@@ -124,6 +124,10 @@ export interface KaggleProblemScore {
   best_score: number;
   attempts: number;
   last_best_at: string | null;
+  submission_id?: string | null;
+  rejudge_seq?: number | null;
+  evaluation_status?: string | null;
+  evaluation_created_at?: string | null;
 }
 
 export interface KaggleRankingRow {

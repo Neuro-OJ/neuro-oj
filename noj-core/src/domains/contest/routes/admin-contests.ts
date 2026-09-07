@@ -27,7 +27,9 @@ import { isValidContestType } from "./../types/contests.ts";
 import { listSubmissions } from "../../submission/index.ts";
 import { resolveUserId } from "../../identity/index.ts";
 import {
+  getContestSettlementStatus,
   getLatestContestRankingSnapshot,
+  listContestRankingSnapshots,
   publishContestRankingSnapshot,
 } from "../services/contest-ranking.ts";
 import {
@@ -217,14 +219,21 @@ router.get("/contests/:id/anti-cheat/timeline", async (c) => {
   });
 });
 
-/** 发布不可变的正式成绩快照；重复请求会生成同分的新版本并保留审计说明。 */
+/** 查看正式成绩发布门禁及待处理/失败评测明细。 */
+router.get("/contests/:id/ranking-snapshots/readiness", async (c) => {
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const data = await getContestSettlementStatus(contestId);
+  return c.json({ data });
+});
+
+/** 发布不可变的正式成绩快照；重复请求会生成新版本并保留审计说明。 */
 router.post("/contests/:id/ranking-snapshots", async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const rawBody = await c.req.text();
-  let body: { note?: string } = {};
+  let body: { note?: string; allow_failed?: boolean } = {};
   if (rawBody.trim()) {
     try {
-      body = JSON.parse(rawBody) as { note?: string };
+      body = JSON.parse(rawBody) as { note?: string; allow_failed?: boolean };
     } catch {
       throw new BadRequestError("请求体格式错误：需要有效的 JSON");
     }
@@ -233,6 +242,7 @@ router.post("/contests/:id/ranking-snapshots", async (c) => {
     contestId,
     c.get("userId"),
     body.note ?? "",
+    { allowFailed: body.allow_failed === true },
   );
   return c.json({ data }, 201);
 });
@@ -244,6 +254,30 @@ router.get("/contests/:id/ranking-snapshots/latest", async (c) => {
   return c.json({ data });
 });
 
+/** 获取正式成绩历史版本元数据；rows 只在具体版本导出时返回。 */
+router.get("/contests/:id/ranking-snapshots", async (c) => {
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const data = await listContestRankingSnapshots(contestId);
+  return c.json({ data });
+});
+
+/** 导出最新正式成绩 JSON，供 CSV 之外的核对与归档使用。 */
+router.get("/contests/:id/ranking-snapshots/latest.json", async (c) => {
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const snapshot = await getLatestContestRankingSnapshot(contestId);
+  if (!snapshot) return c.json({ error: "尚未发布正式成绩" }, 404);
+  return c.json({
+    data: {
+      contest_id: contestId,
+      version: snapshot.version,
+      note: snapshot.note,
+      created_by: snapshot.created_by,
+      created_at: snapshot.created_at,
+      rows: snapshot.rows,
+    },
+  });
+});
+
 /** 导出正式成绩，避免直接导出可被重测改变的实时排名。 */
 router.get("/contests/:id/ranking-snapshots/latest.csv", async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
@@ -251,7 +285,7 @@ router.get("/contests/:id/ranking-snapshots/latest.csv", async (c) => {
   if (!snapshot) return c.json({ error: "尚未发布正式成绩" }, 404);
   const rows = snapshot.rows as KaggleRankingRow[];
   const csv = [
-    "版本,排名,用户,总分,最后提交时间",
+    "版本,排名,用户,总分,最后提交时间,题目提交与评测明细(JSON)",
     ...rows.map((row) =>
       [
         snapshot.version,
@@ -259,6 +293,7 @@ router.get("/contests/:id/ranking-snapshots/latest.csv", async (c) => {
         row.username,
         row.total_score,
         row.last_submission_at ?? "",
+        JSON.stringify(row.problem_scores),
       ].map(csvCell).join(",")
     ),
   ].join("\n");

@@ -21,7 +21,9 @@ export {
 } from "./services/contest-clarifications.ts";
 export {
   getContestRanking,
+  getContestSettlementStatus,
   getLatestContestRankingSnapshot,
+  listContestRankingSnapshots,
   publishContestRankingSnapshot,
 } from "./services/contest-ranking.ts";
 export * from "./types/contests.ts";

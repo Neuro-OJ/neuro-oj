@@ -185,6 +185,8 @@ export type AuditDetail =
     contest_id: string;
     version: number;
     note: string;
+    previous_version?: number | null;
+    failed_count?: number;
   }
   // ── issue #413 内容合规审核 ──
   | {

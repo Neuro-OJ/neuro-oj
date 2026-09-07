@@ -2,6 +2,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
   BadRequestError,
+  ConflictError,
   ForbiddenError,
   UnauthorizedError,
 } from "./../../../shared/base/errors.ts";
@@ -19,12 +20,31 @@ export async function publishContestRankingSnapshot(
   contestId: string,
   actorId: string,
   note = "",
+  options: { allowFailed?: boolean } = {},
 ): Promise<
   { id: string; version: number; rows: KaggleRankingRow[]; created_at: string }
 > {
   const contest = await getContest(contestId);
+  if (contest.status !== "ended") {
+    throw new ConflictError("竞赛尚未结束，不能发布正式成绩");
+  }
+  const settlement = await getContestSettlementStatus(contestId);
+  if (settlement.pending_count > 0) {
+    throw new ConflictError(
+      `仍有 ${settlement.pending_count} 条评测待处理，请完成评测后再结算`,
+    );
+  }
+  if (
+    settlement.failed_count > 0 &&
+    (!options.allowFailed || !note.trim())
+  ) {
+    throw new ConflictError(
+      `发现 ${settlement.failed_count} 条失败评测；请处理失败任务，或填写说明并明确允许带失败评测发布`,
+    );
+  }
   const db = getDb();
-  const rows = await getKaggleRanking(contestId);
+  // 快照需要保留提交/评测明细供 CSV/JSON 导出核对；实时榜默认不返回这些内部字段。
+  const rows = await getKaggleRanking(contestId, true);
   const created_at = new Date().toISOString();
   const id = crypto.randomUUID();
   const version = await db.transaction(async (tx) => {
@@ -56,8 +76,152 @@ export async function publishContestRankingSnapshot(
     contest_id: contestId,
     version,
     note,
+    previous_version: version > 1 ? version - 1 : null,
+    failed_count: settlement.failed_count,
   }, { type: "contest", id: contestId });
   return { id, version, rows, created_at };
+}
+
+export interface ContestSettlementItem {
+  submission_id: string;
+  user_id: string;
+  username: string;
+  problem_id: string;
+  problem_title: string;
+  status: string;
+  result_status: string | null;
+  created_at: string;
+  kind: "submission" | "objective";
+}
+
+export interface ContestSettlementStatus {
+  contest_id: string;
+  contest_status: "pending" | "running" | "ended";
+  pending_count: number;
+  failed_count: number;
+  ready: boolean;
+  items: ContestSettlementItem[];
+  truncated: boolean;
+}
+
+/**
+ * 读取结算门禁状态。pending/judging、缺失结果均属于待处理；error 属于失败。
+ * 该查询只读，不会改变队列或提交状态，管理员可据此决定处理或带说明发布。
+ */
+export async function getContestSettlementStatus(
+  contestId: string,
+): Promise<ContestSettlementStatus> {
+  const contest = await getContest(contestId);
+  const db = getDb();
+  const result = await db.execute(sql`
+    WITH contest_tasks AS (
+      SELECT s.id AS submission_id, s.user_id, u.username, s.problem_id,
+        p.title AS problem_title, s.status,
+        er.status AS result_status, s.created_at, 'submission'::text AS kind
+      FROM submissions s
+      JOIN users u ON u.id = s.user_id
+      JOIN problems p ON p.id = s.problem_id
+      JOIN contests c ON c.id = s.contest_id
+      LEFT JOIN evaluation_results er ON er.submission_id = s.id
+      WHERE s.contest_id = ${contestId}
+        AND s.created_at <= c.end_time
+      UNION ALL
+      SELECT os.id AS submission_id, os.user_id, u.username, os.paper_id,
+        p.title AS problem_title, os.status,
+        os.status AS result_status, os.created_at, 'objective'::text AS kind
+      FROM objective_submissions os
+      JOIN users u ON u.id = os.user_id
+      JOIN problems p ON p.id = os.paper_id
+      JOIN contests c ON c.id = os.contest_id
+      WHERE os.contest_id = ${contestId}
+        AND os.created_at <= c.end_time
+    )
+    SELECT
+      COUNT(*) FILTER (WHERE status IN ('pending', 'judging')
+        OR result_status IS NULL
+        OR result_status NOT IN ('finished', 'error'))::int AS pending_count,
+      COUNT(*) FILTER (WHERE status = 'error' OR result_status = 'error')::int
+        AS failed_count
+    FROM contest_tasks
+  `);
+  const [counts] = unwrapRows<Record<string, unknown>>(result as never);
+  const pendingCount = Number(counts?.pending_count ?? 0);
+  const failedCount = Number(counts?.failed_count ?? 0);
+
+  // 没有待处理/失败任务时无需再查明细，避免大竞赛每次 readiness 都扫描 500 行。
+  if (pendingCount === 0 && failedCount === 0) {
+    return {
+      contest_id: contestId,
+      contest_status: contest.status,
+      pending_count: pendingCount,
+      failed_count: failedCount,
+      ready: contest.status === "ended" && pendingCount === 0,
+      items: [],
+      truncated: false,
+    };
+  }
+
+  const itemResult = await db.execute(sql`
+    WITH contest_tasks AS (
+      SELECT s.id AS submission_id, s.user_id, u.username, s.problem_id,
+        p.title AS problem_title, s.status,
+        er.status AS result_status, s.created_at, 'submission'::text AS kind
+      FROM submissions s
+      JOIN users u ON u.id = s.user_id
+      JOIN problems p ON p.id = s.problem_id
+      JOIN contests c ON c.id = s.contest_id
+      LEFT JOIN evaluation_results er ON er.submission_id = s.id
+      WHERE s.contest_id = ${contestId}
+        AND s.created_at <= c.end_time
+      UNION ALL
+      SELECT os.id AS submission_id, os.user_id, u.username, os.paper_id,
+        p.title AS problem_title, os.status,
+        os.status AS result_status, os.created_at, 'objective'::text AS kind
+      FROM objective_submissions os
+      JOIN users u ON u.id = os.user_id
+      JOIN problems p ON p.id = os.paper_id
+      JOIN contests c ON c.id = os.contest_id
+      WHERE os.contest_id = ${contestId}
+        AND os.created_at <= c.end_time
+    )
+    SELECT submission_id, user_id, username, problem_id, problem_title,
+      status, result_status, created_at, kind
+    FROM contest_tasks
+    WHERE status IN ('pending', 'judging', 'error')
+      OR result_status IS NULL
+      OR result_status NOT IN ('finished', 'error')
+      OR result_status = 'error'
+    ORDER BY created_at ASC, submission_id ASC
+    LIMIT 501
+  `);
+  const rawItems = unwrapRows<Record<string, unknown>>(itemResult as never);
+  const truncated = rawItems.length > 500;
+  const items = rawItems.slice(0, 500).map(
+    (row) => ({
+      submission_id: String(row.submission_id),
+      user_id: String(row.user_id),
+      username: String(row.username),
+      problem_id: String(row.problem_id),
+      problem_title: String(row.problem_title),
+      status: String(row.status),
+      result_status: row.result_status === null
+        ? null
+        : String(row.result_status),
+      created_at: String(row.created_at),
+      kind: row.kind === "objective"
+        ? "objective" as const
+        : "submission" as const,
+    }),
+  );
+  return {
+    contest_id: contestId,
+    contest_status: contest.status,
+    pending_count: pendingCount,
+    failed_count: failedCount,
+    ready: contest.status === "ended" && pendingCount === 0,
+    items,
+    truncated,
+  };
 }
 
 export async function getLatestContestRankingSnapshot(contestId: string) {
@@ -65,6 +229,22 @@ export async function getLatestContestRankingSnapshot(contestId: string) {
     .where(eq(contestRankingSnapshots.contest_id, contestId))
     .orderBy(desc(contestRankingSnapshots.version)).limit(1);
   return snapshot ?? null;
+}
+
+/** 返回竞赛全部正式成绩版本，供修订历史和审计核对使用。 */
+export async function listContestRankingSnapshots(contestId: string) {
+  await getContest(contestId);
+  return await getDb().select({
+    id: contestRankingSnapshots.id,
+    contest_id: contestRankingSnapshots.contest_id,
+    version: contestRankingSnapshots.version,
+    status: contestRankingSnapshots.status,
+    note: contestRankingSnapshots.note,
+    created_by: contestRankingSnapshots.created_by,
+    created_at: contestRankingSnapshots.created_at,
+  }).from(contestRankingSnapshots)
+    .where(eq(contestRankingSnapshots.contest_id, contestId))
+    .orderBy(desc(contestRankingSnapshots.version));
 }
 
 /**
@@ -97,6 +277,7 @@ function parseJsonArray<T>(value: unknown): T[] {
  */
 export async function getKaggleRanking(
   contestId: string,
+  includeDetails = false,
 ): Promise<KaggleRankingRow[]> {
   const contest = await getContest(contestId);
   if (contest.type !== "kaggle") {
@@ -110,14 +291,18 @@ export async function getKaggleRanking(
       WHERE id = ${contestId}
     ),
     submission_scores AS (
-      SELECT s.id, s.user_id, s.problem_id, s.created_at, er.score
+      SELECT s.id, s.user_id, s.problem_id, s.created_at, er.score,
+        er.status AS evaluation_status, er.created_at AS evaluation_created_at,
+        s.rejudge_seq
       FROM submissions s
       JOIN evaluation_results er ON er.submission_id = s.id
       JOIN contest_data c ON c.id = s.contest_id
       WHERE s.contest_id = ${contestId}
         AND s.created_at <= c.end_time
       UNION ALL
-      SELECT os.id, os.user_id, os.paper_id, os.created_at, os.score
+      SELECT os.id, os.user_id, os.paper_id, os.created_at, os.score,
+        os.status AS evaluation_status, os.created_at AS evaluation_created_at,
+        0 AS rejudge_seq
       FROM objective_submissions os
       JOIN contest_data c ON c.id = os.contest_id
       WHERE os.contest_id = ${contestId}
@@ -130,6 +315,9 @@ export async function getKaggleRanking(
         problem_id,
         created_at,
         score,
+        evaluation_status,
+        evaluation_created_at,
+        rejudge_seq,
         MAX(score) OVER (
           PARTITION BY user_id, problem_id
           ORDER BY created_at ASC, id ASC
@@ -145,10 +333,14 @@ export async function getKaggleRanking(
     ),
     best_rows AS (
       SELECT
+        id,
         user_id,
         problem_id,
         created_at,
         score,
+        rejudge_seq,
+        evaluation_status,
+        evaluation_created_at,
         ROW_NUMBER() OVER (
           PARTITION BY user_id, problem_id
           ORDER BY score DESC, created_at ASC, id ASC
@@ -160,7 +352,11 @@ export async function getKaggleRanking(
         user_id,
         problem_id,
         score AS best_score,
-        created_at AS last_best_at
+        created_at AS last_best_at,
+        id AS submission_id,
+        rejudge_seq,
+        evaluation_status,
+        evaluation_created_at
       FROM best_rows
       WHERE rn = 1
     ),
@@ -179,6 +375,10 @@ export async function getKaggleRanking(
         COALESCE(bs.best_score, 0)::int AS best_score,
         COALESCE(at.attempts, 0)::int AS attempts,
         bs.last_best_at,
+        bs.submission_id,
+        bs.rejudge_seq,
+        bs.evaluation_status,
+        bs.evaluation_created_at,
         rt.last_refresh_at
       FROM contest_participants participant
       CROSS JOIN contest_problems cp
@@ -205,7 +405,11 @@ export async function getKaggleRanking(
             'label', ps.label,
             'best_score', ps.best_score,
             'attempts', ps.attempts,
-            'last_best_at', ps.last_best_at
+            'last_best_at', ps.last_best_at,
+            'submission_id', ps.submission_id,
+            'rejudge_seq', ps.rejudge_seq,
+            'evaluation_status', ps.evaluation_status,
+            'evaluation_created_at', ps.evaluation_created_at
           ) ORDER BY ps.sort_order, ps.label
         ) AS problem_scores
       FROM problem_stats ps
@@ -230,17 +434,29 @@ export async function getKaggleRanking(
     ORDER BY rank
   `);
 
-  return unwrapRows<Record<string, unknown>>(result as never).map((row) => ({
-    rank: Number(row.rank),
-    user_id: row.user_id as string,
-    username: row.username as string,
-    avatar_url: (row.avatar_url as string | null) ?? null,
-    total_score: Number(row.total_score),
-    last_submission_at: row.last_submission_at === null
-      ? null
-      : String(row.last_submission_at),
-    problem_scores: parseJsonArray<KaggleProblemScore>(row.problem_scores),
-  }));
+  return unwrapRows<Record<string, unknown>>(result as never).map((row) => {
+    const problemScores = parseJsonArray<KaggleProblemScore>(
+      row.problem_scores,
+    );
+    return {
+      rank: Number(row.rank),
+      user_id: row.user_id as string,
+      username: row.username as string,
+      avatar_url: (row.avatar_url as string | null) ?? null,
+      total_score: Number(row.total_score),
+      last_submission_at: row.last_submission_at === null
+        ? null
+        : String(row.last_submission_at),
+      problem_scores: includeDetails
+        ? problemScores
+        : problemScores.map((ps) => ({
+          label: ps.label,
+          best_score: ps.best_score,
+          attempts: ps.attempts,
+          last_best_at: ps.last_best_at,
+        })),
+    };
+  });
 }
 
 /**

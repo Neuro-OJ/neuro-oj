@@ -18,7 +18,10 @@ import {
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { createFileStream } from "./../../../shared/http/file-stream.ts";
 import { checkPermission } from "./../../identity/index.ts";
-import { getContestRanking } from "../services/contest-ranking.ts";
+import {
+  getContestRanking,
+  getLatestContestRankingSnapshot,
+} from "../services/contest-ranking.ts";
 import {
   createClarification,
   listClarifications,
@@ -252,6 +255,32 @@ contests.get("/:id/ranking", optionalAuthMiddleware, async (c) => {
     c.var.userId,
   );
   return c.json({ data });
+});
+
+/**
+ * GET /:id/final-ranking —— 查看已发布的正式成绩。
+ * 与实时排名分离，返回快照版本和发布时间，避免重测后误把实时成绩当作正式成绩。
+ */
+contests.get("/:id/final-ranking", optionalAuthMiddleware, async (c) => {
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const contest = await getContest(contestId, c.var.userId);
+  if (
+    !contest.is_public && !await checkPermission(c, "submission:read_all") &&
+    !contest.is_registered
+  ) {
+    throw new NotFoundError("竞赛不存在");
+  }
+  const snapshot = await getLatestContestRankingSnapshot(contestId);
+  if (!snapshot) throw new NotFoundError("尚未发布正式成绩");
+  return c.json({
+    data: snapshot.rows,
+    result_type: "official",
+    snapshot: {
+      version: snapshot.version,
+      note: snapshot.note,
+      created_at: snapshot.created_at,
+    },
+  });
 });
 
 /**

@@ -50,6 +50,7 @@
 | GET | `/:id` | noj-core/src/domains/system/routes/announcements.ts |
 | GET | `/:id/avatar` | noj-core/src/domains/identity/routes/users.ts |
 | GET | `/:id/clarifications` | noj-core/src/domains/contest/routes/contests.ts |
+| GET | `/:id/final-ranking` | noj-core/src/domains/contest/routes/contests.ts |
 | GET | `/:id/messages` | noj-core/src/domains/messaging/routes/conversations.ts |
 | GET | `/:id/messages/:messageId/image` | noj-core/src/domains/messaging/routes/conversations.ts |
 | GET | `/:id/my-submissions` | noj-core/src/domains/contest/routes/contests.ts |
@@ -86,8 +87,11 @@
 | GET | `/contests/:id/anti-cheat/timeline` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | GET | `/contests/:id/events` | noj-core/src/domains/contest/routes/sse.ts |
 | GET | `/contests/:id/participants` | noj-core/src/domains/contest/routes/admin-contests.ts |
+| GET | `/contests/:id/ranking-snapshots` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | GET | `/contests/:id/ranking-snapshots/latest` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | GET | `/contests/:id/ranking-snapshots/latest.csv` | noj-core/src/domains/contest/routes/admin-contests.ts |
+| GET | `/contests/:id/ranking-snapshots/latest.json` | noj-core/src/domains/contest/routes/admin-contests.ts |
+| GET | `/contests/:id/ranking-snapshots/readiness` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | GET | `/contests/:id/submissions` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | GET | `/dashboard/observability` | noj-core/src/domains/query/routes/admin-dashboard.ts |
 | GET | `/dashboard/stats` | noj-core/src/domains/query/routes/admin-dashboard.ts |
