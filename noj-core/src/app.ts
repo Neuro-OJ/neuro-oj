@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Context, Next } from "hono";
 import { cors } from "hono/cors";
 import health from "./routes/health.ts";
-import admin from "./routes/admin/index.ts";
+import admin from "./domains/admin/index.ts";
 import { identityRouter } from "./domains/identity/routes/index.ts";
 import { catalogRouter } from "./domains/catalog/routes/index.ts";
 import { submissionRouter } from "./domains/submission/routes/index.ts";
