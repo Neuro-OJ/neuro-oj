@@ -1208,11 +1208,15 @@ const KNOWN_TOP = new Set([
 
 ```ts
 case "server": {
-  const parsedDir = args.includes("--dir")
-    ? args[args.indexOf("--dir") + 1]
-    : undefined;
+  // 仅支持 `server --dir <path> <子命令>` 形式的全局 --dir；
+  // 子命令自身（如 problems import --dir）的参数原样透传，不在这里剥离。
+  let parsedDir: string | undefined;
+  let serverArgs = args;
+  if (args[0] === "--dir" && args[1] !== undefined) {
+    parsedDir = args[1];
+    serverArgs = args.slice(2);
+  }
   const context = resolveContext({ cwd: ctx.cwd, dir: parsedDir });
-  const serverArgs = args.filter((a) => a !== "--dir" && a !== parsedDir);
   return await runServerCommand({ context, args: serverArgs });
 }
 ```
