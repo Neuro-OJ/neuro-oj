@@ -244,6 +244,7 @@ export function parseJudgeArgs(args: string[]): JudgeOptions {
   if (out.composeFile === "") out.composeFile = `${out.dir}/docker-compose.judge.yml`;
   return out;
 }
+```
 
 - [ ] **Step 4: 运行测试确认通过**
 
