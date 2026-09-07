@@ -1,5 +1,6 @@
 import { and, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";
 import {
   conversationPreferences,
   conversationReads,
@@ -358,6 +359,7 @@ export async function sendMessage(
       sender_id: userId,
     },
   );
+  await publishSearchIndexEvent("message", message.id, "upsert");
 
   // 异步内容合规送审（issue #413）：仅文本消息送审；不阻塞发送路径
   if (type === "text") {
@@ -1127,6 +1129,7 @@ export async function deleteMessage(
       deleted_at: now,
     })
     .onConflictDoNothing();
+  await publishSearchIndexEvent("message", messageId, "delete");
 }
 
 /**
@@ -1340,6 +1343,7 @@ export async function editMessage(
       message_id: messageId,
     },
   );
+  await publishSearchIndexEvent("message", messageId, "upsert");
 }
 
 /**
@@ -1396,6 +1400,7 @@ export async function recallMessage(
       message_id: messageId,
     },
   );
+  await publishSearchIndexEvent("message", messageId, "upsert");
 }
 
 /**
