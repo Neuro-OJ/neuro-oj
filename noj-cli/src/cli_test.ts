@@ -230,3 +230,11 @@ Deno.test("parseObservabilityArgs: alert-drill 参数解析", () => {
 Deno.test("observability 无子命令返回 1", async () => {
   assertEquals(await dispatchCommand("observability", [], ctx), 1);
 });
+
+Deno.test("server 无上下文时返回 1", async () => {
+  assertEquals(await dispatchCommand("server", ["db", "migrate"], ctx), 1);
+});
+
+Deno.test("printHelp 包含 server", () => {
+  assertEquals(printHelp().includes("server <cmd>"), true);
+});

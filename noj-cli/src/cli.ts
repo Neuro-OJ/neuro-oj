@@ -33,6 +33,8 @@ import { PRODUCTION_COMMANDS, runProduction } from "./production.ts";
 import { alertDrill } from "./observability/alert_drill.ts";
 import { observabilityCheck } from "./observability/check.ts";
 import { realHttp } from "./observability/http.ts";
+import { runServerCommand } from "./server_cmd/server_cmd.ts";
+import { resolveContext } from "./context/context.ts";
 
 /** CLI 执行上下文，供各子命令共享。 */
 export interface CommandContext {
@@ -84,6 +86,7 @@ export function printHelp(): string {
     "  deploy        部署生命周期 init/up/down/restart/status",
     "  maintain      运维 logs/config/verify/reset/backup(create/verify/restore/drill)",
     "  run-server    前台运行 noj-server 二进制",
+    "  server <cmd>            容器内服务端管理命令（db/init/bootstrap/problems/dev-setup）",
     "  version       显示版本",
     "",
   ].join("\n");
@@ -96,6 +99,7 @@ const KNOWN_TOP = new Set([
   "run-server",
   "version",
   "observability",
+  "server",
 ]);
 
 /** 解析 --port <n>，缺省 8080；非法值抛错。 */
@@ -600,6 +604,18 @@ export async function dispatchCommand(
         console.error(`observability: ${(e as Error).message}`);
         return 1;
       }
+    }
+    case "server": {
+      // 仅支持 `server --dir <path> <子命令>` 形式的全局 --dir；
+      // 子命令自身（如 problems import --dir）的参数原样透传，不在这里剥离。
+      let parsedDir: string | undefined;
+      let serverArgs = args;
+      if (args[0] === "--dir" && args[1] !== undefined) {
+        parsedDir = args[1];
+        serverArgs = args.slice(2);
+      }
+      const context = resolveContext({ cwd: ctx.cwd, dir: parsedDir });
+      return await runServerCommand({ context, args: serverArgs });
     }
     case "run-server": {
       let dirOverride: string | undefined;
