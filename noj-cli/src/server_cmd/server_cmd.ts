@@ -2,6 +2,8 @@ import { dirname } from "@std/path";
 import type { CliContext } from "../context/context.ts";
 import { type CommandRunner, realRunner } from "../runtime/command.ts";
 
+export type ServerSubcommand = readonly [string, ...string[]];
+
 export interface ServerCommandOptions {
   context: CliContext;
   args: string[];
@@ -18,8 +20,40 @@ const VALID_SUBCOMMANDS = new Set([
 
 function validateArgs(args: string[]): void {
   if (args.length === 0) throw new Error("server: 缺少子命令");
-  if (!VALID_SUBCOMMANDS.has(args[0]!)) {
-    throw new Error(`server: 未知子命令 ${args[0]}`);
+  const [sub, subsub] = args;
+  if (!VALID_SUBCOMMANDS.has(sub!)) {
+    throw new Error(`server: 未知子命令 ${sub}`);
+  }
+  if (sub === "dev-setup") {
+    if (args.length !== 1) {
+      throw new Error("server: dev-setup 不接受额外参数");
+    }
+    return;
+  }
+  if (subsub === undefined) {
+    if (sub === "db") throw new Error("server: db 需要 migrate");
+    if (sub === "init") throw new Error("server: init 需要 system");
+    if (sub === "bootstrap") {
+      throw new Error("server: bootstrap 需要 first-admin 或 admin");
+    }
+    if (sub === "problems") {
+      throw new Error("server: problems 需要 build 或 import");
+    }
+  }
+  if (sub === "db" && subsub !== "migrate") {
+    throw new Error("server: db 需要 migrate");
+  }
+  if (sub === "init" && subsub !== "system") {
+    throw new Error("server: init 需要 system");
+  }
+  if (sub === "bootstrap" && subsub !== "first-admin" && subsub !== "admin") {
+    throw new Error("server: bootstrap 需要 first-admin 或 admin");
+  }
+  if (sub === "problems" && subsub !== "build" && subsub !== "import") {
+    throw new Error("server: problems 需要 build 或 import");
+  }
+  if ((sub === "db" || sub === "init") && args.length > 2) {
+    throw new Error(`server: ${sub} 不接受额外参数`);
   }
 }
 
@@ -89,26 +123,36 @@ export async function runServerCommand(
   }
 
   if (context.kind === "production" && context.dir !== null) {
-    const fullArgs = [
-      "compose",
-      "--env-file",
-      `${context.dir}/.env.prod`,
-      "--file",
-      `${context.dir}/docker-compose.prod.yml`,
-      "run",
-      "--rm",
-      "--entrypoint",
-      "/app/bin/noj",
-      "core",
-      ...args,
-    ];
-    const handle = runner.spawn({
-      cmd: "docker",
-      args: fullArgs,
-      cwd: context.dir,
-      env: {},
-    });
-    return await handle.wait();
+    try {
+      const fullArgs = [
+        "compose",
+        "--env-file",
+        `${context.dir}/.env.prod`,
+        "--file",
+        `${context.dir}/docker-compose.prod.yml`,
+        "run",
+        "--rm",
+        "--entrypoint",
+        "/app/bin/noj",
+        "core",
+        ...args,
+      ];
+      const handle = runner.spawn({
+        cmd: "docker",
+        args: fullArgs,
+        cwd: context.dir,
+        env: {},
+      });
+      return await handle.wait();
+    } catch (e) {
+      console.error((e as Error).message);
+      return 1;
+    }
+  }
+
+  if (context.kind === "judge") {
+    console.error("server: 不适用于 judge 上下文");
+    return 1;
   }
 
   const sourceRoot = findSourceRoot(context.cwd);
