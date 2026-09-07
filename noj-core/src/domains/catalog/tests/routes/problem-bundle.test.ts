@@ -11,6 +11,7 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { problems, users } from "../../../../shared/db/schema.ts";
 import { eq, sql } from "drizzle-orm";
 import { createUserToken } from "../../../../../tests/helper.ts";
+import { getDefaultLlmLimits } from "../../../gateway/index.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skipEnv = !hasEnv;
@@ -809,5 +810,50 @@ Deno.test({
       body: formData,
     });
     assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name: "import-bundle: LLM max_calls 超过平台默认被拒（400）",
+  ignore: skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const defaults = getDefaultLlmLimits();
+    const formData = new FormData();
+    formData.append(
+      "file",
+      makeZipBlob({
+        type: "P",
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            time_limit_ms: 60000,
+            memory_limit_mb: 512,
+            network: { enabled: true },
+          },
+          solution: {
+            image: "noj-solution-python",
+            call_timeout_ms: 5000,
+            memory_limit_mb: 512,
+          },
+        },
+        llm: {
+          provider_id: "p1",
+          model: "m",
+          max_calls: defaults.max_calls + 1,
+        },
+      }),
+      "llm-over.zip",
+    );
+    const res = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    assertEquals(res.status, 400);
   },
 });

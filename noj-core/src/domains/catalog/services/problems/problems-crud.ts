@@ -28,7 +28,10 @@ import { getStorageProvider } from "./../../../system/index.ts";
 import { logger } from "./../../../../shared/base/logging.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import { logAudit } from "../../../system/index.ts";
-import { getLlmProviderById } from "../../../gateway/index.ts";
+import {
+  assertLlmLimitsWithinDefault,
+  getLlmProviderById,
+} from "../../../gateway/index.ts";
 import {
   type CreateProblemInput,
   DIFFICULTIES,
@@ -171,6 +174,7 @@ export async function createProblem(
     if (type !== "P") {
       throw new ForbiddenError("仅 P 型/官方题可启用 LLM");
     }
+    assertLlmLimitsWithinDefault(input.llm);
     const provider = await getLlmProviderById(input.llm.provider_id).catch(
       () => null,
     );
@@ -425,6 +429,7 @@ export async function updateProblem(
       if (isObjective) {
         throw new BadRequestError("客观题套卷不支持 LLM 配置");
       }
+      assertLlmLimitsWithinDefault(input.llm);
       const provider = await getLlmProviderById(input.llm.provider_id).catch(
         () => null,
       );

@@ -92,3 +92,23 @@ class LlmTest(TestCase):
             _Handler.status = old_status
             server.shutdown()
             server.server_close()
+
+    def test_out_of_usage_error_raises_structured(self):
+        server = _start_server()
+        old_status = _Handler.status
+        old_response = _Handler.response
+        _Handler.status = 429
+        _Handler.response = {"error": {"code": "out_of_usage"}}
+        try:
+            os.environ["NOJ_LLM_GATEWAY_URL"] = f"http://127.0.0.1:{server.server_port}"
+            os.environ["NOJ_LLM_TOKEN"] = "test-token"
+            os.environ["NOJ_LLM_ALLOWED_MODELS"] = "qwen-plus"
+            with self.assertRaises(llm.LLMError) as ctx:
+                llm.complete(model="qwen-plus", messages=[{"role": "user", "content": "hi"}])
+            self.assertEqual(ctx.exception.status_code, 429)
+            self.assertEqual(ctx.exception.error_code, "out_of_usage")
+        finally:
+            _Handler.status = old_status
+            _Handler.response = old_response
+            server.shutdown()
+            server.server_close()

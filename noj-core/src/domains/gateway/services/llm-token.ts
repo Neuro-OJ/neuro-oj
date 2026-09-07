@@ -5,6 +5,7 @@ import type { LlmConfig } from "./../../catalog/index.ts";
 import type { JudgeTaskLlm } from "../../submission/index.ts";
 import type { RuntimeConfig } from "../../catalog/index.ts";
 import { encodeBase64 } from "@std/encoding/base64";
+import { getDefaultLlmLimits, resolveLlmLimits } from "./llm-limits.ts";
 
 const IV_LENGTH = 12;
 
@@ -80,6 +81,7 @@ export function buildJudgeTaskLlm(
     problemId,
     userId,
     runtimeConfig,
+    resolveLlmLimits(llmConfig),
   );
 }
 
@@ -91,12 +93,14 @@ export async function buildJudgeTaskLlmForProvider(
   problemId: string,
   userId: string,
   runtimeConfig: RuntimeConfig,
+  limits?: { max_calls: number; max_tokens: number },
 ): Promise<JudgeTaskLlm> {
   const gatewayUrl = Deno.env.get("NOJ_LLM_GATEWAY_URL") ??
     "http://localhost:8001";
   const timeLimitMs = runtimeConfig.evaluator.time_limit_ms;
   const ttlSeconds = Math.max(60, Math.ceil((timeLimitMs * 4) / 1000));
   const now = Math.floor(Date.now() / 1000);
+  const resolved = limits ?? getDefaultLlmLimits();
   const token = await mintEvalToken({
     jti: crypto.randomUUID(),
     submission_id: submissionId,
@@ -106,8 +110,8 @@ export async function buildJudgeTaskLlmForProvider(
     allowed_models: [model],
     iat: now,
     exp: now + ttlSeconds,
-    max_calls: Number(Deno.env.get("NOJ_LLM_MAX_CALLS") ?? "100"),
-    max_tokens: Number(Deno.env.get("NOJ_LLM_MAX_TOKENS") ?? "50000"),
+    max_calls: resolved.max_calls,
+    max_tokens: resolved.max_tokens,
   });
   return {
     gateway_url: gatewayUrl,
