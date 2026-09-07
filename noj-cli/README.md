@@ -71,6 +71,20 @@ run-server。备份使用单文件 `.nojbackup`（zstd + SHA-256，可选 GPG AE
 与生产 Compose 的快照目录格式不同，不能交叉恢复。 `maintain restore` 是
 `maintain backup restore` 的别名。
 
+## 新增运维命令（Phase 1）
+
+```bash
+noj-cli observability check [--base-url URL] [--check-notifications]
+noj-cli observability alert-drill [--alertmanager-url URL] [--hold SECONDS]
+noj-cli server db migrate
+noj-cli server init system
+noj-cli server bootstrap first-admin --username <user> --email <email>
+noj-cli server bootstrap admin [--email <email>]
+noj-cli server problems build [--id <id>]
+noj-cli server problems import [--dir <dir>]
+noj-cli server dev-setup
+```
+
 ## 开发与验证
 
 ```bash
