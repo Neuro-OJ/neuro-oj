@@ -16,6 +16,7 @@
  * 用法：
  *   deno task test:parallel            # 并行跑全部分片（需 DATABASE_URL）
  *   deno task test:parallel -- --dry-run   # 仅打印将要执行的命令
+ *   deno task test:parallel -- --shards 1  # 只跑前 1 个分片（默认 2）
  *
  * 分片（目录集合与 .github/workflows/ci.yml 的 core-<domain> / core-shared 一致；unit 分片
  * 多带 tests/00_migrate_test.ts——本脚本所有分片都走真实 PG + TEST_SCHEMA
@@ -31,8 +32,10 @@ import {
   HeadBucketCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { parseShardArgs } from "./test-parallel-args.ts";
 
 const DRY_RUN = Deno.args.includes("--dry-run");
+const SHARD_COUNT = parseShardArgs(Deno.args);
 
 // ── 分片配置 ────────────────────────────────────
 const SHARDS = [
@@ -155,7 +158,7 @@ async function ensureS3Bucket(bucket: string): Promise<void> {
 // ── 1. 预建分片 schema + 清理外部状态 ───────────
 if (!DRY_RUN) {
   const admin = postgres(databaseUrl, { max: 1 });
-  for (const shard of SHARDS) {
+  for (const shard of SHARDS.slice(0, SHARD_COUNT)) {
     await admin.unsafe(`CREATE SCHEMA IF NOT EXISTS "${shard.schema}"`);
     console.log(`schema ${shard.schema} 就绪`);
 
@@ -175,7 +178,7 @@ if (!DRY_RUN) {
 }
 
 // ── 2. 并行执行各分片 ───────────────────────────
-const children = SHARDS.map((shard) => {
+const children = SHARDS.slice(0, SHARD_COUNT).map((shard) => {
   const redisUrl = withRedisDb(baseRedisUrl, shard.redisDb);
   const args = [
     "test",
