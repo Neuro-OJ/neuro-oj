@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { extractApiError } from '~/utils/apiError'
+import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 
 definePageMeta({
   layout: "admin",
@@ -45,16 +46,16 @@ const filterEnd = ref("")
 const limit = ref(100)
 const page = ref(1)
 
-const columns = [
-  { accessorKey: "created_at", header: "时间" },
-  { accessorKey: "submission_id", header: "提交" },
-  { accessorKey: "user_id", header: "用户" },
-  { accessorKey: "problem_id", header: "题目" },
-  { accessorKey: "provider_id", header: "Provider" },
-  { accessorKey: "model", header: "模型" },
-  { accessorKey: "total_tokens", header: "Token" },
-  { accessorKey: "status", header: "状态" },
-  { accessorKey: "actions", header: "操作" },
+const columns: AdminColumn[] = [
+  { key: "created_at", label: "时间" },
+  { key: "submission_id", label: "提交" },
+  { key: "user_id", label: "用户" },
+  { key: "problem_id", label: "题目" },
+  { key: "provider_id", label: "Provider" },
+  { key: "model", label: "模型" },
+  { key: "total_tokens", label: "Token" },
+  { key: "status", label: "状态" },
+  { key: "actions", label: "操作" },
 ]
 
 // 按筛选条件加载用量列表
@@ -185,27 +186,31 @@ function openDetail(row: LlmUsageRow) {
       </div>
     </div>
 
-    <div v-if="error" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ error }}</span></div>
-    <UTable
+    <AdminTable
       :columns="columns"
-      :data="rows"
+      :items="rows as unknown as Record<string, unknown>[]"
       :loading="loading"
-      :empty="'暂无用量记录'">
-      <template #created_at-cell="{ row }">
-        <span>{{ new Date(row.original.created_at).toLocaleString("zh-CN") }}</span>
+      :error="error || undefined"
+      :total-pages="1"
+      :current-page="1"
+    >
+      <template #cell="{ row, column }">
+        <template v-if="column.key === 'created_at'">
+          <span>{{ new Date((row as unknown as LlmUsageRow).created_at).toLocaleString("zh-CN") }}</span>
+        </template>
+        <template v-else-if="column.key === 'submission_id'">
+          <code class="text-xs">{{ (row as unknown as LlmUsageRow).submission_id.slice(0, 8) }}</code>
+        </template>
+        <template v-else-if="column.key === 'status'">
+          <UBadge :color="(row as unknown as LlmUsageRow).status === 'ok' ? 'success' : 'error'" variant="soft">{{ (row as unknown as LlmUsageRow).status }}</UBadge>
+        </template>
       </template>
-      <template #submission_id-cell="{ row }">
-        <code class="text-xs">{{ row.original.submission_id.slice(0, 8) }}</code>
-      </template>
-      <template #status-cell="{ row }">
-        <UBadge :color="row.original.status === 'ok' ? 'success' : 'error'" variant="soft">{{ row.original.status }}</UBadge>
-      </template>
-      <template #actions-cell="{ row }">
-        <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary" title="详情" aria-label="详情" @click="openDetail(row.original)">
+      <template #actions="{ row }">
+        <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary" title="详情" aria-label="详情" @click="openDetail(row as unknown as LlmUsageRow)">
           <UIcon name="i-lucide-eye" class="size-3.5" />
         </UButton>
       </template>
-    </UTable>
+    </AdminTable>
 
     <div class="flex items-center justify-end gap-2">
       <UButton color="neutral" variant="outline" size="sm" :disabled="page <= 1" @click="page--; load()">上一页</UButton>
