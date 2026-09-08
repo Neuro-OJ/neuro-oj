@@ -5,17 +5,8 @@
  * 类型标签、链接构造、图标与次要元信息逻辑集中到一处。
  */
 
+import type { SearchItem } from '~/composables/useSearch';
 import { problemUrl, publicUrl, userUrl } from './publicIdentifiers.ts';
-
-/** 与 useSearch.SearchItem 结构一致的最小搜索项类型。 */
-export interface SearchItem {
-  entity_type: string;
-  entity_id: string;
-  title: string;
-  highlight: string;
-  rank: number;
-  metadata: Record<string, unknown>;
-}
 
 const TYPE_LABELS: Record<string, string> = {
   problem: '题目',
