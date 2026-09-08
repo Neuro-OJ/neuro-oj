@@ -113,6 +113,7 @@ const groups = ref<Record<string, { items: SearchItem[]; has_more: boolean }>>({
 const hasMore = ref(false);
 const tookMs = ref<number | null>(null);
 let searchRequestVersion = 0;
+let urlSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
 const asyncStatus = computed<"loading" | "error" | "empty" | "data">(() => {
   if (loading.value) return "loading";
@@ -191,13 +192,15 @@ async function fetchResults() {
 }
 
 function syncUrl() {
-  router.replace({
-    query: {
-      q: query.value,
-      type: type.value,
-      page: String(page.value),
-    },
-  });
+  const queryParams: Record<string, string> = {
+    q: query.value,
+    type: type.value,
+  };
+  // “全部”Tab 使用 grouped 模式，不涉及分页，URL 不写 page。
+  if (type.value !== "all") {
+    queryParams.page = String(page.value);
+  }
+  router.replace({ query: queryParams });
 }
 
 function onSearch() {
@@ -231,6 +234,9 @@ watch(query, () => {
     tookMs.value = null;
     loading.value = false;
   }
+  // 输入时防抖同步 URL，避免每个字符都写浏览器历史。
+  if (urlSyncTimer) clearTimeout(urlSyncTimer);
+  urlSyncTimer = setTimeout(() => syncUrl(), 300);
 });
 
 onMounted(() => {
