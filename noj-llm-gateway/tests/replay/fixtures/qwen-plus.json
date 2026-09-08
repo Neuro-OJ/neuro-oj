@@ -1,0 +1,10 @@
+{
+  "model": "qwen-plus",
+  "request": {
+    "messages": [{ "role": "user", "content": "1+1=?" }],
+    "max_tokens": 10
+  },
+  "response": {
+    "choices": [{ "message": { "role": "assistant", "content": "2" } }]
+  }
+}
