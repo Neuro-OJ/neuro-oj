@@ -36,6 +36,7 @@ pub fn get_docker() -> Result<Docker> {
 ///
 /// 先检查本地是否已有 `noj-judge-test-runner` 镜像，
 /// 不存在则通过 `docker build` 命令从 Dockerfile 构建。
+#[allow(dead_code)] // 仅部分 E2E test binary 引用
 pub async fn ensure_test_image(docker: &Docker) -> Result<()> {
     let image_name = "noj-judge-test-runner:latest";
 
