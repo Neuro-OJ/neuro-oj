@@ -88,7 +88,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { extractApiError } from "~/utils/apiError";
 import AsyncContent from "~/components/ui/AsyncContent.vue";
 import SearchResultItem from "~/components/feature/search/SearchResultItem.vue";
@@ -241,5 +241,9 @@ watch(query, () => {
 
 onMounted(() => {
   if (query.value.trim().length >= 2) fetchResults();
+});
+
+onUnmounted(() => {
+  if (urlSyncTimer) clearTimeout(urlSyncTimer);
 });
 </script>
