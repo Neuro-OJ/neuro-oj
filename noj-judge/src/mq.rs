@@ -4,53 +4,74 @@ use tracing::{error, info, warn};
 
 use crate::types::{JudgeResult, JudgeTask};
 
-/// BRPOPLPUSH 阻塞等待超时（秒）。
-const BRPOP_TIMEOUT_SECS: f64 = 5.0;
 const PROCESSING_SUFFIX: &str = ":processing";
+
+/// 固定比例轮转序列：high:medium:low = 4:2:1。
+/// 下标对应 `[high, medium, low]` 队列数组。
+pub const PRIORITY_SEQUENCE: [usize; 7] = [0, 0, 0, 0, 1, 1, 2];
+
+/// 返回轮转序列中 `cursor + offset` 对应的队列下标。
+pub fn priority_slot(cursor: usize, offset: usize) -> usize {
+    PRIORITY_SEQUENCE[(cursor + offset) % PRIORITY_SEQUENCE.len()]
+}
 
 /// 从 Redis 队列拉取并暂存到 processing 列表的任务。
 pub struct PulledTask {
     pub task: JudgeTask,
     /// processing 列表中的原始消息，用于成功后 LREM 确认。
     pub raw: String,
+    /// 来源主队列名（用于 requeue/ack 回到同优先级队列）。
+    pub queue: String,
 }
 
 fn processing_queue(queue: &str) -> String {
     format!("{}{}", queue, PROCESSING_SUFFIX)
 }
 
-/// 从 Redis 队列中拉取评测任务。
+/// 从三个优先级队列中按固定比例轮转拉取评测任务。
 ///
 /// NOJ-179：使用 BRPOPLPUSH 把消息先移入 processing 列表，
 /// 处理完成并成功投递结果后由 [`ack_task`] LREM 确认；
 /// 崩溃时消息留在 processing，由 noj-core sweeper 超时重投。
-pub async fn pull_task(
+pub async fn pull_task_priority(
     conn: &mut redis::aio::MultiplexedConnection,
-    queue: &str,
+    queues: &[String; 3],
+    cursor: &mut usize,
+    timeout_secs: f64,
 ) -> Result<Option<PulledTask>> {
-    let processing = processing_queue(queue);
-    let raw: Option<String> = conn
-        .brpoplpush(queue, &processing, BRPOP_TIMEOUT_SECS)
-        .await
-        .context("BRPOPLPUSH 拉取任务失败")?;
+    for offset in 0..PRIORITY_SEQUENCE.len() {
+        let idx = priority_slot(*cursor, offset);
+        let queue = &queues[idx];
+        let processing = processing_queue(queue);
+        let raw: Option<String> = conn
+            .brpoplpush(queue, &processing, timeout_secs)
+            .await
+            .context("BRPOPLPUSH 拉取任务失败")?;
 
-    match raw {
-        Some(raw) => match parse_task_message(&raw) {
-            Some(task) => Ok(Some(PulledTask { task, raw })),
-            None => {
-                // NOJ-181：坏消息记录原文，写入死信列表后移出 processing。
-                error!(
-                    raw = %truncate_for_log(&raw),
-                    "反序列化 JudgeTask 失败，消息已写入死信队列"
-                );
-                let dead_queue = format!("{}:dead", queue);
-                let _: redis::RedisResult<usize> = conn.lpush(&dead_queue, &raw).await;
-                let _: redis::RedisResult<usize> = conn.lrem(&processing, 1, &raw).await;
-                Ok(None)
+        if let Some(raw) = raw {
+            match parse_task_message(&raw) {
+                Some(task) => {
+                    *cursor = (*cursor + offset + 1) % PRIORITY_SEQUENCE.len();
+                    return Ok(Some(PulledTask {
+                        task,
+                        raw,
+                        queue: queue.clone(),
+                    }));
+                }
+                None => {
+                    // NOJ-181：坏消息记录原文，写入死信列表后移出 processing。
+                    error!(
+                        raw = %truncate_for_log(&raw),
+                        "反序列化 JudgeTask 失败，消息已写入死信队列"
+                    );
+                    let dead_queue = format!("{}:dead", queue);
+                    let _: redis::RedisResult<usize> = conn.lpush(&dead_queue, &raw).await;
+                    let _: redis::RedisResult<usize> = conn.lrem(&processing, 1, &raw).await;
+                }
             }
-        },
-        None => Ok(None),
+        }
     }
+    Ok(None)
 }
 
 fn truncate_for_log(raw: &str) -> String {
@@ -74,21 +95,17 @@ fn parse_task_message(value: &str) -> Option<JudgeTask> {
 /// 将已拉取的活跃用户任务放回主队列队尾（并从 processing 移除原消息）。
 ///
 /// 用于公平调度：同一用户已有评测在跑时，后续任务轮给其他用户。
-pub async fn requeue_task(
-    redis_client: &redis::Client,
-    judge_queue: &str,
-    raw: &str,
-) -> Result<()> {
+pub async fn requeue_task(redis_client: &redis::Client, queue: &str, raw: &str) -> Result<()> {
     let mut conn = redis_client
         .get_multiplexed_async_connection()
         .await
         .context("重试连接 Redis 失败")?;
-    let processing = processing_queue(judge_queue);
+    let processing = processing_queue(queue);
     let _: usize = conn
         .lrem(&processing, 1, raw)
         .await
         .context("从 processing 移除重投任务失败")?;
-    conn.rpush::<&str, &str, usize>(judge_queue, raw)
+    conn.rpush::<&str, &str, usize>(queue, raw)
         .await
         .context("将任务放回主队列失败")?;
     Ok(())
@@ -97,10 +114,10 @@ pub async fn requeue_task(
 /// 确认任务完成：从 processing 列表移除原始消息。
 ///
 /// 返回 false 表示确认失败（消息将由 sweeper 重投，at-least-once 可接受）。
-pub async fn ack_task(redis_client: &redis::Client, judge_queue: &str, raw: &str) -> bool {
+pub async fn ack_task(redis_client: &redis::Client, queue: &str, raw: &str) -> bool {
     match redis_client.get_multiplexed_async_connection().await {
         Ok(mut conn) => {
-            let processing = processing_queue(judge_queue);
+            let processing = processing_queue(queue);
             let removed: std::result::Result<usize, redis::RedisError> =
                 conn.lrem(&processing, 1, raw).await;
             match removed {
@@ -311,6 +328,7 @@ fn sanitize_submission_id_for_filename(submission_id: &str) -> String {
 mod tests {
     use super::parse_task_message;
     use super::sanitize_submission_id_for_filename;
+    use super::{priority_slot, PRIORITY_SEQUENCE};
 
     #[test]
     fn test_parse_task_message_invalid_json_returns_none() {
@@ -368,5 +386,21 @@ mod tests {
         let id = "!@#$%^&*()";
         // 特殊字符被替换为 _，但结果非空
         assert_eq!(sanitize_submission_id_for_filename(id), "__________");
+    }
+
+    #[test]
+    fn test_priority_sequence_ratio() {
+        let high = PRIORITY_SEQUENCE.iter().filter(|&&i| i == 0).count();
+        let medium = PRIORITY_SEQUENCE.iter().filter(|&&i| i == 1).count();
+        let low = PRIORITY_SEQUENCE.iter().filter(|&&i| i == 2).count();
+        assert_eq!((high, medium, low), (4, 2, 1));
+    }
+
+    #[test]
+    fn test_priority_slot_round_robin() {
+        assert_eq!(priority_slot(0, 0), 0);
+        assert_eq!(priority_slot(0, 4), 1);
+        assert_eq!(priority_slot(0, 6), 2);
+        assert_eq!(priority_slot(6, 1), 0);
     }
 }

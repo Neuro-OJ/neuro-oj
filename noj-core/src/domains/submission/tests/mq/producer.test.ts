@@ -12,7 +12,7 @@
  */
 
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { MAX_JUDGE_QUEUE_LENGTH, pushJudgeTask } from "../../mq/producer.ts";
+import { JUDGE_QUEUE_CAPACITY, pushJudgeTask } from "../../mq/producer.ts";
 import {
   getRedis,
   resetRedisForTest,
@@ -47,6 +47,7 @@ function makeTask(overrides?: Partial<JudgeTask>): JudgeTask {
     language: "python3",
     code: "print(42)",
     file_name: "submission.py",
+    priority: "medium",
     ...overrides,
   };
 }
@@ -71,7 +72,7 @@ Deno.test({
       assertEquals(queueLen, 1, "首次入队应返回真实队列长度");
 
       // 验证消息被推送
-      const messages = fake.getMessages("noj:judge:queue");
+      const messages = fake.getMessages("noj:judge:queue:medium");
       assertEquals(messages.length, 1, "应有 1 条消息在队列中");
 
       // 验证消息可反序列化为合法的 JudgeTask
@@ -82,6 +83,38 @@ Deno.test({
         "noj-evaluator-python",
       );
       assertEquals(parsed.code, "print(42)");
+    } finally {
+      await fake.stop();
+      resetRedisForTest();
+      Deno.env.delete("REDIS_URL");
+    }
+  },
+});
+
+Deno.test({
+  name: "mq/producer: 按优先级入对应队列",
+  ignore: !hasDb,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const fake = startFakeRedis();
+    try {
+      resetRedisForTest();
+      Deno.env.set("REDIS_URL", fake.url);
+      const redis = getRedis();
+      await redis.connect();
+      await redis.ping();
+
+      await pushJudgeTask(
+        makeTask({ submission_id: "high-1", priority: "high" }),
+      );
+      await pushJudgeTask(
+        makeTask({ submission_id: "low-1", priority: "low" }),
+      );
+
+      assertEquals(fake.getMessages("noj:judge:queue:high").length, 1);
+      assertEquals(fake.getMessages("noj:judge:queue:low").length, 1);
+      assertEquals(fake.getMessages("noj:judge:queue:medium").length, 0);
     } finally {
       await fake.stop();
       resetRedisForTest();
@@ -119,7 +152,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "mq/producer: 队列达到容量上限时原子拒绝且不写入",
+  name: "mq/producer: 每级独立容量上限",
   ignore: !hasDb,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -132,24 +165,24 @@ Deno.test({
       await redis.connect();
       await redis.ping();
 
-      fake.seedQueue("noj:judge:queue", MAX_JUDGE_QUEUE_LENGTH);
-      const task = makeTask({ submission_id: "test-full-queue" });
-
+      fake.seedQueue("noj:judge:queue:high", JUDGE_QUEUE_CAPACITY.high);
       await assertRejects(
         async () => {
-          await pushJudgeTask(task);
+          await pushJudgeTask(makeTask({
+            submission_id: "high-full",
+            priority: "high",
+          }));
         },
         Error,
         "评测队列已满",
       );
 
-      const messages = fake.getMessages("noj:judge:queue");
-      assertEquals(messages.length, MAX_JUDGE_QUEUE_LENGTH);
-      assertEquals(
-        messages.some((message) => message.includes("test-full-queue")),
-        false,
-        "队列已满时不应写入新任务",
-      );
+      // medium 不受 high 满影响
+      const len = await pushJudgeTask(makeTask({
+        submission_id: "medium-ok",
+        priority: "medium",
+      }));
+      assertEquals(len, 1);
     } finally {
       await fake.stop();
       resetRedisForTest();
@@ -210,7 +243,7 @@ Deno.test({
       });
       await pushJudgeTask(task);
 
-      const messages = fake.getMessages("noj:judge:queue");
+      const messages = fake.getMessages("noj:judge:queue:medium");
       const parsed = JSON.parse(messages[0]) as Record<string, unknown>;
 
       // 验证所有关键字段存在且类型正确

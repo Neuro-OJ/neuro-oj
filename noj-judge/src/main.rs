@@ -93,7 +93,9 @@ fn main() -> Result<()> {
         info!("Docker 连接成功");
 
         let result_queue = config.result_queue.clone();
-        let judge_queue = config.judge_queue.clone();
+        let judge_queues = config.judge_queues();
+        let mut priority_cursor = 0usize;
+        let priority_poll_timeout = config.priority_poll_timeout_secs;
         let work_dir = config.work_dir.clone();
         let instance_id = config.instance_id.clone();
 
@@ -179,7 +181,12 @@ fn main() -> Result<()> {
                     drain::drain_tasks(&mut tasks, drain_timeout).await;
                     break;
                 }
-                task_result = mq::pull_task(&mut redis_conn, &judge_queue) => {
+                task_result = mq::pull_task_priority(
+                    &mut redis_conn,
+                    &judge_queues,
+                    &mut priority_cursor,
+                    priority_poll_timeout,
+                ) => {
                     let pulled: PulledTask = match task_result {
                         Ok(Some(pulled)) => pulled,
                         Ok(None) => continue,
@@ -202,7 +209,7 @@ fn main() -> Result<()> {
                     };
                     if is_active_user {
                         if let Err(e) =
-                            mq::requeue_task(&redis_client, &judge_queue, &pulled.raw).await
+                            mq::requeue_task(&redis_client, &pulled.queue, &pulled.raw).await
                         {
                             error!(
                                 submission_id = %pulled.task.submission_id,
@@ -221,7 +228,7 @@ fn main() -> Result<()> {
 
                     let redis_client = redis_client.clone();
                     let result_queue = result_queue.clone();
-                    let judge_queue = judge_queue.clone();
+                    let task_queue = pulled.queue.clone();
                     let cache_dir = cache_dir.clone();
                     let fallback_dir = fallback_dir.clone();
                     let task_work_dir = work_dir.clone();
@@ -276,7 +283,7 @@ fn main() -> Result<()> {
                         )
                         .await;
                         if push_succeeded {
-                            mq::ack_task(&redis_client, &judge_queue, &raw).await;
+                            mq::ack_task(&redis_client, &task_queue, &raw).await;
                         } else {
                             task_metrics.result_push_failed();
                         }

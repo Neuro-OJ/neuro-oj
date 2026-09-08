@@ -8,6 +8,9 @@ export interface JudgeTaskLlm {
   allowed_models: string[];
 }
 
+/** 评测任务优先级。 */
+export type JudgeTaskPriority = "high" | "medium" | "low";
+
 /**
  * 评测任务——从 noj-core 发送到 noj-judge 的消息。
  *
@@ -20,6 +23,8 @@ export interface JudgeTask {
   problem_id: string;
   /** 提交用户 UUID（judge 公平调度：同一用户同时最多 1 个评测在跑） */
   user_id: string;
+  /** 评测任务优先级（服务端推导，客户端不可声明） */
+  priority: JudgeTaskPriority;
   /** 双容器 Runtime 配置（必填） */
   runtime_config: RuntimeConfig;
   /** 支持包下载 URL（`noj-download://` 格式） */

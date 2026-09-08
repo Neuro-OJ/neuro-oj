@@ -61,6 +61,7 @@ import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import { assertContestSubmissionLimit } from "../../../contest/index.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
 import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
+import { resolveJudgeTaskPriority } from "./judge-priority.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
 import { buildJudgeTaskLlmForProvider } from "./../../../gateway/index.ts";
 import { getUserLlmProvider } from "../../../gateway/index.ts";
@@ -468,10 +469,16 @@ export async function createSubmission(
     );
   }
 
+  const priority = await resolveJudgeTaskPriority(
+    resolvedContestId,
+    "submission",
+  );
+
   const task: JudgeTask = {
     submission_id: id,
     problem_id: input.problem_id,
     user_id: userId,
+    priority,
     runtime_config: runtimeConfig,
     download_url,
     language: input.language,

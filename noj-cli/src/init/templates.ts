@@ -255,6 +255,7 @@ export function prodTemplate(opts: ProdTemplateOptions): DeployConfig {
         REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0",
         JUDGE_QUEUE: "noj:judge:queue",
         RESULT_QUEUE: "noj:judge:results",
+        JUDGE_PRIORITY_POLL_TIMEOUT_MS: "100",
         JUDGE_MAX_CONCURRENT_JUDGES: "2",
       },
     }),

@@ -169,7 +169,7 @@ async function pushToQueue(submissionId: string) {
     language: "python3",
     code: "print('test')",
   });
-  await redis.lpush("noj:judge:queue", task);
+  await redis.lpush("noj:judge:queue:medium", task);
 }
 
 async function clearQueue() {
@@ -178,11 +178,19 @@ async function clearQueue() {
     if (redis.status !== "ready") {
       await redis.connect();
     }
-    await redis.lrange("noj:judge:queue", 0, -1).then(async (items) => {
-      for (const _ of items) {
-        await redis.brpop("noj:judge:queue", 1).catch(() => {});
-      }
-    });
+    for (
+      const queue of [
+        "noj:judge:queue:high",
+        "noj:judge:queue:medium",
+        "noj:judge:queue:low",
+      ]
+    ) {
+      await redis.lrange(queue, 0, -1).then(async (items) => {
+        for (const _ of items) {
+          await redis.brpop(queue, 1).catch(() => {});
+        }
+      });
+    }
   } catch { /* ignore */ }
 }
 
@@ -252,7 +260,7 @@ Deno.test({
     }
 
     const redis = getRedis();
-    const tasks = await redis.lrange("noj:judge:queue", 0, -1);
+    const tasks = await redis.lrange("noj:judge:queue:medium", 0, -1);
     assertEquals(
       tasks.some((task) =>
         JSON.parse(task).submission_id === SUBMISSION_JUDGING_ID
@@ -283,7 +291,7 @@ Deno.test({
     const redis = getRedis();
     await clearQueue();
     await pushToQueue(SUBMISSION_PENDING_ID);
-    await redis.lpush("noj:judge:queue", "invalid json");
+    await redis.lpush("noj:judge:queue:medium", "invalid json");
     const ids = await getPendingSubmissionIds();
     // judge 运行中会实时消费队列，但函数不应抛出异常
     assertEquals(Array.isArray(ids), true);

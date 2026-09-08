@@ -16,15 +16,16 @@ import { getSetting } from "../../system/index.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
 import {
   isRetryableJudgeQueueError,
-  JUDGE_QUEUE,
-  MAX_JUDGE_QUEUE_LENGTH,
+  JUDGE_QUEUE_CAPACITY,
+  JUDGE_QUEUES,
 } from "./producer.ts";
 import { logger } from "../../../shared/base/logging.ts";
-import type { JudgeTask } from "../types/index.ts";
+import type { JudgeTask, JudgeTaskPriority } from "../types/index.ts";
 import type { RuntimeConfig } from "../../catalog/index.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import { buildJudgeTaskLlmForProvider } from "../../gateway/index.ts";
 import { getUserLlmProvider } from "../../gateway/index.ts";
+import { resolveJudgeTaskPriority } from "../services/submissions/judge-priority.ts";
 
 const RESULT_QUEUE = "noj:judge:results";
 
@@ -138,6 +139,7 @@ interface PendingRecoveryRow {
   judge_started_at?: string | null;
   user_id?: string;
   llm_provider_config_id?: string | null;
+  contest_id?: string | null;
 }
 
 interface PendingRecoveryActions<T extends PendingRecoveryRow> {
@@ -167,6 +169,7 @@ interface PendingRecoveryTableColumns {
   userId?: AnyPgColumn;
   llmProviderConfigId?: AnyPgColumn;
   judgeStartedAt?: AnyPgColumn;
+  contestId?: AnyPgColumn;
 }
 
 /**
@@ -193,6 +196,7 @@ async function selectPendingRecoveryRows(
     selectFields.llm_provider_config_id = cols.llmProviderConfigId;
   }
   if (cols.judgeStartedAt) selectFields.judge_started_at = cols.judgeStartedAt;
+  if (cols.contestId) selectFields.contest_id = cols.contestId;
 
   // 动态列集合无法保留 Drizzle 的精确查询类型，这里使用 any 收窄到内部契约。
   // deno-lint-ignore no-explicit-any
@@ -214,6 +218,7 @@ async function selectPendingRecoveryRows(
 async function recoverPendingRows<T extends PendingRecoveryRow>(
   rows: T[],
   actions: PendingRecoveryActions<T>,
+  source: "submission" | "self_test",
 ): Promise<void> {
   for (const row of rows) {
     const runtimeConfig = row.runtime_config as RuntimeConfig | null;
@@ -237,10 +242,23 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
       }
     }
 
+    let priority: JudgeTaskPriority;
+    if (source === "self_test") {
+      priority = "medium";
+    } else if ((row.rejudge_seq ?? 0) > 0) {
+      priority = "low";
+    } else {
+      priority = await resolveJudgeTaskPriority(
+        row.contest_id ?? null,
+        "submission",
+      );
+    }
+
     const task: JudgeTask = {
       submission_id: row.id,
       problem_id: row.problem_id,
       user_id: row.user_id ?? "",
+      priority,
       runtime_config: runtimeConfig,
       download_url,
       language: row.language,
@@ -326,6 +344,7 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
       rejudgeSeq: submissions.rejudge_seq,
       userId: submissions.user_id,
       llmProviderConfigId: submissions.llm_provider_config_id,
+      contestId: submissions.contest_id,
     },
     and(
       eq(submissions.status, "pending"),
@@ -367,7 +386,7 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
           and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
         );
     },
-  });
+  }, "submission");
 }
 
 /**
@@ -431,7 +450,7 @@ export async function recoverPendingSelfTests(now: number): Promise<void> {
           and(eq(selfTests.id, row.id), eq(selfTests.status, "pending")),
         );
     },
-  });
+  }, "self_test");
 }
 
 /**
@@ -489,8 +508,8 @@ export async function cleanupOrphanArtifacts(now: number): Promise<void> {
  */
 const _alertStates = new Map<string, boolean>();
 
-/** 主队列积压告警阈值：达到最大队列容量的一半时告警。 */
-const MAIN_QUEUE_ALERT_THRESHOLD = MAX_JUDGE_QUEUE_LENGTH / 2;
+/** 结果队列积压告警阈值：达到最大队列容量的一半时告警。 */
+const RESULT_QUEUE_ALERT_THRESHOLD = 10_000;
 
 /**
  * 检查评测队列是否存在需要运维关注的异常，并在状态变化时输出告警日志。
@@ -509,18 +528,37 @@ async function logQueueAlertsIfNeeded(): Promise<void> {
   }
 
   const queues = [
-    { key: "judge", main: JUDGE_QUEUE },
-    { key: "result", main: RESULT_QUEUE },
+    {
+      key: "judge:high",
+      main: JUDGE_QUEUES.high,
+      capacity: JUDGE_QUEUE_CAPACITY.high,
+    },
+    {
+      key: "judge:medium",
+      main: JUDGE_QUEUES.medium,
+      capacity: JUDGE_QUEUE_CAPACITY.medium,
+    },
+    {
+      key: "judge:low",
+      main: JUDGE_QUEUES.low,
+      capacity: JUDGE_QUEUE_CAPACITY.low,
+    },
+    {
+      key: "result",
+      main: RESULT_QUEUE,
+      capacity: RESULT_QUEUE_ALERT_THRESHOLD,
+    },
   ] as const;
 
-  for (const { key, main } of queues) {
+  for (const { key, main, capacity } of queues) {
     try {
       const [queueLength, deadLength] = await Promise.all([
         redis.llen(main),
         redis.llen(`${main}:dead`),
       ]);
 
-      const queueAlert = Number(queueLength ?? 0) >= MAIN_QUEUE_ALERT_THRESHOLD;
+      const threshold = capacity / 2;
+      const queueAlert = Number(queueLength ?? 0) >= threshold;
       const deadAlert = Number(deadLength ?? 0) > 0;
 
       const alertKeyQueue = `${key}:queue`;
@@ -530,7 +568,7 @@ async function logQueueAlertsIfNeeded(): Promise<void> {
         logger.warn("评测队列积压超过阈值", {
           queue: main,
           queue_length: Number(queueLength ?? 0),
-          threshold: MAIN_QUEUE_ALERT_THRESHOLD,
+          threshold,
         });
         _alertStates.set(alertKeyQueue, true);
       } else if (!queueAlert && _alertStates.get(alertKeyQueue)) {
@@ -554,11 +592,18 @@ async function logQueueAlertsIfNeeded(): Promise<void> {
 
 export async function runQueueSweeperOnce(): Promise<void> {
   const now = Date.now();
+  const judgeQueues = [
+    JUDGE_QUEUES.high,
+    JUDGE_QUEUES.medium,
+    JUDGE_QUEUES.low,
+  ] as const;
   const results = await Promise.allSettled([
-    sweepProcessingQueue(
-      `${JUDGE_QUEUE}:processing`,
-      JUDGE_QUEUE,
-      taskProcessingTimeoutMs(),
+    ...judgeQueues.map((queue) =>
+      sweepProcessingQueue(
+        `${queue}:processing`,
+        queue,
+        taskProcessingTimeoutMs(),
+      )
     ),
     sweepProcessingQueue(
       `${RESULT_QUEUE}:processing`,
