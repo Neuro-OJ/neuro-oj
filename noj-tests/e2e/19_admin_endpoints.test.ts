@@ -88,7 +88,7 @@ e2eTest("[e2e/admin] 2.1 系统设置 GET/PUT", async () => {
       throw new Error(`GET settings 失败: ${getRes.status}`);
     }
     const settingsData = getRes.body as {
-      data?: Array<{ key: string; value: unknown }>;
+      data?: Array<{ key: string; effective_value: unknown }>;
     };
     const settings = settingsData?.data ?? [];
     if (!Array.isArray(settings)) {
@@ -98,10 +98,10 @@ e2eTest("[e2e/admin] 2.1 系统设置 GET/PUT", async () => {
     // 尝试更新一个已知布尔设置（allow_register 是布尔类型）
     let updated = false;
     for (const s of settings) {
-      if (typeof s.value === "boolean") {
+      if (typeof s.effective_value === "boolean") {
         const putRes = await apiPut(
           `/api/v1/admin/system/settings/${s.key}`,
-          { value: s.value },
+          { value: s.effective_value },
           adminToken,
         );
         if (putRes.status !== 200 && putRes.status !== 202) {
@@ -235,13 +235,13 @@ e2eTest("[e2e/admin] 4.3 乐观锁冲突返回 409", async () => {
     // 选择一个运行时设置项并读取其 updated_at
     const getRes = await apiGet("/api/v1/admin/system/settings", adminToken);
     if (getRes.status !== 200) throw new Error("GET settings 失败");
-    const settingsData = getRes.body as { data?: Array<{ key: string; value: unknown }> };
-    const target = (settingsData?.data ?? []).find((s) => "value" in s);
+    const settingsData = getRes.body as { data?: Array<{ key: string; effective_value: unknown }> };
+    const target = (settingsData?.data ?? []).find((s) => "effective_value" in s);
     if (!target) throw new Error("未找到可更新的设置项");
 
     // 用过期版本提交，应返回 409 VERSION_CONFLICT
     const { status, body } = await api("PUT", `/api/v1/admin/system/settings/${target.key}`, {
-      body: { value: target.value },
+      body: { value: target.effective_value },
       token: adminToken,
       headers: { "If-Match": '"stale-version"' },
     });
