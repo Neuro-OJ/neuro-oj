@@ -108,6 +108,16 @@ noj-cli judge upgrade [--version v0.2.0]
 noj-cli judge download [--dir /srv/noj-judge]
 ```
 
+## 备份隔离恢复演练（Phase 3）
+
+```bash
+noj-cli restore-drill /path/to/snapshot-20260907 \
+  --env-file /opt/neuro-oj/.env.prod \
+  --compose-file /opt/neuro-oj/docker-compose.prod.yml \
+  --passphrase-file /etc/noj/backup-passphrase \
+  [--skip-judge] [--keep]
+```
+
 ## 开发与验证
 
 ```bash

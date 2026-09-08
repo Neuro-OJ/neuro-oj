@@ -37,6 +37,8 @@ import { runServerCommand } from "./server_cmd/server_cmd.ts";
 import { resolveContext } from "./context/context.ts";
 import { parseJudgeArgs } from "./judge/options.ts";
 import { runJudgeCommand } from "./judge/commands.ts";
+import { parseRestoreDrillArgs } from "./restore_drill/options.ts";
+import { runRestoreDrill } from "./restore_drill/drill.ts";
 
 /** CLI 执行上下文，供各子命令共享。 */
 export interface CommandContext {
@@ -93,6 +95,7 @@ export function printHelp(): string {
     "  observability alert-drill 向 Alertmanager 注入告警并发送恢复事件",
     "  server <cmd>            容器内服务端管理命令（db/init/bootstrap/problems/dev-setup）",
     "  judge <cmd>            独立 Judge Worker 管理（install/install-env/check/start/stop/status/logs/upgrade/download）",
+    "  restore-drill <snapshot>  备份隔离恢复演练（真实恢复 + 业务验收）",
     "",
   ].join("\n");
 }
@@ -106,6 +109,7 @@ const KNOWN_TOP = new Set([
   "observability",
   "server",
   "judge",
+  "restore-drill",
 ]);
 
 /** 解析 --port <n>，缺省 8080；非法值抛错。 */
@@ -668,6 +672,22 @@ export async function dispatchCommand(
         return await runJudgeCommand(opts);
       } catch (e) {
         console.error(`judge: ${(e as Error).message}`);
+        return 1;
+      }
+    }
+    case "restore-drill": {
+      try {
+        const opts = parseRestoreDrillArgs(args);
+        if (!opts.envFile || !opts.composeFile) {
+          const context = resolveContext({ cwd: ctx.cwd });
+          if (context.kind === "production" && context.dir !== null) {
+            opts.envFile ??= `${context.dir}/.env.prod`;
+            opts.composeFile ??= `${context.dir}/docker-compose.prod.yml`;
+          }
+        }
+        return await runRestoreDrill(opts);
+      } catch (e) {
+        console.error(`restore-drill: ${(e as Error).message}`);
         return 1;
       }
     }

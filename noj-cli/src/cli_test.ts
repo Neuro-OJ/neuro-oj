@@ -249,6 +249,14 @@ Deno.test("judge 需要子命令时返回非零", async () => {
   assertEquals(await dispatchCommand("judge", [], ctx), 1);
 });
 
+Deno.test("printHelp 包含 restore-drill", () => {
+  assertEquals(printHelp().includes("restore-drill"), true);
+});
+
+Deno.test("restore-drill 缺少 snapshot 返回非零", async () => {
+  assertEquals(await dispatchCommand("restore-drill", [], ctx), 1);
+});
+
 Deno.test("parseObservabilityArgs: 未知参数抛错", () => {
   let threw = false;
   try {
