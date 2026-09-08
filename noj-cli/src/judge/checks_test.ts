@@ -27,11 +27,17 @@ function fakeRunner(
   };
 }
 
+const missingDir = `/tmp/noj-judge-missing-${Date.now()}-${
+  Math.random()
+    .toString(36)
+    .slice(2)
+}`;
+
 const baseOpts: JudgeOptions = {
   command: "check",
-  dir: "/srv/noj-judge",
-  envFile: "/srv/noj-judge/.env.judge",
-  composeFile: "/srv/noj-judge/docker-compose.judge.yml",
+  dir: missingDir,
+  envFile: `${missingDir}/.env.judge`,
+  composeFile: `${missingDir}/docker-compose.judge.yml`,
   repo: "https://github.com/Neuro-OJ/neuro-oj",
   ref: "main",
   version: undefined,
@@ -95,8 +101,52 @@ Deno.test("checkConfigValues: 非法版本与数值返回问题", () => {
   assertEquals(issues.length > 0, true);
 });
 
+Deno.test("checkConfigValues: WORK_DIR=/srv/main 不算占位值", () => {
+  const issues = checkConfigValues(env({
+    ...completeValues,
+    WORK_DIR: "/srv/main",
+  }));
+  assertEquals(issues, []);
+});
+
+Deno.test("checkConfigValues: JUDGE_QUEUE=xxx-prod 不算占位值", () => {
+  const issues = checkConfigValues(env({
+    ...completeValues,
+    JUDGE_QUEUE: "xxx-prod",
+  }));
+  assertEquals(issues, []);
+});
+
+Deno.test("checkConfigValues: NOJ_VERSION=latest/xxx-prod 是占位/非法", () => {
+  for (const version of ["latest", "xxx-prod"]) {
+    const issues = checkConfigValues(env({
+      ...completeValues,
+      NOJ_VERSION: version,
+    }));
+    assertEquals(issues.some((i) => i.includes("NOJ_VERSION")), true);
+  }
+});
+
 Deno.test("checkBaseEnvironment: Linux + docker ok 不抛错", async () => {
   await checkBaseEnvironment(baseOpts, fakeRunner());
+});
+
+Deno.test("checkBaseEnvironment: docker 缺失抛缺少依赖", async () => {
+  const runner = fakeRunner((cmd, args) => {
+    if (cmd === "uname" && args[0] === "-s") {
+      return { code: 0, stdout: "Linux\n", stderr: "" };
+    }
+    if (cmd === "uname" && args[0] === "-m") {
+      return { code: 0, stdout: "x86_64\n", stderr: "" };
+    }
+    if (cmd === "docker") throw new Deno.errors.NotFound("docker not found");
+    return { code: 0, stdout: "", stderr: "" };
+  });
+  await assertRejects(
+    () => checkBaseEnvironment(baseOpts, runner),
+    Error,
+    "缺少依赖：docker",
+  );
 });
 
 Deno.test("checkBaseEnvironment: 非 Linux 抛错", async () => {
@@ -180,6 +230,62 @@ Deno.test("checkSocket: 专用 socket 可用时无问题", async () => {
       fakeRunner(),
     );
     assertEquals(issues, []);
+  } finally {
+    listener.close();
+  }
+});
+
+Deno.test("checkSocket: 权限检查使用 runner test，GID 不匹配时不报权限问题", async () => {
+  const dir = Deno.makeTempDirSync();
+  const socketPath = `${dir}/docker.sock`;
+  const listener = Deno.listen({ path: socketPath, transport: "unix" });
+  try {
+    const stat = Deno.statSync(socketPath);
+    const gid = stat.gid?.toString() ?? "";
+    const configuredGid = gid === "0" ? "1" : "0";
+    const seenTests: string[] = [];
+    const runner = fakeRunner((cmd, args) => {
+      if (cmd === "test") {
+        seenTests.push(args[0] ?? "");
+        return { code: 0, stdout: "", stderr: "" };
+      }
+      return { code: 0, stdout: "", stderr: "" };
+    });
+    const issues = await checkSocket(
+      env({
+        JUDGE_DOCKER_SOCKET: socketPath,
+        JUDGE_DOCKER_SOCKET_GID: configuredGid,
+      }),
+      runner,
+    );
+    assertEquals(seenTests.sort(), ["-r", "-w"]);
+    assertEquals(issues.some((i) => i.includes("无法读写")), false);
+    assertEquals(issues.some((i) => i.includes("GID")), true);
+  } finally {
+    listener.close();
+  }
+});
+
+Deno.test("checkSocket: docker 缺失返回缺少依赖", async () => {
+  const dir = Deno.makeTempDirSync();
+  const socketPath = `${dir}/docker.sock`;
+  const listener = Deno.listen({ path: socketPath, transport: "unix" });
+  try {
+    const stat = Deno.statSync(socketPath);
+    const gid = stat.gid?.toString() ?? "";
+    const runner = fakeRunner((cmd) => {
+      if (cmd === "test") return { code: 0, stdout: "", stderr: "" };
+      if (cmd === "docker") throw new Deno.errors.NotFound("docker not found");
+      return { code: 0, stdout: "", stderr: "" };
+    });
+    const issues = await checkSocket(
+      env({
+        JUDGE_DOCKER_SOCKET: socketPath,
+        JUDGE_DOCKER_SOCKET_GID: gid,
+      }),
+      runner,
+    );
+    assertEquals(issues, ["缺少依赖：docker"]);
   } finally {
     listener.close();
   }
@@ -347,4 +453,39 @@ Deno.test("checkImageArchitecture: 无法读取 manifest 时视为警告不返�
     runner,
   );
   assertEquals(issues, []);
+});
+
+Deno.test("checkImageArchitecture: manifest 不可读时打印警告", async () => {
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args.join(" "));
+  };
+  try {
+    const runner = fakeRunner((cmd, args) => {
+      if (cmd === "uname" && args[0] === "-m") {
+        return { code: 0, stdout: "x86_64\n", stderr: "" };
+      }
+      if (cmd === "docker" && args[0] === "image" && args[1] === "inspect") {
+        return { code: 1, stdout: "", stderr: "not found" };
+      }
+      if (
+        cmd === "docker" && args[0] === "buildx" && args[1] === "imagetools"
+      ) {
+        return { code: 1, stdout: "", stderr: "not available" };
+      }
+      return { code: 0, stdout: "", stderr: "" };
+    });
+    const issues = await checkImageArchitecture(
+      env({
+        NOJ_VERSION: "v0.1.0",
+        JUDGE_IMAGE_REGISTRY: "ghcr.io/neuro-oj",
+      }),
+      runner,
+    );
+    assertEquals(issues, []);
+    assertEquals(warnings.length > 0, true);
+  } finally {
+    console.warn = originalWarn;
+  }
 });

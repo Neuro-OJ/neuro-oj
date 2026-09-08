@@ -1,4 +1,4 @@
-import type { CommandRunner } from "../runtime/command.ts";
+import type { CmdResult, CommandRunner } from "../runtime/command.ts";
 import { realRunner } from "../runtime/command.ts";
 import type { JudgeEnv } from "./env.ts";
 import { envValue } from "./env.ts";
@@ -20,12 +20,15 @@ const REQUIRED_CONFIG_KEYS = [
   "JUDGE_GID",
 ] as const;
 
-function isPlaceholder(value: string): boolean {
+function isPlaceholder(value: string, key?: string): boolean {
   if (value === "") return true;
-  return /change-me|changeme|example|placeholder|replace-me|your-|latest|main|xxx/
-    .test(
-      value,
-    );
+  if (/change-me|changeme|example|placeholder|replace-me|your-/.test(value)) {
+    return true;
+  }
+  if (value === "latest" || value === "main") return true;
+  // 队列名允许使用 xxx-* 这类真实业务前缀；版本等其余字段仍按 shell 的 xxx* 识别为占位值。
+  if (key === "JUDGE_QUEUE" || key === "RESULT_QUEUE") return false;
+  return value.startsWith("xxx");
 }
 
 function isReleaseVersion(value: string): boolean {
@@ -44,6 +47,22 @@ async function unameValue(
     // 命令不可用时回退到 Deno 编译期信息
   }
   return fallback;
+}
+
+/** 执行 docker 命令；docker 二进制缺失时转换为友好错误。 */
+async function runDocker(
+  runner: CommandRunner,
+  args: string[],
+  opts?: { env?: Record<string, string> },
+): Promise<CmdResult> {
+  try {
+    return await runner.run("docker", args, opts);
+  } catch (e) {
+    if (e instanceof Deno.errors.NotFound) {
+      throw new Error("缺少依赖：docker");
+    }
+    throw e;
+  }
 }
 
 function expectedArch(machine: string): string | undefined {
@@ -88,6 +107,33 @@ function checkMemoryWarning(): void {
   }
 }
 
+function detectPanel(opts: JudgeOptions): string {
+  if (opts.panel === "baota") return "baota";
+  if (opts.panel === "none") return "none";
+  try {
+    if (Deno.statSync("/www/server/panel").isDirectory) return "baota";
+  } catch {
+    // 未检测到宝塔目录
+  }
+  try {
+    const bt = Deno.statSync("/usr/bin/bt");
+    if ((bt.mode ?? 0) & 0o111) return "baota";
+  } catch {
+    // 未检测到宝塔命令
+  }
+  return "none";
+}
+
+function showPanelGuidance(panelName: string): void {
+  if (panelName !== "baota") return;
+  console.log(
+    "已检测到宝塔面板。脚本会直接使用宝塔管理的标准 Docker/Compose，不调用宝塔 API。\n" +
+      "请在宝塔的 Docker 页面确认 Docker 已安装并运行；部署完成后可以在那里查看本机 Redis 和 Judge 容器。\n" +
+      "脚本不会修改已有站点、反向代理、容器或面板配置，Judge 也不需要公开端口。\n" +
+      "安全提醒：Judge 仍必须使用只服务于 Judge 的 rootless Docker socket，不能填写 /run/docker.sock 或 /var/run/docker.sock。",
+  );
+}
+
 export async function checkBaseEnvironment(
   opts: JudgeOptions,
   runner: CommandRunner = realRunner(),
@@ -96,6 +142,7 @@ export async function checkBaseEnvironment(
   if (os !== "linux") {
     throw new Error("独立 Judge 部署目前只支持 Linux");
   }
+  showPanelGuidance(detectPanel(opts));
 
   const machine = (await unameValue(runner, "-m", Deno.build.arch))
     .toLowerCase();
@@ -106,17 +153,17 @@ export async function checkBaseEnvironment(
     );
   }
 
-  const dockerVersion = await runner.run("docker", ["--version"]);
+  const dockerVersion = await runDocker(runner, ["--version"]);
   if (dockerVersion.code !== 0) {
     throw new Error("缺少依赖：docker");
   }
 
-  const dockerInfo = await runner.run("docker", ["info"]);
+  const dockerInfo = await runDocker(runner, ["info"]);
   if (dockerInfo.code !== 0) {
     throw new Error("Docker daemon 未运行或当前用户无权限");
   }
 
-  const composeVersion = await runner.run("docker", ["compose", "version"]);
+  const composeVersion = await runDocker(runner, ["compose", "version"]);
   if (composeVersion.code !== 0) {
     throw new Error("Docker Compose v2 不可用");
   }
@@ -139,7 +186,7 @@ export function checkConfigValues(env: JudgeEnv): string[] {
   const value = (key: string): string => envValue(env, key) ?? "";
 
   for (const key of REQUIRED_CONFIG_KEYS) {
-    if (isPlaceholder(value(key))) {
+    if (isPlaceholder(value(key), key)) {
       issues.push(`${key} 未配置或仍是占位值`);
     }
   }
@@ -174,27 +221,6 @@ export function checkConfigValues(env: JudgeEnv): string[] {
   }
 
   return issues;
-}
-
-function canReadWriteSocket(info: Deno.FileInfo): boolean {
-  if (Deno.uid() === 0) return true;
-  const mode = info.mode ?? 0;
-  const perm = mode & 0o777;
-  const uid = Deno.uid();
-  const gid = Deno.gid();
-  let read = false;
-  let write = false;
-  if (info.uid === uid) {
-    read = (perm & 0o400) !== 0;
-    write = (perm & 0o200) !== 0;
-  } else if (info.gid === gid) {
-    read = (perm & 0o040) !== 0;
-    write = (perm & 0o020) !== 0;
-  } else {
-    read = (perm & 0o004) !== 0;
-    write = (perm & 0o002) !== 0;
-  }
-  return read && write;
 }
 
 /** 检查专用 Docker socket；返回问题列表。 */
@@ -232,7 +258,13 @@ export async function checkSocket(
     issues.push(`专用 Docker socket 不存在或不是 Unix socket：${socketPath}`);
     return issues;
   }
-  if (!canReadWriteSocket(stat)) {
+  const readOk = await runner.run("test", ["-r", socketPath])
+    .then((r) => r.code === 0)
+    .catch(() => false);
+  const writeOk = await runner.run("test", ["-w", socketPath])
+    .then((r) => r.code === 0)
+    .catch(() => false);
+  if (!readOk || !writeOk) {
     issues.push(`当前用户无法读写专用 Docker socket：${socketPath}`);
     return issues;
   }
@@ -245,9 +277,19 @@ export async function checkSocket(
     return issues;
   }
 
-  const r = await runner.run("docker", ["info"], {
-    env: { DOCKER_HOST: `unix://${socketPath}` },
-  });
+  let r;
+  try {
+    r = await runDocker(runner, ["info"], {
+      env: { DOCKER_HOST: `unix://${socketPath}` },
+    });
+  } catch (e) {
+    if (e instanceof Error && e.message === "缺少依赖：docker") {
+      issues.push("缺少依赖：docker");
+    } else {
+      issues.push(`专用 rootless Docker daemon 不可连接：${socketPath}`);
+    }
+    return issues;
+  }
   if (r.code !== 0) {
     issues.push(`专用 rootless Docker daemon 不可连接：${socketPath}`);
   }
@@ -401,9 +443,15 @@ export async function checkImageArchitecture(
           `Worker 镜像没有当前主机架构 linux/${expected}：${image}`,
         );
       }
+    } else {
+      console.warn(
+        `无法预先读取 Worker manifest，将由 docker pull 报告网络、认证或架构错误：${image}`,
+      );
     }
   } catch {
-    // 无法读取 manifest 时不阻断，交由 docker pull 报告实际错误
+    console.warn(
+      `无法预先读取 Worker manifest，将由 docker pull 报告网络、认证或架构错误：${image}`,
+    );
   }
   return issues;
 }
