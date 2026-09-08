@@ -39,6 +39,7 @@ import { parseJudgeArgs } from "./judge/options.ts";
 import { runJudgeCommand } from "./judge/commands.ts";
 import { parseRestoreDrillArgs } from "./restore_drill/options.ts";
 import { runRestoreDrill } from "./restore_drill/drill.ts";
+import { dispatchProdAlias } from "./production/dispatch.ts";
 
 /** CLI 执行上下文，供各子命令共享。 */
 export interface CommandContext {
@@ -326,7 +327,9 @@ export async function dispatchCommand(
   ctx: CommandContext,
 ): Promise<number> {
   if (PRODUCTION_COMMANDS.has(command)) {
-    return await runProduction(command, args);
+    // Phase 4 过渡：check 仍走脚本兜底，其余生产命令走 Deno 统一分发。
+    if (command === "check") return await runProduction(command, args);
+    return await dispatchProdAlias(command, args, { cwd: ctx.cwd });
   }
   switch (command) {
     case "version":

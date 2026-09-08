@@ -118,6 +118,23 @@ noj-cli restore-drill /path/to/snapshot-20260907 \
   [--skip-judge] [--keep]
 ```
 
+## 生产运维 Deno 化（Phase 4）
+
+旧生产命令已逐步切换到 Deno 统一实现；`check` 仍暂时走脚本兜底。
+
+```bash
+noj-cli start
+noj-cli stop
+noj-cli restart
+noj-cli status
+noj-cli logs core --follow
+noj-cli config check|show|set
+noj-cli install
+noj-cli update [--version v0.2.0]
+noj-cli uninstall --yes
+noj-cli backup create|verify|restore|drill
+```
+
 ## 开发与验证
 
 ```bash

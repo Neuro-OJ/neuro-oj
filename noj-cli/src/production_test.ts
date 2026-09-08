@@ -46,7 +46,7 @@ Deno.test("生产目录支持显式路径、祖先目录及 PATH 软链接；错
   }
 });
 
-Deno.test("生产 CLI 将真实子进程失败码和参数原样返回", async () => {
+Deno.test("生产 CLI 在不完整生产目录返回非零", async () => {
   const dir = await Deno.makeTempDir();
   try {
     await Deno.mkdir(join(dir, "scripts/deploy"), { recursive: true });
@@ -54,18 +54,9 @@ Deno.test("生产 CLI 将真实子进程失败码和参数原样返回", async (
       join(dir, "docker-compose.prod.yml"),
       "services: {}\n",
     );
-    const log = join(dir, "arguments");
-    await Deno.writeTextFile(
-      join(dir, "scripts/deploy/production.sh"),
-      'printf "%s\\n" "$@" >"$(dirname "$0")/../../arguments"\nexit 17\n',
-    );
     assertEquals(
       await run(["status", "--dir", dir, "--env-file", "a $(whoami).env"]),
-      17,
-    );
-    assertEquals(
-      await Deno.readTextFile(log),
-      "status\n--env-file\na $(whoami).env\n",
+      1,
     );
   } finally {
     await Deno.remove(dir, { recursive: true });
