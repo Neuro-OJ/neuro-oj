@@ -25,22 +25,28 @@ await resetDbForTest();
 await initRedisForTest();
 
 Deno.test({
-  name: "admin route: PATCH /api/v1/admin/users/:id/role 未登录返回 401",
+  name:
+    "admin route: PATCH /api/v1/admin/identity/users/:id/role 未登录返回 401",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/users/some-id/role", {
-      method: "PATCH",
-      body: { role: "admin" },
-    });
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users/some-id/role",
+      {
+        method: "PATCH",
+        body: { role: "admin" },
+      },
+    );
     assertEquals(res.status, 401);
   },
 });
 
 Deno.test({
-  name: "admin route: PATCH /api/v1/admin/users/:id/role 非管理员返回 403",
+  name:
+    "admin route: PATCH /api/v1/admin/identity/users/:id/role 非管理员返回 403",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -48,18 +54,22 @@ Deno.test({
     const app = createApp();
     const token = await createUserToken();
 
-    const res = await jsonRequest(app, "/api/v1/admin/users/target-id/role", {
-      method: "PATCH",
-      body: { role: "admin" },
-      token,
-    });
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users/target-id/role",
+      {
+        method: "PATCH",
+        body: { role: "admin" },
+        token,
+      },
+    );
     assertEquals(res.status, 403);
   },
 });
 
 Deno.test({
   name:
-    "admin route: PATCH /api/v1/admin/users/:id/role 管理员提升用户（role_ids 格式）",
+    "admin route: PATCH /api/v1/admin/identity/users/:id/role 管理员提升用户（role_ids 格式）",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -72,11 +82,15 @@ Deno.test({
     const rows = await db.select({ id: roles.id }).from(roles).limit(1);
     const roleId = rows[0]?.id ?? "00000000-0000-0000-0000-000000000000";
 
-    const res = await jsonRequest(app, "/api/v1/admin/users/target-id/role", {
-      method: "PATCH",
-      body: { role_ids: [roleId] },
-      token,
-    });
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users/target-id/role",
+      {
+        method: "PATCH",
+        body: { role_ids: [roleId] },
+        token,
+      },
+    );
     // target-id 不存在 → 404；存在且不可自修改 → 400 均可——测试鉴权通过
     assertEquals(
       [200, 400, 404].includes(res.status),
@@ -88,7 +102,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: PATCH /api/v1/admin/users/:id/role 无效 role_ids 返回 400",
+    "admin route: PATCH /api/v1/admin/identity/users/:id/role 无效 role_ids 返回 400",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -96,11 +110,15 @@ Deno.test({
     const app = createApp();
     const token = await createUserToken("admin");
 
-    const res = await jsonRequest(app, "/api/v1/admin/users/target-id/role", {
-      method: "PATCH",
-      body: { role_ids: ["00000000-0000-0000-0000-000000000000"] },
-      token,
-    });
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users/target-id/role",
+      {
+        method: "PATCH",
+        body: { role_ids: ["00000000-0000-0000-0000-000000000000"] },
+        token,
+      },
+    );
     // 用户不存在返回 404，用户存在但 role_ids 无效返回 400
     assertEquals(
       [400, 404].includes(res.status),
@@ -112,7 +130,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: PATCH /api/v1/admin/users/:id/role 缺少 role_ids 字段返回 400",
+    "admin route: PATCH /api/v1/admin/identity/users/:id/role 缺少 role_ids 字段返回 400",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -120,11 +138,15 @@ Deno.test({
     const app = createApp();
     const token = await createUserToken("admin");
 
-    const res = await jsonRequest(app, "/api/v1/admin/users/target-id/role", {
-      method: "PATCH",
-      body: {},
-      token,
-    });
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users/target-id/role",
+      {
+        method: "PATCH",
+        body: {},
+        token,
+      },
+    );
     assertEquals(res.status, 400);
   },
 });
@@ -347,14 +369,14 @@ Deno.test({
 // ─── 用户编辑 ───────────────────────────────────────────
 
 Deno.test({
-  name: "admin route: PUT /api/v1/admin/users/:id 非管理员返回 403",
+  name: "admin route: PUT /api/v1/admin/identity/users/:id 非管理员返回 403",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/admin/users/some-id", {
+    const res = await jsonRequest(app, "/api/v1/admin/identity/users/some-id", {
       method: "PUT",
       body: { bio: "新简介" },
       token,
@@ -364,14 +386,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: PUT /api/v1/admin/users/:id 无字段返回 400",
+  name: "admin route: PUT /api/v1/admin/identity/users/:id 无字段返回 400",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await jsonRequest(app, "/api/v1/admin/users/some-id", {
+    const res = await jsonRequest(app, "/api/v1/admin/identity/users/some-id", {
       method: "PUT",
       body: {},
       token,
@@ -381,14 +403,15 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: PUT /api/v1/admin/users/:id 邮箱格式非法返回 400",
+  name:
+    "admin route: PUT /api/v1/admin/identity/users/:id 邮箱格式非法返回 400",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await jsonRequest(app, "/api/v1/admin/users/some-id", {
+    const res = await jsonRequest(app, "/api/v1/admin/identity/users/some-id", {
       method: "PUT",
       body: { email: "not-an-email" },
       token,
@@ -400,7 +423,7 @@ Deno.test({
 // ─── 用户搜索筛选 ──────────────────────────────────────
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/users 支持 keyword 参数",
+  name: "admin route: GET /api/v1/admin/identity/users 支持 keyword 参数",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -409,7 +432,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/users?keyword=admin",
+      "/api/v1/admin/identity/users?keyword=admin",
       { token },
     );
     assertEquals(res.status, 200);
@@ -419,16 +442,20 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/users 支持 role 参数",
+  name: "admin route: GET /api/v1/admin/identity/users 支持 role 参数",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await jsonRequest(app, "/api/v1/admin/users?role=admin", {
-      token,
-    });
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users?role=admin",
+      {
+        token,
+      },
+    );
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(Array.isArray(body.data), true);
@@ -468,7 +495,7 @@ async function cleanupTestUser(id: string) {
 }
 
 Deno.test({
-  name: "admin route: PUT /api/v1/admin/users/:id 成功更新 bio",
+  name: "admin route: PUT /api/v1/admin/identity/users/:id 成功更新 bio",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -480,11 +507,15 @@ Deno.test({
 
     try {
       const token = await createUserToken("admin");
-      const res = await jsonRequest(app, `/api/v1/admin/users/${targetId}`, {
-        method: "PUT",
-        body: { bio: "管理员更新的简介" },
-        token,
-      });
+      const res = await jsonRequest(
+        app,
+        `/api/v1/admin/identity/users/${targetId}`,
+        {
+          method: "PUT",
+          body: { bio: "管理员更新的简介" },
+          token,
+        },
+      );
       assertEquals(res.status, 200);
       const body = await res.json();
       assertEquals(body.data.bio, "管理员更新的简介");
@@ -504,7 +535,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: PUT /api/v1/admin/users/:id 邮箱冲突返回 409",
+  name: "admin route: PUT /api/v1/admin/identity/users/:id 邮箱冲突返回 409",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -521,11 +552,15 @@ Deno.test({
     try {
       const token = await createUserToken("admin");
       // 试图把 B 的邮箱改成 A 的，应 409
-      const res = await jsonRequest(app, `/api/v1/admin/users/${idB}`, {
-        method: "PUT",
-        body: { email: emailA },
-        token,
-      });
+      const res = await jsonRequest(
+        app,
+        `/api/v1/admin/identity/users/${idB}`,
+        {
+          method: "PUT",
+          body: { email: emailA },
+          token,
+        },
+      );
       assertEquals(res.status, 409);
     } finally {
       await cleanupTestUser(idA);
@@ -535,7 +570,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: PUT /api/v1/admin/users/:id 不存在用户返回 404",
+  name: "admin route: PUT /api/v1/admin/identity/users/:id 不存在用户返回 404",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -545,7 +580,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/users/nonexistent-user-id",
+      "/api/v1/admin/identity/users/nonexistent-user-id",
       {
         method: "PUT",
         body: { bio: "不存在" },
@@ -557,7 +592,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: PUT /api/v1/admin/users/0 拒绝修改 root",
+  name: "admin route: PUT /api/v1/admin/identity/users/0 拒绝修改 root",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -565,7 +600,7 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await jsonRequest(app, "/api/v1/admin/users/0", {
+    const res = await jsonRequest(app, "/api/v1/admin/identity/users/0", {
       method: "PUT",
       body: { bio: "试图改 root" },
       token,
@@ -575,7 +610,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: PUT /api/v1/admin/users/:id 强化邮箱正则拒绝 TLD 1 字符",
+  name:
+    "admin route: PUT /api/v1/admin/identity/users/:id 强化邮箱正则拒绝 TLD 1 字符",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -588,11 +624,15 @@ Deno.test({
     try {
       const token = await createUserToken("admin");
       // "a@b.c" TLD 只有 1 字符 → 应被强化正则拒绝
-      const res = await jsonRequest(app, `/api/v1/admin/users/${targetId}`, {
-        method: "PUT",
-        body: { email: "weak@example.c" },
-        token,
-      });
+      const res = await jsonRequest(
+        app,
+        `/api/v1/admin/identity/users/${targetId}`,
+        {
+          method: "PUT",
+          body: { email: "weak@example.c" },
+          token,
+        },
+      );
       assertEquals(res.status, 400);
     } finally {
       await cleanupTestUser(targetId);
@@ -601,7 +641,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/users keyword 实际筛选命中",
+  name: "admin route: GET /api/v1/admin/identity/users keyword 实际筛选命中",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -616,7 +656,7 @@ Deno.test({
       const token = await createUserToken("admin");
       const res = await jsonRequest(
         app,
-        `/api/v1/admin/users?keyword=${uniq}`,
+        `/api/v1/admin/identity/users?keyword=${uniq}`,
         { token },
       );
       assertEquals(res.status, 200);

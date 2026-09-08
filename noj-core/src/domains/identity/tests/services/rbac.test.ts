@@ -178,7 +178,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/roles", {
+    const res = await jsonRequest(app, "/api/v1/admin/identity/roles", {
       token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
     });
     assertEquals(res.status, 200);
@@ -201,7 +201,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/permissions", {
+    const res = await jsonRequest(app, "/api/v1/admin/identity/permissions", {
       token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
     });
     assertEquals(res.status, 200);
@@ -233,7 +233,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/roles", {
+    const res = await jsonRequest(app, "/api/v1/admin/identity/roles", {
       token: await signToken({ sub: REGULAR_USER_ID, role: "user" }),
     });
     assertEquals(res.status, 403);
@@ -248,9 +248,13 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     // 获取默认 user 角色的 permission_ids
-    const permsRes = await jsonRequest(app, "/api/v1/admin/permissions", {
-      token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
-    });
+    const permsRes = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/permissions",
+      {
+        token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
+      },
+    );
     // 返回格式：{ data: { problem: [...], submission: [...], ... } }
     const grouped = (await permsRes.json()).data as Record<
       string,
@@ -261,7 +265,7 @@ Deno.test({
       (p) => p.id,
     );
 
-    const res = await jsonRequest(app, "/api/v1/admin/roles", {
+    const res = await jsonRequest(app, "/api/v1/admin/identity/roles", {
       method: "POST",
       body: {
         name: `moderator-${ts}`,
@@ -286,7 +290,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/roles", {
+    const res = await jsonRequest(app, "/api/v1/admin/identity/roles", {
       method: "POST",
       body: { name: "admin" },
       token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
@@ -302,7 +306,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const rolesRes = await jsonRequest(app, "/api/v1/admin/roles", {
+    const rolesRes = await jsonRequest(app, "/api/v1/admin/identity/roles", {
       token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
     });
     const allRoles = (await rolesRes.json()).data as Array<
@@ -310,10 +314,14 @@ Deno.test({
     >;
     const sysRole = allRoles.find((r) => r.is_system);
     if (sysRole) {
-      const res = await jsonRequest(app, `/api/v1/admin/roles/${sysRole.id}`, {
-        method: "DELETE",
-        token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
-      });
+      const res = await jsonRequest(
+        app,
+        `/api/v1/admin/identity/roles/${sysRole.id}`,
+        {
+          method: "DELETE",
+          token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
+        },
+      );
       assertEquals(res.status, 403);
     }
   },
@@ -333,7 +341,7 @@ Deno.test({
 
     const res = await jsonRequest(
       app,
-      `/api/v1/admin/users/${REGULAR_USER_ID}/role`,
+      `/api/v1/admin/identity/users/${REGULAR_USER_ID}/role`,
       {
         method: "PATCH",
         body: { role_ids: [userRoleRow.id] },
@@ -362,7 +370,7 @@ Deno.test({
 
     const res = await jsonRequest(
       app,
-      `/api/v1/admin/users/${ADMIN_USER_ID}/role`,
+      `/api/v1/admin/identity/users/${ADMIN_USER_ID}/role`,
       {
         method: "PATCH",
         body: { role_ids: [adminRoleRow.id] },
@@ -390,7 +398,7 @@ Deno.test({
     const ts = Date.now();
 
     // 创建父角色（含 submission 权限）
-    const parentRes = await jsonRequest(app, "/api/v1/admin/roles", {
+    const parentRes = await jsonRequest(app, "/api/v1/admin/identity/roles", {
       method: "POST",
       body: { name: `inherit-parent-${ts}`, permission_ids: [] },
       token: adminToken,
@@ -399,7 +407,7 @@ Deno.test({
     const parent = (await parentRes.json()).data;
 
     // 创建子角色继承父角色（含 user 权限）
-    const childRes = await jsonRequest(app, "/api/v1/admin/roles", {
+    const childRes = await jsonRequest(app, "/api/v1/admin/identity/roles", {
       method: "POST",
       body: {
         name: `inherit-child-${ts}`,
@@ -466,7 +474,7 @@ Deno.test({
       role: "admin",
     });
 
-    const role1 = await jsonRequest(app, "/api/v1/admin/roles", {
+    const role1 = await jsonRequest(app, "/api/v1/admin/identity/roles", {
       method: "POST",
       body: { name: `multi-role1-${ts}`, permission_ids: problemPermIds },
       token: adminToken,
@@ -474,7 +482,7 @@ Deno.test({
     assertEquals(role1.status, 201);
     const role1Data = (await role1.json()).data;
 
-    const role2 = await jsonRequest(app, "/api/v1/admin/roles", {
+    const role2 = await jsonRequest(app, "/api/v1/admin/identity/roles", {
       method: "POST",
       body: { name: `multi-role2-${ts}`, permission_ids: submissionPermIds },
       token: adminToken,
@@ -496,7 +504,7 @@ Deno.test({
     // 分配两个角色
     const patchRes = await jsonRequest(
       app,
-      `/api/v1/admin/users/${multiUserId}/role`,
+      `/api/v1/admin/identity/users/${multiUserId}/role`,
       {
         method: "PATCH",
         body: { role_ids: [role1Data.id, role2Data.id] },
@@ -552,7 +560,7 @@ Deno.test({
     const ts = Date.now();
 
     // 创建角色
-    const createRes = await jsonRequest(app, "/api/v1/admin/roles", {
+    const createRes = await jsonRequest(app, "/api/v1/admin/identity/roles", {
       method: "POST",
       body: { name: `upd-${ts}`, description: "before" },
       token: adminToken,
@@ -561,9 +569,13 @@ Deno.test({
     const role = (await createRes.json()).data;
 
     // 获取新权限集
-    const permsRes = await jsonRequest(app, "/api/v1/admin/permissions", {
-      token: adminToken,
-    });
+    const permsRes = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/permissions",
+      {
+        token: adminToken,
+      },
+    );
     const grouped = (await permsRes.json()).data as Record<
       string,
       Array<{ id: string }>
@@ -571,15 +583,19 @@ Deno.test({
     const allIds = Object.values(grouped).flat().map((p) => p.id).slice(0, 3);
 
     // 更新
-    const updateRes = await jsonRequest(app, `/api/v1/admin/roles/${role.id}`, {
-      method: "PUT",
-      body: {
-        name: `upd-renamed-${ts}`,
-        description: "after",
-        permission_ids: allIds,
+    const updateRes = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/roles/${role.id}`,
+      {
+        method: "PUT",
+        body: {
+          name: `upd-renamed-${ts}`,
+          description: "after",
+          permission_ids: allIds,
+        },
+        token: adminToken,
       },
-      token: adminToken,
-    });
+    );
     assertEquals(updateRes.status, 200);
     const updated = (await updateRes.json()).data;
     assertEquals(updated.name, `upd-renamed-${ts}`);
@@ -604,7 +620,7 @@ Deno.test({
     const ts = Date.now();
 
     // 创建后删除
-    const createRes = await jsonRequest(app, "/api/v1/admin/roles", {
+    const createRes = await jsonRequest(app, "/api/v1/admin/identity/roles", {
       method: "POST",
       body: { name: `del-${ts}` },
       token: adminToken,
@@ -612,10 +628,14 @@ Deno.test({
     assertEquals(createRes.status, 201);
     const role = (await createRes.json()).data;
 
-    const delRes = await jsonRequest(app, `/api/v1/admin/roles/${role.id}`, {
-      method: "DELETE",
-      token: adminToken,
-    });
+    const delRes = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/roles/${role.id}`,
+      {
+        method: "DELETE",
+        token: adminToken,
+      },
+    );
     assertEquals(delRes.status, 204, "删除自定义角色应返回 204");
   },
 });
@@ -641,7 +661,7 @@ Deno.test({
     // 尝试移除 admin 角色（只保留 user 角色）
     const res = await jsonRequest(
       app,
-      `/api/v1/admin/users/${ADMIN_USER_ID}/role`,
+      `/api/v1/admin/identity/users/${ADMIN_USER_ID}/role`,
       {
         method: "PATCH",
         body: { role_ids: [userRoleRow.id] },
@@ -672,7 +692,7 @@ Deno.test({
     const ts = Date.now();
 
     // 创建角色 A
-    const aRes = await jsonRequest(app, "/api/v1/admin/roles", {
+    const aRes = await jsonRequest(app, "/api/v1/admin/identity/roles", {
       method: "POST",
       body: { name: `cycle-a-${ts}` },
       token: adminToken,
@@ -681,7 +701,7 @@ Deno.test({
     const roleA = (await aRes.json()).data;
 
     // 创建角色 B，继承 A
-    const bRes = await jsonRequest(app, "/api/v1/admin/roles", {
+    const bRes = await jsonRequest(app, "/api/v1/admin/identity/roles", {
       method: "POST",
       body: { name: `cycle-b-${ts}`, parent_id: roleA.id },
       token: adminToken,
@@ -690,11 +710,15 @@ Deno.test({
     const roleB = (await bRes.json()).data;
 
     // 尝试更新 A 继承 B → 形成循环 A→B→A
-    const cycleRes = await jsonRequest(app, `/api/v1/admin/roles/${roleA.id}`, {
-      method: "PUT",
-      body: { parent_id: roleB.id },
-      token: adminToken,
-    });
+    const cycleRes = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/roles/${roleA.id}`,
+      {
+        method: "PUT",
+        body: { parent_id: roleB.id },
+        token: adminToken,
+      },
+    );
     assertEquals(cycleRes.status, 400, "循环继承引用应返回 400");
   },
 });

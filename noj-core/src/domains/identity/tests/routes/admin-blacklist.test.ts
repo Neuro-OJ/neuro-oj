@@ -51,7 +51,7 @@ Deno.test({
     await freshSetup();
     const { createApp } = await import("../../../../app.ts");
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/blacklist");
+    const res = await jsonRequest(app, "/api/v1/admin/identity/blacklist");
     assertEquals(res.status, 401);
   },
 });
@@ -71,7 +71,7 @@ Deno.test({
     const { createApp } = await import("../../../../app.ts");
     const app = createApp();
     const token = await signToken({ sub: ADMIN_ID, role: "admin" });
-    const res = await jsonRequest(app, "/api/v1/admin/blacklist", {
+    const res = await jsonRequest(app, "/api/v1/admin/identity/blacklist", {
       method: "POST",
       body: { ip_or_cidr: "1.2.3.4", reason: "spam" },
       token,
@@ -97,7 +97,7 @@ Deno.test({
     const { createApp } = await import("../../../../app.ts");
     const app = createApp();
     const token = await signToken({ sub: ADMIN_ID, role: "admin" });
-    const res = await jsonRequest(app, "/api/v1/admin/blacklist", {
+    const res = await jsonRequest(app, "/api/v1/admin/identity/blacklist", {
       method: "POST",
       body: { ip_or_cidr: "0.0.0.0/0" },
       token,
@@ -130,7 +130,7 @@ Deno.test({
       updated_at: now,
     });
     const token = await signToken({ sub: "u1", role: "user" });
-    const res = await jsonRequest(app, "/api/v1/admin/blacklist", {
+    const res = await jsonRequest(app, "/api/v1/admin/identity/blacklist", {
       method: "POST",
       body: { ip_or_cidr: "1.2.3.4" },
       token,
@@ -156,10 +156,14 @@ Deno.test({
     const ban = await addIpBan({ ip_or_cidr: "1.2.3.4" }, ADMIN_ID);
     const app = createApp();
     const token = await signToken({ sub: ADMIN_ID, role: "admin" });
-    const res = await jsonRequest(app, `/api/v1/admin/blacklist/${ban.id}`, {
-      method: "DELETE",
-      token,
-    });
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/blacklist/${ban.id}`,
+      {
+        method: "DELETE",
+        token,
+      },
+    );
     assertEquals(res.status, 204);
   },
 });

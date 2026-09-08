@@ -401,6 +401,7 @@ export const SCHEMA_DDL: string[] = [
     created_at TEXT NOT NULL,
     CONSTRAINT audit_logs_action_check CHECK (action IN (
       'users.role_change','users.ban','users.unban','users.delete',
+      'roles.create','roles.update','roles.delete',
       'problems.delete','problems.runtime_config_changed','problems.imported',
       'tags.create','tags.update','tags.delete','tags.merge',
       'submissions.rejudge','settings.update',

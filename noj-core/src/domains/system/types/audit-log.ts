@@ -11,6 +11,9 @@ export type AuditAction =
   | "users.ban"
   | "users.unban"
   | "users.delete"
+  | "roles.create"
+  | "roles.update"
+  | "roles.delete"
   | "problems.delete"
   | "problems.runtime_config_changed"
   | "problems.imported"
@@ -60,6 +63,9 @@ export type AuditDetail =
   }
   | { action: "users.unban" }
   | { action: "users.delete"; username: string }
+  | { action: "roles.create"; name: string; permission_ids?: string[] }
+  | { action: "roles.update"; id: string; name?: string }
+  | { action: "roles.delete"; id: string }
   | { action: "problems.delete"; title: string; display_id: string }
   | {
     action: "problems.runtime_config_changed";
