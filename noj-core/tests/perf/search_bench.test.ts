@@ -3,6 +3,18 @@ import { reindexAll, searchFlat } from "../../src/domains/search/index.ts";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { problems, users } from "./../../src/shared/db/schema.ts";
 import { sql } from "drizzle-orm";
+import { parsePagination } from "../../src/shared/http/pagination.ts";
+import type { Context } from "hono";
+
+function makeCtx(
+  query: Record<string, string | undefined>,
+): Context {
+  return {
+    req: {
+      query: (key: string) => query[key],
+    },
+  } as unknown as Context;
+}
 
 // 性能基准默认不跑：seed 100k problems + 10k users 在每次 PR 上都执行
 // 是 CI 的沉重负担（此前混在 core-test 串行里）。仅当 NOJ_RUN_PERF=1
@@ -149,6 +161,25 @@ Deno.test({
       if (!keepPerfData) {
         await resetDbForTest();
       }
+    }
+  },
+});
+
+Deno.test({
+  name: "perf: 分页解析 10 万次耗时低于 500ms",
+  ignore: !runPerf,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: () => {
+    const start = performance.now();
+    for (let i = 0; i < 100_000; i++) {
+      parsePagination(
+        makeCtx({ page: String((i % 100) + 1), per_page: "20" }),
+      );
+    }
+    const elapsed = performance.now() - start;
+    if (elapsed > 500) {
+      throw new Error(`分页解析过慢: ${elapsed}ms`);
     }
   },
 });
