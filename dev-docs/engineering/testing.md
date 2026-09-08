@@ -61,6 +61,13 @@ deno task test:domain cross-domain # 跨域 E2E
 - judge E2E 使用 `#[serial_test::serial]` 串行执行，避免 Docker 资源竞争。
 - 资源测试必须自建自清，失败/重试/超时也要清理。
 
+## 覆盖率报告与基线
+
+- 覆盖率报告：`deno run -A scripts/coverage-report.ts --report`，输出到 `dev-docs/engineering/test-coverage.md`。
+- 静默跳过清单：`deno run -A scripts/silent-skip-report.ts`，输出到 `dev-docs/engineering/test-silent-skips.md`。
+- 慢测试基线：`deno run -A scripts/test-baseline.ts`，输出到 `dev-docs/engineering/test-baseline.md`。
+- 覆盖率目标仅作趋势跟踪，不设 CI 硬门禁。
+
 ## 后续计划
 
 - 集中 gate runner：`scripts/check-all.ts` / `scripts/check-ci.ts`。
