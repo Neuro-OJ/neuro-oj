@@ -20,8 +20,8 @@
               ref="inputRef"
               v-model="query"
               type="text"
-              aria-label="搜索"
-              placeholder="搜索题目、用户、帖子、竞赛、提交、消息、公告..."
+              :aria-label="t('nav.search')"
+              :placeholder="t('nav.searchFull')"
               class="flex-1 h-full bg-transparent outline-none text-base text-text placeholder:text-text-muted"
               autocomplete="off"
               spellcheck="false"
@@ -90,6 +90,7 @@ import { ref, computed, watch, nextTick } from "vue";
 import { useSearch, type SearchItem } from "~/composables/useSearch";
 import { itemHref, typeLabel } from "~/utils/searchFormat";
 
+const { t } = useI18n();
 const { state, close, search } = useSearch();
 const query = ref("");
 const selectedIndex = ref(0);
