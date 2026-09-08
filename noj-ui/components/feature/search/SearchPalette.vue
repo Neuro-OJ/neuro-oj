@@ -81,7 +81,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from "vue";
 import { useSearch, type SearchItem } from "~/composables/useSearch";
-import { problemUrl, publicUrl, userUrl } from "~/utils/publicIdentifiers";
+import { itemHref, typeLabel } from "~/utils/searchFormat";
 
 const { state, close, search } = useSearch();
 const query = ref("");
@@ -107,20 +107,6 @@ function flatIndex(type: string, index: number): number {
   return 0;
 }
 
-function typeLabel(type: string): string {
-  const map: Record<string, string> = {
-    problem: "题目",
-    user: "用户",
-    community_post: "帖子",
-    community_comment: "评论",
-    contest: "竞赛",
-    submission: "提交",
-    message: "消息",
-    announcement: "公告",
-  };
-  return map[type] ?? type;
-}
-
 watch(query, async (q) => {
   selectedIndex.value = 0;
   await search(q, { mode: "palette" });
@@ -133,6 +119,9 @@ watch(
       lastFocused = document.activeElement as HTMLElement;
       query.value = state.value.query;
       selectedIndex.value = 0;
+      if (query.value.trim().length >= 2) {
+        void search(query.value, { mode: "palette" });
+      }
       await nextTick();
       inputRef.value?.focus();
     } else if (lastFocused) {
@@ -175,7 +164,9 @@ function onKeydown(e: KeyboardEvent) {
     close();
   } else if (e.key === "ArrowDown") {
     e.preventDefault();
-    selectedIndex.value = Math.min(selectedIndex.value + 1, flatItems.value.length - 1);
+    selectedIndex.value = flatItems.value.length === 0
+      ? 0
+      : Math.min(selectedIndex.value + 1, flatItems.value.length - 1);
   } else if (e.key === "ArrowUp") {
     e.preventDefault();
     selectedIndex.value = Math.max(selectedIndex.value - 1, 0);
@@ -185,7 +176,7 @@ function onKeydown(e: KeyboardEvent) {
     e.preventDefault();
     const selected = flatItems.value[selectedIndex.value];
     if (selected) {
-      const href = itemHref(selected);
+      const href = itemHref(selected) || "/search";
       close();
       navigateTo(href);
     } else if (query.value.trim().length >= 2) {
@@ -195,31 +186,6 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
-function itemHref(item: SearchItem): string {
-  switch (item.entity_type) {
-    case "problem":
-      return problemUrl(item.entity_id, String(item.metadata.display_id ?? ""));
-    case "user":
-      return userUrl(String(item.metadata.username ?? ""));
-    case "community_post":
-      return publicUrl("post", String(item.metadata.public_id ?? item.entity_id));
-    case "community_comment":
-      return publicUrl(
-        "post",
-        String(item.metadata.post_public_id ?? item.metadata.post_id ?? item.entity_id),
-      );
-    case "contest":
-      return `/contests/${item.entity_id}`;
-    case "submission":
-      return `/submissions/${item.entity_id}`;
-    case "message":
-      return `/messages?conversation=${String(item.metadata.conversation_id ?? "")}`;
-    case "announcement":
-      return `/announcements/${item.entity_id}`;
-    default:
-      return "/search";
-  }
-}
 </script>
 
 <style scoped>

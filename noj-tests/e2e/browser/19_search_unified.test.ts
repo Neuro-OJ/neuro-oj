@@ -15,6 +15,8 @@
  * 启用：NOJ_RUN_BROWSER_E2E=1 deno task test:browser
  */
 
+import { expect } from "npm:playwright@1.62.1/test";
+
 const BROWSER_E2E = Deno.env.get("NOJ_RUN_BROWSER_E2E") === "1";
 const UI_URL = Deno.env.get("E2E_UI_URL") || "http://localhost:3000";
 const ARTIFACT_DIR = "test-results/ui-browser";
@@ -82,18 +84,25 @@ async function goto(path: string): Promise<void> {
   await p.goto(`${UI_URL}${path}`, { waitUntil: "domcontentloaded" });
 }
 
-function assertClassContains(
+async function assertClassContains(
   element: import("npm:playwright@1.62.1").Locator,
   className: string,
-  label: string,
+  _label: string,
 ): Promise<void> {
-  return element.getAttribute("class").then((cls) => {
-    if (!cls || !cls.includes(className)) {
-      throw new Error(
-        `${label} 应包含 class "${className}"，实际 class="${cls}"`,
-      );
-    }
-  });
+  await expect(element).toContainClass(className, { timeout: 15_000 });
+}
+
+async function assertPaginationIfVisible(
+  page: import("npm:playwright@1.62.1").Page,
+): Promise<void> {
+  const nav = page.getByRole("navigation", { name: "分页导航" });
+  try {
+    await nav.waitFor({ state: "visible", timeout: 5_000 });
+  } catch {
+    return;
+  }
+  await expect(page.getByRole("button", { name: "上一页" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "下一页" })).toBeVisible();
 }
 
 Deno.test("[ui/browser] 统一搜索：命令面板显示分组结果", async () => {
@@ -163,6 +172,11 @@ Deno.test("[ui/browser] 统一搜索：单类型 Tab 分页并同步 URL", async
     const problemTab = p.getByRole("button", { name: "题目", exact: true });
     await problemTab.waitFor({ state: "visible", timeout: 15_000 });
     await assertClassContains(problemTab, "border-signal", "「题目」Tab");
+
+    // 等待单类型结果出现后，若有分页导航则校验上一页/下一页按钮。
+    const problemResult = p.locator('[role="option"]').first();
+    await problemResult.waitFor({ state: "visible", timeout: 15_000 });
+    await assertPaginationIfVisible(p);
 
     // URL 同步：切换到“全部”后，地址栏 type 应更新为 all。
     await p.getByRole("button", { name: "全部", exact: true }).click();

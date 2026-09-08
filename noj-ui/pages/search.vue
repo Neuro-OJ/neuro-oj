@@ -93,6 +93,7 @@ import { extractApiError } from "~/utils/apiError";
 import AsyncContent from "~/components/ui/AsyncContent.vue";
 import SearchResultItem from "~/components/feature/search/SearchResultItem.vue";
 import type { SearchType, SearchItem } from "~/composables/useSearch";
+import { typeLabel } from "~/utils/searchFormat";
 
 definePageMeta({ layout: "default" });
 
@@ -128,29 +129,15 @@ const asyncStatus = computed<"loading" | "error" | "empty" | "data">(() => {
 
 const typeOptions = [
   { value: "all" as SearchType, label: "全部" },
-  { value: "problem" as SearchType, label: "题目" },
-  { value: "user" as SearchType, label: "用户" },
-  { value: "community_post" as SearchType, label: "帖子" },
-  { value: "community_comment" as SearchType, label: "评论" },
-  { value: "contest" as SearchType, label: "竞赛" },
-  { value: "submission" as SearchType, label: "提交" },
-  { value: "message" as SearchType, label: "消息" },
-  { value: "announcement" as SearchType, label: "公告" },
+  { value: "problem" as SearchType, label: typeLabel("problem") },
+  { value: "user" as SearchType, label: typeLabel("user") },
+  { value: "community_post" as SearchType, label: typeLabel("community_post") },
+  { value: "community_comment" as SearchType, label: typeLabel("community_comment") },
+  { value: "contest" as SearchType, label: typeLabel("contest") },
+  { value: "submission" as SearchType, label: typeLabel("submission") },
+  { value: "message" as SearchType, label: typeLabel("message") },
+  { value: "announcement" as SearchType, label: typeLabel("announcement") },
 ];
-
-function typeLabel(t: string): string {
-  const map: Record<string, string> = {
-    problem: "题目",
-    user: "用户",
-    community_post: "帖子",
-    community_comment: "评论",
-    contest: "竞赛",
-    submission: "提交",
-    message: "消息",
-    announcement: "公告",
-  };
-  return map[t] ?? t;
-}
 
 async function fetchResults() {
   const q = query.value.trim();
