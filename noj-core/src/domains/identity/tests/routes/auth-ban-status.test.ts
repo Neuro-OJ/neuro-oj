@@ -101,6 +101,7 @@ Deno.test({
       user_id: USER_ID,
       reason: "违规提交",
       banned_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     });
     _resetBanCacheForTest();
     const res = await jsonRequest(app, "/api/v1/auth/ban-status", {
@@ -168,6 +169,7 @@ Deno.test({
       reason: "temp",
       banned_until: past,
       banned_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     });
     _resetBanCacheForTest();
     const res = await jsonRequest(app, "/api/v1/auth/ban-status", {

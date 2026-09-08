@@ -233,6 +233,7 @@ export const ipBans = pgTable(
     reason: text("reason").notNull().default(""),
     expires_at: text("expires_at"),
     created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
     created_by: text("created_by").references(() => users.id, {
       onDelete: "set null",
     }),

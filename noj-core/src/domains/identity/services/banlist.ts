@@ -125,6 +125,7 @@ export async function addIpBan(
     reason: input.reason ?? "",
     expires_at: input.expires_at ?? null,
     created_at: now,
+    updated_at: now,
     created_by: actorId,
   });
 

@@ -212,6 +212,7 @@ export const userBans = pgTable(
     banned_by: text("banned_by").references(() => users.id, {
       onDelete: "set null",
     }),
+    updated_at: text("updated_at").notNull(),
     /** 解封时间；NULL = 当前活跃封禁 */
     unbanned_at: text("unbanned_at"),
     unbanned_by: text("unbanned_by").references(() => users.id, {

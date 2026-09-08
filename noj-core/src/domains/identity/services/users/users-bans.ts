@@ -124,7 +124,7 @@ export async function banUser(
 
   // 1. 关闭已有活跃封禁
   await db.update(userBans)
-    .set({ unbanned_at: now })
+    .set({ unbanned_at: now, updated_at: now })
     .where(
       and(eq(userBans.user_id, targetUserId), isNull(userBans.unbanned_at)),
     );
@@ -138,6 +138,7 @@ export async function banUser(
     scope,
     banned_until: bannedUntil ?? null,
     banned_at: now,
+    updated_at: now,
     banned_by: currentUserId,
   });
 
@@ -190,7 +191,7 @@ export async function unbanUser(
 
   const now = new Date().toISOString();
   await db.update(userBans)
-    .set({ unbanned_at: now, unbanned_by: currentUserId })
+    .set({ unbanned_at: now, unbanned_by: currentUserId, updated_at: now })
     .where(
       and(eq(userBans.user_id, targetUserId), isNull(userBans.unbanned_at)),
     );

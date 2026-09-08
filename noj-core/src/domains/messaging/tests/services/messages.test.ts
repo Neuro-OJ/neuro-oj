@@ -963,6 +963,7 @@ Deno.test({
         reason: "举报封禁测试",
         scope: "social",
         banned_at: now,
+        updated_at: now,
         banned_by: otherUser,
       });
 

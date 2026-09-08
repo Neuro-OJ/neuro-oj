@@ -433,6 +433,7 @@ export const SCHEMA_DDL: string[] = [
     reason TEXT NOT NULL DEFAULT '',
     expires_at TEXT,
     created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
     created_by TEXT REFERENCES users(id) ON DELETE SET NULL
   )`,
 
@@ -445,6 +446,7 @@ export const SCHEMA_DDL: string[] = [
     banned_until TEXT,
     banned_at TEXT NOT NULL,
     banned_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    updated_at TEXT NOT NULL,
     unbanned_at TEXT,
     unbanned_by TEXT REFERENCES users(id) ON DELETE SET NULL
   )`,
@@ -592,6 +594,7 @@ export const SCHEMA_DDL: string[] = [
     expires_at TEXT,
     created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
     revoked_at TEXT,
     revoked_by TEXT REFERENCES users(id) ON DELETE SET NULL
   )`,
@@ -612,6 +615,7 @@ export const SCHEMA_DDL: string[] = [
     resolution TEXT,
     resolved_by TEXT REFERENCES users(id) ON DELETE SET NULL,
     resolved_at TEXT,
+    updated_at TEXT NOT NULL,
     created_at TEXT NOT NULL,
     CHECK (num_nonnulls(post_id, comment_id, message_id) = 1)
   )`,
