@@ -6,8 +6,9 @@ import type { SearchEntryInput } from "../types.ts";
 
 export async function upsertSearchEntry(
   input: SearchEntryInput,
+  // deno-lint-ignore no-explicit-any
+  db: any = getDb(),
 ): Promise<void> {
-  const db = getDb();
   await db
     .insert(searchEntries)
     .values({
@@ -45,8 +46,9 @@ export async function upsertSearchEntry(
 export async function deleteSearchEntry(
   entityType: string,
   entityId: string,
+  // deno-lint-ignore no-explicit-any
+  db: any = getDb(),
 ): Promise<void> {
-  const db = getDb();
   await db.delete(searchEntries).where(
     sql`${searchEntries.entity_type} = ${entityType} AND ${searchEntries.entity_id} = ${entityId}`,
   );
@@ -591,31 +593,35 @@ export async function reindexAll(): Promise<Record<string, number>> {
   const db = getDb();
   const counts: Record<string, number> = {};
   for (const [entityType, builder] of Object.entries(BUILDERS)) {
-    const table = entityTypeToTable(entityType);
-    const rows = await db.execute<{ id: string }>(sql`SELECT id FROM ${table}`);
-    const ids = unwrapRows<{ id: string }>(rows as never);
-    const existingRows = await db
-      .select({ entityId: searchEntries.entity_id })
-      .from(searchEntries)
-      .where(sql`${searchEntries.entity_type} = ${entityType}`);
-    const existingIds = new Set(existingRows.map((r) => r.entityId));
-    const keptIds = new Set<string>();
-    let count = 0;
-    for (const row of ids) {
-      const entry = await builder(row.id);
-      if (entry) {
-        await upsertSearchEntry(entry);
-        keptIds.add(row.id);
-        count++;
+    await db.transaction(async (tx) => {
+      const table = entityTypeToTable(entityType);
+      const rows = await tx.execute<{ id: string }>(
+        sql`SELECT id FROM ${table}`,
+      );
+      const ids = unwrapRows<{ id: string }>(rows as never);
+      const existingRows = await tx
+        .select({ entityId: searchEntries.entity_id })
+        .from(searchEntries)
+        .where(sql`${searchEntries.entity_type} = ${entityType}`);
+      const existingIds = new Set(existingRows.map((r) => r.entityId));
+      const keptIds = new Set<string>();
+      let count = 0;
+      for (const row of ids) {
+        const entry = await builder(row.id);
+        if (entry) {
+          await upsertSearchEntry(entry, tx);
+          keptIds.add(row.id);
+          count++;
+        }
       }
-    }
-    // 只清理本次未被重建的旧索引，避免 reindex 中断后整个索引为空。
-    for (const existingId of existingIds) {
-      if (!keptIds.has(existingId)) {
-        await deleteSearchEntry(entityType, existingId);
+      // 只清理本次未被重建的旧索引；事务保证单个实体类型要么全部成功，要么回滚。
+      for (const existingId of existingIds) {
+        if (!keptIds.has(existingId)) {
+          await deleteSearchEntry(entityType, existingId, tx);
+        }
       }
-    }
-    counts[entityType] = count;
+      counts[entityType] = count;
+    });
   }
   return counts;
 }
