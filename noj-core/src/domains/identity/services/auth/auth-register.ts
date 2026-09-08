@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import {
   roles,
   systemSettings,
@@ -227,6 +228,8 @@ export async function registerUser(
       is_admin: false,
     },
   );
+
+  await publishSearchIndexEvent("user", id, "upsert");
 
   return {
     id,

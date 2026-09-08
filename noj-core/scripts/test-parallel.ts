@@ -48,7 +48,6 @@ const SHARDS = [
       "src/domains/identity/tests/lib",
       "src/domains/catalog/tests/lib",
       "src/domains/identity/tests/middleware",
-      "src/domains/query/tests/middleware",
       "src/domains/system/tests/middleware",
       "src/domains/catalog/tests/types",
       "src/domains/contest/tests/types",

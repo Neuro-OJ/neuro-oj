@@ -274,45 +274,45 @@ docker compose down     # 停止
 
 ## API 路由
 
-| 方法   | 路径                                         | 权限        | 说明                                          |
-| ------ | -------------------------------------------- | ----------- | --------------------------------------------- |
-| POST   | `/api/v1/auth/register`                      | 公开        | 用户注册                                      |
-| POST   | `/api/v1/auth/email/verify`                  | 公开        | 消费一次性邮箱验证令牌                        |
-| POST   | `/api/v1/auth/email/resend`                  | 登录        | 重新发送验证邮件（防枚举、1 分钟限流）        |
-| POST   | `/api/v1/auth/login`                         | 公开        | 用户登录（返回 JWT）                          |
-| GET    | `/api/v1/auth/me`                            | 登录        | 当前用户信息                                  |
-| GET    | `/api/v1/tags`                               | 公开        | 标签列表（含算法标签名，发现路径）            |
-| POST   | `/api/v1/tags`                               | tag:manage  | 创建标签（默认仅 admin，可配置）              |
-| PUT    | `/api/v1/tags/:id`                           | tag:manage  | 更新标签（改名/改 kind）                      |
-| DELETE | `/api/v1/tags/:id`                           | tag:manage  | 删除标签（级联清理关联）                      |
-| POST   | `/api/v1/tags/:id/merge`                     | tag:manage  | 合并标签（关联重指向后删除源标签）            |
-| GET    | `/api/v1/problems`                           | 公开        | 题目列表（分页+筛选）                         |
-| GET    | `/api/v1/problems/:id`                       | 公开        | 题目详情（**双索引**：UUID/display_id/数字）  |
-| POST   | `/api/v1/problems`                           | 登录        | 创建题目（U/P 类型）                          |
-| PUT    | `/api/v1/problems/:id`                       | 登录        | 更新题目                                      |
-| DELETE | `/api/v1/problems/:id`                       | 登录        | 删除题目                                      |
-| GET    | `/api/v1/submissions`                        | 登录        | 我的提交列表                                  |
-| POST   | `/api/v1/submissions`                        | 登录        | 创建提交                                      |
-| GET    | `/api/v1/submissions/:id`                    | 登录        | 提交详情                                      |
-| GET    | `/api/v1/submissions/:id/status`             | 登录        | 提交队列状态                                  |
-| GET    | `/api/v1/admin/submissions`                  | 管理员      | 全部提交管理                                  |
-| GET    | `/api/v1/admin/users`                        | 管理员      | 用户列表                                      |
-| PATCH  | `/api/v1/admin/users/:id/role`               | 管理员      | 角色变更                                      |
-| GET    | `/api/v1/users/:id/profile`                  | 公开        | 用户主页                                      |
-| PUT    | `/api/v1/users/me`                           | 登录        | 更新个人简介                                  |
-| POST   | `/api/v1/users/me/delete-account`            | 登录        | 密码确认后软删除并匿名化账户                  |
-| DELETE | `/api/v1/admin/users/:id`                    | 管理员      | 注销用户并写入审计日志                        |
-| POST   | `/api/v1/auth/change-password`               | 登录        | 修改密码（issue #75 强制改密）                |
-| POST   | `/api/v1/auth/tfa/setup`                     | 登录        | 生成 TOTP secret 与 otpauth URL（issue #228） |
-| POST   | `/api/v1/auth/tfa/confirm`                   | 登录        | 确认启用 TFA，返回一次性恢复码（issue #228）  |
-| POST   | `/api/v1/auth/tfa/disable`                   | 登录        | 禁用 TFA（需 TOTP/恢复码确认，issue #228）    |
-| POST   | `/api/v1/auth/tfa/recovery-codes/regenerate` | 登录        | 重新生成恢复码（issue #228）                  |
-| POST   | `/api/v1/auth/logout`                        | 公开        | 登出（no-op stub，客户端自行清 Cookie）       |
-| GET    | `/api/v1/problems/:id/support-package`       | 登录        | 下载支持包（通过 core 代理，不暴露 S3 URL）   |
-| POST   | `/api/v1/checkin`                            | 登录        | 每日签到（返回当前连续天数）                  |
-| GET    | `/api/v1/checkin/today`                      | 登录        | 查询今日签到状态                              |
+| 方法   | 路径                                         | 权限        | 说明                                                                |
+| ------ | -------------------------------------------- | ----------- | ------------------------------------------------------------------- |
+| POST   | `/api/v1/auth/register`                      | 公开        | 用户注册                                                            |
+| POST   | `/api/v1/auth/email/verify`                  | 公开        | 消费一次性邮箱验证令牌                                              |
+| POST   | `/api/v1/auth/email/resend`                  | 登录        | 重新发送验证邮件（防枚举、1 分钟限流）                              |
+| POST   | `/api/v1/auth/login`                         | 公开        | 用户登录（返回 JWT）                                                |
+| GET    | `/api/v1/auth/me`                            | 登录        | 当前用户信息                                                        |
+| GET    | `/api/v1/tags`                               | 公开        | 标签列表（含算法标签名，发现路径）                                  |
+| POST   | `/api/v1/tags`                               | tag:manage  | 创建标签（默认仅 admin，可配置）                                    |
+| PUT    | `/api/v1/tags/:id`                           | tag:manage  | 更新标签（改名/改 kind）                                            |
+| DELETE | `/api/v1/tags/:id`                           | tag:manage  | 删除标签（级联清理关联）                                            |
+| POST   | `/api/v1/tags/:id/merge`                     | tag:manage  | 合并标签（关联重指向后删除源标签）                                  |
+| GET    | `/api/v1/problems`                           | 公开        | 题目列表（分页+筛选）                                               |
+| GET    | `/api/v1/problems/:id`                       | 公开        | 题目详情（**双索引**：UUID/display_id/数字）                        |
+| POST   | `/api/v1/problems`                           | 登录        | 创建题目（U/P 类型）                                                |
+| PUT    | `/api/v1/problems/:id`                       | 登录        | 更新题目                                                            |
+| DELETE | `/api/v1/problems/:id`                       | 登录        | 删除题目                                                            |
+| GET    | `/api/v1/submissions`                        | 登录        | 我的提交列表                                                        |
+| POST   | `/api/v1/submissions`                        | 登录        | 创建提交                                                            |
+| GET    | `/api/v1/submissions/:id`                    | 登录        | 提交详情                                                            |
+| GET    | `/api/v1/submissions/:id/status`             | 登录        | 提交队列状态                                                        |
+| GET    | `/api/v1/admin/submissions`                  | 管理员      | 全部提交管理                                                        |
+| GET    | `/api/v1/admin/users`                        | 管理员      | 用户列表                                                            |
+| PATCH  | `/api/v1/admin/users/:id/role`               | 管理员      | 角色变更                                                            |
+| GET    | `/api/v1/users/:id/profile`                  | 公开        | 用户主页                                                            |
+| PUT    | `/api/v1/users/me`                           | 登录        | 更新个人简介                                                        |
+| POST   | `/api/v1/users/me/delete-account`            | 登录        | 密码确认后软删除并匿名化账户                                        |
+| DELETE | `/api/v1/admin/users/:id`                    | 管理员      | 注销用户并写入审计日志                                              |
+| POST   | `/api/v1/auth/change-password`               | 登录        | 修改密码（issue #75 强制改密）                                      |
+| POST   | `/api/v1/auth/tfa/setup`                     | 登录        | 生成 TOTP secret 与 otpauth URL（issue #228）                       |
+| POST   | `/api/v1/auth/tfa/confirm`                   | 登录        | 确认启用 TFA，返回一次性恢复码（issue #228）                        |
+| POST   | `/api/v1/auth/tfa/disable`                   | 登录        | 禁用 TFA（需 TOTP/恢复码确认，issue #228）                          |
+| POST   | `/api/v1/auth/tfa/recovery-codes/regenerate` | 登录        | 重新生成恢复码（issue #228）                                        |
+| POST   | `/api/v1/auth/logout`                        | 公开        | 登出（no-op stub，客户端自行清 Cookie）                             |
+| GET    | `/api/v1/problems/:id/support-package`       | 登录        | 下载支持包（通过 core 代理，不暴露 S3 URL）                         |
+| POST   | `/api/v1/checkin`                            | 登录        | 每日签到（返回当前连续天数）                                        |
+| GET    | `/api/v1/checkin/today`                      | 登录        | 查询今日签到状态                                                    |
 | GET    | `/api/v1/search`                             | 公开/管理员 | 全局搜索（题目、用户、社区帖子/评论、竞赛、提交、私信、公告，分页） |
-| GET    | `/health`                                    | 公开        | 健康检查                                      |
+| GET    | `/health`                                    | 公开        | 健康检查                                                            |
 
 ### 路由层关键模式
 
@@ -491,36 +491,45 @@ Retry-After: 25
 
 ## 全局搜索（issue #100）
 
-`GET /api/v1/search` 是统一的全局搜索入口，基于 `search_entries` 索引表，覆盖题目、用户、社区帖子/评论、竞赛、提交、私信、公告等实体，支持 flat/grouped 两种返回。设计文档见
+`GET /api/v1/search` 是统一的全局搜索入口，基于 `search_entries`
+索引表，覆盖题目、用户、社区帖子/评论、竞赛、提交、私信、公告等实体，支持
+flat/grouped 两种返回。设计文档见
 `dev-docs/superpowers/specs/2026-07-13-global-search-design.md`。
 
 **索引模型**：
 
 - 唯一写者是 search domain，源域通过 Redis 事件异步维护 `search_entries`
 - `search_vector` 为 GENERATED 列：`title` 权重 A + `body` 权重 B
-- 查询走 `tsvector @@ websearch_to_tsquery(...) OR title/body ILIKE '%q%'`，配合 GIN 索引（`idx_search_entries_vector` / `title_trgm` / `body_trgm`）
+- 查询走 `tsvector @@ websearch_to_tsquery(...) OR title/body ILIKE '%q%'`，配合
+  GIN 索引（`idx_search_entries_vector` / `title_trgm` / `body_trgm`）
 
 **权限模型**：
 
-- 通过 `permissionWhere` / `communityVisibilityWhere` 控制可见性：公开项、owner、参与者、admin 可见；消息会排除已删除用户
-- `user` 与 `admin_only` 条目仅 admin 可见；社区条目需社区功能开启且遵循 guest 读取配置
+- 通过 `permissionWhere` / `communityVisibilityWhere`
+  控制可见性：公开项、owner、参与者、admin 可见；消息会排除已删除用户
+- `user` 与 `admin_only` 条目仅 admin 可见；社区条目需社区功能开启且遵循 guest
+  读取配置
 - 管理端可传 `types` 或 `type` 指定实体类型；非法类型返回 400
 
 **输入校验**：
 
 - `q`：trim 后 2 ≤ length ≤ 100；UTF-8
-- `type` / `types`：支持 `problem` / `user` / `community_post` / `community_comment` / `contest` / `submission` / `message` / `announcement`（旧 `type=community` 兼容为 `community_post`）
+- `type` / `types`：支持 `problem` / `user` / `community_post` /
+  `community_comment` / `contest` / `submission` / `message` /
+  `announcement`（旧 `type=community` 兼容为 `community_post`）
 - `page` / `per_page`：沿用全局分页默认值（page=1, per_page=20, max 50）
 
 **SQL 安全**：
 
 - 用户输入通过 Drizzle `sql\`...${input}...\`` 占位符参数化
 - `q` 经 `websearch_to_tsquery` 处理，避免 tsquery 注入
-- `title`/`body` 的 `ILIKE` 子串经 `escapeLikePattern()` 转义 `%`/`_`/`\`，配合 `ESCAPE '\'` 子句
+- `title`/`body` 的 `ILIKE` 子串经 `escapeLikePattern()` 转义 `%`/`_`/`\`，配合
+  `ESCAPE '\'` 子句
 
 **响应**：
 
-- flat：`{items, has_more, page, per_page, took_ms}`，item 为 `{entity_type, entity_id, title, highlight, rank, metadata}`
+- flat：`{items, has_more, page, per_page, took_ms}`，item 为
+  `{entity_type, entity_id, title, highlight, rank, metadata}`
 - grouped：`{groups, took_ms}`，按实体类型分组
 - 高亮：`[[HIGHLIGHT]]...[[/HIGHLIGHT]]` marker（非 HTML），前端替换为 `<mark>`
 - 响应头：`X-Search-Took-Ms`、触发限流时附 `X-RateLimit-*` + `Retry-After`
@@ -539,8 +548,10 @@ Retry-After: 25
 
 **实现文件**：
 
-- 路由：`src/domains/search/routes/search.ts`（`optionalAuthMiddleware` + 权限校验 + service 调用）
-- 服务：`src/domains/search/services/search.ts`（`searchFlat` / `searchGrouped`，基于 `search_entries` 的 tsvector + ILIKE 联合查询）
+- 路由：`src/domains/search/routes/search.ts`（`optionalAuthMiddleware` +
+  权限校验 + service 调用）
+- 服务：`src/domains/search/services/search.ts`（`searchFlat` /
+  `searchGrouped`，基于 `search_entries` 的 tsvector + ILIKE 联合查询）
 - 中间件：`src/domains/search/middleware/search-rate-limit.ts`（Redis 固定窗口）
 - Schema：`src/shared/db/schema/search.ts`（`search_entries` + GIN 索引定义）
 

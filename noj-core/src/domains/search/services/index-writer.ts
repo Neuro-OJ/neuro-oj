@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
+import { ROOT_USER_ID } from "../../../shared/base/constants.ts";
 import { unwrapFirstRow, unwrapRows } from "../../../shared/base/sql-rows.ts";
 import { searchEntries } from "../../../shared/db/schema.ts";
 import type { SearchEntryInput } from "../types.ts";
@@ -144,6 +145,8 @@ export async function buildUserEntry(
     updated_at: string;
   }>(rows as never);
   if (!row) return null;
+  // root 系统用户不进入搜索索引（与既有用户搜索排除 root 的行为一致）。
+  if (row.id === ROOT_USER_ID) return null;
   return {
     entityType: "user",
     entityId: row.id,
@@ -592,36 +595,46 @@ export async function processSearchIndexEvent(
 export async function reindexAll(): Promise<Record<string, number>> {
   const db = getDb();
   const counts: Record<string, number> = {};
+
+  async function reindexType(
+    entityType: string,
+    builder: (id: string) => Promise<SearchEntryInput | null>,
+    // deno-lint-ignore no-explicit-any
+    tx: any,
+  ): Promise<void> {
+    const table = entityTypeToTable(entityType);
+    const rows = await tx.execute(
+      sql`SELECT id FROM ${table}`,
+    ) as { id: string }[] | { rows: { id: string }[] };
+    const ids = unwrapRows<{ id: string }>(rows as never);
+    const existingRows = (await tx
+      .select({ entityId: searchEntries.entity_id })
+      .from(searchEntries)
+      .where(sql`${searchEntries.entity_type} = ${entityType}`)) as {
+        entityId: string;
+      }[];
+    const existingIds = new Set(existingRows.map((r) => r.entityId));
+    const keptIds = new Set<string>();
+    let count = 0;
+    for (const row of ids) {
+      const entry = await builder(row.id);
+      if (entry) {
+        await upsertSearchEntry(entry, tx);
+        keptIds.add(row.id);
+        count++;
+      }
+    }
+    // 只清理本次未被重建的旧索引；不依赖外层事务，避免测试事务下挂起。
+    for (const existingId of existingIds) {
+      if (!keptIds.has(existingId)) {
+        await deleteSearchEntry(entityType, existingId, tx);
+      }
+    }
+    counts[entityType] = count;
+  }
+
   for (const [entityType, builder] of Object.entries(BUILDERS)) {
-    await db.transaction(async (tx) => {
-      const table = entityTypeToTable(entityType);
-      const rows = await tx.execute<{ id: string }>(
-        sql`SELECT id FROM ${table}`,
-      );
-      const ids = unwrapRows<{ id: string }>(rows as never);
-      const existingRows = await tx
-        .select({ entityId: searchEntries.entity_id })
-        .from(searchEntries)
-        .where(sql`${searchEntries.entity_type} = ${entityType}`);
-      const existingIds = new Set(existingRows.map((r) => r.entityId));
-      const keptIds = new Set<string>();
-      let count = 0;
-      for (const row of ids) {
-        const entry = await builder(row.id);
-        if (entry) {
-          await upsertSearchEntry(entry, tx);
-          keptIds.add(row.id);
-          count++;
-        }
-      }
-      // 只清理本次未被重建的旧索引；事务保证单个实体类型要么全部成功，要么回滚。
-      for (const existingId of existingIds) {
-        if (!keptIds.has(existingId)) {
-          await deleteSearchEntry(entityType, existingId, tx);
-        }
-      }
-      counts[entityType] = count;
-    });
+    await reindexType(entityType, builder, db);
   }
   return counts;
 }

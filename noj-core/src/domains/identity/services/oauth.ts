@@ -5,6 +5,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
 import { getDb } from "./../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";
 import {
   oauthAccounts,
   roles,
@@ -547,6 +548,7 @@ async function createOAuthUser(
       }).onConflictDoNothing();
     }
   });
+  await publishSearchIndexEvent("user", userId, "upsert");
   return userId;
 }
 
