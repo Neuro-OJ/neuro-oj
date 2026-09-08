@@ -35,6 +35,8 @@ import { observabilityCheck } from "./observability/check.ts";
 import { realHttp } from "./observability/http.ts";
 import { runServerCommand } from "./server_cmd/server_cmd.ts";
 import { resolveContext } from "./context/context.ts";
+import { parseJudgeArgs } from "./judge/options.ts";
+import { runJudgeCommand } from "./judge/commands.ts";
 
 /** CLI 执行上下文，供各子命令共享。 */
 export interface CommandContext {
@@ -90,6 +92,7 @@ export function printHelp(): string {
     "  observability check       检查 liveness/readiness/metrics（可选通知链路）",
     "  observability alert-drill 向 Alertmanager 注入告警并发送恢复事件",
     "  server <cmd>            容器内服务端管理命令（db/init/bootstrap/problems/dev-setup）",
+    "  judge <cmd>            独立 Judge Worker 管理（install/check/start/stop/status/logs/upgrade/download）",
     "",
   ].join("\n");
 }
@@ -102,6 +105,7 @@ const KNOWN_TOP = new Set([
   "version",
   "observability",
   "server",
+  "judge",
 ]);
 
 /** 解析 --port <n>，缺省 8080；非法值抛错。 */
@@ -657,6 +661,15 @@ export async function dispatchCommand(
         args: parsed.args,
         sourceDir: parsed.dir,
       });
+    }
+    case "judge": {
+      try {
+        const opts = parseJudgeArgs(args);
+        return await runJudgeCommand(opts);
+      } catch (e) {
+        console.error(`judge: ${(e as Error).message}`);
+        return 1;
+      }
     }
     case "run-server": {
       let dirOverride: string | undefined;

@@ -240,6 +240,15 @@ Deno.test("printHelp 包含 server", () => {
   assertEquals(printHelp().includes("server <cmd>"), true);
 });
 
+Deno.test("printHelp 包含 judge", () => {
+  assertEquals(printHelp().includes("judge <cmd>"), true);
+});
+
+Deno.test("judge 需要子命令时返回非零", async () => {
+  // 无子命令应返回 1
+  assertEquals(await dispatchCommand("judge", [], ctx), 1);
+});
+
 Deno.test("parseObservabilityArgs: 未知参数抛错", () => {
   let threw = false;
   try {
