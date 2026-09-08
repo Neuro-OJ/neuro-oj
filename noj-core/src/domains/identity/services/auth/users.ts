@@ -127,6 +127,7 @@ export async function listUsers(
         ban_reason: userBans.reason,
         ban_until: userBans.banned_until,
         ban_scope: userBans.scope,
+        ban_updated_at: userBans.updated_at,
       })
       .from(users)
       .leftJoin(
@@ -182,6 +183,7 @@ export async function listUsers(
         scope: (row.ban_scope === "social" ? "social" : "platform") as
           | "platform"
           | "social",
+        updated_at: row.ban_updated_at,
       }
       : null,
   }));

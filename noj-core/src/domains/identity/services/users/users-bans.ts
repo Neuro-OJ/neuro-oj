@@ -172,7 +172,12 @@ export async function banUser(
 
   return await toUserResponse(
     existing,
-    { reason: reason ?? "", banned_until: bannedUntil ?? null, scope },
+    {
+      reason: reason ?? "",
+      banned_until: bannedUntil ?? null,
+      scope,
+      updated_at: now,
+    },
     now,
   );
 }
