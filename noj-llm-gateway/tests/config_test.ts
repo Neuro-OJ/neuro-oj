@@ -40,3 +40,51 @@ for (
     });
   }
 }
+
+Deno.test("config: 缺少 SERVICE_TOKEN 时拒绝启动", () => {
+  assertThrows(
+    () => loadConfig({ ...baseEnv, NOJ_LLM_SERVICE_TOKEN: "" }),
+    Error,
+    "NOJ_LLM_SERVICE_TOKEN",
+  );
+});
+
+Deno.test("config: SERVICE_TOKEN 长度不足 16 时拒绝启动", () => {
+  assertThrows(
+    () => loadConfig({ ...baseEnv, NOJ_LLM_SERVICE_TOKEN: "short" }),
+    Error,
+    "NOJ_LLM_SERVICE_TOKEN",
+  );
+});
+
+Deno.test("config: 缺少 STORE_KEY 时拒绝启动", () => {
+  assertThrows(
+    () => loadConfig({ ...baseEnv, NOJ_LLM_STORE_KEY: "" }),
+    Error,
+    "NOJ_LLM_STORE_KEY",
+  );
+});
+
+Deno.test("config: STORE_KEY 长度不足 16 时拒绝启动", () => {
+  assertThrows(
+    () => loadConfig({ ...baseEnv, NOJ_LLM_STORE_KEY: "short" }),
+    Error,
+    "NOJ_LLM_STORE_KEY",
+  );
+});
+
+Deno.test("config: 缺少 DATABASE_URL 时拒绝启动", () => {
+  assertThrows(
+    () => loadConfig({ ...baseEnv, DATABASE_URL: "" }),
+    Error,
+    "DATABASE_URL",
+  );
+});
+
+Deno.test("config: REDIS_URL 为空时拒绝启动", () => {
+  assertThrows(
+    () => loadConfig({ ...baseEnv, REDIS_URL: "" }),
+    Error,
+    "REDIS_URL",
+  );
+});
