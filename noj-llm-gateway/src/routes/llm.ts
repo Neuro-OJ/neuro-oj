@@ -212,9 +212,15 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     }
 
     const upstreamText = await upstreamRes.text();
-    const upstreamBody = upstreamText.length <= MAX_UPSTREAM_BODY_BYTES
-      ? await Promise.resolve(JSON.parse(upstreamText)).catch(() => null)
-      : null;
+    let upstreamBody: unknown = null;
+    if (upstreamText.length <= MAX_UPSTREAM_BODY_BYTES) {
+      try {
+        upstreamBody = JSON.parse(upstreamText);
+      } catch {
+        // 上游返回畸形 JSON 时按空 body 处理，不使代理 500
+        upstreamBody = null;
+      }
+    }
     const latency = Date.now() - startedAt;
     const usage = upstreamBody?.usage as
       | {
