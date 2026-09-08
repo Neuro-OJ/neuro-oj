@@ -92,7 +92,7 @@ export function printHelp(): string {
     "  observability check       检查 liveness/readiness/metrics（可选通知链路）",
     "  observability alert-drill 向 Alertmanager 注入告警并发送恢复事件",
     "  server <cmd>            容器内服务端管理命令（db/init/bootstrap/problems/dev-setup）",
-    "  judge <cmd>            独立 Judge Worker 管理（install/check/start/stop/status/logs/upgrade/download）",
+    "  judge <cmd>            独立 Judge Worker 管理（install/install-env/check/start/stop/status/logs/upgrade/download）",
     "",
   ].join("\n");
 }
