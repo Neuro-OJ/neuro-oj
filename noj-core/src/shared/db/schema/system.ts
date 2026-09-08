@@ -206,7 +206,11 @@ export const auditLogs = pgTable(
         'contest.participants_add',
         'contest.participants_remove',
         'contest.kind_change',
-        'contest.reset_code'
+        'contest.reset_code',
+        'judge_images.create',
+        'judge_images.update',
+        'judge_images.delete',
+        'email_delivery.clear_suppression'
       )`,
     ),
     adminIdx: index("audit_logs_admin_id_idx").on(table.admin_id),

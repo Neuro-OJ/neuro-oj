@@ -60,7 +60,11 @@ export type AuditAction =
   | "contest.participants_add"
   | "contest.participants_remove"
   | "contest.kind_change"
-  | "contest.reset_code";
+  | "contest.reset_code"
+  | "judge_images.create"
+  | "judge_images.update"
+  | "judge_images.delete"
+  | "email_delivery.clear_suppression";
 
 /** 按 action 强类型的 detail（discriminated union） */
 export type AuditDetail =
@@ -274,7 +278,24 @@ export type AuditDetail =
     status: "reviewed" | "dismissed";
     action_taken: string;
     resolution: string;
-  };
+  }
+  // ── system 子域管理操作 ──
+  | {
+    action: "judge_images.create";
+    image: string;
+    kind?: string;
+    mode?: string;
+  }
+  | {
+    action: "judge_images.update";
+    id: string;
+    image?: string;
+    kind?: string;
+    mode?: string;
+    description?: string;
+  }
+  | { action: "judge_images.delete"; id: string }
+  | { action: "email_delivery.clear_suppression"; id: string };
 
 /** audit_logs 表的响应类型 */
 export interface AuditLogEntry {

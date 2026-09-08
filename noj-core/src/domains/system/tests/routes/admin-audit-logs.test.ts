@@ -75,7 +75,7 @@ Deno.test({
   fn: async () => {
     await setupFixtureData();
     const app = createApp();
-    const res = await getWithToken(app, "/api/v1/admin/audit-logs");
+    const res = await getWithToken(app, "/api/v1/admin/system/audit-logs");
     assertEquals(res.status, 401);
   },
 });
@@ -94,7 +94,7 @@ Deno.test({
     });
     const res = await getWithToken(
       app,
-      "/api/v1/admin/audit-logs",
+      "/api/v1/admin/system/audit-logs",
       userToken,
     );
     assertEquals(res.status, 403);
@@ -151,7 +151,7 @@ Deno.test({
     });
     const res = await getWithToken(
       app,
-      "/api/v1/admin/audit-logs?page=1&per_page=10",
+      "/api/v1/admin/system/audit-logs?page=1&per_page=10",
       adminToken,
     );
     assertEquals(res.status, 200);
@@ -219,7 +219,7 @@ Deno.test({
     });
     const res = await getWithToken(
       app,
-      "/api/v1/admin/audit-logs?action=users.ban",
+      "/api/v1/admin/system/audit-logs?action=users.ban",
       adminToken,
     );
     assertEquals(res.status, 200);

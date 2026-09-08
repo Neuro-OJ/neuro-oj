@@ -420,7 +420,9 @@ export const SCHEMA_DDL: string[] = [
       'contest.ranking_snapshot',
       'contest.create','contest.update','contest.delete',
       'contest.participants_add','contest.participants_remove',
-      'contest.kind_change','contest.reset_code')
+      'contest.kind_change','contest.reset_code',
+      'judge_images.create','judge_images.update','judge_images.delete',
+      'email_delivery.clear_suppression')
     ))
   `,
 

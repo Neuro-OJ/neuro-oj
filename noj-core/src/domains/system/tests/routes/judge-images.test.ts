@@ -56,7 +56,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "judge-images route: GET /api/v1/admin/judge-images 管理员返回列表",
+  name:
+    "judge-images route: GET /api/v1/admin/system/judge-images 管理员返回列表",
   ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -64,7 +65,7 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await app.request("/api/v1/admin/judge-images", {
+    const res = await app.request("/api/v1/admin/system/judge-images", {
       headers: { Authorization: `Bearer ${token}` },
     });
     assertEquals(res.status, 200);
@@ -74,7 +75,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "judge-images route: GET /api/v1/admin/judge-images 非管理员返回 403",
+  name:
+    "judge-images route: GET /api/v1/admin/system/judge-images 非管理员返回 403",
   ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -82,7 +84,7 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const token = await createUserToken();
-    const res = await app.request("/api/v1/admin/judge-images", {
+    const res = await app.request("/api/v1/admin/system/judge-images", {
       headers: { Authorization: `Bearer ${token}` },
     });
     assertEquals(res.status, 403);
@@ -90,7 +92,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "judge-images route: POST /api/v1/admin/judge-images 管理员创建成功",
+  name:
+    "judge-images route: POST /api/v1/admin/system/judge-images 管理员创建成功",
   ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -98,7 +101,7 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await app.request("/api/v1/admin/judge-images", {
+    const res = await app.request("/api/v1/admin/system/judge-images", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -120,7 +123,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "judge-images route: POST /api/v1/admin/judge-images 非法 mode 返回 400",
+    "judge-images route: POST /api/v1/admin/system/judge-images 非法 mode 返回 400",
   ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -128,7 +131,7 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await app.request("/api/v1/admin/judge-images", {
+    const res = await app.request("/api/v1/admin/system/judge-images", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -144,7 +147,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "judge-images route: PUT /api/v1/admin/judge-images/:id 管理员更新成功",
+  name:
+    "judge-images route: PUT /api/v1/admin/system/judge-images/:id 管理员更新成功",
   ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -154,7 +158,7 @@ Deno.test({
     const token = await createUserToken("admin");
 
     // 先创建
-    const createRes = await app.request("/api/v1/admin/judge-images", {
+    const createRes = await app.request("/api/v1/admin/system/judge-images", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -170,7 +174,7 @@ Deno.test({
 
     // 再更新
     const updateRes = await app.request(
-      `/api/v1/admin/judge-images/${created.data.id}`,
+      `/api/v1/admin/system/judge-images/${created.data.id}`,
       {
         method: "PUT",
         headers: {
@@ -192,7 +196,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "judge-images route: DELETE /api/v1/admin/judge-images/:id 管理员删除成功",
+    "judge-images route: DELETE /api/v1/admin/system/judge-images/:id 管理员删除成功",
   ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -202,7 +206,7 @@ Deno.test({
     const token = await createUserToken("admin");
 
     // 先创建
-    const createRes = await app.request("/api/v1/admin/judge-images", {
+    const createRes = await app.request("/api/v1/admin/system/judge-images", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -218,7 +222,7 @@ Deno.test({
 
     // 再删除
     const deleteRes = await app.request(
-      `/api/v1/admin/judge-images/${created.data.id}`,
+      `/api/v1/admin/system/judge-images/${created.data.id}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
     );
     assertEquals(deleteRes.status, 204);
@@ -227,7 +231,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "judge-images route: DELETE /api/v1/admin/judge-images/:id 不存在的返回 404",
+    "judge-images route: DELETE /api/v1/admin/system/judge-images/:id 不存在的返回 404",
   ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -236,7 +240,7 @@ Deno.test({
     const app = createApp();
     const token = await createUserToken("admin");
     const res = await app.request(
-      "/api/v1/admin/judge-images/nonexistent-id",
+      "/api/v1/admin/system/judge-images/nonexistent-id",
       {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -254,7 +258,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await app.request("/api/v1/admin/judge-images");
+    const res = await app.request("/api/v1/admin/system/judge-images");
     assertEquals(res.status, 401);
   },
 });

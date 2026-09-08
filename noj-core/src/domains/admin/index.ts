@@ -19,21 +19,19 @@ import catalogAdminRouter from "./routes/catalog.ts";
 import { submissionAdminRouter } from "../submission/routes/index.ts";
 import { queryAdminRouter } from "../query/routes/index.ts";
 import contestAdminRouter from "./routes/contest.ts";
-import { systemAdminRouter } from "../system/routes/index.ts";
+import systemAdminRouter from "./routes/system.ts";
 import { gatewayAdminRouter } from "../gateway/routes/index.ts";
 
 const router = new Hono<AuthEnv>();
 
 const FINE_GRAINED_ADMIN_PREFIXES = [
-  "/api/v1/admin/announcements",
+  "/api/v1/admin/catalog",
+  "/api/v1/admin/system/announcements",
 ] as const;
 
 router.use("*", authMiddleware, async (c, next) => {
   if (
-    FINE_GRAINED_ADMIN_PREFIXES.some((prefix) =>
-      c.req.path.startsWith(prefix)
-    ) ||
-    c.req.path.startsWith("/api/v1/admin/catalog")
+    FINE_GRAINED_ADMIN_PREFIXES.some((prefix) => c.req.path.startsWith(prefix))
   ) {
     return next();
   }
@@ -45,7 +43,7 @@ router.route("/catalog", catalogAdminRouter);
 router.route("/", submissionAdminRouter);
 router.route("/", queryAdminRouter);
 router.route("/contest", contestAdminRouter);
-router.route("/", systemAdminRouter);
+router.route("/system", systemAdminRouter);
 router.route("/", gatewayAdminRouter);
 
 export default router;

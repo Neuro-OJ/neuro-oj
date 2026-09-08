@@ -554,6 +554,13 @@
       "when": 1788831239266,
       "tag": "0078_classy_bulldozer",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1788833086276,
+      "tag": "0079_low_magik",
+      "breakpoints": true
     }
   ]
 }
