@@ -8,6 +8,7 @@ if (import.meta.main) {
   await run(["deno", "run", "-A", "scripts/verify-md-links.ts"]);
   await run(["deno", "run", "-A", "scripts/verify-export-jsdoc.ts"]);
   await run(["deno", "run", "-A", "scripts/verify-capability-seams.ts"]);
+  await run(["deno", "run", "-A", "scripts/verify-domain-ci.ts"]);
   await run(["deno", "run", "-A", "scripts/deploy/verify-build-server.ts"]);
   await run(["deno", "run", "-A", "scripts/deploy/verify-compose-server.ts"]);
   await run([
