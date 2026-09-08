@@ -1,5 +1,8 @@
 import type { CommandRunner } from "../runtime/command.ts";
 import { realRunner } from "../runtime/command.ts";
+import type { PromptIO } from "../tui/io.ts";
+import { realIO } from "../tui/io.ts";
+import { input, secretInput, select } from "../tui/widgets.ts";
 import { fileExists } from "../util/fs.ts";
 import {
   checkBaseEnvironment,
@@ -12,42 +15,22 @@ import { composeArgs, runJudgeCompose, writeJudgeCompose } from "./compose.ts";
 import type { JudgeEnv } from "./env.ts";
 import { envValue, loadJudgeEnv, saveJudgeEnv, setJudgeEnv } from "./env.ts";
 import type { JudgeOptions } from "./options.ts";
+import { createLocalRedis, redisConnectionFiles } from "./redis.ts";
 
-/** 读取文件权限低位，文件不存在时返回 0。 */
-function fileMode(path: string): number {
-  try {
-    return Deno.statSync(path).mode ?? 0;
-  } catch {
-    return 0;
-  }
+/** 显式 stat 读取文件权限位；文件不存在或不可 stat 时直接抛错。 */
+function statFileMode(path: string): number {
+  return Deno.statSync(path).mode ?? 0;
 }
 
 /** 生成初始化 .env.judge 所需的默认值；非交互必填项缺失时报错。 */
-function initialEnvValues(opts: JudgeOptions): Record<string, string> {
+function baseEnvValues(opts: JudgeOptions): Record<string, string> {
   const get = (key: string): string | undefined => Deno.env.get(key);
-  const requireValue = (key: string, value: string | undefined): string => {
-    if (value !== undefined && value.trim() !== "") return value;
-    throw new Error(`非交互安装缺少必填配置：${key}`);
-  };
   const optional = (key: string, fallback: string): string =>
     get(key) ?? fallback;
-
-  const version = requireValue(
-    "NOJ_VERSION",
-    opts.version ?? get("NOJ_VERSION"),
-  );
-  const redisUrl = requireValue("REDIS_URL", get("REDIS_URL"));
-  const socket = requireValue(
-    "JUDGE_DOCKER_SOCKET",
-    get("JUDGE_DOCKER_SOCKET"),
-  );
-  const socketGid = requireValue(
-    "JUDGE_DOCKER_SOCKET_GID",
-    get("JUDGE_DOCKER_SOCKET_GID"),
-  );
+  const redisUrl = get("REDIS_URL") ?? "";
 
   return {
-    NOJ_VERSION: version,
+    NOJ_VERSION: opts.version ?? get("NOJ_VERSION") ?? "",
     REDIS_URL: redisUrl,
     REDIS_CHECK_URL: optional("REDIS_CHECK_URL", redisUrl),
     REDIS_SOURCE: optional("REDIS_SOURCE", "existing"),
@@ -57,8 +40,8 @@ function initialEnvValues(opts: JudgeOptions): Record<string, string> {
     JUDGE_MAX_CONCURRENT_JUDGES: optional("JUDGE_MAX_CONCURRENT_JUDGES", "2"),
     JUDGE_IMAGE_PREFIX: optional("JUDGE_IMAGE_PREFIX", "noj-"),
     JUDGE_IMAGE_REGISTRY: optional("JUDGE_IMAGE_REGISTRY", "ghcr.io/neuro-oj"),
-    JUDGE_DOCKER_SOCKET: socket,
-    JUDGE_DOCKER_SOCKET_GID: socketGid,
+    JUDGE_DOCKER_SOCKET: get("JUDGE_DOCKER_SOCKET") ?? "",
+    JUDGE_DOCKER_SOCKET_GID: get("JUDGE_DOCKER_SOCKET_GID") ?? "",
     JUDGE_DOCKER_HOST: "unix:///run/noj-judge/docker.sock",
     JUDGE_REQUIRE_ISOLATED_DOCKER: "true",
     JUDGE_UID: optional("JUDGE_UID", "10001"),
@@ -95,13 +78,199 @@ function initialEnvValues(opts: JudgeOptions): Record<string, string> {
   };
 }
 
+/** 非交互安装：必填项缺失时直接报错。 */
+function nonInteractiveEnvValues(opts: JudgeOptions): Record<string, string> {
+  const values = baseEnvValues(opts);
+  const requireValue = (key: string): void => {
+    if ((values[key] ?? "").trim() !== "") return;
+    throw new Error(`非交互安装缺少必填配置：${key}`);
+  };
+  requireValue("NOJ_VERSION");
+  requireValue("REDIS_URL");
+  requireValue("JUDGE_DOCKER_SOCKET");
+  requireValue("JUDGE_DOCKER_SOCKET_GID");
+  return values;
+}
+
+/** 交互式读取配置项：环境变量已存在时跳过，否则按默认值提示。 */
+async function promptValue(
+  io: PromptIO,
+  key: string,
+  label: string,
+  defaultValue?: string,
+  options?: { secret?: boolean; hint?: string },
+): Promise<string> {
+  const fromEnv = Deno.env.get(key)?.trim();
+  if (fromEnv) return fromEnv;
+  if (options?.hint) io.write(`  说明：${options.hint}\n`);
+  if (options?.secret) {
+    return secretInput(io, `  ${label}`);
+  }
+  while (true) {
+    const raw = await input(io, `  ${label}`, defaultValue);
+    if (raw.trim() !== "") return raw.trim();
+    io.write("输入不能为空，请重试。\n");
+  }
+}
+
+/** Redis 交互配置：已有环境变量、已有 Redis / 本机 Redis / 稍后配置。 */
+async function promptRedis(
+  io: PromptIO,
+  opts: JudgeOptions,
+  runner: CommandRunner,
+): Promise<{ url: string; checkUrl: string; source: string }> {
+  const existingUrl = Deno.env.get("REDIS_URL")?.trim();
+  if (existingUrl) {
+    return {
+      url: existingUrl,
+      checkUrl: Deno.env.get("REDIS_CHECK_URL")?.trim() || existingUrl,
+      source: "existing",
+    };
+  }
+
+  io.write("\n配置 Redis\n");
+  io.write("Redis 是 noj-core 和 Judge 之间传递评测任务的中转站。\n");
+  io.write(
+    "Judge 必须连接 noj-core 正在使用的同一个 Redis、数据库和队列。\n\n",
+  );
+  const choice = await select(io, "请选择 Redis 来源", [
+    "连接已有 Redis（推荐，适合生产环境）",
+    "创建本机 Redis（仅适合明确知道 core 也要使用它的场景）",
+    "稍后配置（本次不会启动 Judge）",
+  ]);
+  switch (choice) {
+    case 0: {
+      const url = await secretInput(io, "  Redis 完整连接地址");
+      return { url, checkUrl: url, source: "existing" };
+    }
+    case 1: {
+      await createLocalRedis(opts, runner);
+      const { metadata } = redisConnectionFiles(opts);
+      const meta = loadJudgeEnv(metadata);
+      const runtimeUrl = envValue(meta, "REDIS_RUNTIME_URL") ?? "";
+      const checkUrl = envValue(meta, "REDIS_CHECK_URL") ?? "";
+      if (!runtimeUrl || !checkUrl) {
+        throw new Error(`本机 Redis 连接信息不完整：${metadata}`);
+      }
+      return { url: runtimeUrl, checkUrl, source: "local" };
+    }
+    default:
+      throw new Error(
+        "已选择稍后配置；请配置与 noj-core 相同的 REDIS_URL 后重新执行 install",
+      );
+  }
+}
+
+/** 交互式生成 .env.judge 的完整配置值。 */
+async function interactiveEnvValues(
+  io: PromptIO,
+  opts: JudgeOptions,
+  runner: CommandRunner,
+): Promise<Record<string, string>> {
+  const values = baseEnvValues(opts);
+
+  values.NOJ_VERSION = opts.version ??
+    await promptValue(
+      io,
+      "NOJ_VERSION",
+      "Worker 版本（例如 0.8.0-rc.1）",
+      undefined,
+      {
+        hint: "填已发布的镜像版本，不要填写 main 或 latest。",
+      },
+    );
+  const redis = await promptRedis(io, opts, runner);
+  values.REDIS_URL = redis.url;
+  values.REDIS_CHECK_URL = redis.checkUrl;
+  values.REDIS_SOURCE = redis.source;
+  values.JUDGE_QUEUE = await promptValue(
+    io,
+    "JUDGE_QUEUE",
+    "任务队列名称",
+    "noj:judge:queue",
+    { hint: "必须与 noj-core 的任务队列名称一致，通常直接回车。" },
+  );
+  values.RESULT_QUEUE = await promptValue(
+    io,
+    "RESULT_QUEUE",
+    "结果队列名称",
+    "noj:judge:results",
+    { hint: "必须与 noj-core 的结果队列名称一致，通常直接回车。" },
+  );
+  values.WORK_DIR = await promptValue(
+    io,
+    "WORK_DIR",
+    "Worker 容器工作目录",
+    "/tmp/noj-judge",
+    { hint: "容器内部目录，通常直接回车。" },
+  );
+  values.JUDGE_MAX_CONCURRENT_JUDGES = await promptValue(
+    io,
+    "JUDGE_MAX_CONCURRENT_JUDGES",
+    "最大并发评测数",
+    "2",
+    { hint: "同时运行的评测数量；机器资源较少时可填写 1。" },
+  );
+  values.JUDGE_IMAGE_PREFIX = await promptValue(
+    io,
+    "JUDGE_IMAGE_PREFIX",
+    "评测镜像前缀",
+    "noj-",
+    { hint: "题目运行时镜像的前缀，通常直接回车。" },
+  );
+  values.JUDGE_IMAGE_REGISTRY = await promptValue(
+    io,
+    "JUDGE_IMAGE_REGISTRY",
+    "Worker 镜像仓库",
+    "ghcr.io/neuro-oj",
+    { hint: "Worker 镜像所在仓库，不要填写末尾的 /noj-judge。" },
+  );
+  values.JUDGE_DOCKER_SOCKET = await promptValue(
+    io,
+    "JUDGE_DOCKER_SOCKET",
+    "专用 Docker socket 路径",
+    "/run/noj-judge/docker.sock",
+    { hint: "必须是 Judge 专用 rootless socket，不能使用宿主机共享 socket。" },
+  );
+  values.JUDGE_DOCKER_SOCKET_GID = await promptValue(
+    io,
+    "JUDGE_DOCKER_SOCKET_GID",
+    "Docker socket 所属组 GID",
+    "10001",
+    {
+      hint:
+        "可用 stat -c '%g' /run/noj-judge/docker.sock 查询；必须与 socket 实际 GID 一致。",
+    },
+  );
+  values.JUDGE_UID = await promptValue(
+    io,
+    "JUDGE_UID",
+    "Worker 用户 UID",
+    "10001",
+    { hint: "容器内非 root 用户，通常直接回车。" },
+  );
+  values.JUDGE_GID = await promptValue(
+    io,
+    "JUDGE_GID",
+    "Worker 用户 GID",
+    "10001",
+    { hint: "容器内非 root 用户组，通常直接回车。" },
+  );
+
+  return values;
+}
+
 /**
  * 初始化 Judge 环境文件。
  * 已有配置时保留并视需要更新 NOJ_VERSION；dry-run 时不写文件；
- * 文件缺失且非 dry-run 时从环境变量/默认值生成配置。
+ * 文件缺失且非 dry-run 时按非交互环境变量或交互提示生成配置。
  */
-function initializeJudgeEnv(opts: JudgeOptions): void {
-  const envExists = fileMode(opts.envFile) !== 0;
+async function initializeJudgeEnv(
+  opts: JudgeOptions,
+  runner: CommandRunner,
+  io: PromptIO,
+): Promise<void> {
+  const envExists = await fileExists(opts.envFile);
 
   if (opts.dryRun) {
     if (envExists) {
@@ -121,14 +290,11 @@ function initializeJudgeEnv(opts: JudgeOptions): void {
     return;
   }
 
-  if (!opts.nonInteractive) {
-    throw new Error(
-      "交互式安装尚未实现，请使用 --non-interactive 并提供环境变量，或预先创建 .env.judge",
-    );
-  }
-
   Deno.mkdirSync(opts.dir, { recursive: true });
-  saveJudgeEnv(opts.envFile, initialEnvValues(opts));
+  const values = opts.nonInteractive
+    ? nonInteractiveEnvValues(opts)
+    : await interactiveEnvValues(io, opts, runner);
+  saveJudgeEnv(opts.envFile, values);
   console.log(`已创建配置：${opts.envFile}`);
 }
 
@@ -169,7 +335,7 @@ async function checkJudgeConfiguration(
   }
 
   if (envExists) {
-    const mode = fileMode(opts.envFile) & 0o777;
+    const mode = statFileMode(opts.envFile) & 0o777;
     if (mode !== 0o600 && mode !== 0o400) {
       throw new Error(`配置文件权限必须为 600 或 400：${opts.envFile}`);
     }
@@ -217,26 +383,36 @@ async function checkJudgeConfiguration(
   console.log("Judge 配置检查通过");
 }
 
-/** install：初始化环境 → 写 compose → 检查 → pull → up。 */
+/** install：先检查基础环境，再初始化环境 → 写 compose → 检查 → pull → up。 */
 async function runInstall(
   opts: JudgeOptions,
   runner: CommandRunner,
+  io: PromptIO,
 ): Promise<number> {
-  initializeJudgeEnv(opts);
-  writeJudgeCompose(opts.composeFile, opts.dryRun);
   await checkBaseEnvironment(opts, runner);
+  await initializeJudgeEnv(opts, runner, io);
+  writeJudgeCompose(opts.composeFile, opts.dryRun);
   await checkJudgeConfiguration(opts, runner);
   const pull = await runJudgeCompose(opts, ["pull"], runner);
   if (pull !== 0) return pull;
   return runJudgeCompose(opts, ["up", "-d", "--remove-orphans"], runner);
 }
 
-/** install-env：检查 Docker/Compose 并输出 rootless 准备指引。 */
+/** install-env：检查 Docker/Compose/curl 并输出 rootless 准备指引。 */
 async function runInstallEnv(
   opts: JudgeOptions,
   runner: CommandRunner,
 ): Promise<number> {
   await checkBaseEnvironment(opts, runner);
+  let curlOk = false;
+  try {
+    curlOk = (await runner.run("curl", ["--version"])).code === 0;
+  } catch {
+    curlOk = false;
+  }
+  if (!curlOk) {
+    throw new Error("缺少依赖：curl");
+  }
   console.log(
     "\n请确认已准备以下隔离条件：\n" +
       "  1. 只服务于 Judge 的 rootless Docker daemon；\n" +
@@ -268,11 +444,14 @@ async function runStart(
   return runJudgeCompose(opts, ["up", "-d", "--remove-orphans"], runner);
 }
 
-/** stop：compose stop。 */
-function runStop(
+/** stop：先确认已安装，再 compose stop。 */
+async function runStop(
   opts: JudgeOptions,
   runner: CommandRunner,
 ): Promise<number> {
+  if (!(await fileExists(opts.envFile))) {
+    throw new Error(`找不到配置文件：${opts.envFile}，请先执行 install`);
+  }
   return runJudgeCompose(opts, ["stop"], runner);
 }
 
@@ -292,14 +471,18 @@ async function runStatus(
   return runJudgeCompose(opts, ["ps"], runner);
 }
 
-/** logs：查看 Judge 日志，可选 --follow。 */
-function runLogs(
+/** logs：先检查基础环境与已安装配置，再查看 Judge 日志。 */
+async function runLogs(
   opts: JudgeOptions,
   runner: CommandRunner,
 ): Promise<number> {
+  await checkBaseEnvironment(opts, runner);
+  if (!(await fileExists(opts.envFile))) {
+    throw new Error(`找不到配置文件：${opts.envFile}，请先执行 install`);
+  }
   const args = ["logs", "--tail=200"];
   if (opts.follow) args.push("--follow");
-  if (opts.follow && runner.stream) {
+  if (opts.follow && !opts.dryRun && runner.stream) {
     return runner.stream(
       "docker",
       composeArgs(opts, args),
@@ -314,17 +497,17 @@ async function runUpgrade(
   opts: JudgeOptions,
   runner: CommandRunner,
 ): Promise<number> {
-  const envExists = await fileExists(opts.envFile);
-  if (envExists) {
-    if (opts.version !== undefined) {
-      setJudgeEnv(opts.envFile, "NOJ_VERSION", opts.version);
-    } else {
-      console.log(`保留已有配置：${opts.envFile}`);
-    }
-  } else if (opts.dryRun) {
-    console.log(`[dry-run] 跳过配置更新：${opts.envFile} 不存在`);
-  } else {
+  if (!(await fileExists(opts.envFile))) {
     throw new Error(`找不到配置文件：${opts.envFile}，请先执行 install`);
+  }
+  if (opts.version !== undefined) {
+    if (opts.dryRun) {
+      console.log(`[dry-run] 将更新 NOJ_VERSION=${opts.version}`);
+    } else {
+      setJudgeEnv(opts.envFile, "NOJ_VERSION", opts.version);
+    }
+  } else {
+    console.log(`保留已有配置：${opts.envFile}`);
   }
 
   writeJudgeCompose(opts.composeFile, opts.dryRun);
@@ -392,6 +575,7 @@ async function downloadJudgeScript(
 export async function runJudgeCommand(
   opts: JudgeOptions,
   runner: CommandRunner = realRunner(),
+  io: PromptIO = realIO(),
 ): Promise<number> {
   try {
     if (opts.downloadOnly || opts.command === "download") {
@@ -399,7 +583,7 @@ export async function runJudgeCommand(
     }
     switch (opts.command) {
       case "install":
-        return await runInstall(opts, runner);
+        return await runInstall(opts, runner, io);
       case "install-env":
         return await runInstallEnv(opts, runner);
       case "check":

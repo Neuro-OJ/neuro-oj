@@ -1,9 +1,28 @@
 import { assertEquals } from "@std/assert";
 import type { CmdResult, CommandRunner } from "../runtime/command.ts";
+import type { PromptIO } from "../tui/io.ts";
 import { writeJudgeCompose } from "./compose.ts";
 import { runJudgeCommand } from "./commands.ts";
 import { envValue, loadJudgeEnv, saveJudgeEnv } from "./env.ts";
 import type { JudgeOptions } from "./options.ts";
+
+/** 可编程 fake IO：按序消费 answers，记录 writes。 */
+class FakeIO implements PromptIO {
+  writes: string[] = [];
+  answers: string[];
+  constructor(answers: string[]) {
+    this.answers = answers;
+  }
+  write(text: string): void {
+    this.writes.push(text);
+  }
+  readLine(_p: string): Promise<string> {
+    return Promise.resolve(this.answers.shift() ?? "");
+  }
+  readSecret(_p: string): Promise<string> {
+    return Promise.resolve(this.answers.shift() ?? "");
+  }
+}
 
 /** 可记录调用并返回成功结果的 fake runner。 */
 function fakeRunner(
@@ -127,6 +146,38 @@ function configuredOpts(
   };
 }
 
+/** 临时清空 judge 安装必需环境变量并返回恢复函数。 */
+function withClearedJudgeEnv(
+  fn: () => Promise<void>,
+): Promise<void> {
+  const keys = [
+    "NOJ_VERSION",
+    "REDIS_URL",
+    "REDIS_CHECK_URL",
+    "REDIS_SOURCE",
+    "JUDGE_QUEUE",
+    "RESULT_QUEUE",
+    "WORK_DIR",
+    "JUDGE_MAX_CONCURRENT_JUDGES",
+    "JUDGE_IMAGE_PREFIX",
+    "JUDGE_IMAGE_REGISTRY",
+    "JUDGE_DOCKER_SOCKET",
+    "JUDGE_DOCKER_SOCKET_GID",
+    "JUDGE_UID",
+    "JUDGE_GID",
+  ];
+  const old = new Map(keys.map((k) => [k, Deno.env.get(k)]));
+  for (const k of keys) Deno.env.delete(k);
+  try {
+    return fn();
+  } finally {
+    for (const [k, v] of old) {
+      if (v === undefined) Deno.env.delete(k);
+      else Deno.env.set(k, v);
+    }
+  }
+}
+
 Deno.test("judge check dry-run 返回 0", async () => {
   const records: { cmd: string; args: string[] }[] = [];
   const code = await runJudgeCommand(
@@ -181,6 +232,91 @@ Deno.test("judge install 按序执行 pull 与 up", async () => {
   }
 });
 
+Deno.test("judge install 非交互缺少必填配置返回 1", async () => {
+  const dir = Deno.makeTempDirSync();
+  const records: { cmd: string; args: string[] }[] = [];
+  const opts: JudgeOptions = {
+    ...baseOpts,
+    command: "install",
+    dir,
+    envFile: `${dir}/.env.judge`,
+    composeFile: `${dir}/docker-compose.judge.yml`,
+    nonInteractive: true,
+    dryRun: false,
+  };
+  await withClearedJudgeEnv(async () => {
+    const code = await runJudgeCommand(
+      opts,
+      fakeRunnerWithConfiguredChecks(dir, records),
+    );
+    assertEquals(code, 1);
+  });
+});
+
+Deno.test("judge install 交互式完整流程写入配置并启动", async () => {
+  await withClearedJudgeEnv(async () => {
+    const dir = Deno.makeTempDirSync();
+    const envFile = `${dir}/.env.judge`;
+    const composeFile = `${dir}/docker-compose.judge.yml`;
+    const socketPath = `${dir}/docker.sock`;
+    let listener: Deno.Listener | undefined;
+    try {
+      listener = Deno.listen({ path: socketPath, transport: "unix" });
+      const gid = Deno.statSync(socketPath).gid?.toString() ?? "10001";
+      const io = new FakeIO([
+        "v0.1.0", // NOJ_VERSION
+        "1", // Redis 来源：连接已有 Redis
+        "redis://127.0.0.1:6379/0", // REDIS_URL（隐藏输入）
+        "", // JUDGE_QUEUE 默认
+        "", // RESULT_QUEUE 默认
+        "", // WORK_DIR 默认
+        "", // JUDGE_MAX_CONCURRENT_JUDGES 默认
+        "", // JUDGE_IMAGE_PREFIX 默认
+        "", // JUDGE_IMAGE_REGISTRY 默认
+        socketPath, // JUDGE_DOCKER_SOCKET
+        gid, // JUDGE_DOCKER_SOCKET_GID
+        "", // JUDGE_UID 默认
+        "", // JUDGE_GID 默认
+      ]);
+      const opts: JudgeOptions = {
+        ...baseOpts,
+        command: "install",
+        dir,
+        envFile,
+        composeFile,
+        nonInteractive: false,
+        dryRun: false,
+      };
+      const records: { cmd: string; args: string[] }[] = [];
+      const code = await runJudgeCommand(
+        opts,
+        fakeRunnerWithConfiguredChecks(dir, records),
+        io,
+      );
+      assertEquals(code, 0);
+      const env = loadJudgeEnv(envFile);
+      assertEquals(envValue(env, "NOJ_VERSION"), "v0.1.0");
+      assertEquals(envValue(env, "REDIS_URL"), "redis://127.0.0.1:6379/0");
+      assertEquals(envValue(env, "JUDGE_DOCKER_SOCKET"), socketPath);
+      const mode = Deno.statSync(envFile).mode! & 0o777;
+      assertEquals(mode, 0o600);
+      assertEquals(
+        records.some((r) =>
+          r.cmd === "docker" && r.args[0] === "compose" &&
+          r.args.includes("pull")
+        ),
+        true,
+      );
+    } finally {
+      try {
+        if (listener) listener.close();
+      } catch {
+        // 忽略已关闭
+      }
+    }
+  });
+});
+
 Deno.test("judge install-env 返回 0", async () => {
   const records: { cmd: string; args: string[] }[] = [];
   const code = await runJudgeCommand(
@@ -213,17 +349,43 @@ Deno.test("judge start 执行 compose up", async () => {
 });
 
 Deno.test("judge stop 执行 compose stop", async () => {
+  const { opts, cleanup } = configuredOpts("stop");
+  try {
+    const records: { cmd: string; args: string[] }[] = [];
+    const code = await runJudgeCommand(
+      opts,
+      fakeRunnerWithConfiguredChecks(opts.dir, records),
+    );
+    assertEquals(code, 0);
+    assertEquals(
+      records.some((r) =>
+        r.cmd === "docker" && r.args[0] === "compose" && r.args.includes("stop")
+      ),
+      true,
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+Deno.test("judge stop 缺少配置文件返回 1 且不执行 compose", async () => {
+  const dir = Deno.makeTempDirSync();
   const records: { cmd: string; args: string[] }[] = [];
-  const code = await runJudgeCommand(
-    { ...baseOpts, command: "stop", dryRun: false },
-    fakeRunner(records),
-  );
-  assertEquals(code, 0);
+  const opts: JudgeOptions = {
+    ...baseOpts,
+    command: "stop",
+    dir,
+    envFile: `${dir}/.env.judge`,
+    composeFile: `${dir}/docker-compose.judge.yml`,
+    dryRun: false,
+  };
+  const code = await runJudgeCommand(opts, fakeRunner(records));
+  assertEquals(code, 1);
   assertEquals(
     records.some((r) =>
       r.cmd === "docker" && r.args[0] === "compose" && r.args.includes("stop")
     ),
-    true,
+    false,
   );
 });
 
@@ -248,35 +410,97 @@ Deno.test("judge status 输出摘要并执行 compose ps", async () => {
 });
 
 Deno.test("judge logs 执行 logs --tail=200", async () => {
-  const records: { cmd: string; args: string[] }[] = [];
-  const code = await runJudgeCommand(
-    { ...baseOpts, command: "logs", dryRun: false },
-    fakeRunner(records),
-  );
-  assertEquals(code, 0);
-  assertEquals(
-    records.some((r) =>
-      r.cmd === "docker" && r.args[0] === "compose" &&
-      r.args.includes("logs") && r.args.includes("--tail=200")
-    ),
-    true,
-  );
+  const { opts, cleanup } = configuredOpts("logs");
+  try {
+    const records: { cmd: string; args: string[] }[] = [];
+    const code = await runJudgeCommand(
+      opts,
+      fakeRunnerWithConfiguredChecks(opts.dir, records),
+    );
+    assertEquals(code, 0);
+    assertEquals(
+      records.some((r) =>
+        r.cmd === "docker" && r.args[0] === "compose" &&
+        r.args.includes("logs") && r.args.includes("--tail=200")
+      ),
+      true,
+    );
+  } finally {
+    cleanup();
+  }
 });
 
 Deno.test("judge logs --follow 追加 --follow", async () => {
+  const { opts, cleanup } = configuredOpts("logs", { follow: true });
+  try {
+    const records: { cmd: string; args: string[] }[] = [];
+    const code = await runJudgeCommand(
+      opts,
+      fakeRunnerWithConfiguredChecks(opts.dir, records),
+    );
+    assertEquals(code, 0);
+    assertEquals(
+      records.some((r) =>
+        r.cmd === "docker" && r.args[0] === "compose" &&
+        r.args.includes("logs") && r.args.includes("--tail=200") &&
+        r.args.includes("--follow")
+      ),
+      true,
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+Deno.test("judge logs --follow --dry-run 不执行 stream", async () => {
+  const { opts, cleanup } = configuredOpts("logs", { follow: true });
+  opts.dryRun = true;
+  try {
+    const records: { cmd: string; args: string[] }[] = [];
+    let streamCalled = false;
+    const runner: CommandRunner = {
+      ...fakeRunnerWithConfiguredChecks(opts.dir, records),
+      stream() {
+        streamCalled = true;
+        return Promise.resolve(0);
+      },
+    };
+    const code = await runJudgeCommand(opts, runner);
+    assertEquals(code, 0);
+    assertEquals(streamCalled, false);
+    assertEquals(
+      records.some((r) =>
+        r.cmd === "docker" && r.args[0] === "compose" &&
+        r.args.includes("logs") && r.args.includes("--follow")
+      ),
+      false,
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+Deno.test("judge logs 缺少配置文件返回 1 且不执行 compose logs", async () => {
+  const dir = Deno.makeTempDirSync();
   const records: { cmd: string; args: string[] }[] = [];
+  const opts: JudgeOptions = {
+    ...baseOpts,
+    command: "logs",
+    dir,
+    envFile: `${dir}/.env.judge`,
+    composeFile: `${dir}/docker-compose.judge.yml`,
+    dryRun: false,
+  };
   const code = await runJudgeCommand(
-    { ...baseOpts, command: "logs", dryRun: false, follow: true },
-    fakeRunner(records),
+    opts,
+    fakeRunnerWithConfiguredChecks(dir, records),
   );
-  assertEquals(code, 0);
+  assertEquals(code, 1);
   assertEquals(
     records.some((r) =>
-      r.cmd === "docker" && r.args[0] === "compose" &&
-      r.args.includes("logs") && r.args.includes("--tail=200") &&
-      r.args.includes("--follow")
+      r.cmd === "docker" && r.args[0] === "compose" && r.args.includes("logs")
     ),
-    true,
+    false,
   );
 });
 
@@ -306,6 +530,47 @@ Deno.test("judge upgrade 更新 NOJ_VERSION 并执行 pull/up", async () => {
   } finally {
     cleanup();
   }
+});
+
+Deno.test("judge upgrade --dry-run 不更新环境文件", async () => {
+  const { opts, cleanup } = configuredOpts("upgrade", {
+    version: "v0.2.0",
+  });
+  opts.dryRun = true;
+  try {
+    const records: { cmd: string; args: string[] }[] = [];
+    const code = await runJudgeCommand(
+      opts,
+      fakeRunnerWithConfiguredChecks(opts.dir, records),
+    );
+    assertEquals(code, 0);
+    const env = loadJudgeEnv(opts.envFile);
+    assertEquals(envValue(env, "NOJ_VERSION"), "v0.1.0");
+    assertEquals(
+      records.some((r) =>
+        r.cmd === "docker" && r.args[0] === "compose" && r.args.includes("pull")
+      ),
+      false,
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+Deno.test("judge upgrade --dry-run 缺少配置文件返回 1", async () => {
+  const dir = Deno.makeTempDirSync();
+  const records: { cmd: string; args: string[] }[] = [];
+  const opts: JudgeOptions = {
+    ...baseOpts,
+    command: "upgrade",
+    dir,
+    envFile: `${dir}/.env.judge`,
+    composeFile: `${dir}/docker-compose.judge.yml`,
+    dryRun: true,
+    version: "v0.2.0",
+  };
+  const code = await runJudgeCommand(opts, fakeRunner(records));
+  assertEquals(code, 1);
 });
 
 Deno.test("judge download 下载脚本到目标目录", async () => {
