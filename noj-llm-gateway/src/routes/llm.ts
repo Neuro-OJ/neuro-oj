@@ -212,7 +212,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     }
 
     const upstreamText = await upstreamRes.text();
-    let upstreamBody: unknown = null;
+    let upstreamBody: Record<string, unknown> | null = null;
     if (upstreamText.length <= MAX_UPSTREAM_BODY_BYTES) {
       try {
         upstreamBody = JSON.parse(upstreamText);

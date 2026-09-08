@@ -1,6 +1,6 @@
 // LLM 回放测试：无 key 可跑，验证录制 fixture 的结构与内容，并可用 fixture 驱动代理路由。
 
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { createLlmRouter } from "../src/routes/llm.ts";
 import {
   createFakeDb,
@@ -40,14 +40,16 @@ async function readFixture(name: string): Promise<ReplayFixture> {
 }
 
 Deno.test("replay: 多 Provider fixture 结构可读", async () => {
-  for (const name of [
-    "simple-chat.json",
-    "deepseek-chat.json",
-    "qwen-plus.json",
-    "openai-gpt-4o.json",
-    "upstream-500.json",
-    "malformed.json",
-  ]) {
+  for (
+    const name of [
+      "simple-chat.json",
+      "deepseek-chat.json",
+      "qwen-plus.json",
+      "openai-gpt-4o.json",
+      "upstream-500.json",
+      "malformed.json",
+    ]
+  ) {
     const fixture = await readFixture(name);
     assertEquals(typeof fixture.model, "string");
     assertEquals(Array.isArray(fixture.request.messages), true);
@@ -70,6 +72,7 @@ Deno.test("replay: simple-chat fixture 可驱动代理路由", async () => {
   const app = createLlmRouter({ config: testConfig, db, redis });
   const token = await makeToken(testConfig, fixture.model);
   const restore = stubFetch(async () => {
+    await Promise.resolve();
     return new Response(JSON.stringify(fixture.response), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -88,4 +91,18 @@ Deno.test("replay: simple-chat fixture 可驱动代理路由", async () => {
   } finally {
     restore();
   }
+});
+
+Deno.test("replay: rate-limit fixture 包含 429 与错误结构", async () => {
+  const fixture: {
+    upstream_status: number;
+    response: { error: { type: string } };
+  } = JSON.parse(
+    await Deno.readTextFile(`${FIXTURE_DIR}rate-limit.json`),
+  );
+  assert(fixture.upstream_status === 429, "upstream_status 应为 429");
+  assert(
+    fixture.response.error.type === "rate_limit_error",
+    "错误类型应匹配",
+  );
 });
