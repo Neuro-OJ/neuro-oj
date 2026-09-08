@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-
 import { extractApiError } from '~/utils/apiError'
+import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 
 definePageMeta({
   layout: "admin",
@@ -31,6 +30,7 @@ interface Role {
   parent_id: string | null
   parent_name: string | null
   permissions: string[]
+  updated_at: string
 }
 
 // 按 resource 分组的权限
@@ -55,30 +55,14 @@ const permissionGroups = computed<PermissionGroup[]>(() => {
 const tableLoading = ref(true)
 const tableError = ref("")
 
-const columns: TableColumn<Role>[] = [
-  { accessorKey: "name", header: "角色名" },
-  {
-    accessorKey: "parent_name",
-    header: "继承自",
-    cell: (info) => (info.getValue() as string) || "-",
-  },
-  {
-    accessorKey: "is_admin",
-    header: "管理员",
-    cell: (info) => (info.getValue() as boolean) ? "是" : "否",
-  },
-  {
-    accessorKey: "is_default",
-    header: "默认角色",
-    cell: (info) => (info.getValue() as boolean) ? "是" : "否",
-  },
-  {
-    accessorKey: "is_system",
-    header: "系统角色",
-    cell: (info) => (info.getValue() as boolean) ? "是" : "否",
-  },
-
-  { accessorKey: "actions", header: "操作" },]
+const columns: AdminColumn[] = [
+  { key: "name", label: "角色名" },
+  { key: "parent_name", label: "继承自" },
+  { key: "is_admin", label: "管理员" },
+  { key: "is_default", label: "默认角色" },
+  { key: "is_system", label: "系统角色" },
+  { key: "actions", label: "操作" },
+]
 
 async function loadRoles() {
   if (!isLoggedIn.value) return
@@ -86,8 +70,8 @@ async function loadRoles() {
   tableError.value = ""
   try {
     const [rolesRes, permsRes] = await Promise.all([
-      api.get<{ data: Role[] }>("/api/v1/admin/roles", { silent: true }),
-      api.get<{ data: Permission[] }>("/api/v1/admin/permissions", { silent: true }),
+      api.get<{ data: Role[] }>("/api/v1/admin/identity/roles", { silent: true }),
+      api.get<{ data: Permission[] }>("/api/v1/admin/identity/permissions", { silent: true }),
     ])
     roles.value = rolesRes.data
     permissions.value = permsRes.data
@@ -170,9 +154,11 @@ async function handleSave() {
       permission_ids: Array.from(editorPermissionIds.value),
     }
     if (editingRole.value) {
-      await api.put(`/api/v1/admin/roles/${editingRole.value.id}`, body)
+      await api.put(`/api/v1/admin/identity/roles/${editingRole.value.id}`, body, {
+        headers: { "If-Match": `"${editingRole.value.updated_at}"` },
+      })
     } else {
-      await api.post("/api/v1/admin/roles", body)
+      await api.post("/api/v1/admin/identity/roles", body)
     }
     showEditor.value = false
     await loadRoles()
@@ -204,7 +190,9 @@ async function confirmDelete(role: Role) {
   deletingId.value = role.id
   deleteError.value = ""
   try {
-    await api.delete(`/api/v1/admin/roles/${role.id}`)
+    await api.delete(`/api/v1/admin/identity/roles/${role.id}`, {
+      headers: { "If-Match": `"${role.updated_at}"` },
+    })
     await loadRoles()
   } catch (err: unknown) {
     deleteError.value = extractApiError(err).message
@@ -216,7 +204,7 @@ async function confirmDelete(role: Role) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="角色管理" description="管理角色与权限分配" />
+    <AdminPageHeader title="角色管理" description="管理角色与权限分配" />
 
     <!-- 错误提示（删除失败） -->
     <div
@@ -235,49 +223,64 @@ async function confirmDelete(role: Role) {
       </UButton>
     </div>
 
-    <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
-    <UTable
+    <AdminTable
       :columns="columns"
-      :data="roles"
+      :items="roles as unknown as Record<string, unknown>[]"
       :loading="tableLoading"
-      :empty="'暂无角色'">
-      <template #name-cell="{ row }">
-        <div class="flex items-center gap-1.5">
-          <UIcon name="i-lucide-shield-check" class="text-info-text shrink-0 size-4" v-if="row.original.is_admin"/>
-          <span>{{ row.original.name }}</span>
-          <UIcon name="i-lucide-lock" class="text-text-muted shrink-0 size-3.5" v-if="row.original.is_system"   title="系统角色"/>
-        </div>
+      :error="tableError || undefined"
+      :total-pages="1"
+      :current-page="1"
+    >
+      <template #cell="{ row, column }">
+        <template v-if="column.key === 'name'">
+          <div class="flex items-center gap-1.5">
+            <UIcon name="i-lucide-shield-check" class="text-info-text shrink-0 size-4" v-if="(row as unknown as Role).is_admin"/>
+            <span>{{ (row as unknown as Role).name }}</span>
+            <UIcon name="i-lucide-lock" class="text-text-muted shrink-0 size-3.5" v-if="(row as unknown as Role).is_system" title="系统角色"/>
+          </div>
+        </template>
+        <template v-else-if="column.key === 'parent_name'">
+          {{ (row as unknown as Role).parent_name || "-" }}
+        </template>
+        <template v-else-if="column.key === 'is_admin'">
+          {{ (row as unknown as Role).is_admin ? "是" : "否" }}
+        </template>
+        <template v-else-if="column.key === 'is_default'">
+          {{ (row as unknown as Role).is_default ? "是" : "否" }}
+        </template>
+        <template v-else-if="column.key === 'is_system'">
+          {{ (row as unknown as Role).is_system ? "是" : "否" }}
+        </template>
       </template>
-
-      <template #actions-cell="{ row }">
+      <template #actions="{ row }">
         <div class="flex items-center gap-1.5">
           <button
             class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all border"
-            :class="row.original.is_system
+            :class="(row as unknown as Role).is_system
               ? 'border-border text-text-muted cursor-not-allowed opacity-50'
               : 'border-border text-text-secondary hover:bg-page hover:text-text'"
-            :disabled="row.original.is_system"
-            :title="row.original.is_system ? '系统角色不可编辑' : '编辑角色'"
-            @click="openEditRole(row.original)"
+            :disabled="(row as unknown as Role).is_system"
+            :title="(row as unknown as Role).is_system ? '系统角色不可编辑' : '编辑角色'"
+            @click="openEditRole(row as unknown as Role)"
           >
             <UIcon name="i-lucide-pencil" class="size-3.5" />
             编辑
           </button>
           <button
             class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all border"
-            :class="row.original.is_system
+            :class="(row as unknown as Role).is_system
               ? 'border-border text-text-muted cursor-not-allowed opacity-50'
               : 'border-error-text text-error-text hover:bg-error-text hover:text-white'"
-            :disabled="row.original.is_system || deletingId === row.id"
-            :title="row.original.is_system ? '系统角色不可删除' : '删除角色'"
-            @click="confirmDelete(row.original)"
+            :disabled="(row as unknown as Role).is_system || deletingId === (row as unknown as Role).id"
+            :title="(row as unknown as Role).is_system ? '系统角色不可删除' : '删除角色'"
+            @click="confirmDelete(row as unknown as Role)"
           >
             <UIcon name="i-lucide-trash-2" class="size-3.5" />
-            {{ deletingId === row.original.id ? "删除中..." : "删除" }}
+            {{ deletingId === (row as unknown as Role).id ? "删除中..." : "删除" }}
           </button>
         </div>
       </template>
-    </UTable>
+    </AdminTable>
   </div>
 
   <!-- 角色编辑弹窗 -->

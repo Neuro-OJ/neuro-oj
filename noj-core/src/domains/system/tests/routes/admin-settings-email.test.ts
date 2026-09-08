@@ -59,7 +59,7 @@ Deno.test({
 
     const statusRes = await jsonRequest(
       app,
-      "/api/v1/admin/settings/email/status",
+      "/api/v1/admin/system/settings/email/status",
       { token },
     );
     assertEquals(statusRes.status, 200);
@@ -70,7 +70,7 @@ Deno.test({
     takeMockEmailsForTest();
     const sendRes = await jsonRequest(
       app,
-      "/api/v1/admin/settings/email/test-send",
+      "/api/v1/admin/system/settings/email/test-send",
       { method: "POST", body: { to: "admin@example.com" }, token },
     );
     assertEquals(sendRes.status, 200);
@@ -92,7 +92,7 @@ Deno.test({
 
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/settings/email/test-send",
+      "/api/v1/admin/system/settings/email/test-send",
       { method: "POST", body: { to: "not-an-email" }, token },
     );
     assertEquals(res.status, 400);
@@ -111,7 +111,7 @@ Deno.test({
 
     const statusRes = await jsonRequest(
       app,
-      "/api/v1/admin/settings/email/status",
+      "/api/v1/admin/system/settings/email/status",
       { token },
     );
     assertEquals(statusRes.status, 200);
@@ -121,7 +121,7 @@ Deno.test({
 
     const sendRes = await jsonRequest(
       app,
-      "/api/v1/admin/settings/email/test-send",
+      "/api/v1/admin/system/settings/email/test-send",
       { method: "POST", body: { to: "admin@example.com" }, token },
     );
     assertEquals(sendRes.status, 400);

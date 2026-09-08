@@ -86,7 +86,7 @@ async function loadEmailStatus() {
   if (!isLoggedIn.value) return
   try {
     const res = await api.get<{ data: EmailConfigStatus }>(
-      '/api/v1/admin/settings/email/status',
+      '/api/v1/admin/system/settings/email/status',
       { silent: true },
     )
     emailStatus.value = res.data
@@ -109,7 +109,7 @@ async function sendTestEmail() {
   sendingTestEmail.value = true
   try {
     const res = await api.post<{ data: { sent: boolean } }>(
-      '/api/v1/admin/settings/email/test-send',
+      '/api/v1/admin/system/settings/email/test-send',
       { to },
       { silent: true },
     )
@@ -141,7 +141,7 @@ async function loadSettings() {
   tableError.value = ""
   try {
     const res = await api.get<{ data: SystemSetting[] }>(
-      "/api/v1/admin/settings",
+      "/api/v1/admin/system/settings",
       { silent: true },
     )
     if (currentRequest !== requestVersion) return
@@ -269,9 +269,13 @@ async function saveSetting(key: string) {
   saveErrors.value = errors
   try {
     // silent: 错误由下方 catch 内联处理（saveErrors + 保留表单值），避免 useApi 默认 toast 双弹
-    const res = await api.put<{ data: SystemSetting }>(`/api/v1/admin/settings/${key}`, {
+    const setting = settings.value.find((x) => x.key === key)
+    const res = await api.put<{ data: SystemSetting }>(`/api/v1/admin/system/settings/${key}`, {
       value: drafts.value[key],
-    }, { silent: true })
+    }, {
+      silent: true,
+      headers: setting?.updated_at ? { "If-Match": `"${setting.updated_at}"` } : undefined,
+    })
     applySetting(res.data)
     // 检查是否需要重启生效
     const s = settings.value.find((x) => x.key === key)
@@ -313,8 +317,11 @@ async function confirmReset(s: SystemSetting) {
   saveErrors.value = errors
   try {
     // silent: 错误由下方 catch 内联处理（saveErrors），避免 useApi 默认 toast 双弹
-    await api.delete(`/api/v1/admin/settings/${s.key}`, { silent: true })
-    const res = await api.get<{ data: SystemSetting[] }>("/api/v1/admin/settings", { silent: true })
+    await api.delete(`/api/v1/admin/system/settings/${s.key}`, {
+      silent: true,
+      headers: s.updated_at ? { "If-Match": `"${s.updated_at}"` } : undefined,
+    })
+    const res = await api.get<{ data: SystemSetting[] }>("/api/v1/admin/system/settings", { silent: true })
     const updated = res.data.find((item) => item.key === s.key)
     if (updated) applySetting(updated)
     toast.success(`已重置 ${s.key}`)
@@ -334,9 +341,12 @@ async function cleanupBootstrapRow(s: SystemSetting) {
   resettingKeys.value = new Set(resettingKeys.value).add(s.key)
   try {
     // 幂等：删除被忽略的 DB 残留行，值仍由 .env 决定
-    await api.delete(`/api/v1/admin/settings/${s.key}`, { silent: true })
+    await api.delete(`/api/v1/admin/system/settings/${s.key}`, {
+      silent: true,
+      headers: s.updated_at ? { "If-Match": `"${s.updated_at}"` } : undefined,
+    })
     // 刷新整表以更新 db_orphaned 标记
-    const res = await api.get<{ data: SystemSetting[] }>("/api/v1/admin/settings", { silent: true })
+    const res = await api.get<{ data: SystemSetting[] }>("/api/v1/admin/system/settings", { silent: true })
     settings.value = res.data
     toast.success(`已清理 ${s.key} 的残留 DB 值（当前值由 .env 决定）`)
   } catch (err: unknown) {
@@ -353,7 +363,7 @@ async function cleanupBootstrapRow(s: SystemSetting) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="系统设置" description="运行时配置写入数据库即时生效；环境配置由 .env 管理，修改需重启服务" />
+    <AdminPageHeader title="系统设置" description="运行时配置写入数据库即时生效；环境配置由 .env 管理，修改需重启服务" />
 
     <!-- 未保存更改标识 -->
     <div

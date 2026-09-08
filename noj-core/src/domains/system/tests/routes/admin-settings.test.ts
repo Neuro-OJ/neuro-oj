@@ -48,7 +48,7 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/settings");
+    const res = await jsonRequest(app, "/api/v1/admin/system/settings");
     assertEquals(res.status, 401);
   },
 });
@@ -61,7 +61,9 @@ Deno.test({
     await freshSetup();
     const app = createApp();
     const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/admin/settings", { token });
+    const res = await jsonRequest(app, "/api/v1/admin/system/settings", {
+      token,
+    });
     assertEquals(res.status, 403);
   },
 });
@@ -74,7 +76,9 @@ Deno.test({
     await freshSetup();
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await jsonRequest(app, "/api/v1/admin/settings", { token });
+    const res = await jsonRequest(app, "/api/v1/admin/system/settings", {
+      token,
+    });
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(Array.isArray(body.data), true);
@@ -114,7 +118,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/settings/allow_register",
+      "/api/v1/admin/system/settings/allow_register",
       {
         method: "PUT",
         body: { value: false },
@@ -129,7 +133,7 @@ Deno.test({
     // 清理：恢复成 true
     await jsonRequest(
       app,
-      "/api/v1/admin/settings/allow_register",
+      "/api/v1/admin/system/settings/allow_register",
       {
         method: "PUT",
         body: { value: true },
@@ -149,7 +153,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/settings/hacker_key",
+      "/api/v1/admin/system/settings/hacker_key",
       {
         method: "PUT",
         body: { value: 1 },
@@ -170,7 +174,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/settings/allow_register",
+      "/api/v1/admin/system/settings/allow_register",
       {
         method: "PUT",
         body: { value: "yes" },
@@ -192,7 +196,7 @@ Deno.test({
     // email/storage 等划归 bootstrap 后不可经后台写
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/settings/storage_provider",
+      "/api/v1/admin/system/settings/storage_provider",
       {
         method: "PUT",
         body: { value: "s3" },
@@ -215,7 +219,7 @@ Deno.test({
     // 先写一个
     await jsonRequest(
       app,
-      "/api/v1/admin/settings/allow_register",
+      "/api/v1/admin/system/settings/allow_register",
       {
         method: "PUT",
         body: { value: false },
@@ -226,13 +230,15 @@ Deno.test({
     // 再删
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/settings/allow_register",
+      "/api/v1/admin/system/settings/allow_register",
       { method: "DELETE", token },
     );
     assertEquals(res.status, 204);
 
     // 验证后续列表返回 default 来源（DB 中已删，回退 default）
-    const listRes = await jsonRequest(app, "/api/v1/admin/settings", { token });
+    const listRes = await jsonRequest(app, "/api/v1/admin/system/settings", {
+      token,
+    });
     assertEquals(listRes.status, 200);
     const listBody = await listRes.json();
     const item = listBody.data.find((i: { key: string }) =>
@@ -252,7 +258,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/settings/maintenance_mode",
+      "/api/v1/admin/system/settings/maintenance_mode",
       { method: "DELETE", token },
     );
     assertEquals(res.status, 204);
@@ -278,7 +284,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/settings/email_provider",
+      "/api/v1/admin/system/settings/email_provider",
       { method: "DELETE", token },
     );
     assertEquals(res.status, 204);
@@ -302,7 +308,7 @@ Deno.test({
     // 不可经 reset 删除——否则收紧的敏感字段授权会在重启后被 seed 恢复
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/settings/totally_unregistered_key",
+      "/api/v1/admin/system/settings/totally_unregistered_key",
       { method: "DELETE", token },
     );
     assertEquals(res.status, 400);

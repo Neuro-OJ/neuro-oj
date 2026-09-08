@@ -156,6 +156,7 @@ export async function createReport(
     resolution: null,
     resolved_by: null,
     resolved_at: null,
+    updated_at: nowIso(),
     created_at: nowIso(),
   };
   await db.insert(communityReports).values(report);
@@ -287,6 +288,7 @@ export async function resolveReport(
     resolution,
     resolved_by: actorId,
     resolved_at: nowIso(),
+    updated_at: nowIso(),
     ban_id: banId ?? undefined,
     sanction_id: sanctionId ?? undefined,
   }).where(eq(communityReports.id, reportId)).returning();
@@ -363,6 +365,7 @@ export async function reopenReport(reportId: string) {
       await tx.update(userBans).set({
         unbanned_at: nowIso(),
         unbanned_by: null,
+        updated_at: nowIso(),
       }).where(
         and(eq(userBans.id, current[0].ban_id), isNull(userBans.unbanned_at)),
       );
@@ -375,6 +378,7 @@ export async function reopenReport(reportId: string) {
       await tx.update(communitySanctions).set({
         revoked_at: nowIso(),
         revoked_by: null,
+        updated_at: nowIso(),
       }).where(
         and(
           eq(communitySanctions.id, current[0].sanction_id),
@@ -388,6 +392,7 @@ export async function reopenReport(reportId: string) {
       resolution: null,
       resolved_by: null,
       resolved_at: null,
+      updated_at: nowIso(),
       ban_id: null,
       sanction_id: null,
     }).where(eq(communityReports.id, reportId)).returning();
@@ -531,6 +536,7 @@ export async function createSanction(
     expires_at: expiresAt ?? null,
     created_by: actorId,
     created_at: nowIso(),
+    updated_at: nowIso(),
     revoked_at: null,
     revoked_by: null,
   };
@@ -559,6 +565,7 @@ export async function revokeSanction(actorId: string, sanctionId: string) {
   const rows = await db.update(communitySanctions).set({
     revoked_at: nowIso(),
     revoked_by: actorId,
+    updated_at: nowIso(),
   }).where(eq(communitySanctions.id, sanctionId)).returning();
   if (!rows[0]) throw new NotFoundError("社区处罚不存在");
   await logAudit(

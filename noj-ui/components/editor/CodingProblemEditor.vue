@@ -110,7 +110,7 @@ const llmProviders = ref<{ id: string; name: string; base_url: string; model: st
 async function loadLlmProviders() {
   try {
     const res = await api.get<{ data: { id: string; name: string; base_url: string; model: string }[] }>(
-      "/api/v1/admin/llm/providers",
+      "/api/v1/admin/gateway/llm/providers",
       { silent: true },
     )
     llmProviders.value = res.data ?? []

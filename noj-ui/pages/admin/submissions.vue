@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-
 import type { SubmissionListItem } from "~/utils/submissionFormat"
+import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 import {
   getStatusColor,
   getStatusLabel,
@@ -66,39 +65,19 @@ const statusOptions = [
   { value: "error", label: "出错" },
 ]
 
-// UTable 列 formatter 通过 row 取原始数据行
-const columns: TableColumn<SubmissionListItem>[] = [
-  { accessorKey: "id", header: "编号", cell: (info) => (info.row.original as SubmissionListItem).public_id || (info.getValue() as string).slice(0, 8) + "..." },
-  { accessorKey: "user_id", header: "用户" },
-  {
-    accessorKey: "problem",
-    header: "题目",
-    cell: (info) => rowSub(info.row.original).problem.title || rowSub(info.row.original).problem_id,
-  },
-  { accessorKey: "language", header: "语言", cell: (info) => getLanguageLabel(info.getValue() as string) },
-  { accessorKey: "status", header: "状态" },
-  {
-    accessorKey: "score",
-    header: "得分",
-    cell: (info) => rowSub(info.row.original).result ? formatScore(rowSub(info.row.original).result!.score) : "--",
-  },
-  {
-    accessorKey: "time_ms",
-    header: "耗时",
-    cell: (info) => rowSub(info.row.original).result ? formatTime(rowSub(info.row.original).result!.time_ms) : "--",
-  },
-  {
-    accessorKey: "memory_kb",
-    header: "内存",
-    cell: (info) => rowSub(info.row.original).result ? formatMemory(rowSub(info.row.original).result!.memory_kb) : "--",
-  },
-  {
-    accessorKey: "created_at",
-    header: "提交时间",
-    cell: (info) => new Date(info.getValue() as string).toLocaleString("zh-CN"),
-  },
-
-  { accessorKey: "actions", header: "操作" },]
+// AdminTable 列定义
+const columns: AdminColumn[] = [
+  { key: "id", label: "编号" },
+  { key: "user_id", label: "用户" },
+  { key: "problem", label: "题目" },
+  { key: "language", label: "语言" },
+  { key: "status", label: "状态" },
+  { key: "score", label: "得分" },
+  { key: "time_ms", label: "耗时" },
+  { key: "memory_kb", label: "内存" },
+  { key: "created_at", label: "提交时间" },
+  { key: "actions", label: "操作" },
+]
 
 function buildQuery(page: number): string {
   const params = new URLSearchParams()
@@ -123,7 +102,7 @@ async function loadSubmissions(page = 1, silent = false) {
   currentPage.value = page
   try {
     const res = await api.get<{ data: SubmissionListItem[]; pagination: { total: number; total_pages: number } }>(
-      `/api/v1/admin/submissions?${buildQuery(page)}`,
+      `/api/v1/admin/submission/submissions?${buildQuery(page)}`,
       { silent: true },
     )
     if (currentRequest !== requestVersion) return
@@ -196,7 +175,7 @@ async function rejudge(submissionId: string) {
 
   rejudgingIds.value = new Set(rejudgingIds.value).add(submissionId)
   try {
-    await api.post(`/api/v1/admin/submissions/${submissionId}/rejudge`)
+    await api.post(`/api/v1/admin/submission/submissions/${submissionId}/rejudge`)
     toast.showToast("success", "重测任务已提交")
     loadSubmissions(currentPage.value)
     // 重测后列表重新出现 pending，恢复自动轮询
@@ -222,7 +201,7 @@ async function removeFromQueue(submissionId: string) {
 
   removingQueueIds.value = new Set(removingQueueIds.value).add(submissionId)
   try {
-    await api.delete(`/api/v1/admin/queue/submissions/${submissionId}`)
+    await api.delete(`/api/v1/admin/submission/queue/submissions/${submissionId}`)
     toast.showToast("success", "评测任务已移出队列")
   } catch (err: unknown) {
     toast.showToast("error", extractApiError(err).message)
@@ -237,7 +216,7 @@ async function removeFromQueue(submissionId: string) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="提交管理" description="查看所有用户的提交记录">
+    <AdminPageHeader title="提交管理" description="查看所有用户的提交记录">
       <template #actions>
         <RefreshControl
           v-model:interval="pollInterval"
@@ -245,7 +224,7 @@ async function removeFromQueue(submissionId: string) {
           @refresh="loadSubmissions(currentPage)"
         />
       </template>
-    </PageHeader>
+    </AdminPageHeader>
 
     <!-- 筛选栏 -->
     <div class="bg-white border border-border rounded-lg p-4">
@@ -298,44 +277,64 @@ async function removeFromQueue(submissionId: string) {
       </div>
     </div>
 
-    <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
-    <UTable
+    <AdminTable
       :columns="columns"
-      :data="submissions"
+      :items="submissions as unknown as Record<string, unknown>[]"
       :loading="tableLoading"
-      :empty="'暂无提交记录'">
-      <!-- 状态标签列 -->
-      <template #status-cell="{ row }">
-        <span
-          class="inline-block px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap"
-          :style="{
-            background: getStatusColor(rowSub(row.original).status, rowSub(row.original).result?.status) + '15',
-            color: getStatusColor(rowSub(row.original).status, rowSub(row.original).result?.status),
-          }"
-        >
-          {{ getStatusLabel(rowSub(row.original).status, rowSub(row.original).result?.status) }}
-        </span>
+      :error="tableError || undefined"
+      :total-pages="totalPages"
+      :current-page="currentPage"
+      @update:page="onPageChange"
+    >
+      <template #cell="{ row, column }">
+        <template v-if="column.key === 'id'">
+          {{ rowSub(row as unknown as SubmissionListItem).public_id || (row.id as string).slice(0, 8) + "..." }}
+        </template>
+        <template v-else-if="column.key === 'user_id'">
+          {{ row.user_id }}
+        </template>
+        <template v-else-if="column.key === 'problem'">
+          {{ rowSub(row as unknown as SubmissionListItem).problem.title || rowSub(row as unknown as SubmissionListItem).problem_id }}
+        </template>
+        <template v-else-if="column.key === 'language'">
+          {{ getLanguageLabel(row.language as string) }}
+        </template>
+        <template v-else-if="column.key === 'status'">
+          <span
+            class="inline-block px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap"
+            :style="{
+              background: getStatusColor(rowSub(row as unknown as SubmissionListItem).status, rowSub(row as unknown as SubmissionListItem).result?.status) + '15',
+              color: getStatusColor(rowSub(row as unknown as SubmissionListItem).status, rowSub(row as unknown as SubmissionListItem).result?.status),
+            }"
+          >
+            {{ getStatusLabel(rowSub(row as unknown as SubmissionListItem).status, rowSub(row as unknown as SubmissionListItem).result?.status) }}
+          </span>
+        </template>
+        <template v-else-if="column.key === 'score'">
+          {{ rowSub(row as unknown as SubmissionListItem).result ? formatScore(rowSub(row as unknown as SubmissionListItem).result!.score) : "--" }}
+        </template>
+        <template v-else-if="column.key === 'time_ms'">
+          {{ rowSub(row as unknown as SubmissionListItem).result ? formatTime(rowSub(row as unknown as SubmissionListItem).result!.time_ms) : "--" }}
+        </template>
+        <template v-else-if="column.key === 'memory_kb'">
+          {{ rowSub(row as unknown as SubmissionListItem).result ? formatMemory(rowSub(row as unknown as SubmissionListItem).result!.memory_kb) : "--" }}
+        </template>
+        <template v-else-if="column.key === 'created_at'">
+          {{ new Date(row.created_at as string).toLocaleString("zh-CN") }}
+        </template>
       </template>
-
-      <!-- 操作列 -->
-      <template #actions-cell="{ row }">
+      <template #actions="{ row }">
         <div class="flex gap-1.5 justify-center">
           <button
-            v-if="rowSub(row.original).status === 'judging'"
+            v-if="rowSub(row as unknown as SubmissionListItem).status === 'judging'"
             class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-error-text border-error-text bg-transparent hover:bg-error-text hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="isRemovingQueue(rowSub(row.original).public_id || rowSub(row.original).id)"
-            @click="removeFromQueue(rowSub(row.original).public_id || rowSub(row.original).id)"
-          >{{ isRemovingQueue(rowSub(row.original).public_id || rowSub(row.original).id) ? '移除中...' : '移出队列' }}</button>
-          <button class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-warning-text border-warning-text bg-transparent hover:bg-warning-text hover:text-white disabled:cursor-not-allowed disabled:opacity-50" :disabled="isRejudging(rowSub(row.original).public_id || rowSub(row.original).id)" @click="rejudge(rowSub(row.original).public_id || rowSub(row.original).id)">{{ isRejudging(rowSub(row.original).public_id || rowSub(row.original).id) ? '提交中...' : '重测' }}</button>
-          <NuxtLink :to="publicUrl('submission', rowSub(row.original).public_id || rowSub(row.original).id)" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-primary border-signal bg-transparent hover:bg-signal hover:text-white">查看</NuxtLink>
+            :disabled="isRemovingQueue(rowSub(row as unknown as SubmissionListItem).public_id || rowSub(row as unknown as SubmissionListItem).id)"
+            @click="removeFromQueue(rowSub(row as unknown as SubmissionListItem).public_id || rowSub(row as unknown as SubmissionListItem).id)"
+          >{{ isRemovingQueue(rowSub(row as unknown as SubmissionListItem).public_id || rowSub(row as unknown as SubmissionListItem).id) ? '移除中...' : '移出队列' }}</button>
+          <button class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-warning-text border-warning-text bg-transparent hover:bg-warning-text hover:text-white disabled:cursor-not-allowed disabled:opacity-50" :disabled="isRejudging(rowSub(row as unknown as SubmissionListItem).public_id || rowSub(row as unknown as SubmissionListItem).id)" @click="rejudge(rowSub(row as unknown as SubmissionListItem).public_id || rowSub(row as unknown as SubmissionListItem).id)">{{ isRejudging(rowSub(row as unknown as SubmissionListItem).public_id || rowSub(row as unknown as SubmissionListItem).id) ? '提交中...' : '重测' }}</button>
+          <NuxtLink :to="publicUrl('submission', rowSub(row as unknown as SubmissionListItem).public_id || rowSub(row as unknown as SubmissionListItem).id)" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-primary border-signal bg-transparent hover:bg-signal hover:text-white">查看</NuxtLink>
         </div>
       </template>
-    </UTable>
-
-    <PaginationNav
-      :current-page="currentPage"
-      :total-pages="totalPages"
-      @page-change="onPageChange"
-    />
+    </AdminTable>
   </div>
 </template>

@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-
 import { extractApiError } from '~/utils/apiError'
 import { useToast } from '~/composables/useToast'
+import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 import { useDialog } from '~/composables/useDialog'
 
 definePageMeta({
@@ -36,12 +35,12 @@ const kindLabels: Record<Tag['kind'], string> = {
   algorithm: '算法标签',
 }
 
-const columns: TableColumn<Tag>[] = [
-  { accessorKey: "name", header: "名称" },
-  { accessorKey: "kind", header: "类型" },
-  { accessorKey: "problem_count", header: "关联题目数" },
-  { accessorKey: "created_at", header: "创建时间", cell: (info) => new Date(info.getValue() as string).toLocaleString("zh-CN") },
-  { accessorKey: "actions", header: "操作" },
+const columns: AdminColumn[] = [
+  { key: "name", label: "名称" },
+  { key: "kind", label: "类型" },
+  { key: "problem_count", label: "关联题目数" },
+  { key: "created_at", label: "创建时间" },
+  { key: "actions", label: "操作" },
 ]
 
 async function loadTags() {
@@ -180,41 +179,47 @@ async function confirmDelete(tag: Tag) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="标签管理" description="管理题目标签（problem）与算法标签（algorithm）">
+    <AdminPageHeader title="标签管理" description="管理题目标签（problem）与算法标签（algorithm）">
       <template #actions>
         <UButton color="primary" size="sm" @click="openCreate">
           <UIcon name="i-lucide-plus" class="size-4" />
           新建标签
         </UButton>
       </template>
-    </PageHeader>
+    </AdminPageHeader>
 
-    <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
-    <UTable
+    <AdminTable
       :columns="columns"
-      :data="tags"
+      :items="tags as unknown as Record<string, unknown>[]"
       :loading="tableLoading"
-      :empty="'暂无标签'">
-      <template #kind-cell="{ row }">
-        <UBadge size="sm" variant="subtle" :color="row.original.kind === 'algorithm' ? 'secondary' : 'primary'">
-          {{ kindLabels[row.original.kind] }}
-        </UBadge>
+      :error="tableError || undefined"
+      :total-pages="1"
+      :current-page="1"
+    >
+      <template #cell="{ row, column }">
+        <template v-if="column.key === 'kind'">
+          <UBadge size="sm" variant="subtle" :color="(row as unknown as Tag).kind === 'algorithm' ? 'secondary' : 'primary'">
+            {{ kindLabels[(row as unknown as Tag).kind] }}
+          </UBadge>
+        </template>
+        <template v-else-if="column.key === 'created_at'">
+          {{ new Date((row as unknown as Tag).created_at).toLocaleString("zh-CN") }}
+        </template>
       </template>
-
-      <template #actions-cell="{ row }">
+      <template #actions="{ row }">
         <div class="flex gap-1.5 justify-center">
-          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" @click="openEdit(row.original)">
+          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" @click="openEdit(row as unknown as Tag)">
             <UIcon name="i-lucide-pencil" class="size-3.5" />
           </UButton>
-          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300" title="合并到其他标签" aria-label="合并" @click="openMerge(row.original)">
+          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300" title="合并到其他标签" aria-label="合并" @click="openMerge(row as unknown as Tag)">
             <UIcon name="i-lucide-git-merge" class="size-3.5" />
           </UButton>
-          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row.original)">
+          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row as unknown as Tag)">
             <UIcon name="i-lucide-trash-2" class="size-3.5" />
           </UButton>
         </div>
       </template>
-    </UTable>
+    </AdminTable>
   </div>
 
   <!-- 创建/编辑弹窗 -->

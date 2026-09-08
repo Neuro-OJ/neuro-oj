@@ -69,7 +69,7 @@ e2eTest("[e2e/clarifications] 1. 创建进行中的竞赛并注册参赛者", as
   if (!isE2E) return;
   const now = Date.now();
   const createResult = await apiPost(
-    "/api/v1/admin/contests",
+    "/api/v1/admin/contest/contests",
     {
       title: `E2E 答疑竞赛 ${testSuffix}`,
       start_time: new Date(now - 60 * 60 * 1000).toISOString(),
@@ -165,7 +165,7 @@ e2eTest(
     // 已结束竞赛：先建赛后改时间窗口（ended 竞赛无法注册）
     const now = Date.now();
     const endedCreate = await apiPost(
-      "/api/v1/admin/contests",
+      "/api/v1/admin/contest/contests",
       {
         title: `E2E 已结束答疑竞赛 ${testSuffix}`,
         start_time: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
@@ -201,7 +201,7 @@ e2eTest(
     // spec: pending / ended 期间提问 MUST 403（需已注册参赛者身份）
     // pending 竞赛：创建未来窗口竞赛，注册后赛前提问
     const pendingCreate = await apiPost(
-      "/api/v1/admin/contests",
+      "/api/v1/admin/contest/contests",
       {
         title: `E2E 待开始答疑竞赛 ${testSuffix}`,
         start_time: new Date(now + 60 * 60 * 1000).toISOString(),
@@ -259,7 +259,7 @@ e2eTest(
 
     // ended 竞赛：无法注册，先建 running 窗口竞赛注册，再由 admin 改为已结束
     const endedAskCreate = await apiPost(
-      "/api/v1/admin/contests",
+      "/api/v1/admin/contest/contests",
       {
         title: `E2E 赛后提问竞赛 ${testSuffix}`,
         start_time: new Date(now - 60 * 60 * 1000).toISOString(),
@@ -296,7 +296,7 @@ e2eTest(
       );
     }
     const endContest = await apiPut(
-      `/api/v1/admin/contests/${endedAskContestId}`,
+      `/api/v1/admin/contest/contests/${endedAskContestId}`,
       { end_time: new Date(now - 1000).toISOString() },
       adminToken,
     );

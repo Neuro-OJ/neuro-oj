@@ -155,7 +155,7 @@ async function createContest(
     }],
   };
   if (opts.password) body.password = opts.password;
-  const res = await apiPost("/api/v1/admin/contests", body, adminToken);
+  const res = await apiPost("/api/v1/admin/contest/contests", body, adminToken);
   if (res.status !== 201) {
     throw new Error(
       `创建竞赛失败: ${res.status} ${JSON.stringify(res.body)}`,

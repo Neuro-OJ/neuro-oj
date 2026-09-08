@@ -42,6 +42,7 @@ interface RoleResponse {
   is_admin: boolean;
   parent_id: string | null;
   parent_name: string | null;
+  updated_at: string;
   permissions: Array<
     { id: string; resource: string; action: string; description: string }
   >;
@@ -72,6 +73,7 @@ export async function listRoles(): Promise<RoleResponse[]> {
       is_default: roles.is_default,
       parent_id: roles.parent_id,
       parent_name: sql<string>`parent.name`,
+      updated_at: roles.updated_at,
     })
     .from(roles)
     .leftJoin(sql`roles parent`, sql`parent.id = ${roles.parent_id}`)
@@ -102,6 +104,7 @@ export async function listRoles(): Promise<RoleResponse[]> {
       ),
       parent_id: row.parent_id,
       parent_name: row.parent_name ?? null,
+      updated_at: row.updated_at,
       permissions: perms,
     });
   }
@@ -486,6 +489,7 @@ async function getRoleById(id: string): Promise<RoleResponse | null> {
       is_default: roles.is_default,
       parent_id: roles.parent_id,
       parent_name: sql<string | null>`NULL`,
+      updated_at: roles.updated_at,
     })
     .from(roles)
     .where(eq(roles.id, id))

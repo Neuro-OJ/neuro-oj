@@ -401,9 +401,11 @@ export const SCHEMA_DDL: string[] = [
     created_at TEXT NOT NULL,
     CONSTRAINT audit_logs_action_check CHECK (action IN (
       'users.role_change','users.ban','users.unban','users.delete',
+      'roles.create','roles.update','roles.delete',
       'problems.delete','problems.runtime_config_changed','problems.imported',
+      'problems.review','trainings.update','trainings.delete',
       'tags.create','tags.update','tags.delete','tags.merge',
-      'submissions.rejudge','settings.update',
+      'submissions.rejudge','submissions.queue_removed','submissions.delete','settings.update',
       'ip_ban.create','ip_ban.delete',
       -- PR-2 新增 auth.* 动作
       'auth.login_success','auth.login_failure','auth.register','auth.email_verified','auth.delete_account',
@@ -412,10 +414,18 @@ export const SCHEMA_DDL: string[] = [
       'auth.tfa_recovery_regenerated','auth.tfa_recovery_used',
       'community.post_moderated','community.report_resolved',
       'community.sanction_created','community.sanction_revoked','community.preset_applied',
+      'community.board_create','community.board_update',
+      'community.board_role_grant_update','community.board_role_grant_delete','community.post_flag',
       'announcement.create','announcement.update','announcement.delete',
       -- issue #413 内容合规审核动作
       'review.queued','review.rejected','review.resolved',
-      'contest.ranking_snapshot')
+      'contest.ranking_snapshot',
+      'contest.create','contest.update','contest.delete',
+      'contest.participants_add','contest.participants_remove',
+      'contest.kind_change','contest.reset_code',
+      'judge_images.create','judge_images.update','judge_images.delete',
+      'email_delivery.clear_suppression',
+      'llm_provider.create','llm_provider.update','llm_quota.upsert')
     ))
   `,
 
@@ -426,6 +436,7 @@ export const SCHEMA_DDL: string[] = [
     reason TEXT NOT NULL DEFAULT '',
     expires_at TEXT,
     created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
     created_by TEXT REFERENCES users(id) ON DELETE SET NULL
   )`,
 
@@ -438,6 +449,7 @@ export const SCHEMA_DDL: string[] = [
     banned_until TEXT,
     banned_at TEXT NOT NULL,
     banned_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    updated_at TEXT NOT NULL,
     unbanned_at TEXT,
     unbanned_by TEXT REFERENCES users(id) ON DELETE SET NULL
   )`,
@@ -585,6 +597,7 @@ export const SCHEMA_DDL: string[] = [
     expires_at TEXT,
     created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
     revoked_at TEXT,
     revoked_by TEXT REFERENCES users(id) ON DELETE SET NULL
   )`,
@@ -605,6 +618,7 @@ export const SCHEMA_DDL: string[] = [
     resolution TEXT,
     resolved_by TEXT REFERENCES users(id) ON DELETE SET NULL,
     resolved_at TEXT,
+    updated_at TEXT NOT NULL,
     created_at TEXT NOT NULL,
     CHECK (num_nonnulls(post_id, comment_id, message_id) = 1)
   )`,

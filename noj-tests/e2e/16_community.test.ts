@@ -23,7 +23,7 @@ e2eTest("[e2e/community] 准备两个社区用户和默认板块", async () => {
     await waitForServer();
     adminToken = await getAdminToken();
     const preset = await apiPost(
-      "/api/v1/community/admin/preset/public",
+      "/api/v1/admin/community/preset/public",
       {},
       adminToken,
     );
@@ -205,7 +205,7 @@ e2eTest("[e2e/community] 发布、互动、治理、通知与软删除主流程"
     if (report.status !== 201) throw new Error(`举报失败: ${report.status}`);
     const reportId = (report.body as { data: { id: string } }).data.id;
     const resolved = await apiPost(
-      `/api/v1/community/admin/reports/${reportId}/resolved`,
+      `/api/v1/admin/community/reports/${reportId}/resolved`,
       { resolution: "E2E 已处理" },
       adminToken,
     );
@@ -320,7 +320,7 @@ e2eTest("[e2e/community] 新用户评论进入预审并可被管理员批准", a
 
     // 再开启新用户预审窗口
     const setReview = await apiPut(
-      "/api/v1/admin/settings/community_new_user_review_hours",
+      "/api/v1/admin/system/settings/community_new_user_review_hours",
       { value: 24 },
       admin,
     );
@@ -351,7 +351,7 @@ e2eTest("[e2e/community] 新用户评论进入预审并可被管理员批准", a
 
     // 管理员待审队列包含该评论
     const pending = await apiGet(
-      "/api/v1/community/admin/comments/pending",
+      "/api/v1/admin/community/comments/pending",
       admin,
     );
     const pendingList = (pending.body as {
@@ -366,7 +366,7 @@ e2eTest("[e2e/community] 新用户评论进入预审并可被管理员批准", a
 
     // 管理员批准 → 帖子作者（管理员）收到回复通知
     const approve = await apiPost(
-      `/api/v1/community/admin/comments/${commentId}/published`,
+      `/api/v1/admin/community/comments/${commentId}/published`,
       { reason: "E2E 审核通过" },
       admin,
     );
@@ -386,7 +386,7 @@ e2eTest("[e2e/community] 新用户评论进入预审并可被管理员批准", a
 
     // 恢复默认，避免影响后续用例
     await apiPut(
-      "/api/v1/admin/settings/community_new_user_review_hours",
+      "/api/v1/admin/system/settings/community_new_user_review_hours",
       { value: 0 },
       admin,
     );

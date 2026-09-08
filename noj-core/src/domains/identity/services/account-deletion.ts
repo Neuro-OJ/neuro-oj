@@ -61,6 +61,7 @@ async function anonymizeUser(
     await tx.update(userBans).set({
       unbanned_at: now,
       unbanned_by: actorId ?? userId,
+      updated_at: now,
     }).where(and(eq(userBans.user_id, userId), isNull(userBans.unbanned_at)));
   });
   return existing.username;

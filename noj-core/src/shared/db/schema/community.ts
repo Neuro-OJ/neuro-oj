@@ -321,6 +321,7 @@ export const communityReports = pgTable(
       onDelete: "set null",
     }),
     resolved_at: text("resolved_at"),
+    updated_at: text("updated_at").notNull(),
     created_at: text("created_at").notNull(),
   },
   (table) => ({
@@ -386,6 +387,7 @@ export const communitySanctions = pgTable(
       onDelete: "set null",
     }),
     created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
     revoked_at: text("revoked_at"),
     revoked_by: text("revoked_by").references(() => users.id, {
       onDelete: "set null",

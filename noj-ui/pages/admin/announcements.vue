@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-
 import { extractApiError } from '~/utils/apiError'
+import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 
 definePageMeta({
   layout: "admin",
@@ -27,7 +26,7 @@ const { api } = useApi()
 const { isLoggedIn } = useAuth()
 
 const { items, loading, error, load, onPageChange, currentPage, totalPages } = useAdminList<AdminAnnouncement>({
-  path: "/api/v1/admin/announcements",
+  path: "/api/v1/admin/system/announcements",
   fetchOptions: { dataField: "data", totalField: "meta.total" },
 })
 
@@ -36,42 +35,13 @@ watch(isLoggedIn, (val) => {
   if (val) load()
 }, { immediate: true })
 
-const columns: TableColumn<AdminAnnouncement>[] = [
-  {
-    accessorKey: "title",
-    header: "标题",
-    cell: (info) => {
-      const v = info.getValue() as string
-      return v.length > 30 ? `${v.slice(0, 30)}…` : v
-    },
-  },
-  {
-    accessorKey: "is_pinned",
-    header: "置顶",
-    cell: (info) => info.getValue() ? "是" : "否",
-  },
-  {
-    accessorKey: "is_active",
-    header: "状态",
-    cell: (info) => info.getValue() ? "已发布" : "已下架",
-  },
-  {
-    accessorKey: "updated_at",
-    header: "更新时间",
-    cell: (info) => {
-      const d = new Date(info.getValue() as string)
-      return isNaN(d.getTime()) ? "-" : d.toLocaleString("zh-CN")
-    },
-  },
-  {
-    accessorKey: "created_at",
-    header: "创建时间",
-    cell: (info) => {
-      const d = new Date(info.getValue() as string)
-      return isNaN(d.getTime()) ? "-" : d.toLocaleString("zh-CN")
-    },
-  },
-  { accessorKey: "actions", header: "操作" },
+const columns: AdminColumn[] = [
+  { key: "title", label: "标题" },
+  { key: "is_pinned", label: "置顶" },
+  { key: "is_active", label: "状态" },
+  { key: "updated_at", label: "更新时间" },
+  { key: "created_at", label: "创建时间" },
+  { key: "actions", label: "操作" },
 ]
 
 // ── 新建/编辑表单 ──
@@ -115,9 +85,11 @@ async function handleSave() {
       is_active: formActive.value,
     }
     if (editing.value) {
-      await api.put(`/api/v1/admin/announcements/${editing.value.public_id || editing.value.id}`, body)
+      await api.put(`/api/v1/admin/system/announcements/${editing.value.public_id || editing.value.id}`, body, {
+        headers: { "If-Match": `"${editing.value.updated_at}"` },
+      })
     } else {
-      await api.post("/api/v1/admin/announcements", body)
+      await api.post("/api/v1/admin/system/announcements", body)
     }
     showForm.value = false
     await load(currentPage.value)
@@ -145,7 +117,9 @@ async function handleDelete() {
   if (!deleteTarget.value) return
   deleting.value = true
   try {
-    await api.delete(`/api/v1/admin/announcements/${deleteTarget.value.public_id || deleteTarget.value.id}`)
+    await api.delete(`/api/v1/admin/system/announcements/${deleteTarget.value.public_id || deleteTarget.value.id}`, {
+      headers: { "If-Match": `"${deleteTarget.value.updated_at}"` },
+    })
     showDeleteConfirm.value = false
     await load(currentPage.value)
   } catch (err: unknown) {
@@ -158,40 +132,50 @@ async function handleDelete() {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="公告管理" description="发布系统公告，置顶公告将优先展示在首页轮播">
+    <AdminPageHeader title="公告管理" description="发布系统公告，置顶公告将优先展示在首页轮播">
       <template #actions>
         <UButton color="primary" size="sm" @click="openCreate">
           <UIcon name="i-lucide-plus" class="size-4" />
           新建公告
         </UButton>
       </template>
-    </PageHeader>
+    </AdminPageHeader>
 
-    <div v-if="error" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ error }}</span></div>
-    <UTable
+    <AdminTable
       :columns="columns"
-      :data="items"
+      :items="items as unknown as Record<string, unknown>[]"
       :loading="loading"
-      :empty="'暂无公告'">
-      <template #actions-cell="{ row }">
+      :error="error ?? undefined"
+      :total-pages="totalPages"
+      :current-page="currentPage"
+      @update:page="onPageChange"
+    >
+      <template #cell="{ row, column }">
+        <template v-if="column.key === 'title'">
+          {{ ((row as unknown as AdminAnnouncement).title.length > 30 ? `${(row as unknown as AdminAnnouncement).title.slice(0, 30)}…` : (row as unknown as AdminAnnouncement).title) }}
+        </template>
+        <template v-else-if="column.key === 'is_pinned'">
+          {{ (row as unknown as AdminAnnouncement).is_pinned ? "是" : "否" }}
+        </template>
+        <template v-else-if="column.key === 'is_active'">
+          {{ (row as unknown as AdminAnnouncement).is_active ? "已发布" : "已下架" }}
+        </template>
+        <template v-else-if="column.key === 'updated_at' || column.key === 'created_at'">
+          <span v-if="!isNaN(new Date(row[column.key] as string).getTime())">{{ new Date(row[column.key] as string).toLocaleString("zh-CN") }}</span>
+          <span v-else>-</span>
+        </template>
+      </template>
+      <template #actions="{ row }">
         <div class="flex gap-1.5 justify-center">
-          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" @click="openEdit(row.original)">
+          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" @click="openEdit(row as unknown as AdminAnnouncement)">
             <UIcon name="i-lucide-pencil" class="size-3.5" />
           </UButton>
-          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row.original)">
+          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row as unknown as AdminAnnouncement)">
             <UIcon name="i-lucide-trash-2" class="size-3.5" />
           </UButton>
         </div>
       </template>
-    </UTable>
-
-    <PaginationNav
-      v-if="totalPages > 1"
-      :current-page="currentPage"
-      :total-pages="totalPages"
-      class="mt-2"
-      @page-change="onPageChange"
-    />
+    </AdminTable>
   </div>
 
   <!-- 新建/编辑弹窗 -->

@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-
 import { useAdminList } from "~/composables/useAdminList"
 import { extractApiError } from '~/utils/apiError'
 import { useToast } from "~/composables/useToast"
+import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 
 definePageMeta({
   layout: "admin",
@@ -25,7 +24,7 @@ interface User {
   is_admin: boolean
   role_ids: string[]
   /** user-ban-table：活跃封禁信息 */
-  active_ban: { reason: string; banned_until: string | null; scope?: "platform" | "social" | null } | null
+  active_ban: { reason: string; banned_until: string | null; scope?: "platform" | "social" | null; updated_at?: string | null } | null
   created_at: string
   updated_at: string
   deleted_at?: string | null
@@ -35,7 +34,7 @@ interface User {
 const pollInterval = ref<number | null>(30000)
 
 const { items: users, totalPages, loading: tableLoading, error: tableError, currentPage, perPage, searchInput, load: loadUsers, onPageChange, lastRefresh } = useAdminList<User>({
-  path: "/api/v1/admin/users",
+  path: "/api/v1/admin/identity/users",
   fetchOptions: { dataField: "data", totalField: "pagination.total" },
   polling: { intervalMs: pollInterval },
 })
@@ -49,24 +48,13 @@ async function reloadAfterMutation() {
   }
 }
 
-const columns: TableColumn<User>[] = [
-  { accessorKey: "username", header: "用户名" },
-  { accessorKey: "email", header: "邮箱" },
-  {
-    accessorKey: "role",
-    header: "角色",
-    cell: (info) => info.getValue() === "admin" ? "管理员" : "用户",
-  },
-  {
-    accessorKey: "created_at",
-    header: "注册时间",
-    cell: (info) => {
-      const d = new Date(info.getValue() as string)
-      return d.toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" })
-    },
-  },
-
-  { accessorKey: "actions", header: "操作" },]
+const columns: AdminColumn[] = [
+  { key: "username", label: "用户名" },
+  { key: "email", label: "邮箱" },
+  { key: "role", label: "角色" },
+  { key: "created_at", label: "注册时间" },
+  { key: "actions", label: "操作" },
+]
 
 watch(isLoggedIn, (val) => {
   if (val) loadUsers()
@@ -90,7 +78,7 @@ const selectedRoleIds = ref<string[]>([])
 
 async function loadRoles() {
   try {
-    const res = await api.get<{ data: Role[] }>("/api/v1/admin/roles", { silent: true })
+    const res = await api.get<{ data: Role[] }>("/api/v1/admin/identity/roles", { silent: true })
     allRoles.value = res.data
   } catch {
     // 角色加载失败不影响用户列表
@@ -119,7 +107,7 @@ async function handleRoleSwitch() {
   switchingRole.value = true
   switchError.value = ""
   try {
-    await api.patch(`/api/v1/admin/users/${targetUser.value.username}/role`, {
+    await api.patch(`/api/v1/admin/identity/users/${targetUser.value.username}/role`, {
       role_ids: selectedRoleIds.value,
     })
     showRoleModal.value = false
@@ -154,7 +142,7 @@ async function handleBan() {
   banning.value = true
   banError.value = ""
   try {
-    await api.patch(`/api/v1/admin/users/${banTarget.value.username}/ban`, {
+    await api.patch(`/api/v1/admin/identity/users/${banTarget.value.username}/ban`, {
       reason: banForm.reason.trim() || undefined,
       banned_until: banForm.banned_until
         ? new Date(banForm.banned_until).toISOString()
@@ -185,7 +173,9 @@ async function confirmUnban(user: User) {
   if (!ok) return
   banning.value = true
   try {
-    await api.patch(`/api/v1/admin/users/${user.username}/unban`)
+    await api.patch(`/api/v1/admin/identity/users/${user.username}/unban`, undefined, {
+      headers: user.active_ban?.updated_at ? { "If-Match": `"${user.active_ban.updated_at}"` } : undefined,
+    })
     toast.success(`已解封 ${user.username}`)
   } catch {
     banning.value = false
@@ -235,7 +225,7 @@ async function showBanHistory(user: User) {
   showHistoryModal.value = true
   try {
     const res = await api.get<{ data: BanRecord[] }>(
-      `/api/v1/admin/users/${user.username}/bans`,
+      `/api/v1/admin/identity/users/${user.username}/bans`,
       { silent: true },
     )
     historyRecords.value = res.data
@@ -253,7 +243,7 @@ async function confirmDeleteUser(user: User) {
   )
   if (!confirmed) return
   try {
-    await api.delete(`/api/v1/admin/users/${user.id}`, {
+    await api.delete(`/api/v1/admin/identity/users/${user.id}`, {
       body: { confirmation: "DELETE" },
       silent: true,
     })
@@ -268,7 +258,7 @@ async function confirmDeleteUser(user: User) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="用户管理" description="管理所有用户的角色权限">
+    <AdminPageHeader title="用户管理" description="管理所有用户的角色权限">
       <template #actions>
         <RefreshControl
           v-model:interval="pollInterval"
@@ -276,7 +266,7 @@ async function confirmDeleteUser(user: User) {
           @refresh="loadUsers(currentPage)"
         />
       </template>
-    </PageHeader>
+    </AdminPageHeader>
 
     <div class="flex items-center gap-2">
       <input
@@ -287,78 +277,83 @@ async function confirmDeleteUser(user: User) {
       />
     </div>
 
-    <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
-    <UTable
+    <AdminTable
       :columns="columns"
-      :data="users"
+      :items="users as unknown as Record<string, unknown>[]"
       :loading="tableLoading"
-      :empty="'暂无用户'">
-      <template #role-cell="{ row }">
-        <div class="flex items-center gap-1.5 flex-wrap">
-          <span
-            class="inline-flex items-center gap-1 px-2 py-[3px] rounded text-xs font-semibold"
-            :class="row.original.is_admin ? 'bg-blue-50 text-info-text' : 'bg-bg-page text-text-muted'"
-          >
-            <UIcon name="i-lucide-shield-check" class="size-3.5" v-if="row.original.is_admin"/>
-            <UIcon name="i-lucide-shield-x" class="size-3.5" v-else/>
-            {{ row.original.is_admin ? "管理员" : "用户" }}
-          </span>
-          <!-- user-ban-table：封禁 badge -->
-          <span
-            v-if="row.original.deleted_at"
-            class="inline-flex items-center px-2 py-[3px] rounded text-xs font-semibold bg-gray-100 text-text-muted"
-          >已注销</span>
-          <span
-            v-if="row.original.active_ban"
-            class="inline-flex items-center px-2 py-[3px] rounded text-xs font-semibold bg-red-50 text-error-text"
-            :title="row.original.active_ban.banned_until ? `至 ${row.original.active_ban.banned_until} 解封` : '永久封禁'"
-          >
-            {{ row.original.active_ban.scope === "social" ? "已封禁·仅社交" : "已封禁" }}
-          </span>
-        </div>
+      :error="tableError"
+      :total-pages="totalPages"
+      :current-page="currentPage"
+      @update:page="onPageChange"
+    >
+      <template #cell="{ row, column }">
+        <template v-if="column.key === 'username'">
+          <span class="font-medium">{{ row.username }}</span>
+        </template>
+        <template v-else-if="column.key === 'email'">
+          <span class="text-text-secondary">{{ row.email }}</span>
+        </template>
+        <template v-else-if="column.key === 'created_at'">
+          {{ new Date(row.created_at as string).toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }) }}
+        </template>
+        <template v-else-if="column.key === 'role'">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span
+              class="inline-flex items-center gap-1 px-2 py-[3px] rounded text-xs font-semibold"
+              :class="(row as unknown as User).is_admin ? 'bg-blue-50 text-info-text' : 'bg-bg-page text-text-muted'"
+            >
+              <UIcon name="i-lucide-shield-check" class="size-3.5" v-if="(row as unknown as User).is_admin"/>
+              <UIcon name="i-lucide-shield-x" class="size-3.5" v-else/>
+              {{ (row as unknown as User).is_admin ? "管理员" : "用户" }}
+            </span>
+            <span
+              v-if="(row as unknown as User).deleted_at"
+              class="inline-flex items-center px-2 py-[3px] rounded text-xs font-semibold bg-gray-100 text-text-muted"
+            >已注销</span>
+            <span
+              v-if="(row as unknown as User).active_ban"
+              class="inline-flex items-center px-2 py-[3px] rounded text-xs font-semibold bg-red-50 text-error-text"
+              :title="(row as unknown as User).active_ban?.banned_until ? `至 ${(row as unknown as User).active_ban?.banned_until} 解封` : '永久封禁'"
+            >
+              {{ (row as unknown as User).active_ban?.scope === "social" ? "已封禁·仅社交" : "已封禁" }}
+            </span>
+          </div>
+        </template>
       </template>
-
-      <template #actions-cell="{ row }">
+      <template #actions="{ row }">
         <div class="flex items-center gap-1.5">
           <button
-            v-if="!row.original.deleted_at"
+            v-if="!(row as unknown as User).deleted_at"
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-info-text text-info-text bg-transparent hover:bg-info-text hover:text-white"
-            @click="confirmRoleSwitch(row.original)"
+            @click="confirmRoleSwitch(row as unknown as User)"
           >
             修改角色
           </button>
-          <!-- user-ban-table：封禁 / 解封 / 历史按钮 -->
           <button
-            v-if="!row.original.deleted_at && !row.original.active_ban"
+            v-if="!(row as unknown as User).deleted_at && !(row as unknown as User).active_ban"
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-error-text text-error-text bg-transparent hover:bg-error-text hover:text-white"
             :disabled="banning"
-            @click="confirmBan(row.original)"
+            @click="confirmBan(row as unknown as User)"
           >
             封禁
           </button>
           <button
-            v-else-if="!row.original.deleted_at"
+            v-else-if="!(row as unknown as User).deleted_at"
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-info-text text-info-text bg-transparent hover:bg-info-text hover:text-white"
             :disabled="banning"
-            @click="confirmUnban(row.original)"
+            @click="confirmUnban(row as unknown as User)"
           >
             解封
           </button>
-          <UButton color="neutral" variant="outline" size="sm" class="py-1 border-border text-text-secondary hover:bg-page hover:text-text" @click="showBanHistory(row.original)">
+          <UButton color="neutral" variant="outline" size="sm" class="py-1 border-border text-text-secondary hover:bg-page hover:text-text" @click="showBanHistory(row as unknown as User)">
             历史
           </UButton>
-          <UButton v-if="!row.original.deleted_at" color="error" variant="outline" size="sm" @click="confirmDeleteUser(row.original)">
+          <UButton v-if="!(row as unknown as User).deleted_at" color="error" variant="outline" size="sm" @click="confirmDeleteUser(row as unknown as User)">
             注销
           </UButton>
         </div>
       </template>
-    </UTable>
-
-    <PaginationNav
-      :current-page="currentPage"
-      :total-pages="totalPages"
-      @page-change="onPageChange"
-    />
+    </AdminTable>
   </div>
 
   <!-- 角色管理弹窗（RBAC role_ids） -->

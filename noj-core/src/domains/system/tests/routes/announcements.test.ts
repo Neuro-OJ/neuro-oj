@@ -36,7 +36,7 @@ async function createViaApi(
   overrides: Record<string, unknown> = {},
 ) {
   const app = createApp();
-  const res = await app.request("/api/v1/admin/announcements", {
+  const res = await app.request("/api/v1/admin/system/announcements", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -84,7 +84,7 @@ Deno.test({
     await resetDbForTest();
     const token = await createUserToken();
     const app = createApp();
-    const res = await app.request("/api/v1/admin/announcements", {
+    const res = await app.request("/api/v1/admin/system/announcements", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -133,7 +133,7 @@ Deno.test({
 
     // 下架置顶公告 → 公开列表消失 + 详情 404
     const unpublishRes = await app.request(
-      `/api/v1/admin/announcements/${pinned.id}`,
+      `/api/v1/admin/system/announcements/${pinned.id}`,
       {
         method: "PUT",
         headers: {
@@ -190,7 +190,7 @@ Deno.test({
     const app = createApp();
 
     // 空 title → 400
-    const bad = await app.request("/api/v1/admin/announcements", {
+    const bad = await app.request("/api/v1/admin/system/announcements", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -201,7 +201,7 @@ Deno.test({
     assertEquals(bad.status, 400);
 
     // 完全缺字段 → 400（不得落 DB NOT NULL 抛 500）
-    const emptyBody = await app.request("/api/v1/admin/announcements", {
+    const emptyBody = await app.request("/api/v1/admin/system/announcements", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -212,19 +212,22 @@ Deno.test({
     assertEquals(emptyBody.status, 400);
 
     // 仅可选字段 → 400
-    const partialBody = await app.request("/api/v1/admin/announcements", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+    const partialBody = await app.request(
+      "/api/v1/admin/system/announcements",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ is_pinned: true }),
       },
-      body: JSON.stringify({ is_pinned: true }),
-    });
+    );
     assertEquals(partialBody.status, 400);
 
     // 更新不存在 → 404
     const missing = await app.request(
-      "/api/v1/admin/announcements/00000000-0000-0000-0000-000000000000",
+      "/api/v1/admin/system/announcements/00000000-0000-0000-0000-000000000000",
       {
         method: "PUT",
         headers: {
@@ -239,7 +242,7 @@ Deno.test({
     // 创建 → 删除 → 204
     const created = await createViaApi(token);
     const delRes = await app.request(
-      `/api/v1/admin/announcements/${created.id}`,
+      `/api/v1/admin/system/announcements/${created.id}`,
       {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -262,14 +265,14 @@ Deno.test({
     const app = createApp();
     const headers = { Authorization: `Bearer ${token}` };
 
-    const allRes = await app.request("/api/v1/admin/announcements", {
+    const allRes = await app.request("/api/v1/admin/system/announcements", {
       headers,
     });
     const all = await allRes.json();
     assertEquals(all.meta.total, 1);
 
     const activeRes = await app.request(
-      "/api/v1/admin/announcements?is_active=true",
+      "/api/v1/admin/system/announcements?is_active=true",
       { headers },
     );
     const active = await activeRes.json();
@@ -333,7 +336,7 @@ Deno.test({
     const token = await signToken({ sub: userId, role: "user" });
 
     const app = createApp();
-    const res = await app.request("/api/v1/admin/announcements", {
+    const res = await app.request("/api/v1/admin/system/announcements", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -344,7 +347,7 @@ Deno.test({
     assertEquals(res.status, 201);
 
     // 管理列表同样放行
-    const listRes = await app.request("/api/v1/admin/announcements", {
+    const listRes = await app.request("/api/v1/admin/system/announcements", {
       headers: { Authorization: `Bearer ${token}` },
     });
     assertEquals(listRes.status, 200);

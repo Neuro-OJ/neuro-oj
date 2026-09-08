@@ -1,7 +1,13 @@
 import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1";
+import { eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
-import { problems, userRoles, users } from "../../../../shared/db/schema.ts";
+import {
+  auditLogs,
+  problems,
+  userRoles,
+  users,
+} from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../identity/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { ensureRbacSeeds } from "../../../system/index.ts";
@@ -15,6 +21,7 @@ await ensureRbacSeeds();
 
 async function setupContestViaAdmin(): Promise<{
   app: ReturnType<typeof createApp>;
+  adminId: string;
   adminToken: string;
   contestId: string;
 }> {
@@ -50,7 +57,7 @@ async function setupContestViaAdmin(): Promise<{
 
   const app = createApp();
   const adminToken = await signToken({ sub: adminId, role: "admin" });
-  const create = await jsonRequest(app, "/api/v1/admin/contests", {
+  const create = await jsonRequest(app, "/api/v1/admin/contest/contests", {
     method: "POST",
     token: adminToken,
     body: {
@@ -71,7 +78,7 @@ async function setupContestViaAdmin(): Promise<{
   });
   assertEquals(create.status, 201);
   const contestId = (await create.json()).data.id;
-  return { app, adminToken, contestId };
+  return { app, adminId, adminToken, contestId };
 }
 
 Deno.test({
@@ -79,10 +86,11 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const { app, adminToken, contestId } = await setupContestViaAdmin();
+    const { app, adminId, adminToken, contestId } =
+      await setupContestViaAdmin();
     const res = await jsonRequest(
       app,
-      `/api/v1/admin/contests/${contestId}/kind`,
+      `/api/v1/admin/contest/contests/${contestId}/kind`,
       {
         method: "PATCH",
         token: adminToken,
@@ -93,6 +101,19 @@ Deno.test({
     const body = await res.json();
     assertEquals(body.data.kind, "public");
     assertEquals(body.data.is_public, true);
+
+    const db = getDb();
+    const rows = await db.select().from(auditLogs).where(
+      eq(auditLogs.admin_id, adminId),
+    );
+    assertEquals(
+      rows.some((r) => r.action === "contest.create"),
+      true,
+    );
+    assertEquals(
+      rows.some((r) => r.action === "contest.kind_change"),
+      true,
+    );
   },
 });
 
@@ -101,10 +122,11 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const { app, adminToken, contestId } = await setupContestViaAdmin();
+    const { app, adminId, adminToken, contestId } =
+      await setupContestViaAdmin();
     const res = await jsonRequest(
       app,
-      `/api/v1/admin/contests/${contestId}/reset-code`,
+      `/api/v1/admin/contest/contests/${contestId}/reset-code`,
       { method: "POST", token: adminToken },
     );
     assertEquals(res.status, 200);
@@ -112,5 +134,18 @@ Deno.test({
     assertEquals(typeof body.data.code, "string");
     assertNotEquals(body.data.code, "");
     assertEquals(body.data.contest.has_password, true);
+
+    const db = getDb();
+    const rows = await db.select().from(auditLogs).where(
+      eq(auditLogs.admin_id, adminId),
+    );
+    assertEquals(
+      rows.some((r) => r.action === "contest.reset_code"),
+      true,
+    );
+    assertEquals(
+      rows.filter((r) => r.action === "contest.reset_code").length,
+      1,
+    );
   },
 });

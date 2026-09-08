@@ -159,7 +159,7 @@ e2eTest("[e2e/llm-gateway] Setup: 管理员登录 + 检查 judge", async () => {
 
   // 创建 Provider 指向 Mock LLM
   const res = await apiPost(
-    "/api/v1/admin/llm/providers",
+    "/api/v1/admin/gateway/llm/providers",
     {
       name: `e2e-mock-${testSuffix}`,
       base_url: MOCK_URL,
@@ -240,7 +240,7 @@ e2eTest("[e2e/llm-gateway] 7.1 导入 P 型 LLM 题并提交评测", async () =>
 
   // 用量审计落库
   const usage = await apiGet(
-    `/api/v1/admin/llm/usage?submission_id=${submissionId}`,
+    `/api/v1/admin/gateway/llm/usage?submission_id=${submissionId}`,
     adminToken,
   );
   if (usage.status !== 200) {
@@ -258,14 +258,14 @@ e2eTest("[e2e/llm-gateway] 7.3 重测重新签发 token", async () => {
   if (!isE2E || !submissionId || !judgeAvailable) return;
   // 记录重测前用量行数
   const before = await apiGet(
-    `/api/v1/admin/llm/usage?submission_id=${submissionId}`,
+    `/api/v1/admin/gateway/llm/usage?submission_id=${submissionId}`,
     adminToken,
   );
   usageCountBeforeRejudge =
     ((before.body as { data: unknown[] }).data ?? []).length;
 
   const rejudge = await apiPost(
-    `/api/v1/admin/submissions/${submissionId}/rejudge`,
+    `/api/v1/admin/submission/submissions/${submissionId}/rejudge`,
     {},
     adminToken,
   );
@@ -278,7 +278,7 @@ e2eTest("[e2e/llm-gateway] 7.3 重测重新签发 token", async () => {
   await pollSubmission(adminToken, submissionId, 60, 2000, true);
 
   const after = await apiGet(
-    `/api/v1/admin/llm/usage?submission_id=${submissionId}`,
+    `/api/v1/admin/gateway/llm/usage?submission_id=${submissionId}`,
     adminToken,
   );
   const afterRows = (after.body as { data: unknown[] }).data ?? [];

@@ -1,7 +1,7 @@
 /**
  * 审计日志类型定义（issue #101）。
  *
- * `AuditAction` 限定 7 类合法操作，CHECK 约束保证 DB 层一致；
+ * `AuditAction` 限定合法操作，CHECK 约束保证 DB 层一致；
  * `AuditDetail` 用 discriminated union 保证 detail 字段的类型安全。
  */
 
@@ -11,15 +11,22 @@ export type AuditAction =
   | "users.ban"
   | "users.unban"
   | "users.delete"
+  | "roles.create"
+  | "roles.update"
+  | "roles.delete"
   | "problems.delete"
   | "problems.runtime_config_changed"
   | "problems.imported"
+  | "problems.review"
+  | "trainings.update"
+  | "trainings.delete"
   | "tags.create"
   | "tags.update"
   | "tags.delete"
   | "tags.merge"
   | "submissions.rejudge"
   | "submissions.queue_removed"
+  | "submissions.delete"
   | "settings.update"
   | "ip_ban.create"
   | "ip_ban.delete"
@@ -41,13 +48,32 @@ export type AuditAction =
   | "community.sanction_created"
   | "community.sanction_revoked"
   | "community.preset_applied"
+  | "community.board_create"
+  | "community.board_update"
+  | "community.board_role_grant_update"
+  | "community.board_role_grant_delete"
+  | "community.post_flag"
   | "announcement.create"
   | "announcement.update"
   | "announcement.delete"
   | "review.queued"
   | "review.rejected"
   | "review.resolved"
-  | "contest.ranking_snapshot";
+  | "contest.ranking_snapshot"
+  | "contest.create"
+  | "contest.update"
+  | "contest.delete"
+  | "contest.participants_add"
+  | "contest.participants_remove"
+  | "contest.kind_change"
+  | "contest.reset_code"
+  | "judge_images.create"
+  | "judge_images.update"
+  | "judge_images.delete"
+  | "email_delivery.clear_suppression"
+  | "llm_provider.create"
+  | "llm_provider.update"
+  | "llm_quota.upsert";
 
 /** 按 action 强类型的 detail（discriminated union） */
 export type AuditDetail =
@@ -60,6 +86,9 @@ export type AuditDetail =
   }
   | { action: "users.unban" }
   | { action: "users.delete"; username: string }
+  | { action: "roles.create"; name: string; permission_ids?: string[] }
+  | { action: "roles.update"; id: string; name?: string }
+  | { action: "roles.delete"; id: string }
   | { action: "problems.delete"; title: string; display_id: string }
   | {
     action: "problems.runtime_config_changed";
@@ -74,6 +103,20 @@ export type AuditDetail =
     display_id: string;
     imported_with_id: boolean;
   }
+  | {
+    action: "problems.review";
+    problem_ids: string[];
+    operation: string;
+  }
+  | {
+    action: "trainings.update";
+    id: string;
+    title?: string;
+    description?: string;
+    visibility?: string;
+    is_pinned?: boolean;
+  }
+  | { action: "trainings.delete"; id: string }
   | {
     action: "tags.create";
     name: string;
@@ -101,6 +144,7 @@ export type AuditDetail =
     count?: number;
   }
   | { action: "submissions.queue_removed"; submission_id: string }
+  | { action: "submissions.delete"; submission_id: string }
   | {
     action: "settings.update";
     operation: "PUT" | "DELETE";
@@ -177,6 +221,23 @@ export type AuditDetail =
     action: "community.preset_applied";
     preset: "public" | "private" | "knowledge";
   }
+  | { action: "community.board_create"; slug: string; name: string }
+  | { action: "community.board_update"; board_id: string }
+  | {
+    action: "community.board_role_grant_update";
+    board_id: string;
+    role_id: string;
+  }
+  | {
+    action: "community.board_role_grant_delete";
+    board_id: string;
+    role_id: string;
+  }
+  | {
+    action: "community.post_flag";
+    post_id: string;
+    flag: string;
+  }
   | { action: "announcement.create"; title: string }
   | { action: "announcement.update"; title: string }
   | { action: "announcement.delete"; title: string }
@@ -188,6 +249,38 @@ export type AuditDetail =
     previous_version?: number | null;
     failed_count?: number;
   }
+  | {
+    action: "contest.create";
+    contest_id: string;
+    title: string;
+    type: string;
+    kind: string;
+  }
+  | {
+    action: "contest.update";
+    contest_id: string;
+    title?: string;
+    type?: string;
+    kind?: string;
+    is_public?: boolean;
+  }
+  | { action: "contest.delete"; contest_id: string }
+  | {
+    action: "contest.participants_add";
+    contest_id: string;
+    user_ids: string[];
+  }
+  | {
+    action: "contest.participants_remove";
+    contest_id: string;
+    user_id: string;
+  }
+  | {
+    action: "contest.kind_change";
+    contest_id: string;
+    to: string;
+  }
+  | { action: "contest.reset_code"; contest_id: string }
   // ── issue #413 内容合规审核 ──
   | {
     action: "review.queued";
@@ -212,7 +305,27 @@ export type AuditDetail =
     status: "reviewed" | "dismissed";
     action_taken: string;
     resolution: string;
-  };
+  }
+  // ── system 子域管理操作 ──
+  | {
+    action: "judge_images.create";
+    image: string;
+    kind?: string;
+    mode?: string;
+  }
+  | {
+    action: "judge_images.update";
+    id: string;
+    image?: string;
+    kind?: string;
+    mode?: string;
+    description?: string;
+  }
+  | { action: "judge_images.delete"; id: string }
+  | { action: "email_delivery.clear_suppression"; id: string }
+  | { action: "llm_provider.create"; name: string }
+  | { action: "llm_provider.update"; id: string; name?: string }
+  | { action: "llm_quota.upsert"; id?: string | null };
 
 /** audit_logs 表的响应类型 */
 export interface AuditLogEntry {

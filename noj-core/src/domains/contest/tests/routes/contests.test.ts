@@ -103,14 +103,14 @@ Deno.test({
     try {
       const unauthorized = await jsonRequest(
         app,
-        "/api/v1/admin/contests",
+        "/api/v1/admin/contest/contests",
         { method: "POST", body: {}, token: userToken },
       );
       assertEquals(unauthorized.status, 403);
 
       const createResponse = await jsonRequest(
         app,
-        "/api/v1/admin/contests",
+        "/api/v1/admin/contest/contests",
         {
           method: "POST",
           token: adminToken,
@@ -135,7 +135,7 @@ Deno.test({
 
       const privateResponse = await jsonRequest(
         app,
-        "/api/v1/admin/contests",
+        "/api/v1/admin/contest/contests",
         {
           method: "POST",
           token: adminToken,
@@ -245,7 +245,7 @@ Deno.test({
 
       const addParticipant = await jsonRequest(
         app,
-        `/api/v1/admin/contests/${privateContestId}/participants`,
+        `/api/v1/admin/contest/contests/${privateContestId}/participants`,
         { method: "POST", token: adminToken, body: [invitedId] },
       );
       assertEquals(addParticipant.status, 201);
@@ -266,7 +266,7 @@ Deno.test({
 
       const participants = await jsonRequest(
         app,
-        `/api/v1/admin/contests/${privateContestId}/participants`,
+        `/api/v1/admin/contest/contests/${privateContestId}/participants`,
         { token: adminToken },
       );
       assertEquals(participants.status, 200);
@@ -274,7 +274,7 @@ Deno.test({
 
       const adminSubmissions = await jsonRequest(
         app,
-        `/api/v1/admin/contests/${contestId}/submissions`,
+        `/api/v1/admin/contest/contests/${contestId}/submissions`,
         { token: adminToken },
       );
       assertEquals(adminSubmissions.status, 200);
@@ -322,7 +322,7 @@ Deno.test({
 
       const update = await jsonRequest(
         app,
-        `/api/v1/admin/contests/${contestId}`,
+        `/api/v1/admin/contest/contests/${contestId}`,
         {
           method: "PUT",
           token: adminToken,
@@ -343,14 +343,14 @@ Deno.test({
       });
       const readiness = await jsonRequest(
         app,
-        `/api/v1/admin/contests/${contestId}/ranking-snapshots/readiness`,
+        `/api/v1/admin/contest/contests/${contestId}/ranking-snapshots/readiness`,
         { token: adminToken },
       );
       assertEquals(readiness.status, 200);
       assertEquals((await readiness.json()).data.pending_count, 0);
       const publish = await jsonRequest(
         app,
-        `/api/v1/admin/contests/${contestId}/ranking-snapshots`,
+        `/api/v1/admin/contest/contests/${contestId}/ranking-snapshots`,
         {
           method: "POST",
           token: adminToken,
@@ -478,7 +478,7 @@ Deno.test({
     let adminSubmissionId: string | undefined;
 
     try {
-      const create = await jsonRequest(app, "/api/v1/admin/contests", {
+      const create = await jsonRequest(app, "/api/v1/admin/contest/contests", {
         method: "POST",
         token: adminToken,
         body: {

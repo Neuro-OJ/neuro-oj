@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-
 import { useToast } from "~/composables/useToast"
 import { extractApiError } from '~/utils/apiError'
+import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 
 definePageMeta({
   layout: "admin",
@@ -21,6 +20,7 @@ interface JudgeImage {
   mode: string
   description: string
   created_at: string
+  updated_at: string
 }
 
 const { api } = useApi()
@@ -31,28 +31,13 @@ const tableError = ref("")
 const { toast } = useToast()
 let requestVersion = 0
 
-const columns: TableColumn<JudgeImage>[] = [
-  { accessorKey: "image", header: "镜像名" },
-  {
-    accessorKey: "mode",
-    header: "匹配模式",
-    cell: (info) => (info.getValue() as string) === "exact" ? "精确版本" : "所有版本",
-  },
-  {
-    accessorKey: "description",
-    header: "介绍",
-    cell: (info) => (info.getValue() as string) || "-",
-  },
-  {
-    accessorKey: "created_at",
-    header: "创建时间",
-    cell: (info) => {
-      const d = new Date(info.getValue() as string)
-      return isNaN(d.getTime()) ? "-" : d.toLocaleString("zh-CN")
-    },
-  },
-
-  { accessorKey: "actions", header: "操作" },]
+const columns: AdminColumn[] = [
+  { key: "image", label: "镜像名" },
+  { key: "mode", label: "匹配模式" },
+  { key: "description", label: "介绍" },
+  { key: "created_at", label: "创建时间" },
+  { key: "actions", label: "操作" },
+]
 
 async function loadItems() {
   if (!isLoggedIn.value) return
@@ -60,7 +45,7 @@ async function loadItems() {
   tableLoading.value = true
   tableError.value = ""
   try {
-    const res = await api.get<{ data: JudgeImage[] }>("/api/v1/admin/judge-images", { silent: true })
+    const res = await api.get<{ data: JudgeImage[] }>("/api/v1/admin/system/judge-images", { silent: true })
     if (currentRequest !== requestVersion) return
     items.value = res.data
   } catch (err: unknown) {
@@ -123,13 +108,15 @@ async function handleSave() {
   formError.value = ""
   try {
     if (editingItem.value) {
-      await api.put(`/api/v1/admin/judge-images/${editingItem.value.id}`, {
+      await api.put(`/api/v1/admin/system/judge-images/${editingItem.value.id}`, {
         image: formImage.value.trim(),
         mode: formMode.value,
         description: formDescription.value.trim(),
+      }, {
+        headers: { "If-Match": `"${editingItem.value.updated_at}"` },
       })
     } else {
-      await api.post("/api/v1/admin/judge-images", {
+      await api.post("/api/v1/admin/system/judge-images", {
         image: formImage.value.trim(),
         mode: formMode.value,
         description: formDescription.value.trim(),
@@ -159,7 +146,9 @@ async function handleDelete() {
   if (!deleteTarget.value) return
   deleting.value = true
   try {
-    await api.delete(`/api/v1/admin/judge-images/${deleteTarget.value.id}`)
+    await api.delete(`/api/v1/admin/system/judge-images/${deleteTarget.value.id}`, {
+      headers: { "If-Match": `"${deleteTarget.value.updated_at}"` },
+    })
     showDeleteConfirm.value = false
     // 服务端重载而非本地 filter，保证与后续分页/刷新状态一致
     await loadItems()
@@ -174,32 +163,49 @@ async function handleDelete() {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="评测镜像管理" description="配置允许使用的 Docker 评测镜像白名单">
+    <AdminPageHeader title="评测镜像管理" description="配置允许使用的 Docker 评测镜像白名单">
       <template #actions>
         <UButton color="primary" size="sm" @click="openCreate">
           <UIcon name="i-lucide-plus" class="size-4" />
           新增镜像
         </UButton>
       </template>
-    </PageHeader>
+    </AdminPageHeader>
 
-    <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
-    <UTable
+    <AdminTable
       :columns="columns"
-      :data="items"
+      :items="items as unknown as Record<string, unknown>[]"
       :loading="tableLoading"
-      :empty="'暂无评测镜像'">
-      <template #actions-cell="{ row }">
+      :error="tableError || undefined"
+      :total-pages="1"
+      :current-page="1"
+    >
+      <template #cell="{ row, column }">
+        <template v-if="column.key === 'image'">
+          <code class="font-mono text-13px font-semibold text-text">{{ (row as unknown as JudgeImage).image }}</code>
+        </template>
+        <template v-else-if="column.key === 'mode'">
+          {{ (row as unknown as JudgeImage).mode === "exact" ? "精确版本" : "所有版本" }}
+        </template>
+        <template v-else-if="column.key === 'description'">
+          {{ (row as unknown as JudgeImage).description || "-" }}
+        </template>
+        <template v-else-if="column.key === 'created_at'">
+          <span v-if="!isNaN(new Date((row as unknown as JudgeImage).created_at).getTime())">{{ new Date((row as unknown as JudgeImage).created_at).toLocaleString("zh-CN") }}</span>
+          <span v-else>-</span>
+        </template>
+      </template>
+      <template #actions="{ row }">
         <div class="flex gap-1.5 justify-center">
-          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" @click="openEdit(row.original)">
+          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" @click="openEdit(row as unknown as JudgeImage)">
             <UIcon name="i-lucide-pencil" class="size-3.5" />
           </UButton>
-          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row.original)">
+          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row as unknown as JudgeImage)">
             <UIcon name="i-lucide-trash-2" class="size-3.5" />
           </UButton>
         </div>
       </template>
-    </UTable>
+    </AdminTable>
   </div>
 
   <!-- 创建/编辑弹窗 -->

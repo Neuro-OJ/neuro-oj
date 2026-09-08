@@ -59,6 +59,8 @@ export interface UserResponse {
     reason: string;
     banned_until: string | null;
     scope?: "platform" | "social" | null;
+    /** 活跃封禁记录的乐观锁版本（管理端解封时用于 If-Match） */
+    updated_at?: string | null;
   } | null;
   /** 用户头像存储 URL（`noj-storage://`），null = 未设置 */
   avatar_url: string | null;

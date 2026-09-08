@@ -139,7 +139,7 @@ Deno.test({
     await initRedisForTest();
     const response = await jsonRequest(
       createApp(),
-      `/api/v1/admin/contests/${contestId}/anti-cheat/ip-groups`,
+      `/api/v1/admin/contest/contests/${contestId}/anti-cheat/ip-groups`,
       { token: await signToken({ sub: userA, role: "admin" }) },
     );
     assertEquals(response.status, 200);

@@ -31,6 +31,7 @@ export interface IpBan {
   reason: string;
   expires_at: string | null;
   created_at: string;
+  updated_at: string;
   created_by: string | null;
 }
 
@@ -125,6 +126,7 @@ export async function addIpBan(
     reason: input.reason ?? "",
     expires_at: input.expires_at ?? null,
     created_at: now,
+    updated_at: now,
     created_by: actorId,
   });
 
@@ -147,6 +149,7 @@ export async function addIpBan(
     reason: input.reason ?? "",
     expires_at: input.expires_at ?? null,
     created_at: now,
+    updated_at: now,
     created_by: actorId,
   };
 }

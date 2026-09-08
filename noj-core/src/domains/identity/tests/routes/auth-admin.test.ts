@@ -6,6 +6,7 @@ import {
 import { createApp } from "../../../../app.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
+  auditLogs,
   problems,
   roles,
   submissions,
@@ -25,22 +26,28 @@ await resetDbForTest();
 await initRedisForTest();
 
 Deno.test({
-  name: "admin route: PATCH /api/v1/admin/users/:id/role 未登录返回 401",
+  name:
+    "admin route: PATCH /api/v1/admin/identity/users/:id/role 未登录返回 401",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/users/some-id/role", {
-      method: "PATCH",
-      body: { role: "admin" },
-    });
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users/some-id/role",
+      {
+        method: "PATCH",
+        body: { role: "admin" },
+      },
+    );
     assertEquals(res.status, 401);
   },
 });
 
 Deno.test({
-  name: "admin route: PATCH /api/v1/admin/users/:id/role 非管理员返回 403",
+  name:
+    "admin route: PATCH /api/v1/admin/identity/users/:id/role 非管理员返回 403",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -48,18 +55,22 @@ Deno.test({
     const app = createApp();
     const token = await createUserToken();
 
-    const res = await jsonRequest(app, "/api/v1/admin/users/target-id/role", {
-      method: "PATCH",
-      body: { role: "admin" },
-      token,
-    });
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users/target-id/role",
+      {
+        method: "PATCH",
+        body: { role: "admin" },
+        token,
+      },
+    );
     assertEquals(res.status, 403);
   },
 });
 
 Deno.test({
   name:
-    "admin route: PATCH /api/v1/admin/users/:id/role 管理员提升用户（role_ids 格式）",
+    "admin route: PATCH /api/v1/admin/identity/users/:id/role 管理员提升用户（role_ids 格式）",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -72,11 +83,15 @@ Deno.test({
     const rows = await db.select({ id: roles.id }).from(roles).limit(1);
     const roleId = rows[0]?.id ?? "00000000-0000-0000-0000-000000000000";
 
-    const res = await jsonRequest(app, "/api/v1/admin/users/target-id/role", {
-      method: "PATCH",
-      body: { role_ids: [roleId] },
-      token,
-    });
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users/target-id/role",
+      {
+        method: "PATCH",
+        body: { role_ids: [roleId] },
+        token,
+      },
+    );
     // target-id 不存在 → 404；存在且不可自修改 → 400 均可——测试鉴权通过
     assertEquals(
       [200, 400, 404].includes(res.status),
@@ -88,7 +103,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: PATCH /api/v1/admin/users/:id/role 无效 role_ids 返回 400",
+    "admin route: PATCH /api/v1/admin/identity/users/:id/role 无效 role_ids 返回 400",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -96,11 +111,15 @@ Deno.test({
     const app = createApp();
     const token = await createUserToken("admin");
 
-    const res = await jsonRequest(app, "/api/v1/admin/users/target-id/role", {
-      method: "PATCH",
-      body: { role_ids: ["00000000-0000-0000-0000-000000000000"] },
-      token,
-    });
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users/target-id/role",
+      {
+        method: "PATCH",
+        body: { role_ids: ["00000000-0000-0000-0000-000000000000"] },
+        token,
+      },
+    );
     // 用户不存在返回 404，用户存在但 role_ids 无效返回 400
     assertEquals(
       [400, 404].includes(res.status),
@@ -112,7 +131,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: PATCH /api/v1/admin/users/:id/role 缺少 role_ids 字段返回 400",
+    "admin route: PATCH /api/v1/admin/identity/users/:id/role 缺少 role_ids 字段返回 400",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -120,11 +139,15 @@ Deno.test({
     const app = createApp();
     const token = await createUserToken("admin");
 
-    const res = await jsonRequest(app, "/api/v1/admin/users/target-id/role", {
-      method: "PATCH",
-      body: {},
-      token,
-    });
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users/target-id/role",
+      {
+        method: "PATCH",
+        body: {},
+        token,
+      },
+    );
     assertEquals(res.status, 400);
   },
 });
@@ -132,26 +155,26 @@ Deno.test({
 // ─── 仪表盘统计 ──────────────────────────────────────────
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/dashboard/stats 未登录返回 401",
+  name: "admin route: GET /api/v1/admin/query/dashboard/stats 未登录返回 401",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/dashboard/stats");
+    const res = await jsonRequest(app, "/api/v1/admin/query/dashboard/stats");
     assertEquals(res.status, 401);
   },
 });
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/dashboard/stats 非管理员返回 403",
+  name: "admin route: GET /api/v1/admin/query/dashboard/stats 非管理员返回 403",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/admin/dashboard/stats", {
+    const res = await jsonRequest(app, "/api/v1/admin/query/dashboard/stats", {
       token,
     });
     assertEquals(res.status, 403);
@@ -159,14 +182,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/dashboard/stats 管理员可访问",
+  name: "admin route: GET /api/v1/admin/query/dashboard/stats 管理员可访问",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await jsonRequest(app, "/api/v1/admin/dashboard/stats", {
+    const res = await jsonRequest(app, "/api/v1/admin/query/dashboard/stats", {
       token,
     });
     assertEquals(res.status, 200);
@@ -178,20 +201,24 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/dashboard/observability 未登录返回 401",
+  name:
+    "admin route: GET /api/v1/admin/query/dashboard/observability 未登录返回 401",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/dashboard/observability");
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/query/dashboard/observability",
+    );
     assertEquals(res.status, 401);
   },
 });
 
 Deno.test({
   name:
-    "admin route: GET /api/v1/admin/dashboard/observability 非管理员返回 403",
+    "admin route: GET /api/v1/admin/query/dashboard/observability 非管理员返回 403",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -200,7 +227,7 @@ Deno.test({
     const token = await createUserToken();
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/dashboard/observability",
+      "/api/v1/admin/query/dashboard/observability",
       {
         token,
       },
@@ -210,7 +237,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/dashboard/observability 管理员可访问",
+  name:
+    "admin route: GET /api/v1/admin/query/dashboard/observability 管理员可访问",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -219,7 +247,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/dashboard/observability",
+      "/api/v1/admin/query/dashboard/observability",
       {
         token,
       },
@@ -236,27 +264,31 @@ Deno.test({
 // ─── 题目列表 ────────────────────────────────────────────
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/problems 非管理员返回 403",
+  name: "admin route: GET /api/v1/admin/catalog/problems 非管理员返回 403",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/admin/problems", { token });
+    const res = await jsonRequest(app, "/api/v1/admin/catalog/problems", {
+      token,
+    });
     assertEquals(res.status, 403);
   },
 });
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/problems 管理员可访问",
+  name: "admin route: GET /api/v1/admin/catalog/problems 管理员可访问",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await jsonRequest(app, "/api/v1/admin/problems", { token });
+    const res = await jsonRequest(app, "/api/v1/admin/catalog/problems", {
+      token,
+    });
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(Array.isArray(body.data), true);
@@ -267,51 +299,8 @@ Deno.test({
 // ─── 提交详情 ────────────────────────────────────────────
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/submissions/:id 未登录返回 401",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/submissions/some-id");
-    assertEquals(res.status, 401);
-  },
-});
-
-Deno.test({
-  name: "admin route: GET /api/v1/admin/submissions/:id 非管理员返回 403",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/admin/submissions/some-id", {
-      token,
-    });
-    assertEquals(res.status, 403);
-  },
-});
-
-Deno.test({
-  name: "admin route: DELETE /api/v1/admin/submissions/:id 非管理员返回 403",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/admin/submissions/some-id", {
-      method: "DELETE",
-      token,
-    });
-    assertEquals(res.status, 403);
-  },
-});
-
-Deno.test({
   name:
-    "admin route: DELETE /api/v1/admin/queue/submissions/:id 未登录返回 401",
+    "admin route: GET /api/v1/admin/submission/submissions/:id 未登录返回 401",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -319,7 +308,64 @@ Deno.test({
     const app = createApp();
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/queue/submissions/some-id",
+      "/api/v1/admin/submission/submissions/some-id",
+    );
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: GET /api/v1/admin/submission/submissions/:id 非管理员返回 403",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/submissions/some-id",
+      {
+        token,
+      },
+    );
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: DELETE /api/v1/admin/submission/submissions/:id 非管理员返回 403",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/submissions/some-id",
+      {
+        method: "DELETE",
+        token,
+      },
+    );
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: DELETE /api/v1/admin/submission/queue/submissions/:id 未登录返回 401",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/queue/submissions/some-id",
       { method: "DELETE" },
     );
     assertEquals(res.status, 401);
@@ -328,7 +374,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: DELETE /api/v1/admin/queue/submissions/:id 非管理员返回 403",
+    "admin route: DELETE /api/v1/admin/submission/queue/submissions/:id 非管理员返回 403",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -337,7 +383,7 @@ Deno.test({
     const token = await createUserToken();
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/queue/submissions/some-id",
+      "/api/v1/admin/submission/queue/submissions/some-id",
       { method: "DELETE", token },
     );
     assertEquals(res.status, 403);
@@ -347,14 +393,14 @@ Deno.test({
 // ─── 用户编辑 ───────────────────────────────────────────
 
 Deno.test({
-  name: "admin route: PUT /api/v1/admin/users/:id 非管理员返回 403",
+  name: "admin route: PUT /api/v1/admin/identity/users/:id 非管理员返回 403",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/admin/users/some-id", {
+    const res = await jsonRequest(app, "/api/v1/admin/identity/users/some-id", {
       method: "PUT",
       body: { bio: "新简介" },
       token,
@@ -364,14 +410,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: PUT /api/v1/admin/users/:id 无字段返回 400",
+  name: "admin route: PUT /api/v1/admin/identity/users/:id 无字段返回 400",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await jsonRequest(app, "/api/v1/admin/users/some-id", {
+    const res = await jsonRequest(app, "/api/v1/admin/identity/users/some-id", {
       method: "PUT",
       body: {},
       token,
@@ -381,14 +427,15 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: PUT /api/v1/admin/users/:id 邮箱格式非法返回 400",
+  name:
+    "admin route: PUT /api/v1/admin/identity/users/:id 邮箱格式非法返回 400",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await jsonRequest(app, "/api/v1/admin/users/some-id", {
+    const res = await jsonRequest(app, "/api/v1/admin/identity/users/some-id", {
       method: "PUT",
       body: { email: "not-an-email" },
       token,
@@ -400,7 +447,7 @@ Deno.test({
 // ─── 用户搜索筛选 ──────────────────────────────────────
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/users 支持 keyword 参数",
+  name: "admin route: GET /api/v1/admin/identity/users 支持 keyword 参数",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -409,7 +456,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/users?keyword=admin",
+      "/api/v1/admin/identity/users?keyword=admin",
       { token },
     );
     assertEquals(res.status, 200);
@@ -419,16 +466,20 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/users 支持 role 参数",
+  name: "admin route: GET /api/v1/admin/identity/users 支持 role 参数",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await jsonRequest(app, "/api/v1/admin/users?role=admin", {
-      token,
-    });
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/identity/users?role=admin",
+      {
+        token,
+      },
+    );
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(Array.isArray(body.data), true);
@@ -467,8 +518,127 @@ async function cleanupTestUser(id: string) {
   }
 }
 
+// ─── 审计唯一性（service 层已写审计的路由不得重复写）────────────
+
 Deno.test({
-  name: "admin route: PUT /api/v1/admin/users/:id 成功更新 bio",
+  name: "admin route: PATCH /users/:id/ban 审计唯一且 detail 准确",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const db = getDb();
+    const username = `adm_ban_${ts}`;
+    const targetId = await insertTestUser(username, `${username}@example.com`);
+    const token = await createUserToken("admin");
+    await db.delete(auditLogs);
+
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/users/${targetId}/ban`,
+      {
+        method: "PATCH",
+        body: { reason: "spam" },
+        token,
+      },
+    );
+    assertEquals(res.status, 200);
+
+    const rows = await db.select().from(auditLogs).where(
+      eq(auditLogs.action, "users.ban"),
+    );
+    assertEquals(rows.length, 1, "users.ban 应仅有一条审计记录");
+    assertEquals(rows[0].target_type, "users");
+    assertEquals(rows[0].target_id, targetId);
+    assertEquals(
+      (rows[0].detail as Record<string, unknown>).reason,
+      "spam",
+    );
+  },
+});
+
+Deno.test({
+  name: "admin route: PATCH /users/:id/unban 审计唯一",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const db = getDb();
+    const username = `adm_unban_${ts}`;
+    const targetId = await insertTestUser(username, `${username}@example.com`);
+    const token = await createUserToken("admin");
+
+    const banRes = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/users/${targetId}/ban`,
+      {
+        method: "PATCH",
+        body: { reason: "spam" },
+        token,
+      },
+    );
+    assertEquals(banRes.status, 200);
+    await db.delete(auditLogs);
+
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/users/${targetId}/unban`,
+      { method: "PATCH", token },
+    );
+    assertEquals(res.status, 200);
+
+    const rows = await db.select().from(auditLogs).where(
+      eq(auditLogs.action, "users.unban"),
+    );
+    assertEquals(rows.length, 1, "users.unban 应仅有一条审计记录");
+    assertEquals(rows[0].target_type, "users");
+    assertEquals(rows[0].target_id, targetId);
+  },
+});
+
+Deno.test({
+  name: "admin route: DELETE /users/:id 审计唯一且 detail 保留用户名",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const db = getDb();
+    const username = `adm_delete_${ts}`;
+    const targetId = await insertTestUser(username, `${username}@example.com`);
+    const token = await createUserToken("admin");
+    await db.delete(auditLogs);
+
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/users/${targetId}`,
+      {
+        method: "DELETE",
+        body: { confirmation: "DELETE" },
+        token,
+      },
+    );
+    assertEquals(res.status, 204);
+
+    const rows = await db.select().from(auditLogs).where(
+      eq(auditLogs.action, "users.delete"),
+    );
+    assertEquals(rows.length, 1, "users.delete 应仅有一条审计记录");
+    assertEquals(rows[0].target_type, "user");
+    assertEquals(rows[0].target_id, targetId);
+    assertEquals(
+      (rows[0].detail as Record<string, unknown>).username,
+      username,
+    );
+  },
+});
+
+Deno.test({
+  name: "admin route: PUT /api/v1/admin/identity/users/:id 成功更新 bio",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -480,11 +650,15 @@ Deno.test({
 
     try {
       const token = await createUserToken("admin");
-      const res = await jsonRequest(app, `/api/v1/admin/users/${targetId}`, {
-        method: "PUT",
-        body: { bio: "管理员更新的简介" },
-        token,
-      });
+      const res = await jsonRequest(
+        app,
+        `/api/v1/admin/identity/users/${targetId}`,
+        {
+          method: "PUT",
+          body: { bio: "管理员更新的简介" },
+          token,
+        },
+      );
       assertEquals(res.status, 200);
       const body = await res.json();
       assertEquals(body.data.bio, "管理员更新的简介");
@@ -504,7 +678,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: PUT /api/v1/admin/users/:id 邮箱冲突返回 409",
+  name: "admin route: PUT /api/v1/admin/identity/users/:id 邮箱冲突返回 409",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -521,11 +695,15 @@ Deno.test({
     try {
       const token = await createUserToken("admin");
       // 试图把 B 的邮箱改成 A 的，应 409
-      const res = await jsonRequest(app, `/api/v1/admin/users/${idB}`, {
-        method: "PUT",
-        body: { email: emailA },
-        token,
-      });
+      const res = await jsonRequest(
+        app,
+        `/api/v1/admin/identity/users/${idB}`,
+        {
+          method: "PUT",
+          body: { email: emailA },
+          token,
+        },
+      );
       assertEquals(res.status, 409);
     } finally {
       await cleanupTestUser(idA);
@@ -535,7 +713,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: PUT /api/v1/admin/users/:id 不存在用户返回 404",
+  name: "admin route: PUT /api/v1/admin/identity/users/:id 不存在用户返回 404",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -545,7 +723,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/users/nonexistent-user-id",
+      "/api/v1/admin/identity/users/nonexistent-user-id",
       {
         method: "PUT",
         body: { bio: "不存在" },
@@ -557,7 +735,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: PUT /api/v1/admin/users/0 拒绝修改 root",
+  name: "admin route: PUT /api/v1/admin/identity/users/0 拒绝修改 root",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -565,7 +743,7 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await jsonRequest(app, "/api/v1/admin/users/0", {
+    const res = await jsonRequest(app, "/api/v1/admin/identity/users/0", {
       method: "PUT",
       body: { bio: "试图改 root" },
       token,
@@ -575,7 +753,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: PUT /api/v1/admin/users/:id 强化邮箱正则拒绝 TLD 1 字符",
+  name:
+    "admin route: PUT /api/v1/admin/identity/users/:id 强化邮箱正则拒绝 TLD 1 字符",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -588,11 +767,15 @@ Deno.test({
     try {
       const token = await createUserToken("admin");
       // "a@b.c" TLD 只有 1 字符 → 应被强化正则拒绝
-      const res = await jsonRequest(app, `/api/v1/admin/users/${targetId}`, {
-        method: "PUT",
-        body: { email: "weak@example.c" },
-        token,
-      });
+      const res = await jsonRequest(
+        app,
+        `/api/v1/admin/identity/users/${targetId}`,
+        {
+          method: "PUT",
+          body: { email: "weak@example.c" },
+          token,
+        },
+      );
       assertEquals(res.status, 400);
     } finally {
       await cleanupTestUser(targetId);
@@ -601,7 +784,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/users keyword 实际筛选命中",
+  name: "admin route: GET /api/v1/admin/identity/users keyword 实际筛选命中",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -616,7 +799,7 @@ Deno.test({
       const token = await createUserToken("admin");
       const res = await jsonRequest(
         app,
-        `/api/v1/admin/users?keyword=${uniq}`,
+        `/api/v1/admin/identity/users?keyword=${uniq}`,
         { token },
       );
       assertEquals(res.status, 200);
@@ -631,7 +814,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: DELETE /api/v1/admin/submissions/:id 管理员真删除",
+  name:
+    "admin route: DELETE /api/v1/admin/submission/submissions/:id 管理员真删除",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -695,7 +879,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      `/api/v1/admin/submissions/${submissionId}`,
+      `/api/v1/admin/submission/submissions/${submissionId}`,
       { method: "DELETE", token },
     );
     assertEquals(res.status, 204);
@@ -712,7 +896,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: DELETE /api/v1/admin/submissions/:missing-id 返回 404",
+  name:
+    "admin route: DELETE /api/v1/admin/submission/submissions/:missing-id 返回 404",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -722,7 +907,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/submissions/00000000-0000-0000-0000-000000000000",
+      "/api/v1/admin/submission/submissions/00000000-0000-0000-0000-000000000000",
       { method: "DELETE", token },
     );
     assertEquals(res.status, 404);
@@ -733,7 +918,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: POST /api/v1/admin/submissions/:id/rejudge 未登录返回 401",
+    "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 未登录返回 401",
   ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -741,7 +926,7 @@ Deno.test({
     const app = createApp();
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/submissions/some-id/rejudge",
+      "/api/v1/admin/submission/submissions/some-id/rejudge",
       { method: "POST" },
     );
     assertEquals(res.status, 401);
@@ -750,7 +935,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: POST /api/v1/admin/submissions/:id/rejudge 非管理员返回 403",
+    "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 非管理员返回 403",
   ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -759,7 +944,7 @@ Deno.test({
     const token = await createUserToken();
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/submissions/some-id/rejudge",
+      "/api/v1/admin/submission/submissions/some-id/rejudge",
       {
         method: "POST",
         token,
@@ -771,7 +956,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: POST /api/v1/admin/submissions/:id/rejudge 不存在的提交返回 404",
+    "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 不存在的提交返回 404",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -781,7 +966,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/submissions/00000000-0000-0000-0000-000000000000/rejudge",
+      "/api/v1/admin/submission/submissions/00000000-0000-0000-0000-000000000000/rejudge",
       {
         method: "POST",
         token,
@@ -792,7 +977,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: POST /api/v1/admin/problems/:id/rejudge 未登录返回 401",
+  name:
+    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 未登录返回 401",
   ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -800,7 +986,7 @@ Deno.test({
     const app = createApp();
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/problems/some-id/rejudge",
+      "/api/v1/admin/submission/problems/some-id/rejudge",
       { method: "POST" },
     );
     assertEquals(res.status, 401);
@@ -808,7 +994,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: POST /api/v1/admin/problems/:id/rejudge 非管理员返回 403",
+  name:
+    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 非管理员返回 403",
   ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -817,7 +1004,7 @@ Deno.test({
     const token = await createUserToken();
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/problems/some-id/rejudge",
+      "/api/v1/admin/submission/problems/some-id/rejudge",
       {
         method: "POST",
         token,
@@ -829,7 +1016,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: POST /api/v1/admin/problems/:id/rejudge 不存在的题目返回 404",
+    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 不存在的题目返回 404",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -839,7 +1026,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/problems/00000000-0000-0000-0000-000000000000/rejudge",
+      "/api/v1/admin/submission/problems/00000000-0000-0000-0000-000000000000/rejudge",
       {
         method: "POST",
         token,
@@ -852,7 +1039,8 @@ Deno.test({
 // ─── 重测业务路径 ─────────────────────────────────────
 
 Deno.test({
-  name: "admin route: POST /api/v1/admin/problems/:id/rejudge 有活跃提交时拒绝",
+  name:
+    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 有活跃提交时拒绝",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -910,7 +1098,7 @@ Deno.test({
 
     const res = await jsonRequest(
       app,
-      `/api/v1/admin/problems/${problemId}/rejudge`,
+      `/api/v1/admin/submission/problems/${problemId}/rejudge`,
       { method: "POST", token },
     );
     assertEquals(res.status, 400);
@@ -923,7 +1111,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: POST /api/v1/admin/submissions/:id/rejudge 评测中时拒绝",
+  name:
+    "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 评测中时拒绝",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -978,7 +1167,7 @@ Deno.test({
 
     const res = await jsonRequest(
       app,
-      `/api/v1/admin/submissions/${submissionId}/rejudge`,
+      `/api/v1/admin/submission/submissions/${submissionId}/rejudge`,
       { method: "POST", token },
     );
     assertEquals(res.status, 400);
@@ -994,7 +1183,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: POST /api/v1/admin/problems/:id/rejudge 无已完结提交返回空",
+    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 无已完结提交返回空",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -1035,7 +1224,7 @@ Deno.test({
 
     const res = await jsonRequest(
       app,
-      `/api/v1/admin/problems/${problemId}/rejudge`,
+      `/api/v1/admin/submission/problems/${problemId}/rejudge`,
       { method: "POST", token },
     );
     assertEquals(res.status, 200);

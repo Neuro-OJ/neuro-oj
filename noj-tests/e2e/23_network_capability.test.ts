@@ -48,7 +48,7 @@ async function ensureImage(
   kind: "evaluator" | "solution",
 ): Promise<void> {
   const adminToken = await getAdminToken();
-  const list = await apiGet("/api/v1/admin/judge-images", adminToken);
+  const list = await apiGet("/api/v1/admin/system/judge-images", adminToken);
   type JiEntry = { id: string; image: string; kind: string };
   const existing = ((list.body as { data: JiEntry[] }).data ?? []).find(
     (ji) => ji.image === image && ji.kind === kind,
@@ -56,7 +56,7 @@ async function ensureImage(
   if (existing) return;
 
   const create = await apiPost(
-    "/api/v1/admin/judge-images",
+    "/api/v1/admin/system/judge-images",
     { image, kind, mode: "exact", description: `e2e ${kind} image` },
     adminToken,
   );

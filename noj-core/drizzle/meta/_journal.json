@@ -533,6 +533,48 @@
       "when": 1788824421998,
       "tag": "0075_parched_old_lace",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1788826201876,
+      "tag": "0076_spicy_phalanx",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1788828998366,
+      "tag": "0077_worthless_hemingway",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1788831239266,
+      "tag": "0078_classy_bulldozer",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1788833086276,
+      "tag": "0079_low_magik",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1788836130256,
+      "tag": "0080_woozy_romulus",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1788839579295,
+      "tag": "0081_peaceful_black_panther",
+      "breakpoints": true
     }
   ]
 }

@@ -96,7 +96,7 @@ e2eTest(
     if (!isE2E) return;
     // 先创建普通公告，再创建置顶公告（置顶较新，验证置顶优先而非时间优先）
     const normal = await apiPost(
-      "/api/v1/admin/announcements",
+      "/api/v1/admin/system/announcements",
       { title: `普通公告-${ts}`, content: "普通公告正文" },
       adminToken,
     );
@@ -106,7 +106,7 @@ e2eTest(
     normalId = (normal.body as { data: { id: string } }).data.id;
 
     const pinned = await apiPost(
-      "/api/v1/admin/announcements",
+      "/api/v1/admin/system/announcements",
       { title: `置顶公告-${ts}`, content: "置顶公告正文", is_pinned: true },
       adminToken,
     );
@@ -193,7 +193,7 @@ e2eTest(
 e2eTest("[e2e/announcements] 2. 非 admin 无写权限", async () => {
   if (!isE2E) return;
   const res = await apiPost(
-    "/api/v1/admin/announcements",
+    "/api/v1/admin/system/announcements",
     { title: "越权", content: "x" },
     userToken,
   );
@@ -209,7 +209,7 @@ e2eTest(
     if (!isE2E) return;
     // 下架置顶公告
     const unpublish = await apiPut(
-      `/api/v1/admin/announcements/${pinnedId}`,
+      `/api/v1/admin/system/announcements/${pinnedId}`,
       { is_active: false },
       adminToken,
     );
@@ -235,7 +235,7 @@ e2eTest(
     }
 
     // 管理列表仍可见（含已下架）
-    const adminList = await apiGet("/api/v1/admin/announcements", adminToken);
+    const adminList = await apiGet("/api/v1/admin/system/announcements", adminToken);
     const adminData = adminList.body as {
       data: Array<{ id: string; is_active: boolean }>;
     };
@@ -259,7 +259,7 @@ e2eTest("[e2e/announcements] 4. SSE 广播 announcement:updated", async () => {
   // 等待连接建立后触发更新（重新发布置顶公告）
   await new Promise((r) => setTimeout(r, 1500));
   await apiPut(
-    `/api/v1/admin/announcements/${pinnedId}`,
+    `/api/v1/admin/system/announcements/${pinnedId}`,
     { is_active: true, is_pinned: true },
     adminToken,
   );
@@ -279,7 +279,7 @@ e2eTest(
     // 验证 P0 修复：无 admin:full_access 但显式拥有 announcement:manage 的用户
     // 可调用公告管理端点（spec: 持有 admin:full_access 通配放行或显式拥有该权限）。
     // 1. 查 announcement:manage 权限 id（响应按 resource 分组）
-    const permRes = await apiGet("/api/v1/admin/permissions", adminToken);
+    const permRes = await apiGet("/api/v1/admin/identity/permissions", adminToken);
     const perms = permRes.body as {
       data?: Record<string, Array<{ id: string; action: string }>>;
     };
@@ -289,7 +289,7 @@ e2eTest(
     if (!annPerm) throw new Error("缺少 announcement:manage 权限");
 
     // 2. 查 user 角色 id（保留基础权限，避免影响测试用户其它行为）
-    const rolesRes = await apiGet("/api/v1/admin/roles", adminToken);
+    const rolesRes = await apiGet("/api/v1/admin/identity/roles", adminToken);
     const roles = rolesRes.body as {
       data?: Array<{ id: string; name: string }>;
     };
@@ -299,7 +299,7 @@ e2eTest(
     // 3. 创建仅含 announcement:manage 的自定义角色（无 admin:full_access）
     const roleName = `ann_operator_${ts}`;
     const createRes = await apiPost(
-      "/api/v1/admin/roles",
+      "/api/v1/admin/identity/roles",
       {
         name: roleName,
         description: "公告运营角色（E2E）",
@@ -314,7 +314,7 @@ e2eTest(
 
     // 4. 按 username 查测试用户 id
     const userRes = await apiGet(
-      `/api/v1/admin/users?keyword=ann_user_${ts}`,
+      `/api/v1/admin/identity/users?keyword=ann_user_${ts}`,
       adminToken,
     );
     const userData = userRes.body as {
@@ -327,7 +327,7 @@ e2eTest(
 
     // 5. 赋角色（user + ann_operator）
     const patchRes = await apiPatch(
-      `/api/v1/admin/users/${target.id}/role`,
+      `/api/v1/admin/identity/users/${target.id}/role`,
       { role_ids: [userRole.id, roleId] },
       adminToken,
     );
@@ -337,7 +337,7 @@ e2eTest(
 
     // 6. 该用户（无 admin:full_access）调用管理端点 → 应放行 201
     const postRes = await apiPost(
-      "/api/v1/admin/announcements",
+      "/api/v1/admin/system/announcements",
       { title: `运营公告-${ts}`, content: "正文" },
       userToken,
     );
@@ -351,8 +351,8 @@ e2eTest(
     const opAnnId = (postRes.body as { data: { id: string } }).data.id;
 
     // 7. 清理：删除公告 + 角色
-    await apiDelete(`/api/v1/admin/announcements/${opAnnId}`, adminToken);
-    await apiDelete(`/api/v1/admin/roles/${roleId}`, adminToken);
+    await apiDelete(`/api/v1/admin/system/announcements/${opAnnId}`, adminToken);
+    await apiDelete(`/api/v1/admin/identity/roles/${roleId}`, adminToken);
     console.log("  ✓ 细粒度 announcement:manage 用户可管理公告");
   },
 );
@@ -360,10 +360,10 @@ e2eTest(
 e2eTest("[e2e/announcements] Cleanup: 删除公告", async () => {
   if (!isE2E) return;
   if (pinnedId) {
-    await apiDelete(`/api/v1/admin/announcements/${pinnedId}`, adminToken);
+    await apiDelete(`/api/v1/admin/system/announcements/${pinnedId}`, adminToken);
   }
   if (normalId) {
-    await apiDelete(`/api/v1/admin/announcements/${normalId}`, adminToken);
+    await apiDelete(`/api/v1/admin/system/announcements/${normalId}`, adminToken);
   }
   console.log("  ✓ 公告清理完成");
 });

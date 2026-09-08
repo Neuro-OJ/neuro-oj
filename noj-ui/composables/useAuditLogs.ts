@@ -71,7 +71,7 @@ export function useAuditLogs(initial: Partial<AuditLogFilters> = {}) {
       if (filters.value.to) params.set('to', filters.value.to);
 
       const res = await api.get<AuditLogListResponse>(
-        `/api/v1/admin/audit-logs?${params}`,
+        `/api/v1/admin/system/audit-logs?${params}`,
         { silent: true },
       );
       data.value = res.data;

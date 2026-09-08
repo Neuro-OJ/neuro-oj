@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
+  auditLogs,
   permissions,
   rolePermissions,
   roles,
@@ -106,7 +107,7 @@ Deno.test({
 
       const forbidden = await jsonRequest(
         app,
-        `/api/v1/admin/trainings/${trainingId}`,
+        `/api/v1/admin/catalog/trainings/${trainingId}`,
         {
           method: "PATCH",
           token: userToken,
@@ -115,20 +116,28 @@ Deno.test({
       );
       assertEquals(forbidden.status, 403);
 
-      const forbiddenList = await jsonRequest(app, "/api/v1/admin/trainings", {
-        token: userToken,
-      });
+      const forbiddenList = await jsonRequest(
+        app,
+        "/api/v1/admin/catalog/trainings",
+        {
+          token: userToken,
+        },
+      );
       assertEquals(forbiddenList.status, 403);
 
       // 独立题单管理 router 使用细粒度权限，不能被通用 admin 守卫提前拦截。
-      const readerList = await jsonRequest(app, "/api/v1/admin/trainings", {
-        token: readerToken,
-      });
+      const readerList = await jsonRequest(
+        app,
+        "/api/v1/admin/catalog/trainings",
+        {
+          token: readerToken,
+        },
+      );
       assertEquals(readerList.status, 200);
 
       const patch = await jsonRequest(
         app,
-        `/api/v1/admin/trainings/${trainingId}`,
+        `/api/v1/admin/catalog/trainings/${trainingId}`,
         {
           method: "PATCH",
           token: adminToken,
@@ -140,7 +149,7 @@ Deno.test({
       assertEquals(patched.data.visibility, "public");
       assertEquals(patched.data.is_pinned, true);
 
-      const list = await jsonRequest(app, "/api/v1/admin/trainings", {
+      const list = await jsonRequest(app, "/api/v1/admin/catalog/trainings", {
         token: adminToken,
       });
       assertEquals(list.status, 200);
@@ -153,6 +162,8 @@ Deno.test({
       if (trainingId) {
         await db.delete(trainings).where(eq(trainings.id, trainingId));
       }
+      // withAudit 会为 trainings.update/delete 写入审计日志，先清理避免删除用户时外键冲突。
+      await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
       await db.delete(users).where(eq(users.id, userId));
       await db.delete(users).where(eq(users.id, adminId));
     }

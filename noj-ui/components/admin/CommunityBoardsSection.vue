@@ -14,6 +14,7 @@ interface Board {
   slug: string
   description: string | null
   is_archived: boolean
+  updated_at: string
 }
 
 const { toast } = useToast()
@@ -35,7 +36,7 @@ async function createBoard() {
   }
   creatingBoard.value = true
   try {
-    await api.post("/api/v1/community/admin/boards", {
+    await api.post("/api/v1/admin/community/boards", {
       slug: newBoard.slug, name: newBoard.name, description: newBoard.description,
     })
     toast.success("板块已创建")
@@ -48,9 +49,11 @@ async function createBoard() {
   }
 }
 
-async function toggleArchive(boardId: string, archived: boolean) {
-  await api.patch(`/api/v1/community/admin/boards/${boardId}`, { is_archived: !archived })
-  toast.success(archived ? "板块已恢复" : "板块已归档")
+async function toggleArchive(board: Board) {
+  await api.patch(`/api/v1/admin/community/boards/${board.id}`, { is_archived: !board.is_archived }, {
+    headers: { "If-Match": `"${board.updated_at}"` },
+  })
+  toast.success(board.is_archived ? "板块已恢复" : "板块已归档")
   await loadBoards()
 }
 
@@ -72,7 +75,7 @@ await loadBoards()
             <p class="mt-1 text-sm text-text-secondary">{{ board.description || '暂无描述' }}</p>
             <p class="mt-1 text-xs text-text-muted">{{ board.slug }}</p>
           </div>
-          <UButton color="primary" variant="outline" class="text-xs" @click="toggleArchive(board.id, board.is_archived)">{{ board.is_archived ? '恢复' : '归档' }}</UButton>
+          <UButton color="primary" variant="outline" class="text-xs" @click="toggleArchive(board)">{{ board.is_archived ? '恢复' : '归档' }}</UButton>
         </div>
       </article>
     </div>

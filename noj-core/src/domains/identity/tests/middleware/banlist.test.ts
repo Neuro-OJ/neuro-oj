@@ -72,6 +72,7 @@ Deno.test({
       reason: "spam",
       banned_until: null,
       banned_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     });
 
     const state = await getUserBanState(TARGET_ID);
@@ -96,6 +97,7 @@ Deno.test({
       reason: "warning",
       banned_until: futureIso,
       banned_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     });
 
     const state = await getUserBanState(TARGET_ID);
@@ -121,6 +123,7 @@ Deno.test({
       reason: "warning",
       banned_until: pastIso,
       banned_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     });
 
     // DB 中有一条 user_bans 记录但 banned_until 已过期

@@ -245,7 +245,7 @@ e2eTest("[e2e/staging] 提交 SSE 可连接并收到事件", async () => {
 e2eTest("[e2e/staging] 管理员重测并再次完成评测", async () => {
   if (!isE2E) return;
   const response = await apiPost(
-    `/api/v1/admin/submissions/${submissionId}/rejudge`,
+    `/api/v1/admin/submission/submissions/${submissionId}/rejudge`,
     {},
     adminToken,
   );

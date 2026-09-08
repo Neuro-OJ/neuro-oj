@@ -1,34 +1,40 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
 import type { Training, TrainingVisibility } from '~/composables/useTrainings'
+import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 
 const { adminUpdateTraining, adminDeleteTraining } = useTrainings()
 const { data, pending, error, refresh } = await useFetch<{ data: Training[]; total: number }>(
-  '/api/v1/admin/trainings',
+  '/api/v1/admin/catalog/trainings',
   { query: { page: 1, per_page: 100 } },
 )
 
-const columns: TableColumn<Training>[] = [
-  { accessorKey: 'title', header: '标题' },
-  { accessorKey: 'visibility', header: '可见性' },
-  { accessorKey: 'is_pinned', header: '置顶' },
-  { accessorKey: 'problem_count', header: '题目数' },
-  { accessorKey: 'actions', header: '操作' },
+const columns: AdminColumn[] = [
+  { key: 'title', label: '标题' },
+  { key: 'visibility', label: '可见性' },
+  { key: 'is_pinned', label: '置顶' },
+  { key: 'problem_count', label: '题目数' },
+  { key: 'actions', label: '操作' },
 ]
 
 async function setVisibility(training: Training, visibility: TrainingVisibility) {
-  await adminUpdateTraining(training.id, { visibility })
+  await adminUpdateTraining(training.id, { visibility }, {
+    headers: { "If-Match": `"${training.updated_at}"` },
+  })
   await refresh()
 }
 
 async function togglePinned(training: Training) {
-  await adminUpdateTraining(training.id, { is_pinned: !training.is_pinned })
+  await adminUpdateTraining(training.id, { is_pinned: !training.is_pinned }, {
+    headers: { "If-Match": `"${training.updated_at}"` },
+  })
   await refresh()
 }
 
-async function remove(id: string) {
+async function remove(training: Training) {
   if (!confirm('确定删除该题单？')) return
-  await adminDeleteTraining(id)
+  await adminDeleteTraining(training.id, {
+    headers: { "If-Match": `"${training.updated_at}"` },
+  })
   await refresh()
 }
 </script>
@@ -39,39 +45,43 @@ async function remove(id: string) {
     error="题单加载失败"
     @retry="refresh"
   >
-    <UTable
+    <AdminTable
       :columns="columns"
-      :data="data?.data ?? []"
+      :items="(data?.data ?? []) as unknown as Record<string, unknown>[]"
       :loading="pending"
-      :empty="'暂无题单'"
+      :error="error ? '题单加载失败' : undefined"
+      :total-pages="1"
+      :current-page="1"
     >
-      <template #visibility-cell="{ row }">
-        <USelect
-          :model-value="row.original.visibility"
-          :items="[
-            { label: '私有', value: 'private' },
-            { label: '链接可见', value: 'unlisted' },
-            { label: '公开', value: 'public' },
-          ]"
-          class="min-w-[120px]"
-          @update:model-value="setVisibility(row.original, $event as TrainingVisibility)"
-        />
+      <template #cell="{ row, column }">
+        <template v-if="column.key === 'visibility'">
+          <USelect
+            :model-value="(row as unknown as Training).visibility"
+            :items="[
+              { label: '私有', value: 'private' },
+              { label: '链接可见', value: 'unlisted' },
+              { label: '公开', value: 'public' },
+            ]"
+            class="min-w-[120px]"
+            @update:model-value="setVisibility(row as unknown as Training, $event as TrainingVisibility)"
+          />
+        </template>
+        <template v-else-if="column.key === 'is_pinned'">
+          <UCheckbox
+            :model-value="(row as unknown as Training).is_pinned"
+            @update:model-value="togglePinned(row as unknown as Training)"
+          />
+        </template>
       </template>
-      <template #is_pinned-cell="{ row }">
-        <UCheckbox
-          :model-value="row.original.is_pinned"
-          @update:model-value="togglePinned(row.original)"
-        />
-      </template>
-      <template #actions-cell="{ row }">
+      <template #actions="{ row }">
         <UButton
           icon="i-lucide-trash"
           size="xs"
           color="error"
           variant="ghost"
-          @click="remove(row.original.id)"
+          @click="remove(row as unknown as Training)"
         />
       </template>
-    </UTable>
+    </AdminTable>
   </AsyncContent>
 </template>

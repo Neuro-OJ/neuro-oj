@@ -107,11 +107,15 @@ Deno.test({
   fn: async () => {
     const { token } = await createTestUser(`review-normal-${Date.now()}`);
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/problems/review", {
-      method: "POST",
-      token,
-      body: { problem_ids: ["x"], action: "to_public" },
-    });
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/catalog/problems/review",
+      {
+        method: "POST",
+        token,
+        body: { problem_ids: ["x"], action: "to_public" },
+      },
+    );
     assertEquals(res.status, 403);
   },
 });
@@ -164,7 +168,7 @@ Deno.test({
     const app = createApp();
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/problems/review?queue=p",
+      "/api/v1/admin/catalog/problems/review?queue=p",
       {
         token,
       },
@@ -216,11 +220,15 @@ Deno.test({
     const { id: ownerId } = await createTestUser(`owner-top-${Date.now()}`);
     const problem = await createUProblem({ ownerId, visibility: "public" });
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/problems/review", {
-      method: "POST",
-      token: adminToken,
-      body: { problem_ids: [problem.id], action: "to_p" },
-    });
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/catalog/problems/review",
+      {
+        method: "POST",
+        token: adminToken,
+        body: { problem_ids: [problem.id], action: "to_p" },
+      },
+    );
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.data.updated, 1);

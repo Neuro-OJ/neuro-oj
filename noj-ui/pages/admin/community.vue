@@ -88,6 +88,8 @@ watch(preset, (val) => {
 
 const applyingPreset = ref(false)
 const savingAll = ref(false)
+/** 系统设置乐观锁版本：key -> updated_at（用于逐项 PUT 携带 If-Match） */
+const settingVersions = ref<Record<string, string | null>>({})
 const pendingPosts = ref<PostRow[]>([])
 const loadingPending = ref(false)
 const moderatingId = ref<string | null>(null)
@@ -106,14 +108,14 @@ const moderatingCommentId = ref<string | null>(null)
 const reports = ref<ReportRow[]>([])
 const resolvingReportId = ref<string | null>(null)
 
-const sanctions = ref<Array<{ id: string; user_id: string; reason: string; expires_at: string | null; revoked_at: string | null; revoked_by: string | null; created_at: string }>>([])
+const sanctions = ref<Array<{ id: string; user_id: string; reason: string; expires_at: string | null; revoked_at: string | null; revoked_by: string | null; created_at: string; updated_at: string }>>([])
 const sanctionUserQuery = ref("")
 const sanctionUserResults = ref<{ id: string; username: string }[]>([])
 const searchingSanctionUser = ref(false)
 const selectedSanctionUser = ref<{ id: string; username: string } | null>(null)
 const sanctionReason = ref("")
 const sanctionExpiresAt = ref("")
-const userSanctions = ref<Array<{ id: string; reason: string; expires_at: string | null; revoked_at: string | null; revoked_by: string | null; created_at: string }>>([])
+const userSanctions = ref<Array<{ id: string; reason: string; expires_at: string | null; revoked_at: string | null; revoked_by: string | null; created_at: string; updated_at: string }>>([])
 const creatingSanction = ref(false)
 const revokingId = ref<string | null>(null)
 
@@ -143,15 +145,30 @@ const NUMBER_SETTINGS: Array<{ configKey: string; settingKey: string; label: str
   { configKey: "post_interval_seconds", settingKey: "community_post_interval_seconds", label: "发布频率限制", suffix: "秒" },
 ]
 
+/** 加载系统设置乐观锁版本（仅取 updated_at，供保存时携带 If-Match） */
+async function loadSettingVersions() {
+  try {
+    const result = await api.get<{ data: Array<{ key: string; updated_at: string | null }> }>(
+      "/api/v1/admin/system/settings",
+      { silent: true },
+    )
+    settingVersions.value = Object.fromEntries(
+      result.data.map((s) => [s.key, s.updated_at]),
+    )
+  } catch {
+    // 设置版本加载失败不阻塞社区管理；保存时若缺少版本则退化为不带 If-Match
+  }
+}
+
 /** silent=true 用于轮询：不置加载态、不清空已有数据，失败保留旧数据 */
 async function load(silent = false) {
   const [reportResult, sanctionResult] = await Promise.all([
-    api.get<{ data: ReportRow[] }>("/api/v1/community/admin/reports", { silent: true }),
-    api.get<{ data: typeof sanctions.value }>("/api/v1/community/admin/sanctions", { silent: true }),
+    api.get<{ data: ReportRow[] }>("/api/v1/admin/community/reports", { silent: true }),
+    api.get<{ data: typeof sanctions.value }>("/api/v1/admin/community/sanctions", { silent: true }),
   ])
   reports.value = reportResult.data
   sanctions.value = sanctionResult.data
-  await Promise.all([loadPending(silent), loadPendingComments(silent), loadConfig(true)])
+  await Promise.all([loadPending(silent), loadPendingComments(silent), loadConfig(true), loadSettingVersions()])
   lastRefresh.value = new Date()
 }
 
@@ -179,7 +196,7 @@ async function loadPendingComments(silent = false) {
   if (!silent) loadingPendingComments.value = true
   try {
     const result = await api.get<{ data: typeof pendingComments.value }>(
-      "/api/v1/community/admin/comments/pending",
+      "/api/v1/admin/community/comments/pending",
       { query: { limit: 100 }, silent: true },
     )
     pendingComments.value = result.data
@@ -254,12 +271,16 @@ async function saveAll() {
     }
     // 逐项写入后端（无批量端点，逐项 PUT 与既有设置保存机制一致）
     for (const { key, value } of dirty) {
-      await api.put(`/api/v1/admin/settings/${key}`, { value }, { silent: true })
+      const version = settingVersions.value[key]
+      await api.put(`/api/v1/admin/system/settings/${key}`, { value }, {
+        silent: true,
+        headers: version ? { "If-Match": `"${version}"` } : undefined,
+      })
     }
-    // 清除草稿并刷新后端权威配置
+    // 清除草稿并刷新后端权威配置与乐观锁版本
     for (const key of Object.keys(booleanDrafts)) delete booleanDrafts[key]
     for (const key of Object.keys(numberInputs)) delete numberInputs[key]
-    await loadConfig(true)
+    await Promise.all([loadConfig(true), loadSettingVersions()])
     toast.success(`已保存 ${dirty.length} 项更改`)
   } catch (err: unknown) {
     toast.error(extractApiError(err).message)
@@ -280,7 +301,7 @@ async function moderatePost(id: string, status: "published" | "hidden") {
   if (moderatingId.value) return
   moderatingId.value = id
   try {
-    await api.post(`/api/v1/community/admin/posts/${id}/${status}`, { reason: "" })
+    await api.post(`/api/v1/admin/community/posts/${id}/${status}`, { reason: "" })
     toast.success(status === "published" ? "内容已批准" : "内容已驳回")
     await loadPending()
   } finally {
@@ -292,7 +313,7 @@ async function moderateComment(id: string, status: "published" | "hidden") {
   if (moderatingCommentId.value) return
   moderatingCommentId.value = id
   try {
-    await api.post(`/api/v1/community/admin/comments/${id}/${status}`, { reason: "" })
+    await api.post(`/api/v1/admin/community/comments/${id}/${status}`, { reason: "" })
     toast.success(status === "published" ? "评论已批准" : "评论已驳回")
     await loadPendingComments()
   } finally {
@@ -300,11 +321,14 @@ async function moderateComment(id: string, status: "published" | "hidden") {
   }
 }
 
-async function resolveReport(id: string, status: "resolved" | "dismissed") {
+async function resolveReport(report: ReportRow, status: "resolved" | "dismissed") {
+  const id = report.report.id
   if (resolvingReportId.value) return
   resolvingReportId.value = id
   try {
-    await api.post(`/api/v1/community/admin/reports/${id}/${status}`, {})
+    await api.post(`/api/v1/admin/community/reports/${id}/${status}`, {}, {
+      headers: { "If-Match": `"${report.report.updated_at}"` },
+    })
     toast.success("举报已处理")
     await load()
   } finally {
@@ -370,7 +394,7 @@ async function loadUserSanctions(userId?: string) {
   }
   try {
     const result = await api.get<{ data: typeof userSanctions.value }>(
-      `/api/v1/community/admin/users/${userId}/sanctions`,
+      `/api/v1/admin/community/users/${userId}/sanctions`,
       { silent: true },
     )
     userSanctions.value = result.data
@@ -386,7 +410,7 @@ async function createSanction() {
   }
   creatingSanction.value = true
   try {
-    await api.post("/api/v1/community/admin/sanctions", {
+    await api.post("/api/v1/admin/community/sanctions", {
       user_id: selectedSanctionUser.value.username,
       reason: sanctionReason.value,
       expires_at: sanctionExpiresAt.value || null,
@@ -400,16 +424,18 @@ async function createSanction() {
   }
 }
 
-async function revokeSanction(sanctionId: string) {
+async function revokeSanction(sanction: { id: string; updated_at: string }) {
   const ok = await dialog.confirm("确定撤销该处罚吗？", {
     title: "撤销处罚",
     danger: true,
     confirmText: "撤销",
   })
   if (!ok || revokingId.value) return
-  revokingId.value = sanctionId
+  revokingId.value = sanction.id
   try {
-    await api.delete(`/api/v1/community/admin/sanctions/${sanctionId}`)
+    await api.delete(`/api/v1/admin/community/sanctions/${sanction.id}`, {
+      headers: { "If-Match": `"${sanction.updated_at}"` },
+    })
     toast.success("已撤销")
     await Promise.all([load(), loadUserSanctions(selectedSanctionUser.value?.id)])
   } finally {
@@ -431,17 +457,15 @@ await load()
 
 <template>
   <div class="space-y-6 p-6">
-    <div class="flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-bold text-text">社区管理</h1>
-        <p class="mt-1 text-sm text-text-secondary">配置私域策略、独立开关，处理待审内容、举报与处罚。</p>
-      </div>
-      <RefreshControl
-        v-model:interval="pollInterval"
-        :last-refresh="lastRefresh"
-        @refresh="load()"
-      />
-    </div>
+    <AdminPageHeader title="社区管理" description="配置私域策略、独立开关，处理待审内容、举报与处罚。" icon="i-lucide-shield-check">
+      <template #actions>
+        <RefreshControl
+          v-model:interval="pollInterval"
+          :last-refresh="lastRefresh"
+          @refresh="load()"
+        />
+      </template>
+    </AdminPageHeader>
 
     <!-- 未保存更改标识（明确提示 + 保存/放弃） -->
     <div v-if="hasUnsaved" class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
@@ -545,12 +569,12 @@ await load()
       <div class="flex items-center gap-2"><UIcon name="i-lucide-flag" class="size-4.5" /><h2 class="font-semibold">待处理举报</h2></div>
       <div v-if="reports.length === 0" class="py-6 text-sm text-text-secondary">暂无待处理举报。</div>
       <div v-else class="mt-4 space-y-3">
-        <article v-for="report in reports" :key="report.id" class="rounded border border-border p-3">
-          <p class="text-sm font-medium">{{ report.reason }}</p>
-          <p class="mt-1 line-clamp-2 text-sm text-text-secondary">{{ report.content_snapshot }}</p>
+        <article v-for="report in reports" :key="report.report.id" class="rounded border border-border p-3">
+          <p class="text-sm font-medium">{{ report.report.reason }}</p>
+          <p class="mt-1 line-clamp-2 text-sm text-text-secondary">{{ report.report.content_snapshot }}</p>
           <div class="mt-3 flex gap-2">
-            <UButton color="primary" class="text-sm" :disabled="resolvingReportId !== null" @click="resolveReport(report.id, 'resolved')">{{ resolvingReportId === report.id ? '处理中…' : '标记已处理' }}</UButton>
-            <UButton color="primary" variant="outline" class="text-sm" :disabled="resolvingReportId !== null" @click="resolveReport(report.id, 'dismissed')">驳回</UButton>
+            <UButton color="primary" class="text-sm" :disabled="resolvingReportId !== null" @click="resolveReport(report, 'resolved')">{{ resolvingReportId === report.report.id ? '处理中…' : '标记已处理' }}</UButton>
+            <UButton color="primary" variant="outline" class="text-sm" :disabled="resolvingReportId !== null" @click="resolveReport(report, 'dismissed')">驳回</UButton>
           </div>
         </article>
       </div>
@@ -587,7 +611,7 @@ await load()
                 <p class="font-medium">{{ s.user_id }}</p>
                 <p class="text-xs text-text-secondary">{{ s.reason }} · {{ s.expires_at ? `截止 ${s.expires_at}` : '永久' }}</p>
               </div>
-              <UButton color="primary" variant="outline" class="text-xs text-red-600" :disabled="revokingId !== null" @click="revokeSanction(s.id)">{{ revokingId === s.id ? '处理中…' : '撤销' }}</UButton>
+              <UButton color="primary" variant="outline" class="text-xs text-red-600" :disabled="revokingId !== null" @click="revokeSanction(s)">{{ revokingId === s.id ? '处理中…' : '撤销' }}</UButton>
             </li>
           </ul>
           <p class="mt-4 text-sm font-medium">用户处罚历史</p>

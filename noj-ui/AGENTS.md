@@ -54,7 +54,7 @@ noj-ui/
 │   ├── card/              # ProblemCard / SubmissionCard
 │   ├── form/              # TextInput / PasswordField
 │   ├── auth/              # AuthFormCard
-│   ├── admin/             # PageHeader / ContestFormModal / SupportPackageUpload
+│   ├── admin/             # AdminPageHeader / AdminTable / AdminEditPanel / AdminFilterBar / AdminFormField / AdminConfirmDialog / AdminStatusBadge / AdminDetailDrawer 等统一管理组件
 │   └── BanBanner.vue      # 封禁横幅
 ├── composables/           # 组合式函数（22 个）
 │   ├── useApi.ts          # 统一 API 调用层（业务代码禁止直接 $fetch）

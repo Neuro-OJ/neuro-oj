@@ -58,7 +58,7 @@ e2eTest("[e2e/contest] 1. 创建正在进行中的 Kaggle 竞赛", async () => {
   if (!isE2E) return;
   const now = Date.now();
   const createResult = await apiPost(
-    "/api/v1/admin/contests",
+    "/api/v1/admin/contest/contests",
     {
       title: `E2E 生命周期竞赛 ${testSuffix}`,
       start_time: new Date(now - 60 * 60 * 1000).toISOString(),
@@ -166,7 +166,7 @@ e2eTest("[e2e/contest] 3. 排名包含提交分数", async () => {
 e2eTest("[e2e/contest] 4. 结束竞赛并发布正式成绩后公开最终排名", async () => {
   if (!isE2E || !judgeAvailable) return;
   const updateResult = await apiPut(
-    `/api/v1/admin/contests/${contestId}`,
+    `/api/v1/admin/contest/contests/${contestId}`,
     { end_time: new Date(Date.now() - 1000).toISOString() },
     adminToken,
   );
@@ -186,7 +186,7 @@ e2eTest("[e2e/contest] 4. 结束竞赛并发布正式成绩后公开最终排名
 
   // 新结算门禁：竞赛结束后需先发布正式成绩快照，公开排名才会展示最终分数。
   const publishResult = await apiPost(
-    `/api/v1/admin/contests/${contestId}/ranking-snapshots`,
+    `/api/v1/admin/contest/contests/${contestId}/ranking-snapshots`,
     { note: "E2E 发布正式成绩" },
     adminToken,
   );
