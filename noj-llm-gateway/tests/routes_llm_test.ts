@@ -136,3 +136,76 @@ Deno.test("llm route: 上游畸形 JSON 不崩溃并记录 ok", async () => {
     restore();
   }
 });
+
+Deno.test("llm route: 成功响应按 billed-token 审计", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db, usageInserts } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  const app = createLlmRouter({ config: testConfig, db, redis });
+  const token = await makeToken(testConfig);
+  const upstream = {
+    choices: [{ message: { role: "assistant", content: "pong" } }],
+    usage: {
+      prompt_tokens: 200,
+      completion_tokens: 30,
+      total_tokens: 230,
+      prompt_tokens_details: { cached_tokens: 180 },
+    },
+  };
+  const restore = stubFetch(async () => {
+    return new Response(JSON.stringify(upstream), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+
+  try {
+    const res = await requestChat(app, token, {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 5,
+    });
+
+    assertEquals(res.status, 200);
+    assertEquals(usageInserts.length, 1);
+    assertEquals(usageInserts[0].billed_prompt_tokens, 20);
+    assertEquals(usageInserts[0].billed_total_tokens, 50);
+    assertEquals(usageInserts[0].status, "ok");
+    assertEquals(usageInserts[0].error_code, null);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("llm route: settle 超限返回 429 并记录 rejected", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db, usageInserts } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  redis.evalResults = ["ok", "limit_exceeded"];
+  const app = createLlmRouter({ config: testConfig, db, redis });
+  const token = await makeToken(testConfig);
+  const upstream = {
+    choices: [{ message: { role: "assistant", content: "pong" } }],
+    usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+  };
+  const restore = stubFetch(async () => {
+    return new Response(JSON.stringify(upstream), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+
+  try {
+    const res = await requestChat(app, token, {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: "ping" }],
+    });
+
+    assertEquals(res.status, 429);
+    assertEquals(usageInserts.length, 1);
+    assertEquals(usageInserts[0].status, "rejected");
+    assertEquals(usageInserts[0].error_code, "limit_exceeded");
+  } finally {
+    restore();
+  }
+});
