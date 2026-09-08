@@ -53,7 +53,14 @@ export type AuditAction =
   | "review.queued"
   | "review.rejected"
   | "review.resolved"
-  | "contest.ranking_snapshot";
+  | "contest.ranking_snapshot"
+  | "contest.create"
+  | "contest.update"
+  | "contest.delete"
+  | "contest.participants_add"
+  | "contest.participants_remove"
+  | "contest.kind_change"
+  | "contest.reset_code";
 
 /** 按 action 强类型的 detail（discriminated union） */
 export type AuditDetail =
@@ -211,6 +218,38 @@ export type AuditDetail =
     previous_version?: number | null;
     failed_count?: number;
   }
+  | {
+    action: "contest.create";
+    contest_id: string;
+    title: string;
+    type: string;
+    kind: string;
+  }
+  | {
+    action: "contest.update";
+    contest_id: string;
+    title?: string;
+    type?: string;
+    kind?: string;
+    is_public?: boolean;
+  }
+  | { action: "contest.delete"; contest_id: string }
+  | {
+    action: "contest.participants_add";
+    contest_id: string;
+    user_ids: string[];
+  }
+  | {
+    action: "contest.participants_remove";
+    contest_id: string;
+    user_id: string;
+  }
+  | {
+    action: "contest.kind_change";
+    contest_id: string;
+    to: string;
+  }
+  | { action: "contest.reset_code"; contest_id: string }
   // ── issue #413 内容合规审核 ──
   | {
     action: "review.queued";

@@ -417,7 +417,10 @@ export const SCHEMA_DDL: string[] = [
       'announcement.create','announcement.update','announcement.delete',
       -- issue #413 内容合规审核动作
       'review.queued','review.rejected','review.resolved',
-      'contest.ranking_snapshot')
+      'contest.ranking_snapshot',
+      'contest.create','contest.update','contest.delete',
+      'contest.participants_add','contest.participants_remove',
+      'contest.kind_change','contest.reset_code')
     ))
   `,
 

@@ -1,11 +1,24 @@
+/**
+ * Admin contest 子域路由。
+ *
+ * 挂载前缀：/api/v1/admin/contest（由 domains/admin/index.ts 以 /contest 挂载）。
+ * 由原 contest 域 `admin-contests.ts` 迁移而来。
+ *
+ * 审计分层：
+ * - ranking-snapshot 发布在 contest-ranking service 内已调用 logAudit，
+ *   因此保持 service 层为唯一审计源，路由层不重复写。
+ * - 其余写操作（create/update/delete、participants add/remove、kind change、
+ *   reset-code）原先未在 service 层审计，由路由层 withAudit 作为唯一审计源。
+ */
 import { Hono } from "hono";
-import type { AuthEnv } from "./../../identity/index.ts";
-import { parseJsonBody } from "./../../../shared/http/request.ts";
-import { BadRequestError } from "./../../../shared/base/errors.ts";
+import type { Context } from "hono";
+import type { AuthEnv } from "../../identity/index.ts";
+import { parseJsonBody } from "../../../shared/http/request.ts";
+import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
   buildPaginationMeta,
   parsePagination,
-} from "./../../../shared/http/pagination.ts";
+} from "../../../shared/http/pagination.ts";
 import {
   addParticipants,
   createContest,
@@ -17,14 +30,14 @@ import {
   removeParticipant,
   resolveContestId,
   updateContest,
-} from "../services/contests.ts";
+} from "../../contest/services/contests.ts";
 import type {
   CreateContestInput,
   KaggleRankingRow,
   UpdateContestInput,
-} from "./../types/contests.ts";
-import { isValidContestKind } from "./../types/contests.ts";
-import { isValidContestType } from "./../types/contests.ts";
+} from "../../contest/types/contests.ts";
+import { isValidContestKind } from "../../contest/types/contests.ts";
+import { isValidContestType } from "../../contest/types/contests.ts";
 import { listSubmissions } from "../../submission/index.ts";
 import { resolveUserId } from "../../identity/index.ts";
 import {
@@ -32,15 +45,36 @@ import {
   getLatestContestRankingSnapshot,
   listContestRankingSnapshots,
   publishContestRankingSnapshot,
-} from "../services/contest-ranking.ts";
+} from "../../contest/services/contest-ranking.ts";
 import {
   listContestIpGroups,
   listContestIpTimeline,
-} from "../services/contest-anti-cheat.ts";
+} from "../../contest/services/contest-anti-cheat.ts";
 import { assertPermission } from "../../identity/index.ts";
+import { withAudit } from "../services/admin-audit.ts";
+import type { AuditMeta } from "../types/admin-audit.ts";
+
+/** 路由层审计用的临时请求体缓存（withAudit 在 handler 返回后才构建 detail）。 */
+const auditBodies = new WeakMap<object, unknown>();
+
+function setAuditBody(c: object, body: unknown): void {
+  auditBodies.set(c, body);
+}
+
+function getAuditBody<T>(c: object): T | undefined {
+  return auditBodies.get(c) as T | undefined;
+}
+
+/** 将 AuthEnv handler 适配为 withAudit 接受的 Context handler。 */
+function auditRoute(
+  meta: AuditMeta,
+  handler: (c: Context<AuthEnv>) => Promise<Response>,
+) {
+  return withAudit(meta)(handler as (c: Context) => Promise<Response>);
+}
 
 /**
- * 管理端竞赛管理路由（挂载前缀 /api/v1/admin，见 admin/index.ts）。
+ * 管理端竞赛管理路由（挂载前缀 /api/v1/admin/contest，见 admin/index.ts）。
  *
  * 提供：
  * - GET/POST /contests                    竞赛列表 / 创建
@@ -88,36 +122,103 @@ router.get("/contests/:id", async (c) => {
  * POST /contests —— 创建竞赛。
  * 权限：管理员。body：CreateContestInput。响应：201 { data }。
  */
-router.post("/contests", async (c) => {
-  const body = await parseJsonBody<CreateContestInput>(c);
-  const data = await createContest(body, c.get("userId"), true);
-  return c.json({ data }, 201);
-});
+router.post(
+  "/contests",
+  auditRoute(
+    {
+      action: "contest.create",
+      target: (c) => {
+        const body = getAuditBody<{ result?: { id?: string } }>(c);
+        return body?.result?.id
+          ? { type: "contest", id: body.result.id }
+          : undefined;
+      },
+      buildDetail: (c) => {
+        const body = getAuditBody<{
+          input?: CreateContestInput;
+          result?: {
+            id?: string;
+            title?: string;
+            type?: string;
+            kind?: string;
+          };
+        }>(c);
+        return {
+          action: "contest.create",
+          contest_id: body?.result?.id ?? "",
+          title: body?.input?.title ?? body?.result?.title ?? "",
+          type: body?.input?.type ?? body?.result?.type ?? "",
+          kind: body?.input?.kind ?? body?.result?.kind ?? "",
+        };
+      },
+    },
+    async (c) => {
+      const body = await parseJsonBody<CreateContestInput>(c);
+      const data = await createContest(body, c.get("userId"), true);
+      setAuditBody(c, { input: body, result: data });
+      return c.json({ data }, 201);
+    },
+  ),
+);
 
 /**
  * PUT /contests/:id —— 更新竞赛。
  * 权限：管理员。path：id。body：UpdateContestInput。响应：{ data }。
  */
-router.put("/contests/:id", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
-  const body = await parseJsonBody<UpdateContestInput>(c);
-  const data = await updateContest(
-    contestId,
-    body,
-    true,
-  );
-  return c.json({ data });
-});
+router.put(
+  "/contests/:id",
+  auditRoute(
+    {
+      action: "contest.update",
+      target: (c) => ({ type: "contest", id: c.req.param("id")! }),
+      buildDetail: (c) => {
+        const body = getAuditBody<UpdateContestInput>(c);
+        return {
+          action: "contest.update",
+          contest_id: c.req.param("id")!,
+          title: body?.title,
+          type: body?.type,
+          kind: body?.kind,
+          is_public: body?.is_public,
+        };
+      },
+    },
+    async (c) => {
+      const contestId = await resolveContestId(c.req.param("id") as string);
+      const body = await parseJsonBody<UpdateContestInput>(c);
+      setAuditBody(c, body);
+      const data = await updateContest(
+        contestId,
+        body,
+        true,
+      );
+      return c.json({ data });
+    },
+  ),
+);
 
 /**
  * DELETE /contests/:id —— 删除竞赛。
  * 权限：管理员。path：id。响应：204 无内容。
  */
-router.delete("/contests/:id", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
-  await deleteContest(contestId);
-  return c.body(null, 204);
-});
+router.delete(
+  "/contests/:id",
+  auditRoute(
+    {
+      action: "contest.delete",
+      target: (c) => ({ type: "contest", id: c.req.param("id")! }),
+      buildDetail: (c) => ({
+        action: "contest.delete",
+        contest_id: c.req.param("id")!,
+      }),
+    },
+    async (c) => {
+      const contestId = await resolveContestId(c.req.param("id") as string);
+      await deleteContest(contestId);
+      return c.body(null, 204);
+    },
+  ),
+);
 
 /**
  * GET /contests/:id/participants —— 竞赛参与者列表。
@@ -133,61 +234,128 @@ router.get("/contests/:id/participants", async (c) => {
  * POST /contests/:id/participants —— 批量添加参与者。
  * 权限：管理员。path：id。body：用户 ID 数组。响应：201 { data: { added } }。
  */
-router.post("/contests/:id/participants", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
-  const userIds = await parseJsonBody<string[]>(c);
-  if (!Array.isArray(userIds)) {
-    throw new BadRequestError("请求体必须为用户 ID 数组");
-  }
-  const resolvedIds = await Promise.all(userIds.map((v) => resolveUserId(v)));
-  const added = await addParticipants(contestId, resolvedIds);
-  return c.json({ data: { added } }, 201);
-});
+router.post(
+  "/contests/:id/participants",
+  auditRoute(
+    {
+      action: "contest.participants_add",
+      target: (c) => ({ type: "contest", id: c.req.param("id")! }),
+      buildDetail: (c) => {
+        const body = getAuditBody<{ user_ids?: string[] }>(c);
+        return {
+          action: "contest.participants_add",
+          contest_id: c.req.param("id")!,
+          user_ids: body?.user_ids ?? [],
+        };
+      },
+    },
+    async (c) => {
+      const contestId = await resolveContestId(c.req.param("id") as string);
+      const userIds = await parseJsonBody<string[]>(c);
+      if (!Array.isArray(userIds)) {
+        throw new BadRequestError("请求体必须为用户 ID 数组");
+      }
+      const resolvedIds = await Promise.all(
+        userIds.map((v) => resolveUserId(v)),
+      );
+      setAuditBody(c, { user_ids: resolvedIds });
+      const added = await addParticipants(contestId, resolvedIds);
+      return c.json({ data: { added } }, 201);
+    },
+  ),
+);
 
 /**
  * DELETE /contests/:id/participants/:userId —— 移除某位参与者。
  * 权限：管理员。path：id、userId。响应：204 无内容。
  */
-router.delete("/contests/:id/participants/:userId", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
-  const targetUserId = await resolveUserId(c.req.param("userId") as string);
-  await removeParticipant(
-    contestId,
-    targetUserId,
-  );
-  return c.body(null, 204);
-});
+router.delete(
+  "/contests/:id/participants/:userId",
+  auditRoute(
+    {
+      action: "contest.participants_remove",
+      target: (c) => ({ type: "contest", id: c.req.param("id")! }),
+      buildDetail: (c) => ({
+        action: "contest.participants_remove",
+        contest_id: c.req.param("id")!,
+        user_id: c.req.param("userId")!,
+      }),
+    },
+    async (c) => {
+      const contestId = await resolveContestId(c.req.param("id") as string);
+      const targetUserId = await resolveUserId(c.req.param("userId") as string);
+      await removeParticipant(
+        contestId,
+        targetUserId,
+      );
+      return c.body(null, 204);
+    },
+  ),
+);
 
 /**
  * PATCH /contests/:id/kind —— 邀请赛转公开赛。
  * 权限：管理员。path：id。body：{ kind: "public" }。响应：{ data }。
  */
-router.patch("/contests/:id/kind", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
-  const body = await parseJsonBody<{ kind?: unknown }>(c);
-  if (body.kind !== "public" || !isValidContestKind(body.kind)) {
-    throw new BadRequestError("仅支持将邀请赛转为公开赛（kind=public）");
-  }
-  const data = await updateContest(
-    contestId,
-    { kind: "public", is_public: true },
-    true,
-  );
-  return c.json({ data });
-});
+router.patch(
+  "/contests/:id/kind",
+  auditRoute(
+    {
+      action: "contest.kind_change",
+      target: (c) => ({ type: "contest", id: c.req.param("id")! }),
+      buildDetail: (c) => {
+        const body = getAuditBody<{ kind?: unknown }>(c);
+        return {
+          action: "contest.kind_change",
+          contest_id: c.req.param("id")!,
+          to: body?.kind === "public" ? "public" : "",
+        };
+      },
+    },
+    async (c) => {
+      const contestId = await resolveContestId(c.req.param("id") as string);
+      const body = await parseJsonBody<{ kind?: unknown }>(c);
+      if (body.kind !== "public" || !isValidContestKind(body.kind)) {
+        throw new BadRequestError("仅支持将邀请赛转为公开赛（kind=public）");
+      }
+      setAuditBody(c, body);
+      const data = await updateContest(
+        contestId,
+        { kind: "public", is_public: true },
+        true,
+      );
+      return c.json({ data });
+    },
+  ),
+);
 
 /**
  * POST /contests/:id/reset-code —— 重置邀请赛邀请码。
  * 权限：管理员。path：id。响应：{ data: { code, contest } }。
  */
-router.post("/contests/:id/reset-code", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const bytes = crypto.getRandomValues(new Uint8Array(10));
-  const code = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
-  const data = await updateContest(contestId, { password: code }, true);
-  return c.json({ data: { code, contest: data } });
-});
+router.post(
+  "/contests/:id/reset-code",
+  auditRoute(
+    {
+      action: "contest.reset_code",
+      target: (c) => ({ type: "contest", id: c.req.param("id")! }),
+      buildDetail: (c) => ({
+        action: "contest.reset_code",
+        contest_id: c.req.param("id")!,
+      }),
+    },
+    async (c) => {
+      const contestId = await resolveContestId(c.req.param("id") as string);
+      const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      const bytes = crypto.getRandomValues(new Uint8Array(10));
+      const code = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join(
+        "",
+      );
+      const data = await updateContest(contestId, { password: code }, true);
+      return c.json({ data: { code, contest: data } });
+    },
+  ),
+);
 
 /**
  * GET /contests/:id/submissions —— 竞赛提交列表。

@@ -4,7 +4,7 @@
  * 提供（挂载前缀 /api/v1/admin，见 app.ts）：
  * - /identity/users、/identity/roles、/identity/permissions、/identity/blacklist
  * - /catalog/problems、/catalog/trainings
- * - /submissions、/contests、/judge-images、
+ * - /submissions、/contest/contests、/judge-images、
  *   /dashboard/stats、/settings、/audit-logs、/announcements、/llm/...
  *
  * 组级守卫：所有 admin 端点均需认证 + 管理员权限，在此统一挂载。
@@ -18,7 +18,7 @@ import identityAdminRouter from "./routes/identity.ts";
 import catalogAdminRouter from "./routes/catalog.ts";
 import { submissionAdminRouter } from "../submission/routes/index.ts";
 import { queryAdminRouter } from "../query/routes/index.ts";
-import { contestAdminRouter } from "../contest/routes/index.ts";
+import contestAdminRouter from "./routes/contest.ts";
 import { systemAdminRouter } from "../system/routes/index.ts";
 import { gatewayAdminRouter } from "../gateway/routes/index.ts";
 
@@ -44,7 +44,7 @@ router.route("/identity", identityAdminRouter);
 router.route("/catalog", catalogAdminRouter);
 router.route("/", submissionAdminRouter);
 router.route("/", queryAdminRouter);
-router.route("/", contestAdminRouter);
+router.route("/contest", contestAdminRouter);
 router.route("/", systemAdminRouter);
 router.route("/", gatewayAdminRouter);
 
