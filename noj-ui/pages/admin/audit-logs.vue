@@ -151,7 +151,7 @@ onMounted(fetch)
       :columns="columns"
       :items="tableItems"
       :loading="loading"
-      :error="error"
+      :error="error ?? undefined"
       :total-pages="totalPages"
       :current-page="pagination.page"
       @update:page="onPageChange"

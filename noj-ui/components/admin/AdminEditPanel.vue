@@ -41,10 +41,7 @@ function onOpenChange(val: boolean) {
 <template>
   <UModal :model-value="open" @update:model-value="onOpenChange">
     <UCard
-      :ui="{
-        body: { padding: 'p-5 sm:p-6' },
-        footer: { padding: 'p-4 sm:p-5' },
-      }"
+      :ui="{ body: 'p-5 sm:p-6', footer: 'p-4 sm:p-5' }"
       class="w-full"
       :class="width ?? 'max-w-lg'"
     >

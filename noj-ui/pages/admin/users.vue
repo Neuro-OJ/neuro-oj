@@ -298,22 +298,22 @@ async function confirmDeleteUser(user: User) {
           <div class="flex items-center gap-1.5 flex-wrap">
             <span
               class="inline-flex items-center gap-1 px-2 py-[3px] rounded text-xs font-semibold"
-              :class="(row as User).is_admin ? 'bg-blue-50 text-info-text' : 'bg-bg-page text-text-muted'"
+              :class="(row as unknown as User).is_admin ? 'bg-blue-50 text-info-text' : 'bg-bg-page text-text-muted'"
             >
-              <UIcon name="i-lucide-shield-check" class="size-3.5" v-if="(row as User).is_admin"/>
+              <UIcon name="i-lucide-shield-check" class="size-3.5" v-if="(row as unknown as User).is_admin"/>
               <UIcon name="i-lucide-shield-x" class="size-3.5" v-else/>
-              {{ (row as User).is_admin ? "管理员" : "用户" }}
+              {{ (row as unknown as User).is_admin ? "管理员" : "用户" }}
             </span>
             <span
-              v-if="(row as User).deleted_at"
+              v-if="(row as unknown as User).deleted_at"
               class="inline-flex items-center px-2 py-[3px] rounded text-xs font-semibold bg-gray-100 text-text-muted"
             >已注销</span>
             <span
-              v-if="(row as User).active_ban"
+              v-if="(row as unknown as User).active_ban"
               class="inline-flex items-center px-2 py-[3px] rounded text-xs font-semibold bg-red-50 text-error-text"
-              :title="(row as User).active_ban?.banned_until ? `至 ${(row as User).active_ban?.banned_until} 解封` : '永久封禁'"
+              :title="(row as unknown as User).active_ban?.banned_until ? `至 ${(row as unknown as User).active_ban?.banned_until} 解封` : '永久封禁'"
             >
-              {{ (row as User).active_ban?.scope === "social" ? "已封禁·仅社交" : "已封禁" }}
+              {{ (row as unknown as User).active_ban?.scope === "social" ? "已封禁·仅社交" : "已封禁" }}
             </span>
           </div>
         </template>
@@ -321,32 +321,32 @@ async function confirmDeleteUser(user: User) {
       <template #actions="{ row }">
         <div class="flex items-center gap-1.5">
           <button
-            v-if="!(row as User).deleted_at"
+            v-if="!(row as unknown as User).deleted_at"
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-info-text text-info-text bg-transparent hover:bg-info-text hover:text-white"
-            @click="confirmRoleSwitch(row as User)"
+            @click="confirmRoleSwitch(row as unknown as User)"
           >
             修改角色
           </button>
           <button
-            v-if="!(row as User).deleted_at && !(row as User).active_ban"
+            v-if="!(row as unknown as User).deleted_at && !(row as unknown as User).active_ban"
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-error-text text-error-text bg-transparent hover:bg-error-text hover:text-white"
             :disabled="banning"
-            @click="confirmBan(row as User)"
+            @click="confirmBan(row as unknown as User)"
           >
             封禁
           </button>
           <button
-            v-else-if="!(row as User).deleted_at"
+            v-else-if="!(row as unknown as User).deleted_at"
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-info-text text-info-text bg-transparent hover:bg-info-text hover:text-white"
             :disabled="banning"
-            @click="confirmUnban(row as User)"
+            @click="confirmUnban(row as unknown as User)"
           >
             解封
           </button>
-          <UButton color="neutral" variant="outline" size="sm" class="py-1 border-border text-text-secondary hover:bg-page hover:text-text" @click="showBanHistory(row as User)">
+          <UButton color="neutral" variant="outline" size="sm" class="py-1 border-border text-text-secondary hover:bg-page hover:text-text" @click="showBanHistory(row as unknown as User)">
             历史
           </UButton>
-          <UButton v-if="!(row as User).deleted_at" color="error" variant="outline" size="sm" @click="confirmDeleteUser(row as User)">
+          <UButton v-if="!(row as unknown as User).deleted_at" color="error" variant="outline" size="sm" @click="confirmDeleteUser(row as unknown as User)">
             注销
           </UButton>
         </div>

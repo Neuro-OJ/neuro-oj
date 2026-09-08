@@ -72,19 +72,28 @@ function rowKey(row: Record<string, unknown>): string {
     <template v-else>
       <UTable
         :rows="items"
-        :columns="columns.map((c) => ({ key: c.key, label: c.label, sortable: c.sortable }))"
-        :ui="{ tr: { base: 'hover:bg-primary-bg cursor-pointer' } }"
-        @select="(row: Record<string, unknown>) => emit('row-click', row)"
+        :columns="columns.map((c) => ({ accessorKey: c.key, header: c.label, sortable: c.sortable }))"
+        @select="(row: unknown) => emit('row-click', row as Record<string, unknown>)"
       >
         <template #default="{ row, column }">
-          <slot name="cell" :row="row" :column="column">
-            <span @click="onSort(column as AdminColumn)" :class="column.sortable ? 'cursor-pointer' : ''">
-              {{ row[column.key] }}
+          <slot
+            v-if="(column as unknown as AdminColumn).key === 'actions'"
+            name="actions"
+            :row="row as unknown as Record<string, unknown>"
+          />
+          <slot
+            v-else
+            name="cell"
+            :row="row as unknown as Record<string, unknown>"
+            :column="column as unknown as AdminColumn"
+          >
+            <span
+              @click="onSort(column as unknown as AdminColumn)"
+              :class="(column as unknown as AdminColumn).sortable ? 'cursor-pointer' : ''"
+            >
+              {{ (row as unknown as Record<string, unknown>)[(column as unknown as AdminColumn).key] }}
             </span>
           </slot>
-        </template>
-        <template #actions="{ row }">
-          <slot name="actions" :row="row" />
         </template>
       </UTable>
       <div v-if="!loading && (totalPages ?? 1) > 1" class="flex justify-end px-4 py-3 border-t border-border">

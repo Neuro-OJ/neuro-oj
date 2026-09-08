@@ -22,7 +22,7 @@ function onOpenChange(val: boolean) {
 
 <template>
   <UModal :model-value="open" @update:model-value="onOpenChange">
-    <UCard :ui="{ body: { padding: 'p-5' }, footer: { padding: 'p-4' } }" class="max-w-md w-full">
+    <UCard :ui="{ body: 'p-5', footer: 'p-4' }" class="max-w-md w-full">
       <h3 class="text-base font-semibold text-text">{{ title }}</h3>
       <p class="mt-2 text-sm text-text-secondary whitespace-pre-line">{{ message }}</p>
       <template #footer>

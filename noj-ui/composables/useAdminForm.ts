@@ -6,7 +6,7 @@
 import type { Ref } from 'vue';
 
 export function useAdminForm<T extends Record<string, unknown>>(initial?: T, initialVersion?: string) {
-  const draft = ref<T>({ ...(initial ?? {}) }) as Ref<T>;
+  const draft = ref<T>({ ...(initial ?? {}) } as T) as Ref<T>;
   const version = ref<string | undefined>(initialVersion);
 
   function setDraft(value: T) {
@@ -22,7 +22,7 @@ export function useAdminForm<T extends Record<string, unknown>>(initial?: T, ini
   }
 
   function reset(next?: T, nextVersion?: string) {
-    draft.value = { ...(next ?? (initial ?? ({} as T))) };
+    draft.value = { ...(next ?? initial ?? ({} as T)) } as T;
     version.value = nextVersion;
   }
 
