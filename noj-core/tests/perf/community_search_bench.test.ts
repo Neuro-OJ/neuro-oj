@@ -1,6 +1,6 @@
 import { assert } from "jsr:@std/assert@^1";
 import { sql } from "drizzle-orm";
-import { searchCommunity } from "../../src/domains/query/index.ts";
+import { reindexAll, searchFlat } from "../../src/domains/search/index.ts";
 import { getDb, resetDbForTest } from "../../src/shared/db/connection.ts";
 import {
   communityBoards,
@@ -11,7 +11,7 @@ import {
 /**
  * 社区搜索基准默认关闭；仅在隔离的 PostgreSQL 测试库中显式运行。
  *
- * 输出 EXPLAIN (ANALYZE, BUFFERS) 与 P50/P95，供部署前后对比记录。
+ * 输出 search_entries EXPLAIN (ANALYZE, BUFFERS) 与 P50/P95，供部署前后对比记录。
  */
 const runPerf = Deno.env.get("NOJ_RUN_PERF") === "1";
 const hasExternalDb = Boolean(Deno.env.get("DATABASE_URL"));
@@ -23,13 +23,14 @@ function percentile(values: number[], p: number): number {
 }
 
 Deno.test({
-  name: "search perf: 100k community posts pg_trgm EXPLAIN + P50/P95",
+  name: "search perf: 100k community posts search_entries EXPLAIN + P50/P95",
   ignore: !runPerf || !hasExternalDb,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
     const db = getDb();
+    const ctx = { userId: undefined, isAdmin: false, guestReadEnabled: true };
     const now = new Date().toISOString();
 
     await db.insert(users).values({
@@ -77,39 +78,54 @@ Deno.test({
       );
     }
 
+    // 将源数据同步到统一搜索索引表，确保基准测量的是 search_entries 新路径
+    await reindexAll();
+
     await db.execute(sql`ANALYZE community_posts`);
-    // 与 searchCommunity 的真实查询保持一致（含 problem 字段与 FTS 分支），
-    // 避免 EXPLAIN 只验证简化查询而实际搜索仍走 Seq Scan。
+    await db.execute(sql`ANALYZE search_entries`);
+    // 与 searchFlat 的真实查询保持一致（search_entries 统一索引表），
+    // 避免 EXPLAIN 只验证简化查询而实际搜索仍走其他路径。
     const explain = await db.execute(sql`
       EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-      SELECT p.id
-      FROM community_posts p
-      JOIN users u ON u.id = p.author_id
-      LEFT JOIN problems problem ON problem.id = p.problem_id
-      WHERE p.status = 'published'
-        AND p.type IN ('solution', 'discussion')
-        AND (p.title ILIKE '%trigram_unique_0%' ESCAPE '\\'
-          OR p.content ILIKE '%trigram_unique_0%' ESCAPE '\\'
-          OR p.problem_id ILIKE '%trigram_unique_0%' ESCAPE '\\'
-          OR (problem.type || problem.number::text) ILIKE '%trigram_unique_0%' ESCAPE '\\'
-          OR problem.title ILIKE '%trigram_unique_0%' ESCAPE '\\'
-          OR to_tsvector('simple', coalesce(p.title, '') || ' ' || p.content) @@ websearch_to_tsquery('simple', 'trigram_unique_0'))
+      SELECT id, entity_type, entity_id, title,
+        ts_rank(search_vector, websearch_to_tsquery('simple', 'trigram_unique_0')) AS rank,
+        ts_headline('simple', title, websearch_to_tsquery('simple', 'trigram_unique_0'),
+          'StartSel=[[HIGHLIGHT]], StopSel=[[/HIGHLIGHT]], MaxWords=20, MinWords=5'
+        ) AS highlight,
+        metadata
+      FROM search_entries
+      WHERE is_active = true
+        AND (
+          search_vector @@ websearch_to_tsquery('simple', 'trigram_unique_0')
+          OR title ILIKE '%trigram_unique_0%' ESCAPE '\\'
+          OR body ILIKE '%trigram_unique_0%' ESCAPE '\\'
+        )
+        AND (
+          (is_public = true OR owner_id = '' OR '' = ANY(participant_ids) OR false)
+          AND (admin_only = false OR false)
+        )
+        AND true
+        AND entity_type = 'community_post'
+      ORDER BY rank DESC NULLS LAST, updated_at DESC
+      LIMIT 21
     `);
     console.log("社区搜索 EXPLAIN:", JSON.stringify(explain));
 
     const elapsed: number[] = [];
     for (let i = 0; i < 30; i++) {
       const start = performance.now();
-      const result = await searchCommunity({
+      const result = await searchFlat({
         q: "trigram_unique_0",
+        type: "community_post",
         page: 1,
-        limit: 20,
+        perPage: 20,
+        ctx,
       });
       elapsed.push(performance.now() - start);
       assert(result.items.length > 0);
     }
     console.log(
-      `社区搜索 pg_trgm P50=${percentile(elapsed, 0.5).toFixed(1)}ms ` +
+      `社区搜索 search_entries P50=${percentile(elapsed, 0.5).toFixed(1)}ms ` +
         `P95=${percentile(elapsed, 0.95).toFixed(1)}ms`,
     );
 

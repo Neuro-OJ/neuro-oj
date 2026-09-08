@@ -2,6 +2,7 @@
 import { and, eq, ne } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { users } from "./../../../../shared/db/schema.ts";
+import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import { NotFoundError } from "./../../../../shared/base/errors.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
 import { isStorageUrl, parseStorageUrl } from "./../../../system/index.ts";
@@ -112,6 +113,9 @@ export async function updateUserAvatar(
       // 旧文件不存在时静默忽略
     }
   }
+
+  await publishSearchIndexEvent("user", userId, "upsert");
+
   return { avatar_url: newUrl };
 }
 

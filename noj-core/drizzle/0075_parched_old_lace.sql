@@ -1,0 +1,1 @@
+ALTER TABLE "search_entries" ADD COLUMN "deleted_by_user_ids" text[] DEFAULT '{}' NOT NULL;

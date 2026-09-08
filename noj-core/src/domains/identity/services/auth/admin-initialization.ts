@@ -1,5 +1,6 @@
 import { eq, ne } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
 import {
   roles,
   systemSettings,
@@ -47,6 +48,7 @@ export async function initializeFirstAdmin(
   validatePasswordStrength(input.password, input.username, input.email);
   const passwordHash = await hashPassword(input.password);
   const db = getDb();
+  let createdUserId: string | undefined;
   const initialized = await db.transaction(async (tx) => {
     const now = new Date().toISOString();
     const claimed = await tx.insert(systemSettings).values({
@@ -75,11 +77,15 @@ export async function initializeFirstAdmin(
       updated_at: now,
     });
     await tx.insert(userRoles).values({ user_id: id, role_id: adminRole.id });
+    createdUserId = id;
     return true;
   });
   if (!initialized) {
     throw new ConflictError(
       "首次管理员初始化已关闭：站点已有用户或已完成初始化",
     );
+  }
+  if (createdUserId) {
+    await publishSearchIndexEvent("user", createdUserId, "upsert");
   }
 }

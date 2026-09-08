@@ -7,6 +7,7 @@ import { identityRouter } from "./domains/identity/routes/index.ts";
 import { catalogRouter } from "./domains/catalog/routes/index.ts";
 import { submissionRouter } from "./domains/submission/routes/index.ts";
 import { queryRouter } from "./domains/query/routes/index.ts";
+import { searchRouter } from "./domains/search/routes/index.ts";
 import { contestRouter } from "./domains/contest/routes/index.ts";
 import { communityRouter } from "./domains/community/routes/index.ts";
 import { messagingRouter } from "./domains/messaging/routes/index.ts";
@@ -171,6 +172,7 @@ export function createApp(): Hono {
   app.route("/api/v1", catalogRouter);
   app.route("/api/v1", submissionRouter);
   app.route("/api/v1", queryRouter);
+  app.route("/api/v1", searchRouter);
   app.route("/api/v1", contestRouter);
   app.route("/api/v1", communityRouter);
   app.route("/api/v1", messagingRouter);

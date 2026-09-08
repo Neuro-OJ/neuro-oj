@@ -383,7 +383,7 @@ jobs:
           BCRYPT_SALT_ROUNDS: 4
         # 不设 DATABASE_URL → PGlite 内存模式，零外部 DB 依赖；
         # 单元测试暂不并行：Redis fail-closed 测试在并行下会互相干扰（已实测 flaky）。
-        run: deno test -A --no-check --preload=tests/preload.ts tests/shared tests/data tests/app.test.ts src/domains/identity/tests/lib src/domains/catalog/tests/lib src/domains/identity/tests/middleware src/domains/query/tests/middleware src/domains/system/tests/middleware src/domains/catalog/tests/types src/domains/contest/tests/types src/domains/submission/tests/types
+        run: deno test -A --no-check --preload=tests/preload.ts tests/shared tests/data tests/app.test.ts src/domains/identity/tests/lib src/domains/catalog/tests/lib src/domains/identity/tests/middleware src/domains/system/tests/middleware src/domains/catalog/tests/types src/domains/contest/tests/types src/domains/submission/tests/types
 
       - name: 上传失败日志
         if: failure() || cancelled()
@@ -505,7 +505,7 @@ jobs:
         # （CI 日志可见 Process 494 vs 495 互锁）。串行执行匹配现有
         # resetDbForTest() 的顺序假设。此 job 只包含 DB 依赖子集，
         # 与 core-test-unit 并行互补。
-        run: deno test -A tests/routes tests/db tests/00_migrate_test.ts tests/seed_bootstrap_admin_test.ts src/domains/identity/tests/routes src/domains/identity/tests/services src/domains/catalog/tests/routes src/domains/catalog/tests/services src/domains/submission/tests/routes src/domains/submission/tests/services src/domains/submission/tests/mq src/domains/query/tests/routes src/domains/query/tests/services src/domains/contest/tests/routes src/domains/contest/tests/services src/domains/community/tests/routes src/domains/community/tests/services src/domains/messaging/tests/routes src/domains/messaging/tests/services src/domains/objective/tests/routes src/domains/objective/tests/services src/domains/system/tests/routes src/domains/system/tests/services src/domains/gateway/tests/services src/domains/content-review/tests/services
+        run: deno test -A tests/routes tests/db tests/00_migrate_test.ts tests/seed_bootstrap_admin_test.ts src/domains/identity/tests/routes src/domains/identity/tests/services src/domains/catalog/tests/routes src/domains/catalog/tests/services src/domains/submission/tests/routes src/domains/submission/tests/services src/domains/submission/tests/mq src/domains/query/tests/routes src/domains/query/tests/services src/domains/search/tests/routes src/domains/search/tests/services src/domains/contest/tests/routes src/domains/contest/tests/services src/domains/community/tests/routes src/domains/community/tests/services src/domains/messaging/tests/routes src/domains/messaging/tests/services src/domains/objective/tests/routes src/domains/objective/tests/services src/domains/system/tests/routes src/domains/system/tests/services src/domains/gateway/tests/services src/domains/content-review/tests/services
 
       # 执行摘要写入 job summary：区分密钥来源，并明确记录
       # 数据库集成测试是"实际执行"而非跳过（issue #430 验收项）。
@@ -609,7 +609,7 @@ jobs:
         working-directory: noj-core
         env:
           BCRYPT_SALT_ROUNDS: 4
-        run: deno test -A tests/00_migrate_test.ts tests/perf
+        run: deno test -A tests/00_migrate_test.ts tests/perf src/domains/search/tests/perf
 
   # ===========================================================================
   # noj-ui — Nuxt 4 前端（Deno 构建检查）

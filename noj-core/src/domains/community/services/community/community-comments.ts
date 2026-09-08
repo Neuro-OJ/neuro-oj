@@ -1,5 +1,6 @@
 import { and, eq, ne, or, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import {
   communityComments,
   communityModerationActions,
@@ -91,6 +92,9 @@ export async function changeCommentStatus(
       );
     }
   }
+
+  await publishSearchIndexEvent("community_comment", commentId, "upsert");
+
   return rows[0]!;
 }
 
@@ -171,6 +175,9 @@ export async function createComment(
       {},
     );
   }
+
+  await publishSearchIndexEvent("community_comment", comment.id, "upsert");
+
   return comment;
 }
 
@@ -272,6 +279,9 @@ export async function updateComment(
     content,
     updated_at: nowIso(),
   }).where(eq(communityComments.id, commentId)).returning();
+
+  await publishSearchIndexEvent("community_comment", commentId, "upsert");
+
   return rows[0]!;
 }
 
@@ -309,5 +319,8 @@ export async function deleteComment(
       { type: "community_comment", id: commentId },
     );
   }
+
+  await publishSearchIndexEvent("community_comment", commentId, "delete");
+
   return rows[0]!;
 }

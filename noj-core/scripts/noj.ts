@@ -34,6 +34,7 @@ import {
 } from "../src/domains/system/index.ts";
 import { importProblemBundle } from "../src/domains/catalog/index.ts";
 import { isValidTemplateFileName } from "./../src/domains/catalog/types/problem-bundle.ts";
+import { reindexAll } from "../src/domains/search/index.ts";
 import { ROOT_USER_ID } from "./../src/shared/base/constants.ts";
 
 const PROJECT_ROOT = Deno.env.get("NOJ_PROJECT_ROOT") ??
@@ -262,6 +263,15 @@ const problemsCmd = new Command()
     return importProblemPackages(opts.dir);
   });
 
+const searchCmd = new Command()
+  .description("搜索索引操作")
+  .command("reindex", "全量重建搜索索引")
+  .action(async () => {
+    console.log("开始全量重建搜索索引...");
+    const counts = await reindexAll();
+    console.log("重建完成", counts);
+  });
+
 try {
   await new Command()
     .name("noj")
@@ -271,6 +281,7 @@ try {
     .command("init", initCmd)
     .command("bootstrap", bootstrapCmd)
     .command("problems", problemsCmd)
+    .command("search", searchCmd)
     .command("dev-setup", "开发环境一键初始化（含 dev 专用数据）")
     .action(() => {
       return runDevSetup();

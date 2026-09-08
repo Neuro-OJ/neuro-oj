@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { users } from "./../../../../shared/db/schema.ts";
+import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import {
   BadRequestError,
   ConflictError,
@@ -43,6 +44,8 @@ export async function updateUserProfile(
   if (!updated) {
     throw new NotFoundError("用户不存在");
   }
+
+  await publishSearchIndexEvent("user", userId, "upsert");
 
   return updated;
 }
@@ -162,6 +165,8 @@ export async function adminUpdateUserProfile(
     .from(users)
     .where(eq(users.id, targetUserId))
     .limit(1);
+
+  await publishSearchIndexEvent("user", targetUserId, "upsert");
 
   return updated;
 }

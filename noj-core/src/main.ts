@@ -12,6 +12,7 @@ import { startSseEventRetentionTask } from "./shared/sse/sse-events.ts";
 import { snapshotEnv } from "./domains/system/index.ts";
 import { validateRegistry } from "./shared/config/settings-registry.ts";
 import { createReviewConsumer } from "./domains/content-review/index.ts";
+import { startSearchIndexConsumer } from "./domains/search/index.ts";
 import {
   ensureRootUser,
   sealExistingSiteAdminInitialization,
@@ -244,6 +245,9 @@ async function main() {
 
   // 启动私信异步内容审核消费者（issue #413；Redis 不可用时自动重试，不阻断启动）
   void createReviewConsumer()();
+
+  // 启动搜索索引事件消费者（后台运行，带自动重连，不阻塞 HTTP）
+  void startSearchIndexConsumer()();
 
   // 启动 processing 超时重投 + pending 提交恢复 sweeper
   startQueueSweeper();

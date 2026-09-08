@@ -663,6 +663,28 @@ export const SCHEMA_DDL: string[] = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
+
+  // 21. search_entries（统一搜索索引表，search domain）
+  `CREATE TABLE IF NOT EXISTS search_entries (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    search_vector tsvector GENERATED ALWAYS AS (
+      setweight(to_tsvector('simple', coalesce(title, '')), 'A') ||
+      setweight(to_tsvector('simple', coalesce(body, '')), 'B')
+    ) STORED,
+    metadata JSONB NOT NULL DEFAULT '{}',
+    owner_id TEXT,
+    participant_ids TEXT[] NOT NULL DEFAULT '{}',
+    deleted_by_user_ids TEXT[] NOT NULL DEFAULT '{}',
+    is_public BOOLEAN NOT NULL DEFAULT false,
+    admin_only BOOLEAN NOT NULL DEFAULT false,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
 ];
 
 export const SCHEMA_INDEXES: string[] = [
@@ -764,6 +786,13 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_content_review_queue_pending_status ON content_review_queue (status, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_content_review_queue_type_status ON content_review_queue (content_type, status)",
   "CREATE INDEX IF NOT EXISTS idx_content_review_queue_target ON content_review_queue (target_id)",
+  // search_entries 索引（与 schema.ts 定义一致，PGlite 测试模式）
+  "CREATE UNIQUE INDEX IF NOT EXISTS idx_search_entries_entity ON search_entries (entity_type, entity_id)",
+  "CREATE INDEX IF NOT EXISTS idx_search_entries_vector ON search_entries USING GIN (search_vector)",
+  "CREATE INDEX IF NOT EXISTS idx_search_entries_owner ON search_entries (owner_id)",
+  "CREATE INDEX IF NOT EXISTS idx_search_entries_participants ON search_entries USING GIN (participant_ids)",
+  "CREATE INDEX IF NOT EXISTS idx_search_entries_public ON search_entries (is_public)",
+  "CREATE INDEX IF NOT EXISTS idx_search_entries_updated ON search_entries (updated_at)",
   // RBAC 权限系统（roles 表已在顶部预置，见 SCHEMA_DDL 第 2 项）
   `CREATE TABLE IF NOT EXISTS permissions (
     id TEXT PRIMARY KEY,
@@ -795,6 +824,8 @@ export const OPTIONAL_EXTENSION_INDEXES: string[] = [
   "CREATE EXTENSION IF NOT EXISTS pg_trgm",
   "CREATE INDEX IF NOT EXISTS idx_community_posts_title_trgm ON community_posts USING GIN (title gin_trgm_ops)",
   "CREATE INDEX IF NOT EXISTS idx_community_posts_content_trgm ON community_posts USING GIN (content gin_trgm_ops)",
+  "CREATE INDEX IF NOT EXISTS idx_search_entries_title_trgm ON search_entries USING GIN (title gin_trgm_ops)",
+  "CREATE INDEX IF NOT EXISTS idx_search_entries_body_trgm ON search_entries USING GIN (body gin_trgm_ops)",
 ];
 
 export const ALL_TABLES = [
@@ -845,6 +876,7 @@ export const ALL_TABLES = [
   "community_notifications",
   "announcements",
   "content_review_queue",
+  "search_entries",
   "email_delivery_events",
   "email_suppressions",
 ] as const;

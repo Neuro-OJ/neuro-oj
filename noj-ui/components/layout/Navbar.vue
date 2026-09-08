@@ -57,7 +57,7 @@
             <button
                 type="button"
                 class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:bg-primary-hover rounded-md transition-colors"
-                :aria-label="t('nav.search')"
+                :aria-label="t('nav.searchFull')"
                 @click="openSearch"
             >
                 <UIcon name="i-lucide-search" class="w-4 h-4 size-4" />

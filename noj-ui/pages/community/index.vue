@@ -67,7 +67,13 @@ const problemId = ref(
   typeof route.query.problem_id === "string" ? route.query.problem_id : "",
 )
 const problemQuery = ref(problemId.value)
-const problemResults = ref<{ id: string; display_id: string; title: string }[]>([])
+interface ProblemSearchResult {
+  id: string
+  display_id: string
+  title: string
+}
+
+const problemResults = ref<ProblemSearchResult[]>([])
 const problemSearching = ref(false)
 const showProblemDropdown = ref(false)
 let problemSearchSeq = 0
@@ -230,12 +236,29 @@ async function searchProblems() {
   const seq = ++problemSearchSeq
   problemSearching.value = true
   try {
-    const result = await api.get<{ data: { items: { id: string; display_id: string; title: string }[] } }>(
+    const result = await api.get<{
+      data: {
+        items: Array<{
+          entity_id: string
+          entity_type: string
+          title: string
+          metadata: Record<string, unknown>
+        }>
+      }
+    }>(
       "/api/v1/search",
       { query: { q, type: "problem" }, silent: true },
     )
     if (seq !== problemSearchSeq) return
-    problemResults.value = result.data.items
+    problemResults.value = result.data.items.map((item) => ({
+      id: item.entity_id,
+      display_id: typeof item.metadata.display_id === "string"
+        ? item.metadata.display_id
+        : "",
+      title: typeof item.metadata.title === "string"
+        ? item.metadata.title
+        : item.title,
+    }))
     showProblemDropdown.value = true
   } catch {
     if (seq !== problemSearchSeq) return
@@ -246,7 +269,7 @@ async function searchProblems() {
   }
 }
 
-function selectProblem(p: { id: string; display_id: string; title: string }) {
+function selectProblem(p: ProblemSearchResult) {
   problemId.value = p.id
   problemQuery.value = `${p.display_id} ${p.title}`
   showProblemDropdown.value = false

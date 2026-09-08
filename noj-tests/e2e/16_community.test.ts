@@ -100,11 +100,11 @@ e2eTest("[e2e/community] 发布、互动、治理、通知与软删除主流程"
       responderToken,
     );
     const globalPosts = (globalSearch.body as {
-      data: { items: Array<{ id: string }> };
+      data: { items: Array<{ entity_id: string }> };
     }).data.items;
     if (
       globalSearch.status !== 200 ||
-      !globalPosts.some((item) => item.id === postId)
+      !globalPosts.some((item) => item.entity_id === postId)
     ) {
       throw new Error("全局帖子搜索未返回已发布讨论");
     }

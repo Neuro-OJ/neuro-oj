@@ -19,6 +19,7 @@ import {
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
 import { getDb } from "./../../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
 import type { JudgeResult, SubmissionStatus } from "../../types/index.ts";
 import { applyNewResult } from "../../../query/index.ts";
@@ -311,4 +312,5 @@ export async function updateSubmissionStatus(
     .update(submissions)
     .set(updates)
     .where(eq(submissions.id, id));
+  await publishSearchIndexEvent("submission", id, "upsert");
 }

@@ -49,6 +49,7 @@ import {
 import { validateRuntimeConfig } from "./problems-types.ts";
 import { syncProblemTags, validateProblemTagIds } from "./problems-tags.ts";
 import { getProblem } from "./problems-list.ts";
+import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import { assertPermission } from "./../../../identity/index.ts";
 import {
   assertSensitiveFieldPermissions,
@@ -289,6 +290,8 @@ export async function createProblem(
   if (input.tag_ids && input.tag_ids.length > 0) {
     await syncProblemTags(id, input.tag_ids, isObjective);
   }
+
+  await publishSearchIndexEvent("problem", id, "upsert");
 
   return getProblem(id);
 }
@@ -544,6 +547,8 @@ export async function updateProblem(
     }
   }
 
+  await publishSearchIndexEvent("problem", id, "upsert");
+
   return getProblem(id);
 }
 
@@ -645,4 +650,6 @@ export async function deleteProblem(
     },
     { type: "problem", id },
   );
+
+  await publishSearchIndexEvent("problem", id, "delete");
 }

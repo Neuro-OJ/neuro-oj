@@ -38,7 +38,7 @@
 | GET | `/` | noj-core/src/domains/contest/routes/contests.ts |
 | GET | `/` | noj-core/src/domains/messaging/routes/conversations.ts |
 | GET | `/` | noj-core/src/domains/query/routes/rankings.ts |
-| GET | `/` | noj-core/src/domains/query/routes/search.ts |
+| GET | `/` | noj-core/src/domains/search/routes/search.ts |
 | GET | `/` | noj-core/src/domains/submission/routes/queue.ts |
 | GET | `/` | noj-core/src/domains/submission/routes/submissions.ts |
 | GET | `/` | noj-core/src/domains/system/routes/admin-announcements.ts |
@@ -247,7 +247,6 @@
 | GET | `userId` | noj-core/src/domains/messaging/routes/conversations.ts |
 | GET | `userId` | noj-core/src/domains/messaging/routes/conversations.ts |
 | GET | `userId` | noj-core/src/domains/messaging/routes/conversations.ts |
-| GET | `userId` | noj-core/src/domains/query/routes/search.ts |
 | GET | `userId` | noj-core/src/domains/submission/routes/admin-submissions.ts |
 | GET | `userId` | noj-core/src/domains/submission/routes/sse.ts |
 | GET | `userId` | noj-core/src/domains/submission/routes/submissions.ts |
@@ -262,7 +261,6 @@
 | GET | `userRole` | noj-core/src/domains/catalog/routes/problems.ts |
 | GET | `userRole` | noj-core/src/domains/catalog/routes/problems.ts |
 | GET | `userRole` | noj-core/src/domains/catalog/routes/problems.ts |
-| GET | `userRole` | noj-core/src/domains/query/routes/search.ts |
 | GET | `userRole` | noj-core/src/domains/submission/routes/sse.ts |
 | PATCH | `/:id` | noj-core/src/domains/catalog/routes/admin-trainings.ts |
 | PATCH | `/:id/messages/:messageId` | noj-core/src/domains/messaging/routes/conversations.ts |

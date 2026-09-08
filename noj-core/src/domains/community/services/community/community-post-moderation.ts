@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import {
   communityModerationActions,
   communityPosts,
@@ -65,6 +66,9 @@ export async function changePostStatus(
     },
     { type: "community_post", id: postId },
   );
+
+  await publishSearchIndexEvent("community_post", postId, "upsert");
+
   return rows[0];
 }
 

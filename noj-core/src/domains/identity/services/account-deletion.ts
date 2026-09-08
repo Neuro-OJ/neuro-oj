@@ -1,5 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "../../../shared/search-events.ts";
 import {
   oauthAccounts,
   passwordResetTokens,
@@ -81,6 +82,7 @@ export async function deleteOwnAccount(
     throw new UnauthorizedError("密码不正确", "PASSWORD_INVALID");
   }
   await anonymizeUser(userId);
+  await publishSearchIndexEvent("user", userId, "delete");
   await logAuthEvent(userId, clientIp ?? "unknown", "auth.delete_account", {
     user_id: userId,
   });
@@ -105,6 +107,7 @@ export async function adminDeleteAccount(
     }
   }
   const username = await anonymizeUser(userId, actorId);
+  await publishSearchIndexEvent("user", userId, "delete");
   await logAudit("users.delete", { action: "users.delete", username }, {
     type: "user",
     id: userId,
