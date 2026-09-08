@@ -94,6 +94,20 @@ noj-cli server dev-setup
 原样透传。 `server bootstrap` 不接受 `--password` 命令行参数，请使用
 交互提示或环境变量。
 
+## 独立 Judge 管理（Phase 2）
+
+```bash
+noj-cli judge install [--dir /srv/noj-judge]
+noj-cli judge install-env
+noj-cli judge check
+noj-cli judge start
+noj-cli judge stop
+noj-cli judge status
+noj-cli judge logs [--follow]
+noj-cli judge upgrade [--version v0.2.0]
+noj-cli judge download [--dir /srv/noj-judge]
+```
+
 ## 开发与验证
 
 ```bash
