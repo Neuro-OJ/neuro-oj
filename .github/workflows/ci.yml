@@ -1637,6 +1637,35 @@ jobs:
           if-no-files-found: ignore
         continue-on-error: true
 
+  ui-components:
+    name: UI Components
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.ui == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: 缓存 node_modules
+        uses: actions/cache@v4
+        with:
+          path: noj-ui/node_modules
+          key: npm-${{ hashFiles('noj-ui/package.json', 'noj-ui/deno.lock') }}
+          restore-keys: |
+            npm-
+      - name: 安装依赖 (Deno BYONM)
+        working-directory: noj-ui
+        run: deno install
+      - name: 生成 Nuxt 类型上下文
+        working-directory: noj-ui
+        run: deno run -A npm:nuxt typecheck
+      - name: 组件测试
+        working-directory: noj-ui
+        run: deno task test:components
+
   # ===========================================================================
   # noj-judge — 格式 + Clippy + 单元测试（合并单 job）
   #
