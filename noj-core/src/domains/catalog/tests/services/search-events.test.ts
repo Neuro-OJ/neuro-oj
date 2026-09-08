@@ -1,4 +1,6 @@
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { problems, problemTags } from "../../../../shared/db/schema.ts";
+import { createTag, mergeTags } from "../../index.ts";
 import { createProblem } from "../../services/problems/problems-crud.ts";
 import { assertSearchEventPublished } from "../../../../../tests/helper/search-events.ts";
 import { connectRedis, getRedis } from "../../../../shared/mq/connection.ts";
@@ -43,5 +45,62 @@ Deno.test({
       runtime_config: VALID_RUNTIME_CONFIG,
     });
     await assertSearchEventPublished("problem", created.id, "upsert");
+  },
+});
+
+Deno.test({
+  name: "catalog search event: mergeTags 为受影响题目发布 upsert",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const now = new Date().toISOString();
+    const ts = Date.now();
+    const source = await createTag({
+      name: `事件合并源-${ts}`,
+      kind: "algorithm",
+    });
+    const target = await createTag({
+      name: `事件合并目标-${ts}`,
+      kind: "algorithm",
+    });
+    const problemA = crypto.randomUUID();
+    const problemB = crypto.randomUUID();
+    await db.insert(problems).values([
+      {
+        id: problemA,
+        title: "合并事件题A",
+        description: "描述",
+        difficulty: "easy",
+        runtime_config: null,
+        number: 940000 + (ts % 10000),
+        owner_id: "0",
+        type: "U",
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: problemB,
+        title: "合并事件题B",
+        description: "描述",
+        difficulty: "easy",
+        runtime_config: null,
+        number: 950000 + (ts % 10000),
+        owner_id: "0",
+        type: "U",
+        created_at: now,
+        updated_at: now,
+      },
+    ]);
+    await db.insert(problemTags).values([
+      { problem_id: problemA, tag_id: source.id },
+      { problem_id: problemB, tag_id: source.id },
+      { problem_id: problemB, tag_id: target.id },
+    ]);
+    await getRedis().del(SEARCH_INDEX_QUEUE);
+    await mergeTags(source.id, target.id);
+    await assertSearchEventPublished("problem", problemA, "upsert");
+    await assertSearchEventPublished("problem", problemB, "upsert");
   },
 });
