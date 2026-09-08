@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-
 import { extractApiError } from '~/utils/apiError'
+import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 
 definePageMeta({
   layout: "admin",
@@ -36,42 +35,13 @@ watch(isLoggedIn, (val) => {
   if (val) load()
 }, { immediate: true })
 
-const columns: TableColumn<AdminAnnouncement>[] = [
-  {
-    accessorKey: "title",
-    header: "标题",
-    cell: (info) => {
-      const v = info.getValue() as string
-      return v.length > 30 ? `${v.slice(0, 30)}…` : v
-    },
-  },
-  {
-    accessorKey: "is_pinned",
-    header: "置顶",
-    cell: (info) => info.getValue() ? "是" : "否",
-  },
-  {
-    accessorKey: "is_active",
-    header: "状态",
-    cell: (info) => info.getValue() ? "已发布" : "已下架",
-  },
-  {
-    accessorKey: "updated_at",
-    header: "更新时间",
-    cell: (info) => {
-      const d = new Date(info.getValue() as string)
-      return isNaN(d.getTime()) ? "-" : d.toLocaleString("zh-CN")
-    },
-  },
-  {
-    accessorKey: "created_at",
-    header: "创建时间",
-    cell: (info) => {
-      const d = new Date(info.getValue() as string)
-      return isNaN(d.getTime()) ? "-" : d.toLocaleString("zh-CN")
-    },
-  },
-  { accessorKey: "actions", header: "操作" },
+const columns: AdminColumn[] = [
+  { key: "title", label: "标题" },
+  { key: "is_pinned", label: "置顶" },
+  { key: "is_active", label: "状态" },
+  { key: "updated_at", label: "更新时间" },
+  { key: "created_at", label: "创建时间" },
+  { key: "actions", label: "操作" },
 ]
 
 // ── 新建/编辑表单 ──
@@ -167,31 +137,41 @@ async function handleDelete() {
       </template>
     </AdminPageHeader>
 
-    <div v-if="error" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ error }}</span></div>
-    <UTable
+    <AdminTable
       :columns="columns"
-      :data="items"
+      :items="items as unknown as Record<string, unknown>[]"
       :loading="loading"
-      :empty="'暂无公告'">
-      <template #actions-cell="{ row }">
+      :error="error ?? undefined"
+      :total-pages="totalPages"
+      :current-page="currentPage"
+      @update:page="onPageChange"
+    >
+      <template #cell="{ row, column }">
+        <template v-if="column.key === 'title'">
+          {{ ((row as unknown as AdminAnnouncement).title.length > 30 ? `${(row as unknown as AdminAnnouncement).title.slice(0, 30)}…` : (row as unknown as AdminAnnouncement).title) }}
+        </template>
+        <template v-else-if="column.key === 'is_pinned'">
+          {{ (row as unknown as AdminAnnouncement).is_pinned ? "是" : "否" }}
+        </template>
+        <template v-else-if="column.key === 'is_active'">
+          {{ (row as unknown as AdminAnnouncement).is_active ? "已发布" : "已下架" }}
+        </template>
+        <template v-else-if="column.key === 'updated_at' || column.key === 'created_at'">
+          <span v-if="!isNaN(new Date(row[column.key] as string).getTime())">{{ new Date(row[column.key] as string).toLocaleString("zh-CN") }}</span>
+          <span v-else>-</span>
+        </template>
+      </template>
+      <template #actions="{ row }">
         <div class="flex gap-1.5 justify-center">
-          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" @click="openEdit(row.original)">
+          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" @click="openEdit(row as unknown as AdminAnnouncement)">
             <UIcon name="i-lucide-pencil" class="size-3.5" />
           </UButton>
-          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row.original)">
+          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row as unknown as AdminAnnouncement)">
             <UIcon name="i-lucide-trash-2" class="size-3.5" />
           </UButton>
         </div>
       </template>
-    </UTable>
-
-    <PaginationNav
-      v-if="totalPages > 1"
-      :current-page="currentPage"
-      :total-pages="totalPages"
-      class="mt-2"
-      @page-change="onPageChange"
-    />
+    </AdminTable>
   </div>
 
   <!-- 新建/编辑弹窗 -->
