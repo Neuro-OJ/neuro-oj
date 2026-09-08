@@ -353,7 +353,7 @@ async function cleanupBootstrapRow(s: SystemSetting) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="系统设置" description="运行时配置写入数据库即时生效；环境配置由 .env 管理，修改需重启服务" />
+    <AdminPageHeader title="系统设置" description="运行时配置写入数据库即时生效；环境配置由 .env 管理，修改需重启服务" />
 
     <!-- 未保存更改标识 -->
     <div

@@ -260,7 +260,7 @@ async function batchReview(action: 'to_public' | 'to_p') {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="题目管理" description="管理所有题目">
+    <AdminPageHeader title="题目管理" description="管理所有题目">
       <template #actions>
         <div class="flex items-center gap-2">
           <input
@@ -275,7 +275,7 @@ async function batchReview(action: 'to_public' | 'to_p') {
           </NuxtLink>
         </div>
       </template>
-    </PageHeader>
+    </AdminPageHeader>
 
     <div class="flex gap-1 border-b border-border">
       <button

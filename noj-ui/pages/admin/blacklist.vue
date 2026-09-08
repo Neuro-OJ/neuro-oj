@@ -108,7 +108,7 @@ function formatExpires(value: string | null) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="IP 黑名单管理" description="拦截恶意 IP / CIDR 范围；命中后返 403 IP_BLACKLISTED" />
+    <AdminPageHeader title="IP 黑名单管理" description="拦截恶意 IP / CIDR 范围；命中后返 403 IP_BLACKLISTED" />
 
     <!-- 顶部操作栏 -->
     <div class="flex items-center justify-between gap-3 flex-wrap">

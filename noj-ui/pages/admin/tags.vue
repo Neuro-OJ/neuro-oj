@@ -180,14 +180,14 @@ async function confirmDelete(tag: Tag) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="标签管理" description="管理题目标签（problem）与算法标签（algorithm）">
+    <AdminPageHeader title="标签管理" description="管理题目标签（problem）与算法标签（algorithm）">
       <template #actions>
         <UButton color="primary" size="sm" @click="openCreate">
           <UIcon name="i-lucide-plus" class="size-4" />
           新建标签
         </UButton>
       </template>
-    </PageHeader>
+    </AdminPageHeader>
 
     <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
     <UTable

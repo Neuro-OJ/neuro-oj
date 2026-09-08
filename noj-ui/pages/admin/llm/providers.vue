@@ -158,14 +158,14 @@ async function handleSave() {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="LLM Provider 管理" description="配置上游 OpenAI 兼容服务（Key 加密存储，永不回显明文）">
+    <AdminPageHeader title="LLM Provider 管理" description="配置上游 OpenAI 兼容服务（Key 加密存储，永不回显明文）">
       <template #actions>
         <UButton color="primary" size="sm" @click="openCreate">
           <UIcon name="i-lucide-plus" class="size-4" />
           新增 Provider
         </UButton>
       </template>
-    </PageHeader>
+    </AdminPageHeader>
 
     <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
     <UTable

@@ -216,7 +216,7 @@ async function confirmDelete(role: Role) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="角色管理" description="管理角色与权限分配" />
+    <AdminPageHeader title="角色管理" description="管理角色与权限分配" />
 
     <!-- 错误提示（删除失败） -->
     <div

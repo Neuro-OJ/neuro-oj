@@ -125,14 +125,14 @@ function openDetail(row: LlmUsageRow) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="LLM 用量" description="按用户/题目/提交查询 LLM 调用记录与用量">
+    <AdminPageHeader title="LLM 用量" description="按用户/题目/提交查询 LLM 调用记录与用量">
       <template #actions>
         <UButton color="primary" size="sm" @click="exportCsv">
           <UIcon name="i-lucide-download" class="size-4" />
           导出 CSV
         </UButton>
       </template>
-    </PageHeader>
+    </AdminPageHeader>
 
     <div class="flex flex-wrap items-end gap-3 p-4 bg-white border border-border rounded-xl">
       <div class="flex flex-col gap-1">

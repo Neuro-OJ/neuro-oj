@@ -237,7 +237,7 @@ async function removeFromQueue(submissionId: string) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="提交管理" description="查看所有用户的提交记录">
+    <AdminPageHeader title="提交管理" description="查看所有用户的提交记录">
       <template #actions>
         <RefreshControl
           v-model:interval="pollInterval"
@@ -245,7 +245,7 @@ async function removeFromQueue(submissionId: string) {
           @refresh="loadSubmissions(currentPage)"
         />
       </template>
-    </PageHeader>
+    </AdminPageHeader>
 
     <!-- 筛选栏 -->
     <div class="bg-white border border-border rounded-lg p-4">

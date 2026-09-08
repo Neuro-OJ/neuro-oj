@@ -174,14 +174,14 @@ async function handleDelete() {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="评测镜像管理" description="配置允许使用的 Docker 评测镜像白名单">
+    <AdminPageHeader title="评测镜像管理" description="配置允许使用的 Docker 评测镜像白名单">
       <template #actions>
         <UButton color="primary" size="sm" @click="openCreate">
           <UIcon name="i-lucide-plus" class="size-4" />
           新增镜像
         </UButton>
       </template>
-    </PageHeader>
+    </AdminPageHeader>
 
     <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
     <UTable

@@ -153,7 +153,7 @@ async function handleRefresh() {
   <!-- tailwind-dashboard -->
   <div class="flex flex-col gap-6">
     <!-- 顶栏 -->
-    <PageHeader title="仪表盘">
+    <AdminPageHeader title="仪表盘">
       <template #actions>
         <RefreshControl
           v-model:interval="pollInterval"
@@ -162,7 +162,7 @@ async function handleRefresh() {
           @refresh="handleRefresh"
         />
       </template>
-    </PageHeader>
+    </AdminPageHeader>
 
     <!-- 加载态 -->
     <div v-if="statsLoading && stats.length === 0" class="flex flex-col items-center justify-center gap-2.5 px-6 py-12 text-text-secondary text-sm bg-white border border-border rounded-xl">

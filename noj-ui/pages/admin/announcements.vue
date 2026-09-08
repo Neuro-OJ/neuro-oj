@@ -158,14 +158,14 @@ async function handleDelete() {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="公告管理" description="发布系统公告，置顶公告将优先展示在首页轮播">
+    <AdminPageHeader title="公告管理" description="发布系统公告，置顶公告将优先展示在首页轮播">
       <template #actions>
         <UButton color="primary" size="sm" @click="openCreate">
           <UIcon name="i-lucide-plus" class="size-4" />
           新建公告
         </UButton>
       </template>
-    </PageHeader>
+    </AdminPageHeader>
 
     <div v-if="error" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ error }}</span></div>
     <UTable

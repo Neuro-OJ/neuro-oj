@@ -474,7 +474,7 @@ async function removeParticipant(participant: Participant) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="竞赛管理" description="创建竞赛、配置赛制并管理参赛者">
+    <AdminPageHeader title="竞赛管理" description="创建竞赛、配置赛制并管理参赛者">
       <template #actions>
         <div class="flex items-center gap-2">
           <RefreshControl
@@ -485,7 +485,7 @@ async function removeParticipant(participant: Participant) {
           <UButton color="primary" size="sm" @click="openCreate"><UIcon name="i-lucide-plus" class="size-4" />创建竞赛</UButton>
         </div>
       </template>
-    </PageHeader>
+    </AdminPageHeader>
 
     <div v-if="loadError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ loadError }}</span></div>
     <UTable :columns="columns" :data="contests" :loading="loading" :empty="'暂无竞赛'">
