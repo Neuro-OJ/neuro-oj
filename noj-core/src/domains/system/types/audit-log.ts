@@ -26,6 +26,7 @@ export type AuditAction =
   | "tags.merge"
   | "submissions.rejudge"
   | "submissions.queue_removed"
+  | "submissions.delete"
   | "settings.update"
   | "ip_ban.create"
   | "ip_ban.delete"
@@ -47,6 +48,11 @@ export type AuditAction =
   | "community.sanction_created"
   | "community.sanction_revoked"
   | "community.preset_applied"
+  | "community.board_create"
+  | "community.board_update"
+  | "community.board_role_grant_update"
+  | "community.board_role_grant_delete"
+  | "community.post_flag"
   | "announcement.create"
   | "announcement.update"
   | "announcement.delete"
@@ -64,7 +70,10 @@ export type AuditAction =
   | "judge_images.create"
   | "judge_images.update"
   | "judge_images.delete"
-  | "email_delivery.clear_suppression";
+  | "email_delivery.clear_suppression"
+  | "llm_provider.create"
+  | "llm_provider.update"
+  | "llm_quota.upsert";
 
 /** 按 action 强类型的 detail（discriminated union） */
 export type AuditDetail =
@@ -135,6 +144,7 @@ export type AuditDetail =
     count?: number;
   }
   | { action: "submissions.queue_removed"; submission_id: string }
+  | { action: "submissions.delete"; submission_id: string }
   | {
     action: "settings.update";
     operation: "PUT" | "DELETE";
@@ -210,6 +220,23 @@ export type AuditDetail =
   | {
     action: "community.preset_applied";
     preset: "public" | "private" | "knowledge";
+  }
+  | { action: "community.board_create"; slug: string; name: string }
+  | { action: "community.board_update"; board_id: string }
+  | {
+    action: "community.board_role_grant_update";
+    board_id: string;
+    role_id: string;
+  }
+  | {
+    action: "community.board_role_grant_delete";
+    board_id: string;
+    role_id: string;
+  }
+  | {
+    action: "community.post_flag";
+    post_id: string;
+    flag: string;
   }
   | { action: "announcement.create"; title: string }
   | { action: "announcement.update"; title: string }
@@ -295,7 +322,10 @@ export type AuditDetail =
     description?: string;
   }
   | { action: "judge_images.delete"; id: string }
-  | { action: "email_delivery.clear_suppression"; id: string };
+  | { action: "email_delivery.clear_suppression"; id: string }
+  | { action: "llm_provider.create"; name: string }
+  | { action: "llm_provider.update"; id: string; name?: string }
+  | { action: "llm_quota.upsert"; id?: string | null };
 
 /** audit_logs 表的响应类型 */
 export interface AuditLogEntry {

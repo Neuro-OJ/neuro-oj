@@ -568,6 +568,13 @@
       "when": 1788836130256,
       "tag": "0080_woozy_romulus",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1788839579295,
+      "tag": "0081_peaceful_black_panther",
+      "breakpoints": true
     }
   ]
 }

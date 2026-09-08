@@ -405,7 +405,7 @@ export const SCHEMA_DDL: string[] = [
       'problems.delete','problems.runtime_config_changed','problems.imported',
       'problems.review','trainings.update','trainings.delete',
       'tags.create','tags.update','tags.delete','tags.merge',
-      'submissions.rejudge','settings.update',
+      'submissions.rejudge','submissions.queue_removed','submissions.delete','settings.update',
       'ip_ban.create','ip_ban.delete',
       -- PR-2 新增 auth.* 动作
       'auth.login_success','auth.login_failure','auth.register','auth.email_verified','auth.delete_account',
@@ -414,6 +414,8 @@ export const SCHEMA_DDL: string[] = [
       'auth.tfa_recovery_regenerated','auth.tfa_recovery_used',
       'community.post_moderated','community.report_resolved',
       'community.sanction_created','community.sanction_revoked','community.preset_applied',
+      'community.board_create','community.board_update',
+      'community.board_role_grant_update','community.board_role_grant_delete','community.post_flag',
       'announcement.create','announcement.update','announcement.delete',
       -- issue #413 内容合规审核动作
       'review.queued','review.rejected','review.resolved',
@@ -422,7 +424,8 @@ export const SCHEMA_DDL: string[] = [
       'contest.participants_add','contest.participants_remove',
       'contest.kind_change','contest.reset_code',
       'judge_images.create','judge_images.update','judge_images.delete',
-      'email_delivery.clear_suppression')
+      'email_delivery.clear_suppression',
+      'llm_provider.create','llm_provider.update','llm_quota.upsert')
     ))
   `,
 

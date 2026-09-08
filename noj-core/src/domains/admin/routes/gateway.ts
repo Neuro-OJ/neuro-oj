@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "./../../identity/index.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
+import { adminAudit } from "../services/admin-audit.ts";
 import {
   BadRequestError,
   NotFoundError,
@@ -63,6 +64,11 @@ router.post("/llm/providers", async (c) => {
     return c.json({ error: "缺少必填字段" }, 400);
   }
   const data = await createLlmProvider(body);
+  await adminAudit(
+    "llm_provider.create",
+    { action: "llm_provider.create", name: body.name },
+    { type: "llm_provider", id: data.id },
+  );
   return c.json({ data }, 201);
 });
 
@@ -79,6 +85,11 @@ router.put("/llm/providers/:id", async (c) => {
   const id = c.req.param("id") as string;
   const body = await parseJsonBody<Partial<LlmProviderInput>>(c);
   const data = await updateLlmProvider(id, body);
+  await adminAudit(
+    "llm_provider.update",
+    { action: "llm_provider.update", id, name: body.name },
+    { type: "llm_provider", id },
+  );
   return c.json({ data });
 });
 
@@ -135,6 +146,11 @@ router.get("/llm/quotas", async (c) => {
 router.post("/llm/quotas", async (c) => {
   const body = await parseJsonBody<LlmQuotaInput>(c);
   const data = await upsertLlmQuota(body);
+  await adminAudit(
+    "llm_quota.upsert",
+    { action: "llm_quota.upsert", id: data?.id ?? null },
+    data?.id ? { type: "llm_quota", id: data.id } : undefined,
+  );
   return c.json({ data }, 201);
 });
 

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Next } from "hono";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
+import { adminAudit } from "../services/admin-audit.ts";
 import {
   BadRequestError,
   ForbiddenError,
@@ -133,14 +134,18 @@ router.post("/boards", async (c) => {
   if (!body.slug || !body.name) {
     throw new BadRequestError("板块 slug 和名称不能为空");
   }
-  return c.json({
-    data: await createBoard({
-      slug: body.slug,
-      name: body.name,
-      description: body.description,
-      sort_order: body.sort_order,
-    }),
-  }, 201);
+  const data = await createBoard({
+    slug: body.slug,
+    name: body.name,
+    description: body.description,
+    sort_order: body.sort_order,
+  });
+  await adminAudit(
+    "community.board_create",
+    { action: "community.board_create", slug: body.slug, name: body.name },
+    { type: "community_board", id: data.id },
+  );
+  return c.json({ data }, 201);
 });
 /**
  * PATCH /admin/boards/:boardId — 更新社区板块。
@@ -152,9 +157,14 @@ router.patch(
   async (c) => {
     // 板块管理：community_board:manage
     await assertPermission(c, "community_board:manage");
-    return c.json({
-      data: await updateBoard(c.req.param("boardId"), await parseJsonBody(c)),
-    });
+    const boardId = c.req.param("boardId");
+    const data = await updateBoard(boardId, await parseJsonBody(c));
+    await adminAudit(
+      "community.board_update",
+      { action: "community.board_update", board_id: boardId },
+      { type: "community_board", id: boardId },
+    );
+    return c.json({ data });
   },
 );
 /**
@@ -181,13 +191,19 @@ router.put("/boards/:boardId/role-grants/:roleId", async (c) => {
     can_post?: boolean;
     can_moderate?: boolean;
   }>(c);
-  return c.json({
-    data: await updateBoardRoleGrant(
-      c.req.param("boardId"),
-      c.req.param("roleId"),
-      body,
-    ),
-  });
+  const boardId = c.req.param("boardId");
+  const roleId = c.req.param("roleId");
+  const data = await updateBoardRoleGrant(boardId, roleId, body);
+  await adminAudit(
+    "community.board_role_grant_update",
+    {
+      action: "community.board_role_grant_update",
+      board_id: boardId,
+      role_id: roleId,
+    },
+    { type: "community_board", id: boardId },
+  );
+  return c.json({ data });
 });
 /**
  * DELETE /admin/boards/:boardId/role-grants/:roleId — 删除板块角色授权。
@@ -195,7 +211,18 @@ router.put("/boards/:boardId/role-grants/:roleId", async (c) => {
  */
 router.delete("/boards/:boardId/role-grants/:roleId", async (c) => {
   await assertPermission(c, "community_board:manage");
-  await deleteBoardRoleGrant(c.req.param("boardId"), c.req.param("roleId"));
+  const boardId = c.req.param("boardId");
+  const roleId = c.req.param("roleId");
+  await deleteBoardRoleGrant(boardId, roleId);
+  await adminAudit(
+    "community.board_role_grant_delete",
+    {
+      action: "community.board_role_grant_delete",
+      board_id: boardId,
+      role_id: roleId,
+    },
+    { type: "community_board", id: boardId },
+  );
   return c.body(null, 204);
 });
 /**
@@ -405,14 +432,18 @@ router.post("/posts/:postId/:flag", async (c) => {
   }
   const body = await parseJsonBody<{ value?: boolean }>(c);
   const postId = await resolvePostId(c.req.param("postId") as string);
-  return c.json({
-    data: await togglePostFlag(
-      postId,
-      userId(c),
-      flag === "lock" ? "is_locked" : "is_pinned",
-      body.value === true,
-    ),
-  });
+  const data = await togglePostFlag(
+    postId,
+    userId(c),
+    flag === "lock" ? "is_locked" : "is_pinned",
+    body.value === true,
+  );
+  await adminAudit(
+    "community.post_flag",
+    { action: "community.post_flag", post_id: postId, flag },
+    { type: "community_post", id: postId },
+  );
+  return c.json({ data });
 });
 /**
  * GET /admin/sanctions — 列出全部社区处罚。

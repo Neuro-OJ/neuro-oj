@@ -15,6 +15,7 @@ import {
 } from "../../submission/services/queue.ts";
 import { resolveProblem } from "./../../catalog/index.ts";
 import { SUBMISSION_STATUSES } from "../../submission/types/index.ts";
+import { adminAudit } from "../services/admin-audit.ts";
 
 /**
  * 管理端提交管理路由（挂载前缀 /api/v1/admin，见 admin/index.ts）。
@@ -102,6 +103,11 @@ router.get("/submissions/:id", async (c) => {
 router.delete("/submissions/:id", async (c) => {
   const id = await resolveSubmissionId(c.req.param("id") as string);
   await deleteSubmission(id);
+  await adminAudit(
+    "submissions.delete",
+    { action: "submissions.delete", submission_id: id },
+    { type: "submission", id },
+  );
   return c.body(null, 204);
 });
 
