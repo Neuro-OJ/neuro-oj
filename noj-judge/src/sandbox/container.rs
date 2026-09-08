@@ -418,4 +418,25 @@ mod tests {
         assert_eq!(entries[0].file_name, "a.py");
         assert_eq!(entries[1].data, b"y");
     }
+
+    #[test]
+    fn test_extract_zip_random_bytes_never_panics() {
+        // 简单确定性伪随机：对随机字节调用解压，只要求不 panic（返回 Err 可接受）。
+        let mut seed = 0x1234_5678u64;
+        for _ in 0..200 {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let len = (seed % 4096) as usize;
+            let mut bytes = Vec::with_capacity(len);
+            for _ in 0..len {
+                seed = seed
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                bytes.push((seed >> 32) as u8);
+            }
+            let _ =
+                extract_zip_entries_reader_with_limits(std::io::Cursor::new(bytes), 10, 1024, 4096);
+        }
+    }
 }
