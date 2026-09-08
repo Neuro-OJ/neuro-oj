@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-
 import { useToast } from "~/composables/useToast"
+import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 import { extractApiError } from '~/utils/apiError'
 
 definePageMeta({
@@ -32,26 +31,15 @@ const tableError = ref("")
 const { toast } = useToast()
 let requestVersion = 0
 
-const columns: TableColumn<LlmProvider>[] = [
-  { accessorKey: "name", header: "名称" },
-  { accessorKey: "base_url", header: "Base URL" },
-  { accessorKey: "model", header: "默认模型" },
-  { accessorKey: "cost_per_1k_tokens", header: "费用/1K token" },
-  { accessorKey: "api_key_masked", header: "API Key" },
-  {
-    accessorKey: "enabled",
-    header: "状态",
-    cell: (info) => (info.getValue() ? "启用" : "停用"),
-  },
-  {
-    accessorKey: "created_at",
-    header: "创建时间",
-    cell: (info) => {
-      const d = new Date(info.getValue() as string)
-      return isNaN(d.getTime()) ? "-" : d.toLocaleString("zh-CN")
-    },
-  },
-  { accessorKey: "actions", header: "操作" },
+const columns: AdminColumn[] = [
+  { key: "name", label: "名称" },
+  { key: "base_url", label: "Base URL" },
+  { key: "model", label: "默认模型" },
+  { key: "cost_per_1k_tokens", label: "费用/1K token" },
+  { key: "api_key_masked", label: "API Key" },
+  { key: "enabled", label: "状态" },
+  { key: "created_at", label: "创建时间" },
+  { key: "actions", label: "操作" },
 ]
 
 // 加载 Provider 列表；用 requestVersion 防止快速切换时的旧响应覆盖新数据
@@ -167,20 +155,31 @@ async function handleSave() {
       </template>
     </AdminPageHeader>
 
-    <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
-    <UTable
+    <AdminTable
       :columns="columns"
-      :data="items"
+      :items="items as unknown as Record<string, unknown>[]"
       :loading="tableLoading"
-      :empty="'暂无 LLM Provider'">
-      <template #actions-cell="{ row }">
+      :error="tableError || undefined"
+      :total-pages="1"
+      :current-page="1"
+    >
+      <template #cell="{ row, column }">
+        <template v-if="column.key === 'enabled'">
+          {{ (row as unknown as LlmProvider).enabled ? "启用" : "停用" }}
+        </template>
+        <template v-else-if="column.key === 'created_at'">
+          <span v-if="!isNaN(new Date((row as unknown as LlmProvider).created_at).getTime())">{{ new Date((row as unknown as LlmProvider).created_at).toLocaleString("zh-CN") }}</span>
+          <span v-else>-</span>
+        </template>
+      </template>
+      <template #actions="{ row }">
         <div class="flex gap-1.5 justify-center">
-          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" @click="openEdit(row.original)">
+          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" @click="openEdit(row as unknown as LlmProvider)">
             <UIcon name="i-lucide-pencil" class="size-3.5" />
           </UButton>
         </div>
       </template>
-    </UTable>
+    </AdminTable>
   </div>
 
   <UModal v-model:open="showForm" :title="editingItem ? '编辑 LLM Provider' : '新增 LLM Provider'" :unmount-on-hide="true">
