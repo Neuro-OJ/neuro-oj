@@ -23,6 +23,8 @@ cd noj-core
 deno task test            # 串行全量（无 DATABASE_URL 时走 PGlite）
 deno task test:parallel   # 并行分片（需本地 PG）
 deno task test:smoke      # 快速冒烟
+deno task test:domain identity   # 按 Domain 跑单元/集成测试
+bash scripts/test-shared.sh      # 共享/全局测试 + smoke
 
 # noj-llm-gateway
 cd noj-llm-gateway
@@ -43,12 +45,16 @@ NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
 
 # 跨模块 E2E
 cd noj-tests
-deno task test
+deno task test                    # 全量（需完整评测栈）
+deno task test:domain identity    # 按 Domain 跑 E2E
+deno task test:domain cross-domain # 跨域 E2E
 ```
 
 ## 约定
 
 - 必须使用 `deno task` 封装命令运行 Deno 测试，不要手拼 `deno test`。
+- 按 Domain 测试必须使用 `deno task test:domain <domain>` 或 `scripts/test-shared.sh`，禁止手拼 `deno test` 绕过脚本。
+- noj-tests E2E 文件按 Domain 目录组织：`e2e/<domain>/`、`e2e/cross-domain/`、`e2e/browser/`。
 - DB 依赖测试在缺少 `DATABASE_URL` / `JWT_SECRET` 时静默跳过。
 - 测试数据使用 `Date.now()` 生成唯一用户名/邮箱，避免冲突。
 - 路由测试使用 `jsonRequest()` 辅助函数。
