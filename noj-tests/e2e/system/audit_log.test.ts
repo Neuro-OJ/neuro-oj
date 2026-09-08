@@ -293,3 +293,43 @@ e2eTest("[e2e/audit-log] 3.2c 非 admin 返回 403", async () => {
   }
   console.log("  ✓ 非 admin 访问审计日志被拒");
 });
+
+e2eTest("[e2e/audit-log] 3.3 管理操作写入审计且包含操作者与时间", async () => {
+  if (!isE2E) return;
+  const title = "Audit " + Date.now().toString(36);
+  const res = await apiPost(
+    "/api/v1/admin/system/announcements",
+    { title, content: "审计断言测试" },
+    adminToken,
+  );
+  if (res.status !== 201) {
+    throw new Error(
+      "创建公告失败: " + res.status + " " + JSON.stringify(res.body),
+    );
+  }
+
+  const list = await apiGet(
+    "/api/v1/admin/system/audit-logs?action=announcement.create&per_page=5",
+    adminToken,
+  );
+  if (list.status !== 200) {
+    throw new Error("审计日志查询失败: " + list.status);
+  }
+  const rows = (list.body as {
+    data: Array<{
+      admin_id: string | null;
+      created_at: string;
+      detail: { title?: string };
+    }>;
+  }).data ?? [];
+  const hit = rows.find((r) => r.detail?.title === title);
+  if (!hit) {
+    throw new Error("审计日志应包含公告创建记录");
+  }
+  if (!hit.admin_id) {
+    throw new Error("审计记录应包含操作者 admin_id");
+  }
+  if (typeof hit.created_at !== "string" || !hit.created_at) {
+    throw new Error("审计记录应包含 created_at");
+  }
+});
