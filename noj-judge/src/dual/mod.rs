@@ -1755,4 +1755,87 @@ mod tests {
             Ok(Err(e)) => panic!("读取出错: {}", e),
         }
     }
+
+    #[test]
+    fn test_clamp_runtime_config_caps_time_and_memory() {
+        use crate::types::{EvaluatorRuntime, SolutionRuntime};
+
+        let rc = RuntimeConfig {
+            evaluator: EvaluatorRuntime {
+                image: "noj-evaluator".to_string(),
+                command: "python3 /workspace/evaluate.py".to_string(),
+                time_limit_ms: 999_999,
+                memory_limit_mb: 9999,
+                network: None,
+            },
+            solution: SolutionRuntime {
+                image: "noj-solution".to_string(),
+                call_timeout_ms: 999_999,
+                memory_limit_mb: 9999,
+            },
+        };
+        let clamped = clamp_runtime_config(&rc, 5000, 1000);
+        assert_eq!(clamped.evaluator.time_limit_ms, 5000);
+        assert_eq!(clamped.solution.call_timeout_ms, 1000);
+        assert_eq!(clamped.evaluator.memory_limit_mb, 4096);
+        assert_eq!(clamped.solution.memory_limit_mb, 4096);
+    }
+
+    #[test]
+    fn test_image_allowed_checks_basename_prefix() {
+        assert!(image_allowed("noj-evaluator:latest", "noj-"));
+        assert!(image_allowed(
+            "registry.example.com/noj-evaluator:latest",
+            "noj-"
+        ));
+        assert!(!image_allowed("other:latest", "noj-"));
+        assert!(!image_allowed("", "noj-"));
+        assert!(!image_allowed("noj-../evil", "noj-"));
+    }
+
+    #[test]
+    fn test_validate_runtime_config_rejects_bad_image() {
+        use crate::types::{EvaluatorRuntime, SolutionRuntime};
+
+        let rc = RuntimeConfig {
+            evaluator: EvaluatorRuntime {
+                image: "evil:latest".to_string(),
+                command: "python3 x".to_string(),
+                time_limit_ms: 1000,
+                memory_limit_mb: 256,
+                network: None,
+            },
+            solution: SolutionRuntime {
+                image: "noj-solution".to_string(),
+                call_timeout_ms: 1000,
+                memory_limit_mb: 256,
+            },
+        };
+        let err = validate_runtime_config("sid-1", &rc, false, "noj-", &["python3".to_string()])
+            .unwrap_err();
+        assert!(err.to_string().contains("镜像"));
+    }
+
+    #[test]
+    fn test_validate_runtime_config_rejects_network_when_disallowed() {
+        use crate::types::{EvaluatorRuntime, SolutionRuntime};
+
+        let rc = RuntimeConfig {
+            evaluator: EvaluatorRuntime {
+                image: "noj-evaluator".to_string(),
+                command: "python3 x".to_string(),
+                time_limit_ms: 1000,
+                memory_limit_mb: 256,
+                network: Some(crate::types::EvaluatorNetwork { enabled: true }),
+            },
+            solution: SolutionRuntime {
+                image: "noj-solution".to_string(),
+                call_timeout_ms: 1000,
+                memory_limit_mb: 256,
+            },
+        };
+        let err = validate_runtime_config("sid-2", &rc, false, "noj-", &["python3".to_string()])
+            .unwrap_err();
+        assert!(err.to_string().contains("网络"));
+    }
 }
