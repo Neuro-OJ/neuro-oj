@@ -18,7 +18,7 @@
  * // interval.value = null   → 关闭轮询
  * ```
  */
-import { type MaybeRefOrGetter, onUnmounted, toValue, watch } from 'vue';
+import { type MaybeRefOrGetter, onUnmounted, ref, toValue, watch } from 'vue';
 
 export interface PollingOptions {
   /** 轮询间隔（ms）；null = 关闭。支持响应式源，变化即时生效 */
