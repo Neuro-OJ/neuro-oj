@@ -13,7 +13,7 @@ import {
 import {
   COMMUNITY_PRESETS,
   MODERATION_STATUSES,
-} from "./../types/community.ts";
+} from "./../../community/types/community.ts";
 import { authMiddleware, getUserBanState } from "./../../identity/index.ts";
 import type { OptionalAuthEnv } from "./../../identity/index.ts";
 import {
@@ -40,7 +40,7 @@ import {
   togglePostFlag,
   updateBoard,
   updateBoardRoleGrant,
-} from "../services/community/community.ts";
+} from "../../community/services/community/community.ts";
 import { resolveUserId } from "../../identity/index.ts";
 import {
   getReviewQueueDetail,
@@ -98,14 +98,14 @@ async function requireCommunityModeration(
 /**
  * 管理路由组守卫：/admin/* 全部需登录且具备社区审核权限（requireCommunityModeration）。
  */
-router.use("/admin/*", authMiddleware, requireCommunityModeration);
+router.use("*", authMiddleware, requireCommunityModeration);
 
 /**
  * POST /admin/preset/:preset — 应用社区预设（public / private / knowledge）。
  * 权限：system:settings（仅管理员）。
  * 响应：{ data: 应用后的社区配置 }。
  */
-router.post("/admin/preset/:preset", async (c) => {
+router.post("/preset/:preset", async (c) => {
   // 预设属于系统配置，仅管理员可应用
   await assertPermission(c, "system:settings");
   const preset = c.req.param("preset");
@@ -124,7 +124,7 @@ router.post("/admin/preset/:preset", async (c) => {
  * 权限：community_board:manage。body：{ slug, name, description?, sort_order? }。
  * 响应：201 { data: 新建板块 }。
  */
-router.post("/admin/boards", async (c) => {
+router.post("/boards", async (c) => {
   // 板块管理：community_board:manage（默认仅 admin 角色被授予）
   await assertPermission(c, "community_board:manage");
   const body = await parseJsonBody<
@@ -148,7 +148,7 @@ router.post("/admin/boards", async (c) => {
  * 响应：{ data: 更新后的板块 }。
  */
 router.patch(
-  "/admin/boards/:boardId",
+  "/boards/:boardId",
   async (c) => {
     // 板块管理：community_board:manage
     await assertPermission(c, "community_board:manage");
@@ -163,7 +163,7 @@ router.patch(
  * 响应：{ data: 角色授权列表 }。
  */
 router.get(
-  "/admin/boards/:boardId/role-grants",
+  "/boards/:boardId/role-grants",
   async (c) => {
     await assertPermission(c, "community_board:manage");
     return c.json({ data: await listBoardRoleGrants(c.req.param("boardId")) });
@@ -174,7 +174,7 @@ router.get(
  * 权限：community_board:manage。body：{ can_read?, can_post?, can_moderate? }。
  * 响应：{ data: 更新后的角色授权 }。
  */
-router.put("/admin/boards/:boardId/role-grants/:roleId", async (c) => {
+router.put("/boards/:boardId/role-grants/:roleId", async (c) => {
   await assertPermission(c, "community_board:manage");
   const body = await parseJsonBody<{
     can_read?: boolean;
@@ -193,7 +193,7 @@ router.put("/admin/boards/:boardId/role-grants/:roleId", async (c) => {
  * DELETE /admin/boards/:boardId/role-grants/:roleId — 删除板块角色授权。
  * 权限：community_board:manage。响应：204。
  */
-router.delete("/admin/boards/:boardId/role-grants/:roleId", async (c) => {
+router.delete("/boards/:boardId/role-grants/:roleId", async (c) => {
   await assertPermission(c, "community_board:manage");
   await deleteBoardRoleGrant(c.req.param("boardId"), c.req.param("roleId"));
   return c.body(null, 204);
@@ -204,7 +204,7 @@ router.delete("/admin/boards/:boardId/role-grants/:roleId", async (c) => {
  * 响应：{ data: 举报列表 }。
  */
 router.get(
-  "/admin/reports",
+  "/reports",
   async (c) => {
     const status = c.req.query("status") as
       | "pending"
@@ -225,7 +225,7 @@ router.get(
  * 响应：{ data: 待审核评论列表 }。
  */
 router.get(
-  "/admin/comments/pending",
+  "/comments/pending",
   async (c) =>
     c.json({
       data: await listPendingComments(Number(c.req.query("limit") ?? 50)),
@@ -236,7 +236,7 @@ router.get(
  * 权限：社区审核；涉及封禁/禁言撤销时需更高权限。
  * 响应：{ data: 更新后的举报 }。
  */
-router.post("/admin/reports/:reportId/reopen", async (c) => {
+router.post("/reports/:reportId/reopen", async (c) => {
   const reportId = c.req.param("reportId");
   // 撤销处理若涉及解除封禁或社区禁言，需更高级的社区处罚权限（防止审核员越权解封）
   const target = await getReportTarget(reportId);
@@ -260,7 +260,7 @@ router.post("/admin/reports/:reportId/reopen", async (c) => {
  * body：{ resolution?, action?, scope?, expires_at? }。
  * 响应：{ data: 更新后的举报 }。
  */
-router.post("/admin/reports/:reportId/:status", async (c) => {
+router.post("/reports/:reportId/:status", async (c) => {
   const status = c.req.param("status");
   if (status !== "resolved" && status !== "dismissed") {
     throw new BadRequestError("无效举报状态");
@@ -355,7 +355,7 @@ router.post("/admin/reports/:reportId/:status", async (c) => {
  * 权限：社区审核。body：{ reason? }。
  * 响应：{ data: 更新后的帖子 }。
  */
-router.post("/admin/posts/:postId/:status", async (c) => {
+router.post("/posts/:postId/:status", async (c) => {
   const status = c.req.param("status");
   if (!(MODERATION_STATUSES as readonly string[]).includes(status)) {
     throw new BadRequestError("无效内容状态");
@@ -376,7 +376,7 @@ router.post("/admin/posts/:postId/:status", async (c) => {
  * 权限：社区审核。body：{ reason? }。
  * 响应：{ data: 更新后的评论 }。
  */
-router.post("/admin/comments/:commentId/:status", async (c) => {
+router.post("/comments/:commentId/:status", async (c) => {
   const status = c.req.param("status");
   if (!(MODERATION_STATUSES as readonly string[]).includes(status)) {
     throw new BadRequestError("无效内容状态");
@@ -396,7 +396,7 @@ router.post("/admin/comments/:commentId/:status", async (c) => {
  * 权限：community_moderation:lock。body：{ value? }。
  * 响应：{ data: 更新后的帖子 }。
  */
-router.post("/admin/posts/:postId/:flag", async (c) => {
+router.post("/posts/:postId/:flag", async (c) => {
   // 锁定/置顶：community_moderation:lock
   await assertPermission(c, "community_moderation:lock");
   const flag = c.req.param("flag");
@@ -420,7 +420,7 @@ router.post("/admin/posts/:postId/:flag", async (c) => {
  * 响应：{ data: 社区处罚列表 }。
  */
 router.get(
-  "/admin/sanctions",
+  "/sanctions",
   async (c) => c.json({ data: await listSanctions() }),
 );
 /**
@@ -428,7 +428,7 @@ router.get(
  * 权限：community_moderation:sanction。body：{ user_id, reason, expires_at? }。
  * 响应：201 { data: 新建处罚 }。
  */
-router.post("/admin/sanctions", async (c) => {
+router.post("/sanctions", async (c) => {
   // 社区处罚：community_moderation:sanction
   await assertPermission(c, "community_moderation:sanction");
   const body = await parseJsonBody<
@@ -453,7 +453,7 @@ router.post("/admin/sanctions", async (c) => {
  * 响应：{ data: 撤销后的处罚 }。
  */
 router.delete(
-  "/admin/sanctions/:sanctionId",
+  "/sanctions/:sanctionId",
   async (c) => {
     // 撤销社区处罚：community_moderation:sanction
     await assertPermission(c, "community_moderation:sanction");
@@ -468,7 +468,7 @@ router.delete(
  * 响应：{ data: 处罚历史列表 }。
  */
 router.get(
-  "/admin/users/:userId/sanctions",
+  "/users/:userId/sanctions",
   async (c) => {
     const targetUserId = await resolveUserId(c.req.param("userId") as string);
     return c.json({ data: await listUserSanctions(targetUserId) });
@@ -477,7 +477,7 @@ router.get(
 
 // 审核员读取举报附带的私信图片（审核员非会话参与者，不能走 conversations 图片端点）
 router.get(
-  "/admin/reports/images/:conversationId/:messageId",
+  "/reports/images/:conversationId/:messageId",
   async (c) => {
     const { conversationId, messageId } = c.req.param();
     const { bytes, contentType, etag } = await getReportImageBytes(
@@ -502,7 +502,7 @@ router.get(
  * 响应：{ data, pagination }。
  */
 router.get(
-  "/admin/content-review",
+  "/content-review",
   async (c) => {
     const parsePage = (raw: string | undefined, fallback: number) => {
       const n = Number(raw ?? fallback);
@@ -553,7 +553,7 @@ router.get(
  * GET /admin/content-review/:id — 审查队列详情（附目标内容上下文）。
  * 权限：社区审核。
  */
-router.get("/admin/content-review/:id", async (c) => {
+router.get("/content-review/:id", async (c) => {
   const detail = await getReviewQueueDetail(c.req.param("id"));
   return c.json({
     data: {
@@ -568,7 +568,7 @@ router.get("/admin/content-review/:id", async (c) => {
  * body：{ resolution, action? }（action：record_only / hide_post / hide_comment / dismiss）。
  * 响应：{ data: 更新后的记录 }。
  */
-router.post("/admin/content-review/:id/:status", async (c) => {
+router.post("/content-review/:id/:status", async (c) => {
   const status = c.req.param("status");
   if (status !== "reviewed" && status !== "dismissed") {
     throw new BadRequestError("无效审查状态");

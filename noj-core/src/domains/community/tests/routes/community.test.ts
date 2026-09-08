@@ -249,7 +249,7 @@ Deno.test({
 
     const forbidden = await jsonRequest(
       app,
-      "/api/v1/community/admin/reports",
+      "/api/v1/admin/community/reports",
       {
         token: responderToken,
       },
@@ -546,7 +546,7 @@ Deno.test({
     const userToken = await signToken({ sub: authorId, role: "user" });
     const created = await jsonRequest(
       app,
-      "/api/v1/community/admin/sanctions",
+      "/api/v1/admin/community/sanctions",
       {
         method: "POST",
         token: adminToken,
@@ -554,21 +554,21 @@ Deno.test({
       },
     );
     const sanctionId = (await created.json()).data.id as string;
-    await jsonRequest(app, "/api/v1/community/admin/sanctions", {
+    await jsonRequest(app, "/api/v1/admin/community/sanctions", {
       method: "POST",
       token: adminToken,
       body: { user_id: authorId, reason: "二次禁言", expires_at: null },
     });
     await jsonRequest(
       app,
-      `/api/v1/community/admin/sanctions/${sanctionId}`,
+      `/api/v1/admin/community/sanctions/${sanctionId}`,
       { method: "DELETE", token: adminToken },
     );
 
     // 普通用户 403
     const forbidden = await jsonRequest(
       app,
-      `/api/v1/community/admin/users/${authorId}/sanctions`,
+      `/api/v1/admin/community/users/${authorId}/sanctions`,
       { token: userToken },
     );
     assertEquals(forbidden.status, 403);
@@ -576,7 +576,7 @@ Deno.test({
     // 管理员可见全部记录（含已撤销）
     const history = await jsonRequest(
       app,
-      `/api/v1/community/admin/users/${authorId}/sanctions`,
+      `/api/v1/admin/community/users/${authorId}/sanctions`,
       { token: adminToken },
     );
     const entries = (await history.json()).data as Array<{
@@ -593,7 +593,7 @@ Deno.test({
     // 无处罚用户返回空数组
     const empty = await jsonRequest(
       app,
-      `/api/v1/community/admin/users/${responderId}/sanctions`,
+      `/api/v1/admin/community/users/${responderId}/sanctions`,
       { token: adminToken },
     );
     assertEquals(await empty.json(), { data: [] });
@@ -726,7 +726,7 @@ Deno.test({
     // 普通用户访问待审评论队列 403
     const forbidden = await jsonRequest(
       app,
-      "/api/v1/community/admin/comments/pending",
+      "/api/v1/admin/community/comments/pending",
       { token: responderToken },
     );
     assertEquals(forbidden.status, 403);
@@ -734,7 +734,7 @@ Deno.test({
     // 管理员可见待审评论
     const pending = await jsonRequest(
       app,
-      "/api/v1/community/admin/comments/pending",
+      "/api/v1/admin/community/comments/pending",
       { token: adminToken },
     );
     assertEquals(pending.status, 200);
@@ -749,7 +749,7 @@ Deno.test({
     // 批准后帖子作者收到回复通知
     const approve = await jsonRequest(
       app,
-      `/api/v1/community/admin/comments/${commentId}/published`,
+      `/api/v1/admin/community/comments/${commentId}/published`,
       { method: "POST", token: adminToken, body: { reason: "审核通过" } },
     );
     assertEquals(approve.status, 200);
@@ -862,14 +862,14 @@ Deno.test({
     // 普通用户（无 moderation 权限）访问待审评论队列 → 403
     const forbidden = await jsonRequest(
       app,
-      "/api/v1/community/admin/comments/pending",
+      "/api/v1/admin/community/comments/pending",
       { token: authorToken },
     );
     assertEquals(forbidden.status, 403);
     // 未登录 → 401
     const guest = await jsonRequest(
       app,
-      "/api/v1/community/admin/comments/pending",
+      "/api/v1/admin/community/comments/pending",
     );
     assertEquals(guest.status, 401);
   },
@@ -903,14 +903,14 @@ Deno.test({
     });
     const response = await jsonRequest(
       app,
-      "/api/v1/community/admin/comments/pending",
+      "/api/v1/admin/community/comments/pending",
       { token: responderToken },
     );
     assertEquals(response.status, 200);
     // 板块管理仍需 community_board:manage（审核员无此权限 → 403）
     const boardForbidden = await jsonRequest(
       app,
-      "/api/v1/community/admin/boards",
+      "/api/v1/admin/community/boards",
       { method: "POST", token: responderToken, body: { slug: "x", name: "X" } },
     );
     assertEquals(boardForbidden.status, 403);
