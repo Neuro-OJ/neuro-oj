@@ -269,9 +269,13 @@ async function saveSetting(key: string) {
   saveErrors.value = errors
   try {
     // silent: 错误由下方 catch 内联处理（saveErrors + 保留表单值），避免 useApi 默认 toast 双弹
+    const setting = settings.value.find((x) => x.key === key)
     const res = await api.put<{ data: SystemSetting }>(`/api/v1/admin/system/settings/${key}`, {
       value: drafts.value[key],
-    }, { silent: true })
+    }, {
+      silent: true,
+      headers: setting?.updated_at ? { "If-Match": `"${setting.updated_at}"` } : undefined,
+    })
     applySetting(res.data)
     // 检查是否需要重启生效
     const s = settings.value.find((x) => x.key === key)
@@ -313,7 +317,10 @@ async function confirmReset(s: SystemSetting) {
   saveErrors.value = errors
   try {
     // silent: 错误由下方 catch 内联处理（saveErrors），避免 useApi 默认 toast 双弹
-    await api.delete(`/api/v1/admin/system/settings/${s.key}`, { silent: true })
+    await api.delete(`/api/v1/admin/system/settings/${s.key}`, {
+      silent: true,
+      headers: s.updated_at ? { "If-Match": `"${s.updated_at}"` } : undefined,
+    })
     const res = await api.get<{ data: SystemSetting[] }>("/api/v1/admin/system/settings", { silent: true })
     const updated = res.data.find((item) => item.key === s.key)
     if (updated) applySetting(updated)
@@ -334,7 +341,10 @@ async function cleanupBootstrapRow(s: SystemSetting) {
   resettingKeys.value = new Set(resettingKeys.value).add(s.key)
   try {
     // 幂等：删除被忽略的 DB 残留行，值仍由 .env 决定
-    await api.delete(`/api/v1/admin/system/settings/${s.key}`, { silent: true })
+    await api.delete(`/api/v1/admin/system/settings/${s.key}`, {
+      silent: true,
+      headers: s.updated_at ? { "If-Match": `"${s.updated_at}"` } : undefined,
+    })
     // 刷新整表以更新 db_orphaned 标记
     const res = await api.get<{ data: SystemSetting[] }>("/api/v1/admin/system/settings", { silent: true })
     settings.value = res.data

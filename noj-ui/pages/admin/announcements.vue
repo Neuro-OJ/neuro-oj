@@ -85,7 +85,9 @@ async function handleSave() {
       is_active: formActive.value,
     }
     if (editing.value) {
-      await api.put(`/api/v1/admin/system/announcements/${editing.value.public_id || editing.value.id}`, body)
+      await api.put(`/api/v1/admin/system/announcements/${editing.value.public_id || editing.value.id}`, body, {
+        headers: { "If-Match": `"${editing.value.updated_at}"` },
+      })
     } else {
       await api.post("/api/v1/admin/system/announcements", body)
     }
@@ -115,7 +117,9 @@ async function handleDelete() {
   if (!deleteTarget.value) return
   deleting.value = true
   try {
-    await api.delete(`/api/v1/admin/system/announcements/${deleteTarget.value.public_id || deleteTarget.value.id}`)
+    await api.delete(`/api/v1/admin/system/announcements/${deleteTarget.value.public_id || deleteTarget.value.id}`, {
+      headers: { "If-Match": `"${deleteTarget.value.updated_at}"` },
+    })
     showDeleteConfirm.value = false
     await load(currentPage.value)
   } catch (err: unknown) {

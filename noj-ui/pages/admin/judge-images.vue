@@ -20,6 +20,7 @@ interface JudgeImage {
   mode: string
   description: string
   created_at: string
+  updated_at: string
 }
 
 const { api } = useApi()
@@ -111,6 +112,8 @@ async function handleSave() {
         image: formImage.value.trim(),
         mode: formMode.value,
         description: formDescription.value.trim(),
+      }, {
+        headers: { "If-Match": `"${editingItem.value.updated_at}"` },
       })
     } else {
       await api.post("/api/v1/admin/system/judge-images", {
@@ -143,7 +146,9 @@ async function handleDelete() {
   if (!deleteTarget.value) return
   deleting.value = true
   try {
-    await api.delete(`/api/v1/admin/system/judge-images/${deleteTarget.value.id}`)
+    await api.delete(`/api/v1/admin/system/judge-images/${deleteTarget.value.id}`, {
+      headers: { "If-Match": `"${deleteTarget.value.updated_at}"` },
+    })
     showDeleteConfirm.value = false
     // 服务端重载而非本地 filter，保证与后续分页/刷新状态一致
     await loadItems()

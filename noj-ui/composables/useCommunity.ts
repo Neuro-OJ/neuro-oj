@@ -43,19 +43,54 @@ export interface CommunityPost {
   updated_at: string;
 }
 
-/** 社区举报（来自后端 community_reports 行） */
+/** 社区举报（来自后端 community_reports 行，含关联信息） */
 export interface ReportRow {
-  id: string;
-  reporter_id: string;
-  post_id: string | null;
-  comment_id: string | null;
-  reason: string;
-  content_snapshot: string;
-  status: 'pending' | 'resolved' | 'dismissed';
-  resolution: string | null;
-  resolved_by: string | null;
-  resolved_at: string | null;
-  created_at: string;
+  report: {
+    id: string;
+    reporter_id: string;
+    post_id: string | null;
+    comment_id: string | null;
+    message_id: string | null;
+    content_type: string;
+    category: string;
+    reason: string;
+    content_snapshot: string;
+    status: 'pending' | 'resolved' | 'dismissed';
+    resolution: string | null;
+    resolved_by: string | null;
+    resolved_at: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  reporter: { id: string; username: string; avatar_url?: string | null };
+  reported_author: { id: string; username: string } | null;
+  resolved_by_user: { id: string; username: string } | null;
+  active_sanction: boolean;
+  ban: {
+    id: string;
+    scope: 'platform' | 'social';
+    banned_until: string | null;
+  } | null;
+  post: {
+    id: string;
+    title: string | null;
+    content: string;
+    type: string;
+    author_id: string;
+  } | null;
+  comment: {
+    id: string;
+    content: string;
+    post_id: string;
+    author_id: string;
+  } | null;
+  message: {
+    id: string;
+    content: string;
+    type: string;
+    conversation_id: string;
+    sender_id: string;
+  } | null;
 }
 
 /** 社区帖子列表行 */

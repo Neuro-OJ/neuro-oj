@@ -30,6 +30,7 @@ interface Role {
   parent_id: string | null
   parent_name: string | null
   permissions: string[]
+  updated_at: string
 }
 
 // 按 resource 分组的权限
@@ -153,7 +154,9 @@ async function handleSave() {
       permission_ids: Array.from(editorPermissionIds.value),
     }
     if (editingRole.value) {
-      await api.put(`/api/v1/admin/identity/roles/${editingRole.value.id}`, body)
+      await api.put(`/api/v1/admin/identity/roles/${editingRole.value.id}`, body, {
+        headers: { "If-Match": `"${editingRole.value.updated_at}"` },
+      })
     } else {
       await api.post("/api/v1/admin/identity/roles", body)
     }
@@ -187,7 +190,9 @@ async function confirmDelete(role: Role) {
   deletingId.value = role.id
   deleteError.value = ""
   try {
-    await api.delete(`/api/v1/admin/identity/roles/${role.id}`)
+    await api.delete(`/api/v1/admin/identity/roles/${role.id}`, {
+      headers: { "If-Match": `"${role.updated_at}"` },
+    })
     await loadRoles()
   } catch (err: unknown) {
     deleteError.value = extractApiError(err).message

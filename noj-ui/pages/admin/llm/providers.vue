@@ -117,7 +117,9 @@ async function handleSave() {
         enabled: formEnabled.value,
       }
       if (formApiKey.value.trim()) payload.api_key = formApiKey.value.trim()
-      await api.put(`/api/v1/admin/gateway/llm/providers/${editingItem.value.id}`, payload)
+      await api.put(`/api/v1/admin/gateway/llm/providers/${editingItem.value.id}`, payload, {
+        headers: { "If-Match": `"${editingItem.value.updated_at}"` },
+      })
     } else {
       if (!formApiKey.value.trim()) {
         formError.value = "API Key 为必填"

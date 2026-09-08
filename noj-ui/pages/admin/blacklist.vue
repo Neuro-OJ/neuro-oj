@@ -22,6 +22,7 @@ interface IpBan {
   reason: string
   expires_at: string | null
   created_at: string
+  updated_at: string
   created_by: string | null
 }
 
@@ -90,7 +91,10 @@ async function confirmDelete(item: IpBan) {
   deleting.value = true
   try {
     // silent: 错误由下方 catch 内联处理（toast.error），避免 useApi 默认 toast 双弹
-    await api.delete(`/api/v1/admin/identity/blacklist/${item.id}`, { silent: true })
+    await api.delete(`/api/v1/admin/identity/blacklist/${item.id}`, {
+      silent: true,
+      headers: { "If-Match": `"${item.updated_at}"` },
+    })
     toast.success(`已删除 ${item.ip_or_cidr}`)
     await load()
   } catch (err: unknown) {

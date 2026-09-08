@@ -238,7 +238,9 @@ async function saveContest(payload: ContestPayload) {
       save: async () => {
         contestInfo('保存请求开始', context)
         if (contestId) {
-          await api.put(`/api/v1/admin/contest/contests/${contestId}`, payload)
+          await api.put(`/api/v1/admin/contest/contests/${contestId}`, payload, {
+            headers: editingContest.value?.updated_at ? { "If-Match": `"${editingContest.value.updated_at}"` } : undefined,
+          })
         } else {
           await api.post('/api/v1/admin/contest/contests', payload)
         }
@@ -280,7 +282,10 @@ async function removeContest(contest: Contest) {
   if (!confirmed) return
   try {
     // silent: 错误由下方 catch 内联处理（toast.error），避免 useApi 默认 toast 双弹
-    await api.delete(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}`, { silent: true })
+    await api.delete(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}`, {
+      silent: true,
+      headers: { "If-Match": `"${contest.updated_at}"` },
+    })
     toast.success('竞赛已删除')
     await loadContests(currentPage.value)
   } catch (err: unknown) {
@@ -342,7 +347,10 @@ async function makeContestPublic(contest: Contest) {
   const confirmed = await dialog.confirm(`确定将竞赛“${contest.title}”转为公开赛吗？公开后无需邀请码即可报名。`, { title: '转公开赛', confirmText: '转公开赛' })
   if (!confirmed) return
   try {
-    await api.patch(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}/kind`, { kind: 'public' }, { silent: true })
+    await api.patch(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}/kind`, { kind: 'public' }, {
+      silent: true,
+      headers: { "If-Match": `"${contest.updated_at}"` },
+    })
     toast.success('竞赛已转为公开赛')
     await loadContests(currentPage.value)
   } catch (err: unknown) {
@@ -357,7 +365,10 @@ async function resetContestCode(contest: Contest) {
     const res = await api.post<{ data: { code: string } }>(
       `/api/v1/admin/contest/contests/${contest.public_id || contest.id}/reset-code`,
       undefined,
-      { silent: true },
+      {
+        silent: true,
+        headers: { "If-Match": `"${contest.updated_at}"` },
+      },
     )
     try {
       await navigator.clipboard.writeText(res.data.code)

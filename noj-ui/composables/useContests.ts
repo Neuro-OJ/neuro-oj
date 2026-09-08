@@ -30,6 +30,7 @@ export interface Contest {
   status: ContestStatus;
   problem_count: number;
   participant_count: number;
+  updated_at: string;
   is_registered?: boolean;
 }
 

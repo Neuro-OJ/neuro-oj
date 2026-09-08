@@ -16,12 +16,14 @@ function onSaved() {
 
 <template>
   <div class="flex flex-col gap-4 max-w-[800px]">
-    <NuxtLink to="/admin/problems" class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary">
-      <UIcon name="i-lucide-arrow-left" class="size-4" />
-      返回题目列表
-    </NuxtLink>
-
-    <h1 class="text-22px font-bold text-text m-0">编辑题目</h1>
+    <AdminPageHeader title="编辑题目" description="编辑现有题目">
+      <template #breadcrumb>
+        <NuxtLink to="/admin/problems" class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary">
+          <UIcon name="i-lucide-arrow-left" class="size-4" />
+          返回题目列表
+        </NuxtLink>
+      </template>
+    </AdminPageHeader>
 
     <CodingProblemEditor mode="edit" :problem-id="problemId" @saved="onSaved" />
   </div>

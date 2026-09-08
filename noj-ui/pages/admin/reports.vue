@@ -64,6 +64,7 @@ interface ReportRow {
     resolved_by: string | null
     resolved_at: string | null
     created_at: string
+    updated_at: string
   }
   reporter: ReportUser
   reported_author: ReportUser | null
@@ -186,7 +187,9 @@ async function submitProcess() {
       body.scope = processScope.value
     }
     body.resolution = processReason.value.trim() || undefined
-    await api.post(`/api/v1/admin/community/reports/${target.report.id}/resolved`, body)
+    await api.post(`/api/v1/admin/community/reports/${target.report.id}/resolved`, body, {
+      headers: { "If-Match": `"${target.report.updated_at}"` },
+    })
     toast.success(isBan ? "已封禁" : "已移除内容")
     showProcess.value = false
     await load("pending")
@@ -207,7 +210,9 @@ async function dismissReport(row: ReportRow) {
   if (reason === null) return
   processingId.value = row.report.id
   try {
-    await api.post(`/api/v1/admin/community/reports/${row.report.id}/dismissed`, { resolution: reason })
+    await api.post(`/api/v1/admin/community/reports/${row.report.id}/dismissed`, { resolution: reason }, {
+      headers: { "If-Match": `"${row.report.updated_at}"` },
+    })
     toast.success("已驳回")
     await load("pending")
     await load("dismissed")
@@ -228,7 +233,9 @@ async function reopenReport(row: ReportRow) {
   if (!ok) return
   processingId.value = row.report.id
   try {
-    await api.post(`/api/v1/admin/community/reports/${row.report.id}/reopen`)
+    await api.post(`/api/v1/admin/community/reports/${row.report.id}/reopen`, undefined, {
+      headers: { "If-Match": `"${row.report.updated_at}"` },
+    })
     toast.success("已撤销，举报回到待处理")
     await load("pending")
     await load("resolved")
@@ -243,10 +250,7 @@ await Promise.all([load("pending"), load("resolved"), load("dismissed")])
 
 <template>
   <div>
-    <div class="mb-6 flex items-center gap-2">
-      <UIcon name="i-lucide-flag" class="size-5" />
-      <h1 class="text-2xl font-bold">举报管理</h1>
-    </div>
+    <AdminPageHeader title="举报管理" description="处理社区举报工单" icon="i-lucide-flag" />
 
     <!-- 三板块 Tab -->
     <div class="mb-6 flex gap-2 border-b border-border">

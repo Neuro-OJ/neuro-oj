@@ -24,7 +24,7 @@ interface User {
   is_admin: boolean
   role_ids: string[]
   /** user-ban-table：活跃封禁信息 */
-  active_ban: { reason: string; banned_until: string | null; scope?: "platform" | "social" | null } | null
+  active_ban: { reason: string; banned_until: string | null; scope?: "platform" | "social" | null; updated_at?: string | null } | null
   created_at: string
   updated_at: string
   deleted_at?: string | null
@@ -173,7 +173,9 @@ async function confirmUnban(user: User) {
   if (!ok) return
   banning.value = true
   try {
-    await api.patch(`/api/v1/admin/identity/users/${user.username}/unban`)
+    await api.patch(`/api/v1/admin/identity/users/${user.username}/unban`, undefined, {
+      headers: user.active_ban?.updated_at ? { "If-Match": `"${user.active_ban.updated_at}"` } : undefined,
+    })
     toast.success(`已解封 ${user.username}`)
   } catch {
     banning.value = false

@@ -17,18 +17,24 @@ const columns: AdminColumn[] = [
 ]
 
 async function setVisibility(training: Training, visibility: TrainingVisibility) {
-  await adminUpdateTraining(training.id, { visibility })
+  await adminUpdateTraining(training.id, { visibility }, {
+    headers: { "If-Match": `"${training.updated_at}"` },
+  })
   await refresh()
 }
 
 async function togglePinned(training: Training) {
-  await adminUpdateTraining(training.id, { is_pinned: !training.is_pinned })
+  await adminUpdateTraining(training.id, { is_pinned: !training.is_pinned }, {
+    headers: { "If-Match": `"${training.updated_at}"` },
+  })
   await refresh()
 }
 
-async function remove(id: string) {
+async function remove(training: Training) {
   if (!confirm('确定删除该题单？')) return
-  await adminDeleteTraining(id)
+  await adminDeleteTraining(training.id, {
+    headers: { "If-Match": `"${training.updated_at}"` },
+  })
   await refresh()
 }
 </script>
@@ -73,7 +79,7 @@ async function remove(id: string) {
           size="xs"
           color="error"
           variant="ghost"
-          @click="remove((row as unknown as Training).id)"
+          @click="remove(row as unknown as Training)"
         />
       </template>
     </AdminTable>

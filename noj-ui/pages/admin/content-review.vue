@@ -267,10 +267,7 @@ watch(activeTab, () => switchTab(activeTab.value), { immediate: true })
 
 <template>
   <div>
-    <div class="mb-6 flex items-center gap-2">
-      <UIcon name="i-lucide-shield-alert" class="size-5" />
-      <h1 class="text-2xl font-bold">内容审查</h1>
-    </div>
+    <AdminPageHeader title="内容审查" description="统一人工审查 UGC 与私信内容" icon="i-lucide-shield-alert" />
 
     <!-- 状态 Tab -->
     <div class="mb-4 flex flex-wrap gap-2 border-b border-border">
