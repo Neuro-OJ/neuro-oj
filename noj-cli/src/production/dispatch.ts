@@ -10,7 +10,12 @@ import {
   prodStatus,
   prodStop,
 } from "./lifecycle.ts";
-import { prodInstall, prodUninstall, prodUpdate } from "./install.ts";
+import {
+  prodInstall,
+  prodInstallEnv,
+  prodUninstall,
+  prodUpdate,
+} from "./install.ts";
 import {
   prodBackupCreate,
   prodBackupDrill,
@@ -72,15 +77,27 @@ export async function dispatchProdAlias(
         { ...base, follow: hasFlag(args, "--follow") },
         runner,
       );
+    case "install-env":
+      return await prodInstallEnv({ ...base, dir }, runner);
     case "install":
       return await prodInstall(
-        { ...base, dir, nonInteractive: hasFlag(args, "--non-interactive") },
+        {
+          ...base,
+          dir,
+          nonInteractive: hasFlag(args, "--non-interactive"),
+          downloadOnly: hasFlag(args, "--download-only"),
+        },
         runner,
       );
     case "update":
     case "upgrade":
       return await prodUpdate(
-        { ...base, dir, version: optionValue(args, "--version") },
+        {
+          ...base,
+          dir,
+          version: optionValue(args, "--version"),
+          latest: hasFlag(args, "--latest"),
+        },
         runner,
       );
     case "uninstall":

@@ -20,6 +20,37 @@ function timestamp(): string {
   return new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
 }
 
+async function sha256File(file: string): Promise<string> {
+  const data = await Deno.readFile(file);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function writeSha256Sums(snapshot: string): Promise<void> {
+  const lines: string[] = [];
+  for await (const entry of Deno.readDir(snapshot)) {
+    if (!entry.isFile || entry.name === "sha256sums.txt") continue;
+    const file = `${snapshot}/${entry.name}`;
+    lines.push(`${await sha256File(file)}  ${entry.name}`);
+  }
+  lines.sort();
+  Deno.writeTextFileSync(`${snapshot}/sha256sums.txt`, lines.join("\n") + "\n");
+}
+
+function pruneOldSnapshots(backupDir: string, retentionDays: number): void {
+  const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+  for (const entry of Deno.readDirSync(backupDir)) {
+    if (!entry.isDirectory || !entry.name.startsWith("snapshot-")) continue;
+    const full = `${backupDir}/${entry.name}`;
+    const stat = Deno.statSync(full);
+    if (stat.mtime !== null && stat.mtime.getTime() < cutoff) {
+      Deno.removeSync(full, { recursive: true });
+    }
+  }
+}
+
 export async function prodBackupCreate(
   opts: ProdBackupOptions,
   runner?: CommandRunner,
@@ -84,8 +115,9 @@ export async function prodBackupCreate(
     JSON.stringify({ created_at: new Date().toISOString() }, null, 2),
   );
   Deno.writeTextFileSync(`${snapshot}/SUCCESS`, "success\n");
-  Deno.writeTextFileSync(`${snapshot}/sha256sums.txt`, "");
-  // 简化：真实实现应递归写文件 SHA-256，这里留空。
+  await writeSha256Sums(snapshot);
+  Deno.chmodSync(snapshot, 0o700);
+  pruneOldSnapshots(opts.backupDir, opts.retentionDays ?? 30);
   return snapshot;
 }
 

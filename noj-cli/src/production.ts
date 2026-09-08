@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "@std/path";
 /** 兼容现有 .env.prod 生产部署；JSON 部署继续使用 deploy/maintain 子命令。 */
 export const PRODUCTION_COMMANDS = new Set([
   "install",
+  "install-env",
   "check",
   "start",
   "stop",

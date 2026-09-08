@@ -29,7 +29,7 @@ import {
 import { maintainReset } from "./maintain/reset.ts";
 import { realDriver } from "./maintain/backup_driver.ts";
 import { runServerForeground } from "./runtime/process.ts";
-import { PRODUCTION_COMMANDS, runProduction } from "./production.ts";
+import { PRODUCTION_COMMANDS } from "./production.ts";
 import { alertDrill } from "./observability/alert_drill.ts";
 import { observabilityCheck } from "./observability/check.ts";
 import { realHttp } from "./observability/http.ts";
@@ -75,6 +75,7 @@ export function printHelp(): string {
     "",
     "命令:",
     "  install       生产安装（.env.prod + Docker Compose；以下命令支持 --dir）",
+    "  install-env   检查生产环境并输出安装准备指引",
     "  check         生产环境检测",
     "  start/stop/restart/status  生产服务生命周期",
     "  update [--latest]  同步部署文件、备份并升级生产服务（upgrade 为别名）",
@@ -327,8 +328,10 @@ export async function dispatchCommand(
   ctx: CommandContext,
 ): Promise<number> {
   if (PRODUCTION_COMMANDS.has(command)) {
-    // Phase 4 过渡：check 仍走脚本兜底，其余生产命令走 Deno 统一分发。
-    if (command === "check") return await runProduction(command, args);
+    // check 复用 doctor 环境检测（已 Deno 化）。
+    if (command === "check") {
+      return await dispatchCommand("doctor", args, ctx);
+    }
     return await dispatchProdAlias(command, args, { cwd: ctx.cwd });
   }
   switch (command) {
