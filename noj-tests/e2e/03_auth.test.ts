@@ -22,7 +22,7 @@ let adminRoleId = "";
 /** 获取角色 ID（通过 /admin/roles API） */
 async function ensureRoleIds(): Promise<void> {
   if (adminRoleId) return;
-  const res = await apiGet("/api/v1/admin/roles", adminToken);
+  const res = await apiGet("/api/v1/admin/identity/roles", adminToken);
   const roles =
     (res.body as { data: Array<{ id: string; name: string }> }).data ?? [];
   const admin = roles.find((r) => r.name === "admin");
@@ -47,7 +47,7 @@ e2eTest("[e2e/auth] Setup", async () => {
 
 e2eTest("[e2e/auth] 3.1 非管理员 promote 被拒", async () => {
     if (!isE2E) return;
-    const { status } = await apiPatch("/api/v1/admin/users/some-id/role", {
+    const { status } = await apiPatch("/api/v1/admin/identity/users/some-id/role", {
       role_ids: ["some-id"],
     }, regularToken);
     if (status !== 403) throw new Error("期望 403, 实际 " + status);
@@ -57,7 +57,7 @@ e2eTest("[e2e/auth] 3.1 非管理员 promote 被拒", async () => {
 e2eTest("[e2e/auth] 3.2 缺少 role_ids 字段", async () => {
     if (!isE2E) return;
     const { status } = await apiPatch(
-      "/api/v1/admin/users/some-id/role",
+      "/api/v1/admin/identity/users/some-id/role",
       {},
       adminToken,
     );
@@ -69,7 +69,7 @@ e2eTest("[e2e/auth] 3.3 非法角色 ID", async () => {
     if (!isE2E) return;
     // 使用有效的用户查询来区分 404(用户不存在) vs 400(role_ids 无效)
     const { status } = await apiPatch(
-      "/api/v1/admin/users/" + regularUserId + "/role",
+      "/api/v1/admin/identity/users/" + regularUserId + "/role",
       {
         role_ids: ["00000000-0000-0000-0000-000000000000"],
       },
@@ -82,7 +82,7 @@ e2eTest("[e2e/auth] 3.3 非法角色 ID", async () => {
 e2eTest("[e2e/auth] 3.4 提升不存在的用户", async () => {
     if (!isE2E) return;
     const { status } = await apiPatch(
-      "/api/v1/admin/users/nonexistent-id/role",
+      "/api/v1/admin/identity/users/nonexistent-id/role",
       { role_ids: [adminRoleId || "00000000-0000-0000-0000-000000000000"] },
       adminToken,
     );
@@ -93,7 +93,7 @@ e2eTest("[e2e/auth] 3.4 提升不存在的用户", async () => {
 e2eTest("[e2e/auth] 3.5 管理员提升用户成功", async () => {
     if (!isE2E) return;
     const { status } = await apiPatch(
-      "/api/v1/admin/users/" + regularUserId + "/role",
+      "/api/v1/admin/identity/users/" + regularUserId + "/role",
       { role_ids: [adminRoleId] },
       adminToken,
     );

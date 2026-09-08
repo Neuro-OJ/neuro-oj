@@ -114,7 +114,7 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
   }
 
   const patched = await apiPatch(
-    `/api/v1/admin/trainings/${trainingId}`,
+    `/api/v1/admin/catalog/trainings/${trainingId}`,
     { visibility: "public", is_pinned: true },
     adminToken,
   );

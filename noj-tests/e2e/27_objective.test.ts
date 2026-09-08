@@ -277,7 +277,7 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
   if (!isE2E) return;
   // 3.1 管理员创建 Kaggle 竞赛并挂入套卷
   const now = Date.now();
-  const contestRes = await apiPost("/api/v1/admin/contests", {
+  const contestRes = await apiPost("/api/v1/admin/contest/contests", {
     title: `E2E 客观题竞赛 ${testSuffix}`,
     start_time: new Date(now - 60 * 60 * 1000).toISOString(),
     end_time: new Date(now + 60 * 60 * 1000).toISOString(),

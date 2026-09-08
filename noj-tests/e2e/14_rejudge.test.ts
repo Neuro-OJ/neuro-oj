@@ -75,7 +75,7 @@ e2eTest("[e2e/rejudge] Setup", async () => {
 e2eTest("[e2e/rejudge] 5.1 管理员单条重测完成提交", async () => {
   if (!isE2E || !judgeOk) return;
   const rejudgeRes = await apiPost(
-    `/api/v1/admin/submissions/${submissionId}/rejudge`,
+    `/api/v1/admin/submission/submissions/${submissionId}/rejudge`,
     {},
     adminToken,
   );
@@ -113,7 +113,7 @@ e2eTest("[e2e/rejudge] 5.1 管理员单条重测完成提交", async () => {
 e2eTest("[e2e/rejudge] 5.2a 不存在的提交返回 404", async () => {
   if (!isE2E || !judgeOk) return;
   const res = await apiPost(
-    "/api/v1/admin/submissions/00000000-0000-0000-0000-000000000000/rejudge",
+    "/api/v1/admin/submission/submissions/00000000-0000-0000-0000-000000000000/rejudge",
     {},
     adminToken,
   );
@@ -126,7 +126,7 @@ e2eTest("[e2e/rejudge] 5.2a 不存在的提交返回 404", async () => {
 e2eTest("[e2e/rejudge] 5.2b 非管理员重测被拒 403", async () => {
   if (!isE2E || !judgeOk) return;
   const res = await apiPost(
-    `/api/v1/admin/submissions/${submissionId}/rejudge`,
+    `/api/v1/admin/submission/submissions/${submissionId}/rejudge`,
     {},
     userToken,
   );
@@ -141,7 +141,7 @@ e2eTest("[e2e/rejudge] 5.2b 非管理员重测被拒 403", async () => {
 e2eTest("[e2e/rejudge] 5.3a 批量重测返回正确结构", async () => {
   if (!isE2E || !judgeOk) return;
   const res = await apiPost(
-    `/api/v1/admin/problems/${PROBLEM_ID}/rejudge`,
+    `/api/v1/admin/catalog/problems/${PROBLEM_ID}/rejudge`,
     {},
     adminToken,
   );
@@ -169,7 +169,7 @@ e2eTest("[e2e/rejudge] 5.3a 批量重测返回正确结构", async () => {
 e2eTest("[e2e/rejudge] 5.3b 重测在审计日志中有记录", async () => {
   if (!isE2E || !judgeOk) return;
   const logs = await apiGet(
-    "/api/v1/admin/audit-logs?action=submissions.rejudge",
+    "/api/v1/admin/system/audit-logs?action=submissions.rejudge",
     adminToken,
   );
   const data =

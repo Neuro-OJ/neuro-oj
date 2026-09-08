@@ -48,7 +48,7 @@ e2eTest("[e2e/guard] Setup", async () => {
 
 e2eTest("[e2e/guard] 1.1 非白名单 API 返回 403 PASSWORD_CHANGE_REQUIRED", async () => {
     if (!isE2E) return;
-    const { status, body } = await apiGet("/api/v1/admin/users", flagToken);
+    const { status, body } = await apiGet("/api/v1/admin/identity/users", flagToken);
     if (status !== 403) throw new Error("期望 403, 实际 " + status);
     const b = body as { code?: string };
     if (b.code !== "PASSWORD_CHANGE_REQUIRED") {

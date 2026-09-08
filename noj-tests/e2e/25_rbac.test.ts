@@ -35,7 +35,7 @@ e2eTest("rbac-e2e: 管理员可获取角色列表", async () => {
   // 用管理员身份（seed 时创建）
   const adminToken = await getAdminToken();
 
-  const rolesRes = await api("GET", "/api/v1/admin/roles", {
+  const rolesRes = await api("GET", "/api/v1/admin/identity/roles", {
     token: adminToken,
   });
   const rolesBody = rolesRes.body as {
@@ -63,7 +63,7 @@ e2eTest("rbac-e2e: 管理员可获取角色列表", async () => {
 e2eTest("rbac-e2e: 管理员可获取权限列表", async () => {
   const adminToken = await getAdminToken();
 
-  const permRes = await api("GET", "/api/v1/admin/permissions", {
+  const permRes = await api("GET", "/api/v1/admin/identity/permissions", {
     token: adminToken,
   });
 
@@ -77,7 +77,7 @@ e2eTest("rbac-e2e: 管理员可创建自定义角色", async () => {
 
   // 创建自定义角色
   const ts = Date.now();
-  const createRes = await api("POST", "/api/v1/admin/roles", {
+  const createRes = await api("POST", "/api/v1/admin/identity/roles", {
     token: adminToken,
     body: {
       name: `e2e-moderator-${ts}`,
@@ -105,7 +105,7 @@ e2eTest("rbac-e2e: 普通用户无法访问管理 API", async () => {
     "TestPass1234",
   );
 
-  const rolesRes = await api("GET", "/api/v1/admin/roles", { token });
+  const rolesRes = await api("GET", "/api/v1/admin/identity/roles", { token });
 
   if (rolesRes.status !== 403 && rolesRes.status !== 401) {
     throw new Error(

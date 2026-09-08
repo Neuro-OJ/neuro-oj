@@ -58,14 +58,14 @@ e2eTest("[e2e/submissions] 4.3 非法 status 400", async () => {
 
 e2eTest("[e2e/submissions] 4.4 admin 列表无 token 401", async () => {
     if (!isE2E) return;
-    const { status } = await apiGet("/api/v1/admin/submissions");
+    const { status } = await apiGet("/api/v1/admin/submission/submissions");
     if (status !== 401) throw new Error("期望 401");
     console.log("  ✓ admin 列表无 token 401");
   });
 
 e2eTest("[e2e/submissions] 4.5 普通用户 admin 列表 403", async () => {
     if (!isE2E) return;
-    const { status, body } = await apiGet("/api/v1/admin/submissions", token);
+    const { status, body } = await apiGet("/api/v1/admin/submission/submissions", token);
     if (status !== 403) throw new Error("期望 403");
     const d = body as { error: string };
     if (d.error !== "需要管理员权限") throw new Error("错误信息不匹配");
@@ -75,7 +75,7 @@ e2eTest("[e2e/submissions] 4.5 普通用户 admin 列表 403", async () => {
 e2eTest("[e2e/submissions] 4.6 admin 空列表", async () => {
     if (!isE2E) return;
     const adminT = await getAdminToken();
-    const { status, body } = await apiGet("/api/v1/admin/submissions", adminT);
+    const { status, body } = await apiGet("/api/v1/admin/submission/submissions", adminT);
     if (status !== 200) throw new Error("期望 200");
     const d = body as { data: unknown[]; pagination: { total: number } };
     if (!Array.isArray(d.data)) throw new Error("data 应数组");
