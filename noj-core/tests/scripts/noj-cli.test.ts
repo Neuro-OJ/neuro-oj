@@ -64,6 +64,18 @@ Deno.test("noj problems import --help 包含 --dir 默认值", async () => {
   assertEquals(stdout.includes("--dir"), true);
 });
 
+Deno.test("noj db migrate --help 包含命令说明", async () => {
+  const { code, stdout } = await runCli(["db", "migrate", "--help"]);
+  assertEquals(code, 0);
+  assertEquals(stdout.includes("执行数据库迁移"), true);
+});
+
+Deno.test("noj init system --help 包含命令说明", async () => {
+  const { code, stdout } = await runCli(["init", "system", "--help"]);
+  assertEquals(code, 0);
+  assertEquals(stdout.includes("初始化系统基础数据"), true);
+});
+
 Deno.test("noj 未知命令返回非零退出码", async () => {
   const { code, stderr } = await runCli(["nonexistent"]);
   assertEquals(code !== 0, true);
