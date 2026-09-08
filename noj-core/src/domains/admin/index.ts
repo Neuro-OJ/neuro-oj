@@ -21,7 +21,7 @@ import { queryAdminRouter } from "../query/routes/index.ts";
 import contestAdminRouter from "./routes/contest.ts";
 import systemAdminRouter from "./routes/system.ts";
 import communityAdminRouter from "./routes/community.ts";
-import { gatewayAdminRouter } from "../gateway/routes/index.ts";
+import gatewayAdminRouter from "./routes/gateway.ts";
 
 const router = new Hono<AuthEnv>();
 
@@ -47,6 +47,6 @@ router.route("/", queryAdminRouter);
 router.route("/contest", contestAdminRouter);
 router.route("/system", systemAdminRouter);
 router.route("/community", communityAdminRouter);
-router.route("/", gatewayAdminRouter);
+router.route("/gateway", gatewayAdminRouter);
 
 export default router;

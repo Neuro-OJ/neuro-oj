@@ -16,7 +16,7 @@ import {
   queryLlmUsage,
   updateLlmProvider,
   upsertLlmQuota,
-} from "../services/llm.ts";
+} from "../../gateway/services/llm.ts";
 
 /**
  * 管理端 LLM Gateway 路由（挂载前缀 /api/v1/admin）。
