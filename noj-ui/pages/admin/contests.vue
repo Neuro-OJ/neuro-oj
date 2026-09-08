@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-
 import { extractApiError, isNetworkError } from '~/utils/apiError'
+import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 import type {
   AdminContestDetail,
   AdminProblemOption,
@@ -67,15 +66,15 @@ const settlementAllowFailed = ref(false)
 const pollInterval = ref<number | null>(30000)
 const lastRefresh = ref<Date | null>(null)
 
-const columns: TableColumn<Contest>[] = [
-  { accessorKey: 'title', header: '竞赛' },
-  { accessorKey: 'type', header: '赛制', cell: (info) => typeLabels.value[info.getValue() as Contest['type']] },
-  { accessorKey: 'status', header: '状态' },
-  { accessorKey: 'start_time', header: '开始时间', cell: (info) => formatDateTime(info.getValue() as string) },
-  { accessorKey: 'participant_count', header: '参赛者' },
-  { accessorKey: 'problem_count', header: '题目' },
-
-  { accessorKey: "actions", header: "操作" },]
+const columns: AdminColumn[] = [
+  { key: 'title', label: '竞赛' },
+  { key: 'type', label: '赛制' },
+  { key: 'status', label: '状态' },
+  { key: 'start_time', label: '开始时间' },
+  { key: 'participant_count', label: '参赛者' },
+  { key: 'problem_count', label: '题目' },
+  { key: 'actions', label: '操作' },
+]
 
 function contestInfo(message: string, details?: unknown) {
   if (!import.meta.dev) return
@@ -487,16 +486,48 @@ async function removeParticipant(participant: Participant) {
       </template>
     </AdminPageHeader>
 
-    <div v-if="loadError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ loadError }}</span></div>
-    <UTable :columns="columns" :data="contests" :loading="loading" :empty="'暂无竞赛'">
-      <template #title-cell="{ row }"><div><div class="font-semibold text-text">{{ row.original.title }}</div><div class="mt-1 text-xs text-text-muted">{{ row.original.kind === 'invite' ? '邀请赛' : '公开赛' }}<span v-if="row.original.has_password"> · {{ row.original.kind === 'invite' ? '邀请码保护' : '密码保护' }}</span></div></div></template>
-      <template #status-cell="{ row }"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold" :class="statusClass(row.original.status)">{{ statusLabels[row.original.status] }}</span></template>
-      <template #participant_count-cell="{ row }"><span>{{ row.original.participant_count }} 人</span></template>
-      <template #problem_count-cell="{ row }"><span>{{ row.original.problem_count }} 题</span></template>
-      <template #actions-cell="{ row }"><div class="flex justify-center gap-1.5"><UButton color="neutral" variant="outline" class="flex size-9" title="检查结算并发布正式成绩" aria-label="检查结算并发布正式成绩" @click="openSettlement(row.original)"><UIcon name="i-lucide-lock-keyhole" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9" title="导出正式成绩" aria-label="导出正式成绩" @click="exportSnapshot(row.original)"><UIcon name="i-lucide-download" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-amber-50 hover:text-amber-700" title="风控线索" aria-label="风控线索" @click="openAntiCheat(row.original)"><UIcon name="i-lucide-shield-alert" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-blue-50 hover:text-primary" title="参与者" aria-label="参与者" @click="openParticipants(row.original)"><UIcon name="i-lucide-users" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" :loading="editingId === row.original.id" :disabled="editingId !== null" @click="openEdit(row.original)"><UIcon name="i-lucide-pencil" class="size-3.5" /></UButton><UButton v-if="row.original.kind === 'invite'" color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-green-50 hover:text-success-text" title="转公开赛" aria-label="转公开赛" @click="makeContestPublic(row.original)"><UIcon name="i-lucide-globe" class="size-3.5" /></UButton><UButton v-if="row.original.kind === 'invite'" color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-blue-50 hover:text-primary" title="重置邀请码" aria-label="重置邀请码" @click="resetContestCode(row.original)"><UIcon name="i-lucide-key-round" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:border-error-text/30 hover:bg-red-50 hover:text-error-text" title="删除" aria-label="删除" @click="removeContest(row.original)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></UButton></div></template>
-    </UTable>
-
-    <PaginationNav :current-page="currentPage" :total-pages="totalPages" @page-change="loadContests" />
+    <AdminTable
+      :columns="columns"
+      :items="contests as unknown as Record<string, unknown>[]"
+      :loading="loading"
+      :error="loadError || undefined"
+      :total-pages="totalPages"
+      :current-page="currentPage"
+      @update:page="loadContests"
+    >
+      <template #cell="{ row, column }">
+        <template v-if="column.key === 'title'">
+          <div><div class="font-semibold text-text">{{ (row as unknown as Contest).title }}</div><div class="mt-1 text-xs text-text-muted">{{ (row as unknown as Contest).kind === 'invite' ? '邀请赛' : '公开赛' }}<span v-if="(row as unknown as Contest).has_password"> · {{ (row as unknown as Contest).kind === 'invite' ? '邀请码保护' : '密码保护' }}</span></div></div>
+        </template>
+        <template v-else-if="column.key === 'type'">
+          {{ typeLabels.value[(row as unknown as Contest).type] }}
+        </template>
+        <template v-else-if="column.key === 'status'">
+          <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold" :class="statusClass((row as unknown as Contest).status)">{{ statusLabels[(row as unknown as Contest).status] }}</span>
+        </template>
+        <template v-else-if="column.key === 'start_time'">
+          {{ formatDateTime((row as unknown as Contest).start_time) }}
+        </template>
+        <template v-else-if="column.key === 'participant_count'">
+          <span>{{ (row as unknown as Contest).participant_count }} 人</span>
+        </template>
+        <template v-else-if="column.key === 'problem_count'">
+          <span>{{ (row as unknown as Contest).problem_count }} 题</span>
+        </template>
+      </template>
+      <template #actions="{ row }">
+        <div class="flex justify-center gap-1.5">
+          <UButton color="neutral" variant="outline" class="flex size-9" title="检查结算并发布正式成绩" aria-label="检查结算并发布正式成绩" @click="openSettlement(row as unknown as Contest)"><UIcon name="i-lucide-lock-keyhole" class="size-3.5" /></UButton>
+          <UButton color="neutral" variant="outline" class="flex size-9" title="导出正式成绩" aria-label="导出正式成绩" @click="exportSnapshot(row as unknown as Contest)"><UIcon name="i-lucide-download" class="size-3.5" /></UButton>
+          <UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-amber-50 hover:text-amber-700" title="风控线索" aria-label="风控线索" @click="openAntiCheat(row as unknown as Contest)"><UIcon name="i-lucide-shield-alert" class="size-3.5" /></UButton>
+          <UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-blue-50 hover:text-primary" title="参与者" aria-label="参与者" @click="openParticipants(row as unknown as Contest)"><UIcon name="i-lucide-users" class="size-3.5" /></UButton>
+          <UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" :loading="editingId === (row as unknown as Contest).id" :disabled="editingId !== null" @click="openEdit(row as unknown as Contest)"><UIcon name="i-lucide-pencil" class="size-3.5" /></UButton>
+          <UButton v-if="(row as unknown as Contest).kind === 'invite'" color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-green-50 hover:text-success-text" title="转公开赛" aria-label="转公开赛" @click="makeContestPublic(row as unknown as Contest)"><UIcon name="i-lucide-globe" class="size-3.5" /></UButton>
+          <UButton v-if="(row as unknown as Contest).kind === 'invite'" color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-blue-50 hover:text-primary" title="重置邀请码" aria-label="重置邀请码" @click="resetContestCode(row as unknown as Contest)"><UIcon name="i-lucide-key-round" class="size-3.5" /></UButton>
+          <UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:border-error-text/30 hover:bg-red-50 hover:text-error-text" title="删除" aria-label="删除" @click="removeContest(row as unknown as Contest)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></UButton>
+        </div>
+      </template>
+    </AdminTable>
   </div>
 
   <div v-if="settlementContest" class="fixed inset-0 z-300 flex items-center justify-center bg-black/45 p-4" @click.self="settlementContest = null">
