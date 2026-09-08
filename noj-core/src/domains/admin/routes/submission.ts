@@ -8,10 +8,13 @@ import {
   rejudgeProblemSubmissions,
   rejudgeSubmission,
   resolveSubmissionId,
-} from "../services/submissions/submissions.ts";
-import { getQueueHealth, removePendingSubmission } from "../services/queue.ts";
+} from "../../submission/services/submissions/submissions.ts";
+import {
+  getQueueHealth,
+  removePendingSubmission,
+} from "../../submission/services/queue.ts";
 import { resolveProblem } from "./../../catalog/index.ts";
-import { SUBMISSION_STATUSES } from "../types/index.ts";
+import { SUBMISSION_STATUSES } from "../../submission/types/index.ts";
 
 /**
  * 管理端提交管理路由（挂载前缀 /api/v1/admin，见 admin/index.ts）。

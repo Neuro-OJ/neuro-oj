@@ -294,51 +294,8 @@ Deno.test({
 // ─── 提交详情 ────────────────────────────────────────────
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/submissions/:id 未登录返回 401",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/submissions/some-id");
-    assertEquals(res.status, 401);
-  },
-});
-
-Deno.test({
-  name: "admin route: GET /api/v1/admin/submissions/:id 非管理员返回 403",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/admin/submissions/some-id", {
-      token,
-    });
-    assertEquals(res.status, 403);
-  },
-});
-
-Deno.test({
-  name: "admin route: DELETE /api/v1/admin/submissions/:id 非管理员返回 403",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/admin/submissions/some-id", {
-      method: "DELETE",
-      token,
-    });
-    assertEquals(res.status, 403);
-  },
-});
-
-Deno.test({
   name:
-    "admin route: DELETE /api/v1/admin/queue/submissions/:id 未登录返回 401",
+    "admin route: GET /api/v1/admin/submission/submissions/:id 未登录返回 401",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -346,7 +303,64 @@ Deno.test({
     const app = createApp();
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/queue/submissions/some-id",
+      "/api/v1/admin/submission/submissions/some-id",
+    );
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: GET /api/v1/admin/submission/submissions/:id 非管理员返回 403",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/submissions/some-id",
+      {
+        token,
+      },
+    );
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: DELETE /api/v1/admin/submission/submissions/:id 非管理员返回 403",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/submissions/some-id",
+      {
+        method: "DELETE",
+        token,
+      },
+    );
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: DELETE /api/v1/admin/submission/queue/submissions/:id 未登录返回 401",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/queue/submissions/some-id",
       { method: "DELETE" },
     );
     assertEquals(res.status, 401);
@@ -355,7 +369,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: DELETE /api/v1/admin/queue/submissions/:id 非管理员返回 403",
+    "admin route: DELETE /api/v1/admin/submission/queue/submissions/:id 非管理员返回 403",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -364,7 +378,7 @@ Deno.test({
     const token = await createUserToken();
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/queue/submissions/some-id",
+      "/api/v1/admin/submission/queue/submissions/some-id",
       { method: "DELETE", token },
     );
     assertEquals(res.status, 403);
@@ -795,7 +809,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: DELETE /api/v1/admin/submissions/:id 管理员真删除",
+  name:
+    "admin route: DELETE /api/v1/admin/submission/submissions/:id 管理员真删除",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -859,7 +874,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      `/api/v1/admin/submissions/${submissionId}`,
+      `/api/v1/admin/submission/submissions/${submissionId}`,
       { method: "DELETE", token },
     );
     assertEquals(res.status, 204);
@@ -876,7 +891,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: DELETE /api/v1/admin/submissions/:missing-id 返回 404",
+  name:
+    "admin route: DELETE /api/v1/admin/submission/submissions/:missing-id 返回 404",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -886,7 +902,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/submissions/00000000-0000-0000-0000-000000000000",
+      "/api/v1/admin/submission/submissions/00000000-0000-0000-0000-000000000000",
       { method: "DELETE", token },
     );
     assertEquals(res.status, 404);
@@ -897,7 +913,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: POST /api/v1/admin/submissions/:id/rejudge 未登录返回 401",
+    "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 未登录返回 401",
   ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -905,7 +921,7 @@ Deno.test({
     const app = createApp();
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/submissions/some-id/rejudge",
+      "/api/v1/admin/submission/submissions/some-id/rejudge",
       { method: "POST" },
     );
     assertEquals(res.status, 401);
@@ -914,7 +930,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: POST /api/v1/admin/submissions/:id/rejudge 非管理员返回 403",
+    "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 非管理员返回 403",
   ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -923,7 +939,7 @@ Deno.test({
     const token = await createUserToken();
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/submissions/some-id/rejudge",
+      "/api/v1/admin/submission/submissions/some-id/rejudge",
       {
         method: "POST",
         token,
@@ -935,7 +951,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: POST /api/v1/admin/submissions/:id/rejudge 不存在的提交返回 404",
+    "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 不存在的提交返回 404",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -945,7 +961,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/submissions/00000000-0000-0000-0000-000000000000/rejudge",
+      "/api/v1/admin/submission/submissions/00000000-0000-0000-0000-000000000000/rejudge",
       {
         method: "POST",
         token,
@@ -956,7 +972,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: POST /api/v1/admin/problems/:id/rejudge 未登录返回 401",
+  name:
+    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 未登录返回 401",
   ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -964,7 +981,7 @@ Deno.test({
     const app = createApp();
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/problems/some-id/rejudge",
+      "/api/v1/admin/submission/problems/some-id/rejudge",
       { method: "POST" },
     );
     assertEquals(res.status, 401);
@@ -972,7 +989,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: POST /api/v1/admin/problems/:id/rejudge 非管理员返回 403",
+  name:
+    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 非管理员返回 403",
   ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -981,7 +999,7 @@ Deno.test({
     const token = await createUserToken();
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/problems/some-id/rejudge",
+      "/api/v1/admin/submission/problems/some-id/rejudge",
       {
         method: "POST",
         token,
@@ -993,7 +1011,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: POST /api/v1/admin/problems/:id/rejudge 不存在的题目返回 404",
+    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 不存在的题目返回 404",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -1003,7 +1021,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/problems/00000000-0000-0000-0000-000000000000/rejudge",
+      "/api/v1/admin/submission/problems/00000000-0000-0000-0000-000000000000/rejudge",
       {
         method: "POST",
         token,
@@ -1016,7 +1034,8 @@ Deno.test({
 // ─── 重测业务路径 ─────────────────────────────────────
 
 Deno.test({
-  name: "admin route: POST /api/v1/admin/problems/:id/rejudge 有活跃提交时拒绝",
+  name:
+    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 有活跃提交时拒绝",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -1074,7 +1093,7 @@ Deno.test({
 
     const res = await jsonRequest(
       app,
-      `/api/v1/admin/problems/${problemId}/rejudge`,
+      `/api/v1/admin/submission/problems/${problemId}/rejudge`,
       { method: "POST", token },
     );
     assertEquals(res.status, 400);
@@ -1087,7 +1106,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: POST /api/v1/admin/submissions/:id/rejudge 评测中时拒绝",
+  name:
+    "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 评测中时拒绝",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -1142,7 +1162,7 @@ Deno.test({
 
     const res = await jsonRequest(
       app,
-      `/api/v1/admin/submissions/${submissionId}/rejudge`,
+      `/api/v1/admin/submission/submissions/${submissionId}/rejudge`,
       { method: "POST", token },
     );
     assertEquals(res.status, 400);
@@ -1158,7 +1178,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: POST /api/v1/admin/problems/:id/rejudge 无已完结提交返回空",
+    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 无已完结提交返回空",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -1199,7 +1219,7 @@ Deno.test({
 
     const res = await jsonRequest(
       app,
-      `/api/v1/admin/problems/${problemId}/rejudge`,
+      `/api/v1/admin/submission/problems/${problemId}/rejudge`,
       { method: "POST", token },
     );
     assertEquals(res.status, 200);

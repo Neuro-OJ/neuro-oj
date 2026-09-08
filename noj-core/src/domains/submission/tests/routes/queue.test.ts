@@ -42,32 +42,39 @@ Deno.test({
 });
 
 Deno.test({
-  name: "queue route: GET /api/v1/admin/queue/health 无 token 返回 401",
+  name:
+    "queue route: GET /api/v1/admin/submission/queue/health 无 token 返回 401",
   ignore: skip,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/queue/health");
+    const res = await jsonRequest(app, "/api/v1/admin/submission/queue/health");
     assertEquals(res.status, 401);
   },
 });
 
 Deno.test({
-  name: "queue route: GET /api/v1/admin/queue/health 非管理员返回 403",
+  name:
+    "queue route: GET /api/v1/admin/submission/queue/health 非管理员返回 403",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/admin/queue/health", {
-      token,
-    });
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/queue/health",
+      {
+        token,
+      },
+    );
     assertEquals(res.status, 403);
   },
 });
 
 Deno.test({
-  name: "queue route: GET /api/v1/admin/queue/health 管理员返回 200 且结构完整",
+  name:
+    "queue route: GET /api/v1/admin/submission/queue/health 管理员返回 200 且结构完整",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -77,9 +84,13 @@ Deno.test({
 
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await jsonRequest(app, "/api/v1/admin/queue/health", {
-      token,
-    });
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/submission/queue/health",
+      {
+        token,
+      },
+    );
     assertEquals(res.status, 200);
 
     const body = await res.json();

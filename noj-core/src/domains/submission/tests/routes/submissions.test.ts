@@ -179,22 +179,26 @@ Deno.test({
 // ── 管理员提交列表 ──
 
 Deno.test({
-  name: "admin submissions: GET /api/v1/admin/submissions 无 token 返回 401",
+  name:
+    "admin submissions: GET /api/v1/admin/submission/submissions 无 token 返回 401",
   ignore: !hasEnv,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/submissions");
+    const res = await jsonRequest(app, "/api/v1/admin/submission/submissions");
     assertEquals(res.status, 401);
   },
 });
 
 Deno.test({
-  name: "admin submissions: GET /api/v1/admin/submissions 普通用户返回 403",
+  name:
+    "admin submissions: GET /api/v1/admin/submission/submissions 普通用户返回 403",
   ignore: skip,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/admin/submissions", { token });
+    const res = await jsonRequest(app, "/api/v1/admin/submission/submissions", {
+      token,
+    });
     assertEquals(res.status, 403);
     const body = await res.json();
     assertEquals(body.error, "需要管理员权限");
@@ -202,14 +206,17 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin submissions: GET /api/v1/admin/submissions 管理员查看所有提交",
+  name:
+    "admin submissions: GET /api/v1/admin/submission/submissions 管理员查看所有提交",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await jsonRequest(app, "/api/v1/admin/submissions", { token });
+    const res = await jsonRequest(app, "/api/v1/admin/submission/submissions", {
+      token,
+    });
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(Array.isArray(body.data), true);
@@ -218,7 +225,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin submissions: GET /api/v1/admin/submissions 按 user_id 筛选",
+  name:
+    "admin submissions: GET /api/v1/admin/submission/submissions 按 user_id 筛选",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -227,7 +235,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/submissions?user_id=nonexistent-user",
+      "/api/v1/admin/submission/submissions?user_id=nonexistent-user",
       { token },
     );
     assertEquals(res.status, 200);
