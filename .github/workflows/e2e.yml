@@ -371,6 +371,14 @@ jobs:
       - name: 启用 sccache（Rust 编译缓存）
         uses: mozilla/sccache-action@v0.0.11
 
+      - name: 缓存 sccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/sccache
+          key: judge-sccache-${{ hashFiles('noj-judge/Cargo.lock', 'noj-judge/rust-toolchain.toml') }}
+          restore-keys: |
+            judge-sccache-
+
       - name: 缓存 Cargo 依赖
         uses: actions/cache@v4
         with:
