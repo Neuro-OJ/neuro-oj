@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AuthEnv } from "./../../identity/index.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { adminAudit } from "../services/admin-audit.ts";
+import { adminVersionMiddleware } from "../middleware/admin-version.ts";
 import {
   BadRequestError,
   NotFoundError,
@@ -81,17 +82,24 @@ router.post("/llm/providers", async (c) => {
  * body: Partial<LlmProviderInput>（部分更新）
  * 响应：`{ data: LlmProviderView }`。
  */
-router.put("/llm/providers/:id", async (c) => {
-  const id = c.req.param("id") as string;
-  const body = await parseJsonBody<Partial<LlmProviderInput>>(c);
-  const data = await updateLlmProvider(id, body);
-  await adminAudit(
-    "llm_provider.update",
-    { action: "llm_provider.update", id, name: body.name },
-    { type: "llm_provider", id },
-  );
-  return c.json({ data });
-});
+router.put(
+  "/llm/providers/:id",
+  adminVersionMiddleware(async (c) => {
+    const id = c.req.param("id") as string;
+    return (await listLlmProviders()).find((p) => p.id === id)?.updated_at;
+  }),
+  async (c) => {
+    const id = c.req.param("id") as string;
+    const body = await parseJsonBody<Partial<LlmProviderInput>>(c);
+    const data = await updateLlmProvider(id, body);
+    await adminAudit(
+      "llm_provider.update",
+      { action: "llm_provider.update", id, name: body.name },
+      { type: "llm_provider", id },
+    );
+    return c.json({ data });
+  },
+);
 
 /**
  * 查询 LLM 用量记录。

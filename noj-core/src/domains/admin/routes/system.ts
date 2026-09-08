@@ -116,20 +116,36 @@ router.post("/announcements", async (c) => {
   return c.json({ data: item }, 201);
 });
 
-router.put("/announcements/:id", async (c) => {
-  await assertPermission(c, "announcement:manage");
-  const id = await resolveAnnouncementId(c.req.param("id") as string);
-  const body = await parseJsonBody<UpdateAnnouncementInput>(c);
-  const item = await updateAnnouncement(id, body);
-  return c.json({ data: item });
-});
+router.put(
+  "/announcements/:id",
+  adminVersionMiddleware(async (c) => {
+    const id = await resolveAnnouncementId(c.req.param("id") as string);
+    const res = await listAdminAnnouncements(1, 100, undefined);
+    return res.data.find((a) => a.id === id)?.updated_at;
+  }),
+  async (c) => {
+    await assertPermission(c, "announcement:manage");
+    const id = await resolveAnnouncementId(c.req.param("id") as string);
+    const body = await parseJsonBody<UpdateAnnouncementInput>(c);
+    const item = await updateAnnouncement(id, body);
+    return c.json({ data: item });
+  },
+);
 
-router.delete("/announcements/:id", async (c) => {
-  await assertPermission(c, "announcement:manage");
-  const id = await resolveAnnouncementId(c.req.param("id") as string);
-  await deleteAnnouncement(id);
-  return c.body(null, 204);
-});
+router.delete(
+  "/announcements/:id",
+  adminVersionMiddleware(async (c) => {
+    const id = await resolveAnnouncementId(c.req.param("id") as string);
+    const res = await listAdminAnnouncements(1, 100, undefined);
+    return res.data.find((a) => a.id === id)?.updated_at;
+  }),
+  async (c) => {
+    await assertPermission(c, "announcement:manage");
+    const id = await resolveAnnouncementId(c.req.param("id") as string);
+    await deleteAnnouncement(id);
+    return c.body(null, 204);
+  },
+);
 
 // ── 审计日志（只读） ──────────────────────────────────────────────────────
 router.get("/audit-logs", async (c) => {
@@ -304,6 +320,10 @@ router.post(
 
 router.put(
   "/judge-images/:id",
+  adminVersionMiddleware(async (c) => {
+    const id = c.req.param("id") as string;
+    return (await listJudgeImages()).find((i) => i.id === id)?.updated_at;
+  }),
   auditRoute(
     {
       action: "judge_images.update",
@@ -334,6 +354,10 @@ router.put(
 
 router.delete(
   "/judge-images/:id",
+  adminVersionMiddleware(async (c) => {
+    const id = c.req.param("id") as string;
+    return (await listJudgeImages()).find((i) => i.id === id)?.updated_at;
+  }),
   auditRoute(
     {
       action: "judge_images.delete",

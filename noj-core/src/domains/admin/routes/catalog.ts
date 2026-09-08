@@ -39,6 +39,7 @@ import {
 import { validateJudgeImageWithKind } from "../../system/index.ts";
 import {
   deleteTraining,
+  getTraining,
   listAllTrainings,
   resolveTrainingId,
   updateTraining,
@@ -46,6 +47,7 @@ import {
 import type { UpdateTrainingInput } from "../../catalog/types/trainings.ts";
 import { withAudit } from "../services/admin-audit.ts";
 import type { AuditMeta } from "../types/admin-audit.ts";
+import { adminVersionMiddleware } from "../middleware/admin-version.ts";
 
 /** 路由层审计用的临时请求体缓存（withAudit 在 handler 返回后才构建 detail）。 */
 const auditBodies = new WeakMap<object, unknown>();
@@ -401,6 +403,10 @@ router.get("/trainings", async (c) => {
  */
 router.patch(
   "/trainings/:id",
+  adminVersionMiddleware(async (c) => {
+    const id = await resolveTrainingId(c.req.param("id") as string);
+    return (await getTraining(id)).updated_at;
+  }),
   auditRoute(
     {
       action: "trainings.update",
@@ -461,6 +467,10 @@ router.patch(
  */
 router.delete(
   "/trainings/:id",
+  adminVersionMiddleware(async (c) => {
+    const id = await resolveTrainingId(c.req.param("id") as string);
+    return (await getTraining(id)).updated_at;
+  }),
   auditRoute(
     {
       action: "trainings.delete",

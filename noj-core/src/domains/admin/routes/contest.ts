@@ -53,6 +53,7 @@ import {
 import { assertPermission } from "../../identity/index.ts";
 import { withAudit } from "../services/admin-audit.ts";
 import type { AuditMeta } from "../types/admin-audit.ts";
+import { adminVersionMiddleware } from "../middleware/admin-version.ts";
 
 /** 路由层审计用的临时请求体缓存（withAudit 在 handler 返回后才构建 detail）。 */
 const auditBodies = new WeakMap<object, unknown>();
@@ -167,6 +168,10 @@ router.post(
  */
 router.put(
   "/contests/:id",
+  adminVersionMiddleware(async (c) => {
+    const id = await resolveContestId(c.req.param("id") as string);
+    return (await getContest(id)).updated_at;
+  }),
   auditRoute(
     {
       action: "contest.update",
@@ -210,6 +215,10 @@ router.put(
  */
 router.delete(
   "/contests/:id",
+  adminVersionMiddleware(async (c) => {
+    const id = await resolveContestId(c.req.param("id") as string);
+    return (await getContest(id)).updated_at;
+  }),
   auditRoute(
     {
       action: "contest.delete",
@@ -331,6 +340,10 @@ router.delete(
  */
 router.patch(
   "/contests/:id/kind",
+  adminVersionMiddleware(async (c) => {
+    const id = await resolveContestId(c.req.param("id") as string);
+    return (await getContest(id)).updated_at;
+  }),
   auditRoute(
     {
       action: "contest.kind_change",
@@ -372,6 +385,10 @@ router.patch(
  */
 router.post(
   "/contests/:id/reset-code",
+  adminVersionMiddleware(async (c) => {
+    const id = await resolveContestId(c.req.param("id") as string);
+    return (await getContest(id)).updated_at;
+  }),
   auditRoute(
     {
       action: "contest.reset_code",

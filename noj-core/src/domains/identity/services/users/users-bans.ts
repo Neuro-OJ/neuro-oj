@@ -217,6 +217,7 @@ export interface BanRecord {
   scope: "platform" | "social";
   banned_until: string | null;
   banned_at: string;
+  updated_at: string;
   banned_by: { id: string; username: string } | null;
   unbanned_at: string | null;
   unbanned_by: { id: string; username: string } | null;
@@ -244,6 +245,7 @@ export async function getUserBanHistory(
       scope: userBans.scope,
       banned_until: userBans.banned_until,
       banned_at: userBans.banned_at,
+      updated_at: userBans.updated_at,
       banned_by_id: userBans.banned_by,
       banned_by_username: users.username,
       unbanned_at: userBans.unbanned_at,
@@ -262,6 +264,7 @@ export async function getUserBanHistory(
     scope: r.scope === "social" ? "social" : "platform",
     banned_until: r.banned_until,
     banned_at: r.banned_at,
+    updated_at: r.updated_at,
     banned_by: r.banned_by_id
       ? { id: r.banned_by_id, username: r.banned_by_username ?? "" }
       : null,

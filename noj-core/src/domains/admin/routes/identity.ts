@@ -15,12 +15,15 @@
  */
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { eq } from "drizzle-orm";
 import type { AuthEnv } from "../../identity/middleware/auth.ts";
 import { parseJsonBody } from "../../../shared/http/request.ts";
 import {
   BadRequestError,
   ValidationError,
 } from "../../../shared/base/errors.ts";
+import { getDb } from "../../../shared/db/connection.ts";
+import { users } from "../../../shared/db/schema.ts";
 import { listUsers } from "../../identity/services/auth.ts";
 import {
   adminUpdateUserProfile,
@@ -45,6 +48,7 @@ import {
 } from "../../identity/services/banlist.ts";
 import { withAudit } from "../services/admin-audit.ts";
 import type { AuditMeta } from "../types/admin-audit.ts";
+import { adminVersionMiddleware } from "../middleware/admin-version.ts";
 
 /** 路由层审计用的临时请求体缓存（withAudit 在 handler 返回后才构建 detail）。 */
 const auditBodies = new WeakMap<object, unknown>();
@@ -139,26 +143,37 @@ router.patch(
  * 管理员编辑用户资料。
  * PUT /api/v1/admin/identity/users/:id
  */
-router.put("/users/:id", async (c) => {
-  const body = await parseJsonBody<{ email?: string; bio?: string }>(c);
+router.put(
+  "/users/:id",
+  adminVersionMiddleware(async (c) => {
+    const targetUserId = await resolveUserId(c.req.param("id")! as string);
+    const rows = await getDb().select({ updated_at: users.updated_at })
+      .from(users)
+      .where(eq(users.id, targetUserId))
+      .limit(1);
+    return rows[0]?.updated_at;
+  }),
+  async (c) => {
+    const body = await parseJsonBody<{ email?: string; bio?: string }>(c);
 
-  if (body.email === undefined && body.bio === undefined) {
-    throw new BadRequestError("至少需要提供一个可更新字段（email 或 bio）");
-  }
+    if (body.email === undefined && body.bio === undefined) {
+      throw new BadRequestError("至少需要提供一个可更新字段（email 或 bio）");
+    }
 
-  if (
-    body.email !== undefined &&
-    !/^(?!\.)(?!.*\.\.)[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(
-      body.email,
-    )
-  ) {
-    throw new BadRequestError("邮箱格式不正确");
-  }
+    if (
+      body.email !== undefined &&
+      !/^(?!\.)(?!.*\.\.)[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(
+        body.email,
+      )
+    ) {
+      throw new BadRequestError("邮箱格式不正确");
+    }
 
-  const targetUserId = await resolveUserId(c.req.param("id")! as string);
-  const user = await adminUpdateUserProfile(targetUserId, body);
-  return c.json({ data: user }, 200);
-});
+    const targetUserId = await resolveUserId(c.req.param("id")! as string);
+    const user = await adminUpdateUserProfile(targetUserId, body);
+    return c.json({ data: user }, 200);
+  },
+);
 
 /**
  * 管理员封禁用户。
@@ -186,11 +201,19 @@ router.patch("/users/:id/ban", async (c) => {
  * 管理员解封用户。
  * PATCH /api/v1/admin/identity/users/:id/unban
  */
-router.patch("/users/:id/unban", async (c) => {
-  const targetUserId = await resolveUserId(c.req.param("id")! as string);
-  const user = await unbanUser(targetUserId, c.get("userId"));
-  return c.json({ data: user }, 200);
-});
+router.patch(
+  "/users/:id/unban",
+  adminVersionMiddleware(async (c) => {
+    const targetUserId = await resolveUserId(c.req.param("id")! as string);
+    const records = await getUserBanHistory(targetUserId);
+    return records.find((r) => !r.unbanned_at)?.updated_at;
+  }),
+  async (c) => {
+    const targetUserId = await resolveUserId(c.req.param("id")! as string);
+    const user = await unbanUser(targetUserId, c.get("userId"));
+    return c.json({ data: user }, 200);
+  },
+);
 
 /**
  * 获取用户封禁历史（user-ban-table）。
@@ -270,6 +293,10 @@ router.post(
  */
 router.put(
   "/roles/:id",
+  adminVersionMiddleware(async (c) => {
+    const id = c.req.param("id")! as string;
+    return (await listRoles()).find((r) => r.id === id)?.updated_at;
+  }),
   auditRoute(
     {
       action: "roles.update",
@@ -304,6 +331,10 @@ router.put(
  */
 router.delete(
   "/roles/:id",
+  adminVersionMiddleware(async (c) => {
+    const id = c.req.param("id")! as string;
+    return (await listRoles()).find((r) => r.id === id)?.updated_at;
+  }),
   auditRoute(
     {
       action: "roles.delete",
@@ -368,10 +399,18 @@ router.post("/blacklist", async (c) => {
  * 管理员删除 IP 黑名单条目。
  * DELETE /api/v1/admin/identity/blacklist/:id
  */
-router.delete("/blacklist/:id", async (c) => {
-  const id = c.req.param("id")! as string;
-  await removeIpBan(id, c.get("userId"));
-  return c.body(null, 204);
-});
+router.delete(
+  "/blacklist/:id",
+  adminVersionMiddleware(async (c) => {
+    const id = c.req.param("id")! as string;
+    const res = await listIpBans({ page: 1, perPage: 100 });
+    return res.data.find((b) => b.id === id)?.updated_at;
+  }),
+  async (c) => {
+    const id = c.req.param("id")! as string;
+    await removeIpBan(id, c.get("userId"));
+    return c.body(null, 204);
+  },
+);
 
 export default router;

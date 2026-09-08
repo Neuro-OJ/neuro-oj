@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import type { Next } from "hono";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { adminAudit } from "../services/admin-audit.ts";
+import { adminVersionMiddleware } from "../middleware/admin-version.ts";
+import { listBoards } from "../../community/services/community/community-boards.ts";
 import {
   BadRequestError,
   ForbiddenError,
@@ -154,6 +156,10 @@ router.post("/boards", async (c) => {
  */
 router.patch(
   "/boards/:boardId",
+  adminVersionMiddleware(async (c) => {
+    const boardId = c.req.param("boardId");
+    return (await listBoards(true)).find((b) => b.id === boardId)?.updated_at;
+  }),
   async (c) => {
     // 板块管理：community_board:manage
     await assertPermission(c, "community_board:manage");
@@ -184,47 +190,61 @@ router.get(
  * 权限：community_board:manage。body：{ can_read?, can_post?, can_moderate? }。
  * 响应：{ data: 更新后的角色授权 }。
  */
-router.put("/boards/:boardId/role-grants/:roleId", async (c) => {
-  await assertPermission(c, "community_board:manage");
-  const body = await parseJsonBody<{
-    can_read?: boolean;
-    can_post?: boolean;
-    can_moderate?: boolean;
-  }>(c);
-  const boardId = c.req.param("boardId");
-  const roleId = c.req.param("roleId");
-  const data = await updateBoardRoleGrant(boardId, roleId, body);
-  await adminAudit(
-    "community.board_role_grant_update",
-    {
-      action: "community.board_role_grant_update",
-      board_id: boardId,
-      role_id: roleId,
-    },
-    { type: "community_board", id: boardId },
-  );
-  return c.json({ data });
-});
+router.put(
+  "/boards/:boardId/role-grants/:roleId",
+  adminVersionMiddleware(async (c) => {
+    const boardId = c.req.param("boardId");
+    return (await listBoards(true)).find((b) => b.id === boardId)?.updated_at;
+  }),
+  async (c) => {
+    await assertPermission(c, "community_board:manage");
+    const body = await parseJsonBody<{
+      can_read?: boolean;
+      can_post?: boolean;
+      can_moderate?: boolean;
+    }>(c);
+    const boardId = c.req.param("boardId");
+    const roleId = c.req.param("roleId");
+    const data = await updateBoardRoleGrant(boardId, roleId, body);
+    await adminAudit(
+      "community.board_role_grant_update",
+      {
+        action: "community.board_role_grant_update",
+        board_id: boardId,
+        role_id: roleId,
+      },
+      { type: "community_board", id: boardId },
+    );
+    return c.json({ data });
+  },
+);
 /**
  * DELETE /admin/boards/:boardId/role-grants/:roleId — 删除板块角色授权。
  * 权限：community_board:manage。响应：204。
  */
-router.delete("/boards/:boardId/role-grants/:roleId", async (c) => {
-  await assertPermission(c, "community_board:manage");
-  const boardId = c.req.param("boardId");
-  const roleId = c.req.param("roleId");
-  await deleteBoardRoleGrant(boardId, roleId);
-  await adminAudit(
-    "community.board_role_grant_delete",
-    {
-      action: "community.board_role_grant_delete",
-      board_id: boardId,
-      role_id: roleId,
-    },
-    { type: "community_board", id: boardId },
-  );
-  return c.body(null, 204);
-});
+router.delete(
+  "/boards/:boardId/role-grants/:roleId",
+  adminVersionMiddleware(async (c) => {
+    const boardId = c.req.param("boardId");
+    return (await listBoards(true)).find((b) => b.id === boardId)?.updated_at;
+  }),
+  async (c) => {
+    await assertPermission(c, "community_board:manage");
+    const boardId = c.req.param("boardId");
+    const roleId = c.req.param("roleId");
+    await deleteBoardRoleGrant(boardId, roleId);
+    await adminAudit(
+      "community.board_role_grant_delete",
+      {
+        action: "community.board_role_grant_delete",
+        board_id: boardId,
+        role_id: roleId,
+      },
+      { type: "community_board", id: boardId },
+    );
+    return c.body(null, 204);
+  },
+);
 /**
  * GET /admin/reports — 列出举报工单。
  * 权限：社区审核。query：status（pending/resolved/dismissed/all，默认 pending）。
@@ -263,120 +283,134 @@ router.get(
  * 权限：社区审核；涉及封禁/禁言撤销时需更高权限。
  * 响应：{ data: 更新后的举报 }。
  */
-router.post("/reports/:reportId/reopen", async (c) => {
-  const reportId = c.req.param("reportId");
-  // 撤销处理若涉及解除封禁或社区禁言，需更高级的社区处罚权限（防止审核员越权解封）
-  const target = await getReportTarget(reportId);
-  if (target.report.ban_id || target.report.sanction_id) {
-    await assertPermission(c, "community_moderation:sanction");
-  }
-  // 若撤销的是 platform 级封禁（限制登录/评测），仅管理员（admin:full_access）可操作
-  if (target.report.ban_id) {
-    const ban = await getReportBanScope(reportId);
-    if (ban === "platform") {
-      await assertPermission(c, "admin:full_access");
+router.post(
+  "/reports/:reportId/reopen",
+  adminVersionMiddleware(async (c) => {
+    const reportId = c.req.param("reportId")!;
+    return (await getReportTarget(reportId)).report.updated_at;
+  }),
+  async (c) => {
+    const reportId = c.req.param("reportId");
+    // 撤销处理若涉及解除封禁或社区禁言，需更高级的社区处罚权限（防止审核员越权解封）
+    const target = await getReportTarget(reportId);
+    if (target.report.ban_id || target.report.sanction_id) {
+      await assertPermission(c, "community_moderation:sanction");
     }
-  }
-  return c.json({
-    data: await reopenReport(reportId),
-  });
-});
+    // 若撤销的是 platform 级封禁（限制登录/评测），仅管理员（admin:full_access）可操作
+    if (target.report.ban_id) {
+      const ban = await getReportBanScope(reportId);
+      if (ban === "platform") {
+        await assertPermission(c, "admin:full_access");
+      }
+    }
+    return c.json({
+      data: await reopenReport(reportId),
+    });
+  },
+);
 /**
  * POST /admin/reports/:reportId/:status — 处理或驳回举报。
  * 权限：社区审核；封禁需 community_moderation:sanction，平台级封禁需 admin:full_access。
  * body：{ resolution?, action?, scope?, expires_at? }。
  * 响应：{ data: 更新后的举报 }。
  */
-router.post("/reports/:reportId/:status", async (c) => {
-  const status = c.req.param("status");
-  if (status !== "resolved" && status !== "dismissed") {
-    throw new BadRequestError("无效举报状态");
-  }
-  const body = await parseJsonBody<{
-    resolution?: string;
-    action?: "remove_content" | "ban";
-    scope?: "platform" | "social";
-    expires_at?: string;
-  }>(c);
-  const reportId = c.req.param("reportId");
-  const actorId = userId(c);
+router.post(
+  "/reports/:reportId/:status",
+  adminVersionMiddleware(async (c) => {
+    const reportId = c.req.param("reportId")!;
+    return (await getReportTarget(reportId)).report.updated_at;
+  }),
+  async (c) => {
+    const status = c.req.param("status");
+    if (status !== "resolved" && status !== "dismissed") {
+      throw new BadRequestError("无效举报状态");
+    }
+    const body = await parseJsonBody<{
+      resolution?: string;
+      action?: "remove_content" | "ban";
+      scope?: "platform" | "social";
+      expires_at?: string;
+    }>(c);
+    const reportId = c.req.param("reportId");
+    const actorId = userId(c);
 
-  // 驳回：仅标记，不处理内容/用户
-  if (status === "dismissed") {
+    // 驳回：仅标记，不处理内容/用户
+    if (status === "dismissed") {
+      return c.json({
+        data: await resolveReport(
+          reportId,
+          actorId,
+          "dismissed",
+          body.resolution,
+        ),
+      });
+    }
+
+    // 处理（resolved）：被处罚用户必须从举报目标派生，不允许客户端指定任意用户（越权封禁）
+    const target = await getReportTarget(reportId);
+    const targetUserId = target.post?.author_id ?? target.comment?.author_id ??
+      target.message?.sender_id;
+    if (!targetUserId) throw new BadRequestError("举报目标用户不存在");
+
+    // 审核员不能借举报流程对管理员/其他审核员施加社交封禁（需 admin:full_access）
+    if (body.action === "ban" && body.scope !== "platform") {
+      const targetPerms = await getUserPermissions(targetUserId);
+      const targetIsPrivileged = targetPerms.has("admin:full_access") ||
+        targetPerms.has("community_moderation:review");
+      if (
+        targetIsPrivileged && !(await checkPermission(c, "admin:full_access"))
+      ) {
+        throw new ForbiddenError("无权对管理员/审核员执行社交封禁");
+      }
+    }
+
+    let banId: string | undefined;
+    if (body.action === "ban") {
+      // 封禁属于更高级别权限（社区处罚 / 管理员）
+      await assertPermission(c, "community_moderation:sanction");
+      // 平台级封禁（限制登录/评测）超出社区处罚本意，仅允许管理员（admin:full_access）
+      if (body.scope === "platform") {
+        await assertPermission(c, "admin:full_access");
+      }
+      // 防止封禁降级：若目标用户已有 platform 活跃封禁，social 封禁会覆盖并降级，需管理员处理
+      if (body.scope !== "platform") {
+        const existing = await getUserBanState(targetUserId);
+        if (existing.banned && existing.scope === "platform") {
+          throw new BadRequestError(
+            "该用户已被平台级封禁，如需调整请使用管理员封禁功能",
+          );
+        }
+      }
+      const created = await banUser(
+        targetUserId,
+        body.resolution || "因举报被处罚",
+        body.expires_at || null,
+        actorId,
+        body.scope ?? "social",
+      );
+      banId = created.active_ban
+        ? await getLatestActiveBanId(targetUserId)
+        : undefined;
+    } else {
+      // 默认移除内容：隐藏帖子或评论；私信消息无公开内容可隐藏，仅记录处理
+      const reason = body.resolution || "被举报隐藏";
+      if (target.post) {
+        await changePostStatus(target.post.id, actorId, "hidden", reason);
+      } else if (target.comment) {
+        await changeCommentStatus(target.comment.id, actorId, "hidden", reason);
+      }
+    }
     return c.json({
       data: await resolveReport(
         reportId,
         actorId,
-        "dismissed",
-        body.resolution,
+        "resolved",
+        body.resolution || (body.action === "ban" ? "已封禁" : "已移除内容"),
+        banId,
       ),
     });
-  }
-
-  // 处理（resolved）：被处罚用户必须从举报目标派生，不允许客户端指定任意用户（越权封禁）
-  const target = await getReportTarget(reportId);
-  const targetUserId = target.post?.author_id ?? target.comment?.author_id ??
-    target.message?.sender_id;
-  if (!targetUserId) throw new BadRequestError("举报目标用户不存在");
-
-  // 审核员不能借举报流程对管理员/其他审核员施加社交封禁（需 admin:full_access）
-  if (body.action === "ban" && body.scope !== "platform") {
-    const targetPerms = await getUserPermissions(targetUserId);
-    const targetIsPrivileged = targetPerms.has("admin:full_access") ||
-      targetPerms.has("community_moderation:review");
-    if (
-      targetIsPrivileged && !(await checkPermission(c, "admin:full_access"))
-    ) {
-      throw new ForbiddenError("无权对管理员/审核员执行社交封禁");
-    }
-  }
-
-  let banId: string | undefined;
-  if (body.action === "ban") {
-    // 封禁属于更高级别权限（社区处罚 / 管理员）
-    await assertPermission(c, "community_moderation:sanction");
-    // 平台级封禁（限制登录/评测）超出社区处罚本意，仅允许管理员（admin:full_access）
-    if (body.scope === "platform") {
-      await assertPermission(c, "admin:full_access");
-    }
-    // 防止封禁降级：若目标用户已有 platform 活跃封禁，social 封禁会覆盖并降级，需管理员处理
-    if (body.scope !== "platform") {
-      const existing = await getUserBanState(targetUserId);
-      if (existing.banned && existing.scope === "platform") {
-        throw new BadRequestError(
-          "该用户已被平台级封禁，如需调整请使用管理员封禁功能",
-        );
-      }
-    }
-    const created = await banUser(
-      targetUserId,
-      body.resolution || "因举报被处罚",
-      body.expires_at || null,
-      actorId,
-      body.scope ?? "social",
-    );
-    banId = created.active_ban
-      ? await getLatestActiveBanId(targetUserId)
-      : undefined;
-  } else {
-    // 默认移除内容：隐藏帖子或评论；私信消息无公开内容可隐藏，仅记录处理
-    const reason = body.resolution || "被举报隐藏";
-    if (target.post) {
-      await changePostStatus(target.post.id, actorId, "hidden", reason);
-    } else if (target.comment) {
-      await changeCommentStatus(target.comment.id, actorId, "hidden", reason);
-    }
-  }
-  return c.json({
-    data: await resolveReport(
-      reportId,
-      actorId,
-      "resolved",
-      body.resolution || (body.action === "ban" ? "已封禁" : "已移除内容"),
-      banId,
-    ),
-  });
-});
+  },
+);
 /**
  * POST /admin/posts/:postId/:status — 变更帖子状态（published/hidden/deleted）。
  * 权限：社区审核。body：{ reason? }。
@@ -485,6 +519,10 @@ router.post("/sanctions", async (c) => {
  */
 router.delete(
   "/sanctions/:sanctionId",
+  adminVersionMiddleware(async (c) => {
+    const sanctionId = c.req.param("sanctionId");
+    return (await listSanctions()).find((s) => s.id === sanctionId)?.updated_at;
+  }),
   async (c) => {
     // 撤销社区处罚：community_moderation:sanction
     await assertPermission(c, "community_moderation:sanction");
