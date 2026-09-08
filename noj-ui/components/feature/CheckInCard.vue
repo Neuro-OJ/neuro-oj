@@ -66,6 +66,8 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted, onUnmounted, ref } from "vue"
+
 interface Props {
     isLoggedIn: boolean
     username: string

@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url';
+import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'vitest/config';
 
 /**
@@ -23,7 +24,7 @@ export default defineConfig({
       '~': fileURLToPath(new URL('.', import.meta.url)),
     },
   },
-  plugins: [nuxtMetaPlugin()],
+  plugins: [vue(), nuxtMetaPlugin()],
   test: {
     environment: 'happy-dom',
     globals: true,
