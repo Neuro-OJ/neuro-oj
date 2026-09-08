@@ -105,11 +105,11 @@ async function loadStats(silent = false) {
   }
 
   const [userRes, problemRes, submissionRes, queueRes, observabilityRes] = await Promise.allSettled([
-    api.get<{ pagination: { total: number } }>("/api/v1/admin/users", { silent: true }),
+    api.get<{ pagination: { total: number } }>("/api/v1/admin/identity/users", { silent: true }),
     api.get<{ total: number }>("/api/v1/problems", { silent: true }),
-    api.get<{ pagination: { total: number } }>("/api/v1/admin/submissions", { silent: true }),
+    api.get<{ pagination: { total: number } }>("/api/v1/admin/submission/submissions", { silent: true }),
     api.get<{ stats: { pending_count: number; judging_count: number; completed_today: number } }>("/api/v1/queue", { silent: true }),
-    api.get<{ data: ObservabilitySnapshot }>("/api/v1/admin/dashboard/observability", { silent: true }),
+    api.get<{ data: ObservabilitySnapshot }>("/api/v1/admin/query/dashboard/observability", { silent: true }),
   ])
   if (currentRequest !== requestVersion) return
 

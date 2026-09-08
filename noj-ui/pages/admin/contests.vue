@@ -95,7 +95,7 @@ async function loadContests(page = currentPage.value, silent = false): Promise<b
     loadError.value = ''
   }
   try {
-    const response = await api.get<{ data: Contest[]; pagination: Pagination }>(`/api/v1/admin/contests?page=${page}&per_page=20`, { silent: true })
+    const response = await api.get<{ data: Contest[]; pagination: Pagination }>(`/api/v1/admin/contest/contests?page=${page}&per_page=20`, { silent: true })
     if (currentRequest !== contestRequestVersion) return true
     contests.value = response.data
     currentPage.value = response.pagination.page
@@ -117,7 +117,7 @@ let problemRequestVersion = 0
 async function loadProblems(keyword = '') {
   const currentRequest = ++problemRequestVersion
   try {
-    const response = await api.get<{ data: AdminProblemOption[] }>(`/api/v1/admin/problems?page=1&limit=20&keyword=${encodeURIComponent(keyword)}`, { silent: true })
+    const response = await api.get<{ data: AdminProblemOption[] }>(`/api/v1/admin/catalog/problems?page=1&limit=20&keyword=${encodeURIComponent(keyword)}`, { silent: true })
     if (currentRequest !== problemRequestVersion) return
     problems.value = response.data
   } catch {
@@ -176,7 +176,7 @@ async function openEdit(contest: Contest) {
   editingId.value = contest.id
   try {
     // silent: 错误由下方 catch 内联处理（toast.error），避免 useApi 默认 toast 双弹
-    const response = await api.get<{ data: AdminContestDetail }>(`/api/v1/admin/contests/${contest.public_id || contest.id}`, { silent: true })
+    const response = await api.get<{ data: AdminContestDetail }>(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}`, { silent: true })
     editingContest.value = response.data
     formOpen.value = true
   } catch (err: unknown) {
@@ -239,9 +239,9 @@ async function saveContest(payload: ContestPayload) {
       save: async () => {
         contestInfo('保存请求开始', context)
         if (contestId) {
-          await api.put(`/api/v1/admin/contests/${contestId}`, payload)
+          await api.put(`/api/v1/admin/contest/contests/${contestId}`, payload)
         } else {
-          await api.post('/api/v1/admin/contests', payload)
+          await api.post('/api/v1/admin/contest/contests', payload)
         }
         contestInfo('保存请求成功', context)
       },
@@ -281,7 +281,7 @@ async function removeContest(contest: Contest) {
   if (!confirmed) return
   try {
     // silent: 错误由下方 catch 内联处理（toast.error），避免 useApi 默认 toast 双弹
-    await api.delete(`/api/v1/admin/contests/${contest.public_id || contest.id}`, { silent: true })
+    await api.delete(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}`, { silent: true })
     toast.success('竞赛已删除')
     await loadContests(currentPage.value)
   } catch (err: unknown) {
@@ -296,7 +296,7 @@ async function openSettlement(contest: Contest) {
   settlementAllowFailed.value = false
   settlementLoading.value = true
   try {
-    const result = await api.get<{ data: SettlementStatus }>(`/api/v1/admin/contests/${contest.public_id || contest.id}/ranking-snapshots/readiness`, { silent: true })
+    const result = await api.get<{ data: SettlementStatus }>(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}/ranking-snapshots/readiness`, { silent: true })
     settlement.value = result.data
   } catch (err: unknown) {
     toast.error(extractApiError(err).message)
@@ -320,7 +320,7 @@ async function publishSnapshot() {
   const confirmed = await dialog.confirm(`确认发布“${contest.title}”当前成绩为正式成绩吗？后续重测将生成新版本，不会覆盖当前快照。`, { title: '确认发布成绩', confirmText: '发布' })
   if (!confirmed) return
   try {
-    const result = await api.post<{ data: { version: number } }>(`/api/v1/admin/contests/${contest.public_id || contest.id}/ranking-snapshots`, { note: settlementNote.value.trim() || '管理员确认发布', allow_failed: settlementAllowFailed.value }, { silent: true })
+    const result = await api.post<{ data: { version: number } }>(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}/ranking-snapshots`, { note: settlementNote.value.trim() || '管理员确认发布', allow_failed: settlementAllowFailed.value }, { silent: true })
     toast.success(`正式成绩已发布（版本 ${result.data.version}）`)
     settlementContest.value = null
     settlement.value = null
@@ -332,8 +332,8 @@ async function publishSnapshot() {
 
 async function exportSnapshot(contest: Contest) {
   try {
-    await api.get(`/api/v1/admin/contests/${contest.public_id || contest.id}/ranking-snapshots/latest`, { silent: true })
-    window.location.assign(`/api/v1/admin/contests/${contest.public_id || contest.id}/ranking-snapshots/latest.csv`)
+    await api.get(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}/ranking-snapshots/latest`, { silent: true })
+    window.location.assign(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}/ranking-snapshots/latest.csv`)
   } catch (err: unknown) {
     toast.error(extractApiError(err).message)
   }
@@ -343,7 +343,7 @@ async function makeContestPublic(contest: Contest) {
   const confirmed = await dialog.confirm(`确定将竞赛“${contest.title}”转为公开赛吗？公开后无需邀请码即可报名。`, { title: '转公开赛', confirmText: '转公开赛' })
   if (!confirmed) return
   try {
-    await api.patch(`/api/v1/admin/contests/${contest.public_id || contest.id}/kind`, { kind: 'public' }, { silent: true })
+    await api.patch(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}/kind`, { kind: 'public' }, { silent: true })
     toast.success('竞赛已转为公开赛')
     await loadContests(currentPage.value)
   } catch (err: unknown) {
@@ -356,7 +356,7 @@ async function resetContestCode(contest: Contest) {
   if (!confirmed) return
   try {
     const res = await api.post<{ data: { code: string } }>(
-      `/api/v1/admin/contests/${contest.public_id || contest.id}/reset-code`,
+      `/api/v1/admin/contest/contests/${contest.public_id || contest.id}/reset-code`,
       undefined,
       { silent: true },
     )
@@ -403,7 +403,7 @@ async function loadParticipants() {
   if (!participantContest.value) return
   participantLoading.value = true
   try {
-    const response = await api.get<{ data: Participant[] }>(`/api/v1/admin/contests/${participantContest.value.public_id || participantContest.value.id}/participants`, { silent: true })
+    const response = await api.get<{ data: Participant[] }>(`/api/v1/admin/contest/contests/${participantContest.value.public_id || participantContest.value.id}/participants`, { silent: true })
     participants.value = response.data
   } finally {
     participantLoading.value = false
@@ -446,7 +446,7 @@ async function searchUsers() {
 
 async function addParticipant(user: UserSearchResult) {
   if (!participantContest.value) return
-  await api.post(`/api/v1/admin/contests/${participantContest.value.public_id || participantContest.value.id}/participants`, [user.username])
+  await api.post(`/api/v1/admin/contest/contests/${participantContest.value.public_id || participantContest.value.id}/participants`, [user.username])
   userResults.value = userResults.value.filter((item) => item.id !== user.id)
   await loadParticipants()
 }
@@ -461,7 +461,7 @@ async function removeParticipant(participant: Participant) {
   if (!confirmed) return
   try {
     await api.delete(
-      `/api/v1/admin/contests/${participantContest.value.public_id || participantContest.value.id}/participants/${participant.username}`,
+      `/api/v1/admin/contest/contests/${participantContest.value.public_id || participantContest.value.id}/participants/${participant.username}`,
       { silent: true },
     )
     toast.success(`已移除参赛者 ${participant.username}`)

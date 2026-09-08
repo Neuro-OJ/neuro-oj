@@ -162,7 +162,7 @@ async function load(targetPage = page.value) {
     if (channelFilter.value) query.channel = channelFilter.value
     if (contentFilter.value) query.content_type = contentFilter.value
     const res = await api.get<{ data: ReviewItem[]; pagination: { total: number } }>(
-      "/api/v1/community/admin/content-review",
+      "/api/v1/admin/community/content-review",
       { query, silent: true },
     )
     items.value = res.data
@@ -196,7 +196,7 @@ async function openDetail(row: ReviewItem) {
   detailLoading.value = true
   try {
     const res = await api.get<{ data: ReviewItem }>(
-      `/api/v1/community/admin/content-review/${row.id}`,
+      `/api/v1/admin/community/content-review/${row.id}`,
       { silent: true },
     )
     detailItem.value = res.data
@@ -222,12 +222,12 @@ async function submitResolve() {
     // 1) 帖子/评论且选择隐藏 → 调既有社区隐藏端点（留痕由 moderation 动作覆盖）
     if (resolveAction.value === "hide_content" && target.content_type !== "message") {
       const endpoint = target.content_type === "post"
-        ? `/api/v1/community/admin/posts/${target.target_id}/hidden`
-        : `/api/v1/community/admin/comments/${target.target_id}/hidden`
+        ? `/api/v1/admin/community/posts/${target.target_id}/hidden`
+        : `/api/v1/admin/community/comments/${target.target_id}/hidden`
       await api.post(endpoint, { reason: resolveReason.value.trim() || "内容审核隐藏" })
     }
     // 2) 处置记录落库（reviewed）
-    await api.post(`/api/v1/community/admin/content-review/${target.id}/reviewed`, {
+    await api.post(`/api/v1/admin/community/content-review/${target.id}/reviewed`, {
       action: resolveAction.value,
       resolution: resolveReason.value.trim() || (resolveAction.value === "hide_content" ? "已隐藏违规内容" : "已人工复核，无违规"),
     })
@@ -250,7 +250,7 @@ async function dismissItem(row: ReviewItem) {
   if (reason === null) return
   processingId.value = row.id
   try {
-    await api.post(`/api/v1/community/admin/content-review/${row.id}/dismissed`, {
+    await api.post(`/api/v1/admin/community/content-review/${row.id}/dismissed`, {
       resolution: reason,
     })
     toast.success("已驳回")

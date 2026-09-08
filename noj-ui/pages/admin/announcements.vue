@@ -27,7 +27,7 @@ const { api } = useApi()
 const { isLoggedIn } = useAuth()
 
 const { items, loading, error, load, onPageChange, currentPage, totalPages } = useAdminList<AdminAnnouncement>({
-  path: "/api/v1/admin/announcements",
+  path: "/api/v1/admin/system/announcements",
   fetchOptions: { dataField: "data", totalField: "meta.total" },
 })
 
@@ -115,9 +115,9 @@ async function handleSave() {
       is_active: formActive.value,
     }
     if (editing.value) {
-      await api.put(`/api/v1/admin/announcements/${editing.value.public_id || editing.value.id}`, body)
+      await api.put(`/api/v1/admin/system/announcements/${editing.value.public_id || editing.value.id}`, body)
     } else {
-      await api.post("/api/v1/admin/announcements", body)
+      await api.post("/api/v1/admin/system/announcements", body)
     }
     showForm.value = false
     await load(currentPage.value)
@@ -145,7 +145,7 @@ async function handleDelete() {
   if (!deleteTarget.value) return
   deleting.value = true
   try {
-    await api.delete(`/api/v1/admin/announcements/${deleteTarget.value.public_id || deleteTarget.value.id}`)
+    await api.delete(`/api/v1/admin/system/announcements/${deleteTarget.value.public_id || deleteTarget.value.id}`)
     showDeleteConfirm.value = false
     await load(currentPage.value)
   } catch (err: unknown) {

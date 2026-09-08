@@ -86,8 +86,8 @@ async function loadRoles() {
   tableError.value = ""
   try {
     const [rolesRes, permsRes] = await Promise.all([
-      api.get<{ data: Role[] }>("/api/v1/admin/roles", { silent: true }),
-      api.get<{ data: Permission[] }>("/api/v1/admin/permissions", { silent: true }),
+      api.get<{ data: Role[] }>("/api/v1/admin/identity/roles", { silent: true }),
+      api.get<{ data: Permission[] }>("/api/v1/admin/identity/permissions", { silent: true }),
     ])
     roles.value = rolesRes.data
     permissions.value = permsRes.data
@@ -170,9 +170,9 @@ async function handleSave() {
       permission_ids: Array.from(editorPermissionIds.value),
     }
     if (editingRole.value) {
-      await api.put(`/api/v1/admin/roles/${editingRole.value.id}`, body)
+      await api.put(`/api/v1/admin/identity/roles/${editingRole.value.id}`, body)
     } else {
-      await api.post("/api/v1/admin/roles", body)
+      await api.post("/api/v1/admin/identity/roles", body)
     }
     showEditor.value = false
     await loadRoles()
@@ -204,7 +204,7 @@ async function confirmDelete(role: Role) {
   deletingId.value = role.id
   deleteError.value = ""
   try {
-    await api.delete(`/api/v1/admin/roles/${role.id}`)
+    await api.delete(`/api/v1/admin/identity/roles/${role.id}`)
     await loadRoles()
   } catch (err: unknown) {
     deleteError.value = extractApiError(err).message

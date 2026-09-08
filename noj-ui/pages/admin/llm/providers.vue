@@ -61,7 +61,7 @@ async function loadItems() {
   tableLoading.value = true
   tableError.value = ""
   try {
-    const res = await api.get<{ data: LlmProvider[] }>("/api/v1/admin/llm/providers", { silent: true })
+    const res = await api.get<{ data: LlmProvider[] }>("/api/v1/admin/gateway/llm/providers", { silent: true })
     if (currentRequest !== requestVersion) return
     items.value = res.data
   } catch (err: unknown) {
@@ -129,14 +129,14 @@ async function handleSave() {
         enabled: formEnabled.value,
       }
       if (formApiKey.value.trim()) payload.api_key = formApiKey.value.trim()
-      await api.put(`/api/v1/admin/llm/providers/${editingItem.value.id}`, payload)
+      await api.put(`/api/v1/admin/gateway/llm/providers/${editingItem.value.id}`, payload)
     } else {
       if (!formApiKey.value.trim()) {
         formError.value = "API Key 为必填"
         saving.value = false
         return
       }
-      await api.post("/api/v1/admin/llm/providers", {
+      await api.post("/api/v1/admin/gateway/llm/providers", {
         name: formName.value.trim(),
         base_url: formBaseUrl.value.trim(),
         model: formModel.value.trim(),

@@ -123,7 +123,7 @@ async function loadSubmissions(page = 1, silent = false) {
   currentPage.value = page
   try {
     const res = await api.get<{ data: SubmissionListItem[]; pagination: { total: number; total_pages: number } }>(
-      `/api/v1/admin/submissions?${buildQuery(page)}`,
+      `/api/v1/admin/submission/submissions?${buildQuery(page)}`,
       { silent: true },
     )
     if (currentRequest !== requestVersion) return
@@ -196,7 +196,7 @@ async function rejudge(submissionId: string) {
 
   rejudgingIds.value = new Set(rejudgingIds.value).add(submissionId)
   try {
-    await api.post(`/api/v1/admin/submissions/${submissionId}/rejudge`)
+    await api.post(`/api/v1/admin/submission/submissions/${submissionId}/rejudge`)
     toast.showToast("success", "重测任务已提交")
     loadSubmissions(currentPage.value)
     // 重测后列表重新出现 pending，恢复自动轮询
@@ -222,7 +222,7 @@ async function removeFromQueue(submissionId: string) {
 
   removingQueueIds.value = new Set(removingQueueIds.value).add(submissionId)
   try {
-    await api.delete(`/api/v1/admin/queue/submissions/${submissionId}`)
+    await api.delete(`/api/v1/admin/submission/queue/submissions/${submissionId}`)
     toast.showToast("success", "评测任务已移出队列")
   } catch (err: unknown) {
     toast.showToast("error", extractApiError(err).message)

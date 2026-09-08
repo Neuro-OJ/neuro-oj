@@ -161,7 +161,7 @@ export function useTrainings() {
     query?: { page?: number; per_page?: number },
     options?: ApiCallOptions,
   ) {
-    return api.get<TrainingListResult>('/api/v1/admin/trainings', {
+    return api.get<TrainingListResult>('/api/v1/admin/catalog/trainings', {
       query,
       silent: true,
       ...options,
@@ -174,14 +174,14 @@ export function useTrainings() {
     options?: ApiCallOptions,
   ) {
     return api.patch<{ data: Training }>(
-      `/api/v1/admin/trainings/${id}`,
+      `/api/v1/admin/catalog/trainings/${id}`,
       body,
       options,
     );
   }
 
   function adminDeleteTraining(id: string, options?: ApiCallOptions) {
-    return api.delete<void>(`/api/v1/admin/trainings/${id}`, options);
+    return api.delete<void>(`/api/v1/admin/catalog/trainings/${id}`, options);
   }
 
   return {

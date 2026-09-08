@@ -35,7 +35,7 @@ async function createBoard() {
   }
   creatingBoard.value = true
   try {
-    await api.post("/api/v1/community/admin/boards", {
+    await api.post("/api/v1/admin/community/boards", {
       slug: newBoard.slug, name: newBoard.name, description: newBoard.description,
     })
     toast.success("板块已创建")
@@ -49,7 +49,7 @@ async function createBoard() {
 }
 
 async function toggleArchive(boardId: string, archived: boolean) {
-  await api.patch(`/api/v1/community/admin/boards/${boardId}`, { is_archived: !archived })
+  await api.patch(`/api/v1/admin/community/boards/${boardId}`, { is_archived: !archived })
   toast.success(archived ? "板块已恢复" : "板块已归档")
   await loadBoards()
 }

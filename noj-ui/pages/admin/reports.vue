@@ -113,7 +113,7 @@ const typeLabel: Record<string, string> = {
 async function load(tab: Tab) {
   try {
     const result = await api.get<{ data: ReportRow[] }>(
-      "/api/v1/community/admin/reports",
+      "/api/v1/admin/community/reports",
       { query: { status: tab }, silent: true },
     )
     lists[tab] = result.data
@@ -186,7 +186,7 @@ async function submitProcess() {
       body.scope = processScope.value
     }
     body.resolution = processReason.value.trim() || undefined
-    await api.post(`/api/v1/community/admin/reports/${target.report.id}/resolved`, body)
+    await api.post(`/api/v1/admin/community/reports/${target.report.id}/resolved`, body)
     toast.success(isBan ? "已封禁" : "已移除内容")
     showProcess.value = false
     await load("pending")
@@ -207,7 +207,7 @@ async function dismissReport(row: ReportRow) {
   if (reason === null) return
   processingId.value = row.report.id
   try {
-    await api.post(`/api/v1/community/admin/reports/${row.report.id}/dismissed`, { resolution: reason })
+    await api.post(`/api/v1/admin/community/reports/${row.report.id}/dismissed`, { resolution: reason })
     toast.success("已驳回")
     await load("pending")
     await load("dismissed")
@@ -228,7 +228,7 @@ async function reopenReport(row: ReportRow) {
   if (!ok) return
   processingId.value = row.report.id
   try {
-    await api.post(`/api/v1/community/admin/reports/${row.report.id}/reopen`)
+    await api.post(`/api/v1/admin/community/reports/${row.report.id}/reopen`)
     toast.success("已撤销，举报回到待处理")
     await load("pending")
     await load("resolved")
@@ -433,7 +433,7 @@ await Promise.all([load("pending"), load("resolved"), load("dismissed")])
                   <template v-else-if="m.type === 'image' && m.image_url">
                     <span class="italic text-text-muted">（已撤回）</span>
                     <img
-                      :src="`/api/v1/community/admin/reports/images/${m.conversation_id}/${m.id}`"
+                      :src="`/api/v1/admin/community/reports/images/${m.conversation_id}/${m.id}`"
                       alt="举报图片（已撤回）"
                       class="max-h-40 rounded-md object-contain"
                       loading="lazy"
@@ -444,7 +444,7 @@ await Promise.all([load("pending"), load("resolved"), load("dismissed")])
                 <!-- 图片消息 -->
                 <span v-else-if="m.type === 'image' && m.image_url">
                   <img
-                    :src="`/api/v1/community/admin/reports/images/${m.conversation_id}/${m.id}`"
+                    :src="`/api/v1/admin/community/reports/images/${m.conversation_id}/${m.id}`"
                     alt="举报图片"
                     class="max-h-40 rounded-md object-contain"
                     loading="lazy"

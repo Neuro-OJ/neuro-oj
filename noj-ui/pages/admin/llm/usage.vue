@@ -74,7 +74,7 @@ async function load() {
     params.set("limit", String(limit.value))
     params.set("page", String(page.value))
     const qs = params.toString()
-    const res = await api.get<{ data: LlmUsageRow[] }>(`/api/v1/admin/llm/usage${qs ? `?${qs}` : ""}`, { silent: true })
+    const res = await api.get<{ data: LlmUsageRow[] }>(`/api/v1/admin/gateway/llm/usage${qs ? `?${qs}` : ""}`, { silent: true })
     rows.value = res.data
   } catch (err: unknown) {
     error.value = extractApiError(err).message

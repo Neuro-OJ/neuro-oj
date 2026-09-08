@@ -145,7 +145,7 @@ const preflightOpen = ref(false)
 
 async function runPreflight(problem: Problem) {
   try {
-    const result = await api.get<{ data: NonNullable<typeof preflight.value> }>(`/api/v1/admin/problems/${problem.display_id}/preflight`, { silent: true })
+    const result = await api.get<{ data: NonNullable<typeof preflight.value> }>(`/api/v1/admin/catalog/problems/${problem.display_id}/preflight`, { silent: true })
     preflight.value = result.data
     preflightOpen.value = true
   } catch (err: unknown) {
@@ -164,7 +164,7 @@ async function batchRejudge(problemId: string) {
   rejudgingProblemIds.value = new Set(rejudgingProblemIds.value).add(problemId)
   try {
     const res = await api.post<{ message: string; total: number; queued: number; skipped: number }>(
-      `/api/v1/admin/problems/${problemId}/rejudge`,
+      `/api/v1/admin/catalog/problems/${problemId}/rejudge`,
     )
     showToast(
       "success",
@@ -203,7 +203,7 @@ async function loadReview() {
   selectedIds.value = new Set()
   try {
     const res = await api.get<{ data: Problem[]; total: number }>(
-      `/api/v1/admin/problems/review?queue=${reviewQueue.value}&page=1&limit=100`,
+      `/api/v1/admin/catalog/problems/review?queue=${reviewQueue.value}&page=1&limit=100`,
       { silent: true },
     )
     reviewProblems.value = res.data
@@ -240,7 +240,7 @@ async function batchReview(action: 'to_public' | 'to_p') {
   reviewing.value = true
   try {
     const res = await api.post<{ data: { updated: number } }>(
-      '/api/v1/admin/problems/review',
+      '/api/v1/admin/catalog/problems/review',
       { problem_ids: [...selectedIds.value], action },
     )
     showToast(

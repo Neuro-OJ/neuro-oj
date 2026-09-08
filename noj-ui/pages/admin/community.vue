@@ -146,8 +146,8 @@ const NUMBER_SETTINGS: Array<{ configKey: string; settingKey: string; label: str
 /** silent=true 用于轮询：不置加载态、不清空已有数据，失败保留旧数据 */
 async function load(silent = false) {
   const [reportResult, sanctionResult] = await Promise.all([
-    api.get<{ data: ReportRow[] }>("/api/v1/community/admin/reports", { silent: true }),
-    api.get<{ data: typeof sanctions.value }>("/api/v1/community/admin/sanctions", { silent: true }),
+    api.get<{ data: ReportRow[] }>("/api/v1/admin/community/reports", { silent: true }),
+    api.get<{ data: typeof sanctions.value }>("/api/v1/admin/community/sanctions", { silent: true }),
   ])
   reports.value = reportResult.data
   sanctions.value = sanctionResult.data
@@ -179,7 +179,7 @@ async function loadPendingComments(silent = false) {
   if (!silent) loadingPendingComments.value = true
   try {
     const result = await api.get<{ data: typeof pendingComments.value }>(
-      "/api/v1/community/admin/comments/pending",
+      "/api/v1/admin/community/comments/pending",
       { query: { limit: 100 }, silent: true },
     )
     pendingComments.value = result.data
@@ -254,7 +254,7 @@ async function saveAll() {
     }
     // 逐项写入后端（无批量端点，逐项 PUT 与既有设置保存机制一致）
     for (const { key, value } of dirty) {
-      await api.put(`/api/v1/admin/settings/${key}`, { value }, { silent: true })
+      await api.put(`/api/v1/admin/system/settings/${key}`, { value }, { silent: true })
     }
     // 清除草稿并刷新后端权威配置
     for (const key of Object.keys(booleanDrafts)) delete booleanDrafts[key]
@@ -280,7 +280,7 @@ async function moderatePost(id: string, status: "published" | "hidden") {
   if (moderatingId.value) return
   moderatingId.value = id
   try {
-    await api.post(`/api/v1/community/admin/posts/${id}/${status}`, { reason: "" })
+    await api.post(`/api/v1/admin/community/posts/${id}/${status}`, { reason: "" })
     toast.success(status === "published" ? "内容已批准" : "内容已驳回")
     await loadPending()
   } finally {
@@ -292,7 +292,7 @@ async function moderateComment(id: string, status: "published" | "hidden") {
   if (moderatingCommentId.value) return
   moderatingCommentId.value = id
   try {
-    await api.post(`/api/v1/community/admin/comments/${id}/${status}`, { reason: "" })
+    await api.post(`/api/v1/admin/community/comments/${id}/${status}`, { reason: "" })
     toast.success(status === "published" ? "评论已批准" : "评论已驳回")
     await loadPendingComments()
   } finally {
@@ -304,7 +304,7 @@ async function resolveReport(id: string, status: "resolved" | "dismissed") {
   if (resolvingReportId.value) return
   resolvingReportId.value = id
   try {
-    await api.post(`/api/v1/community/admin/reports/${id}/${status}`, {})
+    await api.post(`/api/v1/admin/community/reports/${id}/${status}`, {})
     toast.success("举报已处理")
     await load()
   } finally {
@@ -370,7 +370,7 @@ async function loadUserSanctions(userId?: string) {
   }
   try {
     const result = await api.get<{ data: typeof userSanctions.value }>(
-      `/api/v1/community/admin/users/${userId}/sanctions`,
+      `/api/v1/admin/community/users/${userId}/sanctions`,
       { silent: true },
     )
     userSanctions.value = result.data
@@ -386,7 +386,7 @@ async function createSanction() {
   }
   creatingSanction.value = true
   try {
-    await api.post("/api/v1/community/admin/sanctions", {
+    await api.post("/api/v1/admin/community/sanctions", {
       user_id: selectedSanctionUser.value.username,
       reason: sanctionReason.value,
       expires_at: sanctionExpiresAt.value || null,
@@ -409,7 +409,7 @@ async function revokeSanction(sanctionId: string) {
   if (!ok || revokingId.value) return
   revokingId.value = sanctionId
   try {
-    await api.delete(`/api/v1/community/admin/sanctions/${sanctionId}`)
+    await api.delete(`/api/v1/admin/community/sanctions/${sanctionId}`)
     toast.success("已撤销")
     await Promise.all([load(), loadUserSanctions(selectedSanctionUser.value?.id)])
   } finally {

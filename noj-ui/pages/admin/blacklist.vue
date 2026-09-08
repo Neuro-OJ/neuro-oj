@@ -28,7 +28,7 @@ const { api } = useApi()
 
 // ─── 数据加载（useAdminList：分页 + 搜索防抖，后端支持 page/per_page/keyword）───
 const { items, totalPages, loading: tableLoading, error: tableError, currentPage, searchInput, load, onPageChange } = useAdminList<IpBan>({
-  path: "/api/v1/admin/blacklist",
+  path: "/api/v1/admin/identity/blacklist",
   fetchOptions: { dataField: "data", totalField: "pagination.total" },
 })
 
@@ -56,7 +56,7 @@ async function handleSave() {
   saving.value = true
   formError.value = ""
   try {
-    await api.post("/api/v1/admin/blacklist", {
+    await api.post("/api/v1/admin/identity/blacklist", {
       ip_or_cidr: form.ip_or_cidr.trim(),
       reason: form.reason.trim(),
       expires_at: form.expires_at.trim() || null,
@@ -89,7 +89,7 @@ async function confirmDelete(item: IpBan) {
   deleting.value = true
   try {
     // silent: 错误由下方 catch 内联处理（toast.error），避免 useApi 默认 toast 双弹
-    await api.delete(`/api/v1/admin/blacklist/${item.id}`, { silent: true })
+    await api.delete(`/api/v1/admin/identity/blacklist/${item.id}`, { silent: true })
     toast.success(`已删除 ${item.ip_or_cidr}`)
     await load()
   } catch (err: unknown) {

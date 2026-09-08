@@ -7,7 +7,7 @@
  * 用法：
  * ```ts
  * const { items, loading, error, load, onPageChange, searchInput } = useAdminList<User>({
- *   path: "/api/v1/admin/users",
+ *   path: "/api/v1/admin/identity/users",
  *   fetchOptions: { dataField: "data", totalField: "total" },
  * })
  * ```
@@ -19,7 +19,7 @@ import { extractApiError } from '~/utils/apiError';
 import { usePolling } from '~/composables/usePolling';
 
 export interface AdminListOptions<T> {
-  /** API 路径（如 "/api/v1/admin/users"） */
+  /** API 路径（如 "/api/v1/admin/identity/users"） */
   path: string;
   /** 默认每页条数 */
   perPage?: number;

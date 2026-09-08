@@ -231,14 +231,14 @@ export function useContests() {
         };
       }
     >(
-      `/api/v1/admin/contests/${contestId}/anti-cheat/ip-groups`,
+      `/api/v1/admin/contest/contests/${contestId}/anti-cheat/ip-groups`,
       { query, silent: true },
     );
   }
 
   function listAntiCheatTimeline(contestId: string, ip: string) {
     return api.get<{ data: ContestAntiCheatTimelineItem[] }>(
-      `/api/v1/admin/contests/${contestId}/anti-cheat/timeline`,
+      `/api/v1/admin/contest/contests/${contestId}/anti-cheat/timeline`,
       { query: { ip }, silent: true },
     );
   }

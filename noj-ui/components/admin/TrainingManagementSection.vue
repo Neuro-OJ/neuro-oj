@@ -4,7 +4,7 @@ import type { Training, TrainingVisibility } from '~/composables/useTrainings'
 
 const { adminUpdateTraining, adminDeleteTraining } = useTrainings()
 const { data, pending, error, refresh } = await useFetch<{ data: Training[]; total: number }>(
-  '/api/v1/admin/trainings',
+  '/api/v1/admin/catalog/trainings',
   { query: { page: 1, per_page: 100 } },
 )
 

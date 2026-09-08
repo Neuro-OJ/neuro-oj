@@ -60,7 +60,7 @@ async function loadItems() {
   tableLoading.value = true
   tableError.value = ""
   try {
-    const res = await api.get<{ data: JudgeImage[] }>("/api/v1/admin/judge-images", { silent: true })
+    const res = await api.get<{ data: JudgeImage[] }>("/api/v1/admin/system/judge-images", { silent: true })
     if (currentRequest !== requestVersion) return
     items.value = res.data
   } catch (err: unknown) {
@@ -123,13 +123,13 @@ async function handleSave() {
   formError.value = ""
   try {
     if (editingItem.value) {
-      await api.put(`/api/v1/admin/judge-images/${editingItem.value.id}`, {
+      await api.put(`/api/v1/admin/system/judge-images/${editingItem.value.id}`, {
         image: formImage.value.trim(),
         mode: formMode.value,
         description: formDescription.value.trim(),
       })
     } else {
-      await api.post("/api/v1/admin/judge-images", {
+      await api.post("/api/v1/admin/system/judge-images", {
         image: formImage.value.trim(),
         mode: formMode.value,
         description: formDescription.value.trim(),
@@ -159,7 +159,7 @@ async function handleDelete() {
   if (!deleteTarget.value) return
   deleting.value = true
   try {
-    await api.delete(`/api/v1/admin/judge-images/${deleteTarget.value.id}`)
+    await api.delete(`/api/v1/admin/system/judge-images/${deleteTarget.value.id}`)
     showDeleteConfirm.value = false
     // 服务端重载而非本地 filter，保证与后续分页/刷新状态一致
     await loadItems()

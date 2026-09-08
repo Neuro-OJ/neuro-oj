@@ -35,7 +35,7 @@ interface User {
 const pollInterval = ref<number | null>(30000)
 
 const { items: users, totalPages, loading: tableLoading, error: tableError, currentPage, perPage, searchInput, load: loadUsers, onPageChange, lastRefresh } = useAdminList<User>({
-  path: "/api/v1/admin/users",
+  path: "/api/v1/admin/identity/users",
   fetchOptions: { dataField: "data", totalField: "pagination.total" },
   polling: { intervalMs: pollInterval },
 })
@@ -90,7 +90,7 @@ const selectedRoleIds = ref<string[]>([])
 
 async function loadRoles() {
   try {
-    const res = await api.get<{ data: Role[] }>("/api/v1/admin/roles", { silent: true })
+    const res = await api.get<{ data: Role[] }>("/api/v1/admin/identity/roles", { silent: true })
     allRoles.value = res.data
   } catch {
     // 角色加载失败不影响用户列表
@@ -119,7 +119,7 @@ async function handleRoleSwitch() {
   switchingRole.value = true
   switchError.value = ""
   try {
-    await api.patch(`/api/v1/admin/users/${targetUser.value.username}/role`, {
+    await api.patch(`/api/v1/admin/identity/users/${targetUser.value.username}/role`, {
       role_ids: selectedRoleIds.value,
     })
     showRoleModal.value = false
@@ -154,7 +154,7 @@ async function handleBan() {
   banning.value = true
   banError.value = ""
   try {
-    await api.patch(`/api/v1/admin/users/${banTarget.value.username}/ban`, {
+    await api.patch(`/api/v1/admin/identity/users/${banTarget.value.username}/ban`, {
       reason: banForm.reason.trim() || undefined,
       banned_until: banForm.banned_until
         ? new Date(banForm.banned_until).toISOString()
@@ -185,7 +185,7 @@ async function confirmUnban(user: User) {
   if (!ok) return
   banning.value = true
   try {
-    await api.patch(`/api/v1/admin/users/${user.username}/unban`)
+    await api.patch(`/api/v1/admin/identity/users/${user.username}/unban`)
     toast.success(`已解封 ${user.username}`)
   } catch {
     banning.value = false
@@ -235,7 +235,7 @@ async function showBanHistory(user: User) {
   showHistoryModal.value = true
   try {
     const res = await api.get<{ data: BanRecord[] }>(
-      `/api/v1/admin/users/${user.username}/bans`,
+      `/api/v1/admin/identity/users/${user.username}/bans`,
       { silent: true },
     )
     historyRecords.value = res.data
@@ -253,7 +253,7 @@ async function confirmDeleteUser(user: User) {
   )
   if (!confirmed) return
   try {
-    await api.delete(`/api/v1/admin/users/${user.id}`, {
+    await api.delete(`/api/v1/admin/identity/users/${user.id}`, {
       body: { confirmation: "DELETE" },
       silent: true,
     })
