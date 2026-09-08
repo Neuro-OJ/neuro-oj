@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
+import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import type { SearchPermissionContext } from "./permission-filter.ts";
 import {
   communityVisibilityWhere,
@@ -76,9 +77,7 @@ export async function searchGrouped(params: {
       ORDER BY rank DESC NULLS LAST, updated_at DESC
       LIMIT ${perType + 1}
     `);
-    const resultRows = "rows" in rows
-      ? (rows as { rows: typeof rows[number][] }).rows
-      : (rows as unknown as typeof rows[number][]);
+    const resultRows = unwrapRows<typeof rows[number]>(rows as never);
     groups[type] = {
       items: resultRows.slice(0, perType).map((r) => ({
         entity_type: r.entity_type,
@@ -136,9 +135,7 @@ export async function searchFlat(params: {
     ORDER BY rank DESC NULLS LAST, updated_at DESC
     LIMIT ${perPage + 1} OFFSET ${offset}
   `);
-  const resultRows = "rows" in rows
-    ? (rows as { rows: typeof rows[number][] }).rows
-    : (rows as unknown as typeof rows[number][]);
+  const resultRows = unwrapRows<typeof rows[number]>(rows as never);
 
   return {
     items: resultRows.slice(0, perPage).map((r) => ({

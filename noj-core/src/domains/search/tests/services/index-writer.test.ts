@@ -64,6 +64,36 @@ Deno.test({
 });
 
 Deno.test({
+  name: "index-writer: upsert 后 search_vector 由生成列自动填充",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const now = new Date().toISOString();
+    await upsertSearchEntry({
+      entityType: "problem",
+      entityId: "p-vector-1",
+      title: "生成向量测试",
+      body: "hello world",
+      metadata: {},
+      isPublic: true,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const rows = await db.select({
+      searchVector: searchEntries.searchVector,
+    }).from(searchEntries).where(
+      sql`${searchEntries.entity_type} = 'problem' AND ${searchEntries.entity_id} = 'p-vector-1'`,
+    );
+    assertEquals(rows.length, 1);
+    assert(rows[0]?.searchVector !== null);
+    assert((rows[0]?.searchVector ?? "").length > 0);
+  },
+});
+
+Deno.test({
   name: "index-writer: delete 后条目消失",
   sanitizeResources: false,
   sanitizeOps: false,

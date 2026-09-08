@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
-import { unwrapFirstRow } from "../../../shared/base/sql-rows.ts";
+import { unwrapFirstRow, unwrapRows } from "../../../shared/base/sql-rows.ts";
 import { searchEntries } from "../../../shared/db/schema.ts";
 import type { SearchEntryInput } from "../types.ts";
 
@@ -593,9 +593,7 @@ export async function reindexAll(): Promise<Record<string, number>> {
   for (const [entityType, builder] of Object.entries(BUILDERS)) {
     const table = entityTypeToTable(entityType);
     const rows = await db.execute<{ id: string }>(sql`SELECT id FROM ${table}`);
-    const ids = "rows" in rows
-      ? (rows as { rows: { id: string }[] }).rows
-      : (rows as unknown as { id: string }[]);
+    const ids = unwrapRows<{ id: string }>(rows as never);
     const existingRows = await db
       .select({ entityId: searchEntries.entity_id })
       .from(searchEntries)

@@ -46,7 +46,7 @@ export async function publishSearchIndexEvent(
     void redis.lpush(SEARCH_INDEX_QUEUE, JSON.stringify(event)).catch((err) => {
       logger.error("发布搜索索引事件失败", {
         entityType,
-        entityId,
+        entity_id: entityId,
         action,
         err,
       });
@@ -54,7 +54,7 @@ export async function publishSearchIndexEvent(
   } catch (err) {
     logger.error("发布搜索索引事件失败", {
       entityType,
-      entityId,
+      entity_id: entityId,
       action,
       err,
     });
