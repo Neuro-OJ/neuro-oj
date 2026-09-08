@@ -88,8 +88,8 @@ noj-core/src/domains/admin/
 新增 `services/admin-audit.ts`：
 
 - **审计注册表**：`AuditActionRegistry` 把“sub domain + 路由 + 方法”映射到 `AuditAction` 和 detail 构造器。
-- **统一写入函数**：`adminAudit(c, action, detail, target?)` 封装现有 `logAudit()`，自动从 RequestContext 取 actor/ip，保证幂等。
-- **路由级辅助**：`withAudit(handler, meta)` 包装写操作 handler，成功响应后自动写审计。
+- **统一写入函数**：`adminAudit(action, detail, target?)` 封装现有 `logAudit()`，自动从 RequestContext 取 actor/ip，保证幂等。
+- **路由级辅助**：`withAudit(meta)(handler)` 包装写操作 handler，成功响应后自动写审计。
 - **补齐缺失调用**：盘点所有 admin 写操作，替换已有 `logAudit` 为 `adminAudit`，并为尚未审计的操作补上审计。
 - **审计查询 API**：
   - `GET /api/v1/admin/system/audit-logs`（新路径，保留现有筛选/分页）

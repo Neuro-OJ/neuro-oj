@@ -104,7 +104,7 @@ noj-core/
 │   ├── main.ts            # 入口（启动校验 + 初始化顺序）
 │   ├── app.ts             # Hono 应用工厂（CORS + 全局中间件 + 按域挂载路由）
 │   ├── mod.ts             # 公共导出
-│   ├── routes/            # 仅保留顶层路由组合与 health：admin/index.ts、health.ts
+│   ├── routes/            # 仅保留顶层路由组合与 health：health.ts
 │   ├── shared/            # 跨域共享基础设施（不反向依赖 domains）
 │   │   ├── base/          # errors / logging / constants / dates / sql-rows
 │   │   ├── config/        # settings-registry / production-config
@@ -116,6 +116,7 @@ noj-core/
 │   │   ├── security/      # cidr / public-id / image-validation
 │   │   └── middleware/    # request-context
 │   ├── domains/           # 业务域自包含：routes / services / middleware / mq / types / tests
+│   │   ├── admin/         # 管理端统一门面域：identity/catalog/system/... 子域路由、审计、乐观锁
 │   │   ├── identity/      # 注册登录、JWT/RBAC、用户、OAuth、TFA、封禁
 │   │   ├── catalog/       # 题目、标签、题包、题单
 │   │   ├── objective/     # 客观题
@@ -295,13 +296,13 @@ docker compose down     # 停止
 | POST   | `/api/v1/submissions`                        | 登录        | 创建提交                                                            |
 | GET    | `/api/v1/submissions/:id`                    | 登录        | 提交详情                                                            |
 | GET    | `/api/v1/submissions/:id/status`             | 登录        | 提交队列状态                                                        |
-| GET    | `/api/v1/admin/submissions`                  | 管理员      | 全部提交管理                                                        |
-| GET    | `/api/v1/admin/users`                        | 管理员      | 用户列表                                                            |
-| PATCH  | `/api/v1/admin/users/:id/role`               | 管理员      | 角色变更                                                            |
+| GET    | `/api/v1/admin/submission/submissions`       | 管理员      | 全部提交管理                                                        |
+| GET    | `/api/v1/admin/identity/users`               | 管理员      | 用户列表                                                            |
+| PATCH  | `/api/v1/admin/identity/users/:id/role`      | 管理员      | 角色变更                                                            |
 | GET    | `/api/v1/users/:id/profile`                  | 公开        | 用户主页                                                            |
 | PUT    | `/api/v1/users/me`                           | 登录        | 更新个人简介                                                        |
 | POST   | `/api/v1/users/me/delete-account`            | 登录        | 密码确认后软删除并匿名化账户                                        |
-| DELETE | `/api/v1/admin/users/:id`                    | 管理员      | 注销用户并写入审计日志                                              |
+| DELETE | `/api/v1/admin/identity/users/:id`           | 管理员      | 注销用户并写入审计日志                                              |
 | POST   | `/api/v1/auth/change-password`               | 登录        | 修改密码（issue #75 强制改密）                                      |
 | POST   | `/api/v1/auth/tfa/setup`                     | 登录        | 生成 TOTP secret 与 otpauth URL（issue #228）                       |
 | POST   | `/api/v1/auth/tfa/confirm`                   | 登录        | 确认启用 TFA，返回一次性恢复码（issue #228）                        |
@@ -329,9 +330,11 @@ docker compose down     # 停止
 - `PUT /me` 必须在 `GET /:id/profile` **之前**注册，否则 "me" 会被匹配为 `:id`
 - 注释明确警告此顺序依赖
 
-**管理路由挂载**（`app.ts`）：
+**管理路由挂载**（`domains/admin/index.ts`）：
 
-- 管理路由以 `/api/v1/admin` 为前缀挂载，子路由内部路径为 `/`（相对路径）
+- 管理端统一由 `domains/admin` 门面域挂载到 `/api/v1/admin`
+- 按 sub domain 组织：`/identity`、`/catalog`、`/contest`、`/system`、
+  `/community`、`/gateway`、`/submission`、`/query`
 
 ## Redis MQ 约定
 
