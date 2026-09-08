@@ -73,388 +73,247 @@ env:
   DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
 
 jobs:
-  # ===========================================================================
-  # e2e — noj-tests 全链路 API E2E（完整评测栈）
-  # ===========================================================================
-  e2e:
-    name: Full Pipeline (API E2E)
+  changes:
+    name: Detect E2E Domains
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-
+    timeout-minutes: 3
+    outputs:
+      e2e-domains: ${{ steps.domains.outputs.e2e-domains }}
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
-
-      # ── 安装工具链 ────────────────────────────
-
-      - name: 安装 Deno
-        uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
-
-      - name: 安装 Rust
-        uses: dtolnay/rust-toolchain@stable
+          fetch-depth: 0
+      - name: 按 Domain 路径过滤
+        uses: dorny/paths-filter@v3
+        id: filter
         with:
-          components: rustfmt, clippy
-
-      # ── 设置 Docker BuildKit（用于镜像构建缓存）──
-
-      - name: 设置 Docker BuildKit
-        uses: docker/setup-buildx-action@v3
-
-      - name: 校验本地 E2E SDK 镜像刷新逻辑
-        run: bash scripts/e2e/check-setup.sh
-
-      # ── 缓存依赖 ──────────────────────────────
-
-      - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/noj-core/.deno_cache
-          key: deno-${{ hashFiles('noj-core/deno.lock') }}
-          restore-keys: |
-            deno-
-
-      - name: 缓存 Cargo 依赖
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            noj-judge/target
-          key: cargo-e2e-${{ hashFiles('noj-judge/Cargo.lock') }}
-          restore-keys: |
-            cargo-e2e-
-
-      # ════════════════════════════════════════════
-      # 1. 构建基础设施：支持包 + 评测镜像（带 Docker 缓存）
-      # ════════════════════════════════════════════
-
-      - name: 安装 Deno 依赖
-        working-directory: noj-core
-        run: deno install
-
-      - name: 构建题目支持包 (packages/*.zip)
-        working-directory: noj-core
-        run: deno task problems:build
+          filters: |
+            e2e-identity:
+              - 'noj-tests/e2e/identity/**'
+              - 'noj-core/src/domains/identity/**'
+            e2e-catalog:
+              - 'noj-tests/e2e/catalog/**'
+              - 'noj-core/src/domains/catalog/**'
+            e2e-submission:
+              - 'noj-tests/e2e/submission/**'
+              - 'noj-core/src/domains/submission/**'
+            e2e-contest:
+              - 'noj-tests/e2e/contest/**'
+              - 'noj-core/src/domains/contest/**'
+            e2e-system:
+              - 'noj-tests/e2e/system/**'
+              - 'noj-core/src/domains/system/**'
+            e2e-community:
+              - 'noj-tests/e2e/community/**'
+              - 'noj-core/src/domains/community/**'
+            e2e-messaging:
+              - 'noj-tests/e2e/messaging/**'
+              - 'noj-core/src/domains/messaging/**'
+            e2e-objective:
+              - 'noj-tests/e2e/objective/**'
+              - 'noj-core/src/domains/objective/**'
+            e2e-admin:
+              - 'noj-tests/e2e/admin/**'
+              - 'noj-core/src/domains/admin/**'
+            e2e-cross-domain:
+              - 'noj-tests/e2e/cross-domain/**'
+            e2e-browser:
+              - 'noj-tests/e2e/browser/**'
+              - 'noj-ui/**'
+            e2e-infra:
+              - 'noj-core/src/shared/**'
+              - 'noj-core/src/routes/**'
+              - 'noj-core/src/app.ts'
+              - 'noj-core/src/main.ts'
+              - 'noj-core/src/mod.ts'
+              - 'noj-core/drizzle/**'
+              - 'noj-core/tests/**'
+              - 'noj-judge/**'
+              - 'noj-llm-gateway/**'
+              - 'docker-compose.e2e.yml'
+              - 'env.e2e.template'
+              - 'scripts/**'
+              - '.github/workflows/e2e.yml'
+      - name: 计算受影响 e2e-domains
+        id: domains
         env:
-          DENO_DIR: ${{ env.DENO_DIR }}
-
-      - name: 构建评测镜像 (noj-evaluator-python, 带 GHA 缓存)
-        uses: docker/build-push-action@v6
-        with:
-          context: noj-judge
-          file: noj-judge/docker/evaluator-python/Dockerfile
-          tags: noj-evaluator-python
-          load: true
-          cache-from: type=gha
-          # Fork PR 的 GITHUB_TOKEN 是 read-only，cache 写入会失败且
-          # 浪费存储（修复 finding S6 + P7）。原模式 mode=max 还会把缓存
-          # 体积推到 5-10× image size。改用 fork 感知 + 较小 cache。
-          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
-
-      - name: 构建评测镜像 (noj-solution-python, 带 GHA 缓存)
-        uses: docker/build-push-action@v6
-        with:
-          context: noj-judge
-          file: noj-judge/docker/solution-python/Dockerfile
-          tags: noj-solution-python
-          load: true
-          cache-from: type=gha
-          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
-
-      - name: 构建 Docker Compose 镜像 (noj-core, 带 GHA 缓存)
-        uses: docker/build-push-action@v6
-        with:
-          context: noj-core
-          file: noj-core/Dockerfile.e2e
-          tags: noj-e2e-core
-          load: true
-          build-args: CACHE_BUST=${{ github.run_id }}
-          cache-from: type=gha,scope=${{ github.head_ref || github.ref_name }}
-          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || format('type=gha,mode=min,scope={0}', github.head_ref || github.ref_name) }}
-
-      - name: 构建 Docker Compose 镜像 (noj-judge, 带 GHA 缓存)
-        uses: docker/build-push-action@v6
-        with:
-          context: noj-judge
-          file: noj-judge/Dockerfile.e2e
-          tags: noj-e2e-judge
-          load: true
-          cache-from: type=gha
-          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
-
-      - name: 构建 Docker Compose 镜像 (noj-llm-gateway, 带 GHA 缓存)
-        uses: docker/build-push-action@v6
-        with:
-          context: noj-llm-gateway
-          file: noj-llm-gateway/Dockerfile
-          tags: noj-e2e-llm-gateway
-          load: true
-          cache-from: type=gha
-          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
-
-      - name: 初始化 MinIO bucket
-        run: |
-          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME up -d minio minio-init
-
-      # ════════════════════════════════════════════
-      # 2. 启动 E2E 评测栈（使用预构建镜像，不触发 rebuild）
-      # ════════════════════════════════════════════
-
-      - name: 启动评测栈（使用预构建镜像，不触发 rebuild）
-        run: |
-          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME up -d --no-build
-          # 修复 finding C4 + C8：原版用 timeout 60 bash + curl 探测，
-          # 且失败用 `|| echo ⚠` 静默吞下，导致后续 70+ 测试在 noj-core
-          # 未起来时跑出 ECONNREFUSED 伪装成测试失败。
-          #
-          # 改用 docker inspect 轮询 Health.Status：
-          #   - status=healthy → 成功
-          #   - 容器已退出（main.ts 启动失败 / migration 失败等）→ 立即诊断退出
-          #
-          # 一改前：noj-core 启动时跑 migrate + seed（实测 25-30 min），
-          # 一改后：拆分出 noj-migrate one-shot 提前跑 migrate + seed，
-          # noj-core 容器只启动 HTTP server + deno runtime（启动 ~4 min）。
-          # v13 fix：放弃 deno compile AOT（Alpine musl vs glibc binary 兼容性
-          # 问题过多），改用 deno cache 预热 + bash loop 拉长到 600s 兜底
-          # cold-start。
-          echo "等待 noj-core 健康（bash 轮询 docker inspect，600s 超时）..."
-          for i in $(seq 1 600); do
-            status=$(docker inspect --format='{{.State.Health.Status}}' \
-                     noj-e2e-core 2>/dev/null || echo "missing")
-            if [ "$status" = "healthy" ]; then
-              echo "✅ noj-core 健康就绪 ($i s)"
-              exit 0
-            fi
-            # v12 fix：原 `! docker ps` 检查在容器还没 created 时误报
-            # "已退出"（race condition）。改用 docker inspect State.Status
-            # 只判 exited/dead 状态。
-            state=$(docker inspect --format='{{.State.Status}}' \
-                    noj-e2e-core 2>/dev/null || echo "missing")
-            if [ "$state" = "exited" ] || [ "$state" = "dead" ]; then
-              echo "::error::noj-core 容器已退出，状态=$state (health=$status)"
-              docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME \
-                logs --tail=100 noj-core
-              exit 1
-            fi
-            sleep 1
-          done
-          echo "::error::noj-core 未在 600s 内健康就绪 (status=$status)"
-          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME \
-            logs --tail=100 noj-core
-          exit 1
-
-      # ════════════════════════════════════════════
-      # 3. noj-tests E2E 测试（3 组并行）
-      #
-      # 性能优化（2026-07）：30 个测试文件按字母序均分为 3 组，组间
-      # 独立进程并行。文件间无跨文件固定 ID 依赖（此前已审计）；唯一
-      # 共享状态是 admin 账户（getAdminToken 改密竞态由 helper.ts 并发
-      # 兜底）与评测队列（并发提交由 judge 多容器并行消化）。
-      # ════════════════════════════════════════════
-
-      # 独立 staging 验收清单：由 scripts/staging/acceptance.sh 在生产候选
-      # 环境执行，不在本地 E2E 栈中重复运行；文件完整性校验仍要求登记。
-      # staging-smoke.test.ts
-
-      - name: 校验 E2E 文件均已加入 workflow 清单
-        working-directory: noj-tests
+          E2E_IDENTITY: ${{ steps.filter.outputs.e2e-identity }}
+          E2E_CATALOG: ${{ steps.filter.outputs.e2e-catalog }}
+          E2E_SUBMISSION: ${{ steps.filter.outputs.e2e-submission }}
+          E2E_CONTEST: ${{ steps.filter.outputs.e2e-contest }}
+          E2E_SYSTEM: ${{ steps.filter.outputs.e2e-system }}
+          E2E_COMMUNITY: ${{ steps.filter.outputs.e2e-community }}
+          E2E_MESSAGING: ${{ steps.filter.outputs.e2e-messaging }}
+          E2E_OBJECTIVE: ${{ steps.filter.outputs.e2e-objective }}
+          E2E_ADMIN: ${{ steps.filter.outputs.e2e-admin }}
+          E2E_CROSS_DOMAIN: ${{ steps.filter.outputs.e2e-cross-domain }}
+          E2E_BROWSER: ${{ steps.filter.outputs.e2e-browser }}
+          E2E_INFRA: ${{ steps.filter.outputs.e2e-infra }}
         run: |
           python3 - <<'PY'
-          from pathlib import Path
-          root = Path('e2e')
-          dirs = sorted(p.name for p in root.iterdir() if p.is_dir() and p.name not in ('browser', 'support-package', 'staging'))
-          wf = Path('../.github/workflows/e2e.yml').read_text(encoding='utf-8')
-          missing = [d for d in dirs if f'e2e/{d}/' not in wf]
-          stray = [p.name for p in root.glob('*.test.ts')]
-          if missing:
-              raise SystemExit(f"E2E 目录未在 e2e.yml 清单中: {', '.join(missing)}")
-          if stray:
-              raise SystemExit(f"E2E 根目录存在未归入 Domain 的测试文件: {', '.join(stray)}")
-          print(f"OK: {len(dirs)} 个 E2E Domain 目录均已在 workflow 中")
+          import json, os
+          def flag(name):
+              return os.environ.get(name, '') == 'true'
+          all_e2e = ["identity","catalog","submission","contest","system","community","messaging","objective","admin"]
+          e2e_domains = []
+          if flag('E2E_INFRA'):
+              e2e_domains = all_e2e[:]
+          else:
+              for d in all_e2e:
+                  if flag(f'E2E_{d.upper().replace("-", "_")}'):
+                      e2e_domains.append(d)
+          if flag('E2E_CROSS_DOMAIN') or flag('E2E_INFRA'):
+              e2e_domains.append('cross-domain')
+          if flag('E2E_BROWSER') or flag('E2E_INFRA'):
+              e2e_domains.append('browser')
+          print(f"e2e-domains={json.dumps(e2e_domains)}")
           PY
 
-      - name: E2E 测试 (noj-tests, 3 组并行)
-        working-directory: noj-tests
-        env:
-          E2E_BASE_URL: ${{ env.E2E_BASE_URL }}
-          E2E_LLM_MOCK_URL: http://noj-e2e-llm-mock:8002/v1
-        run: |
-          # set -euo pipefail：任一 deno test 失败立即终止整个 job
-          set -euo pipefail
-          run_group() {
-            deno test -A "$@"
-          }
-          run_group \
-            e2e/identity/ \
-            e2e/catalog/ \
-            e2e/submission/ &
-          p1=$!
-          run_group \
-            e2e/contest/ \
-            e2e/system/ \
-            e2e/community/ \
-            e2e/messaging/ \
-            e2e/objective/ \
-            e2e/admin/ &
-          p2=$!
-          run_group \
-            e2e/cross-domain/ &
-          p3=$!
-          fail=0
-          wait "$p1" || fail=1
-          wait "$p2" || fail=1
-          wait "$p3" || fail=1
-          exit "$fail"
-
-      # ════════════════════════════════════════════
-      # 4. UI 浏览器关键流程门禁（issue #427）
-      #
-      # 复用同一评测栈：构建 noj-ui（Nitro 代理指向容器内 noj-core），
-      # 以 Playwright 真实浏览器执行 注册验证 / 登录退出 / 代码提交到结果 /
-      # 核心失败反馈 四条关键路径。Fork PR 无需任何生产凭据——所需密钥
-      # 全部来自 workflow env 中的 e2e 固定测试值。失败时上传 trace + 截图。
-      # ════════════════════════════════════════════
-
-      - name: 安装 noj-ui 依赖
-        working-directory: noj-ui
-        run: deno install
-
-      - name: 构建 noj-ui
-        working-directory: noj-ui
-        run: deno task build
-
-      - name: 启动 noj-ui
-        # 用 Deno 运行产物：deno task build 在 Deno 下执行，产出的 nitro chunk
-        # 含 Deno 分支（如 Deno.env.get("DEBUG")），用 node 启动会
-        # ReferenceError: Deno is not defined。
-        run: |
-          NUXT_API_BASE=http://localhost:8099 PORT=3000 \
-            deno run -A noj-ui/.output/server/index.mjs > /tmp/noj-ui.log 2>&1 &
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:3000/ > /dev/null; then
-              echo "✅ noj-ui 就绪 (:3000)"
-              break
-            fi
-            sleep 1
-          done
-          if ! curl -sf http://localhost:3000/ > /dev/null; then
-            echo "::error::noj-ui 启动超时"
-            tail -50 /tmp/noj-ui.log
-            exit 1
-          fi
-
-      - name: 缓存 Playwright 浏览器
-        uses: actions/cache@v4
+  e2e-identity:
+    name: E2E identity
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'identity') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: noj-e2e-identity
+    steps:
+      - uses: ./.github/actions/e2e-domain
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ hashFiles('noj-tests/deno.lock') }}
-          restore-keys: |
-            playwright-
+          domain: identity
 
-      - name: 安装 Playwright Chromium
-        run: deno run -A npm:playwright@1.62.1 install chromium
-
-      - name: UI 浏览器关键流程测试 (noj-tests test:browser)
-        working-directory: noj-tests
-        env:
-          NOJ_RUN_BROWSER_E2E: "1"
-          E2E_UI_URL: http://localhost:3000
-        run: deno task test:browser
-
-      - name: 上传 UI 浏览器诊断产物
-        if: failure()
-        uses: actions/upload-artifact@v4
+  e2e-catalog:
+    name: E2E catalog
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'catalog') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: noj-e2e-catalog
+    steps:
+      - uses: ./.github/actions/e2e-domain
         with:
-          name: ui-browser-artifacts
-          path: noj-tests/test-results/ui-browser/
-          retention-days: 7
-          if-no-files-found: ignore
+          domain: catalog
 
-      # ════════════════════════════════════════════
-      # 6. 诊断日志（即使前面失败也执行）
-      # ════════════════════════════════════════════
-
-      - name: 输出 noj-migrate 日志
-        if: always()
-        run: |
-          echo "=== noj-migrate 日志 ==="
-          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 noj-migrate 2>&1 || echo "容器可能未启动"
-
-      - name: 输出 noj-judge 日志
-        if: always()
-        run: |
-          echo "=== noj-judge 日志 ==="
-          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 noj-judge 2>&1 || echo "容器可能未启动"
-
-      - name: 输出 noj-core 日志
-        if: always()
-        run: |
-          echo "=== noj-core 日志 ==="
-          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 noj-core 2>&1 || echo "容器可能未启动"
-
-      - name: 输出 noj-llm-gateway 日志
-        if: always()
-        run: |
-          echo "=== noj-llm-gateway 日志 ==="
-          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 noj-llm-gateway 2>&1 || echo "容器可能未启动"
-
-      # 失败时把诊断日志落盘 + 上传为 GitHub Actions artifact
-      # (修复 finding M7/S8)。原版只 echo 到 GHA log，contributor 必须本地复现才能排查。
-      # 改写为：docker logs 重定向到文件，再 upload-artifact。
-      - name: 保存 + 上传 noj-judge 日志
-        if: always()
-        run: |
-          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=500 noj-judge > noj-judge.log 2>&1 || echo "noj-judge may not be running"
-
-      - name: 保存 + 上传 noj-migrate 日志
-        if: always()
-        run: |
-          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=500 noj-migrate > noj-migrate.log 2>&1 || echo "noj-migrate may not be running"
-
-      - name: 保存 + 上传 noj-core 日志
-        if: always()
-        run: |
-          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=500 noj-core > noj-core.log 2>&1 || echo "noj-core may not be running"
-
-      - name: 保存 + 上传 noj-llm-gateway 日志
-        if: always()
-        run: |
-          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=500 noj-llm-gateway > noj-llm-gateway.log 2>&1 || echo "noj-llm-gateway may not be running"
-
-      - name: 上传诊断日志
-        if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+  e2e-submission:
+    name: E2E submission
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'submission') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: noj-e2e-submission
+    steps:
+      - uses: ./.github/actions/e2e-domain
         with:
-          name: e2e-full-pipeline-logs
-          path: |
-            noj-judge.log
-            noj-migrate.log
-            noj-core.log
-            noj-llm-gateway.log
-            /tmp/noj-work/
-          retention-days: 7
-          if-no-files-found: ignore
-        continue-on-error: true
+          domain: submission
 
-      # ════════════════════════════════════════════
-      # 7. 清理
-      # ════════════════════════════════════════════
+  e2e-contest:
+    name: E2E contest
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'contest') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: noj-e2e-contest
+    steps:
+      - uses: ./.github/actions/e2e-domain
+        with:
+          domain: contest
 
-      - name: 清理评测栈
-        if: always()
-        run: |
-          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME down -v
+  e2e-system:
+    name: E2E system
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'system') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: noj-e2e-system
+    steps:
+      - uses: ./.github/actions/e2e-domain
+        with:
+          domain: system
 
-  # ===========================================================================
-  # judge-sandbox — noj-judge Docker 沙箱 E2E（独立 job）
-  #
-  # 性能优化（2026-07）：从原单一大 job 拆出。沙箱测试只依赖 Docker
-  # daemon + Redis（评测镜像由测试内 ensure_test_image 自建），不需要
-  # noj-core 栈，因此与 API E2E job 完全并行。结构上与 ci.yml 的
-  # judge-e2e 保持一致（sccache + 2 组并行）。
-  # ===========================================================================
+  e2e-community:
+    name: E2E community
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'community') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: noj-e2e-community
+    steps:
+      - uses: ./.github/actions/e2e-domain
+        with:
+          domain: community
+
+  e2e-messaging:
+    name: E2E messaging
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'messaging') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: noj-e2e-messaging
+    steps:
+      - uses: ./.github/actions/e2e-domain
+        with:
+          domain: messaging
+
+  e2e-objective:
+    name: E2E objective
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'objective') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: noj-e2e-objective
+    steps:
+      - uses: ./.github/actions/e2e-domain
+        with:
+          domain: objective
+
+  e2e-admin:
+    name: E2E admin
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'admin') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: noj-e2e-admin
+    steps:
+      - uses: ./.github/actions/e2e-domain
+        with:
+          domain: admin
+
+  e2e-cross-domain:
+    name: E2E Cross Domain
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'cross-domain') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: noj-e2e-cross-domain
+    steps:
+      - uses: ./.github/actions/e2e-domain
+        with:
+          domain: cross-domain
+
+  e2e-browser:
+    name: E2E Browser
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'browser') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: noj-e2e-browser
+    steps:
+      - uses: ./.github/actions/e2e-domain
+        with:
+          domain: browser
+          browser: 'true'
+
   judge-sandbox:
     name: Judge Sandbox E2E
     runs-on: ubuntu-latest
