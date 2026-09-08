@@ -1,7 +1,7 @@
 /**
  * 审计日志类型定义（issue #101）。
  *
- * `AuditAction` 限定 7 类合法操作，CHECK 约束保证 DB 层一致；
+ * `AuditAction` 限定合法操作，CHECK 约束保证 DB 层一致；
  * `AuditDetail` 用 discriminated union 保证 detail 字段的类型安全。
  */
 

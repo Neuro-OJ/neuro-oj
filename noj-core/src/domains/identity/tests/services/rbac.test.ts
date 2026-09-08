@@ -11,6 +11,7 @@ import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { eq, sql } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
+  auditLogs,
   permissions,
   roles,
   userRoles,
@@ -637,6 +638,81 @@ Deno.test({
       },
     );
     assertEquals(delRes.status, 204, "删除自定义角色应返回 204");
+  },
+});
+
+// ── 角色路由审计测试 ─────────────────────────────
+
+Deno.test({
+  name: "rbac: 角色 CRUD 路由审计各写一条且不重复",
+  ignore: skip || !hasJwt,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const adminToken = await signToken({
+      sub: ADMIN_USER_ID,
+      role: "admin",
+    });
+    const db = getDb();
+    const t = Date.now();
+    await db.delete(auditLogs);
+
+    const createRes = await jsonRequest(app, "/api/v1/admin/identity/roles", {
+      method: "POST",
+      body: { name: `audit-role-${t}` },
+      token: adminToken,
+    });
+    assertEquals(createRes.status, 201);
+    const role = (await createRes.json()).data;
+
+    const updateRes = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/roles/${role.id}`,
+      {
+        method: "PUT",
+        body: { name: `audit-role-renamed-${t}` },
+        token: adminToken,
+      },
+    );
+    assertEquals(updateRes.status, 200);
+
+    const deleteRes = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/roles/${role.id}`,
+      {
+        method: "DELETE",
+        token: adminToken,
+      },
+    );
+    assertEquals(deleteRes.status, 204);
+
+    const createRows = await db.select().from(auditLogs).where(
+      eq(auditLogs.action, "roles.create"),
+    );
+    assertEquals(createRows.length, 1, "roles.create 应仅有一条审计记录");
+    assertEquals(
+      (createRows[0].detail as Record<string, unknown>).name,
+      `audit-role-${t}`,
+    );
+
+    const updateRows = await db.select().from(auditLogs).where(
+      eq(auditLogs.action, "roles.update"),
+    );
+    assertEquals(updateRows.length, 1, "roles.update 应仅有一条审计记录");
+    assertEquals(
+      (updateRows[0].detail as Record<string, unknown>).id,
+      role.id,
+    );
+
+    const deleteRows = await db.select().from(auditLogs).where(
+      eq(auditLogs.action, "roles.delete"),
+    );
+    assertEquals(deleteRows.length, 1, "roles.delete 应仅有一条审计记录");
+    assertEquals(
+      (deleteRows[0].detail as Record<string, unknown>).id,
+      role.id,
+    );
   },
 });
 

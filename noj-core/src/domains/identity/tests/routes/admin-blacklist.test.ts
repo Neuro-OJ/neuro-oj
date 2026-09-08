@@ -5,7 +5,12 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
-import { ipBans, userRoles, users } from "../../../../shared/db/schema.ts";
+import {
+  auditLogs,
+  ipBans,
+  userRoles,
+  users,
+} from "../../../../shared/db/schema.ts";
 import { signToken } from "../../services/security/jwt.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";
 import { _resetBanlistForTest } from "../../index.ts";
@@ -71,6 +76,8 @@ Deno.test({
     const { createApp } = await import("../../../../app.ts");
     const app = createApp();
     const token = await signToken({ sub: ADMIN_ID, role: "admin" });
+    const db = getDb();
+    await db.delete(auditLogs);
     const res = await jsonRequest(app, "/api/v1/admin/identity/blacklist", {
       method: "POST",
       body: { ip_or_cidr: "1.2.3.4", reason: "spam" },
@@ -79,6 +86,18 @@ Deno.test({
     assertEquals(res.status, 201);
     const body = await res.json();
     assertEquals(body.data.ip_or_cidr, "1.2.3.4");
+
+    // 审计唯一性：service 层已写 ip_ban.create，路由层不得重复写
+    const auditRows = await db.select().from(auditLogs).where(
+      eq(auditLogs.action, "ip_ban.create"),
+    );
+    assertEquals(auditRows.length, 1, "ip_ban.create 应仅有一条审计记录");
+    assertEquals(auditRows[0].target_type, "ip_bans");
+    assertEquals(auditRows[0].target_id, body.data.id);
+    assertEquals(
+      (auditRows[0].detail as Record<string, unknown>).ip_or_cidr,
+      "1.2.3.4",
+    );
   },
 });
 
@@ -156,6 +175,8 @@ Deno.test({
     const ban = await addIpBan({ ip_or_cidr: "1.2.3.4" }, ADMIN_ID);
     const app = createApp();
     const token = await signToken({ sub: ADMIN_ID, role: "admin" });
+    const db = getDb();
+    await db.delete(auditLogs);
     const res = await jsonRequest(
       app,
       `/api/v1/admin/identity/blacklist/${ban.id}`,
@@ -165,5 +186,17 @@ Deno.test({
       },
     );
     assertEquals(res.status, 204);
+
+    // 审计唯一性：service 层已写 ip_ban.delete，路由层不得重复写
+    const auditRows = await db.select().from(auditLogs).where(
+      eq(auditLogs.action, "ip_ban.delete"),
+    );
+    assertEquals(auditRows.length, 1, "ip_ban.delete 应仅有一条审计记录");
+    assertEquals(auditRows[0].target_type, "ip_bans");
+    assertEquals(auditRows[0].target_id, ban.id);
+    assertEquals(
+      (auditRows[0].detail as Record<string, unknown>).ip_or_cidr,
+      "1.2.3.4",
+    );
   },
 });

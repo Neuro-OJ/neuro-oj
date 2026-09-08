@@ -7,8 +7,11 @@
  * - roles/permissions（RBAC 管理）
  * - blacklist（IP 黑名单管理）
  *
- * 写操作统一通过 withAudit 接入统一审计；原 service 层已有的审计保留作为
- * 服务级兜底，路由层审计负责补充角色管理等原先未审计的写操作。
+ * 审计分层：
+ * - service 层已审计的操作（users.ban / users.unban / users.delete /
+ *   ip_ban.create / ip_ban.delete）以 service 为唯一审计源，路由层不再重复写。
+ * - 路由层 withAudit 仅补充原本未在 service 审计的写操作
+ *   （users.role_change / roles.create / roles.update / roles.delete）。
  */
 import { Hono } from "hono";
 import type { Context } from "hono";
@@ -162,65 +165,32 @@ router.put("/users/:id", async (c) => {
  * PATCH /api/v1/admin/identity/users/:id/ban
  * body: { reason?, banned_until? }
  */
-router.patch(
-  "/users/:id/ban",
-  auditRoute(
-    {
-      action: "users.ban",
-      target: (c) => ({ type: "user", id: c.req.param("id")! }),
-      buildDetail: (c) => {
-        const body = getAuditBody<{
-          reason?: string;
-          banned_until?: string | null;
-          scope?: "platform" | "social";
-        }>(c);
-        return {
-          action: "users.ban",
-          reason: body?.reason ?? "",
-          until: body?.banned_until ?? null,
-          scope: body?.scope ?? "platform",
-        };
-      },
-    },
-    async (c) => {
-      const targetUserId = await resolveUserId(c.req.param("id")! as string);
-      const body = await parseJsonBody<{
-        reason?: string;
-        banned_until?: string | null;
-        scope?: "platform" | "social";
-      }>(c);
-      setAuditBody(c, body);
-      const user = await banUser(
-        targetUserId,
-        body.reason,
-        body.banned_until,
-        c.get("userId"),
-        body.scope ?? "platform",
-      );
-      return c.json({ data: user }, 200);
-    },
-  ),
-);
+router.patch("/users/:id/ban", async (c) => {
+  const targetUserId = await resolveUserId(c.req.param("id")! as string);
+  const body = await parseJsonBody<{
+    reason?: string;
+    banned_until?: string | null;
+    scope?: "platform" | "social";
+  }>(c);
+  const user = await banUser(
+    targetUserId,
+    body.reason,
+    body.banned_until,
+    c.get("userId"),
+    body.scope ?? "platform",
+  );
+  return c.json({ data: user }, 200);
+});
 
 /**
  * 管理员解封用户。
  * PATCH /api/v1/admin/identity/users/:id/unban
  */
-router.patch(
-  "/users/:id/unban",
-  auditRoute(
-    {
-      action: "users.unban",
-      target: (c) => ({ type: "user", id: c.req.param("id")! }),
-      buildDetail: () => ({ action: "users.unban" }),
-    },
-    async (c) => {
-      const targetUserId = await resolveUserId(c.req.param("id")! as string);
-      const user = await unbanUser(targetUserId, c.get("userId"));
-      return c.json({ data: user }, 200);
-    },
-  ),
-);
+router.patch("/users/:id/unban", async (c) => {
+  const targetUserId = await resolveUserId(c.req.param("id")! as string);
+  const user = await unbanUser(targetUserId, c.get("userId"));
+  return c.json({ data: user }, 200);
+});
 
 /**
  * 获取用户封禁历史（user-ban-table）。
@@ -233,28 +203,15 @@ router.get("/users/:id/bans", async (c) => {
 });
 
 /** 管理员注销用户；固定确认词降低误操作风险。 */
-router.delete(
-  "/users/:id",
-  auditRoute(
-    {
-      action: "users.delete",
-      target: (c) => ({ type: "user", id: c.req.param("id")! }),
-      buildDetail: (c) => ({
-        action: "users.delete",
-        username: c.req.param("id")!,
-      }),
-    },
-    async (c) => {
-      const body = await parseJsonBody<{ confirmation?: string }>(c);
-      if (body.confirmation !== "DELETE") {
-        throw new ValidationError("请输入确认词 DELETE");
-      }
-      const targetUserId = await resolveUserId(c.req.param("id")! as string);
-      await adminDeleteAccount(targetUserId, c.get("userId"));
-      return c.body(null, 204);
-    },
-  ),
-);
+router.delete("/users/:id", async (c) => {
+  const body = await parseJsonBody<{ confirmation?: string }>(c);
+  if (body.confirmation !== "DELETE") {
+    throw new ValidationError("请输入确认词 DELETE");
+  }
+  const targetUserId = await resolveUserId(c.req.param("id")! as string);
+  await adminDeleteAccount(targetUserId, c.get("userId"));
+  return c.body(null, 204);
+});
 
 /**
  * 管理员获取角色列表。
@@ -394,68 +351,27 @@ router.get("/blacklist", async (c) => {
  * POST /api/v1/admin/identity/blacklist
  * body: { ip_or_cidr, reason?, expires_at? }
  */
-router.post(
-  "/blacklist",
-  auditRoute(
-    {
-      action: "ip_ban.create",
-      target: (c) => ({
-        type: "ip_bans",
-        id: getAuditBody<{ id?: string }>(c)?.id ?? "",
-      }),
-      buildDetail: (c) => {
-        const body = getAuditBody<{
-          ip_or_cidr?: string;
-          reason?: string;
-          expires_at?: string | null;
-        }>(c);
-        return {
-          action: "ip_ban.create",
-          ip_or_cidr: body?.ip_or_cidr ?? "",
-          reason: body?.reason ?? "",
-          expires_at: body?.expires_at ?? null,
-        };
-      },
-    },
-    async (c) => {
-      const body = await parseJsonBody<{
-        ip_or_cidr: string;
-        reason?: string;
-        expires_at?: string | null;
-      }>(c);
-      setAuditBody(c, body);
-      if (!body.ip_or_cidr) {
-        throw new ValidationError("缺少必填字段：ip_or_cidr");
-      }
-      const ban = await addIpBan(body, c.get("userId"));
-      // withAudit 的 target 需要真实 ban id，handler 返回后由响应体补充。
-      setAuditBody(c, { ...body, id: ban.id });
-      return c.json({ data: ban }, 201);
-    },
-  ),
-);
+router.post("/blacklist", async (c) => {
+  const body = await parseJsonBody<{
+    ip_or_cidr: string;
+    reason?: string;
+    expires_at?: string | null;
+  }>(c);
+  if (!body.ip_or_cidr) {
+    throw new ValidationError("缺少必填字段：ip_or_cidr");
+  }
+  const ban = await addIpBan(body, c.get("userId"));
+  return c.json({ data: ban }, 201);
+});
 
 /**
  * 管理员删除 IP 黑名单条目。
  * DELETE /api/v1/admin/identity/blacklist/:id
  */
-router.delete(
-  "/blacklist/:id",
-  auditRoute(
-    {
-      action: "ip_ban.delete",
-      target: (c) => ({ type: "ip_bans", id: c.req.param("id")! }),
-      buildDetail: (c) => ({
-        action: "ip_ban.delete",
-        ip_or_cidr: c.req.param("id")!,
-      }),
-    },
-    async (c) => {
-      const id = c.req.param("id")! as string;
-      await removeIpBan(id, c.get("userId"));
-      return c.body(null, 204);
-    },
-  ),
-);
+router.delete("/blacklist/:id", async (c) => {
+  const id = c.req.param("id")! as string;
+  await removeIpBan(id, c.get("userId"));
+  return c.body(null, 204);
+});
 
 export default router;

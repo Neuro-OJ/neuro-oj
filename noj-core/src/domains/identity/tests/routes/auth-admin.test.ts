@@ -6,6 +6,7 @@ import {
 import { createApp } from "../../../../app.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
+  auditLogs,
   problems,
   roles,
   submissions,
@@ -493,6 +494,125 @@ async function cleanupTestUser(id: string) {
     // ignore
   }
 }
+
+// ─── 审计唯一性（service 层已写审计的路由不得重复写）────────────
+
+Deno.test({
+  name: "admin route: PATCH /users/:id/ban 审计唯一且 detail 准确",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const db = getDb();
+    const username = `adm_ban_${ts}`;
+    const targetId = await insertTestUser(username, `${username}@example.com`);
+    const token = await createUserToken("admin");
+    await db.delete(auditLogs);
+
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/users/${targetId}/ban`,
+      {
+        method: "PATCH",
+        body: { reason: "spam" },
+        token,
+      },
+    );
+    assertEquals(res.status, 200);
+
+    const rows = await db.select().from(auditLogs).where(
+      eq(auditLogs.action, "users.ban"),
+    );
+    assertEquals(rows.length, 1, "users.ban 应仅有一条审计记录");
+    assertEquals(rows[0].target_type, "users");
+    assertEquals(rows[0].target_id, targetId);
+    assertEquals(
+      (rows[0].detail as Record<string, unknown>).reason,
+      "spam",
+    );
+  },
+});
+
+Deno.test({
+  name: "admin route: PATCH /users/:id/unban 审计唯一",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const db = getDb();
+    const username = `adm_unban_${ts}`;
+    const targetId = await insertTestUser(username, `${username}@example.com`);
+    const token = await createUserToken("admin");
+
+    const banRes = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/users/${targetId}/ban`,
+      {
+        method: "PATCH",
+        body: { reason: "spam" },
+        token,
+      },
+    );
+    assertEquals(banRes.status, 200);
+    await db.delete(auditLogs);
+
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/users/${targetId}/unban`,
+      { method: "PATCH", token },
+    );
+    assertEquals(res.status, 200);
+
+    const rows = await db.select().from(auditLogs).where(
+      eq(auditLogs.action, "users.unban"),
+    );
+    assertEquals(rows.length, 1, "users.unban 应仅有一条审计记录");
+    assertEquals(rows[0].target_type, "users");
+    assertEquals(rows[0].target_id, targetId);
+  },
+});
+
+Deno.test({
+  name: "admin route: DELETE /users/:id 审计唯一且 detail 保留用户名",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const db = getDb();
+    const username = `adm_delete_${ts}`;
+    const targetId = await insertTestUser(username, `${username}@example.com`);
+    const token = await createUserToken("admin");
+    await db.delete(auditLogs);
+
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/identity/users/${targetId}`,
+      {
+        method: "DELETE",
+        body: { confirmation: "DELETE" },
+        token,
+      },
+    );
+    assertEquals(res.status, 204);
+
+    const rows = await db.select().from(auditLogs).where(
+      eq(auditLogs.action, "users.delete"),
+    );
+    assertEquals(rows.length, 1, "users.delete 应仅有一条审计记录");
+    assertEquals(rows[0].target_type, "user");
+    assertEquals(rows[0].target_id, targetId);
+    assertEquals(
+      (rows[0].detail as Record<string, unknown>).username,
+      username,
+    );
+  },
+});
 
 Deno.test({
   name: "admin route: PUT /api/v1/admin/identity/users/:id 成功更新 bio",
