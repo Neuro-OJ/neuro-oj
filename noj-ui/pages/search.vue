@@ -103,7 +103,9 @@ const { api } = useApi();
 
 const query = ref<string>((route.query.q as string) ?? "");
 const rawType = (route.query.type as string) ?? "all";
-const type = ref<SearchType>(rawType === "all" ? "all" : rawType as SearchType);
+// 兼容旧版 type=community：归一化为 community_post，否则旧链接打开后没有 Tab 激活。
+const normalizedType = rawType === "community" ? "community_post" : rawType;
+const type = ref<SearchType>(normalizedType === "all" ? "all" : normalizedType as SearchType);
 const page = ref<number>(Number(route.query.page) || 1);
 const limit = 20;
 const loading = ref(false);
