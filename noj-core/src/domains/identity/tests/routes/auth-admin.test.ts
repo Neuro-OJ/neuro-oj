@@ -155,26 +155,26 @@ Deno.test({
 // ─── 仪表盘统计 ──────────────────────────────────────────
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/dashboard/stats 未登录返回 401",
+  name: "admin route: GET /api/v1/admin/query/dashboard/stats 未登录返回 401",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/dashboard/stats");
+    const res = await jsonRequest(app, "/api/v1/admin/query/dashboard/stats");
     assertEquals(res.status, 401);
   },
 });
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/dashboard/stats 非管理员返回 403",
+  name: "admin route: GET /api/v1/admin/query/dashboard/stats 非管理员返回 403",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/admin/dashboard/stats", {
+    const res = await jsonRequest(app, "/api/v1/admin/query/dashboard/stats", {
       token,
     });
     assertEquals(res.status, 403);
@@ -182,14 +182,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/dashboard/stats 管理员可访问",
+  name: "admin route: GET /api/v1/admin/query/dashboard/stats 管理员可访问",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken("admin");
-    const res = await jsonRequest(app, "/api/v1/admin/dashboard/stats", {
+    const res = await jsonRequest(app, "/api/v1/admin/query/dashboard/stats", {
       token,
     });
     assertEquals(res.status, 200);
@@ -201,20 +201,24 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/dashboard/observability 未登录返回 401",
+  name:
+    "admin route: GET /api/v1/admin/query/dashboard/observability 未登录返回 401",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/dashboard/observability");
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/query/dashboard/observability",
+    );
     assertEquals(res.status, 401);
   },
 });
 
 Deno.test({
   name:
-    "admin route: GET /api/v1/admin/dashboard/observability 非管理员返回 403",
+    "admin route: GET /api/v1/admin/query/dashboard/observability 非管理员返回 403",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -223,7 +227,7 @@ Deno.test({
     const token = await createUserToken();
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/dashboard/observability",
+      "/api/v1/admin/query/dashboard/observability",
       {
         token,
       },
@@ -233,7 +237,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: GET /api/v1/admin/dashboard/observability 管理员可访问",
+  name:
+    "admin route: GET /api/v1/admin/query/dashboard/observability 管理员可访问",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -242,7 +247,7 @@ Deno.test({
     const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/dashboard/observability",
+      "/api/v1/admin/query/dashboard/observability",
       {
         token,
       },
