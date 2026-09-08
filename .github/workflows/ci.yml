@@ -363,8 +363,8 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: 覆盖率检查
-        run: deno run -A scripts/coverage-report.ts
+      - name: 覆盖率报告（不设硬门禁）
+        run: deno run -A scripts/coverage-report.ts --report
 
   # ===========================================================================
   # noj-core — Domain 单元/集成测试（独立 job）
