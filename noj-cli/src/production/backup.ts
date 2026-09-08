@@ -110,6 +110,39 @@ export async function prodBackupCreate(
     new TextEncoder().encode(redisRdb.stdout),
   );
 
+  const restoreList = await r.run(
+    "docker",
+    prodComposeArgs(base, [
+      "exec",
+      "-T",
+      "postgres",
+      "pg_restore",
+      "--list",
+    ]),
+    { stdin: Deno.readTextFileSync(`${snapshot}/postgres.dump`) },
+  );
+  Deno.writeTextFileSync(
+    `${snapshot}/postgres.restore-list`,
+    restoreList.stdout,
+  );
+
+  Deno.mkdirSync(`${snapshot}/minio`, { recursive: true, mode: 0o700 });
+  await r.run(
+    "docker",
+    prodComposeArgs(base, [
+      "run",
+      "--rm",
+      "--no-deps",
+      "--entrypoint",
+      "/bin/sh",
+      "-v",
+      `${snapshot}/minio:/backup:rw`,
+      "minio-init",
+      "-c",
+      'set -eu; for i in $(seq 1 30); do mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && break; sleep 2; done; mc mirror --preserve "local/$S3_BUCKET" /backup',
+    ]),
+  );
+
   Deno.writeTextFileSync(
     `${snapshot}/manifest.json`,
     JSON.stringify({ created_at: new Date().toISOString() }, null, 2),
@@ -182,7 +215,47 @@ export async function prodBackupRestore(
     ]),
     { stdin: Deno.readTextFileSync(`${opts.snapshot}/postgres.dump`) },
   );
-  return pg.code;
+  if (pg.code !== 0) return pg.code;
+
+  await runProdCompose(base, ["stop", "redis"], r);
+  const redisWrite = await r.run(
+    "docker",
+    prodComposeArgs(base, [
+      "run",
+      "--rm",
+      "--no-deps",
+      "--entrypoint",
+      "/bin/sh",
+      "redis",
+      "-c",
+      "set -eu; rm -rf /data/appendonlydir /data/dump.rdb; cat > /data/dump.rdb",
+    ]),
+    { stdin: Deno.readTextFileSync(`${opts.snapshot}/redis.rdb`) },
+  );
+  if (redisWrite.code !== 0) return redisWrite.code;
+  const upRedis = await runProdCompose(
+    base,
+    ["up", "-d", "--wait", "redis"],
+    r,
+  );
+  if (upRedis !== 0) return upRedis;
+
+  const minio = await r.run(
+    "docker",
+    prodComposeArgs(base, [
+      "run",
+      "--rm",
+      "--no-deps",
+      "--entrypoint",
+      "/bin/sh",
+      "-v",
+      `${opts.snapshot}/minio:/restore:ro`,
+      "minio-init",
+      "-c",
+      'set -eu; for i in $(seq 1 30); do mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && break; sleep 2; done; mc mirror --overwrite --remove /restore "local/$S3_BUCKET"',
+    ]),
+  );
+  return minio.code;
 }
 
 export async function prodBackupDrill(
