@@ -2,6 +2,7 @@
 import { useAuditLogs } from "~/composables/useAuditLogs"
 import type { AuditAction, AuditLogEntry } from "~/composables/useAuditLogs"
 import { useToast } from "~/composables/useToast"
+import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 
 definePageMeta({
   layout: "admin",
@@ -37,6 +38,15 @@ const ACTION_COLORS: Record<AuditAction, string> = {
   "submissions.rejudge": "bg-purple-100 text-purple-800",
   "settings.update": "bg-yellow-100 text-yellow-800",
 }
+
+const columns: AdminColumn[] = [
+  { key: "created_at", label: "时间" },
+  { key: "admin_id", label: "管理员" },
+  { key: "action", label: "操作" },
+  { key: "target", label: "目标" },
+  { key: "detail", label: "详情" },
+  { key: "ip_address", label: "IP" },
+]
 
 function renderDetail(entry: AuditLogEntry): string {
   const d = entry.detail as Record<string, any>
@@ -82,6 +92,11 @@ function applyFilters() {
   fetch()
 }
 
+function onReset() {
+  reset()
+  fetch()
+}
+
 function onPageChange(page: number) {
   filters.value.page = page
   fetch()
@@ -91,145 +106,87 @@ const totalPages = computed(() =>
   Math.max(1, Math.ceil(pagination.value.total / pagination.value.per_page)),
 )
 
+const tableItems = computed(() => data.value as unknown as Record<string, unknown>[])
+
 onMounted(fetch)
 </script>
 
 <template>
   <div class="flex flex-col gap-4">
-    <div class="flex flex-col gap-1">
-      <h1 class="text-22px font-bold text-text flex items-center gap-2">
-        <UIcon name="i-lucide-scroll-text" class="size-[22px]" />
-        审计日志
-      </h1>
-      <span class="text-sm text-text-secondary">查看管理员操作的完整审计记录（保留 90 天）</span>
-    </div>
-
-    <!-- 筛选条 -->
-    <div class="bg-white border border-border rounded-lg p-4">
-      <div class="flex flex-wrap gap-3 mb-3">
-        <div class="flex flex-col gap-1 min-w-[180px]">
-          <label class="text-xs font-semibold text-text-secondary">操作类型</label>
-          <USelect
-            v-model="filters.action"
-            :items="Object.entries(ACTION_LABELS).map(([value, label]) => ({ label, value }))"
-            placeholder="全部"
-            class="min-w-[180px]"
-          />
-        </div>
-        <div class="flex flex-col gap-1 min-w-[200px]">
-          <label class="text-xs font-semibold text-text-secondary">起始时间</label>
-          <input
-            type="datetime-local"
-            v-model="filters.from"
-            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
-          />
-        </div>
-        <div class="flex flex-col gap-1 min-w-[200px]">
-          <label class="text-xs font-semibold text-text-secondary">截止时间</label>
-          <input
-            type="datetime-local"
-            v-model="filters.to"
-            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
-          />
-        </div>
-      </div>
-      <div class="flex gap-2">
-        <UButton color="primary" size="sm" class="px-3.5 leading-none" @click="applyFilters">
-          筛选
-        </UButton>
-        <UButton color="neutral" variant="outline" size="sm" class="px-3.5 leading-none text-text-secondary border-border hover:border-text-secondary hover:text-text" @click="reset(); fetch()">
-          重置
-        </UButton>
-      </div>
-    </div>
-
-    <!-- 表格 -->
-    <div class="bg-white border border-border rounded-xl overflow-hidden">
-      <table class="w-full border-collapse">
-        <thead>
-          <tr>
-            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-bg-page border-b border-border">
-              时间
-            </th>
-            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-bg-page border-b border-border">
-              管理员
-            </th>
-            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-bg-page border-b border-border">
-              操作
-            </th>
-            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-bg-page border-b border-border">
-              目标
-            </th>
-            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-bg-page border-b border-border">
-              详情
-            </th>
-            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-bg-page border-b border-border">
-              IP
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="loading">
-            <td colspan="6" class="px-4 py-12 text-center text-text-secondary text-sm">
-              加载中...
-            </td>
-          </tr>
-          <tr v-else-if="error">
-            <td colspan="6" class="px-4 py-12 text-center text-red-600 text-sm">
-              {{ error }}
-            </td>
-          </tr>
-          <tr v-else-if="data.length === 0">
-            <td colspan="6" class="px-4 py-12 text-center text-text-muted text-sm">
-              暂无记录
-            </td>
-          </tr>
-          <tr
-            v-for="entry in data"
-            v-else
-            :key="entry.id"
-            class="border-b border-border last:border-b-0 transition-colors hover:bg-primary-bg"
-          >
-            <td class="px-4 py-3 text-sm text-text whitespace-nowrap">
-              {{ new Date(entry.created_at).toLocaleString("zh-CN") }}
-            </td>
-            <td class="px-4 py-3 text-sm font-mono text-text-secondary">
-              {{ entry.admin_id.slice(0, 8) }}...
-            </td>
-            <td class="px-4 py-3 text-sm">
-              <span :class="['inline-block px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap', ACTION_COLORS[entry.action]]">
-                {{ ACTION_LABELS[entry.action] }}
-              </span>
-            </td>
-            <td class="px-4 py-3 text-sm text-text-secondary">
-              {{ entry.target_type }}:{{ entry.target_id?.slice(0, 8) }}...
-            </td>
-            <td class="px-4 py-3 text-sm text-text">
-              {{ renderDetail(entry) }}
-            </td>
-            <td class="px-4 py-3 text-sm text-text-secondary font-mono">
-              <span class="inline-flex items-center gap-1">
-                {{ entry.ip_address }}
-                <button
-                  class="inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-text-muted hover:text-primary hover:bg-primary-bg"
-                  title="复制 IP"
-                  @click="copy(entry.ip_address)"
-                >
-                  <UIcon name="i-lucide-copy" class="size-3" />
-                </button>
-              </span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- 分页 -->
-    <PaginationNav
-      v-if="pagination.total > pagination.per_page"
-      :current-page="pagination.page"
-      :total-pages="totalPages"
-      @page-change="onPageChange"
+    <AdminPageHeader
+      title="审计日志"
+      description="查看管理员操作的完整审计记录（保留 90 天）"
+      icon="i-lucide-scroll-text"
     />
+
+    <AdminFilterBar @search="applyFilters" @reset="onReset">
+      <div class="flex flex-col gap-1 min-w-[180px]">
+        <label class="text-xs font-semibold text-text-secondary">操作类型</label>
+        <USelect
+          v-model="filters.action"
+          :items="Object.entries(ACTION_LABELS).map(([value, label]) => ({ label, value }))"
+          placeholder="全部"
+          class="min-w-[180px]"
+        />
+      </div>
+      <div class="flex flex-col gap-1 min-w-[200px]">
+        <label class="text-xs font-semibold text-text-secondary">起始时间</label>
+        <input
+          type="datetime-local"
+          v-model="filters.from"
+          class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
+        />
+      </div>
+      <div class="flex flex-col gap-1 min-w-[200px]">
+        <label class="text-xs font-semibold text-text-secondary">截止时间</label>
+        <input
+          type="datetime-local"
+          v-model="filters.to"
+          class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
+        />
+      </div>
+    </AdminFilterBar>
+
+    <AdminTable
+      :columns="columns"
+      :items="tableItems"
+      :loading="loading"
+      :error="error"
+      :total-pages="totalPages"
+      :current-page="pagination.page"
+      @update:page="onPageChange"
+    >
+      <template #cell="{ row, column }">
+        <template v-if="column.key === 'created_at'">
+          {{ new Date(row.created_at as string).toLocaleString("zh-CN") }}
+        </template>
+        <template v-else-if="column.key === 'admin_id'">
+          <span class="font-mono text-text-secondary">{{ (row.admin_id as string).slice(0, 8) }}...</span>
+        </template>
+        <template v-else-if="column.key === 'action'">
+          <span :class="['inline-block px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap', ACTION_COLORS[row.action as AuditAction]]">
+            {{ ACTION_LABELS[row.action as AuditAction] }}
+          </span>
+        </template>
+        <template v-else-if="column.key === 'target'">
+          <span class="text-text-secondary">{{ row.target_type }}:{{ (row.target_id as string)?.slice(0, 8) }}...</span>
+        </template>
+        <template v-else-if="column.key === 'detail'">
+          {{ renderDetail(row as unknown as AuditLogEntry) }}
+        </template>
+        <template v-else-if="column.key === 'ip_address'">
+          <span class="inline-flex items-center gap-1 font-mono">
+            {{ row.ip_address }}
+            <button
+              class="inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-text-muted hover:text-primary hover:bg-primary-bg"
+              title="复制 IP"
+              @click="copy(row.ip_address as string)"
+            >
+              <UIcon name="i-lucide-copy" class="size-3" />
+            </button>
+          </span>
+        </template>
+      </template>
+    </AdminTable>
   </div>
 </template>
