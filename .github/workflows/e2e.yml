@@ -263,12 +263,16 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          files = sorted(p.name for p in Path('e2e').glob('*.test.ts'))
+          root = Path('e2e')
+          dirs = sorted(p.name for p in root.iterdir() if p.is_dir() and p.name not in ('browser', 'support-package', 'staging'))
           wf = Path('../.github/workflows/e2e.yml').read_text(encoding='utf-8')
-          missing = [f for f in files if f not in wf]
+          missing = [d for d in dirs if f'e2e/{d}/' not in wf]
+          stray = [p.name for p in root.glob('*.test.ts')]
           if missing:
-              raise SystemExit(f"E2E 文件未在 e2e.yml 清单中: {', '.join(missing)}")
-          print(f"OK: {len(files)} 个 E2E 文件均已在 workflow 中")
+              raise SystemExit(f"E2E 目录未在 e2e.yml 清单中: {', '.join(missing)}")
+          if stray:
+              raise SystemExit(f"E2E 根目录存在未归入 Domain 的测试文件: {', '.join(stray)}")
+          print(f"OK: {len(dirs)} 个 E2E Domain 目录均已在 workflow 中")
           PY
 
       - name: E2E 测试 (noj-tests, 3 组并行)
@@ -283,47 +287,20 @@ jobs:
             deno test -A "$@"
           }
           run_group \
-            e2e/01_tags.test.ts \
-            e2e/02_problems.test.ts \
-            e2e/03_auth.test.ts \
-            e2e/04_submissions.test.ts \
-            e2e/05_profile.test.ts \
-            e2e/06_pipeline.test.ts \
-            e2e/07_queue.test.ts \
-            e2e/08_password_change_guard.test.ts &
+            e2e/identity/ \
+            e2e/catalog/ \
+            e2e/submission/ &
           p1=$!
           run_group \
-            e2e/09_checkin.test.ts \
-            e2e/10_sse.test.ts \
-            e2e/11_messaging.test.ts \
-            e2e/12_audit_log.test.ts \
-            e2e/13_support_package_s3.test.ts \
-            e2e/14_rejudge.test.ts \
-            e2e/15_dual_container_judge.test.ts &
+            e2e/contest/ \
+            e2e/system/ \
+            e2e/community/ \
+            e2e/messaging/ \
+            e2e/objective/ \
+            e2e/admin/ &
           p2=$!
           run_group \
-            e2e/16_community.test.ts \
-            e2e/17_problem_template.test.ts \
-            e2e/18_search.test.ts \
-            e2e/19_admin_endpoints.test.ts \
-            e2e/20_password_reset.test.ts \
-            e2e/21_rankings.test.ts \
-            e2e/22_contest_lifecycle.test.ts \
-            e2e/23_network_capability.test.ts \
-            e2e/24_import_bundle.test.ts \
-            e2e/25_rbac.test.ts \
-            e2e/26_call_timeout.test.ts \
-            e2e/27_objective.test.ts \
-            e2e/28_announcements.test.ts \
-            e2e/28_clarifications.test.ts \
-            e2e/29_avatar.test.ts \
-            e2e/30_contest_anti_cheat.test.ts \
-            e2e/30_self_test.test.ts \
-            e2e/31_tfa.test.ts \
-            e2e/32_llm_gateway.test.ts \
-            e2e/33_artifact_submission.test.ts \
-            e2e/33_priority_queue.test.ts \
-            e2e/trainings.test.ts &
+            e2e/cross-domain/ &
           p3=$!
           fail=0
           wait "$p1" || fail=1

@@ -1,0 +1,168 @@
+/**
+ * 全局搜索 E2E 测试（issue #100）。
+ *
+ * 覆盖：
+ * - 匿名 type=problem 搜索返回 200 + 标准 flat 响应（data.items / has_more / per_page / took_ms）
+ * - 匿名 type=user 返回 401（未登录）
+ * - 已登录非 admin 用户 type=user 返回 403（无权限）
+ * - admin type=user 返回 200 且 items 含 metadata.email 字段
+ * - 错误参数（type 非法、q 过短）返回 400
+ */
+
+import {
+  apiGet,
+  e2eTest,
+  getAdminToken,
+  isE2E,
+  registerUser,
+  TEST_PASSWORD,
+  waitForServer,
+} from "../helper.ts";
+
+let adminToken = "";
+let regularToken = "";
+
+// 与 helper.ts 中 adminCreds.email 一致（默认 "e2e_admin@test.com"）。
+// seed.ts 从 email 派生 username：e2e_admin@test.com → "e2e_admin"。
+const ADMIN_EMAIL = Deno.env.get("E2E_ADMIN_EMAIL") || "e2e_admin@test.com";
+const ADMIN_USERNAME = ADMIN_EMAIL.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_");
+
+e2eTest("[e2e/search] Setup", async () => {
+  if (!isE2E) return;
+  await waitForServer();
+  adminToken = await getAdminToken();
+  const ts = Date.now().toString(36);
+  regularToken = await registerUser(
+    `search_user_${ts}`,
+    `search_user_${ts}@test.com`,
+    TEST_PASSWORD,
+  );
+});
+
+e2eTest("[e2e/search] 1.1 匿名题目搜索返回 200 + 标准结构", async () => {
+  if (!isE2E) return;
+  // P1001 是 seed 自带的 A+B 样例题，关键词稳定可命中。
+  const { status, body } = await apiGet(
+    "/api/v1/search?q=1001&type=problem&per_page=5",
+  );
+  if (status !== 200) throw new Error(`期望 200, 实际 ${status}`);
+  const d = body as {
+    data?: {
+      query?: string;
+      mode?: string;
+      items?: Array<{
+        entity_type: string;
+        entity_id: string;
+        metadata: { display_id?: string; title?: string };
+      }>;
+      has_more?: boolean;
+      page?: number;
+      per_page?: number;
+      took_ms?: number;
+    };
+  };
+  if (!d.data) throw new Error("响应缺少 data 字段");
+  if (d.data.mode !== "flat") throw new Error("mode 应为 flat");
+  if (d.data.query !== "1001") throw new Error("query 应回显请求参数");
+  if (typeof d.data.took_ms !== "number") {
+    throw new Error("took_ms 应为 number");
+  }
+  if (!Array.isArray(d.data.items)) {
+    throw new Error("items 应为数组");
+  }
+  if (typeof d.data.has_more !== "boolean") {
+    throw new Error("has_more 字段应为 boolean");
+  }
+  if (d.data.per_page !== 5) {
+    throw new Error("per_page 字段应回显 5");
+  }
+  console.log(
+    `  ✓ 题目搜索 OK（返回 ${d.data.items.length} 题, has_more=${d.data.has_more}, ` +
+      `took_ms=${d.data.took_ms}）`,
+  );
+});
+
+e2eTest(
+  "[e2e/search] 1.1b flat 分页参数返回 per_page 与 has_more",
+  async () => {
+    if (!isE2E) return;
+    const { status, body } = await apiGet(
+      "/api/v1/search?q=1001&type=problem&per_page=5",
+    );
+    if (status !== 200) throw new Error(`期望 200, 实际 ${status}`);
+    const d = body as { data?: { per_page?: number; has_more?: boolean } };
+    if (typeof d.data?.per_page !== "number") {
+      throw new Error("per_page 字段应为 number");
+    }
+    if (typeof d.data.has_more !== "boolean") {
+      throw new Error("has_more 字段应为 boolean");
+    }
+    console.log(`  ✓ flat 分页参数 OK（per_page=${d.data.per_page}）`);
+  },
+);
+
+e2eTest("[e2e/search] 1.2 匿名用户搜索返回 401", async () => {
+  if (!isE2E) return;
+  const { status } = await apiGet("/api/v1/search?q=alice&type=user");
+  if (status !== 401) throw new Error(`期望 401, 实际 ${status}`);
+  console.log("  ✓ 匿名用户搜索被拒");
+});
+
+e2eTest("[e2e/search] 1.3 已登录非 admin 用户搜索返回 403", async () => {
+  if (!isE2E) return;
+  const { status } = await apiGet(
+    "/api/v1/search?q=alice&type=user",
+    regularToken,
+  );
+  if (status !== 403) throw new Error(`期望 403, 实际 ${status}`);
+  console.log("  ✓ 普通用户搜索被拒");
+});
+
+e2eTest("[e2e/search] 1.4 admin 搜索用户返回 email 字段", async () => {
+  if (!isE2E) return;
+  const { status, body } = await apiGet(
+    `/api/v1/search?q=${ADMIN_USERNAME}&type=user&per_page=10`,
+    adminToken,
+  );
+  if (status !== 200) throw new Error(`期望 200, 实际 ${status}`);
+  const d = body as {
+    data?: {
+      items?: Array<{
+        entity_type: string;
+        entity_id: string;
+        metadata: { username?: string; email?: string };
+      }>;
+    };
+  };
+  if (!d.data?.items?.length) {
+    throw new Error(`未搜到 admin 用户（q=${ADMIN_USERNAME}）`);
+  }
+  const item = d.data.items[0];
+  if (
+    typeof item.metadata.email !== "string" ||
+    !item.metadata.email.includes("@")
+  ) {
+    throw new Error(`metadata.email 字段缺失或非法: ${JSON.stringify(item)}`);
+  }
+  if (typeof item.entity_id !== "string" || item.entity_id.length === 0) {
+    throw new Error(`entity_id 字段缺失或非法: ${JSON.stringify(item)}`);
+  }
+  // users.role 字段已废弃（RBAC：admin:full_access 权限判定），搜索响应不再包含 role
+  console.log(
+    `  ✓ admin 用户搜索 OK（找到 ${item.metadata.username} <${item.metadata.email}>）`,
+  );
+});
+
+e2eTest("[e2e/search] 1.5 非法 type 返回 400", async () => {
+  if (!isE2E) return;
+  const { status } = await apiGet("/api/v1/search?q=test&type=invalid");
+  if (status !== 400) throw new Error(`期望 400, 实际 ${status}`);
+  console.log("  ✓ 非法 type 被拒");
+});
+
+e2eTest("[e2e/search] 1.6 q 过短（< 2 字符）返回 400", async () => {
+  if (!isE2E) return;
+  const { status } = await apiGet("/api/v1/search?q=a&type=problem");
+  if (status !== 400) throw new Error(`期望 400, 实际 ${status}`);
+  console.log("  ✓ 过短关键词被拒");
+});
