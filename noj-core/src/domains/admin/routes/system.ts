@@ -54,6 +54,7 @@ import type {
 } from "../../catalog/index.ts";
 import {
   cleanupBootstrapRow,
+  getSetting,
   listSettings,
   resetSetting,
   updateSetting,
@@ -63,6 +64,7 @@ import { sendTestEmail } from "../../system/services/email.ts";
 import { logger } from "../../../shared/base/logging.ts";
 import { withAudit } from "../services/admin-audit.ts";
 import type { AuditMeta } from "../types/admin-audit.ts";
+import { adminVersionMiddleware } from "../middleware/admin-version.ts";
 
 /** 路由层审计用的临时请求体缓存（withAudit 在 handler 返回后才构建 detail）。 */
 const auditBodies = new WeakMap<object, unknown>();
@@ -234,26 +236,38 @@ router.post("/settings/email/test-send", async (c) => {
   }
 });
 
-router.put("/settings/:key", async (c) => {
-  const key = c.req.param("key") as string;
-  const body = await parseJsonBody<{ value: unknown }>(c);
-  if (!("value" in body)) {
-    throw new BadRequestError("请求体必须包含 value 字段");
-  }
-  const item = await updateSetting(key, body.value, c.get("userId"));
-  return c.json({ data: item }, 200);
-});
+router.put(
+  "/settings/:key",
+  adminVersionMiddleware(async (c) =>
+    getSetting(c.req.param("key") as string)?.updatedAt ?? undefined
+  ),
+  async (c) => {
+    const key = c.req.param("key") as string;
+    const body = await parseJsonBody<{ value: unknown }>(c);
+    if (!("value" in body)) {
+      throw new BadRequestError("请求体必须包含 value 字段");
+    }
+    const item = await updateSetting(key, body.value, c.get("userId"));
+    return c.json({ data: item }, 200);
+  },
+);
 
-router.delete("/settings/:key", async (c) => {
-  const key = c.req.param("key") as string;
-  const userId = c.get("userId");
-  if (isBootstrap(key)) {
-    await cleanupBootstrapRow(key, userId);
-  } else {
-    await resetSetting(key, userId);
-  }
-  return c.body(null, 204);
-});
+router.delete(
+  "/settings/:key",
+  adminVersionMiddleware(async (c) =>
+    getSetting(c.req.param("key") as string)?.updatedAt ?? undefined
+  ),
+  async (c) => {
+    const key = c.req.param("key") as string;
+    const userId = c.get("userId");
+    if (isBootstrap(key)) {
+      await cleanupBootstrapRow(key, userId);
+    } else {
+      await resetSetting(key, userId);
+    }
+    return c.body(null, 204);
+  },
+);
 
 // ── 评测镜像（路由层审计） ───────────────────────────────────────────────
 router.get("/judge-images", async (c) => {

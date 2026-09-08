@@ -12,6 +12,7 @@
  */
 
 import {
+  api,
   apiGet,
   apiPost,
   apiPut,
@@ -224,5 +225,31 @@ e2eTest("[e2e/admin] 4.2 普通用户无法删除提交", async () => {
     );
     if (status !== 403 && status !== 401) {
       throw new Error(`期望 401/403，实际 ${status}`);
+    }
+  });
+
+e2eTest("[e2e/admin] 4.3 乐观锁冲突返回 409", async () => {
+    if (!isE2E) return;
+    const adminToken = await getAdminToken();
+
+    // 选择一个运行时设置项并读取其 updated_at
+    const getRes = await apiGet("/api/v1/admin/system/settings", adminToken);
+    if (getRes.status !== 200) throw new Error("GET settings 失败");
+    const settingsData = getRes.body as { data?: Array<{ key: string; value: unknown }> };
+    const target = (settingsData?.data ?? []).find((s) => "value" in s);
+    if (!target) throw new Error("未找到可更新的设置项");
+
+    // 用过期版本提交，应返回 409 VERSION_CONFLICT
+    const { status, body } = await api("PUT", `/api/v1/admin/system/settings/${target.key}`, {
+      body: { value: target.value },
+      token: adminToken,
+      headers: { "If-Match": '"stale-version"' },
+    });
+    if (status !== 409) {
+      throw new Error(`期望 409，实际 ${status} ${JSON.stringify(body)}`);
+    }
+    const conflictBody = body as { code?: string };
+    if (conflictBody.code !== "VERSION_CONFLICT") {
+      throw new Error(`期望 VERSION_CONFLICT，实际 ${conflictBody.code}`);
     }
   });
