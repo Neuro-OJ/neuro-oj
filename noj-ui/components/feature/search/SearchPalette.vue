@@ -34,6 +34,13 @@
           </div>
 
           <div
+            v-else-if="state.error"
+            class="px-4 py-8 text-center text-error-text text-sm"
+          >
+            {{ state.error }}
+          </div>
+
+          <div
             v-else-if="query.length >= 2 && flatItems.length === 0 && !state.loading"
             class="px-4 py-8 text-center text-text-muted text-sm"
           >
