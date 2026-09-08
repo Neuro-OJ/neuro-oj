@@ -553,3 +553,28 @@ export const CODE_SAMPLES = {
   syntaxError: `def solve(:  # 语法错误
     print("never")`,
 };
+
+/**
+ * E2E 重试辅助：对已知偶发 flaky 的断言进行有限重试。
+ *
+ * @param fn 需要重试的异步断言函数
+ * @param options.retries 最大重试次数（默认 2）
+ * @param options.delayMs 重试间隔（默认 1000）
+ */
+export async function retryE2E(
+  fn: () => Promise<void>,
+  options: { retries?: number; delayMs?: number } = {},
+): Promise<void> {
+  const { retries = 2, delayMs = 1000 } = options;
+  let lastErr: unknown;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      await fn();
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (i < retries) await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw lastErr;
+}
