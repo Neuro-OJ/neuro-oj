@@ -62,7 +62,8 @@
     "singleQuote": false,
     "indentWidth": 2,
     "exclude": [
-      ".deno_cache"
+      ".deno_cache",
+      "drizzle/meta"
     ]
   },
   "lint": {

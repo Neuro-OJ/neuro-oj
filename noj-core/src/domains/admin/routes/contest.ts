@@ -170,23 +170,30 @@ router.put(
   auditRoute(
     {
       action: "contest.update",
-      target: (c) => ({ type: "contest", id: c.req.param("id")! }),
+      target: (c) => {
+        const body = getAuditBody<{ contestId?: string }>(c);
+        return body?.contestId
+          ? { type: "contest", id: body.contestId }
+          : undefined;
+      },
       buildDetail: (c) => {
-        const body = getAuditBody<UpdateContestInput>(c);
+        const body = getAuditBody<
+          { contestId?: string; input?: UpdateContestInput }
+        >(c);
         return {
           action: "contest.update",
-          contest_id: c.req.param("id")!,
-          title: body?.title,
-          type: body?.type,
-          kind: body?.kind,
-          is_public: body?.is_public,
+          contest_id: body?.contestId ?? "",
+          title: body?.input?.title,
+          type: body?.input?.type,
+          kind: body?.input?.kind,
+          is_public: body?.input?.is_public,
         };
       },
     },
     async (c) => {
       const contestId = await resolveContestId(c.req.param("id") as string);
       const body = await parseJsonBody<UpdateContestInput>(c);
-      setAuditBody(c, body);
+      setAuditBody(c, { input: body, contestId });
       const data = await updateContest(
         contestId,
         body,
@@ -206,14 +213,23 @@ router.delete(
   auditRoute(
     {
       action: "contest.delete",
-      target: (c) => ({ type: "contest", id: c.req.param("id")! }),
-      buildDetail: (c) => ({
-        action: "contest.delete",
-        contest_id: c.req.param("id")!,
-      }),
+      target: (c) => {
+        const body = getAuditBody<{ contestId?: string }>(c);
+        return body?.contestId
+          ? { type: "contest", id: body.contestId }
+          : undefined;
+      },
+      buildDetail: (c) => {
+        const body = getAuditBody<{ contestId?: string }>(c);
+        return {
+          action: "contest.delete",
+          contest_id: body?.contestId ?? "",
+        };
+      },
     },
     async (c) => {
       const contestId = await resolveContestId(c.req.param("id") as string);
+      setAuditBody(c, { contestId });
       await deleteContest(contestId);
       return c.body(null, 204);
     },
@@ -239,12 +255,19 @@ router.post(
   auditRoute(
     {
       action: "contest.participants_add",
-      target: (c) => ({ type: "contest", id: c.req.param("id")! }),
+      target: (c) => {
+        const body = getAuditBody<{ contestId?: string }>(c);
+        return body?.contestId
+          ? { type: "contest", id: body.contestId }
+          : undefined;
+      },
       buildDetail: (c) => {
-        const body = getAuditBody<{ user_ids?: string[] }>(c);
+        const body = getAuditBody<{ contestId?: string; user_ids?: string[] }>(
+          c,
+        );
         return {
           action: "contest.participants_add",
-          contest_id: c.req.param("id")!,
+          contest_id: body?.contestId ?? "",
           user_ids: body?.user_ids ?? [],
         };
       },
@@ -258,7 +281,7 @@ router.post(
       const resolvedIds = await Promise.all(
         userIds.map((v) => resolveUserId(v)),
       );
-      setAuditBody(c, { user_ids: resolvedIds });
+      setAuditBody(c, { contestId, user_ids: resolvedIds });
       const added = await addParticipants(contestId, resolvedIds);
       return c.json({ data: { added } }, 201);
     },
@@ -274,16 +297,25 @@ router.delete(
   auditRoute(
     {
       action: "contest.participants_remove",
-      target: (c) => ({ type: "contest", id: c.req.param("id")! }),
-      buildDetail: (c) => ({
-        action: "contest.participants_remove",
-        contest_id: c.req.param("id")!,
-        user_id: c.req.param("userId")!,
-      }),
+      target: (c) => {
+        const body = getAuditBody<{ contestId?: string }>(c);
+        return body?.contestId
+          ? { type: "contest", id: body.contestId }
+          : undefined;
+      },
+      buildDetail: (c) => {
+        const body = getAuditBody<{ contestId?: string; userId?: string }>(c);
+        return {
+          action: "contest.participants_remove",
+          contest_id: body?.contestId ?? "",
+          user_id: body?.userId ?? "",
+        };
+      },
     },
     async (c) => {
       const contestId = await resolveContestId(c.req.param("id") as string);
       const targetUserId = await resolveUserId(c.req.param("userId") as string);
+      setAuditBody(c, { contestId, userId: targetUserId });
       await removeParticipant(
         contestId,
         targetUserId,
@@ -302,12 +334,17 @@ router.patch(
   auditRoute(
     {
       action: "contest.kind_change",
-      target: (c) => ({ type: "contest", id: c.req.param("id")! }),
+      target: (c) => {
+        const body = getAuditBody<{ contestId?: string }>(c);
+        return body?.contestId
+          ? { type: "contest", id: body.contestId }
+          : undefined;
+      },
       buildDetail: (c) => {
-        const body = getAuditBody<{ kind?: unknown }>(c);
+        const body = getAuditBody<{ contestId?: string; kind?: unknown }>(c);
         return {
           action: "contest.kind_change",
-          contest_id: c.req.param("id")!,
+          contest_id: body?.contestId ?? "",
           to: body?.kind === "public" ? "public" : "",
         };
       },
@@ -318,7 +355,7 @@ router.patch(
       if (body.kind !== "public" || !isValidContestKind(body.kind)) {
         throw new BadRequestError("仅支持将邀请赛转为公开赛（kind=public）");
       }
-      setAuditBody(c, body);
+      setAuditBody(c, { contestId, kind: body.kind });
       const data = await updateContest(
         contestId,
         { kind: "public", is_public: true },
@@ -338,11 +375,19 @@ router.post(
   auditRoute(
     {
       action: "contest.reset_code",
-      target: (c) => ({ type: "contest", id: c.req.param("id")! }),
-      buildDetail: (c) => ({
-        action: "contest.reset_code",
-        contest_id: c.req.param("id")!,
-      }),
+      target: (c) => {
+        const body = getAuditBody<{ contestId?: string }>(c);
+        return body?.contestId
+          ? { type: "contest", id: body.contestId }
+          : undefined;
+      },
+      buildDetail: (c) => {
+        const body = getAuditBody<{ contestId?: string }>(c);
+        return {
+          action: "contest.reset_code",
+          contest_id: body?.contestId ?? "",
+        };
+      },
     },
     async (c) => {
       const contestId = await resolveContestId(c.req.param("id") as string);
@@ -351,6 +396,7 @@ router.post(
       const code = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join(
         "",
       );
+      setAuditBody(c, { contestId });
       const data = await updateContest(contestId, { password: code }, true);
       return c.json({ data: { code, contest: data } });
     },
