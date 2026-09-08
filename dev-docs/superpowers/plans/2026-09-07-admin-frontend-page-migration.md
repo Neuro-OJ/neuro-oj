@@ -60,9 +60,9 @@
 | `/api/v1/community/admin` | `/api/v1/admin/community` |
 
 **Steps:**
-- [ ] **Step 1:** 对上述文件批量替换。
-- [ ] **Step 2:** `deno task fmt` + `deno task lint`。
-- [ ] **Step 3:** 提交：`refactor(ui): 管理页 API 路径切换到 admin 子域`
+- [x] **Step 1:** 对上述文件批量替换。
+- [x] **Step 2:** `deno task fmt` + `deno task lint`。
+- [x] **Step 3:** 提交：`refactor(ui): 管理页 API 路径切换到 admin 子域`
 
 ### Task 2: 机械替换 noj-tests 旧 admin API 路径
 
@@ -72,9 +72,9 @@
 **Replacements:** 同 Task 1 映射。
 
 **Steps:**
-- [ ] **Step 1:** 批量替换。
-- [ ] **Step 2:** 运行相关测试。
-- [ ] **Step 3:** 提交：`refactor(test): 管理 E2E 路径切换到 admin 子域`
+- [x] **Step 1:** 批量替换。
+- [x] **Step 2:** 运行相关测试。
+- [x] **Step 3:** 提交：`refactor(test): 管理 E2E 路径切换到 admin 子域`
 
 ### Task 3: 审计日志页接入统一组件
 
@@ -82,10 +82,10 @@
 - `noj-ui/pages/admin/audit-logs.vue`
 
 **Steps:**
-- [ ] **Step 1:** 使用 `AdminPageHeader` 替换手写页头。
-- [ ] **Step 2:** 使用 `AdminFilterBar` 替换筛选条。
-- [ ] **Step 3:** 使用 `AdminTable` 替换手写表格。
-- [ ] **Step 4:** 提交：`feat(ui): 审计日志页接入统一组件`
+- [x] **Step 1:** 使用 `AdminPageHeader` 替换手写页头。
+- [x] **Step 2:** 使用 `AdminFilterBar` 替换筛选条。
+- [x] **Step 3:** 使用 `AdminTable` 替换手写表格。
+- [x] **Step 4:** 提交：`feat(ui): 审计日志页接入统一组件`
 
 ### Task 4: 用户管理页接入统一组件
 
@@ -93,9 +93,9 @@
 - `noj-ui/pages/admin/users.vue`
 
 **Steps:**
-- [ ] **Step 1:** 接入 `AdminPageHeader`、`AdminFilterBar`、`AdminTable`。
-- [ ] **Step 2:** 保持现有角色/封禁弹窗逻辑。
-- [ ] **Step 3:** 提交：`feat(ui): 用户管理页接入统一组件`
+- [x] **Step 1:** 接入 `AdminPageHeader`、`AdminFilterBar`、`AdminTable`。
+- [x] **Step 2:** 保持现有角色/封禁弹窗逻辑。
+- [x] **Step 3:** 提交：`feat(ui): 用户管理页接入统一组件`
 
 ### Task 5: 其余管理页按需接入统一组件
 
@@ -103,8 +103,8 @@
 - 剩余 `/admin/*` 页面
 
 **Steps:**
-- [ ] **Step 1:** 逐页接入 `AdminPageHeader`/`AdminTable`（至少页头与表格）。
-- [ ] **Step 2:** 提交：`feat(ui): 其余管理页接入统一组件`
+- [x] **Step 1:** 逐页接入 `AdminPageHeader`/`AdminTable`（至少页头与表格）。
+- [x] **Step 2:** 提交：`feat(ui): 其余管理页接入统一组件`
 
 ---
 

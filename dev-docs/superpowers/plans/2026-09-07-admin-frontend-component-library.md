@@ -34,10 +34,10 @@
 - Slot: `default`（筛选字段）
 
 **Steps:**
-- [ ] **Step 1:** 实现 `AdminPageHeader.vue`（含面包屑占位、标题、描述、操作区）。
-- [ ] **Step 2:** 实现 `AdminFilterBar.vue`（含默认筛选/重置按钮）。
-- [ ] **Step 3:** `deno task lint` / `deno task fmt`。
-- [ ] **Step 4:** 提交：`feat(ui): 新增 AdminPageHeader 与 AdminFilterBar`
+- [x] **Step 1:** 实现 `AdminPageHeader.vue`（含面包屑占位、标题、描述、操作区）。
+- [x] **Step 2:** 实现 `AdminFilterBar.vue`（含默认筛选/重置按钮）。
+- [x] **Step 3:** `deno task lint` / `deno task fmt`。
+- [x] **Step 4:** 提交：`feat(ui): 新增 AdminPageHeader 与 AdminFilterBar`
 
 ### Task 2: 新增 AdminTable
 
@@ -57,9 +57,9 @@
 - Slots: `cell`（`#cell="{ row, column }"`）、`empty`、`actions`
 
 **Steps:**
-- [ ] **Step 1:** 基于 `UTable` 实现通用表格（分页、排序、空/错/加载态）。
-- [ ] **Step 2:** 接入 `UPagination`。
-- [ ] **Step 3:** 提交：`feat(ui): 新增 AdminTable`
+- [x] **Step 1:** 基于 `UTable` 实现通用表格（分页、排序、空/错/加载态）。
+- [x] **Step 2:** 接入 `UPagination`。
+- [x] **Step 3:** 提交：`feat(ui): 新增 AdminTable`
 
 ### Task 3: 新增 AdminEditPanel 与 AdminFormField
 
@@ -75,9 +75,9 @@
 - Slots: `default`（表单）、`footer`
 
 **Steps:**
-- [ ] **Step 1:** 实现 `AdminFormField.vue`（label/error/hint 包装）。
-- [ ] **Step 2:** 实现 `AdminEditPanel.vue`（基于 `UModal`/`UDrawer`，展示版本号，冲突提示区）。
-- [ ] **Step 3:** 提交：`feat(ui): 新增 AdminEditPanel 与 AdminFormField`
+- [x] **Step 1:** 实现 `AdminFormField.vue`（label/error/hint 包装）。
+- [x] **Step 2:** 实现 `AdminEditPanel.vue`（基于 `UModal`/`UDrawer`，展示版本号，冲突提示区）。
+- [x] **Step 3:** 提交：`feat(ui): 新增 AdminEditPanel 与 AdminFormField`
 
 ### Task 4: 新增 AdminConfirmDialog / AdminStatusBadge / AdminDetailDrawer
 
@@ -92,8 +92,8 @@
 - `AdminDetailDrawer` props: `open`, `title`, `items: { label: string; value: unknown }[]`
 
 **Steps:**
-- [ ] **Step 1:** 实现三个组件。
-- [ ] **Step 2:** 提交：`feat(ui): 新增管理端通用对话框/状态徽标/详情抽屉`
+- [x] **Step 1:** 实现三个组件。
+- [x] **Step 2:** 提交：`feat(ui): 新增管理端通用对话框/状态徽标/详情抽屉`
 
 ### Task 5: 新增 useAdminResource 与 useAdminForm
 
@@ -106,9 +106,9 @@
 - `useAdminForm<T>(initial, version?)` 返回 `{ draft, setDraft, reset, version, setVersion }`
 
 **Steps:**
-- [ ] **Step 1:** 实现 `useAdminResource`（复用 `useAdminList`，集成分页/搜索）。
-- [ ] **Step 2:** 实现 `useAdminForm`（草稿/版本管理）。
-- [ ] **Step 3:** 提交：`feat(ui): 新增 useAdminResource 与 useAdminForm`
+- [x] **Step 1:** 实现 `useAdminResource`（复用 `useAdminList`，集成分页/搜索）。
+- [x] **Step 2:** 实现 `useAdminForm`（草稿/版本管理）。
+- [x] **Step 3:** 提交：`feat(ui): 新增 useAdminResource 与 useAdminForm`
 
 ---
 

@@ -26,15 +26,16 @@
 **已完成：** 已添加 `4.3 乐观锁冲突返回 409` 测试，使用 `If-Match` 过期版本验证 `409 VERSION_CONFLICT`。
 
 **Steps:**
-- [ ] **Step 1:** 确认测试文件 `deno check` 通过。
-- [ ] **Step 2:** 如 E2E 环境可用则运行 `deno task test`；不可用则记录为待 CI 验证。
+- [x] **Step 1:** 确认测试文件 `deno check` 通过。
+- [x] **Step 2:** 如 E2E 环境可用则运行 `deno task test`；不可用则记录为待 CI 验证。
+  - 当前环境无 Redis/完整 E2E 依赖，已记录为待 CI 验证。
 
 ### Task 2: 全量检查
 
 **Steps:**
-- [ ] **Step 1:** `cd noj-core && deno task check`
-- [ ] **Step 2:** `cd noj-ui && deno task check`
-- [ ] **Step 3:** `cd noj-tests && deno check e2e/19_admin_endpoints.test.ts`
+- [x] **Step 1:** `cd noj-core && deno task check`
+- [x] **Step 2:** `cd noj-ui && deno task check`
+- [x] **Step 3:** `cd noj-tests && deno check e2e/19_admin_endpoints.test.ts`
 
 ### Task 3: 文档收尾
 
@@ -44,9 +45,9 @@
 - `noj-ui/AGENTS.md`
 
 **Steps:**
-- [ ] **Step 1:** 确认设计文档签名已更新为 `adminAudit(action, detail, target?)` 与 `withAudit(meta)(handler)`。
-- [ ] **Step 2:** 确认 noj-core/noj-ui 文档包含 `domains/admin` 与统一管理组件清单。
-- [ ] **Step 3:** 提交：`docs(root): 管理员 UI 重做收尾文档`
+- [x] **Step 1:** 确认设计文档签名已更新为 `adminAudit(action, detail, target?)` 与 `withAudit(meta)(handler)`。
+- [x] **Step 2:** 确认 noj-core/noj-ui 文档包含 `domains/admin` 与统一管理组件清单。
+- [x] **Step 3:** 提交：`docs(root): 管理员 UI 重做收尾文档`
 
 ---
 

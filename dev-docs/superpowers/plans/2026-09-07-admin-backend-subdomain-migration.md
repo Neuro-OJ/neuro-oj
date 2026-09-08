@@ -60,14 +60,14 @@
 
 **Steps:**
 
-- [ ] **Step 1:** 新建 `routes/identity.ts`，把三个旧文件的路由合并到一个 Hono router，路径改为上述新路径（在 router 内直接写 `/users`、`/roles`、`/blacklist`，由 `domains/admin/index.ts` 以 `/identity` 前缀挂载）。
-- [ ] **Step 2:** 更新 `domains/admin/index.ts`：导入 `identityAdminRouter` 并 `router.route("/identity", identityAdminRouter)`。
-- [ ] **Step 3:** 更新 `domains/identity/routes/index.ts`：删除 `identityAdminRouter` 导出及其对三个旧文件的引用；保留 `identityRouter` 公开路由。
-- [ ] **Step 4:** 为写操作接入 `withAudit`（至少：role_change、ban、unban、users.delete、roles create/update/delete、blacklist create/delete）。使用 `domains/admin/services/admin-audit.ts`。
-- [ ] **Step 5:** 迁移/更新对应测试，将请求路径改为新路径。
-- [ ] **Step 6:** 运行 `JWT_SECRET=test-secret deno task test --filter "admin"` 或对应测试，确保通过。
-- [ ] **Step 7:** 删除旧 admin 路由文件。
-- [ ] **Step 8:** 提交：`refactor(core): 迁移 identity 管理路由到 admin 域`
+- [x] **Step 1:** 新建 `routes/identity.ts`，把三个旧文件的路由合并到一个 Hono router，路径改为上述新路径（在 router 内直接写 `/users`、`/roles`、`/blacklist`，由 `domains/admin/index.ts` 以 `/identity` 前缀挂载）。
+- [x] **Step 2:** 更新 `domains/admin/index.ts`：导入 `identityAdminRouter` 并 `router.route("/identity", identityAdminRouter)`。
+- [x] **Step 3:** 更新 `domains/identity/routes/index.ts`：删除 `identityAdminRouter` 导出及其对三个旧文件的引用；保留 `identityRouter` 公开路由。
+- [x] **Step 4:** 为写操作接入 `withAudit`（至少：role_change、ban、unban、users.delete、roles create/update/delete、blacklist create/delete）。使用 `domains/admin/services/admin-audit.ts`。
+- [x] **Step 5:** 迁移/更新对应测试，将请求路径改为新路径。
+- [x] **Step 6:** 运行 `JWT_SECRET=test-secret deno task test --filter "admin"` 或对应测试，确保通过。
+- [x] **Step 7:** 删除旧 admin 路由文件。
+- [x] **Step 8:** 提交：`refactor(core): 迁移 identity 管理路由到 admin 域`
 
 ---
 
@@ -98,12 +98,12 @@
 
 **Steps:**
 
-- [ ] **Step 1:** 新建 `routes/catalog.ts`，合并 `admin-problems.ts` 与 `admin-trainings.ts`，路径改为 `/problems`、`/trainings` 前缀。
-- [ ] **Step 2:** 更新 `domains/admin/index.ts` 挂载 `/catalog`。
-- [ ] **Step 3:** 更新 `catalog/routes/index.ts` 删除 `catalogAdminRouter`。
-- [ ] **Step 4:** 为写操作接入 `withAudit`（至少：problems review、trainings update/delete）。
-- [ ] **Step 5:** 更新测试路径并运行。
-- [ ] **Step 6:** 删除旧文件并提交：`refactor(core): 迁移 catalog 管理路由到 admin 域`
+- [x] **Step 1:** 新建 `routes/catalog.ts`，合并 `admin-problems.ts` 与 `admin-trainings.ts`，路径改为 `/problems`、`/trainings` 前缀。
+- [x] **Step 2:** 更新 `domains/admin/index.ts` 挂载 `/catalog`。
+- [x] **Step 3:** 更新 `catalog/routes/index.ts` 删除 `catalogAdminRouter`。
+- [x] **Step 4:** 为写操作接入 `withAudit`（至少：problems review、trainings update/delete）。
+- [x] **Step 5:** 更新测试路径并运行。
+- [x] **Step 6:** 删除旧文件并提交：`refactor(core): 迁移 catalog 管理路由到 admin 域`
 
 ---
 
@@ -129,12 +129,12 @@
 
 **Steps:**
 
-- [ ] **Step 1:** 新建 `routes/contest.ts`，复制 `admin-contests.ts` 并调整路径。
-- [ ] **Step 2:** 更新 `domains/admin/index.ts` 挂载 `/contest`。
-- [ ] **Step 3:** 更新 `contest/routes/index.ts` 删除 `contestAdminRouter`。
-- [ ] **Step 4:** 为写操作接入 `withAudit`（至少：contest create/update/delete、participants add/remove、kind change、reset-code、ranking-snapshot）。
-- [ ] **Step 5:** 更新测试路径并运行。
-- [ ] **Step 6:** 删除旧文件并提交：`refactor(core): 迁移 contest 管理路由到 admin 域`
+- [x] **Step 1:** 新建 `routes/contest.ts`，复制 `admin-contests.ts` 并调整路径。
+- [x] **Step 2:** 更新 `domains/admin/index.ts` 挂载 `/contest`。
+- [x] **Step 3:** 更新 `contest/routes/index.ts` 删除 `contestAdminRouter`。
+- [x] **Step 4:** 为写操作接入 `withAudit`（至少：contest create/update/delete、participants add/remove、kind change、reset-code、ranking-snapshot）。
+- [x] **Step 5:** 更新测试路径并运行。
+- [x] **Step 6:** 删除旧文件并提交：`refactor(core): 迁移 contest 管理路由到 admin 域`
 
 ---
 
@@ -176,13 +176,13 @@
 
 **Steps:**
 
-- [ ] **Step 1:** 新建 `routes/system.ts`，合并五个旧文件并调整路径。
-- [ ] **Step 2:** 更新 `domains/admin/index.ts` 挂载 `/system`。
-- [ ] **Step 3:** 更新 `system/routes/index.ts` 删除 `systemAdminRouter`。
-- [ ] **Step 4:** 为写操作接入 `withAudit`（至少：announcements create/update/delete、settings update/delete、judge-images create/update/delete、email-delivery clear）。
-- [ ] **Step 5:** 新增 `GET /audit-logs/actions`。
-- [ ] **Step 6:** 更新测试路径并运行。
-- [ ] **Step 7:** 删除旧文件并提交：`refactor(core): 迁移 system 管理路由到 admin 域`
+- [x] **Step 1:** 新建 `routes/system.ts`，合并五个旧文件并调整路径。
+- [x] **Step 2:** 更新 `domains/admin/index.ts` 挂载 `/system`。
+- [x] **Step 3:** 更新 `system/routes/index.ts` 删除 `systemAdminRouter`。
+- [x] **Step 4:** 为写操作接入 `withAudit`（至少：announcements create/update/delete、settings update/delete、judge-images create/update/delete、email-delivery clear）。
+- [x] **Step 5:** 新增 `GET /audit-logs/actions`。
+- [x] **Step 6:** 更新测试路径并运行。
+- [x] **Step 7:** 删除旧文件并提交：`refactor(core): 迁移 system 管理路由到 admin 域`
 
 ---
 
@@ -215,13 +215,13 @@
 
 **Steps:**
 
-- [ ] **Step 1:** 新建 `routes/community.ts`，从 `community-admin.ts` 迁移 admin 路由，去掉 `/admin` 路径段。
-- [ ] **Step 2:** 更新 `domains/admin/index.ts` 挂载 `/community`。
-- [ ] **Step 3:** 更新 `community/routes/index.ts`，只保留公开 `communityRouter`，不再挂载 communityAdmin（或保留非 admin 部分）。
-- [ ] **Step 4:** 为写操作接入 `withAudit`（至少：preset、boards CRUD、reports resolve/dismiss/reopen、posts/comments moderation、sanctions create/revoke、content-review decision）。
-- [ ] **Step 5:** 更新测试路径并运行。
-- [ ] **Step 6:** 删除旧的 community admin 代码（若整文件迁移则删除 `community-admin.ts`）。
-- [ ] **Step 7:** 提交：`refactor(core): 迁移 community 管理路由到 admin 域`
+- [x] **Step 1:** 新建 `routes/community.ts`，从 `community-admin.ts` 迁移 admin 路由，去掉 `/admin` 路径段。
+- [x] **Step 2:** 更新 `domains/admin/index.ts` 挂载 `/community`。
+- [x] **Step 3:** 更新 `community/routes/index.ts`，只保留公开 `communityRouter`，不再挂载 communityAdmin（或保留非 admin 部分）。
+- [x] **Step 4:** 为写操作接入 `withAudit`（至少：preset、boards CRUD、reports resolve/dismiss/reopen、posts/comments moderation、sanctions create/revoke、content-review decision）。
+- [x] **Step 5:** 更新测试路径并运行。
+- [x] **Step 6:** 删除旧的 community admin 代码（若整文件迁移则删除 `community-admin.ts`）。
+- [x] **Step 7:** 提交：`refactor(core): 迁移 community 管理路由到 admin 域`
 
 ---
 
@@ -247,12 +247,12 @@
 
 **Steps:**
 
-- [ ] **Step 1:** 新建 `routes/gateway.ts`，迁移 `admin-llm.ts` 并调整路径。
-- [ ] **Step 2:** 更新 `domains/admin/index.ts` 挂载 `/gateway`。
-- [ ] **Step 3:** 更新 `gateway/routes/index.ts` 删除 `gatewayAdminRouter`。
-- [ ] **Step 4:** 为写操作接入 `withAudit`（至少：provider create/update、quota create）。
-- [ ] **Step 5:** 更新测试并运行。
-- [ ] **Step 6:** 删除旧文件并提交：`refactor(core): 迁移 gateway 管理路由到 admin 域`
+- [x] **Step 1:** 新建 `routes/gateway.ts`，迁移 `admin-llm.ts` 并调整路径。
+- [x] **Step 2:** 更新 `domains/admin/index.ts` 挂载 `/gateway`。
+- [x] **Step 3:** 更新 `gateway/routes/index.ts` 删除 `gatewayAdminRouter`。
+- [x] **Step 4:** 为写操作接入 `withAudit`（至少：provider create/update、quota create）。
+- [x] **Step 5:** 更新测试并运行。
+- [x] **Step 6:** 删除旧文件并提交：`refactor(core): 迁移 gateway 管理路由到 admin 域`
 
 ---
 
@@ -279,12 +279,12 @@
 
 **Steps:**
 
-- [ ] **Step 1:** 新建 `routes/submission.ts`，迁移 `admin-submissions.ts` 并调整路径。
-- [ ] **Step 2:** 更新 `domains/admin/index.ts` 挂载 `/submission`。
-- [ ] **Step 3:** 更新 `submission/routes/index.ts` 删除 `submissionAdminRouter`。
-- [ ] **Step 4:** 为写操作接入 `withAudit`（至少：submission delete、queue remove、rejudge）。
-- [ ] **Step 5:** 更新测试并运行。
-- [ ] **Step 6:** 删除旧文件并提交：`refactor(core): 迁移 submission 管理路由到 admin 域`
+- [x] **Step 1:** 新建 `routes/submission.ts`，迁移 `admin-submissions.ts` 并调整路径。
+- [x] **Step 2:** 更新 `domains/admin/index.ts` 挂载 `/submission`。
+- [x] **Step 3:** 更新 `submission/routes/index.ts` 删除 `submissionAdminRouter`。
+- [x] **Step 4:** 为写操作接入 `withAudit`（至少：submission delete、queue remove、rejudge）。
+- [x] **Step 5:** 更新测试并运行。
+- [x] **Step 6:** 删除旧文件并提交：`refactor(core): 迁移 submission 管理路由到 admin 域`
 
 ---
 
@@ -306,12 +306,12 @@
 
 **Steps:**
 
-- [ ] **Step 1:** 新建 `routes/query.ts`，迁移 `admin-dashboard.ts` 并调整路径。
-- [ ] **Step 2:** 更新 `domains/admin/index.ts` 挂载 `/query`。
-- [ ] **Step 3:** 更新 `query/routes/index.ts` 删除 `queryAdminRouter`。
-- [ ] **Step 4:** 这些是只读路由，不接 `withAudit`。
-- [ ] **Step 5:** 更新测试并运行。
-- [ ] **Step 6:** 删除旧文件并提交：`refactor(core): 迁移 query 管理路由到 admin 域`
+- [x] **Step 1:** 新建 `routes/query.ts`，迁移 `admin-dashboard.ts` 并调整路径。
+- [x] **Step 2:** 更新 `domains/admin/index.ts` 挂载 `/query`。
+- [x] **Step 3:** 更新 `query/routes/index.ts` 删除 `queryAdminRouter`。
+- [x] **Step 4:** 这些是只读路由，不接 `withAudit`。
+- [x] **Step 5:** 更新测试并运行。
+- [x] **Step 6:** 删除旧文件并提交：`refactor(core): 迁移 query 管理路由到 admin 域`
 
 ---
 
@@ -327,12 +327,12 @@
 
 **Steps:**
 
-- [ ] **Step 1:** 在 schema 中为上述表增加 `updated_at`（`text("updated_at").notNull()`，写入时填 ISO 字符串）。
-- [ ] **Step 2:** 更新所有 `insert`/`update` 调用点，设置 `updated_at`。
-- [ ] **Step 3:** 运行 `deno task db:generate` 生成迁移；禁止手动改 `_journal.json`。
-- [ ] **Step 4:** 在对应 admin 写路由接入 `adminVersionMiddleware` / `assertVersion`，使用 `updated_at` 作为版本令牌。
-- [ ] **Step 5:** 运行相关测试。
-- [ ] **Step 6:** 提交：`feat(core): admin 乐观锁支持与缺失 updated_at 补列`
+- [x] **Step 1:** 在 schema 中为上述表增加 `updated_at`（`text("updated_at").notNull()`，写入时填 ISO 字符串）。
+- [x] **Step 2:** 更新所有 `insert`/`update` 调用点，设置 `updated_at`。
+- [x] **Step 3:** 运行 `deno task db:generate` 生成迁移；禁止手动改 `_journal.json`。
+- [x] **Step 4:** 在对应 admin 写路由接入 `adminVersionMiddleware` / `assertVersion`，使用 `updated_at` 作为版本令牌。
+- [x] **Step 5:** 运行相关测试。
+- [x] **Step 6:** 提交：`feat(core): admin 乐观锁支持与缺失 updated_at 补列`
 
 ---
 
@@ -347,12 +347,12 @@
 
 **Steps:**
 
-- [ ] **Step 1:** `rg "AdminRouter|routes/admin" noj-core/src` 确认无残留引用。
-- [ ] **Step 2:** 删除 `domains/admin/index.ts` 中不再需要的 `FINE_GRAINED_ADMIN_PREFIXES` 逻辑（若各子路由已自行声明权限）。
-- [ ] **Step 3:** 更新 `noj-core/CLAUDE.md`，加入 `domains/admin` 章节。
-- [ ] **Step 4:** 更新设计文档中过期签名（`adminAudit(c, ...)` → `adminAudit(action, detail, target?)`，`assertVersion` 从 service 导入）。
-- [ ] **Step 5:** 运行 `cd noj-core && deno task test:smoke` 与相关测试。
-- [ ] **Step 6:** 提交：`chore(core): 清理旧 admin 路由并更新文档`
+- [x] **Step 1:** `rg "AdminRouter|routes/admin" noj-core/src` 确认无残留引用。
+- [x] **Step 2:** 删除 `domains/admin/index.ts` 中不再需要的 `FINE_GRAINED_ADMIN_PREFIXES` 逻辑（若各子路由已自行声明权限）。
+- [x] **Step 3:** 更新 `noj-core/CLAUDE.md`，加入 `domains/admin` 章节。
+- [x] **Step 4:** 更新设计文档中过期签名（`adminAudit(c, ...)` → `adminAudit(action, detail, target?)`，`assertVersion` 从 service 导入）。
+- [x] **Step 5:** 运行 `cd noj-core && deno task test:smoke` 与相关测试。
+- [x] **Step 6:** 提交：`chore(core): 清理旧 admin 路由并更新文档`
 
 ---
 

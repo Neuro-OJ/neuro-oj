@@ -1,6 +1,6 @@
 # Admin 后端基础实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 建立 `domains/admin` 统一门面域骨架，提供统一审计封装与乐观锁基础，为后续 sub domain 迁移打地基。
 
@@ -33,7 +33,7 @@
 - Consumes: 现有 `identityAdminRouter`、`catalogAdminRouter`、`submissionAdminRouter`、`queryAdminRouter`、`contestAdminRouter`、`systemAdminRouter`、`gatewayAdminRouter`。
 - Produces: `adminRouter`（默认导出），挂载前缀 `/api/v1/admin`。
 
-- [ ] **Step 1: 创建 `domains/admin/index.ts`**
+- [x] **Step 1: 创建 `domains/admin/index.ts`**
 
 将旧 `routes/admin/index.ts` 内容迁移到新路径，并修正相对导入路径：
 
@@ -92,7 +92,7 @@ router.route("/", gatewayAdminRouter);
 export default router;
 ```
 
-- [ ] **Step 2: 更新 `app.ts` 的 import**
+- [x] **Step 2: 更新 `app.ts` 的 import**
 
 将：
 
@@ -106,18 +106,18 @@ import admin from "./routes/admin/index.ts";
 import admin from "./domains/admin/index.ts";
 ```
 
-- [ ] **Step 3: 删除旧文件**
+- [x] **Step 3: 删除旧文件**
 
 ```bash
 rm noj-core/src/routes/admin/index.ts
 ```
 
-- [ ] **Step 4: 运行现有 admin 路由测试确认无回归**
+- [x] **Step 4: 运行现有 admin 路由测试确认无回归**
 
 Run: `cd noj-core && deno task test:smoke`
 Expected: 通过；若 smoke 不含 admin 路由，则运行 `deno task test -- --filter "admin route"` 或对应域测试。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 jj commit -m "refactor(core): 建立 admin 域骨架并切换挂载"
@@ -141,7 +141,7 @@ jj commit -m "refactor(core): 建立 admin 域骨架并切换挂载"
   - `adminAudit(c: Context, action: AuditAction, detail: AuditDetail, target?: { type: string; id: string }): Promise<void>`
   - `withAudit(meta: AuditMeta): (handler: (c: Context) => Promise<Response>) => (c: Context) => Promise<Response>`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `noj-core/src/domains/admin/tests/services/admin-audit.test.ts`：
 
@@ -242,12 +242,12 @@ Deno.test({
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `cd noj-core && deno task test -- --filter "admin-audit"`
 Expected: FAIL（模块不存在）。
 
-- [ ] **Step 3: 创建类型文件 `types/admin-audit.ts`**
+- [x] **Step 3: 创建类型文件 `types/admin-audit.ts`**
 
 ```ts
 import type { Context } from "hono";
@@ -260,7 +260,7 @@ export interface AuditMeta {
 }
 ```
 
-- [ ] **Step 4: 创建服务文件 `services/admin-audit.ts`**
+- [x] **Step 4: 创建服务文件 `services/admin-audit.ts`**
 
 ```ts
 import type { Context } from "hono";
@@ -309,12 +309,12 @@ export function withAudit(meta: AuditMeta) {
 }
 ```
 
-- [ ] **Step 5: 运行测试确认通过**
+- [x] **Step 5: 运行测试确认通过**
 
 Run: `cd noj-core && deno task test -- --filter "admin-audit"`
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 jj commit -m "feat(core): 新增 admin 统一审计封装"
@@ -337,7 +337,7 @@ jj commit -m "feat(core): 新增 admin 统一审计封装"
   - `assertVersion(current: string | null | undefined, expected: string | undefined): void`
   - `adminVersionMiddleware(getCurrentVersion: (c: Context) => Promise<string | null | undefined>): MiddlewareHandler`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `noj-core/src/domains/admin/tests/middleware/admin-version.test.ts`：
 
@@ -405,12 +405,12 @@ Deno.test({
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `cd noj-core && deno task test -- --filter "admin-version"`
 Expected: FAIL（模块不存在）。
 
-- [ ] **Step 3: 创建服务文件 `services/admin-version.ts`**
+- [x] **Step 3: 创建服务文件 `services/admin-version.ts`**
 
 ```ts
 import { AppError } from "../../shared/base/errors.ts";
@@ -437,7 +437,7 @@ export function assertVersion(
 }
 ```
 
-- [ ] **Step 4: 创建中间件文件 `middleware/admin-version.ts`**
+- [x] **Step 4: 创建中间件文件 `middleware/admin-version.ts`**
 
 ```ts
 import type { Context, MiddlewareHandler } from "hono";
@@ -465,12 +465,12 @@ export function adminVersionMiddleware(
 }
 ```
 
-- [ ] **Step 5: 运行测试确认通过**
+- [x] **Step 5: 运行测试确认通过**
 
 Run: `cd noj-core && deno task test -- --filter "admin-version"`
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 jj commit -m "feat(core): 新增 admin 乐观锁基础"
