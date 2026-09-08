@@ -1838,4 +1838,67 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("网络"));
     }
+
+    #[test]
+    fn test_build_judge_result_clamps_score() {
+        let r = build_judge_result(
+            "sid-clamp",
+            &serde_json::json!({"score": 99999, "details": {}}),
+            "",
+            "",
+            None,
+        );
+        assert_eq!(r.score, 10000);
+
+        let r2 = build_judge_result(
+            "sid-clamp2",
+            &serde_json::json!({"score": -5, "details": {}}),
+            "",
+            "",
+            None,
+        );
+        assert_eq!(r2.score, 0);
+    }
+
+    #[test]
+    fn test_build_judge_result_maps_error_statuses() {
+        for status in [
+            "error",
+            "SystemError",
+            "TimeLimitExceeded",
+            "MemoryLimitExceeded",
+            "RuntimeError",
+        ] {
+            let r = build_judge_result(
+                "sid-status",
+                &serde_json::json!({"status": status, "score": 0}),
+                "",
+                "",
+                None,
+            );
+            assert_eq!(r.status, "error", "status={}", status);
+        }
+        for status in ["Accepted", "WrongAnswer", "finished"] {
+            let r = build_judge_result(
+                "sid-status2",
+                &serde_json::json!({"status": status, "score": 0}),
+                "",
+                "",
+                None,
+            );
+            assert_eq!(r.status, "finished", "status={}", status);
+        }
+    }
+
+    #[test]
+    fn test_build_judge_result_missing_details_is_null() {
+        let r = build_judge_result(
+            "sid-details",
+            &serde_json::json!({"score": 1}),
+            "",
+            "",
+            None,
+        );
+        assert_eq!(r.details, serde_json::Value::Null);
+    }
 }
