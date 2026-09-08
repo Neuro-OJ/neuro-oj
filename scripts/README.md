@@ -1,5 +1,8 @@
 # scripts/ — 脚本总览
 
+> **状态：过渡兜底。** `noj-cli` 正在逐步替代本目录下的运维脚本（judge、restore-drill、生产部署/备份/config 等）。
+> 新功能优先使用 `noj-cli`；以下脚本在完全迁移前保留为兜底，不再作为 noj-cli 的实现依赖。
+
 Neuro OJ 仓库根目录的脚本统一存放点。`setup.sh` 调用 `install.sh`，下载并校验同版本 `noj-cli`，
 由 CLI 调用内部 `production.sh` 和 `deploy.sh` 完成生产安装及运维。
 
