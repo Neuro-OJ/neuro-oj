@@ -310,7 +310,7 @@ docker compose down     # 停止
 | GET    | `/api/v1/problems/:id/support-package`       | 登录        | 下载支持包（通过 core 代理，不暴露 S3 URL）   |
 | POST   | `/api/v1/checkin`                            | 登录        | 每日签到（返回当前连续天数）                  |
 | GET    | `/api/v1/checkin/today`                      | 登录        | 查询今日签到状态                              |
-| GET    | `/api/v1/search`                             | 公开/管理员 | 全局搜索（题目+用户，分页，issue #100）       |
+| GET    | `/api/v1/search`                             | 公开/管理员 | 全局搜索（题目、用户、社区帖子/评论、竞赛、提交、私信、公告，分页） |
 | GET    | `/health`                                    | 公开        | 健康检查                                      |
 
 ### 路由层关键模式
@@ -490,60 +490,39 @@ Retry-After: 25
 
 ## 全局搜索（issue #100）
 
-`GET /api/v1/search` 是统一的全局搜索入口，覆盖题目搜索（公开）与用户搜索
-（admin only），分页返回。设计文档见
+`GET /api/v1/search` 是统一的全局搜索入口，基于 `search_entries` 索引表，覆盖题目、用户、社区帖子/评论、竞赛、提交、私信、公告等实体，支持 flat/grouped 两种返回。设计文档见
 `dev-docs/superpowers/specs/2026-07-13-global-search-design.md`。
 
-**数据库列**：
+**索引模型**：
 
-- `problems.search_vector` — `tsvector` GENERATED 列：
-  `setweight(to_tsvector('simple', coalesce(title,'')), 'A')` + `||`
-  `setweight(to_tsvector('simple', coalesce(type,'')||' '||coalesce(number::text,'')), 'B')`
-- `users.search_vector` — `tsvector` GENERATED 列：`username` 权重 A + `email`
-  权重 B
-- 由 PostgreSQL `GENERATED ALWAYS AS ... STORED` 自动维护，应用层只读
+- 唯一写者是 search domain，源域通过 Redis 事件异步维护 `search_entries`
+- `search_vector` 为 GENERATED 列：`title` 权重 A + `body` 权重 B
+- 查询走 `tsvector @@ websearch_to_tsquery(...) OR title/body ILIKE '%q%'`，配合 GIN 索引（`idx_search_entries_vector` / `title_trgm` / `body_trgm`）
 
-**索引策略**（双 GIN 索引，中英文友好）：
+**权限模型**：
 
-- `idx_*_search_vector` — GIN(tsvector)，英文/数字分词精确匹配
-- `idx_*_title_trgm` / `idx_users_username_trgm` — GIN(pg_trgm)，中文 trigram
-  模糊匹配
-- 查询走 `tsvector @@ websearch_to_tsquery(...) OR ILIKE '%q%'` 联合，PG planner
-  自动选最优索引
-
-**权重设计**：`title`/`username` = A (1.0)，`display_id`/`email` = B (0.4)，
-`ts_rank` 自动按权重排序。
-
-**权限矩阵**：
-
-| type      | 匿名       | 登录用户   | admin                       |
-| --------- | ---------- | ---------- | --------------------------- |
-| `problem` | ✅ 仅 P 型 | ✅ 仅 P 型 | ✅ U+P（`?include_u=true`） |
-| `user`    | ❌ 401     | ❌ 403     | ✅                          |
+- 通过 `permissionWhere` / `communityVisibilityWhere` 控制可见性：公开项、owner、参与者、admin 可见；消息会排除已删除用户
+- `user` 与 `admin_only` 条目仅 admin 可见；社区条目需社区功能开启且遵循 guest 读取配置
+- 管理端可传 `types` 或 `type` 指定实体类型；非法类型返回 400
 
 **输入校验**：
 
 - `q`：trim 后 2 ≤ length ≤ 100；UTF-8
-- `type`：enum `problem` \| `user`
-- `page`：1 ≤ page ≤ 1000（默认 1）
-- `limit`：1 ≤ limit ≤ 50（默认 20）
-- `include_u`：boolean（admin + type=problem 时生效）
+- `type` / `types`：支持 `problem` / `user` / `community_post` / `community_comment` / `contest` / `submission` / `message` / `announcement`（旧 `type=community` 兼容为 `community_post`）
+- `page` / `per_page`：沿用全局分页默认值（page=1, per_page=20, max 50）
 
 **SQL 安全**：
 
 - 用户输入通过 Drizzle `sql\`...${input}...\`` 占位符参数化
-- `q` 字符串经 `websearch_to_tsquery` 处理，避免 tsquery 注入
-- `ILIKE` 子串经 `escapeLikePattern()` 转义 `%`/`_`/`\`，配合 `ESCAPE '\'` 子句
-  （`dcabe8d`，reviewer issue 2）
+- `q` 经 `websearch_to_tsquery` 处理，避免 tsquery 注入
+- `title`/`body` 的 `ILIKE` 子串经 `escapeLikePattern()` 转义 `%`/`_`/`\`，配合 `ESCAPE '\'` 子句
 
-**响应字段**：
+**响应**：
 
-- 题目：`{id, type, number, display_id, title, difficulty, rank, highlight}`
-- 用户：`{id, username, email, role, rank, highlight}`
-- 高亮：用 `[[HIGHLIGHT]]...[[/HIGHLIGHT]]` marker 包裹（非 HTML），前端
-  `SearchResultItem` 替换为 `<mark>`
-- 响应头：`X-Search-Took-Ms`、`X-Search-Query`、触发限流时附 `X-RateLimit-*` +
-  `Retry-After`
+- flat：`{items, has_more, page, per_page, took_ms}`，item 为 `{entity_type, entity_id, title, highlight, rank, metadata}`
+- grouped：`{groups, took_ms}`，按实体类型分组
+- 高亮：`[[HIGHLIGHT]]...[[/HIGHLIGHT]]` marker（非 HTML），前端替换为 `<mark>`
+- 响应头：`X-Search-Took-Ms`、触发限流时附 `X-RateLimit-*` + `Retry-After`
 
 **搜索限流**（与登录限流**独立桶**，避免互相污染）：
 
@@ -555,24 +534,14 @@ Retry-After: 25
 
 通过 `src/shared/config/settings-registry.ts` 注册 4
 个配置项（`rate_limit_search_*`），由 `searchRateLimit("anon")` 中间件在
-`/api/v1/search` 路径级统一处理，admin 经 `c.get("userRole")` 跳过。
-
-**Service 层防御性鉴权**（`dcabe8d`，reviewer issue 3）：
-
-- `searchUsers()` 入口检查 `params.isAdmin === true`，否则
-  `throw new
-  ForbiddenError`，路由守卫缺失时也 fail-closed
-- `searchProblems()` 默认仅返回 `type='P'`，admin 显式传 `includeU=true` 才返回
-  U+P
+`/api/v1/search` 路径级统一处理，admin 经 `admin:full_access` 跳过。
 
 **实现文件**：
 
-- 路由：`src/domains/query/routes/search.ts`（`optionalAuthMiddleware` +
-  权限校验 + service 调用）
-- 服务：`src/domains/query/services/search.ts`（`searchProblems` /
-  `searchUsers`， tsvector + ILIKE 联合查询）
-- 中间件：`src/domains/query/middleware/search-rate-limit.ts`（Redis 固定窗口）
-- Schema：`src/shared/db/schema.ts`（`tsvector` customType + GIN 索引定义）
+- 路由：`src/domains/search/routes/search.ts`（`optionalAuthMiddleware` + 权限校验 + service 调用）
+- 服务：`src/domains/search/services/search.ts`（`searchFlat` / `searchGrouped`，基于 `search_entries` 的 tsvector + ILIKE 联合查询）
+- 中间件：`src/domains/search/middleware/search-rate-limit.ts`（Redis 固定窗口）
+- Schema：`src/shared/db/schema/search.ts`（`search_entries` + GIN 索引定义）
 
 ## CORS 配置
 

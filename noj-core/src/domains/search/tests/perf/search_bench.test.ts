@@ -49,6 +49,7 @@ Deno.test({
       perPage: 20,
       ctx: { userId: undefined, isAdmin: false, guestReadEnabled: true },
     });
+    assert(result.items.length > 0, "搜索应命中至少一条结果");
     const elapsed = performance.now() - start;
     console.log(
       `搜索耗时 ${elapsed.toFixed(0)}ms，命中 ${result.items.length}`,

@@ -1502,6 +1502,13 @@ export async function clearConversationMessages(
         })),
       )
       .onConflictDoNothing();
+    try {
+      for (const row of msgRows) {
+        await publishSearchIndexEvent("message", row.id, "upsert");
+      }
+    } catch (err) {
+      logger.error("清空会话后发布搜索索引事件失败", { err });
+    }
   }
   return { conversation_id: conversationId, cleared: msgRows.length };
 }

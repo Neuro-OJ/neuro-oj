@@ -609,7 +609,7 @@ jobs:
         working-directory: noj-core
         env:
           BCRYPT_SALT_ROUNDS: 4
-        run: deno test -A tests/00_migrate_test.ts tests/perf
+        run: deno test -A tests/00_migrate_test.ts tests/perf src/domains/search/tests/perf
 
   # ===========================================================================
   # noj-ui — Nuxt 4 前端（Deno 构建检查）
