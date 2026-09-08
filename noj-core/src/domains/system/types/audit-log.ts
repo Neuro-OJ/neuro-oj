@@ -17,6 +17,9 @@ export type AuditAction =
   | "problems.delete"
   | "problems.runtime_config_changed"
   | "problems.imported"
+  | "problems.review"
+  | "trainings.update"
+  | "trainings.delete"
   | "tags.create"
   | "tags.update"
   | "tags.delete"
@@ -80,6 +83,20 @@ export type AuditDetail =
     display_id: string;
     imported_with_id: boolean;
   }
+  | {
+    action: "problems.review";
+    problem_ids: string[];
+    operation: string;
+  }
+  | {
+    action: "trainings.update";
+    id: string;
+    title?: string;
+    description?: string;
+    visibility?: string;
+    is_pinned?: boolean;
+  }
+  | { action: "trainings.delete"; id: string }
   | {
     action: "tags.create";
     name: string;

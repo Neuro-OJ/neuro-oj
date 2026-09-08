@@ -403,6 +403,7 @@ export const SCHEMA_DDL: string[] = [
       'users.role_change','users.ban','users.unban','users.delete',
       'roles.create','roles.update','roles.delete',
       'problems.delete','problems.runtime_config_changed','problems.imported',
+      'problems.review','trainings.update','trainings.delete',
       'tags.create','tags.update','tags.delete','tags.merge',
       'submissions.rejudge','settings.update',
       'ip_ban.create','ip_ban.delete',
