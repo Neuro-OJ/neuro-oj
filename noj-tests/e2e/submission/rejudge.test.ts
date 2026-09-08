@@ -141,7 +141,7 @@ e2eTest("[e2e/rejudge] 5.2b 非管理员重测被拒 403", async () => {
 e2eTest("[e2e/rejudge] 5.3a 批量重测返回正确结构", async () => {
   if (!isE2E || !judgeOk) return;
   const res = await apiPost(
-    `/api/v1/admin/catalog/problems/${PROBLEM_ID}/rejudge`,
+    `/api/v1/admin/submission/problems/${PROBLEM_ID}/rejudge`,
     {},
     adminToken,
   );

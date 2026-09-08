@@ -13,9 +13,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: 检出代码
-      uses: actions/checkout@v4
-
     # ── 安装工具链 ────────────────────────────
 
     - name: 安装 Deno
@@ -201,6 +198,14 @@ runs:
           tail -50 /tmp/noj-ui.log
           exit 1
         fi
+      shell: bash
+
+    - name: 重建搜索索引（浏览器测试前置）
+      if: inputs.browser == 'true'
+      working-directory: noj-core
+      env:
+        DATABASE_URL: ${{ env.E2E_DB_URL }}
+      run: deno run -A scripts/noj.ts search reindex
       shell: bash
 
     - name: 缓存 Playwright 浏览器

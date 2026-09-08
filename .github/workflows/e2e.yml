@@ -134,6 +134,9 @@ jobs:
               - 'docker-compose.e2e.yml'
               - 'env.e2e.template'
               - 'scripts/**'
+              - 'noj-tests/scripts/**'
+              - 'noj-tests/deno.json'
+              - '.github/actions/e2e-domain/**'
               - '.github/workflows/e2e.yml'
       - name: 计算受影响 e2e-domains
         id: domains
@@ -167,7 +170,8 @@ jobs:
               e2e_domains.append('cross-domain')
           if flag('E2E_BROWSER') or flag('E2E_INFRA'):
               e2e_domains.append('browser')
-          print(f"e2e-domains={json.dumps(e2e_domains)}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"e2e-domains={json.dumps(e2e_domains)}\n")
           PY
 
   e2e-identity:
@@ -179,6 +183,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-identity
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/e2e-domain
         with:
           domain: identity
@@ -192,6 +197,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-catalog
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/e2e-domain
         with:
           domain: catalog
@@ -205,6 +211,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-submission
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/e2e-domain
         with:
           domain: submission
@@ -218,6 +225,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-contest
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/e2e-domain
         with:
           domain: contest
@@ -231,6 +239,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-system
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/e2e-domain
         with:
           domain: system
@@ -244,6 +253,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-community
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/e2e-domain
         with:
           domain: community
@@ -257,6 +267,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-messaging
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/e2e-domain
         with:
           domain: messaging
@@ -270,6 +281,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-objective
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/e2e-domain
         with:
           domain: objective
@@ -283,6 +295,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-admin
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/e2e-domain
         with:
           domain: admin
@@ -296,6 +309,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-cross-domain
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/e2e-domain
         with:
           domain: cross-domain
@@ -309,6 +323,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-browser
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/e2e-domain
         with:
           domain: browser

@@ -191,7 +191,8 @@ jobs:
                       core_domains.append(d)
           if flag('CORE_SHARED'):
               core_domains.append('shared')
-          print(f"core-domains={json.dumps(core_domains)}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"core-domains={json.dumps(core_domains)}\n")
           PY
 
   # ===========================================================================
