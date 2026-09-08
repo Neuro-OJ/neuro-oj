@@ -125,7 +125,8 @@ noj-core/
 │   │   ├── messaging/     # 私信
 │   │   ├── system/        # 设置、公告、审计、存储/邮件、Actor RequestContext、限流中间件
 │   │   ├── gateway/       # LLM Provider / 配额
-│   │   ├── query/         # 搜索、统计、排行
+│   │   ├── search/        # 全局搜索（search_entries 索引、消费者、搜索 API）
+│   │   ├── query/         # 统计、排行
 │   │   └── content-review/# 内容审核与 DM 审核消费者
 ├── scripts/               # CLI 工具（noj.ts 单入口 + migrate.ts + check-env.ts）
 ├── data/
