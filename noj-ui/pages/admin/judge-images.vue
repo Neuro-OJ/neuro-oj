@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-
 import { useToast } from "~/composables/useToast"
 import { extractApiError } from '~/utils/apiError'
+import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 
 definePageMeta({
   layout: "admin",
@@ -31,28 +30,13 @@ const tableError = ref("")
 const { toast } = useToast()
 let requestVersion = 0
 
-const columns: TableColumn<JudgeImage>[] = [
-  { accessorKey: "image", header: "镜像名" },
-  {
-    accessorKey: "mode",
-    header: "匹配模式",
-    cell: (info) => (info.getValue() as string) === "exact" ? "精确版本" : "所有版本",
-  },
-  {
-    accessorKey: "description",
-    header: "介绍",
-    cell: (info) => (info.getValue() as string) || "-",
-  },
-  {
-    accessorKey: "created_at",
-    header: "创建时间",
-    cell: (info) => {
-      const d = new Date(info.getValue() as string)
-      return isNaN(d.getTime()) ? "-" : d.toLocaleString("zh-CN")
-    },
-  },
-
-  { accessorKey: "actions", header: "操作" },]
+const columns: AdminColumn[] = [
+  { key: "image", label: "镜像名" },
+  { key: "mode", label: "匹配模式" },
+  { key: "description", label: "介绍" },
+  { key: "created_at", label: "创建时间" },
+  { key: "actions", label: "操作" },
+]
 
 async function loadItems() {
   if (!isLoggedIn.value) return
@@ -183,23 +167,40 @@ async function handleDelete() {
       </template>
     </AdminPageHeader>
 
-    <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
-    <UTable
+    <AdminTable
       :columns="columns"
-      :data="items"
+      :items="items as unknown as Record<string, unknown>[]"
       :loading="tableLoading"
-      :empty="'暂无评测镜像'">
-      <template #actions-cell="{ row }">
+      :error="tableError || undefined"
+      :total-pages="1"
+      :current-page="1"
+    >
+      <template #cell="{ row, column }">
+        <template v-if="column.key === 'image'">
+          <code class="font-mono text-13px font-semibold text-text">{{ (row as unknown as JudgeImage).image }}</code>
+        </template>
+        <template v-else-if="column.key === 'mode'">
+          {{ (row as unknown as JudgeImage).mode === "exact" ? "精确版本" : "所有版本" }}
+        </template>
+        <template v-else-if="column.key === 'description'">
+          {{ (row as unknown as JudgeImage).description || "-" }}
+        </template>
+        <template v-else-if="column.key === 'created_at'">
+          <span v-if="!isNaN(new Date((row as unknown as JudgeImage).created_at).getTime())">{{ new Date((row as unknown as JudgeImage).created_at).toLocaleString("zh-CN") }}</span>
+          <span v-else>-</span>
+        </template>
+      </template>
+      <template #actions="{ row }">
         <div class="flex gap-1.5 justify-center">
-          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" @click="openEdit(row.original)">
+          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" @click="openEdit(row as unknown as JudgeImage)">
             <UIcon name="i-lucide-pencil" class="size-3.5" />
           </UButton>
-          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row.original)">
+          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row as unknown as JudgeImage)">
             <UIcon name="i-lucide-trash-2" class="size-3.5" />
           </UButton>
         </div>
       </template>
-    </UTable>
+    </AdminTable>
   </div>
 
   <!-- 创建/编辑弹窗 -->
