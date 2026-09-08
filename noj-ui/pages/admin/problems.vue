@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
 import { useToast } from "~/composables/useToast"
+import type { AdminColumn } from "~/components/admin/AdminTable.vue"
 import { useDialog } from "~/composables/useDialog"
 import { extractApiError } from '~/utils/apiError'
 
@@ -55,23 +55,15 @@ const difficultyLabels: Record<string, string> = {
   hard: "困难",
 }
 
-const columns: TableColumn<Problem>[] = [
-  { accessorKey: "display_id", header: "题号" },
-  { accessorKey: "type", header: "类型", cell: (info) => (info.getValue() as string) === "U" ? "用户题库" : "主题库" },
-  { accessorKey: "title", header: "标题" },
-  { accessorKey: "difficulty", header: "难度", cell: (info) => difficultyLabels[info.getValue() as string] || (info.getValue() as string) },
-  {
-    accessorKey: "tags",
-    header: "标签",
-    cell: (info) => (info.getValue() as { name: string }[]).map((c) => c.name).join(", ") || "-",
-  },
-  {
-    accessorKey: "created_at",
-    header: "创建时间",
-    cell: (info) => new Date(info.getValue() as string).toLocaleDateString("zh-CN"),
-  },
-
-  { accessorKey: "actions", header: "操作" },]
+const columns: AdminColumn[] = [
+  { key: "display_id", label: "题号" },
+  { key: "type", label: "类型" },
+  { key: "title", label: "标题" },
+  { key: "difficulty", label: "难度" },
+  { key: "tags", label: "标签" },
+  { key: "created_at", label: "创建时间" },
+  { key: "actions", label: "操作" },
+]
 
 async function loadProblems(page = 1) {
   if (!isLoggedIn.value) return
@@ -187,12 +179,12 @@ const reviewError = ref('')
 const selectedIds = ref<Set<string>>(new Set())
 const reviewing = ref(false)
 
-const reviewColumns: TableColumn<Problem>[] = [
-  { accessorKey: 'selected', header: '' },
-  { accessorKey: 'display_id', header: '题号' },
-  { accessorKey: 'title', header: '标题' },
-  { accessorKey: 'owner_username', header: '所有者' },
-  { accessorKey: 'created_at', header: '创建时间' },
+const reviewColumns: AdminColumn[] = [
+  { key: 'selected', label: '' },
+  { key: 'display_id', label: '题号' },
+  { key: 'title', label: '标题' },
+  { key: 'owner_username', label: '所有者' },
+  { key: 'created_at', label: '创建时间' },
 ]
 
 const selectedCount = computed(() => selectedIds.value.size)
@@ -293,39 +285,46 @@ async function batchReview(action: 'to_public' | 'to_p') {
     </div>
 
     <template v-if="activeTab === 'all'">
-      <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
-      <UTable
+      <AdminTable
         :columns="columns"
-        :data="problems"
+        :items="problems as unknown as Record<string, unknown>[]"
         :loading="tableLoading"
-        :empty="'暂无题目'">
-        <template #difficulty-cell="{ row }">
-          <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold" :class="row.original.difficulty === 'easy' ? 'bg-green-50 text-success-text' : row.original.difficulty === 'medium' ? 'bg-amber-50 text-warning-text' : 'bg-red-50 text-error-text'">
-            {{ difficultyLabels[row.original.difficulty] || row.original.difficulty }}
-          </span>
+        :error="tableError || undefined"
+        :total-pages="totalPages"
+        :current-page="currentPage"
+        @update:page="onPageChange"
+      >
+        <template #cell="{ row, column }">
+          <template v-if="column.key === 'type'">
+            {{ (row as unknown as Problem).type === "U" ? "用户题库" : "主题库" }}
+          </template>
+          <template v-else-if="column.key === 'difficulty'">
+            <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold" :class="(row as unknown as Problem).difficulty === 'easy' ? 'bg-green-50 text-success-text' : (row as unknown as Problem).difficulty === 'medium' ? 'bg-amber-50 text-warning-text' : 'bg-red-50 text-error-text'">
+              {{ difficultyLabels[(row as unknown as Problem).difficulty] || (row as unknown as Problem).difficulty }}
+            </span>
+          </template>
+          <template v-else-if="column.key === 'tags'">
+            {{ ((row as unknown as Problem).tags ?? []).map((c) => c.name).join(", ") || "-" }}
+          </template>
+          <template v-else-if="column.key === 'created_at'">
+            {{ new Date((row as unknown as Problem).created_at).toLocaleDateString("zh-CN") }}
+          </template>
         </template>
-
-        <template #actions-cell="{ row }">
+        <template #actions="{ row }">
           <div class="flex gap-1.5 justify-center">
-            <NuxtLink :to="`/admin/problem-edit/${row.original.display_id}`" class="inline-flex items-center justify-center w-9 h-9 border border-border rounded bg-transparent text-text-secondary cursor-pointer no-underline transition-all duration-150 hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑">
+            <NuxtLink :to="`/admin/problem-edit/${(row as unknown as Problem).display_id}`" class="inline-flex items-center justify-center w-9 h-9 border border-border rounded bg-transparent text-text-secondary cursor-pointer no-underline transition-all duration-150 hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑">
               <UIcon name="i-lucide-pencil" class="size-3.5" />
             </NuxtLink>
-            <UButton color="neutral" variant="outline" class="w-9 h-9 border-border text-text-secondary hover:bg-amber-50 hover:text-warning-600 hover:border-warning-600/30" :disabled="rejudgingProblemIds.has(row.original.id)" :title="rejudgingProblemIds.has(row.original.id) ? '重测提交中' : '重测'" :aria-label="rejudgingProblemIds.has(row.original.id) ? '重测提交中' : '重测'" @click="batchRejudge(row.original.display_id)">
+            <UButton color="neutral" variant="outline" class="w-9 h-9 border-border text-text-secondary hover:bg-amber-50 hover:text-warning-600 hover:border-warning-600/30" :disabled="rejudgingProblemIds.has((row as unknown as Problem).id)" :title="rejudgingProblemIds.has((row as unknown as Problem).id) ? '重测提交中' : '重测'" :aria-label="rejudgingProblemIds.has((row as unknown as Problem).id) ? '重测提交中' : '重测'" @click="batchRejudge((row as unknown as Problem).display_id)">
               <UIcon name="i-lucide-refresh-cw" class="size-3.5" />
             </UButton>
-            <UButton color="neutral" variant="outline" class="w-9 h-9" title="发布前预检" aria-label="发布前预检" @click="runPreflight(row.original)"><UIcon name="i-lucide-clipboard-check" class="size-3.5" /></UButton>
-            <UButton color="neutral" variant="outline" class="w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row.original)">
+            <UButton color="neutral" variant="outline" class="w-9 h-9" title="发布前预检" aria-label="发布前预检" @click="runPreflight(row as unknown as Problem)"><UIcon name="i-lucide-clipboard-check" class="size-3.5" /></UButton>
+            <UButton color="neutral" variant="outline" class="w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row as unknown as Problem)">
               <UIcon name="i-lucide-trash-2" class="size-3.5" />
             </UButton>
           </div>
         </template>
-      </UTable>
-
-      <PaginationNav
-        :current-page="currentPage"
-        :total-pages="totalPages"
-        @page-change="onPageChange"
-      />
+      </AdminTable>
     </template>
 
     <template v-else>
@@ -342,24 +341,28 @@ async function batchReview(action: 'to_public' | 'to_p') {
         >待转 P</UButton>
       </div>
 
-      <div v-if="reviewError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ reviewError }}</span></div>
-      <UTable
+      <AdminTable
         :columns="reviewColumns"
-        :data="reviewProblems"
+        :items="reviewProblems as unknown as Record<string, unknown>[]"
         :loading="reviewLoading"
-        :empty="'暂无待处理题目'">
-        <template #selected-cell="{ row }">
-          <input
-            type="checkbox"
-            class="size-4 accent-primary"
-            :checked="selectedIds.has(row.original.id)"
-            :aria-label="`选择 ${row.original.display_id}`"
-            @change="toggleSelect(row.original.id)"
-          />
+        :error="reviewError || undefined"
+        :total-pages="1"
+        :current-page="1"
+      >
+        <template #cell="{ row, column }">
+          <template v-if="column.key === 'selected'">
+            <input
+              type="checkbox"
+              class="size-4 accent-primary"
+              :checked="selectedIds.has((row as unknown as Problem).id)"
+              :aria-label="`选择 ${(row as unknown as Problem).display_id}`"
+              @change="toggleSelect((row as unknown as Problem).id)"
+            />
+          </template>
+          <template v-else-if="column.key === 'owner_username'">{{ (row as unknown as Problem).owner_username || (row as unknown as Problem).owner_id }}</template>
+          <template v-else-if="column.key === 'created_at'">{{ new Date((row as unknown as Problem).created_at).toLocaleDateString("zh-CN") }}</template>
         </template>
-        <template #owner_username-cell="{ row }">{{ row.original.owner_username || row.original.owner_id }}</template>
-        <template #created_at-cell="{ row }">{{ new Date(row.original.created_at).toLocaleDateString("zh-CN") }}</template>
-      </UTable>
+      </AdminTable>
 
       <div class="flex items-center gap-2">
         <UButton color="primary" :loading="reviewing" :disabled="selectedCount === 0 || reviewing" @click="batchReview('to_public')">批量转公开</UButton>
