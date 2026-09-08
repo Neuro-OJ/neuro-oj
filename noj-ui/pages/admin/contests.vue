@@ -500,7 +500,7 @@ async function removeParticipant(participant: Participant) {
           <div><div class="font-semibold text-text">{{ (row as unknown as Contest).title }}</div><div class="mt-1 text-xs text-text-muted">{{ (row as unknown as Contest).kind === 'invite' ? '邀请赛' : '公开赛' }}<span v-if="(row as unknown as Contest).has_password"> · {{ (row as unknown as Contest).kind === 'invite' ? '邀请码保护' : '密码保护' }}</span></div></div>
         </template>
         <template v-else-if="column.key === 'type'">
-          {{ typeLabels.value[(row as unknown as Contest).type] }}
+          {{ typeLabels[(row as unknown as Contest).type] }}
         </template>
         <template v-else-if="column.key === 'status'">
           <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold" :class="statusClass((row as unknown as Contest).status)">{{ statusLabels[(row as unknown as Contest).status] }}</span>

@@ -238,7 +238,7 @@ router.post("/settings/email/test-send", async (c) => {
 
 router.put(
   "/settings/:key",
-  adminVersionMiddleware(async (c) =>
+  adminVersionMiddleware((c) =>
     getSetting(c.req.param("key") as string)?.updatedAt ?? undefined
   ),
   async (c) => {
@@ -254,7 +254,7 @@ router.put(
 
 router.delete(
   "/settings/:key",
-  adminVersionMiddleware(async (c) =>
+  adminVersionMiddleware((c) =>
     getSetting(c.req.param("key") as string)?.updatedAt ?? undefined
   ),
   async (c) => {

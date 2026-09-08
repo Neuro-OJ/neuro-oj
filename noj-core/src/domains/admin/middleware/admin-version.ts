@@ -16,7 +16,9 @@ export function readVersion(c: Context): string | undefined {
 }
 
 export function adminVersionMiddleware(
-  getCurrentVersion: (c: Context) => Promise<string | null | undefined>,
+  getCurrentVersion: (
+    c: Context,
+  ) => string | null | undefined | Promise<string | null | undefined>,
 ): MiddlewareHandler {
   return async (c, next) => {
     const expected = readVersion(c);
