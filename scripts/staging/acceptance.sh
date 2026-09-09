@@ -284,7 +284,7 @@ run_smoke() {
       E2E_ADMIN_PASS="$(resolve_admin_password)" \
       E2E_EVALUATOR_IMAGE="$IMAGE_REGISTRY/noj-evaluator-python" \
       E2E_SOLUTION_IMAGE="$IMAGE_REGISTRY/noj-solution-python" \
-      deno test -A --no-check e2e/staging-smoke.test.ts 2>&1 | tee "$ARTIFACT_DIR/smoke.log"
+      deno test -A --no-check e2e/staging/staging-smoke.test.ts 2>&1 | tee "$ARTIFACT_DIR/smoke.log"
   )
   log "业务 staging smoke test 全部通过"
 }

@@ -84,6 +84,7 @@ jobs:
     timeout-minutes: 3
     outputs:
       core: ${{ steps.filter.outputs.core }}
+      core-domains: ${{ steps.domains.outputs.core-domains }}
       ui: ${{ steps.filter.outputs.ui }}
       judge: ${{ steps.filter.outputs.judge }}
       gateway: ${{ steps.filter.outputs.gateway }}
@@ -94,13 +95,59 @@ jobs:
           # paths-filter 需要比较 base/head，push 事件需完整历史
           fetch-depth: 0
 
-      - name: 按模块路径过滤
+      - name: 按模块与 Domain 路径过滤
         uses: dorny/paths-filter@v3
         id: filter
         with:
           filters: |
             core:
               - 'noj-core/**'
+              - 'scripts/**'
+              - 'docker-compose.e2e.yml'
+              - 'env.e2e.template'
+              - '.github/workflows/ci.yml'
+            core-identity:
+              - 'noj-core/src/domains/identity/**'
+            core-catalog:
+              - 'noj-core/src/domains/catalog/**'
+            core-submission:
+              - 'noj-core/src/domains/submission/**'
+            core-contest:
+              - 'noj-core/src/domains/contest/**'
+            core-system:
+              - 'noj-core/src/domains/system/**'
+            core-community:
+              - 'noj-core/src/domains/community/**'
+            core-messaging:
+              - 'noj-core/src/domains/messaging/**'
+            core-objective:
+              - 'noj-core/src/domains/objective/**'
+            core-admin:
+              - 'noj-core/src/domains/admin/**'
+            core-search:
+              - 'noj-core/src/domains/search/**'
+            core-query:
+              - 'noj-core/src/domains/query/**'
+            core-gateway:
+              - 'noj-core/src/domains/gateway/**'
+            core-content-review:
+              - 'noj-core/src/domains/content-review/**'
+            core-shared:
+              - 'noj-core/src/shared/**'
+              - 'noj-core/src/routes/**'
+              - 'noj-core/src/app.ts'
+              - 'noj-core/src/main.ts'
+              - 'noj-core/src/mod.ts'
+              - 'noj-core/drizzle/**'
+              - 'noj-core/tests/**'
+              # noj-core 非 src 路径：此前只被 core-test-unit/db 的 noj-core/**
+              # 覆盖，拆域后必须显式列出，否则改 deno.json/脚本会零测试触发
+              - 'noj-core/scripts/**'
+              - 'noj-core/deno.json'
+              - 'noj-core/deno.lock'
+              - 'noj-core/drizzle.config.ts'
+              - 'noj-core/package.json'
+              - 'noj-core/data/**'
               - 'scripts/**'
               - 'docker-compose.e2e.yml'
               - 'env.e2e.template'
@@ -119,6 +166,42 @@ jobs:
               - 'docker-compose.e2e.yml'
               - 'env.e2e.template'
               - '.github/workflows/ci.yml'
+
+      - name: 计算受影响 core-domains
+        id: domains
+        env:
+          CORE_IDENTITY: ${{ steps.filter.outputs.core-identity }}
+          CORE_CATALOG: ${{ steps.filter.outputs.core-catalog }}
+          CORE_SUBMISSION: ${{ steps.filter.outputs.core-submission }}
+          CORE_CONTEST: ${{ steps.filter.outputs.core-contest }}
+          CORE_SYSTEM: ${{ steps.filter.outputs.core-system }}
+          CORE_COMMUNITY: ${{ steps.filter.outputs.core-community }}
+          CORE_MESSAGING: ${{ steps.filter.outputs.core-messaging }}
+          CORE_OBJECTIVE: ${{ steps.filter.outputs.core-objective }}
+          CORE_ADMIN: ${{ steps.filter.outputs.core-admin }}
+          CORE_SEARCH: ${{ steps.filter.outputs.core-search }}
+          CORE_QUERY: ${{ steps.filter.outputs.core-query }}
+          CORE_GATEWAY: ${{ steps.filter.outputs.core-gateway }}
+          CORE_CONTENT_REVIEW: ${{ steps.filter.outputs.core-content-review }}
+          CORE_SHARED: ${{ steps.filter.outputs.core-shared }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          def flag(name):
+              return os.environ.get(name, '') == 'true'
+          all_core = ["identity","catalog","submission","contest","system","community","messaging","objective","admin","search","query","gateway","content-review"]
+          core_domains = []
+          if flag('CORE_SHARED'):
+              core_domains = all_core[:]
+          else:
+              for d in all_core:
+                  if flag(f'CORE_{d.upper().replace("-", "_")}'):
+                      core_domains.append(d)
+          if flag('CORE_SHARED'):
+              core_domains.append('shared')
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"core-domains={json.dumps(core_domains)}\n")
+          PY
 
   # ===========================================================================
   # noj-core — 快速静态检查（fmt + lint + typecheck，无外部服务）
@@ -284,129 +367,17 @@ jobs:
         run: deno run -A scripts/coverage-report.ts
 
   # ===========================================================================
-  # noj-core — 快速冒烟测试（不依赖外部服务，使用 PGlite 内存数据库）
-  # ===========================================================================
-  core-smoke:
-    name: Core Smoke
-    needs: changes
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    runs-on: ubuntu-latest
-    # 冒烟测试是唯一真实启动 Hono server 并验证 /health 的检查，必须在 main 推送 / 手动触发也执行，
-    # 不只是 PR。core-test 直接 import router 不启 server，覆盖不到 HTTP 层。
-    timeout-minutes: 5
-
-    services:
-      # PR-1 评审修订：smoke 测试现在调 authMiddleware（含 isJtiRevoked），
-      # 必须在 Redis 可达环境下运行。加 redis 服务容器。
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 安装 Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
-      - name: 快速冒烟测试
-        working-directory: noj-core
-        env:
-          REDIS_URL: redis://localhost:6379/
-        run: deno task test:smoke
-
-  # ===========================================================================
-  # noj-core — 单元/轻量测试（PGlite 内存数据库 + Redis，无 PostgreSQL）
+  # noj-core — Domain 单元/集成测试（独立 job）
   #
-  # 性能优化（2026-07）：原 core-test 单一 job 串行跑全部测试文件
-  # （需 PG + Redis，最慢可达 15 min）。拆分为 unit / db 两个并行 job：
-  #   - unit：tests/lib + middleware + types + data + app（纯逻辑 + PGlite，
-  #     无需 PG service，Redis 供 loginThrottle/revokedTokens/searchRateLimit）
-  #   - db：services + routes + mq + db + 迁移/种子（需要真实 PG 覆盖
-  #     pg_trgm / tsvector / GIN 等专属路径）
-  # 每组内仍串行（resetDbForTest 的 TRUNCATE 顺序假设），组间并行。
+  # 每个 Domain 一个独立 job，自带 PostgreSQL + Redis；共享测试由 core-shared
+  # 承担。PR 上按 Domain 级路径过滤，push main / workflow_dispatch 全量。
   # ===========================================================================
-  core-test-unit:
-    name: Core Test (Unit)
+  core-identity:
+    name: Core identity
     needs: changes
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    services:
-      # lib/middleware 的 Redis 相关测试（loginThrottle / revokedTokens /
-      # searchRateLimit）需要可达的 Redis
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      REDIS_URL: redis://localhost:6379/
-      JWT_SECRET: ${{ secrets.JWT_SECRET }}
-      NOJ_ENV: test
-      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
-
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 安装 Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
-      - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/noj-core/.deno_cache
-          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
-          restore-keys: |
-            deno-
-
-      - name: 运行单元测试 (deno test)
-        working-directory: noj-core
-        env:
-          BCRYPT_SALT_ROUNDS: 4
-        # 不设 DATABASE_URL → PGlite 内存模式，零外部 DB 依赖；
-        # 单元测试暂不并行：Redis fail-closed 测试在并行下会互相干扰（已实测 flaky）。
-        run: deno test -A --no-check --preload=tests/preload.ts tests/shared tests/data tests/app.test.ts src/domains/identity/tests/lib src/domains/catalog/tests/lib src/domains/identity/tests/middleware src/domains/system/tests/middleware src/domains/catalog/tests/types src/domains/contest/tests/types src/domains/submission/tests/types
-
-      - name: 上传失败日志
-        if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
-        with:
-          name: core-test-unit-logs
-          path: |
-            noj-core/test-logs/
-            noj-core/test-output.log
-          retention-days: 7
-          if-no-files-found: ignore
-        continue-on-error: true
-
-  # ===========================================================================
-  # noj-core — 集成测试（需 PostgreSQL + Redis 服务容器）
-  # ===========================================================================
-  core-test-db:
-    name: Core Test (DB)
-    needs: changes
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'identity') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     services:
       postgres:
         image: postgres:16-alpine
@@ -421,7 +392,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
       redis:
         image: redis:7-alpine
         ports:
@@ -431,39 +401,18 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
     env:
       REDIS_URL: redis://localhost:6379/
-      # 真实接入 PostgreSQL 服务容器；若缺失则 00_migrate_test.ts 会静默退到 PGlite，
-      # 导致 pg_trgm / tsvector / GIN 等 PG 专属路径在 PR 上从未被 CI 覆盖。
       DATABASE_URL: postgres://noj:noj@localhost:5432/noj
-      # JWT_SECRET 不再直接依赖仓库 Secret：由下方 validate-secrets step 统一
-      # 注入（Fork / Dependabot PR 缺 Secret 时生成一次性随机密钥，issue #430）。
       NOJ_ENV: test
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
-
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
-
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-
-      # 注入 / 校验 JWT_SECRET（修复 finding S7 + issue #430）。
-      # noj-core main.ts 启动时硬校验，但 CI 在测试环节会先 launch main.ts；
-      # 把校验提前到 step 层，错误信息更精准。
-      #
-      # Fork / Dependabot PR 拿不到仓库 secrets——这是 GitHub 的安全边界。
-      # 但本 job 只依赖服务容器内的 PostgreSQL / Redis（凭据固定为 noj/noj），
-      # 不触及任何真实外部服务，因此为隔离测试生成仅本次运行有效的随机
-      # JWT_SECRET 即可让测试正常执行，而不是跳过（SKIPPED_NO_SECRETS），
-      # 使开源 PR 获得同等的数据库回归保障。随机密钥仅存在于本 job 环境，
-      # 与生产凭据无关，也不向不可信代码暴露任何 Secret。
-      #
-      # 真正需要外部服务真实凭据的专用测试（如 S3 / SMTP）不包含在本 job
-      # 的测试清单中，单独按各自的环境变量 guard 跳过。
       - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -475,45 +424,1059 @@ jobs:
             fi
             echo "JWT_SECRET 来源：仓库 Secret（trusted 环境配置）"
             echo "JWT_SECRET_SOURCE=repo-secret" >> "$GITHUB_ENV"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           else
             JWT_SECRET="$(openssl rand -hex 32)"
             echo "JWT_SECRET 来源：本次运行生成的一次性随机密钥（Fork / Dependabot PR 隔离测试，issue #430）"
             echo "JWT_SECRET_SOURCE=random-per-run" >> "$GITHUB_ENV"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
-          # GITHUB_ENV 注入后，后续 step 以 step 级变量生效（优先级高于 job env）
-          echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
-
       - name: 缓存 Deno 依赖
         uses: actions/cache@v4
         with:
-          # cache key 同时 hash deno.lock 和 deno.json（修复 finding P7）。
-          # 原单 hashFiles('deno.lock') 在 imports map 变更时不刷新缓存，
-          # 会用到旧的下载模块。
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
           restore-keys: |
             deno-
-
-      - name: 运行测试 (deno test)
-        # JWT_SECRET 已由 Inject or validate JWT_SECRET step 注入
-        #（仓库 Secret 或一次性随机值），测试不再因缺 Secret 跳过（issue #430）。
-        # 失败即本 job 失败；执行来源可通过 JWT_SECRET_SOURCE 环境变量区分。
+      - name: 运行 Domain 测试
         working-directory: noj-core
         env:
           BCRYPT_SALT_ROUNDS: 4
-        # 不加 --parallel：多 worker 并发 TRUNCATE / INSERT 会导致死锁
-        # （CI 日志可见 Process 494 vs 495 互锁）。串行执行匹配现有
-        # resetDbForTest() 的顺序假设。此 job 只包含 DB 依赖子集，
-        # 与 core-test-unit 并行互补。
-        run: deno test -A tests/routes tests/db tests/00_migrate_test.ts tests/seed_bootstrap_admin_test.ts src/domains/identity/tests/routes src/domains/identity/tests/services src/domains/catalog/tests/routes src/domains/catalog/tests/services src/domains/submission/tests/routes src/domains/submission/tests/services src/domains/submission/tests/mq src/domains/query/tests/routes src/domains/query/tests/services src/domains/search/tests/routes src/domains/search/tests/services src/domains/contest/tests/routes src/domains/contest/tests/services src/domains/community/tests/routes src/domains/community/tests/services src/domains/messaging/tests/routes src/domains/messaging/tests/services src/domains/objective/tests/routes src/domains/objective/tests/services src/domains/system/tests/routes src/domains/system/tests/services src/domains/gateway/tests/services src/domains/content-review/tests/services
+        run: bash scripts/test-domain.sh identity
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-identity-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
 
-      # 执行摘要写入 job summary：区分密钥来源，并明确记录
-      # 数据库集成测试是"实际执行"而非跳过（issue #430 验收项）。
+  core-catalog:
+    name: Core catalog
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'catalog') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行 Domain 测试
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-domain.sh catalog
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-catalog-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  core-submission:
+    name: Core submission
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'submission') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行 Domain 测试
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-domain.sh submission
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-submission-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  core-contest:
+    name: Core contest
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'contest') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行 Domain 测试
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-domain.sh contest
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-contest-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  core-system:
+    name: Core system
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'system') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行 Domain 测试
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-domain.sh system
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-system-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  core-community:
+    name: Core community
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'community') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行 Domain 测试
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-domain.sh community
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-community-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  core-messaging:
+    name: Core messaging
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'messaging') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行 Domain 测试
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-domain.sh messaging
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-messaging-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  core-objective:
+    name: Core objective
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'objective') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行 Domain 测试
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-domain.sh objective
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-objective-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  core-admin:
+    name: Core admin
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'admin') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行 Domain 测试
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-domain.sh admin
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-admin-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  core-search:
+    name: Core search
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'search') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行 Domain 测试
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-domain.sh search
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-search-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  core-query:
+    name: Core query
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'query') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行 Domain 测试
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-domain.sh query
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-query-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  core-gateway:
+    name: Core gateway
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'gateway') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行 Domain 测试
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-domain.sh gateway
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-gateway-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  core-content-review:
+    name: Core content-review
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'content-review') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行 Domain 测试
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-domain.sh content-review
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-content-review-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  core-shared:
+    name: Core Shared
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'shared') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行共享测试 + smoke
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-shared.sh
+      # 执行摘要写入 job summary：区分密钥来源，并明确记录数据库集成测试
+      # 是"实际执行"而非跳过（issue #430 验收项）。
       - name: 记录执行摘要
         if: always()
         run: |
           {
-            echo "### core-test-db 执行摘要"
+            echo "### core-shared 执行摘要"
             echo ""
             if [ "${JWT_SECRET_SOURCE:-}" = "random-per-run" ]; then
               echo "- JWT_SECRET 来源：本次运行生成的一次性随机密钥（仅隔离测试使用）"
@@ -522,15 +1485,11 @@ jobs:
             fi
             echo "- 数据库集成测试：已实际执行（PostgreSQL / Redis 服务容器），无跳过"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      # 失败时上传日志（修复 finding M7）。CI 默认只在 UI 里保留日志，
-      # 开发者必须本地复现才能排查；改为 actions/upload-artifact 上传到
-      # GitHub Actions artifacts，contributor 可直接下载查看。
       - name: 上传失败日志
         if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
-          name: core-test-db-logs
+          name: core-shared-logs
           path: |
             noj-core/test-logs/
             noj-core/test-output.log
@@ -750,100 +1709,6 @@ jobs:
         with:
           name: judge-check-logs
           path: noj-judge/target/
-          retention-days: 7
-          if-no-files-found: ignore
-        continue-on-error: true
-
-  # ===========================================================================
-  # noj-judge — Docker 沙箱集成测试
-  #
-  # 以前只跑在 workflow_dispatch，导致容器池 / 双容器协调 / 沙箱资源限制等
-  # 关键路径在 push / PR 上无信号。现默认 push + 非 fork PR + manual 都跑。
-  # Fork PR 仍会跑（GitHub-hosted ubuntu-latest 自带 Docker daemon），仅 cache 写入
-  # 会被 GHA 静默忽略，缓存命中率下降但不影响测试正确性。
-  # ===========================================================================
-  judge-e2e:
-    name: Judge E2E (Docker)
-    needs: changes
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.judge == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      NOJ_RUN_E2E: "1"
-    permissions:
-      actions: write
-
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 安装 Rust 工具链
-        uses: dtolnay/rust-toolchain@stable
-        # 注意：不装 rustfmt/clippy 组件——本 job 只编译并运行测试；
-        # 曾因并行 cargo 触发 rustup sync 竞争导致 clippy 组件下载失败
-        # （component download failed），组件越少失败面越小。
-      - name: 启用 sccache（Rust 编译缓存）
-        uses: mozilla/sccache-action@v0.0.11
-
-      - name: 缓存 Cargo 依赖
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            noj-judge/target
-          key: cargo-e2e-${{ hashFiles('noj-judge/Cargo.lock') }}
-          restore-keys: |
-            cargo-e2e-
-
-      - name: 构建测试 Docker 镜像
-        working-directory: noj-judge/tests/e2e
-        run: docker build -t noj-judge-test-runner -f Dockerfile.test-runner .
-
-      - name: 运行 E2E 集成测试（2 组并行）
-        working-directory: noj-judge
-        env:
-          # judge-e2e job 现在默认在 push/PR 上也跑（之前仅 workflow_dispatch）。
-          # 此时仍需一个本地可达的 Redis，配合服务容器 redis:7-alpine。
-          REDIS_URL: redis://localhost:6379/
-        run: |
-          # set -euo pipefail：任一 cargo test 失败立即终止整个 job
-          set -euo pipefail
-          # rustup 预热（修复 2026-08 并行竞争）：两个 run_group 同时启动
-          # cargo 会各自触发 rustup channel sync + 组件下载，竞争同一
-          # rustup 状态目录导致 "component download failed"（测试启动即死）。
-          # 先单进程触发一次 sync，之后并行 cargo 不再下载。
-          cargo --version >/dev/null
-          # ci.yml 此处跑 5 个基础沙箱目标；dual_container / network_capability
-          # 由 e2e.yml 的 judge-sandbox job 覆盖（共 7 个目标）。
-          # 原 cargo test --test e2e 在没有 e2e.rs 的
-          # 情况下 exit 101，从未暴露是因为 if: workflow_dispatch。
-          # 性能优化（2026-07）：5 个目标分 2 组并行——组内串行
-          # （serial_test 保证单 binary 内串行），组间并行利用 runner 多核；
-          # 每组 3 个 Docker 沙箱并发为保守取值，避免资源竞争导致 flaky。
-          run_group() {
-            for target in "$@"; do
-              echo "═══ $target ═══"
-              NOJ_RUN_E2E=1 cargo test --test "$target" -- --ignored --test-threads=1
-            done
-          }
-          run_group e2e_docker_basic e2e_resource_limits e2e_security_isolation &
-          p1=$!
-          run_group e2e_support_package e2e_problem_limits &
-          p2=$!
-          fail=0
-          wait "$p1" || fail=1
-          wait "$p2" || fail=1
-          exit "$fail"
-
-      # 失败时上传 Docker 沙箱产物
-      - name: 上传失败日志
-        if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
-        with:
-          name: judge-e2e-logs
-          path: |
-            noj-judge/target/**/test-*.log
           retention-days: 7
           if-no-files-found: ignore
         continue-on-error: true

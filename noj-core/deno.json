@@ -21,6 +21,7 @@
     "check:prod": "deno run -A scripts/check-env.ts --strict --production --file ../.env.prod",
     "test": "deno run -A scripts/prepare-pglite-template.ts && BCRYPT_SALT_ROUNDS=4 env -u DATABASE_URL deno test -A --no-check --preload=tests/preload.ts",
     "test:smoke": "deno test -A --no-check tests/smoke.test.ts",
+    "test:domain": "bash scripts/test-domain.sh",
     "test:watch": "BCRYPT_SALT_ROUNDS=4 deno test -A --no-check --preload=tests/preload.ts --watch",
     "test:parallel": "BCRYPT_SALT_ROUNDS=4 deno run -A --env-file=.env scripts/test-parallel.ts",
     "fmt": "deno fmt",

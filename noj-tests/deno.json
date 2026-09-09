@@ -4,6 +4,7 @@
   "exports": {},
   "tasks": {
     "test": "deno test -A --env-file=../env.e2e.template e2e/",
+    "test:domain": "bash scripts/run-e2e-domain.sh",
     "test:browser": "deno test -A --env-file=../env.e2e.template e2e/browser/"
   },
   "imports": {},

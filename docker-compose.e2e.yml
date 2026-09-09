@@ -74,7 +74,7 @@ services:
       REDIS_URL: redis://redis:6379/1
       NOJ_RUN_E2E: "1"
       STORAGE_PROVIDER: local
-      RATE_LIMIT_ENABLED: "false"
+      RATE_LIMIT_ENABLED: "${RATE_LIMIT_ENABLED:-false}"
       JWT_SECRET: e2e-ci-secret-fixed-value-with-32-chars-min-abc
       ADMIN_EMAIL: e2e_admin@test.com
       ADMIN_PASS: e2e_admin_pass
@@ -115,7 +115,7 @@ services:
       PORT: "8000"
       NOJ_RUN_E2E: "1"
       STORAGE_PROVIDER: local
-      RATE_LIMIT_ENABLED: "false"
+      RATE_LIMIT_ENABLED: "${RATE_LIMIT_ENABLED:-false}"
       BCRYPT_SALT_ROUNDS: "4"
       # LLM Gateway：core 本地 mint eval_token 需要与 gateway 共享 service token。
       # evaluator 容器运行在默认 bridge，只能经宿主机 bridge 网关 IP 访问已发布端口的 gateway。

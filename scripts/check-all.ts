@@ -20,6 +20,7 @@ if (import.meta.main) {
   await run(["deno", "run", "-A", "scripts/gen-event-catalog.ts", "--check"]);
   await run(["deno", "run", "-A", "scripts/gen-route-catalog.ts", "--check"]);
   await run(["deno", "run", "-A", "scripts/check-domains.ts"]);
+  await run(["deno", "run", "-A", "scripts/verify-domain-ci.ts"]);
 
   console.log("== noj-core check ==");
   await run(["deno", "task", "check"], "noj-core");

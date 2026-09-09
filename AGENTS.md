@@ -249,7 +249,12 @@ cd noj-llm-gateway && deno task dev   # 可选
 - 优先 `deno task test:parallel`
 - 零依赖用 `deno task test`
 - 快速反馈用 `deno task test:smoke`
-- 不要直接手拼 `deno test`（会丢失必要环境配置）
+- **按 Domain 测试必须使用规定命令，禁止手拼 `deno test`**：
+  - noj-core 单元/集成：`cd noj-core && deno task test:domain <domain>`
+  - noj-core 共享测试：`cd noj-core && bash scripts/test-shared.sh`
+  - noj-tests E2E：`cd noj-tests && deno task test:domain <domain>`
+  - 跨域 E2E：`cd noj-tests && deno task test:domain cross-domain`
+- 这些命令会统一处理迁移/种子、环境变量与测试路径；手拼 `deno test` 会丢失必要配置，CI 与本地必须使用同一套命令。
 
 ### 8.6 搜索工具要求
 

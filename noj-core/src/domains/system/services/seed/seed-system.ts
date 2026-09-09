@@ -303,7 +303,7 @@ export async function ensureBootstrapAdmin(): Promise<void> {
 /**
  * 创建 E2E 守卫测试专用用户（must_change_password=true）。
  *
- * 仅在 NOJ_RUN_E2E=1 时创建，供 noj-tests/e2e/08_password_change_guard.test.ts
+ * 仅在 NOJ_RUN_E2E=1 时创建，供 noj-tests/e2e/identity/password_change_guard.test.ts
  * 验证 PASSWORD_CHANGE_REQUIRED 守卫（评审修复 H2）。
  * 幂等：用户存在时跳过。
  */

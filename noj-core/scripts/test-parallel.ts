@@ -17,10 +17,10 @@
  *   deno task test:parallel            # 并行跑全部分片（需 DATABASE_URL）
  *   deno task test:parallel -- --dry-run   # 仅打印将要执行的命令
  *
- * 分片（目录集合与 .github/workflows/ci.yml 的 core-test-db 一致；unit 分片
+ * 分片（目录集合与 .github/workflows/ci.yml 的 core-<domain> / core-shared 一致；unit 分片
  * 多带 tests/00_migrate_test.ts——本脚本所有分片都走真实 PG + TEST_SCHEMA
  * 隔离，需要 00_migrate_test 在每个分片 schema 内执行迁移；而 CI 的
- * core-test-unit 是 PGlite 内存模式（resetDbForTest 自动建表），无需迁移）：
+ * core-quick-check / core-shared 之外的域 job 走真实 PG，无需额外迁移）：
  *   - unit：lib / middleware / types / data / app（schema=test_unit）
  *   - db：  services / routes / mq / db / 迁移 / 种子（schema=test_db）
  */
