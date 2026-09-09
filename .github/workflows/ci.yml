@@ -140,6 +140,14 @@ jobs:
               - 'noj-core/src/mod.ts'
               - 'noj-core/drizzle/**'
               - 'noj-core/tests/**'
+              # noj-core 非 src 路径：此前只被 core-test-unit/db 的 noj-core/**
+              # 覆盖，拆域后必须显式列出，否则改 deno.json/脚本会零测试触发
+              - 'noj-core/scripts/**'
+              - 'noj-core/deno.json'
+              - 'noj-core/deno.lock'
+              - 'noj-core/drizzle.config.ts'
+              - 'noj-core/package.json'
+              - 'noj-core/data/**'
               - 'scripts/**'
               - 'docker-compose.e2e.yml'
               - 'env.e2e.template'
@@ -414,9 +422,13 @@ jobs:
               echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
               exit 1
             fi
+            echo "JWT_SECRET 来源：仓库 Secret（trusted 环境配置）"
+            echo "JWT_SECRET_SOURCE=repo-secret" >> "$GITHUB_ENV"
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           else
             JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET 来源：本次运行生成的一次性随机密钥（Fork / Dependabot PR 隔离测试，issue #430）"
+            echo "JWT_SECRET_SOURCE=random-per-run" >> "$GITHUB_ENV"
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
       - name: 缓存 Deno 依赖
@@ -1458,6 +1470,21 @@ jobs:
         env:
           BCRYPT_SALT_ROUNDS: 4
         run: bash scripts/test-shared.sh
+      # 执行摘要写入 job summary：区分密钥来源，并明确记录数据库集成测试
+      # 是"实际执行"而非跳过（issue #430 验收项）。
+      - name: 记录执行摘要
+        if: always()
+        run: |
+          {
+            echo "### core-shared 执行摘要"
+            echo ""
+            if [ "${JWT_SECRET_SOURCE:-}" = "random-per-run" ]; then
+              echo "- JWT_SECRET 来源：本次运行生成的一次性随机密钥（仅隔离测试使用）"
+            else
+              echo "- JWT_SECRET 来源：仓库 Secret"
+            fi
+            echo "- 数据库集成测试：已实际执行（PostgreSQL / Redis 服务容器），无跳过"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: 上传失败日志
         if: failure() || cancelled()
         uses: actions/upload-artifact@v4

@@ -166,7 +166,9 @@ runs:
       env:
         E2E_BASE_URL: ${{ env.E2E_BASE_URL }}
         E2E_LLM_MOCK_URL: http://noj-e2e-llm-mock:8002/v1
-      run: bash scripts/run-e2e-domain.sh "${{ inputs.domain }}"
+        # 用 env 间接传参，避免把 workflow 输入直接拼进 run 命令
+        E2E_DOMAIN: ${{ inputs.domain }}
+      run: bash scripts/run-e2e-domain.sh "$E2E_DOMAIN"
       shell: bash
 
     - name: 安装 noj-ui 依赖

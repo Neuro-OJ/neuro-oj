@@ -118,6 +118,11 @@ jobs:
               - 'noj-core/src/domains/admin/**'
             e2e-cross-domain:
               - 'noj-tests/e2e/cross-domain/**'
+              # 跨域 E2E 直接覆盖这些域，core 域改动必须触发跨域用例
+              - 'noj-core/src/domains/search/**'
+              - 'noj-core/src/domains/query/**'
+              - 'noj-core/src/domains/gateway/**'
+              - 'noj-core/src/domains/content-review/**'
             e2e-browser:
               - 'noj-tests/e2e/browser/**'
               - 'noj-ui/**'
@@ -136,6 +141,11 @@ jobs:
               - 'scripts/**'
               - 'noj-tests/scripts/**'
               - 'noj-tests/deno.json'
+              - 'noj-tests/deno.lock'
+              # e2e 根目录共享模块（helper.ts 被全部 39 个用例 import）
+              - 'noj-tests/e2e/*.ts'
+              - 'noj-tests/run-e2e.sh'
+              - 'noj-tests/e2e/support-package/**'
               - '.github/actions/e2e-domain/**'
               - '.github/workflows/e2e.yml'
       - name: 计算受影响 e2e-domains

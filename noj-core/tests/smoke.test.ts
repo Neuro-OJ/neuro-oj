@@ -4,7 +4,7 @@
  * 快速验证核心 API 端点在 HTTP 层面的可达性和基础响应格式正确性。
  * 使用 PGlite 内存数据库，需要 REDIS_URL 可用（PR-1 后 authMiddleware
  * 校验 JWT 撤销状态依赖 Redis，fail-closed 设计）。
- * 作为 CI 中 core-smoke job 的快速反馈路径（预计 < 1 分钟完成）。
+ * 作为 CI 中 core-shared job 的快速反馈路径（预计 < 1 分钟完成）。
  *
  * 测试覆盖：
  * - GET /health — 健康检查

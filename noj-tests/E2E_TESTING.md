@@ -31,40 +31,30 @@ NOJ_RUN_BROWSER_E2E=1 deno task test:browser
 
 ```
 noj-tests/
-├── deno.json                  # Deno 项目配置
+├── deno.json                  # Deno 项目配置（test:domain 任务）
 ├── E2E_TESTING.md             # 本文档
-├── run-e2e.sh                 # 一键运行脚本
+├── run-e2e.sh                 # 本地全量运行脚本
+├── scripts/
+│   └── run-e2e-domain.sh      # 按 Domain 运行（CI 与本地同一命令）
 └── e2e/
-    ├── helper.ts              # 辅助函数（API 客户端、用户注册、e2eTest 包装）
-    ├── 01_tags.test.ts        # 标签系统（CRUD/合并/筛选 + 算法标签门控）
-    ├── 02_problems.test.ts    # 题目管理（U/P 型 CRUD + 筛选）
-    ├── 03_auth.test.ts        # 认证流程（注册/登录/改密/管理员）
-    ├── 04_submissions.test.ts # 提交流程（AC/WA/TLE + 查看结果）
-    ├── 05_profile.test.ts     # 用户主页（信息+统计）
-    ├── 06_pipeline.test.ts    # 全管道（提交→MQ→评测→结果）
-    ├── 07_queue.test.ts       # 队列可见性+MQ可靠性
-    ├── 08_password_change_guard.test.ts  # 强制改密守卫
-    ├── 09_checkin.test.ts     # 每日签到
-    ├── 10_sse.test.ts         # SSE 推送（提交/队列/统计）
-    ├── 11_messaging.test.ts   # 站内私信
-    ├── 12_audit_log.test.ts   # 审计日志
-    ├── 13_support_package_s3.test.ts    # 支持包 S3 存储
-    ├── 14_rejudge.test.ts     # 重测
-    ├── 15_dual_container_judge.test.ts  # 双容器评测
-    ├── 16_community.test.ts   # 社区（帖子/评论/审核/动态流）
-    ├── 17_problem_template.test.ts      # 题目模板
-    ├── 18_search.test.ts      # 全局搜索
-    ├── 19_admin_endpoints.test.ts       # 管理端点
-    ├── 20_password_reset.test.ts        # 密码重置
-    ├── 21_rankings.test.ts    # 榜单
-    ├── 22_contest_lifecycle.test.ts     # 竞赛生命周期
-    ├── 23_network_capability.test.ts    # 评测网络能力
-    ├── 24_import_bundle.test.ts         # 题目包导入
-    ├── 25_rbac.test.ts        # RBAC 权限
-    ├── 26_call_timeout.test.ts          # 调用级超时
+    ├── helper.ts              # 共享辅助函数（API 客户端、注册、e2eTest 包装）
+    ├── identity/              # 认证、用户主页、改密守卫、密码重置、头像、TFA
+    ├── catalog/               # 标签、题目、题目模板、题包导入、题单
+    ├── submission/            # 提交、队列、SSE、重测、双容器、支持包、调用超时、优先级队列
+    ├── contest/               # 竞赛生命周期、榜单、答疑、防作弊
+    ├── system/                # 签到、审计日志、公告、自测
+    ├── community/             # 社区（帖子/评论/审核/动态流）
+    ├── messaging/             # 站内私信
+    ├── objective/             # 客观题
+    ├── admin/                 # 管理端点
+    ├── cross-domain/          # 跨域链路（全管道、RBAC、搜索、网络能力、双容器、LLM 网关）
+    ├── browser/               # 浏览器流程（需 noj-ui 已构建并监听 :3000）
+    ├── staging/               # staging 验收清单（由 scripts/staging/acceptance.sh 执行，不进 CI）
     └── support-package/       # 测试用支持包参考
-        └── evaluate.py        # 示例评测脚本
 ```
+
+每个目录对应一个 CI job（`e2e-<domain>`）；共享的 `helper.ts`、`scripts/**`、
+`deno.json` 归入 `e2e-infra`，改动它们会触发全部 API 与浏览器 E2E。
 
 ### 测试覆盖
 
@@ -107,7 +97,21 @@ noj-tests/
 
 ## 运行方式
 
-### 一键运行所有 E2E 测试
+### 按 Domain 运行（与 CI 一致）
+
+```bash
+cd noj-tests
+deno task test:domain submission      # 等价于 bash scripts/run-e2e-domain.sh submission
+```
+
+可用 domain：`identity` / `catalog` / `submission` / `contest` / `system` /
+`community` / `messaging` / `objective` / `admin` / `cross-domain` / `browser` /
+`staging`。
+
+> 本地运行需要完整的 E2E 栈（`env.e2e.template` 会设置 `NOJ_RUN_E2E=1`）；
+> 栈未启动时用例会被静默跳过，请先 `bash ../scripts/e2e/setup.sh`。
+
+### 一键运行所有 E2E 测试（本地全量）
 
 ```bash
 cd noj-tests
