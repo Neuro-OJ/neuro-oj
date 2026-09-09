@@ -34,6 +34,28 @@ async function readSseFrames(
   return buffer;
 }
 
+/**
+ * 从原始 SSE 文本中提取指定 event 的 data（多行 data 用换行拼接）。
+ *
+ * 连接建立时会先推 `contest:ranking:snapshot`（榜单快照合法携带 user_id），
+ * 因此不能对整个缓冲区做 `includes('"user_id"')`，必须按事件隔离断言。
+ */
+function extractSseEventData(frames: string, event: string): string | null {
+  for (const block of frames.split(/\r?\n\r?\n/)) {
+    const lines = block.split(/\r?\n/);
+    const eventName = lines
+      .find((line) => line.startsWith("event:"))
+      ?.slice("event:".length)
+      .trim();
+    if (eventName !== event) continue;
+    return lines
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice("data:".length).trimStart())
+      .join("\n");
+  }
+  return null;
+}
+
 async function publishContestSubmissionEvent(
   contestId: string,
 ): Promise<boolean> {
@@ -130,11 +152,20 @@ e2eTest(
     const published = await publishContestSubmissionEvent(contestId);
     if (!published) throw new Error("docker exec noj-e2e-redis 发布事件失败");
     const frames = await readSseFrames(res, 10_000);
-    if (!frames.includes("contest:submission:created")) {
+    const submissionData = extractSseEventData(
+      frames,
+      "contest:submission:created",
+    );
+    if (submissionData === null) {
       throw new Error("报名用户未在 10s 内收到提交事件帧");
     }
-    if (frames.includes("secret-user") || frames.includes('"user_id"')) {
-      throw new Error(`提交事件帧泄露 user_id: ${frames.slice(0, 200)}`);
+    if (
+      submissionData.includes("secret-user") ||
+      submissionData.includes('"user_id"')
+    ) {
+      throw new Error(
+        `提交事件帧泄露 user_id: ${submissionData.slice(0, 200)}`,
+      );
     }
   },
 );

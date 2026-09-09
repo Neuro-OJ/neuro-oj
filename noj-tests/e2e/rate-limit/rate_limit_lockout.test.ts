@@ -10,12 +10,16 @@
  * 因此这里断言的是**服务端真实锁定状态**：
  * 1. 连续错误密码都返回 401（不是 429 限流）；
  * 2. 达到阈值后，用**正确密码**登录也被拒，且提示账号已锁定；
- * 3. Redis 中存在 `loginlock:<username>` 标记（不依赖响应文案）。
+ * 3. Redis 中存在 `loginlock:<userId>` 标记（不依赖响应文案）。
+ *
+ * 注意：锁定 key 经 `resolveLoginAccountKey` 归一化为 `users.id`（NOJ-092），
+ * 用户名/邮箱登录共享同一锁定桶，因此不能按 username 查 Redis。
  *
  * 参考实现：noj-core `src/domains/identity/services/security/loginThrottle.ts`。
  */
 
 import {
+  apiGet,
   apiPost,
   e2eTest,
   isE2E,
@@ -33,7 +37,14 @@ e2eTest(
     if (!isE2E) return;
     const ts = Date.now().toString(36);
     const username = `rl_${ts}`;
-    await registerUser(username, `${username}@test.com`, TEST_PASSWORD);
+    const token = await registerUser(
+      username,
+      `${username}@test.com`,
+      TEST_PASSWORD,
+    );
+    // 锁定桶按 users.id 归一化（NOJ-092），先取 userId 供 Redis 断言使用。
+    const me = await apiGet("/api/v1/auth/me", token);
+    const userId = (me.body as { data: { id: string } }).data.id;
 
     for (let i = 0; i < LOCK_THRESHOLD; i++) {
       const res = await apiPost("/api/v1/auth/login", {
@@ -66,14 +77,18 @@ e2eTest(
       );
     }
 
-    // 直接验证 Redis 锁定标记（服务端状态，不依赖文案）
+    // 直接验证 Redis 锁定标记（服务端状态，不依赖文案）。
+    // E2E 栈的 REDIS_URL 指向 DB 1（docker-compose.e2e.yml），
+    // 不指定 -n 会默认查 DB 0 导致永远 EXISTS 0。
     const cmd = new Deno.Command("docker", {
       args: [
         "exec",
         "noj-e2e-redis",
         "redis-cli",
+        "-n",
+        "1",
         "EXISTS",
-        `loginlock:${username.toLowerCase()}`,
+        `loginlock:${userId.toLowerCase()}`,
       ],
     });
     const { stdout, success } = await cmd.output();

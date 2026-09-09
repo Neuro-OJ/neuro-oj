@@ -116,6 +116,13 @@ services:
       NOJ_RUN_E2E: "1"
       STORAGE_PROVIDER: local
       RATE_LIMIT_ENABLED: "${RATE_LIMIT_ENABLED:-false}"
+      # 登录限流参数必须显式转发：compose 只注入此处列出的变量，
+      # 否则 e2e-rate-limit job 设置的 IP_MAX/ACC_MAX/BACKOFF_SEC 不会
+      # 进入容器，退避按默认 15s 生效会让用例跑 13min 并误判锁定失败。
+      RATE_LIMIT_LOGIN_IP_MAX: "${RATE_LIMIT_LOGIN_IP_MAX:-10}"
+      RATE_LIMIT_LOGIN_ACC_MAX: "${RATE_LIMIT_LOGIN_ACC_MAX:-5}"
+      RATE_LIMIT_LOGIN_BACKOFF_SEC: "${RATE_LIMIT_LOGIN_BACKOFF_SEC:-15}"
+      RATE_LIMIT_LOGIN_LOCK_THRESHOLD: "${RATE_LIMIT_LOGIN_LOCK_THRESHOLD:-10}"
       BCRYPT_SALT_ROUNDS: "4"
       # LLM Gateway：core 本地 mint eval_token 需要与 gateway 共享 service token。
       # evaluator 容器运行在默认 bridge，只能经宿主机 bridge 网关 IP 访问已发布端口的 gateway。

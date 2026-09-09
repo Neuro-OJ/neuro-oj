@@ -14,17 +14,12 @@ import {
   BASE_URL,
   e2eTest,
   getAdminToken,
-  getProblemIdByNumber,
   isE2E,
-  registerUser,
   submitCode,
-  TEST_PASSWORD,
   waitForServer,
 } from "../helper.ts";
 
 let adminToken = "";
-let ownerToken = "";
-let PROBLEM_ID = "";
 let brokenProblemId = "";
 let brokenStorageKey = "";
 
@@ -111,13 +106,6 @@ e2eTest("[e2e/storage-failure] Setup", async () => {
   if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
-  const ts = Date.now().toString(36);
-  ownerToken = await registerUser(
-    "st_user_" + ts,
-    "st_user_" + ts + "@test.com",
-    TEST_PASSWORD,
-  );
-  PROBLEM_ID = await getProblemIdByNumber(1001);
 });
 
 e2eTest("[e2e/storage-failure] 无支持包下载返回 404", async () => {
@@ -235,8 +223,10 @@ e2eTest(
     if (!isE2E) return;
     // 针对存储已损坏的题目提交：接口仍应接受（评测阶段才读取支持包），
     // 不能因为存储故障在创建提交时直接报错。
+    // import-bundle 创建的是 admin 名下的私有 U 型题，必须用 admin 身份提交，
+    // 普通用户会被 resolveProblemAccess 判为无权访问（403）。
     if (!brokenProblemId) throw new Error("缺少 brokenProblemId");
-    const id = await submitCode(ownerToken, brokenProblemId, "print(1)");
+    const id = await submitCode(adminToken, brokenProblemId, "print(1)");
     if (!id) {
       throw new Error("提交未返回 ID");
     }

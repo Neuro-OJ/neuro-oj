@@ -9,6 +9,7 @@
 
 import {
   apiGet,
+  CODE_SAMPLES,
   e2eTest,
   getAdminToken,
   getProblemIdByNumber,
@@ -22,12 +23,17 @@ import {
 const REDIS_CONTAINER = "noj-e2e-redis";
 const QUEUE = "noj:judge:queue:medium";
 
-/** 在 E2E Redis 容器内执行 redis-cli，失败时抛错（不静默跳过）。 */
+/**
+ * 在 E2E Redis 容器内执行 redis-cli，失败时抛错（不静默跳过）。
+ *
+ * 固定 `-n 1`：E2E 栈的 REDIS_URL 指向 DB 1（docker-compose.e2e.yml），
+ * 不指定 DB 会把毒消息推入 DB 0，judge 永远消费不到，用例退化为空断言。
+ */
 async function redisCli(
   ...args: string[]
 ): Promise<string> {
   const cmd = new Deno.Command("docker", {
-    args: ["exec", REDIS_CONTAINER, "redis-cli", ...args],
+    args: ["exec", REDIS_CONTAINER, "redis-cli", "-n", "1", ...args],
   });
   const { stdout, stderr, success } = await cmd.output();
   if (!success) {
@@ -53,7 +59,13 @@ e2eTest("[e2e/mq-invalid] 非法消息不阻塞队列且被移出 processing", a
     TEST_PASSWORD,
   );
   const problemId = await getProblemIdByNumber(1001);
-  const submissionId = await submitCode(token, problemId, "print(1)");
+  // 必须提交能通过 1001 题 evaluator 的代码：`print(1)` 未定义 solve，
+  // 会被评测器判为运行期错误（status=error），无法验证“消费者未卡死”。
+  const submissionId = await submitCode(
+    token,
+    problemId,
+    CODE_SAMPLES.accepted,
+  );
   const result = await pollSubmission(token, submissionId, 60, 2000, true);
   if (result.status !== "finished") {
     throw new Error(`正常提交应评测完成，实际 ${result.status}`);
