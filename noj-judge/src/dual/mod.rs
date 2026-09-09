@@ -746,44 +746,58 @@ async fn run_dual_loop(
     }
 
     // 解析最终结果
-    match result_payload {
-        Some(payload) if !payload.is_empty() => {
-            // payload 是 `---RESULT---` 后第一行 JSON
-            let parsed: serde_json::Value =
-                serde_json::from_str(&payload).context("---RESULT--- JSON 解析失败")?;
-            Ok(build_judge_result(
-                submission_id,
-                &parsed,
-                &eval_stderr_buf,
-                &eval_stdout_full,
-                rejudge_seq,
-            ))
-        }
-        _ => {
-            // 未拿到 RESULT 标记
-            warn!("Evaluator 未输出 ---RESULT--- 标记: {}", submission_id);
-            // drain 残留
-            let remaining = eval_parser.drain_remaining();
-            for line in remaining {
-                if let EvaluatorLine::Unknown(s) = line {
-                    append_capped(&mut eval_stdout_full, &s);
-                    append_capped(&mut eval_stdout_full, "\n");
-                }
-            }
-            let full_output = crate::merge_output(&eval_stdout_full, &eval_stderr_buf);
-            match finalize_outcome(None, sent_call_timeout) {
-                JudgeStatus::TimeLimitExceeded => Ok(JudgeResult::timeout(
-                    submission_id,
-                    &full_output,
-                    rejudge_seq,
-                )),
-                _ => Ok(JudgeResult::system_error(
-                    submission_id,
-                    &full_output,
-                    rejudge_seq,
-                )),
+    if let Some(payload) = result_payload.as_deref().filter(|p| !p.is_empty()) {
+        // payload 是 `---RESULT---` 后第一行 JSON
+        let parsed: serde_json::Value =
+            serde_json::from_str(payload).context("---RESULT--- JSON 解析失败")?;
+        return Ok(build_judge_result(
+            submission_id,
+            &parsed,
+            &eval_stderr_buf,
+            &eval_stdout_full,
+            rejudge_seq,
+        ));
+    }
+
+    // 已见 RESULT 标记但 payload 行未以换行结束（EOF 残留）时，
+    // 把 drain 出的最后一行当作 payload，避免把合法结果误判为 SystemError。
+    let remaining = eval_parser.drain_remaining();
+    for line in remaining {
+        if let EvaluatorLine::Unknown(s) = line {
+            append_capped(&mut eval_stdout_full, &s);
+            append_capped(&mut eval_stdout_full, "\n");
+            if result_payload.as_ref() == Some(&String::new()) && !s.trim().is_empty() {
+                result_payload = Some(s.trim().to_string());
             }
         }
+    }
+
+    if let Some(payload) = result_payload.as_deref().filter(|p| !p.is_empty()) {
+        let parsed: serde_json::Value =
+            serde_json::from_str(payload).context("---RESULT--- JSON 解析失败")?;
+        return Ok(build_judge_result(
+            submission_id,
+            &parsed,
+            &eval_stderr_buf,
+            &eval_stdout_full,
+            rejudge_seq,
+        ));
+    }
+
+    // 未拿到 RESULT 标记
+    warn!("Evaluator 未输出 ---RESULT--- 标记: {}", submission_id);
+    let full_output = crate::merge_output(&eval_stdout_full, &eval_stderr_buf);
+    match finalize_outcome(None, sent_call_timeout) {
+        JudgeStatus::TimeLimitExceeded => Ok(JudgeResult::timeout(
+            submission_id,
+            &full_output,
+            rejudge_seq,
+        )),
+        _ => Ok(JudgeResult::system_error(
+            submission_id,
+            &full_output,
+            rejudge_seq,
+        )),
     }
 }
 

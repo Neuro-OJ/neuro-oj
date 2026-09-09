@@ -173,9 +173,10 @@ async fn support_package_missing_still_finished() {
     common::ensure_sdk_images(&docker).await.unwrap();
 
     // 注意：judge 的 parse_command 会消费反斜杠转义（含单引号内），
-    // 这里用 print 输出换行，避免 `\n` 被吞掉导致 RESULT 标记与 JSON 粘连。
+    // 这里用 chr(10) 输出换行，避免 `\n` 被吞掉导致 RESULT 标记与 JSON 粘连。
+    // JSON 行故意不写末尾换行，覆盖「RESULT 标记后 payload 行 EOF 残留」路径。
     let runtime_config = sdk_runtime(
-        r#"python3 -c "import json; print('---RESULT---'); print(json.dumps({'score':10000,'details':{}}))""#,
+        r#"python3 -c "import sys,json; sys.stdout.write('---RESULT---' + chr(10)); sys.stdout.write(json.dumps({'score':10000,'details':{}}))""#,
         15000,
     );
 
