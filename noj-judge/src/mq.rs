@@ -15,6 +15,11 @@ pub fn priority_slot(cursor: usize, offset: usize) -> usize {
     PRIORITY_SEQUENCE[(cursor + offset) % PRIORITY_SEQUENCE.len()]
 }
 
+/// 拉取成功后推进游标：跳过本次已探测的槽位，使下一轮从下一个槽位开始。
+pub fn advance_cursor(cursor: usize, offset: usize) -> usize {
+    (cursor + offset + 1) % PRIORITY_SEQUENCE.len()
+}
+
 /// 从 Redis 队列拉取并暂存到 processing 列表的任务。
 pub struct PulledTask {
     pub task: JudgeTask,
@@ -28,50 +33,86 @@ fn processing_queue(queue: &str) -> String {
     format!("{}{}", queue, PROCESSING_SUFFIX)
 }
 
+/// 解析已移入 processing 的原始消息。
+///
+/// 坏消息（反序列化失败）写入死信列表并从 processing 移除后返回 `None`，
+/// 由调用方继续按轮转序列探测其他队列。
+async fn handle_pulled_message(
+    conn: &mut redis::aio::MultiplexedConnection,
+    queue: &str,
+    processing: &str,
+    raw: String,
+) -> Option<PulledTask> {
+    match parse_task_message(&raw) {
+        Some(task) => Some(PulledTask {
+            task,
+            raw,
+            queue: queue.to_string(),
+        }),
+        None => {
+            // NOJ-181：坏消息记录原文，写入死信列表后移出 processing。
+            error!(
+                raw = %truncate_for_log(&raw),
+                "反序列化 JudgeTask 失败，消息已写入死信队列"
+            );
+            let dead_queue = format!("{}:dead", queue);
+            let _: redis::RedisResult<usize> = conn.lpush(&dead_queue, &raw).await;
+            let _: redis::RedisResult<usize> = conn.lrem(processing, 1, &raw).await;
+            None
+        }
+    }
+}
+
 /// 从三个优先级队列中按固定比例轮转拉取评测任务。
 ///
-/// NOJ-179：使用 BRPOPLPUSH 把消息先移入 processing 列表，
+/// NOJ-179：使用 RPOPLPUSH / BRPOPLPUSH 把消息先移入 processing 列表，
 /// 处理完成并成功投递结果后由 [`ack_task`] LREM 确认；
 /// 崩溃时消息留在 processing，由 noj-core sweeper 超时重投。
+///
+/// 调度策略（修复 4:2:1 退化与空转）：
+/// 1. 先按 `PRIORITY_SEQUENCE` 顺序对三个队列做**非阻塞** RPOPLPUSH 探测：
+///    只要有任务就立即返回，比例严格等于 4:2:1，且 low 任务不必排在多次
+///    高优先级空队列超时之后；
+/// 2. 三个队列都为空时只做**一次**阻塞 BRPOPLPUSH（旧实现对 7 个槽位各阻塞
+///    一次，一轮空转最长 7×timeout，默认 700ms）。
 pub async fn pull_task_priority(
     conn: &mut redis::aio::MultiplexedConnection,
     queues: &[String; 3],
     cursor: &mut usize,
     timeout_secs: f64,
 ) -> Result<Option<PulledTask>> {
+    // 阶段 1：非阻塞按序探测。
     for offset in 0..PRIORITY_SEQUENCE.len() {
         let idx = priority_slot(*cursor, offset);
         let queue = &queues[idx];
         let processing = processing_queue(queue);
         let raw: Option<String> = conn
-            .brpoplpush(queue, &processing, timeout_secs)
+            .rpoplpush(queue, &processing)
             .await
-            .context("BRPOPLPUSH 拉取任务失败")?;
+            .context("RPOPLPUSH 拉取任务失败")?;
 
         if let Some(raw) = raw {
-            match parse_task_message(&raw) {
-                Some(task) => {
-                    *cursor = (*cursor + offset + 1) % PRIORITY_SEQUENCE.len();
-                    return Ok(Some(PulledTask {
-                        task,
-                        raw,
-                        queue: queue.clone(),
-                    }));
-                }
-                None => {
-                    // NOJ-181：坏消息记录原文，写入死信列表后移出 processing。
-                    error!(
-                        raw = %truncate_for_log(&raw),
-                        "反序列化 JudgeTask 失败，消息已写入死信队列"
-                    );
-                    let dead_queue = format!("{}:dead", queue);
-                    let _: redis::RedisResult<usize> = conn.lpush(&dead_queue, &raw).await;
-                    let _: redis::RedisResult<usize> = conn.lrem(&processing, 1, &raw).await;
-                }
+            *cursor = advance_cursor(*cursor, offset);
+            if let Some(pulled) = handle_pulled_message(conn, queue, &processing, raw).await {
+                return Ok(Some(pulled));
             }
+            // 坏消息已移出 processing，继续探测序列中的下一个队列。
         }
     }
-    Ok(None)
+
+    // 阶段 2：全部为空，只阻塞等待一次（等待游标所在队列，保证不偏袒低优先级）。
+    let idx = priority_slot(*cursor, 0);
+    let queue = &queues[idx];
+    let processing = processing_queue(queue);
+    let raw: Option<String> = conn
+        .brpoplpush(queue, &processing, timeout_secs)
+        .await
+        .context("BRPOPLPUSH 拉取任务失败")?;
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    *cursor = advance_cursor(*cursor, 0);
+    Ok(handle_pulled_message(conn, queue, &processing, raw).await)
 }
 
 fn truncate_for_log(raw: &str) -> String {
@@ -347,7 +388,7 @@ mod tests {
     use super::parse_task_message;
     use super::requeue_task;
     use super::sanitize_submission_id_for_filename;
-    use super::{priority_slot, PRIORITY_SEQUENCE};
+    use super::{advance_cursor, priority_slot, PRIORITY_SEQUENCE};
 
     #[test]
     fn test_parse_task_message_invalid_json_returns_none() {
@@ -421,6 +462,71 @@ mod tests {
         assert_eq!(priority_slot(0, 4), 1);
         assert_eq!(priority_slot(0, 6), 2);
         assert_eq!(priority_slot(6, 1), 0);
+    }
+
+    #[test]
+    fn test_advance_cursor_wraps() {
+        assert_eq!(advance_cursor(0, 0), 1);
+        assert_eq!(advance_cursor(0, 6), 0);
+        assert_eq!(advance_cursor(5, 3), 2);
+    }
+
+    /// 三个队列都非空时，非阻塞探测的命中顺序严格是 4:2:1。
+    #[test]
+    fn test_probe_sequence_ratio_when_all_busy() {
+        let mut cursor = 0usize;
+        let mut hits = [0usize; 3];
+        for _ in 0..14 {
+            let idx = priority_slot(cursor, 0);
+            hits[idx] += 1;
+            cursor = advance_cursor(cursor, 0);
+        }
+        assert_eq!(hits, [8, 4, 2], "high:medium:low 应为 4:2:1");
+    }
+
+    /// high 恒空时，medium 在第 5 次探测命中并推进游标，
+    /// 结果比例接近 2:1 而不是旧实现的 1:1（low 不会与 medium 平权）。
+    #[test]
+    fn test_probe_sequence_high_empty_prefers_medium() {
+        let mut cursor = 0usize;
+        let mut hits = [0usize; 3];
+        for _ in 0..30 {
+            let mut chosen: Option<(usize, usize)> = None;
+            for offset in 0..PRIORITY_SEQUENCE.len() {
+                let idx = priority_slot(cursor, offset);
+                if idx != 0 {
+                    chosen = Some((idx, offset));
+                    break;
+                }
+            }
+            let (idx, offset) = chosen.expect("medium/low 至少一个可命中");
+            hits[idx] += 1;
+            cursor = advance_cursor(cursor, offset);
+        }
+        assert_eq!(hits[0], 0, "high 恒空不应被统计");
+        assert!(
+            hits[1] > hits[2],
+            "medium 应比 low 更频繁（预期 2:1），实际 {:?}",
+            hits
+        );
+    }
+
+    /// 只有 low 有任务时，每轮探测 7 次仍能命中 low，且游标回到起点。
+    #[test]
+    fn test_probe_sequence_only_low_available() {
+        let mut cursor = 0usize;
+        let mut hits = 0usize;
+        for _ in 0..10 {
+            for offset in 0..PRIORITY_SEQUENCE.len() {
+                if priority_slot(cursor, offset) == 2 {
+                    hits += 1;
+                    cursor = advance_cursor(cursor, offset);
+                    break;
+                }
+            }
+        }
+        assert_eq!(hits, 10);
+        assert_eq!(cursor, 0, "只有 low 命中时游标应每轮回到起点");
     }
 
     #[tokio::test]

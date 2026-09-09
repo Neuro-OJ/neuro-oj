@@ -174,6 +174,27 @@ fn main() -> Result<()> {
         let mut tasks = FuturesUnordered::new();
 
         loop {
+            // F-07：先获取全局并发槽位，再拉取任务。
+            // 若先拉取再等槽位，任务已被移入 processing 却只是在排队等槽位，
+            // 会被 sweeper 误判超时重投，造成同一提交重复评测。
+            let shutdown = &mut shutdown_rx;
+            let permit = tokio::select! {
+                biased;
+                _ = shutdown => {
+                    drain::drain_tasks(&mut tasks, drain_timeout).await;
+                    break;
+                }
+                acquired = semaphore.clone().acquire_owned() => {
+                    match acquired {
+                        Ok(permit) => permit,
+                        Err(e) => {
+                            error!("获取评测并发槽位失败: {}", e);
+                            continue;
+                        }
+                    }
+                }
+            };
+
             // 只允许在等待关闭信号时响应关闭。拿到任务后必须完整执行
             // BRPOPLPUSH：Redis 可能已经把消息移入 processing，若此时取消
             // future，消息会留在 processing 却永远不会进入评测任务。
@@ -181,6 +202,7 @@ fn main() -> Result<()> {
             tokio::select! {
                 biased;
                 _ = shutdown => {
+                    drop(permit);
                     drain::drain_tasks(&mut tasks, drain_timeout).await;
                     break;
                 }
@@ -200,15 +222,8 @@ fn main() -> Result<()> {
                         }
                     };
 
-                    // F-07 公平调度：先获取全局并发槽位，再检查同一用户是否已有评测在跑。
-                    // 若用户已活跃则释放槽位并把任务放回队尾轮给他人。
-                    let permit = match semaphore.clone().acquire_owned().await {
-                        Ok(permit) => permit,
-                        Err(e) => {
-                            error!("获取评测并发槽位失败: {}", e);
-                            continue;
-                        }
-                    };
+                    // F-07 公平调度：同一用户已有评测在跑时，释放槽位并把任务
+                    // 放回队尾轮给他人。
                     let is_active_user = {
                         let mut guard = active_users.lock().unwrap();
                         if guard.contains(&pulled.task.user_id) {
