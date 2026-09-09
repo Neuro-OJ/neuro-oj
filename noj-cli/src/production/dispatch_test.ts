@@ -60,6 +60,19 @@ Deno.test("dispatchProdAlias: status 调用 compose ps", async () => {
   assertEquals(log[0]!.includes("ps"), true);
 });
 
+Deno.test("dispatchProdAlias: 支持从目录外通过 --dir 指定生产目录", async () => {
+  const { dir } = makeProdDir();
+  const outside = Deno.makeTempDirSync();
+  const log: string[][] = [];
+  const code = await dispatchProdAlias("status", ["--dir", dir], {
+    cwd: outside,
+    runner: recordingRunner(log),
+  });
+  assertEquals(code, 0);
+  assertEquals(log[0]!.includes("ps"), true);
+  assertEquals(log[0]!.includes("--dir"), false);
+});
+
 Deno.test("dispatchProdAlias: config check 调用 compose config", async () => {
   const { dir } = makeProdDir();
   const log: string[][] = [];

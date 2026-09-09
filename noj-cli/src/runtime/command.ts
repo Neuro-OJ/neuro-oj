@@ -15,6 +15,8 @@ export interface SpawnOpts {
   stdoutFile?: string;
   /** 存在时把子进程 stderr 追加写入该文件。 */
   stderrFile?: string;
+  /** 存在时从该文件读取子进程 stdin（原始字节，不做文本转换）。 */
+  stdinFile?: string;
 }
 
 /** 已启动进程的句柄：记录 PID，可等待退出或终止。 */
@@ -34,7 +36,13 @@ export interface CommandRunner {
   run(
     cmd: string,
     args: string[],
-    opts?: { cwd?: string; env?: Record<string, string>; stdin?: string },
+    opts?: {
+      cwd?: string;
+      env?: Record<string, string>;
+      stdin?: string;
+      /** 存在时从该文件读取子进程 stdin（原始字节，不做文本转换）。 */
+      stdinFile?: string;
+    },
   ): Promise<CmdResult>;
   spawn(opts: SpawnOpts): SpawnHandle;
   /** 逐行流式执行命令；onLine 每收到一行（不含换行）回调一次，返回退出码。可选：P2 既有 fake 可不实现。 */
@@ -52,7 +60,8 @@ export function realRunner(): CommandRunner {
   return {
     async run(cmd, args, opts) {
       const stdin = opts?.stdin;
-      if (stdin === undefined) {
+      const stdinFile = opts?.stdinFile;
+      if (stdin === undefined && stdinFile === undefined) {
         const p = new Deno.Command(cmd, {
           args,
           cwd: opts?.cwd,
@@ -79,8 +88,25 @@ export function realRunner(): CommandRunner {
       // 先开始读 stdout/stderr，避免大 stdin 时子进程写满管道导致双方阻塞。
       const stdoutPromise = new Response(child.stdout).arrayBuffer();
       const stderrPromise = new Response(child.stderr).arrayBuffer();
+      if (stdinFile !== undefined) {
+        const file = await Deno.open(stdinFile, { read: true });
+        const stdinPromise = file.readable.pipeTo(child.stdin).finally(() => {
+          file.close();
+        });
+        const [status, stdoutBuf, stderrBuf] = await Promise.all([
+          child.status,
+          stdoutPromise,
+          stderrPromise,
+          stdinPromise,
+        ]);
+        return {
+          code: status.code,
+          stdout: decoder.decode(stdoutBuf),
+          stderr: decoder.decode(stderrBuf),
+        };
+      }
       const writer = child.stdin.getWriter();
-      await writer.write(new TextEncoder().encode(stdin));
+      await writer.write(new TextEncoder().encode(stdin ?? ""));
       await writer.close();
       const [status, stdoutBuf, stderrBuf] = await Promise.all([
         child.status,
@@ -98,11 +124,22 @@ export function realRunner(): CommandRunner {
         args: opts.args,
         cwd: opts.cwd,
         env: opts.env,
+        stdin: opts.stdinFile ? "piped" : "inherit",
         stdout: opts.stdoutFile ? "piped" : "inherit",
         stderr: opts.stderrFile ? "piped" : "inherit",
       });
       const child = cmd.spawn();
       const pipes: Promise<void>[] = [];
+      if (opts.stdinFile) {
+        const f = Deno.open(opts.stdinFile, { read: true });
+        pipes.push(
+          f.then((file) =>
+            file.readable.pipeTo(child.stdin).finally(() => {
+              file.close();
+            })
+          ),
+        );
+      }
       if (opts.stdoutFile) {
         const f = Deno.open(opts.stdoutFile, {
           write: true,

@@ -60,9 +60,10 @@ export async function prodBackupCreate(
   Deno.mkdirSync(snapshot, { recursive: true, mode: 0o700 });
   const base = { envFile: opts.envFile, composeFile: opts.composeFile };
 
-  const pgDump = await r.run(
-    "docker",
-    prodComposeArgs(base, [
+  // pg_dump -Fc 输出为二进制，直接经 spawn 流式写入文件，避免 UTF-8 文本解码损坏。
+  const pgDumpHandle = r.spawn({
+    cmd: "docker",
+    args: prodComposeArgs(base, [
       "exec",
       "-T",
       "postgres",
@@ -73,11 +74,14 @@ export async function prodBackupCreate(
       "noj",
       "-Fc",
     ]),
-  );
-  Deno.writeFileSync(
-    `${snapshot}/postgres.dump`,
-    new TextEncoder().encode(pgDump.stdout),
-  );
+    cwd: Deno.cwd(),
+    env: {},
+    stdoutFile: `${snapshot}/postgres.dump`,
+  });
+  const pgDumpCode = await pgDumpHandle.wait();
+  if (pgDumpCode !== 0) {
+    throw new Error("pg_dump 失败");
+  }
 
   const globals = await r.run(
     "docker",
@@ -92,11 +96,15 @@ export async function prodBackupCreate(
       "--no-role-passwords",
     ]),
   );
+  if (globals.code !== 0) {
+    throw new Error(`pg_dumpall 失败: ${globals.stderr || globals.stdout}`);
+  }
   Deno.writeTextFileSync(`${snapshot}/postgres-globals.sql`, globals.stdout);
 
-  const redisRdb = await r.run(
-    "docker",
-    prodComposeArgs(base, [
+  // redis RDB 同样为二进制，直接流式写入文件。
+  const redisRdbHandle = r.spawn({
+    cmd: "docker",
+    args: prodComposeArgs(base, [
       "exec",
       "-T",
       "redis",
@@ -104,12 +112,16 @@ export async function prodBackupCreate(
       "-c",
       'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli --no-auth-warning --rdb -',
     ]),
-  );
-  Deno.writeFileSync(
-    `${snapshot}/redis.rdb`,
-    new TextEncoder().encode(redisRdb.stdout),
-  );
+    cwd: Deno.cwd(),
+    env: {},
+    stdoutFile: `${snapshot}/redis.rdb`,
+  });
+  const redisRdbCode = await redisRdbHandle.wait();
+  if (redisRdbCode !== 0) {
+    throw new Error("redis RDB 导出失败");
+  }
 
+  // 恢复/校验读取二进制 dump 时从文件直接喂 stdin，避免文本转换。
   const restoreList = await r.run(
     "docker",
     prodComposeArgs(base, [
@@ -119,15 +131,20 @@ export async function prodBackupCreate(
       "pg_restore",
       "--list",
     ]),
-    { stdin: Deno.readTextFileSync(`${snapshot}/postgres.dump`) },
+    { stdinFile: `${snapshot}/postgres.dump` },
   );
+  if (restoreList.code !== 0) {
+    throw new Error(
+      `pg_restore --list 失败: ${restoreList.stderr || restoreList.stdout}`,
+    );
+  }
   Deno.writeTextFileSync(
     `${snapshot}/postgres.restore-list`,
     restoreList.stdout,
   );
 
   Deno.mkdirSync(`${snapshot}/minio`, { recursive: true, mode: 0o700 });
-  await r.run(
+  const minio = await r.run(
     "docker",
     prodComposeArgs(base, [
       "run",
@@ -142,6 +159,9 @@ export async function prodBackupCreate(
       'set -eu; for i in $(seq 1 30); do mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && break; sleep 2; done; mc mirror --preserve "local/$S3_BUCKET" /backup',
     ]),
   );
+  if (minio.code !== 0) {
+    throw new Error(`MinIO 备份失败: ${minio.stderr || minio.stdout}`);
+  }
 
   Deno.writeTextFileSync(
     `${snapshot}/manifest.json`,
@@ -213,7 +233,7 @@ export async function prodBackupRestore(
       "-d",
       "noj",
     ]),
-    { stdin: Deno.readTextFileSync(`${opts.snapshot}/postgres.dump`) },
+    { stdinFile: `${opts.snapshot}/postgres.dump` },
   );
   if (pg.code !== 0) return pg.code;
 
@@ -230,7 +250,7 @@ export async function prodBackupRestore(
       "-c",
       "set -eu; rm -rf /data/appendonlydir /data/dump.rdb; cat > /data/dump.rdb",
     ]),
-    { stdin: Deno.readTextFileSync(`${opts.snapshot}/redis.rdb`) },
+    { stdinFile: `${opts.snapshot}/redis.rdb` },
   );
   if (redisWrite.code !== 0) return redisWrite.code;
   const upRedis = await runProdCompose(
