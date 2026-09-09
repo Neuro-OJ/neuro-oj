@@ -19,12 +19,13 @@ function nuxtMetaPlugin() {
 }
 
 export default defineConfig({
+  esbuild: { tsconfigRaw: '{}' },
   resolve: {
     alias: {
       '~': fileURLToPath(new URL('.', import.meta.url)),
     },
   },
-  plugins: [vue(), nuxtMetaPlugin()],
+  plugins: [vue() as never, nuxtMetaPlugin()],
   test: {
     environment: 'happy-dom',
     globals: true,
