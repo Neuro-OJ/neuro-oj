@@ -1,7 +1,8 @@
 # scripts/ — 脚本总览
 
-Neuro OJ 仓库根目录的脚本统一存放点。`setup.sh` 调用 `install.sh`，下载并校验同版本 `noj-cli`，
-由 CLI 调用内部 `production.sh` 和 `deploy.sh` 完成生产安装及运维。
+Neuro OJ 仓库根目录的脚本统一存放点。`setup.sh` 调用
+`install.sh`，下载并校验同版本 `noj-cli`， 由 CLI 调用内部 `production.sh` 和
+`deploy.sh` 完成生产安装及运维。
 
 ## 安装、部署与运维入口
 
@@ -42,17 +43,17 @@ scripts/
 
 ## 按使用场景速查
 
-| 我想...                                  | 使用                                                            |
-| ---------------------------------------- | --------------------------------------------------------------- |
-| **一键安装**                            | `curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh \| bash` |
-| **环境检测**                            | `noj-cli check`                                                      |
-| **启动/停止/重启/状态**                  | `noj-cli start\|stop\|restart\|status`                              |
-| **查看日志**                            | `noj-cli logs [core,ui,...] [--follow]`                              |
-| **升级**                                | `noj-cli update [--latest]`                                         |
-| **创建/校验备份**                        | `noj-cli backup` / `noj-cli backup verify <快照>`                                     |
-| **源码运行 noj-cli**                    | `cd noj-cli && deno run -A src/cli.ts --help`                    |
-| **执行 staging 验收**                    | `bash scripts/staging/acceptance.sh all --env-file .env.staging` |
-| **跑跨模块 E2E 测试**                    | `bash scripts/e2e/run-all.sh`                                   |
+| 我想...                 | 使用                                                                                   |
+| ----------------------- | -------------------------------------------------------------------------------------- |
+| **一键安装**            | `curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh \| bash` |
+| **环境检测**            | `noj-cli check`                                                                        |
+| **启动/停止/重启/状态** | `noj-cli start\|stop\|restart\|status`                                                 |
+| **查看日志**            | `noj-cli logs [core,ui,...] [--follow]`                                                |
+| **升级**                | `noj-cli update [--latest]`                                                            |
+| **创建/校验备份**       | `noj-cli backup` / `noj-cli backup verify <快照>`                                      |
+| **源码运行 noj-cli**    | `cd noj-cli && deno run -A src/cli.ts --help`                                          |
+| **执行 staging 验收**   | `bash scripts/staging/acceptance.sh all --env-file .env.staging`                       |
+| **跑跨模块 E2E 测试**   | `bash scripts/e2e/run-all.sh`                                                          |
 
 ## 与原 `deno task` / `cargo run` 的关系
 
@@ -64,7 +65,8 @@ cd noj-ui    && deno task dev
 cd noj-judge && cargo run
 ```
 
-详细开发指南见 [`dev-docs/engineering/development.md`](../dev-docs/engineering/development.md)。
+详细开发指南见
+[`dev-docs/engineering/development.md`](../dev-docs/engineering/development.md)。
 
 生产部署与备份的详细说明见
 [`生产部署文档`](../noj-docs/docs/operators/production-deploy.md)。

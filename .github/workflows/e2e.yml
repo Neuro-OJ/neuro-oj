@@ -116,6 +116,10 @@ jobs:
             e2e-admin:
               - 'noj-tests/e2e/admin/**'
               - 'noj-core/src/domains/admin/**'
+            e2e-rate-limit:
+              - 'noj-tests/e2e/rate-limit/**'
+              - 'noj-core/src/domains/identity/middleware/**'
+              - 'noj-core/src/shared/rate-limit/**'
             e2e-cross-domain:
               - 'noj-tests/e2e/cross-domain/**'
               # 跨域 E2E 直接覆盖这些域，core 域改动必须触发跨域用例
@@ -160,6 +164,7 @@ jobs:
           E2E_MESSAGING: ${{ steps.filter.outputs.e2e-messaging }}
           E2E_OBJECTIVE: ${{ steps.filter.outputs.e2e-objective }}
           E2E_ADMIN: ${{ steps.filter.outputs.e2e-admin }}
+          E2E_RATE_LIMIT: ${{ steps.filter.outputs.e2e-rate-limit }}
           E2E_CROSS_DOMAIN: ${{ steps.filter.outputs.e2e-cross-domain }}
           E2E_BROWSER: ${{ steps.filter.outputs.e2e-browser }}
           E2E_INFRA: ${{ steps.filter.outputs.e2e-infra }}
@@ -168,7 +173,7 @@ jobs:
           import json, os
           def flag(name):
               return os.environ.get(name, '') == 'true'
-          all_e2e = ["identity","catalog","submission","contest","system","community","messaging","objective","admin"]
+          all_e2e = ["identity","catalog","submission","contest","system","community","messaging","objective","admin","rate-limit"]
           e2e_domains = []
           if flag('E2E_INFRA'):
               e2e_domains = all_e2e[:]
@@ -310,6 +315,26 @@ jobs:
         with:
           domain: admin
 
+  e2e-rate-limit:
+    name: E2E Rate Limit
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'rate-limit') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: noj-e2e-rate-limit
+      # 本域需要服务端真正启用限流/账号锁定（compose 读取这些变量注入 noj-core）：
+      # 放宽 IP/账号窗口限流，让「连续失败 10 次锁定」成为唯一触发路径。
+      RATE_LIMIT_ENABLED: "true"
+      RATE_LIMIT_LOGIN_IP_MAX: "1000"
+      RATE_LIMIT_LOGIN_ACC_MAX: "1000"
+      RATE_LIMIT_LOGIN_BACKOFF_SEC: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/e2e-domain
+        with:
+          domain: rate-limit
+
   e2e-cross-domain:
     name: E2E Cross Domain
     needs: changes
@@ -370,6 +395,12 @@ jobs:
         # sync 竞争导致 clippy 组件下载失败、测试启动即死）
       - name: 启用 sccache（Rust 编译缓存）
         uses: mozilla/sccache-action@v0.0.11
+        # mozilla/sccache-action 只安装二进制并导出 SCCACHE_PATH；
+        # 必须显式设置 RUSTC_WRAPPER 与 SCCACHE_GHA_ENABLED 才会真正缓存
+        # 编译产物（GHA cache backend，需要 job 级 actions: write）。
+        env:
+          RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
 
       - name: 缓存 Cargo 依赖
         uses: actions/cache@v4
@@ -399,9 +430,9 @@ jobs:
           # rustup 状态目录导致 "component download failed"（测试启动即死）。
           # 先单进程触发一次 sync，之后并行 cargo 不再下载。
           cargo --version >/dev/null
-          # 必须列出全部 7 个 e2e_* 测试文件（e2e_container_pool 已随容器池
-          # 移除而删除；e2e_dual_container / e2e_network_capability 为后续新增，
-          # 见 dual-container-judge / capability-network 变更）。
+          # 必须列出全部 e2e_* 测试文件（e2e_container_pool 已随容器池移除而
+          # 删除；e2e_dual_container / e2e_network_capability / e2e_abnormal /
+          # e2e_solution_ai 为后续新增，漏登记会让测试只编译不执行）。
           # 性能优化（2026-07）：目标分 2 组并行——组内串行
           # （serial_test 保证单 binary 内串行），组间并行利用 runner 多核。
           run_group() {
@@ -415,9 +446,9 @@ jobs:
           }
           run_group e2e_docker_basic e2e_resource_limits e2e_security_isolation &
           p1=$!
-          run_group e2e_support_package e2e_problem_limits &
+          run_group e2e_support_package e2e_problem_limits e2e_abnormal &
           p2=$!
-          run_group e2e_dual_container e2e_network_capability &
+          run_group e2e_dual_container e2e_network_capability e2e_solution_ai &
           p3=$!
           fail=0
           wait "$p1" || fail=1

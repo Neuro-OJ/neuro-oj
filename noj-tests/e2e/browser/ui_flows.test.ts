@@ -272,3 +272,36 @@ Deno.test("[ui/browser] 4/4 核心失败反馈（错误答案非满分 10 分）
     await teardown(failed);
   }
 });
+
+Deno.test("[ui/browser] 5/5 登录失败显示错误提示", async () => {
+  if (!BROWSER_E2E) return;
+  let failed = true;
+  try {
+    await launch();
+    const p = await goto("/login");
+    await p.getByPlaceholder("请输入用户名或邮箱").fill("nonexistent@test.com");
+    await p.getByPlaceholder("至少 8 位，需包含大小写字母和数字").fill(
+      "WrongPass123",
+    );
+    await p.getByRole("button", { name: "登录", exact: true }).click();
+    // 登录失败后 ToastBanner 以 role=status 展示错误
+    await p.locator('[role="status"]').first().waitFor({ timeout: 10_000 });
+    failed = false;
+  } finally {
+    await teardown(failed);
+  }
+});
+
+Deno.test("[ui/browser] 6/6 题目加载失败显示错误反馈", async () => {
+  if (!BROWSER_E2E) return;
+  let failed = true;
+  try {
+    await launch();
+    const p = await goto("/editor/NOEXIST");
+    // 非竞赛模式题目加载失败时 EditorWorkspace 显示错误状态
+    await p.getByText("题目加载失败").waitFor({ timeout: 10_000 });
+    failed = false;
+  } finally {
+    await teardown(failed);
+  }
+});

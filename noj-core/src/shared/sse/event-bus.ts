@@ -233,3 +233,22 @@ export function initEventSubscriber(): void {
     }
   });
 }
+
+/**
+ * 测试专用：设置 subscriberReady 标志。
+ * 仅测试使用，生产代码不得调用。
+ */
+export function _setSubscriberReadyForTest(ready: boolean): void {
+  subscriberReady = ready;
+}
+
+/**
+ * 测试专用：直接向本地监听器分发消息，绕过 Redis。
+ * 仅测试使用，生产代码不得调用。
+ */
+export function _dispatchToLocalListenersForTest(
+  channel: string,
+  message: string,
+): void {
+  dispatchToLocalListeners(channel, message);
+}

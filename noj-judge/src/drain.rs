@@ -100,4 +100,24 @@ mod tests {
         }));
         drain_tasks(&mut tasks, 30).await;
     }
+
+    #[tokio::test]
+    async fn test_drain_aborts_hung_tasks_after_timeout() {
+        let mut tasks: FuturesUnordered<tokio::task::JoinHandle<()>> = FuturesUnordered::new();
+        tasks.push(tokio::spawn(async {
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+        }));
+
+        let start = std::time::Instant::now();
+        drain_tasks(&mut tasks, 0).await;
+
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "drain 超时后应立即 abort，不应等待挂起任务"
+        );
+        assert!(
+            tasks.iter().all(|h| h.is_finished()),
+            "abort 后挂起任务应已结束"
+        );
+    }
 }

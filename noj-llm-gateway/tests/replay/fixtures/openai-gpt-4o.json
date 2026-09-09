@@ -1,0 +1,16 @@
+{
+  "model": "gpt-4o",
+  "request": {
+    "messages": [{ "role": "user", "content": "hello" }],
+    "max_tokens": 8
+  },
+  "response": {
+    "choices": [{ "message": { "role": "assistant", "content": "Hello!" } }],
+    "usage": {
+      "prompt_tokens": 12,
+      "completion_tokens": 3,
+      "total_tokens": 15,
+      "prompt_tokens_details": { "cached_tokens": 5 }
+    }
+  }
+}

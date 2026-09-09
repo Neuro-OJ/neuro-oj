@@ -32,7 +32,13 @@
     "@types/qrcode": "^1.5.5",
     "rolldown": "1.2.6",
     "vue-tsc": "^3.1.0",
-    "@types/markdown-it": "^14.1.2"
+    "@types/markdown-it": "^14.1.2",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "@vue/test-utils": "^2.4.6",
+    "happy-dom": "^15.7.4",
+    "vitest": "^2.1.0",
+    "vue": "3.5.42",
+    "vue-router": "5.2.0"
   },
   "overrides": {
     "rolldown": "1.2.6"

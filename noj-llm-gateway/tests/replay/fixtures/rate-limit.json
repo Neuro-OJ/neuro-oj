@@ -1,0 +1,14 @@
+{
+  "model": "deepseek-chat",
+  "request": {
+    "messages": [{ "role": "user", "content": "ping" }],
+    "max_tokens": 5
+  },
+  "response": {
+    "error": {
+      "message": "rate limit exceeded",
+      "type": "rate_limit_error"
+    }
+  },
+  "upstream_status": 429
+}

@@ -746,44 +746,58 @@ async fn run_dual_loop(
     }
 
     // 解析最终结果
-    match result_payload {
-        Some(payload) if !payload.is_empty() => {
-            // payload 是 `---RESULT---` 后第一行 JSON
-            let parsed: serde_json::Value =
-                serde_json::from_str(&payload).context("---RESULT--- JSON 解析失败")?;
-            Ok(build_judge_result(
-                submission_id,
-                &parsed,
-                &eval_stderr_buf,
-                &eval_stdout_full,
-                rejudge_seq,
-            ))
-        }
-        _ => {
-            // 未拿到 RESULT 标记
-            warn!("Evaluator 未输出 ---RESULT--- 标记: {}", submission_id);
-            // drain 残留
-            let remaining = eval_parser.drain_remaining();
-            for line in remaining {
-                if let EvaluatorLine::Unknown(s) = line {
-                    append_capped(&mut eval_stdout_full, &s);
-                    append_capped(&mut eval_stdout_full, "\n");
-                }
-            }
-            let full_output = crate::merge_output(&eval_stdout_full, &eval_stderr_buf);
-            match finalize_outcome(None, sent_call_timeout) {
-                JudgeStatus::TimeLimitExceeded => Ok(JudgeResult::timeout(
-                    submission_id,
-                    &full_output,
-                    rejudge_seq,
-                )),
-                _ => Ok(JudgeResult::system_error(
-                    submission_id,
-                    &full_output,
-                    rejudge_seq,
-                )),
+    if let Some(payload) = result_payload.as_deref().filter(|p| !p.is_empty()) {
+        // payload 是 `---RESULT---` 后第一行 JSON
+        let parsed: serde_json::Value =
+            serde_json::from_str(payload).context("---RESULT--- JSON 解析失败")?;
+        return Ok(build_judge_result(
+            submission_id,
+            &parsed,
+            &eval_stderr_buf,
+            &eval_stdout_full,
+            rejudge_seq,
+        ));
+    }
+
+    // 已见 RESULT 标记但 payload 行未以换行结束（EOF 残留）时，
+    // 把 drain 出的最后一行当作 payload，避免把合法结果误判为 SystemError。
+    let remaining = eval_parser.drain_remaining();
+    for line in remaining {
+        if let EvaluatorLine::Unknown(s) = line {
+            append_capped(&mut eval_stdout_full, &s);
+            append_capped(&mut eval_stdout_full, "\n");
+            if result_payload.as_ref() == Some(&String::new()) && !s.trim().is_empty() {
+                result_payload = Some(s.trim().to_string());
             }
         }
+    }
+
+    if let Some(payload) = result_payload.as_deref().filter(|p| !p.is_empty()) {
+        let parsed: serde_json::Value =
+            serde_json::from_str(payload).context("---RESULT--- JSON 解析失败")?;
+        return Ok(build_judge_result(
+            submission_id,
+            &parsed,
+            &eval_stderr_buf,
+            &eval_stdout_full,
+            rejudge_seq,
+        ));
+    }
+
+    // 未拿到 RESULT 标记
+    warn!("Evaluator 未输出 ---RESULT--- 标记: {}", submission_id);
+    let full_output = crate::merge_output(&eval_stdout_full, &eval_stderr_buf);
+    match finalize_outcome(None, sent_call_timeout) {
+        JudgeStatus::TimeLimitExceeded => Ok(JudgeResult::timeout(
+            submission_id,
+            &full_output,
+            rejudge_seq,
+        )),
+        _ => Ok(JudgeResult::system_error(
+            submission_id,
+            &full_output,
+            rejudge_seq,
+        )),
     }
 }
 
@@ -940,6 +954,27 @@ async fn handle_sol_chunk(
     Ok(())
 }
 
+/// 构造 BYOK 错误帧。
+fn user_llm_error_frame(id: &str, code: &str, message: &str) -> Value {
+    serde_json::json!({
+        "type": "error",
+        "id": id,
+        "code": code,
+        "message": message,
+    })
+}
+
+/// 将 gateway 非成功响应映射为 BYOK 错误码。
+fn map_user_llm_gateway_error(status: u16, gateway_code: Option<&str>) -> &'static str {
+    match gateway_code {
+        Some("limit_exceeded" | "rate_limit_exceeded") => "BYOK_QUOTA_EXCEEDED",
+        Some("provider_disabled" | "provider_not_found") => "BYOK_CONFIG_UNAVAILABLE",
+        Some("provider_target_rejected") => "BYOK_PROVIDER_TARGET_REJECTED",
+        _ if status == 401 || status == 403 => "BYOK_GATEWAY_UNAVAILABLE",
+        _ => "BYOK_PROVIDER_ERROR",
+    }
+}
+
 /// 处理 solution 的用户 BYOK capability，不把请求转发给 evaluator。
 async fn handle_user_llm_capability(
     sol_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
@@ -949,27 +984,14 @@ async fn handle_user_llm_capability(
     let Some(id) = frame.get("id").and_then(Value::as_str) else {
         return forward_frame(
             sol_input,
-            &serde_json::json!({
-                "type": "error",
-                "id": "",
-                "code": "BYOK_REQUEST_INVALID",
-                "message": "用户模型请求缺少 id",
-            }),
+            &user_llm_error_frame("", "BYOK_REQUEST_INVALID", "用户模型请求缺少 id"),
         )
         .await;
-    };
-    let error_frame = |code: &str, message: &str| {
-        serde_json::json!({
-            "type": "error",
-            "id": id,
-            "code": code,
-            "message": message,
-        })
     };
     let Some(llm) = user_llm else {
         return forward_frame(
             sol_input,
-            &error_frame("BYOK_CONFIG_UNAVAILABLE", "未绑定用户模型配置"),
+            &user_llm_error_frame(id, "BYOK_CONFIG_UNAVAILABLE", "未绑定用户模型配置"),
         )
         .await;
     };
@@ -981,21 +1003,21 @@ async fn handle_user_llm_capability(
     let Some(prompt) = prompt else {
         return forward_frame(
             sol_input,
-            &error_frame("BYOK_PROMPT_INVALID", "用户模型请求参数无效"),
+            &user_llm_error_frame(id, "BYOK_PROMPT_INVALID", "用户模型请求参数无效"),
         )
         .await;
     };
     if prompt.len() > 32 * 1024 {
         return forward_frame(
             sol_input,
-            &error_frame("BYOK_PROMPT_TOO_LARGE", "用户模型请求内容过大"),
+            &user_llm_error_frame(id, "BYOK_PROMPT_TOO_LARGE", "用户模型请求内容过大"),
         )
         .await;
     }
     let Some(model) = llm.allowed_models.first() else {
         return forward_frame(
             sol_input,
-            &error_frame("BYOK_CONFIG_UNAVAILABLE", "用户模型配置不可用"),
+            &user_llm_error_frame(id, "BYOK_CONFIG_UNAVAILABLE", "用户模型配置不可用"),
         )
         .await;
     };
@@ -1020,7 +1042,7 @@ async fn handle_user_llm_capability(
         Err(_) => {
             return forward_frame(
                 sol_input,
-                &error_frame("BYOK_GATEWAY_UNAVAILABLE", "用户模型服务暂时不可用"),
+                &user_llm_error_frame(id, "BYOK_GATEWAY_UNAVAILABLE", "用户模型服务暂时不可用"),
             )
             .await;
         }
@@ -1037,15 +1059,13 @@ async fn handle_user_llm_capability(
         })
         .unwrap_or(Value::Null);
     if !status.is_success() {
-        let gateway_code = body.get("error").and_then(Value::as_str).unwrap_or("");
-        let code = match gateway_code {
-            "limit_exceeded" | "rate_limit_exceeded" => "BYOK_QUOTA_EXCEEDED",
-            "provider_disabled" | "provider_not_found" => "BYOK_CONFIG_UNAVAILABLE",
-            "provider_target_rejected" => "BYOK_PROVIDER_TARGET_REJECTED",
-            _ if status.as_u16() == 401 || status.as_u16() == 403 => "BYOK_GATEWAY_UNAVAILABLE",
-            _ => "BYOK_PROVIDER_ERROR",
-        };
-        return forward_frame(sol_input, &error_frame(code, "用户模型请求失败")).await;
+        let gateway_code = body.get("error").and_then(Value::as_str);
+        let code = map_user_llm_gateway_error(status.as_u16(), gateway_code);
+        return forward_frame(
+            sol_input,
+            &user_llm_error_frame(id, code, "用户模型请求失败"),
+        )
+        .await;
     }
     let Some(content) = body
         .get("choices")
@@ -1057,7 +1077,7 @@ async fn handle_user_llm_capability(
     else {
         return forward_frame(
             sol_input,
-            &error_frame("BYOK_PROVIDER_ERROR", "用户模型返回格式无效"),
+            &user_llm_error_frame(id, "BYOK_PROVIDER_ERROR", "用户模型返回格式无效"),
         )
         .await;
     };
@@ -1316,7 +1336,6 @@ mod tests {
     async fn test_handle_eval_chunk_forwards_result_error_frames() {
         // capability 响应（result/error）帧必须转发到 solution stdin；
         // log 帧与普通文本不转发。
-        use bollard::container::LogOutput;
         use tokio::io::AsyncReadExt;
 
         let (sink, mut source) = tokio::io::duplex(8192);
@@ -1380,7 +1399,6 @@ mod tests {
     #[tokio::test]
     async fn test_handle_eval_chunk_still_forwards_call_frames() {
         // 既有行为回归：evaluator → solution 的 call 帧仍转发
-        use bollard::container::LogOutput;
         use tokio::io::AsyncReadExt;
 
         let (sink, mut source) = tokio::io::duplex(8192);
@@ -1429,7 +1447,6 @@ mod tests {
     #[tokio::test]
     async fn test_handle_eval_chunk_result_marker_sets_payload() {
         // ---RESULT--- 标记行为回归：下一行 JSON 成为结果 payload
-        use bollard::container::LogOutput;
 
         let (sink, _source) = tokio::io::duplex(8192);
         let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
@@ -1465,8 +1482,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_result_marker_and_payload_split_across_chunks() {
-        use bollard::container::LogOutput;
-
         let (sink, _source) = tokio::io::duplex(8192);
         let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
             Box::pin(sink);
@@ -1514,7 +1529,6 @@ mod tests {
     #[tokio::test]
     async fn test_eval_call_frame_tracked_and_forwarded() {
         // call 帧：登记 in-flight 并原样转发（含 timeout_ms 字段）到 sol_input
-        use bollard::container::LogOutput;
         use tokio::io::AsyncReadExt;
 
         let (sink, mut source) = tokio::io::duplex(8192);
@@ -1563,7 +1577,6 @@ mod tests {
     #[tokio::test]
     async fn test_eval_cap_reg_frame_not_forwarded() {
         // cap_reg 帧：仅更新映射，不转发给 solution（同批 call 帧正常转发）
-        use bollard::container::LogOutput;
         use tokio::io::AsyncReadExt;
 
         let (sink, mut source) = tokio::io::duplex(8192);
@@ -1616,7 +1629,6 @@ mod tests {
     #[tokio::test]
     async fn test_sol_log_frame_still_forwarded() {
         // 回归：solution 的 log 等非 call/capability 帧应保持既有转发语义
-        use bollard::container::LogOutput;
         use tokio::io::AsyncReadExt;
 
         let (sink, mut source) = tokio::io::duplex(8192);
@@ -1662,7 +1674,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_user_llm_capability_is_not_forwarded_without_binding() {
-        use bollard::container::LogOutput;
         use tokio::io::AsyncReadExt;
 
         let (eval_sink, mut eval_source) = tokio::io::duplex(8192);
@@ -1712,7 +1723,6 @@ mod tests {
     #[tokio::test]
     async fn test_sol_unknown_frame_dropped() {
         // spec：未知/非法 type 帧应记录 warn 并丢弃（不转发）
-        use bollard::container::LogOutput;
         use tokio::io::AsyncReadExt;
 
         let (sink, mut source) = tokio::io::duplex(8192);
@@ -1754,5 +1764,283 @@ mod tests {
             }
             Ok(Err(e)) => panic!("读取出错: {}", e),
         }
+    }
+
+    #[test]
+    fn test_clamp_runtime_config_caps_time_and_memory() {
+        use crate::types::{EvaluatorRuntime, SolutionRuntime};
+
+        let rc = RuntimeConfig {
+            evaluator: EvaluatorRuntime {
+                image: "noj-evaluator".to_string(),
+                command: "python3 /workspace/evaluate.py".to_string(),
+                time_limit_ms: 999_999,
+                memory_limit_mb: 9999,
+                network: None,
+            },
+            solution: SolutionRuntime {
+                image: "noj-solution".to_string(),
+                call_timeout_ms: 999_999,
+                memory_limit_mb: 9999,
+            },
+        };
+        let clamped = clamp_runtime_config(&rc, 5000, 1000);
+        assert_eq!(clamped.evaluator.time_limit_ms, 5000);
+        assert_eq!(clamped.solution.call_timeout_ms, 1000);
+        assert_eq!(clamped.evaluator.memory_limit_mb, 4096);
+        assert_eq!(clamped.solution.memory_limit_mb, 4096);
+    }
+
+    #[test]
+    fn test_image_allowed_checks_basename_prefix() {
+        assert!(image_allowed("noj-evaluator:latest", "noj-"));
+        assert!(image_allowed(
+            "registry.example.com/noj-evaluator:latest",
+            "noj-"
+        ));
+        assert!(!image_allowed("other:latest", "noj-"));
+        assert!(!image_allowed("", "noj-"));
+        assert!(!image_allowed("noj-../evil", "noj-"));
+    }
+
+    #[test]
+    fn test_validate_runtime_config_rejects_bad_image() {
+        use crate::types::{EvaluatorRuntime, SolutionRuntime};
+
+        let rc = RuntimeConfig {
+            evaluator: EvaluatorRuntime {
+                image: "evil:latest".to_string(),
+                command: "python3 x".to_string(),
+                time_limit_ms: 1000,
+                memory_limit_mb: 256,
+                network: None,
+            },
+            solution: SolutionRuntime {
+                image: "noj-solution".to_string(),
+                call_timeout_ms: 1000,
+                memory_limit_mb: 256,
+            },
+        };
+        let err = validate_runtime_config("sid-1", &rc, false, "noj-", &["python3".to_string()])
+            .unwrap_err();
+        assert!(err.to_string().contains("镜像"));
+    }
+
+    #[test]
+    fn test_validate_runtime_config_rejects_network_when_disallowed() {
+        use crate::types::{EvaluatorRuntime, SolutionRuntime};
+
+        let rc = RuntimeConfig {
+            evaluator: EvaluatorRuntime {
+                image: "noj-evaluator".to_string(),
+                command: "python3 x".to_string(),
+                time_limit_ms: 1000,
+                memory_limit_mb: 256,
+                network: Some(crate::types::EvaluatorNetwork { enabled: true }),
+            },
+            solution: SolutionRuntime {
+                image: "noj-solution".to_string(),
+                call_timeout_ms: 1000,
+                memory_limit_mb: 256,
+            },
+        };
+        let err = validate_runtime_config("sid-2", &rc, false, "noj-", &["python3".to_string()])
+            .unwrap_err();
+        assert!(err.to_string().contains("网络"));
+    }
+
+    #[test]
+    fn test_build_judge_result_clamps_score() {
+        let r = build_judge_result(
+            "sid-clamp",
+            &serde_json::json!({"score": 99999, "details": {}}),
+            "",
+            "",
+            None,
+        );
+        assert_eq!(r.score, 10000);
+
+        let r2 = build_judge_result(
+            "sid-clamp2",
+            &serde_json::json!({"score": -5, "details": {}}),
+            "",
+            "",
+            None,
+        );
+        assert_eq!(r2.score, 0);
+    }
+
+    #[test]
+    fn test_build_judge_result_maps_error_statuses() {
+        for status in [
+            "error",
+            "SystemError",
+            "TimeLimitExceeded",
+            "MemoryLimitExceeded",
+            "RuntimeError",
+        ] {
+            let r = build_judge_result(
+                "sid-status",
+                &serde_json::json!({"status": status, "score": 0}),
+                "",
+                "",
+                None,
+            );
+            assert_eq!(r.status, "error", "status={}", status);
+        }
+        for status in ["Accepted", "WrongAnswer", "finished"] {
+            let r = build_judge_result(
+                "sid-status2",
+                &serde_json::json!({"status": status, "score": 0}),
+                "",
+                "",
+                None,
+            );
+            assert_eq!(r.status, "finished", "status={}", status);
+        }
+    }
+
+    #[test]
+    fn test_build_judge_result_missing_details_is_null() {
+        let r = build_judge_result(
+            "sid-details",
+            &serde_json::json!({"score": 1}),
+            "",
+            "",
+            None,
+        );
+        assert_eq!(r.details, serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_user_llm_error_frame_shape() {
+        let f = user_llm_error_frame("id-1", "BYOK_QUOTA_EXCEEDED", "用户模型请求失败");
+        assert_eq!(f["type"], "error");
+        assert_eq!(f["id"], "id-1");
+        assert_eq!(f["code"], "BYOK_QUOTA_EXCEEDED");
+        assert_eq!(f["message"], "用户模型请求失败");
+    }
+
+    #[test]
+    fn test_map_user_llm_gateway_error() {
+        assert_eq!(
+            map_user_llm_gateway_error(429, Some("limit_exceeded")),
+            "BYOK_QUOTA_EXCEEDED"
+        );
+        assert_eq!(
+            map_user_llm_gateway_error(429, Some("rate_limit_exceeded")),
+            "BYOK_QUOTA_EXCEEDED"
+        );
+        assert_eq!(
+            map_user_llm_gateway_error(400, Some("provider_disabled")),
+            "BYOK_CONFIG_UNAVAILABLE"
+        );
+        assert_eq!(
+            map_user_llm_gateway_error(400, Some("provider_not_found")),
+            "BYOK_CONFIG_UNAVAILABLE"
+        );
+        assert_eq!(
+            map_user_llm_gateway_error(400, Some("provider_target_rejected")),
+            "BYOK_PROVIDER_TARGET_REJECTED"
+        );
+        assert_eq!(
+            map_user_llm_gateway_error(401, None),
+            "BYOK_GATEWAY_UNAVAILABLE"
+        );
+        assert_eq!(
+            map_user_llm_gateway_error(403, None),
+            "BYOK_GATEWAY_UNAVAILABLE"
+        );
+        assert_eq!(map_user_llm_gateway_error(500, None), "BYOK_PROVIDER_ERROR");
+    }
+
+    #[tokio::test]
+    async fn test_user_llm_capability_missing_id_returns_error() {
+        use tokio::io::AsyncReadExt;
+
+        let (sink, mut source) = tokio::io::duplex(8192);
+        let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
+            Box::pin(sink);
+        let frame = serde_json::json!({
+            "type": "capability",
+            "name": "request_user_llm_completion",
+            "args": ["hello"]
+        });
+        handle_user_llm_capability(&mut writer, &frame, None)
+            .await
+            .unwrap();
+
+        let mut buf = [0u8; 1024];
+        let n = tokio::time::timeout(Duration::from_secs(1), source.read(&mut buf))
+            .await
+            .expect("读取 BYOK 错误帧超时")
+            .unwrap();
+        let text = String::from_utf8_lossy(&buf[..n]).to_string();
+        assert!(text.contains("BYOK_REQUEST_INVALID"));
+    }
+
+    #[tokio::test]
+    async fn test_user_llm_capability_invalid_prompt_returns_error() {
+        use tokio::io::AsyncReadExt;
+
+        let (sink, mut source) = tokio::io::duplex(8192);
+        let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
+            Box::pin(sink);
+        let llm = JudgeTaskLlm {
+            gateway_url: "http://gateway:8001".to_string(),
+            eval_token: "token".to_string(),
+            provider_id: "prov-1".to_string(),
+            allowed_models: vec!["qwen-plus".to_string()],
+        };
+        let frame = serde_json::json!({
+            "type": "capability",
+            "id": "byok-1",
+            "name": "request_user_llm_completion",
+            "args": [123]
+        });
+        handle_user_llm_capability(&mut writer, &frame, Some(&llm))
+            .await
+            .unwrap();
+
+        let mut buf = [0u8; 1024];
+        let n = tokio::time::timeout(Duration::from_secs(1), source.read(&mut buf))
+            .await
+            .expect("读取 BYOK 错误帧超时")
+            .unwrap();
+        let text = String::from_utf8_lossy(&buf[..n]).to_string();
+        assert!(text.contains("BYOK_PROMPT_INVALID"));
+    }
+
+    #[tokio::test]
+    async fn test_user_llm_capability_prompt_too_large_returns_error() {
+        use tokio::io::AsyncReadExt;
+
+        let (sink, mut source) = tokio::io::duplex(8192);
+        let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
+            Box::pin(sink);
+        let llm = JudgeTaskLlm {
+            gateway_url: "http://gateway:8001".to_string(),
+            eval_token: "token".to_string(),
+            provider_id: "prov-1".to_string(),
+            allowed_models: vec!["qwen-plus".to_string()],
+        };
+        let big_prompt = "x".repeat(32 * 1024 + 1);
+        let frame = serde_json::json!({
+            "type": "capability",
+            "id": "byok-2",
+            "name": "request_user_llm_completion",
+            "args": [big_prompt]
+        });
+        handle_user_llm_capability(&mut writer, &frame, Some(&llm))
+            .await
+            .unwrap();
+
+        let mut buf = [0u8; 1024];
+        let n = tokio::time::timeout(Duration::from_secs(1), source.read(&mut buf))
+            .await
+            .expect("读取 BYOK 错误帧超时")
+            .unwrap();
+        let text = String::from_utf8_lossy(&buf[..n]).to_string();
+        assert!(text.contains("BYOK_PROMPT_TOO_LARGE"));
     }
 }
