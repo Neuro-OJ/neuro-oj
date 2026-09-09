@@ -81,6 +81,9 @@ pub struct JudgeTask {
     pub problem_id: String,
     /// 提交用户 UUID（公平调度：同一用户同时最多 1 个评测在跑）
     pub user_id: String,
+    /// 评测任务优先级（服务端推导；judge 调度只看队列，此字段用于 requeue/日志）
+    #[serde(default = "default_priority")]
+    pub priority: String,
     /// 支持包下载 URL（`noj-download://` 格式）
     pub download_url: Option<String>,
     /// artifact 提交的下载 URL（`noj-download://` 格式），仅 artifact 模式携带
@@ -103,6 +106,10 @@ pub struct JudgeTask {
     /// 用户 BYOK LLM 字段；仅由 judge 处理，不注入 Evaluator 环境。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_llm: Option<JudgeTaskLlm>,
+}
+
+fn default_priority() -> String {
+    "medium".to_string()
 }
 
 /// 评测结果——从 noj-judge 返回到 noj-core 的消息。
@@ -241,6 +248,7 @@ mod tests {
         assert_eq!(task.problem_id, "1001");
         assert_eq!(task.runtime_config.evaluator.image, "noj-evaluator-python");
         assert_eq!(task.language, "python3");
+        assert_eq!(task.priority, "medium", "缺省优先级应为 medium");
         assert!(task.download_url.is_none());
         assert!(task.file_name.is_none());
     }
@@ -259,6 +267,7 @@ mod tests {
             "language": "python3",
             "code": "print('hello')",
             "file_name": "solution.py",
+            "priority": "high",
         });
         let task: JudgeTask = serde_json::from_value(json).unwrap();
         assert_eq!(task.submission_id, "sid-456");
@@ -267,6 +276,7 @@ mod tests {
             Some("noj-download://base64/?content=UEsDBBQAAAAIA")
         );
         assert_eq!(task.file_name.as_deref(), Some("solution.py"));
+        assert_eq!(task.priority, "high");
     }
 
     #[test]

@@ -15,6 +15,7 @@ use anyhow::{Context, Result};
 use futures_util::{stream::FuturesUnordered, FutureExt, StreamExt};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
+use tokio::sync::Semaphore;
 use tracing::{error, info};
 
 use crate::config::Config;
@@ -93,7 +94,9 @@ fn main() -> Result<()> {
         info!("Docker 连接成功");
 
         let result_queue = config.result_queue.clone();
-        let judge_queue = config.judge_queue.clone();
+        let judge_queues = config.judge_queues();
+        let mut priority_cursor = 0usize;
+        let priority_poll_timeout = config.priority_poll_timeout_secs;
         let work_dir = config.work_dir.clone();
         let instance_id = config.instance_id.clone();
 
@@ -121,7 +124,9 @@ fn main() -> Result<()> {
         let cpu_limit_millicores = config.cpu_limit_millicores;
         let max_evaluator_time_ms = config.max_evaluator_time_ms;
         let max_solution_call_timeout_ms = config.max_solution_call_timeout_ms;
-        // F-07：移除全局并发闸门，改为每用户 active 集合（同一用户同时最多 1 个评测）。
+        // F-07：全局并发闸门 + 每用户 active 集合（同一用户同时最多 1 个评测）。
+        // 先获取全局 Semaphore 槽位，再做 per-user 公平调度，避免不同用户任务无限制 spawn。
+        let semaphore = Arc::new(Semaphore::new(max_concurrent_judges));
         let active_users: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
         let judge_metrics = Arc::new(JudgeMetrics::new(max_concurrent_judges));
         let heartbeat_metrics = Arc::clone(&judge_metrics);
@@ -169,6 +174,27 @@ fn main() -> Result<()> {
         let mut tasks = FuturesUnordered::new();
 
         loop {
+            // F-07：先获取全局并发槽位，再拉取任务。
+            // 若先拉取再等槽位，任务已被移入 processing 却只是在排队等槽位，
+            // 会被 sweeper 误判超时重投，造成同一提交重复评测。
+            let shutdown = &mut shutdown_rx;
+            let permit = tokio::select! {
+                biased;
+                _ = shutdown => {
+                    drain::drain_tasks(&mut tasks, drain_timeout).await;
+                    break;
+                }
+                acquired = semaphore.clone().acquire_owned() => {
+                    match acquired {
+                        Ok(permit) => permit,
+                        Err(e) => {
+                            error!("获取评测并发槽位失败: {}", e);
+                            continue;
+                        }
+                    }
+                }
+            };
+
             // 只允许在等待关闭信号时响应关闭。拿到任务后必须完整执行
             // BRPOPLPUSH：Redis 可能已经把消息移入 processing，若此时取消
             // future，消息会留在 processing 却永远不会进入评测任务。
@@ -176,10 +202,16 @@ fn main() -> Result<()> {
             tokio::select! {
                 biased;
                 _ = shutdown => {
+                    drop(permit);
                     drain::drain_tasks(&mut tasks, drain_timeout).await;
                     break;
                 }
-                task_result = mq::pull_task(&mut redis_conn, &judge_queue) => {
+                task_result = mq::pull_task_priority(
+                    &mut redis_conn,
+                    &judge_queues,
+                    &mut priority_cursor,
+                    priority_poll_timeout,
+                ) => {
                     let pulled: PulledTask = match task_result {
                         Ok(Some(pulled)) => pulled,
                         Ok(None) => continue,
@@ -190,7 +222,8 @@ fn main() -> Result<()> {
                         }
                     };
 
-                    // F-07 公平调度：同一用户已有评测在跑时，把任务放回队尾轮给他人。
+                    // F-07 公平调度：同一用户已有评测在跑时，释放槽位并把任务
+                    // 放回队尾轮给他人。
                     let is_active_user = {
                         let mut guard = active_users.lock().unwrap();
                         if guard.contains(&pulled.task.user_id) {
@@ -201,8 +234,9 @@ fn main() -> Result<()> {
                         }
                     };
                     if is_active_user {
+                        drop(permit);
                         if let Err(e) =
-                            mq::requeue_task(&redis_client, &judge_queue, &pulled.raw).await
+                            mq::requeue_task(&redis_client, &pulled.queue, &pulled.raw).await
                         {
                             error!(
                                 submission_id = %pulled.task.submission_id,
@@ -221,7 +255,7 @@ fn main() -> Result<()> {
 
                     let redis_client = redis_client.clone();
                     let result_queue = result_queue.clone();
-                    let judge_queue = judge_queue.clone();
+                    let task_queue = pulled.queue.clone();
                     let cache_dir = cache_dir.clone();
                     let fallback_dir = fallback_dir.clone();
                     let task_work_dir = work_dir.clone();
@@ -239,6 +273,8 @@ fn main() -> Result<()> {
                         let task = pulled.task;
                         // RAII guard：任务结束（含 panic/异常路径）时自动释放用户槽位。
                         let _active_guard = ActiveUserGuard::new(active_users, task_user_id);
+                        // 持有全局并发槽位直到任务结束。
+                        let _permit = permit;
 
                         // 统一使用双容器模式（Evaluator + Solution）
                         let result = match judge::runner::evaluate_with_cpu_limit(
@@ -276,7 +312,7 @@ fn main() -> Result<()> {
                         )
                         .await;
                         if push_succeeded {
-                            mq::ack_task(&redis_client, &judge_queue, &raw).await;
+                            mq::ack_task(&redis_client, &task_queue, &raw).await;
                         } else {
                             task_metrics.result_push_failed();
                         }

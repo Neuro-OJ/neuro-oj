@@ -42,6 +42,9 @@ x-core-env: &core-env
   LOG_LEVEL: ${LOG_LEVEL:-info}
   LOG_FORMAT: ${LOG_FORMAT:-json}
   JUDGE_IMAGE_BASE: ${JUDGE_IMAGE_BASE-ghcr.io/neuro-oj/}
+  # 评测任务队列前缀：必须与 judge 服务的 JUDGE_QUEUE 完全一致，
+  # core 据此发布到 {prefix}:high / :medium / :low。
+  JUDGE_QUEUE: ${JUDGE_QUEUE:-noj:judge:queue}
   RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
   AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-90}
 
@@ -149,6 +152,7 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
       JUDGE_QUEUE: ${JUDGE_QUEUE:-noj:judge:queue}
       RESULT_QUEUE: ${RESULT_QUEUE:-noj:judge:results}
+      JUDGE_PRIORITY_POLL_TIMEOUT_MS: ${JUDGE_PRIORITY_POLL_TIMEOUT_MS:-100}
       WORK_DIR: ${WORK_DIR:-/tmp/noj-judge}
       JUDGE_MAX_CONCURRENT_JUDGES: ${JUDGE_MAX_CONCURRENT_JUDGES:-2}
       JUDGE_CPU_LIMIT_MILLICORES: ${JUDGE_CPU_LIMIT_MILLICORES:-1000}

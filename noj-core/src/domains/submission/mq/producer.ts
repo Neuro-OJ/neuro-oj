@@ -1,12 +1,21 @@
-import type { JudgeTask } from "../types/index.ts";
+import type { JudgeTask, JudgeTaskPriority } from "../types/index.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
+import {
+  JUDGE_QUEUE_PREFIX,
+  JUDGE_QUEUES,
+} from "../../../shared/mq/judge-queues.ts";
 import { logJudgeTaskEnqueued } from "../../../shared/base/logging.ts";
 
+export { JUDGE_QUEUE_PREFIX, JUDGE_QUEUES };
+
 /**
- * 评测任务队列名称。
- * noj-judge 从该队列中 BRPOP 拉取任务。
+ * 每级评测队列最大待评测数：超过后拒绝新提交，避免 Redis 内存无限增长。
  */
-export const JUDGE_QUEUE = "noj:judge:queue";
+export const JUDGE_QUEUE_CAPACITY: Record<JudgeTaskPriority, number> = {
+  high: 5000,
+  medium: 10000,
+  low: 20000,
+};
 
 /**
  * Redis 队列消息最大字节数。
@@ -15,9 +24,6 @@ export const JUDGE_QUEUE = "noj:judge:queue";
  * 同时阻止用户提交的 base64 编码支持包 + 代码占用过多内存。
  */
 const MAX_MESSAGE_BYTES = 16 * 1024 * 1024; // 16MB
-
-/** 队列最大待评测数：超过后拒绝新提交，避免 Redis 内存无限增长。 */
-export const MAX_JUDGE_QUEUE_LENGTH = 20_000;
 
 /**
  * 原子执行“容量检查 + 入队”，避免 LLEN 与 LPUSH 之间的竞态窗口。
@@ -45,12 +51,12 @@ export function isRetryableJudgeQueueError(err: unknown): boolean {
 }
 
 /**
- * 将评测任务推送到 Redis 消息队列。
- * 使用 LPUSH 将任务添加到队列头部，noj-judge 通过 BRPOP 消费。
+ * 将评测任务推送到对应优先级的 Redis 消息队列。
+ * 使用 LPUSH 将任务添加到队列头部，noj-judge 通过 BRPOPLPUSH 消费。
  *
- * @param task - 评测任务
+ * @param task - 评测任务（必须携带服务端推导的 priority）
  * @returns 队列长度（LPUSH 返回值）
- * @throws 如果 Redis 连接不可用或消息超过大小限制
+ * @throws 如果 Redis 连接不可用、消息超过大小限制或对应队列已满
  */
 export async function pushJudgeTask(task: JudgeTask): Promise<number> {
   const redis = getRedis();
@@ -72,17 +78,20 @@ export async function pushJudgeTask(task: JudgeTask): Promise<number> {
     );
   }
 
+  const queue = JUDGE_QUEUES[task.priority];
+  const capacity = JUDGE_QUEUE_CAPACITY[task.priority];
+
   // NOJ-077：用单条 Lua 脚本原子完成容量检查和入队，拒绝而不是静默丢最老任务。
   const length = await redis.eval(
     QUEUE_CAPACITY_SCRIPT,
     1,
-    JUDGE_QUEUE,
-    MAX_JUDGE_QUEUE_LENGTH,
+    queue,
+    capacity,
     message,
   );
   if (length < 0) {
     throw new Error(
-      `评测队列已满（${MAX_JUDGE_QUEUE_LENGTH}/${MAX_JUDGE_QUEUE_LENGTH}），请稍后重试`,
+      `评测队列已满（${capacity}/${capacity}），请稍后重试`,
     );
   }
 

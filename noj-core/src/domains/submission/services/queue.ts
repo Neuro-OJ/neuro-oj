@@ -9,14 +9,19 @@ import {
   users,
 } from "./../../../shared/db/schema.ts";
 import { getRedis } from "./../../../shared/mq/connection.ts";
+import { JUDGE_QUEUES } from "../mq/producer.ts";
 import { logger } from "./../../../shared/base/logging.ts";
 import { NotFoundError } from "./../../../shared/base/errors.ts";
 import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import { logAudit } from "../../system/index.ts";
 import { SELF_TEST_ID_PREFIX } from "./../types/self-tests.ts";
 
-/** 评测任务队列名称（与 producer.ts 一致）。 */
-const JUDGE_QUEUE = "noj:judge:queue";
+/** 评测任务队列名称列表（与 producer.ts 一致，按优先级排列）。 */
+const JUDGE_QUEUE_LIST = [
+  JUDGE_QUEUES.high,
+  JUDGE_QUEUES.medium,
+  JUDGE_QUEUES.low,
+];
 
 /** 评测结果队列名称（与 consumer.ts 一致）。 */
 const RESULT_QUEUE = "noj:judge:results";
@@ -185,6 +190,9 @@ export interface SubmissionStatusResponse {
 
 /**
  * 从 Redis 获取 pending 队列中的 submission_id 列表（按入队顺序）。
+ *
+ * `limit` 是**跨三级队列的总上限**：旧实现把 limit 分别应用到每个队列，
+ * 调用方要 20 条却可能拿到 60 条。
  */
 export async function getPendingSubmissionIds(
   limit = PENDING_LIST_LIMIT,
@@ -194,8 +202,13 @@ export async function getPendingSubmissionIds(
     await redis.connect();
   }
   // NOJ-077：监控/列表路径默认不全量 LRANGE；limit<=0 时仍允许调用方按需取全量。
-  const end = limit <= 0 ? -1 : Math.max(0, limit - 1);
-  const raw = await redis.lrange(JUDGE_QUEUE, 0, end);
+  const unlimited = limit <= 0;
+  const raw: string[] = [];
+  for (const queue of JUDGE_QUEUE_LIST) {
+    if (!unlimited && raw.length >= limit) break;
+    const end = unlimited ? -1 : Math.max(0, limit - raw.length - 1);
+    raw.push(...await redis.lrange(queue, 0, end));
+  }
   const ids: string[] = [];
   for (const item of raw) {
     try {
@@ -218,7 +231,55 @@ export async function getPendingQueueLength(): Promise<number> {
   if (redis.status !== "ready") {
     await redis.connect();
   }
-  return redis.llen(JUDGE_QUEUE);
+  const lengths = await Promise.all(
+    JUDGE_QUEUE_LIST.map((queue) => redis.llen(queue)),
+  );
+  return lengths.reduce((total, value) => total + Number(value ?? 0), 0);
+}
+
+/**
+ * 计算提交在三级队列中的排队位置。
+ *
+ * 消费顺序为 high → medium → low，同一队列内 LRANGE 尾部（更早入队）先出队：
+ * - `position`：按上述顺序估算的前方任务数 + 1（1 = 下一个出队）；
+ * - `queueLength`：三级队列总长度；
+ * - `position` 为 null 表示该提交不在任何主队列（可能正在评测或已出队）。
+ */
+export async function getPendingQueuePosition(
+  submissionId: string,
+): Promise<{ position: number | null; queueLength: number }> {
+  const redis = getRedis();
+  if (redis.status !== "ready") {
+    await redis.connect();
+  }
+  const lengths = await Promise.all(
+    JUDGE_QUEUE_LIST.map((queue) => redis.llen(queue)),
+  );
+  const queueLength = lengths.reduce(
+    (total, value) => total + Number(value ?? 0),
+    0,
+  );
+  let ahead = 0;
+  for (let i = 0; i < JUDGE_QUEUE_LIST.length; i++) {
+    const rawItems = await redis.lrange(JUDGE_QUEUE_LIST[i], 0, -1);
+    const idx = rawItems.findIndex((item) => {
+      try {
+        return JSON.parse(item).submission_id === submissionId;
+      } catch {
+        return false;
+      }
+    });
+    if (idx !== -1) {
+      // 更高优先级队列的任务全部排在其前面；
+      // 本队列中更靠近尾部（更早出队）的任务也排在其前面。
+      return {
+        position: ahead + rawItems.length - idx,
+        queueLength,
+      };
+    }
+    ahead += Number(lengths[i] ?? 0);
+  }
+  return { position: null, queueLength };
 }
 
 /** 管理员移除尚未被 worker 领取的评测任务。 */
@@ -235,16 +296,27 @@ export async function removePendingSubmission(id: string): Promise<void> {
 
   const redis = getRedis();
   if (redis.status !== "ready") await redis.connect();
-  const rawItems = await redis.lrange(JUDGE_QUEUE, 0, -1);
-  const raw = rawItems.find((item) => {
-    try {
-      return JSON.parse(item).submission_id === id;
-    } catch {
-      return false;
+  let raw: string | undefined;
+  let targetQueue: string | undefined;
+  for (const queue of JUDGE_QUEUE_LIST) {
+    const rawItems = await redis.lrange(queue, 0, -1);
+    const found = rawItems.find((item) => {
+      try {
+        return JSON.parse(item).submission_id === id;
+      } catch {
+        return false;
+      }
+    });
+    if (found) {
+      raw = found;
+      targetQueue = queue;
+      break;
     }
-  });
-  if (!raw) throw new NotFoundError("待处理队列中不存在该提交");
-  const removed = await redis.lrem(JUDGE_QUEUE, 1, raw);
+  }
+  if (!raw || !targetQueue) {
+    throw new NotFoundError("待处理队列中不存在该提交");
+  }
+  const removed = await redis.lrem(targetQueue, 1, raw);
   if (removed !== 1) throw new NotFoundError("待处理队列中不存在该提交");
 
   if (submission.status === "judging") {
@@ -564,21 +636,13 @@ export async function getSubmissionQueueStatus(
   //    Redis 不可用时静默失败，queue_position/queue_length 保持 null
   if (status === "judging" || status === "pending") {
     try {
-      const snapshot = await getPendingQueueSnapshot();
-      queueLength = snapshot.length;
-      const pendingIds = snapshot.ids;
-      const idx = pendingIds.indexOf(submissionId);
-      if (idx !== -1) {
-        // LRANGE 返回最新优先（LPUSH），
-        // pendingIds.length - idx 使队列位置从 1（下个出队）递增。
-        // 超过 PENDING_LIST_LIMIT 时 snapshot 已回退全量，因此长度即真实队列长度。
-        queuePosition = pendingIds.length - idx;
-      }
+      const info = await getPendingQueuePosition(submissionId);
+      queueLength = info.queueLength;
+      // 不在主队列中（正在评测或已出队）时 queue_position 保持 null
+      queuePosition = info.position;
     } catch {
       // Redis 不可用时静默跳过，queue_position/queue_length 保持 null
     }
-    // 如果不在 pending 中且 status 为 judging，说明正在被评测
-    // queue_position 保持 null
   }
 
   return {
@@ -640,6 +704,26 @@ async function readQueueHealth(mainQueue: string): Promise<QueueHealthEntry> {
 }
 
 /**
+ * 聚合三个评测任务优先级队列的健康快照。
+ *
+ * 任一队列读取失败（-1）时整体返回 -1，避免把 degraded 状态误报为 0。
+ */
+async function readJudgeQueueHealth(): Promise<QueueHealthEntry> {
+  const entries = await Promise.all(
+    JUDGE_QUEUE_LIST.map((queue) => readQueueHealth(queue)),
+  );
+  const sum = (pick: (e: QueueHealthEntry) => number): number => {
+    if (entries.some((e) => pick(e) < 0)) return -1;
+    return entries.reduce((total, e) => total + pick(e), 0);
+  };
+  return {
+    queue_length: sum((e) => e.queue_length),
+    processing_length: sum((e) => e.processing_length),
+    dead_length: sum((e) => e.dead_length),
+  };
+}
+
+/**
  * 获取评测任务/结果队列的健康状态（管理端/运维用）。
  *
  * Redis 不可用时返回 `redis_ok: false`，各队列长度均为 -1。
@@ -657,7 +741,7 @@ export async function getQueueHealth(): Promise<QueueHealthResponse> {
     redisOk = false;
   }
 
-  const judge = await readQueueHealth(JUDGE_QUEUE);
+  const judge = await readJudgeQueueHealth();
   const result = await readQueueHealth(RESULT_QUEUE);
   return {
     judge,

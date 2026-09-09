@@ -1,12 +1,18 @@
 import { sql } from "drizzle-orm";
 import { checkDbHealth, getDb } from "../../../shared/db/connection.ts";
 import { checkRedisHealth, getRedis } from "../../../shared/mq/connection.ts";
+import { JUDGE_QUEUES } from "../../../shared/mq/judge-queues.ts";
 import { consumerAlive } from "../../submission/mq/consumer.ts";
 import { logger } from "../../../shared/base/logging.ts";
 import { metrics } from "../../../shared/base/metrics.ts";
 
 const JUDGE_HEARTBEAT_PREFIX = "noj:observability:judge:";
-const JUDGE_QUEUE = Deno.env.get("JUDGE_QUEUE") || "noj:judge:queue";
+/** 三级评测队列（high/medium/low），积压统计必须跨级聚合。 */
+const JUDGE_QUEUE_LIST: string[] = [
+  JUDGE_QUEUES.high,
+  JUDGE_QUEUES.medium,
+  JUDGE_QUEUES.low,
+];
 const RESULT_QUEUE = Deno.env.get("RESULT_QUEUE") || "noj:judge:results";
 
 export interface ObservabilityAlert {
@@ -170,15 +176,31 @@ async function readJudgeHeartbeats(
 async function readQueueSnapshot(): Promise<QueueSnapshot | null> {
   const redis = getRedis();
   if (redis.status !== "ready") return null;
-  const [pending, processing, resultPending, resultProcessing, judge] =
-    await Promise.all([
-      redis.llen(JUDGE_QUEUE),
-      redis.llen(`${JUDGE_QUEUE}:processing`),
-      redis.llen(RESULT_QUEUE),
-      redis.llen(`${RESULT_QUEUE}:processing`),
-      readJudgeHeartbeats(redis),
-    ]);
-  return { pending, processing, resultPending, resultProcessing, judge };
+  // 三级队列分别统计后求和：任一级积压都应触发 backlog 告警与 Prometheus 指标。
+  const [
+    pendingCounts,
+    processingCounts,
+    resultPending,
+    resultProcessing,
+    judge,
+  ] = await Promise.all([
+    Promise.all(JUDGE_QUEUE_LIST.map((queue) => redis.llen(queue))),
+    Promise.all(
+      JUDGE_QUEUE_LIST.map((queue) => redis.llen(`${queue}:processing`)),
+    ),
+    redis.llen(RESULT_QUEUE),
+    redis.llen(`${RESULT_QUEUE}:processing`),
+    readJudgeHeartbeats(redis),
+  ]);
+  const sum = (values: number[]): number =>
+    values.reduce((total, value) => total + Number(value ?? 0), 0);
+  return {
+    pending: sum(pendingCounts),
+    processing: sum(processingCounts),
+    resultPending,
+    resultProcessing,
+    judge,
+  };
 }
 
 async function readDatabaseQueueStats(): Promise<

@@ -140,6 +140,7 @@ export async function createSelfTest(
     submission_id: id,
     problem_id: problemId,
     user_id: userId,
+    priority: "medium",
     runtime_config: runtimeConfig,
     download_url,
     language: input.language,

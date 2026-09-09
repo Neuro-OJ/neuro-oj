@@ -11,8 +11,8 @@ Evaluator + Solution 双容器（用后即毁），并把结果写回 Redis。
 
 ## 独立节点部署
 
-如果评测节点不运行 noj-core、noj-ui 或完整源码仓库，可以使用仓库提供的 Judge 安装脚本
-在独立目录初始化 Worker：
+如果评测节点不运行 noj-core、noj-ui 或完整源码仓库，可以使用仓库提供的 Judge
+安装脚本 在独立目录初始化 Worker：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/judge-install.sh \
@@ -134,8 +134,8 @@ JUDGE_REQUIRE_ISOLATED_DOCKER=true
 ```
 
 `JUDGE_DOCKER_SOCKET` 是宿主机上独立 daemon 的 socket 路径，不能填写应用宿主机
-的 `/var/run/docker.sock`。`JUDGE_DOCKER_SOCKET_GID` 必须匹配该 socket 的组权限，
-Compose 会以非 root 用户运行 Worker，并只挂载该 socket 和评测缓存。
+的 `/var/run/docker.sock`。`JUDGE_DOCKER_SOCKET_GID` 必须匹配该 socket
+的组权限， Compose 会以非 root 用户运行 Worker，并只挂载该 socket 和评测缓存。
 
 开启 `JUDGE_REQUIRE_ISOLATED_DOCKER=true` 后，Worker 会在启动阶段拒绝
 `/var/run/docker.sock` 与 `/run/docker.sock`，也会拒绝 `tcp://`、`http://` 等
@@ -165,14 +165,17 @@ docker inspect "$(docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neur
 默认 Python 题目使用三个镜像（生产环境从 ghcr.io 拉取）：
 
 - `ghcr.io/neuro-oj/noj-evaluator-python`：运行出题人的 `evaluate.py`。
-- `ghcr.io/neuro-oj/noj-solution-python`：运行用户提交的代码（硬编码 `main.py`）和 Solution Host。
-- `ghcr.io/neuro-oj/noj-solution-ai`：运行需要 CPU PyTorch、CV/ML 依赖的产物提交题和 Solution Host。
+- `ghcr.io/neuro-oj/noj-solution-python`：运行用户提交的代码（硬编码
+  `main.py`）和 Solution Host。
+- `ghcr.io/neuro-oj/noj-solution-ai`：运行需要 CPU PyTorch、CV/ML
+  依赖的产物提交题和 Solution Host。
 
 Evaluator 容器可以通过 Neuro OJ Evaluator SDK 调用 Solution 容器中的用户函数。
 
 ### 构建/发布评测镜像
 
-评测镜像由 GitHub Actions 在 Release 时自动构建并推送到 ghcr.io，无需在服务器上构建。
+评测镜像由 GitHub Actions 在 Release 时自动构建并推送到
+ghcr.io，无需在服务器上构建。
 
 本地开发/调试时仍可使用 `noj-judge/scripts/build-sdk-images.sh`：
 
@@ -182,14 +185,21 @@ cd noj-judge
 ./scripts/build-sdk-images.sh --tag v0.1.0  # 自定义 tag
 ```
 
-生产部署时，`init system` 会根据 `JUDGE_IMAGE_BASE`（默认 `ghcr.io/neuro-oj/`）写入
-ghcr 全限定镜像名；若需要手工确认，见[生产部署](production-deploy.md#3-配置说明)。
+生产部署时，`init system` 会根据 `JUDGE_IMAGE_BASE`（默认
+`ghcr.io/neuro-oj/`）写入 ghcr
+全限定镜像名；若需要手工确认，见[生产部署](production-deploy.md#3-配置说明)。
 
-`noj-evaluator-python` 与 `noj-solution-python` 基于 `python:3.12-slim`，不预装题目专用依赖，题目依赖由出题人在 evaluator 中自行管理；`noj-solution-ai` 额外内置 CPU 版 PyTorch、torchvision 与常用 CV/ML 依赖。
+`noj-evaluator-python` 与 `noj-solution-python` 基于
+`python:3.12-slim`，不预装题目专用依赖，题目依赖由出题人在 evaluator
+中自行管理；`noj-solution-ai` 额外内置 CPU 版 PyTorch、torchvision 与常用 CV/ML
+依赖。
 
 ## 镜像白名单
 
-noj-core 维护评测镜像白名单（`judgeImages`），并在题目 CRUD / 调度阶段完成校验。Judge Worker 侧还会按 `JUDGE_IMAGE_PREFIX` / `JUDGE_COMMAND_WHITELIST` 对 MQ 消息做一次纵深复验，不再通过 Redis RPC 拉取白名单。
+noj-core 维护评测镜像白名单（`judgeImages`），并在题目 CRUD /
+调度阶段完成校验。Judge Worker 侧还会按 `JUDGE_IMAGE_PREFIX` /
+`JUDGE_COMMAND_WHITELIST` 对 MQ 消息做一次纵深复验，不再通过 Redis RPC
+拉取白名单。
 
 镜像规则包含：
 
@@ -197,8 +207,8 @@ noj-core 维护评测镜像白名单（`judgeImages`），并在题目 CRUD / �
 - `kind`：`evaluator` 或 `solution`。
 - `mode`：版本匹配模式。
 
-新增或修改镜像后，需要在 noj-core 的白名单中登记（镜像白名单校验在 core 侧
-题目 CRUD 与调度阶段完成，judge 不再于启动时拉取）。
+新增或修改镜像后，需要在 noj-core 的白名单中登记（镜像白名单校验在 core 侧 题目
+CRUD 与调度阶段完成，judge 不再于启动时拉取）。
 
 ## 评测流程
 
@@ -212,7 +222,8 @@ noj-core 维护评测镜像白名单（`judgeImages`），并在题目 CRUD / �
      让 Evaluator 加入指定网络（如 `noj-net`）以访问 `noj-llm-gateway`；
      Solution 容器始终 `network_mode=none`。
 4. 注入用户代码与支持包，启动双容器 NDJSON 编排。
-5. 评测完成后按 RAII 顺序清理容器（先 Solution 后 Evaluator），下次评测重新创建。
+5. 评测完成后按 RAII 顺序清理容器（先 Solution 后
+   Evaluator），下次评测重新创建。
 
 ## 健康检查与状态查看
 
@@ -235,10 +246,14 @@ docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compos
 
 ## 队列监控 {#queue-monitoring}
 
-评测任务在 Redis 队列 `noj:judge:queue` 中排队，结果写回 `noj:judge:results`：
+评测任务按优先级在 Redis 三级队列 `noj:judge:queue:high` / `:medium` / `:low`
+中排队（前缀由 `.env.prod` 的 `JUDGE_QUEUE` 决定，core 与 judge 必须一致），
+结果写回 `noj:judge:results`：
 
 ```bash
-docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue
+docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:high
+docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:medium
+docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:low
 ```
 
 密码从 `/opt/neuro-oj/.env.prod` 的 `REDIS_PASSWORD` 读取。
@@ -254,12 +269,13 @@ docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue
 
 启动多个 noj-judge 实例即可分担负载：
 
-- 所有实例消费同一个 `noj:judge:queue`，互不冲突。
+- 所有实例消费同一组三级队列，互不冲突。
 - 新实例启动后即可消费任务，无需额外注册。
 
 ## 升级与重启
 
-- 停止实例会进入优雅关闭流程：排空正在执行的 in-flight 任务后再退出，避免提交丢失。
+- 停止实例会进入优雅关闭流程：排空正在执行的 in-flight
+  任务后再退出，避免提交丢失。
 - 升级步骤：修改 `.env.prod` 中的 `NOJ_VERSION` → `noj update`。
 - 升级评测镜像后应先在 noj-core 白名单登记，再启动 Worker。
 
@@ -267,7 +283,10 @@ docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue
 
 - Redis 连接失败：检查 Redis 地址和服务状态。
 - Docker 连接失败：确认 Docker daemon 可用，当前用户有权限访问。
-- 镜像不存在：确认 ghcr.io 镜像已发布，且 `judge_images` 白名单中的镜像名与发布的 ghcr 全限定名一致。
-- 白名单为空：确认 noj-core 已启动、`init system` 已执行；白名单校验在 noj-core 侧完成，judge 侧使用镜像前缀白名单复验。
-- `error`：通常是纯净评测包、运行时配置、镜像、协议或 evaluator 本身异常，需要查看 Judge Worker 日志。
+- 镜像不存在：确认 ghcr.io 镜像已发布，且 `judge_images`
+  白名单中的镜像名与发布的 ghcr 全限定名一致。
+- 白名单为空：确认 noj-core 已启动、`init system` 已执行；白名单校验在 noj-core
+  侧完成，judge 侧使用镜像前缀白名单复验。
+- `error`：通常是纯净评测包、运行时配置、镜像、协议或 evaluator
+  本身异常，需要查看 Judge Worker 日志。
 - 提交长时间 `Pending`：见上文「队列监控」。

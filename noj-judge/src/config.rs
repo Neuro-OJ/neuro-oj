@@ -5,10 +5,12 @@
 pub struct Config {
     /// Redis 连接 URL
     pub redis_url: String,
-    /// 评测任务队列名
+    /// 评测任务队列名前缀（实际队列为 `{prefix}:high/:medium/:low`）
     pub judge_queue: String,
     /// 评测结果列表名
     pub result_queue: String,
+    /// 优先级轮询时每个队列 BRPOPLPUSH 的超时秒数
+    pub priority_poll_timeout_secs: f64,
     /// 临时工作目录
     pub work_dir: String,
     /// 支持包 HTTP 下载超时秒数（默认: 60）
@@ -51,6 +53,10 @@ impl std::fmt::Debug for Config {
             .field("redis_url", &"<redacted>")
             .field("judge_queue", &self.judge_queue)
             .field("result_queue", &self.result_queue)
+            .field(
+                "priority_poll_timeout_secs",
+                &self.priority_poll_timeout_secs,
+            )
             .field("work_dir", &self.work_dir)
             .field(
                 "support_package_download_timeout_secs",
@@ -108,6 +114,9 @@ impl Config {
             redis_url: env_or("REDIS_URL", "redis://127.0.0.1/"),
             judge_queue: env_or("JUDGE_QUEUE", "noj:judge:queue"),
             result_queue: env_or("RESULT_QUEUE", "noj:judge:results"),
+            priority_poll_timeout_secs: env_var_parse::<f64>("JUDGE_PRIORITY_POLL_TIMEOUT_MS")
+                .map(|ms| ms / 1000.0)
+                .unwrap_or(0.1),
             work_dir: env_or("WORK_DIR", "/tmp/noj-judge"),
             support_package_download_timeout_secs: env_var_parse(
                 "SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT",
@@ -148,6 +157,15 @@ impl Config {
             require_isolated_docker: env_var_parse::<bool>("JUDGE_REQUIRE_ISOLATED_DOCKER")
                 .unwrap_or(false),
         }
+    }
+
+    /// 返回三个评测任务队列名（high / medium / low）。
+    pub fn judge_queues(&self) -> [String; 3] {
+        [
+            format!("{}:high", self.judge_queue),
+            format!("{}:medium", self.judge_queue),
+            format!("{}:low", self.judge_queue),
+        ]
     }
 
     /// 优雅关闭排空超时：至少 30s，且覆盖支持包下载超时 + 结果推送余量。
@@ -228,12 +246,22 @@ mod tests {
             "JUDGE_CPU_LIMIT_MILLICORES",
             "JUDGE_DOCKER_HOST",
             "JUDGE_REQUIRE_ISOLATED_DOCKER",
+            "JUDGE_PRIORITY_POLL_TIMEOUT_MS",
         ] {
             std::env::remove_var(key);
         }
         let cfg = Config::from_env();
         assert_eq!(cfg.redis_url, "redis://127.0.0.1/");
         assert_eq!(cfg.judge_queue, "noj:judge:queue");
+        assert_eq!(
+            cfg.judge_queues(),
+            [
+                "noj:judge:queue:high".to_string(),
+                "noj:judge:queue:medium".to_string(),
+                "noj:judge:queue:low".to_string(),
+            ]
+        );
+        assert!((cfg.priority_poll_timeout_secs - 0.1).abs() < f64::EPSILON);
         assert_eq!(cfg.work_dir, "/tmp/noj-judge");
         assert_eq!(cfg.max_concurrent_judges, DEFAULT_MAX_CONCURRENT_JUDGES);
         assert_eq!(cfg.cpu_limit_millicores, DEFAULT_CPU_LIMIT_MILLICORES);
@@ -253,10 +281,20 @@ mod tests {
             ("JUDGE_CPU_LIMIT_MILLICORES", "2500"),
             ("JUDGE_DOCKER_HOST", "unix:///run/noj-judge/docker.sock"),
             ("JUDGE_REQUIRE_ISOLATED_DOCKER", "true"),
+            ("JUDGE_PRIORITY_POLL_TIMEOUT_MS", "250"),
         ]);
         let cfg = Config::from_env();
         assert_eq!(cfg.redis_url, "redis://custom:6379");
         assert_eq!(cfg.judge_queue, "custom:queue");
+        assert_eq!(
+            cfg.judge_queues(),
+            [
+                "custom:queue:high".to_string(),
+                "custom:queue:medium".to_string(),
+                "custom:queue:low".to_string(),
+            ]
+        );
+        assert!((cfg.priority_poll_timeout_secs - 0.25).abs() < f64::EPSILON);
         assert_eq!(cfg.result_queue, "custom:results");
         assert_eq!(cfg.work_dir, "/custom/path");
         assert_eq!(cfg.max_concurrent_judges, 3);

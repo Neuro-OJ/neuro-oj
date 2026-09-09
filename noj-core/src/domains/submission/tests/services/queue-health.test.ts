@@ -53,7 +53,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const redis = getRedis();
-    const queue = "noj:judge:queue";
+    const queue = "noj:judge:queue:medium";
     const before = await getQueueHealth();
     const beforeLen = before.judge.queue_length;
 
