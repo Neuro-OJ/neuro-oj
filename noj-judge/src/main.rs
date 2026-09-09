@@ -15,6 +15,7 @@ use anyhow::{Context, Result};
 use futures_util::{stream::FuturesUnordered, FutureExt, StreamExt};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
+use tokio::sync::Semaphore;
 use tracing::{error, info};
 
 use crate::config::Config;
@@ -123,7 +124,9 @@ fn main() -> Result<()> {
         let cpu_limit_millicores = config.cpu_limit_millicores;
         let max_evaluator_time_ms = config.max_evaluator_time_ms;
         let max_solution_call_timeout_ms = config.max_solution_call_timeout_ms;
-        // F-07：移除全局并发闸门，改为每用户 active 集合（同一用户同时最多 1 个评测）。
+        // F-07：全局并发闸门 + 每用户 active 集合（同一用户同时最多 1 个评测）。
+        // 先获取全局 Semaphore 槽位，再做 per-user 公平调度，避免不同用户任务无限制 spawn。
+        let semaphore = Arc::new(Semaphore::new(max_concurrent_judges));
         let active_users: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
         let judge_metrics = Arc::new(JudgeMetrics::new(max_concurrent_judges));
         let heartbeat_metrics = Arc::clone(&judge_metrics);
@@ -197,7 +200,15 @@ fn main() -> Result<()> {
                         }
                     };
 
-                    // F-07 公平调度：同一用户已有评测在跑时，把任务放回队尾轮给他人。
+                    // F-07 公平调度：先获取全局并发槽位，再检查同一用户是否已有评测在跑。
+                    // 若用户已活跃则释放槽位并把任务放回队尾轮给他人。
+                    let permit = match semaphore.clone().acquire_owned().await {
+                        Ok(permit) => permit,
+                        Err(e) => {
+                            error!("获取评测并发槽位失败: {}", e);
+                            continue;
+                        }
+                    };
                     let is_active_user = {
                         let mut guard = active_users.lock().unwrap();
                         if guard.contains(&pulled.task.user_id) {
@@ -208,6 +219,7 @@ fn main() -> Result<()> {
                         }
                     };
                     if is_active_user {
+                        drop(permit);
                         if let Err(e) =
                             mq::requeue_task(&redis_client, &pulled.queue, &pulled.raw).await
                         {
@@ -246,6 +258,8 @@ fn main() -> Result<()> {
                         let task = pulled.task;
                         // RAII guard：任务结束（含 panic/异常路径）时自动释放用户槽位。
                         let _active_guard = ActiveUserGuard::new(active_users, task_user_id);
+                        // 持有全局并发槽位直到任务结束。
+                        let _permit = permit;
 
                         // 统一使用双容器模式（Evaluator + Solution）
                         let result = match judge::runner::evaluate_with_cpu_limit(

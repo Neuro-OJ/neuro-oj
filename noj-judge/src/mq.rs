@@ -95,19 +95,37 @@ fn parse_task_message(value: &str) -> Option<JudgeTask> {
 /// 将已拉取的活跃用户任务放回主队列队尾（并从 processing 移除原消息）。
 ///
 /// 用于公平调度：同一用户已有评测在跑时，后续任务轮给其他用户。
+///
+/// 使用 Lua 脚本原子完成 `LREM processing + RPUSH queue`，避免两命令之间
+/// 断连/进程退出导致任务从 processing 和主队列同时消失、sweeper 无法恢复。
+const REQUEUE_SCRIPT: &str = r#"
+if redis.call('LREM', KEYS[1], 1, ARGV[1]) > 0 then
+    redis.call('RPUSH', KEYS[2], ARGV[1])
+    return 1
+end
+return 0
+"#;
+
 pub async fn requeue_task(redis_client: &redis::Client, queue: &str, raw: &str) -> Result<()> {
     let mut conn = redis_client
         .get_multiplexed_async_connection()
         .await
         .context("重试连接 Redis 失败")?;
     let processing = processing_queue(queue);
-    let _: usize = conn
-        .lrem(&processing, 1, raw)
+    let moved: i64 = redis::Script::new(REQUEUE_SCRIPT)
+        .key(processing)
+        .key(queue)
+        .arg(raw)
+        .invoke_async(&mut conn)
         .await
-        .context("从 processing 移除重投任务失败")?;
-    conn.rpush::<&str, &str, usize>(queue, raw)
-        .await
-        .context("将任务放回主队列失败")?;
+        .context("原子重投任务失败")?;
+    if moved == 0 {
+        // 消息已不在 processing（可能已被 ack/sweeper 处理），无需重投。
+        warn!(
+            queue = %queue,
+            "活跃用户任务重投时未在 processing 中找到消息，跳过"
+        );
+    }
     Ok(())
 }
 
@@ -327,6 +345,7 @@ fn sanitize_submission_id_for_filename(submission_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::parse_task_message;
+    use super::requeue_task;
     use super::sanitize_submission_id_for_filename;
     use super::{priority_slot, PRIORITY_SEQUENCE};
 
@@ -402,5 +421,13 @@ mod tests {
         assert_eq!(priority_slot(0, 4), 1);
         assert_eq!(priority_slot(0, 6), 2);
         assert_eq!(priority_slot(6, 1), 0);
+    }
+
+    #[tokio::test]
+    async fn requeue_task_connection_failure_returns_err() {
+        // 断连路径：连接失败时返回 Err，任务仍留在 processing，由 sweeper 恢复。
+        let client = redis::Client::open("redis://127.0.0.1:1/").unwrap();
+        let result = requeue_task(&client, "noj:judge:queue:high", "raw").await;
+        assert!(result.is_err());
     }
 }
