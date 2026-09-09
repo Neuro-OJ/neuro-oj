@@ -13,7 +13,7 @@ usage() {
 
 可选 domain：
   identity catalog submission contest system community messaging objective
-  admin cross-domain browser staging
+  admin rate-limit cross-domain browser staging
 
 示例：bash scripts/run-e2e-domain.sh submission
 EOF
@@ -28,7 +28,7 @@ fi
 domain="$1"
 known_domains=(
   identity catalog submission contest system community messaging objective
-  admin cross-domain browser staging
+  admin rate-limit cross-domain browser staging
 )
 if [[ ! " ${known_domains[*]} " == *" $domain "* ]]; then
   echo "错误：未知 domain '$domain'" >&2

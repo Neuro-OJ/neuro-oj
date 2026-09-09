@@ -14,14 +14,26 @@ export function formatDuration(ms: number): string {
 }
 
 export function renderBaseline(rows: BaselineRow[]): string {
-  const lines = ["# 测试耗时基线", "", "| 模块 | 命令 | 耗时 |", "|---|---|---|"];
+  const lines = [
+    "# 测试耗时基线",
+    "",
+    "| 模块 | 命令 | 耗时 |",
+    "|---|---|---|",
+  ];
   for (const r of rows) {
-    lines.push(`| ${r.module} | ${r.command} | ${formatDuration(r.durationMs)} |`);
+    lines.push(
+      `| ${r.module} | ${r.command} | ${formatDuration(r.durationMs)} |`,
+    );
   }
   return lines.join("\n") + "\n";
 }
 
-/** 运行命令并返回耗时（毫秒）；失败不退出，便于记录基线。 */
+/**
+ * 运行命令并返回耗时（毫秒）。
+ *
+ * 命令失败时抛错：失败的测试命令耗时没有意义，若直接记录会把「秒退的坏命令」
+ * 记成「很快的基线」。
+ */
 async function measure(command: string[], cwd: string): Promise<number> {
   const [cmd, ...rest] = command;
   const start = performance.now();
@@ -31,7 +43,12 @@ async function measure(command: string[], cwd: string): Promise<number> {
     stdout: "inherit",
     stderr: "inherit",
   });
-  await proc.output();
+  const result = await proc.output();
+  if (result.code !== 0) {
+    throw new Error(
+      `基线命令失败（exit ${result.code}）：${command.join(" ")}（cwd=${cwd}）`,
+    );
+  }
   return performance.now() - start;
 }
 

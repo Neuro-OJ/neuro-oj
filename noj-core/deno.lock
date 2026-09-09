@@ -50,6 +50,7 @@
     "npm:keyv@5": "5.6.0",
     "npm:otpauth@9": "9.5.1",
     "npm:postgres@*": "3.4.5",
+    "npm:postgres@3": "3.4.5",
     "npm:postgres@3.4.5": "3.4.5",
     "npm:tencentcloud-sdk-nodejs-cms@^4.1.71": "4.1.71",
     "npm:tencentcloud-sdk-nodejs-ses@^4.1.247": "4.1.247"

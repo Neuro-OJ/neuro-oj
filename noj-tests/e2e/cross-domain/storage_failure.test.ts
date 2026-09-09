@@ -233,8 +233,10 @@ e2eTest(
   "[e2e/storage-failure] 提交仍可创建（存储故障不阻塞主流程）",
   async () => {
     if (!isE2E) return;
-    // 即使对象存储/本地存储文件缺失，代码提交接口仍应接受（评测阶段才读取支持包）
-    const id = await submitCode(ownerToken, PROBLEM_ID, "print(1)");
+    // 针对存储已损坏的题目提交：接口仍应接受（评测阶段才读取支持包），
+    // 不能因为存储故障在创建提交时直接报错。
+    if (!brokenProblemId) throw new Error("缺少 brokenProblemId");
+    const id = await submitCode(ownerToken, brokenProblemId, "print(1)");
     if (!id) {
       throw new Error("提交未返回 ID");
     }

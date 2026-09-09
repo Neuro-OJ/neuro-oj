@@ -15,6 +15,25 @@ let adminToken = "";
 let userToken = "";
 let contestId = "";
 
+/** 读取 SSE 流 `ms` 毫秒，返回收到的原始帧文本。 */
+async function readSseFrames(
+  res: Response,
+  ms: number,
+): Promise<string> {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  const deadline = Date.now() + ms;
+  let buffer = "";
+  while (Date.now() < deadline) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    if (buffer.includes("contest:submission:created")) break;
+  }
+  await reader.cancel().catch(() => {});
+  return buffer;
+}
+
 async function publishContestSubmissionEvent(
   contestId: string,
 ): Promise<boolean> {
@@ -71,25 +90,51 @@ e2eTest("[e2e/anti-cheat-abnormal] Setup", async () => {
   contestId = (res.body as { data: { id: string } }).data.id;
 });
 
-e2eTest("[e2e/anti-cheat-abnormal] 未报名用户不能接收提交事件", async () => {
+e2eTest("[e2e/anti-cheat-abnormal] 未报名用户收不到提交事件", async () => {
   if (!isE2E) return;
-  // 未报名用户订阅竞赛事件应被拒绝或收不到提交事件；此处验证接口不返回 500
+  // 公开赛：未报名用户可以订阅（榜单事件），但不得收到任何提交事件帧。
   const res = await fetch(
     `http://localhost:8099/api/v1/contests/${contestId}/events`,
     { headers: { Authorization: "Bearer " + userToken } },
   );
-  if (res.status === 500) throw new Error("SSE 不应 500");
+  if (res.status !== 200) {
+    throw new Error(`公开赛订阅应 200，实际 ${res.status}`);
+  }
+  const published = await publishContestSubmissionEvent(contestId);
+  if (!published) throw new Error("docker exec noj-e2e-redis 发布事件失败");
+  const frames = await readSseFrames(res, 5_000);
+  if (frames.includes("contest:submission:created")) {
+    throw new Error(`未报名用户收到了提交事件帧: ${frames.slice(0, 200)}`);
+  }
 });
 
 e2eTest(
-  "[e2e/anti-cheat-abnormal] 非管理员 SSE 事件不泄露 user_id",
+  "[e2e/anti-cheat-abnormal] 报名用户收到提交事件但不含 user_id",
   async () => {
     if (!isE2E) return;
-    // 通过事件总线直接向频道发布一条带 user_id 的消息，验证发布不抛错；
-    // 完整 user_id 剥离断言由 core 单元测试覆盖。
+    const reg = await apiPost(
+      `/api/v1/contests/${contestId}/register`,
+      {},
+      userToken,
+    );
+    if (reg.status !== 200 && reg.status !== 201) {
+      throw new Error(`报名失败: ${reg.status}`);
+    }
+    const res = await fetch(
+      `http://localhost:8099/api/v1/contests/${contestId}/events`,
+      { headers: { Authorization: "Bearer " + userToken } },
+    );
+    if (res.status !== 200) {
+      throw new Error(`报名用户订阅应 200，实际 ${res.status}`);
+    }
     const published = await publishContestSubmissionEvent(contestId);
-    if (!published) {
-      console.log("  ⚠ docker exec 失败，跳过");
+    if (!published) throw new Error("docker exec noj-e2e-redis 发布事件失败");
+    const frames = await readSseFrames(res, 10_000);
+    if (!frames.includes("contest:submission:created")) {
+      throw new Error("报名用户未在 10s 内收到提交事件帧");
+    }
+    if (frames.includes("secret-user") || frames.includes('"user_id"')) {
+      throw new Error(`提交事件帧泄露 user_id: ${frames.slice(0, 200)}`);
     }
   },
 );

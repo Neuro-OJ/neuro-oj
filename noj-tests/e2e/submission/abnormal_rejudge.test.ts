@@ -57,24 +57,31 @@ e2eTest("[e2e/submission-abnormal] 并发重测同一提交不崩溃", async () 
     ),
   ]);
   for (const r of results) {
-    if (r.status !== 200 && r.status !== 400 && r.status !== 409 && r.status !== 202) {
+    if (
+      r.status !== 200 && r.status !== 400 && r.status !== 409 &&
+      r.status !== 202
+    ) {
       throw new Error("并发重测返回意外状态 " + r.status);
     }
   }
 });
 
-e2eTest("[e2e/submission-abnormal] 评测失败后状态为 error 且可查看", async () => {
-  if (!isE2E) return;
-  // 使用必然运行失败的代码（语法错误）
-  const id = await submitCode(token, PROBLEM_ID, "def broken(:\n");
-  const result = await pollSubmission(token, id, 45, 2000, true);
-  if (result.status !== "error" && result.status !== "finished") {
-    throw new Error("失败提交应最终为 error/finished，实际 " + result.status);
-  }
-  const { status, body } = await apiGet(`/api/v1/submissions/${id}`, token);
-  if (status !== 200) throw new Error("期望 200，实际 " + status);
-  const d = body as { data?: { status?: string } };
-  if (d.data?.status !== "error" && d.data?.status !== "finished") {
-    throw new Error("失败提交应最终为 error/finished，实际 " + d.data?.status);
-  }
-});
+e2eTest(
+  "[e2e/submission-abnormal] 评测失败后状态为 error 且可查看",
+  async () => {
+    if (!isE2E) return;
+    // 使用必然运行失败的代码（语法错误）
+    const id = await submitCode(token, PROBLEM_ID, "def broken(:\n");
+    const result = await pollSubmission(token, id, 45, 2000, true);
+    // 语法错误的代码必然评测失败：状态必须是 error（不是 finished）。
+    if (result.status !== "error") {
+      throw new Error("语法错误提交应最终为 error，实际 " + result.status);
+    }
+    const { status, body } = await apiGet(`/api/v1/submissions/${id}`, token);
+    if (status !== 200) throw new Error("期望 200，实际 " + status);
+    const d = body as { data?: { status?: string } };
+    if (d.data?.status !== "error") {
+      throw new Error("失败提交应最终为 error，实际 " + d.data?.status);
+    }
+  },
+);

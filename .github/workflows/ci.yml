@@ -363,8 +363,21 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: 覆盖率报告（不设硬门禁）
-        run: deno run -A scripts/coverage-report.ts --report
+      - name: 覆盖率报告 + 模块阈值门禁
+        # 模块 deno.json 的 test:coverage 自带 --threshold；--check 让其退出码生效。
+        run: deno run -A scripts/coverage-report.ts --report --check
+      - name: 静默跳过扫描（报告）
+        run: deno run -A scripts/silent-skip-report.ts
+      - name: 上传测试治理报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-governance-reports
+          path: |
+            dev-docs/engineering/test-coverage.md
+            dev-docs/engineering/test-silent-skips.md
+          retention-days: 14
+          if-no-files-found: warn
 
   # ===========================================================================
   # noj-core — Domain 单元/集成测试（独立 job）
@@ -1699,6 +1712,10 @@ jobs:
 
       - name: 启用 sccache（Rust 编译缓存）
         uses: mozilla/sccache-action@v0.0.11
+        # 同上：必须显式设置 RUSTC_WRAPPER / SCCACHE_GHA_ENABLED 才会生效。
+        env:
+          RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
 
       - name: 安装 cargo-nextest（并行测试运行器）
         uses: taiki-e/install-action@v2.87.0

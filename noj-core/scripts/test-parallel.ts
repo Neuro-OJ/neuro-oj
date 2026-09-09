@@ -35,7 +35,6 @@ import {
 import { parseShardArgs } from "./test-parallel-args.ts";
 
 const DRY_RUN = Deno.args.includes("--dry-run");
-const SHARD_COUNT = parseShardArgs(Deno.args);
 
 // ── 分片配置 ────────────────────────────────────
 const SHARDS = [
@@ -96,6 +95,8 @@ const SHARDS = [
     ],
   },
 ];
+
+const SHARD_COUNT = parseShardArgs(Deno.args, SHARDS.length);
 
 const databaseUrl = Deno.env.get("DATABASE_URL");
 if (!databaseUrl) {

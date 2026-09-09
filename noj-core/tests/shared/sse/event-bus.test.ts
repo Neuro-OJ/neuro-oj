@@ -35,18 +35,29 @@ Deno.test("event-bus: onEvent 注册回调并返回退订函数", () => {
   assertEquals(received, ["hello"]);
 });
 
-Deno.test("event-bus: publishEvent 在订阅未就绪时跳过", () => {
+Deno.test("event-bus: publishEvent 在订阅未就绪时跳过", async () => {
   _setSubscriberReadyForTest(false);
-  // 不抛异常即通过（fire-and-forget 语义）
-  publishEvent("noj:events:test", "{}");
+  const received: string[] = [];
+  const unsub = onEvent("noj:events:test", (_ch, msg) => received.push(msg));
+  // fire-and-forget 语义：返回 void 且不抛错
+  assertEquals(publishEvent("noj:events:test", "{}"), undefined);
+  // 订阅未就绪时不得把消息分发给本地监听器
+  await new Promise((r) => setTimeout(r, 50));
+  assertEquals(received, []);
+  unsub();
 });
 
 Deno.test("event-bus: publishSseEventAfterTx 在就绪时发布带 seq 的消息", () => {
   _setSubscriberReadyForTest(true);
   const received: string[] = [];
   const unsub = onEvent("noj:events:test", (_ch, msg) => received.push(msg));
-  publishSseEventAfterTx("noj:events:test", { type: "x" }, 42);
-  // publishEvent 内部走真实 Redis；此处只验证不抛异常
+  // 冒烟：内部走真实 Redis pub/sub，本地无订阅者时只能验证不抛错
+  // （消息构造/seq 字段由 event-bus 单元测试与 E2E 覆盖）。
+  // 返回 void 且不抛错（真实 Redis pub/sub 由 E2E 覆盖）
+  assertEquals(
+    publishSseEventAfterTx("noj:events:test", { type: "x" }, 42),
+    undefined,
+  );
   unsub();
   _setSubscriberReadyForTest(false);
 });
