@@ -109,21 +109,22 @@ cargo fmt
 
 ## 环境变量
 
-| 变量                      | 默认值               | 说明                                      |
-| ------------------------- | -------------------- | ----------------------------------------- |
-| `REDIS_URL`               | `redis://127.0.0.1/` | Redis 连接                                |
-| `JUDGE_QUEUE`             | `noj:judge:queue`    | 评测任务队列名                            |
-| `RESULT_QUEUE`            | `noj:judge:results`  | 评测结果队列名                            |
-| `WORK_DIR`                | `/tmp/noj-judge`     | 临时工作目录                              |
-| `JUDGE_MAX_CONCURRENT_JUDGES` | `2`             | 同时执行的评测任务数（有效范围 1-1024） |
-| `JUDGE_CPU_LIMIT_MILLICORES` | `1000`          | 每个评测容器 CPU 上限（1000m = 1 核，有效范围 100-16000） |
+| 变量                             | 默认值               | 说明                                                                                             |
+| -------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------ |
+| `REDIS_URL`                      | `redis://127.0.0.1/` | Redis 连接                                                                                       |
+| `JUDGE_QUEUE`                    | `noj:judge:queue`    | 评测任务队列名前缀，实际消费 `{prefix}:high/:medium/:low`；必须与 noj-core 的 `JUDGE_QUEUE` 一致 |
+| `JUDGE_PRIORITY_POLL_TIMEOUT_MS` | `100`                | 队列全空时单次 BRPOPLPUSH 阻塞超时（毫秒），有效范围 >0                                          |
+| `RESULT_QUEUE`                   | `noj:judge:results`  | 评测结果队列名                                                                                   |
+| `WORK_DIR`                       | `/tmp/noj-judge`     | 临时工作目录                                                                                     |
+| `JUDGE_MAX_CONCURRENT_JUDGES`    | `2`                  | 同时执行的评测任务数（有效范围 1-1024）                                                          |
+| `JUDGE_CPU_LIMIT_MILLICORES`     | `1000`               | 每个评测容器 CPU 上限（1000m = 1 核，有效范围 100-16000）                                        |
 
 > `POOL_*` 环境变量已随容器池移除（见 remove-container-pool 变更），不再被读取。
 
 ## 评测流程（核心，双容器）
 
-> 所有评测统一走 `dual::evaluate_dual()`（Evaluator + Solution 双容器 NDJSON 编排），
-> 旧的单容器路径已移除。核心流程（`src/dual/mod.rs`）：
+> 所有评测统一走 `dual::evaluate_dual()`（Evaluator + Solution 双容器 NDJSON
+> 编排）， 旧的单容器路径已移除。核心流程（`src/dual/mod.rs`）：
 
 ```
 任务到达
@@ -146,8 +147,9 @@ cargo fmt
   └─ 9. 发 `shutdown` 到 Solution → 显式 `dual.destroy()` 清理两个容器
 ```
 
-当前实现回填 `time_ms`（从评测开始到结果生成的墙上时钟耗时）；
-`memory_kb` 通过销毁前读取一次 Docker stats 尽力回填：
+当前实现回填 `time_ms`（从评测开始到结果生成的墙上时钟耗时）； `memory_kb`
+通过销毁前读取一次 Docker stats 尽力回填：
+
 - cgroups v1 使用 `memory_stats.max_usage`（真实峰值）；
 - cgroups v2 无 `max_usage` 时回退到 `usage`（近似值）；
 - 读取失败或容器不可用时保持 `null`（不阻断评测）。
@@ -158,9 +160,11 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
 ### 超时处理细节
 
 - 判定超时阈值 = `time_limit_ms`
-- 超时由 judge 内部 deadline 判定（启动 30s / 题目 `time_limit_ms` / 调用级 `call_timeout_ms`）
+- 超时由 judge 内部 deadline 判定（启动 30s / 题目 `time_limit_ms` / 调用级
+  `call_timeout_ms`）
 - 超时后通过 `dual.destroy()` 的 `docker rm -f` 强制清理容器
-- 状态由 `finalize_outcome` 按超时来源与 CallTimeout 归因决定（总超时 → SystemError；仅调用级 CallTimeout → TLE）
+- 状态由 `finalize_outcome` 按超时来源与 CallTimeout 归因决定（总超时 →
+  SystemError；仅调用级 CallTimeout → TLE）
 - 输出从 Bollard exec 流实时收集（非 `docker logs`）
 
 ## MQ 消息格式
@@ -193,8 +197,9 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
 }
 ```
 
-> 双容器架构后 `judge_image` / `judge_command` / `time_limit_ms` / `memory_limit_mb`
-> 顶层字段已移除，统一由 `runtime_config`（Evaluator + Solution）承载。
+> 双容器架构后 `judge_image` / `judge_command` / `time_limit_ms` /
+> `memory_limit_mb` 顶层字段已移除，统一由 `runtime_config`（Evaluator +
+> Solution）承载。
 
 **JudgeResult（noj-judge → noj-core）**：
 
@@ -216,7 +221,8 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
 - **zip 炸弹防护**：最大条目数 1000、单文件 64MB、总解压
   512MB（硬编码；按实际解压字节实时限额，不信任条目声明大小）
 - **文件名安全**：拒绝含 `/`、`\`、`..` 的文件名
-- **容器安全**：`cap_drop ALL`、`no-new-privileges`、`network_mode none`（默认）、`ipc_mode none`、`pids_limit 256`、CPU 上限、readonly rootfs + tmpfs /workspace
+- **容器安全**：`cap_drop ALL`、`no-new-privileges`、`network_mode none`（默认）、`ipc_mode none`、`pids_limit 256`、CPU
+  上限、readonly rootfs + tmpfs /workspace
 - **结果重试**：推送结果最多重试 3
   次（指数退避），全部失败则序列化到本地文件系统
 - **孤儿容器清理**：启动时按标签清理残留容器
@@ -241,7 +247,6 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
   `Ok(())`，属合法使用
 - `#[ignore]`：集成测试，需要 `NOJ_RUN_E2E=1` + Docker 环境
 
-
 ## 测试基础设施
 
 - 所有集成测试使用 `#[ignore]` + `NOJ_RUN_E2E=1` 守卫
@@ -263,9 +268,11 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
 
 **Solution AI 镜像**（`docker/solution-ai/Dockerfile`）：
 
-- 基于 `python:3.12-slim` + CPU 版 torch/torchvision + CV/ML 常用库 + noj_solution_sdk
+- 基于 `python:3.12-slim` + CPU 版 torch/torchvision + CV/ML 常用库 +
+  noj_solution_sdk
 - 供 artifact 题（CV/ML 小模型）推理使用
-- 构建：`./scripts/build-sdk-images.sh`（同时构建 evaluator/solution/solution-ai）
+- 构建：`./scripts/build-sdk-images.sh`（同时构建
+  evaluator/solution/solution-ai）
 
 **E2E 测试镜像**（`Dockerfile.e2e`）：
 

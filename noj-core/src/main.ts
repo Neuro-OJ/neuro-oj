@@ -7,6 +7,7 @@ import {
   requestResultConsumerShutdown,
   startResultConsumerWithRetry,
 } from "./domains/submission/index.ts";
+import { migrateLegacyJudgeQueue } from "./domains/submission/mq/legacy-judge-queue.ts";
 import { initEventSubscriber } from "./shared/sse/event-bus.ts";
 import { startSseEventRetentionTask } from "./shared/sse/sse-events.ts";
 import { snapshotEnv } from "./domains/system/index.ts";
@@ -236,6 +237,9 @@ async function main() {
   // 评测相关功能将通过健康检查暴露为 degraded。
   try {
     await connectRedis();
+    // 三级优先级队列升级：把旧单队列残留任务迁入 medium，避免升级瞬间
+    // 在途任务永久卡在 pending/judging（幂等、失败不阻断启动）。
+    await migrateLegacyJudgeQueue();
   } catch (err) {
     logger.error("Redis 连接失败，评测分发功能不可用", { err });
   }

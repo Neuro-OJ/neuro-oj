@@ -190,6 +190,9 @@ export interface SubmissionStatusResponse {
 
 /**
  * 从 Redis 获取 pending 队列中的 submission_id 列表（按入队顺序）。
+ *
+ * `limit` 是**跨三级队列的总上限**：旧实现把 limit 分别应用到每个队列，
+ * 调用方要 20 条却可能拿到 60 条。
  */
 export async function getPendingSubmissionIds(
   limit = PENDING_LIST_LIMIT,
@@ -199,9 +202,11 @@ export async function getPendingSubmissionIds(
     await redis.connect();
   }
   // NOJ-077：监控/列表路径默认不全量 LRANGE；limit<=0 时仍允许调用方按需取全量。
-  const end = limit <= 0 ? -1 : Math.max(0, limit - 1);
+  const unlimited = limit <= 0;
   const raw: string[] = [];
   for (const queue of JUDGE_QUEUE_LIST) {
+    if (!unlimited && raw.length >= limit) break;
+    const end = unlimited ? -1 : Math.max(0, limit - raw.length - 1);
     raw.push(...await redis.lrange(queue, 0, end));
   }
   const ids: string[] = [];
@@ -226,11 +231,55 @@ export async function getPendingQueueLength(): Promise<number> {
   if (redis.status !== "ready") {
     await redis.connect();
   }
-  let total = 0;
-  for (const queue of JUDGE_QUEUE_LIST) {
-    total += Number(await redis.llen(queue) ?? 0);
+  const lengths = await Promise.all(
+    JUDGE_QUEUE_LIST.map((queue) => redis.llen(queue)),
+  );
+  return lengths.reduce((total, value) => total + Number(value ?? 0), 0);
+}
+
+/**
+ * 计算提交在三级队列中的排队位置。
+ *
+ * 消费顺序为 high → medium → low，同一队列内 LRANGE 尾部（更早入队）先出队：
+ * - `position`：按上述顺序估算的前方任务数 + 1（1 = 下一个出队）；
+ * - `queueLength`：三级队列总长度；
+ * - `position` 为 null 表示该提交不在任何主队列（可能正在评测或已出队）。
+ */
+export async function getPendingQueuePosition(
+  submissionId: string,
+): Promise<{ position: number | null; queueLength: number }> {
+  const redis = getRedis();
+  if (redis.status !== "ready") {
+    await redis.connect();
   }
-  return total;
+  const lengths = await Promise.all(
+    JUDGE_QUEUE_LIST.map((queue) => redis.llen(queue)),
+  );
+  const queueLength = lengths.reduce(
+    (total, value) => total + Number(value ?? 0),
+    0,
+  );
+  let ahead = 0;
+  for (let i = 0; i < JUDGE_QUEUE_LIST.length; i++) {
+    const rawItems = await redis.lrange(JUDGE_QUEUE_LIST[i], 0, -1);
+    const idx = rawItems.findIndex((item) => {
+      try {
+        return JSON.parse(item).submission_id === submissionId;
+      } catch {
+        return false;
+      }
+    });
+    if (idx !== -1) {
+      // 更高优先级队列的任务全部排在其前面；
+      // 本队列中更靠近尾部（更早出队）的任务也排在其前面。
+      return {
+        position: ahead + rawItems.length - idx,
+        queueLength,
+      };
+    }
+    ahead += Number(lengths[i] ?? 0);
+  }
+  return { position: null, queueLength };
 }
 
 /** 管理员移除尚未被 worker 领取的评测任务。 */
@@ -587,21 +636,13 @@ export async function getSubmissionQueueStatus(
   //    Redis 不可用时静默失败，queue_position/queue_length 保持 null
   if (status === "judging" || status === "pending") {
     try {
-      const snapshot = await getPendingQueueSnapshot();
-      queueLength = snapshot.length;
-      const pendingIds = snapshot.ids;
-      const idx = pendingIds.indexOf(submissionId);
-      if (idx !== -1) {
-        // LRANGE 返回最新优先（LPUSH），
-        // pendingIds.length - idx 使队列位置从 1（下个出队）递增。
-        // 超过 PENDING_LIST_LIMIT 时 snapshot 已回退全量，因此长度即真实队列长度。
-        queuePosition = pendingIds.length - idx;
-      }
+      const info = await getPendingQueuePosition(submissionId);
+      queueLength = info.queueLength;
+      // 不在主队列中（正在评测或已出队）时 queue_position 保持 null
+      queuePosition = info.position;
     } catch {
       // Redis 不可用时静默跳过，queue_position/queue_length 保持 null
     }
-    // 如果不在 pending 中且 status 为 judging，说明正在被评测
-    // queue_position 保持 null
   }
 
   return {

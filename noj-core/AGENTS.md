@@ -293,10 +293,11 @@ docker compose down     # 停止
 
 ## Redis MQ 约定
 
-| 队列                | 方向                 | 说明                    |
-| ------------------- | -------------------- | ----------------------- |
-| `noj:judge:queue`   | noj-core → noj-judge | 评测任务（LPUSH/BRPOP） |
-| `noj:judge:results` | noj-judge → noj-core | 评测结果（BRPOP/LPUSH） |
+| 队列                                        | 方向                                 | 说明                                                                 |
+| ------------------------------------------- | ------------------------------------ | -------------------------------------------------------------------- |
+| `noj:judge:queue:high` / `:medium` / `:low` | noj-core → noj-judge                 | 评测任务三级优先级队列（LPUSH/RPOPLPUSH；前缀由 `JUDGE_QUEUE` 决定） |
+| `noj:judge:queue:high:processing` 等        | noj-judge → noj-core（sweeper 扫描） | 已领取未确认任务，超时由 sweeper 重投                                |
+| `noj:judge:results`                         | noj-judge → noj-core                 | 评测结果（BRPOP/LPUSH）                                              |
 
 **Redis 连接设计**：
 

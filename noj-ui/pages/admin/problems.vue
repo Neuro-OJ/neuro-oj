@@ -156,7 +156,7 @@ async function batchRejudge(problemId: string) {
   rejudgingProblemIds.value = new Set(rejudgingProblemIds.value).add(problemId)
   try {
     const res = await api.post<{ message: string; total: number; queued: number; skipped: number }>(
-      `/api/v1/admin/catalog/problems/${problemId}/rejudge`,
+      `/api/v1/admin/submission/problems/${problemId}/rejudge`,
     )
     showToast(
       "success",

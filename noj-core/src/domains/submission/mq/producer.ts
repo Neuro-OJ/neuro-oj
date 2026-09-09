@@ -1,16 +1,12 @@
 import type { JudgeTask, JudgeTaskPriority } from "../types/index.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
+import {
+  JUDGE_QUEUE_PREFIX,
+  JUDGE_QUEUES,
+} from "../../../shared/mq/judge-queues.ts";
 import { logJudgeTaskEnqueued } from "../../../shared/base/logging.ts";
 
-/**
- * 评测任务队列名称映射。
- * noj-judge 从对应优先级队列中 BRPOPLPUSH 拉取任务。
- */
-export const JUDGE_QUEUES: Record<JudgeTaskPriority, string> = {
-  high: "noj:judge:queue:high",
-  medium: "noj:judge:queue:medium",
-  low: "noj:judge:queue:low",
-};
+export { JUDGE_QUEUE_PREFIX, JUDGE_QUEUES };
 
 /**
  * 每级评测队列最大待评测数：超过后拒绝新提交，避免 Redis 内存无限增长。

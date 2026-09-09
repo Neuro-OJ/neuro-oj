@@ -4,7 +4,8 @@
  * 覆盖：
  * - 进行中竞赛提交（high）能被消费；
  * - 普通提交（medium）能被消费；
- * - 管理员重测（low）能被消费。
+ * - 管理员重测（low）能被消费；
+ * - high 洪峰下 low 不被饿死（固定 4:2:1 轮转的最小回归断言）。
  */
 
 import {
@@ -14,6 +15,7 @@ import {
   getAdminToken,
   getProblemIdByNumber,
   isE2E,
+  isJudgeAvailable,
   pollSubmission,
   registerUser,
   submitCode,
@@ -25,11 +27,18 @@ let adminToken = "";
 let userToken = "";
 let problemId = "";
 let contestId = "";
+let judgeOk = false;
 
 e2eTest("[e2e/priority-queue] Setup", async () => {
   if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
+  // 与 01/06/14 保持一致：judge 未就绪时快速跳过，而不是等满 poll 超时后硬失败。
+  judgeOk = await isJudgeAvailable();
+  if (!judgeOk) {
+    console.log("  ⚠ judge worker 不可用，优先级队列测试跳过");
+    return;
+  }
   const ts = Date.now().toString(36);
   userToken = await registerUser(
     `pq_${ts}`,
@@ -68,7 +77,7 @@ e2eTest("[e2e/priority-queue] Setup", async () => {
 });
 
 e2eTest("[e2e/priority-queue] high/medium/low 均能被消费", async () => {
-  if (!isE2E) return;
+  if (!isE2E || !judgeOk) return;
 
   // high：进行中竞赛提交
   const highRes = await apiPost(
@@ -110,4 +119,55 @@ e2eTest("[e2e/priority-queue] high/medium/low 均能被消费", async () => {
     );
   }
   await pollSubmission(adminToken, mediumId, 60, 2000, true);
+});
+
+e2eTest("[e2e/priority-queue] high 洪峰下 low 仍能完成（不饿死）", async () => {
+  if (!isE2E || !judgeOk) return;
+
+  // 1) 先压入一批 high（进行中竞赛提交），制造高优先级洪峰
+  const highIds: string[] = [];
+  for (let i = 0; i < 12; i++) {
+    const res = await apiPost(
+      "/api/v1/submissions",
+      {
+        problem_id: problemId,
+        language: "python3",
+        code: CODE_SAMPLES.accepted,
+        contest_id: contestId,
+      },
+      userToken,
+    );
+    if (res.status !== 201) {
+      throw new Error(`竞赛提交失败: ${res.status}`);
+    }
+    highIds.push((res.body as { data: { id: string } }).data.id);
+  }
+
+  // 2) 再排入一个 low（管理员重测）
+  const lowRes = await apiPost(
+    "/api/v1/submissions",
+    {
+      problem_id: problemId,
+      language: "python3",
+      code: CODE_SAMPLES.accepted,
+    },
+    userToken,
+  );
+  if (lowRes.status !== 201) {
+    throw new Error(`普通提交失败: ${lowRes.status}`);
+  }
+  const lowId = (lowRes.body as { data: { id: string } }).data.id;
+  const rejudge = await apiPost(
+    `/api/v1/admin/submission/submissions/${lowId}/rejudge`,
+    {},
+    adminToken,
+  );
+  if (rejudge.status !== 200) {
+    throw new Error(`重测失败: ${rejudge.status}`);
+  }
+
+  // 3) low 必须在有界时间内完成：4:2:1 轮转保证每 7 次取任务至少取 1 次 low。
+  //    若轮转退化为「高优先级不空就永远不取 low」，这里会超时失败。
+  await pollSubmission(adminToken, lowId, 90, 2000, true);
+  console.log(`  ✓ high 洪峰(${highIds.length})下 low 任务已完成`);
 });

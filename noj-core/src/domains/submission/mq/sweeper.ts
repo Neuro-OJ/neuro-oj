@@ -91,6 +91,21 @@ function markRequeued(raw: string, now: number): void {
   }
 }
 
+/**
+ * 原子执行「重投主队列 + 清空 processing 副本」。
+ *
+ * 旧实现先 RPUSH 再 LREM：两条命令之间断连/进程退出会让任务同时存在于
+ * 主队列与 processing（重复评测），或先 LREM 后崩溃导致任务丢失。
+ * 用单条 Lua 脚本保证二者原子完成；仅当 processing 中确实存在该消息时才重投。
+ */
+const REQUEUE_SCRIPT = `
+local removed = redis.call('LREM', KEYS[1], 0, ARGV[1])
+if removed > 0 then
+  redis.call('RPUSH', KEYS[2], ARGV[1])
+end
+return removed
+`;
+
 async function sweepProcessingQueue(
   processingQueue: string,
   mainQueue: string,
@@ -112,15 +127,16 @@ async function sweepProcessingQueue(
   for (const raw of rawItems) {
     if (!shouldRequeue(raw, now, timeoutMs)) continue;
     try {
-      // 先 RPUSH 回主队列（LPUSH 生产 / BRPOP 消费的 FIFO 语义下，RPUSH 落在最老端），
-      // 再清空 processing 中该 payload 的所有副本。
-      await redis.rpush(mainQueue, raw);
-      await redis.lrem(processingQueue, 0, raw);
-      markRequeued(raw, now);
-      logger.warn("processing 消息超时，已重投主队列", {
-        processing: processingQueue,
-        main: mainQueue,
-      });
+      const removed = Number(
+        await redis.eval(REQUEUE_SCRIPT, 2, processingQueue, mainQueue, raw),
+      );
+      if (removed > 0) {
+        markRequeued(raw, now);
+        logger.warn("processing 消息超时，已重投主队列", {
+          processing: processingQueue,
+          main: mainQueue,
+        });
+      }
     } catch (err) {
       logger.error("processing 消息重投失败", { err });
     }
