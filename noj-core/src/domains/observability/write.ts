@@ -11,7 +11,6 @@ export type {
   MetricDefinition,
   SnapshotProvider,
 } from "../../shared/observability/contracts.ts";
-export type { ObservabilitySnapshot } from "./types.ts";
 
 export function registerBusinessMetric(
   def: Parameters<typeof observability.registerBusinessMetric>[0],

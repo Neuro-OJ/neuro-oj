@@ -8,7 +8,7 @@ function assert(cond: unknown, msg: string): void {
   if (!cond) throw new Error(msg);
 }
 
-Deno.test("registry: counter inc/sum/render", () => {
+Deno.test("registry: counter inc 与 render", () => {
   const r = createObservabilityRegistry({ strict: true });
   r.define({
     name: "noj_http_requests_total",
@@ -21,20 +21,22 @@ Deno.test("registry: counter inc/sum/render", () => {
     route: "/health",
     status: "200",
   });
-  assert(r.sum("noj_http_requests_total") === 1, "sum 应为 1");
   const out = r.render();
   assert(
     out.includes(
       'noj_http_requests_total{method="GET",route="/health",status="200"} 1',
     ),
-    "render 应包含序列",
+    `render 应包含序列，实际：${out}`,
   );
 });
 
 Deno.test("registry: 未定义指标写入是 no-op 且不抛错", () => {
   const r = createObservabilityRegistry();
   r.inc("noj_unknown_total");
-  assert(r.sum("noj_unknown_total") === 0, "未定义指标 sum 应为 0");
+  assert(
+    !r.render().includes("noj_unknown_total"),
+    "未定义指标不应出现在渲染输出中",
+  );
 });
 
 Deno.test("registry: 非法标签被丢弃并产生自观测计数", () => {
@@ -46,10 +48,19 @@ Deno.test("registry: 非法标签被丢弃并产生自观测计数", () => {
     owner: "platform",
   });
   r.inc("noj_test_total", { user_id: "u-123" });
-  assert(r.sum("noj_test_total") === 0, "非法标签样本应被丢弃");
+  const out = r.render();
+  // 样本被整体丢弃 → 该指标只剩 HELP/TYPE，没有任何值行。
   assert(
-    r.sum("noj_observability_write_errors_total") >= 1,
-    "应记录写错误",
+    out.includes("# TYPE noj_test_total counter"),
+    `指标定义应保留，实际：${out}`,
+  );
+  assert(
+    !/^noj_test_total[ {]/m.test(out),
+    `非法标签样本应被完全丢弃，实际：${out}`,
+  );
+  assert(
+    /noj_observability_write_errors_total 1/.test(out),
+    `应记录写错误，实际：${out}`,
   );
 });
 
@@ -65,10 +76,17 @@ Deno.test("registry: 基数超限丢弃新序列", () => {
   r.inc("noj_test_total", { route: "/a" });
   r.inc("noj_test_total", { route: "/b" });
   r.inc("noj_test_total", { route: "/c" });
-  assert(r.sum("noj_test_total") === 2, "只应保留前两个序列");
+  const out = r.render();
+  assert(out.includes('noj_test_total{route="/a"} 1'), "应保留 /a");
+  assert(out.includes('noj_test_total{route="/b"} 1'), "应保留 /b");
   assert(
-    r.sum("noj_observability_metric_dropped_total") >= 1,
-    "应记录丢弃",
+    !out.includes('noj_test_total{route="/c"}'),
+    "超限序列应被丢弃",
+  );
+  assert(
+    /noj_observability_metric_dropped_total \d+/.test(out) &&
+      !out.includes("noj_observability_metric_dropped_total 0"),
+    `应记录丢弃，实际：${out}`,
   );
 });
 

@@ -112,7 +112,6 @@
 | GET | `/oauth/:provider/callback` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `/oauth/accounts` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `/oauth/providers` | noj-core/src/domains/identity/routes/auth.ts |
-| GET | `/observability` | noj-core/src/domains/observability/routes/admin.ts |
 | GET | `/permissions` | noj-core/src/domains/admin/routes/identity.ts |
 | GET | `/posts` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/posts/:postId` | noj-core/src/domains/community/routes/community.ts |

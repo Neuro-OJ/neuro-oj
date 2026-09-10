@@ -1,13 +1,9 @@
 /**
- * 观测域读侧类型。
+ * 观测域内部聚合类型。
+ *
+ * 本类型只服务于 `/metrics` 渲染，不构成对外 JSON 契约：
+ * 管理端观测端点已移除，展示归 Prometheus / Grafana。
  */
-
-export interface ObservabilityAlert {
-  key: string;
-  severity: "info" | "warning" | "critical";
-  status: "active" | "ok";
-  message: string;
-}
 
 export interface JudgeSnapshot {
   required: boolean;
@@ -24,7 +20,7 @@ export interface JudgeSnapshot {
   last_seen_at: string | null;
 }
 
-export interface ObservabilitySnapshot {
+export interface MetricsSnapshot {
   generated_at: string;
   dependencies: Record<string, unknown>;
   queue: {
@@ -35,15 +31,7 @@ export interface ObservabilitySnapshot {
     judging: number | null;
     oldest_judging_age_seconds: number | null;
   };
-  api: {
-    requests_total: number;
-    errors_total: number;
-    rate_limited_total: number;
-    error_rate_percent: number;
-    average_latency_ms: number | null;
-  };
   judge: JudgeSnapshot;
-  alerts: ObservabilityAlert[];
   providers?: {
     name: string;
     status: "ok" | "error" | "timeout";

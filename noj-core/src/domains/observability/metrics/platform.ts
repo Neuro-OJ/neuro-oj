@@ -39,8 +39,6 @@ export const PLATFORM_METRIC_NAMES = [
   "noj_judge_completed_tasks_total",
   "noj_judge_failed_tasks_total",
   "noj_judge_result_push_failures_total",
-  "noj_api_error_rate_percent",
-  "noj_api_average_latency_ms",
   "noj_database_health_latency_ms",
   "noj_redis_health_latency_ms",
   "noj_database_pool_configured_max",
@@ -241,18 +239,6 @@ export function registerPlatformMetrics(registry: ObservabilityRegistry): void {
     {
       name: "noj_judge_result_push_failures_total",
       help: "Judge 累计结果回传失败数（心跳上报，可能因 worker 重启回退）",
-      type: "gauge",
-      owner: "platform",
-    },
-    {
-      name: "noj_api_error_rate_percent",
-      help: "API 5xx 错误率百分比",
-      type: "gauge",
-      owner: "platform",
-    },
-    {
-      name: "noj_api_average_latency_ms",
-      help: "API 平均延迟（毫秒）",
       type: "gauge",
       owner: "platform",
     },

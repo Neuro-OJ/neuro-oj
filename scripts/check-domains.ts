@@ -116,8 +116,8 @@ function isPublicDomainImport(target: string, sourceDomain: string): boolean {
   const fileName = m[2]!;
   if (!DOMAINS.has(targetDomain)) return false;
   if (fileName === "index.ts") {
-    // 观测域 index.ts 仅允许 admin 挂载管理路由时导入。
-    if (targetDomain === "observability") return sourceDomain === "admin";
+    // 注：admin 是聚合门面，不在 DOMAINS 集合内，因此不存在"仅 admin 可导入
+    // 观测域 index.ts"这类例外；观测域 index.ts 无特殊例外，正常允许。
     return true;
   }
   const allowed = PUBLIC_SUBPATHS[targetDomain];

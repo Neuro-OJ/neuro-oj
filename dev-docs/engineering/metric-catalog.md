@@ -41,11 +41,9 @@
 | `noj_judge_cache_items`                | gauge     | Judge 支持包缓存条目数        |
 | `noj_judge_cache_bytes`                | gauge     | Judge 支持包缓存字节数        |
 | `noj_judge_work_dir_bytes`             | gauge     | Judge 工作目录字节数          |
-| `noj_judge_completed_tasks_total`      | gauge     | Judge 累计完成任务数           |
-| `noj_judge_failed_tasks_total`         | gauge     | Judge 累计失败任务数           |
-| `noj_judge_result_push_failures_total` | gauge     | Judge 累计结果回传失败数       |
-| `noj_api_error_rate_percent`           | gauge     | API 5xx 错误率百分比          |
-| `noj_api_average_latency_ms`           | gauge     | API 平均延迟                  |
+| `noj_judge_completed_tasks_total`      | gauge     | Judge 累计完成任务数          |
+| `noj_judge_failed_tasks_total`         | gauge     | Judge 累计失败任务数          |
+| `noj_judge_result_push_failures_total` | gauge     | Judge 累计结果回传失败数      |
 
 ## 业务指标（示例）
 

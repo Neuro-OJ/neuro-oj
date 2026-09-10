@@ -10,31 +10,39 @@
 
 ## Prometheus 与告警
 
-对象存储盘点不是 core 请求路径的一部分。按日运行 `cd noj-core && deno task
-storage:audit -- --prometheus-output <textfile-dir>/noj_storage.prom`，通过 textfile
-collector 观察 `noj_storage_objects_total`、`noj_storage_bytes`、`noj_storage_orphan_*`
-和 `noj_storage_missing_references` 的趋势。该命令只读，不会删除对象；治理边界与复核
+对象存储盘点不是 core 请求路径的一部分。按日运行
+`cd noj-core && deno task
+storage:audit -- --prometheus-output <textfile-dir>/noj_storage.prom`，通过
+textfile collector 观察
+`noj_storage_objects_total`、`noj_storage_bytes`、`noj_storage_orphan_*` 和
+`noj_storage_missing_references`
+的趋势。该命令只读，不会删除对象；治理边界与复核
 步骤见[对象存储生命周期治理](../system/object-storage-governance.md)。
 
-将 Prometheus 加入 `noj-net`，使用 `deploy/monitoring/prometheus.yml` 抓取 `core:8000`（含
-`up{job="noj-core"}` 失联检测），并加载**两个**规则文件：`deploy/monitoring/noj-alerts.yml`
-（运维告警，手工维护）与 `deploy/monitoring/noj-slo-alerts.yml`（SLO 燃烧率告警，由
-`noj-core/src/domains/observability/slo.ts` 生成，勿手工编辑）。Alertmanager 配置模板、
-凭据注入与投递演练见 `deploy/monitoring/README.md`。Grafana 可导入
+将 Prometheus 加入 `noj-net`，使用 `deploy/monitoring/prometheus.yml` 抓取
+`core:8000`（含 `up{job="noj-core"}`
+失联检测），并加载**两个**规则文件：`deploy/monitoring/noj-alerts.yml`
+（运维告警，手工维护）与 `deploy/monitoring/noj-slo-alerts.yml`（SLO
+燃烧率告警，由 `noj-core/src/domains/observability/slo.ts`
+生成，勿手工编辑）。Alertmanager 配置模板、 凭据注入与投递演练见
+`deploy/monitoring/README.md`。Grafana 可导入
 `deploy/monitoring/grafana-dashboard.json`。通知接收器凭据应保存在部署环境，不提交到仓库。
 
-> **第二个规则文件缺失不会报错。** Prometheus 的 `rule_files` 指向不存在的文件时照常启动，
-> 只是整组 SLO 规则静默消失。安装后必须用 `promtool check config` 校验，并确认 `/rules`
-> 页面同时列出 `noj-production` 与 `noj-slo` 两组；`NojSloRulesMissing` 告警是这一丢失的看门狗。
+> **第二个规则文件缺失不会报错。** Prometheus 的 `rule_files`
+> 指向不存在的文件时照常启动， 只是整组 SLO 规则静默消失。安装后必须用
+> `promtool check config` 校验，并确认 `/rules` 页面同时列出 `noj-production` 与
+> `noj-slo` 两组；`NojSloRulesMissing` 告警是这一丢失的看门狗。
 
 SLO 告警分两族：`NojSlo<名称>Fast`（severity 由 SLO 定义，短保持时长）与
-`NojSlo<名称>Slow`（warning，长保持时长）。当前为**单窗口**燃烧率——`burn_rate > 1` 等价于
-在 SLI 自身窗口内 `SLI < objective`，因此 `Fast` 会被 `Slow` 严格蕴含；解析告警敏感度时应以
-SLI 表达式里的窗口为准，而不是 Slow 的长窗口。每个 SLO 的处理步骤见其 `runbook` 注解指向的
+`NojSlo<名称>Slow`（warning，长保持时长）。当前为**单窗口**燃烧率——`burn_rate > 1`
+等价于 在 SLI 自身窗口内 `SLI < objective`，因此 `Fast` 会被 `Slow`
+严格蕴含；解析告警敏感度时应以 SLI 表达式里的窗口为准，而不是 Slow
+的长窗口。每个 SLO 的处理步骤见其 `runbook` 注解指向的
 `deploy/monitoring/runbooks/*.md`。
 
-每次发布后应确认 Prometheus target 为 UP、live/ready/metrics 可以访问，并在 staging 演练一次 Judge
-或 Redis 故障及其恢复。上线前必须执行一次告警投递演练（`scripts/deploy/test-alert.sh`）并记录结果。
+每次发布后应确认 Prometheus target 为 UP、live/ready/metrics 可以访问，并在
+staging 演练一次 Judge 或 Redis
+故障及其恢复。上线前必须执行一次告警投递演练（`scripts/deploy/test-alert.sh`）并记录结果。
 
 ## 常见故障
 
@@ -42,7 +50,8 @@ SLI 表达式里的窗口为准，而不是 Slow 的长窗口。每个 SLO 的�
 
 触发：`NojCoreScrapeDown`（抓取失败）、`NojCoreMetricsMissing`（序列缺失）。
 
-1. `noj-cli status` 与 `docker logs` 确认 core 容器状态；区分进程退出与网络/抓取配置问题。
+1. `noj-cli status` 与 `docker logs` 确认 core
+   容器状态；区分进程退出与网络/抓取配置问题。
 2. 查看 `noj-cli logs core` 中的启动顺序错误（JWT_SECRET、迁移、Redis）。
 3. 恢复后确认 Prometheus target UP，且 `noj_database_up`、`noj_redis_up`、
    `noj_result_consumer_up` 恢复为 1。
@@ -53,9 +62,12 @@ SLI 表达式里的窗口为准，而不是 Slow 的长窗口。每个 SLO 的�
 
 触发：`NojDatabaseUnavailable`、`NojRedisUnavailable`。
 
-1. 先查看 `/health/ready` 与 `noj-cli logs core`，确认是依赖不可达还是健康检查超时。
-2. `docker compose ps` 检查 postgres/redis 容器与健康状态；查看容器日志定位 OOM/磁盘/密码问题。
-3. 恢复依赖后确认队列逐步回落；Redis 数据卷损坏时使用最近快照恢复（见生产部署文档 5.1 节）。
+1. 先查看 `/health/ready` 与
+   `noj-cli logs core`，确认是依赖不可达还是健康检查超时。
+2. `docker compose ps` 检查 postgres/redis 容器与健康状态；查看容器日志定位
+   OOM/磁盘/密码问题。
+3. 恢复依赖后确认队列逐步回落；Redis
+   数据卷损坏时使用最近快照恢复（见生产部署文档 5.1 节）。
 4. 不要直接删除 Redis 数据卷或队列。
 
 ### 评测结果消费者异常 {#评测结果消费者异常}
@@ -63,14 +75,16 @@ SLI 表达式里的窗口为准，而不是 Slow 的长窗口。每个 SLO 的�
 触发：`NojResultConsumerDown`、`NojResultQueueBacklog`。
 
 1. `noj-cli logs core` 查找结果消费者启动与写入错误；确认 PostgreSQL 可写。
-2. `result processing` 积压通常是数据库写入失败重试：先恢复数据库，再观察积压回落。
+2. `result processing`
+   积压通常是数据库写入失败重试：先恢复数据库，再观察积压回落。
 3. 消费者重启后确认 `noj_result_consumer_up == 1` 且积压清零。
 
 ### Judge Worker 异常 {#judge-worker-异常}
 
 触发：`NojJudgeWorkersDown`、`NojJudgeHeartbeatMissing`。
 
-1. 检查 Worker 心跳、活跃任务和 `noj-cli logs judge`；确认独立 rootless Docker daemon 可用。
+1. 检查 Worker 心跳、活跃任务和 `noj-cli logs judge`；确认独立 rootless Docker
+   daemon 可用。
 2. `NojJudgeHeartbeatMissing` 通常伴随 core 失联：先按 Core 失联处理。
 3. 恢复后确认心跳指标恢复且队列开始消费；不要直接删除 Redis 数据卷或队列。
 
@@ -86,18 +100,20 @@ SLI 表达式里的窗口为准，而不是 Slow 的长窗口。每个 SLO 的�
 
 触发：`NojStaleJudging`。
 
-1. 查询最早 judging 任务的入队时间与 Worker 日志，确认是否为容器泄漏或超时兜底失效。
+1. 查询最早 judging 任务的入队时间与 Worker
+   日志，确认是否为容器泄漏或超时兜底失效。
 2. 单任务卡死可由管理员 rejudge；批量卡死先停止新任务并排查沙箱 daemon。
 3. 恢复后确认无新的 `NojStaleJudging` 触发。
 
 ### API 错误率或延迟升高 {#api-错误率或延迟升高}
 
-触发：`NojApiErrorRateRecentWarning`、`NojApiErrorRateRecentCritical`（5 分钟滑动窗口 5xx 比例）、
-`NojApiLatencyHigh`（P95）。
+触发：`NojApiErrorRateRecentWarning`、`NojApiErrorRateRecentCritical`（5
+分钟滑动窗口 5xx 比例）、 `NojApiLatencyHigh`（P95）。
 
 1. 按路由与状态码查询结构化日志，区分依赖异常、慢查询和限流。
 2. 结合 `noj_database_up` / `noj_redis_up` 判断是否为依赖故障传导。
-3. 恢复后确认 5 分钟窗口错误率回落；进程累计指标（`noj_api_error_rate_percent`）仅作长期参考。
+3. 恢复后确认 5
+   分钟窗口错误率回落：`sum(rate(noj_http_request_errors_total[5m])) / sum(rate(noj_http_requests_total[5m]))`。
 
 ### 磁盘和缓存压力 {#磁盘和缓存压力}
 
@@ -112,7 +128,8 @@ SLI 表达式里的窗口为准，而不是 Slow 的长窗口。每个 SLO 的�
 触发：`NojBackupStale`（>25h）、`NojBackupVeryStale`（>49h）、`NojBackupMetricMissing`。
 
 1. 检查备份 cron 是否运行、`backup.sh create` 最近输出与退出码。
-2. 确认 textfile 目录（`<备份目录>/metrics/noj_backup.prom`）在最近一次备份后有更新；
+2. 确认 textfile
+   目录（`<备份目录>/metrics/noj_backup.prom`）在最近一次备份后有更新；
    `NojBackupMetricMissing` 通常说明 node_exporter textfile collector 未配置（见
    `deploy/monitoring/README.md` 第 2 节）。
 3. 备份长时间未成功期间发生的故障无法回滚，尽快手动执行一次备份并验证。
@@ -121,5 +138,7 @@ SLI 表达式里的窗口为准，而不是 Slow 的长窗口。每个 SLO 的�
 
 触发：`NojRestoreDrillStale`（>90 天未演练）。
 
-1. 文件校验不能证明业务可恢复；安排执行 `scripts/deploy/restore-drill.sh`（见生产部署文档 5.1 节）。
-2. 演练完成后确认 textfile 目录中 `noj_restore_drill.prom` 更新，告警在下一个评估周期解除。
+1. 文件校验不能证明业务可恢复；安排执行
+   `scripts/deploy/restore-drill.sh`（见生产部署文档 5.1 节）。
+2. 演练完成后确认 textfile 目录中 `noj_restore_drill.prom`
+   更新，告警在下一个评估周期解除。

@@ -53,7 +53,7 @@
       },
       "targets": [
         {
-          "expr": "noj_api_error_rate_percent"
+          "expr": "100 * sum(rate(noj_http_request_errors_total[5m])) / clamp_min(sum(rate(noj_http_requests_total[5m])), 0.001)"
         }
       ],
       "fieldConfig": {
@@ -149,11 +149,11 @@
       },
       "targets": [
         {
-          "expr": "noj_api_average_latency_ms",
+          "expr": "1000 * sum(rate(noj_http_request_duration_seconds_sum[5m])) / clamp_min(sum(rate(noj_http_request_duration_seconds_count[5m])), 0.001)",
           "legendFormat": "average latency ms"
         },
         {
-          "expr": "noj_api_error_rate_percent",
+          "expr": "100 * sum(rate(noj_http_request_errors_total[5m])) / clamp_min(sum(rate(noj_http_requests_total[5m])), 0.001)",
           "legendFormat": "error rate %"
         }
       ]

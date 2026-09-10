@@ -215,28 +215,6 @@ export function createObservabilityRegistry(options: {
       return [...providers.values()];
     },
 
-    sum(name: string): number {
-      const state = metrics.get(name);
-      let total = 0;
-      if (state) {
-        for (const v of state.values.values()) {
-          total += v.kind === "histogram" ? (v.sum ?? 0) : v.value;
-        }
-      }
-      total += self.get(name) ?? 0;
-      return total;
-    },
-
-    count(name: string): number {
-      const state = metrics.get(name);
-      if (!state) return 0;
-      let total = 0;
-      for (const v of state.values.values()) {
-        total += v.kind === "histogram" ? (v.count ?? 0) : 1;
-      }
-      return total;
-    },
-
     render(): string {
       const lines: string[] = [];
       for (

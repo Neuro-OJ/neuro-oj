@@ -1,7 +1,7 @@
 import { createObservabilityRegistry } from "../../../shared/observability/registry.ts";
 import { registerPlatformMetrics } from "../metrics/platform.ts";
 import {
-  getObservabilitySnapshot,
+  collectMetricsSnapshot,
   renderPrometheusMetrics,
 } from "../services/snapshot.ts";
 
@@ -31,7 +31,7 @@ Deno.test("snapshot: provider 失败时仍返回部分快照且 HTTP 可渲染",
         },
       }),
   });
-  const snap = await getObservabilitySnapshot(r);
+  const snap = await collectMetricsSnapshot(r);
   assert(snap.queue.pending === 1, "good provider 应贡献数据");
   assert(
     snap.providers?.some((p) => p.status === "error"),
@@ -70,7 +70,7 @@ Deno.test("snapshot: db/redis 探针合并进 dependencies 且 /metrics 无重�
       }),
   });
 
-  const snap = await getObservabilitySnapshot(r);
+  const snap = await collectMetricsSnapshot(r);
   assert(snap.dependencies.database, "dependencies 应包含 database");
   assert(snap.dependencies.redis, "dependencies 应包含 redis");
   assert(
@@ -95,4 +95,26 @@ Deno.test("snapshot: db/redis 探针合并进 dependencies 且 /metrics 无重�
   assert(out.includes("noj_redis_up 1"), "redis_up 应为 1");
   assert(out.includes("noj_result_consumer_up 1"), "result_consumer_up 应为 1");
   assert(out.includes("noj_judge_workers 0"), "judge_workers 应降级为 0");
+});
+
+Deno.test("snapshot: 不再上报派生的错误率与平均延迟指标", async () => {
+  const r = createObservabilityRegistry();
+  registerPlatformMetrics(r);
+  const out = await renderPrometheusMetrics(r);
+  assert(
+    !out.includes("noj_api_error_rate_percent"),
+    "派生的错误率指标应已移除（判定归 Prometheus 规则）",
+  );
+  assert(
+    !out.includes("noj_api_average_latency_ms"),
+    "派生的平均延迟指标应已移除（判定归 Prometheus 规则）",
+  );
+  assert(
+    out.includes("noj_http_request_errors_total"),
+    "原始错误计数 counter 必须保留",
+  );
+  assert(
+    out.includes("noj_http_request_duration_seconds"),
+    "原始延迟 histogram 必须保留",
+  );
 });

@@ -78,10 +78,10 @@
 | noj-core/src/domains/identity/tests/routes/admin-blacklist.test.ts | 110 | env-guard |
 | noj-core/src/domains/identity/tests/routes/admin-blacklist.test.ts | 134 | env-guard |
 | noj-core/src/domains/identity/tests/routes/admin-blacklist.test.ts | 167 | env-guard |
-| noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 922 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 939 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 982 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 999 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 861 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 878 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 921 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 938 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth-ban-status.test.ts | 55 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth-ban-status.test.ts | 74 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth-ban-status.test.ts | 93 | ignore |

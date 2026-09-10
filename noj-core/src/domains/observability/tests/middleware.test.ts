@@ -27,7 +27,19 @@ Deno.test("middleware: 请求后指标增加", async () => {
   app.use("*", httpMetricsMiddleware(r));
   app.get("/ok", (c) => c.text("ok"));
   await app.request("/ok");
-  assert(r.sum("noj_http_requests_total") === 1, "请求数应为 1");
+  const out = r.render();
+  assert(
+    out.includes(
+      'noj_http_requests_total{method="GET",route="/ok",status="200"} 1',
+    ),
+    `请求计数应为 1，实际渲染：${out}`,
+  );
+  assert(
+    out.includes(
+      'noj_http_request_duration_seconds_count{method="GET",route="/ok"} 1',
+    ),
+    "应记录 1 次耗时观测",
+  );
 });
 
 Deno.test("middleware: requestContext 设置 X-Request-Id", async () => {

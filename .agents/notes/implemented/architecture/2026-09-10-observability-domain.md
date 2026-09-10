@@ -23,8 +23,10 @@ Status: implemented
 - 指标定义权混合：平台指标中央定义，业务指标各域自注册；`scripts/check-metrics.ts`
   校验命名/owner/标签。
 - Fail-open 写入：所有写方法不抛错，非法标签/基数超限丢弃并记录自观测计数。
-- 保留 `/health*`、`/metrics`、`/api/v1/admin/dashboard/observability`
-  路径与语义。
+- 保留 `/health*` 与 `/metrics` 路径与语义；管理端观测端点
+  `/api/v1/admin/dashboard/observability`
+  已按后续收窄决策移除，观测域只做状态上报，不做告警判定与展示 （见
+  `.agents/notes/implemented/bug-fix/2026-09-10-observability-narrowed-to-reporting.md`）。
 - SLO 定义在 `domains/observability/slo.ts`，由 `scripts/gen-alert-rules.ts`
   生成/校验 `deploy/monitoring/noj-slo-alerts.yml`；既有运维告警保留在
   `deploy/monitoring/noj-alerts.yml`，避免生成器覆盖历史规则。

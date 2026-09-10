@@ -16,12 +16,17 @@ Deno.test("system observability: 邮件指标注册后可写入", () => {
     provider: "mock",
     event_type: "permanent_bounce",
   });
+  const out = r.render();
   assert(
-    r.sum("noj_email_send_attempts_total") === 1,
-    "邮件发送尝试应记录 1 次",
+    out.includes(
+      'noj_email_send_attempts_total{message_type="password_reset",provider="mock"} 1',
+    ),
+    `邮件发送尝试应记录 1 次，实际：${out}`,
   );
   assert(
-    r.sum("noj_email_delivery_events_total") === 1,
-    "邮件送达事件应记录 1 次",
+    out.includes(
+      'noj_email_delivery_events_total{event_type="permanent_bounce",provider="mock"} 1',
+    ),
+    `邮件送达事件应记录 1 次，实际：${out}`,
   );
 });

@@ -10,9 +10,8 @@
 import type { ObservabilityRegistry } from "../../../shared/observability/contracts.ts";
 import { collectSnapshot, runHealthProbes } from "../probes/registry.ts";
 import { registerPlatformMetrics } from "../metrics/platform.ts";
-import { makeAlerts } from "./alerts.ts";
 import { emptyJudgeSnapshot } from "./judge-heartbeat.ts";
-import type { JudgeSnapshot, ObservabilitySnapshot } from "../types.ts";
+import type { JudgeSnapshot, MetricsSnapshot } from "../types.ts";
 
 const DEFAULT_QUEUE = {
   pending: null,
@@ -28,46 +27,14 @@ interface DependencyView {
   latency_ms?: number | null;
 }
 
-interface ApiView {
-  requests_total?: number;
-  errors_total?: number;
-  rate_limited_total?: number;
-  error_rate_percent?: number;
-  average_latency_ms?: number | null;
-}
-
 function dependency(value: unknown): DependencyView | undefined {
   if (!value || typeof value !== "object") return undefined;
   return value as DependencyView;
 }
 
-/**
- * 汇总 HTTP 指标。
- *
- * histogram 的 `sum/count` 用于计算平均延迟；counter 的 `sum` 为累计请求数。
- */
-function computeApiMetrics(registry: ObservabilityRegistry): ApiView {
-  const requestsTotal = registry.sum("noj_http_requests_total");
-  const errorsTotal = registry.sum("noj_http_request_errors_total");
-  const rateLimitedTotal = registry.sum("noj_http_rate_limited_total");
-  const latencySumSeconds = registry.sum("noj_http_request_duration_seconds");
-  const latencySamples = registry.count("noj_http_request_duration_seconds");
-  return {
-    requests_total: requestsTotal,
-    errors_total: errorsTotal,
-    rate_limited_total: rateLimitedTotal,
-    error_rate_percent: requestsTotal > 0
-      ? Math.round((errorsTotal / requestsTotal) * 10000) / 100
-      : 0,
-    average_latency_ms: latencySamples > 0
-      ? Math.round((latencySumSeconds / latencySamples) * 100000) / 100
-      : null,
-  };
-}
-
-export async function getObservabilitySnapshot(
+export async function collectMetricsSnapshot(
   registry: ObservabilityRegistry,
-): Promise<ObservabilitySnapshot> {
+): Promise<MetricsSnapshot> {
   const generatedAt = new Date().toISOString();
   const [probeResults, partial] = await Promise.all([
     runHealthProbes(registry),
@@ -90,30 +57,17 @@ export async function getObservabilitySnapshot(
     };
   }
 
-  const computedApi: ObservabilitySnapshot["api"] = computeApiMetrics(
-    registry,
-  ) as ObservabilitySnapshot["api"];
-  const providerApi = (partial.api ?? {}) as Partial<
-    ObservabilitySnapshot["api"]
-  >;
-  const queue =
-    (partial.queue ?? DEFAULT_QUEUE) as ObservabilitySnapshot["queue"];
+  const queue = (partial.queue ?? DEFAULT_QUEUE) as MetricsSnapshot["queue"];
   const judge = (partial.judge as JudgeSnapshot | undefined) ??
     emptyJudgeSnapshot();
-  const api = {
-    ...computedApi,
-    ...providerApi,
-  } as ObservabilitySnapshot["api"];
 
-  const base = {
+  return {
     generated_at: generatedAt,
     dependencies,
     queue,
-    api,
     judge,
-    providers: partial.providers as ObservabilitySnapshot["providers"],
+    providers: partial.providers as MetricsSnapshot["providers"],
   };
-  return { ...base, alerts: makeAlerts(base) };
 }
 
 /**
@@ -127,7 +81,7 @@ export async function renderPrometheusMetrics(
 ): Promise<string> {
   // render 可能被独立调用（测试/工具）；平台指标定义幂等，重复调用安全。
   registerPlatformMetrics(registry);
-  const snapshot = await getObservabilitySnapshot(registry);
+  const snapshot = await collectMetricsSnapshot(registry);
   const deps = snapshot.dependencies as Record<string, unknown>;
   const database = dependency(deps.database);
   const redis = dependency(deps.redis);
@@ -161,8 +115,6 @@ export async function renderPrometheusMetrics(
   set("noj_judge_completed_tasks_total", judge.completed_tasks_total);
   set("noj_judge_failed_tasks_total", judge.failed_tasks_total);
   set("noj_judge_result_push_failures_total", judge.result_push_failures_total);
-  set("noj_api_error_rate_percent", snapshot.api.error_rate_percent);
-  set("noj_api_average_latency_ms", snapshot.api.average_latency_ms);
   set("noj_database_health_latency_ms", database?.latency_ms);
   set("noj_redis_health_latency_ms", redis?.latency_ms);
   const poolMax = Number(Deno.env.get("DATABASE_POOL_MAX") || 10);

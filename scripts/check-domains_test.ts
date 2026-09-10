@@ -87,7 +87,7 @@ Deno.test("checkFile: 业务域 import observability/write.ts 不违规", () => 
 Deno.test("checkFile: 业务域 import observability/services 违规", () => {
   const violations = checkFile(
     "noj-core/src/domains/submission/mq/consumer.ts",
-    `import { getObservabilitySnapshot } from "../../observability/services/snapshot.ts";\n`,
+    `import { collectMetricsSnapshot } from "../../observability/services/snapshot.ts";\n`,
   );
   assert(violations.length > 0, "services 深路径应禁止");
 });
@@ -100,10 +100,26 @@ Deno.test("checkFile: observability 域 import 其他业务域违规", () => {
   assert(violations.length > 0, "观测域不得 import 业务域");
 });
 
-Deno.test("checkFile: admin import observability/index.ts 允许", () => {
+Deno.test("checkFile: 业务域 import observability 读侧 deep path 违规", () => {
   const violations = checkFile(
-    "noj-core/src/domains/admin/index.ts",
-    `import { createObservabilityAdminRouter } from "../observability/index.ts";\n`,
+    "noj-core/src/domains/submission/mq/consumer.ts",
+    `import { collectMetricsSnapshot } from "../../observability/services/snapshot.ts";\n`,
   );
-  assert(violations.length === 0, "admin 挂载管理路由应允许");
+  assert(
+    violations.length > 0,
+    "业务域不得 import 观测域读侧深路径",
+  );
+});
+
+Deno.test("checkFile: 业务域 import observability/write.ts 允许", () => {
+  const violations = checkFile(
+    "noj-core/src/domains/submission/mq/consumer.ts",
+    `import { observability } from "../../observability/write.ts";\n`,
+  );
+  assert(violations.length === 0, "写侧门面应允许");
+});
+
+Deno.test("domainOf: admin 门面域不参与边界检查", () => {
+  // admin 是聚合门面，需跨域挂载各子域路由，故有意不在 DOMAINS 集合内。
+  assertEquals(domainOf("noj-core/src/domains/admin/index.ts"), null);
 });

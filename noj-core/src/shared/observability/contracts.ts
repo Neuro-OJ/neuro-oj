@@ -51,7 +51,5 @@ export interface ObservabilityRegistry extends MetricSink {
   registerBusinessMetric(def: MetricDefinition): void;
   listHealthProbes(): HealthProbe[];
   listSnapshotProviders(): SnapshotProvider[];
-  sum(name: string): number;
-  count(name: string): number;
   render(): string;
 }

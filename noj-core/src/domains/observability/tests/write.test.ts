@@ -15,8 +15,12 @@ Deno.test("write: registerBusinessMetric 后可以写入", () => {
   observability.observe("noj_submission_e2e_duration_seconds", 1.5, {
     result: "accepted",
   });
+  // 断言渲染文本而非调用内部读数方法：渲染才是对外契约。
+  const out = observability.render();
   assert(
-    observability.count("noj_submission_e2e_duration_seconds") === 1,
-    "应记录 1 个样本",
+    out.includes(
+      'noj_submission_e2e_duration_seconds_count{result="accepted"} 1',
+    ),
+    `应记录 1 个样本，实际渲染：${out}`,
   );
 });
