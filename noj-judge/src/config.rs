@@ -45,6 +45,17 @@ pub struct Config {
     pub docker_host: String,
     /// 是否拒绝连接默认宿主 Docker socket（生产环境应开启）
     pub require_isolated_docker: bool,
+    /// 每用户评测占用 claim 的 Redis key 前缀（默认与队列前缀一致）
+    ///
+    /// 跨 worker 公平调度用：所有 worker 共享同一前缀下的占用状态，
+    /// 因此部署多 worker 时「同一用户同时最多 1 个评测」仍然成立。
+    pub user_claim_prefix: String,
+    /// 每用户 claim 的过期阈值（毫秒，默认: 3600000 = 1 小时）
+    ///
+    /// **必须大于单次评测的最长可能耗时**，否则长评测会被误判为过期而破坏互斥。
+    /// 默认 1h 远大于 evaluator 硬上限（默认 300s）。worker 崩溃留下的 claim
+    /// 会在超过该阈值后被其他 worker 自动清理。
+    pub user_claim_ttl_ms: i64,
 }
 
 impl std::fmt::Debug for Config {
@@ -102,6 +113,13 @@ pub const DEFAULT_MAX_EVALUATOR_TIME_MS: u64 = 300_000;
 /// Solution 单次调用超时硬上限（毫秒）。
 pub const DEFAULT_MAX_SOLUTION_CALL_TIMEOUT_MS: u64 = 60_000;
 
+/// 每用户评测占用 claim 的默认过期阈值（毫秒）。
+///
+/// 取 1 小时：必须**远大于**单次评测的最长可能耗时（evaluator 硬上限默认 300s），
+/// 否则长评测会被误判为过期而破坏互斥；同时又不至于让崩溃 worker 的残留 claim
+/// 长时间阻塞该用户。
+pub const DEFAULT_USER_CLAIM_TTL_MS: i64 = 3_600_000;
+
 /// 防止错误配置创建过大的 semaphore 或占满调度资源。
 const MAX_CONFIGURED_CONCURRENT_JUDGES: usize = 1024;
 
@@ -110,9 +128,18 @@ impl Config {
     ///
     /// 缺失的字段使用默认值，不会失败。
     pub fn from_env() -> Self {
+        let judge_queue = env_or("JUDGE_QUEUE", "noj:judge:queue");
+        // claim 前缀缺省由队列名派生：`noj:judge:queue` → `noj:judge`。
+        // 这样同一部署下的所有 worker（共享 JUDGE_QUEUE）自动落到同一命名空间，
+        // 无需额外约定；显式设置 JUDGE_USER_CLAIM_PREFIX 可覆盖。
+        let claim_prefix = judge_queue
+            .rsplit_once(':')
+            .map(|(head, _)| head.to_string())
+            .unwrap_or_else(|| judge_queue.clone());
+
         Self {
             redis_url: env_or("REDIS_URL", "redis://127.0.0.1/"),
-            judge_queue: env_or("JUDGE_QUEUE", "noj:judge:queue"),
+            judge_queue,
             result_queue: env_or("RESULT_QUEUE", "noj:judge:results"),
             priority_poll_timeout_secs: env_var_parse::<f64>("JUDGE_PRIORITY_POLL_TIMEOUT_MS")
                 .map(|ms| ms / 1000.0)
@@ -156,6 +183,12 @@ impl Config {
             docker_host: env_or("JUDGE_DOCKER_HOST", crate::docker::DEFAULT_DOCKER_HOST),
             require_isolated_docker: env_var_parse::<bool>("JUDGE_REQUIRE_ISOLATED_DOCKER")
                 .unwrap_or(false),
+            // 缺省与队列前缀一致：同一部署下所有 worker 自然共享同一 claim 命名空间。
+            // `judge_queue` 形如 `noj:judge:queue`，取其父命名空间作为 claim 前缀。
+            user_claim_prefix: env_or("JUDGE_USER_CLAIM_PREFIX", &claim_prefix),
+            user_claim_ttl_ms: env_var_parse::<i64>("JUDGE_USER_CLAIM_TTL_MS")
+                .filter(|v| *v > 0)
+                .unwrap_or(DEFAULT_USER_CLAIM_TTL_MS),
         }
     }
 

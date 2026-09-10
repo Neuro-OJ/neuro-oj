@@ -9,6 +9,7 @@ pub mod judge;
 pub mod metrics;
 pub mod sandbox;
 pub mod types;
+pub mod user_claim;
 
 /// stdout/stderr 合并分隔符。
 pub const STDERR_SEPARATOR: &str = "--- STDERR ---";

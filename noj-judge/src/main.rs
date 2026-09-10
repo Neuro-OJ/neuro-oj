@@ -13,14 +13,15 @@ mod types;
 
 use anyhow::{Context, Result};
 use futures_util::{stream::FuturesUnordered, FutureExt, StreamExt};
-use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::sync::Semaphore;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::config::Config;
 use crate::mq::PulledTask;
 use noj_judge::metrics::{heartbeat_loop, JudgeMetrics};
+// 跨 worker 的每用户评测占用（分布式 claim）：替代原先的进程内 HashSet。
+use noj_judge::user_claim;
 
 // merge_output 实现在 lib.rs；此处 use 使 bin 内的 `crate::merge_output` 路径可解析
 use noj_judge::merge_output;
@@ -31,28 +32,54 @@ const PULL_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
 /// 评测结果 fallback 文件目录名（相对 work_dir）。
 const FALLBACK_RESULTS_DIR: &str = "fallback-results";
 
-/// 每用户活跃评测槽位的 RAII guard。
+/// 每用户活跃评测槽位的 RAII guard（**跨 worker 分布式**）。
 ///
-/// 评测任务开始前插入 `active_users`，guard 析构时自动移除，
+/// 评测任务开始前在 Redis 上占用该用户的槽位，guard 析构时释放，
 /// 避免任务 panic/异常路径导致用户槽位泄漏。
+///
+/// 修复（跨 worker 公平性）：原实现用进程内 `HashSet` 记录活跃用户，
+/// 部署 N 个 worker 时每个进程各有一份集合，同一用户可同时跑 N 个评测，
+/// 「同一用户同时最多 1 个评测」的公平性限制被静默放大 N 倍。
+/// 现改为 Redis 全局 claim（见 `noj_judge::user_claim`），所有 worker 共享判定。
 struct ActiveUserGuard {
-    active_users: Arc<Mutex<HashSet<String>>>,
+    /// 专用 claim 连接（与主循环的阻塞连接分离，互不影响）。
+    conn: redis::aio::MultiplexedConnection,
+    prefix: String,
     user_id: String,
+    member: String,
 }
 
 impl ActiveUserGuard {
-    fn new(active_users: Arc<Mutex<HashSet<String>>>, user_id: String) -> Self {
+    fn new(
+        conn: redis::aio::MultiplexedConnection,
+        prefix: String,
+        user_id: String,
+        member: String,
+    ) -> Self {
         Self {
-            active_users,
+            conn,
+            prefix,
             user_id,
+            member,
         }
     }
 }
 
 impl Drop for ActiveUserGuard {
     fn drop(&mut self) {
-        if let Ok(mut guard) = self.active_users.lock() {
-            guard.remove(&self.user_id);
+        // Drop 不能 await：把释放操作 spawn 出去（MultiplexedConnection 的命令排队后
+        // 会在后台完成）。同时 claim 自带 TTL，即使本次释放未送达也会自动过期。
+        let (conn, prefix, user_id, member) = (
+            self.conn.clone(),
+            self.prefix.clone(),
+            self.user_id.clone(),
+            self.member.clone(),
+        );
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let mut conn = conn;
+                noj_judge::user_claim::release_user(&mut conn, &prefix, &user_id, &member).await;
+            });
         }
     }
 }
@@ -124,10 +151,17 @@ fn main() -> Result<()> {
         let cpu_limit_millicores = config.cpu_limit_millicores;
         let max_evaluator_time_ms = config.max_evaluator_time_ms;
         let max_solution_call_timeout_ms = config.max_solution_call_timeout_ms;
-        // F-07：全局并发闸门 + 每用户 active 集合（同一用户同时最多 1 个评测）。
+        // F-07：全局并发闸门 + 每用户分布式 claim（同一用户跨 worker 同时最多 1 个评测）。
         // 先获取全局 Semaphore 槽位，再做 per-user 公平调度，避免不同用户任务无限制 spawn。
         let semaphore = Arc::new(Semaphore::new(max_concurrent_judges));
-        let active_users: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+        // 跨 worker 的每用户占用走 Redis（见 noj_judge::user_claim 的模块文档）。
+        let user_claim_prefix = config.user_claim_prefix.clone();
+        let user_claim_ttl_ms = config.user_claim_ttl_ms;
+        // 专用连接：不与主循环的 BRPOPLPUSH 连接共用，避免阻塞命令影响 claim 延迟。
+        let claim_conn = redis_client
+            .get_multiplexed_async_connection()
+            .await
+            .context("创建 per-user claim 连接失败")?;
         let judge_metrics = Arc::new(JudgeMetrics::new(max_concurrent_judges));
         let heartbeat_metrics = Arc::clone(&judge_metrics);
         let heartbeat_redis = redis_client.clone();
@@ -222,15 +256,33 @@ fn main() -> Result<()> {
                         }
                     };
 
-                    // F-07 公平调度：同一用户已有评测在跑时，释放槽位并把任务
-                    // 放回队尾轮给他人。
+                    // F-07 公平调度（跨 worker）：同一用户已有**未过期**评测 claim 时，
+                    // 释放槽位并把任务放回队尾轮给他人。
+                    // 判定走 Redis 全局状态，因此 N 个 worker 也严格保持「每用户 1 个」。
+                    let claim_member =
+                        user_claim::claim_member(&instance_id, &pulled.task.submission_id);
                     let is_active_user = {
-                        let mut guard = active_users.lock().unwrap();
-                        if guard.contains(&pulled.task.user_id) {
-                            true
-                        } else {
-                            guard.insert(pulled.task.user_id.clone());
-                            false
+                        let mut claim_conn = claim_conn.clone();
+                        match user_claim::try_claim_user(
+                            &mut claim_conn,
+                            &user_claim_prefix,
+                            &pulled.task.user_id,
+                            &claim_member,
+                            user_claim_ttl_ms,
+                        )
+                        .await
+                        {
+                            Ok(claimed) => !claimed,
+                            Err(e) => {
+                                // claim 失败（Redis 异常）：保守放回队尾重试，
+                                // 不冒险并发跑同一用户的多个评测。
+                                warn!(
+                                    submission_id = %pulled.task.submission_id,
+                                    error = %e,
+                                    "占用用户槽位失败，任务放回队尾重试"
+                                );
+                                true
+                            }
                         }
                     };
                     if is_active_user {
@@ -263,16 +315,23 @@ fn main() -> Result<()> {
                     let evaluator_network_mode = evaluator_network_mode.clone();
                     let command_whitelist = command_whitelist.clone();
                     let docker = docker.clone();
-                    let active_users = Arc::clone(&active_users);
-                    let task_user_id = pulled.task.user_id.clone();
+                    let guard_conn = claim_conn.clone();
+                    let guard_prefix = user_claim_prefix.clone();
+                    let guard_user_id = pulled.task.user_id.clone();
+                    let guard_member = claim_member;
                     let task_metrics = Arc::clone(&judge_metrics);
                     task_metrics.task_started();
 
                     let handle = tokio::spawn(async move {
                         let raw = pulled.raw;
                         let task = pulled.task;
-                        // RAII guard：任务结束（含 panic/异常路径）时自动释放用户槽位。
-                        let _active_guard = ActiveUserGuard::new(active_users, task_user_id);
+                        // RAII guard：任务结束（含 panic/异常路径）时自动释放用户 claim。
+                        let _active_guard = ActiveUserGuard::new(
+                            guard_conn,
+                            guard_prefix,
+                            guard_user_id,
+                            guard_member,
+                        );
                         // 持有全局并发槽位直到任务结束。
                         let _permit = permit;
 
@@ -338,62 +397,25 @@ fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::types::{EvaluatorRuntime, RuntimeConfig, SolutionRuntime};
 
-    /// F-07 公平调度纯逻辑测试：活跃用户集合的占位/释放语义。
-    #[test]
-    fn active_user_slot_is_exclusive_and_released() {
-        let active: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
-        let user = "u-a".to_string();
-
-        {
-            let mut guard = active.lock().unwrap();
-            assert!(!guard.contains(&user), "初始无活跃用户");
-            guard.insert(user.clone());
-        }
-        {
-            let guard = active.lock().unwrap();
-            assert!(guard.contains(&user), "占位后应包含该用户");
-        }
-        {
-            let mut guard = active.lock().unwrap();
-            guard.remove(&user);
-            assert!(!guard.contains(&user), "释放后应不再包含该用户");
-        }
-    }
-
-    /// 队列 [userA 任务1, userA 任务2, userB 任务1]；userA active 时应跳到 userB 的任务。
+    /// 队列 [userA 任务1, userA 任务2, userB 任务1] 的公平调度**决策语义**：
+    /// 判定依据是「该用户是否已有未过期 claim」，因此 userA 已占用时应跳过其任务。
+    ///
+    /// 注：占用状态的**存储**已迁移到 Redis（见 noj_judge::user_claim 的测试）。
+    /// 这里只保留调度决策本身的纯逻辑断言，不再复制一份进程内集合实现。
     #[test]
     fn per_user_limit_skips_active_users() {
-        let active: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
-        active.lock().unwrap().insert("userA".to_string());
-
-        let queue = ["userA", "userA", "userB"];
-        let mut picked: Option<String> = None;
-        for user in queue {
-            let mut guard = active.lock().unwrap();
-            if guard.contains(user) {
-                continue;
+        // 模拟 try_claim_user 的返回值：userA 已被占用 → claim 失败
+        let claim_results = [("userA", false), ("userA", false), ("userB", true)];
+        let mut picked: Option<&str> = None;
+        for (user, claimed) in claim_results {
+            if claimed {
+                picked = Some(user);
+                break;
             }
-            guard.insert(user.to_string());
-            picked = Some(user.to_string());
-            break;
         }
-        assert_eq!(picked.as_deref(), Some("userB"), "应跳过活跃用户取 userB");
-    }
-
-    /// ActiveUserGuard 析构时自动释放用户槽位。
-    #[test]
-    fn active_user_guard_releases_on_drop() {
-        let active: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
-        let user = "u-guard".to_string();
-        active.lock().unwrap().insert(user.clone());
-        {
-            let _guard = ActiveUserGuard::new(Arc::clone(&active), user.clone());
-            assert!(active.lock().unwrap().contains(&user));
-        }
-        assert!(!active.lock().unwrap().contains(&user));
+        assert_eq!(picked, Some("userB"), "userA 已占用时应跳过并取 userB");
     }
 
     /// JudgeTask 反序列化需要携带 user_id（公平调度字段）。
