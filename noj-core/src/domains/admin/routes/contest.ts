@@ -41,6 +41,7 @@ import { isValidContestType } from "../../contest/types/contests.ts";
 import { listSubmissions } from "../../submission/index.ts";
 import { resolveUserId } from "../../identity/index.ts";
 import {
+  getContestRankingSnapshotByVersion,
   getContestSettlementStatus,
   getLatestContestRankingSnapshot,
   listContestRankingSnapshots,
@@ -606,12 +607,23 @@ router.get("/contests/:id/ranking-snapshots", async (c) => {
   return c.json({ data });
 });
 
-/** 导出最新正式成绩 JSON，供 CSV 之外的核对与归档使用。 */
-router.get("/contests/:id/ranking-snapshots/latest.json", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
-  const snapshot = await getLatestContestRankingSnapshot(contestId);
-  if (!snapshot) return c.json({ error: "尚未发布正式成绩" }, 404);
-  return c.json({
+/**
+ * 构造正式成绩快照的 JSON 响应体（latest 与按版本导出共用）。
+ *
+ * 抽出的理由：两条导出路径若各写一份字段组装，改动时极易只更新其中一处，
+ * 导致「最新版」与「历史版」的导出结构漂移。
+ */
+function buildRankingSnapshotJson(
+  contestId: string,
+  snapshot: {
+    version: number;
+    note: string;
+    created_by: string | null;
+    created_at: string;
+    rows: unknown;
+  },
+) {
+  return {
     data: {
       contest_id: contestId,
       version: snapshot.version,
@@ -620,36 +632,187 @@ router.get("/contests/:id/ranking-snapshots/latest.json", async (c) => {
       created_at: snapshot.created_at,
       rows: snapshot.rows,
     },
-  });
+  };
+}
+
+/**
+ * 构造正式成绩快照的 CSV 文本（latest 与按版本导出共用）。
+ *
+ * 逐行输出每人的总分与**逐题明细**（题目标签、最好成绩、提交次数、最后得分时间），
+ * 便于运营直接做成绩核对与归档，无需再解析 JSON 列。
+ *
+ * 安全：单元格经 `csvCell` 处理——以 `= + - @` 开头的内容加 `'` 前缀，
+ * 防止导出文件在 Excel 中被当作公式执行（CSV 注入）。
+ */
+function buildRankingCsv(snapshot: { version: number; rows: unknown }): string {
+  const rows = (snapshot.rows ?? []) as KaggleRankingRow[];
+  const header = [
+    "版本",
+    "排名",
+    "用户",
+    "总分",
+    "最后提交时间",
+    "题目标签",
+    "题目最好成绩",
+    "题目提交次数",
+    "该题最后得分时间",
+  ];
+  const lines: string[] = [header.join(",")];
+  for (const row of rows) {
+    const scores = row.problem_scores ?? [];
+    if (scores.length === 0) {
+      // 无题目明细时仍输出一行，避免该用户整行消失（总分本身是有效信息）
+      lines.push(
+        [
+          snapshot.version,
+          row.rank,
+          row.username,
+          row.total_score,
+          row.last_submission_at ?? "",
+          "",
+          "",
+          "",
+          "",
+        ].map(csvCell).join(","),
+      );
+      continue;
+    }
+    // 每人每题一行：便于在表格软件中直接按题目透视，而不是把明细塞进一个 JSON 单元格
+    for (const score of scores) {
+      lines.push(
+        [
+          snapshot.version,
+          row.rank,
+          row.username,
+          row.total_score,
+          row.last_submission_at ?? "",
+          score.label,
+          score.best_score,
+          score.attempts,
+          score.last_best_at ?? "",
+        ].map(csvCell).join(","),
+      );
+    }
+  }
+  return lines.join("\n");
+}
+
+/**
+ * 按最新或指定版本载入快照；不存在时返回统一的 404 响应。
+ *
+ * @param version 指定版本号；缺省取最新版
+ * @returns 快照，或 404 Response
+ */
+async function loadRankingSnapshotOr404(
+  contestId: string,
+  version?: number,
+): Promise<
+  | {
+    snapshot: NonNullable<
+      Awaited<ReturnType<typeof getLatestContestRankingSnapshot>>
+    >;
+  }
+  | { response: Response }
+> {
+  const snapshot = version === undefined
+    ? await getLatestContestRankingSnapshot(contestId)
+    : await getContestRankingSnapshotByVersion(contestId, version);
+  if (!snapshot) {
+    return {
+      response: version === undefined
+        ? Response.json({ error: "尚未发布正式成绩" }, { status: 404 })
+        : Response.json(
+          { error: `正式成绩第 ${version} 版不存在` },
+          { status: 404 },
+        ),
+    };
+  }
+  return { snapshot };
+}
+
+/** 导出最新正式成绩 JSON，供 CSV 之外的核对与归档使用。 */
+router.get("/contests/:id/ranking-snapshots/latest.json", async (c) => {
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const loaded = await loadRankingSnapshotOr404(contestId);
+  if ("response" in loaded) return loaded.response;
+  return c.json(buildRankingSnapshotJson(contestId, loaded.snapshot));
 });
 
-/** 导出正式成绩，避免直接导出可被重测改变的实时排名。 */
+/** 导出正式成绩 CSV（最新版）。 */
 router.get("/contests/:id/ranking-snapshots/latest.csv", async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
-  const snapshot = await getLatestContestRankingSnapshot(contestId);
-  if (!snapshot) return c.json({ error: "尚未发布正式成绩" }, 404);
-  const rows = snapshot.rows as KaggleRankingRow[];
-  const csv = [
-    "版本,排名,用户,总分,最后提交时间,题目提交与评测明细(JSON)",
-    ...rows.map((row) =>
-      [
-        snapshot.version,
-        row.rank,
-        row.username,
-        row.total_score,
-        row.last_submission_at ?? "",
-        JSON.stringify(row.problem_scores),
-      ].map(csvCell).join(",")
-    ),
-  ].join("\n");
+  const loaded = await loadRankingSnapshotOr404(contestId);
+  if ("response" in loaded) return loaded.response;
+  return csvResponse(
+    buildRankingCsv(loaded.snapshot),
+    `contest-${contestId}-ranking-v${loaded.snapshot.version}.csv`,
+  );
+});
+
+/**
+ * 导出**指定历史版本**的正式成绩（`<版本号>.json` / `<版本号>.csv`）。
+ *
+ * 补齐能力缺口：此前只有 latest.* 两个导出端点，而 `listContestRankingSnapshots`
+ * 只返回元数据（刻意不含 rows），运营需要核对某次成绩修订时无从取得完整数据。
+ *
+ * 路由形态说明（实测约束，勿轻易改写）：
+ * - Hono 4.12.26 会把 `:version.json` 整体当作参数名（捕获到 `"1.json"`），
+ *   且 `:version{[0-9]+}.json` 这种「正则 + 字面后缀」组合会让 RegExpRouter
+ *   **构建匹配器时直接抛错**。因此这里用单段参数 `:file` 捕获 `1.json`，
+ *   再在 handler 内自行拆分版本号与扩展名。
+ * - 必须注册在所有静态同级路由（`readiness` / `latest` / `latest.json` /
+ *   `latest.csv`）**之后**，否则 `:file` 会抢先匹配 `readiness` 等静态段。
+ */
+router.get("/contests/:id/ranking-snapshots/:file", async (c) => {
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const { version, format } = parseSnapshotFile(c.req.param("file"));
+  const loaded = await loadRankingSnapshotOr404(contestId, version);
+  if ("response" in loaded) return loaded.response;
+  if (format === "json") {
+    return c.json(buildRankingSnapshotJson(contestId, loaded.snapshot));
+  }
+  return csvResponse(
+    buildRankingCsv(loaded.snapshot),
+    `contest-${contestId}-ranking-v${loaded.snapshot.version}.csv`,
+  );
+});
+
+/**
+ * 解析 `<版本号>.<json|csv>` 形式的导出文件名。
+ *
+ * 只接受纯数字版本号 + 受支持的扩展名；其余一律 400。
+ * **不做「不匹配就回退到最新版」**——静默回退会让运营误以为导出的是历史版本。
+ */
+function parseSnapshotFile(file: string | undefined): {
+  version: number;
+  format: "json" | "csv";
+} {
+  const matched = /^(\d+)\.(json|csv)$/.exec(file ?? "");
+  if (!matched) {
+    throw new BadRequestError(
+      "导出路径必须形如 <版本号>.json 或 <版本号>.csv（版本号为不小于 1 的整数）",
+      "VALIDATION_ERROR",
+    );
+  }
+  const version = Number(matched[1]);
+  if (!Number.isInteger(version) || version < 1) {
+    throw new BadRequestError(
+      "版本号必须是不小于 1 的整数",
+      "VALIDATION_ERROR",
+    );
+  }
+  return { version, format: matched[2] as "json" | "csv" };
+}
+
+/** 以 UTF-8 BOM + 附件头返回 CSV（BOM 保证 Excel 正确识别中文）。 */
+function csvResponse(csv: string, filename: string): Response {
   return new Response("\uFEFF" + csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition":
-        `attachment; filename="contest-${contestId}-ranking.csv"`,
+      "Content-Disposition": `attachment; filename="${filename}"`,
     },
   });
-});
+}
 
 function csvCell(value: unknown): string {
   let text = String(value ?? "");

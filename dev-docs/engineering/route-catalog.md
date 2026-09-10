@@ -85,6 +85,7 @@
 | GET | `/contests/:id/events` | noj-core/src/domains/contest/routes/sse.ts |
 | GET | `/contests/:id/participants` | noj-core/src/domains/admin/routes/contest.ts |
 | GET | `/contests/:id/ranking-snapshots` | noj-core/src/domains/admin/routes/contest.ts |
+| GET | `/contests/:id/ranking-snapshots/:file` | noj-core/src/domains/admin/routes/contest.ts |
 | GET | `/contests/:id/ranking-snapshots/latest` | noj-core/src/domains/admin/routes/contest.ts |
 | GET | `/contests/:id/ranking-snapshots/latest.csv` | noj-core/src/domains/admin/routes/contest.ts |
 | GET | `/contests/:id/ranking-snapshots/latest.json` | noj-core/src/domains/admin/routes/contest.ts |
