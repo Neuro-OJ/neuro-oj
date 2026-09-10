@@ -5,7 +5,7 @@
  * 类型标签、链接构造、图标与次要元信息逻辑集中到一处。
  */
 
-import type { SearchItem } from '~/composables/useSearch';
+import type { SearchItem } from './search-types.ts';
 import { problemUrl, publicUrl, userUrl } from './publicIdentifiers.ts';
 
 const TYPE_LABELS: Record<string, string> = {
