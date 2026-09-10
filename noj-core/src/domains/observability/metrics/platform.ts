@@ -1,0 +1,258 @@
+/**
+ * 平台/基础设施指标定义。
+ *
+ * 由观测域启动时注册；业务域不得重复定义这些指标。
+ */
+
+import type { ObservabilityRegistry } from "../../../shared/observability/contracts.ts";
+
+export const PLATFORM_METRIC_NAMES = [
+  "noj_http_requests_total",
+  "noj_http_request_errors_total",
+  "noj_http_rate_limited_total",
+  "noj_http_request_duration_seconds",
+  "noj_http_requests_in_flight",
+  "noj_http_sse_connections",
+  "noj_evaluation_results_total",
+  "noj_evaluation_consumer_errors_total",
+  "noj_database_health_checks_total",
+  "noj_database_health_check_errors_total",
+  "noj_redis_health_checks_total",
+  "noj_redis_health_check_errors_total",
+  "noj_redis_up",
+  "noj_database_up",
+  "noj_result_consumer_up",
+  "noj_queue_pending_jobs",
+  "noj_queue_processing_jobs",
+  "noj_queue_result_pending_jobs",
+  "noj_queue_result_processing_jobs",
+  "noj_queue_judging_jobs",
+  "noj_queue_oldest_judging_age_seconds",
+  "noj_judge_required",
+  "noj_judge_workers",
+  "noj_judge_active_tasks",
+  "noj_judge_max_concurrent_tasks",
+  "noj_judge_orphan_containers",
+  "noj_judge_cache_items",
+  "noj_judge_cache_bytes",
+  "noj_judge_work_dir_bytes",
+  "noj_api_error_rate_percent",
+  "noj_api_average_latency_ms",
+  "noj_database_health_latency_ms",
+  "noj_redis_health_latency_ms",
+  "noj_database_pool_configured_max",
+] as const;
+
+export function registerPlatformMetrics(registry: ObservabilityRegistry): void {
+  const defs: Array<Parameters<ObservabilityRegistry["define"]>[0]> = [
+    {
+      name: "noj_http_requests_total",
+      help: "HTTP 请求总数",
+      type: "counter",
+      owner: "platform",
+      labels: ["method", "route", "status"],
+    },
+    {
+      name: "noj_http_request_errors_total",
+      help: "HTTP 5xx 请求总数",
+      type: "counter",
+      owner: "platform",
+      labels: ["method", "route", "status"],
+    },
+    {
+      name: "noj_http_rate_limited_total",
+      help: "HTTP 被限流请求总数",
+      type: "counter",
+      owner: "platform",
+      labels: ["method", "route"],
+    },
+    {
+      name: "noj_http_request_duration_seconds",
+      help: "HTTP 请求耗时（秒）",
+      type: "histogram",
+      owner: "platform",
+      labels: ["method", "route"],
+    },
+    {
+      name: "noj_http_requests_in_flight",
+      help: "当前处理中的 HTTP 请求数",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_http_sse_connections",
+      help: "当前 SSE 连接数",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_evaluation_results_total",
+      help: "收到的评测结果总数",
+      type: "counter",
+      owner: "platform",
+    },
+    {
+      name: "noj_evaluation_consumer_errors_total",
+      help: "评测结果消费者错误总数",
+      type: "counter",
+      owner: "platform",
+    },
+    {
+      name: "noj_database_health_checks_total",
+      help: "PostgreSQL 健康检查总数",
+      type: "counter",
+      owner: "platform",
+    },
+    {
+      name: "noj_database_health_check_errors_total",
+      help: "PostgreSQL 健康检查失败总数",
+      type: "counter",
+      owner: "platform",
+    },
+    {
+      name: "noj_redis_health_checks_total",
+      help: "Redis 健康检查总数",
+      type: "counter",
+      owner: "platform",
+    },
+    {
+      name: "noj_redis_health_check_errors_total",
+      help: "Redis 健康检查失败总数",
+      type: "counter",
+      owner: "platform",
+    },
+    {
+      name: "noj_redis_up",
+      help: "Redis 是否可用",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_database_up",
+      help: "PostgreSQL 是否可用",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_result_consumer_up",
+      help: "评测结果消费者是否存活",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_queue_pending_jobs",
+      help: "评测 pending 队列长度",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_queue_processing_jobs",
+      help: "评测 processing 队列长度",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_queue_result_pending_jobs",
+      help: "评测结果 pending 队列长度",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_queue_result_processing_jobs",
+      help: "评测结果 processing 队列长度",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_queue_judging_jobs",
+      help: "数据库中 judging 状态的评测数",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_queue_oldest_judging_age_seconds",
+      help: "最早 judging 评测年龄（秒）",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_judge_required",
+      help: "生产环境是否要求 Judge Worker",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_judge_workers",
+      help: "在线 Judge Worker 数",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_judge_active_tasks",
+      help: "Judge 活跃任务数",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_judge_max_concurrent_tasks",
+      help: "Judge 并发上限总和",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_judge_orphan_containers",
+      help: "Judge 孤儿容器数",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_judge_cache_items",
+      help: "Judge 支持包缓存条目数",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_judge_cache_bytes",
+      help: "Judge 支持包缓存字节数",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_judge_work_dir_bytes",
+      help: "Judge 工作目录字节数",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_api_error_rate_percent",
+      help: "API 5xx 错误率百分比",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_api_average_latency_ms",
+      help: "API 平均延迟（毫秒）",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_database_health_latency_ms",
+      help: "PostgreSQL 健康检查延迟（毫秒）",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_redis_health_latency_ms",
+      help: "Redis 健康检查延迟（毫秒）",
+      type: "gauge",
+      owner: "platform",
+    },
+    {
+      name: "noj_database_pool_configured_max",
+      help: "PostgreSQL 配置的连接池上限",
+      type: "gauge",
+      owner: "platform",
+    },
+  ];
+  for (const def of defs) registry.define(def);
+}
