@@ -9,10 +9,11 @@ import { resolve } from "node:path";
 import { PLATFORM_METRIC_NAMES } from "../noj-core/src/domains/observability/metrics/platform.ts";
 
 const DEFINE_RE = /registerBusinessMetric\(\s*\{[\s\S]*?name:\s*"([^"]+)"/g;
-// 只锚定到指标名字符串，不要求紧跟 ")"，否则带标签/带增量的写入
-// （observability.inc("noj_x", { ... })）一条都匹配不到。
-const WRITE_RE =
-  /(?:observability|metrics|registry)\.(?:inc|set|add|observe)\(\s*"([^"]+)"/g;
+// 锚定指标名前缀而非接收者变量名：接收者可能是 observability / metrics /
+// registry / observabilityRegistry 或任意别名，列不全就会漏检（曾因此只覆盖
+// 生产代码 1 个写入点）。`noj_` 前缀由 validateMetricDefinition 强制，
+// 且定义处写作 `name: "..."`，不会与本模式冲突。
+const WRITE_RE = /\.(?:inc|set|add|observe)\(\s*"(noj_[a-z0-9_]+)"/g;
 
 export function checkMetricCalls(
   content: string,

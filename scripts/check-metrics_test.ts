@@ -36,6 +36,17 @@ Deno.test("check-metrics: 带增量的写入也要被检查", () => {
   assert(errors.length > 0, "带增量的未定义写入应报错");
 });
 
+Deno.test("check-metrics: 任意接收者变量名都要被检查", () => {
+  // app.ts 的真实形态是 observabilityRegistry.inc(...)；按接收者枚举会漏检。
+  for (const receiver of ["observabilityRegistry", "obs", "sink", "self"]) {
+    const errors = checkMetricCalls(
+      `${receiver}.inc("noj_unknown_total", { route: "/x" });\n`,
+      new Set(["noj_known_total"]),
+    );
+    assert(errors.length > 0, `接收者 ${receiver} 的未定义写入应报错`);
+  }
+});
+
 Deno.test("check-metrics: 已注册指标不报错", () => {
   const errors = checkMetricCalls(
     `observability.inc("noj_known_total", { route: "/x" });\n` +

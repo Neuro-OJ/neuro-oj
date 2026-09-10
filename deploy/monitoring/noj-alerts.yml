@@ -244,13 +244,15 @@ groups:
 
       # ---- SLO 规则装载看门狗 ----
       # rule_files 指向缺失文件时 Prometheus 照常启动且不报错，整组 SLO 规则会静默
-      # 消失（实测 v2.54.1）。该告警不依赖 SLO 规则本身，用 absent() 覆盖这一失败。
+      # 消失（实测 v2.54.1）。哨兵 noj:slo:rules_loaded 由生成器恒定为 vector(1)，
+      # 只在规则组装载时存在；不能用数据相关的录制规则代替——核心停机或无流量时
+      # 燃烧率规则会产出空向量，absent() 同样为真，会把原因误判为"规则未装载"。
       - alert: NojSloRulesMissing
-        expr: absent(noj:slo:api_availability:burn_rate)
+        expr: absent(noj:slo:rules_loaded)
         for: 30m
         labels:
           severity: critical
         annotations:
           summary: SLO 规则未装载（noj-slo-alerts.yml 缺失或规则未生效）
-          description: 未找到 SLO 燃烧率记录规则。检查 noj-slo-alerts.yml 是否已安装到 /etc/prometheus/rules/，并执行 promtool check config。
+          description: 未找到 SLO 规则组装载哨兵。检查 noj-slo-alerts.yml 是否已安装到 /etc/prometheus/rules/，并执行 promtool check config。
           runbook: noj-docs/docs/operators/observability.md#core-失联

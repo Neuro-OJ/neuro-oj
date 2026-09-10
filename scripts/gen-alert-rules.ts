@@ -17,6 +17,15 @@ import {
 
 export const SLO_ALERTS_RELATIVE_PATH = "deploy/monitoring/noj-slo-alerts.yml";
 
+/**
+ * 规则组装载哨兵。
+ *
+ * 由生成器恒定输出，被 `noj-alerts.yml` 的 `NojSloRulesMissing` 用 `absent()`
+ * 检测。不能用数据相关的录制规则代替：核心停机或无流量时该规则产出空向量，
+ * 会让"规则未装载"与"无数据"无法区分。
+ */
+export const SLO_LOADED_SENTINEL = "noj:slo:rules_loaded";
+
 function yamlEscape(value: string): string {
   return /[:#\n]/.test(value) ? JSON.stringify(value) : value;
 }
@@ -80,6 +89,11 @@ export function renderSloRules(): string {
     "groups:",
     "  - name: noj-slo",
     "    rules:",
+    // 常量哨兵：只要本规则组被装载就恒定存在。NojSloRulesMissing 用它判断
+    // "规则未装载"，而不是用某个数据相关的录制规则（后者在无流量/停机窗口内
+    // 会产出空向量，absent() 同样为真，导致告警原因被误判）。
+    `      - record: ${SLO_LOADED_SENTINEL}`,
+    "        expr: vector(1)",
   ];
   for (const slo of SLOS) {
     if (slo.kind === "ratio") {

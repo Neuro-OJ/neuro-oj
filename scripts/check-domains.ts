@@ -108,18 +108,14 @@ export function resolveRelativeImport(
   return toPosix(rel);
 }
 
-function isPublicDomainImport(target: string, sourceDomain: string): boolean {
+function isPublicDomainImport(target: string): boolean {
   const p = toPosix(target);
   const m = p.match(/^(?:noj-core\/)?src\/domains\/([^/]+)\/([^/]+\.ts)$/);
   if (!m) return false;
   const targetDomain = m[1]!;
   const fileName = m[2]!;
   if (!DOMAINS.has(targetDomain)) return false;
-  if (fileName === "index.ts") {
-    // 注：admin 是聚合门面，不在 DOMAINS 集合内，因此不存在"仅 admin 可导入
-    // 观测域 index.ts"这类例外；观测域 index.ts 无特殊例外，正常允许。
-    return true;
-  }
+  if (fileName === "index.ts") return true;
   const allowed = PUBLIC_SUBPATHS[targetDomain];
   return allowed ? allowed.includes(fileName) : false;
 }
@@ -159,7 +155,7 @@ export function checkFile(
       });
       continue;
     }
-    if (isPublicDomainImport(target, sourceDomain)) continue;
+    if (isPublicDomainImport(target)) continue;
 
     violations.push({
       file,
@@ -216,6 +212,48 @@ export async function checkDomains(root = "."): Promise<DomainViolation[]> {
 }
 
 /**
+ * 检查 `domains/admin/**` 不得导入观测域读侧。
+ *
+ * admin 是聚合门面，`domainOf` 对它返回 null，因此不走通用域边界规则；
+ * 而管理端观测端点已移除，admin 不再需要观测域读侧的任何东西（注册指标走
+ * `observability/write.ts` 门面）。这条不变量需要单独表达。
+ */
+export async function checkAdminObservabilityReadSide(
+  root = ".",
+): Promise<DomainViolation[]> {
+  const violations: DomainViolation[] = [];
+  const adminDir = resolve(root, "noj-core/src/domains/admin");
+  try {
+    const stat = await Deno.stat(adminDir);
+    if (!stat.isDirectory) return [];
+  } catch {
+    return [];
+  }
+  for (const file of await collectTsFiles(adminDir)) {
+    const rel = toPosix(relative(resolve(root), file));
+    const content = await Deno.readTextFile(file);
+    for (const m of content.matchAll(IMPORT_RE)) {
+      const spec = m[1];
+      if (!spec) continue;
+      const target = resolveRelativeImport(rel, spec, root);
+      if (!target) continue;
+      const p = toPosix(target);
+      if (!p.includes("/domains/observability/")) continue;
+      // 写侧门面允许（业务域与 admin 注册指标的唯一入口）。
+      if (p.endsWith("/observability/write.ts")) continue;
+      violations.push({
+        file: rel,
+        importSpec: spec,
+        target: p,
+        message:
+          `admin 不得导入观测域读侧: ${spec}（管理端观测端点已移除，展示归 Prometheus / Grafana）`,
+      });
+    }
+  }
+  return violations;
+}
+
+/**
  * 检查 `src/shared/**` 不得反向依赖 `src/domains/**`。
  */
 export async function checkSharedImports(
@@ -263,7 +301,8 @@ if (import.meta.main) {
 
   const violations = await checkDomains(".");
   const sharedViolations = await checkSharedImports(".");
-  const all = [...violations, ...sharedViolations];
+  const adminReadSideViolations = await checkAdminObservabilityReadSide(".");
+  const all = [...violations, ...sharedViolations, ...adminReadSideViolations];
 
   if (baselinePath) {
     const baselineText = await Deno.readTextFile(baselinePath).catch(() => "");

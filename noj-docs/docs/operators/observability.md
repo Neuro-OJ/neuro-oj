@@ -6,7 +6,6 @@
 - `core:8000/health/live`：进程存活检查。
 - `core:8000/health/ready`：检查 PostgreSQL、Redis 与结果消费者。
 - `core:8000/metrics`：Prometheus 指标端点，只应在内部网络抓取，不应映射到公网。
-- 管理后台仪表盘：管理员可查看观测快照。
 
 ## Prometheus 与告警
 
@@ -96,13 +95,9 @@ staging 演练一次 Judge 或 Redis
 2. 评估是否为提交洪峰：必要时暂停新评测入口，扩容 Worker 后恢复。
 3. 观察磁盘与缓存压力，避免 Worker 因资源不足批量失败。
 
-### 评测卡死 {#评测卡死}
-
-触发：`NojStaleJudging`。
-
-1. 查询最早 judging 任务的入队时间与 Worker
-   日志，确认是否为容器泄漏或超时兜底失效。
-2. 单任务卡死可由管理员 rejudge；批量卡死先停止新任务并排查沙箱 daemon。
+> `NojStaleJudging`（评测卡死）的处置步骤见
+> `deploy/monitoring/runbooks/queue-oldest-judging-age.md`——该告警的 runbook 注解已
+> 指向那里，此处不再重复，避免同一故障存在两份可能漂移的处置说明。
 3. 恢复后确认无新的 `NojStaleJudging` 触发。
 
 ### API 错误率或延迟升高 {#api-错误率或延迟升高}

@@ -64,3 +64,31 @@ Deno.test("health: ready 保留旧顶层字段且 consumer down 时 503", async 
   assert(body.redis === "ok", "应保留 redis 顶层字段");
   assert(body.consumer === "error", "应保留 consumer 顶层字段");
 });
+
+Deno.test("health: 生产环境 ready 不披露依赖明细", async () => {
+  const previous = Deno.env.get("NOJ_ENV");
+  Deno.env.set("NOJ_ENV", "production");
+  try {
+    const r = createObservabilityRegistry();
+    r.registerHealthProbe({
+      name: "database",
+      critical: true,
+      check: () => ({ status: "up" as const }),
+    });
+    const app = new Hono().route("/", createHealthRouter(r));
+    const res = await app.request("/health/ready");
+    const body = await res.json();
+    // /healthz 经 nginx 暴露且无鉴权，依赖可用性不得对外披露。
+    for (const field of ["database", "redis", "consumer", "queue", "checks"]) {
+      assert(
+        body[field] === undefined,
+        `生产环境不应返回 ${field}，实际 ${JSON.stringify(body[field])}`,
+      );
+    }
+    assert(body.status === "ready", "仍应返回 status");
+    assert(body.service === "noj-core", "仍应返回 service");
+  } finally {
+    if (previous === undefined) Deno.env.delete("NOJ_ENV");
+    else Deno.env.set("NOJ_ENV", previous);
+  }
+});

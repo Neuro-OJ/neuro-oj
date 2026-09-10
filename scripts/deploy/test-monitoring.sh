@@ -62,29 +62,61 @@ pass "prometheus.yml 含规则文件引用、Alertmanager 与 noj-core 抓取"
 
 # 2.5 抓取目标主机名必须是生产 compose 的真实服务名（服务名即 noj-net 内的 DNS 名）
 if [[ -f "$PROD_COMPOSE" ]]; then
+  # 解析所有 noj-* 任务的 targets，兼容行内数组与块状多行两种写法。
+  # 注释行跳过；job 状态在遇到非 noj-* 任务时重置，避免沿用到下一个任务。
+  targets="$(awk '
+    /^[[:space:]]*#/ { next }
+    /job_name:/ {
+      line = $0
+      sub(/.*job_name:[[:space:]]*/, "", line)
+      sub(/[[:space:]]*$/, "", line)
+      if (line ~ /^noj-/) { job = line } else { job = "" }
+      intargets = 0
+      next
+    }
+    job == "" { next }
+    /targets:/ {
+      line = $0
+      sub(/.*targets:[[:space:]]*/, "", line)
+      if (line ~ /\[/) {
+        # 行内数组：逐个校验，不能只取第一个
+        sub(/^[^[]*\[/, "", line)
+        sub(/\].*$/, "", line)
+        n = split(line, parts, ",")
+        for (i = 1; i <= n; i++) {
+          gsub(/["[:space:]]/, "", parts[i])
+          if (parts[i] != "") print job "\t" parts[i]
+        }
+        intargets = 0
+      } else {
+        # 块状多行：后续以 "- " 开头的行都是目标
+        sub(/[[:space:]]*$/, "", line)
+        if (line != "") { gsub(/["]/, "", line); print job "\t" line }
+        intargets = 1
+      }
+      next
+    }
+    intargets {
+      if ($0 ~ /^[[:space:]]*-[[:space:]]/) {
+        line = $0
+        sub(/^[[:space:]]*-[[:space:]]*/, "", line)
+        sub(/[[:space:]]*$/, "", line)
+        gsub(/["]/, "", line)
+        if (line != "") print job "\t" line
+      } else { intargets = 0 }
+    }
+  ' "$PROMETHEUS")"
+  # 零目标说明解析失配（格式变化或任务被删空），此时检查已失去意义，必须失败。
+  [[ -n "$targets" ]] ||
+    fail "未从 prometheus.yml 解析出任何 noj-* 抓取目标，检查已失去意义"
   while IFS=$'\t' read -r job target; do
     [[ -n "$job" && -n "$target" ]] || continue
     host="${target%%:*}"
     if ! grep -qE "^  ${host}:" "$PROD_COMPOSE"; then
       fail "prometheus.yml 任务 $job 的目标主机 $host 不是 docker-compose.prod.yml 的服务名"
     fi
-  done < <(awk '
-    /^[[:space:]]*#/ { next }
-    /job_name:[[:space:]]*noj-/ {
-      job = $0
-      sub(/.*job_name:[[:space:]]*/, "", job)
-    }
-    /targets:/ {
-      if (job == "") next
-      line = $0
-      sub(/.*targets:[[:space:]]*/, "", line)
-      sub(/[^]]*$/, "", line)
-      gsub(/[][",]/, "", line)
-      gsub(/[[:space:]]+/, "", line)
-      if (line != "") print job "\t" line
-    }
-  ' "$PROMETHEUS")
-  pass "抓取目标主机名与生产 compose 服务名一致"
+  done <<<"$targets"
+  pass "全部 $(wc -l <<<"$targets") 个抓取目标主机名与生产 compose 服务名一致"
 fi
 
 # 3. 失联检测规则存在（不依赖 core 自身指标）
@@ -97,8 +129,8 @@ grep -q 'NojBackupStale' "$ALERTS" || fail "缺少备份新鲜度告警"
 grep -q 'noj_backup_last_success_unix_time' "$ALERTS" || fail "备份告警未引用 textfile 指标"
 grep -q 'NojRestoreDrillStale' "$ALERTS" || fail "缺少恢复演练新鲜度告警"
 grep -q 'NojSloRulesMissing' "$ALERTS" || fail "缺少 SLO 规则装载看门狗告警"
-grep -q 'absent(noj:slo:api_availability:burn_rate)' "$ALERTS" ||
-  fail "SLO 看门狗应使用 absent() 检测记录规则缺失"
+grep -q 'absent(noj:slo:rules_loaded)' "$ALERTS" ||
+  fail "SLO 看门狗应用 absent() 检测规则组装载哨兵缺失"
 pass "失联检测、近期错误率、备份新鲜度与 SLO 装载看门狗齐备"
 
 # 3.5 SLO 规则存在且与运维告警分离

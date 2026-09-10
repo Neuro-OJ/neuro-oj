@@ -1,4 +1,9 @@
-import { checkFile, domainOf, resolveRelativeImport } from "./check-domains.ts";
+import {
+  checkAdminObservabilityReadSide,
+  checkFile,
+  domainOf,
+  resolveRelativeImport,
+} from "./check-domains.ts";
 
 function assert(cond: unknown, msg: string): void {
   if (!cond) {
@@ -100,26 +105,44 @@ Deno.test("checkFile: observability 域 import 其他业务域违规", () => {
   assert(violations.length > 0, "观测域不得 import 业务域");
 });
 
-Deno.test("checkFile: 业务域 import observability 读侧 deep path 违规", () => {
-  const violations = checkFile(
-    "noj-core/src/domains/submission/mq/consumer.ts",
-    `import { collectMetricsSnapshot } from "../../observability/services/snapshot.ts";\n`,
-  );
-  assert(
-    violations.length > 0,
-    "业务域不得 import 观测域读侧深路径",
-  );
-});
-
-Deno.test("checkFile: 业务域 import observability/write.ts 允许", () => {
-  const violations = checkFile(
-    "noj-core/src/domains/submission/mq/consumer.ts",
-    `import { observability } from "../../observability/write.ts";\n`,
-  );
-  assert(violations.length === 0, "写侧门面应允许");
-});
-
-Deno.test("domainOf: admin 门面域不参与边界检查", () => {
+Deno.test("domainOf: admin 门面域不参与通用边界检查", () => {
   // admin 是聚合门面，需跨域挂载各子域路由，故有意不在 DOMAINS 集合内。
   assertEquals(domainOf("noj-core/src/domains/admin/index.ts"), null);
+});
+
+Deno.test("checkAdminObservabilityReadSide: 真实仓库 admin 不导入观测域读侧", async () => {
+  const violations = await checkAdminObservabilityReadSide(".");
+  assert(
+    violations.length === 0,
+    `admin 不应导入观测域读侧，实际: ${JSON.stringify(violations)}`,
+  );
+});
+
+Deno.test("checkAdminObservabilityReadSide: 用临时夹具验证违规可被检测", async () => {
+  const root = await Deno.makeTempDir({ prefix: "noj-admin-boundary-" });
+  try {
+    const adminDir = `${root}/noj-core/src/domains/admin`;
+    await Deno.mkdir(adminDir, { recursive: true });
+    // 读侧深路径：应违规
+    await Deno.writeTextFile(
+      `${adminDir}/bad.ts`,
+      `import { collectMetricsSnapshot } from "../observability/services/snapshot.ts";\n`,
+    );
+    const bad = await checkAdminObservabilityReadSide(root);
+    assert(bad.length > 0, "admin 导入观测域读侧应被检测为违规");
+
+    // 写侧门面：应允许
+    await Deno.remove(`${adminDir}/bad.ts`);
+    await Deno.writeTextFile(
+      `${adminDir}/ok.ts`,
+      `import { observability } from "../observability/write.ts";\n`,
+    );
+    const ok = await checkAdminObservabilityReadSide(root);
+    assert(
+      ok.length === 0,
+      `write.ts 门面应允许，实际: ${JSON.stringify(ok)}`,
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
 });

@@ -1,6 +1,8 @@
 groups:
   - name: noj-slo
     rules:
+      - record: noj:slo:rules_loaded
+        expr: vector(1)
       - record: noj:slo:api_availability:burn_rate
         expr: |
           (1 - (sum(rate(noj_http_requests_total{status!~"5.."}[5m])) / sum(rate(noj_http_requests_total[5m])))) / (1 - 0.995)

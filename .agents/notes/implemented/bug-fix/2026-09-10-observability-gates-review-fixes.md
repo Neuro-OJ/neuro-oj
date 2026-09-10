@@ -12,8 +12,10 @@ Status: implemented
   仍打印 `✓`。
 - `check-runbooks_test.ts` 与 `check-runtime-contract_test.ts` 只断言
   `Array.isArray(errors)`，对任何输入恒真。
-- `check-metrics.ts` 的 `WRITE_RE` 要求指标名后紧跟 `)`，只能匹配无第二参数的写入；
-  带标签/带增量这种真实调用形态全部漏检。
+- `check-metrics.ts` 的 `WRITE_RE` 把接收者写死为 `observability` 字面量
+  （`/observability\.(?:inc|set|add|observe)\(/`），而生产代码的写入接收者实际写作
+  `metrics`（`// @ts-...` 别名）、`registry`、`observabilityRegistry` 等，因此该门禁
+  在生产代码上**几乎完全失效**：实测基线只匹配到 **1** 个写入点。
 - `check-runbooks.ts` 只 `stat` runbook 路径存在性，从不校验锚点；`test-monitoring.sh`
   又只扫 `noj-alerts.yml`，于是 3 条 email 告警的注解从未被任何检查覆盖。
 
@@ -41,7 +43,9 @@ Status: implemented
   `test-monitoring.sh` 的空输入守卫、按注解声明的文件定位锚点（而非写死一个文件）、
   并要求目标文档存在；两个 check 测试改为断言具体诊断输出。
 - **`checkRunbooks` 零注解即失败**，因为注解被整体清空与「检查逻辑失配」不可区分。
-- **`WRITE_RE` 锚定到指标名字符串**，不要求后接 `)`，覆盖带标签/带增量的写入。
+- **`WRITE_RE` 改为锚定指标名前缀**（`/\.(?:inc|set|add|observe)\(\s*"(noj_[a-z0-9_]+)"/`）：
+  不再枚举接收者变量名，因此覆盖全部接收者形态；`noj_` 前缀由
+  `validateMetricDefinition` 强制，且定义处写作 `name: "..."`，不会误匹配。
 - **删除 SLO 侧的 `queue_oldest_judging_age`**，该条件由运维告警 `NojStaleJudging`
   单独负责；`test-monitoring.sh` 增加反向断言防止重复告警回归。
 - **`burnRateWindows` 更名为 `holdFor`**，并在 `slo.ts` 注释与运维文档中写明当前是
@@ -72,7 +76,8 @@ Status: implemented
 
 - `check-ci.ts` 全绿不再等于配置正确，但零注解、缺锚点、缺文件、抓取目标不匹配、
   重复告警这些形态现在都会显式失败。
-- `check-metrics.ts` 覆盖的写入点从 6 个增至 19 个，带标签的写入不再漏检。
+- `check-metrics.ts` 覆盖的写入点由 1 个增至 20 个（`noj-core/src` 非测试代码），
+  任意接收者变量名的写入都在检查范围内。
 - 运行 `deno run -A scripts/gen-alert-rules.ts` 会按 `slo.ts` 重新生成 SLO 规则；
   运维告警仍在 `noj-alerts.yml` 手工维护，生成器不再触碰该文件。
 - `plan`/`spec` 文档中的 `burnRateWindows` 与计划命名 `NojSloBurnRate*` 未回改——它们
@@ -81,3 +86,32 @@ Status: implemented
   需同步 `prometheus.yml`，否则新断言会失败——这是有意的耦合提示。
 - `NojSloRulesMissing` 自身依赖 SLO 记录规则不存在来触发；若 `noj-alerts.yml` 整体
   未安装，则该看门狗与其保护的对象一同消失，此边界无法在规则文件内消除。
+
+## 复审修复（第二轮）
+
+对本轮改动做独立代码复审后，修掉了 6 处「门禁自身不可靠」的缺陷——它们与本节开头
+列出的缺陷属**同一类**，包括本轮新写的门禁：
+
+- **抓取目标门禁自己就是假绿**：初版 awk 不重置 `job` 变量，导致非 `noj-*` 任务沿用上一个
+  `noj-*` 任务名——按文档取消 `job_name: node` 注释会被误拦（错误信息还会指向错误的任务名）；
+  同时 `gsub(/[[:space:]]+/, "", line)` 把多个目标粘成一个 token，只校验第一个，块状多行
+  `targets:` 更因无 `]` 而整段跳过。已重写为状态机（重置 job、按逗号拆多目标、支持块状、
+  零目标即失败），并用 4 个变异探测验证。
+- **`NojSloRulesMissing` 会把原因误判**：`absent(数据相关录制规则)` 无法区分「规则组未装载」
+  与「录制规则产出空向量」——后者在核心停机或无流量窗口内必然发生（实测：规则已装载时
+  `absent(noj:slo:api_availability:burn_rate)` 仍为 1）。改为生成器恒定输出哨兵
+  `noj:slo:rules_loaded = vector(1)`，告警改用 `absent(noj:slo:rules_loaded)`；实测装载时
+  哨兵存在、absent 为空。
+- **`check-metrics.ts` 的正则仍漏检接收者**：按接收者枚举必然列不全（`observabilityRegistry`
+  即漏网，而 `app.ts` 正是该写法）。改为锚定 `noj_` 指标名前缀。
+- **`/healthz` 信息披露回归**：`/health/ready` 新增的 `database`/`redis`/`consumer`/`queue`
+  四字段被无条件输出，绕过了 `showDetails` 生产守卫，而该端点经 nginx 无鉴权暴露。
+  已移入守卫并补生产环境用例。
+- **`scripts/` 不在 CI 的 lint/fmt 范围内**：本节新增的门禁逻辑大多在 `scripts/`，而
+  `.github/workflows/ci.yml` 只对 `noj-core` 与 `noj-llm-gateway` 跑 `deno lint`/`fmt`。
+  残留的未使用参数（`isPublicDomainImport` 的 `sourceDomain`）因此只在本地暴露。
+  本轮已清理该参数并本地对 `scripts/` 全量 lint；给 CI 补 `scripts/` 检查列为后续工作。
+- **spec §6 的反向断言未实现**：改为新增 `checkAdminObservabilityReadSide`——admin 是聚合
+  门面、`domainOf` 返回 null，通用规则覆盖不到它，这条不变量（admin 不得导入观测域读侧）
+  必须单独表达；同时删掉之前两条重复/空洞的 fixture（其一路径写成 `../../observability/`
+  会解析到不存在的域内路径，断言恒真）。

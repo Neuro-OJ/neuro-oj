@@ -9,7 +9,6 @@
 - `core:8000/health/ready`：检查 PostgreSQL、Redis 和结果消费者。
 - `core:8000/metrics`：Prometheus 文本指标，仅应在内部网络抓取，不要将 core
   端口直接映射到公网。
-- 管理后台首页：展示经过管理员权限保护的观测快照，默认按页面刷新设置轮询。
 
 ## 接入 Prometheus、Grafana 和 Alertmanager
 

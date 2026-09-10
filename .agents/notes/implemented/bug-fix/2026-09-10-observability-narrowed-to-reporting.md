@@ -83,10 +83,9 @@ Grafana。判别标准：**若某个值需要先决定"这算不算正常"，它
   条硬编码判定，而它本已失效且属越界职责。
 - 观测域测试改为断言 `render()` 的文本输出而非内部读数方法。这暴露了原
   `shared/observability/registry.test.ts`
-  中若干断言依赖已删方法的脆弱性，改写后断言 更贴近对外契约；`write.test.ts`
-  原先经 `write.ts` 子门面注册的指标因该门面从不调用 `registerBusinessMetric`
-  而实际未被写入，`count()` 读的是另一数据源，属假通过——
-  改写为渲染文本断言后该路径的真实行为被显式覆盖。
+  中若干断言依赖已删方法的脆弱性，改写后断言更贴近对外契约；`write.test.ts`
+  也改为断言渲染文本——它原先经 `observability` 单例的 `count()` 读数（注册路径本身
+  是通的，该断言有效），渲染文本断言更贴近对外契约且不依赖内部读数方法。
 - `check-domains.ts` 中"观测域 index.ts 仅允许 admin
   导入"的分支被删除：它是死代码 （`sourceDomain` 不可能为
   `admin`），且其注释描述的挂载用途已不存在。

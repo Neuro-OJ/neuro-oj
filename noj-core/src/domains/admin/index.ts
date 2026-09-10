@@ -14,7 +14,6 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "../identity/index.ts";
 import { adminMiddleware, authMiddleware } from "../identity/index.ts";
-import { observability } from "../observability/write.ts";
 import identityAdminRouter from "./routes/identity.ts";
 import catalogAdminRouter from "./routes/catalog.ts";
 import submissionAdminRouter from "./routes/submission.ts";

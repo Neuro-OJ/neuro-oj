@@ -55,10 +55,16 @@ export function createHealthRouter(registry: ObservabilityRegistry): Hono {
       status: ready ? "ready" : "not_ready",
       service: "noj-core",
       version: "0.1.0",
-      database: dbProbe?.status === "up" ? "ok" : "error",
-      redis: redisProbe?.status === "up" ? "ok" : "error",
-      consumer: consumerProbe?.status === "up" ? "ok" : "error",
-      queue: queueOk ? "ok" : "error",
+      // 依赖明细只在非生产环境返回：/healthz 经 nginx 暴露且无鉴权，
+      // 生产环境披露依赖可用性属信息泄漏（与 checks 同一守卫）。
+      ...(showDetails
+        ? {
+          database: dbProbe?.status === "up" ? "ok" : "error",
+          redis: redisProbe?.status === "up" ? "ok" : "error",
+          consumer: consumerProbe?.status === "up" ? "ok" : "error",
+          queue: queueOk ? "ok" : "error",
+        }
+        : {}),
       checks: showDetails
         ? Object.fromEntries(results.map((r) => [r.name, r]))
         : undefined,
