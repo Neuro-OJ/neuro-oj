@@ -5,7 +5,7 @@
  */
 
 import { getRedis } from "../../../shared/mq/connection.ts";
-import type { ObservabilitySnapshot } from "../types.ts";
+import type { JudgeSnapshot } from "../types.ts";
 
 const JUDGE_HEARTBEAT_PREFIX = "noj:observability:judge:";
 
@@ -30,8 +30,8 @@ function numberOrZero(value: unknown): number {
 
 export async function readJudgeHeartbeats(
   redis: ReturnType<typeof getRedis>,
-): Promise<ObservabilitySnapshot["judge"]> {
-  const aggregate: ObservabilitySnapshot["judge"] = {
+): Promise<JudgeSnapshot> {
+  const aggregate: JudgeSnapshot = {
     required: Deno.env.get("NOJ_ENV") === "production" &&
       Deno.env.get("JUDGE_ENABLED") !== "false",
     workers: 0,

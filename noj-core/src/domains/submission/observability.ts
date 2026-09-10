@@ -28,6 +28,13 @@ export function registerSubmissionObservability(
         dependencies: {
           result_consumer: { status: consumerAlive.value ? "up" : "down" },
         },
+        health: {
+          queue: {
+            judge: q.judge,
+            result: q.result,
+            redis_ok: q.redis_ok,
+          },
+        },
       };
     },
   });

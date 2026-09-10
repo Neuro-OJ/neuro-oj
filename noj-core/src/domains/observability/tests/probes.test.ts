@@ -32,7 +32,7 @@ Deno.test("probes: provider 失败返回部分快照", async () => {
   r.registerSnapshotProvider({
     name: "good",
     timeoutMs: 10,
-    collect: () => ({ queue: { pending: 1 } }),
+    collect: () => Promise.resolve({ queue: { pending: 1 } }),
   });
   const snap = await collectSnapshot(r, { timeoutMs: 20 });
   assert(

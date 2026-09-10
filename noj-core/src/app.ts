@@ -2,7 +2,13 @@ import { Hono } from "hono";
 import type { Context, Next } from "hono";
 import { cors } from "hono/cors";
 import { createHealthRouter } from "./domains/observability/routes/health.ts";
-import { createObservabilityRegistry } from "./shared/observability/registry.ts";
+import { observability } from "./domains/observability/write.ts";
+import { registerPlatformMetrics } from "./domains/observability/metrics/platform.ts";
+import { renderPrometheusMetrics } from "./domains/observability/services/snapshot.ts";
+import { registerSubmissionObservability } from "./domains/submission/index.ts";
+import { registerDbHealthProbe } from "./shared/db/connection.ts";
+import { registerRedisHealthProbe } from "./shared/mq/connection.ts";
+import { normalizeMetricRoute } from "./shared/observability/registry.ts";
 import admin from "./domains/admin/index.ts";
 import { identityRouter } from "./domains/identity/routes/index.ts";
 import { catalogRouter } from "./domains/catalog/routes/index.ts";
@@ -21,8 +27,6 @@ import { listJudgeImages } from "./domains/system/index.ts";
 import { banlistMiddleware } from "./domains/identity/index.ts";
 import { requestContext } from "./domains/observability/middleware/request-context.ts";
 import { httpMetricsMiddleware } from "./domains/observability/middleware/http-metrics.ts";
-import { metrics, normalizeMetricRoute } from "./shared/base/metrics.ts";
-import { renderPrometheusMetrics } from "./domains/system/services/observability.ts";
 import { getSetting } from "./domains/system/index.ts";
 import { SECONDS_PER_DAY } from "./shared/base/constants.ts";
 import { securityHeaders } from "./shared/http/security-headers.ts";
@@ -68,7 +72,11 @@ function maintenanceMode(
  */
 export function createApp(): Hono {
   const app = new Hono();
-  const observabilityRegistry = createObservabilityRegistry();
+  const observabilityRegistry = observability;
+  registerPlatformMetrics(observabilityRegistry);
+  registerDbHealthProbe(observabilityRegistry);
+  registerRedisHealthProbe(observabilityRegistry);
+  registerSubmissionObservability(observabilityRegistry);
 
   // 直连 core 时仍输出基础安全头。HSTS 由 TLS 终止边缘负责，CSP 由页面层负责。
   app.use("*", securityHeaders);
@@ -123,7 +131,7 @@ export function createApp(): Hono {
         const routePath =
           (c.req as unknown as { routePath?: string }).routePath;
         const route = normalizeMetricRoute(c.req.path, routePath);
-        metrics.inc("noj_http_rate_limited_total", {
+        observabilityRegistry.inc("noj_http_rate_limited_total", {
           method: c.req.method,
           route,
         });
@@ -168,7 +176,7 @@ export function createApp(): Hono {
   app.route("/", createHealthRouter(observabilityRegistry));
   app.get("/metrics", async (c) => {
     c.header("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
-    return c.body(await renderPrometheusMetrics());
+    return c.body(await renderPrometheusMetrics(observabilityRegistry));
   });
   app.route("/api/v1", identityRouter);
   app.route("/api/v1", catalogRouter);

@@ -9,6 +9,21 @@ export interface ObservabilityAlert {
   message: string;
 }
 
+export interface JudgeSnapshot {
+  required: boolean;
+  workers: number;
+  active_tasks: number;
+  max_concurrent_tasks: number;
+  completed_tasks_total: number;
+  failed_tasks_total: number;
+  result_push_failures_total: number;
+  orphan_containers: number;
+  cache_items: number;
+  cache_bytes: number;
+  work_dir_bytes: number;
+  last_seen_at: string | null;
+}
+
 export interface ObservabilitySnapshot {
   generated_at: string;
   dependencies: Record<string, unknown>;
@@ -27,7 +42,7 @@ export interface ObservabilitySnapshot {
     error_rate_percent: number;
     average_latency_ms: number | null;
   };
-  judge: Record<string, unknown>;
+  judge: JudgeSnapshot;
   alerts: ObservabilityAlert[];
   providers?: {
     name: string;

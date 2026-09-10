@@ -18,16 +18,17 @@ Deno.test("snapshot: provider 失败时仍返回部分快照且 HTTP 可渲染",
   });
   r.registerSnapshotProvider({
     name: "good",
-    collect: () => ({
-      queue: {
-        pending: 1,
-        processing: 0,
-        result_pending: 0,
-        result_processing: 0,
-        judging: 0,
-        oldest_judging_age_seconds: null,
-      },
-    }),
+    collect: () =>
+      Promise.resolve({
+        queue: {
+          pending: 1,
+          processing: 0,
+          result_pending: 0,
+          result_processing: 0,
+          judging: 0,
+          oldest_judging_age_seconds: null,
+        },
+      }),
   });
   const snap = await getObservabilitySnapshot(r);
   assert(snap.queue.pending === 1, "good provider 应贡献数据");
