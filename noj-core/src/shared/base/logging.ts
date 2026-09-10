@@ -13,7 +13,7 @@
  * 均应通过本模块的 `logger`，由 logger 统一脱敏，避免散落实现导致泄露。
  */
 
-import { AsyncLocalStorage } from "node:async_hooks";
+import { getRequestId } from "../observability/context.ts";
 
 // ── 级别 ──────────────────────────────────────────────────────────────
 
@@ -62,29 +62,6 @@ function resolveFormat(): LogFormat {
   const raw = Deno.env.get("LOG_FORMAT")?.trim().toLowerCase();
   if (raw === "json" || raw === "pretty") return raw;
   return isProduction() ? "json" : "pretty";
-}
-
-// ── 请求上下文（AsyncLocalStorage） ──────────────────────────────────
-
-interface RequestContext {
-  requestId: string;
-}
-
-const requestStore = new AsyncLocalStorage<RequestContext>();
-
-/**
- * 在带有 request_id 的上下文中执行 `fn`。
- *
- * 由 request-context 中间件在每个 HTTP 请求最外层调用，
- * 使其内部（含 service 层）的所有 logger 调用自动附带同一 request_id。
- */
-export function runWithRequestContext<T>(requestId: string, fn: () => T): T {
-  return requestStore.run({ requestId }, fn);
-}
-
-/** 读取当前请求上下文的 request_id（不在请求上下文中时返回 undefined）。 */
-export function getRequestId(): string | undefined {
-  return requestStore.getStore()?.requestId;
 }
 
 // ── 脱敏 ──────────────────────────────────────────────────────────────
