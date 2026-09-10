@@ -13,7 +13,7 @@ usage() {
 
 可选 domain：
   identity catalog submission contest system community messaging objective
-  admin search query gateway content-review
+  admin search query gateway content-review observability
 
 示例：bash scripts/test-domain.sh submission
 EOF
@@ -28,7 +28,7 @@ fi
 domain="$1"
 known_domains=(
   identity catalog submission contest system community messaging objective
-  admin search query gateway content-review
+  admin search query gateway content-review observability
 )
 if [[ ! " ${known_domains[*]} " == *" $domain "* ]]; then
   echo "错误：未知 domain '$domain'" >&2
