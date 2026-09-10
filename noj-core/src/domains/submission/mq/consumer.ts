@@ -16,7 +16,7 @@ import {
 } from "../../../shared/sse/event-bus.ts";
 import { SELF_TEST_ID_PREFIX } from "../types/self-tests.ts";
 import type { JudgeResult } from "../types/index.ts";
-import { metrics } from "../../../shared/base/metrics.ts";
+import { observability as metrics } from "../../../domains/observability/write.ts";
 
 /**
  * 评测结果队列名称。

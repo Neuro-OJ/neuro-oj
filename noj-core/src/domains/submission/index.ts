@@ -9,6 +9,7 @@ export {
 } from "./services/submissions/artifact-submissions.ts";
 export * from "./services/queue.ts";
 export * from "./services/self-tests.ts";
+export { registerSubmissionObservability } from "./observability.ts";
 export * from "./types/index.ts";
 export * from "./types/self-tests.ts";
 export * from "./mq/consumer.ts";
