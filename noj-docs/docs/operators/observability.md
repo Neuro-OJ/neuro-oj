@@ -17,9 +17,21 @@ collector 观察 `noj_storage_objects_total`、`noj_storage_bytes`、`noj_storag
 步骤见[对象存储生命周期治理](../system/object-storage-governance.md)。
 
 将 Prometheus 加入 `noj-net`，使用 `deploy/monitoring/prometheus.yml` 抓取 `core:8000`（含
-`up{job="noj-core"}` 失联检测），并加载 `deploy/monitoring/noj-alerts.yml`。Alertmanager 配置模板、
+`up{job="noj-core"}` 失联检测），并加载**两个**规则文件：`deploy/monitoring/noj-alerts.yml`
+（运维告警，手工维护）与 `deploy/monitoring/noj-slo-alerts.yml`（SLO 燃烧率告警，由
+`noj-core/src/domains/observability/slo.ts` 生成，勿手工编辑）。Alertmanager 配置模板、
 凭据注入与投递演练见 `deploy/monitoring/README.md`。Grafana 可导入
 `deploy/monitoring/grafana-dashboard.json`。通知接收器凭据应保存在部署环境，不提交到仓库。
+
+> **第二个规则文件缺失不会报错。** Prometheus 的 `rule_files` 指向不存在的文件时照常启动，
+> 只是整组 SLO 规则静默消失。安装后必须用 `promtool check config` 校验，并确认 `/rules`
+> 页面同时列出 `noj-production` 与 `noj-slo` 两组；`NojSloRulesMissing` 告警是这一丢失的看门狗。
+
+SLO 告警分两族：`NojSlo<名称>Fast`（severity 由 SLO 定义，短保持时长）与
+`NojSlo<名称>Slow`（warning，长保持时长）。当前为**单窗口**燃烧率——`burn_rate > 1` 等价于
+在 SLI 自身窗口内 `SLI < objective`，因此 `Fast` 会被 `Slow` 严格蕴含；解析告警敏感度时应以
+SLI 表达式里的窗口为准，而不是 Slow 的长窗口。每个 SLO 的处理步骤见其 `runbook` 注解指向的
+`deploy/monitoring/runbooks/*.md`。
 
 每次发布后应确认 Prometheus target 为 UP、live/ready/metrics 可以访问，并在 staging 演练一次 Judge
 或 Redis 故障及其恢复。上线前必须执行一次告警投递演练（`scripts/deploy/test-alert.sh`）并记录结果。

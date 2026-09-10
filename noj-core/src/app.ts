@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { createHealthRouter } from "./domains/observability/routes/health.ts";
 import { observability } from "./domains/observability/write.ts";
 import { registerPlatformMetrics } from "./domains/observability/metrics/platform.ts";
+import { registerJudgeHeartbeatProvider } from "./domains/observability/services/judge-heartbeat.ts";
 import { renderPrometheusMetrics } from "./domains/observability/services/snapshot.ts";
 import { registerSubmissionObservability } from "./domains/submission/index.ts";
 import { registerDbHealthProbe } from "./shared/db/connection.ts";
@@ -27,7 +28,10 @@ import { listJudgeImages } from "./domains/system/index.ts";
 import { banlistMiddleware } from "./domains/identity/index.ts";
 import { requestContext } from "./domains/observability/middleware/request-context.ts";
 import { httpMetricsMiddleware } from "./domains/observability/middleware/http-metrics.ts";
-import { getSetting } from "./domains/system/index.ts";
+import {
+  getSetting,
+  registerSystemEmailMetrics,
+} from "./domains/system/index.ts";
 import { SECONDS_PER_DAY } from "./shared/base/constants.ts";
 import { securityHeaders } from "./shared/http/security-headers.ts";
 
@@ -74,9 +78,11 @@ export function createApp(): Hono {
   const app = new Hono();
   const observabilityRegistry = observability;
   registerPlatformMetrics(observabilityRegistry);
+  registerSystemEmailMetrics(observabilityRegistry);
   registerDbHealthProbe(observabilityRegistry);
   registerRedisHealthProbe(observabilityRegistry);
   registerSubmissionObservability(observabilityRegistry);
+  registerJudgeHeartbeatProvider(observabilityRegistry);
 
   // 直连 core 时仍输出基础安全头。HSTS 由 TLS 终止边缘负责，CSP 由页面层负责。
   app.use("*", securityHeaders);

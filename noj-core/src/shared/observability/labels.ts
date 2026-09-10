@@ -14,6 +14,9 @@ export const LABEL_WHITELIST = [
   "result",
   "type",
   "criticality",
+  "message_type",
+  "event_type",
+  "reason",
 ] as const;
 
 export const MAX_LABEL_VALUE_LENGTH = 64;

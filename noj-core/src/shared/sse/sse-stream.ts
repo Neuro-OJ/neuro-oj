@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { type SSEStreamingApi, streamSSE } from "hono/streaming";
+import { observability } from "../observability/registry.ts";
 
 /** SSE 心跳间隔（30s，防止代理/中间件超时断连）。 */
 const KEEPALIVE_INTERVAL_MS = 30_000;
@@ -41,56 +42,71 @@ export function createSseStream(
 ): Response {
   const { safetyTimeoutMs = SAFETY_TIMEOUT_MS } = options;
   return streamSSE(c, async (stream) => {
+    observability.add("noj_http_sse_connections", 1);
+    let metricsReleased = false;
+    const releaseMetrics = () => {
+      if (metricsReleased) return;
+      metricsReleased = true;
+      observability.add("noj_http_sse_connections", -1);
+    };
+
     let streamClosed = false;
     let resolveAbort: (() => void) | null = null;
     // 先初始化为空函数，避免 setup 未注册退订时 close() 触发 TDZ/undefined 调用
     let unsub = () => {};
-
     let safetyTimer: ReturnType<typeof setTimeout> | undefined;
-    if (safetyTimeoutMs > 0) {
-      safetyTimer = setTimeout(() => {
-        close();
-      }, safetyTimeoutMs);
-    }
+    let keepAlive: ReturnType<typeof setInterval> | undefined;
 
-    // 30s 心跳保持连接（防止代理/中间件超时断连）
-    const keepAlive = setInterval(() => {
-      if (streamClosed) return;
-      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
-        close();
-      });
-    }, KEEPALIVE_INTERVAL_MS);
-
-    function close() {
+    const close = () => {
       if (streamClosed) return;
       streamClosed = true;
       if (safetyTimer !== undefined) clearTimeout(safetyTimer);
-      clearInterval(keepAlive);
+      if (keepAlive !== undefined) clearInterval(keepAlive);
       unsub();
+      releaseMetrics();
       if (resolveAbort) resolveAbort();
-    }
-
-    const ctx: SseStreamContext = {
-      stream,
-      get closed() {
-        return streamClosed;
-      },
-      onUnsubscribe(fn) {
-        unsub = fn;
-      },
-      close,
     };
 
-    await setup(ctx);
+    try {
+      if (safetyTimeoutMs > 0) {
+        safetyTimer = setTimeout(() => {
+          close();
+        }, safetyTimeoutMs);
+      }
 
-    // 流已在 setup 内关闭（如终态立即推送）则不再挂起等待
-    if (!streamClosed) {
-      await new Promise<void>((resolve) => {
-        resolveAbort = resolve;
-        stream.onAbort(() => {
+      // 30s 心跳保持连接（防止代理/中间件超时断连）
+      keepAlive = setInterval(() => {
+        if (streamClosed) return;
+        stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
           close();
         });
-      });
+      }, KEEPALIVE_INTERVAL_MS);
+
+      const ctx: SseStreamContext = {
+        stream,
+        get closed() {
+          return streamClosed;
+        },
+        onUnsubscribe(fn) {
+          unsub = fn;
+        },
+        close,
+      };
+
+      await setup(ctx);
+
+      // 流已在 setup 内关闭（如终态立即推送）则不再挂起等待
+      if (!streamClosed) {
+        await new Promise<void>((resolve) => {
+          resolveAbort = resolve;
+          stream.onAbort(() => {
+            close();
+          });
+        });
+      }
+    } finally {
+      // 正常完成时 close() 已在 onAbort/setup 中调用；异常路径兜底清理定时器。
+      close();
     }
   });
 }

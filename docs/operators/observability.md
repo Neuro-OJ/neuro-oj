@@ -11,7 +11,7 @@
 ## 接入 Prometheus、Grafana 和 Alertmanager
 
 1. 将 Prometheus 加入 `noj-net`，复制 `deploy/monitoring/prometheus.yml`，确认目标为 `core:8000`。
-2. 将 `deploy/monitoring/noj-alerts.yml` 放入规则目录，并执行 Prometheus 配置检查与 reload。
+2. 将 `deploy/monitoring/noj-alerts.yml`（运维告警）与 `deploy/monitoring/noj-slo-alerts.yml`（SLO 燃烧率告警，生成产物勿手改）都放入规则目录，并执行 `promtool check config` 与 reload。第二个文件缺失时 Prometheus 仍会正常启动，只是 SLO 规则静默消失；reload 后应确认 `/rules` 页面同时列出 `noj-production` 与 `noj-slo` 两组。
 3. 导入 `deploy/monitoring/grafana-dashboard.json`，选择对应 Prometheus datasource。
 4. 为 Alertmanager 配置实际通知接收器。仓库不保存通知凭据，也不限定企业微信、邮件或 PagerDuty 等渠道。
 5. 若需要宿主机磁盘告警，额外部署 node_exporter，并取消 Prometheus 配置中的 node target 注释；不应把 Judge 工作目录占用误认为宿主机剩余空间。

@@ -18,9 +18,6 @@ interface QueueHealthEntry {
 
 export function createHealthRouter(registry: ObservabilityRegistry): Hono {
   const health = new Hono();
-  const criticalNames = new Set(
-    registry.listHealthProbes().filter((p) => p.critical).map((p) => p.name),
-  );
 
   health.get(
     "/health/live",
@@ -28,14 +25,40 @@ export function createHealthRouter(registry: ObservabilityRegistry): Hono {
   );
 
   health.get("/health/ready", async (c) => {
-    const results = await runHealthProbes(registry);
+    const [results, partial] = await Promise.all([
+      runHealthProbes(registry),
+      collectSnapshot(registry),
+    ]);
+    // 每次请求重新读取 critical probe，避免 router 创建后新注册的探针被忽略。
+    const criticalNames = new Set(
+      registry.listHealthProbes().filter((p) => p.critical).map((p) => p.name),
+    );
     const critical = results.filter((r) => criticalNames.has(r.name));
     const ready = critical.every((r) => r.status === "up");
+    const dbProbe = results.find((r) => r.name === "database");
+    const redisProbe = results.find((r) => r.name === "redis");
+    const consumerProbe = results.find((r) => r.name === "result_consumer");
+    const queueHealth = (partial.health as {
+      queue?: {
+        redis_ok?: boolean;
+        judge?: QueueHealthEntry;
+        result?: QueueHealthEntry;
+      };
+    } | undefined)?.queue;
+    const queueOk = queueHealth
+      ? queueHealth.redis_ok === true &&
+        (queueHealth.judge?.queue_length ?? -1) >= 0 &&
+        (queueHealth.result?.queue_length ?? -1) >= 0
+      : false;
     const showDetails = Deno.env.get("NOJ_ENV") !== "production";
     return c.json({
       status: ready ? "ready" : "not_ready",
       service: "noj-core",
       version: "0.1.0",
+      database: dbProbe?.status === "up" ? "ok" : "error",
+      redis: redisProbe?.status === "up" ? "ok" : "error",
+      consumer: consumerProbe?.status === "up" ? "ok" : "error",
+      queue: queueOk ? "ok" : "error",
       checks: showDetails
         ? Object.fromEntries(results.map((r) => [r.name, r]))
         : undefined,

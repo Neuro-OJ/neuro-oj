@@ -1,4 +1,9 @@
-import { readJudgeHeartbeats } from "../services/judge-heartbeat.ts";
+import { createObservabilityRegistry } from "../../../shared/observability/registry.ts";
+import {
+  emptyJudgeSnapshot,
+  readJudgeHeartbeats,
+  registerJudgeHeartbeatProvider,
+} from "../services/judge-heartbeat.ts";
 
 function assert(cond: unknown, msg: string): void {
   if (!cond) throw new Error(msg);
@@ -44,4 +49,21 @@ Deno.test("judge-heartbeat: 聚合有效心跳并忽略 malformed", async () => 
   );
   assert(aggregate.workers === 1, "应聚合 1 个 worker");
   assert(aggregate.active_tasks === 2, "活跃任务应为 2");
+});
+
+Deno.test("judge-heartbeat: provider 注册并可返回空快照", async () => {
+  const r = createObservabilityRegistry();
+  registerJudgeHeartbeatProvider(r);
+  const provider = r.listSnapshotProviders().find(
+    (p) => p.name === "judge.heartbeat",
+  );
+  assert(provider, "应注册 judge.heartbeat provider");
+  const result = await provider!.collect() as { judge?: { workers?: number } };
+  assert(result.judge?.workers === 0, "无 Redis 时应降级为空快照");
+});
+
+Deno.test("judge-heartbeat: emptyJudgeSnapshot 字段完整", () => {
+  const snap = emptyJudgeSnapshot();
+  assert(snap.workers === 0, "workers 应为 0");
+  assert(snap.last_seen_at === null, "last_seen_at 应为 null");
 });

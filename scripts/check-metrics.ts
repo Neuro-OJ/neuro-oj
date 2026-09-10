@@ -9,7 +9,10 @@ import { resolve } from "node:path";
 import { PLATFORM_METRIC_NAMES } from "../noj-core/src/domains/observability/metrics/platform.ts";
 
 const DEFINE_RE = /registerBusinessMetric\(\s*\{[\s\S]*?name:\s*"([^"]+)"/g;
-const WRITE_RE = /observability\.(?:inc|set|add|observe)\(\s*"([^"]+)"/g;
+// 只锚定到指标名字符串，不要求紧跟 ")"，否则带标签/带增量的写入
+// （observability.inc("noj_x", { ... })）一条都匹配不到。
+const WRITE_RE =
+  /(?:observability|metrics|registry)\.(?:inc|set|add|observe)\(\s*"([^"]+)"/g;
 
 export function checkMetricCalls(
   content: string,

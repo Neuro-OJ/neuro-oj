@@ -1,0 +1,54 @@
+groups:
+  - name: noj-slo
+    rules:
+      - record: noj:slo:api_availability:burn_rate
+        expr: |
+          (1 - (sum(rate(noj_http_requests_total{status!~"5.."}[5m])) / sum(rate(noj_http_requests_total[5m])))) / (1 - 0.995)
+      - alert: NojSloApiAvailabilityFast
+        expr: noj:slo:api_availability:burn_rate > 1
+        for: 5m
+        labels:
+          severity: critical
+          slo: api_availability
+        annotations:
+          summary: 核心 API 可用性 错误预算消耗过快
+          runbook: deploy/monitoring/runbooks/api-availability.md
+      - alert: NojSloApiAvailabilitySlow
+        expr: noj:slo:api_availability:burn_rate > 1
+        for: 1h
+        labels:
+          severity: warning
+          slo: api_availability
+        annotations:
+          summary: 核心 API 可用性 错误预算持续消耗（慢速告警）
+          runbook: deploy/monitoring/runbooks/api-availability.md
+      - record: noj:slo:submission_e2e_latency:burn_rate
+        expr: |
+          (1 - (sum(rate(noj_submission_e2e_duration_seconds_bucket{le="5"}[5m])) / sum(rate(noj_submission_e2e_duration_seconds_count[5m])))) / (1 - 0.95)
+      - alert: NojSloSubmissionE2eLatencyFast
+        expr: noj:slo:submission_e2e_latency:burn_rate > 1
+        for: 5m
+        labels:
+          severity: critical
+          slo: submission_e2e_latency
+        annotations:
+          summary: 提交端到端延迟 错误预算消耗过快
+          runbook: deploy/monitoring/runbooks/submission-e2e-latency.md
+      - alert: NojSloSubmissionE2eLatencySlow
+        expr: noj:slo:submission_e2e_latency:burn_rate > 1
+        for: 1h
+        labels:
+          severity: warning
+          slo: submission_e2e_latency
+        annotations:
+          summary: 提交端到端延迟 错误预算持续消耗（慢速告警）
+          runbook: deploy/monitoring/runbooks/submission-e2e-latency.md
+      - alert: NojSloEvaluationThroughput
+        expr: (sum(rate(noj_evaluation_results_total[5m])) < 0.1) and (sum(rate(noj_http_requests_total{method="POST",route=~"/api/v1/submissions.*"}[5m])) > 0)
+        for: 10m
+        labels:
+          severity: warning
+          slo: evaluation_throughput
+        annotations:
+          summary: 评测吞吐 低于/超过 SLO 阈值
+          runbook: deploy/monitoring/runbooks/evaluation-throughput.md

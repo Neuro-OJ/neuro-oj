@@ -288,22 +288,18 @@ export function createObservabilityRegistry(options: {
     },
   };
 
-  registry.define({
-    name: "noj_observability_write_errors_total",
-    help: "观测写错误总数",
-    type: "counter",
-    owner: "platform",
-  });
-  registry.define({
-    name: "noj_observability_metric_dropped_total",
-    help: "观测指标丢弃总数",
-    type: "counter",
-    owner: "platform",
-  });
   return registry;
 }
 
-export const observability = createObservabilityRegistry();
+function envMaxSeries(): number {
+  const raw = Deno.env.get("OBSERVABILITY_MAX_SERIES");
+  const value = raw ? Number(raw) : NaN;
+  return Number.isInteger(value) && value > 0 ? value : MAX_SERIES_PER_METRIC;
+}
+
+export const observability = createObservabilityRegistry({
+  maxSeriesPerMetric: envMaxSeries(),
+});
 
 export function validateMetricDefinition(def: MetricDefinition): string[] {
   const errors: string[] = [];

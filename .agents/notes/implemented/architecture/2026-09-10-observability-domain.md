@@ -26,7 +26,10 @@ Status: implemented
 - 保留 `/health*`、`/metrics`、`/api/v1/admin/dashboard/observability`
   路径与语义。
 - SLO 定义在 `domains/observability/slo.ts`，由 `scripts/gen-alert-rules.ts`
-  生成/校验 `deploy/monitoring/noj-alerts.yml`。
+  生成/校验 `deploy/monitoring/noj-slo-alerts.yml`；既有运维告警保留在
+  `deploy/monitoring/noj-alerts.yml`，避免生成器覆盖历史规则。
+- 探针/快照带 single-flight + 短 TTL 缓存，避免 `/health*` 与 `/metrics`
+  同时触发重复 DB/Redis 检查。
 
 ## Alternatives considered
 

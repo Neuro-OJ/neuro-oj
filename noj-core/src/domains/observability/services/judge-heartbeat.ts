@@ -5,11 +5,13 @@
  */
 
 import { getRedis } from "../../../shared/mq/connection.ts";
+import type { ObservabilityRegistry } from "../../../shared/observability/contracts.ts";
 import type { JudgeSnapshot } from "../types.ts";
 
 const JUDGE_HEARTBEAT_PREFIX = "noj:observability:judge:";
 
 interface JudgeHeartbeat {
+  schema_version?: number;
   active_tasks?: number;
   max_concurrent_tasks?: number;
   completed_tasks_total?: number;
@@ -28,10 +30,9 @@ function numberOrZero(value: unknown): number {
     : 0;
 }
 
-export async function readJudgeHeartbeats(
-  redis: ReturnType<typeof getRedis>,
-): Promise<JudgeSnapshot> {
-  const aggregate: JudgeSnapshot = {
+/** 空心跳快照；Redis 不可用或没有 worker 在线时作为降级值。 */
+export function emptyJudgeSnapshot(): JudgeSnapshot {
+  return {
     required: Deno.env.get("NOJ_ENV") === "production" &&
       Deno.env.get("JUDGE_ENABLED") !== "false",
     workers: 0,
@@ -46,6 +47,12 @@ export async function readJudgeHeartbeats(
     work_dir_bytes: 0,
     last_seen_at: null,
   };
+}
+
+export async function readJudgeHeartbeats(
+  redis: ReturnType<typeof getRedis>,
+): Promise<JudgeSnapshot> {
+  const aggregate = emptyJudgeSnapshot();
   let cursor = "0";
   let scanned = 0;
   do {
@@ -91,4 +98,26 @@ export async function readJudgeHeartbeats(
     if (scanned > 1000) break;
   } while (cursor !== "0");
   return aggregate;
+}
+
+/**
+ * 注册 Judge 心跳 snapshot provider。
+ *
+ * 由 app.ts 组合根调用；观测域不 import 业务域。
+ */
+export function registerJudgeHeartbeatProvider(
+  registry: ObservabilityRegistry,
+): void {
+  registry.registerSnapshotProvider({
+    name: "judge.heartbeat",
+    timeoutMs: 500,
+    collect: async () => {
+      const redis = getRedis();
+      // 未连接时不阻塞快照；下一轮抓取会自动恢复。
+      if (redis.status !== "ready") {
+        return { judge: emptyJudgeSnapshot() };
+      }
+      return { judge: await readJudgeHeartbeats(redis) };
+    },
+  });
 }

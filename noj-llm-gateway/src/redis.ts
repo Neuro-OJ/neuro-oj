@@ -7,6 +7,7 @@ import IORedis from "ioredis";
  * 本地 Redis 客户端接口（避免 ioredis 在 Deno 下类型解析问题）。
  */
 export interface RedisClient {
+  ping(): Promise<string>;
   incr(key: string): Promise<number>;
   incrby(key: string, amount: number): Promise<number>;
   expire(key: string, seconds: number): Promise<number>;
@@ -30,6 +31,7 @@ export function createRedis(redisUrl: string): RedisClient {
     lazyConnect: false,
   });
   return {
+    ping: () => redis.ping(),
     incr: (key) => redis.incr(key),
     incrby: (key, amount) => redis.incrby(key, amount),
     expire: (key, seconds) => redis.expire(key, seconds),

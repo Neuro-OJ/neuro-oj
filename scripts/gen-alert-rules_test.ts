@@ -14,9 +14,11 @@ Deno.test("gen-alert-rules: SLO id 唯一且 runbook 路径存在", async () => 
   }
 });
 
-Deno.test("gen-alert-rules: 渲染结果包含每个 SLO 的告警", () => {
+Deno.test("gen-alert-rules: 渲染结果包含每个 SLO 的告警且不含运维告警", () => {
   const out = renderSloRules();
   for (const slo of SLOS) {
     assert(out.includes(slo.id), `渲染应包含 ${slo.id}`);
   }
+  assert(!out.includes("NojCoreScrapeDown"), "SLO 文件不应包含运维告警");
+  assert(!out.includes("NojBackupStale"), "SLO 文件不应包含运维告警");
 });

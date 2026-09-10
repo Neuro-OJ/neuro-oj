@@ -211,6 +211,18 @@ export async function handleResultMessage(
       return;
     }
 
+    // 首次评测结果：记录从提交创建到结果落库的端到端延迟。
+    if (applied.created_at && !applied.is_rejudge) {
+      const startedMs = Date.parse(applied.created_at);
+      if (Number.isFinite(startedMs)) {
+        metrics.observe(
+          "noj_submission_e2e_duration_seconds",
+          Math.max(0, (Date.now() - startedMs) / 1000),
+          { result: judgeResult.status },
+        );
+      }
+    }
+
     logger.info("评测结果已持久化", {
       submission_id: judgeResult.submission_id,
       kind: "submission",

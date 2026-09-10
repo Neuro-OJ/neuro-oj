@@ -12,9 +12,11 @@ export function httpMetricsMiddleware(registry: ObservabilityRegistry) {
     next: Next,
   ): Promise<void> {
     const startedAt = performance.now();
+    registry.add("noj_http_requests_in_flight", 1);
     try {
       await next();
     } finally {
+      registry.add("noj_http_requests_in_flight", -1);
       const routePath = (c.req as unknown as { routePath?: string }).routePath;
       const route = normalizeMetricRoute(c.req.path, routePath);
       const labels = {
