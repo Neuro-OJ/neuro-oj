@@ -12,7 +12,8 @@ import {
 } from "./schema-ddl.ts";
 import { dirname, resolve } from "jsr:@std/path@^1";
 import { logger } from "../base/logging.ts";
-import { metrics } from "../base/metrics.ts";
+import { observability as metrics } from "../observability/registry.ts";
+import type { ObservabilityRegistry } from "../observability/contracts.ts";
 
 let _db: ReturnType<typeof drizzlePg> | null = null;
 let _client: ReturnType<typeof postgres> | null = null;
@@ -460,6 +461,28 @@ export async function checkDbHealth(): Promise<
     const message = err instanceof Error ? err.message : String(err);
     return result(false, message);
   }
+}
+
+/**
+ * 注册数据库健康探针。
+ *
+ * 由 app.ts 组合根调用；shared/db 不依赖 domains/observability。
+ */
+export function registerDbHealthProbe(registry: ObservabilityRegistry): void {
+  registry.registerHealthProbe({
+    name: "database",
+    critical: true,
+    timeoutMs: 1000,
+    check: async () => {
+      const started = performance.now();
+      const health = await checkDbHealth();
+      return {
+        status: health.ok ? "up" : "down",
+        latency_ms: Math.round(performance.now() - started),
+        error: health.error,
+      };
+    },
+  });
 }
 
 /**

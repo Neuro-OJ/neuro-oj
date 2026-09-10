@@ -1,6 +1,7 @@
 import IORedis from "ioredis";
 import { logger } from "../base/logging.ts";
-import { metrics } from "../base/metrics.ts";
+import { observability as metrics } from "../observability/registry.ts";
+import type { ObservabilityRegistry } from "../observability/contracts.ts";
 
 /**
  * Redis 客户端的最小接口定义。
@@ -289,6 +290,30 @@ export async function checkRedisHealth(): Promise<
     const message = err instanceof Error ? err.message : String(err);
     return result(false, message);
   }
+}
+
+/**
+ * 注册 Redis 健康探针。
+ *
+ * 由 app.ts 组合根调用；shared/mq 不依赖 domains/observability。
+ */
+export function registerRedisHealthProbe(
+  registry: ObservabilityRegistry,
+): void {
+  registry.registerHealthProbe({
+    name: "redis",
+    critical: true,
+    timeoutMs: 1000,
+    check: async () => {
+      const started = performance.now();
+      const health = await checkRedisHealth();
+      return {
+        status: health.ok ? "up" : "down",
+        latency_ms: Math.round(performance.now() - started),
+        error: health.error,
+      };
+    },
+  });
 }
 
 /**
