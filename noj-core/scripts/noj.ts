@@ -25,6 +25,7 @@ import {
   sealExistingSiteAdminInitialization,
 } from "../src/domains/identity/index.ts";
 import { ensureRbacSeeds } from "../src/domains/system/index.ts";
+import { initProblem } from "./problems-init.ts";
 import {
   ensureAdminFromEnv,
   ensureBootstrapAdmin,
@@ -248,6 +249,43 @@ const bootstrapCmd = new Command()
 
 const problemsCmd = new Command()
   .description("题目包操作")
+  .command("init", "生成新题目的最小可评测骨架（脚手架）")
+  .arguments("<slug:string>")
+  .option("--title <title:string>", "题目标题（缺省用 slug）")
+  .option("--type <type:string>", "题型：U（客观题）/ P（编程题）", {
+    default: "P",
+  })
+  .option("--difficulty <difficulty:string>", "难度：easy / medium / hard", {
+    default: "medium",
+  })
+  .option("--dir <dir:string>", "输出根目录（缺省 data/problems-src）")
+  .action(
+    async (
+      opts: {
+        title?: string;
+        type?: string;
+        difficulty?: string;
+        dir?: string;
+      },
+      slug: string,
+    ) => {
+      const result = await initProblem({
+        slug,
+        title: opts.title,
+        type: opts.type as "U" | "P" | undefined,
+        difficulty: opts.difficulty as "easy" | "medium" | "hard" | undefined,
+        root: opts.dir,
+      });
+      console.log(`已生成题目骨架：${result.dir}`);
+      for (const file of result.files) {
+        console.log(`  + ${file}`);
+      }
+      console.log(
+        `\n下一步：按 README.md 的待办清单补齐题面/判分/用例，然后运行 ` +
+          `deno task problems:build --id ${slug}`,
+      );
+    },
+  )
   .command("build", "从 data/problems-src 构建统一题目包")
   .option("--id <id:string>", "仅构建指定题目 id")
   .action(async (opts: { id?: string }) => {
