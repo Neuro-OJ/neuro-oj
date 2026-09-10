@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import type { Context, Next } from "hono";
 import { cors } from "hono/cors";
-import health from "./routes/health.ts";
+import { createHealthRouter } from "./domains/observability/routes/health.ts";
+import { createObservabilityRegistry } from "./shared/observability/registry.ts";
 import admin from "./domains/admin/index.ts";
 import { identityRouter } from "./domains/identity/routes/index.ts";
 import { catalogRouter } from "./domains/catalog/routes/index.ts";
@@ -67,6 +68,7 @@ function maintenanceMode(
  */
 export function createApp(): Hono {
   const app = new Hono();
+  const observabilityRegistry = createObservabilityRegistry();
 
   // 直连 core 时仍输出基础安全头。HSTS 由 TLS 终止边缘负责，CSP 由页面层负责。
   app.use("*", securityHeaders);
@@ -163,7 +165,7 @@ export function createApp(): Hono {
   app.use("/api/v1/*", maintenanceMode);
 
   // 注册路由（按域自装配；各域 routes/index.ts 内部保持顺序敏感注释）
-  app.route("/", health);
+  app.route("/", createHealthRouter(observabilityRegistry));
   app.get("/metrics", async (c) => {
     c.header("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
     return c.body(await renderPrometheusMetrics());
