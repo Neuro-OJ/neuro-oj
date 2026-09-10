@@ -23,7 +23,7 @@ CREATE TABLE "content_review_queue" (
 	CONSTRAINT "content_review_queue_verdict_check" CHECK ("content_review_queue"."verdict" IN ('pass', 'review', 'block', 'error'))
 );
 --> statement-breakpoint
-ALTER TABLE "content_review_queue" ADD CONSTRAINT "content_review_queue_reviewed_by_users_id_fk" FOREIGN KEY ("reviewed_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "content_review_queue" ADD CONSTRAINT "content_review_queue_reviewed_by_users_id_fk" FOREIGN KEY ("reviewed_by") REFERENCES "users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "idx_content_review_queue_pending_status" ON "content_review_queue" USING btree ("status","created_at");--> statement-breakpoint
 CREATE INDEX "idx_content_review_queue_type_status" ON "content_review_queue" USING btree ("content_type","status");--> statement-breakpoint
 CREATE INDEX "idx_content_review_queue_target" ON "content_review_queue" USING btree ("target_id");
