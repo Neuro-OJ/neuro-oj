@@ -56,7 +56,13 @@ type AntiCheatRow = {
   created_at: string;
 };
 
-async function assertContestExists(contestId: string): Promise<void> {
+/**
+ * 断言竞赛存在，不存在时抛 NotFoundError。
+ *
+ * 供本文件与 `contest-similarity.ts` 共用，保证同域风控端点对「竞赛不存在」
+ * 的响应语义一致（404 而不是空结果）。
+ */
+export async function assertContestExists(contestId: string): Promise<void> {
   const db = getDb();
   const [row] = await db.select({ id: contests.id }).from(contests).where(
     eq(contests.id, contestId),
