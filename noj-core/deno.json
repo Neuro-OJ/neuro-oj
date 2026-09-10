@@ -32,6 +32,9 @@
     "check:types": "find src -name '*.ts' -print0 | xargs -0 deno check",
     "check:jsdoc": "deno run -A ../scripts/verify-export-jsdoc.ts",
     "check:domains": "deno run -A ../scripts/check-domains.ts",
+    "check:metrics": "deno run -A ../scripts/check-metrics.ts",
+    "check:runtime-contract": "deno run -A ../scripts/check-runtime-contract.ts",
+    "check:runbooks": "deno run -A ../scripts/check-runbooks.ts",
     "test:pg": "BCRYPT_SALT_ROUNDS=4 deno test -A --no-check --preload=tests/preload.ts"
   },
   "imports": {

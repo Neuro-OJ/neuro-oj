@@ -75,3 +75,35 @@ Deno.test("checkFile: 非相对导入不检查", () => {
   );
   assert(violations.length === 0, "非相对导入不应产生违规");
 });
+
+Deno.test("checkFile: 业务域 import observability/write.ts 不违规", () => {
+  const violations = checkFile(
+    "noj-core/src/domains/submission/mq/consumer.ts",
+    `import { observability } from "../observability/write.ts";\n`,
+  );
+  assert(violations.length === 0, "write.ts 应允许");
+});
+
+Deno.test("checkFile: 业务域 import observability/services 违规", () => {
+  const violations = checkFile(
+    "noj-core/src/domains/submission/mq/consumer.ts",
+    `import { getObservabilitySnapshot } from "../../observability/services/snapshot.ts";\n`,
+  );
+  assert(violations.length > 0, "services 深路径应禁止");
+});
+
+Deno.test("checkFile: observability 域 import 其他业务域违规", () => {
+  const violations = checkFile(
+    "noj-core/src/domains/observability/services/snapshot.ts",
+    `import { getQueueHealth } from "../../submission/services/queue.ts";\n`,
+  );
+  assert(violations.length > 0, "观测域不得 import 业务域");
+});
+
+Deno.test("checkFile: admin import observability/index.ts 允许", () => {
+  const violations = checkFile(
+    "noj-core/src/domains/admin/index.ts",
+    `import { createObservabilityAdminRouter } from "../observability/index.ts";\n`,
+  );
+  assert(violations.length === 0, "admin 挂载管理路由应允许");
+});

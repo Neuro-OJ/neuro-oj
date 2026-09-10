@@ -27,7 +27,16 @@ const DOMAINS = new Set([
   "gateway",
   "query",
   "content-review",
+  "observability",
 ]);
+
+/** 允许业务域 import 的观测域子路径白名单。 */
+const PUBLIC_SUBPATHS: Record<string, string[]> = {
+  observability: ["write.ts"],
+};
+
+/** 禁止跨任何业务域 import 的域（即使通过 index.ts）。 */
+const NO_CROSS_DOMAIN_DOMAINS = new Set(["observability"]);
 
 const LEGACY_ALIASES: Record<string, string> = {
   auth: "identity",
@@ -99,11 +108,20 @@ export function resolveRelativeImport(
   return toPosix(rel);
 }
 
-function isPublicDomainImport(target: string): boolean {
-  const m = toPosix(target).match(
-    /^(?:noj-core\/)?src\/domains\/([^/]+)\/index\.ts$/,
-  );
-  return m ? DOMAINS.has(m[1]!) : false;
+function isPublicDomainImport(target: string, sourceDomain: string): boolean {
+  const p = toPosix(target);
+  const m = p.match(/^(?:noj-core\/)?src\/domains\/([^/]+)\/([^/]+\.ts)$/);
+  if (!m) return false;
+  const targetDomain = m[1]!;
+  const fileName = m[2]!;
+  if (!DOMAINS.has(targetDomain)) return false;
+  if (fileName === "index.ts") {
+    // 观测域 index.ts 仅允许 admin 挂载管理路由时导入。
+    if (targetDomain === "observability") return sourceDomain === "admin";
+    return true;
+  }
+  const allowed = PUBLIC_SUBPATHS[targetDomain];
+  return allowed ? allowed.includes(fileName) : false;
 }
 
 export function checkFile(
@@ -132,7 +150,16 @@ export function checkFile(
     if (!target) continue;
     const targetDomain = domainOf(target);
     if (!targetDomain || targetDomain === sourceDomain) continue;
-    if (isPublicDomainImport(target)) continue;
+    if (NO_CROSS_DOMAIN_DOMAINS.has(sourceDomain)) {
+      violations.push({
+        file,
+        importSpec: spec,
+        target,
+        message: `${sourceDomain} 域不得 import 其他业务域: ${spec}`,
+      });
+      continue;
+    }
+    if (isPublicDomainImport(target, sourceDomain)) continue;
 
     violations.push({
       file,
