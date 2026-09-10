@@ -19,8 +19,8 @@ import { AppError } from "./shared/base/errors.ts";
 import { logger } from "./shared/base/logging.ts";
 import { listJudgeImages } from "./domains/system/index.ts";
 import { banlistMiddleware } from "./domains/identity/index.ts";
-import { requestContext } from "./shared/middleware/request-context.ts";
-import { metricsMiddleware } from "./shared/middleware/metrics.ts";
+import { requestContext } from "./domains/observability/middleware/request-context.ts";
+import { httpMetricsMiddleware } from "./domains/observability/middleware/http-metrics.ts";
 import { metrics, normalizeMetricRoute } from "./shared/base/metrics.ts";
 import { renderPrometheusMetrics } from "./domains/system/services/observability.ts";
 import { getSetting } from "./domains/system/index.ts";
@@ -76,7 +76,7 @@ export function createApp(): Hono {
   // 请求上下文中间件（最外层）：为每个请求生成 request_id，
   // 写入 context 供 onError 复用，并包裹后续处理使日志自动带 request_id。
   app.use("*", requestContext);
-  app.use("*", metricsMiddleware);
+  app.use("*", httpMetricsMiddleware(observabilityRegistry));
 
   // CORS 中间件
   // - 开发环境：只允许本地 UI 开发端口，避免 credentials 与通配来源组合
