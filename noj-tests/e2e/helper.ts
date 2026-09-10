@@ -196,10 +196,17 @@ export async function getProblemIdByNumber(
 }
 
 /**
- * 检测 judge worker 是否可用（提交后数秒内状态推进）。
+ * 检测 judge worker 是否可用（提交后数秒内状态离开 pending）。
  *
- * 创建一个临时用户提交一次，若 2s 内状态从 pending 变为 judging/finished
- * 则判定 judge worker 正常工作。
+ * 判定口径是「judge 是否在消费队列」，因此状态推进到
+ * judging / finished / **error** 都算可用：error 说明 judge 领取并处理了任务，
+ * 只是评测结果为错误——判据是 worker 的消费能力，而非该次提交的代码正确性。
+ *
+ * 历史教训（2026-09-11）：此前只接受 judging/finished，于是当 judge 因
+ * 「RESULT payload 竞态」把评测统一判为 error 时，本函数返回 false，
+ * 导致整个优先级队列 E2E 套件**静默跳过**（以 201µs「通过」），
+ * 把真实缺陷长时间掩盖成绿色。放宽为接受 error 后，judge 消费异常会表现为
+ * 测试真实执行（并如实失败），而不是被无声跳过。
  */
 export async function isJudgeAvailable(): Promise<boolean> {
   try {
@@ -222,7 +229,9 @@ export async function isJudgeAvailable(): Promise<boolean> {
       const data = await res.json();
       const status = (data as { data?: { status?: string } })?.data?.status ||
         "";
-      if (status === "judging" || status === "finished") return true;
+      if (status === "judging" || status === "finished" || status === "error") {
+        return true;
+      }
     }
     return false;
   } catch {
