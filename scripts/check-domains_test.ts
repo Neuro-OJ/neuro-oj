@@ -73,6 +73,44 @@ Deno.test("checkFile: 允许未来域门面 index.ts 导入", () => {
   assert(violations.length === 0, "应允许域门面导入");
 });
 
+Deno.test("checkFile: 业务域 import observability/index.ts 违规（spec §4.5 规则 2）", () => {
+  // 该不变量此前**未被实现**：isPublicDomainImport 对任何 index.ts 无条件放行，
+  // 不看 sourceDomain，因此 submission → observability/index.ts 被判合规，
+  // 而 spec 与 domain-boundaries.md 都写明该 import 仅 admin 可做。
+  const violations = checkFile(
+    "noj-core/src/domains/submission/services/foo.ts",
+    `import { createObservabilityRouter } from "../../observability/index.ts";\n`,
+  );
+  assert(
+    violations.length > 0,
+    "业务域深路径导入观测域 index.ts 应报违规（唯一例外是 admin）",
+  );
+});
+
+Deno.test("checkFile: admin import observability/index.ts 允许（唯一例外）", () => {
+  const violations = checkFile(
+    "noj-core/src/domains/admin/routes/observability.ts",
+    `import { createObservabilityRouter } from "../../observability/index.ts";\n`,
+  );
+  assert(
+    violations.length === 0,
+    `admin 挂载观测管理路由应被允许，实际: ${JSON.stringify(violations)}`,
+  );
+});
+
+Deno.test("checkFile: 非受限域的 index.ts 仍是公开门面", () => {
+  // 只有 observability 的 index.ts 受限；其他域的门面语义不变
+  // （catalog → identity/index.ts 等是既有正常用法）。
+  const violations = checkFile(
+    "noj-core/src/domains/catalog/routes/problems.ts",
+    `import { resolveUserId } from "../../identity/index.ts";\n`,
+  );
+  assert(
+    violations.length === 0,
+    `其他域 index.ts 应仍可跨域导入，实际: ${JSON.stringify(violations)}`,
+  );
+});
+
 Deno.test("checkFile: 非相对导入不检查", () => {
   const violations = checkFile(
     "noj-core/src/services/contest/contests.ts",

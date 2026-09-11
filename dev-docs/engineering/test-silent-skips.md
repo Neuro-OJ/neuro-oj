@@ -366,10 +366,6 @@
 | noj-tests/e2e/staging/staging-smoke.test.ts | 262 | early-return |
 | noj-tests/e2e/submission/artifact_submission.test.ts | 26 | early-return |
 | noj-tests/e2e/submission/artifact_submission.test.ts | 31 | early-return |
-| noj-tests/e2e/submission/priority_queue.test.ts | 33 | early-return |
-| noj-tests/e2e/submission/priority_queue.test.ts | 39 | early-return |
-| noj-tests/e2e/submission/priority_queue.test.ts | 80 | early-return |
-| noj-tests/e2e/submission/priority_queue.test.ts | 125 | early-return |
 | noj-tests/e2e/submission/sse.test.ts | 85 | early-return |
 | noj-tests/e2e/submission/sse.test.ts | 103 | early-return |
 | noj-tests/e2e/submission/sse.test.ts | 108 | early-return |
@@ -412,6 +408,10 @@
 | noj-tests/e2e/submission/queue.test.ts | 79 | early-return |
 | noj-tests/e2e/submission/queue.test.ts | 100 | early-return |
 | noj-tests/e2e/submission/queue.test.ts | 106 | early-return |
+| noj-tests/e2e/submission/priority_queue.test.ts | 33 | early-return |
+| noj-tests/e2e/submission/priority_queue.test.ts | 39 | early-return |
+| noj-tests/e2e/submission/priority_queue.test.ts | 80 | early-return |
+| noj-tests/e2e/submission/priority_queue.test.ts | 125 | early-return |
 | noj-tests/e2e/system/announcements.test.ts | 82 | early-return |
 | noj-tests/e2e/system/announcements.test.ts | 96 | early-return |
 | noj-tests/e2e/system/announcements.test.ts | 155 | early-return |

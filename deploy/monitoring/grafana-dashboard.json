@@ -199,8 +199,8 @@
           "legendFormat": "requests"
         },
         {
-          "expr": "noj_llm_request_duration_seconds",
-          "legendFormat": "duration"
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(noj_llm_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95 duration"
         },
         {
           "expr": "noj_llm_tokens_total",

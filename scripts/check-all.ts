@@ -24,6 +24,8 @@ if (import.meta.main) {
   await run(["deno", "run", "-A", "scripts/check-runtime-contract.ts"]);
   await run(["deno", "run", "-A", "scripts/check-runbooks.ts"]);
   await run(["deno", "run", "-A", "scripts/gen-alert-rules.ts", "--check"]);
+  await run(["deno", "run", "-A", "scripts/check-test-discovery.ts"]);
+  await run(["deno", "run", "-A", "scripts/check-dashboards.ts"]);
   await run(["bash", "scripts/deploy/test-monitoring.sh"]);
   await run([
     "deno",
@@ -34,6 +36,8 @@ if (import.meta.main) {
     "scripts/check-runtime-contract_test.ts",
     "scripts/check-runbooks_test.ts",
     "scripts/gen-alert-rules_test.ts",
+    "scripts/check-test-discovery_test.ts",
+    "scripts/check-dashboards_test.ts",
   ]);
   await run(["deno", "run", "-A", "scripts/verify-domain-ci.ts"]);
 

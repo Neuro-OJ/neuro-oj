@@ -115,7 +115,6 @@ noj-core/
 │   │   ├── rate-limit/    # 通用限流原语（业务环境相关限流在 system 域）
 │   │   ├── security/      # cidr / public-id / image-validation
 │   │   ├── observability/ # 低层 kernel：指标注册表、写侧契约、日志上下文
-│   │   └── middleware/    # request-context（已迁入 observability 域，目录保留兼容）
 │   ├── domains/           # 业务域自包含：routes / services / middleware / mq / types / tests
 │   │   ├── admin/         # 管理端统一门面域：identity/catalog/system/... 子域路由、审计、乐观锁
 │   │   ├── identity/      # 注册登录、JWT/RBAC、用户、OAuth、TFA、封禁
@@ -130,7 +129,7 @@ noj-core/
 │   │   ├── search/        # 全局搜索（search_entries 索引、消费者、搜索 API）
 │   │   ├── query/         # 统计、排行
 │   │   ├── content-review/# 内容审核与 DM 审核消费者
-│   │   └── observability/ # 平台域：平台指标、探针、快照、健康/指标/管理路由、SLO、运行时契约
+│   │   └── observability/ # 平台域：平台指标、探针、快照、健康/指标路由、SLO、运行时契约
 ├── scripts/               # CLI 工具（noj.ts 单入口 + migrate.ts + check-env.ts）
 ├── data/
 │   ├── problems-src/<id>/ # 题目源文件（版本控制，仅样例题）
@@ -138,7 +137,7 @@ noj-core/
 └── tests/                 # 顶层共享测试与跨模块测试
     ├── 00_migrate_test.ts # 最先执行：迁移 + seed root 用户
     ├── shared/            # shared 层测试（含 config / security / storage）
-    └── routes/health.ts   # 顶层 health 路由测试（其余测试随域进入 domains/*/tests）
+    └── routes/            # 顶层路由测试（*.test.ts；其余测试随域进入 domains/*/tests）
 ```
 
 ## 环境变量

@@ -19,7 +19,9 @@
 | `shared/rate-limit/`    | 通用限流原语（依赖系统设置的限流在 system 域）                       |
 | `shared/security/`      | CIDR、公共 ID、图片校验                                              |
 | `shared/observability/` | 低层 kernel：指标注册表、写侧契约、日志上下文                        |
-| `shared/middleware/`    | 全局 request-context 中间件（已迁入 observability 域，目录保留兼容） |
+
+> 注：`shared/middleware/` 目录**已删除**（2026-09-10 观测域重构把 request-context
+> 中间件迁入 `domains/observability/`），不再保留兼容目录。
 
 ## 域目录
 
@@ -36,7 +38,7 @@
 | gateway        | `src/domains/gateway/`        | LLM Provider、用量、配额；远期迁入 noj-llm-gateway                            |
 | query          | `src/domains/query/`          | 搜索、统计、排行榜、Dashboard 等读模型                                        |
 | content-review | `src/domains/content-review/` | 内容审核、DM 私信审核消费者                                                   |
-| observability  | `src/domains/observability/`  | 平台指标、探针、快照聚合、健康/指标/管理路由、Judge 心跳、SLO、外部运行时契约 |
+| observability  | `src/domains/observability/`  | 平台指标、探针、快照聚合、健康/指标路由、Judge 心跳、SLO、外部运行时契约 |
 
 ## 表所有权
 
@@ -66,6 +68,12 @@
    `src/domains/observability/write.ts`（写侧门面），但不得深路径 import
    观测域的 `services/`、`routes/`、`metrics/`。
 6. `domains/admin` 可 import `src/domains/observability/index.ts`
-   以挂载观测管理路由；其他业务域不享受该例外。
+   （历史上用于挂载观测管理路由；该管理端点已于 2026-09-10 移除，
+   故当前**没有任何代码使用此例外**，它仅作为规则保留，避免未来需要时再开口子）。
+   **其他业务域不享受该例外**——观测域的 `index.ts` 是受限门面。
 7. `domains/observability` 不得 import 任何其他业务域；聚合通过 `app.ts`
    组合根注入 provider 完成。
+
+> 规则 5/6 由 `scripts/check-domains.ts` 强制执行：
+> `PUBLIC_SUBPATHS.observability = ["write.ts"]`、`INDEX_IMPORT_RESTRICTED.observability = ["admin"]`。
+> 回归用例见 `scripts/check-domains_test.ts`。
