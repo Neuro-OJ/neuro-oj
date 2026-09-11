@@ -4,6 +4,7 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   auditLogs,
   communityActivityEvents,
+  communityNotifications,
   communityPosts,
   communityReports,
   communitySanctions,
@@ -734,6 +735,75 @@ Deno.test({
       page2.data.map((i) => (i.kind === "moment" ? i.post.id : i.activity.id)),
     );
     for (const id of ids2) assertEquals(ids1.has(id), false);
+  },
+});
+
+Deno.test({
+  name: "community service: 软删除帖子和评论会清空通知关联",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const board = await createBoard({
+      slug: "notification-delete-board",
+      name: "通知删除板块",
+    });
+    const post = await createPost(actorId, {
+      type: "discussion",
+      board_id: board.id,
+      title: "通知目标清理",
+      content: "内容",
+    });
+    const comment = await createComment(observerId, post.id, "评论");
+
+    await deleteComment(comment.id, observerId, false);
+    let notifications = await getDb().select({
+      post_id: communityNotifications.post_id,
+      comment_id: communityNotifications.comment_id,
+    }).from(communityNotifications).where(
+      eq(communityNotifications.recipient_id, actorId),
+    );
+    assertEquals(notifications, [{ post_id: null, comment_id: null }]);
+
+    const secondComment = await createComment(
+      observerId,
+      post.id,
+      "第二条评论",
+    );
+    await changeCommentStatus(
+      secondComment.id,
+      observerId,
+      "deleted",
+      "审核删除",
+    );
+    notifications = await getDb().select({
+      post_id: communityNotifications.post_id,
+      comment_id: communityNotifications.comment_id,
+    }).from(communityNotifications).where(
+      eq(communityNotifications.recipient_id, actorId),
+    );
+    assertEquals(notifications.length, 2);
+    for (const notification of notifications) {
+      assertEquals(notification, { post_id: null, comment_id: null });
+    }
+
+    const thirdComment = await createComment(
+      observerId,
+      post.id,
+      "第三条评论",
+    );
+    await changePostStatus(post.id, observerId, "deleted", "测试删除");
+    notifications = await getDb().select({
+      post_id: communityNotifications.post_id,
+      comment_id: communityNotifications.comment_id,
+    }).from(communityNotifications).where(
+      eq(communityNotifications.recipient_id, actorId),
+    );
+    assertEquals(notifications.length, 4);
+    for (const notification of notifications) {
+      assertEquals(notification, { post_id: null, comment_id: null });
+    }
+    assertEquals(thirdComment.post_id, post.id);
   },
 });
 
