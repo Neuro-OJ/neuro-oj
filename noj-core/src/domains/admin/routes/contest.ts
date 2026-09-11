@@ -50,6 +50,11 @@ import {
   listContestIpGroups,
   listContestIpTimeline,
 } from "../../contest/services/contest-anti-cheat.ts";
+import {
+  findSimilarSubmissions,
+  MAX_SIMILAR_PAIR_LIMIT,
+} from "../../contest/services/contest-similarity.ts";
+import { resolveProblemIdOrThrow } from "../../catalog/index.ts";
 import { assertPermission } from "../../identity/index.ts";
 import { withAudit } from "../services/admin-audit.ts";
 import type { AuditMeta } from "../types/admin-audit.ts";
@@ -482,6 +487,82 @@ router.get("/contests/:id/anti-cheat/timeline", async (c) => {
     },
   });
 });
+
+/**
+ * GET /contests/:id/anti-cheat/similar-submissions —— 竞赛内互相高度相似的提交对。
+ *
+ * 权限：contest:anti_cheat_read（与同文件其余风控端点一致）。
+ * query：
+ * - `threshold`：相似度阈值，(0, 1]，默认 0.8；
+ * - `limit`：返回对数上限，1-200，默认 50；
+ * - `problem_id`：可选，支持 UUID / display_id，用于把分析范围缩到单题。
+ *
+ * 响应只含提交标识、用户、题目、语言、相似度与指纹统计，**不含源代码**；
+ * 结果是供人工复核的线索，不代表作弊结论。
+ */
+router.get("/contests/:id/anti-cheat/similar-submissions", async (c) => {
+  await assertPermission(c, "contest:anti_cheat_read");
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const threshold = parseSimilarityThreshold(c.req.query("threshold"));
+  const limit = parseSimilarityLimit(c.req.query("limit"));
+  const problemRef = c.req.query("problem_id")?.trim();
+  const problemId = problemRef
+    ? await resolveProblemIdOrThrow(problemRef)
+    : undefined;
+  const result = await findSimilarSubmissions(contestId, {
+    threshold,
+    limit,
+    problemId,
+  });
+  return c.json({
+    data: result.data,
+    meta: {
+      threshold: result.threshold,
+      limit: result.limit,
+      total: result.total,
+      truncated: result.truncated,
+      candidates: result.candidates,
+      // 评审补充：区分「取了多少候选」与「真正比较了多少」——
+      // 只看 candidates 会在候选含大量过短提交时高估分析覆盖率。
+      participating: result.participating,
+      skipped: result.skipped,
+      buckets: result.buckets,
+      max_submissions: result.max_submissions,
+    },
+    data_policy: {
+      // 与同文件的 ip-groups / timeline 保持同一形状（评审指出此处曾多出 source、
+      // 少了 retention_days，而 noj-ui/composables/useContests.ts 把
+      // retention_days 声明为必需字段）。
+      purpose: "竞赛期间代码相似度人工复核",
+      retention_days: 180,
+      automated_penalty: false,
+    },
+  });
+});
+
+/** 解析 `threshold` 查询参数：缺省时返回 undefined，由服务层套用默认阈值。 */
+function parseSimilarityThreshold(raw: string | undefined): number | undefined {
+  const text = raw?.trim();
+  if (!text) return undefined;
+  const value = Number(text);
+  if (!Number.isFinite(value) || value <= 0 || value > 1) {
+    throw new BadRequestError("threshold 必须为大于 0 且不超过 1 的小数");
+  }
+  return value;
+}
+
+/** 解析 `limit` 查询参数：缺省时返回 undefined，由服务层套用默认上限。 */
+function parseSimilarityLimit(raw: string | undefined): number | undefined {
+  const text = raw?.trim();
+  if (!text) return undefined;
+  const value = Number(text);
+  if (!Number.isInteger(value) || value < 1 || value > MAX_SIMILAR_PAIR_LIMIT) {
+    throw new BadRequestError(
+      `limit 必须为 1 到 ${MAX_SIMILAR_PAIR_LIMIT} 之间的整数`,
+    );
+  }
+  return value;
+}
 
 /** 查看正式成绩发布门禁及待处理/失败评测明细。 */
 router.get("/contests/:id/ranking-snapshots/readiness", async (c) => {

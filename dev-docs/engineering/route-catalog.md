@@ -80,6 +80,7 @@
 | GET | `/contests` | noj-core/src/domains/admin/routes/contest.ts |
 | GET | `/contests/:id` | noj-core/src/domains/admin/routes/contest.ts |
 | GET | `/contests/:id/anti-cheat/ip-groups` | noj-core/src/domains/admin/routes/contest.ts |
+| GET | `/contests/:id/anti-cheat/similar-submissions` | noj-core/src/domains/admin/routes/contest.ts |
 | GET | `/contests/:id/anti-cheat/timeline` | noj-core/src/domains/admin/routes/contest.ts |
 | GET | `/contests/:id/events` | noj-core/src/domains/contest/routes/sse.ts |
 | GET | `/contests/:id/participants` | noj-core/src/domains/admin/routes/contest.ts |

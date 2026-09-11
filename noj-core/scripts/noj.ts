@@ -25,6 +25,7 @@ import {
   sealExistingSiteAdminInitialization,
 } from "../src/domains/identity/index.ts";
 import { ensureRbacSeeds } from "../src/domains/system/index.ts";
+import { initProblem } from "./problems-init.ts";
 import {
   ensureAdminFromEnv,
   ensureBootstrapAdmin,
@@ -74,6 +75,11 @@ function resolveTemplateExclude(srcDir: string): string {
 async function buildProblemPackage(id: string): Promise<void> {
   const srcDir = join(SRC_DIR, id);
   const outFile = join(OUT_DIR, `${id}.zip`);
+
+  // 确保产物目录存在：`data/packages/` 是 gitignored 的构建产物目录，
+  // 全新检出时并不存在（其 .gitkeep 也未被跟踪）。此前 buildAllPackages 会
+  // 建它，但单题 `--id` 路径不建，导致出题人按 README 第一条命令就失败。
+  await Deno.mkdir(OUT_DIR, { recursive: true });
 
   // 先删除旧产物：zip -r 对已存在文件是"更新"语义，会保留源中已删除的旧条目
   try {
@@ -248,6 +254,54 @@ const bootstrapCmd = new Command()
 
 const problemsCmd = new Command()
   .description("题目包操作")
+  .command("init", "生成新题目的最小可评测骨架（脚手架）")
+  .arguments("<slug:string>")
+  .option("--title <title:string>", "题目标题（缺省用 slug）")
+  .option(
+    "--type <type:string>",
+    // 注意：这里的 U/P 是**题目归属**（U=用户题 / P=主题题），不是「客观题/编程题」。
+    // 客观题由 problem.json 的 is_objective + questions.json 表达，本脚手架只产
+    // 编程题（P）。此前把 U 标为「客观题」会误导出题人生成出 visibility=private
+    // 且默认列表不可见的题目。
+    "题型：U（用户题，visibility=private）/ P（主题题，默认）",
+    { default: "P" },
+  )
+  .option("--difficulty <difficulty:string>", "难度：easy / medium / hard", {
+    default: "medium",
+  })
+  .option("--dir <dir:string>", "输出根目录（缺省 data/problems-src）")
+  .action(
+    async (
+      opts: {
+        title?: string;
+        type?: string;
+        difficulty?: string;
+        dir?: string;
+      },
+      slug: string,
+    ) => {
+      const result = await initProblem({
+        slug,
+        title: opts.title,
+        type: opts.type as "U" | "P" | undefined,
+        difficulty: opts.difficulty as "easy" | "medium" | "hard" | undefined,
+        root: opts.dir,
+      });
+      console.log(`已生成题目骨架：${result.dir}`);
+      for (const file of result.files) {
+        console.log(`  + ${file}`);
+      }
+      console.log(
+        `\n下一步：按 README.md 的待办清单补齐题面/判分/用例，然后运行 ` +
+          `deno task problems:build --id ${slug}`,
+      );
+      if (opts.dir) {
+        console.log(
+          `注意：已用 --dir 指定输出根目录，请自行 cd 到该根目录再执行 build/import。`,
+        );
+      }
+    },
+  )
   .command("build", "从 data/problems-src 构建统一题目包")
   .option("--id <id:string>", "仅构建指定题目 id")
   .action(async (opts: { id?: string }) => {
