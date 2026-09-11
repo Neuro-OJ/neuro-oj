@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
   BadRequestError,
@@ -230,6 +230,32 @@ export async function getLatestContestRankingSnapshot(contestId: string) {
   const [snapshot] = await getDb().select().from(contestRankingSnapshots)
     .where(eq(contestRankingSnapshots.contest_id, contestId))
     .orderBy(desc(contestRankingSnapshots.version)).limit(1);
+  return snapshot ?? null;
+}
+
+/**
+ * 按版本号取单个正式成绩快照（不可变）。
+ *
+ * 与 `getLatestContestRankingSnapshot` 相对：历史版本的 `rows` 只在**具体版本导出**时
+ * 才需要读取，因此 `listContestRankingSnapshots` 刻意只返回元数据以控响应体大小。
+ * 本函数补齐「按版本取完整 rows」的能力，供历史成绩导出与审计核对使用。
+ *
+ * @param contestId 竞赛 UUID
+ * @param version 快照版本号（从 1 递增；不存在返回 null 而非抛错，由调用方决定 404 语义）
+ * @returns 快照行（含 rows），不存在时为 null
+ */
+export async function getContestRankingSnapshotByVersion(
+  contestId: string,
+  version: number,
+) {
+  const [snapshot] = await getDb().select().from(contestRankingSnapshots)
+    .where(
+      and(
+        eq(contestRankingSnapshots.contest_id, contestId),
+        eq(contestRankingSnapshots.version, version),
+      ),
+    )
+    .limit(1);
   return snapshot ?? null;
 }
 

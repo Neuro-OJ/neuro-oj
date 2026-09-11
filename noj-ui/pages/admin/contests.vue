@@ -56,11 +56,23 @@ interface SettlementStatus {
   items: SettlementItem[]
   truncated: boolean
 }
+/** 正式成绩版本元数据（列表接口不返回 rows；导出具体版本时才取完整数据）。 */
+interface RankingSnapshotMeta {
+  id: string
+  version: number
+  status: string
+  note: string
+  created_by: string | null
+  created_at: string
+}
 const settlementContest = ref<Contest | null>(null)
 const settlement = ref<SettlementStatus | null>(null)
 const settlementLoading = ref(false)
 const settlementNote = ref('')
 const settlementAllowFailed = ref(false)
+/** 版本历史，用于导出**历史版本**成绩（此前 UI 只能导出最新版）。 */
+const snapshotVersions = ref<RankingSnapshotMeta[]>([])
+const snapshotVersionsLoading = ref(false)
 
 // 自动轮询间隔（默认 30s，可由刷新控制条切换/关闭；竞赛状态/人数随刷新更新）
 const pollInterval = ref<number | null>(30000)
@@ -299,15 +311,66 @@ async function openSettlement(contest: Contest) {
   settlementNote.value = ''
   settlementAllowFailed.value = false
   settlementLoading.value = true
+  snapshotVersions.value = []
   try {
     const result = await api.get<{ data: SettlementStatus }>(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}/ranking-snapshots/readiness`, { silent: true })
     settlement.value = result.data
+    // 版本历史并行加载：失败不阻断结算检查（导出是次要功能）
+    void loadSnapshotVersions(contest)
   } catch (err: unknown) {
     toast.error(extractApiError(err).message)
     settlementContest.value = null
   } finally {
     settlementLoading.value = false
   }
+}
+
+/**
+ * 载入正式成绩版本历史。
+ *
+ * 该列表接口刻意不返回 rows（控响应体大小），因此这里只取元数据；
+ * 导出某个版本时再由服务端按版本取完整数据。
+ *
+ * 竞态防护：`openSettlement` 会先清空 `snapshotVersions` 再**不等待地**调用本函数，
+ * 因此「打开 A（版本多）→ 关闭 → 打开 B（无版本）」时 A 的迟到响应会覆盖 B 的
+ * 面板，甚至让导出按钮带上属于 A 的版本号。用请求序号丢弃过期响应。
+ */
+let snapshotVersionsSeq = 0
+
+async function loadSnapshotVersions(contest: Contest) {
+  const seq = ++snapshotVersionsSeq
+  snapshotVersionsLoading.value = true
+  try {
+    const result = await api.get<{ data: RankingSnapshotMeta[] }>(
+      `/api/v1/admin/contest/contests/${contest.public_id || contest.id}/ranking-snapshots`,
+      { silent: true },
+    )
+    // 仅接受最后一次请求的结果（期间可能已切换竞赛或关闭面板）
+    if (seq !== snapshotVersionsSeq) return
+    snapshotVersions.value = result.data
+  } catch {
+    if (seq !== snapshotVersionsSeq) return
+    // 静默失败：不干扰结算与发布主流程
+    snapshotVersions.value = []
+  } finally {
+    if (seq === snapshotVersionsSeq) snapshotVersionsLoading.value = false
+  }
+}
+
+/**
+ * 导出指定版本的正式成绩（CSV 或 JSON）。
+ *
+ * 与「导出最新版」不同，这里必须显式给出 version —— 历史成绩修订的核对与归档
+ * 都需要能取到**当时那一版**的数据，而不是当前最新版。
+ */
+async function exportSnapshotVersion(contest: Contest, version: number, format: 'csv' | 'json') {
+  const base = `/api/v1/admin/contest/contests/${contest.public_id || contest.id}/ranking-snapshots/${version}`
+  // 版本列表已在面板中加载过，能渲染出按钮就说明该版本存在——无需再发一次
+  // 请求探测。此前用 `await api.get(base)` **下载并丢弃整个 JSON 快照**只为
+  // 判断存在性，随后 window.location.assign 又把同一份数据传一遍：一万人规模
+  // 的成绩单每次点击都要传两遍。存在性由服务端在处理下载请求时判定（404 会
+  // 直接呈现给浏览器，用户可见）。
+  window.location.assign(`${base}.${format}`)
 }
 
 async function publishSnapshot() {
@@ -335,12 +398,9 @@ async function publishSnapshot() {
 }
 
 async function exportSnapshot(contest: Contest) {
-  try {
-    await api.get(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}/ranking-snapshots/latest`, { silent: true })
-    window.location.assign(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}/ranking-snapshots/latest.csv`)
-  } catch (err: unknown) {
-    toast.error(extractApiError(err).message)
-  }
+  // 与 exportSnapshotVersion 同理：不再先下载一份 JSON 只为探测存在性。
+  // 若无正式成绩，latest.csv 会返回 404，浏览器直接呈现该响应。
+  window.location.assign(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}/ranking-snapshots/latest.csv`)
 }
 
 async function makeContestPublic(contest: Contest) {
@@ -548,6 +608,34 @@ async function removeParticipant(participant: Participant) {
       <template v-else-if="settlement">
         <div class="grid gap-3 border-b border-border bg-bg-page p-5 sm:grid-cols-3"><div class="rounded-xl border border-border bg-white p-3"><div class="text-xs text-text-muted">竞赛状态</div><div class="mt-1 font-semibold text-text">{{ settlement.contest_status === 'ended' ? '已结束' : settlement.contest_status === 'running' ? '进行中' : '未开始' }}</div></div><div class="rounded-xl border border-border bg-white p-3"><div class="text-xs text-text-muted">待处理评测</div><div class="mt-1 font-semibold" :class="settlement.pending_count ? 'text-error-text' : 'text-success-text'">{{ settlement.pending_count }}</div></div><div class="rounded-xl border border-border bg-white p-3"><div class="text-xs text-text-muted">失败评测</div><div class="mt-1 font-semibold" :class="settlement.failed_count ? 'text-amber-700' : 'text-success-text'">{{ settlement.failed_count }}</div></div></div>
         <div class="min-h-0 flex-1 overflow-y-auto p-5"><p v-if="settlement.pending_count" class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-error-text">待处理评测必须全部完成后才能发布。以下列表展示最多 500 条待处理或失败任务。</p><p v-else-if="settlement.failed_count" class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">失败评测需要人工处理，或由管理员填写说明并明确允许带失败评测发布。</p><p v-else-if="settlement.contest_status !== 'ended'" class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">竞赛尚未结束，当前只能查看结算状态，不能发布正式成绩。</p><div v-if="settlement.items.length" class="overflow-x-auto rounded-xl border border-border"><table class="w-full min-w-[680px] text-left text-xs"><thead class="border-b border-border bg-bg-page text-text-muted"><tr><th class="px-3 py-2">用户</th><th class="px-3 py-2">题目</th><th class="px-3 py-2">提交状态</th><th class="px-3 py-2">评测状态</th><th class="px-3 py-2">提交时间</th></tr></thead><tbody><tr v-for="item in settlement.items" :key="`${item.kind}-${item.submission_id}`" class="border-b border-border last:border-0"><td class="px-3 py-2 font-semibold text-text">{{ item.username }}</td><td class="px-3 py-2 text-text-secondary">{{ item.problem_title }}</td><td class="px-3 py-2"><UBadge :color="item.status === 'error' ? 'error' : 'warning'" variant="subtle">{{ item.status }}</UBadge></td><td class="px-3 py-2 text-text-secondary">{{ item.result_status || '缺少结果' }}</td><td class="px-3 py-2 text-text-muted">{{ formatDateTime(item.created_at) }}</td></tr></tbody></table></div><p v-else class="py-8 text-center text-sm text-success-text">所有竞赛评测均已完成，可在竞赛结束后发布。</p><p v-if="settlement.truncated" class="mt-2 text-xs text-text-muted">列表已截断，仅展示前 500 条；计数仍为完整数量。</p></div>
+          <!-- 版本历史：导出历史正式成绩（此前 UI 只能导出最新版） -->
+          <section class="mt-5 rounded-xl border border-border">
+            <header class="flex items-center justify-between border-b border-border px-4 py-3">
+              <div>
+                <h3 class="text-sm font-bold text-text">正式成绩版本</h3>
+                <p class="mt-0.5 text-xs text-text-muted">重测后会生成新版本且不覆盖旧版；此处可导出任一历史版本</p>
+              </div>
+              <UBadge v-if="snapshotVersions.length" color="neutral" variant="subtle">{{ snapshotVersions.length }} 版</UBadge>
+            </header>
+            <div v-if="snapshotVersionsLoading" class="px-4 py-6 text-center text-xs text-text-muted">加载中…</div>
+            <p v-else-if="!snapshotVersions.length" class="px-4 py-6 text-center text-xs text-text-muted">尚未发布任何正式成绩</p>
+            <ul v-else class="divide-y divide-border">
+              <li v-for="snapshot in snapshotVersions" :key="snapshot.id" class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-semibold text-text tabular-nums">第 {{ snapshot.version }} 版</span>
+                    <UBadge v-if="snapshot.version === snapshotVersions[0]?.version" color="primary" variant="subtle">最新</UBadge>
+                  </div>
+                  <p class="mt-0.5 truncate text-xs text-text-muted" :title="snapshot.note">{{ snapshot.note || '（无说明）' }}</p>
+                  <p class="mt-0.5 text-xs text-text-muted tabular-nums">{{ formatDateTime(snapshot.created_at) }}</p>
+                </div>
+                <div class="flex shrink-0 gap-2">
+                  <UButton color="neutral" variant="outline" size="xs" icon="i-lucide-table" @click="exportSnapshotVersion(settlementContest!, snapshot.version, 'csv')">CSV</UButton>
+                  <UButton color="neutral" variant="outline" size="xs" icon="i-lucide-file-json" @click="exportSnapshotVersion(settlementContest!, snapshot.version, 'json')">JSON</UButton>
+                </div>
+              </li>
+            </ul>
+          </section>
         <div class="border-t border-border p-5"><label class="mb-2 block text-xs font-semibold text-text">修订/发布说明（可选；失败评测时必填）</label><textarea v-model="settlementNote" rows="2" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-signal" placeholder="例如：已确认失败任务不影响参赛者成绩，按当前结果结算"></textarea><label v-if="settlement.failed_count" class="mt-3 flex items-center gap-2 text-sm text-text-secondary"><input v-model="settlementAllowFailed" type="checkbox" class="size-4 rounded border-border text-primary" />我确认已处理失败评测，并允许带失败评测发布</label><div class="mt-4 flex justify-end gap-2"><UButton color="neutral" variant="outline" @click="settlementContest = null">关闭</UButton><UButton color="primary" :disabled="!settlement.ready || (settlement.failed_count > 0 && (!settlementAllowFailed || !settlementNote.trim()))" @click="publishSnapshot">发布正式成绩</UButton></div></div>
       </template>
     </div>
