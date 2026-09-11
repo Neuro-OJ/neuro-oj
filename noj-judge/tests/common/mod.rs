@@ -32,34 +32,88 @@ pub fn get_docker() -> Result<Docker> {
     Docker::connect_with_local_defaults().context("连接 Docker daemon 失败")
 }
 
-/// 确保测试用 Docker 镜像存在。
+/// 记录构建输入哈希的镜像 label。
 ///
-/// 先检查本地是否已有 `noj-judge-test-runner` 镜像，
-/// 不存在则通过 `docker build` 命令从 Dockerfile 构建。
+/// 用于判定「本地镜像是否由当前构建输入产出」。放在模块级是因为
+/// `ensure_sdk_images` 与 `ensure_test_image` 共用同一约定。
+const INPUTS_LABEL: &str = "com.noj.build-inputs-sha";
+
+/// 镜像是否需要重建的判定（**纯函数，便于测试**）。
+///
+/// 这是陈旧判定的核心决策，抽出来单独测试的原因：判定逻辑若写死在
+/// `ensure_*` 里，只能靠跑 Docker 才能覆盖，实践中就等于没有测试——
+/// 而一个反向的判定（相等即重建 / 不等即跳过）会静默地把整套 E2E 变成
+/// 「验证旧镜像」。
+///
+/// 语义（安全方向）：**无法证明镜像是最新的，就重建**。
+/// - 无 label（None）→ 重建：镜像由他人构建、或早于本机制引入；
+/// - label 与期望哈希不同 → 重建：构建输入已变；
+/// - label 与期望哈希相同 → 跳过。
+#[derive(Debug, PartialEq, Eq)]
+pub enum ImageFreshness {
+    /// 输入哈希一致，可复用现有镜像。
+    UpToDate,
+    /// 需要重建，附原因（用于日志，让「为什么重建」可见）。
+    Rebuild(&'static str),
+}
+
+/// 依据「期望哈希」与「镜像上记录的哈希」判定是否需要重建。
+#[allow(dead_code)]
+pub fn decide_image_freshness(expected: &str, recorded: Option<&str>) -> ImageFreshness {
+    match recorded {
+        None => ImageFreshness::Rebuild("镜像无构建输入 label（他人构建或早于本机制）"),
+        Some(got) if got == expected => ImageFreshness::UpToDate,
+        Some(_) => ImageFreshness::Rebuild("构建输入已变更"),
+    }
+}
+
+/// 读取镜像上记录的构建输入哈希（镜像不存在或无 label 时为 None）。
+#[allow(dead_code)]
+async fn recorded_inputs_sha(docker: &Docker, tag: &str) -> Option<String> {
+    docker
+        .inspect_image(tag)
+        .await
+        .ok()
+        .and_then(|info| info.config)
+        .and_then(|cfg| cfg.labels)
+        .and_then(|labels| labels.get(INPUTS_LABEL).cloned())
+}
+
+/// 确保测试用 Docker 镜像存在**且不过期**。
+///
+/// 原实现只检查「tag 是否存在」：本地改了 `tests/e2e/evaluate.py` 或
+/// `Dockerfile.test-runner` 后，E2E 仍会拿旧镜像跑并报绿——正是本轮要消灭的
+/// 「静默验证旧镜像」失效模式。`ensure_sdk_images` 已改为按构建输入内容哈希判定，
+/// 但该函数当时未一并修改，于是 8 个 E2E binary 中依赖它的 6 个仍有同样问题。
+///
+/// 现在与 `ensure_sdk_images` 同机制：把「Dockerfile + 构建上下文（tests/e2e）」
+/// 的内容哈希写进镜像 label，判定不一致就重建。
 #[allow(dead_code)] // 仅部分 E2E test binary 引用
 pub async fn ensure_test_image(docker: &Docker) -> Result<()> {
     let image_name = "noj-judge-test-runner:latest";
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // 构建上下文是 tests/e2e（docker build 在该目录下执行，见下方 current_dir）。
+    // 除 Dockerfile 本身外，把整个上下文目录纳入哈希：evaluate.py 就在其中，
+    // 而它正是最常被改动、也最容易被"陈旧镜像"掩盖的文件。
+    let expected = build_inputs_sha(&root, "tests/e2e/Dockerfile.test-runner", &["tests/e2e"])?;
 
-    // 检查本地镜像
-    let images = docker
-        .list_images(None::<bollard::query_parameters::ListImagesOptions>)
-        .await
-        .context("列出 Docker 镜像失败")?;
-
-    let exists = images.iter().any(|i| {
-        i.repo_tags
-            .iter()
-            .any(|tag| tag == image_name || tag == "noj-judge-test-runner")
-    });
-
-    if exists {
-        return Ok(());
+    let current = recorded_inputs_sha(docker, image_name).await;
+    match decide_image_freshness(&expected, current.as_deref()) {
+        ImageFreshness::UpToDate => {
+            // 明确打印「已是最新」：否则「跳过了」与「没执行」在日志上无法区分。
+            println!(
+                "测试镜像 {} 已是最新（构建输入 {}…），跳过重建",
+                image_name,
+                &expected[..12]
+            );
+            return Ok(());
+        }
+        ImageFreshness::Rebuild(why) => {
+            println!("重建测试镜像 {}（{}）...", image_name, why);
+        }
     }
 
-    // 通过子进程构建镜像（bollard 的 tar 构建在测试环境中不够可靠）
-    println!("测试镜像 {} 不存在，开始构建...", image_name);
-
-    let dockerfile_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/e2e");
+    let dockerfile_dir = root.join("tests/e2e");
     if !dockerfile_dir.join("Dockerfile.test-runner").exists() {
         anyhow::bail!(
             "Dockerfile 不存在: {}",
@@ -74,8 +128,11 @@ pub async fn ensure_test_image(docker: &Docker) -> Result<()> {
             image_name,
             "-f",
             "Dockerfile.test-runner",
+            "--label",
+            &format!("{INPUTS_LABEL}={expected}"),
             ".",
         ])
+        .env("DOCKER_BUILDKIT", "0")
         .current_dir(&dockerfile_dir)
         .status()
         .context("执行 docker build 失败")?;
@@ -84,7 +141,24 @@ pub async fn ensure_test_image(docker: &Docker) -> Result<()> {
         anyhow::bail!("docker build 失败 (exit: {:?})", status.code());
     }
 
-    println!("测试镜像构建完成: {}", image_name);
+    // 构建后复核 label 确实写进去了：若 docker 忽略了 --label（版本差异/被策略
+    // 剥离），每轮都会「看起来重建成功」但下次判定仍为 None → 永久重建循环。
+    // 与其静默循环，不如立刻报错。
+    let after = recorded_inputs_sha(docker, image_name).await;
+    if after.as_deref() != Some(expected.as_str()) {
+        anyhow::bail!(
+            "测试镜像构建完成但输入哈希 label 未生效（期望 {}，实际 {:?}）——\
+             会导致每轮 E2E 都重复重建，请检查 docker 是否支持 --label",
+            expected,
+            after
+        );
+    }
+
+    println!(
+        "测试镜像构建完成: {}（输入 {}…）",
+        image_name,
+        &expected[..12]
+    );
     Ok(())
 }
 
@@ -354,9 +428,6 @@ macro_rules! e2e_test {
 /// 「git checkout 刷新 mtime」造成的无谓重建，也避免 mtime 精度问题。
 #[allow(dead_code)]
 pub async fn ensure_sdk_images(docker: &Docker) -> Result<()> {
-    /// 记录构建输入哈希的镜像 label。
-    const INPUTS_LABEL: &str = "com.noj.build-inputs-sha";
-
     for (tag, dockerfile, source_dirs) in [
         (
             "noj-e2e-sdk-evaluator:latest",
@@ -373,21 +444,21 @@ pub async fn ensure_sdk_images(docker: &Docker) -> Result<()> {
         let expected = build_inputs_sha(&root, dockerfile, source_dirs)?;
 
         // 读取现有镜像的输入哈希 label（镜像不存在或无 label 时为 None）
-        let current: Option<String> = match docker.inspect_image(tag).await {
-            Ok(info) => info
-                .config
-                .and_then(|cfg| cfg.labels)
-                .and_then(|labels| labels.get(INPUTS_LABEL).cloned()),
-            Err(_) => None,
-        };
+        let current = recorded_inputs_sha(docker, tag).await;
 
-        if current.as_deref() == Some(expected.as_str()) {
-            continue;
-        }
-
-        match &current {
-            None => println!("构建 SDK 测试镜像 {} ...", tag),
-            Some(_) => println!("SDK 源码或 Dockerfile 已变更，重建测试镜像 {} ...", tag),
+        match decide_image_freshness(&expected, current.as_deref()) {
+            ImageFreshness::UpToDate => {
+                // 明确打印「已是最新」：否则「跳过了」与「没执行」在日志上无法区分。
+                println!(
+                    "{} 已是最新（构建输入 {}…），跳过重建",
+                    tag,
+                    &expected[..12]
+                );
+                continue;
+            }
+            ImageFreshness::Rebuild(why) => {
+                println!("重建 {}（{}）...", tag, why);
+            }
         }
 
         let status = std::process::Command::new("docker")
@@ -408,6 +479,18 @@ pub async fn ensure_sdk_images(docker: &Docker) -> Result<()> {
             .context("执行 docker build 失败")?;
         if !status.success() {
             anyhow::bail!("docker build 失败: {}", tag);
+        }
+
+        // 构建后复核 label 已生效（否则会静默退化为每轮重建）。
+        let after = recorded_inputs_sha(docker, tag).await;
+        if after.as_deref() != Some(expected.as_str()) {
+            anyhow::bail!(
+                "{} 构建完成但输入哈希 label 未生效（期望 {}，实际 {:?}）——\
+                 会导致每轮 E2E 都重复重建，请检查 docker 是否支持 --label",
+                tag,
+                expected,
+                after
+            );
         }
     }
     Ok(())
@@ -432,8 +515,15 @@ fn build_inputs_sha(
     for dir in source_dirs {
         collect_files(&root.join(dir), &mut files)?;
     }
-    // 跳过 Python 字节码缓存：它们不参与镜像内容（镜像内 PYTHONDONTWRITEBYTECODE=1），
-    // 且本地运行时会被随意重建，纳入哈希会导致每次都不必要的重建。
+    // 跳过 Python 字节码缓存。
+    //
+    // 理由（评审订正，勿写成「镜像内没有 pycache」——那是错的）：镜像里**确实**有
+    // pycache（构建期 `python3 -c "import ..."` 生成，外加从构建上下文复制进来的），
+    // 实测 evaluator 镜像内有数百个 .pyc。但它的内容由源码决定、**不是构建输入**：
+    // 本地每次 import/跑测试都会重建 `__pycache__`，纳入哈希会因这种与镜像无关的
+    // 抖动导致每轮无谓重建。
+    // 取舍是明确的：接受哈希漏掉一个派生文件，换掉永久重建抖动。若将来把
+    // `__pycache__` 加进 .dockerignore、使镜像不再包含它，这个过滤才可以移除。
     files.retain(|p| !p.components().any(|c| c.as_os_str() == "__pycache__"));
 
     let mut rel: Vec<(String, PathBuf)> = files
@@ -580,5 +670,113 @@ mod build_inputs_tests {
         )
         .expect("真实仓库输入应可哈希");
         assert_eq!(sha.len(), 64);
+    }
+
+    /// **测试镜像的构建输入也可被哈希**（`ensure_test_image` 的判定依据）。
+    ///
+    /// 该函数此前只看 tag 是否存在，改 `tests/e2e/evaluate.py` 后 E2E 仍用旧镜像
+    /// 跑并报绿。此用例保证其输入可被计算，且 `evaluate.py` 确实参与哈希
+    /// （它是该上下文里最常被改动、最容易被陈旧镜像掩盖的文件）。
+    #[test]
+    fn test_image_inputs_are_hashable_and_cover_evaluate_py() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let before = build_inputs_sha(&root, "tests/e2e/Dockerfile.test-runner", &["tests/e2e"])
+            .expect("测试镜像输入应可哈希");
+        assert_eq!(before.len(), 64);
+
+        // 复制真实输入到临时目录后改动 evaluate.py，哈希必须变化。
+        let dir = tempfile::TempDir::new().unwrap();
+        let staging = dir.path();
+        copy_dir_all(&root.join("tests/e2e"), &staging.join("tests/e2e")).unwrap();
+        let staged_before =
+            build_inputs_sha(staging, "tests/e2e/Dockerfile.test-runner", &["tests/e2e"]).unwrap();
+        let eval = staging.join("tests/e2e/evaluate.py");
+        assert!(eval.exists(), "测试上下文应包含 evaluate.py");
+        let mut body = std::fs::read_to_string(&eval).unwrap();
+        body.push_str("\n# 评审回归：改动 evaluate.py 必须被检出\n");
+        std::fs::write(&eval, body).unwrap();
+        let staged_after =
+            build_inputs_sha(staging, "tests/e2e/Dockerfile.test-runner", &["tests/e2e"]).unwrap();
+        assert_ne!(
+            staged_before, staged_after,
+            "改动 evaluate.py 必须改变测试镜像的输入哈希（否则会静默验证旧镜像）"
+        );
+    }
+
+    /// 递归复制目录（供上面把真实输入搬到临时目录）。
+    fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
+        std::fs::create_dir_all(dst)?;
+        for entry in std::fs::read_dir(src)? {
+            let entry = entry?;
+            let to = dst.join(entry.file_name());
+            if entry.file_type()?.is_dir() {
+                copy_dir_all(&entry.path(), &to)?;
+            } else {
+                std::fs::copy(entry.path(), to)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// 陈旧判定（`decide_image_freshness`）的单元测试。
+///
+/// 这组用例针对评审指出的问题：**陈旧判定本身此前没有任何测试**——
+/// 改掉判定分支或删掉 `--label` 都不会让任何用例失败，而一个写反的判定
+/// 会静默把整套 E2E 变成「验证旧镜像」。
+#[cfg(test)]
+mod image_freshness_tests {
+    use super::{decide_image_freshness, ImageFreshness};
+
+    /// 无 label → 重建（安全方向：无法证明最新就重建）。
+    #[test]
+    fn missing_label_triggers_rebuild() {
+        assert_eq!(
+            decide_image_freshness("abc", None),
+            ImageFreshness::Rebuild("镜像无构建输入 label（他人构建或早于本机制）")
+        );
+    }
+
+    /// 哈希一致 → 跳过（不必要重建会显著拖慢 E2E）。
+    #[test]
+    fn matching_hash_is_up_to_date() {
+        assert_eq!(
+            decide_image_freshness("abc", Some("abc")),
+            ImageFreshness::UpToDate
+        );
+    }
+
+    /// 哈希不同 → 重建（这是本机制存在的理由）。
+    #[test]
+    fn differing_hash_triggers_rebuild() {
+        assert_eq!(
+            decide_image_freshness("abc", Some("def")),
+            ImageFreshness::Rebuild("构建输入已变更")
+        );
+    }
+
+    /// 边界：空字符串 label 不等于「无 label」，应判为变更而非缺失。
+    #[test]
+    fn empty_label_is_treated_as_changed_not_missing() {
+        assert_eq!(
+            decide_image_freshness("abc", Some("")),
+            ImageFreshness::Rebuild("构建输入已变更")
+        );
+    }
+
+    /// 判定必须是**对称且确定**的：同一输入反复求值结果一致
+    /// （否则会出现「有时重建、有时跳过」的抖动）。
+    #[test]
+    fn decision_is_deterministic() {
+        for _ in 0..3 {
+            assert_eq!(
+                decide_image_freshness("abc", Some("abc")),
+                ImageFreshness::UpToDate
+            );
+            assert_eq!(
+                decide_image_freshness("abc", Some("xyz")),
+                ImageFreshness::Rebuild("构建输入已变更")
+            );
+        }
     }
 }
