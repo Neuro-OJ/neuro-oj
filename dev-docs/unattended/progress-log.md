@@ -1,12 +1,20 @@
 # 无人值守执行工作日志
 
-> 本文件是**持续更新的进度留痕**，由无人值守会话在各 checkpoint 追加。
+> 本文件记录一次无人值守会话的进度与实测证据。
 > 目标与验收标准见 `dev-docs/superpowers/specs/2026-09-11-unattended-24h-objective-design.md`。
+>
+> **性质说明**：这是一份**时点快照**，不是持续维护的看板。最后更新：2026-09-11 02:10 (CST)。
+> 此后的事实变化不会自动同步到本文件；需要最新状态时以各 PR 与 `.agents/notes/` 为准。
 
 - 开始时间：2026-09-11 01:0x (CST)
 - 执行者：AI Agent（无人值守）
 - 预算：不超过 24 小时
 - 交付约定：**只推分支 + Draft PR，绝不推 main、绝不合并**
+
+## 状态标注口径
+
+下表「状态」列只表示**该目标的代码已写完、且所在 Draft PR 的 CI 为绿**，不表示已合并或已发布
+（本栈全部为未合并的 Draft PR，`main` 未被触碰）。各 PR 的 CI 覆盖并不一致，见「交付」列的备注。
 
 ---
 
@@ -14,20 +22,25 @@
 
 | 项 | 内容 | 状态 | 交付 |
 |---|---|---|---|
-| D0 | 基线转绿（迁移分片 / judge RESULT 竞态 / 镜像权限 / 测试噪声） | ✅ 完成 | [neuro-oj#486](https://github.com/Neuro-OJ/neuro-oj/pull/486) |
-| D1 | noj-problems WIP 固化 | ✅ 完成 | [noj-problems#1](https://github.com/Neuro-OJ/noj-problems/pull/1) |
-| D2 | noj-problems CI | ✅ 完成 | [noj-problems#2](https://github.com/Neuro-OJ/noj-problems/pull/2) |
+| D0 | 基线转绿（迁移分片 / judge RESULT 竞态 / 镜像权限 / 测试噪声） | ✅ 完成 | [neuro-oj#486](https://github.com/Neuro-OJ/neuro-oj/pull/486)（CI 39 pass） |
+| D1 | noj-problems WIP 固化 | ✅ 完成 | [noj-problems#1](https://github.com/Neuro-OJ/noj-problems/pull/1)（该 PR 无 CI） |
+| D2 | noj-problems CI | ✅ 完成 | [noj-problems#2](https://github.com/Neuro-OJ/noj-problems/pull/2)（题库检查 pass） |
 | D3.1 | 新题：解码采样器 | ✅ 完成 | [noj-problems#3](https://github.com/Neuro-OJ/noj-problems/pull/3) |
 | D3.2 | 新题：BPE 分词器 | ✅ 完成 | [noj-problems#4](https://github.com/Neuro-OJ/noj-problems/pull/4) |
 | D3.3 | 新题：LLM 评测指标 | ✅ 完成 | [noj-problems#5](https://github.com/Neuro-OJ/noj-problems/pull/5) |
-| D3.4 | 新题：RAG 引用问答（LLM 工程题） | ✅ 完成 | [noj-problems#6](https://github.com/Neuro-OJ/noj-problems/pull/6) |
-| D3.5 | 平台端到端验证（3 题全部通过） | ✅ 完成 | 见下「平台 E2E 实测」 |
-| D4.2 | judge 跨 worker 并发公平性缺陷 | ✅ 完成 | [neuro-oj#488](https://github.com/Neuro-OJ/neuro-oj/pull/488) |
-| D4.3 | 代码相似度检测 | ✅ 完成 | [neuro-oj#490](https://github.com/Neuro-OJ/neuro-oj/pull/490) |
-| D4.4 | 成绩单导出补全 | ✅ 完成 | [neuro-oj#491](https://github.com/Neuro-OJ/neuro-oj/pull/491) |
-| D4.5 | 题目脚手架 `problems init` | ✅ 完成 | [neuro-oj#489](https://github.com/Neuro-OJ/neuro-oj/pull/489) |
-| D5 | 平台代码审查与改进 | ✅ 完成（含陈旧镜像陷阱修复） | [neuro-oj#492](https://github.com/Neuro-OJ/neuro-oj/pull/492) |
-| D6 | 验收证据文档 + 待人工 review 清单 | ⏳ 未开始 | — |
+| D3.4 | 新题：RAG 引用问答（LLM 工程题） | 🔶 **代码完成，平台 E2E 未取证** | [noj-problems#6](https://github.com/Neuro-OJ/noj-problems/pull/6)（**该 PR 无 CI**；平台 E2E 见下方说明） |
+| D3.5 | 平台端到端验证（**P 型 3 题**通过） | ✅ 完成 | 见下「平台 E2E 实测」——**不含 D3.4 的 LLM 题** |
+| D4.2 | judge 跨 worker 并发公平性缺陷 | ✅ 完成 | [neuro-oj#488](https://github.com/Neuro-OJ/neuro-oj/pull/488)（CI 23 pass；新增 Redis 用例的 CI 执行见该 PR 评审） |
+| D4.3 | 代码相似度检测 | ✅ 完成 | [neuro-oj#490](https://github.com/Neuro-OJ/neuro-oj/pull/490)（**当时无 CI 结果**，仅 CLA + Pages） |
+| D4.4 | 成绩单导出补全 | ✅ 完成 | [neuro-oj#491](https://github.com/Neuro-OJ/neuro-oj/pull/491)（**当时无 CI 结果**，仅 CLA + Pages） |
+| D4.5 | 题目脚手架 `problems init` | ✅ 完成 | [neuro-oj#489](https://github.com/Neuro-OJ/neuro-oj/pull/489)（CI 26 pass） |
+| D5 | 平台代码审查与改进 | ✅ 完成（含陈旧镜像陷阱修复） | [neuro-oj#492](https://github.com/Neuro-OJ/neuro-oj/pull/492)（CI 23 pass） |
+| D6 | 验收证据文档 + 待人工 review 清单 | 🔶 进行中（工作日志已完成，证据文档见 #493） | [neuro-oj#493](https://github.com/Neuro-OJ/neuro-oj/pull/493) |
+
+> **D3.4 为何不是 ✅**：`rag-cited-qa` 的产物已写完并通过离线自测，但**平台 E2E 未取证**——
+> 本环境没有可用的真实 LLM Provider（见「未验证项」）。同批的 3 道 P 型题（D3.1–D3.3）已在
+> 真实平台跑通，下表「平台 E2E 实测」只覆盖这 3 题，**不包含 D3.4**。此外 D3.4 的
+> 反刷分门禁（spec §7 L1.9）也尚未在平台上实测。
 
 ---
 
@@ -51,7 +64,9 @@
 - **修复**：三处（守卫语义、幂等的 `drain_eval_tail()`、恢复「payload 完整即收尾」的首选退出条件）。
 - **证据**：新增回归测试 `result_payload_survives_solution_eof` 把竞态**确定化**
   （Solution 立即结束、Evaluator 写完标记后 sleep 1s 再写 payload）——
-  修复前**稳定复现**，修复后通过。全量 8 个 judge E2E binary：42 passed / 0 failed。
+  修复前**稳定复现**，修复后通过。全量 judge E2E：42 passed / 0 failed
+  （`noj-judge/tests/` 下共 9 个 `e2e_*.rs`，其中 8 个需要 Docker；`e2e_solution_ai`
+  含 1 个非 Docker 用例，故计入 CI 的 `--ignored` 用例总数为 42）。
 
 ### 发现 2：一个 E2E 套件长期「静默跳过」，把上述缺陷掩盖成绿色
 
@@ -94,11 +109,13 @@
   （`noj-judge/src/mq.rs:11` `PRIORITY_SEQUENCE`）、队列背压
   （`noj-core/src/domains/submission/mq/producer.ts:84` 单条 Lua 原子「容量检查 + 入队」）
   都已在代码中实现，但 ROADMAP 未勾选。
-- **`plans/` 的 checkbox 不可信**：38 份中 31 份有未勾项，但对应工作早已上线
+- **`plans/` 的 checkbox 不可信**：**47 份中 40 份**含未勾项，但对应工作早已上线
   （`2026-09-03-noj-core-organization-refactor.md` 有 139 未勾，对应域化重构已交付）。
   **不能当作待办清单使用**。
-- `.test-storage/` 产物被误提交（已在 `.gitignore` 却仍被跟踪），导致每次跑测试都产生 6 个
-  删除 diff，污染每个 PR、使干净基线不可达 → 已停止跟踪。
+  计数命令：`rg -l '^\s*-\s\[ \]' dev-docs/superpowers/plans/*.md | wc -l`（分子）、
+  `ls dev-docs/superpowers/plans/*.md | wc -l`（分母）。
+- `.test-storage/` 产物被误提交（已在 `noj-core/.gitignore` 排除却仍被跟踪），导致每次跑测试
+  都产生删除 diff，污染每个 PR、使干净基线不可达 → 已停止跟踪。
 
 > **更正（自查推翻了子代理的一条结论）**：初步盘点曾报「Agent Note 声称的 judge ZIP 模糊
 > 测试实际不存在（全仓 `fuzz` grep = 0），属文档虚报」。**该结论是错的**——子代理只检索了
@@ -163,8 +180,9 @@
 `status=error`、`score=0`、`cases=0`。符合设计契约（运行期异常上抛 → evaluator 不输出
 `---RESULT---` → judge 收尾为 error），且满足「非 AC 且 0 分」的反蒙分要求。
 
-> 结论：三道新题的门禁 #1（包可导入）、#2（参考解满分 / 模板 0 分）、
+> 结论：**P 型三道新题**（D3.1–D3.3）的门禁 #1（包可导入）、#2（参考解满分 / 模板 0 分）、
 > #3（隐藏数据零泄露）、#8（平台 E2E）**均已在真实平台取证**，非仅离线自测。
+> **D3.4 的 LLM 题不在本表覆盖范围内**（无真实 Provider，平台 E2E 未取证）。
 
 ### 搭建平台栈时踩到的环境坑（供后续复现参考）
 
@@ -172,6 +190,11 @@
    而「评测任务三级优先级队列」特性 9-10 才合入 → 该二进制等待的是旧队列名，
    表现为「任务入队但永不消费」。改用新构建的 `target/debug/noj-judge` 即正常。
    （与 D0 发现的陈旧 Docker 镜像属同一类「本地陈旧产物」问题。）
+   **注意两者是不同层的东西，都要处理**：本坑是**宿主机上的 judge 二进制**陈旧，
+   重新 `cargo build` 即可；而 `.agents/notes/implemented/bug-fix/2026-09-11-baseline-stability-fixes.md`
+   讲的是**评测容器镜像**陈旧（改了 `noj-judge/sdk/**` 后镜像不会自动重建）。
+   跑 E2E 前两者都需要是新的：宿主二进制要重建，SDK 镜像需由 `ensure_sdk_images`
+   按构建输入哈希判定后重建（该判定本身在 #492 中修过）。
 2. **judge 拒绝 HTTP 的 S3 预签名 URL**：`S3 下载 URL 必须使用 HTTPS` 是刻意的安全约束
    （仅 HTTPS、禁重定向）。本地 MinIO 是 HTTP，因此必须改用
    `STORAGE_PROVIDER=local` + 共享 `SUPPORT_PACKAGE_DIR`（与 e2e compose 的做法一致）。
@@ -189,17 +212,28 @@
 
 ---
 
-1. **judge RESULT 竞态修复的正确性**：建议重点 review `noj-judge/src/dual/mod.rs` 的编排循环
-   退出条件顺序（payload 完整 → 双流结束 → 超时）。这是本次最高价值的修复。
-2. **`isJudgeAvailable()` 放宽为接受 `error`** 是否会影响其他 E2E 用例的跳过语义
-   （需确认没有用例依赖「error 即视为 judge 不可用」）。
-3. **迁移文件直接修改而非新增迁移**：确认生产环境尚未应用这些迁移，或确认前缀去除对已应用
-   环境无影响（生产对象均在 `public`，理论上无影响）。
-4. **`.test-storage` 停止跟踪**：确认这些产物确实无需版本控制。
+## 待人工 review 清单
+
+每条给出**可执行的判定动作**，而不是需要 reviewer 自行猜测的判断题。
+
+1. **judge RESULT 竞态修复的正确性**（最高价值）
+   - 动作：读 `noj-judge/src/dual/mod.rs` 阶段 2 的退出条件顺序（payload 完整 → 双流结束 → 超时）。
+   - 判定：`git show 72d628389:noj-judge/src/dual/mod.rs` 中 `result_payload.as_deref().is_some_and(|p| !p.is_empty())` 必须先于 `evaluator_done && solution_done`；并确认 `drain_eval_tail` 在两条路径上都被调用。
+2. **`isJudgeAvailable()` 放宽为接受 `error`** 是否影响其他 E2E 用例的跳过语义
+   - 动作：`rg -n 'judgeOk|isJudgeAvailable' noj-tests/e2e/`，逐个确认没有用例依赖「error 即视为 judge 不可用」。
+   - 已知残留：`rejudge.test.ts` / `pipeline.test.ts` / `contest_lifecycle.test.ts` / `tags.test.ts` 仍用 `judgeOk` 提前 return 的写法——本次只修了 `priority_queue.test.ts` 触发的那条链。
+3. **迁移文件直接修改而非新增迁移**
+   - 动作：`psql -c "SELECT count(*) FROM <schema>.__drizzle_migrations"` 确认目标环境是否已应用 0056/0063/0066。
+   - 已复核结论：drizzle `migrate` 只比较 `created_at` 与 `folderMillis`，**从不比对已记录的 hash**，故已应用环境不会重跑、不受影响；但**不会自愈**——任何用旧文本迁移过的非 `public` schema 会永久保留错误 FK，需 `DROP SCHEMA test_db, test_unit CASCADE` 后重建。
+4. **`.test-storage` 停止跟踪**：`git ls-tree -r HEAD | rg test-storage` 应无输出；`noj-core/.gitignore` 已覆盖该目录。
 5. **`test-domain.sh` 兜底 JWT_SECRET**：确认为测试专用固定值可接受（CI 显式传入优先）。
-6. **LLM 题的真实模型质量**：需要在配置真实 LLM Provider 后复验（当前环境无 Provider）。
-7. **WARN 12 条**（trial-snowy-manor 剧本）：均已被论证为「有定价的残余面」，
-   是否继续收敛属设计取舍。
-8. **新题的「判据非空转」证据**：三道新题的离线自测都包含「让一个近似正确的实现被降分」
+6. **LLM 题的真实模型质量**：需在配置真实 LLM Provider 后复验（当前环境无 Provider）。这也是 D3.4 无法标 ✅ 的原因。
+7. **WARN 12 条**（trial-snowy-manor 剧本）：均已被论证为「有定价的残余面」，是否继续收敛属设计取舍。
+8. **新题的「判据非空转」证据**：三道 P 型新题的离线自测都包含「让一个近似正确的实现被降分」
    的实测（如 BPE 的规则顺序反转 → 67.65、LLM 指标的分桶归上桶 → 92.11）。
    建议 review 时确认这些「近似实现」确实代表了选手的典型错误。
+9. **防复发（本次自查发现，原清单遗漏）**：迁移的 `public.` 前缀问题没有门禁兜底——
+   `noj-core/drizzle.config.ts` 未设 `schemaFilter`，`rg schemaFilter` 全仓 0 命中，
+   因此 `deno task db:generate` 会**继续**生成 `REFERENCES "public".`。当前仅靠
+   `noj-core/CLAUDE.md` 的散文约定。建议加一条静态检查（断言 `drizzle/*.sql` 不含
+   `REFERENCES "public".`），否则同类缺陷会随下一个迁移回归。
