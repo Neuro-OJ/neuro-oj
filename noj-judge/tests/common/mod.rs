@@ -339,30 +339,71 @@ macro_rules! e2e_test {
 /// 供真实 SDK 全链路测试使用（evaluate_dual 的 solution 启动命令
 /// 硬编码 `python3 -m noj_solution_sdk.host`，镜像必须含 SDK）。
 /// 仅部分 e2e_* 测试文件引用，未引用的 test binary 会报 dead_code。
+///
+/// # 陈旧镜像问题（本函数存在的理由）
+///
+/// 若「镜像已存在就直接跳过构建」，本地改了 SDK 源码后跑 E2E 会**静默验证旧镜像**，
+/// 产生两种同样有害的后果：
+/// - 源码有问题却因旧镜像正常而**假绿**；
+/// - 源码已修好却因旧镜像仍有问题而**假红**（本项目实际踩过：
+///   旧镜像里 SDK 文件权限为 600，非 root 的容器用户无法 import，
+///   一次性打挂整个双容器 E2E 套件，且报错指向 Python 而非权限根因）。
+///
+/// 因此这里用**构建输入的内容哈希**判断是否需要重建：把 Dockerfile 与 SDK 源码的
+/// 路径+内容哈希写入镜像 label，并与当前输入比对。内容哈希（而非 mtime）避免
+/// 「git checkout 刷新 mtime」造成的无谓重建，也避免 mtime 精度问题。
 #[allow(dead_code)]
 pub async fn ensure_sdk_images(docker: &Docker) -> Result<()> {
-    for (tag, dockerfile) in [
+    /// 记录构建输入哈希的镜像 label。
+    const INPUTS_LABEL: &str = "com.noj.build-inputs-sha";
+
+    for (tag, dockerfile, source_dirs) in [
         (
             "noj-e2e-sdk-evaluator:latest",
             "docker/evaluator-python/Dockerfile",
+            ["sdk/common", "sdk/evaluator"].as_slice(),
         ),
         (
             "noj-e2e-sdk-solution:latest",
             "docker/solution-python/Dockerfile",
+            ["sdk/common", "sdk/solution"].as_slice(),
         ),
     ] {
-        let images = docker
-            .list_images(None::<bollard::query_parameters::ListImagesOptions>)
-            .await?;
-        if images.iter().any(|i| i.repo_tags.iter().any(|t| t == tag)) {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let expected = build_inputs_sha(&root, dockerfile, source_dirs)?;
+
+        // 读取现有镜像的输入哈希 label（镜像不存在或无 label 时为 None）
+        let current: Option<String> = match docker.inspect_image(tag).await {
+            Ok(info) => info
+                .config
+                .and_then(|cfg| cfg.labels)
+                .and_then(|labels| labels.get(INPUTS_LABEL).cloned()),
+            Err(_) => None,
+        };
+
+        if current.as_deref() == Some(expected.as_str()) {
             continue;
         }
-        println!("构建 SDK 测试镜像 {} ...", tag);
+
+        match &current {
+            None => println!("构建 SDK 测试镜像 {} ...", tag),
+            Some(_) => println!("SDK 源码或 Dockerfile 已变更，重建测试镜像 {} ...", tag),
+        }
+
         let status = std::process::Command::new("docker")
-            .args(["build", "-t", tag, "-f", dockerfile, "."])
+            .args([
+                "build",
+                "-t",
+                tag,
+                "-f",
+                dockerfile,
+                "--label",
+                &format!("{INPUTS_LABEL}={expected}"),
+                ".",
+            ])
             // buildx 在部分环境写 activity 文件失败（只读 HOME），退回 legacy builder
             .env("DOCKER_BUILDKIT", "0")
-            .current_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")))
+            .current_dir(&root)
             .status()
             .context("执行 docker build 失败")?;
         if !status.success() {
@@ -370,4 +411,174 @@ pub async fn ensure_sdk_images(docker: &Docker) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// 计算 SDK 测试镜像构建输入的 SHA-256（Dockerfile + SDK 源码目录下全部文件）。
+///
+/// 输入按**相对路径排序**后依次喂入「路径 + NUL + 内容 + NUL」，
+/// 保证结果与文件系统遍历顺序无关、且路径变化也能被检出。
+///
+/// 未纳入计算的文件与被忽略的文件（见下）不会触发重建——这是有意的：
+/// 只有真正参与镜像构建的内容才算输入。
+#[allow(dead_code)]
+fn build_inputs_sha(
+    root: &std::path::Path,
+    dockerfile: &str,
+    source_dirs: &[&str],
+) -> Result<String> {
+    use sha2::{Digest, Sha256};
+
+    let mut files: Vec<PathBuf> = vec![root.join(dockerfile)];
+    for dir in source_dirs {
+        collect_files(&root.join(dir), &mut files)?;
+    }
+    // 跳过 Python 字节码缓存：它们不参与镜像内容（镜像内 PYTHONDONTWRITEBYTECODE=1），
+    // 且本地运行时会被随意重建，纳入哈希会导致每次都不必要的重建。
+    files.retain(|p| !p.components().any(|c| c.as_os_str() == "__pycache__"));
+
+    let mut rel: Vec<(String, PathBuf)> = files
+        .into_iter()
+        .map(|p| {
+            let key = p
+                .strip_prefix(root)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .replace('\\', "/");
+            (key, p)
+        })
+        .collect();
+    rel.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut hasher = Sha256::new();
+    for (key, path) in rel {
+        hasher.update(key.as_bytes());
+        hasher.update([0u8]);
+        let bytes = std::fs::read(&path)
+            .with_context(|| format!("读取构建输入失败: {}", path.display()))?;
+        hasher.update(&bytes);
+        hasher.update([0u8]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// 递归收集目录下的全部文件（跳过符号链接，避免循环）。
+#[allow(dead_code)]
+fn collect_files(dir: &std::path::Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in
+        std::fs::read_dir(dir).with_context(|| format!("读取目录失败: {}", dir.display()))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            collect_files(&path, out)?;
+        } else if file_type.is_file() {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod build_inputs_tests {
+    use super::*;
+
+    /// 搭一个临时目录，内含 Dockerfile 与 SDK 源文件。
+    fn setup() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("docker/x")).unwrap();
+        std::fs::create_dir_all(root.join("sdk/common/pkg")).unwrap();
+        std::fs::write(root.join("docker/x/Dockerfile"), "FROM scratch\n").unwrap();
+        std::fs::write(root.join("sdk/common/pkg/a.py"), "A = 1\n").unwrap();
+        dir
+    }
+
+    /// 相同内容 → 相同哈希（保证「无改动就跳过构建」成立）。
+    #[test]
+    fn hash_is_stable_for_unchanged_inputs() {
+        let dir = setup();
+        let root = dir.path();
+        let a = build_inputs_sha(root, "docker/x/Dockerfile", &["sdk/common"]).unwrap();
+        let b = build_inputs_sha(root, "docker/x/Dockerfile", &["sdk/common"]).unwrap();
+        assert_eq!(a, b);
+        assert_eq!(a.len(), 64, "SHA-256 十六进制长度");
+    }
+
+    /// 改源码内容 → 哈希变化（保证「改了就会重建」成立）。
+    #[test]
+    fn hash_changes_when_source_content_changes() {
+        let dir = setup();
+        let root = dir.path();
+        let before = build_inputs_sha(root, "docker/x/Dockerfile", &["sdk/common"]).unwrap();
+        std::fs::write(root.join("sdk/common/pkg/a.py"), "A = 2\n").unwrap();
+        let after = build_inputs_sha(root, "docker/x/Dockerfile", &["sdk/common"]).unwrap();
+        assert_ne!(before, after, "源码内容变化必须使哈希变化");
+    }
+
+    /// 改 Dockerfile → 哈希变化（镜像构建输入包含 Dockerfile）。
+    #[test]
+    fn hash_changes_when_dockerfile_changes() {
+        let dir = setup();
+        let root = dir.path();
+        let before = build_inputs_sha(root, "docker/x/Dockerfile", &["sdk/common"]).unwrap();
+        std::fs::write(root.join("docker/x/Dockerfile"), "FROM scratch\nRUN true\n").unwrap();
+        let after = build_inputs_sha(root, "docker/x/Dockerfile", &["sdk/common"]).unwrap();
+        assert_ne!(before, after);
+    }
+
+    /// 新增文件 → 哈希变化（新增模块也必须触发重建）。
+    #[test]
+    fn hash_changes_when_file_added() {
+        let dir = setup();
+        let root = dir.path();
+        let before = build_inputs_sha(root, "docker/x/Dockerfile", &["sdk/common"]).unwrap();
+        std::fs::write(root.join("sdk/common/pkg/b.py"), "B = 1\n").unwrap();
+        let after = build_inputs_sha(root, "docker/x/Dockerfile", &["sdk/common"]).unwrap();
+        assert_ne!(before, after);
+    }
+
+    /// `__pycache__` 不参与哈希：否则本地跑一次 Python 就会触发无谓重建。
+    #[test]
+    fn hash_ignores_pycache() {
+        let dir = setup();
+        let root = dir.path();
+        let before = build_inputs_sha(root, "docker/x/Dockerfile", &["sdk/common"]).unwrap();
+        std::fs::create_dir_all(root.join("sdk/common/pkg/__pycache__")).unwrap();
+        std::fs::write(
+            root.join("sdk/common/pkg/__pycache__/a.cpython-312.pyc"),
+            b"\x00\x01",
+        )
+        .unwrap();
+        let after = build_inputs_sha(root, "docker/x/Dockerfile", &["sdk/common"]).unwrap();
+        assert_eq!(before, after, "__pycache__ 不应影响构建输入哈希");
+    }
+
+    /// 路径也参与哈希：仅重命名文件（内容不变）必须被视为变更。
+    #[test]
+    fn hash_detects_rename_with_same_content() {
+        let dir = setup();
+        let root = dir.path();
+        let before = build_inputs_sha(root, "docker/x/Dockerfile", &["sdk/common"]).unwrap();
+        std::fs::rename(
+            root.join("sdk/common/pkg/a.py"),
+            root.join("sdk/common/pkg/renamed.py"),
+        )
+        .unwrap();
+        let after = build_inputs_sha(root, "docker/x/Dockerfile", &["sdk/common"]).unwrap();
+        assert_ne!(before, after, "重命名应被检出（路径参与哈希）");
+    }
+
+    /// 真实仓库输入可被哈希（对实际 Dockerfile 与 sdk 目录的冒烟验证）。
+    #[test]
+    fn hash_works_on_real_repo_inputs() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let sha = build_inputs_sha(
+            &root,
+            "docker/evaluator-python/Dockerfile",
+            &["sdk/common", "sdk/evaluator"],
+        )
+        .expect("真实仓库输入应可哈希");
+        assert_eq!(sha.len(), 64);
+    }
 }
