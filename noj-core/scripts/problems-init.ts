@@ -35,6 +35,28 @@ export class InvalidSlugError extends Error {}
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /**
+ * slug 最大长度。
+ *
+ * slug 会成为目录名与 `data/packages/<slug>.zip` 文件名，多数文件系统的单段
+ * 上限是 255 字节；留出 `.zip` 与父目录余量后取 64，避免落到 `ENAMETOOLONG`
+ * 这类难以归因的系统错误。
+ */
+const SLUG_MAX_LENGTH = 64;
+
+/**
+ * 默认资源限制——**单一事实源**。
+ *
+ * `problem.json`（真正生效的判分参数）与 `statement.md`（选手唯一可见的说明）
+ * 都由这里取值，避免出现「题面写 5000ms、实际按 30000ms 判」这类默认即失真的
+ * 骨架。改这里即同时改两处。
+ */
+const DEFAULT_LIMITS = {
+  evaluatorTimeLimitMs: 30000,
+  solutionCallTimeoutMs: 5000,
+  memoryLimitMb: 256,
+} as const;
+
+/**
  * 校验 slug：必须是小写字母/数字/短横线，且不以短横线开头/结尾。
  *
  * 约束理由：slug 会作为目录名与包文件名，含大写/空格/路径分隔符会带来
@@ -44,11 +66,30 @@ export function validateSlug(slug: string): void {
   if (!slug) {
     throw new InvalidSlugError("题目 slug 不能为空");
   }
+  if (slug.length > SLUG_MAX_LENGTH) {
+    throw new InvalidSlugError(
+      `题目 slug 过长：${slug.length} 字符（上限 ${SLUG_MAX_LENGTH}）`,
+    );
+  }
   if (!SLUG_PATTERN.test(slug)) {
     throw new InvalidSlugError(
       `题目 slug 非法：${slug}（仅允许小写字母、数字与单个短横线，且不以短横线开头/结尾）`,
     );
   }
+}
+
+/**
+ * 默认输出根：`<noj-core>/data/problems-src`。
+ *
+ * 与 `noj.ts` 的 `SRC_DIR` 用同一套推导（`NOJ_PROJECT_ROOT` → 模块目录上一级），
+ * **不用 `Deno.cwd()`**：从仓库根执行 `deno run -A noj-core/scripts/noj.ts ...`
+ * 时 cwd 是仓库根，会把骨架写到 `<repo>/data/problems-src/`，而 `problems build`
+ * 只读 `<noj-core>/data/problems-src/`，产物永远不会被发现。
+ */
+function defaultProblemSrcDir(): string {
+  const projectRoot = Deno.env.get("NOJ_PROJECT_ROOT") ??
+    join(import.meta.dirname ?? ".", "..");
+  return join(projectRoot, "data", "problems-src");
 }
 
 function problemJson(
@@ -61,17 +102,19 @@ function problemJson(
     type: opts.type,
     title: opts.title,
     difficulty: opts.difficulty,
-    tags: ["代码实现"],
+    // 必须使用已种子化的题目标签（seed-system.ts 的 seedTags），否则首次导入会
+    // 打印「标签不存在，已忽略」，出题人以为标签生效了实际没有。
+    tags: ["入门"],
     runtime_config: {
       evaluator: {
         image: "noj-evaluator-python",
-        time_limit_ms: 30000,
-        memory_limit_mb: 256,
+        time_limit_ms: DEFAULT_LIMITS.evaluatorTimeLimitMs,
+        memory_limit_mb: DEFAULT_LIMITS.memoryLimitMb,
       },
       solution: {
         image: "noj-solution-python",
-        call_timeout_ms: 5000,
-        memory_limit_mb: 256,
+        call_timeout_ms: DEFAULT_LIMITS.solutionCallTimeoutMs,
+        memory_limit_mb: DEFAULT_LIMITS.memoryLimitMb,
       },
     },
     template: "template.py",
@@ -121,8 +164,10 @@ function statementMarkdown(title: string): string {
 ## 数据范围与限制
 
 - （写明取值范围与边界）
-- 时间限制：$5000\\text{ms}$
-- 内存限制：$256\\text{MB}$
+- 评测总时限：${DEFAULT_LIMITS.evaluatorTimeLimitMs}ms（与 \`problem.json\` 的
+  \`runtime_config.evaluator.time_limit_ms\` 一致——改限制时两处都要改）
+- 单次 \`solve\` 调用超时：${DEFAULT_LIMITS.solutionCallTimeoutMs}ms
+- 内存限制：${DEFAULT_LIMITS.memoryLimitMb}MB
 
 ## 评分
 
@@ -171,6 +216,11 @@ function evaluatePy(): string {
 
 运行期异常必须**上抛**：不输出 RESULT，由 judge 收尾为 error，
 避免「评测脚本吞异常 → finished 但 0 分」掩盖真实故障。
+
+诊断回显安全约束（**勿改回直接插值**）：judge 以「标记行 + 紧随其后的一行 JSON」
+作为结果 payload，且不校验该 JSON 的来源。若把选手控制的输出（返回值、异常文本）
+原样多行回显，选手只要在返回值里塞入标记行与伪造的 score，就能让**全部用例都错**
+的提交被判满分。因此所有回显一律经 \`echo()\` 压成单行。
 """
 
 from __future__ import annotations
@@ -188,6 +238,21 @@ VISIBLE_PATH = DATA_DIR / "visible.jsonl"
 HIDDEN_PATH = DATA_DIR / "hidden.jsonl"
 
 FULL_SCORE = 100.0
+
+# 诊断回显的单行长度上限（避免选手用超长输出刷屏或挤掉关键日志）。
+MAX_ECHO_CHARS = 500
+
+
+def echo(value: Any) -> str:
+    """把任意值压成单行、限长，供诊断输出安全回显。
+
+    安全性：压掉所有换行后，回显内容**不可能**自成一行标记或 payload，
+    从而无法伪造评测结果。
+    """
+    flat = " ".join(str(value).split())
+    if len(flat) > MAX_ECHO_CHARS:
+        return flat[:MAX_ECHO_CHARS] + "…（已截断）"
+    return flat
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -228,7 +293,6 @@ def run_case(
     case: dict[str, Any],
     *,
     hidden: bool,
-    scored: bool,
 ) -> dict[str, Any]:
     """执行单个用例，返回 case 结果（已按可见性裁剪字段）。"""
     started = time.perf_counter()
@@ -238,17 +302,22 @@ def run_case(
         # 交由评测机识别为调用超时，不吞掉以继续消耗总时限。
         raise
     except Exception as exc:  # noqa: BLE001 — 运行期错误必须上抛给 judge
-        print(f"  [!] Solution 调用异常: {exc}")
+        print(f"  [!] Solution 调用异常: {echo(exc)}")
         raise
 
     elapsed_ms = max(0, round((time.perf_counter() - started) * 1000))
-    passed, reason = compare(raw_output, case["expected"])
+    # compare() 的第二个返回值是失败原因，供出题人自行诊断/扩展使用；
+    # 不写入 details.cases（该键不在平台投影白名单内，见下方说明）。
+    passed, _reason = compare(raw_output, case["expected"])
 
     result: dict[str, Any] = {
         "case_id": case["id"],
         "status": "Accepted" if passed else "WrongAnswer",
         # hidden 是提交结果投影判断可见/隐藏的唯一依据（布尔）
         "hidden": hidden,
+        # visibility 供前端读取（UI 只认该字段，见 noj-ui/utils/submissionCaseResults.ts）；
+        # 与 1001 样例题一致，两个字段都给。
+        "visibility": "hidden" if hidden else "visible",
         "time_ms": elapsed_ms,
     }
     if not hidden:
@@ -262,13 +331,11 @@ def run_case(
                 "actual_output": str(actual_text).strip(),
             }
         )
-        if reason:
-            result["message"] = reason
-    elif not passed:
-        # 隐藏用例：只给失败原因，不含输入/期望/实际数值
-        result["message"] = reason
-    if not scored:
-        result["scored"] = False
+    # 注意：**不要**给用例加 \`message\` / \`scored\` 字段。
+    # 平台的结果投影按白名单裁剪（noj-core/src/domains/submission/mq/consumer.ts 的
+    # JUDGE_CASE_ALLOWED_KEYS），白名单外的键会被静默丢弃——写了也不会到达任何客户端，
+    # 只会让人误以为「失败原因已展示」。可见用例的差异由 expected_output /
+    # actual_output 直接对比得出；需要整体说明时用 details.summary（在白名单内）。
     return result
 
 
@@ -288,24 +355,23 @@ def main() -> None:
 
     print(f"\\n[VISIBLE] {len(visible_cases)} 条（不计分，仅调试）")
     for case in visible_cases:
-        result = run_case(runner, case, hidden=False, scored=False)
+        result = run_case(runner, case, hidden=False)
         case_results.append(result)
         print(f"  {case['id']}: {result['status']}")
         if result["status"] != "Accepted":
-            print(f"     期望: {result['expected_output']}")
-            print(f"     实际: {result['actual_output']}")
-            print(f"     原因: {result.get('message', '')}")
+            # 回显必须全部经 echo()：actual_output 完全由选手控制，
+            # 原样多行回显可伪造 RESULT（见文件头「诊断回显安全约束」）。
+            print(f"     期望: {echo(result['expected_output'])}")
+            print(f"     实际: {echo(result['actual_output'])}")
 
     print(f"\\n[HIDDEN] {len(hidden_cases)} 条（正式评分）")
     hidden_passed = 0
     for case in hidden_cases:
-        result = run_case(runner, case, hidden=True, scored=True)
+        result = run_case(runner, case, hidden=True)
         case_results.append(result)
         ok = result["status"] == "Accepted"
         hidden_passed += 1 if ok else 0
         print(f"  {case['id']}: {'PASS' if ok else 'FAIL'}")
-        if not ok:
-            print(f"     {result.get('message', '')}")
 
     score = FULL_SCORE * hidden_passed / len(hidden_cases) if hidden_cases else 0.0
 
@@ -313,13 +379,17 @@ def main() -> None:
     print(f"隐藏用例通过: {hidden_passed}/{len(hidden_cases)}")
     print(f"得分: {score:.2f}/{FULL_SCORE}")
 
+    # details 只写平台投影白名单内的键（JUDGE_DETAIL_ALLOWED_KEYS）：
+    # cases / score / summary / score_content / score_format / hidden_provided。
+    # 其余键会被静默丢弃。summary 是白名单里唯一的自由文本出口。
     payload = {
         "score": int(round(score * 100)),
         "details": {
             "cases": case_results,
-            "hidden_passed": hidden_passed,
-            "hidden_total": len(hidden_cases),
-            "visible_total": len(visible_cases),
+            "summary": (
+                f"隐藏用例 {hidden_passed}/{len(hidden_cases)} 通过；"
+                f"可见用例 {len(visible_cases)} 条（不计分，仅调试）"
+            ),
         },
     }
     print("---RESULT---")
@@ -361,14 +431,24 @@ function readmeMarkdown(title: string): string {
 - [ ] 核对 \`visible.jsonl\` 与题面示例**逐字一致**（样例即测试）
 - [ ] 自备参考实现并确认能拿满分（**参考实现不入包**，仅用于自测）
 - [ ] 确认 \`template.py\` 提交后**不得分**（防蒙分）
-- [ ] 更新 \`problem.json\` 的 \`tags\`（建议 2–5 个，用大纲通用术语）
+- [ ] 更新 \`problem.json\` 的 \`tags\`（建议 2–5 个；**只能用已存在的标签名**，
+      未种子化的名字导入时会被忽略并打印警告。内置题目类标签见
+      \`noj-core/src/domains/system/services/seed/seed-system.ts\` 的 \`seedTags()\`）
+- [ ] 核对 \`problem.json\` 的 \`runtime_config\` 镜像名与**本部署的白名单**一致。
+      默认写的是不带前缀的 \`noj-evaluator-python\` / \`noj-solution-python\`；
+      若部署设置了 \`JUDGE_IMAGE_BASE\`（如 \`ghcr.io/neuro-oj\`），白名单里是
+      **带前缀**的名字，需按实际值改写，否则导入会被 400 拒绝
 
 ## 构建与导入
 
 \`\`\`bash
-deno task problems:build --id <此目录名>   # 生成 data/packages/<id>.zip
-deno task problems:import                  # 导入平台
+mkdir -p data/packages                       # 构建产物目录（gitignored，全新检出不存在）
+deno task problems:build --id <此目录名>     # 生成 data/packages/<id>.zip
+deno task problems:import                    # 导入平台
 \`\`\`
+
+> 注意：\`data/packages/\` 是 gitignored 的构建产物目录，**全新检出时并不存在**，
+> 直接执行 \`problems:build\` 会因无法写入而失败。先 \`mkdir -p data/packages\`。
 
 ## 相关规范（事实来源）
 
@@ -429,26 +509,53 @@ export async function initProblem(
     throw new Error(`难度非法：${difficulty}（仅允许 easy / medium / hard）`);
   }
 
-  const root = opts.root ?? join(Deno.cwd(), "data", "problems-src");
+  const root = opts.root ?? defaultProblemSrcDir();
   const dir = join(root, opts.slug);
   const title = opts.title?.trim() || opts.slug;
 
-  // 拒绝覆盖已存在的非空目录：出题人的工作不能被脚手架静默抹掉。
+  // 目标路径占用检查（不跟随符号链接）：
+  // 1. 已存在的**符号链接**一律拒绝——否则 mkdir/写入会落到链接目标，
+  //    把 7 个文件写到 `--dir` 之外（实测可越出，属安全问题）；
+  // 2. 已存在的**普通文件**给出可读错误，而不是让 readDir 抛 NotADirectory；
+  // 3. 已存在的**非空目录**拒绝覆盖，保护出题人已有的工作。
+  let existing: Deno.FileInfo | undefined;
   try {
+    existing = await Deno.lstat(dir);
+  } catch (err) {
+    if (!(err instanceof Deno.errors.NotFound)) throw err;
+    // 不存在 → 正常继续
+  }
+
+  // 目录是否由本次创建（回滚时据此决定是否删除）。
+  let createdDir = false;
+
+  if (existing) {
+    if (existing.isSymlink) {
+      throw new Error(
+        `目标路径已存在且为符号链接：${dir}（拒绝写入链接目标，请换 slug 或先删除该链接）`,
+      );
+    }
+    if (!existing.isDirectory) {
+      throw new Error(
+        `目标路径已存在且不是目录：${dir}（请换 slug，或先删除该文件）`,
+      );
+    }
+    let empty = true;
     for await (const _ of Deno.readDir(dir)) {
+      empty = false;
+      break;
+    }
+    if (!empty) {
       throw new Error(
         `目标目录已存在且非空：${dir}（请换 slug，或先自行清空该目录）`,
       );
     }
-  } catch (err) {
-    if (err instanceof Deno.errors.NotFound) {
-      // 目录不存在，正常继续
-    } else {
-      throw err;
-    }
+    // 已存在的空目录：沿用即可（与旧行为一致），无需 mkdir。
+  } else {
+    // 不用 recursive：仅创建一层；并发下若已被他人创建则失败而非静默复用。
+    await Deno.mkdir(dir);
+    createdDir = true;
   }
-
-  await Deno.mkdir(dir, { recursive: true });
 
   const files: Array<[string, string]> = [
     ["problem.json", problemJson({ slug: opts.slug, title, type, difficulty })],
@@ -460,14 +567,22 @@ export async function initProblem(
     ["README.md", readmeMarkdown(title)],
   ];
 
-  for (const [name, content] of files) {
-    await Deno.writeTextFile(join(dir, name), content);
+  // 写入失败时回滚，避免留下「半成品目录」——它会因非空而拒绝后续重跑。
+  const written: string[] = [];
+  try {
+    for (const [name, content] of files) {
+      const target = join(dir, name);
+      // createNew：并发/重入下不覆盖已存在的文件。
+      await Deno.writeTextFile(target, content, { createNew: true });
+      written.push(target);
+    }
+  } catch (err) {
+    for (const target of written) {
+      await Deno.remove(target).catch(() => {});
+    }
+    if (createdDir) await Deno.remove(dir).catch(() => {});
+    throw err;
   }
 
   return { dir, files: files.map(([name]) => name) };
-}
-
-/** 供测试断言：生成的 manifest 必须能通过平台导入校验的最小要求。 */
-export function __testHooks() {
-  return { problemJson, evaluatePy, templatePy, visibleJsonl, hiddenJsonl };
 }
