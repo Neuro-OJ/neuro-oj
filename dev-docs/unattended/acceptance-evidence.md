@@ -4,6 +4,16 @@
 > 进度留痕见 `dev-docs/unattended/progress-log.md`。
 >
 > **本文件的所有数字均为实测输出**，命令附在每节。凡未实测者均明确标注为「未验证」。
+>
+> **可复现性说明（评审补充）**：本文件的许多证据来自**兄弟分支**的产物
+> （#488 的 `user_claim_redis`、#489 的 `problems init`、#490 的代码相似度），
+> 它们**不在本分支的树里**——本文件所在的 `docs/unattended-evidence` 只叠加在
+> #487 → #492 之上。因此：
+> - 标 ✅ 的「平台仓库」命令，只有在本分支树内可执行的那几条能直接复跑；
+> - 涉及 #488/#489/#490/#491 的命令需先切到对应分支（见 §9 的逐条说明）；
+> - 各数字对应的**提交**在 §9 中逐条标注，避免"在同一棵树上复现了另一棵树的结果"。
+>
+> 本文件是**时点快照**（对应 #493 的提交），不是持续维护的看板。
 
 - 执行日期：2026-09-11
 - 交付约定：分支 + Draft PR，**未推送 main、未合并任何 PR**
@@ -15,6 +25,10 @@
 
 ### 平台仓库（Neuro-OJ/neuro-oj）
 
+> CI 列取自**各 PR 自身 head SHA** 的 check 结果（`gh pr checks <n>`）。
+> 注意 CI 覆盖差异很大：`#490`/`#491` 只有 CLA + Cloudflare Pages 两项，
+> 即约 6700 行 core+ui 改动**没有任何测试结果**；这一点在评审中已单独标注。
+
 | PR | 标题 | 类型 | CI（Draft PR 结论） |
 |---|---|---|---|
 | [#485](https://github.com/Neuro-OJ/neuro-oj/pull/485) | docs(root): 无人值守 24h 目标设计与验收标准 | 栈底文档 | 通过（docs-only，模块 job 按路径过滤跳过） |
@@ -22,9 +36,10 @@
 | [#487](https://github.com/Neuro-OJ/neuro-oj/pull/487) | docs(root): 无人值守执行工作日志（含平台 E2E 实测证据） | 文档 | 通过 |
 | [#488](https://github.com/Neuro-OJ/neuro-oj/pull/488) | fix(judge): 每用户评测并发限制改为跨 worker 分布式 claim | **真实缺陷修复** | **23 pass / 0 fail** |
 | [#489](https://github.com/Neuro-OJ/neuro-oj/pull/489) | feat(core): 新增题目脚手架 `noj problems init` | 新功能 | **26 pass / 0 fail** |
-| [#490](https://github.com/Neuro-OJ/neuro-oj/pull/490) | feat(core): 新增竞赛代码相似度检测 | **新功能（空白项）** | **2 pass / 0 fail** |
-| [#491](https://github.com/Neuro-OJ/neuro-oj/pull/491) | feat(core,ui): 成绩单导出补全 | 新功能 | **2 pass / 0 fail** |
-| [#492](https://github.com/Neuro-OJ/neuro-oj/pull/492) | fix(judge): SDK 测试镜像按内容哈希判断陈旧 | 测试基础设施 | **7 pass / 0 fail** |
+| [#490](https://github.com/Neuro-OJ/neuro-oj/pull/490) | feat(core): 新增竞赛代码相似度检测 | **新功能（空白项）** | **2 pass / 0 fail（仅 CLA + Pages，无测试 job）** |
+| [#491](https://github.com/Neuro-OJ/neuro-oj/pull/491) | feat(core,ui): 成绩单导出补全 | 新功能 | **2 pass / 0 fail（仅 CLA + Pages，无测试 job）** |
+| [#492](https://github.com/Neuro-OJ/neuro-oj/pull/492) | fix(judge): SDK 测试镜像按内容哈希判断陈旧 | 测试基础设施 | **23 pass / 0 fail** |
+| [#493](https://github.com/Neuro-OJ/neuro-oj/pull/493) | docs(root): 无人值守交付验收证据与待人工 review 清单 | 文档（本文件） | 见该 PR 自身 check 结果 |
 
 ### 题库仓库（Neuro-OJ/noj-problems）
 
@@ -151,7 +166,7 @@
 | 项 | 内容 | 关键验证 |
 |---|---|---|
 | D4.2 | **每用户并发限制改为跨 worker 分布式 claim**（真实缺陷） | **8 个 worker 并发占用同一用户，恰好 1 个成功**（对原缺陷的直接回归）；另有 5 个 Redis 集成用例覆盖过期回收/误释放/命名空间 |
-| D4.3 | **代码相似度检测**（Phase 2 唯一空白项） | 改名/注释/空白 → **1.0000**；不同实现 → **0.0000**；空/极短 → 0.0000；最难场景（同思路 DP）→ 0.2653；100 份 7.0ms |
+| D4.3 | **代码相似度检测**（Phase 2 唯一空白项） | 改名/注释/空白 → **1.0000**；不同实现 → **0.0000**；空/极短 → 0.0000；最难场景（同思路 DP）→ 0.2653；100 份**普通**提交 7.0ms |
 | D4.4 | **成绩单导出补全**（历史版本 + 逐题明细 CSV + UI 入口） | 真实平台实测：`/1.json` → 200 且返回**该版本** rows；`/1.csv` 逐题展开；`=cmd\|calc` → `'=cmd\|calc`（注入防护）；`/99.json` → 404；`/0.json` → 400；静态路由未被抢占 |
 | D4.5 | **题目脚手架 `noj problems init`** | 11 个用例（含「产物通过平台 manifest 校验」ERROR 0 / WARN 0）；实测生成 7 文件 |
 | D5 | **陈旧镜像陷阱修复** | 无改动 → 跳过（0.71s）；改 SDK 源码 → **检测到并重建**（这正是曾骗过我的场景）；7 个哈希单元用例 |
@@ -183,12 +198,20 @@
 | 检查 | 结果 |
 |---|---|
 | `deno run -A scripts/check-all.ts`（仓库级门禁） | **全部检查通过** |
-| `cargo nextest run --all-targets` | **341 passed / 0 failed** |
+| `cargo nextest run --all-targets` | **389 passed / 44 skipped**（见 §9 的说明：本文件初版写 341，是 #492 收尾前的数字） |
 | `cargo clippy --all-targets` | **零警告** |
 | `cargo fmt --check` / `deno fmt --check` / `deno lint` | 通过 |
 | `noj-ui` 的 `deno task check`（fmt+lint+类型+Nuxt 类型） | exit 0 |
 | 导出 JSDoc 覆盖率门禁 | 通过（noj-core 62.4% ≥ 阈值 59.6%） |
-| Agent Note 格式校验 | 通过（新增 3 篇：基线稳定性 / 代码相似度 / 无人值守设计） |
+| Agent Note 格式校验 | 通过。**本树**相对 `main` 新增 6 篇 note（复核命令：`jj diff --from main --to docs/unattended-evidence --name-only -- .agents/notes`），全部在 `implemented/` 下 |
+
+> **订正（评审）**：本行原先写「新增 3 篇：基线稳定性 / 代码相似度 / 无人值守设计」，
+> 三点都不准确：
+> - 数量不对——本树相对 `main` 实际新增 6 篇；
+> - 「代码相似度」note 属于 **#490 的分支**，不在本树里（本文件与 #490 是兄弟分支）；
+> - 「无人值守设计」是 **spec 文档**，不是 Agent Note。
+>
+> 这类"证据文档自述的数字与实际不符"正是本文件要避免的问题，故一并订正并保留订正记录。
 
 ### 门禁实际拦下的问题（证明门禁有效）
 
@@ -214,23 +237,52 @@
 
 ## 7. 待人工 review 清单
 
+> **与 progress-log 的关系（评审补充）**：`dev-docs/unattended/progress-log.md` 也有一份
+> 8 条清单。两份**不是同一份的两个版本**，而是不同时点的产物：
+> progress-log 那份记录的是「各 PR 合并前」的待确认项，本清单是**交付级**的收口清单
+> （含设计取舍与需真机验证项）。两者不冲突，但**不要把它们当成同一份来比对**。
+> 下面每条尽量给出「判定动作」，避免需要 reviewer 自行猜测。
+
 ### 高优先级（影响正确性）
 
 1. **judge RESULT payload 竞态修复**（#486）—— 本次最高价值修复。
-   重点 review `noj-judge/src/dual/mod.rs` 编排循环的**退出条件顺序**
-   （payload 完整 → 双流结束 → 超时）；后续重构不得把「payload 完整即收尾」
-   放到「双流结束」之后。
-2. **跨 worker 每用户并发 claim**（#488）—— 确认 `JWT_USER_CLAIM_TTL_MS` 默认 1h
+   - 动作：读 `noj-judge/src/dual/mod.rs` 阶段 2 的退出条件顺序。
+   - 判定：退出条件必须是「payload 完整 → **evaluator_done** → 超时」。
+     注意第二个条件**不是** `evaluator_done && solution_done`——Solution 是常驻 host
+     进程，从不 EOF，用后者会让评测器崩溃时白等到总超时（实测 23.2s vs 1.8s）。
+     回归用例：`e2e_abnormal.rs` 的 `evaluator_eof_without_result_fails_fast`。
+2. **跨 worker 每用户并发 claim**（#488）—— 确认 `JUDGE_USER_CLAIM_TTL_MS` 默认 1h
    与生产最长评测耗时的关系（**必须大于**，否则长评测会被误判过期而破坏互斥）。
-3. **迁移文件直接修改而非新增迁移**（#486）—— 确认生产尚未应用这些迁移，
-   或确认前缀去除对已应用环境无影响（生产对象均在 `public`，理论上无影响）。
+   - 判定动作：比对 `JUDGE_MAX_EVALUATOR_TIME_MS` 与 claim TTL；注意
+     `JUDGE_MAX_EVALUATOR_TIME_MS=0` 表示**不设上限**，届时 TTL 不再有保障。
+3. **迁移文件直接修改而非新增迁移**（#486）。
+   - 已复核结论：drizzle migrator 只比较 `created_at` 与 `folderMillis`，**从不比对
+     已记录的 hash**，因此已应用环境不会重跑、生产（对象都在 `public`）不受影响。
+   - 但**不会自愈**：用旧文本迁移过的非 `public` schema 会永久保留错误 FK，
+     需 `DROP SCHEMA test_db, test_unit CASCADE` 重建。`test-parallel.ts` 已加前置校验
+     在此时给出明确指引。
 4. **`isJudgeAvailable()` 放宽为接受 `error`**（#486）—— 确认无其他 E2E 用例
    依赖「error 即视为 judge 不可用」。
+   - 已知残留：`rejudge.test.ts` / `pipeline.test.ts` / `contest_lifecycle.test.ts` /
+     `tags.test.ts` 仍用 `judgeOk` 提前 return 的写法，本次只修了
+     `priority_queue.test.ts` 触发的那条链。
+   - 另注意：`error` 并非只由 judge 产生（MQ 推送永久失败、sweeper 重投超限、
+     管理员移出队列都会置 error），故该接受是**启发式**而非判据（已写入函数注释）。
+5. **防复发门禁**（评审新增项）：迁移的 `public.` 前缀问题**没有**门禁兜底——
+   `noj-core/drizzle.config.ts` 未设 `schemaFilter`，`deno task db:generate` 会
+   **继续**生成该前缀，目前仅靠 `noj-core/CLAUDE.md` 的散文约定。
+   建议加静态检查（断言 `drizzle/*.sql` 不含 `REFERENCES "public".`）。
 
 ### 设计取舍（需产品/运营判断）
 
 5. **代码相似度默认上限 200 份**（#490）—— 若竞赛常见 300+ 份/题需提高，
-   代价是请求线程的同步 CPU 时间（400 份病态输入实测 7.0s）。
+   代价是请求线程的**同步** CPU 时间。
+   > **两个数字的量纲不同，勿混读（评审订正）**：§4 的「100 份 7.0ms」是
+   > **普通真实提交**（实测 1001ms / 200 份量级），本条的「400 份病态输入 7.0s」
+   > 是**人为构造的病态输入**（高度雷同的长代码）。原表述把两者并列易被读成
+   > 「4 倍数据、1000 倍耗时」的矛盾。
+   > 评审实测补充：200 份非平凡提交约 **1001ms / 堆 +28MB**，
+   > 病态输入约 **1588ms / rss +73MB**。
 6. **数字字面量不归一化**（#490）—— 「只改常量」的抄袭会漏报，属刻意取舍。
 7. **成绩导出 CSV 格式变更**（#491）—— 由「一人一行 + JSON 明细单元格」改为
    「一人一题一行」。若有下游脚本解析旧格式需同步调整。
@@ -248,15 +300,32 @@
 
 ## 8. 本次工作暴露的既有问题（不在范围内，供后续排期）
 
-1. **`plans/` 的 checkbox 不可信**：38 份中 31 份有未勾项，但对应工作早已上线
+1. **`plans/` 的 checkbox 不可信**：**47 份中 40 份**有未勾项，但对应工作早已上线
    （`2026-09-03-noj-core-organization-refactor.md` 有 139 未勾，对应域化重构已交付）。
    **不能当待办清单用**——建议要么回勾，要么在文件头声明「checkbox 不维护」。
+   复核命令：`rg -l '^\s*-\s\[ \]' dev-docs/superpowers/plans/*.md | wc -l`（分子）、
+   `ls dev-docs/superpowers/plans/*.md | wc -l`（分母）。
+   > **订正（评审）**：原写「38 份中 31 份」，在任何计数口径下都不成立（实测 47/40）。
+   > 该错误数字此前同时存在于 spec 与 progress-log，三处均已订正。
 2. **ROADMAP 漏报已实现项**：成绩单导出（原仅最新版）、judge 三级优先级队列、
    队列背压都已存在但未勾选。
+   > 注意：**不主张 ROADMAP「虚报」**——曾据「`fuzz` grep 0 命中」判定
+   > 「judge ZIP 模糊测试被虚报」，二次核实为**假阴性**（测试存在，命名不含 fuzz）。
+   > 故本文件与 spec 只主张「漏报」。方法学教训：grep 0 命中只能报「未找到」，
+   > 不能报「不存在」。
 3. **`noj-tests` 有 15 个文件未通过 `deno fmt --check`**（既有格式漂移，非本次引入）。
    我改动的 2 个文件均已格式化；其余 15 个属历史遗留。
-4. **`ensure_sdk_images` 的陈旧镜像问题**已在 #492 修复（同类问题的
-   「陈旧 Docker 镜像」变体也影响过平台 E2E —— 见 progress-log 的环境坑记录）。
+4. **`ensure_sdk_images` 的陈旧镜像问题**已在 #492 修复；评审又发现
+   **`ensure_test_image` 未一并修改**（6 个 E2E binary 用它，改 `evaluate.py` 仍会
+   静默验证旧镜像），已在 #492 的后续提交中补齐。同类问题的「陈旧 Docker 镜像」
+   变体也影响过平台 E2E —— 见 progress-log 的环境坑记录。
+5. **`test:parallel` 分片路径没有任何 CI 覆盖**：CI 各域作业走
+   `test-domain.sh <domain>`（单 schema、无 TEST_SCHEMA），因此 D0 修的那类缺陷在
+   CI 中不可见、回归也不会被发现。已在 #486 补 `core-test-sharded` 作业。
+6. **有测试文件从未被执行**：`noj-core/tests/routes/health.ts` 含 `Deno.test` 但
+   文件名不匹配运行器发现模式（`test-shared.sh` 传目录参数），本地与 CI 都显示绿色
+   而零覆盖。已删除该冗余文件（覆盖由 `health.test.ts` 承担），并新增
+   `scripts/check-test-discovery.ts` 门禁防止同类问题再发生。
 5. **提交详情投影会裁剪出题人自定义的汇总字段**：题目 `details` 中的
    `hidden_passed` 等字段不会返回给前端（投影按白名单裁剪），
    `details.cases[]` 正常保留。出题人若需暴露汇总字段需确认其在白名单内。
@@ -265,22 +334,51 @@
 
 ## 9. 复现方式（供 review 者独立验证）
 
-```bash
-# 平台仓库
-cd neuro-oj
-deno run -A scripts/check-all.ts                    # 仓库级门禁
-cd noj-core && deno task test:parallel              # 910 passed
-cd noj-judge && cargo nextest run --all-targets     # 341 passed
-NOJ_RUN_E2E=1 cargo test --test e2e_abnormal -- --ignored   # 含 RESULT 竞态回归
-REDIS_URL=redis://127.0.0.1:6379/9 cargo test --test user_claim_redis  # 跨 worker 回归
+**先读这段**：下面的命令分两类。**A 类**可在本分支（`docs/unattended-evidence`）的树里
+直接复跑；**B 类**引用的代码属于兄弟分支，必须先 `jj edit <branch>` /
+`git checkout <branch>` 切过去，否则命令会因为文件不存在而失败——**
+这不是"命令写错了"，而是本文件横跨了多棵树的产物**。每行都标了类别与所需分支。
 
-# 题库仓库
-cd noj-problems && bash scripts/ci_checks.sh        # 4 题 14 项检查
+```bash
+# ── A 类：在本分支树内可直接复跑 ──────────────────────────
+cd neuro-oj
+deno run -A scripts/check-all.ts                    # 仓库级门禁（当前树）
+cd noj-core && deno task test:parallel              # 910 passed / 0 failed / 11 ignored
+cd noj-judge && cargo nextest run --all-targets     # 389 passed / 44 skipped
+NOJ_RUN_E2E=1 cargo test --test e2e_abnormal -- --ignored
+#   ↑ 含 RESULT 竞态回归（result_payload_survives_solution_eof）
+#     与快速失败回归（evaluator_eof_without_result_fails_fast，断言耗时 < time_limit_ms 的 3/4）
+
+# ── B 类：需切到对应分支 ──────────────────────────────────
+# #488 的跨 worker claim 回归（文件在 fix/judge-global-user-cap）
+jj edit fix/judge-global-user-cap
+cd noj-judge
+REDIS_URL=redis://127.0.0.1:6379/9 cargo test --test user_claim_redis
+#   ↑ 6 个用例。注意：该 binary 在 CI 中**不执行**（judge-check 无 Redis 服务、
+#     e2e.yml 的目标列表不含它），未设 REDIS_URL 时它会静默 return 并报 ok。
+
+# #489 的脚手架产物契约（文件在 feat/cli-problems-init，且已移入 CI 收集范围）
+jj edit feat/cli-problems-init
+cd noj-core && deno test -A --preload=tests/preload.ts tests/scripts
+#   ↑ 19 个用例；其中「选手输出无法伪造 RESULT」是防蒙分回归
+
+# #490 的相似度判别力（文件在 feat/code-similarity）
+jj edit feat/code-similarity
+cd noj-core && bash scripts/test-domain.sh contest
+```
+
+**题库仓库**（`noj-problems` 是 `<neuro-oj>/noj-problems/` 下的**嵌套独立仓库**，
+被 `.gitignore` 排除，不在 `neuro-oj` 的版本控制内；且其工作副本领先 `origin/main`）：
+
+```bash
+cd noj-problems
+bash scripts/ci_checks.sh                           # 4 题 14 项检查
 cd decoding-sampler && python3 offline_check.py     # 6 项（含反空转）
 cd bpe-tokenizer && python3 offline_check.py
 cd llm-metrics && python3 offline_check.py
 cd rag-cited-qa && python3 offline_check.py         # 22 项（含 6 类反刷分）
 ```
 
-平台 E2E 脚本（需自行搭建栈）：`/tmp/e2e_platform_check.py`（未纳入仓库；
-如需长期使用建议移入 `noj-tests/` 或 `scripts/`）。
+平台 E2E 脚本（需自行搭建栈）：`/tmp/e2e_platform_check.py`（未纳入仓库，
+故**该脚本产出的数字无法被他人复现**；如需长期使用建议移入 `noj-tests/` 或
+`scripts/`）。
