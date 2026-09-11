@@ -69,11 +69,27 @@ Status: approved
 
 ### 3.2 仓库真实状态（修正 ROADMAP/plans 失真）
 
-- **ROADMAP 双向失真**：既漏报已实现项（成绩单 CSV/JSON 导出、judge 三级优先级队列、队列背压都已存在），也虚报（Agent Note 声称的 judge ZIP 模糊测试，全仓 `fuzz` grep = 0 命中）
-- **plans 的 checkbox 不可信**：31/38 份存在未勾项，但对应工作早已上线（`2026-09-03-noj-core-organization-refactor.md` 有 139 未勾，对应域化重构已交付）→ **禁止当作待办清单**
+- **ROADMAP 漏报已实现项**：成绩单 CSV/JSON 导出、judge 三级优先级队列、队列背压都已存在
+  （逐条附代码位置：`noj-core/src/domains/admin/routes/contest.ts:529,546`、
+  `noj-judge/src/mq.rs:11`、`noj-core/src/domains/submission/mq/producer.ts:84`）。
+- **plans 的 checkbox 不可信**：**47 份中 40 份**存在未勾项，但对应工作早已上线
+  （`2026-09-03-noj-core-organization-refactor.md` 有 139 未勾，对应域化重构已交付）
+  → **禁止当作待办清单**。
+  计数命令：`rg -l '^\s*-\s\[ \]' dev-docs/superpowers/plans/*.md | wc -l` /
+  `ls dev-docs/superpowers/plans/*.md | wc -l`。
 - 完全未实现项（grep 验证 0 命中）：SPJ/交互题、代码相似度检测、A/B 榜、IOAI/NOAI 赛制、评测插件机制、备份调度、迁移回滚
-- **真实缺陷**：judge 的 per-user 公平调度使用**各 worker 进程本地**的 `active_users` 集合（`noj-judge/src/main.rs:123-149`），N 个 worker 时同一用户可并发 N 个评测 → 公平性限制静默失效
+- **真实缺陷**：judge 的 per-user 公平调度使用**各 worker 进程本地**的 `active_users` 集合（`noj-judge/src/main.rs:130` 定义、`:228` 变更），N 个 worker 时同一用户可并发 N 个评测 → 公平性限制静默失效
 - 测试规模：noj-core 174 个测试文件（`tests/` 38 + `src/domains/*/tests/` 136）；noj-tests/e2e 45 个测试文件
+
+> **方法学更正（必读）**：本节初版曾把「Agent Note 声称的 judge ZIP 模糊测试」列为
+> ROADMAP **虚报**，理由是「全仓 `fuzz` grep = 0 命中」。**该结论是错的**：测试真实存在，
+> 只是命名不含 `fuzz`——`noj-judge/src/sandbox/container.rs:423` 的
+> `test_extract_zip_random_bytes_never_panics`（固定 LCG 种子 `0x1234_5678` + 200 次有界迭代），
+> 与 Agent Note 的描述完全吻合。
+>
+> **因此本 spec 不主张「ROADMAP 双向失真」，只主张「漏报」**（漏报侧已逐条附代码位置）。
+> 并确立一条方法学规则：**grep 0 命中只能报「未找到」，不能报「不存在」**；
+> 任何此类否定结论必须再用同义词/行为描述二次检索。本节其余「0 命中」断言均按此规则复核。
 
 ### 3.3 可用资源
 
@@ -90,7 +106,15 @@ Status: approved
 
 - `neuro-oj`：当前工作副本在 `observability-domain` 分支（PR #484 已开，全部检查通过）
 - `main` = `origin/main` = `8d6600ae`
-- `noj-problems`：独立仓库（`Neuro-OJ/noj-problems`），**无任何 CI**（无 `.github/workflows`）
+- `noj-problems`：独立仓库（`Neuro-OJ/noj-problems`），**无任何 CI**（无 `.github/workflows`）。
+  > **工作副本位置**：`<neuro-oj>/noj-problems/` —— 一个**嵌套的独立 git 仓库**，被
+  > `neuro-oj/.gitignore` 排除（见该文件「Problem source (moved to separate private
+  > noj-problems repo)」段）。它不在 `neuro-oj` 的版本控制内，也不会随 `neuro-oj` 的
+  > checkout 一起出现。
+  > **该工作副本领先于 `origin/main`**：`origin/main` 上**没有** `verify_scenarios.py`
+  > 与 CI workflow，它们是本地提交。因此 L0 中「`verify_scenarios.py` 0 ERROR」这条门禁
+  > **只在本地可复现**，对任何评审者或全新 clone 都不可见——D1 的验收因此必须是
+  > **已 push 到 `origin/main`**，而不是「已在本地提交」。
 - `noj-problems` 存在**未提交 WIP**：40 文件 / +4177 −501（今日 13:08–13:26 改动），44 个自测全绿、`verify_scenarios.py` 0 ERROR
 
 ---
@@ -112,6 +136,15 @@ Status: approved
 ---
 
 ## 5. 新题设计（D3，方案 A）
+
+> **验收可达性说明（执行中补充）**：D3 的 4 道题分两类，**验收强度不同**。
+> - **P 型 3 道（D3.1–D3.3）**：纯 CPU，可在本环境完整跑通 L1 全部 9 条门禁（含平台 E2E）。
+> - **LLM 题 1 道（D3.4 `rag-cited-qa`）**：本环境 `llm_providers` 表 0 行、无真实 Provider，
+>   **平台 E2E 与反刷分门禁（L1.8/L1.9）无法在本会话取证**。`llm-mock` 只能证明链路可通，
+>   不能证明真实模型下的判别力与防刷分能力。
+>   因此 D3.4 的终态只能是「代码完成 + 离线自测通过 + **待 Owner 配置 Provider 后复验**」，
+>   **不得标为完成**。这条限制在 §7 的 L1 里已体现为「LLM 题可用 llm-mock 验证**链路**」
+>   ——注意是链路，不是质量。
 
 ### 5.1 硬约束
 
@@ -152,7 +185,7 @@ Status: approved
 
 ---
 
-## 6. 平台改进项（D4，用户选定 6 项）
+## 6. 平台改进项（D4，用户选定 5 项）
 
 | # | 项目 | 现状（实测） | 规模 | 验收要点 |
 | --- | --- | --- | --- | --- |
@@ -160,8 +193,11 @@ Status: approved
 | 2 | **judge 跨 worker 并发公平性缺陷** | per-worker 本地 `active_users`，N worker 时限制失效（真缺陷） | S/M | 多 worker 场景下同一用户并发受限；有回归测试 |
 | 3 | **代码相似度检测** | 完全空白（`contest-anti-cheat.ts` 仅 IP 分组/时间线） | M | token 归一 + k-gram winnowing 指纹；竞赛窗口内比对输出相似对；雷同提交命中、正常提交不误报 |
 | 4 | **成绩单导出补全** | 端点已有但仅「最新一版」，UI 无下载入口 | S/M | 历史版本导出端点 + UI 下载按钮；断言列头与行数 |
-| 5 | **题目包脚手架 `noj-cli problems init`** | 只有样例，无生成器 | S/M | 生成 `problem.json`/`evaluate.py`/`template.py` 后可通过 `import-bundle` 校验 |
-| 6 | **Judge ZIP fuzz 测试** | 文档声称已做，实际 0 命中（doc drift） | S | 补随机字节模糊测试（固定种子、有界迭代），消除文档漂移 |
+| 5 | **题目包脚手架 `problems init`** | 只有样例，无生成器 | S/M | 生成 `problem.json`/`evaluate.py`/`template.py` 后可通过 `import-bundle` 校验 |
+
+> **原第 6 项「Judge ZIP fuzz 测试」已移除**：该项基于一个**不成立的前提**——据称
+> Agent Note 虚报了不存在的 fuzz 测试，实测该测试存在（见 §3.2 的方法学更正）。
+> 前提不成立，故不作为交付物。
 
 ---
 
@@ -169,11 +205,30 @@ Status: approved
 
 ### L0 — 全局门禁（每个 PR 必须满足）
 
-- **neuro-oj**：`deno fmt --check` + `deno lint` + `deno task check:types` + 相关域测试全绿
-- **noj-problems**：题目自测全绿 + `verify_scenarios.py` **0 ERROR** + bundle 构建成功
+- **neuro-oj**：`deno fmt --check` + `deno lint` + `deno task check:types` + **本 PR 触及的
+  域**的 CI job 全绿。
+  > 「相关域测试」的判定口径：以 `.github/workflows/ci.yml` 中按路径过滤的
+  > `Core <domain>` 作业为准，而非本地全量 `deno task test:parallel`
+  > （后者**不在任何 CI lane 中运行**，见下方 D0 的补充验收）。
+- **noj-problems**：题目自测全绿 + `verify_scenarios.py` **0 ERROR** + bundle 构建成功。
+  > 脚本位置与调用方式：`<noj-problems 工作副本>/trial-snowy-manor/verify_scenarios.py`，
+  > 按该目录 `README.md` 以 `PYTHONPATH=. python3 verify_scenarios.py` 调用
+  > （退出码非 0 表示存在 ERROR）。**注意该工作副本是嵌套的独立 git 仓库**，被
+  > `neuro-oj/.gitignore` 排除，路径为 `<neuro-oj>/noj-problems/`；其内容可能领先于
+  > `origin/main`，故该门禁当前只在本地可复现（详见 §3.4）。
 - 中文 Conventional Commits；**GPG 签名有效**；非平凡变更附 Agent Note（`deno run -A scripts/verify-agent-note-format.ts` 通过）
-- **main 零改动**（可验证：分支上 `git log origin/main..HEAD` 非空，且 `git log HEAD..origin/main` 为空）
-- **Draft PR 的 CI 结论为验收硬证据**
+- **main 零改动**（可证伪的判定方式）：
+  1. 记录**会话开始时**的 `origin/main` SHA；
+  2. 会话结束时该 SHA **未变**；
+  3. 本地 `main` bookmarks 未前进；
+  4. `git rev-list --count origin/main..<bookmark>` 等于该 bookmark 上预期的提交数。
+  > 原写法「`git log HEAD..origin/main` 为空」**不构成证据**：栈基是 `origin/main` 的后代，
+  > 该条件对正确的与错误的 agent 都恒真。
+- **Draft PR 的 CI 结论为验收硬证据**，但对 **D0** 不足够：
+  > D0 的交付物是「`deno task test:parallel` 分片竞态修复」，而该命令在 CI 中**没有**任何
+  > 调用点（CI 走 `bash scripts/test-domain.sh <domain>`）。因此 D0 必须额外交付
+  > **本地全量 `deno task test:parallel` 的前后输出**（修复前 5 个失败用例名 + 修复后
+  > 0 失败），并说明这 5 个用例正是修复目标。仅凭 CI 绿不能判定 D0 完成。
 
 ### L1 — 每题门禁（9 条，缺一不可）
 
@@ -181,11 +236,22 @@ Status: approved
 2. **判定正确**：参考解 → 预期 AC；`template.py` 原样提交 → **非 AC**（防空提交蒙分）；≥2 个负例（WA/TLE/RE/边界）判定正确
 3. **隐藏数据零泄露**：`details.cases[]` 每项含 `case_id`/`status`/`hidden`（**布尔值**）；隐藏用例不含 input/expected/output
 4. **样例即测试**：题面样例作为可见用例运行、不计分、输出选手友好调试信息
-5. **确定性**：无随机/时间依赖（或固定种子）；同输入两次评测结果一致
+5. **确定性（差分口径）**：无随机/时间依赖（或固定种子）；同输入两次评测结果一致。
+   **仅「自洽」不足以判定**——一个系统性判错的评测器也是完全确定性的。
+   必须同时满足：
+   - 同一份输入跑两次 → 结果一致；
+   - **≥2 个结构不同的正确实现**都拿满分（防止「只认参考解那一种写法」）；
+   - **刻意扰动的实现**（改一个常量 / 换等价但错误的边界处理）→ 非满分且分数可解释。
 6. **题目自测**：题目目录内 `tests/` 全绿
 7. **规范对齐**：标题含署名；tags 2–8 个且用大纲通用术语；`template.py` 不含可满分实现；难度与数据强度匹配
 8. **平台 E2E**：跑通「导入 bundle → 提交参考解 → judge 评测 → 预期判定」全链路（LLM 题可用 `llm-mock` 验证链路）
-9. **反刷分**（LLM 题必做）：零推理/盲搜策略得 0 分，且有回归测试守住
+9. **反刷分（LLM 题必做）**：**必须点名攻击策略并给出每种的实测得分**，不能只写「零推理策略得 0 分」。
+   参照 `noj-problems/trial-snowy-manor/rogue_agents.py` 的既有做法，逐条实测并记录：
+   - 位置型蒙分（`make_positional_agent(position=0)` 之类的固定位置猜测）
+   - 首次高亮型（`make_first_highlight_agent()`）
+   - 穷举/盲搜型（不做推理，直接枚举候选）
+   每条需给出：实测得分 + 是否有回归测试守住 + 残余可得分面的**结构性上界**及其推导。
+   判定：所有攻击策略得分必须显著低于及格线，且上界有据可依（不能只写「应为 0」）。
 
 ### L2 — 交付完整性
 
@@ -207,19 +273,32 @@ Status: approved
 
 ### 栈结构
 
-**neuro-oj**（base = `840fa455`）：
+**neuro-oj**（base = `840fa455`）。下面是**规划时**的栈图；实际落地的栈与此不同（见下方说明）。
 
 ```text
 840fa455 (observability-domain / PR #484)
-  └─ docs/unattended-24h-spec        设计+验收标准文档
-       └─ fix/baseline-stability     D0 基线转绿
-            └─ test/judge-zip-fuzz   D4.6
-                 └─ fix/judge-global-user-cap  D4.2
-                      └─ feat/code-similarity   D4.3
-                           └─ feat/ranking-export  D4.4
-                                └─ feat/cli-problems-init  D4.5
-                                     └─ review/platform-audit  D5
+  └─ docs/unattended-24h-spec        设计+验收标准文档      → PR #485
+       └─ fix/baseline-stability     D0 基线转绿            → PR #486
+            └─ docs/unattended-progress-log  工作日志        → PR #487
+                 ├─ fix/judge-global-user-cap  D4.2         → PR #488
+                 ├─ feat/cli-problems-init     D4.5         → PR #489
+                 │    └─ feat/code-similarity  D4.3         → PR #490
+                 │         └─ feat/ranking-export  D4.4     → PR #491
+                 └─ fix/e2e-image-staleness    D5           → PR #492
+                      └─ docs/unattended-evidence  D6       → PR #493
 ```
+
+> **规划栈与落地栈的差异（诚实记录）**：原计划把 D4.x 串成一条单链；实际是**分叉树**——
+> D4.2 / D4.5 / D5 三者并列挂在 #487 之下，只有 D4.3 → D4.4 是链式叠加。
+> 原因：这些目标彼此独立，串成单链只是徒增 rebase 面。各 PR 的 base 以
+> GitHub 上实际声明的为准。
+
+> **栈的结构性风险（必须在会话早期处理）**：本栈的 base 是 PR #484 的分支
+> （`observability-domain`）而**不是 `main`**。若 #484 以 **squash** 方式合入 `main`，
+> 则该分支的内容不再是 `main` 的祖先，**整条栈的 base 失效**，必须
+> `jj rebase -d main@origin` 重整并重新指向每个 PR 的 base。
+> 该风险不在可用本会话自行修复的范围内（§8 禁止 agent 触碰 main 与合并），
+> 因此**一旦发生必须立即停止并上报 Owner**，不得自行 rebase。
 
 **noj-problems**（base = 其 main + 用户 WIP）：
 
