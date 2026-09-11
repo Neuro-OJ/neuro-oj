@@ -3,12 +3,14 @@ import { getDb } from "./../../../shared/db/connection.ts";
 import { passwordResetTokens, users } from "./../../../shared/db/schema.ts";
 import { hashPassword } from "./security/password.ts";
 import { generateResetToken, hashResetToken } from "./security/resetToken.ts";
-import { sendPasswordResetEmail } from "./../../system/index.ts";
+import {
+  isEmailSuppressed,
+  logAuthEvent,
+  sendPasswordResetEmail,
+} from "./../../system/index.ts";
 import { BadRequestError } from "./../../../shared/base/errors.ts";
 import { logger } from "./../../../shared/base/logging.ts";
-import { logAuthEvent } from "../../system/index.ts";
 import { validatePasswordStrength } from "./auth.ts";
-import { isEmailSuppressed } from "../../system/services/email-delivery/service.ts";
 
 /** 密码重置令牌有效期（分钟）。OWASP 2025+ 建议 ≤ 15 分钟。 */
 const TOKEN_TTL_MINUTES = 15;

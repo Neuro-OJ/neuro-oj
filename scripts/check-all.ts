@@ -20,6 +20,25 @@ if (import.meta.main) {
   await run(["deno", "run", "-A", "scripts/gen-event-catalog.ts", "--check"]);
   await run(["deno", "run", "-A", "scripts/gen-route-catalog.ts", "--check"]);
   await run(["deno", "run", "-A", "scripts/check-domains.ts"]);
+  await run(["deno", "run", "-A", "scripts/check-metrics.ts"]);
+  await run(["deno", "run", "-A", "scripts/check-runtime-contract.ts"]);
+  await run(["deno", "run", "-A", "scripts/check-runbooks.ts"]);
+  await run(["deno", "run", "-A", "scripts/gen-alert-rules.ts", "--check"]);
+  await run(["deno", "run", "-A", "scripts/check-test-discovery.ts"]);
+  await run(["deno", "run", "-A", "scripts/check-dashboards.ts"]);
+  await run(["bash", "scripts/deploy/test-monitoring.sh"]);
+  await run([
+    "deno",
+    "test",
+    "-A",
+    "scripts/check-domains_test.ts",
+    "scripts/check-metrics_test.ts",
+    "scripts/check-runtime-contract_test.ts",
+    "scripts/check-runbooks_test.ts",
+    "scripts/gen-alert-rules_test.ts",
+    "scripts/check-test-discovery_test.ts",
+    "scripts/check-dashboards_test.ts",
+  ]);
   await run(["deno", "run", "-A", "scripts/verify-domain-ci.ts"]);
 
   console.log("== noj-core check ==");

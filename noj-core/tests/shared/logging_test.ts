@@ -4,9 +4,9 @@ import {
   type LogRecord,
   redactId,
   resetLogSink,
-  runWithRequestContext,
   setLogSink,
 } from "./../../src/shared/base/logging.ts";
+import { runWithRequestContext } from "./../../src/shared/observability/context.ts";
 
 /**
  * 捕获日志记录的辅助：替换 sink，返回收集数组 + 还原函数。

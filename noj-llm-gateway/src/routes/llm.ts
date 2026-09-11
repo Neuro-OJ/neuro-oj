@@ -10,6 +10,7 @@ import { getProviderSecret, validateByokBaseUrl } from "../providers.ts";
 import { enforceAndCount, settleUsage } from "../limits.ts";
 import { recordUsage } from "../usage.ts";
 import { calcBilledUsage } from "../billing.ts";
+import { inc, observe } from "../metrics.ts";
 
 export interface LlmDeps {
   config: GatewayConfig;
@@ -66,6 +67,20 @@ function openAiLimitError(_message: string): Response {
 /** 创建 OpenAI 兼容代理路由：校验 eval_token → 限流 → 转发 → 真实用量结算/审计。 */
 export function createLlmRouter(deps: LlmDeps): Hono {
   const app = new Hono();
+
+  // 契约指标：请求计数与耗时覆盖所有进入 chat/completions 的调用（含鉴权失败）。
+  app.use("/v1/chat/completions", async (_c, next) => {
+    inc("noj_llm_requests_total");
+    const startedAt = Date.now();
+    try {
+      await next();
+    } finally {
+      observe(
+        "noj_llm_request_duration_seconds",
+        Math.max(0, Date.now() - startedAt) / 1000,
+      );
+    }
+  });
 
   app.post("/v1/chat/completions", async (c) => {
     const auth = c.req.header("Authorization") ?? "";
@@ -154,6 +169,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "limit_exceeded";
+      inc("noj_llm_rate_limited_total");
       await recordUsage(deps.db, {
         id: crypto.randomUUID(),
         submission_id: payload.submission_id,
@@ -189,6 +205,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         signal: AbortSignal.timeout(120_000),
       });
     } catch {
+      inc("noj_llm_provider_errors_total");
       await recordUsage(deps.db, {
         id: crypto.randomUUID(),
         submission_id: payload.submission_id,
@@ -237,6 +254,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     const actualCompletionTokens = billedUsage.completionTokens;
     const actualTotalTokens = billedUsage.totalTokens;
     const actualBilledTotalTokens = billedUsage.billedTotalTokens;
+    inc("noj_llm_tokens_total", {}, actualBilledTotalTokens);
     const actualCost = estimateCost(
       actualBilledTotalTokens,
       providerSecret.provider.cost_per_1k_tokens,
@@ -256,6 +274,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "quota_exceeded";
+      inc("noj_llm_quota_exhausted_total");
       await recordUsage(deps.db, {
         id: crypto.randomUUID(),
         submission_id: payload.submission_id,
@@ -305,6 +324,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     });
 
     if (!upstreamRes.ok) {
+      inc("noj_llm_provider_errors_total");
       return new Response(
         JSON.stringify({
           error: "upstream_error",

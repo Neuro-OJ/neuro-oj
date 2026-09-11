@@ -11,6 +11,7 @@ alerting:
 
 rule_files:
   - /etc/prometheus/rules/noj-alerts.yml
+  - /etc/prometheus/rules/noj-slo-alerts.yml
 
 scrape_configs:
   # Prometheus 应加入 noj-net，core 只在内部网络暴露 8000 端口。
@@ -18,6 +19,14 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["core:8000"]
+
+  # LLM 网关：内部网络暴露 8001 端口，由 Prometheus 直抓。
+  # 目标名必须与 docker-compose.prod.yml 的服务名一致（服务名即该网络内的 DNS 名），
+  # 即 `llm-gateway`；`noj-llm-gateway` 只是开发编排里的 container_name，生产不解析。
+  - job_name: noj-llm-gateway
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["llm-gateway:8001"]
 
   # 可选：宿主机 node_exporter（含 textfile collector，用于备份新鲜度指标）。
   # 启用方法见 deploy/monitoring/README.md；启用后取消以下注释。

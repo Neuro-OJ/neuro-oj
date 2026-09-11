@@ -49,6 +49,10 @@ export interface SaveEvaluationResultOutcome {
   applied: boolean;
   /** 已随业务事务持久化、待事务提交后发布 Redis 的事件。 */
   outbox_events: SseEventOutboxItem[];
+  /** 首次结果对应的提交创建时间，用于端到端延迟观测。 */
+  created_at?: string;
+  /** 是否为重测结果；重测不参与首次 e2e 延迟统计。 */
+  is_rejudge?: boolean;
 }
 
 /**
@@ -263,6 +267,8 @@ export async function saveEvaluationResult(
   return {
     applied: true,
     outbox_events: outcome.outbox_events,
+    created_at: outcome.created_at,
+    is_rejudge: outcome.is_rejudge,
   };
 }
 

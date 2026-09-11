@@ -1,14 +1,29 @@
 import { assert, assertStringIncludes } from "jsr:@std/assert@^1";
 import {
-  MetricsRegistry,
+  createObservabilityRegistry,
   normalizeMetricRoute,
-} from "../../src/shared/base/metrics.ts";
+} from "../../src/shared/observability/registry.ts";
 
 Deno.test("metrics: counter、gauge、histogram 输出 Prometheus 格式", () => {
-  const registry = new MetricsRegistry();
-  registry.define("test_requests_total", "测试请求数", "counter");
-  registry.define("test_in_flight", "测试并发数", "gauge");
-  registry.define("test_duration_seconds", "测试耗时", "histogram");
+  const registry = createObservabilityRegistry({ strict: true });
+  registry.define({
+    name: "test_requests_total",
+    help: "测试请求数",
+    type: "counter",
+    owner: "platform",
+  });
+  registry.define({
+    name: "test_in_flight",
+    help: "测试并发数",
+    type: "gauge",
+    owner: "platform",
+  });
+  registry.define({
+    name: "test_duration_seconds",
+    help: "测试耗时",
+    type: "histogram",
+    owner: "platform",
+  });
   registry.inc("test_requests_total", { route: '/a"b' });
   registry.set("test_in_flight", 2);
   registry.observe("test_duration_seconds", 0.01, { method: "GET" });

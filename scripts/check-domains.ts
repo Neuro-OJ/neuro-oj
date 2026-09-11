@@ -27,7 +27,30 @@ const DOMAINS = new Set([
   "gateway",
   "query",
   "content-review",
+  "observability",
 ]);
+
+/** 允许业务域 import 的观测域子路径白名单。 */
+const PUBLIC_SUBPATHS: Record<string, string[]> = {
+  observability: ["write.ts"],
+};
+
+/**
+ * `index.ts` 门面的跨域 import **限制**：`目标域 → 允许的 sourceDomain 列表`。
+ *
+ * 只有在表里的目标域才受限制；**其余域的 `index.ts` 是公开门面**，任何业务域
+ * 都可导入（这是 domain index.ts 的既有语义，catalog → identity 等属正常用法）。
+ *
+ * 观测域的 index.ts 只允许 `admin` 导入（用于挂载观测管理路由），这是观测域设计
+ * spec §4.5 规则 2/6 的唯一例外。其他业务域要写指标必须走 `write.ts`
+ * （PUBLIC_SUBPATHS）。
+ */
+const INDEX_IMPORT_RESTRICTED: Record<string, string[]> = {
+  observability: ["admin"],
+};
+
+/** 禁止跨任何业务域 import 的域（即使通过 index.ts）。 */
+const NO_CROSS_DOMAIN_DOMAINS = new Set(["observability"]);
 
 const LEGACY_ALIASES: Record<string, string> = {
   auth: "identity",
@@ -99,11 +122,33 @@ export function resolveRelativeImport(
   return toPosix(rel);
 }
 
-function isPublicDomainImport(target: string): boolean {
-  const m = toPosix(target).match(
-    /^(?:noj-core\/)?src\/domains\/([^/]+)\/index\.ts$/,
-  );
-  return m ? DOMAINS.has(m[1]!) : false;
+/**
+ * 目标是否为「允许跨域 import 的公共入口」。
+ *
+ * 规则（见 dev-docs/engineering/domain-boundaries.md 与观测域设计 spec §4.5 规则 2）：
+ * - 业务域**只**能 import `domains/observability/write.ts`（PUBLIC_SUBPATHS）；
+ * - `domains/observability/index.ts` 是**唯一例外给 `admin`** 的（用于挂载观测管理路由），
+ *   其他业务域一律禁止。
+ *
+ * 修复（评审）：此前对任何 `index.ts` 无条件放行（不看 sourceDomain），
+ * 于是 `domains/submission` import `observability/index.ts` 这种明确违规的写法
+ * 会被判为合规——门禁与其自身文档不一致。该函数因此需要 sourceDomain 参数。
+ */
+function isPublicDomainImport(sourceDomain: string, target: string): boolean {
+  const p = toPosix(target);
+  const m = p.match(/^(?:noj-core\/)?src\/domains\/([^/]+)\/([^/]+\.ts)$/);
+  if (!m) return false;
+  const targetDomain = m[1]!;
+  const fileName = m[2]!;
+  if (!DOMAINS.has(targetDomain)) return false;
+  if (fileName === "index.ts") {
+    // 受限目标域：只对明确列出的来源域放行；其余域 index.ts 仍是公开门面。
+    const restricted = INDEX_IMPORT_RESTRICTED[targetDomain];
+    if (restricted) return restricted.includes(sourceDomain);
+    return true;
+  }
+  const allowed = PUBLIC_SUBPATHS[targetDomain];
+  return allowed ? allowed.includes(fileName) : false;
 }
 
 export function checkFile(
@@ -132,7 +177,16 @@ export function checkFile(
     if (!target) continue;
     const targetDomain = domainOf(target);
     if (!targetDomain || targetDomain === sourceDomain) continue;
-    if (isPublicDomainImport(target)) continue;
+    if (NO_CROSS_DOMAIN_DOMAINS.has(sourceDomain)) {
+      violations.push({
+        file,
+        importSpec: spec,
+        target,
+        message: `${sourceDomain} 域不得 import 其他业务域: ${spec}`,
+      });
+      continue;
+    }
+    if (isPublicDomainImport(sourceDomain, target)) continue;
 
     violations.push({
       file,
@@ -160,8 +214,18 @@ async function collectTsFiles(dir: string): Promise<string[]> {
   return results;
 }
 
-export async function checkDomains(root = "."): Promise<DomainViolation[]> {
+/**
+ * 扫描并返回域边界违规。
+ *
+ * 同时返回**实际扫描到的文件数**，供调用方做「零输入」守卫：
+ * 若因目录改名/移动导致一个文件都没扫到，检查会静默"通过"——那正是本仓库
+ * 反复出现的假绿模式（`check-runbooks` 已为此加了零注解守卫）。
+ */
+export async function scanDomains(
+  root = ".",
+): Promise<{ violations: DomainViolation[]; scannedFiles: number }> {
   const violations: DomainViolation[] = [];
+  let scannedFiles = 0;
   for (
     const dir of [
       "noj-core/src/domains",
@@ -182,7 +246,63 @@ export async function checkDomains(root = "."): Promise<DomainViolation[]> {
       const rel = toPosix(relative(resolve(root), file));
       if (!domainOf(rel)) continue;
       const content = await Deno.readTextFile(file);
+      scannedFiles += 1;
       violations.push(...checkFile(rel, content, root));
+    }
+  }
+  return { violations, scannedFiles };
+}
+
+/** 兼容既有调用方：只返回违规列表。 */
+export async function checkDomains(root = "."): Promise<DomainViolation[]> {
+  return (await scanDomains(root)).violations;
+}
+
+/**
+ * 检查 `domains/admin/**` 不得导入观测域读侧。
+ *
+ * admin 是聚合门面，`domainOf` 对它返回 null，因此不走通用域边界规则；
+ * 而管理端观测端点已移除，admin 不再需要观测域读侧的任何东西（注册指标走
+ * `observability/write.ts` 门面）。这条不变量需要单独表达。
+ */
+export async function checkAdminObservabilityReadSide(
+  root = ".",
+): Promise<DomainViolation[]> {
+  const violations: DomainViolation[] = [];
+  const adminDir = resolve(root, "noj-core/src/domains/admin");
+  try {
+    const stat = await Deno.stat(adminDir);
+    if (!stat.isDirectory) return [];
+  } catch {
+    return [];
+  }
+  for (const file of await collectTsFiles(adminDir)) {
+    const rel = toPosix(relative(resolve(root), file));
+    const content = await Deno.readTextFile(file);
+    // 同时扫静态与**动态** import：`await import("../observability/services/x.ts")`
+    // 与静态 import 同样会绕过「展示归 Prometheus/Grafana」的约束，
+    // 此前只匹配 IMPORT_RE，动态写法可作为后门溜过。
+    const specs = new Set<string>();
+    for (const m of content.matchAll(IMPORT_RE)) {
+      if (m[1]) specs.add(m[1]);
+    }
+    for (const m of content.matchAll(DYNAMIC_IMPORT_RE)) {
+      if (m[1]) specs.add(m[1]);
+    }
+    for (const spec of specs) {
+      const target = resolveRelativeImport(rel, spec, root);
+      if (!target) continue;
+      const p = toPosix(target);
+      if (!p.includes("/domains/observability/")) continue;
+      // 写侧门面允许（业务域与 admin 注册指标的唯一入口）。
+      if (p.endsWith("/observability/write.ts")) continue;
+      violations.push({
+        file: rel,
+        importSpec: spec,
+        target: p,
+        message:
+          `admin 不得导入观测域读侧: ${spec}（管理端观测端点已移除，展示归 Prometheus / Grafana）`,
+      });
     }
   }
   return violations;
@@ -234,9 +354,19 @@ if (import.meta.main) {
   const baselineIndex = args.indexOf("--baseline");
   const baselinePath = baselineIndex >= 0 ? args[baselineIndex + 1] : undefined;
 
-  const violations = await checkDomains(".");
+  const { violations, scannedFiles } = await scanDomains(".");
   const sharedViolations = await checkSharedImports(".");
-  const all = [...violations, ...sharedViolations];
+  const adminReadSideViolations = await checkAdminObservabilityReadSide(".");
+  const all = [...violations, ...sharedViolations, ...adminReadSideViolations];
+
+  // 零输入守卫：一个生产文件都没扫到说明路径推导已失效（目录改名/移动），
+  // 此时「无违规」是假绿，必须失败而不是打印通过。
+  if (scannedFiles === 0) {
+    console.error(
+      "未扫描到任何业务域生产文件，域边界检查已失去意义（目录是否被移动/改名？）",
+    );
+    Deno.exit(1);
+  }
 
   if (baselinePath) {
     const baselineText = await Deno.readTextFile(baselinePath).catch(() => "");

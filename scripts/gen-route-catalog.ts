@@ -13,11 +13,20 @@ interface RouteEntry {
   file: string;
 }
 
+/** 目录不存在时返回 false（statSync 对缺失路径会抛错，不能直接读 isDirectory）。 */
+function isDirectory(path: string): boolean {
+  try {
+    return Deno.statSync(path).isDirectory;
+  } catch {
+    return false;
+  }
+}
+
 function collectRouteFiles(): string[] {
   const files: string[] = [];
   const roots = [ROUTES_DIR, resolve(ROOT, "noj-core/src/domains")];
   for (const root of roots) {
-    if (!Deno.statSync(root).isDirectory) continue;
+    if (!isDirectory(root)) continue;
     const queue = [root];
     while (queue.length > 0) {
       const dir = queue.shift()!;

@@ -132,6 +132,8 @@ jobs:
               - 'noj-core/src/domains/gateway/**'
             core-content-review:
               - 'noj-core/src/domains/content-review/**'
+            core-observability:
+              - 'noj-core/src/domains/observability/**'
             core-shared:
               - 'noj-core/src/shared/**'
               - 'noj-core/src/routes/**'
@@ -162,6 +164,7 @@ jobs:
               - '.github/workflows/ci.yml'
             gateway:
               - 'noj-llm-gateway/**'
+              - 'noj-tests/fixtures/**'
               - 'scripts/**'
               - 'docker-compose.e2e.yml'
               - 'env.e2e.template'
@@ -183,13 +186,14 @@ jobs:
           CORE_QUERY: ${{ steps.filter.outputs.core-query }}
           CORE_GATEWAY: ${{ steps.filter.outputs.core-gateway }}
           CORE_CONTENT_REVIEW: ${{ steps.filter.outputs.core-content-review }}
+          CORE_OBSERVABILITY: ${{ steps.filter.outputs.core-observability }}
           CORE_SHARED: ${{ steps.filter.outputs.core-shared }}
         run: |
           python3 - <<'PY'
           import json, os
           def flag(name):
               return os.environ.get(name, '') == 'true'
-          all_core = ["identity","catalog","submission","contest","system","community","messaging","objective","admin","search","query","gateway","content-review"]
+          all_core = ["identity","catalog","submission","contest","system","community","messaging","objective","admin","search","query","gateway","content-review","observability"]
           core_domains = []
           if flag('CORE_SHARED'):
               core_domains = all_core[:]
@@ -1409,6 +1413,85 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: core-content-review-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  core-observability:
+    name: Core observability
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'observability') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行 Domain 测试
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-domain.sh observability
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-observability-logs
           path: |
             noj-core/test-logs/
             noj-core/test-output.log

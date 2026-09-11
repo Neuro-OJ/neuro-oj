@@ -8,10 +8,10 @@ import {
 import { logger } from "../../../shared/base/logging.ts";
 import { generateResetToken, hashResetToken } from "./security/resetToken.ts";
 import {
+  isEmailSuppressed,
   logAuthEvent,
   sendEmailVerificationEmail,
 } from "../../system/index.ts";
-import { isEmailSuppressed } from "../../system/services/email-delivery/service.ts";
 
 export const EMAIL_VERIFICATION_TTL_MINUTES = 30;
 

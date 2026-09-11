@@ -29,6 +29,10 @@ export class FakeRedis implements RedisClient {
     return Promise.resolve(null);
   }
 
+  ping(): Promise<string> {
+    return Promise.resolve("PONG");
+  }
+
   set(): Promise<unknown> {
     return Promise.resolve("OK");
   }

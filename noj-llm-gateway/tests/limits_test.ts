@@ -34,6 +34,10 @@ class FakeRedis implements RedisClient {
     );
   }
 
+  async ping(): Promise<string> {
+    return await Promise.resolve("PONG");
+  }
+
   async set(key: string, value: string): Promise<unknown> {
     this.data.set(key, Number(value));
     return await Promise.resolve("OK");

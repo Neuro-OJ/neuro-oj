@@ -1,0 +1,18 @@
+# HELP noj_llm_requests_total LLM 请求总数
+# TYPE noj_llm_requests_total counter
+noj_llm_requests_total 0
+# HELP noj_llm_request_duration_seconds LLM 请求耗时
+# TYPE noj_llm_request_duration_seconds histogram
+noj_llm_request_duration_seconds_count 0
+# HELP noj_llm_tokens_total LLM token 用量
+# TYPE noj_llm_tokens_total counter
+noj_llm_tokens_total 0
+# HELP noj_llm_rate_limited_total LLM 限流总数
+# TYPE noj_llm_rate_limited_total counter
+noj_llm_rate_limited_total 0
+# HELP noj_llm_quota_exhausted_total LLM 额度耗尽总数
+# TYPE noj_llm_quota_exhausted_total counter
+noj_llm_quota_exhausted_total 0
+# HELP noj_llm_provider_errors_total LLM provider 错误总数
+# TYPE noj_llm_provider_errors_total counter
+noj_llm_provider_errors_total 0

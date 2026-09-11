@@ -27,7 +27,7 @@ fixture 回调入口为 `POST /api/v1/email-events/fixture`，签名密钥使用
 
 阿里云和腾讯云的生产 webhook 适配器未在本变更中声称完成；没有真实账号、回调配置和官方协议就不能宣称“真实事件验收通过”。
 
-## 告警处置
+## 告警处置 {#告警处置}
 
 - `NojEmailPermanentBounce`：检查坏地址抑制增长、退信分类和域名 DNS；不要批量解除抑制。
 - `NojEmailComplaint`：按投诉来源暂停相关活动或模板，确认 SPF、DKIM、DMARC 与退订策略。

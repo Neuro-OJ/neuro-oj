@@ -16,7 +16,7 @@ import {
 } from "../../../shared/sse/event-bus.ts";
 import { SELF_TEST_ID_PREFIX } from "../types/self-tests.ts";
 import type { JudgeResult } from "../types/index.ts";
-import { metrics } from "../../../shared/base/metrics.ts";
+import { observability as metrics } from "../../../domains/observability/write.ts";
 
 /**
  * 评测结果队列名称。
@@ -209,6 +209,18 @@ export async function handleResultMessage(
         rejudge_seq: judgeResult.rejudge_seq ?? 0,
       });
       return;
+    }
+
+    // 首次评测结果：记录从提交创建到结果落库的端到端延迟。
+    if (applied.created_at && !applied.is_rejudge) {
+      const startedMs = Date.parse(applied.created_at);
+      if (Number.isFinite(startedMs)) {
+        metrics.observe(
+          "noj_submission_e2e_duration_seconds",
+          Math.max(0, (Date.now() - startedMs) / 1000),
+          { result: judgeResult.status },
+        );
+      }
     }
 
     logger.info("评测结果已持久化", {

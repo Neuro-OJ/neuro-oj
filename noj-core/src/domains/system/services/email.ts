@@ -17,7 +17,7 @@ import type {
 import { buildEmailVerificationHtml } from "./email-providers/common.ts";
 import { getSetting } from "./system-settings.ts";
 import { logger } from "../../../shared/base/logging.ts";
-import { metrics } from "../../../shared/base/metrics.ts";
+import { observability as metrics } from "../../../domains/observability/write.ts";
 
 /** Provider 名称到模块路径的映射 */
 const PROVIDER_MODULES: Record<string, string> = {

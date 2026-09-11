@@ -144,6 +144,7 @@ jobs:
               - 'env.e2e.template'
               - 'scripts/**'
               - 'noj-tests/scripts/**'
+              - 'noj-tests/fixtures/**'
               - 'noj-tests/deno.json'
               - 'noj-tests/deno.lock'
               # e2e 根目录共享模块（helper.ts 被全部 39 个用例 import）

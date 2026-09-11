@@ -10,6 +10,10 @@ if (import.meta.main) {
   await run(["deno", "run", "-A", "scripts/verify-capability-seams.ts"]);
   await run(["deno", "run", "-A", "scripts/verify-domain-ci.ts"]);
   await run(["deno", "run", "-A", "scripts/silent-skip-report.ts"]);
+  // 测试文件可发现性：防止「写了 Deno.test 但文件名不匹配运行器约定、
+  // 永不执行却显示绿色」这类静默失效（实测案例：noj-core/tests/routes/health.ts）。
+  await run(["deno", "run", "-A", "scripts/check-test-discovery.ts"]);
+  await run(["deno", "run", "-A", "scripts/check-dashboards.ts"]);
   await run(["deno", "run", "-A", "scripts/deploy/verify-build-server.ts"]);
   await run(["deno", "run", "-A", "scripts/deploy/verify-compose-server.ts"]);
   await run([
@@ -21,5 +25,23 @@ if (import.meta.main) {
   ]);
   await run(["deno", "run", "-A", "scripts/gen-event-catalog.ts", "--check"]);
   await run(["deno", "run", "-A", "scripts/gen-route-catalog.ts", "--check"]);
+  await run(["deno", "run", "-A", "scripts/check-domains.ts"]);
+  await run(["deno", "run", "-A", "scripts/check-metrics.ts"]);
+  await run(["deno", "run", "-A", "scripts/check-runtime-contract.ts"]);
+  await run(["deno", "run", "-A", "scripts/check-runbooks.ts"]);
+  await run(["deno", "run", "-A", "scripts/gen-alert-rules.ts", "--check"]);
+  await run(["bash", "scripts/deploy/test-monitoring.sh"]);
+  await run([
+    "deno",
+    "test",
+    "-A",
+    "scripts/check-domains_test.ts",
+    "scripts/check-metrics_test.ts",
+    "scripts/check-runtime-contract_test.ts",
+    "scripts/check-runbooks_test.ts",
+    "scripts/gen-alert-rules_test.ts",
+    "scripts/check-test-discovery_test.ts",
+    "scripts/check-dashboards_test.ts",
+  ]);
   console.log("CI 仓库级门禁通过");
 }

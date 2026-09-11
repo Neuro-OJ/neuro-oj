@@ -104,7 +104,7 @@ noj-core/
 │   ├── main.ts            # 入口（启动校验 + 初始化顺序）
 │   ├── app.ts             # Hono 应用工厂（CORS + 全局中间件 + 按域挂载路由）
 │   ├── mod.ts             # 公共导出
-│   ├── routes/            # 仅保留顶层路由组合与 health：health.ts
+│   ├── routes/            # 顶层路由组合（health 已迁入 observability 域）
 │   ├── shared/            # 跨域共享基础设施（不反向依赖 domains）
 │   │   ├── base/          # errors / logging / constants / dates / sql-rows
 │   │   ├── config/        # settings-registry / production-config
@@ -114,7 +114,7 @@ noj-core/
 │   │   ├── sse/           # event-bus / sse-stream / sse-events / server-helpers
 │   │   ├── rate-limit/    # 通用限流原语（业务环境相关限流在 system 域）
 │   │   ├── security/      # cidr / public-id / image-validation
-│   │   └── middleware/    # request-context
+│   │   ├── observability/ # 低层 kernel：指标注册表、写侧契约、日志上下文
 │   ├── domains/           # 业务域自包含：routes / services / middleware / mq / types / tests
 │   │   ├── admin/         # 管理端统一门面域：identity/catalog/system/... 子域路由、审计、乐观锁
 │   │   ├── identity/      # 注册登录、JWT/RBAC、用户、OAuth、TFA、封禁
@@ -128,7 +128,8 @@ noj-core/
 │   │   ├── gateway/       # LLM Provider / 配额
 │   │   ├── search/        # 全局搜索（search_entries 索引、消费者、搜索 API）
 │   │   ├── query/         # 统计、排行
-│   │   └── content-review/# 内容审核与 DM 审核消费者
+│   │   ├── content-review/# 内容审核与 DM 审核消费者
+│   │   └── observability/ # 平台域：平台指标、探针、快照、健康/指标路由、SLO、运行时契约
 ├── scripts/               # CLI 工具（noj.ts 单入口 + migrate.ts + check-env.ts）
 ├── data/
 │   ├── problems-src/<id>/ # 题目源文件（版本控制，仅样例题）
@@ -136,7 +137,7 @@ noj-core/
 └── tests/                 # 顶层共享测试与跨模块测试
     ├── 00_migrate_test.ts # 最先执行：迁移 + seed root 用户
     ├── shared/            # shared 层测试（含 config / security / storage）
-    └── routes/health.ts   # 顶层 health 路由测试（其余测试随域进入 domains/*/tests）
+    └── routes/            # 顶层路由测试（*.test.ts；其余测试随域进入 domains/*/tests）
 ```
 
 ## 环境变量
