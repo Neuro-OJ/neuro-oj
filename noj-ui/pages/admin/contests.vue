@@ -330,20 +330,30 @@ async function openSettlement(contest: Contest) {
  *
  * 该列表接口刻意不返回 rows（控响应体大小），因此这里只取元数据；
  * 导出某个版本时再由服务端按版本取完整数据。
+ *
+ * 竞态防护：`openSettlement` 会先清空 `snapshotVersions` 再**不等待地**调用本函数，
+ * 因此「打开 A（版本多）→ 关闭 → 打开 B（无版本）」时 A 的迟到响应会覆盖 B 的
+ * 面板，甚至让导出按钮带上属于 A 的版本号。用请求序号丢弃过期响应。
  */
+let snapshotVersionsSeq = 0
+
 async function loadSnapshotVersions(contest: Contest) {
+  const seq = ++snapshotVersionsSeq
   snapshotVersionsLoading.value = true
   try {
     const result = await api.get<{ data: RankingSnapshotMeta[] }>(
       `/api/v1/admin/contest/contests/${contest.public_id || contest.id}/ranking-snapshots`,
       { silent: true },
     )
+    // 仅接受最后一次请求的结果（期间可能已切换竞赛或关闭面板）
+    if (seq !== snapshotVersionsSeq) return
     snapshotVersions.value = result.data
   } catch {
+    if (seq !== snapshotVersionsSeq) return
     // 静默失败：不干扰结算与发布主流程
     snapshotVersions.value = []
   } finally {
-    snapshotVersionsLoading.value = false
+    if (seq === snapshotVersionsSeq) snapshotVersionsLoading.value = false
   }
 }
 
@@ -355,13 +365,12 @@ async function loadSnapshotVersions(contest: Contest) {
  */
 async function exportSnapshotVersion(contest: Contest, version: number, format: 'csv' | 'json') {
   const base = `/api/v1/admin/contest/contests/${contest.public_id || contest.id}/ranking-snapshots/${version}`
-  try {
-    // 先探测存在性：404 时给出明确提示，而不是让浏览器下载到一个错误页
-    await api.get(base, { silent: true })
-    window.location.assign(`${base}.${format}`)
-  } catch (err: unknown) {
-    toast.error(extractApiError(err).message)
-  }
+  // 版本列表已在面板中加载过，能渲染出按钮就说明该版本存在——无需再发一次
+  // 请求探测。此前用 `await api.get(base)` **下载并丢弃整个 JSON 快照**只为
+  // 判断存在性，随后 window.location.assign 又把同一份数据传一遍：一万人规模
+  // 的成绩单每次点击都要传两遍。存在性由服务端在处理下载请求时判定（404 会
+  // 直接呈现给浏览器，用户可见）。
+  window.location.assign(`${base}.${format}`)
 }
 
 async function publishSnapshot() {
@@ -389,12 +398,9 @@ async function publishSnapshot() {
 }
 
 async function exportSnapshot(contest: Contest) {
-  try {
-    await api.get(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}/ranking-snapshots/latest`, { silent: true })
-    window.location.assign(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}/ranking-snapshots/latest.csv`)
-  } catch (err: unknown) {
-    toast.error(extractApiError(err).message)
-  }
+  // 与 exportSnapshotVersion 同理：不再先下载一份 JSON 只为探测存在性。
+  // 若无正式成绩，latest.csv 会返回 404，浏览器直接呈现该响应。
+  window.location.assign(`/api/v1/admin/contest/contests/${contest.public_id || contest.id}/ranking-snapshots/latest.csv`)
 }
 
 async function makeContestPublic(contest: Contest) {

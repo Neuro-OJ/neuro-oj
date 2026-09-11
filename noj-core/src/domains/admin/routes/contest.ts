@@ -38,7 +38,7 @@ import type {
 } from "../../contest/types/contests.ts";
 import { isValidContestKind } from "../../contest/types/contests.ts";
 import { isValidContestType } from "../../contest/types/contests.ts";
-import { listSubmissions } from "../../submission/index.ts";
+import { listSubmissions, scoreFromDb } from "../../submission/index.ts";
 import { resolveUserId } from "../../identity/index.ts";
 import {
   getContestRankingSnapshotByVersion,
@@ -612,6 +612,9 @@ router.get("/contests/:id/ranking-snapshots", async (c) => {
  *
  * 抽出的理由：两条导出路径若各写一份字段组装，改动时极易只更新其中一处，
  * 导致「最新版」与「历史版」的导出结构漂移。
+ *
+ * **分数换算**：与 CSV 导出同口径——快照以 ×100 整数存储，导出统一换算为
+ * 展示分数（`scoreFromDb`），使 JSON 与 CSV、以及页面榜单三者一致。
  */
 function buildRankingSnapshotJson(
   contestId: string,
@@ -623,6 +626,16 @@ function buildRankingSnapshotJson(
     rows: unknown;
   },
 ) {
+  const rows = Array.isArray(snapshot.rows)
+    ? (snapshot.rows as KaggleRankingRow[]).map((row) => ({
+      ...row,
+      total_score: scoreFromDb(row.total_score),
+      problem_scores: (row.problem_scores ?? []).map((s) => ({
+        ...s,
+        best_score: scoreFromDb(s.best_score),
+      })),
+    }))
+    : snapshot.rows;
   return {
     data: {
       contest_id: contestId,
@@ -630,7 +643,8 @@ function buildRankingSnapshotJson(
       note: snapshot.note,
       created_by: snapshot.created_by,
       created_at: snapshot.created_at,
-      rows: snapshot.rows,
+      // 分数已换算为展示量纲（÷100）；rank/attempts 等计数值原样。
+      rows,
     },
   };
 }
@@ -641,10 +655,20 @@ function buildRankingSnapshotJson(
  * 逐行输出每人的总分与**逐题明细**（题目标签、最好成绩、提交次数、最后得分时间），
  * 便于运营直接做成绩核对与归档，无需再解析 JSON 列。
  *
- * 安全：单元格经 `csvCell` 处理——以 `= + - @` 开头的内容加 `'` 前缀，
+ * **分数换算**：快照表以 ×100 整数存储（`scoreToDb`），而榜单与题面展示的是
+ * 除以 100 后的分数（`noj-ui/components/feature/contest/ContestRanking.vue` 的
+ * `score()`）。导出是给人核对/归档用的，必须与**看到的分数一致**，因此这里对
+ * `total_score` 与 `best_score` 套用 `scoreFromDb()`；否则满分 100 的题目在
+ * 导出文件里会显示成 10000，任何以导出为准的归档与下游重排都会被静默污染。
+ * `rank` / `attempts` 是计数值，不参与换算。
+ *
+ * 安全：单元格经 `csvCell` 处理——以 `= + - @ \t \r` 开头的内容加 `'` 前缀，
  * 防止导出文件在 Excel 中被当作公式执行（CSV 注入）。
  */
-function buildRankingCsv(snapshot: { version: number; rows: unknown }): string {
+function* buildRankingCsv(snapshot: {
+  version: number;
+  rows: unknown;
+}): Generator<string> {
   const rows = (snapshot.rows ?? []) as KaggleRankingRow[];
   const header = [
     "版本",
@@ -657,44 +681,40 @@ function buildRankingCsv(snapshot: { version: number; rows: unknown }): string {
     "题目提交次数",
     "该题最后得分时间",
   ];
-  const lines: string[] = [header.join(",")];
+  // 逐行 yield：配合 csvResponse 的流式写出，峰值内存与总行数无关。
+  yield header.join(",") + "\n";
   for (const row of rows) {
     const scores = row.problem_scores ?? [];
     if (scores.length === 0) {
       // 无题目明细时仍输出一行，避免该用户整行消失（总分本身是有效信息）
-      lines.push(
-        [
-          snapshot.version,
-          row.rank,
-          row.username,
-          row.total_score,
-          row.last_submission_at ?? "",
-          "",
-          "",
-          "",
-          "",
-        ].map(csvCell).join(","),
-      );
+      yield [
+        snapshot.version,
+        row.rank,
+        row.username,
+        scoreFromDb(row.total_score),
+        row.last_submission_at ?? "",
+        "",
+        "",
+        "",
+        "",
+      ].map(csvCell).join(",") + "\n";
       continue;
     }
     // 每人每题一行：便于在表格软件中直接按题目透视，而不是把明细塞进一个 JSON 单元格
     for (const score of scores) {
-      lines.push(
-        [
-          snapshot.version,
-          row.rank,
-          row.username,
-          row.total_score,
-          row.last_submission_at ?? "",
-          score.label,
-          score.best_score,
-          score.attempts,
-          score.last_best_at ?? "",
-        ].map(csvCell).join(","),
-      );
+      yield [
+        snapshot.version,
+        row.rank,
+        row.username,
+        scoreFromDb(row.total_score),
+        row.last_submission_at ?? "",
+        score.label,
+        scoreFromDb(score.best_score),
+        score.attempts,
+        score.last_best_at ?? "",
+      ].map(csvCell).join(",") + "\n";
     }
   }
-  return lines.join("\n");
 }
 
 /**
@@ -804,20 +824,59 @@ function parseSnapshotFile(file: string | undefined): {
   return { version, format: matched[2] as "json" | "csv" };
 }
 
-/** 以 UTF-8 BOM + 附件头返回 CSV（BOM 保证 Excel 正确识别中文）。 */
-function csvResponse(csv: string, filename: string): Response {
-  return new Response("\uFEFF" + csv, {
+/**
+ * 以 UTF-8 BOM + 附件头**流式**返回 CSV（BOM 保证 Excel 正确识别中文）。
+ *
+ * 流式而非一次性字符串：成绩单随参赛人数线性增长，一万人 × 十题的明细是十万行级
+ * 数据；拼成单个字符串会把这些数据在内存里复制多份（原始行数组 + 行数组 + 拼接后
+ * 的大字符串 + BOM 前缀再拼一次），管理员一次导出就能显著推高常驻内存。
+ * 这里逐行生成、逐块写回，峰值内存与总行数无关。
+ *
+ * 缓存策略：响应含全员成绩（个人数据），且随重测/新版本变化，明确禁止任何缓存。
+ */
+function csvResponse(
+  chunkIter: Iterable<string>,
+  filename: string,
+): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      // BOM 必须先于任何内容，否则 Excel 会把中文识别成乱码
+      controller.enqueue(encoder.encode("\uFEFF"));
+      for (const chunk of chunkIter) {
+        controller.enqueue(encoder.encode(chunk));
+      }
+      controller.close();
+    },
+  });
+  return new Response(stream, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${filename}"`,
+      // 全员成绩属个人数据且随时可变，禁止浏览器/代理缓存
+      "Cache-Control": "private, no-store",
     },
   });
 }
 
+/**
+ * CSV 单元格转义（防注入 + 保行框）。
+ *
+ * 注入防护：Excel / Sheets / LibreOffice 会把以 `=` `+` `-` `@` 开头的内容当公式
+ * 执行，**制表符与回车同样能起到前置分隔作用**（`\t=cmd`、`\r=cmd` 实测可绕过
+ * 只查 `^[=+\-@]` 的旧实现），故一并纳入前缀判定。
+ *
+ * 行框保护：`\r` 也必须触发引号包裹——行是用 `\n` 连接的，未包裹的 `\r` 会让
+ * 单元格内容在解析端断行，破坏列对齐。
+ *
+ * 数值不参与前缀判定：`-0`、`-1` 这类负数是合法数据，不该被加上 `'`。
+ */
 function csvCell(value: unknown): string {
+  if (typeof value === "number") return String(value);
   let text = String(value ?? "");
-  if (/^[=+\-@]/.test(text)) text = `'${text}`;
-  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  // 前导空白也可能被表格软件忽略后仍按公式解析，故按「去掉前导空白后的首字符」判定
+  if (/^[\s]*[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
 export default router;
