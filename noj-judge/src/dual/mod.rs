@@ -663,12 +663,59 @@ async fn run_dual_loop(
         }
     }
 
+    // Solution 流是否已结束。结束后禁用 select 中的 Solution 分支，
+    // 但继续消费 Evaluator 输出（见下方修复说明），避免丢失 RESULT payload。
+    let mut solution_done = false;
+
+    // Evaluator 流是否已结束（EOF 或流错误）。结束后禁用 Evaluator 分支，
+    // 避免对已耗尽的流反复 poll（select 会立即就绪导致忙循环）。
+    let mut evaluator_done = false;
+
     // 阶段 2：正式评测——总超时从评测程序开始运行起算（题目 time_limit_ms）。
-    if result_payload.is_none() {
+    //
+    // 修复（D0）：守卫条件必须是「payload **尚未完整取得**」，而不只是
+    // `is_none()`。阶段 1 是 `while !evaluator_started` 循环：一旦收到首条输出
+    // （例如只有 `---RESULT---` 标记的那一个 chunk）就会正常退出循环，此时
+    // `result_payload == Some("")`（已见标记、payload 待读）。若此处用 `is_none()`
+    // 判断，阶段 2 会被整体跳过，payload 永远不被读取 —— 随后尾部逻辑判定
+    // 「已见标记但无 payload」，把合法评测结果误判为 SystemError（提交丢分）。
+    //
+    // 该缺陷表现为时序相关的偶发失败：标记与 payload 落在**同一个** chunk 时
+    // （一次 handle_eval_chunk 内连续处理两行）恰好正常；分成两个 chunk 到达
+    // （评测脚本先 flush 标记、稍后再写 payload）则必然丢结果。
+    if result_payload.as_deref().is_none_or(|p| p.is_empty()) {
         let deadline = tokio::time::sleep(Duration::from_millis(evaluator_timeout_ms));
         tokio::pin!(deadline);
 
         'outer: loop {
+            // 退出条件 1（首选）：结果 payload 已完整取得 → 立即收尾。
+            //
+            // 必须优先于下面的「Evaluator 流结束」条件：Solution 容器承载的是常驻
+            // host 进程，它只在收到 `shutdown` 帧或 **stdin EOF** 时退出，而编排
+            // 循环全程持有 `sol_input` 从不关闭、也从不向它发 shutdown 帧。因此
+            // Solution 的 EOF 在生产中基本不会出现；若等它结束才收尾，必然拖到
+            // 总超时（表现为 status=error「Evaluator 总超时」，而结果其实早已拿到）。
+            if result_payload.as_deref().is_some_and(|p| !p.is_empty()) {
+                break 'outer;
+            }
+
+            // 退出条件 2：Evaluator 流已结束 → 立即收尾。
+            //
+            // Evaluator 是 RESULT 的唯一来源：它的 stdout 一旦关闭（EOF 或流错误），
+            // payload 不可能再补全，继续等待没有意义。先 drain 尾部残留（payload
+            // 可能没有以换行结尾而留在解析器缓冲里），再退出。
+            //
+            // 修复（评审）：此前这里是 `evaluator_done && solution_done`。由于上述
+            // 原因 `solution_done` 在生产中不可达，该条件实际永不成立 —— 当评测器
+            // **不带 RESULT 标记**结束（崩溃、`sys.exit(1)`、被 OOM kill）时，循环会
+            // 空转到 `evaluator_time_limit_ms` 才由 deadline 收尾。判定结果不受影响
+            // （两条路径最终都是 error），但会白占评测槽位并拉长失败延迟。
+            // 阶段 2 重构前这里是「Evaluator EOF 即 break」，本次恢复该快速失败语义。
+            if evaluator_done {
+                drain_eval_tail(&mut eval_parser, &mut eval_stdout_full, &mut result_payload);
+                break 'outer;
+            }
+
             tokio::select! {
                 // 总超时
                 _ = &mut deadline => {
@@ -694,14 +741,28 @@ async fn run_dual_loop(
                 }
 
                 // Evaluator stdout/stderr
-                chunk = eval_output.next() => {
+                chunk = eval_output.next(), if !evaluator_done => {
                     let chunk = match chunk {
                         Some(Ok(c)) => c,
                         Some(Err(e)) => {
                             error!("Evaluator exec 流错误: {}", e);
-                            break 'outer;
+                            evaluator_done = true;
+                            continue;
                         }
-                        None => break 'outer,  // EOF
+                        None => {
+                            // 修复（D0）：Evaluator EOF 时**先 drain 解析器缓冲**再退出。
+                            // payload 行可能没有以换行结尾（EOF 残留），此时它仍在
+                            // eval_parser.buf 中；直接 break 会丢弃它，把合法结果误判为
+                            // SystemError（提交丢分）。drain_remaining() 将其作为最后
+                            // 一行交回，交由下方统一的 payload 提取逻辑处理。
+                            drain_eval_tail(
+                                &mut eval_parser,
+                                &mut eval_stdout_full,
+                                &mut result_payload,
+                            );
+                            evaluator_done = true;
+                            continue;
+                        }
                     };
                     handle_eval_chunk(
                         &mut eval_parser,
@@ -719,28 +780,50 @@ async fn run_dual_loop(
                 }
 
                 // Solution stdout/stderr
-                chunk = sol_output.next() => {
-                    let chunk = match chunk {
-                        Some(Ok(c)) => c,
+                //
+                // 修复（D0）：Solution 流结束**不代表**评测结束。
+                // Evaluator 可能仍有在途/待 flush 输出——典型场景是 evaluate.py
+                // 先写 `---RESULT---`（若 stdout 为行缓冲则立即下发），payload 行
+                // 则要等进程退出时才 flush。此前在此处直接 `break 'outer` 会抛弃
+                // Evaluator 的剩余输出，导致 payload 丢失 → 合法结果被误判为
+                // SystemError（提交丢分），且表现为时序相关的偶发失败。
+                //
+                // 现在只把 Solution 标记为已结束并禁用该分支，继续等待 Evaluator
+                // 输出，直到其 EOF、payload 完整，或总超时兜底（不会无限挂起）。
+                chunk = sol_output.next(), if !solution_done => {
+                    match chunk {
+                        Some(Ok(c)) => {
+                            handle_sol_chunk(
+                                &mut sol_parser,
+                                &mut eval_input,
+                                &mut sol_input,
+                                c,
+                                &mut solution_ready,
+                                &mut tracker,
+                                user_llm,
+                            )
+                            .await?;
+                        }
                         Some(Err(e)) => {
                             error!("Solution exec 流错误: {}", e);
-                            break 'outer;
+                            solution_done = true;
                         }
-                        None => break 'outer,
-                    };
-                    handle_sol_chunk(
-                        &mut sol_parser,
-                        &mut eval_input,
-                        &mut sol_input,
-                        chunk,
-                        &mut solution_ready,
-                        &mut tracker,
-                        user_llm,
-                    )
-                    .await?;
+                        None => {
+                            solution_done = true;
+                        }
+                    }
                 }
 
-                else => break 'outer,
+                else => {
+                    // 安全网：所有分支同时不可用时的兜底退出（正常路径由循环顶部的
+                    // 「payload 完整」/「evaluator_done」两个判定处理）。
+                    drain_eval_tail(
+                        &mut eval_parser,
+                        &mut eval_stdout_full,
+                        &mut result_payload,
+                    );
+                    break 'outer;
+                }
             }
         }
     }
@@ -761,16 +844,8 @@ async fn run_dual_loop(
 
     // 已见 RESULT 标记但 payload 行未以换行结束（EOF 残留）时，
     // 把 drain 出的最后一行当作 payload，避免把合法结果误判为 SystemError。
-    let remaining = eval_parser.drain_remaining();
-    for line in remaining {
-        if let EvaluatorLine::Unknown(s) = line {
-            append_capped(&mut eval_stdout_full, &s);
-            append_capped(&mut eval_stdout_full, "\n");
-            if result_payload.as_ref() == Some(&String::new()) && !s.trim().is_empty() {
-                result_payload = Some(s.trim().to_string());
-            }
-        }
-    }
+    // （幂等：循环内的 drain 已执行过时，此处不再产生内容。）
+    drain_eval_tail(&mut eval_parser, &mut eval_stdout_full, &mut result_payload);
 
     if let Some(payload) = result_payload.as_deref().filter(|p| !p.is_empty()) {
         let parsed: serde_json::Value =
@@ -798,6 +873,31 @@ async fn run_dual_loop(
             &full_output,
             rejudge_seq,
         )),
+    }
+}
+
+/// 取出 Evaluator 解析器缓冲区中的尾部残留并尝试提取 RESULT payload。
+///
+/// 用于 Evaluator EOF / 编排循环收尾：`---RESULT---` 之后的 payload 行可能**没有
+/// 以换行结尾**（评测脚本直接退出，或 stdout 缓冲在退出时才 flush），此时该行仍
+/// 留在 [`LineParser`] 的内部缓冲中，从未经过 `feed()` 切分。若不 drain 就结束编排，
+/// 合法结果会因「已见标记但无 payload」被误判为 SystemError（提交丢分）。
+///
+/// 幂等：`drain_remaining()` 会清空缓冲，重复调用不再产生内容。
+fn drain_eval_tail(
+    parser: &mut LineParser,
+    stdout_full: &mut String,
+    result_payload: &mut Option<String>,
+) {
+    for line in parser.drain_remaining() {
+        if let EvaluatorLine::Unknown(s) = line {
+            append_capped(stdout_full, &s);
+            append_capped(stdout_full, "\n");
+            // 仅当「已见标记、等待首条非空行」时吸收为 payload
+            if result_payload.as_ref() == Some(&String::new()) && !s.trim().is_empty() {
+                *result_payload = Some(s.trim().to_string());
+            }
+        }
     }
 }
 

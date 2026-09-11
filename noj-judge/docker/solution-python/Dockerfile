@@ -27,6 +27,15 @@ RUN apt-get update \
 COPY sdk/common/noj_sdk_common/ /usr/local/lib/python3.12/site-packages/noj_sdk_common/
 COPY sdk/solution/noj_solution_sdk/ /usr/local/lib/python3.12/site-packages/noj_solution_sdk/
 
+# 权限归一化（纵深防御）：容器以非 root（USER noj）运行，而 COPY 会**原样保留**
+# 构建上下文中的文件模式。若开发者工作副本里的 SDK 源码权限异常收紧（例如 600），
+# 文件会以 root:root 0600 落进镜像，noj 用户随即无法读取，表现为 import 失败：
+# PermissionError: [Errno 13] ... __init__.py。
+# 注意：git 只跟踪可执行位，600 属于本地环境漂移，CI 全新检出为 644 因而正常。
+# 此处显式归一化，使镜像不再受源码文件模式影响。
+RUN chmod -R a+rX /usr/local/lib/python3.12/site-packages/noj_sdk_common \
+    /usr/local/lib/python3.12/site-packages/noj_solution_sdk
+
 # 验证 SDK 可导入（构建期 sanity check）
 RUN python3 -c "import noj_solution_sdk; from noj_solution_sdk.host import main; from noj_solution_sdk.registry import register; print('noj_solution_sdk OK')"
 
