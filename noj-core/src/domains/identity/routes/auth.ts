@@ -149,16 +149,12 @@ auth.post("/register", async (c) => {
     throw new ValidationError(`密码长度不能少于 ${MIN_PASSWORD_LENGTH} 位`);
   }
 
-  // F-12：注册邮箱验证开关（默认关闭）。当前仅登记开关但未接入完整“发送验证码 →
-  // 校验并消费”链路；为避免“看起来已启用、实际任意字符串可通过”的假安全，开启时
-  // fail-closed 拒绝注册，待邮件验证服务落地后再放行。
-  const emailVerifySetting = getSetting("register_email_verify");
-  if (emailVerifySetting?.value === true) {
-    throw new ValidationError(
-      "注册邮箱验证功能尚未开放，请联系管理员完成邮箱验证服务配置",
-    );
-  }
-
+  // 注：此前这里有一个 register_email_verify 开关，开启即 fail-closed 拒绝全部注册。
+  // 该开关的「实现未完成」前提早已过期——验证链路现已完整（下方 sendEmailVerification
+  // 发送一次性令牌、/auth/email/verify 与 /auth/email/resend 消费与重发、
+  // authMiddleware 的 requiresVerifiedEmail 强制写操作校验邮箱），
+  // 它唯一的效果是把站点注册彻底关死，与名字表达的语义相反。
+  // 已按 issue #498 删除该开关。
   const clientIp = getClientIp(c);
   const user = await registerUser(body, clientIp);
   const emailVerification = await sendEmailVerification(

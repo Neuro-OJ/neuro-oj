@@ -112,39 +112,6 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "dead-switch: register_email_verify=true 时 /register fail-closed 返 400",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    _resetSystemSettingsForTest();
-    await initSystemSettings();
-    await updateSetting("register_email_verify", true, "0");
-    try {
-      const app = createApp();
-      const res = await jsonRequest(app, `${BASE}/register`, {
-        method: "POST",
-        body: {
-          username: `reg_verify_${ts}`,
-          email: `reg_verify_${ts}@example.com`,
-          password: "TestPwd-2024-Xy9",
-        },
-      });
-      assertEquals(res.status, 400);
-      const body = await res.json();
-      assertEquals(
-        body.error,
-        "注册邮箱验证功能尚未开放，请联系管理员完成邮箱验证服务配置",
-      );
-    } finally {
-      await updateSetting("register_email_verify", false, "0");
-    }
-  },
-});
-
-Deno.test({
   name: "maintenance: maintenance_mode=true 时 POST 返 503 + MAINTENANCE code",
   ignore: skip,
   sanitizeResources: false,

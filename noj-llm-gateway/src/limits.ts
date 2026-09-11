@@ -38,6 +38,37 @@ async function getQuota(
   return rows[0] ?? fallbackQuota(scopeType, windowType);
 }
 
+/** 配额 env 名前缀（`NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>`） */
+export const QUOTA_ENV_PREFIX = "NOJ_LLM_DEFAULT_";
+
+/** 配额窗口类型（与下方 defaults 表一致） */
+export const QUOTA_WINDOWS = ["day", "month"] as const;
+/** 配额作用域类型 */
+export const QUOTA_SCOPES = ["global", "user", "problem"] as const;
+/** 配额字段 */
+export const QUOTA_FIELDS = ["CALLS", "TOKENS", "COST"] as const;
+
+/**
+ * 本模块实际读取的全部配额 env 名（共 3 scope × 2 window × 3 field = 18 个）。
+ *
+ * 由模板拼接生成——这也是这些键长期在「按字面量搜索」下隐身的原因。
+ * 显式枚举出来，供 `src/config-registry.ts` 的声明与测试比对，
+ * 使「新增窗口但忘登记」变成一次可发现的失败而非静默漂移（issue #497）。
+ */
+export const QUOTA_ENV_KEYS: string[] = (() => {
+  const keys: string[] = [];
+  for (const scope of QUOTA_SCOPES) {
+    for (const window of QUOTA_WINDOWS) {
+      for (const field of QUOTA_FIELDS) {
+        keys.push(
+          `${QUOTA_ENV_PREFIX}${scope.toUpperCase()}_${window.toUpperCase()}_${field}`,
+        );
+      }
+    }
+  }
+  return keys;
+})();
+
 /**
  * 无配额记录时的安全 fallback。
  *
@@ -50,7 +81,7 @@ function fallbackQuota(
 ): QuotaRow {
   const env = Deno.env.toObject();
   const prefix =
-    `NOJ_LLM_DEFAULT_${scopeType.toUpperCase()}_${windowType.toUpperCase()}`;
+    `${QUOTA_ENV_PREFIX}${scopeType.toUpperCase()}_${windowType.toUpperCase()}`;
   const num = (key: string, fallback: number): number => {
     const raw = env[key];
     if (raw === undefined || raw === "") return fallback;

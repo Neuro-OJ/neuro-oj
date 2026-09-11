@@ -105,17 +105,6 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     scope: "runtime",
   },
   {
-    key: "register_email_verify",
-    type: "boolean",
-    default: false,
-    description:
-      "注册邮箱验证开关（默认关；当前实现未完成，开启会 fail-closed 拒绝注册）",
-    is_secret: false,
-    envFallback: "REGISTER_EMAIL_VERIFY",
-    category: "auth",
-    scope: "runtime",
-  },
-  {
     key: "jwt_expires_in",
     type: "string",
     default: "24h",
@@ -137,16 +126,6 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     category: "maintenance",
     scope: "runtime",
   },
-  {
-    key: "homepage_banner",
-    type: "text",
-    default: "",
-    description: "首页顶部公告（最多 1000 字符）",
-    is_secret: false,
-    envFallback: "HOMEPAGE_BANNER",
-    category: "maintenance",
-    scope: "runtime",
-  },
 
   // ── email ─────────────────────────────────────────────────
   {
@@ -156,16 +135,6 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     description: "邮件服务（disabled / aliyun / tencent）",
     is_secret: false,
     envKey: "EMAIL_PROVIDER",
-    category: "email",
-    scope: "bootstrap",
-  },
-  {
-    key: "smtp_from",
-    type: "string",
-    default: "",
-    description: "系统发件人地址（邮件 Provider 通用）",
-    is_secret: false,
-    envKey: "SMTP_FROM",
     category: "email",
     scope: "bootstrap",
   },
@@ -253,16 +222,9 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
   },
 
   // ── rate_limit ────────────────────────────────────────────
-  {
-    key: "rate_limit_login_enabled",
-    type: "boolean",
-    default: true,
-    description: "是否启用登录速率限制（NOJ_ENV=test 时强制关闭）",
-    is_secret: false,
-    envFallback: "RATE_LIMIT_LOGIN_ENABLED",
-    category: "rate_limit",
-    scope: "runtime",
-  },
+  // 注：登录限流没有独立开关（issue #496）。此前登记的 rate_limit_login_enabled
+  // 无任何读取点——真实开关是下方的 rate_limit_enabled 总开关，
+  // 搜索限流另有 rate_limit_search_enabled。多一个不生效的开关只增加误配面。
   {
     key: "rate_limit_enabled",
     type: "boolean",
@@ -696,6 +658,30 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
   },
 
   // ── judge ───────────────────────────────────────────────
+  {
+    // issue #499：此前未登记（后台不可见），运维排查「缺 Judge 为何不告警」时不可发现。
+    key: "JUDGE_ENABLED",
+    type: "boolean",
+    description:
+      "是否启用评测组件。生产环境为 true 且无 judge 心跳时触发告警；显式设为 false 可关闭该告警",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "JUDGE_ENABLED",
+    category: "judge",
+  },
+  {
+    // issue #499：此前未登记。core 与 noj-judge **必须使用同一前缀**，
+    // 配错表现为评测任务静默积压（无任何告警），故必须可见、可校验。
+    key: "JUDGE_QUEUE",
+    type: "string",
+    default: "noj:judge:queue",
+    description:
+      "评测任务队列名前缀（需与 noj-judge 的 JUDGE_QUEUE 完全一致，否则任务静默积压）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "JUDGE_QUEUE",
+    category: "judge",
+  },
   {
     key: "judge_max_evaluator_time_limit_ms",
     type: "integer",
@@ -1162,87 +1148,10 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     envKey: "NOJ_FORCE_PASSWORD_CHANGE",
     category: "auth",
   },
-  {
-    key: "NOJ_LLM_DEFAULT_GLOBAL_DAY_CALLS",
-    type: "integer",
-    description: "LLM 配额缺失 fallback：全局日调用上限",
-    is_secret: false,
-    scope: "bootstrap",
-    envKey: "NOJ_LLM_DEFAULT_GLOBAL_DAY_CALLS",
-    category: "other",
-  },
-  {
-    key: "NOJ_LLM_DEFAULT_GLOBAL_DAY_TOKENS",
-    type: "integer",
-    description: "LLM 配额缺失 fallback：全局日 token 上限",
-    is_secret: false,
-    scope: "bootstrap",
-    envKey: "NOJ_LLM_DEFAULT_GLOBAL_DAY_TOKENS",
-    category: "other",
-  },
-  {
-    key: "NOJ_LLM_DEFAULT_GLOBAL_DAY_COST",
-    type: "integer",
-    description: "LLM 配额缺失 fallback：全局日成本上限",
-    is_secret: false,
-    scope: "bootstrap",
-    envKey: "NOJ_LLM_DEFAULT_GLOBAL_DAY_COST",
-    category: "other",
-  },
-  {
-    key: "NOJ_LLM_DEFAULT_USER_DAY_CALLS",
-    type: "integer",
-    description: "LLM 配额缺失 fallback：单用户日调用上限",
-    is_secret: false,
-    scope: "bootstrap",
-    envKey: "NOJ_LLM_DEFAULT_USER_DAY_CALLS",
-    category: "other",
-  },
-  {
-    key: "NOJ_LLM_DEFAULT_USER_DAY_TOKENS",
-    type: "integer",
-    description: "LLM 配额缺失 fallback：单用户日 token 上限",
-    is_secret: false,
-    scope: "bootstrap",
-    envKey: "NOJ_LLM_DEFAULT_USER_DAY_TOKENS",
-    category: "other",
-  },
-  {
-    key: "NOJ_LLM_DEFAULT_USER_DAY_COST",
-    type: "integer",
-    description: "LLM 配额缺失 fallback：单用户日成本上限",
-    is_secret: false,
-    scope: "bootstrap",
-    envKey: "NOJ_LLM_DEFAULT_USER_DAY_COST",
-    category: "other",
-  },
-  {
-    key: "NOJ_LLM_DEFAULT_PROBLEM_DAY_CALLS",
-    type: "integer",
-    description: "LLM 配额缺失 fallback：单题日调用上限",
-    is_secret: false,
-    scope: "bootstrap",
-    envKey: "NOJ_LLM_DEFAULT_PROBLEM_DAY_CALLS",
-    category: "other",
-  },
-  {
-    key: "NOJ_LLM_DEFAULT_PROBLEM_DAY_TOKENS",
-    type: "integer",
-    description: "LLM 配额缺失 fallback：单题日 token 上限",
-    is_secret: false,
-    scope: "bootstrap",
-    envKey: "NOJ_LLM_DEFAULT_PROBLEM_DAY_TOKENS",
-    category: "other",
-  },
-  {
-    key: "NOJ_LLM_DEFAULT_PROBLEM_DAY_COST",
-    type: "integer",
-    description: "LLM 配额缺失 fallback：单题日成本上限",
-    is_secret: false,
-    scope: "bootstrap",
-    envKey: "NOJ_LLM_DEFAULT_PROBLEM_DAY_COST",
-    category: "other",
-  },
+  // 注：NOJ_LLM_DEFAULT_* 配额 env 已迁至 noj-llm-gateway（issue #497）。
+  // 它们由网关的 fallbackQuota() 消费，登记在 core 注册表会误导运维
+  // （在 core 后台可见、却要重启 gateway 才生效）。声明见
+  // noj-llm-gateway/src/config-registry.ts，由 check:config-usage 跨服务校验。
   // ── OAuth（第三方登录）─────────────────────────────────────
   {
     key: "OAUTH_GITHUB_CLIENT_ID",
@@ -1260,6 +1169,20 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: true,
     scope: "bootstrap",
     envKey: "OAUTH_GITHUB_CLIENT_SECRET",
+    category: "auth",
+  },
+  {
+    // issue #499：这是 OAUTH_GITHUB_CLIENT_SECRET 的历史别名，此前未登记，
+    // 属于「代码在读、注册表没有」的盲区（后台不可见、check-env 不校验）。
+    // 保留而非删除，是为了避免已使用该别名的部署在升级后**静默**失去 GitHub 登录
+    // （两个名字指向同一密钥）；新部署请一律使用 OAUTH_GITHUB_CLIENT_SECRET。
+    key: "OAUTH_GITHUB_SECRET",
+    type: "string",
+    description:
+      "【已废弃别名】GitHub OAuth Client Secret 的旧名，仅向后兼容；新部署请使用 OAUTH_GITHUB_CLIENT_SECRET",
+    is_secret: true,
+    scope: "bootstrap",
+    envKey: "OAUTH_GITHUB_SECRET",
     category: "auth",
   },
   {

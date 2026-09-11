@@ -60,12 +60,17 @@ Neuro OJ 使用「角色 → 权限点」模型：权限格式为 `resource:acti
 | `allow_register` | 是否开放自助注册 |
 | `jwt_expires_in` | 登录令牌有效期 |
 | `maintenance_mode` | 维护模式开关 |
-| `homepage_banner` | 首页横幅内容 |
 | `email_provider` 及邮件相关键 | 邮件服务配置 |
 | `rate_limit_*` | 登录 / 搜索限流参数 |
 | `community_*` | 社区总开关、只读、各模块开关、发布门槛、长度限制等 |
 | `judge_max_*` | 评测资源全局上限（evaluator/solution 时间与内存） |
 | `audit_log_retention_days` | 审计日志保留天数 |
+
+> 首页顶部横幅由**公告**驱动（管理后台「公告管理」），不存在独立的
+> `homepage_banner` 配置键（该键为无读取点的死配置，已于 issue #495 删除）。
+>
+> LLM 默认配额（`NOJ_LLM_DEFAULT_*`）由 **noj-llm-gateway** 消费，不在本面板中；
+> 见 `noj-llm-gateway/README.md`，修改后需重启 llm-gateway。
 
 修改即时生效；涉及邮件、限流等键时请先确认新值正确，避免锁死服务。
 

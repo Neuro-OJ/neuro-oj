@@ -145,8 +145,6 @@ const URL_CREDENTIAL_KEYS = new Set(["DATABASE_URL", "REDIS_URL"]);
 
 // ─── 类型校验 ───────────────────────────────────────────────
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 /** 严格 type 校验：值必须匹配注册表 type，否则抛 ValidationError */
 function validateValueType(
   key: string,
@@ -170,13 +168,6 @@ function validateValueType(
     case "string": {
       if (typeof value !== "string") {
         return { ok: false, message: `${key} 必须是 string` };
-      }
-      // 特定 string 类型的额外校验
-      if (key === "smtp_from" && value !== "" && !EMAIL_RE.test(value)) {
-        return {
-          ok: false,
-          message: "smtp_from 必须是有效 email 格式或空字符串",
-        };
       }
       return { ok: true, raw: JSON.stringify(value) };
     }

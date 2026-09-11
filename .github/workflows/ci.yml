@@ -88,6 +88,7 @@ jobs:
       ui: ${{ steps.filter.outputs.ui }}
       judge: ${{ steps.filter.outputs.judge }}
       gateway: ${{ steps.filter.outputs.gateway }}
+      config: ${{ steps.filter.outputs.config }}
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -105,6 +106,15 @@ jobs:
               - 'scripts/**'
               - 'docker-compose.e2e.yml'
               - 'env.e2e.template'
+              - '.github/workflows/ci.yml'
+            # 配置读取点校验跨三个模块（core 注册表 + 网关声明 + noj-ui 引用），
+            # 任一模块变更都可能改变「声明 ↔ 读取点」的一致性
+            config:
+              - 'noj-core/src/shared/config/**'
+              - 'noj-core/scripts/check-config-usage.ts'
+              - 'noj-core/src/**'
+              - 'noj-ui/**'
+              - 'noj-llm-gateway/src/**'
               - '.github/workflows/ci.yml'
             core-identity:
               - 'noj-core/src/domains/identity/**'
@@ -259,10 +269,43 @@ jobs:
         working-directory: noj-core
         run: deno task check:jsdoc
 
+      # 配置读取点静态校验（issue #500）在独立的 config-usage-check 作业中运行：
+      # 它同时扫描 noj-core / noj-ui / noj-llm-gateway 三个模块，路径过滤与
+      # core-check 不同（见 changes 作业的 config 输出）。
+
       # 不在 CI 跑 check:env:strict：脚本是给本地开发者用的工具，
       # CI 环境使用 GitHub Secrets 而非 .env。
       # 强行 cp .env.example .env 会触发模板里"故意写的占位符"
       # （JWT_SECRET=change-this-...），产生误报。
+
+  # ===========================================================================
+  # 配置读取点静态校验（issue #500）— 防死键再生
+  #
+  # 校验两条方向相反的一致性：
+  #   正向：注册表/网关声明的每个可见键都必须有真实读取点（否则是死键）；
+  #   反向：代码里 Deno.env.get 读取的 env 必须已登记或在显式豁免清单中。
+  # 仅做静态扫描（不连库、不读 .env），因此单列一个轻量作业，
+  # 路径过滤覆盖 core / ui / gateway 三个模块。
+  # ===========================================================================
+  config-usage-check:
+    name: Config Usage Check
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.config == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: 配置读取点静态校验 (check:config-usage)
+        working-directory: noj-core
+        run: deno task check:config-usage
 
   # ===========================================================================
   # noj-llm-gateway — 快速静态检查 + 单元测试
