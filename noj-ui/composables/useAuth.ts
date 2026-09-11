@@ -67,18 +67,27 @@ export function useAuth() {
   // 避免「页面提示 + toast」双重提示（ui-api-layer 设计 D6）
   const { api } = useApi();
 
+  /** /auth/me 的 SSR 异步数据（同一请求内按 key 复用，守卫与页面只拉一次） */
+  function meAsyncData() {
+    return useAsyncData(
+      'auth:me',
+      () =>
+        api.get<{ data: UserResponse }>('/api/v1/auth/me', {
+          silent: true,
+          redirectOnUnauthorized: false,
+        }),
+    );
+  }
+
   // ── SSR 初始化：有 session 时通过 /auth/me 获取完整用户与权限 ──
+  // 回填必须等到数据真正 settle：SSR 挂载时 data/error 都还是 undefined，
+  // 若此刻就把 user 置空、loading 置 false，会在渲染前误判为「未登录」
+  // （路由守卫抢在 /auth/me 之前读到空用户，刷新 /admin/* 被踢回登录页）。
   if (import.meta.server) {
     if (session.value) {
-      const { data: meData } = useAsyncData(
-        'auth:me',
-        () =>
-          api.get<{ data: UserResponse }>('/api/v1/auth/me', {
-            silent: true,
-            redirectOnUnauthorized: false,
-          }),
-      );
-      watch(meData, (val) => {
+      const { data: meData, error: meError } = meAsyncData();
+      watch([meData, meError], ([val, err]) => {
+        if (val === undefined && err === undefined) return; // 仍在请求中
         user.value = val?.data ?? null;
         loading.value = false;
       }, { immediate: true });
@@ -250,6 +259,63 @@ export function useAuth() {
     }
   }
 
+  /**
+   * 确保认证状态就绪（可 await），供路由守卫使用。
+   *
+   * 路由中间件在 SSR 阶段同样执行，而 `useAuth()` 的 SSR 初始化走
+   * `useAsyncData`（要等渲染阶段才 resolve）。守卫若直接读 `loading`/`user`，
+   * 会把已登录用户误判成未登录并重定向到 /login——这就是「管理员登录后刷新
+   * /admin/* 被踢回登录页」的根因，因此守卫统一 `await ensureAuthReady()`。
+   *
+   * - user 已就绪（SSR 已拉取 / 客户端已由 session cookie 恢复）→ 直接返回
+   * - 无可读 session cookie → 未登录
+   * - 有 session 但 user 未就绪 → 拉取 /api/v1/auth/me
+   *   （SSR 复用 `meAsyncData` 实例，客户端由浏览器自动携带 Cookie）
+   *   401 → 未登录；其他错误（网络/超时/5xx）→ 退回 session 快照，
+   *   真实鉴权仍由后端执行（与 NOJ-209 的取舍一致）。
+   */
+  async function ensureAuthReady(): Promise<void> {
+    if (user.value) {
+      loading.value = false;
+      return;
+    }
+
+    const snapshot = session.value;
+    if (!snapshot) {
+      user.value = null;
+      loading.value = false;
+      return;
+    }
+
+    try {
+      if (import.meta.server) {
+        const { data: meData, error: meError } = await meAsyncData();
+        const fetched = meData.value?.data;
+        if (fetched) {
+          user.value = fetched;
+        } else if (meError.value && extractApiError(meError.value).status !== 401) {
+          // 后端不可达/超时：退回 session 快照，避免把已登录用户踢回登录页
+          user.value = sessionToUser(snapshot);
+        } else {
+          user.value = null;
+        }
+      } else {
+        const res = await api.get<{ data: UserResponse }>(
+          '/api/v1/auth/me',
+          { silent: true, redirectOnUnauthorized: false, timeout: 5000 },
+        );
+        user.value = res.data ?? sessionToUser(snapshot);
+      }
+    } catch (err) {
+      const info = extractApiError(err);
+      user.value = info.status === 401 ? null : sessionToUser(snapshot);
+      // 明确 401：清掉可读 session cookie，避免登录页仍显示已登录态
+      if (info.status === 401 && import.meta.client) session.value = null;
+    } finally {
+      loading.value = false;
+    }
+  }
+
   async function changePassword(oldPassword: string, newPassword: string) {
     // 后端在改密成功后：
     //   1. 撤销旧 token 的 jti（写入 Redis 黑名单）
@@ -284,6 +350,7 @@ export function useAuth() {
     login,
     register,
     fetchUser,
+    ensureAuthReady,
     changePassword,
     logout,
     forgotPassword,

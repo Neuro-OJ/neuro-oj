@@ -31,7 +31,7 @@ function formatValue(value: unknown): string {
 </script>
 
 <template>
-  <UModal :model-value="open" @update:model-value="onOpenChange">
+  <UModal :open="open" @update:open="onOpenChange">
     <UCard :ui="{ body: 'p-5', footer: 'p-4' }" class="max-w-lg w-full">
       <template #header>
         <h3 class="text-base font-semibold text-text">{{ title }}</h3>

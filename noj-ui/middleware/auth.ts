@@ -25,24 +25,24 @@ const PASSWORD_CHANGE_WHITELIST = new Set<string>([
  *
  * 白名单（issue #49）：/login、/register、/forgot-password、/reset-password 免守卫。
  *
- * SSR 阶段跳过守卫，由客户端水合后重新执行。
+ * SSR 与客户端都会执行：必须先 `await ensureAuthReady()` 拿到真实登录态
+ * （SSR 阶段 `useAuth()` 的 `useAsyncData` 尚未 resolve，直接判断会把已登录
+ * 用户误判为未登录并 302 到 /login）。
  *
  * issue #75：must_change_password=true 时强制跳到 /change-password，
  * 白名单页面（改密/登录/登出）放行。
  */
-import { useAuthReady } from '~/composables/useAuthReady';
-
 export default defineNuxtRouteMiddleware(async (to, _from) => {
   // SSR 阶段仅对 messages 页跳过守卫（该页 ssr:false，水合后重新执行），
-  // 避免全局跳过导致其他 SSR 页面失去服务端登录保护
+  // 避免其他 SSR 页面失去服务端登录保护
   if (import.meta.server && to.path.startsWith('/messages')) return;
 
   if (PUBLIC_AUTH_PATHS.has(to.path)) return;
 
-  const { loading, isLoggedIn, user, fetchUser } = useAuth();
+  const { isLoggedIn, user, fetchUser, ensureAuthReady } = useAuth();
 
-  // 等待认证状态就绪（5s 超时兜底）
-  await useAuthReady(loading);
+  // 等待认证状态就绪（SSR 会拉取 /auth/me；客户端由 session cookie 即时恢复）
+  await ensureAuthReady();
 
   if (!isLoggedIn.value) {
     return navigateTo('/login');

@@ -317,8 +317,21 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const response = await proxyRequest(event, target);
-    return withSecurityHeaders(response);
+    // 注意：h3 的 proxyRequest 会把上游响应（含**状态码**与响应头）直接写入
+    // event.node.res 并结束响应，其返回值是 undefined —— 并不是 Response。
+    //
+    // 曾把它交给 withSecurityHeaders() 包成 new Response(...)，后果是：
+    //   1) 状态码被 new Response(undefined, { status: undefined }) 重置为 200，
+    //      上游的 401/403/404/429/5xx 全部丢失；
+    //   2) 上游的 content-type 等响应头被丢弃（Headers(undefined) 为空）。
+    // 该缺陷只在**构建产物**（生产与 CI 使用的 .output/server）上暴露：dev 下
+    // Node 兼容层保留了已写入的 statusCode，长期掩盖了问题。实测同一请求
+    // 直连 core=404 / dev 代理=404 / 构建产物代理=200。
+    //
+    // 安全响应头由 server/middleware/security-headers.ts 统一设置（对所有响应生效），
+    // 此处无需再包一层；直接返回即可让已写入的状态码生效。
+    await proxyRequest(event, target);
+    return;
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));
     if (import.meta.dev) {

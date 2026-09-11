@@ -1,3 +1,5 @@
+import type { CommunityNotificationType } from '~/utils/communityNotifications';
+
 export type PostType = 'discussion' | 'solution' | 'moment';
 
 export type PostStatus = 'draft' | 'pending' | 'published' | 'hidden' | 'deleted';
@@ -159,7 +161,8 @@ export interface FeedItem {
 export interface NotificationRow {
   notification: {
     id: string;
-    type: 'reply' | 'like' | 'follow' | 'moderation' | 'clarification' | 'report' | 'ban';
+    // 类型定义与展示/跳转规则共用 utils/communityNotifications.ts，避免两处漂移
+    type: CommunityNotificationType;
     post_id: string | null;
     comment_id: string | null;
     read_at: string | null;

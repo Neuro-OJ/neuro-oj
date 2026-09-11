@@ -34,6 +34,7 @@ import {
   createReport,
   deleteComment,
   getCommunityConfig,
+  getNotification,
   getNotificationUnreadCount,
   getPost,
   getReportDetail,
@@ -539,6 +540,24 @@ router.get(
   async (c) =>
     c.json({
       data: { unread_count: await getNotificationUnreadCount(userId(c)) },
+    }),
+);
+/**
+ * GET /notifications/:id — 获取单条通知详情（供通知详情页使用）。
+ * 认证：必填。仅本人通知；非本人或不存在统一 404。
+ * 响应：{ data: { notification, actor } }。
+ *
+ * `:id` 限定为 UUID：同前缀下还有字面量路径 `/notifications/unread-count`
+ * （本文件）与 `/notifications/events`（通知 SSE，sse.ts 挂载在本路由之后）。
+ * 不加约束时 `:id` 会抢先匹配这些字面量路径，导致未读计数与通知 SSE 退化为 404；
+ * 靠“注册顺序”规避既脆弱又跨文件（app.ts 的挂载顺序）。
+ */
+router.get(
+  "/notifications/:id{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}",
+  authMiddleware,
+  async (c) =>
+    c.json({
+      data: await getNotification(userId(c), c.req.param("id") as string),
     }),
 );
 /**

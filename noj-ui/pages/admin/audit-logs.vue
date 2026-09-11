@@ -48,6 +48,18 @@ const columns: AdminColumn[] = [
   { key: "ip_address", label: "IP" },
 ]
 
+/** 操作名展示：已知管理操作走中文映射，其余（如 auth.* 系统事件）回退原始 action */
+function actionLabel(action: string): string {
+  return ACTION_LABELS[action as AuditAction] ?? action
+}
+
+/** 目标列展示：target_type/target_id 均可为 null，需判空 */
+function targetText(row: Record<string, unknown>): string {
+  if (!row.target_type && !row.target_id) return "—"
+  const id = row.target_id ? `${String(row.target_id).slice(0, 8)}...` : ""
+  return `${row.target_type ?? ""}${row.target_type && id ? ":" : ""}${id}`
+}
+
 function renderDetail(entry: AuditLogEntry): string {
   const d = entry.detail as Record<string, any>
   switch (entry.action) {
@@ -161,15 +173,16 @@ onMounted(fetch)
           {{ new Date(row.created_at as string).toLocaleString("zh-CN") }}
         </template>
         <template v-else-if="column.key === 'admin_id'">
-          <span class="font-mono text-text-secondary">{{ (row.admin_id as string).slice(0, 8) }}...</span>
+          <!-- admin_id 可为 null（系统自动事件，如 auth.register），必须判空 -->
+          <span class="font-mono text-text-secondary">{{ row.admin_id ? `${(row.admin_id as string).slice(0, 8)}...` : "系统" }}</span>
         </template>
         <template v-else-if="column.key === 'action'">
-          <span :class="['inline-block px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap', ACTION_COLORS[row.action as AuditAction]]">
-            {{ ACTION_LABELS[row.action as AuditAction] }}
+          <span :class="['inline-block px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap', ACTION_COLORS[row.action as AuditAction] ?? 'bg-gray-100 text-gray-700']">
+            {{ actionLabel(row.action as string) }}
           </span>
         </template>
         <template v-else-if="column.key === 'target'">
-          <span class="text-text-secondary">{{ row.target_type }}:{{ (row.target_id as string)?.slice(0, 8) }}...</span>
+          <span class="text-text-secondary">{{ targetText(row) }}</span>
         </template>
         <template v-else-if="column.key === 'detail'">
           {{ renderDetail(row as unknown as AuditLogEntry) }}
