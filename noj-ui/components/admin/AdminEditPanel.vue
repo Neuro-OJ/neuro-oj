@@ -39,7 +39,7 @@ function onOpenChange(val: boolean) {
 </script>
 
 <template>
-  <UModal :model-value="open" @update:model-value="onOpenChange">
+  <UModal :open="open" @update:open="onOpenChange">
     <UCard
       :ui="{ body: 'p-5 sm:p-6', footer: 'p-4 sm:p-5' }"
       class="w-full"

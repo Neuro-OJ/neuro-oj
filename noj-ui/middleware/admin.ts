@@ -6,17 +6,18 @@
  * - 非管理员 → 重定向到 /（静默拦截，不给错误提示）
  * - 管理员 → 正常放行
  *
- * 注意：所有 admin 页面使用 ssr: false，服务端不渲染页面内容。
- * 因此在 SSR 阶段跳过守卫，由客户端水合后重新执行。
+ * 注意：所有 admin 页面使用 ssr: false，服务端不渲染页面内容，但路由中间件在
+ * SSR 阶段仍会执行。因此必须先 `await ensureAuthReady()` 拿到真实登录态
+ * （SSR 阶段 `useAuth()` 的 `useAsyncData` 尚未 resolve，直接判断会把已登录
+ * 用户误判为未登录并 302 到 /login）。
  */
-import { useAuthReady } from '~/composables/useAuthReady';
 import { isAdminUser } from '~/utils/isAdminUser';
 
 export default defineNuxtRouteMiddleware(async (_to, _from) => {
-  const { loading, isLoggedIn, user } = useAuth();
+  const { isLoggedIn, user, ensureAuthReady } = useAuth();
 
-  // 等待认证状态就绪（5s 超时兜底）
-  await useAuthReady(loading);
+  // 等待认证状态就绪（SSR 会拉取 /auth/me；客户端由 session cookie 即时恢复）
+  await ensureAuthReady();
 
   // 未登录 → 去登录页
   if (!isLoggedIn.value) {

@@ -2,7 +2,12 @@
 import type { NotificationRow } from "~/composables/useCommunity"
 import { extractApiError } from "~/utils/apiError"
 import { useToast } from "~/composables/useToast"
-import { publicUrl, userUrl } from "~/utils/publicIdentifiers"
+import {
+  notificationDetailUrl,
+  notificationTarget,
+  notificationTypeIcon,
+  notificationTypeLabel,
+} from "~/utils/communityNotifications"
 
 definePageMeta({ middleware: "auth", ssr: false })
 
@@ -16,25 +21,6 @@ const loadingMore = ref(false)
 const error = ref("")
 const limit = ref(30)
 const markingRead = ref(false)
-
-const typeLabel: Record<NotificationRow["notification"]["type"], string> = {
-  reply: "回复了你",
-  like: "赞了你的内容",
-  follow: "关注了你",
-  moderation: "更新了内容审核状态",
-  clarification: "回复了你的竞赛提问",
-  report: "举报通知",
-  ban: "封禁通知",
-}
-const typeIcon = {
-  reply: 'i-lucide-reply',
-  like: 'i-lucide-heart',
-  follow: 'i-lucide-user-plus',
-  moderation: 'i-lucide-shield-check',
-  clarification: 'i-lucide-message-circle-question',
-  report: 'i-lucide-flag',
-  ban: 'i-lucide-ban',
-}
 
 async function load(reset = true) {
   if (reset) loading.value = true
@@ -72,14 +58,12 @@ async function markAllRead() {
   }
 }
 
+/**
+ * 通知点击目标：优先直达关联内容，无关联内容（封禁通知、内容已删除、
+ * 触发者已注销）时进入通知详情页。
+ */
 function notificationHref(item: NotificationRow): string {
-  if (item.notification.type === "report" && item.notification.data.report_id) {
-    return `/community/reports/${item.notification.data.report_id}`
-  }
-  if (item.notification.post_id) return publicUrl("post", item.notification.post_id)
-  if (item.notification.type === "follow" && item.actor) return userUrl(item.actor.username)
-  if (item.notification.type === "clarification" && item.notification.data.contest_id) return `${publicUrl("contest", item.notification.data.contest_id as string)}?tab=clarifications`
-  return "/community"
+  return notificationTarget(item) ?? notificationDetailUrl(item.notification.id)
 }
 
 async function handleClick(item: NotificationRow) {
@@ -121,10 +105,10 @@ onMounted(() => {
       >
         <div class="flex items-start gap-3">
           <span class="mt-0.5 flex size-8 flex-shrink-0 items-center justify-center rounded-full" :class="item.notification.type === 'moderation' ? 'bg-red-50 text-red-600' : 'bg-primary-bg text-primary'">
-            <UIcon :name="typeIcon[item.notification.type]" class="size-3.5" />
+            <UIcon :name="notificationTypeIcon(item.notification.type)" class="size-3.5" />
           </span>
           <div class="min-w-0 flex-1">
-            <p class="text-sm text-text flex items-center gap-1"><template v-if="item.actor"><UserIdentity :user="item.actor" size="sm" /></template><template v-else><strong>系统</strong></template>{{ typeLabel[item.notification.type] }}</p>
+            <p class="text-sm text-text flex items-center gap-1"><template v-if="item.actor"><UserIdentity :user="item.actor" size="sm" /></template><template v-else><strong>系统</strong></template>{{ notificationTypeLabel(item.notification.type) }}</p>
             <p v-if="item.notification.data.message" class="mt-1 text-xs text-text-secondary">{{ item.notification.data.message }}</p>
             <p v-else-if="item.notification.data.reason" class="mt-1 text-xs text-text-secondary">{{ item.notification.data.reason }}</p>
             <p v-if="item.notification.type === 'ban'" class="mt-1 text-xs text-text-secondary">

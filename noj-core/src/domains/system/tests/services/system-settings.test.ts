@@ -5,7 +5,6 @@
  * - initSystemSettings 从 DB 全量加载到 Map
  * - getSetting 兜底链：DB > env > default
  * - updateSetting 严格 type 校验
- * - updateSetting smtp_from email 格式校验
  * - updateSetting 未注册 key 拒绝
  * - resetSetting 删除 DB 行
  * - 敏感字段掩码 maskSecret
@@ -117,11 +116,6 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     // email/storage/audit 划归 bootstrap 后不可经后台写
-    await assertRejects(
-      () => updateSetting("smtp_from", "noreply@noj.local", "0"),
-      ValidationError,
-      "环境变量管理",
-    );
     await assertRejects(
       () => updateSetting("storage_provider", "s3", "0"),
       ValidationError,
@@ -262,7 +256,6 @@ Deno.test({
         "allow_register",
         "rate_limit_login_ip_max",
         "maintenance_mode",
-        "homepage_banner",
       ]
     ) {
       assertEquals(findDefinition(k)?.scope, "runtime");
@@ -280,20 +273,6 @@ Deno.test({
       () => updateSetting("hacker_key", "value", "0"),
       ValidationError,
       "未注册",
-    );
-  },
-});
-
-Deno.test({
-  name: "system-settings service: updateSetting homepage_banner 超长拒绝",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await freshSetup();
-    await assertRejects(
-      () => updateSetting("homepage_banner", "x".repeat(1001), "0"),
-      ValidationError,
-      "长度",
     );
   },
 });
@@ -369,14 +348,12 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     const items = await listSettings();
-    // 包含原始 5 项
+    // 包含原始项中仍保留的部分（smtp_from / rate_limit_login_enabled /
+    // homepage_banner 已按 issue #495/#496 删除）
     for (
       const k of [
         "allow_register",
-        "smtp_from",
-        "rate_limit_login_enabled",
         "maintenance_mode",
-        "homepage_banner",
       ]
     ) {
       assertEquals(items.some((i) => i.key === k), true);

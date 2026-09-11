@@ -82,19 +82,17 @@ Deno.test({
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(Array.isArray(body.data), true);
-    // 至少 5 个 DB-backed 设置项
+    // DB-backed 设置项（smtp_from / rate_limit_login_enabled / homepage_banner
+    // 已按 issue #495/#496 作为死键删除）
     const dbKeys = body.data
       .map((d: { key: string }) => d.key)
       .filter((k: string) =>
         [
           "allow_register",
-          "smtp_from",
-          "rate_limit_login_enabled",
           "maintenance_mode",
-          "homepage_banner",
         ].includes(k)
       );
-    assertEquals(dbKeys.length, 5);
+    assertEquals(dbKeys.length, 2);
 
     // 每条含 scope 元数据；runtime 与 bootstrap 两类都存在
     const allowRegister = body.data.find(

@@ -18,6 +18,7 @@
     "db:generate": "deno -A npm:drizzle-kit generate --config=./drizzle.config.ts",
     "check:env": "deno run -A scripts/check-env.ts",
     "check:env:strict": "deno run -A scripts/check-env.ts --strict",
+    "check:config-usage": "deno run -A scripts/check-config-usage.ts",
     "check:prod": "deno run -A scripts/check-env.ts --strict --production --file ../.env.prod",
     "test": "deno run -A scripts/prepare-pglite-template.ts && BCRYPT_SALT_ROUNDS=4 env -u DATABASE_URL deno test -A --no-check --preload=tests/preload.ts",
     "test:smoke": "deno test -A --no-check tests/smoke.test.ts",

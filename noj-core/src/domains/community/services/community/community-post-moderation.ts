@@ -3,6 +3,7 @@ import { getDb } from "./../../../../shared/db/connection.ts";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import {
   communityModerationActions,
+  communityNotifications,
   communityPosts,
 } from "./../../../../shared/db/schema.ts";
 import { NotFoundError } from "./../../../../shared/base/errors.ts";
@@ -66,6 +67,16 @@ export async function changePostStatus(
     },
     { type: "community_post", id: postId },
   );
+
+  if (status === "deleted") {
+    // 帖子采用软删除，数据库 ON DELETE SET NULL 不会触发；通知必须显式降级到详情页。
+    await db.update(communityNotifications).set({
+      post_id: null,
+      comment_id: null,
+    }).where(
+      eq(communityNotifications.post_id, postId),
+    );
+  }
 
   await publishSearchIndexEvent("community_post", postId, "upsert");
 

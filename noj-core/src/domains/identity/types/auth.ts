@@ -5,8 +5,6 @@ export interface RegisterInput {
   username: string;
   email: string;
   password: string;
-  /** 开启 register_email_verify 时必填的邮箱验证码 */
-  email_code?: string;
 }
 
 /**

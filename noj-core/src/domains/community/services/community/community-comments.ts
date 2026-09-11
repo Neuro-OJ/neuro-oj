@@ -4,6 +4,7 @@ import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import {
   communityComments,
   communityModerationActions,
+  communityNotifications,
   communityPosts,
   users,
 } from "./../../../../shared/db/schema.ts";
@@ -91,6 +92,14 @@ export async function changeCommentStatus(
         {},
       );
     }
+  }
+
+  if (status === "deleted") {
+    // 评论采用软删除，数据库 ON DELETE SET NULL 不会触发；清除两级关联后进入通知详情页。
+    await db.update(communityNotifications).set({
+      post_id: null,
+      comment_id: null,
+    }).where(eq(communityNotifications.comment_id, commentId));
   }
 
   await publishSearchIndexEvent("community_comment", commentId, "upsert");
@@ -319,6 +328,11 @@ export async function deleteComment(
       { type: "community_comment", id: commentId },
     );
   }
+  // 评论采用软删除，数据库 ON DELETE SET NULL 不会触发；通知目标需显式清空。
+  await db.update(communityNotifications).set({
+    post_id: null,
+    comment_id: null,
+  }).where(eq(communityNotifications.comment_id, commentId));
 
   await publishSearchIndexEvent("community_comment", commentId, "delete");
 

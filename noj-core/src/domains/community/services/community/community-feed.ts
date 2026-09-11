@@ -211,6 +211,42 @@ export function listNotifications(userId: string, limit = 30) {
 }
 
 /**
+ * 获取单条通知详情（含触发者信息）。
+ *
+ * 投影与 {@link listNotifications} 保持一致，供通知详情页直接复用。
+ * 仅接收者本人可读：非本人或不存在统一抛 404，不泄露他人通知是否存在。
+ *
+ * @param userId 接收者用户 UUID。
+ * @param notificationId 通知 UUID。
+ * @returns 通知记录与触发者信息。
+ * @throws {NotFoundError} 通知不存在或不属于该用户时抛出。
+ */
+export async function getNotification(
+  userId: string,
+  notificationId: string,
+) {
+  const db = getDb();
+  const rows = await db.select({
+    notification: communityNotifications,
+    actor: {
+      id: users.id,
+      username: users.username,
+      avatar_url: users.avatar_url,
+    },
+  }).from(communityNotifications).leftJoin(
+    users,
+    eq(users.id, communityNotifications.actor_id),
+  ).where(
+    and(
+      eq(communityNotifications.id, notificationId),
+      eq(communityNotifications.recipient_id, userId),
+    ),
+  ).limit(1);
+  if (!rows[0]) throw new NotFoundError("通知不存在");
+  return rows[0];
+}
+
+/**
  * 获取用户未读通知数量。
  * @param userId 接收者用户 UUID。
  * @returns 未读通知数量。

@@ -109,6 +109,7 @@
 | GET | `/me/llm-providers` | noj-core/src/domains/identity/routes/users.ts |
 | GET | `/mine` | noj-core/src/domains/catalog/routes/trainings.ts |
 | GET | `/notifications` | noj-core/src/domains/community/routes/community.ts |
+| GET | `/notifications/:id{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/notifications/unread-count` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/oauth/:provider` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `/oauth/:provider/callback` | noj-core/src/domains/identity/routes/auth.ts |

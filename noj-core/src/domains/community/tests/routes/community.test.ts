@@ -447,6 +447,105 @@ Deno.test({
 });
 
 Deno.test({
+  name: "community route: 单条通知详情仅限本人",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const app = createApp();
+    const board = (await getDb().select().from(communityBoards))[0];
+    const authorToken = await signToken({ sub: authorId, role: "user" });
+    const responderToken = await signToken({ sub: responderId, role: "user" });
+    const created = await jsonRequest(app, "/api/v1/community/posts", {
+      method: "POST",
+      token: authorToken,
+      body: {
+        type: "discussion",
+        board_id: board?.id,
+        title: "通知详情讨论",
+        content: "触发回复通知",
+      },
+    });
+    const postId = (await created.json()).data.id as string;
+    await jsonRequest(
+      app,
+      `/api/v1/community/posts/${postId}/comments`,
+      { method: "POST", token: responderToken, body: { content: "详情回复" } },
+    );
+
+    const notifications = await jsonRequest(
+      app,
+      "/api/v1/community/notifications",
+      { token: authorToken },
+    );
+    const notificationId = (await notifications.json()).data[0].notification
+      .id as string;
+
+    // 未登录 401
+    const anonymous = await jsonRequest(
+      app,
+      `/api/v1/community/notifications/${notificationId}`,
+    );
+    assertEquals(anonymous.status, 401);
+
+    // 他人通知 404（不泄露他人通知是否存在）
+    const others = await jsonRequest(
+      app,
+      `/api/v1/community/notifications/${notificationId}`,
+      { token: responderToken },
+    );
+    assertEquals(others.status, 404);
+
+    // 不存在的通知同样 404
+    const missing = await jsonRequest(
+      app,
+      "/api/v1/community/notifications/00000000-0000-0000-0000-000000000000",
+      { token: authorToken },
+    );
+    assertEquals(missing.status, 404);
+
+    // 本人可读，且投影与列表接口一致（含 actor 与 post_id）
+    const detail = await jsonRequest(
+      app,
+      `/api/v1/community/notifications/${notificationId}`,
+      { token: authorToken },
+    );
+    assertEquals(detail.status, 200);
+    const row = (await detail.json()).data as {
+      notification: { id: string; type: string; post_id: string | null };
+      actor: { id: string; username: string } | null;
+    };
+    assertEquals(row.notification.id, notificationId);
+    assertEquals(row.notification.type, "reply");
+    assertEquals(row.notification.post_id, postId);
+    assertEquals(row.actor?.id, responderId);
+
+    // 字面量路由不被 `:id` 抢占：unread-count 仍返回计数而非 404
+    const unread = await jsonRequest(
+      app,
+      "/api/v1/community/notifications/unread-count",
+      { token: authorToken },
+    );
+    assertEquals(unread.status, 200);
+    assertEquals(typeof (await unread.json()).data.unread_count, "number");
+
+    // 非 UUID 段不应被 `:id` 吞掉（`:id` 已限定 UUID 形状）：
+    // `/notifications/events` 是 sse.ts 的通知 SSE 端点，且挂载在本路由之后，
+    // 若 `:id` 不做约束会被抢先匹配成 404（未读计数与实时通知一起失效）。
+    const sse = await jsonRequest(
+      app,
+      "/api/v1/community/notifications/events",
+      { token: authorToken },
+    );
+    assertEquals(sse.status, 200);
+    assertEquals(
+      sse.headers.get("content-type")?.includes("text/event-stream"),
+      true,
+    );
+  },
+});
+
+Deno.test({
   name: "community route: 评论仅作者可编辑删除且删除后不可见",
   sanitizeResources: false,
   sanitizeOps: false,

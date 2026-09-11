@@ -2,6 +2,11 @@
 /**
  * 通用管理表格：分页、排序、加载/错误/空态、行操作插槽。
  *
+ * Nuxt UI v4 的 UTable 用 `data` 接收行数据（v2 的 `rows` 已不是 prop，传入会被
+ * 当作普通属性丢弃，表格恒为空），单元格由列定义里的 `cell` 渲染函数产出。
+ * 这里按 `columns` 生成列定义，并把单元格 / 操作列委托回本组件对外的
+ * `#cell` / `#actions` 插槽，让各管理页保持「一张表一套插槽」的写法。
+ *
  * 用法：
  * ```vue
  * <AdminTable
@@ -41,20 +46,32 @@ const emit = defineEmits<{
   "row-click": [row: Record<string, unknown>]
 }>()
 
-const sort = ref<{ column: string; direction: "asc" | "desc" } | null>(null)
+const slots = useSlots()
 
-function onSort(column: AdminColumn) {
-  if (!column.sortable) return
-  const next = sort.value?.column === column.key && sort.value.direction === "asc"
-    ? "desc"
-    : "asc"
-  sort.value = { column: column.key, direction: next }
-  emit("sort", column.key)
-}
+/** 列定义：cell 渲染函数转发到调用方插槽，未提供插槽时回退为原始值 */
+const tableColumns = computed(() =>
+  props.columns.map((column) => ({
+    accessorKey: column.key,
+    header: column.label,
+    enableSorting: !!column.sortable,
+    cell: (ctx: { row: { original: Record<string, unknown> } }) => {
+      const row = ctx.row.original
+      if (column.key === "actions" && slots.actions) return slots.actions({ row })
+      if (slots.cell) return slots.cell({ row, column })
+      const value = row[column.key]
+      return value === null || value === undefined ? "" : String(value)
+    },
+  })),
+)
 
 function rowKey(row: Record<string, unknown>): string {
   const key = props.rowKey ?? "id"
   return String(row[key] ?? crypto.randomUUID())
+}
+
+/** UTable 的 onSelect 签名为 (event, row)，对外透出原始行数据 */
+function onRowSelect(_event: Event, row: { original: Record<string, unknown> }) {
+  emit("row-click", row.original)
 }
 </script>
 
@@ -71,37 +88,19 @@ function rowKey(row: Record<string, unknown>): string {
     </div>
     <template v-else>
       <UTable
-        :rows="items"
-        :columns="columns.map((c) => ({ accessorKey: c.key, header: c.label, sortable: c.sortable }))"
-        @select="(row: unknown) => emit('row-click', row as Record<string, unknown>)"
-      >
-        <template #default="{ row, column }">
-          <slot
-            v-if="(column as unknown as AdminColumn).key === 'actions'"
-            name="actions"
-            :row="row as unknown as Record<string, unknown>"
-          />
-          <slot
-            v-else
-            name="cell"
-            :row="row as unknown as Record<string, unknown>"
-            :column="column as unknown as AdminColumn"
-          >
-            <span
-              @click="onSort(column as unknown as AdminColumn)"
-              :class="(column as unknown as AdminColumn).sortable ? 'cursor-pointer' : ''"
-            >
-              {{ (row as unknown as Record<string, unknown>)[(column as unknown as AdminColumn).key] }}
-            </span>
-          </slot>
-        </template>
-      </UTable>
-      <div v-if="!loading && (totalPages ?? 1) > 1" class="flex justify-end px-4 py-3 border-t border-border">
+        :data="items"
+        :columns="tableColumns"
+        :get-row-id="rowKey"
+        :on-select="onRowSelect"
+      />
+      <div v-if="(totalPages ?? 1) > 1" class="flex justify-end px-4 py-3 border-t border-border">
         <UPagination
-          :model-value="currentPage ?? 1"
-          :page-count="1"
-          :total="(totalPages ?? 1) * 10"
-          @update:model-value="(p: number) => emit('update:page', p)"
+          :page="currentPage ?? 1"
+          :items-per-page="1"
+          :total="totalPages ?? 1"
+          :show-edges="true"
+          size="sm"
+          @update:page="(page: number) => emit('update:page', page)"
         />
       </div>
     </template>
