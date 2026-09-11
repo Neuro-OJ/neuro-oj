@@ -78,12 +78,27 @@ root:root 0600，非 root 用户无法读取。git 只跟踪可执行位，CI �
 ## Consequences
 
 - 去掉 schema 前缀后，分片与非分片路径的 FK 解析都依赖连接的 `search_path`；**新增迁移必须
-  继续保持不带 schema 前缀**，否则分片测试会再次静默失败（CI 的 `core-<domain>` job 可能不覆盖）。
-- 阶段 2 的守卫语义变为「payload 未完整取得」，退出条件顺序（payload 完整 → 双流结束 →
-  超时）成为编排循环的不变量；后续重构不得把「payload 完整即收尾」放到「双流结束」之后。
+  继续保持不带 schema 前缀**，否则分片测试会再次静默失败。
+  该约束现已**有 CI 兜底**：`core-test-sharded` 作业跑 `scripts/test-parallel.ts --shards 1`
+  （TEST_SCHEMA 路径），这是此前完全缺失的覆盖——CI 各域作业走 `test-domain.sh <domain>`，
+  单 schema、无 TEST_SCHEMA，因此这类缺陷在 CI 中不可见、回归也不会被发现。
+  另有 `test-parallel.ts` 的**陈旧 schema 前置校验**：分片 schema 的最后一条迁移记录若落后于
+  当前迁移集，直接以「DROP SCHEMA ... CASCADE 后重跑」的指引失败，而不是让测试报出难归因的
+  跨 schema FK 错误（该误导是本轮排查耗时的主要来源）。
+- 阶段 2 的退出条件是「payload 完整 → **evaluator_done** → 超时」。
+  注意条件 2 是 `evaluator_done` 而**不是** `evaluator_done && solution_done`：
+  Solution 是常驻 host 进程，只在收到 shutdown 帧或 stdin EOF 时退出，而编排循环全程持有
+  `sol_input` 既不关闭也不发 shutdown，故 `solution_done` 在生产中不可达；若以它作为条件，
+  评测器无 RESULT 结束（崩溃/`sys.exit(1)`）时会空转到总超时才收尾——实测 23.2s，修复后 1.8s。
+  该快速失败语义由 `e2e_abnormal.rs` 的 `evaluator_eof_without_result_fails_fast` 守住
+  （断言实际耗时 < time_limit_ms 的 3/4）。
 - `drain_eval_tail()` 是幂等的，允许在 EOF 与收尾处重复调用。
 - 镜像不再继承源码文件模式，本地权限漂移不会再污染镜像；但**镜像内容陈旧问题仍存在**
   （`ensure_sdk_images` 见到 tag 即跳过重建），本地改 SDK 后需手动重建镜像，否则 E2E 验证的是旧 SDK。
 - `.test-storage/` 产物不再进入版本控制，测试运行的 diff 噪声消除，干净基线可达。
 - 本地执行 `deno task test:domain <domain>` 与 CI 行为一致；仍建议排查此类「本地缺省与 CI 不一致」
   的脚本，避免同类误导性失败。
+- **迁移文件的历史修订不会自愈**：drizzle migrator 只比较 `created_at` 与 `folderMillis`，
+  **从不比对已记录的 hash**，因此已用旧文本迁移过的 schema 会永久保留旧约束。生产（对象都在
+  `public`）不受影响；用旧文本迁移过的非 `public` 分片 schema 需手工 `DROP SCHEMA ... CASCADE`
+  重建（上述前置校验会明确指出这一点）。

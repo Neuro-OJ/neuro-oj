@@ -207,6 +207,15 @@ export async function getProblemIdByNumber(
  * 导致整个优先级队列 E2E 套件**静默跳过**（以 201µs「通过」），
  * 把真实缺陷长时间掩盖成绿色。放宽为接受 error 后，judge 消费异常会表现为
  * 测试真实执行（并如实失败），而不是被无声跳过。
+ *
+ * **已知局限（评审补充，勿据此认为「error 一定代表 judge 在消费」）**：
+ * `error` 状态并非只由 judge 产生，以下路径也会把它置为 error 而不涉及 judge 消费：
+ *   - `submissions-crud.ts` 的 MQ 推送永久失败
+ *   - `sweeper.ts` 的重投超限
+ *   - `queue.ts` 的管理员移出队列
+ * 因此本函数对 `error` 的接受是**启发式**而非判据。实践中 `submitCode()` 在推送
+ * 失败路径上会直接抛错（不会走到轮询），故 CI 里这条启发式是安全的；若要收严，
+ * 应额外断言该提交存在 `judge_started_at` 或评测结果行，而不是仅看 status。
  */
 export async function isJudgeAvailable(): Promise<boolean> {
   try {

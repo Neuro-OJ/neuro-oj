@@ -690,21 +690,28 @@ async fn run_dual_loop(
         'outer: loop {
             // 退出条件 1（首选）：结果 payload 已完整取得 → 立即收尾。
             //
-            // 必须优先于下面的「双流结束」条件：Solution 容器承载的是常驻 host
-            // 进程，只在收到 `shutdown` 帧后才退出；编排循环若等它自然 EOF，必然
-            // 拖到总超时才收尾（表现为 status=error「Evaluator 总超时」，而结果
-            // 其实早已拿到）。原实现在 handle_eval_chunk 之后就带这个判断，重构
-            // 时不可丢失。
+            // 必须优先于下面的「Evaluator 流结束」条件：Solution 容器承载的是常驻
+            // host 进程，它只在收到 `shutdown` 帧或 **stdin EOF** 时退出，而编排
+            // 循环全程持有 `sol_input` 从不关闭、也从不向它发 shutdown 帧。因此
+            // Solution 的 EOF 在生产中基本不会出现；若等它结束才收尾，必然拖到
+            // 总超时（表现为 status=error「Evaluator 总超时」，而结果其实早已拿到）。
             if result_payload.as_deref().is_some_and(|p| !p.is_empty()) {
                 break 'outer;
             }
 
-            // 退出条件 2：两个输出流都已结束。
-            // 先 drain Evaluator 尾部，覆盖 payload 无换行结尾、残留于解析器缓冲
-            // 的场景（payload 由 drain 补全，交由循环后的统一解析处理）。
-            // 不依赖 select 的 else 分支——deadline / 调用级超时分支始终 enabled，
-            // else 实际不会被触发。
-            if evaluator_done && solution_done {
+            // 退出条件 2：Evaluator 流已结束 → 立即收尾。
+            //
+            // Evaluator 是 RESULT 的唯一来源：它的 stdout 一旦关闭（EOF 或流错误），
+            // payload 不可能再补全，继续等待没有意义。先 drain 尾部残留（payload
+            // 可能没有以换行结尾而留在解析器缓冲里），再退出。
+            //
+            // 修复（评审）：此前这里是 `evaluator_done && solution_done`。由于上述
+            // 原因 `solution_done` 在生产中不可达，该条件实际永不成立 —— 当评测器
+            // **不带 RESULT 标记**结束（崩溃、`sys.exit(1)`、被 OOM kill）时，循环会
+            // 空转到 `evaluator_time_limit_ms` 才由 deadline 收尾。判定结果不受影响
+            // （两条路径最终都是 error），但会白占评测槽位并拉长失败延迟。
+            // 阶段 2 重构前这里是「Evaluator EOF 即 break」，本次恢复该快速失败语义。
+            if evaluator_done {
                 drain_eval_tail(&mut eval_parser, &mut eval_stdout_full, &mut result_payload);
                 break 'outer;
             }
@@ -808,8 +815,8 @@ async fn run_dual_loop(
                 }
 
                 else => {
-                    // 安全网：所有分支同时不可用时的兜底退出（正常路径由循环顶部
-                    // 的 evaluator_done && solution_done 判定处理）。
+                    // 安全网：所有分支同时不可用时的兜底退出（正常路径由循环顶部的
+                    // 「payload 完整」/「evaluator_done」两个判定处理）。
                     drain_eval_tail(
                         &mut eval_parser,
                         &mut eval_stdout_full,

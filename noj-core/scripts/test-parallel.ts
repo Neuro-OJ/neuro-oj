@@ -159,8 +159,55 @@ async function ensureS3Bucket(bucket: string): Promise<void> {
 // ── 1. 预建分片 schema + 清理外部状态 ───────────
 if (!DRY_RUN) {
   const admin = postgres(databaseUrl, { max: 1 });
+
+  // 当前迁移集的最新一条（用于下面的陈旧 schema 检测）。
+  const journal = JSON.parse(
+    await Deno.readTextFile(
+      `${import.meta.dirname}/../drizzle/meta/_journal.json`,
+    ),
+  ) as { entries: Array<{ when: number; tag: string }> };
+  const latestMigration = journal.entries[journal.entries.length - 1];
+
   for (const shard of SHARDS.slice(0, SHARD_COUNT)) {
     await admin.unsafe(`CREATE SCHEMA IF NOT EXISTS "${shard.schema}"`);
+
+    // 陈旧 schema 检测（评审补充）：
+    // 迁移文件的历史修订（去掉 `REFERENCES "public".` 前缀）**不会**对已迁移过的
+    // schema 生效——drizzle migrator 只比较 `__drizzle_migrations` 最新一行的
+    // `created_at` 与迁移的 `folderMillis`，**从不比对已记录的 hash**。因此用旧
+    // 文本迁移过的 schema 会永久保留错误约束（跨 schema 指向 public），表现为
+    // 「父行刚插入却报 FK 失败」这类难以归因的报错。
+    //
+    // 这里主动比对最新迁移记录，落后就直接给出可执行的修复指引，而不是让测试带着
+    // 误导性错误失败（该误导正是 D0 排查耗时的主要来源）。
+    if (latestMigration) {
+      let recordedNum: number | null = null;
+      try {
+        const rows = await admin.unsafe(
+          `SELECT max(created_at) AS latest FROM "${shard.schema}".__drizzle_migrations`,
+        ) as Array<{ latest: string | number | null }>;
+        const recorded = rows[0]?.latest;
+        recordedNum = recorded === null || recorded === undefined
+          ? null
+          : Number(recorded);
+      } catch {
+        // 记录表不存在（全新 schema）→ 交给迁移去建，不视为落后。
+        recordedNum = null;
+      }
+      if (recordedNum !== null && recordedNum !== latestMigration.when) {
+        console.error(
+          `\n分片 schema "${shard.schema}" 的迁移状态落后于当前迁移集：\n` +
+            `  最后应用的迁移 when=${recordedNum}，当前最新为 ` +
+            `${latestMigration.tag} (when=${latestMigration.when})\n` +
+            `  这通常意味着该 schema 是用**旧版**迁移文本迁移的（迁移文件被修订过），\n` +
+            `  而 drizzle 不会重跑已应用的迁移，故其中的错误约束会一直保留。\n` +
+            `  修复：DROP SCHEMA "${shard.schema}" CASCADE; 后重跑本命令。\n`,
+        );
+        await admin.end();
+        Deno.exit(1);
+      }
+    }
+
     console.log(`schema ${shard.schema} 就绪`);
 
     await flushRedisDb(withRedisDb(baseRedisUrl, shard.redisDb));

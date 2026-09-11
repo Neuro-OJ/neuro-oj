@@ -1594,6 +1594,92 @@ jobs:
         continue-on-error: true
 
   # ===========================================================================
+  # noj-core — 分片并行测试（TEST_SCHEMA 路径）
+  #
+  # 背景（2026-09-11 评审补充）：D0 修复的是「分片模式下迁移的跨 schema 硬编码
+  # 前缀」导致的一类失败，而**这条路径此前没有任何 CI 覆盖**——CI 各域作业走
+  # `test-domain.sh <domain>`（单 schema、无 TEST_SCHEMA），因此该缺陷在 CI
+  # 中完全不可见，回归也不会被发现。本作业补上这条路径。
+  #
+  # 只跑 `--shards 1`（unit 分片）：它足以覆盖迁移 + TEST_SCHEMA + 跨 schema FK
+  # 解析这条链路，代价远低于跑满两个分片。db 分片由各 Core <domain> 作业覆盖
+  # 同等业务面的单 schema 版本。
+  #
+  # 注意：test-parallel.ts 会先校验分片 schema 的迁移状态，陈旧 schema 会以
+  # 明确指引失败（而不是让测试报出难归因的 FK 错误）。
+  # ===========================================================================
+  core-test-sharded:
+    name: Core Sharded (TEST_SCHEMA)
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      JWT_SECRET: e2e-ci-secret-fixed-value-with-32-chars-min-abc
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-sharded-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-sharded-
+
+      # 不传 --env-file：CI 通过 job env 提供全部变量，避免依赖仓库内不存在的 .env
+      - name: 分片测试（TEST_SCHEMA=test_unit）
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: "4"
+        run: deno run -A scripts/test-parallel.ts --shards 1
+
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-test-sharded-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  # ===========================================================================
   # noj-core — 性能基准（seed 100k problems，默认不跑）
   #
   # search_bench.test.ts 用 NOJ_RUN_PERF=1 guard；只在 main push 与手动
