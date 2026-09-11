@@ -6,6 +6,12 @@
 //! ```bash
 //! REDIS_URL=redis://127.0.0.1:6379/9 cargo test --test user_claim_redis -- --nocapture
 //! ```
+//!
+//! **CI 覆盖（评审补充）**：这些用例此前在 CI 中形同虚设——`judge-check` 作业没有
+//! Redis，用例走「未设置 REDIS_URL → return」分支后被记为 `passed`，而其中
+//! `concurrent_claims_only_one_wins` 是本 PR 最关键的回归证据。
+//! 现已在 `.github/workflows/ci.yml` 的 `judge-check` 中提供 Redis 服务并导出
+//! `REDIS_URL`，故它们在每次 CI 都真实执行。
 
 use std::time::Duration;
 
@@ -14,8 +20,19 @@ use noj_judge::user_claim::{
 };
 
 /// 连接 Redis（未配置 REDIS_URL 时返回 None → 跳过测试）。
+///
+/// 跳过时打印显著提示，避免"完全无声地记为通过"。
 async fn connect() -> Option<redis::aio::MultiplexedConnection> {
-    let url = std::env::var("REDIS_URL").ok()?;
+    let url = match std::env::var("REDIS_URL") {
+        Ok(u) => u,
+        Err(_) => {
+            eprintln!(
+                "⚠ 跳过：未设置 REDIS_URL —— 本用例未执行任何断言。\
+                 如需运行：REDIS_URL=redis://127.0.0.1:6379/9 cargo test --test user_claim_redis"
+            );
+            return None;
+        }
+    };
     redis::Client::open(url)
         .ok()?
         .get_multiplexed_async_connection()
@@ -292,4 +309,67 @@ fn claim_key_namespace_is_distinct_from_queue() {
     assert_eq!(key, "noj:judge:active_users:u-1");
     // 不得落在队列命名空间内（避免与队列 key 混淆）
     assert!(!key.starts_with("noj:judge:queue"));
+}
+
+/// **claim 的时间基准取自 Redis 服务端**（评审回归）。
+///
+/// 评审指出的缺陷：原实现把**调用方时钟**作为 ARGV 传给 Lua 脚本，脚本从不查询
+/// 服务端时间。这在跨主机部署下会静默破坏互斥——某个 worker 的墙上时钟若领先
+/// 超过 TTL，它写下的 claim 会被其他 worker 立即判为过期并被回收，双方同时持有
+/// 同一用户的 claim。
+///
+/// 本用例从**外部**验证时间基准：直接读取 claim 成员的 score，与 Redis 的
+/// `TIME` 对比。若实现仍用调用方时钟，在时钟偏移的机器上二者会明显不同；
+/// 更重要的是，这里断言 score 落在「服务端 now 附近」的窗口内，
+/// 从而把"基准是服务端"这一性质钉住。
+#[tokio::test]
+async fn claim_score_uses_redis_server_clock() {
+    let Some(mut conn) = connect().await else {
+        return;
+    };
+    let prefix = test_prefix("clock");
+    cleanup(&mut conn, &prefix).await;
+
+    let user = "user-clock";
+    let ttl_ms: i64 = 60_000;
+    let claimed = try_claim_user(
+        &mut conn,
+        &prefix,
+        user,
+        &claim_member("worker-clock", "s1"),
+        ttl_ms,
+    )
+    .await
+    .unwrap();
+    assert!(claimed, "首次占用应成功");
+
+    // 写入前后各取一次服务端时间，claim 的 score 必须落在这个区间附近。
+    let before: i64 = redis_server_now_ms(&mut conn).await;
+    let score: Option<i64> = redis::cmd("ZSCORE")
+        .arg(active_users_key(&prefix, user))
+        .arg(claim_member("worker-clock", "s1"))
+        .query_async(&mut conn)
+        .await
+        .unwrap();
+    let after: i64 = redis_server_now_ms(&mut conn).await;
+
+    let score = score.expect("claim 成员应存在");
+    // 容差取 5s：覆盖两次 TIME 往返与调度抖动，但远小于 TTL——
+    // 若 score 来自一个偏移数十秒的调用方时钟，本断言会失败。
+    let tolerance = 5_000;
+    assert!(
+        score >= before - tolerance && score <= after + tolerance,
+        "claim score 必须基于 Redis 服务端时间：score={}, 服务端窗口=[{}, {}]",
+        score,
+        before,
+        after
+    );
+
+    cleanup(&mut conn, &prefix).await;
+}
+
+/// 读取 Redis 服务端当前时间（毫秒）。TIME 返回 {秒, 微秒}。
+async fn redis_server_now_ms(conn: &mut redis::aio::MultiplexedConnection) -> i64 {
+    let t: (i64, i64) = redis::cmd("TIME").query_async(conn).await.unwrap();
+    t.0 * 1000 + t.1 / 1000
 }

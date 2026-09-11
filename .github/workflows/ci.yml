@@ -1870,6 +1870,24 @@ jobs:
     permissions:
       actions: write
 
+    # Redis：per-user claim 的集成测试（tests/user_claim_redis.rs）需要真实 Redis。
+    # 此前该作业没有 Redis，那些用例会走「未设置 REDIS_URL → 直接 return」的分支，
+    # 被 nextest 记为 **passed** 却什么都没验证——PR 里最关键的并发回归证据
+    # （8 个 worker 争抢同一用户，恰好 1 个成功）因此在 CI 中形同虚设。
+    # 提供 Redis 后它们在每次 CI 都真实执行。
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+
     steps:
       - name: 检出代码
         uses: actions/checkout@v4

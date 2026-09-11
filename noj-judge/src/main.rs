@@ -185,6 +185,47 @@ fn main() -> Result<()> {
         info!("Evaluator 时间硬上限: {}ms", max_evaluator_time_ms);
         info!("Solution 调用硬上限: {}ms", max_solution_call_timeout_ms);
 
+        // ── 每用户 claim 的安全不变量校验（评审补充）────────────────────────
+        //
+        // per-user 互斥依赖「claim TTL > 单次评测最长可能耗时」。若 TTL 更短，
+        // 长评测的 claim 会在跑完之前被判过期并被其他 worker 回收，同一用户于是
+        // 并发跑了多个评测——正是本机制要消除的缺陷，且**难以察觉**：回收方不记录
+        // 任何日志，受害方只在结束时打一条泛泛的"可能已过期"警告。
+        //
+        // 该不变量此前只写在注释里，没有任何运行时校验。这里在启动时检查：
+        // 明显不安全（TTL <= 上限）直接拒绝启动；余量偏小（< 4 倍）给出警告。
+        // 特殊语义：max_evaluator_time_ms == 0 表示**不设上限**（见 dual 侧
+        // `clamp_runtime_config` 的 `if max > 0`），此时任何有限 TTL 都不再受保障，
+        // 必须显式告警而不是静默放过。
+        if max_evaluator_time_ms == 0 {
+            warn!(
+                "JUDGE_MAX_EVALUATOR_TIME_MS=0 表示不限制评测时长，而 \
+                 JUDGE_USER_CLAIM_TTL_MS={}ms 是有限的——超长评测会中途丢失 claim，\
+                 同一用户可能并发评测。建议设置有限的评测上限，或大幅提高 claim TTL。",
+                user_claim_ttl_ms
+            );
+        } else if user_claim_ttl_ms <= max_evaluator_time_ms as i64 {
+            anyhow::bail!(
+                "配置不安全：JUDGE_USER_CLAIM_TTL_MS={}ms 不大于 \
+                 JUDGE_MAX_EVALUATOR_TIME_MS={}ms。长评测会在完成前被判过期并被其他 \
+                 worker 回收，导致同一用户并发评测（静默破坏每用户互斥）。\
+                 请将 TTL 提高到评测上限的至少 4 倍。",
+                user_claim_ttl_ms,
+                max_evaluator_time_ms
+            );
+        } else if user_claim_ttl_ms < (max_evaluator_time_ms as i64).saturating_mul(4) {
+            warn!(
+                "JUDGE_USER_CLAIM_TTL_MS={}ms 相对 JUDGE_MAX_EVALUATOR_TIME_MS={}ms \
+                 余量不足 4 倍；建议提高 TTL，避免长评测的 claim 被误回收。",
+                user_claim_ttl_ms,
+                max_evaluator_time_ms
+            );
+        }
+        info!(
+            "每用户 claim：命名空间前缀={}，TTL={}ms（评测上限 {}ms）",
+            user_claim_prefix, user_claim_ttl_ms, max_evaluator_time_ms
+        );
+
         // NOJ-152/155：同时监听 SIGTERM 与 SIGINT 触发优雅关闭。
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         tokio::spawn(async move {

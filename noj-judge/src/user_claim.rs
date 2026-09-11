@@ -29,8 +29,6 @@
 //! `ttl` 必须 **大于单次评测的最长可能耗时**（否则长评测会被误判为过期，
 //! 破坏互斥）；默认 3600s，远大于 evaluator 的硬上限（默认 300s）。
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use anyhow::{Context, Result};
 use redis::AsyncCommands;
 use tracing::warn;
@@ -48,13 +46,9 @@ pub fn claim_member(instance_id: &str, submission_id: &str) -> String {
     format!("{instance_id}:{submission_id}")
 }
 
-/// 当前 Unix 毫秒时间戳（用于 score）。系统时间异常时回退 0。
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
-}
+// 注：本模块**不使用调用方时钟**。claim 的时间戳与过期判定一律在 Lua 脚本内
+// 通过 Redis 的 `TIME` 获取——本机制是跨主机的，各 worker 的墙上时钟偏移会让
+// 领先者的 claim 被落后方立即判为过期，互斥静默失效（见 `try_claim_user` 文档）。
 
 /// 尝试占用某用户的评测槽位。
 ///
@@ -62,7 +56,14 @@ fn now_ms() -> i64 {
 /// 返回 `true` 表示占用成功（调用方应对该用户的任务继续评测）；
 /// `false` 表示该用户已有**未过期**的评测在跑（调用方应释放槽位并把任务放回队尾）。
 ///
-/// @param ttl_ms 过期阈值（毫秒）。必须大于单次评测的最长可能耗时。
+/// **时间戳取自 Redis 服务端**（脚本内 `TIME`），不用调用方时钟。
+/// 理由（评审指出）：本机制是**跨主机**的，若各 worker 的墙上时钟有偏移，
+/// 领先者的 claim 会被落后方立即判为过期，双方同时持有该用户的 claim，
+/// 互斥静默失效——而时钟漂移在多机部署里是常态。取服务端时间后，
+/// 所有 worker 共用同一时间基准，该失效模式从根上消失。
+///
+/// @param ttl_ms 过期阈值（毫秒）。必须大于单次评测的最长可能耗时
+///   （`main.rs` 启动时会校验该不变量）。
 pub async fn try_claim_user(
     conn: &mut redis::aio::MultiplexedConnection,
     prefix: &str,
@@ -71,32 +72,36 @@ pub async fn try_claim_user(
     ttl_ms: i64,
 ) -> Result<bool> {
     let key = active_users_key(prefix, user_id);
-    let now = now_ms();
 
-    // KEYS[1]=key ARGV[1]=now_ms ARGV[2]=ttl_ms ARGV[3]=member ARGV[4]=expire_ms
+    // KEYS[1]=key
+    // ARGV[1]=ttl_ms  ARGV[2]=member  ARGV[3]=expire_ms
     //
-    // 1) 清理过期 claim（score < now - ttl）
-    // 2) 集合仍非空 → 该用户有活跃评测，返回 0
-    // 3) 否则写入 claim，并给 key 一个宽限 TTL（即使 release 丢失也会自然回收）
+    // 注意参数顺序（此处曾与调用不一致，属容易"顺手改错"的地方，勿凭注释记忆）：
+    // 脚本自行取服务端时间 now，故调用方不传 now。
+    //
+    // 1) 取服务端时间 now（TIME 返回 {秒, 微秒}）
+    // 2) 清理过期 claim（score <= now - ttl）
+    // 3) 集合仍非空 → 该用户有活跃评测，返回 0
+    // 4) 否则以 now 为 score 写入 claim，并给 key 一个宽限 TTL（release 丢失也能自然回收）
     const SCRIPT: &str = r"
-        redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
+        local t = redis.call('TIME')
+        local now = t[1] * 1000 + math.floor(t[2] / 1000)
+        local cutoff = now - ARGV[1]
+        redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', cutoff)
         if redis.call('ZCARD', KEYS[1]) > 0 then
             return 0
         end
-        redis.call('ZADD', KEYS[1], ARGV[2], ARGV[3])
-        redis.call('PEXPIRE', KEYS[1], ARGV[4])
+        redis.call('ZADD', KEYS[1], now, ARGV[2])
+        redis.call('PEXPIRE', KEYS[1], ARGV[3])
         return 1
     ";
 
-    let cutoff = now - ttl_ms;
     // key 级兜底过期：给 claim TTL 留 2 倍余量后再过期整个 key。
     let expire_ms = ttl_ms.saturating_mul(2).max(60_000);
-    let member_value = now.to_string();
 
     let claimed: i64 = redis::Script::new(SCRIPT)
         .key(&key)
-        .arg(cutoff)
-        .arg(&member_value)
+        .arg(ttl_ms)
         .arg(member)
         .arg(expire_ms)
         .invoke_async(conn)
@@ -131,6 +136,11 @@ pub async fn release_user(
 }
 
 /// 查询某用户当前**未过期**的 claim 数量（用于诊断与测试）。
+///
+/// 只读实现（评审订正）：原实现用 `ZREMRANGEBYSCORE` 清理过期成员后 `ZCARD`——
+/// 一个叫"count"的辅助函数**会删数据**，且在失败时 `unwrap_or(())` 静默吞掉错误；
+/// 它的 cutoff 还取自调用方时钟，与 claim 的服务端时间基准不一致。
+/// 现在改用 `ZCOUNT`（纯读）并在脚本内取服务端时间，语义与 `try_claim_user` 对齐。
 pub async fn count_active_claims(
     conn: &mut redis::aio::MultiplexedConnection,
     prefix: &str,
@@ -138,9 +148,18 @@ pub async fn count_active_claims(
     ttl_ms: i64,
 ) -> Result<i64> {
     let key = active_users_key(prefix, user_id);
-    let cutoff = now_ms() - ttl_ms;
-    let _: () = conn.zrembyscore(&key, "-inf", cutoff).await.unwrap_or(());
-    let count: i64 = conn.zcard(&key).await.context("查询活跃 claim 数失败")?;
+    // 只读：统计 score > now - ttl 的成员数（即未过期 claim）。
+    const SCRIPT: &str = r"
+        local t = redis.call('TIME')
+        local now = t[1] * 1000 + math.floor(t[2] / 1000)
+        return redis.call('ZCOUNT', KEYS[1], now - ARGV[1], '+inf')
+    ";
+    let count: i64 = redis::Script::new(SCRIPT)
+        .key(&key)
+        .arg(ttl_ms)
+        .invoke_async(conn)
+        .await
+        .context("查询活跃 claim 数失败")?;
     Ok(count)
 }
 
@@ -162,11 +181,5 @@ mod tests {
         assert_eq!(member, "instance-a:sub-1");
         // 不同实例的同一提交必须产生不同 member，避免互相误删。
         assert_ne!(member, claim_member("instance-b", "sub-1"));
-    }
-
-    #[test]
-    fn now_ms_is_positive() {
-        // 仅断言可用性；不断言具体时间（避免脆弱测试）。
-        assert!(now_ms() > 0);
     }
 }
