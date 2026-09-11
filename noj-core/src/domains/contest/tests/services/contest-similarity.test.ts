@@ -194,6 +194,28 @@ Deno.test({
     // 不同实现：必须明显低于默认阈值 0.8
     assert(falsePositiveScore < 0.5, `other score=${falsePositiveScore}`);
 
+    // ── 精确值锁定（评审整改）────────────────────────────────────────────
+    //
+    // 此前这里只有宽松上下界（>0.95 / <0.5），而 Agent Note 却声称「测试从实现
+    // 细节层面锁定了判别力数值」。实测该声称不成立：宽松边界对 k/w/归一化策略的
+    // 中等改动完全不敏感。下面把**可复现**的精确值钉住，使参数改动必须显式面对
+    // 判别力的变化。
+    //
+    // 注意：这些值依赖 BUBBLE_SOLUTION / BUBBLE_RENAMED / COUNTING_SOLUTION 这三份
+    // 固定夹具，不依赖随机性，故可稳定复现（精确到 1e-4）。
+    // 精度取 4 位小数：避免浮点末位差异导致的脆弱失败，同时足以发现实质变化。
+    const round4 = (v: number) => Math.round(v * 10_000) / 10_000;
+    assertEquals(
+      round4(cloneScore),
+      1,
+      `改名副本的相似度应精确为 1（实际 ${cloneScore}）`,
+    );
+    assertEquals(
+      round4(falsePositiveScore),
+      0.0217,
+      `计数排序 vs 冒泡排序应约为 0.0217（实际 ${falsePositiveScore}）`,
+    );
+
     const pairs = detectSimilarPairs([clone, original, other]);
     assertEquals(pairs.length, 1);
     assertEquals(pairs[0]?.submission_a_id, "sub-clone");
@@ -595,7 +617,12 @@ Deno.test({
         user_id: userC,
         code: " \n ",
       }),
-      // 9：极短代码（进入候选但产生不了指纹）
+      // 9：极短代码（**应在 SQL 侧就被排除**，不占候选额度）
+      //
+      // 评审修复前：这类提交会被取出占用候选额度，之后才在归一化阶段被丢弃，
+      // 于是「原始行数 ≤ 上限、但大量是调试残留」的题目会把额度耗在垃圾上，
+      // 真正的雷同对可能落在窗口外，而响应只报 total=0 —— 与「确实没有雷同」
+      // 无法区分。现在可比较性下限进入 SQL，候选额度只统计**可比较**提交。
       submissionRow({
         public_id: "sub-sim-short",
         user_id: userC,
@@ -605,8 +632,12 @@ Deno.test({
     await db.insert(submissions).values(rows as never);
 
     const result = await findSimilarSubmissions(contestId, { threshold: 0.8 });
-    // 候选 = 通过「finished + 非 artifact + 非空白」过滤的行：0,1,2,3,4,5,9
-    assertEquals(result.candidates, 7);
+    // 候选 = 通过「finished + 非 artifact + 非空白 + 长度达标」的行：0,1,2,3,4,5
+    // （9 因过短在 SQL 侧被排除，不再占用额度）
+    assertEquals(result.candidates, 6);
+    // 候选全部可比较（过短的在取数阶段已被挡掉），故 skipped 为 0
+    assertEquals(result.participating, 6);
+    assertEquals(result.skipped, 0);
     assertEquals(result.buckets, 3);
     assertEquals(result.threshold, 0.8);
     assertEquals(result.limit, 50);
@@ -681,10 +712,14 @@ Deno.test({
     };
     assertEquals(body.data.length, 2);
     assertEquals(body.meta.threshold, 0.8);
-    assertEquals(body.meta.candidates, 7);
+    assertEquals(body.meta.candidates, 6);
+    assertEquals(body.meta.participating, 6);
+    assertEquals(body.meta.skipped, 0);
     assertEquals(body.meta.truncated, false);
     assertEquals(body.data_policy.automated_penalty, false);
-    // 不返回源代码本身
+    // data_policy 形状与同级 anti-cheat 端点一致（评审指出此前多 source、少 retention_days）
+    assertEquals(body.data_policy.retention_days, 180);
+    assertEquals("source" in body.data_policy, false);
     assertEquals("code" in body.data[0]!, false);
     assertEquals(JSON.stringify(body).includes("nums[j]"), false);
 
@@ -726,5 +761,133 @@ Deno.test({
       { token: userToken },
     );
     assertEquals(forbidden.status, 403);
+  },
+});
+
+Deno.test({
+  name: "contest similarity: 调试残留不占用候选额度（静默漏报回归）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    // 评审回归：原实现按 created_at 取「原始行」占满候选额度，之后才在归一化阶段
+    // 丢弃过短提交。构造「1 对真雷同 + 大量 print(1) 调试残留」的题目：
+    //   - 修复前：雷同对可能被挤出窗口，响应只报 total=0，与「确实没有雷同」无法区分；
+    //   - 修复后：调试残留在 SQL 侧被排除，雷同对仍在分析范围内。
+    await initRedisForTest();
+    const db = getDb();
+    const now = new Date().toISOString();
+    const contestId = crypto.randomUUID();
+    const userA = crypto.randomUUID();
+    const userB = crypto.randomUUID();
+    const problemId = crypto.randomUUID();
+    const suffix = crypto.randomUUID().slice(0, 8);
+
+    await db.insert(users).values([
+      {
+        id: userA,
+        username: `sim-noise-a-${suffix}`,
+        email: `sim-noise-a-${suffix}@example.com`,
+        password_hash: "hash",
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: userB,
+        username: `sim-noise-b-${suffix}`,
+        email: `sim-noise-b-${suffix}@example.com`,
+        password_hash: "hash",
+        created_at: now,
+        updated_at: now,
+      },
+    ]);
+    // 题目行必须先存在（submissions.problem_id 有外键约束）
+    await db.insert(problems).values({
+      id: problemId,
+      title: `噪声测试题-${suffix}`,
+      description: "",
+      difficulty: "easy",
+      runtime_config: {},
+      number: 982001,
+      owner_id: userA,
+      type: "P",
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contests).values({
+      id: contestId,
+      public_id: `ct-sim-noise-${suffix}`,
+      title: `噪声赛-${suffix}`,
+      description: "",
+      start_time: new Date(Date.now() - 1000).toISOString(),
+      end_time: new Date(Date.now() + 3600000).toISOString(),
+      type: "kaggle",
+      config: {},
+      is_public: true,
+      password: null,
+      affect_global_ranking: false,
+      created_by: userA,
+      announcement: "",
+      created_at: now,
+      updated_at: now,
+    });
+
+    const base = {
+      contest_id: contestId,
+      problem_id: problemId,
+      language: "python",
+      status: "finished" as const,
+      created_at: now,
+      file_name: "submission.py",
+    };
+
+    // 先插入 1 对真雷同（created_at 更早，确保修复前也会先被取到——
+    // 真正要证明的是「噪声不占额度」，故噪声用更晚的时间戳）
+    const earlier = new Date(Date.now() - 60_000).toISOString();
+    await db.insert(submissions).values([
+      {
+        ...base,
+        id: crypto.randomUUID(),
+        public_id: `sim-noise-a1-${suffix}`,
+        user_id: userA,
+        code: BUBBLE_SOLUTION,
+        created_at: earlier,
+      },
+      {
+        ...base,
+        id: crypto.randomUUID(),
+        public_id: `sim-noise-b1-${suffix}`,
+        user_id: userB,
+        code: BUBBLE_RENAMED,
+        created_at: earlier,
+      },
+    ] as never);
+
+    // 再插入大量过短的调试残留（时间戳更晚）
+    const noise = Array.from({ length: 30 }, (_, i) => ({
+      ...base,
+      id: crypto.randomUUID(),
+      public_id: `sim-noise-x${i}-${suffix}`,
+      user_id: i % 2 === 0 ? userA : userB,
+      code: "print(1)",
+    }));
+    await db.insert(submissions).values(noise as never);
+
+    const result = await findSimilarSubmissions(contestId, { threshold: 0.8 });
+
+    // 关键断言：候选只含那 2 份可比较提交，噪声没有占用额度
+    assertEquals(
+      result.candidates,
+      2,
+      "过短的调试残留不得占用候选额度（它们不可比较）",
+    );
+    assertEquals(result.participating, 2);
+    assertEquals(result.skipped, 0);
+    // 且真雷同对确实被找到——这正是修复前可能被静默丢掉的结果
+    assertEquals(
+      result.data.length,
+      1,
+      "调试残留存在时，真雷同对仍必须被检出（修复前可能被挤出窗口）",
+    );
+    assertEquals(result.data[0]!.similarity, 1);
   },
 });

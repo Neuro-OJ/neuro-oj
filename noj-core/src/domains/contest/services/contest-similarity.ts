@@ -84,6 +84,19 @@ const DEFAULT_MAX_RAW_CODE_CHARS = 20_000;
 /** 单份提交参与分析的 token 上限，作用同 DEFAULT_MAX_RAW_CODE_CHARS。 */
 const DEFAULT_MAX_TOKENS = 6_000;
 
+/**
+ * 可比较代码的**原始长度**下限（SQL 侧过滤用）。
+ *
+ * 判定依据：一次完整公共片段至少需要 `k + window - 1 = 8` 个 token 才能留下指纹
+ * （见文件头的 winnowing 说明）。一个 token 在源码里通常 ≥2 字符，故 32 字符是
+ * 「8 个 token」的保守下界——它只会排除 `print(1)`、`x = 1` 这类调试残留，
+ * 不会排除任何结构完整的合法解法。
+ *
+ * 该过滤的意义：候选上限按**可比较提交**计数，而不是按原始行数计数，
+ * 从而消除「额度被垃圾提交占满 → 真雷同对被挤出窗口 → 却报告没有雷同」的静默漏报。
+ */
+const MIN_PAIRABLE_CODE_CHARS = 32;
+
 /** 字符串字面量的占位 token；加入保护集合，不参与标识符改写。 */
 const STRING_TOKEN = "__noj_str__";
 
@@ -933,6 +946,16 @@ interface DetectSimilarPairsResult {
   total: number;
   /** 参与比较的分桶数（题目 × 语言）。 */
   buckets: number;
+  /** 真正参与比较的提交数（归一化后 token 足够、且产生了指纹）。 */
+  participating: number;
+  /**
+   * 取出后**未能参与**比较的提交数（归一化后 token 太少、或指纹为空）。
+   *
+   * 暴露该计数的理由（评审）：`candidates` 只说明"取了多少行"，不说明
+   * "多少行真正被比较"。若二者差距很大而调用方只看 candidates，
+   * 会误以为分析覆盖了全部候选。
+   */
+  skipped: number;
 }
 
 /** 解析并校验阈值。 */
@@ -1019,6 +1042,7 @@ function collectSimilarPairs(
   }
 
   const buckets = new Map<string, Prepared[]>();
+  let participating = 0;
   for (const candidate of submissions) {
     const tokens = normalizeCode(candidate.code, candidate.language);
     if (tokens.length === 0) continue;
@@ -1027,6 +1051,7 @@ function collectSimilarPairs(
       : tokens;
     const prints = new Set(fingerprint(sliced, k, window));
     if (prints.size === 0) continue;
+    participating += 1;
     const key = bucketKey(candidate);
     const bucket = buckets.get(key);
     const prepared: Prepared = { candidate, tokens: sliced, prints };
@@ -1088,6 +1113,8 @@ function collectSimilarPairs(
     pairs: found.slice(0, limit),
     total: found.length,
     buckets: buckets.size,
+    participating,
+    skipped: submissions.length - participating,
   };
 }
 
@@ -1131,6 +1158,14 @@ export interface FindSimilarSubmissionsOptions {
   k?: number;
   /** winnowing 窗口，默认 4。 */
   window?: number;
+  /**
+   * 单份提交参与分析的 token 上限，默认 6000（见 DEFAULT_MAX_TOKENS）。
+   *
+   * 修复（评审）：该选项此前只在内部 `DetectSimilarPairsOptions` 上声明，
+   * 而服务层从未把它转发下去——调用方"以为能调"却完全无效。
+   * 现在在服务层暴露并真正接线。
+   */
+  maxTokens?: number;
 }
 
 /** `findSimilarSubmissions()` 的返回值。 */
@@ -1141,8 +1176,12 @@ export interface ContestSimilarSubmissionsResult {
   total: number;
   /** 是否因 limit 截断。 */
   truncated: boolean;
-  /** 实际参与计算的提交数。 */
+  /** 取出的候选提交数（**不等于**真正被比较的数量，见 participating）。 */
   candidates: number;
+  /** 真正参与比较的提交数（归一化后 token 足够且产生了指纹）。 */
+  participating: number;
+  /** 取出但未能参与比较的提交数（过短 / 归一化后无 token）。 */
+  skipped: number;
   /** 实际参与比较的分桶数（题目 × 语言）。 */
   buckets: number;
   /** 生效的阈值。 */
@@ -1195,6 +1234,19 @@ export async function findSimilarSubmissions(
     // 空代码 / 纯空白代码：不能用 `length(btrim(code)) > 0`——`btrim()` 默认
     // 只去空格，`"\n"`、`"\t"` 会被判为「有代码」，凭空占用规模额度。
     sql`${submissions.code} !~ '^[[:space:]]*$'`,
+    // 可比较性下限（评审修复）：候选上限必须只统计**真正能被比较**的提交。
+    //
+    // 原实现按 created_at 取 maxSubmissions 条**原始行**，之后才在
+    // collectSimilarPairs 里丢弃「归一化后 token 太少」的提交。于是
+    // 「原始行数 ≤ 上限、但其中大量是 print(1) 式调试提交」的题目会把额度耗在
+    // 垃圾上，真正的雷同对可能落在窗口之外，而响应只报告 truncated=false /
+    // total=0，与「确实没有雷同」无法区分——这正是本设计对 >200 场景刻意避免的
+    // 误读，却没避免这个场景。
+    //
+    // SQL 侧无法运行完整归一化（剥注释/字符串、位置化改写），但能挡住最主要的一
+    // 类：过短的提交。下界取 k+window-1（=8）的保守倍数，避免误排除「短但结构
+    // 完整」的合法解法。
+    sql`length(btrim(${submissions.code})) >= ${MIN_PAIRABLE_CODE_CHARS}`,
   ];
   if (options.problemId) {
     conditions.push(eq(submissions.problem_id, options.problemId));
@@ -1241,12 +1293,19 @@ export async function findSimilarSubmissions(
     limit,
     k: options.k,
     window: options.window,
+    // 修复（评审）：maxTokens 此前在选项类型里声明、也写进了 JSDoc，却从未转发到
+    // collectSimilarPairs —— 传了等于静默无效（不报错、不生效）。现在真正接线。
+    maxTokens: options.maxTokens,
   });
   return {
     data: result.pairs,
     total: result.total,
     truncated: result.total > result.pairs.length,
     candidates: candidates.length,
+    // participating/skipped 让调用方能区分「取了 200 行」与「比较了 200 行」。
+    // 只看 candidates 会在候选含大量过短提交时误判分析覆盖率。
+    participating: result.participating,
+    skipped: result.skipped,
     buckets: result.buckets,
     threshold,
     limit,

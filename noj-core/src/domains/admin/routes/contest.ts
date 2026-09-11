@@ -522,12 +522,19 @@ router.get("/contests/:id/anti-cheat/similar-submissions", async (c) => {
       total: result.total,
       truncated: result.truncated,
       candidates: result.candidates,
+      // 评审补充：区分「取了多少候选」与「真正比较了多少」——
+      // 只看 candidates 会在候选含大量过短提交时高估分析覆盖率。
+      participating: result.participating,
+      skipped: result.skipped,
       buckets: result.buckets,
       max_submissions: result.max_submissions,
     },
     data_policy: {
+      // 与同文件的 ip-groups / timeline 保持同一形状（评审指出此处曾多出 source、
+      // 少了 retention_days，而 noj-ui/composables/useContests.ts 把
+      // retention_days 声明为必需字段）。
       purpose: "竞赛期间代码相似度人工复核",
-      source: "submissions.code",
+      retention_days: 180,
       automated_penalty: false,
     },
   });
