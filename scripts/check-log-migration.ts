@@ -211,6 +211,16 @@ if (import.meta.main) {
       all.push(...scanSource(await Deno.readTextFile(f), f));
     }
   }
+  // 防「从错误目录运行 → 扫描 0 个文件 → 报通过」的静默失效：
+  // 本脚本的 roots 相对仓库根，在 noj-core/ 下运行会找不到任何文件。
+  // 这正是本工具要拦的那类问题（不报错、显示绿色），因此必须显式拒绝。
+  if (all.length === 0) {
+    console.error(
+      "[check-log-migration] 未扫描到任何日志调用点——请在**仓库根目录**运行本脚本" +
+        `（当前 CWD: ${Deno.cwd()}，期望存在的根目录: ${roots.join(", ")}）`,
+    );
+    Deno.exit(1);
+  }
   const violations = findViolations(all);
   if (violations.length === 0) {
     console.log(

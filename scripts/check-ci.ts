@@ -34,6 +34,9 @@ if (import.meta.main) {
   await run(["deno", "run", "-A", "scripts/check-metrics.ts"]);
   await run(["deno", "run", "-A", "scripts/check-runtime-contract.ts"]);
   await run(["deno", "run", "-A", "scripts/check-runbooks.ts"]);
+  // 日志模板语法：LogTape 把 `{...}` 当占位符且**失败是静默的**，
+  // 残留的 JS 模板字符串会被当作占位符消费而不报错，只能静态拦住。
+  await run(["deno", "run", "-A", "scripts/check-log-migration.ts"]);
   await run(["deno", "run", "-A", "scripts/gen-alert-rules.ts", "--check"]);
   // 单文件规模棘轮：存量巨型文件不得继续变大，新文件超阈值直接失败（评审 §3.2）
   await run(["deno", "run", "-A", "scripts/check-file-size.ts"]);
@@ -72,6 +75,7 @@ if (import.meta.main) {
     "scripts/silent-skip-report_test.ts",
     "scripts/check-file-size_test.ts",
     "scripts/check-write-rate-limits_test.ts",
+    "scripts/check-log-migration_test.ts",
   ]);
   console.log("CI 仓库级门禁通过");
 }

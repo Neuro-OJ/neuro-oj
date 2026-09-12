@@ -116,37 +116,3 @@ export const logger = {
   error: (msg: string, fields?: Record<string, unknown>) =>
     emit("error", msg, fields),
 };
-
-// ── 向后兼容的具名日志函数 ────────────────────────────────────────────
-
-/**
- * 输出评测任务入队日志。
- * 脱敏由渲染层统一处理（生产环境截断 submission_id）。
- */
-export function logJudgeTaskEnqueued(
-  submissionId: string,
-  queueLength: number,
-  messageBytes: number,
-): void {
-  logger.info("评测任务入队", {
-    submission_id: submissionId,
-    queue_length: queueLength,
-    size_bytes: messageBytes,
-  });
-}
-
-/**
- * 输出评测结果接收日志。
- * 脱敏由渲染层统一处理（生产环境截断 submission_id、隐藏 score）。
- */
-export function logJudgeResultReceived(
-  submissionId: string,
-  status: string,
-  score: number,
-): void {
-  logger.info("收到评测结果", {
-    submission_id: submissionId,
-    status,
-    score,
-  });
-}

@@ -1,5 +1,7 @@
 import IORedis from "ioredis";
-import { logger } from "../base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "mq"]);
 import { observability as metrics } from "../observability/registry.ts";
 import type { ObservabilityRegistry } from "../observability/contracts.ts";
 

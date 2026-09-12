@@ -2,7 +2,9 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { getDb } from "./connection.ts";
 import { dirname, resolve } from "jsr:@std/path@^1";
-import { logger } from "../base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "db"]);
 
 const __dirname = dirname(new URL(import.meta.url).pathname);
 

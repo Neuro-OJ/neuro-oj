@@ -4,7 +4,9 @@ import {
   JUDGE_QUEUE_PREFIX,
   JUDGE_QUEUES,
 } from "../../../shared/mq/judge-queues.ts";
-import { logJudgeTaskEnqueued } from "../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "submission"]);
 
 export { JUDGE_QUEUE_PREFIX, JUDGE_QUEUES };
 
@@ -97,6 +99,10 @@ export async function pushJudgeTask(task: JudgeTask): Promise<number> {
 
   // 注意：不要对主队列设置 EXPIRE。Redis 列表在变为空时会自动删除 key；
   // 对非空列表设置 TTL 会在队列积压且没有新提交时把整个队列（含未消费任务）一起删掉。
-  logJudgeTaskEnqueued(task.submission_id, length, messageBytes);
+  logger.info("评测任务入队", {
+    submission_id: task.submission_id,
+    queue_length: length,
+    size_bytes: messageBytes,
+  });
   return length;
 }

@@ -19,7 +19,9 @@ import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import { getStorageProvider } from "./../../system/index.ts";
 import { isStorageUrl, parseStorageUrl } from "./../../system/index.ts";
 import { validateImageFile } from "./../../../shared/security/image-validation.ts";
-import { logger } from "./../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "messaging"]);
 import { enqueueDmMessageReview } from "../../content-review/index.ts";
 
 /** 消息内容最大长度 */

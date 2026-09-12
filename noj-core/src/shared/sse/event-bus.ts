@@ -1,6 +1,8 @@
 import { createPubSubRedis, getRedis } from "../mq/connection.ts";
 import type { RedisClient } from "../mq/connection.ts";
-import { logger } from "../base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "sse"]);
 import { recordSseEvent } from "./sse-events.ts";
 
 /**

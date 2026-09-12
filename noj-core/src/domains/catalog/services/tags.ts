@@ -14,7 +14,9 @@
  * - 全部写操作写入审计（tags.create/update/delete/merge）
  */
 import { and, asc, count, eq, inArray } from "drizzle-orm";
-import { logger } from "./../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "catalog"]);
 import { getDb } from "./../../../shared/db/connection.ts";
 import { problemTags, tags } from "./../../../shared/db/schema.ts";
 import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";

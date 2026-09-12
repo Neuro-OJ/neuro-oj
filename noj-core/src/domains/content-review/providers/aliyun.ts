@@ -3,7 +3,9 @@ import type {
   ReviewContext,
   ReviewResult,
 } from "./types.ts";
-import { logger } from "./../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "content-review"]);
 
 /**
  * 阿里云内容安全（Green）文本审核 Provider（issue #413）。

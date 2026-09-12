@@ -61,7 +61,9 @@ import {
 } from "../../system/services/system-settings.ts";
 import { getEmailConfigStatus } from "../../system/services/email-status.ts";
 import { sendTestEmail } from "../../system/services/email.ts";
-import { logger } from "../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "admin"]);
 import { withAudit } from "../services/admin-audit.ts";
 import type { AuditMeta } from "../types/admin-audit.ts";
 import { adminVersionMiddleware } from "../middleware/admin-version.ts";
