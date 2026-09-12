@@ -47,6 +47,56 @@ async function collectTsFiles(dir: string): Promise<string[]> {
   return results;
 }
 
+/**
+ * 指标 catalog **文档**校验（2026-09-12 架构评审 §3.5）。
+ *
+ * 缺陷背景：`dev-docs/engineering/metric-catalog.md` 自称"由 scripts/check-metrics.ts
+ * 校验"，但该脚本**从不读取此文件**（全仓搜 `metric-catalog` 零命中），于是文档静默
+ * 漂移：35 个平台指标只登记了 23 个，缺失项里还有告警规则直接依赖的指标。
+ *
+ * 规则（双向）：
+ * - 注册的每个平台指标名必须出现在文档中；
+ * - 文档中出现的每个 `noj_*` 名必须是已注册指标（平台或业务）。
+ *
+ * 自检：平台注册表为空 / 文档中一个指标名都没有 → 判定失败，
+ * 防止"文档改名后门禁自动变成空转"。
+ */
+export function checkMetricCatalogDoc(
+  docContent: string,
+  platformNames: readonly string[],
+  knownNames: ReadonlySet<string>,
+): string[] {
+  const errors: string[] = [];
+  const docNames = new Set(
+    [...docContent.matchAll(/`(noj_[a-z0-9_]+)`/g)].map((m) => m[1]),
+  );
+
+  if (platformNames.length === 0) {
+    errors.push("平台指标注册表为空——指标门禁已失去检查对象");
+  }
+  if (docNames.size === 0) {
+    errors.push(
+      "指标 catalog 文档中未找到任何 noj_* 指标名（文档结构或解析规则已失效）",
+    );
+  }
+
+  const missing = platformNames.filter((n) => !docNames.has(n));
+  if (missing.length > 0) {
+    errors.push(
+      `指标 catalog 文档缺失 ${missing.length} 个平台指标：${
+        missing.join(", ")
+      }`,
+    );
+  }
+
+  for (const name of docNames) {
+    if (!knownNames.has(name)) {
+      errors.push(`指标 catalog 文档登记了未注册的指标: ${name}`);
+    }
+  }
+  return errors;
+}
+
 export async function checkMetrics(root = "."): Promise<string[]> {
   const known = new Set<string>(PLATFORM_METRIC_NAMES);
   const errors: string[] = [];
@@ -117,9 +167,47 @@ export async function checkMetrics(root = "."): Promise<string[]> {
 
 if (import.meta.main) {
   const errors = await checkMetrics(".");
+
+  // 指标 catalog 文档校验（2026-09-12 评审 §3.5）：此前文档自称被本脚本校验，
+  // 实际从不读取，导致 35 个平台指标只登记 23 个。
+  const catalogPath = "dev-docs/engineering/metric-catalog.md";
+  try {
+    const doc = await Deno.readTextFile(catalogPath);
+    const known = new Set<string>(PLATFORM_METRIC_NAMES);
+    // 业务指标名从各域 registerBusinessMetric 定义收集（与 checkMetrics 同源）
+    for (const file of await collectTsFiles(resolve(".", "noj-core/src"))) {
+      const content = await Deno.readTextFile(file);
+      for (const m of content.matchAll(DEFINE_RE)) {
+        if (m[1]) known.add(m[1]);
+      }
+    }
+    // 自观测指标：kernel 内部用 selfInc("...") 自计数，不经注册表登记，
+    // 若不计入已知集合会被误报为"文档登记了未注册的指标"。
+    const SELF_METRIC_RE = /selfInc\(\s*"(noj_[a-z0-9_]+)"\s*\)/g;
+    try {
+      const kernel = await Deno.readTextFile(
+        resolve(".", "noj-core/src/shared/observability/registry.ts"),
+      );
+      for (const m of kernel.matchAll(SELF_METRIC_RE)) {
+        if (m[1]) known.add(m[1]);
+      }
+    } catch {
+      // 文件缺失/改名：交由下面的双向比对暴露（文档中的自观测指标会变成"未注册"）
+    }
+    errors.push(
+      ...checkMetricCatalogDoc(doc, PLATFORM_METRIC_NAMES, known).map((e) =>
+        `${catalogPath}: ${e}`
+      ),
+    );
+  } catch (err) {
+    errors.push(`${catalogPath}: 读取失败（文档被移动或删除）——${err}`);
+  }
+
   if (errors.length > 0) {
     for (const e of errors) console.error(e);
     Deno.exit(1);
   }
-  console.log("指标 catalog 检查通过");
+  console.log(
+    `指标 catalog 检查通过（含文档校验：${PLATFORM_METRIC_NAMES.length} 个平台指标）`,
+  );
 }

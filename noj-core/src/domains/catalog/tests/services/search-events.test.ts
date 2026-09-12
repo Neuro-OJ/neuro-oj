@@ -3,8 +3,7 @@ import { problems, problemTags } from "../../../../shared/db/schema.ts";
 import { createTag, mergeTags } from "../../index.ts";
 import { createProblem } from "../../services/problems/problems-crud.ts";
 import { assertSearchEventPublished } from "../../../../../tests/helper/search-events.ts";
-import { connectRedis, getRedis } from "../../../../shared/mq/connection.ts";
-import { SEARCH_INDEX_QUEUE } from "../../../../shared/search-events.ts";
+import { connectRedis } from "../../../../shared/mq/connection.ts";
 
 try {
   await connectRedis();
@@ -36,7 +35,9 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await getRedis().del(SEARCH_INDEX_QUEUE);
+    // 不要 del(SEARCH_INDEX_QUEUE)：同一分片内多个测试文件会并行操作同一
+    // Redis 键，删除会把对方正在等待观测的事件一并删掉（实测：全量分片必现假
+    // 失败、单文件必过）。断言按本次生成的唯一 entityId 查找，无需清空。
     const created = await createProblem({
       title: "事件测试题",
       description: "desc",
@@ -98,7 +99,6 @@ Deno.test({
       { problem_id: problemB, tag_id: source.id },
       { problem_id: problemB, tag_id: target.id },
     ]);
-    await getRedis().del(SEARCH_INDEX_QUEUE);
     await mergeTags(source.id, target.id);
     await assertSearchEventPublished("problem", problemA, "upsert");
     await assertSearchEventPublished("problem", problemB, "upsert");

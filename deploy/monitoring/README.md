@@ -7,7 +7,29 @@ Grafana 仪表盘（`grafana-dashboard.json`）。
 
 ## 1. 组件与网络
 
-推荐在宿主机以独立容器运行 Prometheus / Alertmanager / node_exporter， 并把
+### 1.1 推荐：使用 compose 的 monitoring profile（2026-09-12 起）
+
+生产 compose 已内置 Prometheus + Alertmanager 的可选 profile，无需手工 run 容器：
+
+```bash
+# 1) 准备告警投递配置（缺失时 alertmanager 会 fail-fast，不会静默丢告警）
+cp deploy/monitoring/alertmanager.yml.example deploy/monitoring/alertmanager.yml
+$EDITOR deploy/monitoring/alertmanager.yml
+
+# 2) 启动（可与 --profile judge 组合）
+docker compose --env-file .env.prod -f docker-compose.prod.yml \
+  --profile monitoring up -d
+```
+
+- Prometheus 通过 `deploy/monitoring/prometheus.yml` 抓取 `core:8000` 与
+  `llm-gateway:8001`，并加载 `noj-alerts.yml` / `noj-slo-alerts.yml`。
+- 端口默认只绑 `127.0.0.1`（`PROMETHEUS_BIND` / `ALERTMANAGER_BIND` 可覆盖），
+  避免未加认证的指标端点暴露到公网。
+- 资源上限与日志轮转随 profile 一并生效（`PROMETHEUS_MEM_LIMIT` 等）。
+
+### 1.2 备选：宿主机独立容器
+
+也可以在宿主机以独立容器运行 Prometheus / Alertmanager / node_exporter， 并把
 Prometheus 与 Alertmanager 加入生产内部网络 `noj-net`：
 
 ```bash

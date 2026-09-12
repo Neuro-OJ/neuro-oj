@@ -25,7 +25,14 @@ x-core-env: &core-env
   OAUTH_OIDC_CLIENT_SECRET: ${OAUTH_OIDC_CLIENT_SECRET:-}
   OAUTH_OIDC_NAME: ${OAUTH_OIDC_NAME:-OIDC}
   NOJ_LLM_SERVICE_TOKEN: ${NOJ_LLM_SERVICE_TOKEN:?NOJ_LLM_SERVICE_TOKEN is required}
+  # 出站 LLM 网关地址：注入 evaluator 环境（judge 的 build_llm_env）供 LLM 题调用。
   NOJ_LLM_GATEWAY_URL: http://llm-gateway:8001
+  # 内部健康/指标地址（**与上面的出站地址用途不同**，2026-09-12 评审 §5.3）：
+  # 观测域 runtime-contract 用它构造 healthUrl/metricsUrl，默认值写的是
+  # `http://noj-llm-gateway:8001`——那是开发编排的 container_name，生产 compose
+  # 的服务名是 `llm-gateway`，不显式设置会指向不存在的 DNS 名。
+  RUNTIME_LLM_GATEWAY_URL: http://llm-gateway:8001
+  RUNTIME_JUDGE_MODE: ${RUNTIME_JUDGE_MODE:-heartbeat}
   JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
   APP_URL: ${APP_URL:?APP_URL is required}
   CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
@@ -54,9 +61,21 @@ x-default-logging: &default-logging
     max-size: 50m
     max-file: "5"
 
+# ── 资源上限与日志轮转（2026-09-12 评审 §5.2）─────────────────────────
+# 此前三个 compose 文件对 `mem_limit|cpus|deploy:|resources:|ulimits` 零命中，
+# 且 `x-default-logging` 只被 migrate/core 引用 → 单机部署最常见、最致命的两类
+# 故障（OOM 杀掉 postgres、日志打满磁盘导致全站写入失败）都没有防线。
+# 现在**每个服务**都声明 mem_limit + logging，并可通过 env 覆盖。
+# 注意：`mem_limit` 是 docker compose（非 swarm）语义；K8s 化时改用 resources.limits。
+x-resource-defaults: &resource-defaults
+  logging: *default-logging
+  restart: unless-stopped
+
 services:
   # ── 一次性初始化：迁移 + 系统数据 ───────────────────────────────
   migrate:
+    # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
+    mem_limit: "${MIGRATE_MEM_LIMIT:-1g}"
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-server:${NOJ_VERSION:?NOJ_VERSION is required}"
     logging: *default-logging
     entrypoint: ["/bin/sh", "-c"]
@@ -77,6 +96,8 @@ services:
 
   # ── 核心 API ──────────────────────────────────────────────────────
   core:
+    # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
+    mem_limit: "${CORE_MEM_LIMIT:-1g}"
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-server:${NOJ_VERSION:?NOJ_VERSION is required}"
     logging: *default-logging
     environment:
@@ -114,6 +135,9 @@ services:
 
   # ── 前端 SSR ──────────────────────────────────────────────────────
   ui:
+    logging: *default-logging
+    # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
+    mem_limit: "${UI_MEM_LIMIT:-1g}"
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-ui:${NOJ_VERSION:?NOJ_VERSION is required}"
     environment:
       NUXT_API_BASE: http://core:8000
@@ -145,9 +169,20 @@ services:
 
   # ── 评测 Worker ───────────────────────────────────────────────────
   judge:
+    logging: *default-logging
+    # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
+    mem_limit: "${JUDGE_MEM_LIMIT:-2g}"
     profiles:
       - judge
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-judge:${NOJ_VERSION:?NOJ_VERSION is required}"
+    # 无 healthcheck，这是**有意为之**（2026-09-12 评审 §5.2）：
+    # judge 是纯 worker，没有 HTTP 端口或心跳文件可供探测；它的失败模式是进程退出，
+    # 已由 `restart: unless-stopped` 覆盖。写一个 `CMD true` 式的 healthcheck 只会
+    # 制造"绿但无用"的假信号——正是本次评审要消除的那类缺陷。
+    # 真正的存活/积压观测走 Prometheus 指标（noj_judge_workers / active_tasks /
+    # queue_pending_jobs）与告警规则（deploy/monitoring/noj-alerts.yml），
+    # 见 deploy/monitoring/README.md。若需要容器级探针，应先在 judge 内实现
+    # "Redis 可达 + 无卡死任务"的自检子命令，而不是用假探针占位。
     environment:
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
       JUDGE_QUEUE: ${JUDGE_QUEUE:-noj:judge:queue}
@@ -194,6 +229,9 @@ services:
 
   # ── LLM Gateway ───────────────────────────────────────────────────
   llm-gateway:
+    logging: *default-logging
+    # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
+    mem_limit: "${LLM_GATEWAY_MEM_LIMIT:-512m}"
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-llm-gateway:${NOJ_VERSION:?NOJ_VERSION is required}"
     environment:
       NOJ_LLM_PORT: "8001"
@@ -232,6 +270,9 @@ services:
 
   # ── 反向代理 / TLS ────────────────────────────────────────────────
   nginx:
+    logging: *default-logging
+    # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
+    mem_limit: "${NGINX_MEM_LIMIT:-256m}"
     image: nginx:1.27-alpine@sha256:62223d644fa234c3a1cc785ee14242ec47a77364226f1c811d2f669f96dc2ac8
     ports:
       # 默认映射到宿主机 8080，避免与外部 TLS 终止层（如宿主机 Nginx）的 80 冲突；
@@ -246,8 +287,68 @@ services:
     networks:
       - noj-net
 
+  # ── 可观测性（可选）：docker compose --profile monitoring up -d ──────
+  #
+  # 2026-09-12 评审 §5.3：一键安装产出的系统此前**没有任何监控**（setup.sh /
+  # noj-cli 对 prometheus|alertmanager 零命中，仅 README 有手工 docker run 指引），
+  # 而 deploy/monitoring/ 下的告警规则与 runbook 又都齐全。
+  # 现在把它们做成可选 profile：默认不启动（不影响最小部署），需要时一条命令获得
+  # 指标采集 + 告警规则加载。
+  #
+  # Alertmanager 需要真实投递配置：把 deploy/monitoring/alertmanager.yml.example
+  # 复制为 deploy/monitoring/alertmanager.yml 并填入接收器，否则该服务会启动失败
+  # （这是有意的 fail-fast，而不是静默丢弃告警）。
+  prometheus:
+    profiles:
+      - monitoring
+    image: prom/prometheus:v3.1.0@sha256:6559acbd5d770b15bb3c954629ce190ac3cbbdb2b7f1c30f0385c4e05104e218
+    logging: *default-logging
+    mem_limit: "${PROMETHEUS_MEM_LIMIT:-1g}"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}
+    volumes:
+      - ./deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/monitoring/noj-alerts.yml:/etc/prometheus/rules/noj-alerts.yml:ro
+      - ./deploy/monitoring/noj-slo-alerts.yml:/etc/prometheus/rules/noj-slo-alerts.yml:ro
+      - promdata:/prometheus
+    ports:
+      # 默认只映射到宿主机回环，避免未加认证的指标端点暴露到公网；
+      # 需要外部抓取时显式设置 PROMETHEUS_BIND（如 0.0.0.0）。
+      - "${PROMETHEUS_BIND:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      core:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - noj-net
+
+  alertmanager:
+    profiles:
+      - monitoring
+    image: prom/alertmanager:v0.28.0@sha256:d5155cfac40a6d9250ffc97c19db2c5e190c7bc57c6b67125c94903358f8c7d8
+    logging: *default-logging
+    mem_limit: "${ALERTMANAGER_MEM_LIMIT:-256m}"
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./deploy/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanagerdata:/alertmanager
+    expose:
+      - "9093"
+    ports:
+      - "${ALERTMANAGER_BIND:-127.0.0.1}:${ALERTMANAGER_PORT:-9093}:9093"
+    restart: unless-stopped
+    networks:
+      - noj-net
+
   # ── PostgreSQL ────────────────────────────────────────────────────
   postgres:
+    logging: *default-logging
+    # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
+    mem_limit: "${POSTGRES_MEM_LIMIT:-2g}"
     image: postgres:16-alpine@sha256:075f7ba66bc9b3ce7d6b8b635208ff61cd7cf1a67d71ec530eec5d7ae0cbe571
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-noj}
@@ -266,6 +367,9 @@ services:
 
   # ── Redis（带密码 + AOF）─────────────────────────────────────────
   redis:
+    logging: *default-logging
+    # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
+    mem_limit: "${REDIS_MEM_LIMIT:-1g}"
     image: redis:7-alpine@sha256:1db42ccef14898aa29bae778452d567534b59c107129cbc1163fb552de184d3c
     command:
       - redis-server
@@ -288,6 +392,9 @@ services:
 
   # ── MinIO（自建对象存储）─────────────────────────────────────────
   minio:
+    logging: *default-logging
+    # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
+    mem_limit: "${MINIO_MEM_LIMIT:-1g}"
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z@sha256:d051d800a3025588f37f69f132bb5ef718547a9a4ee95ddee44e04ad952a0a96
     command: server /data --console-address :9001
     environment:
@@ -301,6 +408,9 @@ services:
 
   # ── MinIO bucket 初始化（一次性，带重试等待 MinIO 就绪）──────────
   minio-init:
+    logging: *default-logging
+    # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
+    mem_limit: "${MINIO_INIT_MEM_LIMIT:-256m}"
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:eb4ea9884b77704230e2423e9004d2fa738dc272876b9cc41a297d29443b8780
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -357,3 +467,6 @@ volumes:
   noj-packages:
   noj-storage:
   judge-cache:
+  # 可观测性数据（仅 --profile monitoring 时使用）
+  promdata:
+  alertmanagerdata:

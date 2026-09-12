@@ -24,7 +24,7 @@ impl JudgeStatus {
     }
 }
 
-/// 双容器模式下的 Runtime 配置（与 noj-core/src/types/index.ts 的 RuntimeConfig 对齐）。
+/// 双容器模式下的 Runtime 配置（与 noj-core/src/domains/submission/types/index.ts 的 RuntimeConfig 对齐）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeConfig {
     pub evaluator: EvaluatorRuntime,
@@ -70,7 +70,12 @@ pub struct JudgeTaskLlm {
 
 /// 评测任务——从 noj-core 发送到 noj-judge 的消息。
 ///
-/// 字段对齐 noj-core/src/types/index.ts 的 JudgeTask 接口。
+/// 字段对齐 noj-core/src/domains/submission/types/index.ts 的 JudgeTask 接口，
+/// 并由两侧共用的契约快照测试钉住：
+/// `noj-tests/fixtures/judge-task.contract.json` +
+/// `noj-judge/tests/judge_task_contract.rs`（Rust 侧）
+/// 与 `noj-core .../tests/types/judge-task-contract.test.ts`（TS 侧）。
+/// 新增字段必须同时更新 fixture 与 noj-core 的 JUDGE_TASK_FIELDS。
 /// 所有评测统一使用双容器模式（Evaluator + Solution），由 `runtime_config` 提供配置。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JudgeTask {
@@ -114,7 +119,7 @@ fn default_priority() -> String {
 
 /// 评测结果——从 noj-judge 返回到 noj-core 的消息。
 ///
-/// 字段对齐 noj-core/src/types/index.ts 的 JudgeResult 接口。
+/// 字段对齐 noj-core/src/domains/submission/types/index.ts 的 JudgeResult 接口。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JudgeResult {
     /// 提交 UUID

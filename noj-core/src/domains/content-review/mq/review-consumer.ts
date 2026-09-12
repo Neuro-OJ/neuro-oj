@@ -1,5 +1,8 @@
 import { eq } from "drizzle-orm";
-import { createConsumer } from "../../../shared/mq/base-consumer.ts";
+import {
+  type ConsumerHandle,
+  createConsumer,
+} from "../../../shared/mq/base-consumer.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { messages } from "../../../shared/db/schema.ts";
 import { logger } from "../../../shared/base/logging.ts";
@@ -94,9 +97,9 @@ export async function handleDmReviewMessage(
 
 /**
  * 创建私信审核消费者（自动重连 + 失败重投语义与评测结果消费者一致）。
- * @returns 启动函数（不返回，直到进程关闭）。
+ * @returns 启动句柄（不返回，直到进程关闭）；`handle.requestShutdown()` 只停本实例。
  */
-export function createReviewConsumer(): () => Promise<void> {
+export function createReviewConsumer(): ConsumerHandle {
   return createConsumer({
     queueName: REVIEW_DM_QUEUE,
     logLabel: "私信审核",
