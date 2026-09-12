@@ -8,6 +8,7 @@
     "jsr:@cliffy/keycode@1.2.1": "1.2.1",
     "jsr:@cliffy/prompt@^1.2.1": "1.2.1",
     "jsr:@cliffy/table@1.2.1": "1.2.1",
+    "jsr:@logtape/logtape@2.3.4": "2.3.4",
     "jsr:@logtape/logtape@^2.3.4": "2.3.4",
     "jsr:@std/assert@*": "1.0.19",
     "jsr:@std/assert@1": "1.0.19",

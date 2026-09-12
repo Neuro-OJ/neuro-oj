@@ -15,7 +15,7 @@ import {
   getConsoleSink,
   type LogRecord as LtRecord,
 } from "@logtape/logtape";
-import { AsyncLocalStorage } from "node:async_hooks";
+import { requestContextStorage } from "../observability/context.ts";
 import {
   isProduction,
   levelRank,
@@ -76,12 +76,11 @@ export function resolveColor(stream: "stdout" | "stderr"): boolean {
 /**
  * 供 LogTape 读取 `request_id` 的存储。
  *
- * 由 `shared/observability/context.ts` 的 `runWithRequestContext` 写入
- * （两者共用同一个 ALS 实例，见 logging.ts 的装配）。
+ * **就是** `shared/observability/context.ts` 里 `runWithRequestContext` 写入的
+ * 那个实例——必须共用同一个对象，否则请求上下文不会出现在日志里。
+ * 这里只做转出，不再自行 new（历史上的两套 ALS 曾让 request_id 静默丢失）。
  */
-export const logContextStorage = new AsyncLocalStorage<
-  Record<string, unknown>
->();
+export const logContextStorage = requestContextStorage;
 
 /** 动态级别过滤：每条记录都重新解析 LOG_LEVEL，便于测试中途切换。 */
 function dynamicLevelFilter(record: LtRecord): boolean {

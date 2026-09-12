@@ -1,9 +1,12 @@
 import { assertEquals, assertStrictEquals } from "jsr:@std/assert@^1";
+import { getLogger, type LogRecord as LtRecord } from "@logtape/logtape";
 import {
   describeColorPolicy,
   resolveColor,
   resolveFormat,
+  setupLogging,
 } from "./../../src/shared/base/log-config.ts";
+import { makeJsonFormatter } from "./../../src/shared/base/log-format.ts";
 import {
   logger,
   resetLogSink,
@@ -124,6 +127,44 @@ Deno.test("logging: request_id 跨 await 传播到 LogTape 上下文", async () 
       logger.info("await 之后");
     });
     assertEquals(records[0]?.request_id, "req-async");
+  } finally {
+    resetLogSink();
+  }
+});
+
+Deno.test("logging: 生产原生 logger 也自动带上 request_id", async () => {
+  // 回归防线：曾经的缺陷是「两套 ALS 实例 + camelCase 键名」，
+  // 使 properties.request_id 恒为 undefined，而上面的兼容层测试因手工注入
+  // 而依然通过。这里刻意用**原生 getLogger**（不经过兼容层）断言渲染出的
+  // JSON，确保两条链路都真的传播。
+  const previousFormat = Deno.env.get("LOG_FORMAT");
+  Deno.env.set("LOG_FORMAT", "json");
+  const raw: LtRecord[] = [];
+  try {
+    setupLogging((r) => raw.push(r));
+    const native = getLogger(["noj", "submission"]);
+    await runWithRequestContext("rid-native-1", async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      native.info("原生 logger 在 await 之后");
+    });
+    assertEquals(raw.length, 1);
+    assertEquals(raw[0]?.properties.request_id, "rid-native-1");
+    // 并且必须真的渲染进输出，而不只是躺在 properties 里
+    const rendered = makeJsonFormatter()(raw[0]!);
+    assertEquals(JSON.parse(rendered).request_id, "rid-native-1");
+  } finally {
+    if (previousFormat === undefined) Deno.env.delete("LOG_FORMAT");
+    else Deno.env.set("LOG_FORMAT", previousFormat);
+    resetLogSink();
+  }
+});
+
+Deno.test("logging: 无请求上下文时不出现 request_id", () => {
+  const records: { request_id?: string }[] = [];
+  setLogSink((r) => records.push(r));
+  try {
+    logger.info("裸调用");
+    assertEquals(records[0]?.request_id, undefined);
   } finally {
     resetLogSink();
   }

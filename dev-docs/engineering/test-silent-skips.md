@@ -78,16 +78,16 @@
 | noj-core/src/domains/identity/tests/routes/admin-blacklist.test.ts | 110 | env-guard |
 | noj-core/src/domains/identity/tests/routes/admin-blacklist.test.ts | 134 | env-guard |
 | noj-core/src/domains/identity/tests/routes/admin-blacklist.test.ts | 167 | env-guard |
-| noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 861 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 878 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 921 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 938 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth-ban-status.test.ts | 55 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth-ban-status.test.ts | 74 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth-ban-status.test.ts | 93 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth-ban-status.test.ts | 120 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth-ban-status.test.ts | 138 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth-ban-status.test.ts | 159 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 861 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 878 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 921 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 938 | ignore |
 | noj-core/src/domains/identity/tests/services/checkin.test.ts | 76 | ignore |
 | noj-core/src/domains/identity/tests/services/checkin.test.ts | 93 | ignore |
 | noj-core/src/domains/identity/tests/services/checkin.test.ts | 119 | ignore |
@@ -447,7 +447,7 @@
 | noj-tests/e2e/system/audit_log.test.ts | 289 | early-return |
 | noj-tests/e2e/system/audit_log.test.ts | 298 | early-return |
 | noj-tests/e2e/rate-limit/rate_limit_lockout.test.ts | 37 | early-return |
-| noj-tests/e2e/helper.ts | 484 | ignore |
+| noj-tests/e2e/helper.ts | 502 | ignore |
 | noj-judge/tests/common/mod.rs | 324 | rust-ignore |
 | noj-judge/tests/e2e_docker_basic.rs | 8 | rust-ignore |
 | noj-judge/tests/e2e_docker_basic.rs | 43 | rust-ignore |
@@ -516,3 +516,7 @@
 | noj-judge/tests/e2e_abnormal.rs | 122 | rust-env-guard |
 | noj-judge/tests/e2e_abnormal.rs | 165 | rust-ignore |
 | noj-judge/tests/e2e_abnormal.rs | 169 | rust-env-guard |
+| noj-judge/tests/e2e_abnormal.rs | 226 | rust-ignore |
+| noj-judge/tests/e2e_abnormal.rs | 230 | rust-env-guard |
+| noj-judge/tests/e2e_abnormal.rs | 288 | rust-ignore |
+| noj-judge/tests/e2e_abnormal.rs | 292 | rust-env-guard |

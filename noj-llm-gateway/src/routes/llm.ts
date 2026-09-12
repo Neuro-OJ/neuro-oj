@@ -11,6 +11,7 @@ import { enforceAndCount, settleUsage } from "../limits.ts";
 import { recordUsage } from "../usage.ts";
 import { calcBilledUsage } from "../billing.ts";
 import { inc, observe } from "../metrics.ts";
+import { logger } from "../logger.ts";
 
 export interface LlmDeps {
   config: GatewayConfig;
@@ -105,8 +106,16 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       if (added === 0) {
         const ipCount = await deps.redis.scard(ipKey);
         if (ipCount > 1) {
-          console.warn(
-            `[llm] eval_token 多来源 IP 调用: submission=${payload.submission_id} ip=${clientIp} ips=${ipCount}`,
+          // 走结构化 logger 而非 console.warn：submission_id / client_ip
+          // 由统一脱敏层处理（生产截断 *_id、隐藏 client_ip），
+          // 手写模板字符串会绕过脱敏把明文 id 与 IP 写进日志文件。
+          logger.warn(
+            "eval_token 多来源 IP 调用: submission={submission_id} ip={client_ip} ips={ips}",
+            {
+              submission_id: payload.submission_id,
+              client_ip: clientIp,
+              ips: ipCount,
+            },
           );
         }
       } else {

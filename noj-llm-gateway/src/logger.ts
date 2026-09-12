@@ -136,6 +136,18 @@ const ID_KEYS = new Set([
 ]);
 
 /**
+ * 免除 id 脱敏的**关联标识**（契约 §6 的显式例外）。
+ *
+ * `*_id` 通配规则的本意是保护业务实体 id，但 `request_id` 不是业务实体：
+ * 它由服务端随机生成、不携带用户隐私，且唯一用途就是**跨服务串联同一次请求**。
+ * 一旦被截断成前 8 字符，生产环境的日志就无法与上游/下游（core、judge）对齐。
+ * 该键同时由 pretty 侧自行 `slice(0, 8)` 控制展示长度（契约 §1）。
+ */
+const CORRELATION_KEYS = new Set([
+  "request_id",
+]);
+
+/**
  * 截断 ID 用于日志展示，保留前缀可识别性但避免完整泄露。
  *
  * @example
@@ -167,6 +179,8 @@ export function redactValueByKey(key: string, value: unknown): unknown {
   const lower = key.toLowerCase();
   if (SENSITIVE_KEYS.has(lower)) return "[redacted]";
   if (lower === "score") return "[redacted]";
+  // 关联标识先于 `*_id` 通配判定，否则会被误截断（见 CORRELATION_KEYS）
+  if (CORRELATION_KEYS.has(lower)) return serializeValue(value);
   if (ID_KEYS.has(lower) || lower.endsWith("_id")) {
     return typeof value === "string" ? redactId(value) : serializeValue(value);
   }
@@ -174,7 +188,76 @@ export function redactValueByKey(key: string, value: unknown): unknown {
   if (lower === "client_ip" || lower === "ip" || lower === "ips") {
     return "[redacted]";
   }
-  return serializeValue(value);
+  // 非敏感键也要递归：顶层键名匹配不到嵌套结构里的 password/api_key，
+  // 整块直通即明文泄露。
+  return redactNested(value);
+}
+
+/** 递归深度上限：防御病态深结构。 */
+const MAX_REDACT_DEPTH = 6;
+
+/** 超出递归上限时的占位符（fail-closed，绝不原样放行）。 */
+export const REDACT_DEPTH_PLACEHOLDER = "[redacted: max-depth]";
+
+/** 自引用结构在遍历中的占位符（避免无限递归与后续 JSON 循环报错）。 */
+export const REDACT_CIRCULAR_PLACEHOLDER = "[redacted: circular]";
+
+/**
+ * 递归脱敏嵌套结构（对象/数组）中的敏感键。
+ *
+ * 仅在生产环境生效（调用方已判定）。
+ *
+ * 两处防御都是 **fail-closed**（返回占位符而非原始子树——原样放行等于把
+ * 未脱敏的 `api_key`/`password` 写进日志）：
+ * - 超过 `MAX_REDACT_DEPTH`；
+ * - 自引用结构（`seen` 记录当前路径上的对象），否则递归不终止，
+ *   且下游 `JSON.stringify` 会直接抛错。
+ */
+function redactNested(
+  value: unknown,
+  depth = 0,
+  seen: WeakSet<object> = new WeakSet(),
+): unknown {
+  const serialized = serializeValue(value);
+  if (serialized === null || typeof serialized !== "object") return serialized;
+  if (serialized instanceof Error) return serialized;
+  if (depth >= MAX_REDACT_DEPTH) return REDACT_DEPTH_PLACEHOLDER;
+  if (seen.has(serialized)) return REDACT_CIRCULAR_PLACEHOLDER;
+  seen.add(serialized);
+  try {
+    if (Array.isArray(serialized)) {
+      return serialized.map((item) => redactNested(item, depth + 1, seen));
+    }
+    const out: Record<string, unknown> = {};
+    for (
+      const [k, v] of Object.entries(serialized as Record<string, unknown>)
+    ) {
+      const lower = k.toLowerCase();
+      if (SENSITIVE_KEYS.has(lower) || lower === "score") {
+        out[k] = "[redacted]";
+        continue;
+      }
+      if (CORRELATION_KEYS.has(lower)) {
+        out[k] = serializeValue(v);
+        continue;
+      }
+      if (lower === "client_ip" || lower === "ip" || lower === "ips") {
+        out[k] = "[redacted]";
+        continue;
+      }
+      if (ID_KEYS.has(lower) || lower.endsWith("_id")) {
+        out[k] = typeof v === "string"
+          ? redactId(v)
+          : redactNested(v, depth + 1, seen);
+        continue;
+      }
+      out[k] = redactNested(v, depth + 1, seen);
+    }
+    return out;
+  } finally {
+    // 只跟踪「当前路径」：兄弟节点引用同一对象是合法的 DAG，不应误判为环。
+    seen.delete(serialized);
+  }
 }
 
 /** 对字段对象批量脱敏。 */
@@ -313,7 +396,20 @@ export function makeGatewayPrettyFormatter(
   return getTextFormatter(options);
 }
 
-/** 构造契约形状的 JSON formatter。 */
+/** JSON 信封的保留键：业务字段不得覆盖它们（见 `log-conventions.md` §4）。 */
+export const RESERVED_ENVELOPE_KEYS: readonly string[] = [
+  "ts",
+  "level",
+  "msg",
+  "request_id",
+];
+
+/**
+ * 构造契约形状的 JSON formatter。
+ *
+ * 保留键（`ts`/`level`/`msg`/`request_id`）由信封占据：同名的业务字段会被
+ * 改名成 `field_<name>`，避免把消息体本身覆盖掉。
+ */
 export function makeGatewayJsonFormatter(): (record: LtRecord) => string {
   return (record: LtRecord): string => {
     const fields = redactFields(record.properties);
@@ -321,7 +417,8 @@ export function makeGatewayJsonFormatter(): (record: LtRecord) => string {
     const rest: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(fields)) {
       if (k === "request_id") continue;
-      rest[k] = v instanceof Error ? serializeValue(v) : v;
+      const key = RESERVED_ENVELOPE_KEYS.includes(k) ? `field_${k}` : k;
+      rest[key] = v instanceof Error ? serializeValue(v) : v;
     }
     return JSON.stringify({
       ts: new Date(record.timestamp).toISOString(),

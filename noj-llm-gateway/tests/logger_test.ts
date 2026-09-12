@@ -102,7 +102,11 @@ Deno.test("formatPretty 着色时使用契约 SGR（dim 时间戳 / 级别色 / 
     { timestamp: "14:32:07.412", record: warn! },
     { color: true },
   );
-  assertMatch(warnLine, /\x1b\[1m.*\x1b\[0m$/);
+  // 用 endsWith 断言而非含 \x1b 的正则：deno lint 的 no-control-regex
+  // 会拒绝正则里的控制字符（`\x1b`），字符串比较无此限制。
+  assertEquals(warnLine.endsWith("\x1b[1m"), false);
+  assertEquals(warnLine.startsWith("\x1b[1m"), true, "WARN 整行应额外粗体");
+  assertEquals(warnLine.endsWith("\x1b[0m"), true, "整行粗体应以 reset 收尾");
   assertStringIncludes(warnLine, "\x1b[1;33m");
 });
 

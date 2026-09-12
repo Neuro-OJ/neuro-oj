@@ -41,7 +41,7 @@ pub fn resolve_color_from(no_color: Option<&str>, log_color: Option<&str>, is_tt
     if no_color.map(|v| !v.is_empty()).unwrap_or(false) {
         return false;
     }
-    match log_color {
+    match log_color.map(|v| v.trim().to_ascii_lowercase()).as_deref() {
         Some("never") => false,
         Some("always") => true,
         _ => is_tty,
@@ -53,6 +53,26 @@ pub fn resolve_color(is_tty: bool) -> bool {
     let no_color = std::env::var("NO_COLOR").ok();
     let log_color = std::env::var("LOG_COLOR").ok();
     resolve_color_from(no_color.as_deref(), log_color.as_deref(), is_tty)
+}
+
+/// 两个输出流各自的着色判定（契约 §3 硬规则 1）。
+///
+/// **必须按流分别探测**：warn/error 走 stderr，info/debug 走 stdout。
+/// 若像此前那样取 `stdout || stderr` 的单一布尔，则在
+/// `1>file 2>tty`（或反向重定向）时会用错另一条流的 TTY 结论，
+/// 把转义码写进文件、或让终端失去颜色。
+#[derive(Clone, Copy, Debug)]
+pub struct StreamColors {
+    pub stdout: bool,
+    pub stderr: bool,
+}
+
+/// 由两条流的 TTY 探测结果计算各自着色（`LOG_COLOR`/`NO_COLOR` 优先）。
+pub fn resolve_stream_colors(stdout_tty: bool, stderr_tty: bool) -> StreamColors {
+    StreamColors {
+        stdout: resolve_color(stdout_tty),
+        stderr: resolve_color(stderr_tty),
+    }
 }
 
 /// 当前时刻的 `HH:MM:SS.mmm`（UTC，不新增依赖）。
@@ -94,6 +114,15 @@ pub struct ContractFormat {
     pub color: bool,
 }
 
+impl ContractFormat {
+    /// 由按流判定结果构造：本事件走哪条流就用哪条流的着色结论。
+    pub fn from_streams(colors: StreamColors, stderr: bool) -> Self {
+        Self {
+            color: if stderr { colors.stderr } else { colors.stdout },
+        }
+    }
+}
+
 impl<S, N> FormatEvent<S, N> for ContractFormat
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
@@ -122,6 +151,14 @@ where
             write!(writer, "{ts}  {}", level_badge(level))?;
         }
         write!(writer, "  {}", visitor.message.unwrap_or_default())?;
+        // 模块名（契约 §5）：TS 侧由 LogTape category 提供，Rust 侧的等价物是
+        // tracing target。本期只保证它进入输出，不做列内对齐。
+        let target = event.metadata().target();
+        if self.color {
+            write!(writer, "  {SGR_DIM}target={SGR_RESET}{target}")?;
+        } else {
+            write!(writer, "  target={target}")?;
+        }
         for (k, v) in &visitor.fields {
             if self.color {
                 write!(writer, "  {SGR_DIM}{k}={SGR_RESET}{v}")?;
@@ -221,17 +258,44 @@ pub fn build_filter() -> tracing_subscriber::EnvFilter {
 /// 修复既有缺陷：原实现使用 `tracing_subscriber::fmt()` 的默认 ansi 推导
 /// （只认 `NO_COLOR`、不探测 TTY），在 `driver: json-file` 下把 ANSI 转义码
 /// 原样写入日志文件。
+///
+/// 着色按流分别探测（契约 §3 硬规则 1）：`ContractFormat` 由 `LevelSplitWriter`
+/// 在每条事件上按目标流重建，因此 `1>file 2>tty` 这类重定向不会串色。
 pub fn init() {
-    let color = resolve_color(io::stdout().is_terminal() || io::stderr().is_terminal());
+    let colors = resolve_stream_colors(io::stdout().is_terminal(), io::stderr().is_terminal());
     // 注意：不要调用 `.with_ansi(...)` —— 该方法只存在于默认 formatter 的
     // builder（`SubscriberBuilder<N, Format<L,T>, F, W>`）上；改用自定义
     // `event_format` 后 builder 类型变为 `SubscriberBuilder<N, ContractFormat, F, W>`，
-    // 调用它会编译失败。着色完全由 `ContractFormat { color }` 自行产生。
+    // 调用它会编译失败。着色完全由 `ContractFormat` 自行产生。
     tracing_subscriber::fmt()
         .with_env_filter(build_filter())
-        .event_format(ContractFormat { color })
+        .event_format(StreamAwareFormat { colors })
         .with_writer(LevelSplitWriter)
         .init();
+}
+
+/// 按事件目标流选择着色的 `FormatEvent` 包装。
+///
+/// `MakeWriter::make_writer_for` 已经按级别决定了流，但着色必须与**同一条流**
+/// 的 TTY 结论配对，故在此按级别重算一次分流（与 `should_use_stderr` 同一判据）。
+pub struct StreamAwareFormat {
+    pub colors: StreamColors,
+}
+
+impl<S, N> FormatEvent<S, N> for StreamAwareFormat
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+    N: for<'a> FormatFields<'a> + 'static,
+{
+    fn format_event(
+        &self,
+        ctx: &FmtContext<'_, S, N>,
+        writer: Writer<'_>,
+        event: &Event<'_>,
+    ) -> std::fmt::Result {
+        let stderr = should_use_stderr(event.metadata().level());
+        ContractFormat::from_streams(self.colors, stderr).format_event(ctx, writer, event)
+    }
 }
 
 #[cfg(test)]
@@ -250,6 +314,75 @@ mod tests {
         assert!(!resolve_color_from(Some("1"), Some("always"), true));
         assert!(resolve_color_from(Some(""), None, true));
         assert!(resolve_color_from(None, Some("bogus"), true));
+        // 大小写与空白须与 TS 侧同样宽容（core 用 trim + toLowerCase）
+        assert!(resolve_color_from(None, Some("ALWAYS"), false));
+        assert!(!resolve_color_from(None, Some("  Never  "), true));
+    }
+
+    #[test]
+    fn colors_resolved_per_stream() {
+        // 契约 §3 硬规则 1：两条流各自探测 TTY。
+        // `1>file 2>tty` 这类重定向下，stdout 无色、stderr 有色，
+        // 取 `stdout || stderr` 的单一布尔会把转义码写进文件。
+        //
+        // 直接测纯函数内核：`resolve_stream_colors` 会读进程环境，
+        // 而 CI/开发机可能已设 NO_COLOR（本仓库开发环境即设了 NO_COLOR=1），
+        // 断言其结果会变成环境敏感测试。
+        let c = StreamColors {
+            stdout: resolve_color_from(None, None, false),
+            stderr: resolve_color_from(None, None, true),
+        };
+        assert!(!c.stdout, "stdout 非 TTY 必须无色（否则转义码进文件）");
+        assert!(c.stderr, "stderr 是 TTY 应着色");
+
+        let d = StreamColors {
+            stdout: resolve_color_from(None, None, true),
+            stderr: resolve_color_from(None, None, false),
+        };
+        assert!(d.stdout);
+        assert!(!d.stderr);
+    }
+
+    #[test]
+    fn contract_format_only_colors_its_own_stream() {
+        // 无色 stdout + 有色 stderr：INFO 行不得带转义，WARN 行必须带。
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let err = Arc::new(Mutex::new(Vec::new()));
+        let sub = tracing_subscriber::fmt::Subscriber::builder()
+            .with_env_filter(tracing_subscriber::EnvFilter::new("trace"))
+            .event_format(StreamAwareFormat {
+                colors: StreamColors {
+                    stdout: false,
+                    stderr: true,
+                },
+            })
+            .with_writer(Split(out.clone(), err.clone()))
+            .finish();
+        tracing::subscriber::with_default(sub, || {
+            tracing::info!("去 stdout");
+            tracing::warn!("去 stderr");
+        });
+        let o = String::from_utf8(out.lock().unwrap().clone()).unwrap();
+        let e = String::from_utf8(err.lock().unwrap().clone()).unwrap();
+        assert!(!o.contains('\u{1b}'), "无色流不得出现转义序列: {o:?}");
+        assert!(e.contains('\u{1b}'), "有色流应出现转义序列: {e:?}");
+    }
+
+    #[test]
+    fn emits_target_as_module_name() {
+        // 契约 §5：TS 侧模块名来自 LogTape category，Rust 侧等价物是 target。
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let err = Arc::new(Mutex::new(Vec::new()));
+        let sub = tracing_subscriber::fmt::Subscriber::builder()
+            .with_env_filter(tracing_subscriber::EnvFilter::new("trace"))
+            .event_format(ContractFormat { color: false })
+            .with_writer(Split(out.clone(), err.clone()))
+            .finish();
+        tracing::subscriber::with_default(sub, || {
+            tracing::info!("带模块名");
+        });
+        let o = String::from_utf8(out.lock().unwrap().clone()).unwrap();
+        assert!(o.contains("target="), "应输出模块名等价物 target=: {o:?}");
     }
 
     #[test]

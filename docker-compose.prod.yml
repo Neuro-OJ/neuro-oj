@@ -149,6 +149,13 @@ services:
       - judge
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-judge:${NOJ_VERSION:?NOJ_VERSION is required}"
     environment:
+      # judge 只读 LOG_LEVEL / LOG_COLOR / NO_COLOR（见 noj-judge/src/logging.rs）：
+      # 它输出契约化的 pretty 文本，不实现 JSON 与脱敏（契约 §4/§6 的
+      # JSON 与脱敏仅适用于 core / gateway）。此处不注入 NOJ_ENV/LOG_FORMAT，
+      # 以免出现「看起来在配置、实际无读取点」的误导项。
+      # 显式关色：容器内无 TTY，auto 本就落空，固化取值可防御误设。
+      LOG_COLOR: ${LOG_COLOR:-never}
+      LOG_LEVEL: ${LOG_LEVEL:-warn}
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
       JUDGE_QUEUE: ${JUDGE_QUEUE:-noj:judge:queue}
       RESULT_QUEUE: ${RESULT_QUEUE:-noj:judge:results}
@@ -196,6 +203,13 @@ services:
   llm-gateway:
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-llm-gateway:${NOJ_VERSION:?NOJ_VERSION is required}"
     environment:
+      # 网关读 NOJ_ENV（决定 JSON 与脱敏）与 LOG_COLOR/LOG_FORMAT（见
+      # noj-llm-gateway/src/logger.ts）。缺失 NOJ_ENV 时按开发模式渲染：
+      # 彩色 pretty 写进 json-file，且敏感字段不脱敏。
+      NOJ_ENV: production
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_COLOR: ${LOG_COLOR:-never}
+      LOG_LEVEL: ${LOG_LEVEL:-warn}
       NOJ_LLM_PORT: "8001"
       NOJ_LLM_SERVICE_TOKEN: ${NOJ_LLM_SERVICE_TOKEN:?NOJ_LLM_SERVICE_TOKEN is required}
       NOJ_LLM_STORE_KEY: ${NOJ_LLM_STORE_KEY:?NOJ_LLM_STORE_KEY is required}
