@@ -1,7 +1,7 @@
 /**
- * 结构化日志与脱敏工具。
+ * 结构化日志（兼容层）。
  *
- * 提供统一的轻量 logger（零外部依赖），支持：
+ * 外观与导出**保持不变**，内部已迁移到 LogTape 2.3.4：
  * - 级别控制：`LOG_LEVEL`（debug/info/warn/error），默认生产 warn、开发 debug
  * - 输出格式：`LOG_FORMAT`（json/pretty），默认生产 json、开发 pretty
  * - 结构化字段优先（借鉴 noj-judge 的 tracing 风格）
@@ -11,140 +11,22 @@
  *
  * 所有涉及 submission_id / score / code / token 等敏感字段的日志，
  * 均应通过本模块的 `logger`，由 logger 统一脱敏，避免散落实现导致泄露。
+ *
+ * 渲染与脱敏规则实现在 `log-format.ts`；LogTape 装配在 `log-config.ts`。
  */
 
+import { getLogger, type LogRecord as LtRecord } from "@logtape/logtape";
 import { getRequestId } from "../observability/context.ts";
+import { setupLogging } from "./log-config.ts";
+import {
+  type LogLevel,
+  redactFields,
+  renderableMessage,
+  toCoreLevel,
+} from "./log-format.ts";
 
-// ── 级别 ──────────────────────────────────────────────────────────────
-
-/** 日志级别。 */
-export type LogLevel = "debug" | "info" | "warn" | "error";
-
-const LEVEL_ORDER: Record<LogLevel, number> = {
-  debug: 10,
-  info: 20,
-  warn: 30,
-  error: 40,
-};
-
-/**
- * 判断当前是否为生产环境。
- * 通过 NOJ_ENV 环境变量识别；非 production 视为开发/测试环境。
- */
-export function isProduction(): boolean {
-  return Deno.env.get("NOJ_ENV") === "production";
-}
-
-/**
- * 解析当前生效的日志级别。
- *
- * 优先读取 `LOG_LEVEL`；非法或未设置时按环境回退
- * （生产 warn，开发/测试 debug）。每次调用重新解析，便于测试动态切换。
- */
-function resolveLevel(): LogLevel {
-  const raw = Deno.env.get("LOG_LEVEL")?.trim().toLowerCase();
-  if (raw && Object.prototype.hasOwnProperty.call(LEVEL_ORDER, raw)) {
-    return raw as LogLevel;
-  }
-  return isProduction() ? "warn" : "debug";
-}
-
-/** 输出格式。 */
-type LogFormat = "json" | "pretty";
-
-/**
- * 解析当前生效的输出格式。
- *
- * 优先读取 `LOG_FORMAT`；非法或未设置时按环境回退
- * （生产 json，开发/测试 pretty）。
- */
-function resolveFormat(): LogFormat {
-  const raw = Deno.env.get("LOG_FORMAT")?.trim().toLowerCase();
-  if (raw === "json" || raw === "pretty") return raw;
-  return isProduction() ? "json" : "pretty";
-}
-
-// ── 脱敏 ──────────────────────────────────────────────────────────────
-
-/**
- * 截断 ID 用于日志展示，保留前缀可识别性但避免完整泄露。
- *
- * @example
- * redactId("550e8400-e29b-41d4-a716-446655440000") // "550e8400..."
- */
-export function redactId(id: string, visiblePrefix = 8): string {
-  if (!id || id.length <= visiblePrefix) return "[redacted]";
-  return `${id.slice(0, visiblePrefix)}...`;
-}
-
-/** 完全脱敏的敏感字段（值不进入日志）。 */
-const SENSITIVE_KEYS = new Set([
-  "password",
-  "password_hash",
-  "token",
-  "token_hash",
-  "secret",
-  "code",
-  "email",
-  "authorization",
-  "cookie",
-  "jwt",
-]);
-
-/** 需要截断展示的 ID 字段。 */
-const ID_KEYS = new Set([
-  "submission_id",
-  "user_id",
-  "problem_id",
-  "conversation_id",
-  "message_id",
-]);
-
-/**
- * 将字段值序列化为可安全 JSON 化的形式。
- * Error 转为 `{name, message}`（开发环境附带 stack）。
- */
-function serializeValue(value: unknown): unknown {
-  if (value instanceof Error) {
-    return isProduction()
-      ? { name: value.name, message: value.message }
-      : { name: value.name, message: value.message, stack: value.stack };
-  }
-  return value;
-}
-
-/**
- * 对字段做环境相关脱敏。
- *
- * 开发/测试环境：原样返回（便于本地调试）。
- * 生产环境：敏感 key 抹除、score 隐藏、*_id 截断。
- */
-function redactFields(
-  fields: Record<string, unknown>,
-): Record<string, unknown> {
-  if (!isProduction()) return fields;
-
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(fields)) {
-    const lower = key.toLowerCase();
-    if (SENSITIVE_KEYS.has(lower)) {
-      out[key] = "[redacted]";
-      continue;
-    }
-    if (lower === "score") {
-      // 分值在生产日志中隐藏（沿用既有策略）
-      continue;
-    }
-    if (ID_KEYS.has(lower) || lower.endsWith("_id")) {
-      out[key] = typeof value === "string" ? redactId(value) : value;
-      continue;
-    }
-    out[key] = value;
-  }
-  return out;
-}
-
-// ── Sink（输出目的地） ────────────────────────────────────────────────
+export type { LogLevel };
+export { isProduction, redactId } from "./log-format.ts";
 
 /** 结构化日志记录。 */
 export interface LogRecord {
@@ -158,58 +40,36 @@ export interface LogRecord {
 /** 日志输出目的地。默认写 console；测试可替换以捕获记录。 */
 export type LogSink = (record: LogRecord) => void;
 
-/** 格式化 pretty 模式下的单个字段值。 */
-function formatValue(value: unknown): string {
-  if (typeof value === "string") {
-    return /\s/.test(value) ? JSON.stringify(value) : value;
+/** LogTape 记录 → 兼容记录（对象形状与迁移前保持一致）。 */
+function toCompatRecord(record: LtRecord): LogRecord {
+  const fields: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(record.properties)) {
+    if (k === "request_id") continue;
+    fields[k] = v;
   }
-  if (value === null || value === undefined) return String(value);
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
+  return {
+    ts: new Date(record.timestamp).toISOString(),
+    level: toCoreLevel(record.level),
+    msg: renderableMessage(record),
+    request_id: typeof record.properties.request_id === "string"
+      ? record.properties.request_id
+      : undefined,
+    fields: redactFields(fields),
+  };
 }
-
-/** 默认 sink：按 LOG_FORMAT 格式化后写入 console。 */
-function defaultSink(record: LogRecord): void {
-  let line: string;
-  if (resolveFormat() === "json") {
-    line = JSON.stringify({
-      ts: record.ts,
-      level: record.level,
-      msg: record.msg,
-      ...(record.request_id ? { request_id: record.request_id } : {}),
-      ...record.fields,
-    });
-  } else {
-    const time = record.ts.slice(11, 23); // HH:MM:SS.mmm
-    const rid = record.request_id
-      ? ` rid=${record.request_id.slice(0, 8)}`
-      : "";
-    const fieldStr = Object.entries(record.fields)
-      .map(([k, v]) => `${k}=${formatValue(v)}`)
-      .join(" ");
-    line = `[${time}] ${record.level.toUpperCase().padEnd(5)} ${record.msg}` +
-      `${rid}${fieldStr ? " " + fieldStr : ""}`;
-  }
-
-  // warn/error 走 stderr，其余走 stdout
-  if (record.level === "warn" || record.level === "error") {
-    console.error(line);
-  } else {
-    console.log(line);
-  }
-}
-
-let currentSink: LogSink = defaultSink;
 
 /** 替换日志 sink（测试用，用于捕获日志记录）。 */
 export function setLogSink(sink: LogSink): void {
-  currentSink = sink;
+  setupLogging((record) => sink(toCompatRecord(record)));
 }
 
 /** 恢复默认 sink（测试清理用）。 */
 export function resetLogSink(): void {
-  currentSink = defaultSink;
+  setupLogging();
 }
+
+// 模块初始化即装配一次默认输出
+setupLogging();
 
 // ── 核心 emit + logger ────────────────────────────────────────────────
 
@@ -218,23 +78,25 @@ function emit(
   msg: string,
   fields?: Record<string, unknown>,
 ): void {
-  if (LEVEL_ORDER[level] < LEVEL_ORDER[resolveLevel()]) return;
-
-  const serialized: Record<string, unknown> = {};
-  if (fields) {
-    for (const [k, v] of Object.entries(fields)) {
-      serialized[k] = serializeValue(v);
-    }
+  // 级别过滤由 LogTape 的 dynamicLevelFilter 统一负责，此处直接投递
+  const log = getLogger(["noj", "legacy"]);
+  const props: Record<string, unknown> = { ...(fields ?? {}) };
+  const rid = getRequestId();
+  if (rid !== undefined) props.request_id = rid;
+  switch (level) {
+    case "debug":
+      log.debug(msg, props);
+      break;
+    case "info":
+      log.info(msg, props);
+      break;
+    case "warn":
+      log.warn(msg, props);
+      break;
+    case "error":
+      log.error(msg, props);
+      break;
   }
-
-  const record: LogRecord = {
-    ts: new Date().toISOString(),
-    level,
-    msg,
-    request_id: getRequestId(),
-    fields: redactFields(serialized),
-  };
-  currentSink(record);
 }
 
 /**
@@ -255,11 +117,11 @@ export const logger = {
     emit("error", msg, fields),
 };
 
-// ── 向后兼容的具名日志函数（内部改走 logger） ────────────────────────
+// ── 向后兼容的具名日志函数 ────────────────────────────────────────────
 
 /**
  * 输出评测任务入队日志。
- * 脱敏由 logger 统一处理（生产环境截断 submission_id）。
+ * 脱敏由渲染层统一处理（生产环境截断 submission_id）。
  */
 export function logJudgeTaskEnqueued(
   submissionId: string,
@@ -275,7 +137,7 @@ export function logJudgeTaskEnqueued(
 
 /**
  * 输出评测结果接收日志。
- * 脱敏由 logger 统一处理（生产环境截断 submission_id、隐藏 score）。
+ * 脱敏由渲染层统一处理（生产环境截断 submission_id、隐藏 score）。
  */
 export function logJudgeResultReceived(
   submissionId: string,
