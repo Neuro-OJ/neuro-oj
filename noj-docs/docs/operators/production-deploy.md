@@ -8,7 +8,8 @@ JSON 配置下的 `deploy/maintain` 命令独立保留，不会自动转换现�
 
 ## 1. 前置条件
 
-- Linux amd64 服务器，至少 2 vCPU、2 GiB Swap 和 5 GiB 可用磁盘空间。
+- Linux amd64 服务器：仅启动/诊断至少 2 vCPU、2 GiB 内存、2 GiB Swap、目标磁盘 10 GiB 可用；这不是公测容量承诺。
+- 启用同机 Judge 做低并发公测，起始建议至少 4 vCPU、8 GiB 内存、4 GiB Swap、目标磁盘 40 GiB 可用，最终规模必须按[容量基线](./capacity-baseline.md)实测确认。
 - Docker Engine 和 Docker Compose v2，当前用户可以运行 Docker。
 - `curl` 或 `wget`、`tar`、`openssl`、CA 证书。
 - 能够访问 GitHub 源码地址和 `ghcr.io/neuro-oj/` 镜像；网络受限时请先配置 Docker 镜像源或代理。
@@ -183,6 +184,26 @@ bash scripts/deploy/restore-drill.sh backups/snapshot-YYYYMMDD-HHMMSS \
 
 建议每季度以及在重要迁移前各执行一次隔离恢复演练。备份快照与 GPG 解密口令文件必须异地独立保存；
 口令丢失时快照无法恢复，任何演练都无法弥补。
+
+### 5.2 定期备份调度与 RPO
+
+恢复演练只能测量 RPO，不能替代定期创建快照。生产安装完成后，建议为当前安装用户注册每日备份任务：
+
+```bash
+cd /opt/neuro-oj
+noj-cli backup schedule install \
+  --schedule '15 2 * * *' \
+  --passphrase-file /etc/noj/backup-passphrase
+noj-cli backup schedule status
+```
+
+任务只维护自己标记的 crontab 区块，不覆盖其他任务；每次执行会保留快照并将输出写入
+`backups/backup-cron.log`。默认每日 02:15 执行，实际时间按服务器时区计算。建议把备份目录和
+口令文件放在独立磁盘/主机，并由监控检查 `noj_backup_last_success_unix_time`；任务失败时应立即
+检查日志和磁盘空间。删除任务使用 `noj-cli backup schedule remove`。
+
+每日快照将 RPO 控制在约 24 小时以内，但无法保证精确上限：任务失败、主机离线或异地复制延迟
+都会扩大实际 RPO。正式验收仍须记录最近快照时间、RPO、RTO 以及备份是否异地保存。
 
 ## 6. 卸载
 

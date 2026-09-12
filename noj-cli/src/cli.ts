@@ -69,7 +69,7 @@ export function printHelp(): string {
     "  start/stop/restart/status  生产服务生命周期",
     "  update [--latest]  同步部署文件、备份并升级生产服务（upgrade 为别名）",
     "  logs          生产服务日志（支持 --follow）",
-    "  backup        生产备份；支持 create/verify/restore/drill",
+    "  backup        生产备份；支持 create/verify/restore/drill/schedule",
     "  verify        生产配置及镜像签名校验",
     "  config check  生产配置校验",
     "  uninstall     卸载生产服务；--all 删除全部数据，需确认",

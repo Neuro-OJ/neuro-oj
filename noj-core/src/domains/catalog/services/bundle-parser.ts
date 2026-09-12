@@ -38,6 +38,14 @@ export interface ParsedProblemBundle {
   entries: Record<string, Uint8Array>;
 }
 
+/** 发布前评测包的静态检查结果。 */
+export interface EvaluationPackageInspection {
+  hasEvaluator: boolean;
+  hasVisibleCases: boolean;
+  hasHiddenCases: boolean;
+  referenceSolution: string | null;
+}
+
 /**
  * 校验条目路径安全：拒绝路径穿越（`..` 段）与绝对路径（`/` 开头）。
  *
@@ -173,6 +181,40 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
     statement: statementFile ? new TextDecoder().decode(statementFile) : null,
     questions,
     entries: files,
+  };
+}
+
+/**
+ * 检查已剥离元数据的评测包是否具备发布前静态验收所需的条目。
+ *
+ * 这里不执行 evaluator，也不把“存在隐藏数据”当成“隐藏数据绝不会泄漏”；
+ * 真正的运行、超时、资源清理和隐藏标记验证必须在隔离 Judge 中完成。
+ */
+export function inspectEvaluationPackage(
+  data: Uint8Array,
+): EvaluationPackageInspection {
+  let files: Record<string, Uint8Array>;
+  try {
+    files = unzipSync(data);
+  } catch {
+    throw new BadRequestError("评测包不是有效的 zip 文件");
+  }
+
+  const names = Object.keys(files);
+  const rootNames = new Set(names.filter((name) => !name.includes("/")));
+  const referenceCandidates = [
+    "reference_solution.py",
+    "standard_solution.py",
+    "solution.py",
+  ];
+  return {
+    hasEvaluator: rootNames.has("evaluate.py"),
+    hasVisibleCases: rootNames.has("visible.jsonl"),
+    hasHiddenCases: rootNames.has("hidden.jsonl") ||
+      names.some((name) => name.startsWith("hidden/")),
+    referenceSolution:
+      referenceCandidates.find((name) => rootNames.has(name)) ??
+        null,
   };
 }
 

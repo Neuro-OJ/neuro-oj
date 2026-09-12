@@ -36,6 +36,7 @@ Neuro OJ 生产运维命令
   status                  查看服务状态
   logs [service]          查看服务日志（支持 --follow）
   backup                  创建完整生产备份
+  backup schedule ...     安装、查看或删除定期备份 cron 任务
   verify                  校验生产镜像和配置
   config check            只检查生产配置，不改变服务状态
 
@@ -486,6 +487,10 @@ main() {
         create)
           shift
           run_deploy backup "$@"
+          ;;
+        schedule)
+          shift
+          bash "$SCRIPT_DIR/scripts/deploy/backup-schedule.sh" "$@"
           ;;
         verify|restore|drill)
           run_backup_command "$@"

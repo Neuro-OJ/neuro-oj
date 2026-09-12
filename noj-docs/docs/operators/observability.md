@@ -43,6 +43,16 @@ SLO 告警分两族：`NojSlo<名称>Fast`（severity 由 SLO 定义，短保持
 staging 演练一次 Judge 或 Redis
 故障及其恢复。上线前必须执行一次告警投递演练（`scripts/deploy/test-alert.sh`）并记录结果。
 
+## 社区搜索性能
+
+社区题解和讨论搜索保留 `ILIKE '%关键词%'` 子串语义。生产 PostgreSQL 通过迁移追加标题和正文的
+`pg_trgm` GIN 部分索引；迁移 0017 已负责启用 `pg_trgm` 扩展，不能回改历史迁移。PGlite 测试环境未内置该扩展，
+测试 DDL 会检测能力后跳过对应索引，但不影响生产迁移。
+
+搜索路由限制关键词为 2～100 个字符。短关键词、高命中率关键词或统计信息不足时，PostgreSQL 仍可能合理选择
+Seq Scan；容量验收应使用约 10 万行代表性数据记录 `EXPLAIN (ANALYZE, BUFFERS)`、P50/P95 和索引体积，
+不能要求所有输入强制走 trigram 索引。
+
 ## 常见故障
 
 ### Core 失联 {#core-失联}
