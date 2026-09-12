@@ -1985,7 +1985,7 @@ jobs:
           SCCACHE_GHA_ENABLED: "true"
 
       - name: 安装 cargo-nextest（并行测试运行器）
-        uses: taiki-e/install-action@v2.87.0
+        uses: taiki-e/install-action@v2.87.8
         with:
           tool: cargo-nextest
 
