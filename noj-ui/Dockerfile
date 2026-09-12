@@ -37,6 +37,7 @@ FROM debian:bookworm-slim@sha256:5ae3c39ebd15e229dcedd5cee596b2497182493d41ff162
 
 # ca-certificates：HTTPS 出站；wget：healthcheck
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         wget \

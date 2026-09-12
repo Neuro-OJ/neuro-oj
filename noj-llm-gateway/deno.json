@@ -10,7 +10,7 @@
     "test:snapshot": "deno test -A --no-check tests/replay_test.ts",
     "test:snapshot:record": "deno run -A scripts/record-replay.ts",
     "db:migrate": "deno run --env-file=.env -A src/db/migrate-cli.ts",
-    "db:generate": "deno -A npm:drizzle-kit generate --config=./drizzle.config.ts",
+    "db:generate": "deno -A npm:drizzle-kit@0.31.10 generate --config=./drizzle.config.ts",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
@@ -24,7 +24,6 @@
     "postgres": "npm:postgres@3.4.5",
     "drizzle-orm": "npm:drizzle-orm@0.45.2",
     "drizzle-orm/": "npm:/drizzle-orm@0.45.2/",
-    "drizzle-kit": "npm:drizzle-kit@0.31.10",
     "@std/encoding": "jsr:@std/encoding@^1"
   },
   "nodeModulesDir": "auto",

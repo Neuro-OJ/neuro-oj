@@ -16,7 +16,9 @@ name: Release Images
 
 on:
   release:
-    types: [published, prereleased]
+    # prereleased 已覆盖创建预发布 Release 的事件；不要同时监听 published，
+    # 否则 GitHub 会为同一次预发布产生两条并发流水线，竞争不可变镜像标签。
+    types: [prereleased]
   workflow_dispatch:
 
 permissions:
