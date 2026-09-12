@@ -88,12 +88,11 @@ impl Drop for ActiveUserGuard {
 fn main() -> Result<()> {
     let rt = tokio::runtime::Runtime::new().context("创建 Tokio 运行时失败")?;
     rt.block_on(async {
-        tracing_subscriber::fmt()
-            .with_env_filter(
-                tracing_subscriber::EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,noj_judge=debug")),
-            )
-            .init();
+        // 契约化日志：布局/配色/分流见 noj_judge::logging 与
+        // dev-docs/engineering/log-conventions.md。
+        // 修复既有缺陷：原 `tracing_subscriber::fmt()` 的默认 ansi 推导只认
+        // NO_COLOR、不探测 TTY，会把 ANSI 转义码写进 json-file 日志。
+        noj_judge::logging::init();
 
         let config = Config::from_env();
         info!("noj-judge 启动");
