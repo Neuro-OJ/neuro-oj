@@ -1,5 +1,5 @@
 <template>
-    <NuxtLink to="/" class="flex items-center gap-2 no-underline text-xl font-bold text-primary shrink-0">
+    <NuxtLink :to="to" class="flex items-center gap-2 no-underline text-xl font-bold text-primary shrink-0">
         <img
             :src="logoSrc"
             :alt="brandName"
@@ -14,9 +14,11 @@ import { computed } from "vue"
 import defaultLogo from "~/assets/img/logo.jpg"
 
 interface Props {
+    /** Logo 点击后的目标地址 */
+    to?: string
     /** 品牌名称 */
     brandName?: string
-    /** Logo 图片地址 */
+    /** Logo 图片地址（支持 PNG、JPG/JPEG、SVG 或外部 URL） */
     logoSrc?: string
     /** Logo 尺寸（Tailwind size-N，对应 size-N 类） */
     size?: number
@@ -25,6 +27,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
+    to: "/",
     brandName: "Neuro OJ",
     logoSrc: defaultLogo,
     size: 7,
