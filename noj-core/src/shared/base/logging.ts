@@ -16,7 +16,6 @@
  */
 
 import { getLogger, type LogRecord as LtRecord } from "@logtape/logtape";
-import { getRequestId } from "../observability/context.ts";
 import { setupLogging } from "./log-config.ts";
 import {
   type LogLevel,
@@ -78,11 +77,12 @@ function emit(
   msg: string,
   fields?: Record<string, unknown>,
 ): void {
-  // 级别过滤由 LogTape 的 dynamicLevelFilter 统一负责，此处直接投递
+  // 级别过滤由 LogTape 的 dynamicLevelFilter 统一负责，此处直接投递。
+  // request_id 不再手工注入：LogTape 的 contextLocalStorage 会用同一个
+  // ALS 自动并入 properties（见 observability/context.ts），手工再写一次
+  // 只会掩盖传播链路的真实状态。
   const log = getLogger(["noj", "legacy"]);
   const props: Record<string, unknown> = { ...(fields ?? {}) };
-  const rid = getRequestId();
-  if (rid !== undefined) props.request_id = rid;
   switch (level) {
     case "debug":
       log.debug(msg, props);

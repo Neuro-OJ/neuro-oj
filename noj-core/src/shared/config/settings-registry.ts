@@ -1046,6 +1046,16 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     envKey: "LOG_COLOR",
     category: "other",
   },
+  {
+    key: "NO_COLOR",
+    type: "string",
+    description:
+      "通用配色禁用约定（https://no-color.org）：非空即关闭着色，优先于 LOG_COLOR；空串视为未设置",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NO_COLOR",
+    category: "other",
+  },
   // ── 可观测性 ───────────────────────────────────────────────
   {
     key: "OBSERVABILITY_SNAPSHOT_TIMEOUT_MS",

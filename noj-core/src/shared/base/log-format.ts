@@ -139,6 +139,19 @@ const ID_KEYS = new Set([
 ]);
 
 /**
+ * 免除 id 脱敏的**关联标识**（契约 §6 的显式例外）。
+ *
+ * `*_id` 通配规则的本意是保护业务实体 id，但 `request_id` 不是业务实体：
+ * 它由服务端随机生成、不携带用户隐私，且唯一用途就是**跨服务串联同一次请求**。
+ * 一旦被截断成前 8 字符，生产环境的日志就无法与上游/下游对齐，串联能力失效。
+ * 该键同时由 pretty 侧自行 `slice(0, 8)` 控制展示长度（契约 §1），
+ * 因此 JSON 侧保留完整值不会带来泄露面。
+ */
+const CORRELATION_KEYS = new Set([
+  "request_id",
+]);
+
+/**
  * 截断 ID 用于日志展示，保留前缀可识别性但避免完整泄露。
  *
  * @example
@@ -170,39 +183,94 @@ export function redactValueByKey(key: string, value: unknown): unknown {
   const lower = key.toLowerCase();
   if (SENSITIVE_KEYS.has(lower)) return "[redacted]";
   if (lower === "score") return "[redacted]";
+  // 关联标识先于 `*_id` 通配判定，否则会被误截断（见 CORRELATION_KEYS）
+  if (CORRELATION_KEYS.has(lower)) return serializeValue(value);
   if (ID_KEYS.has(lower) || lower.endsWith("_id")) {
     return typeof value === "string" ? redactId(value) : serializeValue(value);
   }
-  return serializeValue(value);
+  // 非敏感键也要递归：顶层键名匹配不到嵌套结构里的 password/api_key，
+  // 整块直通即明文泄露（Error 的 details/context 是典型入口）。
+  return redactNested(value);
+}
+
+/** 递归深度上限：防御病态深结构。 */
+const MAX_REDACT_DEPTH = 6;
+
+/** 超出递归上限时的占位符（fail-closed，绝不原样放行）。 */
+export const REDACT_DEPTH_PLACEHOLDER = "[redacted: max-depth]";
+
+/** 自引用结构在遍历中的占位符（避免无限递归与后续 JSON 循环报错）。 */
+export const REDACT_CIRCULAR_PLACEHOLDER = "[redacted: circular]";
+
+/**
+ * 递归脱敏嵌套结构（对象/数组）中的敏感键。
+ *
+ * 仅在生产环境生效（调用方已判定）。
+ *
+ * 两处防御都是 **fail-closed**（返回占位符而非原始子树——原样放行等于把
+ * 未脱敏的 `password`/`token` 写进日志）：
+ * - 超过 `MAX_REDACT_DEPTH`；
+ * - 自引用结构（`seen` 记录当前路径上的对象），否则递归不终止，
+ *   且下游 `JSON.stringify` 会直接抛错。
+ */
+function redactNested(
+  value: unknown,
+  depth = 0,
+  seen: WeakSet<object> = new WeakSet(),
+): unknown {
+  const serialized = serializeValue(value);
+  if (serialized === null || typeof serialized !== "object") return serialized;
+  if (serialized instanceof Error) return serialized;
+  if (depth >= MAX_REDACT_DEPTH) return REDACT_DEPTH_PLACEHOLDER;
+  if (seen.has(serialized)) return REDACT_CIRCULAR_PLACEHOLDER;
+  seen.add(serialized);
+  try {
+    if (Array.isArray(serialized)) {
+      return serialized.map((item) => redactNested(item, depth + 1, seen));
+    }
+    const out: Record<string, unknown> = {};
+    for (
+      const [k, v] of Object.entries(serialized as Record<string, unknown>)
+    ) {
+      const lower = k.toLowerCase();
+      if (SENSITIVE_KEYS.has(lower) || lower === "score") {
+        out[k] = "[redacted]";
+        continue;
+      }
+      if (CORRELATION_KEYS.has(lower)) {
+        out[k] = serializeValue(v);
+        continue;
+      }
+      if (ID_KEYS.has(lower) || lower.endsWith("_id")) {
+        out[k] = typeof v === "string"
+          ? redactId(v)
+          : redactNested(v, depth + 1, seen);
+        continue;
+      }
+      out[k] = redactNested(v, depth + 1, seen);
+    }
+    return out;
+  } finally {
+    // 只跟踪「当前路径」：兄弟节点引用同一对象是合法的 DAG，不应误判为环。
+    seen.delete(serialized);
+  }
 }
 
 /**
  * 对字段做环境相关脱敏。
  *
  * 开发/测试：仅做 Error 序列化。生产：敏感键抹除、`score` 隐藏、`*_id` 截断。
+ *
+ * 逐值委托 `redactValueByKey`，**不重复实现规则**——两条并行的规则副本曾导致
+ * `request_id` 豁免只在一条上生效（另一条仍把它截断），这类漂移必须从结构上消除。
  */
 export function redactFields(
   fields: Record<string, unknown>,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(fields)) {
-    if (!isProduction()) {
-      out[key] = serializeValue(value);
-      continue;
-    }
-    const lower = key.toLowerCase();
-    if (SENSITIVE_KEYS.has(lower)) {
-      out[key] = "[redacted]";
-      continue;
-    }
-    if (lower === "score") continue; // 分值在生产日志中隐藏
-    if (ID_KEYS.has(lower) || lower.endsWith("_id")) {
-      out[key] = typeof value === "string"
-        ? redactId(value)
-        : serializeValue(value);
-      continue;
-    }
-    out[key] = serializeValue(value);
+    if (isProduction() && key.toLowerCase() === "score") continue; // 分值隐藏
+    out[key] = redactValueByKey(key, value);
   }
   return out;
 }
@@ -342,11 +410,23 @@ export function makePrettyFormatter(
   return getTextFormatter(options);
 }
 
+/** JSON 信封的保留键：业务字段不得覆盖它们（见 `log-conventions.md` §4）。 */
+export const RESERVED_ENVELOPE_KEYS: readonly string[] = [
+  "ts",
+  "level",
+  "msg",
+  "request_id",
+];
+
 /**
  * 构造 **core 既有形状**的 JSON formatter。
  *
  * 不使用 `getJsonLinesFormatter()`——它的形状（`@timestamp` / 大写级别 /
  * `properties` 嵌套）与既有契约不兼容。
+ *
+ * 保留键（`ts`/`level`/`msg`/`request_id`）由信封占据：同名的业务字段会被
+ * 改名成 `field_<name>` 而不是静默覆盖信封，否则一条 `logger.info("x", { msg })`
+ * 就能把消息体本身抹掉（历史上确实如此）。
  */
 export function makeJsonFormatter(): (record: LtRecord) => string {
   return (record: LtRecord): string => {
@@ -355,7 +435,8 @@ export function makeJsonFormatter(): (record: LtRecord) => string {
     const rest: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(fields)) {
       if (k === "request_id") continue;
-      rest[k] = v instanceof Error ? serializeValue(v) : v;
+      const key = RESERVED_ENVELOPE_KEYS.includes(k) ? `field_${k}` : k;
+      rest[key] = v instanceof Error ? serializeValue(v) : v;
     }
     return JSON.stringify({
       ts: new Date(record.timestamp).toISOString(),
