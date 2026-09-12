@@ -14,6 +14,7 @@ import {
   deployUp,
 } from "./deploy/deploy.ts";
 import { maintainLogs, parseModulesArg } from "./maintain/logs.ts";
+import { type ColorMode, parseColorMode } from "./util/color.ts";
 import {
   configCheck,
   configSet,
@@ -140,14 +141,19 @@ export function parseDeployArgs(args: string[]): { dir: string | undefined } {
   return { dir: idx !== -1 ? args[idx + 1] : undefined };
 }
 
-/** 解析 maintain 参数：--dir <path>、--follow、位置参数 modules。 */
+/**
+ * 解析 maintain 参数：`--dir <path>`、`--follow`、`--color[=]<auto|always|never>`、
+ * 位置参数 modules。
+ */
 export function parseMaintainArgs(args: string[]): {
   dir: string | undefined;
   follow: boolean;
+  color: ColorMode;
   modules: string | undefined;
 } {
   let dir: string | undefined;
   let follow = false;
+  let color: ColorMode = "auto";
   const positional: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
@@ -156,11 +162,22 @@ export function parseMaintainArgs(args: string[]): {
       i++;
     } else if (a === "--follow") {
       follow = true;
+    } else if (a === "--color") {
+      // 支持 `--color always` 与 `--color=always` 两种写法
+      const next = args[i + 1];
+      if (next !== undefined && !next.startsWith("-")) {
+        color = parseColorMode(next);
+        i++;
+      } else {
+        color = "always"; // 裸 `--color` 视为强制开（与常见 CLI 约定一致）
+      }
+    } else if (a.startsWith("--color=")) {
+      color = parseColorMode(a.slice("--color=".length));
     } else {
       positional.push(a);
     }
   }
-  return { dir, follow, modules: positional[0] };
+  return { dir, follow, color, modules: positional[0] };
 }
 
 /** maintain backup 参数解析结果。 */
@@ -311,7 +328,9 @@ export async function dispatchCommand(
         ], ctx);
       }
       if (sub === "logs") {
-        const { dir, follow, modules } = parseMaintainArgs(args.slice(1));
+        const { dir, follow, color, modules } = parseMaintainArgs(
+          args.slice(1),
+        );
         const deployDir = dir ?? ctx.deployDir ?? findDeployDir(ctx.cwd);
         if (deployDir === null) {
           console.error(
@@ -322,7 +341,12 @@ export async function dispatchCommand(
         try {
           const { config } = await loadDeployment(deployDir);
           const mods = parseModulesArg(modules, config);
-          await maintainLogs({ dir: deployDir, modules: mods, follow });
+          await maintainLogs({
+            dir: deployDir,
+            modules: mods,
+            follow,
+            color,
+          });
           return 0;
         } catch (e) {
           console.error(`maintain logs: ${(e as Error).message}`);

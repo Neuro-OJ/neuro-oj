@@ -12,5 +12,6 @@
 - [API 路由目录](route-catalog.md)
 - [配置分层](config-layering.md)
 - [可重放审计日志](audit-log.md)
+- [日志视觉契约](log-conventions.md)
 
 根 `AGENTS.md` 中的“规则 + 链接”指向这里的详细文档。

@@ -1,7 +1,9 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { users } from "./../../../../shared/db/schema.ts";
-import { logger } from "./../../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "identity"]);
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 
 /**

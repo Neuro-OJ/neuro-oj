@@ -1,5 +1,7 @@
 import { getRedis } from "./mq/connection.ts";
-import { logger } from "./base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "search"]);
 
 export type SearchEntityType =
   | "problem"

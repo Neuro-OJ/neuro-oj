@@ -5,10 +5,7 @@ import {
 } from "../../../shared/mq/base-consumer.ts";
 import { saveEvaluationResult } from "../services/submissions/submissions-result.ts";
 import { saveSelfTestResult } from "../services/self-tests.ts";
-import {
-  logger,
-  logJudgeResultReceived,
-} from "../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
 import {
   Channels,
   publishSseEvent,
@@ -17,6 +14,8 @@ import {
 import { SELF_TEST_ID_PREFIX } from "../types/self-tests.ts";
 import type { JudgeResult } from "../types/index.ts";
 import { observability as metrics } from "../../../domains/observability/write.ts";
+
+const logger = getLogger(["noj", "submission"]);
 
 /**
  * 评测结果队列名称。
@@ -171,11 +170,11 @@ export async function handleResultMessage(
 
   metrics.inc("noj_evaluation_results_total");
 
-  logJudgeResultReceived(
-    judgeResult.submission_id,
-    judgeResult.status,
-    judgeResult.score,
-  );
+  logger.info("收到评测结果", {
+    submission_id: judgeResult.submission_id,
+    status: judgeResult.status,
+    score: judgeResult.score,
+  });
 
   const isSelfTest = judgeResult.submission_id.startsWith(SELF_TEST_ID_PREFIX);
 

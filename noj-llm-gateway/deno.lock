@@ -1,6 +1,7 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@logtape/logtape@^2.3.4": "2.3.4",
     "jsr:@std/assert@*": "1.0.19",
     "jsr:@std/assert@1": "1.0.19",
     "jsr:@std/encoding@1": "1.0.10",
@@ -14,6 +15,9 @@
     "npm:postgres@3.4.5": "3.4.5"
   },
   "jsr": {
+    "@logtape/logtape@2.3.4": {
+      "integrity": "efdcc475dd8475da85f8e8344c43b72b75e408d6c114dcab687498895199b652"
+    },
     "@std/assert@1.0.19": {
       "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
       "dependencies": [
@@ -625,6 +629,7 @@
   },
   "workspace": {
     "dependencies": [
+      "jsr:@logtape/logtape@^2.3.4",
       "jsr:@std/encoding@1",
       "npm:drizzle-kit@0.31.10",
       "npm:drizzle-orm@0.45.2",

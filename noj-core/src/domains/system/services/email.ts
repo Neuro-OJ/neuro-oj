@@ -16,7 +16,9 @@ import type {
 } from "./email-providers/types.ts";
 import { buildEmailVerificationHtml } from "./email-providers/common.ts";
 import { getSetting } from "./system-settings.ts";
-import { logger } from "../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "system"]);
 import { observability as metrics } from "../../../domains/observability/write.ts";
 
 /** Provider 名称到模块路径的映射 */

@@ -11,7 +11,9 @@ import {
   SCHEMA_INDEXES,
 } from "./schema-ddl.ts";
 import { dirname, resolve } from "jsr:@std/path@^1";
-import { logger } from "../base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "db"]);
 import { observability as metrics } from "../observability/registry.ts";
 import type { ObservabilityRegistry } from "../observability/contracts.ts";
 
@@ -524,9 +526,11 @@ export async function ensurePGliteSchemaForTest(): Promise<void> {
           } catch (err) {
             // 测试运行时缺少 pg_trgm 时保留 ILIKE 语义，接受顺序扫描。
             logger.debug(
-              `可选扩展索引未创建（测试环境可忽略）: ${idx} - ${
-                err instanceof Error ? err.message : String(err)
-              }`,
+              "可选扩展索引未创建（测试环境可忽略）: {idx} - {reason}",
+              {
+                idx,
+                reason: err instanceof Error ? err.message : String(err),
+              },
             );
           }
         }

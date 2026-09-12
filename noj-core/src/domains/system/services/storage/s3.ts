@@ -36,7 +36,9 @@ import {
   type StorageProvider,
   validateStorageKey,
 } from "./types.ts";
-import { logger } from "../../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "system"]);
 
 /** S3StorageProvider 构造配置 */
 export interface S3StorageConfig {

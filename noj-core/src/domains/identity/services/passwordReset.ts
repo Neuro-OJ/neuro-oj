@@ -9,7 +9,9 @@ import {
   sendPasswordResetEmail,
 } from "./../../system/index.ts";
 import { BadRequestError } from "./../../../shared/base/errors.ts";
-import { logger } from "./../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "identity"]);
 import { validatePasswordStrength } from "./auth.ts";
 
 /** 密码重置令牌有效期（分钟）。OWASP 2025+ 建议 ≤ 15 分钟。 */

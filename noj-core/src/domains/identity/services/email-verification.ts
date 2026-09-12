@@ -5,7 +5,9 @@ import {
   BadRequestError,
   RateLimitedError,
 } from "../../../shared/base/errors.ts";
-import { logger } from "../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "identity"]);
 import { generateResetToken, hashResetToken } from "./security/resetToken.ts";
 import {
   isEmailSuppressed,

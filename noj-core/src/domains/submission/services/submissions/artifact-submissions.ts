@@ -36,7 +36,9 @@ import {
   Channels,
   publishSseEvent,
 } from "./../../../../shared/sse/event-bus.ts";
-import { logger } from "./../../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "submission"]);
 import type { JudgeTask, JudgeTaskLlm } from "../../types/index.ts";
 import type { LlmConfig, RuntimeConfig } from "./../../../catalog/index.ts";
 import type { SubmissionResponse } from "./submissions-types.ts";

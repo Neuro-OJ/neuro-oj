@@ -18,7 +18,9 @@ import { checkPermission } from "./../../identity/index.ts";
 import { getStorageProvider } from "./../../system/index.ts";
 import { isRetryableJudgeQueueError, pushJudgeTask } from "../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
-import { logger } from "./../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "submission"]);
 import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";

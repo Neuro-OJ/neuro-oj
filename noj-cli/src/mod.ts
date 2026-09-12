@@ -92,7 +92,14 @@ export type {
 } from "./deploy/deploy.ts";
 
 // util（P3）
-export { colorFor, prefixLine, RESET } from "./util/color.ts";
+export {
+  colorFor,
+  type ColorMode,
+  parseColorMode,
+  prefixLine,
+  RESET,
+  resolveColor,
+} from "./util/color.ts";
 
 // runtime（P3）
 export { followLogFile, logPath, readRecentLog } from "./runtime/logfile.ts";

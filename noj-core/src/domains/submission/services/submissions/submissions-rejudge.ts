@@ -34,7 +34,9 @@ import {
   publishSseEvent,
 } from "./../../../../shared/sse/event-bus.ts";
 import { updateSubmissionStatus } from "./submissions-result.ts";
-import { logger } from "./../../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "submission"]);
 
 const MAX_BATCH_REJUDGE = 500;
 

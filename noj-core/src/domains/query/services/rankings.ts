@@ -8,7 +8,9 @@ import { submissions } from "./../../../shared/db/schema.ts";
 import { users } from "./../../../shared/db/schema.ts";
 import { BadRequestError } from "./../../../shared/base/errors.ts";
 import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
-import { logger } from "./../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "query"]);
 
 /**
  * 用户榜单条目。

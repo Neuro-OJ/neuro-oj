@@ -24,7 +24,9 @@ import { getStorageProvider } from "./../../../system/index.ts";
 import type { JudgeResult, SubmissionStatus } from "../../types/index.ts";
 import { applyNewResult } from "../../../query/index.ts";
 import { refreshRankingsView } from "../../../query/index.ts";
-import { logger } from "./../../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "submission"]);
 import { Channels } from "./../../../../shared/sse/event-bus.ts";
 import { createActivity } from "../../../community/index.ts";
 

@@ -111,6 +111,41 @@ export const GATEWAY_CONFIG_DEFINITIONS: GatewayEnvDefinition[] = [
     readMode: "static",
     defaultValue: "api.openai.com",
   },
+  // ── 日志（issue #497「谁读谁声明」：真实读取点是 src/logger.ts） ──
+  {
+    key: "NOJ_ENV",
+    description:
+      "运行环境标记；=production 时启用 JSON 日志输出与生产脱敏（缺失则按开发模式渲染）",
+    isSecret: false,
+    readMode: "static",
+    defaultValue: "development",
+  },
+  {
+    key: "LOG_LEVEL",
+    description: "日志级别（debug/info/warn/error；未设置按 NOJ_ENV 回退）",
+    isSecret: false,
+    readMode: "static",
+  },
+  {
+    key: "LOG_FORMAT",
+    description: "日志格式（json/pretty；未设置按 NOJ_ENV 回退）",
+    isSecret: false,
+    readMode: "static",
+  },
+  {
+    key: "LOG_COLOR",
+    description:
+      "日志着色（always/never/auto；NO_COLOR 优先，LOG_FORMAT=json 时恒无色）",
+    isSecret: false,
+    readMode: "static",
+  },
+  {
+    key: "NO_COLOR",
+    description:
+      "通用配色禁用约定（https://no-color.org）：非空即关闭着色，优先于 LOG_COLOR；空串视为未设置",
+    isSecret: false,
+    readMode: "static",
+  },
   {
     // 代表键：真实键由前缀模板生成，枚举见 QUOTA_ENV_KEYS
     key: "NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>",

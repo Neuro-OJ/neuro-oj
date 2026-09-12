@@ -26,7 +26,9 @@ import type { Context } from "hono";
 import { AppError, ForbiddenError } from "./../../../../shared/base/errors.ts";
 import { checkPermission } from "./../../../identity/index.ts";
 import { getSetting } from "../../../system/index.ts";
-import { logger } from "./../../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "catalog"]);
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import type { RuntimeConfig } from "../../index.ts";
 
@@ -129,9 +131,8 @@ export function enforceResourceLimits(
       if (!warnedInvalidLimits.has(settingKey)) {
         warnedInvalidLimits.add(settingKey);
         logger.warn(
-          `资源上限配置 ${settingKey} 的值非数字（${
-            String(setting.value)
-          }），按不限制处理`,
+          "资源上限配置 {key} 的值非数字（{value}），按不限制处理",
+          { key: settingKey, value: String(setting.value) },
         );
       }
     }

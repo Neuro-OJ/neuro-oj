@@ -19,7 +19,9 @@ import {
   JUDGE_QUEUE_CAPACITY,
   JUDGE_QUEUES,
 } from "./producer.ts";
-import { logger } from "../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "submission"]);
 import type { JudgeTask, JudgeTaskPriority } from "../types/index.ts";
 import type { RuntimeConfig } from "../../catalog/index.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
@@ -317,20 +319,23 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
     try {
       await pushJudgeTask(task);
       await actions.onEnqueued(row);
-      logger.info(`已恢复 pending ${actions.label}入队`, {
+      logger.info("已恢复 pending {label}入队", {
+        label: actions.label,
         [actions.idKey]: row.id,
       });
     } catch (err) {
       if (!isRetryableJudgeQueueError(err)) {
         // 永久错误（消息超限等）：标记 error，避免每轮 sweeper 无限重试。
         await actions.onPermanentError(row, err);
-        logger.error(`pending ${actions.label}因永久入队失败标记为 error`, {
+        logger.error("pending {label}因永久入队失败标记为 error", {
+          label: actions.label,
           [actions.idKey]: row.id,
           err,
         });
         continue;
       }
-      logger.error(`pending ${actions.label}恢复失败（等待下轮重试）`, {
+      logger.error("pending {label}恢复失败（等待下轮重试）", {
+        label: actions.label,
         [actions.idKey]: row.id,
         err,
       });
