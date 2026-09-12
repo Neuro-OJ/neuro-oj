@@ -83,10 +83,11 @@ function isActive(path: string) {
       :class="sidebarOpen ? 'w-60' : 'w-0 md:w-15 overflow-hidden md:overflow-visible'"
     >
       <div class="flex items-center justify-between px-3 py-3.5 border-b border-border min-h-16">
-        <NuxtLink to="/admin" class="flex items-center gap-2 no-underline overflow-hidden">
-          <img src="~/assets/img/logo.jpg" alt="NOJ" class="size-7 rounded-md shrink-0" />
-          <span v-show="sidebarOpen" class="text-base font-bold text-primary whitespace-nowrap">管理后台</span>
-        </NuxtLink>
+        <BrandLogo
+          to="/admin"
+          brand-name="管理后台"
+          :text-class="sidebarOpen ? 'text-base whitespace-nowrap' : 'hidden'"
+        />
         <button class="bg-none border-none text-text-secondary cursor-pointer p-1 rounded shrink-0 hover:bg-primary-hover transition-colors" @click="sidebarOpen = !sidebarOpen">
           <UIcon name="i-lucide-panel-left-close" class="size-4.5" v-if="sidebarOpen"/>
           <UIcon name="i-lucide-panel-left" class="size-4.5" v-else/>
