@@ -32,6 +32,10 @@ if (import.meta.main) {
   // 日志模板语法：LogTape 把 `{...}` 当占位符且**失败是静默的**，
   // 残留的 JS 模板字符串会被当作占位符消费而不报错，只能静态拦住。
   await run(["deno", "run", "-A", "scripts/check-log-migration.ts"]);
+  // 跨运行时日志渲染一致性：core 与 gateway 的渲染实现刻意独立
+  // （跨模块相对导入会破坏 deno check 与 exports 边界），只能靠同一组
+  // fixture 逐字符锁定等价，否则「统一日志渲染」会静默漂移。
+  await run(["deno", "run", "-A", "scripts/check-log-parity.ts"]);
   await run(["deno", "run", "-A", "scripts/gen-alert-rules.ts", "--check"]);
   await run(["bash", "scripts/deploy/test-monitoring.sh"]);
   await run([

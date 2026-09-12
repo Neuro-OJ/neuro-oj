@@ -19,16 +19,56 @@ import { getTextFormatter } from "@logtape/logtape";
 
 export type { LtRecord };
 
-/** SGR 常量（与视觉契约 §1 一一对应）。 */
+/**
+ * SGR 参数码（**不含** ESC 包装），与视觉契约 §1 一一对应。
+ *
+ * 存参数码而非完整转义序列，是为了让渲染层把「行级强调」与「片段自身样式」
+ * 合成进同一个序列（见 `renderSpans`）。契约表中的复合码由 `sgr()` 合成：
+ * ERROR 徽章 `1;31` = `sgr(SGR.bold, SGR.error)`（行级粗体 1 + 级别色 31）。
+ */
 export const SGR = {
-  reset: "\x1b[0m",
-  dim: "\x1b[2m",
-  bold: "\x1b[1m",
-  info: "\x1b[36m",
-  debug: "\x1b[90m",
-  warn: "\x1b[1;33m",
-  error: "\x1b[1;31m",
+  reset: "0",
+  bold: "1",
+  dim: "2",
+  info: "36",
+  debug: "90",
+  warn: "33",
+  error: "31",
+  /** 模块名（契约 §2 模块列）。 */
+  module: "34",
+  /** 数值字面量：与字符串值区分，便于在长行里扫读数字。 */
+  number: "35",
 } as const;
+
+/** 把 SGR 参数码包装成完整转义序列；重复码去重（合成行级强调时会出现）。 */
+export function sgr(...codes: readonly string[]): string {
+  const uniq = [...new Set(codes)];
+  return uniq.length === 0 ? "" : `\x1b[${uniq.join(";")}m`;
+}
+
+/**
+ * 标记「由 Error 序列化而来」的对象。
+ *
+ * `serializeValue` 会把 Error 转成普通对象，`formatFieldValue` 里的
+ * `value instanceof Error` 分支因此**永远不可达**（实测确认），渲染层再也
+ * 认不出这是错误。用不可枚举的 Symbol 打标记：`JSON.stringify` 与
+ * `Object.entries` 都看不见它，故不改动 §4 的 JSON 形状与既有脱敏遍历。
+ */
+export const ERROR_TAG: unique symbol = Symbol.for("noj.log.serialized-error");
+
+/** 给序列化后的 Error 形状打标记（不可枚举，对 JSON 不可见）。 */
+function tagError<T extends object>(obj: T): T {
+  Object.defineProperty(obj, ERROR_TAG, { value: true, enumerable: false });
+  return obj;
+}
+
+/** 判定值是否为序列化后的 Error 形状。 */
+export function isSerializedError(
+  value: unknown,
+): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null &&
+    (value as Record<symbol, unknown>)[ERROR_TAG] === true;
+}
 
 /** core 对外契约级别名。 */
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -165,9 +205,13 @@ export function redactId(id: string, visiblePrefix = 8): string {
 /** Error → 契约形状（生产去掉 stack）。 */
 export function serializeValue(value: unknown): unknown {
   if (value instanceof Error) {
-    return isProduction()
-      ? { name: value.name, message: value.message }
-      : { name: value.name, message: value.message, stack: value.stack };
+    return tagError(
+      isProduction() ? { name: value.name, message: value.message } : {
+        name: value.name,
+        message: value.message,
+        stack: value.stack,
+      },
+    );
   }
   return value;
 }
@@ -228,6 +272,7 @@ function redactNested(
     if (Array.isArray(serialized)) {
       return serialized.map((item) => redactNested(item, depth + 1, seen));
     }
+    const wasError = isSerializedError(serialized);
     const out: Record<string, unknown> = {};
     for (
       const [k, v] of Object.entries(serialized as Record<string, unknown>)
@@ -249,7 +294,9 @@ function redactNested(
       }
       out[k] = redactNested(v, depth + 1, seen);
     }
-    return out;
+    // 重建对象会丢掉不可枚举标记，这里补回：否则递归脱敏后的 Error
+    // 又退回「认不出的普通对象」，渲染层无法展开成详情块。
+    return wasError ? tagError(out) : out;
   } finally {
     // 只跟踪「当前路径」：兄弟节点引用同一对象是合法的 DAG，不应误判为环。
     seen.delete(serialized);
@@ -291,6 +338,11 @@ export function formatFieldValue(value: unknown): string {
     }
   }
   return String(value);
+}
+
+/** 值是否为数值字面量（用于着色区分；不含 bigint 与 NaN）。 */
+export function isNumericValue(value: unknown): boolean {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 /**
@@ -340,10 +392,87 @@ export function renderableFields(record: LtRecord): [string, unknown][] {
 const TIME_WIDTH = 12;
 /** 级别列宽（`padEnd(5)`）。 */
 const LEVEL_WIDTH = 5;
-/** msg 起始列：时间戳 + 2 + 级别 + 2。 */
-const MSG_COLUMN = TIME_WIDTH + 2 + LEVEL_WIDTH + 2;
+/** 模块列宽（契约 §2）。 */
+const MODULE_WIDTH = 14;
+/** msg 起始列：时间戳 + 2 + 级别 + 2 + 模块 + 2 = 37。 */
+const MSG_COLUMN = TIME_WIDTH + 2 + LEVEL_WIDTH + 2 + MODULE_WIDTH + 2;
 
-/** 契约 pretty 布局（视觉契约 §2）。 */
+/**
+ * 一个带样式的文本片段。
+ *
+ * 渲染层**必须**按片段合成 SGR，不能在整行外层套样式：行内每个片段的
+ * `reset` 都会把外层样式清掉（实测——这正是「WARN/ERROR 整行粗体」这一
+ * 契约承诺长期未生效的原因，且 judge 侧还会把粗体泄漏到后续输出）。
+ */
+interface Span {
+  text: string;
+  /** SGR 参数码；空数组表示继承默认色。 */
+  codes: string[];
+}
+
+const PLAIN: readonly string[] = [];
+
+/** 把片段序列渲染成字符串；无色时仅拼接文本，保证零转义序列。 */
+function renderSpans(spans: readonly Span[], color: boolean): string {
+  if (!color) return spans.map((s) => s.text).join("");
+  // 空文本片段不产出转义序列：否则会留下「开了样式却没有内容」的裸 SGR，
+  // 该样式状态会泄漏到后续无关输出上（judge 侧曾有此缺陷）。
+  //
+  // 每个着色片段都自成 `开 → 文本 → 关`：片段之间不共享样式状态，
+  // 因此不需要（也不能）在整行外层套样式——外层会立刻被内层 reset 清掉。
+  return spans
+    .filter((s) => s.text.length > 0)
+    .map((s) =>
+      s.codes.length === 0
+        ? s.text
+        : `${sgr(...s.codes)}${s.text}${sgr(SGR.reset)}`
+    )
+    .join("");
+}
+
+/**
+ * 在指定片段上叠加行级强调码（如 ERROR 整行粗体）。
+ *
+ * 强调码**前置**，使合成结果与契约表一致：ERROR 徽章 `31` + 行级 `1`
+ * → `1;31`，正是契约 §1 的 ERROR 复合码；WARN 徽章 `33` + `1` → `1;33`。
+ * `sgr()` 负责去重，故不会出现 `1;1`。
+ */
+function emphasize(spans: Span[], code: string): Span[] {
+  return spans.map((s) =>
+    // 纯空白片段不参与强调：加粗空格视觉无差别，只会给每行白添若干转义字节。
+    s.text.trim().length === 0
+      ? { text: s.text, codes: s.codes }
+      : { text: s.text, codes: [code, ...s.codes] }
+  );
+}
+
+/** 模块名：取 category 末段（judge 侧取剥掉 crate 前缀的 target）。 */
+export function moduleName(record: LtRecord): string | undefined {
+  const cat = record.category as readonly unknown[] | undefined;
+  if (!Array.isArray(cat) || cat.length === 0) return undefined;
+  // 跳过 LogTape 自身的 meta logger 前缀，取业务段（`noj` 之后的最后一段）。
+  const parts = cat.filter((c) => typeof c === "string") as string[];
+  if (parts.length === 0) return undefined;
+  const last = parts[parts.length - 1]!;
+  return last.length > 0 ? last : undefined;
+}
+
+/** 模块名截断到列宽（超宽加省略号，避免撑破列）。 */
+export function fitModule(name: string): string {
+  return name.length <= MODULE_WIDTH
+    ? name.padEnd(MODULE_WIDTH)
+    : `${name.slice(0, MODULE_WIDTH - 1)}…`;
+}
+
+/**
+ * 契约 pretty 布局（视觉契约 §2）。
+ *
+ * 布局：
+ * ```
+ * 14:32:07.412  INFO   submission      评测任务入队  rid=550e8400  queue_length=3
+ * ```
+ * 续行（msg 内换行、Error 详情块）缩进到 `MSG_COLUMN`。
+ */
 export function formatPretty(
   values: FormattedValues,
   opts: { color: boolean; production: boolean },
@@ -354,39 +483,92 @@ export function formatPretty(
   const rid = typeof record.properties.request_id === "string"
     ? record.properties.request_id.slice(0, 8)
     : undefined;
+  const bold = level === "error";
 
-  const parts: string[] = [];
-  parts.push(opts.color ? `${SGR.dim}${time}${SGR.reset}` : time, "  ");
-  const badge = level.toUpperCase().padEnd(LEVEL_WIDTH);
-  parts.push(opts.color ? `${SGR[level]}${badge}${SGR.reset}` : badge, "  ");
+  const spans: Span[] = [];
+  const emit = (text: string, codes: readonly string[] = PLAIN) => {
+    if (text.length === 0) return;
+    spans.push({ text, codes: [...codes] });
+  };
+
+  emit(time, [SGR.dim]);
+  emit("  ");
+  emit(level.toUpperCase().padEnd(LEVEL_WIDTH), [SGR[level]]);
+  emit("  ");
+  const mod = moduleName(record);
+  if (mod) {
+    emit(fitModule(mod), [SGR.module]);
+    emit("  ");
+  } else {
+    // 无 category 时保留列宽，避免同一批日志出现两种缩进。
+    emit(" ".repeat(MODULE_WIDTH + 2));
+  }
 
   const indent = " ".repeat(MSG_COLUMN);
-  parts.push(renderableMessage(record).split("\n").join(`\n${indent}`));
+  const msg = renderableMessage(record);
+  emit(msg.split("\n").join(`\n${indent}`));
 
   if (rid) {
-    parts.push(
-      "  ",
-      opts.color ? `${SGR.dim}rid=${rid}${SGR.reset}` : `rid=${rid}`,
-    );
+    emit("  ");
+    emit("rid=", [SGR.dim]);
+    emit(rid);
   }
+
   const entries = renderableFields(record);
-  if (entries.length > 0) {
-    parts.push(
-      "  ",
-      entries
-        .map(([k, v]) =>
-          opts.color
-            ? `${SGR.dim}${k}=${SGR.reset}${formatFieldValue(v)}`
-            : `${k}=${formatFieldValue(v)}`
-        )
-        .join("  "),
+  const errors: [string, Record<string, unknown>][] = [];
+  const plain: [string, unknown][] = [];
+  for (const [k, v] of entries) {
+    if (isSerializedError(v)) errors.push([k, v]);
+    else plain.push([k, v]);
+  }
+
+  for (const [k, v] of plain) {
+    emit("  ");
+    emit(`${k}=`, [SGR.dim]);
+    emit(
+      formatFieldValue(v),
+      isNumericValue(v) ? [SGR.number] : PLAIN,
     );
   }
 
-  const line = parts.join("");
-  return opts.color && (level === "warn" || level === "error")
-    ? `${SGR.bold}${line}${SGR.reset}`
-    : line;
+  // Error 详情块：不用 JSON（stack 里的换行转义后整行不可读），
+  // 改为缩进多行文本，首行级别色、后续行暗色。
+  for (const [k, v] of errors) {
+    const detail = formatErrorDetail(k, v);
+    for (const [i, line] of detail.split("\n").entries()) {
+      emit("\n" + indent + (i === 0 ? "" : "  "));
+      emit(line, i === 0 ? [SGR[level]] : [SGR.dim]);
+    }
+  }
+
+  return renderSpans(bold ? emphasize(spans, SGR.bold) : spans, opts.color);
+}
+
+/**
+ * 把序列化后的 Error 形状展成多行详情。
+ *
+ * `stack` 每行缩进两格并去掉重复的首行（`Error: msg` 与 `name: message`
+ * 重复）。
+ */
+export function formatErrorDetail(
+  key: string,
+  value: Record<string, unknown>,
+): string {
+  const name = typeof value.name === "string" ? value.name : "Error";
+  const message = typeof value.message === "string" ? value.message : "";
+  const head = `${key}: ${message}`;
+  const lines = [head];
+  if (typeof value.stack === "string" && value.stack.length > 0) {
+    const stackLines = value.stack.split("\n").slice(1); // 首行与 head 重复
+    for (const l of stackLines) {
+      const t = l.trim();
+      if (t.length > 0) lines.push(`  at ${t.replace(/^at\s+/, "")}`);
+    }
+  }
+  if (lines.length === 1 && name !== "Error") {
+    lines[0] = `${key}: ${name}: ${message}`;
+  }
+  return lines.join("\n");
 }
 
 /**

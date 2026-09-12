@@ -74,6 +74,12 @@ export function resolveColor(
  * 给一行日志加彩色模块前缀；line 末尾换行会被去掉。
  *
  * `enabled=false` 时输出纯文本 `[module] line`（不含任何转义序列）。
+ *
+ * **只着色前缀本身**，不整行着色：
+ * - 函数名与文档承诺的都是「彩色前缀」，整行染色是名实不符；
+ * - `docker logs` / 文件里转发的行**自带 SGR**（core/gateway/judge 的 pretty
+ *   输出），整行外侧的 `开 → 文本 → 关` 会被行内第一个 `reset` 清掉，于是
+ *   「纯文本行整行染色、含 SGR 行只有前缀染色」——同一视图两种表现。
  */
 export function prefixLine(
   module: string,
@@ -82,6 +88,8 @@ export function prefixLine(
   enabled = true,
 ): string {
   const trimmed = line.endsWith("\n") ? line.slice(0, -1) : line;
-  if (!enabled) return `[${module}] ${trimmed}`;
-  return `${color}[${module}] ${trimmed}${RESET}`;
+  const prefix = `[${module}]`;
+  if (!enabled) return `${prefix} ${trimmed}`;
+  // 前缀自成闭合片段，行体保持原样（含其自带样式）。
+  return `${color}${prefix}${RESET} ${trimmed}`;
 }

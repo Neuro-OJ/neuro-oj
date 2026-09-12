@@ -14,6 +14,7 @@
 import {
   assertEquals,
   assertMatch,
+  assertStrictEquals,
   assertStringIncludes,
 } from "jsr:@std/assert@^1";
 import {
@@ -29,6 +30,8 @@ import {
   redactFields,
   resolveColor,
   resolveFormat,
+  SGR,
+  sgr,
   toCoreLevel,
 } from "../src/logger.ts";
 import {
@@ -36,6 +39,67 @@ import {
   getRequestId,
   runWithRequestId,
 } from "../src/context.ts";
+
+/** SGR 转义起始符（ESC）；单独抽出以规避 lint 的 no-control-regex。 */
+const ESC = String.fromCharCode(27);
+
+/** 解析后的一段文本及其累计 SGR 状态。 */
+interface ParsedSpan {
+  text: string;
+  /** 该段生效的原始参数串（如 "1;31"）；无样式为 ""。 */
+  codes: string;
+  bold: boolean;
+  dim: boolean;
+}
+
+/**
+ * 按 SGR 状态机解析一行，得到「每段文本实际带什么样式」。
+ *
+ * 必要性：断言「行首是否有 `\x1b[1m`」**无法**证明整行粗体生效——旧实现
+ * 恰好满足该断言却完全没生效（外层 bold 被行内 reset 清掉）。只有模拟
+ * 终端的状态机才能测到这个缺陷。
+ */
+function sgrSpans(line: string): ParsedSpan[] {
+  const spans: ParsedSpan[] = [];
+  const active = new Set<string>();
+  const re = new RegExp(`${ESC}\\[([0-9;]*)m`, "g");
+  let last = 0;
+  let m: RegExpExecArray | null;
+  const push = (t: string) => {
+    if (t.length === 0) return;
+    spans.push({
+      text: t,
+      codes: [...active].join(";"),
+      bold: active.has("1"),
+      dim: active.has("2"),
+    });
+  };
+  while ((m = re.exec(line))) {
+    push(line.slice(last, m.index));
+    last = m.index + m[0].length;
+    const codes = m[1]!.split(";").filter((c) => c.length > 0);
+    if (codes.length === 0 || codes.includes("0")) {
+      active.clear();
+      continue;
+    }
+    for (const c of codes) active.add(c);
+  }
+  push(line.slice(last));
+  return spans;
+}
+
+/** 判断一行结束时是否仍处于「已开样式」状态（样式泄漏）。 */
+function hasUnclosedSgr(line: string): boolean {
+  const re = new RegExp(`${ESC}\\[([0-9;]*)m`, "g");
+  let active = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(line))) {
+    const codes = m[1]!.split(";").filter((c) => c.length > 0);
+    if (codes.length === 0 || codes.includes("0")) active = 0;
+    else active += codes.length;
+  }
+  return active > 0;
+}
 
 /** 在受控 env 下执行 `fn`（自动还原）。 */
 function withEnv<T>(env: Record<string, string | undefined>, fn: () => T): T {
@@ -74,40 +138,79 @@ function capture(
   return seen;
 }
 
-Deno.test("formatPretty 产出契约布局（时间戳 + 定宽徽章 + msg + 字段平铺）", () => {
+Deno.test("formatPretty 产出契约布局（时间戳 + 定宽徽章 + 模块列 + msg + 字段平铺）", () => {
   const [record] = capture((log) => {
     log.info("评测任务入队", { request_id: "550e8400aa", queue_length: 3 });
   });
   const line = formatPretty(
     { timestamp: "14:32:07.412", record: record! },
     { color: false },
-  );
+  ).trimEnd();
+  // 整行精确断言：列宽/间距漂移立即变红。
+  // capture() 用 ["noj","llm-gateway"]，模块列渲染为 "llm-gateway"（11 字符
+  // + 3 空格补足 14）。
   assertEquals(
     line,
-    "14:32:07.412  INFO   评测任务入队  rid=550e8400  queue_length=3",
+    "14:32:07.412  INFO   llm-gateway     评测任务入队  rid=550e8400  queue_length=3",
+  );
+  assertEquals(
+    line.slice(0, 37),
+    "14:32:07.412  INFO   llm-gateway     ",
+    "msg 必须从第 37 列开始",
   );
 });
 
-Deno.test("formatPretty 着色时使用契约 SGR（dim 时间戳 / 级别色 / 粗体整行）", () => {
+Deno.test("formatPretty 着色时使用契约 SGR（dim 时间戳 / 级别色 / ERROR 粗体整行）", () => {
   const [info] = capture((log) => log.info("启动"));
   const infoLine = formatPretty(
     { timestamp: "14:32:07.412", record: info! },
     { color: true },
+  ).trimEnd();
+  assertStringIncludes(
+    infoLine,
+    `${sgr(SGR.dim)}14:32:07.412${sgr(SGR.reset)}`,
   );
-  assertStringIncludes(infoLine, "\x1b[2m14:32:07.412\x1b[0m");
-  assertStringIncludes(infoLine, "\x1b[36mINFO \x1b[0m");
+  assertStringIncludes(infoLine, `${sgr(SGR.info)}INFO ${sgr(SGR.reset)}`);
 
+  // ERROR：整行粗体必须**真的覆盖 message**。旧实现把 \x1b[1m 套在整行
+  // 最外层，被行内第一个 \x1b[0m 清掉，message 从未变粗。
+  const [err] = capture((log) => log.error("失败"));
+  const errLine = formatPretty(
+    { timestamp: "14:32:07.412", record: err! },
+    { color: true },
+  ).trimEnd();
+  const errSpans = sgrSpans(errLine);
+  assertStrictEquals(
+    errSpans.find((s) => s.text.includes("失败"))?.bold,
+    true,
+    "ERROR 整行粗体必须覆盖 message 本体",
+  );
+  assertStrictEquals(
+    errSpans.find((s) => s.text.trim() === "ERROR")?.codes,
+    "1;31",
+    "ERROR 徽章应为粗体红 1;31",
+  );
+
+  // WARN 不再整行粗体（决策：粗体为 ERROR 专属）
   const [warn] = capture((log) => log.warn("失败"));
   const warnLine = formatPretty(
     { timestamp: "14:32:07.412", record: warn! },
     { color: true },
+  ).trimEnd();
+  const warnSpans = sgrSpans(warnLine);
+  assertStrictEquals(
+    warnSpans.find((s) => s.text.includes("失败"))?.bold,
+    false,
+    "WARN 不得整行粗体",
   );
-  // 用 endsWith 断言而非含 \x1b 的正则：deno lint 的 no-control-regex
-  // 会拒绝正则里的控制字符（`\x1b`），字符串比较无此限制。
-  assertEquals(warnLine.endsWith("\x1b[1m"), false);
-  assertEquals(warnLine.startsWith("\x1b[1m"), true, "WARN 整行应额外粗体");
-  assertEquals(warnLine.endsWith("\x1b[0m"), true, "整行粗体应以 reset 收尾");
-  assertStringIncludes(warnLine, "\x1b[1;33m");
+  assertStrictEquals(
+    warnSpans.find((s) => s.text.trim() === "WARN")?.codes,
+    "33",
+    "WARN 徽章为黄色 33",
+  );
+  // 样式不得跨片段泄漏
+  assertStrictEquals(hasUnclosedSgr(errLine), false, "不得留下未闭合 SGR");
+  assertStrictEquals(hasUnclosedSgr(warnLine), false, "不得留下未闭合 SGR");
 });
 
 Deno.test("message 中的插值值按占位符名脱敏（生产不泄露完整 ID/IP）", () => {
@@ -305,4 +408,53 @@ Deno.test("setupGatewayLogging 幂等可重复装配，且上下文 request_id �
   assertEquals(seen[1]!.properties.request_id, "rid-ctx");
 
   setupGatewayLogging();
+});
+
+Deno.test("formatPretty: 模块列 / 数值着色 / Error 详情块", () => {
+  // 模块列取 category 末段
+  const [r1] = capture((log) => log.info("启动"));
+  assertStringIncludes(
+    formatPretty({ timestamp: "14:32:07.412", record: r1! }, { color: false }),
+    "llm-gateway   ",
+    "模块列应渲染 category 末段",
+  );
+
+  // 数值 magenta 35，字符串保持默认色
+  const [r2] = capture((log) => log.info("入队", { n: 3, s: "events" }));
+  const spans = sgrSpans(
+    formatPretty({ timestamp: "14:32:07.412", record: r2! }, { color: true })
+      .trimEnd(),
+  );
+  assertStrictEquals(spans.find((s) => s.text === "3")?.codes, "35");
+  assertStrictEquals(spans.find((s) => s.text === "events")?.codes, "");
+
+  // Error 展开为多行详情块，不压 JSON 行
+  const [r3] = capture((log) =>
+    log.error("失败", { error: new Error("boom") })
+  );
+  const line = formatPretty(
+    { timestamp: "14:32:07.412", record: r3! },
+    { color: false },
+  );
+  assertStrictEquals(line.includes('{"name"'), false, "不得压行 JSON");
+  const lines = line.trimEnd().split("\n");
+  assertStrictEquals(lines.length > 1, true, "Error 应展开为多行");
+  assertStrictEquals(lines[1]!.startsWith(" ".repeat(37)), true);
+  assertStrictEquals(lines[1]!.includes("error: boom"), true);
+});
+
+Deno.test("formatPretty: 无色输出零转义，且样式不跨片段泄漏", () => {
+  const [rec] = capture((log) =>
+    log.error("失败", { error: new Error("x"), n: 3 })
+  );
+  const plain = formatPretty(
+    { timestamp: "14:32:07.412", record: rec! },
+    { color: false },
+  );
+  assertStrictEquals(plain.includes(ESC), false, "无色模式不得含转义序列");
+  const colored = formatPretty(
+    { timestamp: "14:32:07.412", record: rec! },
+    { color: true },
+  ).trimEnd();
+  assertStrictEquals(hasUnclosedSgr(colored), false, "不得留下未闭合 SGR");
 });

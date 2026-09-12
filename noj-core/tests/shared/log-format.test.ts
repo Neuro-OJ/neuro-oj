@@ -6,12 +6,17 @@ import {
   type Sink,
 } from "@logtape/logtape";
 import {
+  fitModule,
+  formatErrorDetail,
+  isSerializedError,
   makeJsonFormatter,
   makePrettyFormatter,
+  moduleName,
   orderedPlaceholders,
   redactValueByKey,
   renderableFields,
   renderableMessage,
+  serializeValue,
   toCoreLevel,
   toLogTapeLevel,
 } from "./../../src/shared/base/log-format.ts";
@@ -62,6 +67,77 @@ function withEnv<T>(env: Record<string, string | undefined>, fn: () => T): T {
   }
 }
 
+/** SGR 转义起始符（ESC）；单独抽出以规避 lint 的 no-control-regex。 */
+const ESC = String.fromCharCode(27);
+
+/** 解析后的一段文本及其累计 SGR 状态。 */
+interface ParsedSpan {
+  text: string;
+  /** 该段生效的原始参数串（如 "1;31"）；无样式为 ""。 */
+  codes: string;
+  bold: boolean;
+  dim: boolean;
+}
+
+/**
+ * 按 SGR 状态机解析一行，得到「每段文本实际带什么样式」。
+ *
+ * 必要性：断言「行首是否有 `\x1b[1m`」**无法**证明整行粗体生效——旧实现
+ * 恰好满足该断言却完全没生效（外层 bold 被行内 reset 清掉）。只有模拟
+ * 终端的状态机才能测到这个缺陷。
+ */
+function sgrSpans(line: string): ParsedSpan[] {
+  const spans: ParsedSpan[] = [];
+  const active = new Set<string>();
+  // 用 RegExp 构造 + 字符串转义，规避 lint 的 no-control-regex（\x1b 是
+  // SGR 序列的必要组成部分，其状态机语义无法用无转义的正则表达）。
+  const re = new RegExp(`${ESC}\\[([0-9;]*)m`, "g");
+  let last = 0;
+  let m: RegExpExecArray | null;
+  const push = (t: string) => {
+    if (t.length === 0) return;
+    const codes = [...active].join(";");
+    spans.push({
+      text: t,
+      codes,
+      bold: active.has("1"),
+      dim: active.has("2"),
+    });
+  };
+  while ((m = re.exec(line))) {
+    push(line.slice(last, m.index));
+    last = m.index + m[0].length;
+    const codes = m[1]!.split(";").filter((c) => c.length > 0);
+    if (codes.length === 0 || codes.includes("0")) {
+      active.clear();
+      continue;
+    }
+    for (const c of codes) active.add(c);
+  }
+  push(line.slice(last));
+  return spans;
+}
+
+/**
+ * 判断一行在结束时是否仍处于「已开样式」状态（样式泄漏）。
+ *
+ * 用状态机而非正则：`\x1b[1m ... \x1b[0m` 是合法的成对写法，只有
+ * 「开了没关」才是缺陷。
+ */
+function hasUnclosedSgr(line: string): boolean {
+  // 用 RegExp 构造 + 字符串转义，规避 lint 的 no-control-regex（\x1b 是
+  // SGR 序列的必要组成部分，其状态机语义无法用无转义的正则表达）。
+  const re = new RegExp(`${ESC}\\[([0-9;]*)m`, "g");
+  let active = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(line))) {
+    const codes = m[1]!.split(";").filter((c) => c.length > 0);
+    if (codes.length === 0 || codes.includes("0")) active = 0;
+    else active += codes.length;
+  }
+  return active > 0;
+}
+
 Deno.test("log-format: 级别名映射（warn ↔ warning）", () => {
   assertEquals(toLogTapeLevel("warn"), "warning");
   assertEquals(toLogTapeLevel("info"), "info");
@@ -89,12 +165,22 @@ Deno.test("log-format: pretty 无色输出零转义且布局符合契约", () =>
   // formatter 会带行尾换行（getTextFormatter 的约定），断言时去掉
   const line = fmt(records[0]!).trimEnd();
   assertStrictEquals(line.includes("\x1b["), false, "无色模式不得含转义序列");
-  // 时间戳 HH:MM:SS.mmm（12 字符）+ 2 空格 + 级别（padEnd(5)）+ 2 空格。
-  // INFO 被 padEnd 成 "INFO "，再加 2 空格分隔，故 INFO 后共 3 个空格。
+  // 时间戳 HH:MM:SS.mmm（12）+ 2 + 级别 padEnd(5)（"INFO "）+ 2
+  // + 模块 padEnd(14) + 2 = msg 起始第 37 列（0-based 36）。
+  // 整行精确断言：列宽/间距一旦漂移立即变红（用 includes 会漏掉布局回归）。
+  const head = line.slice(0, 37);
+  // 模块列取 category 末段；capture() 用 ["noj","test"]，故渲染为 "test"。
+  // 列宽：12(ts) + 2 + 5(级别 "INFO ") + 2 + 14(模块) + 2 = 37；
+  // 故 INFO 后 3 个空格（徽章自带 1 + 分隔 2），test 后 12 个空格。
   assertEquals(
-    /^\d{2}:\d{2}:\d{2}\.\d{3} {2}INFO {3}/.test(line),
+    /^\d{2}:\d{2}:\d{2}\.\d{3} {2}INFO {3}test {12}$/.test(head),
     true,
-    `布局不符: ${JSON.stringify(line)}`,
+    `列布局不符（msg 须从第 37 列开始）: ${JSON.stringify(head)}`,
+  );
+  assertEquals(
+    line.slice(37),
+    "入队 550e8400-e29b-41d4-a716-446655440000  queue_length=3",
+    `msg 区不符: ${JSON.stringify(line.slice(37))}`,
   );
   assertEquals(
     line.includes("入队 550e8400-e29b-41d4-a716-446655440000"),
@@ -116,9 +202,38 @@ Deno.test("log-format: pretty 有色输出含契约 SGR", () => {
     records[0]!,
   )
     .trimEnd();
-  assertEquals(line.includes("\x1b[1;31m"), true, "ERROR 应为粗体红");
-  assertEquals(line.startsWith("\x1b[1m"), true, "WARN/ERROR 整行粗体");
-  assertEquals(line.endsWith("\x1b[0m"), true);
+  const spans = sgrSpans(line);
+  // ERROR 徽章：契约 §1 的复合码 1;31（行级粗体 1 + 级别色 31，前置合成）
+  const badge = spans.find((s) => s.text === "ERROR");
+  assertStrictEquals(badge?.codes, "1;31", "ERROR 徽章应为粗体红 1;31");
+  // 整行粗体必须**真的覆盖 message**：这是历史缺陷的回归护栏。
+  // 旧实现把 \x1b[1m 套在整行最外层，被行内第一个 \x1b[0m 清掉，
+  // 导致 message 从未变粗（契约承诺未兑现）。
+  const msg = spans.find((s) => s.text === "出错");
+  assertStrictEquals(msg?.bold, true, "ERROR 整行粗体必须覆盖 message 本体");
+  // WARN 不再整行粗体（决策：粗体为 ERROR 专属）
+  const warnRec = capture((emit) => emit("warn", "警告", {}))[0]!;
+  const warnLine = makePrettyFormatter({ color: true, production: false })(
+    warnRec,
+  ).trimEnd();
+  const warnSpans = sgrSpans(warnLine);
+  assertStrictEquals(
+    warnSpans.find((s) => s.text.includes("警告"))?.bold,
+    false,
+    "WARN 不得整行粗体",
+  );
+  assertStrictEquals(
+    warnSpans.find((s) => s.text.trim() === "WARN")?.codes,
+    "33",
+    "WARN 徽章为黄色 33",
+  );
+  // 任何片段都必须自带 reset：行内样式不得跨片段泄漏（judge 侧曾把
+  // 粗体写在换行前且不带 reset，导致样式污染后续输出）。
+  assertEquals(
+    hasUnclosedSgr(line),
+    false,
+    "行尾不得留下未闭合的 SGR（样式会泄漏到后续输出）",
+  );
 });
 
 Deno.test("log-format: 多行 msg 缩进到 msg 列", () => {
@@ -128,9 +243,9 @@ Deno.test("log-format: 多行 msg 缩进到 msg 列", () => {
   );
   const second = line.split("\n")[1]!;
   assertEquals(
-    second.startsWith(" ".repeat(21) + "第二行"),
-    true,
-    `实际: ${JSON.stringify(second)}`,
+    second,
+    " ".repeat(37) + "第二行",
+    `续行须缩进到 msg 起始列（37）: ${JSON.stringify(second)}`,
   );
 });
 
@@ -315,4 +430,142 @@ Deno.test("log-format: 兄弟节点共享同一对象不被误判为环", () => 
       "DAG 不是环，两个分支都应正常脱敏",
     );
   });
+});
+
+Deno.test("log-format: 模块列取 category 末段并按列宽截断", () => {
+  const rec = (cat: string[]) => ({ category: cat }) as unknown as LtRecord;
+  assertEquals(moduleName(rec(["noj", "submission"])), "submission");
+  assertEquals(moduleName(rec(["noj", "dual", "container"])), "container");
+  assertEquals(moduleName(rec(["noj", "core"])), "core");
+  assertEquals(moduleName(rec([])), undefined, "空 category 无模块名");
+  // 列宽 14：不足补空格，超宽截断加省略号（不得撑破列）
+  assertEquals(fitModule("db"), "db".padEnd(14));
+  assertEquals(fitModule("content-review"), "content-review");
+  assertEquals("content-review".length, 14, "恰好 14 不截断");
+  const long = fitModule("a-very-long-module-name");
+  assertEquals(long.length, 14, "超宽必须截到列宽");
+  assertEquals(long.endsWith("…"), true, "截断须有省略号提示");
+});
+
+Deno.test("log-format: 数值字段着色、字符串字段不着色", () => {
+  const records = capture((emit) =>
+    emit("info", "入队", { queue_length: 3, channel: "events" })
+  );
+  const line = makePrettyFormatter({ color: true, production: false })(
+    records[0]!,
+  ).trimEnd();
+  const spans = sgrSpans(line);
+  // 数值 magenta 35，与字符串值区分（长行里便于扫读数字）
+  assertStrictEquals(
+    spans.find((s) => s.text === "3")?.codes,
+    "35",
+    "数值字段应为 magenta 35",
+  );
+  assertStrictEquals(
+    spans.find((s) => s.text === "events")?.codes,
+    "",
+    "字符串字段应保持默认色",
+  );
+  // 无色模式下数值不得引入转义
+  const plain = makePrettyFormatter({ color: false, production: false })(
+    capture((emit) => emit("info", "入队", { queue_length: 3 }))[0]!,
+  );
+  assertStrictEquals(plain.includes("\x1b["), false);
+});
+
+Deno.test("log-format: Error 展开为多行详情块而非压行 JSON", () => {
+  const err = new Error("connection terminated unexpectedly");
+  const records = capture((emit) => emit("error", "写入失败", { error: err }));
+  const line = makePrettyFormatter({ color: false, production: false })(
+    records[0]!,
+  );
+  // 不得出现 JSON 压行（stack 换行被转义成字面 \n 后整行不可读）
+  assertStrictEquals(
+    line.includes('{"name"'),
+    false,
+    "Error 不得渲染为 JSON 压行",
+  );
+  const lines = line.trimEnd().split("\n");
+  assertStrictEquals(lines.length > 1, true, "Error 应展开为多行");
+  assertStrictEquals(
+    lines[1]!.startsWith(" ".repeat(37)),
+    true,
+    `详情块须缩进到 msg 列: ${JSON.stringify(lines[1])}`,
+  );
+  assertStrictEquals(
+    lines[1]!.includes("error: connection terminated unexpectedly"),
+    true,
+  );
+});
+
+Deno.test("log-format: 序列化 Error 标记对 JSON 形状不可见", () => {
+  const tagged = serializeValue(new Error("boom")) as Record<string, unknown>;
+  assertStrictEquals(isSerializedError(tagged), true);
+  // 不可枚举：JSON.stringify 与 Object.entries 都不得看到标记
+  const json = JSON.stringify(tagged);
+  assertStrictEquals(json.includes("Symbol"), false, "标记不得进入 JSON");
+  assertStrictEquals(
+    Object.keys(tagged).includes("Symbol(noj.log.serialized-error)"),
+    false,
+  );
+  // 非 Error 值不得被误判
+  assertStrictEquals(isSerializedError({ name: "Error", message: "x" }), false);
+  assertStrictEquals(isSerializedError("boom"), false);
+  assertStrictEquals(isSerializedError(null), false);
+});
+
+Deno.test("log-format: 生产环境下 Error 标记在脱敏后仍保留", () => {
+  withEnv({ NOJ_ENV: "production" }, () => {
+    // 脱敏会走 serializeValue → redactNested 重建对象，标记必须补回，
+    // 否则递归脱敏后的 Error 又退回「认不出的普通对象」。
+    const after = redactValueByKey("error", new Error("boom"));
+    assertStrictEquals(
+      isSerializedError(after),
+      true,
+      "生产脱敏后仍须能识别 Error 形状",
+    );
+    const records = capture((emit) =>
+      emit("error", "失败", { error: new Error("boom"), email: "a@b.com" })
+    );
+    const line = makePrettyFormatter({ color: false, production: true })(
+      records[0]!,
+    );
+    assertStrictEquals(line.includes('{"name"'), false);
+    assertStrictEquals(line.includes("error: boom"), true);
+    assertStrictEquals(line.includes("a@b.com"), false, "敏感键仍须脱敏");
+  });
+});
+
+Deno.test("log-format: formatErrorDetail 去掉与首行重复的 stack 首行", () => {
+  const err = new Error("boom");
+  const detail = formatErrorDetail(
+    "error",
+    serializeValue(err) as Record<string, unknown>,
+  );
+  const lines = detail.split("\n");
+  assertStrictEquals(lines[0], "error: boom");
+  // stack 首行是 "Error: boom"，与 head 重复，必须剔除
+  assertStrictEquals(
+    lines.filter((l) => l.includes("error: boom") || l.includes("Error: boom"))
+      .length,
+    1,
+    `stack 首行不应重复: ${JSON.stringify(detail)}`,
+  );
+  for (const l of lines.slice(1)) {
+    assertStrictEquals(
+      l.startsWith("  at "),
+      true,
+      `栈帧格式: ${JSON.stringify(l)}`,
+    );
+  }
+});
+
+Deno.test("log-format: 无色模式的 Error 块不得含未闭合 SGR", () => {
+  const records = capture((emit) =>
+    emit("error", "失败", { error: new Error("x") })
+  );
+  const line = makePrettyFormatter({ color: false, production: false })(
+    records[0]!,
+  );
+  assertStrictEquals(line.includes("\x1b["), false, "无色模式零转义");
 });

@@ -7,11 +7,27 @@
 
 | 语义 | SGR | 应用位置 |
 |---|---|---|
-| ERROR | `1;31` 粗体红 | 级别徽章 + 整行粗体 |
-| WARN | `1;33` 粗体黄 | 级别徽章 + 整行粗体 |
+| ERROR | `1;31` 粗体红 | 级别徽章 + **整行粗体** |
+| WARN | `33` 黄 | **仅级别徽章**（不整行） |
 | INFO | `36` 青 | 级别徽章 |
 | DEBUG | `90` 亮黑（灰） | 级别徽章 |
-| dim | `2` | 时间戳、字段名、`=`、`rid` |
+| dim | `2` | 时间戳、字段名、`=`、`rid`、Error 块后续行 |
+| 模块名 | `34` 蓝 | 模块列 |
+| 数值字面量 | `35` 品红 | 字段值（仅 `number` 类型） |
+
+**整行粗体是 ERROR 专属。** WARN 只着色徽章：WARN 在生产是常态级别
+（`LOG_LEVEL` 默认 `warn`），若也整行加粗，整个生产日志流会被加粗淹没，
+粗体也就不再指示「需要立刻处理」。
+
+**行级强调必须合成进片段，不能在整行外层套 SGR。** 行内每个片段的 `reset`
+都会把外层样式清掉——历史上「WARN/ERROR 整行粗体」正是因此**从未生效**
+（`\x1b[1m` 加在最外层，被时间戳片段后的 `\x1b[0m` 立即清除，message 从未
+变粗）。正确做法是把行级码**前置**合进每个非空白片段自身的 SGR 序列，
+如 ERROR 徽章 `31` + 行级 `1` → `1;31`。
+
+**不允许出现未闭合的 SGR**（开了样式却没有内容、或结尾不带 `reset`）：
+样式状态会泄漏到后续无关输出。judge 侧曾把 `\x1b[1m` 写在换行前且不带
+`reset`，属此类缺陷。
 
 **不使用 24-bit 真彩品牌色。** 品牌亮色 `#1B2B4A` 在深色终端对比度极低，可用的暗色
 `#7C96D6` 需 24-bit 支持；24-bit 在 CI、老版本 tmux/screen、部分 Windows 终端会被降级
@@ -21,18 +37,40 @@
 ## 2. 单行布局
 
 ```
-14:32:07.412  INFO   评测任务入队  rid=550e8400  queue_length=3
-└── dim ────┘  └级别色┘ └──msg──┘  └─ dim ──┘  └ key dim · = dim · value 默认色 ┘
+14:32:07.412  INFO   submission      评测任务入队  rid=550e8400  queue_length=3
+└── dim ────┘  └级别色┘ └─ 模块 34 ─┘  └──msg──┘  └─ dim ──┘  └ key dim · = dim · 值(数 35) ┘
 ```
 
 - 时间戳 `HH:MM:SS.mmm`，**固定 12 字符**，dim。**不加方括号**（定宽已足够分列）。
-- 级别 `padEnd(5)` 定宽（`INFO ` / `WARN ` / `ERROR` / `DEBUG`）着色；WARN/ERROR **整行额外粗体**。
+- 级别 `padEnd(5)` 定宽（`INFO ` / `WARN ` / `ERROR` / `DEBUG`）着色；ERROR 整行额外粗体。
+- **模块列 `padEnd(14)`**，取 LogTape `category` 末段（`submission` / `db` / `sse`…）；
+  超宽截断为前 13 字符 + `…`。无 `category` 时**保留列宽**（渲染空格），
+  避免同一批日志出现两种缩进。
 - `rid` 为 `request_id` 前 8 字符，dim。
-- 字段：`key` dim、`=` dim、`value` 默认色；字段间**两空格**。
+- 字段：`key` dim、`=` dim、`value` 数值为 `35`、其余默认色；字段间**两空格**。
 - 字段**不排序**（对象字面量顺序天然稳定）。
-- msg 含换行时，后续行缩进到 **msg 起始列（第 20 列，0-based 19）**：12 + 2 + 5 + 2 = 21 个空格前缀，即 `" ".repeat(21)`。
+- msg 起始列 **37**（0-based 36）：12 + 2 + 5 + 2 + 14 + 2。
+- msg 含换行时，后续行缩进到 msg 起始列，即 `" ".repeat(37)`。
 - **字段去重**：LogTape 插值后键仍在 `properties` 中，渲染字段区时必须排除已插值进
   message 的键。去重**只发生在呈现层**；`LogRecord.fields` 保留全部字段。
+
+### 2.1 Error 字段（多行详情块）
+
+Error **不得**渲染成 JSON 压行——`stack` 换行会被转义成字面 `\n`，整行无法阅读：
+
+```
+14:32:08.140  ERROR  content-review  评测结果写入失败  submission_id=abc
+                                      error: connection terminated unexpectedly
+                                          at src/mq/consumer.ts:88:11
+```
+
+- 首行 `key: message` 用级别色，后续栈帧行 dim 并额外缩进 2 格。
+- `stack` 的首行（`Error: msg`）与 head 重复，**必须剔除**。
+- Error 字段排在普通字段**之后**，独占后续行。
+- 识别方式：`serializeValue()` 给序列化结果打**不可枚举 Symbol 标记**
+  （`JSON.stringify` / `Object.entries` 均不可见，故不影响 §4 的 JSON 形状）。
+  递归脱敏重建对象时**必须补回该标记**，否则生产环境（走 `redactNested`）
+  的 Error 又退回「认不出的普通对象」。
 
 ## 3. 着色判定顺序
 
@@ -70,12 +108,17 @@ LOG_COLOR=auto/未设   → 按流探测 TTY
 **适用范围**：§4 与 §6 由 **noj-core / noj-llm-gateway**（及 noj-cli 的着色策略）
 实现。noj-judge 是纯 worker，只输出契约化 pretty 文本，读取 `LOG_LEVEL` /
 `LOG_COLOR` / `NO_COLOR`，不实现 JSON 与脱敏——其日志仅进 `docker logs`。
+**§1 / §2（颜色语义与布局，含模块列与 Error 块）对四个运行时均适用。**
 
 ## 5. 模块名
 
-TS 侧由 LogTape `category` 提供，取该文件所属域或 shared 子目录名
-（`submission` / `identity` / `db` / `sse` …），根文件（`main.ts`/`app.ts`）取 `core`。
-Rust 侧用 tracing 的 `target`。本期**不做**列内对齐。
+TS 侧取 LogTape `category` 末段（`submission` / `identity` / `db` / `sse` …），
+根文件（`main.ts`/`app.ts`）取 `core`；Rust 侧取 tracing 的 `target` 去掉 crate
+前缀（`noj_judge::dual::container` → `container`）。
+
+模块名进入 **§2 的模块列**（`padEnd(14)`，超宽截断），四个运行时一致。
+跨运行时一致性由 `scripts/check-log-parity.ts` 用同一组 fixture 逐字符校验
+（core ↔ gateway；两侧实现刻意独立，无法共享代码，故以测试锁定等价）。
 
 ## 6. 脱敏不变量
 
