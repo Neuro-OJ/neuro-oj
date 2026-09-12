@@ -20,6 +20,12 @@ on:
     # 否则 GitHub 会为同一次预发布产生两条并发流水线，竞争不可变镜像标签。
     types: [prereleased]
   workflow_dispatch:
+    inputs:
+      cleanup_existing:
+        description: "仅清理指定版本已存在的 GHCR 镜像标签，不构建发布"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -33,9 +39,46 @@ env:
   IMAGE_NAMESPACE: neuro-oj
 
 jobs:
+  cleanup-existing-release-tags:
+    name: 清理同版本镜像残留
+    if: github.event_name == 'workflow_dispatch' && inputs.cleanup_existing == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      packages: write
+    steps:
+      - name: 删除同版本正式标签
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          VERSION: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || {
+            echo "::error::版本必须是合法 Release tag：$VERSION"
+            exit 1
+          }
+          for image in \
+            noj-server noj-ui noj-judge noj-llm-gateway \
+            noj-evaluator-python noj-solution-python noj-solution-ai; do
+            package="/orgs/$OWNER/packages/container/$image/versions"
+            ids="$(gh api --paginate "$package" \
+              --jq '.[] | select((.metadata.container.tags // []) | index(env.VERSION)) | .id')"
+            if [[ -z "$ids" ]]; then
+              echo "未发现 $image:$VERSION，跳过"
+              continue
+            fi
+            while IFS= read -r id; do
+              [[ -n "$id" ]] || continue
+              gh api -X DELETE "$package/$id" >/dev/null
+              echo "已删除 $image:$VERSION（版本 ID $id）"
+            done <<< "$ids"
+          done
+
   publish-cli:
     name: 发布生产运维 CLI
-    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == true
+    if: (github.event_name == 'workflow_dispatch' && inputs.cleanup_existing != true) || github.event.release.prerelease == true
     needs: verify-release
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -71,7 +114,7 @@ jobs:
 
   supply-chain-check:
     name: 检查供应链配置
-    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == true
+    if: (github.event_name == 'workflow_dispatch' && inputs.cleanup_existing != true) || github.event.release.prerelease == true
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -83,7 +126,7 @@ jobs:
 
   build-and-gate:
     name: Build and gate ${{ matrix.name }}
-    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == true
+    if: (github.event_name == 'workflow_dispatch' && inputs.cleanup_existing != true) || github.event.release.prerelease == true
     needs: supply-chain-check
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -288,7 +331,7 @@ jobs:
 
   verify-release:
     name: 验证正式 Release 镜像
-    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == true
+    if: (github.event_name == 'workflow_dispatch' && inputs.cleanup_existing != true) || github.event.release.prerelease == true
     needs: build-and-gate
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -386,7 +429,7 @@ jobs:
 
   publish-release:
     name: 资产就绪后转正 Release
-    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == true
+    if: (github.event_name == 'workflow_dispatch' && inputs.cleanup_existing != true) || github.event.release.prerelease == true
     needs: [verify-release, publish-cli]
     runs-on: ubuntu-latest
     timeout-minutes: 5
