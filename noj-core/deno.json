@@ -51,6 +51,7 @@
     "jose": "npm:jose@^5",
     "drizzle-kit": "npm:drizzle-kit@0.31.10",
     "@std/encoding": "jsr:@std/encoding@^1",
+    "@logtape/logtape": "jsr:@logtape/logtape@^2.3.4",
     "@alicloud/dm": "npm:@alicloud/dm20151123@^1.10.2",
     "@alicloud/openapi-core": "npm:@alicloud/openapi-core@^1.0.7",
     "tencentcloud-sdk-nodejs-ses": "npm:tencentcloud-sdk-nodejs-ses@^4.1.247",

@@ -8,6 +8,7 @@
     "jsr:@cliffy/keycode@1.2.1": "1.2.1",
     "jsr:@cliffy/prompt@^1.2.1": "1.2.1",
     "jsr:@cliffy/table@1.2.1": "1.2.1",
+    "jsr:@logtape/logtape@^2.3.4": "2.3.4",
     "jsr:@std/assert@*": "1.0.19",
     "jsr:@std/assert@1": "1.0.19",
     "jsr:@std/assert@^1.0.19": "1.0.19",
@@ -106,6 +107,9 @@
       "dependencies": [
         "jsr:@std/fmt"
       ]
+    },
+    "@logtape/logtape@2.3.4": {
+      "integrity": "efdcc475dd8475da85f8e8344c43b72b75e408d6c114dcab687498895199b652"
     },
     "@std/assert@1.0.19": {
       "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
@@ -1820,6 +1824,7 @@
   "workspace": {
     "dependencies": [
       "jsr:@cliffy/command@^1.2.1",
+      "jsr:@logtape/logtape@^2.3.4",
       "jsr:@std/encoding@1",
       "npm:@alicloud/dm20151123@^1.10.2",
       "npm:@alicloud/openapi-core@^1.0.7",
