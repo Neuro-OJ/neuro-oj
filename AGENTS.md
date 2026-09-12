@@ -34,10 +34,10 @@ Neuro OJ 是一个面向 **AI 领域认证与竞赛** 的在线评测（Online J
 NOJ 分为多个模块，通过 RESTful API、Redis MQ 和内部 HTTP 服务协作：
 
 ```text
-+----------+   RESTful API   +----------+   Redis MQ    +--------------+
-|  noj-ui  | <-------------> | noj-core | --Producer--> |  noj-judge   |
-|  Nuxt 4  |                 |Deno+Hono | <--Consumer--|  Rust+Docker |
-+----------+                 +----------+               +--------------+
++--------------------+       +----------+   Redis MQ    +--------------+
+| noj-ui / LMCC 插件 | <---> | noj-core | --Producer--> |  noj-judge   |
+| Nuxt 4 / VS Code   | REST  |Deno+Hono | <--Consumer--|  Rust+Docker |
++--------------------+       +----------+               +--------------+
                                    |
                               +----+----+
                               |  Redis   |
@@ -50,6 +50,7 @@ NOJ 分为多个模块，通过 RESTful API、Redis MQ 和内部 HTTP 服务协�
 | noj-ui | Nuxt 4 + Vue 3 | Web 前端、Nitro 代理注入 JWT Cookie |
 | noj-judge | Rust + Tokio | Docker 沙箱评测、双容器 Evaluator + Solution |
 | noj-llm-gateway | Deno + Hono | LLM 调用可信代理、Provider Key 加密、eval_token、限流/额度/审计 |
+| noj-lmcc-extension | VS Code Extension API + TypeScript | LMCC IDE 登录、题目选择、Python 代码提交与结果反馈 |
 
 详细架构见 [noj-docs/docs/system/architecture.md](noj-docs/docs/system/architecture.md) 和各模块文档。
 
@@ -90,6 +91,7 @@ neuro-oj/
 ├── noj-ui/         # Nuxt 4 前端（CLAUDE.md 有完整目录）
 ├── noj-judge/      # Rust 评测 Worker（CLAUDE.md 有完整目录）
 ├── noj-llm-gateway/# LLM 网关（CLAUDE.md 有完整目录）
+├── noj-lmcc-extension/# LMCC IDE / VS Code 插件
 ├── noj-tests/      # 跨模块 E2E 测试
 ├── noj-docs/       # 用户/出题人/运营者文档站（VitePress）
 ├── dev-docs/           # 设计文档、实施计划、工程规范、审计
@@ -112,6 +114,7 @@ neuro-oj/
 | noj-ui | Nuxt 4、Vue 3、Nuxt UI、Tailwind CSS、Monaco Editor |
 | noj-judge | Rust、Tokio、bollard、redis-rs、reqwest、zip |
 | noj-llm-gateway | Deno 2、Hono、ioredis、postgres.js |
+| noj-lmcc-extension | VS Code Extension API、TypeScript、Node.js 内置 HTTP |
 | 基础设施 | PostgreSQL 16、Redis 7、MinIO/S3 |
 
 完整依赖清单见各模块 `CLAUDE.md` / `deno.json` / `Cargo.toml`。

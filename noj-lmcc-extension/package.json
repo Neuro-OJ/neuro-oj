@@ -1,0 +1,186 @@
+{
+  "name": "neuro-oj-lmcc",
+  "displayName": "Neuro OJ for LMCC IDE",
+  "description": "在 LMCC IDE / VS Code 中登录 Neuro OJ、选择题目并提交 Python 代码。",
+  "version": "0.1.0",
+  "publisher": "neuro-oj",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Neuro-OJ/neuro-oj.git",
+    "directory": "noj-lmcc-extension"
+  },
+  "homepage": "https://github.com/Neuro-OJ/neuro-oj/tree/main/noj-lmcc-extension",
+  "bugs": {
+    "url": "https://github.com/Neuro-OJ/neuro-oj/issues"
+  },
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Education",
+    "Other"
+  ],
+  "keywords": [
+    "Neuro OJ",
+    "LMCC",
+    "online judge",
+    "Python"
+  ],
+  "icon": "resources/logo.jpg",
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onView:neuroOj.problems",
+    "onCommand:neuroOj.configureServer",
+    "onCommand:neuroOj.login",
+    "onCommand:neuroOj.useToken",
+    "onCommand:neuroOj.logout",
+    "onCommand:neuroOj.refreshProblems",
+    "onCommand:neuroOj.selectProblem",
+    "onCommand:neuroOj.submit"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "neuroOj.configureServer",
+        "title": "Neuro OJ: 配置服务器地址",
+        "icon": "$(server-environment)"
+      },
+      {
+        "command": "neuroOj.login",
+        "title": "Neuro OJ: 登录账号",
+        "icon": "$(account)"
+      },
+      {
+        "command": "neuroOj.useToken",
+        "title": "Neuro OJ: 使用访问令牌"
+      },
+      {
+        "command": "neuroOj.logout",
+        "title": "Neuro OJ: 退出登录",
+        "icon": "$(sign-out)"
+      },
+      {
+        "command": "neuroOj.refreshProblems",
+        "title": "Neuro OJ: 刷新题目",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "neuroOj.selectProblem",
+        "title": "Neuro OJ: 选择题目"
+      },
+      {
+        "command": "neuroOj.submit",
+        "title": "Neuro OJ: 提交当前 Python 文件",
+        "icon": "$(cloud-upload)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "neuroOj",
+          "title": "Neuro OJ",
+          "icon": "resources/logo.jpg"
+        }
+      ]
+    },
+    "views": {
+      "neuroOj": [
+        {
+          "id": "neuroOj.problems",
+          "name": "题目"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "neuroOj.configureServer",
+          "when": "view == neuroOj.problems",
+          "group": "navigation@0"
+        },
+        {
+          "command": "neuroOj.login",
+          "when": "view == neuroOj.problems && !neuroOj.authenticated",
+          "group": "navigation@1"
+        },
+        {
+          "command": "neuroOj.refreshProblems",
+          "when": "view == neuroOj.problems && neuroOj.authenticated",
+          "group": "navigation@1"
+        },
+        {
+          "command": "neuroOj.logout",
+          "when": "view == neuroOj.problems && neuroOj.authenticated",
+          "group": "navigation@2"
+        },
+        {
+          "command": "neuroOj.submit",
+          "when": "view == neuroOj.problems && neuroOj.authenticated",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "neuroOj.selectProblem",
+          "when": "view == neuroOj.problems && viewItem == neuroOj.problem",
+          "group": "inline"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "neuroOj.submit",
+          "when": "editorLangId == python && neuroOj.authenticated",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Neuro OJ",
+      "properties": {
+        "neuroOj.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:3000",
+          "description": "Neuro OJ 网站地址，例如 https://noj.example.com。"
+        },
+        "neuroOj.requestTimeoutSeconds": {
+          "type": "number",
+          "default": 15,
+          "minimum": 3,
+          "maximum": 120,
+          "description": "单次 API 请求超时时间（秒）。"
+        },
+        "neuroOj.pollIntervalSeconds": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 30,
+          "description": "提交后查询评测状态的间隔（秒）。"
+        },
+        "neuroOj.pollTimeoutSeconds": {
+          "type": "number",
+          "default": 180,
+          "minimum": 10,
+          "maximum": 1800,
+          "description": "等待单次评测结果的最长时间（秒）。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p tsconfig.json",
+    "format:check": "prettier --check \"src/**/*.ts\" package.json tsconfig.json README.md CHANGELOG.md",
+    "check": "npm run format:check && tsc -p tsconfig.json --noEmit",
+    "test": "npm run compile && node --test out/test/*.test.js",
+    "package": "npx @vscode/vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "@types/vscode": "^1.74.0",
+    "@vscode/vsce": "^3.6.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2"
+  }
+}

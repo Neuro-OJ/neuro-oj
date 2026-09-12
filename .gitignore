@@ -30,6 +30,8 @@ node_modules/
 dist/
 .cache/
 *.tsbuildinfo
+/noj-lmcc-extension/*.vsix
+/noj-lmcc-extension/out/
 
 # --- Logs ---
 *.log
@@ -110,4 +112,3 @@ dev-docs/review-snapshots/
 # --- Problem source (moved to separate private noj-problems repo) ---
 /problems/
 /noj-problems/
-

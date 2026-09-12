@@ -101,6 +101,7 @@ export default withMermaid(defineConfig({
               items: [
                 { text: "做题人文档", link: "/users/" },
                 { text: "提交代码", link: "/users/submit" },
+                { text: "LMCC IDE 插件", link: "/users/lmcc-extension" },
                 { text: "使用 capability", link: "/users/capability" },
                 { text: "理解结果", link: "/users/results" },
                 { text: "账号与密码", link: "/users/account" },
