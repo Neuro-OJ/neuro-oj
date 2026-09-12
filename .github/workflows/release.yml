@@ -436,6 +436,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: 检出仓库以解析 Release
+        uses: actions/checkout@v4
+
       - name: 将预发布转正为正式 Release
         env:
           GH_TOKEN: ${{ github.token }}
