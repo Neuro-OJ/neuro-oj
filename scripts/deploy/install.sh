@@ -326,9 +326,9 @@ show_environment_requirements() {
 最低运行要求：
   - Linux x86_64
   - CPU：至少 2 vCPU
-  - 内存：至少 264 MiB
+  - 内存：至少 2 GiB（仅为启动/诊断硬门槛；启用 Judge 的公测建议至少 8 GiB）
   - Swap：至少 2 GiB
-  - 目标目录所在磁盘：至少 5 GiB 可用空间
+  - 目标目录所在磁盘：至少 10 GiB 可用空间
   - Docker 数据目录所在磁盘：至少 5 GiB 可用空间
   - Docker Engine、Docker Compose v2、Bash、tar、OpenSSL，以及 curl 或 wget
   - 可访问 ghcr.io/neuro-oj/；启用 Judge 时还需要独立的 rootless Docker socket

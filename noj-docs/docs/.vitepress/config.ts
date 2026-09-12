@@ -123,6 +123,7 @@ export default withMermaid(defineConfig({
               items: [
                 { text: "运营者文档", link: "/operators/" },
                 { text: "生产部署", link: "/operators/production-deploy" },
+                { text: "公测容量基线", link: "/operators/capacity-baseline" },
                 { text: "可观测性与故障处理", link: "/operators/observability" },
                 { text: "如何提供 LLM 调用能力", link: "/operators/llm-call-capability" },
                 { text: "CLI 初始化", link: "/operators/cli" },

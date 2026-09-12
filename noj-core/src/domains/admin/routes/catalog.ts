@@ -32,6 +32,7 @@ import { getDb } from "../../../shared/db/connection.ts";
 import { problems } from "../../../shared/db/schema.ts";
 import { listAllProblems } from "../../catalog/services/problems/problems.ts";
 import { resolveProblem } from "../../catalog/services/problem-resolve.ts";
+import { inspectEvaluationPackage } from "../../catalog/services/bundle-parser.ts";
 import {
   getProblemTemplate,
   getSupportPackageBytes,
@@ -138,6 +139,51 @@ router.get("/problems/:id/preflight", async (c) => {
     packageBytes ? "pass" : "error",
     packageBytes ? "支持包可读取" : "缺少支持包",
   );
+
+  if (packageBytes && !problem.is_objective) {
+    try {
+      const inspection = inspectEvaluationPackage(packageBytes);
+      add(
+        "evaluator_entry",
+        inspection.hasEvaluator ? "pass" : "error",
+        inspection.hasEvaluator
+          ? "根级 evaluate.py 存在"
+          : "评测包缺少根级 evaluate.py",
+      );
+      add(
+        "visible_cases",
+        inspection.hasVisibleCases ? "pass" : "error",
+        inspection.hasVisibleCases
+          ? "可见测试数据存在"
+          : "评测包缺少根级 visible.jsonl",
+      );
+      add(
+        "hidden_cases",
+        inspection.hasHiddenCases ? "pass" : "warning",
+        inspection.hasHiddenCases
+          ? "隐藏测试数据存在"
+          : "未发现约定的 hidden.jsonl；请确认 evaluator 自己管理隐藏数据",
+      );
+      add(
+        "reference_solution",
+        inspection.referenceSolution ? "pass" : "warning",
+        inspection.referenceSolution
+          ? `发现标准解 \${inspection.referenceSolution}`
+          : "未发现约定的标准解，尚未执行标准解运行验收",
+      );
+    } catch (error) {
+      add(
+        "package_structure",
+        "error",
+        error instanceof Error ? error.message : "评测包结构检查失败",
+      );
+    }
+    add(
+      "runtime_execution",
+      "warning",
+      "当前仅完成静态包检查；标准解执行、隐藏标记泄漏、超时和资源清理仍需隔离 Judge 验收",
+    );
+  }
 
   const packageDigest = packageBytes
     ? await crypto.subtle.digest("SHA-256", packageBytes.slice().buffer)

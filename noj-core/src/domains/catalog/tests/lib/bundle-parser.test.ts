@@ -8,6 +8,7 @@ import { assertEquals, assertMatch, assertThrows } from "jsr:@std/assert@^1";
 import { unzipSync, zipSync } from "fflate";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 import {
+  inspectEvaluationPackage,
   MAX_ZIP_ENTRIES,
   parseBundleZip,
   stripMetadataEntries,
@@ -201,4 +202,19 @@ Deno.test("parseBundleZip: 客观题包 questions.json 非法 JSON 被拒", () =
   });
   const err = assertThrows(() => parseBundleZip(zip), BadRequestError);
   assertMatch(err.message, /questions\.json/);
+});
+
+Deno.test("inspectEvaluationPackage: 识别评测包条目与标准解", () => {
+  const zip = makeZip({
+    "evaluate.py": "print('ok')",
+    "visible.jsonl": '{"input":"1","output":"1"}\n',
+    "hidden.jsonl": '{"input":"2","output":"2"}\n',
+    "reference_solution.py": "print('reference')",
+  });
+  assertEquals(inspectEvaluationPackage(zip), {
+    hasEvaluator: true,
+    hasVisibleCases: true,
+    hasHiddenCases: true,
+    referenceSolution: "reference_solution.py",
+  });
 });
