@@ -1,6 +1,8 @@
 import { getRedis } from "./../../../shared/mq/connection.ts";
 import { getReviewConfig } from "./review-common.ts";
-import { logger } from "./../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "content-review"]);
 
 /**
  * 私信异步审核队列（issue #413）。

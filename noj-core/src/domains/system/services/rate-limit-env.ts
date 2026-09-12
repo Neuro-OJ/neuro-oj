@@ -19,7 +19,9 @@ import {
   ipInRange,
   parseCidr,
 } from "./../../../shared/security/cidr.ts";
-import { logger } from "../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "system"]);
 
 /** 读取整数环境变量（非正数或 NaN 时回退默认值） */
 export function envInt(name: string, def: number): number {

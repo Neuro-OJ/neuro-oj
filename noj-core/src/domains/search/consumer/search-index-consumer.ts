@@ -2,7 +2,9 @@ import {
   createConsumer,
   requestConsumerShutdown,
 } from "../../../shared/mq/base-consumer.ts";
-import { logger } from "../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "search"]);
 import {
   SEARCH_INDEX_QUEUE,
   type SearchIndexEvent,

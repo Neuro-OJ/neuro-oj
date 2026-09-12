@@ -7,7 +7,9 @@
 import { and, asc, gt, inArray, lte } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { sseEvents } from "../db/schema.ts";
-import { logger } from "../base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "sse"]);
 
 /** SSE 事件默认保留天数。 */
 export const SSE_EVENT_RETENTION_DAYS = 7;

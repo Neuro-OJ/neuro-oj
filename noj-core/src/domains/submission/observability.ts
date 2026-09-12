@@ -9,7 +9,9 @@ import type { ObservabilityRegistry } from "../../shared/observability/contracts
 import { getDb } from "../../shared/db/connection.ts";
 import { getRedis } from "../../shared/mq/connection.ts";
 import { submissions } from "../../shared/db/schema.ts";
-import { logger } from "../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "submission"]);
 import { getQueueHealth } from "./services/queue.ts";
 import { consumerAlive } from "./mq/consumer.ts";
 

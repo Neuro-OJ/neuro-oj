@@ -28,7 +28,9 @@ import {
   NotFoundError,
   ValidationError,
 } from "./../../../../shared/base/errors.ts";
-import { logger } from "./../../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "catalog"]);
 import { checkPermission } from "./../../../identity/index.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
 import { parseBundleZip, stripMetadataEntries } from "./../bundle-parser.ts";
@@ -85,7 +87,7 @@ async function resolveTagIds(
     const known = new Set(all.map((t) => t.name));
     for (const name of uniqueNames) {
       if (!known.has(name)) {
-        logger.warn(`题目导入：标签 "${name}" 不存在，已忽略`);
+        logger.warn('题目导入：标签 "{name}" 不存在，已忽略', { name });
       }
     }
   }

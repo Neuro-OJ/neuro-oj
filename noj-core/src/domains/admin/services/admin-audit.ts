@@ -10,7 +10,9 @@
  * 都不允许把已经成功的业务响应变成 5xx。
  */
 import type { Context } from "hono";
-import { logger } from "../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "admin"]);
 import { logAudit } from "../../system/services/audit-log.ts";
 import type { AuditAction, AuditDetail } from "../../system/types/audit-log.ts";
 import type { AuditMeta } from "../types/admin-audit.ts";

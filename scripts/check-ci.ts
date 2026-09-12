@@ -29,6 +29,9 @@ if (import.meta.main) {
   await run(["deno", "run", "-A", "scripts/check-metrics.ts"]);
   await run(["deno", "run", "-A", "scripts/check-runtime-contract.ts"]);
   await run(["deno", "run", "-A", "scripts/check-runbooks.ts"]);
+  // 日志模板语法：LogTape 把 `{...}` 当占位符且**失败是静默的**，
+  // 残留的 JS 模板字符串会被当作占位符消费而不报错，只能静态拦住。
+  await run(["deno", "run", "-A", "scripts/check-log-migration.ts"]);
   await run(["deno", "run", "-A", "scripts/gen-alert-rules.ts", "--check"]);
   await run(["bash", "scripts/deploy/test-monitoring.sh"]);
   await run([
@@ -42,6 +45,7 @@ if (import.meta.main) {
     "scripts/gen-alert-rules_test.ts",
     "scripts/check-test-discovery_test.ts",
     "scripts/check-dashboards_test.ts",
+    "scripts/check-log-migration_test.ts",
   ]);
   console.log("CI 仓库级门禁通过");
 }

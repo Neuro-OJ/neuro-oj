@@ -3,7 +3,9 @@ import {
   JUDGE_QUEUES,
   LEGACY_JUDGE_QUEUE,
 } from "../../../shared/mq/judge-queues.ts";
-import { logger } from "../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "submission"]);
 
 /**
  * 旧单队列一次性迁移。

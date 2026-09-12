@@ -10,7 +10,9 @@ import {
 } from "./../../../shared/db/schema.ts";
 import { getRedis } from "./../../../shared/mq/connection.ts";
 import { JUDGE_QUEUES } from "../mq/producer.ts";
-import { logger } from "./../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "submission"]);
 import { NotFoundError } from "./../../../shared/base/errors.ts";
 import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import { logAudit } from "../../system/index.ts";

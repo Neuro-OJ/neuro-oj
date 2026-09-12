@@ -1036,6 +1036,16 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     envKey: "LOG_FORMAT",
     category: "other",
   },
+  {
+    key: "LOG_COLOR",
+    type: "string",
+    description:
+      "日志着色（always/never/auto；NO_COLOR 优先，LOG_FORMAT=json 时恒无色）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "LOG_COLOR",
+    category: "other",
+  },
   // ── 可观测性 ───────────────────────────────────────────────
   {
     key: "OBSERVABILITY_SNAPSHOT_TIMEOUT_MS",

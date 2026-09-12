@@ -14,7 +14,9 @@ import {
 } from "../../../shared/db/schema.ts";
 import { NotFoundError } from "../../../shared/base/errors.ts";
 import { getSetting } from "../../system/index.ts";
-import { logger } from "../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "contest"]);
 
 export interface ContestIpGroupAccount {
   user_id: string;

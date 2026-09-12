@@ -2,7 +2,9 @@ import { eq } from "drizzle-orm";
 import { createConsumer } from "../../../shared/mq/base-consumer.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { messages } from "../../../shared/db/schema.ts";
-import { logger } from "../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "content-review"]);
 import { type DmReviewTask, REVIEW_DM_QUEUE } from "../services/dm-review.ts";
 import { getReviewConfig } from "../services/review-common.ts";
 import { runContentReview } from "../services/review-runner.ts";

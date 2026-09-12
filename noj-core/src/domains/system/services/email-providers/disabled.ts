@@ -6,7 +6,9 @@
  */
 
 import type { SendEmail, SendPasswordResetEmail } from "./types.ts";
-import { logger } from "../../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "system"]);
 
 export const sendPasswordResetEmail: SendPasswordResetEmail = () => {
   logger.warn("邮件服务未配置，跳过密码找回邮件", {

@@ -86,7 +86,9 @@ import type {
   SubmissionListItem,
   SubmissionResponse,
 } from "./submissions-types.ts";
-import { logger } from "./../../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "submission"]);
 
 /**
  * 详情接口返回的 result.output 最大长度（字节近似）。
