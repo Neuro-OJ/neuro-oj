@@ -1,0 +1,7 @@
+.github/**
+.gitignore
+src/**
+out/test/**
+tsconfig.json
+*.vsix
+*.log

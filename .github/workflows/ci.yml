@@ -89,6 +89,7 @@ jobs:
       judge: ${{ steps.filter.outputs.judge }}
       gateway: ${{ steps.filter.outputs.gateway }}
       config: ${{ steps.filter.outputs.config }}
+      extension: ${{ steps.filter.outputs.extension }}
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -179,6 +180,9 @@ jobs:
               - 'docker-compose.e2e.yml'
               - 'env.e2e.template'
               - '.github/workflows/ci.yml'
+            extension:
+              - 'noj-lmcc-extension/**'
+              - '.github/workflows/ci.yml'
 
       - name: 计算受影响 core-domains
         id: domains
@@ -216,6 +220,39 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
               fh.write(f"core-domains={json.dumps(core_domains)}\n")
           PY
+
+  # ===========================================================================
+  # LMCC IDE / VS Code 扩展 — 类型检查与单元测试
+  # ===========================================================================
+  lmcc-extension-check:
+    name: LMCC Extension
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.extension == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: noj-lmcc-extension/package-lock.json
+
+      - name: 安装依赖
+        working-directory: noj-lmcc-extension
+        run: npm ci
+
+      - name: 类型检查
+        working-directory: noj-lmcc-extension
+        run: npm run check
+
+      - name: 单元测试
+        working-directory: noj-lmcc-extension
+        run: npm test
 
   # ===========================================================================
   # noj-core — 快速静态检查（fmt + lint + typecheck，无外部服务）
