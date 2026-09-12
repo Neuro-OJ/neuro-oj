@@ -1,6 +1,6 @@
 {
   "name": "@noj/cli",
-  "version": "0.1.0",
+  "version": "0.9.5",
   "exports": "./src/mod.ts",
   "tasks": {
     "test": "deno test -A",

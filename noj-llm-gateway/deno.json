@@ -1,6 +1,6 @@
 {
   "name": "@noj/llm-gateway",
-  "version": "0.1.0",
+  "version": "0.9.5",
   "exports": "./src/mod.ts",
   "tasks": {
     "dev": "deno run --watch --env-file=.env -A src/main.ts",

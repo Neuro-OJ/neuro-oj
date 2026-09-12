@@ -42,7 +42,7 @@ Deno.test("noj --help 包含全部子命令", async () => {
 Deno.test("noj --version 输出版本", async () => {
   const { code, stdout } = await runCli(["--version"]);
   assertEquals(code, 0);
-  assertEquals(stdout.includes("1.0.0"), true);
+  assertEquals(stdout.includes("0.9.5"), true);
 });
 
 Deno.test("noj problems build --help 包含 --id 选项", async () => {

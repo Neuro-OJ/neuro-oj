@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatAcceptanceRate } from "~/utils/submissionFormat";
 import type { RankingRow } from "~/composables/useRankings"
 
 definePageMeta({

@@ -1,6 +1,6 @@
 {
   "name": "@noj/tests",
-  "version": "0.1.0",
+  "version": "0.9.5",
   "exports": {},
   "tasks": {
     "test": "deno test -A --env-file=../env.e2e.template e2e/",

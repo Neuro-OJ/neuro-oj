@@ -21,7 +21,7 @@ export function createHealthRouter(registry: ObservabilityRegistry): Hono {
 
   health.get(
     "/health/live",
-    (c) => c.json({ status: "alive", service: "noj-core", version: "0.1.0" }),
+    (c) => c.json({ status: "alive", service: "noj-core", version: "0.9.5" }),
   );
 
   health.get("/health/ready", async (c) => {
@@ -54,7 +54,7 @@ export function createHealthRouter(registry: ObservabilityRegistry): Hono {
     return c.json({
       status: ready ? "ready" : "not_ready",
       service: "noj-core",
-      version: "0.1.0",
+      version: "0.9.5",
       // 依赖明细只在非生产环境返回：/healthz 经 nginx 暴露且无鉴权，
       // 生产环境披露依赖可用性属信息泄漏（与 checks 同一守卫）。
       ...(showDetails
@@ -130,7 +130,7 @@ export function createHealthRouter(registry: ObservabilityRegistry): Hono {
     return c.json({
       status: healthy ? "healthy" : "degraded",
       service: "noj-core",
-      version: "0.1.0",
+      version: "0.9.5",
       database: dbProbe?.status === "up" ? "ok" : "error",
       redis: redisProbe?.status === "up" ? "ok" : "error",
       consumer: consumerStatus === "up" ? "ok" : "error",

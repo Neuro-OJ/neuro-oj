@@ -2,7 +2,7 @@
   "name": "neuro-oj-lmcc",
   "displayName": "Neuro OJ for LMCC IDE",
   "description": "在 LMCC IDE / VS Code 中登录 Neuro OJ、选择题目并提交 Python 代码。",
-  "version": "0.1.0",
+  "version": "0.9.5",
   "publisher": "neuro-oj",
   "license": "AGPL-3.0-only",
   "repository": {

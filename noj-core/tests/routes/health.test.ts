@@ -14,7 +14,7 @@ Deno.test({
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.service, "noj-core");
-    assertEquals(body.version, "0.1.0");
+    assertEquals(body.version, "0.9.5");
     assertExists(body.status);
     assertExists(body.database);
     assertExists(body.redis);

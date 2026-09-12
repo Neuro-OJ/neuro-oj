@@ -330,7 +330,7 @@ try {
   await new Command()
     .name("noj")
     .description("Neuro OJ 管理 CLI（迁移、初始化、管理员、题目包）")
-    .version("1.0.0")
+    .version("0.9.5")
     .command("db", dbCmd)
     .command("init", initCmd)
     .command("bootstrap", bootstrapCmd)

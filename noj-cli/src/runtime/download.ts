@@ -7,7 +7,7 @@ const DEFAULT_BASE_URL = `https://github.com/${REPO}/releases/download`;
 const API_BASE = `https://api.github.com/repos/${REPO}`;
 
 /** 当前内置默认版本（网络不可用时的回退值）。 */
-export const DEFAULT_NOJ_SERVER_VERSION = "0.1.0";
+export const DEFAULT_NOJ_SERVER_VERSION = "0.9.5";
 
 /** GitHub Release 列表条目中本模块需要的字段。 */
 interface ReleaseSummary {

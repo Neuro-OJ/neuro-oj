@@ -1,6 +1,6 @@
 [package]
 name = "noj-judge"
-version = "0.1.0"
+version = "0.9.5"
 edition = "2021"
 description = "Neuro OJ 评测 Worker — 通过 Redis MQ 接收任务，Docker 沙箱执行评测"
 

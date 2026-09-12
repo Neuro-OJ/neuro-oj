@@ -40,7 +40,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, resolveComponent } from "vue";
 import type { SearchItem } from "~/composables/useSearch";
 import {
   iconClass,
