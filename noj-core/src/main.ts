@@ -30,6 +30,7 @@ import {
 import { startAuditLogRetentionTask } from "./domains/system/index.ts";
 import { startContestAntiCheatRetentionTask } from "./domains/contest/index.ts";
 import { logger } from "./shared/base/logging.ts";
+import { describePlaceholderSecret } from "./shared/security/secret-placeholders.ts";
 import {
   assertProductionConfig,
   type ProductionConfig,
@@ -120,6 +121,18 @@ async function main() {
     );
     Deno.exit(1);
   }
+  // 占位值校验（2026-09-12 架构评审 §2.4）：
+  // `.env.prod.example` 的 `change-me-to-a-random-string-at-least-32-chars`
+  // 长度 46，仅靠长度校验会被放行；compose 的 `${JWT_SECRET:?}` 也只拦空值。
+  // 于是"照文档复制模板后直接部署"会以**公开已知的密钥**上线 → 可伪造任意用户 token。
+  const jwtPlaceholder = describePlaceholderSecret("JWT_SECRET", jwtSecret);
+  if (jwtPlaceholder) {
+    logger.error(
+      `${jwtPlaceholder}。\n` +
+        `请不要直接使用示例/占位密钥；可通过 \`openssl rand -base64 48\` 生成强随机密钥。`,
+    );
+    Deno.exit(1);
+  }
 
   // TFA 加密密钥启动校验（fail-fast，评审 P2 修复）：
   // TFA_ENCRYPTION_KEY 用于 AES-256-GCM 加密 TOTP secret，缺失/过短时
@@ -132,6 +145,17 @@ async function main() {
       `TFA_ENCRYPTION_KEY 未设置或长度不足（当前 ${actualLength} 字符，需要至少 ${MIN_TFA_ENCRYPTION_KEY_LENGTH} 字符）。\n` +
         `TFA_ENCRYPTION_KEY 是 TOTP secret 的 AES-256-GCM 加密密钥，必须独立于 JWT_SECRET 配置。\n` +
         `可通过 \`openssl rand -base64 48\` 生成强随机密钥。`,
+    );
+    Deno.exit(1);
+  }
+  const tfaPlaceholder = describePlaceholderSecret(
+    "TFA_ENCRYPTION_KEY",
+    tfaKey,
+  );
+  if (tfaPlaceholder) {
+    logger.error(
+      `${tfaPlaceholder}。\n` +
+        `请不要直接使用示例/占位密钥；可通过 \`openssl rand -base64 48\` 生成强随机密钥。`,
     );
     Deno.exit(1);
   }

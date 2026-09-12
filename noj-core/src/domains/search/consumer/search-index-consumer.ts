@@ -1,6 +1,6 @@
 import {
+  type ConsumerHandle,
   createConsumer,
-  requestConsumerShutdown,
 } from "../../../shared/mq/base-consumer.ts";
 import { logger } from "../../../shared/base/logging.ts";
 import {
@@ -60,17 +60,28 @@ export async function handleSearchIndexEvent(data: unknown): Promise<void> {
   );
 }
 
-export function startSearchIndexConsumer(): () => Promise<void> {
-  return createConsumer({
+/** 当前消费者实例句柄（用于只停本消费者）。 */
+let consumer: ConsumerHandle | null = null;
+
+export function startSearchIndexConsumer(): ConsumerHandle {
+  consumer = createConsumer({
     queueName: SEARCH_INDEX_QUEUE,
     logLabel: "搜索索引",
     aliveRef,
     handleMessage: handleSearchIndexEvent,
   });
+  return consumer;
 }
 
+/**
+ * 只停搜索索引消费者。
+ *
+ * 修复记录（2026-09-12 评审 §2.5）：此前这里调用 `requestConsumerShutdown()`，
+ * 而该标记是三个消费者共享的单一布尔量 → 本想只停搜索索引，实际会把评测结果消费者
+ * 与私信审核消费者一起停掉。现在走实例级 `requestShutdown()`。
+ */
 export function shutdownSearchIndexConsumer(): void {
-  requestConsumerShutdown();
+  consumer?.requestShutdown();
 }
 
 export function isSearchIndexConsumerAlive(): boolean {

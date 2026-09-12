@@ -34,6 +34,39 @@ Deno.test("extractLinks 提取相对链接与锚点", () => {
   assert(links.length === 3, `应提取 3 个链接，实际 ${links.length}`);
 });
 
+Deno.test("extractLinks 跳过围栏代码块与行内代码", () => {
+  // 回归：文档里引用代码示例（含 `](...)`）会被误判为链接。
+  // 实测触发场景：架构评审文档引用路由提取正则后，本门禁报"目标文件不存在"。
+  const content = [
+    "```ts",
+    "const re = /\\.(get|post)\\(\\s*[\"'`]([^\"'`]+)[\"'`]/g;",
+    "```",
+    "行内示例：`[x](no-such.md)` 不是链接",
+    "",
+    "[real](b.md)",
+  ].join("\n");
+  const links = extractLinks(content);
+  assert(links.length === 1, `代码块内不应提取链接，实际 ${links.length}`);
+  assert(links[0].target === "b.md", "应只提取真实链接");
+  assert(links[0].line === 6, `行号应保持，实际 ${links[0].line}`);
+});
+
+Deno.test("verifyMarkdownLinks 不因代码块内容误报", () => {
+  withTempDir({
+    "a.md": [
+      "```js",
+      "const re = /x](y.md)/;",
+      "```",
+      "",
+      "[b](b.md)",
+    ].join("\n"),
+    "b.md": "# B\n",
+  }, (dir) => {
+    const errors = verifyMarkdownLinks(dir);
+    assert(errors.length === 0, `不应误报，实际: ${errors.join("; ")}`);
+  });
+});
+
 Deno.test("有效相对链接与锚点通过", () => {
   withTempDir({
     "a.md": `[b](b.md)\n[b-section](b.md#section)\n[same](#own)\n\n## Own\n`,

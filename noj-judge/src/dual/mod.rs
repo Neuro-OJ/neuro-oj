@@ -140,13 +140,47 @@ fn clamp_runtime_config(
     clamped
 }
 
-/// 追加到累积缓冲：超过上限时丢弃头部、只保留尾部（诊断信息优先）。
-fn append_capped(buf: &mut String, s: &str) {
-    if buf.len() + s.len() > MAX_OUTPUT_BYTES {
-        let keep = MAX_OUTPUT_BYTES.saturating_sub(s.len());
-        let start = buf.len().saturating_sub(keep);
-        *buf = buf[start..].to_string();
+/// 取不小于 `idx` 的最小字符边界。
+///
+/// 保证 `&s[n..]` 不会 panic（`String` 的字节切片要求下标落在 UTF-8 字符边界上），
+/// 且 `s.len() - n <= s.len() - idx` —— 即"丢弃的字节数不少于预期"，
+/// 从而让 `MAX_OUTPUT_BYTES` 成为真正的硬上限。
+fn ceil_char_boundary(s: &str, idx: usize) -> usize {
+    if idx >= s.len() {
+        return s.len();
     }
+    let mut i = idx;
+    while i < s.len() && !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
+}
+
+/// 追加到累积缓冲：超过上限时丢弃头部、只保留尾部（诊断信息优先）。
+///
+/// 修复记录（2026-09-12 架构评审 §2.2）：原实现为
+/// `*buf = buf[start..].to_string()`，`start` 由字节长度相减得到，可能落在多字节
+/// 字符（**中文评测输出是常态**）内部 → `byte index N is not a char boundary` panic。
+/// panic 发生在 `tokio::spawn` 的任务内，`JoinHandle` 的 Err 只被 `error!` 记录
+/// （main.rs），于是结果永不推送、任务永不 ACK，提交永久停在 judging；
+/// core sweeper 重投后再次 panic，形成无限循环。
+///
+/// 现在截断点一律对齐到字符边界，且总长度硬性不超过 `MAX_OUTPUT_BYTES`。
+fn append_capped(buf: &mut String, s: &str) {
+    if s.len() >= MAX_OUTPUT_BYTES {
+        // 单次追加本身就超限（极端恶意输出）：只保留 s 的尾部。
+        let start = ceil_char_boundary(s, s.len() - MAX_OUTPUT_BYTES);
+        buf.clear();
+        buf.push_str(&s[start..]);
+        return;
+    }
+    if buf.len() + s.len() <= MAX_OUTPUT_BYTES {
+        buf.push_str(s);
+        return;
+    }
+    let keep = MAX_OUTPUT_BYTES - s.len();
+    let start = ceil_char_boundary(buf, buf.len().saturating_sub(keep));
+    buf.replace_range(..start, "");
     buf.push_str(s);
 }
 
@@ -2142,5 +2176,70 @@ mod tests {
             .unwrap();
         let text = String::from_utf8_lossy(&buf[..n]).to_string();
         assert!(text.contains("BYOK_PROMPT_TOO_LARGE"));
+    }
+
+    // ── append_capped：UTF-8 字符边界回归测试（2026-09-12 评审 §2.2）──
+    //
+    // 原实现在截断点落在多字节字符内部时 panic。中文评测输出累计超过 1 MiB
+    // 是常态，因此这不是理论风险：panic 后结果永不推送、任务永不 ACK，
+    // 提交会永久卡在 judging 并被 sweeper 反复重投。
+
+    #[test]
+    fn test_append_capped_multibyte_boundary_no_panic() {
+        let mut buf = String::new();
+        // 1800 字节 = 600 个 3 字节汉字。每个块长度都是 3 的倍数，
+        // 而 keep = MAX_OUTPUT_BYTES - 1800 不是 3 的倍数
+        //（1046776 % 3 == 1）→ 旧实现的 start 必然落在字符内部，必 panic。
+        let chunk = "中".repeat(600);
+        assert_eq!(chunk.len(), 1800);
+        // 固定迭代 1000 次：跨越 1 MiB 上限（约第 583 次）之后仍持续追加，
+        // 覆盖"截断后再截断"的路径。
+        for round in 0..1000 {
+            append_capped(&mut buf, &chunk);
+            assert!(
+                buf.len() <= MAX_OUTPUT_BYTES,
+                "第 {} 轮后缓冲区超过硬上限: {} > {}",
+                round,
+                buf.len(),
+                MAX_OUTPUT_BYTES
+            );
+        }
+        // 已接近上限（尾部保留策略生效），且内容仍是合法 UTF-8
+        assert!(buf.len() > MAX_OUTPUT_BYTES - 1800);
+        assert!(buf.ends_with('中'));
+    }
+
+    #[test]
+    fn test_append_capped_keeps_tail_and_respects_cap() {
+        let mut buf = "a".repeat(MAX_OUTPUT_BYTES);
+        append_capped(&mut buf, "尾部诊断信息");
+        assert!(buf.len() <= MAX_OUTPUT_BYTES);
+        assert!(buf.ends_with("尾部诊断信息"));
+    }
+
+    #[test]
+    fn test_append_capped_single_chunk_larger_than_cap() {
+        let mut buf = String::from("已有内容");
+        // 单次追加超过上限：只保留尾部，且必须对齐字符边界
+        let huge = format!("{}{}", "前".repeat(MAX_OUTPUT_BYTES / 3), "END");
+        append_capped(&mut buf, &huge);
+        assert!(
+            buf.len() <= MAX_OUTPUT_BYTES,
+            "单次超大追加后仍须受上限约束: {}",
+            buf.len()
+        );
+        assert!(buf.ends_with("END"));
+        assert!(!buf.starts_with("已有内容"));
+    }
+
+    #[test]
+    fn test_append_capped_small_chunks_accumulate() {
+        let mut buf = String::new();
+        for i in 0..1000 {
+            append_capped(&mut buf, &format!("行 {}\n", i));
+        }
+        assert!(buf.len() < MAX_OUTPUT_BYTES);
+        assert!(buf.starts_with("行 0\n"));
+        assert!(buf.ends_with("行 999\n"));
     }
 }

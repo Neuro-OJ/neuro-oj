@@ -30,6 +30,8 @@ export interface RedisClient {
     destination: string,
     timeout: number,
   ): Promise<string | null>;
+  /** 非阻塞搬运：消费者启动期把本队列 `:processing` 残留消息重投回主队列时使用 */
+  rpoplpush(source: string, destination: string): Promise<string | null>;
   lrange(...args: (string | number)[]): Promise<string[]>;
   llen(...args: (string | number)[]): Promise<number>;
   eval(
@@ -129,6 +131,28 @@ export function createPubSubRedis(): RedisClient {
   });
 
   return redis;
+}
+
+/**
+ * 测试用：按**显式 URL** 创建与共享客户端同配置的连接。
+ *
+ * 动机（2026-09-12）：MQ 层测试此前通过 `Deno.env.set("REDIS_URL", fake.url)` 把
+ * 共享客户端指向 fake Redis。`REDIS_URL` 是**进程级**环境变量，而同一分片内的
+ * 测试文件是并行执行的——伪造 URL 的窗口内，其他文件（如搜索索引事件断言）会读到
+ * 假端口并收到 ECONNREFUSED，造成随机假失败（实测：全量分片出现 2 个假失败、
+ * 单文件必过）。本函数让测试无需再污染全局 env。
+ */
+export function createRedisClientForUrl(url: string): RedisClient {
+  // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
+  const redis = new IORedis(url, {
+    maxRetriesPerRequest: 3,
+    enableOfflineQueue: false,
+    lazyConnect: true,
+  });
+  redis.on("error", (...args: unknown[]) => {
+    logger.error("测试 Redis 连接错误", { err: args[0] });
+  });
+  return redis as unknown as RedisClient;
 }
 
 export function getRedis(): RedisClient {

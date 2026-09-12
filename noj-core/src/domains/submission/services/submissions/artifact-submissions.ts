@@ -37,7 +37,8 @@ import {
   publishSseEvent,
 } from "./../../../../shared/sse/event-bus.ts";
 import { logger } from "./../../../../shared/base/logging.ts";
-import type { JudgeTask, JudgeTaskLlm } from "../../types/index.ts";
+import type { JudgeTaskLlm } from "../../types/index.ts";
+import { buildJudgeTask } from "../../types/index.ts";
 import type { LlmConfig, RuntimeConfig } from "./../../../catalog/index.ts";
 import type { SubmissionResponse } from "./submissions-types.ts";
 
@@ -300,7 +301,7 @@ export async function createArtifactSubmission(
     "submission",
   );
 
-  const task: JudgeTask = {
+  const task = buildJudgeTask({
     submission_id: id,
     problem_id: input.problem_id,
     user_id: userId,
@@ -311,9 +312,9 @@ export async function createArtifactSubmission(
     language,
     code: "",
     file_name: input.file_name,
-    ...(llmTask ? { llm: llmTask } : {}),
-    ...(userLlmTask ? { user_llm: userLlmTask } : {}),
-  };
+    llm: llmTask ?? undefined,
+    user_llm: userLlmTask ?? undefined,
+  });
 
   try {
     await db.insert(submissions).values({

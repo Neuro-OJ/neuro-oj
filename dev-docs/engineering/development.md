@@ -67,7 +67,9 @@ cd noj-llm-gateway && deno task test
 - type：`feat` / `fix` / `docs` / `style` / `refactor` / `perf` / `test` / `chore` / `ci` / `build`
 - scope：`core` / `ui` / `judge` / `root`
 - 所有提交必须 GPG 签名。
-- 禁止直接推送到 `main`，所有变更通过 PR。
+- 分支与推送纪律以根目录 `AGENTS.md` §7.1 为准：日常开发与缺陷修复可直接提交
+  `main`；需要评审的变更从 `main` 派生分支走 PR（2026-09-12 更正：此处原写
+  "禁止直接推送到 main"，与顶层 AGENTS.md 冲突）。
 
 ## 决策记录
 

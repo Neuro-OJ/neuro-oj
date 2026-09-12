@@ -29,24 +29,10 @@
 
 import { MIN_JWT_SECRET_LENGTH } from "../src/shared/base/constants.ts";
 import { MIN_TFA_ENCRYPTION_KEY_LENGTH } from "../src/shared/base/constants.ts";
+// 占位值黑名单收敛到单一事实源：main.ts 启动校验与本题巡检共用同一份，
+// 避免两处黑名单漂移（2026-09-12 评审 §2.4）。
+import { PLACEHOLDER_PATTERNS } from "../src/shared/security/secret-placeholders.ts";
 import { CONFIG_DEFINITIONS } from "../src/shared/config/settings-registry.ts";
-
-// 已知占位值黑名单（不区分大小写）。命中即视为未配置。
-const PLACEHOLDER_PATTERNS: readonly RegExp[] = [
-  /^change-?this/i,
-  /^change-?me/i,
-  /^changeme$/i,
-  /^example$/i,
-  /^test$/i,
-  /^xxx+$/i,
-  /^placeholder/i,
-  /your[-_]?(secret|password|key)/i,
-  /replace-?me/i,
-  /TODO/i,
-  // 审计 NOJ-131：仓库历史模板中公开过的默认管理员凭据
-  /^admin@noj\.local$/i,
-  /^AdminPass123!$/i,
-];
 
 const STRICT_FLAG = "--strict";
 const PRODUCTION_FLAG = "--production";

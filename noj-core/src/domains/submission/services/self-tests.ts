@@ -22,7 +22,8 @@ import { logger } from "./../../../shared/base/logging.ts";
 import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
-import type { JudgeResult, JudgeTask } from "../types/index.ts";
+import type { JudgeResult } from "../types/index.ts";
+import { buildJudgeTask } from "../types/index.ts";
 import { resolveProblemAccess } from "./../../catalog/index.ts";
 import type { RuntimeConfig } from "./../../catalog/index.ts";
 import {
@@ -136,7 +137,7 @@ export async function createSelfTest(
   const id = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
   const now = new Date().toISOString();
 
-  const task: JudgeTask = {
+  const task = buildJudgeTask({
     submission_id: id,
     problem_id: problemId,
     user_id: userId,
@@ -146,7 +147,7 @@ export async function createSelfTest(
     language: input.language,
     code: input.code,
     file_name: fileName,
-  };
+  });
 
   try {
     await db.insert(selfTests).values({

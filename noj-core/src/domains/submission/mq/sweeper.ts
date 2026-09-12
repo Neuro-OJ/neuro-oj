@@ -14,13 +14,15 @@ import { problems, selfTests, submissions } from "../../../shared/db/schema.ts";
 import { getStorageProvider } from "../../system/index.ts";
 import { getSetting } from "../../system/index.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
+import { listSweepTargets } from "../../../shared/mq/sweep-targets.ts";
 import {
   isRetryableJudgeQueueError,
   JUDGE_QUEUE_CAPACITY,
   JUDGE_QUEUES,
 } from "./producer.ts";
 import { logger } from "../../../shared/base/logging.ts";
-import type { JudgeTask, JudgeTaskPriority } from "../types/index.ts";
+import type { JudgeTaskPriority } from "../types/index.ts";
+import { buildJudgeTask } from "../types/index.ts";
 import type { RuntimeConfig } from "../../catalog/index.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import { buildJudgeTaskLlmForProvider } from "../../gateway/index.ts";
@@ -270,7 +272,7 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
       );
     }
 
-    const task: JudgeTask = {
+    const task = buildJudgeTask({
       submission_id: row.id,
       problem_id: row.problem_id,
       user_id: row.user_id ?? "",
@@ -284,7 +286,7 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
       ...(row.rejudge_seq !== undefined
         ? { rejudge_seq: row.rejudge_seq }
         : {}),
-    };
+    });
 
     if (row.user_id && row.llm_provider_config_id) {
       try {
@@ -613,6 +615,16 @@ export async function runQueueSweeperOnce(): Promise<void> {
     JUDGE_QUEUES.medium,
     JUDGE_QUEUES.low,
   ] as const;
+
+  // 评测三级队列与结果队列由 core/judge 直接约定（judge 侧写入 processing），
+  // 保持硬编码；其余消费者队列从登记表读取（createConsumer 自动登记），
+  // 避免"新增消费者忘记加进 sweeper 队列清单"导致消息永久滞留
+  //（2026-09-12 评审 §2.5：noj:search:index / noj:review:dm 此前就是这种状态）。
+  const coreSwept = new Set<string>([...judgeQueues, RESULT_QUEUE]);
+  const registeredTargets = listSweepTargets().filter(
+    (t) => !coreSwept.has(t.queueName),
+  );
+
   const results = await Promise.allSettled([
     ...judgeQueues.map((queue) =>
       sweepProcessingQueue(
@@ -625,6 +637,13 @@ export async function runQueueSweeperOnce(): Promise<void> {
       `${RESULT_QUEUE}:processing`,
       RESULT_QUEUE,
       RESULT_PROCESSING_TIMEOUT_MS,
+    ),
+    ...registeredTargets.map((target) =>
+      sweepProcessingQueue(
+        `${target.queueName}:processing`,
+        target.queueName,
+        target.processingTimeoutMs,
+      )
     ),
     recoverPendingSubmissions(now),
     recoverPendingSelfTests(now),

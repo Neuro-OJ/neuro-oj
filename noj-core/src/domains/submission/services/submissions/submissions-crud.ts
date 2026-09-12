@@ -66,13 +66,9 @@ import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
 import { buildJudgeTaskLlmForProvider } from "./../../../gateway/index.ts";
 import { getUserLlmProvider } from "../../../gateway/index.ts";
 import type { LlmConfig, RuntimeConfig } from "./../../../catalog/index.ts";
-import type {
-  JudgeTask,
-  JudgeTaskLlm,
-  SubmissionStatus,
-} from "../../types/index.ts";
+import type { JudgeTaskLlm, SubmissionStatus } from "../../types/index.ts";
 import type { Context } from "hono";
-import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
+import { buildJudgeTask, LANGUAGE_EXT_MAP } from "../../types/index.ts";
 import {
   Channels,
   publishSseEvent,
@@ -474,7 +470,8 @@ export async function createSubmission(
     "submission",
   );
 
-  const task: JudgeTask = {
+  // 统一经 buildJudgeTask 构造（2026-09-12 评审 §3.1：收敛 6 处内联构造）
+  const task = buildJudgeTask({
     submission_id: id,
     problem_id: input.problem_id,
     user_id: userId,
@@ -484,9 +481,9 @@ export async function createSubmission(
     language: input.language,
     code: input.code,
     file_name: fileName,
-    ...(llmTask ? { llm: llmTask } : {}),
-    ...(userLlmTask ? { user_llm: userLlmTask } : {}),
-  };
+    llm: llmTask ?? undefined,
+    user_llm: userLlmTask ?? undefined,
+  });
 
   try {
     await db.insert(submissions).values({
