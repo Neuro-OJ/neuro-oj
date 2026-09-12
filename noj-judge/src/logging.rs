@@ -13,17 +13,137 @@ use tracing_subscriber::fmt::{format::Writer, FmtContext, FormatEvent, FormatFie
 use tracing_subscriber::registry::LookupSpan;
 
 pub const SGR_RESET: &str = "\x1b[0m";
-pub const SGR_DIM: &str = "\x1b[2m";
-pub const SGR_BOLD: &str = "\x1b[1m";
 
-/// 按级别取 SGR 颜色码（契约 §1）。
-pub fn level_sgr(level: &Level) -> &'static str {
+/// SGR **参数码**（不含 ESC 包装），与契约 §1 一一对应。
+///
+/// 存参数码而非完整转义序列，是为了把「行级强调」与「片段自身样式」合成进
+/// 同一个序列（见 `render_segments`）。复合码由 `sgr_join` 合成：
+/// ERROR 徽章 `1;31` = `sgr_join(&[CODE_BOLD, CODE_ERROR])`。
+pub const CODE_BOLD: &str = "1";
+pub const CODE_DIM: &str = "2";
+pub const CODE_ERROR: &str = "31";
+pub const CODE_WARN: &str = "33";
+pub const CODE_INFO: &str = "36";
+pub const CODE_DEBUG: &str = "90";
+/// 模块名（契约 §2 模块列）。
+pub const CODE_MODULE: &str = "34";
+
+/// 模块列宽（契约 §2）。
+pub const MODULE_WIDTH: usize = 14;
+/// msg 起始列：12(ts) + 2 + 5(级别) + 2 + 14(模块) + 2 = 37（契约 §2）。
+pub const MSG_COLUMN: usize = 12 + 2 + 5 + 2 + MODULE_WIDTH + 2;
+
+/// 按级别取 SGR **参数码**，便于与行级强调合成。
+///
+/// 契约 §1：WARN 只是黄色徽章（`33`），**整行粗体是 ERROR 专属**。
+/// WARN 在生产是常态级别（`LOG_LEVEL` 默认 warn），若也整行加粗，
+/// 整个生产日志流会被加粗淹没，粗体不再指示「需要立刻处理」。
+pub fn level_code(level: &Level) -> &'static str {
     match *level {
-        Level::ERROR => "\x1b[1;31m",
-        Level::WARN => "\x1b[1;33m",
-        Level::INFO => "\x1b[36m",
-        Level::DEBUG | Level::TRACE => "\x1b[90m",
+        Level::ERROR => CODE_ERROR,
+        Level::WARN => CODE_WARN,
+        Level::INFO => CODE_INFO,
+        Level::DEBUG | Level::TRACE => CODE_DEBUG,
     }
+}
+
+/// ERROR 是否整行粗体（契约 §1）。
+pub fn is_bold_line(level: &Level) -> bool {
+    matches!(*level, Level::ERROR)
+}
+
+/// 合成 SGR 序列；参数码去重（行级 `1` 与徽章自身重复时不会变成 `1;1`）。
+///
+/// 无码时返回空串，调用方无需分支即可安全拼接。
+pub fn sgr_join(codes: &[&str]) -> String {
+    let mut uniq: Vec<&str> = Vec::with_capacity(codes.len());
+    for c in codes {
+        if !uniq.contains(c) {
+            uniq.push(c);
+        }
+    }
+    if uniq.is_empty() {
+        String::new()
+    } else {
+        format!("\x1b[{}m", uniq.join(";"))
+    }
+}
+
+/// 模块名：tracing `target` 去掉 crate 前缀，取末段（契约 §5）。
+///
+/// `noj_judge::dual::container` → `container`；`noj_judge` → `noj_judge`。
+pub fn module_from_target(target: &str) -> &str {
+    target.rsplit("::").next().unwrap_or(target)
+}
+
+/// 模块名截断到列宽（超宽加省略号，避免撑破列）。
+///
+/// 按**字符**而非字节截断：模块名可能含非 ASCII，按字节切会产出非法 UTF-8
+/// 边界（`&str` 索引越界会 panic）。
+pub fn fit_module(name: &str) -> String {
+    let count = name.chars().count();
+    if count <= MODULE_WIDTH {
+        // padEnd 语义：右侧补空格到固定列宽
+        let mut s = String::with_capacity(MODULE_WIDTH);
+        s.push_str(name);
+        s.extend(std::iter::repeat_n(' ', MODULE_WIDTH - count));
+        s
+    } else {
+        let head: String = name.chars().take(MODULE_WIDTH - 1).collect();
+        format!("{head}…")
+    }
+}
+
+/// 一行中一个带样式的片段。
+///
+/// 渲染层**必须**按片段合成 SGR，不能在整行外层套样式：行内每个片段的
+/// `reset` 都会把外层样式清掉——历史上「WARN/ERROR 整行粗体」正是因此
+/// **从未生效**，而旧实现写在换行前且不带 `reset`，还会把粗体泄漏到后续输出。
+struct Segment {
+    text: String,
+    /// SGR 参数码；空表示继承默认色。
+    codes: Vec<&'static str>,
+    /// 是否参与行级强调（纯空白片段不参与，避免白添转义字节）。
+    emphasize: bool,
+}
+
+impl Segment {
+    fn new(text: impl Into<String>, codes: Vec<&'static str>) -> Self {
+        let text = text.into();
+        let emphasize = !text.trim().is_empty();
+        Self {
+            text,
+            codes,
+            emphasize,
+        }
+    }
+}
+
+/// 把片段序列渲染为字符串；无色时仅拼接文本（保证零转义序列）。
+fn render_segments(segments: &[Segment], color: bool, bold_line: bool) -> String {
+    let mut out = String::new();
+    for seg in segments {
+        // 空文本不产出转义序列：否则会留下「开了样式却没有内容」的裸 SGR，
+        // 该样式状态会泄漏到后续无关输出。
+        if seg.text.is_empty() {
+            continue;
+        }
+        let mut codes = seg.codes.clone();
+        if bold_line && seg.emphasize && !codes.contains(&"1") {
+            // 强调码**前置**，使合成结果与契约表一致：
+            // ERROR 徽章 31 + 行级 1 → 1;31。
+            codes.insert(0, "1");
+        }
+        if !color || codes.is_empty() {
+            out.push_str(&seg.text);
+            continue;
+        }
+        // 每个着色片段自成 `开 → 文本 → 关`，片段间不共享样式状态。
+        out.push_str(&sgr_join(&codes));
+        out.push_str(&seg.text);
+        out.push_str(SGR_RESET);
+    }
+    out
 }
 
 /// 契约级别徽章（`padEnd(5)` 语义：WARN/INFO 带尾空格）。
@@ -139,37 +259,36 @@ where
         event.record(&mut visitor);
 
         let ts = timestamp_hms();
-        if self.color {
-            write!(writer, "{SGR_DIM}{ts}{SGR_RESET}  ")?;
-            write!(
-                writer,
-                "{}{}{SGR_RESET}",
-                level_sgr(level),
-                level_badge(level)
-            )?;
-        } else {
-            write!(writer, "{ts}  {}", level_badge(level))?;
-        }
-        write!(writer, "  {}", visitor.message.unwrap_or_default())?;
-        // 模块名（契约 §5）：TS 侧由 LogTape category 提供，Rust 侧的等价物是
-        // tracing target。本期只保证它进入输出，不做列内对齐。
-        let target = event.metadata().target();
-        if self.color {
-            write!(writer, "  {SGR_DIM}target={SGR_RESET}{target}")?;
-        } else {
-            write!(writer, "  target={target}")?;
-        }
+        let mut segments: Vec<Segment> = Vec::with_capacity(6 + visitor.fields.len());
+        segments.push(Segment::new(ts, vec![CODE_DIM]));
+        segments.push(Segment::new("  ", vec![]));
+        segments.push(Segment::new(level_badge(level), vec![level_code(level)]));
+        // 模块列（契约 §2）：tracing 的等价物是 target，去掉 crate 前缀取末段。
+        segments.push(Segment::new("  ", vec![]));
+        segments.push(Segment::new(
+            fit_module(module_from_target(event.metadata().target())),
+            vec![CODE_MODULE],
+        ));
+        segments.push(Segment::new("  ", vec![]));
+
+        // msg 含换行时续行缩进到 msg 起始列（与 TS 侧一致）。
+        let indent = " ".repeat(MSG_COLUMN);
+        let message = visitor.message.unwrap_or_default();
+        segments.push(Segment::new(
+            message.replace('\n', &format!("\n{indent}")),
+            vec![],
+        ));
+
         for (k, v) in &visitor.fields {
-            if self.color {
-                write!(writer, "  {SGR_DIM}{k}={SGR_RESET}{v}")?;
-            } else {
-                write!(writer, "  {k}={v}")?;
-            }
+            segments.push(Segment::new("  ", vec![]));
+            segments.push(Segment::new(format!("{k}="), vec![CODE_DIM]));
+            // 多行值（如错误详情）续行缩进，保持块状可读。
+            let value = v.replace('\n', &format!("\n{indent}  "));
+            segments.push(Segment::new(value, vec![]));
         }
-        let bold = self.color && matches!(*level, Level::WARN | Level::ERROR);
-        if bold {
-            write!(writer, "{SGR_BOLD}")?;
-        }
+
+        let rendered = render_segments(&segments, self.color, is_bold_line(level));
+        write!(writer, "{rendered}")?;
         writeln!(writer)
     }
 }
@@ -369,8 +488,9 @@ mod tests {
     }
 
     #[test]
-    fn emits_target_as_module_name() {
-        // 契约 §5：TS 侧模块名来自 LogTape category，Rust 侧等价物是 target。
+    fn emits_module_column_from_target() {
+        // 契约 §2/§5：TS 侧模块名来自 LogTape category，Rust 侧等价物是
+        // target（去 crate 前缀取末段），进入定宽模块列而非 `target=` 字段。
         let out = Arc::new(Mutex::new(Vec::new()));
         let err = Arc::new(Mutex::new(Vec::new()));
         let sub = tracing_subscriber::fmt::Subscriber::builder()
@@ -382,7 +502,18 @@ mod tests {
             tracing::info!("带模块名");
         });
         let o = String::from_utf8(out.lock().unwrap().clone()).unwrap();
-        assert!(o.contains("target="), "应输出模块名等价物 target=: {o:?}");
+        // 本测试模块的 target 末段是 "tests"（module_path! = noj_judge::logging::tests）。
+        assert!(
+            !o.contains("target="),
+            "模块名不再以 target= 字段输出（已升为模块列）: {o:?}"
+        );
+        // 模块列紧跟级别徽章之后，msg 从第 MSG_COLUMN 列开始。
+        let msg_at = o.find("带模块名").expect("应含 msg");
+        assert_eq!(
+            msg_at, MSG_COLUMN,
+            "msg 必须从第 {MSG_COLUMN} 列开始: {o:?}"
+        );
+        assert_eq!(&o[21..35], "tests         ", "模块列应定宽 14: {o:?}");
     }
 
     #[test]
@@ -469,7 +600,182 @@ mod tests {
         });
         let o = String::from_utf8(out.lock().unwrap().clone()).unwrap();
         assert!(o.contains(SGR_RESET), "着色模式应含 SGR_RESET: {o:?}");
-        assert!(o.contains(SGR_DIM), "时间戳应使用暗色: {o:?}");
+        assert!(
+            o.contains(&sgr_join(&[CODE_DIM])),
+            "时间戳应使用暗色: {o:?}"
+        );
+    }
+
+    /// 按 SGR 状态机解析一行，返回「某段文本实际带的参数码集合」。
+    ///
+    /// 必要性：断言「行首是否有 `\x1b[1m`」**无法**证明整行粗体生效——
+    /// 旧实现恰好满足该断言却完全没生效（`\x1b[1m` 写在末尾，只留下一个
+    /// 未闭合的粗体状态，对任何文本都不生效且污染后续输出）。
+    fn codes_for(line: &str, needle: &str) -> Vec<String> {
+        let mut active: Vec<String> = Vec::new();
+        let mut idx = 0;
+        let bytes = line.as_bytes();
+        let mut seg_start = 0;
+        let mut result: Option<Vec<String>> = None;
+        while idx < bytes.len() {
+            if bytes[idx] == 0x1b && idx + 1 < bytes.len() && bytes[idx + 1] == b'[' {
+                // 记录进入转义前的文本段
+                if result.is_none() && line[seg_start..idx].contains(needle) {
+                    result = Some(active.clone());
+                }
+                let end = line[idx..]
+                    .find('m')
+                    .map(|p| idx + p)
+                    .unwrap_or(bytes.len());
+                let params = &line[idx + 2..end];
+                if params.is_empty() || params == "0" {
+                    active.clear();
+                } else {
+                    for p in params.split(';') {
+                        if !active.iter().any(|c| c == p) {
+                            active.push(p.to_string());
+                        }
+                    }
+                }
+                idx = end + 1;
+                seg_start = idx;
+                continue;
+            }
+            idx += 1;
+        }
+        if result.is_none() && line[seg_start..].contains(needle) {
+            result = Some(active.clone());
+        }
+        result.unwrap_or_default()
+    }
+
+    /// 一行结束时是否仍处于「已开样式」（未闭合 SGR → 样式泄漏）。
+    fn has_unclosed_sgr(line: &str) -> bool {
+        let mut active = 0usize;
+        let mut idx = 0;
+        let bytes = line.as_bytes();
+        while idx < bytes.len() {
+            if bytes[idx] == 0x1b && idx + 1 < bytes.len() && bytes[idx + 1] == b'[' {
+                let end = line[idx..]
+                    .find('m')
+                    .map(|p| idx + p)
+                    .unwrap_or(bytes.len());
+                let params = &line[idx + 2..end];
+                if params.is_empty() || params == "0" {
+                    active = 0;
+                } else {
+                    active += params.split(';').count();
+                }
+                idx = end + 1;
+                continue;
+            }
+            idx += 1;
+        }
+        active > 0
+    }
+
+    /// 在给定级别下渲染一行（着色），返回输出与走哪条流无关的字符串。
+    fn render_one(level_msg: &str) -> String {
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let err = Arc::new(Mutex::new(Vec::new()));
+        let sub = tracing_subscriber::fmt::Subscriber::builder()
+            .with_env_filter(tracing_subscriber::EnvFilter::new("trace"))
+            .event_format(ContractFormat { color: true })
+            .with_writer(Split(out.clone(), err.clone()))
+            .finish();
+        tracing::subscriber::with_default(sub, || match level_msg {
+            "error" => tracing::error!("失败"),
+            "warn" => tracing::warn!("失败"),
+            _ => tracing::info!("失败"),
+        });
+        // ERROR/WARN 走 stderr，INFO 走 stdout
+        let is_err = matches!(level_msg, "error" | "warn");
+        let buf = if is_err { err } else { out };
+        let bytes = buf.lock().unwrap().clone();
+        String::from_utf8(bytes).unwrap()
+    }
+
+    #[test]
+    fn error_line_is_bold_and_covers_message() {
+        // 契约 §1：ERROR 整行粗体，且必须**真的覆盖 message**。
+        let o = render_one("error");
+        let codes = codes_for(&o, "失败");
+        assert!(
+            codes.iter().any(|c| c == "1"),
+            "ERROR 整行粗体必须覆盖 message 本体: {o:?}"
+        );
+        // 徽章合成码须为 1;31（行级 1 前置 + 级别 31）
+        assert!(o.contains("\x1b[1;31m"), "ERROR 徽章应为 1;31: {o:?}");
+        assert!(!has_unclosed_sgr(o.trim_end()), "不得留下未闭合 SGR: {o:?}");
+    }
+
+    #[test]
+    fn warn_line_is_not_bold() {
+        // 契约 §1：WARN 只着色徽章（33），不整行粗体。
+        let o = render_one("warn");
+        assert!(o.contains("\x1b[33m"), "WARN 徽章应为黄色 33: {o:?}");
+        assert!(
+            !o.contains("\x1b[1;33m"),
+            "WARN 不得为粗体黄 1;33（整行粗体是 ERROR 专属）: {o:?}"
+        );
+        let codes = codes_for(&o, "失败");
+        assert!(
+            !codes.iter().any(|c| c == "1"),
+            "WARN 的 message 不得为粗体: {o:?}"
+        );
+        assert!(!has_unclosed_sgr(o.trim_end()), "不得留下未闭合 SGR: {o:?}");
+    }
+
+    #[test]
+    fn info_line_is_not_bold() {
+        let o = render_one("info");
+        let codes = codes_for(&o, "失败");
+        assert!(!codes.iter().any(|c| c == "1"), "INFO 不得粗体: {o:?}");
+    }
+
+    #[test]
+    fn fit_module_pads_and_truncates() {
+        assert_eq!(fit_module("db"), "db".to_string() + &" ".repeat(12));
+        assert_eq!(fit_module("content-review"), "content-review");
+        assert_eq!(fit_module("content-review").chars().count(), MODULE_WIDTH);
+        let long = fit_module("a-very-long-module-name");
+        assert_eq!(long.chars().count(), MODULE_WIDTH);
+        assert!(long.ends_with('…'), "超宽须有省略号: {long:?}");
+        // 非 ASCII：必须按字符截断，不得 panic 或产出半个字符
+        let cjk = fit_module("模块名字很长很长很长很长");
+        assert_eq!(cjk.chars().count(), MODULE_WIDTH);
+    }
+
+    #[test]
+    fn module_from_target_strips_crate_prefix() {
+        assert_eq!(
+            module_from_target("noj_judge::dual::container"),
+            "container"
+        );
+        assert_eq!(module_from_target("noj_judge::mq"), "mq");
+        assert_eq!(module_from_target("noj_judge"), "noj_judge");
+        assert_eq!(module_from_target("bollard::docker"), "docker");
+    }
+
+    #[test]
+    fn sgr_join_dedups_and_handles_empty() {
+        assert_eq!(sgr_join(&[]), "");
+        assert_eq!(sgr_join(&["1"]), "\x1b[1m");
+        assert_eq!(sgr_join(&["1", "31"]), "\x1b[1;31m");
+        // 去重：行级 1 与徽章自身重复时不得变成 1;1
+        assert_eq!(sgr_join(&["1", "1", "33"]), "\x1b[1;33m");
+    }
+
+    #[test]
+    fn level_codes_match_contract() {
+        assert_eq!(level_code(&Level::ERROR), "31");
+        assert_eq!(level_code(&Level::WARN), "33");
+        assert_eq!(level_code(&Level::INFO), "36");
+        assert_eq!(level_code(&Level::DEBUG), "90");
+        // 整行粗体是 ERROR 专属
+        assert!(is_bold_line(&Level::ERROR));
+        assert!(!is_bold_line(&Level::WARN));
+        assert!(!is_bold_line(&Level::INFO));
     }
 
     #[test]

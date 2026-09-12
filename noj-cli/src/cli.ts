@@ -14,7 +14,7 @@ import {
   deployUp,
 } from "./deploy/deploy.ts";
 import { maintainLogs, parseModulesArg } from "./maintain/logs.ts";
-import { type ColorMode, parseColorMode } from "./util/color.ts";
+import { COLOR_MODES, type ColorMode, parseColorMode } from "./util/color.ts";
 import {
   configCheck,
   configSet,
@@ -163,13 +163,25 @@ export function parseMaintainArgs(args: string[]): {
     } else if (a === "--follow") {
       follow = true;
     } else if (a === "--color") {
-      // 支持 `--color always` 与 `--color=always` 两种写法
+      // 支持 `--color always` 与 `--color=always` 两种写法。
+      //
+      // 只在该值**确实是合法颜色模式**时才消费下一个参数（评审 P2）：
+      // 早先对任意非 `-` 开头的参数都当作颜色值，于是 `--color server`
+      // 会把模块名 `server` 吞掉（`modules` 变成 undefined），
+      // `maintain logs --color server` 因此丢失目标服务。
       const next = args[i + 1];
-      if (next !== undefined && !next.startsWith("-")) {
+      if (
+        next !== undefined &&
+        // COLOR_MODES 是 readonly ColorMode[]；这里比对的是任意用户输入字符串，
+        // 故先放宽为 string[]（否则 TS2345）。单一事实源仍在 COLOR_MODES。
+        (COLOR_MODES as readonly string[]).includes(next.trim().toLowerCase())
+      ) {
         color = parseColorMode(next);
         i++;
       } else {
-        color = "always"; // 裸 `--color` 视为强制开（与常见 CLI 约定一致）
+        // 裸 `--color` 或后跟非法值：视为强制开（与常见 CLI 约定一致），
+        // 非法值不报错也不吞参，交由位置参数处理。
+        color = "always";
       }
     } else if (a.startsWith("--color=")) {
       color = parseColorMode(a.slice("--color=".length));

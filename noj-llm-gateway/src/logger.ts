@@ -23,15 +23,56 @@ import { gatewayContextStorage } from "./context.ts";
 
 export type { LtRecord };
 
+/**
+ * SGR 参数码（**不含** ESC 包装），与视觉契约 §1 一一对应。
+ *
+ * 存参数码而非完整转义序列，是为了让渲染层把「行级强调」与「片段自身样式」
+ * 合成进同一个序列（见 `renderSpans`）。契约表中的复合码由 `sgr()` 合成：
+ * ERROR 徽章 `1;31` = `sgr(SGR.bold, SGR.error)`。
+ */
 export const SGR = {
-  reset: "\x1b[0m",
-  dim: "\x1b[2m",
-  bold: "\x1b[1m",
-  info: "\x1b[36m",
-  debug: "\x1b[90m",
-  warn: "\x1b[1;33m",
-  error: "\x1b[1;31m",
+  reset: "0",
+  bold: "1",
+  dim: "2",
+  info: "36",
+  debug: "90",
+  warn: "33",
+  error: "31",
+  /** 模块名（契约 §2 模块列）。 */
+  module: "34",
+  /** 数值字面量：与字符串值区分，便于在长行里扫读数字。 */
+  number: "35",
 } as const;
+
+/** 把 SGR 参数码包装成完整转义序列；无参数时返回空串。 */
+export function sgr(...codes: readonly string[]): string {
+  const uniq = [...new Set(codes)];
+  return uniq.length === 0 ? "" : `\x1b[${uniq.join(";")}m`;
+}
+
+/**
+ * 标记「由 Error 序列化而来」的对象。
+ *
+ * `serializeValue` 会把 Error 转成普通对象，`value instanceof Error` 因此
+ * **永远不可达**（实测确认），渲染层再也认不出这是错误。用不可枚举的
+ * Symbol 打标记：`JSON.stringify` 与 `Object.entries` 都看不见它，故不改动
+ * 契约 §4 的 JSON 形状与既有脱敏遍历。
+ */
+export const ERROR_TAG: unique symbol = Symbol.for("noj.log.serialized-error");
+
+/** 给序列化后的 Error 形状打标记（不可枚举，对 JSON 不可见）。 */
+function tagError<T extends object>(obj: T): T {
+  Object.defineProperty(obj, ERROR_TAG, { value: true, enumerable: false });
+  return obj;
+}
+
+/** 判定值是否为序列化后的 Error 形状。 */
+export function isSerializedError(
+  value: unknown,
+): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null &&
+    (value as Record<symbol, unknown>)[ERROR_TAG] === true;
+}
 
 /** 契约级别名。 */
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -42,13 +83,6 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
   warn: 30,
   error: 40,
 };
-
-/** 时间戳列宽（`HH:MM:SS.mmm`）。 */
-const TIME_WIDTH = 12;
-/** 级别列宽（`padEnd(5)`）。 */
-const LEVEL_WIDTH = 5;
-/** message 之后的续行缩进列。 */
-const MSG_COLUMN = TIME_WIDTH + 2 + LEVEL_WIDTH + 2;
 
 /** 生产环境判定（`NOJ_ENV=production`）。 */
 export function isProduction(): boolean {
@@ -159,11 +193,18 @@ export function redactId(id: string, visiblePrefix = 8): string {
 }
 
 /** Error → 契约形状（生产去掉 stack）。 */
-export function serializeValue(value: unknown): unknown {
+export function serializeValue(
+  value: unknown,
+  production: boolean = isProduction(),
+): unknown {
   if (value instanceof Error) {
-    return isProduction()
-      ? { name: value.name, message: value.message }
-      : { name: value.name, message: value.message, stack: value.stack };
+    return tagError(
+      production ? { name: value.name, message: value.message } : {
+        name: value.name,
+        message: value.message,
+        stack: value.stack,
+      },
+    );
   }
   return value;
 }
@@ -174,15 +215,21 @@ export function serializeValue(value: unknown): unknown {
  * 迁移到消息模板后敏感值会**进入 message**，字段区脱敏管不到它；
  * 不按占位符名逐值脱敏会造成生产环境明文泄露。
  */
-export function redactValueByKey(key: string, value: unknown): unknown {
-  if (!isProduction()) return serializeValue(value);
+export function redactValueByKey(
+  key: string,
+  value: unknown,
+  production: boolean = isProduction(),
+): unknown {
+  if (!production) return serializeValue(value, production);
   const lower = key.toLowerCase();
   if (SENSITIVE_KEYS.has(lower)) return "[redacted]";
   if (lower === "score") return "[redacted]";
   // 关联标识先于 `*_id` 通配判定，否则会被误截断（见 CORRELATION_KEYS）
-  if (CORRELATION_KEYS.has(lower)) return serializeValue(value);
+  if (CORRELATION_KEYS.has(lower)) return serializeValue(value, production);
   if (ID_KEYS.has(lower) || lower.endsWith("_id")) {
-    return typeof value === "string" ? redactId(value) : serializeValue(value);
+    return typeof value === "string"
+      ? redactId(value)
+      : serializeValue(value, production);
   }
   // 客户端 IP 在生产日志中不做完整记录（隐私最小化）
   if (lower === "client_ip" || lower === "ip" || lower === "ips") {
@@ -190,7 +237,7 @@ export function redactValueByKey(key: string, value: unknown): unknown {
   }
   // 非敏感键也要递归：顶层键名匹配不到嵌套结构里的 password/api_key，
   // 整块直通即明文泄露。
-  return redactNested(value);
+  return redactNested(value, 0, new WeakSet(), production);
 }
 
 /** 递归深度上限：防御病态深结构。 */
@@ -217,8 +264,9 @@ function redactNested(
   value: unknown,
   depth = 0,
   seen: WeakSet<object> = new WeakSet(),
+  production: boolean = isProduction(),
 ): unknown {
-  const serialized = serializeValue(value);
+  const serialized = serializeValue(value, production);
   if (serialized === null || typeof serialized !== "object") return serialized;
   if (serialized instanceof Error) return serialized;
   if (depth >= MAX_REDACT_DEPTH) return REDACT_DEPTH_PLACEHOLDER;
@@ -226,8 +274,11 @@ function redactNested(
   seen.add(serialized);
   try {
     if (Array.isArray(serialized)) {
-      return serialized.map((item) => redactNested(item, depth + 1, seen));
+      return serialized.map((item) =>
+        redactNested(item, depth + 1, seen, production)
+      );
     }
+    const wasError = isSerializedError(serialized);
     const out: Record<string, unknown> = {};
     for (
       const [k, v] of Object.entries(serialized as Record<string, unknown>)
@@ -238,7 +289,7 @@ function redactNested(
         continue;
       }
       if (CORRELATION_KEYS.has(lower)) {
-        out[k] = serializeValue(v);
+        out[k] = serializeValue(v, production);
         continue;
       }
       if (lower === "client_ip" || lower === "ip" || lower === "ips") {
@@ -248,12 +299,14 @@ function redactNested(
       if (ID_KEYS.has(lower) || lower.endsWith("_id")) {
         out[k] = typeof v === "string"
           ? redactId(v)
-          : redactNested(v, depth + 1, seen);
+          : redactNested(v, depth + 1, seen, production);
         continue;
       }
-      out[k] = redactNested(v, depth + 1, seen);
+      out[k] = redactNested(v, depth + 1, seen, production);
     }
-    return out;
+    // 重建对象会丢掉不可枚举标记，这里补回：否则递归脱敏后的 Error
+    // 又退回「认不出的普通对象」，渲染层无法展开成详情块。
+    return wasError ? tagError(out) : out;
   } finally {
     // 只跟踪「当前路径」：兄弟节点引用同一对象是合法的 DAG，不应误判为环。
     seen.delete(serialized);
@@ -263,11 +316,12 @@ function redactNested(
 /** 对字段对象批量脱敏。 */
 export function redactFields(
   fields: Record<string, unknown>,
+  production: boolean = isProduction(),
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(fields)) {
-    const redacted = redactValueByKey(key, value);
-    if (isProduction() && key.toLowerCase() === "score") continue;
+    const redacted = redactValueByKey(key, value, production);
+    if (production && key.toLowerCase() === "score") continue;
     out[key] = redacted;
   }
   return out;
@@ -297,7 +351,10 @@ export function formatFieldValue(value: unknown): string {
  * `record.message` 是交错数组（文本/值交替），占位符名按 `rawMessage`
  * 的出现顺序解析，二者一一对应。
  */
-export function renderableMessage(record: LtRecord): string {
+export function renderableMessage(
+  record: LtRecord,
+  production: boolean = isProduction(),
+): string {
   const parts = record.message as readonly unknown[];
   const ordered = orderedPlaceholders(
     record.rawMessage as string | readonly string[],
@@ -309,7 +366,9 @@ export function renderableMessage(record: LtRecord): string {
       out.push(String(parts[i] ?? ""));
     } else {
       out.push(
-        formatFieldValue(redactValueByKey(ordered[vi++] ?? "", parts[i])),
+        formatFieldValue(
+          redactValueByKey(ordered[vi++] ?? "", parts[i], production),
+        ),
       );
     }
   }
@@ -321,7 +380,10 @@ export function renderableMessage(record: LtRecord): string {
  *
  * 去重只发生在**呈现层**——`LogRecord.fields` 仍保留全部字段。
  */
-export function renderableFields(record: LtRecord): [string, unknown][] {
+export function renderableFields(
+  record: LtRecord,
+  production: boolean = isProduction(),
+): [string, unknown][] {
   const skip = new Set(
     orderedPlaceholders(record.rawMessage as string | readonly string[]),
   );
@@ -330,7 +392,7 @@ export function renderableFields(record: LtRecord): [string, unknown][] {
   for (const [k, v] of Object.entries(record.properties)) {
     if (!skip.has(k)) kept[k] = v;
   }
-  return Object.entries(redactFields(kept));
+  return Object.entries(redactFields(kept, production));
 }
 
 /** LogTape 传给 `format` 回调的形状（仅取用到的字段）。 */
@@ -339,59 +401,187 @@ export interface FormattedValues {
   record: LtRecord;
 }
 
+/** 时间戳列宽（`HH:MM:SS.mmm`）。 */
+const TIME_WIDTH = 12;
+/** 级别列宽（`padEnd(5)`）。 */
+const LEVEL_WIDTH = 5;
+/** 模块列宽（契约 §2）。 */
+const MODULE_WIDTH = 14;
+/** msg 起始列：12 + 2 + 5 + 2 + 14 + 2 = 37。 */
+const MSG_COLUMN = TIME_WIDTH + 2 + LEVEL_WIDTH + 2 + MODULE_WIDTH + 2;
+
+/**
+ * 一个带样式的文本片段。
+ *
+ * 渲染层**必须**按片段合成 SGR，不能在整行外层套样式：行内每个片段的
+ * `reset` 都会把外层样式清掉（实测——这正是「WARN/ERROR 整行粗体」这一
+ * 契约承诺长期未生效的原因）。
+ */
+interface Span {
+  text: string;
+  /** SGR 参数码；空数组表示继承默认色。 */
+  codes: string[];
+}
+
+const PLAIN: readonly string[] = [];
+
+/** 把片段序列渲染成字符串；无色时仅拼接文本，保证零转义序列。 */
+function renderSpans(spans: readonly Span[], color: boolean): string {
+  if (!color) return spans.map((s) => s.text).join("");
+  // 空文本片段不产出转义序列；每个着色片段自成 `开 → 文本 → 关`，
+  // 片段之间不共享样式状态（避免样式泄漏到后续输出）。
+  return spans
+    .filter((s) => s.text.length > 0)
+    .map((s) =>
+      s.codes.length === 0
+        ? s.text
+        : `${sgr(...s.codes)}${s.text}${sgr(SGR.reset)}`
+    )
+    .join("");
+}
+
+/**
+ * 在指定片段上叠加行级强调码（如 ERROR 整行粗体）。
+ *
+ * 强调码**前置**，使合成结果与契约表一致（ERROR 徽章 `31` + 行级 `1`
+ * → `1;31`）；纯空白片段不参与，避免白添转义字节。
+ */
+function emphasize(spans: Span[], code: string): Span[] {
+  return spans.map((s) =>
+    s.text.trim().length === 0
+      ? { text: s.text, codes: s.codes }
+      : { text: s.text, codes: [code, ...s.codes] }
+  );
+}
+
+/** 模块名：取 category 末段（`noj` 之后的最后一段）。 */
+export function moduleName(record: LtRecord): string | undefined {
+  const cat = record.category as readonly unknown[] | undefined;
+  if (!Array.isArray(cat) || cat.length === 0) return undefined;
+  const parts = cat.filter((c) => typeof c === "string") as string[];
+  if (parts.length === 0) return undefined;
+  const last = parts[parts.length - 1]!;
+  return last.length > 0 ? last : undefined;
+}
+
+/** 模块名截断到列宽（超宽加省略号，避免撑破列）。 */
+export function fitModule(name: string): string {
+  return name.length <= MODULE_WIDTH
+    ? name.padEnd(MODULE_WIDTH)
+    : `${name.slice(0, MODULE_WIDTH - 1)}…`;
+}
+
+/** 值是否为数值字面量（用于着色区分）。 */
+export function isNumericValue(value: unknown): boolean {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/**
+ * 把序列化后的 Error 形状展成多行详情。
+ *
+ * `stack` 去掉与首行重复的那行，其余栈帧各占一行。
+ *
+ * 无 `stack` 时补上 `name`（非 "Error" 才补，避免 `Error: msg` 冗余）：
+ * 生产环境会剥掉 stack，若这里不补，`TypeError: boom` 在网关渲染成
+ * `error: boom`、在 core 渲染成 `error: TypeError: boom` —— 跨服务不一致，
+ * 而这正是 parity 门禁要锁的东西（review 复审指出）。
+ */
+export function formatErrorDetail(
+  key: string,
+  value: Record<string, unknown>,
+): string {
+  const name = typeof value.name === "string" ? value.name : "Error";
+  const message = typeof value.message === "string" ? value.message : "";
+  const lines = [`${key}: ${message}`];
+  if (typeof value.stack === "string" && value.stack.length > 0) {
+    for (const l of value.stack.split("\n").slice(1)) {
+      const t = l.trim();
+      if (t.length > 0) lines.push(`  at ${t.replace(/^at\s+/, "")}`);
+    }
+  }
+  if (lines.length === 1 && name !== "Error") {
+    lines[0] = `${key}: ${name}: ${message}`;
+  }
+  return lines.join("\n");
+}
+
 /** 渲染契约单行布局（pretty）。 */
 export function formatPretty(
   values: FormattedValues,
-  opts: { color: boolean },
+  opts: { color: boolean; production?: boolean },
 ): string {
+  const production = opts.production ?? isProduction();
   const record = values.record;
   const level = toCoreLevel(record.level);
   const time = values.timestamp ?? "";
   const rid = typeof record.properties.request_id === "string"
     ? record.properties.request_id.slice(0, 8)
     : undefined;
+  const bold = level === "error";
 
-  const parts: string[] = [];
-  parts.push(opts.color ? `${SGR.dim}${time}${SGR.reset}` : time, "  ");
-  const badge = level.toUpperCase().padEnd(LEVEL_WIDTH);
-  parts.push(opts.color ? `${SGR[level]}${badge}${SGR.reset}` : badge, "  ");
+  const spans: Span[] = [];
+  const emit = (text: string, codes: readonly string[] = PLAIN) => {
+    if (text.length === 0) return;
+    spans.push({ text, codes: [...codes] });
+  };
+
+  emit(time, [SGR.dim]);
+  emit("  ");
+  emit(level.toUpperCase().padEnd(LEVEL_WIDTH), [SGR[level]]);
+  emit("  ");
+  const mod = moduleName(record);
+  if (mod) {
+    emit(fitModule(mod), [SGR.module]);
+    emit("  ");
+  } else {
+    // 无 category 时保留列宽，避免同一批日志出现两种缩进。
+    emit(" ".repeat(MODULE_WIDTH + 2));
+  }
 
   const indent = " ".repeat(MSG_COLUMN);
-  parts.push(renderableMessage(record).split("\n").join(`\n${indent}`));
+  emit(renderableMessage(record, production).split("\n").join(`\n${indent}`));
 
   if (rid) {
-    parts.push(
-      "  ",
-      opts.color ? `${SGR.dim}rid=${rid}${SGR.reset}` : `rid=${rid}`,
-    );
+    emit("  ");
+    emit("rid=", [SGR.dim]);
+    emit(rid);
   }
-  const entries = renderableFields(record);
-  if (entries.length > 0) {
-    parts.push(
-      "  ",
-      entries
-        .map(([k, v]) =>
-          opts.color
-            ? `${SGR.dim}${k}=${SGR.reset}${formatFieldValue(v)}`
-            : `${k}=${formatFieldValue(v)}`
-        )
-        .join("  "),
-    );
+
+  const entries = renderableFields(record, production);
+  const errors: [string, Record<string, unknown>][] = [];
+  const plain: [string, unknown][] = [];
+  for (const [k, v] of entries) {
+    if (isSerializedError(v)) errors.push([k, v]);
+    else plain.push([k, v]);
   }
-  const line = parts.join("");
-  return opts.color && (level === "warn" || level === "error")
-    ? `${SGR.bold}${line}${SGR.reset}`
-    : line;
+
+  for (const [k, v] of plain) {
+    emit("  ");
+    emit(`${k}=`, [SGR.dim]);
+    emit(formatFieldValue(v), isNumericValue(v) ? [SGR.number] : PLAIN);
+  }
+
+  // Error 详情块：不用 JSON（stack 里的换行转义后整行不可读）。
+  for (const [k, v] of errors) {
+    for (const [i, line] of formatErrorDetail(k, v).split("\n").entries()) {
+      emit("\n" + indent + (i === 0 ? "" : "  "));
+      emit(line, i === 0 ? [SGR[level]] : [SGR.dim]);
+    }
+  }
+
+  return renderSpans(bold ? emphasize(spans, SGR.bold) : spans, opts.color);
 }
 
 /** 构造 pretty formatter。 */
 export function makeGatewayPrettyFormatter(
-  opts: { color: boolean },
+  opts: { color: boolean; production?: boolean },
 ): (record: LtRecord) => string {
+  const production = opts.production ?? isProduction();
   const options: TextFormatterOptions = {
     timestamp: "time",
     value: (v: unknown) => formatFieldValue(v),
-    format: (values) => formatPretty(values as FormattedValues, opts),
+    format: (values) =>
+      formatPretty(values as FormattedValues, { ...opts, production }),
   };
   return getTextFormatter(options);
 }
@@ -410,20 +600,23 @@ export const RESERVED_ENVELOPE_KEYS: readonly string[] = [
  * 保留键（`ts`/`level`/`msg`/`request_id`）由信封占据：同名的业务字段会被
  * 改名成 `field_<name>`，避免把消息体本身覆盖掉。
  */
-export function makeGatewayJsonFormatter(): (record: LtRecord) => string {
+export function makeGatewayJsonFormatter(
+  opts: { production?: boolean } = {},
+): (record: LtRecord) => string {
+  const production = opts.production ?? isProduction();
   return (record: LtRecord): string => {
-    const fields = redactFields(record.properties);
+    const fields = redactFields(record.properties, production);
     const rid = fields.request_id;
     const rest: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(fields)) {
       if (k === "request_id") continue;
       const key = RESERVED_ENVELOPE_KEYS.includes(k) ? `field_${k}` : k;
-      rest[key] = v instanceof Error ? serializeValue(v) : v;
+      rest[key] = v instanceof Error ? serializeValue(v, production) : v;
     }
     return JSON.stringify({
       ts: new Date(record.timestamp).toISOString(),
       level: toCoreLevel(record.level),
-      msg: renderableMessage(record),
+      msg: renderableMessage(record, production),
       ...(rid === undefined ? {} : { request_id: rid }),
       ...rest,
     });
@@ -493,11 +686,15 @@ function dynamicLevelFilter(record: LtRecord): boolean {
  */
 export function setupGatewayLogging(): void {
   const format = resolveFormat();
+  // 与 core 的 setupLogging 一致：生产判定只解析一次并**显式**注入渲染层，
+  // 不让渲染层再自行读全局 env（review 复审指出的死接线：此前这里不传
+  // production，新增的 ctor 形参在生产路径上是死代码）。
+  const production = isProduction();
   const makeFormatter = (stream: "stdout" | "stderr") => {
     const color = resolveColor(stream);
     return format === "json"
-      ? makeGatewayJsonFormatter()
-      : makeGatewayPrettyFormatter({ color });
+      ? makeGatewayJsonFormatter({ production })
+      : makeGatewayPrettyFormatter({ color, production });
   };
   const outFormatter = makeFormatter("stdout");
   const errFormatter = makeFormatter("stderr");

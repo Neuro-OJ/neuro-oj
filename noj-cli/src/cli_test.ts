@@ -145,6 +145,30 @@ Deno.test("parseMaintainArgs: 解析 modules 与 --follow --dir", () => {
   assertEquals(a.dir, "/opt");
 });
 
+Deno.test("parseMaintainArgs: --color 只在合法模式时消费下一个参数", () => {
+  // 回归防线（评审 P2）：早先对任意非 `-` 开头的参数都当作颜色值，
+  // `--color server` 会把模块名吞掉，导致 modules 变成 undefined。
+  const swallowed = parseMaintainArgs(["--color", "server"]);
+  assertEquals(swallowed.modules, "server", "模块名不得被 --color 吞掉");
+  assertEquals(swallowed.color, "always", "裸 --color 视为强制开色");
+
+  // 合法模式仍须被消费
+  const never = parseMaintainArgs(["--color", "never", "core"]);
+  assertEquals(never.color, "never");
+  assertEquals(never.modules, "core");
+  assertEquals(parseMaintainArgs(["--color=auto", "core"]).modules, "core");
+  // 大小写不敏感
+  const upper = parseMaintainArgs(["--color", "ALWAYS", "core"]);
+  assertEquals(upper.color, "always");
+  assertEquals(upper.modules, "core");
+  // 非法值不吞参：保留为位置参数，颜色回退为强制开
+  const bogus = parseMaintainArgs(["--color", "bogus", "core"]);
+  assertEquals(bogus.modules, "bogus");
+  assertEquals(bogus.color, "always");
+  // `--color` 在末尾（无后继参数）不得越界
+  assertEquals(parseMaintainArgs(["core", "--color"]).modules, "core");
+});
+
 Deno.test("parseBackupArgs: create 旗标解析", () => {
   const a = parseBackupArgs([
     "create",

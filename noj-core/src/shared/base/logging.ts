@@ -16,8 +16,9 @@
  */
 
 import { getLogger, type LogRecord as LtRecord } from "@logtape/logtape";
-import { setupLogging } from "./log-config.ts";
+import { type EnvReader, setupLogging } from "./log-config.ts";
 import {
+  isProduction,
   type LogLevel,
   redactFields,
   renderableMessage,
@@ -39,27 +40,40 @@ export interface LogRecord {
 /** 日志输出目的地。默认写 console；测试可替换以捕获记录。 */
 export type LogSink = (record: LogRecord) => void;
 
-/** LogTape 记录 → 兼容记录（对象形状与迁移前保持一致）。 */
-function toCompatRecord(record: LtRecord): LogRecord {
+/**
+ * LogTape 记录 → 兼容记录（对象形状与迁移前保持一致）。
+ *
+ * `env` 透传给脱敏与消息渲染：不传则读进程环境（生产行为不变）；测试可用
+ * 注入的读取器构造"生产/开发"，无需改写全局 `Deno.env`。此前这里恒读全局，
+ * 导致注入 env 的测试拿不到对应脱敏（会静默按进程环境判定）。
+ */
+function toCompatRecord(record: LtRecord, env?: EnvReader): LogRecord {
   const fields: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(record.properties)) {
     if (k === "request_id") continue;
     fields[k] = v;
   }
+  const production = env ? isProduction(env) : isProduction();
   return {
     ts: new Date(record.timestamp).toISOString(),
     level: toCoreLevel(record.level),
-    msg: renderableMessage(record),
+    msg: renderableMessage(record, production),
     request_id: typeof record.properties.request_id === "string"
       ? record.properties.request_id
       : undefined,
-    fields: redactFields(fields),
+    fields: redactFields(fields, production),
   };
 }
 
-/** 替换日志 sink（测试用，用于捕获日志记录）。 */
-export function setLogSink(sink: LogSink): void {
-  setupLogging((record) => sink(toCompatRecord(record)));
+/**
+ * 替换日志 sink（测试用，用于捕获日志记录）。
+ *
+ * @param env 可选的 env 读取器；传入后级别过滤/脱敏都按它判定，测试因此
+ *            **不必改写进程级 `Deno.env`**（那在 `deno test --parallel` 下
+ *            会跨文件互相覆盖）。
+ */
+export function setLogSink(sink: LogSink, env?: EnvReader): void {
+  setupLogging((record) => sink(toCompatRecord(record, env)), env);
 }
 
 /** 恢复默认 sink（测试清理用）。 */

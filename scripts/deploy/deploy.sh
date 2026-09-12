@@ -38,6 +38,8 @@ INTERACTIVE=1
 UNINSTALL_CONFIRMED=0
 UNINSTALL_ALL=0
 INCLUDE_ALL_PROFILES=0
+# logs() 在 LOG_COLOR=always 时置 1，令 run_compose 插入全局 `--ansi always`。
+COMPOSE_FORCE_ANSI=0
 [[ "${NOJ_DEPLOY_NON_INTERACTIVE:-0}" == "1" ]] && INTERACTIVE=0
 declare -a VERIFIED_IMAGE_DIGESTS=()
 CONFIG_STAGE_FILE=""
@@ -955,10 +957,19 @@ run_compose() {
   if ((INCLUDE_ALL_PROFILES)) || judge_enabled; then
     compose_args+=(--profile judge)
   fi
+  # `--ansi always` 是 docker compose 的**全局**旗标，必须排在子命令之前，
+  # 故与 --env-file/-f/--profile 同列。由 logs() 在 LOG_COLOR=always 时置位，
+  # 用于真正强制着色（省略 --no-color 只是交回 compose 自行探测，不等于开）。
+  if [[ "${COMPOSE_FORCE_ANSI:-0}" == "1" ]]; then
+    compose_args+=(--ansi always)
+  fi
   if ((DRY_RUN)); then
     printf "[dry-run] docker compose --env-file %s -f %s" "$ENV_FILE" "$COMPOSE_FILE"
     if judge_enabled; then
       printf " --profile judge"
+    fi
+    if [[ "${COMPOSE_FORCE_ANSI:-0}" == "1" ]]; then
+      printf " --ansi always"
     fi
     printf " %s" "$@"
     printf "\n"
@@ -1107,6 +1118,40 @@ logs() {
   prepare_and_check
   local args=(logs --tail=200)
   if ((FOLLOW)); then args+=(--follow); fi
+  # 着色判定与 noj-cli / core / gateway / judge 同一契约（视觉契约 §3）：
+  #   NO_COLOR 非空 → 关；LOG_COLOR=never → 关；LOG_COLOR=always → 开；
+  #   其余按 stdout 是否 TTY。LOG_COLOR 大小写不敏感（与 TS 侧 trim+toLowerCase 一致）。
+  # 修复评审 P2：此前无条件透传，`noj-cli logs core > out.txt` 会把
+  # docker compose 的 ANSI 转义码写进重定向文件（同一缺陷类在
+  # maintain/logs.ts 已修，但生产路径走的是本脚本，未覆盖）。
+  #
+  # 注意（评审复审）：`docker compose logs` 只提供 `--no-color`，**没有**单命令的
+  # "强制着色"开关——省略 `--no-color` 只是把决定权交回 compose 自己的 TTY 探测，
+  # 并不等于"开"。要真正强制必须用子命令**之前**的全局 `--ansi always`
+  # （与 TS 侧 resolveColor 在无 TTY 下仍返回 true 的语义对齐）。
+  # `--ansi` 是 docker compose 的全局旗标，必须排在子命令前，因此走 LOG_COLOR 变量
+  # 由 run_compose 插入，而不是追加到 args。
+  # 生产路径以 .env.prod 为配置源（.env.prod.example 也把 LOG_COLOR 列为着色开关），
+  # 因此两处都要看：进程 env 优先（显式覆盖），其次 .env.prod。
+  local log_color no_color
+  log_color="${LOG_COLOR-}"
+  if [[ -z "$log_color" ]]; then
+    log_color="$(env_value LOG_COLOR 2>/dev/null || true)"
+  fi
+  log_color="${log_color#"${log_color%%[![:space:]]*}"}"  # ltrim
+  log_color="${log_color%"${log_color##*[![:space:]]}"}"  # rtrim
+  log_color="${log_color,,}"                              # lowercase
+  no_color="${NO_COLOR-}"
+  if [[ -z "$no_color" ]]; then
+    no_color="$(env_value NO_COLOR 2>/dev/null || true)"
+  fi
+  if [[ -n "$no_color" ]] || [[ "$log_color" == "never" ]]; then
+    args+=(--no-color)
+  elif [[ "$log_color" == "always" ]]; then
+    COMPOSE_FORCE_ANSI=1 # 由 run_compose 转成全局 `--ansi always`
+  elif [[ ! -t 1 ]]; then
+    args+=(--no-color)
+  fi
   if ((${#POSITIONAL[@]} > 0)); then args+=("${POSITIONAL[@]}"); fi
   run_compose "${args[@]}"
 }

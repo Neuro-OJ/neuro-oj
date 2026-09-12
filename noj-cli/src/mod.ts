@@ -93,6 +93,7 @@ export type {
 
 // util（P3）
 export {
+  COLOR_MODES,
   colorFor,
   type ColorMode,
   parseColorMode,

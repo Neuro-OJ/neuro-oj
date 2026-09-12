@@ -1,5 +1,12 @@
 import { assertEquals } from "@std/assert";
-import { colorFor, parseColorMode, prefixLine, resolveColor } from "./color.ts";
+import {
+  COLOR_MODES,
+  colorFor,
+  type ColorMode,
+  parseColorMode,
+  prefixLine,
+  resolveColor,
+} from "./color.ts";
 
 Deno.test("colorFor: 同名恒同色，不同名可能不同色", () => {
   assertEquals(colorFor("server"), colorFor("server"));
@@ -19,7 +26,36 @@ Deno.test("colorFor: 返回 ANSI 前景色码并以 m 结尾", () => {
 
 Deno.test("prefixLine: 加彩色模块前缀并去掉行尾换行", () => {
   const out = prefixLine("server", "hello\n", "\x1b[36m");
-  assertEquals(out, "\x1b[36m[server] hello\x1b[0m");
+  // 只着色前缀本身，行体不着色（函数名与文档承诺的是「彩色前缀」）
+  assertEquals(out, "\x1b[36m[server]\x1b[0m hello");
+});
+
+Deno.test("prefixLine: 行内自带 SGR 时前缀仍着色且行体原样保留", () => {
+  // 转发的 docker/文件日志自带 pretty 输出（含转义）。旧实现把整行套在
+  // 外层，被行内第一个 reset 清掉——表现为「纯文本行整行染色、含 SGR 行
+  // 只有前缀染色」，同一视图两种表现。
+  const inner = "\x1b[2m14:32:07\x1b[0m  INFO   启动";
+  const out = prefixLine("server", inner, "\x1b[32m");
+  assertEquals(out, "\x1b[32m[server]\x1b[0m " + inner);
+  assertEquals(out.endsWith(inner), true, "行体必须原样保留");
+});
+
+Deno.test("prefixLine: reset 紧跟前缀，不拖到行尾", () => {
+  // 结构性回归护栏：reset 必须**紧跟前缀**。若 reset 落在行尾，说明是
+  // 整行着色（历史缺陷）——此时行内自带的 SGR 会把前缀色清掉。
+  const color = "\x1b[32m";
+  const cases = [
+    prefixLine("m", "hello", color),
+    prefixLine("m", "\x1b[36mx\x1b[0m", color),
+    prefixLine("m", "\x1b[1;31mERROR\x1b[0m  失败", color),
+  ];
+  for (const out of cases) {
+    assertEquals(
+      out.indexOf("\x1b[0m"),
+      color.length + "[m]".length,
+      `reset 必须紧跟前缀: ${JSON.stringify(out)}`,
+    );
+  }
 });
 
 /** 快照并恢复给定 env，避免污染其他测试。 */
@@ -82,6 +118,23 @@ Deno.test("parseColorMode: 大小写不敏感，非法值回退 auto", () => {
   assertEquals(parseColorMode(" Never "), "never");
   assertEquals(parseColorMode("bogus"), "auto");
   assertEquals(parseColorMode(undefined), "auto");
+});
+
+Deno.test("COLOR_MODES 覆盖 ColorMode 联合类型的全部成员", () => {
+  // 与 parseColorMode 的一致性已由**实现**保证（它复用 COLOR_MODES），
+  // 再断言一次是恒真断言。这里检查真正会漏的地方：ColorMode 联合类型新增
+  // 成员、却忘了同步 COLOR_MODES —— 那样新成员永远无法通过 `--color` 传入。
+  // 用穷尽映射做**编译期**检查（缺成员会直接类型报错）。
+  const exhaustive: Record<ColorMode, true> = {
+    auto: true,
+    always: true,
+    never: true,
+  };
+  assertEquals(
+    [...COLOR_MODES].sort(),
+    Object.keys(exhaustive).sort(),
+    "COLOR_MODES 必须与 ColorMode 联合类型的成员完全一致",
+  );
 });
 
 Deno.test("prefixLine: enabled=false 时不加着色", () => {

@@ -131,8 +131,9 @@ async function main() {
   const jwtPlaceholder = describePlaceholderSecret("JWT_SECRET", jwtSecret);
   if (jwtPlaceholder) {
     logger.error(
-      `${jwtPlaceholder}。\n` +
-        `请不要直接使用示例/占位密钥；可通过 \`openssl rand -base64 48\` 生成强随机密钥。`,
+      "{reason}。\n" +
+        "请不要直接使用示例/占位密钥；可通过 `openssl rand -base64 48` 生成强随机密钥。",
+      { reason: jwtPlaceholder },
     );
     Deno.exit(1);
   }
@@ -158,8 +159,9 @@ async function main() {
   );
   if (tfaPlaceholder) {
     logger.error(
-      `${tfaPlaceholder}。\n` +
-        `请不要直接使用示例/占位密钥；可通过 \`openssl rand -base64 48\` 生成强随机密钥。`,
+      "{reason}。\n" +
+        "请不要直接使用示例/占位密钥；可通过 `openssl rand -base64 48` 生成强随机密钥。",
+      { reason: tfaPlaceholder },
     );
     Deno.exit(1);
   }
