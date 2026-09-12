@@ -11,3 +11,4 @@
 | `contestSubmission` | noj-core/src/domains/contest/routes/sse.ts<br>noj-core/src/domains/submission/services/submissions/artifact-submissions.ts<br>noj-core/src/domains/submission/services/submissions/submissions-crud.ts |
 | `stats` | noj-core/src/domains/query/routes/sse.ts<br>noj-core/src/domains/query/services/stats-cache.ts |
 | `announcements` | noj-core/src/domains/system/routes/announcements.ts<br>noj-core/src/domains/system/services/announcements.ts |
+| `settings` | noj-core/src/domains/system/services/system-settings.ts<br>noj-core/src/domains/system/tests/services/system-settings-invalidation.test.ts |

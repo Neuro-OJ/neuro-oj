@@ -1,5 +1,10 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 const apiBase = process.env.NUXT_API_BASE ?? 'http://localhost:8000';
+// 站点对外地址（用于 sitemap/canonical 等需要**绝对 URL** 的场景）。
+// 必须来自配置而非请求 Host 头：Host 由客户端控制，一旦被写入进程级缓存
+// 就是缓存投毒（2026-09-12 架构评审 §4.2）。未配置时 sitemap 会退化为
+// "按 Host 分键缓存 + 形状校验"，仅用于本地开发。
+const siteUrl = process.env.NUXT_SITE_URL ?? '';
 
 export default defineNuxtConfig({
   compatibilityDate: '2026-06-26',
@@ -32,6 +37,7 @@ export default defineNuxtConfig({
   // 运行时配置（服务端私有，不暴露给浏览器）
   runtimeConfig: {
     apiBase,
+    siteUrl,
   },
 
   // 子目录组件不添加路径前缀（feature/LatestSubmissions.vue → <LatestSubmissions>）

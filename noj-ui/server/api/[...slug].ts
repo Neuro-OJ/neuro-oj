@@ -330,7 +330,16 @@ export default defineEventHandler(async (event) => {
     //
     // 安全响应头由 server/middleware/security-headers.ts 统一设置（对所有响应生效），
     // 此处无需再包一层；直接返回即可让已写入的状态码生效。
-    await proxyRequest(event, target);
+    //
+    // 2026-09-12 架构评审 §4.1：**必须显式 redirect: 'manual'**。
+    // h3 的 sendProxy 用 ofetch 且把选项透传给 fetch，而 ofetch 不设 redirect 默认值
+    // → 平台默认 follow。上游 302（OAuth 授权跳转）会被代理自己跟随，把第三方页面
+    // 回吐给浏览器，浏览器永远停留在 /api/v1/auth/oauth/:provider 而进不到回调端点
+    // （state 校验与 Set-Cookie 都在回调响应里）→ OAuth 登录 100% 失败。
+    // SSE 分支此前已显式设置该语义（proxySseRequest），这里补齐非 SSE 分支。
+    await proxyRequest(event, target, {
+      fetchOptions: { redirect: 'manual' },
+    });
     return;
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));

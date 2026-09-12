@@ -9,10 +9,7 @@
 
 import { assertEquals } from "jsr:@std/assert@^1";
 import { sanitizeJudgeDetails } from "../../mq/consumer.ts";
-import {
-  getRedis,
-  resetRedisForTest,
-} from "../../../../shared/mq/connection.ts";
+import { createRedisClientForUrl } from "../../../../shared/mq/connection.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   evaluationResults,
@@ -90,18 +87,15 @@ async function assertResultExists(submissionId: string): Promise<boolean> {
 
 /** 向 fake Redis LPUSH 一条消息 */
 async function fakeLpush(fakeUrl: string, queue: string, message: string) {
-  const prevUrl = Deno.env.get("REDIS_URL") ?? null;
+  // 用显式 URL 建连，**不改**进程级 REDIS_URL（见 connection.ts 的
+  // createRedisClientForUrl 注释：env 污染会造成同分片其他文件的假失败）。
+  const redis = createRedisClientForUrl(fakeUrl);
   try {
-    resetRedisForTest();
-    Deno.env.set("REDIS_URL", fakeUrl);
-    const redis = getRedis();
     await redis.connect();
     await redis.ping();
     await redis.lpush(queue, message);
   } finally {
-    resetRedisForTest();
-    if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
-    else Deno.env.delete("REDIS_URL");
+    await redis.quit().catch(() => {});
   }
 }
 
@@ -111,18 +105,13 @@ async function _withFakeRedis<T>(
   // deno-lint-ignore no-explicit-any
   fn: (redis: any) => Promise<T>,
 ): Promise<T> {
-  const prevUrl = Deno.env.get("REDIS_URL") ?? null;
+  const redis = createRedisClientForUrl(fakeUrl);
   try {
-    resetRedisForTest();
-    Deno.env.set("REDIS_URL", fakeUrl);
-    const redis = getRedis();
     await redis.connect();
     await redis.ping();
     return await fn(redis);
   } finally {
-    resetRedisForTest();
-    if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
-    else Deno.env.delete("REDIS_URL");
+    await redis.quit().catch(() => {});
   }
 }
 
@@ -136,16 +125,13 @@ Deno.test({
   fn: async () => {
     const fake = startFakeRedis();
     try {
-      resetRedisForTest();
-      Deno.env.set("REDIS_URL", fake.url);
-      const redis = getRedis();
+      const redis = createRedisClientForUrl(fake.url);
       await redis.connect();
       await redis.ping();
       // 空队列 BRPOP 应返回 null
       // deno-lint-ignore no-explicit-any
       const result = await (redis as any).brpop("nonexistent:q", 2);
-      resetRedisForTest();
-      Deno.env.delete("REDIS_URL");
+      await redis.quit().catch(() => {});
 
       assertEquals(result, null, "空队列 BRPOP 应返回 null");
     } finally {
@@ -165,15 +151,12 @@ Deno.test({
       await fakeLpush(fake.url, "mytest:queue", "hello42");
 
       // BRPOP 取数据
-      resetRedisForTest();
-      Deno.env.set("REDIS_URL", fake.url);
-      const redis = getRedis();
+      const redis = createRedisClientForUrl(fake.url);
       await redis.connect();
       await redis.ping();
       // deno-lint-ignore no-explicit-any
       const result = await (redis as any).brpop("mytest:queue", 2);
-      resetRedisForTest();
-      Deno.env.delete("REDIS_URL");
+      await redis.quit().catch(() => {});
 
       assertEquals(Array.isArray(result), true, "有数据时应返回数组");
       assertEquals(result[0], "mytest:queue", "应返回队列名");
@@ -220,17 +203,14 @@ Deno.test({
       await fakeLpush(fake.url, "test:q", "msg1");
       await fakeLpush(fake.url, "test:q", "msg2");
 
-      resetRedisForTest();
-      Deno.env.set("REDIS_URL", fake.url);
-      const redis = getRedis();
+      const redis = createRedisClientForUrl(fake.url);
       await redis.connect();
       await redis.ping();
       // deno-lint-ignore no-explicit-any
       const first = await (redis as any).brpop("test:q", 2);
       // deno-lint-ignore no-explicit-any
       const second = await (redis as any).brpop("test:q", 2);
-      resetRedisForTest();
-      Deno.env.delete("REDIS_URL");
+      await redis.quit().catch(() => {});
 
       assertEquals(first[1], "msg2", "后入应先出（LPUSH 语义）");
       assertEquals(second[1], "msg1", "先入后出");

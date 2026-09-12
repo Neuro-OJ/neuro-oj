@@ -62,7 +62,7 @@ noj-ui/
 │   ├── useToast.ts        # Toast 通知（Nuxt UI useToast 封装）
 │   ├── useDialog.ts       # 弹窗（Nuxt UI useOverlay + DialogModal）
 │   ├── useProblemFilters.ts  # 题目筛选 URL 同步
-│   ├── use-submissions.ts # 提交历史数据获取
+│   ├── useSubmissions.ts # 提交历史数据获取
 │   ├── useCommunity.ts / useContests.ts / useMessages.ts / useSearch.ts / useRankings.ts / useAdminList.ts / useAuditLogs.ts / useBanStatus.ts / useEventSource.ts / useSubmissionPolling.ts / useEditorTheme.ts / useDraftStorage.ts / useFormError.ts / useResizableSplit.ts / useCommunityNotifications.ts  # 业务与工具 composables
 ├── layouts/               # 页面布局
 │   ├── default.vue        # 默认布局（导航栏 + 页脚）
@@ -154,6 +154,7 @@ cd dist
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `NUXT_API_BASE` | `http://localhost:8000` | noj-core API 地址（服务端私有） |
+| `NUXT_SITE_URL` | 空 | sitemap/canonical 的**权威站点地址**（如 `https://noj.example.com`）。未配置时 sitemap 退化为按 Host 分键缓存；生产必须配置，避免缓存投毒（2026-09-12 评审 §4.2） |
 
 ## API 交互约定
 
@@ -291,7 +292,7 @@ cd dist
 - 筛选条件变化时自动重置页码
 - 防抖处理（避免快速输入时频繁请求）
 
-### use-submissions
+### useSubmissions
 - `useSubmissions()`：获取提交历史列表
 - `useSubmissionDetail(id)`：获取单个提交详情（含轮询 pending 状态）
 - 分值格式化：`score / 100`（数据库存储 ×100）
@@ -400,16 +401,22 @@ cd dist
 
 ## 已知限制
 
-- **无前端单元测试**：组件未配置独立的测试框架（跨模块 E2E 测试见 noj-tests）
+- **前端测试已接入 CI**：`deno task test`（Deno 单测，含 server/ 代理与 composable 断言）
+  + `deno task test:components`（vitest 组件测试），均已在 CI 运行；跨模块 E2E 见 noj-tests。
+  （2026-09-12 更正：此处原写"无前端单元测试"，与代码不符）
 - **SEO 基础已具备**：动态页 `useSeoMeta`、OG、sitemap、robots 已加入；结构化数据与完整关键词策略仍待补充
 - **无图片优化**：仅 `logo.jpg`，未使用 Nuxt 图片优化
 - **无字体优化**：使用系统字体栈，无 web font 加载
-- **Composable 命名不一致**：部分使用 camelCase（`useAuth`），部分使用 kebab-case（`use-submissions`）
+- **Composable 命名统一为 camelCase**（如 `useAuth`、`useSubmissions`）；此前文档提到的
+  kebab-case 文件 `use-submissions.ts` 并不存在（2026-09-12 更正）
 
 ## 贡献要求
 
 - **所有提交必须 GPG 签名**（详见根目录 README.md）
-- **所有代码必须通过 PR 提交**，禁止直接推送到 main
+- 分支与推送纪律以根目录 [`AGENTS.md`](../AGENTS.md) §7.1 为准：日常开发与缺陷修复
+  可直接提交 `main`；需要评审的变更从 `main` 派生分支走 PR。无论走哪条路径，
+  提交前必须完成本模块的检查与验收（2026-09-12 更正：此处原写"禁止直接推送到 main"，
+  与顶层 AGENTS.md 冲突）
 - 提交信息格式：`feat(ui): 中文描述` / `fix(ui): 中文描述`
 
 ## 相关文档

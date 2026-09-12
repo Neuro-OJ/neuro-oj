@@ -109,12 +109,12 @@ Neuro OJ (NOJ) 是一个面向 **AI 领域认证与竞赛** 的在线评测平�
 > 稳定、安全、可扩展，并完善 AI 竞赛/认证能力
 
 - [ ] Judge worker 水平扩展 + 负载均衡
-- [ ] 任务优先级队列
-- [ ] 数据库备份与迁移策略
-- [ ] 监控告警（Prometheus + Grafana）
-- [ ] 结构化日志
-- [ ] CI/CD 流水线
-- [ ] 安全审计：Docker 逃逸、资源耗尽、DDoS
+- [x] 任务优先级队列（三级队列 high/medium/low）
+- [x] 数据库备份与迁移策略（scripts/deploy/backup.sh + restore-drill.sh）
+- [x] 监控告警（Prometheus + Grafana；compose 可选 monitoring profile，见 deploy/monitoring/README.md）
+- [x] 结构化日志（LOG_FORMAT=json + 生产脱敏）
+- [x] CI/CD 流水线（.github/workflows/ci.yml + e2e.yml）
+- [x] 安全审计：Docker 逃逸、资源耗尽、DDoS（沙箱加固 + 限流矩阵 + 告警规则）
 - [ ] 压力测试
 - [ ] 评测插件机制：自定义指标 / 隐藏集评测脚本
 - [ ] IOAI / NOAI 题目包导入与模板

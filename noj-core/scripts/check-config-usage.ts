@@ -336,6 +336,8 @@ export const REVERSE_EXEMPT = new Set([
   "NUXT_API_BASE",
   "NUXT_NOJ_ENV",
   "NUXT_ALLOW_INSECURE_HTTP",
+  // sitemap/canonical 的权威站点地址（nuxt.config.ts 读取，2026-09-12 评审 §4.2）
+  "NUXT_SITE_URL",
   // 开发/测试工具链
   "NOJ_PROJECT_ROOT",
   "NOJ_BACKUP_PASSPHRASE_FILE",

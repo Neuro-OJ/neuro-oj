@@ -26,6 +26,12 @@ import { ValidationError } from "../../../shared/base/errors.ts";
 import { logAudit } from "./audit-log.ts";
 import { getEnvSnapshotValue } from "./env-snapshot.ts";
 import {
+  Channels,
+  onEvent,
+  publishEvent,
+} from "../../../shared/sse/event-bus.ts";
+import { logger } from "../../../shared/base/logging.ts";
+import {
   CONFIG_DEFINITIONS,
   type ConfigScope,
   findDefinition,
@@ -89,11 +95,92 @@ let cache: Map<string, SettingValue> = new Map();
 /** 是否已执行 init（用于测试时跳过重复） */
 let _initialized = false;
 
+// ─── 跨副本缓存失效（2026-09-12 评审 §2.6）────────────────────
+//
+// 配置缓存是**进程内**的：单副本下 `cache.delete()` 足够，多副本下"管理员在 A 副本
+// 改了设置，B/C 副本永远不会感知"，会出现"部分用户行为不一致"的线上事故。
+// 这里通过 Redis Pub/Sub 广播失效事件，各副本订阅后清本地缓存。
+//
+// 注：`publishEvent` 在订阅者未就绪时会跳过（避免误导），因此本机制是**尽力而为**的
+// 一致性优化，不是强一致保证——单副本语义不受影响。
+
+/** 设置变更事件的 payload */
+interface SettingsChangedPayload {
+  type: "settings:changed";
+  /** 变更的 key；缺省表示需要整体失效（例如批量初始化）。 */
+  key?: string;
+}
+
+/** 记录已注册监听，避免重复注册（模块可能被多次导入/测试往返）。 */
+let _settingsInvalidationListenerRegistered = false;
+
+/**
+ * 刷新本地设置缓存（跨副本失效的**执行**端）。
+ *
+ * 关键：不能只 `cache.delete()`。`getSetting()` 在缓存未命中时**不回查 DB**，
+ * 而是走 env → default 兜底链；只删缓存会让副本读到 env/默认值，而不是 A 副本
+ * 刚写入的 DB 值。因此这里必须"重新加载"：
+ * - 指定 key：`reloadSingleKey()` 先读 DB 再替换缓存（不留读不到的窗口）；
+ * - 未指定 key：全量重建缓存（原子替换，见 loadAllIntoCache）。
+ */
+export async function refreshSettingsCache(key?: string): Promise<void> {
+  if (key) {
+    // bootstrap（env-owned）项不缓存 DB 值，跳过
+    if (isBootstrap(key)) return;
+    await reloadSingleKey(key);
+    return;
+  }
+  await loadAllIntoCache();
+}
+
+/**
+ * 注册跨副本失效监听（幂等）。
+ *
+ * 由模块加载时自动调用；单测可直接调用
+ * `_dispatchToLocalListenersForTest` 模拟"收到其它副本的变更通知"。
+ */
+export function registerSettingsInvalidationListener(): void {
+  if (_settingsInvalidationListenerRegistered) return;
+  _settingsInvalidationListenerRegistered = true;
+  onEvent(Channels.settings, (_channel, message) => {
+    let payload: SettingsChangedPayload | null = null;
+    try {
+      payload = JSON.parse(message) as SettingsChangedPayload;
+    } catch {
+      payload = null;
+    }
+    void refreshSettingsCache(payload?.key).then(() => {
+      logger.info("收到设置变更通知，已刷新本地设置缓存", {
+        key: payload?.key ?? "(全部)",
+      });
+    }).catch((err) => {
+      logger.warn("收到设置变更通知但刷新本地缓存失败", {
+        key: payload?.key ?? "(全部)",
+        err,
+      });
+    });
+  });
+}
+
+/**
+ * 广播设置变更（供各变更路径调用）。
+ *
+ * 本地缓存由调用方直接清理（不依赖 Pub/Sub 往返）；本函数只负责通知其它副本。
+ */
+export function notifySettingsChanged(key?: string): void {
+  const payload: SettingsChangedPayload = { type: "settings:changed", key };
+  publishEvent(Channels.settings, JSON.stringify(payload));
+}
+
 // 注册 DB 重置回调：TRUNCATE system_settings 表时同步清内存缓存
 registerDbResetCallback(() => {
   cache = new Map();
   _initialized = false;
 });
+
+// 模块加载即注册跨副本失效监听（幂等）——与上面的 registerDbResetCallback 同为
+// 模块级副作用，保证任何用到本模块的进程都能收到失效通知。
+registerSettingsInvalidationListener();
 
 // ─── 敏感字段掩码 ───────────────────────────────────────────
 
@@ -219,7 +306,13 @@ function validateValueType(
  */
 export async function initSystemSettings(): Promise<void> {
   if (_initialized) return;
+  await loadAllIntoCache();
+}
 
+/**
+ * 从 DB 全量重建设置缓存（原子替换；跨副本整体失效与初始化共用）。
+ */
+async function loadAllIntoCache(): Promise<void> {
   const db = getDb();
   const rows = await db.select().from(systemSettings);
 
@@ -544,6 +637,8 @@ export async function updateSetting(
   // 失效缓存单条，异步 reload
   cache.delete(key);
   await reloadSingleKey(key);
+  // 通知其它副本失效（2026-09-12 评审 §2.6）
+  notifySettingsChanged(key);
 
   // 审计日志：记录设置变更（issue #101）
   const def = findDefinition(key);
@@ -608,6 +703,8 @@ export async function resetSetting(
 
   cache.delete(key);
   // 重置后不需要 reload（已经从 Map 删除，下次读会走 env/default 兜底）
+  // 其它副本同样需要失效（2026-09-12 评审 §2.6）
+  notifySettingsChanged(key);
 
   // 审计日志：记录设置删除（issue #101）
   const def = findDefinition(key);
@@ -714,6 +811,8 @@ export async function cleanupBootstrapRow(
 
   await db.delete(systemSettings).where(eq(systemSettings.key, key));
   cache.delete(key);
+  // 清理残留同样广播（2026-09-12 评审 §2.6）
+  notifySettingsChanged(key);
 
   if (rows.length > 0) {
     const fromValue = def.is_secret ? maskSecret(oldRaw) : oldRaw;

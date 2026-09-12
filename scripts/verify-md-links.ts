@@ -19,10 +19,42 @@ export interface ExtractedLink {
   line: number;
 }
 
-/** 从 Markdown 文本中提取 [text](target) 与 ![alt](target)。 */
+/**
+ * 去掉围栏代码块与行内代码，保留行号（用空行占位）。
+ *
+ * 必要性（2026-09-12 实测）：Markdown 的链接正则会把**代码示例**里的
+ * `](...)` 当成链接——例如文档中引用路由提取正则
+ * `/\.(get|post)\(\s*["'`]([^"'`]+)["'`]/g` 时，`]([^"'`]+)` 被判成
+ * "目标文件不存在"。文档里出现代码示例是常态，因此必须先剥离代码再扫描。
+ */
+export function stripCodeBlocks(content: string): string {
+  const lines = content.split(/\r?\n/);
+  const out: string[] = [];
+  let fenceChar: string | null = null;
+  for (const line of lines) {
+    const fence = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (fenceChar === null) {
+      if (fence) {
+        fenceChar = fence[1][0];
+        out.push("");
+        continue;
+      }
+      // 行内代码：`` `...` `` 内容不参与链接扫描
+      out.push(line.replace(/`[^`]*`/g, ""));
+      continue;
+    }
+    if (fence && fence[1][0] === fenceChar) {
+      fenceChar = null;
+    }
+    out.push("");
+  }
+  return out.join("\n");
+}
+
+/** 从 Markdown 文本中提取 [text](target) 与 ![alt](target)（自动跳过代码块）。 */
 export function extractLinks(content: string): ExtractedLink[] {
   const links: ExtractedLink[] = [];
-  const lines = content.split(/\r?\n/);
+  const lines = stripCodeBlocks(content).split(/\r?\n/);
   const re = /!?\[[^\]]*\]\(([^)]+)\)/g;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -107,6 +139,13 @@ function collectMdFiles(root: string): string[] {
   return files;
 }
 
+/**
+ * 统计扫描到的 Markdown 文件数（门禁自检用：扫到 0 个文件时的"通过"是假绿灯）。
+ */
+export function countMarkdownFiles(root: string): number {
+  return collectMdFiles(root).length;
+}
+
 /** 扫描 root 下所有 Markdown 链接，返回错误列表。 */
 export function verifyMarkdownLinks(root: string): string[] {
   const errors: string[] = [];
@@ -172,6 +211,7 @@ export function verifyMarkdownLinks(root: string): string[] {
 
 if (import.meta.main) {
   const root = ".";
+  const mdFiles = countMarkdownFiles(root);
   const errors = verifyMarkdownLinks(root);
   if (errors.length > 0) {
     console.error("Markdown 链接检查失败：");
@@ -183,5 +223,12 @@ if (import.meta.main) {
     }
     Deno.exit(1);
   }
-  console.log("Markdown 链接检查通过");
+  // 自检：扫描器必须真的扫到文件，否则"通过"没有任何意义
+  if (mdFiles === 0) {
+    console.error(
+      `Markdown 链接检查失败：在 ${root} 下未扫描到任何 Markdown 文件（排除目录配置或扫描器已失效）`,
+    );
+    Deno.exit(1);
+  }
+  console.log(`Markdown 链接检查通过（扫描 ${mdFiles} 个 Markdown 文件）`);
 }

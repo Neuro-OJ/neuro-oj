@@ -229,6 +229,15 @@ cd noj-llm-gateway && deno task dev   # 可选
 - 中文注释 + 英文标识符
 - Deno 错误用 `AppError` 继承体系；Rust 用 `anyhow::Result`
 - 日志生产环境自动脱敏，不得直接输出敏感字段
+- **多副本约束**：禁止新增进程内可变状态（配置缓存、计数器、节流/去重标记等）。
+  若确有必要，必须在 [`dev-docs/engineering/domain-boundaries.md`](dev-docs/engineering/domain-boundaries.md#多副本约束2026-09-12-架构评审-26)
+  的「多副本约束」表中登记为"单副本专用"并写明多副本后果。
+  跨副本共享状态一律走 Redis（Pub/Sub 或 INCR）/DB；
+  **配置失效必须"重新加载"而非仅 `cache.delete()`**（`getSetting()` 缓存未命中
+  不回查 DB，只删缓存会读到 env/default 而非真实新值）。
+- **迁移安全**：禁止 `ALTER TABLE ... ADD COLUMN ... NOT NULL` 不带 `DEFAULT`
+  （存量库升级必失败，空库测试无法发现）。必须用三步式：加可空列 → 回填 →
+  `SET NOT NULL`。由 `scripts/check-migration-safety.ts` 强制。
 
 ### 8.3 修改前必读
 
