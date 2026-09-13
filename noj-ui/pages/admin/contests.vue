@@ -9,13 +9,16 @@ import type {
   Pagination,
   ContestAntiCheatGroup,
   ContestAntiCheatTimelineItem,
+  ContestProblem,
 } from '~/composables/useContests'
+import type { SimilarSubmissionPair, SimilarSubmissionsMeta } from '~/utils/contestAntiCheat'
+import { describeCoverage, isTruncated } from '~/utils/contestAntiCheat'
 import { useToast } from '~/composables/useToast'
 import { runContestMutation } from '~/utils/contestMutation'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', ssr: false })
 
-const { typeLabels, statusLabels, formatDateTime, statusClass, listAntiCheatGroups, listAntiCheatTimeline } = useContests()
+const { typeLabels, statusLabels, formatDateTime, statusClass, listAntiCheatGroups, listAntiCheatTimeline, listAntiCheatSimilarSubmissions } = useContests()
 const { toast } = useToast()
 const { dialog } = useDialog()
 const { api } = useApi()
@@ -37,6 +40,28 @@ const antiCheatTimeline = ref<ContestAntiCheatTimelineItem[]>([])
 const antiCheatIp = ref('')
 const antiCheatLoading = ref(false)
 const antiCheatError = ref('')
+
+// ── 风控面板分栏：IP 关联 / 相似提交 ─────────────────────────────
+// 该文件未接入 i18n（全仓 104 个页面/组件中仅 11 个用 useI18n），文案直接写中文。
+const antiCheatTab = ref<'ip' | 'similar'>('ip')
+const similarPairs = ref<SimilarSubmissionPair[]>([])
+const similarMeta = ref<SimilarSubmissionsMeta | null>(null)
+const similarThreshold = ref(0.8)
+const similarProblemId = ref('')
+const similarLoading = ref(false)
+const similarError = ref('')
+/** 本场竞赛的题目，用于相似提交的题目筛选（比全局题目列表更贴合该场次）。 */
+const antiCheatProblems = ref<ContestProblem[]>([])
+
+const similarCoverageText = computed(() => describeCoverage(similarMeta.value))
+const similarTruncated = computed(() => isTruncated(similarMeta.value))
+const similarProblemOptions = computed(() => [
+  { label: '全部题目', value: '' },
+  ...antiCheatProblems.value.map((p) => ({
+    label: `${p.label} ${p.display_id || p.problem_id} ${p.title}`,
+    value: p.problem_id,
+  })),
+])
 interface SettlementItem {
   submission_id: string
   user_id: string
@@ -142,16 +167,62 @@ async function openAntiCheat(contest: Contest) {
   antiCheatTimeline.value = []
   antiCheatIp.value = ''
   antiCheatError.value = ''
+  // 每次打开都重置相似提交状态，避免残留上一场竞赛的结果与筛选条件
+  antiCheatTab.value = 'ip'
+  similarPairs.value = []
+  similarMeta.value = null
+  similarProblemId.value = ''
+  similarThreshold.value = 0.8
+  similarError.value = ''
+  antiCheatProblems.value = []
   antiCheatLoading.value = true
   try {
-    const response = await listAntiCheatGroups(contest.public_id || contest.id, { min_accounts: 2, per_page: 100 })
-    antiCheatGroups.value = response.data
+    const [groupsResponse, detailResponse] = await Promise.all([
+      listAntiCheatGroups(contest.public_id || contest.id, { min_accounts: 2, per_page: 100 }),
+      api.get<{ data: { problems?: ContestProblem[] } }>(
+        `/api/v1/admin/contest/contests/${contest.public_id || contest.id}`,
+        { silent: true },
+      ),
+    ])
+    antiCheatGroups.value = groupsResponse.data
+    antiCheatProblems.value = detailResponse.data.problems ?? []
   } catch (error: unknown) {
     antiCheatError.value = extractApiError(error).message
   } finally {
     antiCheatLoading.value = false
   }
 }
+
+async function loadSimilarSubmissions() {
+  if (!antiCheatContest.value) return
+  similarLoading.value = true
+  similarError.value = ''
+  try {
+    const response = await listAntiCheatSimilarSubmissions(
+      antiCheatContest.value.public_id || antiCheatContest.value.id,
+      {
+        threshold: similarThreshold.value,
+        limit: 50,
+        ...(similarProblemId.value ? { problem_id: similarProblemId.value } : {}),
+      },
+    )
+    similarPairs.value = response.data
+    similarMeta.value = response.meta
+  } catch (error: unknown) {
+    similarError.value = extractApiError(error).message
+    similarPairs.value = []
+    similarMeta.value = null
+  } finally {
+    similarLoading.value = false
+  }
+}
+
+/** 切换分栏时按需加载：相似度计算是 200 份候选量级的开销，不应在打开面板时就跑。 */
+watch(antiCheatTab, (tab) => {
+  if (tab === 'similar' && similarPairs.value.length === 0 && !similarLoading.value) {
+    void loadSimilarSubmissions()
+  }
+})
 
 async function openAntiCheatTimeline(ip: string) {
   if (!antiCheatContest.value) return
@@ -644,8 +715,48 @@ async function removeParticipant(participant: Participant) {
   <div v-if="antiCheatContest" class="fixed inset-0 z-300 flex items-center justify-center bg-black/45 p-4" @click.self="antiCheatContest = null">
     <div class="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-modal">
       <header class="flex items-center justify-between border-b border-border px-6 py-4"><div><h2 class="text-lg font-bold text-text">竞赛风控线索</h2><p class="mt-1 text-xs text-text-muted">{{ antiCheatContest.title }} · 仅供人工复核，不自动封禁或取消成绩</p></div><button class="rounded-lg p-2 text-text-secondary hover:bg-primary-hover" @click="antiCheatContest = null"><UIcon name="i-lucide-x" class="size-4.5" /></button></header>
-      <div class="border-b border-border bg-amber-50 px-6 py-3 text-xs text-amber-800">提交来源 IP 用于竞赛账号关联，默认保留 180 天；仅管理员可见。共享网络、代理和 NAT 可能导致误报，请结合其他证据复核。</div>
-      <div class="flex-1 overflow-y-auto p-5"><p v-if="antiCheatError" class="mb-3 text-sm text-error-text">{{ antiCheatError }}</p><p v-if="antiCheatLoading" class="py-12 text-center text-sm text-text-muted">加载中...</p><div v-else-if="antiCheatGroups.length" class="grid gap-4 lg:grid-cols-2"><button v-for="group in antiCheatGroups" :key="group.ip" class="rounded-xl border border-border p-4 text-left transition hover:border-signal" :class="antiCheatIp === group.ip ? 'border-signal bg-signal/5' : ''" @click="openAntiCheatTimeline(group.ip)"><div class="flex items-center justify-between"><code class="font-mono text-sm font-semibold text-text">{{ group.ip }}</code><UBadge color="warning" variant="subtle">{{ group.account_count }} 个账号</UBadge></div><p class="mt-2 text-xs text-text-secondary">{{ group.submission_count }} 次提交 · {{ formatDateTime(group.first_submission_at) }} 至 {{ formatDateTime(group.last_submission_at) }}</p><div class="mt-3 flex flex-wrap gap-1.5"><UBadge v-for="account in group.accounts" :key="account.user_id" color="neutral" variant="subtle">{{ account.username }}（{{ account.submission_count }}）</UBadge></div></button></div><p v-else-if="!antiCheatLoading" class="py-12 text-center text-sm text-text-muted">暂无同 IP 多账号候选组</p><div v-if="antiCheatTimeline.length" class="mt-5 rounded-xl border border-border"><div class="border-b border-border px-4 py-3 text-sm font-semibold text-text">提交时间线：{{ antiCheatIp }}</div><div class="divide-y divide-border"><div v-for="item in antiCheatTimeline" :key="item.submission_id" class="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-3 text-xs"><span><strong class="text-text">{{ item.username }}</strong><span class="ml-2 text-text-secondary">{{ item.problem_title }} · {{ item.language }}</span></span><span class="text-text-muted">{{ formatDateTime(item.created_at) }}</span><code class="font-mono text-text-muted">{{ item.submission_id.slice(0, 12) }}</code></div></div></div></div>
+      <div class="flex gap-1 border-b border-border px-6 pt-3">
+        <button class="rounded-t-lg px-3 py-2 text-sm font-medium transition" :class="antiCheatTab === 'ip' ? 'border-b-2 border-signal text-text' : 'text-text-secondary hover:text-text'" @click="antiCheatTab = 'ip'">IP 关联</button>
+        <button class="rounded-t-lg px-3 py-2 text-sm font-medium transition" :class="antiCheatTab === 'similar' ? 'border-b-2 border-signal text-text' : 'text-text-secondary hover:text-text'" @click="antiCheatTab = 'similar'">相似提交</button>
+      </div>
+      <div v-if="antiCheatTab === 'ip'" class="border-b border-border bg-amber-50 px-6 py-3 text-xs text-amber-800">提交来源 IP 用于竞赛账号关联，默认保留 180 天；仅管理员可见。共享网络、代理和 NAT 可能导致误报，请结合其他证据复核。</div>
+      <div v-else class="border-b border-border bg-amber-50 px-6 py-3 text-xs text-amber-800">基于代码 token 指纹的相似度，仅供人工复核，不自动判罚。阈值过高会漏掉改名洗稿，过低会放大同思路独立实现的误报。</div>
+      <div v-if="antiCheatTab === 'ip'" class="flex-1 overflow-y-auto p-5"><p v-if="antiCheatError" class="mb-3 text-sm text-error-text">{{ antiCheatError }}</p><p v-if="antiCheatLoading" class="py-12 text-center text-sm text-text-muted">加载中...</p><div v-else-if="antiCheatGroups.length" class="grid gap-4 lg:grid-cols-2"><button v-for="group in antiCheatGroups" :key="group.ip" class="rounded-xl border border-border p-4 text-left transition hover:border-signal" :class="antiCheatIp === group.ip ? 'border-signal bg-signal/5' : ''" @click="openAntiCheatTimeline(group.ip)"><div class="flex items-center justify-between"><code class="font-mono text-sm font-semibold text-text">{{ group.ip }}</code><UBadge color="warning" variant="subtle">{{ group.account_count }} 个账号</UBadge></div><p class="mt-2 text-xs text-text-secondary">{{ group.submission_count }} 次提交 · {{ formatDateTime(group.first_submission_at) }} 至 {{ formatDateTime(group.last_submission_at) }}</p><div class="mt-3 flex flex-wrap gap-1.5"><UBadge v-for="account in group.accounts" :key="account.user_id" color="neutral" variant="subtle">{{ account.username }}（{{ account.submission_count }}）</UBadge></div></button></div><p v-else-if="!antiCheatLoading" class="py-12 text-center text-sm text-text-muted">暂无同 IP 多账号候选组</p><div v-if="antiCheatTimeline.length" class="mt-5 rounded-xl border border-border"><div class="border-b border-border px-4 py-3 text-sm font-semibold text-text">提交时间线：{{ antiCheatIp }}</div><div class="divide-y divide-border"><div v-for="item in antiCheatTimeline" :key="item.submission_id" class="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-3 text-xs"><span><strong class="text-text">{{ item.username }}</strong><span class="ml-2 text-text-secondary">{{ item.problem_title }} · {{ item.language }}</span></span><span class="text-text-muted">{{ formatDateTime(item.created_at) }}</span><code class="font-mono text-text-muted">{{ item.submission_id.slice(0, 12) }}</code></div></div></div></div>
+
+      <div v-else class="flex-1 space-y-4 overflow-y-auto p-5">
+        <div class="flex flex-wrap items-center gap-3">
+          <label class="flex items-center gap-2 text-xs text-text-secondary">
+            相似度阈值
+            <input v-model.number="similarThreshold" type="range" min="0.5" max="0.99" step="0.01" class="w-40">
+            <span class="font-mono tabular-nums text-text">{{ similarThreshold.toFixed(2) }}</span>
+          </label>
+          <USelect v-model="similarProblemId" :items="similarProblemOptions" size="sm" class="min-w-64" />
+          <UButton size="sm" color="primary" :loading="similarLoading" @click="loadSimilarSubmissions">刷新</UButton>
+        </div>
+
+        <p v-if="similarCoverageText" class="text-xs text-text-muted">{{ similarCoverageText }}</p>
+        <p v-if="similarTruncated" class="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">结果已按上限截断，请按题目缩小范围后重试。</p>
+        <p v-if="similarError" class="text-sm text-error-text">{{ similarError }}</p>
+        <p v-if="similarLoading" class="py-12 text-center text-sm text-text-muted">加载中...</p>
+
+        <div v-else-if="similarPairs.length" class="divide-y divide-border rounded-xl border border-border">
+          <div v-for="pair in similarPairs" :key="pair.submission_a_id + '-' + pair.submission_b_id" class="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3">
+            <UBadge color="warning" variant="subtle" class="tabular-nums">{{ pair.similarity.toFixed(4) }}</UBadge>
+            <div class="min-w-0 text-xs">
+              <div class="truncate">
+                <strong class="text-text">{{ pair.username_a ?? '—' }}</strong>
+                <span class="mx-1 text-text-muted">↔</span>
+                <strong class="text-text">{{ pair.username_b ?? '—' }}</strong>
+              </div>
+              <div class="mt-0.5 text-text-muted">
+                {{ pair.language }} · 公共指纹 {{ pair.shared_fingerprints }} / {{ pair.fingerprint_count_a }} · {{ pair.fingerprint_count_b }}
+              </div>
+            </div>
+            <UButton size="xs" color="neutral" variant="outline" :to="'/admin/submissions?highlight=' + pair.submission_b_id">查看提交详情</UButton>
+          </div>
+        </div>
+        <p v-else class="py-12 text-center text-sm text-text-muted">当前阈值下没有相似提交对</p>
+      </div>
     </div>
   </div>
 
