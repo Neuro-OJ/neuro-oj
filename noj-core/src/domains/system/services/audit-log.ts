@@ -13,7 +13,9 @@ import { getDb } from "./../../../shared/db/connection.ts";
 import { auditLogs } from "./../../../shared/db/schema.ts";
 import { getRequestContext } from "./request-context.ts";
 import { getSetting } from "./system-settings.ts";
-import { logger } from "./../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "system"]);
 import type {
   AuditAction,
   AuditDetail,

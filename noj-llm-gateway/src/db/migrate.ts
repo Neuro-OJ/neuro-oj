@@ -1,5 +1,6 @@
 import postgres from "postgres";
 import { dirname, resolve } from "jsr:@std/path@^1";
+import { logger } from "../logger.ts";
 
 /**
  * 执行 noj-llm-gateway 自己的 SQL 迁移。
@@ -40,7 +41,7 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
         INSERT INTO llm_schema_migrations (name, applied_at)
         VALUES (${file}, ${new Date().toISOString()})
       `;
-      console.log(`[llm-gateway] 已应用迁移: ${file}`);
+      logger.info("已应用迁移: {file}", { file });
     }
   } finally {
     await sql.end();

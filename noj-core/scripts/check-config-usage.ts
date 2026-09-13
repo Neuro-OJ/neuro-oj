@@ -65,7 +65,9 @@ const ENV_ACCESSORS = ["Deno.env.get", "envInt", "envBool"] as const;
  * 这些路径里的字符串出现不代表行为被配置驱动。
  */
 const NON_CONSUMER_PATTERNS: RegExp[] = [
-  /shared\/config\/settings-registry\.ts$/,
+  // 注册表本体与其 bootstrap 半区：仅声明、不消费。二者都必须排除，否则
+  // 声明里的键名字面量会被当成「读取点」，让所有死键自动"通过"（假绿灯）。
+  /shared\/config\/settings-registry(-bootstrap)?\.ts$/,
   /shared\/config\/production-config\.ts$/,
   /scripts\/check-env\.ts$/,
   /scripts\/check-config-usage\.ts$/,

@@ -496,6 +496,65 @@ fi
 pass "升级前备份门禁"
 run_deploy logs core >/dev/null 2>"$TEST_ROOT/logs.err" || fail "合法配置的 logs 不应失败"
 grep -q 'compose.*logs.*core' "$FAKE_LOG" || fail "logs 未传递服务名"
+
+# 着色契约（评审 P2 及其复审）：`noj-cli logs <svc>` 走的是本脚本的 logs()，
+# 此前无条件透传，重定向时会把 docker compose 的 ANSI 转义码写进文件。
+# 判定须与 core/gateway/judge/noj-cli 同契约：NO_COLOR 优先、LOG_COLOR 大小写不敏感、
+# `always` 需真正**强制**着色（compose 只认全局 `--ansi always`）。
+#
+# 两个关键点（复审指出原用例在此处是假绿的）：
+# 1. 必须在**真实 PTY** 下测 `never`：测试默认 stdout 非 TTY，TTY 兜底分支本身就
+#    会给出 --no-color，于是删掉 never 分支用例照样通过（实测确认过是假绿）。
+#    用 `script(1)` 造 PTY，`[[ -t 1 ]]` 才为真，never 分支才被真正驱动。
+# 2. `always` 要断言 compose 收到全局 `--ansi always`，而不只是"没有 --no-color"。
+#
+# 注意：这些变量必须**显式**传给 bash——run_deploy_with 用固定赋值列表，
+# 不会转发调用方环境里的 LOG_COLOR / NO_COLOR。
+logs_color_case() {
+  local desc="$1" expect="$2" log_color="$3" no_color="$4" use_pty="$5"
+  local before line cmd
+  before="$(wc -l <"$FAKE_LOG")"
+  cmd=$(printf 'LOG_COLOR=%q NO_COLOR=%q NOJ_DEPLOY_DOCKER_BIN=%q NOJ_DEPLOY_TEST_LOG=%q bash %q logs core --env-file %q --compose-file %q' \
+    "$log_color" "$no_color" "$FAKE_DOCKER" "$FAKE_LOG" "$DEPLOY_SCRIPT" "$ENV_FILE" "$COMPOSE_FILE")
+  if [[ "$use_pty" == "pty" ]]; then
+    script -qec "$cmd" /dev/null >/dev/null 2>&1 || fail "logs 不应失败（$desc）"
+  else
+    bash -c "$cmd" >/dev/null 2>&1 || fail "logs 不应失败（$desc）"
+  fi
+  line="$(tail -n +$((before + 1)) "$FAKE_LOG" | grep 'compose.*logs' | tail -1)"
+  case "$expect" in
+    no-color) [[ "$line" == *"--no-color"* ]] || fail "$desc 应传 --no-color（实际：$line）" ;;
+    force)    [[ "$line" == *"--ansi always"* ]] || fail "$desc 应传 --ansi always 以强制着色（实际：$line）" ;;
+    keep)     [[ "$line" != *"--no-color"* && "$line" != *"--ansi always"* ]] ||
+                fail "$desc 不应传任何着色旗标（实际：$line）" ;;
+  esac
+}
+
+# ── 非 TTY（重定向；PTY 场景之外的主用例）──
+# 未配置 → 关色
+logs_color_case "重定向且未配置" no-color "" "" notty
+# NO_COLOR 非空 → 关色（即使 LOG_COLOR=always）
+logs_color_case "NO_COLOR 优先于 LOG_COLOR=always" no-color "always" "1" notty
+# LOG_COLOR=never → 关色（非 TTY 下与兜底同结果，真正的判别在下方 PTY 用例）
+logs_color_case "LOG_COLOR=never（重定向）" no-color "never" "" notty
+# LOG_COLOR=always → 强制着色
+logs_color_case "LOG_COLOR=always 强制着色" force "always" "" notty
+logs_color_case "LOG_COLOR=ALWAYS 大小写不敏感" force "ALWAYS" "" notty
+logs_color_case "LOG_COLOR 前后空白被 trim" force "  Always  " "" notty
+# 非法值 → 关色（非 TTY 兜底）
+logs_color_case "LOG_COLOR 非法值按 auto 处理" no-color "bogus" "" notty
+
+# ── 真实 PTY：`never` 分支在这里才被真正驱动 ──
+# 有 TTY 时：未配置 → 交给 compose 自行决定（不加旗标）
+logs_color_case "PTY 且未配置" keep "" "" pty
+# 有 TTY 但 LOG_COLOR=never → 必须显式关色（删掉 never 分支本条会变红）
+logs_color_case "PTY 且 LOG_COLOR=never 必须关色" no-color "never" "" pty
+# 有 TTY 且 NO_COLOR 非空 → 必须显式关色
+logs_color_case "PTY 且 NO_COLOR 必须关色" no-color "" "1" pty
+# 空串 NO_COLOR 不算设置（与 TS 侧 `!== ""` 语义一致）
+logs_color_case "NO_COLOR 空串不算设置" no-color "never" "" notty
+pass "logs 着色契约（NO_COLOR / LOG_COLOR / TTY / --ansi always）"
+
 log_lines_before="$(wc -l <"$FAKE_LOG")"
 run_deploy upgrade --dry-run >/dev/null 2>"$TEST_ROOT/dry-run.err" || fail "合法配置的 dry-run 不应失败"
 if tail -n +$((log_lines_before + 1)) "$FAKE_LOG" | grep -E ' pull| up ' >/dev/null; then

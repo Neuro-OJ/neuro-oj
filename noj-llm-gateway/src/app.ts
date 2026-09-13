@@ -3,6 +3,7 @@
  */
 import { Hono } from "hono";
 import type { GatewayConfig } from "./config.ts";
+import { requestIdMiddleware } from "./context.ts";
 import { createDb } from "./db.ts";
 import { createRedis } from "./redis.ts";
 import { createLlmRouter } from "./routes/llm.ts";
@@ -12,6 +13,9 @@ import { renderMetrics } from "./metrics.ts";
 /** 创建 Hono 应用；DB/Redis 可用时挂载代理与内部管理路由。 */
 export function createApp(config: GatewayConfig) {
   const app = new Hono();
+
+  // 请求上下文最先挂载：使后续所有路由/服务的日志自动带上同一 request_id。
+  app.use("*", requestIdMiddleware());
 
   const db = config.databaseUrl ? createDb(config.databaseUrl) : null;
   const redis = config.redisUrl ? createRedis(config.redisUrl) : null;

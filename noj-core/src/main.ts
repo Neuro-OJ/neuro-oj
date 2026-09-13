@@ -29,8 +29,10 @@ import {
 } from "./domains/system/index.ts";
 import { startAuditLogRetentionTask } from "./domains/system/index.ts";
 import { startContestAntiCheatRetentionTask } from "./domains/contest/index.ts";
-import { logger } from "./shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
 import { describePlaceholderSecret } from "./shared/security/secret-placeholders.ts";
+
+const logger = getLogger(["noj", "core"]);
 import {
   assertProductionConfig,
   type ProductionConfig,
@@ -103,7 +105,7 @@ async function fatalStep(
   try {
     await fn();
   } catch (err) {
-    logger.error(`${name}失败，终止启动`, { err });
+    logger.error("{name}失败，终止启动", { name, err });
     Deno.exit(1);
   }
 }
@@ -115,9 +117,10 @@ async function main() {
   if (!jwtSecret || jwtSecret.length < MIN_JWT_SECRET_LENGTH) {
     const actualLength = jwtSecret ? jwtSecret.length : 0;
     logger.error(
-      `JWT_SECRET 未设置或长度不足（当前 ${actualLength} 字符，需要至少 ${MIN_JWT_SECRET_LENGTH} 字符）。\n` +
-        `HS256 算法要求至少 256 bit 密钥强度，使用弱密钥会显著降低 token 防伪造能力。\n` +
-        `可通过 \`openssl rand -base64 48\` 生成强随机密钥。`,
+      "JWT_SECRET 未设置或长度不足（当前 {actual} 字符，需要至少 {min} 字符）。\n" +
+        "HS256 算法要求至少 256 bit 密钥强度，使用弱密钥会显著降低 token 防伪造能力。\n" +
+        "可通过 `openssl rand -base64 48` 生成强随机密钥。",
+      { actual: actualLength, min: MIN_JWT_SECRET_LENGTH },
     );
     Deno.exit(1);
   }
@@ -128,8 +131,9 @@ async function main() {
   const jwtPlaceholder = describePlaceholderSecret("JWT_SECRET", jwtSecret);
   if (jwtPlaceholder) {
     logger.error(
-      `${jwtPlaceholder}。\n` +
-        `请不要直接使用示例/占位密钥；可通过 \`openssl rand -base64 48\` 生成强随机密钥。`,
+      "{reason}。\n" +
+        "请不要直接使用示例/占位密钥；可通过 `openssl rand -base64 48` 生成强随机密钥。",
+      { reason: jwtPlaceholder },
     );
     Deno.exit(1);
   }
@@ -142,9 +146,10 @@ async function main() {
   if (!tfaKey || tfaKey.length < MIN_TFA_ENCRYPTION_KEY_LENGTH) {
     const actualLength = tfaKey ? tfaKey.length : 0;
     logger.error(
-      `TFA_ENCRYPTION_KEY 未设置或长度不足（当前 ${actualLength} 字符，需要至少 ${MIN_TFA_ENCRYPTION_KEY_LENGTH} 字符）。\n` +
-        `TFA_ENCRYPTION_KEY 是 TOTP secret 的 AES-256-GCM 加密密钥，必须独立于 JWT_SECRET 配置。\n` +
-        `可通过 \`openssl rand -base64 48\` 生成强随机密钥。`,
+      "TFA_ENCRYPTION_KEY 未设置或长度不足（当前 {actual} 字符，需要至少 {min} 字符）。\n" +
+        "TFA_ENCRYPTION_KEY 是 TOTP secret 的 AES-256-GCM 加密密钥，必须独立于 JWT_SECRET 配置。\n" +
+        "可通过 `openssl rand -base64 48` 生成强随机密钥。",
+      { actual: actualLength, min: MIN_TFA_ENCRYPTION_KEY_LENGTH },
     );
     Deno.exit(1);
   }
@@ -154,8 +159,9 @@ async function main() {
   );
   if (tfaPlaceholder) {
     logger.error(
-      `${tfaPlaceholder}。\n` +
-        `请不要直接使用示例/占位密钥；可通过 \`openssl rand -base64 48\` 生成强随机密钥。`,
+      "{reason}。\n" +
+        "请不要直接使用示例/占位密钥；可通过 `openssl rand -base64 48` 生成强随机密钥。",
+      { reason: tfaPlaceholder },
     );
     Deno.exit(1);
   }
@@ -207,9 +213,10 @@ async function main() {
     const conflicts = listRuntimeEnvConflicts();
     if (conflicts.length > 0) {
       logger.warn(
-        `以下 ${conflicts.length} 项 runtime 配置同时存在 DB 值与 env 兜底，` +
+        "以下 {count} 项 runtime 配置同时存在 DB 值与 env 兜底，" +
           "当前 DB 值优先；建议移除 .env 中对应变量以避免歧义：",
         {
+          count: conflicts.length,
           keys: conflicts.map((c) => `${c.key} (${c.envKey})`),
         },
       );
@@ -225,9 +232,10 @@ async function main() {
     const orphans = await listOrphanedBootstrapRows();
     if (orphans.length > 0) {
       logger.warn(
-        `以下 ${orphans.length} 项已由环境变量接管，DB 旧值不再生效，` +
+        "以下 {count} 项已由环境变量接管，DB 旧值不再生效，" +
           "可到管理后台「环境配置」一键清理：",
         {
+          count: orphans.length,
           keys: orphans.map((r) =>
             `${r.key}（更新于 ${r.updated_at ?? "?"}，更新人 ${
               r.updated_by ?? "?"

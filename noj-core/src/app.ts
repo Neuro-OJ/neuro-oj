@@ -23,7 +23,9 @@ import { systemRouter } from "./domains/system/routes/index.ts";
 import submissionSse from "./domains/submission/routes/sse.ts";
 import communitySse from "./domains/community/routes/sse.ts";
 import { AppError } from "./shared/base/errors.ts";
-import { logger } from "./shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "core"]);
 import { listJudgeImages } from "./domains/system/index.ts";
 import { banlistMiddleware } from "./domains/identity/index.ts";
 import { requestContext } from "./domains/observability/middleware/request-context.ts";

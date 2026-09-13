@@ -6,7 +6,9 @@
  */
 
 import type { SendEmail, SendPasswordResetEmail } from "./types.ts";
-import { logger } from "../../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "system"]);
 
 export interface MockEmail {
   to: string;

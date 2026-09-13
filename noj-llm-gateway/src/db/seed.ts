@@ -1,4 +1,5 @@
 import type { Db } from "./db.ts";
+import { logger } from "../logger.ts";
 
 interface DefaultQuota {
   id: string;
@@ -70,8 +71,9 @@ export async function seedDefaultQuotas(db: Db): Promise<void> {
         ${q.max_calls}, ${q.max_tokens}, ${q.max_cost}, ${now}, ${now}
       )
     `;
-    console.log(
-      `[llm-gateway] 已写入默认配额: ${q.scope_type}/${q.window_type}`,
-    );
+    logger.info("已写入默认配额: {scope}/{window}", {
+      scope: q.scope_type,
+      window: q.window_type,
+    });
   }
 }

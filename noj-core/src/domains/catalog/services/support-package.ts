@@ -7,7 +7,9 @@ import {
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { getStorageProvider } from "./../../system/index.ts";
-import { logger } from "./../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "catalog"]);
 import { assertPermission } from "./../../identity/index.ts";
 import { isValidTemplateFileName } from "./../types/problem-bundle.ts";
 import type { Context } from "hono";

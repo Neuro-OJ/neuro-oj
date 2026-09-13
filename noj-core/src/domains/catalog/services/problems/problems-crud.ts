@@ -27,7 +27,9 @@ import {
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
-import { logger } from "./../../../../shared/base/logging.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "catalog"]);
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import { logAudit } from "../../../system/index.ts";
 import {

@@ -6,26 +6,30 @@ import {
   resetLogSink,
   setLogSink,
 } from "./../../src/shared/base/logging.ts";
+import type { EnvReader } from "./../../src/shared/base/log-config.ts";
 import { runWithRequestContext } from "./../../src/shared/observability/context.ts";
 
 /**
  * 捕获日志记录的辅助：替换 sink，返回收集数组 + 还原函数。
- * 同时快照并可恢复 LOG_LEVEL / NOJ_ENV，避免污染其他测试。
+ *
+ * **不改写进程级 `Deno.env`**：级别与脱敏都由注入的 `EnvReader` 决定。
+ * 历史实现用 `Deno.env.set` + try/finally 恢复；在 `deno test --parallel`
+ * 下多个测试文件共用同一进程（实测同 pid），env 是进程级全局，会跨文件
+ * 互相覆盖——本文件设 `LOG_LEVEL`/`NOJ_ENV` 时能打乱 `log-config.test.ts`
+ * 的断言（实测 60 次里 1 次失败）。注意：**模块级锁无法解决**，因为
+ * `--parallel` 下每个文件有独立的模块实例（锁对象不共享），只有"不碰全局
+ * 状态"才是真正的修复。
  */
-function withCapture(): { records: LogRecord[]; restore: () => void } {
+function withCapture(
+  vars: Record<string, string | undefined> = {},
+): { records: LogRecord[]; restore: () => void; env: EnvReader } {
   const records: LogRecord[] = [];
-  const prevLevel = Deno.env.get("LOG_LEVEL");
-  const prevEnv = Deno.env.get("NOJ_ENV");
-  setLogSink((r) => records.push(r));
+  const env: EnvReader = (k) => vars[k];
+  setLogSink((r) => records.push(r), env);
   return {
     records,
-    restore: () => {
-      resetLogSink();
-      if (prevLevel === undefined) Deno.env.delete("LOG_LEVEL");
-      else Deno.env.set("LOG_LEVEL", prevLevel);
-      if (prevEnv === undefined) Deno.env.delete("NOJ_ENV");
-      else Deno.env.set("NOJ_ENV", prevEnv);
-    },
+    env,
+    restore: () => resetLogSink(),
   };
 }
 
@@ -44,9 +48,8 @@ Deno.test({
 Deno.test({
   name: "logging: logger 输出结构化记录（msg + fields）",
   fn: () => {
-    const { records, restore } = withCapture();
+    const { records, restore } = withCapture({ LOG_LEVEL: "debug" });
     try {
-      Deno.env.set("LOG_LEVEL", "debug");
       logger.info("测试消息", { foo: "bar", n: 42 });
       assertEquals(records.length, 1);
       assertEquals(records[0].level, "info");
@@ -63,9 +66,8 @@ Deno.test({
 Deno.test({
   name: "logging: LOG_LEVEL 过滤低于阈值的日志",
   fn: () => {
-    const { records, restore } = withCapture();
+    const { records, restore } = withCapture({ LOG_LEVEL: "warn" });
     try {
-      Deno.env.set("LOG_LEVEL", "warn");
       logger.debug("debug 应被抑制");
       logger.info("info 应被抑制");
       logger.warn("warn 应输出");
@@ -82,10 +84,11 @@ Deno.test({
 Deno.test({
   name: "logging: 生产环境未配置 LOG_LEVEL 时默认 warn",
   fn: () => {
-    const { records, restore } = withCapture();
+    const { records, restore } = withCapture({
+      NOJ_ENV: "production",
+      LOG_LEVEL: undefined,
+    });
     try {
-      Deno.env.set("NOJ_ENV", "production");
-      Deno.env.delete("LOG_LEVEL");
       logger.info("info 应被抑制");
       logger.warn("warn 应输出");
       assertEquals(records.length, 1);
@@ -99,10 +102,11 @@ Deno.test({
 Deno.test({
   name: "logging: 生产环境脱敏 submission_id / score / code",
   fn: () => {
-    const { records, restore } = withCapture();
+    const { records, restore } = withCapture({
+      NOJ_ENV: "production",
+      LOG_LEVEL: "debug",
+    });
     try {
-      Deno.env.set("NOJ_ENV", "production");
-      Deno.env.set("LOG_LEVEL", "debug");
       logger.info("提交", {
         submission_id: "550e8400-e29b-41d4-a716-446655440000",
         score: 9500,
@@ -123,10 +127,11 @@ Deno.test({
 Deno.test({
   name: "logging: 开发环境不脱敏（完整字段便于调试）",
   fn: () => {
-    const { records, restore } = withCapture();
+    const { records, restore } = withCapture({
+      NOJ_ENV: "development",
+      LOG_LEVEL: "debug",
+    });
     try {
-      Deno.env.set("NOJ_ENV", "development");
-      Deno.env.set("LOG_LEVEL", "debug");
       logger.info("提交", {
         submission_id: "550e8400-e29b-41d4-a716-446655440000",
         score: 9500,
@@ -143,9 +148,8 @@ Deno.test({
 Deno.test({
   name: "logging: runWithRequestContext 自动注入 request_id",
   fn: () => {
-    const { records, restore } = withCapture();
+    const { records, restore } = withCapture({ LOG_LEVEL: "debug" });
     try {
-      Deno.env.set("LOG_LEVEL", "debug");
       logger.info("请求外");
       runWithRequestContext("req-123", () => {
         logger.info("请求内");
@@ -161,10 +165,11 @@ Deno.test({
 Deno.test({
   name: "logging: Error 字段被序列化为 {name, message}",
   fn: () => {
-    const { records, restore } = withCapture();
+    const { records, restore } = withCapture({
+      NOJ_ENV: "production",
+      LOG_LEVEL: "debug",
+    });
     try {
-      Deno.env.set("NOJ_ENV", "production");
-      Deno.env.set("LOG_LEVEL", "debug");
       logger.error("出错了", { err: new Error("boom") });
       const err = records[0].fields.err as { name: string; message: string };
       assertEquals(err.name, "Error");

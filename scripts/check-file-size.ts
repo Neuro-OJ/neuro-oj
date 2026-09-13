@@ -23,8 +23,11 @@ export const MAX_LINES = 1200;
 export const SIZE_BASELINE: Record<string, number> = {
   "noj-judge/src/dual/mod.rs": 2246,
   "noj-ui/pages/messages/index.vue": 1632,
-  "noj-core/src/domains/messaging/services/messages.ts": 1515,
-  "noj-core/src/shared/config/settings-registry.ts": 1360,
+  // 2026-09-13 拆分后已降到阈值以下，条目移除（棘轮只允许下调/删除）：
+  // - noj-core/.../messaging/services/messages.ts 1517 →
+  //   messages.ts 1102 + messages-conversation-actions.ts 414 + messages-shared.ts 71
+  // - noj-core/src/shared/config/settings-registry.ts 1380 →
+  //   settings-registry.ts 946 + settings-registry-bootstrap.ts 458
   "noj-core/src/domains/contest/services/contest-similarity.ts": 1315,
 };
 

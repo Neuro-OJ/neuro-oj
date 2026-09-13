@@ -4,13 +4,20 @@ import { composePathOf, runDirOf } from "../deploy/paths.ts";
 import type { CommandRunner } from "../runtime/command.ts";
 import { realRunner } from "../runtime/command.ts";
 import { followLogFile, logPath, readRecentLog } from "../runtime/logfile.ts";
-import { colorFor, prefixLine } from "../util/color.ts";
+import {
+  colorFor,
+  type ColorMode,
+  prefixLine,
+  resolveColor,
+} from "../util/color.ts";
 
 /** maintain logs 运行选项。 */
 export interface LogsOptions {
   dir: string;
   modules: string[];
   follow: boolean;
+  /** 着色模式；缺省 auto（按流探测 TTY）。 */
+  color?: ColorMode;
   runner?: CommandRunner;
 }
 
@@ -117,16 +124,20 @@ export async function followLogs(
 
 /** maintain logs 命令入口：非 follow 打印最近日志，follow 逐行打印。 */
 export async function maintainLogs(opts: LogsOptions): Promise<number> {
+  // 修复既有缺陷：原先无条件着色，`logs > out.txt` 会把转义码写进文件。
+  // 现在默认 auto，按 stdout 是否为 TTY 决定。
+  const mode = opts.color ?? "auto";
+  const color = resolveColor(mode, "stdout");
   if (opts.follow) {
     await followLogs(opts, (module, line) => {
-      console.log(prefixLine(module, line, colorFor(module)));
+      console.log(prefixLine(module, line, colorFor(module), color));
     });
     return 0;
   }
   const logs = await collectLogs(opts);
   for (const m of logs) {
     for (const line of m.lines) {
-      console.log(prefixLine(m.module, line, colorFor(m.module)));
+      console.log(prefixLine(m.module, line, colorFor(m.module), color));
     }
   }
   return 0;
