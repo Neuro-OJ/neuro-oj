@@ -52,7 +52,6 @@ export const SCHEMA_DDL: string[] = [
     description TEXT NOT NULL DEFAULT '',
     is_system BOOLEAN NOT NULL DEFAULT false,
     is_default BOOLEAN NOT NULL DEFAULT false,
-    is_admin BOOLEAN NOT NULL DEFAULT false,
     parent_id TEXT REFERENCES roles(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -699,6 +698,26 @@ export const SCHEMA_DDL: string[] = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
+
+  // RBAC 关联表（2026-09-12 评审 §3.3：原定义误放在 SCHEMA_INDEXES 中，
+  // 使 schema-ddl 与 Drizzle schema 的"表在哪个数组"不一致，parity 门禁无法覆盖）
+  `CREATE TABLE IF NOT EXISTS permissions (
+    id TEXT PRIMARY KEY,
+    resource TEXT NOT NULL,
+    action TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    UNIQUE (resource, action)
+  )`,
+  `CREATE TABLE IF NOT EXISTS role_permissions (
+    role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+    PRIMARY KEY (role_id, permission_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS user_roles (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    PRIMARY KEY (user_id, role_id)
+  )`,
 ];
 
 export const SCHEMA_INDEXES: string[] = [
@@ -807,24 +826,6 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_search_entries_participants ON search_entries USING GIN (participant_ids)",
   "CREATE INDEX IF NOT EXISTS idx_search_entries_public ON search_entries (is_public)",
   "CREATE INDEX IF NOT EXISTS idx_search_entries_updated ON search_entries (updated_at)",
-  // RBAC 权限系统（roles 表已在顶部预置，见 SCHEMA_DDL 第 2 项）
-  `CREATE TABLE IF NOT EXISTS permissions (
-    id TEXT PRIMARY KEY,
-    resource TEXT NOT NULL,
-    action TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    UNIQUE (resource, action)
-  )`,
-  `CREATE TABLE IF NOT EXISTS role_permissions (
-    role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-    permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
-    PRIMARY KEY (role_id, permission_id)
-  )`,
-  `CREATE TABLE IF NOT EXISTS user_roles (
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-    PRIMARY KEY (user_id, role_id)
-  )`,
   "CREATE INDEX IF NOT EXISTS idx_roles_parent_id ON roles (parent_id)",
 ];
 

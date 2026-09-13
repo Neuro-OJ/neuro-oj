@@ -46,6 +46,83 @@ export interface JudgeTask {
 }
 
 /**
+ * `buildJudgeTask` 的输入。`code` 允许为空串（artifact 提交不带源码）。
+ */
+export interface BuildJudgeTaskInput {
+  submission_id: string;
+  problem_id: string;
+  user_id: string;
+  priority: JudgeTaskPriority;
+  runtime_config: RuntimeConfig;
+  language: string;
+  code: string;
+  file_name?: string;
+  download_url?: string;
+  artifact_download_url?: string;
+  rejudge_seq?: number;
+  llm?: JudgeTaskLlm;
+  user_llm?: JudgeTaskLlm;
+}
+
+/**
+ * JudgeTask 的**唯一构造入口**（2026-09-12 架构评审 §3.1）。
+ *
+ * 背景：`JudgeTask` 此前由 6 处内联字面量构造
+ * （`submissions-crud` / `submissions-rejudge`×2 / `artifact-submissions` /
+ * `self-tests` / `sweeper`），新增字段需要同时改 6 处 + Rust 侧的镜像结构体，
+ * 全靠人工记忆；而失败模式是**静默的**——Rust 侧 `Option`/`#[serde(default)]`
+ * 会把缺失字段化为默认值，core 加了字段而 judge 不认时不会报错，只会行为异常。
+ *
+ * 现在：新增字段只需改本函数 + Rust 结构体，并由契约快照测试
+ * （`noj-tests/fixtures/judge-task.contract.json`）在两侧同时断言字段集合。
+ *
+ * 可选字段仅在**有值**时写入，保持消息体最小；Rust 侧对可选字段使用
+ * `Option` + `#[serde(skip_serializing_if)]`，两者语义一致。
+ */
+export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
+  const task: JudgeTask = {
+    submission_id: input.submission_id,
+    problem_id: input.problem_id,
+    user_id: input.user_id,
+    priority: input.priority,
+    runtime_config: input.runtime_config,
+    language: input.language,
+    code: input.code,
+  };
+  if (input.file_name !== undefined) task.file_name = input.file_name;
+  if (input.download_url !== undefined) task.download_url = input.download_url;
+  if (input.artifact_download_url !== undefined) {
+    task.artifact_download_url = input.artifact_download_url;
+  }
+  if (input.rejudge_seq !== undefined) task.rejudge_seq = input.rejudge_seq;
+  if (input.llm !== undefined) task.llm = input.llm;
+  if (input.user_llm !== undefined) task.user_llm = input.user_llm;
+  return task;
+}
+
+/**
+ * JudgeTask 的全部字段名（wire 契约）。
+ *
+ * 契约快照测试用它断言"构造出的对象字段集合 = 契约字段集合"，
+ * 因此新增字段忘记登记会立刻失败。
+ */
+export const JUDGE_TASK_FIELDS: readonly string[] = [
+  "submission_id",
+  "problem_id",
+  "user_id",
+  "priority",
+  "runtime_config",
+  "download_url",
+  "artifact_download_url",
+  "language",
+  "code",
+  "file_name",
+  "rejudge_seq",
+  "llm",
+  "user_llm",
+];
+
+/**
  * 评测结果——从 noj-judge 返回到 noj-core 的消息。
  */
 export interface JudgeResult {

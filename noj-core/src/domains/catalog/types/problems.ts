@@ -15,6 +15,42 @@ function stripImageTag(name: string): string {
   return name;
 }
 
+/** 解析后的镜像引用。 */
+export interface ParsedImageRef {
+  /** 不含 tag/digest 的 repository 路径 */
+  repository: string;
+  /** tag（无则 null） */
+  tag: string | null;
+  /** digest（形如 `sha256:...`，无则 null） */
+  digest: string | null;
+}
+
+/**
+ * 解析 Docker 镜像引用为 repository / tag / digest。
+ *
+ * 支持 `repo`、`repo:tag`、`repo@sha256:...`、`registry:5000/repo:tag@sha256:...`。
+ */
+export function parseImageRef(image: string): ParsedImageRef {
+  const trimmed = image.trim();
+  let rest = trimmed;
+  let digest: string | null = null;
+  const at = trimmed.lastIndexOf("@");
+  if (at >= 0) {
+    rest = trimmed.slice(0, at);
+    digest = trimmed.slice(at + 1);
+  }
+  const lastSlash = rest.lastIndexOf("/");
+  const lastColon = rest.lastIndexOf(":");
+  let tag: string | null = null;
+  let repository = rest;
+  // 冒号在最后一个斜杠之后才是 tag 分隔符（否则是 registry 端口）
+  if (lastColon > lastSlash) {
+    tag = rest.slice(lastColon + 1);
+    repository = rest.slice(0, lastColon);
+  }
+  return { repository, tag, digest };
+}
+
 /**
  * 允许的难度等级。
  */
@@ -273,7 +309,19 @@ export interface JudgeImageResponse {
 
 /**
  * 校验 judge_image 是否与白名单匹配。
- * exact 模式：完全相等；all_versions 模式：仅忽略 tag，repository 路径必须一致。
+ *
+ * - `exact` 模式：完全相等（含 digest，若白名单登记了 digest）。
+ * - `all_versions` 模式：repository 路径必须一致；**若白名单条目登记了 digest
+ *   （`repo@sha256:...`），则请求的镜像必须携带同一 digest**。
+ *
+ * 为什么要有 digest 语义（2026-09-12 架构评审 §4.4）：tag 是**可变**的——`latest`
+ * 会被覆盖、同名 tag 可被重新推送，因此"tag 匹配"无法保证跑的还是当初审核过的那个
+ * 镜像。judge 侧基础镜像早已用 `FROM python:3.12-slim@sha256:...` 钉死，白名单却只比
+ * tag，形成不一致的安全水平。
+ *
+ * 向后兼容：白名单条目未登记 digest 时保持原行为（按 repository/tag 匹配），
+ * 因此无需一次性改造存量数据；推荐做法是把条目改为 `repo@sha256:<审核过的 digest>`，
+ * 之后任何不携带该 digest 的请求都会被拒绝。
  */
 export function isImageInWhitelist(
   image: string,
@@ -282,9 +330,21 @@ export function isImageInWhitelist(
   for (const entry of whitelist) {
     if (entry.mode === "exact") {
       if (image === entry.image) return true;
-    } else if (entry.mode === "all_versions") {
-      if (stripImageTag(image) === stripImageTag(entry.image)) return true;
+      continue;
     }
+    if (entry.mode !== "all_versions") continue;
+
+    const expected = parseImageRef(entry.image);
+    const actual = parseImageRef(image);
+    if (expected.repository !== actual.repository) continue;
+
+    if (expected.digest) {
+      // 白名单登记了 digest → tag 不再作为凭据，必须 digest 一致
+      if (actual.digest === expected.digest) return true;
+      continue;
+    }
+    // 未登记 digest：保持历史语义（忽略 tag，repository 必须一致）
+    if (stripImageTag(image) === stripImageTag(entry.image)) return true;
   }
   return false;
 }

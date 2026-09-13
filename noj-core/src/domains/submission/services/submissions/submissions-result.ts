@@ -27,6 +27,7 @@ import { refreshRankingsView } from "../../../query/index.ts";
 import { logger } from "./../../../../shared/base/logging.ts";
 import { Channels } from "./../../../../shared/sse/event-bus.ts";
 import { createActivity } from "../../../community/index.ts";
+import { sanitizeJudgeResult } from "./sanitize-judge-result.ts";
 
 // 允许的状态转换
 const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
@@ -133,13 +134,24 @@ export async function saveEvaluationResult(
       return null;
     }
 
+    // 防御性归一（2026-09-12 评审 §4.3）：Redis 队列是 core↔judge 的信任边界，
+    // judge 侧虽已 clamp，但 core 不能假设回传值一定合法——脏 score 会直接进入
+    // 榜单/竞赛排名 SQL。归一结果与修正清单一起记录，便于发现 judge 异常。
+    const { result: safeResult, adjustments } = sanitizeJudgeResult(result);
+    if (adjustments.length > 0) {
+      logger.warn("评测结果存在非法字段，已归一后落库", {
+        submission_id: result.submission_id,
+        adjustments,
+      });
+    }
+
     const submissionStatus: SubmissionStatus = [
         "error",
         "SystemError",
         "TimeLimitExceeded",
         "MemoryLimitExceeded",
         "RuntimeError",
-      ].includes(result.status)
+      ].includes(safeResult.status)
       ? "error"
       : "finished";
 
@@ -149,19 +161,19 @@ export async function saveEvaluationResult(
         status: submissionStatus,
         judge_finished_at: now,
       })
-      .where(eq(submissions.id, result.submission_id));
+      .where(eq(submissions.id, safeResult.submission_id));
 
     await tx
       .insert(evaluationResults)
       .values({
         id: crypto.randomUUID(),
-        submission_id: result.submission_id,
-        status: result.status,
-        score: result.score,
-        output: result.output,
-        details: JSON.stringify(result.details),
-        time_ms: result.time_ms ?? null,
-        memory_kb: result.memory_kb ?? null,
+        submission_id: safeResult.submission_id,
+        status: safeResult.status,
+        score: safeResult.score,
+        output: safeResult.output,
+        details: JSON.stringify(safeResult.details),
+        time_ms: safeResult.time_ms ?? null,
+        memory_kb: safeResult.memory_kb ?? null,
         created_at: now,
       });
 

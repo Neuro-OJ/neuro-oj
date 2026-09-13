@@ -1,4 +1,4 @@
-import { checkMetricCalls } from "./check-metrics.ts";
+import { checkMetricCalls, checkMetricCatalogDoc } from "./check-metrics.ts";
 
 function assert(cond: unknown, msg: string): void {
   if (!cond) throw new Error(msg);
@@ -98,5 +98,51 @@ Deno.test("check-metrics: 无关的 set/inc 调用不误报", () => {
   assert(
     errors.length === 0,
     `非指标写入不应报错，实际: ${JSON.stringify(errors)}`,
+  );
+});
+
+Deno.test("check-metrics: catalog 文档缺失平台指标时失败", () => {
+  const errors = checkMetricCatalogDoc(
+    "## 平台指标\n\n| 指标 |\n| --- |\n| `noj_a_total` |\n",
+    ["noj_a_total", "noj_b_total"],
+    new Set(["noj_a_total", "noj_b_total"]),
+  );
+  assert(errors.length > 0, "缺失指标必须报错");
+  assert(
+    errors.some((e) => e.includes("noj_b_total")),
+    `错误应指出缺失项：${JSON.stringify(errors)}`,
+  );
+});
+
+Deno.test("check-metrics: catalog 文档登记未注册指标时失败", () => {
+  const errors = checkMetricCatalogDoc(
+    "| `noj_a_total` |\n| `noj_ghost_total` |\n",
+    ["noj_a_total"],
+    new Set(["noj_a_total"]),
+  );
+  assert(
+    errors.some((e) => e.includes("noj_ghost_total")),
+    `未注册指标必须报错：${JSON.stringify(errors)}`,
+  );
+});
+
+Deno.test("check-metrics: catalog 文档名集合一致时通过", () => {
+  const errors = checkMetricCatalogDoc(
+    "| `noj_a_total` |\n| `noj_b_total` |\n",
+    ["noj_a_total", "noj_b_total"],
+    new Set(["noj_a_total", "noj_b_total"]),
+  );
+  assert(errors.length === 0, `不应报错，实际: ${JSON.stringify(errors)}`);
+});
+
+Deno.test("check-metrics: catalog 文档无指标名时判定门禁空转", () => {
+  const errors = checkMetricCatalogDoc(
+    "## 平台指标\n\n（表格被误删）\n",
+    ["noj_a_total"],
+    new Set(["noj_a_total"]),
+  );
+  assert(
+    errors.some((e) => e.includes("未找到任何")),
+    `空文档必须失败：${JSON.stringify(errors)}`,
   );
 });

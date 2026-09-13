@@ -128,6 +128,29 @@ export function parseWorkflow(text: string): WorkflowFilters {
 }
 
 /** 读取受 git 跟踪的文件列表（失败时回退到目录遍历）。 */
+/**
+ * 遍历回退时跳过的派生/依赖目录。
+ *
+ * 修复（2026-09-12 实测）：在 jj worktree（无 `.git` 目录）中 `git ls-files` 失败，
+ * 会走到下面的遍历回退分支；旧实现只跳过 `.git`/`.jj`，于是把 `node_modules`
+ * （1.3 万个文件）当成"受跟踪文件"，因为都不匹配路径过滤而**误报门禁失败**
+ * ——即该门禁在 jj 工作区中根本不可用。CI 检出的是真 git 仓库，所以一直没暴露。
+ */
+const FALLBACK_EXCLUDED_DIRS = new Set([
+  ".git",
+  ".jj",
+  "node_modules",
+  ".nuxt",
+  ".output",
+  "dist",
+  "target",
+  "coverage",
+  ".test-cache",
+  ".test-storage",
+  ".deno_cache",
+  "test-logs",
+]);
+
 async function trackedFiles(): Promise<string[]> {
   try {
     const { stdout, success } = await new Deno.Command("git", {
@@ -136,15 +159,30 @@ async function trackedFiles(): Promise<string[]> {
       stderr: "null",
     }).output();
     if (success) {
-      return new TextDecoder().decode(stdout).split("\n").filter(Boolean);
+      const files = new TextDecoder().decode(stdout).split("\n").filter(
+        Boolean,
+      );
+      // 真 git 仓库路径下也要显式排除（防止未来有人把 node_modules 提交进来）
+      if (files.length > 0) {
+        return files.filter((f) =>
+          !f.split("/").some((seg) => FALLBACK_EXCLUDED_DIRS.has(seg))
+        );
+      }
     }
   } catch {
     // 回退到遍历
   }
   const out: string[] = [];
   async function walk(dir: string, prefix: string): Promise<void> {
-    for await (const entry of Deno.readDir(dir)) {
-      if (entry.name === ".git" || entry.name === ".jj") continue;
+    // Deno.readDir 惰性迭代：目录不存在时错误在 for await 处抛出
+    const entries: Deno.DirEntry[] = [];
+    try {
+      for await (const entry of Deno.readDir(dir)) entries.push(entry);
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (FALLBACK_EXCLUDED_DIRS.has(entry.name)) continue;
       const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
       if (entry.isDirectory) await walk(`${dir}/${entry.name}`, rel);
       else if (entry.isFile) out.push(rel);

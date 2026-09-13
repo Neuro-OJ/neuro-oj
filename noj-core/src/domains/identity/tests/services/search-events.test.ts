@@ -5,8 +5,7 @@ import {
   updateUserProfile,
 } from "../../services/users/users-profile-edit.ts";
 import { assertSearchEventPublished } from "../../../../../tests/helper/search-events.ts";
-import { connectRedis, getRedis } from "../../../../shared/mq/connection.ts";
-import { SEARCH_INDEX_QUEUE } from "../../../../shared/search-events.ts";
+import { connectRedis } from "../../../../shared/mq/connection.ts";
 
 try {
   await connectRedis();
@@ -34,7 +33,9 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await getRedis().del(SEARCH_INDEX_QUEUE);
+    // 不要 del(SEARCH_INDEX_QUEUE)：同一分片内多个测试文件会并行操作同一
+    // Redis 键，删除会把对方正在等待观测的事件一并删掉（实测：全量分片必现假
+    // 失败、单文件必过）。断言按本次生成的唯一 entityId 查找，无需清空。
     await updateUserProfile("u-event-1", "新简介");
     await assertSearchEventPublished("user", "u-event-1", "upsert");
   },
@@ -56,7 +57,6 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await getRedis().del(SEARCH_INDEX_QUEUE);
     await adminUpdateUserProfile("u-admin-event-1", {
       bio: "管理员更新的简介",
     });

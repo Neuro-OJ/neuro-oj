@@ -20,6 +20,18 @@ trap cleanup EXIT
 pass() { printf '✓ %s\n' "$*"; }
 fail() { printf '✗ %s\n' "$*" >&2; exit 1; }
 
+# 文本检索：优先 ripgrep，缺失时回退 grep。
+# CI（GitHub Actions ubuntu runner）**不带 rg**，直接调用会让本脚本以
+# "rg: command not found" 失败（2026-09-12 实测：接入 check-ci 后 Root Gates 变红）。
+# 仓库规范允许在 rg 不存在的环境回退 grep。
+if command -v rg >/dev/null 2>&1; then
+  rgf() { rg -Fq -- "$1" "$2"; }   # 固定字符串
+  rge() { rg -q -- "$1" "$2"; }    # 正则
+else
+  rgf() { grep -Fq -- "$1" "$2"; }
+  rge() { grep -Eq -- "$1" "$2"; }
+fi
+
 # ---------------------------------------------------------------------------
 # fake docker：记录全部调用并模拟 Compose/psql/redis-cli/mc 行为。
 # ---------------------------------------------------------------------------
@@ -212,7 +224,7 @@ canonical_snapshot="$(cd "$local_snapshot" && pwd -P)"
       --passphrase-file "$PASSPHRASE_FILE" \
       --skip-judge --keep --project-name noj-relative >/dev/null 2>&1
 ) || fail "相对快照路径的隔离恢复演练应成功"
-if ! rg -Fq -- "-v $canonical_snapshot/minio:/restore:ro" "$FAKE_LOG"; then
+if ! rgf "-v $canonical_snapshot/minio:/restore:ro" "$FAKE_LOG"; then
   fail "MinIO 恢复应使用绝对快照 bind mount"
 fi
 pass "相对快照路径会规范化为绝对 bind mount"
@@ -227,9 +239,9 @@ run_drill "$local_snapshot" --skip-judge --keep --project-name noj-drill \
   { cat "$TEST_ROOT/drill.err" >&2; fail "隔离恢复演练应成功"; }
 pass "隔离恢复演练（--skip-judge）成功"
 
-rg -q 'pg_restore --clean --if-exists --no-owner --exit-on-error -U noj -d noj$' "$FAKE_LOG" ||
+rge 'pg_restore --clean --if-exists --no-owner --exit-on-error -U noj -d noj$' "$FAKE_LOG" ||
   fail "PostgreSQL 恢复应从标准输入读取快照"
-if rg -q 'pg_restore --clean --if-exists --no-owner --exit-on-error -U noj -d noj -$' "$FAKE_LOG"; then
+if rge 'pg_restore --clean --if-exists --no-owner --exit-on-error -U noj -d noj -$' "$FAKE_LOG"; then
   fail "PostgreSQL 恢复不得把 - 当作容器内输入文件"
 fi
 pass "PostgreSQL 恢复从标准输入读取快照"
@@ -260,9 +272,9 @@ grep -q 'JUDGE_EVALUATOR_NETWORK=noj-drill_noj-net' \
   fail "演练环境应隔离评测网络名"
 grep -q 'subnet: 172.29.0.0/16' "$TEST_ROOT/backups"/drill-*/.work/compose.drill-override.yml ||
   fail "演练覆盖 Compose 应使用独立子网"
-rg -Fq 'image: denoland/deno:debian-2.9.5@sha256:' "$TEST_ROOT/backups"/drill-*/.work/compose.drill-override.yml ||
+rgf 'image: denoland/deno:debian-2.9.5@sha256:' "$TEST_ROOT/backups"/drill-*/.work/compose.drill-override.yml ||
   fail "演练覆盖 Compose 应包含固定版本的 Deno 验收容器"
-rg -Fq 'DO $role$ BEGIN IF NOT EXISTS' "$TEST_ROOT/backups"/drill-*/.work/postgres-globals.sql ||
+rgf 'DO $role$ BEGIN IF NOT EXISTS' "$TEST_ROOT/backups"/drill-*/.work/postgres-globals.sql ||
   fail "PostgreSQL 全局对象恢复应幂等处理已有角色"
 pass "演练环境与覆盖 Compose 隔离配置正确"
 

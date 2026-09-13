@@ -109,6 +109,22 @@ async function collectMarkdownFiles(dir: string): Promise<string[]> {
   return files;
 }
 
+/**
+ * 统计 root 下的 Agent Note 数量（排除 README/AGENTS 说明文件）。
+ *
+ * 门禁自检用：若目录改名/扫描器失效导致"一篇都没扫到"，只报告"格式校验通过"
+ * 就是假绿灯（2026-09-12 架构评审 §2.3 同类缺陷）。
+ */
+export async function countAgentNotes(root: string): Promise<number> {
+  let count = 0;
+  for (const filePath of await collectMarkdownFiles(root)) {
+    const base = filePath.slice(filePath.lastIndexOf("/") + 1);
+    if (base === "README.md" || base === "AGENTS.md") continue;
+    count++;
+  }
+  return count;
+}
+
 /** 递归扫描 root 下所有 Agent Note 并返回错误列表。 */
 export async function verifyAgentNotesTree(root: string): Promise<string[]> {
   const errors: string[] = [];
@@ -132,6 +148,7 @@ export async function verifyAgentNotesTree(root: string): Promise<string[]> {
 
 if (import.meta.main) {
   const root = ".agents/notes";
+  const notes = await countAgentNotes(root);
   const errors = await verifyAgentNotesTree(root);
   if (errors.length > 0) {
     console.error("Agent Note 格式校验失败：");
@@ -140,5 +157,12 @@ if (import.meta.main) {
     }
     Deno.exit(1);
   }
-  console.log("Agent Note 格式校验通过");
+  // 自检：必须真的扫到 note，否则"通过"无意义（见 countAgentNotes 注释）
+  if (notes === 0) {
+    console.error(
+      `Agent Note 格式校验失败：在 ${root} 下未扫描到任何 Agent Note（目录或扫描器已失效）`,
+    );
+    Deno.exit(1);
+  }
+  console.log(`Agent Note 格式校验通过（${notes} 篇）`);
 }

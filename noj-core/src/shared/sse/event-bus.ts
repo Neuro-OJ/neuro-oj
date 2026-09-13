@@ -35,6 +35,14 @@ export const Channels = {
   stats: `${EVENT_CHANNEL_PREFIX}stats`,
   /** 公告变更：noj:events:announcements */
   announcements: `${EVENT_CHANNEL_PREFIX}announcements`,
+  /**
+   * 系统设置变更（**跨副本缓存失效**）：noj:events:settings
+   *
+   * 2026-09-12 评审 §2.6：`system-settings.ts` 的配置缓存是进程内的，此前失效只做
+   * 本地 `cache.delete()`，没有任何跨副本失效通道——多副本下"管理员改了设置，
+   * 其余副本永不感知"。发布/订阅本频道后，各副本收到即清本地缓存。
+   */
+  settings: `${EVENT_CHANNEL_PREFIX}settings`,
 } as const;
 
 /**

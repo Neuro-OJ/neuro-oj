@@ -26,7 +26,8 @@ import { logAudit } from "../../../system/index.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
 import { buildJudgeTaskLlmForProvider } from "./../../../gateway/index.ts";
 import { getUserLlmProvider } from "../../../gateway/index.ts";
-import type { JudgeTask, JudgeTaskLlm } from "../../types/index.ts";
+import type { JudgeTaskLlm } from "../../types/index.ts";
+import { buildJudgeTask } from "../../types/index.ts";
 import type { RuntimeConfig } from "./../../../catalog/index.ts";
 import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
 import {
@@ -153,7 +154,7 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     }
   }
 
-  const task: JudgeTask = {
+  const task = buildJudgeTask({
     submission_id: id,
     problem_id: submission.problem_id,
     user_id: submission.user_id,
@@ -165,9 +166,9 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     file_name: submission.file_name ??
       (LANGUAGE_EXT_MAP[submission.language] || "main.txt"),
     rejudge_seq: updated?.rejudge_seq ?? 0,
-    ...(llmTask ? { llm: llmTask } : {}),
-    ...(userLlmTask ? { user_llm: userLlmTask } : {}),
-  };
+    llm: llmTask ?? undefined,
+    user_llm: userLlmTask ?? undefined,
+  });
 
   // 审计日志：先写入审计再推送不可逆的 MQ 消息（issue #101）
   await logAudit(
@@ -372,7 +373,7 @@ export async function rejudgeProblemSubmissions(
         }
       }
 
-      const task: JudgeTask = {
+      const task = buildJudgeTask({
         submission_id: sub.id,
         problem_id: problemId,
         user_id: sub.user_id,
@@ -384,9 +385,9 @@ export async function rejudgeProblemSubmissions(
         file_name: sub.file_name ??
           (LANGUAGE_EXT_MAP[sub.language] || "main.txt"),
         rejudge_seq: sub.rejudge_seq,
-        ...(llmTask ? { llm: llmTask } : {}),
-        ...(userLlmTask ? { user_llm: userLlmTask } : {}),
-      };
+        llm: llmTask ?? undefined,
+        user_llm: userLlmTask ?? undefined,
+      });
 
       await pushJudgeTask(task);
       // 条件更新：结果可能在入队后立即回写，不得覆盖终态。

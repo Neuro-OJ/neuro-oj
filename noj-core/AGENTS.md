@@ -29,12 +29,12 @@
 
 ### 数据模型
 
-| 表                 | 用途                                                 |
-| ------------------ | ---------------------------------------------------- |
-| `roles`            | 角色定义（`is_admin`/`is_default`/`is_system` 标记） |
-| `permissions`      | 权限定义（`resource:action` 格式，22 个预置）        |
-| `role_permissions` | 角色-权限多对多关联                                  |
-| `user_roles`       | 用户-角色多对多关联                                  |
+| 表                 | 用途                                                                                                                   |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `roles`            | 角色定义（`is_default`/`is_system` 标记；`is_admin` 列已由迁移 0032 删除，管理员判定改为权限集含 `admin:full_access`） |
+| `permissions`      | 权限定义（`resource:action` 格式，22 个预置）                                                                          |
+| `role_permissions` | 角色-权限多对多关联                                                                                                    |
+| `user_roles`       | 用户-角色多对多关联                                                                                                    |
 
 ### 权限检查层次
 
@@ -61,15 +61,15 @@ authMiddleware → 注入 isAdmin
 
 ### 关键函数
 
-| 函数                         | 位置                        | 用途                                          |
-| ---------------------------- | --------------------------- | --------------------------------------------- |
-| `getUserPermissions(userId)` | `src/lib/permissions.ts`    | 递归 CTE 查询用户所有权限，返回 `Set<string>` |
-| `resolvePermissions(c)`      | 同上                        | 请求级缓存封装                                |
-| `checkPermission(c, perm)`   | 同上                        | 返回 boolean，service 层条件判断              |
-| `assertPermission(c, perm)`  | 同上                        | 无权限时抛 ForbiddenError                     |
-| `requireAdmin()`             | 同上                        | 中间件，纯 JWT fast path                      |
-| `requirePermission(perm)`    | 同上                        | 中间件工厂函数                                |
-| `ensureRbacSeeds()`          | `src/services/seed-rbac.ts` | 全量幂等初始化                                |
+| 函数                         | 位置                                                    | 用途                                          |
+| ---------------------------- | ------------------------------------------------------- | --------------------------------------------- |
+| `getUserPermissions(userId)` | `src/domains/identity/services/security/permissions.ts` | 递归 CTE 查询用户所有权限，返回 `Set<string>` |
+| `resolvePermissions(c)`      | 同上                                                    | 请求级缓存封装                                |
+| `checkPermission(c, perm)`   | 同上                                                    | 返回 boolean，service 层条件判断              |
+| `assertPermission(c, perm)`  | 同上                                                    | 无权限时抛 ForbiddenError                     |
+| `requireAdmin()`             | 同上                                                    | 中间件，纯 JWT fast path                      |
+| `requirePermission(perm)`    | 同上                                                    | 中间件工厂函数                                |
+| `ensureRbacSeeds()`          | `src/domains/system/services/seed/seed-rbac.ts`         | 全量幂等初始化                                |
 
 ### Permissions
 
@@ -78,12 +78,14 @@ authMiddleware → 注入 isAdmin
 | problem    | create/create_p/read/write_own/write_any/delete_own/delete_any/package_manage_own/package_manage_any | 题目 CRUD + 支持包 |
 | submission | create/read_own/read_all/rejudge                                                                     | 提交操作           |
 | user       | read_profile/search/manage                                                                           | 用户操作           |
-| category   | read/manage                                                                                          | 分类操作           |
+| tag        | read/manage                                                                                          | 标签操作           |
 | system     | settings/judge_images/audit_logs/ip_bans                                                             | 系统管理           |
 
 ### 迁移策略
 
-- `users.role` 列保留（标记为 deprecated），用于向前兼容和 JWT `role` claim
+- `users.role` 列**已删除**（RBAC 迁移后不再使用）；JWT 的 `role` claim 由
+  `user_roles` + `permissions` 实时计算得出，管理员判定为权限集中含
+  `admin:full_access`
 - 旧服务函数保留 `userRole` 参数作为 fallback，新增 `c?: Context` 参数启用 RBAC
 - `createProblem`/`updateProblem`/`deleteProblem` 等已迁移到
   `assertPermission()`
@@ -102,105 +104,116 @@ noj-core/
 ├── .env                   # 环境变量（不提交）
 ├── src/
 │   ├── main.ts            # 入口（启动校验 + 初始化顺序）
-│   ├── app.ts             # Hono 应用工厂（CORS + 路由 + 错误处理）
+│   ├── app.ts             # Hono 应用工厂（CORS + 全局中间件 + 按域挂载路由）
 │   ├── mod.ts             # 公共导出
-│   ├── routes/            # 路由层（参数校验 + 调用 service）：admin / auth / categories / checkin / community / contests / conversations / health / problems / queue / rankings / sse / stats / submissions / users
-│   ├── services/          # 业务逻辑层（数据库读写，34 个文件，含 problems-*/submissions-* 拆分与 community/contests/dashboard/stats-cache 等）
-│   ├── db/                # 数据库连接 & Drizzle schema
-│   │   ├── index.ts       # 数据库连接管理（单例模式）
-│   │   ├── migrate.ts     # 迁移执行器（绝对路径解析，不依赖 CWD）
-│   │   └── schema.ts      # Drizzle 表定义（38 张表）
-│   ├── middleware/         # 认证中间件（auth / banlist / rateLimit / request-context；搜索限流在 search 域）
-│   ├── mq/                # Redis 消息队列（Producer + Consumer）
-│   │   ├── connection.ts   #   连接管理（共享 + 消费者 + Pub/Sub）
-│   │   ├── base-consumer.ts#   BRPOP 消费基类
-│   │   ├── consumer.ts     #   评测结果消费者（BRPOP 阻塞）
-│   │   └── producer.ts     #   评测任务生产者（LPUSH）
-│   ├── lib/               # 工具函数（JWT、密码、错误类、请求解析、日志、存储、限流、RBAC 等）
-│   │   ├── email.ts            # 邮件发送抽象入口（动态选择 Provider）
-│   │   ├── email-providers/    # 邮件 Provider 实现（types / mock / aliyun / tencent）
-│   │   ├── storage/            # 抽象存储层（StorageProvider）
-│   │   │   ├── types.ts        #   StorageProvider 接口 + URL 工具
-│   │   │   ├── local.ts        #   LocalStorageProvider（dev 专用）
-│   │   │   ├── s3.ts           #   S3StorageProvider（生产环境）
-│   │   │   ├── factory.ts      #   工厂函数（环境变量选择实现）
-│   │   │   └── mod.ts          #   公共导出
-│   │   ├── errors.ts           # AppError 继承体系（6 个子类）
-│   │   ├── jwt.ts              # JWT 签发/验证（HS256, iss/aud 校验）
-│   │   ├── password.ts         # bcrypt 哈希/比对（cost 12）
-│   │   ├── request.ts          # parseJsonBody<T>() 安全 JSON 解析
-│   │   ├── permissions.ts      # RBAC 权限工具（getUserPermissions / requireAdmin / requirePermission 等）
-│   │   ├── logging.ts          # 生产安全日志（UUID 截断、分值隐藏）
-│   │   ├── event-bus.ts        # 进程内事件总线（SSE 推送）
-│   │   ├── env-snapshot.ts     # 环境变量快照（启动期记录）
-│   │   ├── settings-registry.ts# 系统设置注册表
-│   │   ├── rateLimit.ts / loginThrottle.ts / rateLimitEnv.ts / cidr.ts  # 速率限制
-│   │   ├── pagination.ts / samples.ts / sql-rows.ts / resetToken.ts / revokedTokens.ts / banCache.ts / requestContext.ts  # 其他工具
-│   │   └── ...
-│   └── types/             # 类型定义
-│       ├── index.ts        # JudgeTask, JudgeResult, SubmissionStatus, LANGUAGE_EXT_MAP
-│       ├── auth.ts         # RegisterInput, LoginInput, UserResponse
-│       └── problems.ts     # DIFFICULTIES, PROBLEM_TYPES, 校验函数
+│   ├── routes/            # 顶层路由组合（health 已迁入 observability 域）
+│   ├── shared/            # 跨域共享基础设施（不反向依赖 domains）
+│   │   ├── base/          # errors / logging / constants / dates / sql-rows
+│   │   ├── config/        # settings-registry / production-config
+│   │   ├── db/            # connection / migrate / schema / schema-ddl
+│   │   ├── http/          # request / pagination / file-stream / hono-env
+│   │   ├── mq/            # Redis connection / base-consumer
+│   │   ├── sse/           # event-bus / sse-stream / sse-events / server-helpers
+│   │   ├── rate-limit/    # 通用限流原语（业务环境相关限流在 system 域）
+│   │   ├── security/      # cidr / public-id / image-validation
+│   │   ├── observability/ # 低层 kernel：指标注册表、写侧契约、日志上下文
+│   ├── domains/           # 业务域自包含：routes / services / middleware / mq / types / tests
+│   │   ├── admin/         # 管理端统一门面域：identity/catalog/system/... 子域路由、审计、乐观锁
+│   │   ├── identity/      # 注册登录、JWT/RBAC、用户、OAuth、TFA、封禁
+│   │   ├── catalog/       # 题目、标签、题包、题单
+│   │   ├── objective/     # 客观题
+│   │   ├── submission/    # 提交、评测协议、MQ、自测、SSE
+│   │   ├── contest/       # 竞赛
+│   │   ├── community/     # 社区
+│   │   ├── messaging/     # 私信
+│   │   ├── system/        # 设置、公告、审计、存储/邮件、Actor RequestContext、限流中间件
+│   │   ├── gateway/       # LLM Provider / 配额
+│   │   ├── search/        # 全局搜索（search_entries 索引、消费者、搜索 API）
+│   │   ├── query/         # 统计、排行
+│   │   ├── content-review/# 内容审核与 DM 审核消费者
+│   │   └── observability/ # 平台域：平台指标、探针、快照、健康/指标路由、SLO、运行时契约
 ├── scripts/               # CLI 工具（noj.ts 单入口 + migrate.ts + check-env.ts）
 ├── data/
 │   ├── problems-src/<id>/ # 题目源文件（版本控制，仅样例题）
 │   └── packages/<id>.zip  # 构建产物（gitignored，local 模式使用）
-└── tests/                 # 测试文件（与 src 镜像结构）
+└── tests/                 # 顶层共享测试与跨模块测试
     ├── 00_migrate_test.ts # 最先执行：迁移 + seed root 用户
-    ├── services/          # 服务层测试
-    └── routes/            # 路由层测试（使用 jsonRequest() 辅助函数）
+    ├── shared/            # shared 层测试（含 config / security / storage）
+    └── routes/            # 顶层路由测试（*.test.ts；其余测试随域进入 domains/*/tests）
 ```
 
 ## 环境变量
 
-从 `.env` 文件或 `Deno.env` 读取。**必须配置**：
+从 `.env` 文件或 `Deno.env` 读取。**配置分层语义（scope）**：
 
-| 变量                              | 默认值                    | 说明                                                                        |
-| --------------------------------- | ------------------------- | --------------------------------------------------------------------------- |
-| `DATABASE_URL`                    | —                         | PostgreSQL 连接串（无默认值）                                               |
-| `JWT_SECRET`                      | —                         | HS256 签名密钥（≥32 字符）                                                  |
-| `JWT_EXPIRES_IN`                  | `24h`                     | Token 有效期                                                                |
-| `REDIS_URL`                       | `redis://127.0.0.1:6379/` | Redis 连接串                                                                |
-| `PORT`                            | `8000`                    | HTTP 监听端口                                                               |
-| `NOJ_ENV`                         | 空（development）         | `production` 启用生产模式                                                   |
-| `LOG_LEVEL`                       | prod=warn / dev=debug     | 日志级别：`debug`/`info`/`warn`/`error`，低于阈值的日志被抑制               |
-| `LOG_FORMAT`                      | prod=json / dev=pretty    | 日志输出格式：`json`（结构化）/ `pretty`（人类可读）                        |
-| `ADMIN_EMAIL`                     | —                         | 管理员邮箱（**强烈推荐**）。未设置时 bootstrap:admin 自动创建临时引导管理员 |
-| `ADMIN_PASS`                      | —                         | 管理员密码（需与 ADMIN_EMAIL 配合）                                         |
-| `DATABASE_POOL_MAX`               | `10`                      | PostgreSQL 连接池大小                                                       |
-| `DATABASE_CONNECT_TIMEOUT`        | `10`                      | 连接超时秒数                                                                |
-| `DATABASE_IDLE_TIMEOUT`           | `300`                     | 空闲连接超时秒数                                                            |
-| `DATABASE_MAX_LIFETIME`           | `3600`                    | 连接最大生命周期秒数                                                        |
-| `CORS_ALLOWED_ORIGINS`            | —                         | 生产环境 CORS 白名单（逗号分隔）                                            |
-| `EMAIL_PROVIDER`                  | `mock`                    | 邮件 Provider：`mock`/`aliyun`/`tencent`                                    |
-| `ALIBABA_ACCESS_KEY_ID`           | —                         | 阿里云 DirectMail AccessKey（aliyun 时必填）                                |
-| `ALIBABA_ACCESS_KEY_SECRET`       | —                         | 阿里云 DirectMail AccessKey Secret                                          |
-| `ALIBABA_FROM_EMAIL`              | —                         | 阿里云发信地址（需控制台验证域名）                                          |
-| `TENCENT_SECRET_ID`               | —                         | 腾讯云 SecretId（tencent 时必填）                                           |
-| `TENCENT_SECRET_KEY`              | —                         | 腾讯云 SecretKey                                                            |
-| `TENCENT_FROM_EMAIL`              | —                         | 腾讯云发信地址（需控制台验证域名）                                          |
-| `TENCENT_REGION`                  | `ap-guangzhou`            | 腾讯云地域                                                                  |
-| `STORAGE_PROVIDER`                | `local`                   | 存储 Provider：`local`（开发测试）或 `s3`（生产环境）                       |
-| `S3_ENDPOINT`                     | —                         | S3 兼容对象存储端点（s3 模式必填）                                          |
-| `S3_REGION`                       | `us-east-1`               | S3 区域                                                                     |
-| `S3_ACCESS_KEY`                   | —                         | S3 访问密钥（s3 模式必填）                                                  |
-| `S3_SECRET_KEY`                   | —                         | S3 秘密密钥（s3 模式必填）                                                  |
-| `S3_BUCKET`                       | `noj-support-packages`    | S3 存储桶名                                                                 |
-| `S3_FORCE_PATH_STYLE`             | `false`                   | 使用路径风格 URL（MinIO 需要设为 `true`）                                   |
-| `RATE_LIMIT_ENABLED`              | `true`                    | 速率限制总开关（NOJ_ENV=test 时强制关闭）                                   |
-| `RATE_LIMIT_LOGIN_IP_WINDOW`      | `30`                      | IP 维度限流窗口（秒）                                                       |
-| `RATE_LIMIT_LOGIN_IP_MAX`         | `10`                      | IP 维度窗口内最大尝试次数                                                   |
-| `RATE_LIMIT_LOGIN_ACC_WINDOW`     | `30`                      | 账号维度限流窗口（秒）                                                      |
-| `RATE_LIMIT_LOGIN_ACC_MAX`        | `5`                       | 账号维度窗口内最大尝试次数                                                  |
-| `RATE_LIMIT_LOGIN_BACKOFF_SEC`    | `15`                      | 每次失败累计退避秒数                                                        |
-| `RATE_LIMIT_LOGIN_LOCK_THRESHOLD` | `10`                      | 连续失败锁定阈值                                                            |
-| `RATE_LIMIT_LOGIN_LOCK_SECONDS`   | `3600`                    | 锁定时长（秒）                                                              |
-| `RATE_LIMIT_SEARCH_ENABLED`       | `true`                    | 搜索限流总开关（issue #100）                                                |
-| `RATE_LIMIT_SEARCH_WINDOW`        | `30`                      | 搜索限流窗口（秒）                                                          |
-| `RATE_LIMIT_SEARCH_MAX_ANON`      | `60`                      | 匿名 IP 窗口内最大搜索尝试次数                                              |
-| `RATE_LIMIT_SEARCH_MAX_AUTHED`    | `120`                     | 登录用户窗口内最大搜索尝试次数                                              |
-| `TRUSTED_PROXIES`                 | —                         | 可信代理白名单（逗号分隔 IP/CIDR）。生产环境**必须**配置                    |
-| `AUDIT_LOG_RETENTION_DAYS`        | `90`                      | 审计日志保留天数（0 = 禁用清理）                                            |
+- **runtime（DB-owned，运行时可热改）**：`管理后台 > 系统设置 > 运行时配置` 写入
+  DB 即时生效；env 值仅作启动期/开发环境兜底（DB 未写入时），读取链
+  `DB → env → 默认值`。下表标注"可热改"的项属此类。
+- **bootstrap（env-owned，启动期定型只读）**：由 env 唯一决定，读取链
+  `env → 默认值`（**不读 DB**，DB
+  残留旧值被忽略）。`管理后台 > 系统设置 >
+  环境配置` 只读展示全部 bootstrap
+  项（含未配置）；改 .env 后需重启 noj-core。 标注"后台只读"的项属此类。
+
+> 注册表单一事实源：`src/shared/config/settings-registry.ts` 的
+> `CONFIG_DEFINITIONS`（scope + envKey/envFallback）。新 env
+> 变量必须登记入注册表，并同步 `.env.example`； `deno task check:env`
+> 会校验注册表与 `.env.example` 键覆盖一致性。
+
+> **runtime 共存提示**：当 runtime 项同时存在 DB 值与 env 兜底时，当前 DB
+> 值优先， env 被遮蔽；启动日志会 warning，后台设置页进入时弹窗并显示“env
+> 兜底存在”徽标， 建议移除 `.env` 对应变量以避免歧义。
+
+**必须配置**（bootstrap，后台只读）：
+
+| 变量                              | 默认值                    | 说明                                                          |
+| --------------------------------- | ------------------------- | ------------------------------------------------------------- |
+| `DATABASE_URL`                    | —                         | PostgreSQL 连接串（无默认值）                                 |
+| `JWT_SECRET`                      | —                         | HS256 签名密钥（≥32 字符）                                    |
+| `TFA_ENCRYPTION_KEY`              | —                         | TOTP secret 加密密钥（≥32 字符，与 JWT_SECRET 隔离）          |
+| `JWT_EXPIRES_IN`                  | `24h`                     | Token 有效期                                                  |
+| `REDIS_URL`                       | `redis://127.0.0.1:6379/` | Redis 连接串                                                  |
+| `RESULT_CONSUMER_CONCURRENCY`     | `4`                       | 评测结果消费者连接数（1-16）                                  |
+| `PORT`                            | `8000`                    | HTTP 监听端口                                                 |
+| `NOJ_ENV`                         | 空（development）         | `production` 启用生产模式                                     |
+| `LOG_LEVEL`                       | prod=warn / dev=debug     | 日志级别：`debug`/`info`/`warn`/`error`，低于阈值的日志被抑制 |
+| `LOG_FORMAT`                      | prod=json / dev=pretty    | 日志输出格式：`json`（结构化）/ `pretty`（人类可读）          |
+| `ADMIN_EMAIL`                     | —                         | 兼容旧版或手动 `bootstrap admin` 使用；生产新安装无需配置     |
+| `ADMIN_PASS`                      | —                         | 兼容旧版或手动 `bootstrap admin` 使用；生产新安装无需配置     |
+| `DATABASE_POOL_MAX`               | `10`                      | PostgreSQL 连接池大小                                         |
+| `DATABASE_CONNECT_TIMEOUT`        | `10`                      | 连接超时秒数                                                  |
+| `DATABASE_IDLE_TIMEOUT`           | `300`                     | 空闲连接超时秒数                                              |
+| `DATABASE_MAX_LIFETIME`           | `3600`                    | 连接最大生命周期秒数                                          |
+| `CORS_ALLOWED_ORIGINS`            | —                         | 生产环境 CORS 白名单（逗号分隔）                              |
+| `EMAIL_PROVIDER`                  | `mock`                    | 邮件 Provider：`mock`/`aliyun`/`tencent`                      |
+| `ALIBABA_ACCESS_KEY_ID`           | —                         | 阿里云 DirectMail AccessKey（aliyun 时必填）                  |
+| `ALIBABA_ACCESS_KEY_SECRET`       | —                         | 阿里云 DirectMail AccessKey Secret                            |
+| `ALIBABA_FROM_EMAIL`              | —                         | 阿里云发信地址（需控制台验证域名）                            |
+| `TENCENT_SECRET_ID`               | —                         | 腾讯云 SecretId（tencent 时必填）                             |
+| `TENCENT_SECRET_KEY`              | —                         | 腾讯云 SecretKey                                              |
+| `TENCENT_FROM_EMAIL`              | —                         | 腾讯云发信地址（需控制台验证域名）                            |
+| `TENCENT_REGION`                  | `ap-guangzhou`            | 腾讯云地域                                                    |
+| `STORAGE_PROVIDER`                | `local`                   | 存储 Provider：`local`（开发测试）或 `s3`（生产环境）         |
+| `S3_ENDPOINT`                     | —                         | S3 兼容对象存储端点（s3 模式必填）                            |
+| `S3_REGION`                       | `us-east-1`               | S3 区域                                                       |
+| `S3_ACCESS_KEY`                   | —                         | S3 访问密钥（s3 模式必填）                                    |
+| `S3_SECRET_KEY`                   | —                         | S3 秘密密钥（s3 模式必填）                                    |
+| `S3_BUCKET`                       | `noj-support-packages`    | S3 存储桶名                                                   |
+| `S3_FORCE_PATH_STYLE`             | `false`                   | 使用路径风格 URL（MinIO 需要设为 `true`）                     |
+| `RATE_LIMIT_ENABLED`              | `true`                    | 速率限制总开关（NOJ_ENV=test 时强制关闭）                     |
+| `RATE_LIMIT_LOGIN_IP_WINDOW`      | `30`                      | IP 维度限流窗口（秒）                                         |
+| `RATE_LIMIT_LOGIN_IP_MAX`         | `10`                      | IP 维度窗口内最大尝试次数                                     |
+| `RATE_LIMIT_LOGIN_ACC_WINDOW`     | `30`                      | 账号维度限流窗口（秒）                                        |
+| `RATE_LIMIT_LOGIN_ACC_MAX`        | `5`                       | 账号维度窗口内最大尝试次数                                    |
+| `RATE_LIMIT_LOGIN_BACKOFF_SEC`    | `15`                      | 每次失败累计退避秒数                                          |
+| `RATE_LIMIT_LOGIN_LOCK_THRESHOLD` | `10`                      | 连续失败锁定阈值                                              |
+| `RATE_LIMIT_LOGIN_LOCK_SECONDS`   | `3600`                    | 锁定时长（秒）                                                |
+| `RATE_LIMIT_SEARCH_ENABLED`       | `true`                    | 搜索限流总开关（issue #100）                                  |
+| `RATE_LIMIT_SEARCH_WINDOW`        | `30`                      | 搜索限流窗口（秒）                                            |
+| `RATE_LIMIT_SEARCH_MAX_ANON`      | `60`                      | 匿名 IP 窗口内最大搜索尝试次数                                |
+| `RATE_LIMIT_SEARCH_MAX_AUTHED`    | `120`                     | 登录用户窗口内最大搜索尝试次数                                |
+| `TRUSTED_PROXIES`                 | —                         | 可信代理白名单（逗号分隔 IP/CIDR）。生产环境**必须**配置      |
+| `AUDIT_LOG_RETENTION_DAYS`        | `90`                      | 审计日志保留天数（0 = 禁用清理）                              |
 
 ## 开发命令
 
@@ -217,19 +230,44 @@ deno task db:migrate
 # 生成 Drizzle 迁移文件
 deno task db:generate
 
-# 一键初始化（数据库迁移 + 系统初始化 + 管理员引导 + 题目包构建/导入 + dev 数据）
-# 等价于依次执行：db:migrate → init:system → bootstrap:admin → problems:build → problems:import
+# 种子数据（示例题 + 标签 + 管理员）
 deno task dev-setup
 
-# 题目包构建（data/problems-src/ → data/packages/）
+# 构建支持包
 deno task problems:build
 
-# 题目包导入（data/packages/ → 数据库 + 存储后端）
-deno task problems:import
+# 一键初始化
+deno task dev-setup          # 开发环境一键初始化（迁移 + 系统数据 + 题目导入）
+
+# 对象存储只读盘点（仅 SELECT + LIST，不删除对象）
+deno task storage:audit -- --pretty --output /tmp/storage-audit.json
 
 # 测试
-deno task test
+deno task test              # 串行全量（无 DATABASE_URL 时走 PGlite 内存库）
+deno task test:parallel     # 并行分片（需本地 PG：TEST_SCHEMA=test_unit/test_db
+                            # 双 schema 隔离，两组并行，全绿约 2-3 min）
+deno task test:smoke        # 快速冒烟（Hono server + /health，需 Redis）
 ```
+
+### 测试并行分片（TEST_SCHEMA）
+
+`deno task test:parallel`（`scripts/test-parallel.ts`）把测试按目录分为
+`unit`（tests/shared、域内 lib/middleware/types 测试、data/app）与 `db`（域内
+services/routes/mq 测试、db/迁移/种子） 两组，每组独占一个 PG
+schema（`test_unit` / `test_db`），进程级并行互不干扰：
+
+- `src/shared/db/connection.ts` 支持 `TEST_SCHEMA` 环境变量：通过 libpq startup
+  参数 `-csearch_path=<schema>,public` 让连接池内所有连接落在目标 schema
+  （TRUNCATE / SELECT / INSERT 均自动隔离）
+- `src/shared/db/migrate.ts` 在 TEST_SCHEMA 下把 `migrationsSchema` 指向同
+  schema， 避免各分片共享 `drizzle` 迁移记录导致"已迁移"误判跳过
+- 约束：分片目录集合与 CI 的 `core-test-db` 一致；CI 的 `core-test-unit` 是
+  PGlite 模式（无需迁移），本地 unit 分片走真实 PG（需 00_migrate_test）
+
+注意：迁移 SQL 中历史文件（0010/0027/0029）曾带 drizzle-kit 生成的
+`REFERENCES "public"."xxx"` 硬编码前缀，分片下 FK 会错指 public schema （已在
+2026-07 修复为不带前缀，按 search_path 解析）。新增迁移请保持 不带 schema
+前缀，否则分片测试会静默失败。
 
 ## 基础设施
 
@@ -240,37 +278,45 @@ docker compose down     # 停止
 
 ## API 路由
 
-| 方法   | 路径                                   | 权限        | 说明                                                                |
-| ------ | -------------------------------------- | ----------- | ------------------------------------------------------------------- |
-| POST   | `/api/v1/auth/register`                | 公开        | 用户注册                                                            |
-| POST   | `/api/v1/auth/login`                   | 公开        | 用户登录（返回 JWT）                                                |
-| GET    | `/api/v1/auth/me`                      | 登录        | 当前用户信息                                                        |
-| GET    | `/api/v1/categories`                   | 公开        | 分类树                                                              |
-| POST   | `/api/v1/categories`                   | 管理员      | 创建分类                                                            |
-| GET    | `/api/v1/categories/:id`               | 公开        | 分类详情                                                            |
-| PUT    | `/api/v1/categories/:id`               | 管理员      | 更新分类                                                            |
-| DELETE | `/api/v1/categories/:id`               | 管理员      | 删除分类                                                            |
-| GET    | `/api/v1/problems`                     | 公开        | 题目列表（分页+筛选）                                               |
-| GET    | `/api/v1/problems/:id`                 | 公开        | 题目详情（**双索引**：UUID/display_id/数字）                        |
-| POST   | `/api/v1/problems`                     | 登录        | 创建题目（U/P 类型）                                                |
-| PUT    | `/api/v1/problems/:id`                 | 登录        | 更新题目                                                            |
-| DELETE | `/api/v1/problems/:id`                 | 登录        | 删除题目                                                            |
-| GET    | `/api/v1/submissions`                  | 登录        | 我的提交列表                                                        |
-| POST   | `/api/v1/submissions`                  | 登录        | 创建提交                                                            |
-| GET    | `/api/v1/submissions/:id`              | 登录        | 提交详情                                                            |
-| GET    | `/api/v1/submissions/:id/status`       | 登录        | 提交队列状态                                                        |
-| GET    | `/api/v1/admin/submissions`            | 管理员      | 全部提交管理                                                        |
-| GET    | `/api/v1/admin/users`                  | 管理员      | 用户列表                                                            |
-| PATCH  | `/api/v1/admin/users/:id/role`         | 管理员      | 角色变更                                                            |
-| GET    | `/api/v1/users/:id/profile`            | 公开        | 用户主页                                                            |
-| PUT    | `/api/v1/users/me`                     | 登录        | 更新个人简介                                                        |
-| POST   | `/api/v1/auth/change-password`         | 登录        | 修改密码（issue #75 强制改密）                                      |
-| POST   | `/api/v1/auth/logout`                  | 公开        | 登出（no-op stub，客户端自行清 Cookie）                             |
-| GET    | `/api/v1/problems/:id/support-package` | 登录        | 下载支持包（通过 core 代理，不暴露 S3 URL）                         |
-| POST   | `/api/v1/checkin`                      | 登录        | 每日签到（返回当前连续天数）                                        |
-| GET    | `/api/v1/checkin/today`                | 登录        | 查询今日签到状态                                                    |
-| GET    | `/api/v1/search`                       | 公开/管理员 | 全局搜索（题目、用户、社区帖子/评论、竞赛、提交、私信、公告，分页） |
-| GET    | `/health`                              | 公开        | 健康检查                                                            |
+| 方法   | 路径                                         | 权限        | 说明                                                                |
+| ------ | -------------------------------------------- | ----------- | ------------------------------------------------------------------- |
+| POST   | `/api/v1/auth/register`                      | 公开        | 用户注册                                                            |
+| POST   | `/api/v1/auth/email/verify`                  | 公开        | 消费一次性邮箱验证令牌                                              |
+| POST   | `/api/v1/auth/email/resend`                  | 登录        | 重新发送验证邮件（防枚举、1 分钟限流）                              |
+| POST   | `/api/v1/auth/login`                         | 公开        | 用户登录（返回 JWT）                                                |
+| GET    | `/api/v1/auth/me`                            | 登录        | 当前用户信息                                                        |
+| GET    | `/api/v1/tags`                               | 公开        | 标签列表（含算法标签名，发现路径）                                  |
+| POST   | `/api/v1/tags`                               | tag:manage  | 创建标签（默认仅 admin，可配置）                                    |
+| PUT    | `/api/v1/tags/:id`                           | tag:manage  | 更新标签（改名/改 kind）                                            |
+| DELETE | `/api/v1/tags/:id`                           | tag:manage  | 删除标签（级联清理关联）                                            |
+| POST   | `/api/v1/tags/:id/merge`                     | tag:manage  | 合并标签（关联重指向后删除源标签）                                  |
+| GET    | `/api/v1/problems`                           | 公开        | 题目列表（分页+筛选）                                               |
+| GET    | `/api/v1/problems/:id`                       | 公开        | 题目详情（**双索引**：UUID/display_id/数字）                        |
+| POST   | `/api/v1/problems`                           | 登录        | 创建题目（U/P 类型）                                                |
+| PUT    | `/api/v1/problems/:id`                       | 登录        | 更新题目                                                            |
+| DELETE | `/api/v1/problems/:id`                       | 登录        | 删除题目                                                            |
+| GET    | `/api/v1/submissions`                        | 登录        | 我的提交列表                                                        |
+| POST   | `/api/v1/submissions`                        | 登录        | 创建提交                                                            |
+| GET    | `/api/v1/submissions/:id`                    | 登录        | 提交详情                                                            |
+| GET    | `/api/v1/submissions/:id/status`             | 登录        | 提交队列状态                                                        |
+| GET    | `/api/v1/admin/submission/submissions`       | 管理员      | 全部提交管理                                                        |
+| GET    | `/api/v1/admin/identity/users`               | 管理员      | 用户列表                                                            |
+| PATCH  | `/api/v1/admin/identity/users/:id/role`      | 管理员      | 角色变更                                                            |
+| GET    | `/api/v1/users/:id/profile`                  | 公开        | 用户主页                                                            |
+| PUT    | `/api/v1/users/me`                           | 登录        | 更新个人简介                                                        |
+| POST   | `/api/v1/users/me/delete-account`            | 登录        | 密码确认后软删除并匿名化账户                                        |
+| DELETE | `/api/v1/admin/identity/users/:id`           | 管理员      | 注销用户并写入审计日志                                              |
+| POST   | `/api/v1/auth/change-password`               | 登录        | 修改密码（issue #75 强制改密）                                      |
+| POST   | `/api/v1/auth/tfa/setup`                     | 登录        | 生成 TOTP secret 与 otpauth URL（issue #228）                       |
+| POST   | `/api/v1/auth/tfa/confirm`                   | 登录        | 确认启用 TFA，返回一次性恢复码（issue #228）                        |
+| POST   | `/api/v1/auth/tfa/disable`                   | 登录        | 禁用 TFA（需 TOTP/恢复码确认，issue #228）                          |
+| POST   | `/api/v1/auth/tfa/recovery-codes/regenerate` | 登录        | 重新生成恢复码（issue #228）                                        |
+| POST   | `/api/v1/auth/logout`                        | 公开        | 登出（no-op stub，客户端自行清 Cookie）                             |
+| GET    | `/api/v1/problems/:id/support-package`       | 登录        | 下载支持包（通过 core 代理，不暴露 S3 URL）                         |
+| POST   | `/api/v1/checkin`                            | 登录        | 每日签到（返回当前连续天数）                                        |
+| GET    | `/api/v1/checkin/today`                      | 登录        | 查询今日签到状态                                                    |
+| GET    | `/api/v1/search`                             | 公开/管理员 | 全局搜索（题目、用户、社区帖子/评论、竞赛、提交、私信、公告，分页） |
+| GET    | `/health`                                    | 公开        | 健康检查                                                            |
 
 ### 路由层关键模式
 
@@ -287,9 +333,11 @@ docker compose down     # 停止
 - `PUT /me` 必须在 `GET /:id/profile` **之前**注册，否则 "me" 会被匹配为 `:id`
 - 注释明确警告此顺序依赖
 
-**管理路由挂载**（`app.ts`）：
+**管理路由挂载**（`domains/admin/index.ts`）：
 
-- 管理路由以 `/api/v1/admin` 为前缀挂载，子路由内部路径为 `/`（相对路径）
+- 管理端统一由 `domains/admin` 门面域挂载到 `/api/v1/admin`
+- 按 sub domain 组织：`/identity`、`/catalog`、`/contest`、`/system`、
+  `/community`、`/gateway`、`/submission`、`/query`
 
 ## Redis MQ 约定
 
@@ -332,23 +380,24 @@ docker compose down     # 停止
 
 ## 数据库 Schema 设计
 
-| 表                      | 关键列                                                                                                                    | 约束 / 索引                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `users`                 | `id`(UUID), `username`(unique), `email`(unique), `password_hash`, `role`(user/admin), `bio`, `must_change_password`(bool) | PK, UK(username), UK(email)                                    |
-| `problems`              | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`                           | PK, UK(display_id), UK(type,number), FK→users                  |
-| `categories`            | `id`(UUID), `name`, `parent_id`, `level`(缓存深度)                                                                        | PK, FK→categories(parent_id) ON DELETE SET NULL                |
-| `problems_categories`   | `problem_id`, `category_id`                                                                                               | FK→problems ON DELETE CASCADE, FK→categories ON DELETE CASCADE |
-| `submissions`           | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                         | PK, FK→users, FK→problems, idx(user_id,created_at)             |
-| `evaluation_results`    | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb`                     | PK, UK(submission_id), FK→submissions                          |
-| `check_ins`             | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                           | PK, FK→users, UK(user_id,checkin_date)                         |
-| `judge_images`          | `id`(UUID), `image`(text), `enabled`(bool)                                                                                | PK, UK(image)                                                  |
-| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                               | PK, FK→users, UK(token_hash)                                   |
-| `conversations`         | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                               | PK, FK→users, UK(participant_a,participant_b)                  |
-| `messages`              | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                           | PK, FK→conversations, idx(conversation_id,created_at)          |
-| `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                            | PK, FK→conversations, FK→users, UK(conversation_id,user_id)    |
-| `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                   | PK, FK→messages, FK→users                                      |
+| 表                      | 关键列                                                                                                                                                                                       | 约束 / 索引                                                      |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `users`                 | `id`(UUID), `username`, `email`(unique), `password_hash`, `role`(user/admin), `bio`, `must_change_password`, `email_verified`, `email_verify_token`, `email_verify_expires_at`, `deleted_at` | PK, active username partial UK, UK(email)                        |
+| `problems`              | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`, `visibility`(public/private)                                                                | PK, UK(display_id), UK(type,number), FK→users, CHECK(visibility) |
+| `contests`              | `id`(UUID), `public_id`, `title`, `start_time`, `end_time`, `type`, `kind`(public/invite), `is_public`, `password`                                                                           | PK, UK(public_id), CHECK(kind), CHECK(type)                      |
+| `tags`                  | `id`(UUID), `name`(unique), `kind`(problem/algorithm), `created_at`, `updated_at`                                                                                                            | PK, UK(name), CHECK(kind)                                        |
+| `problem_tags`          | `problem_id`, `tag_id`                                                                                                                                                                       | FK→problems ON DELETE CASCADE, FK→tags ON DELETE CASCADE         |
+| `submissions`           | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                                                                                            | PK, FK→users, FK→problems, idx(user_id,created_at)               |
+| `evaluation_results`    | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb`                                                                                        | PK, UK(submission_id), FK→submissions                            |
+| `check_ins`             | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                                                                                              | PK, FK→users, UK(user_id,checkin_date)                           |
+| `judge_images`          | `id`(UUID), `image`(text), `enabled`(bool)                                                                                                                                                   | PK, UK(image)                                                    |
+| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                                                                                                  | PK, FK→users, UK(token_hash)                                     |
+| `conversations`         | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                                                                                                  | PK, FK→users, UK(participant_a,participant_b)                    |
+| `messages`              | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                                                                                              | PK, FK→conversations, idx(conversation_id,created_at)            |
+| `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                                                                                               | PK, FK→conversations, FK→users, UK(conversation_id,user_id)      |
+| `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                                                                                      | PK, FK→messages, FK→users                                        |
 
-> 上表为核心表速查。完整 Schema 共 38 张表（`src/db/schema.ts`），另有：
+> 上表为核心表速查。完整 Schema 共 54 张表（`src/shared/db/schema.ts`），另有：
 >
 > - **竞赛**：`contests` / `contest_problems` / `contest_participants` /
 >   `contest_clarifications`
@@ -365,8 +414,18 @@ docker compose down     # 停止
 - `evaluation_results.score` 为 `INTEGER`（×100），`scoreToDb`/`scoreFromDb`
   在应用层转换
 - `problems.number` 按 `type` 分别自增（`(type, number)` UNIQUE）
-- `categories.level` 为应用层计算的缓存深度（非触发器自动维护）
+- `problems.visibility` 取值 `public`/`private`，由 `resolveProblemAccess`
+  统一判定读取/提交/竞赛上下文访问；新建 U 型默认 `private`，P 型恒 `public`
+- `contests.kind` 取值 `public`/`invite`：public
+  仅管理员可创建、可自助报名；invite 必须设置邀请码并校验；`is_public` 与 kind
+  绑定：public 公开可见，invite 不进入公开列表
+- `tags.kind`
+  区分题目标签（problem，人人可见）与算法标签（algorithm，通过题目后可见，spoiler
+  门控后端强制）
 - `submissions` 有复合索引 `(user_id, created_at)` 优化"我的提交历史"查询
+- 评测脚本
+  `details.cases[].hidden`（布尔）是提交结果投影判断隐藏用例的依据；旧脚本缺少该标记时
+  fail-safe 剥离详情
 
 ## 代码规范
 
@@ -383,28 +442,29 @@ docker compose down     # 停止
 
 ## 服务层业务规则
 
-| 规则                 | 说明                                                                                                                                |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 提交状态机           | `pending → [judging, error]` → `judging → [finished, error]`，finished/error 为终态                                                 |
-| 输出截断             | API 返回时截断至 8KB（`MAX_OUTPUT_LENGTH`），数据库保留完整内容                                                                     |
-| 代码大小上限         | 100KB（`MAX_CODE_LENGTH`），路由层校验                                                                                              |
-| 个人简介上限         | 5000 字符                                                                                                                           |
-| 支持包读取失败       | 非致命：日志记录后继续（无支持包），由 judge 端处理                                                                                 |
-| 题目更新             | 静默忽略 `type` 和 `number` 字段（API 接受但不处理）                                                                                |
-| 题目编号冲突         | 自动分配时重试 3 次（PG 23505），手动指定时立即报错                                                                                 |
-| 评测结果写入         | UPSERT 语义（`onConflictDoUpdate`），用最新结果覆盖旧数据；配合 `rejudge_seq` 防护乱序覆盖                                          |
-| 队列位置查询         | 即使 DB 状态为 "judging" 也检查 Redis 队列（状态在入队时已更新）                                                                    |
-| 问题列表默认         | 默认只显示 `type='P'` 的题目，U 类型需直接 URL 或所有者主页访问                                                                     |
-| 分页默认值           | page=1, per_page=20, max per_page=100                                                                                               |
-| 用户枚举防护         | 登录失败统一返回"用户名或密码错误"，不区分"用户不存在"和"密码错误"                                                                  |
-| Root 用户            | UID="0"，admin 角色，随机密码不可登录，不计入管理员统计，不出现在用户列表                                                           |
-| 密码重置邮箱枚举防护 | `POST /forgot-password` 不管邮箱是否存在都返 200 + 同一消息（与登录失败防枚举共存）                                                 |
-| 密码重置令牌         | DB 存 SHA-256 hex 哈希（**不存明文**），URL 传明文 base64url；32 字节随机数                                                         |
-| 密码重置 TTL         | 15 分钟（OWASP 2025+ 建议 ≤ 15 分钟），单 SQL 原子消耗防并发                                                                        |
-| 密码重置邮件         | 策略模式：`EMAIL_PROVIDER` 选择 mock（默认）/ aliyun / tencent；mock 为控制台输出；真实 Provider 在发送前校验环境变量完整性         |
-| 引导管理员           | 无可登录 admin 且未设 ADMIN_EMAIL 时，bootstrap:admin 自动创建 username=admin 临时账号，must_change_password=true，终端打印随机密码 |
-| 强制改密守卫         | authMiddleware 检测 token.must_change_password=true，白名单（/change-password, /me）外全部 403 PASSWORD_CHANGE_REQUIRED             |
-| change-password限流  | 独立 pwchange 命名空间，不污染 /login 限流桶（issue #75 评审 H4）                                                                   |
+| 规则                 | 说明                                                                                                                                     |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 提交状态机           | `pending → [judging, error]` → `judging → [finished, error]`，finished/error 为终态；artifact 提交评测完成后立即删除存储对象，不支持重测 |
+| 输出截断             | API 返回时截断至 8KB（`MAX_OUTPUT_LENGTH`），数据库保留完整内容                                                                          |
+| 代码大小上限         | 100KB（`MAX_CODE_LENGTH`），路由层校验                                                                                                   |
+| 个人简介上限         | 5000 字符                                                                                                                                |
+| 支持包读取失败       | 非致命：日志记录后继续（无支持包），由 judge 端处理                                                                                      |
+| 题目更新             | 静默忽略 `type` 和 `number` 字段（API 接受但不处理）                                                                                     |
+| 题目编号冲突         | 自动分配时重试 3 次（PG 23505），手动指定时立即报错                                                                                      |
+| 评测结果写入         | UPSERT 语义（`onConflictDoUpdate`），用最新结果覆盖旧数据；配合 `rejudge_seq` 防护乱序覆盖                                               |
+| 队列位置查询         | 即使 DB 状态为 "judging" 也检查 Redis 队列（状态在入队时已更新）                                                                         |
+| 问题列表默认         | 默认只显示 `type='P'` 的题目，U 类型需直接 URL 或所有者主页访问                                                                          |
+| 分页默认值           | page=1, per_page=20, max per_page=100                                                                                                    |
+| 用户枚举防护         | 登录失败统一返回"用户名或密码错误"，不区分"用户不存在"和"密码错误"                                                                       |
+| Root 用户            | UID="0"，admin 角色，随机密码不可登录，不计入管理员统计，不出现在用户列表                                                                |
+| 密码重置邮箱枚举防护 | `POST /forgot-password` 不管邮箱是否存在都返 200 + 同一消息（与登录失败防枚举共存）                                                      |
+| 密码重置令牌         | DB 存 SHA-256 hex 哈希（**不存明文**），URL 传明文 base64url；32 字节随机数                                                              |
+| 密码重置 TTL         | 15 分钟（OWASP 2025+ 建议 ≤ 15 分钟），单 SQL 原子消耗防并发                                                                             |
+| 密码重置邮件         | 策略模式：`EMAIL_PROVIDER` 选择 mock（默认）/ aliyun / tencent；mock 为控制台输出；真实 Provider 在发送前校验环境变量完整性              |
+| 首个生产管理员       | 部署者在服务器交互终端执行 `bootstrap first-admin` 一次性创建；公开注册仅获普通角色，已有站点永久关闭初始化且不自动提权                  |
+| 开发引导管理员       | 无可登录 admin 且未设 ADMIN_EMAIL 时，开发环境 `bootstrap admin` 自动创建 username=admin 临时账号，must_change_password=true             |
+| 强制改密守卫         | authMiddleware 检测 token.must_change_password=true，白名单（/change-password, /me）外全部 403 PASSWORD_CHANGE_REQUIRED                  |
+| change-password限流  | 独立 pwchange 命名空间，不污染 /login 限流桶（issue #75 评审 H4）                                                                        |
 
 ## 登录速率限制（issue #73）
 
@@ -538,7 +598,7 @@ flat/grouped 两种返回。设计文档见
 
 | 命令                                                          | 行为                                                                                                                    |
 | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `deno task dev-setup`（`scripts/noj.ts dev-setup`）           | 幂等：迁移 → 系统基础数据（root/RBAC/镜像白名单/分类）→ 管理员引导 → 构建题目包 → 导入题目包 → dev 专用数据（E2E 用户） |
+| `deno task dev-setup`（`scripts/noj.ts dev-setup`）           | 幂等：迁移 → 系统基础数据（root/RBAC/镜像白名单/标签）→ 管理员引导 → 构建题目包 → 导入题目包 → dev 专用数据（E2E 用户） |
 | `deno task problems:build`（`scripts/noj.ts problems build`） | 调用系统 `zip` 命令（非 JS 库），在 `data/problems-src/<id>/` 目录执行，排除 `submission*`/`__pycache__`/`.git`         |
 | `deno task db:migrate`（`scripts/noj.ts db migrate`）         | 日志中脱敏数据库密码（`"//***@"`），迁移后关闭 DB 连接确保进程退出                                                      |
 
@@ -553,7 +613,11 @@ noj-core 不直接执行评测，但 `data/problems-src/` 中的 evaluate.py 遵
   `noj_evaluator_sdk.runner.SolutionRunner` 与 **Solution
   容器**（承载用户代码）交互（NDJSON 帧协议，见
   `noj-judge/src/dual/protocol.rs`）
-- 输出格式：`---RESULT---` 标记行 + JSON `{status, score, details}`
+- 输出格式：`---RESULT---` 标记行 + JSON `{score, details}`（不再输出
+  `status`，judge 统一映射 `finished`/`error`）
+- `details.cases` 每个用例必须带布尔 `hidden`
+  标记（`true`=隐藏、`false`=可见）；
+  隐藏用例只输出非敏感元数据，不得输出输入/期望/实际输出
 - 评分公式：每题独立定义在 evaluate.py 中（非通用可配置系统）
 - 镜像白名单：`judgeImages` 按 `evaluator` / `solution` 两类 kind 管理
 
@@ -566,7 +630,10 @@ API 或独立的安全通道部署，`support_package_path` 指向受控存储�
 ## 贡献要求
 
 - **所有提交必须 GPG 签名**（详见根目录 README.md）
-- **所有代码必须通过 PR 提交**，禁止直接推送到 main
+- 分支与推送纪律以根目录 [`AGENTS.md`](../AGENTS.md) §7.1
+  为准：日常开发与缺陷修复 可直接提交 `main`；需要评审的变更从 `main` 派生分支走
+  PR。无论走哪条路径， 提交前必须完成本模块的检查与验收（2026-09-12
+  更正：此处原写"禁止直接推送到 main"， 与顶层 AGENTS.md 冲突）
 - 提交信息格式：`feat(core): 中文描述` / `fix(core): 中文描述`
 
 ## 相关文档
