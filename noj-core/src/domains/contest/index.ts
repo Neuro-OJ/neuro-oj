@@ -16,6 +16,10 @@ export {
 } from "./services/contests.ts";
 export { verifyContestAccess } from "./services/contest-access.ts";
 export {
+  filterProblemsInRunningContest,
+  isProblemInRunningContest,
+} from "./services/problem-exposure.ts";
+export {
   createClarification,
   listClarifications,
   replyToClarification,
