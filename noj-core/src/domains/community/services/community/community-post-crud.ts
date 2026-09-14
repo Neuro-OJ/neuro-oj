@@ -39,6 +39,7 @@ import {
   postStatsProjection,
 } from "./community-post-select.ts";
 import { reviewUgcContent } from "./community-review.ts";
+import { isProblemInRunningContest } from "./../../../contest/index.ts";
 
 /**
  * 判断用户是否为指定题目的所有者（用于官方题解标记的写入校验）。
@@ -274,6 +275,13 @@ export async function getPost(
     row.post.status !== "published" && row.post.author_id !== viewerId &&
     !moderator
   ) throw new NotFoundError("社区内容不存在");
+  // 赛期题解门控：进行中竞赛的题解对普通用户（含作者本人）不可见。
+  // 含作者本人是为了避免"自己能看到 = 该题有题解"的侧信道确认。
+  if (!moderator && row.post.type === "solution" && row.post.problem_id) {
+    if (await isProblemInRunningContest(row.post.problem_id)) {
+      throw new NotFoundError("社区内容不存在");
+    }
+  }
   return row;
 }
 

@@ -58,6 +58,7 @@ import {
   updateComment,
   updatePost,
 } from "../services/community/community.ts";
+import { isProblemInRunningContest } from "../../contest/index.ts";
 
 const router = new Hono<OptionalAuthEnv>();
 
@@ -223,16 +224,24 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
   const accepted = requiresAccepted
     ? await hasAcceptedSolution(actorId, problemId)
     : true;
+  // 赛期门控：进行中竞赛的题目，赛期不开放题解发布（赛后自动恢复）。
+  // 审核员不受限（复核需要），与读路径门控口径一致。
+  const moderator = await isModerator(c);
+  const inRunningContest = await isProblemInRunningContest(problemId);
+  const blockedByContest = inRunningContest && !moderator;
   const canCreate = config.solutions_enabled &&
-    (!config.read_only || await isModerator(c)) &&
+    (!config.read_only || moderator) &&
     (await checkPermission(c, "community:create_solution")) &&
-    (accepted || await isModerator(c));
+    (accepted || moderator) &&
+    !blockedByContest;
   return c.json({
     data: {
       enabled: config.solutions_enabled,
       requires_accepted: requiresAccepted,
       accepted,
       can_create: canCreate,
+      // 供前端展示禁用原因，而非让用户点击后吃 403
+      blocked_reason: blockedByContest ? "running_contest" : null,
     },
   });
 });

@@ -1,6 +1,7 @@
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
+  communityPosts,
   evaluationResults,
   submissions,
   users,
@@ -76,4 +77,31 @@ export async function hasAcceptedSolution(
       gt(evaluationResults.score, 0),
     )).limit(1);
   return !!rows[0];
+}
+
+/**
+ * 赛期题解门控谓词：排除「所属题目正在竞赛中」的题解帖子。
+ *
+ * 采用**相关子查询**而非「先查题目 id 再拼 IN 列表」：
+ * - 不产生应用侧扫描，不受题量规模影响（IN 列表方案必须设上限，
+ *   上限一旦被超出就会**静默漏掉**应门控的题目——对安全门控这是不可接受的失效模式）；
+ * - 时间窗口在 SQL 内实时比较，竞赛结束后自动放行，无需调度任务。
+ *
+ * 时间格式：`contests.start_time` / `end_time` 是 ISO 8601 **文本**列，
+ * 故用 `to_char` 生成同形状串做字典序比较（与 `new Date().toISOString()` 等价）。
+ *
+ * @returns 可直接 push 进 drizzle conditions 数组的 SQL 片段。
+ */
+export function notGatedSolution() {
+  return sql`NOT (
+    ${communityPosts.type} = 'solution'
+    AND ${communityPosts.problem_id} IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM contest_problems cp
+      JOIN contests c ON c.id = cp.contest_id
+      WHERE cp.problem_id = ${communityPosts.problem_id}
+        AND c.start_time <= to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+        AND c.end_time > to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+    )
+  )`;
 }

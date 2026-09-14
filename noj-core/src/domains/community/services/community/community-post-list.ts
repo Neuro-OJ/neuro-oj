@@ -10,7 +10,7 @@ import {
   assertCommunityEnabled,
   getCommunityConfig,
 } from "./community-config.ts";
-import { resolveProblemId } from "./community-post-common.ts";
+import { notGatedSolution, resolveProblemId } from "./community-post-common.ts";
 import {
   authorProjection,
   postStatsProjection,
@@ -85,6 +85,8 @@ export async function listPosts(
     // 置顶帖只出现在第一页，避免游标分页时在每页顶部重复
     conditions.push(eq(communityPosts.is_pinned, false));
   }
+  // 赛期题解门控：进行中竞赛的题目，其题解对普通用户整体不可见（设计 spec §6.2）
+  if (!options.moderator) conditions.push(notGatedSolution());
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
   const rows = await db.select({
     post: communityPosts,
@@ -131,6 +133,8 @@ export async function countPostsByType(): Promise<
   }).from(communityPosts).where(and(
     eq(communityPosts.status, "published"),
     inArray(communityPosts.type, enabledTypes),
+    // 被门控的题解不计入 Tab 计数（否则计数与列表不一致，暴露题解存在性）
+    notGatedSolution(),
   )).groupBy(communityPosts.type);
   for (const row of rows) {
     result[row.type as CommunityPostType] = Number(row.count);
@@ -148,6 +152,8 @@ export async function listBookmarks(
   const conditions = [
     eq(communityBookmarks.user_id, userId),
     eq(communityPosts.status, "published"),
+    // 收藏列表同受门控：赛期不展示被门控的题解
+    notGatedSolution(),
   ];
   if (cursor) conditions.push(lt(communityBookmarks.created_at, cursor));
   const limit = Math.min(Math.max(requestedLimit ?? 20, 1), 100);

@@ -140,6 +140,26 @@ export async function listFeed(
   } else {
     activityConditions.push(sql`false`);
   }
+  // 赛期题解门控：不展示"发布竞赛题题解"的动态。
+  // `solution_published` 事件的 target_id 是 **post id**（非 problem id），
+  // 故用相关子查询反查该帖所属题目是否处于进行中竞赛。
+  // 不做"赛期隐藏全部 solution_published"的简化 —— 那会连普通练习题题解活动一起隐藏。
+  activityConditions.push(sql`NOT (
+    ${communityActivityEvents.type} = 'solution_published'
+    AND EXISTS (
+      SELECT 1 FROM community_posts p
+      WHERE p.id = ${communityActivityEvents.subject_id}
+        AND p.type = 'solution'
+        AND p.problem_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM contest_problems cp
+          JOIN contests c ON c.id = cp.contest_id
+          WHERE cp.problem_id = p.problem_id
+            AND c.start_time <= to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+            AND c.end_time > to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+        )
+    )
+  )`);
   const activityRows = await db.select({
     activity: communityActivityEvents,
     author: authorProjection,
