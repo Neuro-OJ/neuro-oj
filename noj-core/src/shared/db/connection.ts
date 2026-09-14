@@ -180,13 +180,65 @@ export async function ensurePGliteTemplateCached(): Promise<string> {
   await Deno.mkdir(TEMPLATE_CACHE_DIR, { recursive: true });
   await Deno.writeFile(PGLITE_TEMPLATE_FILE, bytes);
   await Deno.writeTextFile(PGLITE_TEMPLATE_HASH_FILE, expectedHashFile);
+  // 同步指纹：供 createPGliteInstanceFromTemplate() 在无 await 的路径上判断过期。
+  // 不写这一行，模板会被判定为过期并永远走慢路径（或反之静默复用旧模板）。
+  await Deno.writeTextFile(
+    PGLITE_TEMPLATE_SCHEMA_FILE,
+    computeSchemaFingerprintSync(),
+  );
   return PGLITE_TEMPLATE_FILE;
 }
 
-/** 尝试从模板创建 PGlite 实例；无模板时返回 null */
+/**
+ * 计算 schema 的**同步**指纹（用于模板加载时判断是否过期）。
+ *
+ * 为什么需要它：模板加载路径 `createPGliteInstanceFromTemplate()` 是同步的，
+ * 无法 await `computePGliteTemplateHash()`。而"模板是否过期"的校验此前只存在于
+ * `ensurePGliteTemplateCached()`，后者仅在 `deno task test` 中被调用 ——
+ * 于是**只跑 `deno task test:domain <domain>`（PGlite 模式）时会静默复用过期模板**：
+ * schema-ddl.ts 新增了列但模板仍是旧的，所有写入该表的用例以
+ * "column ... does not exist" 失败，表现为产品缺陷而非缓存问题（2026-09-14 实测）。
+ *
+ * 本指纹只看 DDL 文本（同步可读），足以覆盖"schema 变更"这一类过期原因。
+ */
+export function computeSchemaFingerprintSync(): string {
+  const here = dirname(new URL(import.meta.url).pathname);
+  const ddl = Deno.readTextFileSync(resolve(here, "schema-ddl.ts"));
+  let hash = 2166136261;
+  for (let i = 0; i < ddl.length; i++) {
+    hash ^= ddl.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${PGLITE_TEMPLATE_FORMAT}:${(hash >>> 0).toString(16)}:${ddl.length}`;
+}
+
+/** 模板伴随的 schema 指纹文件（与 .tgz 同目录、同名不同后缀）。 */
+const PGLITE_TEMPLATE_SCHEMA_FILE = resolve(
+  TEMPLATE_CACHE_DIR,
+  "pglite-template.schema",
+);
+
+/**
+ * 尝试从模板创建 PGlite 实例；模板缺失或**已过期**时返回 null。
+ *
+ * 过期判定：模板旁的 schema 指纹与当前 DDL 指纹不一致 → 视为过期，
+ * 回退到 `new PGlite()` + 执行 DDL 的慢路径（正确性优先于速度）。
+ */
 function createPGliteInstanceFromTemplate(): PGlite | null {
   const bytes = loadPGliteTemplateBytesSync();
   if (!bytes) return null;
+
+  // 指纹校验：缺失或不匹配都按"过期"处理，避免旧模板静默生效
+  let cachedFingerprint = "";
+  try {
+    cachedFingerprint = Deno.readTextFileSync(PGLITE_TEMPLATE_SCHEMA_FILE);
+  } catch {
+    cachedFingerprint = "";
+  }
+  if (cachedFingerprint !== computeSchemaFingerprintSync()) {
+    return null;
+  }
+
   _pgliteTemplateLoaded = true;
   return new PGlite({ loadDataDir: new Blob([bytes as unknown as BlobPart]) });
 }
