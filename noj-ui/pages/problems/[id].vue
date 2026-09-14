@@ -4,6 +4,8 @@ import type { PostRow } from "~/composables/useCommunity"
 import { isAdminUser } from "~/utils/isAdminUser"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
 import { extractApiError } from "~/utils/apiError"
+import { describeAcceptance, type PublicProblemStats } from "~/utils/problemStats"
+import { useProblemStats } from "~/composables/useProblemStats"
 
 const route = useRoute()
 const router = useRouter()
@@ -38,6 +40,11 @@ const { data, pending, error, refresh } = useFetch<{
 }>(`/api/v1/problems/${problemId}`)
 
 const problem = computed(() => data.value?.data ?? null)
+
+// ── 公开通过率：对所有人可见；竞赛进行中由后端抑制 ──
+const { fetchPublic } = useProblemStats()
+const publicStats = ref<PublicProblemStats | null>(null)
+const acceptanceText = computed(() => describeAcceptance(publicStats.value))
 
 useSeoMeta({
   title: () => problem.value?.title ? `${problem.value.title} - Neuro OJ` : '题目 - Neuro OJ',
@@ -132,6 +139,10 @@ watch(
     if (!p) return
     loadingSolutions.value = true
     try {
+      // 公开统计与题解并行拉取；失败时保持 null（不渲染），不影响主内容
+      void fetchPublic(p.id)
+        .then((res) => { publicStats.value = res.data })
+        .catch(() => { publicStats.value = null })
       const [solRes, cfg] = await Promise.all([
         api.get<{ data: PostRow[] }>(
           `/api/v1/community/posts?type=solution&problem_id=${p.id}&limit=5`,
@@ -239,6 +250,10 @@ const publishBlockReason = computed(() => {
           </div>
           <div class="flex items-center gap-5 flex-wrap">
             <DifficultyBadge :difficulty="problem.difficulty" />
+            <span v-if="acceptanceText" class="inline-flex items-center gap-1 text-xs text-text-secondary">
+              <UIcon name="i-lucide-percent" class="size-3.5" />
+              {{ acceptanceText }}
+            </span>
             <template v-if="isObjective">
               <span class="inline-flex items-center gap-1 text-xs text-text-secondary">
                 <UIcon name="i-lucide-zap" class="size-3.5" />
