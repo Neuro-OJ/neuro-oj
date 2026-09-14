@@ -58,6 +58,8 @@
 | GET | `/:id/profile` | noj-core/src/domains/identity/routes/users.ts |
 | GET | `/:id/questions` | noj-core/src/domains/catalog/routes/problems.ts |
 | GET | `/:id/ranking` | noj-core/src/domains/contest/routes/contests.ts |
+| GET | `/:id/stats` | noj-core/src/domains/catalog/routes/problems.ts |
+| GET | `/:id/stats/public` | noj-core/src/domains/catalog/routes/problems.ts |
 | GET | `/:id/status` | noj-core/src/domains/submission/routes/submissions.ts |
 | GET | `/:id/support-package` | noj-core/src/domains/catalog/routes/problems.ts |
 | GET | `/:id/template` | noj-core/src/domains/catalog/routes/problems.ts |

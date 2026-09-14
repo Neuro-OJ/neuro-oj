@@ -29,6 +29,10 @@ import {
   updateProblem,
 } from "../services/problems/problems.ts";
 import { applyAlgorithmTagVisibility } from "../services/problems/problems-list.ts";
+import {
+  getProblemStatsDetail,
+  getPublicProblemStats,
+} from "../services/problems/problems-stats.ts";
 import { resolveProblem } from "./../services/problem-resolve.ts";
 import { resolveProblemAccess } from "./../services/problem-access.ts";
 import {
@@ -459,6 +463,37 @@ router.get("/:id/template", authMiddleware, async (c) => {
       language: tpl.language,
     },
   });
+});
+
+/**
+ * 题目公开统计：通过率对所有人可见；竞赛进行中的题目隐藏通过率。
+ *
+ * 注册顺序注意：本路由必须先于 `/:id/stats` 注册，否则被后者吞掉。
+ * GET /api/v1/problems/:id/stats/public
+ */
+router.get("/:id/stats/public", optionalAuthMiddleware, async (c) => {
+  const problem = await resolveProblem(c.req.param("id") as string);
+  return c.json({ data: await getPublicProblemStats(problem.id) });
+});
+
+/**
+ * 题目深度统计：评测状态分布与用例失败分布，仅题目 owner 与管理员可见。
+ * GET /api/v1/problems/:id/stats
+ */
+router.get("/:id/stats", authMiddleware, async (c) => {
+  const problem = await resolveProblem(c.req.param("id") as string);
+  const userId = c.get("userId") as string;
+  const isAdmin = (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS);
+  if (!isAdmin && problem.owner_id !== userId) {
+    throw new ForbiddenError("无权查看该题目的统计数据");
+  }
+  // 窗口天数：非法值（非整数 / 越界）回退默认 90，避免异常入参放大查询范围
+  const rawWindow = Number(c.req.query("window_days") ?? 90);
+  const windowDays = Number.isInteger(rawWindow) && rawWindow > 0 &&
+      rawWindow <= 365
+    ? rawWindow
+    : 90;
+  return c.json({ data: await getProblemStatsDetail(problem.id, windowDays) });
 });
 
 /**
