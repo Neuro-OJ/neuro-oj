@@ -41,6 +41,25 @@ import {
 import { reviewUgcContent } from "./community-review.ts";
 
 /**
+ * 判断用户是否为指定题目的所有者（用于官方题解标记的写入校验）。
+ *
+ * @param userId 用户 UUID。
+ * @param problemId 题目 UUID；缺省时返回 false。
+ * @returns 是该题目 owner 时为 true。
+ */
+async function isProblemOwner(
+  userId: string,
+  problemId: string | undefined,
+): Promise<boolean> {
+  if (!problemId) return false;
+  const [problem] = await getDb().select({ owner_id: problems.owner_id })
+    .from(problems)
+    .where(eq(problems.id, problemId))
+    .limit(1);
+  return problem?.owner_id === userId;
+}
+
+/**
  * 校验题解发布门槛：若配置要求通过题目，则作者必须已通过对应题目。
  * @param authorId 作者用户 UUID。
  * @param problemId 题目 UUID。
@@ -165,6 +184,9 @@ export async function createPost(
     board_id: input.type === "discussion" ? input.board_id! : null,
     title: title ?? null,
     content,
+    // 官方标记：仅题目 owner 或审核员的声明被信任，普通用户自称官方一律忽略
+    is_official: input.is_official === true &&
+      (moderator || await isProblemOwner(authorId, input.problem_id)),
     status,
     is_locked: false,
     is_pinned: false,
@@ -312,4 +334,38 @@ export async function updatePost(
   await publishSearchIndexEvent("community_post", postId, "upsert");
 
   return rows[0]!;
+}
+
+/**
+ * 设置/取消题解的官方标记。
+ *
+ * 权限：题目 owner 或审核员。**服务层强制**——前端隐藏不作为保障。
+ *
+ * @param postId 帖子 UUID。
+ * @param actorId 操作用户 UUID。
+ * @param moderator 是否为审核员。
+ * @param value 目标标记值。
+ * @throws {NotFoundError} 帖子不存在或不可见。
+ * @throws {ValidationError} 帖子不是题解类型。
+ * @throws {ForbiddenError} 非题目 owner 且非审核员。
+ */
+export async function setPostOfficial(
+  postId: string,
+  actorId: string,
+  moderator: boolean,
+  value: boolean,
+): Promise<void> {
+  const post = await getPost(postId, actorId, moderator);
+  if (post.post.type !== "solution") {
+    throw new ValidationError("仅题解可标记为官方题解");
+  }
+  if (
+    !moderator &&
+    !await isProblemOwner(actorId, post.post.problem_id ?? undefined)
+  ) {
+    throw new ForbiddenError("仅题目所有者可设置官方题解");
+  }
+  await getDb().update(communityPosts)
+    .set({ is_official: value, updated_at: nowIso() })
+    .where(eq(communityPosts.id, postId));
 }

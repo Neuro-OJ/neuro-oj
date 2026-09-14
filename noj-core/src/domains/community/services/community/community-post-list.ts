@@ -94,6 +94,8 @@ export async function listPosts(
     users,
     eq(users.id, communityPosts.author_id),
   ).where(and(...conditions)).orderBy(
+    // 官方题解置顶（题解质量优先于普通置顶与时间）
+    desc(communityPosts.is_official),
     desc(communityPosts.is_pinned),
     desc(communityPosts.created_at),
   ).limit(limit + 1);
