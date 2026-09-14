@@ -8,6 +8,16 @@ export {
 } from "./services/problems/problems-list.ts";
 export * from "./services/problems/problem-bundle.ts";
 export * from "./services/problems/problem-field-guard.ts";
+export {
+  _resetProblemStatsCacheForTest,
+  getProblemStatsDetail,
+  getPublicProblemStats,
+  MAX_STATS_SAMPLE,
+  median,
+  type ProblemStatsDetail,
+  type PublicProblemStats,
+  STATS_CACHE_TTL_MS,
+} from "./services/problems/problems-stats.ts";
 export * from "./services/tags.ts";
 export * from "./services/trainings.ts";
 export * from "./services/support-package.ts";
