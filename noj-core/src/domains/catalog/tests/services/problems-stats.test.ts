@@ -2,11 +2,14 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
+  contestProblems,
+  contests,
   evaluationResults,
   problems,
   submissions,
   users,
 } from "../../../../shared/db/schema.ts";
+import { seedRunningContest } from "../../../../shared/testing/contest-fixtures.ts";
 import {
   _resetProblemStatsCacheForTest,
   getProblemStatsDetail,
@@ -284,6 +287,97 @@ Deno.test({
       assertEquals(visibleEntries[0]?.failed, 1);
       assertEquals(hiddenEntries[0]?.failed, 1);
     } finally {
+      await cleanup(problemId, [alice]);
+    }
+  },
+});
+
+/**
+ * C2 回归测试（2026-09-14 评审）。
+ *
+ * 赛期抑制此前只把 `acceptance_rate` 置 null，却照常返回 `accepted_count` 与
+ * `submit_count`——而被扣留的通过率恰为 `accepted_count / submit_count`，
+ * 两个整数即可**算术还原**该先验，抑制形同虚设。
+ *
+ * 本文件此前**从未创建过进行中的竞赛**（`contest` 一词在 catalog 测试里出现 0 次，
+ * `running_contest` 在生产外 0 次），所以抑制分支从未被执行——这正是 C1/C2 得以
+ * 存活的原因。现在用共享夹具补齐这条路径。
+ */
+Deno.test({
+  name: "problems-stats(C2): 赛期三项统计一并抑制，通过率无法算术还原",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    _resetProblemStatsCacheForTest();
+    const problemId = await seedProblem(940006);
+    const alice = await seedUser("ps-alice5");
+    await seedRunningContest({ problemIds: [problemId] });
+    try {
+      await seedSubmission(problemId, alice, 10000, { cases: [] });
+      await seedSubmission(problemId, alice, 0, { cases: [] });
+      await seedSubmission(problemId, alice, 0, { cases: [] });
+
+      const stats = await getPublicProblemStats(problemId);
+      assertEquals(stats.suppressed_reason, "running_contest");
+      assertEquals(stats.acceptance_rate, null);
+      // 关键：分子分母都必须是 null，否则 rate 可被除法还原
+      assertEquals(stats.accepted_count, null);
+      assertEquals(stats.submit_count, null);
+      // 确认这三个字段无法组合出通过率
+      assertEquals(
+        stats.accepted_count === null || stats.submit_count === null,
+        true,
+      );
+      // attempt_count 不构成难度先验（不含通过信息），保持可见
+      assertEquals(typeof stats.attempt_count, "number");
+    } finally {
+      // 清理夹具竞赛：竞赛 id 由夹具生成，按 contest_problems 关联反查
+      const linked = await getDb().select({ id: contestProblems.contest_id })
+        .from(contestProblems)
+        .where(eq(contestProblems.problem_id, problemId));
+      for (const row of linked) {
+        await getDb().delete(contests).where(eq(contests.id, row.id));
+      }
+      await cleanup(problemId, [alice]);
+    }
+  },
+});
+
+Deno.test({
+  name: "problems-stats(C2): 竞赛结束后三项统计恢复为具体数值",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    _resetProblemStatsCacheForTest();
+    const problemId = await seedProblem(940007);
+    const alice = await seedUser("ps-alice6");
+    const contestId = await seedRunningContest({ problemIds: [problemId] });
+    try {
+      await seedSubmission(problemId, alice, 10000, { cases: [] });
+      await seedSubmission(problemId, alice, 0, { cases: [] });
+
+      const during = await getPublicProblemStats(problemId);
+      assertEquals(during.suppressed_reason, "running_contest");
+      assertEquals(during.submit_count, null);
+
+      // 竞赛结束 → 实时放行，无需调度
+      await getDb().update(contests)
+        .set({
+          start_time: new Date(Date.now() - 7_200_000).toISOString(),
+          end_time: new Date(Date.now() - 1_000).toISOString(),
+        })
+        .where(eq(contests.id, contestId));
+      _resetProblemStatsCacheForTest();
+
+      const after = await getPublicProblemStats(problemId);
+      assertEquals(after.suppressed_reason, null);
+      assertEquals(after.submit_count, 2);
+      assertEquals(after.accepted_count, 1);
+      assertEquals(after.acceptance_rate, 0.5);
+    } finally {
+      await getDb().delete(contestProblems)
+        .where(eq(contestProblems.problem_id, problemId));
+      await getDb().delete(contests).where(eq(contests.id, contestId));
       await cleanup(problemId, [alice]);
     }
   },

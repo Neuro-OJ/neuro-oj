@@ -20,6 +20,14 @@ export {
   isProblemInRunningContest,
 } from "./services/problem-exposure.ts";
 export {
+  CONTEST_TIME_ISO_REGEX_SQL,
+  normalizeContestTime,
+  normalizeOptionalContestTime,
+  runningContestExistsForProblem,
+  runningContestProblemIds,
+  runningWindowCondition,
+} from "./services/contest-window.ts";
+export {
   createClarification,
   listClarifications,
   replyToClarification,

@@ -65,6 +65,51 @@ CREATE INDEX "idx_search_entries_entity" ... ;
    - **代码↔快照一致**：代码中 `pgTable("x")` 的表集合必须都在最新快照里；
    - **快照↔迁移一致**：最新快照的表必须都能在迁移里找到 `CREATE TABLE`；
    - **自检**：解析不到表/快照即判定失败，防止路径漂移后的假绿灯。
+
+### 2026-09-15 升级：从「表名集合」到「结构化摘要」
+
+评审发现上述门禁把每个快照降维成**表名集合**（`tableNamesOf()`），因此
+**列与索引的静默丢失完全不被覆盖**：删掉 `0081_snapshot.json` 里
+`search_entries.deleted_by_user_ids` 一列，门禁仍打印「通过」并 exit 0，
+而 `deno task db:generate` 会因此生成
+`ALTER TABLE "search_entries" ADD COLUMN "deleted_by_user_ids" ...`
+—— 在已含该列的存量库上以 `column already exists` 失败，与丢表同一失效模式。
+删索引同理。同时门禁自测只断言 `listSnapshots(emptyDir).length === 0`
+而**从不调用 `checkSnapshotChain()`**，删掉 checker 里的空目录守卫也照样绿。
+
+现已升级为**表 → (列签名, 索引签名, 约束签名)** 的结构化摘要：
+
+- **列签名**覆盖 `(name, type, notNull, primaryKey, default)`，`default` 用
+  递归排序对象键的 `canonicalJson()` 稳定序列化（键序不得造成假阳性，
+  但数组保持原序 —— 索引列顺序有语义）。
+- **索引签名**覆盖 `name + 有序列表表达式 + isUnique + where`（部分索引）。
+- **约束签名**覆盖 `uniqueConstraints` / `compositePrimaryKeys` /
+  `checkConstraints` / `foreignKeys` 四段。
+- 新增 issue kind：`missing_column_in_later_snapshot`、
+  `missing_index_in_later_snapshot`，以及四个约束类 kind；旧 kind 语义不变。
+
+**DROP 豁免改为按迁移区间作用域**（评审同时指出的第二处缺陷：旧的
+`droppedTableNames()` 是**全局且永久**白名单 —— 任一历史迁移出现过
+`DROP TABLE foo`，`foo` 此后从任何快照消失都永久免检，这正是丢表事故
+长期漏过的原因之一）。现在某个对象在快照 *N* → *N+1* 之间消失时，
+只认**迁移编号 ∈ (N, N+1]** 的显式 `DROP`；不再复用历史豁免。
+
+区间（而非「迁移文件名 == N+1」精确匹配）是必需的：本仓库存在
+「快照编号错位」历史 —— 0032 的 `DROP COLUMN` 实际作用在 0031→0032 快照区间，
+0054 的加列作用在 0053→0054 区间。仍有 4 处错位无法用区间本地性解释
+（快照 54→55 的 `problems.submission_mode`、`problems.artifact_max_size_mb`、
+`submissions.artifact_storage_url`、`problems.problems_submission_mode_check`：
+0054 明确 `ADD COLUMN`/`ADD CONSTRAINT`，0055 没有任何 DROP 却把它们抹掉），
+登记在 `LEGACY_RENUMBERING_ARTIFACTS` 并强制写明证据 —— 它们与本次丢表事故同源，
+**不得**被当作「有意删除」。
+
+自测同步补强（`check-migration-snapshot-chain_test.ts`，26 个用例）：
+空目录用例改为断言 `checkSnapshotChain()` **本身**报错；新增丢列/丢表/丢索引/
+丢唯一约束四类阳性回归（断言具体 kind）；新增「合法显式 DROP 不误报」与
+「历史 DROP 不得豁免后续快照丢列」两个反向用例；夹具全部建在临时目录，
+不触碰真实 drizzle 目录。门禁 CLI 另支持可选位置参数 `[快照目录]`，
+便于把快照复制到临时位置人为损坏后复现，CI 不传参、行为与旧版一致
+（退出码与中文文案契约不变）。
 3. **修复 PGlite 模板过期**：新增同步指纹 `computeSchemaFingerprintSync()`
    与伴随文件 `pglite-template.schema`；`createPGliteInstanceFromTemplate()`
    在指纹缺失或不匹配时**返回 null 回退到 DDL 慢路径**（正确性优先于速度）。
@@ -88,9 +133,14 @@ CREATE INDEX "idx_search_entries_entity" ... ;
 
 ## Consequences
 
-- **新增迁移必须同时更新快照链**；若确实要删表，必须先写 `DROP TABLE` 迁移，
+- **新增迁移必须同时更新快照链**；若确实要删表/删列/删索引，必须先写对应的
+  `DROP TABLE` / `DROP COLUMN` / `DROP INDEX`（或 `DROP CONSTRAINT`）迁移，
   否则门禁失败（含明确提示）。
-- 跨服务移交的表（如 `llm_*`）需在 `INTENTIONAL_REMOVALS` 登记并写明理由。
+- DROP 豁免**按迁移区间生效**，不再全局永久：历史 `DROP TABLE foo` 不能豁免
+  `foo` 在后续快照中再次消失。
+- 跨服务移交的表（如 `llm_*`）需在 `INTENTIONAL_REMOVALS` 登记并写明理由；
+  历史上无法用区间本地性解释的 4 条结构错位在 `LEGACY_RENUMBERING_ARTIFACTS`
+  登记并附证据，新增条目必须写明来源迁移。
 - PGlite 模板多了 `pglite-template.schema` 伴随文件；指纹不匹配时
   测试会回退到 DDL 慢路径（本地多花数秒），换来"不会静默用错 schema"。
 - 本次修复未改变任何生产 schema：`0082_orange_omega_red.sql` 仅含

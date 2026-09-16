@@ -176,3 +176,128 @@ Deno.test({
     }
   },
 });
+
+/**
+ * C3 回归测试（2026-09-14 评审）。
+ *
+ * `/:id/stats/public` 此前调用 `resolveProblem(id)` 时**未传 viewer**，因此完全不
+ * 触发访问校验：私有题统计匿名可读，且 200/404 的差异使其成为**存在性预言机**
+ * （可按 display_id 枚举私有题）。兄弟 handler `/:id` 明确注释"无权限一律 404，
+ * 防存在性探测"，本路由必须同口径。
+ */
+Deno.test({
+  name: "problems-stats route(C3): 私有题公开统计匿名必须 404（不泄露存在性）",
+  ignore: skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    _resetProblemStatsCacheForTest();
+    const { id: ownerId } = await createUserWithToken();
+    const problemId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    // U 型私有题：与题目详情路由同样应当对匿名不可见
+    await getDb().insert(problems).values({
+      id: problemId,
+      title: "私有题 C3",
+      description: "题面",
+      difficulty: "easy",
+      runtime_config: {},
+      number: 950006,
+      type: "U",
+      visibility: "private",
+      owner_id: ownerId,
+      created_at: now,
+      updated_at: now,
+    });
+    try {
+      const res = await jsonRequest(
+        app,
+        `/api/v1/problems/${problemId}/stats/public`,
+      );
+      assertEquals(res.status, 404);
+    } finally {
+      await getDb().delete(problems).where(eq(problems.id, problemId));
+      await getDb().delete(users).where(eq(users.id, ownerId));
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "problems-stats route(C3): 私有题存在与不存在返回同一状态码（无预言机）",
+  ignore: skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    _resetProblemStatsCacheForTest();
+    const { id: ownerId } = await createUserWithToken();
+    const privateId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await getDb().insert(problems).values({
+      id: privateId,
+      title: "私有题 C3-预言机",
+      description: "题面",
+      difficulty: "easy",
+      runtime_config: {},
+      number: 950007,
+      type: "U",
+      visibility: "private",
+      owner_id: ownerId,
+      created_at: now,
+      updated_at: now,
+    });
+    try {
+      const existing = await jsonRequest(
+        app,
+        `/api/v1/problems/${privateId}/stats/public`,
+      );
+      const missing = await jsonRequest(
+        app,
+        `/api/v1/problems/${crypto.randomUUID()}/stats/public`,
+      );
+      // 二者必须不可区分：否则可据状态码枚举私有题
+      assertEquals(existing.status, missing.status);
+      assertEquals(existing.status, 404);
+    } finally {
+      await getDb().delete(problems).where(eq(problems.id, privateId));
+      await getDb().delete(users).where(eq(users.id, ownerId));
+    }
+  },
+});
+
+Deno.test({
+  name: "problems-stats route(C3): 私有题 owner 仍可读自己的公开统计",
+  ignore: skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    _resetProblemStatsCacheForTest();
+    const { id: ownerId, token: ownerToken } = await createUserWithToken();
+    const problemId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await getDb().insert(problems).values({
+      id: problemId,
+      title: "私有题 C3-owner",
+      description: "题面",
+      difficulty: "easy",
+      runtime_config: {},
+      number: 950008,
+      type: "U",
+      visibility: "private",
+      owner_id: ownerId,
+      created_at: now,
+      updated_at: now,
+    });
+    try {
+      const res = await jsonRequest(
+        app,
+        `/api/v1/problems/${problemId}/stats/public`,
+        { token: ownerToken },
+      );
+      assertEquals(res.status, 200);
+    } finally {
+      await getDb().delete(problems).where(eq(problems.id, problemId));
+      await getDb().delete(users).where(eq(users.id, ownerId));
+    }
+  },
+});

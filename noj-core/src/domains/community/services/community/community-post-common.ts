@@ -8,6 +8,7 @@ import {
 } from "./../../../../shared/db/schema.ts";
 import { NotFoundError } from "./../../../../shared/base/errors.ts";
 import { resolveProblemIdOrNull } from "./../../../catalog/index.ts";
+import { runningContestExistsForProblem } from "./../../../contest/index.ts";
 import type {
   CommunityConfig,
   CommunityPostStatus,
@@ -87,8 +88,10 @@ export async function hasAcceptedSolution(
  *   上限一旦被超出就会**静默漏掉**应门控的题目——对安全门控这是不可接受的失效模式）；
  * - 时间窗口在 SQL 内实时比较，竞赛结束后自动放行，无需调度任务。
  *
- * 时间格式：`contests.start_time` / `end_time` 是 ISO 8601 **文本**列，
- * 故用 `to_char` 生成同形状串做字典序比较（与 `new Date().toISOString()` 等价）。
+ * 「进行中」判定**不在本文件内手写**：委托 contest 域的
+ * `runningContestExistsForProblem`。此前四处调用点各持一份副本，且都按
+ * **文本字典序**比较时间，对 `+08:00` 形态的合法 ISO 8601 会静默 fail-open
+ * （2026-09-14 评审 C1）。收敛为单一来源是防止再次漂移的唯一手段。
  *
  * @returns 可直接 push 进 drizzle conditions 数组的 SQL 片段。
  */
@@ -96,12 +99,6 @@ export function notGatedSolution() {
   return sql`NOT (
     ${communityPosts.type} = 'solution'
     AND ${communityPosts.problem_id} IS NOT NULL
-    AND EXISTS (
-      SELECT 1 FROM contest_problems cp
-      JOIN contests c ON c.id = cp.contest_id
-      WHERE cp.problem_id = ${communityPosts.problem_id}
-        AND c.start_time <= to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
-        AND c.end_time > to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
-    )
+    AND ${runningContestExistsForProblem(communityPosts.problem_id)}
   )`;
 }

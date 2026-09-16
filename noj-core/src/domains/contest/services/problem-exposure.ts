@@ -11,12 +11,17 @@
  *
  * 取数口径与 `contests.ts` 的 `computeContestStatus` 保持一致：
  * `start_time <= now < end_time` 即为 running。
- * 注意 `contests.start_time` / `end_time` 是 ISO 8601 **文本**列，
- * 与 `new Date().toISOString()` 同格式，故字典序比较等价于时间先后比较。
+ *
+ * **时间比较按「时刻」而非「文本」**：`contests.start_time` / `end_time` 虽为
+ * ISO 8601 文本列，但此前按字典序与 `new Date().toISOString()` 比较，对 `+08:00`
+ * 形态的合法 ISO 8601 会静默 fail-open（2026-09-14 评审 C1）。现统一改用
+ * {@link runningWindowCondition}（`::timestamptz` 比较 + 形态守卫），四处调用点
+ * 共用同一份实现。
  */
-import { and, eq, gt, inArray, lte } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { contestProblems, contests } from "./../../../shared/db/schema.ts";
+import { runningWindowCondition } from "./contest-window.ts";
 
 /**
  * 返回给定题目中，处于进行中竞赛的题目 id 集合。
@@ -28,15 +33,13 @@ export async function filterProblemsInRunningContest(
   problemIds: string[],
 ): Promise<Set<string>> {
   if (problemIds.length === 0) return new Set();
-  const nowIso = new Date().toISOString();
   const rows = await getDb()
     .selectDistinct({ problem_id: contestProblems.problem_id })
     .from(contestProblems)
     .innerJoin(contests, eq(contestProblems.contest_id, contests.id))
     .where(and(
       inArray(contestProblems.problem_id, problemIds),
-      lte(contests.start_time, nowIso),
-      gt(contests.end_time, nowIso),
+      runningWindowCondition(contests.start_time, contests.end_time),
     ));
   return new Set(rows.map((row) => row.problem_id));
 }

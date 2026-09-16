@@ -3,6 +3,10 @@ import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { contests, problems, users } from "../../../../shared/db/schema.ts";
 import {
+  communityBookmarks,
+  communityPostLikes,
+} from "../../../../shared/db/schema.ts";
+import {
   countPostsByType,
   createPost,
   getPost,
@@ -10,8 +14,10 @@ import {
   listFeed,
   listPosts,
   toggleBookmark,
+  togglePostLike,
 } from "../../index.ts";
 import { createContest } from "../../../contest/index.ts";
+import { getUserProfileAggregate } from "../../../identity/index.ts";
 import {
   _resetSystemSettingsForTest,
   ensureRbacSeeds,
@@ -258,8 +264,17 @@ Deno.test({
     await assertRejects(() => getPost(post.id, ownerId, false), Error);
     // 3. 计数（赛期不计入）
     assertEquals((await countPostsByType()).solution, 0);
-    // 4. 收藏（收藏后仍不可见）
-    await toggleBookmark(ownerId, post.id);
+    // 4. 互动（High#6）：对门控帖的点赞/收藏必须被拒绝，既防写入隐藏互动行，
+    //    也避免"成功 vs 外键错"构成存在性预言机
+    await assertRejects(() => toggleBookmark(ownerId, post.id), Error);
+    await assertRejects(() => togglePostLike(ownerId, post.id), Error);
+    // 门控生效期间不应产生任何互动行
+    const likeRows = await getDb().select().from(communityPostLikes)
+      .where(eq(communityPostLikes.post_id, post.id));
+    assertEquals(likeRows.length, 0);
+    const bookmarkRows = await getDb().select().from(communityBookmarks)
+      .where(eq(communityBookmarks.post_id, post.id));
+    assertEquals(bookmarkRows.length, 0);
     const bookmarks = await listBookmarks(ownerId);
     assertEquals(
       bookmarks.data.filter((row) => row.post.id === post.id).length,
@@ -275,7 +290,7 @@ Deno.test({
       0,
     );
 
-    // 赛后全部恢复
+    // 赛后全部恢复（含互动不再被拒）
     await getDb().update(contests)
       .set({ end_time: new Date(Date.now() - 1_000).toISOString() })
       .where(eq(contests.id, contestId));
@@ -285,5 +300,63 @@ Deno.test({
       1,
     );
     assertEquals((await countPostsByType()).solution, 1);
+    assertEquals(await toggleBookmark(ownerId, post.id), true);
+    assertEquals(
+      (await listBookmarks(ownerId))
+        .data.filter((row) => row.post.id === post.id).length,
+      1,
+    );
+  },
+});
+
+/**
+ * High#1/#2 回归（2026-09-14 评审）：用户主页是**匿名可访问**的公开路径
+ * （无 auth 中间件，文档标注"公开访问，无需认证"），但它的题解列表与题解计数
+ * 此前完全未门控 → 泄露赛期题解的**标题与内部 id**，以及"该题有题解"这一事实。
+ *
+ * 门控必须与社区列表口径一致，否则该路径即为旁路。
+ */
+Deno.test({
+  name: "solution-gating(High#1/#2): 匿名用户主页不泄露赛期题解标题与数量",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    await seedSolution(normalProblemId, "普通题题解");
+    await seedSolution(contestProblemId, "竞赛题题解");
+
+    // 普通访问者（非审核员）：赛期题解不应出现在主页题解列表，也不计入数量
+    const asVisitor = await getUserProfileAggregate(ownerId, false);
+    assertEquals(
+      asVisitor.solutions.some((s) => s.title.includes("竞赛题题解")),
+      false,
+    );
+    assertEquals(
+      asVisitor.solutions.some((s) => s.title.includes("普通题题解")),
+      true,
+    );
+    assertEquals(asVisitor.community_stats.solution_count, 1);
+
+    // 审核员视图：免门控（复核需要）
+    const asModerator = await getUserProfileAggregate(ownerId, true);
+    assertEquals(
+      asModerator.solutions.some((s) => s.title.includes("竞赛题题解")),
+      true,
+    );
+    assertEquals(asModerator.community_stats.solution_count, 2);
+
+    // 赛后：普通访问者恢复可见（列表与计数必须同时恢复，避免"数量 2、列表 1"的侧信道）
+    await getDb().update(contests)
+      .set({
+        start_time: new Date(Date.now() - 7_200_000).toISOString(),
+        end_time: new Date(Date.now() - 1_000).toISOString(),
+      })
+      .where(eq(contests.id, contestId));
+    const afterEnd = await getUserProfileAggregate(ownerId, false);
+    assertEquals(
+      afterEnd.solutions.some((s) => s.title.includes("竞赛题题解")),
+      true,
+    );
+    assertEquals(afterEnd.community_stats.solution_count, 2);
   },
 });

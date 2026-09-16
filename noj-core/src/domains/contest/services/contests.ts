@@ -27,6 +27,7 @@ import {
 } from "./../../../shared/security/public-id.ts";
 import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
 import { findContestRow } from "./contest-row.ts";
+import { normalizeContestTime } from "./contest-window.ts";
 import {
   type ContestConfig,
   type ContestKind,
@@ -102,6 +103,10 @@ function normalizeContestConfig(
 /**
  * 校验竞赛开始/结束时间：必须是合法 ISO 8601 时间，且结束时间晚于开始时间。
  *
+ * 注意本函数**只校验、不规范化**；规范化由 {@link normalizeContestTime} 在写入前
+ * 统一完成（2026-09-14 评审 C1：此前"原样落库"让 `+08:00` 等合法形态进入文本列，
+ * 使按字典序比较的门控谓词静默 fail-open）。
+ *
  * @param startTime 开始时间字符串
  * @param endTime 结束时间字符串
  * @throws {BadRequestError} 时间格式非法或结束时间不晚于开始时间时
@@ -117,6 +122,29 @@ function validateTimes(startTime: string, endTime: string): void {
   if (end <= start) {
     throw new BadRequestError("end_time 必须晚于 start_time");
   }
+}
+
+/**
+ * 校验并**规范化**竞赛时间，返回可安全落库的规范形态。
+ *
+ * 这是 C1 的**最高杠杆单点修复**：写侧统一规范化后，文本列中不再出现
+ * `+08:00` / 秒级精度等"合法但形态各异"的值，任何按时刻比较的读侧判定
+ * （含 `::timestamptz` 转换）都不会再被形态差异欺骗。
+ *
+ * @param startTime 开始时间（任意合法 ISO 8601 形态）。
+ * @param endTime 结束时间（同上）。
+ * @returns 规范形态的 `{ start_time, end_time }`。
+ * @throws {BadRequestError} 时间非法或结束不晚于开始时。
+ */
+function normalizeTimes(
+  startTime: string,
+  endTime: string,
+): { start_time: string; end_time: string } {
+  validateTimes(startTime, endTime);
+  return {
+    start_time: normalizeContestTime(startTime),
+    end_time: normalizeContestTime(endTime),
+  };
 }
 
 function normalizeRankingPolicy(input: {
@@ -142,7 +170,12 @@ function normalizeRankingPolicy(input: {
   }
   const start = Date.parse(input.start_time);
   const end = Date.parse(input.end_time);
-  const explicit = input.freeze_start_time ?? null;
+  const rawExplicit = input.freeze_start_time ?? null;
+  // 规范化封榜时间：迁移 0083 的形态 CHECK 也约束 freeze_start_time，
+  // 原样落库会因非规范形态（如 +08:00）被约束拒绝（2026-09-14 评审 C1）
+  const explicit = rawExplicit === null
+    ? null
+    : normalizeContestTime(rawExplicit);
   if (explicit !== null) {
     const freezeStart = Date.parse(explicit);
     if (
@@ -358,8 +391,13 @@ export async function createContest(
   if (kind === "invite" && !input.password) {
     throw new BadRequestError("邀请赛必须设置邀请码");
   }
-  validateTimes(input.start_time, input.end_time);
-  const rankingPolicy = normalizeRankingPolicy(input);
+  // 校验 + 规范化：落库形态统一为 toISOString()，保证读侧按时刻比较安全（C1）
+  const times = normalizeTimes(input.start_time, input.end_time);
+  const rankingPolicy = normalizeRankingPolicy({
+    ...input,
+    start_time: times.start_time,
+    end_time: times.end_time,
+  });
   const config = normalizeContestConfig(input.type, input.config);
   const problemInputs = normalizeProblems(input.type, input.problems);
   const passwordHash = input.password
@@ -377,8 +415,8 @@ export async function createContest(
       public_id: publicId,
       title: input.title.trim(),
       description: input.description ?? "",
-      start_time: input.start_time,
-      end_time: input.end_time,
+      start_time: times.start_time,
+      end_time: times.end_time,
       ...rankingPolicy,
       type: input.type,
       kind,
@@ -433,12 +471,15 @@ export async function updateContest(
   ) {
     throw new BadRequestError("邀请赛必须设置邀请码");
   }
-  const startTime = input.start_time ?? existing.start_time;
-  const endTime = input.end_time ?? existing.end_time;
-  validateTimes(startTime, endTime);
+  // 合并后的时间同样校验 + 规范化：既防新写入脏形态，也顺带把存量非规范行
+  // （如带 +08:00 偏移的旧数据）收敛为规范形态（C1）
+  const times = normalizeTimes(
+    input.start_time ?? existing.start_time,
+    input.end_time ?? existing.end_time,
+  );
   const rankingPolicy = normalizeRankingPolicy({
-    start_time: startTime,
-    end_time: endTime,
+    start_time: times.start_time,
+    end_time: times.end_time,
     ranking_visibility: input.ranking_visibility ?? existing.ranking_visibility,
     freeze_start_time: input.freeze_start_time !== undefined
       ? input.freeze_start_time
@@ -480,8 +521,8 @@ export async function updateContest(
     if (input.description !== undefined) {
       updates.description = input.description;
     }
-    if (input.start_time !== undefined) updates.start_time = input.start_time;
-    if (input.end_time !== undefined) updates.end_time = input.end_time;
+    if (input.start_time !== undefined) updates.start_time = times.start_time;
+    if (input.end_time !== undefined) updates.end_time = times.end_time;
     if (input.ranking_visibility !== undefined) {
       updates.ranking_visibility = rankingPolicy.ranking_visibility;
     }

@@ -5,19 +5,36 @@
  * （可被 `deno task test` 直接断言），Nuxt 依赖（useApi）留在 composable 内。
  */
 
-/** 公开统计：所有用户可见；竞赛进行中的题目通过率为 null。 */
+/**
+ * 公开统计：所有用户可见；竞赛进行中的题目隐藏难度先验。
+ *
+ * 赛期 `accepted_count` / `submit_count` / `acceptance_rate` 三者**一并**为 null：
+ * 通过率恰为 `accepted_count / submit_count`，只抑制 rate 会被算术还原。
+ */
 export interface PublicProblemStats {
   attempt_count: number;
-  submit_count: number;
-  accepted_count: number;
+  /** 提交总数；竞赛进行中时为 null（与 rate 同步抑制，防算术还原）。 */
+  submit_count: number | null;
+  /** 通过数；竞赛进行中时为 null（与 rate 同步抑制，防算术还原）。 */
+  accepted_count: number | null;
   /** 通过率（0-1）；竞赛进行中时为 null。 */
   acceptance_rate: number | null;
   /** 通过率被抑制的原因；未抑制时为 null。 */
   suppressed_reason: 'running_contest' | null;
 }
 
-/** 出题人统计：仅题目 owner 与管理员可见。 */
-export interface ProblemStatsDetail extends PublicProblemStats {
+/**
+ * 出题人统计：仅题目 owner 与管理员可见。
+ *
+ * 不复用 `PublicProblemStats` 的可空字段：owner 视图**不受赛期抑制**，
+ * 三项恒为具体数值，可空类型只会在此处制造无谓的空值判断。
+ */
+export interface ProblemStatsDetail {
+  attempt_count: number;
+  submit_count: number;
+  accepted_count: number;
+  acceptance_rate: number | null;
+  suppressed_reason: 'running_contest' | null;
   status_distribution: Record<string, number>;
   case_failure_distribution: Array<{
     case_id: string;

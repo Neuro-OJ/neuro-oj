@@ -37,6 +37,7 @@ import { reloadSingleKey, updateSetting } from "../../../system/index.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
 import { createNotification } from "../notifications.ts";
 import { invalidateBanCache } from "./../../../identity/index.ts";
+import { isProblemInRunningContest } from "./../../../contest/index.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
 import { parseStorageUrl } from "./../../../system/index.ts";
 
@@ -50,6 +51,7 @@ export { banUser, getLatestActiveBanId } from "../../../identity/index.ts";
  * @throws {ValidationError} 未指定目标、分类无效、原因为空或超长时抛出。
  * @throws {NotFoundError} 举报目标不存在或已删除时抛出。
  * @throws {ConflictError} 同一举报者对同一内容已有待处理举报时抛出。
+ * @param moderator 举报者是否为审核员（审核员免赛期门控，可举报任意内容）。
  */
 export async function createReport(
   reporterId: string,
@@ -60,6 +62,7 @@ export async function createReport(
     reason: string;
     category?: string;
   },
+  moderator = false,
 ) {
   assertCommunityEnabled();
   const targetCount = [input.post_id, input.comment_id, input.message_id]
@@ -81,10 +84,25 @@ export async function createReport(
       id: communityPosts.id,
       content: communityPosts.content,
       status: communityPosts.status,
+      type: communityPosts.type,
+      problem_id: communityPosts.problem_id,
+      author_id: communityPosts.author_id,
     }).from(communityPosts).where(eq(communityPosts.id, input.post_id)).limit(
       1,
     );
     if (!target[0] || target[0].status === "deleted") {
+      throw new NotFoundError("举报目标不存在");
+    }
+    // 赛期题解门控（2026-09-14 评审 High#3/#4）：举报接口会**原样返回**被举报
+    // 内容的完整正文，而 `community:report` 在默认角色权限集内。若此处不门控，
+    // 「匿名主页拿到 post id（High#1）→ 举报接口拿全文」即可链式绕过赛期隐藏。
+    // 口径与读路径一致：无权限一律 404，不确认内容是否存在。
+    // 作者本人与审核员例外（作者需要能举报/申诉自己的帖子）。
+    if (
+      !moderator && target[0].author_id !== reporterId &&
+      target[0].type === "solution" && target[0].problem_id &&
+      await isProblemInRunningContest(target[0].problem_id)
+    ) {
       throw new NotFoundError("举报目标不存在");
     }
     contentSnapshot = target[0].content;
@@ -94,10 +112,27 @@ export async function createReport(
       id: communityComments.id,
       content: communityComments.content,
       status: communityComments.status,
-    }).from(communityComments).where(
-      eq(communityComments.id, input.comment_id),
-    ).limit(1);
+      author_id: communityComments.author_id,
+      // 评论所在帖子的门控信息：评论讨论同样会泄露赛期题目内容
+      post_type: communityPosts.type,
+      post_problem_id: communityPosts.problem_id,
+    }).from(communityComments)
+      .innerJoin(
+        communityPosts,
+        eq(communityPosts.id, communityComments.post_id),
+      )
+      .where(
+        eq(communityComments.id, input.comment_id),
+      ).limit(1);
     if (!target[0] || target[0].status === "deleted") {
+      throw new NotFoundError("举报目标不存在");
+    }
+    // 与帖子举报同口径：评论所属帖子处于赛期门控时一并隐藏（High#3/#4）
+    if (
+      !moderator && target[0].author_id !== reporterId &&
+      target[0].post_type === "solution" && target[0].post_problem_id &&
+      await isProblemInRunningContest(target[0].post_problem_id)
+    ) {
       throw new NotFoundError("举报目标不存在");
     }
     contentSnapshot = target[0].content;
@@ -463,8 +498,20 @@ export async function getReportBanScope(
 /**
  * 获取单个举报详情（供用户可见的举报工单页）。
  * 仅举报者本人或审核员可查看。
+ *
+ * 赛期门控（2026-09-14 评审 High#4）：举报详情会返回被举报内容与
+ * `content_snapshot` 正文。若创建时已门控（High#3），存量工单仍可能在详情页
+ * 泄露全文，故此处同样门控——两条路径必须同时收口。
+ *
+ * @param reportId 举报工单 id。
+ * @param _viewerId 查看者 id（调用方已做归属校验，此处仅保留签名兼容）。
+ * @param moderator 查看者是否为审核员（审核员需看到全文以处理工单）。
  */
-export async function getReportDetail(reportId: string, _viewerId: string) {
+export async function getReportDetail(
+  reportId: string,
+  _viewerId: string,
+  moderator = false,
+) {
   const db = getDb();
   const rows = await db.select({
     report: communityReports,
@@ -478,6 +525,7 @@ export async function getReportDetail(reportId: string, _viewerId: string) {
       content: communityPosts.content,
       type: communityPosts.type,
       author_id: communityPosts.author_id,
+      problem_id: communityPosts.problem_id,
     },
     comment: {
       id: communityComments.id,
@@ -511,7 +559,20 @@ export async function getReportDetail(reportId: string, _viewerId: string) {
     .leftJoin(userBans, eq(userBans.id, communityReports.ban_id))
     .where(eq(communityReports.id, reportId)).limit(1);
   if (!rows[0]) throw new NotFoundError("举报不存在");
-  return rows[0];
+  const row = rows[0];
+  // 赛期门控（High#4）：非审核员查看存量工单时，剥离被门控的正文与快照。
+  // 不抛 404——工单归属已由调用方校验，此处只需不返回受保护正文。
+  if (
+    !moderator && row.post?.problem_id && row.post.type === "solution" &&
+    await isProblemInRunningContest(row.post.problem_id)
+  ) {
+    return {
+      ...row,
+      report: { ...row.report, content_snapshot: "" },
+      post: { ...row.post, content: "" },
+    };
+  }
+  return row;
 }
 
 /**

@@ -185,8 +185,12 @@ export async function createPost(
     board_id: input.type === "discussion" ? input.board_id! : null,
     title: title ?? null,
     content,
-    // 官方标记：仅题目 owner 或审核员的声明被信任，普通用户自称官方一律忽略
-    is_official: input.is_official === true &&
+    // 官方标记：仅**题解**且题目 owner 或审核员的声明被信任。
+    // 必须限定 type === "solution"（2026-09-14 评审）：此前只校验 isProblemOwner，
+    // 而 discussion/moment 不会规范化 problem_id，客户端夹带任意 public 题的 id
+    // 即可让 isProblemOwner 为真；又因 listPosts 无条件按 is_official 置顶排序，
+    // 这类帖子会**置顶社区列表**，绕过 setPostOfficial 的"仅题解可标记"规则。
+    is_official: input.is_official === true && input.type === "solution" &&
       (moderator || await isProblemOwner(authorId, input.problem_id)),
     status,
     is_locked: false,

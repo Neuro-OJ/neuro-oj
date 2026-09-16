@@ -53,6 +53,23 @@ Deno.test('describeAcceptance: 区分赛中抑制、无提交与正常三种状�
   assertEquals(describeAcceptance(undefined), null);
 });
 
+Deno.test('describeAcceptance(C2): 赛期三项统计同为 null 时仍走「赛中抑制」分支', () => {
+  // 后端赛期会把 accepted_count/submit_count/acceptance_rate 一并置 null
+  // （只抑制 rate 会被除法还原）。此时必须先命中 suppressed 分支——若顺序错了，
+  // `submit_count === 0` 为 false 而 `?? 0` 会把 null 当 0，渲染出
+  // "通过率 0.0% · 0/0" 这类误导性文案。
+  assertEquals(
+    describeAcceptance({
+      ...baseDetail,
+      accepted_count: null,
+      submit_count: null,
+      acceptance_rate: null,
+      suppressed_reason: 'running_contest',
+    }),
+    '竞赛进行中，暂不显示通过率',
+  );
+});
+
 Deno.test('formatFirstAcMedian: 无数据用占位符而非 0s', () => {
   assertEquals(formatFirstAcMedian(null), '—');
   assertEquals(formatFirstAcMedian(12345), '12.3s');

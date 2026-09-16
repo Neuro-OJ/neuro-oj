@@ -207,3 +207,59 @@ Deno.test({
     assertEquals(byOther.is_official, false);
   },
 });
+
+/**
+ * 2026-09-14 评审回归：`createPost` 曾只校验 `isProblemOwner` 而不限定帖子类型。
+ *
+ * `discussion` / `moment` 不会规范化 `problem_id`（只有 `solution` 会），因此客户端
+ * 夹带任意**公开题**的 id 就能让 `isProblemOwner` 为真；又因 `listPosts` 无条件按
+ * `is_official` 置顶排序，这类帖子会置顶社区列表，绕过 `setPostOfficial` 的
+ * "仅题解可标记"规则。
+ */
+/**
+ * 2026-09-14 评审回归：`createPost` 曾只校验 `isProblemOwner` 而不限定帖子类型。
+ *
+ * `discussion` / `moment` 不会规范化 `problem_id`（只有 `solution` 会），因此客户端
+ * 夹带任意**公开题**的 id 就能让 `isProblemOwner` 为真；又因 `listPosts` 无条件按
+ * `is_official` 置顶排序，这类帖子会置顶社区列表，绕过 `setPostOfficial` 的
+ * "仅题解可标记"规则。
+ */
+Deno.test({
+  name: "official: 非题解夹带 problem_id 不能获得官方标记（防置顶绕过）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    // owner 发 moment，夹带自己拥有的公开题 id 并自称官方。
+    // moment 不校验 problem_id，故客户端可任意夹带——正是攻击面所在。
+    const moment = await createPost(ownerId, {
+      type: "moment",
+      content: "动态夹带题目 id",
+      problem_id: problemId,
+      is_official: true,
+    }, false);
+    assertEquals(moment.is_official, false);
+    // 非题解不得持久化题目关联（否则会被当作"某题的官方内容"参与置顶）
+    assertEquals(moment.problem_id, null);
+
+    // 即便审核员发 moment 也不应被标记：该标记只属于题解这一语义
+    const moderatorMoment = await createPost(ownerId, {
+      type: "moment",
+      content: "审核员的动态",
+      problem_id: problemId,
+      is_official: true,
+    }, true);
+    assertEquals(moderatorMoment.is_official, false);
+
+    // 确认这类帖子不会因 is_official 排到列表最前（排序键 is_official 优先）
+    const listed = await listPosts({ type: "moment" });
+    assertEquals(listed.data.length > 0, true);
+    assertEquals(
+      listed.data.every((row) => row.post.is_official === false),
+      true,
+    );
+
+    // 对照见上一条用例「创建时声明官方——owner 被信任，普通用户被忽略」：
+    // 那里已用满足通过门槛的夹具验证题解路径未被误伤。
+  },
+});

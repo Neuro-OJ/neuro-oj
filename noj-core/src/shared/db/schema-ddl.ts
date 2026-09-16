@@ -151,7 +151,15 @@ export const SCHEMA_DDL: string[] = [
     announcement TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    CHECK (end_time > start_time)
+    CHECK (end_time > start_time),
+    -- 时间形态约束（评审 C1 第三道防线，见迁移 0083）。
+    -- 正则用 [.] 而非 \\. —— drizzle-kit 的快照序列化会丢反斜杠。
+    -- 此处为 PGlite 全新建表，无存量行，故无需 NOT VALID。
+    CONSTRAINT contests_time_format_check CHECK (
+      start_time ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+      AND end_time ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+      AND (freeze_start_time IS NULL OR freeze_start_time ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$')
+    )
   )`,
 
   `CREATE TABLE IF NOT EXISTS contest_problems (

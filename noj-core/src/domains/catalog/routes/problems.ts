@@ -466,13 +466,33 @@ router.get("/:id/template", authMiddleware, async (c) => {
 });
 
 /**
- * 题目公开统计：通过率对所有人可见；竞赛进行中的题目隐藏通过率。
+ * 题目公开统计：通过率对所有人可见；竞赛进行中的题目隐藏难度先验。
+ *
+ * **可见性校验与题目详情同口径**（2026-09-14 评审 C3）：此前本 handler 调用
+ * `resolveProblem(id)` 时**未传 viewer**，因而完全不触发访问校验，导致
+ * 私有题统计匿名可读，并可据 200/404 差异按 `display_id` 枚举私有题的存在性
+ * （兄弟 handler `/:id` 明确注释"无权限一律 404，防存在性探测"）。
  *
  * 注册顺序注意：本路由必须先于 `/:id/stats` 注册，否则被后者吞掉。
  * GET /api/v1/problems/:id/stats/public
  */
 router.get("/:id/stats/public", optionalAuthMiddleware, async (c) => {
-  const problem = await resolveProblem(c.req.param("id") as string);
+  const id = c.req.param("id") as string;
+  const userId = c.get("userId") as string | undefined;
+  const isAdmin = userId
+    ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
+    : false;
+
+  // 与 /:id 一致：无权限一律 404，避免成为私有题的存在性预言机
+  const problem = await resolveProblem(id, { userId, isAdmin });
+  const access = resolveProblemAccess(problem, {
+    viewerId: userId ?? null,
+    isAdmin,
+  });
+  if (!access.allowed) {
+    throw new NotFoundError("题目不存在");
+  }
+
   return c.json({ data: await getPublicProblemStats(problem.id) });
 });
 

@@ -80,10 +80,24 @@ export async function listPosts(
     // 但已删除内容仍应在任何列表中隐藏，避免删除后仍出现在社区主页。
     conditions.push(ne(communityPosts.status, "deleted"));
   }
-  if (options.cursor) {
-    conditions.push(lt(communityPosts.created_at, options.cursor));
-    // 置顶帖只出现在第一页，避免游标分页时在每页顶部重复
+  const cursorParts = options.cursor ? parsePostCursor(options.cursor) : null;
+  if (cursorParts) {
+    // 复合游标 `created_at|id`：仅按 created_at 比较时，同 created_at 的多条会在
+    // 页边界被**静默丢失**（`<` 严格小于会跳过整批同刻条目）。id 作为并列时的
+    // 决胜键，与 orderBy 的 created_at DESC 配对使用。
+    conditions.push(
+      cursorParts.id
+        ? sql`(${communityPosts.created_at} < ${cursorParts.at}
+            OR (${communityPosts.created_at} = ${cursorParts.at}
+                AND ${communityPosts.id} < ${cursorParts.id}))`
+        : lt(communityPosts.created_at, cursorParts.at),
+    );
+    // 置顶帖与官方题解只出现在第一页，避免游标分页时在每页顶部重复。
+    // 排序键是 (is_official, is_pinned, created_at)，而游标只沿 created_at 推进，
+    // 故**所有**非 created_at 的排序键都必须在此排除，否则该行会在每一页重复
+    // （2026-09-14 评审：此前只排除了 is_pinned，导致官方题解每页复现）。
     conditions.push(eq(communityPosts.is_pinned, false));
+    conditions.push(eq(communityPosts.is_official, false));
   }
   // 赛期题解门控：进行中竞赛的题目，其题解对普通用户整体不可见（设计 spec §6.2）
   if (!options.moderator) conditions.push(notGatedSolution());
@@ -100,12 +114,19 @@ export async function listPosts(
     desc(communityPosts.is_official),
     desc(communityPosts.is_pinned),
     desc(communityPosts.created_at),
+    // id 决胜键：created_at 相同的多条若无稳定次序，游标分页会在页边界
+    // 丢条目/重复条目（SQL 不保证同键行的返回顺序）。与 next_cursor 的
+    // `created_at|id` 复合游标必须成对存在，否则游标比较与排序不一致。
+    desc(communityPosts.id),
   ).limit(limit + 1);
   const hasMore = rows.length > limit;
   const data = hasMore ? rows.slice(0, limit) : rows;
+  const last = data.at(-1)?.post;
   return {
     data,
-    next_cursor: hasMore ? data.at(-1)?.post.created_at ?? null : null,
+    // 复合游标 `created_at|id`，与 listFeed 口径一致（后者早已用复合游标，
+    // 本函数此前只用 created_at，导致同刻条目跨页丢失）
+    next_cursor: hasMore && last ? `${last.created_at}|${last.id}` : null,
   };
 }
 
@@ -177,4 +198,20 @@ export async function listBookmarks(
     data,
     next_cursor: hasMore ? data.at(-1)?.bookmarked_at ?? null : null,
   };
+}
+
+/**
+ * 解析帖子列表游标。
+ *
+ * 支持两种形态，保证向后兼容：
+ * - 复合 `created_at|id`（当前输出）；
+ * - 纯 `created_at`（历史客户端可能缓存了旧游标，或第三方直接调用 API）。
+ *
+ * `id` 可能含 `-`（UUID），但不含 `|`，故用 `lastIndexOf` 切分是安全的
+ * （与 `community-feed.ts` 的 `parseFeedCursor` 同一约定）。
+ */
+function parsePostCursor(cursor: string): { at: string; id?: string } {
+  const sep = cursor.lastIndexOf("|");
+  if (sep === -1) return { at: cursor };
+  return { at: cursor.slice(0, sep), id: cursor.slice(sep + 1) };
 }

@@ -31,6 +31,7 @@ import {
   listFeed,
   listNotifications,
   listPendingComments,
+  listPosts,
   resolveReport,
   toggleBookmark,
   toggleCommentLike,
@@ -859,5 +860,81 @@ Deno.test({
       ConflictError,
       "已举报该内容",
     );
+  },
+});
+
+/**
+ * 2026-09-14 评审回归：`listPosts` 的排序键是
+ * `(is_official, is_pinned, created_at)`，而游标只按 `created_at` 推进。
+ * 此前只排除了 `is_pinned`，漏掉 `is_official` → **官方题解在每一页重复出现**。
+ *
+ * 规则：所有非 created_at 的排序键都必须在游标分支中排除，否则该行会固定排在
+ * 每页最前，永不"用过期"。
+ */
+Deno.test({
+  name:
+    "community service: 游标翻页时官方题解不在每页重复（排序键必须全部排除）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const createdAt = new Date().toISOString();
+    // 1 条官方 + 4 条普通，共 5 条；per_page=2 → 需翻 3 页
+    await getDb().insert(communityPosts).values([
+      {
+        id: "cursor-official",
+        type: "moment" as const,
+        author_id: actorId,
+        problem_id: null,
+        board_id: null,
+        title: null,
+        content: "官方置顶动态",
+        status: "published" as const,
+        is_locked: false,
+        is_pinned: false,
+        is_official: true,
+        moderation_reason: null,
+        published_at: createdAt,
+        created_at: createdAt,
+        updated_at: createdAt,
+      },
+      ...[1, 2, 3, 4].map((i) => ({
+        id: `cursor-normal-${i}`,
+        type: "moment" as const,
+        author_id: actorId,
+        problem_id: null,
+        board_id: null,
+        title: null,
+        content: `普通动态 ${i}`,
+        status: "published" as const,
+        is_locked: false,
+        is_pinned: false,
+        is_official: false,
+        moderation_reason: null,
+        published_at: createdAt,
+        created_at: createdAt,
+        updated_at: createdAt,
+      })),
+    ]);
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < 5; page++) {
+      const res = await listPosts({
+        type: "moment",
+        limit: 2,
+        cursor: cursor ?? undefined,
+      });
+      for (const row of res.data) seen.push(row.post.id);
+      cursor = res.next_cursor;
+      if (!cursor) break;
+    }
+
+    // 官方条目只在第一页出现一次
+    assertEquals(seen.filter((id) => id === "cursor-official").length, 1);
+    // 且不重复任何条目
+    assertEquals(new Set(seen).size, seen.length);
+    // 5 条全部被翻到，不丢失
+    assertEquals(new Set(seen).size, 5);
   },
 });

@@ -29,15 +29,64 @@ let _pgliteTemplateLoaded = false;
 
 /** 模板缓存格式版本；PGlite 依赖大版本升级时 +1 */
 const PGLITE_TEMPLATE_FORMAT = 1;
-const TEMPLATE_CACHE_DIR = resolve(
-  dirname(new URL(import.meta.url).pathname),
-  "../../.test-cache",
-);
-const PGLITE_TEMPLATE_FILE = resolve(TEMPLATE_CACHE_DIR, "pglite-template.tgz");
-const PGLITE_TEMPLATE_HASH_FILE = resolve(
-  TEMPLATE_CACHE_DIR,
-  "pglite-template.hash",
-);
+
+/**
+ * PGlite 模板缓存的输入文件清单（相对本文件所在的 shared/db 目录）。
+ *
+ * **单一事实源**：异步 hash（`computePGliteTemplateHash`）与同步指纹
+ * （`computeSchemaFingerprintSync`）都只从本清单取输入，因此两者永远覆盖同一集合。
+ * 此前两处各自维护文件列表：指纹只覆盖 `schema-ddl.ts`，hash 还覆盖两个种子源码；
+ * 只改种子文件时 hash 变了、指纹没变，`createPGliteInstanceFromTemplate()` 据此
+ * 判定"未过期"→ 模板 fast path **静默加载旧种子数据**（2026-09-17 实测：仅改
+ * `community-seed.ts` 时 hash 变化、指纹保持不变）。
+ *
+ * 新增任何进入模板内容的输入（DDL / 索引 / 种子）都必须加到这里，两个指纹函数
+ * 无需改动；不兼容的内容变更用 `PGLITE_TEMPLATE_FORMAT` 整体失效。
+ */
+const PGLITE_TEMPLATE_INPUT_FILES = [
+  "schema-ddl.ts",
+  "../../domains/system/services/seed/seed-rbac.ts",
+  "../../domains/community/services/community/community-seed.ts",
+] as const;
+
+/** 把相对清单解析为绝对路径（每次调用重新解析，不固化模块级常量） */
+function resolveTemplateInputFiles(): string[] {
+  const here = dirname(new URL(import.meta.url).pathname);
+  return PGLITE_TEMPLATE_INPUT_FILES.map((rel) => resolve(here, rel));
+}
+
+/**
+ * 模板缓存目录的测试注入开关（仅供测试与复现脚本使用，不属于产品配置面）。
+ *
+ * 默认 `<noj-core>/src/.test-cache`；置为其他目录后模板 / hash / 指纹三个产物
+ * 一起落到该目录，使回归测试与 `prepare-pglite-template.ts` 复现步骤都在临时目录
+ * 运行，**绝不触碰开发者真实缓存**。三个产物始终由同一函数派生，因此不可能出现
+ * "模板在 A、指纹在 B"的错配。
+ */
+const PGLITE_TEMPLATE_CACHE_DIR_ENV = "PGLITE_TEMPLATE_CACHE_DIR";
+
+/** 模板缓存三个产物的绝对路径（每次调用解析，以支持运行时注入缓存目录） */
+export function pgliteTemplatePaths(): {
+  /** 缓存目录 */
+  dir: string;
+  /** 模板数据目录压缩包 */
+  template: string;
+  /** 异步内容 hash 文件 */
+  hash: string;
+  /** 同步过期指纹文件 */
+  fingerprint: string;
+} {
+  const override = Deno.env.get(PGLITE_TEMPLATE_CACHE_DIR_ENV)?.trim();
+  const dir = override
+    ? resolve(override)
+    : resolve(dirname(new URL(import.meta.url).pathname), "../../.test-cache");
+  return {
+    dir,
+    template: resolve(dir, "pglite-template.tgz"),
+    hash: resolve(dir, "pglite-template.hash"),
+    fingerprint: resolve(dir, "pglite-template.schema"),
+  };
+}
 
 /** reset 默认清空全部表（含 RBAC 种子表），随后重新播种，保证无 preload 时也干净 */
 const RESET_TABLES = [...ALL_TABLES] as string[];
@@ -90,21 +139,13 @@ export async function runDbResetSeeders(): Promise<void> {
 /**
  * 计算 PGlite 模板内容 hash。
  *
- * 参与 hash 的输入包括 schema DDL、索引 DDL、RBAC/社区种子源码以及模板格式
- * 版本，确保 DDL 或种子逻辑变化后模板自动失效。
+ * 参与 hash 的输入 = `PGLITE_TEMPLATE_INPUT_FILES`（schema DDL、RBAC/社区种子
+ * 源码）+ 模板格式版本，确保 DDL 或种子逻辑变化后模板自动失效。输入清单与
+ * `computeSchemaFingerprintSync()` 共用同一常量，两者不可能漂移。
  */
 export async function computePGliteTemplateHash(): Promise<string> {
-  const here = dirname(new URL(import.meta.url).pathname);
-  const sourceFiles = [
-    resolve(here, "schema-ddl.ts"),
-    resolve(here, "../../domains/system/services/seed/seed-rbac.ts"),
-    resolve(
-      here,
-      "../../domains/community/services/community/community-seed.ts",
-    ),
-  ];
   const parts = [String(PGLITE_TEMPLATE_FORMAT)];
-  for (const file of sourceFiles) {
+  for (const file of resolveTemplateInputFiles()) {
     parts.push(await Deno.readTextFile(file));
   }
   const data = new TextEncoder().encode(parts.join("\n---\n"));
@@ -117,7 +158,7 @@ export async function computePGliteTemplateHash(): Promise<string> {
 /** 同步读取当前模板文件；不存在时返回 null */
 export function loadPGliteTemplateBytesSync(): Uint8Array | null {
   try {
-    return Deno.readFileSync(PGLITE_TEMPLATE_FILE);
+    return Deno.readFileSync(pgliteTemplatePaths().template);
   } catch {
     return null;
   }
@@ -157,40 +198,60 @@ export async function buildPGliteTemplateData(): Promise<Uint8Array> {
 /**
  * 确保模板缓存存在且与当前 schema/种子一致；返回模板文件路径。
  * 若模板缺失或 hash 不匹配则自动重建。
+ *
+ * **命中缓存也必须补齐三个产物**：`.tgz` 模板、`.hash` 内容 hash、`.schema`
+ * 同步指纹是同一套缓存的三部分，缺任何一份都会让 fast path 静默失效——
+ * `createPGliteInstanceFromTemplate()` 缺指纹即返回 null，每个测试文件都退化为
+ * 慢速 DDL 路径（正确但极慢），而调用方只看到"模板就绪"，问题不可见。
+ * 因此这里不使用"hash 命中就提前 return"的写法：命中时先校验另两个产物，
+ * 缺失/过期就地补齐，再返回。
  */
 export async function ensurePGliteTemplateCached(): Promise<string> {
+  const paths = pgliteTemplatePaths();
   const hash = await computePGliteTemplateHash();
   const expectedHashFile = hash;
   let currentHash = "";
   try {
-    currentHash = await Deno.readTextFile(PGLITE_TEMPLATE_HASH_FILE);
+    currentHash = await Deno.readTextFile(paths.hash);
   } catch {
     // 无 hash 文件，视为过期
   }
+
   if (currentHash === expectedHashFile) {
+    let templateExists = true;
     try {
-      await Deno.stat(PGLITE_TEMPLATE_FILE);
-      return PGLITE_TEMPLATE_FILE;
+      await Deno.stat(paths.template);
     } catch {
-      // 模板文件缺失，继续重建
+      templateExists = false; // 模板文件缺失，继续重建
+    }
+    if (templateExists) {
+      // hash 与模板都在：仍须确认同步指纹存在且与当前输入一致。
+      // （指纹缺失或过期同样意味着 fast path 会静默回退慢路径 / 复用旧种子，
+      //   必须在这里补写，不能因为"hash 命中"就跳过。）
+      await writeSchemaFingerprint();
+      return paths.template;
     }
   }
 
   const bytes = await buildPGliteTemplateData();
-  await Deno.mkdir(TEMPLATE_CACHE_DIR, { recursive: true });
-  await Deno.writeFile(PGLITE_TEMPLATE_FILE, bytes);
-  await Deno.writeTextFile(PGLITE_TEMPLATE_HASH_FILE, expectedHashFile);
+  await Deno.mkdir(paths.dir, { recursive: true });
+  await Deno.writeFile(paths.template, bytes);
+  await Deno.writeTextFile(paths.hash, expectedHashFile);
   // 同步指纹：供 createPGliteInstanceFromTemplate() 在无 await 的路径上判断过期。
   // 不写这一行，模板会被判定为过期并永远走慢路径（或反之静默复用旧模板）。
-  await Deno.writeTextFile(
-    PGLITE_TEMPLATE_SCHEMA_FILE,
-    computeSchemaFingerprintSync(),
-  );
-  return PGLITE_TEMPLATE_FILE;
+  await writeSchemaFingerprint();
+  return paths.template;
+}
+
+/** 写入（或刷新）同步指纹 sidecar 文件 */
+async function writeSchemaFingerprint(): Promise<void> {
+  const paths = pgliteTemplatePaths();
+  await Deno.mkdir(paths.dir, { recursive: true });
+  await Deno.writeTextFile(paths.fingerprint, computeSchemaFingerprintSync());
 }
 
 /**
- * 计算 schema 的**同步**指纹（用于模板加载时判断是否过期）。
+ * 计算模板输入内容的**同步**指纹（用于模板加载时判断是否过期）。
  *
  * 为什么需要它：模板加载路径 `createPGliteInstanceFromTemplate()` 是同步的，
  * 无法 await `computePGliteTemplateHash()`。而"模板是否过期"的校验此前只存在于
@@ -199,29 +260,36 @@ export async function ensurePGliteTemplateCached(): Promise<string> {
  * schema-ddl.ts 新增了列但模板仍是旧的，所有写入该表的用例以
  * "column ... does not exist" 失败，表现为产品缺陷而非缓存问题（2026-09-14 实测）。
  *
- * 本指纹只看 DDL 文本（同步可读），足以覆盖"schema 变更"这一类过期原因。
+ * 输入集合与异步 hash 完全一致（同一份 `PGLITE_TEMPLATE_INPUT_FILES` + 格式版本）。
+ * 早期版本只看 `schema-ddl.ts`，于是"只改种子文件"时指纹不变、模板被判为未过期，
+ * 模板 fast path 会**静默读取旧种子数据**（2026-09-17 实测）；统一清单后此类
+ * 漂移不可能再出现。
  */
 export function computeSchemaFingerprintSync(): string {
-  const here = dirname(new URL(import.meta.url).pathname);
-  const ddl = Deno.readTextFileSync(resolve(here, "schema-ddl.ts"));
   let hash = 2166136261;
-  for (let i = 0; i < ddl.length; i++) {
-    hash ^= ddl.charCodeAt(i);
+  const parts = [String(PGLITE_TEMPLATE_FORMAT)];
+  for (const file of resolveTemplateInputFiles()) {
+    parts.push(Deno.readTextFileSync(file));
+  }
+  const text = parts.join("\n---\n");
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
     hash = Math.imul(hash, 16777619);
   }
-  return `${PGLITE_TEMPLATE_FORMAT}:${(hash >>> 0).toString(16)}:${ddl.length}`;
+  return `${PGLITE_TEMPLATE_FORMAT}:${
+    (hash >>> 0).toString(16)
+  }:${text.length}`;
 }
 
-/** 模板伴随的 schema 指纹文件（与 .tgz 同目录、同名不同后缀）。 */
-const PGLITE_TEMPLATE_SCHEMA_FILE = resolve(
-  TEMPLATE_CACHE_DIR,
-  "pglite-template.schema",
-);
+/** 模板输入文件的绝对路径清单（供测试断言两个指纹覆盖同一集合） */
+export function pgliteTemplateInputFiles(): string[] {
+  return resolveTemplateInputFiles();
+}
 
 /**
  * 尝试从模板创建 PGlite 实例；模板缺失或**已过期**时返回 null。
  *
- * 过期判定：模板旁的 schema 指纹与当前 DDL 指纹不一致 → 视为过期，
+ * 过期判定：模板旁的同步指纹与当前输入指纹不一致 → 视为过期，
  * 回退到 `new PGlite()` + 执行 DDL 的慢路径（正确性优先于速度）。
  */
 function createPGliteInstanceFromTemplate(): PGlite | null {
@@ -231,7 +299,9 @@ function createPGliteInstanceFromTemplate(): PGlite | null {
   // 指纹校验：缺失或不匹配都按"过期"处理，避免旧模板静默生效
   let cachedFingerprint = "";
   try {
-    cachedFingerprint = Deno.readTextFileSync(PGLITE_TEMPLATE_SCHEMA_FILE);
+    cachedFingerprint = Deno.readTextFileSync(
+      pgliteTemplatePaths().fingerprint,
+    );
   } catch {
     cachedFingerprint = "";
   }

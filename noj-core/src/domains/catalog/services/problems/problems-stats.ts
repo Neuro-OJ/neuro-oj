@@ -25,19 +25,26 @@ export const MAX_STATS_SAMPLE = 2000;
 /** 统计缓存的默认有效期（毫秒）。 */
 export const STATS_CACHE_TTL_MS = 5 * 60 * 1000;
 
-/** 公开统计：所有用户可见；竞赛进行中的题目隐藏通过率。 */
+/** 公开统计：所有用户可见；竞赛进行中的题目隐藏难度先验。 */
 export interface PublicProblemStats {
   attempt_count: number;
-  submit_count: number;
-  accepted_count: number;
+  /** 提交总数；竞赛进行中时为 null（与 `acceptance_rate` 同步抑制，防算术还原）。 */
+  submit_count: number | null;
+  /** 通过数；竞赛进行中时为 null（与 `acceptance_rate` 同步抑制，防算术还原）。 */
+  accepted_count: number | null;
   /** 通过率（0-1）；竞赛进行中时为 null。 */
   acceptance_rate: number | null;
   /** 通过率被抑制的原因；未抑制时为 null。 */
   suppressed_reason: "running_contest" | null;
 }
 
-/** 出题人统计：仅题目 owner 与管理员可见。 */
-export interface ProblemStatsDetail extends PublicProblemStats {
+/** 出题人统计：仅题目 owner 与管理员可见（不受赛期抑制影响）。 */
+export interface ProblemStatsDetail {
+  attempt_count: number;
+  submit_count: number;
+  accepted_count: number;
+  acceptance_rate: number | null;
+  suppressed_reason: "running_contest" | null;
   status_distribution: Record<string, number>;
   case_failure_distribution: Array<{
     case_id: string;
@@ -230,13 +237,18 @@ export async function getProblemStatsDetail(
 }
 
 /**
- * 公开统计：竞赛进行中的题目隐藏通过率，其余字段照常返回。
+ * 公开统计：竞赛进行中的题目隐藏难度先验，其余字段照常返回。
  *
- * 理由：通过率是"这题有多难"的信号，赛期公开等于给出题目难度先验；
- * 提交数本身不构成榜单优势，故不抑制。
+ * 理由：通过率是"这题有多难"的信号，赛期公开等于给出题目难度先验。
+ *
+ * **为何连 `accepted_count` / `submit_count` 一起抑制**（2026-09-14 评审 C2）：
+ * 通过率恰为 `accepted_count / submit_count`。若只把 `acceptance_rate` 置 null 而
+ * 照常返回这两个整数，被扣留的先验可以**算术还原**——抑制形同虚设。故赛期三者
+ * 一并置 null，调用方无法从任何组合反推通过率。
  *
  * @param problemId 题目 UUID。
- * @returns 公开统计；赛期 `acceptance_rate` 为 null 且 `suppressed_reason` 说明原因。
+ * @returns 公开统计；赛期 `acceptance_rate` / `accepted_count` / `submit_count`
+ *          均为 null，且 `suppressed_reason` 说明原因。
  */
 export async function getPublicProblemStats(
   problemId: string,
@@ -245,8 +257,8 @@ export async function getPublicProblemStats(
   const suppressed = await isProblemInRunningContest(problemId);
   return {
     attempt_count: detail.attempt_count,
-    submit_count: detail.submit_count,
-    accepted_count: detail.accepted_count,
+    submit_count: suppressed ? null : detail.submit_count,
+    accepted_count: suppressed ? null : detail.accepted_count,
     acceptance_rate: suppressed ? null : detail.acceptance_rate,
     suppressed_reason: suppressed ? "running_contest" : null,
   };

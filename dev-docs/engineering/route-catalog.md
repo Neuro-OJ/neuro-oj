@@ -160,6 +160,7 @@
 | PATCH | `/comments/:commentId` | noj-core/src/domains/community/routes/community.ts |
 | PATCH | `/contests/:id/kind` | noj-core/src/domains/admin/routes/contest.ts |
 | PATCH | `/posts/:postId` | noj-core/src/domains/community/routes/community.ts |
+| PATCH | `/posts/:postId/official` | noj-core/src/domains/community/routes/community.ts |
 | PATCH | `/trainings/:id` | noj-core/src/domains/admin/routes/catalog.ts |
 | PATCH | `/users/:id/ban` | noj-core/src/domains/admin/routes/identity.ts |
 | PATCH | `/users/:id/role` | noj-core/src/domains/admin/routes/identity.ts |

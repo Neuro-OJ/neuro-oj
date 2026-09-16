@@ -353,6 +353,9 @@ export const REVERSE_EXEMPT = new Set([
   "DEEPSEEK_BASE_URL",
   "TEST_SCHEMA",
   "BCRYPT_SALT_ROUNDS",
+  // PGlite 模板缓存的测试注入开关（shared/db/connection.ts 经常量间接读取，
+  // 不属于产品配置面；登记在此避免日后内联字面量时被误判为"未登记"）
+  "PGLITE_TEMPLATE_CACHE_DIR",
   // 网关自身的非配额配置（由 loadConfig 读取，见网关 .env.example）
   "NOJ_LLM_PORT",
   "NOJ_LLM_LOG_LEVEL",

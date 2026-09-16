@@ -14,6 +14,7 @@ import {
 import { getCommunityConfig } from "./community-config.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
 import { authorProjection } from "./community-post-select.ts";
+import { runningContestExistsForProblem } from "./../../../contest/index.ts";
 
 /**
  * 创建一条社区动态事件（活动流）。
@@ -141,9 +142,10 @@ export async function listFeed(
     activityConditions.push(sql`false`);
   }
   // 赛期题解门控：不展示"发布竞赛题题解"的动态。
-  // `solution_published` 事件的 target_id 是 **post id**（非 problem id），
+  // `solution_published` 事件的 subject_id 是 **post id**（非 problem id），
   // 故用相关子查询反查该帖所属题目是否处于进行中竞赛。
   // 不做"赛期隐藏全部 solution_published"的简化 —— 那会连普通练习题题解活动一起隐藏。
+  // "进行中"判定复用 contest 域的共享谓词（曾因文本字典序比较而 fail-open）。
   activityConditions.push(sql`NOT (
     ${communityActivityEvents.type} = 'solution_published'
     AND EXISTS (
@@ -151,13 +153,7 @@ export async function listFeed(
       WHERE p.id = ${communityActivityEvents.subject_id}
         AND p.type = 'solution'
         AND p.problem_id IS NOT NULL
-        AND EXISTS (
-          SELECT 1 FROM contest_problems cp
-          JOIN contests c ON c.id = cp.contest_id
-          WHERE cp.problem_id = p.problem_id
-            AND c.start_time <= to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
-            AND c.end_time > to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
-        )
+        AND ${runningContestExistsForProblem(sql`p.problem_id`)}
     )
   )`);
   const activityRows = await db.select({

@@ -23,10 +23,16 @@ export type { UserProfileResponse } from "./users-profile-types.ts";
  * 2. 已通过题目列表（去重，按首次通过时间排序）
  * 3. 最近 10 条提交（不含 code 字段）
  *
+ * 社区部分（题解列表与题解计数）受**赛期门控**约束：进行中竞赛的题解对普通
+ * 访问者不可见，审核员通过 `moderator` 免门控（2026-09-14 评审 High#1/#2）。
+ *
+ * @param userId 主页用户 id。
+ * @param moderator 审核员视图（免赛期门控）。
  * @throws {NotFoundError} 用户不存在
  */
 export async function getUserProfileAggregate(
   userId: string,
+  moderator = false,
 ): Promise<UserProfileResponse> {
   const db = getDb();
 
@@ -46,8 +52,8 @@ export async function getUserProfileAggregate(
     queryProfileStats(db, userId),
     querySolvedProblems(db, userId),
     queryRecentSubmissions(db, userId),
-    queryProfileCommunityStats(db, userId),
-    queryProfileSolutions(db, userId),
+    queryProfileCommunityStats(db, userId, moderator),
+    queryProfileSolutions(db, userId, moderator),
     queryProfileMoments(db, userId),
   ]);
 

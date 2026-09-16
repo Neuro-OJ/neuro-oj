@@ -63,6 +63,28 @@ export const contests = pgTable(
       "contests_time_check",
       sql`${table.end_time} > ${table.start_time}`,
     ),
+    /**
+     * 时间形态约束：强制规范 ISO 8601（UTC、毫秒、`Z`）形态。
+     *
+     * 背景（2026-09-14 评审 C1）：`start_time` / `end_time` 是文本列，而赛期门控
+     * 曾按**字典序**与 UTC `Z` 字面量比较。`+08:00` 这类合法但非规范的形态会让
+     * 比较恒为假，导致门控静默 fail-open（题解与通过率抑制同时失效）。
+     *
+     * 修复分三道：写侧规范化（`normalizeContestTime`）、读侧按时刻比较
+     * （`contest-window.ts` 的 `::timestamptz`）、以及本条 DB 形态约束。
+     * 迁移 0083 先规范化存量行再 `NOT VALID` 添加本约束——`NOT VALID` 使约束对
+     * 存量行不阻塞上线，但**新写入一律校验**，从此脏形态无法再进入库。
+     *
+     * 正则用 `[.]` 而非 `\\.` 表示字面点：drizzle-kit 在快照 JSON 序列化时会丢掉
+     * 反斜杠，`\\.` 会退化成 `.`（匹配任意字符，约束被悄悄放宽）。字符类写法
+     * 无需转义，可安全往返。
+     */
+    timeFormatCheck: check(
+      "contests_time_format_check",
+      sql`${table.start_time} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+        AND ${table.end_time} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+        AND (${table.freeze_start_time} IS NULL OR ${table.freeze_start_time} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$')`,
+    ),
     rankingVisibilityCheck: check(
       "contests_ranking_visibility_check",
       sql`${table.ranking_visibility} IN ('public', 'participants', 'hidden')`,
