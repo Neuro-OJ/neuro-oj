@@ -30,6 +30,11 @@ export const CONTAINER_COMMANDS: readonly string[][] = [
   ["db", "migrate"],
   ["init", "system"],
   ["bootstrap", "first-admin"],
+  // 题目包构建/导入。**单数 `problem` 是 canonical 名**（#514 决策：
+  // noj-core 已把命令统一到单数、`problems` 保留为别名），因此两个名字
+  // 都要能被 Tier 3 包装识别，否则 canonical 名无法到达这些命令。
+  ["problem", "build"],
+  ["problem", "import"],
   ["problems", "build"],
   ["problems", "import"],
   ["search", "reindex"],

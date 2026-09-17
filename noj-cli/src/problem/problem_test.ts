@@ -84,8 +84,10 @@ Deno.test("shouldExclude: 对齐 noj.ts 的排除规则", () => {
   assertEquals(shouldExclude(".git/config"), true);
   // 打包脚本
   assertEquals(shouldExclude("build_bundle.sh"), true);
-  // 模板文件必须保留（前端编辑器需要）
-  assertEquals(shouldExclude("template.py", "template.py"), false);
+  // 模板文件必须**排除**（规范 problem-bundle.md:26 + 旧 noj.ts 行为；
+  // 编辑器模板从 data/problems-src 读取，不从包里读）
+  assertEquals(shouldExclude("template.py", "template.py"), true);
+  assertEquals(shouldExclude("my-template.py", "my-template.py"), true);
   // 正常文件保留
   assertEquals(shouldExclude("evaluate.py"), false);
   assertEquals(shouldExclude("problem.json"), false);
@@ -275,4 +277,36 @@ Deno.test("initProblemScaffold: 非法 type/difficulty 拒绝", async () => {
   } finally {
     await Deno.remove(root, { recursive: true });
   }
+});
+
+// ── 评审修正：vendored 副本的同步警示必须存在（issue #514 硬要求）──────
+
+Deno.test("vendored 副本：每个文件都必须有同步警示与原始路径", async () => {
+  const dir = new URL("./vendor/", import.meta.url);
+  const files: string[] = [];
+  for await (const e of Deno.readDir(dir)) {
+    if (e.isFile && e.name.endsWith(".ts")) files.push(e.name);
+  }
+  assertEquals(files.length > 0, true, "vendor 目录不应为空");
+  for (const name of files) {
+    const text = await Deno.readTextFile(new URL(name, dir));
+    assertEquals(
+      text.includes("本文件是 noj-core 的刻意副本"),
+      true,
+      `${name} 缺少「刻意副本」警示`,
+    );
+    // 必须写明原始路径，否则无法同步
+    assertEquals(
+      /原始路径：noj-core\//.test(text),
+      true,
+      `${name} 缺少原始路径`,
+    );
+  }
+});
+
+Deno.test("pack: 模板文件必须被排除（规范 problem-bundle.md:26）", () => {
+  // 评审修正：早先把 template.py 打进包，违背规范与旧 noj.ts 行为
+  assertEquals(shouldExclude("template.py", "template.py"), true);
+  assertEquals(shouldExclude("template.py"), true);
+  assertEquals(shouldExclude("custom-tpl.py", "custom-tpl.py"), true);
 });

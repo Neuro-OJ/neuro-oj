@@ -1,3 +1,6 @@
+// ⚠️ **本文件是 noj-core 的刻意副本**（issue #514 决策：noj-cli 不依赖主仓库导入映射）。
+// 原始路径：noj-core/src/shared/base/errors.ts
+// 修改时必须同步两处，并运行 noj-cli/src/problem/contract_test.ts（共享 fixture 契约测试）。
 /**
  * 应用错误基类。
  * 所有已知的业务错误继承此类，由全局错误处理程序统一捕获并返回 JSON 响应。

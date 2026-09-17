@@ -5,7 +5,13 @@
  * Windows、精简容器、CI 均可能没有 `zip`（`problems-init.ts` 的 README 甚至
  * 教用户先 `mkdir -p data/packages` 来绕开首次失败）。
  *
- * 改用 `fflate` 在内存中打包，**零外部命令依赖**，排除规则与原实现对齐。
+ * 改用 `fflate` 在内存中打包，**零外部命令依赖**，排除规则与原实现对齐：
+ * `submission*`（参考实现）、manifest 指定的模板文件、`__pycache__`、`.git`。
+ *
+ * **模板必须排除**（评审修正）：`noj-docs/docs/standards/problem-bundle.md:26`
+ * 明确「模板文件与参考实现**不要**放入包中」，旧 `noj.ts:resolveTemplateExclude()`
+ * 也执行排除。编辑器模板由 `getProblemTemplate()` 从 `data/problems-src` 读取，
+ * **不是**从包里读——因此把模板打进包既违背规范又无收益。
  */
 import { zipSync } from "fflate";
 
@@ -42,8 +48,9 @@ export function shouldExclude(
   }
   // 打包脚本本身（出题人本地工具，不属于题目内容）
   if (base.endsWith(".sh") && base.startsWith("build_")) return true;
-  // 显式模板文件由调用方决定是否排除（模板要进包，供前端编辑器使用）
-  if (templateName !== undefined && base === templateName) return false;
+  // manifest 指定的模板文件：与旧实现一致**排除**（规范要求，见文件头说明）。
+  if (templateName !== undefined && base === templateName) return true;
+  if (base === "template.py") return true;
   // lint 报告等本地产物
   if (base === ".DS_Store") return true;
   return false;

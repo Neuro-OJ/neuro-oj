@@ -1,3 +1,6 @@
+// ⚠️ **本文件是 noj-core 的刻意副本**（issue #514 决策：noj-cli 不依赖主仓库导入映射）。
+// 原始路径：noj-core/src/domains/catalog/services/problems/problems-types.ts
+// 修改时必须同步两处，并运行 noj-cli/src/problem/contract_test.ts（共享 fixture 契约测试）。
 /**
  * runtime_config 结构校验（**vendored 副本**，见 problem-bundle.ts 顶部说明）。
  *

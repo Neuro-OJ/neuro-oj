@@ -9,7 +9,9 @@ import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from "../exit_codes.ts";
 import { UsageError } from "../util/args.ts";
 import { type BundleFiles, lintBundle, type LintFinding } from "./lint.ts";
 import { packBundle } from "./pack.ts";
-import { initProblemScaffold } from "./init.ts";
+import { initProblemScaffold, validateSlug } from "./init.ts";
+import { guideProblemInit } from "./tui.ts";
+import { realIO } from "../tui/io.ts";
 import { zipSync } from "fflate";
 
 /** problem 子命令选项。 */
@@ -89,9 +91,14 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
     }
   }
   if (positional.length > 0) out.slug = positional[0];
-  // init 的第一个位置参数是 slug，lint/pack 的是 dir
+  // init 的第一个位置参数是 slug，lint/pack 的是 dir。
+  //
+  // **只有位置参数存在时才覆盖 --dir**（评审修正）：早先无条件赋值，
+  // 使 `problem lint --dir <别的题包>` 把 out.dir 覆盖成 undefined，
+  // 随后静默回落到 cwd 并返回 0——既忽略用户显式指定的目录，
+  // 又给出假阳性结果（校验/打包的其实是当前目录）。
   if (out.sub === "lint" || out.sub === "pack") {
-    out.dir = positional[0];
+    if (positional.length > 0) out.dir = positional[0];
     out.slug = undefined;
   }
   return out;
@@ -259,25 +266,78 @@ export async function runProblemPack(args: ProblemArgs): Promise<number> {
   return EXIT_OK;
 }
 
-/** 执行 `problem init`。 */
+/**
+ * 执行 `problem init`。
+ *
+ * 双模式（issue #514 P6）：
+ * - **TUI 引导**（默认，stdin 是 TTY 且未给 `--no-interactive`）：
+ *   复用既有 PromptIO/widgets，缺什么问什么，全部带默认值；
+ * - **自动化**（`--no-interactive` 或非 TTY）：不提问，缺参直接报用法错误。
+ *
+ * 参数/取值错误一律返回 `EXIT_USAGE`(2)，与运行失败区分（#517 E9）。
+ */
 export async function runProblemInit(args: ProblemArgs): Promise<number> {
-  if (!args.noInteractive && !args.slug && Deno.stdin.isTerminal()) {
-    console.log(
-      "提示: 交互式引导需要参数，或使用 --no-interactive 自动化模式。",
-    );
+  const interactive = !args.noInteractive && Deno.stdin.isTerminal();
+
+  let answers: {
+    slug?: string;
+    title?: string;
+    type?: string;
+    difficulty?: string;
+  } = {
+    slug: args.slug,
+    title: args.title,
+    type: args.type,
+    difficulty: args.difficulty,
+  };
+
+  if (interactive) {
+    try {
+      answers = await guideProblemInit(realIO(), answers);
+    } catch (err) {
+      // 用户在确认环节取消：不是错误，用 0 退出（与常见 CLI 一致）
+      if ((err as Error).message === "已取消") {
+        console.log("已取消。");
+        return EXIT_OK;
+      }
+      throw err;
+    }
   }
-  const slug = args.slug;
+
+  const slug = answers.slug;
   if (!slug) {
     console.error(
       "problem init: 需要 <slug>（例如 noj-cli problem init a-plus-b --type P）",
     );
     return EXIT_USAGE;
   }
+
+  // 参数/取值非法属**用法错误**（退出码 2），而非运行失败
+  try {
+    validateSlug(slug);
+    if (
+      answers.type !== undefined && answers.type !== "U" && answers.type !== "P"
+    ) {
+      throw new UsageError(`--type 仅支持 U/P，收到 "${answers.type}"`);
+    }
+    if (
+      answers.difficulty !== undefined &&
+      !["easy", "medium", "hard"].includes(answers.difficulty)
+    ) {
+      throw new UsageError(
+        `--difficulty 仅支持 easy/medium/hard，收到 "${answers.difficulty}"`,
+      );
+    }
+  } catch (err) {
+    if (err instanceof UsageError) throw err;
+    throw new UsageError((err as Error).message);
+  }
+
   const result = await initProblemScaffold({
     slug,
-    title: args.title,
-    type: args.type,
-    difficulty: args.difficulty,
+    title: answers.title,
+    type: answers.type,
+    difficulty: answers.difficulty,
     root: args.dir,
   });
   console.log(`已生成题目骨架：${result.dir}`);

@@ -96,6 +96,23 @@ export const TIER3_SECTION: HelpSection = {
   ],
 };
 
+/**
+ * 题目包管理分区（#514）。
+ *
+ * 这些命令**离线**运行（不碰部署目录、不需要 Docker），因此独立于
+ * Tier 3 的 `problems build | import`——后者在 noj-server 容器内执行。
+ * 登记在此是 #517 E5「help 是命令清单唯一事实源」的要求：新命令必须
+ * 可从顶层 help 发现，否则用户只能靠猜。
+ */
+export const PROBLEM_SECTION: HelpSection = {
+  title: "题目包管理（离线；无需部署环境）",
+  entries: [
+    { name: "problem init", summary: "生成题目骨架（TTY 下为交互式引导）" },
+    { name: "problem lint", summary: "校验题目包（MUST/SHOULD 两级）" },
+    { name: "problem pack", summary: "打包为可导入的题目包 ZIP" },
+  ],
+};
+
 /** 全局选项分区。 */
 export const GLOBAL_SECTION: HelpSection = {
   title: "全局选项",
@@ -124,6 +141,7 @@ export const EXIT_CODES: Array<{ code: number; meaning: string }> = [
 export const HELP_SECTIONS: HelpSection[] = [
   PRODUCTION_SECTION,
   STACK_SECTION,
+  PROBLEM_SECTION,
   TIER3_SECTION,
   GLOBAL_SECTION,
 ];
