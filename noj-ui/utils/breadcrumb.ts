@@ -6,9 +6,10 @@
  *   因此层级必须由「集中声明的路由表」推导，而不是每页手写；
  * - 纯逻辑放 utils 可被 `deno task test` 直接断言（本仓库既有约定，
  *   同 `utils/problemStats.ts`、`utils/problemView.ts`）；
- * - 中间件只做路径解析与 `useState` 预置，**不发任何请求**，因此零新增首屏延迟。
+ * - 解析本身是 `route.path` 与 `locale` 的纯函数，**不需要中间件**，
+ *   布局组件在 SSR 首帧即可算出（见 `composables/useBreadcrumb.ts` 的说明）。
  *
- * 覆盖范围：26 个内容页（`layouts/default.vue`）。**不含** `/admin/*`
+ * 覆盖范围：`layouts/default.vue` 下的内容页。**不含** `/admin/*`
  * （后台已有“分组 + 当前项”侧栏语义，再叠面包屑冗余）与认证页
  * （`layouts/auth.vue`，单点流程无层级语义）——未注册路径解析结果为空数组，
  * 组件据此不渲染。

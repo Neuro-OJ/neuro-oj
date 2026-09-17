@@ -12,6 +12,15 @@ import { resolveBreadcrumb } from '~/utils/breadcrumb';
  *
  * 唯一需要页面参与的是**动态层的人类可读文案**：async 数据必然晚于布局渲染，
  * 因此由页面用 `useBreadcrumbParams` 回填（首帧先显示路由参数占位，不闪空白）。
+ *
+ * **为什么要等 setup 结束才求值**（评审实测的 SSR 500 根因）：
+ * 页面里 `useBreadcrumbLabel(() => detail.value?.title)` 很可能写在
+ * `const detail = ref(...)` **之前**。若 composable 在调用时立即执行 getter，
+ * 就会访问尚未初始化的 `const` 而抛 `ReferenceError: Cannot access 'detail'
+ * before initialization`——该页无 `ssr: false` 时**服务端渲染直接 500**。
+ *
+ * 而且延迟求值没有任何功能损失：布局渲染早于页面 setup，覆盖值本就
+ * 不可能影响 SSR 首帧的面包屑，因此只在客户端首帧后回填即可。
  */
 
 /** 覆盖值按「路径 + 参数名」分键，避免不同路由之间串味。 */
@@ -54,7 +63,8 @@ export function useBreadcrumbParams(
   const path = route.path;
   const keys = Object.keys(getters).map((param) => overrideKey(path, param));
 
-  watchEffect(() => {
+  /** 读取各 getter 并写入覆盖值。**只允许在 setup 完成后调用**。 */
+  function prime() {
     for (const [param, getter] of Object.entries(getters)) {
       const value = getter()?.trim();
       if (!value) continue;
@@ -62,7 +72,14 @@ export function useBreadcrumbParams(
       if (overrides.value[key] === value) continue;
       overrides.value = { ...overrides.value, [key]: value };
     }
-  });
+  }
+
+  // 仅在客户端、且 setup 完成后求值，从根本上避免 TDZ（见文件头说明）。
+  // 服务端不需要：覆盖值无法影响 SSR 首帧（布局早于页面 setup 渲染）。
+  if (import.meta.client) {
+    onMounted(prime);
+    watchEffect(prime, { flush: 'post' });
+  }
 
   onScopeDispose(() => {
     const next = { ...overrides.value };
