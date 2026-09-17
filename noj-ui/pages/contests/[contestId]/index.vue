@@ -7,6 +7,7 @@ import type { Contest, ContestProblem } from '~/composables/useContests'
 import { extractApiError } from '~/utils/apiError'
 import { runContestRegistration } from '~/utils/contestRegistration'
 import { publicUrl } from '~/utils/publicIdentifiers'
+import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 
 const route = useRoute()
 const router = useRouter()
@@ -25,6 +26,9 @@ const { data, pending, error, refresh } = await useFetch<{ data: Contest }>(
   `/api/v1/contests/${contestId}`,
 )
 const contest = computed(() => data.value?.data ?? null)
+
+// 面包屑（#512）：末层显示竞赛标题
+useBreadcrumbLabel(() => contest.value?.title, 'contestId')
 
 useSeoMeta({
   title: () => contest.value?.title ? `${contest.value.title} - Neuro OJ` : '竞赛 - Neuro OJ',

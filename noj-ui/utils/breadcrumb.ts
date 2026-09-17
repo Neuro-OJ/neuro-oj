@@ -140,6 +140,12 @@ const ROUTES: BreadcrumbRoute[] = [
   // ── 榜单与队列 ──
   { pattern: '/ranking', trail: [{ key: 'nav.ranking' }] },
   { pattern: '/queue', trail: [{ key: 'nav.queue' }] },
+
+  // ── 单层工具页（深度 1，只有当前层）──
+  { pattern: '/search', trail: [{ key: 'nav.search' }] },
+  { pattern: '/settings', trail: [{ key: 'breadcrumb.settings' }] },
+  { pattern: '/about', trail: [{ key: 'breadcrumb.about' }] },
+  { pattern: '/data-policy', trail: [{ key: 'breadcrumb.dataPolicy' }] },
 ];
 
 /** 把 `/a/:b/c` 编译为「静态段数组」，便于无正则匹配。 */
@@ -167,7 +173,8 @@ const COMPILED: CompiledRoute[] = ROUTES.map((route) => ({
 
 /** 把路径归一为无查询串、无尾斜杠的分段数组。 */
 function splitPath(path: string): string[] {
-  const clean = path.split('?')[0].split('#')[0];
+  const withoutQuery = path.split('?')[0] ?? '';
+  const clean = withoutQuery.split('#')[0] ?? '';
   return clean.split('/').filter(Boolean);
 }
 
@@ -195,13 +202,18 @@ export function matchBreadcrumbRoute(path: string): BreadcrumbMatch | null {
     let ok = true;
     for (let i = 0; i < route.segments.length; i++) {
       const segment = route.segments[i];
+      const part = parts[i];
+      if (!segment || part === undefined) {
+        ok = false;
+        break;
+      }
       if ('literal' in segment) {
-        if (segment.literal !== parts[i]) {
+        if (segment.literal !== part) {
           ok = false;
           break;
         }
       } else {
-        params[segment.param] = parts[i];
+        params[segment.param] = part;
       }
     }
     if (ok) return { pattern: route.pattern, params };
@@ -264,6 +276,7 @@ export function resolveBreadcrumb(path: string, locale: Locale = DEFAULT_LOCALE)
   }
 
   // 末层强制不可点击：即便模板里配了 to 也忽略，保证 aria-current="page" 语义
-  if (items.length > 0) delete items[items.length - 1].to;
+  const last = items[items.length - 1];
+  if (last) delete last.to;
   return items;
 }

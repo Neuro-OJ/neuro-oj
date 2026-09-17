@@ -5,6 +5,7 @@ import { QUESTION_TYPE_LABELS } from '~/composables/useObjective'
 import { publicUrl } from '~/utils/publicIdentifiers'
 import { extractApiError } from '~/utils/apiError'
 import { toContestProblemView } from '~/utils/problemView'
+import { useBreadcrumbParams } from '~/composables/useBreadcrumb'
 
 /**
  * 竞赛题目详情页：
@@ -14,7 +15,7 @@ import { toContestProblemView } from '~/utils/problemView'
  *   竞赛模式一次性提交（contest_id 携带），不展示解析（防泄题）
  *
  * #511：头部与题面改用 `components/problem/*` 共用组件，
- * 消除第二份题面实现与第二套硬编码难度色（`bg-green-100` 等）。
+ * 消除第二份题面实现与第二套硬编码难度色（难度统一走 `DifficultyBadge`）。
  */
 definePageMeta({ middleware: 'auth', ssr: false })
 
@@ -37,6 +38,12 @@ const contest = computed(() => contestData.value?.data ?? null)
 
 /** 统一视图模型：与独立题目页共用同一形状（#511）。 */
 const problemView = computed(() => (problem.value ? toContestProblemView(problem.value) : null))
+
+// ── 面包屑（#512）：中间层用竞赛标题，末层用题目编号 ──
+useBreadcrumbParams({
+  contestId: () => contest.value?.title,
+  label: () => label,
+})
 
 const isObjective = computed(() => problemView.value?.is_objective === true)
 const isArtifact = computed(() => problemView.value?.submission_mode === 'artifact')
@@ -185,14 +192,8 @@ async function onSubmit() {
     >
       <div v-if="problemView" class="mx-auto flex max-w-[960px] flex-col gap-4">
         <ProblemHeader :problem="problemView">
-          <!-- 返回竞赛入口：竞赛内返回语义，由 #512 面包屑统一后收敛 -->
+          <!-- 题号标识（「返回竞赛」已由 #512 面包屑承担，避免同页两套导航） -->
           <template #leading>
-            <NuxtLink
-              :to="publicUrl('contest', contestId)"
-              class="inline-flex items-center gap-1.5 text-xs text-text-secondary no-underline hover:text-primary"
-            >
-              <UIcon name="i-lucide-arrow-left" class="size-3.5" />返回竞赛
-            </NuxtLink>
             <span class="flex size-7 items-center justify-center rounded-lg bg-bg-dark font-mono text-xs font-bold text-white">{{ problem?.label }}</span>
           </template>
           <template #titleSuffix>

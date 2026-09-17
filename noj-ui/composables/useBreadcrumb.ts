@@ -28,11 +28,11 @@ export function useBreadcrumbItems() {
   return computed<BreadcrumbItem[]>(() => {
     const items = resolveBreadcrumb(route.path, locale.value);
     if (items.length === 0) return items;
-    return items.map((item) =>
-      item.param && overrides.value[overrideKey(route.path, item.param)]
-        ? { ...item, label: overrides.value[overrideKey(route.path, item.param)] }
-        : item
-    );
+    return items.map((item): BreadcrumbItem => {
+      if (!item.param) return item;
+      const override = overrides.value[overrideKey(route.path, item.param)];
+      return override ? { ...item, label: override } : item;
+    });
   });
 }
 

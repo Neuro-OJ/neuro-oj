@@ -12,6 +12,18 @@ import type { BreadcrumbItem } from '~/utils/breadcrumb'
  */
 
 const items = useBreadcrumbItems()
+const route = useRoute()
+
+/**
+ * 面包屑由布局渲染（保证新页面默认就有），但每个内容页的容器宽度并不一致
+ * （`max-w-[860px]` / `960px` / `4xl` / `7xl` …）。若不跟随，
+ * 面包屑会与页面标题错位。
+ *
+ * 因此页面用可序列化的 `definePageMeta({ breadcrumbWidth })` 声明容器宽度，
+ * 未声明时用既有最普遍的 `960px`。`route.meta` 在 SSR 首帧即可读，
+ * 不需要额外状态或中间件。
+ */
+const maxWidth = computed(() => (route.meta.breadcrumbWidth as string | undefined) ?? '960px')
 
 /** 末层为当前页，不可点击并带 aria-current="page"。 */
 const crumbs = computed(() =>
@@ -24,7 +36,12 @@ const crumbs = computed(() =>
 
 <template>
   <!-- 单层（如「题库」）没有回跳价值，隐藏以免占据首屏 -->
-  <nav v-if="items.length > 1" aria-label="面包屑" class="mb-3">
+  <nav
+    v-if="items.length > 1"
+    aria-label="面包屑"
+    class="mx-auto w-full px-4 pt-4 sm:px-6"
+    :style="{ maxWidth }"
+  >
     <ol class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
       <li v-for="(crumb, index) in crumbs" :key="`${crumb.label}-${index}`" class="flex min-w-0 items-center gap-x-1.5">
         <NuxtLink

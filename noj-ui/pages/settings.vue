@@ -486,16 +486,6 @@ async function handleDeleteAccount() {
 
 <template>
   <div class="max-w-[800px] mx-auto px-4 py-6 sm:px-6 sm:py-8 flex flex-col gap-6">
-    <!-- 返回 -->
-    <NuxtLink
-      v-if="user?.id"
-      :to="userUrl(user?.username ?? '')"
-      class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
-    >
-      <UIcon name="i-lucide-arrow-left" class="size-4" />
-      返回个人主页
-    </NuxtLink>
-
     <!-- 标题 -->
     <div class="bg-white border border-border rounded-xl overflow-hidden">
       <div class="px-6 py-5 border-b border-border">

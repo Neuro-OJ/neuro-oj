@@ -8,6 +8,7 @@ import { useToast } from "~/composables/useToast"
 import { useBanStatus } from "~/composables/useBanStatus"
 import { isCommunityEdited } from "~/utils/communityEdited"
 import { problemUrl } from "~/utils/publicIdentifiers"
+import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 
 const route = useRoute()
 const { isLoggedIn, user } = useAuth()
@@ -34,6 +35,9 @@ const typeLabel: Record<PostType, string> = {
 }
 
 const postId = computed(() => String(route.params.postId))
+// 面包屑（#512）：末层显示帖子标题
+useBreadcrumbLabel(() => post.value?.post.title, 'postId')
+
 const post = ref<PostDetail | null>(null)
 const comments = ref<CommentRow[]>([])
 
@@ -254,7 +258,6 @@ watch(initialData, (value) => {
 
 <template>
   <main class="mx-auto w-full max-w-4xl px-6 py-10">
-    <NuxtLink to="/community" class="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-primary"><UIcon name="i-lucide-arrow-left" class="size-4" />返回社区</NuxtLink>
     <article v-if="post" class="mt-4 rounded-lg border border-border bg-white p-6 shadow-card">
       <template v-if="post.post.status === 'deleted'">
         <p class="py-8 text-center text-text-secondary">该内容已删除。</p>

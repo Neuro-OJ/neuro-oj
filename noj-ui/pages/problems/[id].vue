@@ -7,6 +7,7 @@ import { extractApiError } from "~/utils/apiError"
 import type { PublicProblemStats } from "~/utils/problemStats"
 import { useProblemStats } from "~/composables/useProblemStats"
 import { toProblemView, type ProblemResource } from "~/utils/problemView"
+import { useBreadcrumbLabel } from "~/composables/useBreadcrumb"
 
 const route = useRoute()
 const router = useRouter()
@@ -23,6 +24,9 @@ const { data, pending, error, refresh } = useFetch<{ data: ProblemResource }>(
 const problem = computed(() =>
   data.value?.data ? toProblemView(data.value.data) : null
 )
+
+// ── 面包屑（#512）：数据到位后用题名精化末层文案 ──
+useBreadcrumbLabel(() => problem.value?.title)
 
 // ── 公开通过率：对所有人可见；竞赛进行中由后端抑制 ──
 const { fetchPublic } = useProblemStats()

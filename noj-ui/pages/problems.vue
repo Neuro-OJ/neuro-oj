@@ -2,6 +2,8 @@
 import { difficultyBadgeColors, difficultyLabels, formatAcceptanceRate } from "~/utils/submissionFormat"
 import { problemUrl } from "~/utils/publicIdentifiers"
 import type { ObjectiveSubmission } from '~/composables/useObjective'
+
+definePageMeta({ breadcrumbWidth: '960px' })
 const { api } = useApi()
 
 const router = useRouter()

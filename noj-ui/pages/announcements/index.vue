@@ -2,6 +2,8 @@
 import { formatDateTime } from "~/utils/submissionFormat"
 import { publicUrl } from "~/utils/publicIdentifiers"
 
+definePageMeta({ breadcrumbWidth: '900px' })
+
 interface AnnouncementSummary {
   id: string
   public_id?: string

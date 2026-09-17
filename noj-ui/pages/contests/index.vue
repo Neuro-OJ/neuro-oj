@@ -2,6 +2,8 @@
 import type { Contest, ContestStatus, ContestType } from '~/composables/useContests'
 import { publicUrl } from '~/utils/publicIdentifiers'
 
+definePageMeta({ breadcrumbWidth: '960px' })
+
 const { t } = useI18n()
 useHead({ title: computed(() => `${t('contest.title')} - Neuro OJ`) })
 
