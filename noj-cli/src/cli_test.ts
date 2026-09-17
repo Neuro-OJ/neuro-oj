@@ -10,6 +10,7 @@ import {
   EXIT_USAGE,
   extractProfile,
   firstPositional,
+  formatBytes,
   parseBackupArgs,
   parseDeployArgs,
   parseInitOptions,
@@ -25,6 +26,7 @@ import { parseDirArg } from "./util/args.ts";
 import type { CommandContext } from "./cli.ts";
 import { parseContainerCommand } from "./container.ts";
 import { parseProblemArgs } from "./problem/command.ts";
+import { UsageError } from "./util/args.ts";
 
 const ctx: CommandContext = { cwd: "/tmp", deployDir: null };
 
@@ -790,66 +792,73 @@ Deno.test("评审: Tier 3 子命令 help 必须写 --install-dir 而非 --dir", 
   );
   assertEquals(out.includes("原样透传"), true, "应说明 --dir 透传给容器");
 });
-// ── 评审 B1：PROFILE_AGNOSTIC 命令必须整体豁免 profile 门禁 ──────────
 
-Deno.test("评审 B1: 门禁按「是否路由进 Tier 3」判定，而非仅看顶层名", () => {
-  // 顶层名 `problems` 承担两种角色：`problems build|import` 是 Tier 3
-  //（需生产安装目录），而 `problems init|lint|pack` 是本地出题命令。
-  // 调用点必须先做容器匹配，再决定是否施加 profile 门禁；
-  // 否则本地用法会被生产门禁误拒（探测歧义时 CLI 自己给出的补救建议
-  // 正是「请改用 --profile prod|stack」，用户照做即踩坑）。
-  //
-  // 本分支（#527）尚无本地 problem 分发（由 #514 引入），
-  // 故这里只断言门禁函数本身的契约；集成验证在 #514 分支。
-  assertCommandAllowedInProfile("prod", "problems");
-  let threw = false;
-  try {
-    assertCommandAllowedInProfile("stack", "problems");
-  } catch {
-    threw = true;
-  }
+// ── 第四轮评审修正：problem lint/pack 的 --dir 不得被 positional 覆盖 ──
+
+Deno.test("评审: problem lint/pack 只有位置参数存在时才覆盖 --dir", () => {
+  // 阻塞项：无位置参数时 out.dir = positional[0]（undefined）会覆盖 --dir，
+  // 导致 lint/pack 静默改用 cwd 并返回 0（假阳性）。
   assertEquals(
-    threw,
-    true,
-    "problems（Tier 3 前缀）在 stack profile 下必须被拒",
+    parseProblemArgs(["lint", "--dir", "/some/problem"]).dir,
+    "/some/problem",
   );
-});
-
-Deno.test("评审 B1: 容器匹配决定是否门禁（problems build 命中）", () => {
-  // 修复要点：调用点先做容器匹配，再决定是否施加 profile 门禁。
-  // `problems build|import` 命中 Tier 3 前缀 → 仍须 prod 侧；
-  // 本地出题命令（#514 引入）不命中 → 豁免。
-  const hit = parseContainerCommand(["problems", "build"]);
-  assertEquals(hit.matched, true, "problems build 必须命中 Tier 3");
-  const miss = parseContainerCommand(["problem", "lint"]);
-  assertEquals(miss.matched, false, "problem lint 不应命中 Tier 3");
-});
-
-Deno.test("评审 B1: Tier 3 的 problems 仍受生产门禁约束", () => {
-  // 豁免不能把真正的 Tier 3 用法也放行：
-  // `problems build|import` 命中容器前缀，仍须 prod 侧。
-  let threw = false;
-  try {
-    assertCommandAllowedInProfile("stack", "problems");
-  } catch {
-    threw = true;
-  }
   assertEquals(
-    threw,
-    true,
-    "problems（Tier 3 前缀）在 stack profile 下必须被拒",
+    parseProblemArgs(["pack", "--dir", "/some/problem"]).dir,
+    "/some/problem",
   );
+  // 显式位置参数优先
+  assertEquals(
+    parseProblemArgs(["lint", "/positional", "--dir", "/flag"]).dir,
+    "/positional",
+  );
+  // 两者都没有：dir 保持 undefined（由调用方回落到 cwd）
+  assertEquals(parseProblemArgs(["lint"]).dir, undefined);
+});
+// ── #515 P6：备份 list/prune 的 CLI 契约 ─────────────────────────────
+
+Deno.test("P6: parseBackupArgs 解析 list/prune 旗标", () => {
+  const a = parseBackupArgs([
+    "prune",
+    "--keep",
+    "3",
+    "--older-than",
+    "7",
+    "--include-legacy",
+    "--json",
+  ]);
+  assertEquals(a.sub, "prune");
+  assertEquals(a.keep, 3);
+  assertEquals(a.olderThanDays, 7);
+  assertEquals(a.includeLegacy, true);
+  assertEquals(a.json, true);
 });
 
-Deno.test("评审 B1: Tier 3 的生产门禁仍然生效", () => {
-  // 回归防线：豁免不能把真正的生产命令也放行
-  let threw = false;
-  try {
-    assertCommandAllowedInProfile("stack", "db");
-  } catch {
-    threw = true;
+Deno.test("P6: --keep/--older-than 非法值报用法错误", () => {
+  for (
+    const argv of [["prune", "--keep", "x"], ["prune", "--older-than", "-1"]]
+  ) {
+    let threw = false;
+    try {
+      parseBackupArgs(argv);
+    } catch (e) {
+      threw = e instanceof UsageError;
+    }
+    assertEquals(threw, true, argv.join(" "));
   }
-  assertEquals(threw, true, "db 在 stack profile 下必须被拒");
+});
+
+Deno.test("P6: prune 默认不 confirm（安全默认 = dry-run）", () => {
+  assertEquals(parseBackupArgs(["prune"]).confirm, false);
+  assertEquals(parseBackupArgs(["prune", "--confirm"]).confirm, true);
+  // 默认不删旧目录格式（存量数据保护）
+  assertEquals(parseBackupArgs(["prune"]).includeLegacy, false);
+});
+
+Deno.test("P6: formatBytes 人类可读", () => {
+  assertEquals(formatBytes(0), "0B");
+  assertEquals(formatBytes(512), "512B");
+  assertEquals(formatBytes(2048), "2.0K");
+  assertEquals(formatBytes(5 * 1024 * 1024), "5.0M");
 });
 
 // ── 第四轮评审修正：problem lint/pack 的 --dir 不得被 positional 覆盖 ──

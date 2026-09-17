@@ -40,7 +40,10 @@ Deno.test("resolveOrCreatePassphrase: 已存在则复用，不覆盖", async () 
     const p = dir + "/pass";
     await Deno.writeTextFile(p, "existing-secret\n");
     await Deno.chmod(p, 0o600);
-    const result = await resolveOrCreatePassphrase({ path: p, generate: false });
+    const result = await resolveOrCreatePassphrase({
+      path: p,
+      generate: false,
+    });
     assertEquals(result.created, false);
     assertEquals(await Deno.readTextFile(p), "existing-secret\n");
   } finally {
@@ -71,7 +74,10 @@ Deno.test("resolveOrCreatePassphrase: 不存在且不允许生成时报错", asy
   try {
     let threw = false;
     try {
-      await resolveOrCreatePassphrase({ path: dir + "/missing", generate: false });
+      await resolveOrCreatePassphrase({
+        path: dir + "/missing",
+        generate: false,
+      });
     } catch {
       threw = true;
     }

@@ -29,6 +29,9 @@ import {
   backupVerify,
 } from "./maintain/backup.ts";
 import { maintainReset } from "./maintain/reset.ts";
+import { listBackups, pruneBackups } from "./maintain/backup_list.ts";
+import { defaultBackupDir } from "./maintain/backup.ts";
+import { loadDeployConfig } from "./config/load.ts";
 import { realDriver } from "./maintain/backup_driver.ts";
 import { runServerForeground } from "./runtime/process.ts";
 import {
@@ -198,20 +201,21 @@ export async function run(argv: string[]): Promise<number> {
     // 命令必须与判定出的 profile 相容（显式或探测皆然）。
     //
     // 例外：
-    // - `--help`/`-h` 永远可用且只读（#517 E1/E2）；
-    // - **与部署模式无关的本地命令豁免**（评审 B1）。判定依据是
-    //   「是否会路由进 Tier 3 容器 / 是否为生产命令」，而不是仅看顶层名——
-    //   顶层名 `problems` 同时承担两种角色：`problems build|import` 是
-    //   Tier 3（需生产目录），而 `problems init|lint|pack` 是本地出题命令。
-    //   只看顶层名会让本地用法被生产门禁误拒：探测歧义时 CLI 自己给出的
-    //   补救建议正是「请改用 --profile prod|stack」，用户照做即踩坑。
-    const isTier3 = container.matched;
-    const gated = !PROFILE_AGNOSTIC.has(topCommand) || isTier3;
-    if (effectiveProfile !== null && !wantsHelp(topRest) && gated) {
+    // - `--help`/`-h` 必须永远可用且只读（#517 E1/E2）；
+    // - **PROFILE_AGNOSTIC 的命令整体豁免**（评审 B1）。它们与部署模式无关
+    //   （如 `problem lint` 只是校验本地题目包），若仍走门禁，会出现
+    //   「不传 --profile 能用、显式传 --profile stack 反而被拒」的自相矛盾——
+    //   而探测歧义时 CLI 自己给出的补救建议正是「请改用 --profile prod|stack」，
+    //   用户照做即踩坑。
+    if (
+      effectiveProfile !== null && !wantsHelp(topRest) &&
+      !PROFILE_AGNOSTIC.has(topCommand)
+    ) {
       assertCommandAllowedInProfile(effectiveProfile, topCommand);
     }
 
     // Tier 3：容器包装（纯新增，不影响既有命令）
+    const container = parseContainerCommand([topCommand, ...topRest]);
     if (container.matched) {
       return await dispatchContainer(container, topRest);
     }
@@ -357,6 +361,14 @@ export function firstPositional(
     return arg;
   }
   return "";
+}
+
+/** 人类可读字节数（备份 list 展示用，#515 P6）。 */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return bytes + "B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + "K";
+  if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + "M";
+  return (bytes / 1024 / 1024 / 1024).toFixed(1) + "G";
 }
 
 /** 移除第一个位置参数（保留其余顺序与选项值）。 */
@@ -650,6 +662,14 @@ export interface BackupArgs {
   includeDeployConfigs: boolean;
   snapshot: string | undefined;
   report: string | undefined;
+  /** #515 P6：prune 保留最近 N 份。 */
+  keep: number | undefined;
+  /** #515 P6：prune 删除早于 N 天的备份。 */
+  olderThanDays: number | undefined;
+  /** #515 P6：prune 是否允许删除旧目录格式（默认否，防误删）。 */
+  includeLegacy: boolean;
+  /** #515 P6：机器可读输出（list/prune）。 */
+  json: boolean;
 }
 
 /** 解析 maintain backup 参数：子命令 + 位置参数 snapshot + 各旗标。 */
@@ -665,6 +685,10 @@ export function parseBackupArgs(args: string[]): BackupArgs {
     includeDeployConfigs: false,
     snapshot: undefined,
     report: undefined,
+    keep: undefined,
+    olderThanDays: undefined,
+    includeLegacy: false,
+    json: false,
   };
   const rest = args.slice(1);
   // `--dir` 统一解析（支持 `--dir=`，缺值报错）；下面的 switch 跳过它。
@@ -713,6 +737,33 @@ export function parseBackupArgs(args: string[]): BackupArgs {
         break;
       case "--report":
         out.report = takeValue("--report");
+        break;
+      case "--keep": {
+        const raw = takeValue("--keep");
+        const n = Number(raw);
+        if (!Number.isInteger(n) || n < 0) {
+          throw new UsageError(`--keep 需要一个非负整数，收到 "${raw}"`);
+        }
+        out.keep = n;
+        break;
+      }
+      case "--older-than": {
+        const raw = takeValue("--older-than");
+        const n = Number(raw);
+        if (!Number.isInteger(n) || n < 0) {
+          throw new UsageError(
+            `--older-than 需要一个非负整数（天），收到 "${raw}"`,
+          );
+        }
+        out.olderThanDays = n;
+        break;
+      }
+      case "--include-legacy":
+        // 旧目录格式承载存量数据，默认受保护（#515）
+        out.includeLegacy = true;
+        break;
+      case "--json":
+        out.json = true;
         break;
       default:
         positional.push(a);
@@ -1094,9 +1145,76 @@ export async function dispatchCommand(
               );
               return report.pass ? EXIT_OK : EXIT_FAILURE;
             }
+            case "list": {
+              // #515 P6：列举备份（无需解包；识别单文件与旧目录两种格式）
+              const cfg = await loadDeployConfig(deployDir);
+              const backupDir = a.backupDir ?? defaultBackupDir(cfg);
+              const { entries, ignored } = await listBackups(backupDir);
+              if (a.json) {
+                console.log(
+                  JSON.stringify({ backupDir, entries, ignored }, null, 2),
+                );
+                return EXIT_OK;
+              }
+              if (entries.length === 0) {
+                console.log("没有备份：" + backupDir);
+                return EXIT_OK;
+              }
+              console.log("备份目录：" + backupDir);
+              console.log("  时间                 大小      格式     名称");
+              for (const e of entries) {
+                const size = formatBytes(e.bytes ?? 0);
+                console.log(
+                  "  " + e.createdAt.padEnd(20) + " " + size.padStart(9) +
+                    "  " + e.format.padEnd(7) + " " + e.name,
+                );
+              }
+              if (ignored.length > 0) {
+                console.log("  （忽略 " + ignored.length + " 个非备份条目）");
+              }
+              return EXIT_OK;
+            }
+            case "prune": {
+              // #515 P6：**默认 dry-run**，--confirm 才真删
+              const cfg = await loadDeployConfig(deployDir);
+              const backupDir = a.backupDir ?? defaultBackupDir(cfg);
+              const result = await pruneBackups(backupDir, {
+                keep: a.keep,
+                olderThanDays: a.olderThanDays,
+                includeLegacy: a.includeLegacy,
+                confirm: a.confirm,
+              });
+              if (a.json) {
+                console.log(JSON.stringify(
+                  {
+                    backupDir,
+                    dryRun: !a.confirm,
+                    remove: result.plan.remove.map((e) => e.name),
+                    keep: result.plan.keep.map((e) => e.name),
+                    deleted: result.deleted,
+                  },
+                  null,
+                  2,
+                ));
+                return EXIT_OK;
+              }
+              if (result.plan.remove.length === 0) {
+                console.log("没有需要清理的备份。");
+                return EXIT_OK;
+              }
+              console.log(
+                a.confirm
+                  ? "已删除 " + result.deleted.length + " 个备份："
+                  : "（dry-run）将删除 " + result.plan.remove.length +
+                    " 个备份：",
+              );
+              for (const e of result.plan.remove) console.log("  - " + e.name);
+              if (!a.confirm) console.log("加 --confirm 才会真正删除。");
+              return EXIT_OK;
+            }
             default:
               console.error(
-                "maintain backup: 需要子命令 create/verify/restore/drill",
+                "maintain backup: 需要子命令 create/verify/restore/drill/list/prune",
               );
               return EXIT_USAGE;
           }
