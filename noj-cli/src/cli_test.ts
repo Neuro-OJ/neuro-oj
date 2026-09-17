@@ -15,11 +15,13 @@ import {
   parseMaintainArgs,
   parsePort,
   printHelp,
+  PROFILE_AGNOSTIC,
   removeFirstPositional,
   run,
   stripCliOwnedFlags,
 } from "./cli.ts";
 import type { CommandContext } from "./cli.ts";
+import { parseContainerCommand } from "./container.ts";
 
 const ctx: CommandContext = { cwd: "/tmp", deployDir: null };
 
@@ -244,14 +246,21 @@ Deno.test("E3: 未预期错误在 --debug 下带栈、默认不带", async () =>
     }
     return err;
   };
-  // 生产命令的 --dir 指向不存在的目录 → ProductionDirError（已分类，退出码 1）
-  const plain = await capture(["status", "--dir", "/nonexistent-noj-xyz"]);
+  // 显式 --profile prod 跳过探测（探测先于生产驱动运行），
+  // 再让 --dir 指向不存在路径 → findProductionDir 抛 ProductionDirError（退出码 1）。
+  const plain = await capture([
+    "--profile",
+    "prod",
+    "status",
+    "--dir",
+    "/nonexistent-noj-xyz",
+  ]);
   assertEquals(plain.includes("不是完整的 NOJ 生产安装目录"), true);
   assertEquals(plain.includes("    at "), false, "默认不得打印栈帧");
 
-  // 未分类异常走通用兜底：默认提示加 --debug，--debug 时打印栈帧。
-  // 通过一个会在解析后抛出的真实路径触发（production 目录校验失败在 --debug 下带栈）。
   const debug = await capture([
+    "--profile",
+    "prod",
     "status",
     "--dir",
     "/nonexistent-noj-xyz",
@@ -702,4 +711,90 @@ Deno.test("评审 M1: parseInstallDirArg 支持两种写法", () => {
   assertEquals(parseInstallDirArg(["--install-dir", "/opt"]), "/opt");
   assertEquals(parseInstallDirArg(["--install-dir=/opt"]), "/opt");
   assertEquals(parseInstallDirArg([]), undefined);
+});
+Deno.test("评审: Tier 3 子命令 help 必须写 --install-dir 而非 --dir", async () => {
+  // 阻塞项：help 写 --dir 但 dispatchContainer 只认 --install-dir，
+  // 照 help 抄的命令会 exit 1。
+  const original = console.log;
+  let out = "";
+  console.log = (...a: unknown[]) => {
+    out += a.join(" ") + "\n";
+  };
+  try {
+    await run(["db", "migrate", "--help"]);
+  } finally {
+    console.log = original;
+  }
+  assertEquals(
+    out.includes("--install-dir <path>"),
+    true,
+    "help 必须宣称 --install-dir",
+  );
+  assertEquals(
+    /--dir <path>\s+生产安装目录/.test(out),
+    false,
+    "help 不得再把 --dir 说成生产安装目录",
+  );
+  assertEquals(out.includes("原样透传"), true, "应说明 --dir 透传给容器");
+});
+// ── 评审 B1：PROFILE_AGNOSTIC 命令必须整体豁免 profile 门禁 ──────────
+
+Deno.test("评审 B1: 门禁按「是否路由进 Tier 3」判定，而非仅看顶层名", () => {
+  // 顶层名 `problems` 承担两种角色：`problems build|import` 是 Tier 3
+  //（需生产安装目录），而 `problems init|lint|pack` 是本地出题命令。
+  // 调用点必须先做容器匹配，再决定是否施加 profile 门禁；
+  // 否则本地用法会被生产门禁误拒（探测歧义时 CLI 自己给出的补救建议
+  // 正是「请改用 --profile prod|stack」，用户照做即踩坑）。
+  //
+  // 本分支（#527）尚无本地 problem 分发（由 #514 引入），
+  // 故这里只断言门禁函数本身的契约；集成验证在 #514 分支。
+  assertCommandAllowedInProfile("prod", "problems");
+  let threw = false;
+  try {
+    assertCommandAllowedInProfile("stack", "problems");
+  } catch {
+    threw = true;
+  }
+  assertEquals(
+    threw,
+    true,
+    "problems（Tier 3 前缀）在 stack profile 下必须被拒",
+  );
+});
+
+Deno.test("评审 B1: 容器匹配决定是否门禁（problems build 命中）", () => {
+  // 修复要点：调用点先做容器匹配，再决定是否施加 profile 门禁。
+  // `problems build|import` 命中 Tier 3 前缀 → 仍须 prod 侧；
+  // 本地出题命令（#514 引入）不命中 → 豁免。
+  const hit = parseContainerCommand(["problems", "build"]);
+  assertEquals(hit.matched, true, "problems build 必须命中 Tier 3");
+  const miss = parseContainerCommand(["problem", "lint"]);
+  assertEquals(miss.matched, false, "problem lint 不应命中 Tier 3");
+});
+
+Deno.test("评审 B1: Tier 3 的 problems 仍受生产门禁约束", () => {
+  // 豁免不能把真正的 Tier 3 用法也放行：
+  // `problems build|import` 命中容器前缀，仍须 prod 侧。
+  let threw = false;
+  try {
+    assertCommandAllowedInProfile("stack", "problems");
+  } catch {
+    threw = true;
+  }
+  assertEquals(
+    threw,
+    true,
+    "problems（Tier 3 前缀）在 stack profile 下必须被拒",
+  );
+});
+
+Deno.test("评审 B1: Tier 3 的生产门禁仍然生效", () => {
+  // 回归防线：豁免不能把真正的生产命令也放行
+  let threw = false;
+  try {
+    assertCommandAllowedInProfile("stack", "db");
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, true, "db 在 stack profile 下必须被拒");
 });

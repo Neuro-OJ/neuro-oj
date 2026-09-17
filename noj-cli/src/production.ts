@@ -48,7 +48,10 @@ export async function findProductionDir(
   }
   const installed = dirname(dirname(await Deno.realPath(executable)));
   if (await isInstallDir(installed)) return installed;
-  throw new Error("未找到生产安装目录，请使用 --dir 指定 setup.sh 安装的目录");
+  throw new Error(
+    "未找到生产安装目录，请用 --install-dir 指定 setup.sh 安装的目录" +
+      "（Tier 3 命令）或 --dir（生产/编排命令）",
+  );
 }
 
 /**

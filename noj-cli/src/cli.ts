@@ -1,3 +1,4 @@
+import { resolve } from "@std/path";
 import { findDeployDir } from "./util/find_deploy_dir.ts";
 import { VERSION } from "./mod.ts";
 import { realProbe } from "./doctor/probe.ts";
@@ -146,21 +147,38 @@ export async function run(argv: string[]): Promise<number> {
     // 导致 mixed 目录静默按生产路径执行、stack 意图误入 prod 路径。
     // 现在：无显式值时也执行探测（歧义/未命中抛 UsageError）。
     // 纯工具命令（不依赖部署模式）豁免，否则任意目录下 version 都会失败。
-    const effectiveProfile = PROFILE_AGNOSTIC.has(topCommand)
+    // `--help` 与纯工具命令都不需要探测（只读、与部署模式无关）
+    const profileAgnostic = PROFILE_AGNOSTIC.has(topCommand) ||
+      wantsHelp(topRest);
+    const effectiveProfile = profileAgnostic
       ? (explicitProfile !== undefined
         ? validateProfileName(explicitProfile)!
         : null)
       : (explicitProfile !== undefined
         ? validateProfileName(explicitProfile)!
-        : detectProfileOrNull());
+        // P1：探测必须以 --dir 为起点（与 --profile 正交）
+        : detectProfileOrNull(parseDirArg(topRest)));
+
+    // Tier 3 容器命令（需要在生产安装目录内执行）
+    const container = parseContainerCommand([topCommand, ...topRest]);
 
     // 命令必须与判定出的 profile 相容（显式或探测皆然）。
-    if (effectiveProfile !== null) {
+    //
+    // 例外：
+    // - `--help`/`-h` 永远可用且只读（#517 E1/E2）；
+    // - **与部署模式无关的本地命令豁免**（评审 B1）。判定依据是
+    //   「是否会路由进 Tier 3 容器 / 是否为生产命令」，而不是仅看顶层名——
+    //   顶层名 `problems` 同时承担两种角色：`problems build|import` 是
+    //   Tier 3（需生产目录），而 `problems init|lint|pack` 是本地出题命令。
+    //   只看顶层名会让本地用法被生产门禁误拒：探测歧义时 CLI 自己给出的
+    //   补救建议正是「请改用 --profile prod|stack」，用户照做即踩坑。
+    const isTier3 = container.matched;
+    const gated = !PROFILE_AGNOSTIC.has(topCommand) || isTier3;
+    if (effectiveProfile !== null && !wantsHelp(topRest) && gated) {
       assertCommandAllowedInProfile(effectiveProfile, topCommand);
     }
 
     // Tier 3：容器包装（纯新增，不影响既有命令）
-    const container = parseContainerCommand([topCommand, ...topRest]);
     if (container.matched) {
       return await dispatchContainer(container, topRest);
     }
@@ -266,8 +284,11 @@ export async function dispatchContainer(
         "  交互式输入（如隐藏密码）会透传到容器。",
         "",
         "选项:",
-        "  --dir <path>   生产安装目录",
-        "  --dry-run      仅打印将执行的 compose 命令",
+        "  --install-dir <path>   生产安装目录（CLI 自身选项）",
+        "  --dry-run              仅打印将执行的 compose 命令",
+        "",
+        "注：--dir 属于容器内命令自身的选项（如 problems import --dir），",
+        "    会原样透传；指定生产安装目录请用 --install-dir。",
       ],
     ));
     return EXIT_OK;
@@ -343,19 +364,27 @@ export function assertCommandAllowedInProfile(
   command: string,
 ): void {
   const PROD_ONLY = new Set([...PRODUCTION_COMMANDS]);
+  // Tier 3 容器命令需要**生产安装目录**（docker-compose.prod.yml + .env.prod），
+  // 因此属 prod 侧。早先误把它们归 stack，导致方向写反：
+  // `--profile prod db migrate` 被拒、`--profile stack db migrate` 反而放行。
+  // 这里只登记**顶层命令名**，且必须是真正需要生产安装目录的。
+  // `problem` 的 init/lint/pack 是离线出题命令（PROFILE_AGNOSTIC），
+  // 登记在此会与之矛盾（评审 B1）；Tier 3 的题目包命令由顶层名
+  // `problems` 承接，无需再列单数。
+  const TIER3 = new Set([
+    "db",
+    "init",
+    "bootstrap",
+    "problems",
+    "search",
+  ]);
   const STACK_ONLY = new Set([
     "stack",
     "deploy",
     "maintain",
     "run-server",
-    "db",
-    "init",
-    "bootstrap",
-    "problems",
-    "problem",
-    "search",
   ]);
-  if (profile === "stack" && PROD_ONLY.has(command)) {
+  if (profile === "stack" && (PROD_ONLY.has(command) || TIER3.has(command))) {
     throw new UsageError(
       `${command} 属于生产模式（.env.prod），与 --profile stack 不符。
 ` +
@@ -438,8 +467,13 @@ export const PROFILE_AGNOSTIC = new Set([
  * **歧义或都无法识别时抛 {@link UsageError}**（#518 验收：失败必须报错，
  * 不得静默取默认值）——猜错模式会把命令作用到错误的目标。
  */
-export function detectProfileOrNull(): ProfileName | null {
-  const result = detectProfile({ start: Deno.cwd(), ...realProfileFs() });
+export function detectProfileOrNull(startDir?: string): ProfileName | null {
+  // `--dir` 优先：它与 `--profile` 正交（issue #518），是既有的
+  // 「在任意目录用 --dir 指定安装目录」逃生通道（README / 生产文档均推荐）。
+  const start = startDir !== undefined
+    ? resolve(Deno.cwd(), startDir)
+    : Deno.cwd();
+  const result = detectProfile({ start, ...realProfileFs() });
   if (result.profile === null) {
     throw new UsageError(result.error ?? "无法判定 profile");
   }
@@ -470,6 +504,8 @@ export const KNOWN_TOP = new Set([
   "doctor",
   "deploy",
   "maintain",
+  // #518：新命令必须登记，否则拼写建议看不到它
+  "stack",
   "run-server",
   "version",
   ...PRODUCTION_COMMANDS,
