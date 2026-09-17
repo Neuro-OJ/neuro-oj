@@ -15,7 +15,6 @@ import {
   parseMaintainArgs,
   parsePort,
   printHelp,
-  PROFILE_AGNOSTIC,
   removeFirstPositional,
   run,
   stripCliOwnedFlags,
