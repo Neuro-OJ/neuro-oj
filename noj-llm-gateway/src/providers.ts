@@ -249,7 +249,7 @@ export async function updateProvider(
   }
   const updatedAt = now();
   const sets: string[] = [];
-  const params: unknown[] = [];
+  const params: Array<string | number | boolean> = [];
 
   if (input.name !== undefined) {
     params.push(input.name);
@@ -288,7 +288,7 @@ export async function updateProvider(
     : `updated_at = $1`;
   await db.unsafe(
     `UPDATE llm_providers SET ${setSql} WHERE id = $${offset + 1}`,
-    ...(params as never[]),
+    params,
   );
 
   const row = await getProviderById(db, id);

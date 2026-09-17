@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import type { Db } from "../src/db.ts";
 import type { EvalTokenPayload } from "../src/crypto.ts";
 import { enforceAndCount, settleUsage } from "../src/limits.ts";
@@ -9,6 +9,7 @@ class FakeRedis implements RedisClient {
   data = new Map<string, number>();
   expires = new Map<string, number>();
   lastEvalArgs: (string | number)[] = [];
+  lastEvalKeys: string[] = [];
 
   async incr(key: string): Promise<number> {
     const next = (this.data.get(key) ?? 0) + 1;
@@ -53,11 +54,30 @@ class FakeRedis implements RedisClient {
 
   async eval(
     _script: string,
-    _keys: string[],
+    keys: string[],
     args: (string | number)[],
   ): Promise<unknown> {
     this.lastEvalArgs = args;
-    return await Promise.resolve("ok");
+    this.lastEvalKeys = keys;
+    // 按 Lua 的预扣/结算语义更新状态，确保测试能发现重复计数与错误额度。
+    const reserving = args.length === 4;
+    const meta = JSON.parse(String(args[reserving ? 3 : 0])) as {
+      limits: number[];
+      incs: number[];
+      ttls: number[];
+    };
+    const counters = reserving ? keys.slice(2) : keys;
+    const exceedsLimit = () =>
+      counters.some((key, i) =>
+        meta.limits[i] > 0 &&
+        (this.data.get(key) ?? 0) + (reserving ? meta.incs[i] : 0) >
+          meta.limits[i]
+      );
+    if (reserving && exceedsLimit()) return "limit_exceeded";
+    for (const [i, key] of counters.entries()) {
+      await this.incrby(key, meta.incs[i]);
+    }
+    return !reserving && exceedsLimit() ? "limit_exceeded" : "ok";
   }
 }
 
@@ -152,4 +172,84 @@ Deno.test("limits: settleUsage 按 billedTotal 计算 delta", async () => {
   };
   // SETTLE_SCRIPT 的 ARGV[0] 是 meta；第一个 token counter inc = -120
   assertEquals(meta.incs[0], -120);
+});
+
+const reserveOptions = {
+  model: "model-1",
+  promptTokens: 10,
+  completionTokens: 5,
+  estimatedCost: 1,
+  ip: "127.0.0.1",
+  ttlSeconds: 60,
+  userRateLimitPerMinute: 120,
+  ipRateLimitPerMinute: 30,
+};
+
+Deno.test("limits: 各作用域只预扣一次，结算后保留实际用量", async () => {
+  const redis = new FakeRedis();
+  await enforceAndCount(emptyDb, redis, payload, reserveOptions);
+  assertEquals(new Set(redis.lastEvalKeys).size, redis.lastEvalKeys.length);
+  const scopeKeys = [...redis.data.keys()].filter((key) =>
+    !key.startsWith("llm:sub:")
+  );
+  assertEquals(scopeKeys.length, 18);
+  for (const key of scopeKeys) {
+    assertEquals(redis.data.get(key), key.endsWith(":tokens") ? 15 : 1, key);
+  }
+  await settleUsage(emptyDb, redis, payload, {
+    ...reserveOptions,
+    actualPromptTokens: 5,
+    actualCompletionTokens: 2,
+    actualBilledTotalTokens: 7,
+    actualCost: 2,
+  });
+  assertEquals(new Set(redis.lastEvalKeys).size, redis.lastEvalKeys.length);
+  for (const key of scopeKeys) {
+    const expected = key.endsWith(":tokens")
+      ? 7
+      : key.endsWith(":cost")
+      ? 2
+      : 1;
+    assertEquals(redis.data.get(key), expected, key);
+  }
+});
+
+Deno.test("limits: 跨日后可继续使用月额度且不能超过月上限", async () => {
+  // 固定 UTC 日期，避免月末或测试执行时间影响窗口边界。
+  const originalNow = Date.now;
+  let now = Date.UTC(2026, 8, 10, 12);
+  Date.now = () => now;
+  const db =
+    ((_strings: TemplateStringsArray, ...values: unknown[]) =>
+      Promise.resolve([{
+        max_calls: values[2] === "day" ? 2 : 3,
+        max_tokens: 10000,
+        max_cost: 100,
+      }])) as unknown as Db;
+  const redis = new FakeRedis();
+  try {
+    await enforceAndCount(db, redis, payload, reserveOptions);
+    await enforceAndCount(db, redis, payload, reserveOptions);
+    await assertRejects(
+      () => enforceAndCount(db, redis, payload, reserveOptions),
+      Error,
+      "limit_exceeded",
+    );
+    now += 24 * 60 * 60 * 1000;
+    await enforceAndCount(db, redis, payload, reserveOptions);
+    await assertRejects(
+      () => enforceAndCount(db, redis, payload, reserveOptions),
+      Error,
+      "limit_exceeded",
+    );
+    for (
+      const prefix of ["llm:user:user-1", "llm:global", "llm:problem:problem-1"]
+    ) {
+      assertEquals(redis.data.get(`${prefix}:day:2026-09-10:calls`), 2);
+      assertEquals(redis.data.get(`${prefix}:day:2026-09-11:calls`), 1);
+      assertEquals(redis.data.get(`${prefix}:month:2026-09:calls`), 3);
+    }
+  } finally {
+    Date.now = originalNow;
+  }
 });
