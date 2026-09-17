@@ -574,6 +574,7 @@ async function issueOAuthSession(
     sub: userId,
     role,
     must_change_password: user.must_change_password,
+    session_version: user.session_version,
   });
   await logAuthEvent(userId, "oauth", "auth.login_success", {
     user_id: userId,

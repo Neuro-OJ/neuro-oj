@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { passwordResetTokens, users } from "./../../../shared/db/schema.ts";
 import { hashPassword } from "./security/password.ts";
@@ -205,7 +205,12 @@ export async function resetPassword(
     // 更新密码
     await tx
       .update(users)
-      .set({ password_hash: newHash, updated_at: nowIso })
+      .set({
+        password_hash: newHash,
+        session_version: sql`${users.session_version} + 1`,
+        must_change_password: false,
+        updated_at: nowIso,
+      })
       .where(eq(users.id, user.id));
   });
 

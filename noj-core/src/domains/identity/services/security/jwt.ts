@@ -29,8 +29,7 @@ function getSecretKey(): Uint8Array {
  *
  * must_change_password（issue #75）：当用户密码为临时凭证（如引导管理员）
  * 时，登录后必须修改密码。authMiddleware 据此拦截非白名单请求，避免
- * 临时凭证被滥用。true 时 token 已强制更新为新密码，但**旧 token 仍有效
- * 至自然过期**（依赖前端清 Cookie 重登）。
+ * 临时凭证被滥用。session_version 与数据库实时比较，凭据变更后旧会话失效。
  */
 export interface TokenPayload {
   /** 用户 ID */
@@ -39,7 +38,9 @@ export interface TokenPayload {
   role: string;
   /** 是否必须修改密码（issue #75） */
   must_change_password?: boolean;
-  /** JWT 唯一标识（用于未来实现 token 黑名单/撤销） */
+  /** 签发时的用户会话版本；历史令牌缺省为 0。 */
+  session_version?: number;
+  /** JWT 唯一标识（用于单会话黑名单/撤销） */
   jti?: string;
 }
 
@@ -62,6 +63,7 @@ export async function signToken(
 
   const token = await new SignJWT({
     role: payload.role,
+    session_version: payload.session_version ?? 0,
     // 仅写入存在的字段，避免向 token 注入 undefined
     ...(payload.must_change_password !== undefined && {
       must_change_password: payload.must_change_password,
@@ -84,7 +86,7 @@ export async function signToken(
  * 验证 JWT 并返回负载。
  *
  * 校验 issuer 与 audience 防止跨服务 token 误用。
- * jti 字段透传以便上层实现黑名单机制（当前未启用，需配合 Redis 存储）。
+ * jti 字段供上层校验 Redis 黑名单，session_version 供上层校验用户会话版本。
  * must_change_password 缺省时视为 false（向旧 token 兼容）。
  *
  * @param token - JWT 字符串
@@ -103,9 +105,21 @@ export async function verifyToken(
     algorithms: ["HS256"],
   });
 
+  // 仅缺省字段兼容历史令牌，拒绝负数、非整数或其他类型。
+  const sessionVersion = payload.session_version === undefined
+    ? 0
+    : payload.session_version;
+  if (
+    typeof sessionVersion !== "number" ||
+    !Number.isSafeInteger(sessionVersion) || sessionVersion < 0
+  ) {
+    throw new Error("认证令牌会话版本无效");
+  }
+
   return {
     sub: payload.sub as string,
     role: payload.role as string,
+    session_version: sessionVersion,
     // 旧 token 无 must_change_password 字段，缺省视为 false
     must_change_password: (payload.must_change_password as boolean) ?? false,
     jti: payload.jti,

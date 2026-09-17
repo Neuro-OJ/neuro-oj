@@ -435,7 +435,10 @@ docker compose down     # 停止
 - 错误处理：统一 `AppError` 继承体系（6 个子类），全局 `onError` 捕获，带
   `request_id`
 - 密码强度：≥8 位、含大小写字母和数字
-- JWT：HS256、iss/aud 校验、24h 有效期（无刷新机制）、`jti` 已生成但未持久化校验
+- JWT：HS256、iss/aud 校验、24h 有效期（无刷新机制）；`jti` 校验 Redis
+  撤销记录，`session_version` 与用户表实时比较。改密、重置和补设密码原子递增
+  版本，使全部旧会话失效；历史 JWT 缺省为版本 0。签发必须使用凭据校验时读取
+  或本次 UPDATE 返回的版本，不能在校验后重新读取版本给旧凭据续权。
 - 分值：×100 整数值存储（`scoreToDb`/`scoreFromDb`），避免浮点误差
 - 迁移：Drizzle ORM migrator，`drizzle/` 目录下 SQL 文件按序执行
 - `_journal.json` 与 SQL 文件必须一致，删除文件需同步更新 journal

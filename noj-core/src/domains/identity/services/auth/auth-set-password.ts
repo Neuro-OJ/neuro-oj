@@ -1,6 +1,6 @@
 /** 为尚未设置本地密码的 OAuth 用户补设密码。 */
 
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { users } from "./../../../../shared/db/schema.ts";
 import { hashPassword } from "./../security/password.ts";
@@ -44,10 +44,18 @@ export async function setPassword(
 
   validatePasswordStrength(newPassword, user.username, user.email);
   const now = new Date().toISOString();
-  await db.update(users).set({
+  const changed = await db.update(users).set({
     password_hash: await hashPassword(newPassword),
+    session_version: sql`${users.session_version} + 1`,
     updated_at: now,
-  }).where(eq(users.id, userId));
+  }).where(and(
+    eq(users.id, userId),
+    isNull(users.password_hash),
+    eq(users.session_version, user.session_version),
+  )).returning({ id: users.id });
+  if (changed.length === 0) {
+    throw new UnauthorizedError("密码已变更，请重新登录");
+  }
 
   await logAuthEvent(userId, clientIp ?? "unknown", "auth.change_password", {
     user_id: userId,

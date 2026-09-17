@@ -49,8 +49,9 @@ Deno.test({
       TEST_USER.password,
       "Aa123456",
     );
-    assertEquals(result.must_change_password, false);
-    assertEquals(result.id, testUserId);
+    assertEquals(result.user.must_change_password, false);
+    assertEquals(result.user.id, testUserId);
+    assertEquals(result.sessionVersion, 1);
     // 改密后能用新密码登录
     const loginResult = await loginUser({
       login: TEST_USER.email,

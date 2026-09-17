@@ -65,6 +65,7 @@ function requiresVerifiedEmail(c: Context): boolean {
 async function getActiveAccount(userId: string) {
   const [account] = await getDb().select({
     emailVerified: users.email_verified,
+    sessionVersion: users.session_version,
   }).from(users).where(and(eq(users.id, userId), isNull(users.deleted_at)))
     .limit(1);
   return account;
@@ -160,7 +161,7 @@ export async function optionalAuthMiddleware(
 
   if (payload) {
     const account = await getActiveAccount(payload.sub);
-    if (!account) {
+    if (!account || account.sessionVersion !== payload.session_version) {
       await next();
       return;
     }
@@ -207,6 +208,9 @@ export async function authMiddleware(c: Context, next: Next): Promise<void> {
 
   const account = await getActiveAccount(payload.sub);
   if (!account) throw new UnauthorizedError("账号不存在或已注销");
+  if (account.sessionVersion !== payload.session_version) {
+    throw new UnauthorizedError("登录会话已失效，请重新登录");
+  }
 
   // 强制改密拦截
   if (

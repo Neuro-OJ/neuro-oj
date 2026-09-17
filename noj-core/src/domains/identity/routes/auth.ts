@@ -582,7 +582,7 @@ auth.post(
     await enforceAccountRateLimit(userId, PWCHANGE_NAMESPACE);
 
     try {
-      const user = await changePassword(
+      const { user, sessionVersion } = await changePassword(
         userId,
         body.old_password,
         body.new_password,
@@ -602,6 +602,7 @@ auth.post(
         sub: user.id,
         role: "user",
         must_change_password: false,
+        session_version: sessionVersion,
       });
 
       return c.json({ data: { user, token: newToken } }, 200);

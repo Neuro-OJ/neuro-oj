@@ -176,6 +176,7 @@ export async function loginUser(
     sub: user.id,
     role: jwtRole,
     must_change_password: user.must_change_password,
+    session_version: user.session_version,
   });
 
   // PR-2 审计：登录成功

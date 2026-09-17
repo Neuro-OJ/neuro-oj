@@ -13,6 +13,7 @@ export const SCHEMA_DDL: string[] = [
     email_verify_token TEXT,
     email_verify_expires_at TEXT,
     password_hash TEXT,
+    session_version INTEGER NOT NULL DEFAULT 0,
     bio TEXT NOT NULL DEFAULT '',
     must_change_password BOOLEAN NOT NULL DEFAULT false,
     community_activity_visibility TEXT NOT NULL DEFAULT 'following'

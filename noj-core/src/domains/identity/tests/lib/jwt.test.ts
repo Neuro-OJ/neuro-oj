@@ -9,6 +9,27 @@ import { signToken, verifyToken } from "../../services/security/jwt.ts";
 const hasJwtSecret = !!Deno.env.get("JWT_SECRET");
 
 Deno.test({
+  name: "jwt: 会话版本往返且拒绝畸形版本",
+  ignore: !hasJwtSecret,
+  fn: async () => {
+    const token = await signToken({
+      sub: "version-user",
+      role: "user",
+      session_version: 7,
+    });
+    assertEquals((await verifyToken(token)).session_version, 7);
+    for (const session_version of [-1, 1.5, "1", null]) {
+      const invalid = await new SignJWT({ role: "user", session_version })
+        .setProtectedHeader({ alg: "HS256" })
+        .setIssuer("noj-core").setAudience("noj-ui")
+        .setSubject("version-user").setIssuedAt().setExpirationTime("1h")
+        .sign(new TextEncoder().encode(Deno.env.get("JWT_SECRET")));
+      await assertRejects(() => verifyToken(invalid), Error, "会话版本无效");
+    }
+  },
+});
+
+Deno.test({
   name: "jwt: signToken 返回有效的 JWT 字符串",
   ignore: !hasJwtSecret,
   fn: async () => {

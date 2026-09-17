@@ -29,6 +29,8 @@ export const users = pgTable(
     email_verify_expires_at: text("email_verify_expires_at"),
     /** 本地密码 bcrypt 哈希；OAuth 新用户在补设密码前为 NULL */
     password_hash: text("password_hash"),
+    /** 凭据变更时原子递增，用于撤销该用户此前签发的全部会话。 */
+    session_version: integer("session_version").notNull().default(0),
     /** 个人简介（Markdown 格式） */
     bio: text("bio").notNull().default(""),
     /**
