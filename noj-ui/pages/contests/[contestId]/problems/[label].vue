@@ -4,6 +4,7 @@ import type { ObjectiveQuestion } from '~/composables/useObjective'
 import { QUESTION_TYPE_LABELS } from '~/composables/useObjective'
 import { publicUrl } from '~/utils/publicIdentifiers'
 import { extractApiError } from '~/utils/apiError'
+import { toContestProblemView } from '~/utils/problemView'
 
 /**
  * 竞赛题目详情页：
@@ -11,6 +12,9 @@ import { extractApiError } from '~/utils/apiError'
  *   （/contests/:id/problems/:label/editor）
  * - 客观题套卷（is_objective）：内联渲染客观题表单，
  *   竞赛模式一次性提交（contest_id 携带），不展示解析（防泄题）
+ *
+ * #511：头部与题面改用 `components/problem/*` 共用组件，
+ * 消除第二份题面实现与第二套硬编码难度色（`bg-green-100` 等）。
  */
 definePageMeta({ middleware: 'auth', ssr: false })
 
@@ -31,8 +35,11 @@ const { data, pending, error, refresh } = await useFetch<{ data: ContestProblem 
 const problem = computed(() => data.value?.data ?? null)
 const contest = computed(() => contestData.value?.data ?? null)
 
-const isObjective = computed(() => problem.value?.is_objective === true)
-const isArtifact = computed(() => problem.value?.submission_mode === 'artifact')
+/** 统一视图模型：与独立题目页共用同一形状（#511）。 */
+const problemView = computed(() => (problem.value ? toContestProblemView(problem.value) : null))
+
+const isObjective = computed(() => problemView.value?.is_objective === true)
+const isArtifact = computed(() => problemView.value?.submission_mode === 'artifact')
 
 // ── artifact 提交 ──
 const artifactFile = ref<File | null>(null)
@@ -70,17 +77,6 @@ async function handleArtifactSubmit() {
   } finally {
     artifactSubmitting.value = false
   }
-}
-
-const difficultyLabel: Record<string, string> = {
-  easy: '简单',
-  medium: '中等',
-  hard: '困难',
-}
-const badgeColors: Record<string, string> = {
-  easy: 'bg-green-100 text-green-700',
-  medium: 'bg-yellow-100 text-yellow-700',
-  hard: 'bg-red-100 text-red-800',
 }
 
 // 去做题：仅竞赛进行中且为参赛者/管理员时可进入编辑器；
@@ -183,159 +179,155 @@ async function onSubmit() {
 <template>
   <div class="min-h-[calc(100vh-64px)] bg-bg-page p-4 lg:p-6">
     <AsyncContent
-      :status="pending ? 'loading' : error ? 'error' : problem ? 'data' : 'empty'"
+      :status="pending ? 'loading' : error ? 'error' : problemView ? 'data' : 'empty'"
       error="竞赛题目加载失败"
       @retry="refresh"
     >
-      <div v-if="problem" class="mx-auto flex max-w-[960px] flex-col gap-4">
-        <header class="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-white px-4 py-3">
-          <NuxtLink
-            :to="publicUrl('contest', contestId)"
-            class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
-          >
-            <UIcon name="i-lucide-arrow-left" class="size-4" />返回竞赛
-          </NuxtLink>
-          <span class="h-5 w-px bg-border" />
-          <span class="flex size-8 items-center justify-center rounded-lg bg-bg-dark font-mono text-sm font-bold text-white">{{ problem.label }}</span>
-          <div class="min-w-0 flex-1">
-            <h1 class="truncate text-base font-bold text-text">{{ problem.title }}</h1>
-            <p class="text-xs text-text-muted">{{ contest?.title }} · {{ problem.display_id }}</p>
-          </div>
-          <span
-            v-if="!isObjective"
-            class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold"
-            :class="badgeColors[problem.difficulty] || ''"
-          >
-            {{ difficultyLabel[problem.difficulty] || problem.difficulty }}
-          </span>
-          <span
-            v-else
-            class="inline-flex items-center rounded-full bg-signal/10 px-2 py-0.5 text-xs font-semibold text-primary"
-          >
-            客观题
-          </span>
-          <template v-if="!isObjective && !isArtifact && canUseEditor">
+      <div v-if="problemView" class="mx-auto flex max-w-[960px] flex-col gap-4">
+        <ProblemHeader :problem="problemView">
+          <!-- 返回竞赛入口：竞赛内返回语义，由 #512 面包屑统一后收敛 -->
+          <template #leading>
+            <NuxtLink
+              :to="publicUrl('contest', contestId)"
+              class="inline-flex items-center gap-1.5 text-xs text-text-secondary no-underline hover:text-primary"
+            >
+              <UIcon name="i-lucide-arrow-left" class="size-3.5" />返回竞赛
+            </NuxtLink>
+            <span class="flex size-7 items-center justify-center rounded-lg bg-bg-dark font-mono text-xs font-bold text-white">{{ problem?.label }}</span>
+          </template>
+          <template #titleSuffix>
+            <span class="text-xs text-text-muted">{{ contest?.title }} · {{ problem?.display_id }}</span>
+          </template>
+          <template #actions>
             <UButton
+              v-if="!isObjective && !isArtifact && canUseEditor"
               color="primary"
               class="gap-1.5 px-4 py-2 text-xs"
-              :to="`/editor/${problem.display_id}?contest=${contestId}&label=${label}`"
+              :to="`/editor/${problem?.display_id}?contest=${contestId}&label=${label}`"
             >
               <UIcon name="i-lucide-pencil-ruler" class="size-3.5" />去做题
             </UButton>
+            <span v-else-if="!isObjective && !isArtifact && accessHint" class="text-xs text-text-muted">{{ accessHint }}</span>
           </template>
-          <span v-else-if="!isObjective && !isArtifact && accessHint" class="text-xs text-text-muted">{{ accessHint }}</span>
-        </header>
+        </ProblemHeader>
 
         <!-- 客观题：内联答题表单（竞赛一次性提交） -->
-        <template v-if="isObjective">
-          <AsyncContent
-            :status="qError ? 'error' : questions.length ? 'data' : 'empty'"
-            error="客观题加载失败"
-            empty-text="该套卷暂无小题"
-          >
-            <div v-if="questions.length" class="flex flex-col gap-4">
-              <section
-                v-for="(q, idx) in questions"
-                :key="q.id"
-                class="rounded-xl border border-border bg-white p-5"
-              >
-                <div class="mb-3 flex items-center gap-2">
-                  <span class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-text-secondary">
-                    {{ idx + 1 }}. {{ QUESTION_TYPE_LABELS[q.type] }}
-                  </span>
-                </div>
-                <p class="mb-3 whitespace-pre-wrap text-sm text-text">{{ q.prompt }}</p>
+        <ProblemStatement
+          v-if="isObjective"
+          title="作答"
+          :content="problemView.description"
+          :collapsible="false"
+          :copyable="false"
+        >
+          <template #body>
+            <AsyncContent
+              :status="qError ? 'error' : questions.length ? 'data' : 'empty'"
+              error="客观题加载失败"
+              empty-text="该套卷暂无小题"
+            >
+              <div v-if="questions.length" class="flex flex-col gap-4">
+                <section
+                  v-for="(q, idx) in questions"
+                  :key="q.id"
+                  class="rounded-xl border border-border bg-white p-5"
+                >
+                  <div class="mb-3 flex items-center gap-2">
+                    <span class="inline-flex items-center rounded bg-bg-sunken px-2 py-0.5 text-xs font-medium text-text-secondary">
+                      {{ idx + 1 }}. {{ QUESTION_TYPE_LABELS[q.type] }}
+                    </span>
+                  </div>
+                  <p class="mb-3 whitespace-pre-wrap text-sm text-text">{{ q.prompt }}</p>
 
-                <div v-if="q.type === 'judge'" class="flex flex-col gap-2">
-                  <label
-                    v-for="opt in q.options"
-                    :key="opt.key"
-                    class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
-                    :class="isSelected(q.id, opt.key === 'true') ? 'border-signal bg-signal/5' : 'border-border hover:bg-gray-50'"
-                  >
-                    <input
-                      type="radio"
-                      :name="q.id"
-                      class="accent-primary"
-                      :disabled="alreadySubmitted"
-                      :checked="isSelected(q.id, opt.key === 'true')"
-                      @change="toggleOption(q.id, opt.key === 'true')"
-                    />
-                    {{ opt.text }}
-                  </label>
-                </div>
+                  <div v-if="q.type === 'judge'" class="flex flex-col gap-2">
+                    <label
+                      v-for="opt in q.options"
+                      :key="opt.key"
+                      class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+                      :class="isSelected(q.id, opt.key === 'true') ? 'border-signal bg-signal/5' : 'border-border hover:bg-bg-page'"
+                    >
+                      <input
+                        type="radio"
+                        :name="q.id"
+                        class="accent-primary"
+                        :disabled="alreadySubmitted"
+                        :checked="isSelected(q.id, opt.key === 'true')"
+                        @change="toggleOption(q.id, opt.key === 'true')"
+                      />
+                      {{ opt.text }}
+                    </label>
+                  </div>
 
-                <div v-else-if="q.type === 'single'" class="flex flex-col gap-2">
-                  <label
-                    v-for="opt in q.options"
-                    :key="opt.key"
-                    class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
-                    :class="isSelected(q.id, opt.key) ? 'border-signal bg-signal/5' : 'border-border hover:bg-gray-50'"
-                  >
-                    <input
-                      type="radio"
-                      :name="q.id"
-                      class="accent-primary"
-                      :disabled="alreadySubmitted"
-                      :checked="isSelected(q.id, opt.key)"
-                      @change="toggleOption(q.id, opt.key)"
-                    />
-                    <span class="font-medium">{{ opt.key }}.</span> {{ opt.text }}
-                  </label>
-                </div>
+                  <div v-else-if="q.type === 'single'" class="flex flex-col gap-2">
+                    <label
+                      v-for="opt in q.options"
+                      :key="opt.key"
+                      class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+                      :class="isSelected(q.id, opt.key) ? 'border-signal bg-signal/5' : 'border-border hover:bg-bg-page'"
+                    >
+                      <input
+                        type="radio"
+                        :name="q.id"
+                        class="accent-primary"
+                        :disabled="alreadySubmitted"
+                        :checked="isSelected(q.id, opt.key)"
+                        @change="toggleOption(q.id, opt.key)"
+                      />
+                      <span class="font-medium">{{ opt.key }}.</span> {{ opt.text }}
+                    </label>
+                  </div>
 
-                <div v-else class="flex flex-col gap-2">
-                  <label
-                    v-for="opt in q.options"
-                    :key="opt.key"
-                    class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
-                    :class="isSelected(q.id, opt.key) ? 'border-signal bg-signal/5' : 'border-border hover:bg-gray-50'"
-                  >
-                    <input
-                      type="checkbox"
-                      class="accent-primary"
-                      :disabled="alreadySubmitted"
-                      :checked="isSelected(q.id, opt.key)"
-                      @change="toggleOption(q.id, opt.key)"
-                    />
-                    <span class="font-medium">{{ opt.key }}.</span> {{ opt.text }}
-                  </label>
-                </div>
-              </section>
+                  <div v-else class="flex flex-col gap-2">
+                    <label
+                      v-for="opt in q.options"
+                      :key="opt.key"
+                      class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+                      :class="isSelected(q.id, opt.key) ? 'border-signal bg-signal/5' : 'border-border hover:bg-bg-page'"
+                    >
+                      <input
+                        type="checkbox"
+                        class="accent-primary"
+                        :disabled="alreadySubmitted"
+                        :checked="isSelected(q.id, opt.key)"
+                        @change="toggleOption(q.id, opt.key)"
+                      />
+                      <span class="font-medium">{{ opt.key }}.</span> {{ opt.text }}
+                    </label>
+                  </div>
+                </section>
 
-              <div
-                v-if="alreadySubmitted"
-                class="rounded-xl border border-green-200 bg-green-50 px-5 py-4 text-sm text-green-700"
-              >
-                <UIcon name="i-lucide-check-circle" class="mr-1" />
-                本套卷已提交（竞赛内仅可提交一次）<span v-if="lastScore !== null">，得分 {{ lastScore.toFixed(0) }} 分</span>
+                <div
+                  v-if="alreadySubmitted"
+                  class="rounded-xl border border-success-text/30 bg-success-text/5 px-5 py-4 text-sm text-success-text"
+                >
+                  <UIcon name="i-lucide-check-circle" class="mr-1" />
+                  本套卷已提交（竞赛内仅可提交一次）<span v-if="lastScore !== null">，得分 {{ lastScore.toFixed(0) }} 分</span>
+                </div>
+                <p v-else-if="submitError" class="text-sm text-error-text">{{ submitError }}</p>
+
+                <UButton
+                  v-if="!alreadySubmitted"
+                  class="w-full"
+                  color="primary"
+                  size="lg"
+                  :loading="submitting"
+                  :disabled="questions.length === 0 || !canUseEditor"
+                  @click="onSubmit"
+                >
+                  提交答案
+                </UButton>
+                <p v-else-if="!canUseEditor" class="text-center text-xs text-text-muted">{{ accessHint }}</p>
               </div>
-              <p v-else-if="submitError" class="text-sm text-red-600">{{ submitError }}</p>
+            </AsyncContent>
+          </template>
+        </ProblemStatement>
 
-              <UButton
-                v-if="!alreadySubmitted"
-                class="w-full"
-                color="primary"
-                size="lg"
-                :loading="submitting"
-                :disabled="questions.length === 0 || !canUseEditor"
-                @click="onSubmit"
-              >
-                提交答案
-              </UButton>
-              <p v-else-if="!canUseEditor" class="text-center text-xs text-text-muted">{{ accessHint }}</p>
-            </div>
-          </AsyncContent>
-        </template>
-
-        <!-- 编程题：题目陈述 -->
-        <section v-else class="rounded-xl border border-border bg-white p-6 lg:p-8">
-          <!-- artifact 题：zip 上传提交 -->
-          <div v-if="isArtifact" class="mb-6 rounded-xl border border-border bg-bg-page p-5">
+        <!-- 编程题：题面（artifact 题在题面上方追加 zip 上传） -->
+        <template v-else>
+          <section v-if="isArtifact" class="rounded-xl border border-border bg-white p-6">
             <h2 class="text-base font-semibold text-text mb-1">提交产物（zip）</h2>
             <p class="text-sm text-text-secondary">
               请上传包含 <code class="font-mono text-primary">submission.py</code> 的 zip 压缩包。
-              大小上限：{{ formatMb(problem.artifact_max_size_mb) }}。
+              大小上限：{{ formatMb(problemView.artifact_max_size_mb) }}。
             </p>
             <div class="mt-4 flex flex-col gap-3">
               <input
@@ -344,8 +336,8 @@ async function onSubmit() {
                 class="block w-full text-sm text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-signal file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-signal/80"
                 @change="(e: Event) => artifactFile = (e.target as HTMLInputElement).files?.[0] ?? null"
               />
-              <div v-if="artifactError" class="text-sm text-red-600">{{ artifactError }}</div>
-              <div v-if="artifactSuccessId" class="text-sm text-green-600">
+              <div v-if="artifactError" class="text-sm text-error-text">{{ artifactError }}</div>
+              <div v-if="artifactSuccessId" class="text-sm text-success-text">
                 提交成功！
                 <NuxtLink :to="publicUrl('submission', artifactSuccessId)" class="text-primary no-underline hover:underline">查看评测结果</NuxtLink>
               </div>
@@ -357,9 +349,9 @@ async function onSubmit() {
                 <span v-if="!canUseEditor" class="text-xs text-text-muted">{{ accessHint }}</span>
               </div>
             </div>
-          </div>
-          <MarkdownRenderer :content="problem.description" />
-        </section>
+          </section>
+          <ProblemStatement :content="problemView.description" />
+        </template>
       </div>
     </AsyncContent>
   </div>
