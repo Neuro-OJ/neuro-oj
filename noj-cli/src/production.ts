@@ -1,4 +1,5 @@
 import { dirname, join, resolve } from "@std/path";
+import { UsageError } from "./util/args.ts";
 
 /** 兼容现有 .env.prod 生产部署；JSON 部署继续使用 deploy/maintain 子命令。 */
 export const PRODUCTION_COMMANDS = new Set([
@@ -50,7 +51,12 @@ export async function findProductionDir(
   throw new Error("未找到生产安装目录，请使用 --dir 指定 setup.sh 安装的目录");
 }
 
-/** 仅消费 CLI 自身的 --dir，其他参数原样交给生产驱动，禁止 shell 字符串拼接。 */
+/**
+ * 仅消费 CLI 自身的 --dir，其他参数原样交给生产驱动，禁止 shell 字符串拼接。
+ *
+ * 复用 {@link parseDirArg} 以保证 4 处调用点的 `--dir`/`--dir=` 语义与
+ * 缺值报错完全一致（#517 E6）。
+ */
 export function parseProductionArgs(args: string[]): {
   dir?: string;
   forwarded: string[];
@@ -62,7 +68,7 @@ export function parseProductionArgs(args: string[]): {
     if (arg === "--dir" || arg.startsWith("--dir=")) {
       const value = arg === "--dir" ? args[++i] : arg.slice(6);
       if (!value || value.startsWith("--")) {
-        throw new Error("--dir 需要一个安装目录");
+        throw new UsageError("--dir 需要一个安装目录");
       }
       dir = value;
     } else {
@@ -77,22 +83,33 @@ export async function runProduction(
   command: string,
   args: string[],
 ): Promise<number> {
+  // 解析错误属用法错误（退出码 2），与运行失败（1）区分（#517 E9）。
+  // 这里**不**捕获异常：交给 `run()` 的全局兜底统一格式化，
+  // 避免同一 CLI 内出现两套错误处理（#517 根因表第 2 行）。
+  const parsed = parseProductionArgs(args);
+  let dir: string;
   try {
-    const parsed = parseProductionArgs(args);
-    const dir = await findProductionDir(parsed.dir);
-    const child = new Deno.Command("bash", {
-      args: [
-        join(dir, "scripts/deploy/production.sh"),
-        command,
-        ...parsed.forwarded,
-      ],
-      stdin: "inherit",
-      stdout: "inherit",
-      stderr: "inherit",
-    }).spawn();
-    return (await child.status).code;
+    dir = await findProductionDir(parsed.dir);
   } catch (error) {
-    console.error(`noj-cli ${command}: ${(error as Error).message}`);
-    return 1;
+    throw new ProductionDirError((error as Error).message);
+  }
+  const child = new Deno.Command("bash", {
+    args: [
+      join(dir, "scripts/deploy/production.sh"),
+      command,
+      ...parsed.forwarded,
+    ],
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  }).spawn();
+  return (await child.status).code;
+}
+
+/** 生产安装目录定位失败：属运行失败（退出码 1），非用法错误。 */
+export class ProductionDirError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProductionDirError";
   }
 }
