@@ -28,7 +28,8 @@
 #
 # 进一步优化留待 issue：替换基础镜像为 debian-slim 后再尝试 AOT compile。
 # =============================================================================
-FROM denoland/deno:alpine-2.8.0
+# Deno 版本与 .dvmrc 一致（由 scripts/check-deno-version.ts 强制）。
+FROM denoland/deno:alpine-2.9.5
 
 # docker-compose.e2e.yml noj-core healthcheck 用 wget 探测 /health 端点。
 # Alpine 基础镜像默认不带 wget，必须 apk add。--no-cache 避免增加镜像体积。
