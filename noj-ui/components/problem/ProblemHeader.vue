@@ -61,6 +61,12 @@ const suppressed = computed(
         >
           客观题
         </span>
+        <!--
+          难度徽章（#511 评审修正）：早先难度只在独立页右栏的 ProblemMetaCard 渲染，
+          而竞赛做题页不挂载该卡片，导致**竞赛页难度彻底消失**（相对重构前是回归）。
+          放入头部后两种来源都可见，难度色仍只走 DifficultyBadge 一处。
+        -->
+        <DifficultyBadge v-if="problem.difficulty" :difficulty="problem.difficulty" />
       </div>
       <div class="flex flex-wrap items-center gap-3">
         <h1 class="text-2xl font-bold text-text">{{ problem.title }}</h1>

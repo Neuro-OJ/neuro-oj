@@ -350,7 +350,12 @@ async function onSubmit() {
               </div>
             </div>
           </section>
-          <ProblemStatement :content="problemView.description" />
+          <!--
+            竞赛页题面不折叠（#511 评审修正）：重构前渲染完整 MarkdownRenderer，
+            改用共用组件后默认 collapsible=true + expanded=false 会把题面截断到 384px，
+            属未记录的回归。竞赛场景需要一眼看全题面，故显式关闭折叠。
+          -->
+          <ProblemStatement :content="problemView.description" :collapsible="false" />
         </template>
       </div>
     </AsyncContent>
