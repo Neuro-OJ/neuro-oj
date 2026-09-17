@@ -31,6 +31,7 @@ import { maintainReset } from "./maintain/reset.ts";
 import { realDriver } from "./maintain/backup_driver.ts";
 import { runServerForeground } from "./runtime/process.ts";
 import {
+  findProductionDir,
   PRODUCTION_COMMANDS,
   ProductionDirError,
   runProduction,
@@ -44,6 +45,9 @@ import {
   UsageError,
   validatePort,
 } from "./util/args.ts";
+import { CONTAINER_COMMANDS, parseContainerCommand } from "./container.ts";
+import { runInContainer } from "./container_run.ts";
+import { detectProfile, type ProfileName, realProfileFs } from "./profile.ts";
 
 /** CLI 执行上下文，供各子命令共享。 */
 export interface CommandContext {
@@ -124,12 +128,33 @@ export async function run(argv: string[]): Promise<number> {
     return EXIT_OK;
   }
 
+  // `--profile` / `--debug` 是 CLI 自身的全局选项，不转发给子命令
+  const { profile: explicitProfile, rest: argvRest } = extractProfile(argv);
+  const topCommand = argvRest[0];
+  const topRest = argvRest.slice(1);
+
   try {
+    if (topCommand === undefined) {
+      console.log(printHelp());
+      return EXIT_OK;
+    }
+
+    // 非法 --profile 立即报错（fail fast），而不是等到子命令内部才失败
+    validateProfileName(explicitProfile);
+
+    // Tier 3：容器包装（纯新增，不影响既有命令）
+    const container = parseContainerCommand([topCommand, ...topRest]);
+    if (container.matched) {
+      return await dispatchContainer(container, topRest);
+    }
+
     const ctx: CommandContext = {
       cwd: Deno.cwd(),
       deployDir: findDeployDir(),
     };
-    return await dispatchCommand(command, rest, ctx);
+    return await dispatchCommand(topCommand, topRest, ctx, {
+      explicitProfile,
+    });
   } catch (error) {
     if (error instanceof UsageError) {
       console.error(`noj-cli ${command}: ${error.message}`);
@@ -148,6 +173,151 @@ export async function run(argv: string[]): Promise<number> {
     }
     return EXIT_FAILURE;
   }
+}
+
+/** 统一的错误输出与退出码映射（供 run 与测试复用）。 */
+export function handleError(
+  command: string,
+  error: unknown,
+  argv: string[] = [],
+): number {
+  const debug = isDebug(argv);
+  if (error instanceof UsageError) {
+    console.error(`noj-cli ${command}: ${error.message}`);
+    return EXIT_USAGE;
+  }
+  // ProductionDirError 与未预期错误都是「运行失败」，但后者才需要栈帧提示
+  const classified = error instanceof ProductionDirError;
+  console.error(`noj-cli ${command}: ${(error as Error).message}`);
+  if (debug) {
+    console.error((error as Error).stack ?? "");
+  } else if (!classified) {
+    console.error("（加 --debug 查看完整栈）");
+  }
+  return EXIT_FAILURE;
+}
+
+/**
+ * 剥离 CLI 自身的全局选项（`--profile`、`--debug`），其余原样保留。
+ *
+ * 这两个选项语义属于 noj-cli 本身，**不能**透传给子命令或底层脚本。
+ */
+export function extractProfile(argv: string[]): {
+  profile: string | undefined;
+  rest: string[];
+} {
+  let profile: string | undefined;
+  const rest: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if (arg === "--profile") {
+      const value = argv[i + 1];
+      if (value === undefined || value.startsWith("--")) {
+        throw new UsageError("--profile 需要一个值（prod 或 stack）");
+      }
+      profile = value;
+      i++;
+    } else if (arg.startsWith("--profile=")) {
+      profile = arg.slice("--profile=".length);
+    } else {
+      rest.push(arg);
+    }
+  }
+  return { profile, rest };
+}
+
+/**
+ * 执行 Tier 3 容器命令。
+ *
+ * 需要生产安装目录（含 `docker-compose.prod.yml` 与 `.env.prod`）。
+ * `--dry-run` 只打印将执行的命令。退出码原样透传。
+ */
+export async function dispatchContainer(
+  match: { service: string; args: string[] },
+  tail: string[],
+): Promise<number> {
+  if (wantsHelp(tail)) {
+    console.log(renderCommandHelp(
+      `noj-cli ${match.args.join(" ")} [选项]`,
+      [
+        "在 noj-server 容器内执行服务端管理命令（Tier 3）。",
+        "",
+        "说明:",
+        `  等价于 docker compose … run --rm --entrypoint /app/bin/noj ${match.service} ${
+          match.args.join(" ")
+        }`,
+        "  交互式输入（如隐藏密码）会透传到容器。",
+        "",
+        "选项:",
+        "  --dir <path>   生产安装目录",
+        "  --dry-run      仅打印将执行的 compose 命令",
+      ],
+    ));
+    return EXIT_OK;
+  }
+
+  const dryRun = tail.includes("--dry-run");
+  const dirOverride = parseDirArg(tail);
+  const dir = await findProductionDir(dirOverride, Deno.cwd());
+  // CLI 自身的选项（--dir/--dry-run）不得进入容器命令，否则会被
+  // 容器内的 noj 当作未知参数而报错。
+  const cleaned = stripCliOwnedFlags(match.args);
+  return await runInContainer({
+    dir,
+    service: match.service,
+    command: cleaned,
+    dryRun,
+  });
+}
+
+/** 取第一个位置参数（跳过选项及其值）。 */
+export function firstPositional(
+  args: string[],
+  valueFlags: string[] = ["--dir", "--profile"],
+): string {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (valueFlags.includes(arg)) {
+      i++; // 跳过该选项的值
+      continue;
+    }
+    if (arg.startsWith("-")) continue;
+    return arg;
+  }
+  return "";
+}
+
+/**
+ * 剔除属于 noj-cli 自身的选项（`--dir` 及其值、`--dry-run`），
+ * 使容器内的 noj 只看到它认识的参数。
+ */
+export function stripCliOwnedFlags(args: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--dry-run") continue;
+    if (arg === "--dir") {
+      i++; // 连同值一起跳过
+      continue;
+    }
+    if (arg.startsWith("--dir=")) continue;
+    out.push(arg);
+  }
+  return out;
+}
+
+/** 校验 `--profile` 取值；未给出时返回 undefined（交由探测决定）。 */
+export function validateProfileName(value?: string): ProfileName | undefined {
+  if (value === undefined) return undefined;
+  const result = detectProfile({
+    explicit: value,
+    start: Deno.cwd(),
+    ...realProfileFs(),
+  });
+  if (result.profile === null) {
+    throw new UsageError(result.error ?? `无效的 --profile: ${value}`);
+  }
+  return result.profile;
 }
 
 /** 生成顶层帮助文本（等价于 {@link renderHelp}，保留旧导出名）。 */
@@ -343,11 +513,40 @@ function resolveDeployDir(
   return dirOverride ?? ctx.deployDir ?? findDeployDir(ctx.cwd);
 }
 
+/** 分发选项（#518：profile 相关行为）。 */
+export interface DispatchOptions {
+  /** `--profile` 显式值；缺省时由探测决定。 */
+  explicitProfile?: string;
+  /** 由 `stack` 委派而来：不打印旧名废弃提示。 */
+  stackAlias?: boolean;
+}
+
+/**
+ * 解析 profile，失败时抛出 {@link UsageError}。
+ *
+ * `--profile` 与 `--dir` 正交：profile 定语法，`--dir` 定位置。
+ */
+export function resolveProfile(
+  options: DispatchOptions,
+  cwd: string,
+): ProfileName {
+  const result = detectProfile({
+    explicit: options.explicitProfile,
+    start: cwd,
+    ...realProfileFs(),
+  });
+  if (result.profile === null) {
+    throw new UsageError(result.error ?? "无法判定 profile");
+  }
+  return result.profile;
+}
+
 /** 将命令分发到对应处理函数。供测试与 run 共用。 */
 export async function dispatchCommand(
   command: string,
   args: string[],
   ctx: CommandContext,
+  options: DispatchOptions = {},
 ): Promise<number> {
   // 生产命令的 help 由 CLI 自己回答，不转发给 bash（#517 E12）
   if (PRODUCTION_COMMANDS.has(command) && wantsHelp(args)) {
@@ -356,6 +555,37 @@ export async function dispatchCommand(
   }
   if (PRODUCTION_COMMANDS.has(command)) {
     return await runProduction(command, args);
+  }
+
+  // `stack` = 原 deploy + maintain 合并（#518，验收：覆盖原两者全部能力）
+  if (command === "stack") {
+    // 子命令是第一个非选项参数，且不是某个选项的值
+    // （`stack --dir X status` 必须识别出 status，而不是把 X 当子命令）
+    const sub = firstPositional(args);
+    if (wantsHelp(args) || args.length === 0) {
+      console.log(renderCommandHelp("noj-cli stack <子命令> [选项]", [
+        "JSON 编排模式的部署与运维（原 deploy + maintain 合并）。",
+        "",
+        "子命令:",
+        "  init | up | down | restart | status     部署生命周期",
+        "  logs | config | verify | reset          运维",
+        "  backup                                  备份（create/verify/restore/drill）",
+        "",
+        "选项:",
+        "  --dir <path>   部署目录",
+        "",
+        "提示: deploy / maintain 作为别名仍可用，并会打印废弃提示。",
+      ]));
+      return wantsHelp(args) ? EXIT_OK : EXIT_USAGE;
+    }
+    // 生命周期类交由 deploy 分支处理，运维类交由 maintain 分支处理。
+    // 通过 stackAlias 标记跳过废弃提示（提示只针对直接使用旧名的调用方）。
+    const DEPLOY_SUBS = new Set(["init", "up", "down", "restart", "status"]);
+    const target = DEPLOY_SUBS.has(sub) ? "deploy" : "maintain";
+    return await dispatchCommand(target, args, ctx, {
+      ...options,
+      stackAlias: true,
+    });
   }
 
   switch (command) {
@@ -384,6 +614,9 @@ export async function dispatchCommand(
     }
     case "deploy": {
       const sub = args[0] ?? "";
+      if (!options.stackAlias && !wantsHelp(args)) {
+        console.error(deprecationNotice("deploy", sub));
+      }
       // `deploy <sub> --help` 必须只读：绝不能进入 init 向导（#517 E2）
       if (wantsHelp(args.slice(1)) || sub === "--help" || sub === "-h") {
         console.log(renderDeployHelp(sub));
@@ -456,6 +689,9 @@ export async function dispatchCommand(
     }
     case "maintain": {
       const sub = args[0] ?? "";
+      if (!options.stackAlias && !wantsHelp(args)) {
+        console.error(deprecationNotice("maintain", sub));
+      }
       if (wantsHelp(args.slice(1)) || sub === "--help" || sub === "-h") {
         console.log(renderMaintainHelp(sub));
         return EXIT_OK;
@@ -715,6 +951,21 @@ export async function dispatchCommand(
       return EXIT_USAGE;
     }
   }
+}
+
+/**
+ * 执行旧名（`deploy`/`maintain`）并打印废弃提示。
+ *
+ * 迁移策略（#518）：**先做加法、后做改名**。旧名保留为别名至少一个版本周期，
+ * 因此这里只提示、不阻断。`--help` 不打印提示，避免污染帮助输出。
+ */
+export function deprecationNotice(
+  legacy: string,
+  sub: string,
+): string {
+  const suffix = sub === "" ? "" : " " + sub;
+  return "提示: " + legacy + " 已合并为 stack；请改用 noj-cli stack" + suffix +
+    "。旧名将在后续版本移除。";
 }
 
 /** 生产命令的 CLI 侧帮助（不转发给底层 bash 脚本，#517 E12）。 */
