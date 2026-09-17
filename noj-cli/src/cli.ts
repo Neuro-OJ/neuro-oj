@@ -45,7 +45,7 @@ import {
   UsageError,
   validatePort,
 } from "./util/args.ts";
-import { CONTAINER_COMMANDS, parseContainerCommand } from "./container.ts";
+import { parseContainerCommand } from "./container.ts";
 import { runInContainer } from "./container_run.ts";
 import { detectProfile, type ProfileName, realProfileFs } from "./profile.ts";
 
@@ -128,19 +128,36 @@ export async function run(argv: string[]): Promise<number> {
     return EXIT_OK;
   }
 
-  // `--profile` / `--debug` 是 CLI 自身的全局选项，不转发给子命令
-  const { profile: explicitProfile, rest: argvRest } = extractProfile(argv);
-  const topCommand = argvRest[0];
-  const topRest = argvRest.slice(1);
-
   try {
+    // `--profile` / `--debug` 是 CLI 自身的全局选项，不转发给子命令。
+    // 必须放在 try 内：`--profile` 缺值时 extractProfile 抛 UsageError，
+    // 若在 try 外抛出会绕过统一兜底，打印栈帧与源码路径（评审 B2）。
+    const { profile: explicitProfile, rest: argvRest } = extractProfile(argv);
+    const topCommand = argvRest[0];
+    const topRest = argvRest.slice(1);
+
     if (topCommand === undefined) {
       console.log(printHelp());
       return EXIT_OK;
     }
 
-    // 非法 --profile 立即报错（fail fast），而不是等到子命令内部才失败
-    validateProfileName(explicitProfile);
+    // B1（评审）：profile 必须**真正参与分发**。早先只有显式 --profile 会走
+    // 校验，自动探测这条链（含「歧义/未命中必须报错」）在真实 CLI 中不可达，
+    // 导致 mixed 目录静默按生产路径执行、stack 意图误入 prod 路径。
+    // 现在：无显式值时也执行探测（歧义/未命中抛 UsageError）。
+    // 纯工具命令（不依赖部署模式）豁免，否则任意目录下 version 都会失败。
+    const effectiveProfile = PROFILE_AGNOSTIC.has(topCommand)
+      ? (explicitProfile !== undefined
+        ? validateProfileName(explicitProfile)!
+        : null)
+      : (explicitProfile !== undefined
+        ? validateProfileName(explicitProfile)!
+        : detectProfileOrNull());
+
+    // 命令必须与判定出的 profile 相容（显式或探测皆然）。
+    if (effectiveProfile !== null) {
+      assertCommandAllowedInProfile(effectiveProfile, topCommand);
+    }
 
     // Tier 3：容器包装（纯新增，不影响既有命令）
     const container = parseContainerCommand([topCommand, ...topRest]);
@@ -257,7 +274,8 @@ export async function dispatchContainer(
   }
 
   const dryRun = tail.includes("--dry-run");
-  const dirOverride = parseDirArg(tail);
+  // 评审 M1：安装目录用 --install-dir，避免与容器命令自身的 --dir 冲突
+  const dirOverride = parseInstallDirArg(tail);
   const dir = await findProductionDir(dirOverride, Deno.cwd());
   // CLI 自身的选项（--dir/--dry-run）不得进入容器命令，否则会被
   // 容器内的 noj 当作未知参数而报错。
@@ -287,6 +305,72 @@ export function firstPositional(
   return "";
 }
 
+/** 移除第一个位置参数（保留其余顺序与选项值）。 */
+export function removeFirstPositional(
+  args: string[],
+  valueFlags: string[] = ["--dir", "--install-dir", "--profile"],
+): string[] {
+  const out: string[] = [];
+  let removed = false;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (valueFlags.includes(arg)) {
+      out.push(arg);
+      const value = args[i + 1];
+      if (value !== undefined) {
+        out.push(value);
+        i++;
+      }
+      continue;
+    }
+    if (!removed && !arg.startsWith("-")) {
+      removed = true;
+      continue;
+    }
+    out.push(arg);
+  }
+  return out;
+}
+
+/**
+ * 校验命令是否属于该 profile 的集合（评审 B3）。
+ *
+ * 这是「`--profile` 显式生效」的落地方式：显式指定 profile 后，
+ * 命令必须与之相容，否则说明用户搞混了两套模式——早失败、给可操作提示。
+ */
+export function assertCommandAllowedInProfile(
+  profile: ProfileName,
+  command: string,
+): void {
+  const PROD_ONLY = new Set([...PRODUCTION_COMMANDS]);
+  const STACK_ONLY = new Set([
+    "stack",
+    "deploy",
+    "maintain",
+    "run-server",
+    "db",
+    "init",
+    "bootstrap",
+    "problems",
+    "problem",
+    "search",
+  ]);
+  if (profile === "stack" && PROD_ONLY.has(command)) {
+    throw new UsageError(
+      `${command} 属于生产模式（.env.prod），与 --profile stack 不符。
+` +
+        "请改用 --profile prod，或使用 stack 对应命令。",
+    );
+  }
+  if (profile === "prod" && STACK_ONLY.has(command)) {
+    throw new UsageError(
+      `${command} 属于 JSON 编排模式（noj-deploy.json），与 --profile prod 不符。
+` +
+        "请改用 --profile stack，或使用生产模式对应命令。",
+    );
+  }
+}
+
 /**
  * 剔除属于 noj-cli 自身的选项（`--dir` 及其值、`--dry-run`），
  * 使容器内的 noj 只看到它认识的参数。
@@ -296,14 +380,70 @@ export function stripCliOwnedFlags(args: string[]): string[] {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg === "--dry-run") continue;
-    if (arg === "--dir") {
-      i++; // 连同值一起跳过
+    // 评审 M1：Tier 3 命令的 --dir 存在双语义冲突——noj-cli 用它指安装目录，
+    // 而容器内的 noj 用它指子命令参数（如 problems import --dir <包目录>）。
+    // 因此 CLI 自身的安装目录选项改名为 --install-dir，容器侧的 --dir 原样透传。
+    if (arg === "--install-dir") {
+      i++;
       continue;
     }
-    if (arg.startsWith("--dir=")) continue;
+    if (arg.startsWith("--install-dir=")) continue;
     out.push(arg);
   }
   return out;
+}
+
+/**
+ * 解析 Tier 3 命令的安装目录（`--install-dir`）。
+ *
+ * 与 `--dir` 分开的原因见 {@link stripCliOwnedFlags}（评审 M1）。
+ */
+export function parseInstallDirArg(args: string[]): string | undefined {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--install-dir") {
+      const value = args[i + 1];
+      if (value === undefined || value.startsWith("--")) {
+        throw new UsageError("--install-dir 需要一个安装目录");
+      }
+      return value;
+    }
+    if (arg.startsWith("--install-dir=")) {
+      const value = arg.slice("--install-dir=".length);
+      if (value === "") throw new UsageError("--install-dir 需要一个安装目录");
+      return value;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * **不依赖** profile 判定的命令：纯工具/自描述命令。
+ *
+ * 这些命令在任意目录都应有意义（如 `version`、`problem lint`），
+ * 若也要求探测成功，会让用户在普通目录下无法使用它们。
+ */
+export const PROFILE_AGNOSTIC = new Set([
+  "version",
+  "help",
+  "problem",
+  "problems",
+  "doctor",
+  "completions",
+]);
+
+/**
+ * 自动探测 profile。
+ *
+ * **歧义或都无法识别时抛 {@link UsageError}**（#518 验收：失败必须报错，
+ * 不得静默取默认值）——猜错模式会把命令作用到错误的目标。
+ */
+export function detectProfileOrNull(): ProfileName | null {
+  const result = detectProfile({ start: Deno.cwd(), ...realProfileFs() });
+  if (result.profile === null) {
+    throw new UsageError(result.error ?? "无法判定 profile");
+  }
+  return result.profile;
 }
 
 /** 校验 `--profile` 取值；未给出时返回 undefined（交由探测决定）。 */
@@ -582,7 +722,10 @@ export async function dispatchCommand(
     // 通过 stackAlias 标记跳过废弃提示（提示只针对直接使用旧名的调用方）。
     const DEPLOY_SUBS = new Set(["init", "up", "down", "restart", "status"]);
     const target = DEPLOY_SUBS.has(sub) ? "deploy" : "maintain";
-    return await dispatchCommand(target, args, ctx, {
+    // 评审 B1：必须把**子命令置于首位**再委派，否则下游 `args[0]` 会把
+    // `--dir` 当成子命令（`stack --dir X status` 曾因此丢失 status 与 --dir）。
+    const delegated = [sub, ...removeFirstPositional(args)];
+    return await dispatchCommand(target, delegated, ctx, {
       ...options,
       stackAlias: true,
     });

@@ -1,16 +1,23 @@
 import { assertEquals } from "@std/assert";
 import {
+  assertCommandAllowedInProfile,
+  deprecationNotice,
   dispatchCommand,
   EXIT_FAILURE,
   EXIT_OK,
   EXIT_USAGE,
+  extractProfile,
+  firstPositional,
   parseBackupArgs,
   parseDeployArgs,
   parseInitOptions,
+  parseInstallDirArg,
   parseMaintainArgs,
   parsePort,
   printHelp,
+  removeFirstPositional,
   run,
+  stripCliOwnedFlags,
 } from "./cli.ts";
 import type { CommandContext } from "./cli.ts";
 
@@ -536,4 +543,163 @@ Deno.test("parseBackupArgs: 非法 --zstd-level 报错", () => {
     threw = true;
   }
   assertEquals(threw, true);
+});
+// ── #518：profile 与 Tier 3 ────────────────────────────────────────
+
+Deno.test("前向兼容：--profile 剥离后子命令不受影响", () => {
+  const r = extractProfile(["--profile", "stack", "deploy", "status"]);
+  assertEquals(r.profile, "stack");
+  assertEquals(r.rest, ["deploy", "status"]);
+  assertEquals(extractProfile(["--profile=prod", "status"]).profile, "prod");
+  assertEquals(extractProfile(["status"]).profile, undefined);
+});
+
+Deno.test("extractProfile: 缺值报用法错误", () => {
+  let threw = false;
+  try {
+    extractProfile(["--profile"]);
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, true);
+});
+
+Deno.test("firstPositional: 跳过选项及其值", () => {
+  assertEquals(firstPositional(["--dir", "/opt", "status"]), "status");
+  assertEquals(firstPositional(["--follow", "logs"]), "logs");
+  assertEquals(firstPositional(["--dir=/opt", "backup"]), "backup");
+  assertEquals(firstPositional([]), "");
+  assertEquals(firstPositional(["--dir", "/opt"]), "");
+});
+
+Deno.test("stripCliOwnedFlags: 剔除 --install-dir 与 --dry-run，保留容器侧 --dir", () => {
+  // 评审 M1：CLI 自身的安装目录选项是 --install-dir；
+  // 容器命令自己的 --dir（如 problems import --dir <包目录>）必须透传。
+  assertEquals(
+    stripCliOwnedFlags(["db", "migrate", "--dry-run", "--install-dir", "/opt"]),
+    ["db", "migrate"],
+  );
+  assertEquals(
+    stripCliOwnedFlags(["db", "migrate", "--install-dir=/opt"]),
+    ["db", "migrate"],
+  );
+  // 业务参数（含容器侧 --dir）必须保留
+  assertEquals(
+    stripCliOwnedFlags([
+      "bootstrap",
+      "first-admin",
+      "--username",
+      "alice",
+      "--dir",
+      "/pkg",
+    ]),
+    ["bootstrap", "first-admin", "--username", "alice", "--dir", "/pkg"],
+  );
+});
+
+Deno.test("deprecationNotice: 提示替代命令", () => {
+  assertEquals(
+    deprecationNotice("deploy", "status").includes("stack status"),
+    true,
+  );
+  assertEquals(deprecationNotice("maintain", "").includes("stack"), true);
+});
+
+Deno.test("stack 无子命令返回用法错误，--help 返回 0", async () => {
+  const original = console.log;
+  console.log = () => {};
+  try {
+    assertEquals(await dispatchCommand("stack", [], ctx), EXIT_USAGE);
+    assertEquals(await dispatchCommand("stack", ["--help"], ctx), EXIT_OK);
+  } finally {
+    console.log = original;
+  }
+});
+// ── 评审修正的回归防线（#518 评审 B1/B2/B3/M1/M2）────────────────────
+
+Deno.test("评审 B1: stack 委派时子命令置于首位（--dir 不被当子命令）", () => {
+  // removeFirstPositional 必须移除子命令本身，保留选项与其值
+  const delegated = removeFirstPositional(["--dir", "/opt", "status"]);
+  assertEquals(delegated, ["--dir", "/opt"]);
+  // 委派结果的首元素是子命令，下游 args[0] 才能正确识别
+  assertEquals(["status", ...delegated][0], "status");
+});
+
+Deno.test("评审 B2: --profile 缺值走统一兜底（用法错误 2，无栈帧）", async () => {
+  const orig = console.error;
+  let err = "";
+  console.error = (...a: unknown[]) => {
+    err += a.join(" ") + "\n";
+  };
+  try {
+    assertEquals(await run(["--profile"]), EXIT_USAGE);
+  } finally {
+    console.error = orig;
+  }
+  assertEquals(err.includes("--profile"), true);
+  assertEquals(err.includes("Uncaught"), false, "不得出现未捕获异常");
+  assertEquals(err.includes("    at "), false, "不得打印栈帧");
+  assertEquals(err.includes("file://"), false, "不得泄露源码路径");
+});
+
+Deno.test("评审 B3: --profile 真正参与分发（不相容命令报错）", async () => {
+  const orig = console.error;
+  let err = "";
+  console.error = (...a: unknown[]) => {
+    err += a.join(" ") + "\n";
+  };
+  let code = -1;
+  try {
+    // status 属生产模式，与 --profile stack 不符
+    code = await run(["--profile", "stack", "status"]);
+  } finally {
+    console.error = orig;
+  }
+  assertEquals(code, EXIT_USAGE);
+  assertEquals(err.includes("--profile"), true);
+});
+
+Deno.test("评审 B3: 相容的 profile 组合放行到后续逻辑", () => {
+  // prod 下 status 相容（不抛错）；stack 下 stack 命令相容
+  assertCommandAllowedInProfile("prod", "status");
+  assertCommandAllowedInProfile("stack", "stack");
+  // 不相容则抛 UsageError
+  let threw = false;
+  try {
+    assertCommandAllowedInProfile("stack", "status");
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, true);
+});
+
+Deno.test("评审 M1: stripCliOwnedFlags 保留容器命令的 --dir", () => {
+  // 容器命令自身的 --dir 必须透传
+  assertEquals(
+    stripCliOwnedFlags(["problems", "import", "--dir", "/pkg"]),
+    ["problems", "import", "--dir", "/pkg"],
+  );
+  // CLI 自身的 --install-dir 与 --dry-run 被剔除
+  assertEquals(
+    stripCliOwnedFlags([
+      "problems",
+      "import",
+      "--dir",
+      "/pkg",
+      "--install-dir",
+      "/opt",
+      "--dry-run",
+    ]),
+    ["problems", "import", "--dir", "/pkg"],
+  );
+  assertEquals(
+    stripCliOwnedFlags(["db", "migrate", "--install-dir=/opt"]),
+    ["db", "migrate"],
+  );
+});
+
+Deno.test("评审 M1: parseInstallDirArg 支持两种写法", () => {
+  assertEquals(parseInstallDirArg(["--install-dir", "/opt"]), "/opt");
+  assertEquals(parseInstallDirArg(["--install-dir=/opt"]), "/opt");
+  assertEquals(parseInstallDirArg([]), undefined);
 });

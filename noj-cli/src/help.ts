@@ -47,7 +47,7 @@ export const PRODUCTION_SECTION: HelpSection = {
       aliases: ["upgrade"],
     },
     { name: "backup", summary: "生产备份；子命令 create/verify/restore/drill" },
-    { name: "verify", summary: "生产配置**及镜像签名**校验" },
+    { name: "verify", summary: "生产配置与镜像签名校验（比 config 多验签名）" },
     {
       name: "config",
       summary: "生产配置校验（原 config check；不验镜像签名）",
@@ -60,8 +60,15 @@ export const PRODUCTION_SECTION: HelpSection = {
 export const STACK_SECTION: HelpSection = {
   title:
     "JSON 编排模式（noj-deploy.json + noj-secrets.json；源码开发，需 Deno）",
+  note: "以下命令支持 --dir <部署目录>；可用 --profile stack 显式指定模式。",
   entries: [
     { name: "doctor", summary: "环境检测" },
+    // #518：deploy + maintain 合并为 stack；旧名保留为别名
+    {
+      name: "stack",
+      summary:
+        "部署与运维：init/up/down/restart/status/logs/config/verify/reset/backup",
+    },
     { name: "deploy", summary: "部署生命周期 init/up/down/restart/status" },
     {
       name: "maintain",
@@ -69,6 +76,23 @@ export const STACK_SECTION: HelpSection = {
         "运维 logs/config/verify/reset/backup(create/verify/restore/drill)",
     },
     { name: "run-server", summary: "前台运行 noj-server 二进制" },
+  ],
+};
+
+/**
+ * Tier 3 服务端管理分区（#518 P5）。
+ *
+ * 这些命令把约 150 字符的 compose 调用收敛为短命令。
+ */
+export const TIER3_SECTION: HelpSection = {
+  title: "服务端管理（Tier 3；在 noj-server 容器内执行生产安装的 CLI）",
+  note: "以下命令支持 --install-dir <安装目录> 与 --dry-run。",
+  entries: [
+    { name: "db migrate", summary: "执行数据库迁移" },
+    { name: "init system", summary: "初始化系统基础数据" },
+    { name: "bootstrap first-admin", summary: "创建首个管理员" },
+    { name: "problems build | import", summary: "构建 / 导入题目包" },
+    { name: "search reindex", summary: "全量重建搜索索引" },
   ],
 };
 
@@ -81,6 +105,10 @@ export const GLOBAL_SECTION: HelpSection = {
     {
       name: "--debug",
       summary: "错误时打印完整栈帧（排查用；亦可设 NOJ_CLI_DEBUG=1）",
+    },
+    {
+      name: "--profile <prod|stack>",
+      summary: "显式指定部署模式；缺省按目录特征自动探测（探测失败会报错）",
     },
   ],
 };
@@ -96,6 +124,7 @@ export const EXIT_CODES: Array<{ code: number; meaning: string }> = [
 export const HELP_SECTIONS: HelpSection[] = [
   PRODUCTION_SECTION,
   STACK_SECTION,
+  TIER3_SECTION,
   GLOBAL_SECTION,
 ];
 
