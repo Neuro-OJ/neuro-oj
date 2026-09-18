@@ -1015,3 +1015,75 @@ Deno.test({
     assertEquals(boardForbidden.status, 403);
   },
 });
+
+/**
+ * 2026-09-14 评审回归：`setPostOfficial` 此前只有服务层定义与测试、**全仓零 HTTP
+ * 路由调用**，导致"官方题解"能力半交付——徽章能显示，但没有任何入口能标记它，
+ * 审核员也无法标记他人的题解，W1 验收标准未达成。
+ *
+ * 本用例锁定新补上的 `PATCH /posts/:postId/official` 的端到端行为。
+ */
+Deno.test({
+  name: "community route: PATCH /posts/:postId/official 标记与取消官方题解",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const app = createApp();
+    const authorToken = await signToken({ sub: authorId, role: "user" });
+
+    // author 是 community-search-problem 的 owner（problem 无 owner_id → 非 owner），
+    // 故先把题目 owner 设为 author，使其具备标记权限
+    await getDb().update(problems).set({ owner_id: authorId })
+      .where(eq(problems.id, "community-search-problem"));
+
+    // 发布一条题解
+    const created = await jsonRequest(app, "/api/v1/community/posts", {
+      method: "POST",
+      token: authorToken,
+      body: {
+        type: "solution",
+        title: "待标记为官方的题解",
+        content: "题解正文",
+        problem_id: "community-search-problem",
+      },
+    });
+    assertEquals(created.status, 201);
+    const postId = (await created.json()).data.id;
+
+    // 标记官方
+    const marked = await jsonRequest(
+      app,
+      `/api/v1/community/posts/${postId}/official`,
+      { method: "PATCH", token: authorToken, body: { value: true } },
+    );
+    assertEquals(marked.status, 200);
+    assertEquals((await marked.json()).data.post.is_official, true);
+
+    // 取消官方
+    const unmarked = await jsonRequest(
+      app,
+      `/api/v1/community/posts/${postId}/official`,
+      { method: "PATCH", token: authorToken, body: { value: false } },
+    );
+    assertEquals(unmarked.status, 200);
+    assertEquals((await unmarked.json()).data.post.is_official, false);
+
+    // 缺少 value 或类型错误 → 400（避免静默把 undefined 当 false 写库）
+    const badBody = await jsonRequest(
+      app,
+      `/api/v1/community/posts/${postId}/official`,
+      { method: "PATCH", token: authorToken, body: {} },
+    );
+    assertEquals(badBody.status, 400);
+
+    // 非 owner 用户不可标记（服务层强制，前端隐藏不作为保障）
+    const otherToken = await signToken({ sub: responderId, role: "user" });
+    const forbidden = await jsonRequest(
+      app,
+      `/api/v1/community/posts/${postId}/official`,
+      { method: "PATCH", token: otherToken, body: { value: true } },
+    );
+    assertEquals(forbidden.status === 403 || forbidden.status === 404, true);
+  },
+});

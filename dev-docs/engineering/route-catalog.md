@@ -58,6 +58,8 @@
 | GET | `/:id/profile` | noj-core/src/domains/identity/routes/users.ts |
 | GET | `/:id/questions` | noj-core/src/domains/catalog/routes/problems.ts |
 | GET | `/:id/ranking` | noj-core/src/domains/contest/routes/contests.ts |
+| GET | `/:id/stats` | noj-core/src/domains/catalog/routes/problems.ts |
+| GET | `/:id/stats/public` | noj-core/src/domains/catalog/routes/problems.ts |
 | GET | `/:id/status` | noj-core/src/domains/submission/routes/submissions.ts |
 | GET | `/:id/support-package` | noj-core/src/domains/catalog/routes/problems.ts |
 | GET | `/:id/template` | noj-core/src/domains/catalog/routes/problems.ts |
@@ -158,6 +160,7 @@
 | PATCH | `/comments/:commentId` | noj-core/src/domains/community/routes/community.ts |
 | PATCH | `/contests/:id/kind` | noj-core/src/domains/admin/routes/contest.ts |
 | PATCH | `/posts/:postId` | noj-core/src/domains/community/routes/community.ts |
+| PATCH | `/posts/:postId/official` | noj-core/src/domains/community/routes/community.ts |
 | PATCH | `/trainings/:id` | noj-core/src/domains/admin/routes/catalog.ts |
 | PATCH | `/users/:id/ban` | noj-core/src/domains/admin/routes/identity.ts |
 | PATCH | `/users/:id/role` | noj-core/src/domains/admin/routes/identity.ts |

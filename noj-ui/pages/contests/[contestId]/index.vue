@@ -38,7 +38,7 @@ const problemsLoading = ref(false)
 const problemsError = ref('')
 
 // ── Tabs（详情 / 题目 / 答疑 / 排名），状态同步到 ?tab= query ─────────
-const TAB_NAMES = ['detail', 'problems', 'clarifications', 'ranking'] as const
+const TAB_NAMES = ['detail', 'problems', 'clarifications', 'ranking', 'review'] as const
 type TabName = typeof TAB_NAMES[number]
 const activeTab = ref<TabName>('detail')
 const queryTab = route.query.tab
@@ -61,12 +61,19 @@ watch(() => route.query.tab, (value) => {
   }
 })
 
-const tabItems = [
-  { value: 'detail', label: '详情', icon: 'i-lucide-info', slot: 'detail' },
-  { value: 'problems', label: '题目', icon: 'i-lucide-list-checks', slot: 'problems' },
-  { value: 'clarifications', label: '答疑', icon: 'i-lucide-message-circle-question', slot: 'clarifications' },
-  { value: 'ranking', label: '排名', icon: 'i-lucide-trophy', slot: 'ranking' },
-]
+const tabItems = computed(() => {
+  const base = [
+    { value: 'detail', label: '详情', icon: 'i-lucide-info', slot: 'detail' },
+    { value: 'problems', label: '题目', icon: 'i-lucide-list-checks', slot: 'problems' },
+    { value: 'clarifications', label: '答疑', icon: 'i-lucide-message-circle-question', slot: 'clarifications' },
+    { value: 'ranking', label: '排名', icon: 'i-lucide-trophy', slot: 'ranking' },
+  ]
+  // 赛后复盘仅在竞赛结束后出现（读题面已在 contest-access 层放行）
+  if (contest.value?.status === 'ended') {
+    base.push({ value: 'review', label: '赛后复盘', icon: 'i-lucide-book-open-check', slot: 'review' })
+  }
+  return base
+})
 
 const countdown = computed(() => {
   if (!contest.value) return ''
@@ -243,6 +250,38 @@ onUnmounted(() => {
               <template #ranking>
                 <div class="p-2 pt-5 sm:p-4 sm:pt-6">
                   <ContestRanking :contest-id="contest.public_id || contest.id" />
+                </div>
+              </template>
+
+              <template #review>
+                <div class="p-2 pt-5 sm:p-4 sm:pt-6">
+                  <h2 class="text-lg font-bold text-text">赛后复盘</h2>
+                  <p class="mt-1 text-sm text-text-secondary">
+                    竞赛已结束，可回看题目、查阅官方题解并复盘本人提交。
+                  </p>
+                  <AsyncContent :status="problemsLoading ? 'loading' : problemsError ? 'error' : problems.length ? 'data' : 'empty'" :error="problemsError" @retry="loadProblems">
+                    <div class="mt-4 divide-y divide-border rounded-xl border border-border">
+                      <div v-for="item in problems" :key="item.problem_id" class="flex items-center justify-between gap-3 px-4 py-3">
+                        <div class="min-w-0">
+                          <span class="font-mono text-xs text-text-muted">{{ item.label }}</span>
+                          <NuxtLink :to="`/problems/${item.display_id || item.problem_id}`" class="ml-2 text-sm font-medium text-text no-underline hover:text-primary">
+                            {{ item.title }}
+                          </NuxtLink>
+                        </div>
+                        <UButton
+                          size="xs"
+                          color="primary"
+                          variant="outline"
+                          :to="`/problems/${item.display_id || item.problem_id}`"
+                        >
+                          查看题解
+                        </UButton>
+                      </div>
+                    </div>
+                    <template #empty>
+                      <p class="mt-4 text-sm text-text-muted">本场竞赛暂无题目。</p>
+                    </template>
+                  </AsyncContent>
                 </div>
               </template>
             </UTabs>

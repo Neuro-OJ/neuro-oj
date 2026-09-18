@@ -151,7 +151,18 @@ export const SCHEMA_DDL: string[] = [
     announcement TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    CHECK (end_time > start_time)
+    CHECK (end_time > start_time),
+    -- 时间形态约束（评审 C1 第三道防线，见迁移 0083）。
+    -- 正则用 [.] 而非 \\. —— drizzle-kit 的快照序列化会丢反斜杠。
+    -- 此处为 PGlite 全新建表，无存量行，故无需 NOT VALID。
+    CONSTRAINT contests_time_format_check CHECK (
+      start_time ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+      AND end_time ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+      AND (freeze_start_time IS NULL OR freeze_start_time ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$')
+      AND pg_input_is_valid(start_time, 'timestamptz')
+      AND pg_input_is_valid(end_time, 'timestamptz')
+      AND (freeze_start_time IS NULL OR pg_input_is_valid(freeze_start_time, 'timestamptz'))
+    )
   )`,
 
   `CREATE TABLE IF NOT EXISTS contest_problems (
@@ -514,6 +525,7 @@ export const SCHEMA_DDL: string[] = [
       CHECK (status IN ('draft', 'pending', 'published', 'hidden', 'deleted')),
     is_locked BOOLEAN NOT NULL DEFAULT false,
     is_pinned BOOLEAN NOT NULL DEFAULT false,
+    is_official BOOLEAN NOT NULL DEFAULT false,
     moderation_reason TEXT,
     published_at TEXT,
     created_at TEXT NOT NULL,
@@ -793,6 +805,7 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_community_posts_board ON community_posts (board_id, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_community_posts_published ON community_posts (type, is_pinned, created_at) WHERE status = 'published'",
   "CREATE INDEX IF NOT EXISTS idx_community_posts_pending ON community_posts (created_at) WHERE status = 'pending'",
+  "CREATE INDEX IF NOT EXISTS idx_community_posts_official ON community_posts (problem_id, is_official, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_community_comments_post ON community_comments (post_id, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_community_comments_author ON community_comments (author_id)",
   "CREATE INDEX IF NOT EXISTS idx_community_comments_parent ON community_comments (parent_id)",

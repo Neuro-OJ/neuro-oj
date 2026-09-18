@@ -58,6 +58,20 @@ export NOJ_ENV="${NOJ_ENV:-test}"
 # TRUNCATE 会作用到真实开发库。CI 需要真实 PG 时由 CI 显式传入。
 export JWT_SECRET="${JWT_SECRET:-noj-test-jwt-secret-fixed-value-with-32-chars-min}"
 
+# PGlite 模板缓存必须与当前 schema-ddl.ts 一致。
+#
+# 背景（2026-09-14 实测）：`createPGliteInstanceFromTemplate()` 是**同步**加载模板的，
+# 不做 hash 校验；校验只存在于 `ensurePGliteTemplateCached()`，而后者仅在
+# `deno task test` 的脚本里被调用。因此仅运行 `deno task test:domain <domain>`
+# 时（未设置 DATABASE_URL → PGlite 模式）会**静默复用过期模板**：
+# schema-ddl.ts 加了列但模板还是旧的 → 所有涉及该表的写入以
+# "column does not exist" 失败，看起来像产品缺陷而非缓存问题。
+#
+# 这里在 PGlite 模式（无 DATABASE_URL）下先重建/校验模板，保证本地结果可信。
+if [[ -z "${DATABASE_URL:-}" ]]; then
+  deno run -A scripts/prepare-pglite-template.ts >/dev/null
+fi
+
 # 每个 domain job 都需要先有 schema 和种子数据
 deno test -A --no-check --preload=tests/preload.ts \
   tests/00_migrate_test.ts tests/seed_bootstrap_admin_test.ts

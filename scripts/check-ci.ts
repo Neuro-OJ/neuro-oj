@@ -31,6 +31,10 @@ if (import.meta.main) {
   // 迁移安全：拦截"向已有表加 NOT NULL 列但无 DEFAULT"（存量库升级必失败，
   // 空库测试无法发现——见 2026-09-12 评审 §2.1 与 drizzle/0080）。
   await run(["deno", "run", "-A", "scripts/check-migration-safety.ts"]);
+  // 迁移快照链：drizzle/meta/*_snapshot.json 丢表会让下一次 db:generate 重新生成
+  // CREATE TABLE，空库测试通过而**存量部署必失败**（2026-09-14 实测：search_entries
+  // 自 0076 起从快照链消失，0082 因此生成了重复建表语句）。
+  await run(["deno", "run", "-A", "scripts/check-migration-snapshot-chain.ts"]);
   await run(["deno", "run", "-A", "scripts/check-metrics.ts"]);
   await run(["deno", "run", "-A", "scripts/check-runtime-contract.ts"]);
   await run(["deno", "run", "-A", "scripts/check-runbooks.ts"]);
@@ -77,6 +81,7 @@ if (import.meta.main) {
     "scripts/check-test-discovery_test.ts",
     "scripts/check-dashboards_test.ts",
     "scripts/check-migration-safety_test.ts",
+    "scripts/check-migration-snapshot-chain_test.ts",
     "scripts/verify-capability-seams_test.ts",
     "scripts/gen-route-catalog_test.ts",
     "scripts/silent-skip-report_test.ts",

@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { type AuthEnv, authMiddleware } from "./../middleware/auth.ts";
+import { optionalAuthMiddleware } from "./../middleware/auth.ts";
+import { checkPermission } from "./../services/security/permissions.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import {
   BadRequestError,
@@ -222,12 +224,17 @@ users.get("/:id/avatar", async (c) => {
 /**
  * 获取用户主页。
  * GET /api/v1/users/:id/profile
- * 公开访问，无需认证。
+ * 公开访问，可选认证（登录的审核员看到赛事题解，普通访问者看不到）。
  * 响应对象额外包含 `rank` 字段（number | null），表示该用户全站榜单排名。
+ *
+ * 赛期门控（2026-09-14 评审 High#1/#2）：题解列表与题解计数按审核员身份区分。
+ * 未登录时 `c.get("userId")` 为 undefined，`checkPermission` 权限集为空 → false。
  */
-users.get("/:id/profile", async (c) => {
+users.get("/:id/profile", optionalAuthMiddleware, async (c) => {
   const userId = await resolveUserId(c.req.param("id") as string);
-  const profile = await getUserProfileAggregate(userId);
+  // admin:full_access 通配放行由 checkPermission 内部处理
+  const moderator = await checkPermission(c, "community_moderation:review");
+  const profile = await getUserProfileAggregate(userId, moderator);
   // 追加 rank 字段：复用 rankings service 的 getMyRanking，确保排序逻辑一致
   const ranking = await getMyRanking(userId);
   return c.json({ data: { ...profile, rank: ranking?.rank ?? null } }, 200);
