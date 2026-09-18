@@ -148,3 +148,45 @@ export type {
 // maintain/reset（P4）
 export { maintainReset } from "./maintain/reset.ts";
 export type { ResetOptions } from "./maintain/reset.ts";
+
+// 纯 TS 重写内核（T2–T7）：生产配置 schema / .env.prod 读写 / 状态机 /
+// 输出通道 / 命令树。自 T2 起新建的模块，此前未从包入口再导出，
+// 导致 `deno check src/mod.ts` 不类型检查它们（T6 评审 carry-forward）。
+export {
+  ENV_KEYS,
+  isPlaceholder,
+  JUDGE_KEYS,
+  judgeEnabledError,
+  validateEnv,
+} from "./core/config-schema.ts";
+export type { EnvKeySpec } from "./core/config-schema.ts";
+export {
+  ENV_FILE_MODE,
+  parseEnvFile,
+  readEnvFile,
+  serializeEnvFile,
+  writeEnvFileAtomic,
+} from "./core/env-file.ts";
+// 注意：`transition`/`upIsNoOp`/`downIsNoOp` 已由上文 `state/machine.ts` 与
+// `deploy/state.ts` 导出且签名不同，这里显式重命名避免符号冲突
+//（`core/state.ts` 提供的是 prod 路径用的 `prodState`）。
+export { prodState } from "./core/state.ts";
+export {
+  downIsNoOp as coreDownIsNoOp,
+  transition as coreTransition,
+  upIsNoOp as coreUpIsNoOp,
+} from "./core/state.ts";
+export type {
+  DeployAction as CoreDeployAction,
+  TransitionResult as CoreTransitionResult,
+} from "./core/state.ts";
+export { emitHuman, emitJson, isJsonMode } from "./output/render.ts";
+export type { RenderIO } from "./output/render.ts";
+export {
+  COMMANDS,
+  declaredTopLevelNames,
+  EXIT_CODES,
+  findCommand,
+  renderCommandList,
+} from "./commands.ts";
+export type { CommandSpec, Tier } from "./commands.ts";

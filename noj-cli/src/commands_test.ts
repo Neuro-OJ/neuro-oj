@@ -1,0 +1,185 @@
+import { assert, assertEquals } from "@std/assert";
+import {
+  COMMANDS,
+  type CommandSpec,
+  declaredTopLevelNames,
+  findCommand,
+  renderCommandList,
+} from "./commands.ts";
+import { dispatchableTopLevelNames, KNOWN_TOP } from "./cli.ts";
+import { PRODUCTION_COMMANDS } from "./production.ts";
+import { CONTAINER_COMMANDS } from "./container.ts";
+
+/** 声明中出现的全部别名（反向门禁匹配用）。 */
+function declaredAliases(): Set<string> {
+  const out = new Set<string>();
+  for (const c of COMMANDS) for (const a of c.aliases ?? []) out.add(a);
+  return out;
+}
+
+/**
+ * 校验某条命令的后代：每个父级内子命令名唯一、name/summary 非空，并递归。
+ *
+ * 唯一性只在**同级**判定：`stack verify`（配置校验）与
+ * `stack backup verify`（快照校验）是两个不同命令，跨级同名是合法的。
+ */
+function assertSubcommandsValid(spec: CommandSpec, path: string): void {
+  const siblings = new Set<string>();
+  for (const sub of spec.subcommands ?? []) {
+    assert(sub.name.length > 0, `${path} 的子命令 name 不得为空`);
+    assert(sub.summary.length > 0, `${path} ${sub.name} 的 summary 不得为空`);
+    assertEquals(
+      siblings.has(sub.name),
+      false,
+      `${path} 的子命令名重复: ${sub.name}`,
+    );
+    siblings.add(sub.name);
+    assertSubcommandsValid(sub, `${path} ${sub.name}`);
+  }
+}
+
+Deno.test("COMMANDS: 非空，name/summary 非空，顶层 name 唯一", () => {
+  assert(COMMANDS.length > 0, "命令清单不得为空");
+  const seen = new Set<string>();
+  for (const c of COMMANDS) {
+    assert(c.name.length > 0, "顶层 name 不得为空");
+    assert(c.summary.length > 0, `${c.name} 的 summary 不得为空`);
+    assertEquals(seen.has(c.name), false, `顶层命令名重复: ${c.name}`);
+    seen.add(c.name);
+    // 子命令（递归）：同级内唯一、name/summary 非空
+    assertSubcommandsValid(c, c.name);
+  }
+});
+
+Deno.test("renderCommandList: 含全部顶层命令、分区标题与退出码", () => {
+  const text = renderCommandList();
+  // 顶层名必须是某一行的行首 token（避免被同名子命令"顺便"命中）
+  const firstTokens = new Set(
+    text.split("\n").map((l) => l.trim().split(/\s+/)[0] ?? ""),
+  );
+  for (const name of declaredTopLevelNames()) {
+    assert(firstTokens.has(name), `顶层 help 缺少命令 ${name}`);
+  }
+  for (
+    const title of [
+      "生产模式",
+      "JSON 编排模式",
+      "题目包管理",
+      "服务端管理",
+      "全局命令与选项",
+    ]
+  ) {
+    assert(text.includes(title), `help 缺少分区标题 ${title}`);
+  }
+  assert(text.includes("用法: noj-cli"), "help 缺少用法行");
+  assert(text.includes("退出码"), "help 缺少退出码分区");
+});
+
+Deno.test("防漂移门禁: 声明的顶层命令 ⊆ dispatcher 实际可处理集合", async () => {
+  const declared = declaredTopLevelNames();
+  const handled = await dispatchableTopLevelNames();
+  const undeclared = [...declared].filter((n) => !handled.has(n)).sort();
+  assertEquals(
+    undeclared,
+    [],
+    `这些命令出现在 help 但 dispatcher 无法处理（help 漂移）: ${
+      undeclared.join(", ")
+    }`,
+  );
+});
+
+Deno.test("防漂移门禁自检: 注入虚构命令必须被判为不可处理（非恒真）", async () => {
+  const handled = await dispatchableTopLevelNames();
+  const declared = declaredTopLevelNames();
+  // 基线：当前真实的漂移（正常应为空集；真有漂移时由主门禁报错）
+  const baseline = [...declared].filter((n) => !handled.has(n)).sort();
+  // 注入一个 dispatcher 绝不可能处理的虚构名，失败集合必须**恰好**增加它。
+  // 这样断言不会掩盖真实漂移，也不会因真实漂移而误报"门禁有效"。
+  const planted = new Set([...declared, "frobnicate-xyz"]);
+  const withPlant = [...planted].filter((n) => !handled.has(n)).sort();
+  assertEquals(
+    withPlant,
+    [...baseline, "frobnicate-xyz"].sort(),
+    "门禁必须能识别出未实现的声明，否则形同虚设",
+  );
+  assertEquals(handled.has("frobnicate-xyz"), false);
+});
+
+Deno.test("完整性: PRODUCTION_COMMANDS 全部出现在声明中", () => {
+  const declared = declaredTopLevelNames();
+  const aliases = declaredAliases();
+  const missing = [...PRODUCTION_COMMANDS]
+    .filter((n) => !declared.has(n) && !aliases.has(n))
+    .sort();
+  assertEquals(
+    missing,
+    [],
+    `生产命令未在 help 声明: ${missing.join(", ")}`,
+  );
+});
+
+Deno.test("反向门禁: cli.ts 自登记的命令名（KNOWN_TOP）必须已被声明", () => {
+  const declared = declaredTopLevelNames();
+  const aliases = declaredAliases();
+  const missing = [...KNOWN_TOP]
+    .filter((n) => !declared.has(n) && !aliases.has(n))
+    .sort();
+  assertEquals(
+    missing,
+    [],
+    `KNOWN_TOP 中未在 help 声明的命令（help 漏登记）: ${missing.join(", ")}`,
+  );
+});
+
+Deno.test("cli.ts 自洽: KNOWN_TOP ⊆ dispatcher 可处理集合", async () => {
+  const handled = await dispatchableTopLevelNames();
+  const missing = [...KNOWN_TOP].filter((n) => !handled.has(n)).sort();
+  assertEquals(
+    missing,
+    [],
+    `KNOWN_TOP 中 dispatcher 无法处理的命令: ${missing.join(", ")}`,
+  );
+});
+
+Deno.test("漂移回归: backup 声明包含 list 与 prune，且可从顶层 help 发现", () => {
+  const backup = findCommand("backup");
+  assert(backup !== undefined, "必须声明 backup");
+  const subs = new Set((backup.subcommands ?? []).map((s) => s.name));
+  for (const sub of ["create", "verify", "restore", "drill", "list", "prune"]) {
+    assert(subs.has(sub), `backup 子命令声明缺少 ${sub}`);
+  }
+  const text = renderCommandList();
+  assert(text.includes("backup list"), "顶层 help 应可发现 backup list");
+  assert(text.includes("backup prune"), "顶层 help 应可发现 backup prune");
+});
+
+Deno.test("准确: JSON 编排模式（stack）的 backup 不得声称支持 schedule", () => {
+  const stack = findCommand("stack");
+  const backup = stack?.subcommands?.find((s) => s.name === "backup");
+  assert(backup !== undefined, "stack 必须声明 backup 子命令");
+  assertEquals(
+    backup.summary.includes("schedule"),
+    false,
+    "stack（JSON 编排模式）的 backup 不支持 schedule",
+  );
+  assertEquals(
+    renderCommandList().includes("create/verify/restore/drill/schedule"),
+    false,
+    "help 不得声称 backup 支持 schedule（E5 回归）",
+  );
+});
+
+Deno.test("Tier 3 声明的顶层名必须都能被容器路由识别", () => {
+  const tier3Top = new Set(
+    CONTAINER_COMMANDS.map((prefix) => prefix[0] ?? "").filter((n) => n !== ""),
+  );
+  const declaredTier3 = COMMANDS.filter((c) => c.tier === "tier3").map(
+    (c) => c.name,
+  );
+  const missing = declaredTier3.filter((n) => !tier3Top.has(n));
+  assertEquals(
+    missing,
+    [],
+    `Tier 3 声明了容器路由不认识的名字: ${missing.join(", ")}`,
+  );
+});
