@@ -449,11 +449,52 @@ jj new
 
 ---
 
-## Task 12–26（概要；执行前逐个展开为完整任务块）
+## Task 12: install（唯一生产安装路径）
+
+**Files:**
+- Create: `noj-cli/src/prod/lifecycle.ts`（本任务只加 install 部分）
+- Create: `noj-cli/src/prod/lifecycle_test.ts`
+- Modify: `noj-cli/src/mod.ts`
+
+**Consumes**：T5 `PRODUCTION_MARKERS` 逻辑；T9 `downloadReleaseFiles`；T10 `PRODUCTION_MARKERS` 逻辑；T11 `checkRequiredValues`/`ensureBackupPassphrase`/`checkEnvFileMode`/向导；T4 状态机
+
+**背景（spec R4 + §3.3 洞 2）**：删除 `setup.sh`/`install.sh` 后，用户**手动下载 `noj-cli` 二进制**，在空目录执行 `noj-cli install --dir <dir>` 即应完成安装。安装所需文件（`docker-compose.prod.yml` + `.env.prod.example`）由 **T9 bootstrap** 从 Release 下载并校验；配置向导与校验由 **T11** 提供。本任务把三者接成一条**唯一**安装路径。
+
+**⚠️ 上游 CARRY-FORWARD（全部必须落实）**
+1. **T9**：`downloadReleaseFiles` 的 `overwrite` **默认 false（refuse）** → 首次安装传 `overwrite:false`（或省略），**升级路径必须显式 `overwrite:true`**。资产名 = `docker-compose.prod.yml`、`.env.prod.example`（各带 `.sha256`）。
+2. **T11**：调用顺序必须是 **先 `judgeEnabledError` → 再 `validateEnv`**；judge 未设置/空串 = **启用**。口令回填**仅进程环境变量抑制**（`configuredFromEnv`），`--passphrase-file` **不**抑制。须调 `checkEnvFileMode(mode, envFile)` 校验 `.env.prod` 权限 600/400。`cosignAvailable` 缺省 true，**须注入** `command -v cosign` 的真实结果。
+3. **T10**：`ComposeResult = CmdResult | string[]`，**必须 `Array.isArray` 收窄**；runner 不替调用方打印。
+4. **T11**：`backupPassphrasePath` 须经 `targetFile` 注入 `--passphrase-file` 路径。
+
+- [ ] **Step 1: 写失败测试**
+
+`lifecycle_test.ts`（注入 runner/fetcher/IO，**不触网、不起容器**）：
+- **空目录安装**：仅给二进制与 `--dir`，断言顺序 = 拉取资产 → 校验 → 生成/复用 `.env.prod` → 启动 compose；断言每一步的文件与调用。
+- **幂等/已安装**：目录含 `.env.prod` + `docker-compose.prod.yml` 时走升级路径（`overwrite:true`），保留既有 `.env.prod`（断言内容不被覆盖）。
+- **非交互**：`--non-interactive` 且缺必需配置 → **明确报错**，不进向导、不写文件。
+- **PATH 注册**：安装成功后注册 `bin/noj-cli`（对照 `production.sh:97-131` 的 `register_command` 语义：优先 `/usr/local/bin`，权限不足退 `~/.local/bin`，**拒绝覆盖同名且指向他处的命令**）。
+- **失败原子性**：资产校验失败 → 不启动 compose、不写 `.env.prod`。
+- **权限**：`.env.prod` 权限非 600/400 → 安装前拒绝。
+- **cosign**：`cosignAvailable=false` 时跳过验签并**给出可见警告**（不静默跳过）。
+
+- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+
+- [ ] **Step 3: 实现**
+
+`prod/lifecycle.ts` 的 `install()`：串起 T9 → T11 → T10，落状态（T4）并输出结果。所有外部命令经注入 runner；所有 IO 经注入接口。
+
+- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+
+- [ ] **Step 5: 提交** — `feat(cli): 实现唯一生产安装路径（bootstrap + 配置向导 + compose 启动）`
+
+**明确不做**：不删 bash（T24）；不实现 start/stop/restart/status/logs/uninstall/update（T13–T16）；不实现备份（T17–T19）。
+
+---
+
+## Task 13–26（概要；执行前逐个展开为完整任务块）
 
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
-| T12 install | `prod/lifecycle.ts` | 空目录仅凭二进制可完成；PATH 注册 |
 | T13 start/stop/restart/status | 同上 | 状态机 no-op 判定；退出码 |
 | T14 logs | 同上 | 着色契约；`--follow` |
 | T15 uninstall | 同上 | 确认词；`--all`；拒绝 Git/jj 工作区 |
