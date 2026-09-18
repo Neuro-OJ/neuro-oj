@@ -217,3 +217,24 @@ export {
   validateTargetDir,
 } from "./prod/bootstrap.ts";
 export type { DownloadReleaseFilesOptions, Fetcher } from "./prod/bootstrap.ts";
+// compose（T10）：prod 侧服务集与 compose 调用封装。生产编排只认仓库内固定的
+// docker-compose.prod.yml（T9 下载并校验），**不引入运行时渲染**（spec §3.4）。
+export {
+  composeArgs,
+  composeConfig,
+  composeDown,
+  composeLogs,
+  composePs,
+  composeUp,
+  PROD_COMPOSE_FILE,
+  PROD_ENV_FILE,
+  PROD_SERVICES,
+} from "./prod/compose.ts";
+export type {
+  ComposeArgsOptions,
+  ComposeLogsOptions,
+  ComposeOptions,
+  ComposeResult,
+  ProdProfile,
+  ProdService,
+} from "./prod/compose.ts";
