@@ -180,8 +180,24 @@ export type {
   DeployAction as CoreDeployAction,
   TransitionResult as CoreTransitionResult,
 } from "./core/state.ts";
-export { emitHuman, emitJson, isJsonMode } from "./output/render.ts";
-export type { RenderIO } from "./output/render.ts";
+export {
+  displayWidth,
+  emitHuman,
+  emitJson,
+  isJsonMode,
+  renderStatus,
+  renderTable,
+} from "./output/render.ts";
+export type { RenderIO, StatusOptions, TableOptions } from "./output/render.ts";
+// 品牌语义色（T8）：token → ANSI 映射与降级判定，文档单一事实源见
+// dev-docs/design/noj-design-tokens.md 的「CLI / 终端」section。
+export {
+  createTheme,
+  SEMANTIC_ANSI,
+  SEMANTIC_TOKEN_NAMES,
+  STATUS_SYMBOL,
+} from "./output/theme.ts";
+export type { SemanticToken, StatusKind, Theme } from "./output/theme.ts";
 export {
   COMMANDS,
   declaredTopLevelNames,
