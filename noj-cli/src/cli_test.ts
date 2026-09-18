@@ -19,6 +19,7 @@ import {
   parsePort,
   printHelp,
   removeFirstPositional,
+  renderDrillHelp,
   run,
   stripCliOwnedFlags,
 } from "./cli.ts";
@@ -27,6 +28,7 @@ import type { CommandContext } from "./cli.ts";
 import { parseContainerCommand } from "./container.ts";
 import { parseProblemArgs } from "./problem/command.ts";
 import { UsageError } from "./util/args.ts";
+import { baseConfig, secrets, writeFixture } from "./testing/helpers.ts";
 
 const ctx: CommandContext = { cwd: "/tmp", deployDir: null };
 
@@ -905,4 +907,196 @@ Deno.test("评审 B3: 单数 problem 也能到达 Tier 3 build/import", () => {
   assertEquals(parseContainerCommand(["problem", "lint"]).matched, false);
   assertEquals(parseContainerCommand(["problem", "pack"]).matched, false);
   assertEquals(parseContainerCommand(["problem", "init"]).matched, false);
+});
+
+// ── #516 评审 P1/P2：drill 快照形态与错误码（集成回归） ───────────────
+
+Deno.test("#516 评审 P1: maintain backup drill 对单文件快照返回用法错误 2，而非落到 preflight", async () => {
+  // 关键：必须在**参数阶段**失败。restore-drill.sh 的 preflight 会走出
+  // checkDrillResources（docker info）等外部调用；这里用真实 deployDir fixture，
+  // 若校验顺序写错就会变成「运行失败 1」或抛未捕获异常。
+  const dir = await Deno.makeTempDir();
+  try {
+    await writeFixture(
+      dir,
+      baseConfig({
+        components: {
+          postgres: {
+            enabled: true,
+            method: "docker",
+            image: "postgres:16-alpine",
+            internal_port: 5432,
+            env: {},
+          },
+        },
+      }),
+      secrets(),
+    );
+    const code = await dispatchCommand(
+      "maintain",
+      [
+        "backup",
+        "drill",
+        "/bk/snapshot-2026-09-17T10-30-00Z.nojbackup",
+        "--dir",
+        dir,
+        "--skip-judge",
+      ],
+      { cwd: dir, deployDir: dir },
+    );
+    assertEquals(code, EXIT_USAGE);
+  } finally {
+    await Deno.remove(dir, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("#516 评审 P2: maintain backup drill 非法子网返回用法错误 2", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    await writeFixture(
+      dir,
+      baseConfig({
+        components: {
+          postgres: {
+            enabled: true,
+            method: "docker",
+            image: "postgres:16-alpine",
+            internal_port: 5432,
+            env: {},
+          },
+        },
+      }),
+      secrets(),
+    );
+    for (
+      const subnet of [
+        "999.1.1.1/16",
+        "172.29.1.1/16",
+        "1.2.3/16",
+        "1.2.3.4/33",
+      ]
+    ) {
+      const code = await dispatchCommand(
+        "maintain",
+        [
+          "backup",
+          "drill",
+          dir + "/snapshot-2026-09-17T10-30-00Z",
+          "--dir",
+          dir,
+          "--subnet",
+          subnet,
+        ],
+        { cwd: dir, deployDir: dir },
+      );
+      assertEquals(code, EXIT_USAGE, "子网 " + subnet + " 应返回用法错误 2");
+    }
+  } finally {
+    await Deno.remove(dir, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("#516 评审 P1: drill help 必须说明单文件快照不可用并给出替代路径", () => {
+  const help = renderDrillHelp();
+  assertEquals(help.includes(".nojbackup"), true, "help 应说明单文件形态");
+  assertEquals(
+    help.includes("maintain backup restore"),
+    true,
+    "help 应给出可用的恢复路径",
+  );
+});
+// ── #516 评审 P1/P2：drill 快照形态与错误码（集成回归） ───────────────
+
+Deno.test("#516 评审 P1: maintain backup drill 对单文件快照返回用法错误 2，而非落到 preflight", async () => {
+  // 关键：必须在**参数阶段**失败。restore-drill.sh 的 preflight 会走出
+  // checkDrillResources（docker info）等外部调用；这里用真实 deployDir fixture，
+  // 若校验顺序写错就会变成「运行失败 1」或抛未捕获异常。
+  const dir = await Deno.makeTempDir();
+  try {
+    await writeFixture(
+      dir,
+      baseConfig({
+        components: {
+          postgres: {
+            enabled: true,
+            method: "docker",
+            image: "postgres:16-alpine",
+            internal_port: 5432,
+            env: {},
+          },
+        },
+      }),
+      secrets(),
+    );
+    const code = await dispatchCommand(
+      "maintain",
+      [
+        "backup",
+        "drill",
+        "/bk/snapshot-2026-09-17T10-30-00Z.nojbackup",
+        "--dir",
+        dir,
+        "--skip-judge",
+      ],
+      { cwd: dir, deployDir: dir },
+    );
+    assertEquals(code, EXIT_USAGE);
+  } finally {
+    await Deno.remove(dir, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("#516 评审 P2: maintain backup drill 非法子网返回用法错误 2", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    await writeFixture(
+      dir,
+      baseConfig({
+        components: {
+          postgres: {
+            enabled: true,
+            method: "docker",
+            image: "postgres:16-alpine",
+            internal_port: 5432,
+            env: {},
+          },
+        },
+      }),
+      secrets(),
+    );
+    const badSubnets = [
+      "999.1.1.1/16",
+      "172.29.1.1/16",
+      "1.2.3/16",
+      "1.2.3.4/33",
+    ];
+    for (const subnet of badSubnets) {
+      const code = await dispatchCommand(
+        "maintain",
+        [
+          "backup",
+          "drill",
+          dir + "/snapshot-2026-09-17T10-30-00Z",
+          "--dir",
+          dir,
+          "--subnet",
+          subnet,
+        ],
+        { cwd: dir, deployDir: dir },
+      );
+      assertEquals(code, EXIT_USAGE, "子网 " + subnet + " 应返回用法错误 2");
+    }
+  } finally {
+    await Deno.remove(dir, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("#516 评审 P1: drill help 必须说明单文件快照不可用并给出替代路径", () => {
+  const help = renderDrillHelp();
+  assertEquals(help.includes(".nojbackup"), true, "help 应说明单文件形态");
+  assertEquals(
+    help.includes("maintain backup restore"),
+    true,
+    "help 应给出可用的恢复路径",
+  );
 });

@@ -17,9 +17,13 @@
  * - 默认**清理**演练资源，`--keep` 才保留（失败路径也必须清理）；
  * - 项目名**拒绝包含 prod**，避免误伤生产；
  * - RPO/RTO 超限视为**演练失败**（退出码 1），不是警告；
- * - 资源不足在**开始前**报错（退出码 2），而不是中途失败。
+ * - 资源不足在**开始前**报错（退出码 2），而不是中途失败；
+ * - **只接受 `snapshot-*` 目录快照**：`.nojbackup` 单文件在**参数阶段**明确
+ *   拒绝（退出码 2）并给出可用恢复路径，不再让它落到 preflight 报
+ *   「快照目录不存在」（#516 评审 P1，详见 {@link assertDrillSnapshotSupported}）。
  */
 import { join } from "@std/path";
+import { UsageError } from "../util/args.ts";
 
 /** drill 选项。 */
 export interface DrillOptions {
@@ -62,31 +66,118 @@ export interface DrillResult {
  * **拒绝包含 `prod`**（#516 验收）：演练必须用独立 Compose 项目，
  * 若与生产同名，`docker compose down -v` 会**删掉生产数据卷**。
  * 这是不可逆的破坏，必须在开跑前拦下。
+ *
+ * 非法值抛 {@link UsageError}（退出码 2）——这是用法错误，不是演练失败。
  */
 export function assertDrillProjectName(name: string): void {
   if (name.trim() === "") {
-    throw new Error("演练项目名不能为空");
+    throw new UsageError("演练项目名不能为空");
   }
   if (/prod/i.test(name)) {
-    throw new Error(
+    throw new UsageError(
       `演练项目名不得包含 "prod"（收到 "${name}"）——` +
         `演练会执行 compose down -v，与生产同名会删除生产数据卷。`,
     );
   }
 }
 
-/** 校验子网格式（CIDR）。 */
+/**
+ * 校验子网格式（CIDR）。
+ *
+ * **必须挡住 Docker 也会拒绝的输入**（#516 评审 P2）：早先只检查「四段数字 +
+ * 前缀 8-30」，`999.1.1.1/16`、`172.29.1.1/16`（主机位不为 0）都会通过，
+ * 直到 `docker network create` 才失败——而此时演练已进入 prepare 阶段，
+ * 用户看到的是「演练失败(1)」，与 help/注释承诺的「参数错误 = 2」不符。
+ *
+ * 规则与 Docker/libnetwork 实测行为一致：
+ * - 每个 octet 必须在 0-255（`999.1.1.1/16` 直接拒绝）；
+ * - 前缀 8-30（与 restore-drill.sh / Compose 的可用范围一致）；
+ * - **主机位必须为 0**（即网络地址形式）：`172.29.1.1/16` 被 Docker
+ *   以 `invalid network config` 拒绝，必须在开跑前拦下。
+ *
+ * 非法值抛 {@link UsageError}（退出码 2），而不是普通 Error——否则会被
+ * CLI 当作运行失败(1)，正是评审指出的错误码不符。
+ */
 export function assertSubnetCidr(cidr: string): void {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(
     cidr.trim(),
   );
   if (!m) {
-    throw new Error(`子网必须是 CIDR 形式（如 172.29.0.0/16），收到 "${cidr}"`);
+    throw new UsageError(
+      `子网必须是 CIDR 形式（如 172.29.0.0/16），收到 "${cidr}"`,
+    );
+  }
+  const octets = [m[1], m[2], m[3], m[4]].map(Number);
+  for (const octet of octets) {
+    if (octet < 0 || octet > 255) {
+      throw new UsageError(`子网每段必须在 0-255 之间，收到 "${cidr}"`);
+    }
   }
   const prefix = Number(m[5]);
   if (prefix < 8 || prefix > 30) {
-    throw new Error(`子网前缀应在 8-30 之间，收到 /${prefix}`);
+    throw new UsageError(`子网前缀应在 8-30 之间，收到 /${prefix}`);
   }
+  // 主机位必须为 0：Docker 只接受网络地址形式的 --subnet。
+  // /31、/32 不在允许前缀内，用 32 位掩码判定即可。
+  const value = ((octets[0]! << 24) >>> 0) +
+    (octets[1]! << 16) +
+    (octets[2]! << 8) +
+    octets[3]!;
+  const mask = (0xffffffff << (32 - prefix)) >>> 0;
+  if (((value & mask) >>> 0) !== value) {
+    throw new UsageError(
+      `子网主机位必须为 0（应为网络地址，如 172.29.0.0/16），收到 "${cidr}"`,
+    );
+  }
+}
+
+/**
+ * 判断快照是否为 #515 统一后的**单文件** `.nojbackup`。
+ *
+ * `restore-drill.sh` 的 `validate_snapshot_path` 强制要求快照是
+ * `snapshot-*` **目录**，单文件会在 preflight 直接报「快照目录不存在」
+ * （#533/#514 已识别的格式，backup list 会把它标注为 single）。
+ */
+export function isSingleSnapshotFile(snapshotPath: string): boolean {
+  return snapshotPath.trim().toLowerCase().endsWith(".nojbackup");
+}
+
+/**
+ * 校验快照形态是否被 `drill` 支持（#516 评审 P1）。
+ *
+ * **单文件 `.nojbackup` 不能交给 `restore-drill.sh`，且不能靠「解包到临时
+ * 目录」绕过**——两种形态的内部布局本就不同（已实测确认）：
+ *
+ * | 条目 | 生产目录快照（`backup.sh create`） | 单文件 `.nojbackup`（`backupCreate`） |
+ * | --- | --- | --- |
+ * | `postgres.dump` | `pg_dump -Fc` **原始二进制** | base64 **文本**（经 stdout 传输） |
+ * | `env.prod.gpg` | GPG 加密的生产环境文件 | 不存在（环境在 `noj-secrets.json`） |
+ * | `postgres.restore-list` | `pg_restore --list` 结构清单 | 不存在 |
+ * | `redis.rdb` | redis-cli `--rdb` 原始二进制 | base64 文本 |
+ * | 顶层配置 | `.env.prod` | `noj-deploy.json` / `noj-secrets.json` |
+ *
+ * 因此仅解包得到的目录仍会卡在 `backup.sh verify`（「PostgreSQL dump 结构
+ * 清单为空」），即便补齐校验清单，`restore-drill.sh` 也会把 base64 文本
+ * 当作 `pg_restore` 输入而恢复出垃圾数据——**这是比报错更糟的静默错误**。
+ *
+ * 所以在**参数阶段**明确拒绝（退出码 2）并给出确实可用的恢复路径，
+ * 而不是假装支持后让用户在半途看到误导性的失败。
+ *
+ * @throws {UsageError} 收到单文件快照
+ */
+export function assertDrillSnapshotSupported(snapshotPath: string): void {
+  if (!isSingleSnapshotFile(snapshotPath)) return;
+  throw new UsageError(
+    `drill 不支持单文件快照：${snapshotPath}\n` +
+      "  原因：#515 的 .nojbackup 是 JSON 编排模式（maintain）的格式，其内部布局" +
+      "（base64 文本转储、noj-deploy/noj-secrets 配置、无 env.prod.gpg）" +
+      "与生产目录快照（restore-drill.sh 直接 pg_restore 的原始 dump）不同，" +
+      "解包后也无法安全恢复。\n" +
+      "  可用的恢复路径：\n" +
+      "    - JSON 编排模式恢复：noj-cli maintain backup restore <快照> --confirm\n" +
+      "    - 仅校验文件完整性：noj-cli maintain backup verify <快照>\n" +
+      "    - 生产目录快照（backup.sh create 生成 snapshot-* 目录）仍可直接 backup drill",
+  );
 }
 
 /**
@@ -181,6 +272,9 @@ export function buildDrillArgs(opts: DrillOptions): string[] {
  * 报告路径：显式 `--report` 优先；否则脚本默认写在快照目录下的
  * `restore-drill-report.txt`（评测发现 `--json` 里恒为 null，
  * 文本模式也不告知用户去哪找报告）。
+ *
+ * 只对**目录快照**调用：单文件已在 {@link assertDrillSnapshotSupported}
+ * 阶段被拒绝，不会走到这里（早先单文件会被拼成 `.nojbackup` 内部路径）。
  */
 export function resolveDrillReportPath(
   snapshotPath: string,
@@ -197,8 +291,11 @@ export function resolveDrillReportPath(
 }
 
 export async function runDrill(opts: DrillOptions): Promise<DrillResult> {
-  // 参数/资源错误 → 2（用法错误），在**开跑前**决出
+  // 参数/资源错误 → 2（用法错误），在**开跑前**决出。
+  // 纯参数校验放在最前：不依赖 Docker/磁盘，开跑前的用法错误不应被资源
+  // 检查的错误信息掩盖（#516 评审 P2 要求非法参数稳定返回 2）。
   assertDrillProjectName(opts.projectName ?? "noj-drill");
+  assertDrillSnapshotSupported(opts.snapshotPath);
   if (opts.subnet !== undefined) assertSubnetCidr(opts.subnet);
   await checkDrillResources(opts.dir);
 

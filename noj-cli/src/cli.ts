@@ -29,7 +29,7 @@ import {
 } from "./maintain/backup.ts";
 import { maintainReset } from "./maintain/reset.ts";
 import { listBackups, pruneBackups } from "./maintain/backup_list.ts";
-import { runDrill } from "./maintain/drill.ts";
+import { assertDrillSnapshotSupported, runDrill } from "./maintain/drill.ts";
 import { defaultBackupDir } from "./maintain/backup.ts";
 import { loadDeployConfig } from "./config/load.ts";
 import { realDriver } from "./maintain/backup_driver.ts";
@@ -932,6 +932,13 @@ export function renderDrillHelp(): string {
       "      耗时**分钟级**且**需要 Docker 资源**——不是随手可跑的检查。",
       "      只校验文件完整请用 `backup verify`（结构可解析的 `--deep` 由 #515 提供）。",
       "",
+      "快照形态: 只接受生产目录快照（`backup.sh create` 生成的 snapshot-* 目录）。",
+      "`.nojbackup` 单文件是 JSON 编排模式（maintain）的格式，内部布局",
+      "（base64 文本转储、noj-deploy/noj-secrets、无 env.prod.gpg）与生产目录",
+      "快照不同，无法交给 restore-drill.sh 安全恢复，故在此明确拒绝（退出码 2）。",
+      "单文件请改用 `maintain backup restore <快照> --confirm` 或",
+      "`maintain backup verify <快照>`。",
+      "",
       "选项:",
       "  --skip-judge            跳过 Judge/附件/评测验收（无 Judge 部署时）",
       "  --subnet CIDR           演练网络子网（默认 172.29.0.0/16）",
@@ -961,6 +968,15 @@ async function executeDrill(
 ): Promise<number> {
   if (a.snapshot === undefined) {
     console.error("backup drill: 需要 <snapshot> 路径");
+    return EXIT_USAGE;
+  }
+  // #516 评审 P1：单文件快照在**参数阶段**拒绝（退出码 2），
+  // 并给出可用的恢复路径；不再让它落到 restore-drill.sh 的 preflight
+  // 报「快照目录不存在」。runDrill 内也做同样校验（两条 profile 路径共用）。
+  try {
+    assertDrillSnapshotSupported(a.snapshot);
+  } catch (e) {
+    console.error("backup drill: " + (e as Error).message);
     return EXIT_USAGE;
   }
   try {

@@ -182,6 +182,19 @@ if NOJ_DRILL_TEST_LOG="$FAKE_LOG" \
   fail "非 snapshot-* 目录应被拒绝"
 else
   pass "非快照目录被拒绝"
+
+# 单文件 .nojbackup（#515 统一格式）不得落到「快照目录不存在」这一误导性错误，
+# 必须给出「本脚本不支持单文件」的明确原因（CLI 层已在参数阶段拒绝，
+# 见 noj-cli/src/maintain/drill.ts 的 assertDrillSnapshotSupported）。
+single_file="$BACKUP_DIR/snapshot-2026-09-17T10-30-00Z.nojbackup"
+: >"$single_file"
+if NOJ_DRILL_TEST_LOG="$FAKE_LOG"   NOJ_DRILL_TEST_VERIFY_OUTPUT="$TEST_ROOT/verify-output.txt"   bash "$DRILL_SCRIPT" "$single_file"   --passphrase-file "$PASSPHRASE_FILE"   --env-file "$ENV_FILE" --compose-file "$COMPOSE_FILE"   >/dev/null 2>"$TEST_ROOT/single.err"; then
+  fail "单文件 .nojbackup 快照应被拒绝"
+else
+  rgf "不支持单文件 .nojbackup" "$TEST_ROOT/single.err" ||
+    fail "单文件快照应给出明确原因，而不是「快照目录不存在」"
+  pass "单文件 .nojbackup 快照被明确拒绝"
+fi
 fi
 
 : >"$FAKE_LOG"

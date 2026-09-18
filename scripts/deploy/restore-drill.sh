@@ -206,6 +206,14 @@ write_failure_report() {
 }
 
 validate_snapshot_path() {
+  # #533/#514 起快照有两种形态：单文件 .nojbackup（JSON 编排模式）与 snapshot-*
+  # 目录。本脚本只支持后者——单文件的内部布局不同（base64 文本转储、
+  # noj-deploy/noj-secrets 配置、无 env.prod.gpg），解包后也无法被本脚本安全
+  # 恢复，因此 noj-cli 已在**参数阶段**明确拒绝。
+  # 这里保留兜底提示：直接调用脚本的用户不应只看到「快照目录不存在」而不知原因。
+  if [[ ! -d "$1" && "$1" == *.nojbackup ]]; then
+    die "restore-drill.sh 不支持单文件 .nojbackup 快照：$1（其内部布局与生产目录快照不同，解包后也无法安全恢复）。请改用 noj-cli maintain backup restore/verify，或使用 backup.sh create 生成的 snapshot-* 目录快照"
+  fi
   [[ -d "$1" ]] || die "快照目录不存在：$1"
   [[ "$(basename "$1")" == snapshot-* ]] || die "只允许演练 snapshot-* 快照目录"
   [[ "$1" != */..* && "$1" != */.snapshot-* ]] || die "非法快照路径"
