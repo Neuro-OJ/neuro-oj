@@ -262,3 +262,98 @@ async 数据必然晚于布局渲染。注册表先给出路由参数（如 `100
    `noj-ui`/`noj-llm-gateway` 的 Dockerfile 已纳入，但其他版本来源（如文档示例）不强制。
 4. **面包屑描述口径**：注册 32 条路径中实际渲染（≥2 层）的是 17 条，
    Agent Note 与 PR 描述中「26 个内容页获得多层导航」的表述不够精确，已在复盘记录。
+
+---
+
+## 八、#515 统一备份模型的设计决策（复审轮次新增）
+
+### ADR-24：删除失败必须影响退出码，而不是只打日志
+
+**问题**：`pruneBackups` 用 `catch {}` 静默吞掉删除失败，调用方只看到
+「已删除 0 个」却 `exit 0`。向用户传达了「已清理」的**假成功**——
+恰恰破坏了 prune 的安全价值。
+
+**决策**：新增 `failed[]` 返回结构，CLI 两条输出路径（文本与 `--json`）
+都上报失败原因并返回 `exit 1`。
+
+**为什么退出码而非仅日志**：退出码是脚本唯一可靠的信号。
+「部分成功」若不反映在退出码上，定时任务与 CI 无法据此告警。
+
+### ADR-25：list/prune 不要求密钥文件存在
+
+**决策**：新增 `loadDeployConfig`（只读部署配置），让 `list`/`prune`
+不强制要求 `noj-secrets.json`。
+
+**理由**：密钥丢失或损坏时，恰恰是最需要「有哪些备份」这一信息的时候。
+把「查看现状」与「解密内容」耦合，会让用户在密钥出问题时彻底失去可见性。
+
+---
+
+## 九、#516 真实恢复演练的设计决策（复审轮次新增）
+
+### ADR-26：报告路径必须与脚本契约一致，否则「读回报告」形同虚设
+
+**问题**：CLI 用 `dirname(snapshot)` 推导报告路径，但 `restore-drill.sh`
+把报告写在 **`$SNAPSHOT/restore-drill-report.txt`**（快照是**目录**，
+`validate_snapshot_path` 强制 `[[ -d ]]` 且 basename 为 `snapshot-*`）。
+两者恒差一级目录，`--json` 的 `reportPath` 指向一个**不存在**的文件。
+
+**连带影响**：RPO/RTO 硬阈值的实现正是「读回报告检查
+`result=passed_with_warnings`」。路径错了 → 永远读不到 → 超限仍 `exit 0`。
+**一个路径错误让一整个验收项静默失效。**
+
+**决策**：按脚本契约改为 `<snapshot>/restore-drill-report.txt`，
+并补单测固定该契约（含尾随斜杠归一）。
+
+### ADR-27：`--json` 时脚本 stdout 必须与 JSON 分离
+
+**问题**：`runDrill` 用 `stdout: "inherit"` 透传脚本输出，而 CLI 在 `--json`
+时又向同一 stdout 打印 JSON。结果是「人类日志 + JSON」混在一起，
+`jq` / `json.load` 直接解析失败——而 help 明示 `--json` 是机器可读报告。
+
+**决策**：`--json` 时把脚本 stdout 设为 `piped`，捕获后**转写到 stderr**；
+非 json 保持 `inherit`。日志在两种模式下都可见，但机器可读的 stdout 干净。
+
+**注意**：Deno 的 `stdout` 没有 `"stderr"` 选项（只有 `inherit`/`piped`/`null`），
+因此必须用 piped 捕获 + 显式转写，不能直接指定。
+
+### ADR-28：生产 profile 的 `backup drill` 必须绕过 `production.sh`
+
+**问题**：`PRODUCTION_COMMANDS` 会把 `backup drill` 转发给 `production.sh`，
+后者走 `backup.sh` 的**文件完整性校验**——完全绕过 `restore-drill.sh`。
+于是同一命令在两种 profile 下语义不同：stack 下是真演练，prod 下是假演练。
+
+**决策**：在转发之前拦截 `backup drill`，两条路径共用 `executeDrill`。
+其余 backup 子命令（create/verify/restore/schedule）仍转发给脚本。
+
+### ADR-29：`--keep` 按子命令区分语义，而非猜参数
+
+`prune --keep N`（保留最近 N 份）与 `drill --keep`（保留演练环境，bool）
+含义不同。**决策**：按 `sub` 判定，而不是「看下一个 token 是否是数字」——
+后者在 `prune --keep --json` 这类输入下会静默改变语义。
+
+---
+
+## 十、跨 PR 的评审方法论（本轮最重要的过程结论）
+
+### ADR-30：复审必须导出 `git archive <head sha>` 后独立验证
+
+本轮多次出现「工作区状态 ≠ PR head 状态」：同一份代码在本地与远端 sha
+不一致、被并发会话修改、或被 jj 的自动 rebase 移动。
+**决策**：所有评审都在 `git archive` 导出的只读树中进行，
+并明确以 `gh api .../commits/<sha> --jq .commit.verification` 判断签名
+（**本地 `git verify-commit` 会给出假象**，因为工作区 checkout 可能带上签名）。
+
+### ADR-31：CI 未在 head sha 上运行时，不得推断为「绿」
+
+本轮发现 `pull_request` 触发对部分分支未生效，`gh pr checks` 只剩
+Cloudflare Pages + CLA 两项。**决策**：如实报告「该 sha 上无 CI 运行」，
+不因「上一个 sha 是绿的」或「手动 dispatch 成功」而判定当前 head 绿，
+也不**仅**因缺运行就判 NOT_READY——以代码与实测行为为准。
+
+### ADR-32：stacked PR 的 GitHub「CONFLICTING」可能是陈旧状态
+
+`gh pr view --json mergeable` 多次报 CONFLICTING，但
+`git merge-tree --write-tree <base> <head>` 与真实 worktree merge 都干净
+（base 是 head 的祖先）。**处置**：`gh stack unstack` → 改一次 base → 改回，
+强制 GitHub 重算 merge ref。本例中每次都能恢复为 MERGEABLE/CLEAN。

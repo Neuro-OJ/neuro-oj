@@ -24,12 +24,12 @@ import {
 } from "./maintain/config.ts";
 import {
   backupCreate,
-  backupDrill,
   backupRestore,
   backupVerify,
 } from "./maintain/backup.ts";
 import { maintainReset } from "./maintain/reset.ts";
 import { listBackups, pruneBackups } from "./maintain/backup_list.ts";
+import { assertDrillSnapshotSupported, runDrill } from "./maintain/drill.ts";
 import { defaultBackupDir } from "./maintain/backup.ts";
 import { loadDeployConfig } from "./config/load.ts";
 import { realDriver } from "./maintain/backup_driver.ts";
@@ -164,6 +164,24 @@ export async function run(argv: string[]): Promise<number> {
     }
 
     if (topCommand === undefined) {
+      console.log(printHelp());
+      return EXIT_OK;
+    }
+
+    // 全局选项剥离**之后**必须重新检查 help/version（评审 B-2）：
+    // `--profile stack --help`、`--debug --help`、`--debug --version`
+    // 此前会落到「未知命令: --help」或探测报错。
+    // help/version 只读且最高优先级（#517 E1/E2），剥离后它们可能在首位。
+    if (
+      topCommand === "--version" || topCommand === "-v" ||
+      topCommand === "version"
+    ) {
+      console.log(`noj-cli ${VERSION}`);
+      return EXIT_OK;
+    }
+    if (
+      topCommand === "--help" || topCommand === "-h" || topCommand === "help"
+    ) {
       console.log(printHelp());
       return EXIT_OK;
     }
@@ -674,6 +692,18 @@ export interface BackupArgs {
   includeLegacy: boolean;
   /** #515 P6：机器可读输出（list/prune）。 */
   json: boolean;
+  /** #516：跳过 Judge 验收。 */
+  skipJudge: boolean;
+  /** #516：演练子网。 */
+  subnet: string | undefined;
+  /** #516：演练 Compose 项目名。 */
+  projectName: string | undefined;
+  /** #516：RPO 上限（小时）。 */
+  rpoMaxHours: number | undefined;
+  /** #516：RTO 上限（分钟）。 */
+  rtoMaxMinutes: number | undefined;
+  /** #516：drill 保留演练环境（与 prune 的 --keep N 语义不同）。 */
+  keepFlag: boolean;
 }
 
 /** 解析 maintain backup 参数：子命令 + 位置参数 snapshot + 各旗标。 */
@@ -693,6 +723,12 @@ export function parseBackupArgs(args: string[]): BackupArgs {
     olderThanDays: undefined,
     includeLegacy: false,
     json: false,
+    skipJudge: false,
+    subnet: undefined,
+    projectName: undefined,
+    rpoMaxHours: undefined,
+    rtoMaxMinutes: undefined,
+    keepFlag: false,
   };
   const rest = args.slice(1);
   // `--dir` 统一解析（支持 `--dir=`，缺值报错）；下面的 switch 跳过它。
@@ -743,6 +779,15 @@ export function parseBackupArgs(args: string[]): BackupArgs {
         out.report = takeValue("--report");
         break;
       case "--keep": {
+        // 两种语义（#515/#516），按**子命令**区分而非猜测下一个参数：
+        // - prune：`--keep N` 保留最近 N 份（必须有值）；
+        // - drill：裸 `--keep` 保留演练环境（bool，无值）。
+        if (out.sub === "drill") {
+          out.keepFlag = true;
+          break;
+        }
+        // 注意：takeValue 已经把 i 推进到值上，**不可再 i++**
+        // （否则会多跳一个 token，把下一个选项的值当成位置参数）。
         const raw = takeValue("--keep");
         const n = Number(raw);
         if (!Number.isInteger(n) || n < 0) {
@@ -766,6 +811,34 @@ export function parseBackupArgs(args: string[]): BackupArgs {
         // 旧目录格式承载存量数据，默认受保护（#515）
         out.includeLegacy = true;
         break;
+      case "--skip-judge":
+        // #516：无 Judge 部署时跳过相关验收
+        out.skipJudge = true;
+        break;
+      case "--subnet":
+        out.subnet = takeValue("--subnet");
+        break;
+      case "--project-name":
+        out.projectName = takeValue("--project-name");
+        break;
+      case "--rpo-max-hours": {
+        const raw = takeValue("--rpo-max-hours");
+        const n = Number(raw);
+        if (!Number.isInteger(n) || n <= 0) {
+          throw new UsageError(`--rpo-max-hours 需要正整数，收到 "${raw}"`);
+        }
+        out.rpoMaxHours = n;
+        break;
+      }
+      case "--rto-max-minutes": {
+        const raw = takeValue("--rto-max-minutes");
+        const n = Number(raw);
+        if (!Number.isInteger(n) || n <= 0) {
+          throw new UsageError(`--rto-max-minutes 需要正整数，收到 "${raw}"`);
+        }
+        out.rtoMaxMinutes = n;
+        break;
+      }
       case "--json":
         out.json = true;
         break;
@@ -813,6 +886,127 @@ export function resolveProfile(
   return result.profile;
 }
 
+/**
+ * 生产 profile 下的 `backup drill`：解析参数并执行**真实恢复演练**（#516）。
+ *
+ * 与 `maintain backup drill` 共享 {@link runDrill}，区别只是安装目录来源：
+ * 这里用生产安装目录（`--dir` 或探测到的目录）。
+ */
+async function runBackupDrillFromProduction(
+  args: string[],
+  ctx: CommandContext,
+): Promise<number> {
+  if (wantsHelp(args)) {
+    console.log(renderDrillHelp());
+    return EXIT_OK;
+  }
+  const a = parseBackupArgs(["drill", ...args]);
+  if (a.snapshot === undefined) {
+    console.error(
+      "backup drill: 需要 <snapshot> 路径" + "\n" +
+        "  提示：drill 会起独立 Compose 项目做真实恢复（分钟级、需 Docker）；" +
+        "只校验文件完整请用 backup verify。",
+    );
+    return EXIT_USAGE;
+  }
+  let dir: string;
+  try {
+    dir = await findProductionDir(a.dir ?? ctx.deployDir ?? undefined, ctx.cwd);
+  } catch (e) {
+    throw new ProductionDirError((e as Error).message);
+  }
+  return await executeDrill(a, dir);
+}
+
+/**
+ * drill 专项帮助（#516 验收：help 必须明确「分钟级、耗 Docker」，
+ * 而不是只显示通用的 maintain backup 帮助）。
+ */
+export function renderDrillHelp(): string {
+  return renderCommandHelp(
+    "noj-cli backup drill <snapshot> [选项]",
+    [
+      "在**隔离环境**中真实恢复快照并做业务验收（登录/题目读取/可选评测）。",
+      "",
+      "注意: 会起独立 Compose 项目（默认 noj-drill）、占用独立子网与数据卷，",
+      "      耗时**分钟级**且**需要 Docker 资源**——不是随手可跑的检查。",
+      "      只校验文件完整请用 `backup verify`（结构可解析的 `--deep` 由 #515 提供）。",
+      "",
+      "快照形态: 只接受生产目录快照（`backup.sh create` 生成的 snapshot-* 目录）。",
+      "`.nojbackup` 单文件是 JSON 编排模式（maintain）的格式，内部布局",
+      "（base64 文本转储、noj-deploy/noj-secrets、无 env.prod.gpg）与生产目录",
+      "快照不同，无法交给 restore-drill.sh 安全恢复，故在此明确拒绝（退出码 2）。",
+      "单文件请改用 `maintain backup restore <快照> --confirm` 或",
+      "`maintain backup verify <快照>`。",
+      "",
+      "选项:",
+      "  --skip-judge            跳过 Judge/附件/评测验收（无 Judge 部署时）",
+      "  --subnet CIDR           演练网络子网（默认 172.29.0.0/16）",
+      "  --project-name NAME     演练 Compose 项目名（默认 noj-drill；禁止含 prod）",
+      "  --report FILE           报告路径（默认快照目录下 restore-drill-report.txt）",
+      "  --rpo-max-hours N       快照年龄上限（默认 24）；超限视为演练失败",
+      "  --rto-max-minutes N     恢复耗时上限（默认 60）；超限视为演练失败",
+      "  --keep                  保留演练环境以便排查（默认清理）",
+      "  --json                  机器可读报告",
+      "  --dir <path>            生产安装目录",
+      "",
+      "退出码: 0 通过 / 1 演练失败（含业务验收失败、超 RPO/RTO）/ 2 参数或资源错误",
+    ],
+  );
+}
+
+/**
+ * 执行一次真实恢复演练并输出结果（#516）。
+ *
+ * `maintain backup drill` 与生产 `backup drill` 共用：两者只差安装目录来源，
+ * 参数校验、输出格式与退出码归一必须一致，否则同一命令在两种 profile 下
+ * 行为不同（这正是评测发现的问题）。
+ */
+async function executeDrill(
+  a: BackupArgs,
+  dir: string,
+): Promise<number> {
+  if (a.snapshot === undefined) {
+    console.error("backup drill: 需要 <snapshot> 路径");
+    return EXIT_USAGE;
+  }
+  // #516 评审 P1：单文件快照在**参数阶段**拒绝（退出码 2），
+  // 并给出可用的恢复路径；不再让它落到 restore-drill.sh 的 preflight
+  // 报「快照目录不存在」。runDrill 内也做同样校验（两条 profile 路径共用）。
+  try {
+    assertDrillSnapshotSupported(a.snapshot);
+  } catch (e) {
+    console.error("backup drill: " + (e as Error).message);
+    return EXIT_USAGE;
+  }
+  try {
+    const result = await runDrill({
+      snapshotPath: a.snapshot,
+      dir,
+      skipJudge: a.skipJudge,
+      subnet: a.subnet,
+      projectName: a.projectName,
+      report: a.report,
+      rpoMaxHours: a.rpoMaxHours,
+      rtoMaxMinutes: a.rtoMaxMinutes,
+      keep: a.keepFlag === true,
+      json: a.json,
+      passphraseFile: a.passphraseFile,
+    });
+    if (a.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(result.message);
+      if (result.reportPath) console.log("报告：" + result.reportPath);
+    }
+    return result.exitCode;
+  } catch (e) {
+    // 参数/资源错误 → 用法错误（2），与演练失败（1）区分
+    console.error("backup drill: " + (e as Error).message);
+    return EXIT_USAGE;
+  }
+}
+
 /** 将命令分发到对应处理函数。供测试与 run 共用。 */
 export async function dispatchCommand(
   command: string,
@@ -820,10 +1014,23 @@ export async function dispatchCommand(
   ctx: CommandContext,
   options: DispatchOptions = {},
 ): Promise<number> {
+  // `backup drill` 的 help 必须显示 drill 自己的选项（#516 验收：
+  // help 文本要明确「分钟级、耗 Docker」），不能被通用 backup help 抢先。
+  if (command === "backup" && args[0] === "drill" && wantsHelp(args.slice(1))) {
+    console.log(renderDrillHelp());
+    return EXIT_OK;
+  }
   // 生产命令的 help 由 CLI 自己回答，不转发给 bash（#517 E12）
   if (PRODUCTION_COMMANDS.has(command) && wantsHelp(args)) {
     console.log(renderProductionCommandHelp(command));
     return EXIT_OK;
+  }
+  // `backup drill` = **真实恢复演练**（#516），必须由 CLI 直接执行，
+  // 不能转发给 production.sh——后者的 drill 走 backup.sh 的**文件校验**，
+  // 会绕过 restore-drill.sh（评测发现：prod profile 下 drill 名不副实）。
+  // 其余 backup 子命令（create/verify/restore/schedule）仍转发给脚本。
+  if (command === "backup" && args[0] === "drill") {
+    return await runBackupDrillFromProduction(args.slice(1), ctx);
   }
   if (PRODUCTION_COMMANDS.has(command)) {
     return await runProduction(command, args);
@@ -980,6 +1187,15 @@ export async function dispatchCommand(
       if (!options.stackAlias && !wantsHelp(args)) {
         console.error(deprecationNotice("maintain", sub));
       }
+      // `maintain backup drill --help` 必须显示 drill 专属选项
+      //（#516 验收：help 要明确「分钟级、耗 Docker」；两种 profile 语义一致）。
+      if (
+        sub === "backup" && args[1] === "drill" &&
+        (wantsHelp(args.slice(2)) || wantsHelp(args.slice(1)))
+      ) {
+        console.log(renderDrillHelp());
+        return EXIT_OK;
+      }
       if (wantsHelp(args.slice(1)) || sub === "--help" || sub === "-h") {
         console.log(renderMaintainHelp(sub));
         return EXIT_OK;
@@ -1134,20 +1350,22 @@ export async function dispatchCommand(
               return EXIT_OK;
             }
             case "drill": {
+              // #516：drill = **真实恢复演练**（隔离环境实恢复 + 业务验收），
+              // 秒级的文件完整性校验请用 `backup verify`。
+              // help 必须显示 drill 专属选项（两种 profile 语义一致）。
+              if (wantsHelp(args.slice(1))) {
+                console.log(renderDrillHelp());
+                return EXIT_OK;
+              }
               if (a.snapshot === undefined) {
-                console.error("maintain backup drill: 需要 <snapshot> 路径");
+                console.error(
+                  "backup drill: 需要 <snapshot> 路径\n" +
+                    "  提示：drill 会起独立 Compose 项目做真实恢复（分钟级、需 Docker）；" +
+                    "只校验文件完整请用 backup verify。",
+                );
                 return EXIT_USAGE;
               }
-              const report = await backupDrill({
-                snapshotPath: a.snapshot,
-                passphraseFile: a.passphraseFile,
-                report: a.report,
-                driver: realDriver(),
-              });
-              console.log(
-                `演练完成（drill）：${report.pass ? "通过" : "失败"}`,
-              );
-              return report.pass ? EXIT_OK : EXIT_FAILURE;
+              return await executeDrill(a, deployDir);
             }
             case "list": {
               // #515 P6：列举备份（无需解包；识别单文件与旧目录两种格式）
