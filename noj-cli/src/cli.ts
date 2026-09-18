@@ -157,7 +157,14 @@ export async function run(argv: string[]): Promise<number> {
       : (explicitProfile !== undefined
         ? validateProfileName(explicitProfile)!
         // P1：探测必须以 --dir 为起点（与 --profile 正交）
-        : detectProfileOrNull(parseDirArg(topRest)));
+        // 两种安装目录写法都要参与探测（评审 B1）：
+        // `--dir` 是生产/编排命令的，`--install-dir` 是 Tier 3 的。
+        // 任一给出都应作为探测起点——否则 help 宣称支持 `--install-dir`
+        // 却在探测阶段报「未能识别 profile」，自相矛盾。
+        : detectProfileOrNull(
+          parseDirArg(topRest) ??
+            parseInstallDirArg(topRest),
+        ));
 
     // Tier 3 容器命令（需要在生产安装目录内执行）
     const container = parseContainerCommand([topCommand, ...topRest]);
@@ -235,6 +242,13 @@ export function handleError(
 /**
  * 剥离 CLI 自身的全局选项（`--profile`、`--debug`），其余原样保留。
  *
+ * **`--debug` 必须一并剥离**（评审 B3）：它是 noj-cli 自己的排查开关，
+ * 不是子命令/容器内 noj 的选项。若不剥离：
+ * - 生产命令会把 `--debug` 传给 `production.sh`（其参数契约不接受）；
+ * - Tier 3 会把它透传进容器，容器内 noj 报「未知选项」；
+ * - 放在子命令之后还会被当成未知顶层命令。
+ * 三种表现都是「help 说是全局选项、实际不可用」。
+ *
  * 这两个选项语义属于 noj-cli 本身，**不能**透传给子命令或底层脚本。
  */
 export function extractProfile(argv: string[]): {
@@ -245,6 +259,12 @@ export function extractProfile(argv: string[]): {
   const rest: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
+    if (arg === "--debug") {
+      // 评审 B3：--debug 是 CLI 自身的全局排查开关，必须在**顶层**剥离。
+      // 否则放在子命令前会被当成未知命令，放在子命令后会被转发给
+      // production.sh 或透传进容器（help 却把它列为全局选项）。
+      continue;
+    }
     if (arg === "--profile") {
       const value = argv[i + 1];
       if (value === undefined || value.startsWith("--")) {
@@ -367,14 +387,17 @@ export function assertCommandAllowedInProfile(
   // Tier 3 容器命令需要**生产安装目录**（docker-compose.prod.yml + .env.prod），
   // 因此属 prod 侧。早先误把它们归 stack，导致方向写反：
   // `--profile prod db migrate` 被拒、`--profile stack db migrate` 反而放行。
-  // 这里只登记**顶层命令名**，且必须是真正需要生产安装目录的。
-  // `problem` 的 init/lint/pack 是离线出题命令（PROFILE_AGNOSTIC），
-  // 登记在此会与之矛盾（评审 B1）；Tier 3 的题目包命令由顶层名
-  // `problems` 承接，无需再列单数。
+  // 这里登记**会路由进 Tier 3 容器的顶层命令名**。
+  //
+  // `problem` 与 `problems` 都要列：canonical 名是单数（#514 决策），
+  // 两个名字都能到达 build/import（见 container.ts 的 CONTAINER_COMMANDS）。
+  // 调用点**只在容器匹配成立时**才施加本门禁，因此 `problem lint` 这类
+  // 本地出题用法不会被误拒（评审 B1/B5）。
   const TIER3 = new Set([
     "db",
     "init",
     "bootstrap",
+    "problem",
     "problems",
     "search",
   ]);
@@ -409,6 +432,9 @@ export function stripCliOwnedFlags(args: string[]): string[] {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg === "--dry-run") continue;
+    // 评审 B3：--debug 是 noj-cli 自身的排查开关，必须剥离后再转发，
+    // 否则会被子命令/容器当作未知选项（help 却把它列为全局选项）。
+    if (arg === "--debug") continue;
     // 评审 M1：Tier 3 命令的 --dir 存在双语义冲突——noj-cli 用它指安装目录，
     // 而容器内的 noj 用它指子命令参数（如 problems import --dir <包目录>）。
     // 因此 CLI 自身的安装目录选项改名为 --install-dir，容器侧的 --dir 原样透传。

@@ -74,6 +74,10 @@ export function parseProductionArgs(args: string[]): {
         throw new UsageError("--dir 需要一个安装目录");
       }
       dir = value;
+    } else if (arg === "--debug") {
+      // 评审 B3：--debug 是 noj-cli 自身的排查开关，不得转发给
+      // production.sh（其参数契约不接受，会报未知参数）。
+      continue;
     } else {
       forwarded.push(arg);
     }
