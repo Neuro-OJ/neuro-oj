@@ -403,11 +403,56 @@ jj new
 
 ---
 
-## Task 11–26（概要；执行前逐个展开为完整任务块）
+## Task 11: 配置校验与交互向导（prod/config.ts）
+
+**Files:**
+- Create: `noj-cli/src/prod/config.ts`
+- Create: `noj-cli/src/prod/config_test.ts`
+- Modify: `noj-cli/src/mod.ts`
+
+**Consumes**：T2 `ENV_KEYS`/`validateEnv`/`judgeEnabledError`/`isPlaceholder`；T3 `parseEnvFile`/`readEnvFile`/`writeEnvFileAtomic`；T4 状态机（state 落盘）；T8 主题（渲染提示）
+
+**背景**：bash 侧的配置能力散在 `deploy.sh` 多处，须逐项迁入 TS 并与 `scripts/deploy/deploy.sh` 行为一致（R3）：
+`check_required_values`(:684)、`check_judge_socket`(:768)、`check_port_value`(:780)、`is_site_address`(:354)、`detect_panel`(:791)、`verify_image_signatures`(:837)、`ensure_backup_passphrase`(:920)、`generate_secret`(:220)、`prompt_text`/`prompt_secret`(:226/:245)、`configure_env_interactive`(:429)。
+
+**⚠️ T2 的 CARRY-FORWARD（必须遵守）**：`validateEnv` **不承载** `JUDGE_ENABLED` 枚举错误。调用方**必须先** `judgeEnabledError(env.JUDGE_ENABLED)`，非 null 即报错返回，**再**进 `validateEnv`。且 `JUDGE_ENABLED` **未设置（空串）视为启用**（与 bash `judge_enabled`:679 一致）。
+
+**⚠️ T3 的 CARRY-FORWARD**：`writeEnvFileAtomic` **不 mkdir 父目录**（调用方保证目录存在）；`readEnvFile` 对缺失文件抛普通 Error。
+
+- [ ] **Step 1: 写失败测试**
+
+`config_test.ts` 覆盖（注入 IO/fs，不触真实网络与 docker）：
+- **必填校验**：缺失/占位键进入 `missing`/`placeholder`（对照 T2 语义）。
+- **judge 枚举**：`JUDGE_ENABLED="maybe"` → 报错（先于 `validateEnv`）；`""`/未设置 → 视为启用且要求 judge 键；`false` → 不要求。
+- **口令文件**（`ensure_backup_passphrase` 迁移）：缺失时**自动生成**到 `/etc/noj/backup-passphrase`，权限 **600**；已存在则复用；权限非 600/400 → **拒绝并给可操作提示**（对照 `deploy.sh:916-953` 与 `passphrase_file_mode`）。
+- **站点地址**：`is_site_address` 的接受/拒绝用例（域名 vs IP vs 非法）。
+- **端口**：`check_port_value` 边界（1-65535、非数字）。
+- **judge socket**：启用 judge 时校验 socket 路径与 GID（对照 `:768`）。
+- **交互向导**：给定输入序列产出预期 `.env.prod` 键值（用注入 IO）；**非 TTY 且缺必需参数时明确报错**，不进交互循环（对照 `non_interactive.ts` 与 #517 E10）。
+- **敏感值**：向导**不得**把 secret 回显到输出（断言输出不含 secret 字面量）。
+- **镜像验签**（`verify_image_signatures`）：迁移为可注入执行器的函数；测试断言调用形状与失败退出码（不真的跑 cosign）。
+
+- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+
+- [ ] **Step 3: 实现**
+
+- `prod/config.ts`：逐函数迁移；**必须复用** T2/T3/T8 的模块，不重复实现占位判断/键清单/env 读写/着色。
+- 交互用既有 `tui/widgets.ts`（`select`/`input`/`secretInput`/`confirm`）与 T8 主题；**不要**新造提示函数。
+- 宝塔面板检测（`detect_panel`）与 `record_deployment_metadata` 一并迁入（对照 `:791`/`:875`），行为一致。
+- 所有外部命令（cosign/docker）经 `runtime/command.ts` 的 runner 注入，便于测试。
+
+- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+
+- [ ] **Step 5: 提交** — `feat(cli): 迁移生产配置校验、口令生成与交互向导到 TS`
+
+**明确不做**：不实现 install/start/stop 等生命周期动作（T12–T16）；不删除 bash（T24）；不改 T2/T3 已交付模块的公开契约。
+
+---
+
+## Task 12–26（概要；执行前逐个展开为完整任务块）
 
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
-| T11 config/向导 | `prod/config.ts` | 19 键校验；交互向导；口令自动生成 600；cosign；宝塔检测 |
 | T12 install | `prod/lifecycle.ts` | 空目录仅凭二进制可完成；PATH 注册 |
 | T13 start/stop/restart/status | 同上 | 状态机 no-op 判定；退出码 |
 | T14 logs | 同上 | 着色契约；`--follow` |
