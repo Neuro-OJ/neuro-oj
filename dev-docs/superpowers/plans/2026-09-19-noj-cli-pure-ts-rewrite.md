@@ -220,11 +220,68 @@ jj new
 
 ---
 
-## Task 7–26（概要；每个 Task 执行时按同一 5 步 TDD 循环展开）
+## Task 7: 命令树单一事实源 + 防漂移门禁
+
+**Files:**
+- Create: `noj-cli/src/commands.ts` — 声明式命令清单（单一事实源）
+- Create: `noj-cli/src/commands_test.ts` — 含**防漂移门禁**
+- Modify: `noj-cli/src/mod.ts` — 导出新原语（T6 的 `emitJson`/`emitHuman`/`isJsonMode`/`RenderIO` 与 T2–T6 的 core 模块）
+- Modify: `noj-cli/src/cli.ts` — `printHelp` 改由 `commands.ts` 生成
+
+**Interfaces:**
+- Produces:
+  - `export interface CommandSpec { name: string; summary: string; aliases?: string[]; tier: Tier; subcommands?: CommandSpec[] }`
+  - `export const COMMANDS: readonly CommandSpec[]`
+  - `export function renderCommandList(): string`
+  - `export function declaredTopLevelNames(): Set<string>`
+- Consumes: T6 `output/render.ts`; T2–T5 core 模块
+
+**背景（为何这是关键路径）**：现状 help 文案手写在 **8 个渲染函数**里，已实测漂移——`noj-cli backup --help` 漏列 `list`/`prune`（真实能力），根因是同一份文案维护在 4 处（`help.ts:52` 对，`cli.ts:1064/1567/1640` 错）。本任务把命令清单收敛为**单一事实源**，并加**门禁**使漂移不可能再发生。
+
+- [ ] **Step 1: 写失败测试（含门禁）**
+
+Create `noj-cli/src/commands_test.ts`：
+- 断言 `COMMANDS` 非空且每项 `name`/`summary` 非空、`name` 唯一。
+- 断言 `renderCommandList()` 含每个顶层命令名。
+- **防漂移门禁**：断言「`declaredTopLevelNames()` ⊆ 实际可处理集合」。实际可处理集合的来源须**从 `cli.ts` 的既有判定读取**（`PRODUCTION_COMMANDS`、`KNOWN_TOP`/switch 分支、`problem`/`stack` 等特判），不得硬编码第二份清单——否则门禁自身会漂移。设计一个可导出的「dispatcher 可处理集合」取得方式；若 cli.ts 当前未导出，**导出它**（最小改动）。
+- 断言 `backup` 的子命令声明**包含 `list` 与 `prune`**（本次已实测漂移的回归断言）。
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `cd noj-cli && deno task test 2>&1 | tail -5`
+Expected: FAIL — `commands.ts` 不存在
+
+- [ ] **Step 3: 实现**
+
+Create `noj-cli/src/commands.ts`：
+- 从既有 `help.ts` 的 `COMMANDS` 结构与 `cli.ts` 的实际分支**逐条核对**后建立清单（**以代码为准**，不以 help 文案为准——help 已知有漂移）。
+- `tier` 表示分组（如 `"prod" | "stack" | "problem" | "tier3" | "global"`），用于渲染分区。
+- `renderCommandList()` 输出与现状**信息等价或更准确**的文本（可含分组标题）；**不得**丢失任何现役命令。
+- Modify `cli.ts`：`printHelp()` 改为调用 `renderCommandList()`，删除重复的手写清单（保留 `renderCommandHelp` 等命令级帮助不动，本任务只收敛**清单**）。
+- Modify `mod.ts`：导出 T2–T6 的新模块（`core/config-schema.ts`、`core/env-file.ts`、`core/state.ts`、`output/render.ts`）与原语。
+
+- [ ] **Step 4: 运行确认通过**
+
+Run: `cd noj-cli && deno task test 2>&1 | tail -3` 与 `cd noj-cli && deno task check`
+
+**注意**：`cli_test.ts` 有既有断言依赖 help 文案（如「printHelp 按模式分区并包含全部命令」、「不再声称 maintain backup 支持 schedule」）。**不得删除或弱化**这些断言；若文案变化导致失败，修正实现使其仍满足原意（分区 + 准确）。
+
+- [ ] **Step 5: 提交**
+
+```bash
+cd noj-cli && deno task check
+jj describe -m "refactor(cli): 命令清单收敛为单一事实源并新增防漂移门禁"
+jj new
+```
+
+**明确不做**：本任务**不**引入 Cliffy 接管解析（透传仍在，Cliffy 迁移在 T23 之后按 spec §5 进行）；**不**改动命令行为与退出码；**不**删除 `renderProductionCommandHelp`/`renderDeployHelp`/`renderMaintainHelp`（T23 处理）。
+
+---
+
+## Task 8–26（概要；执行前逐个展开为完整任务块）
 
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
-| T7 Cliffy 命令树 | `cli.ts` 重写 | 命令树即 help 单一事实源；防漂移门禁：help 声明集合 == 实际可处理集合 |
 | T8 渲染与主题 | `output/theme.ts`、`render.ts` | token 语义色；`NO_COLOR`/`LOG_COLOR`/`--color` 契约回归；表格与窄终端 |
 | T9 bootstrap | `prod/bootstrap.ts` | 下载 compose/example + SHA-256 校验；失败拒绝写入 |
 | T10 compose | `prod/compose.ts` | 服务集与 `docker-compose.prod.yml` 逐服务核对无遗漏 |
