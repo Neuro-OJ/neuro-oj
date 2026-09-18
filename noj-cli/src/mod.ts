@@ -303,3 +303,17 @@ export type {
   WizardOptions,
   WizardResult,
 } from "./prod/config.ts";
+// lifecycle（T12）：**唯一**生产安装路径。串起 T9 bootstrap（下载 + SHA-256
+// 校验）、T11 配置向导/校验/口令/验签与 T10 compose 调用；runner / fetcher / IO /
+// 安装目录全部可注入，测试不触网、不起容器。后续 T13–T16 在同一文件追加动作。
+export { install, PATH_LINE, registerCommand } from "./prod/lifecycle.ts";
+// profile（T5→T12）：生产安装目录特征文件的**唯一事实源**。T12 的已安装判定与
+// getProfile 探测都消费它，避免出现第三份标记清单（T5 carry-forward）。
+export { PRODUCTION_MARKERS } from "./profile.ts";
+export type {
+  InstallOptions,
+  InstallResult,
+  InstallStep,
+  InstallStepName,
+  PathRegistration,
+} from "./prod/lifecycle.ts";

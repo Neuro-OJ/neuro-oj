@@ -51,13 +51,18 @@ export interface ProfileDetectOptions extends ProfileFs {
 }
 
 /**
- * 生产安装目录特征文件（与 `production.ts:isInstallDir` 保持一致）。
+ * 生产安装目录特征文件（T5 的唯一事实源）。
  *
  * 只用安装目录必备、且**不随 bash 删除而消失**的文件。早先以
  * `scripts/deploy/production.sh` 为特征，纯 TS 重写删除该脚本后，真实生产目录
  * 会探测失败并按设计报错退出（自锁，spec §3.3 洞 1）。
+ *
+ * **T12 carry-forward（T5）**：本清单原为模块私有，`production.ts:isInstallDir`
+ * 另抄了一份。两处都是"compose + env"这两个名字，但维护上是两份清单。现导出
+ * 为唯一事实源：`production.ts` 与 `prod/lifecycle.ts`（T12 的已安装判定）
+ * 都必须消费本常量，**不得新增第三份标记清单**。
  */
-const PRODUCTION_MARKERS = [
+export const PRODUCTION_MARKERS: readonly string[] = [
   "docker-compose.prod.yml",
   ".env.prod",
 ];
