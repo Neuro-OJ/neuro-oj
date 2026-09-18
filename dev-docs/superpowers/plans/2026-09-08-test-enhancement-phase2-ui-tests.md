@@ -373,8 +373,7 @@ jj describe -m "test(ui): CheckInCard 与 SubmissionResult 组件测试"
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
         with:
-          # 注（2026-09-17 更新）：实际实现已改用 deno-version-file: .dvmrc。
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: 安装依赖
         working-directory: noj-ui
         run: npm install

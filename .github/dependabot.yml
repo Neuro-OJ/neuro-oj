@@ -1,9 +1,5 @@
 # =============================================================================
-# Dependabot 配置 — 自动更新 workflow actions / npm / cargo / pip 依赖
-#
-# 注：Dependabot 无 deno ecosystem，且 github-actions 只更新 uses: 引用，
-# 不改 with: 入参；因此 Deno 版本（.dvmrc）仍需人工升级，见
-# scripts/check-deno-version.ts。
+# Dependabot 配置 — 自动更新 workflow actions / npm / cargo / deno 依赖
 #
 # 修复 finding M8：之前没有自动依赖更新，actions/changes 只能手工 follow。
 # github-actions ecosystem 生成的 PR 会用 SHA 钉形式（如

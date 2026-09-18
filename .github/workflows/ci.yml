@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.9.5
       - name: 检查 CLI 与离线生产安装流程
         working-directory: noj-cli
         run: |
@@ -277,7 +277,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
 
       - name: 缓存 Deno 依赖
         uses: actions/cache@v4
@@ -338,7 +338,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
 
       - name: 配置读取点静态校验 (check:config-usage)
         working-directory: noj-core
@@ -361,7 +361,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
 
       - name: 缓存 Deno 依赖
         uses: actions/cache@v4
@@ -405,7 +405,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
 
       - name: 仓库级门禁
         run: deno run -A scripts/check-ci.ts
@@ -425,7 +425,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
 
       - name: 入口 Smoke
         run: deno run -A scripts/smoke-entrypoints.ts
@@ -445,7 +445,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
 
       - name: 覆盖率报告 + 模块阈值门禁
         # 模块 deno.json 的 test:coverage 自带 --threshold；--check 让其退出码生效。
@@ -509,7 +509,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -592,7 +592,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -671,7 +671,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -750,7 +750,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -829,7 +829,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -908,7 +908,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -987,7 +987,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -1066,7 +1066,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -1145,7 +1145,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -1224,7 +1224,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -1303,7 +1303,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -1382,7 +1382,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -1461,7 +1461,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -1540,7 +1540,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -1619,7 +1619,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -1730,7 +1730,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
 
       - name: 缓存 Deno 依赖
         uses: actions/cache@v4
@@ -1813,7 +1813,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
 
       - name: 缓存 Deno 依赖
         uses: actions/cache@v4
@@ -1849,7 +1849,7 @@ jobs:
       - name: 安装 Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
 
       - name: 缓存 node_modules
         uses: actions/cache@v4
@@ -1910,7 +1910,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
         with:
-          deno-version-file: .dvmrc
+          deno-version: v2.x
       - name: 缓存 node_modules
         uses: actions/cache@v4
         with:
