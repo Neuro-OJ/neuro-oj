@@ -1,12 +1,14 @@
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
+  communityPosts,
   evaluationResults,
   submissions,
   users,
 } from "./../../../../shared/db/schema.ts";
 import { NotFoundError } from "./../../../../shared/base/errors.ts";
 import { resolveProblemIdOrNull } from "./../../../catalog/index.ts";
+import { runningContestExistsForProblem } from "./../../../contest/index.ts";
 import type {
   CommunityConfig,
   CommunityPostStatus,
@@ -76,4 +78,27 @@ export async function hasAcceptedSolution(
       gt(evaluationResults.score, 0),
     )).limit(1);
   return !!rows[0];
+}
+
+/**
+ * 赛期题解门控谓词：排除「所属题目正在竞赛中」的题解帖子。
+ *
+ * 采用**相关子查询**而非「先查题目 id 再拼 IN 列表」：
+ * - 不产生应用侧扫描，不受题量规模影响（IN 列表方案必须设上限，
+ *   上限一旦被超出就会**静默漏掉**应门控的题目——对安全门控这是不可接受的失效模式）；
+ * - 时间窗口在 SQL 内实时比较，竞赛结束后自动放行，无需调度任务。
+ *
+ * 「进行中」判定**不在本文件内手写**：委托 contest 域的
+ * `runningContestExistsForProblem`。此前四处调用点各持一份副本，且都按
+ * **文本字典序**比较时间，对 `+08:00` 形态的合法 ISO 8601 会静默 fail-open
+ * （2026-09-14 评审 C1）。收敛为单一来源是防止再次漂移的唯一手段。
+ *
+ * @returns 可直接 push 进 drizzle conditions 数组的 SQL 片段。
+ */
+export function notGatedSolution() {
+  return sql`NOT (
+    ${communityPosts.type} = 'solution'
+    AND ${communityPosts.problem_id} IS NOT NULL
+    AND ${runningContestExistsForProblem(communityPosts.problem_id)}
+  )`;
 }

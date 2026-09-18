@@ -77,6 +77,11 @@ export const communityPosts = pgTable(
     status: text("status").notNull().default("published"),
     is_locked: boolean("is_locked").notNull().default(false),
     is_pinned: boolean("is_pinned").notNull().default(false),
+    /**
+     * 官方题解标记：由题目 owner 或审核员设置；题目页置顶展示。
+     * 带 DEFAULT，迁移安全（禁止无 DEFAULT 的 NOT NULL 新增列）。
+     */
+    is_official: boolean("is_official").notNull().default(false),
     moderation_reason: text("moderation_reason"),
     published_at: text("published_at"),
     created_at: text("created_at").notNull(),
@@ -121,6 +126,12 @@ export const communityPosts = pgTable(
     ).where(sql`${table.status} = 'published'`),
     pendingIdx: index("idx_community_posts_pending").on(table.created_at).where(
       sql`${table.status} = 'pending'`,
+    ),
+    // 官方题解置顶排序：按题目取题解并按 is_official 优先
+    officialIdx: index("idx_community_posts_official").on(
+      table.problem_id,
+      table.is_official,
+      table.created_at,
     ),
     // issue #453：ILIKE '%keyword%' 由 pg_trgm GIN 索引加速。
     // pg_trgm 扩展只在生产 PostgreSQL 迁移中安装；PGlite 测试 DDL 会跳过这两项。

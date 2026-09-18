@@ -7,6 +7,9 @@ import {
   submissions,
   users,
 } from "./../../../../shared/db/schema.ts";
+// 经 contest 域公开门面（index.ts）导入：域边界门禁要求跨域只能走 index.ts，
+// 深路径导入会被 check-domains.ts 判为违规。
+import { runningContestExistsForProblem } from "./../../../contest/index.ts";
 import type {
   ProfileCommunityStatsRow,
   ProfileMomentRow,
@@ -112,11 +115,26 @@ export function queryRecentSubmissions(
     .limit(10);
 }
 
-/** 5. 社区关注/内容统计。 */
+/**
+ * 5. 社区关注/内容统计。
+ *
+ * **赛期门控**（2026-09-14 评审 High#2）：`solution_count` 此前把进行中竞赛的题解
+ * 也计入，即使标题已被 High#1 门控，数量本身仍会泄露"该题有题解"。
+ * 计数与列表口径必须一致——否则"数量 3、列表 2 条"本身就是侧信道。
+ *
+ * @param db 数据库句柄。
+ * @param userId 主页用户 id。
+ * @param moderator 审核员视图（免赛期门控）。
+ */
 export function queryProfileCommunityStats(
   db: Db,
   userId: string,
+  moderator = false,
 ): Promise<ProfileCommunityStatsRow | undefined> {
+  // 门控谓词只作用于题解计数；动态计数不受竞赛影响
+  const solutionGate = moderator
+    ? sql`true`
+    : sql`NOT ${runningContestExistsForProblem(communityPosts.problem_id)}`;
   return db.select({
     following_count: sql<
       number
@@ -126,29 +144,48 @@ export function queryProfileCommunityStats(
     >`(select count(*) from community_follows where followee_id = ${userId})`,
     solution_count: sql<
       number
-    >`(select count(*) from community_posts where author_id = ${userId} and type = 'solution' and status = 'published')`,
+    >`(select count(*) from community_posts where author_id = ${userId} and type = 'solution' and status = 'published' and ${solutionGate})`,
     moment_count: sql<
       number
     >`(select count(*) from community_posts where author_id = ${userId} and type = 'moment' and status = 'published')`,
   }).from(users).where(eq(users.id, userId)).limit(1).then((rows) => rows[0]);
 }
 
-/** 6. 最近 10 条已发布题解。 */
+/**
+ * 6. 最近 10 条已发布题解。
+ *
+ * **赛期门控**（2026-09-14 评审 High#1）：本路径**匿名可访问**，此前会向任何人
+ * 泄露进行中竞赛题目的题解**标题**与内部 id。门控须与社区列表口径一致，
+ * 否则此处即为旁路。`moderator`（审核员）免门控，与 `listPosts` 一致。
+ *
+ * @param db 数据库句柄。
+ * @param userId 主页用户 id。
+ * @param moderator 审核员视图（免赛期门控）。
+ */
 export function queryProfileSolutions(
   db: Db,
   userId: string,
+  moderator = false,
 ): Promise<ProfileSolutionRow[]> {
+  const conditions = [
+    eq(communityPosts.author_id, userId),
+    eq(communityPosts.type, "solution"),
+    eq(communityPosts.status, "published"),
+  ];
+  // 直接用 contest 域的共享谓词而非 community 域的 notGatedSolution()：
+  // 本查询已固定 type='solution'，无需重复该判断，同时避免 identity → community 反向依赖
+  if (!moderator) {
+    conditions.push(
+      sql`NOT ${runningContestExistsForProblem(communityPosts.problem_id)}`,
+    );
+  }
   return db.select({
     id: communityPosts.id,
     title: communityPosts.title,
     created_at: communityPosts.created_at,
   })
     .from(communityPosts).where(
-      and(
-        eq(communityPosts.author_id, userId),
-        eq(communityPosts.type, "solution"),
-        eq(communityPosts.status, "published"),
-      ),
+      and(...conditions),
     ).orderBy(sql`${communityPosts.created_at} DESC`).limit(10);
 }
 

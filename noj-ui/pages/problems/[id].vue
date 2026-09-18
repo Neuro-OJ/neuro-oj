@@ -4,6 +4,8 @@ import type { PostRow } from "~/composables/useCommunity"
 import { isAdminUser } from "~/utils/isAdminUser"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
 import { extractApiError } from "~/utils/apiError"
+import { describeAcceptance, type PublicProblemStats } from "~/utils/problemStats"
+import { useProblemStats } from "~/composables/useProblemStats"
 
 const route = useRoute()
 const router = useRouter()
@@ -38,6 +40,11 @@ const { data, pending, error, refresh } = useFetch<{
 }>(`/api/v1/problems/${problemId}`)
 
 const problem = computed(() => data.value?.data ?? null)
+
+// ── 公开通过率：对所有人可见；竞赛进行中由后端抑制 ──
+const { fetchPublic } = useProblemStats()
+const publicStats = ref<PublicProblemStats | null>(null)
+const acceptanceText = computed(() => describeAcceptance(publicStats.value))
 
 useSeoMeta({
   title: () => problem.value?.title ? `${problem.value.title} - Neuro OJ` : '题目 - Neuro OJ',
@@ -124,6 +131,8 @@ const eligibility = ref<{
   requires_accepted: boolean
   accepted: boolean
   can_create: boolean
+  /** 赛期门控原因：running_contest 时禁用发布入口。 */
+  blocked_reason: string | null
 } | null>(null)
 
 watch(
@@ -132,6 +141,10 @@ watch(
     if (!p) return
     loadingSolutions.value = true
     try {
+      // 公开统计与题解并行拉取；失败时保持 null（不渲染），不影响主内容
+      void fetchPublic(p.id)
+        .then((res) => { publicStats.value = res.data })
+        .catch(() => { publicStats.value = null })
       const [solRes, cfg] = await Promise.all([
         api.get<{ data: PostRow[] }>(
           `/api/v1/community/posts?type=solution&problem_id=${p.id}&limit=5`,
@@ -167,6 +180,8 @@ const publishBlockReason = computed(() => {
   const el = eligibility.value
   if (!el) return null
   if (el.can_create) return null
+  // 赛期门控优先展示：这是"看得到题但暂时不能写题解"的场景，与权限不足不同
+  if (el.blocked_reason === "running_contest") return "竞赛进行中，赛后开放题解"
   if (!el.enabled) return "题解区已关闭"
   if (config.value?.read_only) return "社区当前为只读模式"
   if (el.requires_accepted && !el.accepted) return "通过本题后可发布题解"
@@ -239,6 +254,10 @@ const publishBlockReason = computed(() => {
           </div>
           <div class="flex items-center gap-5 flex-wrap">
             <DifficultyBadge :difficulty="problem.difficulty" />
+            <span v-if="acceptanceText" class="inline-flex items-center gap-1 text-xs text-text-secondary">
+              <UIcon name="i-lucide-percent" class="size-3.5" />
+              {{ acceptanceText }}
+            </span>
             <template v-if="isObjective">
               <span class="inline-flex items-center gap-1 text-xs text-text-secondary">
                 <UIcon name="i-lucide-zap" class="size-3.5" />
@@ -415,6 +434,9 @@ const publishBlockReason = computed(() => {
             >
               <span class="flex items-center gap-2 text-sm font-medium text-text group-hover:text-primary">
                 <UIcon name="i-lucide-file-text" class="size-3.5 shrink-0 text-text-muted" />
+                <UBadge v-if="item.post.is_official" color="primary" variant="subtle" class="shrink-0">
+                  官方题解
+                </UBadge>
                 {{ item.post.title || "题解" }}
               </span>
               <span class="flex shrink-0 items-center gap-2 text-xs text-text-secondary">
@@ -431,7 +453,7 @@ const publishBlockReason = computed(() => {
         <!-- 门槛禁用说明（community-ui spec 场景：未通过用户受门槛限制） -->
         <p v-if="isLoggedIn && eligibility && !eligibility.can_create && eligibility.enabled" class="mt-3 flex items-center gap-1.5 text-xs text-text-muted">
           <UIcon name="i-lucide-lock" class="size-3" />
-          {{ publishBlockReason }}。通过本题后即可发布题解。
+          {{ publishBlockReason }}<template v-if="eligibility.blocked_reason !== 'running_contest'">。通过本题后即可发布题解。</template>
         </p>
       </section>
       </template>

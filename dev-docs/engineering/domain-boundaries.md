@@ -92,6 +92,7 @@
 | `domains/identity/.../banCache.ts` | 封禁缓存（60s TTL） | 封禁生效延迟不一致（最长 60s） | 单副本专用（TTL 兜底） |
 | `domains/system/middleware/rate-limit.ts` | 限流计数 | 阈值被放大 N 倍 | 单副本专用（文件内已注明） |
 | `domains/query/services/rankings.ts` | 物化视图刷新节流 | 各副本各刷一次 | 单副本专用 |
+| `domains/catalog/services/problems/problems-stats.ts` | 题目统计缓存 `statsCache`（5 分钟 TTL） | 各副本各自缓存，最多 5 分钟内读到旧统计 | 单副本专用（TTL 兜底） |
 
 **跨副本失效的正确做法（务必注意）**：`getSetting()` 在缓存未命中时**不回查 DB**，
 而是走 env → default 兜底链。因此失效必须是**重新加载**（`refreshSettingsCache()`，

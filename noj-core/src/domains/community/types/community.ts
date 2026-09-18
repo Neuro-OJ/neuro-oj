@@ -69,4 +69,11 @@ export interface CommunityPostInput {
   content: string;
   problem_id?: string;
   board_id?: string;
+  /**
+   * 请求标记为官方题解。
+   *
+   * **服务层校验**：仅题目 owner 或审核员的声明被信任，
+   * 普通用户传 true 会被静默忽略（不报错，避免探测题目归属）。
+   */
+  is_official?: boolean;
 }

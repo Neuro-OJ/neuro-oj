@@ -1,4 +1,5 @@
 import { formatDateTime } from '~/utils/submissionFormat';
+import type { SimilarSubmissionsResponse } from '~/utils/contestAntiCheat';
 
 export type ContestType = 'kaggle';
 export type ContestKind = 'public' | 'invite';
@@ -244,6 +245,20 @@ export function useContests() {
     );
   }
 
+  /**
+   * 竞赛内互相高度相似的提交对（人工复核线索）。
+   * 响应**不含源代码**；源码走 `/api/v1/admin/submission/submissions/:id`。
+   */
+  function listAntiCheatSimilarSubmissions(
+    contestId: string,
+    query?: { threshold?: number; limit?: number; problem_id?: string },
+  ) {
+    return api.get<SimilarSubmissionsResponse>(
+      `/api/v1/admin/contest/contests/${contestId}/anti-cheat/similar-submissions`,
+      { query, silent: true },
+    );
+  }
+
   function askClarification(
     contestId: string,
     body: { content: string; problem_id?: string },
@@ -276,5 +291,6 @@ export function useContests() {
     replyClarification,
     listAntiCheatGroups,
     listAntiCheatTimeline,
+    listAntiCheatSimilarSubmissions,
   };
 }
