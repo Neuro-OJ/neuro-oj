@@ -218,14 +218,18 @@ export function checkRequiredValues(env: EnvValues): RequiredValuesReport {
   }
 
   // EMAIL_PROVIDER 枚举 + 分支条件键（bash :718-737）。
+  // 占位/空值已由 validateEnv 记入 missing（bash 在缺失阶段即 fail，枚举行不可达），
+  // 故仅在非占位时做枚举校验，避免同一键同时报"未配置"与"枚举非法"。
   const provider = env["EMAIL_PROVIDER"] ?? "";
-  if (!EMAIL_PROVIDERS.includes(provider)) {
-    errors.push("  - EMAIL_PROVIDER 必须是 aliyun、tencent 或 disabled");
-  } else {
-    for (const key of emailBranchKeys(provider)) {
-      if (isPlaceholder(env[key])) {
-        if (!missing.includes(key)) missing.push(key);
-        errors.push(`  - ${key} 未配置或仍是占位值`);
+  if (!isPlaceholder(provider)) {
+    if (!EMAIL_PROVIDERS.includes(provider)) {
+      errors.push("  - EMAIL_PROVIDER 必须是 aliyun、tencent 或 disabled");
+    } else {
+      for (const key of emailBranchKeys(provider)) {
+        if (isPlaceholder(env[key])) {
+          if (!missing.includes(key)) missing.push(key);
+          errors.push(`  - ${key} 未配置或仍是占位值`);
+        }
       }
     }
   }
@@ -241,8 +245,9 @@ export function checkRequiredValues(env: EnvValues): RequiredValuesReport {
   }
 
   return {
-    ok: missing.length === 0 && placeholder.length === 0 &&
-      siteAddressError === null && errors.length === 0,
+    // errors 已汇总 missing / placeholder / 站点地址 / judge GID / 枚举 / 取值约束，
+    // 故它是"是否通过"的唯一事实源。
+    ok: errors.length === 0,
     judgeError: null,
     judgeEnabled,
     missing,
@@ -720,15 +725,18 @@ export interface EnsurePassphraseOptions {
   /** 覆盖目标路径（测试用；生产由 {@link backupPassphrasePath} 决定）。 */
   targetFile?: string;
   /**
-   * 口令来源是否已被**显式指定**：`--passphrase-file` 旗标，或进程环境
-   * `NOJ_BACKUP_PASSPHRASE_FILE`（deploy.sh:26 把后者读进
-   * `BACKUP_PASSPHRASE_FILE`）。
+   * 口令来源是否来自**进程环境** `NOJ_BACKUP_PASSPHRASE_FILE`（deploy.sh:27 把
+   * 它读进 `BACKUP_PASSPHRASE_FILE`）。
    *
-   * bash `ensure_backup_passphrase`（:948）只在**两者都为空**时才把路径回填到
-   * .env.prod；显式来源（尤其进程环境）通常是用户特意指向仓库外的文件，回填
-   * 会改写用户配置。缺省 false = 未显式指定。
+   * bash `ensure_backup_passphrase` 的回填门（:948）**只读进程环境**：
+   * `[[ -z "$configured_file" && -z "${NOJ_BACKUP_PASSPHRASE_FILE:-}" ]]`，其中
+   * `configured_file` 是 .env.prod 里的值（:923），第二个是进程环境（:27）。
+   * **`--passphrase-file` 旗标不参与该门**：bash :924 只用它选目标路径，:948
+   * 不再引用它，故旗标给出的路径仍会被回填进 .env.prod（R3 逐字对齐）。
+   *
+   * 缺省 false = 进程环境未给出该变量 → 允许回填。
    */
-  explicitConfigured?: boolean;
+  configuredFromEnv?: boolean;
 }
 
 /** {@link ensureBackupPassphrase} 结果。 */
@@ -747,9 +755,10 @@ export interface EnsurePassphraseResult {
  *
  * - 目标存在：必须是普通文件且权限为 600/400，否则拒绝并给可操作提示；
  * - 目标缺失：`mkdir -p -m 700` 父目录 → 生成 32 字节 hex → 临时文件 600 →
- *   原子 rename → 最终 600；仅当"配置里没有该键 **且** 口令来源未被显式指定"
- *   时才回填 `NOJ_BACKUP_PASSPHRASE_FILE`（对照 :948 的 `-z "$configured_file"
- *   && -z "${NOJ_BACKUP_PASSPHRASE_FILE:-}"`）。
+ *   原子 rename → 最终 600；仅当"配置里没有该键 **且** 进程环境未给出
+ *   `NOJ_BACKUP_PASSPHRASE_FILE`"时才回填（对照 :948 的 `-z "$configured_file"
+ *   && -z "${NOJ_BACKUP_PASSPHRASE_FILE:-}"`）。**`--passphrase-file` 旗标不抑制
+ *   回填**：bash :948 只读进程环境，旗标仅在 :924 参与选目标路径。
  *
  * 口令生成不依赖 openssl（复用 init/secrets.ts 的 `randomKey`），因此不会因缺
  * openssl 失败；这是与 bash 的唯一有意差异，见 task-11 报告。
@@ -838,8 +847,9 @@ export async function ensureBackupPassphrase(
     path: target,
     created: true,
     passphrase,
-    // 回填条件与 bash :948 一致：配置里没有该键，且来源未被旗标/进程环境显式指定。
-    envUpdate: configured === "" && !opts.explicitConfigured
+    // 回填条件与 bash :948 一致：.env.prod 里没有该键，且进程环境未给出该变量。
+    // `--passphrase-file` 旗标不抑制回填（bash :948 只读进程环境）。
+    envUpdate: configured === "" && !opts.configuredFromEnv
       ? { NOJ_BACKUP_PASSPHRASE_FILE: target }
       : null,
     error: null,

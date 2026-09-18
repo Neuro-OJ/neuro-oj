@@ -340,6 +340,27 @@ Deno.test("checkRequiredValues: EMAIL_PROVIDER 枚举外报错（对照 :731-734
   }
 });
 
+Deno.test("checkRequiredValues: EMAIL_PROVIDER 空/占位时只报未配置，不重复报枚举", async () => {
+  // bash 在缺失阶段就 fail（枚举行不可达）；占位值同样先被 missing/placeholder 拦截，
+  // 因此空值/占位值不应再叠加"必须是 aliyun、tencent 或 disabled"。
+  const enumError = "  - EMAIL_PROVIDER 必须是 aliyun、tencent 或 disabled";
+  const missingError = "  - EMAIL_PROVIDER 未配置或仍是占位值";
+
+  const empty = await checkRequiredValues(okEnv({ EMAIL_PROVIDER: "" }));
+  assertEquals(empty.missing, ["EMAIL_PROVIDER"]);
+  assertEquals(empty.errors, [missingError]);
+  assertEquals(empty.errors.includes(enumError), false);
+
+  for (const placeholder of ["change-me", "your-provider", "xxx"]) {
+    const report = await checkRequiredValues(
+      okEnv({ EMAIL_PROVIDER: placeholder }),
+    );
+    assertEquals(report.placeholder, ["EMAIL_PROVIDER"], placeholder);
+    assertEquals(report.errors, [missingError], placeholder);
+    assertEquals(report.errors.includes(enumError), false, placeholder);
+  }
+});
+
 Deno.test("checkRequiredValues: EMAIL_PROVIDER=aliyun 要求三个阿里云键（对照 :718-725）", async () => {
   const report = await checkRequiredValues(okEnv({ EMAIL_PROVIDER: "aliyun" }));
   assertEquals(report.ok, false);
@@ -1351,7 +1372,7 @@ Deno.test("generateSecret: 64 位小写 hex，永不重复", () => {
 
 // ---------------- 口令回填（ensure_backup_passphrase :948） ----------------
 
-Deno.test("ensureBackupPassphrase: 进程环境显式指定口令时不回填配置", async () => {
+Deno.test("ensureBackupPassphrase: 进程环境给出该变量时不回填配置", async () => {
   const dir = await Deno.makeTempDir({ prefix: "noj-pass-" });
   try {
     const target = join(dir, "passphrase");
@@ -1359,7 +1380,7 @@ Deno.test("ensureBackupPassphrase: 进程环境显式指定口令时不回填配
     // bash :948 的 `-z "${NOJ_BACKUP_PASSPHRASE_FILE:-}"` 因此为假 → 不回填。
     const result = await ensureBackupPassphrase({}, {
       targetFile: target,
-      explicitConfigured: true,
+      configuredFromEnv: true,
     });
     assertEquals(result.created, true);
     assertEquals(result.error, null);
@@ -1369,7 +1390,27 @@ Deno.test("ensureBackupPassphrase: 进程环境显式指定口令时不回填配
   }
 });
 
-Deno.test("ensureBackupPassphrase: 旗标与配置键都未给出时才回填配置", async () => {
+Deno.test("ensureBackupPassphrase: 仅旗标给出路径时仍回填配置（对照 :948）", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "noj-pass-" });
+  try {
+    const target = join(dir, "from-flag-passphrase");
+    // `--passphrase-file /x` 只影响目标路径（deploy.sh:924），不进入 :948 的回填门；
+    // 进程环境为空且 .env.prod 无该键 → bash 仍会 set_env_value 回填。
+    const result = await ensureBackupPassphrase({}, {
+      targetFile: target,
+      configuredFromEnv: false,
+    });
+    assertEquals(result.created, true);
+    assertEquals(result.error, null);
+    assertEquals(result.envUpdate, {
+      NOJ_BACKUP_PASSPHRASE_FILE: target,
+    });
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("ensureBackupPassphrase: 无进程环境且配置键缺失时回填配置", async () => {
   const dir = await Deno.makeTempDir({ prefix: "noj-pass-" });
   try {
     const target = join(dir, "passphrase");
