@@ -3,7 +3,7 @@ import { join } from "@std/path";
 import { lintBundle, runQualityRules } from "./lint.ts";
 import { packBundle, shouldExclude } from "./pack.ts";
 import { initProblemScaffold, validateSlug } from "./init.ts";
-import { parseProblemArgs } from "./command.ts";
+import { bundleSlug, parseProblemArgs } from "./command.ts";
 
 Deno.test("parseProblemArgs: init 选项与位置参数", () => {
   const a = parseProblemArgs([
@@ -91,6 +91,17 @@ Deno.test("shouldExclude: 对齐 noj.ts 的排除规则", () => {
   // 正常文件保留
   assertEquals(shouldExclude("evaluate.py"), false);
   assertEquals(shouldExclude("problem.json"), false);
+});
+
+Deno.test("评审 P1: bundleSlug 在 Windows 反斜杠路径下只取目录名", () => {
+  // 修复前用 dir.split("/")，Windows 路径会返回整条路径，
+  // join(outDir, slug + ".zip") 因此把盘符/分隔符带进输出路径。
+  assertEquals(bundleSlug("C:\\work\\problems\\a-plus-b"), "a-plus-b");
+  assertEquals(bundleSlug("C:\\work\\problems\\a-plus-b\\"), "a-plus-b");
+  assertEquals(bundleSlug("/work/problems/a-plus-b"), "a-plus-b");
+  assertEquals(bundleSlug("/work/problems/a-plus-b///"), "a-plus-b");
+  // 盘符根不应被当作 slug
+  assertEquals(bundleSlug("C:\\"), "bundle");
 });
 
 Deno.test("packBundle: 排除项不出现在产物中，且可被解压回来", () => {

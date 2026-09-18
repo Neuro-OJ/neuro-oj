@@ -193,6 +193,22 @@ export async function runProblemLint(args: ProblemArgs): Promise<number> {
   return failed ? EXIT_FAILURE : EXIT_OK;
 }
 
+/**
+ * 从题目目录路径取产物 slug（最后一段目录名）。
+ *
+ * 平台无关：Windows 路径（`C:\work\a-plus-b`）与 POSIX 路径（`/w/a-plus-b`）
+ * 都得到 `a-plus-b`。评审 P1：早先用 `dir.split("/")`，在 Windows 上会把
+ * 整条路径当成 slug，`join(outDir, slug + ".zip")` 因而写入错误位置。
+ */
+export function bundleSlug(dir: string): string {
+  // 同时按两种分隔符切分并丢弃空段：既兼容宿主平台，也兼容跨平台传入的路径。
+  const parts = dir.replace(/[/\\]+$/, "").split(/[/\\]/).filter(Boolean);
+  const last = parts[parts.length - 1];
+  // 盘符根（如 "C:"）不构成合法 slug，回退到稳定默认名。
+  if (last === undefined || /^[A-Za-z]:$/.test(last)) return "bundle";
+  return last;
+}
+
 /** 执行 `problem pack`。 */
 export async function runProblemPack(args: ProblemArgs): Promise<number> {
   const dir = resolve(args.dir ?? Deno.cwd());
@@ -238,8 +254,11 @@ export async function runProblemPack(args: ProblemArgs): Promise<number> {
   const result = packBundle({ entries, templateName });
   const outDir = resolve(args.out ?? join(dirname(dir), "packages"));
   await Deno.mkdir(outDir, { recursive: true });
-  // 产物以**题目目录名（slug）**命名，而非父目录名——父目录是所有题共享的根
-  const slug = dir.split("/").filter(Boolean).pop() ?? "bundle";
+  // 产物以**题目目录名（slug）**命名，而非父目录名——父目录是所有题共享的根。
+  // 评审 P1（Windows）：必须 path-aware，不能用 dir.split("/")——
+  // Windows 上 resolve 返回反斜杠路径（C:\work\problems\a-plus-b），
+  // 按 "/" 切分会把整条路径当成 slug，产物名与输出位置都会出错。
+  const slug = bundleSlug(dir);
   const outFile = join(outDir, `${slug}.zip`);
   await Deno.writeFile(outFile, result.data);
 

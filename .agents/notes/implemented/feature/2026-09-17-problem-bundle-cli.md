@@ -99,3 +99,30 @@ noj-core 的 problems（复数）收敛为 problem，**保留 problems 作为别
 - lint 只能做**静态**检查：「evaluator 是否真的不泄露隐藏数据」「模板是否真的拿不到分」
   这类问题静态分析只能给出启发式警告，不能替代真实评测。
 - problem 与 problems 双名并存至下一个版本周期。
+
+## 评审修正（2026-09-18，PR #532）
+
+### Problem
+
+评审 P1（Windows）：`problem pack` 用 `dir.split("/")` 取 slug。Windows 上
+`resolve` 返回反斜杠路径（`C:\work\problems\a-plus-b`），切分结果是整条路径，
+`join(outDir, slug + ".zip")` 因而把盘符与分隔符带入输出路径，产物写入错误位置。
+本 PR 的卖点之一正是「Windows 无系统 zip 依赖」，该缺陷直接推翻使用场景。
+
+### Decision
+
+抽出 `bundleSlug(dir)`：同时按 `/` 与 `\` 切分、丢弃空段、取最后一段；
+盘符根（`C:`）不构成合法 slug，回退为 `bundle`。回归测试覆盖 Windows、
+POSIX、尾随分隔符与盘符根四种输入。
+
+### Alternatives considered
+
+- **`@std/path` 的 `basename` / `win32.basename`**：当前 `@std/path@1` 的
+  `win32` 子模块不可用（实测 `basename("C:\\a\\b")` 在 Linux 上返回整条路径），
+  `Deno.build.os` 分支又依赖运行时平台；显式双分隔符切分无需平台分支即可在
+  任意宿主上对任意写法给出确定结果，且可被单测直接覆盖。
+
+### Consequences
+
+- 任意平台、任意路径写法下产物名都只是题目目录名。
+- slug 推导成为纯函数，可脱离文件系统单测。
