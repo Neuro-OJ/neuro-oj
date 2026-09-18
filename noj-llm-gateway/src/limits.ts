@@ -130,15 +130,17 @@ function minuteKey(date = new Date()): string {
   return date.toISOString().slice(0, 16);
 }
 
-function dayEndMs(): number {
-  const d = new Date();
+function dayEndMs(now: number): number {
+  const d = new Date(now);
   d.setUTCHours(24, 0, 0, 0);
   return d.getTime();
 }
 
-function monthEndMs(): number {
-  const now = new Date();
-  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+function monthEndMs(now: number): number {
+  const date = new Date(now);
+  const d = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1),
+  );
   return d.getTime();
 }
 
@@ -149,63 +151,48 @@ function scopePrefix(
   return scopeType === "global" ? "llm:global" : `llm:${scopeType}:${scopeId}`;
 }
 
-/** 构造某个作用域的 day/month 计数器（limit=0 表示不限，但仍计数）。 */
+/** 每次只构造指定窗口的计数器，避免日/月额度混用和重复扣算。 */
 function scopeCounters(
   scopeType: "user" | "global" | "problem",
   scopeId: string,
+  window: typeof QUOTA_WINDOWS[number],
   quota: QuotaRow | null,
   tokens: number,
   cost: number,
   now: number,
   includeCalls = true,
 ): CounterSpec[] {
-  const prefix = scopePrefix(scopeType, scopeId);
+  const date = new Date(now);
+  const windowKey = window === "day" ? dayKey(date) : monthKey(date);
+  const prefix = `${scopePrefix(scopeType, scopeId)}:${window}:${windowKey}`;
   const maxCalls = quota?.max_calls ?? 0;
   const maxTokens = quota?.max_tokens ?? 0;
   const maxCost = quota?.max_cost ?? 0;
-  const dayTtl = Math.max(1, Math.ceil((dayEndMs() - now) / 1000));
-  const monthTtl = Math.max(1, Math.ceil((monthEndMs() - now) / 1000));
+  const end = window === "day" ? dayEndMs(now) : monthEndMs(now);
+  const ttl = Math.max(1, Math.ceil((end - now) / 1000));
   const out: CounterSpec[] = [];
   if (includeCalls) {
     out.push(
       {
-        key: `${prefix}:day:${dayKey()}:calls`,
+        key: `${prefix}:calls`,
         limit: maxCalls,
         inc: 1,
-        ttl: dayTtl,
-      },
-      {
-        key: `${prefix}:month:${monthKey()}:calls`,
-        limit: maxCalls,
-        inc: 1,
-        ttl: monthTtl,
+        ttl,
       },
     );
   }
   out.push(
     {
-      key: `${prefix}:day:${dayKey()}:tokens`,
+      key: `${prefix}:tokens`,
       limit: maxTokens,
       inc: tokens,
-      ttl: dayTtl,
+      ttl,
     },
     {
-      key: `${prefix}:day:${dayKey()}:cost`,
+      key: `${prefix}:cost`,
       limit: maxCost,
       inc: cost,
-      ttl: dayTtl,
-    },
-    {
-      key: `${prefix}:month:${monthKey()}:tokens`,
-      limit: maxTokens,
-      inc: tokens,
-      ttl: monthTtl,
-    },
-    {
-      key: `${prefix}:month:${monthKey()}:cost`,
-      limit: maxCost,
-      inc: cost,
-      ttl: monthTtl,
+      ttl,
     },
   );
   return out;
@@ -381,21 +368,41 @@ export async function enforceAndCount(
       inc: cost,
       ttl: opts.ttlSeconds,
     },
-    ...scopeCounters("user", payload.user_id, userDay, tokens, cost, now, true),
     ...scopeCounters(
       "user",
       payload.user_id,
+      "day",
+      userDay,
+      tokens,
+      cost,
+      now,
+      true,
+    ),
+    ...scopeCounters(
+      "user",
+      payload.user_id,
+      "month",
       userMonth,
       tokens,
       cost,
       now,
       true,
     ),
-    ...scopeCounters("global", "", globalDay, tokens, cost, now, true),
-    ...scopeCounters("global", "", globalMonth, tokens, cost, now, true),
+    ...scopeCounters("global", "", "day", globalDay, tokens, cost, now, true),
+    ...scopeCounters(
+      "global",
+      "",
+      "month",
+      globalMonth,
+      tokens,
+      cost,
+      now,
+      true,
+    ),
     ...scopeCounters(
       "problem",
       payload.problem_id,
+      "day",
       problemDay,
       tokens,
       cost,
@@ -405,6 +412,7 @@ export async function enforceAndCount(
     ...scopeCounters(
       "problem",
       payload.problem_id,
+      "month",
       problemMonth,
       tokens,
       cost,
@@ -482,6 +490,7 @@ export async function settleUsage(
     ...scopeCounters(
       "user",
       payload.user_id,
+      "day",
       userDay,
       deltaTokens,
       deltaCost,
@@ -491,6 +500,7 @@ export async function settleUsage(
     ...scopeCounters(
       "user",
       payload.user_id,
+      "month",
       userMonth,
       deltaTokens,
       deltaCost,
@@ -500,6 +510,7 @@ export async function settleUsage(
     ...scopeCounters(
       "global",
       "",
+      "day",
       globalDay,
       deltaTokens,
       deltaCost,
@@ -509,6 +520,7 @@ export async function settleUsage(
     ...scopeCounters(
       "global",
       "",
+      "month",
       globalMonth,
       deltaTokens,
       deltaCost,
@@ -518,6 +530,7 @@ export async function settleUsage(
     ...scopeCounters(
       "problem",
       payload.problem_id,
+      "day",
       problemDay,
       deltaTokens,
       deltaCost,
@@ -527,6 +540,7 @@ export async function settleUsage(
     ...scopeCounters(
       "problem",
       payload.problem_id,
+      "month",
       problemMonth,
       deltaTokens,
       deltaCost,
