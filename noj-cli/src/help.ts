@@ -46,7 +46,11 @@ export const PRODUCTION_SECTION: HelpSection = {
       summary: "同步部署文件、备份并升级生产服务",
       aliases: ["upgrade"],
     },
-    { name: "backup", summary: "生产备份；子命令 create/verify/restore/drill" },
+    {
+      name: "backup",
+      summary:
+        "生产备份；子命令 create/verify/restore/drill/list/prune（list/prune 支持 --json）",
+    },
     { name: "verify", summary: "生产配置与镜像签名校验（比 config 多验签名）" },
     {
       name: "config",
@@ -73,7 +77,7 @@ export const STACK_SECTION: HelpSection = {
     {
       name: "maintain",
       summary:
-        "运维 logs/config/verify/reset/backup(create/verify/restore/drill)",
+        "运维 logs/config/verify/reset/backup(create/verify/restore/drill/list/prune)",
     },
     { name: "run-server", summary: "前台运行 noj-server 二进制" },
   ],
