@@ -168,6 +168,24 @@ export async function run(argv: string[]): Promise<number> {
       return EXIT_OK;
     }
 
+    // 全局选项剥离**之后**必须重新检查 help/version（评审 B-2）：
+    // `--profile stack --help`、`--debug --help`、`--debug --version`
+    // 此前会落到「未知命令: --help」或探测报错。
+    // help/version 只读且最高优先级（#517 E1/E2），剥离后它们可能在首位。
+    if (
+      topCommand === "--version" || topCommand === "-v" ||
+      topCommand === "version"
+    ) {
+      console.log(`noj-cli ${VERSION}`);
+      return EXIT_OK;
+    }
+    if (
+      topCommand === "--help" || topCommand === "-h" || topCommand === "help"
+    ) {
+      console.log(printHelp());
+      return EXIT_OK;
+    }
+
     // B1（评审）：profile 必须**真正参与分发**。早先只有显式 --profile 会走
     // 校验，自动探测这条链（含「歧义/未命中必须报错」）在真实 CLI 中不可达，
     // 导致 mixed 目录静默按生产路径执行、stack 意图误入 prod 路径。
@@ -912,7 +930,7 @@ export function renderDrillHelp(): string {
       "",
       "注意: 会起独立 Compose 项目（默认 noj-drill）、占用独立子网与数据卷，",
       "      耗时**分钟级**且**需要 Docker 资源**——不是随手可跑的检查。",
-      "      只校验文件完整请用 `backup verify`（结构可解析的 `--deep` 由 #515 提供，",
+      "      只校验文件完整请用 `backup verify`（结构可解析的 `--deep` 由 #515 提供）。",
       "",
       "选项:",
       "  --skip-judge            跳过 Judge/附件/评测验收（无 Judge 部署时）",
@@ -1153,6 +1171,15 @@ export async function dispatchCommand(
       if (!options.stackAlias && !wantsHelp(args)) {
         console.error(deprecationNotice("maintain", sub));
       }
+      // `maintain backup drill --help` 必须显示 drill 专属选项
+      //（#516 验收：help 要明确「分钟级、耗 Docker」；两种 profile 语义一致）。
+      if (
+        sub === "backup" && args[1] === "drill" &&
+        (wantsHelp(args.slice(2)) || wantsHelp(args.slice(1)))
+      ) {
+        console.log(renderDrillHelp());
+        return EXIT_OK;
+      }
       if (wantsHelp(args.slice(1)) || sub === "--help" || sub === "-h") {
         console.log(renderMaintainHelp(sub));
         return EXIT_OK;
@@ -1309,6 +1336,11 @@ export async function dispatchCommand(
             case "drill": {
               // #516：drill = **真实恢复演练**（隔离环境实恢复 + 业务验收），
               // 秒级的文件完整性校验请用 `backup verify`。
+              // help 必须显示 drill 专属选项（两种 profile 语义一致）。
+              if (wantsHelp(args.slice(1))) {
+                console.log(renderDrillHelp());
+                return EXIT_OK;
+              }
               if (a.snapshot === undefined) {
                 console.error(
                   "backup drill: 需要 <snapshot> 路径\n" +

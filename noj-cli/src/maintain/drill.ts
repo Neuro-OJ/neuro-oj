@@ -187,9 +187,13 @@ export function resolveDrillReportPath(
   explicit: string | undefined,
 ): string {
   if (explicit !== undefined) return explicit;
-  const dirEnd = snapshotPath.lastIndexOf("/");
-  const dir = dirEnd >= 0 ? snapshotPath.slice(0, dirEnd) : ".";
-  return `${dir}/restore-drill-report.txt`;
+  // **快照是目录**（restore-drill.sh 的 validate_snapshot_path 强制 `[[ -d ]]`
+  // 且要求 basename 为 `snapshot-*`），报告写在**该目录之内**：
+  // `REPORT="$SNAPSHOT/restore-drill-report.txt"`（restore-drill.sh:291）。
+  // 早先取 dirname(snapshot) 会恒指向一个**不存在**的路径，
+  // 连带使「读回报告判定 RPO/RTO」永远读不到（评测发现的 M1+M2 连带缺陷）。
+  const base = snapshotPath.replace(/\/+$/, "");
+  return `${base}/restore-drill-report.txt`;
 }
 
 export async function runDrill(opts: DrillOptions): Promise<DrillResult> {

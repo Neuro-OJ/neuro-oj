@@ -80,19 +80,24 @@ Deno.test("drill: 默认不 keep（演练资源必须清理）", () => {
     true,
   );
 });
-Deno.test("drill: resolveDrillReportPath 默认写在快照目录（M1）", () => {
-  // 评测发现 --json 的 reportPath 恒为 null，文本模式也不告知报告位置
+Deno.test("drill: resolveDrillReportPath 写在**快照目录之内**（M1）", () => {
+  // 快照是目录（restore-drill.sh 的 validate_snapshot_path 强制 [[ -d ]]），
+  // 报告写在 snapshot/restore-drill-report.txt（脚本 restore-drill.sh:291）。
+  // 早先取 dirname(snapshot) 会恒指向不存在的路径（评测 M1+M2 连带缺陷）。
   assertEquals(
-    resolveDrillReportPath("/b/snap.nojbackup", undefined),
-    "/b/restore-drill-report.txt",
+    resolveDrillReportPath(
+      "/b/backups/snapshot-2026-09-17T10-30-00Z",
+      undefined,
+    ),
+    "/b/backups/snapshot-2026-09-17T10-30-00Z/restore-drill-report.txt",
   );
   assertEquals(
-    resolveDrillReportPath("/b/snap.nojbackup", "/explicit.txt"),
+    resolveDrillReportPath("/b/snap", "/explicit.txt"),
     "/explicit.txt",
   );
-  // 无目录分量时回落到当前目录
+  // 尾随斜杠不应产生双斜杠
   assertEquals(
-    resolveDrillReportPath("snap.nojbackup", undefined),
-    "./restore-drill-report.txt",
+    resolveDrillReportPath("/b/snap/", undefined),
+    "/b/snap/restore-drill-report.txt",
   );
 });
