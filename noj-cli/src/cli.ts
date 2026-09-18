@@ -207,15 +207,22 @@ export async function run(argv: string[]): Promise<number> {
     //   「不传 --profile 能用、显式传 --profile stack 反而被拒」的自相矛盾——
     //   而探测歧义时 CLI 自己给出的补救建议正是「请改用 --profile prod|stack」，
     //   用户照做即踩坑。
+    // Tier 3 容器命令（需要在生产安装目录内执行）
+    const container = parseContainerCommand([topCommand, ...topRest]);
+
+    // 判定依据是「**是否会路由进 Tier 3 容器**」，而不是只看顶层名
+    //（评审 B5）：顶层名 `problem` 同时承担两种角色——
+    // `problem build|import` 是 Tier 3（需生产目录），
+    // `problem init|lint|pack` 是本地出题命令。只看顶层名会让前者逃过门禁。
+    const isTier3 = container.matched;
     if (
       effectiveProfile !== null && !wantsHelp(topRest) &&
-      !PROFILE_AGNOSTIC.has(topCommand)
+      (!PROFILE_AGNOSTIC.has(topCommand) || isTier3)
     ) {
       assertCommandAllowedInProfile(effectiveProfile, topCommand);
     }
 
     // Tier 3：容器包装（纯新增，不影响既有命令）
-    const container = parseContainerCommand([topCommand, ...topRest]);
     if (container.matched) {
       return await dispatchContainer(container, topRest);
     }
@@ -1192,11 +1199,13 @@ export async function dispatchCommand(
                     remove: result.plan.remove.map((e) => e.name),
                     keep: result.plan.keep.map((e) => e.name),
                     deleted: result.deleted,
+                    failed: result.failed,
                   },
                   null,
                   2,
                 ));
-                return EXIT_OK;
+                // --json 也必须反映失败（此前无 failed 字段且恒 exit 0）
+                return result.failed.length > 0 ? EXIT_FAILURE : EXIT_OK;
               }
               if (result.plan.remove.length === 0) {
                 console.log("没有需要清理的备份。");
@@ -1209,6 +1218,15 @@ export async function dispatchCommand(
                     " 个备份：",
               );
               for (const e of result.plan.remove) console.log("  - " + e.name);
+              // 删除失败必须上报且影响退出码（此前 CLI 层忽略了 failed[]，
+              // 只打印「已删除 0 个」却 exit 0 —— 假成功）。
+              if (result.failed.length > 0) {
+                console.error(`失败 ${result.failed.length} 个（未删除）：`);
+                for (const f of result.failed) {
+                  console.error(`  ! ${f.path}: ${f.reason}`);
+                }
+                return EXIT_FAILURE;
+              }
               if (!a.confirm) console.log("加 --confirm 才会真正删除。");
               return EXIT_OK;
             }
