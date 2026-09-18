@@ -99,3 +99,48 @@ Deno.test("pruneBackups: 无参数时不删任何东西（安全默认）", asyn
     await Deno.remove(dir, { recursive: true });
   }
 });
+Deno.test("pruneBackups: 删除失败必须上报而非静默吞掉", async () => {
+  // 评审修正：早先 catch{} 让调用方看到「已删除 0 个」却 exit 0，
+  // 传达「已清理」的假成功。删除失败必须出现在 failed[] 中。
+  const dir = await Deno.makeTempDir();
+  try {
+    const backups = dir + "/backups";
+    await Deno.mkdir(backups);
+    await Deno.writeTextFile(
+      backups + "/snapshot-2026-09-17T10-00-00Z.nojbackup",
+      "x",
+    );
+    // 目录设为只读：Deno.remove 会失败（非 root 环境生效）
+    await Deno.chmod(backups, 0o555);
+    try {
+      const r = await pruneBackups(backups, { keep: 0, confirm: true });
+      // 非 root 时应失败；root 会绕过权限，此时只断言结构存在
+      assertEquals(Array.isArray(r.failed), true, "必须返回 failed 数组");
+      if (r.failed.length > 0) {
+        assertEquals(r.deleted.length, 0);
+        assertEquals(r.failed[0]!.reason.length > 0, true, "必须带失败原因");
+      }
+    } finally {
+      await Deno.chmod(backups, 0o755);
+    }
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("pruneBackups: 成功时 failed 为空", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const backups = dir + "/backups";
+    await Deno.mkdir(backups);
+    await Deno.writeTextFile(
+      backups + "/snapshot-2026-09-17T10-00-00Z.nojbackup",
+      "x",
+    );
+    const r = await pruneBackups(backups, { keep: 0, confirm: true });
+    assertEquals(r.deleted.length, 1);
+    assertEquals(r.failed, []);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

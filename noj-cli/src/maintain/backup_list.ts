@@ -98,6 +98,14 @@ export interface PruneResult {
   plan: PrunePlan;
   /** 实际删除的路径（dry-run 时为空）。 */
   deleted: string[];
+  /**
+   * 删除失败的条目与原因（评审修正）。
+   *
+   * 早先 `catch {}` 静默吞掉失败，调用方只看到 "已删除 0 个" 却 exit 0——
+   * 向用户传达了"已清理"的**假成功**，恰恰破坏 prune 的安全价值。
+   * 删除失败必须被上报（调用方据此返回非零退出码）。
+   */
+  failed: Array<{ path: string; reason: string }>;
 }
 
 /**
@@ -113,16 +121,18 @@ export async function pruneBackups(
   const { entries } = await listBackups(backupDir);
   const plan = planPrune(entries, options);
   if (!options.confirm) {
-    return { plan, deleted: [] };
+    return { plan, deleted: [], failed: [] };
   }
   const deleted: string[] = [];
+  const failed: Array<{ path: string; reason: string }> = [];
   for (const entry of plan.remove) {
     try {
       await Deno.remove(entry.path, { recursive: entry.format === "legacy" });
       deleted.push(entry.path);
-    } catch {
-      // 删除失败不阻断其余条目
+    } catch (e) {
+      // 不阻断其余条目，但**必须记录**（否则调用方会报出假成功）
+      failed.push({ path: entry.path, reason: (e as Error).message });
     }
   }
-  return { plan, deleted };
+  return { plan, deleted, failed };
 }
