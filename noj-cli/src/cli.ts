@@ -137,6 +137,25 @@ export async function run(argv: string[]): Promise<number> {
     const topCommand = argvRest[0];
     const topRest = argvRest.slice(1);
 
+    // 全局选项剥离**之后**必须重判 help/version（评审）：`--profile stack --help`、
+    // `--debug --help`、`--debug --version` 此前会把 `--help`/`--version`
+    // 留在 rest[0]，落到 dispatchCommand 的 default 分支报「未知命令」——
+    // 而 help.ts 明确把它们列为全局选项（文档与行为矛盾）。
+    // help/version 是只读且最高优先级的（#517 E1/E2），剥离后重新判定。
+    if (
+      topCommand === "--version" || topCommand === "-v" ||
+      topCommand === "version"
+    ) {
+      console.log(`noj-cli ${VERSION}`);
+      return EXIT_OK;
+    }
+    if (
+      topCommand === "--help" || topCommand === "-h" || topCommand === "help"
+    ) {
+      console.log(printHelp());
+      return EXIT_OK;
+    }
+
     if (topCommand === undefined) {
       console.log(printHelp());
       return EXIT_OK;
