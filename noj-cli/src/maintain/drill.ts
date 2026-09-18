@@ -177,6 +177,21 @@ export function buildDrillArgs(opts: DrillOptions): string[] {
  * - `1` 演练失败（含业务验收失败、超 RPO/RTO）
  * - `2` 参数或资源错误
  */
+/**
+ * 报告路径：显式 `--report` 优先；否则脚本默认写在快照目录下的
+ * `restore-drill-report.txt`（评测发现 `--json` 里恒为 null，
+ * 文本模式也不告知用户去哪找报告）。
+ */
+export function resolveDrillReportPath(
+  snapshotPath: string,
+  explicit: string | undefined,
+): string {
+  if (explicit !== undefined) return explicit;
+  const dirEnd = snapshotPath.lastIndexOf("/");
+  const dir = dirEnd >= 0 ? snapshotPath.slice(0, dirEnd) : ".";
+  return `${dir}/restore-drill-report.txt`;
+}
+
 export async function runDrill(opts: DrillOptions): Promise<DrillResult> {
   // 参数/资源错误 → 2（用法错误），在**开跑前**决出
   assertDrillProjectName(opts.projectName ?? "noj-drill");
@@ -191,13 +206,28 @@ export async function runDrill(opts: DrillOptions): Promise<DrillResult> {
   }).output();
 
   const code = result.code;
-  // 脚本自身用 0/1 区分通过/失败；其他非零（如 2/127）视为演练失败
-  const pass = code === 0;
+  const reportPath = resolveDrillReportPath(opts.snapshotPath, opts.report);
+
+  // #516 验收：「RPO/RTO 是**硬阈值**——超限应视为**演练失败**，而非警告」。
+  // 但 restore-drill.sh 对超限只写 `result=passed_with_warnings` 并仍 exit 0。
+  // 因此这里读回报告，把该标记提升为失败——否则「演练」失去意义
+  //（评测发现：超 RPO/RTO 时 CLI 仍返回 0）。
+  let rpoRtoBreach = false;
+  try {
+    const text = await Deno.readTextFile(reportPath);
+    if (/^result=passed_with_warnings$/m.test(text)) rpoRtoBreach = true;
+  } catch {
+    // 报告不存在/不可读：不据此判定失败，交由退出码决定
+  }
+
+  const pass = code === 0 && !rpoRtoBreach;
   return {
     pass,
     exitCode: pass ? 0 : 1,
-    reportPath: opts.report ?? null,
-    message: pass
+    reportPath,
+    message: rpoRtoBreach
+      ? "恢复演练失败：RPO/RTO 未达标（详见报告）——演练要求硬阈值达标"
+      : pass
       ? "恢复演练通过：隔离环境成功恢复并通过业务验收"
       : `恢复演练失败（restore-drill.sh 退出码 ${code}）`,
   };

@@ -4,6 +4,7 @@ import {
   assertSubnetCidr,
   buildDrillArgs,
   type DrillOptions,
+  resolveDrillReportPath,
 } from "./drill.ts";
 
 function baseOpts(over: Partial<DrillOptions> = {}): DrillOptions {
@@ -77,5 +78,21 @@ Deno.test("drill: 默认不 keep（演练资源必须清理）", () => {
   assertEquals(
     buildDrillArgs(baseOpts({ keep: true })).includes("--keep"),
     true,
+  );
+});
+Deno.test("drill: resolveDrillReportPath 默认写在快照目录（M1）", () => {
+  // 评测发现 --json 的 reportPath 恒为 null，文本模式也不告知报告位置
+  assertEquals(
+    resolveDrillReportPath("/b/snap.nojbackup", undefined),
+    "/b/restore-drill-report.txt",
+  );
+  assertEquals(
+    resolveDrillReportPath("/b/snap.nojbackup", "/explicit.txt"),
+    "/explicit.txt",
+  );
+  // 无目录分量时回落到当前目录
+  assertEquals(
+    resolveDrillReportPath("snap.nojbackup", undefined),
+    "./restore-drill-report.txt",
   );
 });
