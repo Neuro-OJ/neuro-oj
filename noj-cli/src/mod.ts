@@ -153,13 +153,24 @@ export type { ResetOptions } from "./maintain/reset.ts";
 // 输出通道 / 命令树。自 T2 起新建的模块，此前未从包入口再导出，
 // 导致 `deno check src/mod.ts` 不类型检查它们（T6 评审 carry-forward）。
 export {
+  ALIYUN_EMAIL_KEYS,
+  checkEnvFileMode,
+  EMAIL_PROVIDERS,
+  emailBranchKeys,
+  ENV_FILE_ALLOWED_MODES,
   ENV_KEYS,
+  ENV_VALUE_RULES,
   isPlaceholder,
   JUDGE_KEYS,
   judgeEnabledError,
+  TENCENT_EMAIL_KEYS,
   validateEnv,
 } from "./core/config-schema.ts";
-export type { EnvKeySpec } from "./core/config-schema.ts";
+export type {
+  EnvKeySpec,
+  EnvValueRule,
+  FilePermissionVerdict,
+} from "./core/config-schema.ts";
 export {
   ENV_FILE_MODE,
   parseEnvFile,
@@ -250,6 +261,8 @@ export {
   DEFAULT_COSIGN_IDENTITY_REGEX,
   DEFAULT_COSIGN_OIDC_ISSUER,
   DEFAULT_IMAGE_REGISTRY,
+  DEFAULT_PANEL_COMMAND,
+  DEFAULT_PANEL_ROOT,
   DEPLOYMENT_MANIFEST_FILE,
   detectPanel,
   ensureBackupPassphrase,
@@ -257,6 +270,7 @@ export {
   isIpv4Address,
   isSiteAddress,
   JUDGE_IMAGES,
+  PANEL_GUIDANCE_OK_LINE,
   panelGuidance,
   PASSPHRASE_ALLOWED_MODES,
   passphraseFileMode,
@@ -264,7 +278,6 @@ export {
   recordDeploymentMetadata,
   runConfigWizard,
   showPanelGuidance,
-  validateProdConfig,
   verifyImageSignatures,
   wizardNeedsInteractiveInput,
 } from "./prod/config.ts";
@@ -281,7 +294,6 @@ export type {
   PassphrasePathOptions,
   PortCheckOptions,
   PortCheckResult,
-  ProdValidation,
   RecordMetadataOptions,
   RecordMetadataResult,
   RequiredValuesReport,

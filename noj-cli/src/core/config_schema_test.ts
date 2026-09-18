@@ -1,9 +1,15 @@
 import { assertEquals } from "@std/assert";
 import {
+  ALIYUN_EMAIL_KEYS,
+  checkEnvFileMode,
+  EMAIL_PROVIDERS,
+  emailBranchKeys,
   ENV_KEYS,
+  ENV_VALUE_RULES,
   isPlaceholder,
   JUDGE_KEYS,
   judgeEnabledError,
+  TENCENT_EMAIL_KEYS,
   validateEnv,
 } from "./config-schema.ts";
 
@@ -274,4 +280,83 @@ Deno.test("validateEnv 不承载 JUDGE_ENABLED 枚举错误（调用方须先查
     judgeEnabledError("maybe"),
     "JUDGE_ENABLED 必须是 true 或 false",
   );
+});
+// ---------------- 条件键与取值约束（T11 R3 补齐） ----------------
+
+Deno.test("EMAIL_PROVIDERS 与 bash case 分支逐字一致", () => {
+  assertEquals([...EMAIL_PROVIDERS], ["aliyun", "tencent", "disabled"]);
+  assertEquals([...emailBranchKeys("aliyun")], [...ALIYUN_EMAIL_KEYS]);
+  assertEquals([...emailBranchKeys("tencent")], [...TENCENT_EMAIL_KEYS]);
+  // disabled 与枚举外均无额外键（枚举错误由调用方另行报告）。
+  assertEquals(emailBranchKeys("disabled"), []);
+  assertEquals(emailBranchKeys("smtp"), []);
+  assertEquals(emailBranchKeys(undefined), []);
+});
+
+Deno.test("ENV_VALUE_RULES 逐条对照 bash :739-764", () => {
+  // 同一键可挂多条规则（bash 是独立 if），故按"收集全部命中"的方式应用。
+  const apply = (
+    env: Record<string, string>,
+    key: string,
+    value: string,
+  ): string[] =>
+    ENV_VALUE_RULES
+      .filter((rule) => rule.key === key)
+      .map((rule) => rule.check(env, value))
+      .filter((error): error is string => error !== null);
+
+  // STORAGE_PROVIDER 必须恰为 s3。
+  assertEquals(apply({}, "STORAGE_PROVIDER", "s3"), []);
+  assertEquals(apply({}, "STORAGE_PROVIDER", "minio"), [
+    "STORAGE_PROVIDER 必须设置为 s3",
+  ]);
+  // JWT_SECRET 不得含 test（大小写敏感子串）。
+  assertEquals(apply({}, "JWT_SECRET", "a-test-b"), [
+    "JWT_SECRET 不得使用测试密钥",
+  ]);
+  assertEquals(apply({}, "JWT_SECRET", "TEST"), []);
+  // APP_URL 协议与不安全 HTTP 模式。
+  assertEquals(apply({}, "APP_URL", "https://x.test"), []);
+  assertEquals(apply({}, "APP_URL", "ftp://x.test"), [
+    "网站完整网址必须以 http:// 或 https:// 开头",
+  ]);
+  assertEquals(
+    apply({ NOJ_ALLOW_INSECURE_HTTP: "false" }, "APP_URL", "http://x.test"),
+    ["网站完整网址使用 HTTP 时，必须明确选择临时 HTTP 模式"],
+  );
+  assertEquals(
+    apply({ NOJ_ALLOW_INSECURE_HTTP: "true" }, "APP_URL", "http://x.test"),
+    [],
+  );
+  // NOJ_VERSION Release 标签。
+  assertEquals(apply({}, "NOJ_VERSION", "v0.1.0"), []);
+  assertEquals(apply({}, "NOJ_VERSION", "0.1.1-rc.1"), []);
+  assertEquals(apply({}, "NOJ_VERSION", "latest"), [
+    "NOJ_VERSION 必须是不可变 Release 标签（如 v0.1.0 或 0.1.1-rc.1）",
+  ]);
+  // GID 不在通用规则表（judge 分支单独处理）。
+  assertEquals(
+    ENV_VALUE_RULES.some((rule) => rule.key === "JUDGE_DOCKER_SOCKET_GID"),
+    false,
+  );
+});
+
+Deno.test("checkEnvFileMode: 三态与 bash check_file_permissions 一致", () => {
+  assertEquals(checkEnvFileMode("600", "/x/.env.prod"), {
+    kind: "ok",
+    mode: "600",
+  });
+  assertEquals(checkEnvFileMode("400", "/x/.env.prod"), {
+    kind: "ok",
+    mode: "400",
+  });
+  assertEquals(checkEnvFileMode("640", "/x/.env.prod"), {
+    kind: "error",
+    mode: "640",
+    message: "生产配置文件权限必须为 600 或 400：/x/.env.prod",
+  });
+  assertEquals(checkEnvFileMode(null, "/x/.env.prod"), {
+    kind: "unreadable",
+    message: "无法读取生产配置文件权限：/x/.env.prod",
+  });
 });

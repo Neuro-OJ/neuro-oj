@@ -13,6 +13,13 @@
 
 import { assertEquals, assertRejects } from "@std/assert";
 import { join } from "@std/path";
+import {
+  ALIYUN_EMAIL_KEYS,
+  checkEnvFileMode,
+  EMAIL_PROVIDERS,
+  ENV_VALUE_RULES,
+  TENCENT_EMAIL_KEYS,
+} from "../core/config-schema.ts";
 import { readEnvFile } from "../core/env-file.ts";
 import type { CommandRunner, SpawnHandle } from "../runtime/command.ts";
 import type { PromptIO } from "../tui/io.ts";
@@ -23,18 +30,20 @@ import {
   checkRequiredValues,
   DEFAULT_BACKUP_PASSPHRASE_FILE,
   DEFAULT_COSIGN_IDENTITY_REGEX,
+  DEFAULT_PANEL_COMMAND,
+  DEFAULT_PANEL_ROOT,
   detectPanel,
   ensureBackupPassphrase,
   type EnvValues,
   generateSecret,
   isIpv4Address,
   isSiteAddress,
+  PANEL_GUIDANCE_OK_LINE,
   panelGuidance,
   passphraseFileMode,
   recordDeploymentMetadata,
   runConfigWizard,
   showPanelGuidance,
-  validateProdConfig,
   verifyImageSignatures,
   wizardNeedsInteractiveInput,
 } from "./config.ts";
@@ -185,11 +194,11 @@ Deno.test("checkRequiredValues: 全部合法时 ok 且无 missing/placeholder", 
 
 // ---------------- judge 枚举（T2 carry-forward） ----------------
 
-Deno.test("validateProdConfig: JUDGE_ENABLED=maybe 在 validateEnv 之前报错", async () => {
+Deno.test("checkRequiredValues: JUDGE_ENABLED=maybe 在 validateEnv 之前报错", async () => {
   // 故意只给一个非法 JUDGE_ENABLED 与一堆缺失键：只有枚举错误能被报出，
   // 证明 judgeEnabledError 先于 validateEnv。
   const env: EnvValues = { JUDGE_ENABLED: "maybe" };
-  const result = await validateProdConfig(env);
+  const result = await checkRequiredValues(env);
   assertEquals(result.ok, false);
   assertEquals(result.judgeError, "JUDGE_ENABLED 必须是 true 或 false");
   assertEquals(result.missing, []);
@@ -197,10 +206,10 @@ Deno.test("validateProdConfig: JUDGE_ENABLED=maybe 在 validateEnv 之前报错"
   assertEquals(result.siteAddressError, null);
 });
 
-Deno.test("validateProdConfig: JUDGE_ENABLED 未设置视为启用，judge 键必需", async () => {
+Deno.test("checkRequiredValues: JUDGE_ENABLED 未设置视为启用，judge 键必需", async () => {
   const env = okEnv();
   delete env.JUDGE_ENABLED;
-  const result = await validateProdConfig(env);
+  const result = await checkRequiredValues(env);
   assertEquals(result.judgeEnabled, true);
   assertEquals(result.missing, [
     "JUDGE_DOCKER_SOCKET",
@@ -209,8 +218,8 @@ Deno.test("validateProdConfig: JUDGE_ENABLED 未设置视为启用，judge 键�
   assertEquals(result.ok, false);
 });
 
-Deno.test("validateProdConfig: JUDGE_ENABLED 空串同样视为启用", async () => {
-  const result = await validateProdConfig(okEnv({ JUDGE_ENABLED: "" }));
+Deno.test("checkRequiredValues: JUDGE_ENABLED 空串同样视为启用", async () => {
+  const result = await checkRequiredValues(okEnv({ JUDGE_ENABLED: "" }));
   assertEquals(result.judgeEnabled, true);
   assertEquals(result.missing, [
     "JUDGE_DOCKER_SOCKET",
@@ -218,8 +227,8 @@ Deno.test("validateProdConfig: JUDGE_ENABLED 空串同样视为启用", async ()
   ]);
 });
 
-Deno.test("validateProdConfig: JUDGE_ENABLED=false 不要求 judge 键", async () => {
-  const result = await validateProdConfig(okEnv({ JUDGE_ENABLED: "false" }));
+Deno.test("checkRequiredValues: JUDGE_ENABLED=false 不要求 judge 键", async () => {
+  const result = await checkRequiredValues(okEnv({ JUDGE_ENABLED: "false" }));
   assertEquals(result.judgeEnabled, false);
   assertEquals(result.missing, []);
   assertEquals(result.ok, true);
@@ -304,8 +313,297 @@ Deno.test("checkRequiredValues: DOMAIN 非法时 siteAddressError 非空", async
   assertEquals(report.missing, []);
 });
 
-Deno.test("validateProdConfig: 汇总 ok 且 judgeEnabled=false", async () => {
-  const result = await validateProdConfig(okEnv());
+// ---------------- 后半段取值约束（bash :718-764） ----------------
+
+Deno.test("checkRequiredValues: EMAIL_PROVIDER 枚举外报错（对照 :731-734）", async () => {
+  const report = await checkRequiredValues(okEnv({ EMAIL_PROVIDER: "smtp" }));
+  assertEquals(report.ok, false);
+  assertEquals(
+    report.errors.includes(
+      "  - EMAIL_PROVIDER 必须是 aliyun、tencent 或 disabled",
+    ),
+    true,
+  );
+  // 枚举错误不改变 missing：EMAIL_PROVIDER 已有值，不算未配置。
+  assertEquals(report.missing, []);
+  assertEquals(report.placeholder, []);
+  // 三个受支持取值都不报枚举错误。
+  for (const provider of EMAIL_PROVIDERS) {
+    const ok = await checkRequiredValues(okEnv({ EMAIL_PROVIDER: provider }));
+    assertEquals(
+      ok.errors.includes(
+        "  - EMAIL_PROVIDER 必须是 aliyun、tencent 或 disabled",
+      ),
+      false,
+      provider,
+    );
+  }
+});
+
+Deno.test("checkRequiredValues: EMAIL_PROVIDER=aliyun 要求三个阿里云键（对照 :718-725）", async () => {
+  const report = await checkRequiredValues(okEnv({ EMAIL_PROVIDER: "aliyun" }));
+  assertEquals(report.ok, false);
+  assertEquals(report.missing, [...ALIYUN_EMAIL_KEYS]);
+  for (const key of ALIYUN_EMAIL_KEYS) {
+    assertEquals(
+      report.errors.includes(`  - ${key} 未配置或仍是占位值`),
+      true,
+      key,
+    );
+  }
+  // 条件键在 .env.prod 里是占位值时同样报"未配置或仍是占位值"。
+  const placeholder = await checkRequiredValues(okEnv({
+    EMAIL_PROVIDER: "aliyun",
+    ALIBABA_ACCESS_KEY_ID: "change-me",
+  }));
+  assertEquals(placeholder.missing, [
+    "ALIBABA_ACCESS_KEY_ID",
+    "ALIBABA_ACCESS_KEY_SECRET",
+    "ALIBABA_FROM_EMAIL",
+  ]);
+});
+
+Deno.test("checkRequiredValues: EMAIL_PROVIDER=tencent 要求四个腾讯云键（对照 :726-731）", async () => {
+  const report = await checkRequiredValues(
+    okEnv({ EMAIL_PROVIDER: "tencent" }),
+  );
+  assertEquals(report.ok, false);
+  assertEquals(report.missing, [...TENCENT_EMAIL_KEYS]);
+  for (const key of TENCENT_EMAIL_KEYS) {
+    assertEquals(
+      report.errors.includes(`  - ${key} 未配置或仍是占位值`),
+      true,
+      key,
+    );
+  }
+  // disabled 分支不要求任何邮件键。
+  const disabled = await checkRequiredValues(
+    okEnv({ EMAIL_PROVIDER: "disabled" }),
+  );
+  assertEquals(disabled.missing, []);
+  assertEquals(disabled.ok, true);
+});
+
+Deno.test("checkRequiredValues: 邮件分支填齐后 all-green（分支互不越界）", async () => {
+  const aliyun = await checkRequiredValues(okEnv({
+    EMAIL_PROVIDER: "aliyun",
+    ALIBABA_ACCESS_KEY_ID: "ak-id",
+    ALIBABA_ACCESS_KEY_SECRET: "ak-secret",
+    ALIBABA_FROM_EMAIL: "noreply@oj.beta.test",
+  }));
+  assertEquals(aliyun.ok, true);
+  assertEquals(aliyun.missing, []);
+  assertEquals(aliyun.errors, []);
+
+  const tencent = await checkRequiredValues(okEnv({
+    EMAIL_PROVIDER: "tencent",
+    TENCENT_SECRET_ID: "id",
+    TENCENT_SECRET_KEY: "key",
+    TENCENT_FROM_EMAIL: "noreply@oj.beta.test",
+    TENCENT_REGION: "ap-guangzhou",
+  }));
+  assertEquals(tencent.ok, true);
+  assertEquals(tencent.missing, []);
+  assertEquals(tencent.errors, []);
+
+  // 选中 tencent 时缺失的阿里云键不应被要求（bash 只走当前分支）。
+  const tencentOnly = await checkRequiredValues(okEnv({
+    EMAIL_PROVIDER: "tencent",
+    TENCENT_SECRET_ID: "id",
+    TENCENT_SECRET_KEY: "key",
+    TENCENT_FROM_EMAIL: "noreply@oj.beta.test",
+    TENCENT_REGION: "ap-guangzhou",
+    ALIBABA_ACCESS_KEY_ID: "",
+  }));
+  assertEquals(tencentOnly.missing, []);
+  assertEquals(tencentOnly.ok, true);
+});
+Deno.test("checkRequiredValues: STORAGE_PROVIDER 必须恰为 s3（对照 :739-742）", async () => {
+  for (const bad of ["minio", "S3", "s3 ", "local", "s30"]) {
+    const report = await checkRequiredValues(okEnv({ STORAGE_PROVIDER: bad }));
+    assertEquals(report.ok, false, bad);
+    assertEquals(
+      report.errors.includes("  - STORAGE_PROVIDER 必须设置为 s3"),
+      true,
+      bad,
+    );
+  }
+  const ok = await checkRequiredValues(okEnv({ STORAGE_PROVIDER: "s3" }));
+  assertEquals(ok.errors.includes("  - STORAGE_PROVIDER 必须设置为 s3"), false);
+  // 空值走 missing（未配置）而非取值错误，且不重复报错。
+  const empty = await checkRequiredValues(okEnv({ STORAGE_PROVIDER: "" }));
+  assertEquals(empty.missing, ["STORAGE_PROVIDER"]);
+  assertEquals(empty.errors, ["  - STORAGE_PROVIDER 未配置或仍是占位值"]);
+});
+
+Deno.test("checkRequiredValues: JWT_SECRET 不得含 test（对照 :743-746）", async () => {
+  // bash 用子串匹配 `*test*`（区分大小写）。
+  for (
+    const bad of [
+      "my-test-secret",
+      "secret-test",
+      "test-secret-value",
+    ]
+  ) {
+    const report = await checkRequiredValues(okEnv({ JWT_SECRET: bad }));
+    assertEquals(report.ok, false, bad);
+    assertEquals(
+      report.errors.includes("  - JWT_SECRET 不得使用测试密钥"),
+      true,
+      bad,
+    );
+  }
+  // 大小写敏感：TESTING / TEST 不含小写子串 test -> 不报错。
+  for (const legal of ["TESTING-secret-value", "TEST-Secret", "te-st"]) {
+    const upper = await checkRequiredValues(okEnv({ JWT_SECRET: legal }));
+    assertEquals(
+      upper.errors.includes("  - JWT_SECRET 不得使用测试密钥"),
+      false,
+      legal,
+    );
+  }
+  // 单个 "test" 先被 isPlaceholder 拦截（进 placeholder），不会同时报测试密钥错误。
+  const placeholder = await checkRequiredValues(okEnv({ JWT_SECRET: "test" }));
+  assertEquals(placeholder.placeholder, ["JWT_SECRET"]);
+  assertEquals(placeholder.errors, ["  - JWT_SECRET 未配置或仍是占位值"]);
+});
+
+Deno.test("checkRequiredValues: APP_URL 协议与 HTTP 模式（对照 :751-759）", async () => {
+  // 非 http(s) 前缀 -> 报协议错误（无论是否允许不安全 HTTP）。
+  for (
+    const bad of ["oj.beta.test", "ftp://oj.beta.test", "//oj.beta.test"]
+  ) {
+    const report = await checkRequiredValues(okEnv({ APP_URL: bad }));
+    assertEquals(report.ok, false, bad);
+    assertEquals(
+      report.errors.includes("  - 网站完整网址必须以 http:// 或 https:// 开头"),
+      true,
+      bad,
+    );
+  }
+  // http:// 且 NOJ_ALLOW_INSECURE_HTTP 非 "true" -> 报"临时 HTTP 模式"。
+  for (const allow of [undefined, "", "false", "TRUE", "True"]) {
+    const report = await checkRequiredValues(okEnv({
+      APP_URL: "http://oj.beta.test",
+      NOJ_ALLOW_INSECURE_HTTP: allow,
+    }));
+    assertEquals(report.ok, false, String(allow));
+    assertEquals(
+      report.errors.includes(
+        "  - 网站完整网址使用 HTTP 时，必须明确选择临时 HTTP 模式",
+      ),
+      true,
+      String(allow),
+    );
+    // 已以 http:// 开头，不再报协议错误。
+    assertEquals(
+      report.errors.includes("  - 网站完整网址必须以 http:// 或 https:// 开头"),
+      false,
+    );
+  }
+  // http:// + NOJ_ALLOW_INSECURE_HTTP=true -> 通过。
+  const insecureOk = await checkRequiredValues(okEnv({
+    APP_URL: "http://oj.beta.test",
+    NOJ_ALLOW_INSECURE_HTTP: "true",
+  }));
+  assertEquals(insecureOk.ok, true);
+  assertEquals(insecureOk.errors, []);
+  // https:// 无需 NOJ_ALLOW_INSECURE_HTTP。
+  const secure = await checkRequiredValues(okEnv());
+  assertEquals(secure.ok, true);
+});
+
+Deno.test("checkRequiredValues: NOJ_VERSION 必须是 Release 标签（对照 :760-764）", async () => {
+  const good = ["v0.1.0", "0.1.1-rc.1", "v1.2.3", "v0.9.5-rc.1", "0.1.0"];
+  for (const version of good) {
+    const report = await checkRequiredValues(okEnv({ NOJ_VERSION: version }));
+    assertEquals(
+      report.errors.includes(
+        "  - NOJ_VERSION 必须是不可变 Release 标签（如 v0.1.0 或 0.1.1-rc.1）",
+      ),
+      false,
+      version,
+    );
+  }
+  const bad = [
+    "latest",
+    "0.1",
+    "v0.1",
+    "dev",
+    "v0.1.0 x",
+    "1.0.0+build.5",
+  ];
+  for (const version of bad) {
+    const report = await checkRequiredValues(okEnv({ NOJ_VERSION: version }));
+    assertEquals(report.ok, false, version);
+    assertEquals(
+      report.errors.includes(
+        "  - NOJ_VERSION 必须是不可变 Release 标签（如 v0.1.0 或 0.1.1-rc.1）",
+      ),
+      true,
+      version,
+    );
+  }
+});
+
+Deno.test("checkEnvFileMode: .env.prod 权限必须为 600 或 400（对照 :658-665）", () => {
+  const file = "/opt/noj/.env.prod";
+  assertEquals(checkEnvFileMode("600", file), { kind: "ok", mode: "600" });
+  assertEquals(checkEnvFileMode("400", file), { kind: "ok", mode: "400" });
+  for (const mode of ["640", "644", "660", "777", "000"]) {
+    const verdict = checkEnvFileMode(mode, file);
+    assertEquals(verdict.kind, "error", mode);
+    assertEquals(
+      verdict.kind === "error" ? verdict.message : "",
+      `生产配置文件权限必须为 600 或 400：${file}`,
+      mode,
+    );
+  }
+  // stat 读不出权限 -> bash 的硬错误（fail）。
+  const unreadable = checkEnvFileMode(null, file);
+  assertEquals(unreadable.kind, "unreadable");
+  assertEquals(
+    unreadable.kind === "unreadable" ? unreadable.message : "",
+    `无法读取生产配置文件权限：${file}`,
+  );
+});
+
+Deno.test("ENV_VALUE_RULES: 覆盖 4 类取值约束（GID 由 judge 分支单独处理）", async () => {
+  const keys = ENV_VALUE_RULES.map((rule) => rule.key);
+  for (
+    const key of [
+      "STORAGE_PROVIDER",
+      "JWT_SECRET",
+      "APP_URL",
+      "NOJ_VERSION",
+    ]
+  ) {
+    assertEquals(keys.includes(key), true, key);
+  }
+  // GID 规则不进通用取值约束表（错误语义不同，见 config-schema.ts 文档）。
+  assertEquals(keys.includes("JUDGE_DOCKER_SOCKET_GID"), false);
+  // judge 启用时 GID 非数字判错（对照 :747-750）。
+  const gid = await checkRequiredValues(okEnv({
+    JUDGE_ENABLED: "true",
+    JUDGE_DOCKER_SOCKET: "/run/noj-judge/docker.sock",
+    JUDGE_DOCKER_SOCKET_GID: "abc",
+  }));
+  assertEquals(gid.missing, ["JUDGE_DOCKER_SOCKET_GID"]);
+  assertEquals(
+    gid.errors.includes("  - JUDGE_DOCKER_SOCKET_GID 必须是数字"),
+    true,
+  );
+  // judge 关闭时 GID 不参与判定（bash 同样只在 judge_enabled 时检查）。
+  const off = await checkRequiredValues(okEnv({
+    JUDGE_ENABLED: "false",
+    JUDGE_DOCKER_SOCKET_GID: "abc",
+  }));
+  assertEquals(off.missing, []);
+  assertEquals(off.errors, []);
+  assertEquals(off.ok, true);
+});
+Deno.test("checkRequiredValues: 汇总 ok 且 judgeEnabled=false", async () => {
+  const result = await checkRequiredValues(okEnv());
   assertEquals(result.ok, true);
   assertEquals(result.judgeEnabled, false);
   assertEquals(result.siteAddressError, null);
@@ -562,6 +860,19 @@ Deno.test("panelGuidance: 非 baota 模式返回 null，baota 经 IO 输出", ()
   const io = new FakeIO([]);
   showPanelGuidance("baota", io);
   assertEquals(io.output().includes("宝塔兼容模式"), true);
+  // bash :817 的 ok 行必须真实输出（此前注释声称有、实现却没有）。
+  assertEquals(io.output().includes(PANEL_GUIDANCE_OK_LINE), true);
+  assertEquals(PANEL_GUIDANCE_OK_LINE, "✓ 宝塔兼容提示已启用");
+  // 非 baota 模式零输出。
+  const silent = new FakeIO([]);
+  showPanelGuidance("none", silent);
+  showPanelGuidance("auto", silent);
+  assertEquals(silent.output(), "");
+});
+
+Deno.test("面板常数: 默认值对应 deploy.sh:31-32 的注入默认", () => {
+  assertEquals(DEFAULT_PANEL_ROOT, "/www/server/panel");
+  assertEquals(DEFAULT_PANEL_COMMAND, "/usr/bin/bt");
 });
 
 // ---------------- 镜像验签 ----------------
@@ -1038,14 +1349,36 @@ Deno.test("generateSecret: 64 位小写 hex，永不重复", () => {
   assertEquals(a === b, false);
 });
 
-// ---------------- 组合校验 ----------------
+// ---------------- 口令回填（ensure_backup_passphrase :948） ----------------
 
-Deno.test("validateProdConfig: 与 checkRequiredValues 结果一致", async () => {
-  const env = okEnv({ DOMAIN: "" });
-  const direct = await checkRequiredValues(env);
-  const combined = await validateProdConfig(env);
-  assertEquals(combined.missing, direct.missing);
-  assertEquals(combined.placeholder, direct.placeholder);
-  assertEquals(combined.ok, direct.ok);
-  assertEquals(combined.errors, direct.errors);
+Deno.test("ensureBackupPassphrase: 进程环境显式指定口令时不回填配置", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "noj-pass-" });
+  try {
+    const target = join(dir, "passphrase");
+    // 模拟 `NOJ_BACKUP_PASSPHRASE_FILE=/tmp/x noj-cli ...`：进程环境已给出路径，
+    // bash :948 的 `-z "${NOJ_BACKUP_PASSPHRASE_FILE:-}"` 因此为假 → 不回填。
+    const result = await ensureBackupPassphrase({}, {
+      targetFile: target,
+      explicitConfigured: true,
+    });
+    assertEquals(result.created, true);
+    assertEquals(result.error, null);
+    assertEquals(result.envUpdate, null);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("ensureBackupPassphrase: 旗标与配置键都未给出时才回填配置", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "noj-pass-" });
+  try {
+    const target = join(dir, "passphrase");
+    const result = await ensureBackupPassphrase({}, { targetFile: target });
+    assertEquals(result.created, true);
+    assertEquals(result.envUpdate, {
+      NOJ_BACKUP_PASSPHRASE_FILE: target,
+    });
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });

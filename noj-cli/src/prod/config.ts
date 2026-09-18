@@ -7,7 +7,9 @@
  * - `configuration_needs_interactive_input` :390
  * - `configure_env_interactive` :429-595（本模块只做"产出键值"，落盘由调用方
  *   决定是否传 `envFile`；生命周期动作属 T12–T16，不在本模块）
- * - `check_required_values` :684-766、`check_judge_socket` :768
+ * - `check_required_values` :684-766（含 EMAIL_PROVIDER 分支 :718-737、取值约束
+ *   :739-764 与 `is_site_address` :713）、`check_judge_socket` :768
+ * - `check_file_permissions` :658-665（经 {@link checkEnvFileMode}）
  * - `check_port_value` :780、`detect_panel` :791、`show_panel_guidance` :804
  * - `verify_image_signatures` :837-874、`record_deployment_metadata` :875-891
  * - `passphrase_file_mode` :916、`ensure_backup_passphrase` :920-953
@@ -23,9 +25,14 @@
 
 import { dirname, join } from "@std/path";
 import {
+  ALIYUN_EMAIL_KEYS,
+  EMAIL_PROVIDERS,
+  emailBranchKeys,
+  ENV_VALUE_RULES,
   isPlaceholder,
   JUDGE_KEYS,
   judgeEnabledError,
+  TENCENT_EMAIL_KEYS,
   validateEnv,
 } from "../core/config-schema.ts";
 import { writeEnvFileAtomic } from "../core/env-file.ts";
@@ -130,13 +137,17 @@ export function isSiteAddress(address: string): boolean {
 
 /** {@link checkRequiredValues} 的报告。 */
 export interface RequiredValuesReport {
-  /** 是否全部通过（含 judge 枚举、judge 键、站点地址）。 */
+  /** 是否全部通过（含 judge 枚举、judge 键、站点地址、邮件分支与取值约束）。 */
   ok: boolean;
   /** `JUDGE_ENABLED` 枚举错误；非 null 时其余字段为空（先于 validateEnv）。 */
   judgeError: string | null;
   /** judge 是否启用（未设置/空串视为启用，见 T2 carry-forward）。 */
   judgeEnabled: boolean;
-  /** 缺失（未设置或空值）的键，顺序与 T2 的 `validateEnv` 一致；judge 启用时追加 JUDGE_KEYS。 */
+  /**
+   * 判定失败的键：未设置、空值、占位值，或 judge 启用时非数字的 GID
+   * （bash :747 把 GID 非数字也写进 missing 计数）。顺序与 T2 的
+   * `validateEnv` 一致；judge 启用时追加 JUDGE_KEYS。
+   */
   missing: string[];
   /** 命中占位值黑名单的键。 */
   placeholder: string[];
@@ -149,14 +160,21 @@ export interface RequiredValuesReport {
 /**
  * 迁移 `check_required_values`（:684-766）。
  *
- * 严格顺序：
+ * 判定顺序：
  * 1. **先** {@link judgeEnabledError}（T2 carry-forward）；非 null 立即返回；
+ *    bash 中该错误由 `judge_enabled` 的 `*) fail` 产出，此处等价地作为硬错误；
  * 2. {@link validateEnv} 得到 missing / placeholder（judge 启用时自动含 judge 键）；
- * 3. judge 启用且 GID 非数字时追加 JUDGE_DOCKER_SOCKET_GID（对应 :747）；
- * 4. DOMAIN 站点地址检查（对应 :713）。
+ * 3. DOMAIN 站点地址检查（:713）；
+ * 4. judge 启用且 GID 非数字（:747-750，错误同时计入 missing）；
+ * 5. EMAIL_PROVIDER 枚举 + 分支条件键（:718-737）；
+ * 6. 取值约束 STORAGE_PROVIDER / JWT_SECRET / APP_URL / NOJ_VERSION
+ *    （:739-764，规则表在 T2 的 `ENV_VALUE_RULES`）。
  *
- * 本函数**不**校验 EMAIL_PROVIDER 枚举 / STORAGE_PROVIDER / JWT_SECRET 测试密钥 /
- * APP_URL 协议 / NOJ_VERSION 标签（bash :718-765）——见报告"有意未迁移"一节。
+ * 与 bash 的差异（有意）：
+ * - bash 在缺失/占位阶段就 `fail`（硬错误退出），后半段根本不会被执行到；
+ *   本函数不提前退出，把全部失败并入 `errors` 后由调用方一次性处理，因此
+ *   `errors` 的**顺序**是 TS 自定的稳定顺序，而非 bash 的打印顺序；
+ * - 取值约束（步骤 6）仅在键**已配置且非占位**时判定，避免与「未配置」重复报错。
  */
 export function checkRequiredValues(env: EnvValues): RequiredValuesReport {
   const judgeError = judgeEnabledError(env["JUDGE_ENABLED"]);
@@ -180,16 +198,6 @@ export function checkRequiredValues(env: EnvValues): RequiredValuesReport {
     `  - ${key} 未配置或仍是占位值`
   );
 
-  const gid = env["JUDGE_DOCKER_SOCKET_GID"];
-  if (
-    judgeEnabled && gid !== undefined && gid !== "" && !/^[0-9]+$/.test(gid)
-  ) {
-    if (!missing.includes("JUDGE_DOCKER_SOCKET_GID")) {
-      missing.push("JUDGE_DOCKER_SOCKET_GID");
-    }
-    errors.push("  - JUDGE_DOCKER_SOCKET_GID 必须是数字");
-  }
-
   const domain = env["DOMAIN"] ?? "";
   const siteAddressError = isSiteAddress(domain)
     ? null
@@ -198,57 +206,49 @@ export function checkRequiredValues(env: EnvValues): RequiredValuesReport {
     errors.push("  - " + siteAddressError);
   }
 
+  // judge 分支（bash :747-750）：GID 必须是纯数字；该错误同样计入 missing。
+  if (judgeEnabled) {
+    const gid = env["JUDGE_DOCKER_SOCKET_GID"];
+    if (gid !== undefined && gid !== "" && !/^[0-9]+$/.test(gid)) {
+      if (!missing.includes("JUDGE_DOCKER_SOCKET_GID")) {
+        missing.push("JUDGE_DOCKER_SOCKET_GID");
+      }
+      errors.push("  - JUDGE_DOCKER_SOCKET_GID 必须是数字");
+    }
+  }
+
+  // EMAIL_PROVIDER 枚举 + 分支条件键（bash :718-737）。
+  const provider = env["EMAIL_PROVIDER"] ?? "";
+  if (!EMAIL_PROVIDERS.includes(provider)) {
+    errors.push("  - EMAIL_PROVIDER 必须是 aliyun、tencent 或 disabled");
+  } else {
+    for (const key of emailBranchKeys(provider)) {
+      if (isPlaceholder(env[key])) {
+        if (!missing.includes(key)) missing.push(key);
+        errors.push(`  - ${key} 未配置或仍是占位值`);
+      }
+    }
+  }
+
+  // 后半段取值约束（bash :739-764）：仅对**已配置且非占位**的键判定，
+  // 否则「未配置」已由上面的 missing 表达，不重复报错。GID 不在本表内，
+  // 由上面的 judge 分支单独处理（其错误还需计入 missing）。
+  for (const rule of ENV_VALUE_RULES) {
+    const value = env[rule.key];
+    if (value === undefined || isPlaceholder(value)) continue;
+    const error = rule.check(definedOnly(env), value);
+    if (error !== null) errors.push("  - " + error);
+  }
+
   return {
     ok: missing.length === 0 && placeholder.length === 0 &&
-      siteAddressError === null,
+      siteAddressError === null && errors.length === 0,
     judgeError: null,
     judgeEnabled,
     missing,
     placeholder,
     errors,
     siteAddressError,
-  };
-}
-
-/** {@link validateProdConfig} 的汇总结果。 */
-export interface ProdValidation {
-  ok: boolean;
-  judgeError: string | null;
-  judgeEnabled: boolean;
-  missing: string[];
-  placeholder: string[];
-  errors: string[];
-  siteAddressError: string | null;
-}
-
-/**
- * 生产配置总校验入口：**先**判 `JUDGE_ENABLED` 枚举，再进 T2 的 `validateEnv`。
- *
- * 与 {@link checkRequiredValues} 的差别只在于"非法枚举时其余字段为空"这一
- * 契约由本函数显式保证（T2 carry-forward 的调用方样板）。
- */
-export function validateProdConfig(env: EnvValues): ProdValidation {
-  const judgeError = judgeEnabledError(env["JUDGE_ENABLED"]);
-  if (judgeError !== null) {
-    return {
-      ok: false,
-      judgeError,
-      judgeEnabled: false,
-      missing: [],
-      placeholder: [],
-      errors: [judgeError],
-      siteAddressError: null,
-    };
-  }
-  const report = checkRequiredValues(env);
-  return {
-    ok: report.ok,
-    judgeError: report.judgeError,
-    judgeEnabled: report.judgeEnabled,
-    missing: report.missing,
-    placeholder: report.placeholder,
-    errors: report.errors,
-    siteAddressError: report.siteAddressError,
   };
 }
 
@@ -430,7 +430,14 @@ export function panelGuidance(panel: PanelName | PanelMode): string | null {
   return panel === "baota" ? BAOTA_GUIDANCE : null;
 }
 
-/** 迁移 `show_panel_guidance`（:804-818）：仅 baota 时输出 section + 正文 + ok 行。 */
+/** bash `:817` 的 ok 行（`show_panel_guidance` 的收尾输出）。 */
+export const PANEL_GUIDANCE_OK_LINE = "✓ 宝塔兼容提示已启用";
+
+/**
+ * 迁移 `show_panel_guidance`（:804-818）：仅 baota 时输出
+ * section 标题 + 正文 + {@link PANEL_GUIDANCE_OK_LINE}（bash 无着色时 ok() 的
+ * 逐字输出）。
+ */
 export function showPanelGuidance(
   panel: PanelName | PanelMode,
   io: PromptIO,
@@ -439,6 +446,7 @@ export function showPanelGuidance(
   if (text === null) return;
   io.write("\n== 宝塔兼容模式 ==\n");
   io.write(text + "\n");
+  io.write(PANEL_GUIDANCE_OK_LINE + "\n");
 }
 
 // ---------------- 镜像验签 ----------------
@@ -711,6 +719,16 @@ export function backupPassphrasePath(opts: PassphrasePathOptions): string {
 export interface EnsurePassphraseOptions {
   /** 覆盖目标路径（测试用；生产由 {@link backupPassphrasePath} 决定）。 */
   targetFile?: string;
+  /**
+   * 口令来源是否已被**显式指定**：`--passphrase-file` 旗标，或进程环境
+   * `NOJ_BACKUP_PASSPHRASE_FILE`（deploy.sh:26 把后者读进
+   * `BACKUP_PASSPHRASE_FILE`）。
+   *
+   * bash `ensure_backup_passphrase`（:948）只在**两者都为空**时才把路径回填到
+   * .env.prod；显式来源（尤其进程环境）通常是用户特意指向仓库外的文件，回填
+   * 会改写用户配置。缺省 false = 未显式指定。
+   */
+  explicitConfigured?: boolean;
 }
 
 /** {@link ensureBackupPassphrase} 结果。 */
@@ -729,7 +747,9 @@ export interface EnsurePassphraseResult {
  *
  * - 目标存在：必须是普通文件且权限为 600/400，否则拒绝并给可操作提示；
  * - 目标缺失：`mkdir -p -m 700` 父目录 → 生成 32 字节 hex → 临时文件 600 →
- *   原子 rename → 最终 600；若配置中还没有 `NOJ_BACKUP_PASSPHRASE_FILE`，回填该键。
+ *   原子 rename → 最终 600；仅当"配置里没有该键 **且** 口令来源未被显式指定"
+ *   时才回填 `NOJ_BACKUP_PASSPHRASE_FILE`（对照 :948 的 `-z "$configured_file"
+ *   && -z "${NOJ_BACKUP_PASSPHRASE_FILE:-}"`）。
  *
  * 口令生成不依赖 openssl（复用 init/secrets.ts 的 `randomKey`），因此不会因缺
  * openssl 失败；这是与 bash 的唯一有意差异，见 task-11 报告。
@@ -818,7 +838,8 @@ export async function ensureBackupPassphrase(
     path: target,
     created: true,
     passphrase,
-    envUpdate: configured === ""
+    // 回填条件与 bash :948 一致：配置里没有该键，且来源未被旗标/进程环境显式指定。
+    envUpdate: configured === "" && !opts.explicitConfigured
       ? { NOJ_BACKUP_PASSPHRASE_FILE: target }
       : null,
     error: null,
@@ -836,23 +857,11 @@ const WIZARD_CORE_KEYS: readonly string[] = [
   "JUDGE_ENABLED",
 ];
 
-/** 阿里云分支需补的键（:398）。 */
-const ALIYUN_KEYS: readonly string[] = [
-  "ALIBABA_ACCESS_KEY_ID",
-  "ALIBABA_ACCESS_KEY_SECRET",
-  "ALIBABA_FROM_EMAIL",
-];
-
-/** 腾讯云分支需补的键（:404）。 */
-const TENCENT_KEYS: readonly string[] = [
-  "TENCENT_SECRET_ID",
-  "TENCENT_SECRET_KEY",
-  "TENCENT_FROM_EMAIL",
-  "TENCENT_REGION",
-];
-
 /** 跳过邮件时清空的键（:548-549）。 */
-const ALL_EMAIL_KEYS: readonly string[] = [...ALIYUN_KEYS, ...TENCENT_KEYS];
+const ALL_EMAIL_KEYS: readonly string[] = [
+  ...ALIYUN_EMAIL_KEYS,
+  ...TENCENT_EMAIL_KEYS,
+];
 
 /** 迁移 `configuration_needs_interactive_input`（:390-417）。 */
 function wizardMissingKeys(env: EnvValues): string[] {
@@ -860,15 +869,8 @@ function wizardMissingKeys(env: EnvValues): string[] {
   for (const key of WIZARD_CORE_KEYS) {
     if (isPlaceholder(currentConfigValue(env, key))) missing.push(key);
   }
-  const provider = env["EMAIL_PROVIDER"] ?? "";
-  if (provider === "aliyun") {
-    for (const key of ALIYUN_KEYS) {
-      if (isPlaceholder(currentConfigValue(env, key))) missing.push(key);
-    }
-  } else if (provider === "tencent") {
-    for (const key of TENCENT_KEYS) {
-      if (isPlaceholder(currentConfigValue(env, key))) missing.push(key);
-    }
+  for (const key of emailBranchKeys(env["EMAIL_PROVIDER"])) {
+    if (isPlaceholder(currentConfigValue(env, key))) missing.push(key);
   }
   if (judgeEnabledFrom(env)) {
     for (const key of JUDGE_KEYS) {
@@ -880,8 +882,8 @@ function wizardMissingKeys(env: EnvValues): string[] {
 
 /** 该键是否属于向导会询问的集合（核心 + 两个邮件分支 + judge）。 */
 function isWizardKey(key: string): boolean {
-  return WIZARD_CORE_KEYS.includes(key) || ALIYUN_KEYS.includes(key) ||
-    TENCENT_KEYS.includes(key) || JUDGE_KEYS.includes(key);
+  return WIZARD_CORE_KEYS.includes(key) || ALIYUN_EMAIL_KEYS.includes(key) ||
+    TENCENT_EMAIL_KEYS.includes(key) || JUDGE_KEYS.includes(key);
 }
 
 /** 迁移 `configuration_needs_interactive_input`（:390）：是否仍需向导补值。 */
@@ -972,12 +974,16 @@ function promptText(
  * 迁移 `configure_env_interactive`（:429-595）。
  *
  * **非 TTY**：缺必需输入时直接抛错并附上缺少的键，绝不进入交互循环
- * （#517 E10；错误文本复用 T? 的 {@link nonInteractiveAdvice}），也不写任何输出。
+ * （#517 E10；错误文本复用 T9 `init/non_interactive.ts` 的
+ * {@link nonInteractiveAdvice}），也不写任何输出。
  * 配置已完整时零输出返回当前值（无需交互）。
  *
  * **TTY**：按 bash 顺序询问版本 → 网站地址 → HTTPS → 邮件服务 → Judge →
  * 确认写入。返回值是"待落盘键值"；只有显式传入 `envFile` 才写盘（T12+ 决定
  * 是暂存还是直接提交，本模块不实现生命周期动作）。
+ *
+ * 邮件条件键清单来自 T2 schema 的 {@link ALIYUN_EMAIL_KEYS} /
+ * {@link TENCENT_EMAIL_KEYS}（唯一事实源），本模块不再自带第二份 key 数组。
  *
  * 复填语义（bash `reset_existing`）通过"传入空 env"表达：传入当前 env 即
  * "补齐缺失"，非占位的历史值成为默认值并在用户回车时复用。

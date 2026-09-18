@@ -1,10 +1,13 @@
 /**
  * 生产配置 schema（唯一事实源）。
  *
- * 本模块替换 `scripts/deploy/deploy.sh` 中散落的硬编码键名数组，键清单与判定
- * 逻辑逐字对照 bash：
+ * 本模块替换 `scripts/deploy/deploy.sh` 中散落的硬编码键名数组**与取值判定**：
+ * 键清单、条件键与判定逻辑逐字对照 bash——
  * - `check_required_values()` 的 19 个必需键（deploy.sh:686-692）
  * - judge 分支的额外 2 个键（deploy.sh:702-710）
+ * - 邮件分支的额外键（deploy.sh:718-737）
+ * - 后半段取值约束 STORAGE_PROVIDER / JWT_SECRET / GID / APP_URL / NOJ_VERSION
+ *   （deploy.sh:739-764）
  * - `is_placeholder()` 的 case 模式（deploy.sh:667-674）
  * - `judge_enabled()` 的真值集合（deploy.sh:676-682）
  */
@@ -161,4 +164,149 @@ export function validateEnv(
     }
   }
   return { missing, placeholder };
+}
+
+// ---------------- 条件键（EMAIL_PROVIDER 分支） ----------------
+
+/** `EMAIL_PROVIDER` 的受支持取值（deploy.sh:718-737 的 case 分支）。 */
+export const EMAIL_PROVIDERS: readonly string[] = [
+  "aliyun",
+  "tencent",
+  "disabled",
+];
+
+/** `EMAIL_PROVIDER=aliyun` 时额外必需的键（deploy.sh:720）。 */
+export const ALIYUN_EMAIL_KEYS: readonly string[] = [
+  "ALIBABA_ACCESS_KEY_ID",
+  "ALIBABA_ACCESS_KEY_SECRET",
+  "ALIBABA_FROM_EMAIL",
+];
+
+/** `EMAIL_PROVIDER=tencent` 时额外必需的键（deploy.sh:727）。 */
+export const TENCENT_EMAIL_KEYS: readonly string[] = [
+  "TENCENT_SECRET_ID",
+  "TENCENT_SECRET_KEY",
+  "TENCENT_FROM_EMAIL",
+  "TENCENT_REGION",
+];
+
+/** 由 `EMAIL_PROVIDER` 决定的额外必需键（枚举外返回空数组，错误另报）。 */
+export function emailBranchKeys(
+  provider: string | undefined,
+): readonly string[] {
+  switch (provider) {
+    case "aliyun":
+      return ALIYUN_EMAIL_KEYS;
+    case "tencent":
+      return TENCENT_EMAIL_KEYS;
+    default:
+      return [];
+  }
+}
+
+// ---------------- 取值约束（check_required_values 后半段） ----------------
+
+/** bash `check_required_values` 对单个键的取值约束。 */
+export interface EnvValueRule {
+  /** 约束的目标键。 */
+  key: string;
+  /**
+   * 判定：返回错误文案（不含 "  - " 前缀）表示不合规，返回 null 表示通过。
+   * `value` 是键的原始值；未设置/空值由调用方先行处理，不进入本判定。
+   */
+  check(env: Record<string, string>, value: string): string | null;
+}
+
+/**
+ * 后半段取值约束，逐条对照 bash `check_required_values`（deploy.sh:739-764）：
+ * - STORAGE_PROVIDER 必须恰为 s3（:739-742）；
+ * - JWT_SECRET 不得含子串 test（:743-746）；
+ * - APP_URL 必须 http:// 或 https:// 开头（:756-759），
+ *   且 http:// 时必须显式 NOJ_ALLOW_INSECURE_HTTP=true（:751-755）；
+ * - NOJ_VERSION 必须匹配 Release 标签正则（:760-764）。
+ *
+ * bash 是**独立 if 语句**而非 else-if，故同一键可挂多条规则；数组顺序即 bash 的
+ * 报错顺序（STORAGE → JWT → APP_URL → VERSION）。
+ *
+ * **不含 GID 规则**：bash `:747-750` 的 GID 数字校验仅在 judge 启用时生效，
+ * 且其错误被 bash 计入 `missing` 计数，与本节"仅已配置键取值约束"语义不同；
+ * 由 `prod/config.ts:checkRequiredValues` 的 judge 分支单独实现。
+ */
+export const ENV_VALUE_RULES: readonly EnvValueRule[] = [
+  {
+    key: "STORAGE_PROVIDER",
+    check: (_env, value) =>
+      value === "s3" ? null : "STORAGE_PROVIDER 必须设置为 s3",
+  },
+  {
+    key: "JWT_SECRET",
+    check: (_env, value) =>
+      value.includes("test") ? "JWT_SECRET 不得使用测试密钥" : null,
+  },
+  {
+    key: "APP_URL",
+    check: (env, value) => {
+      if (
+        value.startsWith("http://") &&
+        env["NOJ_ALLOW_INSECURE_HTTP"] !== "true"
+      ) {
+        return "网站完整网址使用 HTTP 时，必须明确选择临时 HTTP 模式";
+      }
+      return null;
+    },
+  },
+  {
+    key: "APP_URL",
+    check: (_env, value) =>
+      value.startsWith("http://") || value.startsWith("https://")
+        ? null
+        : "网站完整网址必须以 http:// 或 https:// 开头",
+  },
+  {
+    key: "NOJ_VERSION",
+    check: (_env, value) =>
+      /^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$/.test(value)
+        ? null
+        : "NOJ_VERSION 必须是不可变 Release 标签（如 v0.1.0 或 0.1.1-rc.1）",
+  },
+];
+
+/**
+ * 配置文件的权限约束（bash `check_file_permissions`，deploy.sh:658-665）。
+ *
+ * bash 语义：
+ * - 权限**读不出来**（stat 两种形式都失败）→ fail（硬错误，脚本退出）；
+ * - 权限读出来了但不是 600/400 → fail（硬错误）。
+ */
+export type FilePermissionVerdict =
+  | { kind: "ok"; mode: string }
+  | { kind: "error"; mode: string; message: string }
+  | { kind: "unreadable"; message: string };
+
+/** 生产配置文件的合法权限（bash check_file_permissions，deploy.sh:661）。 */
+export const ENV_FILE_ALLOWED_MODES: readonly string[] = ["600", "400"];
+
+/**
+ * 校验 .env.prod 的权限是否为 600 或 400（deploy.sh:658-665）。
+ *
+ * @param mode probe 读到的八进制权限串；读不出时传 null。
+ */
+export function checkEnvFileMode(
+  mode: string | null,
+  envFile: string,
+): FilePermissionVerdict {
+  if (mode === null) {
+    return {
+      kind: "unreadable",
+      message: "无法读取生产配置文件权限：" + envFile,
+    };
+  }
+  if (!ENV_FILE_ALLOWED_MODES.includes(mode)) {
+    return {
+      kind: "error",
+      mode,
+      message: "生产配置文件权限必须为 600 或 400：" + envFile,
+    };
+  }
+  return { kind: "ok", mode };
 }
