@@ -202,12 +202,26 @@ export async function runDrill(opts: DrillOptions): Promise<DrillResult> {
   if (opts.subnet !== undefined) assertSubnetCidr(opts.subnet);
   await checkDrillResources(opts.dir);
 
-  const result = await new Deno.Command("bash", {
+  // `--json` 时 stdout 必须**只含 JSON**（评测发现：脚本的人类日志
+  // 与 CLI 的 JSON 混在同一 stdout，导致 `jq`/`json.load` 解析失败）。
+  // Deno 的 stdout 没有 "stderr" 选项，故 json 模式改为 **piped 捕获后
+  // 转写到 stderr**：日志仍可见，但不污染机器可读的 stdout。
+  // 非 json 模式保持 inherit（交互与实时日志体验不变）。
+  const jsonMode = opts.json === true;
+  const child = new Deno.Command("bash", {
     args: buildDrillArgs(opts),
     stdin: "inherit",
-    stdout: "inherit",
+    stdout: jsonMode ? "piped" : "inherit",
     stderr: "inherit",
-  }).output();
+  });
+  const result = await child.output();
+  if (jsonMode) {
+    const captured = new TextDecoder().decode(result.stdout);
+    if (captured.length > 0) {
+      // 保留脚本日志的可见性，但走 stderr
+      await Deno.stderr.write(new TextEncoder().encode(captured));
+    }
+  }
 
   const code = result.code;
   const reportPath = resolveDrillReportPath(opts.snapshotPath, opts.report);
