@@ -362,11 +362,51 @@ jj new
 
 ---
 
-## Task 10–26（概要；执行前逐个展开为完整任务块）
+## Task 10: compose 服务集与调用（prod/compose.ts）
+
+**Files:**
+- Create: `noj-cli/src/prod/compose.ts`
+- Create: `noj-cli/src/prod/compose_test.ts`
+- Modify: `noj-cli/src/mod.ts`
+
+**背景（spec §3.4 洞 3）**：现 `stack` 模式**运行时渲染** `docker-compose.noj.yml`（`deploy/compose.ts:renderCompose()`），而 `prod` 用**仓库内固定**的 `docker-compose.prod.yml`。**两者不是同一份编排**。**裁决（spec §3.4）**：保留受版本管理的 `docker-compose.prod.yml` 为唯一生产编排（由 T9 bootstrap 下载并校验），**不引入运行时渲染**。理由：固定文件的容器集合/健康检查/profile 已受 CI 与 e2e 测试；运行时渲染会引入未被测试覆盖的编排面。
+
+**实测的 prod 服务集（须逐服务核对，不得遗漏）**：
+`migrate`、`core`、`ui`、`judge`(**profile judge**)、`llm-gateway`、`nginx`、`prometheus`(**profile monitoring**)、`alertmanager`(**profile monitoring**)、`postgres`、`redis`、`minio`、`minio-init`。
+顶层卷/网络：`noj-net`(network)、`pgdata`、`redisdata`、`miniodata`、`noj-packages`、`noj-storage`、`judge-cache`、`promdata`、`alertmanagerdata`。
+
+- [ ] **Step 1: 写失败测试**
+
+`compose_test.ts` 覆盖（**注入 runner**，不触真实 docker）：
+- `composeArgs()` 参数数组形状正确：`["compose", "--env-file", <env>, "-f", <compose>, ...]`，且 **以数组构造，无 shell 字符串**。
+- `judge` profile：启用时含 `--profile judge`，否则不含。
+- `monitoring` profile：按开关含/不含 `--profile monitoring`。
+- **服务集核对**：导出 `PROD_SERVICES`（含 profile 归属），断言其与 `docker-compose.prod.yml` 中**实际服务名集合一致**——通过**读取真实 compose 文件**解析（`^  <name>:` 缩进层级）来断言，而非硬编码第二份清单。若解析难以实现，退化为"文件包含每个服务名"并**在报告中显式说明退化**。
+- `up`/`down`/`ps`/`logs`/`config` 各自拼出预期参数（对照 `deploy/docker.ts:4-49` 的既有形状）。
+- `--dry-run` 时**不执行** runner，只返回将执行的参数。
+- 退出码透传。
+
+- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+
+- [ ] **Step 3: 实现**
+
+`prod/compose.ts`：
+- 导出 `PROD_SERVICES`（服务名 + 所属 profile）、`composeArgs(opts)`，以及 `up/down/ps/logs/config` 的薄封装。复用既有 `runtime/command.ts` 的 `CommandRunner` 抽象，勿新造。
+- **不改** `deploy/docker.ts`（stack 侧，T23 删）；本模块是 prod 侧新实现。
+- 不实现运行时 compose 渲染（见上「裁决」）。
+
+- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+
+- [ ] **Step 5: 提交** — `feat(cli): prod compose 服务集与调用封装（不引入运行时渲染）`
+
+**明确不做**：不删 `deploy/compose.ts`（T23）；不实现生命周期命令（T12–T16）；不决定监控 profile 的默认值（由 T11 配置决定）。
+
+---
+
+## Task 11–26（概要；执行前逐个展开为完整任务块）
 
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
-| T10 compose | `prod/compose.ts` | 服务集与 `docker-compose.prod.yml` 逐服务核对无遗漏 |
 | T11 config/向导 | `prod/config.ts` | 19 键校验；交互向导；口令自动生成 600；cosign；宝塔检测 |
 | T12 install | `prod/lifecycle.ts` | 空目录仅凭二进制可完成；PATH 注册 |
 | T13 start/stop/restart/status | 同上 | 状态机 no-op 判定；退出码 |
