@@ -12,6 +12,7 @@
     "test:production": "bash ../scripts/deploy/test-noj.sh && bash ../scripts/deploy/test-install.sh && bash ../scripts/deploy/test-deploy.sh && bash ../scripts/deploy/test-backup.sh"
   },
   "imports": {
+    "@cliffy/command": "jsr:@cliffy/command@1.2.1",
     "@std/assert": "jsr:@std/assert@^1",
     "@std/path": "jsr:@std/path@^1",
     "fflate": "npm:fflate@~0.8.3"
