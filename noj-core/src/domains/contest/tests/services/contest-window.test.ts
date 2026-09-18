@@ -338,10 +338,23 @@ Deno.test({
       rows.find((r) => r.id === "bad")?.value,
       "2026-13-01T00:00:00",
     );
-    // 可解析行：被正确规范化（证明不是"整段跳过"）
+    // 可解析行：被正确规范化（证明不是"整段跳过"）。
+    //
+    // 期望值**不能写死**：无偏移的 '2026-09-14 10:00:00' 会按**数据库会话时区**
+    // 解释，而 PGlite/PostgreSQL 的默认 TimeZone 来自宿主 TZ（本地 +08 得到
+    // 02:00Z，CI 的 UTC 得到 10:00Z）。写死会在 CI 上假失败。这里用与迁移
+    // 相同的语义现算期望，既保持 TZ 无关，又仍然证明"确实做了规范化转换"。
+    const expected = unwrapRows<{ v: string }>(
+      await db.execute(
+        sql`SELECT to_char(('2026-09-14 10:00:00')::timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS v`,
+      ) as never,
+    )[0]?.v;
+    const ok = rows.find((r) => r.id === "ok")?.value;
+    assertEquals(ok, expected);
+    // 规范化结果必须已是**规范形态**（否则等于没转换）
     assertEquals(
-      rows.find((r) => r.id === "ok")?.value,
-      "2026-09-14T02:00:00.000Z",
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(ok ?? ""),
+      true,
     );
   },
 });
