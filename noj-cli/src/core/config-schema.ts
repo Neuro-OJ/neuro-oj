@@ -67,12 +67,39 @@ const JUDGE_FALSY: ReadonlySet<string> = new Set([
   "OFF",
 ]);
 
+/** `JUDGE_ENABLED` 判定为真的值（deploy.sh:679）；空串表示未设置。 */
+const JUDGE_TRUTHY: ReadonlySet<string> = new Set([
+  "",
+  "true",
+  "TRUE",
+  "yes",
+  "YES",
+  "1",
+  "on",
+  "ON",
+]);
+
 /**
- * 判断 judge 是否启用，真值集合与 bash `judge_enabled()` 一致。
+ * 校验 JUDGE_ENABLED 是否为受支持取值；非法值返回错误信息，合法值返回 null。
+ *
+ * 逐字对照 bash `judge_enabled()`（deploy.sh:676-682）：
+ * - 假值集合 `false|FALSE|no|NO|0|off|OFF` → 关闭，合法；
+ * - 真值集合 `""|true|TRUE|yes|YES|1|on|ON` → 启用，合法（空串/undefined 表示未设置）；
+ * - 其余任意值 → bash 走 `*)` 分支 fail，此处返回同样的错误信息。
+ */
+export function judgeEnabledError(raw: string | undefined): string | null {
+  if (raw === undefined) return null;
+  return JUDGE_FALSY.has(raw) || JUDGE_TRUTHY.has(raw)
+    ? null
+    : "JUDGE_ENABLED 必须是 true 或 false";
+}
+
+/**
+ * 判断 judge 是否启用，判定集合与 bash `judge_enabled()` 一致。
  *
  * 注意 bash 把**空/未设置**视为启用（deploy.sh:679），因此缺省要求 judge 键。
- * 对不在真/假集合内的非法值，bash 会直接 fail；这里按 fail-safe 处理为启用，
- * 使非法值仍会让校验失败，而不是静默跳过 judge 要求。
+ * 枚举外的非法值须由调用方先用 {@link judgeEnabledError} 拒绝；本函数对非法值
+ * 按「启用」兜底（fail-safe），使非法值不会静默跳过 judge 键要求。
  */
 function judgeEnabled(env: Record<string, string>): boolean {
   const raw = env["JUDGE_ENABLED"] ?? "";
@@ -111,6 +138,10 @@ export function isPlaceholder(value: string | undefined): boolean {
  * - `placeholder`：键有值但命中占位值黑名单。
  *
  * `JUDGE_ENABLED` 为真时，额外要求 {@link JUDGE_KEYS}。
+ *
+ * 注意返回形状只有 `{ missing, placeholder }`，无法表达枚举错误：
+ * **调用方必须先调用 {@link judgeEnabledError} 校验 `JUDGE_ENABLED`**，
+ * 非法值（如 `maybe`）应先报错返回，再进入本函数。
  */
 export function validateEnv(
   env: Record<string, string>,

@@ -3,6 +3,7 @@ import {
   ENV_KEYS,
   isPlaceholder,
   JUDGE_KEYS,
+  judgeEnabledError,
   validateEnv,
 } from "./config-schema.ts";
 
@@ -218,4 +219,59 @@ Deno.test("judge 启用时已配置的 judge 键不再报告缺失", () => {
   const r = validateEnv(env);
   assertEquals(r.missing, []);
   assertEquals(r.placeholder, []);
+});
+Deno.test("judgeEnabledError 对全部假值返回 null（视为关闭）", () => {
+  // deploy.sh:678 的假值集合
+  for (const v of ["false", "FALSE", "no", "NO", "0", "off", "OFF"]) {
+    assertEquals(
+      judgeEnabledError(v),
+      null,
+      "JUDGE_ENABLED=" + JSON.stringify(v) + " 应合法（关闭）",
+    );
+  }
+});
+
+Deno.test("judgeEnabledError 对全部真值返回 null（含空串与 undefined）", () => {
+  // deploy.sh:679 的真值集合：空串（含未设置）视为启用
+  for (
+    const v of [
+      "",
+      undefined,
+      "true",
+      "TRUE",
+      "yes",
+      "YES",
+      "1",
+      "on",
+      "ON",
+    ]
+  ) {
+    assertEquals(
+      judgeEnabledError(v),
+      null,
+      "JUDGE_ENABLED=" + JSON.stringify(v) + " 应合法（启用）",
+    );
+  }
+});
+
+Deno.test("judgeEnabledError 对枚举外的值报告 bash 同款错误", () => {
+  // bash judge_enabled 的星号通配分支会 fail；TS 必须同样报错而非静默接受
+  for (const v of ["maybe", "2", "True", "tru", "enabled", " ", "00"]) {
+    assertEquals(
+      judgeEnabledError(v),
+      "JUDGE_ENABLED 必须是 true 或 false",
+      "JUDGE_ENABLED=" + JSON.stringify(v) + " 应报告非法值",
+    );
+  }
+});
+
+Deno.test("validateEnv 不承载 JUDGE_ENABLED 枚举错误（调用方须先查 judgeEnabledError）", () => {
+  // 返回形状只有 { missing, placeholder }，无法表达枚举错误；
+  // 非法值下 validateEnv 的 judge 分支以「启用」兜底，枚举错误由调用方单独校验。
+  const r = validateEnv({ JUDGE_ENABLED: "maybe" });
+  assertEquals(r.missing.includes("JUDGE_DOCKER_SOCKET"), true);
+  assertEquals(
+    judgeEnabledError("maybe"),
+    "JUDGE_ENABLED 必须是 true 或 false",
+  );
 });
