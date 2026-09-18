@@ -48,7 +48,10 @@ export async function findProductionDir(
   }
   const installed = dirname(dirname(await Deno.realPath(executable)));
   if (await isInstallDir(installed)) return installed;
-  throw new Error("未找到生产安装目录，请使用 --dir 指定 setup.sh 安装的目录");
+  throw new Error(
+    "未找到生产安装目录，请用 --install-dir 指定 setup.sh 安装的目录" +
+      "（Tier 3 命令）或 --dir（生产/编排命令）",
+  );
 }
 
 /**
@@ -71,6 +74,10 @@ export function parseProductionArgs(args: string[]): {
         throw new UsageError("--dir 需要一个安装目录");
       }
       dir = value;
+    } else if (arg === "--debug") {
+      // 评审 B3：--debug 是 noj-cli 自身的排查开关，不得转发给
+      // production.sh（其参数契约不接受，会报未知参数）。
+      continue;
     } else {
       forwarded.push(arg);
     }

@@ -1,20 +1,40 @@
 import { assertEquals } from "@std/assert";
+import { join } from "@std/path";
 import {
+  assertCommandAllowedInProfile,
+  deprecationNotice,
+  detectProfileOrNull,
   dispatchCommand,
   EXIT_FAILURE,
   EXIT_OK,
   EXIT_USAGE,
+  extractProfile,
+  firstPositional,
   parseBackupArgs,
   parseDeployArgs,
   parseInitOptions,
+  parseInstallDirArg,
   parseMaintainArgs,
   parsePort,
   printHelp,
+  removeFirstPositional,
   run,
+  stripCliOwnedFlags,
 } from "./cli.ts";
+import { parseDirArg } from "./util/args.ts";
 import type { CommandContext } from "./cli.ts";
+import { parseContainerCommand } from "./container.ts";
 
 const ctx: CommandContext = { cwd: "/tmp", deployDir: null };
+
+/** 造一个满足生产安装目录特征文件的临时目录（供 profile 探测测试用）。 */
+function makeProductionDir(): string {
+  const dir = Deno.makeTempDirSync({ prefix: "noj-prod-" });
+  Deno.mkdirSync(join(dir, "scripts/deploy"), { recursive: true });
+  Deno.writeTextFileSync(join(dir, "scripts/deploy/production.sh"), "");
+  Deno.writeTextFileSync(join(dir, "docker-compose.prod.yml"), "");
+  return dir;
+}
 
 Deno.test("printHelp 按模式分区并包含全部命令", () => {
   const help = printHelp();
@@ -237,14 +257,21 @@ Deno.test("E3: 未预期错误在 --debug 下带栈、默认不带", async () =>
     }
     return err;
   };
-  // 生产命令的 --dir 指向不存在的目录 → ProductionDirError（已分类，退出码 1）
-  const plain = await capture(["status", "--dir", "/nonexistent-noj-xyz"]);
+  // 显式 --profile prod 跳过探测（探测先于生产驱动运行），
+  // 再让 --dir 指向不存在路径 → findProductionDir 抛 ProductionDirError（退出码 1）。
+  const plain = await capture([
+    "--profile",
+    "prod",
+    "status",
+    "--dir",
+    "/nonexistent-noj-xyz",
+  ]);
   assertEquals(plain.includes("不是完整的 NOJ 生产安装目录"), true);
   assertEquals(plain.includes("    at "), false, "默认不得打印栈帧");
 
-  // 未分类异常走通用兜底：默认提示加 --debug，--debug 时打印栈帧。
-  // 通过一个会在解析后抛出的真实路径触发（production 目录校验失败在 --debug 下带栈）。
   const debug = await capture([
+    "--profile",
+    "prod",
     "status",
     "--dir",
     "/nonexistent-noj-xyz",
@@ -270,16 +297,15 @@ Deno.test("评审 P2: --debug 在命令名前也可用（全局选项剥离）",
     }
     return { code, err };
   };
-
-  // 前置 --debug 不得被当作顶层命令（旧行为：未知命令 → 2）
-  const pre = await capture(["status", "--dir", "/nonexistent-noj-xyz"]);
-  assertEquals(pre.code, EXIT_FAILURE);
-  const preDebug = await capture([
-    "--debug",
+  const base = [
+    "--profile",
+    "prod",
     "status",
     "--dir",
     "/nonexistent-noj-xyz",
-  ]);
+  ];
+  // 前置 --debug 不得被当作顶层命令（旧行为：未知命令 → 2）
+  const preDebug = await capture(["--debug", ...base]);
   assertEquals(preDebug.code, EXIT_FAILURE);
   assertEquals(
     preDebug.err.includes("    at "),
@@ -291,17 +317,10 @@ Deno.test("评审 P2: --debug 在命令名前也可用（全局选项剥离）",
     false,
     "--debug 不得被当作命令",
   );
-
-  // 后置 --debug 同样生效，且不进入子命令参数解析
-  const postDebug = await capture([
-    "status",
-    "--dir",
-    "/nonexistent-noj-xyz",
-    "--debug",
-  ]);
+  // 后置 --debug 同样生效
+  const postDebug = await capture([...base, "--debug"]);
   assertEquals(postDebug.err.includes("    at "), true);
-
-  // 普通命令不被 --debug 干扰
+  // 普通命令语义不受影响
   const plain = await capture(["doctor", "--port", "abc", "--debug"]);
   assertEquals(plain.code, EXIT_USAGE);
   assertEquals(plain.err.includes("1-65535"), true);
@@ -536,4 +555,298 @@ Deno.test("parseBackupArgs: 非法 --zstd-level 报错", () => {
     threw = true;
   }
   assertEquals(threw, true);
+});
+// ── #518：profile 与 Tier 3 ────────────────────────────────────────
+
+Deno.test("前向兼容：--profile 剥离后子命令不受影响", () => {
+  const r = extractProfile(["--profile", "stack", "deploy", "status"]);
+  assertEquals(r.profile, "stack");
+  assertEquals(r.rest, ["deploy", "status"]);
+  assertEquals(extractProfile(["--profile=prod", "status"]).profile, "prod");
+  assertEquals(extractProfile(["status"]).profile, undefined);
+});
+
+Deno.test("extractProfile: 缺值报用法错误", () => {
+  let threw = false;
+  try {
+    extractProfile(["--profile"]);
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, true);
+});
+
+Deno.test("firstPositional: 跳过选项及其值", () => {
+  assertEquals(firstPositional(["--dir", "/opt", "status"]), "status");
+  assertEquals(firstPositional(["--follow", "logs"]), "logs");
+  assertEquals(firstPositional(["--dir=/opt", "backup"]), "backup");
+  assertEquals(firstPositional([]), "");
+  assertEquals(firstPositional(["--dir", "/opt"]), "");
+});
+
+Deno.test("stripCliOwnedFlags: 剔除 --install-dir 与 --dry-run，保留容器侧 --dir", () => {
+  // 评审 M1：CLI 自身的安装目录选项是 --install-dir；
+  // 容器命令自己的 --dir（如 problems import --dir <包目录>）必须透传。
+  assertEquals(
+    stripCliOwnedFlags(["db", "migrate", "--dry-run", "--install-dir", "/opt"]),
+    ["db", "migrate"],
+  );
+  assertEquals(
+    stripCliOwnedFlags(["db", "migrate", "--install-dir=/opt"]),
+    ["db", "migrate"],
+  );
+  // 业务参数（含容器侧 --dir）必须保留
+  assertEquals(
+    stripCliOwnedFlags([
+      "bootstrap",
+      "first-admin",
+      "--username",
+      "alice",
+      "--dir",
+      "/pkg",
+    ]),
+    ["bootstrap", "first-admin", "--username", "alice", "--dir", "/pkg"],
+  );
+});
+
+// ── 评审 P1：Tier 3 的 --install-dir 参与 profile 探测，--dir 只透传 ──
+
+Deno.test("评审 P1: Tier 3 从任意目录用 --install-dir 可判定 profile", () => {
+  // 修复前：探测只读 parseDirArg(topRest)，完全忽略 --install-dir，
+  // 用户按 help 在任意目录执行 noj-cli db migrate --install-dir /opt/neuro-oj
+  // 会先收到「未能识别 profile」，与 help 宣称的支持自相矛盾。
+  const prod = makeProductionDir();
+  const cwd = Deno.cwd();
+  try {
+    Deno.chdir(Deno.makeTempDirSync());
+    assertEquals(
+      detectProfileOrNull(parseInstallDirArg(["--install-dir", prod])),
+      "prod",
+    );
+  } finally {
+    Deno.chdir(cwd);
+    Deno.removeSync(prod, { recursive: true });
+  }
+});
+
+Deno.test("评审 P1: 容器侧 --dir 不得被宿主机 profile 探测消费", () => {
+  // 修复前：problems import --dir <包目录> 的容器侧参数被当成宿主机探测起点；
+  // 当题目包位于生产目录之外时，即使 cwd 已是生产安装目录也会报 profile 未识别。
+  const prod = makeProductionDir();
+  const pkg = Deno.makeTempDirSync({ prefix: "noj-pkg-" });
+  const cwd = Deno.cwd();
+  try {
+    Deno.chdir(prod);
+    const container = parseContainerCommand([
+      "problems",
+      "import",
+      "--dir",
+      pkg,
+    ]);
+    assertEquals(container.matched, true);
+    const argv = ["problems", "import", "--dir", pkg];
+    const start = container.matched
+      ? parseInstallDirArg(argv)
+      : parseDirArg(argv);
+    // --install-dir 未给出 → 回落到 cwd（生产目录），不得使用容器侧 --dir
+    assertEquals(start, undefined);
+    assertEquals(detectProfileOrNull(start), "prod");
+  } finally {
+    Deno.chdir(cwd);
+    Deno.removeSync(prod, { recursive: true });
+    Deno.removeSync(pkg, { recursive: true });
+  }
+});
+
+Deno.test("deprecationNotice: 提示替代命令", () => {
+  assertEquals(
+    deprecationNotice("deploy", "status").includes("stack status"),
+    true,
+  );
+  assertEquals(deprecationNotice("maintain", "").includes("stack"), true);
+});
+
+Deno.test("stack 无子命令返回用法错误，--help 返回 0", async () => {
+  const original = console.log;
+  console.log = () => {};
+  try {
+    assertEquals(await dispatchCommand("stack", [], ctx), EXIT_USAGE);
+    assertEquals(await dispatchCommand("stack", ["--help"], ctx), EXIT_OK);
+  } finally {
+    console.log = original;
+  }
+});
+// ── 评审修正的回归防线（#518 评审 B1/B2/B3/M1/M2）────────────────────
+
+Deno.test("评审 B1: stack 委派时子命令置于首位（--dir 不被当子命令）", () => {
+  // removeFirstPositional 必须移除子命令本身，保留选项与其值
+  const delegated = removeFirstPositional(["--dir", "/opt", "status"]);
+  assertEquals(delegated, ["--dir", "/opt"]);
+  // 委派结果的首元素是子命令，下游 args[0] 才能正确识别
+  assertEquals(["status", ...delegated][0], "status");
+});
+
+Deno.test("评审 B2: --profile 缺值走统一兜底（用法错误 2，无栈帧）", async () => {
+  const orig = console.error;
+  let err = "";
+  console.error = (...a: unknown[]) => {
+    err += a.join(" ") + "\n";
+  };
+  try {
+    assertEquals(await run(["--profile"]), EXIT_USAGE);
+  } finally {
+    console.error = orig;
+  }
+  assertEquals(err.includes("--profile"), true);
+  assertEquals(err.includes("Uncaught"), false, "不得出现未捕获异常");
+  assertEquals(err.includes("    at "), false, "不得打印栈帧");
+  assertEquals(err.includes("file://"), false, "不得泄露源码路径");
+});
+
+Deno.test("评审 B3: --profile 真正参与分发（不相容命令报错）", async () => {
+  const orig = console.error;
+  let err = "";
+  console.error = (...a: unknown[]) => {
+    err += a.join(" ") + "\n";
+  };
+  let code = -1;
+  try {
+    // status 属生产模式，与 --profile stack 不符
+    code = await run(["--profile", "stack", "status"]);
+  } finally {
+    console.error = orig;
+  }
+  assertEquals(code, EXIT_USAGE);
+  assertEquals(err.includes("--profile"), true);
+});
+
+Deno.test("评审 B3: 相容的 profile 组合放行到后续逻辑", () => {
+  // prod 下 status 相容（不抛错）；stack 下 stack 命令相容
+  assertCommandAllowedInProfile("prod", "status");
+  assertCommandAllowedInProfile("stack", "stack");
+  // 不相容则抛 UsageError
+  let threw = false;
+  try {
+    assertCommandAllowedInProfile("stack", "status");
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, true);
+});
+
+Deno.test("评审 M1: stripCliOwnedFlags 保留容器命令的 --dir", () => {
+  // 容器命令自身的 --dir 必须透传
+  assertEquals(
+    stripCliOwnedFlags(["problems", "import", "--dir", "/pkg"]),
+    ["problems", "import", "--dir", "/pkg"],
+  );
+  // CLI 自身的 --install-dir 与 --dry-run 被剔除
+  assertEquals(
+    stripCliOwnedFlags([
+      "problems",
+      "import",
+      "--dir",
+      "/pkg",
+      "--install-dir",
+      "/opt",
+      "--dry-run",
+    ]),
+    ["problems", "import", "--dir", "/pkg"],
+  );
+  assertEquals(
+    stripCliOwnedFlags(["db", "migrate", "--install-dir=/opt"]),
+    ["db", "migrate"],
+  );
+});
+
+Deno.test("评审 M1: parseInstallDirArg 支持两种写法", () => {
+  assertEquals(parseInstallDirArg(["--install-dir", "/opt"]), "/opt");
+  assertEquals(parseInstallDirArg(["--install-dir=/opt"]), "/opt");
+  assertEquals(parseInstallDirArg([]), undefined);
+});
+Deno.test("评审: Tier 3 子命令 help 必须写 --install-dir 而非 --dir", async () => {
+  // 阻塞项：help 写 --dir 但 dispatchContainer 只认 --install-dir，
+  // 照 help 抄的命令会 exit 1。
+  const original = console.log;
+  let out = "";
+  console.log = (...a: unknown[]) => {
+    out += a.join(" ") + "\n";
+  };
+  try {
+    await run(["db", "migrate", "--help"]);
+  } finally {
+    console.log = original;
+  }
+  assertEquals(
+    out.includes("--install-dir <path>"),
+    true,
+    "help 必须宣称 --install-dir",
+  );
+  assertEquals(
+    /--dir <path>\s+生产安装目录/.test(out),
+    false,
+    "help 不得再把 --dir 说成生产安装目录",
+  );
+  assertEquals(out.includes("原样透传"), true, "应说明 --dir 透传给容器");
+});
+// ── 评审 B1：PROFILE_AGNOSTIC 命令必须整体豁免 profile 门禁 ──────────
+
+Deno.test("评审 B1: 门禁按「是否路由进 Tier 3」判定，而非仅看顶层名", () => {
+  // 顶层名 `problems` 承担两种角色：`problems build|import` 是 Tier 3
+  //（需生产安装目录），而 `problems init|lint|pack` 是本地出题命令。
+  // 调用点必须先做容器匹配，再决定是否施加 profile 门禁；
+  // 否则本地用法会被生产门禁误拒（探测歧义时 CLI 自己给出的补救建议
+  // 正是「请改用 --profile prod|stack」，用户照做即踩坑）。
+  //
+  // 本分支（#527）尚无本地 problem 分发（由 #514 引入），
+  // 故这里只断言门禁函数本身的契约；集成验证在 #514 分支。
+  assertCommandAllowedInProfile("prod", "problems");
+  let threw = false;
+  try {
+    assertCommandAllowedInProfile("stack", "problems");
+  } catch {
+    threw = true;
+  }
+  assertEquals(
+    threw,
+    true,
+    "problems（Tier 3 前缀）在 stack profile 下必须被拒",
+  );
+});
+
+Deno.test("评审 B1: 容器匹配决定是否门禁（problems build 命中）", () => {
+  // 修复要点：调用点先做容器匹配，再决定是否施加 profile 门禁。
+  // `problems build|import` 命中 Tier 3 前缀 → 仍须 prod 侧；
+  // 本地出题命令（#514 引入）不命中 → 豁免。
+  const hit = parseContainerCommand(["problems", "build"]);
+  assertEquals(hit.matched, true, "problems build 必须命中 Tier 3");
+  const miss = parseContainerCommand(["problem", "lint"]);
+  assertEquals(miss.matched, false, "problem lint 不应命中 Tier 3");
+});
+
+Deno.test("评审 B1: Tier 3 的 problems 仍受生产门禁约束", () => {
+  // 豁免不能把真正的 Tier 3 用法也放行：
+  // `problems build|import` 命中容器前缀，仍须 prod 侧。
+  let threw = false;
+  try {
+    assertCommandAllowedInProfile("stack", "problems");
+  } catch {
+    threw = true;
+  }
+  assertEquals(
+    threw,
+    true,
+    "problems（Tier 3 前缀）在 stack profile 下必须被拒",
+  );
+});
+
+Deno.test("评审 B1: Tier 3 的生产门禁仍然生效", () => {
+  // 回归防线：豁免不能把真正的生产命令也放行
+  let threw = false;
+  try {
+    assertCommandAllowedInProfile("stack", "db");
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, true, "db 在 stack profile 下必须被拒");
 });

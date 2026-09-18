@@ -83,7 +83,8 @@ export function suggestCommand(
   input: string,
   known: Iterable<string>,
 ): string | undefined {
-  const needle = input.trim().toLowerCase();
+  const trimmed = input.trim();
+  const needle = trimmed.toLowerCase();
   if (needle === "") return undefined;
 
   // 短输入要求距离 0（即必须完全一致），长输入允许 1~2 的笔误
@@ -92,6 +93,9 @@ export function suggestCommand(
   let best: string | undefined;
   let bestDistance = Number.POSITIVE_INFINITY;
   for (const candidate of known) {
+    // 绝不把**完全相同的输入**当作建议（否则会出现
+    // 「未知命令: X；你是否想执行: X？」）
+    if (candidate === trimmed) continue;
     const distance = levenshtein(needle, candidate.toLowerCase());
     if (distance <= maxDistance && distance < bestDistance) {
       best = candidate;
