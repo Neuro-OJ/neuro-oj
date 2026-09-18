@@ -1573,8 +1573,8 @@ function renderProductionCommandHelp(command: string): string {
     summaries[command] ?? "生产命令",
     "",
     "说明:",
-    "  该命令需要完整的生产安装目录（含 scripts/deploy/production.sh 与",
-    "  docker-compose.prod.yml）。使用 --dir <path> 指定，或在安装目录内执行。",
+    "  该命令需要完整的生产安装目录（含 docker-compose.prod.yml 与",
+    "  .env.prod）。使用 --dir <path> 指定，或在安装目录内执行。",
     "  --help 由 noj-cli 自己回答，不会转发给底层脚本。",
   ]);
 }

@@ -18,11 +18,16 @@ export const PRODUCTION_COMMANDS = new Set([
   "uninstall",
 ]);
 
+/**
+ * 某目录是否为完整生产安装目录。
+ *
+ * 特征文件须与 `profile.ts` 的 `PRODUCTION_MARKERS` 保持一致：只认安装目录必备、
+ * 且不随 bash 删除而消失的文件（spec §3.3 洞 1）。
+ */
 async function isInstallDir(dir: string): Promise<boolean> {
   try {
-    return (await Deno.stat(join(dir, "scripts/deploy/production.sh")))
-      .isFile &&
-      (await Deno.stat(join(dir, "docker-compose.prod.yml"))).isFile;
+    return (await Deno.stat(join(dir, "docker-compose.prod.yml"))).isFile &&
+      (await Deno.stat(join(dir, ".env.prod"))).isFile;
   } catch {
     return false;
   }

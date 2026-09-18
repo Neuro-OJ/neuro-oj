@@ -25,9 +25,11 @@ Deno.test("生产目录支持显式路径、祖先目录及 PATH 软链接；错
   const root = await Deno.makeTempDir();
   try {
     const dir = join(root, "安装目录");
-    await Deno.mkdir(join(dir, "scripts/deploy"), { recursive: true });
-    await Deno.mkdir(join(dir, "bin"));
-    await Deno.writeTextFile(join(dir, "scripts/deploy/production.sh"), "");
+    await Deno.mkdir(join(dir, "bin"), { recursive: true });
+    // 保留一个真实子目录，供「从子目录向上查找」的断言使用
+    await Deno.mkdir(join(dir, "scripts"), { recursive: true });
+    // 生产目录特征 = .env.prod + docker-compose.prod.yml（production.sh 已非特征）
+    await Deno.writeTextFile(join(dir, ".env.prod"), "");
     await Deno.writeTextFile(
       join(dir, "docker-compose.prod.yml"),
       "services: {}\n",
@@ -54,6 +56,8 @@ Deno.test("生产 CLI 将真实子进程失败码和参数原样返回", async (
       join(dir, "docker-compose.prod.yml"),
       "services: {}\n",
     );
+    // 目录须同时具备新生产特征，production.sh 只是被调用的驱动脚本
+    await Deno.writeTextFile(join(dir, ".env.prod"), "");
     const log = join(dir, "arguments");
     await Deno.writeTextFile(
       join(dir, "scripts/deploy/production.sh"),

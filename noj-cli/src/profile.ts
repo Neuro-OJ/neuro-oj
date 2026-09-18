@@ -50,10 +50,16 @@ export interface ProfileDetectOptions extends ProfileFs {
   start: string;
 }
 
-/** 生产安装目录特征文件（与 `production.ts:isInstallDir` 保持一致）。 */
+/**
+ * 生产安装目录特征文件（与 `production.ts:isInstallDir` 保持一致）。
+ *
+ * 只用安装目录必备、且**不随 bash 删除而消失**的文件。早先以
+ * `scripts/deploy/production.sh` 为特征，纯 TS 重写删除该脚本后，真实生产目录
+ * 会探测失败并按设计报错退出（自锁，spec §3.3 洞 1）。
+ */
 const PRODUCTION_MARKERS = [
-  "scripts/deploy/production.sh",
   "docker-compose.prod.yml",
+  ".env.prod",
 ];
 
 /** JSON 编排目录特征文件。 */
@@ -79,7 +85,7 @@ function isStackDir(dir: string, fs: ProfileFs): boolean {
  *
  * 优先级（命中即停）：
  * 1. `--profile <name>` 显式给出；
- * 2. 目录含 `scripts/deploy/production.sh` **且** `docker-compose.prod.yml` → `prod`;
+ * 2. 目录含 `docker-compose.prod.yml` **且** `.env.prod` → `prod`;
  * 3. 目录（或祖先）含 `noj-deploy.json` → `stack`;
  * 4. 都未命中，或**两者同时命中** → 报错（不猜）。
  */

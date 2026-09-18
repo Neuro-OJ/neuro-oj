@@ -35,8 +35,7 @@ const ctx: CommandContext = { cwd: "/tmp", deployDir: null };
 /** 造一个满足生产安装目录特征文件的临时目录（供 profile 探测测试用）。 */
 function makeProductionDir(): string {
   const dir = Deno.makeTempDirSync({ prefix: "noj-prod-" });
-  Deno.mkdirSync(join(dir, "scripts/deploy"), { recursive: true });
-  Deno.writeTextFileSync(join(dir, "scripts/deploy/production.sh"), "");
+  Deno.writeTextFileSync(join(dir, ".env.prod"), "");
   Deno.writeTextFileSync(join(dir, "docker-compose.prod.yml"), "");
   return dir;
 }

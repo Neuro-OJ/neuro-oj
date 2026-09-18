@@ -15,7 +15,7 @@ function fakeFs(files: Record<string, "file" | "dir">) {
 
 Deno.test("detectProfile: 显式 --profile 优先于一切探测", () => {
   const fs = fakeFs({
-    "/opt/scripts/deploy/production.sh": "file",
+    "/opt/.env.prod": "file",
     "/opt/docker-compose.prod.yml": "file",
   });
   const r = detectProfile({ explicit: "stack", start: "/opt", ...fs });
@@ -25,12 +25,26 @@ Deno.test("detectProfile: 显式 --profile 优先于一切探测", () => {
 
 Deno.test("detectProfile: 生产安装目录判定为 prod", () => {
   const fs = fakeFs({
-    "/opt/scripts/deploy/production.sh": "file",
+    "/opt/.env.prod": "file",
     "/opt/docker-compose.prod.yml": "file",
   });
   const r = detectProfile({ start: "/opt", ...fs });
   assertEquals(r.profile, "prod");
   assertEquals(r.source, "detected");
+});
+
+Deno.test("detectProfile: 仅有 production.sh、缺 .env.prod 时不判为 prod（洞 1 回归）", () => {
+  // scripts/deploy/production.sh 在纯 TS 重写后会被删除。若仍以它作特征文件，
+  // 真实生产目录（.env.prod + docker-compose.prod.yml）会探测失败并按设计报错，
+  // 即「自锁」。此用例锁定新语义：production.sh 不再是生产目录特征。
+  const fs = fakeFs({
+    "/legacy/scripts/deploy/production.sh": "file",
+    "/legacy/docker-compose.prod.yml": "file",
+  });
+  const r = detectProfile({ start: "/legacy", ...fs });
+  assertEquals(r.profile, null);
+  assertEquals(r.source, "none");
+  assertEquals(r.error !== undefined, true, "必须报错而非猜默认值");
 });
 
 Deno.test("detectProfile: 含 noj-deploy.json 判定为 stack", () => {
@@ -43,7 +57,7 @@ Deno.test("detectProfile: 含 noj-deploy.json 判定为 stack", () => {
 Deno.test("detectProfile: 两者同时命中时报错，不静默取默认", () => {
   // issue 明确要求：猜错模式可能作用到错误的目标，必须报错。
   const fs = fakeFs({
-    "/mixed/scripts/deploy/production.sh": "file",
+    "/mixed/.env.prod": "file",
     "/mixed/docker-compose.prod.yml": "file",
     "/mixed/noj-deploy.json": "file",
   });
