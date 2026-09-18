@@ -41,17 +41,17 @@ export interface DownloadReleaseFilesOptions {
   ref: string;
   /** 目标安装目录。 */
   targetDir: string;
-  /** 默认 false：目标文件已存在则拒绝；true 则整体覆盖。 */
-  overwrite?: boolean;
   /**
    * 是否覆盖已存在文件。默认 false（拒绝）——用户会在安装目录里维护 .env.prod
    * 与手工调整过的 compose；.env.prod.example 只是模板，覆盖它收益很低。
    * 需要显式覆盖（如升级 compose 到新版本）时由调用方传 overwrite: true。
    */
+  overwrite?: boolean;
+  /** 资产下载器注入点；缺省为全局 fetch。 */
   fetcher?: Fetcher;
 }
 
-/** 归一化后的仓库地址缓存无关；逐字符白名单见 validateRepository。 */
+/** Release ref 的逐字符白名单（字母 / 数字 / `.` `_` `/` `-`），语义见 validateRef。 */
 const REF_RE = /^[A-Za-z0-9._/-]+$/;
 /** 对照 install.sh:551 的 `[a-fA-F0-9]{64}`：接受大小写十六进制。 */
 const SHA256_RE = /^[a-fA-F0-9]{64}$/;
@@ -78,6 +78,31 @@ export function validateRef(ref: string): void {
   ) {
     throw new Error(`Release ref 非法：${ref}`);
   }
+}
+
+/**
+ * 校验并归一化目标安装目录，对照 install.sh:177-181 的安全防护。
+ *
+ * 拒绝：
+ * - 空串或仅含空白字符（归一化后为空则无法作为目录）
+ * - 恰为 `/`、`.`、`..`（写入根 / 当前 / 上级目录都是破坏性的）
+ * - 含 `\n` 或 `\r`（防止换行注入沾污后续输出）
+ *
+ * 返回去除尾部 `/` 后的安全目录：由于已拒绝 `/`，结果永远非空，
+ * 不会像旧实现那样退化为 `""` 而把文件静默写进当前工作目录。
+ */
+export function validateTargetDir(dir: string): string {
+  if (dir.includes("\n") || dir.includes("\r")) {
+    throw new Error(`安装目录不能包含换行符：${JSON.stringify(dir)}`);
+  }
+  const normalized = dir.replace(/\/+$/, "");
+  if (
+    normalized === "" || normalized === "/" || normalized === "." ||
+    normalized === ".." || dir.trim() === ""
+  ) {
+    throw new Error(`安装目录不安全或为空：${JSON.stringify(dir)}`);
+  }
+  return normalized;
 }
 
 /** 拼出 GitHub Release 资产地址：<repo>/releases/download/<ref>/<asset>。 */
@@ -134,9 +159,17 @@ async function downloadVerified(
 /**
  * 下载并校验生产文件到目标目录。
  *
- * 失败原子性：先下载 + 校验**全部**文件到 .bootstrap-<uid>.tmp 暂存文件，
- * 全部通过后才逐一 rename 进目标目录；任一步失败只删除暂存文件，目标目录
- * 不留半成品、也不覆盖原有文件。
+ * 失败原子性（两阶段提交）：
+ * - 阶段一：把**全部**文件下载 + 校验到 `.bootstrap-<uid>.tmp` 暂存文件；
+ *   任一步失败都不会触碰目标文件。
+ * - 阶段二：提交前先把将被覆盖的普通文件 rename 到 `.bootstrap-<uid>.bak`
+ *   备份，再逐个把暂存文件 rename 进目标目录。任意一次 rename 失败即回滚：
+ *   删除已提交的新文件、还原备份，因此不会出现“新 compose + 旧 example”
+ *   的混合状态；回滚自身失败不会被吞掉，而是连同可恢复的备份路径一并报出。
+ * - `finally` 无条件清理所有暂存文件与备份文件，失败路径也不留残留。
+ *
+ * 目标目录必须先通过 `validateTargetDir`：`/`、空串、`.`、`..`
+ * 会被拒绝（对照 install.sh:177-181），绝不会静默写进当前工作目录。
  *
  * 返回写入的绝对路径列表（顺序与 RELEASE_FILES 一致）。
  */
@@ -145,9 +178,10 @@ export async function downloadReleaseFiles(
 ): Promise<string[]> {
   const repository = validateRepository(opts.repository);
   validateRef(opts.ref);
+  // 在任何文件系统访问之前拒绝危险目标目录。
+  const targetDir = validateTargetDir(opts.targetDir);
   const fetcher = opts.fetcher ?? ((url: string) => fetch(url));
   const overwrite = opts.overwrite ?? false;
-  const targetDir = opts.targetDir.replace(/\/+$/, "");
 
   const targets = RELEASE_FILES.map((name) => join(targetDir, name));
 
@@ -168,6 +202,12 @@ export async function downloadReleaseFiles(
   await Deno.mkdir(targetDir, { recursive: true });
 
   const staged: { target: string; tmp: string }[] = [];
+  // 提交期间创建的备份：旧文件 rename 到 `.bootstrap-<uid>.bak`，回滚时还原。
+  const backups: { target: string; bak: string }[] = [];
+  // 已提交（rename 进目标目录）的新文件，回滚时删除。
+  const committed: string[] = [];
+  // 回滚失败的备份路径：finally 必须保留它们（见 catch 内说明）。
+  const keepBackups = new Set<string>();
   try {
     // 阶段一：全部下载 + 校验到暂存文件。任一步失败都不会触碰目标文件。
     for (let i = 0; i < RELEASE_FILES.length; i++) {
@@ -187,15 +227,51 @@ export async function downloadReleaseFiles(
       staged.push({ target, tmp });
     }
 
-    // 阶段二：全部校验通过后才提交（rename 为原子替换）。
+    // 阶段二：事务式提交。先备份将被覆盖的普通文件，再逐个 rename 进去；
+    // 任一步失败都回滚到提交前的完整状态，不留混合状态。
     for (const { target, tmp } of staged) {
+      if (await fileExists(target)) {
+        const bak = `${target}.bootstrap-${crypto.randomUUID()}.bak`;
+        await Deno.rename(target, bak);
+        backups.push({ target, bak });
+      }
       await Deno.rename(tmp, target);
+      committed.push(target);
     }
     return targets;
+  } catch (err) {
+    const problems: string[] = [];
+    // 最新提交的先回滚；best-effort，失败不吞掉、累积到报告中。
+    for (const target of committed.reverse()) {
+      await Deno.remove(target).catch((e) => {
+        problems.push(`删除已提交文件 ${target} 失败：${e.message}`);
+      });
+    }
+    for (const { target, bak } of backups) {
+      await Deno.rename(bak, target).catch((e) => {
+        keepBackups.add(bak);
+        problems.push(
+          `还原备份 ${bak} -> ${target} 失败：${e.message}（旧文件仍在 ${bak}）`,
+        );
+      });
+    }
+    const detail = problems.length > 0
+      ? `；回滚未完全成功：${problems.join("；")}`
+      : "";
+    throw new Error(
+      `提交部署文件失败，已回滚：${(err as Error).message}${detail}`,
+      { cause: err },
+    );
   } finally {
-    // 未提交的暂存文件（含部分提交后剩下的）全部清理。
+    // 未提交的暂存文件全部清理；
+    // 回滚成功时备份已被 rename 回去，remove 为 no-op。
     for (const { tmp } of staged) {
       await Deno.remove(tmp).catch(() => {});
+    }
+    // 回滚失败的备份不删（它是旧文件唯一副本，已写进抛出的错误）。
+    for (const { bak } of backups) {
+      if (keepBackups.has(bak)) continue;
+      await Deno.remove(bak).catch(() => {});
     }
   }
 }

@@ -31,13 +31,21 @@ Status: implemented
   （`^[A-Za-z0-9._/-]+$`、非前导/尾部 `/`、不含 `..`、不含 `//`、非空）。
 - 校验文件正文取首个空白分隔字段，接受大小写十六进制，统一小写后比较
   （对照 `install.sh:551,553`）。
-- **失败原子性**：先下载 + 校验**全部**文件到 `targetDir` 内的
-  `.bootstrap-<uuid>.tmp` 暂存文件，全部通过后才 `rename` 进目标目录；
-  任一步失败只清理暂存文件，目标目录不留半成品、也不覆盖原文件。
+- **安装目录校验**：导出 `validateTargetDir(dir)`，在任何文件系统访问之前
+  拒绝空串 / 仅空白字符、恰为 `/` / `.` / `..`、以及含 `\n` / `\r` 的目标目录
+  （对照 `install.sh:177-181`），并返回去除尾部 `/` 后的非空目录。旧实现的
+  `replace(/\/+$/, "")` 会把 `/` 归一化为 `""`，使 `join("", name)` 产生裸文件名并
+  **静默写入当前工作目录**；现在这类输入直接报错。
+- **两阶段事务式提交**：阶段一先下载 + 校验**全部**文件到 `targetDir` 内的
+  `.bootstrap-<uuid>.tmp` 暂存文件；阶段二提交前先把将被覆盖的普通文件 `rename`
+  到 `目标.bootstrap-<uuid>.bak`，逐个 rename 进去；任一次 rename 失败即回滚
+  （删除已提交的新文件、还原备份），回滚自身失败不被吞掉而是累积进抛出的
+  错误消息。因此不会出现"新 compose + 旧 example"的混合状态；`finally` 仍
+  清理全部暂存与备份文件，失败路径也不留 `.bootstrap-*` 残留。
 - **已存在目标文件默认拒绝**（`overwrite: false`）：安装目录里的
   `.env.prod` 是用户维护的配置，`docker-compose.prod.yml` 也可能被手工调整；
   静默覆盖会破坏生产配置。需要更新时由调用方（T12 `install`）显式传
-  `overwrite: true`，此时暂存 + rename 保证"要么全新、要么原样"。
+  `overwrite: true`，此时两阶段提交保证"要么全新、要么原样"。
 - 扩展 `.github/workflows/release.yml` 的 `publish-cli`：用 `sha256sum`
   生成并上传四个新资产
   `docker-compose.prod.yml`、`docker-compose.prod.yml.sha256`、
@@ -57,6 +65,11 @@ Status: implemented
   把决定权交回调用方与用户。
 - **先写第一个文件再校验第二个**：实现更简单但会在校验失败时留下半成品，
   正是本任务要消除的失败模式。
+- **提交阶段直接逐个 `rename`（无备份/回滚）**：实现最短，但第二个 rename 失败时
+  第一个已提交，会留下"新 compose + 旧 example"的混合状态（审查已用目录占位
+  复现 EISDIR）。备份 + 回滚代价只是提交期间多一个瞬态备份文件，完全值得。
+- **先删旧文件再 rename**：删除不可恢复，中途失败会直接丢失用户文件；备份到
+  同目录的 rename 则保留了可恢复的旧文件。
 
 ## Consequences
 
@@ -66,8 +79,13 @@ Status: implemented
   `docker-compose.prod.yml`、`docker-compose.prod.yml.sha256`、
   `.env.prod.example`、`.env.prod.example.sha256`。后续修改安装流程必须同步
   维护这组资产（`report` 中已声明给 T12）。
-- `bootstrap_test.ts` 中一条测试直接读取 `release.yml`，断言 `gh release upload`
-  段包含全部六个资产名；这正是"注入 fetcher 的单测不会发现的发布缺口"的
-  回归防线。
+- `bootstrap_test.ts` 中一条测试直接读取 `release.yml`，以**行锚定**方式断言
+  `gh release upload` 段逐行列出全部六个资产名（不用 substring，否则
+  `x.yml.sha256`.includes(`x.yml`) 会让删掉普通资产行的变更漏网）；这正是"注入
+  fetcher 的单测不会发现的发布缺口"的回归防线。
+- `validateTargetDir` 在任何文件系统访问前拒绝 `/` 等危险目标，因此"误写入
+  当前工作目录"不可能再发生；`bootstrap_test.ts` 在真实 CWD 上断言目录集合
+  不变作为回归。
 - 默认拒绝覆盖意味着升级 compose 必须显式传 `overwrite: true`；
-  调用方若省略会得到明确错误而非静默旧文件。
+  调用方若省略会得到明确错误而非静默旧文件。即便在 `overwrite: true` 下，提交
+  也是事务式的：任一目标失败均回滚，不留混合状态、不残留 `.bootstrap-*`。

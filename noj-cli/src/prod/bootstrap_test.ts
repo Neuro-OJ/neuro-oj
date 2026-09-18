@@ -11,6 +11,7 @@ import {
   releaseAssetUrl,
   validateRef,
   validateRepository,
+  validateTargetDir,
 } from "./bootstrap.ts";
 
 const REPO = "https://github.com/Neuro-OJ/neuro-oj";
@@ -30,7 +31,7 @@ async function dirNames(dir: string): Promise<string[]> {
 /** 目标目录内不得残留任何临时文件。 */
 async function assertNoTempLeftovers(dir: string): Promise<void> {
   const leftovers = (await dirNames(dir)).filter((name) =>
-    name.includes(".tmp")
+    name.startsWith(".bootstrap-")
   );
   assertEquals(leftovers, []);
 }
@@ -243,6 +244,42 @@ Deno.test("downloadReleaseFiles: overwrite=true 时原子覆盖现有文件", as
   }
 });
 
+Deno.test("downloadReleaseFiles: 提交阶段第二个 rename 失败时整体回滚", async () => {
+  const dir = await makeTempDir();
+  try {
+    // 第一个目标：已存在的旧文件（可被备份 + 覆盖）。
+    await Deno.writeTextFile(join(dir, COMPOSE), "旧 compose\n");
+    // 第二个目标：占位目录，令 rename(tmp, target) 以 EISDIR 失败，
+    // 从而在"第一个已提交"之后制造失败点。
+    await Deno.mkdir(join(dir, ENV_EXAMPLE));
+
+    const assets = fixtureAssets();
+    await assertRejects(
+      () =>
+        downloadReleaseFiles({
+          repository: REPO,
+          ref: REF,
+          targetDir: dir,
+          overwrite: true,
+          fetcher: makeFetcher([], assets),
+        }),
+      Error,
+    );
+
+    // 回滚生效：第一个目标必须是原始字节，而非新下载的字节。
+    assertEquals(await Deno.readTextFile(join(dir, COMPOSE)), "旧 compose\n");
+    // 目录不得残留备份或暂存文件（含 .bootstrap-*.tmp 与 .bootstrap-*.bak）。
+    assertEquals(
+      (await dirNames(dir)).filter((n) => n.startsWith(".bootstrap-")),
+      [],
+    );
+    // 失败点自身的占位目录仍在（不属于本次提交的产物）。
+    assertEquals((await Deno.stat(join(dir, ENV_EXAMPLE))).isDirectory, true);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("downloadReleaseFiles: 非 HTTPS 仓库被拒绝且不发起请求", async () => {
   const dir = await makeTempDir();
   try {
@@ -343,6 +380,41 @@ Deno.test("validateRef: 接受版本号与分支路径两种形态", () => {
   }
 });
 
+Deno.test("validateTargetDir: 拒绝空 / 根 / 点目录 / 换行", () => {
+  for (const dir of ["", "   ", "/", ".", "..", "/\n", "a\rb", "/opt/x\n"]) {
+    assertThrows(() => validateTargetDir(dir), Error);
+  }
+});
+
+Deno.test("validateTargetDir: 归一化后返回非空目录且不改写合法输入", () => {
+  assertEquals(validateTargetDir("/opt/neuro-oj"), "/opt/neuro-oj");
+  assertEquals(validateTargetDir("/opt/neuro-oj/"), "/opt/neuro-oj");
+  assertEquals(validateTargetDir("relative/dir"), "relative/dir");
+  assertEquals(validateTargetDir("relative/dir/"), "relative/dir");
+});
+
+Deno.test("downloadReleaseFiles: targetDir 为 / 或空时拒绝且不写入 CWD", async () => {
+  const cwd = Deno.cwd();
+  const before = await dirNames(cwd);
+  for (const targetDir of ["/", "", "."]) {
+    const calls: string[] = [];
+    await assertRejects(
+      () =>
+        downloadReleaseFiles({
+          repository: REPO,
+          ref: REF,
+          targetDir,
+          fetcher: makeFetcher(calls, fixtureAssets()),
+        }),
+      Error,
+      "安装目录不安全或为空",
+    );
+    assertEquals(calls, []);
+  }
+  // 关键回归：绝不把资产静默写进当前工作目录。
+  assertEquals(await dirNames(cwd), before);
+});
+
 Deno.test("validateRepository: 归一化尾斜杠与 .git 后缀", () => {
   assertEquals(
     validateRepository("https://github.com/Neuro-OJ/neuro-oj/"),
@@ -373,11 +445,16 @@ Deno.test("release workflow: 发布 bootstrap 依赖的全部资产", async () =
   const uploadAt = workflow.indexOf("gh release upload");
   assertEquals(uploadAt >= 0, true, "release.yml 缺少 gh release upload 步骤");
   const upload = workflow.slice(uploadAt);
+  // 行锚定匹配：每个资产必须独占一行（可带续行反斜杠）。若退化为
+  // substring 匹配，"x.yml.sha256" 会误命中 "x.yml"，删掉普通资产行也不报错。
+  const lines = upload.split(/\r?\n/).map((line) => line.trim());
+  const isListed = (asset: string): boolean =>
+    lines.some((line) => line === asset || line === asset + " \\");
   for (const name of RELEASE_FILES) {
     for (const suffix of ["", ".sha256"]) {
       const asset = `${name}${suffix}`;
       assertEquals(
-        upload.includes(asset),
+        isListed(asset),
         true,
         `Release 未发布 bootstrap 依赖的资产：${asset}`,
       );

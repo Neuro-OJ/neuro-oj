@@ -214,5 +214,6 @@ export {
   releaseAssetUrl,
   validateRef,
   validateRepository,
+  validateTargetDir,
 } from "./prod/bootstrap.ts";
 export type { DownloadReleaseFilesOptions, Fetcher } from "./prod/bootstrap.ts";
