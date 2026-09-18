@@ -466,9 +466,17 @@ export async function updateContest(
   if (kind === "public" && input.kind !== undefined && !isAdmin) {
     throw new ForbiddenError("仅管理员可创建/转公开赛");
   }
-  if (
-    kind === "invite" && input.kind !== undefined && input.password === null
-  ) {
+  // 邀请赛必须有可用凭据。必须按「请求值否则现值」计算**有效密码**，不能只看
+  // 请求里是否显式传了 password：公开赛存量 password 可能为 null，仅改
+  // kind=invite 时 passwordHash 保持 undefined，最终写出
+  // kind=invite / is_public=false / password=null 的"无密码邀请赛"——注册侧对
+  // invite 恒走邀请码校验，而库中无任何可匹配凭据，赛事从此不可加入（评审 #2）。
+  // 判据与下方 passwordHash 的落库逻辑**逐字对齐**（input.password 为真才 hash，
+  // 否则 null）：空串/null 表示"清除密码"，undefined 才表示"不动"。
+  const effectiveHasPassword = input.password === undefined
+    ? existing.password !== null
+    : Boolean(input.password);
+  if (kind === "invite" && !effectiveHasPassword) {
     throw new BadRequestError("邀请赛必须设置邀请码");
   }
   // 合并后的时间同样校验 + 规范化：既防新写入脏形态，也顺带把存量非规范行

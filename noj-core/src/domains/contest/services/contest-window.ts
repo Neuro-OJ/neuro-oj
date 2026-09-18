@@ -70,6 +70,15 @@ export function normalizeOptionalContestTime(
  * `AND`/`OR` **不保证**短路求值，所以"先用正则守卫、再转换"写在 `AND` 里并不安全。
  * `CASE` 的求值顺序**有保证**：只有 `WHEN` 为真时才求值 `THEN`。
  *
+ * ### 为什么形态正则是必要的、但**不充分**的
+ *
+ * 正则只能证明"形状"合法，证明不了"语义"合法：`2026-13-01T00:00:00.000Z` 完全
+ * 匹配正则（四位年、两位月…），但 `::timestamptz` 会抛 `date/time field value out
+ * of range`——CASE 也可能先求值 `THEN`，一条这样的脏行即可让门控查询 500。
+ * 因此 `WHEN` 里追加 `pg_input_is_valid(col, 'timestamptz')`（PG 16+）：它按
+ * **同一条解析路径**判断值能否转成 timestamptz，不抛错、只返回布尔。两道守卫
+ * 都通过后 `THEN` 里的 cast 才可能安全（评审 #3）。
+ *
  * ### 形态非法时为何判为"进行中"（fail-closed）
  *
  * 本条件的用途是**安全门控**（赛期隐藏题解与通过率）。窗口无法解析时无法证明竞赛
@@ -87,6 +96,8 @@ export function runningWindowCondition(
   return sql`CASE
     WHEN ${startTimeExpr} ~ ${CONTEST_TIME_ISO_REGEX_SQL}
      AND ${endTimeExpr} ~ ${CONTEST_TIME_ISO_REGEX_SQL}
+     AND pg_input_is_valid(${startTimeExpr}, 'timestamptz')
+     AND pg_input_is_valid(${endTimeExpr}, 'timestamptz')
     THEN ${startTimeExpr}::timestamptz <= now()
      AND ${endTimeExpr}::timestamptz > now()
     ELSE true

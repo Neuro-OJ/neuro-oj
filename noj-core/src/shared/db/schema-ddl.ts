@@ -159,6 +159,9 @@ export const SCHEMA_DDL: string[] = [
       start_time ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
       AND end_time ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
       AND (freeze_start_time IS NULL OR freeze_start_time ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$')
+      AND pg_input_is_valid(start_time, 'timestamptz')
+      AND pg_input_is_valid(end_time, 'timestamptz')
+      AND (freeze_start_time IS NULL OR pg_input_is_valid(freeze_start_time, 'timestamptz'))
     )
   )`,
 

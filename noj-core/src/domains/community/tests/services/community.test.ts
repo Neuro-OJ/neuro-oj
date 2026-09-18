@@ -938,3 +938,99 @@ Deno.test({
     assertEquals(new Set(seen).size, 5);
   },
 });
+
+/**
+ * 评审 #4 回归：排序含 is_official / is_pinned 而游标只沿 created_at 推进，
+ * 第一页被置顶帖填满时，第二页会以"置顶帖的最后时间"过滤普通帖，
+ * 导致其后仍有但**时间更近的普通帖**永久不可见。
+ *
+ * 上面那条用例只覆盖"官方帖不重复"，恰好因为官方帖与普通帖 created_at 相同才
+ * 没暴露本缺陷（同刻时 `<` 过滤不会误伤）。本条用**置顶帖时间晚于普通帖**的
+ * 真实排布钉死"静默丢失"。
+ */
+Deno.test({
+  name: "community service(评审#4): 置顶帖填满首页后普通帖不被跳过",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const t0 = Date.parse("2026-01-10T12:00:00.000Z");
+    const at = (minutesAgo: number) =>
+      new Date(t0 - minutesAgo * 60_000).toISOString();
+    const base = {
+      type: "moment" as const,
+      author_id: actorId,
+      problem_id: null,
+      board_id: null,
+      title: null,
+      status: "published" as const,
+      is_locked: false,
+      moderation_reason: null,
+      published_at: null,
+      updated_at: at(0),
+    };
+    // 排布：N1/N2 最新，两条置顶帖居中，N3 最旧
+    await getDb().insert(communityPosts).values([
+      {
+        ...base,
+        id: "page-n1",
+        content: "普通1",
+        is_pinned: false,
+        is_official: false,
+        created_at: at(0),
+      },
+      {
+        ...base,
+        id: "page-n2",
+        content: "普通2",
+        is_pinned: false,
+        is_official: false,
+        created_at: at(1),
+      },
+      {
+        ...base,
+        id: "page-p1",
+        content: "置顶1",
+        is_pinned: true,
+        is_official: false,
+        created_at: at(2),
+      },
+      {
+        ...base,
+        id: "page-p2",
+        content: "置顶2",
+        is_pinned: true,
+        is_official: false,
+        created_at: at(3),
+      },
+      {
+        ...base,
+        id: "page-n3",
+        content: "普通3",
+        is_pinned: false,
+        is_official: false,
+        created_at: at(4),
+      },
+    ]);
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < 6; page++) {
+      const res = await listPosts({
+        type: "moment",
+        limit: 2,
+        cursor: cursor ?? undefined,
+      });
+      for (const row of res.data) seen.push(row.post.id);
+      cursor = res.next_cursor;
+      if (!cursor) break;
+    }
+
+    // 修复前：page-n1 / page-n2 被跳过，seen 里没有它们（只剩 p1/p2/n3）
+    assertEquals(new Set(seen).has("page-n1"), true);
+    assertEquals(new Set(seen).has("page-n2"), true);
+    // 5 条全部且各仅一次
+    assertEquals(new Set(seen).size, 5);
+    assertEquals(seen.length, 5);
+  },
+});

@@ -513,6 +513,9 @@ export async function getReportDetail(
   moderator = false,
 ) {
   const db = getDb();
+  // 同一张 community_posts 需要出现两次（被举报帖 / 评论的父帖），必须用别名
+  // 区分，否则 SQL 里两个同名列引用会产生歧义（评审 #1）。
+  const parentPost = aliasedTable(communityPosts, "comment_parent_post");
   const rows = await db.select({
     report: communityReports,
     reporter: {
@@ -532,6 +535,13 @@ export async function getReportDetail(
       content: communityComments.content,
       post_id: communityComments.post_id,
       author_id: communityComments.author_id,
+    },
+    // 评论所属的父帖：评论工单的 report.post_id 为 null，故 row.post 恒为 null，
+    // 门控必须沿 comment -> post 这条边取父帖信息（评审 #1）。
+    // **只取门控所需字段，不取父帖正文**——否则等于把被门控的题解正文随响应返回。
+    parent_post: {
+      type: parentPost.type,
+      problem_id: parentPost.problem_id,
     },
     message: {
       id: messages.id,
@@ -555,21 +565,33 @@ export async function getReportDetail(
       communityComments,
       eq(communityComments.id, communityReports.comment_id),
     )
+    // 父帖 join 挂在评论上：这样评论工单也能拿到"评论所在帖子"的门控依据
+    .leftJoin(parentPost, eq(parentPost.id, communityComments.post_id))
     .leftJoin(messages, eq(messages.id, communityReports.message_id))
     .leftJoin(userBans, eq(userBans.id, communityReports.ban_id))
     .where(eq(communityReports.id, reportId)).limit(1);
   if (!rows[0]) throw new NotFoundError("举报不存在");
   const row = rows[0];
-  // 赛期门控（High#4）：非审核员查看存量工单时，剥离被门控的正文与快照。
+  // 赛期门控（High#4 / 评审 #1）：非审核员查看存量工单时，剥离被门控的正文与快照。
   // 不抛 404——工单归属已由调用方校验，此处只需不返回受保护正文。
+  //
+  // 两条被举报内容的门控口径必须一致：
+  // - 帖子工单：依据 report.post_id 关联到的帖子；
+  // - 评论工单：report.post_id 为 null，必须依据**父帖**（comment.post_id）判定，
+  //   否则 row.post 恒为 null，评论正文与 content_snapshot 会原样泄露给举报人。
+  const gatedProblemId = row.post?.problem_id ??
+    (row.comment ? row.parent_post?.problem_id : null);
+  const gatedType = row.post?.type ??
+    (row.comment ? row.parent_post?.type : null);
   if (
-    !moderator && row.post?.problem_id && row.post.type === "solution" &&
-    await isProblemInRunningContest(row.post.problem_id)
+    !moderator && gatedProblemId && gatedType === "solution" &&
+    await isProblemInRunningContest(gatedProblemId)
   ) {
     return {
       ...row,
       report: { ...row.report, content_snapshot: "" },
-      post: { ...row.post, content: "" },
+      post: row.post ? { ...row.post, content: "" } : row.post,
+      comment: row.comment ? { ...row.comment, content: "" } : row.comment,
     };
   }
   return row;

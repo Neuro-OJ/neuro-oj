@@ -4,12 +4,15 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { contests, problems, users } from "../../../../shared/db/schema.ts";
 import {
   communityBookmarks,
+  communityComments,
   communityPostLikes,
 } from "../../../../shared/db/schema.ts";
 import {
   countPostsByType,
   createPost,
+  createReport,
   getPost,
+  getReportDetail,
   listBookmarks,
   listFeed,
   listPosts,
@@ -358,5 +361,104 @@ Deno.test({
       true,
     );
     assertEquals(afterEnd.community_stats.solution_count, 2);
+  },
+});
+
+/**
+ * 评审 #1 回归：评论工单的门控只看 `report.post_id`，而评论工单的 post_id 为 null。
+ *
+ * `getReportDetail` 同时查 post/comment，但门控只判断 `row.post?.problem_id`、
+ * 只清理 `post.content`。评论工单的 `row.post` 恒为 null，于是
+ * `comment.content` 与 `content_snapshot` 会**原样**返回给举报人——
+ * 赛期题解的评论全文由此泄露。
+ *
+ * 修复：沿 comment -> parent post 取门控依据，并同时清理评论正文与快照。
+ */
+Deno.test({
+  name: "solution-gating(评审#1): 赛期题解的评论工单详情不泄露评论正文与快照",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    // 赛期题解 + 其下评论；评论直接写库（createComment 会走 getPost 门控）
+    const post = await seedSolution(contestProblemId, "竞赛题题解");
+    const commentId = crypto.randomUUID();
+    const secret = "赛期题解评论的机密正文";
+    const now = new Date().toISOString();
+    await getDb().insert(communityComments).values({
+      id: commentId,
+      post_id: post.id,
+      author_id: ownerId,
+      parent_id: null,
+      content: secret,
+      status: "published",
+      moderation_reason: null,
+      created_at: now,
+      updated_at: now,
+    });
+    // 以审核员身份建单（普通举报在赛期会被 404，拿不到"存量工单"）
+    const report = await createReport(ownerId, {
+      comment_id: commentId,
+      reason: "赛期评论举报",
+      category: "其他",
+    }, true);
+    assertEquals(report.content_snapshot, secret);
+
+    // 举报人（非审核员）查看：快照与评论正文都必须被剥离
+    const asReporter = await getReportDetail(report.id, ownerId, false);
+    assertEquals(asReporter.report.content_snapshot, "");
+    assertEquals(asReporter.comment?.content, "");
+    // 父帖投影只含门控元数据，绝不能夹带父帖正文（否则换个字段继续泄露）
+    assertEquals("content" in (asReporter.parent_post ?? {}), false);
+    // 门控元数据仍应在（调用方据此展示"内容暂不可见"）
+    assertEquals(asReporter.parent_post?.problem_id, contestProblemId);
+
+    // 审核员处理工单必须看到全文
+    const asModerator = await getReportDetail(report.id, ownerId, true);
+    assertEquals(asModerator.report.content_snapshot, secret);
+    assertEquals(asModerator.comment?.content, secret);
+
+    // 赛后自动恢复可见（门控实时判定，无调度依赖）
+    await getDb().update(contests)
+      .set({ end_time: new Date(Date.now() - 1_000).toISOString() })
+      .where(eq(contests.id, contestId));
+    const afterEnd = await getReportDetail(report.id, ownerId, false);
+    assertEquals(afterEnd.report.content_snapshot, secret);
+    assertEquals(afterEnd.comment?.content, secret);
+  },
+});
+
+/**
+ * 评审 #1 对照：非赛期题解的评论工单不受影响（避免"一刀切清空"）。
+ */
+Deno.test({
+  name: "solution-gating(评审#1): 普通题评论工单始终返回完整正文",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const post = await seedSolution(normalProblemId, "普通题题解");
+    const commentId = crypto.randomUUID();
+    const body = "普通题的评论正文";
+    const now = new Date().toISOString();
+    await getDb().insert(communityComments).values({
+      id: commentId,
+      post_id: post.id,
+      author_id: ownerId,
+      parent_id: null,
+      content: body,
+      status: "published",
+      moderation_reason: null,
+      created_at: now,
+      updated_at: now,
+    });
+    const report = await createReport(ownerId, {
+      comment_id: commentId,
+      reason: "普通评论举报",
+      category: "其他",
+    }, true);
+    const detail = await getReportDetail(report.id, ownerId, false);
+    assertEquals(detail.report.content_snapshot, body);
+    assertEquals(detail.comment?.content, body);
   },
 });

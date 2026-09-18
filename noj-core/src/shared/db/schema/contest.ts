@@ -83,7 +83,10 @@ export const contests = pgTable(
       "contests_time_format_check",
       sql`${table.start_time} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
         AND ${table.end_time} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
-        AND (${table.freeze_start_time} IS NULL OR ${table.freeze_start_time} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$')`,
+        AND (${table.freeze_start_time} IS NULL OR ${table.freeze_start_time} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$')
+        AND pg_input_is_valid(${table.start_time}, 'timestamptz')
+        AND pg_input_is_valid(${table.end_time}, 'timestamptz')
+        AND (${table.freeze_start_time} IS NULL OR pg_input_is_valid(${table.freeze_start_time}, 'timestamptz'))`,
     ),
     rankingVisibilityCheck: check(
       "contests_ranking_visibility_check",
