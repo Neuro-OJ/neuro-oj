@@ -486,7 +486,11 @@ async function handleDeleteAccount() {
 
 <template>
   <div class="max-w-[800px] mx-auto px-4 py-6 sm:px-6 sm:py-8 flex flex-col gap-6">
-    <!-- 返回 -->
+    <!--
+      返回个人主页（评审修正）：/settings 在面包屑注册表中是**单层**，
+      而 BreadcrumbNav 对单层不渲染（避免占用首屏）。因此本页若删掉该链接，
+      就会**完全没有返回导航**。单层页面的返回入口与面包屑不构成重复，故保留。
+    -->
     <NuxtLink
       v-if="user?.id"
       :to="userUrl(user?.username ?? '')"

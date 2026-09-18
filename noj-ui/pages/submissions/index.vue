@@ -16,12 +16,23 @@ definePageMeta({
   ssr: false,
 })
 
+const route = useRoute()
 const { api } = useApi()
 const { isLoggedIn, loading } = useAuth()
 const { t, locale } = useI18n()
 
 // 认证守卫：未登录跳转到 /login
 useRequireLogin()
+
+/**
+ * 题目详情页「全部提交」入口带来的预筛选（#511）。
+ * `?problem_id=<uuid>` 由 `MySubmissionCard` 构造；此处仅透传给后端，
+ * 不做额外校验（后端按 UUID 精确匹配，非法值只会得到空列表）。
+ */
+const presetProblemId = computed(() => {
+  const value = route.query.problem_id
+  return typeof value === 'string' ? value : ''
+})
 
 // 列表数据
 const submissions = ref<SubmissionListItem[]>([])
@@ -34,6 +45,7 @@ const perPage = 20
 // 筛选条件
 const filters = reactive({
   problem_search: "",
+  problem_id: presetProblemId.value,
   submission_id: "",
   language: undefined as string | undefined,
   status: undefined as string | undefined,
@@ -60,6 +72,7 @@ function buildQuery(page: number): string {
   const params = new URLSearchParams()
   params.set("page", String(page))
   params.set("per_page", String(perPage))
+  if (filters.problem_id) params.set("problem_id", filters.problem_id)
   if (filters.problem_search) params.set("problem_search", filters.problem_search)
   if (filters.submission_id) params.set("submission_id", filters.submission_id)
   if (filters.language) params.set("language", filters.language)
@@ -100,6 +113,7 @@ function applyFilters() {
 
 function clearFilters() {
   filters.problem_search = ""
+  filters.problem_id = ""
   filters.submission_id = ""
   filters.language = undefined
   filters.status = undefined
@@ -153,6 +167,13 @@ function hasResult(
             <USelect v-model="filters.status" :items="statusOptions" :placeholder="t('common.all')" class="min-w-[140px]" @change="applyFilters" />
           </div>
         </div>
+        <p v-if="filters.problem_id" class="mb-3 flex items-center gap-2 text-xs text-text-secondary">
+          <UIcon name="i-lucide-filter" class="size-3.5" />
+          已按题目筛选
+          <UButton color="neutral" variant="outline" size="xs" class="border-border text-text-secondary" @click="clearFilters">
+            {{ t('common.clear') }}
+          </UButton>
+        </p>
         <div class="flex gap-2">
           <UButton color="primary" size="sm" class="px-3.5 leading-none" @click="applyFilters">
             <UIcon name="i-lucide-search" class="size-3.5" />

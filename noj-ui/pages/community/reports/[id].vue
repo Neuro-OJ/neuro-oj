@@ -118,8 +118,6 @@ onMounted(() => {
 
 <template>
   <main class="mx-auto w-full max-w-3xl px-6 py-10">
-    <NuxtLink to="/community/notifications" class="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-primary"><UIcon name="i-lucide-arrow-left" class="size-4" />返回通知</NuxtLink>
-
     <div v-if="loading" class="mt-8 py-12 text-center text-text-secondary">加载中…</div>
     <p v-else-if="error" class="mt-8 py-12 text-center text-text-secondary">{{ error }}</p>
 

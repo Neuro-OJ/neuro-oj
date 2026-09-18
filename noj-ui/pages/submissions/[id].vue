@@ -6,6 +6,7 @@ import SubmissionCaseResults from "~/components/submission/SubmissionCaseResults
 import { useCopyText } from "~/composables/useCopyText"
 import { getLanguageLabel, formatScore, formatTime, formatMemory, statusBadgeColors, getResultDef, verdictClasses, formatDateTime } from "~/utils/submissionFormat"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
+import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 
 interface SubmissionResult {
   status: string
@@ -43,6 +44,9 @@ const submissionId = route.params.id as string
 const isMounted = ref(true)
 const data = ref<SubmissionResponse | null>(null)
 const submission = computed(() => data.value?.data ?? null)
+
+// 面包屑（#512）：末层显示提交公开编号，而非裸 UUID
+useBreadcrumbLabel(() => submission.value?.public_id)
 
 useSeoMeta({
   title: () => submission.value?.public_id ? `提交 #${submission.value.public_id} - Neuro OJ` : '提交结果 - Neuro OJ',
@@ -128,14 +132,15 @@ watch(
 </script>
 <template>
   <div class="max-w-[800px] mx-auto px-3 py-5 sm:px-6 sm:py-8 flex flex-col gap-5">
-    <!-- 回退链接 -->
+    <!-- 「返回题目」已由面包屑（#512）承担；此入口保留为题目的直达链接，
+         因为它指向提交对应的题目，而非父层级 -->
     <NuxtLink
       v-if="submission"
       :to="problemUrl(submission.problem_id)"
       class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
     >
-      <UIcon name="i-lucide-arrow-left" class="size-4" />
-      返回题目
+      <UIcon name="i-lucide-arrow-right" class="size-4" />
+      查看题目
     </NuxtLink>
     <!-- Loading -->
     <div v-if="!submission" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted">

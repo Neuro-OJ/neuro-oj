@@ -3,6 +3,7 @@ import type { Training, TrainingProblem } from '~/composables/useTrainings'
 import { useTrainings } from '~/composables/useTrainings'
 // 显式导入项目 useToast：避免与 @nuxt/ui 自动导入的同名 useToast 混淆
 import { useToast } from '~/composables/useToast'
+import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,6 +20,9 @@ const { data: problemsData, refresh: refreshProblems } = await useFetch<{ data: 
   `/api/v1/trainings/${trainingId}/problems`,
 )
 const training = computed(() => trainingData.value?.data)
+
+// 面包屑（#512）：末层显示题单标题
+useBreadcrumbLabel(() => training.value?.title)
 const problems = computed(() => problemsData.value?.data ?? [])
 const isOwner = computed(() => training.value?.created_by === user.value?.id)
 const showEdit = ref(false)

@@ -4,6 +4,9 @@ import { useMessages } from "~/composables/useMessages"
 import { useToast } from "~/composables/useToast"
 import { difficultyBadgeColors, difficultyLabels, formatDateTime, formatScore, getLanguageLabel } from "~/utils/submissionFormat"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
+import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
+
+definePageMeta({ breadcrumbWidth: '900px' })
 
 const route = useRoute()
 const router = useRouter()
@@ -61,6 +64,9 @@ const { data, pending, error, refresh } = useFetch<ProfileResponse>(
 )
 
 const profile = computed(() => data.value?.data ?? null)
+
+// 面包屑（#512）：末层显示用户名，而非 UUID
+useBreadcrumbLabel(() => profile.value?.user?.username, 'id')
 
 useSeoMeta({
   title: () => profile.value?.user?.username ? `${profile.value.user.username} - Neuro OJ` : '用户 - Neuro OJ',
