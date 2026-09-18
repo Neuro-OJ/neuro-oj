@@ -1,6 +1,10 @@
 /**
  * prod/compose 测试：全部注入 fake runner，绝不触真实 docker。
  *
+ * 契约：真实执行时 wrapper 返回**完整** `CmdResult`（`code` + `stdout` + `stderr`），
+ * 调用方从 `result.code` 读退出码、从 `result.stdout` 读输出；`dryRun` 时返回参数数组
+ * （`Array.isArray(result)` 即 dryRun）。
+ *
  * 服务集核对**读取仓库内真实的 docker-compose.prod.yml 并按缩进层级解析**
  * （services 段内 2 空格缩进的服务名 + 其 4 空格缩进的 profiles 列表），
  * 不在测试里硬编码第二份服务清单。
@@ -24,6 +28,7 @@ import {
   PROD_ENV_FILE,
   PROD_SERVICES,
 } from "./compose.ts";
+import type { ComposeResult } from "./compose.ts";
 
 /** 仓库根部的真实生产编排文件。 */
 const COMPOSE_URL = new URL(
@@ -80,10 +85,11 @@ function parseComposeServices(text: string): Map<string, string[]> {
   return services;
 }
 
-/** 记录 run 调用的 fake runner；退出码与 stdout 可配置。 */
+/** 记录 run 调用的 fake runner；退出码、stdout 与 stderr 可配置。 */
 function fakeRunner(
   code = 0,
   stdout = "",
+  stderr = "",
 ): { runner: CommandRunner; calls: string[][] } {
   const calls: string[][] = [];
   return {
@@ -91,7 +97,7 @@ function fakeRunner(
     runner: {
       run(cmd, args) {
         calls.push([cmd, ...args]);
-        const result: CmdResult = { code, stdout, stderr: "" };
+        const result: CmdResult = { code, stdout, stderr };
         return Promise.resolve(result);
       },
       spawn(_opts: SpawnOpts): SpawnHandle {
@@ -101,10 +107,16 @@ function fakeRunner(
   };
 }
 
+/** 从 wrapper 结果中取退出码；dryRun 返回的是参数数组，没有退出码。 */
+function exitCode(result: ComposeResult): number {
+  if (Array.isArray(result)) throw new Error("dryRun 结果没有退出码");
+  return result.code;
+}
+
 const COMPOSE = "/opt/neuro-oj/docker-compose.prod.yml";
 const ENV = "/opt/neuro-oj/.env.prod";
 
-Deno.test("PROD_COMPOSE_FILE/PROD_ENV_FILE: 命名 T9 bootstrap 下载的固定文件", () => {
+Deno.test("PROD_COMPOSE_FILE/PROD_ENV_FILE: 命名生产编排与用户维护的配置文件", () => {
   assertEquals(PROD_COMPOSE_FILE, "docker-compose.prod.yml");
   assertEquals(PROD_ENV_FILE, ".env.prod");
 });
@@ -138,25 +150,32 @@ Deno.test("服务集核对: 解析真实 compose 的 services 段并逐服务比
   }
 });
 
-Deno.test("服务集核对: 恰好两组成员带 profile，且 profile 名在真实文件中存在", async () => {
-  // 只断言 profile 归属，**不**再硬编码第二份服务名清单（由上一个测试的
-  // 逐服务双向比对负责）。这里额外用真实文件确认 profile 名本身确实被声明过。
-  const profiled = PROD_SERVICES.filter((s) => s.profile !== undefined);
-  assertEquals(profiled, [
-    { name: "judge", profile: "judge" },
-    { name: "prometheus", profile: "monitoring" },
-    { name: "alertmanager", profile: "monitoring" },
-  ]);
-
+Deno.test("服务集核对: 带 profile 的服务仅来自真实文件解析结果", async () => {
+  // 期望值全部从**真实文件解析结果**派生，不再复制 PROD_SERVICES 自身作为断言基准
+  // （那是自指的，模块清单写错时同样"通过"）。逐服务双向比对已由上一个测试负责，
+  // 这里只确认「带 profile 的服务确实存在且仅限 judge/monitoring 两组」。
   const text = await Deno.readTextFile(COMPOSE_URL);
   const parsed = parseComposeServices(text);
-  const declared = new Set([...parsed.values()].flat());
-  for (const { profile } of profiled) {
-    assertEquals(
-      declared.has(profile!),
-      true,
-      `真实 compose 未声明 profile：${profile}`,
-    );
+  const parsedProfiled = [...parsed.entries()]
+    .filter(([, profiles]) => profiles.length > 0)
+    .map(([name, profiles]) => `${name}:${profiles.sort().join(",")}`)
+    .sort();
+  assertEquals(parsedProfiled, [
+    "alertmanager:monitoring",
+    "judge:judge",
+    "prometheus:monitoring",
+  ]);
+
+  // 解析出的 profile 名只允许属于 ProdProfile 的封闭集合。
+  const allowed = new Set(["judge", "monitoring"]);
+  for (const profiles of parsed.values()) {
+    for (const profile of profiles) {
+      assertEquals(
+        allowed.has(profile),
+        true,
+        `真实 compose 出现未知 profile：${profile}`,
+      );
+    }
   }
 });
 
@@ -257,15 +276,15 @@ Deno.test("composeArgs: monitoring profile 按开关插入，且 judge 在前", 
 Deno.test("composeUp/composeDown/composePs: 参数形状与退出码透传", async () => {
   const { runner, calls } = fakeRunner();
   assertEquals(
-    await composeUp(runner, { composeFile: COMPOSE, envFile: ENV }),
+    exitCode(await composeUp(runner, { composeFile: COMPOSE, envFile: ENV })),
     0,
   );
   assertEquals(
-    await composeDown(runner, { composeFile: COMPOSE, envFile: ENV }),
+    exitCode(await composeDown(runner, { composeFile: COMPOSE, envFile: ENV })),
     0,
   );
   assertEquals(
-    await composePs(runner, { composeFile: COMPOSE, envFile: ENV }),
+    exitCode(await composePs(runner, { composeFile: COMPOSE, envFile: ENV })),
     0,
   );
   assertEquals(calls, [
@@ -287,20 +306,37 @@ Deno.test("composeUp/composeDown/composePs: 参数形状与退出码透传", asy
   // 非零退出码原样透传，不被吞掉或改写。
   const failed = fakeRunner(3);
   assertEquals(
-    await composeUp(failed.runner, { composeFile: COMPOSE, envFile: ENV }),
+    exitCode(
+      await composeUp(failed.runner, { composeFile: COMPOSE, envFile: ENV }),
+    ),
     3,
   );
   assertEquals(
-    await composeDown(failed.runner, {
-      composeFile: COMPOSE,
-      envFile: ENV,
-    }),
+    exitCode(
+      await composeDown(failed.runner, { composeFile: COMPOSE, envFile: ENV }),
+    ),
     3,
   );
   assertEquals(
-    await composePs(failed.runner, { composeFile: COMPOSE, envFile: ENV }),
+    exitCode(
+      await composePs(failed.runner, { composeFile: COMPOSE, envFile: ENV }),
+    ),
     3,
   );
+});
+
+Deno.test("composePs: stdout 原样保留（状态解析的数据源）", async () => {
+  const stdout = "NAME  IMAGE  STATUS\ncore  noj-server:1.2.3  running\n";
+  const { runner } = fakeRunner(0, stdout);
+  const result = await composePs(runner, {
+    composeFile: COMPOSE,
+    envFile: ENV,
+  });
+  // 旧实现只返回 result.code，这里会直接失败（number 上没有 stdout）。
+  if (Array.isArray(result)) throw new Error("dryRun 不应被触发");
+  assertEquals(result.code, 0);
+  assertEquals(result.stdout, stdout);
+  assertEquals(result.stderr, "");
 });
 
 Deno.test("composeUp: 带 services / judge profile 时的参数形状", async () => {
@@ -336,7 +372,11 @@ Deno.test("composeLogs: --tail 默认 200，follow 与 services 可叠加", asyn
     follow: true,
     services: ["core"],
   });
-  assertEquals(result, 0);
+  // 日志必须留在 stdout 里；旧实现把结果塌缩成 number，这里会直接失败。
+  if (Array.isArray(result)) throw new Error("dryRun 不应被触发");
+  assertEquals(result.code, 0);
+  assertEquals(result.stdout, "line-1\n");
+  assertEquals(result.stderr, "");
   assertEquals(calls, [[
     "docker",
     "compose",
@@ -367,12 +407,15 @@ Deno.test("composeLogs: --tail 默认 200，follow 与 services 可叠加", asyn
   ]]);
 });
 
-Deno.test("composeConfig: 校验编排，参数形状正确", async () => {
-  const { runner, calls } = fakeRunner();
-  assertEquals(
-    await composeConfig(runner, { composeFile: COMPOSE, envFile: ENV }),
-    0,
-  );
+Deno.test("composeConfig: 校验编排，参数形状正确且 stdout 保留", async () => {
+  const { runner, calls } = fakeRunner(0, "services:\n  core: {}\n");
+  const result = await composeConfig(runner, {
+    composeFile: COMPOSE,
+    envFile: ENV,
+  });
+  if (Array.isArray(result)) throw new Error("dryRun 不应被触发");
+  assertEquals(result.code, 0);
+  assertEquals(result.stdout, "services:\n  core: {}\n");
   assertEquals(calls, [[
     "docker",
     "compose",
@@ -444,4 +487,43 @@ Deno.test("dryRun: 不执行 runner，只返回将执行的参数数组", async 
     "config",
   ]);
   assertEquals(calls, []);
+
+  const downArgs = await composeDown(runner, {
+    composeFile: COMPOSE,
+    envFile: ENV,
+    services: ["redis"],
+    dryRun: true,
+  });
+  assertEquals(downArgs, [
+    "compose",
+    "--env-file",
+    ENV,
+    "-f",
+    COMPOSE,
+    "down",
+    "redis",
+  ]);
+  assertEquals(calls, []);
+
+  const psArgs = await composePs(runner, {
+    composeFile: COMPOSE,
+    envFile: ENV,
+    dryRun: true,
+  });
+  assertEquals(psArgs, [
+    "compose",
+    "--env-file",
+    ENV,
+    "-f",
+    COMPOSE,
+    "ps",
+  ]);
+  assertEquals(calls, []);
+
+  // dryRun 返回值是数组（与真实执行的 CmdResult 可区分）。
+  assertEquals(Array.isArray(upArgs), true);
+  assertEquals(Array.isArray(logsArgs), true);
+  assertEquals(Array.isArray(configArgs), true);
+  assertEquals(Array.isArray(downArgs), true);
+  assertEquals(Array.isArray(psArgs), true);
 });

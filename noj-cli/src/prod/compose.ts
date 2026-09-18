@@ -8,8 +8,29 @@
  *
  * 与 stack 侧 `deploy/compose.ts` 的 `renderCompose()` 是两个不同模块：
  * 本模块**只**负责服务清单、参数数组构造与调用，不做任何渲染。
+ *
+ * ## 调用契约（T12–T16 接线必读）
+ *
+ * 1. **参数数组永远是纯字符串数组**，由 `composeArgs()` 构造，绝不拼接 shell
+ *    字符串；wrapper 把它原样交给 `CommandRunner.run("docker", args)`。
+ * 2. **真实执行返回完整的 `CmdResult`**（`{ code, stdout, stderr }`），
+ *    `stdout`/`stderr` **原样保留**：`composeLogs`/`composePs`/`composeConfig`
+ *    的输出必须由调用方消费（打印或解析），runner 不会替调用方输出。
+ * 3. **`dryRun: true` 不执行任何命令**，runner 零调用，返回 `string[]` 参数数组
+ *    （不含开头的 `"docker"`）。
+ *
+ * 因此读结果时先做形状收窄：
+ *
+ * ```ts
+ * const result = await composeLogs(runner, { ... });
+ * if (Array.isArray(result)) {
+ *   // dryRun：result 是参数数组
+ * } else {
+ *   // 真实执行：result.code 是退出码，result.stdout / result.stderr 是输出
+ * }
+ * ```
  */
-import type { CommandRunner } from "../runtime/command.ts";
+import type { CmdResult, CommandRunner } from "../runtime/command.ts";
 
 /** prod compose 支持的可选 profile 名（与 compose 文件中的 `profiles:` 一致）。 */
 export type ProdProfile = "judge" | "monitoring";
@@ -107,23 +128,27 @@ export interface ComposeOptions {
   dryRun?: boolean;
 }
 
-/** compose 调用结果：真实执行返回退出码，`dryRun` 返回参数数组。 */
-export type ComposeResult = number | string[];
+/**
+ * compose 调用结果：真实执行返回完整结果（含 stdout/stderr），`dryRun` 返回参数数组。
+ *
+ * 收窄方式见模块头「调用契约」：`Array.isArray(result)` 为 `true` 即 `dryRun`。
+ */
+export type ComposeResult = CmdResult | string[];
 
-/** 统一执行路径：`dryRun` 短路，否则执行并透传退出码。 */
+/** 统一执行路径：`dryRun` 短路返回参数数组，否则执行并透传**完整** `CmdResult`。 */
 function invoke(
   runner: CommandRunner,
   args: string[],
   dryRun: boolean | undefined,
 ): Promise<ComposeResult> {
   if (dryRun === true) return Promise.resolve(args);
-  return runner.run("docker", args).then((result) => result.code);
+  return runner.run("docker", args);
 }
 
 /**
  * `docker compose ... up -d --wait [services...]`。
  *
- * 退出码原样透传；`dryRun` 时返回参数数组。
+ * 退出码在 `result.code`；`dryRun` 时返回参数数组（runner 零调用）。
  */
 export function composeUp(
   runner: CommandRunner,
@@ -137,7 +162,11 @@ export function composeUp(
   );
 }
 
-/** `docker compose ... down [services...]`（默认不 `-v`，保留数据卷）。 */
+/**
+ * `docker compose ... down [services...]`（默认不 `-v`，保留数据卷）。
+ *
+ * 退出码在 `result.code`；`dryRun` 时返回参数数组（runner 零调用）。
+ */
 export function composeDown(
   runner: CommandRunner,
   options: ComposeOptions,
@@ -150,7 +179,12 @@ export function composeDown(
   );
 }
 
-/** `docker compose ... ps`。 */
+/**
+ * `docker compose ... ps`。
+ *
+ * 容器列表在 `result.stdout`（T13 status 解析用）；退出码在 `result.code`；
+ * `dryRun` 时返回参数数组（runner 零调用）。
+ */
 export function composePs(
   runner: CommandRunner,
   options: ComposeOptions,
@@ -170,7 +204,12 @@ export interface ComposeLogsOptions extends ComposeOptions {
   follow?: boolean;
 }
 
-/** `docker compose ... logs --tail=<n> [--follow] [services...]`。 */
+/**
+ * `docker compose ... logs --tail=<n> [--follow] [services...]`。
+ *
+ * 日志在 `result.stdout`（stderr 为 compose 告警），调用方负责打印；
+ * 退出码在 `result.code`；`dryRun` 时返回参数数组（runner 零调用）。
+ */
 export function composeLogs(
   runner: CommandRunner,
   options: ComposeLogsOptions,
@@ -185,7 +224,11 @@ export function composeLogs(
   );
 }
 
-/** `docker compose ... config`：校验编排文件可解析。 */
+/**
+ * `docker compose ... config`：校验编排文件可解析。
+ *
+ * 渲染后的配置在 `result.stdout`；退出码在 `result.code`；`dryRun` 时返回参数数组。
+ */
 export function composeConfig(
   runner: CommandRunner,
   options: ComposeOptions,
