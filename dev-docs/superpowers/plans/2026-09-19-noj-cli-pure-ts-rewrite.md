@@ -278,11 +278,49 @@ jj new
 
 ---
 
-## Task 8–26（概要；执行前逐个展开为完整任务块）
+## Task 8: 渲染与主题（品牌 token 语义色 + 表格）
+
+**Files:**
+- Create: `noj-cli/src/output/theme.ts` — 语义色映射（取品牌 token）
+- Create: `noj-cli/src/output/theme_test.ts`
+- Modify: `dev-docs/design/noj-design-tokens.md` — 补 **CLI/终端 section**
+- Modify: `noj-cli/src/output/render.ts` — 加表格与状态符号渲染
+- Modify: `noj-cli/src/output/render_test.ts`
+
+**Consumes**：T6 的 `RenderIO`/`emitHuman`/`emitJson`/`isJsonMode`
+
+**背景**：spec §1.2 实测——"加 ANSI 颜色"大部分已存在（`util/color.ts` 已有 `NO_COLOR`/`LOG_COLOR`/`--color`/非 TTY 关色/`prefixLine`），**真实缺口是排版（表格/对齐/状态符号）与品牌对齐**：`noj-design-tokens.md` 有完整 token 但**无 CLI/终端 section**（`rg 'CLI|终端|ANSI'` 零命中），现调色板是任意 8 色。
+
+- [ ] **Step 1: 写失败测试**
+
+`theme_test.ts` + `render_test.ts` 覆盖：
+- 语义色（成功/警告/错误/信息/强调）在**非 TTY 或 `NO_COLOR` 非空**时**不输出任何 ANSI 转义**（断言字符串不含 `\x1b[`）。
+- `--color=always` 时**有** ANSI；`never` 时无（沿用 `util/color.ts:resolveColor`，不得另造契约）。
+- `NO_COLOR` 优先于 `always`（既有契约，回归）。
+- 表格渲染：列对齐（padEnd 到最宽单元格）、**窄终端不破版**（给定宽度时截断或换行且总宽 ≤ 宽度）、空表不抛错。
+- 状态符号与语义色配对（成功/警告/错误各一）。
+- **`--json` 模式下表格渲染不得写 stdout**（复用 T6 契约）。
+
+- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+
+- [ ] **Step 3: 实现**
+
+- `theme.ts`：从 `noj-design-tokens.md` 的语义 token（`--c-success-text` 等）取概念映射到 ANSI 前景色；**必须先给 token 文档补 CLI/终端 section**，再据其实施（不要凭感觉配色）。复用 `util/color.ts` 的 `resolveColor` 决定是否着色，**不新增第二套 NO_COLOR 判定**。
+- `render.ts`：新增 `renderTable(rows, opts)` 与 `renderStatus(kind, text)`（命名可按实现调整，但须导出并测试）。表格须处理 **CJK 宽度**（中文占 2 列）——若实现复杂度过高，可先只保证 ASCII 对齐并在报告中显式标注 CJK 未处理，**不得**假装处理了。
+- `noj-design-tokens.md`：新增 CLI/终端 section，列出语义色 → ANSI 的映射与降级规则。
+
+- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+
+- [ ] **Step 5: 提交** — `feat(cli): 品牌 token 语义色与表格渲染（CLI 排版）`
+
+**明确不做**：不改 `util/color.ts` 的既有契约（只复用）；不迁移既有调用点（T18）；不引入运行时依赖（表格自绘或复用已有）。
+
+---
+
+## Task 9–26（概要；执行前逐个展开为完整任务块）
 
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
-| T8 渲染与主题 | `output/theme.ts`、`render.ts` | token 语义色；`NO_COLOR`/`LOG_COLOR`/`--color` 契约回归；表格与窄终端 |
 | T9 bootstrap | `prod/bootstrap.ts` | 下载 compose/example + SHA-256 校验；失败拒绝写入 |
 | T10 compose | `prod/compose.ts` | 服务集与 `docker-compose.prod.yml` 逐服务核对无遗漏 |
 | T11 config/向导 | `prod/config.ts` | 19 键校验；交互向导；口令自动生成 600；cosign；宝塔检测 |
