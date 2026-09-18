@@ -37,6 +37,8 @@ export interface CommunityPost {
   status: PostStatus;
   is_locked: boolean;
   is_pinned: boolean;
+  /** 官方题解标记：由题目 owner 或审核员设置，题解列表置顶展示。 */
+  is_official: boolean;
   problem_id: string | null;
   board_id: string | null;
   author_id: string;

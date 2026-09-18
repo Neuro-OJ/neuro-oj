@@ -137,17 +137,37 @@ Deno.test({
       await removeParticipant(contest.id, invitedId);
       assertEquals(await isParticipant(contest.id, invitedId), false);
 
+      // invite 赛清空邀请码必须被拒绝（评审 #2）：注册侧对 invite 恒走邀请码校验，
+      // 库中无凭据即赛事不可加入。此处原断言 has_password=false，编码的正是该缺陷，
+      // 与 security.md「invite 创建/更新必须设置邀请码」相悖，故改为拒绝 + 换码。
+      await assertRejects(
+        () =>
+          updateContest(contest.id, {
+            title: "清空邀请码",
+            password: null,
+          }),
+        BadRequestError,
+        "邀请赛必须设置邀请码",
+      );
+
       const updated = await updateContest(contest.id, {
         title: "已更新竞赛",
-        password: null,
+        password: "RotatedPass123",
         problems: [
           { problem_id: problemA, label: "A", sort_order: 0, score: 10000 },
           { problem_id: problemB, label: "B", sort_order: 1, score: 10000 },
         ],
       });
       assertEquals(updated.title, "已更新竞赛");
-      assertEquals(updated.has_password, false);
+      assertEquals(updated.has_password, true);
       assertEquals(updated.problem_count, 2);
+      // 换码后旧码失效、新码可注册（邀请码确实被轮换而非保留）
+      await assertRejects(
+        () => registerForContest(contest.id, invitedId, "ContestPass123"),
+        ForbiddenError,
+        "邀请码错误",
+      );
+      await registerForContest(contest.id, invitedId, "RotatedPass123");
       assertEquals(
         (await getContestProblems(contest.id, participantId)).length,
         2,
@@ -391,6 +411,134 @@ Deno.test({
       await deleteContest(contest.id).catch(() => {});
       await db.delete(problems).where(eq(problems.id, problemId));
       await db.delete(users).where(eq(users.id, participant));
+      await db.delete(users).where(eq(users.id, creator));
+    }
+  },
+});
+
+/**
+ * 评审 #2 回归：public → invite 的更新可生成"无密码邀请赛"。
+ *
+ * 原实现只在"请求里显式传了 password === null"时拒绝。公开赛存量 password 为 null 时，
+ * 请求仅传 `kind=invite`（不带 password）会得到
+ * `kind=invite / is_public=false / password=null`——注册侧对 invite 恒走邀请码校验，
+ * 而库中无任何可匹配凭据，赛事从此**不可加入**。
+ */
+Deno.test({
+  name:
+    "contests service(评审#2): public 转 invite 未带密码 → BadRequest，不产生无密码邀请赛",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const creator = await createUser("kind-invite-owner");
+    const problemId = await createProblem(950007);
+    const db = getDb();
+    // 不传 password 的默认 createContest：password 落库为 null
+    const contest = await createContest(
+      {
+        title: "公开赛转邀请赛",
+        start_time: new Date(Date.now() - 60_000).toISOString(),
+        end_time: new Date(Date.now() + 3_600_000).toISOString(),
+        type: "kaggle",
+        problems: [{
+          problem_id: problemId,
+          label: "A",
+          sort_order: 0,
+          score: 10000,
+        }],
+      },
+      creator,
+      true,
+    );
+    try {
+      assertEquals(contest.kind, "public");
+      assertEquals(contest.has_password, false);
+
+      // 仅改 kind，不带 password：必须在写库前被拒绝
+      await assertRejects(
+        () => updateContest(contest.id, { kind: "invite" }, true),
+        BadRequestError,
+        "邀请赛必须设置邀请码",
+      );
+
+      // 反证：库中仍是公开赛，未被写成"无密码邀请赛"
+      const stored = await db.select({
+        kind: contests.kind,
+        is_public: contests.is_public,
+        password: contests.password,
+      }).from(contests).where(eq(contests.id, contest.id));
+      assertEquals(stored[0]?.kind, "public");
+      assertEquals(stored[0]?.is_public, true);
+      assertEquals(stored[0]?.password, null);
+
+      // 带上传入密码即可正常转 invite
+      const updated = await updateContest(contest.id, {
+        kind: "invite",
+        password: "NewInviteCode1",
+      }, true);
+      assertEquals(updated.kind, "invite");
+      assertEquals(updated.is_public, false);
+      assertEquals(updated.has_password, true);
+
+      // 反证：转 invite 后必须真的有可用邀请码（否则等于把赛事锁死）
+      const participant = await createUser("kind-invite-user");
+      await registerForContest(contest.id, participant, "NewInviteCode1");
+      assertEquals(await isParticipant(contest.id, participant), true);
+      await db.delete(users).where(eq(users.id, participant));
+    } finally {
+      await deleteContest(contest.id).catch(() => {});
+      await db.delete(problems).where(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, creator));
+    }
+  },
+});
+
+/**
+ * 评审 #2 回归（清除路径）：invite 赛显式清空密码同样必须被拒绝。
+ *
+ * 与上一条互补——上一条是"现值可用、请求未带"，本条是"现值可用、请求显式清空"。
+ * 两者都必须收敛到"邀请赛始终有可用凭据"这一不变量。
+ */
+Deno.test({
+  name: "contests service(评审#2): invite 赛清空邀请码 → BadRequest",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const creator = await createUser("invite-clear-owner");
+    const problemId = await createProblem(950008);
+    const db = getDb();
+    const contest = await createContest(
+      {
+        title: "清空邀请码测试",
+        start_time: new Date(Date.now() - 60_000).toISOString(),
+        end_time: new Date(Date.now() + 3_600_000).toISOString(),
+        type: "kaggle",
+        kind: "invite",
+        password: "KeepMeCode123",
+        problems: [{
+          problem_id: problemId,
+          label: "A",
+          sort_order: 0,
+          score: 10000,
+        }],
+      },
+      creator,
+      true,
+    );
+    try {
+      await assertRejects(
+        () => updateContest(contest.id, { password: null }, true),
+        BadRequestError,
+        "邀请赛必须设置邀请码",
+      );
+      // 反证：原邀请码未被清除，仍可注册
+      const participant = await createUser("invite-clear-user");
+      await registerForContest(contest.id, participant, "KeepMeCode123");
+      assertEquals(await isParticipant(contest.id, participant), true);
+      await db.delete(users).where(eq(users.id, participant));
+    } finally {
+      await deleteContest(contest.id).catch(() => {});
+      await db.delete(problems).where(eq(problems.id, problemId));
       await db.delete(users).where(eq(users.id, creator));
     }
   },

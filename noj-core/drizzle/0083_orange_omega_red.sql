@@ -1,0 +1,2 @@
+ALTER TABLE "community_posts" ADD COLUMN "is_official" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE INDEX "idx_community_posts_official" ON "community_posts" USING btree ("problem_id","is_official","created_at");

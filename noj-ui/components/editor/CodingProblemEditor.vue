@@ -3,6 +3,8 @@ import SupportPackageUpload from "~/components/admin/SupportPackageUpload.vue"
 import { extractApiError } from "~/utils/apiError"
 import { isAdminUser } from "~/utils/isAdminUser"
 import { useToast } from "~/composables/useToast"
+import { useProblemStats } from "~/composables/useProblemStats"
+import type { ProblemStatsDetail } from "~/utils/problemStats"
 
 interface RuntimeConfigPayload {
   evaluator: {
@@ -52,6 +54,27 @@ const artifactMaxSizeMb = ref<number | null>(null)
 // 编辑模式专用
 const displayId = ref("")
 const isEditMode = computed(() => props.mode === "edit")
+
+// ── 题目数据（仅编辑模式）：按需加载，避免每次打开编辑页都跑一次聚合 ──
+const { fetchDetail } = useProblemStats()
+const statsDetail = ref<ProblemStatsDetail | null>(null)
+const statsLoading = ref(false)
+const statsError = ref("")
+
+async function loadStats() {
+  if (!props.problemId) return
+  statsLoading.value = true
+  statsError.value = ""
+  try {
+    const res = await fetchDetail(props.problemId)
+    statsDetail.value = res.data
+  } catch (e) {
+    statsError.value = extractApiError(e).message
+    statsDetail.value = null
+  } finally {
+    statsLoading.value = false
+  }
+}
 
 // 支持包上传
 const hasSupportPackage = ref(false)
@@ -641,6 +664,26 @@ async function handleSubmit() {
     <!-- 支持包上传 -->
     <section class="px-6 py-5 border-b border-border last:border-b-0">
       <SupportPackageUpload :problem-id="uploadProblemId" :has-package="hasSupportPackage" :disabled="!uploadProblemId" @package-changed="(val: boolean) => hasSupportPackage = val" />
+    </section>
+
+    <!-- 题目数据（仅编辑模式）：出题人视角的评测洞察 -->
+    <section v-if="isEditMode" class="px-6 py-5 border-b border-border last:border-b-0">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="text-base font-semibold text-text">题目数据</h3>
+          <p class="mt-1 text-xs text-text-secondary">评测状态分布与用例失败分布，用于定位题面歧义与数据强度问题。</p>
+        </div>
+        <UButton color="neutral" variant="outline" size="sm" :loading="statsLoading" @click="loadStats">
+          {{ statsDetail ? "刷新" : "加载数据" }}
+        </UButton>
+      </div>
+      <p v-if="statsError" class="mt-3 text-sm text-error-text">{{ statsError }}</p>
+      <div v-if="statsDetail" class="mt-4">
+        <ProblemStatsPanel :stats="statsDetail" />
+      </div>
+      <p v-else-if="!statsLoading && !statsError" class="mt-3 text-xs text-text-muted">
+        点击"加载数据"查看本题的评测统计。
+      </p>
     </section>
 
     <!-- 提交按钮 -->

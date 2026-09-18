@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import BanBanner from "~/components/BanBanner.vue"
+import BreadcrumbNav from "~/components/layout/BreadcrumbNav.vue"
 import SearchPalette from "~/components/feature/search/SearchPalette.vue";
 import { useBanStatus } from "~/composables/useBanStatus"
 
@@ -35,6 +36,8 @@ onUnmounted(() => {
         <EmailVerificationBanner />
         <div class="flex flex-1 min-h-[calc(100vh-var(--header-h))] w-full pt-(--header-h)">
             <main id="main" class="flex-1 min-w-0 w-full">
+                <!-- 面包屑（#512）：未注册路径不渲染，因此 admin/auth 页零影响 -->
+                <BreadcrumbNav />
                 <slot />
             </main>
         </div>

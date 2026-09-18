@@ -39,6 +39,26 @@ import {
   postStatsProjection,
 } from "./community-post-select.ts";
 import { reviewUgcContent } from "./community-review.ts";
+import { isProblemInRunningContest } from "./../../../contest/index.ts";
+
+/**
+ * 判断用户是否为指定题目的所有者（用于官方题解标记的写入校验）。
+ *
+ * @param userId 用户 UUID。
+ * @param problemId 题目 UUID；缺省时返回 false。
+ * @returns 是该题目 owner 时为 true。
+ */
+async function isProblemOwner(
+  userId: string,
+  problemId: string | undefined,
+): Promise<boolean> {
+  if (!problemId) return false;
+  const [problem] = await getDb().select({ owner_id: problems.owner_id })
+    .from(problems)
+    .where(eq(problems.id, problemId))
+    .limit(1);
+  return problem?.owner_id === userId;
+}
 
 /**
  * 校验题解发布门槛：若配置要求通过题目，则作者必须已通过对应题目。
@@ -165,6 +185,13 @@ export async function createPost(
     board_id: input.type === "discussion" ? input.board_id! : null,
     title: title ?? null,
     content,
+    // 官方标记：仅**题解**且题目 owner 或审核员的声明被信任。
+    // 必须限定 type === "solution"（2026-09-14 评审）：此前只校验 isProblemOwner，
+    // 而 discussion/moment 不会规范化 problem_id，客户端夹带任意 public 题的 id
+    // 即可让 isProblemOwner 为真；又因 listPosts 无条件按 is_official 置顶排序，
+    // 这类帖子会**置顶社区列表**，绕过 setPostOfficial 的"仅题解可标记"规则。
+    is_official: input.is_official === true && input.type === "solution" &&
+      (moderator || await isProblemOwner(authorId, input.problem_id)),
     status,
     is_locked: false,
     is_pinned: false,
@@ -252,6 +279,13 @@ export async function getPost(
     row.post.status !== "published" && row.post.author_id !== viewerId &&
     !moderator
   ) throw new NotFoundError("社区内容不存在");
+  // 赛期题解门控：进行中竞赛的题解对普通用户（含作者本人）不可见。
+  // 含作者本人是为了避免"自己能看到 = 该题有题解"的侧信道确认。
+  if (!moderator && row.post.type === "solution" && row.post.problem_id) {
+    if (await isProblemInRunningContest(row.post.problem_id)) {
+      throw new NotFoundError("社区内容不存在");
+    }
+  }
   return row;
 }
 
@@ -312,4 +346,38 @@ export async function updatePost(
   await publishSearchIndexEvent("community_post", postId, "upsert");
 
   return rows[0]!;
+}
+
+/**
+ * 设置/取消题解的官方标记。
+ *
+ * 权限：题目 owner 或审核员。**服务层强制**——前端隐藏不作为保障。
+ *
+ * @param postId 帖子 UUID。
+ * @param actorId 操作用户 UUID。
+ * @param moderator 是否为审核员。
+ * @param value 目标标记值。
+ * @throws {NotFoundError} 帖子不存在或不可见。
+ * @throws {ValidationError} 帖子不是题解类型。
+ * @throws {ForbiddenError} 非题目 owner 且非审核员。
+ */
+export async function setPostOfficial(
+  postId: string,
+  actorId: string,
+  moderator: boolean,
+  value: boolean,
+): Promise<void> {
+  const post = await getPost(postId, actorId, moderator);
+  if (post.post.type !== "solution") {
+    throw new ValidationError("仅题解可标记为官方题解");
+  }
+  if (
+    !moderator &&
+    !await isProblemOwner(actorId, post.post.problem_id ?? undefined)
+  ) {
+    throw new ForbiddenError("仅题目所有者可设置官方题解");
+  }
+  await getDb().update(communityPosts)
+    .set({ is_official: value, updated_at: nowIso() })
+    .where(eq(communityPosts.id, postId));
 }

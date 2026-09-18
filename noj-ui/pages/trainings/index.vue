@@ -2,6 +2,8 @@
 import type { Training } from '~/composables/useTrainings'
 import { useToast } from '~/composables/useToast'
 
+definePageMeta({ breadcrumbWidth: '960px' })
+
 useHead({ title: '题单 - Neuro OJ' })
 
 const currentPage = ref(1)

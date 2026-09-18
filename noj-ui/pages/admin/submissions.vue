@@ -22,6 +22,7 @@ definePageMeta({
 
 const { isLoggedIn, loading } = useAuth()
 const router = useRouter()
+const route = useRoute()
 
 useRequireLogin()
 
@@ -118,9 +119,36 @@ async function loadSubmissions(page = 1, silent = false) {
   }
 }
 
+/**
+ * 消费 `?highlight=<submission_id>` 查询参数。
+ *
+ * 竞赛风控面板的「查看提交详情」按钮跳转到
+ * `/admin/submissions?highlight=<id>`，但此前**全仓无任何代码读取该参数**——
+ * 按钮存在、能力不存在（2026-09-14 评审 W1 验收缺口）。
+ *
+ * 修复方式：把该参数作为筛选条件交给已有的 `submission_id` 后端查询，
+ * 复用既有列表与轮询，无需新增端点或页面。筛选栏会同步显示该 id，
+ * 管理员可据此清空筛选回到全量列表。
+ */
+function applyHighlightFromRoute() {
+  const highlight = route.query.highlight
+  const value = Array.isArray(highlight) ? highlight[0] : highlight
+  if (typeof value !== "string" || !value) return
+  if (filters.submission_id === value) return
+  filters.submission_id = value
+}
+
 watch(isLoggedIn, (val) => {
-  if (val) loadSubmissions()
+  if (!val) return
+  applyHighlightFromRoute()
+  loadSubmissions(1)
 }, { immediate: true })
+
+// 已在本页时再次点击风控面板的跳转链接，query 变化不会重挂组件，故需显式响应
+watch(() => route.query.highlight, () => {
+  applyHighlightFromRoute()
+  loadSubmissions(1)
+})
 
 // 提交列表自动轮询：存在 pending/judging 时每 3s 刷新，全部终态自动停止
 const TERMINAL_STATUSES = ["finished", "error"]

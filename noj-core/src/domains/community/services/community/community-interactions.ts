@@ -20,12 +20,37 @@ import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
 
 /**
+ * 校验帖子可被该用户互动（存在、已发布、未处于赛期门控）。
+ *
+ * **为什么必须在写入前校验**（2026-09-14 评审 High#6）：
+ * - 此前 `togglePostLike` 在**插入之后**才调 `getPost`（且仅用于发通知），
+ *   `toggleBookmark` 则完全不调。于是门控形同虚设：
+ *   ① 对隐藏帖子写入成功 → 库里出现指向赛期题解的互动行；
+ *   ② 隐藏帖子返回成功 / 不存在的帖子报外键错，二者状态码不同，
+ *      构成**存在性预言机**（可用来枚举赛期题解的存在）。
+ *
+ * 复用 `getPost` 的门控逻辑（含赛期判定与发布状态）而非另写一份判断，
+ * 避免门控口径再次漂移；门控触发时它抛 `NotFoundError`，与"真不存在"不可区分。
+ *
+ * @param postId 帖子 UUID。
+ * @param userId 操作用户 UUID。
+ * @throws {NotFoundError} 帖子不存在、未发布或处于赛期门控时。
+ */
+async function assertPostInteractable(
+  postId: string,
+  userId: string,
+): Promise<void> {
+  await getPost(postId, userId);
+}
+
+/**
  * 切换帖子点赞/收藏关系：已存在则删除（返回 false），否则插入（返回 true）。
  * @param table 目标关系表（帖子点赞或收藏）。
  * @param columns 关系键：post_id 与 user_id。
  * @param enabled 对应的功能开关配置项。
  * @returns 切换后是否处于已点赞/已收藏状态。
  * @throws {ForbiddenError} 对应功能关闭时抛出。
+ * @throws {NotFoundError} 帖子不存在或处于赛期门控时抛出。
  */
 async function toggleRelation(
   table: typeof communityPostLikes | typeof communityBookmarks,
@@ -33,6 +58,8 @@ async function toggleRelation(
   enabled: keyof CommunityConfig,
 ) {
   assertCommunityEnabled(enabled);
+  // 写入前校验：既是门控要求，也消除"存在 / 不存在"的状态码差异（High#6）
+  await assertPostInteractable(columns.post_id, columns.user_id);
   const db = getDb();
   const existing = await db.select().from(table).where(
     and(eq(table.post_id, columns.post_id), eq(table.user_id, columns.user_id)),

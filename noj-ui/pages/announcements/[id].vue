@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatDateTime } from "~/utils/submissionFormat"
+import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 
 interface AnnouncementDetail {
   id: string
@@ -13,6 +14,9 @@ interface AnnouncementDetail {
 
 const route = useRoute()
 const { api } = useApi()
+
+// 面包屑（#512）：末层显示公告标题
+useBreadcrumbLabel(() => detail.value?.title)
 
 const detail = ref<AnnouncementDetail | null>(null)
 const notFound = ref(false)

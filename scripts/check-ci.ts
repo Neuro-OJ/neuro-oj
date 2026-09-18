@@ -31,6 +31,10 @@ if (import.meta.main) {
   // 迁移安全：拦截"向已有表加 NOT NULL 列但无 DEFAULT"（存量库升级必失败，
   // 空库测试无法发现——见 2026-09-12 评审 §2.1 与 drizzle/0080）。
   await run(["deno", "run", "-A", "scripts/check-migration-safety.ts"]);
+  // 迁移快照链：drizzle/meta/*_snapshot.json 丢表会让下一次 db:generate 重新生成
+  // CREATE TABLE，空库测试通过而**存量部署必失败**（2026-09-14 实测：search_entries
+  // 自 0076 起从快照链消失，0082 因此生成了重复建表语句）。
+  await run(["deno", "run", "-A", "scripts/check-migration-snapshot-chain.ts"]);
   await run(["deno", "run", "-A", "scripts/check-metrics.ts"]);
   await run(["deno", "run", "-A", "scripts/check-runtime-contract.ts"]);
   await run(["deno", "run", "-A", "scripts/check-runbooks.ts"]);
@@ -46,6 +50,9 @@ if (import.meta.main) {
   await run(["deno", "run", "-A", "scripts/check-file-size.ts"]);
   // 写端点限流覆盖：含写路由的文件必须有有限流证据或在白名单登记（评审 §4.6）
   await run(["deno", "run", "-A", "scripts/check-write-rate-limits.ts"]);
+  // Deno 版本一致性（2026-09-17）：CI 曾用浮动 v2.x，2.9.7 发布引入 BrokenPipe
+  // 回归导致 UI Components 间歇红灯。.dvmrc 为唯一事实源，禁止写死 deno-version。
+  await run(["deno", "run", "-A", "scripts/check-deno-version.ts"]);
   // schema-ddl.ts（PGlite 测试用手工 SQL 镜像）与 Drizzle schema 的表/列一致性
   //（2026-09-12 评审 §3.3）。脚本置于 noj-core 下以便解析其导入映射。
   await run(
@@ -74,12 +81,14 @@ if (import.meta.main) {
     "scripts/check-test-discovery_test.ts",
     "scripts/check-dashboards_test.ts",
     "scripts/check-migration-safety_test.ts",
+    "scripts/check-migration-snapshot-chain_test.ts",
     "scripts/verify-capability-seams_test.ts",
     "scripts/gen-route-catalog_test.ts",
     "scripts/silent-skip-report_test.ts",
     "scripts/check-file-size_test.ts",
     "scripts/check-write-rate-limits_test.ts",
     "scripts/check-log-migration_test.ts",
+    "scripts/check-deno-version_test.ts",
   ]);
   console.log("CI 仓库级门禁通过");
 }

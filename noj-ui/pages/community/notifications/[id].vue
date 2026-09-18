@@ -13,6 +13,7 @@ import {
   notificationTypeIcon,
   notificationTypeLabel,
 } from "~/utils/communityNotifications"
+import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 
 definePageMeta({ middleware: "auth", ssr: false })
 
@@ -22,6 +23,11 @@ const { loadUnreadCount } = useCommunityNotifications()
 
 const notificationId = computed(() => String(route.params.id ?? ""))
 const item = ref<NotificationRow | null>(null)
+
+// 面包屑（#512）：末层显示通知类型，而非原始 ID
+useBreadcrumbLabel(() =>
+  item.value ? notificationTypeLabel(item.value.notification.type) : null
+)
 const loading = ref(true)
 const error = ref("")
 
@@ -76,15 +82,8 @@ function formatDateTime(value?: string | null): string {
 
 <template>
   <main class="mx-auto w-full max-w-3xl px-6 py-10">
-    <NuxtLink
-      to="/community/notifications"
-      class="inline-flex items-center gap-1 text-sm text-text-secondary no-underline hover:text-primary"
-    >
-      <UIcon name="i-lucide-arrow-left" class="size-4" />返回通知列表
-    </NuxtLink>
-
     <!-- 标题在所有状态下都渲染：加载/未找到时页面不应该是“无标题”的 -->
-    <h1 class="mt-4 text-2xl font-bold text-text">通知详情</h1>
+    <h1 class="text-2xl font-bold text-text">通知详情</h1>
 
     <div v-if="loading" class="mt-6 py-12 text-center text-text-secondary">加载中…</div>
     <p v-else-if="error" class="mt-6 py-12 text-center text-text-secondary">{{ error }}</p>

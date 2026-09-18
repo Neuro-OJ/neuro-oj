@@ -15,6 +15,8 @@ import { extractApiError } from "~/utils/apiError"
 import { publicUrl } from "~/utils/publicIdentifiers"
 import { isCommunityEdited } from "~/utils/communityEdited"
 
+definePageMeta({ breadcrumbWidth: '56rem' })
+
 const { isLoggedIn, user } = useAuth()
 const route = useRoute()
 const router = useRouter()

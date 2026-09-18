@@ -29,6 +29,10 @@ import {
   updateProblem,
 } from "../services/problems/problems.ts";
 import { applyAlgorithmTagVisibility } from "../services/problems/problems-list.ts";
+import {
+  getProblemStatsDetail,
+  getPublicProblemStats,
+} from "../services/problems/problems-stats.ts";
 import { resolveProblem } from "./../services/problem-resolve.ts";
 import { resolveProblemAccess } from "./../services/problem-access.ts";
 import {
@@ -459,6 +463,57 @@ router.get("/:id/template", authMiddleware, async (c) => {
       language: tpl.language,
     },
   });
+});
+
+/**
+ * 题目公开统计：通过率对所有人可见；竞赛进行中的题目隐藏难度先验。
+ *
+ * **可见性校验与题目详情同口径**（2026-09-14 评审 C3）：此前本 handler 调用
+ * `resolveProblem(id)` 时**未传 viewer**，因而完全不触发访问校验，导致
+ * 私有题统计匿名可读，并可据 200/404 差异按 `display_id` 枚举私有题的存在性
+ * （兄弟 handler `/:id` 明确注释"无权限一律 404，防存在性探测"）。
+ *
+ * 注册顺序注意：本路由必须先于 `/:id/stats` 注册，否则被后者吞掉。
+ * GET /api/v1/problems/:id/stats/public
+ */
+router.get("/:id/stats/public", optionalAuthMiddleware, async (c) => {
+  const id = c.req.param("id") as string;
+  const userId = c.get("userId") as string | undefined;
+  const isAdmin = userId
+    ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
+    : false;
+
+  // 与 /:id 一致：无权限一律 404，避免成为私有题的存在性预言机
+  const problem = await resolveProblem(id, { userId, isAdmin });
+  const access = resolveProblemAccess(problem, {
+    viewerId: userId ?? null,
+    isAdmin,
+  });
+  if (!access.allowed) {
+    throw new NotFoundError("题目不存在");
+  }
+
+  return c.json({ data: await getPublicProblemStats(problem.id) });
+});
+
+/**
+ * 题目深度统计：评测状态分布与用例失败分布，仅题目 owner 与管理员可见。
+ * GET /api/v1/problems/:id/stats
+ */
+router.get("/:id/stats", authMiddleware, async (c) => {
+  const problem = await resolveProblem(c.req.param("id") as string);
+  const userId = c.get("userId") as string;
+  const isAdmin = (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS);
+  if (!isAdmin && problem.owner_id !== userId) {
+    throw new ForbiddenError("无权查看该题目的统计数据");
+  }
+  // 窗口天数：非法值（非整数 / 越界）回退默认 90，避免异常入参放大查询范围
+  const rawWindow = Number(c.req.query("window_days") ?? 90);
+  const windowDays = Number.isInteger(rawWindow) && rawWindow > 0 &&
+      rawWindow <= 365
+    ? rawWindow
+    : 90;
+  return c.json({ data: await getProblemStatsDetail(problem.id, windowDays) });
 });
 
 /**

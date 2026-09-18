@@ -50,6 +50,7 @@ import {
   markNotificationsRead,
   resolvePostId,
   resolveProblemId,
+  setPostOfficial,
   toggleBookmark,
   toggleCommentLike,
   toggleFollow,
@@ -58,6 +59,7 @@ import {
   updateComment,
   updatePost,
 } from "../services/community/community.ts";
+import { isProblemInRunningContest } from "../../contest/index.ts";
 
 const router = new Hono<OptionalAuthEnv>();
 
@@ -223,16 +225,24 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
   const accepted = requiresAccepted
     ? await hasAcceptedSolution(actorId, problemId)
     : true;
+  // 赛期门控：进行中竞赛的题目，赛期不开放题解发布（赛后自动恢复）。
+  // 审核员不受限（复核需要），与读路径门控口径一致。
+  const moderator = await isModerator(c);
+  const inRunningContest = await isProblemInRunningContest(problemId);
+  const blockedByContest = inRunningContest && !moderator;
   const canCreate = config.solutions_enabled &&
-    (!config.read_only || await isModerator(c)) &&
+    (!config.read_only || moderator) &&
     (await checkPermission(c, "community:create_solution")) &&
-    (accepted || await isModerator(c));
+    (accepted || moderator) &&
+    !blockedByContest;
   return c.json({
     data: {
       enabled: config.solutions_enabled,
       requires_accepted: requiresAccepted,
       accepted,
       can_create: canCreate,
+      // 供前端展示禁用原因，而非让用户点击后吃 403
+      blocked_reason: blockedByContest ? "running_contest" : null,
     },
   });
 });
@@ -292,6 +302,29 @@ router.patch("/posts/:postId", authMiddleware, async (c) => {
       input,
     ),
   });
+});
+
+/**
+ * PATCH /posts/:postId/official — 设置/取消题解的官方标记。
+ * 认证：必填。权限：题目 owner 或审核员（服务层强制，前端隐藏不作为保障）。
+ * body：{ value: boolean }。
+ * 响应：{ data: 更新后的帖子 }。
+ *
+ * 2026-09-14 评审修复：`setPostOfficial` 此前只有服务层定义与测试、**全仓零 HTTP
+ * 路由调用**，导致"官方题解"能力半交付（徽章能显示，但无人能标记，审核员也无法
+ * 标记他人题解）。此处补上唯一入口。
+ */
+router.patch("/posts/:postId/official", authMiddleware, async (c) => {
+  const actorId = userId(c);
+  const postId = await resolvePostId(c.req.param("postId") as string);
+  const moderator = await isModerator(c);
+  await assertCommunityWritable(actorId, moderator);
+  const body = await parseJsonBody<{ value?: boolean }>(c);
+  if (typeof body.value !== "boolean") {
+    throw new BadRequestError("value 必须为布尔值");
+  }
+  await setPostOfficial(postId, actorId, moderator, body.value);
+  return c.json({ data: await getPost(postId, actorId, moderator) });
 });
 
 /**
@@ -599,7 +632,12 @@ router.post("/reports", authMiddleware, async (c) => {
   >(c);
   if (!body.reason?.trim()) throw new BadRequestError("缺少举报原因");
   return c.json({
-    data: await createReport(actorId, { ...body, reason: body.reason }),
+    // 审核员免赛期门控（High#3）：普通用户举报被门控内容一律 404，不确认其存在
+    data: await createReport(
+      actorId,
+      { ...body, reason: body.reason },
+      await isModerator(c),
+    ),
   }, 201);
 });
 /**
@@ -609,15 +647,16 @@ router.post("/reports", authMiddleware, async (c) => {
  */
 router.get("/reports/:reportId", authMiddleware, async (c) => {
   const actorId = userId(c);
+  const isMod = await isModerator(c);
   const detail = await getReportDetail(
     c.req.param("reportId") as string,
     actorId,
+    isMod,
   );
-  if (detail.report.reporter_id !== actorId && !(await isModerator(c))) {
+  if (detail.report.reporter_id !== actorId && !isMod) {
     throw new ForbiddenError("无权查看该举报");
   }
   // 非审核员不返回被举报者的封禁元数据（避免泄露 scope/期限），仅保留处理结果摘要
-  const isMod = await isModerator(c);
   if (detail.report.reporter_id === actorId && !isMod) {
     detail.ban = null;
   }
