@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **515** 处（early-return=268 ignore=162 rust-ignore=45 rust-env-guard=27 env-guard=13）。
+> 当前命中 **509** 处（early-return=268 ignore=156 rust-ignore=45 rust-env-guard=27 env-guard=13）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -36,12 +36,6 @@
 | noj-core/src/domains/submission/tests/services/judge-priority.test.ts | 31 | ignore |
 | noj-core/src/domains/submission/tests/services/judge-priority.test.ts | 41 | ignore |
 | noj-core/src/domains/community/tests/routes/community.test.ts | 23 | env-guard |
-| noj-core/src/domains/identity/tests/lib/jwt.test.ts | 13 | ignore |
-| noj-core/src/domains/identity/tests/lib/jwt.test.ts | 23 | ignore |
-| noj-core/src/domains/identity/tests/lib/jwt.test.ts | 34 | ignore |
-| noj-core/src/domains/identity/tests/lib/jwt.test.ts | 49 | ignore |
-| noj-core/src/domains/identity/tests/lib/jwt.test.ts | 60 | ignore |
-| noj-core/src/domains/identity/tests/lib/jwt.test.ts | 77 | ignore |
 | noj-core/src/domains/identity/tests/lib/revokedTokens.test.ts | 40 | ignore |
 | noj-core/src/domains/identity/tests/lib/revokedTokens.test.ts | 77 | ignore |
 | noj-core/src/domains/identity/tests/lib/revokedTokens.test.ts | 89 | ignore |
