@@ -18,7 +18,7 @@ runs:
     - name: 安装 Deno
       uses: denoland/setup-deno@v2
       with:
-        deno-version: v2.x
+        deno-version-file: .dvmrc
 
     - name: 安装 Rust
       uses: dtolnay/rust-toolchain@stable
