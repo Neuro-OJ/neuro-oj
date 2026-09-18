@@ -317,11 +317,55 @@ jj new
 
 ---
 
-## Task 9–26（概要；执行前逐个展开为完整任务块）
+## Task 9: bootstrap（洞 2：从 Release 下载 compose 与 example 配置）
+
+**Files:**
+- Create: `noj-cli/src/prod/bootstrap.ts`
+- Create: `noj-cli/src/prod/bootstrap_test.ts`
+- Modify: `.github/workflows/release.yml` — **发布资产必须新增 compose 与 example 配置**
+- Modify: `noj-cli/src/mod.ts` — 导出新符号
+
+**Consumes**：T3 `writeEnvFileAtomic`（若需写配置）；T1 的 Cliffy 不涉及
+
+**背景（spec §3.3 洞 2）**：R4 要求移除 `setup.sh`/`install.sh`、用户手动下载二进制。但删掉 `install.sh` 后，`install` 仍需 `docker-compose.prod.yml`（与 `.env.prod.example`）——**原来自源码归档**（`install.sh` 下载 `$REPO/archive/$REF.tar.gz` 后 `cp`）。本任务把该职责吸收进 CLI：**从 GitHub Release 下载这两个文件并校验**。
+
+> ⚠️ **实测的硬前置**：`.github/workflows/release.yml:110-113` 当前**只上传** `noj-cli-linux-amd64` + `.sha256`。**没有** `docker-compose.prod.yml` / `.env.prod.example`。因此本任务**必须同时改 release workflow**，否则 bootstrap 在生产无资产可下载（而单测用注入 fetcher 不会发现）。这是本任务的一部分，不是"以后再说"。
+
+- [ ] **Step 1: 写失败测试**
+
+`bootstrap_test.ts` 用**注入的 fetcher**（不触网）覆盖：
+- 成功路径：下载 compose + example 到目标目录，且**逐字节**等于 fake 内容。
+- **SHA-256 校验失败 → 抛错且不写入任何文件**（断言目标目录为空/原文件未被覆盖）。
+- 校验文件格式非法（非 64 位 hex）→ 抛错。
+- 目标文件已存在时的策略：显式定义（覆盖 vs 拒绝）并测试；必须在报告中说明选择理由。
+- URL 构造：给定 repo/ref，断言拼出的 URL 形状正确（可用注入 fetcher 捕获请求 URL）。
+- **安全**：URL 必须 HTTPS；ref 必须经字符白名单校验（对照 `install.sh:185-190` 的 `validate_ref`）——断言非法 ref（含 `..`、前导 `/`、空格）被拒。
+
+- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+
+- [ ] **Step 3: 实现**
+
+- `prod/bootstrap.ts`：导出形如 `fetchReleaseAssets(opts, fetcher)` 与 `validateRef(ref)` 的函数（命名可调，须导出并测试）。要求：
+  - 参数以**数组/结构体**构造，不拼 shell 字符串。
+  - 复用 `@std` 或 `Deno.Command("curl"|"wget")` 之外的方式：优先用 **`fetch()`**（Deno 内置），避免依赖外部二进制；若必须用 `curl`，须在报告中说明并保证无 shell 注入。
+  - SHA-256 用 `util/hash.ts` 的既有实现（勿自造）。
+  - **失败原子性**：先下载+校验到临时位置，全部通过后才写入目标；任一步失败不得留下半成品。
+- Modify `.github/workflows/release.yml`：在 `gh release upload` 中新增
+  `docker-compose.prod.yml`、`docker-compose.prod.yml.sha256`、`.env.prod.example`、`.env.prod.example.sha256`（生成方式与既有 CLI 资产一致，用 `sha256sum`）。
+- Modify `mod.ts`：导出新符号。
+
+- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+
+- [ ] **Step 5: 提交** — `feat(cli): bootstrap 从 Release 下载 compose/example 并校验（吸收 install.sh 职责）`
+
+**明确不做**：本任务**不**删除 `install.sh`（T24 删）；**不**实现完整 `install` 流程（T12）；**不**让 bootstrap 依赖源码归档。
+
+---
+
+## Task 10–26（概要；执行前逐个展开为完整任务块）
 
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
-| T9 bootstrap | `prod/bootstrap.ts` | 下载 compose/example + SHA-256 校验；失败拒绝写入 |
 | T10 compose | `prod/compose.ts` | 服务集与 `docker-compose.prod.yml` 逐服务核对无遗漏 |
 | T11 config/向导 | `prod/config.ts` | 19 键校验；交互向导；口令自动生成 600；cosign；宝塔检测 |
 | T12 install | `prod/lifecycle.ts` | 空目录仅凭二进制可完成；PATH 注册 |
