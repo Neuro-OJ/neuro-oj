@@ -253,6 +253,60 @@ Deno.test("E3: 未预期错误在 --debug 下带栈、默认不带", async () =>
   assertEquals(debug.includes("    at "), true, "--debug 应打印栈帧");
 });
 
+Deno.test("评审 P2: --debug 在命令名前也可用（全局选项剥离）", async () => {
+  const originalErr = console.error;
+  const capture = async (
+    argv: string[],
+  ): Promise<{ code: number; err: string }> => {
+    let err = "";
+    console.error = (...a: unknown[]) => {
+      err += a.join(" ") + "\n";
+    };
+    let code = -1;
+    try {
+      code = await run(argv);
+    } finally {
+      console.error = originalErr;
+    }
+    return { code, err };
+  };
+
+  // 前置 --debug 不得被当作顶层命令（旧行为：未知命令 → 2）
+  const pre = await capture(["status", "--dir", "/nonexistent-noj-xyz"]);
+  assertEquals(pre.code, EXIT_FAILURE);
+  const preDebug = await capture([
+    "--debug",
+    "status",
+    "--dir",
+    "/nonexistent-noj-xyz",
+  ]);
+  assertEquals(preDebug.code, EXIT_FAILURE);
+  assertEquals(
+    preDebug.err.includes("    at "),
+    true,
+    "--debug 前置时应打印栈帧",
+  );
+  assertEquals(
+    preDebug.err.includes("未知命令"),
+    false,
+    "--debug 不得被当作命令",
+  );
+
+  // 后置 --debug 同样生效，且不进入子命令参数解析
+  const postDebug = await capture([
+    "status",
+    "--dir",
+    "/nonexistent-noj-xyz",
+    "--debug",
+  ]);
+  assertEquals(postDebug.err.includes("    at "), true);
+
+  // 普通命令不被 --debug 干扰
+  const plain = await capture(["doctor", "--port", "abc", "--debug"]);
+  assertEquals(plain.code, EXIT_USAGE);
+  assertEquals(plain.err.includes("1-65535"), true);
+});
+
 // ── #517 E7/E8：可发现性 ─────────────────────────────────────────
 
 Deno.test("E7: --version 与 -v 输出且返回 0", async () => {

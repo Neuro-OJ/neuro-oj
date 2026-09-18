@@ -70,6 +70,32 @@ export function isDebug(args: string[] = []): boolean {
 }
 
 /**
+ * 剥离 CLI 自有的全局旗标，返回剩余参数与是否命中 `--debug`。
+ *
+ * 评审 P2（#517）：`--debug` 被帮助声明为全局选项，但 `run()` 曾直接把
+ * `argv[0]` 当作命令，`noj-cli --debug status` 因此落入未知命令分支返回 2，
+ * 文档承诺的调试模式在命令名前不可用。
+ *
+ * 在解析命令之前统一剥离，两个位置都可用；同时 `--debug` 不会透传到底层
+ * 脚本（生产命令）或子命令的参数解析。
+ */
+export function extractGlobalFlags(args: string[]): {
+  rest: string[];
+  debug: boolean;
+} {
+  const rest: string[] = [];
+  let debug = false;
+  for (const arg of args) {
+    if (arg === "--debug") {
+      debug = true;
+      continue;
+    }
+    rest.push(arg);
+  }
+  return { rest, debug };
+}
+
+/**
  * 顶层命令分发。返回进程退出码。
  *
  * 全局异常兜底在此处统一处理（#517 E3）：任何未捕获错误都转为单行可读信息，
@@ -80,7 +106,10 @@ export function isDebug(args: string[] = []): boolean {
  * 因此 `deploy init --help` 不会进入交互向导。
  */
 export async function run(argv: string[]): Promise<number> {
-  const [command, ...rest] = argv;
+  // 全局旗标先剥离：命令前/后均可写，且不进入子命令参数（评审 P2）。
+  const globals = extractGlobalFlags(argv);
+  const debug = globals.debug || isDebug();
+  const [command, ...rest] = globals.rest;
 
   if (
     command === undefined || command === "--help" || command === "-h" ||
@@ -108,11 +137,11 @@ export async function run(argv: string[]): Promise<number> {
     }
     if (error instanceof ProductionDirError) {
       console.error(`noj-cli ${command}: ${error.message}`);
-      if (isDebug(argv)) console.error((error as Error).stack ?? "");
+      if (debug) console.error((error as Error).stack ?? "");
       return EXIT_FAILURE;
     }
     console.error(`noj-cli ${command}: ${(error as Error).message}`);
-    if (isDebug(argv)) {
+    if (debug) {
       console.error((error as Error).stack ?? "");
     } else {
       console.error("（加 --debug 查看完整栈）");
