@@ -912,7 +912,7 @@ export function renderDrillHelp(): string {
       "",
       "注意: 会起独立 Compose 项目（默认 noj-drill）、占用独立子网与数据卷，",
       "      耗时**分钟级**且**需要 Docker 资源**——不是随手可跑的检查。",
-      "      只校验文件完整请用 `backup verify`；结构可解析用 `backup verify --deep`。",
+      "      只校验文件完整请用 `backup verify`（结构可解析的 `--deep` 由 #515 提供，",
       "",
       "选项:",
       "  --skip-judge            跳过 Judge/附件/评测验收（无 Judge 部署时）",
