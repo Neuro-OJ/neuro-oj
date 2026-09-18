@@ -206,3 +206,13 @@ export {
   renderCommandList,
 } from "./commands.ts";
 export type { CommandSpec, Tier } from "./commands.ts";
+// bootstrap（T9）：从 GitHub Release 下载 compose 与 example 配置并校验，
+// 吸收 install.sh 原先"从源码归档 cp"的职责（spec §3.3 洞 2）。
+export {
+  downloadReleaseFiles,
+  RELEASE_FILES,
+  releaseAssetUrl,
+  validateRef,
+  validateRepository,
+} from "./prod/bootstrap.ts";
+export type { DownloadReleaseFilesOptions, Fetcher } from "./prod/bootstrap.ts";
