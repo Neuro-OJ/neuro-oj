@@ -24,6 +24,7 @@ import {
 import { parseDirArg } from "./util/args.ts";
 import type { CommandContext } from "./cli.ts";
 import { parseContainerCommand } from "./container.ts";
+import { parseProblemArgs } from "./problem/command.ts";
 
 const ctx: CommandContext = { cwd: "/tmp", deployDir: null };
 
@@ -849,4 +850,50 @@ Deno.test("评审 B1: Tier 3 的生产门禁仍然生效", () => {
     threw = true;
   }
   assertEquals(threw, true, "db 在 stack profile 下必须被拒");
+});
+
+// ── 第四轮评审修正：problem lint/pack 的 --dir 不得被 positional 覆盖 ──
+
+Deno.test("评审: problem lint/pack 只有位置参数存在时才覆盖 --dir", () => {
+  // 阻塞项：无位置参数时 out.dir = positional[0]（undefined）会覆盖 --dir，
+  // 导致 lint/pack 静默改用 cwd 并返回 0（假阳性）。
+  assertEquals(
+    parseProblemArgs(["lint", "--dir", "/some/problem"]).dir,
+    "/some/problem",
+  );
+  assertEquals(
+    parseProblemArgs(["pack", "--dir", "/some/problem"]).dir,
+    "/some/problem",
+  );
+  // 显式位置参数优先
+  assertEquals(
+    parseProblemArgs(["lint", "/positional", "--dir", "/flag"]).dir,
+    "/positional",
+  );
+  // 两者都没有：dir 保持 undefined（由调用方回落到 cwd）
+  assertEquals(parseProblemArgs(["lint"]).dir, undefined);
+});
+// ── 评审 B2/B3：新命令必须可从 help 发现；单数名可到达 Tier 3 ─────────
+
+Deno.test("评审 B2: 顶层 help 必须登记 problem init/lint/pack", () => {
+  // #517 E5：help 是命令清单唯一事实源；新命令不登记则用户无法发现。
+  const help = printHelp();
+  for (const cmd of ["problem init", "problem lint", "problem pack"]) {
+    assertEquals(help.includes(cmd), true, `顶层 help 缺少 ${cmd}`);
+  }
+});
+
+Deno.test("评审 B3: 单数 problem 也能到达 Tier 3 build/import", () => {
+  // canonical 名是单数（core 已改名、problems 为别名），
+  // 若容器包装只认复数，canonical 名就无法到达这两个命令。
+  for (const sub of ["build", "import"]) {
+    const singular = parseContainerCommand(["problem", sub]);
+    const plural = parseContainerCommand(["problems", sub]);
+    assertEquals(singular.matched, true, `problem ${sub} 必须命中 Tier 3`);
+    assertEquals(plural.matched, true, `problems ${sub} 必须命中 Tier 3`);
+  }
+  // 本地出题子命令不得被误判为 Tier 3
+  assertEquals(parseContainerCommand(["problem", "lint"]).matched, false);
+  assertEquals(parseContainerCommand(["problem", "pack"]).matched, false);
+  assertEquals(parseContainerCommand(["problem", "init"]).matched, false);
 });

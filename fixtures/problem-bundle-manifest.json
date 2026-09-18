@@ -1,0 +1,189 @@
+{
+  "$comment": [
+    "共享 fixture 契约（#514）。",
+    "本文件是 noj-core 与 noj-cli 两份校验实现的**共同契约**：",
+    "两侧测试都对它断言，任一实现漂移即红灯。",
+    "修改本文件前请确认两侧都能通过。"
+  ],
+  "valid": [
+    {
+      "name": "最小合法编程题",
+      "manifest": {
+        "format_version": 1,
+        "title": "A+B Problem",
+        "difficulty": "easy",
+        "type": "P",
+        "runtime_config": {
+          "evaluator": {
+            "image": "noj/evaluator-python:1",
+            "command": "python3 /workspace/evaluate.py",
+            "time_limit_ms": 1000,
+            "memory_limit_mb": 256
+          },
+          "solution": {
+            "image": "noj/solution-python:1",
+            "call_timeout_ms": 5000,
+            "memory_limit_mb": 256
+          }
+        }
+      }
+    },
+    {
+      "name": "客观题套卷（无 runtime_config）",
+      "manifest": {
+        "format_version": 1,
+        "title": "选择题套卷",
+        "difficulty": "medium",
+        "type": "U",
+        "is_objective": true
+      }
+    },
+    {
+      "name": "artifact 提交 + 标签 + 样例",
+      "manifest": {
+        "format_version": 1,
+        "title": "产物题",
+        "type": "U",
+        "submission_mode": "artifact",
+        "artifact_max_size_mb": 64,
+        "tags": [
+          "模拟"
+        ],
+        "samples": [
+          {
+            "input": "1 2",
+            "output": "3"
+          }
+        ],
+        "runtime_config": {
+          "evaluator": {
+            "image": "noj/evaluator-python:1",
+            "time_limit_ms": 2000,
+            "memory_limit_mb": 512
+          },
+          "solution": {
+            "image": "noj/solution-python:1",
+            "call_timeout_ms": 8000,
+            "memory_limit_mb": 512
+          }
+        }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "格式版本不支持",
+      "manifest": {
+        "format_version": 2,
+        "title": "x"
+      }
+    },
+    {
+      "name": "title 为空",
+      "manifest": {
+        "format_version": 1,
+        "title": "   "
+      }
+    },
+    {
+      "name": "非法难度",
+      "manifest": {
+        "format_version": 1,
+        "title": "x",
+        "difficulty": "insane"
+      }
+    },
+    {
+      "name": "缺 runtime_config（非客观题）",
+      "manifest": {
+        "format_version": 1,
+        "title": "x"
+      }
+    },
+    {
+      "name": "客观题带 runtime_config",
+      "manifest": {
+        "format_version": 1,
+        "title": "x",
+        "is_objective": true,
+        "runtime_config": {
+          "evaluator": {
+            "image": "i",
+            "command": "c",
+            "time_limit_ms": 1,
+            "memory_limit_mb": 1
+          },
+          "solution": {
+            "image": "i",
+            "call_timeout_ms": 1,
+            "memory_limit_mb": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "template 路径穿越",
+      "manifest": {
+        "format_version": 1,
+        "title": "x",
+        "template": "../evil.py",
+        "runtime_config": {
+          "evaluator": {
+            "image": "i",
+            "command": "c",
+            "time_limit_ms": 1,
+            "memory_limit_mb": 1
+          },
+          "solution": {
+            "image": "i",
+            "call_timeout_ms": 1,
+            "memory_limit_mb": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "LLM 未开 evaluator 网络",
+      "manifest": {
+        "format_version": 1,
+        "title": "x",
+        "type": "P",
+        "llm": {
+          "enabled": true
+        },
+        "runtime_config": {
+          "evaluator": {
+            "image": "i",
+            "command": "c",
+            "time_limit_ms": 1,
+            "memory_limit_mb": 1
+          },
+          "solution": {
+            "image": "i",
+            "call_timeout_ms": 1,
+            "memory_limit_mb": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "tags 含空串",
+      "manifest": {
+        "format_version": 1,
+        "title": "x",
+        "tags": [
+          "ok",
+          "  "
+        ]
+      }
+    },
+    {
+      "name": "submission_mode 非法",
+      "manifest": {
+        "format_version": 1,
+        "title": "x",
+        "submission_mode": "binary"
+      }
+    }
+  ]
+}

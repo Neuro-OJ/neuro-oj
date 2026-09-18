@@ -47,6 +47,8 @@ import {
   validatePort,
 } from "./util/args.ts";
 import { parseContainerCommand } from "./container.ts";
+import { parseProblemArgs, runProblem } from "./problem/command.ts";
+import { renderProblemHelp } from "./problem/help.ts";
 import { runInContainer } from "./container_run.ts";
 import { detectProfile, type ProfileName, realProfileFs } from "./profile.ts";
 
@@ -541,8 +543,10 @@ export const KNOWN_TOP = new Set([
   "doctor",
   "deploy",
   "maintain",
-  // #518：新命令必须登记，否则拼写建议看不到它
+  // #518/#514：新命令必须登记，否则拼写建议看不到它们
   "stack",
+  "problem",
+  "problems",
   "run-server",
   "version",
   ...PRODUCTION_COMMANDS,
@@ -768,6 +772,19 @@ export async function dispatchCommand(
   }
   if (PRODUCTION_COMMANDS.has(command)) {
     return await runProduction(command, args);
+  }
+
+  // `problem` = 题目包管理（#514）：init / lint / pack
+  if (command === "problem" || command === "problems") {
+    if (args.length === 0) {
+      console.log(renderProblemHelp());
+      return EXIT_USAGE;
+    }
+    if (wantsHelp(args)) {
+      console.log(renderProblemHelp());
+      return EXIT_OK;
+    }
+    return await runProblem(parseProblemArgs(args));
   }
 
   // `stack` = 原 deploy + maintain 合并（#518，验收：覆盖原两者全部能力）

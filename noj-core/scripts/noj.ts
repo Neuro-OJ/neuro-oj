@@ -254,6 +254,8 @@ const bootstrapCmd = new Command()
 
 const problemsCmd = new Command()
   .description("题目包操作")
+  // #514：命令名统一到单数；`problems` 为别名，避免破坏既有脚本与文档。
+  .alias("problems")
   .command("init", "生成新题目的最小可评测骨架（脚手架）")
   .arguments("<slug:string>")
   .option("--title <title:string>", "题目标题（缺省用 slug）")
@@ -334,7 +336,9 @@ try {
     .command("db", dbCmd)
     .command("init", initCmd)
     .command("bootstrap", bootstrapCmd)
-    .command("problems", problemsCmd)
+    // #514：命令名统一到单数 `problem`；`problems` 保留为别名过渡，
+    // 避免破坏既有脚本（deno task problems:build 等仍可用）。
+    .command("problem", problemsCmd)
     .command("search", searchCmd)
     .command("dev-setup", "开发环境一键初始化（含 dev 专用数据）")
     .action(() => {
