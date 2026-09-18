@@ -30,6 +30,7 @@ import {
 } from "./maintain/backup.ts";
 import { maintainReset } from "./maintain/reset.ts";
 import { listBackups, pruneBackups } from "./maintain/backup_list.ts";
+import { runDrill } from "./maintain/drill.ts";
 import { defaultBackupDir } from "./maintain/backup.ts";
 import { loadDeployConfig } from "./config/load.ts";
 import { realDriver } from "./maintain/backup_driver.ts";
@@ -674,6 +675,18 @@ export interface BackupArgs {
   includeLegacy: boolean;
   /** #515 P6：机器可读输出（list/prune）。 */
   json: boolean;
+  /** #516：跳过 Judge 验收。 */
+  skipJudge: boolean;
+  /** #516：演练子网。 */
+  subnet: string | undefined;
+  /** #516：演练 Compose 项目名。 */
+  projectName: string | undefined;
+  /** #516：RPO 上限（小时）。 */
+  rpoMaxHours: number | undefined;
+  /** #516：RTO 上限（分钟）。 */
+  rtoMaxMinutes: number | undefined;
+  /** #516：drill 保留演练环境（与 prune 的 --keep N 语义不同）。 */
+  keepFlag: boolean;
 }
 
 /** 解析 maintain backup 参数：子命令 + 位置参数 snapshot + 各旗标。 */
@@ -693,6 +706,12 @@ export function parseBackupArgs(args: string[]): BackupArgs {
     olderThanDays: undefined,
     includeLegacy: false,
     json: false,
+    skipJudge: false,
+    subnet: undefined,
+    projectName: undefined,
+    rpoMaxHours: undefined,
+    rtoMaxMinutes: undefined,
+    keepFlag: false,
   };
   const rest = args.slice(1);
   // `--dir` 统一解析（支持 `--dir=`，缺值报错）；下面的 switch 跳过它。
@@ -743,6 +762,15 @@ export function parseBackupArgs(args: string[]): BackupArgs {
         out.report = takeValue("--report");
         break;
       case "--keep": {
+        // 两种语义（#515/#516），按**子命令**区分而非猜测下一个参数：
+        // - prune：`--keep N` 保留最近 N 份（必须有值）；
+        // - drill：裸 `--keep` 保留演练环境（bool，无值）。
+        if (out.sub === "drill") {
+          out.keepFlag = true;
+          break;
+        }
+        // 注意：takeValue 已经把 i 推进到值上，**不可再 i++**
+        // （否则会多跳一个 token，把下一个选项的值当成位置参数）。
         const raw = takeValue("--keep");
         const n = Number(raw);
         if (!Number.isInteger(n) || n < 0) {
@@ -766,6 +794,34 @@ export function parseBackupArgs(args: string[]): BackupArgs {
         // 旧目录格式承载存量数据，默认受保护（#515）
         out.includeLegacy = true;
         break;
+      case "--skip-judge":
+        // #516：无 Judge 部署时跳过相关验收
+        out.skipJudge = true;
+        break;
+      case "--subnet":
+        out.subnet = takeValue("--subnet");
+        break;
+      case "--project-name":
+        out.projectName = takeValue("--project-name");
+        break;
+      case "--rpo-max-hours": {
+        const raw = takeValue("--rpo-max-hours");
+        const n = Number(raw);
+        if (!Number.isInteger(n) || n <= 0) {
+          throw new UsageError(`--rpo-max-hours 需要正整数，收到 "${raw}"`);
+        }
+        out.rpoMaxHours = n;
+        break;
+      }
+      case "--rto-max-minutes": {
+        const raw = takeValue("--rto-max-minutes");
+        const n = Number(raw);
+        if (!Number.isInteger(n) || n <= 0) {
+          throw new UsageError(`--rto-max-minutes 需要正整数，收到 "${raw}"`);
+        }
+        out.rtoMaxMinutes = n;
+        break;
+      }
       case "--json":
         out.json = true;
         break;
@@ -1134,20 +1190,44 @@ export async function dispatchCommand(
               return EXIT_OK;
             }
             case "drill": {
+              // #516：drill = **真实恢复演练**（隔离环境实恢复 + 业务验收），
+              // 秒级的文件完整性校验请用 `backup verify`。
               if (a.snapshot === undefined) {
-                console.error("maintain backup drill: 需要 <snapshot> 路径");
+                console.error(
+                  "backup drill: 需要 <snapshot> 路径\n" +
+                    "  提示：drill 会起独立 Compose 项目做真实恢复（分钟级、需 Docker）；" +
+                    "只校验文件完整请用 backup verify。",
+                );
                 return EXIT_USAGE;
               }
-              const report = await backupDrill({
-                snapshotPath: a.snapshot,
-                passphraseFile: a.passphraseFile,
-                report: a.report,
-                driver: realDriver(),
-              });
-              console.log(
-                `演练完成（drill）：${report.pass ? "通过" : "失败"}`,
-              );
-              return report.pass ? EXIT_OK : EXIT_FAILURE;
+              try {
+                const result = await runDrill({
+                  snapshotPath: a.snapshot,
+                  dir: deployDir,
+                  skipJudge: a.skipJudge,
+                  subnet: a.subnet,
+                  projectName: a.projectName,
+                  report: a.report,
+                  rpoMaxHours: a.rpoMaxHours,
+                  rtoMaxMinutes: a.rtoMaxMinutes,
+                  keep: a.keepFlag === true,
+                  json: a.json,
+                  passphraseFile: a.passphraseFile,
+                });
+                if (a.json) {
+                  console.log(JSON.stringify(result, null, 2));
+                } else {
+                  console.log(result.message);
+                  if (result.reportPath) {
+                    console.log(`报告：${result.reportPath}`);
+                  }
+                }
+                return result.exitCode;
+              } catch (e) {
+                // 参数/资源错误 → 用法错误（2），与演练失败（1）区分
+                console.error(`backup drill: ${(e as Error).message}`);
+                return EXIT_USAGE;
+              }
             }
             case "list": {
               // #515 P6：列举备份（无需解包；识别单文件与旧目录两种格式）
