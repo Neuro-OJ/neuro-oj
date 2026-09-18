@@ -1,7 +1,9 @@
 import { assertEquals } from "@std/assert";
+import { join } from "@std/path";
 import {
   assertCommandAllowedInProfile,
   deprecationNotice,
+  detectProfileOrNull,
   dispatchCommand,
   EXIT_FAILURE,
   EXIT_OK,
@@ -19,10 +21,20 @@ import {
   run,
   stripCliOwnedFlags,
 } from "./cli.ts";
+import { parseDirArg } from "./util/args.ts";
 import type { CommandContext } from "./cli.ts";
 import { parseContainerCommand } from "./container.ts";
 
 const ctx: CommandContext = { cwd: "/tmp", deployDir: null };
+
+/** 造一个满足生产安装目录特征文件的临时目录（供 profile 探测测试用）。 */
+function makeProductionDir(): string {
+  const dir = Deno.makeTempDirSync({ prefix: "noj-prod-" });
+  Deno.mkdirSync(join(dir, "scripts/deploy"), { recursive: true });
+  Deno.writeTextFileSync(join(dir, "scripts/deploy/production.sh"), "");
+  Deno.writeTextFileSync(join(dir, "docker-compose.prod.yml"), "");
+  return dir;
+}
 
 Deno.test("printHelp 按模式分区并包含全部命令", () => {
   const help = printHelp();
@@ -285,16 +297,15 @@ Deno.test("评审 P2: --debug 在命令名前也可用（全局选项剥离）",
     }
     return { code, err };
   };
-
-  // 前置 --debug 不得被当作顶层命令（旧行为：未知命令 → 2）
-  const pre = await capture(["status", "--dir", "/nonexistent-noj-xyz"]);
-  assertEquals(pre.code, EXIT_FAILURE);
-  const preDebug = await capture([
-    "--debug",
+  const base = [
+    "--profile",
+    "prod",
     "status",
     "--dir",
     "/nonexistent-noj-xyz",
-  ]);
+  ];
+  // 前置 --debug 不得被当作顶层命令（旧行为：未知命令 → 2）
+  const preDebug = await capture(["--debug", ...base]);
   assertEquals(preDebug.code, EXIT_FAILURE);
   assertEquals(
     preDebug.err.includes("    at "),
@@ -306,17 +317,10 @@ Deno.test("评审 P2: --debug 在命令名前也可用（全局选项剥离）",
     false,
     "--debug 不得被当作命令",
   );
-
-  // 后置 --debug 同样生效，且不进入子命令参数解析
-  const postDebug = await capture([
-    "status",
-    "--dir",
-    "/nonexistent-noj-xyz",
-    "--debug",
-  ]);
+  // 后置 --debug 同样生效
+  const postDebug = await capture([...base, "--debug"]);
   assertEquals(postDebug.err.includes("    at "), true);
-
-  // 普通命令不被 --debug 干扰
+  // 普通命令语义不受影响
   const plain = await capture(["doctor", "--port", "abc", "--debug"]);
   assertEquals(plain.code, EXIT_USAGE);
   assertEquals(plain.err.includes("1-65535"), true);
@@ -603,6 +607,55 @@ Deno.test("stripCliOwnedFlags: 剔除 --install-dir 与 --dry-run，保留容器
     ]),
     ["bootstrap", "first-admin", "--username", "alice", "--dir", "/pkg"],
   );
+});
+
+// ── 评审 P1：Tier 3 的 --install-dir 参与 profile 探测，--dir 只透传 ──
+
+Deno.test("评审 P1: Tier 3 从任意目录用 --install-dir 可判定 profile", () => {
+  // 修复前：探测只读 parseDirArg(topRest)，完全忽略 --install-dir，
+  // 用户按 help 在任意目录执行 noj-cli db migrate --install-dir /opt/neuro-oj
+  // 会先收到「未能识别 profile」，与 help 宣称的支持自相矛盾。
+  const prod = makeProductionDir();
+  const cwd = Deno.cwd();
+  try {
+    Deno.chdir(Deno.makeTempDirSync());
+    assertEquals(
+      detectProfileOrNull(parseInstallDirArg(["--install-dir", prod])),
+      "prod",
+    );
+  } finally {
+    Deno.chdir(cwd);
+    Deno.removeSync(prod, { recursive: true });
+  }
+});
+
+Deno.test("评审 P1: 容器侧 --dir 不得被宿主机 profile 探测消费", () => {
+  // 修复前：problems import --dir <包目录> 的容器侧参数被当成宿主机探测起点；
+  // 当题目包位于生产目录之外时，即使 cwd 已是生产安装目录也会报 profile 未识别。
+  const prod = makeProductionDir();
+  const pkg = Deno.makeTempDirSync({ prefix: "noj-pkg-" });
+  const cwd = Deno.cwd();
+  try {
+    Deno.chdir(prod);
+    const container = parseContainerCommand([
+      "problems",
+      "import",
+      "--dir",
+      pkg,
+    ]);
+    assertEquals(container.matched, true);
+    const argv = ["problems", "import", "--dir", pkg];
+    const start = container.matched
+      ? parseInstallDirArg(argv)
+      : parseDirArg(argv);
+    // --install-dir 未给出 → 回落到 cwd（生产目录），不得使用容器侧 --dir
+    assertEquals(start, undefined);
+    assertEquals(detectProfileOrNull(start), "prod");
+  } finally {
+    Deno.chdir(cwd);
+    Deno.removeSync(prod, { recursive: true });
+    Deno.removeSync(pkg, { recursive: true });
+  }
 });
 
 Deno.test("deprecationNotice: 提示替代命令", () => {

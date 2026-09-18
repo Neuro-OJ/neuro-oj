@@ -77,12 +77,12 @@ export function isDebug(args: string[] = []): boolean {
 /**
  * 剥离 CLI 自有的全局旗标，返回剩余参数与是否命中 `--debug`。
  *
- * 评审 P2（#517）：`--debug` 被帮助声明为全局选项，但 `run()` 曾直接把
+ * 评审 P2（#518）：`--debug` 被帮助声明为全局选项，但 `run()` 曾直接把
  * `argv[0]` 当作命令，`noj-cli --debug status` 因此落入未知命令分支返回 2，
  * 文档承诺的调试模式在命令名前不可用。
  *
- * 在解析命令之前统一剥离，两个位置都可用；同时 `--debug` 不会透传到底层
- * 脚本（生产命令）或子命令的参数解析。
+ * 在解析命令之前统一剥离，两个位置都可用；同时 `--debug` 不会进入子命令
+ * 参数解析，也不会透传到底层脚本或容器。
  */
 export function extractGlobalFlags(args: string[]): {
   rest: string[];
@@ -114,7 +114,7 @@ export async function run(argv: string[]): Promise<number> {
   // 全局旗标先剥离：命令前/后均可写，且不进入子命令参数（评审 P2）。
   const globals = extractGlobalFlags(argv);
   const debug = globals.debug || isDebug();
-  const [command, ...rest] = globals.rest;
+  const command = globals.rest[0];
 
   if (
     command === undefined || command === "--help" || command === "-h" ||
@@ -133,7 +133,9 @@ export async function run(argv: string[]): Promise<number> {
     // `--profile` / `--debug` 是 CLI 自身的全局选项，不转发给子命令。
     // 必须放在 try 内：`--profile` 缺值时 extractProfile 抛 UsageError，
     // 若在 try 外抛出会绕过统一兜底，打印栈帧与源码路径（评审 B2）。
-    const { profile: explicitProfile, rest: argvRest } = extractProfile(argv);
+    const { profile: explicitProfile, rest: argvRest } = extractProfile(
+      globals.rest,
+    );
     const topCommand = argvRest[0];
     const topRest = argvRest.slice(1);
 
@@ -167,6 +169,10 @@ export async function run(argv: string[]): Promise<number> {
     // 现在：无显式值时也执行探测（歧义/未命中抛 UsageError）。
     // 纯工具命令（不依赖部署模式）豁免，否则任意目录下 version 都会失败。
     // `--help` 与纯工具命令都不需要探测（只读、与部署模式无关）
+    // Tier 3 容器命令（需要在生产安装目录内执行）。
+    // 必须先于 profile 探测计算：探测起点取决于是否命中容器（评审 P1）。
+    const container = parseContainerCommand([topCommand, ...topRest]);
+
     const profileAgnostic = PROFILE_AGNOSTIC.has(topCommand) ||
       wantsHelp(topRest);
     const effectiveProfile = profileAgnostic
@@ -175,18 +181,17 @@ export async function run(argv: string[]): Promise<number> {
         : null)
       : (explicitProfile !== undefined
         ? validateProfileName(explicitProfile)!
-        // P1：探测必须以 --dir 为起点（与 --profile 正交）
-        // 两种安装目录写法都要参与探测（评审 B1）：
-        // `--dir` 是生产/编排命令的，`--install-dir` 是 Tier 3 的。
-        // 任一给出都应作为探测起点——否则 help 宣称支持 `--install-dir`
-        // 却在探测阶段报「未能识别 profile」，自相矛盾。
+        // P1：两种安装目录写法参与探测，但**语义不同**：
+        // - 普通命令：`--dir` 就是宿主机安装目录，`--install-dir` 是 Tier 3 别名，二者都可用；
+        // - Tier 3 容器命令：`--dir` 属于**容器内** noj（如 problems import --dir <包目录>），
+        //   不能当作宿主机探测起点——否则题目包位于生产目录之外时，即使 cwd
+        //   就是生产安装目录也会报「未能识别 profile」。宿主机目录只能用
+        //   `--install-dir`（help 亦如此声明）。
         : detectProfileOrNull(
-          parseDirArg(topRest) ??
-            parseInstallDirArg(topRest),
+          container.matched
+            ? parseInstallDirArg(topRest)
+            : parseDirArg(topRest) ?? parseInstallDirArg(topRest),
         ));
-
-    // Tier 3 容器命令（需要在生产安装目录内执行）
-    const container = parseContainerCommand([topCommand, ...topRest]);
 
     // 命令必须与判定出的 profile 相容（显式或探测皆然）。
     //
@@ -217,22 +222,8 @@ export async function run(argv: string[]): Promise<number> {
       explicitProfile,
     });
   } catch (error) {
-    if (error instanceof UsageError) {
-      console.error(`noj-cli ${command}: ${error.message}`);
-      return EXIT_USAGE;
-    }
-    if (error instanceof ProductionDirError) {
-      console.error(`noj-cli ${command}: ${error.message}`);
-      if (debug) console.error((error as Error).stack ?? "");
-      return EXIT_FAILURE;
-    }
-    console.error(`noj-cli ${command}: ${(error as Error).message}`);
-    if (debug) {
-      console.error((error as Error).stack ?? "");
-    } else {
-      console.error("（加 --debug 查看完整栈）");
-    }
-    return EXIT_FAILURE;
+    /* 全局兜底见下 */
+    return handleError(command, error, globals.rest, debug);
   }
 }
 
@@ -241,8 +232,9 @@ export function handleError(
   command: string,
   error: unknown,
   argv: string[] = [],
+  debugOverride?: boolean,
 ): number {
-  const debug = isDebug(argv);
+  const debug = debugOverride ?? isDebug(argv);
   if (error instanceof UsageError) {
     console.error(`noj-cli ${command}: ${error.message}`);
     return EXIT_USAGE;

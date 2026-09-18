@@ -80,3 +80,44 @@ help.ts 是命令清单的唯一事实源；本 issue 把 stack / --profile / Ti
   可被 deno task test 直接断言。
 - 已知限制：--profile 的分发门控基于命令名集合，若新增命令需同步登记；
   未登记的命令在两个 profile 下都放行（保持向后兼容）。
+
+## 评审修正（2026-09-18，PR #527）
+
+### Problem
+
+评审指出探测起点选错，两条 P1 都源于「容器侧参数被当成宿主机安装目录」：
+
+1. Tier 3 只读 `parseDirArg(topRest)`，完全忽略 `--install-dir`；用户按 help
+   在任意目录执行 `noj-cli db migrate --install-dir /opt/neuro-oj` 会先收到
+   「未能识别 profile」，与 help 宣称的支持自相矛盾。
+2. `problems import --dir <包目录>` 的**容器侧** `--dir` 被当作宿主机探测起点；
+   题目包位于生产目录之外时，即使 cwd 就是生产安装目录也会报 profile 未识别。
+
+### Decision
+
+先计算容器匹配，再据此选择探测起点：
+
+- 命中 Tier 3 → 只用 `--install-dir`（`--dir` 属于容器内命令，原样透传）；
+- 普通命令 → `--dir` 优先，`--install-dir` 作为别名兜底。
+
+回归测试用真实临时生产目录 + `Deno.chdir` 覆盖两条路径。
+
+### Consequences
+
+- Tier 3 的 `--install-dir` 语义与 help 一致，任意目录可用。
+- `--dir` 的双语义冲突在**探测阶段**也被尊重，而非只在转发阶段。
+3. **`--debug` 未真正剥离**：`extractProfile` 的注释声称同时剥离
+   `--profile`/`--debug`，实现却只处理 `--profile`。于是前置
+   `noj-cli --debug <command>` 被当成未知顶层命令（返回 2），命令后的
+   `--debug` 还会透传到底层脚本/容器。
+
+### Decision（补充）
+
+新增 `extractGlobalFlags`，在解析命令**之前**统一剥离 `--debug`，
+并把剥离结果作为布尔值传入 `handleError`；`run()` 交给 `extractProfile`
+的也是剥离后的 argv。回归测试覆盖前置/后置两种写法与命令语义不受影响。
+
+### Consequences（补充）
+
+- 全局选项在命令前后均生效，help 声明与行为一致。
+- 后续新增全局选项有唯一剥离点。
