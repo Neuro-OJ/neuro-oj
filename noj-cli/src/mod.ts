@@ -278,6 +278,92 @@ export type {
   RawDriver,
   RawIO,
 } from "./prod/backup/driver.ts";
+// judge（T21）：独立 Judge Worker 部署的**原生**迁移。两条不可协商的安全约束：
+// ① 禁止应用宿主机的共享 Docker socket（/var/run、/run，含 realpath 归一后的等价形式）
+//    —— 挂进 Judge 容器等于把评测代码提升到能操作宿主所有容器；
+// ② 不碰宿主 Docker daemon（不装/不换/不配置），宝塔类面板只探测不调 API。
+export {
+  assertDedicatedSocket,
+  assertIsolatedDockerRequired,
+  assertJudgeConfigValues,
+  assertJudgeDockerHost,
+  assertJudgeEnvFileMode,
+  assertJudgeEnvViaSchema,
+  assertJudgeVersion,
+  assertRedisContainerName,
+  assertRedisPort,
+  checkJudgeHost,
+  DEFAULT_JUDGE_DIR,
+  DEFAULT_JUDGE_REDIS_IMAGE,
+  DEFAULT_REDIS_CONTAINER,
+  DEFAULT_REDIS_PORT,
+  envValue,
+  findForbiddenHostCalls,
+  FORBIDDEN_HOST_COMMANDS,
+  FORBIDDEN_SOCKET_PATHS,
+  generateRedisPassword,
+  JUDGE_COMPOSE_FILE,
+  JUDGE_COMPOSE_MODE,
+  JUDGE_DEFAULT_VALUES,
+  JUDGE_ENV_ALLOWED_MODES,
+  JUDGE_ENV_FILE,
+  JUDGE_ENV_MODE,
+  JUDGE_PROJECT_NAME,
+  JUDGE_REDIS_VOLUME,
+  JUDGE_REQUIRED_KEYS,
+  JUDGE_SOCKET_CONTAINER_PATH,
+  judgePaths,
+  readJudgeEnv,
+  REDIS_COMPONENT_LABEL,
+  REDIS_MANAGED_BY_LABEL,
+  writeJudgeEnv,
+} from "./prod/judge/config.ts";
+export type {
+  HostProbe,
+  HostProbeResult,
+  JudgePaths,
+  WriteJudgeEnvOptions,
+  WriteJudgeEnvResult,
+} from "./prod/judge/config.ts";
+export {
+  assertAbsolute,
+  checkJudgeImageArchitecture,
+  checkJudgeRedis,
+  checkStandaloneJudgeSocket,
+  COMPOSE_ENV_DEFAULTS,
+  DEFAULT_JUDGE_IMAGE_REGISTRY,
+  dockerArchOf,
+  judgeComposeArgs,
+  redactUrl,
+  redisHostOf,
+  renderJudgeCompose,
+} from "./prod/judge/compose.ts";
+export type {
+  ImageArchCheckResult,
+  JudgeRedisCheckOptions,
+  JudgeRedisCheckResult,
+  JudgeSocketCheckOptions,
+  JudgeSocketCheckResult,
+} from "./prod/judge/compose.ts";
+export {
+  judgeCheck,
+  judgeInstall,
+  judgeLogs,
+  judgeStart,
+  judgeStatus,
+  judgeStop,
+  judgeUpgrade,
+  renderStatusSummary,
+} from "./prod/judge/actions.ts";
+export type {
+  JudgeActionOptions,
+  JudgeActionResult,
+  JudgeCheckOptions,
+  JudgeInstallOptions,
+  JudgeLogsOptions,
+  JudgeSocketProbes,
+  JudgeStatusResult,
+} from "./prod/judge/actions.ts";
 // schedule（T20）：crontab 标记区块的原生迁移。核心承诺是**只动自己标记的行**：
 // 区块外的字节（含顺序与末尾换行）逐字节保留；危险 cron 表达式=注入防线，写入前拒绝。
 export {
