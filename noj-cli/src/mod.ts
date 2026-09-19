@@ -309,6 +309,8 @@ export type {
 // 测试不触网、不起容器。
 export {
   install,
+  // T14：日志命令（着色契约 + --follow）；reachability 由 mod.ts 的再导出保证。
+  logs,
   // 仅为可测而导出：首装报错清单需按 judge 状态条件化（review Minor 2）。
   missingConfigError,
   restart,
@@ -320,9 +322,12 @@ export {
 // wait_for_stack、前置校验、compose 输出/裸子命令原语）。命令入口仍在
 // lifecycle.ts；T14–T16 在此追加步骤。
 export {
+  applyLogsColor,
   assertConfiguration,
   COMPOSE_CONFIG_INVALID_HINT,
   composeOutputText,
+  decideLogsColor,
+  mergeColorSource,
   NGINX_REFRESH_FAILURE_HINT,
   PORT_CONFLICT_HINT,
   prepareAndCheck,
@@ -332,6 +337,8 @@ export {
   waitForStack,
 } from "./prod/lifecycle/steps.ts";
 export type {
+  LogsColorDecision,
+  LogsColorOptions,
   PreparedEnvironment,
   PrepareFailure,
   PrepareOptions,
@@ -351,6 +358,8 @@ export type {
   InstallStepName,
   LifecycleBaseResult,
   LifecycleOptions,
+  LogsCommandOptions,
+  LogsResult,
   StatusResult,
 } from "./prod/lifecycle.ts";
 // lifecycle/path（T13 拆分）：production.sh 的 register_command 迁移 + PATH 字面量。

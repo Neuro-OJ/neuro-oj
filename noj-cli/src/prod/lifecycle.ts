@@ -151,7 +151,7 @@ import {
   validateTargetDir,
 } from "./bootstrap.ts";
 import type { Fetcher } from "./bootstrap.ts";
-import { composePs } from "./compose.ts";
+import { composeLogs, composePs } from "./compose.ts";
 import type { ComposeOptions, ComposeResult } from "./compose.ts";
 import { PROD_COMPOSE_FILE, PROD_ENV_FILE } from "./compose.ts";
 import {
@@ -166,10 +166,13 @@ import {
 } from "./config.ts";
 import type { EnvValues, VerifiedDigest } from "./config.ts";
 import {
+  applyLogsColor,
   assertConfiguration,
   composeOutputText,
+  decideLogsColor,
   isFile,
   judgeEnabledFrom,
+  mergeColorSource,
   prepareAndCheck,
   readEnvValues,
   runComposeSub,
@@ -177,6 +180,7 @@ import {
   WAIT_FAILURE_HINT,
   waitForStack,
 } from "./lifecycle/steps.ts";
+import type { LogsColorDecision } from "./lifecycle/steps.ts";
 import { registerCommand } from "./lifecycle/path.ts";
 import type { PathRegistration } from "./lifecycle/path.ts";
 import type { PreparedEnvironment } from "./lifecycle/steps.ts";
@@ -760,7 +764,7 @@ async function prepareLifecycle(
   ctx: LifecycleContext,
   opts: LifecycleOptions,
 ): Promise<
-  | { ok: true; composeOptions: ComposeOptions }
+  | { ok: true; composeOptions: ComposeOptions; env: EnvValues }
   | { ok: false; error: string }
 > {
   const prepared = await prepareAndCheck({
@@ -775,7 +779,13 @@ async function prepareLifecycle(
     return { ok: false, error: prepared.error };
   }
   ctx.status("success", "生产配置检查通过");
-  return { ok: true, composeOptions: composeOptionsOf(prepared) };
+  // env 透传给 logs（T14）：着色取值需要读 .env.prod 的 LOG_COLOR / NO_COLOR，
+  // 复用已读取的同一份值，避免在命令层再解析一遍配置文件。
+  return {
+    ok: true,
+    composeOptions: composeOptionsOf(prepared),
+    env: prepared.env,
+  };
 }
 
 /** 取“当前真实状态”：跑 `docker compose ps` 并用 T4 `prodState` 推断。 */
@@ -818,6 +828,185 @@ function stateLabel(state: DeployState): { kind: StatusKind; text: string } {
     case "error":
       return { kind: "error", text: "生产服务处于错误状态（error）" };
   }
+}
+
+// ---------------- logs（T14，deploy.sh:1117-1158） ----------------
+
+/**
+ * logs 的选项：在 {@link LifecycleOptions} 上追加服务名、--follow 与着色取值来源。
+ *
+ * 命名为 LogsCommandOptions（而非 LogsOptions）：后者已被 maintain/logs.ts 的
+ * JSON 编排日志命令占用，包入口（mod.ts）再导出会撞名。
+ *
+ * LOG_COLOR / NO_COLOR 的**取值**统一经 {@link LogsCommandOptions.env}（缺省读进程环境）
+ * 与 .env.prod；命令层只做合并，开/关判定交回 resolveColor（见
+ * lifecycle/steps.ts 的 decideLogsColor），不新造第二套解析。
+ */
+export interface LogsCommandOptions extends LifecycleOptions {
+  /** 位置参数（服务名）；透传给 compose。缺省 = 所有服务。 */
+  services?: string[];
+  /** 是否 --follow（实时跟随）。 */
+  follow?: boolean;
+  /**
+   * 进程环境快照；缺省 Deno.env.toObject()（与 install 的 processEnv 同义）。
+   *
+   * 只为可测：断言里不必污染真实进程环境，也便于模拟「进程 env > .env.prod」。
+   */
+  env?: Record<string, string>;
+}
+
+/** logs 的结果：在公共形状上追加服务名、着色决策与是否跟随。 */
+export interface LogsResult extends LifecycleBaseResult {
+  /** 透传的服务名（与输入一致）。 */
+  services: string[];
+  /** 最终着色决策（--json 载荷的一部分，亦便于测试断言）。 */
+  color: LogsColorDecision;
+  /** 是否走实时跟随路径。 */
+  followed: boolean;
+}
+
+/**
+ * logs（deploy.sh:1117-1158）：前置校验 → 着色判定 → compose logs。
+ *
+ * 迁移要点：
+ * 1. **着色优先级**逐字对照 bash（见 steps.ts 的 decideLogsColor）：NO_COLOR 非空
+ *    或 LOG_COLOR=never → --no-color；LOG_COLOR=always → 强制（子命令**之前**的
+ *    全局 --ansi always）；否则按 stdout 是否 TTY（resolveColor）。取值
+ *    **进程环境优先、回退 .env.prod**；
+ * 2. **实时跟随走 CommandRunner.stream**：T10 composeLogs 经 run() 是**缓冲**的，
+ *    --follow 会一直不返回、看不到输出（T10/T13 已登记）。因此 follow 分支先用
+ *    T10 的 composeLogs(dryRun: true) 取参数数组，再交给 stream 逐行写 stdout；
+ * 3. **非 follow 用缓冲路径并自行写 stdout**（runner 不替调用方打印，T10
+ *    carry-forward）：stdout 原样写人类通道、stderr（compose 告警）原样转 stderr；
+ * 4. **--json 纯净**：stdout 只有结果 JSON，日志与诊断都改道 stderr（T6/T13 先例）；
+ * 5. **退出码**：0 成功 / 1 运行失败（前置校验不过、compose 非 0）；用法错误 2 由
+ *    CLI 解析层产出。
+ */
+export async function logs(opts: LogsCommandOptions): Promise<LogsResult> {
+  const ctx = lifecycleContext(opts);
+  const services = opts.services ?? [];
+  const followed = opts.follow === true;
+
+  const prepared = await prepareLifecycle(ctx, opts);
+  if (!prepared.ok) {
+    const result: LogsResult = {
+      ...failed(ctx.dir, prepared.error),
+      services,
+      color: "no-color",
+      followed,
+    };
+    if (ctx.jsonMode) emitJson(logsPayload(result), ctx.io);
+    return result;
+  }
+
+  // ---- 着色判定：进程环境优先，回退 .env.prod；开/关交回 resolveColor ----
+  const processEnv = opts.env ?? Deno.env.toObject();
+  const decision = decideLogsColor({
+    logColor: mergeColorSource(
+      processEnv["LOG_COLOR"],
+      prepared.env["LOG_COLOR"],
+    ),
+    noColor: mergeColorSource(processEnv["NO_COLOR"], prepared.env["NO_COLOR"]),
+    // bash 用 [[ -t 1 ]] 探测 **stdout**；这里保持同一流。
+    stream: "stdout",
+  });
+
+  const logOptions = { ...prepared.composeOptions, services, follow: followed };
+  // dryRun 只取参数数组：参数形状由 T10 唯一保证，着色两处插入由 T14 helper 完成。
+  const dryRun = await composeLogs(opts.runner, {
+    ...logOptions,
+    dryRun: true,
+  });
+  if (!Array.isArray(dryRun)) {
+    const error = "compose logs 参数构造失败（dryRun 未返回参数数组）";
+    ctx.error(error);
+    const result: LogsResult = {
+      ...failed(ctx.dir, error),
+      services,
+      color: decision,
+      followed,
+    };
+    if (ctx.jsonMode) emitJson(logsPayload(result), ctx.io);
+    return result;
+  }
+  const args = applyLogsColor(dryRun, decision);
+
+  const code = followed
+    ? await streamLogs(opts.runner, args, ctx)
+    : await runLogs(opts.runner, args, ctx);
+  if (code !== 0) {
+    const error = "查看生产服务日志失败（docker compose 退出码 " + code + "）";
+    ctx.error(error);
+    const result: LogsResult = {
+      ...failed(ctx.dir, error),
+      services,
+      color: decision,
+      followed,
+    };
+    if (ctx.jsonMode) emitJson(logsPayload(result), ctx.io);
+    return result;
+  }
+
+  const result: LogsResult = {
+    dir: ctx.dir,
+    state: "running",
+    noOp: false,
+    exitCode: 0,
+    error: null,
+    services,
+    color: decision,
+    followed,
+  };
+  // JSON 模式：stdout 只含这一个文档；日志本体与诊断已改道 stderr（emitHuman）。
+  if (ctx.jsonMode) emitJson(logsPayload(result), ctx.io);
+  return result;
+}
+
+/** logs 的 `--json` 载荷（stdout 只含这一个 JSON 文档）。 */
+function logsPayload(result: LogsResult): Record<string, unknown> {
+  return {
+    dir: result.dir,
+    services: result.services,
+    color: result.color,
+    followed: result.followed,
+    error: result.error,
+  };
+}
+
+/** 非 follow：缓冲执行并**自行**写出（runner 不打印）。 */
+async function runLogs(
+  runner: CommandRunner,
+  args: string[],
+  ctx: LifecycleContext,
+): Promise<number> {
+  const result = await runner.run("docker", args);
+  // 日志本体是人类通道输出（--json 时自动改道 stderr），告警（compose stderr）
+  // 同样改道——stdout 在 JSON 模式下必须逐字节为 JSON。
+  emitHuman(result.stdout, ctx.io);
+  // compose 告警属于诊断：**永远 stderr**（对照 bash 的 >&2 继承），
+  // 这样重定向 stdout 时告警仍可见、--json 的 stdout 也不被污染。
+  if (result.stderr !== "") emitFailure(ctx.io, result.stderr);
+  return result.code;
+}
+
+/**
+ * follow：实时逐行执行（T13 报告的缺口在本任务闭合）。
+ *
+ * runner 未实现 stream（P2 既有 fake）时**不静默降级**：直接报错，避免
+ * --follow 悄悄退化成不可用的缓冲调用。
+ */
+async function streamLogs(
+  runner: CommandRunner,
+  args: string[],
+  ctx: LifecycleContext,
+): Promise<number> {
+  if (runner.stream === undefined) {
+    ctx.error("当前运行时不支持实时日志（CommandRunner.stream 缺失）");
+    return 1;
+  }
+  return await runner.stream("docker", args, (line) => {
+    emitHuman(line + "\n", ctx.io);
+  });
 }
 
 /** 生命周期结果的 `--json` 载荷（stdout 只含这一个 JSON 文档）。 */
