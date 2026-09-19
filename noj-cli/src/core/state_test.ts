@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import type { DeployState } from "../config/types.ts";
+import type { DeployState } from "./state.ts";
 import { downIsNoOp, prodState, transition, upIsNoOp } from "./state.ts";
 
 /** 状态机全部合法状态，用于遍历。 */

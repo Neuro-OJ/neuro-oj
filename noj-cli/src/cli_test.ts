@@ -23,7 +23,8 @@ import { parseContainerCommand } from "./container.ts";
 import { parseProblemArgs } from "./problem/command.ts";
 import { UsageError } from "./util/args.ts";
 
-const ctx: CommandContext = { cwd: "/tmp", deployDir: null };
+// T23：CommandContext 只剩 cwd（deployDir 随 JSON 模态删除）
+const ctx: CommandContext = { cwd: "/tmp" };
 
 /** 造一个满足生产安装目录特征文件的临时目录（供 profile 探测测试用）。 */
 function makeProductionDir(): string {

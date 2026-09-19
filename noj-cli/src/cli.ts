@@ -1,5 +1,4 @@
 import { resolve } from "@std/path";
-import { findDeployDir } from "./util/find_deploy_dir.ts";
 import { VERSION } from "./mod.ts";
 import {
   findProductionDir,
@@ -23,11 +22,16 @@ import { renderProblemHelp } from "./problem/help.ts";
 import { runInContainer } from "./container_run.ts";
 import { detectProfile, type ProfileName, realProfileFs } from "./profile.ts";
 
-/** CLI 执行上下文，供各子命令共享。 */
+/**
+ * CLI 执行上下文，供各子命令共享。
+ *
+ * T23：原先还有 `deployDir`（由 `findDeployDir()` 向上查找 `noj-deploy.json`
+ * 得到）——那是 JSON 编排模式的目录发现。该模态删除后，生产目录改由
+ * `findProductionDir()` 单独负责（它按 `PRODUCTION_MARKERS` 判定，并会检查
+ * 已安装二进制的位置），因此这个字段失去意义。
+ */
 export interface CommandContext {
   cwd: string;
-  /** 向上查找到的部署目录，找不到为 null。 */
-  deployDir: string | null;
 }
 
 /** 退出码语义（#517 E9）。 */
@@ -210,10 +214,7 @@ export async function run(argv: string[]): Promise<number> {
       return await dispatchContainer(container, topRest);
     }
 
-    const ctx: CommandContext = {
-      cwd: Deno.cwd(),
-      deployDir: findDeployDir(),
-    };
+    const ctx: CommandContext = { cwd: Deno.cwd() };
     return await dispatchCommand(topCommand, topRest, ctx);
   } catch (error) {
     /* 全局兜底见下 */
@@ -819,7 +820,7 @@ async function runBackupDrillFromProduction(
   }
   let dir: string;
   try {
-    dir = await findProductionDir(a.dir ?? ctx.deployDir ?? undefined, ctx.cwd);
+    dir = await findProductionDir(a.dir, ctx.cwd);
   } catch (e) {
     throw new ProductionDirError((e as Error).message);
   }
