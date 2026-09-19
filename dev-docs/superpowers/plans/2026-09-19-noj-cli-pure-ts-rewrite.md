@@ -1102,7 +1102,7 @@ T18 `verifyContainer`；`runtime/command.ts` 的 `CommandRunner`；`maintain/dri
    （口令、token 绝不回显）；`--dry-run` 零副作用。
 7. **退出码**：0 成功 / 1 运行失败 / 2 用法或前置错误（与 T19/T20 同一分层）。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 - **共享 socket 拒绝（最高价值）**：`/var/run/docker.sock`、`/run/docker.sock`、
   二者经 `realpath` 后的等价路径 → 全部拒绝（退出码 2）且**零配置写入**、
@@ -1123,18 +1123,18 @@ T18 `verifyContainer`；`runtime/command.ts` 的 `CommandRunner`；`maintain/dri
 - **`logs --follow`**：断言走 `stream`（非缓冲 `run`），与 T14 同一契约。
 - **`upgrade`**：按配置里的版本拉取；版本缺失 → 明确报错。
 
-- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+- [x] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 - 一切外部访问可注入（runner / fs / 网络 / 探测）；配置读写复用
   `core/env-file.ts`（T3）；不使用任何在 TS 里重写 shell 拼接的写法。
 - `download` 子命令经 T9 的 `downloadReleaseFiles`（`overwrite:true`）实现，
   不新造下载逻辑。
 
-- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+- [x] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
 
-- [ ] **Step 5: 提交** — `feat(cli): 原生迁移独立 Judge 部署（专用 rootless socket 强约束）`
+- [x] **Step 5: 提交** — `feat(cli): 原生迁移独立 Judge 部署（专用 rootless socket 强约束）`
 
 **明确不做**：不删 `judge-install.sh`（T24）；不安装/配置 Docker daemon（安全约束）；
 不调用宝塔 API；不改 `noj-judge` 自身的运行时代码。
