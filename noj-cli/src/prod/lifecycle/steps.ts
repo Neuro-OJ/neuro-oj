@@ -16,11 +16,18 @@
  *    测试用临时目录（不碰真实部署目录）。
  * 4. **前置校验复用 T11/T12 的既有判定**（`checkEnvFileMode` /
  *    `checkRequiredValues` / `judgeEnabledError`），本模块不重写一套。
+ * 5. **T15**：`uninstall` 的 docker/daemon/compose 前置（bash
+ *    `check_uninstall_dependencies`）与 `--all` 的安装目录守卫
+ *    （`remove_install_directory`/`validate_install_directory`）也进本模块——
+ *    它们与 `prepareAndCheck` 同属「命令变更任何东西之前必须通过」的判定。
+ *    安装目录特征文件消费 `profile.ts` 的 {@link PRODUCTION_MARKERS} 单一事实源，
+ *    不新增第二份标记清单（T5/T12 carry-forward）。
  *
  * 本模块不持有任何模块级可变状态（AGENTS.md §8.2 多副本约束）：只有常量与纯函数。
  */
 
 import { join } from "@std/path";
+import { PRODUCTION_MARKERS } from "../../profile.ts";
 import {
   checkEnvFileMode,
   judgeEnabledError,
@@ -538,4 +545,206 @@ export const NGINX_REFRESH_FAILURE_HINT =
  */
 export function PORT_CONFLICT_HINT(port: number): string {
   return `NGINX_PORT=${port} 已被其他进程监听；启动时可能发生端口冲突`;
+}
+
+// ---------------- uninstall 前置与安装目录守卫（T15） ----------------
+//
+// 两段 bash 被收敛到这里：
+// 1. `check_uninstall_dependencies`（deploy.sh:1085-1096）：docker CLI / daemon /
+//    compose v2 / `.env.prod` / compose 文件五条前置，**任一缺失即拒绝**；
+// 2. `validate_install_directory` + `remove_install_directory`
+//    （production.sh:167-182）：`--all` 直接 `rm -rf` 安装目录前的守卫
+//    （目录形态 → 安装完整性 → **Git 工作区拒绝** → 危险路径拒绝）。
+//
+// 为什么放在共享步骤模块：两者与 `prepareAndCheck` 同类——都是「命令变更任何东西
+// 之前必须通过」的判定，且被 `uninstall` 与（后续）`update` 复用。
+
+/** docker CLI 缺失文案（deploy.sh:1088 逐字，仅二进制名参数化）。 */
+export function dockerMissingHint(dockerBin: string): string {
+  return `找不到 Docker CLI：${dockerBin}`;
+}
+
+/** daemon 不可用文案（deploy.sh:1089 逐字）。 */
+export const UNINSTALL_DAEMON_HINT = "Docker daemon 未运行或当前用户无权限";
+
+/** Compose v2 不可用文案（deploy.sh:1091 逐字）。 */
+export const UNINSTALL_COMPOSE_HINT = "Docker Compose v2 不可用";
+
+/** `.env.prod` 缺失文案（deploy.sh:1092 逐字）。 */
+export function uninstallEnvMissingHint(envFile: string): string {
+  return `找不到生产配置：${envFile}；无法安全定位生产 Compose 栈`;
+}
+
+/** compose 文件缺失文案（deploy.sh:1093 逐字）。 */
+export function uninstallComposeMissingHint(composeFile: string): string {
+  return `找不到生产 Compose 文件：${composeFile}`;
+}
+
+/** 工作区拒绝文案（production.sh:173 逐字）。 */
+export const UNINSTALL_WORKSPACE_HINT =
+  "检测到 Git 工作区，拒绝删除源码目录；请在生产安装目录执行 uninstall --all";
+
+/** 危险路径拒绝文案（production.sh:175 逐字）。 */
+export function uninstallUnsafePathHint(dir: string): string {
+  return `拒绝删除危险安装路径：${dir}`;
+}
+
+/** 安装目录形态不符文案（production.sh:169 逐字）。 */
+export function uninstallNotADirHint(dir: string): string {
+  return `当前安装目录不存在或不是普通目录：${dir}`;
+}
+
+/** 安装目录不完整文案（production.sh:171 逐字）。 */
+export function uninstallIncompleteDirHint(dir: string): string {
+  return `当前目录不是完整的 NOJ 安装目录，拒绝完全删除：${dir}`;
+}
+
+/**
+ * `check_uninstall_dependencies`（deploy.sh:1085-1096）：卸载前的五条前置。
+ *
+ * 逐条顺序：`docker --version` → `docker info` → `docker compose version` →
+ * `.env.prod` 存在 → compose 文件存在；**任一失败立即返回错误**，由调用方转成
+ * 退出码 1 且**零 compose down**。
+ *
+ * 返回 {@link PreparedEnvironment} 的原因：compose down **必须覆盖全部 profile**
+ * （bash `INCLUDE_ALL_PROFILES=1`，见 `uninstall()` :1101），因此这里顺带解析
+ * `.env.prod` 得出 `judge` 旗标；但解析失败**不阻断卸载**（配置不完整恰恰是
+ * 卸载的常见场景）——失败时按 judge 启用处理，宁可多带一个 profile 也不漏删。
+ */
+export async function checkUninstallDependencies(opts: {
+  dir: string;
+  runner: CommandRunner;
+  /** docker 可执行名（`NOJ_DEPLOY_DOCKER_BIN` 的等价）。 */
+  dockerBin?: string;
+}): Promise<PrepareResult> {
+  const dockerBin = opts.dockerBin ?? "docker";
+  const envFile = join(opts.dir, PROD_ENV_FILE);
+  const composeFile = join(opts.dir, PROD_COMPOSE_FILE);
+
+  if ((await opts.runner.run(dockerBin, ["--version"])).code !== 0) {
+    return { ok: false, error: dockerMissingHint(dockerBin) };
+  }
+  if ((await opts.runner.run(dockerBin, ["info"])).code !== 0) {
+    return { ok: false, error: UNINSTALL_DAEMON_HINT };
+  }
+  if ((await opts.runner.run(dockerBin, ["compose", "version"])).code !== 0) {
+    return { ok: false, error: UNINSTALL_COMPOSE_HINT };
+  }
+  if (!(await isFile(envFile))) {
+    return { ok: false, error: uninstallEnvMissingHint(envFile) };
+  }
+  if (!(await isFile(composeFile))) {
+    return { ok: false, error: uninstallComposeMissingHint(composeFile) };
+  }
+
+  let env: EnvValues = {};
+  let judge = true;
+  try {
+    env = await readEnvValues(envFile);
+    judge = assertConfiguration(env).judgeEnabled;
+  } catch {
+    // 配置不完整/非法：卸载不能因此被卡住，按 judge 启用处理（多 profile 无害）。
+    judge = true;
+  }
+
+  return { ok: true, dir: opts.dir, envFile, composeFile, env, judge };
+}
+
+/** `-e` 语义（含悬空软链）的存在性判定。 */
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await Deno.lstat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `--all` 的安装目录守卫（`validate_install_directory`, production.sh:167-182）。
+ *
+ * 四条检查逐条对照：
+ * 1. `[[ -d && ! -L ]] || fail "当前安装目录不存在或不是普通目录"`；
+ * 2. `[[ -f bin/noj-cli && -f "$DEPLOY_SCRIPT" && -f docker-compose.prod.yml ]]`——
+ *    `DEPLOY_SCRIPT` 在 TS 侧仍是安装目录内的 `scripts/deploy/deploy.sh`
+ *    （T24 才删除 bash；二进制保持同形文件系统契约）。特征文件消费
+ *    {@link PRODUCTION_MARKERS}（T5/T12 单一事实源），不新写标记清单；
+ * 3. `[[ ! -e .git && ! -e .jj ]]` → 拒绝；**本实现有意比 bash 多查 `.jj`**：
+ *    本仓 colocated 的 jj 工作区里 `.jj` 是**文件**而 `.git` 是目录，只查 `.git`
+ *    会漏判纯 jj 检出（T15 brief 明写 "Git/jj 工作区"）；
+ * 4. `[[ "$SCRIPT_DIR" != / && != . && != .. && != "$HOME" ]]`。
+ *
+ * **抛错而非返回结果**：守卫失败必须终止整个命令，返回布尔容易被调用方误当成
+ * 可继续的信号；`remove_install_directory` 也是 `fail` 语义。
+ */
+export async function assertRemovableInstallDir(
+  dir: string,
+  processEnv: Record<string, string | undefined> = Deno.env.toObject(),
+  opts: {
+    /** 安装版 CLI 路径；缺省 `<dir>/bin/noj-cli`。 */
+    cliBinary?: string;
+    /** 生产部署脚本路径；缺省 `<dir>/scripts/deploy/deploy.sh`。 */
+    deployScript?: string;
+  } = {},
+): Promise<void> {
+  let st: Deno.FileInfo | null = null;
+  try {
+    st = await Deno.lstat(dir);
+  } catch {
+    st = null;
+  }
+  if (st === null || !st.isDirectory || st.isSymlink) {
+    throw new Error(uninstallNotADirHint(dir));
+  }
+
+  const cliBinary = opts.cliBinary ?? join(dir, "bin/noj-cli");
+  const deployScript = opts.deployScript ??
+    join(dir, "scripts/deploy/deploy.sh");
+  if (!(await isFile(cliBinary))) {
+    throw new Error(`找不到生产 CLI 二进制：${cliBinary}`);
+  }
+  if (!(await isFile(deployScript))) {
+    throw new Error(`找不到生产部署脚本：${deployScript}`);
+  }
+  for (const marker of PRODUCTION_MARKERS) {
+    if (!(await isFile(join(dir, marker)))) {
+      throw new Error(uninstallIncompleteDirHint(dir));
+    }
+  }
+
+  if (
+    await pathExists(join(dir, ".git")) || await pathExists(join(dir, ".jj"))
+  ) {
+    throw new Error(UNINSTALL_WORKSPACE_HINT);
+  }
+
+  const normalized = dir.replace(/\/+$/, "");
+  const home = (processEnv["HOME"] ?? "").replace(/\/+$/, "");
+  if (
+    normalized === "" || normalized === "/" || normalized === "." ||
+    normalized === ".." || (home !== "" && normalized === home)
+  ) {
+    throw new Error(uninstallUnsafePathHint(dir));
+  }
+}
+
+/**
+ * `remove_install_directory`（production.sh:178-182）：先守卫、再 `rm -rf`。
+ *
+ * 删除失败即抛错（bash `rm -rf ... || fail "无法删除 NOJ 安装目录"`）。
+ */
+export async function removeInstallDirectory(
+  dir: string,
+  processEnv: Record<string, string | undefined> = Deno.env.toObject(),
+  opts: {
+    cliBinary?: string;
+    deployScript?: string;
+  } = {},
+): Promise<void> {
+  await assertRemovableInstallDir(dir, processEnv, opts);
+  try {
+    await Deno.remove(dir, { recursive: true });
+  } catch {
+    throw new Error(`无法删除 NOJ 安装目录：${dir}`);
+  }
 }

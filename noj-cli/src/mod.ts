@@ -317,6 +317,16 @@ export {
   start,
   status,
   stop,
+  uninstall,
+  // T15：卸载（确认词 + 数据卷安全 + 工作区保护）。确认提示与拒绝文案一并导出，
+  // 便于 T24 接线时逐字复用而不是另写一份。
+  UNINSTALL_ALL_CANCELLED_HINT,
+  UNINSTALL_ALL_PROMPT,
+  UNINSTALL_ALL_WARNING,
+  UNINSTALL_CANCELLED_HINT,
+  UNINSTALL_PROMPT,
+  UNINSTALL_TTY_HINT,
+  UNINSTALL_WARNING,
 } from "./prod/lifecycle.ts";
 // lifecycle/steps（T13）：从 lifecycle.ts 抽出的共享编排步骤（compose 的
 // wait_for_stack、前置校验、compose 输出/裸子命令原语）。命令入口仍在
@@ -324,14 +334,26 @@ export {
 export {
   applyLogsColor,
   assertConfiguration,
+  assertRemovableInstallDir,
+  checkUninstallDependencies,
   COMPOSE_CONFIG_INVALID_HINT,
   composeOutputText,
   decideLogsColor,
+  dockerMissingHint,
   mergeColorSource,
   NGINX_REFRESH_FAILURE_HINT,
   PORT_CONFLICT_HINT,
   prepareAndCheck,
+  removeInstallDirectory,
   runComposeSub,
+  UNINSTALL_COMPOSE_HINT,
+  UNINSTALL_DAEMON_HINT,
+  UNINSTALL_WORKSPACE_HINT,
+  uninstallComposeMissingHint,
+  uninstallEnvMissingHint,
+  uninstallIncompleteDirHint,
+  uninstallNotADirHint,
+  uninstallUnsafePathHint,
   WAIT_FAILURE_HINT,
   WAIT_TIMEOUT_SECONDS,
   waitForStack,
@@ -361,7 +383,15 @@ export type {
   LogsCommandOptions,
   LogsResult,
   StatusResult,
+  UninstallOptions,
+  UninstallResult,
 } from "./prod/lifecycle.ts";
-// lifecycle/path（T13 拆分）：production.sh 的 register_command 迁移 + PATH 字面量。
-export { PATH_LINE, registerCommand } from "./prod/lifecycle/path.ts";
+// lifecycle/path（T13 拆分，T15 补反向逻辑）：production.sh 的 register_command /
+// unregister_command 迁移 + PATH 字面量。正反两向共享「软链指向何处」判定。
+export {
+  PATH_LINE,
+  registerCommand,
+  symlinkPointsToInstall,
+  unregisterCommand,
+} from "./prod/lifecycle/path.ts";
 export type { PathRegistration } from "./prod/lifecycle/path.ts";

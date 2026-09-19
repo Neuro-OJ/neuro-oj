@@ -1,14 +1,15 @@
 /**
- * PATH 注册助手（T13 拆分）：迁移 `register_command`（production.sh:97-131）。
+ * PATH 注册/注销助手（T13 拆分，T15 补反向逻辑）：迁移 `register_command`
+ * （production.sh:97-131）与 `unregister_command`（:133-165）。
  *
- * 从 `lifecycle.ts`（T13 时已达 1173 行）抽出的**内聚单元**：只服务 install 的
- * 第 9 步「注册 PATH」，与命令入口、结果形状无关，也不参与 compose 编排。
- * T15 uninstall 的软链清理反向逻辑预计复用本模块的判定。
+ * 从 `lifecycle.ts`（T13 时已达 1173 行）抽出的**内聚单元**：注册服务 install 的
+ * 第 9 步，注销服务 uninstall 的软链清理；两者与命令入口、结果形状无关，也不参与
+ * compose 编排。正反两个方向共享同一套「软链指向何处」判定，故同住一个模块。
  *
  * 本模块不持有任何模块级可变状态（AGENTS.md §8.2 多副本约束）：只有常量与纯函数。
  */
 
-import { join } from "@std/path";
+import { dirname, join, resolve } from "@std/path";
 
 /** PATH 追加行（逐字对照 production.sh:90）。 */
 export const PATH_LINE = 'export PATH="$HOME/.local/bin:$PATH"';
@@ -151,4 +152,86 @@ export async function registerCommand(
 
   warn(`无法注册 noj-cli 到 PATH；部署已完成，可直接运行 ${opts.cliBinary}`);
   return { path: null, warnings };
+}
+
+// ---------------- unregister_command（T15） ----------------
+//
+// production.sh:133-165 的反向逻辑：**只**移除解析后指向本安装目录
+// `<dir>/bin/noj-cli` 或 `<dir>/noj` 的软链。三条语义逐条对照：
+// 1. `[[ -L "$command_path" ]] || continue`：普通文件（或不存在）一律跳过，
+//    绝不 `rm` 掉别的安装留下的真实命令；
+// 2. `symlink_points_to_current_install`（:133-146）：绝对目标直接比较；相对目标
+//    以软链所在目录为基准解析（bash 用 `cd -P "$(dirname ...)"`，本实现用
+//    `resolve(dirname(link), target)`），因此同一目标写成相对路径也能命中；
+// 3. 一个都没删时 `warn`（不是失败）——"没有可清理的软链"是正常终态。
+
+/**
+ * 该软链是否指向**本安装目录**（production.sh:133-146 的等价判定）。
+ *
+ * 目标为绝对路径时直接比较；为相对路径时以软链所在目录为基准解析——与 bash
+ * `cd -P "$(dirname "$command_path")" && cd -P "$(dirname "$target")" && pwd`
+ * 后再拼 `basename` 的结果一致（`resolve` 已规范化 `.` 与 `..`）。
+ * 不是软链、目标是空串、或解析结果不属于本安装目录 → false。
+ */
+export async function symlinkPointsToInstall(
+  commandPath: string,
+  dir: string,
+): Promise<boolean> {
+  let st: Deno.FileInfo | null = null;
+  try {
+    st = await Deno.lstat(commandPath);
+  } catch {
+    st = null;
+  }
+  if (st === null || !st.isSymlink) return false;
+  const target = await Deno.readLink(commandPath).catch(() => "");
+  if (target === "") return false;
+  const resolved = target.startsWith("/")
+    ? target
+    : resolve(dirname(commandPath), target);
+  const expected = [join(dir, "bin/noj-cli"), join(dir, "noj")];
+  return expected.includes(resolved);
+}
+
+/**
+ * 迁移 `unregister_command`（production.sh:148-165）：移除指向本安装目录的 PATH 软链。
+ *
+ * 候选路径的**顺序与重复**都照抄 bash：`NOJ_BIN_DIR`（若设置）下的 `noj-cli`/`noj`、
+ * 再 `/usr/local/bin` 的两个、最后 `$HOME/.local/bin` 的两个。`NOJ_BIN_DIR` 等于
+ * `/usr/local/bin` 时同一路径出现两次属 bash 既有行为——第二次已不是软链，自然跳过。
+ *
+ * **失败即抛错**（bash `rm -f ... || fail`）：不做"尽力而为"，删除失败必须让调用方
+ * 转成退出码 1；返回的是**确实已移除**的路径列表。一个都没移除时调用方按 bash 的
+ * `warn` 处理（本函数返回空数组，不写输出）。
+ */
+export async function unregisterCommand(opts: {
+  dir: string;
+  binDir?: string;
+  userHome?: string;
+  remove?: (path: string) => Promise<void>;
+}): Promise<string[]> {
+  const candidates: string[] = [];
+  if (opts.binDir !== undefined && opts.binDir !== "") {
+    candidates.push(join(opts.binDir, "noj-cli"), join(opts.binDir, "noj"));
+  }
+  candidates.push("/usr/local/bin/noj-cli", "/usr/local/bin/noj");
+  if (opts.userHome !== undefined && opts.userHome !== "") {
+    candidates.push(
+      join(opts.userHome, ".local/bin/noj-cli"),
+      join(opts.userHome, ".local/bin/noj"),
+    );
+  }
+
+  const remove = opts.remove ?? ((path: string) => Deno.remove(path));
+  const removed: string[] = [];
+  for (const commandPath of candidates) {
+    if (!(await symlinkPointsToInstall(commandPath, opts.dir))) continue;
+    try {
+      await remove(commandPath);
+    } catch {
+      throw new Error("无法移除 PATH 命令软链接：" + commandPath);
+    }
+    removed.push(commandPath);
+  }
+  return removed;
 }
