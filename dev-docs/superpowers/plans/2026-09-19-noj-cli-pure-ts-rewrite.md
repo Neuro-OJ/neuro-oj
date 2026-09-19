@@ -1312,7 +1312,106 @@ input/select/confirm），`command.ts` 也已区分 TTY 与 `--no-interactive`�
 
 ---
 
-## Task 24–26（概要；执行前逐个展开为完整任务块）
+## Task 24: 删 bash + 命令接线（R1 收口 / R2 弃用闸门）
+
+**Files:**
+- Modify: `noj-cli/src/cli.ts`（生产命令从"转发 bash"改为"调用原生实现"）
+- Modify: `noj-cli/src/production.ts`（删 `runProduction`/`parseProductionArgs`）
+- Create: `noj-cli/src/prod/cli.ts` — 生产命令的**参数解析 + 原生实现接线**
+- Create: `noj-cli/src/prod/cli_test.ts`
+- Delete: `scripts/deploy/{production.sh,deploy.sh,backup.sh,backup-schedule.sh,
+  install.sh,judge-install.sh,restore-drill.sh}` 与 `scripts/deploy/test-*.sh`
+- Delete: 根 `noj`（447 行）
+- Modify: `scripts/deploy/{deploy.sh,restore-drill.sh}`（若保留过渡期则加 R2 闸门）
+- Modify: `noj-cli/src/mod.ts`、`.github/workflows/*.yml`、`noj-cli/deno.json`
+
+**⚠️ 前置事实核对**：T12–T21 已交付全部生产命令的**原生实现**（`prod/lifecycle.ts`
+的 install/start/stop/restart/status/logs/update/upgrade/uninstall、
+`prod/backup/*`、`prod/drill/*`、`prod/schedule.ts`、`prod/judge/*`），但它们
+**尚未接线**——`cli.ts` 仍把 `PRODUCTION_COMMANDS` 整体转发给 `bash production.sh`
+（`production.ts:112`，**当前唯一的 R1 违例**）。本任务兑现 R1，并删除全部 bash。
+
+**R1 验收（spec §8）**
+- [ ] `rg 'Deno\.Command\("bash"|production\.sh|deploy\.sh|backup\.sh|restore-drill\.sh|backup-schedule\.sh|judge-install\.sh' noj-cli/src` → **空**
+- [ ] `deno compile` 产物在**仅含 docker/curl/openssl** 的环境可完成全部命令
+- [ ] `scripts/deploy/*.sh` 的运维逻辑均有 TS 对应实现（逐条对照表见各任务块）
+
+**R2 验收（弃用闸门）**
+- [ ] `deploy.sh`、`restore-drill.sh` 启动打印弃用警告并**要求输入 `y`**
+- [ ] 非 `y` → 退出且**无副作用**；`NOJ_ACCEPT_DEPRECATED=1` 可跳过
+- [ ] **非 TTY 不挂起**（明确报错或按既定策略）
+- [ ] 闸门只加在**用户运维入口**（`deploy.sh`/`restore-drill.sh`）；内驱脚本
+      （`production.sh`/`backup.sh`/`install.sh`/`judge-install.sh`/
+      `backup-schedule.sh`）随删除处理，不加闸门
+
+**必须实现的行为**
+
+1. **接线矩阵（逐命令对照原生实现）**：
+
+   | 命令 | 原生入口 | 备注 |
+   | --- | --- | --- |
+   | `install` | `prod/lifecycle.ts:install` | 需 `io`（向导）与 `fetcher` |
+   | `check` | `prod/config.ts` 的校验链 | 复用 `prepareAndCheck` |
+   | `start`/`stop`/`restart`/`status` | `prod/lifecycle.ts` 同名 | T13 已含 T4 状态机 |
+   | `logs` | `prod/lifecycle.ts:logs` | 着色契约 + `--follow`（T14） |
+   | `update`/`upgrade` | `prod/lifecycle.ts:update` | 需注入 `backup`（T17–T19 已就绪） |
+   | `uninstall` | `prod/lifecycle.ts:uninstall` | 需接 `PromptIO` 到 `readConfirm` |
+   | `backup create/verify/list/prune/restore --dry-run` | `prod/backup/commands.ts` | T18 |
+   | `backup drill` | `prod/drill/drill.ts` | T19 已接线 |
+   | `backup schedule` | `prod/schedule.ts` | T20 |
+   | `judge *` | `prod/judge/actions.ts` | T21 |
+
+2. **`update` 的备份注入**：T16 把 `UpdateOptions.backup` 留为**必填注入点**
+   （未注入即明确失败）。T24 必须接上 `prod/backup` 的真实实现——
+   这是 T16 登记的 carry-forward，也是"升级前必须备份"这条门禁的落点。
+3. **`uninstall` 的确认读取**：T15 的 `readConfirm` 缺省**不读真实 stdin**
+   （未接线时宁可报"无法读取确认输入"也不静默放行）。T24 由 CLI 层接上
+   `PromptIO`（`realIO().readLine`）。
+4. **退出码透传**：原生实现返回 0/1/2（T12–T21 统一契约），CLI 直接透传；
+   `ProductionDirError`（目录定位失败）→ 1（运行失败，非用法错误）。
+5. **`--json` 通道**：原生实现已实现 T6 契约（stdout 只含 JSON），
+   CLI 层不得再打印任何人类文字到 stdout。
+6. **CI 调用点同步**：删除 bash 后，`.github/workflows/*.yml`、`noj-cli/deno.json`
+   的 `test:production` 任务、`scripts/check-ci.ts` 等对 `scripts/deploy/*.sh`
+   的引用必须同步更新，否则 CI 会红（spec §9 风险表已登记该风险）。
+7. **根 `noj`（447 行）删除**：它是生产命令的 bash 入口，其能力全部由
+   `noj-cli` 覆盖；PATH 注册（T13/T15 的 `registerCommand`）指向
+   `<dir>/bin/noj-cli`，故删除后不影响已安装站点。
+
+- [ ] **Step 1: 写失败测试**（`prod/cli_test.ts`）
+
+- **接线**：每个命令的 CLI 入口都要调到**原生**实现——用注入 runner 断言
+  "调用的是 `prod/*` 的路径而不是 spawn bash"（`runner.run` 收到的是
+  `docker compose …`，且**不含** `bash`）。
+- **R1 门禁**：`rg` 检查放在测试里（读源码断言无 `Deno.Command("bash"` 与脚本名）。
+- **退出码**：目录定位失败 → 1；前置校验失败 → 2；原生失败 → 1；成功 → 0。
+- **`update` 的备份门禁**：接上真实备份后，备份失败 → 升级中止（不 pull/up）。
+- **`uninstall` 确认**：非 TTY 且未 `--yes` → 明确报错且零副作用（T15 契约保持）。
+- **`--json`**：每个命令的 stdout 逐字节合法 JSON（`JSON.parse` 不抛）。
+- **R2 闸门**（若保留过渡脚本）：注入 `NOJ_ACCEPT_DEPRECATED` / 非 TTY → 行为明确。
+
+- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+
+- [ ] **Step 3: 实现**（先接线、跑绿，再删 bash——顺序不可颠倒）
+
+- 接线（`prod/cli.ts`）→ `deno task check && deno task test` 绿 →
+  删 bash 与根 `noj` → 同步 CI 调用点 → 再跑门禁。
+
+- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`；
+  `rg` 残留检查为空；`bash scripts/check-ci.ts` 等价检查通过。
+
+- [ ] **Step 5: 提交** — 拆成三个提交便于 review：
+  `feat(cli): 生产命令接线到原生实现（移除 bash 转发）` →
+  `chore(cli): 删除生产 bash 脚本与根 noj` →
+  `ci(root): 同步删除脚本后的 CI 调用点`
+
+**明确不做**：不改 `prod/` 的行为契约（只解析参数并调用）；不改
+`docker-compose.prod.yml`；不动 `noj-docs/`（T25）；不删除 e2e 用的
+`docker-compose.e2e.yml` 与 `scripts/e2e/`。
+
+---
+
+## Task 25–26（概要；执行前逐个展开为完整任务块）
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
 | T17 .nojbackup 容器 | `backup/container.ts`、`driver.ts` | 单文件 + 整包加密；**文件重定向采二进制**；`pg_restore --list` 可解析 |
