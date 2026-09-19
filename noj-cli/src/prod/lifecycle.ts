@@ -151,19 +151,24 @@ import {
   validateTargetDir,
 } from "./bootstrap.ts";
 import type { Fetcher } from "./bootstrap.ts";
-import { composeLogs, composePs } from "./compose.ts";
+import { composeLogs, composePs, composePull } from "./compose.ts";
 import type { ComposeOptions, ComposeResult } from "./compose.ts";
 import { PROD_COMPOSE_FILE, PROD_ENV_FILE, PROD_SERVICES } from "./compose.ts";
 import {
-  backupPassphrasePath,
-  ensureBackupPassphrase,
   generateSecret,
   recordDeploymentMetadata,
   runConfigWizard,
-  toEntries,
   verifyImageSignatures,
   wizardNeedsInteractiveInput,
 } from "./config.ts";
+import {
+  commitConfigVersion,
+  configuredVersion,
+  DEFAULT_UPDATE_REPOSITORY,
+  normalizedVersion,
+  resolveLatestReleaseTag,
+  stageConfigVersion,
+} from "./release.ts";
 import type { EnvValues, VerifiedDigest } from "./config.ts";
 import {
   applyLogsColor,
@@ -172,6 +177,7 @@ import {
   checkUninstallDependencies,
   composeOutputText,
   decideLogsColor,
+  ensureCommandPassphrase,
   isFile,
   judgeEnabledFrom,
   mergeColorSource,
@@ -539,23 +545,17 @@ export async function install(opts: InstallOptions): Promise<InstallResult> {
   }
 
   // ---- 4. passphrase（T11）：旗标经 targetFile 注入；仅进程环境抑制回填 ----
-  const passphraseTarget = backupPassphrasePath({
-    flag: opts.passphraseFile,
-    explicit: processEnv["NOJ_BACKUP_PASSPHRASE_FILE"],
-    configured: env["NOJ_BACKUP_PASSPHRASE_FILE"],
-  });
-  const ensured = await ensureBackupPassphrase(env, {
-    targetFile: passphraseTarget,
-    configuredFromEnv: (processEnv["NOJ_BACKUP_PASSPHRASE_FILE"] ?? "") !== "",
+  // T16 把该步骤抽成 `ensureCommandPassphrase`（steps.ts），使 install 与 update
+  // 走**同一份**装配（路径优先级 / 回填门 / 告警 / 重新读取），不再各写一遍。
+  const ensured = await ensureCommandPassphrase({
+    envFile,
+    env,
+    processEnv,
+    passphraseFile: opts.passphraseFile,
+    warn,
   });
   if (ensured.error !== null) throw new Error(ensured.error);
-  if (ensured.created) {
-    warn("请将该口令文件安全复制到仓库外的异地位置，否则无法恢复加密快照");
-  }
-  if (ensured.envUpdate !== null) {
-    await writeEnvFileAtomic(envFile, toEntries(ensured.envUpdate));
-    env = await readEnvValues(envFile);
-  }
+  env = ensured.env;
   steps.push({ name: "passphrase", paths: [ensured.path] });
 
   // ---- 5. validate：与四个生命周期命令共用 prepareAndCheck（T13 评审 Important）----
@@ -1260,6 +1260,458 @@ export async function restart(
   };
   if (ctx.jsonMode) emitJson(jsonPayload(result), ctx.io);
   return result;
+}
+
+// ---------------- update / upgrade（T16，production.sh:201-440 + deploy.sh:1034-1044） ----------------
+//
+// `update` 是生产升级的唯一入口，`upgrade` 是它的**别名**（bash :518-519 两个
+// 词进同一个函数）。两种模式：
+//
+// - **固定版本**（无 `--latest`）：目标版本取自 `.env.prod` 的 `NOJ_VERSION`，
+//   先按该 ref 同步部署文件（bash `run_files_sync --files-only` 的等价），再走
+//   与 `upgrade` 完全相同的升级序列。用户改版本号即可升级/回滚，无需网络查询。
+// - **`--latest`**：查询最新**资产就绪**的稳定 Release（T16 `prod/release.ts`），
+//   与当前版本**归一化比较**；相等即 no-op（**零 compose、零备份、不写配置**），
+//   否则先把新版本写进**暂存配置**，同步文件 → 升级 → 成功后才原子提交配置。
+//
+// 升级序列（deploy.sh:1034-1044 逐条）：
+// `prepare_and_check` → `ensure_backup_passphrase` → **备份** → `compose pull`
+// → `wait_for_stack` → `record_deployment_metadata`。
+//
+// ## 备份子系统的边界（T17–T19 之前的有意非迁移）
+//
+// bash 的 `run_backup "upgrade"` 调 `backup.sh create`。TS 侧的生产备份
+// （`.nojbackup` 单文件容器）归 T17–T19；本任务**不**实现它，但**也不静默跳过**：
+// 备份是升级序列里不可省的一步（`test-deploy.sh` 有"升级前备份失败阻断升级"的
+// 用例），因此 `update` 经注入点 {@link UpdateOptions.backup} 调用——
+// 未注入时返回**明确的运行失败**（退出码 1，且尚未 pull/up），而不是假装成功。
+// 这样接口先立住，T17–T19 只需接上真实实现，升级序列与断言都不用改。
+
+/** update/upgrade 的注入点：在 {@link LifecycleOptions} 上追加升级专用项。 */
+export interface UpdateOptions extends LifecycleOptions {
+  /** `--latest`：升级到最新稳定 Release；缺省按 `.env.prod` 的版本升级。 */
+  latest?: boolean;
+  /** 仓库地址（`NOJ_UPDATE_REPOSITORY`）；缺省官方仓库。 */
+  repository?: string;
+  /** 显式 API 地址（`NOJ_UPDATE_API_URL`）；仅供离线/私有镜像验证。 */
+  apiUrl?: string;
+  /** Release 元数据下载器；缺省全局 fetch（测试必须注入）。 */
+  fetcher?: Fetcher;
+  /** `--passphrase-file`（升级前的备份口令）。 */
+  passphraseFile?: string;
+  /** 进程环境快照；缺省 `Deno.env.toObject()`。 */
+  processEnv?: Record<string, string>;
+  /** 备份口令新生成时的告警汇聚点。 */
+  warn?: (message: string) => void;
+  /** docker 可执行名（`NOJ_DEPLOY_DOCKER_BIN` 的等价）。 */
+  dockerBin?: string;
+  /** cosign 可执行名。 */
+  cosignBin?: string;
+  /** cosign 可用性探测（与 install 同语义：缺省经 runner 真实探测）。 */
+  cosignAvailable?: () => Promise<boolean>;
+  /** judge socket 存在性探测（`prepareAndCheck` 的注入点）。 */
+  socketExists?: (path: string) => Promise<boolean>;
+  /** 元数据时间戳（测试注入固定值）。 */
+  now?: Date;
+  /**
+   * 升级前备份（bash `run_backup "upgrade"`）。
+   *
+   * T17–T19 之前必须由调用方注入；缺省返回失败文案（见模块内注释）。
+   */
+  backup?: (context: UpdateBackupContext) => Promise<UpdateBackupResult>;
+  /**
+   * `--files-only` 语义的部署文件同步（bash `run_files_sync --files-only`）。
+   *
+   * 缺省用 T9 {@link downloadReleaseFiles}（`overwrite:true`）实现：以目标 ref
+   * 重新拉取 compose / example 并 SHA-256 校验，**不动 `.env.prod`**。
+   */
+  syncFiles?: (context: UpdateSyncContext) => Promise<void>;
+}
+
+/** 升级前备份的上下文（供 T17–T19 实现消费）。 */
+export interface UpdateBackupContext {
+  /** 归一化安装目录。 */
+  dir: string;
+  /** 目标版本（即将升级到的版本）。 */
+  version: string;
+  /** `.env.prod` 路径。 */
+  envFile: string;
+  /** 口令文件路径（可能为空串：尚未解析出）。 */
+  passphraseFile: string;
+}
+
+/** 升级前备份的结果。 */
+export interface UpdateBackupResult {
+  ok: boolean;
+  /** 备份产物路径；未产出时为 null。 */
+  path: string | null;
+  /** 失败文案；成功为 null。 */
+  error: string | null;
+}
+
+/** 部署文件同步的上下文。 */
+export interface UpdateSyncContext {
+  dir: string;
+  /** 目标 ref（`update` 恒等于目标版本标签）。 */
+  ref: string;
+  repository: string;
+}
+
+/** {@link update} 的结果。 */
+export interface UpdateResult extends LifecycleBaseResult {
+  /** 升级前的版本（`.env.prod` 的 `NOJ_VERSION`）。 */
+  from: string;
+  /** 目标版本；no-op 时等于 `from`。 */
+  to: string;
+  /** 是否 no-op（`--latest` 且已是最新，未重启、未备份、未写配置）。 */
+  noOp: boolean;
+  /** 是否走 `--latest` 模式。 */
+  latest: boolean;
+  /** 是否已同步部署文件。 */
+  filesSynced: boolean;
+  /** 备份产物路径；未备份（no-op / 失败前）时为 null。 */
+  backupPath: string | null;
+}
+
+/** `--latest` 且已是最新时的文案（production.sh:396 逐字）。 */
+export const UPDATE_UP_TO_DATE_HINT = "当前已经是最新稳定 Release，无需升级";
+
+/** 升级成功文案（production.sh:431 逐字，仅版本号参数化）。 */
+export function updateSuccessHint(version: string): string {
+  return `已升级到最新稳定 Release：${version}`;
+}
+
+/** 升级前备份未接线时的失败文案（T17–T19 之前）。 */
+export const UPDATE_BACKUP_UNAVAILABLE_HINT =
+  "升级前备份尚未接线（备份子系统由 T17–T19 交付）；为安全起见已中止升级";
+
+/** 本次升级的编排结果。 */
+interface UpgradeOutcome {
+  /** 失败文案；成功为 null。 */
+  error: string | null;
+  /** 备份产物路径（已走过的步骤才非 null）。 */
+  backupPath: string | null;
+}
+
+/**
+ * `--latest`：解析最新稳定 Release 的目标版本。
+ *
+ * 归一化比较交由调用方（{@link normalizedVersion}）——比较用归一化值，写入
+ * `.env.prod` 用**原文**（它直接参与镜像 tag 插值）。
+ */
+async function resolveLatestTarget(opts: UpdateOptions): Promise<string> {
+  return await resolveLatestReleaseTag({
+    repository: opts.repository,
+    apiUrl: opts.apiUrl,
+    fetcher: opts.fetcher,
+  });
+}
+
+/** 升级前备份：注入点缺省即"未接线"失败（绝不静默跳过）。 */
+async function runUpdateBackup(
+  opts: UpdateOptions,
+  context: UpdateBackupContext,
+): Promise<UpdateBackupResult> {
+  if (opts.backup === undefined) {
+    return { ok: false, path: null, error: UPDATE_BACKUP_UNAVAILABLE_HINT };
+  }
+  return await opts.backup(context);
+}
+
+/**
+ * `--files-only` 语义的部署文件同步。
+ *
+ * 对照 bash `run_files_sync`：以目标 ref 重新拉取部署文件；`overwrite:true`
+ * 是刻意的（bash 用 `cp -a` 覆盖），而 **`.env.prod` 完全不在 `RELEASE_FILES`
+ * 里**——T9 的资产清单只含 compose / example 及其校验文件，故无需额外保护，
+ * 配置天然不被触碰（任务书 Step 1「`.env.prod` 内容不被改动」的落点）。
+ */
+async function runUpdateSync(
+  opts: UpdateOptions,
+  context: UpdateSyncContext,
+): Promise<void> {
+  if (opts.syncFiles !== undefined) {
+    await opts.syncFiles(context);
+    return;
+  }
+  await downloadReleaseFiles({
+    repository: context.repository,
+    ref: context.ref,
+    targetDir: context.dir,
+    overwrite: true,
+    fetcher: opts.fetcher,
+  });
+}
+
+/**
+ * 升级编排（bash `deploy.sh:upgrade()` :1034-1044）：备份 → pull → wait → metadata。
+ *
+ * 与 `install` 的关键差异：
+ * 1. **不 seed 配置**：升级只读既有 `.env.prod`（缺失即失败）；
+ * 2. **不建 PATH**：命令已注册（install 第 9 步），重复注册是噪声；
+ * 3. **多一步备份**且**先于 pull**：`test-deploy.sh` 有"备份失败后仍执行了镜像
+ *    拉取或启动即失败"的用例，故备份失败必须在任何 compose 变更之前返回。
+ *
+ * `prepare_and_check` 与 install/start 共用同一份（T13 评审 Important），因此
+ * 六步前置校验在任何变更之前完成。
+ */
+async function upgradeWith(
+  opts: UpdateOptions,
+  ctx: LifecycleContext,
+  to: string,
+): Promise<UpgradeOutcome> {
+  const prepared = await prepareLifecycle(ctx, opts);
+  if (!prepared.ok) return { error: prepared.error, backupPath: null };
+
+  // ---- ensure_backup_passphrase（bash deploy.sh:1036）----
+  const processEnv = opts.processEnv ?? Deno.env.toObject();
+  const passphrase = await ensureCommandPassphrase({
+    envFile: join(ctx.dir, PROD_ENV_FILE),
+    env: prepared.env,
+    processEnv,
+    passphraseFile: opts.passphraseFile,
+    warn: opts.warn,
+  });
+  if (passphrase.error !== null) {
+    ctx.error(passphrase.error);
+    return { error: passphrase.error, backupPath: null };
+  }
+
+  // ---- run_backup "upgrade"（bash :1037）：**先于** pull ----
+  const backup = await runUpdateBackup(opts, {
+    dir: ctx.dir,
+    version: to,
+    envFile: join(ctx.dir, PROD_ENV_FILE),
+    passphraseFile: passphrase.path,
+  });
+  if (!backup.ok) {
+    const error = backup.error ?? "升级前备份失败";
+    ctx.error(error);
+    return { error, backupPath: null };
+  }
+
+  // ---- compose pull（bash :1039）----
+  logSection(ctx, "拉取目标版本镜像");
+  const pulled = await composePull(opts.runner, prepared.composeOptions);
+  const pullText = composeOutputText(pulled);
+  if (pullText !== "") emitHuman(pullText, ctx.io);
+  if (!Array.isArray(pulled) && pulled.code !== 0) {
+    const error = "拉取生产镜像失败：" +
+      (pulled.stderr.trim() || ("docker compose 退出码 " + pulled.code));
+    ctx.error(error);
+    return { error, backupPath: backup.path };
+  }
+
+  // ---- wait_for_stack（bash :1040，与 install/start 同源）----
+  const wait = await waitForStack(
+    opts.runner,
+    prepared.composeOptions,
+    (text) => emitHuman(text, ctx.io),
+  );
+  if (!wait.ok) {
+    const error = wait.error ?? WAIT_FAILURE_HINT;
+    ctx.error(error);
+    return { error, backupPath: backup.path };
+  }
+
+  // ---- 镜像验签 + record_deployment_metadata（bash :874/:1041）----
+  // `check_configuration` 在 install|start|upgrade|verify 下会跑
+  // verify_image_signatures（deploy.sh:911），因此 upgrade 与 install 同源。
+  const verify = await verifyImageSignatures(prepared.env, {
+    runner: opts.runner,
+    cosignAvailable: opts.cosignAvailable ??
+      probeCosign(opts.runner, opts.cosignBin ?? "cosign"),
+    dockerBin: opts.dockerBin,
+    cosignBin: opts.cosignBin,
+    warn: opts.warn,
+  });
+  if (!verify.ok) {
+    const error = verify.error ?? "生产镜像签名校验失败";
+    ctx.error(error);
+    return { error, backupPath: backup.path };
+  }
+  // 元数据必须记录**目标**版本（bash 在 upgrade 时 .env.prod 已指向新版本，
+  // `env_value NOJ_VERSION` 取到的即目标值）。
+  await recordDeploymentMetadata({
+    version: to,
+    at: opts.now ?? new Date(),
+    verified: verify.digests,
+    backupDir: join(ctx.dir, "backups"),
+  });
+  return { error: null, backupPath: backup.path };
+}
+
+/** 小节标题（对照 bash `section`：`\n== <标题> ==\n`）。 */
+function logSection(ctx: LifecycleContext, title: string): void {
+  emitHuman("\n== " + title + " ==\n", ctx.io);
+}
+
+/**
+ * `update`（production.sh:345-436）：两种模式共用同一套升级序列。
+ *
+ * 编排（**顺序即断言**）：
+ * 1. `prepare_and_check`（六步前置，零变更命令）；
+ * 2. `--latest`：查询最新稳定 Release → 与当前版本归一化比较 → 相等即 **no-op**
+ *    （零 compose、零备份、零配置写入）；否则把目标版本写进**暂存配置**；
+ * 3. 非 `--latest`：目标版本取自 `.env.prod`；
+ * 4. **同步部署文件**（`--files-only` 语义，`.env.prod` 不受影响）；
+ * 5. `ensure_backup_passphrase` → **备份** → `compose pull` → `wait_for_stack`
+ *    → `record_deployment_metadata`；
+ * 6. **仅升级成功后**才 `rename` 暂存配置到 `.env.prod`（bash :428-432）。
+ *
+ * 退出码：0 成功（含 no-op）；1 运行失败（前置不过、无最新版本、同步失败、
+ * 备份失败、compose 失败、健康检查失败、配置提交失败）；用法错误 2 由 CLI 层产出。
+ *
+ * `--json` 模式 stdout 只含一个 JSON 文档（人类文字全部改道 stderr）。
+ */
+export async function update(opts: UpdateOptions): Promise<UpdateResult> {
+  const ctx = lifecycleContext(opts);
+  const envFile = join(ctx.dir, PROD_ENV_FILE);
+  const latest = opts.latest === true;
+
+  const finish = (result: UpdateResult): UpdateResult => {
+    if (ctx.jsonMode) emitJson(updatePayload(result), ctx.io);
+    return result;
+  };
+  const fail = (from: string, to: string, error: string): UpdateResult => {
+    ctx.error(error);
+    return finish({
+      ...failed(ctx.dir, error),
+      from,
+      to,
+      noOp: false,
+      latest,
+      filesSynced: false,
+      backupPath: null,
+    });
+  };
+
+  // ---- 1. 读当前版本：缺失即失败（升级不可能无目标）----
+  let from: string;
+  try {
+    from = await configuredVersion(envFile);
+  } catch (err) {
+    return fail("", "", (err as Error).message);
+  }
+
+  // ---- 2. --latest：解析目标版本；相等即 no-op（零副作用）----
+  let to: string;
+  if (latest) {
+    try {
+      to = await resolveLatestTarget(opts);
+    } catch (err) {
+      return fail(from, "", (err as Error).message);
+    }
+    emitHuman(`当前生产版本：${from}\n`, ctx.io);
+    emitHuman(`最新稳定版本：${to}\n`, ctx.io);
+    if (normalizedVersion(to) === normalizedVersion(from)) {
+      ctx.status("success", UPDATE_UP_TO_DATE_HINT);
+      return finish({
+        dir: ctx.dir,
+        state: "running",
+        noOp: true,
+        exitCode: 0,
+        error: null,
+        from,
+        to: from,
+        latest,
+        filesSynced: false,
+        backupPath: null,
+      });
+    }
+  } else {
+    to = from;
+  }
+
+  // ---- 3. compose pull 之前的前置校验（prepare_and_check）已在升级序列内 ----
+  // 暂存配置只在 --latest 且确有新版本时创建；**升级成功前不碰 .env.prod**。
+  let staged: string | null = null;
+  if (latest) {
+    try {
+      staged = await stageConfigVersion(envFile, to);
+    } catch (err) {
+      return fail(from, to, (err as Error).message);
+    }
+  }
+
+  const discardStaged = async (): Promise<void> => {
+    if (staged !== null) await Deno.remove(staged).catch(() => {});
+  };
+
+  // ---- 4. 同步部署文件（--files-only 语义）----
+  emitHuman(`同步生产部署文件：${to}\n`, ctx.io);
+  try {
+    await runUpdateSync(opts, {
+      dir: ctx.dir,
+      ref: to,
+      repository: opts.repository ?? DEFAULT_UPDATE_REPOSITORY,
+    });
+  } catch (err) {
+    await discardStaged();
+    return fail(from, to, (err as Error).message);
+  }
+
+  // ---- 5. 升级序列：备份 → pull → wait → metadata ----
+  const upgraded = await upgradeWith(opts, ctx, to);
+  if (upgraded.error !== null) {
+    await discardStaged();
+    const result = fail(from, to, upgraded.error);
+    result.filesSynced = true;
+    result.backupPath = upgraded.backupPath;
+    return result;
+  }
+
+  // ---- 6. 仅升级成功后提交暂存配置（bash :428-432）----
+  if (staged !== null) {
+    try {
+      await commitConfigVersion(staged, envFile);
+    } catch (err) {
+      // 服务已升级但配置未提交：必须显式报告半完成状态（不吞错）。
+      const result = fail(from, to, (err as Error).message);
+      result.filesSynced = true;
+      result.backupPath = upgraded.backupPath;
+      return result;
+    }
+  }
+
+  ctx.status("success", latest ? updateSuccessHint(to) : "生产服务已升级");
+  return finish({
+    dir: ctx.dir,
+    state: "running",
+    noOp: false,
+    exitCode: 0,
+    error: null,
+    from,
+    to,
+    latest,
+    filesSynced: true,
+    backupPath: upgraded.backupPath,
+  });
+}
+
+/**
+ * `upgrade`：`update` 的**别名**（bash :518-519 两个词进同一函数）。
+ *
+ * 行为与 `update` 完全一致；独立导出只为 CLI 层与 `commands.ts` 的声明同形，
+ * 不复制任何编排（别名若有第二份实现，迟早会漂移）。
+ */
+export async function upgrade(opts: UpdateOptions): Promise<UpdateResult> {
+  return await update({ ...opts, latest: false });
+}
+
+/** `update` 的 `--json` 载荷（stdout 只含这一个 JSON 文档）。 */
+function updatePayload(result: UpdateResult): Record<string, unknown> {
+  return {
+    dir: result.dir,
+    from: result.from,
+    to: result.to,
+    state: result.state,
+    noOp: result.noOp,
+    latest: result.latest,
+    filesSynced: result.filesSynced,
+    backupPath: result.backupPath,
+    error: result.error,
+  };
 }
 
 // ---------------- uninstall（T15，deploy.sh:1052-1111 + production.sh:133-182） ----------------
