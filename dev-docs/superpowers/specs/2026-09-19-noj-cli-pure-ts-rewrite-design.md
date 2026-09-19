@@ -368,7 +368,15 @@ snapshot-<ts>.nojbackup
 ### P11 · 文档
 
 - [ ] #510：ROADMAP 校准（A 类勾选/B 类移除多语言/C 类补证据/D 类改新命令）
-- [ ] `AGENTS.md` 的 `deploy`→`stack` 纠错；`about.vue:324` 移除多语言暗示
+- [x] `AGENTS.md` 的命令面纠错（T23/T24 后旧命令已移除，见 §5.2 两段式开发流程）
+- [x] ~~`about.vue:324` 移除多语言暗示~~ —— **该指控不成立（T25 核对后撤销）**：
+      原文写"默认提供 Python 3 评测环境，**更多语言由管理员配置评测镜像后在「管理后台」启用**"，
+      而这条链路**真实存在**：`judge_images` 表（`noj-core/src/shared/db/schema/system.ts`）
+      + 管理端接口（`domains/admin/routes/system.ts`）+ 后台页面
+      （`noj-ui/pages/admin/judge-images.vue`）+ 题目编辑器按镜像选择运行时
+      （`components/editor/CodingProblemEditor.vue:89-96`）。
+      它是**已实现能力的准确说明**，不是"暗示未实现的多语言"。
+      真正的 B 类漂移只有 `ROADMAP.md` 的两条多语言条目（已移除，见该文件的 Phase 1）。
 - [ ] 新建 CHANGELOG；`openspec/changes/add-noj-cli/tasks.md:9` 修正
 
 ---

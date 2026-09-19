@@ -11,13 +11,15 @@ Evaluator + Solution 双容器（用后即毁），并把结果写回 Redis。
 
 ## 独立节点部署
 
-如果评测节点不运行 noj-core、noj-ui 或完整源码仓库，可以使用仓库提供的 Judge
-安装脚本 在独立目录初始化 Worker：
+如果评测节点不运行 noj-core、noj-ui 或完整源码仓库，可用 `noj-cli` 的 `judge`
+子命令在独立目录初始化 Worker（**不再需要下载任何安装脚本**）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/judge-install.sh \
-  -o judge-install.sh
-bash judge-install.sh install --dir /srv/noj-judge
+# 首次：先准备专用 rootless Docker socket，并检查依赖
+noj-cli judge install-env
+
+# 配置并启动（首次会询问版本、Redis、队列名与专用 socket）
+noj-cli judge install --dir /srv/noj-judge
 ```
 
 首次配置需要填写：
@@ -31,12 +33,14 @@ bash judge-install.sh install --dir /srv/noj-judge
 管理独立 Worker：
 
 ```bash
-bash /srv/noj-judge/judge-install.sh status
-bash /srv/noj-judge/judge-install.sh logs
-bash /srv/noj-judge/judge-install.sh stop
+noj-cli judge status --dir /srv/noj-judge
+noj-cli judge logs --dir /srv/noj-judge [--follow]
+noj-cli judge check  --dir /srv/noj-judge   # 配置 / Redis / 专用 socket / 镜像架构
+noj-cli judge stop | start | upgrade --dir /srv/noj-judge
 ```
 
-Judge 安装脚本与主站部署脚本相互独立；它不会安装或替换主站的 `noj` 命令。
+Judge 的部署与主站部署相互独立；`noj-cli` **不会安装、替换或配置**宿主 Docker
+daemon，宝塔类面板也只做探测与提示（不调用其 API）。
 
 当前生产 Release 镜像由发布流水线提供 `linux/amd64`。ARM64 主机必须先确认所选
 版本发布了对应 manifest；否则部署会在启动前提示架构不匹配，不能通过回退到宿主机

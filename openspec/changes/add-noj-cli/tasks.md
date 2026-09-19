@@ -1,3 +1,15 @@
+# 统一 noj-cli 生产入口（历史变更记录）
+
+> **状态：已被取代（superseded）**。本变更描述的入口形态（根目录 `noj` 脚本、
+> `setup.sh` → `install.sh` 自举、`scripts/deploy/*.sh` 转发）已在
+> 「noj-cli 纯 TS 重写」中整体重建：根 `noj`、`setup.sh`、`install.sh`、
+> `production.sh` 等脚本均已删除，能力迁入 `noj-cli`（纯 TS）。
+>
+> 本文件作为**历史记录保留**，不逐条回改（#510 明确不校准历史归档）。
+> 仅下方 2.1 标注了与现状的冲突，以免读者照它去操作不存在的脚本。
+> 现行做法见 `dev-docs/superpowers/specs/2026-09-19-noj-cli-pure-ts-rewrite-design.md`
+> 与 `noj-cli/README.md`。
+
 ## 1. 统一命令入口
 
 - [x] 1.1 新增根目录可执行 `noj` 脚本，解析自身所在的生产安装目录并在底层部署脚本缺失时返回清晰错误；使用 `bash -n noj` 和 `./noj --help` 验证
@@ -6,7 +18,10 @@
 
 ## 2. 安装与更新集成
 
-- [x] 2.1 扩展已有安装更新流程，使 `scripts/deploy/install.sh` 更新生产部署文件时同步复制根目录 `noj` 并恢复执行权限；使用临时安装目录测试新安装和已有安装更新均保留 `.env.prod`
+- [x] 2.1 ~~扩展已有安装更新流程，使 `scripts/deploy/install.sh` 更新生产部署文件时同步复制根目录 `noj` 并恢复执行权限；使用临时安装目录测试新安装和已有安装更新均保留 `.env.prod`~~
+      **⚠️ 与现状冲突（T25 标注）**：`scripts/deploy/install.sh` 与根 `noj` 均已删除。
+      现行做法：`noj-cli install` 自己从 Release 下载部署文件并校验 SHA-256
+      （见 `noj-cli/src/prod/bootstrap.ts`），首次安装不再有自举脚本。
 - [x] 2.2 确认旧的 `scripts/deploy/deploy.sh upgrade`、`install` 和其他既有命令保持兼容；运行现有 `scripts/deploy/test-deploy.sh` 并验证原命令行为不变
 
 ## 3. 文档与测试
