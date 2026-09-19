@@ -125,6 +125,72 @@ Deno.test("E12: install --help 由 CLI 回答，不出现 deploy.sh 文案", asy
   assertEquals(out.includes("deploy.sh install"), false);
 });
 
+// ── T26 发现：同一次目录定位失败必须给出同一个退出码 ──────────────
+//
+// 这个用例来自验收取证（T26）：编译产物实测发现
+//   `status --dir /nonexistent`               → 2
+//   `status --profile prod --dir /nonexistent` → 1
+// **同一次失败、同一句错误文案，退出码却不同**。
+//
+// 根因：探测（`detectProfileOrNull`）先于生产分发运行，它对"目录不是生产安装目录"
+// 抛 `UsageError`（2）；而显式 `--profile prod` 跳过探测，改由 `findProductionDir`
+// 抛 `ProductionDirError`（1）。调用方无法用退出码区分"我参数写错了"与"目录不对"，
+// 而计划与 `production.ts` 的契约都写明**目录定位失败 = 1（运行失败）**：
+// 目录不存在是环境问题，不是用法问题。
+//
+// 契约：无论是否显式给 `--profile`，目录定位失败的退出码必须一致。
+
+Deno.test("T26: 目录定位失败的退出码与 --profile 是否显式无关", async () => {
+  const originalErr = console.error;
+  const capture = async (argv: string[]): Promise<number> => {
+    console.error = () => {};
+    try {
+      return await run(argv);
+    } finally {
+      console.error = originalErr;
+    }
+  };
+  const implicit = await capture(["status", "--dir", "/nonexistent-noj-xyz"]);
+  const explicit = await capture([
+    "--profile",
+    "prod",
+    "status",
+    "--dir",
+    "/nonexistent-noj-xyz",
+  ]);
+  assertEquals(
+    implicit,
+    explicit,
+    `目录定位失败的退出码必须一致：隐式=${implicit} 显式=${explicit}`,
+  );
+  assertEquals(
+    implicit,
+    EXIT_FAILURE,
+    "目录不存在属运行失败（1），非用法错误（2）",
+  );
+});
+
+Deno.test("T26: 生产命令在缺少安装目录时报运行失败（1），并给出可操作提示", async () => {
+  const originalErr = console.error;
+  let err = "";
+  console.error = (...a: unknown[]) => {
+    err += a.join(" ") + "\n";
+  };
+  let code = -1;
+  try {
+    code = await run(["status", "--dir", "/nonexistent-noj-xyz"]);
+  } finally {
+    console.error = originalErr;
+  }
+  assertEquals(code, EXIT_FAILURE);
+  // 提示必须指向可执行的下一步（--dir / 安装目录），而不是只报"失败"
+  assertEquals(
+    err.includes("--dir") || err.includes("安装目录"),
+    true,
+    `错误信息应给出可操作提示，实得：${err}`,
+  );
+});
+
 // ── #517 E3/E4：异常兜底与可读错误 ────────────────────────────────
 
 Deno.test("E3: --debug 下用法错误仍只给可读文案（不打印栈）", async () => {

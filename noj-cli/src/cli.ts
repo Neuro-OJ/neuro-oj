@@ -191,7 +191,19 @@ export async function run(argv: string[]): Promise<number> {
 
     const profileAgnostic = PROFILE_AGNOSTIC.has(topCommand) ||
       wantsHelp(topRest);
-    const effectiveProfile = profileAgnostic
+    // **T24/T26 关键**：生产命令的"目录定位失败"必须由**生产分发**产出
+    // （`ProductionDirError` → 退出码 1），不能让探测抢先抛 `UsageError`（2）。
+    //
+    // 探测的用途是回答"这是个什么模式的目录"，而 T23 收敛为单模态后，这个问题
+    // 对生产命令只剩一个答案：**目录对不对**。那正是 `dispatchProduction` 里
+    // `findProductionDir` 的职责，且它的报错文案更具体（会指出是哪个路径）。
+    // 若让探测先跑，会出现"同一次失败、退出码取决于是否显式给了 --profile"
+    // 的分裂（实测：隐式 2、显式 1）——调用方无法据此区分"参数写错"与"目录不对"。
+    //
+    // 因此：**生产命令跳过 profile 探测**，把目录判定完全交给生产分发。
+    // 对非生产命令（Tier 3 容器、problem 等）仍照常探测。
+    const skipProfileDetection = PRODUCTION_COMMANDS.has(topCommand);
+    const effectiveProfile = (profileAgnostic || skipProfileDetection)
       ? (explicitProfile !== undefined
         ? validateProfileName(explicitProfile)!
         : null)
