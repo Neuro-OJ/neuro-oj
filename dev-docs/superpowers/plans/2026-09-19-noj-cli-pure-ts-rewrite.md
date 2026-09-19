@@ -1182,7 +1182,7 @@ input/select/confirm），`command.ts` 也已区分 TTY 与 `--no-interactive`�
    `!noInteractive && Deno.stdin.isTerminal()` 是唯一判定点；`tui.ts` 不自行读
    `Deno.stdin`（否则测试无法注入）。缺参数时报用法错误（2）且提示具体旗标。
 
-- [ ] **Step 1: 写失败测试**（`tui_test.ts`，全部注入 fake `PromptIO`）
+- [x] **Step 1: 写失败测试**（`tui_test.ts`，全部注入 fake `PromptIO`）
 
 - **R6 覆盖**：注入脚本化答案 → 断言四个字段都被问到且返回值正确；已给旗标的字段
   **不再提问**（`planInitPrompts` 的三态）。
@@ -1199,13 +1199,13 @@ input/select/confirm），`command.ts` 也已区分 TTY 与 `--no-interactive`�
   非 TTY（注入 `isTty: false`）同样不提问。
 - **端到端回归**：用注入答案生成的骨架**通过 `problem lint`**（R6 第三条）。
 
-- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+- [x] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
 
-- [ ] **Step 3: 实现**（`tui.ts` 加 EOF 上限 + 回退 + 进度；`PromptIO` 语义不变）
+- [x] **Step 3: 实现**（`tui.ts` 加 EOF 上限 + 回退 + 进度；`PromptIO` 语义不变）
 
-- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+- [x] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
 
-- [ ] **Step 5: 提交** — `fix(cli): problem init 引导的 EOF 挂死、回退与进度（R6 收口）`
+- [x] **Step 5: 提交** — `fix(cli): problem init 引导的 EOF 挂死、回退与进度（R6 收口）`
 
 **明确不做**：不重写既有引导与 widgets；不改 `problem pack/lint`；不引入新 TUI 依赖。
 
