@@ -340,7 +340,7 @@ Deno.test("T17 create：postgres/redis 二进制经文件重定向落盘，逐�
 
     // 从 tar 时刻的 staging 快照读出实际落盘的 payload 并逐字节比对
     // （createContainer 的 finally 已清理真实 staging，故必须用快照）。
-    assertEquals(tars.length, 2, "两轮打包");
+    assertEquals(tars.length, 1, "单轮打包");
     const dump = await Deno.readFile(
       join(snapshot, CONTAINER_FILES.postgresDump),
     );
@@ -465,9 +465,18 @@ Deno.test("T17 create：manifest 的 payload_layout/字段/摘要时序正确", 
     assertEquals(m.incremental_policy, MANIFEST_DEFAULTS.incremental_policy);
     assertEquals(m.rpo, MANIFEST_DEFAULTS.rpo);
     assertEquals(m.rto, MANIFEST_DEFAULTS.rto);
-    // 摘要时序：两轮打包（第一轮取摘要 → 写 manifest → 第二轮含 manifest）
-    assertEquals(tars.length, 2, "必须两轮打包（manifest 自身要进包）");
-    assertEquals(m.sha256, result.payloadSha256);
+    // 单轮打包即可：manifest 内**不放**整包摘要（自指不可能，见 container.ts）
+    assertEquals(tars.length, 1, "manifest 不再引用自身归档的摘要，故单轮打包");
+    // 整包摘要落在同级 sidecar，且与容器文件一致
+    assertEquals(result.sidecar, result.path + ".sha256");
+    assertStringIncludes(
+      await Deno.readTextFile(result.sidecar),
+      result.sha256,
+    );
+    assertStringIncludes(
+      await Deno.readTextFile(result.sidecar),
+      result.path.split("/").pop()!,
+    );
     // files 含 manifest 与 checksums，且已排序
     assert(m.files.includes(CONTAINER_FILES.manifest));
     assert(m.files.includes(CONTAINER_FILES.checksums));

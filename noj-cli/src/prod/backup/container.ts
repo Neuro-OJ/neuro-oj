@@ -7,7 +7,7 @@
  * snapshot-<ts>.nojbackup
  * └─ gpg(AES256, <passphrase>)         ← **整包**加密（不是只加密 env）
  *    └─ tar.zst
- *       ├─ manifest.json               schema_version / payload_layout / created_at / sha256
+ *       ├─ manifest.json               schema_version / payload_layout / created_at / files
  *       ├─ postgres.dump               pg_dump -Fc **原始二进制**
  *       ├─ postgres-globals.sql
  *       ├─ redis.rdb                   redis-cli --rdb **原始二进制**
@@ -76,6 +76,18 @@ export const SUCCESS_MARKER = "success";
 export const BACKUP_SUFFIX = ".nojbackup";
 
 /**
+ * 容器文件的校验文件后缀（sidecar）。
+ *
+ * **为什么摘要不能在 manifest 里**（重要，见本模块 {@link createContainer} 的
+ * "自指不可能"注释）：manifest 位于容器**内部**，因此它无法记录自己所在文件的
+ * 摘要——"写入摘要 → 摘要改变 → 再写入"是无限回归。
+ * 因此最终产物的 SHA-256 落在与容器**同级**的 `<容器名>.sha256` 里，
+ * 格式沿用仓库既有约定（与 Release 资产的 `noj-cli-linux-amd64.sha256` 一致：
+ * `<64 位十六进制>  <文件名>`），便于 `sha256sum -c` 直接校验。
+ */
+export const CHECKSUM_SUFFIX = ".sha256";
+
+/**
  * manifest.json 的形状（字段名与 `backup.sh:271-283` 的 JSON **逐字对应**，
  * 只多了单文件容器必需的 `schema_version` / `payload_layout` / `encrypted` /
  * `zstd_level` / `sha256` / `files`）。
@@ -91,15 +103,6 @@ export interface BackupManifest {
   encrypted: boolean;
   /** zstd 压缩级别（复现打包参数）。 */
   zstd_level: number;
-  /**
-   * **tar.zst**（未加密的 payload 归档）的 SHA-256。
-   *
-   * 刻意不是最终 `.nojbackup` 的摘要：整包加密后每次运行的密文都不同
-   * （GPG 的随机 IV / salt），故密文摘要无法用于"同一快照"的比较或复现；
-   * 而 tar.zst 的摘要只要有相同的输入文件与压缩级别就稳定。
-   * 最终产物的摘要由调用方（`backup create`）另行计算并回报。
-   */
-  sha256: string;
   /** staging 内的文件清单（容器内相对路径，已排序）。 */
   files: string[];
   /** PostgreSQL 数据库名（bash 字段）。 */
@@ -370,10 +373,14 @@ export interface ContainerPayloadOps {
 export interface CreateContainerResult {
   /** 最终 `.nojbackup` 路径。 */
   path: string;
-  /** 最终产物的 SHA-256（密文；每次运行都不同）。 */
+  /**
+   * 最终产物的 SHA-256（整包密文；因 GPG 的随机 IV/salt，每次运行都不同）。
+   *
+   * 同时被写进同级 sidecar `<路径>.sha256`，供 `sha256sum -c` 直接校验。
+   */
   sha256: string;
-  /** tar.zst 的 SHA-256（manifest 内记录的那个）。 */
-  payloadSha256: string;
+  /** sidecar 校验文件路径（`<容器>.sha256`）。 */
+  sidecar: string;
   /** 完整的 manifest（便于调用方回报与测试断言）。 */
   manifest: BackupManifest;
 }
@@ -492,12 +499,35 @@ export async function createContainer(
       SUCCESS_MARKER + "\n",
     );
 
-    // ---- 8. checksums 与 manifest（先算除 manifest 外的全部文件）----
-    const beforeManifest = (await listFiles(staging)).filter((rel) =>
-      rel !== CONTAINER_FILES.manifest
+    // ---- 8. manifest 先落盘（顺序重要：checksums 必须覆盖 manifest）----
+    // bash `write_checksums`（:187-195）覆盖 staging 内**除自身以外的全部文件**，
+    // 包含它之前写入的 manifest。因此这里必须"先写 manifest、再算 checksums"——
+    // 反过来会让 manifest 游离在校验之外（实测中被 T17 的覆盖用例抓出）。
+    //
+    // `files` 清单是**预测**：此刻 checksums 尚未写出，故显式把它自己也算进去。
+    const manifest: BackupManifest = {
+      schema_version: SCHEMA_VERSION,
+      payload_layout: PAYLOAD_LAYOUT,
+      created_at: utcTimestamp(now),
+      encrypted: !noEncrypt,
+      zstd_level: zstdLevel,
+      files: [
+        ...(await listFiles(staging)),
+        CONTAINER_FILES.manifest,
+        CONTAINER_FILES.checksums,
+      ].sort(),
+      postgres_database: opts.postgresDatabase,
+      retention_days: opts.retentionDays ?? DEFAULT_RETENTION_DAYS,
+      ...MANIFEST_DEFAULTS,
+    };
+    await Deno.writeTextFile(
+      join(staging, CONTAINER_FILES.manifest),
+      JSON.stringify(manifest, null, 2) + "\n",
     );
+
+    // ---- 9. checksums：覆盖除自身外的全部文件（含 manifest）----
     const checksumEntries: ChecksumEntry[] = [];
-    for (const rel of beforeManifest) {
+    for (const rel of await listFiles(staging)) {
       if (rel === CONTAINER_FILES.checksums) continue;
       checksumEntries.push({
         relPath: rel,
@@ -509,29 +539,12 @@ export async function createContainer(
       renderChecksums(checksumEntries),
     );
 
-    // ---- 9. 两轮打包：manifest 需要 tar.zst 的摘要，而 manifest 自身要进包 ----
-    await opts.ops.tarZst(staging, tarZst, zstdLevel);
-    const payloadSha256 = await fileSha256HexStreaming(tarZst);
-
-    const manifest: BackupManifest = {
-      schema_version: SCHEMA_VERSION,
-      payload_layout: PAYLOAD_LAYOUT,
-      created_at: utcTimestamp(now),
-      encrypted: !noEncrypt,
-      zstd_level: zstdLevel,
-      sha256: payloadSha256,
-      files: [...(await listFiles(staging)), CONTAINER_FILES.manifest].sort(),
-      postgres_database: opts.postgresDatabase,
-      retention_days: opts.retentionDays ?? DEFAULT_RETENTION_DAYS,
-      ...MANIFEST_DEFAULTS,
-    };
-    await Deno.writeTextFile(
-      join(staging, CONTAINER_FILES.manifest),
-      JSON.stringify(manifest, null, 2) + "\n",
-    );
-    // 第二轮：manifest 进包（摘要字段留的是**未含 manifest** 时的 tar 摘要，
-    // 因为那正是校验方解包后能复算的对象——见 manifest.sha256 的 JSDoc）。
-    await Deno.remove(tarZst).catch(() => {});
+    // ---- 9b. 单轮打包（manifest 不引用自身归档的摘要，见下方"自指不可能"）----
+    // **自指不可能**：manifest 位于容器内部，无法记录自己所在文件的摘要
+    // （"写摘要 → 摘要变 → 再写"是无限回归）。因此容器内容的整体摘要落在
+    // **同级 sidecar** `<容器名>.sha256`（见 CHECKSUM_SUFFIX），格式与仓库既有
+    // Release 资产校验文件一致，可直接 `sha256sum -c`。
+    // 单轮打包也因此足够：manifest 不需要引用它所属归档的摘要。
     await opts.ops.tarZst(staging, tarZst, zstdLevel);
 
     // ---- 10. 收紧权限（bash chmod -R go-rwx）----
@@ -554,8 +567,29 @@ export async function createContainer(
       throw new ContainerError("commit", (err as Error).message);
     }
 
+    // ---- 12. sidecar 校验文件（容器整体摘要的**唯一**落点）----
+    // 与容器同目录、同临时名策略：先写 `.tmp` 再 rename，保证 sidecar 与容器
+    // 不会出现"容器已提交但 sidecar 缺失"之外的中间态（该情形下 verify 会
+    // 明确报"缺少 sidecar"，而不是静默通过）。
     const sha256 = await fileSha256HexStreaming(finalPath);
-    return { path: finalPath, sha256, payloadSha256, manifest };
+    const sidecar = finalPath + CHECKSUM_SUFFIX;
+    const sidecarTemp = `${sidecar}.${Deno.pid}.${crypto.randomUUID()}.tmp`;
+    try {
+      await Deno.writeTextFile(
+        sidecarTemp,
+        `${sha256}  ${finalPath.split("/").pop()}\n`,
+      );
+      await Deno.rename(sidecarTemp, sidecar);
+    } catch (err) {
+      await Deno.remove(sidecarTemp).catch(() => {});
+      // 容器已提交（不可回退地占了名字），故如实报告"缺 sidecar"的后果
+      throw new ContainerError(
+        "commit",
+        `容器已写入但无法写出校验文件 ${sidecar}：${(err as Error).message}`,
+      );
+    }
+
+    return { path: finalPath, sha256, sidecar, manifest };
   } finally {
     // 失败零残留：staging 与临时产物一律清理。
     // 注意 staged 的 `tar.zst` 是 `${staging}.tar.zst`（staging **同级**），
@@ -580,4 +614,399 @@ async function chmodPrivate(dir: string): Promise<void> {
       await Deno.chmod(full, 0o600);
     }
   }
+}
+
+// ---------------- 容器解包（verify / restore / drill 共用） ----------------
+
+/** {@link unpackContainer} 的注入点。 */
+export interface UnpackContainerOptions {
+  /** 容器文件路径。 */
+  path: string;
+  /** 口令文件路径；容器 `encrypted: false` 时可为空。 */
+  passphraseFile?: string;
+  /** 解包目标目录（临时目录；**调用方负责清理**）。 */
+  destDir: string;
+  /** 解包操作集（注入；生产为 `createProdPayloadOps`）。 */
+  ops: Pick<ContainerPayloadOps, "gpgDecrypt" | "untarZst">;
+  /**
+   * 容器是否加密。缺省按"有口令即加密"推断——但更稳妥的是由调用方
+   * 先读 manifest 再决定；此处提供显式开关以便测试与 `--no-encrypt` 产物。
+   */
+  encrypted?: boolean;
+}
+
+/** {@link unpackContainer} 的结果。 */
+export interface UnpackContainerResult {
+  /** 解包出的 staging 目录（= `destDir`）。 */
+  staging: string;
+  /** 解析后的 manifest；缺失或非法时为 null（由调用方判定是否致命）。 */
+  manifest: BackupManifest | null;
+}
+
+/**
+ * 解包 `.nojbackup` 容器到 `destDir`。
+ *
+ * 编排：加密时 `gpg --decrypt` → `tar -I zstd -xf` → 读 manifest。
+ *
+ * **不校验**内容（那是 {@link verifyContainer} 的职责）：本函数只负责把包打开，
+ * 让上层按档位自行判定。这样三档 verify 与 restore/drill 共用同一份解包实现。
+ *
+ * **不清理** `destDir`：调用方在 `finally` 里删（verify 需要在解包后继续读文件）。
+ */
+export async function unpackContainer(
+  opts: UnpackContainerOptions,
+): Promise<UnpackContainerResult> {
+  const encrypted = opts.encrypted ?? true;
+  const tarball = join(opts.destDir, "payload.tar.zst");
+  if (encrypted) {
+    if (opts.passphraseFile === undefined || opts.passphraseFile === "") {
+      throw new ContainerError("encrypt", "容器已加密，需要口令文件才能解包");
+    }
+    await Deno.mkdir(opts.destDir, { recursive: true });
+    await opts.ops.gpgDecrypt(opts.path, tarball, opts.passphraseFile);
+  }
+
+  // 解包到一个子目录：容器根的条目直接落在这里，便于与 destDir 自身的
+  // `payload.tar.zst` 共存（未加密时它就是容器本身）。
+  const staging = join(opts.destDir, "payload");
+  if (encrypted) {
+    await opts.ops.untarZst(tarball, staging);
+  } else {
+    await opts.ops.untarZst(opts.path, staging);
+  }
+
+  return { staging, manifest: await readManifest(staging) };
+}
+
+/** 读并解析 staging 内的 manifest；缺失或非法返回 null（不抛错）。 */
+export async function readManifest(
+  staging: string,
+): Promise<BackupManifest | null> {
+  let text: string;
+  try {
+    text = await Deno.readTextFile(join(staging, CONTAINER_FILES.manifest));
+  } catch {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(text) as BackupManifest;
+    return typeof parsed === "object" && parsed !== null ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------- 容器校验（verify 的三档共用底座） ----------------
+
+/** 单条校验失败。 */
+export interface VerifyIssue {
+  /** 失败所属档位。 */
+  level: "files" | "deep" | "payload";
+  /** 面向用户的说明。 */
+  message: string;
+}
+
+/** {@link verifyContainer} 的结果。 */
+export interface VerifyContainerResult {
+  /** 解包出的 staging（调用方负责清理）。 */
+  staging: string;
+  manifest: BackupManifest | null;
+  /** 逐档结论。 */
+  checks: {
+    /** 默认档：manifest + SUCCESS + sha256sums 逐文件。 */
+    files: boolean;
+    /** `--deep`：结构可解析 + env 可解密。 */
+    deep: boolean;
+    /** `--payload-sha`：容器文件摘要与同级 sidecar `.sha256` 一致。 */
+    payload: boolean;
+  };
+  issues: VerifyIssue[];
+  /** 是否已询问的档位全部通过。 */
+  pass: boolean;
+  /** `--deep` 是否因缺口令而跳过了需要口令的检查（如实报告，不静默通过）。 */
+  skippedDecrypt: boolean;
+}
+
+/** {@link verifyContainer} 的注入点。 */
+export interface VerifyContainerOptions extends UnpackContainerOptions {
+  /** 是否跑 `--deep` 档。 */
+  deep?: boolean;
+  /** 是否跑 `--payload-sha` 档。 */
+  payloadSha?: boolean;
+}
+
+/**
+ * 校验 `.nojbackup` 容器（`backup.sh verify_snapshot` :302-334 的等价 + 两档增强）。
+ *
+ * 三档**累加**（高档包含低档的全部检查）：
+ *
+ * | 档位 | 内容 | 成本 |
+ * | --- | --- | --- |
+ * | 默认 | `payload_layout == "prod-raw"`、`SUCCESS` 哨兵、`sha256sums.txt` 逐文件 | 秒级 |
+ * | `--deep` | 上一档 + `postgres.restore-list` 非空 + `redis.rdb` 首字节 `REDIS` + `minio/` 存在 + `env.prod.gpg` 可解密且非空 | 十秒级 |
+ * | `--payload-sha` | 上一档 + 复算**容器文件**摘要并与同级 sidecar `.sha256` 比对 | 十秒级 |
+ *
+ * 设计要点：
+ * - **不清理** staging（调用方 `finally` 删）——verify 之后 restore/drill 可能还要读；
+ * - `sha256sums` 的路径做**穿越防护**（`../`、绝对路径一律拒绝），与 bash
+ *   `verify_snapshot` 的 `[[ "$file" != /* && "$file" != *".."* ]]` 同义；
+ * - `--deep` 在缺口令时**跳过**解密并置 {@link VerifyContainerResult.skippedDecrypt}，
+ *   由调用方如实报告——静默通过会让"加密档"名不副实。
+ */
+export async function verifyContainer(
+  opts: VerifyContainerOptions,
+): Promise<VerifyContainerResult> {
+  const issues: VerifyIssue[] = [];
+  const unpacked = await unpackContainer(opts);
+  const { staging } = unpacked;
+  const manifest = unpacked.manifest;
+
+  // ---- 默认档：manifest / payload_layout ----
+  let filesOk = true;
+  if (manifest === null) {
+    filesOk = false;
+    issues.push({ level: "files", message: "缺少或无法解析 manifest.json" });
+  } else if (manifest.payload_layout !== PAYLOAD_LAYOUT) {
+    // 唯一形态：不做分派，直接拒绝（历史/未知布局不在支持范围）
+    filesOk = false;
+    issues.push({
+      level: "files",
+      message:
+        `payload_layout 不受支持：${manifest.payload_layout}（只支持 ${PAYLOAD_LAYOUT}）`,
+    });
+  }
+
+  // ---- 默认档：SUCCESS 哨兵 ----
+  let successOk = false;
+  try {
+    successOk =
+      (await Deno.readTextFile(join(staging, CONTAINER_FILES.success)))
+        .trim() ===
+        SUCCESS_MARKER;
+  } catch {
+    successOk = false;
+  }
+  if (!successOk) {
+    filesOk = false;
+    issues.push({
+      level: "files",
+      message: `缺少有效的 ${CONTAINER_FILES.success} 哨兵`,
+    });
+  }
+
+  // ---- 默认档：sha256sums 逐文件 ----
+  let sumsOk = false;
+  try {
+    const text = await Deno.readTextFile(
+      join(staging, CONTAINER_FILES.checksums),
+    );
+    const entries = parseChecksums(text);
+    let ok = true;
+    for (const entry of entries) {
+      // 穿越防护：绝对路径或含 .. 的清单项一律拒绝。
+      if (entry.relPath.startsWith("/") || entry.relPath.includes("..")) {
+        ok = false;
+        issues.push({
+          level: "files",
+          message: `校验清单包含非法路径：${entry.relPath}`,
+        });
+        continue;
+      }
+      let actual = "";
+      try {
+        actual = await fileSha256HexStreaming(join(staging, entry.relPath));
+      } catch {
+        ok = false;
+        issues.push({
+          level: "files",
+          message: `校验清单引用了缺失文件：${entry.relPath}`,
+        });
+        continue;
+      }
+      if (actual !== entry.sha256) {
+        ok = false;
+        issues.push({
+          level: "files",
+          message: `SHA-256 校验失败：${entry.relPath}`,
+        });
+      }
+    }
+    sumsOk = ok && entries.length > 0;
+    if (entries.length === 0) {
+      issues.push({ level: "files", message: "校验清单为空" });
+    }
+  } catch (err) {
+    issues.push({
+      level: "files",
+      message: `无法解析 ${CONTAINER_FILES.checksums}：${
+        (err as Error).message
+      }`,
+    });
+  }
+  filesOk = filesOk && successOk && sumsOk;
+
+  // ---- --deep 档：结构可解析 ----
+  let deepOk = filesOk;
+  let skippedDecrypt = false;
+  if (opts.deep === true) {
+    if (filesOk) {
+      // restore-list 非空（create 时 pg_restore --list 的产物）
+      let listOk = false;
+      try {
+        listOk = (await Deno.stat(
+          join(staging, CONTAINER_FILES.postgresRestoreList),
+        )).size > 0;
+      } catch {
+        listOk = false;
+      }
+      if (!listOk) {
+        deepOk = false;
+        issues.push({
+          level: "deep",
+          message:
+            `${CONTAINER_FILES.postgresRestoreList} 为空或缺失（PostgreSQL 结构未验证）`,
+        });
+      }
+
+      // redis.rdb 非空且首字节是 "REDIS"（RDB 魔术串）
+      let rdbOk = false;
+      let rdbDetail = "缺失或为空";
+      try {
+        const rdbPath = join(staging, CONTAINER_FILES.redisRdb);
+        const size = (await Deno.stat(rdbPath)).size;
+        if (size >= 5) {
+          const file = await Deno.open(rdbPath, { read: true });
+          try {
+            const head = new Uint8Array(5);
+            await file.read(head);
+            rdbOk = new TextDecoder().decode(head) === "REDIS";
+            if (!rdbOk) {
+              rdbDetail = `首字节不是 REDIS 魔术串：${
+                JSON.stringify(new TextDecoder().decode(head))
+              }`;
+            }
+          } finally {
+            file.close();
+          }
+        }
+      } catch {
+        rdbOk = false;
+      }
+      if (!rdbOk) {
+        deepOk = false;
+        issues.push({
+          level: "deep",
+          message: `redis.rdb 不可解析：${rdbDetail}`,
+        });
+      }
+
+      // minio/ 目录存在
+      let minioOk = false;
+      try {
+        minioOk = (await Deno.stat(join(staging, CONTAINER_FILES.minioDir)))
+          .isDirectory;
+      } catch {
+        minioOk = false;
+      }
+      if (!minioOk) {
+        deepOk = false;
+        issues.push({
+          level: "deep",
+          message: `${CONTAINER_FILES.minioDir}/ 目录缺失`,
+        });
+      }
+    } else {
+      deepOk = false;
+    }
+
+    // env.prod.gpg 可解密（需要口令；缺口令则如实跳过）
+    const hasPassphrase = (opts.passphraseFile ?? "") !== "";
+    if (deepOk && hasPassphrase) {
+      const out = join(opts.destDir, "env.prod.verify");
+      try {
+        await opts.ops.gpgDecrypt(
+          join(staging, CONTAINER_FILES.envProdGpg),
+          out,
+          opts.passphraseFile!,
+        );
+        const size = (await Deno.stat(out)).size;
+        if (size === 0) {
+          deepOk = false;
+          issues.push({
+            level: "deep",
+            message: "环境文件解密结果为空",
+          });
+        }
+      } catch (err) {
+        deepOk = false;
+        issues.push({
+          level: "deep",
+          message: `环境文件解密失败：${(err as Error).message}`,
+        });
+      } finally {
+        await Deno.remove(out).catch(() => {});
+      }
+    } else if (deepOk && !hasPassphrase) {
+      skippedDecrypt = true;
+    }
+  }
+
+  // ---- --payload-sha 档：容器整体摘要 vs 同级 sidecar ----
+  //
+  // 语义与**安全边界**（必须诚实）：sidecar 检测的是**意外损坏**——介质位翻转、
+  // 拷贝被截断、下载不完整、误改。它**不**防蓄意篡改：能改 `.nojbackup` 的人
+  // 同样能改同级 `.sha256`。要防蓄意篡改需要非对称签名（cosign 一类），
+  // 而对称口令体系下"持有口令者可重写一切"，签名不在本任务的范围内。
+  let payloadOk = deepOk;
+  if (opts.payloadSha === true) {
+    if (!filesOk) {
+      payloadOk = false;
+    } else {
+      const sidecar = opts.path + CHECKSUM_SUFFIX;
+      try {
+        const text = await Deno.readTextFile(sidecar);
+        const expected = text.trim().split(/\s+/)[0] ?? "";
+        if (!/^[0-9a-f]{64}$/.test(expected)) {
+          payloadOk = false;
+          issues.push({
+            level: "payload",
+            message: `sidecar 校验文件格式非法：${sidecar}`,
+          });
+        } else {
+          const actual = await fileSha256HexStreaming(opts.path);
+          payloadOk = actual === expected;
+          if (!payloadOk) {
+            issues.push({
+              level: "payload",
+              message:
+                `容器摘要与 sidecar 不一致（期望 ${expected}，实际 ${actual}）——文件可能已损坏`,
+            });
+          }
+        }
+      } catch {
+        payloadOk = false;
+        issues.push({
+          level: "payload",
+          message: `缺少 sidecar 校验文件：${sidecar}`,
+        });
+      }
+    }
+  }
+
+  const pass = filesOk &&
+    (opts.deep !== true || deepOk) &&
+    (opts.payloadSha !== true || payloadOk);
+
+  return {
+    staging,
+    manifest,
+    checks: {
+      files: filesOk,
+      deep: opts.deep === true ? deepOk : filesOk,
+      payload: opts.payloadSha === true ? payloadOk : deepOk,
+    },
+    issues,
+    pass,
+    skippedDecrypt,
+  };
 }
