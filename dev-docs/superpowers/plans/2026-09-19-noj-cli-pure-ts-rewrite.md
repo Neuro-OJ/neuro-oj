@@ -717,11 +717,12 @@ snapshot-<ts>.nojbackup
    两空格分隔、`LC_ALL=C sort` 排序（与 bash 的 `write_checksums` 逐字一致的排序
    口径）；`SUCCESS` 内容为 `success`（bash 写 `'success\n'`）；权限 `go-rwx`。
 5. **manifest**：`schema_version: 1`、`payload_layout: "prod-raw"`、`created_at`（UTC
-   `%Y-%m-%dT%H:%M:%SZ`）、`sha256`（**tar.zst** 的摘要，非最终文件）；另含 bash 的
-   说明性字段（`postgres_database`/`redis_policy`/`object_storage`/
-   `postgres_backup_mode`/`incremental_policy`/`rpo`/`rto`/`retention_days`）。
-   注意 sha256 的**时序**：manifest 自身要进包，故须"打包取摘要 → 写 manifest →
-   重新打包"两轮（bash 无 manifest 故无此问题；T18 的 verify 依赖该摘要）。
+   `%Y-%m-%dT%H:%M:%SZ`）与 `files` 清单；另含 bash 的说明性字段
+   （`postgres_database`/`redis_policy`/`object_storage`/`postgres_backup_mode`/
+   `incremental_policy`/`rpo`/`rto`/`retention_days`）。
+   **manifest 内不放整包摘要**（实现时修正）：manifest 在容器内部，记录自己所在
+   文件的摘要是不可能的（无限回归），故单轮打包即可；整包摘要落在**同级 sidecar**
+   `<容器名>.sha256`（`CHECKSUM_SUFFIX`），格式与 Release 资产校验文件一致。
 6. **原子落盘**：staging 目录 → 打包 → 加密到 `<backup-dir>/snapshot-<ts>.nojbackup`
    的**临时名** → `rename` 提交；任一步失败清理临时产物与 staging（`finally`），
    绝不留下半成品 `.nojbackup`。
@@ -740,7 +741,8 @@ snapshot-<ts>.nojbackup
 - **整包加密**：断言 `gpg --symmetric --cipher-algo AES256` 的输入是 **tar.zst**
   整体（而非逐文件），且最终产物是单个 `.nojbackup`。
 - **manifest 字段**：`payload_layout == "prod-raw"`、`schema_version == 1`、
-  `sha256` 等于 tar.zst 的摘要、`encrypted` 随 `--no-encrypt` 变化。
+  `files` 含 manifest 自身、`encrypted` 随 `--no-encrypt` 变化；**同级 sidecar**
+  `.sha256` 的摘要等于容器文件的摘要（且 `sha256sum -c` 可用）。
 - **checksums 覆盖**：`sha256sums.txt` 含除自身外的每个文件，排序为 `LC_ALL=C`。
 - **原子性**：加密失败 / 打包失败 → 备份目录内**零** `.nojbackup` 残留、无 staging
   残留（`finally` 生效）。
@@ -796,8 +798,15 @@ snapshot-<ts>.nojbackup
      非空（即 create 时的 `pg_restore --list` 产物存在）、`redis.rdb` 非空且
      首字节为 `REDIS`、`minio/` 目录存在、`env.prod.gpg` 能被口令**成功解密**
      且结果非空；
-   - **`--payload-sha`**：额外复算 `tar.zst` 的 SHA-256 并与 `manifest.sha256`
-     比对（证明 payload 未被重打包）。三档可叠加，任一失败即退出码 1。
+   - **`--payload-sha`**：额外复算**容器文件**的 SHA-256 并与**同级 sidecar**
+     `<容器>.sha256` 比对（检出介质损坏 / 拷贝截断 / 误改）。三档可叠加，任一失败
+     即退出码 1。
+     **为什么不是 manifest 内的摘要**（实现时修正）：manifest 位于容器**内部**，
+     无法记录自己所在文件的摘要（"写摘要 → 摘要变 → 再写"是无限回归）。
+     因此整体摘要落在同级 sidecar，格式与仓库既有 Release 资产校验文件一致
+     （可直接 `sha256sum -c`）。**安全边界须诚实**：sidecar 只防意外损坏，
+     不防蓄意篡改（能改容器的人也能改同级 sidecar）；对称口令体系下"持有口令者
+     可重写一切"，防篡改需要非对称签名，不在本任务范围。
 2. **`prune` 默认 dry-run**：不 `--confirm` 时只输出**计划**，零删除、零副作用；
    `--confirm` 才落地。默认**不删 legacy 目录**（存量数据）——复用
    `maintain/backup_index.ts:planPrune` 的既有语义，不重写判定。
