@@ -1490,19 +1490,62 @@ spec 在 `deploy.sh`/`restore-drill.sh` 的去留上**自相矛盾**：
 
 ---
 
-## Task 26（概要；执行前展开为完整任务块）
-| Task | 文件 | 验收要点 |
-| --- | --- | --- |
-| T17 .nojbackup 容器 | `backup/container.ts`、`driver.ts` | 单文件 + 整包加密；**文件重定向采二进制**；`pg_restore --list` 可解析 |
-| T18 verify/list/prune/dry-run | `backup/commands.ts` | 三档 verify；prune 默认 dry-run；restore --dry-run 无副作用；**不创建备份** |
-| T19 drill | `backup/drill.ts` | 隔离项目/子网/不映射端口；RPO/RTO 超限=1；资源缺失=2；失败也清理 |
-| T20 schedule | `schedule.ts` | crontab 标记区块幂等 |
-| T21 judge | `judge/` | 覆盖 `judge-install.sh`；不碰宿主 docker daemon |
-| T22 problem init | `problem/tui.ts` | 交互引导 + 非 TTY 明确行为 |
-| T23 删双模态 | 全仓 | 删 `noj-deploy.json` 路径、`deploy`/`maintain`/`stack`/`run-server`、`devTemplate`/`renderCompose`；`rg` 残留为空 |
-| T24 删 bash + 闸门 | `scripts/deploy/` | 删内驱脚本/根 `noj`；`deploy.sh`/`restore-drill.sh` 加 y 确认 |
-| T25 文档 | `noj-docs/`、`AGENTS.md`、CHANGELOG | #510 治理；两段式开发流程；CLI 文档重写 |
-| T26 证据 | `dev-docs/unattended/` | 验收证据 + 进度日志 + 待人工 review |
+## Task 26: 验收证据与待人工 review（交付收口）
+
+**Files:**
+- Create: `dev-docs/unattended/2026-09-19-noj-cli-rewrite-evidence.md` — 验收证据
+- Modify: `dev-docs/unattended/progress-log.md` — 追加本次重写的进度与实测结果
+- Create: `dev-docs/unattended/2026-09-19-noj-cli-manual-review.md` — 待人工 review 清单
+
+**性质**：本任务**不写代码**，只产出**可复核的证据**。判据是"另一个工程师能否
+仅凭这份文档复现结论"，而不是"文档读起来很完整"。
+
+**必须产出的内容**
+
+1. **逐条验收对照（spec §8 的 L0/M/R1–R7/P8/P11）**：每条给
+   - 判定（✅ / ⚠️ / ❌）；
+   - **可执行的复核命令**（`deno task test`、`rg …`、`bash scripts/…`）；
+   - **实测输出**（不是"应该通过"，而是贴出结果的**关键行**）。
+2. **规模与覆盖的量化对照**：基线 vs 现状（测试数、文件数、bash 删除行数、
+   bash 保留行数与其理由）。**测试数下降要解释**（删掉的是已不存在行为的用例）。
+3. **待人工 review 清单**：每条给出**可执行的判定动作**（读哪个文件的哪一段、
+   跑哪条命令、期望看到什么），而不是需要 reviewer 自行猜测的判断题。
+   必须包含（至少）：
+   - **spec 的两处自相矛盾**（T24 的删除 vs 闸门；T25 对 `about.vue` 的错误指控）
+     及其裁决依据 —— reviewer 需要判断裁决是否合理；
+   - **过渡期保留的 3 个 bash 脚本**（`deploy.sh`/`restore-drill.sh`/`backup.sh`）
+     的删除时机；
+   - **`update` 的备份注入**是否达到"升级前必须备份"的设计意图；
+   - **judge 的共享 socket 拒绝**是否有遗漏的等价路径（realpath 之外）；
+   - **drill 的隔离性**（不映射端口）在真实 Docker 上的表现（本环境只做了注入测试）；
+   - **`install` 在真实 Release 上的端到端**（本环境无法发布 Release，属未取证项）。
+4. **诚实标注未取证项**：区分"已验证"与"未验证"。至少：
+   - `deno compile` 产物在仅含 docker/curl/openssl 环境的行为；
+   - 真实 GitHub Release 的资产完整性（`install` / `update --latest` 端到端）；
+   - drill 在真实 Docker 上的完整演练（RPO/RTO、业务验收）；
+   - judge 在真实 rootless daemon 上的部署。
+
+- [ ] **Step 1: 采集证据**（跑命令、留输出）
+
+- 逐条跑 spec §8 的验收命令并记录**关键输出行**；不确定的条目**重跑一次**再判定。
+
+- [ ] **Step 2: 写验收证据文档**
+
+- 表格化：验收项 / 判定 / 复核命令 / 实测输出。
+
+- [ ] **Step 3: 写待人工 review 清单**
+
+- 每条 = 判定动作 + 期望结果 + 不通过意味着什么。
+
+- [ ] **Step 4: 追加进度日志**
+
+- 本次重写的提交数、测试数变化、发现的真实缺陷清单（即"计划外的收获"）。
+
+- [ ] **Step 5: 提交** — `docs(root): noj-cli 重写验收证据与待人工 review 清单`
+
+**明确不做**：不修改实现（发现缺陷应单独提交）；不校准历史归档
+（`dev-docs/superpowers/plans/` 的历史条目、`openspec/changes/`）；
+不宣称未取证的项已通过。
 
 ---
 
