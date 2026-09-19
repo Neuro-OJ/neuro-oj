@@ -1211,7 +1211,108 @@ input/select/confirm），`command.ts` 也已区分 TTY 与 `--no-interactive`�
 
 ---
 
-## Task 23–26（概要；执行前逐个展开为完整任务块）
+## Task 23: 删双模态（M1–M7 收口）
+
+**Files（删除，非测试 ~6291 行 / 测试 ~3075 行）:**
+- Delete: `noj-cli/src/deploy/**`（compose/deploy/docker/paths/state + 测试）
+- Delete: `noj-cli/src/maintain/**`（backup/logs/reset/config/backup_driver + 测试）
+  **除** `backup_index.ts`/`backup_list.ts`/`drill.ts`（见「抢救清单」）
+- Delete: `noj-cli/src/config/**`、`noj-cli/src/init/templates.ts`、`init/wizard.ts`
+- Delete: `noj-cli/src/state/machine.ts`、`noj-cli/src/doctor/**`
+- Delete: `noj-cli/src/runtime/process.ts`、`pidfile.ts`（`run-server` 的运行时支撑）
+- Modify: `noj-cli/src/cli.ts`（1705 → 大幅收缩：删旧命令分支与 profile 门控）
+- Modify: `noj-cli/src/commands.ts`、`noj-cli/src/mod.ts`、`cli_test.ts`、
+  `commands_test.ts`、`production.ts`、`profile.ts`
+
+**⚠️ 前置事实核对（本任务的真正难点）**：T17–T22 交付的 `prod/` **仍依赖 6 个旧模块**，
+因此这**不是** `rm -rf`。必须先「抢救」再删除，否则会连带打断已验收的 prod 路径：
+
+| 旧模块 | 被谁用 | 抢救方式 |
+| --- | --- | --- |
+| `maintain/backup_index.ts`（`planPrune`/`parseBackupName`/`detectSnapshotFormat`） | `prod/backup/commands.ts` | **移入** `prod/backup/index.ts`（纯逻辑，与模态无关） |
+| `maintain/backup_list.ts`（`listBackups`/`pruneBackups`） | `prod/backup/commands.ts` | **移入** `prod/backup/list.ts` |
+| `maintain/drill.ts`（`assertDrillProjectName`/`assertSubnetCidr`） | `prod/drill/{plan,drill}.ts` | **移入** `prod/drill/plan.ts`（T19 已登记该 carry-forward） |
+| `init/secrets.ts`（`randomKey`） | `prod/lifecycle.ts`、`prod/config.ts` | `randomKey` **移入** `util/random.ts`；`generateSecrets` 随 `SecretsConfig` 一并删除 |
+| `init/non_interactive.ts`（`nonInteractiveAdvice`） | `prod/config.ts`、`prod/lifecycle.ts` | **移入** `prod/advice.ts`（文案需改写：不再指引 `deploy init`） |
+| `config/types.ts`（`DeployState`/`SCHEMA_VERSION`） | `prod/lifecycle.ts`、`core/state.ts` | `DeployState` 已在 `core/state.ts` 有等价定义；`SCHEMA_VERSION` **移入** `prod/backup/container.ts`（它本就有自己的 `SCHEMA_VERSION`） |
+
+**M1–M7 的验收（逐条对应 spec §2.6/§2.7）**
+- M1 一套状态机：`core/state.ts` 唯一；删 `state/machine.ts` 与 `deploy/state.ts`
+- M2 一套配置 schema：`core/config-schema.ts` 唯一；删 `config/validate.ts`
+- M3 一条部署路径：删 `deploy/docker.ts`（prod 走 `prod/compose.ts`）
+- M4 一份 compose：删 `deploy/compose.ts` 的 `renderCompose()`（保留固定 prod compose）
+- M5 命令面单一含义：删 `deploy`/`maintain`/`stack` 三个旧名
+- M6 删 `noj-deploy.json`/`noj-secrets.json` 双配置读写
+- M7 移除开发部署模式：删 `devTemplate`/`prodTemplate`/`renderCompose`/`run-server`
+
+**必须实现的行为**
+
+1. **先抢救、后删除**（顺序不可颠倒）：每一步都保持 `deno task check && deno task test`
+   绿。抢救用 `jj commit` 单独成一次提交，便于 review「文件移动 + import 改写」。
+2. **删除是分组的独立提交**（见 Step 3 的 5 组），每组删完即跑门禁——
+   一次删 6000 行会让失败定位变得昂贵。
+3. **命令面**：顶层只剩 `prod` 语义（`install`/`check`/`start`/`stop`/`restart`/
+   `status`/`logs`/`update`/`backup`/`verify`/`config`/`uninstall`）+ `problem` +
+   Tier 3 容器命令 + `version`/`help`。**`stack`/`deploy`/`maintain`/`run-server`/
+   `doctor` 全部移除**；对旧名给出**明确的迁移提示**（一次即可，不保留别名）：
+   - `deploy`/`maintain`/`stack` → 提示生产命令名（如 `noj-cli status`）
+   - `run-server` → 提示源码调试用两段式（`docker compose up -d` + `deno task dev`）
+4. **profile 收敛**：`profile.ts` 的 `stack` 分支删除；`PRODUCTION_MARKERS`
+   （`.env.prod` + `docker-compose.prod.yml`）保留（T5 已确立它是 prod 探测的事实源）。
+   `--profile` 旗标保留但只接受 `prod`（显式给出 `stack` → 用法错误 2 + 迁移提示）。
+5. **`rg` 残留为空**（spec M6/M7 的验收形式，门禁化）：
+   - `rg 'noj-deploy\.json|noj-secrets\.json' noj-cli/src` → 仅允许出现在
+     **迁移提示文案**与测试里（提示必须提到旧文件名，否则用户不知道要删什么）；
+   - `rg 'devTemplate|prodTemplate|renderCompose|runServerForeground|startManagedProcess|stopManagedProcess' noj-cli/src` → 空；
+   - `rg '"(deploy|maintain|stack|run-server)"' noj-cli/src/commands.ts` → 空。
+6. **测试同步**：`cli_test.ts` 里针对旧命令的用例**删除**（那些行为已不存在）；
+   针对**防漂移门禁**的用例保留并更新（T7 的 `declaredTopLevelNames() ⊆ 可处理集合`
+   必须继续通过——它是本次删除的安全网）。
+
+- [ ] **Step 1: 抢救（rescue）**
+
+- 移 `backup_index.ts`/`backup_list.ts` → `prod/backup/{index,list}.ts`；移
+  `drill.ts` 的两个校验 → `prod/drill/plan.ts`；`randomKey` → `util/random.ts`；
+  `nonInteractiveAdvice` → `prod/advice.ts`（改写文案）；`SCHEMA_VERSION` →
+  `prod/backup/container.ts`。
+- 对应测试一并移动（`backup_index_test.ts`/`backup_list_test.ts` 必须跟着走，
+  否则删除时会连测试一起丢掉——那会让 T18 的 prune 安全默认失去覆盖）。
+- 断言：`deno task check && deno task test` 全绿，且**测试数不减**。
+
+- [ ] **Step 2: 命令面收敛（cli.ts + commands.ts）**
+
+- 删 `stack`/`deploy`/`maintain`/`run-server`/`doctor` 分支与 `DEPLOY_SUBS`/
+  `STACK_ONLY`/`PROD_ONLY` 门控；旧名走**一次性迁移提示**（退出码 2，因为命令已不存在）。
+- `commands.ts` 删 `stack` 分区与三个旧名条目；`TIER_ORDER` 去掉 `"stack"`。
+- 断言：`deno task test` 绿（含 T7 防漂移门禁），`rg` 无旧命令残留。
+
+- [ ] **Step 3: 分组删除（5 组，各自一个提交）**
+
+- 3a `deploy/**`（含测试）；3b `maintain/**` 剩余部分（含测试）；
+- 3c `config/**` + `init/{templates,wizard}.ts`（含测试）；
+- 3d `state/machine.ts` + `doctor/**`（含测试）；3e `runtime/{process,pidfile}.ts`。
+- 每组后跑 `deno task check && deno task test`。
+
+- [ ] **Step 4: 收尾（mod.ts 导出、残留清零、门禁）**
+
+- `mod.ts` 删掉全部已删模块的再导出（它是 `deno check` 的 reachability 入口，
+  残留导出会直接编译失败——这正是它作为门禁的价值）。
+- 加**残留门禁**到 `commands_test.ts`：断言 `COMMANDS` 不含旧名、
+  `renderCommandList()` 不含 `stack`/`deploy`/`maintain`/`run-server`。
+
+- [ ] **Step 5: 运行确认通过 + 提交**
+
+- `cd noj-cli && deno task check && deno task test`；
+- 提交序列（便于 review）：`refactor(cli): 抢救 prod 依赖的纯逻辑模块` →
+  `refactor(cli): 命令面收敛为单模态（删 stack/deploy/maintain/run-server）` →
+  5 个分组删除提交 → `refactor(cli): 清理包入口导出并加残留门禁`。
+
+**明确不做**：不删 bash（T24）；不改 `prod/` 的行为契约（只搬 import）；
+不动 `docker-compose.prod.yml`（它是 M4 的保留项）；不改 `problem/`/Tier 3。
+
+---
+
+## Task 24–26（概要；执行前逐个展开为完整任务块）
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
 | T17 .nojbackup 容器 | `backup/container.ts`、`driver.ts` | 单文件 + 整包加密；**文件重定向采二进制**；`pg_restore --list` 可解析 |
