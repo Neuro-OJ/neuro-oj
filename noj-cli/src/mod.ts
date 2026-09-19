@@ -278,6 +278,35 @@ export type {
   RawDriver,
   RawIO,
 } from "./prod/backup/driver.ts";
+// backup 命令面（T18）：verify 三档 / list / prune（默认 dry-run）/ restore --dry-run。
+// 三条硬约束：三档累加；prune 默认零删除；四个命令都不得创建备份（实测过的误路由）。
+export {
+  assertContainerPath,
+  backupCount,
+  type BackupListResult,
+  type BackupPruneResult,
+  type BackupVerifyResult,
+  listBackupCommand,
+  prodBackupDir,
+  pruneCommand,
+  restorePlan,
+  type RestorePlanOptions,
+  type RestoreStep,
+  verifyCommand,
+} from "./prod/backup/commands.ts";
+export {
+  CHECKSUM_SUFFIX,
+  readManifest,
+  unpackContainer,
+  verifyContainer,
+} from "./prod/backup/container.ts";
+export type {
+  UnpackContainerOptions,
+  UnpackContainerResult,
+  VerifyContainerOptions,
+  VerifyContainerResult,
+  VerifyIssue,
+} from "./prod/backup/container.ts";
 // release（T16）：生产升级的版本解析与版本配置落盘（production.sh 的
 // validate_release_tag / latest_release_version / configured_version /
 // write_config_version）。过滤规则与 runtime/download.ts **同源**
