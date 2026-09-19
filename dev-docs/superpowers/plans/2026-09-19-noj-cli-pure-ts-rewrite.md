@@ -1378,7 +1378,7 @@ input/select/confirm），`command.ts` 也已区分 TTY 与 `--no-interactive`�
    `noj-cli` 覆盖；PATH 注册（T13/T15 的 `registerCommand`）指向
    `<dir>/bin/noj-cli`，故删除后不影响已安装站点。
 
-- [ ] **Step 1: 写失败测试**（`prod/cli_test.ts`）
+- [x] **Step 1: 写失败测试**（`prod/cli_test.ts`）
 
 - **接线**：每个命令的 CLI 入口都要调到**原生**实现——用注入 runner 断言
   "调用的是 `prod/*` 的路径而不是 spawn bash"（`runner.run` 收到的是
@@ -1390,20 +1390,31 @@ input/select/confirm），`command.ts` 也已区分 TTY 与 `--no-interactive`�
 - **`--json`**：每个命令的 stdout 逐字节合法 JSON（`JSON.parse` 不抛）。
 - **R2 闸门**（若保留过渡脚本）：注入 `NOJ_ACCEPT_DEPRECATED` / 非 TTY → 行为明确。
 
-- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+- [x] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
 
-- [ ] **Step 3: 实现**（先接线、跑绿，再删 bash——顺序不可颠倒）
+- [x] **Step 3: 实现**（先接线、跑绿，再删 bash——顺序不可颠倒）
 
 - 接线（`prod/cli.ts`）→ `deno task check && deno task test` 绿 →
   删 bash 与根 `noj` → 同步 CI 调用点 → 再跑门禁。
 
-- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`；
+- [x] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`；
   `rg` 残留检查为空；`bash scripts/check-ci.ts` 等价检查通过。
 
-- [ ] **Step 5: 提交** — 拆成三个提交便于 review：
+- [x] **Step 5: 提交** — 拆成三个提交便于 review：
   `feat(cli): 生产命令接线到原生实现（移除 bash 转发）` →
   `chore(cli): 删除生产 bash 脚本与根 noj` →
   `ci(root): 同步删除脚本后的 CI 调用点`
+
+**⚠️ 执行中的 spec 冲突（已与用户确认，按「保留 + 闸门」处理）**
+
+spec 在 `deploy.sh`/`restore-drill.sh` 的去留上**自相矛盾**：
+- §3.3 删除清单 + §10「❌ 保留任何 bash 实现路径（R1 是硬要求）」→ **删除**三者
+  （含 `backup.sh`，它是前两者的硬依赖）；
+- §7 P10 + §8 R2 验收 → **保留** `deploy.sh`/`restore-drill.sh` 并加弃用闸门。
+
+裁决：**保留 + 闸门**（删除不可逆，闸门可在下一版本收紧为删除）。
+附带事实：该支实际保留 **3 个**脚本——`deploy.sh:1167` 与 `restore-drill.sh:276`
+都硬依赖 `backup.sh`，另有 `restore-drill-verify.ts`，少了它们闸门形同虚设。
 
 **明确不做**：不改 `prod/` 的行为契约（只解析参数并调用）；不改
 `docker-compose.prod.yml`；不动 `noj-docs/`（T25）；不删除 e2e 用的
