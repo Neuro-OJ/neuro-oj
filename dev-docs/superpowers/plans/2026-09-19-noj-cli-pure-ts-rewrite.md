@@ -14,7 +14,7 @@
 - Consumes: 无（起点）
 - Produces: `@cliffy/command` 可 import；基线记录可供后续对照
 
-- [ ] **Step 1: 记录基线**
+- [x] **Step 1: 记录基线**
 
 运行并记录（写入 `dev-docs/unattended/2026-09-19-baseline.md`）：
 ```bash
@@ -23,14 +23,14 @@ cd noj-cli && deno task check 2>&1 | tail -3
 jj log --no-graph -r '@' -T 'commit_id ++ "\n"'   # 冻结 SHA
 ```
 
-- [ ] **Step 2: 加 Cliffy 依赖**
+- [x] **Step 2: 加 Cliffy 依赖**
 
 ```bash
 cd noj-cli && deno add jsr:@cliffy/command@1.2.1
 ```
 （**禁止**手改 deno.lock。）
 
-- [ ] **Step 3: 写冒烟测试证明依赖可用**
+- [x] **Step 3: 写冒烟测试证明依赖可用**
 
 Create `noj-cli/src/core/cliffy_smoke_test.ts`：
 ```ts
@@ -49,12 +49,12 @@ Deno.test("Cliffy 可实例化并解析 variadic 透传参数", async () => {
 });
 ```
 
-- [ ] **Step 4: 运行并确认通过**
+- [x] **Step 4: 运行并确认通过**
 
 Run: `cd noj-cli && deno task test 2>&1 | tail -3`
 Expected: `324 passed | 0 failed`（323 + 1 新增）
 
-- [ ] **Step 5: 门禁 + 提交**
+- [x] **Step 5: 门禁 + 提交**
 
 ```bash
 cd noj-cli && deno task check
@@ -81,7 +81,7 @@ jj new
 
 **来源（对照 bash，不得遗漏）**：`scripts/deploy/deploy.sh:684-711` 的 `check_required_values` 硬编码 19 个键 + judge 2 个键。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 Create `noj-cli/src/core/config_schema_test.ts`：
 ```ts
@@ -119,21 +119,21 @@ Deno.test("judge 启用时额外要求 JUDGE_DOCKER_SOCKET 与 GID", () => {
 });
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `cd noj-cli && deno task test 2>&1 | tail -5`
 Expected: FAIL — `Module not found` / `config-schema.ts`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 Create `noj-cli/src/core/config-schema.ts`（键清单与 `deploy.sh:686-710` 逐字一致；`isPlaceholder` 对照 `deploy.sh:667-675` 的占位判断，含 `change-this`/`REPLACE_WITH_`/`your-` 等前缀）。
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `cd noj-cli && deno task test 2>&1 | tail -3`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 cd noj-cli && deno task check
@@ -156,11 +156,11 @@ jj new
   - `export async function readEnvFile(path: string): Promise<Map<string,string>>`
   - `export async function writeEnvFileAtomic(path: string, entries: Map<string,string>): Promise<void>`（临时文件 + chmod 600 + rename）
 
-- [ ] **Step 1: 写失败测试**（覆盖：注释保留、引号剥离、`=` 在值中、CRLF、原子写权限 600、不存在文件报错）
-- [ ] **Step 2: 运行确认失败**
-- [ ] **Step 3: 实现**（对照 `deploy.sh:181-192` 的 `env_value` 与 `:200-219` 的 `set_env_value` 语义）
-- [ ] **Step 4: 运行确认通过**
-- [ ] **Step 5: 提交** — `feat(cli): 新增 .env.prod 原子读写（保留注释与顺序）`
+- [x] **Step 1: 写失败测试**（覆盖：注释保留、引号剥离、`=` 在值中、CRLF、原子写权限 600、不存在文件报错）
+- [x] **Step 2: 运行确认失败**
+- [x] **Step 3: 实现**（对照 `deploy.sh:181-192` 的 `env_value` 与 `:200-219` 的 `set_env_value` 语义）
+- [x] **Step 4: 运行确认通过**
+- [x] **Step 5: 提交** — `feat(cli): 新增 .env.prod 原子读写（保留注释与顺序）`
 
 ---
 
@@ -174,11 +174,11 @@ jj new
 **Interfaces:**
 - Produces: 与现有 `transition()` 相同的 `DeployAction`/`DeployState` 语义，新增 `prodState(composePsOutput): DeployState`
 
-- [ ] **Step 1: 写失败测试**（`up` 已 running → no-op；`down` 已 stopped → no-op；`prodState` 从 `docker compose ps` 输出推断 running/stopped/partial）
-- [ ] **Step 2: 运行确认失败**
-- [ ] **Step 3: 实现**（移植 `state/machine.ts`；`prodState` 为新增，解决 §2.2 的 prod 无状态问题）
-- [ ] **Step 4: 运行确认通过**
-- [ ] **Step 5: 提交** — `feat(cli): 状态机提升为公共内核并支持 prod 路径`
+- [x] **Step 1: 写失败测试**（`up` 已 running → no-op；`down` 已 stopped → no-op；`prodState` 从 `docker compose ps` 输出推断 running/stopped/partial）
+- [x] **Step 2: 运行确认失败**
+- [x] **Step 3: 实现**（移植 `state/machine.ts`；`prodState` 为新增，解决 §2.2 的 prod 无状态问题）
+- [x] **Step 4: 运行确认通过**
+- [x] **Step 5: 提交** — `feat(cli): 状态机提升为公共内核并支持 prod 路径`
 
 ---
 
@@ -192,11 +192,11 @@ jj new
 **Interfaces:**
 - Produces: `PRODUCTION_MARKERS = ["docker-compose.prod.yml", ".env.prod"]`
 
-- [ ] **Step 1: 更新测试**（把 mock fs 的 `/opt/scripts/deploy/production.sh` 改为 `/opt/.env.prod`；**新增**：仅有 `production.sh` 无 `.env.prod` → 不再判定为 prod）
-- [ ] **Step 2: 运行确认失败**
-- [ ] **Step 3: 实现**（两处常量同步改；`isInstallDir` 同）
-- [ ] **Step 4: 运行确认通过**
-- [ ] **Step 5: 提交** — `fix(cli): profile 探测标记改用 .env.prod，避免删除 production.sh 后自锁`
+- [x] **Step 1: 更新测试**（把 mock fs 的 `/opt/scripts/deploy/production.sh` 改为 `/opt/.env.prod`；**新增**：仅有 `production.sh` 无 `.env.prod` → 不再判定为 prod）
+- [x] **Step 2: 运行确认失败**
+- [x] **Step 3: 实现**（两处常量同步改；`isInstallDir` 同）
+- [x] **Step 4: 运行确认通过**
+- [x] **Step 5: 提交** — `fix(cli): profile 探测标记改用 .env.prod，避免删除 production.sh 后自锁`
 
 ---
 
@@ -212,11 +212,11 @@ jj new
   - `export function emitHuman(text: string, io?): void` — 人类输出只在 `--json` 关闭时写 stdout，否则写 stderr
   - `export function isJsonMode(args: string[]): boolean`
 
-- [ ] **Step 1: 写失败测试**（`--json` 时 stdout 不含装饰；人类输出不污染 stdout；非 json 时正常）
-- [ ] **Step 2: 运行确认失败**
-- [ ] **Step 3: 实现**
-- [ ] **Step 4: 运行确认通过**
-- [ ] **Step 5: 提交** — `feat(cli): --json 走独立通道，保证 stdout 逐字节为合法 JSON`
+- [x] **Step 1: 写失败测试**（`--json` 时 stdout 不含装饰；人类输出不污染 stdout；非 json 时正常）
+- [x] **Step 2: 运行确认失败**
+- [x] **Step 3: 实现**
+- [x] **Step 4: 运行确认通过**
+- [x] **Step 5: 提交** — `feat(cli): --json 走独立通道，保证 stdout 逐字节为合法 JSON`
 
 ---
 
@@ -238,7 +238,7 @@ jj new
 
 **背景（为何这是关键路径）**：现状 help 文案手写在 **8 个渲染函数**里，已实测漂移——`noj-cli backup --help` 漏列 `list`/`prune`（真实能力），根因是同一份文案维护在 4 处（`help.ts:52` 对，`cli.ts:1064/1567/1640` 错）。本任务把命令清单收敛为**单一事实源**，并加**门禁**使漂移不可能再发生。
 
-- [ ] **Step 1: 写失败测试（含门禁）**
+- [x] **Step 1: 写失败测试（含门禁）**
 
 Create `noj-cli/src/commands_test.ts`：
 - 断言 `COMMANDS` 非空且每项 `name`/`summary` 非空、`name` 唯一。
@@ -246,12 +246,12 @@ Create `noj-cli/src/commands_test.ts`：
 - **防漂移门禁**：断言「`declaredTopLevelNames()` ⊆ 实际可处理集合」。实际可处理集合的来源须**从 `cli.ts` 的既有判定读取**（`PRODUCTION_COMMANDS`、`KNOWN_TOP`/switch 分支、`problem`/`stack` 等特判），不得硬编码第二份清单——否则门禁自身会漂移。设计一个可导出的「dispatcher 可处理集合」取得方式；若 cli.ts 当前未导出，**导出它**（最小改动）。
 - 断言 `backup` 的子命令声明**包含 `list` 与 `prune`**（本次已实测漂移的回归断言）。
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `cd noj-cli && deno task test 2>&1 | tail -5`
 Expected: FAIL — `commands.ts` 不存在
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 Create `noj-cli/src/commands.ts`：
 - 从既有 `help.ts` 的 `COMMANDS` 结构与 `cli.ts` 的实际分支**逐条核对**后建立清单（**以代码为准**，不以 help 文案为准——help 已知有漂移）。
@@ -260,13 +260,13 @@ Create `noj-cli/src/commands.ts`：
 - Modify `cli.ts`：`printHelp()` 改为调用 `renderCommandList()`，删除重复的手写清单（保留 `renderCommandHelp` 等命令级帮助不动，本任务只收敛**清单**）。
 - Modify `mod.ts`：导出 T2–T6 的新模块（`core/config-schema.ts`、`core/env-file.ts`、`core/state.ts`、`output/render.ts`）与原语。
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `cd noj-cli && deno task test 2>&1 | tail -3` 与 `cd noj-cli && deno task check`
 
 **注意**：`cli_test.ts` 有既有断言依赖 help 文案（如「printHelp 按模式分区并包含全部命令」、「不再声称 maintain backup 支持 schedule」）。**不得删除或弱化**这些断言；若文案变化导致失败，修正实现使其仍满足原意（分区 + 准确）。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 cd noj-cli && deno task check
@@ -291,7 +291,7 @@ jj new
 
 **背景**：spec §1.2 实测——"加 ANSI 颜色"大部分已存在（`util/color.ts` 已有 `NO_COLOR`/`LOG_COLOR`/`--color`/非 TTY 关色/`prefixLine`），**真实缺口是排版（表格/对齐/状态符号）与品牌对齐**：`noj-design-tokens.md` 有完整 token 但**无 CLI/终端 section**（`rg 'CLI|终端|ANSI'` 零命中），现调色板是任意 8 色。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `theme_test.ts` + `render_test.ts` 覆盖：
 - 语义色（成功/警告/错误/信息/强调）在**非 TTY 或 `NO_COLOR` 非空**时**不输出任何 ANSI 转义**（断言字符串不含 `\x1b[`）。
@@ -301,17 +301,17 @@ jj new
 - 状态符号与语义色配对（成功/警告/错误各一）。
 - **`--json` 模式下表格渲染不得写 stdout**（复用 T6 契约）。
 
-- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+- [x] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 - `theme.ts`：从 `noj-design-tokens.md` 的语义 token（`--c-success-text` 等）取概念映射到 ANSI 前景色；**必须先给 token 文档补 CLI/终端 section**，再据其实施（不要凭感觉配色）。复用 `util/color.ts` 的 `resolveColor` 决定是否着色，**不新增第二套 NO_COLOR 判定**。
 - `render.ts`：新增 `renderTable(rows, opts)` 与 `renderStatus(kind, text)`（命名可按实现调整，但须导出并测试）。表格须处理 **CJK 宽度**（中文占 2 列）——若实现复杂度过高，可先只保证 ASCII 对齐并在报告中显式标注 CJK 未处理，**不得**假装处理了。
 - `noj-design-tokens.md`：新增 CLI/终端 section，列出语义色 → ANSI 的映射与降级规则。
 
-- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+- [x] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
 
-- [ ] **Step 5: 提交** — `feat(cli): 品牌 token 语义色与表格渲染（CLI 排版）`
+- [x] **Step 5: 提交** — `feat(cli): 品牌 token 语义色与表格渲染（CLI 排版）`
 
 **明确不做**：不改 `util/color.ts` 的既有契约（只复用）；不迁移既有调用点（T18）；不引入运行时依赖（表格自绘或复用已有）。
 
@@ -331,7 +331,7 @@ jj new
 
 > ⚠️ **实测的硬前置**：`.github/workflows/release.yml:110-113` 当前**只上传** `noj-cli-linux-amd64` + `.sha256`。**没有** `docker-compose.prod.yml` / `.env.prod.example`。因此本任务**必须同时改 release workflow**，否则 bootstrap 在生产无资产可下载（而单测用注入 fetcher 不会发现）。这是本任务的一部分，不是"以后再说"。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `bootstrap_test.ts` 用**注入的 fetcher**（不触网）覆盖：
 - 成功路径：下载 compose + example 到目标目录，且**逐字节**等于 fake 内容。
@@ -341,9 +341,9 @@ jj new
 - URL 构造：给定 repo/ref，断言拼出的 URL 形状正确（可用注入 fetcher 捕获请求 URL）。
 - **安全**：URL 必须 HTTPS；ref 必须经字符白名单校验（对照 `install.sh:185-190` 的 `validate_ref`）——断言非法 ref（含 `..`、前导 `/`、空格）被拒。
 
-- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+- [x] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 - `prod/bootstrap.ts`：导出形如 `fetchReleaseAssets(opts, fetcher)` 与 `validateRef(ref)` 的函数（命名可调，须导出并测试）。要求：
   - 参数以**数组/结构体**构造，不拼 shell 字符串。
@@ -354,9 +354,9 @@ jj new
   `docker-compose.prod.yml`、`docker-compose.prod.yml.sha256`、`.env.prod.example`、`.env.prod.example.sha256`（生成方式与既有 CLI 资产一致，用 `sha256sum`）。
 - Modify `mod.ts`：导出新符号。
 
-- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+- [x] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
 
-- [ ] **Step 5: 提交** — `feat(cli): bootstrap 从 Release 下载 compose/example 并校验（吸收 install.sh 职责）`
+- [x] **Step 5: 提交** — `feat(cli): bootstrap 从 Release 下载 compose/example 并校验（吸收 install.sh 职责）`
 
 **明确不做**：本任务**不**删除 `install.sh`（T24 删）；**不**实现完整 `install` 流程（T12）；**不**让 bootstrap 依赖源码归档。
 
@@ -375,7 +375,7 @@ jj new
 `migrate`、`core`、`ui`、`judge`(**profile judge**)、`llm-gateway`、`nginx`、`prometheus`(**profile monitoring**)、`alertmanager`(**profile monitoring**)、`postgres`、`redis`、`minio`、`minio-init`。
 顶层卷/网络：`noj-net`(network)、`pgdata`、`redisdata`、`miniodata`、`noj-packages`、`noj-storage`、`judge-cache`、`promdata`、`alertmanagerdata`。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `compose_test.ts` 覆盖（**注入 runner**，不触真实 docker）：
 - `composeArgs()` 参数数组形状正确：`["compose", "--env-file", <env>, "-f", <compose>, ...]`，且 **以数组构造，无 shell 字符串**。
@@ -386,18 +386,18 @@ jj new
 - `--dry-run` 时**不执行** runner，只返回将执行的参数。
 - 退出码透传。
 
-- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+- [x] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `prod/compose.ts`：
 - 导出 `PROD_SERVICES`（服务名 + 所属 profile）、`composeArgs(opts)`，以及 `up/down/ps/logs/config` 的薄封装。复用既有 `runtime/command.ts` 的 `CommandRunner` 抽象，勿新造。
 - **不改** `deploy/docker.ts`（stack 侧，T23 删）；本模块是 prod 侧新实现。
 - 不实现运行时 compose 渲染（见上「裁决」）。
 
-- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+- [x] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
 
-- [ ] **Step 5: 提交** — `feat(cli): prod compose 服务集与调用封装（不引入运行时渲染）`
+- [x] **Step 5: 提交** — `feat(cli): prod compose 服务集与调用封装（不引入运行时渲染）`
 
 **明确不做**：不删 `deploy/compose.ts`（T23）；不实现生命周期命令（T12–T16）；不决定监控 profile 的默认值（由 T11 配置决定）。
 
@@ -419,7 +419,7 @@ jj new
 
 **⚠️ T3 的 CARRY-FORWARD**：`writeEnvFileAtomic` **不 mkdir 父目录**（调用方保证目录存在）；`readEnvFile` 对缺失文件抛普通 Error。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `config_test.ts` 覆盖（注入 IO/fs，不触真实网络与 docker）：
 - **必填校验**：缺失/占位键进入 `missing`/`placeholder`（对照 T2 语义）。
@@ -432,18 +432,18 @@ jj new
 - **敏感值**：向导**不得**把 secret 回显到输出（断言输出不含 secret 字面量）。
 - **镜像验签**（`verify_image_signatures`）：迁移为可注入执行器的函数；测试断言调用形状与失败退出码（不真的跑 cosign）。
 
-- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+- [x] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 - `prod/config.ts`：逐函数迁移；**必须复用** T2/T3/T8 的模块，不重复实现占位判断/键清单/env 读写/着色。
 - 交互用既有 `tui/widgets.ts`（`select`/`input`/`secretInput`/`confirm`）与 T8 主题；**不要**新造提示函数。
 - 宝塔面板检测（`detect_panel`）与 `record_deployment_metadata` 一并迁入（对照 `:791`/`:875`），行为一致。
 - 所有外部命令（cosign/docker）经 `runtime/command.ts` 的 runner 注入，便于测试。
 
-- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+- [x] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
 
-- [ ] **Step 5: 提交** — `feat(cli): 迁移生产配置校验、口令生成与交互向导到 TS`
+- [x] **Step 5: 提交** — `feat(cli): 迁移生产配置校验、口令生成与交互向导到 TS`
 
 **明确不做**：不实现 install/start/stop 等生命周期动作（T12–T16）；不删除 bash（T24）；不改 T2/T3 已交付模块的公开契约。
 
@@ -466,7 +466,7 @@ jj new
 3. **T10**：`ComposeResult = CmdResult | string[]`，**必须 `Array.isArray` 收窄**；runner 不替调用方打印。
 4. **T11**：`backupPassphrasePath` 须经 `targetFile` 注入 `--passphrase-file` 路径。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `lifecycle_test.ts`（注入 runner/fetcher/IO，**不触网、不起容器**）：
 - **空目录安装**：仅给二进制与 `--dir`，断言顺序 = 拉取资产 → 校验 → 生成/复用 `.env.prod` → 启动 compose；断言每一步的文件与调用。
@@ -477,15 +477,15 @@ jj new
 - **权限**：`.env.prod` 权限非 600/400 → 安装前拒绝。
 - **cosign**：`cosignAvailable=false` 时跳过验签并**给出可见警告**（不静默跳过）。
 
-- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+- [x] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `prod/lifecycle.ts` 的 `install()`：串起 T9 → T11 → T10，落状态（T4）并输出结果。所有外部命令经注入 runner；所有 IO 经注入接口。
 
-- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+- [x] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
 
-- [ ] **Step 5: 提交** — `feat(cli): 实现唯一生产安装路径（bootstrap + 配置向导 + compose 启动）`
+- [x] **Step 5: 提交** — `feat(cli): 实现唯一生产安装路径（bootstrap + 配置向导 + compose 启动）`
 
 **明确不做**：不删 bash（T24）；不实现 start/stop/restart/status/logs/uninstall/update（T13–T16）；不实现备份（T17–T19）。
 
@@ -505,7 +505,7 @@ jj new
 
 **对照 bash（R3）**：`deploy.sh` `start()`(:1027)、`stop()`(:1045)、`status()`(:1112)、`wait_for_stack()`(:981-993)、`prepare_and_check()`(:994)。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `lifecycle_test.ts` 追加（注入 runner，无真实 docker）：
 - **status**：给注入的 `compose ps` 输出（全 Up / 混合 / 全 Exited / 空），断言 `prodState` 结论与报告形状（running/partial/stopped）；退出码 0。
@@ -516,17 +516,17 @@ jj new
 - **失败传播**：wait 失败 → 非零退出并提示 `status`/`logs`（对照 bash `fail` 文案）。
 - **权限/配置前置**：`.env.prod` 权限非 600/400 → 拒绝；缺必需配置 → 报错（复用 T11/T12 的既有判定，勿重写）。
 
-- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+- [x] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 - 把 compose 编排段抽到 `prod/lifecycle/steps.ts`（T12 评审建议），`lifecycle.ts` 保留命令入口；**不得**为此改动 T10 的公开契约。
 - `start`/`stop`/`restart`/`status` 各自实现；`restart` 走 stop→up。
 - `status` 输出用 T8 的表格/状态符号（人类可读），并保留 `--json` 机器可读（T6 通道，stdout 只含 JSON）。
 
-- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+- [x] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
 
-- [ ] **Step 5: 提交** — `feat(cli): 迁移 start/stop/restart/status 并接线 T4 状态机`
+- [x] **Step 5: 提交** — `feat(cli): 迁移 start/stop/restart/status 并接线 T4 状态机`
 
 **明确不做**：不删 bash（T24）；不实现 logs/uninstall/update（T14–T16）与备份（T17–T19）；不改 T10 契约。
 
@@ -552,7 +552,7 @@ jj new
 5. 位置参数（服务名）透传。
 6. `--tail=200` 为默认；`--follow` 时追加。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 - **优先级**：进程 env `LOG_COLOR=always` 覆盖 `.env.prod` 的 `never`（且反之：进程 env 未设时读 `.env.prod`）。
 - **大小写与空白**：`LOG_COLOR=" ALWAYS "` → 视为 always。
@@ -563,16 +563,16 @@ jj new
 - **重定向不写 ANSI**：模拟非 TTY，断言输出不含 `\x1b[`。
 - **实时跟随**：`--follow` 走 `CommandRunner.stream`（T12/T14 已知：`composeLogs` 经 `run()` 是**缓冲**的，实时需 `stream`），断言 stream 被调用而非 run。
 
-- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+- [x] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 - `logs` 复用 `util/color.ts` 的判定（**不得**新造第二套 `NO_COLOR`/`LOG_COLOR` 解析；若现有 `resolveColor` 不足以表达"进程 env > .env.prod"，则在其**上层**做取值合并，仍只调用 `resolveColor` 决定最终开关）。
 - `--follow` 用 `CommandRunner.stream` 实时输出；非 follow 用既有缓冲路径并自行写 stdout（runner 不打印）。
 
-- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+- [x] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
 
-- [ ] **Step 5: 提交** — `feat(cli): 迁移生产 logs 并精确实现着色优先级与实时跟随`
+- [x] **Step 5: 提交** — `feat(cli): 迁移生产 logs 并精确实现着色优先级与实时跟随`
 
 **明确不做**：不删 bash（T24）；不实现 uninstall/update（T15–T16）与备份；不改 T10 契约；不迁移 T13 已完成的命令。
 
@@ -597,7 +597,7 @@ jj new
 4. **工作区保护**（#513/既有约束）：**拒绝在 Git/jj 工作区内执行 `--all`**（对照 `production.sh:167-183` 的 `validate_install_directory` 与 `remove_install_directory` 的 Git 检测），错误须可操作。
 5. **软链清理**：卸载后清理指向本安装目录的 PATH 命令。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 - 确认词：`--yes` 通过；无 TTY 无 `--yes` → 报错（且零调用）；`UNINSTALL` 通过；`--all` 要求 `DELETE ALL`（输入 `UNINSTALL` **不**通过）；错误输入 → 零副作用。
 - 默认卸载参数**不含** `--volumes`，`--all` **含** `--volumes` 与 `--rmi all`；默认用 `--rmi local`。
@@ -606,13 +606,13 @@ jj new
 - **Git/jj 工作区保护**：模拟工作区标记存在 → `--all` 被拒且**不执行 down**。
 - 软链清理：指向本目录的软链被移除；指向他处的**不被**误删。
 
-- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+- [x] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
 
-- [ ] **Step 3: 实现** — 全部经注入 runner/IO；确认词读取经注入接口（便于测试）。
+- [x] **Step 3: 实现** — 全部经注入 runner/IO；确认词读取经注入接口（便于测试）。
 
-- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+- [x] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
 
-- [ ] **Step 5: 提交** — `feat(cli): 迁移生产 uninstall（确认词、数据卷安全与工作区保护）`
+- [x] **Step 5: 提交** — `feat(cli): 迁移生产 uninstall（确认词、数据卷安全与工作区保护）`
 
 **明确不做**：不删 bash（T24）；不实现 update（T16）与备份；不改 T10 契约。
 
@@ -819,7 +819,7 @@ snapshot-<ts>.nojbackup
 5. **口令缺失的报错**：verify 的解密档与 `--deep` 需要口令；缺口令时
    **只跳过需要口令的检查并显式报告**（不静默通过、也不误报失败）。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 - **三档累加**：同一份容器，默认档通过 → `--deep` 通过 → `--payload-sha` 通过；
   逐档注入缺陷（篡改 payload 内的 `redis.rdb` 字节 / 删 `minio/` / 让
@@ -835,9 +835,9 @@ snapshot-<ts>.nojbackup
 - **口令**：缺口令时 verify 默认档仍应通过（无需解密），`--deep` 明确报告
   "已跳过环境文件解密"而不是静默通过。
 
-- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+- [x] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 - `container.ts` 加 `unpackContainer(path, opts)`：解密（或直读）→ 解包到临时目录 →
   返回 staging 路径与 manifest；调用方负责清理（`finally`）。**复用 T17 的
@@ -845,9 +845,9 @@ snapshot-<ts>.nojbackup
 - `commands.ts`：三个命令的编排与结果形状（`verify` 返回逐档的布尔与错误清单；
   `list`/`prune` 复用 `backup_index.ts` 的算法）。
 
-- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+- [x] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
 
-- [ ] **Step 5: 提交** — `feat(cli): 备份 verify 三档 / list / prune 默认 dry-run / restore --dry-run`
+- [x] **Step 5: 提交** — `feat(cli): 备份 verify 三档 / list / prune 默认 dry-run / restore --dry-run`
 
 **明确不做**：不实现真实 restore（写目标数据）；不实现 drill（T19）；不改 T17 的
 容器格式；不删 bash（T24）。
@@ -1525,23 +1525,23 @@ spec 在 `deploy.sh`/`restore-drill.sh` 的去留上**自相矛盾**：
    - drill 在真实 Docker 上的完整演练（RPO/RTO、业务验收）；
    - judge 在真实 rootless daemon 上的部署。
 
-- [ ] **Step 1: 采集证据**（跑命令、留输出）
+- [x] **Step 1: 采集证据**（跑命令、留输出）
 
 - 逐条跑 spec §8 的验收命令并记录**关键输出行**；不确定的条目**重跑一次**再判定。
 
-- [ ] **Step 2: 写验收证据文档**
+- [x] **Step 2: 写验收证据文档**
 
 - 表格化：验收项 / 判定 / 复核命令 / 实测输出。
 
-- [ ] **Step 3: 写待人工 review 清单**
+- [x] **Step 3: 写待人工 review 清单**
 
 - 每条 = 判定动作 + 期望结果 + 不通过意味着什么。
 
-- [ ] **Step 4: 追加进度日志**
+- [x] **Step 4: 追加进度日志**
 
 - 本次重写的提交数、测试数变化、发现的真实缺陷清单（即"计划外的收获"）。
 
-- [ ] **Step 5: 提交** — `docs(root): noj-cli 重写验收证据与待人工 review 清单`
+- [x] **Step 5: 提交** — `docs(root): noj-cli 重写验收证据与待人工 review 清单`
 
 **明确不做**：不修改实现（发现缺陷应单独提交）；不校准历史归档
 （`dev-docs/superpowers/plans/` 的历史条目、`openspec/changes/`）；
