@@ -532,11 +532,56 @@ jj new
 
 ---
 
-## Task 14–26（概要；执行前逐个展开为完整任务块）
+## Task 14: logs（颜色契约 + --follow）
+
+**Files:**
+- Modify: `noj-cli/src/prod/lifecycle.ts`（加 logs）
+- Modify: `noj-cli/src/prod/lifecycle/steps.ts`
+- Modify: `noj-cli/src/prod/lifecycle_test.ts`
+- Modify: `noj-cli/src/mod.ts`
+
+**Consumes**：T10 `composeLogs`/`composeArgs`（`ComposeResult`，`Array.isArray` 收窄）；T6 `emitHuman`/`isJsonMode`；T8 主题；`util/color.ts` 的 `resolveColor`/`ColorMode`（**唯一**着色判定来源，勿另造）；`runtime/command.ts` 的 `CommandRunner.stream`（实时跟随）
+
+**背景**：bash `deploy.sh:1117-1158` 的 `logs()` 有一套**明确**的着色优先级，且有评审修复历史（首次实现无条件透传，导致 `noj-cli logs core > out.txt` 把 ANSI 写进重定向文件）。本任务须精确迁移该契约。
+
+**着色判定顺序（对照 `deploy.sh:1138-1157`，逐条实现）**：
+1. `LOG_COLOR` 取值：**进程环境优先**，缺省回退读 `.env.prod` 的 `LOG_COLOR`；随后 trim + 小写。
+2. `NO_COLOR` 同理：进程环境优先，回退 `.env.prod`。
+3. 判定：`NO_COLOR` 非空 **或** `LOG_COLOR=never` → 传 `--no-color`；`LOG_COLOR=always` → **强制着色**；否则 `!isatty(1)` → `--no-color`。
+4. **强制着色必须用子命令之前的全局 `--ansi always`**（`docker compose logs` 只有 `--no-color`，没有"强制开"的单命令开关——bash 注释明确记录此坑）。
+5. 位置参数（服务名）透传。
+6. `--tail=200` 为默认；`--follow` 时追加。
+
+- [ ] **Step 1: 写失败测试**
+
+- **优先级**：进程 env `LOG_COLOR=always` 覆盖 `.env.prod` 的 `never`（且反之：进程 env 未设时读 `.env.prod`）。
+- **大小写与空白**：`LOG_COLOR=" ALWAYS "` → 视为 always。
+- **`NO_COLOR` 非空** → `--no-color`，即使 `LOG_COLOR=always`（对照 bash：`NO_COLOR` 分支在前）。
+- **非 TTY 默认** → `--no-color`。
+- **强制着色** → 断言全局 `--ansi always` 出现在**子命令之前**（而非 `logs` 之后）。
+- **服务名与 --follow**：`logs core --follow` → `--tail=200 --follow core`。
+- **重定向不写 ANSI**：模拟非 TTY，断言输出不含 `\x1b[`。
+- **实时跟随**：`--follow` 走 `CommandRunner.stream`（T12/T14 已知：`composeLogs` 经 `run()` 是**缓冲**的，实时需 `stream`），断言 stream 被调用而非 run。
+
+- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+
+- [ ] **Step 3: 实现**
+
+- `logs` 复用 `util/color.ts` 的判定（**不得**新造第二套 `NO_COLOR`/`LOG_COLOR` 解析；若现有 `resolveColor` 不足以表达"进程 env > .env.prod"，则在其**上层**做取值合并，仍只调用 `resolveColor` 决定最终开关）。
+- `--follow` 用 `CommandRunner.stream` 实时输出；非 follow 用既有缓冲路径并自行写 stdout（runner 不打印）。
+
+- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+
+- [ ] **Step 5: 提交** — `feat(cli): 迁移生产 logs 并精确实现着色优先级与实时跟随`
+
+**明确不做**：不删 bash（T24）；不实现 uninstall/update（T15–T16）与备份；不改 T10 契约；不迁移 T13 已完成的命令。
+
+---
+
+## Task 15–26（概要；执行前逐个展开为完整任务块）
 
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
-| T14 logs | 同上 | 着色契约；`--follow` |
 | T15 uninstall | 同上 | 确认词；`--all`；拒绝 Git/jj 工作区 |
 | T16 update | 同上 | 版本解析（资产就绪过滤）；备份；健康检查 |
 | T17 .nojbackup 容器 | `backup/container.ts`、`driver.ts` | 单文件 + 整包加密；**文件重定向采二进制**；`pg_restore --list` 可解析 |
