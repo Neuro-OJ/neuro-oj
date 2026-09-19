@@ -55,7 +55,10 @@ export { realRunner } from "./runtime/command.ts";
 export {
   DEFAULT_NOJ_SERVER_VERSION,
   ensureNojServerBinary,
+  isStableReleaseTag,
+  type ReleaseSummary,
   resolveLatestVersion,
+  selectLatestAssetReadyRelease,
 } from "./runtime/download.ts";
 export { fileExists } from "./util/fs.ts";
 export { pidPath, readPid, removePid, writePid } from "./runtime/pidfile.ts";
@@ -228,6 +231,30 @@ export {
   validateTargetDir,
 } from "./prod/bootstrap.ts";
 export type { DownloadReleaseFilesOptions, Fetcher } from "./prod/bootstrap.ts";
+// release（T16）：生产升级的版本解析与版本配置落盘（production.sh 的
+// validate_release_tag / latest_release_version / configured_version /
+// write_config_version）。过滤规则与 runtime/download.ts **同源**
+// （selectLatestAssetReadyRelease），只是资产集合更宽（含 compose/example）。
+export {
+  commitConfigVersion,
+  configuredVersion,
+  DEFAULT_UPDATE_REPOSITORY,
+  envMissingHint,
+  httpsOnlyHint,
+  normalizedVersion,
+  releaseListHint,
+  releasesApiUrl,
+  releaseTagHint,
+  resolveLatestReleaseTag,
+  SINGLE_RELEASE_INVALID_HINT,
+  stageConfigVersion,
+  UPDATE_API_URL_HINT,
+  UPDATE_RELEASE_ASSETS,
+  validateReleaseTag,
+  versionConfigText,
+  versionMissingHint,
+  writeConfigVersion,
+} from "./prod/release.ts";
 // compose（T10）：prod 侧服务集与 compose 调用封装。生产编排只认仓库内固定的
 // docker-compose.prod.yml（T9 下载并校验），**不引入运行时渲染**（spec §3.4）。
 export {
@@ -236,6 +263,7 @@ export {
   composeDown,
   composeLogs,
   composePs,
+  composePull,
   composeUp,
   PROD_COMPOSE_FILE,
   PROD_ENV_FILE,
@@ -243,6 +271,7 @@ export {
 } from "./prod/compose.ts";
 export type {
   ComposeArgsOptions,
+  ComposeConfigOptions,
   ComposeLogsOptions,
   ComposeOptions,
   ComposeResult,
@@ -327,6 +356,13 @@ export {
   UNINSTALL_PROMPT,
   UNINSTALL_TTY_HINT,
   UNINSTALL_WARNING,
+  update,
+  // T16：升级（固定版本 / --latest 两种模式 + 备份 → pull → wait → metadata 序列）。
+  // `upgrade` 是 `update` 的别名（bash 两个词进同一函数），行为逐字一致。
+  UPDATE_BACKUP_UNAVAILABLE_HINT,
+  UPDATE_UP_TO_DATE_HINT,
+  updateSuccessHint,
+  upgrade,
 } from "./prod/lifecycle.ts";
 // lifecycle/steps（T13）：从 lifecycle.ts 抽出的共享编排步骤（compose 的
 // wait_for_stack、前置校验、compose 输出/裸子命令原语）。命令入口仍在
@@ -340,8 +376,10 @@ export {
   composeOutputText,
   decideLogsColor,
   dockerMissingHint,
+  ensureCommandPassphrase,
   mergeColorSource,
   NGINX_REFRESH_FAILURE_HINT,
+  PASSPHRASE_CARRY_HINT,
   PORT_CONFLICT_HINT,
   prepareAndCheck,
   probeCommandCode,
@@ -362,6 +400,8 @@ export {
 export type {
   LogsColorDecision,
   LogsColorOptions,
+  PassphraseStepOptions,
+  PassphraseStepResult,
   PreparedEnvironment,
   PrepareFailure,
   PrepareOptions,
@@ -388,6 +428,11 @@ export type {
   StatusResult,
   UninstallOptions,
   UninstallResult,
+  UpdateBackupContext,
+  UpdateBackupResult,
+  UpdateOptions,
+  UpdateResult,
+  UpdateSyncContext,
 } from "./prod/lifecycle.ts";
 // lifecycle/path（T13 拆分，T15 补反向逻辑）：production.sh 的 register_command /
 // unregister_command 迁移 + PATH 字面量。正反两向共享「软链指向何处」判定。
