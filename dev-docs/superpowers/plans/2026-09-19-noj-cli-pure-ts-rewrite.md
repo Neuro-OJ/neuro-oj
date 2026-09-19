@@ -1462,27 +1462,27 @@ spec 在 `deploy.sh`/`restore-drill.sh` 的去留上**自相矛盾**：
    "让 `noj update` 按 `.env.prod` 的 `NOJ_VERSION` 同步部署文件"，与现状一致，
    但其上下文（第 9 行）仍描述已删除的双模态路径。
 
-- [ ] **Step 1: 盘点漂移（先取证，再改字）**
+- [x] **Step 1: 盘点漂移（先取证，再改字）**
 
 - `rg` 出一份**文档→现实**的差异清单，每条附证据（代码位置/命令/`rg` 结果）。
   产出写进 Agent Note，而不是只改字——否则下一次无人知道哪条被核过。
 
-- [ ] **Step 2: 逐文件改写**
+- [x] **Step 2: 逐文件改写**
 
 - 按 A/B/C/D 四类逐条落地；每条改动在提交信息里给出依据。
 
-- [ ] **Step 3: 链接与一致性门禁**
+- [x] **Step 3: 链接与一致性门禁**
 
 - `deno run -A scripts/verify-md-links.ts`（CI 已有）必须通过——
   删文件后最容易留下的就是**指向已删文件的链接**。
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 - `deno run -A scripts/verify-md-links.ts && deno run -A scripts/verify-agent-note-format.ts`；
 - `rg 'deploy init|noj-deploy\.json|setup\.sh|install\.sh' noj-docs/ AGENTS.md ROADMAP.md`
   → 只允许出现在"已删除/已废弃"的说明里。
 
-- [ ] **Step 5: 提交** — `docs(root): #510 文档漂移治理与 CLI 文档重写` +
+- [x] **Step 5: 提交** — `docs(root): #510 文档漂移治理与 CLI 文档重写` +
   `docs(root): 新建 CHANGELOG 记录破坏性变更`
 
 **明确不做**：不校准历史归档（`dev-docs/superpowers/plans/`、`openspec/changes/`
