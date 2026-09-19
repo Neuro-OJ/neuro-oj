@@ -54,6 +54,10 @@ die() {
   exit 1
 }
 
+# R2 弃用闸门（T24）。
+# shellcheck source=scripts/deploy/deprecation-gate.sh
+source "$SCRIPT_DIR/deprecation-gate.sh"
+
 usage() {
   cat <<'EOF'
 Neuro OJ 备份隔离恢复演练
@@ -606,4 +610,8 @@ main() {
 }
 
 trap on_exit EXIT
+# R2 弃用闸门（T24）：必须在 `main` 之前——`main` 会创建演练目录、起隔离容器。
+require_deprecation_acceptance "restore-drill.sh" \
+  "隔离恢复演练：noj-cli backup drill <快照> [--skip-judge] [--keep]" \
+  "仅校验文件完整：noj-cli backup verify <快照> [--deep]"
 main "$@"

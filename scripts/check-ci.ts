@@ -63,12 +63,12 @@ if (import.meta.main) {
     ["deno", "test", "-A", "scripts/check-schema-parity_test.ts"],
     "noj-core",
   );
-  await run(["bash", "scripts/deploy/test-monitoring.sh"]);
-  // 运维脚本测试（2026-09-12 评审 §5.4）：此前仅 test-monitoring.sh 进 CI，
-  // 其余 8 个（约 130KB）零引用。以下三个均为"无 Docker + fake docker"测试。
-  await run(["bash", "scripts/deploy/test-deploy.sh"]);
-  await run(["bash", "scripts/deploy/test-backup.sh"]);
-  await run(["bash", "scripts/deploy/test-restore-drill.sh"]);
+  // T24：被删脚本的测试（test-deploy/test-backup/test-restore-drill/
+  // test-monitoring 等）随之移除——它们测的是已删除的 bash 实现，
+  // 其行为覆盖已由 noj-cli 的 TS 测试承接（prod/*_test.ts）。
+  // 取而代之的是**弃用闸门**测试：过渡期保留的 deploy.sh/restore-drill.sh
+  // 必须继续受 R2 闸门保护（警告 + y 确认 + 非 TTY 不挂起 + 零副作用）。
+  await run(["bash", "scripts/deploy/test-deprecation-gate.sh"]);
   await run([
     "deno",
     "test",

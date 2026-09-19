@@ -59,6 +59,11 @@ fail() {
 }
 section() { printf "\n== %s ==\n" "$*"; }
 
+# R2 弃用闸门（T24）。必须在任何副作用之前 source 并调用——
+# 见文件末尾 main 调用点的注释。
+# shellcheck source=scripts/deploy/deprecation-gate.sh
+source "$SCRIPT_DIR/deprecation-gate.sh"
+
 has_interactive_tty() {
   [[ -r "$TTY_PATH" && -w "$TTY_PATH" ]] || return 1
   (exec 3<>"$TTY_PATH") 2>/dev/null
@@ -1200,5 +1205,12 @@ main() {
 }
 
 if [[ "${NOJ_DEPLOY_SOURCE_ONLY:-0}" != "1" ]]; then
+  # R2 弃用闸门（T24）：在任何副作用之前确认。
+  # `parse_args` 只做字符串处理，但 `main` 内部会创建目录、调 docker、
+  # 写配置——因此闸门必须在 `main` 之前，而不是在它内部。
+  require_deprecation_acceptance "deploy.sh" \
+    "安装/启停/状态：noj-cli install | start | stop | restart | status --dir <安装目录>" \
+    "日志与升级：noj-cli logs | update" \
+    "卸载：noj-cli uninstall [--all]"
   main "$@"
 fi

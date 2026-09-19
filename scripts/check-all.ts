@@ -26,7 +26,8 @@ if (import.meta.main) {
   await run(["deno", "run", "-A", "scripts/gen-alert-rules.ts", "--check"]);
   await run(["deno", "run", "-A", "scripts/check-test-discovery.ts"]);
   await run(["deno", "run", "-A", "scripts/check-dashboards.ts"]);
-  await run(["bash", "scripts/deploy/test-monitoring.sh"]);
+  // T24：被删脚本的测试随之移除；保留闸门测试（见 check-ci.ts 注释）。
+  await run(["bash", "scripts/deploy/test-deprecation-gate.sh"]);
   await run([
     "deno",
     "test",
