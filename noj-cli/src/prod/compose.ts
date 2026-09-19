@@ -225,17 +225,54 @@ export function composeLogs(
 }
 
 /**
- * `docker compose ... config`：校验编排文件可解析。
+ * `docker compose ... pull [services...]`。
  *
- * 渲染后的配置在 `result.stdout`；退出码在 `result.code`；`dryRun` 时返回参数数组。
+ * T12/T13 登记的 carry-forward：`install` 与 `update` 都直接经
+ * {@link runComposeSub} 跑裸 `pull`，本任务把它收敛为命名封装（T16），
+ * 语义与 bash `run_compose pull` 等价（无附加旗标）。
+ *
+ * 退出码在 `result.code`；`dryRun` 时返回参数数组（runner 零调用）。
  */
-export function composeConfig(
+export function composePull(
   runner: CommandRunner,
   options: ComposeOptions,
 ): Promise<ComposeResult> {
+  const command = ["pull", ...(options.services ?? [])];
   return invoke(
     runner,
-    composeArgs({ ...options, command: ["config"] }),
+    composeArgs({ ...options, command }),
+    options.dryRun,
+  );
+}
+
+/** `composeConfig` 的选项：在公共选项上追加 `--quiet`。 */
+export interface ComposeConfigOptions extends ComposeOptions {
+  /**
+   * 追加 `--quiet`（只判定可解析性，不输出渲染结果）。
+   *
+   * 生产前置校验（`prepareAndCheck` 的步骤 6）恒用 `--quiet`，与 bash
+   * `check_configuration` 的 `run_compose config --quiet`（deploy.sh:904）逐字一致。
+   */
+  quiet?: boolean;
+}
+
+/**
+ * `docker compose ... config [--quiet]`：校验编排文件可解析。
+ *
+ * `quiet: true` 对应 bash `check_configuration` 的 `run_compose config --quiet`
+ * （deploy.sh:904）——只判定可解析性，不把渲染结果打到 stdout。缺省 false 保留
+ * T10 的通用语义（渲染后的配置在 `result.stdout`，供需要完整配置的调用方使用）。
+ *
+ * 退出码在 `result.code`；`dryRun` 时返回参数数组。
+ */
+export function composeConfig(
+  runner: CommandRunner,
+  options: ComposeConfigOptions,
+): Promise<ComposeResult> {
+  const command = options.quiet === true ? ["config", "--quiet"] : ["config"];
+  return invoke(
+    runner,
+    composeArgs({ ...options, command }),
     options.dryRun,
   );
 }

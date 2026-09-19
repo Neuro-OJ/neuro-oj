@@ -23,6 +23,7 @@ import {
   composeDown,
   composeLogs,
   composePs,
+  composePull,
   composeUp,
   PROD_COMPOSE_FILE,
   PROD_ENV_FILE,
@@ -425,6 +426,63 @@ Deno.test("composeConfig: 校验编排，参数形状正确且 stdout 保留", a
     COMPOSE,
     "config",
   ]]);
+});
+
+Deno.test("composeConfig: quiet=true 追加 --quiet（对照 deploy.sh:904 的前置校验）", async () => {
+  const { runner, calls } = fakeRunner(0, "");
+  const result = await composeConfig(runner, {
+    composeFile: COMPOSE,
+    envFile: ENV,
+    judge: true,
+    quiet: true,
+  });
+  if (Array.isArray(result)) throw new Error("dryRun 不应被触发");
+  assertEquals(calls, [[
+    "docker",
+    "compose",
+    "--env-file",
+    ENV,
+    "-f",
+    COMPOSE,
+    "--profile",
+    "judge",
+    "config",
+    "--quiet",
+  ]]);
+  // --quiet 下 compose 不输出渲染结果
+  assertEquals(result.stdout, "");
+});
+
+Deno.test("composePull: 拉取镜像，参数形状与位置参数正确", async () => {
+  const { runner, calls } = fakeRunner(0, "");
+  const result = await composePull(runner, {
+    composeFile: COMPOSE,
+    envFile: ENV,
+    judge: true,
+    services: ["core"],
+  });
+  if (Array.isArray(result)) throw new Error("dryRun 不应被触发");
+  assertEquals(calls, [[
+    "docker",
+    "compose",
+    "--env-file",
+    ENV,
+    "-f",
+    COMPOSE,
+    "--profile",
+    "judge",
+    "pull",
+    "core",
+  ]]);
+
+  // dryRun：零 runner 调用
+  const dry = await composePull(runner, {
+    composeFile: COMPOSE,
+    envFile: ENV,
+    dryRun: true,
+  });
+  assertEquals(dry, ["compose", "--env-file", ENV, "-f", COMPOSE, "pull"]);
+  assertEquals(calls.length, 1);
 });
 
 Deno.test("dryRun: 不执行 runner，只返回将执行的参数数组", async () => {
