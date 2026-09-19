@@ -237,3 +237,71 @@
    因此 `deno task db:generate` 会**继续**生成 `REFERENCES "public".`。当前仅靠
    `noj-core/CLAUDE.md` 的散文约定。建议加一条静态检查（断言 `drizzle/*.sql` 不含
    `REFERENCES "public".`），否则同类缺陷会随下一个迁移回归。
+
+---
+
+# 2026-09-19 · noj-cli 纯 TS 重写（独立目标）
+
+> **与上文（2026-09-11 的 24 小时目标）是不同的目标**，故单列一节。
+> 计划见 `dev-docs/superpowers/plans/2026-09-19-noj-cli-pure-ts-rewrite.md`（26 个 Task）。
+> 基线见 [`2026-09-19-baseline.md`](./2026-09-19-baseline.md)；
+> 验收证据见 [`2026-09-19-noj-cli-rewrite-evidence.md`](./2026-09-19-noj-cli-rewrite-evidence.md)；
+> 待人工 review 见 [`2026-09-19-noj-cli-manual-review.md`](./2026-09-19-noj-cli-manual-review.md)。
+
+## 目标与约束
+
+把 `noj-cli` 从"bash 外壳"重写为**纯 TS**：R1 零 bash 调用、R2 弃用闸门、
+R3 与 bash parity、R4 移除自举、R5 Cliffy 界面、R6 `problem init` 交互、
+R7 `.nojbackup` 统一备份流；并收敛 M1–M7（删双模态）。
+
+执行方式：**Inline Execution**（不使用 subagent），每个 Task 一个计划块 +
+失败测试 → 实现 → `deno task check && deno task test` → Agent Note → 勾选计划。
+
+## 规模变化
+
+| 指标 | 基线 | 交付 |
+|---|---|---|
+| `deno task test` | 323 passed / 0 failed | **680 passed / 0 failed** |
+| `deno task check` | exit 0（fmt 108 / lint 106） | exit 0（fmt 101 / lint 99） |
+| `noj-cli/src` bash 调用 | 1 处 | **0 处** |
+| 生产 bash 行数 | 7849（含根 `noj`/`setup.sh`） | 保留 2515（过渡期 4 文件） |
+| `deno compile` 产物 | — | 101.9 MB，独立可用 |
+
+## 发现的**真实缺陷**（计划外的收获）
+
+按价值排序。每条都有独立提交与回归测试。
+
+| # | 缺陷 | 后果 | 发现方式 |
+|---|---|---|---|
+| 1 | 定时备份的 cron 条目指向**已删除**的 `scripts/deploy/backup.sh` | **定时备份静默失败**——cron 失败只落日志，无人察觉 | T24 的 R1 门禁 |
+| 2 | `uninstall --all` 的完整性判据含已删脚本 `deploy.sh` | 在**任何**真实安装目录上**永久自锁**，无法卸载 | T24 的 R1 门禁 |
+| 3 | 目录定位失败的退出码随 `--profile` 显隐而变（2 vs 1） | 调用方无法区分"参数错"与"目录不对"；与 `production.ts` 契约及 bash parity 均矛盾 | T26 用**编译产物**实测 |
+| 4 | `problem init` 在 EOF（Ctrl-D）时无限循环 | 进程 OOM 崩溃（`Fatal JavaScript out of memory`） | T22 实现时实测 |
+| 5 | 两处错误文案指引执行**已删除**的 `backup.sh` | 指引本身成了错误的 | T24 的 R1 门禁 |
+| 6 | `manifest.sha256` 自指不可能（两轮打包永不收敛） | 无法把整包摘要写进 manifest | T17 实现时实测 |
+| 7 | `help` 声称 `backup` 支持 `schedule`（位置与实现不符） | help 与实现不一致 | T25 核对 E5 时 |
+| 8 | T25 发现的 **spec 自身错误**：要求删除 `about.vue` 的多语言说明，而该说明**准确** | 照做会删掉对用户有用的信息 | T25 逐条取证 |
+
+> 第 1、2、5 条由**同一条门禁**（R1：剥掉注释后扫描 `src` 的 bash 调用）一次抓出——
+> 说明"把验收写成可执行门禁"比"人工核对"有效得多。
+
+## 两处 spec 自相矛盾（已裁决，见 review 清单 A1/A2）
+
+1. **`deploy.sh`/`restore-drill.sh` 去留**：§3.3+§10 要求删除 vs §7 P10+§8 R2 要求
+   保留并加闸门 → 裁决**保留 + 闸门**（与项目所有者确认）。
+2. **`about.vue:324`**：spec 要求移除"多语言暗示"，核对后发现该链路真实存在
+   → 裁决**不删**，并在 spec 中划掉该条附证据。
+
+## 未取证项（诚实标注，不应视为通过）
+
+1. `install`/`update --latest` 在**真实 Release** 上的端到端（取决于是否已发布含新资产）；
+2. 编译产物在**仅含 docker/curl/openssl** 的最小环境（本机已证实"不依赖仓库脚本"）；
+3. `backup drill` 在真实 Docker 上的完整演练（本机 Docker 可用，但需拉生产镜像起栈）；
+4. `judge install` 在真实 rootless daemon 上；
+5. 每个 `test-*.sh` 到 TS 测试的**逐条**覆盖映射表（覆盖已承接，映射未做）；
+6. 真实 `pg_dump` 产物被 `pg_restore --list` 解析。
+
+## 提交数
+
+本目标（T16–T26 的本次会话段）共 **63 个 jj 提交**，全部 GPG 签名，
+按"计划块 / 实现 / 测试 / Agent Note / 勾选"拆分以便 review。
