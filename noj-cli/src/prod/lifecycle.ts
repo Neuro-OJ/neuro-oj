@@ -1,4 +1,52 @@
 /**
+ * 生产生命周期命令入口（T12 起）：install / start / stop / restart / status。
+ *
+ * 结构（T13 拆分）：**命令入口与结果形状留在本文件**；被多个动作共享的
+ * compose 编排与前置校验步骤在 `./lifecycle/steps.ts`（T12 评审建议：
+ * lifecycle.ts 仅 install 时就已 715 行，继续追加会失控）。T14–T16 在同一
+ * steps 模块追加，不再堆进本文件。
+ *
+ * ## T13：T4 状态机的落点（T12 的 carry-forward 在本任务闭合）
+ *
+ * T12 的 `install` **有意不查** `docker compose ps`（与 bash `install()` 一致），
+ * 状态落盘延后到本任务，已登记在 task-12 报告的「有意非迁移清单」与
+ * `install()` 第 8 步前的注释。本任务把 T4 状态机真正接上，四个命令的消费方式：
+ *
+ * | 命令 | 如何消费 T4 |
+ * | --- | --- |
+ * | `status` | `prodState(compose ps 的输出)` 推断 running / partial / stopped |
+ * | `start` | 先 `prodState` 推断当前态；`upIsNoOp(当前态)` 为真即 **no-op**（不跑 `up`），否则 `waitForStack` |
+ * | `stop` | 先 `prodState` 推断当前态；`downIsNoOp(当前态)` 为真即 **no-op**（不跑 `stop`），否则 `compose stop` |
+ * | `restart` | T4 `transition(当前态, "restart")` 表达目标态 running；实际执行为 stop → start，顺序对齐 bash `deploy.sh:1034-1044` 与 `production.sh:437-441` |
+ *
+ * **no-op 文案逐字取自 T4**（`upIsNoOp`/`downIsNoOp` 背后的
+ * `transition(...).message`：`已处于 running，无需重复启动` /
+ * `已处于 stopped，无需重复关闭`），本模块不另写第二份提示语。
+ *
+ * ## 退出码（#517 E9 的 0/1/2 项目契约）
+ *
+ * 四个命令都返回 `exitCode`：0 成功（含 no-op）；1 运行失败（前置校验不过、
+ * compose 失败、wait_for_stack 失败）。**用法错误（未知旗标等）= 2 由 CLI 解析层
+ * 产出**（`cli.ts` + `util/args.ts:UsageError`），命令层不吞不掉、也不自行判 2。
+ *
+ * ## 与 bash 的有意差异（R3 逐项核对后保留）
+ *
+ * 1. **`--dry-run` 未迁移**：bash `run_compose` 有 DRY_RUN 早退；本模块的 dryRun
+ *    只存在于 T10 封装（`ComposeOptions.dryRun`），四个命令不暴露该旗标
+ *    （brief 未要求，且 T16 才需要脚本化干跑）。
+ * 2. **`check_dependencies`（docker / daemon / buildx 探测）未接线**：
+ *    `prepareAndCheck` 只迁移 `check_configuration` 的配置侧；真实 docker 探测
+ *    属环境面（T12 报告 §6.4 已登记），compose 调用失败会自然报错。
+ * 3. **`stop` 失败仍报成功**：bash `stop()` 不看 `compose stop` 的退出码就
+ *    `ok "服务已停止，数据卷已保留"`。本实现如实读退出码（!=0 → 退出码 1），
+ *    因为"静默假装成功"是真实可用性缺口；文案差异已在测试中显式断言。
+ * 4. **人类输出走注入的 RenderIO**：bash 直写终端；本模块经 T8 `renderTable` /
+ *    T6 `emitHuman`，`--json` 时人类文字自动改道 stderr（R5）。
+ *
+ * 以下 `install` 的章节保留 T12 原文（为可追溯，未随本次拆分改写）。
+ *
+ * ---
+ *
  * 生产生命周期动作（T12 起）：`install` 是**唯一**生产安装路径。
  *
  * 背景（spec R4 + §3.3 洞 2）：删除 `setup.sh` / `install.sh` 后，用户手动
@@ -49,17 +97,18 @@
  * - **非交互 + 缺配置 → 零写入**：bash `initialize_env`（:646-655）会先由模板
  *   生成 `.env.prod` 再 `exit 2`；本实现按 task-12 brief 的明文要求**在写入前
  *   直接报错**，避免留下半成品配置。
- * - **`wait_for_stack` 的附加旗标**：bash 先 `up -d --wait --wait-timeout 180
- *   --remove-orphans`，再 `up -d --force-recreate --no-deps nginx`；本模块复用
- *   T10 的 `composeUp`（`up -d --wait`），不另造 compose 封装。
+ * - ~~**`wait_for_stack` 的附加旗标**~~：**T13 已闭合**——`install` 与 `start`
+ *   现共用 `lifecycle/steps.ts:waitForStack`，逐字跑
+ *   `up -d --wait --wait-timeout 180 --remove-orphans` 与
+ *   `up -d --force-recreate --no-deps nginx`（对照 deploy.sh:987-990）。
  * - **不把运行中的二进制复制进 `<dir>/bin/noj-cli`**：那是 install.sh
  *   `download_cli`/`install_cli` 的职责，随 R4 删除；二进制由用户手动下载
  *   （R4），跨版本同步归 T16。PATH 注册严格照 `register_command` 语义：目标
  *   不存在时按「源码运行模式」告警并跳过。
- * - **不落 T4 状态**：brief 的「落状态（T4）」**延后到 T13**。bash `install()`
- *   用 `compose up -d --wait` 的退出码表达"是否真的起来"，install 不查
- *   `compose ps`；prod 状态由 T13 起的生命周期命令消费 T4 的
- *   `prodState`/`transition` 写入。已登记在 task-12 报告的「有意非迁移清单」。
+ * - **不落 T4 状态**：`install` 不查 `compose ps`（与 bash `install()` 一致，
+ *   用 `waitForStack` 的退出码表达"是否真的起来"）。T12 曾把 brief 的「落状态
+ *   （T4）」**延后到 T13**；**T13 已闭合**：`status`/`start`/`stop` 消费 T4 的
+ *   `prodState`/`transition`（见本模块头）。
  */
 
 import { join } from "@std/path";
@@ -67,28 +116,37 @@ import {
   checkEnvFileMode,
   ENV_KEYS,
   JUDGE_KEYS,
-  judgeEnabledError,
-  validateEnv,
 } from "../core/config-schema.ts";
 import type { FilePermissionVerdict } from "../core/config-schema.ts";
-import { readEnvFile, writeEnvFileAtomic } from "../core/env-file.ts";
+import { writeEnvFileAtomic } from "../core/env-file.ts";
+import { downIsNoOp, prodState, transition, upIsNoOp } from "../core/state.ts";
+import type { DeployState } from "../config/types.ts";
 import { randomKey } from "../init/secrets.ts";
 import { nonInteractiveAdvice } from "../init/non_interactive.ts";
+import {
+  emitHuman,
+  emitJson,
+  isJsonMode,
+  renderStatus,
+} from "../output/render.ts";
+import type { RenderIO } from "../output/render.ts";
+import { createTheme } from "../output/theme.ts";
+import type { StatusKind } from "../output/theme.ts";
 import type { CommandRunner } from "../runtime/command.ts";
 import type { PromptIO } from "../tui/io.ts";
+import type { ColorMode } from "../util/color.ts";
 import {
   downloadReleaseFiles,
   RELEASE_FILES,
   validateTargetDir,
 } from "./bootstrap.ts";
 import type { Fetcher } from "./bootstrap.ts";
-import { composeArgs, composeConfig, composeUp } from "./compose.ts";
+import { composeConfig, composePs } from "./compose.ts";
 import type { ComposeOptions, ComposeResult } from "./compose.ts";
 import { PROD_COMPOSE_FILE, PROD_ENV_FILE } from "./compose.ts";
 import {
   backupPassphrasePath,
   checkJudgeSocket,
-  checkRequiredValues,
   ensureBackupPassphrase,
   generateSecret,
   recordDeploymentMetadata,
@@ -97,11 +155,32 @@ import {
   verifyImageSignatures,
   wizardNeedsInteractiveInput,
 } from "./config.ts";
-import type {
-  EnvValues,
-  RequiredValuesReport,
-  VerifiedDigest,
-} from "./config.ts";
+import type { EnvValues, VerifiedDigest } from "./config.ts";
+import {
+  assertConfiguration,
+  composeOutputText,
+  isFile,
+  judgeEnabledFrom,
+  prepareAndCheck,
+  readEnvValues,
+  runComposeSub,
+  statMode,
+  waitForStack,
+} from "./lifecycle/steps.ts";
+import type { PreparedEnvironment } from "./lifecycle/steps.ts";
+
+export {
+  assertConfiguration,
+  prepareAndCheck,
+  statMode,
+  waitForStack,
+} from "./lifecycle/steps.ts";
+export type {
+  PreparedEnvironment,
+  PrepareFailure,
+  PrepareResult,
+  StepSink,
+} from "./lifecycle/steps.ts";
 
 /** install 的步骤名（顺序即执行顺序，也是 `InstallResult.steps` 的顺序）。 */
 export type InstallStepName =
@@ -218,43 +297,8 @@ const GENERATED_SECRET_KEYS: readonly string[] = [
 
 // ---------------- 通用小工具 ----------------
 
-/** 读取 `.env.prod` 为 {@link EnvValues}。 */
-async function readEnvValues(path: string): Promise<EnvValues> {
-  const map = await readEnvFile(path);
-  const out: EnvValues = {};
-  for (const [key, value] of map) out[key] = value;
-  return out;
-}
-
-/** `-f` 语义的普通文件判定。 */
-async function isFile(path: string): Promise<boolean> {
-  try {
-    return (await Deno.stat(path)).isFile;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * 读文件的八进制权限串（`stat -c %a` 的等价）。
- *
- * 返回 `{ isFile, mode }`：`mode` 读不出时为 null，交由 T11
- * {@link checkEnvFileMode} 产出与 bash :658-665 一致的报错。
- */
-async function statMode(path: string): Promise<{
-  isFile: boolean;
-  mode: string | null;
-}> {
-  try {
-    const st = await Deno.stat(path);
-    return {
-      isFile: st.isFile,
-      mode: ((st.mode ?? 0) & 0o777).toString(8).padStart(3, "0"),
-    };
-  } catch {
-    return { isFile: false, mode: null };
-  }
-}
+// 通用小工具（readEnvValues / isFile / statMode）已抽到 ./lifecycle/steps.ts，
+// 由本模块与 start/stop/restart/status 共用（T13 拆分，避免同形函数两份）。
 
 /**
  * `.env.prod` 路径的**三态**判定（`stat` 而非 `-e`）。
@@ -314,18 +358,6 @@ async function isExecutableFile(path: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/**
- * judge 是否启用：**镜像 T2 `validateEnv` 的真值表**，不新增第三份字面集合。
- *
- * 在"仅含 JUDGE_ENABLED 的探针输入"上跑 T2 的 `validateEnv`，看它是否要求
- * `JUDGE_KEYS[0]`：要求即启用。空串/未设置 → `validateEnv` 按启用处理
- * （deploy.sh:679）；T2 增删真值集合时本判定自动跟随。
- */
-function judgeEnabledFrom(env: EnvValues): boolean {
-  const probe = validateEnv({ JUDGE_ENABLED: env["JUDGE_ENABLED"] ?? "" });
-  return probe.missing.includes(JUDGE_KEYS[0] ?? "JUDGE_DOCKER_SOCKET");
 }
 
 /**
@@ -524,23 +556,6 @@ export async function registerCommand(
 
 // ---------------- install ----------------
 
-/**
- * T11 配置校验入口：**先** `judgeEnabledError` → **再** `checkRequiredValues`。
- *
- * 顺序是 T11 carry-forward 的硬要求：`validateEnv`（`checkRequiredValues` 的第一
- * 步）装不下 `JUDGE_ENABLED` 的枚举错误，非法值必须先被 `judgeEnabledError`
- * 拒绝。judge **未设置/空串 = 启用**（deploy.sh:679）。
- */
-function assertConfiguration(env: EnvValues): RequiredValuesReport {
-  const judgeError = judgeEnabledError(env["JUDGE_ENABLED"]);
-  if (judgeError !== null) throw new Error(judgeError);
-  const report = checkRequiredValues(env);
-  if (!report.ok) {
-    throw new Error("生产配置校验失败：\n" + report.errors.join("\n"));
-  }
-  return report;
-}
-
 /** 真实 cosign 探测：经注入 runner 执行 `cosign version`（无 shell）。 */
 function probeCosign(
   runner: CommandRunner,
@@ -549,24 +564,10 @@ function probeCosign(
   return async () => (await runner.run(cosignBin, ["version"])).code === 0;
 }
 
-/**
- * 执行一条 compose 子命令（`pull` / `up` 由 T10 的 `composeUp` 覆盖）。
- *
- * 必须在调用点用 `Array.isArray` 收窄 `ComposeResult`（T10 carry-forward）。
- */
-function runComposeSub(
-  runner: CommandRunner,
-  options: ComposeOptions,
-  command: string[],
-): Promise<ComposeResult> {
-  return runner.run("docker", composeArgs({ ...options, command }));
-}
-
 /** 把 compose 输出原样转给调用方（T10 carry-forward：runner 不打印）。 */
 function emitComposeOutput(io: PromptIO, result: ComposeResult): void {
-  if (Array.isArray(result)) return;
-  if (result.stdout !== "") io.write(result.stdout);
-  if (result.stderr !== "") io.write(result.stderr);
+  const text = composeOutputText(result);
+  if (text !== "") io.write(text);
 }
 
 /**
@@ -732,20 +733,23 @@ export async function install(opts: InstallOptions): Promise<InstallResult> {
   }
   steps.push({ name: "compose-pull", paths: [composeFile] });
 
-  const up = await composeUp(runner, composeOptions);
-  emitComposeOutput(io, up);
-  const composeUpCode = Array.isArray(up) ? 0 : up.code;
-  if (!Array.isArray(up) && up.code !== 0) {
-    throw new Error("服务启动或健康检查失败，请执行 status 和 logs 排查");
-  }
+  // wait_for_stack（deploy.sh:981-993）与 start 共用同一份实现：T12 只跑
+  // `up -d --wait`，缺 `--wait-timeout 180 --remove-orphans` 与第二段 nginx
+  // 刷新；本任务（T13）补齐，install 因此获得与 bash 逐字一致的两段编排。
+  const wait = await waitForStack(
+    runner,
+    composeOptions,
+    (text) => io.write(text),
+  );
+  if (!wait.ok) throw new Error(wait.error ?? "服务启动或健康检查失败");
+  const composeUpCode = 0;
   steps.push({ name: "compose-up", paths: [composeFile] });
 
   // ---- 8. record-metadata（T11）：无验签结果时零副作用 ----
-  // T4 状态：**本任务不落状态**（brief 的"落状态（T4）"延后到 T13，见 task-12
-  // 报告 §9 的有意非迁移清单）。bash `install()` 的 `compose up -d --wait` 已把
-  // "是否真的起来"表达为退出码，install 不查 `compose ps`；prod 状态由后续生命
-  // 周期命令（T13 status/start/stop…）消费 T4 的 `prodState`/`transition` 写入，
-  // 与 `scripts/deploy/deploy.sh` 的 install 行为一致（不额外查询）。
+  // T4 状态：`install` **仍然有意不查** `compose ps`（与 bash `install()` 一致），
+  // 但 T12 的"延后到 T13"已在本任务闭合：T4 状态机由 `status`/`start`/`stop`
+  // 消费（见模块头「T13：T4 状态机的落点」）。安装用 `waitForStack` 的退出码表达
+  // "是否真的起来"，不额外查询；下一次 `status` 即可从 `compose ps` 读出真实态。
   const metadata = await recordDeploymentMetadata({
     version: env["NOJ_VERSION"] ?? "",
     at: opts.now ?? new Date(),
@@ -778,4 +782,392 @@ export async function install(opts: InstallOptions): Promise<InstallResult> {
     composeUpCode,
     registration,
   };
+}
+
+// ---------------- start / stop / restart / status（T13）----------------
+
+/**
+ * 生命周期命令的公共选项。
+ *
+ * 与 {@link InstallOptions} 一样，**一切外部访问都可注入**：命令走 `runner`、
+ * 输出走 T6/T8 的 {@link RenderIO}、目录由 `dir` 给出。测试因此不触真实 docker、
+ * 不写真实 stdout/stderr。
+ */
+export interface LifecycleOptions {
+  /** 生产安装目录（`--dir`）；入口负责归一化（T9 `validateTargetDir`）。 */
+  dir: string;
+  /** 外部命令注入点（docker）。 */
+  runner: CommandRunner;
+  /** 人类可读输出汇聚点；缺省直达真实进程流。 */
+  io?: RenderIO;
+  /** 原始参数：仅用于 `isJsonMode` 判定 `--json`（缺省视为人类模式）。 */
+  args?: string[];
+  /** 着色模式（`--color`）；缺省 `auto`（非 TTY 自动关色）。 */
+  color?: ColorMode;
+}
+
+/** 四个生命周期命令的公共结果形状。 */
+export interface LifecycleBaseResult {
+  /** 归一化安装目录（无尾斜杠）。 */
+  dir: string;
+  /** T4 状态机给出的当前/最终状态。 */
+  state: DeployState;
+  /** 是否 no-op（未执行任何变更命令）。 */
+  noOp: boolean;
+  /** 进程退出码：0 成功（含 no-op）/ 1 运行失败；用法错误 2 由 CLI 层产出。 */
+  exitCode: number;
+  /** 运行失败的面向用户文案；成功为 null。 */
+  error: string | null;
+}
+
+/** {@link status} 的结果。 */
+export interface StatusResult extends LifecycleBaseResult {
+  /** `docker compose ps` 的原始 stdout（`status --json` 的机器可读通道）。 */
+  psOutput: string;
+}
+
+/** 一次命令运行的上下文：目录 + 两个输出通道 + 状态行写出器。 */
+interface LifecycleContext {
+  dir: string;
+  io: RenderIO;
+  jsonMode: boolean;
+  /** 写一行状态（T8 符号 + 语义色），JSON 模式自动改道 stderr。 */
+  status: (kind: StatusKind, text: string) => void;
+  /** 写一条失败诊断：**永远 stderr**（对照 bash `fail` 的 >&2）。 */
+  error: (text: string) => void;
+}
+
+/** 真实 stderr 写入（RenderIO 未注入 stderr 时的兜底）。 */
+function realStderr(text: string): void {
+  Deno.stderr.writeSync(new TextEncoder().encode(text));
+}
+
+/**
+ * 写失败诊断到 stderr。
+ *
+ * bash `fail` 是 `printf ... >&2; exit 1`，而 T6 的 `emitHuman` 在人类模式写
+ * **stdout**（只有 JSON 模式改道 stderr）——两者不能同时满足，故失败诊断显式
+ * 走 stderr：这样重定向 `> out.txt` 时错误仍可见，`--json` 的 stdout 也不被污染。
+ */
+function emitFailure(io: RenderIO, text: string): void {
+  (io.stderr ?? realStderr)(text);
+}
+
+/** 构造命令上下文：T6 的 JSON 模式与 T8 的 stream 成对判定。 */
+function lifecycleContext(opts: LifecycleOptions): LifecycleContext {
+  const jsonMode = isJsonMode(opts.args ?? []);
+  const io: RenderIO = { ...(opts.io ?? {}), jsonMode };
+  const stream = jsonMode ? "stderr" : "stdout";
+  const theme = createTheme(opts.color ?? "auto", stream);
+  return {
+    dir: validateTargetDir(opts.dir),
+    io,
+    jsonMode,
+    status: (kind, text) => {
+      renderStatus(kind, text, { color: opts.color, stream, io });
+    },
+    error: (text) => emitFailure(io, theme.status("error", text) + "\n"),
+  };
+}
+
+/** 由已校验的环境构造 T10 compose 选项（judge → `--profile judge`）。 */
+function composeOptionsOf(env: PreparedEnvironment): ComposeOptions {
+  return {
+    composeFile: env.composeFile,
+    envFile: env.envFile,
+    judge: env.judge,
+  };
+}
+
+/**
+ * `prepare_and_check` 的公共前置：归一化目录 + 配置校验。
+ *
+ * 失败时把错误写往人类通道（JSON 模式为 stderr），并回传错误文案；
+ * **零 docker 调用**、零副作用（`prepareAndCheck` 已保证）。
+ */
+async function prepareLifecycle(
+  ctx: LifecycleContext,
+): Promise<
+  | { ok: true; composeOptions: ComposeOptions }
+  | { ok: false; error: string }
+> {
+  const prepared = await prepareAndCheck(ctx.dir);
+  if (!prepared.ok) {
+    ctx.error(prepared.error);
+    return { ok: false, error: prepared.error };
+  }
+  ctx.status("success", "生产配置检查通过");
+  return { ok: true, composeOptions: composeOptionsOf(prepared) };
+}
+
+/** 取“当前真实状态”：跑 `docker compose ps` 并用 T4 `prodState` 推断。 */
+async function probeState(
+  ctx: LifecycleContext,
+  opts: LifecycleOptions,
+  options: ComposeOptions,
+): Promise<
+  | { ok: true; state: DeployState; psOutput: string }
+  | { ok: false; error: string }
+> {
+  const result = await composePs(opts.runner, options);
+  if (Array.isArray(result)) {
+    // dryRun：没有真实输出可解析；属调用方误用，按运行失败处理。
+    const error = "compose ps 未真实执行（dryRun）";
+    ctx.error(error);
+    return { ok: false, error };
+  }
+  // compose 的告警写在 stderr（可能混有 WARN 行）：原样转 stderr，不静默丢弃。
+  if (result.stderr !== "") emitFailure(ctx.io, result.stderr);
+  if (result.code !== 0) {
+    const error = "docker compose ps 失败：" + result.stderr.trim();
+    ctx.error(error);
+    return { ok: false, error };
+  }
+  return { ok: true, state: prodState(result.stdout), psOutput: result.stdout };
+}
+
+/** T4 状态 → T8 状态符号种类 + 中文标签（人类可读摘要行）。 */
+function stateLabel(state: DeployState): { kind: StatusKind; text: string } {
+  switch (state) {
+    case "running":
+      return { kind: "success", text: "生产服务运行中（running）" };
+    case "partial":
+      return { kind: "warning", text: "生产服务部分运行（partial）" };
+    case "stopped":
+      return { kind: "info", text: "生产服务未运行（stopped）" };
+    case "uninitialized":
+      return { kind: "info", text: "生产服务未初始化（uninitialized）" };
+    case "error":
+      return { kind: "error", text: "生产服务处于错误状态（error）" };
+  }
+}
+
+/** 生命周期结果的 `--json` 载荷（stdout 只含这一个 JSON 文档）。 */
+function jsonPayload(result: LifecycleBaseResult): Record<string, unknown> {
+  return {
+    dir: result.dir,
+    state: result.state,
+    noOp: result.noOp,
+    error: result.error,
+  };
+}
+
+/** 统一的运行失败结果（`error` 已写往人类通道）。 */
+function failed(dir: string, error: string): LifecycleBaseResult {
+  return { dir, state: "error", noOp: false, exitCode: 1, error };
+}
+
+/**
+ * `status`（deploy.sh:1112-1115）：`prepare_and_check` → `run_compose ps`。
+ *
+ * **T4 接线点**：`prodState(compose ps 的输出)` 推断 running / partial / stopped。
+ * 状态**探测成功本身**即退出码 0（与 bash 一致：`compose ps` 成功就是成功，
+ * 不因栈处于 stopped 而失败）；只有前置校验或 `compose ps` 失败才是 1。
+ *
+ * 人类输出 = 状态摘要行（T8） + 完整 compose 表（含原表头，与 bash 一致）；
+ * `--json` 时 stdout 只有 `{ dir, state, ps }` 一个 JSON 文档，人类文字改道 stderr。
+ */
+export async function status(opts: LifecycleOptions): Promise<StatusResult> {
+  const ctx = lifecycleContext(opts);
+  const prepared = await prepareLifecycle(ctx);
+  if (!prepared.ok) {
+    if (ctx.jsonMode) {
+      emitJson({
+        dir: ctx.dir,
+        state: "uninitialized",
+        ps: "",
+        error: prepared.error,
+      }, ctx.io);
+    }
+    return {
+      ...failed(ctx.dir, prepared.error),
+      state: "uninitialized",
+      psOutput: "",
+    };
+  }
+
+  const probe = await probeState(ctx, opts, prepared.composeOptions);
+  if (!probe.ok) {
+    if (ctx.jsonMode) {
+      emitJson(
+        { dir: ctx.dir, state: "error", ps: "", error: probe.error },
+        ctx.io,
+      );
+    }
+    return { ...failed(ctx.dir, probe.error), psOutput: "" };
+  }
+
+  if (ctx.jsonMode) {
+    emitJson({ dir: ctx.dir, state: probe.state, ps: probe.psOutput }, ctx.io);
+  }
+  const label = stateLabel(probe.state);
+  ctx.status(label.kind, label.text);
+  if (probe.psOutput !== "") emitHuman(probe.psOutput, ctx.io);
+
+  return {
+    dir: ctx.dir,
+    state: probe.state,
+    noOp: false,
+    exitCode: 0,
+    error: null,
+    psOutput: probe.psOutput,
+  };
+}
+
+/** `start` 的核心（不写 JSON；由公开入口按模式补写）。 */
+async function startWith(
+  ctx: LifecycleContext,
+  opts: LifecycleOptions,
+): Promise<LifecycleBaseResult> {
+  const prepared = await prepareLifecycle(ctx);
+  if (!prepared.ok) {
+    return { ...failed(ctx.dir, prepared.error), state: "uninitialized" };
+  }
+
+  const probe = await probeState(ctx, opts, prepared.composeOptions);
+  if (!probe.ok) return failed(ctx.dir, probe.error);
+
+  // T4：running 时 up 是 no-op（changed=false）→ 不重复启动。
+  const decision = transition(probe.state, "up");
+  if (upIsNoOp(probe.state)) {
+    ctx.status("success", decision.message);
+    return {
+      dir: ctx.dir,
+      state: decision.state,
+      noOp: true,
+      exitCode: 0,
+      error: null,
+    };
+  }
+
+  const wait = await waitForStack(
+    opts.runner,
+    prepared.composeOptions,
+    (text) => emitHuman(text, ctx.io),
+  );
+  if (!wait.ok) {
+    const error = wait.error ??
+      "服务启动或健康检查失败，请执行 status 和 logs 排查";
+    ctx.error(error);
+    return failed(ctx.dir, error);
+  }
+
+  ctx.status("success", "生产服务已启动");
+  return {
+    dir: ctx.dir,
+    state: "running",
+    noOp: false,
+    exitCode: 0,
+    error: null,
+  };
+}
+
+/** `stop` 的核心（不写 JSON；由公开入口按模式补写）。 */
+async function stopWith(
+  ctx: LifecycleContext,
+  opts: LifecycleOptions,
+): Promise<LifecycleBaseResult> {
+  const prepared = await prepareLifecycle(ctx);
+  if (!prepared.ok) {
+    return { ...failed(ctx.dir, prepared.error), state: "uninitialized" };
+  }
+
+  const probe = await probeState(ctx, opts, prepared.composeOptions);
+  if (!probe.ok) return failed(ctx.dir, probe.error);
+
+  // T4：stopped 时 down 是 no-op（changed=false）→ 不重复关闭。
+  const decision = transition(probe.state, "down");
+  if (downIsNoOp(probe.state)) {
+    ctx.status("success", decision.message);
+    return {
+      dir: ctx.dir,
+      state: decision.state,
+      noOp: true,
+      exitCode: 0,
+      error: null,
+    };
+  }
+
+  ctx.status("info", "停止生产服务");
+  // 裸 `stop` 子命令（T10 无命名封装）——绝不含 down/-v，数据卷保留。
+  const stopped = await runComposeSub(opts.runner, prepared.composeOptions, [
+    "stop",
+  ]);
+  const text = composeOutputText(stopped);
+  if (text !== "") emitHuman(text, ctx.io);
+  if (!Array.isArray(stopped) && stopped.code !== 0) {
+    const error = "停止生产服务失败，请执行 status 和 logs 排查";
+    ctx.error(error);
+    return failed(ctx.dir, error);
+  }
+
+  ctx.status("success", "服务已停止，数据卷已保留");
+  return {
+    dir: ctx.dir,
+    state: "stopped",
+    noOp: false,
+    exitCode: 0,
+    error: null,
+  };
+}
+
+/**
+ * `start`（deploy.sh:1027-1032）：`prepare_and_check` → `wait_for_stack`。
+ *
+ * **T4 接线点**：先探测当前态，`upIsNoOp(当前态)` 为真即 **no-op**，绝不重复
+ * 执行 `compose up`（bash 会无条件重跑 up；本实现按 brief 的“已 running 时
+ * no-op”要求收紧）。no-op 文案逐字取自 T4 `transition(..., "up").message`。
+ */
+export async function start(
+  opts: LifecycleOptions,
+): Promise<LifecycleBaseResult> {
+  const ctx = lifecycleContext(opts);
+  const result = await startWith(ctx, opts);
+  if (ctx.jsonMode) emitJson(jsonPayload(result), ctx.io);
+  return result;
+}
+
+/**
+ * `stop`（deploy.sh:1045-1050）：`prepare_and_check` → `run_compose stop`。
+ *
+ * **绝不使用 `down`/`-v`/`--volumes`**：bash 明写“服务已停止，数据卷已保留”。
+ * **T4 接线点**：`downIsNoOp(当前态)` 为真即 **no-op**（已 stopped 不再 stop），
+ * no-op 文案逐字取自 T4 `transition(..., "down").message`。
+ */
+export async function stop(
+  opts: LifecycleOptions,
+): Promise<LifecycleBaseResult> {
+  const ctx = lifecycleContext(opts);
+  const result = await stopWith(ctx, opts);
+  if (ctx.jsonMode) emitJson(jsonPayload(result), ctx.io);
+  return result;
+}
+
+/**
+ * `restart`：**先 stop 再 start**（production.sh:437-441 的逐字顺序）。
+ *
+ * **T4 接线点**：`transition(最终态, "restart")` 表达目标态 running（changed 恒
+ * 为 true，restart 从不停用）；实际编排复用 `stop` → `start`，因此中间态、
+ * no-op 判定与错误传播都与两命令各自独立时一致。
+ *
+ * 顺序断言（测试锁定）：`stop` 的 compose 调用严格早于 `up`。JSON 模式只在
+ * 最后输出**一个**文档（内部两步不各自写 stdout），stdout 因此逐字节合法。
+ */
+export async function restart(
+  opts: LifecycleOptions,
+): Promise<LifecycleBaseResult> {
+  const ctx = lifecycleContext(opts);
+  const stopped = await stopWith(ctx, opts);
+  if (stopped.exitCode !== 0) {
+    if (ctx.jsonMode) emitJson(jsonPayload(stopped), ctx.io);
+    return stopped;
+  }
+  const started = await startWith(ctx, opts);
+  const target = transition(started.state, "restart");
+  const result: LifecycleBaseResult = {
+    ...started,
+    state: started.exitCode === 0 ? target.state : "error",
+  };
+  if (ctx.jsonMode) emitJson(jsonPayload(result), ctx.io);
+  return result;
 }

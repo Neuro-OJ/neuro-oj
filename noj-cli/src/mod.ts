@@ -303,16 +303,40 @@ export type {
   WizardOptions,
   WizardResult,
 } from "./prod/config.ts";
-// lifecycle（T12）：**唯一**生产安装路径。串起 T9 bootstrap（下载 + SHA-256
-// 校验）、T11 配置向导/校验/口令/验签与 T10 compose 调用；runner / fetcher / IO /
-// 安装目录全部可注入，测试不触网、不起容器。后续 T13–T16 在同一文件追加动作。
+// lifecycle（T12/T13）：生产生命周期命令入口。install 是**唯一**生产安装路径；
+// T13 追加 start/stop/restart/status 并接线 T4 状态机（prodState / transition /
+// upIsNoOp / downIsNoOp）。runner / fetcher / IO / 安装目录全部可注入，
+// 测试不触网、不起容器。
 export {
   install,
   // 仅为可测而导出：首装报错清单需按 judge 状态条件化（review Minor 2）。
   missingConfigError,
   PATH_LINE,
   registerCommand,
+  restart,
+  start,
+  status,
+  stop,
 } from "./prod/lifecycle.ts";
+// lifecycle/steps（T13）：从 lifecycle.ts 抽出的共享编排步骤（compose 的
+// wait_for_stack、前置校验、compose 输出/裸子命令原语）。命令入口仍在
+// lifecycle.ts；T14–T16 在此追加步骤。
+export {
+  assertConfiguration,
+  composeOutputText,
+  NGINX_REFRESH_FAILURE_HINT,
+  prepareAndCheck,
+  runComposeSub,
+  WAIT_FAILURE_HINT,
+  WAIT_TIMEOUT_SECONDS,
+  waitForStack,
+} from "./prod/lifecycle/steps.ts";
+export type {
+  PreparedEnvironment,
+  PrepareFailure,
+  PrepareResult,
+  StepSink,
+} from "./prod/lifecycle/steps.ts";
 // profile（T5）：生产安装目录特征文件的**唯一事实源**，由 getProfile 探测消费，
 // 避免出现第三份标记清单（T5 carry-forward）。**T12 的 install 不再用它做
 // "保留既有配置 vs 首装 seed"判定**（那由 .env.prod 自身是否存在决定，见
@@ -323,5 +347,8 @@ export type {
   InstallResult,
   InstallStep,
   InstallStepName,
+  LifecycleBaseResult,
+  LifecycleOptions,
   PathRegistration,
+  StatusResult,
 } from "./prod/lifecycle.ts";
