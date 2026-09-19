@@ -71,12 +71,25 @@ carry-forward）：`--follow` 走它永不返回、也看不到输出。
 
 - `noj-cli logs core > out.txt` 在非 TTY 下传 `--no-color`，输出无 ANSI；`LOG_COLOR=always`
   在终端里通过**全局** `--ansi always`（位于 `logs` 之前）真正强制着色。
-- 变异测试（5/6 处转红）：分支顺序反转、`.env.prod` 优先、`--ansi` 追加到子命令之后、
-  `--no-color` 位置错误、`--no-color` 完全不插、放弃 TTY 探测——均被现有测试捕获。
-  **唯一存活变异**：`decideLogsColor` 内把 `NO_COLOR` 分支改成 no-op 仍全绿——因为
-  `resolveColor` 自身也读进程 `NO_COLOR` 兜底（双保险，且有 `color_test.ts` 覆盖）。
-  这是有意的纵深防御，不是测试缺口薄弱到不可接受；`.env.prod` 的 `NO_COLOR` 路径由
-  「分支顺序」用例的第二个断言覆盖。
+- 变异测试（8/8 处转红）：分支顺序反转、`.env.prod` 优先、`--ansi` 追加到子命令之后、
+  `--no-color` 位置错误、`--no-color` 完全不插、`decideLogsColor` 去掉 `NO_COLOR` 分支、
+  放弃 TTY 探测——均被现有测试捕获。其中 M4（`--no-color` 位置）与 M5（空串回退）
+  最初存活，补测后转红，记于 T14 报告。
+- **`decideLogsColor` 的 `NO_COLOR` 分支是 load-bearing**：去掉它（等价于把该分支改成
+  no-op）会让「分支顺序」用例的 **`.env.prod` 一半**（`lifecycle_test.ts` 的
+  `logs 分支顺序：NO_COLOR 非空 → --no-color，即使 LOG_COLOR=always`）转红——
+  `fileResult.colorDecision` 会从 `no-color` 漂成 `force`。原因：`.env.prod` 里的
+  `NO_COLOR` 不经进程环境，`resolveColor` 只读进程 `NO_COLOR` 兜底，无法替代本分支。
+  （观察，非「变异存活」：进程环境那条 `NO_COLOR` 路径对 `resolveColor` 是双保险，
+  `color_test.ts` 另有一层覆盖；但 `.env.prod` 这条只由本分支承担，故不可删。）
+- **结果字段命名**：`LogsResult` 的着色字段是 `colorDecision`（不是 `color`）——它持有
+  `force` / `inherit` / `no-color` 三态结论，**不是** `ColorMode`
+  （`auto`/`always`/`never`）；`--json` 载荷的键同名。`state` 恒为 `"running"` 且
+  **不作探测**（bash `logs()` 也不查 `compose ps`），只为满足 `LifecycleBaseResult`
+  的公共形状，不代表真实栈状态。
+- **重定向安全用例的确定性**：该用例显式注入进程 `NO_COLOR=1` 使判定与运行器是否
+  TTY 无关（否则交互式 runner 下断言退化为 no-op）；auto + TTY 的 `inherit` 分支另由
+  一条独立的非 `NO_COLOR` 用例按 `Deno.stdout.isTerminal()` 双向断言覆盖。
 - **CLI 入口未接线**（与 T12/T13 同一状态）：`cli.ts` 仍把 `logs` 路由到 `runProduction`
   → bash；本次交付的是可注入的纯 TS 命令实现，接线按任务书归 T24。删 bash 前必须接线。
 - **未迁移 `--dry-run`**：bash `run_compose` 有 DRY_RUN 早退；T14 只用 T10 的 `dryRun`

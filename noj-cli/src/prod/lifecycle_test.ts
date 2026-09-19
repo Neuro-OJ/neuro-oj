@@ -1626,14 +1626,11 @@ Deno.test("status --json：stdout 逐字节为合法 JSON（人类输出改道 s
       color: NO_COLOR,
     });
     assertEquals(result.state, "partial");
-    // stdout 以恰好一个 JSON 文档**结尾**（状态行由显式 stdout 先写，与 bash
-    // 的 stdout 行为一致）；无 ANSI、无中文装饰、无 ps 表夹在 JSON 之后。
-    const out = stdout.join("");
-    const doc =
-      JSON.stringify({ dir, state: "partial", ps: PS_PARTIAL }, null, 2) +
-      "\n";
-    assertEquals(out.endsWith(doc), true, "stdout 必须以唯一 JSON 文档结尾");
-    assertEquals(out.endsWith("\n" + doc) || out === doc, true);
+    // 唯一 stdout 内容 = 一个 JSON 文档：无 ANSI、无中文装饰、无 ps 表
+    assertEquals(
+      stdout.join(""),
+      JSON.stringify({ dir, state: "partial", ps: PS_PARTIAL }, null, 2) + "\n",
+    );
     assertStringIncludes(stderr.join(""), "生产服务部分运行（partial）");
   } finally {
     await Deno.remove(dir, { recursive: true });
@@ -2364,7 +2361,7 @@ Deno.test("logs 着色优先级：进程 env LOG_COLOR=always 覆盖 .env.prod �
       () => logs({ dir, runner, io, color: NO_COLOR }),
     );
     assertEquals(result.exitCode, 0);
-    assertEquals(result.color, "force");
+    assertEquals(result.colorDecision, "force");
     assertForcedAnsi(logsCall(runs));
   } finally {
     await Deno.remove(dir, { recursive: true });
@@ -2381,7 +2378,7 @@ Deno.test("logs 着色优先级：进程 env 未设 → 回退 .env.prod 的 LOG
       () => logs({ dir, runner, io, color: NO_COLOR }),
     );
     assertEquals(result.exitCode, 0);
-    assertEquals(result.color, "force");
+    assertEquals(result.colorDecision, "force");
     assertForcedAnsi(logsCall(runs));
   } finally {
     await Deno.remove(dir, { recursive: true });
@@ -2397,7 +2394,7 @@ Deno.test("logs 着色优先级：进程 env LOG_COLOR=never 覆盖 .env.prod �
       { LOG_COLOR: "never" },
       () => logs({ dir, runner, io, color: NO_COLOR }),
     );
-    assertEquals(result.color, "no-color");
+    assertEquals(result.colorDecision, "no-color");
     const args = logsCall(runs);
     assertEquals(args.includes("--no-color"), true);
     assertEquals(args.includes("--ansi"), false);
@@ -2416,7 +2413,7 @@ Deno.test('logs 着色：LOG_COLOR 去空白 + 小写归一（" ALWAYS " → alw
       { LOG_COLOR: " ALWAYS " },
       () => logs({ dir, runner: envCase.runner, io, color: NO_COLOR }),
     );
-    assertEquals(forced.color, "force");
+    assertEquals(forced.colorDecision, "force");
     assertForcedAnsi(logsCall(envCase.runs));
 
     // 进程 env 未设 → .env.prod 的 " Never " 同样归一为 never
@@ -2425,7 +2422,7 @@ Deno.test('logs 着色：LOG_COLOR 去空白 + 小写归一（" ALWAYS " → alw
       {},
       () => logs({ dir, runner: fileCase.runner, io, color: NO_COLOR }),
     );
-    assertEquals(fileOnly.color, "no-color");
+    assertEquals(fileOnly.colorDecision, "no-color");
     assertEquals(logsCall(fileCase.runs).includes("--no-color"), true);
   } finally {
     await Deno.remove(dir, { recursive: true });
@@ -2444,7 +2441,7 @@ Deno.test("logs 分支顺序：NO_COLOR 非空 → --no-color，即使 LOG_COLOR
       { NO_COLOR: "1", LOG_COLOR: "always" },
       () => logs({ dir, runner: envCase.runner, io }),
     );
-    assertEquals(envResult.color, "no-color");
+    assertEquals(envResult.colorDecision, "no-color");
     assertEquals(logsCall(envCase.runs).includes("--no-color"), true);
     assertEquals(logsCall(envCase.runs).includes("--ansi"), false);
 
@@ -2454,7 +2451,7 @@ Deno.test("logs 分支顺序：NO_COLOR 非空 → --no-color，即使 LOG_COLOR
       {},
       () => logs({ dir: envDir, runner: fileCase.runner, io }),
     );
-    assertEquals(fileResult.color, "no-color");
+    assertEquals(fileResult.colorDecision, "no-color");
     assertEquals(logsCall(fileCase.runs).includes("--no-color"), true);
     assertEquals(logsCall(fileCase.runs).includes("--ansi"), false);
   } finally {
@@ -2463,25 +2460,47 @@ Deno.test("logs 分支顺序：NO_COLOR 非空 → --no-color，即使 LOG_COLOR
   }
 });
 
-Deno.test("logs 重定向安全：非 TTY 默认 → --no-color，且自身输出不含 ANSI", async () => {
+Deno.test("logs 重定向安全：NO_COLOR=1 强制关色 → --no-color，且自身输出不含 ANSI", async () => {
   const dir = await makeInstalledDir();
   try {
     const { runner, runs } = makeLogsRunner({ stdout: "line-1\n" });
     const { io, stdout, stderr } = captureRenderIO();
-    const result = await withLogEnv({}, () => logs({ dir, runner, io }));
+    // 断言必须**无条件执行**：显式给进程 env 的 NO_COLOR，使判定与
+    // 运行器是否 TTY 无关（否则交互式 runner 下整条断言变成 no-op）。
+    const result = await withLogEnv(
+      { NO_COLOR: "1" },
+      () => logs({ dir, runner, io }),
+    );
     assertEquals(result.exitCode, 0);
-    // 测试进程 stdout 非 TTY（与 util/color_test.ts 同一前提）；TTY 下应为
-    // inherit（不传色旗，交回 compose 自行探测）。
-    const expected = Deno.stdout.isTerminal() ? "inherit" : "no-color";
-    assertEquals(result.color, expected);
-    if (!Deno.stdout.isTerminal()) {
-      assertEquals(logsCall(runs).includes("--no-color"), true);
-    }
+    assertEquals(result.colorDecision, "no-color");
+    assertEquals(logsCall(runs).includes("--no-color"), true);
+    assertEquals(logsCall(runs).includes("--ansi"), false);
     // `noj-cli logs core > out.txt` 的等价场景：不得把 ANSI 写进重定向文件。
     for (const chunk of [...stdout, ...stderr]) {
       assertEquals(chunk.includes("\x1b["), false, "重定向输出不得含 ANSI");
     }
     assertStringIncludes(stdout.join(""), "line-1\n");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("logs 重定向安全：非 TTY 的 auto 路径 → --no-color（TTY 下为 inherit）", async () => {
+  const dir = await makeInstalledDir();
+  try {
+    const { runner, runs } = makeLogsRunner({ stdout: "line-1\n" });
+    const { io } = captureRenderIO();
+    const result = await withLogEnv({}, () => logs({ dir, runner, io }));
+    assertEquals(result.exitCode, 0);
+    // 无任何色旗输入时，判定 = stdout 是否 TTY（bash `[[ -t 1 ]]`）：
+    // 非 TTY（测试进程前提，与 util/color_test.ts 同一前提）→ no-color；
+    // TTY → inherit（不传色旗，交回 compose 自行探测）。
+    const expected = Deno.stdout.isTerminal() ? "inherit" : "no-color";
+    assertEquals(result.colorDecision, expected);
+    assertEquals(
+      logsCall(runs).includes("--no-color"),
+      expected === "no-color",
+    );
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
@@ -2505,7 +2524,7 @@ Deno.test("logs core --follow：走 stream（实时），参数为 --tail=200 --
       }));
     assertEquals(result.exitCode, 0);
     assertEquals(result.followed, true);
-    assertEquals(result.color, "force");
+    assertEquals(result.colorDecision, "force");
     // 实时跟随走 stream，缓冲的 run 不接 logs（run 无法实时输出）
     assertEquals(streams.length, 1);
     assertEquals(
@@ -2563,7 +2582,13 @@ Deno.test("logs --json：stdout 逐字节为合法 JSON，日志与诊断改道 
     assertEquals(
       stdout.join(""),
       JSON.stringify(
-        { dir, services: [], color: "no-color", followed: false, error: null },
+        {
+          dir,
+          services: [],
+          colorDecision: "no-color",
+          followed: false,
+          error: null,
+        },
         null,
         2,
       ) + "\n",
@@ -2653,7 +2678,7 @@ Deno.test("logs：进程 env 的 LOG_COLOR 为空串 → 回退 .env.prod（对�
       { LOG_COLOR: "" },
       () => logs({ dir, runner, io, color: NO_COLOR }),
     );
-    assertEquals(result.color, "force");
+    assertEquals(result.colorDecision, "force");
     assertForcedAnsi(logsCall(runs));
   } finally {
     await Deno.remove(dir, { recursive: true });

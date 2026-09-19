@@ -855,12 +855,24 @@ export interface LogsCommandOptions extends LifecycleOptions {
   env?: Record<string, string>;
 }
 
-/** logs 的结果：在公共形状上追加服务名、着色决策与是否跟随。 */
+/**
+ * logs 的结果：在公共形状上追加服务名、着色决策与是否跟随。
+ *
+ * `state` 恒为 `"running"` 且**不作探测**（与 bash `logs()` 一致：不查
+ * `compose ps`）；它只是为满足 {@link LifecycleBaseResult} 的公共形状，
+ * **不代表真实栈状态**。
+ */
 export interface LogsResult extends LifecycleBaseResult {
   /** 透传的服务名（与输入一致）。 */
   services: string[];
-  /** 最终着色决策（--json 载荷的一部分，亦便于测试断言）。 */
-  color: LogsColorDecision;
+  /**
+   * 最终**着色决策**：`force` / `inherit` / `no-color`。
+   *
+   * 命名刻意不叫 `color`——它不是 {@link ColorMode}
+   * （`auto`/`always`/`never`），而是 `applyLogsColor` 落回 compose 参数的
+   * 三态结论，也是 `--json` 载荷的一部分，便于测试断言。
+   */
+  colorDecision: LogsColorDecision;
   /** 是否走实时跟随路径。 */
   followed: boolean;
 }
@@ -892,7 +904,7 @@ export async function logs(opts: LogsCommandOptions): Promise<LogsResult> {
     const result: LogsResult = {
       ...failed(ctx.dir, prepared.error),
       services,
-      color: "no-color",
+      colorDecision: "no-color",
       followed,
     };
     if (ctx.jsonMode) emitJson(logsPayload(result), ctx.io);
@@ -923,7 +935,7 @@ export async function logs(opts: LogsCommandOptions): Promise<LogsResult> {
     const result: LogsResult = {
       ...failed(ctx.dir, error),
       services,
-      color: decision,
+      colorDecision: decision,
       followed,
     };
     if (ctx.jsonMode) emitJson(logsPayload(result), ctx.io);
@@ -940,7 +952,7 @@ export async function logs(opts: LogsCommandOptions): Promise<LogsResult> {
     const result: LogsResult = {
       ...failed(ctx.dir, error),
       services,
-      color: decision,
+      colorDecision: decision,
       followed,
     };
     if (ctx.jsonMode) emitJson(logsPayload(result), ctx.io);
@@ -954,7 +966,7 @@ export async function logs(opts: LogsCommandOptions): Promise<LogsResult> {
     exitCode: 0,
     error: null,
     services,
-    color: decision,
+    colorDecision: decision,
     followed,
   };
   // JSON 模式：stdout 只含这一个文档；日志本体与诊断已改道 stderr（emitHuman）。
@@ -967,7 +979,7 @@ function logsPayload(result: LogsResult): Record<string, unknown> {
   return {
     dir: result.dir,
     services: result.services,
-    color: result.color,
+    colorDecision: result.colorDecision,
     followed: result.followed,
     error: result.error,
   };
