@@ -854,7 +854,113 @@ snapshot-<ts>.nojbackup
 
 ---
 
-## Task 19–26（概要；执行前逐个展开为完整任务块）
+## Task 19: drill（隔离恢复演练，原生移植）
+
+**Files:**
+- Create: `noj-cli/src/prod/drill/plan.ts` — 参数/快照校验、compose 覆盖、报告路径、资源前置
+- Create: `noj-cli/src/prod/drill/verify.ts` — 业务验收（`restore-drill-verify.ts` 的原生移植）
+- Create: `noj-cli/src/prod/drill/report.ts` — 报告渲染/解析 + 监控指标
+- Create: `noj-cli/src/prod/drill/drill.ts` — 演练编排
+- Create: `noj-cli/src/prod/drill/*_test.ts`
+- Modify: `noj-cli/src/mod.ts`
+
+**Consumes**：T17 `unpackContainer`（**新增**：drill 接受 `.nojbackup` 单文件）、
+T18 `verifyContainer`；`runtime/command.ts` 的 `CommandRunner`；`maintain/drill.ts`
+的既有**纯校验**（`assertDrillProjectName`/`assertSubnetCidr`，已带 P1/P2 评审修复）
+
+**对照 bash（R3）**：`restore-drill.sh` 全 609 行（`preflight()`:250-281、
+`prepare_*`:282-339、`restore_data_services()`:340-376、`verify_data()`:377-424、
+`seed_drill_admin()`:425-447、`start_business_services()`:448-466、
+`ensure_judge_images()`:467-480、`run_business_verification()`:481-501、
+`write_report()`:521-564、`write_drill_metrics()`:565-575、`on_exit()`:165-186）；
+`restore-drill-verify.ts` 全 496 行。
+
+**R1 硬约束**：当前 `maintain/drill.ts` 是 `restore-drill.sh` 的**薄包装**
+（`new Deno.Command("bash", ...)`）——这正是 R1 要消灭的形态。本任务把它移植为
+原生 TS：**零** `bash` / `restore-drill.sh` 调用，业务验收由 CLI 直接发 HTTP。
+
+**形态反转（重要）**：`maintain/drill.ts` 的 `assertDrillSnapshotSupported` 目前
+**拒绝** `.nojbackup` 单文件（当时它属于 JSON 模态、布局不同）。T17 之后单文件
+是**唯一**形态且 `payload_layout == "prod-raw"` 与生产目录快照**逐文件一致**，
+故 T19 **反转为接受单文件**：校验 `payload_layout == "prod-raw"` → 解包到临时
+目录 → 交给隔离编排。旧的"拒绝单文件"逻辑连同其理由一并作废（T23 收敛时删除
+`maintain/drill.ts`）。
+
+**必须实现的行为**
+
+1. **隔离性（#516 核心保证，逐条不可省）**：
+   - 独立 Compose **项目名**（默认 `noj-drill`；**拒绝含 `prod`**——`down -v`
+     会删生产卷）；项目名正则 `^[a-z0-9][a-z0-9_-]*$`；
+   - 独立**子网**（默认 `172.29.0.0/16`）：覆盖文件只改 `noj-net` 的 ipam；
+   - **不映射宿主机端口**：覆盖文件不为任何服务加 `ports:`；
+   - 数据卷沿用项目名前缀 → 与生产卷天然隔离。
+2. **校验前置（缺资源 = 2，不中途失败）**：参数错误（项目名/子网/RPO/RTO 非负整数）
+   与资源不足（docker 不可用、磁盘 < 2GiB、快照/passphrase/compose 缺失、快照校验
+   不过）都在**起容器之前**决出，返回退出码 **2**（`UsageError` 语义）。
+3. **恢复序列**：启动隔离 postgres/redis/minio → `minio-init` →（幂等化 globals）
+   恢复 PostgreSQL → 停止并写入 redis RDB → 重启 redis → `mc mirror` 恢复对象。
+   **二进制一律经文件重定向**（复用 T17 的 `feedFromFile`/`feedToFile` 语义）。
+4. **数据核对**：迁移版本与快照 `migration-status.txt` **逐字一致**；用户数可读；
+   Redis 键数可读；MinIO 对象数**不少于**快照。任一不符 → 演练失败（1）。
+5. **业务验收**（原生 HTTP，替代容器内跑 `deno run verify.ts`）：
+   登录（Cookie 与 JSON token 双兼容）→ 题目列表 → （非 `--skip-judge`）导入
+   A+B 演练题目包 → 题目详情 → 附件下载（zip 魔数校验）→ 真实评测（提交 + 轮询，
+   上限 10 分钟，要求 `finished` 且 `score > 0`）→ 注册探针（仅 warning）。
+   登录失败立即短路（`restore-drill-verify.ts:424-427` 的语义）。
+6. **RPO/RTO 是硬阈值**：超限 → `result=passed_with_warnings` 且 **退出码 1**
+   （`maintain/drill.ts:326-337` 已确立的语义，原生版保持）。
+7. **失败也清理**：失败路径必须 `down -v --remove-orphans` 并删演练目录
+   （`--keep` 才保留）；且**清理失败不掩盖原始错误**。
+8. **报告**：字段与 bash `write_report` 逐字一致（`result`/`drill_type`/`snapshot`/
+   `snapshot_created_at`/`drill_started_at`/`drill_finished_at`/
+   `restore_duration_seconds`/`total_duration_seconds`/`rpo_*`/`rto_*`/
+   `compose_project`/`network_subnet`/`checks.env` 各项/验收明细/`cleanup`/
+   `credential_note`），权限 600。
+9. **监控指标名逐字保持**（spec §3.4 契约，被 `noj-alerts.yml:236` 引用）：
+   `noj_restore_drill_last_success_unix_time`（仅成功时写，gauge）。
+10. **`--json` 时 stdout 只含 JSON**：人类日志改道 stderr（T6/T16 先例）。
+
+- [ ] **Step 1: 写失败测试**
+
+- **隔离性**：断言覆盖 YAML **不含** `ports:`；只改 `noj-net` 的 ipam 子网；
+  compose 参数含 `--project-name <演练名>`。
+- **退出码语义（#516 验收）**：RPO 超限 → 1；RTO 超限 → 1；两者都达标 → 0；
+  docker 不可用 / 磁盘不足 / 快照缺失 / 参数非法 → **2**（且**零 compose 调用**）。
+- **`--project-name` 含 prod → 拒绝（2）**，且零 compose 调用。
+- **失败也清理**：注入在"恢复数据"阶段失败的 runner → 断言仍执行了
+  `down -v --remove-orphans`；`--keep` 时**不**清理；清理命令自身失败**不**掩盖
+  原始错误（错误信息仍是原始失败原因）。
+- **快照形态反转**：`.nojbackup` 单文件被**接受**并解包（`payload_layout` 校验）；
+  非 `prod-raw` 布局 → 拒绝（2）。
+- **数据核对**：迁移状态不一致 → 演练失败（1）；MinIO 对象数少于快照 → 失败（1）。
+- **业务验收**：登录失败 → 立即短路（不再发题目请求）；`--skip-judge` 时不导入
+  题目、评测步骤记为 `skipped`；评测未达 `score > 0` → 失败（1）。
+- **报告**：字段名与 bash 逐字一致；权限 600；`rpo_met`/`rto_met` 与结论一致；
+  `cleanup=kept-for-review|done` 随 `--keep`。
+- **指标**：仅成功时写 `noj_restore_drill_last_success_unix_time`，且**名字逐字**
+  等于契约（含 `# HELP`/`# TYPE` 行）；失败时**不**写。
+- **R1**：`rg 'Deno.Command\("bash"' noj-cli/src` 为空；drill 路径零脚本调用。
+
+- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+
+- [ ] **Step 3: 实现**
+
+- 一切外部访问可注入（runner / fetcher / fs / now）；`verify.ts` 只依赖注入的
+  `fetch`，因此业务验收可在无 docker 的 CI 里用 fake HTTP 全覆盖。
+- 复用 `maintain/drill.ts` 的 `assertDrillProjectName`/`assertSubnetCidr`
+  （已含 P1/P2 评审修复，不重写），但**迁移到 `prod/drill/plan.ts`** 以便 T23
+  删除双模态时不留悬挂。
+
+- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+
+- [ ] **Step 5: 提交** — `feat(cli): 原生移植隔离恢复演练（drill），零 bash 调用`
+
+**明确不做**：不删 `maintain/drill.ts`（T23）；不删 `restore-drill.sh`（T24）；
+不实现 `backup restore` 的真实恢复（仅 drill 内的隔离恢复）。
+
+---
+
+## Task 20–26（概要；执行前逐个展开为完整任务块）
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
 | T17 .nojbackup 容器 | `backup/container.ts`、`driver.ts` | 单文件 + 整包加密；**文件重定向采二进制**；`pg_restore --list` 可解析 |
