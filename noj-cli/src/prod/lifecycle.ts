@@ -1,10 +1,14 @@
 /**
  * 生产生命周期命令入口（T12 起）：install / start / stop / restart / status。
  *
- * 结构（T13 拆分）：**命令入口与结果形状留在本文件**；被多个动作共享的
- * compose 编排与前置校验步骤在 `./lifecycle/steps.ts`（T12 评审建议：
- * lifecycle.ts 仅 install 时就已 715 行，继续追加会失控）。T14–T16 在同一
- * steps 模块追加，不再堆进本文件。
+ * 结构（T13 拆分）：**命令入口与结果形状留在本文件**。两个内聚单元已外移：
+ * - `./lifecycle/steps.ts`：被多个动作共享的 compose 编排（`waitForStack`）与
+ *   前置校验（`prepareAndCheck`，即 bash `check_configuration` 六步），
+ *   T14–T16 的编排增量进该模块；
+ * - `./lifecycle/path.ts`：仅服务 install 第 9 步的 PATH 注册
+ *   （`registerCommand`/`PATH_LINE`，production.sh `register_command`）。
+ *
+ * 两者都是「命令无关」的单元，因此本文件只留命令入口、结果形状与上下文装配。
  *
  * ## T13：T4 状态机的落点（T12 的 carry-forward 在本任务闭合）
  *
@@ -34,9 +38,12 @@
  * 1. **`--dry-run` 未迁移**：bash `run_compose` 有 DRY_RUN 早退；本模块的 dryRun
  *    只存在于 T10 封装（`ComposeOptions.dryRun`），四个命令不暴露该旗标
  *    （brief 未要求，且 T16 才需要脚本化干跑）。
- * 2. **`check_dependencies`（docker / daemon / buildx 探测）未接线**：
- *    `prepareAndCheck` 只迁移 `check_configuration` 的配置侧；真实 docker 探测
- *    属环境面（T12 报告 §6.4 已登记），compose 调用失败会自然报错。
+ * 2. **`check_dependencies` 的 docker / daemon / buildx 三条未接线**：
+ *    `prepareAndCheck` 已迁移 `check_configuration` 六步 + `check_dependencies`
+ *    的 compose 文件判定；只有「docker 可执行 / daemon 可连 / buildx 可用」
+ *    这三条环境探测仍属环境面（T12 报告 §6.4 已登记），compose 调用失败会自然
+ *    报错。**步骤 5 的 `lsof` 占用探测**经 `LifecycleOptions.probePort` 可注入，
+ *    未注入即等同 bash 的 `command -v lsof` 不命中（只 warn，不 fail）。
  * 3. **`stop` 失败仍报成功**：bash `stop()` 不看 `compose stop` 的退出码就
  *    `ok "服务已停止，数据卷已保留"`。本实现如实读退出码（!=0 → 退出码 1），
  *    因为"静默假装成功"是真实可用性缺口；文案差异已在测试中显式断言。
@@ -62,8 +69,9 @@
  * 3. **configure**（仅在仍有缺失时执行并记录）：T11 {@link runConfigWizard}
  *    交互向导（仅 TTY；非交互缺配置直接报错且**零写入**）；
  * 4. **passphrase**：T11 {@link ensureBackupPassphrase}（deploy.sh :920-953）；
- * 5. **validate**：T11 {@link checkRequiredValues} + {@link checkJudgeSocket} +
- *    `compose config`（deploy.sh :684-766 / :893-914）；
+ * 5. **validate**：与四个生命周期命令**共用** `lifecycle/steps.ts:prepareAndCheck`
+ *    ——bash `check_configuration` 六步（env 文件 / 权限 / 必填值 / judge socket /
+ *    端口 / `compose config`，deploy.sh :893-914 + :684-789）；
  * 6. **verify-images**：T11 {@link verifyImageSignatures}（deploy.sh :837-874）；
  * 7. **compose-pull / compose-up**：T10 {@link composeUp} 等（deploy.sh
  *    `run_compose pull` + `wait_for_stack` :981-992）；
@@ -103,8 +111,10 @@
  *   `up -d --force-recreate --no-deps nginx`（对照 deploy.sh:987-990）。
  * - **不把运行中的二进制复制进 `<dir>/bin/noj-cli`**：那是 install.sh
  *   `download_cli`/`install_cli` 的职责，随 R4 删除；二进制由用户手动下载
- *   （R4），跨版本同步归 T16。PATH 注册严格照 `register_command` 语义：目标
- *   不存在时按「源码运行模式」告警并跳过。
+ *   （R4），跨版本同步归 T16。PATH 注册（`./lifecycle/path.ts`）严格照
+ *   `register_command` 语义：目标不存在时按「源码运行模式」告警并跳过。
+ * - **`composeUpCode` 如实取自 `waitForStack`**：bash `wait_for_stack` 失败即
+ *   `fail` 退出，故 `install` 返回时该值恒为真 0（不再硬编码）。
  * - **不落 T4 状态**：`install` 不查 `compose ps`（与 bash `install()` 一致，
  *   用 `waitForStack` 的退出码表达"是否真的起来"）。T12 曾把 brief 的「落状态
  *   （T4）」**延后到 T13**；**T13 已闭合**：`status`/`start`/`stop` 消费 T4 的
@@ -141,12 +151,11 @@ import {
   validateTargetDir,
 } from "./bootstrap.ts";
 import type { Fetcher } from "./bootstrap.ts";
-import { composeConfig, composePs } from "./compose.ts";
+import { composePs } from "./compose.ts";
 import type { ComposeOptions, ComposeResult } from "./compose.ts";
 import { PROD_COMPOSE_FILE, PROD_ENV_FILE } from "./compose.ts";
 import {
   backupPassphrasePath,
-  checkJudgeSocket,
   ensureBackupPassphrase,
   generateSecret,
   recordDeploymentMetadata,
@@ -165,22 +174,12 @@ import {
   readEnvValues,
   runComposeSub,
   statMode,
+  WAIT_FAILURE_HINT,
   waitForStack,
 } from "./lifecycle/steps.ts";
+import { registerCommand } from "./lifecycle/path.ts";
+import type { PathRegistration } from "./lifecycle/path.ts";
 import type { PreparedEnvironment } from "./lifecycle/steps.ts";
-
-export {
-  assertConfiguration,
-  prepareAndCheck,
-  statMode,
-  waitForStack,
-} from "./lifecycle/steps.ts";
-export type {
-  PreparedEnvironment,
-  PrepareFailure,
-  PrepareResult,
-  StepSink,
-} from "./lifecycle/steps.ts";
 
 /** install 的步骤名（顺序即执行顺序，也是 `InstallResult.steps` 的顺序）。 */
 export type InstallStepName =
@@ -204,14 +203,6 @@ export interface InstallStep {
   paths?: string[];
 }
 
-/** PATH 注册结果。 */
-export interface PathRegistration {
-  /** 实际创建（或已存在且正确）的软链接路径；未注册时为 null。 */
-  path: string | null;
-  /** 用户可见的告警（未覆盖、无法注册、源码运行模式等）。 */
-  warnings: string[];
-}
-
 /** {@link install} 的结果。 */
 export interface InstallResult {
   /** 归一化后的安装目录（无尾斜杠）。 */
@@ -224,7 +215,13 @@ export interface InstallResult {
   composeFile: string;
   /** 通过 cosign 验签的镜像 digest（关闭验签时为空）。 */
   verified: VerifiedDigest[];
-  /** `compose up` 的退出码（真实执行；本模块不做 dryRun）。 */
+  /**
+   * `waitForStack` 首段 `up` 的 compose 退出码（成功恒为真 0）。
+   *
+   * 该字段反映的是 `wait_for_stack` 的结果：它失败时本函数**抛错**（bash 同样
+   * `fail` 退出），因此返回到调用方时必然是 0——不是"没执行"的占位值，
+   * 也不是硬编码常量。本模块不做 dryRun。
+   */
   composeUpCode: number;
   /** PATH 注册结果（best-effort，失败不抛错）。 */
   registration: PathRegistration;
@@ -279,9 +276,6 @@ export interface InstallOptions {
   /** 新装时的 `NOJ_VERSION` 默认值；缺省与 `ref` 相同（对照 install.sh 传 REF）。 */
   defaultVersion?: string;
 }
-
-/** PATH 追加行（逐字对照 production.sh:90）。 */
-export const PATH_LINE = 'export PATH="$HOME/.local/bin:$PATH"';
 
 /** 首次安装自动生成强随机值的键（deploy.sh :627-635）。 */
 const GENERATED_SECRET_KEYS: readonly string[] = [
@@ -348,16 +342,6 @@ async function hasReleaseAssets(dir: string): Promise<boolean> {
     if (await isFile(join(dir, asset))) return true;
   }
   return false;
-}
-
-/** 该路径是否为可执行普通文件（对应 bash `[[ -x ]]`）。 */
-async function isExecutableFile(path: string): Promise<boolean> {
-  try {
-    const st = await Deno.stat(path);
-    return st.isFile && ((st.mode ?? 0) & 0o111) !== 0;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -428,130 +412,6 @@ async function seedEnvFile(
     entries.set("NOJ_VERSION", defaultVersion);
   }
   await writeEnvFileAtomic(envFile, entries);
-}
-
-// ---------------- PATH 注册（production.sh:97-131） ----------------
-
-/** `link_command` 的三态：ok=已就绪 / refuse=拒绝覆盖 / cannot=无法创建。 */
-type LinkStatus = "ok" | "refuse" | "cannot";
-
-/**
- * 在 `binDir` 下建立 `noj-cli` → `target` 软链接（逐字对照 `link_command`）。
- *
- * - 已是软链接且指向同一目标 → `ok`（幂等）；指向他处 → `refuse`；
- * - 存在同名非软链接 → `refuse`（绝不覆盖）；
- * - `mkdir -p` 或 `ln -s` 失败 → `cannot`（调用方据此回落用户目录）。
- */
-async function linkCommand(
-  binDir: string,
-  target: string,
-): Promise<LinkStatus> {
-  const link = join(binDir, "noj-cli");
-  let st: Deno.FileInfo | null = null;
-  try {
-    st = await Deno.lstat(link);
-  } catch {
-    st = null;
-  }
-  if (st !== null && st.isSymlink) {
-    const existing = await Deno.readLink(link).catch(() => "");
-    return existing === target ? "ok" : "refuse";
-  }
-  if (st !== null) return "refuse";
-  try {
-    await Deno.mkdir(binDir, { recursive: true });
-  } catch {
-    return "cannot";
-  }
-  try {
-    await Deno.symlink(target, link);
-  } catch {
-    return "cannot";
-  }
-  return "ok";
-}
-
-/**
- * 把 `~/.local/bin` 追加进 `~/.profile`（`add_user_path` :86-95）。
- *
- * `grep -Fqx` 等价：整行比较，已存在则不重复追加。返回是否成功。
- */
-async function addUserPath(userHome: string): Promise<boolean> {
-  if (userHome === "") return false;
-  const profile = join(userHome, ".profile");
-  let existing = "";
-  try {
-    existing = await Deno.readTextFile(profile);
-  } catch {
-    existing = "";
-  }
-  if (existing.split("\n").some((line) => line === PATH_LINE)) return true;
-  try {
-    await Deno.writeTextFile(
-      profile,
-      `\n# Neuro OJ command\n${PATH_LINE}\n`,
-      { append: true, create: true },
-    );
-  } catch {
-    return false;
-  }
-  return true;
-}
-
-/**
- * 迁移 `register_command`（production.sh:97-131）。
- *
- * 目标 `<dir>/bin/noj-cli` 不存在/不可执行时按「源码运行模式」告警并跳过
- * （不把 `deno` 自身误注册成命令）。优先全局目录，权限不足回落 `~/.local/bin`；
- * 两个目录都存在同名且指向他处的命令时**拒绝覆盖**并告警（不静默成功）。
- */
-export async function registerCommand(
-  opts: {
-    cliBinary: string;
-    binDir: string;
-    userHome: string;
-    warn: (message: string) => void;
-  },
-): Promise<PathRegistration> {
-  const warnings: string[] = [];
-  const warn = (message: string): void => {
-    warnings.push(message);
-    opts.warn(message);
-  };
-
-  if (!(await isExecutableFile(opts.cliBinary))) {
-    warn("当前为源码运行模式，未注册 PATH；安装版 CLI 位于 " + opts.cliBinary);
-    return { path: null, warnings };
-  }
-
-  const global = await linkCommand(opts.binDir, opts.cliBinary);
-  if (global === "ok") {
-    return { path: join(opts.binDir, "noj-cli"), warnings };
-  }
-  if (global === "refuse") {
-    warn(`未覆盖已有命令：${join(opts.binDir, "noj-cli")}`);
-    return { path: null, warnings };
-  }
-
-  if (opts.userHome !== "") {
-    const userBin = join(opts.userHome, ".local/bin");
-    const user = await linkCommand(userBin, opts.cliBinary);
-    if (user === "ok") {
-      const link = join(userBin, "noj-cli");
-      if (await addUserPath(opts.userHome)) {
-        return { path: link, warnings };
-      }
-      warn(`已创建用户命令：${link}，但无法自动更新 PATH，请手动将其加入 PATH`);
-      return { path: link, warnings };
-    }
-    if (user === "refuse") {
-      warn(`未覆盖已有命令：${join(userBin, "noj-cli")}`);
-      return { path: null, warnings };
-    }
-  }
-
-  warn(`无法注册 noj-cli 到 PATH；部署已完成，可直接运行 ${opts.cliBinary}`);
-  return { path: null, warnings };
 }
 
 // ---------------- install ----------------
@@ -682,28 +542,19 @@ export async function install(opts: InstallOptions): Promise<InstallResult> {
   }
   steps.push({ name: "passphrase", paths: [ensured.path] });
 
-  // ---- 5. validate（T11）：judgeEnabledError → checkRequiredValues ----
-  const report = assertConfiguration(env);
-  if (report.judgeEnabled) {
-    const socket = await checkJudgeSocket(env, {
-      socketExists: opts.socketExists,
-    });
-    if (!socket.ok) {
-      throw new Error(socket.error ?? "Judge Docker socket 校验失败");
-    }
-  }
-  const composeOptions: ComposeOptions = {
-    composeFile,
-    envFile,
-    judge: report.judgeEnabled,
-  };
-  const configCheck = await composeConfig(runner, composeOptions);
-  if (!Array.isArray(configCheck) && configCheck.code !== 0) {
-    throw new Error(
-      "Docker Compose 配置无效，请检查环境变量和生产 Compose 文件：" +
-        configCheck.stderr.trim(),
-    );
-  }
+  // ---- 5. validate：与四个生命周期命令共用 prepareAndCheck（T13 评审 Important）----
+  // bash 的 check_configuration 六步在此**与 start/stop/status/restart 逐条同源**：
+  // 1 env 文件 → 2 权限 → 3 check_required_values → 4 check_judge_socket →
+  // 5 check_port_value → 6 compose config。此前 install 只共享 1/2/3，另三步在
+  // 本文件各写一份（judge socket、compose config 重复），正是评审指出的分叉。
+  // 失败文案与 bash `fail` 逐字一致（compose 无效时仍带 stderr 细节）。
+  const prepared = await prepareAndCheck({
+    dir,
+    runner,
+    socketExists: opts.socketExists,
+  });
+  if (!prepared.ok) throw new Error(prepared.error);
+  const composeOptions: ComposeOptions = composeOptionsOf(prepared);
   steps.push({ name: "validate", paths: [envFile, composeFile] });
 
   // ---- 6. verify-images（T11）：cosign 缺失/失败必须可见 ----
@@ -742,7 +593,7 @@ export async function install(opts: InstallOptions): Promise<InstallResult> {
     (text) => io.write(text),
   );
   if (!wait.ok) throw new Error(wait.error ?? "服务启动或健康检查失败");
-  const composeUpCode = 0;
+  const composeUpCode = wait.code;
   steps.push({ name: "compose-up", paths: [composeFile] });
 
   // ---- 8. record-metadata（T11）：无验签结果时零副作用 ----
@@ -804,6 +655,19 @@ export interface LifecycleOptions {
   args?: string[];
   /** 着色模式（`--color`）；缺省 `auto`（非 TTY 自动关色）。 */
   color?: ColorMode;
+  /**
+   * judge socket 存在性探测（T11 `checkJudgeSocket` 的注入点）。
+   *
+   * 仅 judge 启用时被调用；缺省不探测 = bash judge 关闭时的「已跳过」分支。
+   */
+  socketExists?: (path: string) => Promise<boolean>;
+  /**
+   * 端口占用探测（`lsof -nP -iTCP:<port> -sTCP:LISTEN` 的注入点）。
+   *
+   * 缺省不探测（等同 bash `command -v lsof` 不命中）；注入后命中即写一条
+   * 端口冲突告警，**不阻断**命令（与 bash 的 `warn` 一致）。
+   */
+  probePort?: (port: number) => Promise<boolean>;
 }
 
 /** 四个生命周期命令的公共结果形状。 */
@@ -880,18 +744,32 @@ function composeOptionsOf(env: PreparedEnvironment): ComposeOptions {
 }
 
 /**
- * `prepare_and_check` 的公共前置：归一化目录 + 配置校验。
+ * `prepare_and_check` 的公共前置：配置校验（T13 评审 Important：与 install 同源）。
  *
- * 失败时把错误写往人类通道（JSON 模式为 stderr），并回传错误文案；
- * **零 docker 调用**、零副作用（`prepareAndCheck` 已保证）。
+ * `prepareAndCheck` 负责 bash `check_configuration` 的**六步**（env 文件 / 权限 /
+ * 必填值 / judge socket / 端口 / compose config），本函数只把它接进命令上下文：
+ * 1. 目录经 `validateTargetDir` 归一化（`lifecycleContext` 已做）；
+ * 2. 环境探测注入点从 {@link LifecycleOptions} 透传（未注入即 bash 的「已跳过」/「无 lsof」）；
+ * 3. 端口冲突告警走人类通道（T6/T8，`--json` 自动改道 stderr）；
+ * 4. 失败诊断写 stderr 并回传文案。
+ *
+ * **零变更命令**：步骤 1–5 不调用 docker；步骤 6 的 `compose config` 只读解析。
+ * 任一失败都发生在任何 `up`/`stop`/`down` 之前。
  */
 async function prepareLifecycle(
   ctx: LifecycleContext,
+  opts: LifecycleOptions,
 ): Promise<
   | { ok: true; composeOptions: ComposeOptions }
   | { ok: false; error: string }
 > {
-  const prepared = await prepareAndCheck(ctx.dir);
+  const prepared = await prepareAndCheck({
+    dir: ctx.dir,
+    runner: opts.runner,
+    socketExists: opts.socketExists,
+    probePort: opts.probePort,
+    write: (text) => emitHuman(text + "\n", ctx.io),
+  });
   if (!prepared.ok) {
     ctx.error(prepared.error);
     return { ok: false, error: prepared.error };
@@ -969,7 +847,7 @@ function failed(dir: string, error: string): LifecycleBaseResult {
  */
 export async function status(opts: LifecycleOptions): Promise<StatusResult> {
   const ctx = lifecycleContext(opts);
-  const prepared = await prepareLifecycle(ctx);
+  const prepared = await prepareLifecycle(ctx, opts);
   if (!prepared.ok) {
     if (ctx.jsonMode) {
       emitJson({
@@ -1019,7 +897,7 @@ async function startWith(
   ctx: LifecycleContext,
   opts: LifecycleOptions,
 ): Promise<LifecycleBaseResult> {
-  const prepared = await prepareLifecycle(ctx);
+  const prepared = await prepareLifecycle(ctx, opts);
   if (!prepared.ok) {
     return { ...failed(ctx.dir, prepared.error), state: "uninitialized" };
   }
@@ -1046,8 +924,7 @@ async function startWith(
     (text) => emitHuman(text, ctx.io),
   );
   if (!wait.ok) {
-    const error = wait.error ??
-      "服务启动或健康检查失败，请执行 status 和 logs 排查";
+    const error = wait.error ?? WAIT_FAILURE_HINT;
     ctx.error(error);
     return failed(ctx.dir, error);
   }
@@ -1067,7 +944,7 @@ async function stopWith(
   ctx: LifecycleContext,
   opts: LifecycleOptions,
 ): Promise<LifecycleBaseResult> {
-  const prepared = await prepareLifecycle(ctx);
+  const prepared = await prepareLifecycle(ctx, opts);
   if (!prepared.ok) {
     return { ...failed(ctx.dir, prepared.error), state: "uninitialized" };
   }

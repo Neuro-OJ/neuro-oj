@@ -27,18 +27,19 @@ import type { PromptIO } from "../tui/io.ts";
 import type { RenderIO } from "../output/render.ts";
 import { sha256Hex } from "../util/hash.ts";
 import type { Fetcher } from "./bootstrap.ts";
+import { PATH_LINE } from "./lifecycle/path.ts";
 import {
   install,
   type InstallResult,
   type LifecycleBaseResult,
   type LifecycleOptions,
   missingConfigError,
-  PATH_LINE,
   restart,
   start,
   status,
   stop,
 } from "./lifecycle.ts";
+import { COMPOSE_CONFIG_INVALID_HINT } from "./lifecycle/steps.ts";
 import { PRODUCTION_MARKERS } from "../profile.ts";
 
 const REPO = "https://github.com/Neuro-OJ/neuro-oj";
@@ -960,16 +961,19 @@ Deno.test("install carry-forward T11：cosignAvailable 缺省注入真实探测�
           repository: REPO,
           ref: REF,
           io: makeIO([], []),
-          runner: makeRunner(records, (cmd) =>
-            cmd === "cosign"
-              ? { code: 127, stdout: "", stderr: "not found" }
-              : undefined),
+          runner: makeRunner(
+            records,
+            configOk((cmd) =>
+              cmd === "cosign"
+                ? { code: 127, stdout: "", stderr: "not found" }
+                : undefined
+            ),
+          ),
           fetcher: makeFetcher([], []),
           nonInteractive: true,
           passphraseFile: passphrase,
           processEnv: {},
-          warn: (m) =>
-            warnings.push(m),
+          warn: (m) => warnings.push(m),
         }),
       Error,
       "找不到 Cosign",
@@ -1478,6 +1482,12 @@ function captureRenderIO(json = false): {
 /** 测试固定 --color=never，输出无 ANSI，断言可逐字比较。 */
 const NO_COLOR = "never" as const;
 
+/**
+ * judge socket 存在探针：judge 启用时 T11 `checkJudgeSocket` 要求 socket 存在。
+ * 注入后测试无需真实 `/var/run/…`，也不因环境差异漂移。
+ */
+const SOCKET_PRESENT = () => Promise.resolve(true);
+
 /** 让 compose ps 返回固定输出的 override。 */
 function psOverride(
   output: string,
@@ -1494,6 +1504,24 @@ function hasSub(record: RunnerCall, sub: string): boolean {
   return record.cmd === "docker" && record.args.includes(sub);
 }
 
+/**
+ * 默认 fake：`compose config` 视为通过，其余命令由 `overrides` 决定。
+ *
+ * `prepareAndCheck`（T13 评审 Important）现在会对所有命令跑 `compose config`，
+ * 因此测试的 compose 结果判定必须先放行 config；只关心特定子命令（如 `ps`）
+ * 的用例无需重复声明。
+ */
+function configOk(
+  overrides: (cmd: string, args: string[]) => Partial<CmdResult> | undefined,
+): (cmd: string, args: string[]) => Partial<CmdResult> | undefined {
+  return (cmd, args) => {
+    if (cmd === "docker" && args.includes("config")) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    return overrides(cmd, args);
+  };
+}
+
 /** 四个生命周期命令的公共签名（前置校验测试用）。 */
 type LifecycleFn = (opts: LifecycleOptions) => Promise<LifecycleBaseResult>;
 
@@ -1504,7 +1532,8 @@ Deno.test("status：全 Up → running（T4 prodState），退出码 0", async (
     const { io, stdout } = captureRenderIO();
     const result = await status({
       dir,
-      runner: makeRunner(records, psOverride(PS_RUNNING)),
+      runner: makeRunner(records, configOk(psOverride(PS_RUNNING))),
+      socketExists: SOCKET_PRESENT,
       io,
       color: NO_COLOR,
     });
@@ -1528,7 +1557,8 @@ Deno.test("status：混合 → partial，退出码 0", async () => {
     const { io, stdout } = captureRenderIO();
     const result = await status({
       dir,
-      runner: makeRunner([], psOverride(PS_PARTIAL)),
+      runner: makeRunner([], configOk(psOverride(PS_PARTIAL))),
+      socketExists: SOCKET_PRESENT,
       io,
       color: NO_COLOR,
     });
@@ -1546,7 +1576,8 @@ Deno.test("status：全 Exited → stopped，退出码 0", async () => {
     const { io, stdout } = captureRenderIO();
     const result = await status({
       dir,
-      runner: makeRunner([], psOverride(PS_STOPPED)),
+      runner: makeRunner([], configOk(psOverride(PS_STOPPED))),
+      socketExists: SOCKET_PRESENT,
       io,
       color: NO_COLOR,
     });
@@ -1564,7 +1595,8 @@ Deno.test("status：空 ps 输出 → stopped（不写任何 ps 行）", async (
     const { io, stdout } = captureRenderIO();
     const result = await status({
       dir,
-      runner: makeRunner([], psOverride("")),
+      runner: makeRunner([], configOk(psOverride(""))),
+      socketExists: SOCKET_PRESENT,
       io,
       color: NO_COLOR,
     });
@@ -1586,7 +1618,8 @@ Deno.test("status --json：stdout 逐字节为合法 JSON（人类输出改道 s
     const { io, stdout, stderr } = captureRenderIO(true);
     const result = await status({
       dir,
-      runner: makeRunner([], psOverride(PS_PARTIAL)),
+      runner: makeRunner([], configOk(psOverride(PS_PARTIAL))),
+      socketExists: SOCKET_PRESENT,
       io,
       args: ["--json"],
       color: NO_COLOR,
@@ -1610,7 +1643,8 @@ Deno.test("start：已 running → no-op（不调用 up），文案取自 T4 状
     const { io, stdout } = captureRenderIO();
     const result = await start({
       dir,
-      runner: makeRunner(records, psOverride(PS_RUNNING)),
+      runner: makeRunner(records, configOk(psOverride(PS_RUNNING))),
+      socketExists: SOCKET_PRESENT,
       io,
       color: NO_COLOR,
     });
@@ -1636,7 +1670,8 @@ Deno.test("start：stopped → wait_for_stack 两段 up（参数逐元素精确�
     const { io } = captureRenderIO();
     const result = await start({
       dir,
-      runner: makeRunner(records, psOverride(PS_STOPPED)),
+      runner: makeRunner(records, configOk(psOverride(PS_STOPPED))),
+      socketExists: SOCKET_PRESENT,
       io,
       color: NO_COLOR,
     });
@@ -1685,7 +1720,8 @@ Deno.test("stop：已 stopped → no-op（不调用 stop）", async () => {
     const { io, stdout } = captureRenderIO();
     const result = await stop({
       dir,
-      runner: makeRunner(records, psOverride(PS_STOPPED)),
+      runner: makeRunner(records, configOk(psOverride(PS_STOPPED))),
+      socketExists: SOCKET_PRESENT,
       io,
       color: NO_COLOR,
     });
@@ -1710,7 +1746,8 @@ Deno.test("stop：running → compose stop，且绝不使用 down/-v（数据卷
     const { io } = captureRenderIO();
     const result = await stop({
       dir,
-      runner: makeRunner(records, psOverride(PS_RUNNING)),
+      runner: makeRunner(records, configOk(psOverride(PS_RUNNING))),
+      socketExists: SOCKET_PRESENT,
       io,
       color: NO_COLOR,
     });
@@ -1750,18 +1787,22 @@ Deno.test("restart：先 stop 再 up（顺序断言）", async () => {
       dir,
       io,
       color: NO_COLOR,
-      runner: makeRunner(records, (cmd, args) => {
-        if (cmd === "docker" && args.includes("ps")) {
-          psCalls++;
-          // 第一次（stop 前）→ running；第二次（start 前）→ 已停止。
-          return {
-            code: 0,
-            stdout: psCalls === 1 ? PS_RUNNING : PS_STOPPED,
-            stderr: "",
-          };
-        }
-        return undefined;
-      }),
+      socketExists: SOCKET_PRESENT,
+      runner: makeRunner(
+        records,
+        configOk((cmd, args) => {
+          if (cmd === "docker" && args.includes("ps")) {
+            psCalls++;
+            // 第一次（stop 前）→ running；第二次（start 前）→ 已停止。
+            return {
+              code: 0,
+              stdout: psCalls === 1 ? PS_RUNNING : PS_STOPPED,
+              stderr: "",
+            };
+          }
+          return undefined;
+        }),
+      ),
     });
     assertEquals(result.exitCode, 0);
     assertEquals(result.state, "running");
@@ -1783,15 +1824,19 @@ Deno.test("wait_for_stack：首段 up 失败 → 退出码 1 + status/logs 提�
       dir,
       io,
       color: NO_COLOR,
-      runner: makeRunner(records, (cmd, args) => {
-        if (cmd === "docker" && args.includes("ps")) {
-          return { code: 0, stdout: PS_STOPPED, stderr: "" };
-        }
-        if (cmd === "docker" && args.includes("up")) {
-          return { code: 1, stdout: "", stderr: "healthcheck failed" };
-        }
-        return undefined;
-      }),
+      socketExists: SOCKET_PRESENT,
+      runner: makeRunner(
+        records,
+        configOk((cmd, args) => {
+          if (cmd === "docker" && args.includes("ps")) {
+            return { code: 0, stdout: PS_STOPPED, stderr: "" };
+          }
+          if (cmd === "docker" && args.includes("up")) {
+            return { code: 1, stdout: "", stderr: "healthcheck failed" };
+          }
+          return undefined;
+        }),
+      ),
     });
     assertEquals(result.exitCode, 1);
     assertEquals(
@@ -1819,18 +1864,22 @@ Deno.test("wait_for_stack：第二段 nginx 失败 → 退出码 1 + 反向代�
       dir,
       io,
       color: NO_COLOR,
-      runner: makeRunner(records, (cmd, args) => {
-        if (cmd === "docker" && args.includes("ps")) {
-          return { code: 0, stdout: PS_STOPPED, stderr: "" };
-        }
-        if (cmd === "docker" && args.includes("up")) {
-          ups++;
-          return ups === 1
-            ? { code: 0, stdout: "", stderr: "" }
-            : { code: 1, stdout: "", stderr: "nginx boom" };
-        }
-        return undefined;
-      }),
+      socketExists: SOCKET_PRESENT,
+      runner: makeRunner(
+        records,
+        configOk((cmd, args) => {
+          if (cmd === "docker" && args.includes("ps")) {
+            return { code: 0, stdout: PS_STOPPED, stderr: "" };
+          }
+          if (cmd === "docker" && args.includes("up")) {
+            ups++;
+            return ups === 1
+              ? { code: 0, stdout: "", stderr: "" }
+              : { code: 1, stdout: "", stderr: "nginx boom" };
+          }
+          return undefined;
+        }),
+      ),
     });
     assertEquals(result.exitCode, 1);
     assertEquals(result.error, "反向代理刷新失败，请执行 status 和 logs 排查");
@@ -1847,7 +1896,8 @@ Deno.test("status：compose ps 非 0 → 退出码 1", async () => {
     const { io, stderr } = captureRenderIO();
     const result = await status({
       dir,
-      runner: makeRunner([], psOverride("", 1)),
+      runner: makeRunner([], configOk(psOverride("", 1))),
+      socketExists: SOCKET_PRESENT,
       io,
       color: NO_COLOR,
     });
@@ -1873,7 +1923,8 @@ Deno.test("前置：.env.prod 权限非 600/400 → 四个命令均拒绝且零 
       const { io } = captureRenderIO();
       const result = await fn({
         dir,
-        runner: makeRunner(records, psOverride(PS_RUNNING)),
+        runner: makeRunner(records, configOk(psOverride(PS_RUNNING))),
+        socketExists: SOCKET_PRESENT,
         io,
         color: NO_COLOR,
       });
@@ -1896,7 +1947,8 @@ Deno.test("前置：缺必需配置 → 报错（复用 T11 缺失清单），�
     const { io } = captureRenderIO();
     const result = await status({
       dir,
-      runner: makeRunner(records, psOverride(PS_RUNNING)),
+      runner: makeRunner(records, configOk(psOverride(PS_RUNNING))),
+      socketExists: SOCKET_PRESENT,
       io,
       color: NO_COLOR,
     });
@@ -1910,6 +1962,270 @@ Deno.test("前置：缺必需配置 → 报错（复用 T11 缺失清单），�
   }
 });
 
+// ---------------- T13 评审 Important：check_configuration 六步共享前置 ----------------
+//
+// prepareAndCheck 现在对**所有**生命周期命令与 install 跑 bash check_configuration
+// 的六步（env 文件 / 权限 / 必填值 / judge socket / 端口 / compose config）。
+// 以下测试锁定新增的第 4/5/6 步及其零副作用顺序。
+
+Deno.test("前置（步骤 4）：judge 启用 → socket 检查执行（注入探针被调用）", async () => {
+  // completeEnv 默认 JUDGE_ENABLED=false；显式改 true 才会走 check_judge_socket。
+  // judge 启用时 T2 的 validateEnv 也要求 socket 键非占位，故一并给出。
+  const dir = await makeInstalledDir({
+    JUDGE_ENABLED: "true",
+    JUDGE_DOCKER_SOCKET: "/run/noj-judge/docker.sock",
+    JUDGE_DOCKER_SOCKET_GID: "10001",
+  });
+  try {
+    const probed: string[] = [];
+    const records: RunnerCall[] = [];
+    const { io } = captureRenderIO();
+    const result = await status({
+      dir,
+      runner: makeRunner(records, configOk(psOverride(PS_RUNNING))),
+      socketExists: (path) => {
+        probed.push(path);
+        return Promise.resolve(true);
+      },
+      io,
+      color: NO_COLOR,
+    });
+    assertEquals(result.exitCode, 0);
+    assertEquals(probed.length, 1, "judge 启用时 socket 探针必须被调用一次");
+    // judge=true → compose 调用必须带 --profile judge（socket 检查通过后照常执行）。
+    assert(
+      records.some((r) => r.args.includes("--profile")),
+      "judge 启用时后续 compose 调用必须带 --profile judge",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("前置（步骤 4）：judge 关闭 → 跳过 socket 检查（bash 的「已跳过」分支）", async () => {
+  const dir = await makeInstalledDir({ JUDGE_ENABLED: "false" });
+  try {
+    let calls = 0;
+    const records: RunnerCall[] = [];
+    const { io } = captureRenderIO();
+    const result = await status({
+      dir,
+      runner: makeRunner(records, configOk(psOverride(PS_RUNNING))),
+      socketExists: () => {
+        calls++;
+        return Promise.resolve(true);
+      },
+      io,
+      color: NO_COLOR,
+    });
+    assertEquals(result.exitCode, 0);
+    // bash：judge_enabled 为假 → ok "已跳过 Judge Docker socket 检查"，不探 socket。
+    assertEquals(calls, 0, "judge 关闭时不得探测 socket");
+    assertEquals(
+      records.some((r) => r.args.includes("--profile")),
+      false,
+      "judge 关闭时不得带 --profile judge",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("前置（步骤 4）：judge 启用但 socket 不存在 → 报错且零 docker 调用", async () => {
+  const dir = await makeInstalledDir({
+    JUDGE_ENABLED: "true",
+    JUDGE_DOCKER_SOCKET: "/run/noj-judge/docker.sock",
+    JUDGE_DOCKER_SOCKET_GID: "10001",
+  });
+  try {
+    const records: RunnerCall[] = [];
+    const { io } = captureRenderIO();
+    const result = await status({
+      dir,
+      runner: makeRunner(records, configOk(psOverride(PS_RUNNING))),
+      socketExists: () => Promise.resolve(false),
+      io,
+      color: NO_COLOR,
+    });
+    assertEquals(result.exitCode, 1);
+    assertStringIncludes(result.error ?? "", "Judge 隔离 Docker socket 不存在");
+    assertEquals(records, [], "socket 检查失败必须早于任何 docker 调用");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("前置（步骤 5）：NGINX_PORT 取值非法 → 报错且零 docker 调用", async () => {
+  const dir = await makeInstalledDir({ NGINX_PORT: "70000" });
+  try {
+    const records: RunnerCall[] = [];
+    const { io } = captureRenderIO();
+    const result = await status({
+      dir,
+      runner: makeRunner(records, configOk(psOverride(PS_RUNNING))),
+      socketExists: SOCKET_PRESENT,
+      io,
+      color: NO_COLOR,
+    });
+    assertEquals(result.exitCode, 1);
+    assertEquals(result.error, "NGINX_PORT 必须是 1-65535 的端口号");
+    assertEquals(records, [], "端口非法时必须早于任何 docker 调用");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("前置（步骤 5）：端口探测注入 → 冲突告警但**不**阻断命令", async () => {
+  const dir = await makeInstalledDir({ NGINX_PORT: "8080" });
+  try {
+    const probed: number[] = [];
+    const { io, stdout } = captureRenderIO();
+    const result = await status({
+      dir,
+      runner: makeRunner([], configOk(psOverride(PS_RUNNING))),
+      socketExists: SOCKET_PRESENT,
+      probePort: (port) => {
+        probed.push(port);
+        return Promise.resolve(true);
+      },
+      io,
+      color: NO_COLOR,
+    });
+    assertEquals(result.exitCode, 0, "端口冲突只是告警，不得阻断");
+    assertEquals(probed, [8080]);
+    assertStringIncludes(stdout.join(""), "NGINX_PORT=8080 已被其他进程监听");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("前置（步骤 6）：compose config 失败 → 报错文案含 compose 无效提示，且零变更命令", async () => {
+  const dir = await makeInstalledDir();
+  try {
+    const records: RunnerCall[] = [];
+    const { io, stderr } = captureRenderIO();
+    const result = await start({
+      dir,
+      runner: makeRunner(records, (cmd, args) => {
+        if (cmd === "docker" && args.includes("config")) {
+          return { code: 1, stdout: "", stderr: "service 'core' has no image" };
+        }
+        return undefined;
+      }),
+      socketExists: SOCKET_PRESENT,
+      io,
+      color: NO_COLOR,
+    });
+    assertEquals(result.exitCode, 1);
+    assertStringIncludes(
+      result.error ?? "",
+      "Docker Compose 配置无效，请检查环境变量和生产 Compose 文件",
+    );
+    assertStringIncludes(result.error ?? "", "service 'core' has no image");
+    assertStringIncludes(stderr.join(""), "Docker Compose 配置无效");
+    // compose config 是唯一的 docker 调用：失败后绝不进入 up（零变更命令）。
+    assertEquals(records.filter((r) => hasSub(r, "config")).length, 1);
+    assertEquals(
+      records.filter((r) => hasSub(r, "up") || hasSub(r, "stop")).length,
+      0,
+      "compose config 失败后不得执行任何变更命令",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("前置（顺序）：compose config 失败早于任何 up/stop/down（四个命令同断言）", async () => {
+  const dir = await makeInstalledDir();
+  try {
+    const commands: ReadonlyArray<[string, LifecycleFn]> = [
+      ["start", start],
+      ["stop", stop],
+      ["restart", restart],
+      ["status", status],
+    ];
+    for (const [name, fn] of commands) {
+      const records: RunnerCall[] = [];
+      const { io } = captureRenderIO();
+      const result = await fn({
+        dir,
+        // 只让 config 失败；ps 也故意返回 running，若不前置校验就会执行 stop/up。
+        runner: makeRunner(records, (cmd, args) => {
+          if (cmd === "docker" && args.includes("config")) {
+            return { code: 1, stdout: "", stderr: "invalid compose" };
+          }
+          return { code: 0, stdout: PS_RUNNING, stderr: "" };
+        }),
+        socketExists: SOCKET_PRESENT,
+        io,
+        color: NO_COLOR,
+      });
+      assertEquals(result.exitCode, 1, name + " 必须因前置校验失败而拒绝");
+      assertStringIncludes(result.error ?? "", "Docker Compose 配置无效");
+      const mutating = records.filter((r) =>
+        hasSub(r, "up") || hasSub(r, "stop") || hasSub(r, "down")
+      );
+      assertEquals(
+        mutating,
+        [],
+        name + " 前置校验失败时不得记录任何变更命令（up/stop/down）",
+      );
+      assertEquals(
+        records.filter((r) => hasSub(r, "config")).length,
+        1,
+        name + " 必须先且只跑一次 compose config",
+      );
+    }
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("前置（步骤 6）：install 与生命周期命令共享同一 compose config 文案", async () => {
+  const dir = await makeInstalledDir();
+  try {
+    const passphrase = join(dir, "backup-passphrase");
+    await writePassphraseFile(passphrase);
+    const records: RunnerCall[] = [];
+    await assertRejects(
+      () =>
+        install({
+          dir,
+          repository: REPO,
+          ref: REF,
+          io: makeIO([], []),
+          runner: makeRunner(records, (cmd, args) => {
+            if (cmd === "docker" && args.includes("config")) {
+              return { code: 1, stdout: "", stderr: "invalid compose" };
+            }
+            return undefined;
+          }),
+          fetcher: makeFetcher([], []),
+          nonInteractive: true,
+          passphraseFile: passphrase,
+          processEnv: { NOJ_BACKUP_PASSPHRASE_FILE: passphrase },
+          cosignAvailable: () => Promise.resolve(true),
+          socketExists: SOCKET_PRESENT,
+          warn: () => {},
+        }),
+      Error,
+      COMPOSE_CONFIG_INVALID_HINT,
+    );
+    assertEquals(
+      records.filter((r) => hasSub(r, "config")).length,
+      1,
+      "install 的 validate 步骤必须跑一次 compose config",
+    );
+    assertEquals(
+      records.filter((r) => hasSub(r, "up")).length,
+      0,
+      "install 的 compose config 失败后不得进入 up",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("前置：缺少 .env.prod → 明确报错（请先执行 install）", async () => {
   const dir = await Deno.makeTempDir();
   try {
@@ -1918,7 +2234,8 @@ Deno.test("前置：缺少 .env.prod → 明确报错（请先执行 install）"
     const { io } = captureRenderIO();
     const result = await status({
       dir,
-      runner: makeRunner(records, psOverride(PS_RUNNING)),
+      runner: makeRunner(records, configOk(psOverride(PS_RUNNING))),
+      socketExists: SOCKET_PRESENT,
       io,
       color: NO_COLOR,
     });

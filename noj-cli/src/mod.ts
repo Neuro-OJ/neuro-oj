@@ -311,8 +311,6 @@ export {
   install,
   // 仅为可测而导出：首装报错清单需按 judge 状态条件化（review Minor 2）。
   missingConfigError,
-  PATH_LINE,
-  registerCommand,
   restart,
   start,
   status,
@@ -323,8 +321,10 @@ export {
 // lifecycle.ts；T14–T16 在此追加步骤。
 export {
   assertConfiguration,
+  COMPOSE_CONFIG_INVALID_HINT,
   composeOutputText,
   NGINX_REFRESH_FAILURE_HINT,
+  PORT_CONFLICT_HINT,
   prepareAndCheck,
   runComposeSub,
   WAIT_FAILURE_HINT,
@@ -334,8 +334,10 @@ export {
 export type {
   PreparedEnvironment,
   PrepareFailure,
+  PrepareOptions,
   PrepareResult,
   StepSink,
+  WaitForStackResult,
 } from "./prod/lifecycle/steps.ts";
 // profile（T5）：生产安装目录特征文件的**唯一事实源**，由 getProfile 探测消费，
 // 避免出现第三份标记清单（T5 carry-forward）。**T12 的 install 不再用它做
@@ -349,6 +351,8 @@ export type {
   InstallStepName,
   LifecycleBaseResult,
   LifecycleOptions,
-  PathRegistration,
   StatusResult,
 } from "./prod/lifecycle.ts";
+// lifecycle/path（T13 拆分）：production.sh 的 register_command 迁移 + PATH 字面量。
+export { PATH_LINE, registerCommand } from "./prod/lifecycle/path.ts";
+export type { PathRegistration } from "./prod/lifecycle/path.ts";
