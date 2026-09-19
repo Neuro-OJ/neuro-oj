@@ -1282,7 +1282,7 @@ export async function restart(
 //
 // bash 的 `run_backup "upgrade"` 调 `backup.sh create`。TS 侧的生产备份
 // （`.nojbackup` 单文件容器）归 T17–T19；本任务**不**实现它，但**也不静默跳过**：
-// 备份是升级序列里不可省的一步（`test-deploy.sh` 有"升级前备份失败阻断升级"的
+// 备份是升级序列里不可省的一步（原 bash `test-deploy.sh` 有"升级前备份失败阻断升级"的
 // 用例），因此 `update` 经注入点 {@link UpdateOptions.backup} 调用——
 // 未注入时返回**明确的运行失败**（退出码 1，且尚未 pull/up），而不是假装成功。
 // 这样接口先立住，T17–T19 只需接上真实实现，升级序列与断言都不用改。
@@ -1449,7 +1449,7 @@ async function runUpdateSync(
  * 与 `install` 的关键差异：
  * 1. **不 seed 配置**：升级只读既有 `.env.prod`（缺失即失败）；
  * 2. **不建 PATH**：命令已注册（install 第 9 步），重复注册是噪声；
- * 3. **多一步备份**且**先于 pull**：`test-deploy.sh` 有"备份失败后仍执行了镜像
+ * 3. **多一步备份**且**先于 pull**：原 bash `test-deploy.sh` 有"备份失败后仍执行了镜像
  *    拉取或启动即失败"的用例，故备份失败必须在任何 compose 变更之前返回。
  *
  * `prepare_and_check` 与 install/start 共用同一份（T13 评审 Important），因此
