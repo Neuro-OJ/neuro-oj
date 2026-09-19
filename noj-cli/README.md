@@ -1,17 +1,19 @@
 # noj-cli
 
-Neuro OJ 部署与运维 CLI（纯 TypeScript，Deno 运行时；生产二进制支持 Linux amd64）。
+Neuro OJ 部署与运维 CLI（纯 TypeScript，Deno 运行时；生产二进制支持 Linux
+amd64）。
 
-> **单一配置真相源**：`.env.prod` + `docker-compose.prod.yml`。
-> 早期版本还有一套 JSON 编排模式（`noj-deploy.json` + `noj-secrets.json`）与
-> `deploy`/`maintain`/`stack`/`run-server`/`doctor` 命令，已实测从未被使用且已损坏，
-> 现已全部移除。若目录里仍有那两个 JSON 文件，可直接删除。
+> **单一配置真相源**：`.env.prod` + `docker-compose.prod.yml`。 早期版本还有一套
+> JSON 编排模式（`noj-deploy.json` + `noj-secrets.json`）与
+> `deploy`/`maintain`/`stack`/`run-server`/`doctor`
+> 命令，已实测从未被使用且已损坏， 现已全部移除。若目录里仍有那两个 JSON
+> 文件，可直接删除。
 
 ## 首次安装
 
 **不再有自举脚本**（`setup.sh` / `scripts/deploy/install.sh` 已移除）。生产主机
-无需 Deno：从 Release 下载 `noj-cli-linux-amd64` 与 `.sha256`，校验后执行 `install`，
-它会自己补齐所需的 Compose 文件。
+无需 Deno：从 Release 下载 `noj-cli-linux-amd64` 与 `.sha256`，校验后执行
+`install`， 它会自己补齐所需的 Compose 文件。
 
 ```bash
 # 1) 下载并校验二进制（Release 资产含 .sha256）
@@ -29,11 +31,11 @@ noj-cli status
 
 安装过程会：拉取同版本 `docker-compose.prod.yml` / `.env.prod.example` 并校验
 SHA-256 → 生成 `.env.prod`（600，含自动生成的强随机密钥）→ 在 TTY 下进入配置向导
-（网站地址、邮件、Judge）→ 校验镜像签名 → 拉取镜像并等待健康检查 → 记录部署元数据
-→ 注册 PATH。
+（网站地址、邮件、Judge）→ 校验镜像签名 → 拉取镜像并等待健康检查 →
+记录部署元数据 → 注册 PATH。
 
-> Release 必须同时包含 CLI 二进制、校验文件与两个部署文件；缺少资产时**明确报错**，
-> 不会混用不同版本。
+> Release 必须同时包含 CLI
+> 二进制、校验文件与两个部署文件；缺少资产时**明确报错**， 不会混用不同版本。
 
 ## 日常运维
 
@@ -79,7 +81,8 @@ noj-cli logs core --dir /opt/neuro-oj --follow
 ## 独立 Judge Worker
 
 Judge 需要**只服务于它的 rootless Docker socket**——禁止使用应用宿主机的
-`/var/run/docker.sock` 或 `/run/docker.sock`（挂载它等于把评测代码提升到能操作宿主
+`/var/run/docker.sock` 或
+`/run/docker.sock`（挂载它等于把评测代码提升到能操作宿主
 全部容器）。本工具**不安装、不替换、不配置**宿主 Docker daemon，宝塔类面板只做
 探测与提示。
 
@@ -98,8 +101,8 @@ noj-cli problem lint <目录>
 noj-cli problem pack <目录> --out <目录>
 ```
 
-`problem init` 在 TTY 下进入交互引导（含校验与回退，输入 `:b` 退回上一步）；
-非 TTY 或 `--no-interactive` 需显式给出参数。
+`problem init` 在 TTY 下进入交互引导（含校验与回退，输入 `:b` 退回上一步）； 非
+TTY 或 `--no-interactive` 需显式给出参数。
 
 ## 开发与验证
 
@@ -118,7 +121,8 @@ deno task build:cli       # 交叉编译 Linux amd64 → bin/noj-cli-linux-amd64
 
 - `src/cli.ts`：命令分发、参数解析、退出码映射
 - `src/prod/`：**生产域**（唯一模态）
-  - `lifecycle.ts` / `lifecycle/steps.ts`：install/start/stop/restart/status/logs/
+  - `lifecycle.ts` /
+    `lifecycle/steps.ts`：install/start/stop/restart/status/logs/
     update/uninstall 的实现与共享步骤
   - `compose.ts`：`docker-compose.prod.yml` 调用封装（不引入运行时渲染）
   - `bootstrap.ts` / `release.ts`：Release 资产下载与版本解析
@@ -136,6 +140,8 @@ deno task build:cli       # 交叉编译 Linux amd64 → bin/noj-cli-linux-amd64
 
 ## 过渡期说明
 
-`scripts/deploy/deploy.sh` 与 `restore-drill.sh` 仍在仓库中，但**已废弃**：每次执行
-会打印警告并要求输入 `y` 确认（自动化可用 `NOJ_ACCEPT_DEPRECATED=1` 跳过；非 TTY
-且未设置该变量时**明确报错**而非挂起）。请改用 `noj-cli`；这两个脚本将在后续版本删除。
+`scripts/deploy/deploy.sh` 与 `restore-drill.sh`
+仍在仓库中，但**已废弃**：每次执行 会打印警告并要求输入 `y` 确认（自动化可用
+`NOJ_ACCEPT_DEPRECATED=1` 跳过；非 TTY
+且未设置该变量时**明确报错**而非挂起）。请改用
+`noj-cli`；这两个脚本将在后续版本删除。
