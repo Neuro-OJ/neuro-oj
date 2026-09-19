@@ -618,11 +618,55 @@ jj new
 
 ---
 
-## Task 16–26（概要；执行前逐个展开为完整任务块）
+## Task 16: update / upgrade（版本解析 + 备份 + 文件同步 + 健康检查）
 
+**Files:**
+- Modify: `noj-cli/src/prod/lifecycle.ts`、`prod/lifecycle/steps.ts`、`prod/lifecycle_test.ts`、`src/mod.ts`
+- 可能 Modify：`noj-cli/src/prod/compose.ts`（新增 `composePull`，T12/T13 已登记的 carry-forward）
+- 可能 Modify：`noj-cli/src/runtime/download.ts`（若 `resolveLatestVersion` 需扩展资产过滤）
+
+**Consumes**：T10 compose 封装；T9 `downloadReleaseFiles`（`overwrite:true`）；T12 `install()`；T13 `waitForStack`；T11 口令与校验
+
+**对照 bash（R3）**：`production.sh` `update()`:345-436、`latest_release_version()`:255-323、`validate_release_tag()`:249-254、`write_config_version()`:324-344、`run_files_sync()`:201-217；`deploy.sh` `upgrade()`:1034-1044。
+
+**必须实现的行为**
+1. **两种模式**：
+   - 无 `--latest`：按 `.env.prod` 的 `NOJ_VERSION` 升级；**先同步部署文件**（`--files-only` 语义）再 upgrade。
+   - `--latest`：查询最新**资产就绪**的稳定 Release；等于当前版本则 **no-op**（不重启、不建备份）。
+2. **版本解析**：**不得**用 `/releases/latest`；按 Release 列表过滤 draft / prerelease / 资产就绪（issue #431）；标签须过 release-tag 正则校验（见 bash `:761`）。
+3. **升级序列**：`prepare_and_check` → `ensure_backup_passphrase` → **备份** → `compose pull` → `wait_for_stack` → `record_deployment_metadata`。
+4. **配置版本落盘**：`write_config_version` 语义（仅改 `NOJ_VERSION`，保留注释/其它键/顺序，原子写）。
+5. **文件同步**：`--files-only` 语义 = 以 `overwrite:true` 重新拉取 compose/example 资产并保留 `.env.prod`。
+6. `upgrade` 仍是 `update` 的别名。
+
+- [ ] **Step 1: 写失败测试**
+
+- 版本解析：fake Release 列表 → draft/prerelease 被排除、缺资产被排除、选中最新合规 tag；无合规版本 → 报错。
+- 标签校验：非法 tag 被拒；`v0.1.0`/`0.1.0` 通过。
+- **no-op**：`--latest` 且最新 == 当前 → 返回 0 且**零 compose 调用、零备份**。
+- **升级序列顺序**：断言 备份 → pull → wait → metadata 的调用次序（索引比较）。
+- **文件同步**：断言资产以 `overwrite:true` 重新拉取，且 `.env.prod` 内容不被改动。
+- **write_config_version**：仅替换 `NOJ_VERSION`，保留注释/其它键/顺序。
+- `upgrade` 与 `update` 行为一致（别名）。
+
+- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+
+- [ ] **Step 3: 实现**
+
+- 建议把 `composePull` 加入 `prod/compose.ts`（T12/T13 登记的 carry-forward），在 `update` 中复用。
+- 若 `runtime/download.ts` 的 `resolveLatestVersion` 只按 CLI 资产过滤（T9 已指出），**扩展资产集合**以含 compose/example，或在 `prod/` 内实现等价过滤——**二择一并说明理由**。
+
+- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+
+- [ ] **Step 5: 提交** — `feat(cli): 迁移 update/upgrade（版本解析、备份、文件同步与健康检查）`
+
+**明确不做**：不删 bash（T24）；不实现备份内部设计（T17–T19）；不改 T10 契约（除新增 `composePull`）。
+
+---
+
+## Task 17–26（概要；执行前逐个展开为完整任务块）
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
-| T16 update | 同上 | 版本解析（资产就绪过滤）；备份；健康检查 |
 | T17 .nojbackup 容器 | `backup/container.ts`、`driver.ts` | 单文件 + 整包加密；**文件重定向采二进制**；`pg_restore --list` 可解析 |
 | T18 verify/list/prune/dry-run | `backup/commands.ts` | 三档 verify；prune 默认 dry-run；restore --dry-run 无副作用；**不创建备份** |
 | T19 drill | `backup/drill.ts` | 隔离项目/子网/不映射端口；RPO/RTO 超限=1；资源缺失=2；失败也清理 |
