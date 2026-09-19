@@ -1422,7 +1422,75 @@ spec 在 `deploy.sh`/`restore-drill.sh` 的去留上**自相矛盾**：
 
 ---
 
-## Task 25–26（概要；执行前逐个展开为完整任务块）
+## Task 25: 文档收口（#510 治理 + CLI 文档重写 + CHANGELOG）
+
+**Files:**
+- Modify: `ROADMAP.md`（A 类勾选 / B 类移除多语言 / C 类补证据链接 / D 类改用新命令）
+- Modify: `AGENTS.md`（§5.2 改两段式开发流程；移除 `deploy init --mode dev` 指引）
+- Modify: `noj-ui/pages/about.vue:324`（移除「可配置更多语言」的错误承诺）
+- Modify: `noj-docs/docs/operators/production-deploy.md`、`noj-docs/docs/operators/cli.md`
+- Modify: `noj-cli/README.md`、`scripts/README.md`
+- Create: `CHANGELOG.md`
+- Modify: `openspec/changes/add-noj-cli/tasks.md`
+
+**背景（#510 的实测漂移）**：文档承诺与实现已多方不一致——`ROADMAP.md` 声称多语言
+能力（实测为零）、`AGENTS.md` 指引的 `deploy init --mode dev` 已在 T23 删除、
+`about.vue:324` 对用户承诺「可配置更多语言」。单纯"改字"会把错误从一处搬到另一处；
+#510 要求**逐条给出证据**（代码位置或 issue 号）。
+
+**必须实现的行为**
+
+1. **四类治理（#510 的分类）**，每类逐条处理且**标注依据**：
+   - **A 类**（已实现但未勾选）→ 勾选并补**代码位置**；
+   - **B 类**（承诺但未实现）→ **移除**承诺（多语言是唯一一条，含 `ROADMAP.md`
+     与 `about.vue` 两处）；
+   - **C 类**（已实现但缺证据）→ 补证据链接；
+   - **D 类**（命令名已变）→ 改用新命令（`deploy`/`maintain`/`stack` 已删除）。
+2. **命令引用必须与 T23/T24 的现实一致**：
+   - 顶层命令只剩 `install`/`check`/`start`/`stop`/`restart`/`status`/`logs`/
+     `update`/`backup`/`verify`/`config`/`uninstall` + `problem` + Tier 3；
+   - `setup.sh` 与 `install.sh` 已删除 → 首次安装改为**手动下载二进制**（R4）；
+   - `deploy.sh`/`restore-drill.sh` 已加弃用闸门 → 文档必须说明"已废弃、
+     用 `NOJ_ACCEPT_DEPRECATED=1` 可跳过"。
+3. **两段式开发流程**：`docker compose up -d`（仅基础设施）+ 各模块
+   `deno task dev`。**明确写出"不再有 `deploy init --mode dev`"**——否则照着旧
+   文档操作的开发者会撞上一个不存在的命令。
+4. **CHANGELOG 记录破坏性变更**：本重写删除了整套命令面（`deploy`/`maintain`/
+   `stack`/`run-server`/`doctor`）、双配置（`noj-deploy.json`/`noj-secrets.json`）、
+   自举（`setup.sh`/`install.sh`）。这类变更必须让人**一眼看到**。
+5. **`openspec/changes/add-noj-cli/tasks.md` 矛盾修正**：该文件的 5.2 条声称
+   "让 `noj update` 按 `.env.prod` 的 `NOJ_VERSION` 同步部署文件"，与现状一致，
+   但其上下文（第 9 行）仍描述已删除的双模态路径。
+
+- [ ] **Step 1: 盘点漂移（先取证，再改字）**
+
+- `rg` 出一份**文档→现实**的差异清单，每条附证据（代码位置/命令/`rg` 结果）。
+  产出写进 Agent Note，而不是只改字——否则下一次无人知道哪条被核过。
+
+- [ ] **Step 2: 逐文件改写**
+
+- 按 A/B/C/D 四类逐条落地；每条改动在提交信息里给出依据。
+
+- [ ] **Step 3: 链接与一致性门禁**
+
+- `deno run -A scripts/verify-md-links.ts`（CI 已有）必须通过——
+  删文件后最容易留下的就是**指向已删文件的链接**。
+
+- [ ] **Step 4: 运行确认通过**
+
+- `deno run -A scripts/verify-md-links.ts && deno run -A scripts/verify-agent-note-format.ts`；
+- `rg 'deploy init|noj-deploy\.json|setup\.sh|install\.sh' noj-docs/ AGENTS.md ROADMAP.md`
+  → 只允许出现在"已删除/已废弃"的说明里。
+
+- [ ] **Step 5: 提交** — `docs(root): #510 文档漂移治理与 CLI 文档重写` +
+  `docs(root): 新建 CHANGELOG 记录破坏性变更`
+
+**明确不做**：不校准历史归档（`dev-docs/superpowers/plans/`、`openspec/changes/`
+的历史条目——#510 明确排除）；不改 `dev-docs/` 下的设计与审计文档（它们是时点记录）。
+
+---
+
+## Task 26（概要；执行前展开为完整任务块）
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
 | T17 .nojbackup 容器 | `backup/container.ts`、`driver.ts` | 单文件 + 整包加密；**文件重定向采二进制**；`pg_restore --list` 可解析 |
