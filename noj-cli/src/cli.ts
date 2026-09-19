@@ -28,7 +28,7 @@ import {
   backupVerify,
 } from "./maintain/backup.ts";
 import { maintainReset } from "./maintain/reset.ts";
-import { listBackups, pruneBackups } from "./maintain/backup_list.ts";
+import { listBackups, pruneBackups } from "./prod/backup/list.ts";
 import { assertDrillSnapshotSupported, runDrill } from "./maintain/drill.ts";
 import { defaultBackupDir } from "./maintain/backup.ts";
 import { loadDeployConfig } from "./config/load.ts";

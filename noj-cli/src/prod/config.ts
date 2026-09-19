@@ -36,8 +36,8 @@ import {
   validateEnv,
 } from "../core/config-schema.ts";
 import { writeEnvFileAtomic } from "../core/env-file.ts";
-import { randomKey } from "../init/secrets.ts";
-import { nonInteractiveAdvice } from "../init/non_interactive.ts";
+import { randomKey } from "../util/random.ts";
+import { nonInteractiveAdvice } from "./advice.ts";
 import { createTheme, type Theme } from "../output/theme.ts";
 import type { CommandRunner } from "../runtime/command.ts";
 import type { PromptIO } from "../tui/io.ts";

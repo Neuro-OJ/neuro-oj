@@ -1,11 +1,24 @@
-import type { DeployState } from "../config/types.ts";
-
 /**
  * 唯一状态机：所有命令的状态源（M1）。
  *
  * transition / DeployAction / TransitionResult 逐字移植自 src/state/machine.ts，
  * 语义与中文措辞完全一致；prodState 为新增，解决「prod 路径无状态」问题（§2.2）。
+ *
+ * ## T23：`DeployState` 的定义搬到这里
+ *
+ * 它原住在 `config/types.ts`（双模态时代的 JSON 配置类型集合）。M1 要求
+ * "一套状态机"，而状态的**类型**却定义在另一份已删除的配置模态里，是明显的
+ * 遗留错位：`prod/` 依赖它，就必须连整份 JSON 配置类型一起留着。
+ * 现在它属于状态机自身，`config/types.ts` 可随之删除。
  */
+
+/** 部署状态机的所有合法状态。 */
+export type DeployState =
+  | "uninitialized"
+  | "stopped"
+  | "running"
+  | "partial"
+  | "error";
 
 /** 部署动作：状态机的唯一输入。 */
 export type DeployAction = "init" | "up" | "down" | "restart" | "reset";

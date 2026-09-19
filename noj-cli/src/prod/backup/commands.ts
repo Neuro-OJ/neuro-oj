@@ -7,14 +7,14 @@
  *    `--payload-sha`（payload 摘要）。高档必须在低档失败时也失败——
  *    否则"加个旗标"会让弱检查通过强检查失败的东西。
  * 2. **`prune` 默认 dry-run**：不 `--confirm` 时**零删除**。判定复用
- *    `maintain/backup_index.ts:planPrune`（既有实现，含 legacy 默认保留的语义），
+ *    `prod/backup/index.ts:planPrune`（既有实现，含 legacy 默认保留的语义），
  *    本模块**不重写**该算法。
  * 3. **这些命令都不创建备份**：生产 profile 的 `list`/`prune` 曾误路由到 JSON
  *    模态的创建路径（实测缺陷）。测试断言备份目录在命令前后**逐项不变**。
  *
  * ## 与 `maintain/` 的关系
  *
- * `maintain/backup_index.ts` / `backup_list.ts` 是纯逻辑（无文件系统以外的依赖），
+ * `prod/backup/index.ts` / `backup_list.ts` 是纯逻辑（无文件系统以外的依赖），
  * 与模态无关，因此**直接复用**：`list` 的产物格式（`SnapshotEntry`）与
  * `snapshot-*.nojbackup` 单文件天然契合（T17 的文件名可在其 `parseBackupName`
  * 下解析）。这两点让 T18 无需为 prod 重写索引与保留策略。
@@ -28,8 +28,8 @@ import {
   type ListResult,
   pruneBackups,
   type PruneResult,
-} from "../../maintain/backup_list.ts";
-import type { PruneOptions } from "../../maintain/backup_index.ts";
+} from "./list.ts";
+import type { PruneOptions } from "./index.ts";
 import {
   CONTAINER_FILES,
   type ContainerPayloadOps,
@@ -37,7 +37,7 @@ import {
   type VerifyContainerResult,
 } from "./container.ts";
 
-/** `list` 的结果（复用 `maintain/backup_list.ts` 的形状，不新造）。 */
+/** `list` 的结果（复用 `prod/backup/list.ts` 的形状，不新造）。 */
 export type BackupListResult = ListResult;
 
 /**
@@ -64,7 +64,7 @@ export interface BackupPruneResult extends PruneResult {
  * `prune`：按计划清理快照，**默认 dry-run**。
  *
  * `confirm !== true` 时只返回计划（`deleted` 恒空），**零文件系统副作用**。
- * 判定完全委托 `maintain/backup_index.ts:planPrune`——包括"两个条件都不给则
+ * 判定完全委托 `prod/backup/index.ts:planPrune`——包括"两个条件都不给则
  * 什么都不删"与"legacy 默认保留"这两条安全默认。
  */
 export async function pruneCommand(

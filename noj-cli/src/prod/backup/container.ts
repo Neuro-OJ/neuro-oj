@@ -246,7 +246,7 @@ function stageLabel(stage: ContainerStage): string {
  * 备份产物的文件名（`snapshot-<ts>` + {@link BACKUP_SUFFIX}）。
  *
  * 时间戳格式 `%Y%m%d-%H%M%S`（bash `backup.sh:238` 的 `date '+%Y%m%d-%H%M%S'`），
- * 可在 `maintain/backup_index.ts:parseBackupName` 的既有解析下工作，从而让
+ * 可在 `prod/backup/index.ts:parseBackupName` 的既有解析下工作，从而让
  * `list`/`prune` 无需感知容器细节。
  */
 export function containerFileName(ts: Date): string {

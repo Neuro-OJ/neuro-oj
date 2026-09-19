@@ -130,9 +130,9 @@ import {
 import type { FilePermissionVerdict } from "../core/config-schema.ts";
 import { writeEnvFileAtomic } from "../core/env-file.ts";
 import { downIsNoOp, prodState, transition, upIsNoOp } from "../core/state.ts";
-import type { DeployState } from "../config/types.ts";
-import { randomKey } from "../init/secrets.ts";
-import { nonInteractiveAdvice } from "../init/non_interactive.ts";
+import type { DeployState } from "../core/state.ts";
+import { randomKey } from "../util/random.ts";
+import { nonInteractiveAdvice } from "./advice.ts";
 import {
   emitHuman,
   emitJson,

@@ -34,13 +34,72 @@ import { dirname, join } from "@std/path";
 import type { CmdResult, CommandRunner } from "../../runtime/command.ts";
 import { UsageError } from "../../util/args.ts";
 
-// 参数校验**复用** maintain/drill.ts 的实现（那里已修过两轮评审：
-// P1 = 单文件快照必须在参数阶段拒绝；P2 = 子网必须挡掉 Docker 也会拒绝的输入）。
-// T23 删除双模态时会把它们搬进来，届时只需改这一处 import。
-export {
-  assertDrillProjectName,
-  assertSubnetCidr,
-} from "../../maintain/drill.ts";
+/**
+ * 校验演练项目名（原 `maintain/drill.ts`，T23 搬迁）。
+ *
+ * **拒绝包含 `prod`**（#516 验收）：演练必须用独立 Compose 项目，若与生产同名，
+ * `docker compose down -v` 会**删掉生产数据卷**。这是不可逆的破坏，必须在开跑前拦下。
+ *
+ * 非法值抛 {@link UsageError}（退出码 2）——这是用法错误，不是演练失败。
+ */
+export function assertDrillProjectName(name: string): void {
+  if (name.trim() === "") {
+    throw new UsageError("演练项目名不能为空");
+  }
+  if (/prod/i.test(name)) {
+    throw new UsageError(
+      `演练项目名不得包含 "prod"（收到 "${name}"）——` +
+        `演练会执行 compose down -v，与生产同名会删除生产数据卷。`,
+    );
+  }
+}
+
+/**
+ * 校验子网格式（CIDR）（原 `maintain/drill.ts`，T23 搬迁）。
+ *
+ * **必须挡住 Docker 也会拒绝的输入**（#516 评审 P2）：早先只检查「四段数字 +
+ * 前缀 8-30」，`999.1.1.1/16`、`172.29.1.1/16`（主机位不为 0）都会通过，
+ * 直到 `docker network create` 才失败——而此时演练已进入 prepare 阶段，
+ * 用户看到的是「演练失败(1)」，与 help/注释承诺的「参数错误 = 2」不符。
+ *
+ * 规则与 Docker/libnetwork 实测行为一致：每个 octet 在 0-255；前缀 8-30；
+ * **主机位必须为 0**（即网络地址形式）。
+ *
+ * 非法值抛 {@link UsageError}（退出码 2），而不是普通 Error——否则会被 CLI
+ * 当作运行失败(1)，正是评审指出的错误码不符。
+ */
+export function assertSubnetCidr(cidr: string): void {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(
+    cidr.trim(),
+  );
+  if (!m) {
+    throw new UsageError(
+      `子网必须是 CIDR 形式（如 172.29.0.0/16），收到 "${cidr}"`,
+    );
+  }
+  const octets = [m[1], m[2], m[3], m[4]].map(Number);
+  for (const octet of octets) {
+    if (octet < 0 || octet > 255) {
+      throw new UsageError(`子网每段必须在 0-255 之间，收到 "${cidr}"`);
+    }
+  }
+  const prefix = Number(m[5]);
+  if (prefix < 8 || prefix > 30) {
+    throw new UsageError(`子网前缀应在 8-30 之间，收到 /${prefix}`);
+  }
+  // 主机位必须为 0：Docker 只接受网络地址形式的 --subnet。
+  // /31、/32 不在允许前缀内，用 32 位掩码判定即可。
+  const value = ((octets[0]! << 24) >>> 0) +
+    (octets[1]! << 16) +
+    (octets[2]! << 8) +
+    octets[3]!;
+  const mask = (0xffffffff << (32 - prefix)) >>> 0;
+  if (((value & mask) >>> 0) !== value) {
+    throw new UsageError(
+      `子网主机位必须为 0（应为网络地址，如 172.29.0.0/16），收到 "${cidr}"`,
+    );
+  }
+}
 
 /** 演练默认项目名（`NOJ_DRILL_PROJECT_NAME` 的缺省，bash :31）。 */
 export const DEFAULT_DRILL_PROJECT_NAME = "noj-drill";
