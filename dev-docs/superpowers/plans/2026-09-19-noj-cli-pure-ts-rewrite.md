@@ -768,7 +768,84 @@ snapshot-<ts>.nojbackup
 
 ---
 
-## Task 18–26（概要；执行前逐个展开为完整任务块）
+## Task 18: verify / list / prune / restore --dry-run（命令面收口）
+
+**Files:**
+- Modify: `noj-cli/src/prod/backup/container.ts`（加 `unpackContainer`：解包 + 校验）
+- Create: `noj-cli/src/prod/backup/commands.ts` — verify / list / prune / restore 的编排
+- Create: `noj-cli/src/prod/backup/commands_test.ts`
+- Modify: `noj-cli/src/mod.ts`
+
+**Consumes**：T17 的 `createContainer` 与 `RawDriver`；`maintain/backup_index.ts` 的
+`listBackups`/`planPrune`（**纯逻辑，复用不重写**）；`core/env-file.ts`
+
+**对照 bash（R3）**：`backup.sh` `verify_snapshot()`:302-334、
+`validate_snapshot_path()`:296-300、`prune_old_snapshots()`:196-205。
+
+**Spec（R7 验收）**：三档 verify；`prune` **默认 dry-run**；`restore --dry-run`
+**无副作用**；这些命令**都不得创建备份**（实测过的误路由缺陷：prod profile 的
+`list`/`prune` 曾走到 JSON 模态的创建路径）。
+
+**必须实现的行为**
+
+1. **三档 verify**（名字即保证强度，逐档累加）：
+   - **默认（文件完整性，秒级）**：解包 → `manifest.json` 存在且
+     `payload_layout == "prod-raw"` → `SUCCESS` 哨兵 → `sha256sums.txt`
+     **逐文件**校验；
+   - **`--deep`（结构可解析，十秒级）**：在默认之上加——`postgres.restore-list`
+     非空（即 create 时的 `pg_restore --list` 产物存在）、`redis.rdb` 非空且
+     首字节为 `REDIS`、`minio/` 目录存在、`env.prod.gpg` 能被口令**成功解密**
+     且结果非空；
+   - **`--payload-sha`**：额外复算 `tar.zst` 的 SHA-256 并与 `manifest.sha256`
+     比对（证明 payload 未被重打包）。三档可叠加，任一失败即退出码 1。
+2. **`prune` 默认 dry-run**：不 `--confirm` 时只输出**计划**，零删除、零副作用；
+   `--confirm` 才落地。默认**不删 legacy 目录**（存量数据）——复用
+   `maintain/backup_index.ts:planPrune` 的既有语义，不重写判定。
+3. **`restore --dry-run` 无副作用**：完整走"解包 → 校验 → 规划恢复步骤"，但
+   **不碰** docker、不写目标数据、不改 `.env.prod`；输出将执行的步骤清单。
+   非 dry-run 的 restore 本任务**不实现**（归 T19 的 drill 之后的独立任务；
+   任务书的验收只要求 dry-run 无副作用）。
+4. **这些命令都不创建备份**：以测试断言"备份目录在命令前后逐项不变"
+   （目录 mtime/文件清单/内容摘要），锁死误路由回归。
+5. **口令缺失的报错**：verify 的解密档与 `--deep` 需要口令；缺口令时
+   **只跳过需要口令的检查并显式报告**（不静默通过、也不误报失败）。
+
+- [ ] **Step 1: 写失败测试**
+
+- **三档累加**：同一份容器，默认档通过 → `--deep` 通过 → `--payload-sha` 通过；
+  逐档注入缺陷（篡改 payload 内的 `redis.rdb` 字节 / 删 `minio/` / 让
+  `manifest.sha256` 不匹配）并断言**恰好触发对应档**的失败（默认档不得漏报
+  结构问题，`--deep` 不得重复默认档的判定）。
+- **篡改检出**：改 `postgres.dump` 一个字节 → `sha256sums` 校验必须失败。
+- **`payload_layout` 防线**：`payload_layout` 非 `prod-raw` → 明确拒绝（无分派）。
+- **prune 默认 dry-run**：无 `--confirm` 时断言零删除、零副作用（文件清单不变）；
+  `--confirm` 才删；legacy 默认保留。
+- **restore --dry-run 无副作用**：注入会**抛错**的 runner（一旦调用即失败）→
+  命令仍成功并输出步骤清单，证明未触 docker。
+- **不创建备份**：三个命令前后，备份目录的文件清单与各自摘要**逐项不变**。
+- **口令**：缺口令时 verify 默认档仍应通过（无需解密），`--deep` 明确报告
+  "已跳过环境文件解密"而不是静默通过。
+
+- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+
+- [ ] **Step 3: 实现**
+
+- `container.ts` 加 `unpackContainer(path, opts)`：解密（或直读）→ 解包到临时目录 →
+  返回 staging 路径与 manifest；调用方负责清理（`finally`）。**复用 T17 的
+  `tempContainerPath`/`listFiles`/`parseChecksums`**，不重写。
+- `commands.ts`：三个命令的编排与结果形状（`verify` 返回逐档的布尔与错误清单；
+  `list`/`prune` 复用 `backup_index.ts` 的算法）。
+
+- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+
+- [ ] **Step 5: 提交** — `feat(cli): 备份 verify 三档 / list / prune 默认 dry-run / restore --dry-run`
+
+**明确不做**：不实现真实 restore（写目标数据）；不实现 drill（T19）；不改 T17 的
+容器格式；不删 bash（T24）。
+
+---
+
+## Task 19–26（概要；执行前逐个展开为完整任务块）
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
 | T17 .nojbackup 容器 | `backup/container.ts`、`driver.ts` | 单文件 + 整包加密；**文件重定向采二进制**；`pg_restore --list` 可解析 |
