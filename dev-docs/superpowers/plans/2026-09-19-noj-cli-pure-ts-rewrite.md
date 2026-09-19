@@ -920,7 +920,7 @@ T18 `verifyContainer`；`runtime/command.ts` 的 `CommandRunner`；`maintain/dri
    `noj_restore_drill_last_success_unix_time`（仅成功时写，gauge）。
 10. **`--json` 时 stdout 只含 JSON**：人类日志改道 stderr（T6/T16 先例）。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 - **隔离性**：断言覆盖 YAML **不含** `ports:`；只改 `noj-net` 的 ipam 子网；
   compose 参数含 `--project-name <演练名>`。
@@ -941,9 +941,9 @@ T18 `verifyContainer`；`runtime/command.ts` 的 `CommandRunner`；`maintain/dri
   等于契约（含 `# HELP`/`# TYPE` 行）；失败时**不**写。
 - **R1**：`rg 'Deno.Command\("bash"' noj-cli/src` 为空；drill 路径零脚本调用。
 
-- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+- [x] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 - 一切外部访问可注入（runner / fetcher / fs / now）；`verify.ts` 只依赖注入的
   `fetch`，因此业务验收可在无 docker 的 CI 里用 fake HTTP 全覆盖。
@@ -951,9 +951,9 @@ T18 `verifyContainer`；`runtime/command.ts` 的 `CommandRunner`；`maintain/dri
   （已含 P1/P2 评审修复，不重写），但**迁移到 `prod/drill/plan.ts`** 以便 T23
   删除双模态时不留悬挂。
 
-- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+- [x] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
 
-- [ ] **Step 5: 提交** — `feat(cli): 原生移植隔离恢复演练（drill），零 bash 调用`
+- [x] **Step 5: 提交** — `feat(cli): 原生移植隔离恢复演练（drill），零 bash 调用`
 
 **明确不做**：不删 `maintain/drill.ts`（T23）；不删 `restore-drill.sh`（T24）；
 不实现 `backup restore` 的真实恢复（仅 drill 内的隔离恢复）。
