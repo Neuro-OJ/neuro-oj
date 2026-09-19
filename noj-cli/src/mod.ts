@@ -278,6 +278,32 @@ export type {
   RawDriver,
   RawIO,
 } from "./prod/backup/driver.ts";
+// schedule（T20）：crontab 标记区块的原生迁移。核心承诺是**只动自己标记的行**：
+// 区块外的字节（含顺序与末尾换行）逐字节保留；危险 cron 表达式=注入防线，写入前拒绝。
+export {
+  assertSchedule,
+  BACKUP_DIR_MODE,
+  CRON_LOG_MODE,
+  CRON_LOG_NAME,
+  DEFAULT_SCHEDULE,
+  extractManagedBlock,
+  installSchedule,
+  MARKER_BEGIN,
+  MARKER_END,
+  quoteForCron,
+  readCrontab,
+  removeManagedBlock,
+  removeSchedule,
+  renderScheduleEntry,
+  statusSchedule,
+  upsertManagedBlock,
+  writeCrontab,
+} from "./prod/schedule.ts";
+export type {
+  InstallScheduleOptions,
+  ScheduleEntryOptions,
+  ScheduleResult,
+} from "./prod/schedule.ts";
 // drill（T19）：隔离恢复演练的**原生**移植（零 bash / 脚本调用）。
 // 隔离性三保证：独立项目名（拒绝含 prod）、独立子网、**不映射宿主机端口**；
 // 业务验收由 CLI 直接发 HTTP（经容器 IP），不再依赖额外的 deno 容器镜像。
