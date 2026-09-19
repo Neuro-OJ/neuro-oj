@@ -33,13 +33,16 @@ import {
   judgeEnabledError,
   validateEnv,
 } from "../../core/config-schema.ts";
-import { readEnvFile } from "../../core/env-file.ts";
+import { readEnvFile, writeEnvFileAtomic } from "../../core/env-file.ts";
 import type { CommandRunner } from "../../runtime/command.ts";
 import { type ColorMode, resolveColor } from "../../util/color.ts";
 import {
+  backupPassphrasePath,
   checkJudgeSocket,
   checkPortValue,
   checkRequiredValues,
+  ensureBackupPassphrase,
+  toEntries,
 } from "../config.ts";
 import type { EnvValues, RequiredValuesReport } from "../config.ts";
 import {
@@ -261,12 +264,17 @@ export async function prepareAndCheck(
   }
 
   // ---- 6. run_compose config --quiet（:904，只读解析）----
+  // `--quiet` 逐字对齐 bash：只判定可解析性，不把渲染结果写进 stdout
+  // （T16 补：T10 的 composeConfig 此前缺该旗标，属 parity 缺口）。
   const composeOptions: ComposeOptions = {
     composeFile,
     envFile,
     judge: report.judgeEnabled,
   };
-  const configCheck = await composeConfig(opts.runner, composeOptions);
+  const configCheck = await composeConfig(opts.runner, {
+    ...composeOptions,
+    quiet: true,
+  });
   if (!Array.isArray(configCheck) && configCheck.code !== 0) {
     const detail = configCheck.stderr.trim();
     return {
@@ -315,6 +323,85 @@ export function composeOutputText(result: ComposeResult): string {
 
 /** 步骤输出的汇聚点：人类可读诊断，调用方决定去 stdout / stderr。 */
 export type StepSink = (text: string) => void;
+
+// ---------------- 备份口令步骤（T12 install / T16 update 共用） ----------------
+
+/** 口令回填告警文案（deploy.sh:952 的 `warn` 逐字）。 */
+export const PASSPHRASE_CARRY_HINT =
+  "请将该口令文件安全复制到仓库外的异地位置，否则无法恢复加密快照";
+
+/** {@link ensureCommandPassphrase} 的输入。 */
+export interface PassphraseStepOptions {
+  /** `.env.prod` 路径（回填目标）。 */
+  envFile: string;
+  /** 当前 `.env.prod` 键值（`NOJ_BACKUP_PASSPHRASE_FILE` 参与选目标路径）。 */
+  env: EnvValues;
+  /** 进程环境快照（`NOJ_BACKUP_PASSPHRASE_FILE` 抑制回填且优先选路径）。 */
+  processEnv: Record<string, string | undefined>;
+  /** `--passphrase-file` 旗标（优先级最高，但**不**抑制回填）。 */
+  passphraseFile?: string;
+  /** 口令新生成时的告警汇聚点。 */
+  warn?: (message: string) => void;
+}
+
+/** {@link ensureCommandPassphrase} 的结果。 */
+export interface PassphraseStepResult {
+  /** 口令文件路径（无论新建还是复用）。 */
+  path: string;
+  /** 本次是否新生成口令文件。 */
+  created: boolean;
+  /** 回填后**重新读取**的 env（未回填时为传入的 `env` 原值）。 */
+  env: EnvValues;
+  /** 面向用户的失败文案；成功为 null。 */
+  error: string | null;
+}
+
+/**
+ * `ensure_backup_passphrase` 的命令级装配（deploy.sh:920-953 的调用点）。
+ *
+ * install（第 4 步）与 update（升级序列第 2 步）需要**逐字同一套**语义，此前
+ * install 内联实现、update 将再抄一遍。本函数把它收敛为一处：
+ *
+ * 1. 目标路径 = `backupPassphrasePath({ flag, explicit: 进程环境, configured: 配置文件 })`
+ *    ——bash :924 的四级优先；
+ * 2. `configuredFromEnv` **只**看进程环境（bash :948 的 `-z "${NOJ_BACKUP_PASSPHRASE_FILE:-}"`）；
+ *    `--passphrase-file` 旗标不抑制回填（T11 carry-forward，见 `config.ts` 的 JSDoc）；
+ * 3. 需要回填时经 T3 `writeEnvFileAtomic` 就地改写（保留注释与顺序）并**重新读取**，
+ *    让调用方拿到回填后的真实值；
+ * 4. 新生成时转出告警——口令丢失等于备份不可恢复，静默不是选项。
+ *
+ * 失败以 `error` 返回而非抛错：调用方（install 抛错 / update 转退出码 1）各自决定。
+ */
+export async function ensureCommandPassphrase(
+  opts: PassphraseStepOptions,
+): Promise<PassphraseStepResult> {
+  const explicit = opts.processEnv["NOJ_BACKUP_PASSPHRASE_FILE"];
+  const target = backupPassphrasePath({
+    flag: opts.passphraseFile,
+    explicit,
+    configured: opts.env["NOJ_BACKUP_PASSPHRASE_FILE"],
+  });
+  const ensured = await ensureBackupPassphrase(opts.env, {
+    targetFile: target,
+    configuredFromEnv: (explicit ?? "") !== "",
+  });
+  if (ensured.error !== null) {
+    return {
+      path: ensured.path,
+      created: false,
+      env: opts.env,
+      error: ensured.error,
+    };
+  }
+  if (ensured.created) opts.warn?.(PASSPHRASE_CARRY_HINT);
+
+  let env = opts.env;
+  if (ensured.envUpdate !== null) {
+    await writeEnvFileAtomic(opts.envFile, toEntries(ensured.envUpdate));
+    env = await readEnvValues(opts.envFile);
+  }
+  return { path: ensured.path, created: ensured.created, env, error: null };
+}
 
 // ---------------- logs 着色契约（T14，deploy.sh:1117-1158） ----------------
 //
