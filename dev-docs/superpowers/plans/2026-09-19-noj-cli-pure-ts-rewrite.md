@@ -578,11 +578,50 @@ jj new
 
 ---
 
-## Task 15–26（概要；执行前逐个展开为完整任务块）
+## Task 15: uninstall（确认词 + 数据卷安全 + 工作区保护）
+
+**Files:**
+- Modify: `noj-cli/src/prod/lifecycle.ts`、`prod/lifecycle/steps.ts`、`prod/lifecycle_test.ts`、`src/mod.ts`
+
+**Consumes**：T10 `composeArgs`（`down --remove-orphans --rmi ... [--volumes]`）；T12 的 `registerCommand` 反向逻辑（软链清理）；`runtime/command.ts` 的 runner；T6 `emitHuman`
+
+**对照 bash（R3）**：`deploy.sh` `confirm_uninstall()`:1052-1084、`check_uninstall_dependencies()`:1085-1096、`uninstall()`:1097-1111。**关键：这是破坏性命令，逐条对齐。**
+
+**必须实现的行为**
+1. **确认词**（`confirm_uninstall`，:1052-1084）：`--yes` 跳过；无 TTY 且未 `--yes` → **报错**（"卸载需要交互确认；自动化环境请显式使用 --yes"）；否则要求输入 `UNINSTALL`；`--all` 时要求输入 **`DELETE ALL`**（不同确认词！）。输入不符 → 报错且**不修改任何服务或文件**。
+2. **依赖/配置前置**（:1085-1096）：docker 可用、daemon 可连、compose v2 可用、`.env.prod` 与 compose 文件存在——**任一缺失即拒绝**。
+3. **删除范围**（:1097-1111）：
+   - 默认：`down --remove-orphans --rmi local`（**保留**数据卷、`.env.prod`、备份、部署目录）
+   - `--all`：`down --remove-orphans --rmi all --volumes`（**删除**数据卷）
+   - `INCLUDE_ALL_PROFILES=1`：卸载须覆盖所有 profile（judge/monitoring），**不得**漏删。
+4. **工作区保护**（#513/既有约束）：**拒绝在 Git/jj 工作区内执行 `--all`**（对照 `production.sh:167-183` 的 `validate_install_directory` 与 `remove_install_directory` 的 Git 检测），错误须可操作。
+5. **软链清理**：卸载后清理指向本安装目录的 PATH 命令。
+
+- [ ] **Step 1: 写失败测试**
+
+- 确认词：`--yes` 通过；无 TTY 无 `--yes` → 报错（且零调用）；`UNINSTALL` 通过；`--all` 要求 `DELETE ALL`（输入 `UNINSTALL` **不**通过）；错误输入 → 零副作用。
+- 默认卸载参数**不含** `--volumes`，`--all` **含** `--volumes` 与 `--rmi all`；默认用 `--rmi local`。
+- **所有 profile 覆盖**：断言卸载参数包含 enabling judge/monitoring 的 profile 旗标（或等价的 `INCLUDE_ALL_PROFILES` 语义），**不得**遗漏。
+- 前置缺失（无 `.env.prod` / 无 compose / docker 不可用）→ 明确报错，零 `down` 调用。
+- **Git/jj 工作区保护**：模拟工作区标记存在 → `--all` 被拒且**不执行 down**。
+- 软链清理：指向本目录的软链被移除；指向他处的**不被**误删。
+
+- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+
+- [ ] **Step 3: 实现** — 全部经注入 runner/IO；确认词读取经注入接口（便于测试）。
+
+- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+
+- [ ] **Step 5: 提交** — `feat(cli): 迁移生产 uninstall（确认词、数据卷安全与工作区保护）`
+
+**明确不做**：不删 bash（T24）；不实现 update（T16）与备份；不改 T10 契约。
+
+---
+
+## Task 16–26（概要；执行前逐个展开为完整任务块）
 
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
-| T15 uninstall | 同上 | 确认词；`--all`；拒绝 Git/jj 工作区 |
 | T16 update | 同上 | 版本解析（资产就绪过滤）；备份；健康检查 |
 | T17 .nojbackup 容器 | `backup/container.ts`、`driver.ts` | 单文件 + 整包加密；**文件重定向采二进制**；`pg_restore --list` 可解析 |
 | T18 verify/list/prune/dry-run | `backup/commands.ts` | 三档 verify；prune 默认 dry-run；restore --dry-run 无副作用；**不创建备份** |
