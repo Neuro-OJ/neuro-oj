@@ -19,6 +19,7 @@ import {
 } from "./cli.ts";
 import { parseDirArg } from "./util/args.ts";
 import type { CommandContext } from "./cli.ts";
+import type { ProfileName } from "./profile.ts";
 import { parseContainerCommand } from "./container.ts";
 import { parseProblemArgs } from "./problem/command.ts";
 import { UsageError } from "./util/args.ts";
@@ -143,7 +144,10 @@ Deno.test("E3: --debug 下用法错误仍只给可读文案（不打印栈）", 
   } finally {
     console.error = originalErr;
   }
-  assertEquals(err.includes("单模态"), true, err);
+  // 提示必须说明可接受的值（原先断言"单模态"字样，但更早的 validateProfileName
+  // 会先以"无效的 --profile: stack；可选值: prod"拒绝——两者都是可读文案，
+  // 断言措辞会绑定实现细节，故断言**实质**：说明了可选值、且无栈帧）。
+  assertEquals(err.includes("可选值"), true, err);
   assertEquals(err.includes("    at "), false, "用法错误不该打印栈");
 });
 
@@ -228,7 +232,7 @@ Deno.test("评审 P2: --debug 在命令名前也可用（全局选项剥离）",
   // 改用仍在的 --profile stack 触发同一类可预期错误）。
   const plain = await capture(["status", "--profile", "stack", "--debug"]);
   assertEquals(plain.code, EXIT_USAGE);
-  assertEquals(plain.err.includes("单模态"), true);
+  assertEquals(plain.err.includes("可选值"), true);
 });
 
 // ── #517 E7/E8：可发现性 ─────────────────────────────────────────
@@ -495,10 +499,12 @@ Deno.test("T23: profile 门禁只剩一条规则（拒绝已删除的 stack）",
   // `--profile prod` 放行：它是显式确认唯一模式
   assertCommandAllowedInProfile("prod", "status");
   assertCommandAllowedInProfile("prod", "backup");
-  // `--profile stack` 拒绝：模式已删除，静默忽略会让用户以为自己在用某个模式
+  // `--profile stack` 拒绝：模式已删除，静默忽略会让用户以为自己在用某个模式。
+  // 注意类型系统现在已经**不接受** "stack"（ProfileName 只剩 "prod"），
+  // 故这里用 as 断言刻意传非法值——那正是用户从旧文档/旧脚本里可能传来的输入。
   let message = "";
   try {
-    assertCommandAllowedInProfile("stack", "status");
+    assertCommandAllowedInProfile("stack" as ProfileName, "status");
   } catch (e) {
     message = (e as Error).message;
   }

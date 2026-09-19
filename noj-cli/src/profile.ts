@@ -18,7 +18,7 @@
 import { dirname } from "@std/path";
 
 /** 受支持的 profile。 */
-export const PROFILE_NAMES = ["prod", "stack"] as const;
+export const PROFILE_NAMES = ["prod"] as const;
 export type ProfileName = typeof PROFILE_NAMES[number];
 
 /** 判定来源，供帮助文本与错误信息说明「为什么是这个 profile」。 */
@@ -67,9 +67,6 @@ export const PRODUCTION_MARKERS: readonly string[] = [
   ".env.prod",
 ];
 
-/** JSON 编排目录特征文件。 */
-const STACK_MARKER = "noj-deploy.json";
-
 /** 把路径规整为无尾斜杠形式。 */
 function joinPath(dir: string, name: string): string {
   return dir.endsWith("/") ? `${dir}${name}` : `${dir}/${name}`;
@@ -80,19 +77,17 @@ function isProductionDir(dir: string, fs: ProfileFs): boolean {
   return PRODUCTION_MARKERS.every((marker) => fs.isFile(joinPath(dir, marker)));
 }
 
-/** 某目录是否为 JSON 编排目录。 */
-function isStackDir(dir: string, fs: ProfileFs): boolean {
-  return fs.isFile(joinPath(dir, STACK_MARKER));
-}
-
 /**
  * 判定当前 profile。
  *
  * 优先级（命中即停）：
- * 1. `--profile <name>` 显式给出；
- * 2. 目录含 `docker-compose.prod.yml` **且** `.env.prod` → `prod`;
- * 3. 目录（或祖先）含 `noj-deploy.json` → `stack`;
- * 4. 都未命中，或**两者同时命中** → 报错（不猜）。
+ * 1. `--profile <name>` 显式给出（T23 起只接受 `prod`）；
+ * 2. 目录（或祖先）含 `docker-compose.prod.yml` **且** `.env.prod` → `prod`;
+ * 3. 未命中 → 报错（不猜）。
+ *
+ * **T23**：原先还有 `stack`（`noj-deploy.json` 探测）与"两者同时命中即
+ * ambiguous"的分支。该模态删除后，"猜错模式"的风险不复存在——只剩一个模式，
+ * 要么识别出生产安装目录，要么明确报错。
  */
 export function detectProfile(
   options: ProfileDetectOptions,
@@ -114,21 +109,9 @@ export function detectProfile(
 
   let dir = start;
   while (true) {
-    const production = isProductionDir(dir, fs);
-    const stack = isStackDir(dir, fs);
-
-    if (production && stack) {
-      return {
-        profile: null,
-        source: "ambiguous",
-        error:
-          `目录 ${dir} 同时像生产安装目录（含 .env.prod 编排文件）与 JSON 编排目录（含 ${STACK_MARKER}）。\n` +
-          "无法安全推断，请显式指定: noj-cli --profile prod <命令> 或 noj-cli --profile stack <命令>。",
-      };
+    if (isProductionDir(dir, fs)) {
+      return { profile: "prod", source: "detected" };
     }
-    if (production) return { profile: "prod", source: "detected" };
-    if (stack) return { profile: "stack", source: "detected" };
-
     const parent = dirname(dir);
     if (parent === dir || parent === "" || parent === ".") break;
     dir = parent;
@@ -138,9 +121,9 @@ export function detectProfile(
     profile: null,
     source: "none",
     error: [
-      "未能在当前目录及祖先中识别出 profile（既无生产安装目录特征，",
-      `也无 ${STACK_MARKER}）。`,
-      "请用 --profile prod|stack 显式指定，或用 --dir <path> 指向目标目录。",
+      "未能在当前目录及祖先中识别出生产安装目录",
+      `（需要同时含 ${PRODUCTION_MARKERS.join(" 与 ")}）。`,
+      "请用 --dir <path> 指向安装目录。",
     ].join("\n"),
   };
 }
