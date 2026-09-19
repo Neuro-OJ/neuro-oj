@@ -1006,7 +1006,7 @@ T18 `verifyContainer`；`runtime/command.ts` 的 `CommandRunner`；`maintain/dri
 7. **一切经注入的 runner**：`crontab -l` 的非 0（无 crontab 是常态）不视为错误；
    `crontab -` 写入失败**必须报错**（bash `die` 的等价）。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 - **幂等**：install 两次 → 断言区块计数为 1；两条不同的 `--schedule` →
   断言只有新的那条存在（旧的不残留）。
@@ -1026,18 +1026,18 @@ T18 `verifyContainer`；`runtime/command.ts` 的 `CommandRunner`；`maintain/dri
 - **写失败传播**：`crontab -` 返回非 0 → install 失败（退出码 1）并报错。
 - **`crontab -l` 非 0**（无 crontab）：install 仍成功（视为空 crontab）。
 
-- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+- [x] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 - 区块的解析与合并是**纯函数**（`removeManagedBlock`/`upsertManagedBlock`/
   `extractManagedBlock`），因此幂等与"不碰他人行"可脱离进程直接断言；
   只有 `crontab -l` / `crontab -` 两次调用经 runner。
 - 引用器与路径校验也是纯函数，便于对含空格/单引号的路径做表驱动断言。
 
-- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+- [x] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
 
-- [ ] **Step 5: 提交** — `feat(cli): 原生迁移备份调度（crontab 标记区块幂等）`
+- [x] **Step 5: 提交** — `feat(cli): 原生迁移备份调度（crontab 标记区块幂等）`
 
 **明确不做**：不删 `backup-schedule.sh`（T24）；不实现 systemd timer（YAGNI，
 与 bash 一致）；不改 `backup.sh` 的调用契约。
