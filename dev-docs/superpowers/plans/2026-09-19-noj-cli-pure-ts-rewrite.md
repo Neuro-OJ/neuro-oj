@@ -664,7 +664,111 @@ jj new
 
 ---
 
-## Task 17–26（概要；执行前逐个展开为完整任务块）
+## Task 17: `.nojbackup` 单文件容器 + prod-raw payload driver
+
+**Files:**
+- Create: `noj-cli/src/prod/backup/container.ts` — 单文件容器格式（manifest / 打包 / 加密 / 解包）
+- Create: `noj-cli/src/prod/backup/driver.ts` — prod-raw payload driver（**文件重定向**采二进制）
+- Create: `noj-cli/src/prod/backup/container_test.ts`、`driver_test.ts`
+- Modify: `noj-cli/src/prod/release.ts`（若需复用版本读取）—— 预期不改
+- Modify: `noj-cli/src/mod.ts`
+
+**Consumes**：`runtime/command.ts` 的 `CommandRunner`（`run` 的 `stdin` 与 `spawn` 的
+`stdoutFile`/`stderrFile`）；`core/env-file.ts`；`prod/config.ts` 的
+`backupPassphrasePath`/`ensureBackupPassphrase`/`passphraseFileMode`；`util/hash.ts`
+
+**对照 bash（R3）**：`backup.sh` `create_snapshot()`:224-294、
+`gpg_encrypt/decrypt()`:133-148、`write_checksums()`:187-195、
+`record_migration_status()`:172-185、`prepare_idempotent_globals()`:150-170、
+`validate_snapshot_path()`:296-300。
+
+**Spec（`2026-09-19-noj-cli-production-unification-design.md` §3.1）**：容器形态
+**唯一**，`payload_layout` 恒为 `"prod-raw"`（无历史兼容 = 无需分派）：
+
+```text
+snapshot-<ts>.nojbackup
+└─ gpg(AES256, <passphrase>)         ← **整包**加密（不是只加密 env）
+   └─ tar.zst
+      ├─ manifest.json               schema_version / payload_layout / created_at / sha256
+      ├─ postgres.dump               pg_dump -Fc **原始二进制**
+      ├─ postgres-globals.sql
+      ├─ redis.rdb                   redis-cli --rdb **原始二进制**
+      ├─ minio/…
+      ├─ env.prod.gpg
+      ├─ migration-status.txt
+      ├─ sha256sums.txt
+      └─ SUCCESS
+```
+
+**必须实现的行为**
+
+1. **整包加密**：`gpg --symmetric --cipher-algo AES256` 作用于 `tar.zst`（不是逐个
+   文件）。口令路径经注入点给出（生产由 T11 `backupPassphrasePath` 决定）。
+2. **文件重定向采二进制（本任务最高风险项）**：`postgres.dump` 与 `redis.rdb` 必须
+   经 `docker compose exec -T … > <file>` 采集——`backup_driver.ts:114` 的既有注释
+   写明：数据经 **stdout 字符串**传输会**静默损坏**二进制。因此实现须走
+   `SpawnOpts.stdoutFile`（内核级重定向到文件），**不得**走 `run()` 的字符串捕获；
+   `pg_restore --list < postgres.dump` 的结构校验同理（stdin 从**文件**喂入）。
+   测试须对"未经字符串传输"有可断言证据（见 Step 1）。
+3. **`pg_restore --list` 可解析**：`postgres.dump` 落盘后必须能被 `pg_restore --list`
+   解析（spec R7 验收项）。这是二进制静默损坏的**唯一**可检测信号，必须进 `create`
+   的成功路径（bash `:250-252` 同样在 create 内跑）。
+4. **checksums 与哨兵**：`sha256sums.txt` 覆盖 staging 内**全部**文件（除自身），
+   两空格分隔、`LC_ALL=C sort` 排序（与 bash 的 `write_checksums` 逐字一致的排序
+   口径）；`SUCCESS` 内容为 `success`（bash 写 `'success\n'`）；权限 `go-rwx`。
+5. **manifest**：`schema_version: 1`、`payload_layout: "prod-raw"`、`created_at`（UTC
+   `%Y-%m-%dT%H:%M:%SZ`）、`sha256`（**tar.zst** 的摘要，非最终文件）；另含 bash 的
+   说明性字段（`postgres_database`/`redis_policy`/`object_storage`/
+   `postgres_backup_mode`/`incremental_policy`/`rpo`/`rto`/`retention_days`）。
+   注意 sha256 的**时序**：manifest 自身要进包，故须"打包取摘要 → 写 manifest →
+   重新打包"两轮（bash 无 manifest 故无此问题；T18 的 verify 依赖该摘要）。
+6. **原子落盘**：staging 目录 → 打包 → 加密到 `<backup-dir>/snapshot-<ts>.nojbackup`
+   的**临时名** → `rename` 提交；任一步失败清理临时产物与 staging（`finally`），
+   绝不留下半成品 `.nojbackup`。
+7. **`--no-encrypt`**：仍产出单文件（`.nojbackup` 内含未加密 tar.zst），manifest 的
+   `encrypted: false` 如实记录。缺口令且未 `--no-encrypt` → 明确报错（bash :227）。
+
+- [ ] **Step 1: 写失败测试**
+
+- **二进制完整性（最高价值）**：注入 fake runner，令其"经 stdoutFile 写出"一段
+  **含 `\x00` 的字节**，断言落盘文件**逐字节等于**该字节序列；同时断言该次采集
+  **未经** `run()` 的字符串路径（例如 fake 的 `run` 一旦被用于采集 dump 即抛错）。
+  反向用例：若改用字符串路径（模拟 base64/UTF-8 往返），`\x00` 与高位字节被破坏，
+  断言 `sha256sums` 校验**必须失败**——锁住"静默损坏不可接受"。
+- **`pg_restore --list` 可解析**：注入的 fake 对 `pg_restore --list` 返回非 0 时，
+  `create` 必须失败且**不产出** `.nojbackup`（零残留）。
+- **整包加密**：断言 `gpg --symmetric --cipher-algo AES256` 的输入是 **tar.zst**
+  整体（而非逐文件），且最终产物是单个 `.nojbackup`。
+- **manifest 字段**：`payload_layout == "prod-raw"`、`schema_version == 1`、
+  `sha256` 等于 tar.zst 的摘要、`encrypted` 随 `--no-encrypt` 变化。
+- **checksums 覆盖**：`sha256sums.txt` 含除自身外的每个文件，排序为 `LC_ALL=C`。
+- **原子性**：加密失败 / 打包失败 → 备份目录内**零** `.nojbackup` 残留、无 staging
+  残留（`finally` 生效）。
+- **缺口令**：无口令且未 `--no-encrypt` → 明确报错且零产物。
+
+- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+
+- [ ] **Step 3: 实现**
+
+- `container.ts`：纯格式层（manifest 形状与序列化、checksums 生成与解析、打包/加密/
+  解包的编排），**一切外部命令经注入的 driver**，不直接 spawn。
+- `driver.ts`：prod-raw driver——`captureToFile(cmd, args, destFile)` 走
+  `CommandRunner.spawn({ stdoutFile, stderrFile })`（**内核级重定向**），
+  `feedFile(cmd, args, srcFile)` 走 stdin 重定向；两者都返回退出码且**不把内容读进
+  内存字符串**。`pgDump`/`pgDumpAll`/`pgRestoreList`/`redisRdb`/`minioMirror`/
+  `gpgEncrypt`/`gpgDecrypt`/`tarZst`/`untarZst` 建立在其上。
+- 复用既有 `util/hash.ts:fileSha256Hex`（流式摘要，不整读进内存）。
+
+- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+
+- [ ] **Step 5: 提交** — `feat(cli): .nojbackup 单文件容器与 prod-raw 驱动（文件重定向采二进制）`
+
+**明确不做**：不实现 verify/list/prune/restore 命令面（T18）；不实现 drill（T19）；
+不删 bash（T24）；不改 `maintain/` 既有 JSON 模式备份（T23 才收敛）。
+
+---
+
+## Task 18–26（概要；执行前逐个展开为完整任务块）
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
 | T17 .nojbackup 容器 | `backup/container.ts`、`driver.ts` | 单文件 + 整包加密；**文件重定向采二进制**；`pg_restore --list` 可解析 |
