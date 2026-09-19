@@ -1044,7 +1044,104 @@ T18 `verifyContainer`；`runtime/command.ts` 的 `CommandRunner`；`maintain/dri
 
 ---
 
-## Task 21–26（概要；执行前逐个展开为完整任务块）
+## Task 21: judge（独立 Judge Worker 部署，原生迁移）
+
+**Files:**
+- Create: `noj-cli/src/prod/judge/config.ts` — 配置读写、校验、socket 安全守卫
+- Create: `noj-cli/src/prod/judge/compose.ts` — `docker-compose.judge.yml` 渲染
+- Create: `noj-cli/src/prod/judge/actions.ts` — install/start/stop/status/logs/upgrade
+- Create: `noj-cli/src/prod/judge/*_test.ts`
+- Modify: `noj-cli/src/mod.ts`
+
+**Consumes**：`runtime/command.ts`；`core/env-file.ts`（配置读写，**复用不重写**）；
+`prod/drill/plan.ts` 的 `checkPassphraseFile` 与 `detectPanel` 类面板探测；
+`prod/schedule.ts` 的 `quoteForCron` 不适用（不写 crontab）
+
+**对照 bash（R3）**：`judge-install.sh` 全 951 行（`parse_args()`:134-204、
+`env_value()/set_env_value()`:205-239、`detect_panel()/show_panel_guidance()`:244-275、
+`ensure_target_dir()/validate_existing_target()`:299-316、`generate_redis_password()`:337、
+`validate_redis_port()/port_is_in_use()`:345-365、`write_redis_connection_files()`:366-390、
+`create_local_redis()/configure_redis()`:391-500、`initialize_env()`:501-581、
+`write_compose()`:582-637、`check_base_environment()/check_config_values()`:638-694、
+`check_socket()`:695-717、`check_redis()`:728-752、
+`check_image_architecture()`:761-789、`check_configuration()`:790-809、
+`run_compose()`:810-820、`download_script()`:821+）。
+
+**⚠️ 两条不可协商的安全约束（spec P8 + help 的「安全约束」段）**
+
+1. **禁止共享 Docker socket**：`JUDGE_DOCKER_SOCKET` 不得是
+   `/var/run/docker.sock` 或 `/run/docker.sock`（bash `:699-701`）。这两个 socket
+   是**应用宿主机**的 daemon——挂进 Judge 容器等于把整台宿主的容器控制权交给
+   评测代码。校验必须在**写入配置之前**，且 `JUDGE_DOCKER_HOST` 必须指向容器内
+   专用 endpoint `unix:///run/noj-judge/docker.sock`（bash `:687-691`）。
+2. **不碰宿主 Docker daemon**：不安装、不替换、不配置 daemon，也不调用面板 API
+   （宝塔只做**探测 + 提示**）。这条决定了实现里**不允许**出现 `systemctl`、
+   `apt`、`yum`、`dockerd` 之类调用——门禁用测试断言"这些命令从未被调用"。
+
+**必须实现的行为**
+
+1. **配置层**（`config.ts`）：`install` 写入 `DIR/.env.judge`（**权限 600**），
+   `upgrade`/`start` 复用既有配置（**绝不覆盖**）；必填项校验沿用 T2 的
+   `ENV_KEYS` 风格但对 judge 侧键单独建清单（judge 的键与生产 `.env.prod` 不同）。
+   占位值判定复用 T2 的 `isPlaceholder`。
+2. **socket 守卫**（`check_socket` 的等价）：非 `unix://` → 拒绝；共享 socket
+   路径 → 拒绝；专用 socket 不可连接（经 `DOCKER_HOST=unix://<path> docker info`）
+   → 拒绝并给出 rootless 准备指引；权限非 600/400 的配置文件同样拒绝。
+3. **本机 Redis 模式**：交互式可选「连接已有 Redis」或「创建本机 Redis」；
+   **非交互必须提供 `REDIS_URL`**（不自动创建）。本机 Redis 用命名容器 + 持久化卷 +
+   **仅绑定回环地址**的端口（默认 16379），并生成随机口令。端口占用时必须拒绝
+   （`port_is_in_use` 的等价，经注入探测）。
+4. **Compose 渲染**（`compose.ts`）：产出 `docker-compose.judge.yml`，
+   服务名/依赖/卷/端口与 bash `write_compose()` 逐项一致；socket 挂载为 `:ro`；
+   judge 的 `WORK_DIR`/队列名/并发上限来自配置。**渲染是纯函数**，因此"服务集合
+   与 bash 一致"可直接断言，不必起容器。
+5. **镜像架构校验**：`local_image_arch()` 的等价——本地镜像架构与宿主机不符时
+   拒绝（避免 exec format error 这类运行期才暴露的问题）。
+6. **命令面**：`install` / `install-env` / `check` / `start` / `stop` / `status` /
+   `logs [--follow]` / `upgrade` / `download`；`status` 输出**脱敏**摘要
+   （口令、token 绝不回显）；`--dry-run` 零副作用。
+7. **退出码**：0 成功 / 1 运行失败 / 2 用法或前置错误（与 T19/T20 同一分层）。
+
+- [ ] **Step 1: 写失败测试**
+
+- **共享 socket 拒绝（最高价值）**：`/var/run/docker.sock`、`/run/docker.sock`、
+  二者经 `realpath` 后的等价路径 → 全部拒绝（退出码 2）且**零配置写入**、
+  **零 compose 调用**。
+- **不碰宿主 daemon**：断言整个 judge 路径**从未**调用 `systemctl`/`apt`/`yum`/
+  `dockerd`/`service`（注入 runner 记录全部调用后逐一断言）。
+- **`JUDGE_DOCKER_HOST` endpoint**：非 `unix:///run/noj-judge/docker.sock` → 拒绝。
+- **配置不覆盖**：`install` 前预置一份 `.env.judge` → 断言其内容逐字节不变
+  （升级路径不得覆盖用户配置）；首装才写新文件且权限 600。
+- **非交互 + 缺 `REDIS_URL`** → 拒绝且**不创建**本机 Redis（零 `docker run`）。
+- **本机 Redis 端口**：端口被占用 → 拒绝；绑定地址必须是 `127.0.0.1`（不得 `0.0.0.0`）；
+  口令随机且不回显。
+- **Compose 渲染**：服务集合/卷/`:ro` socket 挂载/不映射多余端口逐项断言；
+  渲染是纯函数，**不调 runner**。
+- **架构不符**：注入 `local_image_arch` 返回与宿主机不同的架构 → 拒绝。
+- **`status` 脱敏**：配置含口令与 token → 断言输出**不含**这些值（含子串匹配）。
+- **`--dry-run`**：断言零 runner 调用、零文件写入。
+- **`logs --follow`**：断言走 `stream`（非缓冲 `run`），与 T14 同一契约。
+- **`upgrade`**：按配置里的版本拉取；版本缺失 → 明确报错。
+
+- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+
+- [ ] **Step 3: 实现**
+
+- 一切外部访问可注入（runner / fs / 网络 / 探测）；配置读写复用
+  `core/env-file.ts`（T3）；不使用任何在 TS 里重写 shell 拼接的写法。
+- `download` 子命令经 T9 的 `downloadReleaseFiles`（`overwrite:true`）实现，
+  不新造下载逻辑。
+
+- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+
+- [ ] **Step 5: 提交** — `feat(cli): 原生迁移独立 Judge 部署（专用 rootless socket 强约束）`
+
+**明确不做**：不删 `judge-install.sh`（T24）；不安装/配置 Docker daemon（安全约束）；
+不调用宝塔 API；不改 `noj-judge` 自身的运行时代码。
+
+---
+
+## Task 22–26（概要；执行前逐个展开为完整任务块）
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
 | T17 .nojbackup 容器 | `backup/container.ts`、`driver.ts` | 单文件 + 整包加密；**文件重定向采二进制**；`pg_restore --list` 可解析 |
