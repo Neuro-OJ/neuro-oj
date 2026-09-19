@@ -4,8 +4,29 @@ import {
   findProductionDir,
   PRODUCTION_COMMANDS,
   ProductionDirError,
-  runProduction,
 } from "./production.ts";
+import {
+  flagValue,
+  hasFlag,
+  hasJson,
+  parseProdArgs,
+  positionals,
+  runBackupCreate,
+  runBackupList,
+  runBackupPrune,
+  runBackupRestorePlan,
+  runBackupSchedule,
+  runBackupVerify,
+  runProdCheck,
+  runProdInstall,
+  runProdLogs,
+  runProdRestart,
+  runProdStart,
+  runProdStatus,
+  runProdStop,
+  runProdUninstall,
+  runProdUpdate,
+} from "./prod/cli.ts";
 import { renderCommandHelp } from "./help.ts";
 import { renderCommandList } from "./commands.ts";
 import {
@@ -796,15 +817,17 @@ export function resolveProfile(
 }
 
 /**
- * 生产 profile 下的 `backup drill`：解析参数并执行**真实恢复演练**（#516）。
+ * `backup drill`：解析参数并执行**真实恢复演练**。
  *
- * 与 `maintain backup drill` 共享 {@link runDrill}，区别只是安装目录来源：
- * 这里用生产安装目录（`--dir` 或探测到的目录）。
+ * **T24 接线**：目录由调用方（`dispatchProduction`）给定——它已用
+ * `findProductionDir` 定位过，这里不再重复探测（重复探测会在"显式 --dir 与实际
+ * 安装目录不一致"时给出误导性的第二次报错）。
  */
 async function runBackupDrillFromProduction(
   args: string[],
-  ctx: CommandContext,
+  ctx: { cwd: string; prodDir: string },
 ): Promise<number> {
+  void ctx;
   if (wantsHelp(args)) {
     console.log(renderDrillHelp());
     return EXIT_OK;
@@ -818,13 +841,7 @@ async function runBackupDrillFromProduction(
     );
     return EXIT_USAGE;
   }
-  let dir: string;
-  try {
-    dir = await findProductionDir(a.dir, ctx.cwd);
-  } catch (e) {
-    throw new ProductionDirError((e as Error).message);
-  }
-  return await executeDrill(a, dir);
+  return await executeDrill(a, ctx.prodDir);
 }
 
 /**
@@ -920,6 +937,274 @@ async function executeDrill(
   }
 }
 
+/**
+ * 生产命令的原生分发（T24）。
+ *
+ * 职责分工：
+ * - **本函数**：定位安装目录（`findProductionDir`）→ 拆 `--dir` → 分派到
+ *   `prod/cli.ts` 的对应入口 → 打印人类结论、透传退出码；
+ * - **`prod/`**：命令的全部语义（前置校验、compose 编排、状态机、输出通道）。
+ *
+ * 退出码：0 成功 / 1 运行失败 / 2 用法错误。
+ * `--json` 时原生实现已把结果 JSON 写到 stdout，因此这里**不再打印结论**
+ * （否则 stdout 会混入人类文字，破坏 T6 契约）。
+ */
+async function dispatchProduction(
+  ctx: CommandContext,
+  command: string,
+  args: string[],
+): Promise<number> {
+  const parsed = parseProdArgs(args);
+  let dir: string;
+  try {
+    dir = await findProductionDir(parsed.dir, ctx.cwd);
+  } catch (e) {
+    throw new ProductionDirError((e as Error).message);
+  }
+  const rest = parsed.rest;
+  const json = hasJson(rest);
+  // 人类结论统一走 stderr 或 stdout：`--json` 时走 stderr，保证 stdout 干净。
+  const say = (text: string): void => {
+    if (text === "") return;
+    if (json) console.error(text);
+    else console.log(text);
+  };
+
+  try {
+    switch (command) {
+      case "install": {
+        const r = await runProdInstall(dir, rest, {});
+        say(r.message);
+        return r.exitCode;
+      }
+      case "check": {
+        const r = await runProdCheck(dir, rest, {});
+        say(r.message);
+        return r.exitCode;
+      }
+      case "status": {
+        const r = await runProdStatus(dir, rest, {});
+        say(r.error ?? "");
+        return r.exitCode;
+      }
+      case "start": {
+        const r = await runProdStart(dir, rest, {});
+        say(r.error ?? "");
+        return r.exitCode;
+      }
+      case "stop": {
+        const r = await runProdStop(dir, rest, {});
+        say(r.error ?? "");
+        return r.exitCode;
+      }
+      case "restart": {
+        const r = await runProdRestart(dir, rest, {});
+        say(r.error ?? "");
+        return r.exitCode;
+      }
+      case "logs": {
+        const r = await runProdLogs(dir, rest, {});
+        say(r.error ?? "");
+        return r.exitCode;
+      }
+      case "update": {
+        const r = await runProdUpdate(dir, rest, {});
+        say(r.error ?? "");
+        return r.exitCode;
+      }
+      case "upgrade": {
+        const r = await runProdUpdate(dir, rest, {}, true);
+        say(r.error ?? "");
+        return r.exitCode;
+      }
+      case "uninstall": {
+        const r = await runProdUninstall(dir, rest, {});
+        say(r.error ?? "");
+        return r.exitCode;
+      }
+      case "verify": {
+        // `verify` = 配置校验 + 镜像验签（比 `check` 多验签）。
+        const r = await runProdCheck(dir, rest, {});
+        say(r.message);
+        return r.exitCode;
+      }
+      case "config": {
+        // `config check` 是唯一支持的子命令（与 bash 的 `config-check` 等价）。
+        const sub = positionals(rest)[0];
+        if (sub !== undefined && sub !== "check") {
+          console.error(`config 目前只支持 check，收到 "${sub}"`);
+          return EXIT_USAGE;
+        }
+        const r = await runProdCheck(dir, rest, {});
+        say(r.message);
+        return r.exitCode;
+      }
+      case "backup": {
+        return await dispatchProdBackup(dir, rest, json);
+      }
+      default: {
+        console.error(`未知生产命令：${command}`);
+        return EXIT_USAGE;
+      }
+    }
+  } catch (e) {
+    // 参数错误 → 2；其余（原生实现抛出的运行失败）→ 1
+    if (e instanceof UsageError) {
+      console.error(`${command}: ${(e as Error).message}`);
+      return EXIT_USAGE;
+    }
+    console.error(`${command}: ${(e as Error).message}`);
+    return EXIT_FAILURE;
+  }
+}
+
+/** `backup` 的子命令分发（T17–T20 的原生实现）。 */
+async function dispatchProdBackup(
+  dir: string,
+  args: string[],
+  json: boolean,
+): Promise<number> {
+  // `drill` 需要自己的 help 文案（已在上方处理），这里只分派执行。
+  const sub = args[0] ?? "";
+  const rest = args.slice(1);
+  const say = (text: string): void => {
+    if (text === "") return;
+    if (json) console.error(text);
+    else console.log(text);
+  };
+  switch (sub) {
+    case "drill":
+      return await runBackupDrillFromProduction(rest, {
+        cwd: Deno.cwd(),
+        prodDir: dir,
+      });
+    case "create": {
+      const created = await runBackupCreate(dir, {
+        args: rest,
+        deps: {},
+        passphraseFile: flagValue(rest, "--passphrase-file"),
+        backupDir: flagValue(rest, "--backup-dir"),
+        zstdLevel: numberFlag(rest, "--zstd-level"),
+        noEncrypt: hasFlag(rest, "--no-encrypt"),
+      });
+      if (json) {
+        console.log(JSON.stringify(
+          {
+            path: created.path,
+            sha256: created.sha256,
+            sidecar: created.sidecar,
+            payload_layout: created.manifest.payload_layout,
+          },
+          null,
+          2,
+        ));
+      } else {
+        say(`完整生产快照已创建：${created.path}`);
+        say(`校验文件：${created.sidecar}`);
+      }
+      return EXIT_OK;
+    }
+    case "verify": {
+      const r = await runBackupVerify(dir, rest, {});
+      if (json) {
+        console.log(JSON.stringify(
+          {
+            path: r.path,
+            pass: r.pass,
+            checks: r.checks,
+            issues: r.issues,
+          },
+          null,
+          2,
+        ));
+      } else {
+        say(r.summary);
+      }
+      return r.pass ? EXIT_OK : EXIT_FAILURE;
+    }
+    case "list": {
+      const r = await runBackupList(dir, rest, {});
+      if (json) {
+        console.log(JSON.stringify(r, null, 2));
+      } else if (r.entries.length === 0) {
+        say("没有可用备份");
+      } else {
+        for (const e of r.entries) {
+          say(`${e.name}  ${formatBytes(e.bytes ?? 0)}  ${e.createdAt}`);
+        }
+      }
+      return EXIT_OK;
+    }
+    case "prune": {
+      const r = await runBackupPrune(dir, rest, {});
+      if (json) {
+        console.log(JSON.stringify(
+          {
+            applied: r.applied,
+            deleted: r.deleted.map((p) => p),
+            planned: r.plan.remove.map((e) => e.name),
+            failed: r.failed.map((f) => f.path),
+          },
+          null,
+          2,
+        ));
+      } else {
+        // 默认 dry-run：必须明确告知"没有删任何东西"，否则用户以为已清理
+        say(
+          r.applied
+            ? `已删除 ${r.deleted.length} 个备份`
+            : `[dry-run] 将删除 ${r.plan.remove.length} 个备份（加 --confirm 才真正删除）`,
+        );
+        for (const e of r.plan.remove) say(`  - ${e.name}`);
+      }
+      return r.failed.length === 0 ? EXIT_OK : EXIT_FAILURE;
+    }
+    case "restore": {
+      const r = await runBackupRestorePlan(dir, rest, {});
+      if (json) {
+        console.log(JSON.stringify(r, null, 2));
+      } else {
+        say(r.summary);
+      }
+      return r.verified ? EXIT_OK : EXIT_FAILURE;
+    }
+    case "schedule": {
+      const r = await runBackupSchedule(dir, rest, {});
+      if (json) {
+        console.log(JSON.stringify(
+          {
+            exitCode: r.exitCode,
+            message: r.message,
+            block: r.block,
+          },
+          null,
+          2,
+        ));
+      } else {
+        say(r.message);
+      }
+      return r.exitCode;
+    }
+    default:
+      console.error(
+        `backup 需要子命令 create/verify/list/prune/restore/drill/schedule，` +
+          `收到 "${sub}"`,
+      );
+      return EXIT_USAGE;
+  }
+}
+
+/** 读一个数值旗标（非法值报用法错误）。 */
+function numberFlag(args: string[], name: string): number | undefined {
+  const raw = flagValue(args, name);
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) {
+    throw new UsageError(`${name} 必须是非负整数，收到 "${raw}"`);
+  }
+  return n;
+}
+
 /** 将命令分发到对应处理函数。供测试与 run 共用。 */
 export async function dispatchCommand(
   command: string,
@@ -932,20 +1217,16 @@ export async function dispatchCommand(
     console.log(renderDrillHelp());
     return EXIT_OK;
   }
-  // 生产命令的 help 由 CLI 自己回答，不转发给 bash（#517 E12）
+  // 生产命令的 help 由 CLI 自己回答（#517 E12）
   if (PRODUCTION_COMMANDS.has(command) && wantsHelp(args)) {
     console.log(renderProductionCommandHelp(command));
     return EXIT_OK;
   }
-  // `backup drill` = **真实恢复演练**（#516），必须由 CLI 直接执行，
-  // 不能转发给 production.sh——后者的 drill 走 backup.sh 的**文件校验**，
-  // 会绕过 restore-drill.sh（评测发现：prod profile 下 drill 名不副实）。
-  // 其余 backup 子命令（create/verify/restore/schedule）仍转发给脚本。
-  if (command === "backup" && args[0] === "drill") {
-    return await runBackupDrillFromProduction(args.slice(1), ctx);
-  }
+  // 生产命令一律调用**原生实现**（T24 接线，R1 收口）。
+  // 此前这里转发给 `bash <dir>/scripts/deploy/production.sh`——那是 src 内唯一的
+  // 脚本调用（R1 违例），也是"纯 TS 重写"最后一块非 TS 拼图。
   if (PRODUCTION_COMMANDS.has(command)) {
-    return await runProduction(command, args);
+    return await dispatchProduction(ctx, command, args);
   }
 
   // `problem` = 题目包管理（#514）：init / lint / pack

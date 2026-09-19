@@ -785,11 +785,18 @@ async function pathExists(path: string): Promise<boolean> {
  *
  * 四条检查逐条对照：
  * 1. `[[ -d && ! -L ]] || fail "当前安装目录不存在或不是普通目录"`；
- * 2. `[[ -f bin/noj-cli && -f "$DEPLOY_SCRIPT" && -f docker-compose.prod.yml ]]`——
- *    `DEPLOY_SCRIPT` 在 TS 侧仍是安装目录内的 `scripts/deploy/deploy.sh`
- *    （T24 才删除 bash；二进制保持同形文件系统契约）。特征文件消费
- *    {@link PRODUCTION_MARKERS}（T5/T12 单一事实源），不新写标记清单。
- *    bash 把三条 `-f` 折叠成**同一句** `fail`，故三个缺失分支共用
+ * 2. **安装完整性**：`bin/noj-cli` 存在（可执行）**且** {@link PRODUCTION_MARKERS}
+ *    两个特征文件存在。
+ *
+ *    **T24 重新定义**：bash `production.sh:170` 的完整性判据是
+ *    `-f bin/noj-cli && -f "$DEPLOY_SCRIPT"（scripts/deploy/deploy.sh） &&
+ *    -f docker-compose.prod.yml`。T24 删除了 `scripts/deploy/**`，若继续要求
+ *    那个脚本存在，`uninstall --all` 在**任何**真实安装目录上都会以
+ *    "不是完整的 NOJ 安装目录" 永久拒绝（自锁）——T15 的 Agent Note 已预警过
+ *    这一点。现在改为"CLI 二进制 + 两个生产特征文件"：三者都是部署后**确实
+ *    存在**、且不随 bash 删除而消失的东西。
+ *
+ *    bash 把三条 `-f` 折叠成**同一句** `fail`，故各缺失分支共用
  *    {@link uninstallIncompleteDirHint}，不各写一条文案（T15 评审 Minor 2）；
  * 3. `[[ ! -e .git && ! -e .jj ]]` → 拒绝。**与 bash 逐字同形**：production.sh:172
  *    本就同时检查 `.git` 与 `.jj`，不是"多查一个"的有意偏离；
@@ -804,8 +811,6 @@ export async function assertRemovableInstallDir(
   opts: {
     /** 安装版 CLI 路径；缺省 `<dir>/bin/noj-cli`。 */
     cliBinary?: string;
-    /** 生产部署脚本路径；缺省 `<dir>/scripts/deploy/deploy.sh`。 */
-    deployScript?: string;
   } = {},
 ): Promise<void> {
   let st: Deno.FileInfo | null = null;
@@ -819,14 +824,9 @@ export async function assertRemovableInstallDir(
   }
 
   const cliBinary = opts.cliBinary ?? join(dir, "bin/noj-cli");
-  const deployScript = opts.deployScript ??
-    join(dir, "scripts/deploy/deploy.sh");
-  // bash 的三条 `-f` 用 `&&` 串在一个 `[[ ]]` 里，失败只有**一句**文案
-  // （production.sh:170-171），无法（也不应）区分是哪一个特征文件缺失。
+  // 各条 `-f` 用 `&&` 串在一起时失败只有**一句**文案（production.sh:170-171），
+  // 无法（也不应）区分是哪一个特征文件缺失。
   if (!(await isFile(cliBinary))) {
-    throw new Error(uninstallIncompleteDirHint(dir));
-  }
-  if (!(await isFile(deployScript))) {
     throw new Error(uninstallIncompleteDirHint(dir));
   }
   for (const marker of PRODUCTION_MARKERS) {
@@ -861,7 +861,6 @@ export async function removeInstallDirectory(
   processEnv: Record<string, string | undefined> = Deno.env.toObject(),
   opts: {
     cliBinary?: string;
-    deployScript?: string;
   } = {},
 ): Promise<void> {
   await assertRemovableInstallDir(dir, processEnv, opts);

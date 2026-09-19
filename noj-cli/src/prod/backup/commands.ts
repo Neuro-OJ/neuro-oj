@@ -108,7 +108,7 @@ export interface VerifyCommandOptions {
 export function assertContainerPath(path: string): void {
   if (!path.endsWith(".nojbackup")) {
     throw new Error(
-      `只支持 .nojbackup 单文件快照：${path}（目录形态的旧快照请先用 backup.sh 迁移）`,
+      `只支持 .nojbackup 单文件快照：${path}（目录形态的旧快照已不受支持）`,
     );
   }
   if (path.split("/").includes("..")) {

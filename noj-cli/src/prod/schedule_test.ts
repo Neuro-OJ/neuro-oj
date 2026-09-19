@@ -108,9 +108,11 @@ function makeCrontabRunner(
 /** 建一个"完整安装目录"：备份脚本（可执行）+ .env.prod + compose。 */
 async function makeInstallDir(root: string): Promise<string> {
   const dir = join(root, "install");
-  await Deno.mkdir(join(dir, "scripts/deploy"), { recursive: true });
-  const script = join(dir, "scripts/deploy/backup.sh");
-  await Deno.writeTextFile(script, "#!/usr/bin/env bash\nexit 0\n");
+  // T24：cron 的入口是 **noj-cli 自身**（`<dir>/bin/noj-cli backup create`），
+  // 不再是已删除的 scripts/deploy/backup.sh。
+  await Deno.mkdir(join(dir, "bin"), { recursive: true });
+  const script = join(dir, "bin/noj-cli");
+  await Deno.writeTextFile(script, "#!/bin/sh\nexit 0\n");
   await Deno.chmod(script, 0o755);
   await Deno.writeTextFile(join(dir, ".env.prod"), "NOJ_VERSION=v0.9.5\n");
   await Deno.chmod(join(dir, ".env.prod"), 0o600);
@@ -251,7 +253,7 @@ Deno.test("T20 quoteForCron：含空格/引号/$ 的路径被安全引用", () =
 Deno.test("T20 renderScheduleEntry：结构逐字对齐 bash（含 >> 与 2>&1）", () => {
   const entry = renderScheduleEntry({
     schedule: "15 2 * * *",
-    backupScript: "/opt/noj/scripts/deploy/backup.sh",
+    backupScript: "/opt/noj/bin/noj-cli",
     envFile: "/opt/noj/.env.prod",
     composeFile: "/opt/noj/docker-compose.prod.yml",
     backupDir: "/opt/noj/backups",
@@ -259,7 +261,7 @@ Deno.test("T20 renderScheduleEntry：结构逐字对齐 bash（含 >> 与 2>&1�
   });
   assertEquals(
     entry,
-    "15 2 * * * /opt/noj/scripts/deploy/backup.sh create " +
+    "15 2 * * * /opt/noj/bin/noj-cli backup create " +
       "--env-file /opt/noj/.env.prod " +
       "--compose-file /opt/noj/docker-compose.prod.yml " +
       "--backup-dir /opt/noj/backups " +
@@ -271,19 +273,19 @@ Deno.test("T20 renderScheduleEntry：结构逐字对齐 bash（含 >> 与 2>&1�
 Deno.test("T20 renderScheduleEntry：含空格的安装目录仍产出单一命令（引用生效）", async () => {
   const entry = renderScheduleEntry({
     schedule: "15 2 * * *",
-    backupScript: "/opt/my noj/scripts/deploy/backup.sh",
+    backupScript: "/opt/my noj/bin/noj-cli",
     envFile: "/opt/my noj/.env.prod",
     composeFile: "/opt/my noj/docker-compose.prod.yml",
     backupDir: "/opt/my noj/backups",
     passphraseFile: "/etc/noj/backup-passphrase",
   });
-  assertStringIncludes(entry, "'/opt/my noj/scripts/deploy/backup.sh'");
+  assertStringIncludes(entry, "'/opt/my noj/bin/noj-cli'");
   assertStringIncludes(entry, "'/opt/my noj/.env.prod'");
   // `sh -c` 解析后，命令词数应等于未含空格时的词数（证明没被拆成多列）
   const words = await shellWords(entry);
   const plain = await shellWords(renderScheduleEntry({
     schedule: "15 2 * * *",
-    backupScript: "/opt/noj/scripts/deploy/backup.sh",
+    backupScript: "/opt/noj/bin/noj-cli",
     envFile: "/opt/noj/.env.prod",
     composeFile: "/opt/noj/docker-compose.prod.yml",
     backupDir: "/opt/noj/backups",
@@ -293,9 +295,11 @@ Deno.test("T20 renderScheduleEntry：含空格的安装目录仍产出单一命�
   // 拆成多个词，词数就会变多（这正是要防的静默错命令）
   assertEquals(words.length, plain.length, "含空格的路径不得让一行变成多列");
   // 脚本路径必须仍是**一个**完整的词（位于 `create` 之前）
-  const createAt = words.indexOf("create");
-  assert(createAt > 0, "必须能找到 create 子命令");
-  assertEquals(words[createAt - 1], "/opt/my noj/scripts/deploy/backup.sh");
+  // 结构：`<schedule> <noj-cli> backup create --env-file …`
+  const backupAt = words.indexOf("backup");
+  assert(backupAt > 0, "必须能找到 backup 子命令");
+  assertEquals(words[backupAt - 1], "/opt/my noj/bin/noj-cli");
+  assertEquals(words[backupAt + 1], "create");
   // 选项值同样是单一完整的词
   const envAt = words.indexOf("--env-file");
   assertEquals(words[envAt + 1], "/opt/my noj/.env.prod");
@@ -331,7 +335,7 @@ Deno.test("T20 install：写入区块、建日志（600）与备份目录（700�
       BACKUP_DIR_MODE,
     );
     // 绝对路径被写进条目
-    assertStringIncludes(state.content, join(dir, "scripts/deploy/backup.sh"));
+    assertStringIncludes(state.content, join(dir, "bin/noj-cli"));
     assertStringIncludes(state.content, passphrase);
   } finally {
     await Deno.remove(root, { recursive: true });
@@ -444,7 +448,7 @@ Deno.test("T20 install：前置失败（口令/缺文件/不可执行脚本）�
     // 4) 备份脚本不可执行
     {
       const dir2 = await makeInstallDir(join(root, "i2"));
-      await Deno.chmod(join(dir2, "scripts/deploy/backup.sh"), 0o644);
+      await Deno.chmod(join(dir2, "bin/noj-cli"), 0o644);
       const calls: CrontabCall[] = [];
       const { runner } = makeCrontabRunner(HOST_TASKS, { calls });
       const result = await installSchedule({

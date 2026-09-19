@@ -428,7 +428,7 @@ async function unpackForDrill(
     throw new UsageError(
       `drill 只接受 .nojbackup 单文件快照：${opts.snapshotPath}\n` +
         "  原因：T17 起单文件容器是唯一形态（payload_layout=prod-raw），" +
-        "目录形态的旧快照请先用 backup.sh 迁移。",
+        "目录形态的旧快照已不受支持。",
     );
   }
   const drillDir = await allocateDrillDir(

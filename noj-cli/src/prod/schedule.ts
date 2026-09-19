@@ -225,6 +225,9 @@ export function renderScheduleEntry(opts: ScheduleEntryOptions): string {
   return [
     opts.schedule,
     quoteForCron(opts.backupScript),
+    // 入口是 noj-cli 自身，故子命令是 `backup create`（而非旧的裸 `create`——
+    // 那是 backup.sh 的参数契约）。
+    "backup",
     "create",
     "--env-file",
     quoteForCron(opts.envFile),
@@ -348,7 +351,10 @@ function resolvePaths(opts: InstallScheduleOptions): ScheduleResult["paths"] {
   const dir = opts.installDir.replace(/\/+$/, "");
   const backupDir = opts.backupDir ?? join(dir, "backups");
   const paths = {
-    backupScript: opts.backupScript ?? join(dir, "scripts/deploy/backup.sh"),
+    // **T24 关键修正**：cron 任务此前指向 `scripts/deploy/backup.sh`——那个脚本
+    // 已随 T24 删除。若不改，定时备份会在**无人察觉**的情况下失败（cron 的失败
+    // 只落在日志里）。现在指向本工具自身：`<dir>/bin/noj-cli backup create`。
+    backupScript: opts.backupScript ?? join(dir, "bin/noj-cli"),
     envFile: opts.envFile ?? join(dir, ".env.prod"),
     composeFile: opts.composeFile ?? join(dir, "docker-compose.prod.yml"),
     backupDir,
