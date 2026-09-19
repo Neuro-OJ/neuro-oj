@@ -639,7 +639,7 @@ jj new
 5. **文件同步**：`--files-only` 语义 = 以 `overwrite:true` 重新拉取 compose/example 资产并保留 `.env.prod`。
 6. `upgrade` 仍是 `update` 的别名。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 - 版本解析：fake Release 列表 → draft/prerelease 被排除、缺资产被排除、选中最新合规 tag；无合规版本 → 报错。
 - 标签校验：非法 tag 被拒；`v0.1.0`/`0.1.0` 通过。
@@ -649,16 +649,16 @@ jj new
 - **write_config_version**：仅替换 `NOJ_VERSION`，保留注释/其它键/顺序。
 - `upgrade` 与 `update` 行为一致（别名）。
 
-- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+- [x] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 - 建议把 `composePull` 加入 `prod/compose.ts`（T12/T13 登记的 carry-forward），在 `update` 中复用。
 - 若 `runtime/download.ts` 的 `resolveLatestVersion` 只按 CLI 资产过滤（T9 已指出），**扩展资产集合**以含 compose/example，或在 `prod/` 内实现等价过滤——**二择一并说明理由**。
 
-- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+- [x] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
 
-- [ ] **Step 5: 提交** — `feat(cli): 迁移 update/upgrade（版本解析、备份、文件同步与健康检查）`
+- [x] **Step 5: 提交** — `feat(cli): 迁移 update/upgrade（版本解析、备份、文件同步与健康检查）`
 
 **明确不做**：不删 bash（T24）；不实现备份内部设计（T17–T19）；不改 T10 契约（除新增 `composePull`）。
 
