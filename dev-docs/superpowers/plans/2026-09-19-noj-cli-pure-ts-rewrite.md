@@ -1269,7 +1269,7 @@ input/select/confirm），`command.ts` 也已区分 TTY 与 `--no-interactive`�
    针对**防漂移门禁**的用例保留并更新（T7 的 `declaredTopLevelNames() ⊆ 可处理集合`
    必须继续通过——它是本次删除的安全网）。
 
-- [ ] **Step 1: 抢救（rescue）**
+- [x] **Step 1: 抢救（rescue）**
 
 - 移 `backup_index.ts`/`backup_list.ts` → `prod/backup/{index,list}.ts`；移
   `drill.ts` 的两个校验 → `prod/drill/plan.ts`；`randomKey` → `util/random.ts`；
@@ -1279,28 +1279,28 @@ input/select/confirm），`command.ts` 也已区分 TTY 与 `--no-interactive`�
   否则删除时会连测试一起丢掉——那会让 T18 的 prune 安全默认失去覆盖）。
 - 断言：`deno task check && deno task test` 全绿，且**测试数不减**。
 
-- [ ] **Step 2: 命令面收敛（cli.ts + commands.ts）**
+- [x] **Step 2: 命令面收敛（cli.ts + commands.ts）**
 
 - 删 `stack`/`deploy`/`maintain`/`run-server`/`doctor` 分支与 `DEPLOY_SUBS`/
   `STACK_ONLY`/`PROD_ONLY` 门控；旧名走**一次性迁移提示**（退出码 2，因为命令已不存在）。
 - `commands.ts` 删 `stack` 分区与三个旧名条目；`TIER_ORDER` 去掉 `"stack"`。
 - 断言：`deno task test` 绿（含 T7 防漂移门禁），`rg` 无旧命令残留。
 
-- [ ] **Step 3: 分组删除（5 组，各自一个提交）**
+- [x] **Step 3: 分组删除（5 组，各自一个提交）**
 
 - 3a `deploy/**`（含测试）；3b `maintain/**` 剩余部分（含测试）；
 - 3c `config/**` + `init/{templates,wizard}.ts`（含测试）；
 - 3d `state/machine.ts` + `doctor/**`（含测试）；3e `runtime/{process,pidfile}.ts`。
 - 每组后跑 `deno task check && deno task test`。
 
-- [ ] **Step 4: 收尾（mod.ts 导出、残留清零、门禁）**
+- [x] **Step 4: 收尾（mod.ts 导出、残留清零、门禁）**
 
 - `mod.ts` 删掉全部已删模块的再导出（它是 `deno check` 的 reachability 入口，
   残留导出会直接编译失败——这正是它作为门禁的价值）。
 - 加**残留门禁**到 `commands_test.ts`：断言 `COMMANDS` 不含旧名、
   `renderCommandList()` 不含 `stack`/`deploy`/`maintain`/`run-server`。
 
-- [ ] **Step 5: 运行确认通过 + 提交**
+- [x] **Step 5: 运行确认通过 + 提交**
 
 - `cd noj-cli && deno task check && deno task test`；
 - 提交序列（便于 review）：`refactor(cli): 抢救 prod 依赖的纯逻辑模块` →
