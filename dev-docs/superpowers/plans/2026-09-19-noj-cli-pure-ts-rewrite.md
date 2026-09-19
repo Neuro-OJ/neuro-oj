@@ -960,7 +960,91 @@ T18 `verifyContainer`；`runtime/command.ts` 的 `CommandRunner`；`maintain/dri
 
 ---
 
-## Task 20–26（概要；执行前逐个展开为完整任务块）
+## Task 20: schedule（crontab 标记区块，幂等）
+
+**Files:**
+- Create: `noj-cli/src/prod/schedule.ts` — crontab 标记区块的解析/合并/渲染
+- Create: `noj-cli/src/prod/schedule_test.ts`
+- Modify: `noj-cli/src/mod.ts`
+
+**Consumes**：`runtime/command.ts` 的 `CommandRunner`（crontab 读写）；
+`prod/drill/plan.ts` 的 `checkPassphraseFile`（口令权限 600/400 校验，**复用不重写**）
+
+**对照 bash（R3）**：`backup-schedule.sh` 全 162 行
+（`validate_schedule()`:51-55、`validate_install()`:57-72、`read_crontab()`:74-76、
+`remove_block()`:78-84、`write_crontab()`:86-89、`install_schedule()`:91-108、
+`status_schedule()`:110-123、`remove_schedule()`:125-136）。
+
+**背景（为什么它是独立的 P7 交付物）**：crontab 是**宿主机共享资源**——用户机器上
+通常已有其他任务。该脚本的整个价值就在"只动自己标记的区块，绝不动别人的行"。
+`test-backup-schedule.sh` 有四条断言直接锁这一点（保留 `# unrelated host task`、
+区块不重复、更新后旧调度消失、删除不误删他人任务）。
+
+**必须实现的行为**
+
+1. **标记区块幂等**：区块由 `# BEGIN NEURO-OJ BACKUP (managed)` 与
+   `# END NEURO-OJ BACKUP (managed)` 界定（逐字，含 `(managed)`）。
+   `install` 语义 = **先删旧区块、再在末尾追加新区块**，因此：
+   - 重复 install **不产生第二个区块**（更新语义）；
+   - 区块外的行**逐字节保留**（含它们的顺序与内容）。
+2. **危险表达式拒绝**：`--schedule` 只接受五段 cron 表达式，每段限
+   `[0-9*/?,-]+`。**这同时是 shell 注入防线**：表达式会被拼进 crontab 行并经
+   `sh -c` 交给 cron，因此 `15 2 * * *; touch /tmp/unsafe` 必须在**写入前**
+   被拒（`test-backup-schedule.sh:88-95` 的用例）。
+3. **路径引用必须安全**：crontab 行里的每个路径都要**适当地引用**，否则含空格的
+   安装路径会把一行拆成多列、静默变成另一条命令（bash 用 `printf '%q'`）。
+   TS 侧实现一个**保守的引用器**：安全字符集之外一律单引号包裹并把内部单引号
+   转义为 `'\''`（POSIX 惯用法）。
+4. **绝对路径**：crontab 运行时不继承用户 PATH，因此写入的必须是绝对路径。
+   实现须**校验**这一点（相对路径 → 参数错误），而不是指望调用方传对。
+5. **安装前置**（`validate_install`）：口令文件存在且权限 600/400、`.env.prod` 与
+   compose 文件存在、crontab 可用、表达式合法；并**创建备份目录（700）与日志文件
+   （600）**——日志 600 是安全要求（cron 输出可能含内部路径）。
+6. **三个子命令**：`install`（可带 `--schedule`）、`status`（只打印本工具的区块；
+   未安装时 **退出码 1** 并给出可读提示）、`remove`（无区块时**成功返回**且
+   不重写 crontab——避免无意义的写入）。
+7. **一切经注入的 runner**：`crontab -l` 的非 0（无 crontab 是常态）不视为错误；
+   `crontab -` 写入失败**必须报错**（bash `die` 的等价）。
+
+- [ ] **Step 1: 写失败测试**
+
+- **幂等**：install 两次 → 断言区块计数为 1；两条不同的 `--schedule` →
+  断言只有新的那条存在（旧的不残留）。
+- **不碰他人任务**：crontab 预置 `# unrelated host task` 与两行他人任务 →
+  断言 install/remove 后这些行**逐字节不变**（含顺序），且 remove 后无残留标记。
+- **注入防线**：`15 2 * * *; touch /tmp/unsafe`、`$(id)`、反引号、换行 → 全部
+  拒绝（退出码 2）且 **零 crontab 写入**（断言 runner 未被调用写路径）。
+- **非法表达式**：四段、六段、空段、含 `|`/`&`/`>` → 拒绝。
+- **路径引用**：安装目录**含空格**（`/opt/my noj`）→ 断言 crontab 行里的路径被
+  正确引用（`sh -c` 解析后仍是单一参数），且日志重定向与 `2>&1` 结构正确。
+- **绝对路径校验**：相对 `--env-file` → 拒绝（2）。
+- **口令前置**：口令文件缺失 / 权限 644 → 拒绝（2）且零 crontab 写入。
+- **日志文件**：install 后 `backup-cron.log` 存在且权限 **600**、备份目录 **700**。
+- **status/remove**：未安装时 status 退出码 1 且提示可读；remove 无区块时退出码 0
+  且**不调用** `crontab -`（无意义写入必须避免）；remove 后 `crontab -l` 内容
+  等于"原内容减去本工具区块"。
+- **写失败传播**：`crontab -` 返回非 0 → install 失败（退出码 1）并报错。
+- **`crontab -l` 非 0**（无 crontab）：install 仍成功（视为空 crontab）。
+
+- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+
+- [ ] **Step 3: 实现**
+
+- 区块的解析与合并是**纯函数**（`removeManagedBlock`/`upsertManagedBlock`/
+  `extractManagedBlock`），因此幂等与"不碰他人行"可脱离进程直接断言；
+  只有 `crontab -l` / `crontab -` 两次调用经 runner。
+- 引用器与路径校验也是纯函数，便于对含空格/单引号的路径做表驱动断言。
+
+- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+
+- [ ] **Step 5: 提交** — `feat(cli): 原生迁移备份调度（crontab 标记区块幂等）`
+
+**明确不做**：不删 `backup-schedule.sh`（T24）；不实现 systemd timer（YAGNI，
+与 bash 一致）；不改 `backup.sh` 的调用契约。
+
+---
+
+## Task 21–26（概要；执行前逐个展开为完整任务块）
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
 | T17 .nojbackup 容器 | `backup/container.ts`、`driver.ts` | 单文件 + 整包加密；**文件重定向采二进制**；`pg_restore --list` 可解析 |
