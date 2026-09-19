@@ -1,39 +1,6 @@
 import { resolve } from "@std/path";
 import { findDeployDir } from "./util/find_deploy_dir.ts";
 import { VERSION } from "./mod.ts";
-import { realProbe } from "./doctor/probe.ts";
-import { runDoctor } from "./doctor/doctor.ts";
-import { formatReport } from "./doctor/report.ts";
-import { realIO } from "./tui/io.ts";
-import { type InitOptions, runInitWizard } from "./init/wizard.ts";
-import { saveDeployment } from "./config/save.ts";
-import { loadDeployment } from "./config/load.ts";
-import {
-  deployDown,
-  deployRestart,
-  deployStatus,
-  deployUp,
-} from "./deploy/deploy.ts";
-import { maintainLogs, parseModulesArg } from "./maintain/logs.ts";
-import { COLOR_MODES, type ColorMode, parseColorMode } from "./util/color.ts";
-import {
-  configCheck,
-  configSet,
-  configShow,
-  maintainVerify,
-} from "./maintain/config.ts";
-import {
-  backupCreate,
-  backupRestore,
-  backupVerify,
-} from "./maintain/backup.ts";
-import { maintainReset } from "./maintain/reset.ts";
-import { listBackups, pruneBackups } from "./prod/backup/list.ts";
-import { assertDrillSnapshotSupported, runDrill } from "./maintain/drill.ts";
-import { defaultBackupDir } from "./maintain/backup.ts";
-import { loadDeployConfig } from "./config/load.ts";
-import { realDriver } from "./maintain/backup_driver.ts";
-import { runServerForeground } from "./runtime/process.ts";
 import {
   findProductionDir,
   PRODUCTION_COMMANDS,
@@ -42,15 +9,15 @@ import {
 } from "./production.ts";
 import { renderCommandHelp } from "./help.ts";
 import { renderCommandList } from "./commands.ts";
-import { nonInteractiveAdvice } from "./init/non_interactive.ts";
 import {
   parseDirArg,
   parsePortArg,
   suggestCommand,
   UsageError,
-  validatePort,
 } from "./util/args.ts";
 import { CONTAINER_COMMANDS, parseContainerCommand } from "./container.ts";
+import { runDrill } from "./prod/drill/drill.ts";
+import { realRunner } from "./runtime/command.ts";
 import { parseProblemArgs, runProblem } from "./problem/command.ts";
 import { renderProblemHelp } from "./problem/help.ts";
 import { runInContainer } from "./container_run.ts";
@@ -247,9 +214,7 @@ export async function run(argv: string[]): Promise<number> {
       cwd: Deno.cwd(),
       deployDir: findDeployDir(),
     };
-    return await dispatchCommand(topCommand, topRest, ctx, {
-      explicitProfile,
-    });
+    return await dispatchCommand(topCommand, topRest, ctx);
   } catch (error) {
     /* 全局兜底见下 */
     return handleError(command, error, globals.rest, debug);
@@ -422,51 +387,30 @@ export function removeFirstPositional(
 }
 
 /**
- * 校验命令是否属于该 profile 的集合（评审 B3）。
+ * 命令与 profile 的相容性门禁（T23 收敛后）。
  *
- * 这是「`--profile` 显式生效」的落地方式：显式指定 profile 后，
- * 命令必须与之相容，否则说明用户搞混了两套模式——早失败、给可操作提示。
+ * ## T23 的变化
+ *
+ * 此前有 `prod`/`stack` 两个 profile，故需要"命令属于哪个模式"的双向门禁。
+ * T23 删掉 `stack` 模态后只剩**一个** profile，那些判定随之失去意义——继续保留
+ * 会让一个已删除的模式以错误信息的形式"复活"（实测：`noj-cli deploy status`
+ * 报的是"属于 JSON 编排模式，请改用 --profile stack"，而 stack 已不存在）。
+ *
+ * 现在只做一件事：**拒绝 `--profile stack`**（显式使用了已删除的模式时给出
+ * 可操作提示，而不是静默忽略——静默忽略会让用户以为自己在用某个模式）。
+ *
+ * `--profile prod` 与不传 profile 都放行：前者是显式确认，后者是唯一模式。
  */
 export function assertCommandAllowedInProfile(
   profile: ProfileName,
   command: string,
 ): void {
-  const PROD_ONLY = new Set([...PRODUCTION_COMMANDS]);
-  // Tier 3 容器命令需要**生产安装目录**（docker-compose.prod.yml + .env.prod），
-  // 因此属 prod 侧。早先误把它们归 stack，导致方向写反：
-  // `--profile prod db migrate` 被拒、`--profile stack db migrate` 反而放行。
-  // 这里登记**会路由进 Tier 3 容器的顶层命令名**。
-  //
-  // `problem` 与 `problems` 都要列：canonical 名是单数（#514 决策），
-  // 两个名字都能到达 build/import（见 container.ts 的 CONTAINER_COMMANDS）。
-  // 调用点**只在容器匹配成立时**才施加本门禁，因此 `problem lint` 这类
-  // 本地出题用法不会被误拒（评审 B1/B5）。
-  const TIER3 = new Set([
-    "db",
-    "init",
-    "bootstrap",
-    "problem",
-    "problems",
-    "search",
-  ]);
-  const STACK_ONLY = new Set([
-    "stack",
-    "deploy",
-    "maintain",
-    "run-server",
-  ]);
-  if (profile === "stack" && (PROD_ONLY.has(command) || TIER3.has(command))) {
+  if (profile !== "prod") {
     throw new UsageError(
-      `${command} 属于生产模式（.env.prod），与 --profile stack 不符。
-` +
-        "请改用 --profile prod，或使用 stack 对应命令。",
-    );
-  }
-  if (profile === "prod" && STACK_ONLY.has(command)) {
-    throw new UsageError(
-      `${command} 属于 JSON 编排模式（noj-deploy.json），与 --profile prod 不符。
-` +
-        "请改用 --profile stack，或使用生产模式对应命令。",
+      `--profile ${profile} 已不受支持：T23 起 noj-cli 收敛为单模态，` +
+        `配置真相源唯一（.env.prod + docker-compose.prod.yml）。\n` +
+        `  直接运行 noj-cli ${command}（可省略 --profile prod）。\n` +
+        `  若目录里仍有 noj-deploy.json / noj-secrets.json，可直接删除。`,
     );
   }
 }
@@ -587,7 +531,7 @@ function topLevelDispatchNames(): Set<string> {
   // 锚点必须**行首匹配**：本函数自身源码里含有这两个签名的字符串字面量，
   // 用普通 indexOf 会命中自己（实测 start/end 落在本函数内部，提取结果为空）。
   const startMatch = /^export async function dispatchCommand\(/m.exec(source);
-  const endMatch = /^export function deprecationNotice\(/m.exec(source);
+  const endMatch = /^export function removedCommandNotice\(/m.exec(source);
   if (startMatch === null || endMatch === null) return new Set();
   const start = startMatch.index;
   const end = endMatch.index;
@@ -631,14 +575,11 @@ export function printHelp(): string {
 
 /** 已登记的顶层命令（用于拼写建议，#517 E8）。 */
 export const KNOWN_TOP = new Set([
-  "doctor",
-  "deploy",
-  "maintain",
-  // #518/#514：新命令必须登记，否则拼写建议看不到它们
-  "stack",
+  // #518/#514：新命令必须登记，否则拼写建议看不到它们。
+  // T23：`doctor`/`deploy`/`maintain`/`stack`/`run-server` 已随双模态移除，
+  // 因此不再登记——它们不是"可用命令"，出现在拼写建议里会误导用户。
   "problem",
   "problems",
-  "run-server",
   "version",
   ...PRODUCTION_COMMANDS,
 ]);
@@ -648,88 +589,6 @@ export function parsePort(args: string[]): number {
   return parsePortArg(args, 8080);
 }
 
-/** 解析 deploy init 选项：--mode dev|prod、--port <n>、--dir <path>。 */
-export function parseInitOptions(args: string[], cwd: string): InitOptions {
-  let mode: "dev" | "prod" | undefined;
-  let port: number | undefined;
-
-  const modeIdx = args.indexOf("--mode");
-  if (modeIdx !== -1) {
-    const raw = args[modeIdx + 1];
-    if (raw !== "dev" && raw !== "prod") {
-      throw new UsageError(
-        `--mode 仅支持 dev/prod，收到 "${raw ?? ""}"`,
-      );
-    }
-    mode = raw;
-  }
-  const portIdx = args.indexOf("--port");
-  if (portIdx !== -1) {
-    port = validatePort(args[portIdx + 1]);
-  }
-
-  return { mode, port, installDir: parseDirArg(args) ?? cwd };
-}
-
-/** 解析 deploy 生命周期参数：目前仅 --dir <path>。 */
-export function parseDeployArgs(args: string[]): { dir: string | undefined } {
-  return { dir: parseDirArg(args) };
-}
-
-/**
- * 解析 maintain 参数：`--dir <path>`、`--follow`、`--color[=]<auto|always|never>`、
- * 位置参数 modules。
- */
-export function parseMaintainArgs(args: string[]): {
-  dir: string | undefined;
-  follow: boolean;
-  color: ColorMode;
-  modules: string | undefined;
-} {
-  const dir = parseDirArg(args);
-  let follow = false;
-  let color: ColorMode = "auto";
-  const positional: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i]!;
-    if (a === "--dir" || a.startsWith("--dir=")) {
-      // 已由 parseDirArg 统一消费（含缺值报错），此处跳过其值
-      if (a === "--dir") i++;
-      continue;
-    }
-    if (a === "--follow") {
-      follow = true;
-    } else if (a === "--color") {
-      // 支持 `--color always` 与 `--color=always` 两种写法。
-      //
-      // 只在该值**确实是合法颜色模式**时才消费下一个参数（评审 P2）：
-      // 早先对任意非 `-` 开头的参数都当作颜色值，于是 `--color server`
-      // 会把模块名 `server` 吞掉（`modules` 变成 undefined），
-      // `maintain logs --color server` 因此丢失目标服务。
-      const next = args[i + 1];
-      if (
-        next !== undefined &&
-        // COLOR_MODES 是 readonly ColorMode[]；这里比对的是任意用户输入字符串，
-        // 故先放宽为 string[]（否则 TS2345）。单一事实源仍在 COLOR_MODES。
-        (COLOR_MODES as readonly string[]).includes(next.trim().toLowerCase())
-      ) {
-        color = parseColorMode(next);
-        i++;
-      } else {
-        // 裸 `--color` 或后跟非法值：视为强制开（与常见 CLI 约定一致），
-        // 非法值不报错也不吞参，交由位置参数处理。
-        color = "always";
-      }
-    } else if (a.startsWith("--color=")) {
-      color = parseColorMode(a.slice("--color=".length));
-    } else {
-      positional.push(a);
-    }
-  }
-  return { dir, follow, color, modules: positional[0] };
-}
-
-/** maintain backup 参数解析结果。 */
 export interface BackupArgs {
   sub: string;
   dir: string | undefined;
@@ -907,14 +766,6 @@ export function parseBackupArgs(args: string[]): BackupArgs {
   return out;
 }
 
-/** 解析出部署目录；未找到返回 null（调用方负责报错文案）。 */
-function resolveDeployDir(
-  dirOverride: string | undefined,
-  ctx: CommandContext,
-): string | null {
-  return dirOverride ?? ctx.deployDir ?? findDeployDir(ctx.cwd);
-}
-
 /** 分发选项（#518：profile 相关行为）。 */
 export interface DispatchOptions {
   /** `--profile` 显式值；缺省时由探测决定。 */
@@ -978,6 +829,9 @@ async function runBackupDrillFromProduction(
 /**
  * drill 专项帮助（#516 验收：help 必须明确「分钟级、耗 Docker」，
  * 而不是只显示通用的 maintain backup 帮助）。
+ *
+ * **T23 更新**：快照形态说明随 T19 的裁决反转——现在只接受 `.nojbackup`
+ * 单文件（唯一形态），旧的"目录快照"表述已作废。
  */
 export function renderDrillHelp(): string {
   return renderCommandHelp(
@@ -987,25 +841,23 @@ export function renderDrillHelp(): string {
       "",
       "注意: 会起独立 Compose 项目（默认 noj-drill）、占用独立子网与数据卷，",
       "      耗时**分钟级**且**需要 Docker 资源**——不是随手可跑的检查。",
-      "      只校验文件完整请用 `backup verify`（结构可解析的 `--deep` 由 #515 提供）。",
+      "      只校验文件完整请用 `backup verify`（结构可解析加 `--deep`）。",
       "",
-      "快照形态: 只接受生产目录快照（`backup.sh create` 生成的 snapshot-* 目录）。",
-      "`.nojbackup` 单文件是 JSON 编排模式（maintain）的格式，内部布局",
-      "（base64 文本转储、noj-deploy/noj-secrets、无 env.prod.gpg）与生产目录",
-      "快照不同，无法交给 restore-drill.sh 安全恢复，故在此明确拒绝（退出码 2）。",
-      "单文件请改用 `maintain backup restore <快照> --confirm` 或",
-      "`maintain backup verify <快照>`。",
+      "快照形态: `.nojbackup` 单文件（`backup create` 的唯一产物形态）。",
+      "演练会校验其 payload_layout == prod-raw 后解包到临时目录，",
+      "再交给隔离编排（独立项目/独立子网/**不映射宿主机端口**）。",
       "",
       "选项:",
       "  --skip-judge            跳过 Judge/附件/评测验收（无 Judge 部署时）",
       "  --subnet CIDR           演练网络子网（默认 172.29.0.0/16）",
       "  --project-name NAME     演练 Compose 项目名（默认 noj-drill；禁止含 prod）",
-      "  --report FILE           报告路径（默认快照目录下 restore-drill-report.txt）",
+      "  --report FILE           报告路径（默认快照同级 restore-drill-report.txt）",
       "  --rpo-max-hours N       快照年龄上限（默认 24）；超限视为演练失败",
       "  --rto-max-minutes N     恢复耗时上限（默认 60）；超限视为演练失败",
       "  --keep                  保留演练环境以便排查（默认清理）",
       "  --json                  机器可读报告",
       "  --dir <path>            生产安装目录",
+      "  --passphrase-file FILE  GPG 口令文件",
       "",
       "退出码: 0 通过 / 1 演练失败（含业务验收失败、超 RPO/RTO）/ 2 参数或资源错误",
     ],
@@ -1013,33 +865,33 @@ export function renderDrillHelp(): string {
 }
 
 /**
- * 执行一次真实恢复演练并输出结果（#516）。
+ * 执行一次真实恢复演练并输出结果。
  *
- * `maintain backup drill` 与生产 `backup drill` 共用：两者只差安装目录来源，
- * 参数校验、输出格式与退出码归一必须一致，否则同一命令在两种 profile 下
- * 行为不同（这正是评测发现的问题）。
+ * **T23 接线**：改用 T19 的**原生**实现（`prod/drill/drill.ts`），不再经
+ * `maintain/drill.ts` 的 bash 薄包装。这正是 R1 的落点——drill 路径因此
+ * 零 `Deno.command("bash", …)`、零仓库脚本依赖。
+ *
+ * 退出码（#516 验收，T19 已实现并测试）：0 通过 / 1 演练失败（含 RPO/RTO 超标）/
+ * 2 参数或资源错误。`runDrill` 内部已按此分层，这里只做输出与透传。
  */
 async function executeDrill(
   a: BackupArgs,
   dir: string,
 ): Promise<number> {
   if (a.snapshot === undefined) {
-    console.error("backup drill: 需要 <snapshot> 路径");
-    return EXIT_USAGE;
-  }
-  // #516 评审 P1：单文件快照在**参数阶段**拒绝（退出码 2），
-  // 并给出可用的恢复路径；不再让它落到 restore-drill.sh 的 preflight
-  // 报「快照目录不存在」。runDrill 内也做同样校验（两条 profile 路径共用）。
-  try {
-    assertDrillSnapshotSupported(a.snapshot);
-  } catch (e) {
-    console.error("backup drill: " + (e as Error).message);
+    console.error(
+      "backup drill: 需要 <snapshot> 路径\n" +
+        "  提示：drill 会起独立 Compose 项目做真实恢复（分钟级、需 Docker）；" +
+        "只校验文件完整请用 backup verify。",
+    );
     return EXIT_USAGE;
   }
   try {
     const result = await runDrill({
       snapshotPath: a.snapshot,
       dir,
+      runner: realRunner(),
+      passphraseFile: a.passphraseFile,
       skipJudge: a.skipJudge,
       subnet: a.subnet,
       projectName: a.projectName,
@@ -1047,8 +899,11 @@ async function executeDrill(
       rpoMaxHours: a.rpoMaxHours,
       rtoMaxMinutes: a.rtoMaxMinutes,
       keep: a.keepFlag === true,
-      json: a.json,
-      passphraseFile: a.passphraseFile,
+      log: (line) => {
+        // `--json` 时 stdout 必须逐字节为 JSON，故人类日志改道 stderr
+        if (a.json) console.error(line);
+        else console.log(line);
+      },
     });
     if (a.json) {
       console.log(JSON.stringify(result, null, 2));
@@ -1069,7 +924,6 @@ export async function dispatchCommand(
   command: string,
   args: string[],
   ctx: CommandContext,
-  options: DispatchOptions = {},
 ): Promise<number> {
   // `backup drill` 的 help 必须显示 drill 自己的选项（#516 验收：
   // help 文本要明确「分钟级、耗 Docker」），不能被通用 backup help 抢先。
@@ -1107,479 +961,45 @@ export async function dispatchCommand(
   }
 
   // `stack` = 原 deploy + maintain 合并（#518，验收：覆盖原两者全部能力）
-  if (command === "stack") {
-    // 子命令是第一个非选项参数，且不是某个选项的值
-    // （`stack --dir X status` 必须识别出 status，而不是把 X 当子命令）
-    const sub = firstPositional(args);
-    if (wantsHelp(args) || args.length === 0) {
-      console.log(renderCommandHelp("noj-cli stack <子命令> [选项]", [
-        "JSON 编排模式的部署与运维（原 deploy + maintain 合并）。",
-        "",
-        "子命令:",
-        "  init | up | down | restart | status     部署生命周期",
-        "  logs | config | verify | reset          运维",
-        "  backup                                  备份（create/verify/restore/drill）",
-        "",
-        "选项:",
-        "  --dir <path>   部署目录",
-        "",
-        "提示: deploy / maintain 作为别名仍可用，并会打印废弃提示。",
-      ]));
-      return wantsHelp(args) ? EXIT_OK : EXIT_USAGE;
-    }
-    // 生命周期类交由 deploy 分支处理，运维类交由 maintain 分支处理。
-    // 通过 stackAlias 标记跳过废弃提示（提示只针对直接使用旧名的调用方）。
-    const DEPLOY_SUBS = new Set(["init", "up", "down", "restart", "status"]);
-    const target = DEPLOY_SUBS.has(sub) ? "deploy" : "maintain";
-    // 评审 B1：必须把**子命令置于首位**再委派，否则下游 `args[0]` 会把
-    // `--dir` 当成子命令（`stack --dir X status` 曾因此丢失 status 与 --dir）。
-    const delegated = [sub, ...removeFirstPositional(args)];
-    return await dispatchCommand(target, delegated, ctx, {
-      ...options,
-      stackAlias: true,
-    });
-  }
 
   switch (command) {
     case "version":
       console.log(`noj-cli ${VERSION}`);
       return EXIT_OK;
     case "doctor": {
-      if (wantsHelp(args)) {
-        console.log(
-          renderCommandHelp("noj-cli doctor [--port <n>] [--dir <path>]", [
-            "环境检测：Docker / Compose / 磁盘 / 内存 / 端口占用。",
-            "",
-            "选项:",
-            "  --port <n>     检测该端口是否被占用（默认 8080）",
-            "  --dir <path>   部署目录（默认当前目录及祖先）",
-          ]),
-        );
-        return EXIT_OK;
-      }
-      const port = parsePort(args);
-      const dirOverride = parseDirArg(args);
-      const installDir = dirOverride ?? ctx.deployDir ?? ctx.cwd;
-      const report = await runDoctor(realProbe(), { port, installDir });
-      console.log(formatReport(report));
-      return report.failed ? EXIT_FAILURE : EXIT_OK;
+      // T23：doctor 随双模态一起移除——它的检查项（Docker/Compose/磁盘/内存/端口）
+      // 已由 `noj-cli check`（生产配置检查）与 `noj-cli status` 覆盖，
+      // 而"同一件事两个入口"正是本次治理要消除的形态。
+      console.error(removedCommandNotice("doctor", [
+        "生产配置与依赖检查：noj-cli check --dir <安装目录>",
+        "服务与容器状态：noj-cli status --dir <安装目录>",
+      ]));
+      return EXIT_USAGE;
     }
-    case "deploy": {
-      const sub = args[0] ?? "";
-      if (!options.stackAlias && !wantsHelp(args)) {
-        console.error(deprecationNotice("deploy", sub));
-      }
-      // `deploy <sub> --help` 必须只读：绝不能进入 init 向导（#517 E2）
-      if (wantsHelp(args.slice(1)) || sub === "--help" || sub === "-h") {
-        console.log(renderDeployHelp(sub));
-        return EXIT_OK;
-      }
-      if (sub === "init") {
-        const opts = parseInitOptions(args.slice(1), ctx.cwd);
-        // 非 TTY 时一律拒绝进入交互向导（#517 E10）。
-        //
-        // 评审修正：早先这里有 `--yes` 逃生阀，但它并非已实现的非交互模式——
-        // 向导仍逐个提问，读不到输入时无限循环刷屏（实测 10 秒 237 万行），
-        // 比修复前更糟，且与 nonInteractiveAdvice 推荐的命令自相矛盾。
-        // 因此移除该逃生阀：要么补齐真正的非交互路径，要么明确拒绝。
-        const isTty = Deno.stdin.isTerminal();
-        const advice = nonInteractiveAdvice(isTty, opts.mode !== undefined);
-        if (advice) {
-          console.error(`deploy init: ${advice.message}`);
-          return EXIT_USAGE;
-        }
-        const { config, secrets } = await runInitWizard(
-          realIO(),
-          realProbe(),
-          opts,
-        );
-        await saveDeployment(opts.installDir, config, secrets);
-        console.log(
-          `已写入 ${opts.installDir}/noj-deploy.json 与 noj-secrets.json`,
-        );
-        return EXIT_OK;
-      }
-      const { dir } = parseDeployArgs(args.slice(1));
-      const deployDir = resolveDeployDir(dir, ctx);
-      if (deployDir === null) {
-        console.error("deploy: 未找到 noj-deploy.json，请先运行 deploy init");
-        return EXIT_FAILURE;
-      }
-      switch (sub) {
-        case "up": {
-          const state = await deployUp({ dir: deployDir });
-          console.log(`deploy up 完成，状态: ${state}`);
-          return EXIT_OK;
-        }
-        case "down": {
-          const state = await deployDown({ dir: deployDir });
-          console.log(`deploy down 完成，状态: ${state}`);
-          return EXIT_OK;
-        }
-        case "restart": {
-          const state = await deployRestart({ dir: deployDir });
-          console.log(`deploy restart 完成，状态: ${state}`);
-          return EXIT_OK;
-        }
-        case "status": {
-          const report = await deployStatus({ dir: deployDir });
-          console.log(`状态: ${report.state}`);
-          for (const c of report.components) {
-            console.log(
-              `  ${c.component}: ${
-                c.enabled ? (c.running ? "运行中" : "未运行") : "禁用"
-              } (${c.method})`,
-            );
-          }
-          return EXIT_OK;
-        }
-        default:
-          console.error("deploy: 需要子命令 init/up/down/restart/status");
-          console.error("运行 'noj-cli deploy --help' 查看用法。");
-          return EXIT_USAGE;
-      }
-    }
-    case "maintain": {
-      const sub = args[0] ?? "";
-      if (!options.stackAlias && !wantsHelp(args)) {
-        console.error(deprecationNotice("maintain", sub));
-      }
-      // `maintain backup drill --help` 必须显示 drill 专属选项
-      //（#516 验收：help 要明确「分钟级、耗 Docker」；两种 profile 语义一致）。
-      if (
-        sub === "backup" && args[1] === "drill" &&
-        (wantsHelp(args.slice(2)) || wantsHelp(args.slice(1)))
-      ) {
-        console.log(renderDrillHelp());
-        return EXIT_OK;
-      }
-      if (wantsHelp(args.slice(1)) || sub === "--help" || sub === "-h") {
-        console.log(renderMaintainHelp(sub));
-        return EXIT_OK;
-      }
-      if (sub === "restore") {
-        return await dispatchCommand("maintain", [
-          "backup",
-          "restore",
-          ...args.slice(1),
-        ], ctx);
-      }
-      if (sub === "logs") {
-        const { dir, follow, color, modules } = parseMaintainArgs(
-          args.slice(1),
-        );
-        const deployDir = resolveDeployDir(dir, ctx);
-        if (deployDir === null) {
-          console.error(
-            "maintain logs: 未找到 noj-deploy.json，请先运行 deploy init",
-          );
-          return EXIT_FAILURE;
-        }
-        try {
-          const { config } = await loadDeployment(deployDir);
-          const mods = parseModulesArg(modules, config);
-          await maintainLogs({
-            dir: deployDir,
-            modules: mods,
-            follow,
-            color,
-          });
-          return EXIT_OK;
-        } catch (e) {
-          console.error(`maintain logs: ${(e as Error).message}`);
-          return EXIT_FAILURE;
-        }
-      }
-      if (sub === "config") {
-        const rest = args.slice(1);
-        const dirOverride = parseDirArg(rest);
-        // 按 **`--dir` 语法**跳过（而非值相等比较）：早先用 `a !== dirOverride`
-        // 会误删与目录同名的业务参数，例如
-        // `config set DATA_DIR /tmp/x --dir /tmp/x` 会丢掉 `/tmp/x`。
-        const positional: string[] = [];
-        for (let i = 0; i < rest.length; i++) {
-          const a = rest[i]!;
-          if (a === "--dir") {
-            i++; // 连同值跳过
-            continue;
-          }
-          if (a.startsWith("--dir=")) continue;
-          positional.push(a);
-        }
-        const action = positional[0] ?? "";
-        const deployDir = resolveDeployDir(dirOverride, ctx);
-        if (deployDir === null) {
-          console.error(
-            "maintain config: 未找到 noj-deploy.json，请先运行 deploy init",
-          );
-          return EXIT_FAILURE;
-        }
-        try {
-          switch (action) {
-            case "check": {
-              const issues = await configCheck(deployDir);
-              if (issues.length === 0) {
-                console.log("配置校验通过");
-                return EXIT_OK;
-              }
-              for (const i of issues) {
-                console.error(`  ${i.path}: ${i.message}`);
-              }
-              return EXIT_FAILURE;
-            }
-            case "show": {
-              console.log(await configShow(deployDir));
-              return EXIT_OK;
-            }
-            case "set": {
-              const key = positional[1];
-              const value = positional[2];
-              if (key === undefined || value === undefined) {
-                console.error("maintain config set: 需要 <key> <value>");
-                return EXIT_USAGE;
-              }
-              await configSet(deployDir, key, value);
-              console.log(`已更新 ${key} = ${value}`);
-              return EXIT_OK;
-            }
-            default:
-              console.error("maintain config: 需要子命令 check/show/set");
-              return EXIT_USAGE;
-          }
-        } catch (e) {
-          console.error(`maintain config: ${(e as Error).message}`);
-          return EXIT_FAILURE;
-        }
-      }
-      if (sub === "backup") {
-        const a = parseBackupArgs(args.slice(1));
-        const deployDir = resolveDeployDir(a.dir, ctx);
-        if (deployDir === null) {
-          console.error("maintain backup: 未找到 noj-deploy.json");
-          return EXIT_FAILURE;
-        }
-        try {
-          switch (a.sub) {
-            case "create": {
-              const r = await backupCreate({
-                dir: deployDir,
-                backupDir: a.backupDir,
-                passphraseFile: a.passphraseFile,
-                zstdLevel: a.zstdLevel,
-                noEncrypt: a.noEncrypt,
-                driver: realDriver(),
-              });
-              console.log(`备份完成: ${r.path}`);
-              console.log(`SHA-256: ${r.sha256}`);
-              return EXIT_OK;
-            }
-            case "verify": {
-              if (a.snapshot === undefined) {
-                console.error("maintain backup verify: 需要 <snapshot> 路径");
-                return EXIT_USAGE;
-              }
-              const report = await backupVerify({
-                snapshotPath: a.snapshot,
-                passphraseFile: a.passphraseFile,
-                driver: realDriver(),
-              });
-              if (report.pass) {
-                console.log("校验通过");
-                return EXIT_OK;
-              }
-              for (const e of report.errors) console.error(`  ${e}`);
-              return EXIT_FAILURE;
-            }
-            case "restore": {
-              if (a.snapshot === undefined) {
-                console.error("maintain backup restore: 需要 <snapshot> 路径");
-                return EXIT_USAGE;
-              }
-              const state = await backupRestore({
-                dir: deployDir,
-                snapshotPath: a.snapshot,
-                confirm: a.confirm,
-                passphraseFile: a.passphraseFile,
-                includeDeployConfigs: a.includeDeployConfigs,
-                driver: realDriver(),
-              });
-              console.log(`恢复完成，状态: ${state}`);
-              return EXIT_OK;
-            }
-            case "drill": {
-              // #516：drill = **真实恢复演练**（隔离环境实恢复 + 业务验收），
-              // 秒级的文件完整性校验请用 `backup verify`。
-              // help 必须显示 drill 专属选项（两种 profile 语义一致）。
-              if (wantsHelp(args.slice(1))) {
-                console.log(renderDrillHelp());
-                return EXIT_OK;
-              }
-              if (a.snapshot === undefined) {
-                console.error(
-                  "backup drill: 需要 <snapshot> 路径\n" +
-                    "  提示：drill 会起独立 Compose 项目做真实恢复（分钟级、需 Docker）；" +
-                    "只校验文件完整请用 backup verify。",
-                );
-                return EXIT_USAGE;
-              }
-              return await executeDrill(a, deployDir);
-            }
-            case "list": {
-              // #515 P6：列举备份（无需解包；识别单文件与旧目录两种格式）
-              const cfg = await loadDeployConfig(deployDir);
-              const backupDir = a.backupDir ?? defaultBackupDir(cfg);
-              const { entries, ignored } = await listBackups(backupDir);
-              if (a.json) {
-                console.log(
-                  JSON.stringify({ backupDir, entries, ignored }, null, 2),
-                );
-                return EXIT_OK;
-              }
-              if (entries.length === 0) {
-                console.log("没有备份：" + backupDir);
-                return EXIT_OK;
-              }
-              console.log("备份目录：" + backupDir);
-              console.log("  时间                 大小      格式     名称");
-              for (const e of entries) {
-                const size = formatBytes(e.bytes ?? 0);
-                console.log(
-                  "  " + e.createdAt.padEnd(20) + " " + size.padStart(9) +
-                    "  " + e.format.padEnd(7) + " " + e.name,
-                );
-              }
-              if (ignored.length > 0) {
-                console.log("  （忽略 " + ignored.length + " 个非备份条目）");
-              }
-              return EXIT_OK;
-            }
-            case "prune": {
-              // #515 P6：**默认 dry-run**，--confirm 才真删
-              const cfg = await loadDeployConfig(deployDir);
-              const backupDir = a.backupDir ?? defaultBackupDir(cfg);
-              const result = await pruneBackups(backupDir, {
-                keep: a.keep,
-                olderThanDays: a.olderThanDays,
-                includeLegacy: a.includeLegacy,
-                confirm: a.confirm,
-              });
-              if (a.json) {
-                console.log(JSON.stringify(
-                  {
-                    backupDir,
-                    dryRun: !a.confirm,
-                    remove: result.plan.remove.map((e) => e.name),
-                    keep: result.plan.keep.map((e) => e.name),
-                    deleted: result.deleted,
-                    failed: result.failed,
-                  },
-                  null,
-                  2,
-                ));
-                // --json 也必须反映失败（此前无 failed 字段且恒 exit 0）
-                return result.failed.length > 0 ? EXIT_FAILURE : EXIT_OK;
-              }
-              if (result.plan.remove.length === 0) {
-                console.log("没有需要清理的备份。");
-                return EXIT_OK;
-              }
-              console.log(
-                a.confirm
-                  ? "已删除 " + result.deleted.length + " 个备份："
-                  : "（dry-run）将删除 " + result.plan.remove.length +
-                    " 个备份：",
-              );
-              for (const e of result.plan.remove) console.log("  - " + e.name);
-              // 删除失败必须上报且影响退出码（此前 CLI 层忽略了 failed[]，
-              // 只打印「已删除 0 个」却 exit 0 —— 假成功）。
-              if (result.failed.length > 0) {
-                console.error(`失败 ${result.failed.length} 个（未删除）：`);
-                for (const f of result.failed) {
-                  console.error(`  ! ${f.path}: ${f.reason}`);
-                }
-                return EXIT_FAILURE;
-              }
-              if (!a.confirm) console.log("加 --confirm 才会真正删除。");
-              return EXIT_OK;
-            }
-            default:
-              console.error(
-                "maintain backup: 需要子命令 create/verify/restore/drill/list/prune",
-              );
-              return EXIT_USAGE;
-          }
-        } catch (e) {
-          console.error(`maintain backup: ${(e as Error).message}`);
-          return EXIT_FAILURE;
-        }
-      }
-
-      if (sub === "reset") {
-        const a = parseBackupArgs(["reset", ...args.slice(1)]);
-        const deployDir = resolveDeployDir(a.dir, ctx);
-        if (deployDir === null) {
-          console.error("maintain reset: 未找到 noj-deploy.json");
-          return EXIT_FAILURE;
-        }
-        try {
-          const state = await maintainReset({
-            dir: deployDir,
-            confirm: a.confirm,
-            includeDeployConfigs: a.includeDeployConfigs,
-            driver: realDriver(),
-          });
-          console.log(`重置完成，状态: ${state}`);
-          return EXIT_OK;
-        } catch (e) {
-          console.error(`maintain reset: ${(e as Error).message}`);
-          return EXIT_FAILURE;
-        }
-      }
-
-      if (sub === "verify") {
-        const dirOverride = parseDirArg(args.slice(1));
-        const deployDir = resolveDeployDir(dirOverride, ctx);
-        if (deployDir === null) {
-          console.error("maintain verify: 未找到 noj-deploy.json");
-          return EXIT_FAILURE;
-        }
-        try {
-          const report = await maintainVerify(deployDir);
-          if (report.pass) {
-            console.log("校验通过");
-            return EXIT_OK;
-          }
-          for (const e of report.errors) console.error(`  ${e}`);
-          return EXIT_FAILURE;
-        } catch (e) {
-          console.error(`maintain verify: ${(e as Error).message}`);
-          return EXIT_FAILURE;
-        }
-      }
-
-      console.error(
-        "maintain: 需要子命令 logs/backup/restore/verify/reset/config",
-      );
-      console.error("运行 'noj-cli maintain --help' 查看用法。");
+    case "deploy":
+    case "maintain":
+    case "stack": {
+      // T23：三个旧名（JSON 编排模式）随双模态一起移除，不再保留别名。
+      // 早期（#518）走"先加法后改名 + 别名保留一个版本周期"的过渡策略；
+      // 现在配置真相源已唯一（.env.prod），继续保留别名只会让
+      // "status/logs/backup 各有两个含义"的混乱延续下去。
+      console.error(removedCommandNotice(command, [
+        "生产生命周期：noj-cli install | start | stop | restart | status",
+        "日志与备份：noj-cli logs | backup | verify",
+        "若目录里仍有 noj-deploy.json / noj-secrets.json，可直接删除——" +
+        "配置真相源已统一为 .env.prod（与 docker-compose.prod.yml 配套）",
+      ]));
       return EXIT_USAGE;
     }
     case "run-server": {
-      if (wantsHelp(args)) {
-        console.log(renderCommandHelp("noj-cli run-server [--dir <path>]", [
-          "前台运行 noj-server 二进制（阻塞当前终端）。",
-          "",
-          "选项:",
-          "  --dir <path>   部署目录（默认当前目录及祖先）",
-        ]));
-        return EXIT_OK;
-      }
-      const dirOverride = parseDirArg(args);
-      const deployDir = resolveDeployDir(dirOverride, ctx);
-      if (deployDir === null) {
-        console.error("run-server: 未找到 noj-deploy.json");
-        return EXIT_FAILURE;
-      }
-      return await runServerForeground({ dir: deployDir });
+      // T23：run-server 移除（层属运行时，非 CLI 职责，与 #518 判断一致）。
+      // 真实开发流程是两段式的，且已在 AGENTS.md §5.3 记录。
+      console.error(removedCommandNotice("run-server", [
+        "起基础设施：docker compose up -d",
+        "各模块前台启动：cd noj-core && deno task dev（ui 同理）",
+        "生产前台调试：noj-cli logs --follow 查看容器日志",
+      ]));
+      return EXIT_USAGE;
     }
     default: {
       const suggestion = suggestCommand(command, KNOWN_TOP);
@@ -1595,18 +1015,30 @@ export async function dispatchCommand(
 }
 
 /**
- * 执行旧名（`deploy`/`maintain`）并打印废弃提示。
+ * 已移除命令的迁移提示（T23）。
  *
- * 迁移策略（#518）：**先做加法、后做改名**。旧名保留为别名至少一个版本周期，
- * 因此这里只提示、不阻断。`--help` 不打印提示，避免污染帮助输出。
+ * 与旧版 `deprecationNotice` 的**关键差异**：那条提示说"已合并为 stack，旧名将在
+ * 后续版本移除"——现在旧名确实**已经移除**，继续用"提示"口吻会误导用户以为命令
+ * 仍可用。因此这里：
+ * - 明确说明**命令已不存在**（而不是"建议改用"）；
+ * - 直接给出**替代命令**（逐条可粘贴），而不是指向另一个同样模糊的名字；
+ * - 调用方返回 {@link EXIT_USAGE}(2)：命令不存在是用法错误，不是运行失败(1)。
+ *
+ * 注意本函数名是 `topLevelDispatchNames()` 的**提取锚点**（T7 防漂移门禁按
+ * 行首匹配它来界定 `dispatchCommand` 的正文）。改名必须同步改那个正则，
+ * 否则门禁会以"声明落空"的方式变红——那是**有意的**保护。
  */
-export function deprecationNotice(
+export function removedCommandNotice(
   legacy: string,
-  sub: string,
+  alternatives: readonly string[],
 ): string {
-  const suffix = sub === "" ? "" : " " + sub;
-  return "提示: " + legacy + " 已合并为 stack；请改用 noj-cli stack" + suffix +
-    "。旧名将在后续版本移除。";
+  const lines = [
+    `命令已移除：${legacy}`,
+    "  T23 起 noj-cli 收敛为单模态（配置真相源唯一：.env.prod + docker-compose.prod.yml）。",
+    "  替代方式：",
+  ];
+  for (const alt of alternatives) lines.push(`    - ${alt}`);
+  return lines.join("\n");
 }
 
 /** 生产命令的 CLI 侧帮助（不转发给底层 bash 脚本，#517 E12）。 */
@@ -1633,69 +1065,6 @@ function renderProductionCommandHelp(command: string): string {
     "  该命令需要完整的生产安装目录（含 docker-compose.prod.yml 与",
     "  .env.prod）。使用 --dir <path> 指定，或在安装目录内执行。",
     "  --help 由 noj-cli 自己回答，不会转发给底层脚本。",
-  ]);
-}
-
-/** deploy 子命令帮助。 */
-function renderDeployHelp(sub: string): string {
-  if (sub === "init") {
-    return renderCommandHelp("noj-cli deploy init [选项]", [
-      "交互式生成 noj-deploy.json 与 noj-secrets.json。",
-      "",
-      "选项:",
-      "  --mode dev|prod      部署模式",
-      "  --port <n>           服务端口（1-65535）",
-      "  --dir <path>         安装目录（默认当前目录）",
-      "",
-      "提示: --help 只读，不会创建任何文件。",
-    ]);
-  }
-  return renderCommandHelp("noj-cli deploy <子命令> [选项]", [
-    "JSON 编排模式的部署生命周期。",
-    "",
-    "子命令:",
-    "  init                  交互式初始化配置",
-    "  up                    启动服务",
-    "  down                  停止服务",
-    "  restart               重启服务",
-    "  status                查看状态",
-    "",
-    "选项:",
-    "  --dir <path>          部署目录（默认当前目录及祖先）",
-  ]);
-}
-
-/** maintain 子命令帮助。 */
-function renderMaintainHelp(sub: string): string {
-  if (sub === "backup") {
-    return renderCommandHelp("noj-cli maintain backup <子命令> [选项]", [
-      "JSON 编排模式的备份运维。",
-      "",
-      "子命令:",
-      "  create                创建备份",
-      "  verify <snapshot>     校验备份完整性",
-      "  restore <snapshot>    恢复备份（需 --confirm）",
-      "  drill <snapshot>      恢复演练",
-      "",
-      "选项:",
-      "  --dir <path>          部署目录",
-      "  --backup-dir <path>   备份输出目录",
-      "  --passphrase-file <p> 口令文件",
-      "  --zstd-level <n>      压缩级别（1-22，默认 15）",
-      "  --no-encrypt          不加密（需显式指定）",
-      "  --confirm             确认危险操作",
-    ]);
-  }
-  return renderCommandHelp("noj-cli maintain <子命令> [选项]", [
-    "JSON 编排模式的运维命令。",
-    "",
-    "子命令:",
-    "  logs                  查看日志（--follow / --color）",
-    "  config check|show|set 配置校验与查看",
-    "  verify                配置校验",
-    "  reset                 重置部署（需 --confirm）",
-    "  backup                备份（create/verify/restore/drill）",
-    "  restore               等价于 backup restore",
   ]);
 }
 

@@ -13,7 +13,7 @@
  */
 
 /** 命令所属分区；决定顶层 help 的展示分组。 */
-export type Tier = "prod" | "stack" | "problem" | "tier3" | "global";
+export type Tier = "prod" | "problem" | "tier3" | "global";
 
 /** 单条命令声明（可递归嵌套子命令）。 */
 export interface CommandSpec {
@@ -37,7 +37,6 @@ export interface CommandSpec {
 /** 分区展示顺序即顶层 help 的顺序。 */
 const TIER_ORDER: readonly Tier[] = [
   "prod",
-  "stack",
   "problem",
   "tier3",
   "global",
@@ -49,11 +48,6 @@ const SECTIONS: Record<Tier, { title: string; note?: string }> = {
     title:
       "生产模式（.env.prod + docker-compose.prod.yml；宿主机运维，无需 Deno）",
     note: "以下命令支持 --dir <安装目录>；在安装目录内可省略。",
-  },
-  stack: {
-    title:
-      "JSON 编排模式（noj-deploy.json + noj-secrets.json；源码开发，需 Deno）",
-    note: "以下命令支持 --dir <部署目录>；可用 --profile stack 显式指定模式。",
   },
   problem: {
     title: "题目包管理（离线；无需部署环境）",
@@ -152,85 +146,6 @@ export const COMMANDS: readonly CommandSpec[] = [
     name: "uninstall",
     tier: "prod",
     summary: "卸载生产服务；--all 删除全部数据，需确认",
-  },
-
-  // ── JSON 编排模式 ──
-  {
-    name: "doctor",
-    tier: "stack",
-    summary: "环境检测（Docker / Compose / 磁盘 / 内存 / 端口）",
-  },
-  {
-    name: "stack",
-    tier: "stack",
-    summary: "部署与运维（原 deploy + maintain 合并）",
-    subcommands: [
-      {
-        name: "init",
-        tier: "stack",
-        summary: "交互式生成 noj-deploy.json 与 noj-secrets.json",
-      },
-      { name: "up", tier: "stack", summary: "启动服务" },
-      { name: "down", tier: "stack", summary: "停止服务" },
-      { name: "restart", tier: "stack", summary: "重启服务" },
-      { name: "status", tier: "stack", summary: "查看状态" },
-      {
-        name: "logs",
-        tier: "stack",
-        summary: "查看日志（--follow / --color）",
-      },
-      {
-        name: "config",
-        tier: "stack",
-        summary: "配置校验与查看（check/show/set）",
-      },
-      { name: "verify", tier: "stack", summary: "配置校验" },
-      { name: "reset", tier: "stack", summary: "重置部署（需 --confirm）" },
-      {
-        name: "backup",
-        tier: "stack",
-        summary: "备份运维（create/verify/restore/drill/list/prune）",
-        subcommands: [
-          { name: "create", tier: "stack", summary: "创建备份" },
-          {
-            name: "verify",
-            tier: "stack",
-            summary: "校验备份完整性（<snapshot>）",
-          },
-          {
-            name: "restore",
-            tier: "stack",
-            summary: "恢复备份（需 --confirm）",
-          },
-          {
-            name: "drill",
-            tier: "stack",
-            summary: "隔离环境真实恢复演练（分钟级、需 Docker）",
-          },
-          { name: "list", tier: "stack", summary: "列出备份（支持 --json）" },
-          {
-            name: "prune",
-            tier: "stack",
-            summary: "清理过期备份（默认 dry-run，--confirm 才真正删除）",
-          },
-        ],
-      },
-    ],
-  },
-  {
-    name: "deploy",
-    tier: "stack",
-    summary: "部署生命周期 init/up/down/restart/status（旧名，建议 stack）",
-  },
-  {
-    name: "maintain",
-    tier: "stack",
-    summary: "运维 logs/config/verify/reset/backup/restore（旧名，建议 stack）",
-  },
-  {
-    name: "run-server",
-    tier: "stack",
-    summary: "前台运行 noj-server 二进制（阻塞当前终端）",
   },
 
   // ── 题目包管理（离线）──

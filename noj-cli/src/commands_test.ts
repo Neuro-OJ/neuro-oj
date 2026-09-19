@@ -60,10 +60,11 @@ Deno.test("renderCommandList: 含全部顶层命令、分区标题与退出码",
   for (const name of declaredTopLevelNames()) {
     assert(firstTokens.has(name), `顶层 help 缺少命令 ${name}`);
   }
+  // T23：`JSON 编排模式` 分区已随双模态删除，故不再断言它存在。
+  // （断言一个已删除的分区标题存在，等于要求实现保留已删功能。）
   for (
     const title of [
       "生产模式",
-      "JSON 编排模式",
       "题目包管理",
       "服务端管理",
       "全局命令与选项",
@@ -153,19 +154,28 @@ Deno.test("漂移回归: backup 声明包含 list 与 prune，且可从顶层 he
   assert(text.includes("backup prune"), "顶层 help 应可发现 backup prune");
 });
 
-Deno.test("准确: JSON 编排模式（stack）的 backup 不得声称支持 schedule", () => {
-  const stack = findCommand("stack");
-  const backup = stack?.subcommands?.find((s) => s.name === "backup");
-  assert(backup !== undefined, "stack 必须声明 backup 子命令");
+Deno.test("准确: backup 的 help 不得声称支持 schedule（E5 回归，T23 重定向）", () => {
+  // T23：原用例检查的是 `stack` 的 backup 条目，但 stack 已删除。
+  // E5 的**实质**是"help 不得声明实现不支持的能力"——那条不因模态收敛而失效，
+  // 因此改为检查幸存的生产 backup 条目。
+  const backup = findCommand("backup");
+  assert(backup !== undefined, "必须声明 backup 命令");
+  assert(backup.subcommands !== undefined, "backup 必须声明子命令");
+  const names = backup.subcommands!.map((s) => s.name);
+  // E5 的原缺陷是"**声明了实现不支持的能力**"。T23 之后生产 backup **确实**
+  // 实现了 schedule（T20 交付了 crontab 标记区块管理），因此声明它是**准确的**；
+  // 反过来断言"不得含 schedule"会把已交付的能力从 help 里删掉。
+  // 这里锁住的是"声明与实现一致"这一实质：清单里必须有 schedule。
   assertEquals(
-    backup.summary.includes("schedule"),
-    false,
-    "stack（JSON 编排模式）的 backup 不支持 schedule",
+    names.includes("schedule"),
+    true,
+    "backup 已实现 schedule（T20），help 必须声明它",
   );
+  // 同时不得出现旧的合写短语（它对应已删除的 stack 条目，且未列 list/prune）
   assertEquals(
     renderCommandList().includes("create/verify/restore/drill/schedule"),
     false,
-    "help 不得声称 backup 支持 schedule（E5 回归）",
+    "help 不得使用旧的合写短语（漏列 list/prune）",
   );
 });
 
