@@ -600,34 +600,77 @@ export function uninstallIncompleteDirHint(dir: string): string {
 }
 
 /**
+ * 执行"存在性探测"命令并归一到退出码：**命令无法启动时返回 `null`**。
+ *
+ * 真实 {@link CommandRunner}（`runtime/command.ts`）用 `Deno.Command`：二进制
+ * 不在 PATH 时 `output()` **抛 `Deno.errors.NotFound`**，而不是返回非 0。bash 的
+ * `command -v "$DOCKER_BIN"`（deploy.sh:1087）与 cosign 探测都**不会抛**，
+ * 而是把"找不到"归一成一个失败信号。若直接取 `(await runner.run(...)).code`，
+ * 真实主机上缺 docker/cosign 会把可操作文案换成裸异常（T15 评审 Important）。
+ *
+ * @returns 退出码；命令无法启动（不存在/无权限）时为 `null`。
+ */
+export async function probeCommandCode(
+  runner: CommandRunner,
+  cmd: string,
+  args: string[],
+): Promise<number | null> {
+  try {
+    return (await runner.run(cmd, args)).code;
+  } catch {
+    return null;
+  }
+}
+
+/** {@link checkUninstallDependencies} 的成功分支：卸载所需的三个已定位路径。 */
+export interface UninstallDependencies {
+  ok: true;
+  /** 归一化安装目录（无尾斜杠）。 */
+  dir: string;
+  envFile: string;
+  composeFile: string;
+}
+
+/** {@link checkUninstallDependencies} 的结果。 */
+export type UninstallDependenciesResult =
+  | UninstallDependencies
+  | PrepareFailure;
+
+/**
  * `check_uninstall_dependencies`（deploy.sh:1085-1096）：卸载前的五条前置。
  *
  * 逐条顺序：`docker --version` → `docker info` → `docker compose version` →
  * `.env.prod` 存在 → compose 文件存在；**任一失败立即返回错误**，由调用方转成
- * 退出码 1 且**零 compose down**。
+ * 退出码 1 且**零 compose down**。三条 docker 探测都经 {@link probeCommandCode}：
+ * spawn 失败（二进制缺失）与退出码非 0 同样落在"失败"分支。
  *
- * 返回 {@link PreparedEnvironment} 的原因：compose down **必须覆盖全部 profile**
- * （bash `INCLUDE_ALL_PROFILES=1`，见 `uninstall()` :1101），因此这里顺带解析
- * `.env.prod` 得出 `judge` 旗标；但解析失败**不阻断卸载**（配置不完整恰恰是
- * 卸载的常见场景）——失败时按 judge 启用处理，宁可多带一个 profile 也不漏删。
+ * **只判定存在性，不解析 `.env.prod`**（与 bash 一致）：卸载不需要 `judge` 旗标
+ * ——`INCLUDE_ALL_PROFILES=1` 使 judge 恒带（见 `uninstall()` 的注释），
+ * 因此本步骤不读取文件内容，成功分支只回填三个被调用方消费的路径字段
+ * （T15 评审 Minor 3：此前的 `env`/`judge` 解析是调用方从不消费的死工作）。
  */
 export async function checkUninstallDependencies(opts: {
   dir: string;
   runner: CommandRunner;
   /** docker 可执行名（`NOJ_DEPLOY_DOCKER_BIN` 的等价）。 */
   dockerBin?: string;
-}): Promise<PrepareResult> {
+}): Promise<UninstallDependenciesResult> {
   const dockerBin = opts.dockerBin ?? "docker";
   const envFile = join(opts.dir, PROD_ENV_FILE);
   const composeFile = join(opts.dir, PROD_COMPOSE_FILE);
 
-  if ((await opts.runner.run(dockerBin, ["--version"])).code !== 0) {
+  if (
+    (await probeCommandCode(opts.runner, dockerBin, ["--version"])) !== 0
+  ) {
     return { ok: false, error: dockerMissingHint(dockerBin) };
   }
-  if ((await opts.runner.run(dockerBin, ["info"])).code !== 0) {
+  if ((await probeCommandCode(opts.runner, dockerBin, ["info"])) !== 0) {
     return { ok: false, error: UNINSTALL_DAEMON_HINT };
   }
-  if ((await opts.runner.run(dockerBin, ["compose", "version"])).code !== 0) {
+  if (
+    (await probeCommandCode(opts.runner, dockerBin, ["compose", "version"])) !==
+      0
+  ) {
     return { ok: false, error: UNINSTALL_COMPOSE_HINT };
   }
   if (!(await isFile(envFile))) {
@@ -637,17 +680,7 @@ export async function checkUninstallDependencies(opts: {
     return { ok: false, error: uninstallComposeMissingHint(composeFile) };
   }
 
-  let env: EnvValues = {};
-  let judge = true;
-  try {
-    env = await readEnvValues(envFile);
-    judge = assertConfiguration(env).judgeEnabled;
-  } catch {
-    // 配置不完整/非法：卸载不能因此被卡住，按 judge 启用处理（多 profile 无害）。
-    judge = true;
-  }
-
-  return { ok: true, dir: opts.dir, envFile, composeFile, env, judge };
+  return { ok: true, dir: opts.dir, envFile, composeFile };
 }
 
 /** `-e` 语义（含悬空软链）的存在性判定。 */
@@ -668,10 +701,11 @@ async function pathExists(path: string): Promise<boolean> {
  * 2. `[[ -f bin/noj-cli && -f "$DEPLOY_SCRIPT" && -f docker-compose.prod.yml ]]`——
  *    `DEPLOY_SCRIPT` 在 TS 侧仍是安装目录内的 `scripts/deploy/deploy.sh`
  *    （T24 才删除 bash；二进制保持同形文件系统契约）。特征文件消费
- *    {@link PRODUCTION_MARKERS}（T5/T12 单一事实源），不新写标记清单；
- * 3. `[[ ! -e .git && ! -e .jj ]]` → 拒绝；**本实现有意比 bash 多查 `.jj`**：
- *    本仓 colocated 的 jj 工作区里 `.jj` 是**文件**而 `.git` 是目录，只查 `.git`
- *    会漏判纯 jj 检出（T15 brief 明写 "Git/jj 工作区"）；
+ *    {@link PRODUCTION_MARKERS}（T5/T12 单一事实源），不新写标记清单。
+ *    bash 把三条 `-f` 折叠成**同一句** `fail`，故三个缺失分支共用
+ *    {@link uninstallIncompleteDirHint}，不各写一条文案（T15 评审 Minor 2）；
+ * 3. `[[ ! -e .git && ! -e .jj ]]` → 拒绝。**与 bash 逐字同形**：production.sh:172
+ *    本就同时检查 `.git` 与 `.jj`，不是"多查一个"的有意偏离；
  * 4. `[[ "$SCRIPT_DIR" != / && != . && != .. && != "$HOME" ]]`。
  *
  * **抛错而非返回结果**：守卫失败必须终止整个命令，返回布尔容易被调用方误当成
@@ -700,11 +734,13 @@ export async function assertRemovableInstallDir(
   const cliBinary = opts.cliBinary ?? join(dir, "bin/noj-cli");
   const deployScript = opts.deployScript ??
     join(dir, "scripts/deploy/deploy.sh");
+  // bash 的三条 `-f` 用 `&&` 串在一个 `[[ ]]` 里，失败只有**一句**文案
+  // （production.sh:170-171），无法（也不应）区分是哪一个特征文件缺失。
   if (!(await isFile(cliBinary))) {
-    throw new Error(`找不到生产 CLI 二进制：${cliBinary}`);
+    throw new Error(uninstallIncompleteDirHint(dir));
   }
   if (!(await isFile(deployScript))) {
-    throw new Error(`找不到生产部署脚本：${deployScript}`);
+    throw new Error(uninstallIncompleteDirHint(dir));
   }
   for (const marker of PRODUCTION_MARKERS) {
     if (!(await isFile(join(dir, marker)))) {

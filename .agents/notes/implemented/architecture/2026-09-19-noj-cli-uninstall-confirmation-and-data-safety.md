@@ -35,9 +35,14 @@ Status: implemented
    导出常量，便于 T24 接线复用而非另写一份。
 2. **前置**：新步骤 `checkUninstallDependencies()`（`lifecycle/steps.ts`）逐条跑
    `docker --version` → `docker info` → `docker compose version` → `.env.prod` →
-   compose 文件（`deploy.sh:1085-1096`），文案逐字。返回 `PrepareResult`：`.env.prod`
-   顺带解析出 `judge` 旗标，但**解析失败不阻断卸载**（配置残缺恰是卸载的常见场景），
-   失败时按 judge 启用处理——宁可多带一个 `--profile` 也不漏删。
+   compose 文件（`deploy.sh:1085-1096`），文案逐字。三条 docker 探测经
+   `probeCommandCode()` 归一退出码：真实 runner（`Deno.Command`）在二进制缺失时
+   **抛 `Deno.errors.NotFound`**，与 bash `command -v` 的"未命中"必须落到同一个
+   失败分支，否则真实主机上缺 docker 会抛裸异常而不是可操作文案
+   （T15 评审 Important）。返回 `UninstallDependenciesResult`，成功分支只含
+   `dir`/`envFile`/`composeFile` 三个被调用方消费的路径——`judge` 旗标无需解析
+   （`INCLUDE_ALL_PROFILES=1` 使其恒带），此前"顺带解析 `.env.prod`"是死工作
+   （T15 评审 Minor 3）。
 3. **删除范围**：`judge` 与 `monitoring` 两个 profile 旗标**都带上**。
    - judge 取"恒真"而非 `judge_enabled()`：bash 在 `INCLUDE_ALL_PROFILES=1` 下
      `run_compose` 的判据是 `((INCLUDE_ALL_PROFILES)) || judge_enabled`（`:957`），
@@ -50,7 +55,9 @@ Status: implemented
    （`production.sh:167-182`）在 `uninstall()` 中**在 `down` 之前调用一次**（`:509` 的等价），
    删除前由 `removeInstallDirectory` 再调用一次（`production.sh:179` 的等价）。
    四条检查逐条对照：目录形态（`-d && ! -L`）→ 安装完整性（`bin/noj-cli` + 部署脚本 +
-   `PRODUCTION_MARKERS` 特征文件）→ **`.git` / `.jj` 拒绝** → 危险路径（`/`、`.`、`..`、`$HOME`）。
+   `PRODUCTION_MARKERS` 特征文件；bash 把三条 `-f` 折进同一句 `fail`，本实现三个
+   缺失分支共用同一条**不是完整的 NOJ 安装目录**文案）→ **`.git` / `.jj` 拒绝**
+   （与 bash `production.sh:172` 逐字同形）→ 危险路径（`/`、`.`、`..`、`$HOME`）。
    安装特征文件消费 `profile.ts` 的 `PRODUCTION_MARKERS` 单一事实源，不新增清单（T5/T12
    carry-forward）。
 5. **软链清理**：`unregisterCommand()`（`production.sh:148-165`）落在 `lifecycle/path.ts`——
@@ -72,9 +79,10 @@ Status: implemented
   运行中的 judge 容器。恒带更安全且是逐字等价。
 - **monitoring 旗标从 compose 文件解析 `profiles:`**：需要自己解析 YAML 缩进，等于在
   `compose.ts` 之外再造一份服务清单；`PROD_SERVICES` 已是与真实文件双向比对过的事实源。
-- **只检查 `.git`（严格照抄 bash 的 `.git` 分支）**：本仓是 colocated jj/git，但纯 jj
-  检出（无 `.git`）、`.jj` 是**文件**的情形确实存在；T15 brief 明写"Git/jj 工作区"。
-  多查一个 `.jj` 只会更保守，不会误删。
+- **把 `.jj` 检查当作"比 bash 更保守的有意偏离"**：这个说法**不成立**，
+  已更正——bash `production.sh:172` 本就写成 `[[ ! -e "$SCRIPT_DIR/.git" && ! -e "$SCRIPT_DIR/.jj" ]]`，
+  **同时**检查 `.git` 与 `.jj`。TS 侧两边都查是**逐字 parity**，不是额外加码
+  （T15 评审 Minor 1）。
 - **软链清理用 `Deno.realPath` 解析目标**：`realPath` 要求目标存在，而安装目录里的
   `bin/noj-cli` 可能已被删；`readLink` + 相对路径 `resolve` 纯字符串解析，与 bash 的
   `cd -P && pwd` 语义一致且不依赖目标存活。
@@ -96,9 +104,10 @@ Status: implemented
   T24 删除 bash 时必须同步处理：要么保留同形文件系统契约（部署脚本占位），要么
   重新定义"安装完整性"——**否则 `uninstall --all` 会在真实安装目录上永远拒绝**。
   该风险同时记在 T5/T24 的 ledger carry-forward 下。
-- **变异测试 9/9 转红**：交换两个确认词、默认改成 `--rmi all`、`--all` 去掉 `--volumes`、
-  去掉 monitoring 旗标、去掉 judge 旗标、软链判定恒真、去掉无 TTY 拒绝、去掉工作区守卫、
-  把工作区守卫从 `down` 之前挪走——均被现有测试捕获。
+- **变异测试 10/10 转红**（M1–M9、M11）：交换两个确认词、默认改成 `--rmi all`、
+  `--all` 去掉 `--volumes`、去掉 monitoring 旗标、软链判定恒真、去掉无 TTY 拒绝、
+  去掉工作区守卫、judge 旗标恒假、去掉 `down` 之前的安装目录守卫、确认失败仍继续
+  执行 `down`——均被现有测试捕获。
 - **CLI 入口仍未接线**（与 T12–T14 同一状态）：`cli.ts` 仍把 `uninstall` 路由到
   `runProduction` → bash；本次交付的是可注入的纯 TS 命令实现，接线按任务书归 T24。
   删 bash 前必须接线，且 `readConfirm` 需由 CLI 层接上 `PromptIO`（缺省不读真实 stdin

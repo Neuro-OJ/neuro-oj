@@ -176,6 +176,7 @@ import {
   judgeEnabledFrom,
   mergeColorSource,
   prepareAndCheck,
+  probeCommandCode,
   readEnvValues,
   removeInstallDirectory,
   runComposeSub,
@@ -423,12 +424,20 @@ async function seedEnvFile(
 
 // ---------------- install ----------------
 
-/** 真实 cosign 探测：经注入 runner 执行 `cosign version`（无 shell）。 */
+/**
+ * 真实 cosign 探测：经注入 runner 执行 `cosign version`（无 shell）。
+ *
+ * 经 {@link probeCommandCode} 归一：cosign **不在 PATH** 时真实 runner 抛
+ * `Deno.errors.NotFound`（`Deno.Command` 语义），而 bash 的 `command -v cosign`
+ * 只是"未命中"。两处都必须落到同一个 `false`，否则 T12 的 skip-with-warning
+ * 契约会被一个裸异常顶替（T15 评审 Important）。
+ */
 function probeCosign(
   runner: CommandRunner,
   cosignBin: string,
 ): () => Promise<boolean> {
-  return async () => (await runner.run(cosignBin, ["version"])).code === 0;
+  return async () =>
+    (await probeCommandCode(runner, cosignBin, ["version"])) === 0;
 }
 
 /** 把 compose 输出原样转给调用方（T10 carry-forward：runner 不打印）。 */
@@ -1290,8 +1299,14 @@ export interface UninstallOptions extends LifecycleOptions {
   binDir?: string;
   /** 用户 home；缺省进程环境 `HOME`。 */
   userHome?: string;
-  /** 进程环境快照；缺省 `Deno.env.toObject()`。 */
-  env?: Record<string, string>;
+  /**
+   * 进程环境快照；缺省 `Deno.env.toObject()`（与 install 的 `processEnv` 同义）。
+   *
+   * 命名刻意**不叫 `env`**：`PreparedEnvironment.env` 指 `.env.prod` 解析出的
+   * 键值集合，两者概念相反（进程环境 vs 配置文件），同名会被读成同一件事
+   * （T15 评审 Minor 6）。
+   */
+  processEnv?: Record<string, string>;
   /** 显示传入的终端判定；缺省 `Deno.stdin.isTerminal()`。 */
   isTty?: boolean;
   /** 安装版 CLI 路径（`--all` 的安装完整性守卫；缺省 `<dir>/bin/noj-cli`）。 */
@@ -1302,7 +1317,14 @@ export interface UninstallOptions extends LifecycleOptions {
 export interface UninstallResult extends LifecycleBaseResult {
   /** 是否 `--all`（删除数据卷与安装目录）。 */
   all: boolean;
-  /** 是否已删除数据卷（等价于 `all`，独立字段便于断言）。 */
+  /**
+   * `down --volumes` 是否**确实执行成功**（即数据卷删除这一步的结果）。
+   *
+   * 只反映第 4 步（`compose down`）的结果，**不受**后续清理影响：软链清理
+   * （第 5 步）或删目录（第 6 步）失败时本字段仍为 `true`——数据卷已经删了，
+   * 如实报告才便于自动化判定"是否已不可恢复"（T15 评审 Minor 4）。
+   * 成功路径恒等于 `all`（默认卸载不带 `--volumes`）。
+   */
   volumesRemoved: boolean;
   /** 实际移除的 PATH 软链（只含指向本安装目录者）。 */
   removedCommands: string[];
@@ -1399,7 +1421,7 @@ export async function uninstall(
 ): Promise<UninstallResult> {
   const ctx = lifecycleContext(opts);
   const all = opts.all === true;
-  const processEnv = opts.env ?? Deno.env.toObject();
+  const processEnv = opts.processEnv ?? Deno.env.toObject();
   const userHome = opts.userHome ?? processEnv["HOME"] ?? "";
   const binDir = opts.binDir ?? processEnv["NOJ_BIN_DIR"] ??
     "/usr/local/bin";
@@ -1413,15 +1435,18 @@ export async function uninstall(
     if (ctx.jsonMode) emitJson(uninstallPayload(full), ctx.io);
     return full;
   };
+  // volumesRemoved 反映"第 4 步是否真的删了卷"：第 4 步自身失败或更早失败时为
+  // false，之后的清理失败（软链/删目录）不改变它（T15 评审 Minor 4）。
   const fail = (
     error: string,
     removed: string[] = [],
+    volumesRemoved = false,
   ): UninstallResult => {
     ctx.error(error);
     return finish(
       {
         all,
-        volumesRemoved: false,
+        volumesRemoved,
         removedCommands: removed,
         installDirRemoved: false,
       },
@@ -1473,6 +1498,9 @@ export async function uninstall(
   const command = all
     ? ["down", "--remove-orphans", "--rmi", "all", "--volumes"]
     : ["down", "--remove-orphans", "--rmi", "local"];
+  // `down` 成功即代表卷删除这一步已完成（默认命令本就不带 --volumes，字段为 false）。
+  // 该事实必须**在后续清理之前**固定下来：软链/删目录失败不能让 `volumesRemoved`
+  // 退回 false（T15 评审 Minor 4）。
   const result = await runComposeSub(opts.runner, uninstallOptions, command);
   const text = composeOutputText(result);
   if (text !== "") emitHuman(text, ctx.io);
@@ -1484,6 +1512,7 @@ export async function uninstall(
         : detail,
     );
   }
+  const volumesRemoved = all;
 
   // ---- 5. unregister_command：只删指向本安装目录的软链 ----
   let removed: string[] = [];
@@ -1494,7 +1523,7 @@ export async function uninstall(
       userHome,
     });
   } catch (error) {
-    return fail((error as Error).message, removed);
+    return fail((error as Error).message, removed, volumesRemoved);
   }
   if (removed.length === 0) {
     ctx.error("未找到指向当前安装目录的 PATH 命令软链接");
@@ -1512,7 +1541,7 @@ export async function uninstall(
         cliBinary: opts.cliBinary,
       });
     } catch (error) {
-      return fail((error as Error).message, removed);
+      return fail((error as Error).message, removed, volumesRemoved);
     }
     installDirRemoved = true;
     log("success", `已删除 NOJ 安装目录：${ctx.dir}`);
@@ -1529,7 +1558,7 @@ export async function uninstall(
   return finish(
     {
       all,
-      volumesRemoved: all,
+      volumesRemoved,
       removedCommands: removed,
       installDirRemoved,
     },

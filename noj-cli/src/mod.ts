@@ -344,6 +344,7 @@ export {
   NGINX_REFRESH_FAILURE_HINT,
   PORT_CONFLICT_HINT,
   prepareAndCheck,
+  probeCommandCode,
   removeInstallDirectory,
   runComposeSub,
   UNINSTALL_COMPOSE_HINT,
@@ -366,6 +367,8 @@ export type {
   PrepareOptions,
   PrepareResult,
   StepSink,
+  UninstallDependencies,
+  UninstallDependenciesResult,
   WaitForStackResult,
 } from "./prod/lifecycle/steps.ts";
 // profile（T5）：生产安装目录特征文件的**唯一事实源**，由 getProfile 探测消费，

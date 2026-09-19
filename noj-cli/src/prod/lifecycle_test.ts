@@ -995,6 +995,44 @@ Deno.test("install carry-forward T11：cosignAvailable 缺省注入真实探测�
   }
 });
 
+Deno.test("install carry-forward T11：cosign 探测**抛 NotFound** → 仍按「找不到 Cosign」拒绝并告警", async () => {
+  const dir = await makeInstalledDir({ NOJ_ENFORCE_IMAGE_SIGNATURES: "true" });
+  try {
+    const passphrase = join(dir, "backup-passphrase");
+    await writePassphraseFile(passphrase);
+    const records: RunnerCall[] = [];
+    const warnings: string[] = [];
+    // 真实 runner 在 cosign 不在 PATH 时抛 Deno.errors.NotFound（Deno.Command 语义），
+    // 而 bash 的 command -v cosign 只是"未命中"。两者必须落到同一个 false，
+    // 否则 T12 的 skip-with-warning 契约被裸异常顶替（T15 评审 Important）。
+    await assertRejects(
+      () =>
+        install({
+          dir,
+          repository: REPO,
+          ref: REF,
+          io: makeIO([], []),
+          runner: throwingRunner(records, (cmd) => cmd === "cosign"),
+          fetcher: makeFetcher([], []),
+          nonInteractive: true,
+          passphraseFile: passphrase,
+          processEnv: {},
+          warn: (m) => warnings.push(m),
+        }),
+      Error,
+      "找不到 Cosign",
+    );
+    assertEquals(
+      records.some((r) => r.cmd === "cosign" && r.args[0] === "version"),
+      true,
+      "缺省必须经 runner 真实探测 cosign（抛错也必须被探测到）",
+    );
+    assert(warnings.some((w) => w.includes("找不到 Cosign")));
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("install 非交互 + 已安装但配置不完整：安装前报错，fetch 零、docker 零", async () => {
   // 已安装目录但仍是模板占位值（DOMAIN / POSTGRES_PASSWORD 命中占位黑名单）。
   const dir = await makeInstalledDir({
@@ -2825,6 +2863,33 @@ function downFails(
     : undefined;
 }
 
+/**
+ * 会把指定命令**抛成 `Deno.errors.NotFound`** 的 runner。
+ *
+ * 真实 runner 用 `Deno.Command`：二进制不在 PATH 时 `output()` 抛 `NotFound`，
+ * **不是**返回非 0；只注入 `code: 127` 的 fake 会掩盖这条真实路径
+ * （T15 评审 Important）。records 仍记录调用，便于断言"探测确实跑过"。
+ */
+function throwingRunner(
+  records: RunnerCall[],
+  shouldThrow: (cmd: string, args: string[]) => boolean,
+): CommandRunner {
+  return {
+    run(cmd, args) {
+      records.push({ cmd, args: [...args] });
+      if (shouldThrow(cmd, args)) {
+        return Promise.reject(
+          new Deno.errors.NotFound(`Failed to spawn '${cmd}'`),
+        );
+      }
+      return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+    },
+    spawn(): SpawnHandle {
+      throw new Error("uninstall 测试不 spawn");
+    },
+  };
+}
+
 Deno.test("uninstall 默认 --yes：down --rmi local、覆盖全 profile、保留数据卷与安装目录", async () => {
   const dir = await makeInstalledDir();
   try {
@@ -2837,7 +2902,7 @@ Deno.test("uninstall 默认 --yes：down --rmi local、覆盖全 profile、保�
       isTty: false,
       io,
       color: NO_COLOR,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 0);
     assertEquals(result.error, null);
@@ -2886,7 +2951,7 @@ Deno.test("uninstall --all --yes：down --rmi all --volumes 并删除安装目�
       isTty: false,
       io,
       color: NO_COLOR,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 0);
     assertEquals(result.all, true);
@@ -2927,7 +2992,7 @@ Deno.test("uninstall --all：输入 UNINSTALL 不通过（必须是 DELETE ALL�
       },
       io,
       color: NO_COLOR,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 1);
     assertStringIncludes(
@@ -2958,7 +3023,7 @@ Deno.test("uninstall --all：输入 DELETE ALL 通过", async () => {
       readConfirm: () => Promise.resolve("DELETE ALL"),
       io,
       color: NO_COLOR,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 0);
     assert(downCall(records) !== undefined);
@@ -2979,7 +3044,7 @@ Deno.test("uninstall：无 TTY 且未 --yes → 硬错误且零 runner 调用", 
       isTty: false,
       io,
       color: NO_COLOR,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 1);
     assertStringIncludes(
@@ -3010,7 +3075,7 @@ Deno.test("uninstall：TTY 下输入 UNINSTALL → 通过且保留数据卷", as
       },
       io,
       color: NO_COLOR,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 0);
     assertStringIncludes(prompts[0] ?? "", "请输入 UNINSTALL 确认卸载");
@@ -3035,7 +3100,7 @@ Deno.test("uninstall：TTY 下输入错误词 → 报错且零副作用", async 
       readConfirm: () => Promise.resolve("yes"),
       io,
       color: NO_COLOR,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 1);
     assertStringIncludes(
@@ -3065,7 +3130,7 @@ Deno.test("uninstall：down 覆盖全部 profile（judge + monitoring），默�
         isTty: false,
         io,
         color: NO_COLOR,
-        env: {},
+        processEnv: {},
       });
       assertEquals(result.exitCode, 0);
       const down = downCall(records);
@@ -3104,12 +3169,89 @@ Deno.test("uninstall 前置：docker CLI 缺失 → 明确报错且零 down", as
       isTty: false,
       io,
       color: NO_COLOR,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 1);
     assertStringIncludes(result.error ?? "", "找不到 Docker CLI：docker");
     assertEquals(downCall(records), undefined);
     assertStringIncludes(stderr.join(""), "找不到 Docker CLI");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("uninstall 前置：docker 探测**抛 NotFound**（真实缺二进制）→ 仍报找不到 Docker CLI 且零 down", async () => {
+  const dir = await makeInstalledDir();
+  try {
+    const records: RunnerCall[] = [];
+    const { io, stderr } = captureRenderIO();
+    // 真实 runner 在二进制缺失时抛 Deno.errors.NotFound，而不是返回 127。
+    const result = await uninstall({
+      dir,
+      runner: throwingRunner(records, () => true),
+      yes: true,
+      isTty: false,
+      io,
+      color: NO_COLOR,
+      processEnv: {},
+    });
+    assertEquals(result.exitCode, 1);
+    assertStringIncludes(result.error ?? "", "找不到 Docker CLI：docker");
+    assertEquals(downCall(records), undefined);
+    assertStringIncludes(stderr.join(""), "找不到 Docker CLI");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("uninstall 前置：docker info **抛 NotFound** → 仍报 daemon 不可用且零 down", async () => {
+  const dir = await makeInstalledDir();
+  try {
+    const records: RunnerCall[] = [];
+    const { io } = captureRenderIO();
+    const result = await uninstall({
+      dir,
+      runner: throwingRunner(
+        records,
+        (cmd, args) => cmd === "docker" && args[0] === "info",
+      ),
+      yes: true,
+      isTty: false,
+      io,
+      color: NO_COLOR,
+      processEnv: {},
+    });
+    assertEquals(result.exitCode, 1);
+    assertStringIncludes(
+      result.error ?? "",
+      "Docker daemon 未运行或当前用户无权限",
+    );
+    assertEquals(downCall(records), undefined);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("uninstall 前置：compose version **抛 NotFound** → 仍报 Compose v2 不可用且零 down", async () => {
+  const dir = await makeInstalledDir();
+  try {
+    const records: RunnerCall[] = [];
+    const { io } = captureRenderIO();
+    const result = await uninstall({
+      dir,
+      runner: throwingRunner(
+        records,
+        (cmd, args) => cmd === "docker" && args[0] === "compose",
+      ),
+      yes: true,
+      isTty: false,
+      io,
+      color: NO_COLOR,
+      processEnv: {},
+    });
+    assertEquals(result.exitCode, 1);
+    assertStringIncludes(result.error ?? "", "Docker Compose v2 不可用");
+    assertEquals(downCall(records), undefined);
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
@@ -3127,7 +3269,7 @@ Deno.test("uninstall 前置：daemon 不可用 → 明确报错且零 down", asy
       isTty: false,
       io,
       color: NO_COLOR,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 1);
     assertStringIncludes(
@@ -3153,7 +3295,7 @@ Deno.test("uninstall 前置：Compose v2 不可用 → 明确报错且零 down",
       isTty: false,
       io,
       color: NO_COLOR,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 1);
     assertStringIncludes(result.error ?? "", "Docker Compose v2 不可用");
@@ -3176,7 +3318,7 @@ Deno.test("uninstall 前置：缺 .env.prod → 明确报错且零 down", async 
       isTty: false,
       io,
       color: NO_COLOR,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 1);
     assertStringIncludes(result.error ?? "", "找不到生产配置");
@@ -3201,7 +3343,7 @@ Deno.test("uninstall 前置：缺 compose 文件 → 明确报错且零 down", a
       isTty: false,
       io,
       color: NO_COLOR,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 1);
     assertStringIncludes(result.error ?? "", "找不到生产 Compose 文件");
@@ -3226,7 +3368,7 @@ Deno.test("uninstall --all：检测到 Git/jj 工作区标记 → 拒绝且不�
       isTty: false,
       io,
       color: NO_COLOR,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 1);
     assertStringIncludes(result.error ?? "", "检测到 Git 工作区");
@@ -3258,7 +3400,7 @@ Deno.test("uninstall --all：.git 目录同样触发工作区保护", async () =
       isTty: false,
       io,
       color: NO_COLOR,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 1);
     assertStringIncludes(result.error ?? "", "检测到 Git 工作区");
@@ -3290,7 +3432,7 @@ Deno.test("uninstall：只移除指向本安装目录的软链，他处软链与
       io,
       color: NO_COLOR,
       binDir: bin,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 0);
     assertEquals(result.removedCommands, [ours]);
@@ -3318,7 +3460,7 @@ Deno.test("uninstall：无指向本安装目录的软链 → 告警而非报错"
       io,
       color: NO_COLOR,
       binDir: bin,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 0);
     assertEquals(result.removedCommands, []);
@@ -3348,7 +3490,7 @@ Deno.test("uninstall：compose down 失败 → 退出码 1 且不移除软链/�
       io,
       color: NO_COLOR,
       binDir: bin,
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 1);
     assertStringIncludes(result.error ?? "", "down failed");
@@ -3359,6 +3501,40 @@ Deno.test("uninstall：compose down 失败 → 退出码 1 且不移除软链/�
   } finally {
     await Deno.remove(dir, { recursive: true });
     await Deno.remove(bin, { recursive: true });
+  }
+});
+
+Deno.test("uninstall --all：down --volumes 成功后软链清理失败 → volumesRemoved 仍为 true", async () => {
+  const dir = await makeRemovableDir();
+  const bin = await Deno.makeTempDir();
+  try {
+    await Deno.symlink(join(dir, "bin/noj-cli"), join(bin, "noj-cli"));
+    // 只读父目录让 `unlink` 真的 PermissionDenied（Ubuntu 非 root 下可复现），
+    // 于是 unregisterCommand 走 bash `rm -f ... || fail` 的抛错分支。
+    await Deno.chmod(bin, 0o500);
+    const records: RunnerCall[] = [];
+    const { io } = captureRenderIO();
+    const result = await uninstall({
+      dir,
+      runner: makeRunner(records),
+      yes: true,
+      all: true,
+      isTty: false,
+      io,
+      color: NO_COLOR,
+      binDir: bin,
+      processEnv: {},
+    });
+    assertEquals(result.exitCode, 1);
+    assertStringIncludes(result.error ?? "", "无法移除 PATH 命令软链接");
+    // T15 评审 Minor 4：`down --volumes` 已成功，volumesRemoved 必须如实为 true，
+    // 不因后续清理失败而回退。
+    assertEquals(result.volumesRemoved, true);
+    assertEquals(result.installDirRemoved, false);
+  } finally {
+    await Deno.chmod(bin, 0o755).catch(() => {});
+    await Deno.remove(dir, { recursive: true }).catch(() => {});
+    await Deno.remove(bin, { recursive: true }).catch(() => {});
   }
 });
 
@@ -3388,7 +3564,7 @@ Deno.test("uninstall --json：stdout 只有 JSON 文档，人类文字改道 std
       io,
       color: NO_COLOR,
       args: ["--json"],
-      env: {},
+      processEnv: {},
     });
     assertEquals(result.exitCode, 0);
     assertEquals(
