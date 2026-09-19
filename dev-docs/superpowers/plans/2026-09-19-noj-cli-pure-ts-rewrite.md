@@ -1141,7 +1141,77 @@ T18 `verifyContainer`；`runtime/command.ts` 的 `CommandRunner`；`maintain/dri
 
 ---
 
-## Task 22–26（概要；执行前逐个展开为完整任务块）
+## Task 22: problem init 交互（R6 收口）
+
+**Files:**
+- Modify: `noj-cli/src/problem/tui.ts` — 引导的**进度提示、回退与 EOF 处理**
+- Create: `noj-cli/src/problem/tui_test.ts` — R6 的三条验收 + 边界
+- Modify: `noj-cli/src/problem/command.ts`（若需要暴露 TTY/注入点）
+- Modify: `noj-cli/src/mod.ts`
+
+**现状（前置事实核对，避免重复造轮子）**：`problem/tui.ts` 的引导已在 #514 交付
+（`planInitPrompts` / `guideProblemInit`，复用 `tui/widgets.ts` 的
+input/select/confirm），`command.ts` 也已区分 TTY 与 `--no-interactive`。
+**本任务补的是 R6 的三条验收缺口 + 零测试覆盖 + 一个实测挂死缺陷**，不重写引导。
+
+**Consumes**：`tui/io.ts` 的 `PromptIO`（注入点）、`tui/widgets.ts`、
+`problem/init.ts` 的 `SLUG_PATTERN` 与 `initProblemScaffold`
+
+**spec R6 验收（逐条对照）**
+- 引导覆盖：slug/type/difficulty/title 等，**含校验与回退**；
+- 非 TTY / `--no-interactive` 行为**明确**（报错或按参数）；
+- 生成骨架后可通过 `problem lint`（回归）。
+
+**必须实现的行为**
+
+1. **EOF 不是"非法输入"**（本任务修的实测缺陷）。当前 slug 的 `for(;;)` 循环在
+   `readLine` 返回空串时永不退出：用户按 Ctrl-D 会看到 "slug 非法" 被**无限重复**
+   （实测确认）。空串在"EOF"与"用户直接回车"两种含义上是**不可区分**的，因此
+   `PromptIO` 需要能表达"没有更多输入"：
+   - `readLine` 保持返回 `string`（不破坏既有实现），但引导层对**连续空输入**
+     设上限（缺省 3 次）后**明确报错**并以退出码 2 结束，而不是继续循环；
+   - 报错文案要说明"输入已结束（EOF）或连续空输入"，并提示可用显式旗标
+     （`--no-interactive --slug X --type P`）走自动化路径。
+2. **回退（back）可表达**：用户在任一提问处输入 `:b`/`back` 时回到**上一个**
+   尚未确定的字段重新提问；在第一个字段上输入 `back` 则不回退（给出提示后重问）。
+   这是 R6「含校验与回退」的落点——当前实现只支持"取消"，不支持"退回上一步"。
+3. **进度提示**：多步提问时显示 `[2/4]` 形式的进度（4 = 待提问项数，与
+   `planInitPrompts` 的结果一致，不硬编码 4）。
+4. **标题默认值来自 slug**：回车即接受默认（既有行为，保持并用测试锁定）。
+5. **非交互/TTY 判定只在一处**：`command.ts` 的
+   `!noInteractive && Deno.stdin.isTerminal()` 是唯一判定点；`tui.ts` 不自行读
+   `Deno.stdin`（否则测试无法注入）。缺参数时报用法错误（2）且提示具体旗标。
+
+- [ ] **Step 1: 写失败测试**（`tui_test.ts`，全部注入 fake `PromptIO`）
+
+- **R6 覆盖**：注入脚本化答案 → 断言四个字段都被问到且返回值正确；已给旗标的字段
+  **不再提问**（`planInitPrompts` 的三态）。
+- **校验**：非法 slug（大写、含下划线、首尾连字符、过短）→ 断言**重新提问**
+  且提示可读；合法后继续。type/difficulty 只接受合法枚举。
+- **EOF / 连续空输入（回归本次修复）**：`readLine` 恒返回 `""` → 断言
+  **有限次**提问后抛错（而非无限循环）；错误文案提到输入结束与自动化旗标。
+  用计数 fake 断言提问次数有上界（这是"不挂死"的直接证据）。
+- **回退**：脚本 `["", ":b", "real-slug"]`（slug 处先空、再 back、再正常）→
+  断言最终 slug 正确且 back 后**重新**提问了 slug。
+- **进度**：断言提示里出现 `[1/N]`…（N = 待提问数，且随已给旗标变化）。
+- **确认取消**：`confirm` 返回 false → 抛 `已取消`（`command.ts` 据此退出码 0）。
+- **非交互**：`--no-interactive` 缺 `--type` → 用法错误 2 且提示旗标；
+  非 TTY（注入 `isTty: false`）同样不提问。
+- **端到端回归**：用注入答案生成的骨架**通过 `problem lint`**（R6 第三条）。
+
+- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+
+- [ ] **Step 3: 实现**（`tui.ts` 加 EOF 上限 + 回退 + 进度；`PromptIO` 语义不变）
+
+- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+
+- [ ] **Step 5: 提交** — `fix(cli): problem init 引导的 EOF 挂死、回退与进度（R6 收口）`
+
+**明确不做**：不重写既有引导与 widgets；不改 `problem pack/lint`；不引入新 TUI 依赖。
+
+---
+
+## Task 23–26（概要；执行前逐个展开为完整任务块）
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
 | T17 .nojbackup 容器 | `backup/container.ts`、`driver.ts` | 单文件 + 整包加密；**文件重定向采二进制**；`pg_restore --list` 可解析 |
