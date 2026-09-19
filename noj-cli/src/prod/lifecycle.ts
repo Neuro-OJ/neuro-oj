@@ -9,10 +9,10 @@
  * 装配顺序（对照 deploy.sh 的 `install()` :999-1026 与 `initialize_env` :597-656）：
  * 1. **bootstrap**：T9 {@link downloadReleaseFiles} 拉取并 SHA-256 校验
  *    `docker-compose.prod.yml` + `.env.prod.example`；
- * 2. **seed-env**（仅首次）：由模板生成 `.env.prod`（600）并写入自动生成的
- *    强随机密钥（deploy.sh :622-644）；
- * 3. **configure**：T11 {@link runConfigWizard} 交互向导（仅 TTY；非交互缺配置
- *    直接报错且**零写入**）；
+ * 2. **seed-env**（仅当 `.env.prod` **不存在**）：由模板生成 `.env.prod`（600）
+ *    并写入自动生成的强随机密钥（deploy.sh :622-644）；既有文件逐字节保留；
+ * 3. **configure**（仅在仍有缺失时执行并记录）：T11 {@link runConfigWizard}
+ *    交互向导（仅 TTY；非交互缺配置直接报错且**零写入**）；
  * 4. **passphrase**：T11 {@link ensureBackupPassphrase}（deploy.sh :920-953）；
  * 5. **validate**：T11 {@link checkRequiredValues} + {@link checkJudgeSocket} +
  *    `compose config`（deploy.sh :684-766 / :893-914）；
@@ -25,8 +25,16 @@
  * ## 上游 CARRY-FORWARD（全部落实）
  *
  * 1. **T9**：`downloadReleaseFiles` 的 `overwrite` 默认 false（拒绝覆盖）→
- *    首次安装传 `overwrite:false`，**升级路径（目录已有 `.env.prod`）显式传
- *    `overwrite:true`**。资产名沿用 T9 的 `RELEASE_FILES`（各带 `.sha256`）。
+ *    目录里**已有任一 Release 资产**（`docker-compose.prod.yml` 或
+ *    `.env.prod.example`）时显式传 `overwrite:true`，真正的空目录首装才保持
+ *    false。**注意**：`overwrite` **不是**由 `.env.prod` 是否存在决定的，它只
+ *    看 T9 自己的 `RELEASE_FILES` 资产清单（{@link hasReleaseAssets}）。
+ *    **是否 seed `.env.prod`** 是另一条**独立**判定：只看该文件自身是否存在，
+ *    {@link seedEnvFile} 绝不覆盖已存在的 `.env.prod`（对照 bash
+ *    `initialize_env` :600-615 的 `[[ -e "$ENV_FILE" ]]` 早退）。T5 的
+ *    `PRODUCTION_MARKERS`（compose + env 两件套）不再是 install 的判定依据，
+ *    它只由 `production.ts` 的 profile 探测消费。资产名沿用 T9 的
+ *    `RELEASE_FILES`（各带 `.sha256`）。
  * 2. **T11**：调用顺序 **先 `judgeEnabledError` → 再 `checkRequiredValues`
  *    （内部即 `validateEnv`）**；judge 未设置/空串 = 启用。口令回填**仅由进程
  *    环境变量抑制**（`configuredFromEnv`），`--passphrase-file` 不抑制；口令
@@ -48,6 +56,10 @@
  *   `download_cli`/`install_cli` 的职责，随 R4 删除；二进制由用户手动下载
  *   （R4），跨版本同步归 T16。PATH 注册严格照 `register_command` 语义：目标
  *   不存在时按「源码运行模式」告警并跳过。
+ * - **不落 T4 状态**：brief 的「落状态（T4）」**延后到 T13**。bash `install()`
+ *   用 `compose up -d --wait` 的退出码表达"是否真的起来"，install 不查
+ *   `compose ps`；prod 状态由 T13 起的生命周期命令消费 T4 的
+ *   `prodState`/`transition` 写入。已登记在 task-12 报告的「有意非迁移清单」。
  */
 
 import { join } from "@std/path";
@@ -56,12 +68,12 @@ import {
   ENV_KEYS,
   JUDGE_KEYS,
   judgeEnabledError,
+  validateEnv,
 } from "../core/config-schema.ts";
 import type { FilePermissionVerdict } from "../core/config-schema.ts";
 import { readEnvFile, writeEnvFileAtomic } from "../core/env-file.ts";
 import { randomKey } from "../init/secrets.ts";
 import { nonInteractiveAdvice } from "../init/non_interactive.ts";
-import { PRODUCTION_MARKERS } from "../profile.ts";
 import type { CommandRunner } from "../runtime/command.ts";
 import type { PromptIO } from "../tui/io.ts";
 import {
@@ -81,6 +93,7 @@ import {
   generateSecret,
   recordDeploymentMetadata,
   runConfigWizard,
+  toEntries,
   verifyImageSignatures,
   wizardNeedsInteractiveInput,
 } from "./config.ts";
@@ -213,17 +226,6 @@ async function readEnvValues(path: string): Promise<EnvValues> {
   return out;
 }
 
-/** 把键值表转成 T3 `writeEnvFileAtomic` 需要的 Map（丢弃 undefined）。 */
-function toEntries(
-  values: Record<string, string | undefined>,
-): Map<string, string> {
-  const entries = new Map<string, string>();
-  for (const [key, value] of Object.entries(values)) {
-    if (value !== undefined) entries.set(key, value);
-  }
-  return entries;
-}
-
 /** `-f` 语义的普通文件判定。 */
 async function isFile(path: string): Promise<boolean> {
   try {
@@ -255,26 +257,47 @@ async function statMode(path: string): Promise<{
 }
 
 /**
- * 目录是否为**完整**生产安装目录（T5 {@link PRODUCTION_MARKERS} 全在）。
+ * `.env.prod` 路径的**三态**判定（`stat` 而非 `-e`）。
  *
- * T12 carry-forward（T5）：复用 T5 导出的唯一事实源，**不新增第三份标记清单**。
- * 该判定只决定「首次安装（需由模板生成 .env.prod）」还是「升级（复用既有配置）」。
+ * - `"regular"`：已存在且是普通文件 → **保留**（chmod 600，既不截断也不由模板
+ *   重建）。对照 bash `initialize_env` :600-603 的
+ *   `[[ -e "$ENV_FILE" ]]` → `chmod 600` → `ok "保留已有配置"` 后 `return 0`；
+ * - `"exists"`：路径存在但**不是**普通文件（目录/设备/悬空软链接等）→ 显式报错
+ *   （对照 bash :601 `[[ -f "$ENV_FILE" ]] || fail "生产配置路径不是普通文件"`）；
+ * - `"absent"`：不存在 → 由模板 seed。
+ *
+ * **为什么不再用 T5 的 `PRODUCTION_MARKERS` 决定 seed**：bash 只在 `.env.prod`
+ * 存在时保留配置，compose 文件在不在（例如用户为强制重下资产而删掉它）与
+ * 「是否覆盖用户配置」无关。旧实现要求两件套齐全才走升级路径，于是「只有
+ * `.env.prod`」被误判成空目录首装，`seedEnvFile` 会以 `truncate:true` 覆盖用户
+ * 的真实配置 —— 数据销毁（review Finding 1）。现改为只看 `.env.prod` 自身。
  */
-async function isInstallationDir(dir: string): Promise<boolean> {
-  for (const marker of PRODUCTION_MARKERS) {
-    if (!(await isFile(join(dir, marker)))) return false;
+async function envFileExists(path: string): Promise<
+  "regular" | "exists" | "absent"
+> {
+  let st: Deno.FileInfo | null = null;
+  try {
+    st = await Deno.stat(path);
+  } catch {
+    st = null;
   }
-  return true;
+  if (st === null) return "absent";
+  return st.isFile ? "regular" : "exists";
 }
 
 /**
  * 目录内是否已有 T9 的任一 Release 资产（决定 `overwrite`，T9 carry-forward）。
  *
- * 与 {@link isInstallationDir} 刻意分开：
- * - **是否 seed** 由 T5 的完整标记集决定（两件套齐全才算已安装）；
- * - **是否覆盖** 由 T9 自己的资产清单决定 —— 半成品目录（例如上次安装中途
- *   失败，只留下 compose）若按「未安装」传 `overwrite:false`，T9 会拒绝覆盖并
- *   卡死重试。这里有资产就已经不是"空目录首装"，必须允许覆盖。
+ * 与 {@link envFileExists} 刻意分开（两者**互相独立**）：
+ * - **是否 seed `.env.prod`** 只看该文件自身是否存在（`envFileExists`）；
+ * - **是否覆盖资产** 由 T9 自己的资产清单决定 —— 半成品目录（例如上次安装
+ *   中途失败，只留下 compose，或用户为强制重下而删掉 compose）若按"空目录
+ *   首装"传 `overwrite:false`，T9 会拒绝覆盖并卡死重试。这里有任一资产就已经
+ *   不是"空目录首装"，必须允许覆盖。
+ *
+ * 反例（review Finding 1 的成因）：若把 `overwrite`/`created` 都挂在 T5 的
+ * 两件套标记上，"只有 `.env.prod`、没有 compose"的目录会被判为首装，
+ * `seedEnvFile` 随即 truncate 掉用户的真实配置。
  */
 async function hasReleaseAssets(dir: string): Promise<boolean> {
   for (const asset of RELEASE_FILES) {
@@ -293,10 +316,32 @@ async function isExecutableFile(path: string): Promise<boolean> {
   }
 }
 
-/** 首次安装缺配置时的可操作报错（复用 T9 `nonInteractiveAdvice` 文案）。 */
-function missingConfigError(): Error {
+/**
+ * judge 是否启用：**镜像 T2 `validateEnv` 的真值表**，不新增第三份字面集合。
+ *
+ * 在"仅含 JUDGE_ENABLED 的探针输入"上跑 T2 的 `validateEnv`，看它是否要求
+ * `JUDGE_KEYS[0]`：要求即启用。空串/未设置 → `validateEnv` 按启用处理
+ * （deploy.sh:679）；T2 增删真值集合时本判定自动跟随。
+ */
+function judgeEnabledFrom(env: EnvValues): boolean {
+  const probe = validateEnv({ JUDGE_ENABLED: env["JUDGE_ENABLED"] ?? "" });
+  return probe.missing.includes(JUDGE_KEYS[0] ?? "JUDGE_DOCKER_SOCKET");
+}
+
+/**
+ * 首次安装缺配置时的可操作报错（复用 T9 `nonInteractiveAdvice` 文案）。
+ *
+ * `JUDGE_KEYS` **仅在 judge 启用时列出**：judge 关闭（`JUDGE_ENABLED` 为假值）
+ * 时那两个键本就不是必需项，一并印出会误导用户去填永远不会被校验的配置。
+ *
+ * 导出仅为可测：首装路径恒有 `env = {}`（judge 未设置 = 启用），条件分支在
+ * `install()` 里不可观测，需要直接单测才能锁住规则（review Minor 2）。
+ */
+export function missingConfigError(env: EnvValues): Error {
   const advice = nonInteractiveAdvice(false, false);
-  const required = [...ENV_KEYS.map((spec) => spec.key), ...JUDGE_KEYS];
+  const required = judgeEnabledFrom(env)
+    ? [...ENV_KEYS.map((spec) => spec.key), ...JUDGE_KEYS]
+    : ENV_KEYS.map((spec) => spec.key);
   return new Error(
     `${advice?.message ?? "检测到非交互环境"}\n缺少必需配置：${
       required.join("、")
@@ -311,12 +356,19 @@ function missingConfigError(): Error {
  *
  * 顺序：模板正文落盘（600）→ 自动生成强随机值就地覆盖 → 覆盖
  * `MINIO_ROOT_USER`/`S3_ACCESS_KEY` 的随机后缀。占位值因此被真实密钥替换。
+ *
+ * **安全前提**：调用方必须先确认 `.env.prod` **不存在**。本函数用
+ * `truncate:true` 落盘，一旦路径已存在就会销毁既有配置（review Finding 1 的
+ * 数据销毁路径），故这里再加一道独立防线：存在即拒绝，绝不静默截断。
  */
 async function seedEnvFile(
   envFile: string,
   templateFile: string,
   defaultVersion: string | undefined,
 ): Promise<void> {
+  if ((await envFileExists(envFile)) !== "absent") {
+    throw new Error(`生产配置已存在，拒绝覆盖：${envFile}`);
+  }
   if (!(await isFile(templateFile))) {
     throw new Error(`找不到生产配置模板：${templateFile}`);
   }
@@ -535,27 +587,35 @@ export async function install(opts: InstallOptions): Promise<InstallResult> {
   const runner = opts.runner;
   const steps: InstallStep[] = [];
 
-  // 已安装判定复用 T5 的 {@link PRODUCTION_MARKERS} 唯一事实源：
-  // 目录同时含 docker-compose.prod.yml 与 .env.prod 才算「已安装 → 复用配置」。
-  const installed = await isInstallationDir(dir);
-  const created = !installed;
+  // ---- 既有 `.env.prod` 是**唯一**的"保留 vs 新建"判据（review Finding 1） ----
+  // bash `initialize_env`（:600-615）只要 `-e "$ENV_FILE"` 就保留配置，与 compose
+  // 文件是否存在无关；这里逐字对齐，不再用 T5 的 PRODUCTION_MARKERS 两件套判定
+  // （那会把"只有 .env.prod"误判为首装并 truncate 覆盖）。
   // T9 carry-forward：overwrite 由 T9 自己的资产清单决定（首次安装 false）。
+  const envState = await envFileExists(envFile);
+  const created = envState === "absent";
   const overwrite = await hasReleaseAssets(dir);
-
-  if (!installed) {
-    // 首次安装：无模板可读，非交互不可能补齐配置 → 写盘前明确报错（零写入）。
-    const tty = opts.isTty ?? Deno.stdin.isTerminal();
-    if (opts.nonInteractive === true || !tty) throw missingConfigError();
+  if (envState === "exists") {
+    throw new Error(`生产配置路径不是普通文件：${envFile}`);
   }
 
-  // ---- 既有 .env.prod：权限不合格时必须在任何安装动作之前拒绝 ----
-  if (installed) {
-    const { isFile: regular, mode } = await statMode(envFile);
-    if (!regular) {
-      throw new Error(`生产配置路径不是普通文件：${envFile}`);
-    }
+  if (created) {
+    // 首次安装：无既有配置可读（.env.prod 尚不存在），非交互不可能补齐配置 →
+    // 写盘前明确报错（零写入）。传入空表：judge 未设置 = 启用，故仍会列出
+    // JUDGE_KEYS；报错清单按"judge 是否启用"条件化（review Minor 2）。
+    const tty = opts.isTty ?? Deno.stdin.isTerminal();
+    if (opts.nonInteractive === true || !tty) throw missingConfigError({});
+  } else {
+    // ---- 既有 `.env.prod`：保留 + chmod 600（bash :602），权限不合格必须
+    // 在任何安装动作之前拒绝 ----
+    const { mode } = await statMode(envFile);
     const verdict: FilePermissionVerdict = checkEnvFileMode(mode, envFile);
     if (verdict.kind !== "ok") throw new Error(verdict.message);
+    // 校验通过后才 chmod 600（bash :602）。放在校验**之后**是有意的：bash 先
+    // chmod 再由后续 check_file_permissions 看到 600，等价于把 644 静默修好；本
+    // 实现保留 T12 brief 的"权限非 600/400 → 安装前拒绝"语义，只把合法的 400
+    // 归一化成 600（与 bash 的最终状态一致）。
+    await Deno.chmod(envFile, 0o600);
 
     // 非交互下若既有配置本就不完整，先于一切写入报错（brief 明文要求）。
     // 校验入口与步骤 5 共用，因此 judgeEnabledError → validateEnv 的顺序不变。
@@ -591,14 +651,15 @@ export async function install(opts: InstallOptions): Promise<InstallResult> {
   }
 
   // ---- 3. configure（T11 向导）：仅 TTY 且确有缺失时进入 ----
+  // 步骤记录必须诚实：只有真的进入并跑完向导才记 `configure`（review Minor 3）。
   let env = await readEnvValues(envFile);
   if (opts.nonInteractive !== true && (opts.isTty ?? Deno.stdin.isTerminal())) {
     if (wizardNeedsInteractiveInput(env)) {
       await runConfigWizard(io, env, { isTty: true, envFile });
       env = await readEnvValues(envFile);
+      steps.push({ name: "configure", paths: [envFile] });
     }
   }
-  steps.push({ name: "configure", paths: [envFile] });
 
   // ---- 4. passphrase（T11）：旗标经 targetFile 注入；仅进程环境抑制回填 ----
   const passphraseTarget = backupPassphrasePath({
@@ -680,6 +741,11 @@ export async function install(opts: InstallOptions): Promise<InstallResult> {
   steps.push({ name: "compose-up", paths: [composeFile] });
 
   // ---- 8. record-metadata（T11）：无验签结果时零副作用 ----
+  // T4 状态：**本任务不落状态**（brief 的"落状态（T4）"延后到 T13，见 task-12
+  // 报告 §9 的有意非迁移清单）。bash `install()` 的 `compose up -d --wait` 已把
+  // "是否真的起来"表达为退出码，install 不查 `compose ps`；prod 状态由后续生命
+  // 周期命令（T13 status/start/stop…）消费 T4 的 `prodState`/`transition` 写入，
+  // 与 `scripts/deploy/deploy.sh` 的 install 行为一致（不额外查询）。
   const metadata = await recordDeploymentMetadata({
     version: env["NOJ_VERSION"] ?? "",
     at: opts.now ?? new Date(),

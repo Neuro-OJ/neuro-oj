@@ -962,8 +962,13 @@ async function socketGid(path: string): Promise<string | null> {
   }
 }
 
-/** 把键值表转成 T3 `writeEnvFileAtomic` 需要的 Map（丢弃 undefined）。 */
-function toEntries(values: EnvValues): Map<string, string> {
+/**
+ * 把键值表转成 T3 `writeEnvFileAtomic` 需要的 Map（丢弃 undefined）。
+ *
+ * T12 起导出：`lifecycle.ts` 的 install 与向导回填共用这一份实现，避免同形
+ * 函数在 `config.ts` / `lifecycle.ts` 各存一份（去重）。
+ */
+export function toEntries(values: EnvValues): Map<string, string> {
   const entries = new Map<string, string>();
   for (const [key, value] of Object.entries(values)) {
     if (value !== undefined) entries.set(key, value);

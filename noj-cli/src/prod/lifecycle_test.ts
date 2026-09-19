@@ -26,7 +26,12 @@ import type {
 import type { PromptIO } from "../tui/io.ts";
 import { sha256Hex } from "../util/hash.ts";
 import type { Fetcher } from "./bootstrap.ts";
-import { install, type InstallResult, PATH_LINE } from "./lifecycle.ts";
+import {
+  install,
+  type InstallResult,
+  missingConfigError,
+  PATH_LINE,
+} from "./lifecycle.ts";
 import { PRODUCTION_MARKERS } from "../profile.ts";
 
 const REPO = "https://github.com/Neuro-OJ/neuro-oj";
@@ -1049,16 +1054,182 @@ Deno.test("registerCommand：源码运行模式（无 bin/noj-cli）→ 告警�
   }
 });
 
-Deno.test("install 已安装判定复用 T5 PRODUCTION_MARKERS：只认 compose+env 两件套", async () => {
-  // 只有 .env.prod、没有 compose 文件 → **不是**已安装，走首次安装路径
-  // （T5 唯一事实源要求两件套齐全）。
+Deno.test("install 的保留判定只看 .env.prod 自身：T5 两件套规则已退役（Finding 1 回归守卫）", async () => {
+  // 旧实现：只有 .env.prod、没有 compose → 判成"未安装 → 首装缺配置"报错。
+  // 新实现（对齐 bash :600-615）：.env.prod 存在即保留，流程继续走到 compose。
   const dir = await Deno.makeTempDir();
+  const root = await Deno.makeTempDir();
   try {
     await Deno.writeTextFile(join(dir, ENV_FILE), completeEnv());
     await Deno.chmod(join(dir, ENV_FILE), 0o600);
     const calls: string[] = [];
     const records: RunnerCall[] = [];
-    // 非交互 + 首次安装（模板不可得）→ 明确报错，证明未被误判成"已安装"。
+    const passphrase = join(root, "pp");
+    await writePassphraseFile(passphrase);
+    const result = await install({
+      dir,
+      repository: REPO,
+      ref: REF,
+      io: makeIO([], []),
+      runner: makeRunner(records),
+      fetcher: makeFetcher(calls, []),
+      nonInteractive: true,
+      passphraseFile: passphrase,
+      processEnv: { NOJ_BACKUP_PASSPHRASE_FILE: passphrase },
+      cosignAvailable: () => Promise.resolve(true),
+      warn: () => {},
+    });
+    assertEquals(result.created, false, "有 .env.prod 即非首装");
+    assertEquals(calls.length, 4, "未按首装缺配置报错，而是拉资产补齐 compose");
+    assertEquals(
+      records.some((r) => r.cmd === "docker" && r.args.includes("up")),
+      true,
+      "必须走到 compose up",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("PRODUCTION_MARKERS：唯一事实源就是 compose + .env.prod（无 production.sh）", () => {
+  assertEquals([...PRODUCTION_MARKERS], [
+    "docker-compose.prod.yml",
+    ".env.prod",
+  ]);
+  assertEquals(
+    PRODUCTION_MARKERS.includes("scripts/deploy/production.sh"),
+    false,
+  );
+});
+
+Deno.test("install 仅有 .env.prod（无 compose）：逐字节保留用户配置，绝不按模板重建（Finding 1）", async () => {
+  // review Finding 1 的复现：旧实现用 T5 两件套判定"已安装"，于是"只有 .env.prod"
+  // 被判成空目录首装 → seedEnvFile 以 truncate:true 覆盖用户真实配置（数据销毁）。
+  // bash initialize_env（:600-603）只要 `-e "$ENV_FILE"` 就保留并 chmod 600。
+  const dir = await Deno.makeTempDir();
+  const root = await Deno.makeTempDir();
+  try {
+    const sentinel = "SENTINEL-" + "f".repeat(32);
+    const original = completeEnv({
+      DOMAIN: "old.test-oj.cn",
+      POSTGRES_PASSWORD: sentinel,
+    });
+    await Deno.writeTextFile(join(dir, ENV_FILE), original);
+    await Deno.chmod(join(dir, ENV_FILE), 0o600);
+    await makeCliBinary(dir);
+    const calls: string[] = [];
+    const records: RunnerCall[] = [];
+    const events: string[] = [];
+    const passphrase = join(root, "pp");
+    await writePassphraseFile(passphrase);
+
+    const result = await install({
+      dir,
+      repository: REPO,
+      ref: REF,
+      io: makeIO([], events),
+      runner: makeRunner(records),
+      fetcher: makeFetcher(calls, events),
+      nonInteractive: true,
+      passphraseFile: passphrase,
+      processEnv: { NOJ_BACKUP_PASSPHRASE_FILE: passphrase },
+      cosignAvailable: () => Promise.resolve(true),
+      socketExists: () => Promise.resolve(true),
+      binDir: join(root, "bin"),
+      userHome: join(root, "home"),
+      warn: () => {},
+    });
+
+    // created 表示"是否由模板生成"，此处必须为 false。
+    assertEquals(result.created, false);
+    // 绝无 seed-env 步骤。
+    assertEquals(
+      result.steps.some((s) => s.name === "seed-env"),
+      false,
+      "既有 .env.prod 不得触发 seed-env",
+    );
+    // 既无 compose 资产 → 首装式 overwrite:false。
+    assertEquals(result.steps[0]?.overwrite, false);
+    // 关键断言一：哨兵值逐字节仍在。
+    const after = await Deno.readTextFile(join(dir, ENV_FILE));
+    assertEquals(after, original, "既有 .env.prod 必须逐字节保留");
+    assertStringIncludes(after, sentinel);
+    // 关键断言二：不是模板 seed（自动生成的随机密钥不会出现在原文件里）。
+    assert(
+      !after.includes("change-me-strong-postgres-password"),
+      "不得被模板覆盖",
+    );
+    assertEquals(
+      calls.length,
+      4,
+      "缺 compose 时仍须下载 compose + example 及其 .sha256",
+    );
+    // compose 与模板都已落盘（bootstrap 补自举）。
+    assertEquals(await Deno.readTextFile(join(dir, COMPOSE)), COMPOSE_BODY);
+    assertEquals(await Deno.readTextFile(join(dir, ENV_EXAMPLE)), EXAMPLE_BODY);
+    assertEquals(
+      ((await Deno.stat(join(dir, ENV_FILE))).mode ?? 0) & 0o777,
+      0o600,
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("install 仅有 .env.prod（无 compose）：已验证配置时 compose 步骤仍可跑通", async () => {
+  // 交叉场景：env 已存在 + compose 不存在。校验必须仍然通过（judge=false 时
+  // compose 的 judge profile 不参与解析，故不会引用缺失键），且 compose 被下载。
+  const dir = await Deno.makeTempDir();
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(join(dir, ENV_FILE), completeEnv());
+    await Deno.chmod(join(dir, ENV_FILE), 0o600);
+    const calls: string[] = [];
+    const records: RunnerCall[] = [];
+    const passphrase = join(root, "pp");
+    await writePassphraseFile(passphrase);
+
+    const result = await install({
+      dir,
+      repository: REPO,
+      ref: REF,
+      io: makeIO([], []),
+      runner: makeRunner(records),
+      fetcher: makeFetcher(calls, []),
+      nonInteractive: true,
+      passphraseFile: passphrase,
+      processEnv: { NOJ_BACKUP_PASSPHRASE_FILE: passphrase },
+      cosignAvailable: () => Promise.resolve(true),
+      warn: () => {},
+    });
+
+    assertEquals(result.created, false);
+    assertEquals(await Deno.readTextFile(join(dir, COMPOSE)), COMPOSE_BODY);
+    const names = result.steps.map((s) => s.name);
+    assert(names.includes("validate"), "校验步骤必须出现");
+    assert(names.includes("compose-up"), "compose 启动步骤必须出现");
+    assert(!names.includes("seed-env"), "不得 seed");
+    // judge=false → 不带 --profile judge。
+    assertEquals(
+      records
+        .filter((r) => r.cmd === "docker")
+        .every((r) => !r.args.includes("--profile")),
+      true,
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("install .env.prod 路径存在但不是普通文件 → 显式报错、零副作用（Finding 1）", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    await Deno.mkdir(join(dir, ENV_FILE));
+    const calls: string[] = [];
+    const records: RunnerCall[] = [];
     await assertRejects(
       () =>
         install({
@@ -1073,24 +1244,112 @@ Deno.test("install 已安装判定复用 T5 PRODUCTION_MARKERS：只认 compose+
           warn: () => {},
         }),
       Error,
-      "缺少必需配置",
+      "生产配置路径不是普通文件",
     );
-    assertEquals(calls, [], "未判定为已安装时不得按升级路径拉资产");
-    assertEquals(records, []);
+    assertEquals(calls, [], "非普通文件时不得下载资产");
+    assertEquals(records, [], "非普通文件时不得调用 docker");
+    assertEquals(
+      (await Deno.stat(join(dir, ENV_FILE))).isDirectory,
+      true,
+      "目录必须原样保留",
+    );
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
 });
 
-Deno.test("PRODUCTION_MARKERS：唯一事实源就是 compose + .env.prod（无 production.sh）", () => {
-  assertEquals([...PRODUCTION_MARKERS], [
-    "docker-compose.prod.yml",
-    ".env.prod",
-  ]);
-  assertEquals(
-    PRODUCTION_MARKERS.includes("scripts/deploy/production.sh"),
-    false,
+Deno.test("install 空目录：仍由模板 seed .env.prod（正常路径回归守卫）", async () => {
+  const dir = await Deno.makeTempDir();
+  const root = await Deno.makeTempDir();
+  try {
+    const calls: string[] = [];
+    const records: RunnerCall[] = [];
+    const passphrase = join(root, "pp");
+    const result = await install({
+      dir,
+      repository: REPO,
+      ref: REF,
+      io: makeIO(["v0.9.5", "oj.test-oj.cn", "y", "", "y", "", "", "y"], []),
+      runner: makeRunner(records),
+      fetcher: makeFetcher(calls, []),
+      isTty: true,
+      passphraseFile: passphrase,
+      processEnv: {},
+      cosignAvailable: () => Promise.resolve(true),
+      socketExists: () => Promise.resolve(true),
+      binDir: join(root, "bin"),
+      userHome: join(root, "home"),
+      warn: () => {},
+    });
+    assertEquals(result.created, true);
+    assert(
+      result.steps.some((s) => s.name === "seed-env"),
+      "空目录必须 seed",
+    );
+    const text = await Deno.readTextFile(join(dir, ENV_FILE));
+    // 模板正文 + 真实随机密钥。
+    assertStringIncludes(text, "STORAGE_PROVIDER=s3");
+    assert(
+      !text.includes("change-me-strong-postgres-password"),
+      "占位口令必须被替换",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("install 非交互首装报错清单按 judge 状态条件化（Minor 2）", () => {
+  // 未设置 JUDGE_ENABLED = 启用 → 报错清单含 JUDGE_KEYS。
+  const enabled = missingConfigError({}).message;
+  assertStringIncludes(enabled, "JUDGE_DOCKER_SOCKET");
+  assertStringIncludes(enabled, "JUDGE_DOCKER_SOCKET_GID");
+  // 显式关闭 → 不得再列 JUDGE_KEYS（否则误导用户填非必需键）。
+  const disabled = missingConfigError({ JUDGE_ENABLED: "false" }).message;
+  assert(
+    !disabled.includes("JUDGE_DOCKER_SOCKET"),
+    "judge 关闭时不得列出 JUDGE_KEYS",
   );
+  // 核心键仍在。
+  assertStringIncludes(disabled, "DOMAIN");
+  assertStringIncludes(disabled, "JWT_SECRET");
+});
+
+Deno.test("install 升级路径：既有配置完整时不再进入向导（Minor 3 的步骤诚实性）", async () => {
+  const dir = await makeInstalledDir();
+  const root = await Deno.makeTempDir();
+  try {
+    const passphrase = join(root, "pp");
+    await writePassphraseFile(passphrase);
+    const events: string[] = [];
+    const result = await install({
+      dir,
+      repository: REPO,
+      ref: REF,
+      io: makeIO([], events),
+      runner: makeRunner([]),
+      fetcher: makeFetcher([], events),
+      // TTY 但不非交互：配置已完整 → 向导不应被触发。
+      isTty: true,
+      passphraseFile: passphrase,
+      processEnv: { NOJ_BACKUP_PASSPHRASE_FILE: passphrase },
+      cosignAvailable: () => Promise.resolve(true),
+      warn: () => {},
+    });
+    assertEquals(
+      events.filter((e) => e.startsWith("read:") || e.startsWith("secret:")),
+      [],
+      "配置完整时不得有任何交互",
+    );
+    assertEquals(
+      result.steps.some((s) => s.name === "configure"),
+      false,
+      "没做任何事时不得记录 configure 步骤",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+    await Deno.remove(root, { recursive: true });
+  }
 });
 
 Deno.test("install 半成品目录（仅有 compose、缺 .env.prod）：允许覆盖重下，不误判为空目录", async () => {

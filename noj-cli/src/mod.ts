@@ -306,9 +306,17 @@ export type {
 // lifecycle（T12）：**唯一**生产安装路径。串起 T9 bootstrap（下载 + SHA-256
 // 校验）、T11 配置向导/校验/口令/验签与 T10 compose 调用；runner / fetcher / IO /
 // 安装目录全部可注入，测试不触网、不起容器。后续 T13–T16 在同一文件追加动作。
-export { install, PATH_LINE, registerCommand } from "./prod/lifecycle.ts";
-// profile（T5→T12）：生产安装目录特征文件的**唯一事实源**。T12 的已安装判定与
-// getProfile 探测都消费它，避免出现第三份标记清单（T5 carry-forward）。
+export {
+  install,
+  // 仅为可测而导出：首装报错清单需按 judge 状态条件化（review Minor 2）。
+  missingConfigError,
+  PATH_LINE,
+  registerCommand,
+} from "./prod/lifecycle.ts";
+// profile（T5）：生产安装目录特征文件的**唯一事实源**，由 getProfile 探测消费，
+// 避免出现第三份标记清单（T5 carry-forward）。**T12 的 install 不再用它做
+// "保留既有配置 vs 首装 seed"判定**（那由 .env.prod 自身是否存在决定，见
+// review Finding 1 与 lifecycle.ts 的 envFileExists）。
 export { PRODUCTION_MARKERS } from "./profile.ts";
 export type {
   InstallOptions,
