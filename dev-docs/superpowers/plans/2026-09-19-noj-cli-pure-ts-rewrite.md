@@ -728,7 +728,7 @@ snapshot-<ts>.nojbackup
 7. **`--no-encrypt`**：仍产出单文件（`.nojbackup` 内含未加密 tar.zst），manifest 的
    `encrypted: false` 如实记录。缺口令且未 `--no-encrypt` → 明确报错（bash :227）。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 - **二进制完整性（最高价值）**：注入 fake runner，令其"经 stdoutFile 写出"一段
   **含 `\x00` 的字节**，断言落盘文件**逐字节等于**该字节序列；同时断言该次采集
@@ -746,9 +746,9 @@ snapshot-<ts>.nojbackup
   残留（`finally` 生效）。
 - **缺口令**：无口令且未 `--no-encrypt` → 明确报错且零产物。
 
-- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+- [x] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 - `container.ts`：纯格式层（manifest 形状与序列化、checksums 生成与解析、打包/加密/
   解包的编排），**一切外部命令经注入的 driver**，不直接 spawn。
@@ -759,9 +759,9 @@ snapshot-<ts>.nojbackup
   `gpgEncrypt`/`gpgDecrypt`/`tarZst`/`untarZst` 建立在其上。
 - 复用既有 `util/hash.ts:fileSha256Hex`（流式摘要，不整读进内存）。
 
-- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+- [x] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
 
-- [ ] **Step 5: 提交** — `feat(cli): .nojbackup 单文件容器与 prod-raw 驱动（文件重定向采二进制）`
+- [x] **Step 5: 提交** — `feat(cli): .nojbackup 单文件容器与 prod-raw 驱动（文件重定向采二进制）`
 
 **明确不做**：不实现 verify/list/prune/restore 命令面（T18）；不实现 drill（T19）；
 不删 bash（T24）；不改 `maintain/` 既有 JSON 模式备份（T23 才收敛）。
