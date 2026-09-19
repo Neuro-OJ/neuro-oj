@@ -231,6 +231,53 @@ export {
   validateTargetDir,
 } from "./prod/bootstrap.ts";
 export type { DownloadReleaseFilesOptions, Fetcher } from "./prod/bootstrap.ts";
+// backup（T17）：`.nojbackup` 单文件容器 + prod-raw payload driver。
+// 容器形态**唯一**（payload_layout 恒为 "prod-raw"，无历史兼容）；二进制经
+// **文件重定向**采集（spawn 的 stdoutFile），不走 stdout 字符串——见 driver.ts 模块头。
+export {
+  allocateContainerPath,
+  BACKUP_SUFFIX,
+  CONTAINER_FILES,
+  ContainerError,
+  containerFileName,
+  createContainer,
+  type CreateContainerOptions,
+  type CreateContainerResult,
+  DEFAULT_RETENTION_DAYS,
+  DEFAULT_ZSTD_LEVEL,
+  fileSha256HexStreaming,
+  listFiles,
+  MANIFEST_DEFAULTS,
+  parseChecksums,
+  PAYLOAD_LAYOUT,
+  renderChecksums,
+  SCHEMA_VERSION,
+  SUCCESS_MARKER,
+  tempContainerPath,
+  utcTimestamp,
+} from "./prod/backup/container.ts";
+export type {
+  BackupManifest,
+  ChecksumEntry,
+  ContainerPayloadOps,
+  ContainerStage,
+} from "./prod/backup/container.ts";
+export { Sha256, sha256BytesHex } from "./prod/backup/sha256.ts";
+export {
+  CaptureError,
+  createProdPayloadOps,
+  MINIO_CLIENT_IMAGE,
+  postgresEnvOf,
+  prodComposeArgs,
+  realRawDriver,
+} from "./prod/backup/driver.ts";
+export type {
+  ProdComposeContext,
+  ProdPayloadOps,
+  ProdPayloadOptions,
+  RawDriver,
+  RawIO,
+} from "./prod/backup/driver.ts";
 // release（T16）：生产升级的版本解析与版本配置落盘（production.sh 的
 // validate_release_tag / latest_release_version / configured_version /
 // write_config_version）。过滤规则与 runtime/download.ts **同源**
