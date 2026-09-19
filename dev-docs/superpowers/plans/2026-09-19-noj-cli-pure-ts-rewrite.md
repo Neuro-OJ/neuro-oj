@@ -491,11 +491,51 @@ jj new
 
 ---
 
-## Task 13–26（概要；执行前逐个展开为完整任务块）
+## Task 13: start / stop / restart / status（含 T4 状态机接线）
+
+**Files:**
+- Modify: `noj-cli/src/prod/lifecycle.ts`（加 start/stop/restart/status）
+- Modify: `noj-cli/src/prod/lifecycle_test.ts`
+- Create: `noj-cli/src/prod/lifecycle/steps.ts`（T12 评审建议：把 compose 编排段拆出，为 T14–T16 预留结构）
+- Modify: `noj-cli/src/mod.ts`
+
+**Consumes**：T4 `prodState`/`transition`/`upIsNoOp`/`downIsNoOp`；T10 `composeUp`/`composeDown`/`composePs`（`ComposeResult`，须 `Array.isArray` 收窄）；T11 `checkRequiredValues`/`checkEnvFileMode`；T12 `install()` 的既有步骤结构
+
+**⚠️ T12 的 CARRY-FORWARD**：install 曾**有意**不落状态（与 bash 一致），已登记延后到本任务。**本任务必须接线 T4 状态机**：`status` 用 `prodState(docker compose ps 输出)` 推断状态；`start`/`stop` 用 `upIsNoOp`/`downIsNoOp` 做 no-op 判定。
+
+**对照 bash（R3）**：`deploy.sh` `start()`(:1027)、`stop()`(:1045)、`status()`(:1112)、`wait_for_stack()`(:981-993)、`prepare_and_check()`(:994)。
+
+- [ ] **Step 1: 写失败测试**
+
+`lifecycle_test.ts` 追加（注入 runner，无真实 docker）：
+- **status**：给注入的 `compose ps` 输出（全 Up / 混合 / 全 Exited / 空），断言 `prodState` 结论与报告形状（running/partial/stopped）；退出码 0。
+- **start**：已 running 时**no-op**（不重复 up；断言 runner 未被调用 up）；stopped 时执行 up（含 `--wait`）。
+- **stop**：已 stopped 时 no-op；running 时执行 `stop`（**不得** down -v，断言参数含 `stop` 或不含 `-v`）。
+- **restart**：先 stop 再 up 的顺序断言。
+- **wait_for_stack 语义**：断言 `up -d --wait --wait-timeout 180 --remove-orphans` + 第二次 `up -d --force-recreate --no-deps nginx`（T12 未迁，本任务补齐）。
+- **失败传播**：wait 失败 → 非零退出并提示 `status`/`logs`（对照 bash `fail` 文案）。
+- **权限/配置前置**：`.env.prod` 权限非 600/400 → 拒绝；缺必需配置 → 报错（复用 T11/T12 的既有判定，勿重写）。
+
+- [ ] **Step 2: 运行确认失败** — `cd noj-cli && deno task test 2>&1 | tail -5`
+
+- [ ] **Step 3: 实现**
+
+- 把 compose 编排段抽到 `prod/lifecycle/steps.ts`（T12 评审建议），`lifecycle.ts` 保留命令入口；**不得**为此改动 T10 的公开契约。
+- `start`/`stop`/`restart`/`status` 各自实现；`restart` 走 stop→up。
+- `status` 输出用 T8 的表格/状态符号（人类可读），并保留 `--json` 机器可读（T6 通道，stdout 只含 JSON）。
+
+- [ ] **Step 4: 运行确认通过** — `cd noj-cli && deno task check && deno task test`
+
+- [ ] **Step 5: 提交** — `feat(cli): 迁移 start/stop/restart/status 并接线 T4 状态机`
+
+**明确不做**：不删 bash（T24）；不实现 logs/uninstall/update（T14–T16）与备份（T17–T19）；不改 T10 契约。
+
+---
+
+## Task 14–26（概要；执行前逐个展开为完整任务块）
 
 | Task | 文件 | 验收要点 |
 | --- | --- | --- |
-| T13 start/stop/restart/status | 同上 | 状态机 no-op 判定；退出码 |
 | T14 logs | 同上 | 着色契约；`--follow` |
 | T15 uninstall | 同上 | 确认词；`--all`；拒绝 Git/jj 工作区 |
 | T16 update | 同上 | 版本解析（资产就绪过滤）；备份；健康检查 |
