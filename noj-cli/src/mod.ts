@@ -278,6 +278,78 @@ export type {
   RawDriver,
   RawIO,
 } from "./prod/backup/driver.ts";
+// drill（T19）：隔离恢复演练的**原生**移植（零 bash / 脚本调用）。
+// 隔离性三保证：独立项目名（拒绝含 prod）、独立子网、**不映射宿主机端口**；
+// 业务验收由 CLI 直接发 HTTP（经容器 IP），不再依赖额外的 deno 容器镜像。
+export {
+  allocateDrillDir,
+  assertDrillProjectName,
+  assertSubnetCidr,
+  checkDrillPreflight,
+  checkPassphraseFile,
+  DEFAULT_DRILL_PROJECT_NAME,
+  DEFAULT_DRILL_SUBNET,
+  DEFAULT_EVALUATOR_IMAGE,
+  DEFAULT_RPO_MAX_HOURS,
+  DEFAULT_RTO_MAX_MINUTES,
+  DEFAULT_SOLUTION_IMAGE,
+  DEFAULT_WAIT_TIMEOUT,
+  DRILL_ADMIN_EMAIL_DOMAIN,
+  DRILL_ADMIN_PASSWORD,
+  DRILL_ADMIN_USER,
+  DRILL_BCRYPT_HASH,
+  DRILL_MIN_FREE_BYTES,
+  DRILL_NETWORK_NAME,
+  drillCleanupArgs,
+  drillComposeArgs,
+  drillDirName,
+  DrillPreflightError,
+  probeDocker,
+  probeFreeBytes,
+  readEnvValues,
+  renderDrillOverride,
+  resolveReportPath,
+  valueOr,
+} from "./prod/drill/plan.ts";
+export {
+  buildDrillBundle,
+  runBusinessVerification,
+} from "./prod/drill/verify.ts";
+export type {
+  VerifyOptions,
+  VerifyResult,
+  VerifyStep,
+} from "./prod/drill/verify.ts";
+export {
+  CREDENTIAL_NOTE,
+  DRILL_METRICS_FILE,
+  DRILL_TYPE,
+  formatHours,
+  hoursSinceSnapshot,
+  METRIC_LAST_SUCCESS,
+  metricsDirOf,
+  renderChecks,
+  renderDrillMetrics,
+  renderFailureReport,
+  renderReport,
+  REPORT_FILE_NAME,
+  snapshotCreatedAt,
+} from "./prod/drill/report.ts";
+export type {
+  ChecksInput,
+  FailureReportInput,
+  ReportInput,
+} from "./prod/drill/report.ts";
+export {
+  makeIdempotentGlobals,
+  runDrill,
+  tailLines,
+} from "./prod/drill/drill.ts";
+export type {
+  DrillRunOptions,
+  DrillRunResult,
+  JudgeImageContext,
+} from "./prod/drill/drill.ts";
 // backup 命令面（T18）：verify 三档 / list / prune（默认 dry-run）/ restore --dry-run。
 // 三条硬约束：三档累加；prune 默认零删除；四个命令都不得创建备份（实测过的误路由）。
 export {
