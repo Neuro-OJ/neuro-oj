@@ -250,3 +250,66 @@ Deno.test("T23 残留门禁: Tier 类型与分区表只剩单模态", () => {
     if (tier === "global") assertEquals(text.includes("全局命令"), true);
   }
 });
+
+// ── T26：能力可达性门禁（补防漂移门禁的盲区）────────────────────────
+//
+// **这个盲区真实存在过。** T21 交付了 `prod/judge/*`（36 个测试全过），但 `judge`
+// 既没登记进 `PRODUCTION_COMMANDS`、也没有分发分支——**该能力从 CLI 完全不可达**，
+// 而 36 个测试全绿也没发现，因为它们只断言模块**内部**行为。
+//
+// 已有的"防漂移门禁"只检查单向（`declared ⊆ dispatchable`），因此只能抓
+// "help 里有、分发里没有"；抓不到反向的"**实现有、命令面上没有**"。
+// 本门禁补上反向：`prod/` 下的每个**域模块**都必须有可达的命令入口。
+
+Deno.test("T26 可达性门禁: prod/ 的每个域模块都有可达的 CLI 入口", async () => {
+  // 域模块 → 期望可达的顶层命令。**新增域模块时必须在此登记**——
+  // 这是本门禁的"人审锚点"：忘记登记会让该模块的实现对用户不可见。
+  const DOMAIN_TO_COMMAND: Record<string, string> = {
+    // T19 隔离恢复演练：经由 `backup drill`
+    "drill/drill.ts": "backup",
+    // T20 crontab 标记区块：经由 `backup schedule`
+    "schedule.ts": "backup",
+    // T21 独立 Judge：顶层命令 `judge`
+    "judge/actions.ts": "judge",
+    // T17/T18 备份容器与命令面：经由 `backup`
+    "backup/commands.ts": "backup",
+    // T12–T16 生命周期：顶层生产命令
+    "lifecycle.ts": "install",
+  };
+
+  const handled = await dispatchableTopLevelNames();
+  const declared = declaredTopLevelNames();
+  const problems: string[] = [];
+  for (const [mod, command] of Object.entries(DOMAIN_TO_COMMAND)) {
+    if (!(await fileExists(`./prod/${mod}`))) {
+      problems.push(`${mod} 不存在（域模块被删但映射未更新）`);
+      continue;
+    }
+    if (!handled.has(command)) {
+      problems.push(`${mod} 已交付，但命令 ${command} 不可分发（能力不可达）`);
+    }
+    if (!declared.has(command)) {
+      problems.push(
+        `${mod} 已交付，但命令 ${command} 未在 help 声明（用户发现不了）`,
+      );
+    }
+  }
+  assertEquals(
+    problems,
+    [],
+    `能力可达性缺陷：\n${problems.join("\n")}`,
+  );
+});
+
+/**
+ * 文件是否存在（本地小工具，避免引入额外依赖）。
+ *
+ * 相对路径以**本测试文件所在目录**（`src/`）为基准解析，故调用方传 `./prod/...`。
+ */
+async function fileExists(relativePath: string): Promise<boolean> {
+  try {
+    return (await Deno.stat(new URL(relativePath, import.meta.url))).isFile;
+  } catch {
+    return false;
+  }
+}
