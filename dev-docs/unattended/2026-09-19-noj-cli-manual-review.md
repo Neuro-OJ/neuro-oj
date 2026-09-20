@@ -130,6 +130,31 @@
 - **不通过的后果**：调用方（脚本/CI）无法据退出码区分"环境不对"与"参数错"，
   自动化编排会误判。
 
+### B5. judge 的接线与 `install-env` 是否完整？（T26 发现后已修，需复核修复质量）
+
+- **背景**：T21 交付 `prod/judge/*`（36 测试）但**未接线**——`judge` 不在
+  `PRODUCTION_COMMANDS`、无分发分支，`judge install-env` **完全未实现**。
+  测试全绿也没发现，因为它们只测模块内部行为。
+- **已修**：实现 `judgeInstallEnv` + 接入注册表/分发 + 新增**可达性门禁**。
+- **动作**：
+  ```bash
+  cd noj-cli && deno task build:cli
+  B=bin/noj-cli-linux-amd64
+  $B judge --dir /tmp/nojinstall          # 非法/缺子命令 → 2，并列出可选值
+  $B judge install-env --dir /tmp/nojinstall   # 真实 Docker：打印指引，exit 0
+  rg -n 'name: "judge"' src/commands.ts
+  rg -n '"judge"' src/production.ts
+  ```
+- **期望**：8 个子命令全部可达；`install-env` 打印四条隔离条件 + 安全边界声明。
+- **请判断**：
+  1. `judge install-env` 的**退出码 1**（daemon 不可连）是否接受？bash
+     `judge-install.sh:51-54` 的 `fail()` 也是 1，故按逐命令 parity 取 1——
+     但这与 `judge` 模块内"2 = 前置错误"的通用分层不同，是有意的例外。
+  2. `judge upgrade` 不接受 `--version`（版本取自配置文件）——是否符合预期？
+     bash 侧 `upgrade_worker` 也从环境文件读版本。
+  3. 是否还有其他"模块已交付但未接线"的能力？建议用可达性思路再扫一遍。
+- **不通过的后果**：能力存在但用户无法使用——T21 的 36 个测试给了虚假的安全感。
+
 ## C. 低优先级：文档与呈现
 
 ### C1. `ROADMAP.md` 的证据引用是否可核对？
@@ -169,6 +194,7 @@ T26 取证过程中发现并**单独提交**的修复（未混入证据文档）
 | # | 缺陷 | 提交 | 复核方式 |
 |---|---|---|---|
 | 1 | 目录定位失败退出码随 `--profile` 显隐而变（2 vs 1） | `fix(cli): 目录定位失败的退出码不再取决于是否显式 --profile` | 见 B4 的动作 |
+| 1b | **judge 从 CLI 完全不可达**，且 `judge install-env` 未实现 | `fix(cli): 接通 judge 命令并补上缺失的 install-env` | 见下方 B5 |
 
 前序 Task 中修复的**真实缺陷**（均有独立提交与回归测试）：
 

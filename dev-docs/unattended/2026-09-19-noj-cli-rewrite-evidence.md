@@ -9,7 +9,7 @@
 
 | 指标 | 基线 | 现状 | 说明 |
 |---|---|---|---|
-| `deno task test` | 323 passed / 0 failed | **680 passed / 0 failed** | +357（T2–T26 新增覆盖） |
+| `deno task test` | 323 passed / 0 failed | **683 passed / 0 failed** | +360（T2–T26 新增覆盖） |
 | `deno task check` | exit 0（fmt 108 / lint 106） | exit 0（fmt 101 / lint 99） | 文件数**下降**：T23 删除双模态（155 → 98 后回升到 101） |
 | `noX-cli/src` bash 调用 | 1 处（`production.ts:112`） | **0 处** | 见 R1 |
 | `scripts/deploy/*.sh` 行数 | 7367 | **2402**（保留 4 个文件） | 见下方"bash 退场" |
@@ -19,7 +19,7 @@
 复核：
 
 ```bash
-cd noj-cli && deno task test 2>&1 | tail -2      # ok | 680 passed | 0 failed
+cd noj-cli && deno task test 2>&1 | tail -2      # ok | 683 passed | 0 failed
 cd noj-cli && deno task check 2>&1 | tail -3     # Checked 101 / Checked 99
 wc -l ../scripts/deploy/deploy.sh ../scripts/deploy/restore-drill.sh \
       ../scripts/deploy/backup.sh ../scripts/deploy/deprecation-gate.sh | tail -1   # 2402 总计
@@ -158,6 +158,41 @@ status --profile prod --dir /nonexistent  → 1
 `UsageError`(2)。已修：生产命令跳过探测，目录判定完全交给 `findProductionDir`
 （`ProductionDirError` → 1）。修复后实测全部为 **1**，且 `--profile stack` 仍为 2、
 未知命令仍为 2、Tier 3 help 仍为 0。提交：`fix(cli): 目录定位失败的退出码不再取决于是否显式 --profile`。
+
+## 5.1 T26 取证发现的第二个真实缺陷：judge 不可达
+
+编译产物实测发现（**测试全绿也未曾触及**）：
+
+```text
+$ noj-cli judge status      → exit 2
+$ noj-cli judge install-env → exit 2
+```
+
+T21 交付了 `prod/judge/*` 与 36 个测试，但 `judge` 既不在 `PRODUCTION_COMMANDS`、
+也无分发分支——**该能力从 CLI 完全不可达**。且 `judge install-env`（bash
+`judge-install.sh:847-867`，独立节点部署的**入口**）在 TS 侧**完全没有实现**，
+而 `compose.ts:289` 的报错恰好是"请先执行 install-env"——指向一个不存在的命令。
+
+已修（提交：`fix(cli): 接通 judge 命令并补上缺失的 install-env`）：
+实现 `judgeInstallEnv`（逐条对照 bash，含四条隔离条件与安全边界声明）、
+把 `judge` 接入生产命令与注册表、新增**反向门禁**断言"judge 必须可从 CLI 到达"。
+
+修复后实测（真实 Docker）：
+
+```bash
+$ noj-cli judge install-env --dir /tmp/nojinstall
+✓ Docker daemon 与 Compose 可用
+请确认已准备以下隔离条件：
+  1. 只服务于 Judge 的 rootless Docker daemon；
+  2. 独立 Unix socket（例如 /run/noj-judge/docker.sock）；
+  3. Worker 用户的 UID/GID 及 socket group 权限；
+  4. 与 noj-core 使用同一 Redis、任务队列和结果队列。
+本工具不会自动安装或替换 Docker daemon，也不会把 /var/run/docker.sock 提供给 Judge。
+Judge 部署依赖检查通过          # exit 0
+```
+
+> **教训**：T21 的 36 个测试全过，但测的都是**模块内部**行为——没有一条断言
+> "能从 CLI 调用到它"。新加的门禁断言的正是**可达性**，不是"某个函数存在"。
 
 ## 6. R4 · 移除自举
 
