@@ -9,7 +9,7 @@
 
 | 指标 | 基线 | 现状 | 说明 |
 |---|---|---|---|
-| `deno task test` | 323 passed / 0 failed | **683 passed / 0 failed** | +360（T2–T26 新增覆盖） |
+| `deno task test` | 323 passed / 0 failed | **684 passed / 0 failed** | +361（T2–T26 新增覆盖） |
 | `deno task check` | exit 0（fmt 108 / lint 106） | exit 0（fmt 101 / lint 99） | 文件数**下降**：T23 删除双模态（155 → 98 后回升到 101） |
 | `noX-cli/src` bash 调用 | 1 处（`production.ts:112`） | **0 处** | 见 R1 |
 | `scripts/deploy/*.sh` 行数 | 7367 | **2402**（保留 4 个文件） | 见下方"bash 退场" |
@@ -19,7 +19,7 @@
 复核：
 
 ```bash
-cd noj-cli && deno task test 2>&1 | tail -2      # ok | 683 passed | 0 failed
+cd noj-cli && deno task test 2>&1 | tail -2      # ok | 684 passed | 0 failed
 cd noj-cli && deno task check 2>&1 | tail -3     # Checked 101 / Checked 99
 wc -l ../scripts/deploy/deploy.sh ../scripts/deploy/restore-drill.sh \
       ../scripts/deploy/backup.sh ../scripts/deploy/deprecation-gate.sh | tail -1   # 2402 总计
@@ -99,7 +99,7 @@ rg -n 'noj-deploy\.json' noj-cli/src --glob '!*_test.ts' | grep -v '^\S*: *\*' |
 |---|---|---|
 | `src` 内零 bash / 脚本调用 | ✅ | `prod/cli_test.ts` 的 R1 门禁（**剥掉注释后**检查代码），全过 |
 | `deno compile` 产物可独立工作 | ✅ | 见下方实测 |
-| `scripts/deploy/*.sh` 逻辑均有 TS 实现 | ✅ | 逐命令对照见 T12–T21 各 Agent Note；`deno task test:production` = 411 passed |
+| `scripts/deploy/*.sh` 逻辑均有 TS 实现 | ✅ | 逐命令对照见 T12–T21 各 Agent Note；`deno task test:production` = 414 passed |
 
 **编译产物实测**（`/tmp` 下独立目录，无仓库脚本）：
 
@@ -141,7 +141,7 @@ $ echo $?                                    # 1
 | 验收项 | 判定 | 证据 |
 |---|---|---|
 | 逐条对照表 | ✅ | 各 Task 的 Agent Note 内（每模块 `## 与 bash 的有意差异`） |
-| 每个 `test-*.sh` 的行为有 TS 测试 | ⚠️ | 9 个 `test-*.sh` 已删；覆盖由 `prod/*_test.ts`（411 个）承接，但**未做逐条映射表** |
+| 每个 `test-*.sh` 的行为有 TS 测试 | ⚠️ | 9 个 `test-*.sh` 已删；覆盖由 `prod/*_test.ts`（414 个）承接，但**未做逐条映射表** |
 | 副作用断言（文件系统可验证） | ✅ | 备份"零残留"、crontab 前后、`--dry-run` 零副作用等均有断言 |
 | 退出码 0/1/2 逐命令一致 | ⚠️ | 见下方"已知偏差"（T26 修了一处，另有一处**有意保留**） |
 
