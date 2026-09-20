@@ -37,6 +37,10 @@ SHA-256 → 生成 `.env.prod`（600，含自动生成的强随机密钥）→ �
 > Release 必须同时包含 CLI
 > 二进制、校验文件与两个部署文件；缺少资产时**明确报错**， 不会混用不同版本。
 
+> **运行时依赖（重要）**：二进制是**动态链接 glibc** 的，因此需要 glibc 系统
+> （Debian / Ubuntu / RHEL / CentOS 等）。**Alpine 等 musl 发行版不能运行**
+> （实测报 `not found`）——若目标主机是 Alpine，请在宿主机或 glibc 容器内执行。
+
 ## 日常运维
 
 ```bash

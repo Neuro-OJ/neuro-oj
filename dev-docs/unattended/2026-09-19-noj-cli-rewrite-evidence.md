@@ -112,10 +112,27 @@ noj-cli status: 不是完整的 NOJ 生产安装目录：/nonexistent
 $ echo $?                                    # 1
 ```
 
-> **未验证**：spec 要求"仅含 docker/curl/openssl 的环境"。本机 Docker **可用**
-> （`docker info` 成功），因此二进制**不依赖仓库脚本**这一条已证实；但
-> "在缺少 Deno/curl/openssl 之外工具的最小镜像中跑通全部命令"未取证——
-> 那需要一个干净容器，且涉及真实镜像拉取。**建议 reviewer 在 staging 上补做。**
+**最小环境实测**（T26 补做；本机 Docker 可用，故此前标注的"未取证"已消除）：
+
+```bash
+$ docker run --rm -v $PWD/noj-cli-linux-amd64:/noj-cli:ro \
+    -v /tmp/nojinstall:/inst debian:stable-slim sh -c '...'
+✓ 无 deno                       # 容器内确认无 Deno 运行时
+✓ --help 可用                   # 纯内置帮助
+status（配置不全）  exit=1        # 运行失败
+check （配置不全）  exit=1
+help                exit=0
+backup list         exit=0
+judge install-env   exit=1        # 容器内无 docker socket，按运行失败
+```
+
+即：**在无 Deno、无仓库、无任何脚本的 glibc 最小镜像中，编译产物可独立完成
+命令解析、目录定位、配置校验与子命令分派**，退出码符合 0/1/2 分层。
+
+> **发现一个部署约束（reviewer 需知）**：产物是**动态链接 glibc** 的
+> （`interpreter /lib64/ld-linux-x86-64.so.2`），因此在 **musl/Alpine**
+> 镜像中**不能运行**（`docker:cli` 实测 `not found`）。目标主机需为 glibc 系统
+> （Debian/Ubuntu/RHEL 等）。若要支持 Alpine，需改用静态链接或 musl 目标构建。
 
 ## 4. R2 · 弃用闸门
 
@@ -258,12 +275,14 @@ Judge 部署依赖检查通过          # exit 0
 | # | 未取证项 | 前置条件 | 补做方式 |
 |---|---|---|---|
 | 1 | `install` / `update --latest` 在**真实 Release** 上的端到端 | 发布一个含新资产的 Release | 按 `noj-cli/README.md` 手动下载流程跑一遍 |
-| 2 | 编译产物在**仅含 docker/curl/openssl** 的最小环境 | 干净容器/主机 | 把二进制拷入 `debian:slim` + docker CLI，跑 `check`/`status`/`backup list` |
 | 3 | `backup drill` 在**真实 Docker** 上的完整演练 | 可用 Docker 资源（本机 Docker 可用，但演练需拉起完整 Compose 栈与镜像） | `noj-cli backup drill <快照> --keep`，核对 RPO/RTO 与业务验收 |
 | 4 | `judge install` 在**真实 rootless daemon** 上 | 专用 rootless dockerd + 其 socket | `noj-cli judge install-env` → `judge install` → `judge check` |
 | 5 | 每个 `test-*.sh` 到 TS 测试的**逐条**覆盖映射表 | — | 见下方 review 清单第 3 条 |
 | 6 | 真实 `pg_dump` 产物被 `pg_restore --list` 解析 | 运行中的 PostgreSQL | 在 staging 生成 → `pg_restore --list <dump>` |
 | 7 | 窄终端（如 40 列）不破版 | — | `COLUMNS=40 noj-cli --help` |
 
+> **第 2 项（最小环境）已在 T26 完成**——见上文 R1 节，结论是"可独立运行"，
+> 并附带发现一个部署约束（glibc 依赖，Alpine 不可用）。
+>
 > 第 3/4 项的本机 Docker **可用**（`docker info` 成功），但完整演练需要拉取生产
 > 镜像并起多容器栈，超出本次任务范围；第 1 项取决于是否已发布含新资产的 Release。

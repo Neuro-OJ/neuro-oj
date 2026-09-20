@@ -15,6 +15,8 @@
 - 启用同机 Judge 做低并发公测，起始建议至少 4 vCPU、8 GiB 内存、4 GiB Swap、目标磁盘 40 GiB 可用，最终规模必须按[容量基线](./capacity-baseline.md)实测确认。
 - Docker Engine 和 Docker Compose v2，当前用户可以运行 Docker。
 - `curl` 或 `wget`、`tar`、`openssl`、CA 证书。
+- **glibc 系统**（Debian / Ubuntu / RHEL / CentOS 等）：`noj-cli` 二进制动态链接
+  glibc，**Alpine 等 musl 发行版不能运行**（实测报 `not found`）。
 - 能够访问 GitHub 源码地址和 `ghcr.io/neuro-oj/` 镜像；网络受限时请先配置 Docker 镜像源或代理。
 - 正式网站建议准备域名和 HTTPS 证书；临时测试可使用服务器 IP 和 HTTP。
 

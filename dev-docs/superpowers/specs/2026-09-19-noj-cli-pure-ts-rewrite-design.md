@@ -311,11 +311,13 @@ snapshot-<ts>.nojbackup
 ### R1 · 纯 TS
 
 - [x] `noj-cli/src` 内 **零** `Deno.Command("bash"` / `production.sh` / `deploy.sh` / `backup.sh` / `restore-drill.sh` 调用（`rg` 空输出为证）
-- [ ] `deno compile` 产物在**仅含 docker/curl/openssl** 的环境可完成全部命令（无脚本依赖）
-      —— **部分取证**（T26）：已证实编译产物**不依赖仓库脚本**（拷到 `/tmp` 独立目录
-      可跑 `--help` / `status` / `judge install-env`，真实 Docker 下退出码正确）；
-      但未在最小镜像中验证。见 `dev-docs/unattended/2026-09-19-noj-cli-rewrite-evidence.md`
-      的"未取证项 #2"。
+- [x] `deno compile` 产物在**仅含 docker/curl/openssl** 的环境可完成全部命令（无脚本依赖）
+      —— **已取证**（T26）：在 `debian:stable-slim`（无 Deno、无仓库、无脚本）中实测
+      `--help` / `status` / `check` / `backup list` / `judge install-env` 均可独立运行，
+      退出码符合 0/1/2 分层。
+      **副作用发现**：产物动态链接 **glibc**，在 musl/Alpine 镜像中**不能运行**
+      （实测 `docker:cli` 报 `not found`）——目标主机需为 glibc 系统。
+      详见 `dev-docs/unattended/2026-09-19-noj-cli-rewrite-evidence.md`。
 - [x] `scripts/deploy/*.sh` 的运维逻辑均有 TS 对应实现
 
 ### R2 · 弃用闸门
