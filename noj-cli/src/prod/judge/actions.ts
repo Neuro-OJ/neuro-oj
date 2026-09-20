@@ -31,6 +31,7 @@
 import type { CommandRunner } from "../../runtime/command.ts";
 import { UsageError } from "../../util/args.ts";
 import {
+  assertDedicatedSocket,
   assertJudgeConfigValues,
   assertJudgeEnvFileMode,
   checkJudgeHost,
@@ -412,6 +413,14 @@ async function prepareExisting(
     }
     const env = await readJudgeEnv(paths.envFile);
     assertJudgeConfigValues(env);
+    // **配置文件本身也必须过共享 socket 守卫**（评审发现 Important）：
+    // 此前只有 `check`/`install` 会调 `assertDedicatedSocket`，而
+    // `start`/`stop`/`status`/`logs`/`upgrade` 走 `prepareExisting`——
+    // 于是**手工把 `JUDGE_DOCKER_SOCKET` 改成宿主 socket 后，
+    // `judge start` 会照常启动**（实测：`judge check` 正确拒绝，
+    // `judge start` 却继续拉起容器）。守卫必须是"加载既有配置"的固有一步，
+    // 而不是某几个子命令各自记得调用。
+    assertDedicatedSocket(env["JUDGE_DOCKER_SOCKET"] ?? "");
     return { ok: true, paths, env };
   } catch (err) {
     return {

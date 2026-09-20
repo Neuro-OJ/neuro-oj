@@ -256,3 +256,79 @@ Deno.test("评审: 生产命令的 --dry-run 拒绝不影响 judge（已实现�
     UsageError,
   );
 });
+
+// ── 评审发现（Important）：judge start 不校验专用 socket ──────────────
+//
+// `assertDedicatedSocket` 此前只被 `check`/`install` 调用，而
+// `start`/`stop`/`status`/`logs`/`upgrade` 走 `prepareExisting` —— 于是
+// **手工把 `JUDGE_DOCKER_SOCKET` 改成宿主 socket 后，`judge start` 会照常启动**
+// （实测：`judge check` 正确拒绝，`judge start` 却继续拉起容器）。
+// 即守卫成了"某几个子命令各自记得调用"的东西，而不是加载配置的固有一步。
+
+Deno.test("评审: 所有走 prepareExisting 的子命令都必须拒绝共享 socket", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "judge");
+    await Deno.mkdir(dir, { recursive: true });
+    const envFile = join(dir, ".env.judge");
+    await Deno.writeTextFile(
+      envFile,
+      [
+        "NOJ_VERSION=v0.9.5",
+        "REDIS_URL=redis://redis:6379",
+        "JUDGE_QUEUE=noj:judge:queue",
+        "RESULT_QUEUE=noj:judge:results",
+        "WORK_DIR=/var/lib/noj-judge",
+        "JUDGE_MAX_CONCURRENT_JUDGES=2",
+        "JUDGE_IMAGE_PREFIX=noj-judge",
+        "JUDGE_IMAGE_REGISTRY=ghcr.io/neuro-oj",
+        // 宿主 socket（四层守卫都应拦住）
+        "JUDGE_DOCKER_SOCKET=/var/run/docker.sock",
+        "JUDGE_DOCKER_SOCKET_GID=10001",
+        "JUDGE_UID=10001",
+        "JUDGE_GID=10001",
+        "JUDGE_DOCKER_HOST=unix:///run/noj-judge/docker.sock",
+        "JUDGE_REQUIRE_ISOLATED_DOCKER=true",
+        "",
+      ].join("\n"),
+    );
+    await Deno.chmod(envFile, 0o600);
+    await Deno.writeTextFile(
+      join(dir, "docker-compose.judge.yml"),
+      "services: {}\n",
+    );
+
+    const acts = await import("./actions.ts");
+    const base = {
+      dir,
+      envFile,
+      composeFile: join(dir, "docker-compose.judge.yml"),
+      runner: {
+        run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }),
+        spawn: () => {
+          throw new Error("no spawn");
+        },
+      },
+      log: () => {},
+    };
+    for (
+      const [name, fn] of [
+        ["start", acts.judgeStart],
+        ["stop", acts.judgeStop],
+        ["status", acts.judgeStatus],
+        ["logs", acts.judgeLogs],
+      ] as const
+    ) {
+      const r = await (fn as (o: unknown) => Promise<{ message: string }>)(
+        base,
+      );
+      assert(
+        r.message.includes("禁止使用应用宿主机 Docker socket") ||
+          r.message.includes("宿主机"),
+        `${name} 必须拒绝共享 socket，实得：${r.message}`,
+      );
+    }
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
