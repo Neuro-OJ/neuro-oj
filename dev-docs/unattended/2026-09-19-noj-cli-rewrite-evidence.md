@@ -257,9 +257,35 @@ Judge 部署依赖检查通过          # exit 0
 |---|---|---|
 | `create` 产出单文件，`payload_layout == "prod-raw"` | ✅ | `T17 create：manifest 的 payload_layout/字段/摘要时序正确` |
 | **无口令无法读取包内任何内容**（P2） | ✅ | `T18 verify：整包加密 + 缺口令 → 明确失败`；`T17 create：缺口令且未 --no-encrypt → 明确报错且零产物` |
-| `postgres.dump` 可被 `pg_restore --list` 解析 | ✅ | `T17 create：pg_restore --list 的结构校验在成功路径上（输入来自文件）` |
+| `postgres.dump` 可被 `pg_restore --list` 解析 | ✅ | T17 测试 + **真实 PostgreSQL 实测**（见下） |
 | `list`/`prune`（默认 dry-run）/`restore --dry-run`（无副作用）/`verify [--deep]` | ✅ | T18 全套用例（三档累加、篡改一字节被抓、`--payload-sha` 精确分档） |
 | 断言**不创建备份** | ✅ | `T18 list：列举容器，且不创建/不修改任何东西` |
+
+**真实 PostgreSQL 实测**（T26 补做，消除"未取证项 #6"）：
+
+```bash
+$ docker run -d --name noj-pgtest -e POSTGRES_PASSWORD=test ... postgres:16-alpine
+$ docker exec noj-pgtest psql -U noj -d noj -c "CREATE TABLE t_demo(...); INSERT ..."
+$ docker exec noj-pgtest pg_dump -U noj -Fc -d noj -f /dump/real.dump   # 真实 2543 字节
+$ docker exec noj-pgtest pg_restore --list /dump/real.dump | head -8
+; Archive created at 2026-09-20 04:56:25 UTC
+;     dbname: noj
+;     TOC Entries: 11
+;     Compression: gzip
+;     Dump Version: 1.15-0
+;     Format: CUSTOM
+# exit=0
+```
+
+并验证**与 TS 实现相同的参数形态**（stdin 喂文件、stdout 落文件，见
+`driver.ts:374` 的 `postgresRestoreList`）：
+
+```bash
+$ docker exec noj-pgtest sh -c 'pg_restore --list < /dump/real.dump > /dump/list.txt'
+exit=0；22 行 / 653 字节（非空 → 满足 `--deep` 的 `size > 0` 判据）
+```
+
+即"防二进制静默损坏"这条链路对**真实** `pg_dump -Fc` 产物成立，不只对测试夹具。
 
 **一处设计裁决（reviewer 需知）**：整包摘要**无法**写进 `manifest.json`
 （自指不可能——两轮打包永不收敛），故落在同级 `<container>.sha256` sidecar。
@@ -278,7 +304,6 @@ Judge 部署依赖检查通过          # exit 0
 | 3 | `backup drill` 在**真实 Docker** 上的完整演练 | 可用 Docker 资源（本机 Docker 可用，但演练需拉起完整 Compose 栈与镜像） | `noj-cli backup drill <快照> --keep`，核对 RPO/RTO 与业务验收 |
 | 4 | `judge install` 在**真实 rootless daemon** 上 | 专用 rootless dockerd + 其 socket | `noj-cli judge install-env` → `judge install` → `judge check` |
 | 5 | 每个 `test-*.sh` 到 TS 测试的**逐条**覆盖映射表 | — | 见下方 review 清单第 3 条 |
-| 6 | 真实 `pg_dump` 产物被 `pg_restore --list` 解析 | 运行中的 PostgreSQL | 在 staging 生成 → `pg_restore --list <dump>` |
 | 7 | 窄终端（如 40 列）不破版 | — | `COLUMNS=40 noj-cli --help` |
 
 > **第 2 项（最小环境）已在 T26 完成**——见上文 R1 节，结论是"可独立运行"，
