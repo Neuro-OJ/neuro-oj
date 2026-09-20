@@ -240,7 +240,12 @@ export function prodComposeArgs(
   }
   if (ctx.judge === true) args.push("--profile", "judge");
   if (ctx.monitoring === true) args.push("--profile", "monitoring");
-  if (ctx.noAnsi === true) args.unshift("--ansi", "never");
+  // **`--ansi` 是 `docker compose` 的旗标，不是 `docker` 的**（评审发现）：
+  // `unshift` 会把它放到数组最前（`compose` 之前）→
+  // `docker --ansi never compose …` → 实测 `unknown flag: --ansi`。
+  // 必须插在 `compose` **之后**；`lifecycle/steps.ts` 的日志路径一直是对的，
+  // 只有这里写错（且 driver_test 断言了这个错误形状，把 bug 固化了下来）。
+  if (ctx.noAnsi === true) args.splice(1, 0, "--ansi", "never");
   args.push(...command);
   return args;
 }

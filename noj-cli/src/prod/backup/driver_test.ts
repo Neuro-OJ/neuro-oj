@@ -215,7 +215,17 @@ Deno.test("T17 prodComposeArgs：参数数组形状（含 profile / project-name
     judge: true,
     noAnsi: true,
   }, ["ps"]);
-  assertEquals(withAll.slice(0, 2), ["--ansi", "never"]);
+  // **`--ansi` 必须紧跟 `compose` 之后**（评审发现）：它是 compose 的旗标。
+  // 旧断言把 `["--ansi","never"]` 钉在数组**最前**（即 `compose` 之前），
+  // 实测那会得到 `docker --ansi never compose …` → `unknown flag: --ansi`。
+  // 也就是说：**这条断言在固化一个真实的 bug**。
+  assertEquals(withAll[0], "compose");
+  assertEquals(withAll.slice(1, 3), ["--ansi", "never"]);
+  // 再钉一次不变式：`--ansi` 之后才允许出现 `compose` 的子命令
+  assert(
+    withAll.indexOf("compose") < withAll.indexOf("--ansi"),
+    "--ansi 必须在 compose 之后",
+  );
   const pn = withAll.indexOf("--project-name");
   const pf = withAll.indexOf("--profile");
   assert(pn > 0 && pf > pn, "project-name 必须在 profile 之前");
