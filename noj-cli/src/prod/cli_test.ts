@@ -1069,3 +1069,39 @@ Deno.test("评审: verify 必须真的验签（ENFORCE=true 且无 cosign → �
     await Deno.remove(dir, { recursive: true }).catch(() => {});
   }
 });
+
+// ── 评审发现：带值旗标未登记 → 旗标的值被当成位置参数 ────────────────
+//
+// `positionals()` 靠一份 `valueTaking` 清单决定"是否跳过下一个 token"。
+// 漏登记会让**旗标的值**被当成位置参数。实测：
+//
+//   backup restore --restore-env /tmp/custom.env snap.nojbackup
+//   → "只支持 .nojbackup 单文件快照：/tmp/custom.env"
+//
+// 即把 `--restore-env` 的**值**当成了快照路径，真正的快照被忽略。
+
+Deno.test("评审: 带值旗标的值不得被当成位置参数", async () => {
+  const { positionals } = await import("./cli.ts");
+  // 每种旗标：其值必须被跳过，只留下真正的位置参数
+  const cases: [string[], string[]][] = [
+    [["--restore-env", "/tmp/custom.env", "snap.nojbackup"], [
+      "snap.nojbackup",
+    ]],
+    [["--repo", "https://github.com/a/b", "snap.nojbackup"], [
+      "snap.nojbackup",
+    ]],
+    [["--version", "v1.2.3", "snap.nojbackup"], ["snap.nojbackup"]],
+    [["--redis-url", "redis://x:6379", "core"], ["core"]],
+    [["--socket-path", "/run/s.sock", "core"], ["core"]],
+    [["--older-than", "30", "snap.nojbackup"], ["snap.nojbackup"]],
+    // `--flag=value` 自带值，不消费下一个 token
+    [["--restore-env=/tmp/x.env", "snap.nojbackup"], ["snap.nojbackup"]],
+  ];
+  for (const [args, expected] of cases) {
+    assertEquals(
+      positionals(args),
+      expected,
+      `positionals(${JSON.stringify(args)}) 应为 ${JSON.stringify(expected)}`,
+    );
+  }
+});

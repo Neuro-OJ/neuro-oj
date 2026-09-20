@@ -272,6 +272,17 @@ export function positionals(args: string[]): string[] {
     "--keep",
     "--retention-days",
     "--ref",
+    // **带值的旗标必须登记在此**（评审发现）：`positionals()` 靠这份清单决定
+    // "是否跳过下一个 token"，漏登记会让旗标的**值**被当成位置参数。
+    // 实测 `backup restore --restore-env /tmp/custom.env snap.nojbackup`
+    // 会把 `/tmp/custom.env` 当成快照路径，报"只支持 .nojbackup 单文件快照"。
+    "--restore-env",
+    "--repo",
+    "--version",
+    "--redis-url",
+    "--socket-path",
+    "--env-file",
+    "--older-than",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
