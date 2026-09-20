@@ -62,6 +62,7 @@ import {
   listBackupCommand,
   prodBackupDir,
   pruneCommand,
+  restoreConfirmed,
   restorePlan,
   type RestoreStep,
   verifyCommand,
@@ -793,35 +794,83 @@ export function runBackupPrune(
   });
 }
 
-/** `backup restore --dry-run`（T18：无副作用）。 */
-export async function runBackupRestorePlan(
-  _dir: string,
+/**
+ * `backup restore`：**`--confirm` 走真实恢复，否则只出 dry-run 计划**。
+ *
+ * 这是文档承诺的语义（"恢复到已停止的 Compose 环境（需 --confirm）"）：
+ * 该旗标是"不可逆操作"的门禁，而不是装饰。此前的实现无条件走
+ * `runBackupRestorePlan`，于是带 `--confirm` 也只规划不执行——**文档承诺了
+ * 一个不存在的实现**（评审发现）。
+ *
+ * 失败一律抛错（由 `dispatchProdBackup` 统一转退出码）：
+ * 恢复失败绝不能被当成"成功但没什么可做"。
+ */
+export async function runBackupRestore(
+  dir: string,
   args: string[],
   deps: ProdCliDeps,
-): Promise<{ steps: RestoreStep[]; verified: boolean; summary: string }> {
+): Promise<
+  | {
+    kind: "dry-run";
+    steps: RestoreStep[];
+    verified: boolean;
+    summary: string;
+  }
+  | { kind: "restored"; summary: string; restored: string[]; path: string }
+> {
   const snapshot = positionals(args)[0];
   if (snapshot === undefined) {
     throw new UsageError("backup restore 需要 <snapshot> 路径");
   }
   const d = prodDeps(deps);
-  const work = await Deno.makeTempDir({ prefix: "noj-restore-plan-" });
+  const work = await Deno.makeTempDir({ prefix: "noj-restore-" });
   try {
-    const plan = await restorePlan({
+    const ops = {
+      gpgDecrypt: (src: string, dest: string, pass: string) =>
+        gpgDecrypt(d.runner, src, dest, pass),
+      untarZst: (src: string, destDir: string) =>
+        untarZst(d.runner, src, destDir),
+    };
+    // 无 --confirm：保持 dry-run（零副作用），并明确告知"未执行"
+    if (!hasFlag(args, "--confirm")) {
+      const plan = await restorePlan({
+        path: snapshot,
+        workDir: work,
+        passphraseFile: flagValue(args, "--passphrase-file"),
+        encrypted: !hasFlag(args, "--no-encrypt"),
+        restoreEnv: flagValue(args, "--restore-env"),
+        bucket: undefined,
+        ops,
+      });
+      return {
+        kind: "dry-run",
+        steps: plan.steps,
+        verified: plan.verified,
+        summary: plan.summary +
+          "\n（未执行任何变更；要真正恢复请追加 --confirm）",
+      };
+    }
+    // --confirm：真实恢复
+    const result = await restoreConfirmed({
       path: snapshot,
+      dir,
+      composeFile: join(dir, PROD_COMPOSE_FILE),
+      envFile: join(dir, PROD_ENV_FILE),
+      runner: d.runner,
+      confirm: true,
       workDir: work,
       passphraseFile: flagValue(args, "--passphrase-file"),
       encrypted: !hasFlag(args, "--no-encrypt"),
       restoreEnv: flagValue(args, "--restore-env"),
-      bucket: undefined,
-      ops: {
-        gpgDecrypt: (src, dest, pass) => gpgDecrypt(d.runner, src, dest, pass),
-        untarZst: (src, destDir) => untarZst(d.runner, src, destDir),
-      },
+      judge: false,
+      log: (line) => (deps.out ?? ((t: string) => console.log(t)))(line),
+      ops,
     });
     return {
-      steps: plan.steps,
-      verified: plan.verified,
-      summary: plan.summary,
+      kind: "restored",
+      summary: result.summary,
+      restored: result.restored,
+      path: result.path,
     };
   } finally {
     await Deno.remove(work, { recursive: true }).catch(() => {});

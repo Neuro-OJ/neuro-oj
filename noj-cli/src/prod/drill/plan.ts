@@ -461,11 +461,7 @@ export async function readEnvValues(
 }
 
 /** 带缺省值的取值（bash `${VAR:-default}` 的等价）。 */
-export function valueOr(
-  env: Record<string, string>,
-  key: string,
-  fallback: string,
-): string {
-  const v = env[key];
-  return v === undefined || v === "" ? fallback : v;
-}
+
+// `valueOr` 已移到 `prod/env-values.ts`（生产 restore 也要用，避免 backup→drill
+// 的反向依赖）。此处**再导出**以保持既有导入点不变。
+export { valueOr } from "../env-values.ts";

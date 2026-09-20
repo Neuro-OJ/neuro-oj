@@ -1070,3 +1070,187 @@ Deno.test("T18 copyTree 辅助自检：确保测试打包器忠实（往返一�
     await Deno.remove(root, { recursive: true });
   }
 });
+
+// ── 用户要求：backup restore --confirm 执行**真实恢复** ──────────────
+//
+// 文档与 help 一直承诺"恢复到已停止的 Compose 环境（需 --confirm）"，
+// 而实现只有 dry-run 规划器（`restorePlan` 的 `dryRun` 恒为 true）。
+// 本组用例钉住真实恢复的三条契约：
+//   1. **无 `--confirm` 必须拒绝**（不可逆操作）；
+//   2. **服务未停必须拒绝**（对齐 bash `ensure_stopped`）；
+//   3. 带 `--confirm` 时执行真实恢复序列（PostgreSQL → Redis → MinIO），
+//      且恢复后**停止数据服务**等人工检查（bash 语义）。
+
+Deno.test("新增 restore --confirm：无确认时拒绝，且零 compose 调用", async () => {
+  const { restoreConfirmed } = await import("./commands.ts");
+  const calls: string[] = [];
+  const runner = {
+    run: (cmd: string, args: string[]) => {
+      calls.push([cmd, ...args].join(" "));
+      return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+    },
+    spawn: () => {
+      throw new Error("no spawn");
+    },
+  };
+  await assertRejects(
+    () =>
+      restoreConfirmed({
+        path: "/tmp/x.nojbackup",
+        dir: "/tmp/install",
+        composeFile: "/tmp/install/docker-compose.prod.yml",
+        envFile: "/tmp/install/.env.prod",
+        runner,
+        confirm: false,
+        workDir: "/tmp/work",
+        ops: {
+          gpgDecrypt: () => Promise.resolve(),
+          untarZst: () => Promise.resolve(),
+        },
+      } as never),
+    Error,
+    "--confirm",
+  );
+  assertEquals(calls, [], "拒绝时必须零 compose 调用");
+});
+
+Deno.test("新增 restore --confirm：服务仍在运行时拒绝（对齐 bash ensure_stopped）", async () => {
+  const { restoreConfirmed } = await import("./commands.ts");
+  const calls: string[] = [];
+  const runner = {
+    run: (cmd: string, args: string[]) => {
+      calls.push([cmd, ...args].join(" "));
+      // `compose ps --status running -q` 返回有容器 → 服务在跑
+      const isPs = args.includes("ps");
+      return Promise.resolve({
+        code: 0,
+        stdout: isPs ? "abc123def456\n" : "",
+        stderr: "",
+      });
+    },
+    spawn: () => {
+      throw new Error("no spawn");
+    },
+  };
+  await assertRejects(
+    () =>
+      restoreConfirmed({
+        path: "/tmp/x.nojbackup",
+        dir: "/tmp/install",
+        composeFile: "/tmp/install/docker-compose.prod.yml",
+        envFile: "/tmp/install/.env.prod",
+        runner,
+        confirm: true,
+        workDir: "/tmp/work",
+        ops: {
+          gpgDecrypt: () => Promise.resolve(),
+          untarZst: () => Promise.resolve(),
+        },
+      } as never),
+    Error,
+  );
+  // 只应发生"探测 ps"这一次调用；不得进入恢复序列
+  assert(
+    calls.every((c) => c.includes("ps")),
+    `服务在跑时必须停在探测阶段，实得调用：${calls.join(" | ")}`,
+  );
+});
+
+Deno.test("新增 restore --confirm：真实恢复序列（真实容器解包 + 记录 compose 调用）", async () => {
+  const c = await makeContainer();
+  const passphraseFile = join(c.root, "passphrase");
+  try {
+    const calls: string[] = [];
+    const runner = {
+      run: (cmd: string, args: string[]) => {
+        calls.push([cmd, ...args].join(" "));
+        // 探测 "服务是否在跑" → 返回空（已停机）
+        const isPs = args.includes("ps");
+        return Promise.resolve({
+          code: 0,
+          stdout: isPs ? "" : "",
+          stderr: "",
+        });
+      },
+      spawn: () => {
+        throw new Error("no spawn");
+      },
+    };
+    const { restoreConfirmed } = await import("./commands.ts");
+    const result = await restoreConfirmed({
+      path: c.path,
+      dir: c.root,
+      composeFile: join(c.root, "docker-compose.prod.yml"),
+      envFile: join(c.root, ".env.prod"),
+      runner,
+      confirm: true,
+      workDir: await workDir(c.root, "restore-w"),
+      passphraseFile,
+      ops: c.ops,
+      log: () => {},
+    } as never);
+
+    assertEquals(result.dryRun, false, "必须是真实恢复（dryRun=false）");
+    assertEquals(result.restored, ["postgres", "redis", "minio"]);
+
+    // 关键：恢复序列的每一步都真的发了 compose 命令
+    const joined = calls.join("\n");
+    assert(joined.includes("pg_restore"), `应执行 pg_restore，实得：${joined}`);
+    assert(joined.includes("psql"), "应重放幂等化后的全局对象");
+    assert(
+      joined.includes("minio-init") && joined.includes("mc mirror"),
+      "应 mirror MinIO 对象",
+    );
+    // Redis 是"停 → 写 RDB → 起"。
+    // **不能只判断 `includes("stop") && includes("redis")`**：参数里
+    // `--env-file /path/.env.prod` 等片段会让子串匹配失真；而恢复收尾那条
+    // `stop postgres redis minio` 也同时含 "stop" 与 "redis"。
+    // 用 compose 子命令**尾部**判定才准确。
+    const subcommandOf = (x: string): string => {
+      // 去掉 `docker compose` 前缀与所有 `--flag value`/`--flag=value`
+      const parts = x.split(/\s+/);
+      const at = parts.indexOf("compose");
+      const rest = parts.slice(at + 1);
+      const out: string[] = [];
+      for (let i = 0; i < rest.length; i++) {
+        const tok = rest[i]!;
+        if (tok.startsWith("--")) {
+          if (
+            !tok.includes("=") && rest[i + 1] !== undefined &&
+            !rest[i + 1]!.startsWith("--")
+          ) i++;
+          continue;
+        }
+        out.push(tok);
+      }
+      return out.join(" ");
+    };
+    const subs = calls.map(subcommandOf);
+    const stopAt = subs.indexOf("stop redis");
+    // 注意：`subcommandOf` 会剥掉 `--rm` 这类旗标，故匹配的是 `run redis …`
+    const rdbAt = subs.findIndex((x) =>
+      x.startsWith("run redis") && x.includes("dump.rdb")
+    );
+    const startAt = subs.findIndex((x) =>
+      x.startsWith("up -d") && x.trim().endsWith("redis")
+    );
+    assert(
+      stopAt >= 0 && rdbAt > stopAt && startAt > rdbAt,
+      `顺序必须是 停 → 写 RDB → 起：stop@${stopAt} rdb@${rdbAt} up@${startAt}\n${
+        subs.join("\n")
+      }`,
+    );
+    // MinIO：必须带 `--overwrite --remove`（否则目标桶会残留快照里已删的对象）
+    assert(
+      calls.some((x) => x.includes("mc mirror") && x.includes("--remove")),
+      "MinIO mirror 必须带 --remove（保证目标桶与快照一致）",
+    );
+    // 恢复后停数据服务（等人工检查）
+    assert(
+      subs.includes("stop postgres redis minio"),
+      `恢复后必须停数据服务（bash :382 语义），实得子命令：${subs.join(" | ")}`,
+    );
+  } finally {
+    await Deno.remove(c.root, { recursive: true }).catch(() => {});
+  }
+});

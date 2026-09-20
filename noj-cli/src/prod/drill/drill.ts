@@ -39,6 +39,8 @@
 
 import { join } from "@std/path";
 import type { CommandRunner } from "../../runtime/command.ts";
+import { restoreDataServices as sharedRestoreDataServices } from "../backup/data_restore.ts";
+import { makeIdempotentGlobals } from "../backup/globals.ts";
 import {
   type ContainerPayloadOps,
   unpackContainer,
@@ -565,6 +567,16 @@ async function compose(
 }
 
 /** `restore_data_services()`（bash :340-376）：启动隔离数据服务并恢复三类数据。 */
+/**
+ * 恢复三类数据服务（**委托给 `backup/data_restore.ts` 的共享序列**）。
+ *
+ * 抽取理由见该模块头部：这段序列的顺序与错误处理是评审迭代出来的，
+ * 分成 drill 与生产 restore 两份必然漂移——而"演练通过但真实恢复没做对"
+ * 是最坏的一类不一致（drill 的全部意义就是证明 restore 可行）。
+ *
+ * 本函数只负责**把 drill 的上下文适配成共享接口**（隔离项目参数 + 不停服务，
+ * 因为 drill 后续还要起业务服务做验收）。
+ */
 async function restoreDataServices(
   opts: DrillRunOptions,
   ctx: DrillContext,
@@ -573,136 +585,27 @@ async function restoreDataServices(
   waitTimeout: number,
   log: (line: string) => void,
 ): Promise<void> {
-  log("✓ 启动隔离数据服务（postgres/redis/minio）");
-  if (
-    await compose(ctx, runner, dockerBin, [
-      "up",
-      "-d",
-      "--wait",
-      "--wait-timeout",
-      String(waitTimeout),
-      "postgres",
-      "redis",
-      "minio",
-    ]) !== 0
-  ) {
-    throw new Error("隔离数据服务启动失败");
-  }
-  // **必须检查退出码**（评审发现）：bash 对每一步都是 `|| die`，
-  // 而这里此前丢弃了返回值——`minio-init` 失败会变成后面某个更难懂的错误
-  // （例如"数据核对失败"），把根因埋掉。
-  if (
-    await compose(ctx, runner, dockerBin, ["run", "--rm", "minio-init"]) !== 0
-  ) {
-    throw new Error("MinIO 初始化失败（minio-init）");
-  }
-
-  const pgUser = valueOr(ctx.env, "POSTGRES_USER", "noj");
-  const pgDb = valueOr(ctx.env, "POSTGRES_DB", "noj");
-
-  // PostgreSQL：全局对象（幂等化后）→ 数据（**pg_restore 的输入来自文件**）
-  log("✓ 恢复 PostgreSQL");
-  const globals = await makeIdempotentGlobals(
-    join(ctx.staging, "postgres-globals.sql"),
-    join(ctx.tempDir, "postgres-globals.sql"),
-  );
-  if (globals !== 0) {
-    throw new Error("生成幂等 PostgreSQL 全局对象脚本失败");
-  }
-  const globalsCode = await feedFileToCompose(
-    ctx,
-    runner,
-    dockerBin,
-    [
-      "exec",
-      "-T",
-      "postgres",
-      "psql",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      pgUser,
-      "-d",
-      pgDb,
-    ],
-    join(ctx.tempDir, "postgres-globals.sql"),
-  );
-  if (globalsCode !== 0) throw new Error("PostgreSQL 全局对象恢复失败");
-
-  const restoreCode = await feedFileToCompose(
-    ctx,
-    runner,
-    dockerBin,
-    [
-      "exec",
-      "-T",
-      "postgres",
-      "pg_restore",
-      "--clean",
-      "--if-exists",
-      "--no-owner",
-      "--exit-on-error",
-      "-U",
-      pgUser,
-      "-d",
-      pgDb,
-    ],
-    join(ctx.staging, "postgres.dump"),
-  );
-  if (restoreCode !== 0) throw new Error("PostgreSQL 数据恢复失败");
-
-  // Redis：停 → 写 RDB（**从文件喂 stdin**）→ 起
-  log("✓ 恢复 Redis");
-  if (await compose(ctx, runner, dockerBin, ["stop", "redis"]) !== 0) {
-    throw new Error("停止 Redis 失败");
-  }
-  const rdbCode = await feedFileToCompose(
-    ctx,
-    runner,
-    dockerBin,
-    [
-      "run",
-      "--rm",
-      "--no-deps",
-      "--entrypoint",
-      "/bin/sh",
-      "redis",
-      "-c",
-      "set -eu; rm -rf /data/appendonlydir /data/dump.rdb; cat > /data/dump.rdb",
-    ],
-    join(ctx.staging, "redis.rdb"),
-  );
-  if (rdbCode !== 0) throw new Error("写入 Redis RDB 失败");
-  if (
-    await compose(ctx, runner, dockerBin, [
-      "up",
-      "-d",
-      "--wait",
-      "--wait-timeout",
-      String(waitTimeout),
-      "redis",
-    ]) !== 0
-  ) {
-    throw new Error("恢复后 Redis 启动失败");
-  }
-
-  // MinIO：把 staging 的 minio/ 目录挂进容器后 mc mirror
-  log("✓ 恢复 MinIO/S3 对象");
-  const bucket = valueOr(ctx.env, "S3_BUCKET", "noj-support-packages");
-  const mirrorCode = await compose(ctx, runner, dockerBin, [
-    "run",
-    "--rm",
-    "--no-deps",
-    "--entrypoint",
-    "/bin/sh",
-    "-v",
-    `${join(ctx.staging, "minio")}:/restore:ro`,
-    "minio-init",
-    "-c",
-    `set -eu; for i in $(seq 1 30); do mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && break; sleep 2; done; mc mirror --overwrite --remove /restore "local/${bucket}"`,
-  ]);
-  if (mirrorCode !== 0) throw new Error("MinIO/S3 对象恢复失败");
   void opts;
+  await sharedRestoreDataServices({
+    staging: ctx.staging,
+    tempDir: ctx.tempDir,
+    env: ctx.env,
+    runner,
+    dockerBin,
+    composeArgs: (command) =>
+      drillComposeArgs({
+        projectName: ctx.projectName,
+        composeEnvFile: ctx.composeEnvFile,
+        composeFile: ctx.composeFile,
+        overrideFile: ctx.overrideFile,
+        judge: ctx.judge,
+        command,
+      }),
+    waitTimeout,
+    log,
+    // drill 之后还要起业务服务做验收，故 **不** 在恢复后停服务。
+    stopAfterRestore: false,
+  });
 }
 
 /**
@@ -739,44 +642,9 @@ async function feedFileToCompose(
   return res.code;
 }
 
-/**
- * 把 `pg_dumpall --globals-only` 的 `CREATE ROLE` 改为幂等形式
- * （bash `prepare_idempotent_globals` :150-170 的等价）。
- *
- * 为什么需要：目标 PostgreSQL 已由 `POSTGRES_USER` 创建了默认角色，
- * 直接重放 `CREATE ROLE` 会以 "role already exists" 失败。改写为
- * `DO $$ BEGIN IF NOT EXISTS (...) THEN CREATE ROLE …; END IF; END $$;`。
- */
-export async function makeIdempotentGlobals(
-  source: string,
-  target: string,
-): Promise<number> {
-  let text: string;
-  try {
-    text = await Deno.readTextFile(source);
-  } catch {
-    await Deno.writeTextFile(target, "");
-    return 1;
-  }
-  const out: string[] = [];
-  for (const line of text.split("\n")) {
-    if (line.startsWith("CREATE ROLE ")) {
-      const identifier = line.slice("CREATE ROLE ".length).replace(/;\s*$/, "");
-      let name = identifier;
-      if (name.startsWith('"') && name.endsWith('"') && name.length >= 2) {
-        name = name.slice(1, -1).replace(/""/g, '"');
-      }
-      const escaped = name.replace(/'/g, "''");
-      out.push(
-        `DO $role$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${escaped}') THEN CREATE ROLE ${identifier}; END IF; END $role$;`,
-      );
-      continue;
-    }
-    out.push(line);
-  }
-  await Deno.writeTextFile(target, out.join("\n"));
-  return 0;
-}
+// `makeIdempotentGlobals` 已移到 `backup/globals.ts`：生产 restore 也要用它。
+// 此处**再导出**以保持既有导入点（含测试）不变。
+export { makeIdempotentGlobals };
 
 /** `verify_data()`（bash :377-424）：迁移版本、用户数、Redis 键数、对象数。 */
 async function verifyData(

@@ -25,7 +25,7 @@ import {
   runBackupCreate,
   runBackupList,
   runBackupPrune,
-  runBackupRestorePlan,
+  runBackupRestore,
   runBackupSchedule,
   runBackupVerify,
   runProdCheck,
@@ -1368,13 +1368,20 @@ async function dispatchProdBackup(
       return r.failed.length === 0 ? EXIT_OK : EXIT_FAILURE;
     }
     case "restore": {
-      const r = await runBackupRestorePlan(dir, rest, {});
+      // `--confirm` → 真实恢复；否则 dry-run 计划（文档承诺的语义）。
+      const r = await runBackupRestore(dir, rest, {});
       if (json) {
         console.log(JSON.stringify(r, null, 2));
       } else {
         say(r.summary);
+        if (r.kind === "restored") {
+          for (const component of r.restored) say(`  ✓ 已恢复：${component}`);
+        }
       }
-      return r.verified ? EXIT_OK : EXIT_FAILURE;
+      if (r.kind === "dry-run") {
+        return r.verified ? EXIT_OK : EXIT_FAILURE;
+      }
+      return EXIT_OK;
     }
     case "schedule": {
       const r = await runBackupSchedule(dir, rest, {});

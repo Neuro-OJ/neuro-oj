@@ -23,6 +23,10 @@
  */
 
 import { join } from "@std/path";
+import type { CommandRunner } from "../../runtime/command.ts";
+import { prodComposeArgs } from "./driver.ts";
+import { restoreDataServices } from "./data_restore.ts";
+import { readEnvValues } from "../drill/plan.ts";
 import {
   listBackups,
   type ListResult,
@@ -290,6 +294,163 @@ export async function restorePlan(
     manifest: verified.manifest,
     issues: verified.issues,
     summary,
+  };
+}
+
+/** {@link restoreConfirmed} 的注入点。 */
+export interface RestoreConfirmedOptions {
+  /** `.nojbackup` 快照路径。 */
+  path: string;
+  /** 生产安装目录。 */
+  dir: string;
+  composeFile: string;
+  envFile: string;
+  runner: CommandRunner;
+  /** 必须为 true——由 CLI 从 `--confirm` 传入。 */
+  confirm: boolean;
+  /** 解包工作目录（调用方创建/清理）。 */
+  workDir: string;
+  passphraseFile?: string;
+  encrypted?: boolean;
+  /** `--restore-env FILE`：把加密环境文件恢复到该路径。 */
+  restoreEnv?: string;
+  judge?: boolean;
+  /** `--wait` 超时（秒）；测试可注入小值。 */
+  waitTimeout?: number;
+  /** 解包能力（校验 + `--restore-env` 解密都经它）。 */
+  ops: Pick<ContainerPayloadOps, "gpgDecrypt" | "untarZst">;
+  log?: (line: string) => void;
+}
+
+/** {@link restoreConfirmed} 的结果。 */
+export interface RestoreConfirmedResult {
+  path: string;
+  /** 恒为 false（真实恢复）。保留字段以便与 dry-run 结果同形。 */
+  dryRun: boolean;
+  manifest: VerifyContainerResult["manifest"];
+  /** 已恢复的组件名（`postgres` / `redis` / `minio`）。 */
+  restored: string[];
+  summary: string;
+}
+
+/**
+ * `backup restore --confirm`：**真实恢复**（不可逆）。
+ *
+ * 迁移 bash `restore_snapshot`（backup.sh:350-384）。与 `restorePlan` 的
+ * dry-run 规划器是**两条路径**，不是同一个函数的开关：
+ * dry-run 只要 `gpgDecrypt`/`untarZst` 两项能力（类型上就无法写数据），
+ * 而本函数需要完整的数据恢复编排。共用编排逻辑在
+ * {@link restoreDataServices}（生产与 drill 共享，见其文件头）。
+ *
+ * ## 顺序（每一步都是安全要求）
+ *
+ * 1. **`--confirm`**：不可逆操作必须显式确认（bash :352）；
+ * 2. **校验快照**：解包 + 三档校验，不通过即停（bash :353）；
+ * 3. **确认服务已停**：`compose ps --status running -q` 非空即拒绝
+ *    （bash `ensure_stopped` :336-340）——在**运行中的库上**做
+ *    `pg_restore --clean` 会与业务写入互相破坏；
+ * 4. **恢复环境文件**（可选）：目标已存在即拒绝，避免覆盖用户文件
+ *    （bash `restore_env_file` :342-348）；
+ * 5. **数据恢复序列**：起数据服务 → PostgreSQL → Redis → MinIO（共享实现）；
+ * 6. **停数据服务**：等人工检查后再起业务（bash :382）。
+ *
+ * 失败时**不清理已恢复的数据**（那是不可逆的既成事实），但会如实抛出
+ * 具名错误，避免把根因埋在后续步骤里。
+ */
+export async function restoreConfirmed(
+  opts: RestoreConfirmedOptions,
+): Promise<RestoreConfirmedResult> {
+  assertContainerPath(opts.path);
+  const log = opts.log ?? (() => {});
+
+  // ---- 1. 确认 ----
+  if (opts.confirm !== true) {
+    throw new Error("restore 会覆盖目标数据，必须显式提供 --confirm");
+  }
+
+  // ---- 2. 校验快照（复用 verify 三档 + --deep）----
+  const verified = await verifyContainer({
+    path: opts.path,
+    destDir: opts.workDir,
+    passphraseFile: opts.passphraseFile,
+    encrypted: opts.encrypted ?? true,
+    ops: opts.ops,
+    deep: true,
+  });
+  if (!verified.pass) {
+    const detail = verified.issues.map((i) => `  - [${i.level}] ${i.message}`)
+      .join("\n");
+    throw new Error(`快照校验未通过，拒绝恢复：\n${detail}`);
+  }
+
+  const env = await readEnvValues(opts.envFile);
+  const composeArgs = (command: string[]): string[] =>
+    prodComposeArgs({
+      composeFile: opts.composeFile,
+      envFile: opts.envFile,
+      dockerBin: "docker",
+      judge: opts.judge === true,
+    }, command);
+
+  // ---- 3. 必须已停机 ----
+  const running = await opts.runner.run(
+    "docker",
+    composeArgs(["ps", "--status", "running", "-q"]),
+  );
+  if (running.stdout.trim() !== "") {
+    throw new Error(
+      "恢复前必须停止 Compose 服务；请先执行 noj-cli stop（在运行中的数据库上" +
+        "恢复会与业务写入互相破坏）",
+    );
+  }
+
+  // ---- 4. 恢复环境文件（目标已存在即拒绝，不覆盖用户文件）----
+  if (opts.restoreEnv !== undefined && opts.restoreEnv !== "") {
+    let exists = false;
+    try {
+      await Deno.stat(opts.restoreEnv);
+      exists = true;
+    } catch {
+      exists = false;
+    }
+    if (exists) {
+      throw new Error(
+        `恢复环境文件目标已存在，为避免覆盖请先移走：${opts.restoreEnv}`,
+      );
+    }
+    await opts.ops.gpgDecrypt(
+      `${verified.staging}/${CONTAINER_FILES.envProdGpg}`,
+      opts.restoreEnv,
+      opts.passphraseFile ?? "",
+    );
+    await Deno.chmod(opts.restoreEnv, 0o600);
+    log(`✓ 加密环境文件已恢复：${opts.restoreEnv}`);
+  }
+
+  // ---- 5. 数据恢复序列（与 drill 共享同一实现）----
+  await restoreDataServices({
+    // **必须用 verify 解包出的 staging**（`<workDir>/payload`），
+    // 不是 workDir 本身——容器根的条目落在子目录里（见 unpackContainer）。
+    // 我第一版传了 workDir，导致幂等化 globals 时读不到文件而报"生成脚本失败"。
+    staging: verified.staging,
+    tempDir: opts.workDir,
+    env,
+    runner: opts.runner,
+    dockerBin: "docker",
+    composeArgs,
+    waitTimeout: opts.waitTimeout ?? 180,
+    log,
+    // 生产语义：恢复后停服务，等人工检查再起业务（bash :382）。
+    stopAfterRestore: true,
+  });
+
+  return {
+    path: opts.path,
+    dryRun: false,
+    manifest: verified.manifest,
+    restored: ["postgres", "redis", "minio"],
+    summary:
+      "快照恢复完成；数据服务已停止，请人工检查后再启动业务服务（noj-cli start）",
   };
 }
 
