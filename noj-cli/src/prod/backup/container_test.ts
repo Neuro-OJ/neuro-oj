@@ -816,3 +816,48 @@ Deno.test("T17 sha256 复用：容器使用增量实现（大文件不整读）"
     await Deno.remove(root, { recursive: true });
   }
 });
+
+// ── 评审发现：最终产物权限由 umask 决定（--no-encrypt 时明文可读）────
+//
+// `chmodPrivate` 只遍历 staging 目录，而 rename 出来的 `.nojbackup` 与 sidecar
+// 的权限由进程 umask 决定——实测 umask 022 下是 **644**。即
+// `backup create --no-encrypt` 产出的容器**含明文 pg dump 且全世界可读**
+// （bash 侧是 `chmod -R go-rwx`）。
+//
+// 加密时风险较小，但"同一命令的产物权限取决于调用者 umask"本身不可接受：
+// 备份不该比 `.env.prod`（600）更宽松。
+
+Deno.test("评审: 产物 .nojbackup 与 sidecar 必须是 600（不随 umask 放宽）", async () => {
+  const { createContainer } = await import("./container.ts");
+  const root = await Deno.makeTempDir();
+  const prev = Deno.umask();
+  try {
+    // 故意放宽 umask，模拟"宽松环境"——修复前产物会变成 644
+    Deno.umask(0o022);
+    const backupDir = join(root, "backups");
+    await Deno.mkdir(backupDir, { recursive: true });
+
+    // 复用既有 helper，避免手抄选项形状（我第一版手抄了一遍，签名对不上）
+    const spawns: SpawnRecord[] = [];
+    const ops = makeFakeOps({ runner: makeStrictRunner(spawns) });
+    const options = await createOptions(root, ops);
+    const result = await createContainer({
+      ...options,
+      backupDir,
+      noEncrypt: true,
+      passphraseFile: undefined,
+    });
+
+    for (const path of [result.path, result.sidecar]) {
+      const st = await Deno.stat(path);
+      assertEquals(
+        (st.mode ?? 0) & 0o077,
+        0,
+        `${path} 不得对 group/other 开放（实测 umask 022 下曾是 644）`,
+      );
+    }
+  } finally {
+    Deno.umask(prev);
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});

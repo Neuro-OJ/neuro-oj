@@ -561,6 +561,13 @@ export async function createContainer(
         await opts.ops.gpgEncrypt(tarZst, tempPath, passphraseFile);
       }
       await Deno.rename(tempPath, finalPath);
+      // **最终产物也必须收紧权限**（评审发现）：`chmodPrivate` 只作用于
+      // staging 目录，而这里 rename 出来的容器文件权限由进程 umask 决定——
+      // 实测 umask 022 下是 **644**，即 `--no-encrypt` 时**含明文 pg dump**
+      // 的备份全世界可读（bash 侧是 `chmod -R go-rwx`）。
+      // 加密时风险较小，但"同一个命令的产物权限取决于调用者 umask"本身
+      // 就不可接受：备份不该比 `.env.prod`（600）更宽松。
+      await Deno.chmod(finalPath, 0o600);
       committed = true;
     } catch (err) {
       if (err instanceof ContainerError) throw err;
@@ -580,6 +587,7 @@ export async function createContainer(
         `${sha256}  ${finalPath.split("/").pop()}\n`,
       );
       await Deno.rename(sidecarTemp, sidecar);
+      await Deno.chmod(sidecar, 0o600);
     } catch (err) {
       await Deno.remove(sidecarTemp).catch(() => {});
       // 容器已提交（不可回退地占了名字），故如实报告"缺 sidecar"的后果
