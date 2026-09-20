@@ -971,3 +971,101 @@ Deno.test("评审: judge status 人类模式不重复打印（summary 只出现�
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
+
+// ── 评审发现（Important）：verify 与 check 完全相同，安全控制没运行 ──
+//
+// `case "verify"` 此前直接调 `runProdCheck`，与 `check`/`config` **逐字相同**，
+// 而注释与 help 都写着"比 check 多验签名"。即**一个安全控制报成功却从未运行**，
+// 而运维者会把它当作部署前的保证闸门——比"没有该命令"更糟。
+//
+// bash（deploy.sh:911）对 `install|start|upgrade|verify` **都**跑
+// `verify_image_signatures`；`verifyImageSignatures` 在 TS 侧也早已实现
+// （install/update 都在用），只是 `verify` 命令的接线漏了。
+
+// 覆盖范围说明（诚实标注）：本用例直接调 `runProdVerify`，因此验的是
+// **验签逻辑本身**；把 `dispatchProduction` 的 `case "verify"` 退回
+// `runProdCheck` **不会**让它转红。接线那一层由下面的"verify 与 check 行为可区分"
+// 用例覆盖（它比较两个函数的返回，同样是直接调用，但至少钉住两者不等价）。
+Deno.test("评审: verify 必须真的验签（ENFORCE=true 且无 cosign → 失败）", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const HEX = "a".repeat(64);
+    await Deno.writeTextFile(
+      join(dir, "docker-compose.prod.yml"),
+      "services: {}\n",
+    );
+    await Deno.writeTextFile(
+      join(dir, ".env.prod"),
+      [
+        "NOJ_VERSION=v0.9.5",
+        "DOMAIN=oj.testoj.cn",
+        "APP_URL=https://oj.testoj.cn",
+        "CORS_ALLOWED_ORIGINS=https://oj.testoj.cn",
+        "TRUSTED_PROXIES=172.28.0.0/16",
+        `POSTGRES_PASSWORD=${HEX}`,
+        `REDIS_PASSWORD=${HEX}`,
+        "MINIO_ROOT_USER=nojminio123456",
+        `MINIO_ROOT_PASSWORD=${HEX}`,
+        "S3_ACCESS_KEY=nojs3123456",
+        `S3_SECRET_KEY=${HEX}`,
+        "S3_BUCKET=noj-support-packages",
+        "S3_ENDPOINT=http://minio:9000",
+        "STORAGE_PROVIDER=s3",
+        `JWT_SECRET=${HEX}`,
+        `TFA_ENCRYPTION_KEY=${HEX}`,
+        `NOJ_LLM_SERVICE_TOKEN=${HEX}`,
+        `NOJ_LLM_STORE_KEY=${HEX}`,
+        "EMAIL_PROVIDER=disabled",
+        "JUDGE_ENABLED=false",
+        // 开启强制验签：verify 必须因此失败（找不到 cosign）
+        "NOJ_ENFORCE_IMAGE_SIGNATURES=true",
+        "",
+      ].join("\n"),
+    );
+    await Deno.chmod(join(dir, ".env.prod"), 0o600);
+
+    const { runProdVerify, runProdCheck } = await import("./cli.ts");
+    const warn: string[] = [];
+    const deps = {
+      runner: {
+        // **只让 cosign 失败**：`check` 会先跑 compose config；若连它也失败，
+        // 本用例就无法区分"verify 因验签失败"与"两者都因 compose 失败"
+        // （第一版正是如此——断言 check 通过时转红暴露了它）。
+        run: (cmd: string) =>
+          Promise.resolve(
+            cmd.includes("cosign")
+              ? { code: 127, stdout: "", stderr: "not found" }
+              : { code: 0, stdout: "", stderr: "" },
+          ),
+      },
+      io: {
+        write: () => {},
+        readLine: () => Promise.resolve(""),
+        readSecret: () => Promise.resolve(""),
+      },
+      isTty: () => false,
+      processEnv: { NOJ_ENFORCE_IMAGE_SIGNATURES: "true" },
+      err: (t: string) => warn.push(t),
+    };
+    const verified = await runProdVerify(dir, [], deps as never);
+    const checked = await runProdCheck(dir, [], {
+      ...deps,
+      err: undefined,
+    } as never);
+
+    // verify 必须失败（cosign 缺失）
+    assertEquals(
+      verified.exitCode,
+      1,
+      `verify 在 ENFORCE=true 且无 cosign 时必须失败，实得：${verified.message}`,
+    );
+    // check 不验签，故仍通过——这正是两者应有的差异
+    assertEquals(
+      checked.exitCode,
+      0,
+      `check 不验签，应通过，实得：${checked.message}`,
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true }).catch(() => {});
+  }
+});

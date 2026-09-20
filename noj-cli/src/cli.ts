@@ -37,6 +37,7 @@ import {
   runProdStop,
   runProdUninstall,
   runProdUpdate,
+  runProdVerify,
 } from "./prod/cli.ts";
 import { renderCommandHelp } from "./help.ts";
 import { declaredTopLevelNames, renderCommandList } from "./commands.ts";
@@ -1110,8 +1111,10 @@ async function dispatchProduction(
         return r.exitCode;
       }
       case "verify": {
-        // `verify` = 配置校验 + 镜像验签（比 `check` 多验签）。
-        const r = await runProdCheck(dir, rest, {});
+        // `verify` = 配置校验 + **镜像验签**（比 `check` 多验签）。
+        // 此前这里误调 `runProdCheck`，与 check/config 完全相同 →
+        // 安全控制报成功却从未运行（评审发现）。
+        const r = await runProdVerify(dir, rest, {});
         say(r.message);
         return r.exitCode;
       }

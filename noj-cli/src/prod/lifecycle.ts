@@ -453,7 +453,7 @@ async function seedEnvFile(
  * 只是"未命中"。两处都必须落到同一个 `false`，否则 T12 的 skip-with-warning
  * 契约会被一个裸异常顶替（T15 评审 Important）。
  */
-function probeCosign(
+export function probeCosign(
   runner: CommandRunner,
   cosignBin: string,
 ): () => Promise<boolean> {
