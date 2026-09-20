@@ -166,6 +166,30 @@ export function flagValue(
   return undefined;
 }
 
+/**
+ * 读一个**非负整数**旗标；缺省返回 undefined，非法值抛用法错误。
+ *
+ * 存在的理由：这类值会被下游当作**数量/天数**参与"保护哪些备份"的计算，
+ * 而非法的 `NaN` 在 `slice`/比较里会静默退化为"什么都不保护"——
+ * 也就是说校验缺失的后果是**删数据**，不是报错。
+ */
+export function optionalCount(
+  args: string[],
+  name: string,
+): number | undefined {
+  const raw = flagValue(args, name);
+  if (raw === undefined) return undefined;
+  // 只接受十进制非负整数（拒绝 "1.5"、"1e3"、"0x10"、"-1"、""）
+  if (!/^\d+$/.test(raw)) {
+    throw new UsageError(`${name} 必须是非负整数，收到 "${raw}"`);
+  }
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isSafeInteger(n)) {
+    throw new UsageError(`${name} 超出可用范围，收到 "${raw}"`);
+  }
+  return n;
+}
+
 /** 取布尔旗标（支持 `-y` 这类短名）。 */
 export function hasFlag(args: string[], ...names: string[]): boolean {
   return args.some((a) => names.includes(a));
@@ -545,11 +569,13 @@ export function runBackupPrune(
 ): Promise<BackupPruneResult> {
   void deps;
   const backupDir = flagValue(args, "--backup-dir") ?? prodBackupDir(dir);
-  const keepRaw = flagValue(args, "--keep");
-  const olderRaw = flagValue(args, "--older-than");
+  // **必须校验**（评审发现的数据丢失缺陷）：`Number("oops")` 是 `NaN`，
+  // 而 `planPrune` 的 `Math.max(0, NaN)` 仍是 `NaN`、`slice(0, NaN)` 返回空集，
+  // 于是"受数量保护"的集合为空 → **每一份备份都被删**。
+  // 用户输入 `--keep oops --confirm` 的本意是"保留一些"，结果全删了。
   return pruneCommand(backupDir, {
-    keep: keepRaw === undefined ? undefined : Number(keepRaw),
-    olderThanDays: olderRaw === undefined ? undefined : Number(olderRaw),
+    keep: optionalCount(args, "--keep"),
+    olderThanDays: optionalCount(args, "--older-than"),
     includeLegacy: hasFlag(args, "--include-legacy"),
     confirm: hasFlag(args, "--confirm"),
   });

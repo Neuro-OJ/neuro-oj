@@ -382,3 +382,48 @@ async function dirFingerprint(dir: string): Promise<string[]> {
   }
   return out.sort();
 }
+
+// ── 评审发现：prune 的数值旗标未校验 → 静默删光全部备份 ────────────
+//
+// `Number("oops")` 是 `NaN`，而 `planPrune` 里 `Math.max(0, NaN)` 仍是 `NaN`，
+// `slice(0, NaN)` 返回**空数组** → "受数量保护"的集合为空 → **每一份备份都进 remove**。
+// 也就是说 `--keep oops --confirm` 会把所有快照删掉，而用户的本意是"保留一些"。
+//
+// 注意这条**不是新旗标的边界情况，而是 parity 回归**：旧的
+// `parseBackupArgs`（`cli.ts`）本来校验 `--keep` 必须是非负整数，且
+// `cli_test.ts` 至今仍在断言它——但 T24 之后 `parseBackupArgs` 只被 drill 路径使用，
+// prune 走 `runBackupPrune` 完全绕过了那个校验。
+// **"存在且有测试的校验"不再位于活跃路径上**，这正是它危险的原因。
+
+Deno.test("评审: prune 的 --keep/--older-than 非法值必须报用法错误，而非删光备份", async () => {
+  const { runBackupPrune } = await import("./cli.ts");
+  for (
+    const args of [
+      ["--keep", "oops"],
+      ["--keep", "-1"],
+      ["--keep", "1.5"],
+      ["--keep", "1e3"],
+      ["--older-than", "abc"],
+      ["--older-than", "-3"],
+    ]
+  ) {
+    // 参数校验在**任何删除动作之前同步抛出**（这是刻意的：非法值绝不能
+    // 走到 pruneCommand，否则 NaN 会让它删光）。故这里断言同步抛错。
+    assertThrows(
+      () => runBackupPrune("/tmp", [...args, "--confirm"], {}),
+      UsageError,
+      undefined,
+      `非法值 ${args.join(" ")} 必须报用法错误而不是执行删除`,
+    );
+  }
+});
+
+Deno.test("评审: prune 的合法值仍正常规划（不误伤）", async () => {
+  const { runBackupPrune } = await import("./cli.ts");
+  // 空备份目录：只验证不抛错、且默认 dry-run
+  const r = await runBackupPrune("/tmp/noj-nonexistent-dir-xyz", [
+    "--keep",
+    "3",
+  ], {});
+  assertEquals(r.applied, false, "未给 --confirm 时必须保持 dry-run");
+});
