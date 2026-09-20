@@ -144,6 +144,16 @@ export {
   tempContainerPath,
   utcTimestamp,
 } from "./prod/backup/container.ts";
+// 备份新鲜度指标（T27）：`noj-alerts.yml` 的 NojBackupStale / NojBackupVeryStale /
+// NojBackupMetricMissing 三条告警依赖这些指标名，**逐字不可改**。
+export {
+  BACKUP_METRICS_FILE,
+  METRIC_BACKUP_BYTES,
+  METRIC_BACKUP_LAST_SUCCESS,
+  renderBackupMetrics,
+  writeBackupMetrics,
+} from "./prod/backup/metrics.ts";
+export type { WriteBackupMetricsOptions } from "./prod/backup/metrics.ts";
 export type {
   BackupManifest,
   ChecksumEntry,

@@ -72,6 +72,8 @@ import {
   type CreateContainerResult,
 } from "./backup/container.ts";
 import { createProdPayloadOps, realRawDriver } from "./backup/driver.ts";
+import { writeBackupMetrics } from "./backup/metrics.ts";
+import type { ContainerPayloadOps } from "./backup/container.ts";
 import { installSchedule, removeSchedule, statusSchedule } from "./schedule.ts";
 import type { ScheduleResult } from "./schedule.ts";
 import { readEnvValues } from "./drill/plan.ts";
@@ -601,6 +603,15 @@ export interface BackupCreateCliOptions {
   noEncrypt?: boolean;
   args: string[];
   deps: ProdCliDeps;
+  /**
+   * 采集/打包操作集注入点；缺省用真实的 `createProdPayloadOps`。
+   *
+   * 存在的理由：**让"create 成功后是否写了指标"这条接线可测**。
+   * 真实 ops 需要 pg/redis/minio 与 tar/zstd，单测环境不具备；
+   * 若不注入，指标接线就只能靠"手抄一个 writeBackupMetrics 再断言"来假装覆盖
+   * （那样测的是 metrics.ts 自身，而非 create 的接线）。
+   */
+  ops?: ContainerPayloadOps;
 }
 
 /**
@@ -626,7 +637,7 @@ export async function runBackupCreate(
   const passphraseFile = opts.passphraseFile;
   const env = await readEnvValues(envFile);
 
-  const ops = createProdPayloadOps({
+  const ops = opts.ops ?? createProdPayloadOps({
     runner: d.runner,
     driver: realRawDriver(d.runner),
     compose: {
@@ -639,7 +650,7 @@ export async function runBackupCreate(
     env,
   });
 
-  return await createContainer({
+  const created = await createContainer({
     backupDir,
     // staging 与产物同目录：跨目录 rename 可能退化为拷贝并丢失原子性
     stagingParent: backupDir,
@@ -657,6 +668,29 @@ export async function runBackupCreate(
     ops,
     now: opts.deps.now?.(),
   });
+
+  // ---- 13. 备份新鲜度指标（node_exporter textfile）----
+  // **只在成功后写**：`NojBackupStale` 的语义是"最近一次**成功**距今多久"，
+  // 失败也写会让"备份一直没成功"被掩盖——那正是该告警要抓的。
+  // 指标缺失（脚本删掉后 TS 侧曾无写入方）会触发 `NojBackupMetricMissing`
+  // 持续报警，进而让人忽略真正的备份故障。
+  try {
+    const size = (await Deno.stat(created.path)).size;
+    const at = opts.deps.now?.() ?? new Date();
+    await writeBackupMetrics({
+      backupDir,
+      explicitDir: d.processEnv["NOJ_BACKUP_METRICS_DIR"],
+      unixSeconds: Math.floor(at.getTime() / 1000),
+      snapshotBytes: size,
+    });
+  } catch (err) {
+    // 备份**本体**已成功，指标写失败不该把成功报成失败；但必须可见
+    // （静默会让"指标缺失"变成无声故障）。
+    (opts.deps.err ?? ((t: string) => console.error(t)))(
+      `! 备份已完成，但新鲜度指标写入失败：${(err as Error).message}`,
+    );
+  }
+  return created;
 }
 
 /**

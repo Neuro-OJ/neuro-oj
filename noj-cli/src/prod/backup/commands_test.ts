@@ -1254,3 +1254,90 @@ Deno.test("新增 restore --confirm：真实恢复序列（真实容器解包 + 
     await Deno.remove(c.root, { recursive: true }).catch(() => {});
   }
 });
+
+// ── 用户要求：补 noj_backup_last_success_unix_time 指标写入方 ─────────
+//
+// `deploy/monitoring/noj-alerts.yml` 的 NojBackupStale / NojBackupVeryStale /
+// NojBackupMetricMissing 三条告警依赖该指标（以及 snapshot_bytes），
+// 而 TS 侧**没有任何写入方**——`backup.sh` 仍会写，但它已列入删除计划。
+// 即"迁移不完整"：脚本一删，三条告警会同时失去数据源（其中一条正是
+// `absent(...)` 缺失告警，会持续报警）。
+//
+// 格式必须与 bash（backup.sh:213-220）与 drill 的既有 writer 一致：
+// `# HELP` + `# TYPE` + 值行，文件名 `noj_backup.prom`，权限 644、目录 755。
+
+Deno.test("新增 备份指标：renderBackupMetrics 输出三行且指标名逐字正确", async () => {
+  const {
+    renderBackupMetrics,
+    METRIC_BACKUP_LAST_SUCCESS,
+    METRIC_BACKUP_BYTES,
+  } = await import("./metrics.ts");
+  const text = renderBackupMetrics(1758300000, 4096);
+  // 指标名必须与告警规则里的表达式**逐字一致**（否则告警永远缺失）
+  assertEquals(METRIC_BACKUP_LAST_SUCCESS, "noj_backup_last_success_unix_time");
+  assertEquals(METRIC_BACKUP_BYTES, "noj_backup_snapshot_bytes");
+  assertStringIncludes(text, "# HELP noj_backup_last_success_unix_time");
+  assertStringIncludes(text, "# TYPE noj_backup_last_success_unix_time gauge");
+  assertStringIncludes(text, "noj_backup_last_success_unix_time 1758300000");
+  assertStringIncludes(text, "# TYPE noj_backup_snapshot_bytes gauge");
+  assertStringIncludes(text, "noj_backup_snapshot_bytes 4096");
+});
+
+Deno.test("新增 备份指标：writeBackupMetrics 落盘为 644、目录 755", async () => {
+  const root = await makeTempDir();
+  try {
+    const { writeBackupMetrics, BACKUP_METRICS_FILE } = await import(
+      "./metrics.ts"
+    );
+    const backupDir = join(root, "backups");
+    await Deno.mkdir(backupDir, { recursive: true });
+    // 固定 umask 避免环境差异（本用例断言的是代码设定的权限）
+    const prev = Deno.umask(0o022);
+    try {
+      const dir = await writeBackupMetrics({
+        backupDir,
+        unixSeconds: 1758300000,
+        snapshotBytes: 8192,
+      });
+      assertEquals(dir, join(backupDir, "metrics"));
+      const file = join(dir, BACKUP_METRICS_FILE);
+      const text = await Deno.readTextFile(file);
+      assertStringIncludes(
+        text,
+        "noj_backup_last_success_unix_time 1758300000",
+      );
+      assertStringIncludes(text, "noj_backup_snapshot_bytes 8192");
+      const st = await Deno.stat(file);
+      assertEquals(
+        st.mode! & 0o777,
+        0o644,
+        "指标文件应为 644（node_exporter 可读）",
+      );
+      const dirSt = await Deno.stat(dir);
+      assertEquals(dirSt.mode! & 0o777, 0o755, "指标目录应为 755");
+    } finally {
+      Deno.umask(prev);
+    }
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("新增 备份指标：NOJ_BACKUP_METRICS_DIR 可覆盖目录（与 bash 一致）", async () => {
+  const root = await makeTempDir();
+  try {
+    const { writeBackupMetrics } = await import("./metrics.ts");
+    const custom = join(root, "custom-metrics");
+    const dir = await writeBackupMetrics({
+      backupDir: join(root, "backups"),
+      explicitDir: custom,
+      unixSeconds: 1,
+      snapshotBytes: 2,
+    });
+    assertEquals(dir, custom, "显式目录必须优先");
+    const st = await Deno.stat(custom);
+    assert(st.isDirectory);
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});

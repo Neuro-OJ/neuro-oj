@@ -1105,3 +1105,108 @@ Deno.test("评审: 带值旗标的值不得被当成位置参数", async () => {
     );
   }
 });
+
+// ── 用户要求：create 成功后必须写出备份新鲜度指标 ────────────────────
+//
+// 单测 `metrics.ts` 只证明渲染/落盘正确；**接线**（create 是否真的调用它）
+// 必须单独断言——评审反复证明过这一类"实现有、接线漏"的缺陷。
+
+Deno.test("新增: backup create 成功后写出 noj_backup.prom（接线断言）", async () => {
+  // 注入最小 ops 走**完整 create 路径**——这样断言的是 `runBackupCreate`
+  // 的指标接线，而不是把 `writeBackupMetrics` 再测一遍（后者无法发现
+  // "create 忘了调它"这一类缺陷，评审已多次证明这类缺陷真实存在）。
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "install");
+    await Deno.mkdir(join(dir, "bin"), { recursive: true });
+    await Deno.writeTextFile(
+      join(dir, "docker-compose.prod.yml"),
+      "services: {}\n",
+    );
+    await Deno.writeTextFile(
+      join(dir, ".env.prod"),
+      "NOJ_VERSION=v0.9.5\nPOSTGRES_USER=noj\nPOSTGRES_DB=noj\nS3_BUCKET=b\n",
+    );
+    await Deno.chmod(join(dir, ".env.prod"), 0o600);
+    const backupDir = join(root, "backups");
+    await Deno.mkdir(backupDir, { recursive: true });
+    const pass = join(root, "pass");
+    await Deno.writeTextFile(pass, "x".repeat(64));
+
+    const { runBackupCreate } = await import("./cli.ts");
+    const { createContainer } = await import("./backup/container.ts");
+    void createContainer;
+    // 最小 ops：写真实文件 + 真实 tar.zst（不加密，避免依赖 gpg）
+    const ops = {
+      async postgresDump(d: string) {
+        await Deno.writeFile(d, new Uint8Array([0x50, 0x47, 0x44, 0x4d, 0x50]));
+      },
+      async postgresGlobals(d: string) {
+        await Deno.writeTextFile(d, "-- g\nCREATE ROLE noj;\n");
+      },
+      async postgresRestoreList(_s: string, d: string) {
+        await Deno.writeTextFile(d, "; listing\n1; 0 0 TABLE public t\n");
+      },
+      async redisRdb(d: string) {
+        await Deno.writeFile(d, new Uint8Array([0x52, 0x45, 0x44, 0x49, 0x53]));
+      },
+      async redisPersistence(d: string) {
+        await Deno.writeTextFile(d, "rdb_last_bgsave_status:ok\r\n");
+      },
+      async minioMirror(d: string) {
+        await Deno.mkdir(d, { recursive: true });
+        await Deno.writeTextFile(`${d}/o.txt`, "x");
+      },
+      async minioList(_d: string, dest: string) {
+        await Deno.writeTextFile(dest, "o.txt\n");
+      },
+      async restorePostgres() {},
+      async restoreRedisRdb() {},
+      async gpgEncrypt(src: string, dest: string) {
+        await Deno.copyFile(src, dest);
+      },
+      async gpgDecrypt(src: string, dest: string) {
+        await Deno.copyFile(src, dest);
+      },
+      async tarZst(staging: string, dest: string) {
+        const r = await new Deno.Command("tar", {
+          args: ["-I", "zstd", "-cf", dest, "-C", staging, "."],
+        }).output();
+        if (r.code !== 0) throw new Error("tar failed");
+      },
+      async untarZst(src: string, destDir: string) {
+        await Deno.mkdir(destDir, { recursive: true });
+        const r = await new Deno.Command("tar", {
+          args: ["-I", "zstd", "-xf", src, "-C", destDir],
+        }).output();
+        if (r.code !== 0) throw new Error("untar failed");
+      },
+    };
+
+    await runBackupCreate(dir, {
+      args: [],
+      deps: {
+        runner: {
+          run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }),
+          spawn: () => {
+            throw new Error("no spawn");
+          },
+        },
+        processEnv: {},
+        now: () => new Date("2026-09-19T12:00:00Z"),
+      },
+      backupDir,
+      passphraseFile: pass,
+      noEncrypt: true,
+      ops: ops as never,
+    });
+
+    // 指标必须由 create **自己**写出（这才是本用例要钉的接线）
+    const file = join(backupDir, "metrics", "noj_backup.prom");
+    const text = await Deno.readTextFile(file);
+    assertStringIncludes(text, "noj_backup_last_success_unix_time 1789819200");
+    assertStringIncludes(text, "noj_backup_snapshot_bytes ");
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
