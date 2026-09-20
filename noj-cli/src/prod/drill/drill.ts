@@ -588,7 +588,14 @@ async function restoreDataServices(
   ) {
     throw new Error("隔离数据服务启动失败");
   }
-  await compose(ctx, runner, dockerBin, ["run", "--rm", "minio-init"]);
+  // **必须检查退出码**（评审发现）：bash 对每一步都是 `|| die`，
+  // 而这里此前丢弃了返回值——`minio-init` 失败会变成后面某个更难懂的错误
+  // （例如"数据核对失败"），把根因埋掉。
+  if (
+    await compose(ctx, runner, dockerBin, ["run", "--rm", "minio-init"]) !== 0
+  ) {
+    throw new Error("MinIO 初始化失败（minio-init）");
+  }
 
   const pgUser = valueOr(ctx.env, "POSTGRES_USER", "noj");
   const pgDb = valueOr(ctx.env, "POSTGRES_DB", "noj");
@@ -996,7 +1003,11 @@ async function startBusinessServices(
   log: (line: string) => void,
 ): Promise<{ evaluator: string; solution: string }> {
   log("✓ 执行迁移并启动 core");
-  await compose(ctx, runner, dockerBin, ["run", "--rm", "migrate"]);
+  // 同上：迁移失败必须立刻显式报错，否则会表现为 core 起不来
+  // （"隔离 core 启动失败"），掩盖"其实是迁移失败"这一根因。
+  if (await compose(ctx, runner, dockerBin, ["run", "--rm", "migrate"]) !== 0) {
+    throw new Error("数据库迁移失败（migrate）");
+  }
   if (
     await compose(ctx, runner, dockerBin, [
       "up",

@@ -1119,3 +1119,40 @@ Deno.test("T19 readEnvValues/valueOr/tailLines：解析与兜底", async () => {
     await Deno.remove(root, { recursive: true });
   }
 });
+
+// ── 评审发现（Important）：恢复路径上两处 compose 退出码被丢弃 ────────
+//
+// bash 对 drill 的每一步都是 `|| die`；而 `run --rm minio-init`
+// 与 `run --rm migrate` 此前**丢弃返回值**，于是失败会表现为后续某个更难懂的
+// 错误（"隔离 core 启动失败"、"数据核对失败"），把根因埋掉。
+
+Deno.test("评审: minio-init 失败必须显式报错（行为断言，不埋根因）", async () => {
+  // 行为断言而非源码文本匹配：注入 runner 让 `run --rm minio-init` 失败，
+  // 断言最终错误**点名 minio-init**。修复前该退出码被丢弃，错误会变成
+  // 后面某个更难懂的现象，运维者无法定位。
+  const root = await Deno.makeTempDir();
+  try {
+    const calls: Call[] = [];
+    const runner = makeRunner(calls, {
+      // **只命中 `run --rm minio-init`**（初始化），不要误伤后面那条
+      // `mc mirror`（它的 args 里也含 "minio-init"，但它自己已检查退出码）。
+      // 我第一版就是这样写的：`includes("minio-init")` 命中了 `mc mirror`，
+      // 于是演练在更早处失败、本用例**恒真**——移除修复也照样通过。
+      failOn: (args) =>
+        args.includes("run") && args.includes("--rm") &&
+        args.includes("minio-init") && !args.includes("-c"),
+    });
+    const result = await runDrill(await baseOptions(root, runner));
+    console.log(
+      "DBG minio:",
+      JSON.stringify({ code: result.exitCode, msg: result.message }),
+    );
+    assertEquals(result.exitCode, 1, "minio-init 失败应使演练失败");
+    assert(
+      result.message.includes("MinIO") || result.message.includes("minio-init"),
+      `失败信息应点名 minio-init，实得：${result.message}`,
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
