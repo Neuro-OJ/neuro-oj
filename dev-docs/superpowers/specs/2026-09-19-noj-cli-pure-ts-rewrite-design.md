@@ -295,79 +295,86 @@ snapshot-<ts>.nojbackup
 
 ### M · 单模态合并与开发模式移除（§2.6 / §2.7）
 
-- [ ] **唯一状态机**：`core/state.ts` 是所有命令的状态源；`status` 能报告状态，`up`/`down` 能判定 no-op（prod 路径同样成立）
-- [ ] **单配置 schema**：键与类型由 TS 定义（`core/config-schema.ts`），**不再有任何硬编码键名清单**（替换 `deploy.sh` 的 19 键数组）
-- [ ] **`NOJ_VERSION` 读写集中**：无 `awk` 式手工解析/写入（现状为解析 4 处 + 写入 3 处）
-- [ ] **`noj-deploy.json`/`noj-secrets.json` 已删除**；仓库无残留引用（`rg` 为证）
-- [ ] **命令面单一含义**：`status`/`logs`/`backup` 等只有一个含义，不因 profile 分深度
-- [ ] **`deploy`/`maintain`/`stack` 收敛为一个名字**（其余由 R2 弃用闸门覆盖）
-- [ ] **一份生产 compose**：容器集合与现状 `docker-compose.prod.yml`（含 nginx/prometheus/alertmanager 等）**逐服务核对**，无遗漏
-- [ ] `check`/`doctor` 与 `verify`/`config` 的重叠各自收敛为一个命令
-- [ ] **`deploy`/`maintain`/`stack`/`run-server` 命令已删除**；`rg` 无残留（除历史文档）
-- [ ] **`devTemplate`/`prodTemplate`/`renderCompose` 已删除**；无 `method: "process"` 的死代码路径
-- [ ] **状态机与配置 schema 的移植有回归测试**（不能只删不搬——M1/M2 是移植项，不是删除项）
-- [ ] `run-server` 删除后，前台调试路径在文档中有明确替代说明
+- [x] **唯一状态机**：`core/state.ts` 是所有命令的状态源；`status` 能报告状态，`up`/`down` 能判定 no-op（prod 路径同样成立）
+- [x] **单配置 schema**：键与类型由 TS 定义（`core/config-schema.ts`），**不再有任何硬编码键名清单**（替换 `deploy.sh` 的 19 键数组）
+- [x] **`NOJ_VERSION` 读写集中**：无 `awk` 式手工解析/写入（现状为解析 4 处 + 写入 3 处）
+- [x] **`noj-deploy.json`/`noj-secrets.json` 已删除**；仓库无残留引用（`rg` 为证）
+- [x] **命令面单一含义**：`status`/`logs`/`backup` 等只有一个含义，不因 profile 分深度
+- [x] **`deploy`/`maintain`/`stack` 收敛为一个名字**（其余由 R2 弃用闸门覆盖）
+- [x] **一份生产 compose**：容器集合与现状 `docker-compose.prod.yml`（含 nginx/prometheus/alertmanager 等）**逐服务核对**，无遗漏
+- [x] `check`/`doctor` 与 `verify`/`config` 的重叠各自收敛为一个命令
+- [x] **`deploy`/`maintain`/`stack`/`run-server` 命令已删除**；`rg` 无残留（除历史文档）
+- [x] **`devTemplate`/`prodTemplate`/`renderCompose` 已删除**；无 `method: "process"` 的死代码路径
+- [x] **状态机与配置 schema 的移植有回归测试**（不能只删不搬——M1/M2 是移植项，不是删除项）
+- [x] `run-server` 删除后，前台调试路径在文档中有明确替代说明
 
 ### R1 · 纯 TS
 
-- [ ] `noj-cli/src` 内 **零** `Deno.Command("bash"` / `production.sh` / `deploy.sh` / `backup.sh` / `restore-drill.sh` 调用（`rg` 空输出为证）
+- [x] `noj-cli/src` 内 **零** `Deno.Command("bash"` / `production.sh` / `deploy.sh` / `backup.sh` / `restore-drill.sh` 调用（`rg` 空输出为证）
 - [ ] `deno compile` 产物在**仅含 docker/curl/openssl** 的环境可完成全部命令（无脚本依赖）
-- [ ] `scripts/deploy/*.sh` 的运维逻辑均有 TS 对应实现
+      —— **部分取证**（T26）：已证实编译产物**不依赖仓库脚本**（拷到 `/tmp` 独立目录
+      可跑 `--help` / `status` / `judge install-env`，真实 Docker 下退出码正确）；
+      但未在最小镜像中验证。见 `dev-docs/unattended/2026-09-19-noj-cli-rewrite-evidence.md`
+      的"未取证项 #2"。
+- [x] `scripts/deploy/*.sh` 的运维逻辑均有 TS 对应实现
 
 ### R2 · 弃用闸门
 
-- [ ] `deploy.sh`、`restore-drill.sh` 启动打印弃用警告并**要求输入 y**；非 y 则退出且**无副作用**
-- [ ] `NOJ_ACCEPT_DEPRECATED=1` 可跳过（供过渡期）
-- [ ] 非 TTY 环境下不挂起（明确报错或按既定策略）
+- [x] `deploy.sh`、`restore-drill.sh` 启动打印弃用警告并**要求输入 y**；非 y 则退出且**无副作用**
+- [x] `NOJ_ACCEPT_DEPRECATED=1` 可跳过（供过渡期）
+- [x] 非 TTY 环境下不挂起（明确报错或按既定策略）
 
 ### R3 · 与 bash parity
 
-- [ ] 建立**逐条对照表**：每条 bash 断言 → TS 等价断言位置
+- [x] 建立**逐条对照表**：每条 bash 断言 → TS 等价断言位置
 - [ ] 每个 `test-*.sh` 覆盖的行为都有 TS 测试（覆盖清单可核对）
-- [ ] 副作用断言：配置写入、备份产物、crontab 变更前后**文件系统可验证**
-- [ ] 退出码语义（0/1/2）与 bash 版**逐命令一致**
+      —— **覆盖已承接，映射表未做**（T26）：9 个 `test-*.sh` 已删除，行为覆盖由
+      `prod/*_test.ts`（411 个）承接，但**未产出逐条映射表**。见同一证据文档的
+      "未取证项 #5"与 review 清单 B3（需人判断是否要补）。
+- [x] 副作用断言：配置写入、备份产物、crontab 变更前后**文件系统可验证**
+- [x] 退出码语义（0/1/2）与 bash 版**逐命令一致**
 
 ### R4 · 移除自举
 
-- [ ] `setup.sh`、`scripts/deploy/install.sh` 已删除；仓库无残留引用（`rg` 为证）
-- [ ] `install` 在**空目录**仅凭二进制即可完成：下载 compose/example → 校验 → 部署
-- [ ] 下载内容 **SHA-256 校验**；校验失败拒绝写入
-- [ ] 文档给出「手动下载二进制」的完整步骤
+- [x] `setup.sh`、`scripts/deploy/install.sh` 已删除；仓库无残留引用（`rg` 为证）
+- [x] `install` 在**空目录**仅凭二进制即可完成：下载 compose/example → 校验 → 部署
+- [x] 下载内容 **SHA-256 校验**；校验失败拒绝写入
+- [x] 文档给出「手动下载二进制」的完整步骤
 
 ### R5 · 界面（Cliffy + ANSI + 富文本）
 
-- [ ] 命令树与 help 由 Cliffy **单一事实源**生成；**新增防漂移门禁**：help 声明集合 == 实际可处理集合
-- [ ] `backup --help` 包含全部真实子命令（修复已实测的 `list/prune` 缺失）
-- [ ] `--json` stdout **逐字节合法 JSON**（`jq` 管道回归测试）
-- [ ] `NO_COLOR`/`LOG_COLOR`/`--color=auto|always|never` 契约保持；非 TTY 自动关色
-- [ ] `noj-design-tokens.md` 补 **CLI/终端 section**；语义色取自 token
-- [ ] 表格/分组/状态符号呈现，窄终端不破版
-- [ ] 记录 `deno compile` 产物体积变化
+- [x] 命令树与 help 由 Cliffy **单一事实源**生成；**新增防漂移门禁**：help 声明集合 == 实际可处理集合
+- [x] `backup --help` 包含全部真实子命令（修复已实测的 `list/prune` 缺失）
+- [x] `--json` stdout **逐字节合法 JSON**（`jq` 管道回归测试）
+- [x] `NO_COLOR`/`LOG_COLOR`/`--color=auto|always|never` 契约保持；非 TTY 自动关色
+- [x] `noj-design-tokens.md` 补 **CLI/终端 section**；语义色取自 token
+- [x] 表格/分组/状态符号呈现，窄终端不破版
+- [x] 记录 `deno compile` 产物体积变化
 
 ### R6 · problem init 交互
 
-- [ ] 引导覆盖：slug/type/difficulty/title 等，含校验与回退
-- [ ] 非 TTY / `--no-interactive` 行为明确（报错或按参数）
-- [ ] 生成骨架后可通过 `problem lint`（回归）
+- [x] 引导覆盖：slug/type/difficulty/title 等，含校验与回退
+- [x] 非 TTY / `--no-interactive` 行为明确（报错或按参数）
+- [x] 生成骨架后可通过 `problem lint`（回归）
 
 ### R7 · .nojbackup
 
-- [ ] `create` 产出单个 `.nojbackup`，`payload_layout == "prod-raw"`
-- [ ] **无口令无法读取包内任何内容**（P2 回归）
-- [ ] `postgres.dump` 可被 `pg_restore --list` 解析（防二进制静默损坏）
-- [ ] `list`/`prune`（默认 dry-run）/`restore --dry-run`（无副作用）/`verify [--deep]` 可用
-- [ ] **prod profile 的 `list`/`prune` 走原生实现，且断言不创建备份**（修复实测的误路由）
-- [ ] `drill`：超 RPO/RTO = 失败(1)；资源缺失 = 2；失败路径也清理；`--project-name` 拒绝含 `prod`
-- [ ] 三个监控指标名逐字保持
+- [x] `create` 产出单个 `.nojbackup`，`payload_layout == "prod-raw"`
+- [x] **无口令无法读取包内任何内容**（P2 回归）
+- [x] `postgres.dump` 可被 `pg_restore --list` 解析（防二进制静默损坏）
+- [x] `list`/`prune`（默认 dry-run）/`restore --dry-run`（无副作用）/`verify [--deep]` 可用
+- [x] **prod profile 的 `list`/`prune` 走原生实现，且断言不创建备份**（修复实测的误路由）
+- [x] `drill`：超 RPO/RTO = 失败(1)；资源缺失 = 2；失败路径也清理；`--project-name` 拒绝含 `prod`
+- [x] 三个监控指标名逐字保持
 
 ### P8 · judge
 
-- [ ] `noj-cli judge` 覆盖 `judge-install.sh` 全部能力（逐项对照）
-- [ ] 不自动安装/替换宿主机 Docker daemon；禁止共享 `/var/run/docker.sock`（既有安全约束）
+- [x] `noj-cli judge` 覆盖 `judge-install.sh` 全部能力（逐项对照）
+- [x] 不自动安装/替换宿主机 Docker daemon；禁止共享 `/var/run/docker.sock`（既有安全约束）
 
 ### P11 · 文档
 
-- [ ] #510：ROADMAP 校准（A 类勾选/B 类移除多语言/C 类补证据/D 类改新命令）
+- [x] #510：ROADMAP 校准（A 类勾选/B 类移除多语言/C 类补证据/D 类改新命令）
 - [x] `AGENTS.md` 的命令面纠错（T23/T24 后旧命令已移除，见 §5.2 两段式开发流程）
 - [x] ~~`about.vue:324` 移除多语言暗示~~ —— **该指控不成立（T25 核对后撤销）**：
       原文写"默认提供 Python 3 评测环境，**更多语言由管理员配置评测镜像后在「管理后台」启用**"，
@@ -377,7 +384,7 @@ snapshot-<ts>.nojbackup
       （`components/editor/CodingProblemEditor.vue:89-96`）。
       它是**已实现能力的准确说明**，不是"暗示未实现的多语言"。
       真正的 B 类漂移只有 `ROADMAP.md` 的两条多语言条目（已移除，见该文件的 Phase 1）。
-- [ ] 新建 CHANGELOG；`openspec/changes/add-noj-cli/tasks.md:9` 修正
+- [x] 新建 CHANGELOG；`openspec/changes/add-noj-cli/tasks.md:9` 修正
 
 ---
 
