@@ -493,3 +493,82 @@ Deno.test("评审: 非 install 命令仍要求完整安装目录（不放宽守�
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
+
+// ── 评审发现：install 缺省 ref 曾是分支名 `main`（R4 阻塞 + R3 parity 破坏）──
+//
+// 删掉的 `install.sh:722` 在无 `--ref` 时调 `resolve_latest_ref`：查询 Release
+// 列表并选**最新资产就绪的稳定版**。TS 版却把缺省写成字符串 `"main"`：
+//
+//   $ noj-cli install --dir X        # 文档就是让用户这么装（无 --ref）
+//   → https://github.com/.../releases/download/main/docker-compose.prod.yml → 404
+//
+// 而文档让用户下载的是某个**标签**的二进制，install 必须从同一个标签取部署文件，
+// 否则正是 issue #431 要避免的"CLI 与部署文件版本不一致"。
+
+Deno.test("评审: install 无 --ref 时必须解析最新资产就绪 Release（而非分支 main）", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const urls: string[] = [];
+    const { runProdInstall } = await import("./cli.ts");
+    const releases = [
+      { tag_name: "v0.10.0", draft: false, prerelease: false, assets: [] },
+      {
+        tag_name: "v0.9.5",
+        draft: false,
+        prerelease: false,
+        assets: [
+          { name: "noj-cli-linux-amd64" },
+          { name: "noj-cli-linux-amd64.sha256" },
+          { name: "docker-compose.prod.yml" },
+          { name: "docker-compose.prod.yml.sha256" },
+          { name: ".env.prod.example" },
+          { name: ".env.prod.example.sha256" },
+        ],
+      },
+    ];
+    await runProdInstall(dir, ["--non-interactive"], {
+      // 只拦截 Release 列表查询；后续部署文件下载让它失败也没关系——
+      // 本用例断言的是**解析出的 ref**，不是安装成功。
+      fetcher: (url: string) => {
+        urls.push(url);
+        if (url.includes("/releases")) {
+          return Promise.resolve(
+            new Response(JSON.stringify(releases), { status: 200 }),
+          );
+        }
+        return Promise.resolve(new Response("", { status: 404 }));
+      },
+      isTty: () => false,
+      processEnv: {},
+      io: {
+        write: () => {},
+        readLine: () => Promise.resolve(""),
+        readSecret: () => Promise.resolve(""),
+      },
+      runner: {
+        run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }),
+        spawn: () => {
+          throw new Error("不应 spawn");
+        },
+      },
+    }).catch(() => {});
+    // 必须查过 Release 列表（证明走了"解析最新版本"这条路）
+    assert(
+      urls.some((u) => u.includes("/releases")),
+      `install 无 --ref 时必须查询 Release 列表，实得请求：${urls.join(" | ")}`,
+    );
+    // 且**不得**把分支名当 ref 去拼下载 URL
+    assert(
+      urls.every((u) => !u.includes("/download/main/")),
+      `不得用分支 main 当版本 ref，实得请求：${urls.join(" | ")}`,
+    );
+    // 应选中资产就绪的 v0.9.5（v0.10.0 资产为空，必须被跳过）
+    assert(
+      urls.some((u) => u.includes("/download/v0.9.5/")) ||
+        urls.every((u) => !u.includes("/download/")),
+      `应使用资产就绪的 v0.9.5，实得：${urls.join(" | ")}`,
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true }).catch(() => {});
+  }
+});

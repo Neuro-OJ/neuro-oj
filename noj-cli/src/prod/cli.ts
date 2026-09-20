@@ -34,7 +34,10 @@ import { realRunner } from "../runtime/command.ts";
 import { realIO } from "../tui/io.ts";
 import type { PromptIO } from "../tui/io.ts";
 import { UsageError } from "../util/args.ts";
-import { DEFAULT_UPDATE_REPOSITORY } from "./release.ts";
+import {
+  DEFAULT_UPDATE_REPOSITORY,
+  resolveLatestReleaseTag,
+} from "./release.ts";
 import type { Fetcher } from "./bootstrap.ts";
 import { PROD_COMPOSE_FILE, PROD_ENV_FILE } from "./compose.ts";
 import {
@@ -285,8 +288,25 @@ export async function runProdInstall(
   const result: InstallResult = await install({
     dir,
     repository: flagValue(args, "--repo") ?? DEFAULT_REPOSITORY,
+    // **缺省不再是分支名 `main`**（评审发现的 R4 阻塞）：
+    // 删掉的 `install.sh:722` 在无 `--ref` 时调 `resolve_latest_ref`——
+    // 查询 Release 列表并选**最新的资产就绪稳定版**。这与 R4 的前提一致：
+    // 用户手动下载的是某个**标签**的二进制，`install` 必须从**同一个**标签取
+    // 部署文件，否则会出现 issue #431 要避免的"CLI 与部署文件版本不一致"。
+    //
+    // 修前实测：`install --dir X`（无 --ref）只尝试
+    // `https://github.com/.../releases/download/main/docker-compose.prod.yml` → 404，
+    // 而文档正是让用户这么装（`install --dir /opt/neuro-oj`，无 --ref）。
     ref: flagValue(args, "--ref") ?? flagValue(args, "--version") ??
-      d.processEnv["NOJ_DEPLOY_DEFAULT_VERSION"] ?? "main",
+      d.processEnv["NOJ_DEPLOY_DEFAULT_VERSION"] ??
+      // 用**宽资产集**解析器（CLI + compose + example 及其校验文件）：
+      // install 恰好要用到全部这些资产，只按 CLI 资产过滤会选中一个
+      // "有二进制但没有部署文件"的 Release，随后同步必然失败（issue #431）。
+      await resolveLatestReleaseTag({
+        repository: flagValue(args, "--repo") ?? DEFAULT_REPOSITORY,
+        apiUrl: d.processEnv["NOJ_UPDATE_API_URL"],
+        fetcher: deps.fetcher,
+      }),
     io: d.io,
     runner: d.runner,
     fetcher: deps.fetcher,
