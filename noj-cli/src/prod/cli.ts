@@ -198,6 +198,48 @@ export function hasFlag(args: string[], ...names: string[]): boolean {
   return args.some((a) => names.includes(a));
 }
 
+/**
+ * 生产命令上**未实现却会被静默吞掉**的旗标 → 拒绝并说明原因。
+ *
+ * ## 为什么必须拒绝而不是忽略（评审发现的数据丢失）
+ *
+ * `--dry-run` 是 bash 的真实选项（`deploy.sh:110`），且在破坏性路径上有守卫：
+ * `production.sh:506` 的 `if ((remove_all && !dry_run))` 与 `:511` 的
+ * `if (( !dry_run ))` 明确**在 dry-run 下不做 `unregister_command` 与
+ * `remove_install_directory`**。TS 版既没实现它、也没拒绝它，于是：
+ *
+ * ```
+ * $ rm -rf y2 && mkdir -p y2/bin && ... && touch y2/important.txt
+ * $ noj-cli uninstall --all --yes --dry-run --dir /tmp/y2
+ * ✓ 已删除 NOJ 安装目录：/tmp/y2        ← 真的删了
+ * EXITCODE=0                            ← 而且报成功
+ * ```
+ *
+ * 即用户执行"给我看看会做什么"的命令，**真删了整个安装目录与数据卷**。
+ * 这比"旗标不存在"更危险：没有报错，用户的预期与结果完全相反。
+ *
+ * 因此：**未实现的旗标必须显式拒绝（退出码 2）**，而不是静默忽略。
+ * 这同时给未来的实现留了明确位置——实现后从本表移除即可。
+ */
+const UNIMPLEMENTED_PROD_FLAGS: Record<string, string> = {
+  "--dry-run": "生产命令尚未实现 --dry-run；该旗标此前被静默忽略，会让看似" +
+    "预演的命令真的执行（uninstall --all 会真的删除目录与数据卷）。" +
+    "如需确认将要执行的 compose 命令，请先阅读 noj-cli/README.md 的说明，" +
+    "或对破坏性操作使用 --help 查看其确切语义",
+  "--panel": "生产命令尚未实现 --panel（面板模式 auto|baota|none）；" +
+    "面板只做探测与提示，不影响部署结果",
+};
+
+/** 拒绝未实现的生产旗标（在任何副作用之前）。 */
+export function rejectUnimplementedProdFlags(args: string[]): void {
+  for (const arg of args) {
+    // 同时覆盖 `--flag` 与 `--flag=value` 两种写法
+    const name = arg.includes("=") ? arg.slice(0, arg.indexOf("=")) : arg;
+    const hint = UNIMPLEMENTED_PROD_FLAGS[name];
+    if (hint !== undefined) throw new UsageError(hint);
+  }
+}
+
 /** 位置参数（跳过所有 `--xxx` 与它们的值）。 */
 export function positionals(args: string[]): string[] {
   const out: string[] = [];

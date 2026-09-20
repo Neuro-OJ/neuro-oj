@@ -25,7 +25,7 @@ import {
   positionals,
 } from "./cli.ts";
 import { UsageError } from "../util/args.ts";
-import { run } from "../cli.ts";
+import { EXIT_USAGE, run } from "../cli.ts";
 
 // ---------------- R1 门禁 ----------------
 
@@ -571,4 +571,96 @@ Deno.test("评审: install 无 --ref 时必须解析最新资产就绪 Release�
   } finally {
     await Deno.remove(dir, { recursive: true }).catch(() => {});
   }
+});
+
+// ── 评审发现：--dry-run 被静默忽略 → "预演"真的删数据 ────────────────
+//
+// bash 的 `--dry-run` 在破坏性路径上有守卫（`production.sh:506`/`:511`：dry-run 下
+// 不做 `unregister_command` 与 `remove_install_directory`）。TS 版既没实现也没拒绝，
+// 于是旗标被静默吞掉。实测（编译产物）：
+//
+//   $ noj-cli uninstall --all --yes --dry-run --dir /tmp/y2
+//   ✓ 已删除 NOJ 安装目录：/tmp/y2        ← 真的删了
+//   EXITCODE=0
+//
+// 即用户执行"给我看看会做什么"，结果整个安装目录与数据卷被删除。
+// 因此**未实现的旗标必须显式拒绝（2）**，而不是忽略。
+
+Deno.test("评审: 生产命令上未实现的 --dry-run 必须被拒绝，而非静默执行", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "install");
+    await Deno.mkdir(join(dir, "bin"), { recursive: true });
+    await Deno.writeTextFile(
+      join(dir, "docker-compose.prod.yml"),
+      "services: {}\n",
+    );
+    await Deno.writeTextFile(join(dir, ".env.prod"), "NOJ_VERSION=v0.9.5\n");
+    await Deno.chmod(join(dir, ".env.prod"), 0o600);
+    await Deno.writeTextFile(join(dir, "bin/noj-cli"), "#!/bin/sh\n");
+    await Deno.chmod(join(dir, "bin/noj-cli"), 0o755);
+    const canary = join(dir, "important.txt");
+    await Deno.writeTextFile(canary, "CANARY\n");
+
+    const originalErr = console.error;
+    let err = "";
+    console.error = (...a: unknown[]) => {
+      err += a.join(" ") + "\n";
+    };
+    let code = -1;
+    try {
+      code = await run([
+        "uninstall",
+        "--all",
+        "--yes",
+        "--dry-run",
+        "--dir",
+        dir,
+      ]);
+    } finally {
+      console.error = originalErr;
+    }
+    // 必须是用法错误（2），而不是"成功执行"
+    assertEquals(
+      code,
+      EXIT_USAGE,
+      `--dry-run 必须被拒绝，实得 ${code}：${err}`,
+    );
+    assertEquals(
+      err.includes("--dry-run"),
+      true,
+      `错误信息应点名该旗标：${err}`,
+    );
+    // **关键断言**：目录与其中的文件必须完好无损
+    assertEquals(
+      await Deno.stat(canary).then((s) => s.isFile).catch(() => false),
+      true,
+      "被拒绝时不得删除任何东西（这正是本次修复的目的）",
+    );
+    assertEquals(
+      await Deno.stat(join(dir, "docker-compose.prod.yml")).then(() => true)
+        .catch(() => false),
+      true,
+      "安装目录必须完好",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("评审: 未实现的 --panel 同样被拒绝（不静默吞掉）", async () => {
+  const { rejectUnimplementedProdFlags } = await import("./cli.ts");
+  assertThrows(
+    () => rejectUnimplementedProdFlags(["--panel", "none"]),
+    UsageError,
+    undefined,
+    "--panel 未实现时必须拒绝",
+  );
+  // `--flag=value` 写法也要覆盖
+  assertThrows(
+    () => rejectUnimplementedProdFlags(["--panel=none"]),
+    UsageError,
+  );
+  // 已实现的旗标不得被误伤
+  rejectUnimplementedProdFlags(["--dir", "/x", "--all", "--yes", "--json"]);
 });

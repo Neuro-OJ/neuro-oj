@@ -21,6 +21,7 @@ import {
   hasJson,
   parseProdArgs,
   positionals,
+  rejectUnimplementedProdFlags,
   runBackupCreate,
   runBackupList,
   runBackupPrune,
@@ -1014,6 +1015,10 @@ async function dispatchProduction(
   command: string,
   args: string[],
 ): Promise<number> {
+  // **先拒绝未实现的旗标**（在任何副作用之前）：`--dry-run` 在破坏性命令上
+  // 被静默忽略会让"预演"真的执行（评审实测：`uninstall --all --yes --dry-run`
+  // 删除了整个安装目录）。必须在解析/分发之前。
+  rejectUnimplementedProdFlags(args);
   const parsed = parseProdArgs(args);
   let dir: string;
   try {
