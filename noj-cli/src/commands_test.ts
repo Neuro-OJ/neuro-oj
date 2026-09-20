@@ -313,3 +313,37 @@ async function fileExists(relativePath: string): Promise<boolean> {
     return false;
   }
 }
+
+// ── T26：help 不得承诺实现拒绝的取值 ────────────────────────────────
+//
+// **这个缺陷真实存在过**：T23 把 profile 收敛为单模态（只接受 `prod`），
+// 但顶层 help 仍写 `--profile <prod|stack>`。用户照 help 传 `--profile stack`
+// 会得到"无效的 --profile: stack"，而 `--debug` 的错误提示里同时说"可选值: prod"
+// ——help 与报错自相矛盾。
+//
+// 这类漂移（"help 承诺一个实现不接受的取值"）比"help 漏了一个命令"更糟：
+// 漏掉的用户自己会发现，而多承诺的会让用户按文档操作后失败。
+
+Deno.test("T26 门禁: help 中的 --profile 取值必须与实现接受的一致", async () => {
+  const text = renderCommandList();
+  // 实现接受的全部取值（唯一事实源）
+  const { PROFILE_NAMES } = await import("./profile.ts");
+  const accepted = [...PROFILE_NAMES];
+  // 找到 help 里 `--profile <...>` 那一行
+  const line: string | undefined = text.split("\n").find((l) =>
+    l.includes("--profile")
+  );
+  assert(line !== undefined, "help 必须声明 --profile");
+  // 该行里 `<>` 内的取值集合必须恰好等于实现接受的集合
+  const m = /<([^>]+)>/.exec(line);
+  assert(m !== null, `--profile 的取值应写在 <> 中，实得：${line}`);
+  const inside: string = m?.[1] ?? "";
+  const advertised = inside.split("|").map((x) => x.trim()).filter((x) =>
+    x !== ""
+  );
+  assertEquals(
+    advertised.sort(),
+    [...accepted].sort(),
+    `help 声明的 --profile 取值必须与实现一致（help=${advertised} 实现=${accepted}）`,
+  );
+});

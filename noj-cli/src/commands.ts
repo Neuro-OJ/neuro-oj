@@ -270,9 +270,12 @@ export const COMMANDS: readonly CommandSpec[] = [
     summary: "错误时打印完整栈帧（排查用；亦可设 NOJ_CLI_DEBUG=1）",
   },
   {
-    name: "--profile <prod|stack>",
+    // T23 收敛为单模态后只剩 `prod`。**这里必须与实现同步**：旧的
+    // `<prod|stack>` 会让用户照 help 传 `--profile stack`，然后被拒绝——
+    // help 承诺一个实现不接受的取值，是最容易误导人的一类漂移。
+    name: "--profile <prod>",
     tier: "global",
-    summary: "显式指定部署模式；缺省按目录特征自动探测（探测失败会报错）",
+    summary: "显式确认部署模式（仅 prod）；缺省按目录特征自动探测",
   },
 ];
 
