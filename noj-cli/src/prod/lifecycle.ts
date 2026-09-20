@@ -1497,14 +1497,31 @@ async function upgradeWith(
   opts: UpdateOptions,
   ctx: LifecycleContext,
   to: string,
+  /**
+   * 已写入**目标版本**的暂存环境文件（`stageConfigVersion` 的产物）。
+   *
+   * **必须传给 compose**（评审发现的严重缺陷）：bash 是这么做的——
+   * `production.sh:419` 的 `deploy_args+=(--env-file "$stage_file")`，
+   * 即**升级本身跑在暂存配置上**，成功后才 `mv` 覆盖 `.env.prod`（:427）。
+   * 早先的 TS 实现把暂存文件**只**用于最后提交，pull/up 全部读旧 `.env.prod`，
+   * 于是 `update --latest` 会：拉旧镜像、起旧栈、把 `NOJ_VERSION` 写成新值、
+   * 并报"已升级"——**版本号与实际部署不一致，且下一次 up 可能拉到不存在的 tag**。
+   */
+  stagedEnvFile?: string,
 ): Promise<UpgradeOutcome> {
   const prepared = await prepareLifecycle(ctx, opts);
   if (!prepared.ok) return { error: prepared.error, backupPath: null };
+  // 生效配置 = 暂存文件（若已创建）；compose 与口令回填都作用于它。
+  const effectiveEnvFile = stagedEnvFile ?? join(ctx.dir, PROD_ENV_FILE);
+  const composeOptions: ComposeOptions = {
+    ...prepared.composeOptions,
+    envFile: effectiveEnvFile,
+  };
 
   // ---- ensure_backup_passphrase（bash deploy.sh:1036）----
   const processEnv = opts.processEnv ?? Deno.env.toObject();
   const passphrase = await ensureCommandPassphrase({
-    envFile: join(ctx.dir, PROD_ENV_FILE),
+    envFile: effectiveEnvFile,
     env: prepared.env,
     processEnv,
     passphraseFile: opts.passphraseFile,
@@ -1519,7 +1536,7 @@ async function upgradeWith(
   const backup = await runUpdateBackup(opts, {
     dir: ctx.dir,
     version: to,
-    envFile: join(ctx.dir, PROD_ENV_FILE),
+    envFile: effectiveEnvFile,
     passphraseFile: passphrase.path,
   });
   if (!backup.ok) {
@@ -1530,7 +1547,7 @@ async function upgradeWith(
 
   // ---- compose pull（bash :1039）----
   logSection(ctx, "拉取目标版本镜像");
-  const pulled = await composePull(opts.runner, prepared.composeOptions);
+  const pulled = await composePull(opts.runner, composeOptions);
   const pullText = composeOutputText(pulled);
   if (pullText !== "") emitHuman(pullText, ctx.io);
   if (!Array.isArray(pulled) && pulled.code !== 0) {
@@ -1541,9 +1558,11 @@ async function upgradeWith(
   }
 
   // ---- wait_for_stack（bash :1040，与 install/start 同源）----
+  // **用 composeOptions（含暂存 envFile）**，否则起栈读的是旧 `NOJ_VERSION`，
+  // 镜像 tag 与刚 pull 的目标版本不一致（评审发现的空升级）。
   const wait = await waitForStack(
     opts.runner,
-    prepared.composeOptions,
+    composeOptions,
     (text) => emitHuman(text, ctx.io),
   );
   if (!wait.ok) {
@@ -1690,7 +1709,7 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
   }
 
   // ---- 5. 升级序列：备份 → pull → wait → metadata ----
-  const upgraded = await upgradeWith(opts, ctx, to);
+  const upgraded = await upgradeWith(opts, ctx, to, staged ?? undefined);
   if (upgraded.error !== null) {
     await discardStaged();
     const result = fail(from, to, upgraded.error);

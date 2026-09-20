@@ -4584,3 +4584,102 @@ Deno.test("评审: install 成功后 <dir>/bin/noj-cli 存在（且能通过 uni
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
+
+// ── 评审发现：update --latest 用**旧** .env.prod 起栈（空升级）──────────
+//
+// 暂存文件（已写入目标版本）原本**只**用于最后提交，而 `composePull` /
+// `waitForStack` 读的是仍然写着旧版本的 `.env.prod`。由于
+// `docker-compose.prod.yml` 里镜像 tag 插值 `${NOJ_VERSION}`，结果是
+// **拉旧镜像、起旧栈，却把新版本号写进配置并报"已升级"**。
+//
+// bash 不是这样：`production.sh:419` 的 `deploy_args+=(--env-file "$stage_file")`
+// 让**升级本身跑在暂存配置上**，成功后才 `mv` 覆盖（:427）。
+// 既有的顺序测试只断言 `sync < backup < pull < wait`，从不检查 pull/wait
+// **用的是哪个 env 文件**，所以它兼容两种实现、抓不到本缺陷。
+
+Deno.test("评审: update --latest 的 pull/up 必须使用暂存配置（目标版本），而非旧 .env.prod", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.5" });
+    const envFile = join(dir, ENV_FILE);
+
+    const envFilesUsed: string[] = [];
+    const records: RunnerCall[] = [];
+    const runner = makeRunner(records, (cmd, args) => {
+      // 记录每次 compose 调用实际使用的 --env-file
+      const i = args.indexOf("--env-file");
+      if (cmd === "docker" && i >= 0) envFilesUsed.push(args[i + 1] ?? "");
+      return undefined;
+    });
+
+    await update({
+      dir,
+      runner,
+      // 注意：`latest` 是**布尔字段**（`opts.latest === true`），不是从 args 推的；
+      // CLI 层由 `hasFlag(args, "--latest")` 传入（`prod/cli.ts`）。
+      latest: true,
+      args: ["--latest"],
+      io: { stdout: () => {}, stderr: () => {}, jsonMode: false },
+      isTty: false,
+      // Releases 列表走 stub，部署文件走既有 ASSETS stub（URL 感知）
+      fetcher: (url: string) => {
+        // 注意：下载地址也含 `/releases/`（`/releases/download/<tag>/…`），
+        // 必须用 API 特征串区分，否则会把清单 JSON 当成部署文件返回。
+        if (url.includes("/releases?") || url.includes("api.github.com")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify([
+                {
+                  tag_name: "v0.10.0",
+                  draft: false,
+                  prerelease: false,
+                  assets: [
+                    { name: "noj-cli-linux-amd64" },
+                    { name: "noj-cli-linux-amd64.sha256" },
+                    { name: "docker-compose.prod.yml" },
+                    { name: "docker-compose.prod.yml.sha256" },
+                    { name: ".env.prod.example" },
+                    { name: ".env.prod.example.sha256" },
+                  ],
+                },
+              ]),
+              { status: 200 },
+            ),
+          );
+        }
+        return makeFetcher([], [])(url);
+      },
+      processEnv: { NOJ_BACKUP_PASSPHRASE_FILE: join(root, "pass") },
+      backup: () => Promise.resolve({ ok: true, path: null, error: null }),
+      warn: () => {},
+      now: () => new Date("2026-09-19T00:00:00Z"),
+    } as never);
+
+    const staged = envFilesUsed.filter((p) => p !== envFile);
+    assert(
+      staged.length > 0,
+      `pull/up 必须使用暂存配置（目标版本），实得 env-file 序列：${
+        envFilesUsed.join(" | ")
+      }`,
+    );
+    // 关键断言：**compose 调用期间**用的必须是暂存文件（而非真实 .env.prod），
+    // 且该文件当时写着**目标版本**。注意不能在此处读文件内容——升级成功后
+    // `commitConfigVersion` 已把它 rename 覆盖到 `.env.prod`（这正是期望行为），
+    // 故暂存路径此刻已不存在。改为断言"最终 .env.prod 已是目标版本"
+    // + "期间 use 的路径与真实配置不同"。
+    for (const p of staged) {
+      assertEquals(
+        p === envFile,
+        false,
+        "compose 不得使用真实 .env.prod 跑升级（那会用旧 NOJ_VERSION 拉镜像）",
+      );
+    }
+    const finalEnv = await Deno.readTextFile(envFile);
+    assert(
+      finalEnv.includes("v0.10.0"),
+      `升级成功后 .env.prod 必须已是目标版本，实得：${finalEnv}`,
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});

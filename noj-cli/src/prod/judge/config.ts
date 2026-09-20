@@ -36,7 +36,7 @@
  * 本模块不持有模块级可变状态（AGENTS.md §8.2 多副本约束）。
  */
 
-import { isAbsolute, join } from "@std/path";
+import { dirname, isAbsolute, join, normalize } from "@std/path";
 import { isPlaceholder, validateEnv } from "../../core/config-schema.ts";
 import { parseEnvFile, writeEnvFileAtomic } from "../../core/env-file.ts";
 import { UsageError } from "../../util/args.ts";
@@ -202,13 +202,47 @@ export function assertDedicatedSocket(
     );
   }
 
-  const candidates = new Set<string>([raw, collapseSlashes(raw)]);
-  // realpath 只在路径**存在**时有意义（不存在时回退字面值）。
-  const resolved = realPath(raw);
-  if (resolved !== "") {
-    candidates.add(resolved);
-    candidates.add(collapseSlashes(resolved));
-  }
+  // **归一化是必需的**（评审发现的绕过）：仅比较字面量会漏掉一切等价写法。
+  // 实测被放行的形态：`/var/run/docker.sock/`（尾部斜杠）、`…/docker.sock/.`、
+  // `/run/docker.sock/./`。它们指向同一个宿主 socket——且真实 Docker 对
+  // 尾部斜杠的 bind 源同样会挂载该路径，所以一个手误的斜杠就能把宿主 socket
+  // 交给 Judge，正是本模块要防的容器逃逸面。
+  //
+  // `realPath` 之所以不够：`Deno.realPathSync("/var/run/docker.sock/")` 抛
+  // `NotADirectory`（socket 不是目录），旧实现把"抛错"当成"路径不存在"跳过，
+  // 于是归一化完全没发生。
+  const candidates = new Set<string>();
+  const add = (path: string): void => {
+    if (path === "") return;
+    candidates.add(path);
+    candidates.add(collapseSlashes(path));
+    // **真正的路径归一化**：`normalize` 解决 `.`/`..`/重复斜杠，
+    // 但它**保留尾部斜杠**（实测 `/a/b/` → `/a/b/`），故再剥一次。
+    // 手写正则做不到这点：`/var/run/docker.sock/..//docker.sock`
+    // 归一化后正是被禁路径，而简单的去尾斜杠看不出来。
+    const normalized = normalize(path).replace(/\/+$/, "");
+    if (normalized !== "" && normalized !== path) {
+      candidates.add(normalized);
+      candidates.add(collapseSlashes(normalized));
+    }
+    // 父目录也纳入：socket 常被软链到"更整洁"的路径。
+    const parent = dirname(normalized === "" ? path : normalized);
+    if (parent !== "" && parent !== "/") {
+      candidates.add(parent);
+      const realParent = safeRealPath(realPath, parent);
+      if (realParent !== "") {
+        candidates.add(realParent);
+        candidates.add(collapseSlashes(realParent));
+      }
+    }
+  };
+  add(raw);
+  // realpath 只在路径**存在**时有意义（不存在/非目录时回退字面值）。
+  const resolved = safeRealPath(realPath, raw);
+  add(resolved);
+  // 对**父目录**再取一次 realpath：socket 常被软链到"更整洁"的路径，
+  // 而针对 socket 本身取 realpath 在部分平台会失败。
+  add(safeRealPath(realPath, dirname(raw.replace(/\/+$/, ""))));
   for (const candidate of candidates) {
     if (FORBIDDEN_SOCKET_PATHS.includes(candidate)) {
       throw new UsageError(
@@ -216,6 +250,26 @@ export function assertDedicatedSocket(
           `请准备只服务于 Judge 的 rootless socket（例如 /run/noj-judge/docker.sock）`,
       );
     }
+  }
+}
+
+/**
+ * `realPath` 的容错包装：抛错（路径不存在 / 非目录）时返回 `""`。
+ *
+ * 抽出来的理由：旧实现直接调用它并**把抛错当成"不存在"**，于是
+ * `/var/run/docker.sock/` 这类会抛 `NotADirectory` 的输入完全跳过了归一化——
+ * 那是绕过守卫的直接原因。现在抛错只影响"这一步拿不到 realpath"，
+ * 字面量/去尾斜杠/父目录的归一化仍在。
+ */
+function safeRealPath(
+  realPath: (path: string) => string,
+  path: string,
+): string {
+  if (path === "") return "";
+  try {
+    return realPath(path);
+  } catch {
+    return "";
   }
 }
 
