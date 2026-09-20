@@ -2816,17 +2816,24 @@ function downCall(records: RunnerCall[]): RunnerCall | undefined {
 /**
  * 造出**通过** `--all` 安装目录守卫的完整安装目录。
  *
- * bash `validate_install_directory`（production.sh:167-176）要求
- * `bin/noj-cli`、生产部署脚本与 compose 特征文件齐全；不齐全时先于工作区检查
- * 报"不是完整的 NOJ 安装目录"（这与 T24 ledger 记录的自锁一致）。因此凡是要
- * 走到守卫后续分支（工作区拒绝、危险路径拒绝、真正 `rm -rf`）的用例，都必须
- * 用本 helper 而不是裸 `makeInstalledDir`。
+ * 判据是 `bin/noj-cli` + `PRODUCTION_MARKERS`（compose + `.env.prod`）——
+ * **不再含生产部署脚本**：bash `validate_install_directory`
+ * （production.sh:167-176）曾要求它，但那些脚本已随 T24 删除，继续要求会
+ * 让守卫在任何真实安装目录上永久拒绝（自锁）。
+ *
+ * 不齐全时先于工作区检查报"不是完整的 NOJ 安装目录"。因此凡是要走到守卫
+ * 后续分支（工作区拒绝、危险路径拒绝、真正 `rm -rf`）的用例，都必须用本
+ * helper 而不是裸 `makeInstalledDir`。
  */
 async function makeRemovableDir(): Promise<string> {
+  // **只造真实安装流程产得出的形状**：`bin/noj-cli` + `PRODUCTION_MARKERS`
+  // （compose + .env.prod）。此前这里还会伪造 `scripts/deploy/deploy.sh`——
+  // 那是个**已随 T24 删除**的文件，且 `install` 从不会创建它。
+  // 伪造它会让"uninstall 完整性判据"的测试跑在一个不可能的目录形状上，
+  // 从而掩盖真实缺口（评审发现：install 曾根本不放置 `bin/noj-cli`，
+  // 而测试因为自己预置了它而全绿）。
   const dir = await makeInstalledDir();
   await makeCliBinary(dir);
-  await Deno.mkdir(join(dir, "scripts/deploy"), { recursive: true });
-  await Deno.writeTextFile(join(dir, "scripts/deploy/deploy.sh"), "");
   return dir;
 }
 
