@@ -1035,7 +1035,14 @@ async function dispatchProduction(
     //
     // 这里只做**路径归一化**（不要求标记），标记校验交给 `prod/lifecycle.ts:install`
     // 自己的分支（它按 `.env.prod` 是否存在决定 seed 还是保留），那才是该判定的归属地。
-    dir = command === "install" && parsed.dir !== undefined
+    // **`judge` 同样允许空/新建目录**（评审发现）：独立 Judge 节点
+    // （`noj-docs/docs/operators/judge-workers.md`）的文档流程就是
+    // `noj-cli judge install-env` → `noj-cli judge install --dir /srv/noj-judge`，
+    // 而该节点**不运行 noj-core/noj-ui**，目录里自然没有 `PRODUCTION_MARKERS`。
+    // 要求"完整生产安装目录"等于让文档承诺的入口**永远无法执行**
+    // （实测：两者都报"不是完整的 NOJ 生产安装目录"）。
+    const allowsFreshDir = command === "install" || command === "judge";
+    dir = allowsFreshDir && parsed.dir !== undefined
       ? resolve(ctx.cwd, parsed.dir)
       : await findProductionDir(parsed.dir, ctx.cwd);
   } catch (e) {

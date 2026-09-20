@@ -846,3 +846,63 @@ Deno.test("评审: CLI 层 judge install --dry-run 不得写出 .env.judge", asy
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
+
+// ── 评审发现：独立 Judge 节点的文档入口不可执行（与 install 同类）──────
+//
+// `noj-docs/docs/operators/judge-workers.md` 给**不运行 noj-core/noj-ui** 的
+// 独立评测节点的流程是：
+//     noj-cli judge install-env
+//     noj-cli judge install --dir /srv/noj-judge
+// 而 `dispatchProduction` 只对 `command === "install"` 放宽目录要求，
+// 于是这两条命令都报"不是完整的 NOJ 生产安装目录"**永远无法执行**。
+
+Deno.test("评审: judge 子命令接受新建/空目录（独立节点文档流程）", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "fresh-judge");
+    let err = "";
+    const originalErr = console.error;
+    console.error = (...a: unknown[]) => {
+      err += a.join(" ") + "\n";
+    };
+    let code = -1;
+    try {
+      code = await run(["judge", "install-env", "--dir", dir]);
+    } finally {
+      console.error = originalErr;
+    }
+    assertEquals(
+      err.includes("不是完整的 NOJ 生产安装目录"),
+      false,
+      `judge install-env 不得要求预完整目录，实得：${err}`,
+    );
+    void code;
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("评审: 放宽只针对 install/judge，其他命令仍要求完整安装目录", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    for (const cmd of ["status", "start", "stop", "logs", "backup"]) {
+      let err = "";
+      const originalErr = console.error;
+      console.error = (...a: unknown[]) => {
+        err += a.join(" ") + "\n";
+      };
+      try {
+        await run([cmd, "--dir", root]);
+      } finally {
+        console.error = originalErr;
+      }
+      assertEquals(
+        err.includes("不是完整的 NOJ 生产安装目录"),
+        true,
+        `${cmd} 必须仍拒绝非安装目录`,
+      );
+    }
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
