@@ -1227,9 +1227,12 @@ async function dispatchProdJudge(
           2,
         ));
       } else {
+        // **人类模式不得重复打印**（评审发现）：`judgeStatus` 已经通过
+        // `base.log`（= say）逐行输出了 summary 与 compose ps，这里再打印
+        // 一遍会让每行出现两次（实测 15 行重复）。
+        // 因此人类模式只补 `message`；`summary`/`psOutput` 仅在 `--json`
+        // 分支作为结构化字段输出（那时 log 走 stderr，不污染 stdout）。
         say(r.message);
-        for (const line of r.summary) say(line);
-        say(r.psOutput.trimEnd());
       }
       return r.exitCode;
     }

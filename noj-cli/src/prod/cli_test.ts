@@ -906,3 +906,68 @@ Deno.test("评审: 放宽只针对 install/judge，其他命令仍要求完整�
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
+
+// ── 评审发现：judge status 人类模式每行打印两次 ─────────────────────
+//
+// `judgeStatus` 通过 `base.log`（= 注入的 say）逐行输出 summary 与 compose ps，
+// 而 `dispatchProdJudge` 的 status 分支**又**打印一遍返回的 `summary`/`psOutput`，
+// 于是每行出现两次（实测 15 行重复）。人类可读输出重复既是噪声，
+// 也让人怀疑"是不是跑了两遍"。
+
+Deno.test("评审: judge status 人类模式不重复打印（summary 只出现一次）", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "judge");
+    await Deno.mkdir(join(dir, "bin"), { recursive: true });
+    await Deno.writeTextFile(
+      join(dir, ".env.judge"),
+      [
+        "NOJ_VERSION=v0.9.5",
+        "REDIS_URL=redis://redis:6379",
+        "JUDGE_QUEUE=noj:judge:queue",
+        "RESULT_QUEUE=noj:judge:results",
+        "WORK_DIR=/var/lib/noj-judge",
+        "JUDGE_MAX_CONCURRENT_JUDGES=2",
+        "JUDGE_IMAGE_PREFIX=noj-judge",
+        "JUDGE_IMAGE_REGISTRY=ghcr.io/neuro-oj",
+        "JUDGE_DOCKER_SOCKET=/run/noj-judge/docker.sock",
+        "JUDGE_DOCKER_SOCKET_GID=10001",
+        "JUDGE_UID=10001",
+        "JUDGE_GID=10001",
+        "JUDGE_DOCKER_HOST=unix:///run/noj-judge/docker.sock",
+        "JUDGE_REQUIRE_ISOLATED_DOCKER=true",
+        "",
+      ].join("\n"),
+    );
+    await Deno.chmod(join(dir, ".env.judge"), 0o600);
+    await Deno.writeTextFile(
+      join(dir, "docker-compose.judge.yml"),
+      "services: {}\n",
+    );
+    // 捕获人类输出
+    const original = console.log;
+    const lines: string[] = [];
+    console.log = (...a: unknown[]) => {
+      lines.push(a.join(" "));
+    };
+    try {
+      await run(["judge", "status", "--dir", dir]).catch(() => {});
+    } finally {
+      console.log = original;
+    }
+    // 任何非空行都不得出现两次
+    const seen = new Map<string, number>();
+    for (const l of lines) {
+      if (l.trim() === "") continue;
+      seen.set(l, (seen.get(l) ?? 0) + 1);
+    }
+    const dupes = [...seen.entries()].filter(([, n]) => n > 1);
+    assertEquals(
+      dupes.map(([l, n]) => `${n}× ${l}`),
+      [],
+      "judge status 人类输出不得有重复行",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
