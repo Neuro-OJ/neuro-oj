@@ -9,7 +9,7 @@
 
 | 指标 | 基线 | 现状 | 说明 |
 |---|---|---|---|
-| `deno task test` | 323 passed / 0 failed | **684 passed / 0 failed** | +361（T2–T26 新增覆盖） |
+| `deno task test` | 323 passed / 0 failed | **687 passed / 0 failed** | +364（T2–T26 新增覆盖） |
 | `deno task check` | exit 0（fmt 108 / lint 106） | exit 0（fmt 101 / lint 99） | 文件数**下降**：T23 删除双模态（155 → 98 后回升到 101） |
 | `noX-cli/src` bash 调用 | 1 处（`production.ts:112`） | **0 处** | 见 R1 |
 | `scripts/deploy/*.sh` 行数 | 7367 | **2402**（保留 4 个文件） | 见下方"bash 退场" |
@@ -19,7 +19,7 @@
 复核：
 
 ```bash
-cd noj-cli && deno task test 2>&1 | tail -2      # ok | 684 passed | 0 failed
+cd noj-cli && deno task test 2>&1 | tail -2      # ok | 687 passed | 0 failed
 cd noj-cli && deno task check 2>&1 | tail -3     # Checked 101 / Checked 99
 wc -l ../scripts/deploy/deploy.sh ../scripts/deploy/restore-drill.sh \
       ../scripts/deploy/backup.sh ../scripts/deploy/deprecation-gate.sh | tail -1   # 2402 总计
@@ -232,12 +232,17 @@ Judge 部署依赖检查通过          # exit 0
 | 防漂移门禁：help 声明 == 实际可处理 | ✅ | `commands_test.ts:79`（含自检 `:92`，注入虚构命令必须被判不可处理） |
 | `backup --help` 含 `list`/`prune` | ✅ | `commands_test.ts` "漂移回归: backup 声明包含 list 与 prune" |
 | `--json` stdout 逐字节合法 JSON | ✅ | `output/render_test.ts`（`JSON.parse(c.out())` 直接消费） |
+| `noj-design-tokens.md` 补 CLI/终端 section；语义色取自 token | ✅ | 该文件**已有** `## CLI / 终端`（含语义色 → ANSI 映射表）；`output/theme.ts:51-58` 的 8 个语义色与其**逐项一致**（success=32 / warning=33 / error=31 / info=36 / primary=34 / signal=92 / muted=90 / secondary=dim） |
+| 窄终端不破版 | ✅ | `COLUMNS=30/40/60/80/120` 下 `--help` 溢出均为 **0**，行数随宽度自适应；门禁断言"每一行 ≤ 给定宽度" |
 | 颜色契约（`NO_COLOR`/`--color`） | ✅ | `util/color.ts` + `util/color_test.ts` |
 | `--json` 与人类输出**不混流** | ✅ | `prod/cli.ts` 在 `--json` 时把人类文案改道 stderr |
 
 > **未做**：`noj-design-tokens.md` 的 "CLI/终端 section"（R5 的 checklist 有，但
-> 属文档增强而非功能）；窄终端不破版的实测；`deno compile` 体积的**基线对照**
-> （只有现状 101.9 MB，无基线值可比）。
+> 属文档增强而非功能；经核实该文件**已有** CLI/终端 section，见其 `## CLI / 终端`）；
+> `deno compile` 体积的**基线对照**（只有现状 101.9 MB，无基线值可比）。
+>
+> **窄终端不破版已补做**：`COLUMNS=30/40/60/80/120` 下溢出均为 0
+> （原先 `COLUMNS=40` 有 26 行溢出），并新增门禁。见 R5 表。
 
 ## 8. R6 · problem init 交互
 
