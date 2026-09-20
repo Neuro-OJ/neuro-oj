@@ -1210,3 +1210,62 @@ Deno.test("新增: backup create 成功后写出 noj_backup.prom（接线断言�
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
+
+// ── 我自查发现的缺陷：judge --redis-mode local 在 --dry-run 下真建了 Redis ──
+//
+// bash 的 install 在 `DRY_RUN` 时早退（judge-install.sh:523），根本走不到
+// `configure_redis`。我第一版把"创建本机 Redis"放在 dry-run 判断**之前**，
+// 实测 `--dry-run` 真的创建了容器并写出 `redis.conf`——违反"预演零副作用"，
+// 而这正是本会话反复修过的一类缺陷（`uninstall --dry-run` 删数据、
+// `judge install --dry-run` 写配置）。
+//
+// **教训**：新增"有副作用的前置步骤"时，必须先确认它在 dry-run 下被短路。
+
+Deno.test("自查: judge install --redis-mode local --dry-run 不得创建 Redis/配置", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "judge");
+    await Deno.mkdir(dir, { recursive: true });
+    const calls: string[] = [];
+    const originalLog = console.log;
+    const lines: string[] = [];
+    console.log = (...a: unknown[]) => {
+      lines.push(a.join(" "));
+    };
+    let code = -1;
+    try {
+      code = await run([
+        "judge",
+        "install",
+        "--redis-mode",
+        "local",
+        "--dry-run",
+        "--dir",
+        dir,
+        "--version",
+        "v0.9.5",
+        "--socket-path",
+        "/run/noj-judge/docker.sock",
+      ]);
+    } finally {
+      console.log = originalLog;
+    }
+    void calls;
+    // 不得写出 redis.conf（那是"真的建了 Redis"的证据）
+    assertEquals(
+      await Deno.stat(join(dir, "redis.conf")).then(() => true).catch(() =>
+        false
+      ),
+      false,
+      "dry-run 不得写 redis.conf",
+    );
+    // 且必须**明确告知**将要做的事（否则用户不知道 dry-run 覆盖了什么）
+    assert(
+      lines.some((l) => l.includes("[dry-run]") && l.includes("Redis")),
+      `dry-run 应说明将创建 Redis，实得输出：${lines.join(" | ")}`,
+    );
+    void code;
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});

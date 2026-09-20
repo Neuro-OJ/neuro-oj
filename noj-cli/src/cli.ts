@@ -49,6 +49,7 @@ import {
 } from "./util/args.ts";
 import { CONTAINER_COMMANDS, parseContainerCommand } from "./container.ts";
 import { runDrill } from "./prod/drill/drill.ts";
+import { createLocalRedis } from "./prod/judge/config.ts";
 import { realRunner } from "./runtime/command.ts";
 import { parseProblemArgs, runProblem } from "./problem/command.ts";
 import { renderProblemHelp } from "./problem/help.ts";
@@ -1194,10 +1195,48 @@ async function dispatchProdJudge(
       return r.exitCode;
     }
     case "install": {
+      // `--redis-mode local`：先为本机 Judge 创建**仅绑定回环**的 Redis，
+      // 再把它的连接串喂给 install（bash `create_local_redis` 的接线）。
+      // 缺省（不传）为"连接已有 Redis"，与 bash 交互式缺省一致。
+      let redisUrl = flagValue(rest, "--redis-url");
+      let localRedis: Awaited<ReturnType<typeof createLocalRedis>> | null =
+        null;
+      const redisMode = flagValue(rest, "--redis-mode");
+      // **`--dry-run` 下绝不创建 Redis**：bash 的 install 在 `DRY_RUN` 时早退
+      // （judge-install.sh:523），根本走不到 `configure_redis`。
+      // 我第一版把创建放在 dry-run 判断之前，实测 `--dry-run` 真的建了容器并写了
+      // `redis.conf`——违反"预演零副作用"，而那正是本会话反复修过的一类缺陷。
+      const dryRunForRedis = hasFlag(rest, "--dry-run");
+      if (redisMode === "local" && dryRunForRedis) {
+        say("[dry-run] 将创建本机 Redis（仅绑定 127.0.0.1，不执行）");
+      } else if (redisMode === "local") {
+        const portRaw = flagValue(rest, "--redis-port");
+        localRedis = await createLocalRedis({
+          dir,
+          runner: base.runner,
+          containerName: flagValue(rest, "--redis-container"),
+          port: portRaw === undefined
+            ? undefined
+            : Number.parseInt(portRaw, 10),
+          dockerBin: base.dockerBin,
+        });
+        redisUrl = localRedis.checkUrl;
+        say(
+          `✓ 本机 Redis 已就绪：${localRedis.containerName}（仅绑定 127.0.0.1:${localRedis.port}）`,
+        );
+      } else if (redisMode !== undefined && redisMode !== "existing") {
+        throw new UsageError(
+          `--redis-mode 只能是 local 或 existing，收到 "${redisMode}"`,
+        );
+      }
       const r = await judgeInstall({
         ...base,
         version: flagValue(rest, "--version"),
-        redisUrl: flagValue(rest, "--redis-url"),
+        redisUrl,
+        // 容器内的 Judge 必须走 `host.docker.internal`（Redis 在宿主机上）
+        redisCheckUrl: localRedis === null
+          ? flagValue(rest, "--redis-url")
+          : localRedis.runtimeUrl,
         socketPath: flagValue(rest, "--socket-path"),
         values: {},
       });

@@ -176,7 +176,12 @@ export const COMMANDS: readonly CommandSpec[] = [
         tier: "prod",
         summary: "检查依赖并输出 rootless 准备指引",
       },
-      { name: "install", tier: "prod", summary: "首次配置并启动独立 Judge" },
+      {
+        name: "install",
+        tier: "prod",
+        summary:
+          "首次配置并启动独立 Judge（--redis-mode local 可创建仅绑定回环的本机 Redis）",
+      },
       {
         name: "check",
         tier: "prod",
