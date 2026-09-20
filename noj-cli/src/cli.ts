@@ -38,7 +38,7 @@ import {
   runProdUpdate,
 } from "./prod/cli.ts";
 import { renderCommandHelp } from "./help.ts";
-import { renderCommandList } from "./commands.ts";
+import { declaredTopLevelNames, renderCommandList } from "./commands.ts";
 import {
   parseDirArg,
   parsePortArg,
@@ -212,7 +212,22 @@ export async function run(argv: string[]): Promise<number> {
     //
     // 因此：**生产命令跳过 profile 探测**，把目录判定完全交给生产分发。
     // 对非生产命令（Tier 3 容器、problem 等）仍照常探测。
-    const skipProfileDetection = PRODUCTION_COMMANDS.has(topCommand);
+    // **已移除的命令也必须跳过探测**（评审发现，clean checkout 下转红）：
+    // 它们的分发路径只打印迁移提示并返回 2，与任何安装目录无关。
+    // 若照常探测，"已移除"这个纯粹的用法错误会先撞上
+    // "未能识别出生产安装目录"，用户看到的提示与真实原因无关——
+    // 而且该测试此前**只在仓根恰好存在 .env.prod 时**才通过（本地残留文件），
+    // 干净检出下必然失败（实测：685 passed / 2 failed）。
+    // **未知命令同理**：它只会走 dispatchCommand 的 default 分支打印
+    // "未知命令 + 拼写建议"，与安装目录无关。若照常探测，`noj-cli instal`
+    // 会先报"未能识别出生产安装目录"，把"你拼错了"这条真正有用的信息盖掉
+    // （干净检出下的实测失败之一）。
+    const isKnownCommand = PRODUCTION_COMMANDS.has(topCommand) ||
+      REMOVED_COMMANDS.has(topCommand) || PROFILE_AGNOSTIC.has(topCommand) ||
+      declaredTopLevelNames().has(topCommand) ||
+      parseContainerCommand([topCommand, ...topRest]).matched;
+    const skipProfileDetection = PRODUCTION_COMMANDS.has(topCommand) ||
+      REMOVED_COMMANDS.has(topCommand) || !isKnownCommand;
     const effectiveProfile = (profileAgnostic || skipProfileDetection)
       ? (explicitProfile !== undefined
         ? validateProfileName(explicitProfile)!
@@ -621,6 +636,24 @@ export function printHelp(): string {
   const maxWidth = Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   return renderCommandList(maxWidth === undefined ? {} : { maxWidth });
 }
+
+/**
+ * 已移除的命令（T23 的双模态收敛）。
+ *
+ * 这些名字**不再是命令**：分发时只打印迁移提示并返回用法错误 2。
+ * 它们必须与 {@link PRODUCTION_COMMANDS} 一样**跳过 profile 探测**——
+ * 否则一个纯粹的用法错误会先报"未能识别出生产安装目录"，掩盖真实原因。
+ *
+ * 唯一事实源：`dispatchCommand` 里处理它们的分支必须与本集合一致
+ * （`commands_test.ts` 的门禁断言两者同步）。
+ */
+export const REMOVED_COMMANDS = new Set([
+  "doctor",
+  "deploy",
+  "maintain",
+  "stack",
+  "run-server",
+]);
 
 /** 已登记的顶层命令（用于拼写建议，#517 E8）。 */
 export const KNOWN_TOP = new Set([
