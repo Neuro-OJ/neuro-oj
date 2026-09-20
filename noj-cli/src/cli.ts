@@ -614,7 +614,12 @@ export function dispatchableTopLevelNames(): Set<string> {
  * 命令清单已收敛到 `commands.ts`；此处只做委托，不再手写命令列表。
  */
 export function printHelp(): string {
-  return renderCommandList();
+  // T26：把终端宽度传给渲染器，使窄终端下每行不溢出。
+  // `COLUMNS` 缺失或非法时不限制宽度（保持既有行为）。
+  const raw = Deno.env.get("COLUMNS");
+  const parsed = raw === undefined ? NaN : Number.parseInt(raw, 10);
+  const maxWidth = Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  return renderCommandList(maxWidth === undefined ? {} : { maxWidth });
 }
 
 /** 已登记的顶层命令（用于拼写建议，#517 E8）。 */

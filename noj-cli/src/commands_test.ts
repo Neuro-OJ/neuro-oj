@@ -347,3 +347,38 @@ Deno.test("T26 门禁: help 中的 --profile 取值必须与实现接受的一�
     `help 声明的 --profile 取值必须与实现一致（help=${advertised} 实现=${accepted}）`,
   );
 });
+
+// ── T26：窄终端不破版（spec R5）──────────────────────────────────────
+//
+// **这个缺陷真实存在过**：`renderCommandList` 此前手写 `padEnd` 对齐，
+// 绕过了 `renderTable` 已有的宽度感知能力（及其测试）。
+// `COLUMNS=40` 下实测 **26 行**溢出——在窄终端里会被折断成难以阅读的碎片。
+//
+// 修法：help 的命令表与分区散文都走宽度约束渲染。
+// 本门禁断言的是**性质**（任何一行都不超过给定宽度），而不是某几行的快照——
+// 快照会随文案改动频繁失效，而"不破版"才是要守的东西。
+
+Deno.test("T26 门禁: 窄终端下 help 每一行都不超过给定宽度", async () => {
+  const { displayWidth } = await import("./output/render.ts");
+  for (const maxWidth of [30, 40, 60, 80]) {
+    const text = renderCommandList({ maxWidth });
+    const tooWide = text.split("\n")
+      .map((line, i) => ({ i: i + 1, w: displayWidth(line), line }))
+      .filter((x) => x.w > maxWidth);
+    assertEquals(
+      tooWide.map((x) => `第 ${x.i} 行 (${x.w} > ${maxWidth}): ${x.line}`),
+      [],
+      `maxWidth=${maxWidth} 下 help 不得溢出`,
+    );
+  }
+});
+
+Deno.test("T26: 不传 maxWidth 时保持既有行为（不折行）", async () => {
+  // 缺省不限制宽度：调用方与既有测试可直接比较全文。
+  const { displayWidth } = await import("./output/render.ts");
+  const text = renderCommandList();
+  assert(
+    text.split("\n").some((l) => displayWidth(l) > 80),
+    "缺省应保持自然宽度（不折行），否则会改变既有输出契约",
+  );
+});

@@ -34,6 +34,36 @@ export interface CommandSpec {
   subcommands?: CommandSpec[];
 }
 
+/** 命令表每行的缩进宽度（缩进计入 `maxWidth` 预算）。 */
+const TABLE_INDENT = 2;
+
+/**
+ * 按显示宽度折行（CJK 全角按 2 列计）。
+ *
+ * 与 {@link renderTable} 分开是因为职责不同：表格管**列对齐**，本函数管
+ * **散文换行**（抬头、用法、分区标题/说明、退出码）。两者共用
+ * {@link displayWidth} 这一个宽度口径，故窄终端下不会出现"表格收窄了、
+ * 抬头却仍然溢出"的半吊子状态。
+ *
+ * `maxWidth` 未给定时原样返回（保持既有输出契约）。
+ */
+function wrap(text: string, indent = "", maxWidth?: number): string[] {
+  if (maxWidth === undefined) return [indent + text];
+  const budget = Math.max(8, maxWidth - displayWidth(indent));
+  const out: string[] = [];
+  let cur = "";
+  for (const ch of text) {
+    if (displayWidth(cur + ch) > budget && cur !== "") {
+      out.push(indent + cur);
+      cur = ch;
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(indent + cur);
+  return out;
+}
+
 /** 分区展示顺序即顶层 help 的顺序。 */
 const TIER_ORDER: readonly Tier[] = [
   "prod",
@@ -75,6 +105,8 @@ export const EXIT_CODES: ReadonlyArray<{ code: number; meaning: string }> = [
  * `dispatchCommand` 的 `switch (command)` 分支、`problem`/`problems`/
  * `stack` 特判，以及 `container.ts` 的 Tier 3 前缀路由。
  */
+import { displayWidth, renderTable } from "./output/render.ts";
+
 export const COMMANDS: readonly CommandSpec[] = [
   // ── 生产模式（PRODUCTION_COMMANDS）──
   {
@@ -346,42 +378,81 @@ function flatten(cmd: CommandSpec, prefix = ""): RenderRow[] {
  *
  * 输出按 {@link Tier} 分区；每个分区内，顶层命令与其子命令逐行展开，
  * 使 `backup list` 这类真实能力可直接从顶层 help 发现（本任务修复的漂移）。
+ *
+ * ## 窄终端（T26）
+ *
+ * 传入 `maxWidth`（通常为 `COLUMNS`）时，每个分区的命令表经
+ * {@link renderTable} 的宽度约束渲染：先均摊收缩最宽列、超宽以 `…` 截断、
+ * 极窄时整行兜底截断。
+ *
+ * **此前这里手写 `padEnd` 对齐**，导致 `renderTable` 已有的宽度感知能力
+ * （及其测试）在 help 这条唯一的表格路径上被绕过——`COLUMNS=40` 下实测有 26 行
+ * 溢出。改为复用同一渲染器后，help 与表格走同一条代码路径，
+ * 宽度行为也就只有一处需要正确。
+ *
+ * `maxWidth` 缺省时不限制（保持既有行为，便于调用方与测试不加参数直接比较全文）。
  */
-export function renderCommandList(): string {
-  const lines: string[] = [
-    "noj-cli - Neuro OJ 统一部署与运维 CLI",
-    "",
-    "用法: noj-cli <命令> [子命令] [选项]",
-  ];
+export function renderCommandList(opts: { maxWidth?: number } = {}): string {
+  const lines: string[] = [];
+  // 抬头与用法行同样受宽度约束（此处**是** `renderCommandList` 的正文，
+  // 不是外部传入的标题；`maxWidth=30` 时这两行实测 37/36 列）。
+  const pushProse = (text: string, indent = ""): void => {
+    lines.push(...wrap(text, indent, opts.maxWidth));
+  };
+  pushProse("noj-cli - Neuro OJ 统一部署与运维 CLI");
+  lines.push("");
+  pushProse("用法: noj-cli <命令> [子命令] [选项]");
 
   for (const tier of TIER_ORDER) {
     const section = SECTIONS[tier];
-    lines.push("", section.title);
-    if (section.note) lines.push(`  ${section.note}`);
+    lines.push("", ...wrap(section.title, "", opts.maxWidth));
+    if (section.note) lines.push(...wrap(section.note, "  ", opts.maxWidth));
 
     const rows: RenderRow[] = [];
     for (const cmd of COMMANDS) {
       if (cmd.tier !== tier) continue;
       rows.push(...flatten(cmd));
     }
-    const width = rows.length === 0
-      ? 0
-      : Math.max(...rows.map((r) => r.label.length));
-    for (const row of rows) {
-      lines.push(
-        `  ${row.label.padEnd(width)}  ${row.summary}${row.aliasSuffix}`,
-      );
+    if (rows.length === 0) continue;
+    // 复用 renderTable：CJK 按 2 列计宽，且在 maxWidth 下收缩/截断。
+    // 末行以恰好一个换行结尾，故裁掉后按行推入。
+    // **缩进要在预算里扣掉**：本行随后会加 2 空格缩进，
+    // 若把整个 maxWidth 交给 renderTable，加缩进后每行都会超宽 2 列
+    // （实测：`maxWidth=30` 时全部命令行都溢出）。
+    // **必须捕获 `renderTable` 的写出**：它除返回文本外还会经 `emitHuman`
+    // 直接写 stdout（设计如此，供表格类命令使用）。在 help 里那会导致
+    // **双份输出**——一份是它自己写的（未去尾空格），一份是下面拼进
+    // `lines` 再由调用方打印的。传入一个捕获 sink 即可让它只返回不写出。
+    const captured: string[] = [];
+    const table = renderTable(
+      rows.map((r) => [r.label, r.summary + r.aliasSuffix]),
+      {
+        ...(opts.maxWidth === undefined
+          ? {}
+          : { maxWidth: Math.max(1, opts.maxWidth - TABLE_INDENT) }),
+        io: { stdout: (text: string) => captured.push(text) },
+      },
+    ).replace(/\n$/, "");
+    // 去掉行尾填充空格：`renderTable` 会补齐到列宽（便于逐行比较总宽），
+    // 但 help 是给人读的，行尾空白只会让复制粘贴带上尾随空格。
+    for (const line of table.split("\n")) {
+      lines.push(`  ${line.replace(/ +$/, "")}`);
     }
+    void tier;
   }
 
-  lines.push("", "退出码");
+  lines.push("", ...wrap("退出码", "", opts.maxWidth));
   for (const { code, meaning } of EXIT_CODES) {
-    lines.push(`  ${code}  ${meaning}`);
+    lines.push(...wrap(`${code}  ${meaning}`, "  ", opts.maxWidth));
   }
 
   lines.push(
     "",
-    "提示: `noj-cli --help` 只读，不会创建目录、读取配置或启动容器。",
+    ...wrap(
+      "提示: `noj-cli --help` 只读，不会创建目录、读取配置或启动容器。",
+      "",
+      opts.maxWidth,
+    ),
     "",
   );
   return lines.join("\n");
