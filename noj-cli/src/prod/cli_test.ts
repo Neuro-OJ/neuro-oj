@@ -25,6 +25,7 @@ import {
   positionals,
 } from "./cli.ts";
 import { UsageError } from "../util/args.ts";
+import { run } from "../cli.ts";
 
 // ---------------- R1 门禁 ----------------
 
@@ -426,4 +427,69 @@ Deno.test("评审: prune 的合法值仍正常规划（不误伤）", async () =
     "3",
   ], {});
   assertEquals(r.applied, false, "未给 --confirm 时必须保持 dry-run");
+});
+
+// ── 评审发现：R4 的首次安装路径不可达 ────────────────────────────────
+//
+// R4 的验收是"`install` 在空目录仅凭二进制即可完成"，文档也写成
+// `./noj-cli-linux-amd64 install --dir /opt/neuro-oj`（"目录可以是空的"）。
+// 但 `dispatchProduction` 先调 `findProductionDir`，而它对**显式目录**要求
+// 已含两个生产标记 → `install --dir <空目录>` 报
+// "不是完整的 NOJ 生产安装目录"，**永远走不到 install 自己**。
+//
+// 即"必须先装好才能装"。这是计划级错误：R4 删掉了 install.sh 的自举，
+// 却没把"目标目录可以为空"这条语义接上。
+
+Deno.test("评审: install 接受不存在的目标目录（R4 首次安装的前提）", async () => {
+  const root = await Deno.makeTempDir();
+  const dir = `${root}/fresh-install`;
+  try {
+    // 不应因"目录不是完整生产目录"而失败；真正的失败来自后续网络/配置，
+    // 故这里只断言错误信息**不是**目录完整性错误。
+    let err = "";
+    const originalErr = console.error;
+    console.error = (...a: unknown[]) => {
+      err += a.join(" ") + "\n";
+    };
+    let code = -1;
+    try {
+      code = await run(["install", "--dir", dir, "--non-interactive"]);
+    } finally {
+      console.error = originalErr;
+    }
+    assertEquals(
+      err.includes("不是完整的 NOJ 生产安装目录"),
+      false,
+      `install 不得要求目标目录预先完整，实得：${err}`,
+    );
+    // 非交互 + 缺配置 → 用法/前置错误，而不是目录错误
+    assert(code !== 0, "缺配置的非交互安装不应成功");
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("评审: 非 install 命令仍要求完整安装目录（不放宽守卫）", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    for (const cmd of ["status", "start", "uninstall"]) {
+      let err = "";
+      const originalErr = console.error;
+      console.error = (...a: unknown[]) => {
+        err += a.join(" ") + "\n";
+      };
+      try {
+        await run([cmd, "--dir", root]);
+      } finally {
+        console.error = originalErr;
+      }
+      assertEquals(
+        err.includes("不是完整的 NOJ 生产安装目录"),
+        true,
+        `${cmd} 必须仍拒绝非安装目录，实得：${err}`,
+      );
+    }
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
 });

@@ -1017,7 +1017,17 @@ async function dispatchProduction(
   const parsed = parseProdArgs(args);
   let dir: string;
   try {
-    dir = await findProductionDir(parsed.dir, ctx.cwd);
+    // **`install` 是唯一允许目标目录不存在/为空的命令**（评审发现的 R4 阻塞）：
+    // 首次安装的定义就是"往一个空目录里装东西"，而 `findProductionDir` 要求
+    // 目录**已经**含两个生产标记——用它当 `install` 的入口等于"必须先装好才能装"。
+    // 实测：`install --dir <空目录>` → "不是完整的 NOJ 生产安装目录"，
+    // 于是文档承诺的 `install --dir /opt/neuro-oj`（目录可以是空的）**永远无法执行**。
+    //
+    // 这里只做**路径归一化**（不要求标记），标记校验交给 `prod/lifecycle.ts:install`
+    // 自己的分支（它按 `.env.prod` 是否存在决定 seed 还是保留），那才是该判定的归属地。
+    dir = command === "install" && parsed.dir !== undefined
+      ? resolve(ctx.cwd, parsed.dir)
+      : await findProductionDir(parsed.dir, ctx.cwd);
   } catch (e) {
     throw new ProductionDirError((e as Error).message);
   }
