@@ -781,3 +781,68 @@ Deno.test("评审: 迁移表不存在时写 not-initialized（而非 unavailable
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
+
+// ── 评审发现（Critical）：CLI 层从未把 --dry-run 转给 judge ────────────
+//
+// 上一组用例直接调 `judgeInstall({dryRun:true})`，验的是 actions.ts 的分支；
+// 而缺陷在**接线**：`dispatchProdJudge` 只传了 version/redisUrl/socketPath，
+// `--dry-run` 被静默吞掉 → 真的写出 `.env.judge` 才失败退出。
+// 因此必须在 **CLI 层**（`run([...])`）断言零副作用，否则修复可能只修了一半。
+
+Deno.test("评审: CLI 层 judge install --dry-run 不得写出 .env.judge", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    // 造一个**完整生产安装目录**（findProductionDir 会放行），
+    // 模拟"同机 judge 装在既有 NOJ 安装目录里"这一正常场景。
+    const dir = join(root, "install");
+    await Deno.mkdir(join(dir, "bin"), { recursive: true });
+    await Deno.writeTextFile(
+      join(dir, "docker-compose.prod.yml"),
+      "services: {}\n",
+    );
+    await Deno.writeTextFile(join(dir, ".env.prod"), "NOJ_VERSION=v0.9.5\n");
+    await Deno.chmod(join(dir, ".env.prod"), 0o600);
+    await Deno.writeTextFile(join(dir, "bin/noj-cli"), "#!/bin/sh\n");
+    await Deno.chmod(join(dir, "bin/noj-cli"), 0o755);
+
+    // **必须带上足够参数让流程能走到"写配置"那一步**，否则早期校验失败会
+    // 让本用例**恒真**（我实测过：不带 --version 时缺 NOJ_VERSION 早退，
+    // 移除 dryRun 转发它照样通过——那种门禁毫无价值）。
+    const code = await run([
+      "judge",
+      "install",
+      "--dry-run",
+      "--dir",
+      dir,
+      "--version",
+      "v0.9.5",
+      "--redis-url",
+      "redis://redis:6379",
+      "--socket-path",
+      "/run/noj-judge/docker.sock",
+    ]);
+    // dry-run 应当**校验通过**（exit 0）——这也证明它真的走到了分支末尾
+    // 而不是被早期校验挡下；被挡下的话下面的"零副作用"断言就是恒真的。
+    assertEquals(
+      code,
+      0,
+      "dry-run 应校验通过（若因缺参数早退，本用例会变成恒真的假门禁）",
+    );
+
+    // 关键：不得出现 judge 产物
+    const judgeEnv = join(dir, ".env.judge");
+    assertEquals(
+      await Deno.stat(judgeEnv).then(() => true).catch(() => false),
+      false,
+      "CLI 层 --dry-run 必须零副作用（曾被静默吞掉并写出 .env.judge）",
+    );
+    const judgeCompose = join(dir, "docker-compose.judge.yml");
+    assertEquals(
+      await Deno.stat(judgeCompose).then(() => true).catch(() => false),
+      false,
+      "CLI 层 --dry-run 不得写出 judge compose",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});

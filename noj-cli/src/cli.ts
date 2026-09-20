@@ -1018,7 +1018,12 @@ async function dispatchProduction(
   // **先拒绝未实现的旗标**（在任何副作用之前）：`--dry-run` 在破坏性命令上
   // 被静默忽略会让"预演"真的执行（评审实测：`uninstall --all --yes --dry-run`
   // 删除了整个安装目录）。必须在解析/分发之前。
-  rejectUnimplementedProdFlags(args);
+  // `judge` 子命令已实现 `--dry-run`（`judgeInstall` 内有完整分支），故放行；
+  // 其余生产命令未实现，必须拒绝而非静默执行。
+  rejectUnimplementedProdFlags(
+    args,
+    command === "judge" ? ["--dry-run"] : [],
+  );
   const parsed = parseProdArgs(args);
   let dir: string;
   try {
@@ -1161,6 +1166,11 @@ async function dispatchProdJudge(
     envFile: flagValue(rest, "--env-file"),
     composeFile: flagValue(rest, "--compose-file"),
     dockerBin: Deno.env.get("NOJ_DEPLOY_DOCKER_BIN") ?? undefined,
+    // **必须转发 `--dry-run`**（评审发现）：`judgeInstall` 里有完整的 dry-run
+    // 分支（校验后直接返回、不写任何文件），但 CLI 层从未传这个字段，于是
+    // `--dry-run` 被静默吞掉 → **真的写了 `.env.judge`** 才因后续检查失败退出。
+    // 即"预演"产生了副作用，违反 plan T21 §6 的"dry-run 零副作用"。
+    dryRun: hasFlag(rest, "--dry-run"),
     log: say,
   };
 

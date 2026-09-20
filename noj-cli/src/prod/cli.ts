@@ -230,11 +230,22 @@ const UNIMPLEMENTED_PROD_FLAGS: Record<string, string> = {
     "面板只做探测与提示，不影响部署结果",
 };
 
-/** 拒绝未实现的生产旗标（在任何副作用之前）。 */
-export function rejectUnimplementedProdFlags(args: string[]): void {
+/**
+ * 拒绝未实现的生产旗标（在任何副作用之前）。
+ *
+ * `allow` 用于**已实现**该旗标的子命令：`judge` 的 `install`/`install-env`
+ * 等确实支持 `--dry-run`（有完整分支，校验后直接返回不写文件），
+ * 因此必须放行——否则"拒绝未实现的旗标"会误伤已实现的能力
+ * （实测过：`judge install --dry-run` 曾被这条守卫拦截）。
+ */
+export function rejectUnimplementedProdFlags(
+  args: string[],
+  allow: readonly string[] = [],
+): void {
   for (const arg of args) {
     // 同时覆盖 `--flag` 与 `--flag=value` 两种写法
     const name = arg.includes("=") ? arg.slice(0, arg.indexOf("=")) : arg;
+    if (allow.includes(name)) continue;
     const hint = UNIMPLEMENTED_PROD_FLAGS[name];
     if (hint !== undefined) throw new UsageError(hint);
   }

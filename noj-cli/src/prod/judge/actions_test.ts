@@ -13,8 +13,9 @@
 //
 // 这是"实现已交付但未接线"的同类问题（与 T24 的接线缺失同源）。
 
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import { join } from "@std/path";
+import { UsageError } from "../../util/args.ts";
 
 Deno.test("T26: judgeInstallEnv 检查依赖并输出 rootless 隔离指引", async () => {
   const calls: string[] = [];
@@ -175,4 +176,83 @@ Deno.test("评审: judge upgrade 必须先重渲染 Compose（否则版本不变
   } finally {
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
+});
+
+// ── 评审发现（Critical）：judge install --dry-run 不是 dry ────────────
+//
+// `judgeInstall` 里有完整的 dry-run 分支（校验后**直接返回**、不写任何文件），
+// 但 CLI 层从未把 `--dry-run` 传进去（只传了 version/redisUrl/socketPath），
+// 于是旗标被静默吞掉 → **真的写出了 `.env.judge`**（评审实测 889 字节），
+// 随后才因 socket 检查失败退出。即"预演"产生了副作用，
+// 违反 plan T21 §6 与 Agent Note 声称的"dry-run 零副作用"。
+
+Deno.test("评审: judge install --dry-run 不得写入任何文件", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "judge");
+    await Deno.mkdir(dir, { recursive: true });
+    const { judgeInstall } = await import("./actions.ts");
+    const result = await judgeInstall({
+      dir,
+      dryRun: true,
+      runner: {
+        run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }),
+        spawn: () => {
+          throw new Error("no spawn");
+        },
+      },
+      log: () => {},
+      // 完整合法配置，确保 dry-run 走的是"校验通过"分支而不是早退
+      version: "v0.9.5",
+      redisUrl: "redis://redis:6379",
+      socketPath: "/run/noj-judge/docker.sock",
+      values: {
+        JUDGE_QUEUE: "noj:judge:queue",
+        RESULT_QUEUE: "noj:judge:results",
+        WORK_DIR: "/var/lib/noj-judge",
+        JUDGE_MAX_CONCURRENT_JUDGES: "2",
+        JUDGE_IMAGE_PREFIX: "noj-judge",
+        JUDGE_IMAGE_REGISTRY: "ghcr.io/neuro-oj",
+        JUDGE_DOCKER_SOCKET_GID: "10001",
+        JUDGE_UID: "10001",
+        JUDGE_GID: "10001",
+        JUDGE_DOCKER_HOST: "unix:///run/noj-judge/docker.sock",
+        JUDGE_REQUIRE_ISOLATED_DOCKER: "true",
+      },
+      host: {
+        os: "linux",
+        docker: () => Promise.resolve(true),
+        compose: () => Promise.resolve(true),
+        curl: () => Promise.resolve(true),
+      },
+    } as never);
+    assertEquals(result.exitCode, 0, `dry-run 应校验通过：${result.message}`);
+    // **关键**：目录里不得出现任何产物
+    const entries: string[] = [];
+    for await (const e of Deno.readDir(dir)) entries.push(e.name);
+    assertEquals(
+      entries,
+      [],
+      `dry-run 必须零副作用，实得产物：${entries.join(", ")}`,
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("评审: 生产命令的 --dry-run 拒绝不影响 judge（已实现，须放行）", async () => {
+  const { rejectUnimplementedProdFlags } = await import("../cli.ts");
+  // 生产命令（未实现）：拒绝——注意 `--` 之后的旗标才是被检查的对象，
+  // 命令名本身不参与判断，故这里只传旗标。
+  assertThrows(
+    () => rejectUnimplementedProdFlags(["--dry-run"]),
+    UsageError,
+  );
+  // judge（已实现）：显式放行 → 不抛
+  rejectUnimplementedProdFlags(["--dry-run"], ["--dry-run"]);
+  // 未列入 allow 的其它未实现旗标仍拒绝
+  assertThrows(
+    () => rejectUnimplementedProdFlags(["--panel"], ["--dry-run"]),
+    UsageError,
+  );
 });
