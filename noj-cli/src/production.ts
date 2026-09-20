@@ -16,6 +16,9 @@ export const PRODUCTION_COMMANDS = new Set([
   "verify",
   "config",
   "uninstall",
+  // T26：`judge` 是独立 Judge Worker 的部署入口（对应已删除的 judge-install.sh）。
+  // 早先 T21 交付了 `prod/judge/*` 但**未登记**在此，导致该能力从 CLI 不可达。
+  "judge",
 ]);
 
 /**

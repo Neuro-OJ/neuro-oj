@@ -1332,17 +1332,28 @@ input/select/confirm），`command.ts` 也已区分 TTY 与 `--no-interactive`�
 （`production.ts:112`，**当前唯一的 R1 违例**）。本任务兑现 R1，并删除全部 bash。
 
 **R1 验收（spec §8）**
-- [ ] `rg 'Deno\.Command\("bash"|production\.sh|deploy\.sh|backup\.sh|restore-drill\.sh|backup-schedule\.sh|judge-install\.sh' noj-cli/src` → **空**
+- [x] `rg 'Deno\.Command\("bash"|production\.sh|deploy\.sh|backup\.sh|restore-drill\.sh|backup-schedule\.sh|judge-install\.sh' noj-cli/src` → **空**
+      （**剥掉注释后**检查代码：注释里引用 `deploy.sh:679` 这类出处是 R3 parity 所依赖的
+      可追溯信息。门禁已固化在 `src/prod/cli_test.ts`。）
 - [ ] `deno compile` 产物在**仅含 docker/curl/openssl** 的环境可完成全部命令
-- [ ] `scripts/deploy/*.sh` 的运维逻辑均有 TS 对应实现（逐条对照表见各任务块）
+      —— **未取证**：已证实"不依赖仓库脚本"（二进制拷到 `/tmp` 独立目录可跑），
+      但未在最小镜像中验证。见 T26 证据文档"未取证项 #2"。
+- [x] `scripts/deploy/*.sh` 的运维逻辑均有 TS 对应实现
+      （`install`/`start`/`stop`/`restart`/`status`/`logs`/`update`/`upgrade`/`uninstall`
+      在 `prod/lifecycle.ts`；`check` 经 `prepareAndCheck`；`backup` 在 `prod/backup/`；
+      `drill`/`schedule`/`judge` 各有原生模块）
 
 **R2 验收（弃用闸门）**
-- [ ] `deploy.sh`、`restore-drill.sh` 启动打印弃用警告并**要求输入 `y`**
-- [ ] 非 `y` → 退出且**无副作用**；`NOJ_ACCEPT_DEPRECATED=1` 可跳过
-- [ ] **非 TTY 不挂起**（明确报错或按既定策略）
-- [ ] 闸门只加在**用户运维入口**（`deploy.sh`/`restore-drill.sh`）；内驱脚本
+- [x] `deploy.sh`、`restore-drill.sh` 启动打印弃用警告并**要求输入 `y`**
+- [x] 非 `y` → 退出且**无副作用**；`NOJ_ACCEPT_DEPRECATED=1` 可跳过
+- [x] **非 TTY 不挂起**（明确报错退出码 2，而非挂起等待）
+- [x] 闸门只加在**用户运维入口**（`deploy.sh`/`restore-drill.sh`）；内驱脚本
       （`production.sh`/`backup.sh`/`install.sh`/`judge-install.sh`/
       `backup-schedule.sh`）随删除处理，不加闸门
+      （**例外**：`backup.sh` 因是前两者的硬依赖而保留，但**不加**闸门）
+
+> 上列 R2 四项均由 `bash scripts/deploy/test-deprecation-gate.sh` 覆盖（5 条全过，
+> 含两条真实 PTY 用例）。
 
 **必须实现的行为**
 

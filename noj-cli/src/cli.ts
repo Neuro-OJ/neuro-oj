@@ -6,6 +6,16 @@ import {
   ProductionDirError,
 } from "./production.ts";
 import {
+  judgeCheck,
+  judgeInstall,
+  judgeInstallEnv,
+  judgeLogs,
+  judgeStart,
+  judgeStatus,
+  judgeStop,
+  judgeUpgrade,
+} from "./prod/judge/actions.ts";
+import {
   flagValue,
   hasFlag,
   hasJson,
@@ -1054,6 +1064,9 @@ async function dispatchProduction(
       case "backup": {
         return await dispatchProdBackup(dir, rest, json);
       }
+      case "judge": {
+        return await dispatchProdJudge(dir, rest, json);
+      }
       default: {
         console.error(`未知生产命令：${command}`);
         return EXIT_USAGE;
@@ -1067,6 +1080,110 @@ async function dispatchProduction(
     }
     console.error(`${command}: ${(e as Error).message}`);
     return EXIT_FAILURE;
+  }
+}
+
+/**
+ * `judge` 的子命令分发（T21 的原生实现 + T26 补齐的 `install-env`）。
+ *
+ * **T26 补漏**：T21 交付了 `prod/judge/*`（36 个测试全过），但 `judge` 既未登记在
+ * `PRODUCTION_COMMANDS`、也无本函数——该能力从 CLI **完全不可达**。本函数把它接通，
+ * 并补上当时缺失的 `install-env`（依赖检查 + rootless 隔离指引）。
+ */
+async function dispatchProdJudge(
+  dir: string,
+  args: string[],
+  json: boolean,
+): Promise<number> {
+  const sub = args[0] ?? "";
+  const rest = args.slice(1);
+  const say = (text: string): void => {
+    if (text === "") return;
+    if (json) console.error(text);
+    else console.log(text);
+  };
+  const base = {
+    dir,
+    runner: realRunner(),
+    envFile: flagValue(rest, "--env-file"),
+    composeFile: flagValue(rest, "--compose-file"),
+    dockerBin: Deno.env.get("NOJ_DEPLOY_DOCKER_BIN") ?? undefined,
+    log: say,
+  };
+
+  switch (sub) {
+    case "install-env": {
+      const r = await judgeInstallEnv(base);
+      say(r.message);
+      return r.exitCode;
+    }
+    case "install": {
+      const r = await judgeInstall({
+        ...base,
+        version: flagValue(rest, "--version"),
+        redisUrl: flagValue(rest, "--redis-url"),
+        socketPath: flagValue(rest, "--socket-path"),
+        values: {},
+      });
+      say(r.message);
+      return r.exitCode;
+    }
+    case "check": {
+      const r = await judgeCheck(base);
+      say(r.message);
+      return r.exitCode;
+    }
+    case "start": {
+      const r = await judgeStart(base);
+      say(r.message);
+      return r.exitCode;
+    }
+    case "stop": {
+      const r = await judgeStop(base);
+      say(r.message);
+      return r.exitCode;
+    }
+    case "status": {
+      const r = await judgeStatus(base);
+      if (json) {
+        console.log(JSON.stringify(
+          {
+            exitCode: r.exitCode,
+            message: r.message,
+            summary: r.summary,
+            ps: r.psOutput,
+          },
+          null,
+          2,
+        ));
+      } else {
+        say(r.message);
+        for (const line of r.summary) say(line);
+        say(r.psOutput.trimEnd());
+      }
+      return r.exitCode;
+    }
+    case "logs": {
+      const r = await judgeLogs({
+        ...base,
+        follow: hasFlag(rest, "--follow", "-f"),
+      });
+      say(r.message);
+      return r.exitCode;
+    }
+    case "upgrade": {
+      // 版本来自配置文件（`prepareExisting` 会读取并校验），不接受 `--version`：
+      // 升级的目标版本是"配置里写的那个"，显式传值会让配置与实际运行不一致。
+      const r = await judgeUpgrade(base);
+      say(r.message);
+      return r.exitCode;
+    }
+    default:
+      console.error(
+        `judge 需要子命令 install-env/install/check/start/stop/status/logs/` +
+          `upgrade，收到 "${sub}"`,
+      );
+      return EXIT_USAGE;
   }
 }
 

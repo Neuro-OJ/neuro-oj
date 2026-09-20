@@ -133,6 +133,35 @@ export const COMMANDS: readonly CommandSpec[] = [
     ],
   },
   {
+    // T26：独立 Judge Worker 部署入口（对应已删除的 judge-install.sh）。
+    // 子命令与 bash `judge-install.sh usage()` 逐项对应。
+    name: "judge",
+    tier: "prod",
+    summary: "独立 Judge Worker 部署（需专用 rootless Docker socket）",
+    subcommands: [
+      {
+        name: "install-env",
+        tier: "prod",
+        summary: "检查依赖并输出 rootless 准备指引",
+      },
+      { name: "install", tier: "prod", summary: "首次配置并启动独立 Judge" },
+      {
+        name: "check",
+        tier: "prod",
+        summary: "检查配置 / Redis / 专用 socket / 镜像架构",
+      },
+      { name: "start", tier: "prod", summary: "启动 Judge（保留现有容器）" },
+      {
+        name: "stop",
+        tier: "prod",
+        summary: "停止 Judge（保留配置与 Redis 任务）",
+      },
+      { name: "status", tier: "prod", summary: "查看状态与脱敏配置摘要" },
+      { name: "logs", tier: "prod", summary: "查看日志（--follow 实时跟随）" },
+      { name: "upgrade", tier: "prod", summary: "升级 Judge 镜像" },
+    ],
+  },
+  {
     name: "verify",
     tier: "prod",
     summary: "生产配置与镜像签名校验（比 config 多验签名）",

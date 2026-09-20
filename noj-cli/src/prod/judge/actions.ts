@@ -100,6 +100,83 @@ export interface JudgeInstallOptions
 }
 
 /**
+ * `install-env`（bash `install_env()`:847-867）：依赖检查 + rootless 隔离指引。
+ *
+ * **为什么单列一个子命令**：独立 Judge 节点的部署**不能**自动化——它要求运维者
+ * 先准备一个只服务于 Judge 的 rootless Docker daemon 与独立 socket。本工具刻意
+ * **不**安装、**不**替换宿主 daemon（自动安装需要 root 安装器，那正是评测隔离
+ * 要防的东西）。因此这条命令的产出是"**检查 + 指引**"：确认依赖可用，并把必须
+ * 由人工确认的四条隔离条件说清楚。
+ *
+ * ## 对照 bash（R3）
+ *
+ * | bash（`judge-install.sh:847-867`） | 本实现 |
+ * | --- | --- |
+ * | Linux 判定 | {@link checkJudgeHost} 的 OS 探测 |
+ * | `detect_panel` + `show_panel_guidance` | `host` 的面板探测（只提示，不调 API） |
+ * | `require_command curl` / `docker` | `host` 的依赖探测 |
+ * | `docker info` 失败 → fail | 见下（退出码 **1**） |
+ * | `docker compose version` 失败 → fail | 见下（退出码 **1**） |
+ * | 打印四条隔离条件 | 见下（逐条对应） |
+ * | 声明不动宿主 daemon 与 socket | 见下（**不可省略**：它是安全边界的对外声明） |
+ *
+ * ## 与 bash 的差异
+ *
+ * 1. **退出码与 bash 一致**（`judge-install.sh:51-54` 的 `fail()` 是 `exit 1`）：
+ *    daemon 不可连、Compose 不可用都返回 **1**。这与 `judge` 模块整体的
+ *    "2 = 用法或前置错误、1 = 运行失败"分层**不同**——因为 bash 侧本就把
+ *    judge 的各类失败统一为 1。此处以**逐命令 parity** 为准（R3 要求退出码
+ *    逐命令一致），而不是套用模块内的通用分层。
+ * 2. **前置失败不打印后续指引**：指引只在依赖全部通过后才输出，否则用户会误以为
+ *    环境已就绪。
+ */
+export async function judgeInstallEnv(
+  opts: JudgeActionOptions & { host?: HostProbe },
+): Promise<JudgeActionResult> {
+  const paths = judgePaths(opts.dir, opts.envFile, opts.composeFile);
+  const log = opts.log ?? (() => {});
+
+  // ---- 依赖与宿主检查（只读；不安装任何东西）----
+  const host = await checkJudgeHost(opts.host ?? {});
+  if (!host.ok) {
+    return fail(paths, 1, host.error ?? "宿主环境不满足要求");
+  }
+
+  const dockerBin = opts.dockerBin ?? "docker";
+  const daemon = await opts.runner.run(dockerBin, ["info"]);
+  if (daemon.code !== 0) {
+    const detail = daemon.stderr.trim();
+    return fail(
+      paths,
+      1,
+      "Docker daemon 未运行或当前用户无权限" +
+        (detail === "" ? "" : `：${detail}`),
+    );
+  }
+  const compose = await opts.runner.run(dockerBin, ["compose", "version"]);
+  if (compose.code !== 0) {
+    return fail(paths, 1, "Docker Compose v2 不可用");
+  }
+  log("✓ Docker daemon 与 Compose 可用");
+
+  // ---- 四条隔离条件（bash :859-864 逐条对应）----
+  log("");
+  log("请确认已准备以下隔离条件：");
+  log("  1. 只服务于 Judge 的 rootless Docker daemon；");
+  log("  2. 独立 Unix socket（例如 /run/noj-judge/docker.sock）；");
+  log("  3. Worker 用户的 UID/GID 及 socket group 权限；");
+  log("  4. 与 noj-core 使用同一 Redis、任务队列和结果队列。");
+  log("");
+  // 安全边界的对外声明：读起来像说明文字，但它界定了本工具**不会**做什么。
+  log(
+    "本工具不会自动安装或替换 Docker daemon，" +
+      "也不会把 /var/run/docker.sock 提供给 Judge。",
+  );
+
+  return { exitCode: 0, message: "Judge 部署依赖检查通过", paths };
+}
+
+/**
  * `install`（bash `install` 动作的等价）：建目录 → 写配置 → 渲染 Compose →
  * 前置校验 → `compose up -d`。
  *

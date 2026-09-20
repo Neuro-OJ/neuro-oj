@@ -236,6 +236,7 @@ export type {
 export {
   judgeCheck,
   judgeInstall,
+  judgeInstallEnv,
   judgeLogs,
   judgeStart,
   judgeStatus,
