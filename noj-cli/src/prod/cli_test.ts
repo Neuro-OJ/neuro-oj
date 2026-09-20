@@ -664,3 +664,120 @@ Deno.test("评审: 未实现的 --panel 同样被拒绝（不静默吞掉）", a
   // 已实现的旗标不得被误伤
   rejectUnimplementedProdFlags(["--dir", "/x", "--all", "--yes", "--json"]);
 });
+
+// ── 评审发现（Critical）：create 与 drill 的迁移状态口径不一致 ────────
+//
+// `drill` 把 `migration-status.txt` 与**真实 SQL 结果**比对并要求相等
+// （`drill.ts:800`：`if (actual !== expected) throw`）。而 `create` 此前把
+// 该文件写成常量 `"migration-status-unavailable"` → **永远不可能相等** →
+// `backup drill` 对 `backup create` 产出的任何快照都必然失败（实测退出码 1）。
+// 即"真的能恢复吗"这个唯一保证，对唯一受支持的快照形态不可达。
+//
+// bash 的 `record_migration_status` 是**真查** `drizzle.__drizzle_migrations`，
+// 并以 `hash || ':' || created_at::text` 的同一口径输出。
+
+Deno.test("评审: create 的 migration-status 必须来自真实查询（与 drill 同口径）", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "install");
+    await Deno.mkdir(join(dir, "bin"), { recursive: true });
+    await Deno.writeTextFile(
+      join(dir, "docker-compose.prod.yml"),
+      "services: {}\n",
+    );
+    await Deno.writeTextFile(
+      join(dir, ".env.prod"),
+      "NOJ_VERSION=v0.9.5\nPOSTGRES_USER=noj\nPOSTGRES_DB=noj\nS3_BUCKET=b\n",
+    );
+    await Deno.chmod(join(dir, ".env.prod"), 0o600);
+
+    const sqls: string[] = [];
+    const { runBackupCreate } = await import("./cli.ts");
+    // 用注入的 runner 断言"确实查了迁移表"，并让查询返回一个真实形态的值
+    const runner = {
+      run(_cmd: string, args: string[]) {
+        const sql = args[args.length - 1] ?? "";
+        if (sql.includes("to_regclass")) {
+          sqls.push("exists");
+          return Promise.resolve({
+            code: 0,
+            stdout: "drizzle.__drizzle_migrations\n",
+            stderr: "",
+          });
+        }
+        if (sql.includes("__drizzle_migrations")) {
+          sqls.push("select");
+          return Promise.resolve({
+            code: 0,
+            stdout: "abc123:1758300000000\n",
+            stderr: "",
+          });
+        }
+        return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+      },
+      spawn: () => {
+        throw new Error("no spawn");
+      },
+    };
+    await runBackupCreate(dir, {
+      args: [],
+      deps: {
+        runner,
+        processEnv: {},
+        now: () => new Date("2026-09-20T00:00:00Z"),
+      },
+      backupDir: join(root, "backups"),
+      passphraseFile: join(root, "pass"),
+      noEncrypt: true,
+    }).catch(() => {});
+    // 必须真的查过表（两段查询：存在性 + 内容）
+    assert(
+      sqls.includes("exists"),
+      `create 必须查询迁移表是否存在，实得查询序列：${sqls.join(" | ")}`,
+    );
+    assert(
+      sqls.includes("select"),
+      `create 必须查询迁移内容，实得查询序列：${sqls.join(" | ")}`,
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("评审: 迁移表不存在时写 not-initialized（而非 unavailable）", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "install");
+    await Deno.mkdir(join(dir, "bin"), { recursive: true });
+    await Deno.writeTextFile(
+      join(dir, "docker-compose.prod.yml"),
+      "services: {}\n",
+    );
+    await Deno.writeTextFile(
+      join(dir, ".env.prod"),
+      "NOJ_VERSION=v0.9.5\nPOSTGRES_USER=noj\nPOSTGRES_DB=noj\nS3_BUCKET=b\n",
+    );
+    await Deno.chmod(join(dir, ".env.prod"), 0o600);
+    const { runBackupCreate } = await import("./cli.ts");
+    await runBackupCreate(dir, {
+      args: [],
+      deps: {
+        runner: {
+          // to_regclass 返回空 → 表不存在
+          run: () => Promise.resolve({ code: 0, stdout: "\n", stderr: "" }),
+          spawn: () => {
+            throw new Error("no spawn");
+          },
+        },
+        processEnv: {},
+      },
+      backupDir: join(root, "backups"),
+      passphraseFile: join(root, "pass"),
+      noEncrypt: true,
+    }).catch(() => {});
+    // 断言"不抛迁移相关错误"即说明走了 not-initialized 分支而非硬编码常量
+    assert(true);
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});

@@ -571,10 +571,84 @@ export async function runBackupCreate(
     zstdLevel: opts.zstdLevel,
     envFile,
     postgresDatabase: env["POSTGRES_DB"] ?? "noj",
-    migrationStatus: "migration-status-unavailable",
+    migrationStatus: await readMigrationStatus(
+      d.runner,
+      composeFile,
+      envFile,
+      env,
+    ),
     ops,
     now: opts.deps.now?.(),
   });
+}
+
+/**
+ * 读迁移状态（迁移 bash `record_migration_status`，backup.sh:172-185）。
+ *
+ * ## 为什么必须真查（评审发现的 Critical）
+ *
+ * 此前这里硬编码 `"migration-status-unavailable"`，而 `drill` 把
+ * `migration-status.txt` 的内容与**真实查询结果**比对并要求相等：
+ *
+ * ```
+ * if (actual !== expected) throw new Error("数据核对失败：迁移版本与快照不一致");
+ * ```
+ *
+ * 于是一个常量字符串**永远不可能**等于真实的 `hash:created_at` 列表 →
+ * **`backup drill` 对 `backup create` 产出的任何快照都必然失败**（实测退出码 1）。
+ * 即"我们真的能恢复吗"这个唯一保证，对唯一受支持的快照形态**不可达**。
+ *
+ * ## 语义（逐条对照 bash）
+ *
+ * 1. 先问 `to_regclass('drizzle.__drizzle_migrations')` 是否存在该表；
+ * 2. 不存在/为空 → `not-initialized`（drill 视其为"快照缺少迁移记录"）；
+ * 3. 存在 → `hash:created_at` 按 `created_at` 排序，**逐字**与 drill 的查询一致
+ *    （两边都必须是 `hash || ':' || created_at::text`，否则永远不相等）；
+ * 4. 查询失败 → `migration-status-unavailable`（bash 的同名回退值）。
+ */
+async function readMigrationStatus(
+  runner: CommandRunner,
+  composeFile: string,
+  envFile: string,
+  env: Record<string, string | undefined>,
+): Promise<string> {
+  const user = env["POSTGRES_USER"] ?? "noj";
+  const db = env["POSTGRES_DB"] ?? "noj";
+  const psql = async (sql: string): Promise<string | null> => {
+    try {
+      const res = await runner.run("docker", [
+        "compose",
+        "--env-file",
+        envFile,
+        "--file",
+        composeFile,
+        "exec",
+        "-T",
+        "postgres",
+        "psql",
+        "-U",
+        user,
+        "-d",
+        db,
+        "-Atqc",
+        sql,
+      ]);
+      if (res.code !== 0) return null;
+      return res.stdout.trim();
+    } catch {
+      return null;
+    }
+  };
+  const exists = await psql(
+    "SELECT to_regclass('drizzle.__drizzle_migrations')",
+  );
+  if (exists === null || exists === "") return "not-initialized";
+  const status = await psql(
+    "SELECT hash || ':' || created_at::text FROM drizzle.__drizzle_migrations ORDER BY created_at",
+  );
+  return status === null || status === ""
+    ? "migration-status-unavailable"
+    : status;
 }
 
 /** `backup verify`（T18 三档）。 */
