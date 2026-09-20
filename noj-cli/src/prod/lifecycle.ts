@@ -191,7 +191,11 @@ import {
   waitForStack,
 } from "./lifecycle/steps.ts";
 import type { LogsColorDecision } from "./lifecycle/steps.ts";
-import { registerCommand, unregisterCommand } from "./lifecycle/path.ts";
+import {
+  installCliBinary,
+  registerCommand,
+  unregisterCommand,
+} from "./lifecycle/path.ts";
 import type { PathRegistration } from "./lifecycle/path.ts";
 import type { PreparedEnvironment } from "./lifecycle/steps.ts";
 
@@ -206,6 +210,9 @@ export type InstallStepName =
   | "compose-pull"
   | "compose-up"
   | "record-metadata"
+  // 把运行中的二进制安装到 `<dir>/bin/noj-cli`（`install.sh:558-565`）。
+  // 位于 register 之前——register 以该文件存在为前提。
+  | "install-cli"
   | "register";
 
 /** 单个已完成的安装步骤。 */
@@ -281,6 +288,14 @@ export interface InstallOptions {
   binDir?: string;
   /** 用户 home；缺省取进程环境 `HOME`。 */
   userHome?: string;
+  /**
+   * 运行中的可执行文件路径（`installCliBinary` 的源）；缺省 `Deno.execPath()`。
+   *
+   * 注入点存在的原因：测试环境里 `Deno.execPath()` 指向 `deno`，而源码运行模式
+   * 下**不应**把它复制进安装目录（会得到一个跑不了本 CLI 的文件）——
+   * 故必须能注入一个"看起来像已编译产物"的路径来覆盖真实路径。
+   */
+  executable?: string;
   /** 安装版 CLI 路径（PATH 注册目标）；缺省 `<dir>/bin/noj-cli`。 */
   cliBinary?: string;
   /** 告警汇聚点（缺省丢弃；生产由 CLI 接到 stderr）。 */
@@ -627,6 +642,29 @@ export async function install(opts: InstallOptions): Promise<InstallResult> {
     name: "record-metadata",
     paths: metadata.path === null ? [] : [metadata.path],
   });
+
+  // ---- 8.5 安装二进制（`install.sh:558-565` 的 `install_cli()`）----
+  // 必须在 register 之前：`registerCommand` 见目标不存在就按"源码运行模式"
+  // 跳过注册，于是"安装成功"却没有任何可执行入口（评审发现的 R4 阻塞）。
+  // 用 try/catch 而非静默：写不进 `<dir>/bin` 属真实失败，但**不**应让整个
+  // 安装失败——docker 栈已经起来了，报错并继续才是可操作的（与 bash 的
+  // `install_cli` 失败即 `fail` 不同：bash 那时目录还没起栈）。
+  let installedBinary: string | null = null;
+  try {
+    installedBinary = await installCliBinary({
+      dir,
+      executable: opts.executable,
+    });
+    if (installedBinary !== null) {
+      steps.push({ name: "install-cli", paths: [installedBinary] });
+    }
+  } catch (err) {
+    warn(
+      `未能把 CLI 安装到 ${join(dir, "bin/noj-cli")}：${
+        (err as Error).message
+      }；可手动复制后重试注册`,
+    );
+  }
 
   // ---- 9. register（production.sh `register_command`）----
   const cliBinary = opts.cliBinary ?? join(dir, "bin/noj-cli");

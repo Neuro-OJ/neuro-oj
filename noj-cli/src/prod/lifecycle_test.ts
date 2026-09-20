@@ -4468,3 +4468,112 @@ Deno.test("update：升级时 prepare_and_check 与 install 同源（六步前�
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+// ── 评审发现：install 从不把二进制放到 <dir>/bin/noj-cli ─────────────
+//
+// R4 把首次安装改为"手动下载二进制 → 跑 install"，但 install.sh 随 R4 删除时，
+// 它**唯一**负责放置二进制的那步（`install_cli()`，install.sh:558-565）没接上。
+// 一处缺口造成三重后果：
+//   1. PATH 注册静默跳过（registerCommand 见目标不存在就按"源码运行模式"告警）；
+//   2. `uninstall --all` 完整性判据要求 bin/noj-cli → **永久自锁**；
+//   3. T24 重定向后的 cron 入口指向该文件 → 定时备份必然失败。
+// 而三份文档都让用户执行 `/opt/neuro-oj/bin/noj-cli status`。
+
+Deno.test("评审: installCliBinary 以暂存+原子改名放置可执行文件", async () => {
+  const { installCliBinary } = await import("./lifecycle/path.ts");
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "install");
+    await Deno.mkdir(dir, { recursive: true });
+    // 造一个"像已编译产物"的源文件（文件名不是 deno*）
+    const fakeCli = join(root, "noj-cli-linux-amd64");
+    await Deno.writeTextFile(fakeCli, "#!/bin/sh\nexit 0\n");
+    await Deno.chmod(fakeCli, 0o755);
+
+    const target = await installCliBinary({ dir, executable: fakeCli });
+    assertEquals(target, join(dir, "bin/noj-cli"));
+    const st = await Deno.stat(target!);
+    assert(st.isFile, "必须是普通文件");
+    assertEquals(st.mode! & 0o111, 0o111, "必须可执行（755）");
+    // 不得残留暂存文件
+    const leftovers: string[] = [];
+    for await (const e of Deno.readDir(join(dir, "bin"))) {
+      if (e.name.startsWith(".noj-cli.")) leftovers.push(e.name);
+    }
+    assertEquals(leftovers, [], "原子改名后不得残留暂存文件");
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("评审: installCliBinary 在源码运行模式（deno）下跳过，不复制 deno 自身", async () => {
+  const { installCliBinary } = await import("./lifecycle/path.ts");
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "install");
+    await Deno.mkdir(dir, { recursive: true });
+    const fakeDeno = join(root, "deno");
+    await Deno.writeTextFile(fakeDeno, "#!/bin/sh\n");
+    assertEquals(
+      await installCliBinary({ dir, executable: fakeDeno }),
+      null,
+      "源码运行模式必须跳过（复制 deno 进安装目录会得到跑不了本 CLI 的文件）",
+    );
+    const exists = await Deno.stat(join(dir, "bin/noj-cli")).then(() => true)
+      .catch(() => false);
+    assertEquals(exists, false, "跳过时不得留下文件");
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("评审: install 成功后 <dir>/bin/noj-cli 存在（且能通过 uninstall 完整性判据）", async () => {
+  // 注意：既有 install 测试都先调 `makeCliBinary(dir)`**预置** `bin/noj-cli`，
+  // 因此从未覆盖"install 自己会不会放置二进制"这一路径——缺口正是这样藏住的。
+  // 本用例**不预置**，断言 install 自己产出它。
+  const dir = await Deno.makeTempDir();
+  const root = await Deno.makeTempDir();
+  try {
+    const events: string[] = [];
+    const records: RunnerCall[] = [];
+    const passphrase = join(root, "backup-passphrase");
+    const io = makeIO(
+      ["v0.9.5", "oj.test-oj.cn", "y", "", "y", "", "", "y"],
+      events,
+    );
+    // 源：一个"像已编译产物"的文件（文件名不是 deno*）
+    const fakeCli = join(root, "noj-cli-linux-amd64");
+    await Deno.writeTextFile(fakeCli, "#!/bin/sh\nexit 0\n");
+    await Deno.chmod(fakeCli, 0o755);
+
+    await install({
+      dir,
+      repository: REPO,
+      ref: REF,
+      io,
+      runner: makeRunner(records, () => undefined, events),
+      fetcher: makeFetcher([], events),
+      isTty: true,
+      passphraseFile: passphrase,
+      processEnv: {},
+      cosignAvailable: () => Promise.resolve(true),
+      socketExists: () => Promise.resolve(true),
+      binDir: join(root, "bin"),
+      userHome: join(root, "home"),
+      executable: fakeCli,
+      now: new Date("2026-09-19T00:00:00Z"),
+    });
+
+    // 1) 二进制必须就位——文档让用户执行 `<dir>/bin/noj-cli status`
+    const bin = join(dir, "bin/noj-cli");
+    const st = await Deno.stat(bin).catch(() => null);
+    assertEquals(st?.isFile, true, "install 必须把 CLI 放到 <dir>/bin/noj-cli");
+    assertEquals(st!.mode! & 0o111, 0o111, "落地的二进制必须可执行");
+
+    // 2) 于是 uninstall --all 的完整性判据可通过（解除自锁）
+    await assertRemovableInstallDir(dir, { HOME: root });
+  } finally {
+    await Deno.remove(dir, { recursive: true }).catch(() => {});
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});

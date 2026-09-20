@@ -99,6 +99,71 @@ async function addUserPath(userHome: string): Promise<boolean> {
 }
 
 /**
+ * 把运行中的二进制安装到 `<dir>/bin/noj-cli`（迁移 `install.sh:558-565` 的
+ * `install_cli()`）。
+ *
+ * ## 为什么必须有这一步（评审发现的 R4 阻塞）
+ *
+ * R4 把首次安装改成"用户手动下载二进制，再跑 `install`"。但
+ * `install.sh` 随 R4 删除时，它**唯一**负责"把二进制放到安装目录"的那一步
+ * （`install_cli()`：`mkdir -p bin` → 暂存 → `chmod 755` → `mv -f`）
+ * 没有接上，于是在三处同时出问题：
+ *
+ * 1. **PATH 注册静默跳过**：`registerCommand` 见目标不存在就按"源码运行模式"
+ *    告警跳过（那是为 `deno run src/cli.ts` 设计的路径）——安装版用户拿到的是
+ *    一条"未注册 PATH"的告警，却没有任何提示告诉他把二进制放哪里；
+ * 2. **`uninstall --all` 永久自锁**：安装完整性判据要求 `bin/noj-cli` 存在，
+ *    而它永远不会存在 → 任何真实安装目录都无法被完全卸载
+ *    （正是 T15/T24 两次试图消除的同一类自锁，换了个缺失文件再次出现）；
+ * 3. **定时备份必然失败**：T24 把 cron 入口重定向到 `<dir>/bin/noj-cli`，
+ *    而那个文件不存在 → `backup schedule install` 报"备份脚本不存在或不可执行"。
+ *
+ * 三份文档都承诺了这个路径（`README.md`、`noj-cli/README.md`、
+ * `production-deploy.md` 让用户执行 `/opt/neuro-oj/bin/noj-cli status`），
+ * 所以修复方向明确：**把二进制放到文档所说的位置**。
+ *
+ * ## 实现细节（照 bash）
+ *
+ * - **暂存 + 原子 rename**：先写 `<dir>/bin/.noj-cli.XXXXXX` 再 `mv -f`，
+ *   避免覆盖到一半时用户执行到一个半截二进制；
+ * - `chmod 755` 在 rename **之前**，故目标文件一出现就是可执行的；
+ * - **源码运行模式跳过**（`Deno.execPath()` 指向 `deno` 而非安装版）：那时
+ *   复制 `deno` 自身进安装目录是错的——与 `registerCommand` 的既有判断一致。
+ *
+ * @returns 写入的绝对路径；源码运行模式下返回 null。
+ */
+export async function installCliBinary(opts: {
+  /** 安装目录。 */
+  dir: string;
+  /** 运行中的可执行文件路径；缺省 `Deno.execPath()`。 */
+  executable?: string;
+}): Promise<string | null> {
+  const executable = opts.executable ?? Deno.execPath();
+  // 源码运行模式：`deno run src/cli.ts` 的 execPath 是 deno 本身。
+  // 复制它进安装目录会得到一个"能跑 deno 但跑不了本 CLI"的文件。
+  const base = executable.split(/[\\/]/).pop() ?? "";
+  if (base === "deno" || base.startsWith("deno.")) return null;
+
+  const binDir = join(opts.dir, "bin");
+  await Deno.mkdir(binDir, { recursive: true });
+  const target = join(binDir, "noj-cli");
+  const staged = await Deno.makeTempFile({
+    dir: binDir,
+    prefix: ".noj-cli.",
+  });
+  try {
+    await Deno.copyFile(executable, staged);
+    await Deno.chmod(staged, 0o755);
+    // 原子替换：同目录 rename，目标要么是旧的完整文件、要么是新的完整文件。
+    await Deno.rename(staged, target);
+  } catch (err) {
+    await Deno.remove(staged).catch(() => {});
+    throw err;
+  }
+  return target;
+}
+
+/**
  * 迁移 `register_command`（production.sh:97-131）。
  *
  * 目标 `<dir>/bin/noj-cli` 不存在/不可执行时按「源码运行模式」告警并跳过
