@@ -646,9 +646,26 @@ export async function judgeUpgrade(
   log(`✓ 目标版本：${version}`);
 
   if (opts.dryRun === true) {
-    log("[dry-run] 将拉取镜像并重建 Judge 容器");
+    log("[dry-run] 将重渲染 Compose（写入目标版本）并重建 Judge 容器");
     return { exitCode: 0, message: `[dry-run] 将升级到 ${version}`, paths };
   }
+
+  // ---- write_compose（bash `upgrade_worker`:890）----
+  // **必须先重渲染**：`renderJudgeCompose` 把版本**烘成字面量**
+  // （`image: "…/noj-judge:${version}"`，compose.ts:114），不像
+  // `docker-compose.prod.yml` 用 `${NOJ_VERSION}` 插值。因此只改
+  // `NOJ_VERSION` 再 pull/up，拉到的仍是**旧 tag** 的镜像——
+  // 结果是"报成功但版本没变"的空升级（评审用真实 compose 复现）。
+  // bash 的 `upgrade_worker` 正是靠这行 `write_compose` 避免该问题。
+  try {
+    const yaml = renderJudgeCompose(env);
+    await Deno.writeTextFile(paths.composeFile, yaml);
+    await Deno.chmod(paths.composeFile, JUDGE_COMPOSE_MODE);
+    log(`✓ 已重渲染 Compose 配置：${paths.composeFile}`);
+  } catch (err) {
+    return fail(paths, 1, `重渲染 Compose 配置失败：${(err as Error).message}`);
+  }
+
   if (await runCompose(opts, paths, ["pull"]) !== 0) {
     return fail(paths, 1, "拉取 Judge 镜像失败");
   }

@@ -14,6 +14,7 @@
 // 这是"实现已交付但未接线"的同类问题（与 T24 的接线缺失同源）。
 
 import { assert, assertEquals } from "@std/assert";
+import { join } from "@std/path";
 
 Deno.test("T26: judgeInstallEnv 检查依赖并输出 rootless 隔离指引", async () => {
   const calls: string[] = [];
@@ -98,4 +99,80 @@ Deno.test("T26 门禁: judge 必须可从 CLI 到达（命令注册表 + 分发�
     PRODUCTION_COMMANDS.has("judge"),
     "judge 必须是生产命令（否则不会被分发到生产层）",
   );
+});
+
+// ── 评审发现（Critical）：judge upgrade 报成功但版本没变 ──────────────
+//
+// `renderJudgeCompose` 把版本**烘成字面量**（`image: "…/noj-judge:${version}"`，
+// compose.ts:114），不像 `docker-compose.prod.yml` 用 `${NOJ_VERSION}` 插值。
+// 因此只改 `NOJ_VERSION` 再 pull/up，拉到的仍是**旧 tag** 的镜像。
+//
+// bash 的 `upgrade_worker`（judge-install.sh:890）靠 `write_compose`
+// （升级前重渲染 compose）避免该问题；TS 版丢掉了这一步。
+
+Deno.test("评审: judge upgrade 必须先重渲染 Compose（否则版本不变的空升级）", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "judge");
+    await Deno.mkdir(dir, { recursive: true });
+    const envFile = join(dir, ".env.judge");
+    const composeFile = join(dir, "docker-compose.judge.yml");
+    // 既有配置：旧版本 v0.9.5
+    // 全部 JUDGE_REQUIRED_KEYS 齐备，才能走到 upgrade 的渲染/pull/up 段；
+    // 目标版本直接写 v0.10.0（"用户改完配置再升级"的场景）。
+    await Deno.writeTextFile(
+      envFile,
+      [
+        "NOJ_VERSION=v0.10.0",
+        "REDIS_URL=redis://redis:6379",
+        "JUDGE_QUEUE=noj:judge:queue",
+        "RESULT_QUEUE=noj:judge:results",
+        "WORK_DIR=/var/lib/noj-judge",
+        "JUDGE_MAX_CONCURRENT_JUDGES=2",
+        "JUDGE_IMAGE_PREFIX=noj-judge",
+        "JUDGE_IMAGE_REGISTRY=ghcr.io/neuro-oj",
+        "JUDGE_DOCKER_SOCKET=/run/noj-judge/docker.sock",
+        "JUDGE_DOCKER_SOCKET_GID=10001",
+        "JUDGE_UID=10001",
+        "JUDGE_GID=10001",
+        "JUDGE_DOCKER_HOST=unix:///run/noj-judge/docker.sock",
+        "JUDGE_REQUIRE_ISOLATED_DOCKER=true",
+        "",
+      ].join("\n"),
+    );
+    await Deno.chmod(envFile, 0o600);
+    // 既有 compose 仍指向旧版本（模拟未重渲染的状态）
+    await Deno.writeTextFile(
+      composeFile,
+      "services:\n  judge:\n    image: ghcr.io/neuro-oj/noj-judge:v0.9.5\n",
+    );
+
+    const { judgeUpgrade } = await import("./actions.ts");
+    const res = await judgeUpgrade({
+      dir,
+      envFile,
+      composeFile,
+      runner: {
+        run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }),
+        spawn: () => {
+          throw new Error("no spawn");
+        },
+      },
+      log: () => {},
+    });
+    void res;
+
+    // 重渲染后 compose 必须指向**新**版本
+    const after = await Deno.readTextFile(composeFile);
+    assert(
+      after.includes("v0.10.0"),
+      `upgrade 必须重渲染 compose 到目标版本，实得：${after}`,
+    );
+    assert(
+      !after.includes("v0.9.5"),
+      `compose 不得残留旧版本 tag，实得：${after}`,
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
 });
