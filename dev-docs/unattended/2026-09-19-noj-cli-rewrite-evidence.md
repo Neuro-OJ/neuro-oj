@@ -5,11 +5,22 @@
 >
 > 基线对照物：[`2026-09-19-baseline.md`](./2026-09-19-baseline.md)（323 passed / 108 文件）。
 
+> **⚠️ 2026-09-19 代码评审后的更正**：本文件初版报告"687 passed / 0 failed"，
+> 但那**不成立于干净检出**——仓根有一份未被 git 跟踪的本地 `.env.prod`，
+> 使两条依赖"当前目录是生产安装目录"的测试侥幸通过；CI 的 `actions/checkout`
+> 不带该文件，该 job 实际是红的。已修复（已移除/未知命令跳过 profile 探测），
+> 现在**干净检出**（`git archive` 解出、无 `.env.prod`）实测
+> **715 passed / 0 failed**，可复现。
+>
+> 此外，三名评审共提出 **10 个 Critical**，全部已修复并各自带回归测试；
+> 本文件下方各节的判定已在修复后复验。修复清单见
+> [`2026-09-19-noj-cli-review-fixes.md`](./2026-09-19-noj-cli-review-fixes.md)。
+
 ## 0. 规模与覆盖
 
 | 指标 | 基线 | 现状 | 说明 |
 |---|---|---|---|
-| `deno task test` | 323 passed / 0 failed | **687 passed / 0 failed** | +364（T2–T26 新增覆盖） |
+| `deno task test` | 323 passed / 0 failed | **715 passed / 0 failed** | +392（含评审修复的回归测试） |
 | `deno task check` | exit 0（fmt 108 / lint 106） | exit 0（fmt 101 / lint 99） | 文件数**下降**：T23 删除双模态（155 → 98 后回升到 101） |
 | `noX-cli/src` bash 调用 | 1 处（`production.ts:112`） | **0 处** | 见 R1 |
 | `scripts/deploy/*.sh` 行数 | 7367 | **2402**（保留 4 个文件） | 见下方"bash 退场" |
@@ -19,7 +30,7 @@
 复核：
 
 ```bash
-cd noj-cli && deno task test 2>&1 | tail -2      # ok | 687 passed | 0 failed
+cd noj-cli && deno task test 2>&1 | tail -2      # ok | 715 passed | 0 failed
 cd noj-cli && deno task check 2>&1 | tail -3     # Checked 101 / Checked 99
 wc -l ../scripts/deploy/deploy.sh ../scripts/deploy/restore-drill.sh \
       ../scripts/deploy/backup.sh ../scripts/deploy/deprecation-gate.sh | tail -1   # 2402 总计

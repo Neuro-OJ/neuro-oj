@@ -125,6 +125,27 @@ Deno.test("E12: install --help 由 CLI 回答，不出现 deploy.sh 文案", asy
   assertEquals(out.includes("deploy.sh install"), false);
 });
 
+Deno.test("评审: 错误文案不得出现已删除的模式名（stack）", async () => {
+  // T26 的 help 门禁只检查 help 文本，**不检查错误信息**，于是
+  // `--profile` 缺值的报错仍写着"（prod 或 stack）"——唯一残留的
+  // "已删模式"用户可见文案。本门禁补上错误文本这一面。
+  const originalErr = console.error;
+  let err = "";
+  console.error = (...a: unknown[]) => {
+    err += a.join(" ") + "\n";
+  };
+  try {
+    await run(["status", "--profile"]);
+  } finally {
+    console.error = originalErr;
+  }
+  assertEquals(
+    err.includes("stack"),
+    false,
+    `错误信息不得再提已删除的 stack 模式，实得：${err}`,
+  );
+});
+
 // ── T26 发现：同一次目录定位失败必须给出同一个退出码 ──────────────
 //
 // 这个用例来自验收取证（T26）：编译产物实测发现

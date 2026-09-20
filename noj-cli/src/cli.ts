@@ -334,7 +334,10 @@ export function extractProfile(argv: string[]): {
     if (arg === "--profile") {
       const value = argv[i + 1];
       if (value === undefined || value.startsWith("--")) {
-        throw new UsageError("--profile 需要一个值（prod 或 stack）");
+        // `stack` 已随 T23 删除；错误信息里不能再提它（评审发现：这是
+        // 唯一残留的"已删模式"用户可见文案，而 T26 的 help 门禁只查 help、
+        // 不查错误文本，所以它逃过了那道门禁）。
+        throw new UsageError("--profile 需要一个值（仅支持 prod）");
       }
       profile = value;
       i++;
