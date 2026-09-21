@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **989** 处（ignore=636 early-return=268 rust-ignore=45 rust-env-guard=27 env-guard=13）。
+> 当前命中 **990** 处（ignore=637 early-return=268 rust-ignore=45 rust-env-guard=27 env-guard=13）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -595,22 +595,23 @@
 | noj-core/src/domains/catalog/tests/services/tags.test.ts | 300 | ignore |
 | noj-core/src/domains/catalog/tests/services/problems-llm-limits.test.ts | 76 | ignore |
 | noj-core/src/domains/catalog/tests/services/problems-llm-limits.test.ts | 113 | ignore |
-| noj-core/src/domains/catalog/tests/services/problems.test.ts | 73 | ignore |
-| noj-core/src/domains/catalog/tests/services/problems.test.ts | 87 | ignore |
-| noj-core/src/domains/catalog/tests/services/problems.test.ts | 108 | ignore |
-| noj-core/src/domains/catalog/tests/services/problems.test.ts | 129 | ignore |
-| noj-core/src/domains/catalog/tests/services/problems.test.ts | 148 | ignore |
-| noj-core/src/domains/catalog/tests/services/problems.test.ts | 177 | ignore |
-| noj-core/src/domains/catalog/tests/services/problems.test.ts | 190 | ignore |
-| noj-core/src/domains/catalog/tests/services/problems.test.ts | 205 | ignore |
-| noj-core/src/domains/catalog/tests/services/problems.test.ts | 218 | ignore |
-| noj-core/src/domains/catalog/tests/services/problems.test.ts | 238 | ignore |
-| noj-core/src/domains/catalog/tests/services/problems.test.ts | 263 | ignore |
-| noj-core/src/domains/catalog/tests/services/problems.test.ts | 285 | ignore |
-| noj-core/src/domains/catalog/tests/services/problems.test.ts | 351 | ignore |
-| noj-core/src/domains/catalog/tests/services/problems.test.ts | 366 | ignore |
-| noj-core/src/domains/catalog/tests/services/problems.test.ts | 379 | ignore |
-| noj-core/src/domains/catalog/tests/services/problems.test.ts | 414 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 74 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 88 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 109 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 130 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 149 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 178 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 191 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 206 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 219 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 239 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 264 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 286 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 324 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 390 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 405 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 418 | ignore |
+| noj-core/src/domains/catalog/tests/services/problems.test.ts | 453 | ignore |
 | noj-core/src/domains/content-review/tests/services/content-review.test.ts | 85 | ignore |
 | noj-core/src/domains/content-review/tests/services/content-review.test.ts | 111 | ignore |
 | noj-core/src/domains/content-review/tests/services/content-review.test.ts | 159 | ignore |
