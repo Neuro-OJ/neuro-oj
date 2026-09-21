@@ -445,11 +445,14 @@ jobs:
               NOJ_RUN_E2E=1 cargo test --test "$target" -- --ignored --test-threads=1
             done
           }
+          # 分组约束：会创建 dual（evaluator + solution）标签容器的测试必须
+          # 集中在同一组（p3），避免与其他组并发时污染 e2e_prediction 对全局
+          # Docker 标签的轮询断言（组间并行，#[serial] 只保证单 binary 内串行）。
           run_group e2e_docker_basic e2e_resource_limits e2e_security_isolation &
           p1=$!
-          run_group e2e_support_package e2e_problem_limits e2e_abnormal &
+          run_group e2e_support_package e2e_problem_limits &
           p2=$!
-          run_group e2e_dual_container e2e_network_capability e2e_solution_ai e2e_prediction &
+          run_group e2e_dual_container e2e_network_capability e2e_solution_ai e2e_abnormal e2e_prediction &
           p3=$!
           fail=0
           wait "$p1" || fail=1

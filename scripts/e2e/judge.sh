@@ -75,6 +75,10 @@ E2E_TARGETS=(
   e2e_security_isolation
   e2e_support_package
   e2e_problem_limits
+  e2e_dual_container
+  e2e_network_capability
+  e2e_solution_ai
+  e2e_abnormal
   e2e_prediction
 )
 
