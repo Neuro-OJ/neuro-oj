@@ -107,7 +107,6 @@ export async function makeProvider(storeKey: string): Promise<ProviderRow> {
     id: "prov-1",
     name: "test",
     base_url: "https://api.openai.com/v1",
-    model: "deepseek-chat",
     cost_per_1k_tokens: 1,
     encrypted_api_key: await encryptSecret("sk-test", storeKey),
     enabled: true,

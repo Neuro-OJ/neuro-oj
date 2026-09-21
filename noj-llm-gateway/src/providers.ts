@@ -7,7 +7,6 @@ import { decryptSecret, encryptSecret } from "./crypto.ts";
 export interface ProviderInput {
   name: string;
   base_url: string;
-  model: string;
   api_key: string;
   cost_per_1k_tokens?: number;
   enabled?: boolean;
@@ -17,7 +16,6 @@ export interface ProviderRow {
   id: string;
   name: string;
   base_url: string;
-  model: string;
   cost_per_1k_tokens: number;
   encrypted_api_key: string;
   enabled: boolean;
@@ -29,7 +27,6 @@ export interface ProviderView {
   id: string;
   name: string;
   base_url: string;
-  model: string;
   cost_per_1k_tokens: number;
   /** 脱敏后的 Key，如 `sk-****abcd` */
   api_key_masked: string;
@@ -59,7 +56,6 @@ function toView(row: ProviderRow, apiKey: string): ProviderView {
     id: row.id,
     name: row.name,
     base_url: row.base_url,
-    model: row.model,
     cost_per_1k_tokens: row.cost_per_1k_tokens,
     api_key_masked: maskApiKey(apiKey),
     enabled: row.enabled,
@@ -127,8 +123,8 @@ export async function createProvider(
   const createdAt = now();
   const encrypted = await encryptSecret(input.api_key, storeKey);
   await db`
-    INSERT INTO llm_providers (id, name, base_url, model, cost_per_1k_tokens, encrypted_api_key, enabled, created_at, updated_at)
-    VALUES (${id}, ${input.name}, ${input.base_url}, ${input.model}, ${
+    INSERT INTO llm_providers (id, name, base_url, cost_per_1k_tokens, encrypted_api_key, enabled, created_at, updated_at)
+    VALUES (${id}, ${input.name}, ${input.base_url}, ${
     input.cost_per_1k_tokens ?? 0
   }, ${encrypted}, ${input.enabled ?? true}, ${createdAt}, ${createdAt})
   `;
@@ -146,7 +142,6 @@ export async function updateProvider(
       ProviderInput,
       | "name"
       | "base_url"
-      | "model"
       | "api_key"
       | "cost_per_1k_tokens"
       | "enabled"
@@ -169,10 +164,6 @@ export async function updateProvider(
   if (input.base_url !== undefined) {
     params.push(input.base_url);
     sets.push(`base_url = $${params.length}`);
-  }
-  if (input.model !== undefined) {
-    params.push(input.model);
-    sets.push(`model = $${params.length}`);
   }
   if (input.cost_per_1k_tokens !== undefined) {
     // 负值会让 INCRBY 减少共享配额计数器；荒谬大值会污染配额核算。
@@ -231,7 +222,11 @@ export async function testProviderConnection(
   db: Db,
   id: string,
   storeKey: string,
+  model: string,
 ): Promise<void> {
+  if (!model.trim()) {
+    throw new Error("model_required");
+  }
   const row = await getProviderById(db, id);
   if (!row) {
     throw new Error("provider_not_found");
@@ -248,7 +243,7 @@ export async function testProviderConnection(
         authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: row.model,
+        model,
         messages: [{ role: "user", content: "ping" }],
         max_tokens: 1,
       }),
