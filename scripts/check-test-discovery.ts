@@ -101,14 +101,9 @@ export async function findUndiscoverableTests(
       const testCount = content.match(/\bDeno\.test\s*\(/g)?.length ?? 0;
       if (testCount === 0) continue;
 
-      // 排除「测试工厂」：把 Deno.test 包在导出函数里供其他测试调用的辅助模块
-      // （如 noj-tests/e2e/helper.ts 的 e2eTest()）。这类文件的 Deno.test 调用
-      // 位于函数体内，本身不应被发现——它们不是测试文件。
-      // 判定：文件导出了函数/箭头函数，且没有顶层的 Deno.test( 调用。
-      const hasTopLevelTest = /^(?!\s*(?:\/\/|\*)).*?\bDeno\.test\s*\(/m.test(
-        content.split("\n").filter((l) => !/^\s/.test(l)).join("\n"),
-      );
-      if (!hasTopLevelTest) continue;
+      // 排除「测试工厂」（把 Deno.test 包在导出函数里供其他测试调用的辅助模块，
+      // 如 noj-tests/e2e/helper.ts 的 e2eTest()）。判定见 hasFileLevelTest。
+      if (!hasFileLevelTest(content)) continue;
 
       found.push({ file: `${relDir}/${entry.name}`, testCount });
     }
@@ -116,6 +111,98 @@ export async function findUndiscoverableTests(
 
   await walk(resolve(root, searchDir), searchDir);
   return found;
+}
+
+/**
+ * 判断文件内是否存在**文件级** `Deno.test(...)` 调用。
+ *
+ * 背景（2026-09-21 修复）：此前用「剔除所有以空白开头的行，再看剩余是否有
+ * `Deno.test(`」来排除"测试工厂"（如 `noj-tests/e2e/helper.ts` 的 `e2eTest()`）。
+ * 该启发式把**所有缩进行**都当函数体，于是把 `Deno.test` 写在缩进块里的真实
+ * 测试文件也一并放过——例如：
+ *
+ * ```ts
+ * // noj-core/tests/routes/health2.ts（文件名不可发现）
+ * for (const c of ["a", "b"]) {
+ *   Deno.test(`case ${c}`, () => {});
+ * }
+ * ```
+ *
+ * 该文件既不会被运行器发现，也不会被本门禁标记，正是本门禁要防的"写了测试却
+ * 永不执行、本地与 CI 都显示绿色"。
+ *
+ * 新判定：扫描源码（跳过字符串与注释），记录每个 `Deno.test(` 所在块的**开括号
+ * 是否属于函数体**。只要存在一个不在函数体内的调用，就视为文件级测试。
+ * 这样既保留"工厂排除"（helper.ts 的调用在 `e2eTest` 函数体内），又能发现
+ * 顶层与控制流块（for/if/try）里的测试。
+ */
+export function hasFileLevelTest(content: string): boolean {
+  let i = 0;
+  const n = content.length;
+  // 每个未闭合的 `{` 对应一个栈项：true 表示该块是函数体。
+  const braceIsFunction: boolean[] = [];
+
+  /** 判断某个 `{` 之前的片段是否像函数体开头。 */
+  const looksLikeFunctionBrace = (before: string): boolean => {
+    const tail = before.slice(-400);
+    return (
+      // function 声明/表达式、方法简写、箭头函数、构造器
+      /(?:function\b[^;{}()]*\([^;{}]*\)|\([^;{}]*\)\s*=>|=>|\bconstructor\b)\s*$/
+        .test(tail) ||
+      // `function foo(` 之后到 `{` 之间可能是返回类型注解
+      /\bfunction\b[^;{]*$/.test(tail)
+    );
+  };
+
+  while (i < n) {
+    const ch = content[i];
+    // 跳过行注释
+    if (ch === "/" && content[i + 1] === "/") {
+      const nl = content.indexOf("\n", i);
+      i = nl === -1 ? n : nl + 1;
+      continue;
+    }
+    // 跳过块注释
+    if (ch === "/" && content[i + 1] === "*") {
+      const end = content.indexOf("*/", i + 2);
+      i = end === -1 ? n : end + 2;
+      continue;
+    }
+    // 跳过字符串/模板字面量（粗粒度：忽略嵌套与转义带来的极端情况）
+    if (ch === '"' || ch === "'" || ch === "`") {
+      const quote = ch;
+      i++;
+      while (i < n) {
+        if (content[i] === "\\") i += 2;
+        else if (content[i] === quote) {
+          i++;
+          break;
+        } else i++;
+      }
+      continue;
+    }
+
+    if (ch === "{") {
+      braceIsFunction.push(looksLikeFunctionBrace(content.slice(0, i)));
+      i++;
+      continue;
+    }
+    if (ch === "}") {
+      braceIsFunction.pop();
+      i++;
+      continue;
+    }
+
+    if (content.startsWith("Deno.test", i)) {
+      const after = content.slice(i + "Deno.test".length);
+      if (/^\s*\(/.test(after)) {
+        // 不在任何函数体内 → 文件级测试
+        if (!braceIsFunction.some(Boolean)) return true;
+      }
+    }
+    i++;
+  }
+  return false;
 }
 
 /** 扫描仓库主要模块，返回全部不可发现的测试文件。 */

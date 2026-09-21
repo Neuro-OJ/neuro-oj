@@ -10,6 +10,7 @@ import { assert, assertEquals } from "jsr:@std/assert@^1";
 import {
   checkTestDiscovery,
   findUndiscoverableTests,
+  hasFileLevelTest,
   isDiscoverable,
 } from "./check-test-discovery.ts";
 
@@ -108,3 +109,68 @@ Deno.test(
     }
   },
 );
+
+// ── 2026-09-21 修复：缩进块里的 Deno.test 逃逸 ──
+// 触发条件：Deno.test 位于 for/if/try 等控制流块内（非函数体）。
+Deno.test("hasFileLevelTest: 识别控制流块内的 Deno.test", () => {
+  // 顶层调用
+  assert(hasFileLevelTest(`Deno.test("a", () => {});`));
+  // for 块内（缩进）——此前被"剔除所有缩进行"的启发式漏掉
+  assert(
+    hasFileLevelTest(
+      `for (const c of ["a", "b"]) {\n  Deno.test(\`case \${c}\`, () => {});\n}\n`,
+    ),
+  );
+  // if 块内
+  assert(
+    hasFileLevelTest(`if (x) {\n  Deno.test("a", () => {});\n}\n`),
+  );
+  // 函数体内（测试工厂）→ 不算文件级
+  assertEquals(
+    hasFileLevelTest(
+      `export function e2eTest(name, fn) {\n  Deno.test({ name, fn });\n}\n`,
+    ),
+    false,
+  );
+  // 箭头函数体内 → 不算
+  assertEquals(
+    hasFileLevelTest(
+      `const helper = () => {\n  Deno.test("x", () => {});\n};\n`,
+    ),
+    false,
+  );
+  // 注释/字符串里的 Deno.test 不算
+  assertEquals(hasFileLevelTest(`// Deno.test("x", () => {});\n`), false);
+  assertEquals(
+    hasFileLevelTest(`const s = 'Deno.test("x", () => {})';\n`),
+    false,
+  );
+});
+
+Deno.test("findUndiscoverableTests: 控制流块中的测试文件会被报出", async () => {
+  const root = await Deno.makeTempDir({ prefix: "test-discovery-" });
+  try {
+    await Deno.mkdir(`${root}/noj-core/tests/routes`, { recursive: true });
+    await Deno.writeTextFile(
+      `${root}/noj-core/tests/routes/health.ts`,
+      `for (const c of ["a", "b"]) {\n  Deno.test(\`case \${c}\`, () => {});\n}\n`,
+    );
+    const found = await findUndiscoverableTests(root, "noj-core");
+    assert(
+      found.some((f) => f.file.endsWith("tests/routes/health.ts")),
+      `控制流块内的测试文件必须被报出，实际 ${JSON.stringify(found)}`,
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("findUndiscoverableTests: 真实仓库的 helper.ts 测试工厂不被误报", async () => {
+  // 防回归：helper.ts 的 e2eTest() 在函数体内，必须继续被视为工厂而跳过
+  const found = await findUndiscoverableTests(".", "noj-tests");
+  assertEquals(
+    found.some((f) => f.file.endsWith("e2e/helper.ts")),
+    false,
+    `helper.ts 是测试工厂，不应被报为不可发现，实际 ${JSON.stringify(found)}`,
+  );
+});
