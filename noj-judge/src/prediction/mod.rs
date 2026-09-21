@@ -20,26 +20,6 @@ use crate::types::{JudgeResult, RuntimeConfig};
 const PREDICTION_DIR: &str = "/workspace/prediction";
 const RESULT_MARKER: &str = "---RESULT---";
 
-/// 从 evaluator stdout 提取 `---RESULT---` 后的首个非空行。
-///
-/// 保留为纯函数以便直接解析完整文本 / 单测；实际评测循环不再依赖它——循环改用
-/// [`PredictionOutput`] 的流式解析，避免对可能被截断的滚动缓冲重复全量扫描。
-#[allow(dead_code)]
-fn extract_result_payload(stdout: &str) -> Option<String> {
-    let mut lines = stdout.lines();
-    while let Some(line) = lines.next() {
-        if line.trim() == RESULT_MARKER {
-            for next in lines.by_ref() {
-                if !next.trim().is_empty() {
-                    return Some(next.trim().to_string());
-                }
-            }
-            return None;
-        }
-    }
-    None
-}
-
 /// prediction 输出累积器。
 ///
 /// 关键安全修复（2026-09-21 Task 8 评审）：prediction 评测消费用户提供的预测文件，
@@ -353,15 +333,33 @@ mod tests {
         }
     }
 
+    /// 标记存在时提取其后的首个非空行（流式路径，覆盖原 `extract_result_payload`
+    /// 的等价语义：标记存在 / 不存在 / 标记后仅空白行）。
     #[test]
-    fn test_extract_result_payload() {
-        let out = "some logs\n---RESULT---\n{\"score\":1000,\"details\":{}}\ntrailing";
+    fn test_payload_extraction_semantics() {
+        // 标记存在 + 后续噪声行 → 取标记后首个非空行
+        let mut out = PredictionOutput::new();
+        out.feed(&stdout_chunk(
+            "some logs\n---RESULT---\n{\"score\":1000,\"details\":{}}\ntrailing\n",
+        ));
+        out.finish();
         assert_eq!(
-            extract_result_payload(out).as_deref(),
+            out.payload.as_deref(),
             Some("{\"score\":1000,\"details\":{}}")
         );
-        assert_eq!(extract_result_payload("no marker here"), None);
-        assert_eq!(extract_result_payload("---RESULT---\n\n  \n"), None);
+
+        // 标记不存在 → 无 payload
+        let mut out = PredictionOutput::new();
+        out.feed(&stdout_chunk("no marker here\n"));
+        out.finish();
+        assert_eq!(out.payload, None);
+
+        // 标记后仅空白行 → 保持空 payload（不得误判为已捕获）
+        let mut out = PredictionOutput::new();
+        out.feed(&stdout_chunk("---RESULT---\n\n  \n"));
+        out.finish();
+        assert_eq!(out.payload.as_deref(), Some(""));
+        assert!(!out.has_payload());
     }
 
     /// marker + payload 之后跟超过 1 MiB（输出上限）的噪声，payload 仍必须被捕获。

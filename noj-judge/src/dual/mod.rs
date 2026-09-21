@@ -146,10 +146,6 @@ pub(crate) fn clamp_runtime_config(
 ///
 /// prediction 提交省略 `solution`，因此无需 `max_solution_call_timeout_ms`；
 /// evaluator 的时间/内存上限收敛规则与 [`clamp_runtime_config`] 保持一致。
-///
-/// `#[allow(dead_code)]`：bin 目标尚未声明 `prediction` 模块（分派由 Task 9 接入），
-/// 故 bin 侧暂时没有调用点；接入后应移除本 allow。
-#[allow(dead_code)]
 pub(crate) fn clamp_runtime_config_for_prediction(
     rc: &RuntimeConfig,
     max_evaluator_time_ms: u64,
@@ -295,7 +291,9 @@ impl std::io::Write for ChannelWriter {
 /// 时间上限**（例如用 `tokio::time::timeout` 包裹本 future）。prediction 编排
 /// 路径复用启动期的 30s 截止时间；本函数只保证在通道关闭时以 BrokenPipe 结束
 /// 后台写入线程，而**不负责**时间上限。
-#[allow(dead_code)] // prediction 编排（后续任务）是本函数的唯一调用方，先行落地原语
+///
+/// prediction 编排路径是本函数的唯一调用方；现已由 `runner::evaluate_with_cpu_limit`
+/// 分派接入，故不再需要 `#[allow(dead_code)]`。
 pub(crate) async fn inject_file_stream_to_container(
     docker: &bollard::Docker,
     container_id: &str,

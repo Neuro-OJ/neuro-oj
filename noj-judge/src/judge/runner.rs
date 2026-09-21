@@ -7,6 +7,14 @@ use crate::sandbox::cache::SupportPackageCache;
 use crate::sandbox::download::{self, DownloadedPackage};
 use crate::types::{JudgeResult, JudgeTask};
 
+/// 评测路径选择（纯函数，便于单测）。
+///
+/// prediction 提交物是纯数据，不需要 Solution 容器执行不可信代码；判定完全基于
+/// 显式的 `submission_mode` 字段，历史消息缺省值 `"code"` 一律走双容器路径。
+pub fn is_prediction_mode(submission_mode: &str) -> bool {
+    submission_mode == "prediction"
+}
+
 /// 读取支持包文件大小（用于日志展示；失败时返回 0，不阻断主流程）。
 fn package_size(pkg: &DownloadedPackage) -> u64 {
     std::fs::metadata(&pkg.path).map(|m| m.len()).unwrap_or(0)
@@ -30,6 +38,7 @@ pub async fn evaluate_with_cpu_limit(
     command_whitelist: &[String],
     max_evaluator_time_ms: u64,
     max_solution_call_timeout_ms: u64,
+    prediction_workspace_mb: u64,
 ) -> Result<JudgeResult> {
     let work_dir = PathBuf::from(work_dir);
 
@@ -102,6 +111,46 @@ pub async fn evaluate_with_cpu_limit(
     } else {
         None
     };
+
+    // prediction 模式：单容器数据评分路径。
+    //
+    // 预测文件与支持包同为「下载到宿主的 zip 文件」，此处复用上面的 artifact 下载
+    // 结果（`artifact_zip`）。prediction 任务必须携带预测文件，缺失即报错而不是
+    // 静默降级——否则会以空预测文件继续评分，产出无意义的分数。
+    if is_prediction_mode(&task.submission_mode) {
+        let prediction_path = artifact_zip
+            .as_ref()
+            .map(|p| p.path.as_path())
+            .ok_or_else(|| {
+                anyhow::anyhow!("prediction 任务缺少预测文件（artifact_download_url）")
+            })?;
+        let file_name = task
+            .file_name
+            .clone()
+            .unwrap_or_else(|| "prediction.csv".to_string());
+        info!(
+            submission_id = %task.submission_id,
+            prediction_file = %file_name,
+            "走 prediction 单容器评分路径"
+        );
+        return crate::prediction::evaluate_prediction(
+            docker,
+            &task.submission_id,
+            &task.runtime_config,
+            support_pkg.as_ref().map(|p| p.path.as_path()),
+            prediction_path,
+            &file_name,
+            task.rejudge_seq,
+            cpu_limit_millicores,
+            allow_evaluator_network,
+            evaluator_network_mode,
+            image_prefix,
+            command_whitelist,
+            max_evaluator_time_ms,
+            prediction_workspace_mb,
+        )
+        .await;
+    }
 
     crate::dual::evaluate_dual_with_cpu_limit_and_user_llm(
         docker,
