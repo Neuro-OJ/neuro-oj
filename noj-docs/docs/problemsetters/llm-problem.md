@@ -51,7 +51,7 @@ from noj_evaluator_sdk import llm, result
 
 def evaluate(prompt: str) -> str:
     resp = llm.complete(
-        model="qwen-plus",          # 可省略，默认取允许模型列表第一个
+        # 不要指定 model：平台默认模型即唯一允许值，省略后 SDK 自动取允许列表首个
         messages=[
             {"role": "system", "content": "你是数学解题助手。"},
             {"role": "user", "content": prompt},
@@ -65,7 +65,10 @@ from noj_evaluator_sdk import register_capability
 register_capability("solve_math", evaluate)
 ```
 
-- `llm.complete(model=..., messages=..., **params)` 会读取评测时自动注入的
+- 用哪个模型由**平台默认**决定，是唯一权威来源：`eval_token` 只允许 `NOJ_LLM_ALLOWED_MODELS`
+  中的模型（即平台默认模型一项），传入其他模型会被 gateway 以 403
+  `model_not_allowed` 拒绝。因此请**省略 `model=`**，由 SDK 取允许列表首个（平台默认）。
+- `llm.complete(messages=..., **params)` 会读取评测时自动注入的
   `NOJ_LLM_GATEWAY_URL`、`NOJ_LLM_TOKEN`、`NOJ_LLM_ALLOWED_MODELS` 等环境变量。
 - 返回上游 OpenAI 兼容 Chat Completions 响应字典。
 - 调用失败（配置缺失、token 失效、上游 4xx/5xx、网络错误）会抛出 `LLMError`。
