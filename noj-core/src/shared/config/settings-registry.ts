@@ -44,6 +44,7 @@ export type SettingCategory =
   | "community"
   | "judge"
   | "review"
+  | "llm"
   | "other";
 
 /** 配置项元数据（统一注册表条目） */
@@ -377,6 +378,28 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "TRUSTED_PROXIES",
     category: "rate_limit",
+    scope: "runtime",
+  },
+
+  // ── llm（题目 LLM 能力的平台全局默认）────────────────────
+  {
+    key: "llm_default_provider_id",
+    type: "string",
+    default: "",
+    description: "LLM 题全局默认 Provider ID（gateway 内部 Provider UUID）",
+    is_secret: false,
+    envFallback: "NOJ_LLM_DEFAULT_PROVIDER_ID",
+    category: "llm",
+    scope: "runtime",
+  },
+  {
+    key: "llm_default_model",
+    type: "string",
+    default: "",
+    description: "LLM 题全局默认模型名（必须显式配置，无 Provider 级回退）",
+    is_secret: false,
+    envFallback: "NOJ_LLM_DEFAULT_MODEL",
+    category: "llm",
     scope: "runtime",
   },
 
