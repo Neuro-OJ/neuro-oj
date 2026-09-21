@@ -1,7 +1,12 @@
 /**
  * LLM 题目配置与 token 签发测试（纯函数，无需 DB）。
  */
-import { assert, assertEquals, assertThrows } from "jsr:@std/assert@^1";
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertThrows,
+} from "jsr:@std/assert@^1";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 import { validateBundleManifest } from "../../../catalog/index.ts";
 import { isValidLlmConfig } from "../../../catalog/index.ts";
@@ -16,9 +21,16 @@ import { getLlmPlatformDefault } from "../../services/llm.ts";
 import { _resetSystemSettingsForTest } from "../../../system/index.ts";
 
 Deno.test("llm-config: isValidLlmConfig", () => {
+  assert(isValidLlmConfig({}));
+  assert(isValidLlmConfig({ max_calls: 30 }));
+  assert(isValidLlmConfig({ max_calls: 30, max_tokens: 20000 }));
+  // 存量旧字段容忍并忽略
   assert(isValidLlmConfig({ provider_id: "p1", model: "qwen-plus" }));
-  assert(!isValidLlmConfig({ provider_id: "", model: "qwen-plus" }));
-  assert(!isValidLlmConfig({ provider_id: "p1" }));
+  // 非法预算
+  assert(!isValidLlmConfig({ max_calls: 0 }));
+  assert(!isValidLlmConfig({ max_calls: -1 }));
+  assert(!isValidLlmConfig({ max_tokens: 1.5 }));
+  assert(!isValidLlmConfig({ max_tokens: "100" }));
   assert(!isValidLlmConfig(null));
 });
 
@@ -40,9 +52,9 @@ Deno.test("llm-bundle: P 型 + 网络开启通过", () => {
         memory_limit_mb: 512,
       },
     },
-    llm: { provider_id: "p1", model: "qwen-plus" },
+    llm: { max_calls: 30 },
   });
-  assertEquals(manifest.llm?.model, "qwen-plus");
+  assertEquals(manifest.llm?.max_calls, 30);
 });
 
 Deno.test("llm-bundle: U 型携带 llm 被拒", () => {
@@ -94,40 +106,35 @@ Deno.test("llm-bundle: 未开启网络被拒", () => {
 });
 
 Deno.test("llm-token: buildJudgeTaskLlm 生成可校验字段", async () => {
+  _resetSystemSettingsForTest();
   const oldToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN");
   const oldUrl = Deno.env.get("NOJ_LLM_GATEWAY_URL");
   Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "test-service-token-0123456789abcdef");
   Deno.env.set("NOJ_LLM_GATEWAY_URL", "http://127.0.0.1:8001");
+  Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "prov-default");
+  Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "qwen-plus");
+  const restore = stubProviderFetch(true);
   try {
-    const runtime: RuntimeConfig = {
-      evaluator: {
-        image: "noj-evaluator-python",
-        command: "python3 /workspace/evaluate.py",
-        time_limit_ms: 30000,
-        memory_limit_mb: 256,
-      },
-      solution: {
-        image: "noj-solution-python",
-        call_timeout_ms: 5000,
-        memory_limit_mb: 256,
-      },
-    };
     const llmTask = await buildJudgeTaskLlm(
-      { provider_id: "p1", model: "qwen-plus" },
+      {},
       "sub-1",
       "prob-1",
       "user-1",
-      runtime,
+      RUNTIME,
     );
-    assertEquals(llmTask.provider_id, "p1");
+    assertEquals(llmTask.provider_id, "prov-default");
     assertEquals(llmTask.allowed_models, ["qwen-plus"]);
     assertEquals(llmTask.gateway_url, "http://127.0.0.1:8001");
     assert(llmTask.eval_token.length > 0);
   } finally {
+    restore();
     if (oldToken === undefined) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
     else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", oldToken);
     if (oldUrl === undefined) Deno.env.delete("NOJ_LLM_GATEWAY_URL");
     else Deno.env.set("NOJ_LLM_GATEWAY_URL", oldUrl);
+    Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
+    Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
+    _resetSystemSettingsForTest();
   }
 });
 
@@ -351,6 +358,109 @@ Deno.test("llm-platform-default: env 兜底生效", () => {
       model: "qwen-plus",
     });
   } finally {
+    Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
+    Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
+    _resetSystemSettingsForTest();
+  }
+});
+
+function stubProviderFetch(enabled: boolean): () => void {
+  const original = globalThis.fetch;
+  globalThis.fetch = ((_input: Request | URL | string) =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          data: {
+            id: "prov-default",
+            name: "stub",
+            base_url: "http://stub",
+            cost_per_1k_tokens: 0,
+            api_key_masked: "sk-****",
+            enabled,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )) as typeof fetch;
+  return () => {
+    globalThis.fetch = original;
+  };
+}
+
+const RUNTIME: RuntimeConfig = {
+  evaluator: {
+    image: "noj-evaluator-python",
+    command: "python3 /workspace/evaluate.py",
+    time_limit_ms: 60000,
+    memory_limit_mb: 512,
+    network: { enabled: true },
+  },
+  solution: {
+    image: "noj-solution-python",
+    call_timeout_ms: 5000,
+    memory_limit_mb: 512,
+  },
+};
+
+Deno.test("llm-token: 未配置平台默认时抛错", async () => {
+  _resetSystemSettingsForTest();
+  Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
+  Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
+  try {
+    await assertRejects(
+      () => buildJudgeTaskLlm({}, "sub-1", "prob-1", "user-1", RUNTIME),
+      BadRequestError,
+    );
+  } finally {
+    _resetSystemSettingsForTest();
+  }
+});
+
+Deno.test("llm-token: 使用平台默认填充 provider/model 与预算", async () => {
+  _resetSystemSettingsForTest();
+  const oldToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN");
+  Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "test-service-token-0123456789abcdef");
+  Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "prov-default");
+  Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "qwen-plus");
+  const restore = stubProviderFetch(true);
+  try {
+    const task = await buildJudgeTaskLlm(
+      { max_calls: 7 },
+      "sub-1",
+      "prob-1",
+      "user-1",
+      RUNTIME,
+    );
+    assertEquals(task.provider_id, "prov-default");
+    assertEquals(task.allowed_models, ["qwen-plus"]);
+  } finally {
+    restore();
+    if (oldToken === undefined) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
+    else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", oldToken);
+    Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
+    Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
+    _resetSystemSettingsForTest();
+  }
+});
+
+Deno.test("llm-token: 默认 Provider 停用时抛错", async () => {
+  _resetSystemSettingsForTest();
+  const oldToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN");
+  Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "test-service-token-0123456789abcdef");
+  Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "prov-default");
+  Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "qwen-plus");
+  const restore = stubProviderFetch(false);
+  try {
+    await assertRejects(
+      () => buildJudgeTaskLlm({}, "sub-1", "prob-1", "user-1", RUNTIME),
+      BadRequestError,
+    );
+  } finally {
+    restore();
+    if (oldToken === undefined) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
+    else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", oldToken);
     Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
     Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
     _resetSystemSettingsForTest();

@@ -5,6 +5,8 @@ import type { LlmConfig } from "./../../catalog/index.ts";
 import type { JudgeTaskLlm } from "../../submission/index.ts";
 import type { RuntimeConfig } from "../../catalog/index.ts";
 import { encodeBase64 } from "@std/encoding/base64";
+import { BadRequestError } from "../../../shared/base/errors.ts";
+import { getLlmPlatformDefault, getLlmProviderById } from "./llm.ts";
 import { resolveLlmLimits } from "./llm-limits.ts";
 
 const IV_LENGTH = 12;
@@ -74,6 +76,19 @@ export async function buildJudgeTaskLlm(
   userId: string,
   runtimeConfig: RuntimeConfig,
 ): Promise<JudgeTaskLlm> {
+  const platform = getLlmPlatformDefault();
+  if (!platform) {
+    throw new BadRequestError(
+      "平台未配置默认 LLM Provider / 模型，无法评测 LLM 题",
+    );
+  }
+  const provider = await getLlmProviderById(platform.provider_id).catch(
+    () => null,
+  );
+  if (!provider || !provider.enabled) {
+    throw new BadRequestError("平台默认 LLM Provider 不存在或已停用");
+  }
+
   const gatewayUrl = Deno.env.get("NOJ_LLM_GATEWAY_URL") ??
     "http://localhost:8001";
   const timeLimitMs = runtimeConfig.evaluator.time_limit_ms;
@@ -85,8 +100,8 @@ export async function buildJudgeTaskLlm(
     submission_id: submissionId,
     problem_id: problemId,
     user_id: userId,
-    provider_id: llmConfig.provider_id,
-    allowed_models: [llmConfig.model],
+    provider_id: platform.provider_id,
+    allowed_models: [platform.model],
     iat: now,
     exp: now + ttlSeconds,
     max_calls: limits.max_calls,
@@ -95,7 +110,7 @@ export async function buildJudgeTaskLlm(
   return {
     gateway_url: gatewayUrl,
     eval_token: token,
-    provider_id: llmConfig.provider_id,
-    allowed_models: [llmConfig.model],
+    provider_id: platform.provider_id,
+    allowed_models: [platform.model],
   };
 }

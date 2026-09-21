@@ -7,10 +7,6 @@
 
 import { getSetting } from "../../system/index.ts";
 
-const GATEWAY_URL = Deno.env.get("NOJ_LLM_GATEWAY_URL") ??
-  "http://localhost:8001";
-const SERVICE_TOKEN = Deno.env.get("NOJ_LLM_SERVICE_TOKEN") ?? "";
-
 /**
  * 创建或更新 LLM Provider 的输入参数。
  */
@@ -116,16 +112,21 @@ export interface LlmQuotaInput {
  * 自动拼接 GATEWAY_URL、注入 SERVICE_TOKEN 承载 Token 与 JSON 头，
  * 并将响应体解包返回。Token 未配置或 HTTP 非 2xx 时抛错。
  *
+ * 环境变量在每次调用时读取（而非模块加载时捕获），便于测试按需设置。
+ *
  * @param path 相对路径（如 `/internal/providers`），不含 GATEWAY_URL 前缀
  * @param init 可选的 fetch 请求配置（method/body/headers 等）
  * @returns 响应体 JSON 按类型 T 返回
- * @throws {Error} NOJ_LLM_SERVICE_TOKEN 未配置时抛出
+ * @throws {Error} 调用时 NOJ_LLM_SERVICE_TOKEN 未配置
  * @throws {LlmGatewayError} gateway 返回非 2xx 时抛出，携带状态码与错误码
  */
 async function request<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
+  const GATEWAY_URL = Deno.env.get("NOJ_LLM_GATEWAY_URL") ??
+    "http://localhost:8001";
+  const SERVICE_TOKEN = Deno.env.get("NOJ_LLM_SERVICE_TOKEN") ?? "";
   if (!SERVICE_TOKEN) {
     throw new Error("NOJ_LLM_SERVICE_TOKEN 未配置，无法访问 LLM Gateway");
   }

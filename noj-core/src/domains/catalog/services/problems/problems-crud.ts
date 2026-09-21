@@ -33,10 +33,7 @@ import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "catalog"]);
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import { logAudit } from "../../../system/index.ts";
-import {
-  assertLlmLimitsWithinDefault,
-  getLlmProviderById,
-} from "../../../gateway/index.ts";
+import { assertLlmLimitsWithinDefault } from "../../../gateway/index.ts";
 import {
   type CreateProblemInput,
   DIFFICULTIES,
@@ -181,12 +178,6 @@ export async function createProblem(
       throw new ForbiddenError("仅 P 型/官方题可启用 LLM");
     }
     assertLlmLimitsWithinDefault(input.llm);
-    const provider = await getLlmProviderById(input.llm.provider_id).catch(
-      () => null,
-    );
-    if (!provider || !provider.enabled) {
-      throw new BadRequestError("LLM Provider 不存在或已停用");
-    }
     const runtime = input.runtime_config;
     if (!runtime || !runtime.evaluator.network?.enabled) {
       throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
@@ -439,12 +430,6 @@ export async function updateProblem(
         throw new BadRequestError("客观题套卷不支持 LLM 配置");
       }
       assertLlmLimitsWithinDefault(input.llm);
-      const provider = await getLlmProviderById(input.llm.provider_id).catch(
-        () => null,
-      );
-      if (!provider || !provider.enabled) {
-        throw new BadRequestError("LLM Provider 不存在或已停用");
-      }
       const effectiveRuntime = input.runtime_config ??
         (problem.runtime_config as RuntimeConfig | null);
       if (
