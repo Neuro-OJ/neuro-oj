@@ -19,25 +19,40 @@ use noj_judge::user_claim::{
     active_users_key, claim_member, count_active_claims, release_user, try_claim_user,
 };
 
-/// 连接 Redis（未配置 REDIS_URL 时返回 None → 跳过测试）。
+/// 连接 Redis。
 ///
-/// 跳过时打印显著提示，避免"完全无声地记为通过"。
+/// 跳过语义**只针对"未配置 REDIS_URL"**（本地无外部依赖时的显式跳过）。
+///
+/// 2026-09-21 修复：此前把"配置了但连不上"也当作跳过——`Client::open(...).ok()?`
+/// 与 `get_multiplexed_async_connection().await.ok()` 都是 `.ok()?`，任何连接
+/// 失败（CI service 未启动、端口写错、Redis 挂了）都返回 `None`，用例随即
+/// `eprintln!("跳过：未设置 REDIS_URL")` 并 `return`，被 nextest/cargo 记为
+/// **passed**。实测：`REDIS_URL=redis://127.0.0.1:6399/9`（不可达）时 7 个用例
+/// 全部 ok，其中包含本 PR 最关键的 `concurrent_claims_only_one_wins`。
+/// 后果是 CI 基础设施故障表现为绿色。
+///
+/// 修复后：设置了 REDIS_URL 就**必须**连上，否则 panic（测试失败），
+/// 并给出可操作的错误信息。
 async fn connect() -> Option<redis::aio::MultiplexedConnection> {
-    let url = match std::env::var("REDIS_URL") {
-        Ok(u) => u,
-        Err(_) => {
-            eprintln!(
-                "⚠ 跳过：未设置 REDIS_URL —— 本用例未执行任何断言。\
-                 如需运行：REDIS_URL=redis://127.0.0.1:6379/9 cargo test --test user_claim_redis"
-            );
-            return None;
-        }
+    let Some(url) = std::env::var("REDIS_URL").ok() else {
+        eprintln!(
+            "⚠ 跳过：未设置 REDIS_URL —— 本用例未执行任何断言。\
+             如需运行：REDIS_URL=redis://127.0.0.1:6379/9 cargo test --test user_claim_redis"
+        );
+        return None;
     };
-    redis::Client::open(url)
-        .ok()?
+    let client = redis::Client::open(url.as_str())
+        .unwrap_or_else(|e| panic!("REDIS_URL 不是合法的 Redis URL（{url}）：{e}"));
+    let conn = client
         .get_multiplexed_async_connection()
         .await
-        .ok()
+        .unwrap_or_else(|e| {
+            panic!(
+                "已设置 REDIS_URL={url} 但无法连接 Redis：{e}。\
+             本用例必须真实执行（不得记为 passed）；请检查 Redis 是否可用。"
+            )
+        });
+    Some(conn)
 }
 
 /// 测试用命名空间（避免与真实部署/其他测试互相污染）。
