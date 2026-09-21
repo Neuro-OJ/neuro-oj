@@ -908,12 +908,13 @@ else:
             time_limit_ms: 20000,
             memory_limit_mb: 256,
             network: Some(EvaluatorNetwork { enabled: true }),
+            workspace_size_mb: None,
         },
-        solution: SolutionRuntime {
+        solution: Some(SolutionRuntime {
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 8000,
             memory_limit_mb: 128,
-        },
+        }),
     };
     let user_code = r#"
 from noj_solution_sdk import register, call_capability

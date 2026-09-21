@@ -100,12 +100,14 @@ router.get("/problems/:id/preflight", async (c) => {
   } else if (!problem.runtime_config) {
     add("runtime", "error", "缺少 runtime_config");
   } else {
-    for (
-      const [kind, config] of [
-        ["evaluator", problem.runtime_config.evaluator],
-        ["solution", problem.runtime_config.solution],
-      ] as const
-    ) {
+    const configs: [string, { image: string } | undefined][] = [
+      ["evaluator", problem.runtime_config.evaluator],
+    ];
+    if (problem.runtime_config.solution) {
+      configs.push(["solution", problem.runtime_config.solution]);
+    }
+    for (const [kind, config] of configs) {
+      if (!config) continue;
       try {
         await validateJudgeImageWithKind(config.image, kind);
         add(`image:${kind}`, "pass", `镜像 ${config.image} 已在白名单中`);

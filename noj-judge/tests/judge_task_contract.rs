@@ -34,6 +34,7 @@ fn judge_task_contract_fixture_deserializes() {
     assert_eq!(task.problem_id, "22222222-2222-4222-8222-222222222222");
     assert_eq!(task.user_id, "33333333-3333-4333-8333-333333333333");
     assert_eq!(task.priority, "medium");
+    assert_eq!(task.submission_mode, "artifact");
     assert_eq!(task.language, "python3");
     assert_eq!(task.code, "print('hello')");
     assert_eq!(task.file_name.as_deref(), Some("main.py"));
@@ -46,8 +47,11 @@ fn judge_task_contract_fixture_deserializes() {
     assert_eq!(runtime.evaluator.command, "python3 /workspace/evaluate.py");
     assert_eq!(runtime.evaluator.time_limit_ms, 5000);
     assert_eq!(runtime.evaluator.memory_limit_mb, 512);
-    assert_eq!(runtime.solution.image, "noj-solution-python");
-    assert_eq!(runtime.solution.call_timeout_ms, 2000);
+    assert_eq!(
+        runtime.solution.as_ref().unwrap().image,
+        "noj-solution-python"
+    );
+    assert_eq!(runtime.solution.as_ref().unwrap().call_timeout_ms, 2000);
 
     let llm = task.llm.expect("fixture 应包含 llm 字段");
     assert_eq!(llm.gateway_url, "http://llm-gateway:8001");
@@ -68,6 +72,7 @@ fn judge_task_contract_has_no_unknown_fields() {
         "problem_id",
         "user_id",
         "priority",
+        "submission_mode",
         "runtime_config",
         "download_url",
         "artifact_download_url",

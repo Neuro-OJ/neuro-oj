@@ -23,7 +23,7 @@ import {
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "submission"]);
-import type { JudgeTaskPriority } from "../types/index.ts";
+import type { JudgeSubmissionMode, JudgeTaskPriority } from "../types/index.ts";
 import { buildJudgeTask } from "../types/index.ts";
 import type { RuntimeConfig } from "../../catalog/index.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
@@ -154,6 +154,7 @@ interface PendingRecoveryRow {
   file_name: string | null;
   rejudge_seq?: number;
   problem_id: string;
+  submission_mode?: string | null;
   runtime_config: unknown;
   support_package_storage_url: string | null;
   judge_started_at?: string | null;
@@ -209,6 +210,7 @@ async function selectPendingRecoveryRows(
     problem_id: cols.problemId,
     runtime_config: cols.runtimeConfig,
     support_package_storage_url: cols.supportPackageStorageUrl,
+    submission_mode: problems.submission_mode,
   };
   if (cols.rejudgeSeq) selectFields.rejudge_seq = cols.rejudgeSeq;
   if (cols.userId) selectFields.user_id = cols.userId;
@@ -279,6 +281,9 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
       problem_id: row.problem_id,
       user_id: row.user_id ?? "",
       priority,
+      submission_mode: source === "self_test"
+        ? "code"
+        : (row.submission_mode as JudgeSubmissionMode) ?? "code",
       runtime_config: runtimeConfig,
       download_url,
       language: row.language,

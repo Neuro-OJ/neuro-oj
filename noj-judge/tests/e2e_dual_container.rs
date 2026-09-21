@@ -42,6 +42,7 @@ fn dual_task() -> JudgeTask {
         problem_id: "1001".to_string(),
         user_id: "user-1".to_string(),
         priority: "medium".to_string(),
+        submission_mode: "code".to_string(),
         download_url: None,
         artifact_download_url: None,
         runtime_config: RuntimeConfig {
@@ -51,12 +52,13 @@ fn dual_task() -> JudgeTask {
                 time_limit_ms: 10_000,
                 memory_limit_mb: 256,
                 network: None,
+                workspace_size_mb: None,
             },
-            solution: SolutionRuntime {
+            solution: Some(SolutionRuntime {
                 image: "noj-judge-test-runner:latest".to_string(),
                 call_timeout_ms: 1_000,
                 memory_limit_mb: 256,
-            },
+            }),
         },
         language: "python3".to_string(),
         code: String::new(),
@@ -604,7 +606,14 @@ fn dual_task_runtime_config_serialization() {
         task.runtime_config.evaluator.image,
         "noj-evaluator-python:3.12"
     );
-    assert_eq!(task.runtime_config.solution.call_timeout_ms, 1000);
+    assert_eq!(
+        task.runtime_config
+            .solution
+            .as_ref()
+            .unwrap()
+            .call_timeout_ms,
+        1000
+    );
 }
 
 #[allow(dead_code)]
@@ -636,12 +645,13 @@ async fn evaluate_dual_end_to_end() {
             time_limit_ms: 15000,
             memory_limit_mb: 256,
             network: None,
+            workspace_size_mb: None,
         },
-        solution: SolutionRuntime {
+        solution: Some(SolutionRuntime {
             image: "noj-judge-test-runner:latest".to_string(),
             call_timeout_ms: 5000,
             memory_limit_mb: 128,
-        },
+        }),
     };
 
     let result = noj_judge::dual::evaluate_dual_with_cpu_limit(
@@ -705,12 +715,13 @@ except Exception as e:
             time_limit_ms: 15000,
             memory_limit_mb: 256,
             network: None,
+            workspace_size_mb: None,
         },
-        solution: SolutionRuntime {
+        solution: Some(SolutionRuntime {
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 100, // 题目级默认：100ms
             memory_limit_mb: 128,
-        },
+        }),
     };
     // solution 代码：sleep_solution 睡 300ms（> 100ms 默认超时）
     let code = "import time\ndef sleep_solution():\n    time.sleep(0.3)\n    return 1\n";
@@ -789,12 +800,13 @@ result.accept(score=1000, details={'cases': out})
             time_limit_ms: 15000,
             memory_limit_mb: 256,
             network: None,
+            workspace_size_mb: None,
         },
-        solution: SolutionRuntime {
+        solution: Some(SolutionRuntime {
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 5000, // 题目级默认宽松；验证调用级 50ms 覆盖
             memory_limit_mb: 128,
-        },
+        }),
     };
     let code = "import time\ndef sleep_solution():\n    time.sleep(0.3)\n    return 1\ndef fast_solution():\n    return 42\n";
 
@@ -870,12 +882,13 @@ except Exception as e:
             time_limit_ms: 15000,
             memory_limit_mb: 256,
             network: None,
+            workspace_size_mb: None,
         },
-        solution: SolutionRuntime {
+        solution: Some(SolutionRuntime {
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 5000, // 题目级默认宽松；验证 cap_reg 上报的 100ms 生效
             memory_limit_mb: 128,
-        },
+        }),
     };
     // solution：延迟 1s 调用 slow_cap（确保 evaluator 已完成 cap_reg 上报），
     // 捕获超时结果，供 evaluator 的 report() 读取
@@ -946,12 +959,13 @@ while True:
             time_limit_ms: 2000, // 2s 总超时
             memory_limit_mb: 256,
             network: None,
+            workspace_size_mb: None,
         },
-        solution: SolutionRuntime {
+        solution: Some(SolutionRuntime {
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 5000,
             memory_limit_mb: 128,
-        },
+        }),
     };
 
     let result = tokio::time::timeout(
@@ -1009,12 +1023,13 @@ runner.call('sleep_solution')
             time_limit_ms: 15000,
             memory_limit_mb: 256,
             network: None,
+            workspace_size_mb: None,
         },
-        solution: SolutionRuntime {
+        solution: Some(SolutionRuntime {
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 100, // 100ms 调用超时
             memory_limit_mb: 128,
-        },
+        }),
     };
     // solution：sleep_solution 睡 300ms（> 100ms 调用超时）
     let code = "import time\ndef sleep_solution():\n    time.sleep(0.3)\n    return 1\n";
@@ -1082,12 +1097,13 @@ except SolutionTimeoutError:
             time_limit_ms: 15000,
             memory_limit_mb: 256,
             network: None,
+            workspace_size_mb: None,
         },
-        solution: SolutionRuntime {
+        solution: Some(SolutionRuntime {
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 100,
             memory_limit_mb: 128,
-        },
+        }),
     };
     let code = "import time\ndef sleep_solution():\n    time.sleep(0.3)\n    return 1\n";
 
@@ -1160,12 +1176,13 @@ except Exception as e:
             time_limit_ms: 15000,
             memory_limit_mb: 256,
             network: None,
+            workspace_size_mb: None,
         },
-        solution: SolutionRuntime {
+        solution: Some(SolutionRuntime {
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 5000,
             memory_limit_mb: 128,
-        },
+        }),
     };
     let artifact_zip = build_artifact_zip();
     let temp_dir = tempfile::tempdir().unwrap();

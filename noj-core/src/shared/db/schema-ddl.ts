@@ -74,7 +74,7 @@ export const SCHEMA_DDL: string[] = [
       CHECK (visibility IN ('public', 'private')),
     CONSTRAINT problems_p_visibility_check CHECK (type <> 'P' OR visibility = 'public'),
     submission_mode TEXT NOT NULL DEFAULT 'code'
-      CHECK (submission_mode IN ('code', 'artifact')),
+      CHECK (submission_mode IN ('code', 'artifact', 'prediction')),
     artifact_max_size_mb INTEGER,
     llm_config JSONB,
     created_at TEXT NOT NULL,

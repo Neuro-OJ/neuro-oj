@@ -11,6 +11,9 @@ export interface JudgeTaskLlm {
 /** 评测任务优先级。 */
 export type JudgeTaskPriority = "high" | "medium" | "low";
 
+/** JudgeTask 的提交模式（与题目 submission_mode 对应）。 */
+export type JudgeSubmissionMode = "code" | "artifact" | "prediction";
+
 /**
  * 评测任务——从 noj-core 发送到 noj-judge 的消息。
  *
@@ -25,6 +28,8 @@ export interface JudgeTask {
   user_id: string;
   /** 评测任务优先级（服务端推导，客户端不可声明） */
   priority: JudgeTaskPriority;
+  /** 提交模式（服务端推导，客户端不可声明） */
+  submission_mode: JudgeSubmissionMode;
   /** 双容器 Runtime 配置（必填） */
   runtime_config: RuntimeConfig;
   /** 支持包下载 URL（`noj-download://` 格式） */
@@ -53,6 +58,7 @@ export interface BuildJudgeTaskInput {
   problem_id: string;
   user_id: string;
   priority: JudgeTaskPriority;
+  submission_mode: JudgeSubmissionMode;
   runtime_config: RuntimeConfig;
   language: string;
   code: string;
@@ -85,6 +91,7 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
     problem_id: input.problem_id,
     user_id: input.user_id,
     priority: input.priority,
+    submission_mode: input.submission_mode,
     runtime_config: input.runtime_config,
     language: input.language,
     code: input.code,
@@ -111,6 +118,7 @@ export const JUDGE_TASK_FIELDS: readonly string[] = [
   "problem_id",
   "user_id",
   "priority",
+  "submission_mode",
   "runtime_config",
   "download_url",
   "artifact_download_url",

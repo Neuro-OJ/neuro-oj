@@ -486,14 +486,15 @@ mod tests {
                 time_limit_ms: 1000,
                 memory_limit_mb: 256,
                 network: None,
+                workspace_size_mb: None,
             },
-            solution: SolutionRuntime {
+            solution: Some(SolutionRuntime {
                 image: "img".to_string(),
                 call_timeout_ms: 1000,
                 memory_limit_mb: 256,
-            },
+            }),
         };
         assert_eq!(config.evaluator.time_limit_ms, 1000);
-        assert_eq!(config.solution.call_timeout_ms, 1000);
+        assert_eq!(config.solution.as_ref().unwrap().call_timeout_ms, 1000);
     }
 }

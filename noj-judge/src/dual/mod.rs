@@ -81,12 +81,14 @@ fn validate_runtime_config(
             runtime_config.evaluator.image
         );
     }
-    if !image_allowed(&runtime_config.solution.image, image_prefix) {
-        anyhow::bail!(
-            "submission {}: solution 镜像不在白名单前缀内: {}",
-            submission_id,
-            runtime_config.solution.image
-        );
+    if let Some(ref solution) = runtime_config.solution {
+        if !image_allowed(&solution.image, image_prefix) {
+            anyhow::bail!(
+                "submission {}: solution 镜像不在白名单前缀内: {}",
+                submission_id,
+                solution.image
+            );
+        }
     }
 
     let argv = parse_command(&runtime_config.evaluator.command);
@@ -128,15 +130,15 @@ fn clamp_runtime_config(
         clamped.evaluator.time_limit_ms =
             clamped.evaluator.time_limit_ms.min(max_evaluator_time_ms);
     }
-    if max_solution_call_timeout_ms > 0 {
-        clamped.solution.call_timeout_ms = clamped
-            .solution
-            .call_timeout_ms
-            .min(max_solution_call_timeout_ms);
+    if let Some(ref mut solution) = clamped.solution {
+        if max_solution_call_timeout_ms > 0 {
+            solution.call_timeout_ms = solution.call_timeout_ms.min(max_solution_call_timeout_ms);
+        }
+        // 内存硬上限与容器创建逻辑保持一致（0 由容器层规范化为 512MB，上限 4096MB）。
+        solution.memory_limit_mb = solution.memory_limit_mb.min(4096);
     }
     // 内存硬上限与容器创建逻辑保持一致（0 由容器层规范化为 512MB，上限 4096MB）。
     clamped.evaluator.memory_limit_mb = clamped.evaluator.memory_limit_mb.min(4096);
-    clamped.solution.memory_limit_mb = clamped.solution.memory_limit_mb.min(4096);
     clamped
 }
 
@@ -375,6 +377,12 @@ pub async fn evaluate_dual_with_cpu_limit_and_user_llm(
         image_prefix,
         command_whitelist,
     )?;
+    let solution = runtime_config.solution.as_ref().ok_or_else(|| {
+        anyhow::anyhow!(
+            "submission {}: 缺少 solution 运行时配置",
+            task_submission_id
+        )
+    })?;
     let started = Instant::now();
     // F-08：启动期 30s 绝对时限从注入/容器准备阶段开始计时（注入耗时计入启动期）。
     let startup_deadline = Instant::now() + Duration::from_secs(30);
@@ -404,8 +412,8 @@ pub async fn evaluate_dual_with_cpu_limit_and_user_llm(
 
     // 2. 创建 Solution 容器
     dual.create_solution(
-        &runtime_config.solution.image,
-        runtime_config.solution.memory_limit_mb,
+        &solution.image,
+        solution.memory_limit_mb,
         cpu_limit_millicores,
     )
     .await
@@ -483,7 +491,7 @@ pub async fn evaluate_dual_with_cpu_limit_and_user_llm(
         evaluator_exec,
         solution_exec,
         runtime_config.evaluator.time_limit_ms,
-        runtime_config.solution.call_timeout_ms,
+        solution.call_timeout_ms,
         task_rejudge_seq,
         user_llm,
         startup_deadline,
@@ -1911,18 +1919,19 @@ mod tests {
                 time_limit_ms: 999_999,
                 memory_limit_mb: 9999,
                 network: None,
+                workspace_size_mb: None,
             },
-            solution: SolutionRuntime {
+            solution: Some(SolutionRuntime {
                 image: "noj-solution".to_string(),
                 call_timeout_ms: 999_999,
                 memory_limit_mb: 9999,
-            },
+            }),
         };
         let clamped = clamp_runtime_config(&rc, 5000, 1000);
         assert_eq!(clamped.evaluator.time_limit_ms, 5000);
-        assert_eq!(clamped.solution.call_timeout_ms, 1000);
+        assert_eq!(clamped.solution.as_ref().unwrap().call_timeout_ms, 1000);
         assert_eq!(clamped.evaluator.memory_limit_mb, 4096);
-        assert_eq!(clamped.solution.memory_limit_mb, 4096);
+        assert_eq!(clamped.solution.as_ref().unwrap().memory_limit_mb, 4096);
     }
 
     #[test]
@@ -1948,12 +1957,13 @@ mod tests {
                 time_limit_ms: 1000,
                 memory_limit_mb: 256,
                 network: None,
+                workspace_size_mb: None,
             },
-            solution: SolutionRuntime {
+            solution: Some(SolutionRuntime {
                 image: "noj-solution".to_string(),
                 call_timeout_ms: 1000,
                 memory_limit_mb: 256,
-            },
+            }),
         };
         let err = validate_runtime_config("sid-1", &rc, false, "noj-", &["python3".to_string()])
             .unwrap_err();
@@ -1971,12 +1981,13 @@ mod tests {
                 time_limit_ms: 1000,
                 memory_limit_mb: 256,
                 network: Some(crate::types::EvaluatorNetwork { enabled: true }),
+                workspace_size_mb: None,
             },
-            solution: SolutionRuntime {
+            solution: Some(SolutionRuntime {
                 image: "noj-solution".to_string(),
                 call_timeout_ms: 1000,
                 memory_limit_mb: 256,
-            },
+            }),
         };
         let err = validate_runtime_config("sid-2", &rc, false, "noj-", &["python3".to_string()])
             .unwrap_err();

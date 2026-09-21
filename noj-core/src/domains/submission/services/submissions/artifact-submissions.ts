@@ -246,6 +246,14 @@ export async function createArtifactSubmission(
     );
   }
   await validateJudgeImageWithKind(runtimeConfig.evaluator.image, "evaluator");
+  if (!runtimeConfig.solution) {
+    await storage.delete(artifactStorageUrl).catch(() => {});
+    throw new AppError(
+      "题目缺少 solution 运行时配置，无法评测",
+      500,
+      "RUNTIME_CONFIG_SOLUTION_MISSING",
+    );
+  }
   await validateJudgeImageWithKind(runtimeConfig.solution.image, "solution");
 
   let llmTask: JudgeTaskLlm | undefined;
@@ -308,6 +316,7 @@ export async function createArtifactSubmission(
     problem_id: input.problem_id,
     user_id: userId,
     priority,
+    submission_mode: "artifact",
     runtime_config: runtimeConfig,
     download_url,
     artifact_download_url: artifactDownloadUrl,

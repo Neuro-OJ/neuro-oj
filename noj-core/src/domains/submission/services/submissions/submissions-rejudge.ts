@@ -26,7 +26,7 @@ import { logAudit } from "../../../system/index.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
 import { buildJudgeTaskLlmForProvider } from "./../../../gateway/index.ts";
 import { getUserLlmProvider } from "../../../gateway/index.ts";
-import type { JudgeTaskLlm } from "../../types/index.ts";
+import type { JudgeSubmissionMode, JudgeTaskLlm } from "../../types/index.ts";
 import { buildJudgeTask } from "../../types/index.ts";
 import type { RuntimeConfig } from "./../../../catalog/index.ts";
 import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
@@ -161,6 +161,7 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     problem_id: submission.problem_id,
     user_id: submission.user_id,
     priority: "low",
+    submission_mode: (problem.submission_mode as JudgeSubmissionMode) ?? "code",
     runtime_config: runtimeConfig as NonNullable<typeof runtimeConfig>,
     download_url,
     language: submission.language,
@@ -380,6 +381,8 @@ export async function rejudgeProblemSubmissions(
         problem_id: problemId,
         user_id: sub.user_id,
         priority: "low",
+        submission_mode: (problem.submission_mode as JudgeSubmissionMode) ??
+          "code",
         runtime_config: runtimeConfig as NonNullable<typeof runtimeConfig>,
         download_url,
         language: sub.language,

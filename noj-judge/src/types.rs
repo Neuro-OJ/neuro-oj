@@ -28,7 +28,9 @@ impl JudgeStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeConfig {
     pub evaluator: EvaluatorRuntime,
-    pub solution: SolutionRuntime,
+    /// prediction 模式省略（无 Solution 容器）。
+    #[serde(default)]
+    pub solution: Option<SolutionRuntime>,
 }
 
 /// Evaluator 容器网络配置（可选，缺省 = 无网）。
@@ -49,6 +51,9 @@ pub struct EvaluatorRuntime {
     /// 网络配置；缺省/None = 容器保持 `network_mode: none`（与旧行为一致）。
     #[serde(default)]
     pub network: Option<EvaluatorNetwork>,
+    /// prediction 模式 /workspace 上限（MB）。
+    #[serde(default)]
+    pub workspace_size_mb: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,6 +94,9 @@ pub struct JudgeTask {
     /// 评测任务优先级（服务端推导；judge 调度只看队列，此字段用于 requeue/日志）
     #[serde(default = "default_priority")]
     pub priority: String,
+    /// 提交模式；缺省 "code"（兼容在途旧消息）。
+    #[serde(default = "default_submission_mode")]
+    pub submission_mode: String,
     /// 支持包下载 URL（`noj-download://` 格式）
     pub download_url: Option<String>,
     /// artifact 提交的下载 URL（`noj-download://` 格式），仅 artifact 模式携带
@@ -115,6 +123,10 @@ pub struct JudgeTask {
 
 fn default_priority() -> String {
     "medium".to_string()
+}
+
+fn default_submission_mode() -> String {
+    "code".to_string()
 }
 
 /// 评测结果——从 noj-judge 返回到 noj-core 的消息。

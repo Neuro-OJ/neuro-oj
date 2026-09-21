@@ -63,7 +63,7 @@ export const problems = pgTable(
     ),
     submissionModeCheck: check(
       "problems_submission_mode_check",
-      sql`${table.submission_mode} IN ('code', 'artifact')`,
+      sql`${table.submission_mode} IN ('code', 'artifact', 'prediction')`,
     ),
     visibilityCheck: check(
       "problems_visibility_check",

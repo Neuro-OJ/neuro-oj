@@ -38,8 +38,8 @@ export interface ProblemResponse {
   visibility: "public" | "private";
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective: boolean;
-  /** 提交模式：code / artifact */
-  submission_mode: "code" | "artifact";
+  /** 提交模式：code / artifact / prediction */
+  submission_mode: "code" | "artifact" | "prediction";
   /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
   artifact_max_size_mb: number | null;
   /** LLM 配置（可空，仅 owner/admin 返回） */
@@ -87,7 +87,7 @@ export interface AdminProblemListItem {
   type: string;
   /** 题目可见性：public / private */
   visibility: "public" | "private";
-  submission_mode: "code" | "artifact";
+  submission_mode: "code" | "artifact" | "prediction";
   artifact_max_size_mb: number | null;
   display_id: string;
 }
@@ -110,9 +110,6 @@ export interface AdminProblemListResponse {
 export function validateRuntimeConfig(rc: RuntimeConfig): void {
   if (!rc.evaluator || typeof rc.evaluator !== "object") {
     throw new BadRequestError("runtime_config.evaluator 必须是对象");
-  }
-  if (!rc.solution || typeof rc.solution !== "object") {
-    throw new BadRequestError("runtime_config.solution 必须是对象");
   }
 
   const evaluator = rc.evaluator;
@@ -160,26 +157,45 @@ export function validateRuntimeConfig(rc: RuntimeConfig): void {
     }
   }
 
-  const solution = rc.solution;
-  if (typeof solution.image !== "string" || !solution.image.trim()) {
-    throw new BadRequestError("runtime_config.solution.image 必须是非空字符串");
+  if (rc.solution !== undefined && rc.solution !== null) {
+    const solution = rc.solution;
+    if (typeof solution.image !== "string" || !solution.image.trim()) {
+      throw new BadRequestError(
+        "runtime_config.solution.image 必须是非空字符串",
+      );
+    }
+    // solution.call_timeout_ms：题目级默认调用超时（必填正整数）；
+    // evaluator 的 runner.call(..., timeout_ms) 可按调用覆盖，capability 可经 register_capability(timeout_ms=...) 配置
+    if (
+      typeof solution.call_timeout_ms !== "number" ||
+      solution.call_timeout_ms <= 0
+    ) {
+      throw new BadRequestError(
+        "runtime_config.solution.call_timeout_ms 必须为正整数",
+      );
+    }
+    if (
+      typeof solution.memory_limit_mb !== "number" ||
+      solution.memory_limit_mb <= 0
+    ) {
+      throw new BadRequestError(
+        "runtime_config.solution.memory_limit_mb 必须为正整数",
+      );
+    }
   }
-  // solution.call_timeout_ms：题目级默认调用超时（必填正整数）；
-  // evaluator 的 runner.call(..., timeout_ms) 可按调用覆盖，capability 可经 register_capability(timeout_ms=...) 配置
+
+  // evaluator.workspace_size_mb（可选，缺省由 judge 决定）
   if (
-    typeof solution.call_timeout_ms !== "number" ||
-    solution.call_timeout_ms <= 0
+    evaluator.workspace_size_mb !== undefined &&
+    evaluator.workspace_size_mb !== null
   ) {
-    throw new BadRequestError(
-      "runtime_config.solution.call_timeout_ms 必须为正整数",
-    );
-  }
-  if (
-    typeof solution.memory_limit_mb !== "number" ||
-    solution.memory_limit_mb <= 0
-  ) {
-    throw new BadRequestError(
-      "runtime_config.solution.memory_limit_mb 必须为正整数",
-    );
+    if (
+      typeof evaluator.workspace_size_mb !== "number" ||
+      evaluator.workspace_size_mb <= 0
+    ) {
+      throw new BadRequestError(
+        "runtime_config.evaluator.workspace_size_mb 必须为正整数",
+      );
+    }
   }
 }

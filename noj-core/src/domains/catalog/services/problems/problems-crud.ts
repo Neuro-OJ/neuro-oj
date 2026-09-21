@@ -100,7 +100,7 @@ export async function createProblem(
   const submissionMode = input.submission_mode ?? "code";
   if (!isValidSubmissionMode(submissionMode)) {
     throw new BadRequestError(
-      `非法提交模式：${input.submission_mode}，仅允许 code / artifact`,
+      `非法提交模式：${input.submission_mode}，仅允许 code / artifact / prediction`,
     );
   }
 
@@ -138,10 +138,12 @@ export async function createProblem(
         input.runtime_config.evaluator.image,
         "evaluator",
       );
-      await validateJudgeImageWithKind(
-        input.runtime_config.solution.image,
-        "solution",
-      );
+      if (input.runtime_config.solution) {
+        await validateJudgeImageWithKind(
+          input.runtime_config.solution.image,
+          "solution",
+        );
+      }
     } catch (err) {
       logger.error("createProblem: runtime_config 镜像校验失败", { err });
       throw err;
@@ -378,7 +380,7 @@ export async function updateProblem(
     !isValidSubmissionMode(input.submission_mode)
   ) {
     throw new BadRequestError(
-      `非法提交模式：${input.submission_mode}，仅允许 code / artifact`,
+      `非法提交模式：${input.submission_mode}，仅允许 code / artifact / prediction`,
     );
   }
 
@@ -405,10 +407,12 @@ export async function updateProblem(
       input.runtime_config.evaluator.image,
       "evaluator",
     );
-    await validateJudgeImageWithKind(
-      input.runtime_config.solution.image,
-      "solution",
-    );
+    if (input.runtime_config.solution) {
+      await validateJudgeImageWithKind(
+        input.runtime_config.solution.image,
+        "solution",
+      );
+    }
 
     // evaluator 联网权限与题目编辑权限一致：U 型 owner/admin、P 型 admin
     // （上方权限检查已保证）。

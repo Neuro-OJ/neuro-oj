@@ -219,7 +219,9 @@ export function validateBundleManifest(
     !isValidSubmissionMode(m.submission_mode as string)
   ) {
     throw new BadRequestError(
-      `非法提交模式：${String(m.submission_mode)}，仅允许 code / artifact`,
+      `非法提交模式：${
+        String(m.submission_mode)
+      }，仅允许 code / artifact / prediction`,
     );
   }
 
