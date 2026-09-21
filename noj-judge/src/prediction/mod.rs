@@ -12,13 +12,19 @@ use futures_util::StreamExt;
 use serde_json::Value;
 use tracing::warn;
 
+use crate::dual::append_capped;
 use crate::dual::container::{start_exec, DualContainer};
+use crate::dual::protocol::{EvaluatorLine, LineParser};
 use crate::types::{JudgeResult, RuntimeConfig};
 
 const PREDICTION_DIR: &str = "/workspace/prediction";
 const RESULT_MARKER: &str = "---RESULT---";
 
 /// 从 evaluator stdout 提取 `---RESULT---` 后的首个非空行。
+///
+/// 保留为纯函数以便直接解析完整文本 / 单测；实际评测循环不再依赖它——循环改用
+/// [`PredictionOutput`] 的流式解析，避免对可能被截断的滚动缓冲重复全量扫描。
+#[allow(dead_code)]
 fn extract_result_payload(stdout: &str) -> Option<String> {
     let mut lines = stdout.lines();
     while let Some(line) = lines.next() {
@@ -32,6 +38,91 @@ fn extract_result_payload(stdout: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// prediction 输出累积器。
+///
+/// 关键安全修复（2026-09-21 Task 8 评审）：prediction 评测消费用户提供的预测文件，
+/// 恶意文件可诱导 evaluator 在 `time_limit_ms` 内无限打印。原实现用无界
+/// `push_str` 累积 stdout/stderr，会让 judge 进程 OOM（容器内存限制不约束 judge），
+/// 并连带杀死同进程内其他在途提交。现改为：
+///
+/// - stdout/stderr 全文一律经 [`append_capped`] 累积，硬上限
+///   [`crate::dual::MAX_OUTPUT_BYTES`]（1 MiB，超出丢头部保尾部）；
+/// - 标记检测改为流式：用 [`LineParser`] 按行切分，见到 `---RESULT---` 后把下一个
+///   非空行立刻存入独立的 `payload` 槽。这样即使滚动缓冲被截断（标记被丢出窗口），
+///   标记与 payload 也已被捕获，不会误判为 `system_error`；
+/// - 同时消除了每 chunk 对无界缓冲全量重扫的 O(n²) 开销。
+#[derive(Debug, Default)]
+struct PredictionOutput {
+    stdout_full: String,
+    stderr_buf: String,
+    parser: LineParser,
+    /// `None`＝未见标记；`Some("")`＝已见标记、等待首个非空行；
+    /// `Some(payload)`＝已捕获 payload。
+    payload: Option<String>,
+}
+
+impl PredictionOutput {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// 是否已捕获到 payload（评测可提前结束）。
+    fn has_payload(&self) -> bool {
+        matches!(&self.payload, Some(p) if !p.is_empty())
+    }
+
+    /// 喂入一个 chunk：累积输出并流式检测 RESULT 标记/payload。
+    fn feed(&mut self, chunk: &LogOutput) {
+        match chunk {
+            LogOutput::StdOut { message } => {
+                let lines = self.parser.feed(message);
+                for line in lines {
+                    self.handle_line(line);
+                }
+            }
+            LogOutput::StdErr { message } => {
+                let s = String::from_utf8_lossy(message);
+                append_capped(&mut self.stderr_buf, &s);
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_line(&mut self, line: EvaluatorLine) {
+        match line {
+            EvaluatorLine::ResultMarker => {
+                // Some("") 作为「已见标记、等待下一非空行」的跨 chunk 状态
+                self.payload = Some(String::new());
+                append_capped(&mut self.stdout_full, RESULT_MARKER);
+                append_capped(&mut self.stdout_full, "\n");
+            }
+            other => {
+                // 非标记行统一记录到 stdout 全文（供结果展示）
+                let s = match other {
+                    EvaluatorLine::Frame(v) => v.to_string(),
+                    EvaluatorLine::Unknown(s) => s,
+                    EvaluatorLine::ResultMarker => unreachable!("ResultMarker 已在上分支处理"),
+                };
+                append_capped(&mut self.stdout_full, &s);
+                append_capped(&mut self.stdout_full, "\n");
+                if self.payload.as_ref() == Some(&String::new()) && !s.trim().is_empty() {
+                    self.payload = Some(s.trim().to_string());
+                }
+            }
+        }
+    }
+
+    /// 收尾：把 [`LineParser`] 内部缓冲的尾部残留（无换行结尾）也走一遍检测。
+    ///
+    /// EOF 时 evaluator 可能刚 flush 完 `---RESULT---\n<json>` 的最后一行而尚未出
+    /// 换行，若不做这一步，payload 会遗留在解析器缓冲里、被误判为无结果。
+    fn finish(&mut self) {
+        for line in self.parser.drain_remaining() {
+            self.handle_line(line);
+        }
+    }
 }
 
 /// prediction 评测入口。
@@ -167,8 +258,7 @@ async fn run_prediction_loop(
     rejudge_seq: Option<i64>,
     startup_deadline: Instant,
 ) -> Result<JudgeResult> {
-    let mut stdout_full = String::new();
-    let mut stderr_buf = String::new();
+    let mut out = PredictionOutput::new();
 
     // 阶段 1：等待首条输出（30s 启动期）
     let mut first_seen = false;
@@ -193,17 +283,14 @@ async fn run_prediction_loop(
             Ok(Some(Err(e))) => return Err(anyhow::anyhow!("读取 Evaluator 输出失败: {}", e)),
             Ok(Some(Ok(chunk))) => {
                 first_seen = true;
-                append_chunk(&chunk, &mut stdout_full, &mut stderr_buf);
+                out.feed(&chunk);
             }
         }
     }
 
-    // 阶段 2：总时限内持续读取
+    // 阶段 2：总时限内持续读取，直到流式解析捕获 payload 或流结束
     let deadline = Instant::now() + Duration::from_millis(time_limit_ms);
-    loop {
-        if extract_result_payload(&stdout_full).is_some() {
-            break;
-        }
+    while !out.has_payload() {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
             return Ok(JudgeResult::system_error(
@@ -222,17 +309,20 @@ async fn run_prediction_loop(
             }
             Ok(None) => break,
             Ok(Some(Err(e))) => return Err(anyhow::anyhow!("读取 Evaluator 输出失败: {}", e)),
-            Ok(Some(Ok(chunk))) => append_chunk(&chunk, &mut stdout_full, &mut stderr_buf),
+            Ok(Some(Ok(chunk))) => out.feed(&chunk),
         }
     }
 
-    match extract_result_payload(&stdout_full) {
-        Some(payload) => match serde_json::from_str::<Value>(&payload) {
+    // EOF 或无换行结尾的尾部残留也参与检测
+    out.finish();
+
+    match out.payload.take() {
+        Some(payload) if !payload.is_empty() => match serde_json::from_str::<Value>(&payload) {
             Ok(parsed) => Ok(crate::dual::build_judge_result(
                 submission_id,
                 &parsed,
-                &stderr_buf,
-                &stdout_full,
+                &out.stderr_buf,
+                &out.stdout_full,
                 rejudge_seq,
             )),
             Err(e) => {
@@ -244,7 +334,7 @@ async fn run_prediction_loop(
                 ))
             }
         },
-        None => Ok(JudgeResult::system_error(
+        _ => Ok(JudgeResult::system_error(
             submission_id,
             "评测脚本未输出结果标记",
             rejudge_seq,
@@ -252,21 +342,16 @@ async fn run_prediction_loop(
     }
 }
 
-fn append_chunk(chunk: &LogOutput, stdout_full: &mut String, stderr_buf: &mut String) {
-    match chunk {
-        LogOutput::StdOut { message } => {
-            stdout_full.push_str(&String::from_utf8_lossy(message));
-        }
-        LogOutput::StdErr { message } => {
-            stderr_buf.push_str(&String::from_utf8_lossy(message));
-        }
-        _ => {}
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::extract_result_payload;
+    use super::*;
+
+    /// 构造一个 stdout 分块。
+    fn stdout_chunk(s: &str) -> LogOutput {
+        LogOutput::StdOut {
+            message: s.as_bytes().to_vec().into(),
+        }
+    }
 
     #[test]
     fn test_extract_result_payload() {
@@ -277,5 +362,71 @@ mod tests {
         );
         assert_eq!(extract_result_payload("no marker here"), None);
         assert_eq!(extract_result_payload("---RESULT---\n\n  \n"), None);
+    }
+
+    /// marker + payload 之后跟超过 1 MiB（输出上限）的噪声，payload 仍必须被捕获。
+    ///
+    /// 回归 2026-09-21 Task 8 评审：rolling buffer 会丢弃头部，若循环依赖重扫全文
+    /// 检测标记，标记会被截断出窗口 → 误判 system_error。
+    #[test]
+    fn test_streaming_payload_survives_buffer_truncation() {
+        let mut out = PredictionOutput::new();
+        out.feed(&stdout_chunk("---RESULT---\n{\"score\":1000}\n"));
+        // 追加远超 MAX_OUTPUT_BYTES 的尾部噪声，足以把 marker 挤出滚动缓冲
+        let noise = "x".repeat(crate::dual::MAX_OUTPUT_BYTES + 4096);
+        out.feed(&stdout_chunk(&noise));
+        out.finish();
+
+        assert!(
+            out.stdout_full.len() <= crate::dual::MAX_OUTPUT_BYTES,
+            "stdout 全文必须受硬上限约束: {}",
+            out.stdout_full.len()
+        );
+        assert!(
+            !out.stdout_full.contains("---RESULT---"),
+            "本用例应已把 marker 挤出缓冲（否则用例无效）"
+        );
+        assert_eq!(out.payload.as_deref(), Some("{\"score\":1000}"));
+        assert!(out.has_payload());
+    }
+
+    /// 无换行结尾的 payload（EOF 时才 flush）也必须被捕获。
+    #[test]
+    fn test_payload_without_trailing_newline_drained_at_eof() {
+        let mut out = PredictionOutput::new();
+        out.feed(&stdout_chunk("---RESULT---\n{\"score\":7}"));
+        assert!(!out.has_payload(), "无换行时 payload 仍在解析器缓冲内");
+        out.finish();
+        assert_eq!(out.payload.as_deref(), Some("{\"score\":7}"));
+    }
+
+    /// 未输出标记时保持「无 payload」语义。
+    #[test]
+    fn test_no_marker_yields_no_payload() {
+        let mut out = PredictionOutput::new();
+        out.feed(&stdout_chunk("just logs\nmore logs\n"));
+        out.finish();
+        assert!(!out.has_payload());
+    }
+
+    /// marker 后只有空白行 → payload 保持为空（不得误判为已捕获）。
+    #[test]
+    fn test_marker_with_only_blank_lines() {
+        let mut out = PredictionOutput::new();
+        out.feed(&stdout_chunk("---RESULT---\n\n   \n"));
+        out.finish();
+        assert_eq!(out.payload.as_deref(), Some(""));
+        assert!(!out.has_payload());
+    }
+
+    /// stderr 同样受硬上限约束。
+    #[test]
+    fn test_stderr_capped() {
+        let mut out = PredictionOutput::new();
+        let noise = "e".repeat(crate::dual::MAX_OUTPUT_BYTES + 4096);
+        out.feed(&LogOutput::StdErr {
+            message: noise.into_bytes().into(),
+        });
+        assert!(out.stderr_buf.len() <= crate::dual::MAX_OUTPUT_BYTES);
     }
 }

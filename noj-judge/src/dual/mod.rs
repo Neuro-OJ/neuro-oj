@@ -188,7 +188,10 @@ fn ceil_char_boundary(s: &str, idx: usize) -> usize {
 /// core sweeper 重投后再次 panic，形成无限循环。
 ///
 /// 现在截断点一律对齐到字符边界，且总长度硬性不超过 `MAX_OUTPUT_BYTES`。
-fn append_capped(buf: &mut String, s: &str) {
+///
+/// prediction 单容器路径同样复用本函数做输出累积上限（用户提供的预测文件可诱导
+/// evaluator 无限打印，无界累积会拖垮 judge 进程）。
+pub(crate) fn append_capped(buf: &mut String, s: &str) {
     if s.len() >= MAX_OUTPUT_BYTES {
         // 单次追加本身就超限（极端恶意输出）：只保留 s 的尾部。
         let start = ceil_char_boundary(s, s.len() - MAX_OUTPUT_BYTES);
