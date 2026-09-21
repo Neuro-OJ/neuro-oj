@@ -12,6 +12,8 @@ import {
   getDefaultLlmLimits,
   resolveLlmLimits,
 } from "../../services/llm-limits.ts";
+import { getLlmPlatformDefault } from "../../services/llm.ts";
+import { _resetSystemSettingsForTest } from "../../../system/index.ts";
 
 Deno.test("llm-config: isValidLlmConfig", () => {
   assert(isValidLlmConfig({ provider_id: "p1", model: "qwen-plus" }));
@@ -321,5 +323,36 @@ Deno.test("llm-limits: assertLlmLimitsWithinDefault 拒绝非正整数", () => {
     else Deno.env.set("NOJ_LLM_MAX_CALLS", oldCalls);
     if (oldTokens === undefined) Deno.env.delete("NOJ_LLM_MAX_TOKENS");
     else Deno.env.set("NOJ_LLM_MAX_TOKENS", oldTokens);
+  }
+});
+
+Deno.test("llm-platform-default: 未配置返回 null", () => {
+  _resetSystemSettingsForTest();
+  const oldP = Deno.env.get("NOJ_LLM_DEFAULT_PROVIDER_ID");
+  const oldM = Deno.env.get("NOJ_LLM_DEFAULT_MODEL");
+  Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
+  Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
+  try {
+    assertEquals(getLlmPlatformDefault(), null);
+  } finally {
+    if (oldP) Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", oldP);
+    if (oldM) Deno.env.set("NOJ_LLM_DEFAULT_MODEL", oldM);
+    _resetSystemSettingsForTest();
+  }
+});
+
+Deno.test("llm-platform-default: env 兜底生效", () => {
+  _resetSystemSettingsForTest();
+  Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "prov-abc");
+  Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "qwen-plus");
+  try {
+    assertEquals(getLlmPlatformDefault(), {
+      provider_id: "prov-abc",
+      model: "qwen-plus",
+    });
+  } finally {
+    Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
+    Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
+    _resetSystemSettingsForTest();
   }
 });
