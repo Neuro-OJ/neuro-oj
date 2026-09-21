@@ -504,6 +504,127 @@ Deno.test({
   },
 });
 
+// 更新路径的模式切换完整性：prediction → code/artifact 时若省略 runtime_config，
+// 必须按「生效 runtime_config」（即既有落库值）补校验 solution，避免留下缺
+// solution 的 code/artifact 题（提交期才 500）。
+Deno.test({
+  name: "problems service: prediction 题改为 code 且省略 runtime_config 被拒",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const created = await createProblem({
+      title: `prediction 转 code 缺配置 ${Date.now()}`,
+      description: "切换模式但不提供 runtime_config",
+      difficulty: "easy",
+      submission_mode: "prediction",
+      // prediction 合法形态：省略 solution
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+      },
+    });
+    assertEquals(created.submission_mode, "prediction");
+
+    await assertRejects(
+      () => updateProblem(created.id, { submission_mode: "code" }, "0"),
+      BadRequestError,
+      "runtime_config.solution 必须是对象",
+    );
+
+    // 校验失败后不得落库：模式仍为 prediction
+    const [row] = await getDb()
+      .select({ submission_mode: problems.submission_mode })
+      .from(problems)
+      .where(eq(problems.id, created.id))
+      .limit(1);
+    assertEquals(row.submission_mode, "prediction");
+  },
+});
+
+Deno.test({
+  name:
+    "problems service: prediction 题改为 code 且提供缺 solution 的 runtime_config 被拒",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const created = await createProblem({
+      title: `prediction 转 code 显式缺 solution ${Date.now()}`,
+      description: "切换模式并显式给出不完整的 runtime_config",
+      difficulty: "easy",
+      submission_mode: "prediction",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+      },
+    });
+
+    await assertRejects(
+      () =>
+        updateProblem(
+          created.id,
+          {
+            submission_mode: "code",
+            runtime_config: {
+              evaluator: {
+                image: "noj-evaluator-python",
+                command: "python3 /workspace/evaluate.py",
+                time_limit_ms: 5000,
+                memory_limit_mb: 512,
+              },
+            },
+          },
+          "0",
+        ),
+      BadRequestError,
+      "runtime_config.solution 必须是对象",
+    );
+  },
+});
+
+// prediction → artifact 同样受约束（artifact 与 code 一致需要 Solution 容器）。
+Deno.test({
+  name:
+    "problems service: prediction 题改为 artifact 且省略 runtime_config 被拒",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const created = await createProblem({
+      title: `prediction 转 artifact 缺配置 ${Date.now()}`,
+      description: "切换模式但不提供 runtime_config",
+      difficulty: "easy",
+      submission_mode: "prediction",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+      },
+    });
+
+    await assertRejects(
+      () => updateProblem(created.id, { submission_mode: "artifact" }, "0"),
+      BadRequestError,
+      "runtime_config.solution 必须是对象",
+    );
+  },
+});
+
 Deno.test({
   name: "problems service: 非法 submission_mode 被拒（CHECK 三值以外）",
   ignore: skip,

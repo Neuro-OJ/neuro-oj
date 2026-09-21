@@ -404,6 +404,24 @@ export async function updateProblem(
   // 被误判为 code 模式而拒绝）。
   const effectiveSubmissionMode = (input.submission_mode ??
     problem.submission_mode ?? "code") as SubmissionMode;
+  // 更新路径的模式切换完整性：prediction → code/artifact 时若客户端省略
+  // runtime_config，落库的仍是旧（prediction 形态）配置，可能缺 solution。
+  // 此处按「生效 runtime_config」（既有落库值）补校验，避免留下缺 solution 的
+  // code/artifact 题，直到提交期才 500。
+  if (
+    !isObjective &&
+    input.runtime_config === undefined &&
+    input.submission_mode !== undefined &&
+    effectiveSubmissionMode !== "prediction"
+  ) {
+    const persistedRuntimeConfig = problem.runtime_config as
+      | RuntimeConfig
+      | null;
+    if (!persistedRuntimeConfig) {
+      throw new BadRequestError("runtime_config 是必填字段");
+    }
+    validateRuntimeConfig(persistedRuntimeConfig, effectiveSubmissionMode);
+  }
   if (!isObjective && input.runtime_config !== undefined) {
     if (input.runtime_config === null) {
       throw new BadRequestError("runtime_config 是必填字段，不可清空");
