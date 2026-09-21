@@ -38,6 +38,7 @@ import {
   getSupportPackageBytes,
 } from "../../catalog/services/support-package.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
+import type { JudgeImageKind } from "../../catalog/types/problems.ts";
 import {
   deleteTraining,
   getTraining,
@@ -100,7 +101,7 @@ router.get("/problems/:id/preflight", async (c) => {
   } else if (!problem.runtime_config) {
     add("runtime", "error", "缺少 runtime_config");
   } else {
-    const configs: [string, { image: string } | undefined][] = [
+    const configs: [JudgeImageKind, { image: string } | undefined][] = [
       ["evaluator", problem.runtime_config.evaluator],
     ];
     if (problem.runtime_config.solution) {

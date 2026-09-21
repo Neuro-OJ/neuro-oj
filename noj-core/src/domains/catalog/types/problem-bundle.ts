@@ -28,6 +28,7 @@ import {
   isValidSubmissionMode,
   type LlmConfig,
   type RuntimeConfig,
+  type SubmissionMode,
 } from "./problems.ts";
 
 /** 当前 manifest 格式版本。 */
@@ -276,7 +277,12 @@ export function validateBundleManifest(
     runtimeConfig = resolveManifestCommand(
       m.runtime_config as RuntimeConfig,
     );
-    validateRuntimeConfig(runtimeConfig);
+    // 模式只由显式 submission_mode 判定，不靠字段缺席推断：code/artifact 仍需
+    // solution，prediction 可省略。
+    validateRuntimeConfig(
+      runtimeConfig,
+      (m.submission_mode as SubmissionMode) ?? "code",
+    );
 
     if (llm !== undefined && !runtimeConfig.evaluator.network?.enabled) {
       throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");

@@ -46,6 +46,7 @@ import {
   type LlmConfig,
   type ProblemResponseWithTags,
   type RuntimeConfig,
+  type SubmissionMode,
   type UpdateProblemInput,
 } from "./../../types/problems.ts";
 import { validateRuntimeConfig } from "./problems-types.ts";
@@ -132,7 +133,7 @@ export async function createProblem(
   } else if (
     input.runtime_config !== undefined && input.runtime_config !== null
   ) {
-    validateRuntimeConfig(input.runtime_config);
+    validateRuntimeConfig(input.runtime_config, submissionMode);
     try {
       await validateJudgeImageWithKind(
         input.runtime_config.evaluator.image,
@@ -398,11 +399,16 @@ export async function updateProblem(
   //   undefined → 不变；null → 拒绝（编程题 runtime_config 是必填字段）；object → 校验并写入
   //   客观题套卷（is_objective）：忽略 runtime_config（无评测容器）
   const isObjective = input.is_objective ?? problem.is_objective;
+  // 校验/落库使用的提交模式：显式变更优先，否则沿用题目现值（PATCH 部分更新
+  // 不重述 submission_mode 时，prediction 题缺 solution 的 runtime_config 不应
+  // 被误判为 code 模式而拒绝）。
+  const effectiveSubmissionMode = (input.submission_mode ??
+    problem.submission_mode ?? "code") as SubmissionMode;
   if (!isObjective && input.runtime_config !== undefined) {
     if (input.runtime_config === null) {
       throw new BadRequestError("runtime_config 是必填字段，不可清空");
     }
-    validateRuntimeConfig(input.runtime_config);
+    validateRuntimeConfig(input.runtime_config, effectiveSubmissionMode);
     await validateJudgeImageWithKind(
       input.runtime_config.evaluator.image,
       "evaluator",

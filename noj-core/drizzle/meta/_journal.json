@@ -603,6 +603,13 @@
       "when": 1789654113364,
       "tag": "0085_whole_edwin_jarvis",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1789990636493,
+      "tag": "0086_loud_dreadnoughts",
+      "breakpoints": true
     }
   ]
 }

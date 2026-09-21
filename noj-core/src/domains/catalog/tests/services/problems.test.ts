@@ -443,3 +443,109 @@ Deno.test({
     );
   },
 });
+
+// Task 4：schema CHECK 三值。
+//
+// 注意：本地 PGlite 模板由 `scripts/prepare-pglite-template.ts` 从 schema-ddl.ts
+// 生成，而 `deno task test:domain catalog` 在无 DATABASE_URL 时会先重建模板，
+// 因此以下用例在 PGlite 下直接覆盖 DDL 的三值 CHECK。
+Deno.test({
+  name: "problems service: 创建 prediction 模式题目成功（CHECK 允许第三值）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    // prediction 模式无 Solution 容器：runtime_config 省略 solution 也必须被接受。
+    const created = await createProblem({
+      title: `prediction 题 ${Date.now()}`,
+      description: "预测提交题",
+      difficulty: "medium",
+      submission_mode: "prediction",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+      },
+    });
+    assertEquals(created.submission_mode, "prediction");
+    assertEquals(created.runtime_config!.solution, undefined);
+  },
+});
+
+Deno.test({
+  name: "problems service: code 模式缺 solution 创建被拒（创建期强制）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await assertRejects(
+      () =>
+        createProblem({
+          title: `缺 solution 的 code 题 ${Date.now()}`,
+          description: "应被拒绝",
+          difficulty: "easy",
+          runtime_config: {
+            evaluator: {
+              image: "noj-evaluator-python",
+              command: "python3 /workspace/evaluate.py",
+              time_limit_ms: 5000,
+              memory_limit_mb: 512,
+            },
+          },
+        }),
+      BadRequestError,
+      "runtime_config.solution 必须是对象",
+    );
+  },
+});
+
+Deno.test({
+  name: "problems service: 非法 submission_mode 被拒（CHECK 三值以外）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await assertRejects(
+      () =>
+        createProblem({
+          title: `非法提交模式题 ${Date.now()}`,
+          description: "应被拒绝",
+          difficulty: "easy",
+          submission_mode: "bogus",
+          runtime_config: VALID_RUNTIME_CONFIG,
+        }),
+      BadRequestError,
+    );
+  },
+});
+
+// 直连 DB 写入非法值：绕过服务层枚举校验，验证 DB CHECK 本身。
+Deno.test({
+  name: "problems service: DB CHECK 拒绝非法 submission_mode（bogus）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const now = new Date().toISOString();
+    await assertRejects(
+      () =>
+        db.insert(problems).values({
+          id: crypto.randomUUID(),
+          title: "bogus 模式直插",
+          description: "应被 CHECK 拒绝",
+          number: 999001,
+          submission_mode: "bogus",
+          created_at: now,
+          updated_at: now,
+        }),
+    );
+  },
+});

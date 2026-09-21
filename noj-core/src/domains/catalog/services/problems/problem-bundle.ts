@@ -515,10 +515,13 @@ async function createViaCrud(
     manifest.runtime_config!.evaluator.image,
     "evaluator",
   );
-  await validateJudgeImageWithKind(
-    manifest.runtime_config!.solution.image,
-    "solution",
-  );
+  // prediction 模式无 Solution 容器，solution 可省略；显式提供时才校验。
+  if (manifest.runtime_config!.solution) {
+    await validateJudgeImageWithKind(
+      manifest.runtime_config!.solution.image,
+      "solution",
+    );
+  }
 
   // evaluator 联网权限与题目创建权限一致：普通用户导入创建 U 型题可开网；
   // P 型由上方类型检查保证仅 admin。安全提醒：联网 + 可控 evaluator.command

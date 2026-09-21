@@ -1,0 +1,2 @@
+ALTER TABLE "problems" DROP CONSTRAINT "problems_submission_mode_check";--> statement-breakpoint
+ALTER TABLE "problems" ADD CONSTRAINT "problems_submission_mode_check" CHECK ("problems"."submission_mode" IN ('code', 'artifact', 'prediction'));

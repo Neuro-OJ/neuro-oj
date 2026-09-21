@@ -16,6 +16,7 @@ import type {
   ProblemResponseWithTags,
   ProblemTagRef,
   RuntimeConfig,
+  SubmissionMode,
 } from "./../../types/problems.ts";
 
 /**
@@ -105,9 +106,19 @@ export interface AdminProblemListResponse {
 /**
  * 校验 runtime_config 结构（不涉及白名单 / kind，调用方负责）。
  *
+ * `submissionMode` 决定 `solution` 是否必填：
+ * - `code` / `artifact`：需要 Solution 容器，`solution` 必填（缺省模式 = code）。
+ * - `prediction`：无 Solution 容器，`solution` 可省略；若显式提供仍照常校验。
+ *
+ * 模式只由显式 `submission_mode` 判定，**不靠字段缺席推断**（缺 solution 的
+ * code 题必须在创建期就 400，而不是拖到提交期 500）。
+ *
  * @throws {BadRequestError} 缺字段、类型错、值越界
  */
-export function validateRuntimeConfig(rc: RuntimeConfig): void {
+export function validateRuntimeConfig(
+  rc: RuntimeConfig,
+  submissionMode: SubmissionMode = "code",
+): void {
   if (!rc.evaluator || typeof rc.evaluator !== "object") {
     throw new BadRequestError("runtime_config.evaluator 必须是对象");
   }
@@ -157,6 +168,11 @@ export function validateRuntimeConfig(rc: RuntimeConfig): void {
     }
   }
 
+  // prediction 模式允许省略 solution（无 Solution 容器）；code / artifact 必填。
+  if (submissionMode !== "prediction" && !rc.solution) {
+    throw new BadRequestError("runtime_config.solution 必须是对象");
+  }
+
   if (rc.solution !== undefined && rc.solution !== null) {
     const solution = rc.solution;
     if (typeof solution.image !== "string" || !solution.image.trim()) {
@@ -184,13 +200,15 @@ export function validateRuntimeConfig(rc: RuntimeConfig): void {
     }
   }
 
-  // evaluator.workspace_size_mb（可选，缺省由 judge 决定）
+  // evaluator.workspace_size_mb（可选，缺省由 judge 决定；prediction 模式用于
+  // /workspace tmpfs 上限）
   if (
     evaluator.workspace_size_mb !== undefined &&
     evaluator.workspace_size_mb !== null
   ) {
     if (
       typeof evaluator.workspace_size_mb !== "number" ||
+      !Number.isInteger(evaluator.workspace_size_mb) ||
       evaluator.workspace_size_mb <= 0
     ) {
       throw new BadRequestError(
