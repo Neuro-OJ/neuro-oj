@@ -26,23 +26,15 @@ export function createInternalRouter(deps: InternalDeps): Hono {
 
   // Provider 列表（Key 脱敏）
   app.get("/internal/providers", async (c) => {
-    const providers = await listProviders(
-      deps.db,
-      deps.config.storeKey,
-      c.req.query("created_by"),
-    );
+    const providers = await listProviders(deps.db, deps.config.storeKey);
     return c.json({ data: providers });
   });
 
   // Provider 精简信息（不含加密 Key）
   app.get("/internal/providers/:id", async (c) => {
     const id = c.req.param("id");
-    const createdBy = c.req.query("created_by");
-    const rows = createdBy
-      ? await deps
-        .db`SELECT id, name, base_url, model, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id} AND created_by = ${createdBy}`
-      : await deps
-        .db`SELECT id, name, base_url, model, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id}`;
+    const rows = await deps
+      .db`SELECT id, name, base_url, model, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id}`;
     if (rows.length === 0) {
       return c.json({ error: "provider_not_found" }, 404);
     }
@@ -73,14 +65,6 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const id = c.req.param("id");
     const body = await c.req.json<Partial<ProviderInput>>();
     try {
-      const createdBy = c.req.query("created_by");
-      if (createdBy) {
-        const existing = await deps
-          .db`SELECT id, created_by FROM llm_providers WHERE id = ${id}`;
-        if (!existing[0] || existing[0].created_by !== createdBy) {
-          return c.json({ error: "provider_not_found" }, 404);
-        }
-      }
       const provider = await updateProvider(
         deps.db,
         id,
@@ -98,11 +82,7 @@ export function createInternalRouter(deps: InternalDeps): Hono {
   });
 
   app.delete("/internal/providers/:id", async (c) => {
-    const deleted = await deleteProvider(
-      deps.db,
-      c.req.param("id"),
-      c.req.query("created_by"),
-    );
+    const deleted = await deleteProvider(deps.db, c.req.param("id"));
     return deleted
       ? c.body(null, 204)
       : c.json({ error: "provider_not_found" }, 404);
@@ -114,7 +94,6 @@ export function createInternalRouter(deps: InternalDeps): Hono {
         deps.db,
         c.req.param("id"),
         deps.config.storeKey,
-        c.req.query("created_by"),
       );
       return c.json({ data: { status: "ok" } });
     } catch (err) {

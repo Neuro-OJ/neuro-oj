@@ -111,7 +111,6 @@ export async function makeProvider(storeKey: string): Promise<ProviderRow> {
     cost_per_1k_tokens: 1,
     encrypted_api_key: await encryptSecret("sk-test", storeKey),
     enabled: true,
-    created_by: "0",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };

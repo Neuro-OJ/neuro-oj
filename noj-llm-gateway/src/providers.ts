@@ -11,7 +11,6 @@ export interface ProviderInput {
   api_key: string;
   cost_per_1k_tokens?: number;
   enabled?: boolean;
-  created_by?: string;
 }
 
 export interface ProviderRow {
@@ -22,7 +21,6 @@ export interface ProviderRow {
   cost_per_1k_tokens: number;
   encrypted_api_key: string;
   enabled: boolean;
-  created_by: string;
   created_at: string;
   updated_at: string;
 }
@@ -38,57 +36,6 @@ export interface ProviderView {
   enabled: boolean;
   created_at: string;
   updated_at: string;
-}
-
-/** BYOK Provider 仅允许运维配置的 HTTPS 公共主机。 */
-export function validateByokBaseUrl(raw: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(raw.trim());
-  } catch {
-    throw new Error("provider_target_rejected");
-  }
-  const allowed = new Set(
-    (Deno.env.get("NOJ_LLM_BYOK_ALLOWED_HOSTS") ?? "api.openai.com")
-      .split(",")
-      .map((host) => host.trim().toLowerCase())
-      .filter(Boolean),
-  );
-  const hostname = parsed.hostname.toLowerCase();
-  if (
-    parsed.protocol !== "https:" ||
-    parsed.username ||
-    parsed.password ||
-    parsed.search ||
-    parsed.hash ||
-    (parsed.port && parsed.port !== "443") ||
-    !allowed.has(hostname) ||
-    isPrivateHostname(hostname)
-  ) {
-    throw new Error("provider_target_rejected");
-  }
-  parsed.pathname = parsed.pathname.replace(/\/+$/, "") || "/";
-  return parsed.toString();
-}
-
-function isPrivateHostname(hostname: string): boolean {
-  if (
-    hostname === "localhost" ||
-    hostname === "metadata.google.internal" ||
-    hostname === "169.254.169.254" ||
-    hostname === "::1"
-  ) return true;
-  const octets = hostname.split(".").map(Number);
-  if (
-    octets.length !== 4 ||
-    octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)
-  ) {
-    return false;
-  }
-  return octets[0] === 10 || octets[0] === 127 ||
-    (octets[0] === 169 && octets[1] === 254) ||
-    (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
-    (octets[0] === 192 && octets[1] === 168);
 }
 
 function uuid(): string {
@@ -121,59 +68,6 @@ function toView(row: ProviderRow, apiKey: string): ProviderView {
   };
 }
 
-function validateByokFields(input: {
-  name?: string;
-  model?: string;
-  api_key?: string;
-}): void {
-  if (
-    input.name !== undefined &&
-    (input.name.trim().length === 0 || input.name.length > 200)
-  ) {
-    throw new Error("provider_invalid");
-  }
-  if (
-    input.model !== undefined &&
-    (input.model.trim().length === 0 || input.model.length > 200)
-  ) {
-    throw new Error("provider_invalid");
-  }
-  if (
-    input.api_key !== undefined &&
-    (input.api_key.trim().length === 0 || input.api_key.length > 8192)
-  ) {
-    throw new Error("provider_invalid");
-  }
-}
-
-/**
- * 用户（BYOK）可自行更新的字段白名单。
- *
- * 2026-09-21 修复：`/api/v1/users/me/llm-providers/:id` 路由把**整个请求体**
- * 原样转发到 gateway 的 `PUT /internal/providers/:id`（TS 泛型在运行时被擦除，
- * 路由没有字段过滤），而 `updateProvider` 按字段名取值。于是普通登录用户可以：
- *
- * 1. 设置 `enabled` —— 绕过管理员对自己的 Provider 禁用（`llm.ts` 在
- *    `!provider.enabled` 时拒绝调用）；
- * 2. 设置负的 `cost_per_1k_tokens` —— `estimateCost` 产生负值，
- *    `enforceAndCount` / `settleUsage` 的 Lua `INCRBY` 会**减少** user/global/
- *    problem 的共享 cost 计数器，即为自己的请求给全局配额"退款"，
- *    绕过 `max_cost` 限额。
- *
- * 创建路径（`users.ts` 的 POST）本就用显式字面量对象，不含这两项——两条路径
- * 的不对称说明更新路径是疏漏。这里在 gateway 侧按白名单收窄（core 是可信的
- * 服务间调用方，但 gateway 不应假设上游一定做了过滤）。
- */
-const BYOK_UPDATABLE_FIELDS = ["name", "base_url", "model", "api_key"] as const;
-
-/**
- * 判断本次更新是否来自 BYOK 用户（`created_by !== "0"`）。
- * 运维/管理员创建的 Provider 允许更新 cost 与 enabled。
- */
-function isByokRow(createdBy: string): boolean {
-  return createdBy !== "0";
-}
-
 /** 成本单价上界（防止 u64 溢出与荒谬单价）。下界为 0，拒绝负值。 */
 const MAX_COST_PER_1K_TOKENS = 1_000_000;
 
@@ -181,15 +75,10 @@ const MAX_COST_PER_1K_TOKENS = 1_000_000;
 export async function listProviders(
   db: Db,
   storeKey: string,
-  createdBy?: string,
 ): Promise<ProviderView[]> {
-  const rows = createdBy === undefined
-    ? await db<
-      ProviderRow[]
-    >`SELECT * FROM llm_providers ORDER BY created_at DESC`
-    : await db<
-      ProviderRow[]
-    >`SELECT * FROM llm_providers WHERE created_by = ${createdBy} ORDER BY created_at DESC`;
+  const rows = await db<
+    ProviderRow[]
+  >`SELECT * FROM llm_providers ORDER BY created_at DESC`;
   const views: ProviderView[] = [];
   for (const row of rows) {
     let apiKey = "";
@@ -234,20 +123,14 @@ export async function createProvider(
   input: ProviderInput,
   storeKey: string,
 ): Promise<ProviderView> {
-  if (input.created_by && input.created_by !== "0") {
-    validateByokFields(input);
-    input = { ...input, base_url: validateByokBaseUrl(input.base_url) };
-  }
   const id = uuid();
   const createdAt = now();
   const encrypted = await encryptSecret(input.api_key, storeKey);
   await db`
-    INSERT INTO llm_providers (id, name, base_url, model, cost_per_1k_tokens, encrypted_api_key, enabled, created_by, created_at, updated_at)
+    INSERT INTO llm_providers (id, name, base_url, model, cost_per_1k_tokens, encrypted_api_key, enabled, created_at, updated_at)
     VALUES (${id}, ${input.name}, ${input.base_url}, ${input.model}, ${
     input.cost_per_1k_tokens ?? 0
-  }, ${encrypted}, ${input.enabled ?? true}, ${
-    input.created_by ?? "0"
-  }, ${createdAt}, ${createdAt})
+  }, ${encrypted}, ${input.enabled ?? true}, ${createdAt}, ${createdAt})
   `;
   const row = await getProviderById(db, id);
   if (!row) throw new Error("provider_not_found");
@@ -275,20 +158,6 @@ export async function updateProvider(
   if (!existing) {
     throw new Error("provider_not_found");
   }
-  if (existing.created_by !== "0") {
-    validateByokFields(input);
-  }
-  // BYOK 行：只允许更新用户自有的配置字段（白名单）。`enabled` 与
-  // `cost_per_1k_tokens` 属管理面，用户不得改写（见 BYOK_UPDATABLE_FIELDS 注释）。
-  const byok = isByokRow(existing.created_by);
-  const rejected = byok
-    ? Object.keys(input).filter(
-      (k) => !(BYOK_UPDATABLE_FIELDS as readonly string[]).includes(k),
-    )
-    : [];
-  if (rejected.length > 0) {
-    throw new Error("provider_invalid");
-  }
   const updatedAt = now();
   const sets: string[] = [];
   const params: Array<string | number | boolean> = [];
@@ -298,11 +167,7 @@ export async function updateProvider(
     sets.push(`name = $${params.length}`);
   }
   if (input.base_url !== undefined) {
-    params.push(
-      existing.created_by !== "0"
-        ? validateByokBaseUrl(input.base_url)
-        : input.base_url,
-    );
+    params.push(input.base_url);
     sets.push(`base_url = $${params.length}`);
   }
   if (input.model !== undefined) {
@@ -310,8 +175,8 @@ export async function updateProvider(
     sets.push(`model = $${params.length}`);
   }
   if (input.cost_per_1k_tokens !== undefined) {
-    // 负值会让 INCRBY 减少共享配额计数器（用户可为全局配额"退款"）；
-    // 荒谬大值会污染配额核算。无论来源为何都夹取到合法区间。
+    // 负值会让 INCRBY 减少共享配额计数器；荒谬大值会污染配额核算。
+    // 无论来源为何都夹取到合法区间（防 u64 溢出与污染配额）。
     const cost = Number(input.cost_per_1k_tokens);
     if (!Number.isFinite(cost) || cost < 0 || cost > MAX_COST_PER_1K_TOKENS) {
       throw new Error("provider_invalid");
@@ -348,14 +213,13 @@ export async function updateProvider(
   return toView(row, apiKey);
 }
 
-/** 删除 Provider；若指定 owner 则同时校验归属。 */
+/** 删除 Provider。 */
 export async function deleteProvider(
   db: Db,
   id: string,
-  createdBy?: string,
 ): Promise<boolean> {
   const row = await getProviderById(db, id);
-  if (!row || (createdBy !== undefined && row.created_by !== createdBy)) {
+  if (!row) {
     return false;
   }
   await db`DELETE FROM llm_providers WHERE id = ${id}`;
@@ -367,15 +231,12 @@ export async function testProviderConnection(
   db: Db,
   id: string,
   storeKey: string,
-  createdBy?: string,
 ): Promise<void> {
   const row = await getProviderById(db, id);
-  if (!row || (createdBy !== undefined && row.created_by !== createdBy)) {
+  if (!row) {
     throw new Error("provider_not_found");
   }
-  const baseUrl = row.created_by !== "0"
-    ? validateByokBaseUrl(row.base_url)
-    : row.base_url;
+  const baseUrl = row.base_url;
   const { apiKey } = await getProviderSecret(db, id, storeKey);
   let response: Response;
   try {
