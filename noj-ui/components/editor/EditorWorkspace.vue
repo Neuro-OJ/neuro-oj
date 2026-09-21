@@ -57,7 +57,6 @@ const props = withDefaults(
     problemId: string,
     language: string,
     code: string,
-    llmProviderConfigId?: string,
   ) => Promise<{ id: string }>
     selfTest?: (
       problemId: string,
@@ -72,7 +71,6 @@ const props = withDefaults(
     subtitle?: string
     canSubmit?: boolean
     submissionFilter?: (s: WorkspaceSubmission) => boolean
-    enableByok?: boolean
   }>(),
   {
     templateUrl: undefined,
@@ -81,7 +79,6 @@ const props = withDefaults(
     canSubmit: true,
     submissionFilter: undefined,
     selfTest: undefined,
-    enableByok: true,
   },
 )
 
@@ -94,35 +91,6 @@ const { isLoggedIn } = useAuth()
 const { api } = useApi()
 const { dialog } = useDialog()
 const { toast } = useToast()
-
-interface ByokProvider {
-  id: string
-  name: string
-  model: string
-  api_key_masked: string
-  enabled: boolean
-}
-const byokProviders = ref<ByokProvider[]>([])
-const selectedByokProvider = ref('')
-const byokLoading = ref(false)
-
-async function loadByokProviders() {
-  if (!props.enableByok || !isLoggedIn.value) return
-  byokLoading.value = true
-  try {
-    const res = await api.get<{ data: ByokProvider[] }>(
-      '/api/v1/users/me/llm-providers',
-      { silent: true },
-    )
-    byokProviders.value = res.data.filter((provider) => provider.enabled)
-  } catch {
-    byokProviders.value = []
-  } finally {
-    byokLoading.value = false
-  }
-}
-
-watch(isLoggedIn, loadByokProviders, { immediate: true })
 
 // 主题
 const { theme, set: setTheme } = useEditorTheme()
@@ -207,7 +175,6 @@ async function handleSubmit() {
       props.problem.id,
       language.value,
       code.value,
-      selectedByokProvider.value || undefined,
     )
     // 留在编辑页：自动切到历史 tab + 启动实时轮询
     sidebarTab.value = 'history'
@@ -421,25 +388,6 @@ const toolbarProblem = computed(() => {
 
       <!-- 正常状态 -->
       <template v-else>
-        <div
-          v-if="enableByok && isLoggedIn"
-          class="flex items-center gap-3 border-b border-border bg-white px-4 py-2"
-        >
-          <span class="text-xs font-medium text-text-secondary">模型配置</span>
-          <USelect
-            v-model="selectedByokProvider"
-            :items="[
-              { label: '不使用自带模型（使用题目/平台能力）', value: '' },
-              ...byokProviders.map((provider) => ({
-                label: `${provider.name}（${provider.model}）`,
-                value: provider.id,
-              })),
-            ]"
-            :loading="byokLoading"
-            class="min-w-[280px]"
-            aria-label="选择用户自带模型配置"
-          />
-        </div>
         <EditorToolbar
           :problem="toolbarProblem"
           :language="language"
