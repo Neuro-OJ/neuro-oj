@@ -137,7 +137,10 @@ function simpleSanitize(raw: string): string {
           }
           if (dq != null) return ` ${attrLower}="${dq.replace(/"/g, '&quot;')}"`;
           if (sq != null) return ` ${attrLower}='${sq.replace(/'/g, '&#039;')}'`;
-          return val ? ` ${attrLower}="${val}"` : ` ${attrLower}`;
+          // 无引号值同样必须转义引号：`(\S+)` 会把 `x"onerror="alert(1)` 整段吃进 val，
+          // 直接输出成 `src="x"onerror="alert(1)"` 会让浏览器解析出 onerror 属性（XSS）。
+          // 这里与上面两个分支对齐，同时转义单/双引号。
+          return val ? ` ${attrLower}="${val.replace(/"/g, '&quot;').replace(/'/g, '&#039;')}"` : ` ${attrLower}`;
         },
       );
       return `<${tagLower}${safeAttrs}>`;
