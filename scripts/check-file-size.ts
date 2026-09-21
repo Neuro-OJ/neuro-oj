@@ -21,7 +21,8 @@ export const MAX_LINES = 1200;
  * 拆分后请把数值改成新的实际行数（或直接删除条目）。
  */
 export const SIZE_BASELINE: Record<string, number> = {
-  "noj-judge/src/dual/mod.rs": 2246,
+  // 2026-09-21 移除 BYOK：dual/mod.rs 从 2246 降至 1861 行，下调基线锁住成果。
+  "noj-judge/src/dual/mod.rs": 1861,
   "noj-ui/pages/messages/index.vue": 1632,
   // 2026-09-13 拆分后已降到阈值以下，条目移除（棘轮只允许下调/删除）：
   // - noj-core/.../messaging/services/messages.ts 1517 →
