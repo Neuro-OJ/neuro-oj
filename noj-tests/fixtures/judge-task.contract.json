@@ -27,11 +27,5 @@
     "eval_token": "eval-token-abc",
     "provider_id": "44444444-4444-4444-8444-444444444444",
     "allowed_models": ["qwen-plus", "gpt-4o-mini"]
-  },
-  "user_llm": {
-    "gateway_url": "http://llm-gateway:8001",
-    "eval_token": "eval-token-byok",
-    "provider_id": "55555555-5555-4555-8555-555555555555",
-    "allowed_models": ["gpt-4o-mini"]
   }
 }

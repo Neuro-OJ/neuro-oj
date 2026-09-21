@@ -277,47 +277,6 @@ async fn inject_file_to_container(
     anyhow::bail!("注入文件超时")
 }
 
-/// 双容器评测入口，允许通过 Worker 配置传入每个容器的 CPU 上限。
-#[allow(dead_code)]
-#[allow(clippy::too_many_arguments)]
-pub async fn evaluate_dual_with_cpu_limit(
-    docker: bollard::Docker,
-    task_submission_id: &str,
-    runtime_config: &RuntimeConfig,
-    user_code: &str,
-    support_pkg_path: Option<&Path>,
-    artifact_zip_path: Option<&Path>,
-    task_rejudge_seq: Option<i64>,
-    task_llm: Option<&JudgeTaskLlm>,
-    cpu_limit_millicores: u64,
-    allow_evaluator_network: bool,
-    evaluator_network_mode: &str,
-    image_prefix: &str,
-    command_whitelist: &[String],
-    max_evaluator_time_ms: u64,
-    max_solution_call_timeout_ms: u64,
-) -> Result<JudgeResult> {
-    evaluate_dual_with_cpu_limit_and_user_llm(
-        docker,
-        task_submission_id,
-        runtime_config,
-        user_code,
-        support_pkg_path,
-        artifact_zip_path,
-        task_rejudge_seq,
-        task_llm,
-        None,
-        cpu_limit_millicores,
-        allow_evaluator_network,
-        evaluator_network_mode,
-        image_prefix,
-        command_whitelist,
-        max_evaluator_time_ms,
-        max_solution_call_timeout_ms,
-    )
-    .await
-}
-
 /// 从容器读取一次内存峰值（KB）。
 ///
 /// Docker `stats` 的 `memory_stats.max_usage` 仅 cgroups v1 可用；
@@ -344,8 +303,9 @@ async fn read_container_memory_peak_kb(
     Some(peak_bytes / 1024)
 }
 
+/// 双容器评测入口，允许通过 Worker 配置传入每个容器的 CPU 上限。
 #[allow(clippy::too_many_arguments)]
-pub async fn evaluate_dual_with_cpu_limit_and_user_llm(
+pub async fn evaluate_dual_with_cpu_limit(
     docker: bollard::Docker,
     task_submission_id: &str,
     runtime_config: &RuntimeConfig,
@@ -354,7 +314,6 @@ pub async fn evaluate_dual_with_cpu_limit_and_user_llm(
     artifact_zip_path: Option<&Path>,
     task_rejudge_seq: Option<i64>,
     task_llm: Option<&JudgeTaskLlm>,
-    user_llm: Option<&JudgeTaskLlm>,
     cpu_limit_millicores: u64,
     allow_evaluator_network: bool,
     evaluator_network_mode: &str,
@@ -485,7 +444,6 @@ pub async fn evaluate_dual_with_cpu_limit_and_user_llm(
         runtime_config.evaluator.time_limit_ms,
         runtime_config.solution.call_timeout_ms,
         task_rejudge_seq,
-        user_llm,
         startup_deadline,
     )
     .await;
@@ -595,7 +553,6 @@ async fn run_dual_loop(
     evaluator_timeout_ms: u64,
     default_call_timeout_ms: u64,
     rejudge_seq: Option<i64>,
-    user_llm: Option<&JudgeTaskLlm>,
     startup_deadline: Instant,
 ) -> Result<JudgeResult> {
     // 解构 exec 拿到 output/input
@@ -830,11 +787,9 @@ async fn run_dual_loop(
                             handle_sol_chunk(
                                 &mut sol_parser,
                                 &mut eval_input,
-                                &mut sol_input,
                                 c,
                                 &mut solution_ready,
                                 &mut tracker,
-                                user_llm,
                             )
                             .await?;
                         }
@@ -1026,11 +981,9 @@ async fn handle_eval_chunk(
 async fn handle_sol_chunk(
     parser: &mut LineParser,
     eval_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
-    sol_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
     chunk: LogOutput,
     solution_ready: &mut bool,
     tracker: &mut InFlightTracker,
-    user_llm: Option<&JudgeTaskLlm>,
 ) -> Result<()> {
     let data = match chunk {
         LogOutput::StdOut { message } => message,
@@ -1055,14 +1008,9 @@ async fn handle_sol_chunk(
             }
             match frame_type(&v) {
                 Some(FRAME_CAPABILITY) => {
-                    if v.get("name").and_then(Value::as_str) == Some("request_user_llm_completion")
-                    {
-                        handle_user_llm_capability(sol_input, &v, user_llm).await?;
-                    } else {
-                        // solution 请求普通 capability：查注册超时登记后转发 evaluator
-                        tracker.on_capability_frame(&v, Instant::now());
-                        forward_frame(eval_input, &v).await?;
-                    }
+                    // solution 请求 capability：查注册超时登记后转发 evaluator
+                    tracker.on_capability_frame(&v, Instant::now());
+                    forward_frame(eval_input, &v).await?;
                 }
                 Some(FRAME_RESULT) | Some(FRAME_ERROR) => {
                     // call 响应帧（evaluator 等待）：命中则转发，迟到/未知丢弃
@@ -1086,140 +1034,6 @@ async fn handle_sol_chunk(
         }
     }
     Ok(())
-}
-
-/// 构造 BYOK 错误帧。
-fn user_llm_error_frame(id: &str, code: &str, message: &str) -> Value {
-    serde_json::json!({
-        "type": "error",
-        "id": id,
-        "code": code,
-        "message": message,
-    })
-}
-
-/// 将 gateway 非成功响应映射为 BYOK 错误码。
-fn map_user_llm_gateway_error(status: u16, gateway_code: Option<&str>) -> &'static str {
-    match gateway_code {
-        Some("limit_exceeded" | "rate_limit_exceeded") => "BYOK_QUOTA_EXCEEDED",
-        Some("provider_disabled" | "provider_not_found") => "BYOK_CONFIG_UNAVAILABLE",
-        Some("provider_target_rejected") => "BYOK_PROVIDER_TARGET_REJECTED",
-        _ if status == 401 || status == 403 => "BYOK_GATEWAY_UNAVAILABLE",
-        _ => "BYOK_PROVIDER_ERROR",
-    }
-}
-
-/// 处理 solution 的用户 BYOK capability，不把请求转发给 evaluator。
-async fn handle_user_llm_capability(
-    sol_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
-    frame: &Value,
-    user_llm: Option<&JudgeTaskLlm>,
-) -> Result<()> {
-    let Some(id) = frame.get("id").and_then(Value::as_str) else {
-        return forward_frame(
-            sol_input,
-            &user_llm_error_frame("", "BYOK_REQUEST_INVALID", "用户模型请求缺少 id"),
-        )
-        .await;
-    };
-    let Some(llm) = user_llm else {
-        return forward_frame(
-            sol_input,
-            &user_llm_error_frame(id, "BYOK_CONFIG_UNAVAILABLE", "未绑定用户模型配置"),
-        )
-        .await;
-    };
-    let prompt = frame
-        .get("args")
-        .and_then(Value::as_array)
-        .and_then(|args| args.first())
-        .and_then(Value::as_str);
-    let Some(prompt) = prompt else {
-        return forward_frame(
-            sol_input,
-            &user_llm_error_frame(id, "BYOK_PROMPT_INVALID", "用户模型请求参数无效"),
-        )
-        .await;
-    };
-    if prompt.len() > 32 * 1024 {
-        return forward_frame(
-            sol_input,
-            &user_llm_error_frame(id, "BYOK_PROMPT_TOO_LARGE", "用户模型请求内容过大"),
-        )
-        .await;
-    }
-    let Some(model) = llm.allowed_models.first() else {
-        return forward_frame(
-            sol_input,
-            &user_llm_error_frame(id, "BYOK_CONFIG_UNAVAILABLE", "用户模型配置不可用"),
-        )
-        .await;
-    };
-    let url = format!(
-        "{}/v1/chat/completions",
-        llm.gateway_url.trim_end_matches('/')
-    );
-    let response = reqwest::Client::new()
-        .post(url)
-        .bearer_auth(&llm.eval_token)
-        .header("content-type", "application/json")
-        .body(serde_json::to_vec(&serde_json::json!({
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 1024,
-        }))?)
-        .timeout(Duration::from_secs(30))
-        .send()
-        .await;
-    let response = match response {
-        Ok(response) => response,
-        Err(_) => {
-            return forward_frame(
-                sol_input,
-                &user_llm_error_frame(id, "BYOK_GATEWAY_UNAVAILABLE", "用户模型服务暂时不可用"),
-            )
-            .await;
-        }
-    };
-    let status = response.status();
-    let body = response
-        .text()
-        .await
-        .ok()
-        .and_then(|text| {
-            (text.len() <= 1024 * 1024)
-                .then(|| serde_json::from_str::<Value>(&text).ok())
-                .flatten()
-        })
-        .unwrap_or(Value::Null);
-    if !status.is_success() {
-        let gateway_code = body.get("error").and_then(Value::as_str);
-        let code = map_user_llm_gateway_error(status.as_u16(), gateway_code);
-        return forward_frame(
-            sol_input,
-            &user_llm_error_frame(id, code, "用户模型请求失败"),
-        )
-        .await;
-    }
-    let Some(content) = body
-        .get("choices")
-        .and_then(Value::as_array)
-        .and_then(|choices| choices.first())
-        .and_then(|choice| choice.get("message"))
-        .and_then(|message| message.get("content"))
-        .and_then(Value::as_str)
-    else {
-        return forward_frame(
-            sol_input,
-            &user_llm_error_frame(id, "BYOK_PROVIDER_ERROR", "用户模型返回格式无效"),
-        )
-        .await;
-    };
-    forward_frame(
-        sol_input,
-        &serde_json::json!({"type": "result", "id": id, "value": content}),
-    )
-    .await
 }
 
 /// 向等待方写调用级超时错误帧。
@@ -1324,18 +1138,7 @@ pub mod mod_test_helpers {
         solution_ready: &mut bool,
         tracker: &mut InFlightTracker,
     ) {
-        let mut sink: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
-            Box::pin(tokio::io::sink());
-        let _ = super::handle_sol_chunk(
-            parser,
-            eval_input,
-            &mut sink,
-            chunk,
-            solution_ready,
-            tracker,
-            None,
-        )
-        .await;
+        let _ = super::handle_sol_chunk(parser, eval_input, chunk, solution_ready, tracker).await;
     }
 }
 
@@ -1768,8 +1571,6 @@ mod tests {
         let (sink, mut source) = tokio::io::duplex(8192);
         let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
             Box::pin(sink);
-        let mut sol_sink: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
-            Box::pin(tokio::io::sink());
 
         let SolHarness {
             mut parser,
@@ -1785,11 +1586,9 @@ mod tests {
         handle_sol_chunk(
             &mut parser,
             &mut writer,
-            &mut sol_sink,
             chunk,
             &mut solution_ready,
             &mut tracker,
-            None,
         )
         .await
         .unwrap();
@@ -1807,54 +1606,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_user_llm_capability_is_not_forwarded_without_binding() {
-        use tokio::io::AsyncReadExt;
-
-        let (eval_sink, mut eval_source) = tokio::io::duplex(8192);
-        let (sol_sink, mut sol_source) = tokio::io::duplex(8192);
-        let mut eval_writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
-            Box::pin(eval_sink);
-        let mut sol_writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
-            Box::pin(sol_sink);
-        let SolHarness {
-            mut parser,
-            mut solution_ready,
-            mut tracker,
-        } = SolHarness::new();
-        let chunk = LogOutput::StdOut {
-            message: bytes::Bytes::from_static(
-                b"{\"type\":\"capability\",\"id\":\"byok-1\",\"name\":\"request_user_llm_completion\",\"args\":[\"hello\"]}\n",
-            ),
-        };
-
-        handle_sol_chunk(
-            &mut parser,
-            &mut eval_writer,
-            &mut sol_writer,
-            chunk,
-            &mut solution_ready,
-            &mut tracker,
-            None,
-        )
-        .await
-        .unwrap();
-
-        let mut response_buf = [0u8; 1024];
-        let response_len =
-            tokio::time::timeout(Duration::from_secs(1), sol_source.read(&mut response_buf))
-                .await
-                .expect("BYOK 错误帧读取超时")
-                .unwrap();
-        let response = String::from_utf8_lossy(&response_buf[..response_len]);
-        assert!(response.contains("BYOK_CONFIG_UNAVAILABLE"));
-        let mut forwarded = [0u8; 1024];
-        let eval_read =
-            tokio::time::timeout(Duration::from_millis(100), eval_source.read(&mut forwarded))
-                .await;
-        assert!(eval_read.is_err(), "BYOK capability 不应转发给 evaluator");
-    }
-
-    #[tokio::test]
     async fn test_sol_unknown_frame_dropped() {
         // spec：未知/非法 type 帧应记录 warn 并丢弃（不转发）
         use tokio::io::AsyncReadExt;
@@ -1862,8 +1613,6 @@ mod tests {
         let (sink, mut source) = tokio::io::duplex(8192);
         let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
             Box::pin(sink);
-        let mut sol_sink: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
-            Box::pin(tokio::io::sink());
 
         let SolHarness {
             mut parser,
@@ -1877,11 +1626,9 @@ mod tests {
         handle_sol_chunk(
             &mut parser,
             &mut writer,
-            &mut sol_sink,
             chunk,
             &mut solution_ready,
             &mut tracker,
-            None,
         )
         .await
         .unwrap();
@@ -2044,138 +1791,6 @@ mod tests {
             None,
         );
         assert_eq!(r.details, serde_json::Value::Null);
-    }
-
-    #[test]
-    fn test_user_llm_error_frame_shape() {
-        let f = user_llm_error_frame("id-1", "BYOK_QUOTA_EXCEEDED", "用户模型请求失败");
-        assert_eq!(f["type"], "error");
-        assert_eq!(f["id"], "id-1");
-        assert_eq!(f["code"], "BYOK_QUOTA_EXCEEDED");
-        assert_eq!(f["message"], "用户模型请求失败");
-    }
-
-    #[test]
-    fn test_map_user_llm_gateway_error() {
-        assert_eq!(
-            map_user_llm_gateway_error(429, Some("limit_exceeded")),
-            "BYOK_QUOTA_EXCEEDED"
-        );
-        assert_eq!(
-            map_user_llm_gateway_error(429, Some("rate_limit_exceeded")),
-            "BYOK_QUOTA_EXCEEDED"
-        );
-        assert_eq!(
-            map_user_llm_gateway_error(400, Some("provider_disabled")),
-            "BYOK_CONFIG_UNAVAILABLE"
-        );
-        assert_eq!(
-            map_user_llm_gateway_error(400, Some("provider_not_found")),
-            "BYOK_CONFIG_UNAVAILABLE"
-        );
-        assert_eq!(
-            map_user_llm_gateway_error(400, Some("provider_target_rejected")),
-            "BYOK_PROVIDER_TARGET_REJECTED"
-        );
-        assert_eq!(
-            map_user_llm_gateway_error(401, None),
-            "BYOK_GATEWAY_UNAVAILABLE"
-        );
-        assert_eq!(
-            map_user_llm_gateway_error(403, None),
-            "BYOK_GATEWAY_UNAVAILABLE"
-        );
-        assert_eq!(map_user_llm_gateway_error(500, None), "BYOK_PROVIDER_ERROR");
-    }
-
-    #[tokio::test]
-    async fn test_user_llm_capability_missing_id_returns_error() {
-        use tokio::io::AsyncReadExt;
-
-        let (sink, mut source) = tokio::io::duplex(8192);
-        let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
-            Box::pin(sink);
-        let frame = serde_json::json!({
-            "type": "capability",
-            "name": "request_user_llm_completion",
-            "args": ["hello"]
-        });
-        handle_user_llm_capability(&mut writer, &frame, None)
-            .await
-            .unwrap();
-
-        let mut buf = [0u8; 1024];
-        let n = tokio::time::timeout(Duration::from_secs(1), source.read(&mut buf))
-            .await
-            .expect("读取 BYOK 错误帧超时")
-            .unwrap();
-        let text = String::from_utf8_lossy(&buf[..n]).to_string();
-        assert!(text.contains("BYOK_REQUEST_INVALID"));
-    }
-
-    #[tokio::test]
-    async fn test_user_llm_capability_invalid_prompt_returns_error() {
-        use tokio::io::AsyncReadExt;
-
-        let (sink, mut source) = tokio::io::duplex(8192);
-        let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
-            Box::pin(sink);
-        let llm = JudgeTaskLlm {
-            gateway_url: "http://gateway:8001".to_string(),
-            eval_token: "token".to_string(),
-            provider_id: "prov-1".to_string(),
-            allowed_models: vec!["qwen-plus".to_string()],
-        };
-        let frame = serde_json::json!({
-            "type": "capability",
-            "id": "byok-1",
-            "name": "request_user_llm_completion",
-            "args": [123]
-        });
-        handle_user_llm_capability(&mut writer, &frame, Some(&llm))
-            .await
-            .unwrap();
-
-        let mut buf = [0u8; 1024];
-        let n = tokio::time::timeout(Duration::from_secs(1), source.read(&mut buf))
-            .await
-            .expect("读取 BYOK 错误帧超时")
-            .unwrap();
-        let text = String::from_utf8_lossy(&buf[..n]).to_string();
-        assert!(text.contains("BYOK_PROMPT_INVALID"));
-    }
-
-    #[tokio::test]
-    async fn test_user_llm_capability_prompt_too_large_returns_error() {
-        use tokio::io::AsyncReadExt;
-
-        let (sink, mut source) = tokio::io::duplex(8192);
-        let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
-            Box::pin(sink);
-        let llm = JudgeTaskLlm {
-            gateway_url: "http://gateway:8001".to_string(),
-            eval_token: "token".to_string(),
-            provider_id: "prov-1".to_string(),
-            allowed_models: vec!["qwen-plus".to_string()],
-        };
-        let big_prompt = "x".repeat(32 * 1024 + 1);
-        let frame = serde_json::json!({
-            "type": "capability",
-            "id": "byok-2",
-            "name": "request_user_llm_completion",
-            "args": [big_prompt]
-        });
-        handle_user_llm_capability(&mut writer, &frame, Some(&llm))
-            .await
-            .unwrap();
-
-        let mut buf = [0u8; 1024];
-        let n = tokio::time::timeout(Duration::from_secs(1), source.read(&mut buf))
-            .await
-            .expect("读取 BYOK 错误帧超时")
-            .unwrap();
-        let text = String::from_utf8_lossy(&buf[..n]).to_string();
-        assert!(text.contains("BYOK_PROMPT_TOO_LARGE"));
     }
 
     // ── append_capped：UTF-8 字符边界回归测试（2026-09-12 评审 §2.2）──
