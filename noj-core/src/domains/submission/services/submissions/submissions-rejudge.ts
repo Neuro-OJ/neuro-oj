@@ -78,7 +78,7 @@ export async function rejudgeSubmission(id: string): Promise<void> {
   }
 
   if (submission.artifact_storage_url) {
-    throw new BadRequestError("artifact 提交不支持重测");
+    throw new BadRequestError("产物/预测提交不支持重测");
   }
 
   if (submission.status !== "finished" && submission.status !== "error") {
@@ -285,7 +285,7 @@ export async function rejudgeProblemSubmissions(
 
     if (rows.some((r) => r.artifact_storage_url)) {
       return {
-        error: "该题目包含 artifact 提交，artifact 提交不支持重测",
+        error: "该题目包含产物/预测提交，产物/预测提交不支持重测",
       };
     }
 

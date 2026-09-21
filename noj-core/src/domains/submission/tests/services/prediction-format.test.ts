@@ -9,7 +9,7 @@ import { assertEquals, assertThrows } from "jsr:@std/assert@^1";
 import {
   predictionFileExtension,
   validatePredictionFile,
-} from "../../index.ts";
+} from "../../services/submissions/prediction-format.ts";
 import { BadRequestError } from "./../../../../shared/base/errors.ts";
 
 /** 断言校验以 PREDICTION_FORMAT_REJECTED 错误码拒绝。 */
