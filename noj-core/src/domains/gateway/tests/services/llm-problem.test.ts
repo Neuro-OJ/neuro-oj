@@ -17,7 +17,7 @@ import {
   getDefaultLlmLimits,
   resolveLlmLimits,
 } from "../../services/llm-limits.ts";
-import { getLlmPlatformDefault } from "../../services/llm.ts";
+import { getLlmPlatformDefault, LlmGatewayError } from "../../services/llm.ts";
 import { _resetSystemSettingsForTest } from "../../../system/index.ts";
 
 Deno.test("llm-config: isValidLlmConfig", () => {
@@ -364,25 +364,37 @@ Deno.test("llm-platform-default: env 兜底生效", () => {
   }
 });
 
-function stubProviderFetch(enabled: boolean): () => void {
+/**
+ * stub gateway `/internal/providers/:id`。
+ *
+ * @param enabled Provider 是否启用（仅在成功响应下使用）
+ * @param failure 提供时返回该错误响应（status + error code），用于模拟
+ *   provider_not_found / gateway 故障等非 2xx 路径
+ */
+function stubProviderFetch(
+  enabled: boolean,
+  failure?: { status: number; error: string },
+): () => void {
   const original = globalThis.fetch;
+  const status = failure?.status ?? 200;
+  const body = failure ? { error: failure.error } : {
+    data: {
+      id: "prov-default",
+      name: "stub",
+      base_url: "http://stub",
+      cost_per_1k_tokens: 0,
+      api_key_masked: "sk-****",
+      enabled,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  };
   globalThis.fetch = ((_input: Request | URL | string) =>
     Promise.resolve(
-      new Response(
-        JSON.stringify({
-          data: {
-            id: "prov-default",
-            name: "stub",
-            base_url: "http://stub",
-            cost_per_1k_tokens: 0,
-            api_key_masked: "sk-****",
-            enabled,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      }),
     )) as typeof fetch;
   return () => {
     globalThis.fetch = original;
@@ -457,6 +469,61 @@ Deno.test("llm-token: 默认 Provider 停用时抛错", async () => {
       () => buildJudgeTaskLlm({}, "sub-1", "prob-1", "user-1", RUNTIME),
       BadRequestError,
     );
+  } finally {
+    restore();
+    if (oldToken === undefined) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
+    else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", oldToken);
+    Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
+    Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
+    _resetSystemSettingsForTest();
+  }
+});
+
+Deno.test("llm-token: Provider 不存在（provider_not_found）时抛 BadRequestError", async () => {
+  _resetSystemSettingsForTest();
+  const oldToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN");
+  Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "test-service-token-0123456789abcdef");
+  Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "prov-missing");
+  Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "qwen-plus");
+  const restore = stubProviderFetch(true, {
+    status: 404,
+    error: "provider_not_found",
+  });
+  try {
+    await assertRejects(
+      () => buildJudgeTaskLlm({}, "sub-1", "prob-1", "user-1", RUNTIME),
+      BadRequestError,
+    );
+  } finally {
+    restore();
+    if (oldToken === undefined) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
+    else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", oldToken);
+    Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
+    Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
+    _resetSystemSettingsForTest();
+  }
+});
+
+Deno.test("llm-token: gateway 故障（5xx）时上抛 LlmGatewayError 而非 400", async () => {
+  _resetSystemSettingsForTest();
+  const oldToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN");
+  Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "test-service-token-0123456789abcdef");
+  Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "prov-default");
+  Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "qwen-plus");
+  const restore = stubProviderFetch(true, {
+    status: 503,
+    error: "gateway_error",
+  });
+  try {
+    let thrown: unknown;
+    try {
+      await buildJudgeTaskLlm({}, "sub-1", "prob-1", "user-1", RUNTIME);
+    } catch (e) {
+      thrown = e;
+    }
+    assert(thrown instanceof LlmGatewayError);
+    assert(!(thrown instanceof BadRequestError));
+    assertEquals((thrown as LlmGatewayError).code, "gateway_error");
   } finally {
     restore();
     if (oldToken === undefined) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
