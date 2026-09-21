@@ -100,7 +100,7 @@ Docker daemon（这是有意的边界：自动安装 daemon 需要 root 安装�
 
 | 配置项 | 说明 |
 |---|---|
-| `NOJ_VERSION` | 要使用的 Release 标签，例如 `v0.8.1`；不要填写 `latest` |
+| `NOJ_VERSION` | 要使用的 Release 标签，例如 `v0.9.5`；不要填写 `latest` |
 | `DOMAIN` | 网站地址，只填写域名或服务器 IP，不要写 `http://`/`https://` |
 | `APP_URL` | 网站完整地址，例如 `http://1.2.3.4` 或 `https://oj.example.com` |
 | `CORS_ALLOWED_ORIGINS` | 通常与 `APP_URL` 相同 |
@@ -172,13 +172,12 @@ noj-cli update --latest
 |---|---|---|
 | 备份 | `noj-cli backup create` | PostgreSQL/Redis/MinIO/加密环境文件已写入单个 `.nojbackup` |
 | 文件校验 | `noj-cli backup verify` / `backup drill` | 快照完整、口令可用、dump 结构可解析 |
-| 隔离恢复演练 | `scripts/deploy/restore-drill.sh <快照>` | 业务真的可以从快照恢复并运行 |
+| 隔离恢复演练 | `noj-cli backup drill <快照>` | 业务真的可以从快照恢复并运行 |
 
 `backup drill` 只做文件级校验，**不能**证明业务可恢复。真实的恢复验收演练：
 
 ```bash
-cd /opt/neuro-oj
-bash scripts/deploy/restore-drill.sh backups/snapshot-YYYYMMDD-HHMMSS \
+noj-cli backup drill backups/snapshot-YYYYMMDD-HHMMSS \
   --passphrase-file /secure/noj-backup-passphrase
 ```
 
@@ -187,7 +186,7 @@ bash scripts/deploy/restore-drill.sh backups/snapshot-YYYYMMDD-HHMMSS \
 （需要 judge 沙箱 Docker socket 与 `noj-evaluator-python` / `noj-solution-python` 镜像，
 与生产 judge 使用同一个独立 rootless daemon）。可用 `--skip-judge` 跳过评测环节。
 
-演练报告（默认写入 `backups/snapshot-*/restore-drill-report.txt`）记录：快照时间、恢复耗时、
+演练报告（默认写入快照同级的 `restore-drill-report.txt`，权限 600）记录：快照时间、恢复耗时、
 数据核对结果（迁移版本/用户数/Redis 键数/对象数）、业务验收明细，以及 RPO/RTO 目标与是否达标
 （默认 RPO ≤ 24 小时、RTO ≤ 60 分钟，可用 `--rpo-max-hours` / `--rto-max-minutes` 调整）。
 损坏快照、解密失败、数据库恢复失败或业务验收失败都会以非零退出并保留失败现场报告。

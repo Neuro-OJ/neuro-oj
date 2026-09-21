@@ -20,17 +20,14 @@ docker compose up -d
 node scripts/install-git-hooks.mjs
 ```
 
-一键部署/运维（统一入口 `noj-cli`，旧 `devtool.sh` 已移除）：
+## 两段式开发
+
+NOJ 源码开发**不使用** `noj-cli`（它面向生产部署与运维）。先起基础设施，再按需
+在独立终端启动模块：
 
 ```bash
-cd noj-cli
-deno run -A src/cli.ts deploy init --mode dev --dir /opt/neuro-oj
-deno run -A src/cli.ts deploy up --dir /opt/neuro-oj
-deno run -A src/cli.ts deploy status --dir /opt/neuro-oj
-deno run -A src/cli.ts deploy down --dir /opt/neuro-oj
+docker compose up -d
 ```
-
-手动启动：
 
 ```bash
 cd noj-core && deno task dev        # http://localhost:8000

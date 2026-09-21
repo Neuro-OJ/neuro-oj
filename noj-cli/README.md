@@ -55,7 +55,7 @@ noj-cli update --latest        # 升级到最新稳定 Release（已是最新则
 noj-cli backup create          # 创建 .nojbackup 单文件快照（整包加密）
 noj-cli backup verify <快照> --deep
 noj-cli backup list | prune    # prune 默认 dry-run，--confirm 才真正删除
-noj-cli backup restore <快照> --dry-run
+noj-cli backup restore <快照>    # 不带 --confirm 时默认 dry-run（零副作用）；--confirm 才执行真实恢复
 noj-cli backup drill <快照>    # 隔离环境真实恢复演练（分钟级、需 Docker）
 noj-cli backup schedule install --schedule '15 2 * * *'
 noj-cli uninstall              # 保留数据卷、配置与备份

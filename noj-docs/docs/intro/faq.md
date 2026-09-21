@@ -40,7 +40,7 @@
 
 ### 提交后长时间 Pending？
 
-确认 noj-judge 已启动、连接的 Redis 与 noj-core 一致。查看队列积压：`redis-cli LLEN noj:judge:queue`。常见原因与扩容方法见 [Judge Worker 运维](../operators/judge-workers.md#queue-monitoring)。
+确认 noj-judge 已启动、连接的 Redis 与 noj-core 一致。查看队列积压（按三级优先级队列，而非裸前缀 `noj:judge:queue`）：`redis-cli LLEN noj:judge:queue:high`（另见 `:medium` / `:low`）。常见原因与扩容方法见 [Judge Worker 运维](../operators/judge-workers.md#queue-monitoring)。
 
 ### 评测镜像不存在？
 

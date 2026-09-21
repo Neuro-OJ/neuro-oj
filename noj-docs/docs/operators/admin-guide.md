@@ -1,6 +1,6 @@
 # 后台管理指南
 
-管理后台面向 `admin` / 社区审核员等角色，前端入口为「管理」页面（`/admin`）。大部分管理端点位于 `/api/v1/admin/*` 并强制校验管理员权限；公告与题单使用细粒度权限（`announcement:manage`、`training:*`），社区管理端点位于 `/api/v1/community/admin/*` 并校验社区审核权限。
+管理后台面向 `admin` / 社区审核员等角色，前端入口为「管理」页面（`/admin`）。大部分管理端点位于 `/api/v1/admin/*` 并强制校验管理员权限；公告与题单使用细粒度权限（`announcement:manage`、`training:*`），社区管理端点为 `/api/v1/admin/community/*`（管理域下的 community 子域）并校验社区审核权限。
 
 ## 概览
 

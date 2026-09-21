@@ -40,7 +40,7 @@
 
 ### 发布前预检
 
-管理员可以调用题目管理接口的 `GET /api/v1/admin/problems/:id/preflight` 查看发布前检查：
+管理员可以调用题目管理接口的 `GET /api/v1/admin/catalog/problems/:id/preflight` 查看发布前检查：
 运行时配置和镜像白名单、模板、支持包，以及代码题包中的 `evaluate.py`、`visible.jsonl`、隐藏数据和约定的标准解。
 缺少运行入口、可见用例或支持包会形成阻断错误；缺少隐藏数据或标准解属于质量警告。
 

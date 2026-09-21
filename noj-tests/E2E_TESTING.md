@@ -47,7 +47,8 @@ noj-tests/
     ├── messaging/             # 站内私信
     ├── objective/             # 客观题
     ├── admin/                 # 管理端点
-    ├── cross-domain/          # 跨域链路（全管道、RBAC、搜索、网络能力、双容器、LLM 网关）
+    ├── rate-limit/            # 登录限流与锁定
+    ├── cross-domain/          # 跨域链路（全管道、RBAC、搜索、网络能力、双容器、存储故障、LLM 网关）
     ├── browser/               # 浏览器流程（需 noj-ui 已构建并监听 :3000）
     ├── staging/               # staging 验收清单（由 scripts/staging/acceptance.sh 执行，不进 CI）
     └── support-package/       # 测试用支持包参考
@@ -60,33 +61,52 @@ noj-tests/
 
 | 测试文件                           | 测试内容                           | 关键验证点                                                                                           |
 | ---------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `01_tags.test.ts`                  | 标签 CRUD/合并/筛选 + 算法标签门控 | 打标签→筛选命中→合并/删除清理；匿名/未 AC 隐藏、AC 后可见                                            |
-| `02_problems.test.ts`              | 题目 CRUD + U/P 型 + 筛选          | 题型分离，URL 驱动筛选                                                                               |
-| `03_auth.test.ts`                  | 登录/注册/改密/管理员              | JWT Cookie，强制改密守卫                                                                             |
-| `04_submissions.test.ts`           | 提交流程 AC/WA/TLE                 | 评测结果正确性                                                                                       |
-| `05_profile.test.ts`               | 用户主页信息统计                   | 通过数，AC 率                                                                                        |
-| `06_pipeline.test.ts`              | 全管道端到端                       | 提交→MQ→评测→结果→DB                                                                                 |
-| `07_queue.test.ts`                 | 队列可见性 + MQ 可靠性             | 队列状态，非法消息容错                                                                               |
-| `08_password_change_guard.test.ts` | 强制改密守卫                       | 改密前访问限制                                                                                       |
-| `09_checkin.test.ts`               | 每日签到                           | 连续签到天数计算                                                                                     |
-| `10_sse.test.ts`                   | SSE 推送                           | 提交/队列/统计事件流                                                                                 |
-| `11_messaging.test.ts`             | 站内私信                           | 会话/消息/已读/删除                                                                                  |
-| `12_audit_log.test.ts`             | 审计日志                           | 管理操作留痕                                                                                         |
-| `13_support_package_s3.test.ts`    | 支持包 S3 存储                     | presigned URL 下载                                                                                   |
-| `14_rejudge.test.ts`               | 重测                               | 单题/整题重测                                                                                        |
-| `15_dual_container_judge.test.ts`  | 双容器评测                         | Evaluator + Solution                                                                                 |
-| `16_community.test.ts`             | 社区                               | 帖子/评论/审核/动态流/通知                                                                           |
-| `17_problem_template.test.ts`      | 题目模板                           | 代码模板注入                                                                                         |
-| `18_search.test.ts`                | 全局搜索                           | 题目/用户/社区检索                                                                                   |
-| `19_admin_endpoints.test.ts`       | 管理端点                           | 用户/题目/黑名单等                                                                                   |
-| `20_password_reset.test.ts`        | 密码重置                           | 邮件令牌流程                                                                                         |
-| `21_rankings.test.ts`              | 榜单                               | 全局/竞赛排名                                                                                        |
-| `22_contest_lifecycle.test.ts`     | 竞赛生命周期                       | 创建/报名/提交/封榜/解封                                                                             |
-| `23_network_capability.test.ts`    | 评测网络能力                       | evaluator 联网与 capability                                                                          |
-| `24_import_bundle.test.ts`         | 题目包导入                         | 统一题目包                                                                                           |
-| `25_rbac.test.ts`                  | RBAC 权限                          | 角色/权限/继承                                                                                       |
-| `26_call_timeout.test.ts`          | 调用级超时                         | call_timeout_ms 生效                                                                                 |
-| `32_llm_gateway.test.ts`           | LLM Gateway 全链路                 | Provider → P 型 LLM 题 → 提交 → gateway → Mock LLM → 用量落库；U 型/未开网络拒绝；重测重新签发 token |
+| `catalog/tags.test.ts`             | 标签 CRUD/合并/筛选 + 算法标签门控 | 打标签→筛选命中→合并/删除清理；匿名/未 AC 隐藏、AC 后可见                                            |
+| `catalog/problems.test.ts`         | 题目 CRUD + U/P 型 + 筛选          | 题型分离，URL 驱动筛选                                                                               |
+| `catalog/problem_template.test.ts` | 题目模板                           | 代码模板注入                                                                                         |
+| `catalog/import_bundle.test.ts`    | 题目包导入                         | 统一题目包                                                                                           |
+| `catalog/trainings.test.ts`        | 题单                               | 创建/管理/可见性                                                                                     |
+| `identity/auth.test.ts`            | 登录/注册/改密/管理员              | JWT Cookie，强制改密守卫                                                                             |
+| `identity/profile.test.ts`         | 用户主页信息统计                   | 通过数，AC 率                                                                                        |
+| `identity/password_reset.test.ts`  | 密码重置                           | 邮件令牌流程                                                                                         |
+| `identity/password_change_guard.test.ts` | 强制改密守卫                 | 改密前访问限制                                                                                       |
+| `identity/avatar.test.ts`          | 头像上传/展示                      | 对象存储与回退                                                                                       |
+| `identity/tfa.test.ts`             | 两步验证（TFA）                    | 启用/恢复码/二次验证                                                                                 |
+| `submission/submissions.test.ts`   | 提交流程                           | 评测结果正确性                                                                                       |
+| `submission/queue.test.ts`         | 队列可见性 + MQ 可靠性             | 队列状态，非法消息容错                                                                               |
+| `submission/sse.test.ts`           | SSE 推送                           | 提交/队列/统计事件流                                                                                 |
+| `submission/rejudge.test.ts`       | 重测                               | 单题/整题重测                                                                                        |
+| `submission/abnormal_rejudge.test.ts` | 异常重测                        | 异常状态下的重测语义                                                                                 |
+| `submission/artifact_submission.test.ts` | 产物提交题                  | zip 产物上传与评测                                                                                   |
+| `submission/call_timeout.test.ts`  | 调用级超时                         | call_timeout_ms 生效                                                                                 |
+| `submission/priority_queue.test.ts` | 优先级队列                        | high/medium/low 调度                                                                                 |
+| `submission/mq_invalid_message.test.ts` | MQ 非法消息容错               | 坏消息被跳过不阻塞                                                                                   |
+| `submission/support_package_s3.test.ts` | 支持包 S3 存储               | presigned URL 下载                                                                                   |
+| `contest/contest_lifecycle.test.ts` | 竞赛生命周期                      | 创建/报名/提交/封榜/解封                                                                             |
+| `contest/rankings.test.ts`         | 榜单                               | 全局/竞赛排名                                                                                        |
+| `contest/clarifications.test.ts`   | 竞赛答疑                           | 提问/回复可见性                                                                                      |
+| `contest/contest_anti_cheat.test.ts` | 竞赛风控                         | 同 IP 候选组与代码相似度复核                                                                         |
+| `contest/anti_cheat_abnormal.test.ts` | 竞赛风控异常路径               | 畸形输入的降级行为                                                                                   |
+| `system/checkin.test.ts`           | 每日签到                           | 连续签到天数计算                                                                                     |
+| `system/audit_log.test.ts`         | 审计日志                           | 管理操作留痕                                                                                         |
+| `system/announcements.test.ts`     | 公告                               | 发布/下架/SSE                                                                                        |
+| `system/self_test.test.ts`         | 自测                               | 编辑器内自测任务不进入正式提交                                                                       |
+| `community/community.test.ts`      | 社区                               | 帖子/评论/审核/动态流/通知                                                                           |
+| `messaging/messaging.test.ts`      | 站内私信                           | 会话/消息/已读/删除                                                                                  |
+| `objective/objective.test.ts`      | 客观题                             | 单选/多选/判断的服务端判定                                                                           |
+| `admin/admin_endpoints.test.ts`    | 管理端点                           | 用户/题目/黑名单等                                                                                   |
+| `rate-limit/rate_limit_lockout.test.ts` | 登录限流与锁定                | 窗口/退避/锁定                                                                                       |
+| `cross-domain/pipeline.test.ts`    | 全管道端到端                       | 提交→MQ→评测→结果→DB                                                                                 |
+| `cross-domain/rbac.test.ts`        | RBAC 权限                          | 角色/权限/继承                                                                                       |
+| `cross-domain/search.test.ts`      | 全局搜索                           | 题目/用户/社区检索                                                                                   |
+| `cross-domain/network_capability.test.ts` | 评测网络能力                 | evaluator 联网与 capability                                                                          |
+| `cross-domain/dual_container_judge.test.ts` | 双容器评测                 | Evaluator + Solution                                                                                 |
+| `cross-domain/storage_failure.test.ts` | 存储故障降级                  | S3 不可用时的行为                                                                                    |
+| `cross-domain/llm_gateway.test.ts` | LLM Gateway 全链路                 | Provider → P 型 LLM 题 → 提交 → gateway → Mock LLM → 用量落库；U 型/未开网络拒绝；重测重新签发 token |
+| `browser/ui_flows.test.ts`         | 浏览器关键流程                     | 注册→验证页、登录→退出、提交→结果、失败反馈                                                          |
+| `browser/19_search_unified.test.ts` | 浏览器搜索                        | 命令面板与结果页                                                                                     |
+| `browser/20_admin_panel.test.ts`   | 浏览器管理后台                     | 管理页面交互                                                                                         |
+| `browser/21_notifications.test.ts` | 浏览器通知                         | 通知交互                                                                                             |
 
 ## 前置条件
 
@@ -105,8 +125,8 @@ deno task test:domain submission      # 等价于 bash scripts/run-e2e-domain.sh
 ```
 
 可用 domain：`identity` / `catalog` / `submission` / `contest` / `system` /
-`community` / `messaging` / `objective` / `admin` / `cross-domain` / `browser` /
-`staging`。
+`community` / `messaging` / `objective` / `admin` / `rate-limit` / `cross-domain` /
+`browser` / `staging`。
 
 > 本地运行需要完整的 E2E 栈（`env.e2e.template` 会设置 `NOJ_RUN_E2E=1`）；
 > 栈未启动时用例会被静默跳过，请先 `bash ../scripts/e2e/setup.sh`。
@@ -170,5 +190,5 @@ E2E 测试在 `.github/workflows/e2e.yml` 中定义，在 PR 和推送到 main �
   测试**：`cd noj-judge && NOJ_RUN_E2E=1 cargo test -- --ignored`（低层 Docker
   沙箱行为）
 - **noj-core API E2E
-  测试**：`cd noj-core && deno test -A tests/e2e/api.test.ts`（33 个 HTTP API
-  测试）
+  测试**：由本仓库 `noj-tests` 承担（`cd noj-tests && deno task test:domain <domain>`）；
+  `noj-core` 自身只有单元/集成测试，不含独立的 HTTP API E2E 目录。

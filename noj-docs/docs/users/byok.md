@@ -22,7 +22,7 @@
 
 | 错误 | 含义 |
 | --- | --- |
-| `provider_target_rejected` | 服务地址不符合 HTTPS 或 host allowlist 规则 |
+| `BYOK_PROVIDER_TARGET_REJECTED` | 服务地址不符合 HTTPS 或 host allowlist 规则 |
 | `BYOK_CONFIG_UNAVAILABLE` | 配置不存在、被删除、停用或未绑定到本次提交 |
 | `BYOK_QUOTA_EXCEEDED` | 本次评测调用额度已用尽 |
 | `BYOK_GATEWAY_UNAVAILABLE` | 用户模型网关暂时不可用 |
