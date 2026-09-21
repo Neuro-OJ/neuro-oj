@@ -92,9 +92,13 @@ noj-core 提交服务 → JudgeTask.user_llm → noj-judge（capability 代打 g
   删 `handle_user_llm_capability`、`user_llm_error_frame`、
   `map_user_llm_gateway_error`、`FRAME_CAPABILITY` 中
   `request_user_llm_completion` 特殊分支（该帧回落到通用转发路径）、
-  `evaluate_dual_with_cpu_limit_and_user_llm` 的 `user_llm` 参数及其传递链，
-  以及全部 capability 相关单元测试。
-- `src/judge/runner.rs`：删除调用点的 `task.user_llm.as_ref()`。
+  全部 capability 相关单元测试。
+  将 `evaluate_dual_with_cpu_limit_and_user_llm` 的**实现体**合并进唯一入口
+  `evaluate_dual_with_cpu_limit`（移除 `user_llm` 参数后两者签名一致，删除重复
+  wrapper 以免留下误导性死名），并删除内部传递链中的 `user_llm`。
+  合并后全部调用点名称不变，测试零改名。
+- `src/judge/runner.rs`：调用改为 `evaluate_dual_with_cpu_limit`，删除
+  `task.user_llm.as_ref()` 实参。
 - `AGENTS.md`：删 `user_llm` 描述。
 
 ### 3.3 noj-core 数据与 schema
