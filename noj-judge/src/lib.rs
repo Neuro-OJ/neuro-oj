@@ -8,6 +8,7 @@ pub mod dual;
 pub mod judge;
 pub mod logging;
 pub mod metrics;
+pub mod prediction;
 pub mod sandbox;
 pub mod types;
 pub mod user_claim;

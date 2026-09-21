@@ -142,6 +142,26 @@ pub(crate) fn clamp_runtime_config(
     clamped
 }
 
+/// prediction 路径的运行时收敛（不涉及 solution 调用超时）。
+///
+/// prediction 提交省略 `solution`，因此无需 `max_solution_call_timeout_ms`；
+/// evaluator 的时间/内存上限收敛规则与 [`clamp_runtime_config`] 保持一致。
+///
+/// `#[allow(dead_code)]`：bin 目标尚未声明 `prediction` 模块（分派由 Task 9 接入），
+/// 故 bin 侧暂时没有调用点；接入后应移除本 allow。
+#[allow(dead_code)]
+pub(crate) fn clamp_runtime_config_for_prediction(
+    rc: &RuntimeConfig,
+    max_evaluator_time_ms: u64,
+) -> RuntimeConfig {
+    let mut c = rc.clone();
+    if max_evaluator_time_ms > 0 {
+        c.evaluator.time_limit_ms = c.evaluator.time_limit_ms.min(max_evaluator_time_ms);
+    }
+    c.evaluator.memory_limit_mb = c.evaluator.memory_limit_mb.min(4096);
+    c
+}
+
 /// 取不小于 `idx` 的最小字符边界。
 ///
 /// 保证 `&s[n..]` 不会 panic（`String` 的字节切片要求下标落在 UTF-8 字符边界上），
