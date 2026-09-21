@@ -1,9 +1,9 @@
 {
-  "total": 992,
+  "total": 993,
   "by_reason": {
     "early-return": 268,
     "env-guard": 13,
-    "ignore": 639,
+    "ignore": 640,
     "rust-env-guard": 27,
     "rust-ignore": 45
   },
@@ -17,7 +17,7 @@
     "noj-core/src/domains/catalog/tests/routes/support-package.test.ts": 5,
     "noj-core/src/domains/catalog/tests/routes/tags.test.ts": 8,
     "noj-core/src/domains/catalog/tests/services/problem-field-guard.test.ts": 15,
-    "noj-core/src/domains/catalog/tests/services/problems-llm-limits.test.ts": 2,
+    "noj-core/src/domains/catalog/tests/services/problems-llm-limits.test.ts": 3,
     "noj-core/src/domains/catalog/tests/services/problems-tags.test.ts": 8,
     "noj-core/src/domains/catalog/tests/services/problems.test.ts": 17,
     "noj-core/src/domains/catalog/tests/services/support-package.test.ts": 8,
