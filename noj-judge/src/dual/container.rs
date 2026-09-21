@@ -287,4 +287,14 @@ mod tests {
         // 纯函数：把 MB 转成 tmpfs 规格字符串
         assert_eq!(workspace_tmpfs_spec(2048), "size=2048M,mode=1777");
     }
+
+    #[test]
+    fn test_workspace_tmpfs_default_spec_unchanged() {
+        // 回归钉住「默认双容器行为不变」：默认上限 512MB 时规格字符串必须
+        // 精确等于历史值，任何改动都会在此处显性失败。
+        assert_eq!(
+            workspace_tmpfs_spec(DEFAULT_WORKSPACE_MB),
+            "size=512M,mode=1777"
+        );
+    }
 }

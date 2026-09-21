@@ -186,6 +186,174 @@ fn append_capped(buf: &mut String, s: &str) {
     buf.push_str(s);
 }
 
+/// 双容器生产路径必须携带 Solution 运行时；缺失时返回明确的守卫错误。
+///
+/// prediction 提交（无 Solution 容器）走独立编排，不得进入双容器路径；
+/// 这里抽成纯函数以便无 Docker 单测覆盖该守卫。
+pub(crate) fn require_solution<'a>(
+    submission_id: &str,
+    runtime_config: &'a RuntimeConfig,
+) -> Result<&'a crate::types::SolutionRuntime> {
+    runtime_config.solution.as_ref().ok_or_else(|| {
+        anyhow::anyhow!("submission {}: 双容器路径缺少 solution 配置", submission_id)
+    })
+}
+
+/// 校验注入用的容器内相对路径（拒绝绝对路径与 `..` 段）。
+///
+/// 拒绝：空串、前导 `/`、含 NUL，以及任何空 / `.` / `..` 段，
+/// 防止 tar 条目逃出 `/workspace`（路径穿越）。
+fn sanitize_rel_path(rel: &str) -> Result<String> {
+    if rel.is_empty() || rel.starts_with('/') || rel.contains('\0') {
+        anyhow::bail!("非法注入路径: {}", rel);
+    }
+    for seg in rel.split('/') {
+        if seg.is_empty() || seg == "." || seg == ".." {
+            anyhow::bail!("非法注入路径: {}", rel);
+        }
+    }
+    Ok(rel.to_string())
+}
+
+/// 生成并写出一条 tar 归档数据（同步，供 `spawn_blocking` 中调用）。
+///
+/// `size` 必须与 `reader` 的字节数一致（调用方已从文件元数据取得）。
+/// 使用 [`tar::Builder`] 逐块复制，不把文件整体读入内存；嵌套路径的父目录
+/// 由容器侧 `tar xf` 自动创建。
+fn write_tar_entry<W: std::io::Write, R: std::io::Read>(
+    out: &mut W,
+    container_rel_path: &str,
+    size: u64,
+    reader: R,
+) -> std::io::Result<()> {
+    let mut header = tar::Header::new_gnu();
+    header.set_size(size);
+    header.set_mode(0o644);
+    header.set_cksum();
+    let mut builder = tar::Builder::new(out);
+    builder.append_data(&mut header, container_rel_path, reader)?;
+    builder.finish()
+}
+
+/// 有界 mpsc 的同步写端。
+///
+/// tar 归档帧由 `spawn_blocking` 中的同步代码产生，但 exec stdin 是异步流；
+/// 该适配器把每个块经 `blocking_send` 推入容量为 1 的 channel，channel 满时
+/// 阻塞写入线程，形成背压 —— 从而保证**整文件永不被一次性读入内存**。
+struct ChannelWriter {
+    tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+}
+
+impl std::io::Write for ChannelWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        // `blocking_send` 只能在非 async 上下文调用；本类型仅在 spawn_blocking 中使用。
+        self.tx
+            .blocking_send(buf.to_vec())
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "注入通道已关闭"))?;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// 流式注入单个宿主文件到容器的 `/workspace/<container_rel_path>`。
+///
+/// 与 [`inject_file_to_container`] 不同，本函数不把文件内容整体读入内存：
+/// 后台 `spawn_blocking` 任务以有界 channel 为背压源，边读宿主文件边产出 tar
+/// 帧；异步侧逐块写入 `docker exec ... tar xf -` 的 stdin。适用于多 GB 的预测
+/// 结果文件。
+#[allow(dead_code)] // prediction 编排（后续任务）是本函数的唯一调用方，先行落地原语
+pub(crate) async fn inject_file_stream_to_container(
+    docker: &bollard::Docker,
+    container_id: &str,
+    host_path: &Path,
+    container_rel_path: &str,
+) -> Result<()> {
+    let rel = sanitize_rel_path(container_rel_path)?;
+
+    // 先取文件与大小（廉价），但**在 exec 就绪前不启动** tar 生产任务：
+    // 若 create_exec/start_exec 失败则直接返回，不会残留阻塞在 channel 上的线程。
+    let host_file = tokio::fs::File::open(host_path)
+        .await
+        .with_context(|| format!("打开待注入文件失败: {}", host_path.display()))?
+        .into_std()
+        .await;
+    let size = host_file
+        .metadata()
+        .with_context(|| format!("读取待注入文件元数据失败: {}", host_path.display()))?
+        .len();
+
+    let exec = docker
+        .create_exec(
+            container_id,
+            bollard::models::ExecConfig {
+                cmd: Some(vec![
+                    "sh".to_string(),
+                    "-c".to_string(),
+                    "tar xf - -C /workspace".to_string(),
+                ]),
+                attach_stdin: Some(true),
+                attach_stdout: Some(false),
+                attach_stderr: Some(false),
+                ..Default::default()
+            },
+        )
+        .await
+        .context("创建注入 exec 失败")?;
+
+    let started = docker.start_exec(&exec.id, None).await?;
+    let mut input = match started {
+        bollard::exec::StartExecResults::Attached { input, .. } => input,
+        bollard::exec::StartExecResults::Detached => {
+            anyhow::bail!("注入 exec 不应进入 Detached 模式（已请求 attach）")
+        }
+    };
+
+    // 容量 1：writer 每产出一块就必须等待异步侧消费，内存占用与文件大小无关。
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(1);
+    let rel_for_task = rel.clone();
+    let writer_task = tokio::task::spawn_blocking(move || -> Result<()> {
+        let mut writer = ChannelWriter { tx };
+        write_tar_entry(&mut writer, &rel_for_task, size, host_file)
+            .with_context(|| format!("流式生成 tar 归档失败: {}", rel_for_task))
+    });
+
+    let mut copy_result: Result<()> = Ok(());
+    while let Some(bytes) = rx.recv().await {
+        if let Err(e) = input.write_all(&bytes).await.context("写入容器 stdin 失败") {
+            copy_result = Err(e);
+            break;
+        }
+    }
+    if copy_result.is_ok() {
+        copy_result = input.shutdown().await.context("关闭注入 stdin 失败");
+    }
+
+    // 显式丢弃接收端：若上面提前出错退出，仍阻塞在 `blocking_send` 的写入线程
+    // 会立刻收到 BrokenPipe 而结束，`writer_task.await` 因此不会死锁。
+    drop(rx);
+
+    // 无论写入成败都等待后台任务收尾，避免线程泄漏；异步侧错误优先上报
+    // （后台任务常因通道关闭而报 BrokenPipe，那只是前者的后果）。
+    let writer_result = writer_task.await.context("tar 写入任务 panic")?;
+    copy_result?;
+    writer_result?;
+
+    for _ in 0..INJECT_POLL_ATTEMPTS {
+        let inspect = docker.inspect_exec(&exec.id).await?;
+        if let Some(code) = inspect.exit_code {
+            if code != 0 {
+                anyhow::bail!("注入文件 {} 失败（exit_code={}）", rel, code);
+            }
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(INJECT_POLL_INTERVAL_MS)).await;
+    }
+    anyhow::bail!("注入文件超时")
+}
+
 /// 注入支持包（zip）到 Evaluator 容器的 /workspace 目录。
 ///
 /// 先同步提取 zip 中所有文件到内存，再逐个异步注入到容器。
@@ -380,12 +548,7 @@ pub async fn evaluate_dual_with_cpu_limit_and_user_llm(
     // 双容器生产路径必须携带 solution 运行时；prediction 提交等无 solution 的模式
     // 走独立编排（`crate::prediction`），不应进入本函数。
     // 绑定取自 clamp 后的副本，避免与收敛前的配置混用。
-    let solution = runtime_config.solution.as_ref().ok_or_else(|| {
-        anyhow::anyhow!(
-            "submission {}: 双容器路径缺少 solution 配置",
-            task_submission_id
-        )
-    })?;
+    let solution = require_solution(task_submission_id, &runtime_config)?;
     let started = Instant::now();
     // F-08：启动期 30s 绝对时限从注入/容器准备阶段开始计时（注入耗时计入启动期）。
     let startup_deadline = Instant::now() + Duration::from_secs(30);
@@ -1935,6 +2098,99 @@ mod tests {
         assert_eq!(clamped.solution.as_ref().unwrap().call_timeout_ms, 1000);
         assert_eq!(clamped.evaluator.memory_limit_mb, 4096);
         assert_eq!(clamped.solution.as_ref().unwrap().memory_limit_mb, 4096);
+    }
+
+    /// prediction 提交没有 Solution 运行时；clamp 与 validate 都必须成功，
+    /// 不得因为 `solution == None` 报错（无 Docker，纯逻辑）。
+    #[test]
+    fn test_clamp_and_validate_allow_absent_solution() {
+        use crate::types::EvaluatorRuntime;
+
+        let rc = RuntimeConfig {
+            evaluator: EvaluatorRuntime {
+                image: "noj-evaluator".to_string(),
+                command: "python3 /workspace/evaluate.py".to_string(),
+                time_limit_ms: 999_999,
+                memory_limit_mb: 9999,
+                network: None,
+                workspace_size_mb: Some(4096),
+            },
+            solution: None,
+        };
+
+        let clamped = clamp_runtime_config(&rc, 5000, 1000);
+        assert!(clamped.solution.is_none(), "无 solution 时不应被凭空创建");
+        assert_eq!(clamped.evaluator.time_limit_ms, 5000);
+        assert_eq!(clamped.evaluator.memory_limit_mb, 4096);
+
+        assert!(
+            validate_runtime_config("sid-pred", &rc, false, "noj-", &["python3".to_string()])
+                .is_ok(),
+            "无 solution 的 prediction 配置应通过白名单复验"
+        );
+    }
+
+    /// 双容器生产路径必须携带 solution；缺失时给出明确的守卫错误
+    /// （prediction 提交不应进入双容器路径）。无 Docker。
+    #[test]
+    fn test_require_solution_rejects_absent_solution() {
+        use crate::types::EvaluatorRuntime;
+
+        let rc = RuntimeConfig {
+            evaluator: EvaluatorRuntime {
+                image: "noj-evaluator".to_string(),
+                command: "python3 /workspace/evaluate.py".to_string(),
+                time_limit_ms: 1000,
+                memory_limit_mb: 256,
+                network: None,
+                workspace_size_mb: None,
+            },
+            solution: None,
+        };
+        let err = require_solution("sid-pred-guard", &rc).unwrap_err();
+        assert!(err.to_string().contains("缺少 solution"), "err={}", err);
+    }
+
+    /// 注入路径净化：只接受不含绝对路径 / `..` / `.` / 空段的相对路径。
+    #[test]
+    fn test_sanitize_rel_path_rejects_traversal() {
+        assert!(sanitize_rel_path("prediction/pred.csv").is_ok());
+        assert_eq!(
+            sanitize_rel_path("prediction/pred.csv").unwrap(),
+            "prediction/pred.csv"
+        );
+        assert!(sanitize_rel_path("../etc/passwd").is_err());
+        assert!(sanitize_rel_path("pred/../../x").is_err());
+        assert!(sanitize_rel_path("/abs").is_err());
+        // 边界：空串、NUL、空段 / `.` / `..` 段
+        assert!(sanitize_rel_path("").is_err());
+        assert!(sanitize_rel_path("a\0b").is_err());
+        assert!(sanitize_rel_path("a//b").is_err());
+        assert!(sanitize_rel_path("a/./b").is_err());
+        assert!(sanitize_rel_path(".").is_err());
+        assert!(sanitize_rel_path("..").is_err());
+        assert!(sanitize_rel_path("a/").is_err());
+    }
+
+    /// 流式 tar 组帧：单个条目、支持嵌套相对路径，输出是合法 tar 归档。
+    #[test]
+    fn test_write_tar_entry_frames_nested_path() {
+        use std::io::Read;
+
+        let mut buf: Vec<u8> = Vec::new();
+        write_tar_entry(&mut buf, "prediction/pred.csv", 5, &b"hello"[..]).unwrap();
+
+        let mut archive = tar::Archive::new(&buf[..]);
+        let mut entries = archive.entries().unwrap();
+        let mut entry = entries.next().expect("应有一个条目").unwrap();
+        assert_eq!(
+            entry.path().unwrap().to_string_lossy(),
+            "prediction/pred.csv"
+        );
+        let mut content = String::new();
+        entry.read_to_string(&mut content).unwrap();
+        assert_eq!(content, "hello");
+        assert!(entries.next().is_none(), "不应再有其他条目");
     }
 
     #[test]
