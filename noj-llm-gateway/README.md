@@ -27,7 +27,6 @@ LLM 调用网关，作为 evaluator 与外部 OpenAI 兼容 LLM API 之间的可
 | `NOJ_LLM_PORT` / `PORT`                    | 否   | 监听端口，默认 `8001`                                             |
 | `NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE`       | 否   | 每个用户每 UTC 分钟调用次数，默认 `60`，正整数                    |
 | `NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE`         | 否   | 每个 IP 每 UTC 分钟调用次数，默认 `60`，正整数                    |
-| `NOJ_LLM_BYOK_ALLOWED_HOSTS`               | 否   | BYOK 自带 Key 的出网主机白名单（逗号分隔），默认 `api.openai.com` |
 | `NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>` | 否   | LLM 默认配额兜底值，见下节                                        |
 
 ### LLM 默认配额 fallback（`NOJ_LLM_DEFAULT_*`）
