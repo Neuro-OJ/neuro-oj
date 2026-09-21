@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **516** 处（early-return=268 ignore=163 rust-ignore=45 rust-env-guard=27 env-guard=13）。
+> 当前命中 **513** 处（early-return=268 ignore=160 rust-ignore=45 rust-env-guard=27 env-guard=13）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -19,7 +19,6 @@
 | noj-core/src/domains/submission/tests/mq/consumer.test.ts | 145 | ignore |
 | noj-core/src/domains/submission/tests/mq/consumer.test.ts | 172 | ignore |
 | noj-core/src/domains/submission/tests/mq/consumer.test.ts | 197 | ignore |
-| noj-core/src/domains/submission/tests/routes/self-tests.test.ts | 94 | ignore |
 | noj-core/src/domains/submission/tests/routes/sse.test.ts | 26 | ignore |
 | noj-core/src/domains/submission/tests/routes/sse.test.ts | 38 | ignore |
 | noj-core/src/domains/submission/tests/routes/sse.test.ts | 60 | ignore |
@@ -31,18 +30,12 @@
 | noj-core/src/domains/submission/tests/routes/submissions.test.ts | 115 | ignore |
 | noj-core/src/domains/submission/tests/routes/submissions.test.ts | 151 | ignore |
 | noj-core/src/domains/submission/tests/routes/submissions.test.ts | 184 | ignore |
+| noj-core/src/domains/submission/tests/routes/self-tests.test.ts | 111 | ignore |
 | noj-core/src/domains/submission/tests/services/judge-priority.test.ts | 11 | ignore |
 | noj-core/src/domains/submission/tests/services/judge-priority.test.ts | 21 | ignore |
 | noj-core/src/domains/submission/tests/services/judge-priority.test.ts | 31 | ignore |
 | noj-core/src/domains/submission/tests/services/judge-priority.test.ts | 41 | ignore |
 | noj-core/src/domains/community/tests/routes/community.test.ts | 23 | env-guard |
-| noj-core/src/domains/identity/tests/lib/jwt.test.ts | 13 | ignore |
-| noj-core/src/domains/identity/tests/lib/jwt.test.ts | 34 | ignore |
-| noj-core/src/domains/identity/tests/lib/jwt.test.ts | 44 | ignore |
-| noj-core/src/domains/identity/tests/lib/jwt.test.ts | 55 | ignore |
-| noj-core/src/domains/identity/tests/lib/jwt.test.ts | 70 | ignore |
-| noj-core/src/domains/identity/tests/lib/jwt.test.ts | 81 | ignore |
-| noj-core/src/domains/identity/tests/lib/jwt.test.ts | 98 | ignore |
 | noj-core/src/domains/identity/tests/lib/revokedTokens.test.ts | 40 | ignore |
 | noj-core/src/domains/identity/tests/lib/revokedTokens.test.ts | 77 | ignore |
 | noj-core/src/domains/identity/tests/lib/revokedTokens.test.ts | 89 | ignore |
@@ -136,17 +129,17 @@
 | noj-core/src/domains/messaging/tests/services/messages.test.ts | 866 | ignore |
 | noj-core/src/domains/messaging/tests/services/messages.test.ts | 897 | ignore |
 | noj-core/src/domains/messaging/tests/services/messages.test.ts | 944 | ignore |
-| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 69 | ignore |
-| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 89 | ignore |
-| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 113 | ignore |
-| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 140 | ignore |
-| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 161 | ignore |
-| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 170 | ignore |
-| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 199 | ignore |
-| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 226 | ignore |
-| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 252 | ignore |
-| noj-core/src/domains/system/tests/routes/admin-settings-email.test.ts | 31 | env-guard |
+| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 90 | ignore |
+| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 111 | ignore |
+| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 136 | ignore |
+| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 164 | ignore |
+| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 186 | ignore |
+| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 195 | ignore |
+| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 225 | ignore |
+| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 253 | ignore |
+| noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 280 | ignore |
 | noj-core/src/domains/system/tests/routes/admin-settings.test.ts | 28 | env-guard |
+| noj-core/src/domains/system/tests/routes/admin-settings-email.test.ts | 42 | env-guard |
 | noj-core/src/domains/query/tests/routes/rankings.test.ts | 61 | ignore |
 | noj-core/src/domains/query/tests/routes/rankings.test.ts | 78 | ignore |
 | noj-core/src/domains/query/tests/routes/rankings.test.ts | 90 | ignore |
@@ -525,3 +518,7 @@
 | noj-judge/tests/e2e_abnormal.rs | 230 | rust-env-guard |
 | noj-judge/tests/e2e_abnormal.rs | 288 | rust-ignore |
 | noj-judge/tests/e2e_abnormal.rs | 292 | rust-env-guard |
+| noj-cli/src/prod/e2e/roundtrip_test.ts | 104 | ignore |
+| noj-cli/src/prod/e2e/roundtrip_test.ts | 224 | ignore |
+| noj-cli/src/prod/e2e/roundtrip_test.ts | 319 | ignore |
+| noj-cli/src/prod/e2e/roundtrip_test.ts | 354 | ignore |

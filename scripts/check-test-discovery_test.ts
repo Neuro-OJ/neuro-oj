@@ -6,7 +6,7 @@
  * 2. 端到端扫描能真正报出「含 Deno.test 但不被发现」的文件（而不是空转）。
  */
 
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assert, assertEquals } from "jsr:@std/assert@^1";
 import {
   checkTestDiscovery,
   findUndiscoverableTests,
@@ -85,3 +85,26 @@ Deno.test("check-test-discovery: 能报出夹具中的不可发现测试（非�
     await Deno.remove(root, { recursive: true });
   }
 });
+
+Deno.test(
+  "checkTestDiscovery: 扫描 noj-cli 中不可发现的测试（2026-09-21 补盲区）",
+  async () => {
+    // noj-cli 此前不在扫描根内，其中的不可发现测试永远不会被本门禁抓到。
+    // 用夹具在 noj-cli 路径下放一个不可发现文件，验证 checkTestDiscovery 会扫描它。
+    const root = await Deno.makeTempDir({ prefix: "noj-discovery-cli-" });
+    try {
+      await Deno.mkdir(`${root}/noj-cli/src/util`, { recursive: true });
+      await Deno.writeTextFile(
+        `${root}/noj-cli/src/util/undiscovered.ts`,
+        `Deno.test("cli", () => {});\n`,
+      );
+      const found = await checkTestDiscovery(root);
+      assert(
+        found.some((f) => f.file === "noj-cli/src/util/undiscovered.ts"),
+        `noj-cli 下的不可发现测试必须被报出，实际：${JSON.stringify(found)}`,
+      );
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  },
+);

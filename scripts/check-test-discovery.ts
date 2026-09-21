@@ -123,7 +123,17 @@ export async function checkTestDiscovery(
   root = ".",
 ): Promise<UndiscoverableTest[]> {
   const results: UndiscoverableTest[] = [];
-  for (const dir of ["noj-core", "noj-ui", "noj-tests", "noj-llm-gateway"]) {
+  // 2026-09-21：补上 `noj-cli`。它是正式模块（44 个测试文件），此前不在扫描根内
+  // → 其中的「写了 Deno.test 但文件名不被运行器发现」永远不会被本门禁抓到。
+  for (
+    const dir of [
+      "noj-core",
+      "noj-ui",
+      "noj-tests",
+      "noj-llm-gateway",
+      "noj-cli",
+    ]
+  ) {
     results.push(...await findUndiscoverableTests(root, dir));
   }
   return results;

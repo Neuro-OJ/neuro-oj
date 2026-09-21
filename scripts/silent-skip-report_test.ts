@@ -6,6 +6,7 @@ import {
   buildBaseline,
   compareWithBaseline,
   renderReport,
+  SCAN_ROOTS,
   scanFile,
   type SkipHit,
 } from "./silent-skip-report.ts";
@@ -104,4 +105,52 @@ Deno.test("silent-skip: 基线非零而当前为 0 判定扫描器失效", () =>
 
 Deno.test("silent-skip: 基线为 0 且当前为 0 属正常", () => {
   assertEquals(compareWithBaseline([], buildBaseline([])), []);
+});
+
+// ── 扫描根覆盖（2026-09-21：noj-cli 曾是盲区）────────────────────────────
+Deno.test("silent-skip: 扫描根包含 noj-cli（正式模块不得被门禁遗漏）", () => {
+  assert(
+    (SCAN_ROOTS as readonly string[]).includes("noj-cli"),
+    `noj-cli 必须被扫描，否则其新增 ignore 不会被发现：${
+      JSON.stringify(SCAN_ROOTS)
+    }`,
+  );
+});
+
+Deno.test("silent-skip: 扫描根覆盖全部一等模块（防再次遗漏）", () => {
+  for (
+    const mod of [
+      "noj-core",
+      "noj-ui",
+      "noj-llm-gateway",
+      "noj-tests",
+      "noj-judge",
+      "noj-cli",
+    ]
+  ) {
+    assert(
+      (SCAN_ROOTS as readonly string[]).includes(mod),
+      `扫描根缺少模块 ${mod}`,
+    );
+  }
+});
+
+Deno.test("silent-skip: noj-cli 的 ignore 能被扫描到（端到端）", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "silent-skip-cli-" });
+  try {
+    await Deno.mkdir(`${dir}/noj-cli/src`, { recursive: true });
+    await Deno.writeTextFile(
+      `${dir}/noj-cli/src/demo_test.ts`,
+      `Deno.test({ name: "x", ignore: true, fn: () => {} });\n`,
+    );
+    // 直接复用 scanFile 验证规则；SCAN_ROOTS 的接线由上面的断言保证。
+    const hits = scanFile(
+      `${dir}/noj-cli/src/demo_test.ts`,
+      await Deno.readTextFile(`${dir}/noj-cli/src/demo_test.ts`),
+    );
+    assertEquals(hits.length, 1);
+    assertEquals(hits[0]!.reason, "ignore");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });

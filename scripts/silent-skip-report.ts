@@ -180,6 +180,21 @@ const EXCLUDED_DIRS = new Set([
   ".jj",
 ]);
 
+/**
+ * 静默跳过扫描的模块根。
+ *
+ * 单一事实源：`collectHits` 与入口处的「扫描到 0 个文件即失败」自检共用，
+ * 避免两处清单漂移（此前 `noj-cli` 正是只漏在 collectHits 一处）。
+ */
+export const SCAN_ROOTS = [
+  "noj-core",
+  "noj-ui",
+  "noj-llm-gateway",
+  "noj-tests",
+  "noj-judge",
+  "noj-cli",
+] as const;
+
 /** 是否是需要扫描的测试文件（含被测试 import 的 helper / setup 模块）。 */
 function isTestFile(name: string): boolean {
   return /(_test|\.test)\.ts$/.test(name) ||
@@ -205,14 +220,13 @@ async function collectFiles(root: string): Promise<string[]> {
 
 async function collectHits(): Promise<SkipHit[]> {
   const hits: SkipHit[] = [];
-  const roots = [
-    "noj-core",
-    "noj-ui",
-    "noj-llm-gateway",
-    "noj-tests",
-    "noj-judge",
-  ];
-  for (const root of roots) {
+  // 扫描根必须覆盖**所有**含测试文件的一等模块。2026-09-21 修复前遗漏
+  // `noj-cli`：它是纯 TS 重写后的正式模块（44 个测试文件、含 `ignore: !isE2E`
+  // 的 E2E 用例），但本脚本与 `check-test-discovery.ts` 的扫描根都只列了
+  // core/ui/gateway/tests/judge 五个。后果是 noj-cli 新增 `ignore` / 环境守卫
+  // **不会被门禁发现**（实测：往 noj-cli 测试注入 `ignore: true` 后
+  // `--check` 仍 exit 0）——正是本门禁要防的「静默跳过增长无人察觉」。
+  for (const root of SCAN_ROOTS) {
     for (const file of await collectFiles(root)) {
       const source = await Deno.readTextFile(file);
       hits.push(...scanFile(file, source));
@@ -228,9 +242,7 @@ if (import.meta.main) {
 
   // 自检：必须真的扫到测试文件，否则"0 处跳过"是假绿灯
   const scannedFiles = (await Promise.all(
-    ["noj-core", "noj-ui", "noj-llm-gateway", "noj-tests", "noj-judge"].map(
-      (r) => collectFiles(r),
-    ),
+    SCAN_ROOTS.map((r) => collectFiles(r)),
   )).reduce((acc, files) => acc + files.length, 0);
   if (scannedFiles === 0) {
     console.error(
