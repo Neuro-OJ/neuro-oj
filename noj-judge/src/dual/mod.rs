@@ -264,6 +264,14 @@ impl std::io::Write for ChannelWriter {
 /// 后台 `spawn_blocking` 任务以有界 channel 为背压源，边读宿主文件边产出 tar
 /// 帧；异步侧逐块写入 `docker exec ... tar xf -` 的 stdin。适用于多 GB 的预测
 /// 结果文件。
+///
+/// # 超时契约：本函数**不内置任何截止时间（deadline）**
+///
+/// 复制阶段（`input.write_all` / `rx.recv`）本身没有超时：若容器侧 `tar xf -`
+/// 停止读取又不退出（挂起），本 future 会一直等待。因此**调用方必须自行界定
+/// 时间上限**（例如用 `tokio::time::timeout` 包裹本 future）。prediction 编排
+/// 路径复用启动期的 30s 截止时间；本函数只保证在通道关闭时以 BrokenPipe 结束
+/// 后台写入线程，而**不负责**时间上限。
 #[allow(dead_code)] // prediction 编排（后续任务）是本函数的唯一调用方，先行落地原语
 pub(crate) async fn inject_file_stream_to_container(
     docker: &bollard::Docker,
@@ -2191,6 +2199,73 @@ mod tests {
         entry.read_to_string(&mut content).unwrap();
         assert_eq!(content, "hello");
         assert!(entries.next().is_none(), "不应再有其他条目");
+    }
+
+    /// 有界背压契约（无 Docker）：直接驱动 [`ChannelWriter`]，证明容量 1 的 channel
+    /// 确实把「整文件读入内存」限制为「至多 1 块在途」。
+    ///
+    /// 若把容量改大（回归），本测试的 `rx.len() == 1` 断言会失败；
+    /// 若 channel 关闭后写入线程不结束（挂起），`join` 会失败。
+    #[test]
+    fn test_channel_writer_applies_bounded_backpressure_and_broken_pipe() {
+        use std::io::Write;
+
+        // 容量 1：与 `inject_file_stream_to_container` 内部保持一致。
+        let (tx, rx) = tokio::sync::mpsc::channel::<Vec<u8>>(1);
+        const CHUNKS: usize = 64;
+        const CHUNK: &[u8] = b"12345678";
+
+        std::thread::scope(|scope| {
+            let producer = scope.spawn(move || {
+                let mut writer = ChannelWriter { tx };
+                for i in 0..CHUNKS {
+                    match writer.write(CHUNK) {
+                        Ok(n) => assert_eq!(n, CHUNK.len()),
+                        // 接收端被 drop 后必须立刻以 BrokenPipe 结束，而不是挂起。
+                        Err(e) => {
+                            assert_eq!(
+                                e.kind(),
+                                std::io::ErrorKind::BrokenPipe,
+                                "第 {} 块写入错误: {:?}",
+                                i,
+                                e
+                            );
+                            return i;
+                        }
+                    }
+                }
+                // 无消费者时不可能写完全部块：容量 1 只能容纳 1 块，第 2 次
+                // blocking_send 必然阻塞。
+                unreachable!("无消费者时 ChannelWriter 不应完成全部 {} 块写入", CHUNKS);
+            });
+
+            // 等生产者填满容量后阻塞。
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while rx.is_empty() && std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            assert_eq!(
+                rx.len(),
+                1,
+                "无消费者时 channel 中最多只能有 1 块（容量 1），实测 {}",
+                rx.len()
+            );
+
+            // 保持阻塞一小段时间：确认生产者卡住而非继续产出（内存与文件大小无关）。
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            assert!(
+                !producer.is_finished(),
+                "channel 满后写入线程应保持阻塞，不得继续产出"
+            );
+            assert_eq!(rx.len(), 1, "阻塞期间不得再推入数据");
+
+            // 丢弃接收端：阻塞中的写入线程必须立刻收到 BrokenPipe 并结束。
+            drop(rx);
+            let stalled_at = producer
+                .join()
+                .expect("写入线程不应 panic，应在 BrokenPipe 后正常返回");
+            assert_eq!(stalled_at, 1, "第 1 块入队，第 2 块因通道关闭报错");
+        });
     }
 
     #[test]
