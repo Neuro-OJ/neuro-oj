@@ -45,6 +45,7 @@ import {
   updateBoardRoleGrant,
 } from "../../community/services/community/community.ts";
 import { resolveUserId } from "../../identity/index.ts";
+import { parseQueryLimit } from "../../community/services/community/query-limit.ts";
 import {
   getReviewQueueDetail,
   listReviewQueue,
@@ -275,7 +276,9 @@ router.get(
   "/comments/pending",
   async (c) =>
     c.json({
-      data: await listPendingComments(Number(c.req.query("limit") ?? 50)),
+      data: await listPendingComments(
+        parseQueryLimit(c.req.query("limit"), { default: 50 }),
+      ),
     }),
 );
 /**

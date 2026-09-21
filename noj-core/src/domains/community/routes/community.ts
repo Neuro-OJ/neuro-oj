@@ -24,6 +24,7 @@ import type {
   CommunityPostInput,
   CommunityPostType,
 } from "./../types/community.ts";
+import { parseQueryLimit } from "../services/community/query-limit.ts";
 import {
   assertCommunityEnabled,
   assertCommunityWritable,
@@ -177,7 +178,7 @@ router.get("/posts", optionalAuthMiddleware, async (c) => {
       authorId: c.req.query("author_id"),
       query,
       cursor: c.req.query("cursor"),
-      limit: Number(c.req.query("limit") ?? 20),
+      limit: parseQueryLimit(c.req.query("limit"), { default: 20 }),
       viewerId: c.get("userId"),
       moderator,
     }),
@@ -194,7 +195,7 @@ router.get("/bookmarks", authMiddleware, async (c) => {
     await listBookmarks(
       userId(c),
       c.req.query("cursor"),
-      Number(c.req.query("limit") ?? 20),
+      parseQueryLimit(c.req.query("limit"), { default: 20 }),
     ),
   );
 });
@@ -542,7 +543,7 @@ router.get("/feed", optionalAuthMiddleware, async (c) => {
       view,
       c.get("userId"),
       c.req.query("cursor"),
-      Number(c.req.query("limit") ?? 20),
+      parseQueryLimit(c.req.query("limit"), { default: 20 }),
     ),
   );
 });
@@ -558,7 +559,7 @@ router.get(
     c.json({
       data: await listNotifications(
         userId(c),
-        Number(c.req.query("limit") ?? 30),
+        parseQueryLimit(c.req.query("limit"), { default: 30 }),
       ),
     }),
 );

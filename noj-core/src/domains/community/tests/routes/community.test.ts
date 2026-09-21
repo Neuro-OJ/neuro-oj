@@ -1087,3 +1087,68 @@ Deno.test({
     assertEquals(forbidden.status === 403 || forbidden.status === 404, true);
   },
 });
+
+Deno.test({
+  name: "community route: 非数字 limit 不得绕过上限（NaN 使夹取失效）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const app = createApp();
+    const board = (await getDb().select().from(communityBoards))[0];
+    const authorToken = await signToken({ sub: authorId, role: "user" });
+
+    // 造 25 条（> 默认 20）讨论帖，用于判定 limit 是否被真正夹取。
+    for (let i = 0; i < 25; i++) {
+      const created = await jsonRequest(app, "/api/v1/community/posts", {
+        method: "POST",
+        token: authorToken,
+        body: {
+          type: "discussion",
+          board_id: board?.id,
+          title: `NaN limit 用例 ${i}`,
+          content: `正文 ${i}`,
+        },
+      });
+      assertEquals(created.status, 201);
+    }
+
+    // 修复前：Number("abc") = NaN → Math.min/Math.max 夹取整体返回 NaN →
+    // drizzle 静默**省略** LIMIT 子句 → 返回无上限结果集（25 条，超过文档上限）。
+    const nanLimit = await jsonRequest(
+      app,
+      "/api/v1/community/posts?type=discussion&limit=abc",
+      { token: authorToken },
+    );
+    assertEquals(nanLimit.status, 200);
+    const nanItems = (await nanLimit.json()).data as unknown[];
+    // 修复前：NaN 让 clamp 与 `collected.length <= limit` 判定同时失效 →
+    // 静默返回**空列表**（正文被"藏起来"），修复后回退到默认 20 条。
+    assertEquals(
+      nanItems.length,
+      20,
+      `limit=abc 应回退到默认 20 条，实际返回 ${nanItems.length} 条`,
+    );
+
+    // 对照：合法 limit 生效
+    const bounded = await jsonRequest(
+      app,
+      "/api/v1/community/posts?type=discussion&limit=5",
+      { token: authorToken },
+    );
+    assertEquals(((await bounded.json()).data as unknown[]).length, 5);
+
+    // 其余三个此前同样直接 Number() 的列表端点：非法 limit 也应回退而非
+    // 让 NaN 穿透（feed 走 `Math.min(Math.max(nan,1),100)`，同样整体变 NaN）。
+    for (
+      const path of [
+        "/api/v1/community/feed?limit=abc",
+        "/api/v1/community/bookmarks?limit=abc",
+        "/api/v1/community/notifications?limit=abc",
+      ]
+    ) {
+      const response = await jsonRequest(app, path, { token: authorToken });
+      assertEquals(response.status, 200, `${path} 期望 200`);
+    }
+  },
+});
