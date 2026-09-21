@@ -4,7 +4,13 @@ import type { ObjectiveQuestion } from '~/composables/useObjective'
 import { QUESTION_TYPE_LABELS } from '~/composables/useObjective'
 import { publicUrl } from '~/utils/publicIdentifiers'
 import { extractApiError } from '~/utils/apiError'
-import { toContestProblemView } from '~/utils/problemView'
+import {
+  ARTIFACT_FILE_ACCEPT,
+  isPredictionView,
+  PREDICTION_FILE_ACCEPT,
+  predictionHint,
+  toContestProblemView,
+} from '~/utils/problemView'
 import { useBreadcrumbParams } from '~/composables/useBreadcrumb'
 
 /**
@@ -47,8 +53,12 @@ useBreadcrumbParams({
 
 const isObjective = computed(() => problemView.value?.is_objective === true)
 const isArtifact = computed(() => problemView.value?.submission_mode === 'artifact')
+/** prediction 提交模式：单文件上传（本地 GPU 出分）。 */
+const isPrediction = computed(() => problemView.value != null && isPredictionView(problemView.value))
+/** artifact 与 prediction 均不进入代码编辑器。 */
+const isFileUploadMode = computed(() => isArtifact.value || isPrediction.value)
 
-// ── artifact 提交 ──
+// ── 文件上传提交（artifact zip / prediction 单文件，共用一套流程）──
 const artifactFile = ref<File | null>(null)
 const artifactSubmitting = ref(false)
 const artifactError = ref('')
@@ -60,10 +70,13 @@ function formatMb(mb: number | null | undefined): string {
   return `${mb} MB`
 }
 
+/** 上传 accept 列表：prediction 单文件白名单，其余为 artifact zip。 */
+const uploadAccept = computed(() => isPrediction.value ? PREDICTION_FILE_ACCEPT : ARTIFACT_FILE_ACCEPT)
+
 async function handleArtifactSubmit() {
   if (!problem.value) return
   if (!artifactFile.value) {
-    artifactError.value = '请选择 zip 文件'
+    artifactError.value = isPrediction.value ? '请选择预测结果文件' : '请选择 zip 文件'
     return
   }
   artifactError.value = ''
@@ -201,14 +214,14 @@ async function onSubmit() {
           </template>
           <template #actions>
             <UButton
-              v-if="!isObjective && !isArtifact && canUseEditor"
+              v-if="!isObjective && !isFileUploadMode && canUseEditor"
               color="primary"
               class="gap-1.5 px-4 py-2 text-xs"
               :to="`/editor/${problem?.display_id}?contest=${contestId}&label=${label}`"
             >
               <UIcon name="i-lucide-pencil-ruler" class="size-3.5" />去做题
             </UButton>
-            <span v-else-if="!isObjective && !isArtifact && accessHint" class="text-xs text-text-muted">{{ accessHint }}</span>
+            <span v-else-if="!isObjective && !isFileUploadMode && accessHint" class="text-xs text-text-muted">{{ accessHint }}</span>
           </template>
         </ProblemHeader>
 
@@ -322,18 +335,24 @@ async function onSubmit() {
           </template>
         </ProblemStatement>
 
-        <!-- 编程题：题面（artifact 题在题面上方追加 zip 上传） -->
+        <!-- 编程题：题面（artifact / prediction 题在题面上方追加文件上传） -->
         <template v-else>
-          <section v-if="isArtifact" class="rounded-xl border border-border bg-white p-6">
-            <h2 class="text-base font-semibold text-text mb-1">提交产物（zip）</h2>
-            <p class="text-sm text-text-secondary">
+          <section v-if="isFileUploadMode" class="rounded-xl border border-border bg-white p-6">
+            <h2 class="text-base font-semibold text-text mb-1">
+              {{ isPrediction ? '提交预测结果（单文件）' : '提交产物（zip）' }}
+            </h2>
+            <p v-if="isPrediction" class="text-sm text-text-secondary">
+              {{ predictionHint() }}
+              预测文件由题面提供的外链数据集或本地自评产出；大小上限：{{ formatMb(problemView.artifact_max_size_mb) }}。
+            </p>
+            <p v-else class="text-sm text-text-secondary">
               请上传包含 <code class="font-mono text-primary">submission.py</code> 的 zip 压缩包。
               大小上限：{{ formatMb(problemView.artifact_max_size_mb) }}。
             </p>
             <div class="mt-4 flex flex-col gap-3">
               <input
                 type="file"
-                accept=".zip,application/zip,application/x-zip-compressed"
+                :accept="uploadAccept"
                 class="block w-full text-sm text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-signal file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-signal/80"
                 @change="(e: Event) => artifactFile = (e.target as HTMLInputElement).files?.[0] ?? null"
               />

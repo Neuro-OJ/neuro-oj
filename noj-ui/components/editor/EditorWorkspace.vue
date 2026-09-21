@@ -10,6 +10,7 @@ import { useResizableSplitter } from '~/composables/useResizableSplitter'
 import { useDialog } from '~/composables/useDialog'
 import { useToast } from '~/composables/useToast'
 import { restoreCodeTemplate } from '~/utils/codeEditorTemplate'
+import type { SubmissionMode } from '~/utils/problemView'
 
 /**
  * 独立做题工作区（从 pages/editor/[id].vue 抽出，供标准题库与竞赛共用）。
@@ -27,7 +28,7 @@ export interface WorkspaceProblem {
   description: string
   difficulty: string
   type: 'U' | 'P'
-  submission_mode?: 'code' | 'artifact'
+  submission_mode?: SubmissionMode
   tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
 }
 
