@@ -80,6 +80,13 @@ export function scanFile(file: string, source: string): SkipHit[] {
 
 export function renderReport(hits: SkipHit[]): string {
   const byReason = summarizeReasons(hits);
+  // 排序后渲染：`--check` 会把本文件与一次全新渲染**逐字节比对**，而
+  // `collectFiles` 使用不保证顺序的 `Deno.readDir`。若不排序，报告的文件块顺序
+  // 会随文件系统枚举顺序漂移，导致"跳过数未变"却在 CI / 干净检出上误报过期。
+  // 按文件路径（与 buildBaseline 一致用 localeCompare）再按行号升序，保证跨环境可复现。
+  const sorted = [...hits].sort((a, b) =>
+    a.file.localeCompare(b.file) || a.line - b.line
+  );
   const lines = [
     "# 静默跳过测试清单",
     "",
@@ -97,7 +104,7 @@ export function renderReport(hits: SkipHit[]): string {
     "| 文件 | 行号 | 原因 |",
     "|---|---|---|",
   ];
-  for (const h of hits) {
+  for (const h of sorted) {
     lines.push(`| ${h.file} | ${h.line} | ${h.reason} |`);
   }
   return lines.join("\n") + "\n";
