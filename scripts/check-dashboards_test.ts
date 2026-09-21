@@ -6,7 +6,7 @@
  * 2. 引用不存在的指标名（拼写错误）。
  */
 
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assert, assertEquals } from "jsr:@std/assert@^1";
 import {
   checkDashboards,
   checkExpression,
@@ -112,5 +112,49 @@ Deno.test("check-dashboards: 能真正发现指标定义（非空转）", async 
     defined.get("noj_submission_e2e_duration_seconds"),
     "histogram",
     "业务直方图类型应被识别（来自 registerBusinessMetric）",
+  );
+});
+
+// ── 2026-09-21 修复：裸前缀匹配让 `up*` 拼错指标逃逸 ──
+// 触发条件：dashboard 引用 `up` 开头的自造/拼错指标。
+Deno.test("isExternalMetric: 不做裸前缀匹配（up*/postgres* 拼错不得放行）", () => {
+  for (
+    const n of [
+      "upload_failed_requests_total",
+      "uptime_seconds",
+      "uptime_second", // 拼错
+      "postgresql_x", // 不带下划线的自造名
+    ]
+  ) {
+    assertEquals(
+      isExternalMetric(n),
+      false,
+      `${n} 不得被当作外部指标（否则拼错指标永远不会被门禁发现）`,
+    );
+  }
+  // 带下划线边界的仍视为外部
+  for (
+    const n of [
+      "node_cpu_seconds_total",
+      "process_resident_memory_bytes",
+      "pg_stat_activity_count",
+      "postgres_up",
+      "redis_connected_clients",
+      "up", // 精确匹配
+    ]
+  ) {
+    assertEquals(isExternalMetric(n), true, `${n} 应视为外部指标`);
+  }
+});
+
+Deno.test("checkExpression: 拼错的 up* 指标会被报为未定义", () => {
+  const problems = checkExpression(
+    "拼错面板",
+    "sum(upload_failed_requests_total)",
+    new Map(),
+  );
+  assert(
+    problems.some((p) => p.problem.includes("引用了未定义的指标")),
+    `拼错的 up* 指标必须报未定义，实际 ${JSON.stringify(problems)}`,
   );
 });
