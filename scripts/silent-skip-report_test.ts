@@ -154,3 +154,56 @@ Deno.test("silent-skip: noj-cli 的 ignore 能被扫描到（端到端）", asyn
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+// ── 2026-09-21 修复：`ignore: <标识符>` 整类写法失明 ──
+// 触发条件：守卫由变量承载（仓库中数量最多的一类写法）。
+Deno.test("silent-skip: 识别 ignore: <标识符>（变量守卫）", () => {
+  const source = [
+    `const skip = !(hasDb && hasJwt);`,
+    `Deno.test({ name: "a", ignore: skip, fn: () => {} });`,
+    `Deno.test({ name: "b", ignore: skipDb, fn: () => {} });`,
+    `Deno.test({ name: "c", ignore: skipEnv, fn: () => {} });`,
+    `Deno.test({ name: "d", ignore: skipDb || skipEnv, fn: () => {} });`,
+    `Deno.test({ name: "e", ignore: skip || !hasRedis, fn: () => {} });`,
+  ].join("\n");
+  const hits = scanFile("tests/demo_test.ts", source);
+  assertEquals(
+    hits.length,
+    5,
+    `5 条 ignore:<标识符> 都应命中，实际 ${hits.length}: ${
+      JSON.stringify(hits)
+    }`,
+  );
+  assertEquals(hits.every((h) => h.reason === "ignore"), true);
+});
+
+Deno.test("silent-skip: ignore: true / false / ! 的分类不被新规则改变", () => {
+  assertEquals(scanFile("a.ts", `ignore: true,`)[0]!.reason, "ignore");
+  assertEquals(scanFile("a.ts", `ignore: !isE2E,`)[0]!.reason, "ignore");
+  assertEquals(
+    scanFile("a.ts", `ignore: Deno.env.get("X"),`)[0]!.reason,
+    "env-guard",
+  );
+  // 显式 false 不应命中（否则基线会被噪声灌满）
+  assertEquals(scanFile("a.ts", `ignore: false,`).length, 0);
+});
+
+Deno.test("silent-skip: 真实仓库的变量守卫文件被计入", async () => {
+  // 防回归：这两个文件此前零命中，是全仓库最典型的整文件环境守卫。
+  const real = await Deno.readTextFile(
+    "noj-core/src/domains/messaging/tests/routes/messages.test.ts",
+  );
+  const hits = scanFile(
+    "noj-core/src/domains/messaging/tests/routes/messages.test.ts",
+    real,
+  );
+  assertEquals(
+    hits.length > 0,
+    true,
+    `messages.test.ts 的 ignore: skip 应被计入，实际 ${hits.length}`,
+  );
+  const audit = await Deno.readTextFile(
+    "noj-core/src/domains/system/tests/services/audit-log.test.ts",
+  );
+  assertEquals(scanFile("audit-log.test.ts", audit).length > 0, true);
+});

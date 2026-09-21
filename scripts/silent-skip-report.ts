@@ -39,6 +39,22 @@ const LINE_RULES: Array<{ re: RegExp; reason: SkipHit["reason"] }> = [
   { re: /\bignore\s*:\s*true\b/, reason: "ignore" },
   { re: /\bignore\s*:\s*!/, reason: "ignore" },
   { re: /\bignore\s*:\s*Deno\.env\.get/, reason: "env-guard" },
+  // `ignore: <标识符>` —— 由变量承载的守卫（`const skip = !hasEnv` 之类）。
+  //
+  // 2026-09-21 修复：此前只认 `true` / `!` / `Deno.env.get` 三种字面量，于是
+  // 仓库里**数量最多**的一类写法完全失明——实测 `ignore: skip` 有 382 处、
+  // `ignore: skipEnv` 32 处、`ignore: skipDb || skipEnv` 20 处。基线
+  // by_reason.ignore 只有 161，正是因为这些全部被漏计。
+  // 后果：往任意测试文件写入 `const skip = !hasEnv; Deno.test({..., ignore: skip})`
+  // 后 `--check` 仍 exit 0——正是本门禁要防的「静默跳过增长无人察觉」。
+  //
+  // 放在字面量规则之后，保证 `ignore: true` 等仍归到原有 reason，不改变既有
+  // 基线的分类口径（只新增此前漏计的命中）。
+  // 排除 falsy 字面量（`ignore: false` / `undefined` / `null` 表示不跳过）。
+  {
+    re: /\bignore\s*:\s*\$?(?!false\b|undefined\b|null\b)[A-Za-z_][\w$]*/,
+    reason: "ignore",
+  },
   { re: /\bif\s*\(!?Deno\.env\.get\(/, reason: "env-guard" },
   // 测试体内提前返回：if (!isE2E) return; / if (!isE2E || !judgeOk) return;
   { re: /\bif\s*\(\s*!\s*isE2E\b/, reason: "early-return" },
