@@ -67,7 +67,7 @@ fn image_allowed(image: &str, prefix: &str) -> bool {
 }
 
 /// NOJ-190：judge 侧对 MQ 消息中的镜像/命令/网络做白名单复验。
-fn validate_runtime_config(
+pub(crate) fn validate_runtime_config(
     submission_id: &str,
     runtime_config: &RuntimeConfig,
     allow_evaluator_network: bool,
@@ -120,7 +120,7 @@ fn validate_runtime_config(
 }
 
 /// 对任务中的资源限制字段执行硬上限收敛，防止 core 配置缺失或消息被篡改。
-fn clamp_runtime_config(
+pub(crate) fn clamp_runtime_config(
     rc: &RuntimeConfig,
     max_evaluator_time_ms: u64,
     max_solution_call_timeout_ms: u64,
@@ -189,7 +189,7 @@ fn append_capped(buf: &mut String, s: &str) {
 /// 注入支持包（zip）到 Evaluator 容器的 /workspace 目录。
 ///
 /// 先同步提取 zip 中所有文件到内存，再逐个异步注入到容器。
-async fn inject_support_package_to_evaluator(
+pub(crate) async fn inject_support_package_to_evaluator(
     docker: &bollard::Docker,
     container_id: &str,
     zip_path: &Path,
@@ -325,7 +325,7 @@ pub async fn evaluate_dual_with_cpu_limit(
 /// Docker `stats` 的 `memory_stats.max_usage` 仅 cgroups v1 可用；
 /// cgroups v2 下该字段缺失，回退到 `usage` 近似值。读取失败或容器已销毁时
 /// 返回 `None`（不阻断评测主流程）。
-async fn read_container_memory_peak_kb(
+pub(crate) async fn read_container_memory_peak_kb(
     docker: &bollard::Docker,
     container_id: &str,
 ) -> Option<u64> {
@@ -377,9 +377,12 @@ pub async fn evaluate_dual_with_cpu_limit_and_user_llm(
         image_prefix,
         command_whitelist,
     )?;
+    // 双容器生产路径必须携带 solution 运行时；prediction 提交等无 solution 的模式
+    // 走独立编排（`crate::prediction`），不应进入本函数。
+    // 绑定取自 clamp 后的副本，避免与收敛前的配置混用。
     let solution = runtime_config.solution.as_ref().ok_or_else(|| {
         anyhow::anyhow!(
-            "submission {}: 缺少 solution 运行时配置",
+            "submission {}: 双容器路径缺少 solution 配置",
             task_submission_id
         )
     })?;
@@ -1256,7 +1259,7 @@ async fn forward_frame(
     Ok(())
 }
 
-fn build_judge_result(
+pub(crate) fn build_judge_result(
     submission_id: &str,
     parsed: &serde_json::Value,
     stderr: &str,

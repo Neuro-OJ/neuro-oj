@@ -30,17 +30,51 @@ pub struct DualContainer {
     pub solution_id: Option<String>,
 }
 
+/// 默认 /workspace tmpfs 上限（MB）——双容器路径沿用历史值。
+pub const DEFAULT_WORKSPACE_MB: u64 = 512;
+
+/// 生成 /workspace tmpfs 规格（纯函数，便于单测）。
+fn workspace_tmpfs_spec(workspace_mb: u64) -> String {
+    format!("size={}M,mode=1777", workspace_mb)
+}
+
 impl DualContainer {
     /// 创建并启动 Evaluator 容器。
     ///
     /// `network_mode`：开启联网时通常为 "bridge"，生产可传 compose 网络名；
     /// 关闭联网时传 "none"。
+    ///
+    /// /workspace tmpfs 使用历史默认上限 [`DEFAULT_WORKSPACE_MB`]；需要更大
+    /// 工作区（如预测提交）时改用 [`Self::create_evaluator_with_workspace`]。
     pub async fn create_evaluator(
         docker: &Docker,
         image: &str,
         memory_mb: u64,
         network_mode: &str,
         cpu_limit_millicores: u64,
+    ) -> Result<Self> {
+        Self::create_evaluator_with_workspace(
+            docker,
+            image,
+            memory_mb,
+            network_mode,
+            cpu_limit_millicores,
+            DEFAULT_WORKSPACE_MB,
+        )
+        .await
+    }
+
+    /// 创建并启动 Evaluator 容器，显式指定 /workspace tmpfs 上限（MB）。
+    ///
+    /// `network_mode`：开启联网时通常为 "bridge"，生产可传 compose 网络名；
+    /// 关闭联网时传 "none"。
+    pub async fn create_evaluator_with_workspace(
+        docker: &Docker,
+        image: &str,
+        memory_mb: u64,
+        network_mode: &str,
+        cpu_limit_millicores: u64,
+        workspace_mb: u64,
     ) -> Result<Self> {
         let id = create_container_with_security(
             docker,
@@ -49,6 +83,7 @@ impl DualContainer {
             "evaluator",
             network_mode,
             cpu_limit_millicores,
+            workspace_mb,
         )
         .await?;
         info!("Evaluator 容器创建: {}", id);
@@ -73,6 +108,7 @@ impl DualContainer {
             "solution",
             "none",
             cpu_limit_millicores,
+            DEFAULT_WORKSPACE_MB,
         )
         .await?;
         info!("Solution 容器创建: {}", id);
@@ -181,6 +217,7 @@ async fn create_container_with_security(
     kind: &str,
     network_mode: &str,
     cpu_limit_millicores: u64,
+    workspace_mb: u64,
 ) -> Result<String> {
     let mut labels = std::collections::HashMap::new();
     labels.insert(format!("com.noj.judge.dual.{}", kind), "true".to_string());
@@ -195,10 +232,13 @@ async fn create_container_with_security(
     };
     let memory_bytes = (normalized_memory_mb as i64) * 1024 * 1024;
 
+    // `tmpfs` 以 `&str` 借用，规格字符串需绑定到局部变量以覆盖其生命周期。
+    let workspace_spec = workspace_tmpfs_spec(workspace_mb);
     let mut tmpfs = std::collections::HashMap::new();
     tmpfs.insert("/tmp", "size=256M,mode=1777");
     // NOJ-187：rootfs 只读，/workspace 用 tmpfs 承载运行时注入文件。
-    tmpfs.insert("/workspace", "size=512M,mode=1777");
+    // 默认 512MB（历史值），预测提交路径可请求更大上限。
+    tmpfs.insert("/workspace", workspace_spec.as_str());
 
     let host_config = build_host_config_with_cpu(
         memory_bytes,
@@ -236,4 +276,15 @@ async fn create_container_with_security(
     }
 
     Ok(result.id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_workspace_tmpfs_string() {
+        // 纯函数：把 MB 转成 tmpfs 规格字符串
+        assert_eq!(workspace_tmpfs_spec(2048), "size=2048M,mode=1777");
+    }
 }
