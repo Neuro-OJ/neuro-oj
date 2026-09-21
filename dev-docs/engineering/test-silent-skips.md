@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **513** 处（early-return=268 ignore=160 rust-ignore=45 rust-env-guard=27 env-guard=13）。
+> 当前命中 **514** 处（early-return=268 ignore=161 rust-ignore=45 rust-env-guard=27 env-guard=13）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -109,26 +109,27 @@
 | noj-core/src/domains/messaging/tests/services/messages.test.ts | 259 | ignore |
 | noj-core/src/domains/messaging/tests/services/messages.test.ts | 283 | ignore |
 | noj-core/src/domains/messaging/tests/services/messages.test.ts | 312 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 336 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 368 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 343 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 367 | ignore |
 | noj-core/src/domains/messaging/tests/services/messages.test.ts | 399 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 419 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 447 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 470 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 499 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 531 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 569 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 608 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 641 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 683 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 707 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 736 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 771 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 806 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 836 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 866 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 430 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 450 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 478 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 501 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 530 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 562 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 600 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 639 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 672 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 714 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 738 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 767 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 802 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 837 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 867 | ignore |
 | noj-core/src/domains/messaging/tests/services/messages.test.ts | 897 | ignore |
-| noj-core/src/domains/messaging/tests/services/messages.test.ts | 944 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 928 | ignore |
+| noj-core/src/domains/messaging/tests/services/messages.test.ts | 975 | ignore |
 | noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 90 | ignore |
 | noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 111 | ignore |
 | noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 136 | ignore |

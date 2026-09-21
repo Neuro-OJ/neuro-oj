@@ -1013,6 +1013,13 @@ export async function getUnreadCountByConversation(
   userId: string,
   conversationId: string,
 ): Promise<number> {
+  // 参与者校验：非参与者对他人会话查询时，readState 必然为空，
+  // 未读计数会退化为「该会话中所有非本人发送的消息数」，即把他人私信会话的
+  // 消息量泄露给任意登录用户。本文件其余读取入口（listMessages / sendMessage /
+  // markConversationRead / getMessageImageBytes 等）都走 assertParticipant，
+  // 此处此前遗漏。校验失败抛 NotFoundError（不暴露会话是否存在）。
+  await assertParticipant(userId, conversationId);
+
   // 查询当前用户的已读位置
   const [readState] = await getDb()
     .select({ last_read_message_id: conversationReads.last_read_message_id })

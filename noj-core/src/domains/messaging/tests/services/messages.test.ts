@@ -308,6 +308,37 @@ Deno.test({
 });
 
 Deno.test({
+  name: "messages: 非参与者查询他人会话未读数被拒绝（IDOR）",
+  ignore: !hasEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const userA = await createTestUser();
+    const userB = await createTestUser();
+    const userC = await createTestUser();
+    try {
+      const { conversation: conv } = await findOrCreateConversation(
+        userA,
+        userB,
+      );
+      await sendMessage(userA, conv.id, "仅 A/B 可见的私信");
+
+      // C 非会话参与者：查询他人会话的未读数必须被拒（NotFoundError），
+      // 修复前会返回 1（该会话中非 C 发送的消息数），泄露他人私信元数据。
+      await assertRejects(
+        () => getUnreadCountByConversation(userC, conv.id),
+        NotFoundError,
+      );
+
+      // 参与者不受影响
+      assertEquals(await getUnreadCountByConversation(userB, conv.id), 1);
+    } finally {
+      await cleanup(userA, userB, userC);
+    }
+  },
+});
+
+Deno.test({
   name: "messages: 总未读计数",
   ignore: !hasEnv,
   sanitizeResources: false,
