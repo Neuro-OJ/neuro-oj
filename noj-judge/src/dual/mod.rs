@@ -477,7 +477,7 @@ async fn inject_file_to_container(
 }
 
 /// 双容器评测入口，允许通过 Worker 配置传入每个容器的 CPU 上限。
-#[allow(dead_code)]
+#[allow(dead_code)] // bin 目标只调用 `_and_user_llm` 变体；本函数仅 lib + 集成测试引用
 #[allow(clippy::too_many_arguments)]
 pub async fn evaluate_dual_with_cpu_limit(
     docker: bollard::Docker,
