@@ -15,8 +15,6 @@ export interface LlmProviderInput {
   name: string;
   /** Provider Base URL */
   base_url: string;
-  /** 模型名 */
-  model: string;
   /** API Key（仅发送给 gateway 加密存储，不会返回明文） */
   api_key: string;
   /** 每 1000 token 的成本（可选） */
@@ -48,8 +46,6 @@ export interface LlmProviderView {
   name: string;
   /** Provider Base URL */
   base_url: string;
-  /** 模型名 */
-  model: string;
   /** 每 1000 token 的成本 */
   cost_per_1k_tokens: number;
   /** 脱敏后的 API Key（如 `sk-****`） */
