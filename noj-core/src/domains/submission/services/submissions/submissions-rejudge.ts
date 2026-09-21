@@ -24,8 +24,6 @@ import { getProblem } from "../../../catalog/index.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
 import { logAudit } from "../../../system/index.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
-import { buildJudgeTaskLlmForProvider } from "./../../../gateway/index.ts";
-import { getUserLlmProvider } from "../../../gateway/index.ts";
 import type { JudgeTaskLlm } from "../../types/index.ts";
 import { buildJudgeTask } from "../../types/index.ts";
 import type { RuntimeConfig } from "./../../../catalog/index.ts";
@@ -138,23 +136,6 @@ export async function rejudgeSubmission(id: string): Promise<void> {
       runtimeConfig,
     );
   }
-  let userLlmTask: JudgeTaskLlm | undefined;
-  if (submission.llm_provider_config_id && runtimeConfig) {
-    const provider = await getUserLlmProvider(
-      submission.user_id,
-      submission.llm_provider_config_id,
-    );
-    if (provider.enabled) {
-      userLlmTask = await buildJudgeTaskLlmForProvider(
-        provider.id,
-        provider.model,
-        id,
-        submission.problem_id,
-        submission.user_id,
-        runtimeConfig,
-      );
-    }
-  }
 
   const task = buildJudgeTask({
     submission_id: id,
@@ -169,7 +150,6 @@ export async function rejudgeSubmission(id: string): Promise<void> {
       (LANGUAGE_EXT_MAP[submission.language] || "main.txt"),
     rejudge_seq: updated?.rejudge_seq ?? 0,
     llm: llmTask ?? undefined,
-    user_llm: userLlmTask ?? undefined,
   });
 
   // 审计日志：先写入审计再推送不可逆的 MQ 消息（issue #101）
@@ -267,7 +247,6 @@ export async function rejudgeProblemSubmissions(
         code: submissions.code,
         file_name: submissions.file_name,
         user_id: submissions.user_id,
-        llm_provider_config_id: submissions.llm_provider_config_id,
         artifact_storage_url: submissions.artifact_storage_url,
       })
       .from(submissions)
@@ -357,23 +336,6 @@ export async function rejudgeProblemSubmissions(
           runtimeConfig,
         );
       }
-      let userLlmTask: JudgeTaskLlm | undefined;
-      if (sub.llm_provider_config_id && runtimeConfig) {
-        const provider = await getUserLlmProvider(
-          sub.user_id,
-          sub.llm_provider_config_id,
-        );
-        if (provider.enabled) {
-          userLlmTask = await buildJudgeTaskLlmForProvider(
-            provider.id,
-            provider.model,
-            sub.id,
-            problemId,
-            sub.user_id,
-            runtimeConfig,
-          );
-        }
-      }
 
       const task = buildJudgeTask({
         submission_id: sub.id,
@@ -388,7 +350,6 @@ export async function rejudgeProblemSubmissions(
           (LANGUAGE_EXT_MAP[sub.language] || "main.txt"),
         rejudge_seq: sub.rejudge_seq,
         llm: llmTask ?? undefined,
-        user_llm: userLlmTask ?? undefined,
       });
 
       await pushJudgeTask(task);

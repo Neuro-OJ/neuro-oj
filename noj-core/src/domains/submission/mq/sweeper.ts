@@ -27,8 +27,6 @@ import type { JudgeTaskPriority } from "../types/index.ts";
 import { buildJudgeTask } from "../types/index.ts";
 import type { RuntimeConfig } from "../../catalog/index.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
-import { buildJudgeTaskLlmForProvider } from "../../gateway/index.ts";
-import { getUserLlmProvider } from "../../gateway/index.ts";
 import { resolveJudgeTaskPriority } from "../services/submissions/judge-priority.ts";
 
 const RESULT_QUEUE = "noj:judge:results";
@@ -158,7 +156,6 @@ interface PendingRecoveryRow {
   support_package_storage_url: string | null;
   judge_started_at?: string | null;
   user_id?: string;
-  llm_provider_config_id?: string | null;
   contest_id?: string | null;
 }
 
@@ -212,9 +209,6 @@ async function selectPendingRecoveryRows(
   };
   if (cols.rejudgeSeq) selectFields.rejudge_seq = cols.rejudgeSeq;
   if (cols.userId) selectFields.user_id = cols.userId;
-  if (cols.llmProviderConfigId) {
-    selectFields.llm_provider_config_id = cols.llmProviderConfigId;
-  }
   if (cols.judgeStartedAt) selectFields.judge_started_at = cols.judgeStartedAt;
   if (cols.contestId) selectFields.contest_id = cols.contestId;
 
@@ -290,33 +284,6 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
         : {}),
     });
 
-    if (row.user_id && row.llm_provider_config_id) {
-      try {
-        const provider = await getUserLlmProvider(
-          row.user_id,
-          row.llm_provider_config_id,
-        );
-        if (provider.enabled) {
-          task.user_llm = await buildJudgeTaskLlmForProvider(
-            provider.id,
-            provider.model,
-            row.id,
-            row.problem_id,
-            row.user_id,
-            runtimeConfig,
-          );
-        }
-      } catch (err) {
-        logger.warn(
-          "pending 提交的 BYOK 配置不可用，将继续以无 BYOK 任务恢复",
-          {
-            submission_id: row.id,
-            err,
-          },
-        );
-      }
-    }
-
     const { pushJudgeTask } = await import("./producer.ts");
     try {
       await pushJudgeTask(task);
@@ -366,7 +333,6 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
       supportPackageStorageUrl: problems.support_package_storage_url,
       rejudgeSeq: submissions.rejudge_seq,
       userId: submissions.user_id,
-      llmProviderConfigId: submissions.llm_provider_config_id,
       contestId: submissions.contest_id,
     },
     and(
