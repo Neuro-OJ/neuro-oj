@@ -24,6 +24,13 @@ export {
 
 export { createArtifactSubmission } from "./artifact-submissions.ts";
 
+export { createPredictionSubmission } from "./prediction-submissions.ts";
+
+export {
+  predictionFileExtension,
+  validatePredictionFile,
+} from "./prediction-format.ts";
+
 export {
   saveEvaluationResult,
   updateSubmissionStatus,

@@ -1,12 +1,19 @@
 /**
- * Artifact 提交服务（类 Kaggle 产物提交）。
+ * prediction 提交服务（预测结果文件提交）。
+ *
+ * 与 artifact 提交的区别：
+ * - 提交物是**单个数据文件**（非 zip），扩展名/魔数经 `validatePredictionFile` 校验；
+ * - 评测只创建 Evaluator 容器（`runtime_config` 可省略 `solution`），因此本路径
+ *   **不读取也不校验 `solution`**；
+ * - 复用 `submissions.artifact_storage_url` 列存放预测文件 URL，从而免费继承既有
+ *   「评测后删除 / 不支持重测 / 孤儿清理 / 相似度排除」生命周期。
  *
  * 负责：
- * - 校验题目 submission_mode=artifact
- * - 流式上传 zip 到存储（local 临时文件 / S3 multipart）
+ * - 校验题目 submission_mode=prediction
+ * - 流式上传单文件到存储（local 临时文件 / S3 multipart）
  * - 双层大小限制（题目 artifact_max_size_mb + NOJ 硬上限）
  * - 创建提交记录并推送评测任务
- * - 评测/入队失败时立即删除 artifact
+ * - 评测/入队失败时立即删除上传对象
  */
 
 import { and, eq } from "drizzle-orm";
@@ -29,56 +36,43 @@ import { assertContestSubmissionLimit } from "../../../contest/index.ts";
 import { verifyContestAccess } from "../../../contest/index.ts";
 import { resolveProblemAccess } from "../../../catalog/index.ts";
 import { resolveJudgeTaskPriority } from "./judge-priority.ts";
-import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
-import { buildJudgeTaskLlmForProvider } from "./../../../gateway/index.ts";
-import { getUserLlmProvider } from "../../../gateway/index.ts";
 import {
   Channels,
   publishSseEvent,
 } from "./../../../../shared/sse/event-bus.ts";
 import { getLogger } from "@logtape/logtape";
-import { peekFirstChunk } from "./stream-peek.ts";
 
 const logger = getLogger(["noj", "submission"]);
-import type { JudgeTaskLlm } from "../../types/index.ts";
 import { buildJudgeTask } from "../../types/index.ts";
-import type { LlmConfig, RuntimeConfig } from "./../../../catalog/index.ts";
+import type { RuntimeConfig } from "./../../../catalog/index.ts";
 import type { SubmissionResponse } from "./submissions-types.ts";
+import { getArtifactHardLimit } from "./artifact-submissions.ts";
+import { peekFirstChunk } from "./stream-peek.ts";
+import {
+  predictionFileExtension,
+  validatePredictionFile,
+} from "./prediction-format.ts";
 
-/** NOJ artifact 硬上限默认值：2GB。 */
-export const DEFAULT_ARTIFACT_MAX_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
-
-/**
- * 读取 NOJ artifact 硬上限（字节）。
- * 环境变量 `NOJ_ARTIFACT_MAX_SIZE_MB` 可覆盖，单位 MB。
- */
-export function getArtifactHardLimit(): number {
-  const raw = Deno.env.get("NOJ_ARTIFACT_MAX_SIZE_MB");
-  if (raw) {
-    const mb = Number(raw);
-    if (Number.isFinite(mb) && mb > 0) {
-      return Math.floor(mb * 1024 * 1024);
-    }
-  }
-  return DEFAULT_ARTIFACT_MAX_SIZE_BYTES;
+/** prediction 提交的输入（单文件流）。 */
+export interface PredictionSubmissionInput {
+  problem_id: string;
+  file_name: string;
+  file_stream: ReadableStream<Uint8Array>;
+  contest_id?: string;
 }
 
 /**
- * 创建 artifact 提交。
+ * 创建 prediction 提交。
  *
  * @param userId 提交用户
  * @param input problem_id / file_name / file_stream / contest_id
  * @param contestId 路由层显式竞赛 ID（可选）
+ * @param clientIp 客户端 IP（审计用）
+ * @param isAdmin 是否管理员（访问解析用）
  */
-export async function createArtifactSubmission(
+export async function createPredictionSubmission(
   userId: string,
-  input: {
-    problem_id: string;
-    file_name: string;
-    file_stream: ReadableStream<Uint8Array>;
-    contest_id?: string;
-    llm_provider_config_id?: string;
-  },
+  input: PredictionSubmissionInput,
   contestId?: string,
   clientIp?: string,
   isAdmin = false,
@@ -128,40 +122,32 @@ export async function createArtifactSubmission(
     throw new ForbiddenError("仅可在竞赛进行期间提交");
   }
 
-  if (problem.submission_mode !== "artifact") {
-    throw new BadRequestError("该题目不支持 artifact 提交");
-  }
-  if (!input.file_name.toLowerCase().endsWith(".zip")) {
-    throw new BadRequestError("仅支持 .zip 格式文件");
+  if (problem.submission_mode !== "prediction") {
+    throw new BadRequestError("该题目不支持 prediction 提交");
   }
 
-  // 固定语言 python3
-  const language = "python3";
+  const ext = predictionFileExtension(input.file_name);
 
-  // 双层大小限制
+  // 双层大小限制（复用题目 artifact_max_size_mb + NOJ 硬上限）
   const hardLimit = getArtifactHardLimit();
   const problemLimit = problem.artifact_max_size_mb
     ? problem.artifact_max_size_mb * 1024 * 1024
     : hardLimit;
   const maxSizeBytes = Math.min(problemLimit, hardLimit);
 
-  // 校验 zip magic bytes（PK 头）
+  // 取头部做扩展名 + 魔数校验，rest 可重放供上传消费。
   const { first, rest } = await peekFirstChunk(input.file_stream);
-  if (
-    first.length < 4 || first[0] !== 0x50 || first[1] !== 0x4b
-  ) {
-    throw new BadRequestError("文件不是有效的 zip 格式");
-  }
+  validatePredictionFile(input.file_name, first);
 
-  // 流式上传到存储
+  // 流式上传到存储（复用 artifacts/ 前缀，便于既有治理脚本覆盖）
   const storage = await getStorageProvider();
-  const storageKey = `artifacts/${crypto.randomUUID()}.zip`;
-  let artifactStorageUrl: string;
+  const storageKey = `artifacts/${crypto.randomUUID()}${ext}`;
+  let predictionStorageUrl: string;
   try {
-    artifactStorageUrl = await storage.putStream(
+    predictionStorageUrl = await storage.putStream(
       storageKey,
       rest,
-      "application/zip",
+      "application/octet-stream",
       maxSizeBytes,
     );
   } catch (err) {
@@ -193,77 +179,38 @@ export async function createArtifactSubmission(
     }
   }
 
-  // 校验 runtime_config
+  // 校验 runtime_config：prediction 只要求 evaluator（无 Solution 容器）。
   const runtimeConfig = problem.runtime_config as
     | RuntimeConfig
     | null
     | undefined;
-  if (!runtimeConfig) {
-    await storage.delete(artifactStorageUrl).catch(() => {});
+  if (!runtimeConfig || !runtimeConfig.evaluator) {
+    await storage.delete(predictionStorageUrl).catch(() => {});
     throw new AppError(
-      "题目缺少 runtime_config 配置，无法评测",
+      "题目缺少 runtime_config.evaluator 配置，无法评测",
       500,
       "RUNTIME_CONFIG_MISSING",
     );
   }
   await validateJudgeImageWithKind(runtimeConfig.evaluator.image, "evaluator");
-  if (!runtimeConfig.solution) {
-    await storage.delete(artifactStorageUrl).catch(() => {});
-    throw new AppError(
-      "题目缺少 solution 运行时配置，无法评测",
-      500,
-      "RUNTIME_CONFIG_SOLUTION_MISSING",
-    );
-  }
-  await validateJudgeImageWithKind(runtimeConfig.solution.image, "solution");
 
-  let llmTask: JudgeTaskLlm | undefined;
-  const llmConfig = problem.llm_config as LlmConfig | null;
-  if (llmConfig) {
-    llmTask = await buildJudgeTaskLlm(
-      llmConfig,
-      id,
-      input.problem_id,
-      userId,
-      runtimeConfig,
-    );
-  }
-  let userLlmTask: JudgeTaskLlm | undefined;
-  if (input.llm_provider_config_id) {
-    const provider = await getUserLlmProvider(
-      userId,
-      input.llm_provider_config_id,
-    );
-    if (!provider.enabled) {
-      throw new BadRequestError(
-        "用户模型配置已停用",
-        "BYOK_CONFIG_UNAVAILABLE",
-      );
-    }
-    userLlmTask = await buildJudgeTaskLlmForProvider(
-      provider.id,
-      provider.model,
-      id,
-      input.problem_id,
-      userId,
-      runtimeConfig,
-    );
-  }
+  // 固定语言 python3（占位，保持列非空）
+  const language = "python3";
 
-  // artifact 下载 URL（judge 交付层）
-  let artifactDownloadUrl: string;
+  // 预测文件下载 URL（judge 交付层）
+  let predictionDownloadUrl: string;
   try {
-    artifactDownloadUrl = await storage.downloadUrl(artifactStorageUrl);
+    predictionDownloadUrl = await storage.downloadUrl(predictionStorageUrl);
   } catch (err) {
-    await storage.delete(artifactStorageUrl).catch(() => {});
-    logger.error("获取 artifact download URL 失败", {
-      storage_url: artifactStorageUrl,
+    await storage.delete(predictionStorageUrl).catch(() => {});
+    logger.error("获取 prediction 文件 download URL 失败", {
+      storage_url: predictionStorageUrl,
       err,
     });
     throw new AppError(
-      "提交失败：无法生成 artifact 下载地址，请稍后重试",
+      "提交失败：无法生成预测文件下载地址，请稍后重试",
       500,
-      "ARTIFACT_DOWNLOAD_ERROR",
+      "PREDICTION_DOWNLOAD_ERROR",
     );
   }
 
@@ -277,15 +224,13 @@ export async function createArtifactSubmission(
     problem_id: input.problem_id,
     user_id: userId,
     priority,
-    submission_mode: "artifact",
+    submission_mode: "prediction",
     runtime_config: runtimeConfig,
     download_url,
-    artifact_download_url: artifactDownloadUrl,
+    artifact_download_url: predictionDownloadUrl,
     language,
     code: "",
     file_name: input.file_name,
-    llm: llmTask ?? undefined,
-    user_llm: userLlmTask ?? undefined,
   });
 
   try {
@@ -299,14 +244,13 @@ export async function createArtifactSubmission(
       language,
       code: "",
       file_name: input.file_name,
-      artifact_storage_url: artifactStorageUrl,
-      llm_provider_config_id: input.llm_provider_config_id,
+      artifact_storage_url: predictionStorageUrl,
       status: "pending",
       created_at: now,
     });
   } catch (dbErr) {
-    await storage.delete(artifactStorageUrl).catch(() => {});
-    logger.error("artifact 提交记录插入失败", { err: dbErr });
+    await storage.delete(predictionStorageUrl).catch(() => {});
+    logger.error("prediction 提交记录插入失败", { err: dbErr });
     throw new AppError(
       "提交失败：数据库写入错误，请稍后重试",
       500,
@@ -333,12 +277,12 @@ export async function createArtifactSubmission(
       );
     }
   } catch (mqErr) {
-    logger.error("artifact 评测任务推送失败", {
+    logger.error("prediction 评测任务推送失败", {
       submission_id: id,
       err: mqErr,
     });
-    // 入队失败：删除 artifact 并标记 error（artifact 不支持重测，不留孤儿）
-    await storage.delete(artifactStorageUrl).catch(() => {});
+    // 入队失败：删除预测文件并标记 error（prediction 不支持重测，不留孤儿）
+    await storage.delete(predictionStorageUrl).catch(() => {});
     if (!isRetryableJudgeQueueError(mqErr)) {
       await db.update(submissions)
         .set({
