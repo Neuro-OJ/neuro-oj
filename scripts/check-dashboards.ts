@@ -185,8 +185,15 @@ export async function collectDefinedMetrics(
         defined.set(m[1], m[2] as "counter" | "gauge" | "histogram");
       }
     }
-    // 兜底：只出现名字（可能定义在别处或以常量形式）
-    for (const m of content.matchAll(/"(noj_[a-z0-9_]+)"/g)) {
+    // 只有名字的定义（type 在别处/由泛型推断）。
+    //
+    // 2026-09-21 修复：此前兜底为「源码里出现过的**任何** `"noj_..."` 字面量」，
+    // 于是把调用点（`inc("noj_typo_metric_xyz")`）也算作定义——形成恒真断言：
+    // dashboard 引用任意拼错/自造指标都不会报"引用了未定义的指标"。
+    // `scripts/check-metrics.ts` 早已为同一问题加了 META_DEF_RE 防护（其注释明确
+    // 记录"把调用点改成 noj_typo_metric_xyz 仍判通过"），本脚本此前遗漏。
+    // 收紧为 `name: "noj_..."` 形式：本仓库所有业务/平台指标都以该字段定义。
+    for (const m of content.matchAll(/name:\s*"(noj_[a-z0-9_]+)"/g)) {
       if (m[1] && !defined.has(m[1])) defined.set(m[1], "unknown");
     }
   }

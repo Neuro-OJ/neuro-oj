@@ -158,3 +158,41 @@ Deno.test("checkExpression: 拼错的 up* 指标会被报为未定义", () => {
     `拼错的 up* 指标必须报未定义，实际 ${JSON.stringify(problems)}`,
   );
 });
+
+// ── 2026-09-21 修复：兜底把任意 noj_* 字面量当定义（恒真断言）──
+// 触发条件：源码里出现拼错/自造的 noj_* 字面量。
+Deno.test("collectDefinedMetrics: 调用点字面量不得被当作指标定义", async () => {
+  const root = await Deno.makeTempDir({ prefix: "dash-def-" });
+  try {
+    await Deno.mkdir(`${root}/noj-core/src`, { recursive: true });
+    // 真实定义（name: "...", type 字段）
+    await Deno.writeTextFile(
+      `${root}/noj-core/src/real.ts`,
+      `const d = { name: "noj_real_metric_total", type: "counter" };\n`,
+    );
+    // 调用点：只出现字面量，不是定义
+    await Deno.writeTextFile(
+      `${root}/noj-core/src/call.ts`,
+      `inc("noj_typo_metric_xyz");\n`,
+    );
+    const defined = await collectDefinedMetrics(root);
+    assertEquals(defined.has("noj_real_metric_total"), true);
+    assertEquals(
+      defined.has("noj_typo_metric_xyz"),
+      false,
+      "调用点字面量不得被登记为已定义（否则门禁恒真）",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("collectDefinedMetrics: 真实仓库不产生 unknown 兜底条目", async () => {
+  const defined = await collectDefinedMetrics(".");
+  const unknowns = [...defined.entries()].filter(([, t]) => t === "unknown");
+  assertEquals(
+    unknowns.length,
+    0,
+    `不应有仅凭字面量登记的 unknown 条目，实际 ${JSON.stringify(unknowns)}`,
+  );
+});
