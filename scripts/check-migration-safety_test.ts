@@ -6,7 +6,9 @@
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import {
   checkMigrationSafety,
+  findHardcodedPublicSchemaRefs,
   findUnsafeAddColumns,
+  hasHardcodedPublicSchemaRef,
   isUnsafeNotNullAddColumn,
   splitMigrationStatements,
 } from "./check-migration-safety.ts";
@@ -99,4 +101,66 @@ Deno.test("migration-safety: 目录不存在时门禁失败（不静默通过）
 Deno.test("migration-safety: 真实迁移目录当前无一步式 NOT NULL 加列", async () => {
   const errors = await checkMigrationSafety("noj-core/drizzle");
   assertEquals(errors, []);
+});
+
+// ── schema 前缀门禁（2026-09-19 D0 缺口）────────────────────────────────
+Deno.test(
+  'migration-safety: REFERENCES "public". 前缀被识别（历史 0056/0063/0066 形态）',
+  () => {
+    const statements = splitMigrationStatements(
+      "mem.sql",
+      `ALTER TABLE "submissions" ADD CONSTRAINT "fk" FOREIGN KEY ("x") ` +
+        `REFERENCES "public"."llm_providers"("id") ON DELETE set null;` +
+        `--> statement-breakpoint`,
+    );
+    assertEquals(findHardcodedPublicSchemaRefs(statements).length, 1);
+  },
+);
+
+Deno.test("migration-safety: 不带 schema 前缀的 REFERENCES 不误报", () => {
+  const statements = splitMigrationStatements(
+    "mem.sql",
+    `ALTER TABLE "t" ADD CONSTRAINT "fk" FOREIGN KEY ("x") ` +
+      `REFERENCES "users"("id") ON DELETE set null;`,
+  );
+  assertEquals(findHardcodedPublicSchemaRefs(statements).length, 0);
+});
+
+Deno.test("migration-safety: 字符串字面量中的 public. 不误报", () => {
+  // 只认 REFERENCES 之后的限定符，避免把值里出现的 public 当 schema
+  assertEquals(
+    hasHardcodedPublicSchemaRef(
+      `INSERT INTO "t" ("note") VALUES ('REFERENCES public.foo');`,
+    ),
+    false,
+  );
+});
+
+Deno.test(
+  "migration-safety: 含 public 前缀的迁移目录整体判定失败（非空转）",
+  async () => {
+    const dir = await Deno.makeTempDir({ prefix: "migration-safety-ref-" });
+    try {
+      await Deno.writeTextFile(
+        `${dir}/0001_demo.sql`,
+        `ALTER TABLE "widgets" ADD CONSTRAINT "fk" FOREIGN KEY ("owner_id") ` +
+          `REFERENCES "public"."users"("id");`,
+      );
+      const errors = await checkMigrationSafety(dir);
+      assert(
+        errors.some((e) => e.includes("public")),
+        `必须报出 schema 前缀：${JSON.stringify(errors)}`,
+      );
+    } finally {
+      await Deno.remove(dir, { recursive: true });
+    }
+  },
+);
+
+Deno.test("migration-safety: 真实迁移目录已无 public schema 前缀", async () => {
+  const errors = await checkMigrationSafety("noj-core/drizzle");
+  assertEquals(
+    errors.filter((e) => e.includes("public")),
+    [],
+  );
 });

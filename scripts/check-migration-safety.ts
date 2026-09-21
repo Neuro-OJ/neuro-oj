@@ -104,6 +104,58 @@ export function isUnsafeNotNullAddColumn(statement: string): boolean {
   return true;
 }
 
+/**
+ * 去掉 SQL 中的字符串字面量内容（单引号串与 `$$` 美元引用），
+ * 只保留 DDL 标识符，避免把值里出现的文本误判为 schema 限定符。
+ *
+ * 注意：DDL 标识符用的是**双引号**（`"public"`），单引号只会是字符串值，
+ * 因此剥离单引号串不会影响对 `REFERENCES "public".` 的判定。
+ */
+export function stripSqlStringLiterals(statement: string): string {
+  // 先处理 $$...$$（可含单引号），再处理 '...'（含 '' 转义）
+  return statement
+    .replace(/\$\$[\s\S]*?\$\$/g, "$$")
+    .replace(/'(?:[^']|'')*'/g, "''");
+}
+
+/**
+ * 检测语句是否硬编码了 `public` schema 限定符的外键引用。
+ *
+ * 背景（2026-09-19 D0 排查结论，长期无门禁）：drizzle-kit 在**引用已存在于
+ * 其它 schema（含 public）的表**时，会生成 `REFERENCES "public"."foo"("id")`。
+ * 这类迁移在 `public` search_path 之外的 schema 上执行时，FK 会跨 schema 指向
+ * `public.foo`，于是分片测试（`TEST_SCHEMA=test_unit` / `test_db`，见
+ * `scripts/test-parallel.ts`）里「父行刚插入却报 FK 失败」——报错与真实原因
+ * 相距甚远，是当时排查耗时的主要来源。
+ *
+ * 仓库历史上有 0056/0063/0066 三个迁移带该前缀，靠人工修订去掉；但**没有任何
+ * 门禁拦截**，`noj-core/drizzle.config.ts` 也未设 `schemaFilter`，因此
+ * `deno task db:generate` 会持续生成带前缀的语句，同类缺陷会随下一个迁移回归。
+ * 本函数把该约定变成静态门禁。
+ *
+ * 只匹配 `REFERENCES` 后的限定符，并先剥离字符串字面量，避免值中文本误判。
+ */
+export function hasHardcodedPublicSchemaRef(statement: string): boolean {
+  return /REFERENCES\s+"?public"?\s*\./i.test(
+    stripSqlStringLiterals(statement),
+  );
+}
+
+/** 找出所有硬编码 `REFERENCES "public".` 的语句。 */
+export function findHardcodedPublicSchemaRefs(
+  statements: MigrationStatement[],
+): MigrationStatement[] {
+  const found: MigrationStatement[] = [];
+  for (const chunk of statements) {
+    for (const single of splitSqlStatements(chunk.text)) {
+      if (hasHardcodedPublicSchemaRef(single)) {
+        found.push({ file: chunk.file, text: single });
+      }
+    }
+  }
+  return found;
+}
+
 export function findUnsafeAddColumns(
   statements: MigrationStatement[],
 ): UnsafeAddColumn[] {
@@ -166,6 +218,29 @@ export async function checkMigrationSafety(
 
   for (const bad of findUnsafeAddColumns(allStatements)) {
     errors.push(`${bad.file}: ${bad.statement}\n    → ${bad.reason}`);
+  }
+
+  // 门禁 2：迁移不得硬编码 `REFERENCES "public".` schema 前缀。
+  // 自检：仓库当前有 0 处，若扫描规则失效（永远返回空）无法自证，
+  // 故用一条**合成语句**验证检测函数本身可用，避免"恒真门禁"。
+  const probe = findHardcodedPublicSchemaRefs([
+    {
+      file: "<self-check>",
+      text: `ALTER TABLE "t" ADD CONSTRAINT "fk" FOREIGN KEY ("x") ` +
+        `REFERENCES "public"."users"("id");`,
+    },
+  ]);
+  if (probe.length !== 1) {
+    errors.push(
+      "迁移 schema 前缀门禁自检失败：合成语句未被识别（检测规则已失效），判定失败",
+    );
+  }
+  for (const ref of findHardcodedPublicSchemaRefs(allStatements)) {
+    errors.push(
+      `${ref.file}: ${ref.text}\n    → 迁移硬编码了 REFERENCES "public". 前缀；` +
+        `分片测试（TEST_SCHEMA）下 FK 会跨 schema 指向 public。` +
+        `请去掉 \`"public".\` 限定符（按 search_path 解析）。`,
+    );
   }
 
   return errors;
