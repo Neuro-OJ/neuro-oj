@@ -68,6 +68,33 @@
           }
         }
       }
+    },
+    {
+      "name": "LLM 旧形状 provider_id/model 被容忍",
+      "manifest": {
+        "format_version": 1,
+        "title": "x",
+        "type": "P",
+        "llm": {
+          "provider_id": "old-provider",
+          "model": "old-model",
+          "max_calls": 10
+        },
+        "runtime_config": {
+          "evaluator": {
+            "image": "i",
+            "command": "c",
+            "time_limit_ms": 1,
+            "memory_limit_mb": 1,
+            "network": { "enabled": true }
+          },
+          "solution": {
+            "image": "i",
+            "call_timeout_ms": 1,
+            "memory_limit_mb": 1
+          }
+        }
+      }
     }
   ],
   "invalid": [
@@ -149,7 +176,7 @@
         "title": "x",
         "type": "P",
         "llm": {
-          "enabled": true
+          "max_calls": 1
         },
         "runtime_config": {
           "evaluator": {

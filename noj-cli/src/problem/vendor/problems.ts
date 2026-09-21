@@ -94,11 +94,11 @@ export function isValidProblemType(value: string): value is ProblemType {
 }
 
 /**
- * 题目 LLM 配置：出题人固定 provider 与 model，做题人不可选择。
+ * 题目 LLM 配置：出题人只声明预算，Provider/模型由平台全局默认决定。
+ *
+ * 非 null 即启用 LLM；`provider_id` / `model` 等旧字段容忍并忽略。
  */
 export interface LlmConfig {
-  provider_id: string;
-  model: string;
   /** 单次评测 LLM 调用上限；缺省 = 平台默认 */
   max_calls?: number;
   /** 单次评测 LLM billed token 上限；缺省 = 平台默认 */
@@ -107,6 +107,8 @@ export interface LlmConfig {
 
 /**
  * 校验 LLM 配置是否合法。
+ *
+ * 只校验可选预算字段；未知键（含存量的 provider_id/model）忽略，保持前向兼容。
  */
 export function isValidLlmConfig(value: unknown): value is LlmConfig {
   if (typeof value !== "object" || value === null) return false;
@@ -114,9 +116,8 @@ export function isValidLlmConfig(value: unknown): value is LlmConfig {
   const isValidPositiveInt = (v: unknown): boolean =>
     v === undefined ||
     (typeof v === "number" && Number.isInteger(v) && v > 0);
-  return typeof obj.provider_id === "string" && obj.provider_id.length > 0 &&
-    typeof obj.model === "string" && obj.model.length > 0 &&
-    isValidPositiveInt(obj.max_calls) && isValidPositiveInt(obj.max_tokens);
+  return isValidPositiveInt(obj.max_calls) &&
+    isValidPositiveInt(obj.max_tokens);
 }
 
 /**
