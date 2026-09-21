@@ -58,6 +58,40 @@ Deno.test('sanitize: 单引号值内注入与表格内注入被阻断', () => {
   }
 });
 
+Deno.test('sanitize: 未知标签降级为纯文本时不得重新引入可解析标签', () => {
+  // 回归背景：未知标签分支只转义了定界符 `<` / `>`，属性原文照抄。
+  // `<foo bar="<img src=x onerror=alert(1)//>">` 因此被"净化"成
+  //   &lt;foo bar="<img src=x onerror=alert(1)//&gt;">
+  // 其中字面量 `<img ...>` 会被浏览器解析成真标签，onerror 直接执行
+  // （SSR 首屏即触发，无需交互）。属性里的 `<` 必须一并实体化。
+  const cases: Array<[payload: string, mustBeEscaped: string]> = [
+    [`<foo bar="<img src=x onerror=alert(1)//>">`, '&lt;img'],
+    [`<foo bar="<img src=x onerror=alert(document.domain)>">`, '&lt;img'],
+    [`<xyz a="<svg onload=alert(1)>">`, '&lt;svg'],
+    [`<foo bar="<img src=x onerror=window.__xss(777)//>">`, '&lt;img'],
+  ];
+  for (const [payload, mustBeEscaped] of cases) {
+    const out = sanitizeHtmlSync(payload);
+    // 注意：这里不能对输出直接跑 `assertNoEventHandlers` —— 转义后的文本里
+    // ` onerror=` 仍在（它是**文本**，不是属性），字符串级匹配会误报。
+    // 真正的判据是「载荷里的内层标签必须被实体化成 &lt;tag」，即不再可解析。
+    // DOM 级断言见 tests/utils/sanitize.spec.ts。
+    assertStringIncludes(out, mustBeEscaped);
+    // 内层标签不得以字面量形式残留（否则浏览器会当元素解析）
+    const literalTag = mustBeEscaped.replace('&lt;', '<');
+    assertEquals(out.includes(literalTag), false, `残留字面量 ${literalTag}：${out}`);
+  }
+});
+
+Deno.test('sanitize: 未知标签降级后文本内容仍可读（不丢字）', () => {
+  // 转义必须只做实体化，不能吞掉内容
+  const out = sanitizeHtmlSync(`<foo bar="a<b">hi</foo>`);
+  assertStringIncludes(out, 'a&lt;b');
+  assertStringIncludes(out, 'hi');
+  assertStringIncludes(out, '&lt;foo');
+  assertStringIncludes(out, '&lt;/foo&gt;');
+});
+
 Deno.test('sanitize: 既有防护不回归（script / 危险协议 / 未知标签）', () => {
   assertEquals(sanitizeHtmlSync(`<script>alert(1)</script>`), '');
   // javascript: / data: 协议仍被剥离，且属性一并移除
