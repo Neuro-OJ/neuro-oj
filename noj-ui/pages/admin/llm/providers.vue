@@ -16,7 +16,6 @@ interface LlmProvider {
   id: string
   name: string
   base_url: string
-  model: string
   cost_per_1k_tokens: number
   api_key_masked: string
   enabled: boolean
@@ -34,7 +33,6 @@ let requestVersion = 0
 const columns: AdminColumn[] = [
   { key: "name", label: "名称" },
   { key: "base_url", label: "Base URL" },
-  { key: "model", label: "默认模型" },
   { key: "cost_per_1k_tokens", label: "费用/1K token" },
   { key: "api_key_masked", label: "API Key" },
   { key: "enabled", label: "状态" },
@@ -66,7 +64,6 @@ const showForm = ref(false)
 const editingItem = ref<LlmProvider | null>(null)
 const formName = ref("")
 const formBaseUrl = ref("")
-const formModel = ref("")
 const formCostPer1k = ref(0)
 const formApiKey = ref("")
 const formEnabled = ref(true)
@@ -78,7 +75,6 @@ function openCreate() {
   editingItem.value = null
   formName.value = ""
   formBaseUrl.value = ""
-  formModel.value = ""
   formCostPer1k.value = 0
   formApiKey.value = ""
   formEnabled.value = true
@@ -91,7 +87,6 @@ function openEdit(item: LlmProvider) {
   editingItem.value = item
   formName.value = item.name
   formBaseUrl.value = item.base_url
-  formModel.value = item.model
   formCostPer1k.value = item.cost_per_1k_tokens ?? 0
   formApiKey.value = ""
   formEnabled.value = item.enabled
@@ -101,8 +96,8 @@ function openEdit(item: LlmProvider) {
 
 // 保存 Provider：编辑时未填 Key 则不更新；新增时 Key 必填
 async function handleSave() {
-  if (!formName.value.trim() || !formBaseUrl.value.trim() || !formModel.value.trim()) {
-    formError.value = "名称、Base URL 与默认模型均为必填"
+  if (!formName.value.trim() || !formBaseUrl.value.trim()) {
+    formError.value = "名称与 Base URL 均为必填"
     return
   }
   saving.value = true
@@ -112,7 +107,6 @@ async function handleSave() {
       const payload: Record<string, unknown> = {
         name: formName.value.trim(),
         base_url: formBaseUrl.value.trim(),
-        model: formModel.value.trim(),
         cost_per_1k_tokens: Number(formCostPer1k.value) || 0,
         enabled: formEnabled.value,
       }
@@ -129,7 +123,6 @@ async function handleSave() {
       await api.post("/api/v1/admin/gateway/llm/providers", {
         name: formName.value.trim(),
         base_url: formBaseUrl.value.trim(),
-        model: formModel.value.trim(),
         cost_per_1k_tokens: Number(formCostPer1k.value) || 0,
         api_key: formApiKey.value.trim(),
         enabled: formEnabled.value,
@@ -194,10 +187,6 @@ async function handleSave() {
         <div class="flex flex-col gap-1">
           <label class="text-13px font-semibold text-text">Base URL <span class="text-error-text">*</span></label>
           <input v-model="formBaseUrl" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-signal" placeholder="如：https://api.openai.com/v1" />
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-13px font-semibold text-text">默认模型 <span class="text-error-text">*</span></label>
-          <input v-model="formModel" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-signal" placeholder="如：qwen-plus" />
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-13px font-semibold text-text">费用 / 1K token</label>

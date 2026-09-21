@@ -124,21 +124,8 @@ const solutionMemoryLimitMb = ref(256)
 
 // ── LLM 配置（仅 P 型/官方题可启用） ──
 const llmEnabled = ref(false)
-const llmProviderId = ref("")
-const llmModel = ref("")
 const llmMaxCalls = ref("")
 const llmMaxTokens = ref("")
-const llmProviders = ref<{ id: string; name: string; base_url: string; model: string }[]>([])
-
-async function loadLlmProviders() {
-  try {
-    const res = await api.get<{ data: { id: string; name: string; base_url: string; model: string }[] }>(
-      "/api/v1/admin/gateway/llm/providers",
-      { silent: true },
-    )
-    llmProviders.value = res.data ?? []
-  } catch { /* 非 admin 或 gateway 未启用时静默 */ }
-}
 
 // 启用 LLM 必须同时开启 evaluator 网络
 watch(llmEnabled, (val) => {
@@ -266,16 +253,12 @@ async function loadProblem() {
     // 加载 LLM 配置
     const llmConfig = (p as {
       llm_config?: {
-        provider_id: string
-        model: string
         max_calls?: number | null
         max_tokens?: number | null
       } | null
     }).llm_config
     if (llmConfig) {
       llmEnabled.value = true
-      llmProviderId.value = llmConfig.provider_id
-      llmModel.value = llmConfig.model
       llmMaxCalls.value = llmConfig.max_calls != null ? String(llmConfig.max_calls) : ""
       llmMaxTokens.value = llmConfig.max_tokens != null ? String(llmConfig.max_tokens) : ""
     }
@@ -298,7 +281,6 @@ onMounted(async () => {
   }
   loadTags()
   loadJudgeImages()
-  loadLlmProviders()
   if (isEditMode.value) loadProblem()
 })
 
@@ -317,8 +299,6 @@ function validate(): boolean {
   if (!evaluatorImage.value.trim()) errors.evaluator_image = "请选择 evaluator 镜像"
   if (!solutionImage.value.trim()) errors.solution_image = "请选择 solution 镜像"
   if (llmEnabled.value) {
-    if (!llmProviderId.value.trim()) errors.llm_provider = "请选择 LLM Provider"
-    if (!llmModel.value.trim()) errors.llm_model = "请输入模型名"
     if (!evaluatorNetworkEnabled.value) errors.evaluator_network = "启用 LLM 必须开启 Evaluator 联网"
     const maxCalls = llmMaxCalls.value === "" ? null : Number(llmMaxCalls.value)
     const maxTokens = llmMaxTokens.value === "" ? null : Number(llmMaxTokens.value)
@@ -356,8 +336,6 @@ async function handleSubmit() {
     const llmMaxTokensNum = llmMaxTokens.value === "" ? null : Number(llmMaxTokens.value)
     const llmPayload = llmEnabled.value
       ? {
-          provider_id: llmProviderId.value.trim(),
-          model: llmModel.value.trim(),
           ...(llmMaxCallsNum !== null ? { max_calls: llmMaxCallsNum } : {}),
           ...(llmMaxTokensNum !== null ? { max_tokens: llmMaxTokensNum } : {}),
         }
@@ -579,20 +557,10 @@ async function handleSubmit() {
                 <input v-model="llmEnabled" type="checkbox" class="size-4 accent-primary">
                 <span>
                   启用 LLM 调用（仅 P 型/官方题）
-                  <span class="block text-xs text-text-muted">启用后必须开启 Evaluator 联网，题目固定 provider/model</span>
+                  <span class="block text-xs text-text-muted">启用后必须开启 Evaluator 联网；模型与供应商由平台统一配置</span>
                 </span>
               </label>
               <div v-if="llmEnabled" class="flex flex-col gap-2">
-                <div class="flex flex-col gap-1">
-                  <label class="text-xs font-semibold text-text">LLM Provider <span class="text-red-600">*</span></label>
-                  <USelect v-model="llmProviderId" :items="llmProviders.map((p) => ({ label: `${p.name} (${p.model})`, value: p.id }))" placeholder="请选择 Provider" class="w-full" />
-                  <p v-if="fieldErrors.llm_provider" class="text-xs text-red-600">{{ fieldErrors.llm_provider }}</p>
-                </div>
-                <div class="flex flex-col gap-1">
-                  <label class="text-xs font-semibold text-text">模型 <span class="text-red-600">*</span></label>
-                  <input v-model="llmModel" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none focus:border-signal bg-white" placeholder="如：qwen-plus" />
-                  <p v-if="fieldErrors.llm_model" class="text-xs text-red-600">{{ fieldErrors.llm_model }}</p>
-                </div>
                 <div class="grid grid-cols-2 gap-2">
                   <div class="flex flex-col gap-1">
                     <label class="text-xs font-semibold text-text">调用上限</label>
