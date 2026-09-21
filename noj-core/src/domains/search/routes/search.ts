@@ -37,7 +37,9 @@ const COMMUNITY_TYPES = ["community_post", "community_comment"];
 router.get(
   "/",
   optionalAuthMiddleware,
-  searchRateLimit("anon"),
+  // 维度 auto：登录用户走用户桶（30s/120 次，可在后台配置），匿名走 IP 桶。
+  // 修复见 middleware/search-rate-limit.ts 的注释（校园机房 NAT 场景）。
+  searchRateLimit("auto"),
   async (c) => {
     const q = (c.req.query("q") ?? "").trim();
     const typesParam = c.req.query("types");
