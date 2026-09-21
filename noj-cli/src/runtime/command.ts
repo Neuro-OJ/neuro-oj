@@ -145,6 +145,28 @@ export function realRunner(): CommandRunner {
         stderr: "piped",
       });
       const child = p.spawn();
+      // stderr 必须被持续排空：子进程一旦向 stderr 写入超过内核管道缓冲
+      // （Linux 约 64 KiB）就会阻塞在 write 上，stdout 也随之不再产生新数据，
+      // 下面的 reader.read() 与 child.status 将永远不返回（CLI 静默挂死）。
+      // `--follow` 的子进程正是 `docker compose ... logs --follow`，多服务时
+      // 会向 stderr 输出告警/进度，属真实可达路径。这里把 stderr 逐行转发到
+      // 同一回调（与 stdout 同等对待），并保证在返回前排空。
+      const stderrDone = (async () => {
+        const reader = child.stderr.getReader();
+        let sbuf = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          sbuf += decoder.decode(value, { stream: true });
+          let idx: number;
+          while ((idx = sbuf.indexOf("\n")) !== -1) {
+            const line = sbuf.slice(0, idx);
+            sbuf = sbuf.slice(idx + 1);
+            onLine(line.endsWith("\r") ? line.slice(0, -1) : line);
+          }
+        }
+        if (sbuf.length > 0) onLine(sbuf);
+      })();
       let buf = "";
       const reader = child.stdout.getReader();
       for (;;) {
@@ -160,7 +182,9 @@ export function realRunner(): CommandRunner {
         }
       }
       if (buf.length > 0) onLine(buf);
-      return (await child.status).code;
+      const code = (await child.status).code;
+      await stderrDone;
+      return code;
     },
   };
 }
