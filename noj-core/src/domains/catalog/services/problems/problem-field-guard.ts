@@ -42,6 +42,7 @@ export const SENSITIVE_FIELD_PERMISSIONS: Record<string, string> = {
 export const RESOURCE_LIMIT_SETTINGS: Record<string, string> = {
   "evaluator.time_limit_ms": "judge_max_evaluator_time_limit_ms",
   "evaluator.memory_limit_mb": "judge_max_evaluator_memory_limit_mb",
+  "evaluator.workspace_size_mb": "judge_max_prediction_workspace_mb",
   "solution.call_timeout_ms": "judge_max_solution_call_timeout_ms",
   "solution.memory_limit_mb": "judge_max_solution_memory_limit_mb",
 };

@@ -670,3 +670,156 @@ Deno.test({
     );
   },
 });
+
+// prediction 题禁止 LLM 配置：judge 的 prediction 路径不注入 NOJ_LLM_*，
+// 题目级 llm_config 不会生效。创建/更新期 fail-fast，避免提交期才暴露。
+Deno.test({
+  name: "problems service: prediction 题携带 llm 创建被拒",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await assertRejects(
+      () =>
+        createProblem(
+          {
+            title: `prediction 配 LLM ${Date.now()}`,
+            description: "应被拒绝",
+            difficulty: "easy",
+            type: "P",
+            submission_mode: "prediction",
+            runtime_config: {
+              evaluator: {
+                image: "noj-evaluator-python",
+                command: "python3 /workspace/evaluate.py",
+                time_limit_ms: 5000,
+                memory_limit_mb: 512,
+                network: { enabled: true },
+              },
+            },
+            llm: { provider_id: "p1", model: "qwen-plus" },
+          },
+          "0",
+          "admin",
+        ),
+      BadRequestError,
+      "预测提交题不支持 LLM 配置",
+    );
+  },
+});
+
+Deno.test({
+  name: "problems service: 已配 LLM 的题目切为 prediction 被拒（需先移除 LLM）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const id = crypto.randomUUID();
+    // 直插一道已落库的「P 型 + 已配 LLM + 联网」题，绕过创建期的 provider 校验
+    // （本用例只关心更新路径的模式切换守卫）。
+    await db.insert(problems).values({
+      id,
+      title: `已有 LLM 的题 ${Date.now()}`,
+      description: "更新为 prediction 应被拒绝",
+      difficulty: "easy",
+      type: "P",
+      number: 999500,
+      owner_id: "0",
+      runtime_config: NETWORKED_RUNTIME_CONFIG,
+      llm_config: { provider_id: "p1", model: "qwen-plus" },
+      submission_mode: "code",
+      created_at: now,
+      updated_at: now,
+    });
+
+    await assertRejects(
+      () =>
+        updateProblem(
+          id,
+          {
+            submission_mode: "prediction",
+            runtime_config: {
+              evaluator: {
+                image: "noj-evaluator-python",
+                command: "python3 /workspace/evaluate.py",
+                time_limit_ms: 5000,
+                memory_limit_mb: 512,
+                network: { enabled: true },
+              },
+            },
+          },
+          "0",
+          "admin",
+        ),
+      BadRequestError,
+      "启用 LLM 的题目不能切换为预测提交",
+    );
+
+    // 同时显式移除 LLM 即可完成切换
+    const updated = await updateProblem(
+      id,
+      {
+        submission_mode: "prediction",
+        llm: null,
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+            network: { enabled: true },
+          },
+        },
+      },
+      "0",
+      "admin",
+    );
+    assertEquals(updated.submission_mode, "prediction");
+  },
+});
+
+Deno.test({
+  name: "problems service: prediction 题更新时添加 llm 被拒",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const created = await createProblem(
+      {
+        title: `prediction 更新加 LLM ${Date.now()}`,
+        description: "更新期应被拒绝",
+        difficulty: "easy",
+        type: "P",
+        submission_mode: "prediction",
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+            network: { enabled: true },
+          },
+        },
+      },
+      "0",
+      "admin",
+    );
+    assertEquals(created.submission_mode, "prediction");
+
+    await assertRejects(
+      () =>
+        updateProblem(
+          created.id,
+          { llm: { provider_id: "p1", model: "qwen-plus" } },
+          "0",
+          "admin",
+        ),
+      BadRequestError,
+      "预测提交题不支持 LLM 配置",
+    );
+  },
+});

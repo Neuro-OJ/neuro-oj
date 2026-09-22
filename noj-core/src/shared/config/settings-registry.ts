@@ -730,6 +730,18 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     min: 0,
     scope: "runtime",
   },
+  {
+    key: "judge_max_prediction_workspace_mb",
+    type: "integer",
+    default: 0,
+    description:
+      "prediction 题 /workspace tmpfs 上限（MB），0 = 仅受 judge 侧 512–16384 硬范围约束",
+    is_secret: false,
+    envFallback: "JUDGE_MAX_PREDICTION_WORKSPACE_MB",
+    category: "judge",
+    min: 0,
+    scope: "runtime",
+  },
 
   // ── review（内容合规审核，issue #413）───────────────────────
   {

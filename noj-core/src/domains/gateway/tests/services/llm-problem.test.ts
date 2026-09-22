@@ -91,6 +91,32 @@ Deno.test("llm-bundle: 未开启网络被拒", () => {
   );
 });
 
+Deno.test("llm-bundle: prediction 模式携带 llm 被拒（judge 不注入 NOJ_LLM_*）", () => {
+  // 回归：prediction 只跑 Evaluator，题目级 LLM 配置不会生效。
+  // 若不在导入期拦截，出题人会在提交期才拿到「环境变量未配置」的评测错误。
+  assertThrows(
+    () =>
+      validateBundleManifest({
+        format_version: 1,
+        title: "预测 LLM 题",
+        type: "P",
+        submission_mode: "prediction",
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            time_limit_ms: 60000,
+            memory_limit_mb: 512,
+            network: { enabled: true },
+          },
+          // prediction 无 Solution 容器
+        },
+        llm: { provider_id: "p1", model: "qwen-plus" },
+      }),
+    BadRequestError,
+    "预测提交题不支持 LLM 配置",
+  );
+});
+
 Deno.test("llm-token: buildJudgeTaskLlm 生成可校验字段", async () => {
   const oldToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN");
   const oldUrl = Deno.env.get("NOJ_LLM_GATEWAY_URL");

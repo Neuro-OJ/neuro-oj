@@ -20,6 +20,21 @@ use crate::types::{JudgeResult, RuntimeConfig};
 const PREDICTION_DIR: &str = "/workspace/prediction";
 const RESULT_MARKER: &str = "---RESULT---";
 
+/// 解析 prediction `/workspace` tmpfs 上限（MB）。
+///
+/// 题目级 `evaluator.workspace_size_mb` 优先，缺省用 Judge Worker 的
+/// `JUDGE_PREDICTION_WORKSPACE_MB`；两者都收敛到
+/// [`crate::config::MIN_PREDICTION_WORKSPACE_MB`]..=[`crate::config::MAX_PREDICTION_WORKSPACE_MB`]。
+///
+/// 题目级字段是**用户可控输入**（U 型题 owner 可自行编辑），原先直接传入 Docker
+/// tmpfs size，绕过 worker 配置的 512–16384 范围；这里补上同一收敛，避免无界声明。
+fn resolve_workspace_mb(configured: Option<u64>, default_workspace_mb: u64) -> u64 {
+    configured.unwrap_or(default_workspace_mb).clamp(
+        crate::config::MIN_PREDICTION_WORKSPACE_MB,
+        crate::config::MAX_PREDICTION_WORKSPACE_MB,
+    )
+}
+
 /// prediction 输出累积器。
 ///
 /// 关键安全修复（2026-09-21 Task 8 评审）：prediction 评测消费用户提供的预测文件，
@@ -73,8 +88,16 @@ impl PredictionOutput {
     fn handle_line(&mut self, line: EvaluatorLine) {
         match line {
             EvaluatorLine::ResultMarker => {
-                // Some("") 作为「已见标记、等待下一非空行」的跨 chunk 状态
-                self.payload = Some(String::new());
+                // 首个标记生效：payload 已捕获（非空）时后续标记行不再重置，避免把
+                // 已经拿到的合法结果清掉。触发场景：
+                // - evaluate.py 曾用 print 调试 `---RESULT---`，之后才是真正结果；
+                // - stdout 块缓冲下进程在写标记与 flush payload 之间死亡（标记先行、
+                //   payload 丢失），此后若出现第二组标记+payload，同样保留先到者。
+                // 空 payload（Some("")＝已见标记、等待下一非空行）时保持原语义，
+                // 使「标记与 payload 跨 chunk」仍能正常收尾。
+                if !self.has_payload() {
+                    self.payload = Some(String::new());
+                }
                 append_capped(&mut self.stdout_full, RESULT_MARKER);
                 append_capped(&mut self.stdout_full, "\n");
             }
@@ -148,10 +171,7 @@ pub async fn evaluate_prediction(
     } else {
         "none"
     };
-    let workspace_mb = rc
-        .evaluator
-        .workspace_size_mb
-        .unwrap_or(default_workspace_mb);
+    let workspace_mb = resolve_workspace_mb(rc.evaluator.workspace_size_mb, default_workspace_mb);
 
     let dual = DualContainer::create_evaluator_with_workspace(
         &docker,
@@ -398,6 +418,37 @@ mod tests {
         assert_eq!(out.payload.as_deref(), Some("{\"score\":7}"));
     }
 
+    /// 首个标记生效：payload 已捕获后，后续标记行不得把结果清掉。
+    ///
+    /// 回归场景：evaluate.py 调试打印过 `---RESULT---`，或 stdout 块缓冲下
+    /// 标记先于 payload 下发。原实现每个标记都重置 payload，会把已捕获的
+    /// 合法结果丢掉并误判为 system_error。
+    #[test]
+    fn test_second_marker_does_not_clobber_captured_payload() {
+        let mut out = PredictionOutput::new();
+        out.feed(&stdout_chunk(
+            "---RESULT---\n{\"score\":1000}\n---RESULT---\n{\"score\":0}\n",
+        ));
+        out.finish();
+        assert_eq!(
+            out.payload.as_deref(),
+            Some("{\"score\":1000}"),
+            "已捕获的 payload 不应被后续标记重置"
+        );
+    }
+
+    /// 标记后只有噪声、随后才有第二组标记 + payload：仍应吸收第二组的 payload。
+    #[test]
+    fn test_second_marker_payload_used_when_first_had_none() {
+        let mut out = PredictionOutput::new();
+        out.feed(&stdout_chunk(
+            "---RESULT---\n  \n---RESULT---\n{\"score\":7}\n",
+        ));
+        out.finish();
+        assert_eq!(out.payload.as_deref(), Some("{\"score\":7}"));
+        assert!(out.has_payload());
+    }
+
     /// 未输出标记时保持「无 payload」语义。
     #[test]
     fn test_no_marker_yields_no_payload() {
@@ -426,5 +477,26 @@ mod tests {
             message: noise.into_bytes().into(),
         });
         assert!(out.stderr_buf.len() <= crate::dual::MAX_OUTPUT_BYTES);
+    }
+
+    /// 题目级 workspace_size_mb 必须收敛到 worker 允许范围
+    /// （`JUDGE_PREDICTION_WORKSPACE_MB` 的 512–16384）。
+    #[test]
+    fn test_resolve_workspace_mb_clamps_problem_override() {
+        use crate::config::{MAX_PREDICTION_WORKSPACE_MB, MIN_PREDICTION_WORKSPACE_MB};
+
+        // 缺省：用 worker 配置值
+        assert_eq!(resolve_workspace_mb(None, 2048), 2048);
+        // 范围内：原样透传
+        assert_eq!(resolve_workspace_mb(Some(4096), 2048), 4096);
+        // 越界：收敛到上下限（题目 owner 是用户可控输入，不能无界声明 tmpfs）
+        assert_eq!(
+            resolve_workspace_mb(Some(10_000_000), 2048),
+            MAX_PREDICTION_WORKSPACE_MB
+        );
+        assert_eq!(
+            resolve_workspace_mb(Some(1), 2048),
+            MIN_PREDICTION_WORKSPACE_MB
+        );
     }
 }

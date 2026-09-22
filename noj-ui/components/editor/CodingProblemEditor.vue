@@ -280,7 +280,7 @@ async function loadProblem() {
         max_tokens?: number | null
       } | null
     }).llm_config
-    if (llmConfig) {
+    if (llmConfig && !isPredictionMode.value) {
       llmEnabled.value = true
       llmProviderId.value = llmConfig.provider_id
       llmModel.value = llmConfig.model
@@ -325,7 +325,7 @@ function validate(): boolean {
   if (!evaluatorImage.value.trim()) errors.evaluator_image = "请选择 evaluator 镜像"
   // prediction 无 Solution 容器，不要求 solution 镜像
   if (!isPredictionMode.value && !solutionImage.value.trim()) errors.solution_image = "请选择 solution 镜像"
-  if (llmEnabled.value) {
+  if (llmEnabled.value && !isPredictionMode.value) {
     if (!llmProviderId.value.trim()) errors.llm_provider = "请选择 LLM Provider"
     if (!llmModel.value.trim()) errors.llm_model = "请输入模型名"
     if (!evaluatorNetworkEnabled.value) errors.evaluator_network = "启用 LLM 必须开启 Evaluator 联网"
@@ -366,13 +366,18 @@ async function handleSubmit() {
     }
     const llmMaxCallsNum = llmMaxCalls.value === "" ? null : Number(llmMaxCalls.value)
     const llmMaxTokensNum = llmMaxTokens.value === "" ? null : Number(llmMaxTokens.value)
-    const llmPayload = llmEnabled.value
+    // prediction 题禁止 LLM 配置（后端 400）：省略该字段而非发 null。
+    // 发 null 会被 update 路径当作「显式清空」，从而绕过「切 prediction 前先移除
+    // LLM」的守卫——用户需要显式清空 + 切换两步完成，避免配置被静默丢弃。
+    const llmPayload = llmEnabled.value && !isPredictionMode.value
       ? {
           provider_id: llmProviderId.value.trim(),
           model: llmModel.value.trim(),
           ...(llmMaxCallsNum !== null ? { max_calls: llmMaxCallsNum } : {}),
           ...(llmMaxTokensNum !== null ? { max_tokens: llmMaxTokensNum } : {}),
         }
+      : isPredictionMode.value
+      ? undefined
       : null
     const submissionModePayload = submissionMode.value
     const artifactMaxSizePayload = artifactMaxSizeMb.value
@@ -592,8 +597,8 @@ async function handleSubmit() {
               </span>
             </label>
 
-            <!-- LLM 配置 -->
-            <div class="border-t border-border mt-2 pt-2.5 flex flex-col gap-2">
+            <!-- LLM 配置（prediction 题禁止：评测只跑 Evaluator，不注入 NOJ_LLM_*） -->
+            <div v-if="!isPredictionMode" class="border-t border-border mt-2 pt-2.5 flex flex-col gap-2">
               <label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text">
                 <input v-model="llmEnabled" type="checkbox" class="size-4 accent-primary">
                 <span>

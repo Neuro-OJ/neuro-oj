@@ -252,6 +252,11 @@ export function validateBundleManifest(
     if ((m.type ?? "U") !== "P") {
       throw new BadRequestError("仅 P 型/官方题可启用 LLM");
     }
+    // prediction 路径不注入 NOJ_LLM_*（评测只跑 Evaluator），题目级 LLM 配置
+    // 不会生效，导入期即拒绝而不是拖到提交期。
+    if (m.submission_mode === "prediction") {
+      throw new BadRequestError("预测提交题不支持 LLM 配置");
+    }
     llm = m.llm as LlmConfig;
   }
 

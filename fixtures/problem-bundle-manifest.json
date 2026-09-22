@@ -203,6 +203,30 @@
         "title": "x",
         "submission_mode": "binary"
       }
+    },
+    {
+      "name": "prediction 题携带 llm（judge 不注入 NOJ_LLM_*）",
+      "manifest": {
+        "format_version": 1,
+        "title": "预测 LLM 题",
+        "type": "P",
+        "submission_mode": "prediction",
+        "llm": {
+          "provider_id": "p1",
+          "model": "qwen-plus"
+        },
+        "runtime_config": {
+          "evaluator": {
+            "image": "noj/evaluator-python:1",
+            "command": "python3 /workspace/evaluate.py",
+            "time_limit_ms": 3000,
+            "memory_limit_mb": 1024,
+            "network": {
+              "enabled": true
+            }
+          }
+        }
+      }
     }
   ]
 }

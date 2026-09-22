@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 # 与既有 SDK 测试保持一致的写法（历史遗留：tests/ 现已位于包内，Python ≥3.11
@@ -188,6 +189,40 @@ class TestLoadPredictions(unittest.TestCase):
         msg = str(ctx.exception)
         self.assertIn("重复", msg)
         self.assertIn("缺少", msg)
+
+    def test_assert_id_alignment_is_linear_on_large_inputs(self):
+        """大预测文件必须线性完成（原实现逐元素 list.count 是 O(n²)）。
+
+        5 万行时旧实现需要约 15 秒、10 万行约 67 秒，会白白吃掉评测时限；
+        这里给出宽松上限，只拦截复杂度回归而非机器差异。
+        """
+        n = 50_000
+        bundle = PredictionBundle(
+            path="x",
+            columns=["value"],
+            rows=[{"value": 0} for _ in range(n)],
+        )
+        expected = [str(i) for i in range(n)]
+        start = time.perf_counter()
+        assert_id_alignment(bundle, expected)  # 不抛异常
+        elapsed = time.perf_counter() - start
+        self.assertLess(
+            elapsed,
+            5.0,
+            f"{n} 行对齐校验耗时 {elapsed:.2f}s，疑似退回 O(n²) 实现",
+        )
+
+    def test_assert_id_alignment_duplicates_reported_on_large_inputs(self):
+        """线性实现仍需正确报出大输入中的重复 ID。"""
+        rows = [{"id": str(i), "value": 0} for i in range(1000)]
+        rows.append({"id": "999", "value": 0})
+        bundle = PredictionBundle(path="x", columns=["id", "value"], rows=rows)
+        expected = [str(i) for i in range(1000)]
+        with self.assertRaises(ValueError) as ctx:
+            assert_id_alignment(bundle, expected)
+        msg = str(ctx.exception)
+        self.assertIn("重复 1 个['999']", msg)
+        self.assertIn("缺少 0 个[]", msg)
 
     def test_numpy_branch_requires_numpy_when_absent(self):
         try:

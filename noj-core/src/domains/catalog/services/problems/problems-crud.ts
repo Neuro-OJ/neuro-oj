@@ -176,6 +176,12 @@ export async function createProblem(
     if (isObjective) {
       throw new BadRequestError("客观题套卷不支持 LLM 配置");
     }
+    // prediction 路径不注入 NOJ_LLM_* 环境变量（评测只跑 Evaluator、无 Solution
+    // 调用语义），题目级 LLM 配置不会生效。此处 fail-fast，避免出题人配好后在
+    // 提交期才拿到「环境变量未配置」的评测错误。
+    if (submissionMode === "prediction") {
+      throw new BadRequestError("预测提交题不支持 LLM 配置");
+    }
     if (!isValidLlmConfig(input.llm)) {
       throw new BadRequestError("llm 配置格式非法");
     }
@@ -456,6 +462,12 @@ export async function updateProblem(
     if (input.llm === null) {
       llmConfig = null;
     } else {
+      // prediction 路径不注入 NOJ_LLM_*（与创建路径同一理由：评测只跑 Evaluator）。
+      // 用 effectiveSubmissionMode（已在上方按「显式变更优先、否则沿用现值」解析）
+      // 判定，避免 prediction → code 切换时被误拒。
+      if (effectiveSubmissionMode === "prediction") {
+        throw new BadRequestError("预测提交题不支持 LLM 配置");
+      }
       if (!isValidLlmConfig(input.llm)) {
         throw new BadRequestError("llm 配置格式非法");
       }
@@ -490,6 +502,13 @@ export async function updateProblem(
   if (nextLlm) {
     if (isObjective) {
       llmConfig = null;
+    } else if (effectiveSubmissionMode === "prediction") {
+      // 反向切换：已配 LLM 的题目切为 prediction 会让该配置失效（judge 不注入
+      // NOJ_LLM_*）。显式拒绝而不是静默清空，避免出题人的配置被无声丢弃；
+      // 同一请求带 `llm: null` 即可完成切换。
+      throw new BadRequestError(
+        "启用 LLM 的题目不能切换为预测提交，请先移除 LLM 配置",
+      );
     } else if (
       input.runtime_config !== undefined &&
       input.runtime_config !== null &&

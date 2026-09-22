@@ -35,7 +35,11 @@
 1. 提交模式选择 **预测提交（prediction / 单文件）**。
 2. `runtime_config` **只配置 `evaluator`**，省略 `solution`（prediction 无 Solution 容器）。
 3. 使用「产物大小上限」字段限制预测文件大小（该字段对 prediction 同样生效）。
-4. 如需更大的容器 `/workspace`，设置 `runtime_config.evaluator.workspace_size_mb`。
+4. 如需更大的容器 `/workspace`，设置 `runtime_config.evaluator.workspace_size_mb`（有效范围 512–16384；管理员可设 `judge_max_prediction_workspace_mb` 再收一层上限，超限保存即 400）。
+
+::: warning 不支持 LLM 配置
+prediction 题**不能配置 LLM**（创建、更新、题目包导入三处都会拒绝）。评测只运行 Evaluator、不注入 `NOJ_LLM_*` 环境变量，题目级 `llm_config` 不会生效，因此平台在保存期即 fail-fast，而不是拖到提交期。
+:::
 
 ```json
 {

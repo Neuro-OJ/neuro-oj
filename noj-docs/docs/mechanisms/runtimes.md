@@ -50,7 +50,7 @@ Python 题目使用两个镜像：
   | `NOJ_PREDICTION_DIR` | `/workspace/prediction` | 预测文件所在目录 |
   | `NOJ_PREDICTION_FILE` | 选手上传的文件名 | 预测文件名 |
 
-- `/workspace` 大小由 `runtime_config.evaluator.workspace_size_mb` 决定；缺省取 Judge Worker 的 `JUDGE_PREDICTION_WORKSPACE_MB`（默认 `2048`，单位 MB，允许范围 512–16384）。大预测文件会以 tmpfs 形式占用 Worker 内存。
+- `/workspace` 大小由 `runtime_config.evaluator.workspace_size_mb` 决定；缺省取 Judge Worker 的 `JUDGE_PREDICTION_WORKSPACE_MB`（默认 `2048`，单位 MB）。两者都被收敛到 **512–16384** 范围（题目级越界值在 judge 侧 clamp）；管理员可用 `judge_max_prediction_workspace_mb` 设置项（`JUDGE_MAX_PREDICTION_WORKSPACE_MB`，0 = 不限制）再收一层上限，超限的出题请求在保存时即 400。大预测文件会以 tmpfs 形式占用 Worker 内存。
 - 输出解析与双容器一致：Evaluator stdout 出现 `---RESULT---` 后取下一非空行 JSON `{score, details}`；stdout/stderr 全文受 1 MiB 硬上限约束，标记检测为流式（不依赖滚动缓冲重扫）。
 - prediction 题**不配置 `solution`**：题目的 `runtime_config` 可省略 `solution`，提交时语言固定为 `python3` 占位。
 - 预测文件复用 `artifact_storage_url` 生命周期：评测完成后对象即删除，**不支持重测**。

@@ -18,6 +18,7 @@ import json
 import math
 import numbers
 import os
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -164,11 +165,15 @@ def assert_id_alignment(prediction: PredictionBundle, expected_ids: list[str]) -
     - **多余**：预测出现期望之外的 ID。
     另外，数量不一致（``len(prediction.ids) != len(expected_ids)``）时也报错，
     避免仅集合相同但行数不同的情况被放过。
+
+    实现为单趟统计：预测文件可能有数十万行，逐元素 ``list.count()`` 是 O(n²)，
+    会在评测时限内跑不完（实测 10 万行约 67 秒）。
     """
     got = [str(i) for i in prediction.ids]
     want = [str(i) for i in expected_ids]
-    duplicates = sorted({i for i in got if got.count(i) > 1})
-    got_set = set(got)
+    got_counts = Counter(got)
+    duplicates = sorted(i for i, n in got_counts.items() if n > 1)
+    got_set = set(got_counts)
     want_set = set(want)
     missing = sorted(want_set - got_set)
     extra = sorted(got_set - want_set)
