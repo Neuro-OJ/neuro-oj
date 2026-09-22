@@ -421,6 +421,14 @@ export interface WriteJudgeEnvResult {
   written: boolean;
   /** 最终生效的键值。 */
   env: Record<string, string>;
+  /**
+   * 因「既有配置优先」而被忽略的键（值为本次请求值）。
+   *
+   * 为什么必须回报（评审发现）：`judge install --redis-url …` 在既有配置上
+   * 只应用 `updateVersion`，其余值一律不动且**零提示**——用户以为改了 Redis
+   * 口令，实际什么都没发生。静默忽略与"旗标被吞"是同一类缺陷。
+   */
+  ignored: Record<string, string>;
 }
 
 /**
@@ -450,9 +458,19 @@ export async function writeJudgeEnv(
       );
     }
     await Deno.chmod(opts.path, JUDGE_ENV_MODE);
+    // 回报「请求了但因既有配置而未被应用」的键：静默忽略会让用户误以为
+    // `--redis-url` / `--socket-gid` 生效（评审发现的同类缺陷）。
+    const ignored: Record<string, string> = {};
+    for (const [key, value] of Object.entries(opts.values ?? {})) {
+      if (key === "NOJ_VERSION") continue; // 版本是显式例外，已在上面处理
+      if (value !== "" && envValue(existing, key) !== value) {
+        ignored[key] = value;
+      }
+    }
     return {
       written: updateVersion !== undefined && updateVersion !== "",
       env: await readJudgeEnv(opts.path),
+      ignored,
     };
   }
 
@@ -482,7 +500,7 @@ export async function writeJudgeEnv(
   });
   await writeEnvFileAtomic(opts.path, new Map(Object.entries(merged)));
   await Deno.chmod(opts.path, JUDGE_ENV_MODE);
-  return { written: true, env: await readJudgeEnv(opts.path) };
+  return { written: true, env: await readJudgeEnv(opts.path), ignored: {} };
 }
 
 /** Judge 目录内各文件的绝对路径。 */

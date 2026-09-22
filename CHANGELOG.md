@@ -50,7 +50,7 @@
 
 | 命令 | 说明 |
 | --- | --- |
-| `backup create` | 产出单个 `.nojbackup`（+ `.sha256`） |
+| `backup create [--retention-days N] [--min-free-mb N]` | 产出单个 `.nojbackup`（+ `.sha256`）；采集前校验可用空间，成功后按保留天数清理过期快照 |
 | `backup verify [--deep] [--payload-sha]` | 三档校验：文件完整性 / 结构可解析 / 摘要比对 |
 | `backup list` / `backup prune` | `prune` **默认 dry-run**，`--confirm` 才真正删除；legacy 目录默认保留 |
 | `backup restore --dry-run` | 只规划并校验，**零副作用**（不触 docker、不改配置） |
@@ -58,6 +58,11 @@
 | `backup schedule install\|status\|remove` | crontab **标记区块**（只动自己那几行） |
 
 > `prune` 两个条件都不给时**不删任何东西**；这是刻意的安全默认。
+
+> **口令文件**：`--passphrase-file` > `NOJ_BACKUP_PASSPHRASE_FILE`（进程环境）>
+> `.env.prod` 中的同名键。`verify`/`restore`/`drill` 都按此顺序解析——
+> `--no-encrypt` 只关闭**整包**那一层加密，包内 `env.prod.gpg` 恒为加密，
+> 因此这些命令始终需要口令。
 
 #### 5. 命令接线改为纯 TS（不再有 bash 转发）
 

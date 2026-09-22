@@ -45,6 +45,15 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/check-write-rate-limits_test.ts",
   "scripts/check-log-migration_test.ts",
   "scripts/check-deno-version_test.ts",
+  // 评审发现：下面两个是本次新增/扩展的守卫测试，却**不在任何执行入口内**
+  // ——写了测试却永不执行，正是本仓库反复治理的"假绿"形态。
+  "scripts/gate-list_test.ts",
+  "scripts/coverage-report_test.ts",
+  // 同轮收口的存量漏网：这四个同样无人执行（评审发现）。
+  "scripts/test-baseline_test.ts",
+  "scripts/verify-md-links_test.ts",
+  "scripts/verify-export-jsdoc_test.ts",
+  "scripts/verify-agent-note-format_test.ts",
 ];
 
 /**

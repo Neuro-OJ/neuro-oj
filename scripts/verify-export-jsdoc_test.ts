@@ -77,11 +77,17 @@ Deno.test("analyzeRoot 聚合目录覆盖率", () => {
 
 Deno.test("阈值判断", () => {
   assert(
-    !isBelowThreshold({ exports: 10, documented: 7, coverage: 70 }, 62.9),
+    !isBelowThreshold(
+      { exports: 10, documented: 7, coverage: 70, files: 1 },
+      62.9,
+    ),
     "70% 不应低于 62.9%",
   );
   assert(
-    isBelowThreshold({ exports: 10, documented: 5, coverage: 50 }, 62.9),
+    isBelowThreshold(
+      { exports: 10, documented: 5, coverage: 50, files: 1 },
+      62.9,
+    ),
     "50% 应低于 62.9%",
   );
 });

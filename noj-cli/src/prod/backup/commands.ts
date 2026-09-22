@@ -312,6 +312,13 @@ export interface RestoreConfirmedOptions {
   workDir: string;
   passphraseFile?: string;
   encrypted?: boolean;
+  /**
+   * docker 可执行名（缺省 `docker`；生产取自 `NOJ_DEPLOY_DOCKER_BIN`）。
+   *
+   * 评审发现：恢复路径此前把 `docker` 写死，只有 install/update/create 装配
+   * 尊重该变量——非默认 docker 路径的宿主机上 `restore --confirm` 会失败。
+   */
+  dockerBin?: string;
   /** `--restore-env FILE`：把加密环境文件恢复到该路径。 */
   restoreEnv?: string;
   judge?: boolean;
@@ -384,17 +391,18 @@ export async function restoreConfirmed(
   }
 
   const env = await readEnvValues(opts.envFile);
+  const dockerBin = opts.dockerBin ?? "docker";
   const composeArgs = (command: string[]): string[] =>
     prodComposeArgs({
       composeFile: opts.composeFile,
       envFile: opts.envFile,
-      dockerBin: "docker",
+      dockerBin,
       judge: opts.judge === true,
     }, command);
 
   // ---- 3. 必须已停机 ----
   const running = await opts.runner.run(
-    "docker",
+    dockerBin,
     composeArgs(["ps", "--status", "running", "-q"]),
   );
   if (running.stdout.trim() !== "") {
@@ -436,7 +444,7 @@ export async function restoreConfirmed(
     tempDir: opts.workDir,
     env,
     runner: opts.runner,
-    dockerBin: "docker",
+    dockerBin,
     composeArgs,
     waitTimeout: opts.waitTimeout ?? 180,
     log,

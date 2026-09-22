@@ -371,6 +371,19 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     scope: "runtime",
   },
   {
+    key: "rate_limit_search_max_ip_total",
+    type: "integer",
+    default: 600,
+    description: "登录用户在同一 IP 上的窗口内搜索引擎兜底上限（0 = 关闭）。" +
+      "量级远高于用户桶，只用于防止账号轮换绕过与保留 IP 维度的洪水线索",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_SEARCH_MAX_IP_TOTAL",
+    category: "rate_limit",
+    min: 0,
+    max: 100000,
+    scope: "runtime",
+  },
+  {
     key: "trusted_proxies",
     type: "string",
     default: "",

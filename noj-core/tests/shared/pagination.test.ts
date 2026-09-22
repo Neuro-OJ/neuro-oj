@@ -132,11 +132,14 @@ Deno.test({
         return c.json(p);
       });
       const res = await app.request(`/x?page=${page}`);
-      // 修复前：offset=(page-1)*20 超出 bigint → PG 22P02/22003 → onError → 500
+      // 该 harness 的 `makeCtx` **没有 onError 映射**（见文件头），因此这里只能
+      // 观察到 500；生产 `createApp()` 会把它映射成 400
+      // （见下方路由级用例：`/api/v1/problems?page=9900000000000000000` → 400）。
+      // 关键是**修复前会打到 PG 才报 bigint 溢出**，修复后在解析层就被拒绝。
       assertEquals(
         res.status,
         500,
-        `page=${page} 应由 ValidationError 提前拒绝`,
+        `page=${page} 应被解析层提前拒绝（harness 无 onError → 500；生产为 400）`,
       );
     }
   },

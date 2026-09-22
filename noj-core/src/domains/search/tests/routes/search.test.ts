@@ -280,6 +280,69 @@ async function clearUserSearchKeys(
   } while (cursor !== "0");
 }
 
+// ── 2026-09-22 评审：认证用户的粗粒度 IP 兜底 ──
+// `auto` 下登录用户只走用户桶（NAT 修复），但这也让"注册多账号轮换"可以绕过
+// IP 维度、且洪水不在 IP 键上留痕。这里断言量级远高的 IP 上限确实存在：
+// 正常用户不会撞到，而超限时同样 429（在 IP 键上留痕）。
+Deno.test({
+  name: "search route: 认证用户受粗粒度 IP 兜底上限约束（429）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    Deno.env.set("RATE_LIMIT_ENABLED", "true");
+    Deno.env.set("RATE_LIMIT_SEARCH_ENABLED", "true");
+    Deno.env.set("RATE_LIMIT_SEARCH_WINDOW", "60");
+    Deno.env.set("RATE_LIMIT_SEARCH_MAX_ANON", "100");
+    // 用户桶远高于下面用到的次数，确保触发的是 IP 兜底而非用户桶
+    Deno.env.set("RATE_LIMIT_SEARCH_MAX_AUTHED", "100");
+    Deno.env.set("RATE_LIMIT_SEARCH_MAX_IP_TOTAL", "2");
+    const ip = "203.0.113.99";
+    const ipKey = `ratelimit:search:ip:${ip}`;
+    await resetDbForTest();
+    await seed();
+    const { createUserToken } = await import("../../../../../tests/helper.ts");
+    const userToken = await createUserToken("user");
+    const redis = getRedis();
+    await redis.del(ipKey);
+    const clear = async () => {
+      await redis.del(ipKey);
+      await clearUserSearchKeys(redis);
+    };
+    await clear();
+    try {
+      const app = createApp();
+      const first = await jsonRequest(app, "/api/v1/search?q=aa", {
+        ip,
+        token: userToken,
+      });
+      assertEquals(first.status, 200);
+      const second = await jsonRequest(app, "/api/v1/search?q=bb", {
+        ip,
+        token: userToken,
+      });
+      assertEquals(second.status, 200);
+      const third = await jsonRequest(app, "/api/v1/search?q=cc", {
+        ip,
+        token: userToken,
+      });
+      assertEquals(
+        third.status,
+        429,
+        "认证用户超过 IP 兜底上限必须 429（否则账号轮换可完全绕过 IP 维度）",
+      );
+    } finally {
+      await clear();
+      Deno.env.delete("RATE_LIMIT_ENABLED");
+      Deno.env.delete("RATE_LIMIT_SEARCH_ENABLED");
+      Deno.env.delete("RATE_LIMIT_SEARCH_WINDOW");
+      Deno.env.delete("RATE_LIMIT_SEARCH_MAX_ANON");
+      Deno.env.delete("RATE_LIMIT_SEARCH_MAX_AUTHED");
+      Deno.env.delete("RATE_LIMIT_SEARCH_MAX_IP_TOTAL");
+    }
+  },
+});
+
 async function createAdminToken(): Promise<string> {
   const { createUserToken } = await import("../../../../../tests/helper.ts");
   return createUserToken("admin");

@@ -247,6 +247,16 @@ export async function judgeInstall(
         ? `✓ 配置就绪：${paths.envFile}`
         : `✓ 保留已有配置：${paths.envFile}`,
     );
+    // **必须显式提示被保留覆盖的键**（评审发现）：既有配置优先时，
+    // `--redis-url` / `--socket-path` / `--socket-gid` 会被静默丢弃，
+    // 用户以为改了实际没改。静默忽略与"旗标被吞"属同一类缺陷。
+    const ignoredKeys = Object.keys(written.ignored);
+    if (ignoredKeys.length > 0) {
+      log(
+        `! 以下旗标未生效（既有配置优先，需手工修改 ${paths.envFile}）：` +
+          ignoredKeys.join("、"),
+      );
+    }
   } catch (err) {
     return fail(paths, isUsage(err) ? 2 : 1, (err as Error).message);
   }
@@ -614,6 +624,10 @@ export async function judgeLogs(
       opts.dockerBin ?? "docker",
       args,
       (line) => log(line),
+      // `--json` 时人类日志走 stderr（`log` 已按该契约分发），stderr 行的
+      // 路由与 stdout 一致即可；显式给出以表明"诊断输出也必须可见且不污染
+      // stdout"（评审建议：缺省转发是安全默认，但显式更清晰）。
+      { onStderr: (line) => log(line) },
     );
     if (code !== 0) {
       return fail(paths, 1, `查看 Judge 日志失败（退出码 ${code}）`);

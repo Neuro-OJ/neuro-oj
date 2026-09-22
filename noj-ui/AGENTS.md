@@ -292,7 +292,7 @@ cd dist
 - 筛选条件变化时自动重置页码
 - 防抖处理（避免快速输入时频繁请求）
 
-### useSubmissions（提交数据与轮询）
+### useSubmissionPolling（提交数据与轮询）
 - `useSubmissionPolling`：轮询 pending 提交直至终态（基于 `setInterval`，状态终态自动停止）
 - 分值格式化：`score / 100`（数据库存储 ×100）
 - 状态/颜色映射：`finished→green`（已评测 + 分数）、`error→red`（出错）等；不再使用 AC/WA 文案
@@ -301,11 +301,14 @@ cd dist
 全局搜索状态 + 防抖 fetch（issue #100），命令面板与结果页共享同一 `useState`
 实例：
 
-- `state` — `{ open, query, type("all"|"problem"|"user"), results:
-  {problems, users}, loading, error }`
+- `state` — `{ open, query, type, groups, flatItems, loading, error }`
+  （`type` 取值见 `SearchType`；`groups` 用于"全部"分组模式，
+  `flatItems` 用于按类型的结果页）
 - `open()` / `close()` — 控制 `SearchPalette` 浮层显隐
-- `search(q, opts?)` — 300ms 防抖调用 `GET /api/v1/search`；`type="all"` 时
-  并行 `Promise.allSettled` 拉题目 + 用户，两个端点都失败时设置 `state.error`
+- `search(q, opts?)` — 300ms 防抖调用 `GET /api/v1/search`；
+  "全部"模式请求
+  `types=problem,user,community_post,community_comment,contest,submission,message,announcement`
+  并以 `groups` 分组返回
 - `Navbar.vue` 调用 `open()` 唤起命令面板；`SearchPalette` / `pages/search.vue`
   共写共读
 
@@ -319,8 +322,7 @@ cd dist
 - **`onScopeDispose` 清理挂起的 debounce + Promise**，防止组件卸载后写共享
   state
 - **同步写入 `query`/`type`** 到共享 state，让分页等下游消费方能读到最新值
-- **`Promise.allSettled` 不抛错**，"all" 模式下两个端点都失败时显式置
-  `state.error = "搜索失败"`
+- **失败时**置 `state.error`（各分支显式处理，不做静默兜底）
 
 ## 数据获取策略
 

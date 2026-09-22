@@ -45,11 +45,12 @@ Status: implemented
    - `SECURITY.md` 支持版本仍写 `v0.8.1`（当前 `v0.9.5`）。
 
 这些是**纯文档缺陷**：`check-ci.ts` 全绿，`verify-md-links.ts` 只覆盖相对链接
-（478 个文件通过），VitePress 本地构建也通过——即现有门禁无法发现上述漂移。
+（479 个文件通过），VitePress 本地构建也通过——即现有门禁无法发现上述漂移。
 
 ## Decision
 
-1. **逐条以代码取证后修正**，覆盖 17 个文件：根级 `README.md`、`AGENTS.md`、
+1. **逐条以代码取证后修正**，覆盖 31 个 Markdown 文件（另有
+   `.env.prod.example` 与源码文件 `noj-judge/src/logging.rs` 的测试去竞态）：根级 `README.md`、`AGENTS.md`、
    `CONTRIBUTING.md`、`SECURITY.md`、`.env.prod.example`；`scripts/README.md`；
    `deploy/README.md`（未改）与其 `deploy/monitoring/README.md`；
    `noj-cli/README.md`；`noj-core`、`noj-ui`、`noj-judge` 的模块文档；

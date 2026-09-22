@@ -153,6 +153,7 @@ export async function updateProvider(
   if (!existing) {
     throw new Error("provider_not_found");
   }
+
   const updatedAt = now();
   const sets: string[] = [];
   const params: Array<string | number | boolean> = [];
