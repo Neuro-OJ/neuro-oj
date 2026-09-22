@@ -51,10 +51,26 @@ export function searchRateLimit(
     const max = effective === "anon"
       ? settingInt("rate_limit_search_max_anon")
       : settingInt("rate_limit_search_max_authed");
+    // **粗粒度 IP 兜底**（2026-09-22 评审）：`auto` 下登录用户只走用户桶，
+    // 这解决了校园机房 NAT 的误伤，但也意味着单账号轮换可以绕过 IP 维度、
+    // 且认证用户的搜索洪水不再在 IP 键上留痕（运维少一条线索）。
+    // 因此对认证用户额外加一个**量级远高**的 IP 上限作为安全网：
+    // 正常 NAT 出口不会撞到它，而异常洪水会在 IP 键上留痕并可见。
+    const maxIpTotal = settingInt("rate_limit_search_max_ip_total");
+    const ipKey = `search:ip:${getClientIp(c)}`;
 
-    const key = effective === "authed"
-      ? `search:user:${userId}`
-      : `search:ip:${getClientIp(c)}`;
+    if (effective === "authed" && maxIpTotal > 0) {
+      const ipCfg = { windowSec, max: maxIpTotal };
+      const ipResult = await checkRateLimit(ipKey, ipCfg);
+      if (!ipResult.allowed) {
+        throw new RateLimitedError(
+          "搜索请求过于频繁，请稍后再试（IP 维度兜底）",
+          rateLimitHeaders(ipCfg, ipResult),
+        );
+      }
+    }
+
+    const key = effective === "authed" ? `search:user:${userId}` : ipKey;
 
     const cfg = { windowSec, max };
     const result = await checkRateLimit(key, cfg);

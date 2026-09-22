@@ -124,6 +124,7 @@ Deno.test("providers: BYOK 更新拒绝 enabled（用户不得自行解禁）", 
       provider.id,
       { enabled: true },
       testConfig.storeKey,
+      "user", // 用户自助路径：带 ?created_by= 的请求
     );
     throw new Error("expected provider_invalid");
   } catch (error) {
@@ -151,6 +152,7 @@ Deno.test("providers: BYOK 更新拒绝负 cost（防止配额退款）", async 
         provider.id,
         { cost_per_1k_tokens: bad },
         testConfig.storeKey,
+        "user",
       );
       throw new Error(`expected provider_invalid for ${bad}`);
     } catch (error) {
@@ -178,6 +180,7 @@ Deno.test("providers: BYOK 更新仍允许白名单字段", async () => {
     provider.id,
     { name: "改名", model: "gpt-4o-mini" },
     testConfig.storeKey,
+    "user",
   );
   assertEquals(result.name, "改名");
   assertEquals(result.model, "gpt-4o-mini");
@@ -203,4 +206,56 @@ Deno.test("providers: 管理员 Provider（created_by=0）仍可更新 enabled �
   );
   assertEquals(result.enabled, false);
   assertEquals(result.cost_per_1k_tokens, 3);
+});
+
+// ── 2026-09-22 评审：按"行的归属"判定白名单会误伤管理端 ──
+// 触发条件：管理员在后台编辑**用户自建** Provider 并保存。管理端 UI 的载荷恒带
+// `enabled` / `cost_per_1k_tokens`，而 core 转发走的是**不带** `created_by` 的
+// `PUT /internal/providers/:id`。按行归属判定会把管理端也拦下（400
+// provider_invalid），管理员从此无法启用/停用/改价用户自建 Provider——
+// 而管理端列表不暴露归属，管理员无从预判。
+// 修复：白名单绑定**请求作用域**（带 `created_by` = 用户路径）。
+Deno.test("providers: 管理端更新用户自建 Provider 的 enabled/cost 必须放行（回归）", async () => {
+  const provider = await byokRow(testConfig.storeKey); // created_by = "user-1"
+  const { db } = createFakeDb(provider);
+  const unsafe = (query: string, params: unknown) => {
+    const fields = [...query.matchAll(/(\w+) = \$(\d+)/g)];
+    for (const [, field, index] of fields) {
+      const value = (params as unknown[])[Number(index) - 1];
+      if (field !== "id") Object.assign(provider, { [field]: value });
+    }
+    return Promise.resolve([]);
+  };
+  db.unsafe = unsafe as unknown as typeof db.unsafe;
+  // 默认作用域 = 管理面（不带 created_by）
+  const result = await updateProvider(
+    db,
+    provider.id,
+    { enabled: false, cost_per_1k_tokens: 7 },
+    testConfig.storeKey,
+  );
+  assertEquals(
+    result.enabled,
+    false,
+    "管理员必须能停用用户自建 Provider（曾因按行归属判定而 400）",
+  );
+  assertEquals(result.cost_per_1k_tokens, 7);
+});
+
+Deno.test("providers: 用户路径仍不得改 enabled/cost（作用域收窄未放松）", async () => {
+  const provider = await byokRow(testConfig.storeKey);
+  const { db } = createFakeDb(provider);
+  db.unsafe = (() => Promise.resolve([])) as unknown as typeof db.unsafe;
+  // 显式 admin 作用域下才允许；user 作用域下必须仍拒绝——防止"修管理端时
+  // 顺手把用户侧也放开"。
+  for (const input of [{ enabled: true }, { cost_per_1k_tokens: 0 }]) {
+    try {
+      await updateProvider(db, provider.id, input, testConfig.storeKey, "user");
+      throw new Error(`expected provider_invalid for ${JSON.stringify(input)}`);
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== "provider_invalid") {
+        throw error;
+      }
+    }
+  }
 });

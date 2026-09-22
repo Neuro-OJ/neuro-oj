@@ -1,4 +1,4 @@
-import { resolve } from "@std/path";
+import { join, resolve } from "@std/path";
 import { VERSION } from "./mod.ts";
 import {
   findProductionDir,
@@ -16,9 +16,11 @@ import {
   judgeUpgrade,
 } from "./prod/judge/actions.ts";
 import {
+  envNumber,
   flagValue,
   hasFlag,
   hasJson,
+  numberFlag,
   parseProdArgs,
   positionals,
   rejectUnimplementedProdFlags,
@@ -49,7 +51,9 @@ import {
 } from "./util/args.ts";
 import { CONTAINER_COMMANDS, parseContainerCommand } from "./container.ts";
 import { runDrill } from "./prod/drill/drill.ts";
+import { readEnvValues } from "./prod/drill/plan.ts";
 import { createLocalRedis } from "./prod/judge/config.ts";
+import { PROD_ENV_FILE } from "./prod/compose.ts";
 import { realRunner } from "./runtime/command.ts";
 import { parseProblemArgs, runProblem } from "./problem/command.ts";
 import { renderProblemHelp } from "./problem/help.ts";
@@ -677,182 +681,9 @@ export function parsePort(args: string[]): number {
   return parsePortArg(args, 8080);
 }
 
-export interface BackupArgs {
-  sub: string;
-  dir: string | undefined;
-  backupDir: string | undefined;
-  passphraseFile: string | undefined;
-  zstdLevel: number;
-  noEncrypt: boolean;
-  confirm: boolean;
-  includeDeployConfigs: boolean;
-  snapshot: string | undefined;
-  report: string | undefined;
-  /** #515 P6：prune 保留最近 N 份。 */
-  keep: number | undefined;
-  /** #515 P6：prune 删除早于 N 天的备份。 */
-  olderThanDays: number | undefined;
-  /** #515 P6：prune 是否允许删除旧目录格式（默认否，防误删）。 */
-  includeLegacy: boolean;
-  /** #515 P6：机器可读输出（list/prune）。 */
-  json: boolean;
-  /** #516：跳过 Judge 验收。 */
-  skipJudge: boolean;
-  /** #516：演练子网。 */
-  subnet: string | undefined;
-  /** #516：演练 Compose 项目名。 */
-  projectName: string | undefined;
-  /** #516：RPO 上限（小时）。 */
-  rpoMaxHours: number | undefined;
-  /** #516：RTO 上限（分钟）。 */
-  rtoMaxMinutes: number | undefined;
-  /** #516：drill 保留演练环境（与 prune 的 --keep N 语义不同）。 */
-  keepFlag: boolean;
-}
-
-/** 解析 maintain backup 参数：子命令 + 位置参数 snapshot + 各旗标。 */
-export function parseBackupArgs(args: string[]): BackupArgs {
-  const out: BackupArgs = {
-    sub: args[0] ?? "",
-    dir: undefined,
-    backupDir: undefined,
-    passphraseFile: undefined,
-    zstdLevel: 15,
-    noEncrypt: false,
-    confirm: false,
-    includeDeployConfigs: false,
-    snapshot: undefined,
-    report: undefined,
-    keep: undefined,
-    olderThanDays: undefined,
-    includeLegacy: false,
-    json: false,
-    skipJudge: false,
-    subnet: undefined,
-    projectName: undefined,
-    rpoMaxHours: undefined,
-    rtoMaxMinutes: undefined,
-    keepFlag: false,
-  };
-  const rest = args.slice(1);
-  // `--dir` 统一解析（支持 `--dir=`，缺值报错）；下面的 switch 跳过它。
-  out.dir = parseDirArg(rest);
-  const positional: string[] = [];
-  for (let i = 0; i < rest.length; i++) {
-    const a = rest[i]!;
-    if (a === "--dir" || a.startsWith("--dir=")) {
-      if (a === "--dir") i++;
-      continue;
-    }
-    const takeValue = (name: string): string => {
-      const value = rest[i + 1];
-      if (value === undefined || value.startsWith("--")) {
-        throw new UsageError(`${name} 需要一个值`);
-      }
-      i++;
-      return value;
-    };
-    switch (a) {
-      case "--backup-dir":
-        out.backupDir = takeValue("--backup-dir");
-        break;
-      case "--passphrase-file":
-        out.passphraseFile = takeValue("--passphrase-file");
-        break;
-      case "--zstd-level": {
-        const raw = takeValue("--zstd-level");
-        const level = Number(raw);
-        if (!Number.isInteger(level) || level < 1 || level > 22) {
-          throw new UsageError(
-            `--zstd-level 需要一个 1-22 的整数，收到 "${raw}"`,
-          );
-        }
-        out.zstdLevel = level;
-        break;
-      }
-      case "--no-encrypt":
-        out.noEncrypt = true;
-        break;
-      case "--confirm":
-        out.confirm = true;
-        break;
-      case "--include-deploy-configs":
-        out.includeDeployConfigs = true;
-        break;
-      case "--report":
-        out.report = takeValue("--report");
-        break;
-      case "--keep": {
-        // 两种语义（#515/#516），按**子命令**区分而非猜测下一个参数：
-        // - prune：`--keep N` 保留最近 N 份（必须有值）；
-        // - drill：裸 `--keep` 保留演练环境（bool，无值）。
-        if (out.sub === "drill") {
-          out.keepFlag = true;
-          break;
-        }
-        // 注意：takeValue 已经把 i 推进到值上，**不可再 i++**
-        // （否则会多跳一个 token，把下一个选项的值当成位置参数）。
-        const raw = takeValue("--keep");
-        const n = Number(raw);
-        if (!Number.isInteger(n) || n < 0) {
-          throw new UsageError(`--keep 需要一个非负整数，收到 "${raw}"`);
-        }
-        out.keep = n;
-        break;
-      }
-      case "--older-than": {
-        const raw = takeValue("--older-than");
-        const n = Number(raw);
-        if (!Number.isInteger(n) || n < 0) {
-          throw new UsageError(
-            `--older-than 需要一个非负整数（天），收到 "${raw}"`,
-          );
-        }
-        out.olderThanDays = n;
-        break;
-      }
-      case "--include-legacy":
-        // 旧目录格式承载存量数据，默认受保护（#515）
-        out.includeLegacy = true;
-        break;
-      case "--skip-judge":
-        // #516：无 Judge 部署时跳过相关验收
-        out.skipJudge = true;
-        break;
-      case "--subnet":
-        out.subnet = takeValue("--subnet");
-        break;
-      case "--project-name":
-        out.projectName = takeValue("--project-name");
-        break;
-      case "--rpo-max-hours": {
-        const raw = takeValue("--rpo-max-hours");
-        const n = Number(raw);
-        if (!Number.isInteger(n) || n <= 0) {
-          throw new UsageError(`--rpo-max-hours 需要正整数，收到 "${raw}"`);
-        }
-        out.rpoMaxHours = n;
-        break;
-      }
-      case "--rto-max-minutes": {
-        const raw = takeValue("--rto-max-minutes");
-        const n = Number(raw);
-        if (!Number.isInteger(n) || n <= 0) {
-          throw new UsageError(`--rto-max-minutes 需要正整数，收到 "${raw}"`);
-        }
-        out.rtoMaxMinutes = n;
-        break;
-      }
-      case "--json":
-        out.json = true;
-        break;
-      default:
-        positional.push(a);
-    }
-  }
-  out.snapshot = positional[0];
-  return out;
-}
+// `backup` 子命令参数解析已抽到 ./backup-args.ts（单文件规模棘轮）。
+export { type BackupArgs, parseBackupArgs } from "./backup-args.ts";
+import { type BackupArgs, parseBackupArgs } from "./backup-args.ts";
 
 /** 分发选项（#518：profile 相关行为）。 */
 export interface DispatchOptions {
@@ -942,6 +773,7 @@ export function renderDrillHelp(): string {
       "  --json                  机器可读报告",
       "  --dir <path>            生产安装目录",
       "  --passphrase-file FILE  GPG 口令文件",
+      "  --no-encrypt            快照未加密（`backup create --no-encrypt` 的产物）",
       "",
       "退出码: 0 通过 / 1 演练失败（含业务验收失败、超 RPO/RTO）/ 2 参数或资源错误",
     ],
@@ -975,13 +807,26 @@ async function executeDrill(
       snapshotPath: a.snapshot,
       dir,
       runner: realRunner(),
-      passphraseFile: a.passphraseFile,
+      // **`--passphrase-file` > `NOJ_BACKUP_PASSPHRASE_FILE` > `.env.prod`**
+      // （评审发现）：此前只透传旗标，环境变量形同虚设——而报错文案却
+      // 明示该变量可用。
+      passphraseFile: await resolveBackupPassphraseForDir(
+        a.passphraseFile,
+        dir,
+      ),
       skipJudge: a.skipJudge,
       subnet: a.subnet,
       projectName: a.projectName,
       report: a.report,
       rpoMaxHours: a.rpoMaxHours,
       rtoMaxMinutes: a.rtoMaxMinutes,
+      // `backup create --no-encrypt` 的产物必须也能被演练（评审发现）：
+      // 否则"不加密"这条受支持的路径无法做恢复验收。
+      encrypted: !a.noEncrypt,
+      // `NOJ_DEPLOY_DOCKER_BIN` 与非默认 docker 路径的宿主机（评审发现）：
+      // restore/drill 此前把 docker 写死，只有 install/update/create 装配
+      // 尊重该变量。
+      dockerBin: Deno.env.get("NOJ_DEPLOY_DOCKER_BIN") ?? undefined,
       keep: a.keepFlag === true,
       log: (line) => {
         // `--json` 时 stdout 必须逐字节为 JSON，故人类日志改道 stderr
@@ -1023,12 +868,22 @@ async function dispatchProduction(
   // **先拒绝未实现的旗标**（在任何副作用之前）：`--dry-run` 在破坏性命令上
   // 被静默忽略会让"预演"真的执行（评审实测：`uninstall --all --yes --dry-run`
   // 删除了整个安装目录）。必须在解析/分发之前。
-  // `judge` 子命令已实现 `--dry-run`（`judgeInstall` 内有完整分支），故放行；
-  // 其余生产命令未实现，必须拒绝而非静默执行。
-  rejectUnimplementedProdFlags(
-    args,
-    command === "judge" ? ["--dry-run"] : [],
-  );
+  // 已实现 `--dry-run` 的命令必须放行：`judge`（`judgeInstall` 内的 dry-run 分支）
+  // 与 `backup restore`（`README.md` / CHANGELOG 承诺的"只规划并校验"）。
+  const dryRunAllowed = command === "judge" ||
+    (command === "backup" && args[0] === "restore");
+  rejectUnimplementedProdFlags(args, dryRunAllowed ? ["--dry-run"] : []);
+  // **互相矛盾的旗标在解析目录之前就拒绝**：`--dry-run`（只规划）与
+  // `--confirm`（会真正覆盖数据）同时给出属用法错误——猜哪个都危险，
+  // 且纯参数错误不该依赖"安装目录能否找到"。
+  if (
+    command === "backup" && args[0] === "restore" &&
+    hasFlag(args, "--dry-run") && hasFlag(args, "--confirm")
+  ) {
+    throw new UsageError(
+      "--dry-run 与 --confirm 不能同时使用：前者只规划、后者会真正覆盖数据",
+    );
+  }
   const parsed = parseProdArgs(args);
   let dir: string;
   try {
@@ -1238,6 +1093,7 @@ async function dispatchProdJudge(
           ? flagValue(rest, "--redis-url")
           : localRedis.runtimeUrl,
         socketPath: flagValue(rest, "--socket-path"),
+        socketGid: flagValue(rest, "--socket-gid"),
         values: {},
       });
       say(r.message);
@@ -1333,6 +1189,12 @@ async function dispatchProdBackup(
         backupDir: flagValue(rest, "--backup-dir"),
         zstdLevel: numberFlag(rest, "--zstd-level"),
         noEncrypt: hasFlag(rest, "--no-encrypt"),
+        // 环境变量缺省与 bash 一致（`NOJ_BACKUP_RETENTION_DAYS` /
+        // `NOJ_BACKUP_MIN_FREE_MB`，backup.sh:13-14）。
+        retentionDays: numberFlag(rest, "--retention-days") ??
+          envNumber("NOJ_BACKUP_RETENTION_DAYS"),
+        minFreeMb: numberFlag(rest, "--min-free-mb") ??
+          envNumber("NOJ_BACKUP_MIN_FREE_MB"),
       });
       if (json) {
         console.log(JSON.stringify(
@@ -1408,6 +1270,8 @@ async function dispatchProdBackup(
     }
     case "restore": {
       // `--confirm` → 真实恢复；否则 dry-run 计划（文档承诺的语义）。
+      // `--dry-run` 是**显式**的 dry-run 请求：与 `--confirm` 互斥的检查
+      // 已在 `dispatchProduction` 的开头完成（纯参数错误先于目录解析）。
       const r = await runBackupRestore(dir, rest, {});
       if (json) {
         console.log(JSON.stringify(r, null, 2));
@@ -1446,17 +1310,6 @@ async function dispatchProdBackup(
       );
       return EXIT_USAGE;
   }
-}
-
-/** 读一个数值旗标（非法值报用法错误）。 */
-function numberFlag(args: string[], name: string): number | undefined {
-  const raw = flagValue(args, name);
-  if (raw === undefined) return undefined;
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < 0) {
-    throw new UsageError(`${name} 必须是非负整数，收到 "${raw}"`);
-  }
-  return n;
 }
 
 /** 将命令分发到对应处理函数。供测试与 run 共用。 */
@@ -1577,6 +1430,30 @@ export function removedCommandNotice(
   return lines.join("\n");
 }
 
+/**
+ * 解析 drill 的口令文件（`--passphrase-file` > 进程环境 > `.env.prod`）。
+ *
+ * 独立成函数是因为 drill 的调用点只有 `executeDrill`，而它需要 `dir`
+ * 才能读安装目录里的 `.env.prod`（评审发现：环境变量此前未接线）。
+ */
+async function resolveBackupPassphraseForDir(
+  flag: string | undefined,
+  dir: string,
+): Promise<string | undefined> {
+  if (flag !== undefined && flag !== "") return flag;
+  const fromEnv = Deno.env.get("NOJ_BACKUP_PASSPHRASE_FILE");
+  if (fromEnv !== undefined && fromEnv !== "") return fromEnv;
+  try {
+    const configured = (await readEnvValues(join(dir, PROD_ENV_FILE)))[
+      "NOJ_BACKUP_PASSPHRASE_FILE"
+    ];
+    return configured === "" ? undefined : configured;
+  } catch {
+    // 安装目录不可读不在此处致命：口令的必需性由 runDrill 自己的前置校验决定。
+    return undefined;
+  }
+}
+
 /** 生产命令的 CLI 侧帮助（不转发给底层 bash 脚本，#517 E12）。 */
 function renderProductionCommandHelp(command: string): string {
   const summaries: Record<string, string> = {
@@ -1593,14 +1470,44 @@ function renderProductionCommandHelp(command: string): string {
     verify: "校验生产配置与镜像签名",
     config: "校验生产配置（不校验镜像签名）",
     uninstall: "卸载生产服务；--all 删除全部数据，需确认",
+    judge: "独立 Judge Worker 部署（install-env/install/check/start/stop/…）",
   };
+  // `judge` 的必需旗标必须出现在 help 里：文档给的一行命令此前不可执行
+  // （评审发现——`judge install --dir X` 只会报"首装必须提供 NOJ_VERSION"，
+  // 而 `--version`/`--redis-url`/`--socket-path` 在任何 help 中都不出现）。
+  const judgeFlags = command === "judge"
+    ? [
+      "",
+      "judge install 必需旗标（首装）:",
+      "  --version <tag>        不可变 Release 版本（如 v0.9.5；禁用 main/latest）",
+      "  --redis-url <url>      与 noj-core 相同的 Redis 地址",
+      "  --socket-path <path>   专用 rootless Docker socket（禁用宿主共享 socket）",
+      "  --socket-gid <gid>     socket 实际组 ID（stat -c '%g' <socket>）",
+      "",
+      "可选: --redis-mode local|existing、--redis-port、--redis-container、",
+      "      --dry-run（零副作用预演）、--env-file、--compose-file",
+    ]
+    : [];
+  const backupFlags = command === "backup"
+    ? [
+      "",
+      "backup 常用选项:",
+      "  create --retention-days N --min-free-mb N   保留天数 / 可用空间下限",
+      "  verify|restore|drill --passphrase-file FILE  GPG 口令（或用",
+      "      NOJ_BACKUP_PASSPHRASE_FILE，或 .env.prod 中的同名键）",
+      "  restore 省略 --confirm（或显式 --dry-run）为只规划、零副作用",
+    ]
+    : [];
   return renderCommandHelp(`noj-cli ${command} [选项]`, [
     summaries[command] ?? "生产命令",
     "",
     "说明:",
     "  该命令需要完整的生产安装目录（含 docker-compose.prod.yml 与",
     "  .env.prod）。使用 --dir <path> 指定，或在安装目录内执行。",
+    "  `judge` 允许空/新建目录（独立节点不运行 noj-core/noj-ui）。",
     "  --help 由 noj-cli 自己回答，不会转发给底层脚本。",
+    ...judgeFlags,
+    ...backupFlags,
   ]);
 }
 

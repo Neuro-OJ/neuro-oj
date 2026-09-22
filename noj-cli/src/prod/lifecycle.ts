@@ -1066,9 +1066,9 @@ async function streamLogs(
     ctx.error("当前运行时不支持实时日志（CommandRunner.stream 缺失）");
     return 1;
   }
-  return await runner.stream("docker", args, (line) => {
-    emitHuman(line + "\n", ctx.io);
-  });
+  // compose 的告警/进度走 stderr：显式与 stdout 分流（评审建议）。
+  const emit = (line: string) => emitHuman(line + "\n", ctx.io);
+  return await runner.stream("docker", args, emit, { onStderr: emit });
 }
 
 /** 生命周期结果的 `--json` 载荷（stdout 只含这一个 JSON 文档）。 */
