@@ -55,6 +55,37 @@ const ALLOWED_EXT: readonly string[] = [
 /** 统一的拒绝错误码，前端可据此做差异化提示。 */
 const REJECTED_CODE = "PREDICTION_FORMAT_REJECTED";
 
+/**
+ * 校验文件名**形态**（2026-09-22 评审）。
+ *
+ * 为什么需要：选手上传的原始文件名会被透传到 judge 并拼成
+ * `prediction/<file_name>` 注入容器。judge 侧的 `sanitize_rel_path` 会拒绝
+ * 含 `..`/空段/前导 `/` 的路径，但**那是评测期**——届时选手拿到的是通用
+ * 「系统内部错误」，而不是提交期的 400。例如 `a/../../x.csv`、`foo//bar.csv`
+ * 会通过入库与入队，直到注入阶段才失败。
+ *
+ * 这里在提交期就拒绝：路径分隔符、控制字符、`.`/`..`、首尾空白。
+ * 允许的文件名形态 = 单层普通文件名（可含 `.`、`-`、`_`、空格、Unicode）。
+ *
+ * @param fileName 原始文件名
+ * @throws {BadRequestError} 文件名形态非法（错误码同上）
+ */
+export function validatePredictionFileName(fileName: string): void {
+  const reject = (reason: string): never => {
+    throw new BadRequestError(`预测文件名不合法：${reason}`, REJECTED_CODE);
+  };
+  if (fileName === "") reject("文件名为空");
+  // 控制字符（含 NUL、换行）与路径分隔符：Windows 的反斜杠一并拒绝，
+  // 避免跨平台注入语义差异。
+  // deno-lint-ignore no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(fileName)) reject("含控制字符");
+  if (fileName.includes("/") || fileName.includes("\\")) {
+    reject("不得包含路径分隔符");
+  }
+  if (fileName === "." || fileName === "..") reject("不得为 . 或 ..");
+  if (fileName.trim() !== fileName) reject("首尾不得有空白");
+}
+
 /** 从文件名提取小写扩展名；无扩展名时返回空串。 */
 export function predictionFileExtension(fileName: string): string {
   const lower = fileName.toLowerCase();
@@ -94,6 +125,9 @@ export function validatePredictionFile(
   fileName: string,
   firstBytes: Uint8Array,
 ): void {
+  // 先校验**文件名形态**：它会在 judge 侧参与路径拼接，必须在提交期拒绝。
+  validatePredictionFileName(fileName);
+
   const ext = predictionFileExtension(fileName);
 
   // 先判黑名单：即使内容看似正常，pickle 类扩展名也直接拒绝。

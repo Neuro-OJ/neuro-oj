@@ -28,11 +28,31 @@ const RESULT_MARKER: &str = "---RESULT---";
 ///
 /// 题目级字段是**用户可控输入**（U 型题 owner 可自行编辑），原先直接传入 Docker
 /// tmpfs size，绕过 worker 配置的 512–16384 范围；这里补上同一收敛，避免无界声明。
+/// 解析本次评测的 workspace 大小（MB）。
+///
+/// 语义（2026-09-22 评审澄清）：
+/// - 题目未声明 → 用 worker 的 `JUDGE_PREDICTION_WORKSPACE_MB` 缺省值；
+/// - 题目声明值**超出 worker 允许范围**时收敛到上下限——题目 owner 是用户可控
+///   输入，不能无界声明 tmpfs；
+/// - 但收敛**不再静默**：越界时打一条 warn（此前静默抬高/压低，出题人看到
+///   自己写的 `256` 却得到 `512` 时无从判断是配置没生效还是被夹取）。
+///
+/// 另注意两个近似名不要混淆：worker 侧的 `JUDGE_PREDICTION_WORKSPACE_MB` 是
+/// **缺省值**，core 侧的管理员设置 `JUDGE_MAX_PREDICTION_WORKSPACE_MB` 是**上限**。
 fn resolve_workspace_mb(configured: Option<u64>, default_workspace_mb: u64) -> u64 {
-    configured.unwrap_or(default_workspace_mb).clamp(
-        crate::config::MIN_PREDICTION_WORKSPACE_MB,
-        crate::config::MAX_PREDICTION_WORKSPACE_MB,
-    )
+    let min = crate::config::MIN_PREDICTION_WORKSPACE_MB;
+    let max = crate::config::MAX_PREDICTION_WORKSPACE_MB;
+    let requested = configured.unwrap_or(default_workspace_mb);
+    let resolved = requested.clamp(min, max);
+    if let Some(configured) = configured {
+        if configured != resolved {
+            warn!(
+                "题目声明的 workspace_size_mb={} 超出允许范围 [{}, {}]，已收敛为 {}",
+                configured, min, max, resolved
+            );
+        }
+    }
+    resolved
 }
 
 /// prediction 输出累积器。
@@ -56,7 +76,21 @@ struct PredictionOutput {
     /// `None`＝未见标记；`Some("")`＝已见标记、等待首个非空行；
     /// `Some(payload)`＝已捕获 payload。
     payload: Option<String>,
+    /// 标记之后的**候选 payload**（按出现顺序，有界）。
+    ///
+    /// 为什么要多候选（2026-09-22 评审）：`payload` 只保留标记后的**首个**非空行。
+    /// 若 evaluator 在标记与真正的 JSON 之间打印了一行噪声（调试输出、告警、
+    /// 进度），首个候选会被噪声占位，真正的 JSON 被忽略 → 解析失败 →
+    /// 直接判 `system_error`（提交得 0 分且 prediction 不支持重测）。
+    ///
+    /// 这里按顺序保留若干个候选，`run_prediction_loop` 在 JSON 解析失败时依次
+    /// 尝试后续候选。上限 [`MAX_PAYLOAD_CANDIDATES`] 防止恶意 evaluator 用海量
+    /// 行撑爆 judge 内存（与 stdout 的 1 MiB 硬上限同一防护意图）。
+    payload_candidates: Vec<String>,
 }
+
+/// 候选 payload 的保留上限（防恶意 evaluator 无限追加）。
+const MAX_PAYLOAD_CANDIDATES: usize = 8;
 
 impl PredictionOutput {
     fn new() -> Self {
@@ -66,6 +100,27 @@ impl PredictionOutput {
     /// 是否已捕获到 payload（评测可提前结束）。
     fn has_payload(&self) -> bool {
         matches!(&self.payload, Some(p) if !p.is_empty())
+    }
+
+    /// 返回按优先级排列的候选 payload（首个 `payload` 优先，其余按出现顺序）。
+    ///
+    /// 调用方（`run_prediction_loop`）依次尝试 JSON 解析，直到成功为止——
+    /// 这样"标记 → 噪声 → 真 JSON"不再丢掉真结果。
+    fn payload_candidates_ordered(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        if let Some(p) = &self.payload {
+            if !p.trim().is_empty() {
+                out.push(p.trim().to_string());
+            }
+        }
+        for c in &self.payload_candidates {
+            let t = c.trim();
+            if t.is_empty() || out.iter().any(|e| e == t) {
+                continue;
+            }
+            out.push(t.to_string());
+        }
+        out
     }
 
     /// 喂入一个 chunk：累积输出并流式检测 RESULT 标记/payload。
@@ -110,8 +165,15 @@ impl PredictionOutput {
                 };
                 append_capped(&mut self.stdout_full, &s);
                 append_capped(&mut self.stdout_full, "\n");
-                if self.payload.as_ref() == Some(&String::new()) && !s.trim().is_empty() {
-                    self.payload = Some(s.trim().to_string());
+                if !s.trim().is_empty() {
+                    // 候选按出现顺序收集（有界）：真正的 JSON 可能排在噪声之后。
+                    if self.payload_candidates.len() < MAX_PAYLOAD_CANDIDATES {
+                        self.payload_candidates.push(s.trim().to_string());
+                    }
+                    // 首个非空行仍是"主 payload"（保持既有语义与提前结束行为）。
+                    if self.payload.as_ref() == Some(&String::new()) {
+                        self.payload = Some(s.trim().to_string());
+                    }
                 }
             }
         }
@@ -317,23 +379,33 @@ async fn run_prediction_loop(
     out.finish();
 
     match out.payload.take() {
-        Some(payload) if !payload.is_empty() => match serde_json::from_str::<Value>(&payload) {
-            Ok(parsed) => Ok(crate::dual::build_judge_result(
-                submission_id,
-                &parsed,
-                &out.stderr_buf,
-                &out.stdout_full,
-                rejudge_seq,
-            )),
-            Err(e) => {
-                warn!("prediction RESULT JSON 解析失败: {}", e);
-                Ok(JudgeResult::system_error(
-                    submission_id,
-                    "评测脚本输出结果不是合法 JSON",
-                    rejudge_seq,
-                ))
+        Some(payload) if !payload.is_empty() => {
+            // 依次尝试候选：标记 → 噪声 → 真 JSON 的场景下，首个候选不是合法
+            // JSON，但后续候选可能是（2026-09-22 评审）。
+            let mut last_err: Option<String> = None;
+            for candidate in out.payload_candidates_ordered() {
+                match serde_json::from_str::<Value>(&candidate) {
+                    Ok(parsed) => {
+                        return Ok(crate::dual::build_judge_result(
+                            submission_id,
+                            &parsed,
+                            &out.stderr_buf,
+                            &out.stdout_full,
+                            rejudge_seq,
+                        ))
+                    }
+                    Err(e) => last_err = Some(e.to_string()),
+                }
             }
-        },
+            if let Some(e) = last_err {
+                warn!("prediction RESULT JSON 解析失败（已尝试全部候选）: {}", e);
+            }
+            Ok(JudgeResult::system_error(
+                submission_id,
+                "评测脚本输出结果不是合法 JSON",
+                rejudge_seq,
+            ))
+        }
         _ => Ok(JudgeResult::system_error(
             submission_id,
             "评测脚本未输出结果标记",
@@ -447,6 +519,49 @@ mod tests {
         out.finish();
         assert_eq!(out.payload.as_deref(), Some("{\"score\":7}"));
         assert!(out.has_payload());
+    }
+
+    /// 标记 → 噪声行 → 真 JSON：噪声不得吞掉真结果（2026-09-22 评审）。
+    ///
+    /// 此前 `payload` 只保留标记后**首个**非空行，噪声占位后真结果被忽略 →
+    /// JSON 解析失败 → 直接判 `system_error`（0 分且 prediction 不支持重测）。
+    #[test]
+    fn test_noise_between_marker_and_payload_keeps_real_result() {
+        let mut out = PredictionOutput::new();
+        out.feed(&stdout_chunk(
+            "---RESULT---\nwarning: deprecated numpy API\n{\"score\":1000,\"details\":{}}\n",
+        ));
+        out.finish();
+        // 主 payload 仍是首个非空行（保持既有语义）
+        assert_eq!(
+            out.payload.as_deref(),
+            Some("warning: deprecated numpy API")
+        );
+        // 但候选列表里含真正的 JSON，且顺序上排在噪声之后
+        let candidates = out.payload_candidates_ordered();
+        assert_eq!(candidates.len(), 2, "candidates={candidates:?}");
+        assert_eq!(candidates[0], "warning: deprecated numpy API");
+        assert_eq!(candidates[1], "{\"score\":1000,\"details\":{}}");
+        assert!(
+            serde_json::from_str::<Value>(&candidates[1]).is_ok(),
+            "第二个候选必须是合法 JSON（解析循环据此取到真结果）"
+        );
+    }
+
+    /// 候选数量有界（防恶意 evaluator 用海量行撑爆内存）。
+    #[test]
+    fn test_payload_candidates_are_bounded() {
+        let mut out = PredictionOutput::new();
+        let mut input = String::from("---RESULT---\n");
+        for i in 0..(MAX_PAYLOAD_CANDIDATES * 4) {
+            input.push_str(&format!("noise-{i}\n"));
+        }
+        out.feed(&stdout_chunk(&input));
+        out.finish();
+        assert!(
+            out.payload_candidates_ordered().len() <= MAX_PAYLOAD_CANDIDATES,
+            "候选必须受上限约束"
+        );
     }
 
     /// 未输出标记时保持「无 payload」语义。

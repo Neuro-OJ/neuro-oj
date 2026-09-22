@@ -422,11 +422,27 @@ class TestEmitCaseScores(unittest.TestCase):
         data = self._read_written()
         self.assertNotIn("gold", data["details"])
 
-    def test_emit_skips_unknown_ids(self):
-        emit_case_scores(self._bundle(), {"0": 1})
+    def test_emit_rejects_partial_coverage_by_default(self):
+        """fail-closed：只覆盖部分 gold 的文件必须报错（此前静默得高分）。"""
+        with self.assertRaises(ValueError) as ctx:
+            emit_case_scores(self._bundle(), {"0": 1})
+        self.assertIn("预测 ID 与期望不一致", str(ctx.exception))
+
+    def test_emit_rejects_unknown_extra_ids_by_default(self):
+        with self.assertRaises(ValueError):
+            emit_case_scores(self._bundle(), {"0": 1, "1": 0, "2": 0, "3": 1})
+
+    def test_emit_skips_unknown_ids_with_explicit_opt_in(self):
+        """显式 `on_missing="skip"` 才允许宽松匹配（交集计分）。"""
+        emit_case_scores(self._bundle(), {"0": 1}, on_missing="skip")
         data = self._read_written()
         self.assertEqual(len(data["details"]["cases"]), 1)
         self.assertEqual(data["details"]["cases"][0]["case_id"], "0")
+
+    def test_emit_rejects_invalid_on_missing(self):
+        with self.assertRaises(ValueError):
+            emit_case_scores(self._bundle(), {"0": 1, "1": 0, "2": 0},
+                             on_missing="whatever")
 
     def test_emit_string_values_match_numeric_gold(self):
         """CSV 行恒为 str，gold 为 int/float；曾因严格 == 全体判错（Task 12 复审修复）。"""

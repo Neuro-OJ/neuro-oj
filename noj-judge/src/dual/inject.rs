@@ -227,6 +227,12 @@ pub(crate) async fn inject_file_to_container(
     file_name: &str,
     content: &[u8],
 ) -> Result<()> {
+    // **路径必须在打包进 tar 之前校验**（2026-09-22 评审）：tar 条目名会直接
+    // 落到容器内，本模块的文档承诺"所有路径均经 sanitize_rel_path 校验"，但此前
+    // 只有流式注入路径调用了它。调用链（zip 解压产物 / 用户代码文件名）虽然各自
+    // 也做过校验，但此处是 tar 条目的**唯一落点**，按纵深防御在此复验。
+    let rel = sanitize_rel_path(file_name)?;
+
     // 构造 tar in-memory
     let mut header = tar::Header::new_gnu();
     header.set_size(content.len() as u64);
@@ -236,7 +242,7 @@ pub(crate) async fn inject_file_to_container(
     let mut tar_buf: Vec<u8> = Vec::new();
     {
         let mut builder = tar::Builder::new(&mut tar_buf);
-        builder.append_data(&mut header, file_name, content)?;
+        builder.append_data(&mut header, &rel, content)?;
         builder.finish()?;
     }
 

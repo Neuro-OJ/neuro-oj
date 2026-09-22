@@ -146,6 +146,9 @@ emit_case_scores(preds, gold, metric="accuracy")
 - `gold` 是 `{case_id: 标签}` 映射；标签只用于比对，不写入 `details`。
 - 每个 case 输出 `{"case_id": ..., "status": "Accepted"|"WrongAnswer", "hidden": true}`。
 - 分数按 `score_scale`（默认 100.0）× 正确率计算，SDK 再按平台约定写入 ×100 整数值。
+- **ID 覆盖率默认 fail-closed**：预测 ID 与 `gold` 键集合必须完全一致（重复/缺少/多余/行数不等都报错），
+  因此只提交子集**不会**得到更高分数。确需宽松匹配（gold 只覆盖部分 case）时，
+  必须显式传 `on_missing="skip"`，此时未命中的预测行被跳过、分母只算交集。
 - 目前 `emit_case_scores` 仅支持 `metric="accuracy"`；其他度量以独立函数导出，由出题人自行组合后用 `result.accept(...)` 输出。
 
 因此若你的预测列不叫 `value`（例如 `label` / `prediction`），请改用下面的自定义评分，或在题面约定列名为 `value`。

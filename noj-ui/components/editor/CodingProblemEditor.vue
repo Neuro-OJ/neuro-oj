@@ -14,6 +14,8 @@ interface RuntimeConfigPayload {
     time_limit_ms: number
     memory_limit_mb: number
     network?: { enabled: boolean }
+    /** prediction 模式 /workspace tmpfs 上限（MB）；缺省由 judge 决定 */
+    workspace_size_mb?: number
   }
   /** prediction 模式无 Solution 容器，提交时省略该块。 */
   solution?: {
@@ -123,6 +125,10 @@ const evaluatorCommand = ref("python3 /workspace/evaluate.py")
 const evaluatorTimeLimitMs = ref(5000)
 const evaluatorMemoryLimitMb = ref(512)
 const evaluatorNetworkEnabled = ref(false)
+// prediction 专用：/workspace tmpfs 上限（MB）；空 = 用 judge 缺省。
+// 该字段受管理员上限（JUDGE_MAX_PREDICTION_WORKSPACE_MB）约束，越界会被
+// judge 收敛并打警告，因此界面上给出提示（2026-09-22 评审：此前只能改 JSON）。
+const evaluatorWorkspaceSizeMb = ref<number | null>(null)
 const solutionImage = ref("")
 const solutionCallTimeoutMs = ref(1000)
 const solutionMemoryLimitMb = ref(256)
@@ -264,6 +270,7 @@ async function loadProblem() {
       evaluatorTimeLimitMs.value = rc.evaluator.time_limit_ms
       evaluatorMemoryLimitMb.value = rc.evaluator.memory_limit_mb
       evaluatorNetworkEnabled.value = rc.evaluator.network?.enabled === true
+      evaluatorWorkspaceSizeMb.value = rc.evaluator.workspace_size_mb ?? null
       // prediction 题的 runtime_config 省略 solution
       if (rc.solution) {
         solutionImage.value = rc.solution.image
@@ -338,6 +345,15 @@ function validate(): boolean {
       errors.llm_max_tokens = "token 上限必须是正整数"
     }
   }
+  // prediction 的 workspace 上限：留空 = 用 judge 缺省；填了必须是范围内的正整数
+  // （越界会被 judge 收敛并打警告，但 UI 提前报错更直观）。
+  if (isPredictionMode.value && evaluatorWorkspaceSizeMb.value !== null &&
+      evaluatorWorkspaceSizeMb.value !== undefined) {
+    const ws = Number(evaluatorWorkspaceSizeMb.value)
+    if (!Number.isInteger(ws) || ws < 512 || ws > 16384) {
+      errors.evaluator_workspace = "工作区上限必须是 512–16384 的整数（留空用缺省）"
+    }
+  }
   fieldErrors.value = errors
   return Object.keys(errors).length === 0
 }
@@ -354,6 +370,10 @@ async function handleSubmit() {
         time_limit_ms: evaluatorTimeLimitMs.value,
         memory_limit_mb: evaluatorMemoryLimitMb.value,
         ...(evaluatorNetworkEnabled.value ? { network: { enabled: true } } : {}),
+        // 仅 prediction 模式提交该字段；其他模式省略，避免写入无意义配置。
+        ...(isPredictionMode.value && typeof evaluatorWorkspaceSizeMb.value === "number"
+          ? { workspace_size_mb: evaluatorWorkspaceSizeMb.value }
+          : {}),
       },
       // prediction 无 Solution 容器：省略 solution，避免提交空壳配置
       ...(isPredictionMode.value ? {} : {
@@ -588,6 +608,19 @@ async function handleSubmit() {
                 <label class="text-xs font-semibold text-text">内存 (MB)</label>
                 <input v-model.number="evaluatorMemoryLimitMb" type="number" class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white" min="32" max="8192" />
               </div>
+            </div>
+            <div v-if="isPredictionMode" class="flex flex-col gap-1">
+              <label class="text-xs font-semibold text-text">预测工作区上限 (MB，可留空)</label>
+              <input
+                v-model.number="evaluatorWorkspaceSizeMb"
+                type="number"
+                class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white"
+                min="512"
+                max="16384"
+                placeholder="缺省 2048（受管理员上限约束，范围 512–16384）"
+              />
+              <span class="text-xs text-text-muted">prediction 题的 /workspace tmpfs 容量；越界时 judge 会收敛并记录警告</span>
+              <p v-if="fieldErrors.evaluator_workspace" class="text-xs text-red-600">{{ fieldErrors.evaluator_workspace }}</p>
             </div>
             <label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text">
               <input v-model="evaluatorNetworkEnabled" type="checkbox" class="size-4 accent-primary" :disabled="llmEnabled">

@@ -67,3 +67,36 @@ Status: implemented
   「已配 LLM → 切 prediction」需要两个请求（先清空 LLM，再切模式）。
 - **中性**：新增一个 runtime 设置项 `judge_max_prediction_workspace_mb`（默认 0 =
   仅受 512–16384 硬范围约束），已登记 `.env.example` 与文档。
+
+## 第二轮评审收尾（2026-09-22）
+
+首轮修复后的独立评审发现两处需在合并前处理的问题，以及若干边界收口：
+
+1. **SDK `emit_case_scores` 对 ID 覆盖率 fail-open**（公平性缺陷）。原实现
+   `gold.get(pid)` 命中才计数、分母只算交集 → **只提交少数有把握 case 的文件会得到
+   更高分数**（gold 100 例时提交 1 例命中即 100 分），而出题文档只把 `assert_id_alignment`
+   列为「推荐写法」，漏调即中招。现默认 **fail-closed**：先做全量对齐校验（复用
+   `assert_id_alignment`，重复/缺少/多余/行数不等都报错）；确需宽松匹配时用显式
+   `on_missing="skip"` 开启。原「钉住旧行为」的测试改为「默认拒绝部分覆盖 + 显式 opt-in
+   才跳过 + 非法参数报错」三条，文档同步说明默认语义。
+2. **迁移编号与 BYOK 移除链撞号**（`0086_loud_dreadnoughts` vs `0086_brainy_venus`）。
+   按仓库既有约定改号为 **`0087_loud_dreadnoughts`**（快照同步重命名，`prevId` 仍指向
+   0085，快照链门禁通过）。两个分支单独合入 main 都安全；若先后合入，后合入者在解决
+   `_journal.json` / 静默跳过基线冲突时需以合并后的 main 重跑生成口径。
+3. **文件名形态在提交期校验**（此前推迟到评测期）。原始文件名会被拼成
+   `prediction/<file_name>` 注入容器，judge 的 `sanitize_rel_path` 只在评测时拒绝
+   `..`/空段/前导 `/` → 选手拿到通用「系统内部错误」。新增
+   `validatePredictionFileName`：拒绝路径分隔符、控制字符、`.`/`..`、首尾空白，补 2 条
+   正反例测试。
+4. **标记与真 JSON 之间的噪声不再吞掉结果**。原 `payload` 只留标记后**首个**非空行，
+   evaluator 打印一行调试输出即占位 → 真 JSON 被忽略 → `system_error`（0 分且
+   prediction 不支持重测）。现按序保留**有界**候选（`MAX_PAYLOAD_CANDIDATES = 8`），
+  解析循环依次尝试直到成功；补「噪声后仍取到真结果」与「候选有界」两条测试。
+5. **workspace 收敛不再静默**：越界时打 warn（此前 `256` 被静默抬成 `512`，出题人
+   无从判断配置是否生效）；文档澄清 `JUDGE_PREDICTION_WORKSPACE_MB`（缺省值）与
+   `JUDGE_MAX_PREDICTION_WORKSPACE_MB`（管理员上限）两个近似名的区别。
+6. **`inject_file_to_container` 补路径校验**（纵深防御）。模块文档承诺「所有路径均经
+   `sanitize_rel_path` 校验」，但只有流式注入路径真的调用了它；内存路径（zip 产物、
+   用户代码文件名）此前依赖上游校验。此处是 tar 条目的唯一落点，按纵深防御复验。
+7. **出题编辑器补 `workspace_size_mb` 输入**（含 512–16384 校验），此前只能改 JSON；
+   值仅在 prediction 模式提交，越界在 UI 即报错。

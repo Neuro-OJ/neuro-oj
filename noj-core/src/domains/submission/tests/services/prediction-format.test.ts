@@ -109,3 +109,46 @@ Deno.test("prediction-format: 扩展名提取（大小写、无扩展名）", ()
   // 路径式文件名取最后一段扩展名（路由层传 basename，这里保守处理）
   assertEquals(predictionFileExtension("a.b.parquet"), ".parquet");
 });
+
+// ── 2026-09-22 评审：文件名形态必须在提交期拒绝 ──
+// 触发条件：原始文件名会被透传到 judge 并拼成 `prediction/<file_name>`。
+// judge 的 `sanitize_rel_path` 会拒绝 `..`/空段/前导 `/`，但那是**评测期**，
+// 选手拿到的是通用「系统内部错误」；`a/../../x.csv`、`foo//bar.csv` 能通过
+// 入库与入队，直到注入阶段才失败。
+Deno.test("prediction-format: 拒绝路径分隔符与控制字符的文件名", () => {
+  const ok = new TextEncoder().encode("id,value\n1,0\n");
+  for (
+    const bad of [
+      "a/../../x.csv",
+      "foo//bar.csv",
+      "dir\\win.csv",
+      "/abs.csv",
+      "..",
+      ".",
+      "bad\u0000.csv",
+      "bad\nline.csv",
+      " leading.csv",
+      "trailing.csv ",
+      "",
+    ]
+  ) {
+    assertRejected(bad, ok);
+  }
+});
+
+Deno.test("prediction-format: 普通文件名（含点/短横线/Unicode）放行", () => {
+  const text = new TextEncoder().encode("id,value\n1,0\n");
+  const parquet = new Uint8Array([0x50, 0x41, 0x52, 0x31, 0x00]);
+  for (
+    const good of [
+      "pred.csv",
+      "my-pred_v2.csv",
+      "提交结果.csv",
+      "PRED.JSONL",
+    ]
+  ) {
+    validatePredictionFile(good, text);
+  }
+  // 扩展名与内容匹配时同样放行（文件名形态校验不得误伤正常名字）
+  validatePredictionFile("a.b.parquet", parquet);
+});

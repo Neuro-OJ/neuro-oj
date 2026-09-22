@@ -27,6 +27,13 @@
 - 测试必须经 `deno task` / `cargo nextest`；禁止手拼 `deno test`。
 - 迁移编号从 `0086_` 起；不得带 schema 前缀。
 
+> **2026-09-22 更新（评审收尾）**：`0086` 与 BYOK 移除链（#570）的
+> `0086_brainy_venus` 撞号。按仓库既有约定（对照
+> `77253a736 chore(root): 同步 main 并解决社区迁移编号冲突`），本分支的迁移
+> **改号为 `0087_loud_dreadnoughts`**（快照同步重命名，prevId 链保持指向 0085）。
+> 两个分支各自单独合入 main 都不会破坏快照链；若两者先后合入，后合入者需按
+> 合并后的 main 重跑一次 `db:generate` 口径核对（见 Agent Note）。
+
 ---
 
 ## File Structure

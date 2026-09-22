@@ -258,17 +258,38 @@ def emit_case_scores(
     *,
     metric: str = "accuracy",
     score_scale: float = 100.0,
+    on_missing: str = "error",
 ) -> None:
     """按 case 计算并写出标准结果；每 case 必带 ``hidden: true``，不写隐藏标签内容。
 
     ``metric`` 当前仅支持 ``accuracy``（其余度量以独立函数导出，由出题人组合）。
     ``gold`` 中的标签**只用于比对**，其内容绝不进入 ``details``。
     逐 case 比较统一走 :func:`values_equal`（数值容差 + 数值字符串归一化）。
+
+    **ID 覆盖率默认 fail-closed**（2026-09-22 评审）：
+
+    此前实现为 ``gold.get(pid)`` 命中才计数，分母只统计交集，因此**只提交少数
+    有把握 case 的文件会得到更高分数**（gold 有 100 例时，提交 1 例命中即
+    100 分）——直接削弱本模式的公平性保证。默认行为改为「预测 ID 与 gold 键集合
+    必须完全一致」（复用 :func:`assert_id_alignment` 的判定：重复/缺少/多余/行数
+    不等都报错）。确需宽松匹配（例如 gold 只覆盖部分公开 case）时用
+    ``on_missing="skip"`` 显式开启，此时未命中的预测行被跳过、分母只算交集。
+
+    :param on_missing: ``"error"``（默认，fail-closed）或 ``"skip"``（显式宽松）。
+    :raises ValueError: ``on_missing="error"`` 且 ID 集合不一致时。
     """
     from . import result  # 延迟导入，避免循环依赖
 
     if metric != "accuracy":  # pragma: no cover - 防御性，当前仅 accuracy
         raise ValueError(f"emit_case_scores 暂不支持 metric={metric!r}")
+    if on_missing not in ("error", "skip"):
+        raise ValueError(
+            f"on_missing 只能是 'error' 或 'skip'，收到 {on_missing!r}"
+        )
+
+    if on_missing == "error":
+        # fail-closed：默认要求预测覆盖全部隐藏 case（并拒绝重复/多余）。
+        assert_id_alignment(predictions, list(gold.keys()))
 
     cases = []
     correct = 0
