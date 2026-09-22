@@ -247,6 +247,16 @@ export async function judgeInstall(
         ? `✓ 配置就绪：${paths.envFile}`
         : `✓ 保留已有配置：${paths.envFile}`,
     );
+    // **必须显式提示被保留覆盖的键**（评审发现）：既有配置优先时，
+    // `--redis-url` / `--socket-path` / `--socket-gid` 会被静默丢弃，
+    // 用户以为改了实际没改。静默忽略与"旗标被吞"属同一类缺陷。
+    const ignoredKeys = Object.keys(written.ignored);
+    if (ignoredKeys.length > 0) {
+      log(
+        `! 以下旗标未生效（既有配置优先，需手工修改 ${paths.envFile}）：` +
+          ignoredKeys.join("、"),
+      );
+    }
   } catch (err) {
     return fail(paths, isUsage(err) ? 2 : 1, (err as Error).message);
   }

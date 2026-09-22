@@ -18,17 +18,29 @@ Evaluator + Solution 双容器（用后即毁），并把结果写回 Redis。
 # 首次：先准备专用 rootless Docker socket，并检查依赖
 noj-cli judge install-env
 
-# 配置并启动（首次会询问版本、Redis、队列名与专用 socket）
-noj-cli judge install --dir /srv/noj-judge
+# 配置并启动（必需参数必须显式给出；本命令不做交互式询问）
+noj-cli judge install --dir /srv/noj-judge \
+  --version v0.9.5 \
+  --redis-url 'redis://:密码@127.0.0.1:6379/0' \
+  --socket-path /run/noj-judge/docker.sock \
+  --socket-gid "$(stat -c '%g' /run/noj-judge/docker.sock)"
 ```
 
-首次配置需要填写：
+首次配置必填项（缺失会报"首装必须提供 …"，退出码 2）：
 
-- `NOJ_VERSION`：不可变 Release 版本，例如 `v0.1.0`；
-- `REDIS_URL`：与 noj-core 相同的 Redis 地址、数据库和认证信息；
-- `JUDGE_QUEUE` / `RESULT_QUEUE`：必须与 noj-core 使用的队列名称一致；
-- `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID`：只服务于 Judge 的 rootless
-  Docker daemon Unix socket 及其组 ID。
+- `--version`（`NOJ_VERSION`）：不可变 Release 版本，例如 `v0.1.0`；
+- `--redis-url`（`REDIS_URL`）：与 noj-core 相同的 Redis 地址、数据库和认证信息；
+- `--socket-path`（`JUDGE_DOCKER_SOCKET`）：只服务于 Judge 的 rootless Docker
+  daemon Unix socket 路径；
+- `--socket-gid`（`JUDGE_DOCKER_SOCKET_GID`）：该 socket 的组 ID，必须与
+  `stat -c '%g' <socket>` 的实际值一致，否则启动前的 socket 校验会失败。
+
+其余键（`JUDGE_QUEUE` / `RESULT_QUEUE` / 并发数等）使用内置默认值，需要改动时直接
+编辑安装目录下的 `.env.judge`（600）。
+
+> **既有配置优先**：`.env.judge` 已存在时 `judge install` 只更新 `--version`，
+> 其余旗标不会生效，并会打印"以下旗标未生效（既有配置优先）"提示。
+> 要改 Redis / socket，请直接编辑 `.env.judge` 或先移走该文件。
 
 管理独立 Worker：
 

@@ -1269,3 +1269,227 @@ Deno.test("自查: judge install --redis-mode local --dry-run 不得创建 Redis
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
+
+// ── 评审发现（major）：三处"旗标被接受却静默无效"的接线缺口 ────────────
+//
+// 本 PR 自己把"被静默忽略的旗标会让用户的预期与结果相反"定义为 Critical
+// （见 `UNIMPLEMENTED_PROD_FLAGS` 的注释）。评审指出同一形态仍有三个新实例，
+// 下面逐条断言"不再静默"。
+
+Deno.test("评审: judge install 必须把 --socket-gid 传给底层实现", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "judge");
+    await Deno.mkdir(dir, { recursive: true });
+    // 用一个 GID 与配置默认值（10001）不同的 socket 场景：
+    // 修复前 `--socket-gid` 从不传给 judgeInstall，配置里恒为 10001，
+    // 于是"按文档安装"在 GID≠10001 的主机上必然失败且留下半成品配置。
+    const { run } = await import("../cli.ts");
+    const originalLog = console.log;
+    const originalErr = console.error;
+    console.log = () => {};
+    console.error = () => {};
+    let code = -1;
+    try {
+      code = await run([
+        "judge",
+        "install",
+        "--dir",
+        dir,
+        "--version",
+        "v0.9.5",
+        "--redis-url",
+        "redis://127.0.0.1:6379/0",
+        "--socket-path",
+        "/run/noj-judge/docker.sock",
+        "--socket-gid",
+        "1234",
+      ]);
+    } finally {
+      console.log = originalLog;
+      console.error = originalErr;
+    }
+    void code;
+    // 若配置被写出，`JUDGE_DOCKER_SOCKET_GID` 必须是旗标值（而非默认 10001）；
+    // 若因 socket 校验失败未写出配置，则不得留下**含错误 GID** 的半成品。
+    const envPath = join(dir, ".env.judge");
+    const written = await Deno.readTextFile(envPath).catch(() => null);
+    if (written !== null) {
+      assertStringIncludes(
+        written,
+        "JUDGE_DOCKER_SOCKET_GID=1234",
+        "--socket-gid 必须写入配置（曾被静默忽略）",
+      );
+      assertEquals(
+        written.includes("JUDGE_DOCKER_SOCKET_GID=10001"),
+        false,
+        "不得回落到默认 GID",
+      );
+    }
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("评审: backup restore --dry-run 被接受（不再报用法错误）", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "install");
+    await Deno.mkdir(join(dir, "bin"), { recursive: true });
+    await Deno.writeTextFile(
+      join(dir, "docker-compose.prod.yml"),
+      "services: {}\n",
+    );
+    await Deno.writeTextFile(join(dir, ".env.prod"), "NOJ_VERSION=v0.9.5\n");
+    await Deno.chmod(join(dir, ".env.prod"), 0o600);
+    await Deno.writeTextFile(join(dir, "bin/noj-cli"), "#!/bin/sh\n");
+    await Deno.chmod(join(dir, "bin/noj-cli"), 0o755);
+
+    const originalErr = console.error;
+    let err = "";
+    console.error = (...a: unknown[]) => {
+      err += a.join(" ") + "\n";
+    };
+    let code = -1;
+    try {
+      code = await run([
+        "backup",
+        "restore",
+        join(root, "x.nojbackup"),
+        "--dry-run",
+        "--dir",
+        dir,
+      ]);
+    } finally {
+      console.error = originalErr;
+    }
+    // 修复前：`--dry-run` 在拒绝表里 → EXIT_USAGE 且文案是"尚未实现"。
+    // 修复后：进入 dry-run 分支，因快照不存在而以运行失败结束（1），
+    // 关键是**不再报"未实现该旗标"**。
+    assertEquals(
+      err.includes("尚未实现 --dry-run"),
+      false,
+      `不得再报"未实现 --dry-run"：${err}`,
+    );
+    void code;
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("评审: backup restore --dry-run 与 --confirm 同时给出必须拒绝", async () => {
+  const { run } = await import("../cli.ts");
+  const originalErr = console.error;
+  let err = "";
+  console.error = (...a: unknown[]) => {
+    err += a.join(" ") + "\n";
+  };
+  let code = -1;
+  try {
+    code = await run([
+      "backup",
+      "restore",
+      "/tmp/x.nojbackup",
+      "--dry-run",
+      "--confirm",
+    ]);
+  } finally {
+    console.error = originalErr;
+  }
+  assertEquals(code, EXIT_USAGE, `矛盾的旗标组合必须是用法错误：${err}`);
+  assert(
+    err.includes("--dry-run") && err.includes("--confirm"),
+    `错误信息应点名两个旗标：${err}`,
+  );
+});
+
+Deno.test("评审: backup create 接住 --retention-days / --min-free-mb", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "install");
+    await Deno.mkdir(join(dir, "bin"), { recursive: true });
+    await Deno.writeTextFile(
+      join(dir, "docker-compose.prod.yml"),
+      "services: {}\n",
+    );
+    await Deno.writeTextFile(
+      join(dir, ".env.prod"),
+      "NOJ_VERSION=v0.9.5\nPOSTGRES_USER=noj\nPOSTGRES_DB=noj\nS3_BUCKET=b\n",
+    );
+    await Deno.chmod(join(dir, ".env.prod"), 0o600);
+    const { runBackupCreate } = await import("./cli.ts");
+    // 注入"空间不足"的探测结果：必须**拒绝**（修复前 --min-free-mb 被静默吞掉）
+    await assertRejects(
+      () =>
+        runBackupCreate(dir, {
+          args: [],
+          deps: { runner: minimalRunner(), processEnv: {} },
+          backupDir: join(root, "backups"),
+          passphraseFile: join(root, "pass"),
+          noEncrypt: true,
+          minFreeMb: 1024,
+          retentionDays: 7,
+          probeFreeBytes: () => Promise.resolve(512 * 1024 * 1024),
+        }),
+      Error,
+      "可用空间不足",
+      "--min-free-mb 必须真的生效（曾被静默忽略，且 bash 的空间守卫被整体删除）",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("评审: backup create --retention-days 非法值在采集前报错", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "install");
+    await Deno.mkdir(join(dir, "bin"), { recursive: true });
+    await Deno.writeTextFile(
+      join(dir, "docker-compose.prod.yml"),
+      "services: {}\n",
+    );
+    await Deno.writeTextFile(
+      join(dir, ".env.prod"),
+      "NOJ_VERSION=v0.9.5\nPOSTGRES_USER=noj\nPOSTGRES_DB=noj\nS3_BUCKET=b\n",
+    );
+    await Deno.chmod(join(dir, ".env.prod"), 0o600);
+    const { runBackupCreate } = await import("./cli.ts");
+    const spawned: string[] = [];
+    await assertRejects(
+      () =>
+        runBackupCreate(dir, {
+          args: [],
+          deps: {
+            runner: {
+              run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }),
+              spawn: () => {
+                spawned.push("spawn");
+                throw new Error("no spawn");
+              },
+            },
+            processEnv: {},
+          },
+          backupDir: join(root, "backups"),
+          passphraseFile: join(root, "pass"),
+          noEncrypt: true,
+          retentionDays: -1,
+        }),
+      Error,
+    );
+    // **关键**：校验必须发生在采集之前（`--retention-days oops` 不该先产出备份再报错）
+    assertEquals(spawned.length, 0, "参数非法时不得开始采集");
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+/** 最小 runner：所有 compose 查询返回空，spawn 直接抛错（采集不该被触发）。 */
+function minimalRunner() {
+  return {
+    run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }),
+    spawn: () => {
+      throw new Error("no spawn");
+    },
+  };
+}

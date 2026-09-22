@@ -37,6 +37,11 @@ SHA-256 → 生成 `.env.prod`（600，含自动生成的强随机密钥）→ �
 > Release 必须同时包含 CLI
 > 二进制、校验文件与两个部署文件；缺少资产时**明确报错**， 不会混用不同版本。
 
+> **兼容范围（重要）**：compose / `.env.prod.example` 资产是**本版本起**
+> 才纳入发布流程的。因此对**早于本版本的既有 Release**（如 v0.9.5），
+> `install`/`update --latest` 会在解析阶段报"没有发现资产就绪的正式 Release"，
+> 显式 `--ref v0.9.5` 同样找不到这两个资产。请使用本版本之后发布的 Release。
+
 > **运行时依赖（重要）**：二进制是**动态链接 glibc** 的，因此需要 glibc 系统
 > （Debian / Ubuntu / RHEL / CentOS 等）。**Alpine 等 musl 发行版不能运行**
 > （实测报 `not found`）——若目标主机是 Alpine，请在宿主机或 glibc 容器内执行。
@@ -55,7 +60,8 @@ noj-cli update --latest        # 升级到最新稳定 Release（已是最新则
 noj-cli backup create          # 创建 .nojbackup 单文件快照（整包加密）
 noj-cli backup verify <快照> --deep
 noj-cli backup list | prune    # prune 默认 dry-run，--confirm 才真正删除
-noj-cli backup restore <快照> --dry-run
+noj-cli backup restore <快照> --dry-run   # 只规划并校验（等价于省略 --confirm）
+noj-cli backup restore <快照> --confirm   # 真实恢复（不可逆）
 noj-cli backup drill <快照>    # 隔离环境真实恢复演练（分钟级、需 Docker）
 noj-cli backup schedule install --schedule '15 2 * * *'
 noj-cli uninstall              # 保留数据卷、配置与备份
