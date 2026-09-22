@@ -26,7 +26,7 @@ import { logAudit } from "../../../system/index.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
 import { buildJudgeTaskLlmForProvider } from "./../../../gateway/index.ts";
 import { getUserLlmProvider } from "../../../gateway/index.ts";
-import type { JudgeSubmissionMode, JudgeTaskLlm } from "../../types/index.ts";
+import type { JudgeTaskLlm } from "../../types/index.ts";
 import { buildJudgeTask } from "../../types/index.ts";
 import type { RuntimeConfig } from "./../../../catalog/index.ts";
 import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
@@ -161,7 +161,10 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     problem_id: submission.problem_id,
     user_id: submission.user_id,
     priority: "low",
-    submission_mode: (problem.submission_mode as JudgeSubmissionMode) ?? "code",
+    // 重测路径只承载代码提交（上方已拒绝 artifact_storage_url 非空的产物/预测提交），
+    // 因此固定为 code；若改从 problem.submission_mode 派生，题目被作者切换为
+    // prediction 后会把无预测文件的旧代码提交误路由到 prediction 分支而静默失败。
+    submission_mode: "code",
     runtime_config: runtimeConfig as NonNullable<typeof runtimeConfig>,
     download_url,
     language: submission.language,
@@ -381,8 +384,9 @@ export async function rejudgeProblemSubmissions(
         problem_id: problemId,
         user_id: sub.user_id,
         priority: "low",
-        submission_mode: (problem.submission_mode as JudgeSubmissionMode) ??
-          "code",
+        // 批量重测同单条重测：候选行均满足 artifact_storage_url IS NULL 的代码提交，
+        // 固定 code，避免题目切到 prediction 后旧代码提交被误路由。
+        submission_mode: "code",
         runtime_config: runtimeConfig as NonNullable<typeof runtimeConfig>,
         download_url,
         language: sub.language,

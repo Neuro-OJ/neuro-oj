@@ -259,6 +259,65 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "prediction-submissions: 题目切为 prediction 后旧代码提交重测仍以 code 入队",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    // 回归：重测只承载代码提交（artifact_storage_url 为空），必须固定 code。
+    // 若从 problem.submission_mode 派生，题目被作者切为 prediction 后此处会
+    // 发出 prediction，judge 找不到预测文件而静默失败。
+    const fixture = await insertFixture("prediction");
+    try {
+      const db = getDb();
+      const now = new Date().toISOString();
+      const subId = crypto.randomUUID();
+      await db.insert(submissions).values({
+        id: subId,
+        user_id: fixture.userId,
+        problem_id: fixture.problemId,
+        language: "python3",
+        code: "print(1)",
+        file_name: "main.py",
+        status: "finished",
+        rejudge_seq: 0,
+        created_at: now,
+      });
+
+      await withFakeRedis(async (fake) => {
+        // 单条重测
+        await rejudgeSubmission(subId);
+        const single = fake.getMessages(JUDGE_QUEUES.low);
+        assertEquals(single.length, 1);
+        const singleTask = JSON.parse(single[0]) as Record<string, unknown>;
+        assertEquals(
+          singleTask.submission_mode,
+          "code",
+          "重测路径只承载代码提交，必须固定 code，不随题目当前模式漂移",
+        );
+
+        // 批量重测：同题同样固定 code
+        await getDb().update(submissions).set({ status: "finished" })
+          .where(eq(submissions.id, subId));
+        fake.clear();
+        await rejudgeProblemSubmissions(fixture.problemId);
+        const batch = fake.getMessages(JUDGE_QUEUES.low);
+        assertEquals(batch.length, 1);
+        const batchTask = JSON.parse(batch[0]) as Record<string, unknown>;
+        assertEquals(
+          batchTask.submission_mode,
+          "code",
+          "批量重测路径只承载代码提交，必须固定 code",
+        );
+      });
+    } finally {
+      await deleteFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
   name: "prediction-submissions: .pkl 被格式校验拒绝",
   ignore: skip,
   sanitizeResources: false,
