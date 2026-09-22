@@ -68,6 +68,25 @@
           }
         }
       }
+    },
+    {
+      "name": "prediction 题：runtime_config 仅有 evaluator（无 solution）",
+      "manifest": {
+        "format_version": 1,
+        "title": "预测题",
+        "difficulty": "hard",
+        "type": "P",
+        "submission_mode": "prediction",
+        "runtime_config": {
+          "evaluator": {
+            "image": "noj/evaluator-python:1",
+            "command": "python3 /workspace/evaluate.py",
+            "time_limit_ms": 3000,
+            "memory_limit_mb": 1024,
+            "workspace_size_mb": 2048
+          }
+        }
+      }
     }
   ],
   "invalid": [
