@@ -116,6 +116,7 @@ export default withMermaid(defineConfig({
                 { text: "Web 题目编辑器", link: "/problemsetters/web-editor" },
                 { text: "A+B 示例题", link: "/problemsetters/ab-example" },
                 { text: "出 LLM 调用题", link: "/problemsetters/llm-problem" },
+                { text: "出预测提交题", link: "/problemsetters/prediction-problems" },
               ],
             },
             {
