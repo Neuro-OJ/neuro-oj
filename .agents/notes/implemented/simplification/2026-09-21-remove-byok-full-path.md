@@ -55,6 +55,32 @@ Provider，并在普通编程题提交时选用。该能力横跨四个运行模
 `DELETE FROM llm_providers WHERE created_by <> '0'` 会永久删除用户 Provider 的
 信封加密 API Key。执行升级前必须完成备份（`noj-cli backup create`）。
 
+### 悬空引用（评审发现，必须升级前核查）
+
+被删除的用户 Provider **可能仍被题目引用**：题目保存时的校验只检查
+`getLlmProviderById(provider_id)` 存在且 `enabled`，**不校验归属**，而出题人 UI 的
+Provider 下拉来自无过滤的 `listLlmProviders()`。因此历史上管理员可以把某个
+用户自建 Provider 选为题目 Provider 并写进 `problems.llm_config->>'provider_id'`。
+
+升级后的症状是**评测期静默失败**：提交阶段不做任何校验（
+`submissions-crud.ts` 只读 `llm_config` 并签发 eval_token），直到 evaluator 打
+gateway `POST /v1/chat/completions` 时 `getProviderSecret()` 抛错 → 400
+`provider_not_found`；该题后续"编辑保存"也会以「LLM Provider 不存在或已停用」
+失败，直到管理员手工更换 Provider。
+
+处置（两道防线）：
+
+1. **升级前核查 SQL**（文档
+   `noj-docs/docs/operators/production-deploy.md` 的「升级前检查」小节）：
+   `SELECT p.id, p.title, p.llm_config->>'provider_id' FROM problems p JOIN
+   llm_providers lp ON lp.id = p.llm_config->>'provider_id' WHERE lp.created_by <> '0';`
+2. **`llm_usage.provider_id`** 同样可能悬空，但那是无 FK 的历史审计文本列，
+   不影响功能（既有 Agent Note 已登记）。
+
+> 为什么不在迁移里自动清空：`problems.llm_config` 是 jsonb，批量改写会静默改变
+> 题目语义（题目可能仍需 LLM 能力，只是要换成平台 Provider）。运维按核查结果
+> 逐题处置（改 Provider 或清空）比自动改写安全。
+
 ### 未来重建的关键约束
 
 - 用户 Provider 必须与管理员 Provider 在**归属模型**上显式分离——不要再次复用

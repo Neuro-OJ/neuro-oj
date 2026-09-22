@@ -184,7 +184,6 @@ interface PendingRecoveryTableColumns {
   supportPackageStorageUrl: AnyPgColumn;
   rejudgeSeq?: AnyPgColumn;
   userId?: AnyPgColumn;
-  llmProviderConfigId?: AnyPgColumn;
   judgeStartedAt?: AnyPgColumn;
   contestId?: AnyPgColumn;
 }
