@@ -5,11 +5,26 @@
  * 覆盖链路：admin 建 prediction 题（evaluator 命令读 `$NOJ_PREDICTION_DIR` 下唯一
  * 文件与内联隐藏标签）→ 普通用户 multipart 上传 `.csv` →
  * `POST /api/v1/submissions` → 轮询 `GET /api/v1/submissions/:id` →
- * 断言 `finished` 且 `score > 0`。
+ * 断言 `finished`、`score === 6666`、`details.cases` 恰 3 例且逐例
+ * `hidden === true`（结果投影剥离隐藏用例的唯一判据）与逐例状态。
  *
  * 评测脚本故意保留 1/3 错误预测，使 score = 6666：既证明脚本真的读到了预测文件
- * 与隐藏标签并逐条比对，又不同于任何硬编码满分。
+ * 与隐藏标签并逐条比对，又不同于任何硬编码满分/恒定分数。
  */
+
+/** 单个用例：仅取断言所需字段。 */
+type CaseResult = {
+  case_id?: string;
+  status?: string;
+  hidden?: boolean;
+};
+
+/** 轮询到的评测结果：`details` 必须保留，用于校验 `hidden` 标记契约。 */
+type PolledResult = {
+  status: string;
+  score?: number;
+  details?: { cases?: CaseResult[] } | null;
+};
 
 import {
   apiGet,
@@ -118,7 +133,7 @@ e2eTest("[e2e/prediction] 创建 prediction 题目并上传 csv 评测", async (
   const submission = (await uploadRes.json() as { data: { id: string } }).data;
 
   // 轮询评测结果
-  let result: { status: string; score?: number } | null = null;
+  let result: PolledResult | null = null;
   for (let i = 0; i < 40; i++) {
     const detail = await apiGet(
       `/api/v1/submissions/${submission.id}`,
@@ -127,7 +142,7 @@ e2eTest("[e2e/prediction] 创建 prediction 题目并上传 csv 评测", async (
     const d = (detail.body as {
       data: {
         status: string;
-        result: { status: string; score: number } | null;
+        result: PolledResult | null;
       };
     }).data;
     if (d.status === "finished" || d.status === "error") {
@@ -140,8 +155,47 @@ e2eTest("[e2e/prediction] 创建 prediction 题目并上传 csv 评测", async (
   if (result.status !== "finished") {
     throw new Error(`评测未成功: ${JSON.stringify(result)}`);
   }
-  if ((result.score ?? 0) <= 0) {
-    throw new Error(`分数异常: ${JSON.stringify(result)}`);
+
+  // 分数必须精确等于 2/3 折算值：恒定分数的假评测无法通过
+  const EXPECTED_SCORE = 6666;
+  if (result.score !== EXPECTED_SCORE) {
+    throw new Error(
+      `分数应为 ${EXPECTED_SCORE}（3 例中 2 例命中），实际 ${result.score}: ${
+        JSON.stringify(result)
+      }`,
+    );
+  }
+
+  // details.cases 是隐藏用例剥离的判据来源，必须逐项校验：
+  // 1) 评测脚本恰输出 3 例；2) 每例都带 hidden === true
+  const cases = result.details?.cases;
+  if (!Array.isArray(cases) || cases.length !== 3) {
+    throw new Error(
+      `details.cases 应恰有 3 例，实际 ${cases?.length}: ${
+        JSON.stringify(result.details)
+      }`,
+    );
+  }
+  const unmarked = cases.filter((c) => c.hidden !== true);
+  if (unmarked.length > 0) {
+    throw new Error(
+      `details.cases[].hidden 必须全为 true（隐藏用例剥离判据），异常项: ${
+        JSON.stringify(unmarked)
+      }`,
+    );
+  }
+
+  // 逐例状态（c1/c3 命中、c2 故意错），存在时才断言，避免绑定可选字段
+  const expectedStatuses = ["Accepted", "WrongAnswer", "Accepted"];
+  if (cases.every((c) => typeof c.status === "string")) {
+    const actualStatuses = cases.map((c) => c.status);
+    if (actualStatuses.join(",") !== expectedStatuses.join(",")) {
+      throw new Error(
+        `details.cases[].status 应为 ${expectedStatuses.join("/")}，实际 ${
+          actualStatuses.join("/")
+        }`,
+      );
+    }
   }
   console.log("  ✓ prediction 上传 → 单容器评测 → 隐藏用例算分 OK");
 });
