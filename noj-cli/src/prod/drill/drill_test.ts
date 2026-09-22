@@ -377,8 +377,10 @@ Deno.test("T19 隔离性：覆盖 YAML 不含 ports（不映射宿主机端口�
   assertEquals(yaml.includes("ports:"), false, "覆盖文件不得映射任何端口");
   assertStringIncludes(yaml, `networks:\n  ${DRILL_NETWORK_NAME}:\n    ipam:`);
   assertStringIncludes(yaml, "subnet: 172.29.0.0/16");
-  // verifier 服务存在且接入演练网络
-  assertStringIncludes(yaml, "services:\n  verifier:");
+  // `verifier` 服务已删除（评审发现：TS 重写后业务验收由 CLI 直接发 HTTP，
+  // 该服务无任何使用点，只会多拉一个镜像并出现在 compose 解析面）。
+  assertEquals(yaml.includes("services:"), false, "覆盖文件不得声明任何服务");
+  assertEquals(yaml.includes("verifier"), false, "不得残留死服务 verifier");
 });
 
 Deno.test("T19 隔离性：compose 参数含 --project-name，且 profile 在子命令之前", () => {

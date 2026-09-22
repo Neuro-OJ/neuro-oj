@@ -71,6 +71,7 @@ import {
   createContainer,
   type CreateContainerResult,
 } from "./backup/container.ts";
+import { pruneBackups } from "./backup/list.ts";
 import { createProdPayloadOps, realRawDriver } from "./backup/driver.ts";
 import { writeBackupMetrics } from "./backup/metrics.ts";
 import type { ContainerPayloadOps } from "./backup/container.ts";
@@ -284,7 +285,10 @@ export function positionals(args: string[]): string[] {
     "--version",
     "--redis-url",
     "--socket-path",
-    "--env-file",
+    "--socket-gid",
+    "--redis-port",
+    "--redis-container",
+    "--redis-mode",
     "--older-than",
   ]);
   for (let i = 0; i < args.length; i++) {
@@ -316,6 +320,55 @@ export function prodDeps(deps: ProdCliDeps): {
     isTty: deps.isTty ?? (() => Deno.stdin.isTerminal()),
     processEnv: deps.processEnv ?? Deno.env.toObject(),
   };
+}
+
+/**
+ * 解析 GPG 口令文件路径（`--passphrase-file` > 进程环境 > `.env.prod`）。
+ *
+ * **为什么必须集中解析**（评审发现）：`backup drill` 的报错文案明示
+ * "必须提供 `--passphrase-file` 或 `NOJ_BACKUP_PASSPHRASE_FILE`"，但该环境变量
+ * 此前对 `drill`/`verify`/`restore` **全未接线**——设了也报同一错误；
+ * 而 `install` 恰会把它回填进 `.env.prod`，形成"安装时写进去、备份校验时用不上"。
+ * 优先级与 `backupPassphrasePath` 一致（bash deploy.sh:924）。
+ */
+export function resolveBackupPassphrase(
+  args: string[],
+  opts: { env?: Record<string, string>; configured?: string } = {},
+): string | undefined {
+  const flag = flagValue(args, "--passphrase-file");
+  if (flag !== undefined && flag !== "") return flag;
+  const explicit = (opts.env ?? {})["NOJ_BACKUP_PASSPHRASE_FILE"];
+  if (explicit !== undefined && explicit !== "") return explicit;
+  const configured = opts.configured;
+  if (configured !== undefined && configured !== "") return configured;
+  return undefined;
+}
+
+/**
+ * 读数值型环境变量（缺省或非法时返回 undefined，由调用方的默认值兜底）。
+ *
+ * 用于 `NOJ_BACKUP_RETENTION_DAYS` / `NOJ_BACKUP_MIN_FREE_MB` 的 bash 兼容缺省
+ * （backup.sh:13-14）。
+ */
+export function envNumber(name: string): number | undefined {
+  const raw = Deno.env.get(name);
+  if (raw === undefined || raw === "") return undefined;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : undefined;
+}
+
+/** 读一个数值旗标（非法值报用法错误）。 */
+export function numberFlag(
+  args: string[],
+  name: string,
+): number | undefined {
+  const raw = flagValue(args, name);
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) {
+    throw new UsageError(`${name} 必须是非负整数，收到 "${raw}"`);
+  }
+  return n;
 }
 
 /** 生产命令的执行结果（统一形状，供 CLI 转退出码）。 */
@@ -601,6 +654,20 @@ export interface BackupCreateCliOptions {
   backupDir?: string;
   zstdLevel?: number;
   noEncrypt?: boolean;
+  /**
+   * 保留天数（`--retention-days` / `NOJ_BACKUP_RETENTION_DAYS`，默认 30）。
+   *
+   * 语义与 bash 一致：写入 manifest，并在**成功创建快照后**清理
+   * 早于该天数的快照（bash `prune_old_snapshots`，`backup.sh:196-203`）。
+   */
+  retentionDays?: number;
+  /**
+   * 最低可用空间（MB，`--min-free-mb` / `NOJ_BACKUP_MIN_FREE_MB`，默认 1024）。
+   *
+   * 对应 bash `check_free_space`（`backup.sh:113-121`）：采集**之前**校验，
+   * 空间不足直接失败。此前 TS 侧整体缺失该守卫，`backup create` 可以把磁盘写满。
+   */
+  minFreeMb?: number;
   args: string[];
   deps: ProdCliDeps;
   /**
@@ -612,6 +679,13 @@ export interface BackupCreateCliOptions {
    * （那样测的是 metrics.ts 自身，而非 create 的接线）。
    */
   ops?: ContainerPayloadOps;
+  /**
+   * 可用空间探测注入点（缺省用 `df -Pk`）。
+   *
+   * 单独暴露是为了让"空间不足必须拒绝"这条守卫可测——真实 `df` 无法在单测里
+   * 造出"磁盘已满"。
+   */
+  probeFreeBytes?: (dir: string) => Promise<number>;
 }
 
 /**
@@ -637,6 +711,29 @@ export async function runBackupCreate(
   const passphraseFile = opts.passphraseFile;
   const env = await readEnvValues(envFile);
 
+  // ---- 0. 数字旗标校验（bash `check_numbers` :108-111）----
+  // **必须在任何副作用之前**：`--retention-days oops` 若拖到清理阶段才报错，
+  // 备份已经产出、用户却拿到失败退出码。
+  const retentionDays = assertNonNegative(
+    opts.retentionDays ?? 30,
+    "--retention-days",
+  );
+  const minFreeMb = assertNonNegative(opts.minFreeMb ?? 1024, "--min-free-mb");
+
+  // ---- 0b. 可用空间守卫（bash `check_free_space` :113-121）----
+  // 这是备份场景最常见的自伤方式：磁盘写满后连恢复都没有余量。
+  // bash 侧一直有此检查，TS 重写时被整体删除（评审发现）。
+  const probe = opts.probeFreeBytes ??
+    ((target: string) => probeDirFreeBytes(d.runner, target));
+  const freeBytes = await probe(backupDir);
+  if (Number.isFinite(freeBytes) && freeBytes < minFreeMb * 1024 * 1024) {
+    throw new Error(
+      `备份目录可用空间不足：需要至少 ${minFreeMb}MB（可用 ${
+        Math.floor(freeBytes / (1024 * 1024))
+      }MB）`,
+    );
+  }
+
   const ops = opts.ops ?? createProdPayloadOps({
     runner: d.runner,
     driver: realRawDriver(d.runner),
@@ -657,6 +754,7 @@ export async function runBackupCreate(
     passphraseFile,
     noEncrypt: opts.noEncrypt === true,
     zstdLevel: opts.zstdLevel,
+    retentionDays,
     envFile,
     postgresDatabase: env["POSTGRES_DB"] ?? "noj",
     migrationStatus: await readMigrationStatus(
@@ -690,7 +788,63 @@ export async function runBackupCreate(
       `! 备份已完成，但新鲜度指标写入失败：${(err as Error).message}`,
     );
   }
+
+  // ---- 14. 按保留天数清理旧快照（bash `prune_old_snapshots` :291-292）----
+  // **只在成功后做**：备份失败时清理旧快照等于把"没有新备份"变成"没有备份"。
+  // 删除失败不改变备份已成功的事实，但必须可见（否则"已清理"是假成功）。
+  try {
+    const pruned = await pruneBackups(backupDir, {
+      olderThanDays: retentionDays,
+      confirm: true,
+    });
+    for (const path of pruned.deleted) {
+      (opts.deps.out ?? ((t: string) => console.log(t)))(
+        `✓ 已清理过期快照：${path}`,
+      );
+    }
+    if (pruned.failed.length > 0) {
+      (opts.deps.err ?? ((t: string) => console.error(t)))(
+        `! 有 ${pruned.failed.length} 份过期快照清理失败：` +
+          pruned.failed.map((f) => f.path).join("、"),
+      );
+    }
+  } catch (err) {
+    (opts.deps.err ?? ((t: string) => console.error(t)))(
+      `! 备份已完成，但过期快照清理失败：${(err as Error).message}`,
+    );
+  }
   return created;
+}
+
+/** 校验一个非负整数旗标（未给或非法时的报错口径与 bash `check_numbers` 一致）。 */
+function assertNonNegative(value: number, flag: string): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new UsageError(`${flag} 必须是非负整数，收到 "${value}"`);
+  }
+  return value;
+}
+
+/**
+ * 探测目录可用字节数（`df -Pk <dir>` 的等价，经注入 runner）。
+ *
+ * 与 `drill/plan.ts:probeFreeBytes` 同源，但这里返回**字节**且无法探测时返回
+ * `Infinity`（放行）——空间守卫的语义是"明显不足才拒绝"，而不是因为
+ * `df` 不可用就拒绝一切备份。
+ */
+async function probeDirFreeBytes(
+  runner: CommandRunner,
+  dir: string,
+): Promise<number> {
+  try {
+    const res = await runner.run("df", ["-Pk", dir]);
+    if (res.code !== 0) return Number.POSITIVE_INFINITY;
+    const lines = res.stdout.trim().split("\n");
+    const cols = lines[lines.length - 1]?.split(/\s+/) ?? [];
+    const availKb = Number(cols[3]);
+    return Number.isFinite(availKb) ? availKb * 1024 : Number.POSITIVE_INFINITY;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
 }
 
 /**
@@ -764,7 +918,7 @@ async function readMigrationStatus(
 
 /** `backup verify`（T18 三档）。 */
 export async function runBackupVerify(
-  _dir: string,
+  dir: string,
   args: string[],
   deps: ProdCliDeps,
 ): Promise<BackupVerifyResult> {
@@ -773,12 +927,19 @@ export async function runBackupVerify(
     throw new UsageError("backup verify 需要 <snapshot> 路径");
   }
   const d = prodDeps(deps);
+  // 口令来源：旗标 > 进程环境 > `.env.prod`（评审发现：环境变量此前未接线，
+  // 而 `install` 会把它写进 `.env.prod`）。
+  const configured = await readConfiguredPassphrase(dir);
+  const passphraseFile = resolveBackupPassphrase(args, {
+    env: d.processEnv,
+    configured,
+  });
   const work = await Deno.makeTempDir({ prefix: "noj-verify-" });
   try {
     return await verifyCommand({
       path: snapshot,
       workDir: work,
-      passphraseFile: flagValue(args, "--passphrase-file"),
+      passphraseFile,
       encrypted: !hasFlag(args, "--no-encrypt"),
       deep: hasFlag(args, "--deep"),
       payloadSha: hasFlag(args, "--payload-sha"),
@@ -789,6 +950,24 @@ export async function runBackupVerify(
     });
   } finally {
     await Deno.remove(work, { recursive: true }).catch(() => {});
+  }
+}
+
+/**
+ * 读 `.env.prod` 里的 `NOJ_BACKUP_PASSPHRASE_FILE`（文件不存在/不可读时为 undefined）。
+ *
+ * 备份命令（verify/restore/drill）可能在**安装目录之外**执行（例如只拿到一个
+ * 快照文件做校验），因此这里绝不因读不到 `.env.prod` 而失败——口令的必需性
+ * 由各命令自己的前置校验决定。
+ */
+async function readConfiguredPassphrase(
+  dir: string,
+): Promise<string | undefined> {
+  try {
+    const env = await readEnvValues(join(dir, PROD_ENV_FILE));
+    return env["NOJ_BACKUP_PASSPHRASE_FILE"];
+  } catch {
+    return undefined;
   }
 }
 
@@ -857,6 +1036,12 @@ export async function runBackupRestore(
     throw new UsageError("backup restore 需要 <snapshot> 路径");
   }
   const d = prodDeps(deps);
+  // 口令来源：旗标 > 进程环境 > `.env.prod`（评审发现：环境变量此前未接线）。
+  const passphraseFile = resolveBackupPassphrase(args, {
+    env: d.processEnv,
+    configured: await readConfiguredPassphrase(dir),
+  });
+  const dockerBin = d.processEnv["NOJ_DEPLOY_DOCKER_BIN"] ?? "docker";
   const work = await Deno.makeTempDir({ prefix: "noj-restore-" });
   try {
     const ops = {
@@ -865,12 +1050,12 @@ export async function runBackupRestore(
       untarZst: (src: string, destDir: string) =>
         untarZst(d.runner, src, destDir),
     };
-    // 无 --confirm：保持 dry-run（零副作用），并明确告知"未执行"
+    // 无 --confirm（或显式 --dry-run）：保持 dry-run（零副作用），并明确告知"未执行"
     if (!hasFlag(args, "--confirm")) {
       const plan = await restorePlan({
         path: snapshot,
         workDir: work,
-        passphraseFile: flagValue(args, "--passphrase-file"),
+        passphraseFile,
         encrypted: !hasFlag(args, "--no-encrypt"),
         restoreEnv: flagValue(args, "--restore-env"),
         bucket: undefined,
@@ -893,10 +1078,11 @@ export async function runBackupRestore(
       runner: d.runner,
       confirm: true,
       workDir: work,
-      passphraseFile: flagValue(args, "--passphrase-file"),
+      passphraseFile,
       encrypted: !hasFlag(args, "--no-encrypt"),
       restoreEnv: flagValue(args, "--restore-env"),
       judge: false,
+      dockerBin,
       log: (line) => (deps.out ?? ((t: string) => console.log(t)))(line),
       ops,
     });

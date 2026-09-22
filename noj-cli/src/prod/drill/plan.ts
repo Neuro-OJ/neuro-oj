@@ -140,20 +140,22 @@ export const DRILL_NETWORK_NAME = "noj-net";
 /**
  * 生成演练 Compose 覆盖文件内容（`prepare_compose_override` :321-339 的等价）。
  *
- * 只做**两件事**：声明 `verifier` 服务（业务验收容器的载体）与把 `noj-net` 的
- * 子网改为演练子网。**刻意不含** `ports:`——这是"不映射宿主机端口"的落点，
- * 由测试逐字断言。
+ * 只做**一件事**：把 `noj-net` 的子网改为演练子网。**刻意不含** `ports:`——这是
+ * "不映射宿主机端口"的落点，由测试逐字断言。
+ *
+ * ## 为什么不再声明 `verifier` 服务（评审发现）
+ *
+ * bash 的覆盖文件声明了一个 `verifier` 服务（`restore-drill.sh:326-334`），
+ * 载体是**额外容器**里跑的 `verify.ts`。TS 重写后业务验收改由 CLI **直接发
+ * HTTP**（经容器 IP 访问隔离网络，见 `verify.ts`），该服务再无任何使用点——
+ * 但它仍留在覆盖文件里，会出现在 `compose config`/`up` 的解析面并多拉一个镜像，
+ * 且与"少一个镜像依赖"的表述矛盾。已删除。
  *
  * 为什么需要覆盖而不是改生产文件：生产 `docker-compose.prod.yml` 受版本管理且
- * 被 CI/论文档引用，演练**不得**修改它；Compose 的多 `-f` 叠加语义正好用于此。
+ * 被 CI/文档引用，演练**不得**修改它；Compose 的多 `-f` 叠加语义正好用于此。
  */
 export function renderDrillOverride(subnet: string): string {
   return `# restore-drill 自动生成的隔离覆盖：独立子网，避免与生产 noj-net 冲突。
-services:
-  verifier:
-    image: denoland/deno:debian-2.9.5@sha256:5d46f925d213e9adaf18a0664b291fe973c91ba7b929572877610dcaaf09ee2b
-    networks:
-      - ${DRILL_NETWORK_NAME}
 networks:
   ${DRILL_NETWORK_NAME}:
     ipam:

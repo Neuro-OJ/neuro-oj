@@ -135,6 +135,14 @@ export interface DrillRunOptions {
   }>;
   /** docker 可执行名（`NOJ_BACKUP_DOCKER_BIN`）。 */
   dockerBin?: string;
+  /**
+   * 快照是否加密（缺省 `true`，对应 `backup create` 的默认行为）。
+   *
+   * `backup create --no-encrypt` 的产物必须也能演练（评审发现）：
+   * 此前 drill 无条件按加密解包，不加密的快照会在 `gpg --decrypt` 处失败，
+   * 于是"不加密"这条受支持的路径无法做恢复验收。
+   */
+  encrypted?: boolean;
 }
 
 /** 查评测镜像白名单的上下文。 */
@@ -210,6 +218,9 @@ export async function runDrill(
     if (opts.subnet !== undefined) assertSubnetCidr(subnet);
     assertNonNegativeInt("RPO", rpoMaxHours);
     assertNonNegativeInt("RTO", rtoMaxMinutes);
+    // 口令**始终必需**：`--no-encrypt` 只关闭整包那一层，`env.prod.gpg`
+    // 这一层恒为加密（见 `createContainer` 第 5 步与 `container.ts` 的
+    // `CONTAINER_FILES.envProdGpg`），演练要解出 `.env.prod` 就必须有口令。
     if (opts.passphraseFile === undefined || opts.passphraseFile === "") {
       throw new UsageError(
         "必须提供 --passphrase-file 或 NOJ_BACKUP_PASSPHRASE_FILE",
@@ -477,6 +488,7 @@ async function unpackForDrill(
     path: opts.snapshotPath,
     destDir: join(drillDir, ".work/unpack"),
     passphraseFile: opts.passphraseFile,
+    encrypted: opts.encrypted,
     ops,
   });
 
@@ -498,20 +510,25 @@ async function prepareDrillEnvironment(
   ctx: DrillContext,
   runner: CommandRunner,
 ): Promise<void> {
-  // 解密 env.prod.gpg 到演练 env，并叠加隔离配置（评测器网络名指向演练网络）
-  const code = await runner.run("gpg", [
-    "--batch",
-    "--yes",
-    "--pinentry-mode",
-    "loopback",
-    "--passphrase-file",
-    opts.passphraseFile!,
-    "--decrypt",
-    "--output",
-    ctx.composeEnvFile,
-    join(ctx.staging, "env.prod.gpg"),
-  ]);
-  if (code.code !== 0) throw new Error("解密快照内的环境文件失败");
+  // 解密 env.prod.gpg 到演练 env，并叠加隔离配置（评测器网络名指向演练网络）。
+  // 注意 `env.prod.gpg` 这一层**恒为加密**：`create --no-encrypt` 只关闭整包
+  // 那一层（见 `createContainer` 第 5 步），故这里无需按 encrypted 分流。
+  const envSrc = join(ctx.staging, "env.prod.gpg");
+  {
+    const code = await runner.run("gpg", [
+      "--batch",
+      "--yes",
+      "--pinentry-mode",
+      "loopback",
+      "--passphrase-file",
+      opts.passphraseFile!,
+      "--decrypt",
+      "--output",
+      ctx.composeEnvFile,
+      envSrc,
+    ]);
+    if (code.code !== 0) throw new Error("解密快照内的环境文件失败");
+  }
   const size = (await Deno.stat(ctx.composeEnvFile)).size;
   if (size === 0) throw new Error("解密后的环境文件为空");
   await Deno.chmod(ctx.composeEnvFile, 0o600);
