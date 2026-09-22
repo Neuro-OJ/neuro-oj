@@ -174,7 +174,7 @@ runs:
     - name: 安装 noj-ui 依赖
       if: inputs.browser == 'true'
       working-directory: noj-ui
-      run: deno install
+      run: deno install --frozen-lockfile
       shell: bash
 
     - name: 构建 noj-ui
