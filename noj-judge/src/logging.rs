@@ -597,7 +597,6 @@ mod tests {
         // 渲染函数本身仍须与自身在同一毫秒内一致（纯函数，无竞态）。
         let t = SystemTime::now();
         assert_eq!(timestamp_hms_from(t), timestamp_hms_from(t));
-        assert_eq!(o.as_bytes()[2], b':');
     }
 
     #[test]

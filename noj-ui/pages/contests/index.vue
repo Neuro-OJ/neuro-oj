@@ -9,6 +9,12 @@ useHead({ title: computed(() => `${t('contest.title')} - Neuro OJ`) })
 
 const { typeLabels, statusLabels, formatDateTime, formatDuration, statusClass } = useContests()
 const selectedType = ref<ContestType | undefined>(undefined)
+// 赛制下拉必须来自**实现支持的赛制**（`ContestType`），而不是硬编码的
+// ICPC/IOI/OI——那些赛制尚未开放（schema 的 CHECK 只允许 `kaggle`），
+// 选中后永远筛出空列表（2026-09-22 评审发现的真实 UI 缺陷）。
+const typeOptions = computed(() =>
+  Object.entries(typeLabels.value).map(([value, label]) => ({ label, value }))
+)
 const selectedStatus = ref<ContestStatus | undefined>(undefined)
 const currentPage = ref(1)
 const perPage = 12
@@ -55,7 +61,7 @@ watch([selectedType, selectedStatus], () => {
       </section>
 
       <section class="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-white p-4">
-        <USelect v-model="selectedType" :items="[{ label: 'ICPC', value: 'icpc' }, { label: 'IOI', value: 'ioi' }, { label: 'OI', value: 'oi' }]" :placeholder="t('contest.allTypes')" class="min-w-[120px]" />
+        <USelect v-model="selectedType" :items="typeOptions" :placeholder="t('contest.allTypes')" class="min-w-[120px]" />
         <USelect v-model="selectedStatus" :items="[{ label: t('contest.pending'), value: 'pending' }, { label: t('contest.running'), value: 'running' }, { label: t('contest.ended'), value: 'ended' }]" :placeholder="t('contest.allStatuses')" class="min-w-[120px]" />
         <span class="ml-auto text-xs text-text-muted">{{ t('contest.count', { count: filteredContests.length }) }}</span>
       </section>

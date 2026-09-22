@@ -130,21 +130,21 @@ cargo fmt
 | `WORK_DIR`                       | `/tmp/noj-judge`     | 临时工作目录                                                                                     |
 | `JUDGE_MAX_CONCURRENT_JUDGES`    | `2`                  | 同时执行的评测任务数（有效范围 1-1024）                                                          |
 | `JUDGE_CPU_LIMIT_MILLICORES`     | `1000`               | 每个评测容器 CPU 上限（1000m = 1 核，有效范围 100-16000）                                        |
-| `JUDGE_INSTANCE_ID`              | 主机名               | 实例标识（日志/claim 前缀用）                                                                    |
+| `JUDGE_INSTANCE_ID`              | `{hostname}-{pid}`   | 实例标识（日志/claim 前缀用）                                                                    |
 | `JUDGE_IMAGE_PREFIX`             | `noj-`               | 允许的评测镜像名前缀（启动期与调度期复验）                                                       |
-| `JUDGE_COMMAND_WHITELIST`        | —                    | 允许的命令可执行文件白名单（逗号分隔）                                                           |
+| `JUDGE_COMMAND_WHITELIST`        | `python3,deno,node,bash,sh` | 允许的命令可执行文件白名单（逗号分隔）                                                   |
 | `JUDGE_ALLOW_EVALUATOR_NETWORK`  | `false`              | 是否允许 Evaluator 容器联网（LLM 题需开启）                                                      |
-| `JUDGE_EVALUATOR_NETWORK`        | —                    | Evaluator 联网时加入的 Docker 网络名                                                            |
+| `JUDGE_EVALUATOR_NETWORK`        | `bridge`             | Evaluator 联网时加入的 Docker 网络名                                                            |
 | `JUDGE_ALLOW_HTTP_S3`            | `false`              | 是否允许经 HTTP 下载支持包（自建 MinIO 内网常需开启）                                            |
-| `JUDGE_MAX_EVALUATOR_TIME_MS`    | —                    | 单次评测 Evaluator 总时长硬上限（毫秒）                                                          |
-| `JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS` | —                | 单次调用超时硬上限（毫秒）                                                                       |
-| `JUDGE_DOCKER_HOST`              | —                    | Docker daemon 地址（Unix socket）                                                                |
-| `JUDGE_REQUIRE_ISOLATED_DOCKER`  | —                    | 是否强制使用独立/隔离的 Docker daemon                                                            |
-| `JUDGE_USER_CLAIM_PREFIX`        | —                    | 用户级公平调度 claim 的 Redis key 前缀                                                           |
-| `JUDGE_USER_CLAIM_TTL_MS`        | —                    | 用户级 claim 的 TTL（毫秒）                                                                      |
-| `SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT` | —                  | 支持包下载超时（毫秒）                                                                           |
-| `SUPPORT_CACHE_DIR`              | —                    | 支持包内容寻址缓存目录                                                                           |
-| `SUPPORT_CACHE_MAX_ITEMS`        | —                    | 缓存最大条目数                                                                                   |
+| `JUDGE_MAX_EVALUATOR_TIME_MS`    | `300000`             | 单次评测 Evaluator 总时长硬上限（毫秒）                                                          |
+| `JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS` | `60000`          | 单次调用超时硬上限（毫秒）                                                                       |
+| `JUDGE_DOCKER_HOST`              | `unix:///var/run/docker.sock` | Docker daemon 地址（Unix socket，生产应指向独立 rootless daemon）                     |
+| `JUDGE_REQUIRE_ISOLATED_DOCKER`  | `false`              | 是否强制使用独立/隔离的 Docker daemon                                                            |
+| `JUDGE_USER_CLAIM_PREFIX`        | 队列前缀的同名父命名空间 | 用户级公平调度 claim 的 Redis key 前缀                                                        |
+| `JUDGE_USER_CLAIM_TTL_MS`        | `3600000`            | 用户级 claim 的 TTL（毫秒）                                                                      |
+| `SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT` | `60`               | 支持包下载超时（**秒**；实现按 `Duration::from_secs` 使用）                                      |
+| `SUPPORT_CACHE_DIR`              | `/tmp/noj-judge/support-cache` | 支持包内容寻址缓存目录                                                                 |
+| `SUPPORT_CACHE_MAX_ITEMS`        | `500`                | 缓存最大条目数                                                                                   |
 | `SUPPORT_CACHE_MAX_MB`           | `2048`               | 缓存最大容量（MB）                                                                               |
 
 > `POOL_*` 环境变量已随容器池移除（见 remove-container-pool 变更），不再被读取。
@@ -228,7 +228,8 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
 ```
 
 > 完整 wire 契约以 `noj-tests/fixtures/judge-task.contract.json` 与
-> `JUDGE_TASK_FIELDS` 为准（`user_id`、`priority` 为必填/契约字段；启用 LLM 的题目
+> `JUDGE_TASK_FIELDS` 为准（`user_id` 必填；`priority` 缺省 `medium`——
+> Rust 侧带 `#[serde(default = "default_priority")]`；启用 LLM 的题目
 > 另带 `llm` / `user_llm`）。
 
 > 双容器架构后 `judge_image` / `judge_command` / `time_limit_ms` /
