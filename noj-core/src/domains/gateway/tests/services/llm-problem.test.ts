@@ -17,7 +17,11 @@ import {
   getDefaultLlmLimits,
   resolveLlmLimits,
 } from "../../services/llm-limits.ts";
-import { getLlmPlatformDefault, LlmGatewayError } from "../../services/llm.ts";
+import {
+  describeLlmPlatformDefaultGap,
+  getLlmPlatformDefault,
+  LlmGatewayError,
+} from "../../services/llm.ts";
 import { _resetSystemSettingsForTest } from "../../../system/index.ts";
 
 Deno.test("llm-config: isValidLlmConfig", () => {
@@ -360,6 +364,52 @@ Deno.test("llm-platform-default: env 兜底生效", () => {
   } finally {
     Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
     Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
+    _resetSystemSettingsForTest();
+  }
+});
+
+// ── 2026-09-22 评审：只配一半的平台默认必须被启动期发现 ──
+// `getLlmPlatformDefault()` 要求两项同时配置，任一为空即 null → LLM 题提交 400。
+// 部署者极易只取消注释其中一项（模板里两项都是注释示例），因此必须有可操作的提示。
+Deno.test("llm-platform-default: 只配一项时 gap 指出缺失键（两项都空不告警）", () => {
+  _resetSystemSettingsForTest();
+  const oldP = Deno.env.get("NOJ_LLM_DEFAULT_PROVIDER_ID");
+  const oldM = Deno.env.get("NOJ_LLM_DEFAULT_MODEL");
+  try {
+    Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
+    Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
+    assertEquals(
+      describeLlmPlatformDefaultGap(),
+      [],
+      "两项都空 = 不启用 LLM 题，属正常配置，不应告警",
+    );
+
+    Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "prov-abc");
+    assertEquals(
+      describeLlmPlatformDefaultGap(),
+      ["llm_default_model"],
+      "只配 Provider 时必须提示缺 model",
+    );
+
+    Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
+    Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "qwen-plus");
+    assertEquals(
+      describeLlmPlatformDefaultGap(),
+      ["llm_default_provider_id"],
+      "只配 model 时必须提示缺 Provider",
+    );
+
+    Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "prov-abc");
+    assertEquals(
+      describeLlmPlatformDefaultGap(),
+      [],
+      "两项齐备时不应告警",
+    );
+  } finally {
+    if (oldP === undefined) Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
+    else Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", oldP);
+    if (oldM === undefined) Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
+    else Deno.env.set("NOJ_LLM_DEFAULT_MODEL", oldM);
     _resetSystemSettingsForTest();
   }
 });

@@ -166,6 +166,27 @@ export function getLlmPlatformDefault(): {
   return { provider_id: providerId, model };
 }
 
+/**
+ * 提示平台默认 LLM 配置**只配了一半**的情况（2026-09-22 评审）。
+ *
+ * `getLlmPlatformDefault()` 要求两项同时配置，任一为空即返回 null → LLM 题提交
+ * 直接 400。而部署者极易只取消注释其中一项（`.env.prod.example` 里两项都是
+ * 注释示例），因此这里在启动时给出可操作的告警，而不是等到用户提交才 400。
+ *
+ * @returns 需要告警的键名（两项都空时返回空数组——那代表"不启用 LLM 题"，
+ * 属正常配置，不该刷告警）。
+ */
+export function describeLlmPlatformDefaultGap(): string[] {
+  const providerId = String(getSetting("llm_default_provider_id")?.value ?? "")
+    .trim();
+  const model = String(getSetting("llm_default_model")?.value ?? "").trim();
+  if (!providerId && !model) return [];
+  if (providerId && model) return [];
+  return [
+    providerId ? "llm_default_model" : "llm_default_provider_id",
+  ];
+}
+
 /** 获取 LLM Provider 列表（Key 已由 gateway 脱敏）。 */
 export async function listLlmProviders(): Promise<LlmProviderView[]> {
   const body = await request<{ data: LlmProviderView[] }>(

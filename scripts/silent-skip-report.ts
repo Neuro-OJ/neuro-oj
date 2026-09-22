@@ -34,6 +34,19 @@ export interface SkipBaseline {
   by_file: Record<string, number>;
 }
 
+/**
+ * 按 UTF-16 码位比较两个字符串（不依赖 ICU / `LC_ALL`）。
+ *
+ * 评审建议：`localeCompare` 的结果受运行环境的 locale 与 ICU 数据版本影响，
+ * 而本报告会被 `--check` **逐字节比对**，因此排序键必须跨环境稳定。
+ * 码位比较是确定性的（ASCII 路径下与 `localeCompare` 结果一致；本仓库无
+ * 非 ASCII 路径，评审已实测两种 locale 下输出一致）。
+ */
+export function compareCodeUnits(a: string, b: string): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}
+
 /** 单行匹配规则（顺序即报告中的命中顺序）。 */
 const LINE_RULES: Array<{ re: RegExp; reason: SkipHit["reason"] }> = [
   { re: /\bignore\s*:\s*true\b/, reason: "ignore" },
@@ -83,9 +96,9 @@ export function renderReport(hits: SkipHit[]): string {
   // 排序后渲染：`--check` 会把本文件与一次全新渲染**逐字节比对**，而
   // `collectFiles` 使用不保证顺序的 `Deno.readDir`。若不排序，报告的文件块顺序
   // 会随文件系统枚举顺序漂移，导致"跳过数未变"却在 CI / 干净检出上误报过期。
-  // 按文件路径（与 buildBaseline 一致用 localeCompare）再按行号升序，保证跨环境可复现。
+  // 按文件路径（与 buildBaseline 一致用码位比较）再按行号升序，保证跨环境可复现。
   const sorted = [...hits].sort((a, b) =>
-    a.file.localeCompare(b.file) || a.line - b.line
+    compareCodeUnits(a.file, b.file) || a.line - b.line
   );
   const lines = [
     "# 静默跳过测试清单",
@@ -134,12 +147,12 @@ export function buildBaseline(hits: SkipHit[]): SkipBaseline {
     total: hits.length,
     by_reason: Object.fromEntries(
       [...summarizeReasons(hits).entries()].sort((a, b) =>
-        a[0].localeCompare(b[0])
+        compareCodeUnits(a[0], b[0])
       ),
     ),
     by_file: Object.fromEntries(
       [...summarizeFiles(hits).entries()].sort((a, b) =>
-        a[0].localeCompare(b[0])
+        compareCodeUnits(a[0], b[0])
       ),
     ),
   };

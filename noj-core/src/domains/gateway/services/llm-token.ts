@@ -67,7 +67,7 @@ export async function mintEvalToken(
 /**
  * 为一次提交构造 JudgeTask.llm 字段。
  *
- * @param llmConfig 题目固定的 LLM 配置
+ * @param llmConfig 题目声明的 LLM 能力与预算（Provider / 模型由平台默认决定）
  * @param submissionId 提交 ID
  * @param problemId 题目 ID
  * @param userId 提交用户 ID

@@ -101,6 +101,31 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     });
   }
 
+  // **LLM 任务必须在改变状态之前解析**（2026-09-22 评审）。
+  //
+  // `buildJudgeTaskLlm` 在平台默认 Provider 缺配/停用时抛 `BadRequestError`。
+  // 此前该调用位于"事务把提交置回 pending 并递增 rejudge_seq"**之后**，
+  // 抛错会让提交卡在 `pending`：MQ 里没有任务，sweeper 要等到下一轮才恢复，
+  // 而 sweeper 又不带 `llm`（见 sweeper 的说明）。管理员看到的是"重测按钮
+  // 报错但提交变成评测中"。
+  //
+  // 前置后，解析失败不会产生任何状态变更，管理员补配后可直接重试。
+  const runtimeConfig = problem.runtime_config as
+    | RuntimeConfig
+    | null
+    | undefined;
+
+  let llmTask: JudgeTaskLlm | undefined;
+  if (problem.llm_config && runtimeConfig) {
+    llmTask = await buildJudgeTaskLlm(
+      problem.llm_config,
+      id,
+      submission.problem_id,
+      submission.user_id,
+      runtimeConfig,
+    );
+  }
+
   await db.transaction(async (tx) => {
     await tx.delete(evaluationResults)
       .where(eq(evaluationResults.submission_id, id));
@@ -120,22 +145,6 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     .from(submissions)
     .where(eq(submissions.id, id))
     .limit(1);
-
-  const runtimeConfig = problem.runtime_config as
-    | RuntimeConfig
-    | null
-    | undefined;
-
-  let llmTask: JudgeTaskLlm | undefined;
-  if (problem.llm_config && runtimeConfig) {
-    llmTask = await buildJudgeTaskLlm(
-      problem.llm_config,
-      id,
-      submission.problem_id,
-      submission.user_id,
-      runtimeConfig,
-    );
-  }
 
   const task = buildJudgeTask({
     submission_id: id,

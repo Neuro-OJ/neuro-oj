@@ -94,3 +94,32 @@ problem.json manifest.llm = { provider_id: "<gateway UUID>", model: "qwen-plus" 
   本次解耦的预期结果，已在文档中明确。
 - **wire 契约零改动**通过 core + judge 契约快照测试与 `judge-task.contract.json`
   锁定；e2e 的新形状 manifest 与平台默认写入链路在完整栈下覆盖。
+
+## 评审收尾（2026-09-22）
+
+本 PR 的核心设计（题目只声明能力与预算、Provider/模型由平台决定）在评审中未发现
+blocker，但补了以下几处**可运维性/竞态**缺口：
+
+1. **单条重测的 LLM 解析前置**（`submissions-rejudge.ts`）。`buildJudgeTaskLlm`
+   在平台默认缺配/停用时抛 400，而该调用此前位于「事务把提交置回 `pending` 并
+   递增 `rejudge_seq`」**之后**：抛错会让提交卡在 `pending`（MQ 无任务，sweeper
+   又不带 `llm`）。现改为**先解析、后改状态**，解析失败不产生任何状态变更，补一条
+   回归测试断言「状态仍为 finished 且 rejudge_seq 未变」。
+2. **sweeper 的取舍显式化**。`recoverPendingRows` 刻意不组装 `llm`（避免 gateway
+   抖动把提交永久标记为 `error`），但该决定此前只存在于代码行为里。现补注释说明
+   取舍与「若将来支持重建 `llm`，必须把解析失败降级为跳过本轮重试」。
+3. **半配的平台默认在启动期告警**。新增 `describeLlmPlatformDefaultGap()`：两项
+   只配一项时输出可操作告警（两项都空 = 不启用 LLM 题，不告警），补单测覆盖四种
+   组合。部署者此前只能等到用户提交才看到 400。
+4. **Provider ID 可见性**。平台默认要求填 gateway 内部 UUID，而管理端 Provider
+   列表不展示 `id`、运营者无从获取。现补「Provider ID」列。
+5. **文档与注释同步**：`schema/catalog.ts` 的 `llm_config` 注释按收缩后的语义重写；
+   `llm-token.ts` 的函数注释改为「题目声明的能力与预算」；gateway README 补
+   `POST /internal/providers/:id/test` 必须带 `model` 与 PUT 的作用域语义。
+6. **`silent-skip-report` 的排序改为码位比较**（`compareCodeUnits`）：报告会被
+   `--check` 逐字节比对，`localeCompare` 受 `LC_ALL`/ICU 版本影响，存在跨环境
+   误报风险。
+
+静默跳过基线 +1（993 → 994）来自上述第 1 条的回归测试：它遵循
+`submissions.test.ts` 既有的 `ignore: !hasDb` 模式（该文件 14 个用例同此），
+在完整测试环境（CI）中会真正执行，仅裸跑缺 PG 时跳过。

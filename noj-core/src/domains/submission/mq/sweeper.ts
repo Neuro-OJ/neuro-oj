@@ -268,6 +268,17 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
       );
     }
 
+    // **注意：此处刻意不组装 `llm`**（2026-09-22 评审）。
+    //
+    // 平台默认 Provider 的解析（`buildJudgeTaskLlm`）在缺配或 Provider 停用时
+    // 会抛错（400/5xx）。若在 sweeper 里补上 `llm`，一次 gateway 抖动或漏配就
+    // 会让每轮重试都以失败告终，进而把提交永久标记为 `error`
+    // （`onPermanentError`）——那比"少一次 LLM 调用"严重得多。
+    //
+    // 现状语义：pending 恢复出来的 LLM 题任务不带 `llm`，evaluator 侧按普通
+    // 题目执行（LLM 能力不可用）。这与移除 BYOK 之前的行为一致，属**已知取舍**。
+    // 后续若要支持"恢复时重建 llm"，必须同时把解析失败降级为"跳过本轮重试"，
+    // 而不是让整个恢复流程永久失败。
     const task = buildJudgeTask({
       submission_id: row.id,
       problem_id: row.problem_id,

@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **993** 处（ignore=640 early-return=268 rust-ignore=45 rust-env-guard=27 env-guard=13）。
+> 当前命中 **994** 处（ignore=641 early-return=268 rust-ignore=45 rust-env-guard=27 env-guard=13）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -161,13 +161,6 @@
 | noj-core/src/domains/identity/tests/lib/revokedTokens.test.ts | 77 | ignore |
 | noj-core/src/domains/identity/tests/lib/revokedTokens.test.ts | 89 | ignore |
 | noj-core/src/domains/identity/tests/lib/revokedTokens.test.ts | 99 | ignore |
-| noj-core/src/domains/identity/tests/middleware/auth_must_change_test.ts | 111 | ignore |
-| noj-core/src/domains/identity/tests/middleware/auth_must_change_test.ts | 127 | ignore |
-| noj-core/src/domains/identity/tests/middleware/auth_must_change_test.ts | 142 | ignore |
-| noj-core/src/domains/identity/tests/middleware/auth_must_change_test.ts | 157 | ignore |
-| noj-core/src/domains/identity/tests/middleware/auth_must_change_test.ts | 173 | ignore |
-| noj-core/src/domains/identity/tests/middleware/auth_must_change_test.ts | 185 | ignore |
-| noj-core/src/domains/identity/tests/middleware/auth_must_change_test.ts | 200 | ignore |
 | noj-core/src/domains/identity/tests/middleware/auth.test.ts | 89 | ignore |
 | noj-core/src/domains/identity/tests/middleware/auth.test.ts | 102 | ignore |
 | noj-core/src/domains/identity/tests/middleware/auth.test.ts | 115 | ignore |
@@ -177,17 +170,17 @@
 | noj-core/src/domains/identity/tests/middleware/auth.test.ts | 191 | ignore |
 | noj-core/src/domains/identity/tests/middleware/auth.test.ts | 206 | ignore |
 | noj-core/src/domains/identity/tests/middleware/auth.test.ts | 221 | ignore |
+| noj-core/src/domains/identity/tests/middleware/auth_must_change_test.ts | 111 | ignore |
+| noj-core/src/domains/identity/tests/middleware/auth_must_change_test.ts | 127 | ignore |
+| noj-core/src/domains/identity/tests/middleware/auth_must_change_test.ts | 142 | ignore |
+| noj-core/src/domains/identity/tests/middleware/auth_must_change_test.ts | 157 | ignore |
+| noj-core/src/domains/identity/tests/middleware/auth_must_change_test.ts | 173 | ignore |
+| noj-core/src/domains/identity/tests/middleware/auth_must_change_test.ts | 185 | ignore |
+| noj-core/src/domains/identity/tests/middleware/auth_must_change_test.ts | 200 | ignore |
 | noj-core/src/domains/identity/tests/routes/admin-blacklist.test.ts | 70 | env-guard |
 | noj-core/src/domains/identity/tests/routes/admin-blacklist.test.ts | 110 | env-guard |
 | noj-core/src/domains/identity/tests/routes/admin-blacklist.test.ts | 134 | env-guard |
 | noj-core/src/domains/identity/tests/routes/admin-blacklist.test.ts | 167 | env-guard |
-| noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 79 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 91 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 116 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 137 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 155 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 176 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 193 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 31 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 51 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth-admin.test.ts | 74 | ignore |
@@ -277,6 +270,13 @@
 | noj-core/src/domains/identity/tests/routes/auth.test.ts | 1059 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth.test.ts | 1078 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth.test.ts | 1099 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 79 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 91 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 116 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 137 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 155 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 176 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 193 | ignore |
 | noj-core/src/domains/identity/tests/routes/avatar.test.ts | 28 | env-guard |
 | noj-core/src/domains/identity/tests/routes/checkin.test.ts | 76 | ignore |
 | noj-core/src/domains/identity/tests/routes/checkin.test.ts | 88 | ignore |
@@ -300,17 +300,6 @@
 | noj-core/src/domains/identity/tests/routes/users.test.ts | 15 | ignore |
 | noj-core/src/domains/identity/tests/routes/users.test.ts | 29 | ignore |
 | noj-core/src/domains/identity/tests/routes/users.test.ts | 43 | ignore |
-| noj-core/src/domains/identity/tests/services/auth_change_password_test.ts | 43 | ignore |
-| noj-core/src/domains/identity/tests/services/auth_change_password_test.ts | 66 | ignore |
-| noj-core/src/domains/identity/tests/services/auth_change_password_test.ts | 80 | ignore |
-| noj-core/src/domains/identity/tests/services/auth_change_password_test.ts | 94 | ignore |
-| noj-core/src/domains/identity/tests/services/auth_change_password_test.ts | 113 | ignore |
-| noj-core/src/domains/identity/tests/services/auth_change_password_test.ts | 133 | ignore |
-| noj-core/src/domains/identity/tests/services/auth_tfa.test.ts | 41 | ignore |
-| noj-core/src/domains/identity/tests/services/auth_tfa.test.ts | 68 | ignore |
-| noj-core/src/domains/identity/tests/services/auth_tfa.test.ts | 97 | ignore |
-| noj-core/src/domains/identity/tests/services/auth_tfa.test.ts | 120 | ignore |
-| noj-core/src/domains/identity/tests/services/auth_tfa.test.ts | 143 | ignore |
 | noj-core/src/domains/identity/tests/services/auth.test.ts | 34 | ignore |
 | noj-core/src/domains/identity/tests/services/auth.test.ts | 53 | ignore |
 | noj-core/src/domains/identity/tests/services/auth.test.ts | 73 | ignore |
@@ -324,6 +313,17 @@
 | noj-core/src/domains/identity/tests/services/auth.test.ts | 240 | ignore |
 | noj-core/src/domains/identity/tests/services/auth.test.ts | 255 | ignore |
 | noj-core/src/domains/identity/tests/services/auth.test.ts | 278 | ignore |
+| noj-core/src/domains/identity/tests/services/auth_change_password_test.ts | 43 | ignore |
+| noj-core/src/domains/identity/tests/services/auth_change_password_test.ts | 66 | ignore |
+| noj-core/src/domains/identity/tests/services/auth_change_password_test.ts | 80 | ignore |
+| noj-core/src/domains/identity/tests/services/auth_change_password_test.ts | 94 | ignore |
+| noj-core/src/domains/identity/tests/services/auth_change_password_test.ts | 113 | ignore |
+| noj-core/src/domains/identity/tests/services/auth_change_password_test.ts | 133 | ignore |
+| noj-core/src/domains/identity/tests/services/auth_tfa.test.ts | 41 | ignore |
+| noj-core/src/domains/identity/tests/services/auth_tfa.test.ts | 68 | ignore |
+| noj-core/src/domains/identity/tests/services/auth_tfa.test.ts | 97 | ignore |
+| noj-core/src/domains/identity/tests/services/auth_tfa.test.ts | 120 | ignore |
+| noj-core/src/domains/identity/tests/services/auth_tfa.test.ts | 143 | ignore |
 | noj-core/src/domains/identity/tests/services/checkin.test.ts | 76 | ignore |
 | noj-core/src/domains/identity/tests/services/checkin.test.ts | 93 | ignore |
 | noj-core/src/domains/identity/tests/services/checkin.test.ts | 119 | ignore |
@@ -574,6 +574,7 @@
 | noj-core/src/domains/submission/tests/services/submissions.test.ts | 854 | ignore |
 | noj-core/src/domains/submission/tests/services/submissions.test.ts | 941 | ignore |
 | noj-core/src/domains/submission/tests/services/submissions.test.ts | 1090 | ignore |
+| noj-core/src/domains/submission/tests/services/submissions.test.ts | 1216 | ignore |
 | noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 90 | ignore |
 | noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 111 | ignore |
 | noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 136 | ignore |

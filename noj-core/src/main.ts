@@ -29,6 +29,7 @@ import {
 } from "./domains/system/index.ts";
 import { startAuditLogRetentionTask } from "./domains/system/index.ts";
 import { startContestAntiCheatRetentionTask } from "./domains/contest/index.ts";
+import { describeLlmPlatformDefaultGap } from "./domains/gateway/index.ts";
 import { getLogger } from "@logtape/logtape";
 import { describePlaceholderSecret } from "./shared/security/secret-placeholders.ts";
 
@@ -224,6 +225,25 @@ async function main() {
   } catch (err) {
     // 检测失败不阻断启动（仅提示）
     logger.warn("runtime env/DB 共存冲突检测失败", { err });
+  }
+
+  // 提示平台默认 LLM 配置**只配了一半**（2026-09-22 评审）：
+  // `llm_default_provider_id` / `llm_default_model` 必须同时配置，否则 LLM 题
+  // 提交会以 400 失败。部署者常只取消注释其中一项（模板里两项都是注释示例），
+  // 因此在启动时给出可操作告警，而不是等用户提交才暴露。
+  try {
+    const gap = describeLlmPlatformDefaultGap();
+    if (gap.length > 0) {
+      logger.warn(
+        "平台默认 LLM 配置不完整：{missing} 未设置，LLM 题提交会返回 400。" +
+          "请把 llm_default_provider_id 与 llm_default_model 配成一对" +
+          "（管理后台「系统设置」或 .env.prod）。",
+        { missing: gap.join(", ") },
+      );
+    }
+  } catch (err) {
+    // 检测失败不阻断启动（仅提示）
+    logger.warn("平台默认 LLM 配置完整性检测失败", { err });
   }
 
   // 提示 bootstrap（env-owned）项在 DB 中的残留旧值：

@@ -32,6 +32,9 @@ let requestVersion = 0
 
 const columns: AdminColumn[] = [
   { key: "name", label: "名称" },
+  // ID 必须可见：平台默认 LLM 配置（llm_default_provider_id）要求填 gateway
+  // 内部 UUID，而此前列表不展示 id，运营者无从获取（2026-09-22 评审发现）。
+  { key: "id", label: "Provider ID" },
   { key: "base_url", label: "Base URL" },
   { key: "cost_per_1k_tokens", label: "费用/1K token" },
   { key: "api_key_masked", label: "API Key" },
