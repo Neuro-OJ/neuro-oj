@@ -147,6 +147,58 @@ Deno.test("hasFileLevelTest: 识别控制流块内的 Deno.test", () => {
   );
 });
 
+// ── 2026-09-22 评审修复：启发式双向失准的反例 ──
+// 评审实测：方法简写/class 方法内的 Deno.test 被误判为"文件级"（会把合法测试
+// 工厂报红），而 IIFE 里的真实测试被漏判（放过永不执行的测试）。
+Deno.test("hasFileLevelTest: 方法简写/class 方法内的调用不算文件级（防误红）", () => {
+  assertEquals(
+    hasFileLevelTest(
+      `const suite = { register(name) {\n  Deno.test(name, () => {});\n} };\n`,
+    ),
+    false,
+    "对象方法简写体应视为函数体内",
+  );
+  assertEquals(
+    hasFileLevelTest(
+      `class Suite {\n  add(name: string) {\n    Deno.test(name, () => {});\n  }\n}\n`,
+    ),
+    false,
+    "class 方法体应视为函数体内",
+  );
+  assertEquals(
+    hasFileLevelTest(
+      `const s = {\n  run(name: string): void {\n    Deno.test(name, () => {});\n  },\n};\n`,
+    ),
+    false,
+    "带返回类型注解的方法体应视为函数体内",
+  );
+});
+
+Deno.test("hasFileLevelTest: IIFE 内调用必须被视为执行（防漏判）", () => {
+  assert(
+    hasFileLevelTest(`(() => {\n  Deno.test("x", () => {});\n})();\n`),
+    "IIFE 内的测试会在加载时执行，文件若不可发现即为漏判",
+  );
+  assert(
+    hasFileLevelTest(
+      `(function () {\n  Deno.test("x", () => {});\n}).call(null);\n`,
+    ),
+    ".call 形式的立即调用同样应被视为执行",
+  );
+  // while/for 等控制流仍不算函数体
+  assert(
+    hasFileLevelTest(`while (x) {\n  Deno.test("a", () => {});\n}\n`),
+  );
+  assert(
+    hasFileLevelTest(
+      `switch (x) {\n  case 1:\n    Deno.test("a", () => {});\n}\n`,
+    ),
+  );
+  assert(
+    hasFileLevelTest(`try {\n  Deno.test("a", () => {});\n} catch {}\n`),
+  );
+});
+
 Deno.test("findUndiscoverableTests: 控制流块中的测试文件会被报出", async () => {
   const root = await Deno.makeTempDir({ prefix: "test-discovery-" });
   try {

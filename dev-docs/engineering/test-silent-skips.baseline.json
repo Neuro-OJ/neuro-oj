@@ -1,9 +1,9 @@
 {
-  "total": 992,
+  "total": 993,
   "by_reason": {
     "early-return": 268,
     "env-guard": 13,
-    "ignore": 639,
+    "ignore": 640,
     "rust-env-guard": 27,
     "rust-ignore": 45
   },
@@ -55,7 +55,7 @@
     "noj-core/src/domains/query/tests/services/rankings.test.ts": 8,
     "noj-core/src/domains/query/tests/services/stats-cache.test.ts": 7,
     "noj-core/src/domains/search/tests/perf/search_bench.test.ts": 1,
-    "noj-core/src/domains/search/tests/routes/search.test.ts": 6,
+    "noj-core/src/domains/search/tests/routes/search.test.ts": 7,
     "noj-core/src/domains/submission/tests/mq/consumer.test.ts": 4,
     "noj-core/src/domains/submission/tests/mq/producer.test.ts": 6,
     "noj-core/src/domains/submission/tests/mq/self-test-consumer.test.ts": 8,

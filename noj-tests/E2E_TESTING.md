@@ -40,7 +40,8 @@ noj-tests/
     ├── helper.ts              # 共享辅助函数（API 客户端、注册、e2eTest 包装）
     ├── identity/              # 认证、用户主页、改密守卫、密码重置、头像、TFA
     ├── catalog/               # 标签、题目、题目模板、题包导入、题单
-    ├── submission/            # 提交、队列、SSE、重测、双容器、支持包、调用超时、优先级队列
+    ├── submission/            # 提交、队列、SSE、重测、支持包、调用超时、优先级队列
+    │                          # （双容器用例在 cross-domain/dual_container_judge.test.ts）
     ├── contest/               # 竞赛生命周期、榜单、答疑、防作弊
     ├── system/                # 签到、审计日志、公告、自测
     ├── community/             # 社区（帖子/评论/审核/动态流）

@@ -32,7 +32,7 @@
 | 表                 | 用途                                                                                                                   |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | `roles`            | 角色定义（`is_default`/`is_system` 标记；`is_admin` 列已由迁移 0032 删除，管理员判定改为权限集含 `admin:full_access`） |
-| `permissions`      | 权限定义（`resource:action` 格式，预置 52 条、跨 10 个资源域）                                                         |
+| `permissions`      | 权限定义（`resource:action` 格式，预置 52 条、跨 12 个资源域）                                                         |
 | `role_permissions` | 角色-权限多对多关联                                                                                                    |
 | `user_roles`       | 用户-角色多对多关联                                                                                                    |
 
@@ -122,7 +122,7 @@ noj-core/
 │   │   ├── sse/           # event-bus / sse-stream / sse-events / server-helpers
 │   │   ├── rate-limit/    # 通用限流原语（业务环境相关限流在 system 域）
 │   │   ├── security/      # cidr / public-id / image-validation
-│   │   ├── testing/       # 测试辅助（PGlite 模板、事务隔离等）
+│   │   ├── testing/       # 共享测试夹具（赛期门控等；PGlite 模板在 shared/db）
 │   │   ├── observability/ # 低层 kernel：指标注册表、写侧契约、日志上下文
 │   │   └── search-events.ts # 搜索索引事件（跨域共享）
 │   ├── domains/           # 业务域自包含：routes / services / middleware / mq / types / tests

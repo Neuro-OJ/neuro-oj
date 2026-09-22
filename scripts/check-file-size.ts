@@ -36,7 +36,9 @@ export const SIZE_BASELINE: Record<string, number> = {
   // 只允许下调。与同轮对 `check-test-discovery` / `silent-skip-report` 的
   // 「补 noj-cli」修复同一模式。
   "noj-cli/src/prod/lifecycle.ts": 2097,
-  "noj-cli/src/cli.ts": 1611,
+  // 2026-09-23：`backup` 参数解析抽到 `backup-args.ts`，cli.ts 1518 行；同步下调
+  // 以锁住成果（棘轮只允许下调）。
+  "noj-cli/src/cli.ts": 1518,
   "noj-cli/src/prod/config.ts": 1218,
 };
 

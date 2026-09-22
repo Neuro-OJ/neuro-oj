@@ -202,10 +202,11 @@ WHERE lp.created_by <> '0';
 | 层级 | 命令 | 证明的内容 |
 |---|---|---|
 | 备份 | `noj-cli backup create` | PostgreSQL/Redis/MinIO/加密环境文件已写入单个 `.nojbackup` |
-| 文件校验 | `noj-cli backup verify` / `backup drill` | 快照完整、口令可用、dump 结构可解析 |
+| 文件校验 | `noj-cli backup verify` | 快照完整、口令可用、dump 结构可解析（`--deep` / `--payload-sha` 逐档加深） |
 | 隔离恢复演练 | `noj-cli backup drill <快照>` | 业务真的可以从快照恢复并运行 |
 
-`backup drill` 只做文件级校验，**不能**证明业务可恢复。真实的恢复验收演练：
+`backup verify` 只做**文件级**校验，**不能**证明业务可恢复；`backup drill` 才是
+真正的恢复验收演练（会起独立 Compose 项目，分钟级、需 Docker）：
 
 ```bash
 noj-cli backup drill backups/snapshot-YYYYMMDD-HHMMSS \

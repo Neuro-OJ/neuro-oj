@@ -8,7 +8,7 @@
 
 需要：Deno 2、Rust（judge）、Docker（judge E2E）、zip/unzip。
 
-基础设施：
+基础设施（两段式开发的第一步，见下节）：
 
 ```bash
 docker compose up -d
@@ -22,12 +22,8 @@ node scripts/install-git-hooks.mjs
 
 ## 两段式开发
 
-NOJ 源码开发**不使用** `noj-cli`（它面向生产部署与运维）。先起基础设施，再按需
-在独立终端启动模块：
-
-```bash
-docker compose up -d
-```
+NOJ 源码开发**不使用** `noj-cli`（它面向生产部署与运维）。基础设施已由上一节
+启动后，再按需在独立终端启动模块：
 
 ```bash
 cd noj-core && deno task dev        # http://localhost:8000

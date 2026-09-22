@@ -19,6 +19,15 @@ export interface InternalDeps {
   db: Db;
 }
 
+/**
+ * 分页页码上界。
+ *
+ * 与 noj-core 的 `shared/http/pagination.ts:MAX_SAFE_PAGE` 同值：OFFSET 在 PG 里是
+ * `bigint`，页码越界会让查询报 `value ... out of range for type bigint` → 500。
+ * gateway 是独立模块（不 import core 的源码），故此处独立定义并说明来源。
+ */
+const MAX_SAFE_PAGE = Number.MAX_SAFE_INTEGER;
+
 /** 创建 core↔gateway 内部管理路由；所有端点均需服务间 Bearer Token。 */
 export function createInternalRouter(deps: InternalDeps): Hono {
   const app = new Hono();
@@ -65,6 +74,9 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const id = c.req.param("id");
     const body = await c.req.json<Partial<ProviderInput>>();
     try {
+      // BYOK 已全路径移除：不再有「用户自助 Provider」，`created_by` 归属列与
+      // 用户路由都已删除，因此这里既不读 `created_by`，也不传作用域参数
+      // （#541 引入的 `scope` 参数随 BYOK 一起消失）。
       const provider = await updateProvider(
         deps.db,
         id,
@@ -116,10 +128,14 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const limit = Number.isFinite(rawLimit)
       ? Math.min(Math.max(1, Math.floor(rawLimit)), 1000)
       : 100;
-    const page = Math.max(
-      1,
-      Math.floor(Number(c.req.query("page") ?? "1") || 1),
-    );
+    // **页码上界 + 参数化**（评审发现的同类漏网）：`page` 此前无上界且
+    // `OFFSET` 是字符串插值，`page=1e30` 会拼出 `OFFSET 1.0000000000000001e+33`
+    // → PG 报 `bigint out of range` → 500（管理员可达）。改参数化后既无注入面，
+    // 也让越界值由 PG 的类型系统拒绝而不是拼进 SQL 文本。
+    const rawPage = Number(c.req.query("page") ?? "1");
+    const page = Number.isFinite(rawPage) && rawPage >= 1
+      ? Math.min(Math.floor(rawPage), MAX_SAFE_PAGE)
+      : 1;
 
     const conditions: string[] = [];
     const params: string[] = [];
@@ -154,11 +170,13 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const where = conditions.length > 0
       ? `WHERE ${conditions.join(" AND ")}`
       : "";
+    // LIMIT/OFFSET 也走参数化（评审建议）：`limit` 已夹取到 ≤1000，但字符串
+    // 插值在后续改动下容易重新引入注入面。
     const rows = await deps.db.unsafe(
-      `SELECT * FROM llm_usage ${where} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${
-        (page - 1) * limit
-      }`,
-      params,
+      `SELECT * FROM llm_usage ${where} ORDER BY created_at DESC LIMIT $${
+        params.length + 1
+      } OFFSET ${params.length + 2}`,
+      [...params, String(limit), String((page - 1) * limit)],
     );
     return c.json({ data: rows });
   });

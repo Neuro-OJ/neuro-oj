@@ -94,7 +94,7 @@ neuro-oj/
 ├── noj-llm-gateway/# LLM 网关（CLAUDE.md 有完整目录）
 ├── noj-lmcc-extension/# LMCC IDE / VS Code 插件
 ├── noj-cli/        # 生产部署/运维 CLI（纯 TS，deno compile 单二进制）
-├── noj-problems/   # 题目源目录（题目包构建输入，非运行模块）
+├── noj-problems/   # 题目源目录（**独立私有仓库**，主仓库 gitignore；构建输入在 noj-core/data/problems-src/）
 ├── noj-tests/      # 跨模块 E2E 测试
 ├── noj-docs/       # 用户/出题人/运营者文档站（VitePress）
 ├── dev-docs/           # 设计文档、实施计划、工程规范、审计
