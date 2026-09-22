@@ -614,6 +614,10 @@ export async function judgeLogs(
       opts.dockerBin ?? "docker",
       args,
       (line) => log(line),
+      // `--json` 时人类日志走 stderr（`log` 已按该契约分发），stderr 行的
+      // 路由与 stdout 一致即可；显式给出以表明"诊断输出也必须可见且不污染
+      // stdout"（评审建议：缺省转发是安全默认，但显式更清晰）。
+      { onStderr: (line) => log(line) },
     );
     if (code !== 0) {
       return fail(paths, 1, `查看 Judge 日志失败（退出码 ${code}）`);

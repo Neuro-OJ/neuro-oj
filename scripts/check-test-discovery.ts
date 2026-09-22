@@ -141,18 +141,89 @@ export function hasFileLevelTest(content: string): boolean {
   const n = content.length;
   // 每个未闭合的 `{` 对应一个栈项：true 表示该块是函数体。
   const braceIsFunction: boolean[] = [];
+  // 与之等长的栈项：该函数体的 `{` 在源码中的下标（非函数块为 -1）。
+  const braceOpenIndex: number[] = [];
+  // 每个 `{` → 匹配的 `}` 的下标（第一遍预扫描填充）。
+  const matchOf = new Map<number, number>();
+  const openStack: number[] = [];
 
   /** 判断某个 `{` 之前的片段是否像函数体开头。 */
   const looksLikeFunctionBrace = (before: string): boolean => {
     const tail = before.slice(-400);
     return (
-      // function 声明/表达式、方法简写、箭头函数、构造器
+      // function 声明/表达式、箭头函数、构造器
       /(?:function\b[^;{}()]*\([^;{}]*\)|\([^;{}]*\)\s*=>|=>|\bconstructor\b)\s*$/
         .test(tail) ||
       // `function foo(` 之后到 `{` 之间可能是返回类型注解
-      /\bfunction\b[^;{]*$/.test(tail)
+      /\bfunction\b[^;{]*$/.test(tail) ||
+      // **方法简写 / class 方法**（评审发现的误判）：
+      //   `const suite = { register(name) { Deno.test(...) } }`
+      //   `class Suite { add(name) { Deno.test(...) } }`
+      // 这类 `{` 同样属于函数体，此前会被判定为"文件级测试"→ 把合法测试工厂
+      // 报成不可发现（误红）。反向匹配"标识符/属性名 + 参数表 + 可选返回注解 +
+      // 行尾"，并排除控制流关键字（`if (x) {`、`for (…) {` 等不是函数体）。
+      /(?<![.\w])(?!if\b|for\b|while\b|switch\b|catch\b|return\b|do\b|else\b|typeof\b|new\b|function\b)[A-Za-z_$][\w$]*\s*\([^;{}]*\)(\s*:\s*[^;{}()]+)?\s*$/
+        .test(tail)
     );
   };
+
+  /**
+   * 该函数体是否是**立即调用**的函数表达式（IIFE）。
+   *
+   * 评审发现的漏判：`(() => { Deno.test("x", …) })()` 里的用例**确实会执行**，
+   * 但它所在文件若命名不可发现就永远不会被运行器加载——此前因为"在函数体内"
+   * 而被放过（真漏判）。判定方式：找到与函数体 `{` 匹配的 `}`，跳过其后的
+   * `)`（包裹括号）与空白，若下一个字符是 `(`（或 `.call(` / `.apply(`），
+   * 则该函数被立即调用。
+   *
+   * 已知局限（与旧实现一致）：`function make() { Deno.test(…) } make();` 这种
+   * "先定义、后另行调用"的形态仍会被当作工厂放过——完整判定需要作用域分析，
+   * 超出本门禁的成本预算；该形态在仓库中不存在。
+   */
+  const isImmediatelyInvoked = (openIndex: number): boolean => {
+    const close = matchOf.get(openIndex);
+    if (close === undefined) return false;
+    let j = close + 1;
+    while (j < n && /[\s)]/.test(content[j]!)) j++;
+    if (content[j] === "(") return true;
+    return content.startsWith(".call(", j) || content.startsWith(".apply(", j);
+  };
+
+  // ── 第一遍：建立 `{` → `}` 配对表（跳过注释与字符串）──
+  {
+    let k = 0;
+    while (k < n) {
+      const ch = content[k];
+      if (ch === "/" && content[k + 1] === "/") {
+        const nl = content.indexOf("\n", k);
+        k = nl === -1 ? n : nl + 1;
+        continue;
+      }
+      if (ch === "/" && content[k + 1] === "*") {
+        const end = content.indexOf("*/", k + 2);
+        k = end === -1 ? n : end + 2;
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === "`") {
+        const quote = ch;
+        k++;
+        while (k < n) {
+          if (content[k] === "\\") k += 2;
+          else if (content[k] === quote) {
+            k++;
+            break;
+          } else k++;
+        }
+        continue;
+      }
+      if (ch === "{") openStack.push(k);
+      else if (ch === "}") {
+        const open = openStack.pop();
+        if (open !== undefined) matchOf.set(open, k);
+      }
+      k++;
+    }
+  }
 
   while (i < n) {
     const ch = content[i];
@@ -183,12 +254,15 @@ export function hasFileLevelTest(content: string): boolean {
     }
 
     if (ch === "{") {
-      braceIsFunction.push(looksLikeFunctionBrace(content.slice(0, i)));
+      const isFunction = looksLikeFunctionBrace(content.slice(0, i));
+      braceIsFunction.push(isFunction);
+      braceOpenIndex.push(isFunction ? i : -1);
       i++;
       continue;
     }
     if (ch === "}") {
       braceIsFunction.pop();
+      braceOpenIndex.pop();
       i++;
       continue;
     }
@@ -196,8 +270,13 @@ export function hasFileLevelTest(content: string): boolean {
     if (content.startsWith("Deno.test", i)) {
       const after = content.slice(i + "Deno.test".length);
       if (/^\s*\(/.test(after)) {
-        // 不在任何函数体内 → 文件级测试
-        if (!braceIsFunction.some(Boolean)) return true;
+        // 不在任何函数体内 → 文件级测试。
+        // 在函数体内但该函数是 IIFE（立即调用）→ 同样会在加载时执行，
+        // 因此也算"文件级"（文件被运行器加载时就会跑）。
+        const inFactory = braceIsFunction.some((isFn, depth) =>
+          isFn && !isImmediatelyInvoked(braceOpenIndex[depth]!)
+        );
+        if (!inFactory) return true;
       }
     }
     i++;

@@ -120,6 +120,9 @@ export async function checkDenoVersion(root = "."): Promise<string[]> {
     for (const e of entries) {
       if (e.isDirectory) {
         if (e.name === "node_modules" || e.name === "target") continue;
+        // 评审建议：`.deno_cache` / `.test-cache` 等缓存目录会随依赖膨胀而拖慢
+        // 门禁（当前实测无命中，但成本会线性增长）；以 `.` 开头的目录一律跳过。
+        if (e.name.startsWith(".")) continue;
         await collectDockerfiles(dir + "/" + e.name);
       } else if (e.name.startsWith("Dockerfile")) {
         dockerfiles.push(dir + "/" + e.name);

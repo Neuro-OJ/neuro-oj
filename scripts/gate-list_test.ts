@@ -109,6 +109,26 @@ Deno.test("gate-list: 全部门禁自测文件都存在", async () => {
   }
 });
 
+Deno.test("gate-list: scripts/*_test.ts 必须全部登记（防假绿）", async () => {
+  // 评审发现：`gate-list_test.ts` 与 `coverage-report_test.ts` 曾**不在任何
+  // 执行入口内**——写了测试却永不运行，本地与 CI 都显示绿色。
+  // 这条自检把"漏登记"变成可发现的失败，而不是靠人记得。
+  const registered = new Set(GATE_SELF_TESTS);
+  const missing: string[] = [];
+  for await (const entry of Deno.readDir(REPO_ROOT + "scripts")) {
+    if (!entry.isFile) continue;
+    if (!entry.name.endsWith("_test.ts")) continue;
+    const rel = `scripts/${entry.name}`;
+    if (!registered.has(rel)) missing.push(rel);
+  }
+  assertEquals(
+    missing,
+    [],
+    `以下门禁自测未登记到 GATE_SELF_TESTS（写了却永不执行）：` +
+      missing.join("、"),
+  );
+});
+
 Deno.test("gate-list: gateLabel 有 label 用 label，否则拼接 args", () => {
   assertEquals(
     gateLabel({ label: "自定义", args: ["deno", "run"] }),
