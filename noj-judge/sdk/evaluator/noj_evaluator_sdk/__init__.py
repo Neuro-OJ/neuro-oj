@@ -28,6 +28,7 @@ from .prediction import (
     mae,
     rmse,
     roc_auc,
+    values_equal,
 )
 from .result import Result
 from .runner import SolutionRunner
@@ -52,6 +53,7 @@ __all__ = [
     "rmse",
     "mae",
     "roc_auc",
+    "values_equal",
     "emit_case_scores",
     "ConnectionError",
     "NotFoundError",

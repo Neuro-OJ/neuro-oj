@@ -52,7 +52,7 @@ def solve(a: int, b: int) -> int:
   .csv .tsv .jsonl .json .txt .npy .npz .parquet
   ```
 
-  禁止一切 pickle 类格式（`.pkl` / `.pickle` / `.pt` / `.pth` / `.bin` / `.joblib` / `.ckpt`）；即使改了扩展名，含 pickle 协议头或 NUL 字节的文件也会被拒绝。
+  禁止一切 pickle 类格式（`.pkl` / `.pickle` / `.pt` / `.pth` / `.bin` / `.joblib` / `.ckpt`）；即使改了扩展名，含 pickle 协议头的文件也会被拒绝。此外，**文本格式**（`.csv` / `.tsv` / `.jsonl` / `.json` / `.txt`）若首块含 NUL 字节也会被拒绝；二进制格式（`.npy` / `.npz` / `.parquet`）按各自魔数校验，不做 NUL 检查。
 - 请按题面约定准备好 ID 列 / 行顺序；服务端会校验预测与隐藏标签的 ID 对齐，错位会报错或影响得分。
 - 评分在服务端**单个 Evaluator 容器**内对照隐藏标签完成，**不会运行你的代码**，也**不会把隐藏标签下发到你的机器**。
 - 上传大小受题目配置和系统硬上限共同限制。**预测提交不支持重测**；如需修改预测，请重新提交。
