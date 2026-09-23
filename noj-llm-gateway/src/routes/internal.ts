@@ -180,11 +180,20 @@ export function createInternalRouter(deps: InternalDeps): Hono {
       : "";
     // LIMIT/OFFSET 也走参数化（评审建议）：`limit` 已夹取到 ≤1000，但字符串
     // 插值在后续改动下容易重新引入注入面。
+    //
+    // **注意 `$` 是字面量**（2026-09-23 复审，CI 回归）：两处占位符都必须写成
+    // `$${...}`（`$` + 插值出的序号）。此前 OFFSET 一处漏了 `$`，实际渲染成
+    // `LIMIT $2 OFFSET 2` —— 绑定数组多出一个未被引用的参数，PG 报
+    // `42P18 could not determine data type of parameter $3` → 用量查询 503
+    // （E2E 的 7.1/7.3 因此挂）。
+    //
+    // 另：值必须传**数字**而非字符串——postgres.js 对字符串参数按 unknown 发送，
+    // 在 `LIMIT/OFFSET` 位置无法推断类型。
     const rows = await deps.db.unsafe(
       `SELECT * FROM llm_usage ${where} ORDER BY created_at DESC LIMIT $${
         params.length + 1
-      } OFFSET ${params.length + 2}`,
-      [...params, String(limit), String((page - 1) * limit)],
+      } OFFSET $${params.length + 2}`,
+      [...params, limit, (page - 1) * limit],
     );
     return c.json({ data: rows });
   });
