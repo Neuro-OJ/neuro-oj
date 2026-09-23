@@ -228,7 +228,8 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
 ```
 
 > 完整 wire 契约以 `noj-tests/fixtures/judge-task.contract.json` 与
-> `JUDGE_TASK_FIELDS` 为准（`user_id`、`priority` 为必填/契约字段；启用 LLM 的题目
+> `JUDGE_TASK_FIELDS` 为准（`user_id` 必填；`priority` 缺省 `medium`——
+> Rust 侧带 `#[serde(default = "default_priority")]`；启用 LLM 的题目
 > 另带 `llm`）。
 
 > 双容器架构后 `judge_image` / `judge_command` / `time_limit_ms` /

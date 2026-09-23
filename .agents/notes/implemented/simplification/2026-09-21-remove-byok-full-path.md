@@ -74,8 +74,10 @@ gateway `POST /v1/chat/completions` 时 `getProviderSecret()` 抛错 → 400
    `noj-docs/docs/operators/production-deploy.md` 的「升级前检查」小节）：
    `SELECT p.id, p.title, p.llm_config->>'provider_id' FROM problems p JOIN
    llm_providers lp ON lp.id = p.llm_config->>'provider_id' WHERE lp.created_by <> '0';`
-2. **`llm_usage.provider_id`** 同样可能悬空，但那是无 FK 的历史审计文本列，
-   不影响功能（既有 Agent Note 已登记）。
+2. **`llm_usage.provider_id`** 同样可能悬空，但那是**无 FK 的历史审计文本列**，
+   不参与任何运行时决策、不影响功能；本 Note 在此登记即可（此前正文曾称
+   "既有 Agent Note 已登记"，但 base 的 `.agents/` 中并无该记录——已更正为
+   可核对的表述）。
 
 > 为什么不在迁移里自动清空：`problems.llm_config` 是 jsonb，批量改写会静默改变
 > 题目语义（题目可能仍需 LLM 能力，只是要换成平台 Provider）。运维按核查结果
