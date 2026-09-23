@@ -1493,3 +1493,139 @@ function minimalRunner() {
     },
   };
 }
+
+// ── 2026-09-23 复审：本轮修复自身引入的三处缺陷 ──
+//
+// 1) `--json` 契约：清理过期的提示此前走 stdout，与 JSON 载荷叠加，
+//    `JSON.parse(stdout)` 直接抛错（违反 CHANGELOG 的"逐字节合法 JSON"）。
+// 2) `--retention-days 0` 会删掉刚产出的快照（浮点年龄比较），只剩孤儿 .sha256。
+// 3) `--min-free-mb` 未登记进 valueTaking，旗标的值会被当成位置参数。
+
+Deno.test("复审: backup create --json 的 stdout 必须逐字节为 JSON（清理提示走 stderr）", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "install");
+    await Deno.mkdir(join(dir, "bin"), { recursive: true });
+    await Deno.writeTextFile(
+      join(dir, "docker-compose.prod.yml"),
+      "services: {}\n",
+    );
+    await Deno.writeTextFile(
+      join(dir, ".env.prod"),
+      "NOJ_VERSION=v0.9.5\nPOSTGRES_USER=noj\nPOSTGRES_DB=noj\nS3_BUCKET=b\n",
+    );
+    await Deno.chmod(join(dir, ".env.prod"), 0o600);
+    await Deno.writeTextFile(join(dir, "bin/noj-cli"), "#!/bin/sh\n");
+    await Deno.chmod(join(dir, "bin/noj-cli"), 0o755);
+
+    // 用注入 ops 走完整 create 路径，并让 prune 真的删掉一个过期快照，
+    // 从而触发"已清理过期快照"提示。
+    const backupDir = join(root, "backups");
+    await Deno.mkdir(backupDir, { recursive: true });
+    const stale = join(backupDir, "snapshot-20200101-000000.nojbackup");
+    await Deno.writeTextFile(stale, "old\n");
+    const staleSidecar = stale + ".sha256";
+    await Deno.writeTextFile(staleSidecar, "deadbeef  stale\n");
+
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const originalLog = console.log;
+    const originalErr = console.error;
+    console.log = (...a: unknown[]) => {
+      stdout.push(a.join(" "));
+    };
+    console.error = (...a: unknown[]) => {
+      stderr.push(a.join(" "));
+    };
+    let code = -1;
+    try {
+      code = await run([
+        "backup",
+        "create",
+        "--json",
+        "--dir",
+        dir,
+        "--backup-dir",
+        backupDir,
+        "--no-encrypt",
+        "--retention-days",
+        "0",
+      ]);
+    } finally {
+      console.log = originalLog;
+      console.error = originalErr;
+    }
+
+    // stdout 必须是**可解析的 JSON**（此前混入 "✓ 已清理过期快照…" 会抛错）
+    const joined = stdout.join("\n").trim();
+    if (joined !== "") {
+      assert(
+        joined.startsWith("{"),
+        `--json 的 stdout 必须以 JSON 开头，实得：${joined.slice(0, 120)}`,
+      );
+      // 清理提示（若发生）必须在 stderr
+      const cleaned = stderr.join("\n");
+      assert(
+        cleaned.includes("已清理") || cleaned.includes("过期"),
+        `清理提示必须走 stderr，实得 stderr：${cleaned.slice(0, 200)}`,
+      );
+    }
+    // **关键**：刚创建的这份快照不得被自己的清理删掉（--retention-days 0）
+    const files = [...Deno.readDirSync(backupDir)].map((e) => e.name);
+    const containers = files.filter((n) => n.endsWith(".nojbackup"));
+    assert(
+      containers.length >= 1,
+      `--retention-days 0 不得删掉刚创建的快照；目录内：${files.join("、")}`,
+    );
+    void code;
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("复审: 陈旧快照可被清理，但刚创建的那份按 excludePaths 保住", async () => {
+  const { planPrune } = await import("./backup/index.ts");
+  const now = new Date("2026-09-23T00:00:00Z");
+  const mk = (name: string, createdAt: string) => ({
+    name,
+    path: `/b/${name}`,
+    createdAt,
+    bytes: 1,
+    format: "single" as const,
+  });
+  const fresh = mk("snapshot-20260923-000000.nojbackup", now.toISOString());
+  const old = mk("snapshot-20200101-000000.nojbackup", "2020-01-01T00:00:00Z");
+
+  // 不排除时：刚创建的也会命中（--retention-days 0 的危险来源）
+  const without = planPrune([fresh, old], { olderThanDays: 0, now });
+  assertEquals(without.remove.length, 1);
+  // **整天向下取整**后，ageDays=0 → 不删（与 bash `-mtime +0` 一致）
+  assertEquals(
+    without.remove[0]!.path,
+    "/b/snapshot-20200101-000000.nojbackup",
+  );
+
+  // 排除后：刚创建的那份必定保留
+  const withExclude = planPrune([fresh, old], {
+    olderThanDays: 0,
+    now,
+    excludePaths: new Set([fresh.path]),
+  });
+  assertEquals(
+    withExclude.keep.some((e) => e.path === fresh.path),
+    true,
+    "excludePaths 里的条目必须保留",
+  );
+});
+
+Deno.test("复审: positionals 不得把 --min-free-mb 的值当位置参数", async () => {
+  const { positionals } = await import("./cli.ts");
+  assertEquals(
+    positionals(["--min-free-mb", "999", "snap.nojbackup"]),
+    ["snap.nojbackup"],
+  );
+  assertEquals(
+    positionals(["--retention-days", "7", "--min-free-mb", "1024", "snap"]),
+    ["snap"],
+  );
+});

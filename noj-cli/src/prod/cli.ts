@@ -275,6 +275,7 @@ export function positionals(args: string[]): string[] {
     "--zstd-level",
     "--keep",
     "--retention-days",
+    "--min-free-mb",
     "--ref",
     // **带值的旗标必须登记在此**（评审发现）：`positionals()` 靠这份清单决定
     // "是否跳过下一个 token"，漏登记会让旗标的**值**被当成位置参数。
@@ -792,26 +793,32 @@ export async function runBackupCreate(
   // ---- 14. 按保留天数清理旧快照（bash `prune_old_snapshots` :291-292）----
   // **只在成功后做**：备份失败时清理旧快照等于把"没有新备份"变成"没有备份"。
   // 删除失败不改变备份已成功的事实，但必须可见（否则"已清理"是假成功）。
+  //
+  // **人类提示一律走 stderr**（2026-09-23 复审）：`backup create --json` 的 stdout
+  // 必须**逐字节为 JSON**（CHANGELOG 的 T6 契约），此前这些 `✓ 已清理…` 走 stdout
+  // 会让 `JSON.parse(stdout)` 直接抛错。
+  const note = opts.deps.err ?? ((t: string) => console.error(t));
   try {
     const pruned = await pruneBackups(backupDir, {
       olderThanDays: retentionDays,
       confirm: true,
+      // **必须把"刚创建的这一份"排除在清理之外**：`--retention-days 0` 的语义是
+      // "不留旧快照"，而 bash 的 `-mtime +0` 要求**满 24 小时**且只匹配目录。
+      // 若按 `ageDays > 0` 判定，刚产出的快照（ageDays≈0）在某些时钟/时区下会
+      // 被判为"过期"并当场删除，只剩孤儿 `.sha256`（复审实测：exit 0 但快照消失）。
+      excludePaths: new Set([created.path]),
     });
     for (const path of pruned.deleted) {
-      (opts.deps.out ?? ((t: string) => console.log(t)))(
-        `✓ 已清理过期快照：${path}`,
-      );
+      note(`✓ 已清理过期快照：${path}`);
     }
     if (pruned.failed.length > 0) {
-      (opts.deps.err ?? ((t: string) => console.error(t)))(
+      note(
         `! 有 ${pruned.failed.length} 份过期快照清理失败：` +
           pruned.failed.map((f) => f.path).join("、"),
       );
     }
   } catch (err) {
-    (opts.deps.err ?? ((t: string) => console.error(t)))(
-      `! 备份已完成，但过期快照清理失败：${(err as Error).message}`,
-    );
+    note(`! 备份已完成，但过期快照清理失败：${(err as Error).message}`);
   }
   return created;
 }
