@@ -51,6 +51,7 @@ NOJ 分为多个模块，通过 RESTful API、Redis MQ 和内部 HTTP 服务协�
 | noj-judge | Rust + Tokio | Docker 沙箱评测、双容器 Evaluator + Solution |
 | noj-llm-gateway | Deno + Hono | LLM 调用可信代理、Provider Key 加密、eval_token、限流/额度/审计 |
 | noj-lmcc-extension | VS Code Extension API + TypeScript | LMCC IDE 登录、题目选择、Python 代码提交与结果反馈 |
+| noj-cli | Deno 2（`deno compile` 单二进制） | 生产安装、启停、升级、备份/恢复/演练、配置校验 |
 
 详细架构见 [noj-docs/docs/system/architecture.md](noj-docs/docs/system/architecture.md) 和各模块文档。
 
@@ -92,6 +93,8 @@ neuro-oj/
 ├── noj-judge/      # Rust 评测 Worker（CLAUDE.md 有完整目录）
 ├── noj-llm-gateway/# LLM 网关（CLAUDE.md 有完整目录）
 ├── noj-lmcc-extension/# LMCC IDE / VS Code 插件
+├── noj-cli/        # 生产部署/运维 CLI（纯 TS，deno compile 单二进制）
+├── noj-problems/   # 题目源目录（**独立私有仓库**，主仓库 gitignore；构建输入在 noj-core/data/problems-src/）
 ├── noj-tests/      # 跨模块 E2E 测试
 ├── noj-docs/       # 用户/出题人/运营者文档站（VitePress）
 ├── dev-docs/           # 设计文档、实施计划、工程规范、审计

@@ -581,9 +581,22 @@ mod tests {
         assert!(e.contains("失败"));
         assert!(!o.contains('\u{1b}'), "无色模式不得有转义");
         assert!(!e.contains('\u{1b}'));
-        // 时间戳位于行首，形如 HH:MM:SS.mmm
-        assert_eq!(&o[..12], &timestamp_hms()[..12]);
-        assert_eq!(o.as_bytes()[2], b':');
+        // 时间戳位于行首，形如 HH:MM:SS.mmm。
+        // 注意：不得与 `timestamp_hms()` 的即时值比较——两次 now() 横跨毫秒
+        // 边界时该断言会随机失败（2026-09-21 CI 实测）。改为校验格式而非精确值。
+        let ts = &o[..12];
+        assert_eq!(ts.as_bytes()[2], b':', "时间戳应为 HH:MM:SS.mmm: {ts:?}");
+        assert_eq!(ts.as_bytes()[5], b':', "时间戳应为 HH:MM:SS.mmm: {ts:?}");
+        assert_eq!(ts.as_bytes()[8], b'.', "时间戳应为 HH:MM:SS.mmm: {ts:?}");
+        assert!(
+            ts.bytes()
+                .enumerate()
+                .all(|(i, b)| matches!(i, 2 | 5 | 8) || b.is_ascii_digit()),
+            "时间戳应为数字与分隔符: {ts:?}"
+        );
+        // 渲染函数本身仍须与自身在同一毫秒内一致（纯函数，无竞态）。
+        let t = SystemTime::now();
+        assert_eq!(timestamp_hms_from(t), timestamp_hms_from(t));
     }
 
     #[test]

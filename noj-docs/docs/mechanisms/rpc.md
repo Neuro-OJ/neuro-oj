@@ -115,8 +115,7 @@ Neuro OJ RPC 使用 JSON 加一层 Neuro OJ codec。当前支持：
 
 ```json
 {
-  "__noj_type__": "bytes",
-  "base64": "SGVsbG8="
+  "__bytes__": "SGVsbG8="
 }
 ```
 

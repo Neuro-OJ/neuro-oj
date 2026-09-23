@@ -107,15 +107,39 @@ node_exporter 时，备份/演练新鲜度告警不会触发，请在容量规�
 
 ## 5. 告警投递演练（上线前必须执行一次）
 
-规则文件只能产生告警，**不能证明有人收到**。每次部署或调整接收器后，执行一次投递演练：
+规则文件只能产生告警，**不能证明有人收到**。每次部署或调整接收器后，执行一次投递演练。
+
+仓库不再提供 `scripts/deploy/test-alert.sh`（随自举 bash 脚本一并删除）。改用
+Alertmanager 的 v2 API 直接注入一条测试告警（critical 与 warning 各一条），再由
+`scripts/monitoring/check-observability.sh --check-notifications` 校验通知链路前置条件：
 
 ```bash
-bash scripts/deploy/test-alert.sh http://alertmanager:9093
+# 需要能从执行主机访问 Alertmanager 的 HTTP 端点（默认 9093）
+ALERTMANAGER_URL="${ALERTMANAGER_URL:-http://127.0.0.1:9093}"
+# 触发告警（不带 endsAt → 按 Alertmanager 的 resolve_timeout 视为持续 firing）
+curl -fsS -X POST "$ALERTMANAGER_URL/api/v2/alerts" \
+  -H 'Content-Type: application/json' \
+  -d '[{"labels":{"alertname":"NojNotificationDrill","severity":"critical"},
+        "annotations":{"summary":"投递演练（触发）"}}]'
+
+# 校验 liveness/readiness/metrics 与 Alertmanager 就绪（含通知链路前置条件）
+NOJ_OBSERVABILITY_BASE_URL=http://127.0.0.1:8000 \
+  bash scripts/monitoring/check-observability.sh --check-notifications
+
+# 恢复通知：显式把 endsAt 设为过去时刻（确定性 resolved），或直接删除该告警
+curl -fsS -X POST "$ALERTMANAGER_URL/api/v2/alerts" \
+  -H 'Content-Type: application/json' \
+  -d '[{"labels":{"alertname":"NojNotificationDrill","severity":"critical"},
+        "endsAt":"2000-01-01T00:00:00Z",
+        "annotations":{"summary":"投递演练（恢复）"}}]'
+# 等价做法：curl -fsS -X DELETE \
+#   "$ALERTMANAGER_URL/api/v2/alerts?filter=alertname=%22NojNotificationDrill%22"
 ```
 
-脚本会向 Alertmanager 注入一条 `NojNotificationDrill` 测试告警（critical 与
-warning 各一条），
-接收方应同时收到触发与恢复（resolved）通知。演练结果按下表记录（保留在本仓库外或运维手册）：
+接收方应**先**收到触发、**随后**收到恢复（resolved）通知。注意：不带 `endsAt`
+的 API 告警由 Alertmanager 按 `resolve_timeout`（默认 5 分钟）到期后才视为
+resolved，因此"确定性验证恢复链路"必须显式给出过去的 `endsAt` 或删除告警。
+演练结果按下表记录（保留在本仓库外或运维手册）：
 
 | 日期 (UTC)        | 演练人       | 告警条数 | 预期接收方      | 实际收到时间 | 恢复通知收到时间 | 结果 |
 | ----------------- | ------------ | -------- | --------------- | ------------ | ---------------- | ---- |
@@ -128,7 +152,7 @@ warning 各一条），
 - [ ] `promtool check config` 通过，且 `/rules` 页面同时列出 `noj-production` 与
       `noj-slo` 两组规则（缺第二组说明 `noj-slo-alerts.yml` 未安装，且不会有任何报错）。
 - [ ] `amtool check-config` 通过，Alertmanager 日志无加载错误。
-- [ ] 执行过至少一次 `scripts/deploy/test-alert.sh`
+- [ ] 执行过至少一次告警投递演练（见 §5）
       且接收方确认收到触发与恢复通知，并已记录。
 - [ ] Runbook 链接（noj-alerts.yml / noj-slo-alerts.yml 中的 `runbook` 注解）能定位到对应处理步骤。
 - [ ] 备份 cron 运行后 textfile 目录中出现 `noj_backup.prom`。

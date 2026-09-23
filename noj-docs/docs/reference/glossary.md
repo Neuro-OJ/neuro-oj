@@ -86,7 +86,7 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 
 （judge image，DB 表 `judge_images`）
 
-运行 Evaluator 或 Solution 的 Docker 镜像，如 `noj-evaluator-python:3.12`、`noj-solution-python:3.12`。镜像是否可用由[镜像白名单](#judge-image-whitelist)（`judge_images` 表）决定。
+运行 Evaluator 或 Solution 的 Docker 镜像，如 `noj-evaluator-python`、`noj-solution-python`（SDK 构建脚本默认打 `:latest` 标签）。镜像是否可用由[镜像白名单](#judge-image-whitelist)（`judge_images` 表）决定。
 
 ::: warning 易混淆
 评测镜像 ≠ 镜像白名单。评测镜像是具体镜像，镜像白名单是允许 Judge Worker 使用的评测镜像列表。

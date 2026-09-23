@@ -243,14 +243,14 @@ CRUD 与调度阶段完成，judge 不再于启动时拉取）。
 
 ## 健康检查与状态查看
 
-生产环境使用 `noj` 或 Judge 脚本管理：
+生产环境使用 `noj-cli` 管理：
 
 ```bash
 # 查看所有服务状态（含 judge 是否在线）
-bash /opt/neuro-oj/noj status
+noj-cli status
 
 # 查看 judge 日志
-bash /opt/neuro-oj/noj logs judge --follow
+noj-cli logs judge --follow
 ```
 
 调高日志详细度排查问题（临时覆盖环境变量）：
@@ -267,16 +267,20 @@ docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compos
 结果写回 `noj:judge:results`：
 
 ```bash
-docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:high
-docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:medium
-docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:low
+docker exec noj-prod-redis-1 redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:high
+docker exec noj-prod-redis-1 redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:medium
+docker exec noj-prod-redis-1 redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:low
 ```
+
+> 容器名由 Compose 项目名派生（`name: noj-prod` + service `redis` →
+> `noj-prod-redis-1`）。用 `docker ps` 确认实际名称，或改用
+> `noj-cli status` 查看 compose 状态。
 
 密码从 `/opt/neuro-oj/.env.prod` 的 `REDIS_PASSWORD` 读取。
 
 如果队列持续堆积：
 
-1. 确认 Judge Worker 在线且连接了同一个 Redis（`noj status`）。
+1. 确认 Judge Worker 在线且连接了同一个 Redis（`noj-cli status`）。
 2. 查看 judge 日志是否有拉取/容器错误。
 3. 检查 Docker daemon 是否可用、评测镜像是否已从 ghcr.io 拉取。
 4. 如负载确实超过单实例能力，按下一节水平扩展。
@@ -292,7 +296,7 @@ docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:low
 
 - 停止实例会进入优雅关闭流程：排空正在执行的 in-flight
   任务后再退出，避免提交丢失。
-- 升级步骤：修改 `.env.prod` 中的 `NOJ_VERSION` → `noj update`。
+- 升级步骤：修改 `.env.prod` 中的 `NOJ_VERSION` → `noj-cli update`。
 - 升级评测镜像后应先在 noj-core 白名单登记，再启动 Worker。
 
 ## 常见排查方向

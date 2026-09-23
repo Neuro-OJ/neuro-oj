@@ -10,7 +10,7 @@ Neuro OJ 当前已实现阿里云 DirectMail 和腾讯云 SES 的发信 Provider
 - `EmailDeliveryAdapter` 接口和带 HMAC-SHA256、时间戳（5 分钟窗口）、事件 ID 的 fixture 适配器，供测试和本地演练。
 - 事件 ID 幂等；数据库只保存收件地址 SHA-256 哈希和脱敏地址，不保存原始 webhook。
 - 永久退信和投诉进入抑制清单；验证邮件和密码重置邮件发送前查询清单，临时失败不会永久抑制。
-- 管理端查看和解除抑制：`GET /api/v1/admin/email-delivery/suppressions`、`POST /api/v1/admin/email-delivery/suppressions/:id/clear`。
+- 管理端查看和解除抑制：`GET /api/v1/admin/system/email-delivery/suppressions`、`POST /api/v1/admin/system/email-delivery/suppressions/:id/clear`。
 
 fixture 回调入口为 `POST /api/v1/email-events/fixture`，签名密钥使用 `EMAIL_WEBHOOK_SECRET`。该入口只用于本地/测试，不应暴露到生产公网。
 

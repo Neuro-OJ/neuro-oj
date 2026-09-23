@@ -41,7 +41,8 @@ SLO 告警分两族：`NojSlo<名称>Fast`（severity 由 SLO 定义，短保持
 
 每次发布后应确认 Prometheus target 为 UP、live/ready/metrics 可以访问，并在
 staging 演练一次 Judge 或 Redis
-故障及其恢复。上线前必须执行一次告警投递演练（`scripts/deploy/test-alert.sh`）并记录结果。
+故障及其恢复。上线前必须执行一次告警投递演练（见 `deploy/monitoring/README.md` §5，
+不再提供 `scripts/deploy/test-alert.sh`）并记录结果。
 
 ## 社区搜索性能
 
@@ -132,7 +133,7 @@ Seq Scan；容量验收应使用约 10 万行代表性数据记录 `EXPLAIN (ANA
 
 触发：`NojBackupStale`（>25h）、`NojBackupVeryStale`（>49h）、`NojBackupMetricMissing`。
 
-1. 检查备份 cron 是否运行、`backup.sh create` 最近输出与退出码。
+1. 检查备份 cron 是否运行、`noj-cli backup create` 最近输出与退出码。
 2. 确认 textfile
    目录（`<备份目录>/metrics/noj_backup.prom`）在最近一次备份后有更新；
    `NojBackupMetricMissing` 通常说明 node_exporter textfile collector 未配置（见
@@ -144,6 +145,6 @@ Seq Scan；容量验收应使用约 10 万行代表性数据记录 `EXPLAIN (ANA
 触发：`NojRestoreDrillStale`（>90 天未演练）。
 
 1. 文件校验不能证明业务可恢复；安排执行
-   `scripts/deploy/restore-drill.sh`（见生产部署文档 5.1 节）。
+   `noj-cli backup drill <快照>`（见生产部署文档 5.1 节）。
 2. 演练完成后确认 textfile 目录中 `noj_restore_drill.prom`
    更新，告警在下一个评估周期解除。
