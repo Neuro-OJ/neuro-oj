@@ -369,7 +369,7 @@ jj config get signing.key
 
 ## 13. 故障排查
 
-常见问题与处理见 [README.md](README.md#故障排查) 和 `noj-cli status --dir <安装目录>`。
+常见问题与处理见[常见问题](https://docs.noj.xyber-nova.space/intro/faq.html)和 `noj-cli status --dir <安装目录>`。
 
 ---
 
