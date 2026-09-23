@@ -28,8 +28,6 @@ export const llmProviders = pgTable(
     encrypted_api_key: text("encrypted_api_key").notNull(),
     /** 是否启用；停用后新评测不能选用 */
     enabled: boolean("enabled").notNull().default(true),
-    /** 创建者用户 ID（一般为 admin） */
-    created_by: text("created_by").notNull().default("0"),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
   },

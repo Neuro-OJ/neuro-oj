@@ -164,6 +164,37 @@ noj-cli update --latest
 数据库迁移只追加，不会自动回滚，因此跨大版本升级前必须确认迁移兼容性。
 注意：切回镜像标签不是数据库回滚；迁移只增不减，回退版本前需按迁移清单人工评估。
 
+### 升级前检查：题目引用的 LLM Provider 是否为用户自建
+
+**适用版本**：升级到移除 BYOK 的版本（`llm_providers.created_by` 列被删除）时必查。
+
+在删除 BYOK 的迁移中，gateway 会执行
+`DELETE FROM llm_providers WHERE created_by <> '0'`（永久删除用户自建 Provider
+及其加密 Key）。**历史上题目的 `problems.llm_config->>'provider_id'` 可以指向
+用户自建 Provider**（题目保存时的校验只检查 Provider 存在且启用，不校验归属），
+因此这类题目的引用会在升级后变成悬空：提交仍会被接受，但评测时 gateway 返回
+400 `provider_not_found`，表现为"LLM 题评测静默失败"。
+
+升级**之前**用下面的 SQL 核查（`psql` 连到生产库）：
+
+```sql
+-- 列出会被删除、但已被题目引用的用户 Provider
+SELECT p.id AS problem_id, p.title, p.llm_config->>'provider_id' AS provider_id
+FROM problems p
+JOIN llm_providers lp ON lp.id = p.llm_config->>'provider_id'
+WHERE lp.created_by <> '0';
+```
+
+- **结果为空**：直接升级。
+- **有结果**：先把这些题目的 LLM 配置改为平台 Provider（管理端编辑题目即可），
+  或按需清空（`UPDATE problems SET llm_config = NULL WHERE id = '<problem_id>'`），
+  再执行升级。升级后这类题目的**编辑保存**也会以
+  「LLM Provider 不存在或已停用」失败，因此不要留到升级后再处理。
+
+> 升级后若怀疑存在遗漏，可再查一次悬空引用：
+> `SELECT id, title FROM problems WHERE llm_config->>'provider_id' IS NOT NULL
+> AND llm_config->>'provider_id' NOT IN (SELECT id FROM llm_providers);`
+
 ## 5.1 备份、文件校验与隔离恢复演练
 
 备份体系分三层，必须区分能力边界：

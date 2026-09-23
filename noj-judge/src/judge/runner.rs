@@ -103,7 +103,7 @@ pub async fn evaluate_with_cpu_limit(
         None
     };
 
-    crate::dual::evaluate_dual_with_cpu_limit_and_user_llm(
+    crate::dual::evaluate_dual_with_cpu_limit(
         docker,
         &task.submission_id,
         &task.runtime_config,
@@ -112,7 +112,6 @@ pub async fn evaluate_with_cpu_limit(
         artifact_zip.as_ref().map(|p| p.path.as_path()),
         task.rejudge_seq,
         task.llm.as_ref(),
-        task.user_llm.as_ref(),
         cpu_limit_millicores,
         allow_evaluator_network,
         evaluator_network_mode,

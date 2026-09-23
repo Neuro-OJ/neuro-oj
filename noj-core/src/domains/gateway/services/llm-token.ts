@@ -5,7 +5,7 @@ import type { LlmConfig } from "./../../catalog/index.ts";
 import type { JudgeTaskLlm } from "../../submission/index.ts";
 import type { RuntimeConfig } from "../../catalog/index.ts";
 import { encodeBase64 } from "@std/encoding/base64";
-import { getDefaultLlmLimits, resolveLlmLimits } from "./llm-limits.ts";
+import { resolveLlmLimits } from "./llm-limits.ts";
 
 const IV_LENGTH = 12;
 
@@ -67,56 +67,35 @@ export async function mintEvalToken(
  * @param userId 提交用户 ID
  * @param runtimeConfig 题目 runtime_config（用于 TTL）
  */
-export function buildJudgeTaskLlm(
+export async function buildJudgeTaskLlm(
   llmConfig: LlmConfig,
   submissionId: string,
   problemId: string,
   userId: string,
   runtimeConfig: RuntimeConfig,
 ): Promise<JudgeTaskLlm> {
-  return buildJudgeTaskLlmForProvider(
-    llmConfig.provider_id,
-    llmConfig.model,
-    submissionId,
-    problemId,
-    userId,
-    runtimeConfig,
-    resolveLlmLimits(llmConfig),
-  );
-}
-
-/** 为指定 Provider 构造短期 LLM token，平台题目和用户 BYOK 共用该契约。 */
-export async function buildJudgeTaskLlmForProvider(
-  providerId: string,
-  model: string,
-  submissionId: string,
-  problemId: string,
-  userId: string,
-  runtimeConfig: RuntimeConfig,
-  limits?: { max_calls: number; max_tokens: number },
-): Promise<JudgeTaskLlm> {
   const gatewayUrl = Deno.env.get("NOJ_LLM_GATEWAY_URL") ??
     "http://localhost:8001";
   const timeLimitMs = runtimeConfig.evaluator.time_limit_ms;
   const ttlSeconds = Math.max(60, Math.ceil((timeLimitMs * 4) / 1000));
   const now = Math.floor(Date.now() / 1000);
-  const resolved = limits ?? getDefaultLlmLimits();
+  const limits = resolveLlmLimits(llmConfig);
   const token = await mintEvalToken({
     jti: crypto.randomUUID(),
     submission_id: submissionId,
     problem_id: problemId,
     user_id: userId,
-    provider_id: providerId,
-    allowed_models: [model],
+    provider_id: llmConfig.provider_id,
+    allowed_models: [llmConfig.model],
     iat: now,
     exp: now + ttlSeconds,
-    max_calls: resolved.max_calls,
-    max_tokens: resolved.max_tokens,
+    max_calls: limits.max_calls,
+    max_tokens: limits.max_tokens,
   });
   return {
     gateway_url: gatewayUrl,
     eval_token: token,
-    provider_id: providerId,
-    allowed_models: [model],
+    provider_id: llmConfig.provider_id,
+    allowed_models: [llmConfig.model],
   };
 }

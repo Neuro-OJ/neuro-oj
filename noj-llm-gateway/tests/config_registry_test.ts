@@ -58,14 +58,6 @@ Deno.test("config-registry: 配额键覆盖 3 scope × 2 window × 3 field = 18 
 Deno.test("config-registry: 安全相关键被显式声明且标记敏感级别", () => {
   const byKey = new Map(GATEWAY_CONFIG_DEFINITIONS.map((d) => [d.key, d]));
 
-  const byok = byKey.get("NOJ_LLM_BYOK_ALLOWED_HOSTS");
-  assertEquals(
-    byok !== undefined,
-    true,
-    "BYOK 出网白名单必须登记（issue #499：安全相关且此前完全未登记）",
-  );
-  assertEquals(byok?.defaultValue, "api.openai.com");
-
   // 密钥类必须标 isSecret，避免在文档/后台明文展示
   for (
     const key of ["NOJ_LLM_SERVICE_TOKEN", "NOJ_LLM_STORE_KEY", "DATABASE_URL"]

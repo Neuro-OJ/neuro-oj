@@ -5,17 +5,8 @@ import { checkPermission } from "./../services/security/permissions.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import {
   BadRequestError,
-  NotFoundError,
   ValidationError,
 } from "./../../../shared/base/errors.ts";
-import {
-  createUserLlmProvider,
-  deleteUserLlmProvider,
-  listUserLlmProviders,
-  LlmGatewayError,
-  testUserLlmProvider,
-  updateUserLlmProvider,
-} from "../../gateway/index.ts";
 import {
   clearUserAvatar,
   getUserAvatarBytes,
@@ -30,115 +21,6 @@ import { deleteOwnAccount } from "../services/account-deletion.ts";
 import { getClientIp } from "../../system/index.ts";
 
 const users = new Hono<AuthEnv>();
-
-/**
- * 将 LLM 网关错误映射为对应的 HTTP 错误。
- * @param error 捕获的异常
- * @returns 永不返回（总是抛出映射后的错误）
- * @throws {NotFoundError} 网关返回 404（模型配置不存在）
- * @throws {BadRequestError} 网关返回 400 或服务不可用
- */
-function mapLlmError(error: unknown): never {
-  if (error instanceof LlmGatewayError) {
-    if (error.status === 404) throw new NotFoundError("模型配置不存在");
-    if (error.status === 400) throw new BadRequestError(error.code, error.code);
-    throw new BadRequestError("模型服务暂时不可用", "BYOK_GATEWAY_UNAVAILABLE");
-  }
-  throw error;
-}
-
-/**
- * 列出当前用户的 LLM 提供商配置。
- * GET /api/v1/users/me/llm-providers
- * 需登录。
- */
-users.get("/me/llm-providers", authMiddleware, async (c) => {
-  try {
-    return c.json({
-      data: await listUserLlmProviders(c.get("userId") as string),
-    });
-  } catch (error) {
-    return mapLlmError(error);
-  }
-});
-
-/**
- * 创建当前用户的 LLM 提供商配置。
- * POST /api/v1/users/me/llm-providers
- * 需登录；body 需提供 name、model、api_key（base_url 可选）。
- */
-users.post("/me/llm-providers", authMiddleware, async (c) => {
-  const body = await parseJsonBody<Record<string, unknown>>(c);
-  if (!body.name || !body.model || !body.api_key) {
-    throw new BadRequestError("缺少必填字段：name、model、api_key");
-  }
-  try {
-    const data = await createUserLlmProvider(c.get("userId") as string, {
-      name: String(body.name),
-      base_url: String(body.base_url ?? "https://api.openai.com/v1"),
-      model: String(body.model),
-      api_key: String(body.api_key),
-    });
-    return c.json({ data }, 201);
-  } catch (error) {
-    return mapLlmError(error);
-  }
-});
-
-/**
- * 更新当前用户的 LLM 提供商配置。
- * PUT /api/v1/users/me/llm-providers/:id
- * 需登录；body 为可选的 name/base_url/model/api_key 字段。
- */
-users.put("/me/llm-providers/:id", authMiddleware, async (c) => {
-  const body = await parseJsonBody<
-    Partial<{ name: string; base_url: string; model: string; api_key: string }>
-  >(c);
-  try {
-    const data = await updateUserLlmProvider(
-      c.get("userId") as string,
-      c.req.param("id") as string,
-      body,
-    );
-    return c.json({ data });
-  } catch (error) {
-    return mapLlmError(error);
-  }
-});
-
-/**
- * 删除当前用户的 LLM 提供商配置。
- * DELETE /api/v1/users/me/llm-providers/:id
- * 需登录；成功返回 204。
- */
-users.delete("/me/llm-providers/:id", authMiddleware, async (c) => {
-  try {
-    await deleteUserLlmProvider(
-      c.get("userId") as string,
-      c.req.param("id") as string,
-    );
-    return c.body(null, 204);
-  } catch (error) {
-    return mapLlmError(error);
-  }
-});
-
-/**
- * 测试当前用户的 LLM 提供商配置连通性。
- * POST /api/v1/users/me/llm-providers/:id/test
- * 需登录；成功返回 `{ data: { status: "ok" } }`。
- */
-users.post("/me/llm-providers/:id/test", authMiddleware, async (c) => {
-  try {
-    await testUserLlmProvider(
-      c.get("userId") as string,
-      c.req.param("id") as string,
-    );
-    return c.json({ data: { status: "ok" } });
-  } catch (error) {
-    return mapLlmError(error);
-  }
-});
 
 /**
  * 搜索用户。

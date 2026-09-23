@@ -52,8 +52,6 @@ fn judge_task_contract_fixture_deserializes() {
     let llm = task.llm.expect("fixture 应包含 llm 字段");
     assert_eq!(llm.gateway_url, "http://llm-gateway:8001");
     assert_eq!(llm.allowed_models.len(), 2);
-    let user_llm = task.user_llm.expect("fixture 应包含 user_llm 字段");
-    assert_eq!(user_llm.allowed_models, vec!["gpt-4o-mini"]);
 }
 
 /// fixture 的字段必须被结构体**全部**消费：任何 fixture 里的键在结构体中不存在，
@@ -76,7 +74,6 @@ fn judge_task_contract_has_no_unknown_fields() {
         "file_name",
         "rejudge_seq",
         "llm",
-        "user_llm",
     ];
     let mut actual: Vec<&str> = object.keys().map(|k| k.as_str()).collect();
     actual.sort_unstable();

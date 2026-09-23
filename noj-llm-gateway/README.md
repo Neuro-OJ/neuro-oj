@@ -18,17 +18,16 @@ LLM 调用网关，作为 evaluator 与外部 OpenAI 兼容 LLM API 之间的可
 
 ## 环境变量
 
-| 变量                                       | 必填 | 说明                                                              |
-| ------------------------------------------ | ---- | ----------------------------------------------------------------- |
-| `DATABASE_URL`                             | 是   | PostgreSQL 连接串                                                 |
-| `REDIS_URL`                                | 是   | Redis 连接串                                                      |
-| `NOJ_LLM_SERVICE_TOKEN`                    | 是   | core↔gateway 管理 API 鉴权 + eval_token 签发/校验（≥16 字符）     |
-| `NOJ_LLM_STORE_KEY`                        | 是   | 加密 Provider API Key 的主密钥（≥16 字符）                        |
-| `NOJ_LLM_PORT` / `PORT`                    | 否   | 监听端口，默认 `8001`                                             |
-| `NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE`       | 否   | 每个用户每 UTC 分钟调用次数，默认 `60`，正整数                    |
-| `NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE`         | 否   | 每个 IP 每 UTC 分钟调用次数，默认 `60`，正整数                    |
-| `NOJ_LLM_BYOK_ALLOWED_HOSTS`               | 否   | BYOK 自带 Key 的出网主机白名单（逗号分隔），默认 `api.openai.com` |
-| `NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>` | 否   | LLM 默认配额兜底值，见下节                                        |
+| 变量                                       | 必填 | 说明                                                          |
+| ------------------------------------------ | ---- | ------------------------------------------------------------- |
+| `DATABASE_URL`                             | 是   | PostgreSQL 连接串                                             |
+| `REDIS_URL`                                | 是   | Redis 连接串                                                  |
+| `NOJ_LLM_SERVICE_TOKEN`                    | 是   | core↔gateway 管理 API 鉴权 + eval_token 签发/校验（≥16 字符） |
+| `NOJ_LLM_STORE_KEY`                        | 是   | 加密 Provider API Key 的主密钥（≥16 字符）                    |
+| `NOJ_LLM_PORT` / `PORT`                    | 否   | 监听端口，默认 `8001`                                         |
+| `NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE`       | 否   | 每个用户每 UTC 分钟调用次数，默认 `60`，正整数                |
+| `NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE`         | 否   | 每个 IP 每 UTC 分钟调用次数，默认 `60`，正整数                |
+| `NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>` | 否   | LLM 默认配额兜底值，见下节                                    |
 
 ### LLM 默认配额 fallback（`NOJ_LLM_DEFAULT_*`）
 
