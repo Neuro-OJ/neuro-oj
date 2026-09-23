@@ -106,6 +106,9 @@ impl PredictionOutput {
     ///
     /// 调用方（`run_prediction_loop`）依次尝试 JSON 解析，直到成功为止——
     /// 这样"标记 → 噪声 → 真 JSON"不再丢掉真结果。
+    ///
+    /// 候选**只来自标记之后**的行（见 `handle_line`），因此不会把标记前的诊断
+    /// JSON 当成结果（2026-09-23 复审：那会导致静默 0 分）。
     fn payload_candidates_ordered(&self) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
         if let Some(p) = &self.payload {
@@ -166,13 +169,22 @@ impl PredictionOutput {
                 append_capped(&mut self.stdout_full, &s);
                 append_capped(&mut self.stdout_full, "\n");
                 if !s.trim().is_empty() {
-                    // 候选按出现顺序收集（有界）：真正的 JSON 可能排在噪声之后。
-                    if self.payload_candidates.len() < MAX_PAYLOAD_CANDIDATES {
-                        self.payload_candidates.push(s.trim().to_string());
-                    }
-                    // 首个非空行仍是"主 payload"（保持既有语义与提前结束行为）。
-                    if self.payload.as_ref() == Some(&String::new()) {
-                        self.payload = Some(s.trim().to_string());
+                    // **只有"已见标记之后"的行才是候选**（2026-09-23 复审）。
+                    //
+                    // 此前的实现无条件收集所有非空行，于是标记**之前**的诊断 JSON
+                    // （例如 evaluator 打印的 `{"cases": ...}` 调试输出）也会进入
+                    // 候选列表；`payload` 槽为空时它还会被排到首位，解析循环拿到
+                    // 它就 `return`，而 `build_judge_result` 对缺失的 `score` 取
+                    // `unwrap_or(0)` → **静默 0 分且 prediction 不支持重测**
+                    // （CI 的 Judge Sandbox E2E 因此从 6666 分变成 0 分）。
+                    if self.payload.is_some() {
+                        if self.payload_candidates.len() < MAX_PAYLOAD_CANDIDATES {
+                            self.payload_candidates.push(s.trim().to_string());
+                        }
+                        // 首个非空行仍是"主 payload"（保持既有语义与提前结束行为）。
+                        if self.payload.as_ref() == Some(&String::new()) {
+                            self.payload = Some(s.trim().to_string());
+                        }
                     }
                 }
             }
@@ -382,10 +394,14 @@ async fn run_prediction_loop(
         Some(payload) if !payload.is_empty() => {
             // 依次尝试候选：标记 → 噪声 → 真 JSON 的场景下，首个候选不是合法
             // JSON，但后续候选可能是（2026-09-22 评审）。
+            //
+            // **解析成功但缺 `score` 时必须继续尝试后续候选**（2026-09-23 复审）：
+            // `build_judge_result` 对缺失的 `score` 取 `unwrap_or(0)`，若在此直接
+            // 返回，一个没有 score 的合法 JSON（调试输出等）会变成**静默 0 分**。
             let mut last_err: Option<String> = None;
             for candidate in out.payload_candidates_ordered() {
                 match serde_json::from_str::<Value>(&candidate) {
-                    Ok(parsed) => {
+                    Ok(parsed) if parsed.get("score").is_some() => {
                         return Ok(crate::dual::build_judge_result(
                             submission_id,
                             &parsed,
@@ -393,6 +409,12 @@ async fn run_prediction_loop(
                             &out.stdout_full,
                             rejudge_seq,
                         ))
+                    }
+                    Ok(_) => {
+                        last_err = Some(
+                            "JSON 合法但缺少 score 字段（已跳过，继续尝试后续候选）".to_string(),
+                        );
+                        continue;
                     }
                     Err(e) => last_err = Some(e.to_string()),
                 }
@@ -545,6 +567,57 @@ mod tests {
         assert!(
             serde_json::from_str::<Value>(&candidates[1]).is_ok(),
             "第二个候选必须是合法 JSON（解析循环据此取到真结果）"
+        );
+    }
+
+    /// **标记之前的诊断 JSON 不得被当成结果**（2026-09-23 复审，CI 回归）。
+    ///
+    /// 触发场景：evaluator 在打印 `---RESULT---` **之前**输出过一行合法 JSON
+    /// （诊断/调试/第三方库日志）。若候选收集无条件进行，该行会被排到候选首位，
+    /// 解析成功即被当作结果，而它没有 `score` → `unwrap_or(0)` → 静默 0 分
+    /// （CI 的 Judge Sandbox E2E 实测：期望 6666，实得 0）。
+    #[test]
+    fn test_diagnostic_json_before_marker_is_not_a_candidate() {
+        let mut out = PredictionOutput::new();
+        out.feed(&stdout_chunk(
+            "{\"cases\":[1,2,3]}\n---RESULT---\n{\"score\":6666,\"details\":{}}\n",
+        ));
+        out.finish();
+        let candidates = out.payload_candidates_ordered();
+        assert_eq!(
+            candidates,
+            vec!["{\"score\":6666,\"details\":{}}".to_string()],
+            "标记前的诊断 JSON 不得进入候选：{candidates:?}"
+        );
+        // 主 payload 也必须是标记后的那行
+        assert_eq!(
+            out.payload.as_deref(),
+            Some("{\"score\":6666,\"details\":{}}")
+        );
+    }
+
+    /// 标记后出现"合法但缺 score"的 JSON：仍须取到后续带 score 的候选。
+    #[test]
+    fn test_json_without_score_falls_through_to_later_candidate() {
+        let mut out = PredictionOutput::new();
+        out.feed(&stdout_chunk(
+            "---RESULT---\n{\"cases\":[1,2]}\n{\"score\":6666}\n",
+        ));
+        out.finish();
+        let candidates = out.payload_candidates_ordered();
+        assert_eq!(candidates.len(), 2, "candidates={candidates:?}");
+        // 首个缺 score（解析循环会跳过），第二个才是真结果
+        assert!(serde_json::from_str::<Value>(&candidates[0]).is_ok());
+        assert!(serde_json::from_str::<Value>(&candidates[0])
+            .unwrap()
+            .get("score")
+            .is_none());
+        assert_eq!(
+            serde_json::from_str::<Value>(&candidates[1])
+                .unwrap()
+                .get("score")
+                .unwrap(),
+            &serde_json::json!(6666)
         );
     }
 
