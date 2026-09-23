@@ -96,7 +96,7 @@ export function parseBackupName(name: string): Date | null {
 export interface PruneOptions {
   /** 保留最近 N 份。 */
   keep?: number;
-  /** 删除早于 N 天的备份。 */
+  /** 删除早于 N 天的备份（语义对齐 `find -mtime +N`：需**超过** N×24 小时）。 */
   olderThanDays?: number;
   /** 判定「现在」的时刻（测试可注入）。 */
   now?: Date;
@@ -107,6 +107,14 @@ export interface PruneOptions {
    * 明确要求「旧格式不被 prune 误删（除非显式指定）」。
    */
   includeLegacy?: boolean;
+  /**
+   * 无论如何都不删除的路径（2026-09-23 复审新增）。
+   *
+   * `backup create` 用它排除**刚创建的这一份**：`--retention-days 0` 的语义是
+   * "不留旧快照"，而按 `ageDays > 0` 判定时刚产出的快照（ageDays≈0，但在时钟
+   * 精度/时区边界下可能 >0）会被当场删除，只剩孤儿 `.sha256`。
+   */
+  excludePaths?: ReadonlySet<string>;
 }
 
 /** prune 计划（**不执行**删除；调用方在 --confirm 后才落地）。 */
@@ -133,6 +141,7 @@ function timeOf(entry: SnapshotEntry): number {
  *   若只给了 `olderThanDays`，则只按年龄过滤；若只给了 `keep`，则只按数量过滤。
  * - 两个条件都不给 → **不删任何东西**（安全默认，避免误删全部）。
  * - legacy 默认不删（见 {@link PruneOptions.includeLegacy}）。
+ * - `excludePaths` 里的条目**永不删除**（见该字段说明）。
  */
 export function planPrune(
   entries: SnapshotEntry[],
@@ -141,7 +150,13 @@ export function planPrune(
   // 时间倒序（最新在前）
   const sorted = [...entries].sort((a, b) => timeOf(b) - timeOf(a));
 
-  const { keep, olderThanDays, now, includeLegacy = false } = options;
+  const {
+    keep,
+    olderThanDays,
+    now,
+    includeLegacy = false,
+    excludePaths,
+  } = options;
 
   // 先按数量确定「数量上受保护」的集合
   const protectedByCount = keep === undefined
@@ -158,6 +173,11 @@ export function planPrune(
       result.keep.push(entry);
       continue;
     }
+    // 显式排除（如"刚创建的这一份"）优先于一切删除条件
+    if (excludePaths?.has(entry.path) === true) {
+      result.keep.push(entry);
+      continue;
+    }
     if (protectedByCount.has(entry.path)) {
       result.keep.push(entry);
       continue;
@@ -168,8 +188,15 @@ export function planPrune(
     }
     // 数量条件已给出且未被保护 → 该删；
     // 若同时给了年龄条件，则还必须超龄（交集语义）。
+    //
+    // 年龄按**整天向下取整**比较，与 bash `find -mtime +N` 一致（2026-09-23 复审）：
+    // `-mtime +0` 只匹配"满 24 小时以上"的条目，而浮点比较会让刚产出的快照
+    // （ageDays≈1e-5 > 0）当场被删——`backup create --retention-days 0` 因此
+    // 会删掉自己刚写出的备份，只剩孤儿 `.sha256`。
     if (hasAge) {
-      const ageDays = (nowMs - timeOf(entry)) / (24 * 60 * 60 * 1000);
+      const ageDays = Math.floor(
+        (nowMs - timeOf(entry)) / (24 * 60 * 60 * 1000),
+      );
       if (ageDays <= olderThanDays!) {
         result.keep.push(entry);
         continue;
