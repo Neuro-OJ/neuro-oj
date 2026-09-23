@@ -22,7 +22,7 @@ import { QUOTA_ENV_KEYS } from "../src/limits.ts";
 
 Deno.test("config-registry: limits.ts 实际读取的配额 env 与声明完全一致", () => {
   // 同时钉住两侧集合本身，避免「两边同时为空」的假通过
-  assertEquals(QUOTA_ENV_KEYS.length, 18);
+  assertEquals(QUOTA_ENV_KEYS.length, 24);
   const drift = findQuotaEnvDrift();
   assertEquals(
     drift.missing,
@@ -38,12 +38,12 @@ Deno.test("config-registry: limits.ts 实际读取的配额 env 与声明完全�
   );
 });
 
-Deno.test("config-registry: 配额键覆盖 3 scope × 2 window × 3 field = 18 个", () => {
+Deno.test("config-registry: 配额键覆盖 4 scope × 2 window × 3 field = 24 个", () => {
   const keys = quotaEnvKeys();
-  assertEquals(keys.length, 18);
+  assertEquals(keys.length, 24);
   // day 与 month 窗口都必须在内（month 变体曾是漏登记的部分）
-  assertEquals(keys.filter((k) => k.includes("_DAY_")).length, 9);
-  assertEquals(keys.filter((k) => k.includes("_MONTH_")).length, 9);
+  assertEquals(keys.filter((k) => k.includes("_DAY_")).length, 12);
+  assertEquals(keys.filter((k) => k.includes("_MONTH_")).length, 12);
   // 键名形状与 limits.ts 的模板拼接逐字一致
   for (const key of keys) {
     assertEquals(key.startsWith(QUOTA_ENV_PREFIX), true);

@@ -63,6 +63,16 @@ export const BOOTSTRAP_CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     envKey: "DATABASE_MAX_LIFETIME",
     category: "database",
   },
+  {
+    key: "DATABASE_JIT",
+    type: "string",
+    description:
+      "PostgreSQL JIT 编译（off 默认关闭；on 恢复）。OLTP 负载下退化查询触发 JIT 纯属开销",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "DATABASE_JIT",
+    category: "database",
+  },
   // ── Redis ──────────────────────────────────────────────────
   {
     key: "REDIS_URL",

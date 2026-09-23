@@ -11,6 +11,7 @@
 //! 8. RAII 清理两个容器
 
 pub mod container;
+pub mod llm_env;
 pub mod protocol;
 pub mod tracker;
 
@@ -41,22 +42,6 @@ pub const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
 /// Solution 容器入口文件名（评测内部约定，硬编码；与 noj_solution_sdk.host
 /// 的 `--entry` 路径一致，模块名固定为 `user_solution`，文件名不影响评测）。
 pub const SOLUTION_ENTRY_FILE: &str = "main.py";
-
-/// 构造 Evaluator 的 LLM 环境变量（Solution 容器始终不注入）。
-///
-/// 除网关地址与 eval_token 外，一并注入提交标识与重测序号，
-/// 让题目侧 evaluator 能据此做**确定性随机**（同一提交重测结果一致，
-/// 不同提交抽到不同剧本）；缺失时题目侧退化为固定默认值。
-fn build_llm_env(llm: &JudgeTaskLlm, submission_id: &str, rejudge_seq: Option<i64>) -> Vec<String> {
-    vec![
-        format!("NOJ_LLM_GATEWAY_URL={}", llm.gateway_url),
-        format!("NOJ_LLM_TOKEN={}", llm.eval_token),
-        format!("NOJ_LLM_PROVIDER_ID={}", llm.provider_id),
-        format!("NOJ_LLM_ALLOWED_MODELS={}", llm.allowed_models.join(",")),
-        format!("NOJ_SUBMISSION_ID={}", submission_id),
-        format!("NOJ_REJUDGE_SEQ={}", rejudge_seq.unwrap_or(0)),
-    ]
-}
 
 /// 文件注入 exec 完成轮询次数与间隔（50 × 100ms = 5s 上限）。
 const INJECT_POLL_ATTEMPTS: u32 = 50;
@@ -419,7 +404,7 @@ pub async fn evaluate_dual_with_cpu_limit(
 
     // 5. 构造 Evaluator 环境变量（LLM 任务注入 gateway 地址、eval_token 与提交标识）
     let evaluator_env = task_llm
-        .map(|llm| build_llm_env(llm, task_submission_id, task_rejudge_seq))
+        .map(|llm| crate::dual::llm_env::build_llm_env(llm, task_submission_id, task_rejudge_seq))
         .unwrap_or_default();
 
     // 6. 启动 Evaluator exec
@@ -1190,36 +1175,6 @@ mod tests {
                 tracker: InFlightTracker::new(2000),
             }
         }
-    }
-
-    #[test]
-    fn test_build_llm_env() {
-        let llm = JudgeTaskLlm {
-            gateway_url: "http://llm-gateway:8001".to_string(),
-            eval_token: "token-abc".to_string(),
-            provider_id: "prov-1".to_string(),
-            allowed_models: vec!["qwen-plus".to_string(), "qwen-max".to_string()],
-        };
-        let env = build_llm_env(&llm, "sub-9", Some(7));
-        assert!(env.contains(&"NOJ_LLM_GATEWAY_URL=http://llm-gateway:8001".to_string()));
-        assert!(env.contains(&"NOJ_LLM_TOKEN=token-abc".to_string()));
-        assert!(env.contains(&"NOJ_LLM_PROVIDER_ID=prov-1".to_string()));
-        assert!(env.contains(&"NOJ_LLM_ALLOWED_MODELS=qwen-plus,qwen-max".to_string()));
-        // 提交标识与重测序号一并注入，供题目侧做确定性随机（同提交重测一致）。
-        assert!(env.contains(&"NOJ_SUBMISSION_ID=sub-9".to_string()));
-        assert!(env.contains(&"NOJ_REJUDGE_SEQ=7".to_string()));
-    }
-
-    #[test]
-    fn test_build_llm_env_without_rejudge_seq() {
-        let llm = JudgeTaskLlm {
-            gateway_url: "http://llm-gateway:8001".to_string(),
-            eval_token: "token-abc".to_string(),
-            provider_id: "prov-1".to_string(),
-            allowed_models: vec![],
-        };
-        let env = build_llm_env(&llm, "sub-1", None);
-        assert!(env.contains(&"NOJ_REJUDGE_SEQ=0".to_string()));
     }
 
     #[test]

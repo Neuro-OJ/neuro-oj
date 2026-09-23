@@ -1,7 +1,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import type { Db } from "../src/db.ts";
 import type { EvalTokenPayload } from "../src/crypto.ts";
-import { enforceAndCount, settleUsage } from "../src/limits.ts";
+import { enforceAndCount, ipRatePrefix, settleUsage } from "../src/limits.ts";
 import type { RedisClient } from "../src/redis.ts";
 import { incrByWithTtl, incrWithTtl } from "../src/redis.ts";
 
@@ -192,7 +192,7 @@ Deno.test("limits: 各作用域只预扣一次，结算后保留实际用量", a
   const scopeKeys = [...redis.data.keys()].filter((key) =>
     !key.startsWith("llm:sub:")
   );
-  assertEquals(scopeKeys.length, 18);
+  assertEquals(scopeKeys.length, 24);
   for (const key of scopeKeys) {
     assertEquals(redis.data.get(key), key.endsWith(":tokens") ? 15 : 1, key);
   }
@@ -243,7 +243,12 @@ Deno.test("limits: 跨日后可继续使用月额度且不能超过月上限", a
       "limit_exceeded",
     );
     for (
-      const prefix of ["llm:user:user-1", "llm:global", "llm:problem:problem-1"]
+      const prefix of [
+        "llm:user:user-1",
+        "llm:global",
+        "llm:problem:problem-1",
+        "llm:user_problem:user-1:problem-1",
+      ]
     ) {
       assertEquals(redis.data.get(`${prefix}:day:2026-09-10:calls`), 2);
       assertEquals(redis.data.get(`${prefix}:day:2026-09-11:calls`), 1);
@@ -251,5 +256,108 @@ Deno.test("limits: 跨日后可继续使用月额度且不能超过月上限", a
     }
   } finally {
     Date.now = originalNow;
+  }
+});
+
+Deno.test("limits: ipRatePrefix 无真实 IP 时按 submission 隔离（F-10）", () => {
+  // 有真实 IP：按 IP 分桶
+  assertEquals(ipRatePrefix("203.0.113.7", "sub-1"), "llm:rate:ip:203.0.113.7");
+  // 缺失/占位：不再共用 unknown 桶，而是按 submission 隔离
+  assertEquals(ipRatePrefix("", "sub-1"), "llm:rate:sub:sub-1");
+  assertEquals(ipRatePrefix("unknown", "sub-2"), "llm:rate:sub:sub-2");
+  // 不同 submission 得到不同桶，互不挤兑
+  assertEquals(
+    ipRatePrefix("", "sub-1") !== ipRatePrefix("", "sub-2"),
+    true,
+  );
+});
+
+/**
+ * 构造只对满足 `match(scope_type, scope_id)` 的配额查询返回该行的假 Db。
+ *
+ * `getQuota` 的模板参数顺序为 `(scope_type, scope_id, window_type)`，故直接按
+ * 这两个值判定即可模拟真实 DB 的精确匹配语义。
+ */
+function dbWithQuota(
+  match: (scopeType: string, scopeId: string) => boolean,
+  row: { max_calls: number; max_tokens: number; max_cost: number },
+): Db {
+  return ((_strings: TemplateStringsArray, ...values: unknown[]) =>
+    Promise.resolve(
+      match(String(values[0]), String(values[1])) ? [row] : [],
+    )) as unknown as Db;
+}
+
+/** 取 PROM 计量表里 user_problem（day+month）6 个计数器的上限。 */
+function userProblemLimits(redis: FakeRedis): number[] {
+  const meta = JSON.parse(String(redis.lastEvalArgs[3])) as {
+    limits: number[];
+  };
+  // 计数器顺序：sub(3) → user day/month → global day/month → problem day/month
+  // → user_problem day/month（各 3 个字段），故 user_problem 位于 21..26。
+  return meta.limits.slice(21, 27);
+}
+
+Deno.test("limits: user_problem 精确 scope_id 行优先于 env（F-06 解析顺序）", async () => {
+  const original = Deno.env.get("NOJ_LLM_DEFAULT_USER_PROBLEM_DAY_CALLS");
+  Deno.env.set("NOJ_LLM_DEFAULT_USER_PROBLEM_DAY_CALLS", "111");
+  try {
+    const redis = new FakeRedis();
+    const db = dbWithQuota(
+      (_scope, scopeId) => scopeId === "user-1:problem-1",
+      { max_calls: 999, max_tokens: 12345, max_cost: 7 },
+    );
+    await enforceAndCount(db, redis, payload, reserveOptions);
+    // 精确行命中：day/month 两个窗口的 3 个字段都取该行，env(111) 不参与
+    assertEquals(userProblemLimits(redis), [999, 12345, 7, 999, 12345, 7]);
+  } finally {
+    if (original === undefined) {
+      Deno.env.delete("NOJ_LLM_DEFAULT_USER_PROBLEM_DAY_CALLS");
+    } else {
+      Deno.env.set("NOJ_LLM_DEFAULT_USER_PROBLEM_DAY_CALLS", original);
+    }
+  }
+});
+
+Deno.test("limits: user_problem 占位行（scope_id=''）不参与限额计算（评审 2026-09-25）", async () => {
+  const redis = new FakeRedis();
+  // 模拟 seed.ts 曾写入的 scope_id="" 占位行：既然传入的是具体
+  // `<userId>:<problemId>`，精确匹配下它永远不会命中，限额只能用内置默认值。
+  const db = dbWithQuota(
+    (scope, scopeId) => scope === "user_problem" && scopeId === "",
+    { max_calls: 999, max_tokens: 12345, max_cost: 7 },
+  );
+  await enforceAndCount(db, redis, payload, reserveOptions);
+  assertEquals(userProblemLimits(redis), [
+    500,
+    50_000,
+    50,
+    5_000,
+    500_000,
+    500,
+  ]);
+});
+
+Deno.test("limits: user_problem 无精确行时由 env 提供默认值（F-06）", async () => {
+  const original = Deno.env.get("NOJ_LLM_DEFAULT_USER_PROBLEM_DAY_CALLS");
+  Deno.env.set("NOJ_LLM_DEFAULT_USER_PROBLEM_DAY_CALLS", "321");
+  try {
+    const redis = new FakeRedis();
+    await enforceAndCount(emptyDb, redis, payload, reserveOptions);
+    assertEquals(userProblemLimits(redis)[0], 321);
+    // 未覆盖的字段仍取内置默认
+    assertEquals(userProblemLimits(redis).slice(1), [
+      50_000,
+      50,
+      5_000,
+      500_000,
+      500,
+    ]);
+  } finally {
+    if (original === undefined) {
+      Deno.env.delete("NOJ_LLM_DEFAULT_USER_PROBLEM_DAY_CALLS");
+    } else {
+      Deno.env.set("NOJ_LLM_DEFAULT_USER_PROBLEM_DAY_CALLS", original);
+    }
   }
 });
