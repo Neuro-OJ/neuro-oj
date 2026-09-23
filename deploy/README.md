@@ -54,17 +54,17 @@ server {
 
 ## 首次安装与生产运维
 
-推荐使用仓库根目录的 `setup.sh` 一键安装入口。脚本会先检查环境，再下载部署文件并引导完成生产配置：
+从 Release 手动下载 `noj-cli` 二进制并校验后执行 `install`（**不再有自举脚本**；
+`setup.sh` 与 `scripts/deploy/install.sh` 已移除）：
 
 ```bash
-# 首次安装
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --dir /opt/neuro-oj
+# 首次安装（先下载 noj-cli-linux-amd64 与 .sha256 并校验，见项目 README）
+./noj-cli-linux-amd64 install --dir /opt/neuro-oj
 
 # 日常运维
 noj-cli status
 noj-cli logs core
-noj-cli backup
+noj-cli backup create
 noj-cli restart
 noj-cli stop
 noj-cli start
@@ -73,9 +73,9 @@ noj-cli config check
 
 `noj-cli update` 按 `.env.prod` 中的版本升级，`noj-cli update --latest` 获取最新稳定版本。
 `noj-cli uninstall` 默认保留数据卷，`noj-cli uninstall --all --yes` 才会执行完全删除。
-安装器从同版本 Release 下载并校验 `noj-cli`，生产机无需安装 Deno。已有 `.env.prod`、备份和数据卷继续使用。
+`install` 从同版本 Release 下载并校验部署文件，生产机无需安装 Deno。已有 `.env.prod`、备份和数据卷**逐字节保留**。
 `noj-cli backup verify/restore/drill` 提供快照校验、恢复和演练；恢复需要显式 `--confirm`。
-所选 Release 必须已发布 CLI 资产，旧 Release 不会被安装器静默切换成其他版本。
+所选 Release 必须已发布 CLI 与部署文件资产；缺少资产时明确报错，不会被静默切换成其他版本。
 
 镜像拉取由 Docker daemon 负责。若官方源访问不稳定，请在 Docker daemon 配置
 registry mirror 或 HTTP(S) proxy 后重试；评测镜像仍可通过 `JUDGE_IMAGE_BASE`

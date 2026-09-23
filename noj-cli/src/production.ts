@@ -1,5 +1,5 @@
 import { dirname, join, resolve } from "@std/path";
-import { UsageError } from "./util/args.ts";
+import { PRODUCTION_MARKERS } from "./profile.ts";
 
 /** 兼容现有 .env.prod 生产部署；JSON 部署继续使用 deploy/maintain 子命令。 */
 export const PRODUCTION_COMMANDS = new Set([
@@ -16,13 +16,24 @@ export const PRODUCTION_COMMANDS = new Set([
   "verify",
   "config",
   "uninstall",
+  // T26：`judge` 是独立 Judge Worker 的部署入口（对应已删除的 judge-install.sh）。
+  // 早先 T21 交付了 `prod/judge/*` 但**未登记**在此，导致该能力从 CLI 不可达。
+  "judge",
 ]);
 
+/**
+ * 某目录是否为完整生产安装目录。
+ *
+ * T12 carry-forward（T5）：**消费** `profile.ts` 导出的 {@link PRODUCTION_MARKERS}
+ * 作为唯一事实源（此前是手抄的第二份清单）。只认安装目录必备、且不随 bash 删除
+ * 而消失的文件（spec §3.3 洞 1）。
+ */
 async function isInstallDir(dir: string): Promise<boolean> {
   try {
-    return (await Deno.stat(join(dir, "scripts/deploy/production.sh")))
-      .isFile &&
-      (await Deno.stat(join(dir, "docker-compose.prod.yml"))).isFile;
+    for (const marker of PRODUCTION_MARKERS) {
+      if (!(await Deno.stat(join(dir, marker))).isFile) return false;
+    }
+    return true;
   } catch {
     return false;
   }
@@ -60,60 +71,6 @@ export async function findProductionDir(
  * 复用 {@link parseDirArg} 以保证 4 处调用点的 `--dir`/`--dir=` 语义与
  * 缺值报错完全一致（#517 E6）。
  */
-export function parseProductionArgs(args: string[]): {
-  dir?: string;
-  forwarded: string[];
-} {
-  let dir: string | undefined;
-  const forwarded: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]!;
-    if (arg === "--dir" || arg.startsWith("--dir=")) {
-      const value = arg === "--dir" ? args[++i] : arg.slice(6);
-      if (!value || value.startsWith("--")) {
-        throw new UsageError("--dir 需要一个安装目录");
-      }
-      dir = value;
-    } else if (arg === "--debug") {
-      // 评审 B3：--debug 是 noj-cli 自身的排查开关，不得转发给
-      // production.sh（其参数契约不接受，会报未知参数）。
-      continue;
-    } else {
-      forwarded.push(arg);
-    }
-  }
-  return { dir, forwarded };
-}
-
-/** 继承终端以保留敏感输入、确认提示和连续日志，原样返回底层退出码。 */
-export async function runProduction(
-  command: string,
-  args: string[],
-): Promise<number> {
-  // 解析错误属用法错误（退出码 2），与运行失败（1）区分（#517 E9）。
-  // 这里**不**捕获异常：交给 `run()` 的全局兜底统一格式化，
-  // 避免同一 CLI 内出现两套错误处理（#517 根因表第 2 行）。
-  const parsed = parseProductionArgs(args);
-  let dir: string;
-  try {
-    dir = await findProductionDir(parsed.dir);
-  } catch (error) {
-    throw new ProductionDirError((error as Error).message);
-  }
-  const child = new Deno.Command("bash", {
-    args: [
-      join(dir, "scripts/deploy/production.sh"),
-      command,
-      ...parsed.forwarded,
-    ],
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-  }).spawn();
-  return (await child.status).code;
-}
-
-/** 生产安装目录定位失败：属运行失败（退出码 1），非用法错误。 */
 export class ProductionDirError extends Error {
   constructor(message: string) {
     super(message);

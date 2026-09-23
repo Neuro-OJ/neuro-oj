@@ -119,27 +119,31 @@ Evaluator、Solution 评测镜像）逻辑大小约 2.75 GiB；实际磁盘还�
 
 这些工具仅在源码开发、构建评测镜像或运行部分测试时需要，详见[项目开发约定](./AGENTS.md)。
 
-### 一键部署
+### 部署
 
-生产环境推荐使用仓库根目录的一键安装入口 `setup.sh`。它会下载部署脚本，
-自动检查环境、引导填写配置并启动生产服务：
+生产主机**无需 Deno、也不下载源码**：从 Release 下载 `noj-cli` 二进制并校验，
+再由它完成安装。
 
 ```bash
-# 一键安装（默认自动选择最新 Release）
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --dir /opt/neuro-oj
+# 1) 下载并校验二进制（将 vX.Y.Z 替换为目标 Release 标签）
+VERSION=v0.9.5
+curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64"
+curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64.sha256"
+sha256sum -c noj-cli-linux-amd64.sha256
+chmod +x noj-cli-linux-amd64
 
-# 固定版本：将 vX.Y.Z 替换为包含 CLI 资产的 Release 标签
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --ref vX.Y.Z --dir /opt/neuro-oj
+# 2) 安装（目录可为空：install 自己拉取并校验部署文件）
+./noj-cli-linux-amd64 install --dir /opt/neuro-oj
 ```
 
-安装脚本会在前面先检查 Linux、Docker、Compose、磁盘、端口等环境；首次安装会创建
-`.env.prod` 并用简单中文提示填写网站地址、HTTP/HTTPS、邮件服务和 Judge。邮件可以跳过，
-公开注册仅创建普通用户；新站管理员须由部署者在服务器上执行一次性初始化，见[服务端 CLI 初始化](./noj-docs/docs/operators/cli.md#管理员初始化)。已存在的安装目录会保留配置并继续更新，不会因为目录非空而停止。
+`install` 会在前面先检查 Linux、Docker、Compose、磁盘、端口等环境，从同版本
+Release 拉取 `docker-compose.prod.yml` 与 `.env.prod.example` 并校验 **SHA-256**；
+首次安装会创建 `.env.prod`（权限 `600`，含自动生成的强随机密钥）并用中文提示填写
+网站地址、HTTP/HTTPS、邮件服务和 Judge。邮件可以跳过，公开注册仅创建普通用户；
+新站管理员须由部署者在服务器上执行一次性初始化，见[服务端 CLI 初始化](./noj-docs/docs/operators/cli.md#管理员初始化)。已存在的安装目录会**逐字节保留** `.env.prod`、备份与数据卷。
 
-安装器下载并校验同版本的 `noj-cli` 二进制，调用 CLI 完成生产安装并注册 PATH；生产机无需安装 Deno。
-安装完成后，服务启停、升级、备份和日志统一使用 `noj-cli`。所选 Release 必须包含 CLI 二进制及 SHA-256 校验文件。
+> **不再有自举脚本**：`setup.sh` 与 `scripts/deploy/install.sh` 已移除——安装职责
+> 转入 `noj-cli` 自身。所选 Release 必须同时包含 CLI 二进制、校验文件与两个部署文件。
 
 部署完成后，通过配置的域名访问：
 
@@ -157,14 +161,20 @@ noj-cli logs core                        # 查看 core 日志
 noj-cli restart                          # 重启服务
 noj-cli stop                             # 停止服务但保留数据卷
 noj-cli update --latest                  # 升级到最新稳定 Release
-noj-cli backup                           # 创建生产备份
+noj-cli backup create                    # 创建生产备份（.nojbackup 单文件）
+noj-cli backup verify <快照> --deep      # 三档校验
+noj-cli backup drill <快照>              # 隔离环境真实恢复演练
 noj-cli config check                     # 只校验配置，不改变服务状态
 ```
 
-`noj-cli` 同时保留 `install`、`start`、`stop`、`upgrade`、`update`、`status`、`logs`、`backup`、
-`verify`、`config check` 和 `uninstall`。需要高级参数时可直接运行
-`bash scripts/deploy/deploy.sh <命令>`。未加入 PATH 时可运行 `/opt/neuro-oj/bin/noj-cli status`，
-或用 `noj-cli status --dir /opt/neuro-oj` 显式指定安装目录。开发者也可从 `noj-cli/` 目录通过 Deno 运行相同入口。
+`noj-cli` 提供 `install`、`start`、`stop`、`restart`、`update`（别名 `upgrade`）、
+`status`、`logs`、`backup`、`verify`、`config check` 与 `uninstall`。未加入 PATH 时
+可运行 `/opt/neuro-oj/bin/noj-cli status`，或用 `noj-cli status --dir /opt/neuro-oj`
+显式指定安装目录。开发者也可从 `noj-cli/` 目录通过 Deno 运行同一入口。
+
+> **`deploy`/`maintain`/`stack`/`run-server`/`doctor` 命令与 `noj-deploy.json` 双配置已移除**；
+> 源码开发请用两段式流程（`docker compose up -d` + 各模块 `deno task dev`），
+> 见[项目开发约定](./AGENTS.md#52-两段式开发流程)。
 
 更多部署、TLS、备份和升级说明见 [`deploy/README.md`](./deploy/README.md) 和[生产部署文档](./noj-docs/docs/operators/production-deploy.md)。
 

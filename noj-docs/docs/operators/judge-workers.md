@@ -11,32 +11,48 @@ Evaluator + Solution 双容器（用后即毁），并把结果写回 Redis。
 
 ## 独立节点部署
 
-如果评测节点不运行 noj-core、noj-ui 或完整源码仓库，可以使用仓库提供的 Judge
-安装脚本 在独立目录初始化 Worker：
+如果评测节点不运行 noj-core、noj-ui 或完整源码仓库，可用 `noj-cli` 的 `judge`
+子命令在独立目录初始化 Worker（**不再需要下载任何安装脚本**）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/judge-install.sh \
-  -o judge-install.sh
-bash judge-install.sh install --dir /srv/noj-judge
+# 首次：先准备专用 rootless Docker socket，并检查依赖
+noj-cli judge install-env
+
+# 配置并启动（必需参数必须显式给出；本命令不做交互式询问）
+noj-cli judge install --dir /srv/noj-judge \
+  --version v0.9.5 \
+  --redis-url 'redis://:密码@127.0.0.1:6379/0' \
+  --socket-path /run/noj-judge/docker.sock \
+  --socket-gid "$(stat -c '%g' /run/noj-judge/docker.sock)"
 ```
 
-首次配置需要填写：
+首次配置必填项（缺失会报"首装必须提供 …"，退出码 2）：
 
-- `NOJ_VERSION`：不可变 Release 版本，例如 `v0.1.0`；
-- `REDIS_URL`：与 noj-core 相同的 Redis 地址、数据库和认证信息；
-- `JUDGE_QUEUE` / `RESULT_QUEUE`：必须与 noj-core 使用的队列名称一致；
-- `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID`：只服务于 Judge 的 rootless
-  Docker daemon Unix socket 及其组 ID。
+- `--version`（`NOJ_VERSION`）：不可变 Release 版本，例如 `v0.1.0`；
+- `--redis-url`（`REDIS_URL`）：与 noj-core 相同的 Redis 地址、数据库和认证信息；
+- `--socket-path`（`JUDGE_DOCKER_SOCKET`）：只服务于 Judge 的 rootless Docker
+  daemon Unix socket 路径；
+- `--socket-gid`（`JUDGE_DOCKER_SOCKET_GID`）：该 socket 的组 ID，必须与
+  `stat -c '%g' <socket>` 的实际值一致，否则启动前的 socket 校验会失败。
+
+其余键（`JUDGE_QUEUE` / `RESULT_QUEUE` / 并发数等）使用内置默认值，需要改动时直接
+编辑安装目录下的 `.env.judge`（600）。
+
+> **既有配置优先**：`.env.judge` 已存在时 `judge install` 只更新 `--version`，
+> 其余旗标不会生效，并会打印"以下旗标未生效（既有配置优先）"提示。
+> 要改 Redis / socket，请直接编辑 `.env.judge` 或先移走该文件。
 
 管理独立 Worker：
 
 ```bash
-bash /srv/noj-judge/judge-install.sh status
-bash /srv/noj-judge/judge-install.sh logs
-bash /srv/noj-judge/judge-install.sh stop
+noj-cli judge status --dir /srv/noj-judge
+noj-cli judge logs --dir /srv/noj-judge [--follow]
+noj-cli judge check  --dir /srv/noj-judge   # 配置 / Redis / 专用 socket / 镜像架构
+noj-cli judge stop | start | upgrade --dir /srv/noj-judge
 ```
 
-Judge 安装脚本与主站部署脚本相互独立；它不会安装或替换主站的 `noj` 命令。
+Judge 的部署与主站部署相互独立；`noj-cli` **不会安装、替换或配置**宿主 Docker
+daemon，宝塔类面板也只做探测与提示（不调用其 API）。
 
 当前生产 Release 镜像由发布流水线提供 `linux/amd64`。ARM64 主机必须先确认所选
 版本发布了对应 manifest；否则部署会在启动前提示架构不匹配，不能通过回退到宿主机
