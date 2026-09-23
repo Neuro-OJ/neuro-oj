@@ -1,5 +1,6 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { listBackups, pruneBackups } from "./list.ts";
+import { planPrune, type SnapshotEntry } from "./index.ts";
 
 /** 建一个含单文件与旧目录备份的临时备份目录。 */
 async function makeFixture(): Promise<string> {
@@ -142,5 +143,34 @@ Deno.test("pruneBackups: 成功时 failed 为空", async () => {
     assertEquals(r.failed, []);
   } finally {
     await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("listBackups: 名字不可解析时回退 mtime（而非 epoch）", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    // 手工改名的快照：名字解析不出时间戳，但 mtime 是"刚刚"
+    const manual = `${root}/my-manual-backup.nojbackup`;
+    await Deno.writeTextFile(manual, "x");
+    await Deno.writeTextFile(`${root}/snapshot-20260917-103000.nojbackup`, "y");
+    const { entries } = await listBackups(root);
+    const e = entries.find((x) => x.name === "my-manual-backup.nojbackup");
+    assert(e !== undefined, "手工改名的快照应被列举（不应因名字被忽略）");
+    const ageMs = Date.now() - Date.parse(e!.createdAt);
+    assert(
+      ageMs < 60_000,
+      `应按 mtime 取"刚刚"而非 epoch（实得 age=${ageMs}ms）`,
+    );
+    // 且不会在默认保留期（30 天）内被清理
+    const plan = planPrune(entries, { olderThanDays: 30, now: new Date() });
+    assertEquals(
+      plan.remove.some((x: SnapshotEntry) =>
+        x.name === "my-manual-backup.nojbackup"
+      ),
+      false,
+      "刚拷进来的快照不得被自动清理删除",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
