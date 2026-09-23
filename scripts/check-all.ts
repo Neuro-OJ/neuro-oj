@@ -1,55 +1,26 @@
 // 本地全量检查入口。
-// 依次运行仓库级门禁与各模块 quick check；任一失败即退出非零。
+// 依次运行仓库级门禁（与 CI 的 root-gates 完全一致）与各模块 quick check；
+// 任一失败即退出非零。
+//
+// 门禁清单集中在 `scripts/gate-list.ts`（单一事实源）。2026-09-21 之前本文件
+// 与 `check-ci.ts` 各自维护列表，长期分叉——本地比 CI 少 19 项门禁，导致
+// "本地全量检查通过"而 CI 红灯。现在两者从同一清单派生，分叉由
+// `scripts/gate-list_test.ts` 守护。
 import { run } from "./gate-runner.ts";
+import { gateLabel, MODULE_CHECKS, REPO_GATES } from "./gate-list.ts";
 
 if (import.meta.main) {
-  console.log("== 仓库级门禁 ==");
-  await run(["deno", "run", "-A", "scripts/verify-agent-note-format.ts"]);
-  await run(["deno", "run", "-A", "scripts/verify-md-links.ts"]);
-  await run(["deno", "run", "-A", "scripts/verify-export-jsdoc.ts"]);
-  await run(["deno", "run", "-A", "scripts/verify-capability-seams.ts"]);
-  await run(["deno", "run", "-A", "scripts/deploy/verify-build-server.ts"]);
-  await run(["deno", "run", "-A", "scripts/deploy/verify-compose-server.ts"]);
-  await run([
-    "deno",
-    "test",
-    "-A",
-    "scripts/deploy/verify-build-server_test.ts",
-    "scripts/deploy/verify-compose-server_test.ts",
-  ]);
-  await run(["deno", "run", "-A", "scripts/gen-event-catalog.ts", "--check"]);
-  await run(["deno", "run", "-A", "scripts/gen-route-catalog.ts", "--check"]);
-  await run(["deno", "run", "-A", "scripts/check-domains.ts"]);
-  await run(["deno", "run", "-A", "scripts/check-metrics.ts"]);
-  await run(["deno", "run", "-A", "scripts/check-runtime-contract.ts"]);
-  await run(["deno", "run", "-A", "scripts/check-runbooks.ts"]);
-  await run(["deno", "run", "-A", "scripts/gen-alert-rules.ts", "--check"]);
-  await run(["deno", "run", "-A", "scripts/check-test-discovery.ts"]);
-  await run(["deno", "run", "-A", "scripts/check-dashboards.ts"]);
-  // T24：被删脚本的测试随之移除；保留闸门测试（见 check-ci.ts 注释）。
-  await run(["bash", "scripts/deploy/test-deprecation-gate.sh"]);
-  await run([
-    "deno",
-    "test",
-    "-A",
-    "scripts/check-domains_test.ts",
-    "scripts/check-metrics_test.ts",
-    "scripts/check-runtime-contract_test.ts",
-    "scripts/check-runbooks_test.ts",
-    "scripts/gen-alert-rules_test.ts",
-    "scripts/check-test-discovery_test.ts",
-    "scripts/check-dashboards_test.ts",
-  ]);
-  await run(["deno", "run", "-A", "scripts/verify-domain-ci.ts"]);
+  console.log("== 仓库级门禁（与 CI root-gates 一致）==");
+  for (const gate of REPO_GATES) {
+    console.log(`-- ${gateLabel(gate)}`);
+    await run(gate.args, gate.cwd);
+  }
 
-  console.log("== noj-core check ==");
-  await run(["deno", "task", "check"], "noj-core");
-
-  console.log("== noj-llm-gateway check ==");
-  await run(["deno", "task", "check"], "noj-llm-gateway");
-
-  console.log("== noj-ui check ==");
-  await run(["deno", "task", "check"], "noj-ui");
+  console.log("== 模块级 check ==");
+  for (const gate of MODULE_CHECKS) {
+    console.log(`-- ${gate.label}`);
+    await run(gate.args, gate.cwd);
+  }
 
   console.log("全部检查通过");
 }

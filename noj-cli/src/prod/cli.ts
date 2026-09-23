@@ -1165,47 +1165,8 @@ export async function runBackupSchedule(
   }
 }
 
-// ---------------- gpg / tar 薄封装（供 backup 命令复用） ----------------
-
-/** `gpg --decrypt`（供 verify/restore 解包容器）。 */
-export async function gpgDecrypt(
-  runner: CommandRunner,
-  src: string,
-  dest: string,
-  passphraseFile: string,
-): Promise<void> {
-  const res = await runner.run("gpg", [
-    "--batch",
-    "--yes",
-    "--pinentry-mode",
-    "loopback",
-    "--passphrase-file",
-    passphraseFile,
-    "--decrypt",
-    "--output",
-    dest,
-    src,
-  ]);
-  if (res.code !== 0) throw new Error(`gpg 解密失败：${res.stderr.trim()}`);
-}
-
-/** `tar -I zstd -xf`（供 verify/restore 解包容器）。 */
-export async function untarZst(
-  runner: CommandRunner,
-  src: string,
-  destDir: string,
-): Promise<void> {
-  await Deno.mkdir(destDir, { recursive: true });
-  const res = await runner.run("tar", [
-    "-I",
-    "zstd",
-    "-xf",
-    src,
-    "-C",
-    destDir,
-  ]);
-  if (res.code !== 0) throw new Error(`tar 解包失败：${res.stderr.trim()}`);
-}
+export { gpgDecrypt, untarZst } from "./gpg-tar.ts";
+import { gpgDecrypt, untarZst } from "./gpg-tar.ts";
 
 /** 供测试引用（避免重复字面量）。 */
 export { DEFAULT_UPDATE_REPOSITORY };

@@ -7,8 +7,25 @@ import { problems, selfTests, users } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../identity/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 
-// 显式启用限流（NOJ_ENV=test 时默认关闭）
-Deno.env.set("RATE_LIMIT_ENABLED", "true");
+// 限流开关**只**在需要它的用例内临时打开（见下方"超过每用户限流阈值返回 429"）。
+//
+// 不能在模块顶层 `Deno.env.set("RATE_LIMIT_ENABLED", "true")`：Deno 测试文件共享
+// 同一进程环境，模块级 set 会把开关泄漏给同一次运行中后续执行的文件，使它们的
+// 请求被限流成 429（2026-09-21 实测：与 problem-bundle.test.ts 同跑时，
+// 后者由 19 passed 变成 9 failed）。
+const RATE_LIMIT_ENV_KEY = "RATE_LIMIT_ENABLED";
+
+/** 在限流开启的环境下运行 `fn`，结束后还原为进入前的值（含失败路径）。 */
+async function withRateLimitEnabled<T>(fn: () => Promise<T> | T): Promise<T> {
+  const previous = Deno.env.get(RATE_LIMIT_ENV_KEY);
+  Deno.env.set(RATE_LIMIT_ENV_KEY, "true");
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) Deno.env.delete(RATE_LIMIT_ENV_KEY);
+    else Deno.env.set(RATE_LIMIT_ENV_KEY, previous);
+  }
+}
 
 await resetDbForTest();
 await initRedisForTest();
@@ -219,24 +236,25 @@ Deno.test({
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    let lastStatus = 0;
-    // 该用户在前面已创建过 1 次自测，这里再打 4 次应触发第 5 次 429
-    for (let i = 0; i < 4; i++) {
-      const res = await jsonRequest(
-        app,
-        `/api/v1/problems/${PROBLEM_ID}/self-test`,
-        {
-          method: "POST",
-          body: { language: "python3", code: "print(1)" },
-          token: TEST_TOKEN,
-        },
-      );
-      lastStatus = res.status;
-    }
-    assertEquals(lastStatus, 429);
-  },
+  fn: () =>
+    withRateLimitEnabled(async () => {
+      const app = createApp();
+      let lastStatus = 0;
+      // 该用户在前面已创建过 1 次自测，这里再打 4 次应触发第 5 次 429
+      for (let i = 0; i < 4; i++) {
+        const res = await jsonRequest(
+          app,
+          `/api/v1/problems/${PROBLEM_ID}/self-test`,
+          {
+            method: "POST",
+            body: { language: "python3", code: "print(1)" },
+            token: TEST_TOKEN,
+          },
+        );
+        lastStatus = res.status;
+      }
+      assertEquals(lastStatus, 429);
+    }),
 });
 
 Deno.test({

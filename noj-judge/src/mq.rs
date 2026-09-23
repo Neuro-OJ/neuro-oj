@@ -117,10 +117,18 @@ pub async fn pull_task_priority(
 
 fn truncate_for_log(raw: &str) -> String {
     if raw.len() <= 1024 {
-        raw.to_string()
-    } else {
-        format!("{}...(truncated {} bytes)", &raw[..1024], raw.len())
+        return raw.to_string();
     }
+    // 截断点必须落在 UTF-8 字符边界上：评测消息里的中文/emoji 是常态，
+    // `&raw[..1024]` 落在多字节字符内部会 panic（`byte index ... is not a char
+    // boundary`）——这正是 `dual/mod.rs` 的 append_capped 已修过的同类缺陷。
+    // 这里的 panic 发生在日志路径：bad JSON 消息 / fallback 文件反序列化失败时，
+    // 会把「记录诊断信息」变成「进程崩溃」，反而丢失全部诊断。
+    let mut end = 1024;
+    while end > 0 && !raw.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...(truncated {} bytes)", &raw[..end], raw.len())
 }
 
 fn parse_task_message(value: &str) -> Option<JudgeTask> {
@@ -388,6 +396,7 @@ mod tests {
     use super::parse_task_message;
     use super::requeue_task;
     use super::sanitize_submission_id_for_filename;
+    use super::truncate_for_log;
     use super::{advance_cursor, priority_slot, PRIORITY_SEQUENCE};
 
     #[test]
@@ -535,5 +544,40 @@ mod tests {
         let client = redis::Client::open("redis://127.0.0.1:1/").unwrap();
         let result = requeue_task(&client, "noj:judge:queue:high", "raw").await;
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn truncate_for_log_ascii_short_is_unchanged() {
+        assert_eq!(truncate_for_log("short"), "short");
+    }
+
+    #[test]
+    fn truncate_for_log_ascii_long_is_truncated() {
+        let raw = "a".repeat(2000);
+        let out = truncate_for_log(&raw);
+        assert!(out.starts_with(&"a".repeat(1024)));
+        assert!(out.contains("truncated 2000 bytes"));
+    }
+
+    /// 回归：第 1024 字节落在多字节字符内部时不得 panic。
+    /// 旧实现 `&raw[..1024]` 在此稳定 panic（`byte index 1024 is not a char boundary`）。
+    #[test]
+    fn truncate_for_log_multibyte_boundary_does_not_panic() {
+        // 408 个三字节中文字符 = 1224 字节；1024 落在字符内部（bytes 1023..1026）
+        let raw = "错".repeat(408);
+        assert_eq!(raw.len(), 1224);
+        let out = truncate_for_log(&raw);
+        assert!(out.contains("truncated 1224 bytes"));
+        // 保留部分是合法 UTF-8，且不超过对齐后的边界
+        assert!(out.starts_with("错"));
+    }
+
+    #[test]
+    fn truncate_for_log_all_boundaries_do_not_panic() {
+        // 覆盖所有可能的字节偏移：任意 1..=2000 字节的中文串都不能 panic
+        for n in 1..=800usize {
+            let raw = "错".repeat(n);
+            let _ = truncate_for_log(&raw);
+        }
     }
 }

@@ -12,6 +12,7 @@
  * - 权限在具体 handler 内声明：通用题目管理仍要求 admin:full_access；
  *   problems/review 使用 problem:create_p；trainings 使用 training:* 细粒度权限。
  */
+import { MAX_SAFE_PAGE } from "../../../shared/http/pagination.ts";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { eq, inArray, sql } from "drizzle-orm";
@@ -228,6 +229,10 @@ router.get("/problems", async (c) => {
   if (Number.isNaN(page) || Number.isNaN(limit)) {
     throw new BadRequestError("分页参数 page 和 limit 必须为数字");
   }
+  // 超大 page 会让 OFFSET 超出 PG bigint（2026-09-21 修复）。
+  if (page > MAX_SAFE_PAGE) {
+    throw new BadRequestError("分页参数 page 超出允许范围");
+  }
 
   const result = await listAllProblems({
     page: Math.max(1, page),
@@ -264,6 +269,10 @@ router.get("/problems/review", async (c) => {
 
   if (Number.isNaN(page) || Number.isNaN(limit)) {
     throw new BadRequestError("分页参数 page 和 limit 必须为数字");
+  }
+  // 超大 page 会让 OFFSET 超出 PG bigint（2026-09-21 修复）。
+  if (page > MAX_SAFE_PAGE) {
+    throw new BadRequestError("分页参数 page 超出允许范围");
   }
 
   const visibility = queue === "public"

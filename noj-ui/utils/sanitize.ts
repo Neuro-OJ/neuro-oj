@@ -65,6 +65,23 @@ const SAFE_ATTR_RE = /^(?:href|title|alt|src|class|width|height|target|rel|align
 /** 允许的 URL 协议（相对 URL / 锚点直接放行）。 */
 const SAFE_URL_PROTOCOLS = /^(?:https?|mailto|tel):/i;
 
+/**
+ * 把任意文本转义为可安全嵌入 HTML 的纯文本（用于「降级为纯文本」分支）。
+ *
+ * 关键点：必须连 `<` / `>` 一起实体化。若只转义标签两侧的定界符
+ * （`&lt;` ... `&gt;`）而把属性原文照抄，属性值里的 `<` 会在浏览器
+ * 重新解析时开启一个新标签 —— 净化器反而构造出它本要剥离的处理器。
+ * 同时转义引号，避免属性值提前闭合。
+ */
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 /** 解码常见 HTML 实体（数字 + named），避免 jav&#x61;script: 绕过协议检查。 */
 function decodeHtmlEntities(value: string): string {
   return value
@@ -120,8 +137,12 @@ function simpleSanitize(raw: string): string {
     (_match, close: string, tag: string, attrs: string) => {
       const tagLower = tag.toLowerCase();
       if (!SAFE_TAGS.has(tagLower)) {
-        // 不认识的标签 → 转为纯文本显示
-        return `&lt;${close}${tag}${attrs}&gt;`;
+        // 不认识的标签 → 转为纯文本显示。
+        // 必须整体转义（含属性里的 `<`），否则
+        // `<foo bar="<img src=x onerror=alert(1)//>">` 会被输出成
+        // `&lt;foo bar="<img src=x onerror=alert(1)//&gt;">` —— 其中字面量
+        // `<img ...>` 被浏览器解析成真标签，onerror 可执行（SSR 首屏 XSS）。
+        return escapeHtmlText(`<${close}${tag}${attrs}>`);
       }
       if (close) return `</${tagLower}>`;
 
@@ -137,7 +158,10 @@ function simpleSanitize(raw: string): string {
           }
           if (dq != null) return ` ${attrLower}="${dq.replace(/"/g, '&quot;')}"`;
           if (sq != null) return ` ${attrLower}='${sq.replace(/'/g, '&#039;')}'`;
-          return val ? ` ${attrLower}="${val}"` : ` ${attrLower}`;
+          // 无引号值同样必须转义引号：`(\S+)` 会把 `x"onerror="alert(1)` 整段吃进 val，
+          // 直接输出成 `src="x"onerror="alert(1)"` 会让浏览器解析出 onerror 属性（XSS）。
+          // 这里与上面两个分支对齐，同时转义单/双引号。
+          return val ? ` ${attrLower}="${val.replace(/"/g, '&quot;').replace(/'/g, '&#039;')}"` : ` ${attrLower}`;
         },
       );
       return `<${tagLower}${safeAttrs}>`;

@@ -37,12 +37,27 @@ export interface CommandRunner {
     opts?: { cwd?: string; env?: Record<string, string>; stdin?: string },
   ): Promise<CmdResult>;
   spawn(opts: SpawnOpts): SpawnHandle;
-  /** 逐行流式执行命令；onLine 每收到一行（不含换行）回调一次，返回退出码。可选：P2 既有 fake 可不实现。 */
+  /**
+   * 逐行流式执行命令；`onLine` 每收到一行（不含换行）回调一次，返回退出码。
+   *
+   * `opts.onStderr` 控制 **stderr 的行路由**（2026-09-22 评审）：
+   * - 未提供（缺省）：stderr 与 stdout 一样逐行交给 `onLine`。这是安全默认——
+   *   子进程写满 stderr 管道会**挂死**（Linux 管道缓冲约 64 KiB），排空是必需的，
+   *   而"排空的字节必须有去处"。
+   * - 提供回调：stderr 行交给它（可据此区分通道，例如人类日志 vs JSON）；
+   * - 传 `false`：只排空、不转发（调用方自会处理诊断输出）。
+   *
+   * 可选：P2 既有 fake 可不实现。
+   */
   stream?(
     cmd: string,
     args: string[],
     onLine: (line: string) => void,
-    opts?: { cwd?: string; env?: Record<string, string> },
+    opts?: {
+      cwd?: string;
+      env?: Record<string, string>;
+      onStderr?: ((line: string) => void) | false;
+    },
   ): Promise<number>;
 }
 
@@ -145,6 +160,37 @@ export function realRunner(): CommandRunner {
         stderr: "piped",
       });
       const child = p.spawn();
+      // stderr 必须被持续排空：子进程一旦向 stderr 写入超过内核管道缓冲
+      // （Linux 约 64 KiB）就会阻塞在 write 上，stdout 也随之不再产生新数据，
+      // 下面的 reader.read() 与 child.status 将永远不返回（CLI 静默挂死）。
+      // `--follow` 的子进程正是 `docker compose ... logs --follow`，多服务时
+      // 会向 stderr 输出告警/进度，属真实可达路径。
+      //
+      // 行的去处由 `opts.onStderr` 决定（评审建议）：缺省与 stdout 同等对待
+      // （安全默认，保证排空的字节可见）；传函数则分流；传 `false` 只排空。
+      const stderrRoute = opts?.onStderr === undefined
+        ? onLine
+        : opts.onStderr === false
+        ? null
+        : opts.onStderr;
+      const stderrDone = (async () => {
+        const reader = child.stderr.getReader();
+        let sbuf = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          sbuf += decoder.decode(value, { stream: true });
+          let idx: number;
+          while ((idx = sbuf.indexOf("\n")) !== -1) {
+            const line = sbuf.slice(0, idx);
+            sbuf = sbuf.slice(idx + 1);
+            if (stderrRoute !== null) {
+              stderrRoute(line.endsWith("\r") ? line.slice(0, -1) : line);
+            }
+          }
+        }
+        if (sbuf.length > 0 && stderrRoute !== null) stderrRoute(sbuf);
+      })();
       let buf = "";
       const reader = child.stdout.getReader();
       for (;;) {
@@ -160,7 +206,9 @@ export function realRunner(): CommandRunner {
         }
       }
       if (buf.length > 0) onLine(buf);
-      return (await child.status).code;
+      const code = (await child.status).code;
+      await stderrDone;
+      return code;
     },
   };
 }

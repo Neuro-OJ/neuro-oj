@@ -19,6 +19,15 @@ export interface InternalDeps {
   db: Db;
 }
 
+/**
+ * 分页页码上界。
+ *
+ * 与 noj-core 的 `shared/http/pagination.ts:MAX_SAFE_PAGE` 同值：OFFSET 在 PG 里是
+ * `bigint`，页码越界会让查询报 `value ... out of range for type bigint` → 500。
+ * gateway 是独立模块（不 import core 的源码），故此处独立定义并说明来源。
+ */
+const MAX_SAFE_PAGE = Number.MAX_SAFE_INTEGER;
+
 /** 创建 core↔gateway 内部管理路由；所有端点均需服务间 Bearer Token。 */
 export function createInternalRouter(deps: InternalDeps): Hono {
   const app = new Hono();
@@ -81,11 +90,14 @@ export function createInternalRouter(deps: InternalDeps): Hono {
           return c.json({ error: "provider_not_found" }, 404);
         }
       }
+      // 作用域由**请求**决定（评审发现的回归）：带 `created_by` = 用户自助路径，
+      // 不带 = 管理面。按行的归属判定会让管理员无法编辑用户自建 Provider。
       const provider = await updateProvider(
         deps.db,
         id,
         body,
         deps.config.storeKey,
+        createdBy ? "user" : "admin",
       );
       return c.json({ data: provider });
     } catch (err) {
@@ -137,10 +149,14 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const limit = Number.isFinite(rawLimit)
       ? Math.min(Math.max(1, Math.floor(rawLimit)), 1000)
       : 100;
-    const page = Math.max(
-      1,
-      Math.floor(Number(c.req.query("page") ?? "1") || 1),
-    );
+    // **页码上界 + 参数化**（评审发现的同类漏网）：`page` 此前无上界且
+    // `OFFSET` 是字符串插值，`page=1e30` 会拼出 `OFFSET 1.0000000000000001e+33`
+    // → PG 报 `bigint out of range` → 500（管理员可达）。改参数化后既无注入面，
+    // 也让越界值由 PG 的类型系统拒绝而不是拼进 SQL 文本。
+    const rawPage = Number(c.req.query("page") ?? "1");
+    const page = Number.isFinite(rawPage) && rawPage >= 1
+      ? Math.min(Math.floor(rawPage), MAX_SAFE_PAGE)
+      : 1;
 
     const conditions: string[] = [];
     const params: string[] = [];
@@ -175,11 +191,22 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const where = conditions.length > 0
       ? `WHERE ${conditions.join(" AND ")}`
       : "";
+    // LIMIT/OFFSET 也走参数化（评审建议）：`limit` 已夹取到 ≤1000，但字符串
+    // 插值在后续改动下容易重新引入注入面。
+    //
+    // **注意 `$` 是字面量**（2026-09-23 复审，CI 回归）：两处占位符都必须写成
+    // `$${...}`（`$` + 插值出的序号）。此前 OFFSET 一处漏了 `$`，实际渲染成
+    // `LIMIT $2 OFFSET 2` —— 绑定数组多出一个未被引用的参数，PG 报
+    // `42P18 could not determine data type of parameter $3` → 用量查询 503
+    // （E2E 的 7.1/7.3 因此挂）。
+    //
+    // 另：值必须传**数字**而非字符串——postgres.js 对字符串参数按 unknown 发送，
+    // 在 `LIMIT/OFFSET` 位置无法推断类型。
     const rows = await deps.db.unsafe(
-      `SELECT * FROM llm_usage ${where} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${
-        (page - 1) * limit
-      }`,
-      params,
+      `SELECT * FROM llm_usage ${where} ORDER BY created_at DESC LIMIT $${
+        params.length + 1
+      } OFFSET $${params.length + 2}`,
+      [...params, limit, (page - 1) * limit],
     );
     return c.json({ data: rows });
   });

@@ -55,3 +55,31 @@ Deno.test("realRunner.stream: 逐行回调并返回退出码", async () => {
   assertEquals(code, 0);
   assertEquals(lines, ["a", "b"]);
 });
+
+// ── 2026-09-21 修复：stream() 把 stderr 设为 piped 却从不消费 ──
+// 触发条件：子进程向 stderr 写入超过内核管道缓冲（Linux 约 64 KiB）。
+// 实际可达：`noj-cli logs --follow` / `judge logs --follow` 的子进程是
+// `docker compose ... logs --follow`，多服务时会向 stderr 写告警/进度。
+Deno.test("realRunner.stream: 子进程大量 stderr 输出不会死锁", async () => {
+  const lines: string[] = [];
+  const r = realRunner();
+  // 先写 256 KiB stderr，再向 stdout 输出一行。
+  const script = [
+    'python3 -c "',
+    "import sys",
+    "sys.stderr.write('E' * (256*1024))",
+    "sys.stderr.flush()",
+    "print('done')\"",
+  ].join("\n");
+  const run = r.stream!("sh", ["-c", script], (l) => lines.push(l));
+  const timeout = new Promise<number>((resolve) => {
+    setTimeout(() => resolve(-1), 10_000);
+  });
+  const code = await Promise.race([run, timeout]);
+  assertEquals(
+    code,
+    0,
+    "stream 应在子进程退出后返回退出码；超时(-1)说明 stderr 管道未被排空导致死锁",
+  );
+  assertEquals(lines.includes("done"), true);
+});

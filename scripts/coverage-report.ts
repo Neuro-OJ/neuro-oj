@@ -13,6 +13,20 @@ export interface CoverageSummary {
 }
 
 /**
+ * 去掉 ANSI 颜色转义序列。
+ *
+ * `deno coverage` 在 TTY（本地终端）下会给表格单元格着色，输出形如
+ * `| \u001b[0m\u001b[32m 100.0\u001b[0m |`；非 TTY（CI）则无颜色。若不剥离，
+ * `Number("...100.0...")` 为 `NaN` → 该行被判定为无法解析 → **模块在报告中
+ * 静默消失**（同时打印"未解析到覆盖率数据（exit 0）"）。这会造成本地与 CI
+ * 的报告内容不一致，并让覆盖率数据的缺失看起来像"没有数据"而非解析缺陷。
+ */
+export function stripAnsi(text: string): string {
+  // deno-lint-ignore no-control-regex -- 需要匹配 ESC (0x1b) 起始的 SGR 序列
+  return text.replace(/\u001b\[[0-9;]*m/g, "");
+}
+
+/**
  * 解析 `deno coverage` 表格中的一行。
  *
  * 真实输出形如：
@@ -23,7 +37,7 @@ export interface CoverageSummary {
  * 表头、分隔行与无法解析的行返回 null。
  */
 export function parseCoverageLine(line: string): CoverageSummary | null {
-  const trimmed = line.trim();
+  const trimmed = stripAnsi(line).trim();
   if (!trimmed.startsWith("|")) return null;
   const body = trimmed.endsWith("|") ? trimmed.slice(1, -1) : trimmed.slice(1);
   const cells = body.split("|").map((cell) => cell.trim());

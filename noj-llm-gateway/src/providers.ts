@@ -146,6 +146,40 @@ function validateByokFields(input: {
   }
 }
 
+/**
+ * 用户（BYOK）可自行更新的字段白名单。
+ *
+ * 2026-09-21 修复：`/api/v1/users/me/llm-providers/:id` 路由把**整个请求体**
+ * 原样转发到 gateway 的 `PUT /internal/providers/:id`（TS 泛型在运行时被擦除，
+ * 路由没有字段过滤），而 `updateProvider` 按字段名取值。于是普通登录用户可以：
+ *
+ * 1. 设置 `enabled` —— 绕过管理员对自己的 Provider 禁用（`llm.ts` 在
+ *    `!provider.enabled` 时拒绝调用）；
+ * 2. 设置负的 `cost_per_1k_tokens` —— `estimateCost` 产生负值，
+ *    `enforceAndCount` / `settleUsage` 的 Lua `INCRBY` 会**减少** user/global/
+ *    problem 的共享 cost 计数器，即为自己的请求给全局配额"退款"，
+ *    绕过 `max_cost` 限额。
+ *
+ * 创建路径（`users.ts` 的 POST）本就用显式字面量对象，不含这两项——两条路径
+ * 的不对称说明更新路径是疏漏。这里在 gateway 侧按白名单收窄（core 是可信的
+ * 服务间调用方，但 gateway 不应假设上游一定做了过滤）。
+ */
+const BYOK_UPDATABLE_FIELDS = ["name", "base_url", "model", "api_key"] as const;
+
+/**
+ * 判断一行是否是用户自建（BYOK）Provider（`created_by !== "0"`）。
+ *
+ * 用于**行级**语义（base_url 的 BYOK 安全校验、视图掩码等），
+ * **不用于**判定更新白名单——后者按请求作用域（见 `updateProvider` 的
+ * `scope` 参数），否则会误伤管理端。
+ */
+function isByokRow(createdBy: string): boolean {
+  return createdBy !== "0";
+}
+
+/** 成本单价上界（防止 u64 溢出与荒谬单价）。下界为 0，拒绝负值。 */
+const MAX_COST_PER_1K_TOKENS = 1_000_000;
+
 /** 列出全部 Provider；解密失败时返回不可用的掩码，不阻断列表。 */
 export async function listProviders(
   db: Db,
@@ -239,13 +273,38 @@ export async function updateProvider(
     >
   >,
   storeKey: string,
+  /**
+   * 请求作用域：`"user"` 表示这次更新来自 BYOK 用户的自助路径
+   * （内部端点带 `?created_by=<userId>`），`"admin"` 表示管理面路径（不带该参数）。
+   *
+   * **为什么按请求作用域而不是按行的 `created_by`**（评审发现的回归）：
+   * 管理端编辑用户自建 Provider 时走的是**不带** `created_by` 的
+   * `PUT /internal/providers/:id`（`noj-core/.../llm.ts:265`），而 UI 的保存载荷
+   * 恒带 `enabled` 与 `cost_per_1k_tokens`。按行归属判定会把管理端也拦下
+   * （400 `provider_invalid`），管理员从此**无法启用/停用/改价**用户自建 Provider，
+   * 而管理端列表不暴露归属，管理员无从预判。
+   * 白名单的语义是"用户不能自改管理面字段"，因此归属应来自**请求来源**。
+   */
+  scope: "user" | "admin" = "admin",
 ): Promise<ProviderView> {
   const existing = await getProviderById(db, id);
   if (!existing) {
     throw new Error("provider_not_found");
   }
-  if (existing.created_by !== "0") {
+  const byokRow = isByokRow(existing.created_by);
+  if (byokRow) {
     validateByokFields(input);
+  }
+  // BYOK 用户自助路径：只允许更新用户自有的配置字段（白名单）。
+  // `enabled` 与 `cost_per_1k_tokens` 属管理面，用户不得改写
+  // （见 BYOK_UPDATABLE_FIELDS 注释）。管理面路径不受此限。
+  const rejected = scope === "user"
+    ? Object.keys(input).filter(
+      (k) => !(BYOK_UPDATABLE_FIELDS as readonly string[]).includes(k),
+    )
+    : [];
+  if (rejected.length > 0) {
+    throw new Error("provider_invalid");
   }
   const updatedAt = now();
   const sets: string[] = [];
@@ -257,9 +316,7 @@ export async function updateProvider(
   }
   if (input.base_url !== undefined) {
     params.push(
-      existing.created_by !== "0"
-        ? validateByokBaseUrl(input.base_url)
-        : input.base_url,
+      byokRow ? validateByokBaseUrl(input.base_url) : input.base_url,
     );
     sets.push(`base_url = $${params.length}`);
   }
@@ -268,7 +325,13 @@ export async function updateProvider(
     sets.push(`model = $${params.length}`);
   }
   if (input.cost_per_1k_tokens !== undefined) {
-    params.push(input.cost_per_1k_tokens);
+    // 负值会让 INCRBY 减少共享配额计数器（用户可为全局配额"退款"）；
+    // 荒谬大值会污染配额核算。无论来源为何都夹取到合法区间。
+    const cost = Number(input.cost_per_1k_tokens);
+    if (!Number.isFinite(cost) || cost < 0 || cost > MAX_COST_PER_1K_TOKENS) {
+      throw new Error("provider_invalid");
+    }
+    params.push(cost);
     sets.push(`cost_per_1k_tokens = $${params.length}`);
   }
   if (input.enabled !== undefined) {

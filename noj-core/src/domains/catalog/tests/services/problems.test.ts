@@ -11,6 +11,7 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   auditLogs,
   problems,
+  selfTests,
   tags,
   users,
 } from "../../../../shared/db/schema.ts";
@@ -277,6 +278,44 @@ Deno.test({
       NotFoundError,
       "题目不存在",
     );
+  },
+});
+
+Deno.test({
+  name: "problems service: 有自测记录的题目仍可删除（self_tests FK）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    // 触发条件：该题被任意用户自测过一次后 owner/admin 删除题目。
+    // 修复前：self_tests.problem_id → problems.id 为 ON DELETE no action，
+    // 且 deleteProblem 未清理 self_tests → PG 23503 → 全局 onError → 500，
+    // 题目永久无法删除。
+    const problem = await createProblem({
+      title: `带自测的待删题目 ${ts}`,
+      description: "带 self_tests 记录",
+      difficulty: "easy",
+      runtime_config: VALID_RUNTIME_CONFIG,
+    });
+    const now = new Date().toISOString();
+    await getDb().insert(selfTests).values({
+      id: crypto.randomUUID(),
+      user_id: "0",
+      problem_id: problem.id,
+      language: "python",
+      code: "print(1)",
+      created_at: now,
+    });
+
+    await deleteProblem(problem.id, "0");
+
+    // 题目与其自测记录都应被清理
+    await assertRejects(() => getProblem(problem.id), NotFoundError);
+    const leftovers = await getDb()
+      .select({ id: selfTests.id })
+      .from(selfTests)
+      .where(eq(selfTests.problem_id, problem.id));
+    assertEquals(leftovers.length, 0);
   },
 });
 

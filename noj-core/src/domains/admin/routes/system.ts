@@ -24,7 +24,10 @@ import {
 import { isBootstrap } from "../../../shared/config/settings-registry.ts";
 import { assertPermission } from "../../identity/index.ts";
 import { withActorContext } from "../../system/index.ts";
-import { parsePagination } from "../../../shared/http/pagination.ts";
+import {
+  MAX_SAFE_PAGE,
+  parsePagination,
+} from "../../../shared/http/pagination.ts";
 import {
   createAnnouncement,
   deleteAnnouncement,
@@ -156,6 +159,8 @@ router.get("/audit-logs", async (c) => {
   if (isNaN(page) || page < 1) page = 1;
   if (isNaN(perPage) || perPage < 1) perPage = 20;
   if (perPage > 100) perPage = 100;
+  // 超大 page 会让 OFFSET 超出 PG bigint（2026-09-21 修复）→ 回退默认页。
+  if (page > MAX_SAFE_PAGE) page = 1;
 
   const result = await listAuditLogs({
     page,

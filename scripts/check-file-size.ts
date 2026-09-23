@@ -29,6 +29,16 @@ export const SIZE_BASELINE: Record<string, number> = {
   // - noj-core/src/shared/config/settings-registry.ts 1380 →
   //   settings-registry.ts 946 + settings-registry-bootstrap.ts 458
   "noj-core/src/domains/contest/services/contest-similarity.ts": 1315,
+  // 2026-09-21：`noj-cli` 是纯 TS 重写后的正式模块，此前**不在 SCAN_ROOTS**，
+  // 其 3 个超阈值文件从未受棘轮约束（实测 lifecycle.ts 2097 行、cli.ts 1611 行、
+  // config.ts 1218 行，门禁只报 3 个核心/UI 文件）。补入扫描根后按现状登记基线，
+  // 只允许下调。与同轮对 `check-test-discovery` / `silent-skip-report` 的
+  // 「补 noj-cli」修复同一模式。
+  "noj-cli/src/prod/lifecycle.ts": 2097,
+  // 2026-09-23：`backup` 参数解析抽到 `backup-args.ts`，cli.ts 1518 行；同步下调
+  // 以锁住成果（棘轮只允许下调）。
+  "noj-cli/src/cli.ts": 1518,
+  "noj-cli/src/prod/config.ts": 1218,
 };
 
 const SCAN_ROOTS = [
@@ -37,6 +47,7 @@ const SCAN_ROOTS = [
   "noj-judge/src",
   "noj-llm-gateway/src",
   "noj-lmcc-extension/src",
+  "noj-cli/src",
   "noj-tests",
 ];
 
