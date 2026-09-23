@@ -18,8 +18,6 @@ export const llmProviders = pgTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     base_url: text("base_url").notNull(),
-    /** 默认模型名，题目可通过 llm_config.model 覆盖 */
-    model: text("model").notNull(),
     /** 每 1K token 费用（用于用量估算；0 表示不计费） */
     cost_per_1k_tokens: doublePrecision("cost_per_1k_tokens").notNull().default(
       0,

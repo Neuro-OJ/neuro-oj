@@ -7,9 +7,10 @@
 
 1. 部署并配置 `noj-llm-gateway`。
 2. 在管理后台添加并启用 LLM Provider。
-3. 按需配置用户/全局/题目的配额。
-4. 确认 Judge Worker 的 evaluator 能访问 gateway。
-5. 出题人创建 P 型 LLM 题目并完成评测验证。
+3. 配置平台默认 Provider 与模型（`llm_default_provider_id` / `llm_default_model`）。
+4. 按需配置用户/全局/题目的配额。
+5. 确认 Judge Worker 的 evaluator 能访问 gateway。
+6. 出题人创建 P 型 LLM 题目并完成评测验证。
 
 出题人侧的接入说明见 [出 LLM 调用题](../problemsetters/llm-problem.md)。
 
@@ -36,17 +37,33 @@
 
 - 名称：便于识别的显示名。
 - Base URL：上游服务地址（如 `https://api.openai.com/v1`）。
-- 默认模型：如 `qwen-plus`。
 - API Key：仅保存到 gateway，加密存储；列表只显示掩码。
 - 费用/1K token：用于用量估算。
 - 启用状态：只有 `enabled=true` 的 Provider 才能被 LLM 题目使用。
 
-## 3. 配额（可选）
+> Provider 不再自带默认模型；调用哪个模型由下一节的平台默认决定。
+
+## 3. 配置平台默认 Provider 与模型
+
+题目不再携带 Provider / 模型，改用平台级全局默认。在管理后台
+「系统设置 → LLM」中配置以下两项 **runtime 设置**（写库即时生效，无需重启）：
+
+| 设置键 | 说明 |
+| --- | --- |
+| `llm_default_provider_id` | 上一节创建的 Provider ID（gateway 内部 UUID） |
+| `llm_default_model` | 调用的模型名，如 `qwen-plus`（必须显式填写） |
+
+- **两项必须同时配置，无回退**：缺任一项时，LLM 题目的提交会被拒绝（400）。
+- 部署者也可用 env 兜底 `NOJ_LLM_DEFAULT_PROVIDER_ID` /
+  `NOJ_LLM_DEFAULT_MODEL`；DB 值优先，env 仅在 DB 未写入时生效。
+- 修改这两项即可让**全部** LLM 题统一切换 Provider 或模型，无需逐题调整。
+
+## 4. 配额（可选）
 
 在「LLM 用量 / 配额」管理能力中，可按用户、全局、题目维度维护
 day/month 的 calls/tokens/cost 上限；`0` 表示不限制但仍计数。
 
-## 4. 网络要求
+## 5. 网络要求
 
 LLM 调用题要求 evaluator 联网访问 gateway：
 
@@ -54,9 +71,9 @@ LLM 调用题要求 evaluator 联网访问 gateway：
 - `JUDGE_EVALUATOR_NETWORK` 必须指向 `llm-gateway` 所在 Docker 网络（如 `noj-net`）。
 - Solution 容器始终无网，且不注入任何 `NOJ_LLM_*` 环境变量。
 
-## 5. 验证
+## 6. 验证
 
-1. 管理后台确认 Provider 为启用状态。
+1. 管理后台确认 Provider 为启用状态，且「系统设置 → LLM」两项平台默认已填写。
 2. 按出题人文档创建一道 P 型 LLM 题并提交。
 3. 在「LLM 用量」页确认调用记录已落库、状态为 `ok`。
 

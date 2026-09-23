@@ -142,9 +142,7 @@ function llmManifest(
         memory_limit_mb: 512,
       },
     },
-    ...(includeLlm
-      ? { llm: { provider_id: providerId, model: MOCK_MODEL } }
-      : {}),
+    ...(includeLlm ? { llm: { max_calls: 30 } } : {}),
   });
 }
 
@@ -163,7 +161,6 @@ e2eTest("[e2e/llm-gateway] Setup: 管理员登录 + 检查 judge", async () => {
     {
       name: `e2e-mock-${testSuffix}`,
       base_url: MOCK_URL,
-      model: MOCK_MODEL,
       api_key: "e2e-mock-key",
       enabled: true,
     },
@@ -175,6 +172,30 @@ e2eTest("[e2e/llm-gateway] Setup: 管理员登录 + 检查 judge", async () => {
     );
   }
   providerId = (res.body as { data: { id: string } }).data.id;
+
+  // 平台默认：题目不再携带 provider/model，改由平台设置提供
+  const setProvider = await apiPut(
+    "/api/v1/admin/system/settings/llm_default_provider_id",
+    { value: providerId },
+    adminToken,
+  );
+  if (setProvider.status !== 200) {
+    throw new Error(
+      `写入默认 Provider 失败: ${setProvider.status} ${
+        JSON.stringify(setProvider.body)
+      }`,
+    );
+  }
+  const setModel = await apiPut(
+    "/api/v1/admin/system/settings/llm_default_model",
+    { value: MOCK_MODEL },
+    adminToken,
+  );
+  if (setModel.status !== 200) {
+    throw new Error(
+      `写入默认模型失败: ${setModel.status} ${JSON.stringify(setModel.body)}`,
+    );
+  }
 });
 
 e2eTest("[e2e/llm-gateway] 7.2 U 型题携带 llm 被拒", async () => {

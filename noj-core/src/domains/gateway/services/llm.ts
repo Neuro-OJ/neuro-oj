@@ -5,9 +5,7 @@
  * 统一通过 gateway 内部管理 API 完成。
  */
 
-const GATEWAY_URL = Deno.env.get("NOJ_LLM_GATEWAY_URL") ??
-  "http://localhost:8001";
-const SERVICE_TOKEN = Deno.env.get("NOJ_LLM_SERVICE_TOKEN") ?? "";
+import { getSetting } from "../../system/index.ts";
 
 /**
  * 创建或更新 LLM Provider 的输入参数。
@@ -17,8 +15,6 @@ export interface LlmProviderInput {
   name: string;
   /** Provider Base URL */
   base_url: string;
-  /** 模型名 */
-  model: string;
   /** API Key（仅发送给 gateway 加密存储，不会返回明文） */
   api_key: string;
   /** 每 1000 token 的成本（可选） */
@@ -50,8 +46,6 @@ export interface LlmProviderView {
   name: string;
   /** Provider Base URL */
   base_url: string;
-  /** 模型名 */
-  model: string;
   /** 每 1000 token 的成本 */
   cost_per_1k_tokens: number;
   /** 脱敏后的 API Key（如 `sk-****`） */
@@ -114,16 +108,21 @@ export interface LlmQuotaInput {
  * 自动拼接 GATEWAY_URL、注入 SERVICE_TOKEN 承载 Token 与 JSON 头，
  * 并将响应体解包返回。Token 未配置或 HTTP 非 2xx 时抛错。
  *
+ * 环境变量在每次调用时读取（而非模块加载时捕获），便于测试按需设置。
+ *
  * @param path 相对路径（如 `/internal/providers`），不含 GATEWAY_URL 前缀
  * @param init 可选的 fetch 请求配置（method/body/headers 等）
  * @returns 响应体 JSON 按类型 T 返回
- * @throws {Error} NOJ_LLM_SERVICE_TOKEN 未配置时抛出
+ * @throws {Error} 调用时 NOJ_LLM_SERVICE_TOKEN 未配置
  * @throws {LlmGatewayError} gateway 返回非 2xx 时抛出，携带状态码与错误码
  */
 async function request<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
+  const GATEWAY_URL = Deno.env.get("NOJ_LLM_GATEWAY_URL") ??
+    "http://localhost:8001";
+  const SERVICE_TOKEN = Deno.env.get("NOJ_LLM_SERVICE_TOKEN") ?? "";
   if (!SERVICE_TOKEN) {
     throw new Error("NOJ_LLM_SERVICE_TOKEN 未配置，无法访问 LLM Gateway");
   }
@@ -148,6 +147,44 @@ async function request<T>(
     );
   }
   return body as T;
+}
+
+/**
+ * 读取平台级默认 LLM Provider 与模型。
+ *
+ * 两项必须同时配置（无 Provider 级 model 回退）：任一为空则返回 null，
+ * 由调用方（buildJudgeTaskLlm）转成明确的 400 错误。
+ */
+export function getLlmPlatformDefault(): {
+  provider_id: string;
+  model: string;
+} | null {
+  const providerId = String(getSetting("llm_default_provider_id")?.value ?? "")
+    .trim();
+  const model = String(getSetting("llm_default_model")?.value ?? "").trim();
+  if (!providerId || !model) return null;
+  return { provider_id: providerId, model };
+}
+
+/**
+ * 提示平台默认 LLM 配置**只配了一半**的情况（2026-09-22 评审）。
+ *
+ * `getLlmPlatformDefault()` 要求两项同时配置，任一为空即返回 null → LLM 题提交
+ * 直接 400。而部署者极易只取消注释其中一项（`.env.prod.example` 里两项都是
+ * 注释示例），因此这里在启动时给出可操作的告警，而不是等到用户提交才 400。
+ *
+ * @returns 需要告警的键名（两项都空时返回空数组——那代表"不启用 LLM 题"，
+ * 属正常配置，不该刷告警）。
+ */
+export function describeLlmPlatformDefaultGap(): string[] {
+  const providerId = String(getSetting("llm_default_provider_id")?.value ?? "")
+    .trim();
+  const model = String(getSetting("llm_default_model")?.value ?? "").trim();
+  if (!providerId && !model) return [];
+  if (providerId && model) return [];
+  return [
+    providerId ? "llm_default_model" : "llm_default_provider_id",
+  ];
 }
 
 /** 获取 LLM Provider 列表（Key 已由 gateway 脱敏）。 */

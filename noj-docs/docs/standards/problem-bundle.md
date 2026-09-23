@@ -66,7 +66,7 @@
 | `tags` | ❌ | 标签名数组，按 name 匹配已有标签，缺省忽略 + warning |
 | `samples` | ❌ | 预留；缺省从题面自动提取 |
 | `template` | ❌ | 模板文件索引（纯文件名，禁止 `/`、`\`、`..`），缺省 `"template.py"`；客观题包禁止提供 |
-| `llm` | ❌ | LLM 调用题配置 `{ provider_id, model }`；仅 P 型 + evaluator 联网可启用；客观题包禁止提供 |
+| `llm` | ❌ | LLM 调用题配置 `{ max_calls?, max_tokens? }`（非 null 即启用，预算均可选）；仅 P 型 + evaluator 联网可启用；客观题包禁止提供 |
 
 > `categories` 字段已退役，统一使用 `tags`。
 > `runtime_config.solution` 无需配置入口文件名：Solution 入口为评测内部约定，用户代码由 Judge Worker 以硬编码名 `main.py` 注入容器，出题人不可见、不可配置。
@@ -76,7 +76,7 @@
 - `format_version` 当前唯一支持 `1`；未知版本导入返回 HTTP 400。
 - ZIP 安全约束：拒绝路径穿越条目（`..` 或 `/` 开头）、条目数 ≤ 1000、单文件 ≤ 64 MiB、总解压 ≤ 512 MiB。
 - `tags` 按 name 匹配已有标签；不存在的标签名被忽略并记录 warning。
-- `llm` 校验：仅 P 型/官方题可启用，且必须开启 evaluator 网络。
+- `llm` 校验：仅 P 型/官方题可启用，且必须开启 evaluator 网络；只校验可选预算字段，未知键（含存量的 `provider_id`/`model`）忽略。
 
 ## 导入语义与存储
 
@@ -88,14 +88,16 @@
 
 ### LLM 调用题
 
-在 manifest 中增加 `llm` 字段：
+在 manifest 中增加 `llm` 字段，只声明**预算**；用哪个 Provider、哪个模型由平台全局
+默认统一决定（后台「系统设置 → LLM」），因此题包不含部署期 UUID 或模型名，可跨部署
+直接导入：
 
 ```json
 {
   "type": "P",
   "llm": {
-    "provider_id": "uuid-of-provider",
-    "model": "qwen-plus"
+    "max_calls": 30,
+    "max_tokens": 20000
   },
   "runtime_config": {
     "evaluator": {
@@ -105,8 +107,8 @@
 }
 ```
 
-- `provider_id` 必须是管理后台中已存在且 `enabled=true` 的 Provider。
-- `model` 必须在该 Provider 可用的模型范围内。
+- `llm` 非 null 即启用；`max_calls` / `max_tokens` 均可选，若提供必须为正整数。
+- 旧 manifest 中的 `provider_id` / `model` 被容忍并忽略（不报错）。
 - 必须 P 型 + evaluator 联网，否则导入被拒。
 - 安全与配额要求见[出 LLM 调用题](../problemsetters/llm-problem.md)。
 

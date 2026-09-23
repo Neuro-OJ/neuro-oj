@@ -72,7 +72,11 @@ deno task db:migrate # 执行 LLM 表迁移（幂等）
 - `GET /internal/providers` — Provider 列表（Key 已脱敏）
 - `GET /internal/providers/:id` — Provider 精简信息（不含 Key）
 - `POST /internal/providers` — 新增 Provider
-- `PUT /internal/providers/:id` — 更新 Provider
+- `PUT /internal/providers/:id` — 更新 Provider（带 `?created_by=` 时为用户自助
+  路径，仅允许改白名单字段；不带则为管理面路径，可改 `enabled` /
+  `cost_per_1k_tokens`）
+- `POST /internal/providers/:id/test` — Provider 连通性测试（**必须带
+  `model`**， 缺失返回 400 `model_required`）
 - `GET /internal/usage` — 用量查询（支持
   submission/user/problem/provider/status/时间范围/分页）
 - `GET /internal/quotas` — 配额列表

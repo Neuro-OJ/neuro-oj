@@ -9,7 +9,7 @@
  * - resetSetting 删除 DB 行
  * - 敏感字段掩码 maskSecret
  */
-import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { systemSettings } from "../../../../shared/db/schema.ts";
@@ -570,6 +570,15 @@ Deno.test({
       ValidationError,
     );
   },
+});
+
+Deno.test("system-settings: llm 平台默认项已注册且默认为空串", () => {
+  const provider = getSetting("llm_default_provider_id");
+  const model = getSetting("llm_default_model");
+  assert(provider !== null, "llm_default_provider_id 应已注册");
+  assert(model !== null, "llm_default_model 应已注册");
+  assertEquals(provider.value, "");
+  assertEquals(model.value, "");
 });
 
 // 清理

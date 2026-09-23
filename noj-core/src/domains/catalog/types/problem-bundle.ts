@@ -71,7 +71,11 @@ export interface ProblemBundleManifest {
   submission_mode?: string;
   /** artifact 提交大小上限（MB），可空 */
   artifact_max_size_mb?: number | null;
-  /** LLM 配置（可空）：仅 P 型/官方题可启用，且必须开启 evaluator 网络 */
+  /**
+   * LLM 配置（可空）：仅 P 型/官方题可启用，且必须开启 evaluator 网络。
+   * 只声明预算；Provider/模型由平台全局默认决定。旧字段
+   * `provider_id` / `model` 容忍并忽略。
+   */
   llm?: LlmConfig;
   /** 客观题套卷标记：true 时使用 questions.json，不要求 runtime_config/evaluate.py */
   is_objective?: boolean;

@@ -49,6 +49,23 @@ Deno.test("silent-skip: renderReport 生成 Markdown", () => {
   assertEquals(md.includes("tests/a_test.ts"), true);
 });
 
+Deno.test("silent-skip: renderReport 输出与输入顺序无关（门禁逐字节比对）", () => {
+  // 门禁 `--check` 会把报告与一次全新渲染**逐字节比对**，而 collectFiles 的
+  // Deno.readDir 顺序不稳定。同一命中的不同输入顺序必须渲染出完全相同的文本，
+  // 否则 CI / 干净检出会误报"报告过期"。
+  const a: SkipHit[] = [
+    { file: "b/b_test.ts", line: 20, reason: "ignore" },
+    { file: "a/a_test.ts", line: 9, reason: "early-return" },
+    { file: "a/a_test.ts", line: 3, reason: "ignore" },
+  ];
+  const b: SkipHit[] = [a[1]!, a[2]!, a[0]!];
+  assertEquals(renderReport(a), renderReport(b));
+  // 排序：先文件路径 localeCompare，再行号升序。
+  const body = renderReport(a).split("\n").filter((l) => l.startsWith("| a/"));
+  assertEquals(body[0]!.includes("| 3 |"), true);
+  assertEquals(body[1]!.includes("| 9 |"), true);
+});
+
 Deno.test("silent-skip: 数量未变时通过", () => {
   const hits = [hit("a.ts"), hit("a.ts"), hit("b.ts")];
   const baseline = buildBaseline(hits);

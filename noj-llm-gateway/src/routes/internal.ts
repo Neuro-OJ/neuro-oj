@@ -43,7 +43,7 @@ export function createInternalRouter(deps: InternalDeps): Hono {
   app.get("/internal/providers/:id", async (c) => {
     const id = c.req.param("id");
     const rows = await deps
-      .db`SELECT id, name, base_url, model, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id}`;
+      .db`SELECT id, name, base_url, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id}`;
     if (rows.length === 0) {
       return c.json({ error: "provider_not_found" }, 404);
     }
@@ -53,7 +53,7 @@ export function createInternalRouter(deps: InternalDeps): Hono {
   // 新增 Provider
   app.post("/internal/providers", async (c) => {
     const body = await c.req.json<ProviderInput>();
-    if (!body.name || !body.base_url || !body.model || !body.api_key) {
+    if (!body.name || !body.base_url || !body.api_key) {
       return c.json({ error: "missing_required_fields" }, 400);
     }
     try {
@@ -101,16 +101,24 @@ export function createInternalRouter(deps: InternalDeps): Hono {
   });
 
   app.post("/internal/providers/:id/test", async (c) => {
+    const body = await c.req.json<{ model?: string }>().catch(
+      () => ({} as { model?: string }),
+    );
     try {
       await testProviderConnection(
         deps.db,
         c.req.param("id"),
         deps.config.storeKey,
+        body.model ?? "",
       );
       return c.json({ data: { status: "ok" } });
     } catch (err) {
       const code = err instanceof Error ? err.message : "provider_error";
-      const status = code === "provider_not_found" ? 404 : 502;
+      const status = code === "provider_not_found"
+        ? 404
+        : code === "model_required"
+        ? 400
+        : 502;
       return c.json({ error: code }, status);
     }
   });
