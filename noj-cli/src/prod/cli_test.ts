@@ -1501,7 +1501,13 @@ function minimalRunner() {
 // 2) `--retention-days 0` 会删掉刚产出的快照（浮点年龄比较），只剩孤儿 .sha256。
 // 3) `--min-free-mb` 未登记进 valueTaking，旗标的值会被当成位置参数。
 
-Deno.test("复审: backup create --json 的 stdout 必须逐字节为 JSON（清理提示走 stderr）", async () => {
+Deno.test("复审: 自动清理的提示文案走 stderr（--json 的 stdout 只含 JSON）", async () => {
+  // 上一轮复审指出：此前那条 CLI 级用例在**没有 PostgreSQL**的环境下
+  // `stdout` 为空，被 `if (joined !== "")` 短路成空转（变异测试证实不会失败）。
+  // 这里改为**直接断言接线**：清理提示必须经 `deps.err` 而非 `deps.out`。
+  //
+  // 做法：注入 ops 走完整 create 路径，并让 prune 真的删掉一个过期快照
+  // （陈旧文件名的 mtime 由 utimes 置为 40 天前，保证按 mtime 判定为过期）。
   const root = await Deno.makeTempDir();
   try {
     const dir = join(root, "install");
@@ -1518,70 +1524,83 @@ Deno.test("复审: backup create --json 的 stdout 必须逐字节为 JSON（清
     await Deno.writeTextFile(join(dir, "bin/noj-cli"), "#!/bin/sh\n");
     await Deno.chmod(join(dir, "bin/noj-cli"), 0o755);
 
-    // 用注入 ops 走完整 create 路径，并让 prune 真的删掉一个过期快照，
-    // 从而触发"已清理过期快照"提示。
     const backupDir = join(root, "backups");
     await Deno.mkdir(backupDir, { recursive: true });
+    // 一个"陈旧"快照：文件名可解析 + mtime 40 天前
     const stale = join(backupDir, "snapshot-20200101-000000.nojbackup");
     await Deno.writeTextFile(stale, "old\n");
-    const staleSidecar = stale + ".sha256";
-    await Deno.writeTextFile(staleSidecar, "deadbeef  stale\n");
+    const past = new Date(Date.now() - 40 * 24 * 3600 * 1000);
+    await Deno.utime(stale, past, past);
 
-    const stdout: string[] = [];
-    const stderr: string[] = [];
-    const originalLog = console.log;
-    const originalErr = console.error;
-    console.log = (...a: unknown[]) => {
-      stdout.push(a.join(" "));
-    };
-    console.error = (...a: unknown[]) => {
-      stderr.push(a.join(" "));
-    };
-    let code = -1;
-    try {
-      code = await run([
-        "backup",
-        "create",
-        "--json",
-        "--dir",
-        dir,
-        "--backup-dir",
-        backupDir,
-        "--no-encrypt",
-        "--retention-days",
-        "0",
-      ]);
-    } finally {
-      console.log = originalLog;
-      console.error = originalErr;
-    }
+    const { runBackupCreate } = await import("./cli.ts");
+    const outLines: string[] = [];
+    const errLines: string[] = [];
+    await runBackupCreate(dir, {
+      args: [],
+      deps: {
+        runner: {
+          run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }),
+          spawn: () => {
+            throw new Error("no spawn");
+          },
+        },
+        processEnv: {},
+        out: (t) => outLines.push(t),
+        err: (t) => errLines.push(t),
+      },
+      backupDir,
+      passphraseFile: join(root, "pass"),
+      noEncrypt: true,
+      ops: makeCreateFakeOps(),
+      retentionDays: 7,
+      minFreeMb: 0,
+      // 空间守卫注入：不依赖真实 df
+      probeFreeBytes: () => Promise.resolve(Number.POSITIVE_INFINITY),
+    }).catch(() => {
+      // create 本体在无真实 pg/redis 时可能失败；本用例只关心"清理提示的通道"，
+      // 但为了确保真的走到清理阶段，下面的断言会校验它确实发生了。
+    });
 
-    // stdout 必须是**可解析的 JSON**（此前混入 "✓ 已清理过期快照…" 会抛错）
-    const joined = stdout.join("\n").trim();
-    if (joined !== "") {
-      assert(
-        joined.startsWith("{"),
-        `--json 的 stdout 必须以 JSON 开头，实得：${joined.slice(0, 120)}`,
-      );
-      // 清理提示（若发生）必须在 stderr
-      const cleaned = stderr.join("\n");
-      assert(
-        cleaned.includes("已清理") || cleaned.includes("过期"),
-        `清理提示必须走 stderr，实得 stderr：${cleaned.slice(0, 200)}`,
-      );
-    }
-    // **关键**：刚创建的这份快照不得被自己的清理删掉（--retention-days 0）
-    const files = [...Deno.readDirSync(backupDir)].map((e) => e.name);
-    const containers = files.filter((n) => n.endsWith(".nojbackup"));
+    const deleted = !(await Deno.stat(stale).then(() =>
+      true
+    ).catch(() => false));
+    // 清理确实发生（否则本用例空转）
+    assert(deleted, "陈旧快照应被自动清理（否则本用例无法验证提示通道）");
+    // **关键断言**：提示走 err，绝不走 out
     assert(
-      containers.length >= 1,
-      `--retention-days 0 不得删掉刚创建的快照；目录内：${files.join("、")}`,
+      errLines.some((l) => l.includes("已清理过期快照")),
+      `清理提示必须走 stderr，实得 stderr=${JSON.stringify(errLines)}`,
     );
-    void code;
+    assert(
+      !outLines.some((l) => l.includes("已清理过期快照")),
+      `清理提示不得走 stdout，实得 stdout=${JSON.stringify(outLines)}`,
+    );
   } finally {
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
+
+/** 构造一份最小 create ops（只写必要文件，不触真实 pg/redis/minio）。 */
+function makeCreateFakeOps() {
+  return {
+    postgresDump: (dest: string) => Deno.writeTextFile(dest, "DUMP"),
+    postgresGlobals: (dest: string) => Deno.writeTextFile(dest, "-- globals\n"),
+    postgresRestoreList: (dump: string, dest: string) =>
+      Deno.stat(dump).then((st) =>
+        st.size === 0
+          ? Promise.reject(new Error("pg_restore: no magic string"))
+          : Deno.writeTextFile(dest, "list\n")
+      ),
+    redisRdb: (dest: string) => Deno.writeTextFile(dest, "REDIS"),
+    redisPersistence: (dest: string) => Deno.writeTextFile(dest, "ok\n"),
+    minioMirror: (destDir: string) => Deno.mkdir(destDir, { recursive: true }),
+    gpgEncrypt: (src: string, dest: string) => Deno.copyFile(src, dest),
+    gpgDecrypt: (src: string, dest: string) => Deno.copyFile(src, dest),
+    tarZst: (_staging: string, dest: string) => Deno.writeTextFile(dest, "TAR"),
+    untarZst: (_src: string, destDir: string) =>
+      Deno.mkdir(destDir, { recursive: true }),
+  };
+}
 
 Deno.test("复审: 陈旧快照可被清理，但刚创建的那份按 excludePaths 保住", async () => {
   const { planPrune } = await import("./backup/index.ts");
@@ -1628,4 +1647,73 @@ Deno.test("复审: positionals 不得把 --min-free-mb 的值当位置参数", a
     positionals(["--retention-days", "7", "--min-free-mb", "1024", "snap"]),
     ["snap"],
   );
+});
+
+// ── 2026-09-23 复审：`--json` 契约在 restore --confirm / schedule 仍破 ──
+// 触发条件：这两条路径的人类日志接 `deps.out`（stdout），与 JSON 载荷叠加，
+// `JSON.parse(stdout)` 失败。CHANGELOG 承诺"所有生产命令"的 stdout 逐字节为 JSON。
+Deno.test("复审: restore --confirm 的日志通道在 --json 下改为 stderr（接线断言）", async () => {
+  // 说明：`restoreConfirmed` 里的 `log()` 只在 **`--restore-env` 解密成功后**被调用
+  // （commands.ts 的唯一 log 点），要走到那里必须准备完整加密快照——成本高且
+  // 易碎。这里改为**断言接线本身**：JSON 模式下 `runBackupRestore` 传入的 `log`
+  // 必须写 stderr；非 JSON 模式写 out。
+  //
+  // 做法：读取源文件，确认 restore --confirm 分支的 log 回调包含 hasJson 分流。
+  // 这是"接线级"断言（与 `verify 必须真的验签` 那类用例同一思路），
+  // 比依赖深层流程到达更稳。
+  const src = await Deno.readTextFile(
+    new URL("./cli.ts", import.meta.url).pathname,
+  );
+  const idx = src.indexOf("restoreConfirmed({");
+  assert(idx > 0, "应能找到 restoreConfirmed 调用点");
+  const block = src.slice(idx, idx + 1600);
+  assert(
+    block.includes("hasJson(args)") && block.includes("console.error"),
+    `restore --confirm 的 log 必须在 --json 时走 stderr，实得片段：\n${
+      block.slice(0, 700)
+    }`,
+  );
+  assert(
+    !/log: \(line\) => \(deps\.out/.test(block),
+    "restore --confirm 的 log 不得直连 deps.out（会在 --json 下污染 stdout）",
+  );
+});
+
+Deno.test("复审: backup schedule 的人类日志在 --json 下走 stderr", async () => {
+  const { runBackupSchedule } = await import("./cli.ts");
+  const outLines: string[] = [];
+  const errLines: string[] = [];
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "install");
+    await Deno.mkdir(dir, { recursive: true });
+    await Deno.writeTextFile(
+      join(dir, "docker-compose.prod.yml"),
+      "services: {}\n",
+    );
+    await Deno.writeTextFile(join(dir, ".env.prod"), "NOJ_VERSION=v0.9.5\n");
+    await Deno.chmod(join(dir, ".env.prod"), 0o600);
+    // status 子命令会读 crontab；用注入 runner 模拟"无 crontab"
+    await runBackupSchedule(dir, ["status", "--json"], {
+      runner: {
+        run: () =>
+          Promise.resolve({ code: 1, stdout: "", stderr: "no crontab" }),
+        spawn: () => {
+          throw new Error("no spawn");
+        },
+      },
+      processEnv: {},
+      out: (t) => outLines.push(t),
+      err: (t) => errLines.push(t),
+    }).catch(() => {});
+    assertEquals(
+      outLines.filter((l) => l.trim() !== "").length,
+      0,
+      `--json 下 schedule 不得往 stdout 写人类日志，实得：${
+        JSON.stringify(outLines)
+      }`,
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
 });

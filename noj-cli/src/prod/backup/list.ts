@@ -77,13 +77,29 @@ export async function listBackups(backupDir: string): Promise<ListResult> {
       continue;
     }
     const path = backupDir + "/" + e.name;
+    // 时间来源优先级（2026-09-23 复审修复）：
+    // 1. 文件名里的时间戳（最可信，与 bash 的 `-name 'snapshot-*'` 口径一致）；
+    // 2. **文件系统 mtime**（文件名解析不出时间戳时的兜底，与 bash `find -mtime`
+    //    实际使用的判据一致）。
+    //
+    // 为什么不能用 epoch 兜底：`backup create` 的自动清理按"年龄 > 保留天数"删除，
+    // epoch 会让任何**文件名不合规范**的快照被判成"极旧"而当场删除。触发场景：
+    // - 同秒碰撞的 `snapshot-<ts>-1.nojbackup`（`allocateContainerPath` 的产物，
+    //   `parseBackupName` 不匹配）；
+    // - 用户手工改名/拷贝的快照（bash 的 `find -mtime +N` 永不删它们）。
+    // 这两种情况下 mtime 才是真实年龄，用 epoch 属误删。
+    let createdAt: string;
     const parsed = parseBackupName(e.name);
+    if (parsed !== null) {
+      createdAt = parsed.toISOString();
+    } else {
+      const stat = await Deno.stat(path);
+      createdAt = (stat.mtime ?? new Date(0)).toISOString();
+    }
     entries.push({
       name: e.name,
       path,
-      // 无法解析时间时用 epoch：排序会被排到最后（视为最旧），
-      // 避免坏名字的条目被误当成最新而躲过 prune。
-      createdAt: (parsed ?? new Date(0)).toISOString(),
+      createdAt,
       bytes: e.isDirectory ? await dirSize(path) : (await Deno.stat(path)).size,
       format,
     });
