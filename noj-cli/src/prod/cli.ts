@@ -708,7 +708,10 @@ export async function runBackupCreate(
   const d = prodDeps(opts.deps);
   const envFile = join(dir, PROD_ENV_FILE);
   const composeFile = join(dir, PROD_COMPOSE_FILE);
-  const backupDir = opts.backupDir ?? prodBackupDir(dir);
+  // **归一化尾随斜杠**（2026-09-23 复审）：`--backup-dir /x/` 与
+  // `listBackups` 拼出的 `/x//name` 不一致，会让下面的 `excludePaths` 完全失配
+  // → 刚创建的快照仍可能被自己的清理删掉。
+  const backupDir = normalizeDir(opts.backupDir ?? prodBackupDir(dir));
   const passphraseFile = opts.passphraseFile;
   const env = await readEnvValues(envFile);
 
@@ -821,6 +824,18 @@ export async function runBackupCreate(
     note(`! 备份已完成，但过期快照清理失败：${(err as Error).message}`);
   }
   return created;
+}
+
+/**
+ * 去掉目录路径的尾随斜杠（根路径除外）。
+ *
+ * 用途：`backup create` 的 `excludePaths` 与 `listBackups` 拼出的路径必须逐字符
+ * 一致，否则"刚创建的那份"保护会静默失效（2026-09-23 复审实测：
+ * `--backup-dir /x/` 时 `excludePaths` 完全失配）。
+ */
+export function normalizeDir(path: string): string {
+  if (path.length <= 1) return path;
+  return path.replace(/\/+$/, "");
 }
 
 /** 校验一个非负整数旗标（未给或非法时的报错口径与 bash `check_numbers` 一致）。 */
@@ -1090,7 +1105,12 @@ export async function runBackupRestore(
       restoreEnv: flagValue(args, "--restore-env"),
       judge: false,
       dockerBin,
-      log: (line) => (deps.out ?? ((t: string) => console.log(t)))(line),
+      // `--json` 时 stdout 必须逐字节为 JSON（CHANGELOG 的生产命令契约），
+      // 因此人类日志改道 stderr（2026-09-23 复审）。
+      log: (line) => {
+        if (hasJson(args)) console.error(line);
+        else (deps.out ?? ((t: string) => console.log(t)))(line);
+      },
       ops,
     });
     return {
@@ -1122,7 +1142,11 @@ export async function runBackupSchedule(
     backupDir: flagValue(args, "--backup-dir") ?? prodBackupDir(dir),
     passphraseFile: flagValue(args, "--passphrase-file") ??
       d.processEnv["NOJ_BACKUP_PASSPHRASE_FILE"],
-    log: (line: string) => (deps.out ?? ((t: string) => console.log(t)))(line),
+    // 同上：`--json` 时人类日志走 stderr，保证 stdout 干净。
+    log: (line: string) => {
+      if (hasJson(args)) console.error(line);
+      else (deps.out ?? ((t: string) => console.log(t)))(line);
+    },
   };
   switch (sub) {
     case "install":

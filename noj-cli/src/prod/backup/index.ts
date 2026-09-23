@@ -62,32 +62,53 @@ export function detectSnapshotFormat(input: DetectInput): SnapshotFormat {
  * - 单文件：`snapshot-2026-09-17T10-30-00Z.nojbackup`（ISO，冒号换成 `-`）
  * - 旧目录：`snapshot-20260917-103000`（紧凑时间戳）
  *
+ * 两种形态都允许**同秒碰撞后缀**（`-1`、`-2`…），见
+ * {@link allocateContainerPath}：同一秒内连续备份两次会产出
+ * `snapshot-<ts>-1.nojbackup`。早先不识别此后缀，导致这类"合法产物"在
+ * `listBackups` 里退化成 epoch，进而在下一次 `backup create` 的自动清理中被
+ * 当成"极旧"误删（2026-09-23 复审）。
+ *
  * @returns Date；无法解析返回 null（**不抛错**——list 不应因一个坏名字整体失败）。
  */
 export function parseBackupName(name: string): Date | null {
-  const base = name.replace(/\.nojbackup$/i, "").replace(/^snapshot-/, "");
+  const raw = name.replace(/\.nojbackup$/i, "").replace(/^snapshot-/, "");
+  // 同秒碰撞后缀：`-1` / `-2` …（`allocateContainerPath` 的产物）。
+  //
+  // 只在**两种已知时间戳形态都匹配失败**时才尝试剥掉后缀——否则会吃掉紧凑形态的
+  // 秒字段（`20260917-103000` 末尾的 `-103000` 会被误剥）。因此这里先按原样匹配，
+  // 失败后再按剥后缀重试。
+  const base = raw;
 
-  // ISO 形式：2026-09-17T10-30-00Z（冒号被替换为 -）
-  const isoMatch = base.match(
-    /^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z?$/,
-  );
-  if (isoMatch) {
-    const [, y, mo, d, h, mi, s] = isoMatch;
-    const date = new Date(
-      `${y}-${mo}-${d}T${h}:${mi}:${s}Z`,
+  /** 按给定字符串解析两种时间戳形态；解析不出返回 null。 */
+  const parseExact = (candidate: string): Date | null => {
+    // ISO 形式：2026-09-17T10-30-00Z（冒号被替换为 -）
+    const isoMatch = candidate.match(
+      /^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z?$/,
     );
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
+    if (isoMatch) {
+      const [, y, mo, d, h, mi, s] = isoMatch;
+      const date = new Date(`${y}-${mo}-${d}T${h}:${mi}:${s}Z`);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    // 紧凑形式：20260917-103000
+    const compact = candidate.match(
+      /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/,
+    );
+    if (compact) {
+      const [, y, mo, d, h, mi, s] = compact;
+      const date = new Date(`${y}-${mo}-${d}T${h}:${mi}:${s}Z`);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    return null;
+  };
 
-  // 紧凑形式：20260917-103000
-  const compact = base.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/);
-  if (compact) {
-    const [, y, mo, d, h, mi, s] = compact;
-    const date = new Date(
-      `${y}-${mo}-${d}T${h}:${mi}:${s}Z`,
-    );
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
+  // 先按原样解析（覆盖绝大多数产物）
+  const exact = parseExact(base);
+  if (exact !== null) return exact;
+
+  // 再尝试剥掉同秒碰撞后缀（`-1`/`-2`…）后解析
+  const withoutSuffix = base.replace(/-\d+$/, "");
+  if (withoutSuffix !== base) return parseExact(withoutSuffix);
 
   return null;
 }
