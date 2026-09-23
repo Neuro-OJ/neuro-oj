@@ -43,6 +43,7 @@ const navGroups: NavGroup[] = [
       { label: "内容审查", to: "/admin/content-review", icon: 'i-lucide-shield-alert' },
       { label: "举报管理", to: "/admin/reports", icon: 'i-lucide-flag' },
       { label: "公告管理", to: "/admin/announcements", icon: 'i-lucide-megaphone' },
+      { label: "轮播管理", to: "/admin/carousel", icon: 'i-lucide-gallery-horizontal' },
     ],
   },
   {
@@ -52,6 +53,7 @@ const navGroups: NavGroup[] = [
       { label: "角色管理", to: "/admin/roles", icon: 'i-lucide-shield-check' },
       { label: "黑名单管理", to: "/admin/blacklist", icon: 'i-lucide-ban' },
       { label: "系统设置", to: "/admin/settings", icon: 'i-lucide-settings' },
+      { label: "法律与合规", to: "/admin/legal", icon: 'i-lucide-scale' },
       { label: "审计日志", to: "/admin/audit-logs", icon: 'i-lucide-scroll-text' },
     ],
   },

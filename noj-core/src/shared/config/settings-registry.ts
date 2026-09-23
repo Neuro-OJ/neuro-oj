@@ -45,6 +45,7 @@ export type SettingCategory =
   | "judge"
   | "review"
   | "llm"
+  | "legal"
   | "other";
 
 /** 配置项元数据（统一注册表条目） */
@@ -77,26 +78,151 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
   // 数据说明只公开以下专用字段，运营者补充真实部署信息。
   // ── runtime（DB-owned，运行时可热改）───────────────────────
   // bootstrap 半区见 ./settings-registry-bootstrap.ts（下方展开处拼接）。
+  // ── legal（法律与合规，PIPL，2026-09-23）───────────────────
   {
+    key: "legal_operator_name",
+    type: "string",
+    default: "",
+    description: "个人信息处理者名称（运营主体，公开展示）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "LEGAL_OPERATOR_NAME",
+    category: "legal",
+  },
+  {
+    key: "legal_contact",
+    type: "string",
+    default: "",
+    description: "法律与隐私事务联系方式（邮箱或说明，公开展示）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "LEGAL_CONTACT",
+    category: "legal",
+  },
+  {
+    key: "legal_icp_number",
+    type: "string",
+    default: "",
+    description: "ICP 备案号（未备案留空，页脚不显示）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "LEGAL_ICP_NUMBER",
+    category: "legal",
+  },
+  {
+    key: "legal_icp_url",
+    type: "string",
+    default: "",
+    description: "ICP 备案查询链接（可选）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "LEGAL_ICP_URL",
+    category: "legal",
+  },
+  {
+    key: "legal_police_number",
+    type: "string",
+    default: "",
+    description: "公安联网备案号（未备案留空，页脚不显示）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "LEGAL_POLICE_NUMBER",
+    category: "legal",
+  },
+  {
+    key: "legal_police_url",
+    type: "string",
+    default: "",
+    description: "公安联网备案查询链接（可选）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "LEGAL_POLICE_URL",
+    category: "legal",
+  },
+  {
+    key: "legal_third_parties",
+    type: "text",
+    default: "",
+    description:
+      "第三方服务清单（JSON 数组：名称/用途/数据种类；经 /api/v1/site/meta 公开展示）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "LEGAL_THIRD_PARTIES",
+    category: "legal",
+  },
+  {
+    // 2026-09-25 评审：旧键 `data_policy_deployment` 的语义是"部署补充说明"
+    // （存储区域/保留期限/备份/第三方服务…），0088 迁移一度把它搬进
+    // `legal_operator_name`（个人信息处理者名称），导致 /data-policy 页把多行
+    // 说明渲染成"处理者：<说明>"。这里恢复语义：独立键承载部署说明。
+    key: "legal_deployment_notes",
+    type: "text",
+    default: "",
+    description:
+      "部署补充说明（存储区域、保留期限、备份、第三方服务及额外用途；/data-policy 公开展示）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "LEGAL_DEPLOYMENT_NOTES",
+    category: "legal",
+  },
+  {
+    // 老 env 名兼容（对位 bootstrap 的 OAUTH_GITHUB_SECRET 别名做法）：
+    // 升级后仍在 .env.prod 里配 DATA_POLICY_CONTACT 的部署不应静默失去联系方式。
+    // 该键不展示在后台（值应写入 legal_contact），只在读取链里作为兜底。
     key: "data_policy_contact",
     type: "string",
     default: "",
-    description: "数据使用与注销反馈渠道（公开展示，请填写实际邮箱或联系说明）",
+    description:
+      "【已废弃别名】旧 env `DATA_POLICY_CONTACT` 的兼容项；请改用 legal_contact / LEGAL_CONTACT",
     is_secret: false,
     scope: "runtime",
     envFallback: "DATA_POLICY_CONTACT",
-    category: "other",
+    category: "legal",
+    visible: false,
   },
   {
     key: "data_policy_deployment",
     type: "text",
     default: "",
     description:
-      "数据说明的部署补充：运营主体、存储区域、保留期限、备份、第三方服务及额外用途（公开纯文本）",
+      "【已废弃别名】旧 env `DATA_POLICY_DEPLOYMENT` 的兼容项；请改用 legal_deployment_notes / LEGAL_DEPLOYMENT_NOTES",
     is_secret: false,
     scope: "runtime",
     envFallback: "DATA_POLICY_DEPLOYMENT",
-    category: "other",
+    category: "legal",
+    visible: false,
+  },
+  {
+    key: "tsa_provider",
+    type: "string",
+    default: "disabled",
+    description:
+      "政策版本时间戳 Provider：disabled | freetsa | digicert | custom（仅技术验证用免费 Provider）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "TSA_PROVIDER",
+    category: "legal",
+  },
+  {
+    key: "tsa_url",
+    type: "string",
+    default: "",
+    description: "自定义 TSA 端点（tsa_provider=custom 时填写）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "TSA_URL",
+    category: "legal",
+  },
+  {
+    key: "tsa_root_cert",
+    type: "text",
+    default: "",
+    description:
+      "TSA 根证书（PEM，custom 时用于验证）。config-usage: exempt 本期 TSA 仅签发时间戳不做离线验证，根证书供后续验证/审计时人工使用，暂无代码读取点",
+    is_secret: true,
+    scope: "runtime",
+    envFallback: "TSA_ROOT_CERT",
+    category: "legal",
   },
   // ── auth ──────────────────────────────────────────────────
   {

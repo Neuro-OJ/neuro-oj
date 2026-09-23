@@ -4,6 +4,7 @@
  * 提供：
  * - listPublicAnnouncements()：公开列表（仅 active，置顶优先 + 分页）
  * - getPublicAnnouncement()：公开详情（非 active / 不存在 → 404）
+ * - getLatestBannerAnnouncement()：最新带 `banner_text` 的公开公告（导航栏横幅）
  * - listAdminAnnouncements()：管理列表（含未发布/已下架，可选 is_active 筛选）
  * - createAnnouncement() / updateAnnouncement() / deleteAnnouncement()：管理 CRUD
  *
@@ -15,7 +16,7 @@
  *   由前端页面加载 / 轮询 fallback 兜底，与既有事件机制一致）。
  */
 
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, isNotNull, ne } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";
 import { announcements } from "./../../../shared/db/schema.ts";
@@ -60,6 +61,7 @@ export interface AnnouncementDetail {
   public_id: string;
   title: string;
   content: string;
+  banner_text: string | null;
   is_pinned: boolean;
   created_at: string;
   updated_at: string;
@@ -72,6 +74,7 @@ export interface AdminAnnouncementItem {
   public_id: string;
   title: string;
   content: string;
+  banner_text: string | null;
   is_pinned: boolean;
   is_active: boolean;
   created_by: string;
@@ -79,10 +82,18 @@ export interface AdminAnnouncementItem {
   updated_at: string;
 }
 
+/** 导航栏横幅载荷（无用户态） */
+export interface AnnouncementBanner {
+  id: string;
+  public_id: string;
+  banner_text: string;
+}
+
 /** 创建公告入参（is_pinned / is_active 缺省 false / true） */
 export interface CreateAnnouncementInput {
   title: string;
   content: string;
+  banner_text?: string | null;
   is_pinned?: boolean;
   is_active?: boolean;
 }
@@ -91,6 +102,7 @@ export interface CreateAnnouncementInput {
 export interface UpdateAnnouncementInput {
   title?: string;
   content?: string;
+  banner_text?: string | null;
   is_pinned?: boolean;
   is_active?: boolean;
 }
@@ -113,6 +125,18 @@ async function broadcastAnnouncementUpdate(): Promise<void> {
     Channels.announcements,
     { type: "announcement:updated" },
   );
+}
+
+/**
+ * 规范化横幅文字：去首尾空白；空串视为「不出横幅」→ null。
+ *
+ * @param value 原始输入（可为 undefined/null）
+ * @returns 规范化后的字符串或 null
+ */
+function normalizeBannerText(value: string | null | undefined): string | null {
+  if (value === undefined || value === null) return null;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
 }
 
 /** 标题 / 内容长度校验（title 1–100、content 1–50000），非法抛 400 */
@@ -184,10 +208,43 @@ export async function getPublicAnnouncement(
     public_id: row.public_id,
     title: row.title,
     content: row.content,
+    banner_text: row.banner_text,
     is_pinned: row.is_pinned,
     created_at: row.created_at,
     updated_at: row.updated_at,
     created_by: row.created_by,
+  };
+}
+
+/**
+ * 取最新一条带横幅文字的公开公告（导航栏横幅用）。
+ *
+ * 无用户态、无分页：`banner_text IS NOT NULL`（且非空串）且 `is_active`，
+ * 按 `is_pinned DESC, created_at DESC` 取 1 条。
+ *
+ * @returns 横幅载荷；无符合条件的公告时返回 null
+ */
+export async function getLatestBannerAnnouncement(): Promise<
+  AnnouncementBanner | null
+> {
+  const db = getDb();
+  const [row] = await db
+    .select()
+    .from(announcements)
+    .where(
+      and(
+        eq(announcements.is_active, true),
+        isNotNull(announcements.banner_text),
+        ne(announcements.banner_text, ""),
+      ),
+    )
+    .orderBy(desc(announcements.is_pinned), desc(announcements.created_at))
+    .limit(1);
+  if (!row || !row.banner_text) return null;
+  return {
+    id: row.id,
+    public_id: row.public_id,
+    banner_text: row.banner_text,
   };
 }
 
@@ -263,6 +320,7 @@ export async function createAnnouncement(
     public_id: publicId,
     title: input.title.trim(),
     content: input.content.trim(),
+    banner_text: normalizeBannerText(input.banner_text),
     is_pinned: input.is_pinned ?? false,
     is_active: input.is_active ?? true,
     created_by: actorId,
@@ -309,6 +367,9 @@ export async function updateAnnouncement(
   };
   if (input.title !== undefined) updates.title = input.title.trim();
   if (input.content !== undefined) updates.content = input.content.trim();
+  if (input.banner_text !== undefined) {
+    updates.banner_text = normalizeBannerText(input.banner_text);
+  }
   if (input.is_pinned !== undefined) updates.is_pinned = input.is_pinned;
   if (input.is_active !== undefined) updates.is_active = input.is_active;
 

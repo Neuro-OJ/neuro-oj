@@ -53,6 +53,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'breadcrumb.settings': '设置',
     'breadcrumb.about': '关于',
     'breadcrumb.dataPolicy': '数据使用政策',
+    'breadcrumb.privacyPolicy': '隐私政策',
+    'breadcrumb.termsOfService': '服务条款',
     'auth.login': '登录',
     'auth.register': '注册',
     'auth.usernameOrEmail': '用户名 / 邮箱',
@@ -87,6 +89,9 @@ export const messages: Record<Locale, Record<string, string>> = {
     'auth.thirdPartyRegister': '或使用第三方账号注册',
     'auth.loginWith': '使用 {name} 登录',
     'auth.registerWith': '使用 {name} 注册',
+    'auth.oauthLegalConsentRequired':
+      '这是新账号：按《个人信息保护法》要求，建号前需先明确同意《服务条款》与《隐私政策》。请前往注册页勾选同意后再用第三方账号注册。',
+    'auth.goToRegister': '前往注册页',
     'auth.twoFactorHint': '账号已启用两步验证，请输入6位动态验证码验证身份',
     'auth.twoFactorRecoveryHint': '账号已启用两步验证，请输入恢复码或上传恢复码文件验证身份',
     'auth.account': '账号：{account}',
@@ -225,6 +230,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'breadcrumb.settings': 'Settings',
     'breadcrumb.about': 'About',
     'breadcrumb.dataPolicy': 'Data policy',
+    'breadcrumb.privacyPolicy': 'Privacy policy',
+    'breadcrumb.termsOfService': 'Terms of service',
     'auth.login': 'Log in',
     'auth.register': 'Sign up',
     'auth.usernameOrEmail': 'Username / email',
@@ -259,6 +266,9 @@ export const messages: Record<Locale, Record<string, string>> = {
     'auth.thirdPartyRegister': 'Or sign up with',
     'auth.loginWith': 'Log in with {name}',
     'auth.registerWith': 'Sign up with {name}',
+    'auth.oauthLegalConsentRequired':
+      'This looks like a new account: under PIPL, you must explicitly agree to the Terms of Service and Privacy Policy before we can create it. Please check the consent box on the sign-up page and continue with your third-party account there.',
+    'auth.goToRegister': 'Go to sign-up',
     'auth.twoFactorHint': 'Two-factor authentication is enabled. Enter your 6-digit code.',
     'auth.twoFactorRecoveryHint':
       'Two-factor authentication is enabled. Enter a recovery code or upload a recovery-code file.',

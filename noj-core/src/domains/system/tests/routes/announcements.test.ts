@@ -385,3 +385,106 @@ Deno.test({
     assertEquals(grants.length, 1);
   },
 });
+
+Deno.test({
+  name: "announcements: /banner 无横幅公告时返回 null",
+  ignore: skipDb || skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const res = await app.request("/api/v1/announcements/banner");
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.data, null);
+  },
+});
+
+Deno.test({
+  name: "announcements: /banner 返回最新带 banner_text 的 active 公告",
+  ignore: skipDb || skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const token = await createUserToken("admin");
+
+    // 无 banner_text 的公告不出横幅
+    await createViaApi(token, { title: `无横幅-${ts}` });
+    // 有 banner_text 的公告
+    const withBanner = await createViaApi(token, {
+      title: `有横幅-${ts}`,
+      banner_text: "系统将于今晚维护",
+    });
+    assertEquals(withBanner.res.status, 201);
+
+    const app = createApp();
+    const res = await app.request("/api/v1/announcements/banner");
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.data.id, withBanner.id);
+    assertEquals(body.data.banner_text, "系统将于今晚维护");
+  },
+});
+
+Deno.test({
+  name: "announcements: /banner 忽略已下架公告",
+  ignore: skipDb || skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const token = await createUserToken("admin");
+
+    const created = await createViaApi(token, {
+      title: `下架横幅-${ts}`,
+      banner_text: "即将下架",
+    });
+    // 下架
+    const app = createApp();
+    await app.request(
+      `/api/v1/admin/system/announcements/${created.id}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ is_active: false }),
+      },
+    );
+
+    const res = await app.request("/api/v1/announcements/banner");
+    const body = await res.json();
+    assertEquals(body.data, null);
+  },
+});
+
+Deno.test({
+  name: "announcements: banner_text 空白串保存为 null（不出横幅）",
+  ignore: skipDb || skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const token = await createUserToken("admin");
+    const created = await createViaApi(token, {
+      title: `空白横幅-${ts}`,
+      banner_text: "   ",
+    });
+    assertEquals(created.res.status, 201);
+
+    // 详情返回 banner_text=null
+    const app = createApp();
+    const detail = await app.request(
+      `/api/v1/announcements/${created.id}`,
+    );
+    const detailBody = await detail.json();
+    assertEquals(detailBody.banner_text, null);
+
+    // 横幅端点也返回 null
+    const banner = await app.request("/api/v1/announcements/banner");
+    assertEquals((await banner.json()).data, null);
+  },
+});

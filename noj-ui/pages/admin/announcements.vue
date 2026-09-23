@@ -15,6 +15,7 @@ interface AdminAnnouncement {
   public_id?: string
   title: string
   content: string
+  banner_text: string | null
   is_pinned: boolean
   is_active: boolean
   created_by: string
@@ -51,6 +52,7 @@ const saving = ref(false)
 const formError = ref("")
 const formTitle = ref("")
 const formContent = ref("")
+const formBannerText = ref("")
 const formPinned = ref(false)
 const formActive = ref(true)
 
@@ -58,6 +60,7 @@ function openCreate() {
   editing.value = null
   formTitle.value = ""
   formContent.value = ""
+  formBannerText.value = ""
   formPinned.value = false
   formActive.value = true
   formError.value = ""
@@ -68,6 +71,7 @@ function openEdit(row: AdminAnnouncement) {
   editing.value = row
   formTitle.value = row.title
   formContent.value = row.content
+  formBannerText.value = row.banner_text ?? ""
   formPinned.value = row.is_pinned
   formActive.value = row.is_active
   formError.value = ""
@@ -81,6 +85,8 @@ async function handleSave() {
     const body = {
       title: formTitle.value,
       content: formContent.value,
+      // 留空 → null（不出横幅）
+      banner_text: formBannerText.value.trim() || null,
       is_pinned: formPinned.value,
       is_active: formActive.value,
     }
@@ -132,7 +138,7 @@ async function handleDelete() {
 
 <template>
   <div class="flex flex-col gap-4">
-    <AdminPageHeader title="公告管理" description="发布系统公告，置顶公告将优先展示在首页轮播">
+    <AdminPageHeader title="公告管理" description="发布系统公告；置顶公告优先展示于首页公告区块，填写横幅文字的公告会出现在导航栏横幅">
       <template #actions>
         <UButton color="primary" size="sm" @click="openCreate">
           <UIcon name="i-lucide-plus" class="size-4" />
@@ -189,6 +195,15 @@ async function handleDelete() {
         <div class="flex flex-col gap-1">
           <label class="text-13px font-semibold text-text">内容（Markdown） <span class="text-error-text">*</span></label>
           <UTextarea v-model="formContent" :rows="10" maxlength="50000" placeholder="支持 Markdown 语法" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-13px font-semibold text-text">横幅文字</label>
+          <UInput
+            v-model="formBannerText"
+            maxlength="200"
+            placeholder="导航栏下方横幅显示的文字；留空则此公告不出横幅"
+          />
+          <p class="text-12px text-text-muted">横幅展示最新一条填了此字段的已发布公告；用户关闭后仅在其浏览器本地隐藏。</p>
         </div>
         <div class="flex items-center justify-between gap-4 pt-1">
           <label class="text-13px font-semibold text-text cursor-pointer select-none" for="ann-form-pinned">置顶展示</label>

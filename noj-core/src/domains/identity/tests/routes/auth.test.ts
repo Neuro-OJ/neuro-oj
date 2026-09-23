@@ -1,7 +1,11 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
-import { passwordResetTokens, users } from "../../../../shared/db/schema.ts";
+import {
+  passwordResetTokens,
+  userConsents,
+  users,
+} from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import {
   getRedis,
@@ -18,6 +22,7 @@ import {
   hashResetToken,
 } from "../../services/security/resetToken.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";
+import { publishVersion } from "../../../legal/index.ts";
 
 // PGlite 内存数据库始终可用，无需检测
 const hasJwt = !!Deno.env.get("JWT_SECRET");
@@ -99,6 +104,7 @@ Deno.test({
         username: `route_user_${ts}`,
         email: `route_user_${ts}@example.com`,
         password: "TestPwd-2024-Xy9",
+        accepted_legal: true,
       },
     });
 
@@ -217,6 +223,7 @@ Deno.test({
         username: `dup_user_${ts}`,
         email: `dup_user_${ts}@example.com`,
         password: "TestPwd-2024-Xy9",
+        accepted_legal: true,
       },
     });
     assertEquals(res1.status, 201);
@@ -228,6 +235,7 @@ Deno.test({
         username: `dup_user_${ts}`,
         email: `other-${ts}@example.com`,
         password: "TestPwd-2024-Xy9",
+        accepted_legal: true,
       },
     });
     assertEquals(res2.status, 409);
@@ -253,6 +261,7 @@ Deno.test({
         username: user,
         email: `${user}@example.com`,
         password: "TestPwd-2024-Xy9",
+        accepted_legal: true,
       },
     });
 
@@ -289,6 +298,7 @@ Deno.test({
         username: user,
         email: `${user}@example.com`,
         password: "CorrectPwd-Ab1",
+        accepted_legal: true,
       },
     });
 
@@ -323,6 +333,7 @@ Deno.test({
         username: user,
         email: `${user}@example.com`,
         password: "TestPwd-2024-Xy9",
+        accepted_legal: true,
       },
     });
 
@@ -363,6 +374,7 @@ Deno.test({
         username: user,
         email,
         password: "TestPwd-2024-Xy9",
+        accepted_legal: true,
       },
     });
 
@@ -440,6 +452,7 @@ Deno.test({
         username: user,
         email: `${user}@example.com`,
         password: "TestPwd0", // 恰好 8 位（MIN_PASSWORD_LENGTH 边界）
+        accepted_legal: true,
       },
     });
     assertEquals(res.status, 201);
@@ -593,6 +606,7 @@ Deno.test({
           username: user,
           email: `${user}@example.com`,
           password: "CorrectPwd-Ab1",
+          accepted_legal: true,
         },
       });
       assertEquals(registerRes.status, 201);
@@ -700,6 +714,7 @@ Deno.test({
         username: user,
         email: `${user}@example.com`,
         password,
+        accepted_legal: true,
       },
     });
     const loginRes = await jsonRequest(app, `${BASE}/login`, {
@@ -763,6 +778,7 @@ Deno.test({
         username: user,
         email: `${user}@example.com`,
         password: oldPassword,
+        accepted_legal: true,
       },
     });
     const loginRes = await jsonRequest(app, `${BASE}/login`, {
@@ -828,6 +844,7 @@ Deno.test({
         username: user,
         email: `${user}@example.com`,
         password,
+        accepted_legal: true,
       },
     });
     const loginRes = await jsonRequest(app, `${BASE}/login`, {
@@ -873,6 +890,7 @@ Deno.test({
         username,
         email,
         password: "OrigPass-2024-Ab1",
+        accepted_legal: true,
       },
     });
     assertEquals(registerRes.status, 201);
@@ -1112,6 +1130,7 @@ Deno.test({
         username,
         email,
         password: "OrigPass-2024-Ab1",
+        accepted_legal: true,
       },
     });
 
@@ -1149,6 +1168,77 @@ Deno.test({
       },
     });
     assertEquals(res.status, 400);
+
+    await cleanupUser(username);
+  },
+});
+
+Deno.test({
+  name: "routes: POST /register 未同意法律条款返回 400",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const res = await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: `legal_no_${ts}`,
+        email: `legal_no_${ts}@example.com`,
+        password: "TestPwd-2024-Xy9",
+        // 缺少 accepted_legal
+      },
+    });
+    assertEquals(res.status, 400);
+  },
+});
+
+Deno.test({
+  name: "routes: POST /register 同意后写入隐私政策与服务条款同意记录",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    // 先发布两份文档（否则 registerUser 无从记录版本）。
+    const now = new Date().toISOString();
+    const publisherId = `legal-pub-${ts}`;
+    await db.insert(users).values({
+      id: publisherId,
+      username: `legal_pub_${ts}`,
+      email: `legal_pub_${ts}@example.com`,
+      password_hash: "x",
+      created_at: now,
+      updated_at: now,
+    });
+    await publishVersion("privacy", "隐私政策正文", null, true, publisherId);
+    await publishVersion("terms", "服务条款正文", null, true, publisherId);
+
+    const app = createApp();
+    const username = `legal_yes_${ts}`;
+    const res = await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      headers: { "User-Agent": "NOJ-Test/1.0" },
+      body: {
+        username,
+        email: `${username}@example.com`,
+        password: "TestPwd-2024-Xy9",
+        accepted_legal: true,
+      },
+    });
+    assertEquals(res.status, 201);
+    const body = await res.json();
+    const userId = body.data.id as string;
+
+    const consents = await db.select().from(userConsents).where(
+      eq(userConsents.user_id, userId),
+    );
+    assertEquals(consents.length, 2);
+    const kinds = consents.map((r) => r.document_kind).sort();
+    assertEquals(kinds, ["privacy", "terms"]);
+    assertEquals(consents.every((r) => r.user_agent === "NOJ-Test/1.0"), true);
 
     await cleanupUser(username);
   },

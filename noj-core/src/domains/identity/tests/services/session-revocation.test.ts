@@ -268,7 +268,13 @@ sessionTest(
       email: "session_oauth@example.test",
       emailVerified: true,
     };
-    const first = await resolveOAuthIdentity("github", identity, "login");
+    const first = await resolveOAuthIdentity(
+      "github",
+      identity,
+      "login",
+      undefined,
+      true,
+    );
     await setPassword(first.user.id, oldPassword);
     assertEquals(
       (await app().request("/protected", { headers: headers(first.token) }))
@@ -276,7 +282,13 @@ sessionTest(
       401,
     );
     await resetPassword(await seedResetToken(first.user.id), newPassword);
-    const fresh = await resolveOAuthIdentity("github", identity, "login");
+    const fresh = await resolveOAuthIdentity(
+      "github",
+      identity,
+      "login",
+      undefined,
+      true,
+    );
     assertEquals((await verifyToken(fresh.token)).session_version, 2);
     assertEquals(
       (await app().request("/protected", { headers: headers(fresh.token) }))

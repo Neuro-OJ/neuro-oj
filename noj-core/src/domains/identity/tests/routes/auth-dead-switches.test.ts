@@ -104,6 +104,7 @@ Deno.test({
         username: `reg_on_${ts}`,
         email: `reg_on_${ts}@example.com`,
         password: "TestPwd-2024-Xy9",
+        accepted_legal: true,
       },
     });
     assertEquals(res.status, 201);
@@ -160,6 +161,7 @@ Deno.test({
         username,
         email: `${username}@example.com`,
         password: "TestPwd-2024-Xy9",
+        accepted_legal: true,
       },
     });
 
@@ -185,7 +187,12 @@ Deno.test({
 
     await jsonRequest(app, `${BASE}/register`, {
       method: "POST",
-      body: { username, email: `${username}@example.com`, password },
+      body: {
+        username,
+        email: `${username}@example.com`,
+        password,
+        accepted_legal: true,
+      },
     });
     await jsonRequest(app, `${BASE}/login`, {
       method: "POST",
@@ -243,7 +250,12 @@ Deno.test({
 
     await jsonRequest(app, `${BASE}/register`, {
       method: "POST",
-      body: { username, email: `${username}@example.com`, password },
+      body: {
+        username,
+        email: `${username}@example.com`,
+        password,
+        accepted_legal: true,
+      },
     });
     await jsonRequest(app, `${BASE}/login`, {
       method: "POST",
@@ -283,6 +295,7 @@ Deno.test({
         username,
         email: `${username}@example.com`,
         password: oldPassword,
+        accepted_legal: true,
       },
     });
     const regBody = (await regRes.json()) as { data: { id: string } };
@@ -344,7 +357,12 @@ Deno.test({
 
     await jsonRequest(app, `${BASE}/register`, {
       method: "POST",
-      body: { username, email, password: "TestPwd-2024-Xy9" },
+      body: {
+        username,
+        email,
+        password: "TestPwd-2024-Xy9",
+        accepted_legal: true,
+      },
     });
     await jsonRequest(app, `${BASE}/forgot-password`, {
       method: "POST",
@@ -383,7 +401,12 @@ Deno.test({
 
     await jsonRequest(app, `${BASE}/register`, {
       method: "POST",
-      body: { username, email, password: oldPassword },
+      body: {
+        username,
+        email,
+        password: oldPassword,
+        accepted_legal: true,
+      },
     });
     await jsonRequest(app, `${BASE}/forgot-password`, {
       method: "POST",

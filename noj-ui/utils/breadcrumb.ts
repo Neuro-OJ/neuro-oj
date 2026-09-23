@@ -147,6 +147,8 @@ const ROUTES: BreadcrumbRoute[] = [
   { pattern: '/settings', trail: [{ key: 'breadcrumb.settings' }] },
   { pattern: '/about', trail: [{ key: 'breadcrumb.about' }] },
   { pattern: '/data-policy', trail: [{ key: 'breadcrumb.dataPolicy' }] },
+  { pattern: '/legal/privacy', trail: [{ key: 'breadcrumb.privacyPolicy' }] },
+  { pattern: '/legal/terms', trail: [{ key: 'breadcrumb.termsOfService' }] },
 ];
 
 /** 把 `/a/:b/c` 编译为「静态段数组」，便于无正则匹配。 */

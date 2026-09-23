@@ -56,6 +56,10 @@ export type AuditAction =
   | "announcement.create"
   | "announcement.update"
   | "announcement.delete"
+  | "carousel.create"
+  | "carousel.update"
+  | "carousel.delete"
+  | "carousel.reorder"
   | "review.queued"
   | "review.rejected"
   | "review.resolved"
@@ -241,6 +245,10 @@ export type AuditDetail =
   | { action: "announcement.create"; title: string }
   | { action: "announcement.update"; title: string }
   | { action: "announcement.delete"; title: string }
+  | { action: "carousel.create"; kind: string }
+  | { action: "carousel.update"; kind: string }
+  | { action: "carousel.delete"; kind: string }
+  | { action: "carousel.reorder"; count: number }
   | {
     action: "contest.ranking_snapshot";
     contest_id: string;

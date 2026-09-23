@@ -876,3 +876,42 @@ Deno.test({
     assert(perms.has("contest:create"), "默认角色应有 contest:create");
   },
 });
+
+Deno.test({
+  name: "rbac: 管理员角色具备 legal:manage 权限",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await ensureRbacSeeds();
+    const db = getDb();
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+      id: ADMIN_USER_ID,
+      username: `admin-${ts}`,
+      email: `admin-${ts}@test.com`,
+      password_hash: "x",
+      created_at: now,
+      updated_at: now,
+    }).onConflictDoNothing();
+    const [adminRole] = await db.select({ id: roles.id }).from(roles).where(
+      eq(roles.name, "admin"),
+    ).limit(1);
+    if (adminRole) {
+      await db.insert(userRoles).values({
+        user_id: ADMIN_USER_ID,
+        role_id: adminRole.id,
+      }).onConflictDoNothing();
+    }
+    const perms = await getUserPermissions(ADMIN_USER_ID);
+    assert(
+      perms.has("admin:full_access") || perms.has("legal:manage"),
+      "管理员角色应有 legal:manage（或通配 admin:full_access）",
+    );
+    assert(
+      !(await getUserPermissions(REGULAR_USER_ID)).has("legal:manage"),
+      "普通用户不应有 legal:manage",
+    );
+  },
+});

@@ -88,6 +88,16 @@
     >
       {{ t('auth.loginWith', { name: provider.name }) }}
     </UButton>
+    <!-- 新账号走第三方登录会撞 PIPL 同意硬门槛：给出可自救的指引（2026-09-25 评审）。
+         已有账号不受影响，故这里不强制勾选，只提供去注册页同意的入口。 -->
+    <div
+      v-if="legalConsentRequired"
+      class="rounded border border-warning-text/40 bg-sunken px-3 py-2 text-xs text-text-secondary leading-relaxed"
+      data-testid="oauth-legal-consent-notice"
+    >
+      {{ t('auth.oauthLegalConsentRequired') }}
+      <NuxtLink to="/register" class="text-primary no-underline hover:underline">{{ t('auth.goToRegister') }}</NuxtLink>
+    </div>
   </div>
 
   <AuthFormCard
@@ -250,12 +260,19 @@ const recoveryFileCodes = ref<string[]>([])
 const recoveryFileError = ref("")
 const oauthProviders = ref<Array<{ id: string; name: string }>>([])
 const oauthLoading = ref(false)
+/** 新账号走第三方登录但未同意条款时，展示"去注册页同意"的可行动指引。 */
+const legalConsentRequired = ref(false)
 
 onMounted(async () => {
   if (route.query.oauth_error) {
-    setError(route.query.oauth_error === "state_invalid"
-      ? "第三方登录请求已失效，请重新尝试"
-      : "第三方登录失败，请稍后重试")
+    if (route.query.oauth_error === "legal_consent_required") {
+      // 不折叠成"稍后重试"：这是可自救的合规门槛，反复重试永远不会成功。
+      legalConsentRequired.value = true
+    } else {
+      setError(route.query.oauth_error === "state_invalid"
+        ? "第三方登录请求已失效，请重新尝试"
+        : "第三方登录失败，请稍后重试")
+    }
   }
   try {
     oauthProviders.value = await auth.getOAuthProviders()

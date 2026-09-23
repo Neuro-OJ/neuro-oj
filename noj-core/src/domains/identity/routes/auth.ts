@@ -1,6 +1,7 @@
 import { type Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { eq } from "drizzle-orm";
+import { getLogger } from "@logtape/logtape";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { users } from "./../../../shared/db/schema.ts";
 import {
@@ -49,10 +50,13 @@ import {
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { getUserPermissions } from "./../services/security/permissions.ts";
 import { signToken, verifyToken } from "./../services/security/jwt.ts";
+import { getLegalStatus } from "./../../legal/index.ts";
 import { revokeJti } from "./../services/security/revokedTokens.ts";
 import { getEmailConfigStatus, getSetting } from "../../system/index.ts";
 import { getClientIp } from "../../system/index.ts";
 import { getBannedIpDetail } from "../services/banlist.ts";
+
+const logger = getLogger(["noj", "identity", "auth"]);
 import {
   applyLoginBackoff,
   clearLoginFailure,
@@ -149,6 +153,11 @@ auth.post("/register", async (c) => {
     throw new ValidationError(`密码长度不能少于 ${MIN_PASSWORD_LENGTH} 位`);
   }
 
+  // PIPL 合规硬门槛：必须明确同意服务条款与隐私政策。
+  if (body.accepted_legal !== true) {
+    throw new ValidationError("必须同意服务条款与隐私政策后才能注册");
+  }
+
   // 注：此前这里有一个 register_email_verify 开关，开启即 fail-closed 拒绝全部注册。
   // 该开关的「实现未完成」前提早已过期——验证链路现已完整（下方 sendEmailVerification
   // 发送一次性令牌、/auth/email/verify 与 /auth/email/resend 消费与重发、
@@ -156,7 +165,11 @@ auth.post("/register", async (c) => {
   // 它唯一的效果是把站点注册彻底关死，与名字表达的语义相反。
   // 已按 issue #498 删除该开关。
   const clientIp = getClientIp(c);
-  const user = await registerUser(body, clientIp);
+  const user = await registerUser(
+    body,
+    clientIp,
+    c.req.header("user-agent") ?? null,
+  );
   const emailVerification = await sendEmailVerification(
     user.id,
     new URL(c.req.url).origin,
@@ -396,10 +409,14 @@ auth.get("/oauth/providers", (c) => {
 /** 发起登录或绑定授权。绑定由 POST /oauth/:provider/link 创建 state。 */
 auth.get("/oauth/:provider", async (c) => {
   const requestUrl = c.req.url;
+  // PIPL：新建 OAuth 账号需已明确同意条款；登录页可省略（仅影响建号）。
+  const acceptedLegal = c.req.query("accepted_legal") === "true";
   const result = await createOAuthAuthorization(
     c.req.param("provider") as string,
     "login",
     requestUrl,
+    undefined,
+    acceptedLegal,
   );
   setCookie(c, oauthStateCookieName(), result.cookieValue, {
     ...oauthCookieOptions(),
@@ -439,6 +456,7 @@ auth.get("/oauth/:provider/callback", async (c) => {
       identity,
       state.intent,
       state.userId,
+      state.acceptedLegal,
     );
     setOAuthSession(c, result.user, result.token);
     return c.redirect(
@@ -455,13 +473,29 @@ auth.get("/oauth/:provider/callback", async (c) => {
     );
   } catch (error) {
     deleteCookie(c, oauthStateCookieName(), { path: "/" });
-    const code =
-      error instanceof BadRequestError && error.code.startsWith("OAUTH_STATE")
-        ? "state_invalid"
-        : "provider_error";
+    // 2026-09-25 评审：PIPL 同意门槛此前被折叠成 provider_error，登录页只显示
+    // "第三方登录失败，请稍后重试"，新用户从登录页走 OAuth 建号时无从自救。
+    // 这里保留语义化错误码，前端据此给出"去注册页同意条款"的可行动指引。
+    const code = oauthErrorCode(error);
+    logger.warn("OAuth 回调失败: provider={provider} code={code} err={err}", {
+      provider,
+      code,
+      err: error instanceof Error ? error.message : String(error),
+    });
     return c.redirect(oauthFrontendRedirect(requestUrl, code), 302);
   }
 });
+
+/** 把回调异常映射为前端可读的 `oauth_error` 码（保留语义，不吞同意门槛）。 */
+function oauthErrorCode(error: unknown): string {
+  if (error instanceof BadRequestError) {
+    if (error.code === "LEGAL_CONSENT_REQUIRED") {
+      return "legal_consent_required";
+    }
+    if (error.code.startsWith("OAUTH_STATE")) return "state_invalid";
+  }
+  return "provider_error";
+}
 
 /**
  * 发起绑定第三方账号授权。
@@ -535,7 +569,11 @@ auth.get("/me", authMiddleware, async (c) => {
   const userId = c.get("userId") as string;
   const user = await getUserProfile(userId);
   const permissions = await getUserPermissions(userId);
-  return c.json({ data: { ...user, permissions: [...permissions] } }, 200);
+  const legal = await getLegalStatus(userId);
+  return c.json(
+    { data: { ...user, permissions: [...permissions], legal } },
+    200,
+  );
 });
 
 /**

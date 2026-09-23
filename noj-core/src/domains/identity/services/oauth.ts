@@ -23,6 +23,7 @@ import {
 import { isUserAdmin } from "./security/permissions.ts";
 import { logAuthEvent } from "../../system/index.ts";
 import { toUserResponse } from "./auth/auth-register.ts";
+import { recordConsentsForRegistration } from "../../legal/index.ts";
 import type { UserResponse } from "./../types/auth.ts";
 
 /** 支持的 OAuth 身份提供商。 */
@@ -63,6 +64,13 @@ interface OAuthStatePayload {
   provider: OAuthProviderId;
   intent: OAuthIntent;
   userId?: string;
+  /**
+   * 用户是否已在发起页勾选同意服务条款与隐私政策（PIPL 硬门槛）。
+   *
+   * 仅 `intent="login"` 有意义：新建 OAuth 账号必须为 `true`，否则回调拒绝建号；
+   * 绑定（`intent="link"`）不建号，无需该标记。
+   */
+  acceptedLegal?: boolean;
 }
 
 // Cookie 名不能包含 `:`（Hono serializer 会拒绝），与 Nitro 的 `noj:token`
@@ -197,6 +205,7 @@ export async function createOAuthAuthorization(
   intent: OAuthIntent,
   requestUrl: string,
   userId?: string,
+  acceptedLegal?: boolean,
 ): Promise<{ url: string; state: string; cookieValue: string }> {
   const provider = providerOrThrow(providerId);
   if (intent === "link" && !userId) {
@@ -209,6 +218,7 @@ export async function createOAuthAuthorization(
     provider: provider.id,
     intent,
     ...(userId ? { userId } : {}),
+    ...(acceptedLegal ? { acceptedLegal: true } : {}),
   };
   const state = await new SignJWT(payload as unknown as Record<string, unknown>)
     .setProtectedHeader({ alg: "HS256" })
@@ -285,6 +295,7 @@ export async function consumeOAuthState(
     provider: value.provider,
     intent: value.intent,
     ...(typeof value.userId === "string" ? { userId: value.userId } : {}),
+    ...(value.acceptedLegal === true ? { acceptedLegal: true } : {}),
   };
 }
 
@@ -547,6 +558,8 @@ async function createOAuthUser(
         role_id: defaultRole.id,
       }).onConflictDoNothing();
     }
+    // PIPL：与用户插入同事务写入隐私政策/服务条款同意记录（原子）。
+    await recordConsentsForRegistration(tx, userId, null, null);
   });
   await publishSearchIndexEvent("user", userId, "upsert");
   return userId;
@@ -592,6 +605,7 @@ export async function resolveOAuthIdentity(
   identity: OAuthIdentity,
   intent: OAuthIntent,
   linkUserId?: string,
+  acceptedLegal?: boolean,
 ): Promise<{ user: UserResponse; token: string; linked: boolean }> {
   const db = getDb();
   const [linked] = await db.select().from(oauthAccounts)
@@ -646,6 +660,13 @@ export async function resolveOAuthIdentity(
     }
   }
   if (!userId) {
+    // PIPL 硬门槛：新建 OAuth 账号必须已明确同意服务条款与隐私政策。
+    if (acceptedLegal !== true) {
+      throw new BadRequestError(
+        "必须同意服务条款与隐私政策后才能注册",
+        "LEGAL_CONSENT_REQUIRED",
+      );
+    }
     userId = await createOAuthUser(provider, identity);
     await db.insert(oauthAccounts).values({
       id: crypto.randomUUID(),

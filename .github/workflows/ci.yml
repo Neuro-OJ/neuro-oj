@@ -55,7 +55,6 @@ jobs:
           deno task test
           deno task test:production
 
-
   # ===========================================================================
   # noj-cli 真实 E2E：备份产物的**真实工具链往返**（用户要求，CI 侧）。
   #
@@ -128,7 +127,6 @@ jobs:
           deno task check
           # 只跑真实 E2E 目录（单测由 production-cli job 覆盖，避免重复）
           deno test -A src/prod/e2e/
-
 
   # ===========================================================================
   # 生产镜像供应链配置检查：在 PR 阶段提前阻止 latest 和未固定 digest 回归。
@@ -213,6 +211,8 @@ jobs:
               - 'noj-core/src/domains/search/**'
             core-query:
               - 'noj-core/src/domains/query/**'
+            core-legal:
+              - 'noj-core/src/domains/legal/**'
             core-gateway:
               - 'noj-core/src/domains/gateway/**'
             core-content-review:
@@ -275,13 +275,14 @@ jobs:
           CORE_GATEWAY: ${{ steps.filter.outputs.core-gateway }}
           CORE_CONTENT_REVIEW: ${{ steps.filter.outputs.core-content-review }}
           CORE_OBSERVABILITY: ${{ steps.filter.outputs.core-observability }}
+          CORE_LEGAL: ${{ steps.filter.outputs.core-legal }}
           CORE_SHARED: ${{ steps.filter.outputs.core-shared }}
         run: |
           python3 - <<'PY'
           import json, os
           def flag(name):
               return os.environ.get(name, '') == 'true'
-          all_core = ["identity","catalog","submission","contest","system","community","messaging","objective","admin","search","query","gateway","content-review","observability"]
+          all_core = ["identity","catalog","submission","contest","system","community","messaging","objective","admin","search","query","gateway","content-review","observability","legal"]
           core_domains = []
           if flag('CORE_SHARED'):
               core_domains = all_core[:]
@@ -1409,6 +1410,85 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: core-query-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  core-legal:
+    name: Core legal
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'legal') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version-file: .dvmrc
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行 Domain 测试
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-domain.sh legal
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-legal-logs
           path: |
             noj-core/test-logs/
             noj-core/test-output.log

@@ -15,7 +15,7 @@
                 </div>
             </div>
 
-            <p class="mb-4 text-sm text-text-secondary">{{ t('auth.registerPolicyPrefix') }}<NuxtLink to="/data-policy" target="_blank" class="text-primary underline">{{ t('auth.registerPolicy') }}</NuxtLink>。</p>
+            <p class="mb-4 text-sm text-text-secondary">{{ t('auth.registerPolicyPrefix') }}<NuxtLink to="/legal/privacy" target="_blank" class="text-primary underline">{{ t('auth.registerPolicy') }}</NuxtLink>。</p>
             <form @submit.prevent="handleRegister">
                 <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.05s_both]">
                     <TextInput
@@ -77,7 +77,18 @@
                     />
                 </div>
 
-                <UButton color="primary" size="md" block class="animate-[fadeInUp_0.5s_ease_0.25s_both]" type="submit"  :disabled="loading || !!registerRestricted">
+                <!-- PIPL 合规硬门槛：未同意条款不可注册 -->
+                <div class="mb-5 flex items-start gap-2">
+                    <UCheckbox v-model="acceptedLegal" :disabled="loading" />
+                    <span class="text-sm text-text-secondary leading-relaxed">
+                        我已年满 14 周岁，或在监护人陪同下已阅读并同意
+                        <NuxtLink to="/legal/terms" target="_blank" class="text-primary no-underline hover:underline">《服务条款》</NuxtLink>
+                        与
+                        <NuxtLink to="/legal/privacy" target="_blank" class="text-primary no-underline hover:underline">《隐私政策》</NuxtLink>
+                    </span>
+                </div>
+
+                <UButton color="primary" size="md" block class="animate-[fadeInUp_0.5s_ease_0.25s_both]" type="submit"  :disabled="loading || !!registerRestricted || !acceptedLegal">
                     <UIcon name="i-lucide-loader-2" class="animate-spin-slow mr-1.5 size-4.5" v-if="loading"/>
                     {{ loading ? t('auth.registering') : t('auth.register') }}
                 </UButton>
@@ -95,7 +106,7 @@
                     color="neutral"
                     variant="outline"
                     block
-                    :disabled="oauthLoading"
+                    :disabled="oauthLoading || !acceptedLegal"
                     @click="startOAuth(provider.id)"
                 >{{ t('auth.registerWith', { name: provider.name }) }}</UButton>
             </div>
@@ -141,8 +152,15 @@ onMounted(async () => {
 })
 
 function startOAuth(provider: string) {
+    // PIPL：注册页 OAuth 属新建账号入口，须先同意条款（后端亦强校验）
+    if (!acceptedLegal.value) {
+        setError("请先阅读并同意《服务条款》与《隐私政策》")
+        return
+    }
     oauthLoading.value = true
-    window.location.assign(`/api/v1/auth/oauth/${encodeURIComponent(provider)}`)
+    window.location.assign(
+        `/api/v1/auth/oauth/${encodeURIComponent(provider)}?accepted_legal=true`
+    )
 }
 
 const form = reactive({
@@ -152,6 +170,9 @@ const form = reactive({
     confirmPassword: "",
 })
 const loading = ref(false)
+
+// 已同意服务条款与隐私政策（PIPL 硬门槛；未勾选禁止提交）
+const acceptedLegal = ref(false)
 
 const { error, setError, clearError } = useFormError(3000)
 
@@ -215,18 +236,24 @@ async function handleRegister() {
 
     if (!validate()) return
 
+    if (!acceptedLegal.value) {
+        setError("请先阅读并同意《服务条款》与《隐私政策》")
+        return
+    }
+
     loading.value = true
     try {
         // 注册 → 自动登录 → 按邮件发送结果跳转（流程逻辑见 utils/registerFlow.ts）
         const result = await submitRegistration(
             {
-                register: (username, email, password) =>
-                    auth.register(username, email, password),
+                register: (username, email, password, accepted) =>
+                    auth.register(username, email, password, accepted),
                 login: (username, password) => auth.login(username, password),
             },
             form.username.trim(),
             form.email.trim(),
             form.password,
+            acceptedLegal.value,
         )
         if (result) router.replace(result.destination)
     } catch (e: unknown) {

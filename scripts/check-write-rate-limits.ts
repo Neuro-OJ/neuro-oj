@@ -84,10 +84,6 @@ export const ALLOWLIST: Record<
     reason:
       "每日签到本身按天幂等；但写路由无任何限流，建议补 IP 限流或明确豁免",
   },
-  "noj-core/src/domains/identity/routes/users.ts": {
-    status: "pending",
-    reason: "资料修改/注销账号等写路由无限流；注销为高价值操作，建议补限流",
-  },
   "noj-core/src/domains/system/routes/email-delivery.ts": {
     status: "pending",
     reason: "邮件投递回执写路由无限流，需确认是否外部可达",

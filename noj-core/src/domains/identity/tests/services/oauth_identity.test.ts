@@ -34,12 +34,18 @@ Deno.test({
     setEnv("NOJ_ENV", "test");
     try {
       await resetDbForTest();
-      const result = await resolveOAuthIdentity("github", {
-        providerUserId: "github-identity-1",
-        username: "oauth_test_user",
-        email: "oauth-test@example.com",
-        emailVerified: true,
-      }, "login");
+      const result = await resolveOAuthIdentity(
+        "github",
+        {
+          providerUserId: "github-identity-1",
+          username: "oauth_test_user",
+          email: "oauth-test@example.com",
+          emailVerified: true,
+        },
+        "login",
+        undefined,
+        true,
+      );
 
       assertEquals(result.user.has_local_password, false);
       assertEquals(result.user.is_admin, false);
@@ -83,6 +89,79 @@ Deno.test({
           eq(oauthAccounts.user_id, result.user.id),
         )).length,
         0,
+      );
+    } finally {
+      restoreEnv();
+    }
+  },
+});
+
+Deno.test({
+  name: "oauth: 未同意法律条款时拒绝新建账号，同意后写入同意记录",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    setEnv("JWT_SECRET", "oauth-legal-test-secret-that-is-long-enough");
+    setEnv("NOJ_ENV", "test");
+    try {
+      await resetDbForTest();
+      const identity = {
+        providerUserId: "github-legal-1",
+        username: "oauth_legal_user",
+        email: "oauth-legal@example.com",
+        emailVerified: true,
+      };
+
+      // 未同意（acceptedLegal 缺省/ false）→ 拒绝建号
+      await assertRejects(
+        () =>
+          resolveOAuthIdentity("github", identity, "login", undefined, false),
+        Error,
+        "必须同意服务条款与隐私政策",
+      );
+
+      // 先发布两份政策（否则无从记录同意版本）
+      const { users: usersTable } = await import(
+        "../../../../shared/db/schema.ts"
+      );
+      const now = new Date().toISOString();
+      const publisherId = "oauth-legal-publisher";
+      await getDb().insert(usersTable).values({
+        id: publisherId,
+        username: "oauth_legal_publisher",
+        email: "oauth-legal-publisher@example.com",
+        password_hash: "x",
+        created_at: now,
+        updated_at: now,
+      }).onConflictDoNothing();
+      const { publishVersion, LEGAL_KINDS } = await import(
+        "../../../legal/index.ts"
+      );
+      for (const kind of LEGAL_KINDS) {
+        await publishVersion(kind, `${kind} 正文`, null, true, publisherId);
+      }
+
+      // 同意 → 建号成功
+      const created = await resolveOAuthIdentity(
+        "github",
+        identity,
+        "login",
+        undefined,
+        true,
+      );
+      assertEquals(created.user.has_local_password, false);
+
+      // 同意记录与用户同事务写入（privacy + terms 各一条）
+      const { userConsents } = await import(
+        "../../../../shared/db/schema.ts"
+      );
+      const consents = await getDb().select().from(userConsents).where(
+        eq(userConsents.user_id, created.user.id),
+      );
+      assertEquals(consents.length, 2);
+      assertEquals(
+        consents.map((r) => r.document_kind).sort(),
+        ["privacy", "terms"],
       );
     } finally {
       restoreEnv();

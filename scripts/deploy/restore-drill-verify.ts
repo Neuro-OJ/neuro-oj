@@ -406,6 +406,9 @@ async function stepRegisterProbe(): Promise<void> {
       username: `drill_${suffix}`.slice(0, 30),
       email: `drill-${suffix}@restore-drill.invalid`,
       password: "Drill-Recover-2026",
+      // PIPL 同意硬门槛（2026-09-25 评审）：不带该字段注册恒 400，探针会被永久
+      // 降级成 warning，且归因误导为"邮件提供方问题"。
+      accepted_legal: true,
     }),
   });
   if (res.status === 201) {
