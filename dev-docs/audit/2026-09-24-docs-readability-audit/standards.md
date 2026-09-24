@@ -76,3 +76,14 @@
 4. **重复内容（跨页，未越界修改）**：`problemsetters/web-editor.md`、`quick-start.md` 已多处引用本组页面，内容分工清晰（出题人流程 vs 规范细节），无矛盾；但 `problemsetters/cases.md`、`support-package.md` 已是纯跳转壳页，长期看可与 standards 合并，减少"跳转空洞"。
 5. **样例题 `statement.md` 的限制与 `problem.json` 不一致（源码侧，超范围）**：`data/problems-src/1001/statement.md` 写"时间限制 1000ms"，`problem.json` 为 `evaluator.time_limit_ms: 30000` / `solution.call_timeout_ms: 5000`。属样例题内容问题，非本组文档职责，仅记录。
 6. **`llm` 旧字段容忍的表述**：`problem-bundle.ts:108` 的注释说未知键（含 `provider_id`/`model`）忽略，`isValidLlmConfig` 只校验 `max_calls`/`max_tokens`，文档表述与实现一致，已保留。
+
+## 2026-09-25 复核补充（第三轮评审）
+
+7. **`test-data.md` 的计分归因是错的（本报告漏检，已修）**：该页在本次审计中被改写为
+   「正式评分只使用不可见测试数据（**与样例题骨架的 `evaluate.py` 一致：分数只来自隐藏用例**）」，
+   但骨架 `noj-core/data/problems-src/1001/evaluate.py:150-155` 实际把可见与隐藏用例
+   **等权计入** `score_content`（10 可见 + 10 隐藏 → 每例 0.4 分）。即：建议本身可以接受，
+   但"与骨架一致"的归因是虚假事实，且与本报告 RUBRIC 要求的"接口语义先取证再落笔"相违。
+   已改为如实描述骨架口径 + 明确标注"只按隐藏用例计分需自行实现"。
+8. **索引清单类表述**：`data-dictionary.md` 各表小节的索引行以封闭列表形式给出但不完整
+   （如 `submissions` 3/8），已在页首加"主要索引（不完整）"限定（该页属 #577，非本组）。

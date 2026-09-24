@@ -129,7 +129,7 @@ result.wrong_answer(score=5, details={"passed": 5})   # 部分分，写入 score
 
 新协议下结果 JSON 不再输出 `status`，只输出 `score` 与 `details`；`accept` / `wrong_answer` 只是写入分数的便捷方法。评测脚本自身出错时应直接抛出异常或非零退出，由 judge 统一映射为 `error`；SDK 已移除会写入结果的 `runtime_error()`，`system_error()` 现在也是**直接抛出 `RuntimeError`**（不再写结果 JSON）。
 
-结果 JSON 中的 `score` 是 ×100 的整数（与数据库存储一致）。例如满分 10 分时，`accept(score=10)` 写入 `"score": 1000`，前端显示 10.00 分。
+结果 JSON 中的 `score` 是 ×100 的整数（与数据库存储一致）。例如满分 10 分时，`accept(score=10)` 写入 `"score": 1000`，前端按 `(score / 100).toFixed(1)` 显示为 `10.0` 分。
 
 ## details
 
@@ -141,7 +141,7 @@ result.wrong_answer(score=5, details={"passed": 5})   # 部分分，写入 score
 | `status` | ✅ | 用例级状态（`Accepted` / `WrongAnswer` 等，仅参考） |
 | `hidden` | ✅ | 布尔：`true` 隐藏 / `false` 可见；**每个用例都要写** |
 | `visibility` | | `visible` / `hidden`，兼容与人读用 |
-| `time_ms` / `memory_kb` | | 耗时 / 内存，可见与隐藏用例都可给 |
+| `time_ms` / `memory_kb` | | 耗时 / 内存，可见与隐藏用例都可给；两者都会被 core 结果白名单收录并落库（`memory_kb` 自 2026-09-24 起收录，此前会被静默丢弃） |
 | `input` / `expected_output` / `actual_output` | | 仅**可见**用例可给；隐藏用例**不得**出现 |
 
 ::: warning 隐藏用例不能带输入/期望/实际输出

@@ -113,7 +113,7 @@ Evaluator 与 Solution 使用同一组 `type` 值（源码常量见 `noj-judge/s
 | `capability` | Solution → Evaluator | 请求调用 evaluator 注册的 capability |
 | `cap_reg` | Evaluator → Judge | capability 默认超时上报（**不转发**） |
 | `log` | Solution → Evaluator | 日志帧（judge 转发给 Evaluator 并收集；Evaluator 侧的 log 帧不转发） |
-| `shutdown` | （保留）发往 host / evaluator | 关闭通知；两端 reader 均识别，但当前编排循环**不发送**，靠 stdin EOF 兜底 |
+| `shutdown` | （保留）发往 host / evaluator | 关闭通知；Solution→Evaluator 方向会被识别并转发，Evaluator→host 方向按"未知帧"记 `warn` 丢弃；当前编排循环**不发送**，靠 stdin EOF 兜底 |
 
 ## 可传递的数据类型
 

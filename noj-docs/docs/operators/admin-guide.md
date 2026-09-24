@@ -87,7 +87,7 @@ Neuro OJ 使用「角色 → 权限点」模型：权限格式为 `resource:acti
 `banner_text`，用户关闭仅存本地 localStorage）。不存在 `homepage_banner` 配置键
 （该键为无读取点的死配置，已于 issue #495 删除）。
 :::
->
+
 > LLM **默认配额**（`NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>`）由
 > **noj-llm-gateway** 消费，不在本面板中；见 `noj-llm-gateway/README.md`，修改后需重启
 > llm-gateway。平台默认 Provider/模型（`llm_default_provider_id` /

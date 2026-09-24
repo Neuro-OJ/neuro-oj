@@ -36,7 +36,7 @@
 | `cap_drop` | `ALL` | 丢弃全部 Linux capabilities |
 | `security_opt` | `no-new-privileges:true` | 禁止提权 |
 | `network_mode` | `none`（默认） | 默认无网络；LLM 题由题目配置显式开启 |
-| `ipc_mode` / `pid_mode` | `none` / 默认 | 不共享宿主 IPC/PID |
+| `ipc_mode` | `none` | 不共享宿主 IPC；`pid_mode` 未设置（沿用 Docker 默认命名空间） |
 | `pids_limit` | `256` | 限制进程数，防 fork 炸弹 |
 | `readonly_rootfs` | `true` | 根文件系统只读，`/workspace` 用 tmpfs |
 | `nano_cpus` | 可配（默认 ≤ 1 核） | 越界值收敛到安全范围 |

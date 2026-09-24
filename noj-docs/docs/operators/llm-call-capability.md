@@ -76,7 +76,9 @@ LLM」中配置以下两项 **runtime 设置**（写库即时生效，无需重�
 用户×题目组合维度（`scope_type=user_problem`，`scope_id` 形如
 `<userId>:<problemId>`）用于防止一名选手反复提交打满**全选手共享**的题目日桶，
 导致他人 LLM 题评测因 `out_of_usage` 得 0 分。默认兜底值见网关 `.env.example` 的
-`NOJ_LLM_DEFAULT_USER_PROBLEM_*`（由 gateway 启动时 seed，改动后需重启）。
+`NOJ_LLM_DEFAULT_USER_PROBLEM_*`（网关**启动期读取 env**，改动后需重启网关；`llm_quotas` 里的
+占位行按 `scope_id=''` 写入，与 `<userId>:<problemId>` 精确匹配不上，不参与限额计算——
+需要单条覆盖时请写 `scope_id` 为具体组合的行）。
 
 分钟维度限流对无客户端 IP 的评测流量（Evaluator 直连网关、无
 `X-Forwarded-For`）按 submission 隔离，不再共用全局 `unknown` 桶。

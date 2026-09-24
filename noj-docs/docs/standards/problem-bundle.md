@@ -94,7 +94,7 @@
 
 - `format_version` 当前唯一支持 `1`；未知版本导入返回 HTTP 400。
 - `tags` 按 name 匹配已有标签；不存在的标签名被忽略并记录 warning（**不会**因此导入失败）。
-- `llm` 校验：仅 P 型/官方题可启用，且必须开启 evaluator 网络；只校验可选预算字段，未知键（含存量的 `provider_id` / `model`）忽略。
+- `llm` 校验：仅 P 型（`type="P"`）可启用，且必须开启 evaluator 网络；只校验可选预算字段，未知键（含存量的 `provider_id` / `model`）忽略。
 
 ::: warning ZIP 安全与上传入口约束
 - 拒绝路径穿越条目：绝对路径（`/` 开头）或含 `..` 段的条目一律 400。

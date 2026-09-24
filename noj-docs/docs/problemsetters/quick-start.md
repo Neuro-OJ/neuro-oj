@@ -32,7 +32,7 @@ U 型（用户题）任意登录用户可创建；**P 型（主题题）仅管�
    3. 修改后重新上传，或对旧提交触发 rejudge（管理端）。
 
 ::: tip 提供初始代码模板
-题目源码目录可提供初始代码模板（`problem.json` 的 `template` 字段，缺省 `template.py`）。编辑器在无本地草稿或点击「重置模板」时，通过 `GET /api/v1/problems/:id/template` 拉取该文件并填入代码框（返回 `{content, language}` JSON，文件不存在则 404）。
+题目源码目录可提供初始代码模板（`problem.json` 的 `template` 字段，缺省 `template.py`）。编辑器在无本地草稿或点击「重置模板」时，通过 `GET /api/v1/problems/:id/template` 拉取该文件并填入代码框（返回 `{"data":{"content","language"}}`，文件不存在则 404）。
 
 注意：这是**代码编辑器的初始代码（starter code）**，**不是**支持包模板下载；支持包需自行按[题目包格式规范](../standards/problem-bundle.md)组织后上传。
 :::

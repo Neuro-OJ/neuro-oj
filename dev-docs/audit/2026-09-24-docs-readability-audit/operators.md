@@ -115,11 +115,11 @@
 3. **`observability.md` §社区搜索性能**：原文“迁移 0017 已负责启用 `pg_trgm` 扩展”，
    实测 `0070_unusual_starfox.sql` 也执行了 `CREATE EXTENSION IF NOT EXISTS pg_trgm`
    （`noj-core/drizzle/0070_unusual_starfox.sql:2`）。不影响结论（扩展确实已启用），
-   但“0017 负责”的措辞可能让人以为只此一处。建议（未改，需人确认）：改为“迁移
-   0017 与 0070 均已启用”。
+   但“0017 负责”的措辞可能让人以为只此一处。**已修正**（2026-09-24 复核补修）：
+   改为“迁移 0017 与 0070 先后启用”。
 4. **`capacity-baseline.md`** 未提及 `JUDGE_MAX_CONCURRENT_JUDGES` 与
    `JUDGE_CPU_LIMIT_MILLICORES` 作为必录字段；报告模板已有 `judge_concurrency`，
-   但缺 CPU 上限。建议（未改，需人确认）：模板补一行 `judge_cpu_limit_millicores=`。
+   但缺 CPU 上限。**已修正**（2026-09-24 复核补修）：模板补 `judge_cpu_limit_millicores=`。
 5. **`llm-call-capability.md` §4** 提到配额可“按用户、全局、题目、用户×题目”维护，
    但 `noj-ui` 无配额维护页面，运营者只能调接口或依赖网关 `.env` 兜底默认值；
    文档已如实改为接口表述，但**产品层面**是否补一个配额管理页属跨模块决策。
