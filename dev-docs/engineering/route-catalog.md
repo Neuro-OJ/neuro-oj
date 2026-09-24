@@ -211,6 +211,7 @@
 | POST | `/contests/:id/reset-code` | noj-core/src/domains/admin/routes/contest.ts |
 | POST | `/data-requests` | noj-core/src/domains/legal/routes/data-requests.ts |
 | POST | `/documents/:kind/versions` | noj-core/src/domains/legal/routes/admin.ts |
+| POST | `/documents/:kind/versions/:version/verify-tsa` | noj-core/src/domains/legal/routes/admin.ts |
 | POST | `/email-delivery/suppressions/:id/clear` | noj-core/src/domains/admin/routes/system.ts |
 | POST | `/email-events/:provider` | noj-core/src/domains/system/routes/email-delivery.ts |
 | POST | `/email/resend` | noj-core/src/domains/identity/routes/auth.ts |

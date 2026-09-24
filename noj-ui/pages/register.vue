@@ -79,7 +79,12 @@
 
                 <!-- PIPL 合规硬门槛：未同意条款不可注册 -->
                 <div class="mb-5 flex items-start gap-2">
-                    <UCheckbox v-model="acceptedLegal" :disabled="loading" />
+                    <UCheckbox
+                        v-model="acceptedLegal"
+                        :disabled="loading"
+                        aria-label="同意服务条款与隐私政策"
+                        data-testid="accepted-legal"
+                    />
                     <span class="text-sm text-text-secondary leading-relaxed">
                         我已年满 14 周岁，或在监护人陪同下已阅读并同意
                         <NuxtLink to="/legal/terms" target="_blank" class="text-primary no-underline hover:underline">《服务条款》</NuxtLink>

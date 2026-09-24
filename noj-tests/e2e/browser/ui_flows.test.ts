@@ -104,6 +104,8 @@ async function registerViaUI(
   await p.getByPlaceholder("请输入邮箱地址").fill(email);
   await p.getByPlaceholder("至少 8 位，需包含大小写字母和数字").fill(password);
   await p.getByPlaceholder("再次输入密码").fill(password);
+  // PIPL 硬门槛：未勾选同意条款时注册按钮 disabled，须先勾选
+  await p.getByRole("checkbox", { name: "同意服务条款与隐私政策" }).check();
   await p.getByRole("button", { name: "注册", exact: true }).click();
 }
 
