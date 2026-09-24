@@ -330,6 +330,8 @@ export async function publishVersion(
             tsa_provider: result.provider,
             tsa_token: result.token,
             tsa_chain: result.chain,
+            tsa_query: result.query,
+            tsa_timestamp: result.timestamp,
           })
           .where(
             and(
@@ -342,4 +344,61 @@ export async function publishVersion(
   }
 
   return newVersion;
+}
+
+/**
+ * 读取某版本保存的时间戳记录（供管理端验证）。
+ *
+ * @param kind 文档类型
+ * @param version 版本号
+ * @returns 时间戳字段；无记录或该版本不存在时返回 null
+ */
+export async function getVersionTsa(
+  kind: LegalKind,
+  version: number,
+): Promise<
+  {
+    content_hash: string;
+    provider: string | null;
+    token: string | null;
+    chain: string | null;
+    query: string | null;
+    timestamp: string | null;
+  } | null
+> {
+  assertKind(kind);
+  const db = getDb();
+  const [doc] = await db
+    .select()
+    .from(legalDocuments)
+    .where(eq(legalDocuments.kind, kind))
+    .limit(1);
+  if (!doc) return null;
+
+  const [row] = await db
+    .select({
+      content_hash: legalDocumentVersions.content_hash,
+      tsa_provider: legalDocumentVersions.tsa_provider,
+      tsa_token: legalDocumentVersions.tsa_token,
+      tsa_chain: legalDocumentVersions.tsa_chain,
+      tsa_query: legalDocumentVersions.tsa_query,
+      tsa_timestamp: legalDocumentVersions.tsa_timestamp,
+    })
+    .from(legalDocumentVersions)
+    .where(
+      and(
+        eq(legalDocumentVersions.document_id, doc.id),
+        eq(legalDocumentVersions.version, version),
+      ),
+    )
+    .limit(1);
+  if (!row) return null;
+  return {
+    content_hash: row.content_hash,
+    provider: row.tsa_provider,
+    token: row.tsa_token,
+    chain: row.tsa_chain,
+    query: row.tsa_query,
+    timestamp: row.tsa_timestamp,
+  };
 }

@@ -217,8 +217,7 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     key: "tsa_root_cert",
     type: "text",
     default: "",
-    description:
-      "TSA 根证书（PEM，custom 时用于验证）。config-usage: exempt 本期 TSA 仅签发时间戳不做离线验证，根证书供后续验证/审计时人工使用，暂无代码读取点",
+    description: "TSA 根证书（PEM，custom 时用于验证时间戳签发者链）",
     is_secret: true,
     scope: "runtime",
     envFallback: "TSA_ROOT_CERT",

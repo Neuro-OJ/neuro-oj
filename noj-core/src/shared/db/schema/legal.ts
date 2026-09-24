@@ -67,10 +67,14 @@ export const legalDocumentVersions = pgTable(
     }),
     /** 时间戳 Provider 标识（disabled 时为空） */
     tsa_provider: text("tsa_provider"),
-    /** RFC 3161 时间戳响应（base64） */
+    /** RFC 3161 时间戳响应中的 TimeStampToken（base64，含 CMS 签名） */
     tsa_token: text("tsa_token"),
-    /** 时间戳证书链（长期验证必需，不可省略） */
+    /** 时间戳证书链（base64，多证书以换行分隔；长期验证必需） */
     tsa_chain: text("tsa_chain"),
+    /** 原始 RFC 3161 请求（base64，含 nonce），供事后重放/复核 */
+    tsa_query: text("tsa_query"),
+    /** 时间戳签发时间（TSTInfo.genTime，ISO 8601；TSA 签名保证） */
+    tsa_timestamp: text("tsa_timestamp"),
   },
   (table) => ({
     docVersionUnique: unique("legal_document_versions_doc_version_unique").on(

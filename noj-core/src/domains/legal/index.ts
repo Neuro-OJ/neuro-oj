@@ -15,9 +15,15 @@ export {
   getCurrentDocument,
   getRequiredConsentInfo,
   getRequiredConsentVersion,
+  getVersionTsa,
   hashContent,
   listVersions,
   publishVersion,
 } from "./services/documents.ts";
-export { timestampHash, tsaEnabled } from "./services/tsa.ts";
+export {
+  buildTimeStampQuery,
+  timestampHash,
+  tsaEnabled,
+  verifyTimestamp,
+} from "./services/tsa.ts";
 export * from "./services/data-requests.ts";

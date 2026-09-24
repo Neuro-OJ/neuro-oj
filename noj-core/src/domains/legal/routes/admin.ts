@@ -21,11 +21,14 @@ import { ValidationError } from "./../../../shared/base/errors.ts";
 import { enforceRateLimit } from "./../../system/index.ts";
 import {
   getCurrentDocument,
+  getVersionTsa,
   listVersions,
   publishVersion,
 } from "../services/documents.ts";
+import { verifyTimestamp } from "../services/tsa.ts";
 import { isLegalKind } from "../types.ts";
 import type { LegalKind } from "../types.ts";
+import { getSetting } from "../../system/index.ts";
 import {
   DATA_REQUEST_STATUSES,
   type DataRequestStatus,
@@ -74,6 +77,46 @@ router.post("/documents/:kind/versions", authMiddleware, async (c) => {
   );
   return c.json({ data: { kind, version } }, 201);
 });
+
+/** 验证某版本的时间戳（离线复核 CMS 签名与 imprint）。 */
+router.post(
+  "/documents/:kind/versions/:version/verify-tsa",
+  authMiddleware,
+  async (c) => {
+    await assertPermission(c, "legal:manage");
+    await enforceRateLimit(
+      `legal-verify:user:${c.get("userId") as string}`,
+      { windowSec: 60, max: 20 },
+    );
+    const kind = requireKind(c.req.param("kind"));
+    const version = Number(c.req.param("version"));
+    const record = await getVersionTsa(kind, version);
+    if (!record) {
+      throw new ValidationError("该版本不存在");
+    }
+    if (!record.token || !record.chain) {
+      return c.json({
+        data: {
+          ok: false,
+          reason: "该版本未保存时间戳（或为旧格式缺少证书链）",
+        },
+      });
+    }
+    const rootCert = String(getSetting("tsa_root_cert")?.value ?? "").trim();
+    const result = await verifyTimestamp(
+      record.content_hash,
+      { token: record.token, chain: record.chain },
+      rootCert || undefined,
+    );
+    return c.json({
+      data: {
+        ...result,
+        provider: record.provider,
+        saved_timestamp: record.timestamp,
+      },
+    });
+  },
+);
 
 /** 请求列表。 */
 router.get("/data-requests", authMiddleware, async (c) => {

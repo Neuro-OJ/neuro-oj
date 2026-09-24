@@ -755,6 +755,8 @@ export const SCHEMA_DDL: string[] = [
     tsa_provider TEXT,
     tsa_token TEXT,
     tsa_chain TEXT,
+    tsa_query TEXT,
+    tsa_timestamp TEXT,
     CONSTRAINT legal_document_versions_doc_version_unique UNIQUE (document_id, version)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_legal_versions_material ON legal_document_versions (document_id, is_material, version)`,
