@@ -16,7 +16,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "./../../../shared/base/errors.ts";
-import { logAudit } from "./../../system/services/audit-log.ts";
+import { logAudit } from "../../system/index.ts";
 
 /** 请求类型。 */
 export const DATA_REQUEST_KINDS = ["delete", "correct"] as const;

@@ -28,7 +28,7 @@ import type {
 } from "../types.ts";
 import { isLegalKind } from "../types.ts";
 import { timestampHash, tsaEnabled } from "./tsa.ts";
-import { logAudit } from "./../../system/services/audit-log.ts";
+import { logAudit } from "../../system/index.ts";
 
 /**
  * 规范化文档内容。

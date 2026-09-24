@@ -33,8 +33,34 @@ prompt 与来源 IP，但在合规上存在系统性缺口：
 - **公开只读端点**：`GET /api/v1/legal/documents`、`/documents/:kind/versions`、
   `/site/meta`（备案+第三方），均只读、无认证。
 - **TSA 可选且不阻塞**：`tsa_provider` 默认 `disabled`；只对政策版本哈希打
-  RFC 3161 时间戳，失败仅告警不阻塞发布，须保存证书链。免费 Provider
-  （freetsa/digicert）标注"仅技术验证"，中国法律场景建议 `custom` 接国内 TSA。
+  RFC 3161 时间戳，失败仅告警不阻塞发布。**签发即校验**：解析 `TimeStampResp` 并断言
+  `PKIStatus` 授权、`messageImprint == content_hash`、CMS 签名有效、证书链内嵌；
+  仅全部通过才落库，保存真实证书链 + 原始 TSQ（含 nonce）+ 签发时间。管理端提供
+  离线复核端点 `verify-tsa`（配置 `tsa_root_cert` 时校验签发者链）。
+  免费 Provider（freetsa/digicert）标注"仅技术验证"，中国法律场景建议 `custom` 接国内 TSA。
+
+### 2026-09-24 二轮评审修复（独立子代理 REQUEST_CHANGES → 修复）
+
+- **TSA 复核补 signedAttrs 绑定校验（MAJOR）**：`verifyCmsSignature` 此前只验
+  签名，未核对 `signedAttrs.messageDigest == H(eContent)`（RFC 5652 §5.4）。
+  实测：替换 eContent 后任意合法 token 都能让复核返回 `ok:true`。现已补
+  contentType + messageDigest 常量时间比对，签发与复核两条路径同时生效；
+  测试夹具改为携带 signedAttrs 的真实形态，并新增伪造回归用例（反向探针实测
+  修复前失败 / 修复后通过）。
+- **`resetDbForTest` 漏表（MAJOR）**：`carousel_slides` 等 **5 张表**从未登记进
+  `ALL_TABLES`（`carousel_slides` / `objective_questions` / `objective_submissions` /
+  `self_tests` / `sse_events`），TRUNCATE 漏清导致同进程用例污染。已补登记，
+  并新增两道守卫：`tests/db/schema.test.ts` 的 `ALL_TABLES ↔ DDL/Drizzle` 交叉
+  核对（可捕获未来新增表漏登记）、`tests/db/reset-db-tables.test.ts` 的功能性
+  插入→reset→断言清空。
+- **合规写操作补审计（MAJOR）**：政策发布与删除/更正请求处置此前无审计日志。
+  新增 `legal.publish_version` / `legal.data_request_update` 动作（类型、DB CHECK、
+  schema-ddl、迁移 0092 同步），legal 管理路由补组级 `withActorContext`，
+  路由级回归测试断言两条审计真实落库。
+- **MINOR**：0088 数据迁移的空值判定补 `'""'`（`JSON.stringify("")` 的落库形态），
+  避免"新键为空串"被误判非空而丢旧值；`updateDataRequestStatus` 加乐观锁
+  （并发处置冲突返回 409 而非后写覆盖）；E2E 非法状态回退断言收紧为 400/409；
+  TSA 的 `base64Decode(...).buffer` 统一经 `toBufferSource` 截断。
 - **权利通道**：`GET /api/v1/users/me/data-export`（聚合本人账户/提交/社区/
   同意）；`POST/GET /api/v1/legal/data-requests` 提交与查看；管理端
   `GET/PATCH /api/v1/admin/legal/data-requests` 按状态机
@@ -69,8 +95,11 @@ prompt 与来源 IP，但在合规上存在系统性缺口：
 - 未发布政策时注册仍成功但不写同意记录；**部署者必须先发布政策再开放注册**
   （`noj-docs/docs/operators/legal-compliance.md` 已写明）。
 - 页脚备案位未配置时不渲染，境外托管（无 ICP）可留空。
-- TSA 根证书当前无代码读取点（仅签发不校验），在注册表以 `config-usage: exempt`
-  登记并注明原因，留待后续离线验证实现。
+- TSA 根证书已被读取与强制：`POST /admin/legal/documents/:kind/versions/:version/verify-tsa`
+  在未配置 `tsa_root_cert` 时返回 `ok:false` + `trusted:false`（`signature_valid`
+  单独给出），并校验 imprint 算法为 SHA-256、签名者证书在签发时刻处于有效期内；
+  仅 `trusted:true` 才可作为可信时间戳证据（2026-09-25 评审收紧，此前为"可选校验"）。
+  历史版本若 `tsa_chain` 为旧格式（token 副本），复核端点会给出明确提示。
 - 政策重大变更同意弹窗（`LegalConsentModal`）已交付：登录用户存在未同意的
   `is_material` 版本时展示，**不可关闭**，同意后调用 `/legal/consent` 并刷新状态。
 - OAuth 注册同样受硬门槛约束：`intent=login` 的授权需带 `accepted_legal=true`，
@@ -122,6 +151,12 @@ prompt 与来源 IP，但在合规上存在系统性缺口：
   `/api/v1/data-policy` 把多行说明渲染成"处理者：<说明>"）。
 - **管理端审计筛选**：`legal.publish_version` / `legal.data_request_update` 登记进
   `AUDIT_ACTIONS`（写入侧早已落库，此前筛选清单没有这两项）。
+- **合规证据表补取值约束**：`user_consents.document_kind` 新增
+  `user_consents_kind_check CHECK (document_kind IN ('privacy','terms'))`
+  （迁移 0093，drizzle schema 与 `schema-ddl.ts` 同步），与同层 `legal_documents` /
+  `data_requests` / `carousel_slides` 的 CHECK 口径一致。
+- **同意弹窗判据**：`LegalConsentModal` 的 watch 键从"待同意项数组长度"改为
+  "首个待同意项的 kind"，长度不变但内容变化时也能重开弹窗。
 - **读路径校验与限流**：`GET /admin/legal/data-requests?status=…` 非法状态由"静默
   返回空列表"改为 400，与写路径口径一致。
 - **公开轮播图片**：`getCarouselImageBytes` 增加 `is_enabled=true AND kind='image'`
