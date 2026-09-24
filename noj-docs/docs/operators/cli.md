@@ -5,15 +5,38 @@
 它与宿主机的 `noj-cli` 相互独立；后者由一键安装器从 Release
 下载，负责生产部署和运维。
 
+::: info 两个 `noj` 别混淆
+- **`noj-cli`**：宿主机上的部署/运维 CLI（`status`/`logs`/`update`/`backup`…）。
+- **`/app/bin/noj`**：`noj-server` 容器内的一次性管理 CLI（`db`/`init`/`bootstrap`/`problem`）。
+  本页讲的是后者，需在 `core` 容器内以 `--entrypoint` 方式执行。
+:::
+
 ## 生产环境执行方式
 
 生产环境不直接使用源码或 `deno task`，而是通过部署目录中的 Docker Compose，在
-`noj-server` 镜像内执行 CLI：
+`noj-server` 镜像内执行 CLI。命令模板如下（把 `<子命令>` 换成下表任意一条）：
 
 ```bash
 docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
   --entrypoint /app/bin/noj core <子命令>
 ```
+
+::: tip 更短的等价写法
+上面那些 Tier 3 命令都可由宿主机上的 `noj-cli` 自动包装（它自动带上
+`--env-file`、`-f` 与 `--entrypoint`），无需手写长命令：
+
+```
+noj-cli db migrate            # 等价于 core db migrate
+noj-cli init system           # 等价于 core init system
+noj-cli bootstrap first-admin --username site_admin --email admin@example.com
+noj-cli problem build         # 或 problem import（problems 为别名）
+noj-cli search reindex
+```
+
+指定安装目录用 `--install-dir <path>`（**不要用 `--dir`**，那会被原样透传给
+容器内的 `noj`，例如 `problems import --dir <包目录>`）；`--dry-run` 只打印将执行的
+compose 命令。
+:::
 
 常用子命令：
 
@@ -39,7 +62,7 @@ docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compos
   --entrypoint /app/bin/noj core problems import
 ```
 
-> 说明：`migrate` 服务本身已按顺序执行
+> 说明：compose 的一次性 `migrate` 服务本身已按顺序执行
 > `db migrate → init system`，不会自动创建或提升管理员。 上面的 `run --rm`
 > 方式用于需要单独执行某个子命令的场景。
 

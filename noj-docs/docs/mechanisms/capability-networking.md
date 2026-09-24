@@ -1,19 +1,23 @@
 # 如何提供受限网络能力
 
-本页面向出题人：当题目需要访问外部网络 API（LLM 接口、检索服务等）时，
-如何通过 capability 安全地把网络能力交给 solution 使用。
+> 一句话：当题目需要访问外部网络 API（LLM、检索等）时，**只有 evaluator 联网**，并把它封装成一个**精确的业务函数**（capability）交给 solution 调用；solution 容器始终无网。
+
+本页面向出题人：当题目需要访问外部网络 API（LLM 接口、检索服务等）时，如何通过 capability 安全地把网络能力交给 solution 使用。
 
 ## 三步概览
 
-1. **在题目配置中开启 evaluator 联网**：`runtime_config.evaluator.network.enabled = true`（Web 编辑器勾选「允许 Evaluator 联网」）。该字段是敏感字段，需要 `problem:field_evaluator_network` 权限；**默认普通用户没有此权限**，需由管理员在 RBAC 面板显式授权，P 型题目仍仅管理员可管理。开启后 evaluator 容器以 Docker bridge 模式联网；solution 容器**始终无网**。
+1. **在题目配置中开启 evaluator 联网**：`runtime_config.evaluator.network.enabled = true`（Web 编辑器勾选「允许 Evaluator 联网」）。
 2. **在 evaluate.py 中注册 capability**：用 `register_capability` 暴露一个**精确封装**的函数。
 3. **在题面中声明 capability**：明确写出名称、参数、返回值语义，做题人用 `call_capability` 调用。
 
+::: warning 开启联网需要额外权限
+`evaluator.network` 是敏感字段，需要 `problem:field_evaluator_network` 权限。**默认普通用户没有此权限**（RBAC seed 会从默认 user 角色撤销），需由管理员在 RBAC 面板显式授权；P 型题目仍仅管理员可管理。同样地，`evaluator.command` 需要 `problem:field_evaluator_command`。
+:::
+
+开启后 evaluator 容器以 Docker bridge 模式联网；solution 容器**始终无网**。
+
 ::: tip LLM 调用题请优先使用 noj-llm-gateway
-如果外部 API 是 OpenAI 兼容的 LLM 服务，**不要**在 evaluator 里保存上游 API Key，
-而是使用系统提供的 `noj-llm-gateway`（`llm.complete`）。这样真实 Key 只存在于
-gateway，并且自动获得 eval_token、限流/额度与用量审计。具体接入见
-[出 LLM 调用题](../problemsetters/llm-problem.md)。
+如果外部 API 是 OpenAI 兼容的 LLM 服务，**不要**在 evaluator 里保存上游 API Key，而是使用系统提供的 `noj-llm-gateway`（`llm.complete`）。这样真实 Key 只存在于 gateway，并且自动获得 eval_token、限流/额度与用量审计。具体接入见 [出 LLM 调用题](../problemsetters/llm-problem.md)。
 :::
 
 ## 注册 capability
@@ -36,7 +40,7 @@ register_capability("request_llm_completion", request_llm_completion)
 ## 核心原则：封装精确函数，而不是通用转发
 
 **这是最重要的安全边界。** capability 是 solution 调用网络**唯一**的入口，
-它的签名就是你的安全策略。请封装"业务意图"，而不是"网络能力"：
+它的签名就是你的安全策略。请封装“业务意图”，而不是“网络能力”：
 
 ::: danger 反例：通用转发（会打开 SSRF 面）
 ```python
@@ -71,7 +75,7 @@ register_capability("request_llm_completion", request_llm_completion)
 ```
 :::
 
-**判断标准**：solution 通过你的 capability 最多能做到什么？如果"任意目标地址、任意方法、任意头"都能被控制，就等同于给 solution 开了全量网络。目标地址应当固定或来自受控枚举，而不是由调用方自由传入。
+**判断标准**：solution 通过你的 capability 最多能做到什么？如果“任意目标地址、任意方法、任意头”都能被控制，就等同于给 solution 开了全量网络。目标地址应当固定或来自受控枚举，而不是由调用方自由传入。
 
 ## 安全清单（出题人自查）
 
@@ -93,13 +97,19 @@ register_capability("request_llm_completion", request_llm_completion)
 
 ## 网络模式说明
 
-- `network.enabled = true`：evaluator 以 Docker **默认 bridge** 联网（**全量**出网，无网络层白名单）。安全依赖上述 capability 设计原则。
-- `network.enabled` 缺省 / `false`：evaluator 与 solution 均无网（默认，与旧行为一致）。
-- **横向移动面（威胁模型）**：Docker 默认 bridge 允许容器间互通（ICC），联网的 evaluator 可探测同宿主其他容器及网关（`172.17.0.1` 等）上的服务。由于 evaluator 只运行出题人编写的可信代码，此面由"不要注册通用转发 capability"约束兜底；生产加固方向（每任务独立 user-defined network + `icc=false`）已列入规划，当前版本请以 capability 封装为准。
-- **未来增强**：网络层白名单代理（egress proxy）已列入规划，届时可在网络层兜底限制域名/端口；当前版本请以 capability 封装为准。
+| 配置 | evaluator | solution |
+| --- | --- | --- |
+| `network.enabled = true` | Docker **bridge** 联网（**全量**出网，无网络层白名单）；网络名可由运维改为 compose 网络（`JUDGE_EVALUATOR_NETWORK`） | 无网 |
+| `network.enabled` 缺省 / `false` | 无网（默认，与旧行为一致） | 无网 |
+
+::: warning 横向移动面（威胁模型）
+Docker 默认 bridge 允许容器间互通（ICC），联网的 evaluator 可探测同宿主其他容器及网关（`172.17.0.1` 等）上的服务。由于 evaluator 只运行出题人编写的可信代码，此面由“不要注册通用转发 capability”约束兜底；生产加固方向（每任务独立 user-defined network + `icc=false`）已列入规划，当前版本请以 capability 封装为准。
+:::
+
+网络层白名单代理（egress proxy）同样已列入规划，届时可在网络层兜底限制域名/端口。
 
 ## 验证方法
 
-- 本地用 `deno task dev-setup` 环境跑一次真实提交，确认 solution 能通过 `call_capability` 拿到正确结果。
-- 提交一个恶意尝试（如调用未注册 capability、传非预期参数）确认被拒绝（`CapabilityNotFoundError` / `CapabilityRejectedError`）。
-- 如需确认 solution 确实无网，可在题面声明"不允许直接网络请求"，观察提交是否会失败。
+1. 本地用 `deno task dev-setup` 环境跑一次真实提交，确认 solution 能通过 `call_capability` 拿到正确结果。
+2. 提交一个恶意尝试（如调用未注册 capability、传非预期参数）确认被拒绝（`CapabilityNotFoundError` / `CapabilityRejectedError`）。
+3. 如需确认 solution 确实无网，可在题面声明“不允许直接网络请求”，观察提交是否会失败。

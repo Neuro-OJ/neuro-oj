@@ -1,11 +1,13 @@
 # 功能主题
 
-本部分按功能维度介绍 Neuro OJ 的各类功能。
+本部分按功能维度介绍 Neuro OJ 的各类功能，每页覆盖该功能的能力范围、关键规则与操作入口。
 
-- [排行榜与签到](ranking.md)
-- [搜索与私信](search-messages.md)
-- [社区](community.md)
-- [竞赛](contests.md)
-- [题单](trainings.md)
-- [公告](announcements.md)
-- [客观题套卷](objective.md)
+| 主题 | 内容 |
+|------|------|
+| [排行榜与签到](ranking.md) | 全站榜单排序口径、每日签到与活跃度统计 |
+| [搜索与私信](search-messages.md) | 全局搜索覆盖范围与限制、站内私信 |
+| [社区](community.md) | 题解 / 讨论 / 动态、互动、板块权限与审核 |
+| [竞赛](contests.md) | 类 Kaggle 赛制、报名、榜单可见性与封榜、赛后复盘 |
+| [题单](trainings.md) | 题单可见性、创建管理与进度统计 |
+| [公告](announcements.md) | 公告发布、导航栏横幅与首页轮播 |
+| [客观题套卷](objective.md) | 单选 / 多选 / 判断的作答、判定与导入 |

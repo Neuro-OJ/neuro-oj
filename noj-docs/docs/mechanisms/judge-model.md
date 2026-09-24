@@ -1,6 +1,12 @@
 # 评测模型
 
+> 一句话：每次提交同时启动 **Evaluator 容器**（跑出题人的 `evaluate.py`）与 **Solution 容器**（跑用户代码 + Solution Host 进程），由 Evaluator 主动调用用户函数并按返回值判分。
+
 Neuro OJ 当前支持双容器评测模型。每次提交会同时涉及 Evaluator 容器和 Solution 容器。核心术语见[术语表](../reference/glossary.md)。
+
+::: info Solution Host 与 Solution 容器
+**Solution 容器**是 Docker 容器；**Solution Host** 是其中负责加载用户模块、转发函数调用的协议进程（即 `noj_solution_sdk.host`）。下文按此区分使用。
+:::
 
 ```mermaid
 flowchart TD
@@ -10,9 +16,7 @@ flowchart TD
 
 ## 与传统 OJ 的差异
 
-传统 OJ 通常运行用户程序，把 stdin 输入喂给程序，再比对 stdout。Neuro OJ 的 Python 题目不使用这种答案通道。
-
-在 Neuro OJ 中：
+传统 OJ 通常运行用户程序，把 stdin 输入喂给程序，再比对 stdout。Neuro OJ 的 Python 题目不使用这种答案通道：
 
 - 用户提交的是可被调用的 Python 代码。
 - 题面会声明必须实现的函数，例如 `solve(a, b)`。
@@ -31,19 +35,32 @@ Evaluator 是评分逻辑的所有者。它决定：
 - 如何计算分数。
 - 向用户展示哪些详情。
 
-Evaluator 的 stdout 会进入评测输出，同时承载 NDJSON 协议帧和 `---RESULT---` 标记；Judge Worker 解析带 `type` 字段的协议帧，其余文本作为评测输出。Evaluator 的 stderr 只作为普通日志/诊断输出，不承载 RPC 帧。
+::: info Evaluator 的两个输出通道去向不同
+- **stdout**：进入评测输出，同时承载 NDJSON 协议帧与 `---RESULT---` 标记；Judge Worker 解析带 `type` 字段的协议帧，其余文本作为评测输出。
+- **stderr**：只作为普通日志/诊断输出，**不承载 RPC 帧**。
+:::
 
 ## Solution 容器
 
-Solution 容器运行用户提交的代码（Judge Worker 以硬编码名 `main.py` 注入）和 Solution Host。Solution Host 会加载用户模块，并等待 Evaluator 发起函数调用。
+Solution 容器运行用户提交的代码（Judge Worker 以硬编码名 `main.py` 注入）和 Solution Host。Solution Host 会加载用户模块、自动注册其中的顶层函数，并等待 Evaluator 发起函数调用。
 
-如果用户函数不存在，Solution Host 会返回 `code="NotFound"` 的错误帧，Evaluator SDK 将其转换为 `NotFoundError`。如果用户函数抛异常，会返回异常类型、消息和截断后的 traceback。
+调用失败时 Solution Host 返回错误帧，Evaluator SDK 将其转换为对应异常：
 
-注意这里的“返回”指的是发回给 Evaluator 的调用错误对象，不等于最终提交的结果状态（verdict）。新协议下最终状态只保留 `finished` / `error`，分数是唯一结果；`Accepted` / `WrongAnswer` 等只作为 `details.cases` 用例级参考信息。也就是说：
+| 情况 | 协议 code | Evaluator 侧异常 |
+| --- | --- | --- |
+| 用户函数不存在 | `NotFound` | `NotFoundError` |
+| 用户函数抛异常 | `Exception`（含清洗后 traceback） | `SystemError` |
+| 返回值类型非法 | `Rejected` | `RejectedError` |
+
+::: warning 调用失败 ≠ 提交失败
+上表说的是发回给 Evaluator 的**调用错误对象**，不等于最终提交结果（verdict）。新协议下最终状态只保留 `finished` / `error`，**分数是唯一结果**；`Accepted` / `WrongAnswer` 等只作为 `details.cases` 用例级参考信息。
+:::
+
+具体来说：
 
 - 用户函数抛异常后，Evaluator 可以把它记为失败用例，最终通常为 `finished` + 0 分。
 - 调用超时或调用阶段资源异常后，Evaluator 也可以把它当作普通失败用例处理，最终为 `finished` + 0 分。
-- 只有当 Evaluator 自身异常退出、整体超时，或 Judge Worker / Solution Host 在调用前就无法正常工作时，最终状态才会是 `error`。
+- 只有当 Evaluator 自身异常退出、整体超时，或 Solution Host 在调用前就无法正常工作时，最终状态才会是 `error`。
 - 用户代码语法错误、模块导入失败、Solution Host 启动失败，通常会在调用前被判为 `error`，因为这时 Evaluator 还没有拿到可继续评分的函数实例。
 
 ### 超时与状态映射
@@ -59,7 +76,9 @@ Solution 容器运行用户提交的代码（Judge Worker 以硬编码名 `main.
 
 evaluator 启动超时（评测环境未就绪）同样归 `error`。
 
-Solution Host 在同一次评测中是 persistent 的：多次 `runner.call()` 默认会调用同一个 Python 模块实例，因此用户模块的全局状态会在调用之间保留。当前 SDK **不提供** `runner.restart()`。
+::: tip Solution Host 在同一次评测中是常驻的
+多次 `runner.call()` 默认调用**同一个** Python 模块实例，因此用户模块的全局状态会在调用之间保留。当前 SDK **不提供** `runner.restart()`。
+:::
 
 ## 隔离边界
 

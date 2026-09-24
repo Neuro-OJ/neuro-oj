@@ -1,11 +1,11 @@
 # 对象存储生命周期治理
 
-本文档描述对象类型、数据库引用和当前生命周期边界。机器可检查的清单位于
-[`dev-docs/engineering/object-storage-governance.json`](../../../dev-docs/engineering/object-storage-governance.json)。
+> 本页描述对象类型、数据库引用和当前生命周期边界，并说明只读盘点的运行方式。机器可检查的清单位于
+> [`dev-docs/engineering/object-storage-governance.json`](https://github.com/Neuro-OJ/neuro-oj/blob/main/dev-docs/engineering/object-storage-governance.json)。
 
 ## 当前阶段：只读盘点
 
-第一阶段只建立事实基线，不新增对象删除策略：
+第一阶段只建立事实基线，**不新增对象删除策略**：
 
 ```bash
 cd noj-core
@@ -14,10 +14,15 @@ deno task storage:audit -- --pretty \
   --prometheus-output /var/lib/node_exporter/textfile/noj_storage.prom
 ```
 
-命令只执行数据库 `SELECT` 和对象存储 `LIST`，输出对象数量、字节数、按类型统计、
-未被数据库引用的对象、数据库引用但对象不存在的记录，以及非法存储 URL。它不会调用
-`delete`、`put` 或修改数据库。报告中的 orphan 不是“可直接删除”清单：跨环境引用、
-备份恢复窗口和历史迁移都必须由运营者复核。
+命令只执行数据库 `SELECT` 和对象存储 `LIST`，输出对象数量、字节数、按类型统计、未被数据库引用的对象、数据库引用但对象不存在的记录，以及非法存储 URL。它不会调用 `delete`、`put` 或修改数据库。
+
+::: danger orphan 不是"可直接删除"清单
+报告中的 orphan 只表示"当前 inventory 中未被引用"。跨环境引用、备份恢复窗口和历史迁移都必须先由运营者复核；**直接删除 bucket、目录或对象可能造成不可逆的数据丢失**。
+:::
+
+::: warning 先确认目标环境
+运行前必须确认 provider、bucket、存储目录与生产目标一致。对错误的存储目录（如挂载点写错）执行盘点，会得出误导性的 orphan/missing 结论。
+:::
 
 ## 对象类型与引用
 
@@ -31,18 +36,25 @@ deno task storage:audit -- --pretty \
 
 ## 运行与告警
 
-将 `noj_storage_objects_total`、`noj_storage_bytes`、`noj_storage_orphan_objects`、
-`noj_storage_orphan_bytes`、`noj_storage_missing_references` 和
-`noj_storage_audit_generated_at_seconds` 写入 node_exporter textfile collector 后，
-由 Prometheus 观察数量/容量增长趋势。建议每日盘点；对象数量或字节数异常增长先查
-artifact 入队失败、消息图片发送和备份任务，不要直接删除 bucket 或目录。
+盘点结果以低基数 Prometheus gauge 写入 node_exporter textfile collector，由 Prometheus 观察数量/容量增长趋势：
 
-出现以下情况应暂停回收并人工复核：
+| 指标 | 含义 |
+| --- | --- |
+| `noj_storage_objects_total` | 当前对象总数 |
+| `noj_storage_bytes` | 当前对象总字节数 |
+| `noj_storage_orphan_objects` / `noj_storage_orphan_bytes` | 未被数据库引用的对象数与字节数 |
+| `noj_storage_missing_references` | 数据库引用但 inventory 中不存在的引用数 |
+| `noj_storage_audit_generated_at_seconds` | 盘点报告生成时间 |
 
+建议每日盘点；对象数量或字节数异常增长时，先排查 artifact 入队失败、消息图片发送和备份任务，**不要直接删除 bucket 或目录**。
+
+::: warning 出现以下情况应暂停回收并人工复核
 - `missing_references_total > 0`（数据库仍引用但对象不存在）；
 - provider、bucket、存储目录与部署配置不一致；
 - orphan 对象的 `lastModified` 处于近期发布/恢复窗口；
 - local 内容寻址对象被多个用户共享，或存在跨 provider 的历史 URL。
+:::
 
-备份与 local 支持包路径需区分：`data/storage/` 是运行时纯净评测包，
-`data/packages/` 是可重建的导入载体。生产环境必须使用 S3/兼容对象存储。
+::: info 备份与支持包路径需区分
+`data/storage/` 是运行时纯净评测包（local provider 默认目录，可用 `SUPPORT_PACKAGE_DIR` 覆盖）；`data/packages/` 是可重建的导入载体（`problems:build` 产物）。生产环境必须使用 S3/兼容对象存储（`STORAGE_PROVIDER=s3`）。
+:::

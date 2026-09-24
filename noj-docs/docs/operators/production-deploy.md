@@ -9,6 +9,13 @@
 
 生产环境默认将容器日志限制为每个文件 50 MiB、保留 5 个文件；如需集中检索，应在宿主机或日志平台配置采集器，并避免写入凭据、代码、prompt 或完整提交内容。
 
+::: tip 阅读顺序
+1. 先看下文「1. 前置条件」确认主机满足要求；
+2. 照「2. 安装」下载并运行 `noj-cli install`；
+3. 用「4. 日常运维」里的命令管理服务；
+4. 需要升级/回滚/备份时看「5. 升级与回滚」及「5.1 备份、文件校验与隔离恢复演练」。
+:::
+
 ## 1. 前置条件
 
 - Linux amd64 服务器：仅启动/诊断至少 2 vCPU、2 GiB 内存、2 GiB Swap、目标磁盘 10 GiB 可用；这不是公测容量承诺。
@@ -48,17 +55,26 @@ chmod +x noj-cli-linux-amd64
 ./noj-cli-linux-amd64 install --dir /opt/neuro-oj
 ```
 
+::: warning 非交互环境必须先备好配置
+`install` 在**没有 TTY**（如 CI、远程管道）或显式 `--non-interactive` 时不会进入
+配置向导；此时若目录中没有现成的 `.env.prod`，安装会**报错且零写入**。
+需要无人值守部署时，先手工准备好 `.env.prod`（权限 `600`，含全部必填值）再运行。
+:::
+
 `install` 会按以下顺序执行：
 
 1. 从同版本 Release 下载 `docker-compose.prod.yml` 与 `.env.prod.example`，
    并校验 **SHA-256**（校验失败拒绝写入）；
-2. 首次安装时由模板生成 `.env.prod`（权限 `600`），并写入自动生成的强随机密钥；
+2. 首次安装时由模板生成 `.env.prod`（权限 `600`），并写入自动生成的强随机密钥
+   （`JWT_SECRET` / `TFA_ENCRYPTION_KEY` / 数据库与 Redis 口令 / S3 / LLM 主密钥等）；
    已存在则**逐字节保留**，不做覆盖；
 3. 在 TTY 下进入配置向导（网站地址、HTTP/HTTPS、邮件服务、是否启用 Judge）。
    非交互环境必须显式提供配置，否则**报错且零写入**；
-4. 校验生产配置（env 文件 / 权限 / 必填值 / Judge socket / 端口 / Compose 解析）；
-5. 校验镜像签名（仅在 `NOJ_ENFORCE_IMAGE_SIGNATURES` 开启时）；
-6. 拉取镜像 → 等待健康检查 → 记录部署元数据 → 注册 PATH 命令。
+4. 解析备份口令（`--passphrase-file` / 环境变量 / `.env.prod` 三选一）；
+5. 校验生产配置（env 文件 / 权限 / 必填值 / Judge socket / 端口 / Compose 解析）；
+6. 校验镜像签名（仅在 `NOJ_ENFORCE_IMAGE_SIGNATURES` 开启时）；
+7. 拉取镜像 → 等待健康检查 → 记录部署元数据 → 安装 `<dir>/bin/noj-cli` →
+   注册 PATH 命令。
 
 > **资产前置**：所选 Release 必须同时包含 CLI 二进制、校验文件与两个部署文件。
 > 缺少任一资产时**明确报错**，不会混用不同版本（issue #431 的过滤规则）。
@@ -101,12 +117,12 @@ Docker daemon（这是有意的边界：自动安装 daemon 需要 root 安装�
 | 配置项 | 说明 |
 |---|---|
 | `NOJ_VERSION` | 要使用的 Release 标签，例如 `v0.9.5`；不要填写 `latest` |
-| `DOMAIN` | 网站地址，只填写域名或服务器 IP，不要写 `http://`/`https://` |
+| `DOMAIN` | 对外域名或服务器 IP，只填主机名，不要写 `http://`/`https://`（`install` 的向导会据此生成 `APP_URL`；不直接注入容器） |
 | `APP_URL` | 网站完整地址，例如 `http://1.2.3.4` 或 `https://oj.example.com` |
 | `CORS_ALLOWED_ORIGINS` | 通常与 `APP_URL` 相同 |
 | `POSTGRES_PASSWORD` / `REDIS_PASSWORD` | 数据库和 Redis 强密码 |
 | `JWT_SECRET` / `TFA_ENCRYPTION_KEY` | 至少 32 个字符的随机密钥 |
-| `EMAIL_PROVIDER` | `aliyun`、`tencent` 或 `disabled`；可直接跳过，但 `disabled` 时公开注册受限（见上文） |
+| `EMAIL_PROVIDER` | `aliyun`、`tencent` 或 `disabled`；`disabled` 时邮箱验证/密码找回不可用，公开注册被禁止（见[后台管理指南](./admin-guide.md)） |
 | `JUDGE_ENABLED` | 是否启动 Judge，默认 `true` |
 | `JUDGE_DOCKER_SOCKET` | Judge 专用 rootless Docker socket；禁止使用宿主机默认 socket |
 | `NGINX_PORT` | 对外端口，默认 `8080` |
@@ -127,10 +143,17 @@ noj-cli logs judge --follow   # 持续查看 Judge 日志
 noj-cli start                 # 启动服务
 noj-cli stop                  # 停止服务但保留数据
 noj-cli restart               # 重启服务
-noj-cli backup                # 创建备份
+noj-cli backup create         # 创建备份快照（backup 必须带子命令）
+noj-cli backup list           # 列出已有备份
 noj-cli verify                # 校验配置和镜像
 noj-cli config check          # 只检查配置，不改变服务
 ```
+
+::: tip `backup` 必须带子命令
+`noj-cli backup` 本身不创建备份，只打印用法错误。创建用
+`noj-cli backup create`，另有 `verify` / `list` / `prune` / `restore` / `drill` /
+`schedule` 子命令。
+:::
 
 如果 `noj-cli` 尚未加入 PATH，可以直接调用安装目录内的二进制：
 
@@ -185,11 +208,13 @@ JOIN llm_providers lp ON lp.id = p.llm_config->>'provider_id'
 WHERE lp.created_by <> '0';
 ```
 
+::: warning 悬空 Provider 引用会导致 LLM 题静默失败
 - **结果为空**：直接升级。
 - **有结果**：先把这些题目的 LLM 配置改为平台 Provider（管理端编辑题目即可），
   或按需清空（`UPDATE problems SET llm_config = NULL WHERE id = '<problem_id>'`），
   再执行升级。升级后这类题目的**编辑保存**也会以
   「LLM Provider 不存在或已停用」失败，因此不要留到升级后再处理。
+:::
 
 > 升级后若怀疑存在遗漏，可再查一次悬空引用：
 > `SELECT id, title FROM problems WHERE llm_config->>'provider_id' IS NOT NULL
@@ -209,7 +234,8 @@ WHERE lp.created_by <> '0';
 真正的恢复验收演练（会起独立 Compose 项目，分钟级、需 Docker）：
 
 ```bash
-noj-cli backup drill backups/snapshot-YYYYMMDD-HHMMSS \
+# 快照是 .nojbackup 单文件，命名形如 snapshot-YYYYMMDD-HHMMSS.nojbackup
+noj-cli backup drill backups/snapshot-20260924-021500.nojbackup \
   --passphrase-file /secure/noj-backup-passphrase
 ```
 
@@ -224,8 +250,10 @@ noj-cli backup drill backups/snapshot-YYYYMMDD-HHMMSS \
 损坏快照、解密失败、数据库恢复失败或业务验收失败都会以非零退出并保留失败现场报告。
 演练结束后自动 `down -v` 回收资源；`--keep` 可保留现场供人工检查。
 
-建议每季度以及在重要迁移前各执行一次隔离恢复演练。备份快照与 GPG 解密口令文件必须异地独立保存；
-口令丢失时快照无法恢复，任何演练都无法弥补。
+::: danger 口令遗失 = 备份不可恢复
+备份快照与 GPG 解密口令文件必须异地独立保存；口令丢失时快照无法恢复，
+任何演练都无法弥补。建议每季度以及在重要迁移前各执行一次隔离恢复演练。
+:::
 
 ### 5.2 定期备份调度与 RPO
 
@@ -257,8 +285,12 @@ noj-cli uninstall
 noj-cli uninstall --all --yes
 ```
 
-普通卸载要求输入 `UNINSTALL`，不会删除 PostgreSQL、Redis、MinIO、Judge 缓存、备份或配置。
-完全删除要求输入 `DELETE ALL` 或使用 `--yes`，执行前请确认备份已保存到其他位置。
+::: danger 不可逆：`uninstall --all`
+完全删除会连同 PostgreSQL、Redis、MinIO 数据卷、备份与安装目录一并删除，
+**无法恢复**。普通卸载（不带 `--all`）只删容器/网络/本地镜像，要求交互输入
+`UNINSTALL`；完全删除要求输入 `DELETE ALL` 或使用 `--yes`。
+执行前请务必确认备份已保存到其他位置。
+:::
 
 ## 7. CLI 配置模式与源码运行
 
