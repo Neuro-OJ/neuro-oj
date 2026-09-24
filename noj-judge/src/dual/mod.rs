@@ -1016,6 +1016,25 @@ async fn forward_frame(
     Ok(())
 }
 
+/// 把结果 JSON 的 `score` 归一为 0–10000 的整数。
+///
+/// 接受整数与浮点（四舍五入）；负数 / NaN / Infinity / 非数值一律 0。
+/// 判定见 `build_judge_result` 的注释（浮点曾静默判 0，2026-09-24 评审修复）。
+fn score_to_i32(value: Option<&Value>) -> i32 {
+    let Some(v) = value else { return 0 };
+    if let Some(i) = v.as_i64() {
+        return i.clamp(0, 10_000) as i32;
+    }
+    if let Some(f) = v.as_f64() {
+        if !f.is_finite() {
+            return 0;
+        }
+        // 四舍五入到最接近的整数（与 SDK 的 int(round(score*100)) 口径一致）
+        return (f.round() as i64).clamp(0, 10_000) as i32;
+    }
+    0
+}
+
 pub(crate) fn build_judge_result(
     submission_id: &str,
     parsed: &serde_json::Value,
@@ -1034,11 +1053,11 @@ pub(crate) fn build_judge_result(
         _ => "finished",
     }
     .to_string();
-    let score = parsed
-        .get("score")
-        .and_then(Value::as_i64)
-        .unwrap_or(0)
-        .clamp(0, 10_000) as i32;
+    // 分数取整：优先整数；浮点（如 `6666.666…`）按四舍五入取整后再夹取。
+    // 此前仅 `as_i64()`，绕过 SDK 直印浮点 score 的 evaluator 会被静默判 0 分
+    // 且外观与正常评测无异（2026-09-24 评审修复）；prediction 不可重测，
+    // 一次误判即作废。
+    let score = score_to_i32(parsed.get("score"));
     let details = parsed.get("details").cloned().unwrap_or(Value::Null);
 
     JudgeResult {

@@ -97,9 +97,25 @@ impl PredictionOutput {
         Self::default()
     }
 
-    /// 是否已捕获到 payload（评测可提前结束）。
+    /// 是否已捕获到 payload（标记已见且至少一行非空内容）。
     fn has_payload(&self) -> bool {
         matches!(&self.payload, Some(p) if !p.is_empty())
+    }
+
+    /// 是否存在**可用**（可解析为 JSON 且含 `score`）的候选 payload。
+    ///
+    /// 阶段 2 的提前退出条件（2026-09-24 评审修复）。此前退出条件是
+    /// [`Self::has_payload`]（任意非空行即为真），于是「标记 → 噪声行 → 真
+    /// JSON」会在噪声行处提前退出，后续的真结果永远不被读取，评测以
+    /// `error/0` 收尾——prediction 不支持重测，一次失败即作废。
+    ///
+    /// 改为逐一试解析候选：只有拿到带 `score` 的 JSON 才允许提前收尾，
+    /// 否则继续读到流结束或 `time_limit_ms` 超时（候选有界，
+    /// [`MAX_PAYLOAD_CANDIDATES`] ≤ 8，解析开销可忽略）。
+    fn has_usable_payload(&self) -> bool {
+        self.payload_candidates_ordered()
+            .iter()
+            .any(|c| serde_json::from_str::<Value>(c).is_ok_and(|v| v.get("score").is_some()))
     }
 
     /// 返回按优先级排列的候选 payload（首个 `payload` 优先，其余按出现顺序）。
@@ -362,9 +378,11 @@ async fn run_prediction_loop(
         }
     }
 
-    // 阶段 2：总时限内持续读取，直到流式解析捕获 payload 或流结束
+    // 阶段 2：总时限内持续读取，直到捕获到**可用** payload（可解析且含 score）
+    // 或流结束。退出条件不能用「任意非空行」——「标记 → 噪声 → 真 JSON」场景
+    // 会在噪声处提前退出并丢掉真结果（2026-09-24 评审修复）。
     let deadline = Instant::now() + Duration::from_millis(time_limit_ms);
-    while !out.has_payload() {
+    while !out.has_usable_payload() {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
             return Ok(JudgeResult::system_error(
@@ -686,5 +704,80 @@ mod tests {
             resolve_workspace_mb(Some(1), 2048),
             MIN_PREDICTION_WORKSPACE_MB
         );
+    }
+}
+
+#[cfg(test)]
+mod fix_tests {
+    use super::*;
+
+    fn stdout_chunk(s: &str) -> LogOutput {
+        LogOutput::StdOut {
+            message: bytes::Bytes::from(s.to_string()),
+        }
+    }
+
+    /// 回归（2026-09-24 评审 F-2）：标记 → 噪声行 → 真 JSON 的场景。
+    ///
+    /// 修复前 `has_payload()` 对任意非空行为真，阶段 2 循环在噪声行处提前退出，
+    /// 真 JSON 永不被读取 → `error/0`。修复后只有「可解析且含 score」才允许
+    /// 提前退出，噪声（不可解析 / 无 score）会继续读。
+    #[test]
+    fn test_noise_line_does_not_stop_reading_until_usable_payload() {
+        let mut out = PredictionOutput::new();
+        out.feed(&stdout_chunk("---RESULT---\n"));
+        out.feed(&stdout_chunk("this is a noise line\n"));
+        // 噪声行已到：旧语义 has_payload() == true（会提前退出）
+        assert!(out.has_payload(), "噪声行仍会让 has_payload 为真");
+        // 新语义：噪声不可解析 → 不可用 → 必须继续读
+        assert!(
+            !out.has_usable_payload(),
+            "噪声行不得被视为可用 payload（否则提前退出丢真结果）"
+        );
+        // 真结果到达后才可提前退出
+        out.feed(&stdout_chunk("{\"score\":6666,\"details\":{}}\n"));
+        assert!(out.has_usable_payload());
+        let ordered = out.payload_candidates_ordered();
+        assert_eq!(ordered[0], "this is a noise line");
+        assert_eq!(ordered[1], "{\"score\":6666,\"details\":{}}");
+    }
+
+    /// 合法 JSON 但缺 score 同样不得被视为可用（与 parse loop 的 is_some() 门禁同口径）。
+    #[test]
+    fn test_json_without_score_is_not_usable_but_later_candidate_is() {
+        let mut out = PredictionOutput::new();
+        out.feed(&stdout_chunk(
+            "---RESULT---\n{\"debug\":true}\n{\"score\":42,\"details\":{}}\n",
+        ));
+        assert!(out.has_usable_payload());
+        let ordered = out.payload_candidates_ordered();
+        assert_eq!(ordered[0], "{\"debug\":true}");
+        assert_eq!(ordered[1], "{\"score\":42,\"details\":{}}");
+    }
+
+    /// F-3：浮点 score 必须四舍五入为整数，不得静默 0。
+    #[test]
+    fn test_float_score_rounds_instead_of_zero() {
+        let parsed: serde_json::Value =
+            serde_json::from_str("{\"score\":6666.666666666667,\"details\":{}}").unwrap();
+        let result = crate::dual::build_judge_result("sub-1", &parsed, "", "", None);
+        assert_eq!(result.status, "finished");
+        assert_eq!(result.score, 6667, "浮点 score 应四舍五入而非判 0");
+
+        // 整数行为不变
+        let parsed: serde_json::Value = serde_json::from_str("{\"score\":5000}").unwrap();
+        let result = crate::dual::build_judge_result("sub-1", &parsed, "", "", None);
+        assert_eq!(result.score, 5000);
+
+        // 超界仍夹取；非数值/NaN/Infinity 仍为 0
+        let parsed: serde_json::Value = serde_json::from_str("{\"score\":12345.6}").unwrap();
+        let result = crate::dual::build_judge_result("sub-1", &parsed, "", "", None);
+        assert_eq!(result.score, 10_000);
+        let parsed: serde_json::Value = serde_json::from_str("{\"score\":\"abc\"}").unwrap();
+        let result = crate::dual::build_judge_result("sub-1", &parsed, "", "", None);
+        assert_eq!(result.score, 0);
+        let parsed: serde_json::Value = serde_json::from_str("{\"score\":-3}").unwrap();
+        let result = crate::dual::build_judge_result("sub-1", &parsed, "", "", None);
+        assert_eq!(result.score, 0);
     }
 }

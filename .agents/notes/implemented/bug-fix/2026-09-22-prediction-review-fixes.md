@@ -100,3 +100,19 @@ Status: implemented
    用户代码文件名）此前依赖上游校验。此处是 tar 条目的唯一落点，按纵深防御复验。
 7. **出题编辑器补 `workspace_size_mb` 输入**（含 512–16384 校验），此前只能改 JSON；
    值仅在 prediction 模式提交，越界在 UI 即报错。
+
+## 2026-09-24 二轮评审后续修复（随 main 合并一并落地）
+
+- **`has_payload` 早退丢结果（MAJOR，复现）**：阶段 2 的退出条件是「任意非空
+  行」，于是「`---RESULT---` → 噪声行 → 真 JSON」会在噪声行处提前退出，真结果
+  永不被读取 → `error/0`（prediction 不可重测，一次作废）。改为
+  `has_usable_payload()`：候选须可解析为 JSON 且含 `score` 才允许提前退出；
+  新增 `fix_tests` 回归（反向探针实测旧语义下失败）。
+- **浮点 `score` 静默 0 分（MINOR，复现）**：`build_judge_result` 仅
+  `as_i64()`，绕过 SDK 直印 `{"score": 6666.666…}` 会判 0 且外观正常。改为
+  `score_to_i32`：整数直取、浮点四舍五入、非数值/越界归一（0 / 夹取 10000），
+  与 SDK `int(round(score*100))` 口径一致。
+- **大文件注入必然超时（MAJOR，未修，见下）**：300 MiB 预测文件 + `mem=256MB`
+  实测 30s 注入超时（`mem=1024MB` 时 862ms 成功）。修法取向（core 保存期强制
+  `artifact_max_size_mb ≤ memory_limit_mb` vs 重定义 workspace 语义）属产品
+  决策，记为 pending；文档已提示「文件必须小于 `memory_limit_mb`」。
