@@ -190,6 +190,7 @@ export default withMermaid(defineConfig({
                 { text: "参考文档", link: "/reference/" },
                 { text: "术语表", link: "/reference/glossary" },
                 { text: "结果状态", link: "/reference/result-status" },
+                { text: "数据库与 Redis 数据字典", link: "/reference/data-dictionary" },
                 { text: "更新日志", link: "/reference/changelog" },
               ],
             },

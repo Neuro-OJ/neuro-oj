@@ -183,3 +183,56 @@
     left: -5px;
     top: -1px;
 }
+
+/* ============================================================
+   数据字典专用：DANGER ZONE 徽标与危险列标记
+   用于 noj-docs/docs/reference/data-dictionary.md。
+   颜色复用 custom-block 的 danger 色，亮/暗两套；圆角 3px（近直角，
+   遵循品牌设计 token）。
+   ============================================================ */
+
+:root {
+    --noj-danger-zone-bg: #ffebec;
+    --noj-danger-zone-border: #e13238;
+    --noj-danger-zone-text: #8a1418;
+    --noj-danger-col: #c11f25;
+}
+
+/* 注意：:root 与 .dark 特异性相同，后定义者生效。
+   沿用本文件既有写法（见文件顶部）：:root 在前、.dark 在后，
+   使暗色模式覆盖亮色值。调整顺序会静默破坏暗色配色。 */
+.dark {
+    --noj-danger-zone-bg: #4b1113;
+    --noj-danger-zone-border: #e13238;
+    --noj-danger-zone-text: #ffd9db;
+    --noj-danger-col: #ff9ba0;
+}
+
+/* 行内徽标：置于表标题后，如 `llm_providers` <span class="noj-danger-zone">DANGER ZONE</span> */
+.noj-danger-zone {
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 8px;
+    padding: 1px 8px;
+    border: 1px solid var(--noj-danger-zone-border);
+    border-radius: 3px;
+    background-color: var(--noj-danger-zone-bg);
+    color: var(--noj-danger-zone-text);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    line-height: 18px;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+/* 危险列单元格标记（字段表中的红色文字） */
+.noj-danger-col {
+    color: var(--noj-danger-col);
+    font-weight: 600;
+}
+
+/* 危险列单元格标记旁的小图标（用于「加密存储」「凭据」等） */
+.noj-danger-col::before {
+    content: '⚠ ';
+}
