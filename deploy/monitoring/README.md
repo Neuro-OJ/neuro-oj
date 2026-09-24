@@ -87,14 +87,16 @@ promtool check config /etc/prometheus/prometheus.yml   # 会明确指出缺失�
 
 - `noj-cli backup create` 写出 `<备份目录>/metrics/noj_backup.prom`
   （`noj_backup_last_success_unix_time`、`noj_backup_snapshot_bytes`）。
-- `noj-cli backup drill <snapshot>` 写出
-  `<备份目录>/metrics/noj_restore_drill.prom`
+- `noj-cli backup drill <snapshot>` 写出**快照同级**的
+  `metrics/noj_restore_drill.prom`（`NOJ_BACKUP_METRICS_DIR` 可覆盖）
   （`noj_restore_drill_last_success_unix_time`）。
 
 > 历史说明：这两组指标过去由 `scripts/deploy/backup.sh` 与
-> `scripts/deploy/restore-drill.sh` 写入；两者已加弃用闸门，生产写入方
-> 现为 `noj-cli`（见 `noj-cli/src/prod/backup/metrics.ts` 与
-> `noj-cli/src/prod/drill/report.ts`）。
+> `scripts/deploy/restore-drill.sh` 写入；生产写入方现为 `noj-cli`
+> （见 `noj-cli/src/prod/backup/metrics.ts` 与 `noj-cli/src/prod/drill/report.ts`）。
+> 弃用闸门现状：`scripts/deploy/deploy.sh` 与 `scripts/deploy/restore-drill.sh`
+> 已加闸门（每次执行需 `y` 确认）；**`backup.sh` 未加闸门，仍可直接执行并写入
+> 同一批指标**，生产请改用 `noj-cli backup create`。
 
 宿主机 node_exporter 通过 textfile collector 采集这些文件，Prometheus
 抓取后告警生效：

@@ -150,9 +150,16 @@ export async function importProblemBundle(
     !Array.isArray(parsed.manifest) &&
     (parsed.manifest as Record<string, unknown>).samples !== undefined
   ) {
+    const samples = (parsed.manifest as Record<string, unknown>).samples;
     logger.warn(
       "题目包 manifest.samples 已废弃（从不落库），本次导入已忽略；样例请直接写进题面",
-      { file: file.name },
+      {
+        file: file.name,
+        // 便于发现手写坏值：以前非法形状会 400，软废弃后只在 warning 里可见。
+        value_type: Array.isArray(samples)
+          ? `array(len=${samples.length})`
+          : typeof samples,
+      },
     );
   }
 
