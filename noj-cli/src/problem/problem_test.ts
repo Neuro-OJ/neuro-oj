@@ -235,6 +235,42 @@ Deno.test("runQualityRules: 隐藏用例泄露到可见文件 → 警告", () =>
   );
 });
 
+Deno.test("runQualityRules: manifest.samples 已废弃 → 警告", () => {
+  const findings = runQualityRules({
+    files: { texts: {}, names: [] },
+    manifest: { samples: [{ input: "1 2", output: "3" }] },
+  });
+  const finding = findings.find((f) => f.rule === "quality/deprecated-samples");
+  assertEquals(finding?.rule, "quality/deprecated-samples");
+  // 必须是 warn：一旦被误升级为 error，带 samples 的存量题包会被 pack 拒绝
+  assertEquals(finding?.level, "warn");
+  assertEquals(finding?.file, "problem.json");
+  // 打包判定只看 hasError，warn 不得阻断
+  assertEquals(findings.some((f) => f.level === "error"), false);
+});
+
+Deno.test("runQualityRules: samples 为非法形状（字符串）同样只告警不报错", () => {
+  // 软废弃后不再校验形状：历史坏值也必须能打包，只在 warning 里可见
+  const findings = runQualityRules({
+    files: { texts: {}, names: [] },
+    manifest: { samples: "legacy-shape" },
+  });
+  const finding = findings.find((f) => f.rule === "quality/deprecated-samples");
+  assertEquals(finding?.level, "warn");
+  assertEquals(findings.some((f) => f.level === "error"), false);
+});
+
+Deno.test("runQualityRules: 无 samples → 不告警", () => {
+  const findings = runQualityRules({
+    files: { texts: {}, names: [] },
+    manifest: { title: "x" },
+  });
+  assertEquals(
+    findings.some((f) => f.rule === "quality/deprecated-samples"),
+    false,
+  );
+});
+
 Deno.test("initProblemScaffold: 生成骨架且拒绝非空目录", async () => {
   const root = await Deno.makeTempDir();
   try {

@@ -142,6 +142,20 @@ export async function importProblemBundle(
   const parsed = parseBundleZip(file.data);
   const manifest = validateBundleManifest(parsed.manifest);
 
+  // 2.5 已废弃字段告警（2026-09-24 审计 A2-2）：`samples` 从不落库、无消费者。
+  // 校验层为兼容存量题包而容忍该字段，这里补一条可见 warning，避免出题人
+  // 继续写一个"看起来生效、实际无效"的字段。
+  if (
+    typeof parsed.manifest === "object" && parsed.manifest !== null &&
+    !Array.isArray(parsed.manifest) &&
+    (parsed.manifest as Record<string, unknown>).samples !== undefined
+  ) {
+    logger.warn(
+      "题目包 manifest.samples 已废弃（从不落库），本次导入已忽略；样例请直接写进题面",
+      { file: file.name },
+    );
+  }
+
   // 3. 题面：statement.md 优先，manifest.description 兜底，二者皆缺 → 400
   const description = parsed.statement ?? manifest.description;
   if (!description || !description.trim()) {

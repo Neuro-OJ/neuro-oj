@@ -45,6 +45,9 @@ const JUDGE_CASE_ALLOWED_KEYS = new Set([
   "visibility",
   "hidden",
   "time_ms",
+  // 用例级内存（KB）。此前缺失导致 `details.cases[].memory_kb` 在落库前
+  // 被静默丢弃，与 Evaluator SDK 文档契约不符（2026-09-24 审计 A2-1）。
+  "memory_kb",
   "input",
   "expected_output",
   "actual_output",

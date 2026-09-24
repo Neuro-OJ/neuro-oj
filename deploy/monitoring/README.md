@@ -85,11 +85,16 @@ promtool check config /etc/prometheus/prometheus.yml   # 会明确指出缺失�
 
 `noj-alerts.yml` 中的备份/演练新鲜度告警依赖 textfile 指标：
 
-- `scripts/deploy/backup.sh create` 写出 `<备份目录>/metrics/noj_backup.prom`
+- `noj-cli backup create` 写出 `<备份目录>/metrics/noj_backup.prom`
   （`noj_backup_last_success_unix_time`、`noj_backup_snapshot_bytes`）。
-- `scripts/deploy/restore-drill.sh` 写出
+- `noj-cli backup drill <snapshot>` 写出
   `<备份目录>/metrics/noj_restore_drill.prom`
   （`noj_restore_drill_last_success_unix_time`）。
+
+> 历史说明：这两组指标过去由 `scripts/deploy/backup.sh` 与
+> `scripts/deploy/restore-drill.sh` 写入；两者已加弃用闸门，生产写入方
+> 现为 `noj-cli`（见 `noj-cli/src/prod/backup/metrics.ts` 与
+> `noj-cli/src/prod/drill/report.ts`）。
 
 宿主机 node_exporter 通过 textfile collector 采集这些文件，Prometheus
 抓取后告警生效：

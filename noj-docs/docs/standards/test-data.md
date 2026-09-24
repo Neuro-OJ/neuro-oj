@@ -88,7 +88,7 @@ LMCC 官方标准区分可见与不可见测试数据。Neuro OJ 采用更严格
 | `hidden` | 必填布尔：`true` 为隐藏用例，`false` 为可见用例；缺失时旧脚本按 fail-safe 处理 |
 | `visibility` | 可选兼容字段：`visible` / `hidden`，仅供人读与旧前端兼容；新评测器以 `hidden` 为准 |
 | `time_ms` | 可选，该用例耗时（毫秒） |
-| `memory_kb` | 可选，该用例内存（KB）；**注意**：当前 core 侧结果白名单未收录该字段，写入后会在落库前被丢弃，暂不会展示 |
+| `memory_kb` | 可选，该用例内存（KB）；服务端结果白名单已收录，会随用例详情一并落库 |
 | `input` | 仅可见用例可包含 |
 | `expected_output` | 仅可见用例可包含 |
 | `actual_output` | 仅可见用例可包含 |
@@ -120,7 +120,7 @@ LMCC 官方标准区分可见与不可见测试数据。Neuro OJ 采用更严格
 
 约定：
 
-- **隐藏用例**可以展示 `case_id`、`status`、`hidden`、`visibility`、`time_ms`（`memory_kb` 同表备注，当前会被 core 侧白名单丢弃），但 MUST NOT 写入 `input`、`expected_output`、`actual_output`。
+- **隐藏用例**可以展示 `case_id`、`status`、`hidden`、`visibility`、`time_ms`、`memory_kb`，但 MUST NOT 写入 `input`、`expected_output`、`actual_output`。
 - **可见用例**可以展示输入、期望输出和实际输出，用于做题人调试。
 - 提交结果投影（`applySubmissionProjection`）会按 `hidden` 标记在竞赛场景剥离隐藏用例；如果 `cases` 中任意用例缺少 `hidden`，视为旧脚本，fail-safe 整份用例详情不返回。
 - 历史格式 `visible.cases` / `hidden.cases` 以及旧字段 `id` / `expected` / `actual` 仍会被提交结果页兼容，但新评测器应使用上述标准字段，并确保每个用例都带 `hidden`。
