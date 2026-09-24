@@ -60,6 +60,7 @@ prediction 题**不能配置 LLM**（创建、更新、题目包导入三处都�
 - `workspace_size_mb` 缺省时由 Judge Worker 的 `JUDGE_PREDICTION_WORKSPACE_MB` 决定（默认 2048MB）。
 - 支持包 **只装评分材料**（`evaluate.py` + 隐藏标签），**不要**把公开数据集打进支持包。
 - 预测文件大小受「题目上限」与系统硬上限共同约束，取较小者；文件以 tmpfs 形式落在容器 `/workspace/prediction/`，会占用 Judge Worker 内存，请按需设置 `workspace_size_mb`。
+- **实际瓶颈是 `evaluator.memory_limit_mb`**：注入时文件经容器内 `tar` 解压到 tmpfs，页计入容器 cgroup 内存。实测 300 MiB 文件在 `memory_limit_mb=256` 下注入 30s 超时（`error`），`memory_limit_mb=1024` 时 862ms 完成。请保证 **预测文件大小 < `memory_limit_mb`**，并为解压过程留余量；`workspace_size_mb` 只决定 tmpfs 上限，**不能**替代内存上限。
 
 ## 题面必须写清楚
 
@@ -189,7 +190,8 @@ result.accept(score=max(0.0, 100.0 - rmse(pred, gold)), details={"cases": cases}
 
 - 预测文件复用提交的 `artifact_storage_url`；**评测完成后对象即被删除**。
 - **不支持重测**：预测文件是一次性的，需要重算请重新提交。
-- 评测期间容器内 `workspace_size_mb` 为 tmpfs，大文件会占用 Worker 内存，请按需设置。
+- 评测期间容器内 `workspace_size_mb` 为 tmpfs，大文件会占用 Worker 内存，请按需设置；
+  **预测文件必须小于 `evaluator.memory_limit_mb`**（tmpfs 页计入容器 cgroup，超限会在注入期超时失败，且 prediction 不支持重测）。
 - prediction 题不执行 Solution 容器，因此没有 `call_timeout_ms` / 用户函数调用语义。
 
 ## 验证方法
