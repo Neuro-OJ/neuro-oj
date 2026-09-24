@@ -24,8 +24,6 @@ import { getProblem } from "../../../catalog/index.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
 import { logAudit } from "../../../system/index.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
-import { buildJudgeTaskLlmForProvider } from "./../../../gateway/index.ts";
-import { getUserLlmProvider } from "../../../gateway/index.ts";
 import type { JudgeTaskLlm } from "../../types/index.ts";
 import { buildJudgeTask } from "../../types/index.ts";
 import type { RuntimeConfig } from "./../../../catalog/index.ts";
@@ -103,6 +101,31 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     });
   }
 
+  // **LLM 任务必须在改变状态之前解析**（2026-09-22 评审）。
+  //
+  // `buildJudgeTaskLlm` 在平台默认 Provider 缺配/停用时抛 `BadRequestError`。
+  // 此前该调用位于"事务把提交置回 pending 并递增 rejudge_seq"**之后**，
+  // 抛错会让提交卡在 `pending`：MQ 里没有任务，sweeper 要等到下一轮才恢复，
+  // 而 sweeper 又不带 `llm`（见 sweeper 的说明）。管理员看到的是"重测按钮
+  // 报错但提交变成评测中"。
+  //
+  // 前置后，解析失败不会产生任何状态变更，管理员补配后可直接重试。
+  const runtimeConfig = problem.runtime_config as
+    | RuntimeConfig
+    | null
+    | undefined;
+
+  let llmTask: JudgeTaskLlm | undefined;
+  if (problem.llm_config && runtimeConfig) {
+    llmTask = await buildJudgeTaskLlm(
+      problem.llm_config,
+      id,
+      submission.problem_id,
+      submission.user_id,
+      runtimeConfig,
+    );
+  }
+
   await db.transaction(async (tx) => {
     await tx.delete(evaluationResults)
       .where(eq(evaluationResults.submission_id, id));
@@ -123,39 +146,6 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     .where(eq(submissions.id, id))
     .limit(1);
 
-  const runtimeConfig = problem.runtime_config as
-    | RuntimeConfig
-    | null
-    | undefined;
-
-  let llmTask: JudgeTaskLlm | undefined;
-  if (problem.llm_config && runtimeConfig) {
-    llmTask = await buildJudgeTaskLlm(
-      problem.llm_config,
-      id,
-      submission.problem_id,
-      submission.user_id,
-      runtimeConfig,
-    );
-  }
-  let userLlmTask: JudgeTaskLlm | undefined;
-  if (submission.llm_provider_config_id && runtimeConfig) {
-    const provider = await getUserLlmProvider(
-      submission.user_id,
-      submission.llm_provider_config_id,
-    );
-    if (provider.enabled) {
-      userLlmTask = await buildJudgeTaskLlmForProvider(
-        provider.id,
-        provider.model,
-        id,
-        submission.problem_id,
-        submission.user_id,
-        runtimeConfig,
-      );
-    }
-  }
-
   const task = buildJudgeTask({
     submission_id: id,
     problem_id: submission.problem_id,
@@ -173,7 +163,6 @@ export async function rejudgeSubmission(id: string): Promise<void> {
       (LANGUAGE_EXT_MAP[submission.language] || "main.txt"),
     rejudge_seq: updated?.rejudge_seq ?? 0,
     llm: llmTask ?? undefined,
-    user_llm: userLlmTask ?? undefined,
   });
 
   // 审计日志：先写入审计再推送不可逆的 MQ 消息（issue #101）
@@ -271,7 +260,6 @@ export async function rejudgeProblemSubmissions(
         code: submissions.code,
         file_name: submissions.file_name,
         user_id: submissions.user_id,
-        llm_provider_config_id: submissions.llm_provider_config_id,
         artifact_storage_url: submissions.artifact_storage_url,
       })
       .from(submissions)
@@ -361,23 +349,6 @@ export async function rejudgeProblemSubmissions(
           runtimeConfig,
         );
       }
-      let userLlmTask: JudgeTaskLlm | undefined;
-      if (sub.llm_provider_config_id && runtimeConfig) {
-        const provider = await getUserLlmProvider(
-          sub.user_id,
-          sub.llm_provider_config_id,
-        );
-        if (provider.enabled) {
-          userLlmTask = await buildJudgeTaskLlmForProvider(
-            provider.id,
-            provider.model,
-            sub.id,
-            problemId,
-            sub.user_id,
-            runtimeConfig,
-          );
-        }
-      }
 
       const task = buildJudgeTask({
         submission_id: sub.id,
@@ -395,7 +366,6 @@ export async function rejudgeProblemSubmissions(
           (LANGUAGE_EXT_MAP[sub.language] || "main.txt"),
         rejudge_seq: sub.rejudge_seq,
         llm: llmTask ?? undefined,
-        user_llm: userLlmTask ?? undefined,
       });
 
       await pushJudgeTask(task);

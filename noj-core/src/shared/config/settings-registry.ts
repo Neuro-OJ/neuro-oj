@@ -44,6 +44,7 @@ export type SettingCategory =
   | "community"
   | "judge"
   | "review"
+  | "llm"
   | "other";
 
 /** 配置项元数据（统一注册表条目） */
@@ -370,6 +371,19 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     scope: "runtime",
   },
   {
+    key: "rate_limit_search_max_ip_total",
+    type: "integer",
+    default: 600,
+    description: "登录用户在同一 IP 上的窗口内搜索引擎兜底上限（0 = 关闭）。" +
+      "量级远高于用户桶，只用于防止账号轮换绕过与保留 IP 维度的洪水线索",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_SEARCH_MAX_IP_TOTAL",
+    category: "rate_limit",
+    min: 0,
+    max: 100000,
+    scope: "runtime",
+  },
+  {
     key: "trusted_proxies",
     type: "string",
     default: "",
@@ -377,6 +391,28 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "TRUSTED_PROXIES",
     category: "rate_limit",
+    scope: "runtime",
+  },
+
+  // ── llm（题目 LLM 能力的平台全局默认）────────────────────
+  {
+    key: "llm_default_provider_id",
+    type: "string",
+    default: "",
+    description: "LLM 题全局默认 Provider ID（gateway 内部 Provider UUID）",
+    is_secret: false,
+    envFallback: "NOJ_LLM_DEFAULT_PROVIDER_ID",
+    category: "llm",
+    scope: "runtime",
+  },
+  {
+    key: "llm_default_model",
+    type: "string",
+    default: "",
+    description: "LLM 题全局默认模型名（必须显式配置，无 Provider 级回退）",
+    is_secret: false,
+    envFallback: "NOJ_LLM_DEFAULT_MODEL",
+    category: "llm",
     scope: "runtime",
   },
 

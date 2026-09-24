@@ -6,6 +6,7 @@ import {
   buildBaseline,
   compareWithBaseline,
   renderReport,
+  SCAN_ROOTS,
   scanFile,
   type SkipHit,
 } from "./silent-skip-report.ts";
@@ -46,6 +47,23 @@ Deno.test("silent-skip: renderReport 生成 Markdown", () => {
     { file: "tests/a_test.ts", line: 3, reason: "ignore" },
   ]);
   assertEquals(md.includes("tests/a_test.ts"), true);
+});
+
+Deno.test("silent-skip: renderReport 输出与输入顺序无关（门禁逐字节比对）", () => {
+  // 门禁 `--check` 会把报告与一次全新渲染**逐字节比对**，而 collectFiles 的
+  // Deno.readDir 顺序不稳定。同一命中的不同输入顺序必须渲染出完全相同的文本，
+  // 否则 CI / 干净检出会误报"报告过期"。
+  const a: SkipHit[] = [
+    { file: "b/b_test.ts", line: 20, reason: "ignore" },
+    { file: "a/a_test.ts", line: 9, reason: "early-return" },
+    { file: "a/a_test.ts", line: 3, reason: "ignore" },
+  ];
+  const b: SkipHit[] = [a[1]!, a[2]!, a[0]!];
+  assertEquals(renderReport(a), renderReport(b));
+  // 排序：先文件路径 localeCompare，再行号升序。
+  const body = renderReport(a).split("\n").filter((l) => l.startsWith("| a/"));
+  assertEquals(body[0]!.includes("| 3 |"), true);
+  assertEquals(body[1]!.includes("| 9 |"), true);
 });
 
 Deno.test("silent-skip: 数量未变时通过", () => {
@@ -104,4 +122,105 @@ Deno.test("silent-skip: 基线非零而当前为 0 判定扫描器失效", () =>
 
 Deno.test("silent-skip: 基线为 0 且当前为 0 属正常", () => {
   assertEquals(compareWithBaseline([], buildBaseline([])), []);
+});
+
+// ── 扫描根覆盖（2026-09-21：noj-cli 曾是盲区）────────────────────────────
+Deno.test("silent-skip: 扫描根包含 noj-cli（正式模块不得被门禁遗漏）", () => {
+  assert(
+    (SCAN_ROOTS as readonly string[]).includes("noj-cli"),
+    `noj-cli 必须被扫描，否则其新增 ignore 不会被发现：${
+      JSON.stringify(SCAN_ROOTS)
+    }`,
+  );
+});
+
+Deno.test("silent-skip: 扫描根覆盖全部一等模块（防再次遗漏）", () => {
+  for (
+    const mod of [
+      "noj-core",
+      "noj-ui",
+      "noj-llm-gateway",
+      "noj-tests",
+      "noj-judge",
+      "noj-cli",
+    ]
+  ) {
+    assert(
+      (SCAN_ROOTS as readonly string[]).includes(mod),
+      `扫描根缺少模块 ${mod}`,
+    );
+  }
+});
+
+Deno.test("silent-skip: noj-cli 的 ignore 能被扫描到（端到端）", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "silent-skip-cli-" });
+  try {
+    await Deno.mkdir(`${dir}/noj-cli/src`, { recursive: true });
+    await Deno.writeTextFile(
+      `${dir}/noj-cli/src/demo_test.ts`,
+      `Deno.test({ name: "x", ignore: true, fn: () => {} });\n`,
+    );
+    // 直接复用 scanFile 验证规则；SCAN_ROOTS 的接线由上面的断言保证。
+    const hits = scanFile(
+      `${dir}/noj-cli/src/demo_test.ts`,
+      await Deno.readTextFile(`${dir}/noj-cli/src/demo_test.ts`),
+    );
+    assertEquals(hits.length, 1);
+    assertEquals(hits[0]!.reason, "ignore");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+// ── 2026-09-21 修复：`ignore: <标识符>` 整类写法失明 ──
+// 触发条件：守卫由变量承载（仓库中数量最多的一类写法）。
+Deno.test("silent-skip: 识别 ignore: <标识符>（变量守卫）", () => {
+  const source = [
+    `const skip = !(hasDb && hasJwt);`,
+    `Deno.test({ name: "a", ignore: skip, fn: () => {} });`,
+    `Deno.test({ name: "b", ignore: skipDb, fn: () => {} });`,
+    `Deno.test({ name: "c", ignore: skipEnv, fn: () => {} });`,
+    `Deno.test({ name: "d", ignore: skipDb || skipEnv, fn: () => {} });`,
+    `Deno.test({ name: "e", ignore: skip || !hasRedis, fn: () => {} });`,
+  ].join("\n");
+  const hits = scanFile("tests/demo_test.ts", source);
+  assertEquals(
+    hits.length,
+    5,
+    `5 条 ignore:<标识符> 都应命中，实际 ${hits.length}: ${
+      JSON.stringify(hits)
+    }`,
+  );
+  assertEquals(hits.every((h) => h.reason === "ignore"), true);
+});
+
+Deno.test("silent-skip: ignore: true / false / ! 的分类不被新规则改变", () => {
+  assertEquals(scanFile("a.ts", `ignore: true,`)[0]!.reason, "ignore");
+  assertEquals(scanFile("a.ts", `ignore: !isE2E,`)[0]!.reason, "ignore");
+  assertEquals(
+    scanFile("a.ts", `ignore: Deno.env.get("X"),`)[0]!.reason,
+    "env-guard",
+  );
+  // 显式 false 不应命中（否则基线会被噪声灌满）
+  assertEquals(scanFile("a.ts", `ignore: false,`).length, 0);
+});
+
+Deno.test("silent-skip: 真实仓库的变量守卫文件被计入", async () => {
+  // 防回归：这两个文件此前零命中，是全仓库最典型的整文件环境守卫。
+  const real = await Deno.readTextFile(
+    "noj-core/src/domains/messaging/tests/routes/messages.test.ts",
+  );
+  const hits = scanFile(
+    "noj-core/src/domains/messaging/tests/routes/messages.test.ts",
+    real,
+  );
+  assertEquals(
+    hits.length > 0,
+    true,
+    `messages.test.ts 的 ignore: skip 应被计入，实际 ${hits.length}`,
+  );
+  const audit = await Deno.readTextFile(
+    "noj-core/src/domains/system/tests/services/audit-log.test.ts",
+  );
+  assertEquals(scanFile("audit-log.test.ts", audit).length > 0, true);
 });

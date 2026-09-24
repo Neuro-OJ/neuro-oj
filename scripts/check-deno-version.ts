@@ -101,20 +101,55 @@ export async function checkDenoVersion(root = "."): Promise<string[]> {
     if (content.includes("deno-version-file: .dvmrc")) versionFileCount++;
   }
 
-  // 2. Dockerfile 的 deno 镜像与 .dvmrc 主次版本一致
+  // 2. Dockerfile 的 deno 镜像与 .dvmrc 主次版本一致。
   const expected = dvmrc.split(".").slice(0, 2).join(".");
-  for (const df of ["noj-core/Dockerfile", "noj-core/Dockerfile.e2e"]) {
+  // 2026-09-21 修复：此前只校验 noj-core 的两个 Dockerfile，而 noj-ui 与
+  // noj-llm-gateway 也各自 `FROM denoland/deno:*`——它们的版本漂移**不会
+  // 被门禁发现**（实测把 .dvmrc 改成 v2.10.0 并同步 core 后，两处仍留在
+  // 2.9.5 却打印"检查通过"）。生产镜像与本地/CI 运行时不同版本会导致
+  // "本地能跑、镜像里挂"的排查地狱，与门禁立项目的直接冲突。
+  // 扫描根改为仓库内**全部** Dockerfile，避免再次遗漏新模块。
+  const dockerfiles: string[] = [];
+  async function collectDockerfiles(dir: string): Promise<void> {
+    const entries: Deno.DirEntry[] = [];
+    try {
+      for await (const e of Deno.readDir(dir)) entries.push(e);
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.isDirectory) {
+        if (e.name === "node_modules" || e.name === "target") continue;
+        // 评审建议：`.deno_cache` / `.test-cache` 等缓存目录会随依赖膨胀而拖慢
+        // 门禁（当前实测无命中，但成本会线性增长）；以 `.` 开头的目录一律跳过。
+        if (e.name.startsWith(".")) continue;
+        await collectDockerfiles(dir + "/" + e.name);
+      } else if (e.name.startsWith("Dockerfile")) {
+        dockerfiles.push(dir + "/" + e.name);
+      }
+    }
+  }
+  await collectDockerfiles(root);
+  if (dockerfiles.length === 0) {
+    // 零输入守卫：路径推导失效时「无版本漂移」是假绿。
+    errors.push("未扫描到任何 Dockerfile：版本一致性门禁可能已失效");
+  }
+  for (const df of dockerfiles.sort()) {
     let content: string;
     try {
-      content = await Deno.readTextFile(root + "/" + df);
+      content = await Deno.readTextFile(df);
     } catch {
       continue;
     }
+    const rel = df.replace(root.replace(/\/$/, "") + "/", "").replace(
+      /^\.\//,
+      "",
+    );
     for (const tag of findDockerDenoTags(content)) {
       const mm = majorMinor(tag);
       if (mm !== null && mm !== expected) {
         errors.push(
-          df + " 使用 denoland/deno:" + tag + "（主次版本 " + mm +
+          rel + " 使用 denoland/deno:" + tag + "（主次版本 " + mm +
             "），与 .dvmrc 的 " + expected + " 不一致",
         );
       }

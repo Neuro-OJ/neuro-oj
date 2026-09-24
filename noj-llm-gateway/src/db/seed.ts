@@ -1,4 +1,4 @@
-import type { Db } from "./db.ts";
+import type { Db } from "../db.ts";
 import { logger } from "../logger.ts";
 
 interface DefaultQuota {

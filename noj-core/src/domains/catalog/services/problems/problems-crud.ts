@@ -18,6 +18,7 @@ import {
   contestProblems,
   evaluationResults,
   problems,
+  selfTests,
   submissions,
 } from "./../../../../shared/db/schema.ts";
 import {
@@ -32,10 +33,7 @@ import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "catalog"]);
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import { logAudit } from "../../../system/index.ts";
-import {
-  assertLlmLimitsWithinDefault,
-  getLlmProviderById,
-} from "../../../gateway/index.ts";
+import { assertLlmLimitsWithinDefault } from "../../../gateway/index.ts";
 import {
   type CreateProblemInput,
   DIFFICULTIES,
@@ -189,12 +187,6 @@ export async function createProblem(
       throw new ForbiddenError("仅 P 型/官方题可启用 LLM");
     }
     assertLlmLimitsWithinDefault(input.llm);
-    const provider = await getLlmProviderById(input.llm.provider_id).catch(
-      () => null,
-    );
-    if (!provider || !provider.enabled) {
-      throw new BadRequestError("LLM Provider 不存在或已停用");
-    }
     const runtime = input.runtime_config;
     if (!runtime || !runtime.evaluator.network?.enabled) {
       throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
@@ -478,12 +470,6 @@ export async function updateProblem(
         throw new BadRequestError("客观题套卷不支持 LLM 配置");
       }
       assertLlmLimitsWithinDefault(input.llm);
-      const provider = await getLlmProviderById(input.llm.provider_id).catch(
-        () => null,
-      );
-      if (!provider || !provider.enabled) {
-        throw new BadRequestError("LLM Provider 不存在或已停用");
-      }
       const effectiveRuntime = input.runtime_config ??
         (problem.runtime_config as RuntimeConfig | null);
       if (
@@ -685,6 +671,17 @@ export async function deleteProblem(
       ),
     );
   await db.delete(submissions).where(eq(submissions.problem_id, id));
+
+  // 清理自测记录。
+  //
+  // 2026-09-21 修复：`self_tests.problem_id → problems.id` 是 `ON DELETE no action`
+  // （drizzle/0042 + schema-ddl.ts），但本函数从未清理 self_tests。只要该题
+  // 被任何人自测过一次，`DELETE FROM problems` 就会触发
+  //   `update or delete on table "problems" violates foreign key constraint
+  //    "self_tests_problem_id_fkey" on table "self_tests"`
+  // → 全局 onError 转成 500，题目永久无法删除（运维死锁），且报错信息对
+  // 调用方完全不可解释。与上面 submissions 的手动清理同一模式。
+  await db.delete(selfTests).where(eq(selfTests.problem_id, id));
 
   // 级联删除（problem_tags 的 ON DELETE CASCADE 会自动清理关联）
   await db.delete(problems).where(eq(problems.id, id));

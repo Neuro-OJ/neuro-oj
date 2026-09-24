@@ -39,4 +39,4 @@
 - 锁定或置顶帖子。
 - 对用户实施社区处罚（sanction）。
 
-社区管理端点位于 `/api/v1/community/admin/*`，权限模型见[后台管理指南](../operators/admin-guide.md)。
+社区管理端点位于 `/api/v1/admin/community/*`（管理域下的 community 子域），权限模型见[后台管理指南](../operators/admin-guide.md)。

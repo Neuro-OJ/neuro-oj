@@ -1,8 +1,11 @@
 # 生产部署（公测）
 
-本文档介绍 Linux 服务器上的一键部署方式。生产服务使用 Docker Compose 和
-`ghcr.io/neuro-oj/` 镜像；`noj-cli` 负责生产安装与运维，复用 `.env.prod` 和现有生产 Compose。
-JSON 配置下的 `deploy/maintain` 命令独立保留，不会自动转换现有生产数据。
+本文档介绍 Linux 服务器上的生产部署方式。生产服务使用 Docker Compose 和
+`ghcr.io/neuro-oj/` 镜像；`noj-cli`（纯 TS）负责生产安装与运维，配置真相源唯一：
+`.env.prod` + `docker-compose.prod.yml`。
+
+> 早期版本的 JSON 编排模式（`noj-deploy.json` + `noj-secrets.json`）与
+> `deploy`/`maintain`/`stack`/`run-server`/`doctor` 命令已全部移除。
 
 生产环境默认将容器日志限制为每个文件 50 MiB、保留 5 个文件；如需集中检索，应在宿主机或日志平台配置采集器，并避免写入凭据、代码、prompt 或完整提交内容。
 
@@ -12,6 +15,8 @@ JSON 配置下的 `deploy/maintain` 命令独立保留，不会自动转换现�
 - 启用同机 Judge 做低并发公测，起始建议至少 4 vCPU、8 GiB 内存、4 GiB Swap、目标磁盘 40 GiB 可用，最终规模必须按[容量基线](./capacity-baseline.md)实测确认。
 - Docker Engine 和 Docker Compose v2，当前用户可以运行 Docker。
 - `curl` 或 `wget`、`tar`、`openssl`、CA 证书。
+- **glibc 系统**（Debian / Ubuntu / RHEL / CentOS 等）：`noj-cli` 二进制动态链接
+  glibc，**Alpine 等 musl 发行版不能运行**（实测报 `not found`）。
 - 能够访问 GitHub 源码地址和 `ghcr.io/neuro-oj/` 镜像；网络受限时请先配置 Docker 镜像源或代理。
 - 正式网站建议准备域名和 HTTPS 证书；临时测试可使用服务器 IP 和 HTTP。
 
@@ -22,49 +27,56 @@ JSON 配置下的 `deploy/maintain` 命令独立保留，不会自动转换现�
 `NGINX_PORT`，请使用修改后的端口。启用 Judge 时仍必须使用独立的 rootless Docker socket，
 不能填写 `/run/docker.sock` 或 `/var/run/docker.sock`。
 
-## 2. 一键安装
+## 2. 安装
 
-直接复制以下命令到服务器控制台：
+**不再有自举脚本**：`setup.sh` 与 `scripts/deploy/install.sh` 已移除——安装职责
+转入 `noj-cli` 自身，因此生产主机**无需 Deno**，也不需要下载源码。
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --dir /opt/neuro-oj
-```
-
-脚本会按以下顺序执行：
-
-1. 检查 Linux、CPU 架构、Docker、Compose、磁盘和端口。
-2. 下载指定版本的部署文件和 `noj-cli-linux-amd64`，SHA-256 校验通过后安装到 `bin/noj-cli`；未指定版本时自动选择最新 Release。
-   所选 Release 必须包含 CLI 资产，下载或校验失败不会覆盖已有安装。生产机无需 Deno。
-3. 首次创建 `.env.prod`，用简单提示询问网站地址、HTTP/HTTPS、邮件服务和是否安装 Judge。
-4. `noj-cli install` 引导用户确认配置后，拉取镜像、执行数据库迁移并等待健康检查，完成后注册 PATH 命令。
-
-可选参数：
+从 Release 手动下载二进制并校验：
 
 ```bash
-# 固定版本：将 vX.Y.Z 替换为包含 CLI 资产的 Release 标签
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --ref vX.Y.Z --dir /opt/neuro-oj
-
-# 只检查环境，不下载源码
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- check
-
-# 只安装基础工具；Docker Engine 仍需按发行版方式安装
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- install-env
+VERSION=v0.9.5   # 替换为目标 Release 标签
+curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64"
+curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64.sha256"
+sha256sum -c noj-cli-linux-amd64.sha256
+chmod +x noj-cli-linux-amd64
 ```
 
-重复执行时，如果目标目录已经是 NOJ 安装目录，脚本会保留 `.env.prod`、备份和数据卷并继续执行；
-不会因为目录非空而停止。其他非空目录只更新 NOJ 部署文件，保留其余内容。若之前配置过，脚本开头会询问是否继续使用；
-选择重新填写时只在最后确认后写入正式配置。
+然后安装到目标目录（**目录可以是空的**：`install` 自己补齐部署文件）：
 
-安装完成后，在开放注册前按[管理员初始化](./cli.md#管理员初始化)执行服务器本机 CLI 的 `bootstrap first-admin`。
-公开注册只获得普通权限。已有用户站点升级不会自动提权，也不能重新执行首次初始化。
-邮件服务可以选择“暂不配置”，不影响网站启动或本机管理员初始化，但会禁止全部公开注册，密码找回邮件同样不可用。
-新用户需要完成邮箱验证才能提交、发帖和私信。
-开放公开注册前，请在管理后台「系统设置」确认邮件服务已就绪并发送测试邮件验证。Judge 可以在安装时跳过，
-之后补充独立 Docker socket 后再启用。
+```bash
+./noj-cli-linux-amd64 install --dir /opt/neuro-oj
+```
+
+`install` 会按以下顺序执行：
+
+1. 从同版本 Release 下载 `docker-compose.prod.yml` 与 `.env.prod.example`，
+   并校验 **SHA-256**（校验失败拒绝写入）；
+2. 首次安装时由模板生成 `.env.prod`（权限 `600`），并写入自动生成的强随机密钥；
+   已存在则**逐字节保留**，不做覆盖；
+3. 在 TTY 下进入配置向导（网站地址、HTTP/HTTPS、邮件服务、是否启用 Judge）。
+   非交互环境必须显式提供配置，否则**报错且零写入**；
+4. 校验生产配置（env 文件 / 权限 / 必填值 / Judge socket / 端口 / Compose 解析）；
+5. 校验镜像签名（仅在 `NOJ_ENFORCE_IMAGE_SIGNATURES` 开启时）；
+6. 拉取镜像 → 等待健康检查 → 记录部署元数据 → 注册 PATH 命令。
+
+> **资产前置**：所选 Release 必须同时包含 CLI 二进制、校验文件与两个部署文件。
+> 缺少任一资产时**明确报错**，不会混用不同版本（issue #431 的过滤规则）。
+
+重复执行 `install` 时，若目标目录已是 NOJ 安装目录，会保留 `.env.prod`、备份与数据卷；
+若 `.env.prod` 权限不是 `600`/`400`，安装会**在任何写入之前拒绝**。
+
+### 环境检查
+
+安装前可用 `check` 做只读校验（不修改任何东西）：
+
+```bash
+./noj-cli-linux-amd64 check --dir /opt/neuro-oj   # 需要目录已有 .env.prod
+```
+
+Docker Engine 仍需按发行版官方方式安装；`noj-cli` **不安装、不替换、不配置**宿主
+Docker daemon（这是有意的边界：自动安装 daemon 需要 root 安装器，而那正是评测隔离
+要防的东西）。
 
 ## 2.1 版本发布流程（维护者）
 
@@ -77,8 +89,8 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 3. 全部通过后，工作流最后的 `publish-release` 任务把预发布转正为正式 Release（`--latest`）。
 
 由此保证：`/releases/latest` 指向的版本一定具备同版本镜像、CLI 资产与校验文件。
-安装器（`scripts/deploy/install.sh`）自动选择版本时同样只接受非 draft、非 prerelease
-且资产中包含 `noj-cli-linux-amd64` 与 `.sha256` 的 Release，双重过滤未就绪版本。
+`noj-cli update --latest` 自动选择版本时同样只接受非 draft、非 prerelease 且资产中
+包含 `noj-cli-linux-amd64`、`.sha256` 与两个部署文件的 Release，双重过滤未就绪版本。
 直接发布正式 Release（published）会被工作流识别并跳过构建；重试时正式镜像 tag 指向不同构建
 会被拒绝覆盖，避免版本混用。
 
@@ -88,7 +100,7 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 
 | 配置项 | 说明 |
 |---|---|
-| `NOJ_VERSION` | 要使用的 Release 标签，例如 `v0.8.1`；不要填写 `latest` |
+| `NOJ_VERSION` | 要使用的 Release 标签，例如 `v0.9.5`；不要填写 `latest` |
 | `DOMAIN` | 网站地址，只填写域名或服务器 IP，不要写 `http://`/`https://` |
 | `APP_URL` | 网站完整地址，例如 `http://1.2.3.4` 或 `https://oj.example.com` |
 | `CORS_ALLOWED_ORIGINS` | 通常与 `APP_URL` 相同 |
@@ -120,11 +132,10 @@ noj-cli verify                # 校验配置和镜像
 noj-cli config check          # 只检查配置，不改变服务
 ```
 
-如果 `noj-cli` 尚未加入 PATH，也可以在安装目录执行 `./bin/noj-cli`，或直接调用：
+如果 `noj-cli` 尚未加入 PATH，可以直接调用安装目录内的二进制：
 
 ```bash
-cd /opt/neuro-oj
-bash scripts/deploy/deploy.sh status
+/opt/neuro-oj/bin/noj-cli status
 ```
 
 ## 5. 升级与回滚
@@ -153,21 +164,52 @@ noj-cli update --latest
 数据库迁移只追加，不会自动回滚，因此跨大版本升级前必须确认迁移兼容性。
 注意：切回镜像标签不是数据库回滚；迁移只增不减，回退版本前需按迁移清单人工评估。
 
+### 升级前检查：题目引用的 LLM Provider 是否为用户自建
+
+**适用版本**：升级到移除 BYOK 的版本（`llm_providers.created_by` 列被删除）时必查。
+
+在删除 BYOK 的迁移中，gateway 会执行
+`DELETE FROM llm_providers WHERE created_by <> '0'`（永久删除用户自建 Provider
+及其加密 Key）。**历史上题目的 `problems.llm_config->>'provider_id'` 可以指向
+用户自建 Provider**（题目保存时的校验只检查 Provider 存在且启用，不校验归属），
+因此这类题目的引用会在升级后变成悬空：提交仍会被接受，但评测时 gateway 返回
+400 `provider_not_found`，表现为"LLM 题评测静默失败"。
+
+升级**之前**用下面的 SQL 核查（`psql` 连到生产库）：
+
+```sql
+-- 列出会被删除、但已被题目引用的用户 Provider
+SELECT p.id AS problem_id, p.title, p.llm_config->>'provider_id' AS provider_id
+FROM problems p
+JOIN llm_providers lp ON lp.id = p.llm_config->>'provider_id'
+WHERE lp.created_by <> '0';
+```
+
+- **结果为空**：直接升级。
+- **有结果**：先把这些题目的 LLM 配置改为平台 Provider（管理端编辑题目即可），
+  或按需清空（`UPDATE problems SET llm_config = NULL WHERE id = '<problem_id>'`），
+  再执行升级。升级后这类题目的**编辑保存**也会以
+  「LLM Provider 不存在或已停用」失败，因此不要留到升级后再处理。
+
+> 升级后若怀疑存在遗漏，可再查一次悬空引用：
+> `SELECT id, title FROM problems WHERE llm_config->>'provider_id' IS NOT NULL
+> AND llm_config->>'provider_id' NOT IN (SELECT id FROM llm_providers);`
+
 ## 5.1 备份、文件校验与隔离恢复演练
 
 备份体系分三层，必须区分能力边界：
 
 | 层级 | 命令 | 证明的内容 |
 |---|---|---|
-| 备份 | `noj-cli backup`（`backup.sh create`） | PostgreSQL/Redis/MinIO/加密环境文件已写入快照 |
-| 文件校验 | `noj-cli backup verify` / `backup drill` | 快照完整、口令可用、dump 结构可解析 |
-| 隔离恢复演练 | `scripts/deploy/restore-drill.sh <快照>` | 业务真的可以从快照恢复并运行 |
+| 备份 | `noj-cli backup create` | PostgreSQL/Redis/MinIO/加密环境文件已写入单个 `.nojbackup` |
+| 文件校验 | `noj-cli backup verify` | 快照完整、口令可用、dump 结构可解析（`--deep` / `--payload-sha` 逐档加深） |
+| 隔离恢复演练 | `noj-cli backup drill <快照>` | 业务真的可以从快照恢复并运行 |
 
-`backup drill` 只做文件级校验，**不能**证明业务可恢复。真实的恢复验收演练：
+`backup verify` 只做**文件级**校验，**不能**证明业务可恢复；`backup drill` 才是
+真正的恢复验收演练（会起独立 Compose 项目，分钟级、需 Docker）：
 
 ```bash
-cd /opt/neuro-oj
-bash scripts/deploy/restore-drill.sh backups/snapshot-YYYYMMDD-HHMMSS \
+noj-cli backup drill backups/snapshot-YYYYMMDD-HHMMSS \
   --passphrase-file /secure/noj-backup-passphrase
 ```
 
@@ -176,7 +218,7 @@ bash scripts/deploy/restore-drill.sh backups/snapshot-YYYYMMDD-HHMMSS \
 （需要 judge 沙箱 Docker socket 与 `noj-evaluator-python` / `noj-solution-python` 镜像，
 与生产 judge 使用同一个独立 rootless daemon）。可用 `--skip-judge` 跳过评测环节。
 
-演练报告（默认写入 `backups/snapshot-*/restore-drill-report.txt`）记录：快照时间、恢复耗时、
+演练报告（默认写入快照同级的 `restore-drill-report.txt`，权限 600）记录：快照时间、恢复耗时、
 数据核对结果（迁移版本/用户数/Redis 键数/对象数）、业务验收明细，以及 RPO/RTO 目标与是否达标
 （默认 RPO ≤ 24 小时、RTO ≤ 60 分钟，可用 `--rpo-max-hours` / `--rto-max-minutes` 调整）。
 损坏快照、解密失败、数据库恢复失败或业务验收失败都会以非零退出并保留失败现场报告。
@@ -221,10 +263,12 @@ noj-cli uninstall --all --yes
 ## 7. CLI 配置模式与源码运行
 
 `noj-cli install/start/stop/status/update/uninstall/logs/backup/verify/config check` 管理 `.env.prod` 生产部署；
-内部复用 `scripts/deploy/production.sh`、`deploy.sh` 和 `backup.sh`，因此旧配置、服务名和数据卷不变。
+全部运维能力由 `noj-cli` 的 TS 实现直接完成（`src/prod/`），不再经任何 bash 脚本转发，
+因此配置、服务名与数据卷与旧版本完全一致。
 `noj-cli backup restore <快照> --confirm` 要求目标 Compose 服务已停止；`backup verify` 与 `backup drill` 用于校验和演练。
 
-`deploy/maintain/run-server` 使用另一套 `noj-deploy.json` / `noj-secrets.json`，不能直接管理 `.env.prod` 安装。
+`deploy`/`maintain`/`stack`/`run-server` 与它们使用的 `noj-deploy.json` /
+`noj-secrets.json` 已移除；`noj-cli` 只管理 `.env.prod` 安装。
 若同时管理多个安装，请显式使用 `--dir` 选择目标。
 
 开发者可从源码运行相同入口：

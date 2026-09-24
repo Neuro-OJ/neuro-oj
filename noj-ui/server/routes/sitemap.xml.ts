@@ -12,13 +12,20 @@
 //   4. 显式声明 `cache-control`，让 CDN/爬虫有明确语义。
 
 import { resolveOrigin } from '../utils/sitemap-origin';
+import { SitemapCache } from '../utils/sitemap-cache';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const MAX_PAGES = 10;
 const PER_PAGE = 100;
 
-/** origin → 缓存条目。按 origin 分键，避免 Host 头互相污染。 */
-const cache = new Map<string, { at: number; body: string }>();
+/**
+ * origin → 缓存条目。按 origin 分键（避免 Host 头互相污染）。
+ *
+ * 2026-09-21 修复：改用有界缓存（TTL + LRU）。此前是裸 `Map` 且只写不删——
+ * `NUXT_SITE_URL` 未配置时 origin 来自请求 Host，攻击者循环发送不同 Host 即可
+ * 让 Map 无界增长，并触发上游扇出。实现与容量上限见 `utils/sitemap-cache.ts`。
+ */
+const cache = new SitemapCache({ ttlMs: CACHE_TTL_MS });
 
 interface SitemapEntry {
   loc: string;
@@ -69,13 +76,12 @@ export default defineEventHandler(async (event) => {
     return 'invalid host';
   }
 
-  const cached = cache.get(origin);
-  if (cached && now - cached.at < CACHE_TTL_MS) {
+  const cached = cache.get(origin, now);
+  if (cached) {
     setHeader(event, 'content-type', 'application/xml');
     setHeader(event, 'cache-control', 'public, max-age=3600');
     return cached.body;
   }
-
   const entries: SitemapEntry[] = [{ loc: `${origin}/` }];
   let degraded = false;
 
@@ -109,10 +115,12 @@ export default defineEventHandler(async (event) => {
   if (degraded) {
     setHeader(event, 'content-type', 'application/xml');
     setHeader(event, 'cache-control', 'no-store');
-    if (cached) {
-      // 有完整旧缓存时优先返回旧内容，避免"只有首页"的残缺 sitemap 被收录
+    const stale = cache.peekStale(origin);
+    if (stale) {
+      // 有完整旧缓存时优先返回旧内容，避免"只有首页"的残缺 sitemap 被收录。
+      // 用 peekStale 而非 get：即便旧缓存已过 TTL，完整内容仍优于残缺内容。
       setHeader(event, 'cache-control', 'public, max-age=60');
-      return cached.body;
+      return stale.body;
     }
     return body;
   }

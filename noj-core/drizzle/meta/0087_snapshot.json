@@ -1,6 +1,6 @@
 {
-  "id": "850ab70a-e65b-450d-8c2a-4250e7be5558",
-  "prevId": "2b6b919a-526e-4f71-83fa-8852cef37c1f",
+  "id": "e6dbeafc-ae0b-474d-bd75-de1c673517ad",
+  "prevId": "69b406f9-d12a-4dd0-8926-2f9a7ad31bcf",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5855,12 +5855,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "llm_provider_config_id": {
-          "name": "llm_provider_config_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "status": {
           "name": "status",
           "type": "text",
@@ -5987,21 +5981,6 @@
             },
             {
               "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_submissions_llm_provider_config_id": {
-          "name": "idx_submissions_llm_provider_config_id",
-          "columns": [
-            {
-              "expression": "llm_provider_config_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

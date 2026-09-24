@@ -27,6 +27,10 @@ x-core-env: &core-env
   NOJ_LLM_SERVICE_TOKEN: ${NOJ_LLM_SERVICE_TOKEN:?NOJ_LLM_SERVICE_TOKEN is required}
   # 出站 LLM 网关地址：注入 evaluator 环境（judge 的 build_llm_env）供 LLM 题调用。
   NOJ_LLM_GATEWAY_URL: http://llm-gateway:8001
+  # LLM 题平台全局默认（可选 env 兜底；不设置则走后台系统设置/注册表默认空串）。
+  # 两项必须同时配置，否则 LLM 题提交返回 400。
+  NOJ_LLM_DEFAULT_PROVIDER_ID: ${NOJ_LLM_DEFAULT_PROVIDER_ID:-}
+  NOJ_LLM_DEFAULT_MODEL: ${NOJ_LLM_DEFAULT_MODEL:-}
   # 内部健康/指标地址（**与上面的出站地址用途不同**，2026-09-12 评审 §5.3）：
   # 观测域 runtime-contract 用它构造 healthUrl/metricsUrl，默认值写的是
   # `http://noj-llm-gateway:8001`——那是开发编排的 container_name，生产 compose
@@ -252,7 +256,6 @@ services:
       NOJ_LLM_PORT: "8001"
       NOJ_LLM_SERVICE_TOKEN: ${NOJ_LLM_SERVICE_TOKEN:?NOJ_LLM_SERVICE_TOKEN is required}
       NOJ_LLM_STORE_KEY: ${NOJ_LLM_STORE_KEY:?NOJ_LLM_STORE_KEY is required}
-      NOJ_LLM_BYOK_ALLOWED_HOSTS: ${NOJ_LLM_BYOK_ALLOWED_HOSTS:-api.openai.com}
       NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE: ${NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE:-60}
       NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE: ${NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE:-60}
       DATABASE_URL: postgres://${POSTGRES_USER:-noj}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-noj}

@@ -46,7 +46,13 @@ export const problems = pgTable(
     submission_mode: text("submission_mode").notNull().default("code"),
     /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
     artifact_max_size_mb: integer("artifact_max_size_mb"),
-    /** LLM 网关配置（可空）：{ provider_id, model }，仅受信题目可启用 */
+    /**
+     * 题目 LLM 配置（可空）：`{ provider_id, model, max_calls?, max_tokens? }`。
+     *
+     * 2026-09-22 起语义收窄为「题目声明的能力与预算」：Provider/模型由**平台
+     * 默认**（`llm_default_provider_id` / `llm_default_model`）决定，
+     * `provider_id` / `model` 保留为用户/题包显式指定的覆盖值（可空）。
+     */
     llm_config: jsonb("llm_config"),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),

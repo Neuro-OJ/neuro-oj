@@ -38,7 +38,7 @@ cd noj-judge && cargo run
 cd noj-llm-gateway && deno task dev
 ```
 
-`noj-llm-gateway` 为可选模块；`noj-judge` 需要 Docker 访问权限。也可以使用 `noj-cli` 的开发部署入口，具体命令见 [`dev-docs/engineering/development.md`](./dev-docs/engineering/development.md) 和 [`noj-cli/README.md`](./noj-cli/README.md)。
+`noj-llm-gateway` 为可选模块；`noj-judge` 需要 Docker 访问权限。`noj-cli` 只面向生产部署与运维（开发部署入口已随双模态一起移除），从源码运行它的方式见 [`noj-cli/README.md`](./noj-cli/README.md)；本地开发流程见 [`dev-docs/engineering/development.md`](./dev-docs/engineering/development.md)。
 
 ## 测试与检查
 

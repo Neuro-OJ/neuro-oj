@@ -33,68 +33,12 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { parseShardArgs } from "./test-parallel-args.ts";
+import { SHARDS } from "./test-parallel-shards.ts";
 
 const DRY_RUN = Deno.args.includes("--dry-run");
 
-// ── 分片配置 ────────────────────────────────────
-const SHARDS = [
-  {
-    name: "unit",
-    schema: "test_unit",
-    redisDb: 1,
-    storageDir: "",
-    s3Bucket: "noj-test-unit",
-    dirs: [
-      "tests/00_migrate_test.ts",
-      "tests/shared",
-      "src/domains/identity/tests/lib",
-      "src/domains/catalog/tests/lib",
-      "src/domains/identity/tests/middleware",
-      "src/domains/system/tests/middleware",
-      "src/domains/catalog/tests/types",
-      "src/domains/contest/tests/types",
-      "src/domains/submission/tests/types",
-      "tests/data",
-      "tests/app.test.ts",
-    ],
-  },
-  {
-    name: "db",
-    schema: "test_db",
-    redisDb: 2,
-    storageDir: ".test-storage/db",
-    s3Bucket: "noj-test-db",
-    dirs: [
-      "tests/00_migrate_test.ts",
-      "tests/routes",
-      "tests/db",
-      "tests/seed_bootstrap_admin_test.ts",
-      "src/domains/identity/tests/routes",
-      "src/domains/identity/tests/services",
-      "src/domains/catalog/tests/routes",
-      "src/domains/catalog/tests/services",
-      "src/domains/submission/tests/routes",
-      "src/domains/submission/tests/services",
-      "src/domains/submission/tests/mq",
-      "src/domains/query/tests/routes",
-      "src/domains/query/tests/services",
-      "src/domains/search/tests/routes",
-      "src/domains/search/tests/services",
-      "src/domains/contest/tests/routes",
-      "src/domains/contest/tests/services",
-      "src/domains/community/tests/routes",
-      "src/domains/community/tests/services",
-      "src/domains/messaging/tests/routes",
-      "src/domains/messaging/tests/services",
-      "src/domains/objective/tests/routes",
-      "src/domains/objective/tests/services",
-      "src/domains/system/tests/routes",
-      "src/domains/system/tests/services",
-      "src/domains/gateway/tests/services",
-      "src/domains/content-review/tests/services",
-    ],
-  },
-];
+// 分片配置（含 schema / Redis DB / 目录集合的单一事实源）见
+// `test-parallel-shards.ts`；覆盖漂移由 tests/scripts/test-parallel-coverage.test.ts 守护。
 
 const SHARD_COUNT = parseShardArgs(Deno.args, SHARDS.length);
 

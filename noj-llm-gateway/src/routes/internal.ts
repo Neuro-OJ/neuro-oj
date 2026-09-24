@@ -19,6 +19,15 @@ export interface InternalDeps {
   db: Db;
 }
 
+/**
+ * 分页页码上界。
+ *
+ * 与 noj-core 的 `shared/http/pagination.ts:MAX_SAFE_PAGE` 同值：OFFSET 在 PG 里是
+ * `bigint`，页码越界会让查询报 `value ... out of range for type bigint` → 500。
+ * gateway 是独立模块（不 import core 的源码），故此处独立定义并说明来源。
+ */
+const MAX_SAFE_PAGE = Number.MAX_SAFE_INTEGER;
+
 /** 创建 core↔gateway 内部管理路由；所有端点均需服务间 Bearer Token。 */
 export function createInternalRouter(deps: InternalDeps): Hono {
   const app = new Hono();
@@ -26,23 +35,15 @@ export function createInternalRouter(deps: InternalDeps): Hono {
 
   // Provider 列表（Key 脱敏）
   app.get("/internal/providers", async (c) => {
-    const providers = await listProviders(
-      deps.db,
-      deps.config.storeKey,
-      c.req.query("created_by"),
-    );
+    const providers = await listProviders(deps.db, deps.config.storeKey);
     return c.json({ data: providers });
   });
 
   // Provider 精简信息（不含加密 Key）
   app.get("/internal/providers/:id", async (c) => {
     const id = c.req.param("id");
-    const createdBy = c.req.query("created_by");
-    const rows = createdBy
-      ? await deps
-        .db`SELECT id, name, base_url, model, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id} AND created_by = ${createdBy}`
-      : await deps
-        .db`SELECT id, name, base_url, model, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id}`;
+    const rows = await deps
+      .db`SELECT id, name, base_url, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id}`;
     if (rows.length === 0) {
       return c.json({ error: "provider_not_found" }, 404);
     }
@@ -52,7 +53,7 @@ export function createInternalRouter(deps: InternalDeps): Hono {
   // 新增 Provider
   app.post("/internal/providers", async (c) => {
     const body = await c.req.json<ProviderInput>();
-    if (!body.name || !body.base_url || !body.model || !body.api_key) {
+    if (!body.name || !body.base_url || !body.api_key) {
       return c.json({ error: "missing_required_fields" }, 400);
     }
     try {
@@ -73,14 +74,9 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const id = c.req.param("id");
     const body = await c.req.json<Partial<ProviderInput>>();
     try {
-      const createdBy = c.req.query("created_by");
-      if (createdBy) {
-        const existing = await deps
-          .db`SELECT id, created_by FROM llm_providers WHERE id = ${id}`;
-        if (!existing[0] || existing[0].created_by !== createdBy) {
-          return c.json({ error: "provider_not_found" }, 404);
-        }
-      }
+      // BYOK 已全路径移除：不再有「用户自助 Provider」，`created_by` 归属列与
+      // 用户路由都已删除，因此这里既不读 `created_by`，也不传作用域参数
+      // （#541 引入的 `scope` 参数随 BYOK 一起消失）。
       const provider = await updateProvider(
         deps.db,
         id,
@@ -98,28 +94,31 @@ export function createInternalRouter(deps: InternalDeps): Hono {
   });
 
   app.delete("/internal/providers/:id", async (c) => {
-    const deleted = await deleteProvider(
-      deps.db,
-      c.req.param("id"),
-      c.req.query("created_by"),
-    );
+    const deleted = await deleteProvider(deps.db, c.req.param("id"));
     return deleted
       ? c.body(null, 204)
       : c.json({ error: "provider_not_found" }, 404);
   });
 
   app.post("/internal/providers/:id/test", async (c) => {
+    const body = await c.req.json<{ model?: string }>().catch(
+      () => ({} as { model?: string }),
+    );
     try {
       await testProviderConnection(
         deps.db,
         c.req.param("id"),
         deps.config.storeKey,
-        c.req.query("created_by"),
+        body.model ?? "",
       );
       return c.json({ data: { status: "ok" } });
     } catch (err) {
       const code = err instanceof Error ? err.message : "provider_error";
-      const status = code === "provider_not_found" ? 404 : 502;
+      const status = code === "provider_not_found"
+        ? 404
+        : code === "model_required"
+        ? 400
+        : 502;
       return c.json({ error: code }, status);
     }
   });
@@ -137,10 +136,14 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const limit = Number.isFinite(rawLimit)
       ? Math.min(Math.max(1, Math.floor(rawLimit)), 1000)
       : 100;
-    const page = Math.max(
-      1,
-      Math.floor(Number(c.req.query("page") ?? "1") || 1),
-    );
+    // **页码上界 + 参数化**（评审发现的同类漏网）：`page` 此前无上界且
+    // `OFFSET` 是字符串插值，`page=1e30` 会拼出 `OFFSET 1.0000000000000001e+33`
+    // → PG 报 `bigint out of range` → 500（管理员可达）。改参数化后既无注入面，
+    // 也让越界值由 PG 的类型系统拒绝而不是拼进 SQL 文本。
+    const rawPage = Number(c.req.query("page") ?? "1");
+    const page = Number.isFinite(rawPage) && rawPage >= 1
+      ? Math.min(Math.floor(rawPage), MAX_SAFE_PAGE)
+      : 1;
 
     const conditions: string[] = [];
     const params: string[] = [];
@@ -175,11 +178,22 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const where = conditions.length > 0
       ? `WHERE ${conditions.join(" AND ")}`
       : "";
+    // LIMIT/OFFSET 也走参数化（评审建议）：`limit` 已夹取到 ≤1000，但字符串
+    // 插值在后续改动下容易重新引入注入面。
+    //
+    // **注意 `$` 是字面量**（2026-09-23 复审，CI 回归）：两处占位符都必须写成
+    // `$${...}`（`$` + 插值出的序号）。此前 OFFSET 一处漏了 `$`，实际渲染成
+    // `LIMIT $2 OFFSET 2` —— 绑定数组多出一个未被引用的参数，PG 报
+    // `42P18 could not determine data type of parameter $3` → 用量查询 503
+    // （E2E 的 7.1/7.3 因此挂）。
+    //
+    // 另：值必须传**数字**而非字符串——postgres.js 对字符串参数按 unknown 发送，
+    // 在 `LIMIT/OFFSET` 位置无法推断类型。
     const rows = await deps.db.unsafe(
-      `SELECT * FROM llm_usage ${where} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${
-        (page - 1) * limit
-      }`,
-      params,
+      `SELECT * FROM llm_usage ${where} ORDER BY created_at DESC LIMIT $${
+        params.length + 1
+      } OFFSET $${params.length + 2}`,
+      [...params, limit, (page - 1) * limit],
     );
     return c.json({ data: rows });
   });

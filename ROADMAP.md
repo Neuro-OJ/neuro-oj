@@ -54,7 +54,6 @@ Neuro OJ (NOJ) 是一个面向 **AI 领域认证与竞赛** 的在线评测平�
 **noj-core**
 
 - [x] 题目管理：CRUD + 难度标签 + 分类
-- [ ] 多语言：Python、C++、Java、JavaScript
 - [x] 提交历史：分页、筛选
 - [x] 排行榜：通过数 / 通过率
 - [x] 用户主页：统计、通过列表
@@ -70,7 +69,6 @@ Neuro OJ (NOJ) 是一个面向 **AI 领域认证与竞赛** 的在线评测平�
 
 **noj-judge**
 
-- [ ] 多语言：C++ (g++)、Java、Node.js
 - [ ] SPJ（Special Judge）
 - [ ] 交互题支持
 - [ ] 评测优化：容器预热、镜像缓存
@@ -87,8 +85,8 @@ Neuro OJ (NOJ) 是一个面向 **AI 领域认证与竞赛** 的在线评测平�
 - [x] 参赛流程：公开竞赛报名与参赛
 - [x] 比赛规则：按各题最高分累计排名，并支持每题提交次数限制
 - [x] 实时榜单：SSE 更新排名
-- [ ] 防作弊基础：IP 记录、代码相似度检测
-- [ ] 统计导出：成绩单 CSV / JSON
+- [x] 防作弊基础：IP 记录、代码相似度检测（`noj-core/src/domains/contest/services/contest-anti-cheat.ts`；端点 `GET /contests/:id/anti-cheat/similar-submissions`，见 `domains/admin/routes/contest.ts:504`）
+- [x] 统计导出：成绩单 CSV / JSON（端点 `GET /contests/:id/ranking-snapshots/<version>.csv|json` 与 `latest.csv|json`，见 `noj-core/src/domains/admin/routes/contest.ts:569-760`；CSV 含注入防护）
 - [x] 产物提交：支持 zip（预测结果 / 模型 / 代码 / 数据）作为提交物
 - [ ] 隐藏测试集评测：A/B 榜与更复杂的榜单隔离规则
 - [ ] IOAI / NOAI 赛制模板：At-Home 长周期 + 现场短时
@@ -110,7 +108,7 @@ Neuro OJ (NOJ) 是一个面向 **AI 领域认证与竞赛** 的在线评测平�
 
 - [ ] Judge worker 水平扩展 + 负载均衡
 - [x] 任务优先级队列（三级队列 high/medium/low）
-- [x] 数据库备份与迁移策略（scripts/deploy/backup.sh + restore-drill.sh）
+- [x] 数据库备份与迁移策略（`noj-cli backup`：`.nojbackup` 单文件 + 隔离恢复演练 `backup drill`）
 - [x] 监控告警（Prometheus + Grafana；compose 可选 monitoring profile，见 deploy/monitoring/README.md）
 - [x] 结构化日志（LOG_FORMAT=json + 生产脱敏）
 - [x] CI/CD 流水线（.github/workflows/ci.yml + e2e.yml）

@@ -47,7 +47,7 @@ noj-ui/
 │   └── ...
 ├── components/            # 可复用 Vue 组件（按功能分目录）
 │   ├── layout/            # Navbar / FooterBar / Sidebar / UserMenu
-│   ├── editor/            # MonacoEditor / ProblemEditor / EditorSidebar / EditorToolbar / EditorStatusBar / ActivityBar / ResizableSplitter
+│   ├── editor/            # MonacoEditor / CodingProblemEditor / EditorSidebar / EditorToolbar / EditorStatusBar / ActivityBar / EditorWorkspace / ResizableSplitter
 │   ├── feature/           # ProblemFilterBar / CheckInCard / RandomProblems / StatsToggle / FollowingFeed / LatestSubmissions / ChatSidebar / search（SearchPalette / SearchResultItem）/ community（CommentCard）
 │   ├── shared/            # MarkdownRenderer（DOMPurify 清洗）/ PaginationNav / BrandLogo / MarqueeTitle
 │   ├── ui/                # AsyncContent / DialogModal / DifficultyBadge / StatusBadge / ProblemId / SubmissionResult / TableSkeleton / ToastBanner / AnimatedCounter
@@ -56,14 +56,14 @@ noj-ui/
 │   ├── auth/              # AuthFormCard
 │   ├── admin/             # AdminPageHeader / AdminTable / AdminEditPanel / AdminFilterBar / AdminFormField / AdminConfirmDialog / AdminStatusBadge / AdminDetailDrawer 等统一管理组件
 │   └── BanBanner.vue      # 封禁横幅
-├── composables/           # 组合式函数（22 个）
+├── composables/           # 组合式函数（33 个）
 │   ├── useApi.ts          # 统一 API 调用层（业务代码禁止直接 $fetch）
 │   ├── useAuth.ts         # 认证状态管理
 │   ├── useToast.ts        # Toast 通知（Nuxt UI useToast 封装）
 │   ├── useDialog.ts       # 弹窗（Nuxt UI useOverlay + DialogModal）
 │   ├── useProblemFilters.ts  # 题目筛选 URL 同步
-│   ├── useSubmissions.ts # 提交历史数据获取
-│   ├── useCommunity.ts / useContests.ts / useMessages.ts / useSearch.ts / useRankings.ts / useAdminList.ts / useAuditLogs.ts / useBanStatus.ts / useEventSource.ts / useSubmissionPolling.ts / useEditorTheme.ts / useDraftStorage.ts / useFormError.ts / useResizableSplit.ts / useCommunityNotifications.ts  # 业务与工具 composables
+│   ├── useSubmissionPolling.ts # 提交状态轮询（终态自动停止）
+│   ├── useCommunity.ts / useContests.ts / useMessages.ts / useSearch.ts / useRankings.ts / useAdminList.ts / useAuditLogs.ts / useBanStatus.ts / useEventSource.ts / useEditorTheme.ts / useDraftStorage.ts / useFormError.ts / useResizableSplitter.ts / useCommunityNotifications.ts  # 业务与工具 composables
 ├── layouts/               # 页面布局
 │   ├── default.vue        # 默认布局（导航栏 + 页脚）
 │   ├── auth.vue           # 认证页面布局（登录/注册）
@@ -263,7 +263,7 @@ cd dist
 - 全局状态通过 `useState()` 共享（如 `useAuth` 的 `auth:user`）
 - API 调用封装在 `composables/` 中
 - 类型定义放在组件内或 `composables/` 中（无单独 `types/` 目录）
-- 弹窗（`useDialog`）与 Toast（`useToast`）基于 Nuxt UI（`useModal`/`useToast`），已移除 SweetAlert2
+- 弹窗（`useDialog`）与 Toast（`useToast`）基于 Nuxt UI（`useOverlay`/`useToast`），已移除 SweetAlert2
 
 ## Composables 参考
 
@@ -292,9 +292,8 @@ cd dist
 - 筛选条件变化时自动重置页码
 - 防抖处理（避免快速输入时频繁请求）
 
-### useSubmissions
-- `useSubmissions()`：获取提交历史列表
-- `useSubmissionDetail(id)`：获取单个提交详情（含轮询 pending 状态）
+### useSubmissionPolling（提交数据与轮询）
+- `useSubmissionPolling`：轮询 pending 提交直至终态（基于 `setInterval`，状态终态自动停止）
 - 分值格式化：`score / 100`（数据库存储 ×100）
 - 状态/颜色映射：`finished→green`（已评测 + 分数）、`error→red`（出错）等；不再使用 AC/WA 文案
 
@@ -302,11 +301,14 @@ cd dist
 全局搜索状态 + 防抖 fetch（issue #100），命令面板与结果页共享同一 `useState`
 实例：
 
-- `state` — `{ open, query, type("all"|"problem"|"user"), results:
-  {problems, users}, loading, error }`
+- `state` — `{ open, query, type, groups, flatItems, loading, error }`
+  （`type` 取值见 `SearchType`；`groups` 用于"全部"分组模式，
+  `flatItems` 用于按类型的结果页）
 - `open()` / `close()` — 控制 `SearchPalette` 浮层显隐
-- `search(q, opts?)` — 300ms 防抖调用 `GET /api/v1/search`；`type="all"` 时
-  并行 `Promise.allSettled` 拉题目 + 用户，两个端点都失败时设置 `state.error`
+- `search(q, opts?)` — 300ms 防抖调用 `GET /api/v1/search`；
+  "全部"模式请求
+  `types=problem,user,community_post,community_comment,contest,submission,message,announcement`
+  并以 `groups` 分组返回
 - `Navbar.vue` 调用 `open()` 唤起命令面板；`SearchPalette` / `pages/search.vue`
   共写共读
 
@@ -320,8 +322,7 @@ cd dist
 - **`onScopeDispose` 清理挂起的 debounce + Promise**，防止组件卸载后写共享
   state
 - **同步写入 `query`/`type`** 到共享 state，让分页等下游消费方能读到最新值
-- **`Promise.allSettled` 不抛错**，"all" 模式下两个端点都失败时显式置
-  `state.error = "搜索失败"`
+- **失败时**置 `state.error`（各分支显式处理，不做静默兜底）
 
 ## 数据获取策略
 
@@ -363,7 +364,7 @@ cd dist
 |------|------|
 | `MonacoEditor.vue` | 基于 npm `monaco-editor` 包（postinstall 脚本自托管 `public/monaco`，非 CDN），`diff` 模式可选 |
 | `MarkdownRenderer.vue` | markdown-it + highlight.js + KaTeX 渲染，**DOMPurify 清洗 HTML** 防 XSS |
-| `ProblemEditor.vue` | 题目编辑器（`editor/` 目录），支持 U/P 类型切换、`submission_mode`（code/artifact/prediction）与 artifact 大小上限，必填字段校验；prediction 模式隐藏 Solution 卡片与 LLM 配置（后端 400 拒绝） |
+| `CodingProblemEditor.vue` | 题目编辑器（`editor/` 目录），支持 U/P 类型切换、`submission_mode`（code/artifact/prediction）与 artifact 大小上限，必填字段校验；prediction 模式隐藏 Solution 卡片与 LLM 配置（后端 400 拒绝） |
 | `ProblemCard.vue` / `SubmissionCard.vue` | 题目卡片 / 提交卡片（状态标签着色，点击跳转详情） |
 | `AsyncContent.vue` | 异步内容容器，统一处理 loading / empty / error 状态 |
 | `TableSkeleton.vue` | 表格骨架屏加载态 |

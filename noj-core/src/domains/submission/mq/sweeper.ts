@@ -27,8 +27,6 @@ import type { JudgeTaskPriority } from "../types/index.ts";
 import { buildJudgeTask } from "../types/index.ts";
 import type { RuntimeConfig } from "../../catalog/index.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
-import { buildJudgeTaskLlmForProvider } from "../../gateway/index.ts";
-import { getUserLlmProvider } from "../../gateway/index.ts";
 import { resolveJudgeTaskPriority } from "../services/submissions/judge-priority.ts";
 
 const RESULT_QUEUE = "noj:judge:results";
@@ -158,7 +156,6 @@ interface PendingRecoveryRow {
   support_package_storage_url: string | null;
   judge_started_at?: string | null;
   user_id?: string;
-  llm_provider_config_id?: string | null;
   contest_id?: string | null;
 }
 
@@ -187,7 +184,6 @@ interface PendingRecoveryTableColumns {
   supportPackageStorageUrl: AnyPgColumn;
   rejudgeSeq?: AnyPgColumn;
   userId?: AnyPgColumn;
-  llmProviderConfigId?: AnyPgColumn;
   judgeStartedAt?: AnyPgColumn;
   contestId?: AnyPgColumn;
 }
@@ -212,9 +208,6 @@ async function selectPendingRecoveryRows(
   };
   if (cols.rejudgeSeq) selectFields.rejudge_seq = cols.rejudgeSeq;
   if (cols.userId) selectFields.user_id = cols.userId;
-  if (cols.llmProviderConfigId) {
-    selectFields.llm_provider_config_id = cols.llmProviderConfigId;
-  }
   if (cols.judgeStartedAt) selectFields.judge_started_at = cols.judgeStartedAt;
   if (cols.contestId) selectFields.contest_id = cols.contestId;
 
@@ -274,6 +267,17 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
       );
     }
 
+    // **注意：此处刻意不组装 `llm`**（2026-09-22 评审）。
+    //
+    // 平台默认 Provider 的解析（`buildJudgeTaskLlm`）在缺配或 Provider 停用时
+    // 会抛错（400/5xx）。若在 sweeper 里补上 `llm`，一次 gateway 抖动或漏配就
+    // 会让每轮重试都以失败告终，进而把提交永久标记为 `error`
+    // （`onPermanentError`）——那比"少一次 LLM 调用"严重得多。
+    //
+    // 现状语义：pending 恢复出来的 LLM 题任务不带 `llm`，evaluator 侧按普通
+    // 题目执行（LLM 能力不可用）。这与移除 BYOK 之前的行为一致，属**已知取舍**。
+    // 后续若要支持"恢复时重建 llm"，必须同时把解析失败降级为"跳过本轮重试"，
+    // 而不是让整个恢复流程永久失败。
     const task = buildJudgeTask({
       submission_id: row.id,
       problem_id: row.problem_id,
@@ -293,33 +297,6 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
         ? { rejudge_seq: row.rejudge_seq }
         : {}),
     });
-
-    if (row.user_id && row.llm_provider_config_id) {
-      try {
-        const provider = await getUserLlmProvider(
-          row.user_id,
-          row.llm_provider_config_id,
-        );
-        if (provider.enabled) {
-          task.user_llm = await buildJudgeTaskLlmForProvider(
-            provider.id,
-            provider.model,
-            row.id,
-            row.problem_id,
-            row.user_id,
-            runtimeConfig,
-          );
-        }
-      } catch (err) {
-        logger.warn(
-          "pending 提交的 BYOK 配置不可用，将继续以无 BYOK 任务恢复",
-          {
-            submission_id: row.id,
-            err,
-          },
-        );
-      }
-    }
 
     const { pushJudgeTask } = await import("./producer.ts");
     try {
@@ -370,7 +347,6 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
       supportPackageStorageUrl: problems.support_package_storage_url,
       rejudgeSeq: submissions.rejudge_seq,
       userId: submissions.user_id,
-      llmProviderConfigId: submissions.llm_provider_config_id,
       contestId: submissions.contest_id,
     },
     and(

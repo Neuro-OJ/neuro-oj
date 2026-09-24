@@ -13,6 +13,7 @@
  * - 路由层 withAudit 仅补充原本未在 service 审计的写操作
  *   （users.role_change / roles.create / roles.update / roles.delete）。
  */
+import { MAX_SAFE_PAGE } from "../../../shared/http/pagination.ts";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { eq } from "drizzle-orm";
@@ -81,6 +82,8 @@ router.get("/users", async (c) => {
   if (isNaN(page) || page < 1) page = 1;
   if (isNaN(perPage) || perPage < 1) perPage = 20;
   if (perPage > 100) perPage = 100;
+  // 超大 page 会让 OFFSET 超出 PG bigint（2026-09-21 修复）→ 回退默认页。
+  if (page > MAX_SAFE_PAGE) page = 1;
 
   const keyword = c.req.query("keyword") || undefined;
   // is_admin 筛选：true / false / 缺省（全部）
@@ -371,6 +374,8 @@ router.get("/blacklist", async (c) => {
   if (isNaN(page) || page < 1) page = 1;
   if (isNaN(perPage) || perPage < 1) perPage = 20;
   if (perPage > 100) perPage = 100;
+  // 超大 page 会让 OFFSET 超出 PG bigint（2026-09-21 修复）→ 回退默认页。
+  if (page > MAX_SAFE_PAGE) page = 1;
 
   const keyword = c.req.query("keyword") || undefined;
   const result = await listIpBans({ page, perPage, keyword });

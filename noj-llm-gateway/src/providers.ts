@@ -7,22 +7,18 @@ import { decryptSecret, encryptSecret } from "./crypto.ts";
 export interface ProviderInput {
   name: string;
   base_url: string;
-  model: string;
   api_key: string;
   cost_per_1k_tokens?: number;
   enabled?: boolean;
-  created_by?: string;
 }
 
 export interface ProviderRow {
   id: string;
   name: string;
   base_url: string;
-  model: string;
   cost_per_1k_tokens: number;
   encrypted_api_key: string;
   enabled: boolean;
-  created_by: string;
   created_at: string;
   updated_at: string;
 }
@@ -31,64 +27,12 @@ export interface ProviderView {
   id: string;
   name: string;
   base_url: string;
-  model: string;
   cost_per_1k_tokens: number;
   /** 脱敏后的 Key，如 `sk-****abcd` */
   api_key_masked: string;
   enabled: boolean;
   created_at: string;
   updated_at: string;
-}
-
-/** BYOK Provider 仅允许运维配置的 HTTPS 公共主机。 */
-export function validateByokBaseUrl(raw: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(raw.trim());
-  } catch {
-    throw new Error("provider_target_rejected");
-  }
-  const allowed = new Set(
-    (Deno.env.get("NOJ_LLM_BYOK_ALLOWED_HOSTS") ?? "api.openai.com")
-      .split(",")
-      .map((host) => host.trim().toLowerCase())
-      .filter(Boolean),
-  );
-  const hostname = parsed.hostname.toLowerCase();
-  if (
-    parsed.protocol !== "https:" ||
-    parsed.username ||
-    parsed.password ||
-    parsed.search ||
-    parsed.hash ||
-    (parsed.port && parsed.port !== "443") ||
-    !allowed.has(hostname) ||
-    isPrivateHostname(hostname)
-  ) {
-    throw new Error("provider_target_rejected");
-  }
-  parsed.pathname = parsed.pathname.replace(/\/+$/, "") || "/";
-  return parsed.toString();
-}
-
-function isPrivateHostname(hostname: string): boolean {
-  if (
-    hostname === "localhost" ||
-    hostname === "metadata.google.internal" ||
-    hostname === "169.254.169.254" ||
-    hostname === "::1"
-  ) return true;
-  const octets = hostname.split(".").map(Number);
-  if (
-    octets.length !== 4 ||
-    octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)
-  ) {
-    return false;
-  }
-  return octets[0] === 10 || octets[0] === 127 ||
-    (octets[0] === 169 && octets[1] === 254) ||
-    (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
-    (octets[0] === 192 && octets[1] === 168);
 }
 
 function uuid(): string {
@@ -112,7 +56,6 @@ function toView(row: ProviderRow, apiKey: string): ProviderView {
     id: row.id,
     name: row.name,
     base_url: row.base_url,
-    model: row.model,
     cost_per_1k_tokens: row.cost_per_1k_tokens,
     api_key_masked: maskApiKey(apiKey),
     enabled: row.enabled,
@@ -121,44 +64,17 @@ function toView(row: ProviderRow, apiKey: string): ProviderView {
   };
 }
 
-function validateByokFields(input: {
-  name?: string;
-  model?: string;
-  api_key?: string;
-}): void {
-  if (
-    input.name !== undefined &&
-    (input.name.trim().length === 0 || input.name.length > 200)
-  ) {
-    throw new Error("provider_invalid");
-  }
-  if (
-    input.model !== undefined &&
-    (input.model.trim().length === 0 || input.model.length > 200)
-  ) {
-    throw new Error("provider_invalid");
-  }
-  if (
-    input.api_key !== undefined &&
-    (input.api_key.trim().length === 0 || input.api_key.length > 8192)
-  ) {
-    throw new Error("provider_invalid");
-  }
-}
+/** 成本单价上界（防止 u64 溢出与荒谬单价）。下界为 0，拒绝负值。 */
+const MAX_COST_PER_1K_TOKENS = 1_000_000;
 
 /** 列出全部 Provider；解密失败时返回不可用的掩码，不阻断列表。 */
 export async function listProviders(
   db: Db,
   storeKey: string,
-  createdBy?: string,
 ): Promise<ProviderView[]> {
-  const rows = createdBy === undefined
-    ? await db<
-      ProviderRow[]
-    >`SELECT * FROM llm_providers ORDER BY created_at DESC`
-    : await db<
-      ProviderRow[]
-    >`SELECT * FROM llm_providers WHERE created_by = ${createdBy} ORDER BY created_at DESC`;
+  const rows = await db<
+    ProviderRow[]
+  >`SELECT * FROM llm_providers ORDER BY created_at DESC`;
   const views: ProviderView[] = [];
   for (const row of rows) {
     let apiKey = "";
@@ -203,20 +119,14 @@ export async function createProvider(
   input: ProviderInput,
   storeKey: string,
 ): Promise<ProviderView> {
-  if (input.created_by && input.created_by !== "0") {
-    validateByokFields(input);
-    input = { ...input, base_url: validateByokBaseUrl(input.base_url) };
-  }
   const id = uuid();
   const createdAt = now();
   const encrypted = await encryptSecret(input.api_key, storeKey);
   await db`
-    INSERT INTO llm_providers (id, name, base_url, model, cost_per_1k_tokens, encrypted_api_key, enabled, created_by, created_at, updated_at)
-    VALUES (${id}, ${input.name}, ${input.base_url}, ${input.model}, ${
+    INSERT INTO llm_providers (id, name, base_url, cost_per_1k_tokens, encrypted_api_key, enabled, created_at, updated_at)
+    VALUES (${id}, ${input.name}, ${input.base_url}, ${
     input.cost_per_1k_tokens ?? 0
-  }, ${encrypted}, ${input.enabled ?? true}, ${
-    input.created_by ?? "0"
-  }, ${createdAt}, ${createdAt})
+  }, ${encrypted}, ${input.enabled ?? true}, ${createdAt}, ${createdAt})
   `;
   const row = await getProviderById(db, id);
   if (!row) throw new Error("provider_not_found");
@@ -232,7 +142,6 @@ export async function updateProvider(
       ProviderInput,
       | "name"
       | "base_url"
-      | "model"
       | "api_key"
       | "cost_per_1k_tokens"
       | "enabled"
@@ -244,9 +153,7 @@ export async function updateProvider(
   if (!existing) {
     throw new Error("provider_not_found");
   }
-  if (existing.created_by !== "0") {
-    validateByokFields(input);
-  }
+
   const updatedAt = now();
   const sets: string[] = [];
   const params: Array<string | number | boolean> = [];
@@ -256,19 +163,17 @@ export async function updateProvider(
     sets.push(`name = $${params.length}`);
   }
   if (input.base_url !== undefined) {
-    params.push(
-      existing.created_by !== "0"
-        ? validateByokBaseUrl(input.base_url)
-        : input.base_url,
-    );
+    params.push(input.base_url);
     sets.push(`base_url = $${params.length}`);
   }
-  if (input.model !== undefined) {
-    params.push(input.model);
-    sets.push(`model = $${params.length}`);
-  }
   if (input.cost_per_1k_tokens !== undefined) {
-    params.push(input.cost_per_1k_tokens);
+    // 负值会让 INCRBY 减少共享配额计数器；荒谬大值会污染配额核算。
+    // 无论来源为何都夹取到合法区间（防 u64 溢出与污染配额）。
+    const cost = Number(input.cost_per_1k_tokens);
+    if (!Number.isFinite(cost) || cost < 0 || cost > MAX_COST_PER_1K_TOKENS) {
+      throw new Error("provider_invalid");
+    }
+    params.push(cost);
     sets.push(`cost_per_1k_tokens = $${params.length}`);
   }
   if (input.enabled !== undefined) {
@@ -300,14 +205,13 @@ export async function updateProvider(
   return toView(row, apiKey);
 }
 
-/** 删除 Provider；若指定 owner 则同时校验归属。 */
+/** 删除 Provider。 */
 export async function deleteProvider(
   db: Db,
   id: string,
-  createdBy?: string,
 ): Promise<boolean> {
   const row = await getProviderById(db, id);
-  if (!row || (createdBy !== undefined && row.created_by !== createdBy)) {
+  if (!row) {
     return false;
   }
   await db`DELETE FROM llm_providers WHERE id = ${id}`;
@@ -319,15 +223,16 @@ export async function testProviderConnection(
   db: Db,
   id: string,
   storeKey: string,
-  createdBy?: string,
+  model: string,
 ): Promise<void> {
+  if (!model.trim()) {
+    throw new Error("model_required");
+  }
   const row = await getProviderById(db, id);
-  if (!row || (createdBy !== undefined && row.created_by !== createdBy)) {
+  if (!row) {
     throw new Error("provider_not_found");
   }
-  const baseUrl = row.created_by !== "0"
-    ? validateByokBaseUrl(row.base_url)
-    : row.base_url;
+  const baseUrl = row.base_url;
   const { apiKey } = await getProviderSecret(db, id, storeKey);
   let response: Response;
   try {
@@ -339,7 +244,7 @@ export async function testProviderConnection(
         authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: row.model,
+        model,
         messages: [{ role: "user", content: "ping" }],
         max_tokens: 1,
       }),

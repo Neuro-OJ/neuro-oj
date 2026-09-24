@@ -18,8 +18,6 @@ export const llmProviders = pgTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     base_url: text("base_url").notNull(),
-    /** 默认模型名，题目可通过 llm_config.model 覆盖 */
-    model: text("model").notNull(),
     /** 每 1K token 费用（用于用量估算；0 表示不计费） */
     cost_per_1k_tokens: doublePrecision("cost_per_1k_tokens").notNull().default(
       0,
@@ -28,8 +26,6 @@ export const llmProviders = pgTable(
     encrypted_api_key: text("encrypted_api_key").notNull(),
     /** 是否启用；停用后新评测不能选用 */
     enabled: boolean("enabled").notNull().default(true),
-    /** 创建者用户 ID（一般为 admin） */
-    created_by: text("created_by").notNull().default("0"),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
   },

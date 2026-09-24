@@ -30,8 +30,6 @@ import { verifyContestAccess } from "../../../contest/index.ts";
 import { resolveProblemAccess } from "../../../catalog/index.ts";
 import { resolveJudgeTaskPriority } from "./judge-priority.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
-import { buildJudgeTaskLlmForProvider } from "./../../../gateway/index.ts";
-import { getUserLlmProvider } from "../../../gateway/index.ts";
 import {
   Channels,
   publishSseEvent,
@@ -77,7 +75,6 @@ export async function createArtifactSubmission(
     file_name: string;
     file_stream: ReadableStream<Uint8Array>;
     contest_id?: string;
-    llm_provider_config_id?: string;
   },
   contestId?: string,
   clientIp?: string,
@@ -228,27 +225,6 @@ export async function createArtifactSubmission(
       runtimeConfig,
     );
   }
-  let userLlmTask: JudgeTaskLlm | undefined;
-  if (input.llm_provider_config_id) {
-    const provider = await getUserLlmProvider(
-      userId,
-      input.llm_provider_config_id,
-    );
-    if (!provider.enabled) {
-      throw new BadRequestError(
-        "用户模型配置已停用",
-        "BYOK_CONFIG_UNAVAILABLE",
-      );
-    }
-    userLlmTask = await buildJudgeTaskLlmForProvider(
-      provider.id,
-      provider.model,
-      id,
-      input.problem_id,
-      userId,
-      runtimeConfig,
-    );
-  }
 
   // artifact 下载 URL（judge 交付层）
   let artifactDownloadUrl: string;
@@ -285,7 +261,6 @@ export async function createArtifactSubmission(
     code: "",
     file_name: input.file_name,
     llm: llmTask ?? undefined,
-    user_llm: userLlmTask ?? undefined,
   });
 
   try {
@@ -300,7 +275,6 @@ export async function createArtifactSubmission(
       code: "",
       file_name: input.file_name,
       artifact_storage_url: artifactStorageUrl,
-      llm_provider_config_id: input.llm_provider_config_id,
       status: "pending",
       created_at: now,
     });

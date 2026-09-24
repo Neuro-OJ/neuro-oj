@@ -15,6 +15,21 @@ export interface DomainViolation {
   message: string;
 }
 
+/**
+ * 受域边界约束的业务域目录集合。
+ *
+ * **必须与 `noj-core/src/domains/` 下的实际目录一致**（admin 是聚合门面、
+ * 有意豁免，见 `domainOf` 的注释与 `check-domains_test.ts`）。
+ *
+ * 2026-09-21 修复：此前遗漏 `search`。`domainOf()` 因 `DOMAINS.has("search")`
+ * 为 false 而对 search 域生产文件返回 null，`checkFile` 随即 early-return——
+ * 即 search 域的**任意深路径跨域 import 都被放行**。实测：在
+ * `domains/search/services/search.ts` 顶部加入
+ * `import { getProblem } from "../../catalog/services/problems/problems-crud.ts"`
+ * 后门禁仍 exit 0，而同样写法放在 messaging 域会被拦下。
+ * 这不是「search 是只读查询域、豁免边界」的设计——它与同目录下的 query 域
+ * 同等对待，只是新域建立时未同步登记。
+ */
 const DOMAINS = new Set([
   "identity",
   "catalog",
@@ -28,6 +43,7 @@ const DOMAINS = new Set([
   "query",
   "content-review",
   "observability",
+  "search",
 ]);
 
 /** 允许业务域 import 的观测域子路径白名单。 */

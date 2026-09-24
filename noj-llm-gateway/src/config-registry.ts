@@ -103,14 +103,6 @@ export const GATEWAY_CONFIG_DEFINITIONS: GatewayEnvDefinition[] = [
     isSecret: false,
     readMode: "static",
   },
-  {
-    key: "NOJ_LLM_BYOK_ALLOWED_HOSTS",
-    description:
-      "BYOK 自带 Key 的出网主机白名单（逗号分隔）；安全相关，收紧后非白名单主机一律拒绝",
-    isSecret: false,
-    readMode: "static",
-    defaultValue: "api.openai.com",
-  },
   // ── 日志（issue #497「谁读谁声明」：真实读取点是 src/logger.ts） ──
   {
     key: "NOJ_ENV",

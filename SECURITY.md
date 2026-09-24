@@ -31,7 +31,7 @@
 
 | 版本或分支 | 支持情况 |
 | --- | --- |
-| `v0.8.x`（当前正式版为 `v0.8.1`） | 当前安全支持目标；后续版本以 [GitHub Releases](https://github.com/Neuro-OJ/neuro-oj/releases) 页面显示的最新正式版本为准 |
+| `v0.9.x`（当前正式版为 `v0.9.5`） | 当前安全支持目标；后续版本以 [GitHub Releases](https://github.com/Neuro-OJ/neuro-oj/releases) 页面显示的最新正式版本为准 |
 | `main` | 活跃开发分支，接受安全修复；不等同于已发布的生产版本 |
 | 旧 Release、预发布版本和任意提交快照 | 不承诺持续支持；报告前请尽量在最新正式 Release 或 `main` 上复现 |
 

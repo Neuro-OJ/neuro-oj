@@ -1138,6 +1138,132 @@ Deno.test({
 
 Deno.test({
   name:
+    "submissions service: LLM 题缺平台默认时重测必须在改状态前失败（不卡 pending）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    resetRedisForTest();
+
+    const fakeRedis = await startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
+    Deno.env.set("REDIS_URL", fakeRedis.url);
+    const redis = getRedis();
+    await redis.connect();
+    await redis.ping();
+    // 清空平台默认（env 兜底），让 buildJudgeTaskLlm 抛 BadRequestError
+    const oldP = Deno.env.get("NOJ_LLM_DEFAULT_PROVIDER_ID");
+    const oldM = Deno.env.get("NOJ_LLM_DEFAULT_MODEL");
+    Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
+    Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
+    try {
+      const db = getDb();
+      const adminId = crypto.randomUUID();
+      const localUserId = crypto.randomUUID();
+      const localProblemId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      await db.insert(users).values([
+        {
+          id: adminId,
+          username: `test-rej-llm-admin-${Date.now()}`,
+          email: `test-rej-llm-admin-${Date.now()}@example.com`,
+          password_hash: "",
+          created_at: now,
+          updated_at: now,
+        },
+        {
+          id: localUserId,
+          username: `test-rej-llm-user-${Date.now()}`,
+          email: `test-rej-llm-user-${Date.now()}@example.com`,
+          password_hash: "",
+          created_at: now,
+          updated_at: now,
+        },
+      ]);
+      // P 型题 + llm_config：走 buildJudgeTaskLlm 分支
+      await db.insert(problems).values({
+        id: localProblemId,
+        title: `LLM 重测题 ${Date.now()}`,
+        description: "rejudge 前置校验回归测试",
+        difficulty: "easy",
+        type: "P",
+        number: 61000 + (Date.now() & 0x7fff),
+        owner_id: adminId,
+        llm_config: { provider_id: "p-x", model: "m-x" },
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+            network: { enabled: true },
+          },
+          solution: {
+            image: "noj-solution-python",
+            call_timeout_ms: 2000,
+            memory_limit_mb: 512,
+          },
+        },
+        created_at: now,
+        updated_at: now,
+      });
+      enterTestContext({
+        actorId: adminId,
+        actorIp: "10.0.0.56",
+        actorRole: "admin",
+      });
+      const subId = crypto.randomUUID();
+      await db.insert(submissions).values({
+        id: subId,
+        user_id: localUserId,
+        problem_id: localProblemId,
+        language: "python3",
+        code: "print(1)",
+        file_name: "main.py",
+        status: "finished",
+        rejudge_seq: 0,
+        created_at: now,
+      });
+
+      // 执行：平台默认缺失 → 必须抛错
+      await assertRejects(
+        () => rejudgeSubmission(subId),
+        Error,
+        "平台未配置默认 LLM Provider",
+      );
+
+      // **关键断言**：提交状态必须仍是 finished（未被置回 pending），
+      // 且 rejudge_seq 未递增——修复前这两处已被事务改写，
+      // 表现为"重测报错但提交卡在评测中"。
+      const [after] = await db.select().from(submissions).where(
+        eq(submissions.id, subId),
+      );
+      assertEquals(
+        after?.status,
+        "finished",
+        "前置校验失败时不得改变提交状态（否则会卡在 pending）",
+      );
+      assertEquals(after?.rejudge_seq, 0, "前置校验失败时不得递增 rejudge_seq");
+
+      await db.delete(submissions).where(eq(submissions.id, subId));
+      await db.delete(problems).where(eq(problems.id, localProblemId));
+      await db.delete(users).where(eq(users.id, adminId));
+      await db.delete(users).where(eq(users.id, localUserId));
+    } finally {
+      if (oldP === undefined) Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
+      else Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", oldP);
+      if (oldM === undefined) Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
+      else Deno.env.set("NOJ_LLM_DEFAULT_MODEL", oldM);
+      await fakeRedis.stop();
+      if (previousRedisUrl) Deno.env.set("REDIS_URL", previousRedisUrl);
+      else Deno.env.delete("REDIS_URL");
+    }
+  },
+});
+
+Deno.test({
+  name:
     "submissions service: rejudgeProblemSubmissions 写一条 submissions.rejudge 审计",
   ignore: skip,
   sanitizeResources: false,

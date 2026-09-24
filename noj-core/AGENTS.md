@@ -32,7 +32,7 @@
 | 表                 | 用途                                                                                                                   |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | `roles`            | 角色定义（`is_default`/`is_system` 标记；`is_admin` 列已由迁移 0032 删除，管理员判定改为权限集含 `admin:full_access`） |
-| `permissions`      | 权限定义（`resource:action` 格式，22 个预置）                                                                          |
+| `permissions`      | 权限定义（`resource:action` 格式，预置 52 条、跨 12 个资源域）                                                         |
 | `role_permissions` | 角色-权限多对多关联                                                                                                    |
 | `user_roles`       | 用户-角色多对多关联                                                                                                    |
 
@@ -73,13 +73,20 @@ authMiddleware → 注入 isAdmin
 
 ### Permissions
 
-| `resource` | `action`                                                                                             | 说明               |
-| ---------- | ---------------------------------------------------------------------------------------------------- | ------------------ |
-| problem    | create/create_p/read/write_own/write_any/delete_own/delete_any/package_manage_own/package_manage_any | 题目 CRUD + 支持包 |
-| submission | create/read_own/read_all/rejudge                                                                     | 提交操作           |
-| user       | read_profile/search/manage                                                                           | 用户操作           |
-| tag        | read/manage                                                                                          | 标签操作           |
-| system     | settings/judge_images/audit_logs/ip_bans                                                             | 系统管理           |
+| `resource`           | `action`                                                                                                                                             | 说明                          |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| admin                | full_access                                                                                                                                          | 管理员全权限（隐式拥有全部）  |
+| problem              | create/create_p/read/write_own/write_any/delete_own/delete_any/package_manage_own/package_manage_any/field_evaluator_command/field_evaluator_network | 题目 CRUD + 支持包 + 评测字段 |
+| submission           | create/read_own/read_all/rejudge                                                                                                                     | 提交操作                      |
+| user                 | read_profile/search/manage                                                                                                                           | 用户操作                      |
+| tag                  | read/manage                                                                                                                                          | 标签操作                      |
+| contest              | create/manage/anti_cheat_read/participate                                                                                                            | 竞赛                          |
+| community            | read/create_solution/create_discussion/create_moment/comment/react/follow/report                                                                     | 社区内容与互动                |
+| community_moderation | review/hide/lock/sanction                                                                                                                            | 社区治理                      |
+| community_board      | manage                                                                                                                                               | 社区板块                      |
+| training             | create/read/read_any/write_own/write_any/delete_own/delete_any/publish/pin                                                                           | 题单                          |
+| announcement         | manage                                                                                                                                               | 公告                          |
+| system               | settings/judge_images/audit_logs/ip_bans                                                                                                             | 系统管理                      |
 
 ### 迁移策略
 
@@ -106,7 +113,6 @@ noj-core/
 │   ├── main.ts            # 入口（启动校验 + 初始化顺序）
 │   ├── app.ts             # Hono 应用工厂（CORS + 全局中间件 + 按域挂载路由）
 │   ├── mod.ts             # 公共导出
-│   ├── routes/            # 顶层路由组合（health 已迁入 observability 域）
 │   ├── shared/            # 跨域共享基础设施（不反向依赖 domains）
 │   │   ├── base/          # errors / logging / constants / dates / sql-rows
 │   │   ├── config/        # settings-registry / production-config
@@ -116,7 +122,9 @@ noj-core/
 │   │   ├── sse/           # event-bus / sse-stream / sse-events / server-helpers
 │   │   ├── rate-limit/    # 通用限流原语（业务环境相关限流在 system 域）
 │   │   ├── security/      # cidr / public-id / image-validation
+│   │   ├── testing/       # 共享测试夹具（赛期门控等；PGlite 模板在 shared/db）
 │   │   ├── observability/ # 低层 kernel：指标注册表、写侧契约、日志上下文
+│   │   └── search-events.ts # 搜索索引事件（跨域共享）
 │   ├── domains/           # 业务域自包含：routes / services / middleware / mq / types / tests
 │   │   ├── admin/         # 管理端统一门面域：identity/catalog/system/... 子域路由、审计、乐观锁
 │   │   ├── identity/      # 注册登录、JWT/RBAC、用户、OAuth、TFA、封禁
@@ -132,7 +140,7 @@ noj-core/
 │   │   ├── query/         # 统计、排行
 │   │   ├── content-review/# 内容审核与 DM 审核消费者
 │   │   └── observability/ # 平台域：平台指标、探针、快照、健康/指标路由、SLO、运行时契约
-├── scripts/               # CLI 工具（noj.ts 单入口 + migrate.ts + check-env.ts）
+├── scripts/               # 开发/运维脚本（noj.ts 单入口 + migrate/check-env/test-* 等）
 ├── data/
 │   ├── problems-src/<id>/ # 题目源文件（版本控制，仅样例题）
 │   └── packages/<id>.zip  # 构建产物（gitignored，local 模式使用）
@@ -380,24 +388,25 @@ docker compose down     # 停止
 
 ## 数据库 Schema 设计
 
-| 表                      | 关键列                                                                                                                                                                                       | 约束 / 索引                                                      |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `users`                 | `id`(UUID), `username`, `email`(unique), `password_hash`, `role`(user/admin), `bio`, `must_change_password`, `email_verified`, `email_verify_token`, `email_verify_expires_at`, `deleted_at` | PK, active username partial UK, UK(email)                        |
-| `problems`              | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`, `visibility`(public/private)                                                                | PK, UK(display_id), UK(type,number), FK→users, CHECK(visibility) |
-| `contests`              | `id`(UUID), `public_id`, `title`, `start_time`, `end_time`, `type`, `kind`(public/invite), `is_public`, `password`                                                                           | PK, UK(public_id), CHECK(kind), CHECK(type)                      |
-| `tags`                  | `id`(UUID), `name`(unique), `kind`(problem/algorithm), `created_at`, `updated_at`                                                                                                            | PK, UK(name), CHECK(kind)                                        |
-| `problem_tags`          | `problem_id`, `tag_id`                                                                                                                                                                       | FK→problems ON DELETE CASCADE, FK→tags ON DELETE CASCADE         |
-| `submissions`           | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                                                                                            | PK, FK→users, FK→problems, idx(user_id,created_at)               |
-| `evaluation_results`    | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb`                                                                                        | PK, UK(submission_id), FK→submissions                            |
-| `check_ins`             | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                                                                                              | PK, FK→users, UK(user_id,checkin_date)                           |
-| `judge_images`          | `id`(UUID), `image`(text), `enabled`(bool)                                                                                                                                                   | PK, UK(image)                                                    |
-| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                                                                                                  | PK, FK→users, UK(token_hash)                                     |
-| `conversations`         | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                                                                                                  | PK, FK→users, UK(participant_a,participant_b)                    |
-| `messages`              | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                                                                                              | PK, FK→conversations, idx(conversation_id,created_at)            |
-| `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                                                                                               | PK, FK→conversations, FK→users, UK(conversation_id,user_id)      |
-| `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                                                                                      | PK, FK→messages, FK→users                                        |
+| 表                      | 关键列                                                                                                                                                                   | 约束 / 索引                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| `users`                 | `id`(UUID), `username`, `email`(unique), `password_hash`, `bio`, `must_change_password`, `email_verified`, `email_verify_token`, `email_verify_expires_at`, `deleted_at` | PK, active username partial UK, UK(email)                        |
+| `problems`              | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`, `visibility`(public/private)                                            | PK, UK(display_id), UK(type,number), FK→users, CHECK(visibility) |
+| `contests`              | `id`(UUID), `public_id`, `title`, `start_time`, `end_time`, `type`, `kind`(public/invite), `is_public`, `password`                                                       | PK, UK(public_id), CHECK(kind), CHECK(type)                      |
+| `tags`                  | `id`(UUID), `name`(unique), `kind`(problem/algorithm), `created_at`, `updated_at`                                                                                        | PK, UK(name), CHECK(kind)                                        |
+| `problem_tags`          | `problem_id`, `tag_id`                                                                                                                                                   | FK→problems ON DELETE CASCADE, FK→tags ON DELETE CASCADE         |
+| `submissions`           | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                                                                        | PK, FK→users, FK→problems, idx(user_id,created_at)               |
+| `evaluation_results`    | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb`                                                                    | PK, UK(submission_id), FK→submissions                            |
+| `check_ins`             | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                                                                          | PK, FK→users, UK(user_id,checkin_date)                           |
+| `judge_images`          | `id`(UUID), `image`(text), `enabled`(bool)                                                                                                                               | PK, UK(image)                                                    |
+| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                                                                              | PK, FK→users, UK(token_hash)                                     |
+| `conversations`         | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                                                                              | PK, FK→users, UK(participant_a,participant_b)                    |
+| `messages`              | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                                                                          | PK, FK→conversations, idx(conversation_id,created_at)            |
+| `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                                                                           | PK, FK→conversations, FK→users, UK(conversation_id,user_id)      |
+| `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                                                                  | PK, FK→messages, FK→users                                        |
 
-> 上表为核心表速查。完整 Schema 共 54 张表（`src/shared/db/schema.ts`），另有：
+> 上表为核心表速查。完整 Schema 共 54
+> 张表（`src/shared/db/schema/`，按域拆分；`schema.ts` 为 barrel 导出），另有：
 >
 > - **竞赛**：`contests` / `contest_problems` / `contest_participants` /
 >   `contest_clarifications`

@@ -1,8 +1,8 @@
-import { assert, assertEquals } from "jsr:@std/assert@^1";
+import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import {
   maskApiKey,
+  testProviderConnection,
   updateProvider,
-  validateByokBaseUrl,
 } from "../src/providers.ts";
 import { decryptSecret } from "../src/crypto.ts";
 import { createFakeDb, makeProvider, testConfig } from "./helpers.ts";
@@ -18,7 +18,6 @@ Deno.test("providers: 更新使用参数数组绑定，支持单字段、多字�
       { name: "新名称" },
       {
         name: "新名称",
-        model: "新模型",
         enabled: false,
         cost_per_1k_tokens: 2,
         api_key: "sk-new-test-key",
@@ -54,7 +53,6 @@ Deno.test("providers: 更新使用参数数组绑定，支持单字段、多字�
     );
     assertEquals(calls, 1);
     assertEquals(result.name, input.name ?? "test");
-    assertEquals(result.model, input.model ?? "deepseek-chat");
     assertEquals(result.enabled, input.enabled ?? true);
     assertEquals(result.cost_per_1k_tokens, input.cost_per_1k_tokens ?? 1);
     assert(!("api_key" in result));
@@ -68,31 +66,36 @@ Deno.test("providers: 更新使用参数数组绑定，支持单字段、多字�
   }
 });
 
-Deno.test("providers: BYOK base URL rejects unsafe targets", () => {
-  assertEquals(
-    validateByokBaseUrl("https://api.openai.com/v1"),
-    "https://api.openai.com/v1",
-  );
-  for (
-    const value of [
-      "http://api.openai.com",
-      "https://localhost",
-      "https://127.0.0.1",
-      "https://169.254.169.254",
-      "https://api.openai.com:8443",
-      "https://evil.example",
-    ]
-  ) {
-    try {
-      validateByokBaseUrl(value);
-      throw new Error(`expected target to be rejected: ${value}`);
-    } catch (error) {
-      if (
-        !(error instanceof Error) ||
-        error.message !== "provider_target_rejected"
-      ) {
-        throw error;
-      }
+// ── 管理员 Provider 更新仍可改 enabled 与 cost（通用输入校验保留） ──
+
+Deno.test("providers: 管理员 Provider 可更新 enabled 与 cost", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db } = createFakeDb(provider);
+  const unsafe = (query: string, params: unknown) => {
+    const fields = [...query.matchAll(/(\w+) = \$(\d+)/g)];
+    for (const [, field, index] of fields) {
+      const value = (params as unknown[])[Number(index) - 1];
+      if (field !== "id") Object.assign(provider, { [field]: value });
     }
-  }
+    return Promise.resolve([]);
+  };
+  db.unsafe = unsafe as unknown as typeof db.unsafe;
+  const result = await updateProvider(
+    db,
+    provider.id,
+    { enabled: false, cost_per_1k_tokens: 3 },
+    testConfig.storeKey,
+  );
+  assertEquals(result.enabled, false);
+  assertEquals(result.cost_per_1k_tokens, 3);
+});
+
+Deno.test("providers: 连通性测试必须显式指定 model", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db } = createFakeDb(provider);
+  await assertRejects(
+    () => testProviderConnection(db, provider.id, testConfig.storeKey, ""),
+    Error,
+    "model_required",
+  );
 });

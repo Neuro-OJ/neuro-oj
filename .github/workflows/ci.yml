@@ -57,6 +57,80 @@ jobs:
 
 
   # ===========================================================================
+  # noj-cli 真实 E2E：备份产物的**真实工具链往返**（用户要求，CI 侧）。
+  #
+  # 与 `production-cli` 的分工：那个 job 跑单测（fake ops/fake runner，秒级、
+  # 无外部依赖）；本 job 跑**真实 PostgreSQL/Redis/MinIO**，因为有三类问题
+  # 单测永远抓不到：
+  #   - 参数形状与真实 CLI 的兼容性（`--ansi` 位置、`ss` 字段解析都出过错）；
+  #   - 产物可用性（pg_dump 能否被真实 pg_restore 读回）；
+  #   - 格式的隐蔽不兼容（`-Fc` 是自定义格式，被当文本处理会静默损坏）。
+  # 实测价值：本 job 的用例在本地上线当天就抓出"pg_restore 缺
+  # `--clean --if-exists`"——fake runner 永远不会拒绝参数。
+  #
+  # **只起 PostgreSQL**：现有 E2E 用例验证的是"产物能否被真实工具链往返"
+  # （pg_dump↔pg_restore、gpg/tar 加密封包、幂等化 globals），这些只需 PG +
+  # 宿主机的 gpg/tar/zstd。不预先起 Redis/MinIO：加未使用的 service 只会拖慢
+  # CI，且 `minio/minio` 的 health-cmd 在该镜像里不可用（`mc` 不在 PATH）。
+  # 若将来补 Redis/MinIO 往返用例，再按需增加并配好 health-cmd。
+  # ===========================================================================
+  production-cli-e2e:
+    name: Production CLI E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NOJ_RUN_E2E: "1"
+      # 对齐下方 service container 的凭据
+      NOJ_E2E_PG_CONTAINER: noj-e2e-postgres
+      NOJ_E2E_PG_USER: noj
+      NOJ_E2E_PG_PASSWORD: noj
+      NOJ_E2E_PG_DB: noj
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --name noj-e2e-postgres
+          --health-cmd "pg_isready -U noj"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version-file: .dvmrc
+      # 本 job 直接操作 `docker exec`（不经 compose），故需要容器名可达。
+      # service container 的 `--name` 只作用于该 runner 的 docker daemon，
+      # 因此这里显式确认容器存在——失败会给出明确原因而不是难以定位的
+      # "No such container"。
+      - name: 确认 E2E 依赖容器就绪
+        run: |
+          set -euo pipefail
+          for c in noj-e2e-postgres; do
+            docker inspect "$c" >/dev/null || {
+              echo "::error::service container $c 未就绪"; exit 1; }
+          done
+      - name: 校验工具链（gpg / tar / zstd）
+        run: |
+          set -euo pipefail
+          gpg --version >/dev/null
+          tar --version >/dev/null
+          zstd --version >/dev/null
+      - name: 检查 CLI 与真实往返 E2E
+        working-directory: noj-cli
+        run: |
+          deno task check
+          # 只跑真实 E2E 目录（单测由 production-cli job 覆盖，避免重复）
+          deno test -A src/prod/e2e/
+
+
+  # ===========================================================================
   # 生产镜像供应链配置检查：在 PR 阶段提前阻止 latest 和未固定 digest 回归。
   # ===========================================================================
   supply-chain:

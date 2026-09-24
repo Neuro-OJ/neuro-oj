@@ -126,9 +126,18 @@ const PROMQL_KEYWORDS = new Set([
 
 /** 判断指标名是否属于标准导出器（无需本仓库定义）。 */
 export function isExternalMetric(name: string): boolean {
-  return EXTERNAL_PREFIXES.some((p) =>
-    name === p || name.startsWith(`${p}_`) || name.startsWith(p)
-  );
+  return EXTERNAL_PREFIXES.some((p) => {
+    // 精确匹配（如 `up`）；前缀已含下划线（如 `node_`）时按下划线边界匹配；
+    // 不带下划线的前缀（如 `postgres`）只允许 `postgres_*`，**不做裸前缀匹配**。
+    //
+    // 2026-09-21 修复：此前末尾还有一条 `name.startsWith(p)`，使边界失效——
+    // `isExternalMetric("upload_failed_requests_total")` 因 `up` 前缀返回 true，
+    // 于是 dashboard 里任何 `up*` 开头的**拼错指标**（如自造的
+    // `upload_failed_requests_total`、`uptime_second`）都会被门禁当作"标准
+    // 导出器指标"而放行，`引用了未定义的指标` 永不触发。
+    if (name === p) return true;
+    return p.endsWith("_") ? name.startsWith(p) : name.startsWith(`${p}_`);
+  });
 }
 
 /** 收集仓库内定义的全部指标名（含直方图标记）。 */
@@ -176,8 +185,15 @@ export async function collectDefinedMetrics(
         defined.set(m[1], m[2] as "counter" | "gauge" | "histogram");
       }
     }
-    // 兜底：只出现名字（可能定义在别处或以常量形式）
-    for (const m of content.matchAll(/"(noj_[a-z0-9_]+)"/g)) {
+    // 只有名字的定义（type 在别处/由泛型推断）。
+    //
+    // 2026-09-21 修复：此前兜底为「源码里出现过的**任何** `"noj_..."` 字面量」，
+    // 于是把调用点（`inc("noj_typo_metric_xyz")`）也算作定义——形成恒真断言：
+    // dashboard 引用任意拼错/自造指标都不会报"引用了未定义的指标"。
+    // `scripts/check-metrics.ts` 早已为同一问题加了 META_DEF_RE 防护（其注释明确
+    // 记录"把调用点改成 noj_typo_metric_xyz 仍判通过"），本脚本此前遗漏。
+    // 收紧为 `name: "noj_..."` 形式：本仓库所有业务/平台指标都以该字段定义。
+    for (const m of content.matchAll(/name:\s*"(noj_[a-z0-9_]+)"/g)) {
       if (m[1] && !defined.has(m[1])) defined.set(m[1], "unknown");
     }
   }

@@ -17,6 +17,7 @@ import {
   COMMUNITY_PRESETS,
   MODERATION_STATUSES,
 } from "./../../community/types/community.ts";
+import { MAX_SAFE_PAGE } from "./../../../shared/http/pagination.ts";
 import { authMiddleware, getUserBanState } from "./../../identity/index.ts";
 import type { OptionalAuthEnv } from "./../../identity/index.ts";
 import {
@@ -45,6 +46,7 @@ import {
   updateBoardRoleGrant,
 } from "../../community/services/community/community.ts";
 import { resolveUserId } from "../../identity/index.ts";
+import { parseQueryLimit } from "../../community/services/community/query-limit.ts";
 import {
   getReviewQueueDetail,
   listReviewQueue,
@@ -275,7 +277,9 @@ router.get(
   "/comments/pending",
   async (c) =>
     c.json({
-      data: await listPendingComments(Number(c.req.query("limit") ?? 50)),
+      data: await listPendingComments(
+        parseQueryLimit(c.req.query("limit"), { default: 50 }),
+      ),
     }),
 );
 /**
@@ -575,7 +579,12 @@ router.get(
   async (c) => {
     const parsePage = (raw: string | undefined, fallback: number) => {
       const n = Number(raw ?? fallback);
-      return Number.isInteger(n) && n >= 1 ? n : fallback;
+      if (!Number.isInteger(n) || n < 1) return fallback;
+      // **页码上界**（评审发现的同类漏网）：`Number.isInteger(1e20) === true`，
+      // 而 `offset((page-1)*perPage)` 会超 bigint → PG 报
+      // `value ... out of range for type bigint` → 全局 onError → 500。
+      // 本 PR 已为 5 个路由补了 `MAX_SAFE_PAGE`，此处与之一致。
+      return Math.min(n, MAX_SAFE_PAGE);
     };
     const status = c.req.query("status");
     const content_type = c.req.query("content_type");
@@ -605,7 +614,7 @@ router.get(
       from: c.req.query("from") ?? undefined,
       to: c.req.query("to") ?? undefined,
       page: parsePage(c.req.query("page"), 1),
-      perPage: parsePage(c.req.query("per_page"), 20),
+      perPage: Math.min(parsePage(c.req.query("per_page"), 20), 100),
     });
     return c.json({
       data: result.data,

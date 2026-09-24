@@ -56,12 +56,12 @@ router.get("/llm/providers", async (c) => {
  * POST /api/v1/admin/llm/providers
  *
  * 权限/认证：管理员（adminMiddleware 组级保护）。
- * body: { name, base_url, model, api_key, cost_per_1k_tokens?, enabled? }
+ * body: { name, base_url, api_key, cost_per_1k_tokens?, enabled? }
  * 响应：201 `{ data: LlmProviderView }`；缺少必填字段返回 400 `{ error }`。
  */
 router.post("/llm/providers", async (c) => {
   const body = await parseJsonBody<LlmProviderInput>(c);
-  if (!body.name || !body.base_url || !body.model || !body.api_key) {
+  if (!body.name || !body.base_url || !body.api_key) {
     return c.json({ error: "缺少必填字段" }, 400);
   }
   const data = await createLlmProvider(body);

@@ -184,3 +184,65 @@ Deno.test("checkAdminObservabilityReadSide: 用临时夹具验证违规可被检
     await Deno.remove(root, { recursive: true });
   }
 });
+
+// ── 2026-09-21 修复：DOMAINS 曾遗漏 search 域 ──
+// 触发条件：在 search 域生产文件里做深路径跨域 import，门禁此前放行。
+Deno.test("domainOf: search 域必须被识别（此前遗漏致门禁完全不设防）", () => {
+  assertEquals(
+    domainOf("noj-core/src/domains/search/services/search.ts"),
+    "search",
+  );
+  assertEquals(
+    domainOf("noj-core/src/domains/search/middleware/search-rate-limit.ts"),
+    "search",
+  );
+});
+
+Deno.test("checkFile: search 域深路径跨域 import 报违规", () => {
+  const violations = checkFile(
+    "noj-core/src/domains/search/services/search.ts",
+    `import { getProblem } from "../../catalog/services/problems/problems-crud.ts";\n`,
+  );
+  assertEquals(violations.length, 1);
+  if (violations.length !== 1) {
+    throw new Error(
+      `search 域跨域深路径导入应报违规，实际 ${JSON.stringify(violations)}`,
+    );
+  }
+  assertEquals(
+    violations[0]!.target,
+    "noj-core/src/domains/catalog/services/problems/problems-crud.ts",
+  );
+});
+
+Deno.test("checkFile: search 域同域 import 与 shared 不报违规", () => {
+  assertEquals(
+    checkFile(
+      "noj-core/src/domains/search/services/search.ts",
+      `import { something } from "./index-writer.ts";\nimport { getDb } from "../../../shared/db/connection.ts";\n`,
+    ).length,
+    0,
+  );
+});
+
+Deno.test("domainOf: 磁盘上每个 domains 子目录都被登记（防新域漏登记）", async () => {
+  const domainsDir = "noj-core/src/domains";
+  const dirs: string[] = [];
+  for await (const entry of Deno.readDir(domainsDir)) {
+    if (entry.isDirectory) dirs.push(entry.name);
+  }
+  // admin 是聚合门面（有意不在 DOMAINS 内）。
+  const exempt = new Set(["admin"]);
+  const unrecognized = dirs.filter(
+    (d) =>
+      !exempt.has(d) && domainOf(`noj-core/src/domains/${d}/index.ts`) === null,
+  );
+  assertEquals(unrecognized.length, 0);
+  if (unrecognized.length > 0) {
+    throw new Error(
+      `以下域目录未被 check-domains.ts 的 DOMAINS 登记，其跨域 import 完全不设防：${
+        unrecognized.join(", ")
+      }`,
+    );
+  }
+});

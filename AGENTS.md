@@ -51,6 +51,7 @@ NOJ 分为多个模块，通过 RESTful API、Redis MQ 和内部 HTTP 服务协�
 | noj-judge | Rust + Tokio | Docker 沙箱评测、双容器 Evaluator + Solution |
 | noj-llm-gateway | Deno + Hono | LLM 调用可信代理、Provider Key 加密、eval_token、限流/额度/审计 |
 | noj-lmcc-extension | VS Code Extension API + TypeScript | LMCC IDE 登录、题目选择、Python 代码提交与结果反馈 |
+| noj-cli | Deno 2（`deno compile` 单二进制） | 生产安装、启停、升级、备份/恢复/演练、配置校验 |
 
 详细架构见 [noj-docs/docs/system/architecture.md](noj-docs/docs/system/architecture.md) 和各模块文档。
 
@@ -92,6 +93,8 @@ neuro-oj/
 ├── noj-judge/      # Rust 评测 Worker（CLAUDE.md 有完整目录）
 ├── noj-llm-gateway/# LLM 网关（CLAUDE.md 有完整目录）
 ├── noj-lmcc-extension/# LMCC IDE / VS Code 插件
+├── noj-cli/        # 生产部署/运维 CLI（纯 TS，deno compile 单二进制）
+├── noj-problems/   # 题目源目录（**独立私有仓库**，主仓库 gitignore；构建输入在 noj-core/data/problems-src/）
 ├── noj-tests/      # 跨模块 E2E 测试
 ├── noj-docs/       # 用户/出题人/运营者文档站（VitePress）
 ├── dev-docs/           # 设计文档、实施计划、工程规范、审计
@@ -131,21 +134,39 @@ neuro-oj/
 | Redis | 6379 | 无认证 |
 | MinIO（e2e） | 9000/9001 | `minioadmin / minioadmin` |
 
-### 5.2 一键脚本
+### 5.2 两段式开发流程
 
-部署与运维统一使用 `noj-cli`（旧 `scripts/dev/devtool.sh` 已移除）：
-
-生产环境使用 `setup.sh` 安装 CLI，再执行 `noj-cli status/update/logs/...`，配置仍为 `.env.prod`。
-下面的 `deploy/maintain` 命令使用独立 JSON 配置，供源码开发和实验性编排使用。
+**生产运维**统一使用 `noj-cli`（纯 TS，单一配置真相源 `.env.prod`）：
 
 ```bash
-cd noj-cli
-deno run -A src/cli.ts doctor
-deno run -A src/cli.ts deploy init --mode dev --dir /opt/neuro-oj
-deno run -A src/cli.ts deploy up --dir /opt/neuro-oj
-deno run -A src/cli.ts deploy status --dir /opt/neuro-oj
-deno run -A src/cli.ts deploy down --dir /opt/neuro-oj
+# 首次安装：手动下载 Release 中的 noj-cli 二进制后执行
+./noj-cli-linux-amd64 install --dir /opt/neuro-oj
+
+# 日常运维（在安装目录内可省略 --dir）
+noj-cli status|start|stop|restart|logs|update|backup|verify|config|uninstall
 ```
+
+> **`setup.sh` 与 `scripts/deploy/install.sh` 已移除**：`install` 自己从 Release
+> 下载 `docker-compose.prod.yml` / `.env.prod.example` 并校验 SHA-256，无需自举脚本。
+> 手动下载步骤见 `noj-docs/docs/operators/production-deploy.md`。
+
+> **`deploy` / `maintain` / `stack` / `run-server` / `doctor` 命令已移除**：它们承载的
+> JSON 编排模式（`noj-deploy.json` + `noj-secrets.json`）与开发部署模式实测从未被
+> 使用且已损坏，已随重写删除。若目录里仍有这两个 JSON 配置，可直接删除。
+
+**源码开发**是两段式：先起基础设施，再按模块启动。
+
+```bash
+docker compose up -d                 # 仅基础设施：postgres/redis/minio
+cd noj-core && deno task dev         # 各模块各自前台启动（ui/judge/gateway 同理）
+```
+
+> 模块内的 `deno run -A src/cli.ts <命令>` 仅用于**开发该模块自身**（如 `--help`、
+> 单元测试），不再是部署入口。
+
+> **过渡期**：`scripts/deploy/deploy.sh` 与 `restore-drill.sh` 仍在仓库中，但已加弃用
+> 闸门（每次执行需输入 `y` 确认；自动化可用 `NOJ_ACCEPT_DEPRECATED=1` 跳过）。
+> 新流程请使用 `noj-cli`；这两个脚本将在后续版本删除。
 
 ### 5.3 手动启动
 
@@ -348,7 +369,7 @@ jj config get signing.key
 
 ## 13. 故障排查
 
-常见问题与处理见 [README.md](README.md#故障排查) 和 `noj-cli deploy status --dir <部署目录>`。
+常见问题与处理见[常见问题](https://docs.noj.xyber-nova.space/intro/faq.html)和 `noj-cli status --dir <安装目录>`。
 
 ---
 

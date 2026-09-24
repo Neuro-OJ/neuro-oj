@@ -30,7 +30,8 @@ noj-judge/
 ├── docker/                 # 评测镜像 Dockerfile
 │   ├── evaluator-python/Dockerfile  # Evaluator Python 运行时（python:3.12-slim）
 │   ├── solution-python/Dockerfile   # Solution Python 运行时（python:3.12-slim）
-│   └── solution-ai/Dockerfile       # Solution AI 运行时（CPU torch/CV/ML）
+│   ├── solution-ai/Dockerfile       # Solution AI 运行时（CPU torch/CV/ML）
+│   └── python/Dockerfile            # 遗留单容器运行时（已不再使用，保留供参考）
 ├── Dockerfile.e2e          # E2E 测试用 Dockerfile（多阶段构建）
 ├── .dockerignore           # 排除 target/ tests/ docker/ 等
 ├── src/
@@ -40,6 +41,10 @@ noj-judge/
 │   ├── types.rs            # JudgeTask、JudgeResult、CaseResult 类型
 │   ├── drain.rs            # 优雅关闭时排空 in-flight 评测任务
 │   ├── mq.rs               # Redis MQ 任务拉取 + 结果推送（带重试 + fallback）
+│   ├── docker.rs           # Docker 客户端/daemon 连接封装
+│   ├── logging.rs          # tracing 初始化与日志约定
+│   ├── metrics.rs          # Prometheus 指标
+│   ├── user_claim.rs       # 用户级公平调度 claim（Redis）
 │   ├── sandbox/
 │   │   ├── mod.rs
 │   │   ├── container.rs    # 容器生命周期 + zip 解压 + 命令解析
@@ -49,12 +54,13 @@ noj-judge/
 │   │   └── host_config.rs  # 容器 HostConfig 构造（安全项）
 │   ├── judge/
 │   │   ├── mod.rs
-│   │   └── runner.rs       # 评测入口（支持包获取 + 双容器分发）
+│   │   └── runner.rs       # 评测入口（支持包获取 + 双容器 / prediction 分发）
 │   ├── prediction/
 │   │   └── mod.rs          # prediction 单容器数据评分路径（无 Solution 容器）
 │   └── dual/
 │       ├── mod.rs          # 双容器编排（Evaluator + Solution）
 │       ├── container.rs    # 双容器生命周期
+│       ├── tracker.rs      # 调用/超时追踪
 │       └── protocol.rs     # NDJSON 编排协议
 └── tests/
     ├── common/mod.rs       # 测试公共辅助函数
@@ -66,8 +72,12 @@ noj-judge/
     ├── e2e_security_isolation.rs
     ├── e2e_support_package.rs
     ├── e2e_dual_container.rs  # 双容器 NDJSON 编排 E2E
+    ├── e2e_abnormal.rs        # 异常/畸形输入 E2E
+    ├── e2e_solution_ai.rs     # Solution AI 运行时 E2E
+    ├── judge_task_contract.rs # JudgeTask wire 契约快照
+    ├── user_claim_redis.rs    # 用户级 claim（需 Redis）
     ├── e2e_network_capability.rs  # evaluator 联网 + capability 转发 E2E
-    ├── e2e_prediction.rs  # prediction 单容器数据评分 E2E（无 Solution 容器）
+    ├── e2e_prediction.rs     # prediction 单容器数据评分 E2E（无 Solution 容器）
     └── e2e_problem_limits.rs  # 验证 time_limit_ms/memory_limit_mb 实际生效
 ```
 
@@ -95,6 +105,8 @@ NOJ_RUN_E2E=1 cargo test --test e2e_dual_container -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_network_capability -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_prediction -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_problem_limits -- --ignored
+NOJ_RUN_E2E=1 cargo test --test e2e_abnormal -- --ignored
+NOJ_RUN_E2E=1 cargo test --test e2e_solution_ai -- --ignored
 
 # 运行指定集成测试
 NOJ_RUN_E2E=1 cargo test --test e2e_dual_container -- --ignored test_dual_container_basic
@@ -126,6 +138,22 @@ cargo fmt
 
 > `JUDGE_PREDICTION_WORKSPACE_MB` **仅 judge 消费**：noj-core 不读取该变量，因此不登记
 > `settings-registry` / `noj-core/.env.example`。
+| `JUDGE_INSTANCE_ID`              | `{hostname}-{pid}`   | 实例标识（日志/claim 前缀用）                                                                    |
+| `JUDGE_IMAGE_PREFIX`             | `noj-`               | 允许的评测镜像名前缀（启动期与调度期复验）                                                       |
+| `JUDGE_COMMAND_WHITELIST`        | `python3,deno,node,bash,sh` | 允许的命令可执行文件白名单（逗号分隔）                                                   |
+| `JUDGE_ALLOW_EVALUATOR_NETWORK`  | `false`              | 是否允许 Evaluator 容器联网（LLM 题需开启）                                                      |
+| `JUDGE_EVALUATOR_NETWORK`        | `bridge`             | Evaluator 联网时加入的 Docker 网络名                                                            |
+| `JUDGE_ALLOW_HTTP_S3`            | `false`              | 是否允许经 HTTP 下载支持包（自建 MinIO 内网常需开启）                                            |
+| `JUDGE_MAX_EVALUATOR_TIME_MS`    | `300000`             | 单次评测 Evaluator 总时长硬上限（毫秒）                                                          |
+| `JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS` | `60000`          | 单次调用超时硬上限（毫秒）                                                                       |
+| `JUDGE_DOCKER_HOST`              | `unix:///var/run/docker.sock` | Docker daemon 地址（Unix socket，生产应指向独立 rootless daemon）                     |
+| `JUDGE_REQUIRE_ISOLATED_DOCKER`  | `false`              | 是否强制使用独立/隔离的 Docker daemon                                                            |
+| `JUDGE_USER_CLAIM_PREFIX`        | 队列前缀的同名父命名空间 | 用户级公平调度 claim 的 Redis key 前缀                                                        |
+| `JUDGE_USER_CLAIM_TTL_MS`        | `3600000`            | 用户级 claim 的 TTL（毫秒）                                                                      |
+| `SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT` | `60`               | 支持包下载超时（**秒**；实现按 `Duration::from_secs` 使用）                                      |
+| `SUPPORT_CACHE_DIR`              | `/tmp/noj-judge/support-cache` | 支持包内容寻址缓存目录                                                                 |
+| `SUPPORT_CACHE_MAX_ITEMS`        | `500`                | 缓存最大条目数                                                                                   |
+| `SUPPORT_CACHE_MAX_MB`           | `2048`               | 缓存最大容量（MB）                                                                               |
 
 > `POOL_*` 环境变量已随容器池移除（见 remove-container-pool 变更），不再被读取。
 
@@ -145,7 +173,7 @@ cargo fmt
   ├─ 3. 注入用户代码/artifact zip 到 Solution 容器（artifact 模式解压到 /workspace，入口 submission.py）
   ├─ 4. 注入支持包 zip 到 Evaluator 容器 /workspace
   ├─ 5. 启动两个 exec — Evaluator 跑 evaluate.py；Solution 跑 host.py
-  ├─ 6. 等待 Solution `ready` 帧（5s 超时）
+  ├─ 6. Evaluator 首帧输出前受 30s 启动 deadline 约束；Solution 侧在就绪前只接受 `ready` 帧（其余忽略），无独立超时
   ├─ 7. 双向消息转发 — evaluator stdout ↔ solution stdin/stderr（调用级超时）
   │     ├─ 超时 → 向等待方写入 CallTimeout/error 帧
   │     └─ 正常 → 读取 stdout/stderr 直到 RESULT 或 EOF
@@ -154,10 +182,10 @@ cargo fmt
   │     ├─ 总超时（启动超时 / time_limit_ms）→ SystemError（finalize_outcome 优先）
   │     ├─ 无标记 + 曾发送 CallTimeout 错误帧 → TimeLimitExceeded
   │     └─ 无标记 + 未发送 → SystemError
-  └─ 9. 发 `shutdown` 到 Solution → 显式 `dual.destroy()` 清理两个容器
+  └─ 9. 结果取得后立即收尾 → 显式 `dual.destroy()` 强制清理两个容器（编排循环不发 `shutdown` 帧、也不关闭 Solution stdin）
 ```
 
-当前实现回填 `time_ms`（从评测开始到结果生成的墙上时钟耗时）； `memory_kb`
+当前实现回填 `time_ms`（从评测开始到 `dual.destroy()` 清理完成的墙上时钟总耗时，含清理）； `memory_kb`
 通过销毁前读取一次 Docker stats 尽力回填：
 
 - cgroups v1 使用 `memory_stats.max_usage`（真实峰值）；
@@ -199,7 +227,7 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
   └─ 7. dual.destroy() 清理 Evaluator 容器
 ```
 
-- **绝不创建 Solution 容器**（E2E 以 `com.noj.judge.dual.solution` 标签断言）。
+- **绝不创建 Solution 容器**（E2E 以标签断言）。
 - 结果解析与双容器共用 `build_judge_result`；标记缺失 / JSON 非法 / 启动超时 /
   `time_limit_ms` 超时均归 `SystemError`。
 - 输出全文经 `append_capped` 累积（1 MiB，超出丢头部保尾部），标记检测用
@@ -213,6 +241,8 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
 {
   "submission_id": "uuid",
   "problem_id": "uuid",
+  "user_id": "uuid",
+  "priority": "medium",
   "download_url": "noj-download://base64/?content=UEsDBBQAAAAIA...&checksum_sha256=abc123",
   "artifact_download_url": "noj-download://s3?url=...&checksum_sha256=abc123",
   "runtime_config": {
@@ -234,6 +264,11 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
   "rejudge_seq": 1
 }
 ```
+
+> 完整 wire 契约以 `noj-tests/fixtures/judge-task.contract.json` 与
+> `JUDGE_TASK_FIELDS` 为准（`user_id` 必填；`priority` 缺省 `medium`——
+> Rust 侧带 `#[serde(default = "default_priority")]`；启用 LLM 的题目
+> 另带 `llm`）。
 
 > 双容器架构后 `judge_image` / `judge_command` / `time_limit_ms` /
 > `memory_limit_mb` 顶层字段已移除，统一由 `runtime_config`（Evaluator +
@@ -265,8 +300,7 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
   次（指数退避），全部失败则序列化到本地文件系统
 - **孤儿容器清理**：启动时按标签清理残留容器
 - **JudgeResult::error()** 有意隐藏错误详情（不暴露内部路径/配置给用户）
-- **镜像存在性检查**：`ensure_image_local()` 检查本地是否存在，不存在则从
-  registry 拉取
+- **镜像白名单复验**：镜像前缀（`JUDGE_IMAGE_PREFIX`）、命令可执行文件白名单与网络开关在任务执行前复验；容器创建直接调 `docker.create_container`，不存在启动期的镜像拉取/探测辅助函数。
 
 ## 日志约定
 

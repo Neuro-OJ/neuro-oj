@@ -14,7 +14,10 @@ import {
   NotFoundError,
   UnauthorizedError,
 } from "./../../../shared/base/errors.ts";
-import { parsePagination } from "./../../../shared/http/pagination.ts";
+import {
+  MAX_SAFE_PAGE,
+  parsePagination,
+} from "./../../../shared/http/pagination.ts";
 import {
   enforceObjectiveSubmitRateLimit,
   enforceProblemCreateRateLimit,
@@ -81,6 +84,12 @@ router.get("/", optionalAuthMiddleware, async (c) => {
   // 校验非数字输入
   if (Number.isNaN(page) || Number.isNaN(limit)) {
     throw new BadRequestError("分页参数 page 和 limit 必须为数字");
+  }
+  // page 必须有上界：offset=(page-1)*limit 会进入 PostgreSQL 的 OFFSET（bigint），
+  // 9.9e16 量级的 page 使 offset 超出 bigint → PG "value ... is out of range
+  // for type bigint" → 500。与 shared/http/pagination.ts 的 MAX_PAGE 保持一致。
+  if (page > MAX_SAFE_PAGE) {
+    throw new BadRequestError("分页参数 page 超出允许范围");
   }
 
   const query: ProblemListQuery = {

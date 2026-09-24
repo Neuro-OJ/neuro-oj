@@ -102,6 +102,14 @@ jobs:
           ./bin/noj-cli-linux-amd64 --help
           cd bin
           sha256sum noj-cli-linux-amd64 > noj-cli-linux-amd64.sha256
+      - name: 生成生产部署文件校验文件
+        # bootstrap 从 Release 下载 docker-compose.prod.yml 与 .env.prod.example
+        # 并校验（noj-cli/src/prod/bootstrap.ts），因此两者必须与二进制同版本发布，
+        # 校验文件生成方式与 CLI 资产一致（sha256sum 的"摘要  文件名"格式）。
+        run: |
+          set -Eeuo pipefail
+          sha256sum docker-compose.prod.yml > docker-compose.prod.yml.sha256
+          sha256sum .env.prod.example > .env.prod.example.sha256
       - name: 发布同版本二进制资产
         env:
           GH_TOKEN: ${{ github.token }}
@@ -110,6 +118,10 @@ jobs:
           gh release upload "$VERSION" \
             noj-cli/bin/noj-cli-linux-amd64 \
             noj-cli/bin/noj-cli-linux-amd64.sha256 \
+            docker-compose.prod.yml \
+            docker-compose.prod.yml.sha256 \
+            .env.prod.example \
+            .env.prod.example.sha256 \
             --clobber
 
   supply-chain-check:

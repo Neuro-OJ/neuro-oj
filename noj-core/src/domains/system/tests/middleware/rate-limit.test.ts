@@ -13,8 +13,29 @@ import { AppError } from "../../../../shared/base/errors.ts";
 import type { Context } from "hono";
 import { resetDbForTest } from "../../../../shared/db/connection.ts";
 
-// 显式启用限流中间件（NOJ_ENV=test 时默认关闭）
-Deno.env.set("RATE_LIMIT_ENABLED", "true");
+// 显式启用限流中间件（NOJ_ENV=test 时默认关闭）。
+//
+// 该开关必须在**每个用例内**设置并在结束时还原，不能在模块顶层 `Deno.env.set`：
+// Deno 测试文件共享同一进程环境，模块级 set 会把 `RATE_LIMIT_ENABLED=true` 泄漏给
+// 同一次运行中后续执行的文件，使它们的请求被限流成 429（2026-09-21 实测：
+// 与 problem-bundle.test.ts 同跑时，后者由 19 passed 变成 8 failed）。
+const RATE_LIMIT_ENV_KEY = "RATE_LIMIT_ENABLED";
+
+/**
+ * 在限流开启的环境下运行 `fn`，结束后把开关还原为进入前的值
+ * （原本未设置则删除），失败路径同样还原。
+ */
+async function withRateLimitEnabled<T>(fn: () => Promise<T> | T): Promise<T> {
+  const previous = Deno.env.get(RATE_LIMIT_ENV_KEY);
+  Deno.env.set(RATE_LIMIT_ENV_KEY, "true");
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) Deno.env.delete(RATE_LIMIT_ENV_KEY);
+    else Deno.env.set(RATE_LIMIT_ENV_KEY, previous);
+  }
+}
+
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 
 // PR-1：optionalAuthMiddleware 校验 JWT 撤销需 Redis
@@ -67,93 +88,97 @@ function createTestApp(loggedInMs: number, loggedOutMs: number) {
 Deno.test({
   name: "rate limit: 未登录连续两次请求第二次返回 429",
   ignore: !hasEnv,
-  fn: async () => {
-    _resetRateLimitForTest();
-    const app = createTestApp(1000, 5000);
+  fn: () =>
+    withRateLimitEnabled(async () => {
+      _resetRateLimitForTest();
+      const app = createTestApp(1000, 5000);
 
-    const r1 = await app.request("/limited");
-    assertEquals(r1.status, 200);
+      const r1 = await app.request("/limited");
+      assertEquals(r1.status, 200);
 
-    const r2 = await app.request("/limited");
-    assertEquals(r2.status, 429);
+      const r2 = await app.request("/limited");
+      assertEquals(r2.status, 429);
 
-    const body = await r2.json();
-    assertEquals(body.error, "请求过于频繁，请稍后再试");
-    assertEquals(body.retry_after, 5);
-    assertEquals(r2.headers.get("Retry-After"), "5");
-  },
+      const body = await r2.json();
+      assertEquals(body.error, "请求过于频繁，请稍后再试");
+      assertEquals(body.retry_after, 5);
+      assertEquals(r2.headers.get("Retry-After"), "5");
+    }),
 });
 
 Deno.test({
   name: "rate limit: 登录用户连续两次请求间隔 < 1s 返回 429",
   ignore: !hasEnv,
-  fn: async () => {
-    _resetRateLimitForTest();
-    const app = createTestApp(1000, 5000);
-    const token = await createUserToken();
+  fn: () =>
+    withRateLimitEnabled(async () => {
+      _resetRateLimitForTest();
+      const app = createTestApp(1000, 5000);
+      const token = await createUserToken();
 
-    const r1 = await app.request("/limited", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    assertEquals(r1.status, 200);
+      const r1 = await app.request("/limited", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      assertEquals(r1.status, 200);
 
-    const r2 = await app.request("/limited", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    assertEquals(r2.status, 429);
+      const r2 = await app.request("/limited", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      assertEquals(r2.status, 429);
 
-    const body = await r2.json();
-    assertEquals(body.retry_after, 1);
-    assertEquals(r2.headers.get("Retry-After"), "1");
-  },
+      const body = await r2.json();
+      assertEquals(body.retry_after, 1);
+      assertEquals(r2.headers.get("Retry-After"), "1");
+    }),
 });
 
 Deno.test({
   name: "rate limit: 不同 IP 的未登录请求互不影响",
   ignore: !hasEnv,
-  fn: async () => {
-    _resetRateLimitForTest();
-    const app = createTestApp(1000, 5000);
+  fn: () =>
+    withRateLimitEnabled(async () => {
+      _resetRateLimitForTest();
+      const app = createTestApp(1000, 5000);
 
-    // IP A 请求一次
-    const r1 = await app.request("/limited", {
-      headers: { "x-forwarded-for": "1.2.3.4" },
-    });
-    assertEquals(r1.status, 200);
+      // IP A 请求一次
+      const r1 = await app.request("/limited", {
+        headers: { "x-forwarded-for": "1.2.3.4" },
+      });
+      assertEquals(r1.status, 200);
 
-    // IP B 请求一次：不应被 IP A 的限流影响
-    const r2 = await app.request("/limited", {
-      headers: { "x-forwarded-for": "5.6.7.8" },
-    });
-    assertEquals(r2.status, 200);
+      // IP B 请求一次：不应被 IP A 的限流影响
+      const r2 = await app.request("/limited", {
+        headers: { "x-forwarded-for": "5.6.7.8" },
+      });
+      assertEquals(r2.status, 200);
 
-    // IP A 第二次请求：仍在 5s 限流窗口内
-    const r3 = await app.request("/limited", {
-      headers: { "x-forwarded-for": "1.2.3.4" },
-    });
-    assertEquals(r3.status, 429);
-  },
+      // IP A 第二次请求：仍在 5s 限流窗口内
+      const r3 = await app.request("/limited", {
+        headers: { "x-forwarded-for": "1.2.3.4" },
+      });
+      assertEquals(r3.status, 429);
+    }),
 });
 
 Deno.test({
   name: "rate limit: 不同登录用户互不影响",
   ignore: !hasEnv,
-  fn: async () => {
-    _resetRateLimitForTest();
-    const app = createTestApp(1000, 5000);
-    const tokenA = await createUserToken();
-    const tokenB = await createUserToken();
+  fn: () =>
+    withRateLimitEnabled(async () => {
+      _resetRateLimitForTest();
+      const app = createTestApp(1000, 5000);
+      const tokenA = await createUserToken();
+      const tokenB = await createUserToken();
 
-    const r1 = await app.request("/limited", {
-      headers: { Authorization: `Bearer ${tokenA}` },
-    });
-    assertEquals(r1.status, 200);
+      const r1 = await app.request("/limited", {
+        headers: { Authorization: `Bearer ${tokenA}` },
+      });
+      assertEquals(r1.status, 200);
 
-    const r2 = await app.request("/limited", {
-      headers: { Authorization: `Bearer ${tokenB}` },
-    });
-    assertEquals(r2.status, 200);
-  },
+      const r2 = await app.request("/limited", {
+        headers: { Authorization: `Bearer ${tokenB}` },
+      });
+      assertEquals(r2.status, 200);
+    }),
 });
 
 Deno.test({
@@ -172,26 +197,27 @@ Deno.test({
   sanitizeOps: false,
   // 引入路由会触发 DB 连接；放在测试里加载避免顶层副作用
   // 此测试独立，不依赖前面的限流测试
-  fn: async () => {
-    _resetRateLimitForTest();
-    await resetDbForTest();
-    await initRedisForTest();
-    const { default: router } = await import(
-      "../../../submission/routes/submissions.ts"
-    );
-    const app = new Hono<Env>();
-    app.onError(handleError);
-    app.route("/api/v1/submissions", router);
+  fn: () =>
+    withRateLimitEnabled(async () => {
+      _resetRateLimitForTest();
+      await resetDbForTest();
+      await initRedisForTest();
+      const { default: router } = await import(
+        "../../../submission/routes/submissions.ts"
+      );
+      const app = new Hono<Env>();
+      app.onError(handleError);
+      app.route("/api/v1/submissions", router);
 
-    const res = await app.request(
-      "/api/v1/submissions/public/recent?per_page=100",
-    );
-    assertEquals(res.status, 200);
-    const body = await res.json();
-    // 未登录 per_page 上限 50：无论 DB 中数据多少，返回 data 长度 ≤ 50
-    assertEquals(Array.isArray(body.data), true);
-    assertEquals(body.data.length <= 50, true);
-  },
+      const res = await app.request(
+        "/api/v1/submissions/public/recent?per_page=100",
+      );
+      assertEquals(res.status, 200);
+      const body = await res.json();
+      // 未登录 per_page 上限 50：无论 DB 中数据多少，返回 data 长度 ≤ 50
+      assertEquals(Array.isArray(body.data), true);
+      assertEquals(body.data.length <= 50, true);
+    }),
 });
 
 Deno.test({
@@ -199,26 +225,27 @@ Deno.test({
   ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
-  fn: async () => {
-    _resetRateLimitForTest();
-    await resetDbForTest();
-    const { default: router } = await import(
-      "../../../submission/routes/submissions.ts"
-    );
-    const app = new Hono<Env>();
-    app.onError(handleError);
-    app.route("/api/v1/submissions", router);
+  fn: () =>
+    withRateLimitEnabled(async () => {
+      _resetRateLimitForTest();
+      await resetDbForTest();
+      const { default: router } = await import(
+        "../../../submission/routes/submissions.ts"
+      );
+      const app = new Hono<Env>();
+      app.onError(handleError);
+      app.route("/api/v1/submissions", router);
 
-    const token = await createUserToken();
-    const res = await app.request(
-      "/api/v1/submissions/public/recent?per_page=200",
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
-    assertEquals(res.status, 200);
-    const body = await res.json();
-    // 登录用户 per_page 上限 100：返回 data 长度 ≤ 100
-    assertEquals(body.data.length <= 100, true);
-  },
+      const token = await createUserToken();
+      const res = await app.request(
+        "/api/v1/submissions/public/recent?per_page=200",
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      assertEquals(res.status, 200);
+      const body = await res.json();
+      // 登录用户 per_page 上限 100：返回 data 长度 ≤ 100
+      assertEquals(body.data.length <= 100, true);
+    }),
 });
 
 Deno.test({
@@ -226,25 +253,26 @@ Deno.test({
   ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
-  fn: async () => {
-    _resetRateLimitForTest();
-    await resetDbForTest();
-    const { default: router } = await import(
-      "../../../submission/routes/submissions.ts"
-    );
-    const app = new Hono<Env>();
-    app.onError(handleError);
-    app.route("/api/v1/submissions", router);
+  fn: () =>
+    withRateLimitEnabled(async () => {
+      _resetRateLimitForTest();
+      await resetDbForTest();
+      const { default: router } = await import(
+        "../../../submission/routes/submissions.ts"
+      );
+      const app = new Hono<Env>();
+      app.onError(handleError);
+      app.route("/api/v1/submissions", router);
 
-    // 第一次：无 token 走未登录限流（5s）
-    const r1 = await app.request("/api/v1/submissions/public/recent");
-    assertEquals(r1.status, 200);
+      // 第一次：无 token 走未登录限流（5s）
+      const r1 = await app.request("/api/v1/submissions/public/recent");
+      assertEquals(r1.status, 200);
 
-    // 立即第二次：应触发 429
-    const r2 = await app.request("/api/v1/submissions/public/recent");
-    assertEquals(r2.status, 429);
-    assertEquals(r2.headers.get("Retry-After"), "5");
-  },
+      // 立即第二次：应触发 429
+      const r2 = await app.request("/api/v1/submissions/public/recent");
+      assertEquals(r2.status, 429);
+      assertEquals(r2.headers.get("Retry-After"), "5");
+    }),
 });
 
 Deno.test({
@@ -252,28 +280,29 @@ Deno.test({
   ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
-  fn: async () => {
-    _resetRateLimitForTest();
-    await resetDbForTest();
-    const { default: router } = await import(
-      "../../../submission/routes/submissions.ts"
-    );
-    const app = new Hono<Env>();
-    app.onError(handleError);
-    app.route("/api/v1/submissions", router);
+  fn: () =>
+    withRateLimitEnabled(async () => {
+      _resetRateLimitForTest();
+      await resetDbForTest();
+      const { default: router } = await import(
+        "../../../submission/routes/submissions.ts"
+      );
+      const app = new Hono<Env>();
+      app.onError(handleError);
+      app.route("/api/v1/submissions", router);
 
-    const token = await createUserToken();
+      const token = await createUserToken();
 
-    const r1 = await app.request("/api/v1/submissions/public/recent", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    assertEquals(r1.status, 200);
+      const r1 = await app.request("/api/v1/submissions/public/recent", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      assertEquals(r1.status, 200);
 
-    // 立即第二次：触发登录 1s 限流
-    const r2 = await app.request("/api/v1/submissions/public/recent", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    assertEquals(r2.status, 429);
-    assertEquals(r2.headers.get("Retry-After"), "1");
-  },
+      // 立即第二次：触发登录 1s 限流
+      const r2 = await app.request("/api/v1/submissions/public/recent", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      assertEquals(r2.status, 429);
+      assertEquals(r2.headers.get("Retry-After"), "1");
+    }),
 });

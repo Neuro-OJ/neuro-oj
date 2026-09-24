@@ -28,5 +28,5 @@ features:
     details: Monaco 编辑器，支持语法高亮与提交历史，提交后立即可见排队与评测结果。
   - icon: 🏆
     title: 社区与竞赛
-    details: 帖子与关注动态流，icpc / ioi / oi 三赛制竞赛与实时排名，RBAC 权限管理。
+    details: 帖子与关注动态流，类 Kaggle 分数赛与实时排名，RBAC 权限管理。
 ---

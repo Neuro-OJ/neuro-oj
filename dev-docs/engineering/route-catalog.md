@@ -21,7 +21,6 @@
 | DELETE | `/contests/:id/participants/:userId` | noj-core/src/domains/admin/routes/contest.ts |
 | DELETE | `/judge-images/:id` | noj-core/src/domains/admin/routes/system.ts |
 | DELETE | `/me/avatar` | noj-core/src/domains/identity/routes/users.ts |
-| DELETE | `/me/llm-providers/:id` | noj-core/src/domains/identity/routes/users.ts |
 | DELETE | `/oauth/accounts/:id` | noj-core/src/domains/identity/routes/auth.ts |
 | DELETE | `/posts/:postId` | noj-core/src/domains/community/routes/community.ts |
 | DELETE | `/queue/submissions/:id` | noj-core/src/domains/admin/routes/submission.ts |
@@ -108,7 +107,6 @@
 | GET | `/llm/usage` | noj-core/src/domains/admin/routes/gateway.ts |
 | GET | `/me` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `/me` | noj-core/src/domains/query/routes/rankings.ts |
-| GET | `/me/llm-providers` | noj-core/src/domains/identity/routes/users.ts |
 | GET | `/mine` | noj-core/src/domains/catalog/routes/trainings.ts |
 | GET | `/notifications` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/notifications/:id{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}` | noj-core/src/domains/community/routes/community.ts |
@@ -210,8 +208,6 @@
 | POST | `/logout` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/me/avatar` | noj-core/src/domains/identity/routes/users.ts |
 | POST | `/me/delete-account` | noj-core/src/domains/identity/routes/users.ts |
-| POST | `/me/llm-providers` | noj-core/src/domains/identity/routes/users.ts |
-| POST | `/me/llm-providers/:id/test` | noj-core/src/domains/identity/routes/users.ts |
 | POST | `/notifications/:id/read` | noj-core/src/domains/community/routes/community.ts |
 | POST | `/notifications/read` | noj-core/src/domains/community/routes/community.ts |
 | POST | `/oauth/:provider/link` | noj-core/src/domains/identity/routes/auth.ts |
@@ -255,7 +251,6 @@
 | PUT | `/llm/providers/:id` | noj-core/src/domains/admin/routes/gateway.ts |
 | PUT | `/me` | noj-core/src/domains/identity/routes/users.ts |
 | PUT | `/me/activity-visibility` | noj-core/src/domains/community/routes/community.ts |
-| PUT | `/me/llm-providers/:id` | noj-core/src/domains/identity/routes/users.ts |
 | PUT | `/roles/:id` | noj-core/src/domains/admin/routes/identity.ts |
 | PUT | `/settings/:key` | noj-core/src/domains/admin/routes/system.ts |
 | PUT | `/users/:id` | noj-core/src/domains/admin/routes/identity.ts |

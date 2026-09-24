@@ -43,7 +43,6 @@ Deno.test("JudgeTask 契约: 工厂按 fixture 构造出的消息与 fixture 完
     artifact_download_url: fixture.artifact_download_url,
     rejudge_seq: fixture.rejudge_seq,
     llm: fixture.llm,
-    user_llm: fixture.user_llm,
   });
   // 经 JSON 往返比较：同时验证字段集合与值（含嵌套 runtime_config / llm）
   assertEquals(JSON.parse(JSON.stringify(built)), fixture);
@@ -65,7 +64,6 @@ Deno.test("JudgeTask 契约: 字段集合与登记表一致", async () => {
     artifact_download_url: fixture.artifact_download_url,
     rejudge_seq: fixture.rejudge_seq,
     llm: fixture.llm,
-    user_llm: fixture.user_llm,
   });
   assertEquals(
     Object.keys(built).sort(),

@@ -41,6 +41,12 @@ fi
 # 共享/全局测试 + 迁移/种子 + smoke
 deno test -A --no-check --preload=tests/preload.ts \
   tests/00_migrate_test.ts tests/seed_bootstrap_admin_test.ts
+# tests/ 顶层还散落着若干测试文件，早期版本只按**子目录**枚举（tests/shared、
+# tests/routes…），这些顶层文件因此从未被执行——`deno test tests/routes` 这类
+# 目录参数不会带上 `tests/*.test.ts`。已实测确认（2026-09-21）：下面三个文件共
+# 5 个用例全部通过，但此前 `test:shared`、`test:domain`、`test:parallel` 与 CI
+# 的 core-shared job 都不覆盖它们；而 `test:coverage` 全树扫描，等于为「从不执行
+# 的测试」计入了覆盖率。此处显式列出，避免再次被目录枚举遗漏。
 deno test -A --no-check --preload=tests/preload.ts \
   tests/shared \
   tests/data \
@@ -48,4 +54,7 @@ deno test -A --no-check --preload=tests/preload.ts \
   tests/db \
   tests/routes \
   tests/scripts \
+  tests/security-headers.test.ts \
+  tests/types_safety_test.ts \
+  tests/defensive-patterns_test.ts \
   tests/smoke.test.ts

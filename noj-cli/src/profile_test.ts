@@ -15,17 +15,18 @@ function fakeFs(files: Record<string, "file" | "dir">) {
 
 Deno.test("detectProfile: 显式 --profile 优先于一切探测", () => {
   const fs = fakeFs({
-    "/opt/scripts/deploy/production.sh": "file",
+    "/opt/.env.prod": "file",
     "/opt/docker-compose.prod.yml": "file",
   });
-  const r = detectProfile({ explicit: "stack", start: "/opt", ...fs });
-  assertEquals(r.profile, "stack");
+  // T23：显式值现在只接受 prod（stack 模式已删除）
+  const r = detectProfile({ explicit: "prod", start: "/opt", ...fs });
+  assertEquals(r.profile, "prod");
   assertEquals(r.source, "explicit");
 });
 
 Deno.test("detectProfile: 生产安装目录判定为 prod", () => {
   const fs = fakeFs({
-    "/opt/scripts/deploy/production.sh": "file",
+    "/opt/.env.prod": "file",
     "/opt/docker-compose.prod.yml": "file",
   });
   const r = detectProfile({ start: "/opt", ...fs });
@@ -33,28 +34,28 @@ Deno.test("detectProfile: 生产安装目录判定为 prod", () => {
   assertEquals(r.source, "detected");
 });
 
-Deno.test("detectProfile: 含 noj-deploy.json 判定为 stack", () => {
-  const fs = fakeFs({ "/work/noj-deploy.json": "file" });
-  const r = detectProfile({ start: "/work", ...fs });
-  assertEquals(r.profile, "stack");
-  assertEquals(r.source, "detected");
+Deno.test("detectProfile: 仅有 production.sh、缺 .env.prod 时不判为 prod（洞 1 回归）", () => {
+  // scripts/deploy/production.sh 在纯 TS 重写后会被删除。若仍以它作特征文件，
+  // 真实生产目录（.env.prod + docker-compose.prod.yml）会探测失败并按设计报错，
+  // 即「自锁」。此用例锁定新语义：production.sh 不再是生产目录特征。
+  const fs = fakeFs({
+    "/legacy/scripts/deploy/production.sh": "file",
+    "/legacy/docker-compose.prod.yml": "file",
+  });
+  const r = detectProfile({ start: "/legacy", ...fs });
+  assertEquals(r.profile, null);
+  assertEquals(r.source, "none");
+  assertEquals(r.error !== undefined, true, "必须报错而非猜默认值");
 });
 
-Deno.test("detectProfile: 两者同时命中时报错，不静默取默认", () => {
-  // issue 明确要求：猜错模式可能作用到错误的目标，必须报错。
-  const fs = fakeFs({
-    "/mixed/scripts/deploy/production.sh": "file",
-    "/mixed/docker-compose.prod.yml": "file",
-    "/mixed/noj-deploy.json": "file",
-  });
-  const r = detectProfile({ start: "/mixed", ...fs });
+Deno.test("T23: 含 noj-deploy.json 不再被识别（该模态已删除）", () => {
+  // 反向断言：旧模态的特征文件不得再让探测成功——否则一个只含 noj-deploy.json
+  // 的目录会被判定为"可用"，而 CLI 已没有任何命令能消费它。
+  const fs = fakeFs({ "/work/noj-deploy.json": "file" });
+  const r = detectProfile({ start: "/work", ...fs });
   assertEquals(r.profile, null);
-  assertEquals(r.source, "ambiguous");
-  assertEquals(
-    r.error?.includes("--profile") ?? false,
-    true,
-    "错误信息应给出下一步操作建议",
-  );
+  assertEquals(r.source, "none");
+  assertEquals(r.error !== undefined, true);
 });
 
 Deno.test("detectProfile: 都不命中时报错，不猜默认", () => {
@@ -65,9 +66,13 @@ Deno.test("detectProfile: 都不命中时报错，不猜默认", () => {
 });
 
 Deno.test("detectProfile: 向上查找到祖先目录", () => {
-  const fs = fakeFs({ "/root/noj-deploy.json": "file" });
+  // T23：改用生产安装目录特征（原先用 noj-deploy.json 模拟 stack）
+  const fs = fakeFs({
+    "/root/.env.prod": "file",
+    "/root/docker-compose.prod.yml": "file",
+  });
   const r = detectProfile({ start: "/root/a/b/c", ...fs });
-  assertEquals(r.profile, "stack");
+  assertEquals(r.profile, "prod");
 });
 
 Deno.test("detectProfile: 非法 --profile 值直接报错", () => {
@@ -75,7 +80,8 @@ Deno.test("detectProfile: 非法 --profile 值直接报错", () => {
   assertEquals(r.profile, null);
   assertEquals(r.source, "invalid");
   assertEquals(r.error?.includes("prod"), true);
-  assertEquals(r.error?.includes("stack"), true);
+  // T23：错误信息不该再列出已删除的 stack 作为可选项
+  assertEquals(r.error?.includes("stack"), false);
 });
 
 Deno.test("detectProfile: 显式 profile 不要求目录存在对应文件", () => {
@@ -84,6 +90,6 @@ Deno.test("detectProfile: 显式 profile 不要求目录存在对应文件", () 
   assertEquals(r.profile, "prod");
 });
 
-Deno.test("PROFILE_NAMES 固定为 prod/stack", () => {
-  assertEquals([...PROFILE_NAMES].sort(), ["prod", "stack"]);
+Deno.test("T23: PROFILE_NAMES 只剩 prod（单模态）", () => {
+  assertEquals([...PROFILE_NAMES], ["prod"]);
 });

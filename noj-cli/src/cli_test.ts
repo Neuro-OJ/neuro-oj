@@ -2,7 +2,6 @@ import { assertEquals } from "@std/assert";
 import { join } from "@std/path";
 import {
   assertCommandAllowedInProfile,
-  deprecationNotice,
   detectProfileOrNull,
   dispatchCommand,
   EXIT_FAILURE,
@@ -12,121 +11,32 @@ import {
   firstPositional,
   formatBytes,
   parseBackupArgs,
-  parseDeployArgs,
-  parseInitOptions,
   parseInstallDirArg,
-  parseMaintainArgs,
   parsePort,
   printHelp,
-  removeFirstPositional,
-  renderDrillHelp,
   run,
   stripCliOwnedFlags,
 } from "./cli.ts";
 import { parseDirArg } from "./util/args.ts";
 import type { CommandContext } from "./cli.ts";
+import type { ProfileName } from "./profile.ts";
 import { parseContainerCommand } from "./container.ts";
 import { parseProblemArgs } from "./problem/command.ts";
 import { UsageError } from "./util/args.ts";
-import { baseConfig, secrets, writeFixture } from "./testing/helpers.ts";
 
-const ctx: CommandContext = { cwd: "/tmp", deployDir: null };
+// T23：CommandContext 只剩 cwd（deployDir 随 JSON 模态删除）
+const ctx: CommandContext = { cwd: "/tmp" };
 
 /** 造一个满足生产安装目录特征文件的临时目录（供 profile 探测测试用）。 */
 function makeProductionDir(): string {
   const dir = Deno.makeTempDirSync({ prefix: "noj-prod-" });
-  Deno.mkdirSync(join(dir, "scripts/deploy"), { recursive: true });
-  Deno.writeTextFileSync(join(dir, "scripts/deploy/production.sh"), "");
+  Deno.writeTextFileSync(join(dir, ".env.prod"), "");
   Deno.writeTextFileSync(join(dir, "docker-compose.prod.yml"), "");
   return dir;
 }
 
-Deno.test("printHelp 按模式分区并包含全部命令", () => {
-  const help = printHelp();
-  for (
-    const c of [
-      "doctor",
-      "deploy",
-      "maintain",
-      "run-server",
-      "version",
-      "install",
-      "backup",
-    ]
-  ) {
-    assertEquals(help.includes(c), true, `help 应包含 ${c}`);
-  }
-  // 分区标题必须存在（E11：不再靠「以下命令支持 --dir」含糊指代）
-  assertEquals(help.includes("生产模式"), true);
-  assertEquals(help.includes("JSON 编排模式"), true);
-  assertEquals(help.includes("退出码"), true);
-});
-
-Deno.test("printHelp 不再声称 maintain backup 支持 schedule（E5）", () => {
-  // schedule 只属于生产模式；早先 help 把它写进 maintain backup 子命令列表
-  assertEquals(
-    printHelp().includes("create/verify/restore/drill/schedule"),
-    false,
-  );
-});
-
 Deno.test("version stub 返回 0", async () => {
   assertEquals(await dispatchCommand("version", [], ctx), EXIT_OK);
-});
-
-Deno.test("maintain 无子命令/错误子命令返回用法错误 2（E9）", async () => {
-  assertEquals(await dispatchCommand("maintain", [], ctx), EXIT_USAGE);
-  assertEquals(await dispatchCommand("maintain", ["unknown"], ctx), EXIT_USAGE);
-  // restore 有子命令语义，缺快照时是运行失败而非用法错误
-  assertEquals(
-    await dispatchCommand("maintain", ["restore"], ctx),
-    EXIT_FAILURE,
-  );
-  assertEquals(await dispatchCommand("run-server", [], ctx), EXIT_FAILURE);
-});
-
-Deno.test("deploy 无配置目录时返回 1", async () => {
-  assertEquals(await dispatchCommand("deploy", [], ctx), EXIT_FAILURE);
-});
-
-Deno.test("maintain logs 无配置目录时返回 1", async () => {
-  assertEquals(await dispatchCommand("maintain", ["logs"], ctx), EXIT_FAILURE);
-});
-
-Deno.test("maintain config 无配置目录时返回 1", async () => {
-  assertEquals(
-    await dispatchCommand("maintain", ["config"], ctx),
-    EXIT_FAILURE,
-  );
-});
-
-Deno.test("maintain backup 无配置目录时返回 1", async () => {
-  assertEquals(
-    await dispatchCommand("maintain", ["backup"], ctx),
-    EXIT_FAILURE,
-  );
-});
-
-Deno.test("maintain reset 无配置目录时返回 1", async () => {
-  assertEquals(await dispatchCommand("maintain", ["reset"], ctx), EXIT_FAILURE);
-});
-
-Deno.test("maintain reset --dir 解析后找不到配置返回 1", async () => {
-  assertEquals(
-    await dispatchCommand(
-      "maintain",
-      ["reset", "--dir", "/nonexistent-noj", "--confirm"],
-      ctx,
-    ),
-    EXIT_FAILURE,
-  );
-});
-
-Deno.test("maintain verify 无配置目录时返回 1", async () => {
-  assertEquals(
-    await dispatchCommand("maintain", ["verify"], ctx),
-    EXIT_FAILURE,
-  );
 });
 
 Deno.test("未知命令返回用法错误 2（E9）", async () => {
@@ -144,41 +54,58 @@ Deno.test("run 识别 version 返回 0", async () => {
 // ── #517 E1/E2/E12：--help 全面可用且严格只读 ──────────────────────
 
 Deno.test("E1: 各子命令 --help / -h 返回 0", async () => {
+  // T23：旧名（deploy/maintain/stack/run-server/doctor）已移除，不再列在这里——
+  // 它们的 `--help` 现在返回用法错误 2（见下一个用例）。留下它们会让本用例
+  // 同时断言"命令存在"与"命令不存在"两种矛盾事实。
   const cases: string[][] = [
-    ["deploy", "--help"],
-    ["deploy", "-h"],
-    ["deploy", "init", "--help"],
-    ["deploy", "up", "--help"],
-    ["maintain", "--help"],
-    ["maintain", "backup", "--help"],
-    ["maintain", "logs", "-h"],
-    ["doctor", "--help"],
-    ["run-server", "--help"],
     ["install", "--help"],
     ["check", "--help"],
     ["backup", "--help"],
     ["status", "--help"],
+    ["start", "--help"],
+    ["stop", "--help"],
+    ["logs", "--help"],
+    ["update", "--help"],
+    ["config", "--help"],
+    ["uninstall", "--help"],
+    ["problem", "--help"],
+    ["problem", "init", "--help"],
   ];
   for (const argv of cases) {
     assertEquals(await run(argv), EXIT_OK, argv.join(" "));
   }
 });
 
-Deno.test("E2: deploy init --help 不产生任何副作用（不建文件）", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const before = [...Deno.readDirSync(dir)].length;
+Deno.test("T23: 已移除的命令返回用法错误 2 并给出可粘贴的替代命令", async () => {
+  const originalErr = console.error;
+  const cases: [string[], string][] = [
+    [["deploy", "status"], "已移除"],
+    [["maintain", "logs"], "已移除"],
+    [["stack", "up"], "已移除"],
+    [["run-server"], "docker compose up -d"],
+    [["doctor"], "noj-cli check"],
+  ];
+  for (const [argv, expect] of cases) {
+    let err = "";
+    console.error = (...a: unknown[]) => {
+      err += a.join(" ") + "\n";
+    };
+    try {
+      assertEquals(await run(argv), EXIT_USAGE, argv.join(" "));
+    } finally {
+      console.error = originalErr;
+    }
+    // 提示必须说明"已移除"，并给出可直接粘贴的替代命令
     assertEquals(
-      await dispatchCommand("deploy", ["init", "--help"], {
-        cwd: dir,
-        deployDir: null,
-      }),
-      EXIT_OK,
+      err.includes("已移除"),
+      true,
+      `${argv.join(" ")} 的提示应说明命令已移除，实得：${err}`,
     );
-    const after = [...Deno.readDirSync(dir)].length;
-    assertEquals(after, before, "deploy init --help 不得写入任何文件");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
+    assertEquals(
+      err.includes(expect),
+      true,
+      `${argv.join(" ")} 的提示应含 "${expect}"，实得：${err}`,
+    );
   }
 });
 
@@ -198,54 +125,117 @@ Deno.test("E12: install --help 由 CLI 回答，不出现 deploy.sh 文案", asy
   assertEquals(out.includes("deploy.sh install"), false);
 });
 
+Deno.test("评审: 错误文案不得出现已删除的模式名（stack）", async () => {
+  // T26 的 help 门禁只检查 help 文本，**不检查错误信息**，于是
+  // `--profile` 缺值的报错仍写着"（prod 或 stack）"——唯一残留的
+  // "已删模式"用户可见文案。本门禁补上错误文本这一面。
+  const originalErr = console.error;
+  let err = "";
+  console.error = (...a: unknown[]) => {
+    err += a.join(" ") + "\n";
+  };
+  try {
+    await run(["status", "--profile"]);
+  } finally {
+    console.error = originalErr;
+  }
+  assertEquals(
+    err.includes("stack"),
+    false,
+    `错误信息不得再提已删除的 stack 模式，实得：${err}`,
+  );
+});
+
+// ── T26 发现：同一次目录定位失败必须给出同一个退出码 ──────────────
+//
+// 这个用例来自验收取证（T26）：编译产物实测发现
+//   `status --dir /nonexistent`               → 2
+//   `status --profile prod --dir /nonexistent` → 1
+// **同一次失败、同一句错误文案，退出码却不同**。
+//
+// 根因：探测（`detectProfileOrNull`）先于生产分发运行，它对"目录不是生产安装目录"
+// 抛 `UsageError`（2）；而显式 `--profile prod` 跳过探测，改由 `findProductionDir`
+// 抛 `ProductionDirError`（1）。调用方无法用退出码区分"我参数写错了"与"目录不对"，
+// 而计划与 `production.ts` 的契约都写明**目录定位失败 = 1（运行失败）**：
+// 目录不存在是环境问题，不是用法问题。
+//
+// 契约：无论是否显式给 `--profile`，目录定位失败的退出码必须一致。
+
+Deno.test("T26: 目录定位失败的退出码与 --profile 是否显式无关", async () => {
+  const originalErr = console.error;
+  const capture = async (argv: string[]): Promise<number> => {
+    console.error = () => {};
+    try {
+      return await run(argv);
+    } finally {
+      console.error = originalErr;
+    }
+  };
+  const implicit = await capture(["status", "--dir", "/nonexistent-noj-xyz"]);
+  const explicit = await capture([
+    "--profile",
+    "prod",
+    "status",
+    "--dir",
+    "/nonexistent-noj-xyz",
+  ]);
+  assertEquals(
+    implicit,
+    explicit,
+    `目录定位失败的退出码必须一致：隐式=${implicit} 显式=${explicit}`,
+  );
+  assertEquals(
+    implicit,
+    EXIT_FAILURE,
+    "目录不存在属运行失败（1），非用法错误（2）",
+  );
+});
+
+Deno.test("T26: 生产命令在缺少安装目录时报运行失败（1），并给出可操作提示", async () => {
+  const originalErr = console.error;
+  let err = "";
+  console.error = (...a: unknown[]) => {
+    err += a.join(" ") + "\n";
+  };
+  let code = -1;
+  try {
+    code = await run(["status", "--dir", "/nonexistent-noj-xyz"]);
+  } finally {
+    console.error = originalErr;
+  }
+  assertEquals(code, EXIT_FAILURE);
+  // 提示必须指向可执行的下一步（--dir / 安装目录），而不是只报"失败"
+  assertEquals(
+    err.includes("--dir") || err.includes("安装目录"),
+    true,
+    `错误信息应给出可操作提示，实得：${err}`,
+  );
+});
+
 // ── #517 E3/E4：异常兜底与可读错误 ────────────────────────────────
 
-Deno.test("E3: doctor --port abc 返回用法错误 2，无栈帧", async () => {
+Deno.test("E3: --debug 下用法错误仍只给可读文案（不打印栈）", async () => {
+  // T23：原用例用 `doctor --port abc`，但 doctor 已随双模态移除。
+  // 改用仍在的 `--profile stack` 触发 UsageError——它同样是"可预期错误"，
+  // 因此即便 --debug 也只应给可读文案（栈只留给未预期错误，见下一例）。
   const originalErr = console.error;
   let err = "";
   console.error = (...a: unknown[]) => {
     err += a.join(" ") + "\n";
   };
   try {
-    assertEquals(await run(["doctor", "--port", "abc"]), EXIT_USAGE);
+    assertEquals(
+      await run(["status", "--profile", "stack", "--debug"]),
+      EXIT_USAGE,
+    );
   } finally {
     console.error = originalErr;
   }
-  assertEquals(err.includes("abc"), true, "错误信息应包含收到的值");
-  assertEquals(err.includes("    at "), false, "不得包含栈帧");
-  assertEquals(err.includes("file://"), false, "不得包含源码路径");
-  assertEquals(err.includes("Uncaught"), false);
-});
-
-Deno.test("E4: doctor --port 缺值报「需要整数」而非 undefined", async () => {
-  const originalErr = console.error;
-  let err = "";
-  console.error = (...a: unknown[]) => {
-    err += a.join(" ") + "\n";
-  };
-  try {
-    assertEquals(await run(["doctor", "--port"]), EXIT_USAGE);
-  } finally {
-    console.error = originalErr;
-  }
-  assertEquals(err.includes("1-65535"), true);
-  assertEquals(err.includes("undefined"), false, "不得出现 undefined");
-});
-
-Deno.test("E3: --debug 时打印完整栈", async () => {
-  const originalErr = console.error;
-  let err = "";
-  console.error = (...a: unknown[]) => {
-    err += a.join(" ") + "\n";
-  };
-  try {
-    assertEquals(await run(["doctor", "--port", "abc", "--debug"]), EXIT_USAGE);
-  } finally {
-    console.error = originalErr;
-  }
-  // UsageError 是可预期错误，即便 --debug 也不必打印栈；
-  // 真正未预期的错误才在 --debug 下打印（见下一例）
-  assertEquals(err.includes("1-65535"), true);
+  // 提示必须说明可接受的值（原先断言"单模态"字样，但更早的 validateProfileName
+  // 会先以"无效的 --profile: stack；可选值: prod"拒绝——两者都是可读文案，
+  // 断言措辞会绑定实现细节，故断言**实质**：说明了可选值、且无栈帧）。
+  assertEquals(err.includes("可选值"), true, err);
+  assertEquals(err.includes("    at "), false, "用法错误不该打印栈");
 });
 
 Deno.test("E3: 未预期错误在 --debug 下带栈、默认不带", async () => {
@@ -325,10 +315,11 @@ Deno.test("评审 P2: --debug 在命令名前也可用（全局选项剥离）",
   // 后置 --debug 同样生效
   const postDebug = await capture([...base, "--debug"]);
   assertEquals(postDebug.err.includes("    at "), true);
-  // 普通命令语义不受影响
-  const plain = await capture(["doctor", "--port", "abc", "--debug"]);
+  // 普通命令语义不受影响（T23：原先用 doctor --port abc，doctor 已移除，
+  // 改用仍在的 --profile stack 触发同一类可预期错误）。
+  const plain = await capture(["status", "--profile", "stack", "--debug"]);
   assertEquals(plain.code, EXIT_USAGE);
-  assertEquals(plain.err.includes("1-65535"), true);
+  assertEquals(plain.err.includes("可选值"), true);
 });
 
 // ── #517 E7/E8：可发现性 ─────────────────────────────────────────
@@ -387,61 +378,6 @@ Deno.test("parsePort: 非法端口抛错", () => {
   assertEquals(threw, true);
 });
 
-Deno.test("parseInitOptions: 缺省 mode/port/installDir", () => {
-  const opts = parseInitOptions([], "/tmp");
-  assertEquals(opts.mode, undefined);
-  assertEquals(opts.port, undefined);
-  assertEquals(opts.installDir, "/tmp");
-});
-
-Deno.test("parseInitOptions: 解析 --mode prod --port 9000 --dir /opt", () => {
-  const opts = parseInitOptions(
-    ["--mode", "prod", "--port", "9000", "--dir", "/opt"],
-    "/tmp",
-  );
-  assertEquals(opts.mode, "prod");
-  assertEquals(opts.port, 9000);
-  assertEquals(opts.installDir, "/opt");
-});
-
-Deno.test("parseInitOptions: 支持 --dir=/opt 写法（E6 一致性）", () => {
-  assertEquals(parseInitOptions(["--dir=/opt"], "/tmp").installDir, "/opt");
-});
-
-Deno.test("parseInitOptions: 非法 mode 抛错", () => {
-  let threw = false;
-  try {
-    parseInitOptions(["--mode", "staging"], "/tmp");
-  } catch {
-    threw = true;
-  }
-  assertEquals(threw, true);
-});
-
-Deno.test("E6: parseDeployArgs 支持 --dir= 且缺值报错", () => {
-  assertEquals(parseDeployArgs([]).dir, undefined);
-  assertEquals(parseDeployArgs(["--dir", "/opt"]).dir, "/opt");
-  assertEquals(parseDeployArgs(["--dir=/opt"]).dir, "/opt");
-  let threw = false;
-  try {
-    parseDeployArgs(["--dir"]);
-  } catch {
-    threw = true;
-  }
-  assertEquals(threw, true, "--dir 缺值必须显式报错");
-});
-
-Deno.test("E6: parseMaintainArgs 支持 --dir= 且缺值报错", () => {
-  assertEquals(parseMaintainArgs(["--dir=/opt"]).dir, "/opt");
-  let threw = false;
-  try {
-    parseMaintainArgs(["--dir"]);
-  } catch {
-    threw = true;
-  }
-  assertEquals(threw, true);
-});
-
 Deno.test("E6: parseBackupArgs 支持 --dir= 且缺值报错", () => {
   assertEquals(parseBackupArgs(["create", "--dir=/opt"]).dir, "/opt");
   let threw = false;
@@ -463,40 +399,6 @@ Deno.test("E6: parseBackupArgs 旗标缺值报错而非静默 undefined", () => 
     }
     assertEquals(threw, true, argv.join(" "));
   }
-});
-
-Deno.test("parseMaintainArgs: 缺省 modules/follow/dir", () => {
-  const a = parseMaintainArgs([]);
-  assertEquals(a.modules, undefined);
-  assertEquals(a.follow, false);
-  assertEquals(a.dir, undefined);
-});
-
-Deno.test("parseMaintainArgs: 解析 modules 与 --follow --dir", () => {
-  const a = parseMaintainArgs(["server,ui", "--follow", "--dir", "/opt"]);
-  assertEquals(a.modules, "server,ui");
-  assertEquals(a.follow, true);
-  assertEquals(a.dir, "/opt");
-});
-
-Deno.test("parseMaintainArgs: --color 只在合法模式时消费下一个参数", () => {
-  // 回归防线（评审 P2）：早先对任意非 `-` 开头的参数都当作颜色值，
-  // `--color server` 会把模块名吞掉，导致 modules 变成 undefined。
-  const swallowed = parseMaintainArgs(["--color", "server"]);
-  assertEquals(swallowed.modules, "server", "模块名不得被 --color 吞掉");
-  assertEquals(swallowed.color, "always", "裸 --color 视为强制开色");
-
-  const never = parseMaintainArgs(["--color", "never", "core"]);
-  assertEquals(never.color, "never");
-  assertEquals(never.modules, "core");
-  assertEquals(parseMaintainArgs(["--color=auto", "core"]).modules, "core");
-  const upper = parseMaintainArgs(["--color", "ALWAYS", "core"]);
-  assertEquals(upper.color, "always");
-  assertEquals(upper.modules, "core");
-  const bogus = parseMaintainArgs(["--color", "bogus", "core"]);
-  assertEquals(bogus.modules, "bogus");
-  assertEquals(bogus.color, "always");
-  assertEquals(parseMaintainArgs(["core", "--color"]).modules, "core");
 });
 
 Deno.test("parseBackupArgs: create 旗标解析", () => {
@@ -663,34 +565,6 @@ Deno.test("评审 P1: 容器侧 --dir 不得被宿主机 profile 探测消费", 
   }
 });
 
-Deno.test("deprecationNotice: 提示替代命令", () => {
-  assertEquals(
-    deprecationNotice("deploy", "status").includes("stack status"),
-    true,
-  );
-  assertEquals(deprecationNotice("maintain", "").includes("stack"), true);
-});
-
-Deno.test("stack 无子命令返回用法错误，--help 返回 0", async () => {
-  const original = console.log;
-  console.log = () => {};
-  try {
-    assertEquals(await dispatchCommand("stack", [], ctx), EXIT_USAGE);
-    assertEquals(await dispatchCommand("stack", ["--help"], ctx), EXIT_OK);
-  } finally {
-    console.log = original;
-  }
-});
-// ── 评审修正的回归防线（#518 评审 B1/B2/B3/M1/M2）────────────────────
-
-Deno.test("评审 B1: stack 委派时子命令置于首位（--dir 不被当子命令）", () => {
-  // removeFirstPositional 必须移除子命令本身，保留选项与其值
-  const delegated = removeFirstPositional(["--dir", "/opt", "status"]);
-  assertEquals(delegated, ["--dir", "/opt"]);
-  // 委派结果的首元素是子命令，下游 args[0] 才能正确识别
-  assertEquals(["status", ...delegated][0], "status");
-});
-
 Deno.test("评审 B2: --profile 缺值走统一兜底（用法错误 2，无栈帧）", async () => {
   const orig = console.error;
   let err = "";
@@ -708,35 +582,25 @@ Deno.test("评审 B2: --profile 缺值走统一兜底（用法错误 2，无栈�
   assertEquals(err.includes("file://"), false, "不得泄露源码路径");
 });
 
-Deno.test("评审 B3: --profile 真正参与分发（不相容命令报错）", async () => {
-  const orig = console.error;
-  let err = "";
-  console.error = (...a: unknown[]) => {
-    err += a.join(" ") + "\n";
-  };
-  let code = -1;
-  try {
-    // status 属生产模式，与 --profile stack 不符
-    code = await run(["--profile", "stack", "status"]);
-  } finally {
-    console.error = orig;
-  }
-  assertEquals(code, EXIT_USAGE);
-  assertEquals(err.includes("--profile"), true);
-});
-
-Deno.test("评审 B3: 相容的 profile 组合放行到后续逻辑", () => {
-  // prod 下 status 相容（不抛错）；stack 下 stack 命令相容
+Deno.test("T23: profile 门禁只剩一条规则（拒绝已删除的 stack）", () => {
+  // `--profile prod` 放行：它是显式确认唯一模式
   assertCommandAllowedInProfile("prod", "status");
-  assertCommandAllowedInProfile("stack", "stack");
-  // 不相容则抛 UsageError
-  let threw = false;
+  assertCommandAllowedInProfile("prod", "backup");
+  // `--profile stack` 拒绝：模式已删除，静默忽略会让用户以为自己在用某个模式。
+  // 注意类型系统现在已经**不接受** "stack"（ProfileName 只剩 "prod"），
+  // 故这里用 as 断言刻意传非法值——那正是用户从旧文档/旧脚本里可能传来的输入。
+  let message = "";
   try {
-    assertCommandAllowedInProfile("stack", "status");
-  } catch {
-    threw = true;
+    assertCommandAllowedInProfile("stack" as ProfileName, "status");
+  } catch (e) {
+    message = (e as Error).message;
   }
-  assertEquals(threw, true);
+  assertEquals(message.includes("单模态"), true, message);
+  assertEquals(
+    message.includes("noj-deploy.json"),
+    true,
+    "提示应说明旧配置可删",
+  );
 });
 
 Deno.test("评审 M1: stripCliOwnedFlags 保留容器命令的 --dir", () => {
@@ -910,193 +774,3 @@ Deno.test("评审 B3: 单数 problem 也能到达 Tier 3 build/import", () => {
 });
 
 // ── #516 评审 P1/P2：drill 快照形态与错误码（集成回归） ───────────────
-
-Deno.test("#516 评审 P1: maintain backup drill 对单文件快照返回用法错误 2，而非落到 preflight", async () => {
-  // 关键：必须在**参数阶段**失败。restore-drill.sh 的 preflight 会走出
-  // checkDrillResources（docker info）等外部调用；这里用真实 deployDir fixture，
-  // 若校验顺序写错就会变成「运行失败 1」或抛未捕获异常。
-  const dir = await Deno.makeTempDir();
-  try {
-    await writeFixture(
-      dir,
-      baseConfig({
-        components: {
-          postgres: {
-            enabled: true,
-            method: "docker",
-            image: "postgres:16-alpine",
-            internal_port: 5432,
-            env: {},
-          },
-        },
-      }),
-      secrets(),
-    );
-    const code = await dispatchCommand(
-      "maintain",
-      [
-        "backup",
-        "drill",
-        "/bk/snapshot-2026-09-17T10-30-00Z.nojbackup",
-        "--dir",
-        dir,
-        "--skip-judge",
-      ],
-      { cwd: dir, deployDir: dir },
-    );
-    assertEquals(code, EXIT_USAGE);
-  } finally {
-    await Deno.remove(dir, { recursive: true }).catch(() => {});
-  }
-});
-
-Deno.test("#516 评审 P2: maintain backup drill 非法子网返回用法错误 2", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    await writeFixture(
-      dir,
-      baseConfig({
-        components: {
-          postgres: {
-            enabled: true,
-            method: "docker",
-            image: "postgres:16-alpine",
-            internal_port: 5432,
-            env: {},
-          },
-        },
-      }),
-      secrets(),
-    );
-    for (
-      const subnet of [
-        "999.1.1.1/16",
-        "172.29.1.1/16",
-        "1.2.3/16",
-        "1.2.3.4/33",
-      ]
-    ) {
-      const code = await dispatchCommand(
-        "maintain",
-        [
-          "backup",
-          "drill",
-          dir + "/snapshot-2026-09-17T10-30-00Z",
-          "--dir",
-          dir,
-          "--subnet",
-          subnet,
-        ],
-        { cwd: dir, deployDir: dir },
-      );
-      assertEquals(code, EXIT_USAGE, "子网 " + subnet + " 应返回用法错误 2");
-    }
-  } finally {
-    await Deno.remove(dir, { recursive: true }).catch(() => {});
-  }
-});
-
-Deno.test("#516 评审 P1: drill help 必须说明单文件快照不可用并给出替代路径", () => {
-  const help = renderDrillHelp();
-  assertEquals(help.includes(".nojbackup"), true, "help 应说明单文件形态");
-  assertEquals(
-    help.includes("maintain backup restore"),
-    true,
-    "help 应给出可用的恢复路径",
-  );
-});
-// ── #516 评审 P1/P2：drill 快照形态与错误码（集成回归） ───────────────
-
-Deno.test("#516 评审 P1: maintain backup drill 对单文件快照返回用法错误 2，而非落到 preflight", async () => {
-  // 关键：必须在**参数阶段**失败。restore-drill.sh 的 preflight 会走出
-  // checkDrillResources（docker info）等外部调用；这里用真实 deployDir fixture，
-  // 若校验顺序写错就会变成「运行失败 1」或抛未捕获异常。
-  const dir = await Deno.makeTempDir();
-  try {
-    await writeFixture(
-      dir,
-      baseConfig({
-        components: {
-          postgres: {
-            enabled: true,
-            method: "docker",
-            image: "postgres:16-alpine",
-            internal_port: 5432,
-            env: {},
-          },
-        },
-      }),
-      secrets(),
-    );
-    const code = await dispatchCommand(
-      "maintain",
-      [
-        "backup",
-        "drill",
-        "/bk/snapshot-2026-09-17T10-30-00Z.nojbackup",
-        "--dir",
-        dir,
-        "--skip-judge",
-      ],
-      { cwd: dir, deployDir: dir },
-    );
-    assertEquals(code, EXIT_USAGE);
-  } finally {
-    await Deno.remove(dir, { recursive: true }).catch(() => {});
-  }
-});
-
-Deno.test("#516 评审 P2: maintain backup drill 非法子网返回用法错误 2", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    await writeFixture(
-      dir,
-      baseConfig({
-        components: {
-          postgres: {
-            enabled: true,
-            method: "docker",
-            image: "postgres:16-alpine",
-            internal_port: 5432,
-            env: {},
-          },
-        },
-      }),
-      secrets(),
-    );
-    const badSubnets = [
-      "999.1.1.1/16",
-      "172.29.1.1/16",
-      "1.2.3/16",
-      "1.2.3.4/33",
-    ];
-    for (const subnet of badSubnets) {
-      const code = await dispatchCommand(
-        "maintain",
-        [
-          "backup",
-          "drill",
-          dir + "/snapshot-2026-09-17T10-30-00Z",
-          "--dir",
-          dir,
-          "--subnet",
-          subnet,
-        ],
-        { cwd: dir, deployDir: dir },
-      );
-      assertEquals(code, EXIT_USAGE, "子网 " + subnet + " 应返回用法错误 2");
-    }
-  } finally {
-    await Deno.remove(dir, { recursive: true }).catch(() => {});
-  }
-});
-
-Deno.test("#516 评审 P1: drill help 必须说明单文件快照不可用并给出替代路径", () => {
-  const help = renderDrillHelp();
-  assertEquals(help.includes(".nojbackup"), true, "help 应说明单文件形态");
-  assertEquals(
-    help.includes("maintain backup restore"),
-    true,
-    "help 应给出可用的恢复路径",
-  );
-});

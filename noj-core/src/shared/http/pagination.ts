@@ -33,6 +33,29 @@ const DEFAULT_PAGE = 1;
 const DEFAULT_PER_PAGE = 20;
 const DEFAULT_MAX_PER_PAGE = 100;
 
+/**
+ * OFFSET 的硬上限：PostgreSQL 的 `OFFSET` 参数是 `bigint`，上限为
+ * `2^63 - 1 = 9223372036854775807`。
+ *
+ * 2026-09-21 修复：`page` 此前只校验"正整数"而没有上界，`offset = (page-1) *
+ * perPage` 在 `page` 取到 `9.9e16` 量级时超出 bigint，postgres.js 会把它序列化成
+ * 十进制字符串交给 `OFFSET $n`，PG 抛
+ * `value "9900000000000000000" is out of range for type bigint` → 全局 onError
+ * 转成 500。该 helper 被 13 个公开端点复用，任意匿名请求
+ * `GET /api/v1/problems?page=99000000000000000` 即可稳定触发。
+ *
+ * 这里改用 `Number.MAX_SAFE_INTEGER`（≈9.007e15，远小于 bigint 上限）作为
+ * 页码上界：超出即与 `page=0`/`page=abc` 一样抛 `ValidationError`（400），
+ * 属"非法输入"而非"服务器内部错误"。正常业务永远不会用到这个量级的页码。
+ */
+const MAX_PAGE = Number.MAX_SAFE_INTEGER;
+
+/**
+ * 允许的最大页码；导出供未走 `parsePagination` 的内联分页路由复用，
+ * 保证全仓 OFFET 上界口径一致（见 `parsePagination` 的说明）。
+ */
+export const MAX_SAFE_PAGE = MAX_PAGE;
+
 /** parsePagination 配置项 */
 export interface ParsePaginationOptions {
   /** 默认页码（默认 1） */
@@ -84,7 +107,7 @@ export function parsePagination(
     ? defaultPage
     : parseInt(pageRaw, 10);
 
-  if (!Number.isInteger(page) || page < 1) {
+  if (!Number.isInteger(page) || page < 1 || page > MAX_PAGE) {
     throw new ValidationError(`${pageField} 必须为正整数`);
   }
 

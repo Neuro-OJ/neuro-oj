@@ -1,6 +1,6 @@
 # 后台管理指南
 
-管理后台面向 `admin` / 社区审核员等角色，前端入口为「管理」页面（`/admin`）。大部分管理端点位于 `/api/v1/admin/*` 并强制校验管理员权限；公告与题单使用细粒度权限（`announcement:manage`、`training:*`），社区管理端点位于 `/api/v1/community/admin/*` 并校验社区审核权限。
+管理后台面向 `admin` / 社区审核员等角色，前端入口为「管理」页面（`/admin`）。大部分管理端点位于 `/api/v1/admin/*` 并强制校验管理员权限；公告与题单使用细粒度权限（`announcement:manage`、`training:*`），社区管理端点为 `/api/v1/admin/community/*`（管理域下的 community 子域）并校验社区审核权限。
 
 ## 概览
 
@@ -69,8 +69,10 @@ Neuro OJ 使用「角色 → 权限点」模型：权限格式为 `resource:acti
 > 首页顶部横幅由**公告**驱动（管理后台「公告管理」），不存在独立的
 > `homepage_banner` 配置键（该键为无读取点的死配置，已于 issue #495 删除）。
 >
-> LLM 默认配额（`NOJ_LLM_DEFAULT_*`）由 **noj-llm-gateway** 消费，不在本面板中；
-> 见 `noj-llm-gateway/README.md`，修改后需重启 llm-gateway。
+> LLM **默认配额**（`NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>`）由
+> **noj-llm-gateway** 消费，不在本面板中；见 `noj-llm-gateway/README.md`，修改后需重启
+> llm-gateway。平台默认 Provider/模型（`llm_default_provider_id` /
+> `llm_default_model`）则属于本面板的 runtime 设置。
 
 修改即时生效；涉及邮件、限流等键时请先确认新值正确，避免锁死服务。
 
@@ -122,7 +124,9 @@ Neuro OJ 使用「角色 → 权限点」模型：权限格式为 `resource:acti
 
 ### LLM Providers
 
-- 新增 Provider 时填写名称、`base_url`、默认 `model`、API Key、单价（每 1k tokens）与启停状态。
+- 新增 Provider 时填写名称、`base_url`、API Key、单价（每 1k tokens）与启停状态。
+- Provider 不再自带默认模型；具体调用哪个模型由「系统设置 → LLM」的平台默认
+  （`llm_default_provider_id` / `llm_default_model`，两项须同时配置）决定。
 - API Key 保存后**不会**再明文返回，列表中只显示掩码（如 `sk-****abcd`）；需要更新时重新填写 Key。
 - 只有 `enabled=true` 的 Provider 可用于 LLM 题目；停用后已有评测 token 仍可能继续调用到过期，请先停止相关题目或等待 token 自然过期。
 

@@ -119,7 +119,7 @@ result.accept(score=1000, details={"passed": 10})
 result.wrong_answer(score=500, details={"passed": 5})
 ```
 
-新协议下结果 JSON 不再输出 `status`，只输出 `score` 与 `details`；`accept` / `wrong_answer` 只是写入分数的便捷方法。评测脚本自身出错时应直接抛出异常或非零退出，由 judge 统一映射为 `error`；SDK 已移除 `runtime_error()` / `system_error()` 结果写入方法。
+新协议下结果 JSON 不再输出 `status`，只输出 `score` 与 `details`；`accept` / `wrong_answer` 只是写入分数的便捷方法。评测脚本自身出错时应直接抛出异常或非零退出，由 judge 统一映射为 `error`；SDK 已移除会写入结果的 `runtime_error()`，`system_error()` 现在也是**直接抛出 `RuntimeError`**（不再写结果 JSON）。
 
 分数是整数，当前样例题使用“实际分数乘以 100”的方式。例如满分 10 分时，`1000` 表示 10.00 分。
 

@@ -102,7 +102,7 @@ Neuro OJ 通过双容器提供**有限的互联网能力**：
 
 ## 它是如何实现的？
 
-Neuro OJ 由三个模块通过 RESTful API 和 Redis 消息队列协作：
+Neuro OJ 由多个模块通过 RESTful API 和 Redis 消息队列协作，核心评测链路如下：
 
 ```mermaid
 flowchart LR
@@ -112,11 +112,17 @@ flowchart LR
     JUDGE -->|评测结果| MQ
     MQ --> CORE
     CORE <--> DB[(PostgreSQL 持久化)]
+    CORE -.->|LLM 调用代理| GW[noj-llm-gateway<br/>可选]
 ```
 
 - **noj-ui**：Web 前端（题目列表、代码编辑器、提交结果、管理后台）。
 - **noj-core**：RESTful API 与业务逻辑，评测任务的生产者和结果消费者。
 - **noj-judge**：从队列拉取任务，在 Docker 沙箱容器中执行评测并回传结果。
+- **noj-llm-gateway**（可选）：LLM 调用的可信代理，承载 Provider Key、限流/额度与审计。
+- **noj-cli**（运维）：生产部署、启停、升级与备份/恢复。
+- **noj-lmcc-extension**（可选）：VS Code / LMCC IDE 做题插件。
+
+更完整的部署形态与各服务职责见[系统架构](../system/architecture.md)。
 
 评测采用**双容器模型**：用户代码与出题人评测代码分别在独立容器中运行，Evaluator 通过 RPC 调用用户函数。详见[评测模型](../mechanisms/judge-model.md)。
 

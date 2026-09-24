@@ -6,7 +6,7 @@ import type { Db } from "../db.ts";
 import type { RedisClient } from "../redis.ts";
 import type { GatewayConfig } from "../config.ts";
 import { verifyEvalToken } from "../crypto.ts";
-import { getProviderSecret, validateByokBaseUrl } from "../providers.ts";
+import { getProviderSecret } from "../providers.ts";
 import { enforceAndCount, settleUsage } from "../limits.ts";
 import { recordUsage } from "../usage.ts";
 import { calcBilledUsage } from "../billing.ts";
@@ -146,13 +146,6 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     }
     if (!providerSecret.provider.enabled) {
       return c.json({ error: "provider_disabled" }, 403);
-    }
-    if (providerSecret.provider.created_by !== "0") {
-      try {
-        validateByokBaseUrl(providerSecret.provider.base_url);
-      } catch {
-        return c.json({ error: "provider_target_rejected" }, 403);
-      }
     }
 
     const startedAt = Date.now();

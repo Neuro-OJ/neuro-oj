@@ -34,11 +34,40 @@ export interface SkipBaseline {
   by_file: Record<string, number>;
 }
 
+/**
+ * 按 UTF-16 码位比较两个字符串（不依赖 ICU / `LC_ALL`）。
+ *
+ * 评审建议：`localeCompare` 的结果受运行环境的 locale 与 ICU 数据版本影响，
+ * 而本报告会被 `--check` **逐字节比对**，因此排序键必须跨环境稳定。
+ * 码位比较是确定性的（ASCII 路径下与 `localeCompare` 结果一致；本仓库无
+ * 非 ASCII 路径，评审已实测两种 locale 下输出一致）。
+ */
+export function compareCodeUnits(a: string, b: string): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}
+
 /** 单行匹配规则（顺序即报告中的命中顺序）。 */
 const LINE_RULES: Array<{ re: RegExp; reason: SkipHit["reason"] }> = [
   { re: /\bignore\s*:\s*true\b/, reason: "ignore" },
   { re: /\bignore\s*:\s*!/, reason: "ignore" },
   { re: /\bignore\s*:\s*Deno\.env\.get/, reason: "env-guard" },
+  // `ignore: <标识符>` —— 由变量承载的守卫（`const skip = !hasEnv` 之类）。
+  //
+  // 2026-09-21 修复：此前只认 `true` / `!` / `Deno.env.get` 三种字面量，于是
+  // 仓库里**数量最多**的一类写法完全失明——实测 `ignore: skip` 有 382 处、
+  // `ignore: skipEnv` 32 处、`ignore: skipDb || skipEnv` 20 处。基线
+  // by_reason.ignore 只有 161，正是因为这些全部被漏计。
+  // 后果：往任意测试文件写入 `const skip = !hasEnv; Deno.test({..., ignore: skip})`
+  // 后 `--check` 仍 exit 0——正是本门禁要防的「静默跳过增长无人察觉」。
+  //
+  // 放在字面量规则之后，保证 `ignore: true` 等仍归到原有 reason，不改变既有
+  // 基线的分类口径（只新增此前漏计的命中）。
+  // 排除 falsy 字面量（`ignore: false` / `undefined` / `null` 表示不跳过）。
+  {
+    re: /\bignore\s*:\s*\$?(?!false\b|undefined\b|null\b)[A-Za-z_][\w$]*/,
+    reason: "ignore",
+  },
   { re: /\bif\s*\(!?Deno\.env\.get\(/, reason: "env-guard" },
   // 测试体内提前返回：if (!isE2E) return; / if (!isE2E || !judgeOk) return;
   { re: /\bif\s*\(\s*!\s*isE2E\b/, reason: "early-return" },
@@ -64,6 +93,13 @@ export function scanFile(file: string, source: string): SkipHit[] {
 
 export function renderReport(hits: SkipHit[]): string {
   const byReason = summarizeReasons(hits);
+  // 排序后渲染：`--check` 会把本文件与一次全新渲染**逐字节比对**，而
+  // `collectFiles` 使用不保证顺序的 `Deno.readDir`。若不排序，报告的文件块顺序
+  // 会随文件系统枚举顺序漂移，导致"跳过数未变"却在 CI / 干净检出上误报过期。
+  // 按文件路径（与 buildBaseline 一致用码位比较）再按行号升序，保证跨环境可复现。
+  const sorted = [...hits].sort((a, b) =>
+    compareCodeUnits(a.file, b.file) || a.line - b.line
+  );
   const lines = [
     "# 静默跳过测试清单",
     "",
@@ -81,7 +117,7 @@ export function renderReport(hits: SkipHit[]): string {
     "| 文件 | 行号 | 原因 |",
     "|---|---|---|",
   ];
-  for (const h of hits) {
+  for (const h of sorted) {
     lines.push(`| ${h.file} | ${h.line} | ${h.reason} |`);
   }
   return lines.join("\n") + "\n";
@@ -111,12 +147,12 @@ export function buildBaseline(hits: SkipHit[]): SkipBaseline {
     total: hits.length,
     by_reason: Object.fromEntries(
       [...summarizeReasons(hits).entries()].sort((a, b) =>
-        a[0].localeCompare(b[0])
+        compareCodeUnits(a[0], b[0])
       ),
     ),
     by_file: Object.fromEntries(
       [...summarizeFiles(hits).entries()].sort((a, b) =>
-        a[0].localeCompare(b[0])
+        compareCodeUnits(a[0], b[0])
       ),
     ),
   };
@@ -180,6 +216,21 @@ const EXCLUDED_DIRS = new Set([
   ".jj",
 ]);
 
+/**
+ * 静默跳过扫描的模块根。
+ *
+ * 单一事实源：`collectHits` 与入口处的「扫描到 0 个文件即失败」自检共用，
+ * 避免两处清单漂移（此前 `noj-cli` 正是只漏在 collectHits 一处）。
+ */
+export const SCAN_ROOTS = [
+  "noj-core",
+  "noj-ui",
+  "noj-llm-gateway",
+  "noj-tests",
+  "noj-judge",
+  "noj-cli",
+] as const;
+
 /** 是否是需要扫描的测试文件（含被测试 import 的 helper / setup 模块）。 */
 function isTestFile(name: string): boolean {
   return /(_test|\.test)\.ts$/.test(name) ||
@@ -205,14 +256,13 @@ async function collectFiles(root: string): Promise<string[]> {
 
 async function collectHits(): Promise<SkipHit[]> {
   const hits: SkipHit[] = [];
-  const roots = [
-    "noj-core",
-    "noj-ui",
-    "noj-llm-gateway",
-    "noj-tests",
-    "noj-judge",
-  ];
-  for (const root of roots) {
+  // 扫描根必须覆盖**所有**含测试文件的一等模块。2026-09-21 修复前遗漏
+  // `noj-cli`：它是纯 TS 重写后的正式模块（44 个测试文件、含 `ignore: !isE2E`
+  // 的 E2E 用例），但本脚本与 `check-test-discovery.ts` 的扫描根都只列了
+  // core/ui/gateway/tests/judge 五个。后果是 noj-cli 新增 `ignore` / 环境守卫
+  // **不会被门禁发现**（实测：往 noj-cli 测试注入 `ignore: true` 后
+  // `--check` 仍 exit 0）——正是本门禁要防的「静默跳过增长无人察觉」。
+  for (const root of SCAN_ROOTS) {
     for (const file of await collectFiles(root)) {
       const source = await Deno.readTextFile(file);
       hits.push(...scanFile(file, source));
@@ -228,9 +278,7 @@ if (import.meta.main) {
 
   // 自检：必须真的扫到测试文件，否则"0 处跳过"是假绿灯
   const scannedFiles = (await Promise.all(
-    ["noj-core", "noj-ui", "noj-llm-gateway", "noj-tests", "noj-judge"].map(
-      (r) => collectFiles(r),
-    ),
+    SCAN_ROOTS.map((r) => collectFiles(r)),
   )).reduce((acc, files) => acc + files.length, 0);
   if (scannedFiles === 0) {
     console.error(

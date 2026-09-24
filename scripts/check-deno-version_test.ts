@@ -67,3 +67,72 @@ Deno.test("checkDenoVersion: 缺少 .dvmrc 时报错", async () => {
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+// ── 2026-09-21 修复：Dockerfile 扫描只覆盖 noj-core ──
+// 触发条件：noj-ui / noj-llm-gateway 的 Dockerfile deno 镜像版本漂移。
+Deno.test("checkDenoVersion: 非 noj-core 模块的 Dockerfile 版本漂移必须报错", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(`${dir}/.dvmrc`, "v2.9.5\n");
+    await Deno.mkdir(`${dir}/.github/workflows`, { recursive: true });
+    await Deno.writeTextFile(
+      `${dir}/.github/workflows/ci.yml`,
+      "        deno-version-file: .dvmrc\n",
+    );
+    // core 与 .dvmrc 一致
+    await Deno.mkdir(`${dir}/noj-core`, { recursive: true });
+    await Deno.writeTextFile(
+      `${dir}/noj-core/Dockerfile`,
+      "FROM denoland/deno:debian-2.9.5\n",
+    );
+    // 非 core 模块漂移到 2.8.1
+    await Deno.mkdir(`${dir}/noj-ui`, { recursive: true });
+    await Deno.writeTextFile(
+      `${dir}/noj-ui/Dockerfile`,
+      "FROM denoland/deno:debian-2.8.1 AS builder\n",
+    );
+    const errors = await checkDenoVersion(dir);
+    const hit = errors.find((e) => e.includes("noj-ui/Dockerfile"));
+    assertEquals(
+      typeof hit === "string",
+      true,
+      `noj-ui/Dockerfile 的版本漂移应被检出，实际 errors=${
+        JSON.stringify(errors)
+      }`,
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("checkDenoVersion: 新模块任意深度的 Dockerfile 也在扫描范围内", async () => {
+  // 防回归：不得再硬编码 Dockerfile 清单。用一个"未来可能出现"的嵌套路径
+  // 证明扫描是递归的，而不是只认 noj-core 或固定前缀。
+  const dir = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(`${dir}/.dvmrc`, "v2.9.5\n");
+    await Deno.mkdir(`${dir}/.github/workflows`, { recursive: true });
+    await Deno.writeTextFile(
+      `${dir}/.github/workflows/ci.yml`,
+      "        deno-version-file: .dvmrc\n",
+    );
+    await Deno.mkdir(`${dir}/noj-future/deploy`, { recursive: true });
+    await Deno.writeTextFile(
+      `${dir}/noj-future/deploy/Dockerfile.worker`,
+      "FROM denoland/deno:alpine-2.8.0\n",
+    );
+    const errors = await checkDenoVersion(dir);
+    const hit = errors.find((e) =>
+      e.includes("noj-future/deploy/Dockerfile.worker")
+    );
+    assertEquals(
+      typeof hit === "string",
+      true,
+      `嵌套新模块的 Dockerfile 漂移应被检出，实际 errors=${
+        JSON.stringify(errors)
+      }`,
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

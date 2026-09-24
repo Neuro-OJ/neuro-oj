@@ -11,32 +11,48 @@ Evaluator + Solution 双容器（用后即毁），并把结果写回 Redis。
 
 ## 独立节点部署
 
-如果评测节点不运行 noj-core、noj-ui 或完整源码仓库，可以使用仓库提供的 Judge
-安装脚本 在独立目录初始化 Worker：
+如果评测节点不运行 noj-core、noj-ui 或完整源码仓库，可用 `noj-cli` 的 `judge`
+子命令在独立目录初始化 Worker（**不再需要下载任何安装脚本**）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/judge-install.sh \
-  -o judge-install.sh
-bash judge-install.sh install --dir /srv/noj-judge
+# 首次：先准备专用 rootless Docker socket，并检查依赖
+noj-cli judge install-env
+
+# 配置并启动（必需参数必须显式给出；本命令不做交互式询问）
+noj-cli judge install --dir /srv/noj-judge \
+  --version v0.9.5 \
+  --redis-url 'redis://:密码@127.0.0.1:6379/0' \
+  --socket-path /run/noj-judge/docker.sock \
+  --socket-gid "$(stat -c '%g' /run/noj-judge/docker.sock)"
 ```
 
-首次配置需要填写：
+首次配置必填项（缺失会报"首装必须提供 …"，退出码 2）：
 
-- `NOJ_VERSION`：不可变 Release 版本，例如 `v0.1.0`；
-- `REDIS_URL`：与 noj-core 相同的 Redis 地址、数据库和认证信息；
-- `JUDGE_QUEUE` / `RESULT_QUEUE`：必须与 noj-core 使用的队列名称一致；
-- `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID`：只服务于 Judge 的 rootless
-  Docker daemon Unix socket 及其组 ID。
+- `--version`（`NOJ_VERSION`）：不可变 Release 版本，例如 `v0.1.0`；
+- `--redis-url`（`REDIS_URL`）：与 noj-core 相同的 Redis 地址、数据库和认证信息；
+- `--socket-path`（`JUDGE_DOCKER_SOCKET`）：只服务于 Judge 的 rootless Docker
+  daemon Unix socket 路径；
+- `--socket-gid`（`JUDGE_DOCKER_SOCKET_GID`）：该 socket 的组 ID，必须与
+  `stat -c '%g' <socket>` 的实际值一致，否则启动前的 socket 校验会失败。
+
+其余键（`JUDGE_QUEUE` / `RESULT_QUEUE` / 并发数等）使用内置默认值，需要改动时直接
+编辑安装目录下的 `.env.judge`（600）。
+
+> **既有配置优先**：`.env.judge` 已存在时 `judge install` 只更新 `--version`，
+> 其余旗标不会生效，并会打印"以下旗标未生效（既有配置优先）"提示。
+> 要改 Redis / socket，请直接编辑 `.env.judge` 或先移走该文件。
 
 管理独立 Worker：
 
 ```bash
-bash /srv/noj-judge/judge-install.sh status
-bash /srv/noj-judge/judge-install.sh logs
-bash /srv/noj-judge/judge-install.sh stop
+noj-cli judge status --dir /srv/noj-judge
+noj-cli judge logs --dir /srv/noj-judge [--follow]
+noj-cli judge check  --dir /srv/noj-judge   # 配置 / Redis / 专用 socket / 镜像架构
+noj-cli judge stop | start | upgrade --dir /srv/noj-judge
 ```
 
-Judge 安装脚本与主站部署脚本相互独立；它不会安装或替换主站的 `noj` 命令。
+Judge 的部署与主站部署相互独立；`noj-cli` **不会安装、替换或配置**宿主 Docker
+daemon，宝塔类面板也只做探测与提示（不调用其 API）。
 
 当前生产 Release 镜像由发布流水线提供 `linux/amd64`。ARM64 主机必须先确认所选
 版本发布了对应 manifest；否则部署会在启动前提示架构不匹配，不能通过回退到宿主机
@@ -227,14 +243,14 @@ CRUD 与调度阶段完成，judge 不再于启动时拉取）。
 
 ## 健康检查与状态查看
 
-生产环境使用 `noj` 或 Judge 脚本管理：
+生产环境使用 `noj-cli` 管理：
 
 ```bash
 # 查看所有服务状态（含 judge 是否在线）
-bash /opt/neuro-oj/noj status
+noj-cli status
 
 # 查看 judge 日志
-bash /opt/neuro-oj/noj logs judge --follow
+noj-cli logs judge --follow
 ```
 
 调高日志详细度排查问题（临时覆盖环境变量）：
@@ -251,16 +267,20 @@ docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compos
 结果写回 `noj:judge:results`：
 
 ```bash
-docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:high
-docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:medium
-docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:low
+docker exec noj-prod-redis-1 redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:high
+docker exec noj-prod-redis-1 redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:medium
+docker exec noj-prod-redis-1 redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:low
 ```
+
+> 容器名由 Compose 项目名派生（`name: noj-prod` + service `redis` →
+> `noj-prod-redis-1`）。用 `docker ps` 确认实际名称，或改用
+> `noj-cli status` 查看 compose 状态。
 
 密码从 `/opt/neuro-oj/.env.prod` 的 `REDIS_PASSWORD` 读取。
 
 如果队列持续堆积：
 
-1. 确认 Judge Worker 在线且连接了同一个 Redis（`noj status`）。
+1. 确认 Judge Worker 在线且连接了同一个 Redis（`noj-cli status`）。
 2. 查看 judge 日志是否有拉取/容器错误。
 3. 检查 Docker daemon 是否可用、评测镜像是否已从 ghcr.io 拉取。
 4. 如负载确实超过单实例能力，按下一节水平扩展。
@@ -276,7 +296,7 @@ docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue:low
 
 - 停止实例会进入优雅关闭流程：排空正在执行的 in-flight
   任务后再退出，避免提交丢失。
-- 升级步骤：修改 `.env.prod` 中的 `NOJ_VERSION` → `noj update`。
+- 升级步骤：修改 `.env.prod` 中的 `NOJ_VERSION` → `noj-cli update`。
 - 升级评测镜像后应先在 noj-core 白名单登记，再启动 Worker。
 
 ## 常见排查方向
