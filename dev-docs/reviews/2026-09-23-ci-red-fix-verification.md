@@ -8,7 +8,7 @@
 
 | # | 问题                         | 根因                                                                           | 修复                                                                                    |
 | - | ---------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| 1 | Root Gates：文件规模棘轮     | `noj-judge/src/dual/mod.rs` 1861 → 1884（+23）                                 | 抽 `build_llm_env` 及测试到 `dual/llm_env.rs`；`mod.rs` 降至 1843，下调 `SIZE_BASELINE` |
+| 1 | Root Gates：文件规模棘轮     | `noj-judge/src/dual/mod.rs` 1861 → 1884（+23）                                 | 抽 `build_llm_env` 及测试到 `dual/llm_env.rs`；`mod.rs` 降至 1839，下调 `SIZE_BASELINE` |
 | 2 | Core Perf：10 万题搜索 604ms | 中文 2 字不切词 → 退化 `ILIKE '%测试%'` → 全表扫描 → 触发 PG JIT（编译 238ms） | 连接 startup 参数默认 `-cjit=off`（`DATABASE_JIT=on` 可恢复）                           |
 | 3 | issue #554                   | `buildContestEntry` 把竞赛内全部题目标题写入索引                               | 聚合仅纳入 `visibility='public'` 的题目 + 回归测试                                      |
 | 4 | F-06                         | 单用户可打满共享 `problem/day` 桶冻结他人 LLM 题                               | 新增 `user_problem` 组合配额维度（day/month）                                           |
@@ -40,7 +40,7 @@ SHOW jit = off（修复后，连接级生效，无需 DB 级设置）
 
 | 验证                              | 命令                                                                                 | 结果                                             |
 | --------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------ |
-| Root Gates（本地等价 CI）         | `deno run -A scripts/check-file-size.ts`                                             | ✅ 通过（`dual/mod.rs=1843`）                    |
+| Root Gates（本地等价 CI）         | `deno run -A scripts/check-file-size.ts`                                             | ✅ 通过（`dual/mod.rs=1839`）                    |
 | 门禁自测                          | `deno test -A scripts/check-file-size_test.ts`                                       | ✅ 7 passed                                      |
 | Judge 单测                        | `cargo nextest run --all-targets`                                                    | ✅ 316 passed / 44 skipped                       |
 | Judge fmt/clippy                  | `cargo fmt --check && cargo clippy --all-targets -- -D warnings`                     | ✅ 零警告                                        |

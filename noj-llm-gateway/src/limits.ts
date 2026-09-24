@@ -4,7 +4,7 @@
  * 使用 Redis Lua 脚本原子完成“检查 + 自增”，避免并发下超限。
  * 支持：
  * - 单次提交 calls/tokens
- * - 用户 / 全局 / 题目 的 day / month 维度 calls / tokens / cost
+ * - 用户 / 全局 / 题目 / 用户×题目（user_problem）的 day / month 维度 calls / tokens / cost
  * - 用户与 IP 的分钟速率窗口
  */
 import type { Db } from "./db.ts";

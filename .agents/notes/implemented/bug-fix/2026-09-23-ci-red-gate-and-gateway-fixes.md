@@ -21,7 +21,7 @@ Status: implemented
 ### 1. 文件规模棘轮：拆分而非放宽
 
 把 `build_llm_env` 与其两个内联测试从 `dual/mod.rs` 抽到新子模块
-`noj-judge/src/dual/llm_env.rs`，`dual/mod.rs` 降到 1843 行，并按棘轮规则
+`noj-judge/src/dual/llm_env.rs`，`dual/mod.rs` 降到 1839 行，并按棘轮规则
 **下调** `SIZE_BASELINE`。棘轮语义是"只允许下调、不允许上调"，因此不放宽基线。
 
 ### 2. 搜索性能：消除 JIT 纯开销（真实优化，非调阈值）
