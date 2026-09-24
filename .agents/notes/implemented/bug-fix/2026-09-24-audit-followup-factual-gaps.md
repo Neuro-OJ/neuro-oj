@@ -17,7 +17,7 @@ Status: implemented
 1. **`memory_kb` 契约冲突（两层混淆）**：`details.cases[].memory_kb` 被
    `JUDGE_CASE_ALLOWED_KEYS` 白名单静默丢弃（`consumer.ts` 精确匹配后 `continue`），
    而 `mechanisms/evaluator-sdk.md` 声称「可见与隐藏用例都可给」，`standards/test-data.md`
-   却说「会被丢弃」——两页结论相反。顶层 `result.memory_kb` 则是正常落库的
+   却说「会被丢弃」——两页结论相反（修正后确认：`evaluator-sdk.md` 侧描述正确）。顶层 `result.memory_kb` 则是正常落库的
    （`submissions-result.ts`）。
 2. **`samples` 死字段**：manifest 接受并**严格校验** `samples`（`{input,output}`
    数组，非法即 400），但 `rg samples` 排除类型定义后无任何下游消费者——出题人认真
@@ -32,7 +32,7 @@ Status: implemented
 **A2-1 `memory_kb`：加白名单（让 SDK 文档契约成真）**
 `JUDGE_CASE_ALLOWED_KEYS` 增加 `"memory_kb"`，并更新 `consumer.test.ts` 断言
 （原测试用例刻意用 `secret` 验证被丢弃，现在同时验证 `memory_kb` 被保留）。
-同步修正 `test-data.md`、`quality.md`、`evaluator-sdk.md` 三处「会被丢弃」表述。
+同步修正 `test-data.md` 与 `quality.md` 两处「会被丢弃」表述（`evaluator-sdk.md` 原本即为正确契约，无需改动）。
 
 **A2-2 `samples`：软废弃（容忍 + 告警），而非硬移除**
 保留字段容忍但不落库，在三处补可见 warning，避免"写了没效果还不报错"：
@@ -47,10 +47,14 @@ Status: implemented
 全链路告警」既兼容存量、又让新题包不再误用。noj-cli vendored 副本**同步修改**
 （`vendor/problem-bundle.ts` 是 #514 决策的刻意副本，头注释要求两处同步）。
 
-**A2-3 样例题：只删 statement.md 的冗余限制文字**
-时间/内存限由前端从 `runtime_config` 读取展示（`ProblemHeader.vue` +
-`problemView.ts`），题面重复写死反而制造矛盾。删除 `## 限制` 中的时间/内存两行，
-保留数据范围约束。
+**A2-3 样例题：题面限制改为与 `runtime_config` 一致**
+`1001/statement.md` 原写「时间限制 1000ms」，而 `problem.json` 是
+`evaluator.time_limit_ms=30000` / `solution.call_timeout_ms=5000`，相差 30 倍。
+最初尝试直接删除题面里的时间/内存两行（理由是前端从 `runtime_config` 渲染权威值），
+2026-09-25 三轮评审实测**非 owner / 竞赛页拿不到 `runtime_config`**，删除会造成决定性
+信息缺失；已改为在题面写出与配置一致的三行（总时限 30000ms、单次调用超时 5000ms、
+内存 256MB），并保留数据范围约束。代价是数值在题面与配置各存一份（见「未引入自动化
+门禁」一条）。
 
 **A2-4 `.env.example`：对齐实现**
 注释改为「默认 `data/storage`，与构建产物目录 `data/packages/` 分离」，
@@ -97,10 +101,16 @@ Status: implemented
   行为从"静默丢弃"变为"保留"（正向，无破坏）。
 - **`samples` 成为显式废弃字段**：导入仍兼容但会告警；`noj-cli problem lint` 新增
   `quality/deprecated-samples` 规则（warn 级，`--strict` 下影响退出码）。
-- **共享 fixture 语义更新**：`fixtures/problem-bundle-manifest.json` 的正例改名并加注
-  「artifact 提交 + 标签 + 已废弃 samples（仍被容忍）」，core 与 noj-cli 两侧契约测试
-  同时验证该容忍行为。
-- **样例题题面不再重复时间/内存**：做题人看到的是前端从运行时配置渲染的权威值。
+- **共享 fixture 语义更新**：`fixtures/problem-bundle-manifest.json` 的正例改名为
+  「artifact 提交 + 标签 + 已废弃 samples（非法形状仍被容忍）」，且 `samples` 取
+  **非法形状**（字符串）——这样"将来重新收紧校验"的漂移会被 core 与 noj-cli 两侧契约
+  测试立刻发现（合法形状在收紧前后都被接受，锁不住该语义）。
+- **样例题题面保留限制数值**：与 `problem.json` 一致（30000ms / 5000ms / 256MB），
+  做题人无需依赖 `runtime_config` 即可看到权威限制（2026-09-25 三轮评审修正）。
+- **补齐测试**：core 侧新增「已废弃 samples（含非法形状）导入成功」用例；noj-cli 侧
+  断言该规则 `level === "warn"`（防止被误升级为 error 而拒绝存量题包）；
+  `scripts/problems-init.ts` 的 evaluate.py 骨架注明"用例级 memory_kb 可选、本骨架
+  不产出（Evaluator 读不到 Solution 容器内存，提交级峰值由评测机回填）"。
 - 19 个文件变更（core 5、noj-cli 3、fixtures 1、docs 6、deploy 2、.env.example 1、
   data 1）；核心测试（noj-cli 745 通过、core catalog/submission 契约与单元全绿）、
   `deno fmt`/`deno lint`/`deno check`、docs 构建与链接检查全部通过。
