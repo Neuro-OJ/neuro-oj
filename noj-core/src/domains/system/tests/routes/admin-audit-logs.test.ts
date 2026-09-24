@@ -233,3 +233,29 @@ Deno.test({
     await db.delete(auditLogs);
   },
 });
+
+Deno.test({
+  // 2026-09-25 评审：legal 合规动作已落库，但此前漏登记进筛选清单
+  name: "admin-audit-logs: /actions 含 legal 合规动作（可筛选）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setupFixtureData();
+    const app = createApp();
+    const adminToken = await signToken({
+      sub: ADMIN_USER_ID,
+      role: "admin",
+    });
+    const res = await getWithToken(
+      app,
+      "/api/v1/admin/system/audit-logs/actions",
+      adminToken,
+    );
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    const actions = body.data as string[];
+    assertEquals(actions.includes("legal.publish_version"), true);
+    assertEquals(actions.includes("legal.data_request_update"), true);
+    assertEquals(actions.includes("carousel.create"), true);
+  },
+});

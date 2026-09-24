@@ -20,11 +20,13 @@ const { fetchUser } = useAuth()
 const open = ref(false)
 const submitting = ref(false)
 
-// 出现新的待同意项时打开弹窗
+// 出现新的待同意项时打开弹窗。
+// 2026-09-25 评审：以"首个待同意项"为键，而不是数组长度——长度不变但内容
+// 变化（如 privacy 换成 terms）时此前不会重开弹窗。
 watch(
-  () => props.pending.length,
-  (n) => {
-    if (n > 0) open.value = true
+  () => props.pending[0]?.kind ?? null,
+  (kind) => {
+    if (kind) open.value = true
   },
   { immediate: true },
 )

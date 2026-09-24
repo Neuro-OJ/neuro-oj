@@ -18,6 +18,7 @@ import { resetDbForTest } from "../../../../shared/db/connection.ts";
 import { updateSetting } from "./../../../system/services/system-settings.ts";
 import { timestampHash, tsaEnabled, verifyTimestamp } from "../../index.ts";
 import {
+  buildForgedTimeStampRespWithCert,
   buildTestTimeStampResp,
   buildTestTimeStampRespWithCert,
 } from "./tsa-fixtures.ts";
@@ -362,6 +363,52 @@ Deno.test({
     const result = await verifyTimestamp(hash, captured!, built.signerCertPem);
     assertEquals(result.ok, false);
     assertEquals(result.reason?.includes("SHA-256"), true);
+  },
+});
+
+Deno.test({
+  name:
+    "tsa: verifyTimestamp 拒绝 eContent 被替换的伪造 token（signedAttrs 绑定）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  async fn() {
+    await resetDbForTest();
+    await updateSetting("tsa_provider", "custom", "0");
+    await updateSetting("tsa_url", "https://tsa.example.test/tsr", "0");
+
+    // 攻击场景：持有对 `signedHash` 的合法 token，把 eContent 换成
+    // `forgedHash` 的 imprint，冒充「该哈希被打过戳」。
+    const signedHash = "ab".repeat(32);
+    const forgedHash = "cd".repeat(32);
+    const forged = await buildForgedTimeStampRespWithCert(
+      signedHash,
+      forgedHash,
+    );
+
+    // 通过 timestampHash 落库路径构造伪造记录不可行（它只接受真实响应），
+    // 因此直接解析伪造响应，组装 saved 结构后复验。
+    // 修复前这里会返回 ok:true（缺少 signedAttrs.messageDigest 校验），
+    // 修复后必须 ok:false——且必须传入真实根证书，使失败归因于签名绑定
+    // 而非"缺少信任锚"（2026-09-25 评审收紧信任模型）。
+    const { extractTokenForTest } = await import("./tsa-fixtures.ts");
+    const saved = await extractTokenForTest(forged.response);
+
+    const result = await verifyTimestamp(
+      forgedHash,
+      saved,
+      forged.signerCertPem,
+    );
+    assertEquals(result.ok, false);
+
+    // 对照：真实 token 对真实哈希仍然通过
+    const real = await buildTestTimeStampRespWithCert(signedHash);
+    const realSaved = await extractTokenForTest(real.response);
+    const realOk = await verifyTimestamp(
+      signedHash,
+      realSaved,
+      real.signerCertPem,
+    );
+    assertEquals(realOk.ok, true);
   },
 });
 

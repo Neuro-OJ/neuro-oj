@@ -203,6 +203,10 @@ const AUDIT_ACTIONS: AuditAction[] = [
   "carousel.update",
   "carousel.delete",
   "carousel.reorder",
+  // 2026-09-25 评审：legal 合规动作已落库（types/audit-log.ts + schema CHECK），
+  // 但此前未登记进管理端筛选清单，"法律与合规"操作无法按动作筛选。
+  "legal.publish_version",
+  "legal.data_request_update",
   "contest.ranking_snapshot",
   "contest.create",
   "contest.update",

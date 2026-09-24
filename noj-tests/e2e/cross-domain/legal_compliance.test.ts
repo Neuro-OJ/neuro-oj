@@ -262,8 +262,11 @@ e2eTest("legal-e2e: 删除/更正请求全生命周期与状态机", async () =>
     { status: "pending" },
     adminToken,
   );
-  if (illegal.status === 200) {
-    throw new Error("resolved 后回退到 pending 应被拒绝");
+  // 断言具体拒绝码（400/409），避免 500 等异常被「!==200」宽松放过
+  if (illegal.status !== 400 && illegal.status !== 409) {
+    throw new Error(
+      `resolved 后回退到 pending 应以 400/409 拒绝，实际 ${illegal.status}`,
+    );
   }
 });
 

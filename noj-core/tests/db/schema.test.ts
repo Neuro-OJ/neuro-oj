@@ -177,3 +177,59 @@ Deno.test("schema: 社区搜索 pg_trgm 索引与迁移 DDL 保持同步", async
   assertEquals(migration.includes('"idx_community_posts_title_trgm"'), true);
   assertEquals(migration.includes('"idx_community_posts_content_trgm"'), true);
 });
+
+Deno.test("schema: ALL_TABLES 覆盖全部 Drizzle 表（resetDbForTest 不得漏表）", async () => {
+  // 2026-09-24 评审：carousel_slides 建表但漏登记 ALL_TABLES，导致
+  // resetDbForTest() 不清该表、同进程用例互相污染，且 schema parity 门禁
+  // 看不到这类名单遗漏。这里从两份事实源交叉核对：
+  //   1) schema-ddl.ts 的 CREATE TABLE 语句（测试模式建表的事实源）
+  //   2) Drizzle schema 模块导出的表名（生产迁移的事实源）
+  const { ALL_TABLES } = await import("../../src/shared/db/schema-ddl.ts");
+  const ddl = await Deno.readTextFile(
+    new URL("../../src/shared/db/schema-ddl.ts", import.meta.url),
+  );
+  const ddlTables = [...ddl.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)]
+    .map((m) => m[1]);
+
+  const listed = new Set<string>(ALL_TABLES as readonly string[]);
+  const missingFromAllTables = ddlTables.filter((t) => !listed.has(t));
+  assertEquals(
+    missingFromAllTables,
+    [],
+    `ALL_TABLES 漏登记：${
+      missingFromAllTables.join(", ")
+    }（resetDbForTest 不会清空这些表）`,
+  );
+
+  // 反向：ALL_TABLES 不应包含 DDL 中不存在的表名（拼写漂移同样危险）
+  const ddlSet = new Set(ddlTables);
+  const phantom = [...listed].filter((t) => !ddlSet.has(t));
+  assertEquals(
+    phantom,
+    [],
+    `ALL_TABLES 含 DDL 不存在的表：${phantom.join(", ")}`,
+  );
+
+  // 逐个 Drizzle 表（来自 schema.ts 的运行时导出）也必须在 ALL_TABLES 内。
+  const schema = await import("../../src/shared/db/schema.ts");
+  const drizzleTables: string[] = [];
+  for (const value of Object.values(schema)) {
+    if (typeof value !== "object" || value === null) continue;
+    // Drizzle pgTable 对象带 Symbol.for("drizzle:Name") 表名
+    const name = (value as unknown as Record<symbol, unknown>)[
+      Symbol.for("drizzle:Name")
+    ];
+    if (typeof name === "string") drizzleTables.push(name);
+  }
+  assertEquals(
+    drizzleTables.length > 0,
+    true,
+    "未能从 Drizzle schema 提取表名",
+  );
+  const missingFromDrizzle = drizzleTables.filter((t) => !listed.has(t));
+  assertEquals(
+    missingFromDrizzle,
+    [],
+    `ALL_TABLES 漏登记 Drizzle 表：${missingFromDrizzle.join(", ")}`,
+  );
+});

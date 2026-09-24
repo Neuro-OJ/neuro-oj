@@ -9,6 +9,7 @@
 import * as asn1js from "asn1js";
 import {
   AlgorithmIdentifier,
+  Attribute,
   AttributeTypeAndValue,
   Certificate,
   CryptoEngine,
@@ -17,6 +18,7 @@ import {
   MessageImprint,
   PKIStatusInfo,
   RelativeDistinguishedNames,
+  SignedAndUnsignedAttributes,
   SignedData,
   SignerInfo,
   Time,
@@ -37,6 +39,13 @@ export interface FixtureOptions {
   hashAlgorithmOid?: string;
   /** 回显的 nonce（hex）；缺省不回显，用于构造 nonce 不匹配场景 */
   nonceHex?: string;
+  /**
+   * 是否携带 signedAttrs（contentType + messageDigest）。
+   *
+   * 真实 TSA（freetsa/digicert 等）默认携带；缺省 `true` 以贴近真实形态，
+   * 并让 `verifyTimestamp` 的 RFC 5652 §5.4 绑定校验被真实覆盖。
+   */
+  signedAttrs?: boolean;
 }
 
 /** 由 hex 构造字节。 */
@@ -165,6 +174,31 @@ export async function buildTestTimeStampRespWithCert(
       serialNumber: cert.serialNumber,
     }),
   });
+  // 真实 TSA 响应携带 signedAttrs（contentType + messageDigest）。
+  // messageDigest 必须是 eContent（TSTInfo DER）的 SHA-256——RFC 5652 §5.4；
+  // `verifyCmsSignature` 会核对这一点，缺省构造为真实形态以便回归覆盖。
+  if (opts.signedAttrs !== false) {
+    const digest = new Uint8Array(
+      await globalThis.crypto.subtle.digest("SHA-256", eContent),
+    );
+    signerInfo.signedAttrs = new SignedAndUnsignedAttributes({
+      type: 0,
+      attributes: [
+        new Attribute({
+          type: "1.2.840.113549.1.9.3", // content-type
+          values: [
+            new asn1js.ObjectIdentifier({
+              value: "1.2.840.113549.1.9.16.1.4",
+            }),
+          ],
+        }),
+        new Attribute({
+          type: "1.2.840.113549.1.9.4", // message-digest
+          values: [new asn1js.OctetString({ valueHex: digest.buffer })],
+        }),
+      ],
+    });
+  }
   const signedData = new SignedData({
     version: 3,
     encapContentInfo: new EncapsulatedContentInfo({
@@ -224,6 +258,139 @@ export async function buildTestTimeStampRespWithCert(
       headers: { "Content-Type": "application/timestamp-reply" },
     }),
     signerCertPem: certToPem(cert),
+  };
+}
+
+/**
+ * 从 TimeStampResp 提取 `{token, chain}`（与 `timestampHash` 落库结构一致），
+ * 供测试直接复验伪造/真实响应，无需经过网络路径。
+ *
+ * @param resp `buildTestTimeStampResp` / `buildForgedTimeStampResp` 的返回值
+ */
+export async function extractTokenForTest(
+  resp: Response,
+): Promise<{ token: string; chain: string }> {
+  const der = new Uint8Array(await resp.arrayBuffer());
+  const parsed = asn1js.fromBER(der.buffer as ArrayBuffer)
+    .result as asn1js.Sequence;
+  const tokenCi = parsed.valueBlock.value[1] as asn1js.Sequence;
+  const explicit = tokenCi.valueBlock.value[1] as asn1js.Constructed;
+  const signedDataSeq = explicit.valueBlock.value[0] as asn1js.Sequence;
+
+  const certsImplicit = signedDataSeq.valueBlock.value[3] as asn1js.Constructed;
+  const chain = certsImplicit.valueBlock.value
+    .map((c) => base64Encode(new Uint8Array(c.toBER(false))))
+    .join("\n");
+
+  return {
+    token: base64Encode(new Uint8Array(tokenCi.toBER(false))),
+    chain,
+  };
+}
+
+function base64Encode(bytes: Uint8Array): string {
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
+/**
+ * 构造一个**伪造的**时间戳响应：签名与 signedAttrs 来自真实 token（对
+ * `signedHashHex` 打戳），但 eContent（TSTInfo）被替换为 `forgedHashHex` 的
+ * imprint——即攻击者用任意一条合法 TSA token 冒充「对另一哈希打过戳」。
+ *
+ * 用于回归 RFC 5652 §5.4 的 `signedAttrs.messageDigest == H(eContent)` 校验：
+ * 修复前 `verifyTimestamp(forgedHashHex, …)` 会错误地返回 `ok:true`。
+ *
+ * @param signedHashHex 真实被打戳的哈希（进入 signedAttrs 的 messageDigest）
+ * @param forgedHashHex 伪造进 eContent 的哈希
+ */
+export async function buildForgedTimeStampResp(
+  signedHashHex: string,
+  forgedHashHex: string,
+): Promise<Response> {
+  const built = await buildForgedTimeStampRespWithCert(
+    signedHashHex,
+    forgedHashHex,
+  );
+  return built.response;
+}
+
+/**
+ * 同 {@link buildForgedTimeStampResp}，但一并返回签名者证书 PEM。
+ *
+ * 供信任锚收紧后的用例使用：伪造 token 的失败必须是"签名绑定不成立"，
+ * 因此复验时需要传入真实根证书，否则会因缺少信任锚而先行失败。
+ *
+ * @param signedHashHex 真实被打戳的哈希
+ * @param forgedHashHex 伪造进 eContent 的哈希
+ */
+export async function buildForgedTimeStampRespWithCert(
+  signedHashHex: string,
+  forgedHashHex: string,
+): Promise<{ response: Response; signerCertPem: string }> {
+  const real = await buildTestTimeStampRespWithCert(signedHashHex);
+  const realDer = new Uint8Array(await real.response.arrayBuffer());
+
+  // 解析真实响应，取 token 的签名字节与证书，替换 eContent 为伪造 TSTInfo。
+  const resp = asn1js.fromBER(realDer.buffer as ArrayBuffer)
+    .result as asn1js.Sequence;
+  const tokenCi = resp.valueBlock.value[1] as asn1js.Sequence;
+  const explicit = tokenCi.valueBlock.value[1] as asn1js.Constructed;
+  const signedDataSeq = explicit.valueBlock.value[0] as asn1js.Sequence;
+
+  const forgedTst = new TSTInfo({
+    version: 1,
+    policy: "1.2.3.4.5",
+    messageImprint: new MessageImprint({
+      hashAlgorithm: new AlgorithmIdentifier({
+        algorithmId: "2.16.840.1.101.3.4.2.1",
+      }),
+      hashedMessage: new asn1js.OctetString({
+        valueHex: hexToBytes(forgedHashHex).buffer as ArrayBuffer,
+      }),
+    }),
+    serialNumber: new asn1js.Integer({ value: 1 }),
+    genTime: new Date(),
+  });
+  const forgedEContent = forgedTst.toSchema().toBER(false);
+
+  // signedDataSeq.valueBlock.value[2] = encapContentInfo（保留其 eContentType，
+  // 仅替换 [0] EXPLICIT 内的 OCTET STRING 内容）。
+  const eci = signedDataSeq.valueBlock.value[2] as asn1js.Sequence;
+  const eciExplicit = eci.valueBlock.value[1] as asn1js.Constructed;
+  eciExplicit.valueBlock.value = [
+    new asn1js.OctetString({ valueHex: forgedEContent }),
+  ];
+
+  const forgedSignedData = new asn1js.Sequence({
+    value: signedDataSeq.valueBlock.value,
+  }).toBER(false);
+
+  const statusDer = new PKIStatusInfo({ status: 0 }).toSchema().toBER(false);
+  const respDer = new asn1js.Sequence({
+    value: [
+      asn1js.fromBER(statusDer).result as asn1js.Sequence,
+      new asn1js.Sequence({
+        value: [
+          new asn1js.ObjectIdentifier({ value: "1.2.840.113549.1.7.2" }),
+          new asn1js.Constructed({
+            idBlock: { tagClass: 3, tagNumber: 0 },
+            value: [
+              asn1js.fromBER(forgedSignedData).result as asn1js.Sequence,
+            ],
+          }),
+        ],
+      }),
+    ],
+  }).toBER(false);
+
+  return {
+    response: new Response(respDer, {
+      status: 200,
+      headers: { "Content-Type": "application/timestamp-reply" },
+    }),
+    signerCertPem: real.signerCertPem,
   };
 }
 

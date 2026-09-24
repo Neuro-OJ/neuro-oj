@@ -228,7 +228,9 @@ export const auditLogs = pgTable(
         'email_delivery.clear_suppression',
         'llm_provider.create',
         'llm_provider.update',
-        'llm_quota.upsert'
+        'llm_quota.upsert',
+        'legal.publish_version',
+        'legal.data_request_update'
       )`,
     ),
     adminIdx: index("audit_logs_admin_id_idx").on(table.admin_id),

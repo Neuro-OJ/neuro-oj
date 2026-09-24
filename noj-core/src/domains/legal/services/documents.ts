@@ -28,6 +28,7 @@ import type {
 } from "../types.ts";
 import { isLegalKind } from "../types.ts";
 import { timestampHash, tsaEnabled } from "./tsa.ts";
+import { logAudit } from "./../../system/services/audit-log.ts";
 
 /**
  * 规范化文档内容。
@@ -313,6 +314,19 @@ export async function publishVersion(
 
     return version;
   });
+
+  // 合规留痕（2026-09-24 评审）：政策发布是最需要审计链的操作之一，
+  // 与 announcement/carousel 等同类管理动作口径一致。
+  await logAudit(
+    "legal.publish_version",
+    {
+      action: "legal.publish_version",
+      kind,
+      version: newVersion,
+      is_material: isMaterial,
+    },
+    { type: "legal_document", id: kind },
+  );
 
   // 打时间戳：失败不阻塞发布（政策发布是低频人工操作，可容忍降级）。
   if (isMaterial && tsaEnabled()) {

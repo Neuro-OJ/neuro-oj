@@ -187,7 +187,7 @@ async function parseAndValidate(
 ): Promise<
   { tokenDer: Uint8Array; chainBase64: string[]; genTime: string } | null
 > {
-  const resp = TimeStampResp.fromBER(respBytes.buffer as ArrayBuffer);
+  const resp = TimeStampResp.fromBER(toBufferSource(respBytes));
   const status = (resp.status as PKIStatusInfo).status;
   if (!PKI_STATUS_GRANTED.has(status)) {
     logger.warn("TSA PKIStatus 非授权", { status });
@@ -280,12 +280,31 @@ function findSignerCert(
     certs[0] ?? null;
 }
 
+/** CMS signedAttrs 的必选属性 OID（RFC 5652 §11.1/§11.2）。 */
+const ATTR_CONTENT_TYPE_OID = "1.2.840.113549.1.9.3";
+const ATTR_MESSAGE_DIGEST_OID = "1.2.840.113549.1.9.4";
+
+/** 摘要算法 OID → WebCrypto 名称（signedAttrs.messageDigest 校验用）。 */
+const DIGEST_ALGORITHMS: Record<string, string> = {
+  "2.16.840.1.101.3.4.2.1": "SHA-256",
+  "2.16.840.1.101.3.4.2.2": "SHA-384",
+  "2.16.840.1.101.3.4.2.3": "SHA-512",
+  "1.3.14.3.2.26": "SHA-1",
+};
+
 /**
- * 校验 CMS 签名：用签名者证书公钥验证 signerInfo.signature。
+ * 校验 CMS 签名：用签名者证书公钥验证 signerInfo.signature，并在有
+ * `signedAttrs` 时核对其与 eContent 的绑定关系（RFC 5652 §5.4）。
  *
  * 覆盖无 `signedAttrs`（签名直接 over eContent=TSTInfo DER）与有 `signedAttrs`
  * （签名 over signedAttrs SET）两种形态。不走 pkijs 的 `SignedData.verify`，
  * 因其对 TSTInfo 会改用"重算 imprint"语义，不是我们要的签名校验。
+ *
+ * **为什么必须核对 signedAttrs（2026-09-24 评审发现）**：有 signedAttrs 时，
+ * 签名只覆盖 signedAttrs，不再覆盖 eContent。若不核对
+ * `messageDigest == H(eContent)`，任何持有**任意一条合法 TSA token** 的人
+ * 都可以替换 eContent（伪造 messageImprint/时间）而签名仍然验签通过，
+ * 从而让复核端点对从未打戳过的哈希错误地返回 `ok:true`。
  *
  * @param signedData 已解析的 CMS
  * @param signerCert 签名者证书
@@ -304,6 +323,44 @@ async function verifyCmsSignature(
     const ber = new Uint8Array(signerInfo.signedAttrs.toSchema().toBER(false));
     ber[0] = 0x31; // 由 SEQUENCE 改为 SET
     signedBytes = ber;
+
+    // RFC 5652 §5.4：signedAttrs 必须包含 content-type 与 message-digest，
+    // 且 messageDigest 必须等于 eContent 的摘要，否则签名与内容解绑（伪造面）。
+    const eContent = signedData.encapContentInfo.eContent;
+    if (!eContent) return false;
+    // deno-lint-ignore no-explicit-any
+    const attributes = (signerInfo.signedAttrs as any).attributes ?? [];
+    let contentTypeOk = false;
+    let messageDigest: Uint8Array | null = null;
+    // deno-lint-ignore no-explicit-any
+    for (const attr of attributes as any[]) {
+      const values = attr.values ?? [];
+      if (attr.type === ATTR_CONTENT_TYPE_OID && values.length === 1) {
+        contentTypeOk = values[0].valueBlock?.toString?.() ===
+          signedData.encapContentInfo.eContentType;
+      } else if (attr.type === ATTR_MESSAGE_DIGEST_OID && values.length === 1) {
+        messageDigest = new Uint8Array(values[0].valueBlock.valueHexView ?? []);
+      }
+    }
+    if (!contentTypeOk || !messageDigest) return false;
+
+    const digestName = DIGEST_ALGORITHMS[
+      signerInfo.digestAlgorithm.algorithmId
+    ];
+    if (!digestName) return false;
+    const actual = new Uint8Array(
+      await globalThis.crypto.subtle.digest(
+        digestName,
+        toBufferSource(new Uint8Array(eContent.getValue())),
+      ),
+    );
+    if (actual.length !== messageDigest.length) return false;
+    // 常量时间比对（属性长度可控，且避免时序侧信道）
+    let diff = 0;
+    for (let i = 0; i < actual.length; i++) {
+      diff |= actual[i] ^ messageDigest[i];
+    }
+    if (diff !== 0) return false;
   } else {
     if (!signedData.encapContentInfo.eContent) return false;
     signedBytes = new Uint8Array(
@@ -352,7 +409,7 @@ export async function verifyTimestamp(
 ): Promise<TsaVerifyResult> {
   try {
     const tokenDer = base64Decode(saved.token);
-    const ci = ContentInfo.fromBER(tokenDer.buffer as ArrayBuffer);
+    const ci = ContentInfo.fromBER(toBufferSource(tokenDer));
     if (ci.contentType !== SIGNED_DATA_OID) {
       return { ok: false, trusted: false, reason: "token 不是 CMS SignedData" };
     }
@@ -388,7 +445,7 @@ export async function verifyTimestamp(
       return { ok: false, trusted: false, reason: "缺少证书链" };
     }
     const certs = chainDer.map((b64) =>
-      Certificate.fromBER(base64Decode(b64).buffer as ArrayBuffer)
+      Certificate.fromBER(toBufferSource(base64Decode(b64)))
     );
 
     // CMS 签名验证（用签名者证书）
@@ -459,7 +516,7 @@ function certFromPem(pem: string): Certificate {
     .replace(/-----BEGIN CERTIFICATE-----/, "")
     .replace(/-----END CERTIFICATE-----/, "")
     .replace(/\s+/g, "");
-  return Certificate.fromBER(base64Decode(b64).buffer as ArrayBuffer);
+  return Certificate.fromBER(toBufferSource(base64Decode(b64)));
 }
 
 /**

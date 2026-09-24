@@ -18,7 +18,7 @@ import {
 } from "./../../identity/index.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { ValidationError } from "./../../../shared/base/errors.ts";
-import { enforceRateLimit } from "./../../system/index.ts";
+import { enforceRateLimit, withActorContext } from "./../../system/index.ts";
 import {
   getCurrentDocument,
   getVersionTsa,
@@ -37,6 +37,13 @@ import {
 } from "../services/data-requests.ts";
 
 const router = new Hono<AuthEnv>();
+
+// 组级注入 Actor RequestContext：审计日志（logAudit）依赖 getRequestContext()，
+// 而管理员路径经 FINE_GRAINED_ADMIN_PREFIXES 跳过了注入上下文的 adminMiddleware。
+// 与 admin/routes/carousel.ts 同模式（2026-09-24 评审：legal 发布/处置此前无审计）。
+router.use("*", authMiddleware, (c, next) => {
+  return withActorContext(c, () => next());
+});
 
 /** 断言 kind 合法（路由层 400）。 */
 function requireKind(raw: string | undefined): LegalKind {

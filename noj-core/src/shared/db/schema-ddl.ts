@@ -435,7 +435,9 @@ export const SCHEMA_DDL: string[] = [
       'contest.kind_change','contest.reset_code',
       'judge_images.create','judge_images.update','judge_images.delete',
       'email_delivery.clear_suppression',
-      'llm_provider.create','llm_provider.update','llm_quota.upsert')
+      'llm_provider.create','llm_provider.update','llm_quota.upsert',
+      -- 2026-09-24 评审：legal 合规写操作留痕
+      'legal.publish_version','legal.data_request_update')
     ))
   `,
 
@@ -989,4 +991,11 @@ export const ALL_TABLES = [
   "legal_document_versions",
   "user_consents",
   "data_requests",
+  "carousel_slides",
+  // 2026-09-24 评审：以下 4 张表建表但长期漏登记，resetDbForTest 从不清理
+  // （跨用例污染隐患；守卫测试 tests/db/schema.test.ts 现已覆盖该类遗漏）。
+  "objective_questions",
+  "objective_submissions",
+  "self_tests",
+  "sse_events",
 ] as const;

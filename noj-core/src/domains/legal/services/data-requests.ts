@@ -12,9 +12,11 @@ import { getDb } from "./../../../shared/db/connection.ts";
 import { dataRequests } from "./../../../shared/db/schema.ts";
 import {
   BadRequestError,
+  ConflictError,
   NotFoundError,
   ValidationError,
 } from "./../../../shared/base/errors.ts";
+import { logAudit } from "./../../system/services/audit-log.ts";
 
 /** 请求类型。 */
 export const DATA_REQUEST_KINDS = ["delete", "correct"] as const;
@@ -161,7 +163,9 @@ export async function updateDataRequestStatus(
     );
   }
 
-  await db
+  // 乐观锁（2026-09-24 评审）：WHERE 带上读取时的 status，防两个管理员并发
+  // 处置同一请求时后写覆盖前写（状态机校验基于读取时的值）。
+  const updated = await db
     .update(dataRequests)
     .set({
       status,
@@ -170,5 +174,23 @@ export async function updateDataRequestStatus(
       resolution,
       updated_at: new Date().toISOString(),
     })
-    .where(eq(dataRequests.id, id));
+    .where(and(eq(dataRequests.id, id), eq(dataRequests.status, current)))
+    .returning({ id: dataRequests.id });
+  if (updated.length === 0) {
+    throw new ConflictError(
+      "请求状态已被其他管理员更新，请刷新后重试",
+    );
+  }
+
+  // 合规留痕（2026-09-24 评审）：权利请求的处置必须可审计（谁在何时批准/驳回）。
+  await logAudit(
+    "legal.data_request_update",
+    {
+      action: "legal.data_request_update",
+      id,
+      from: current,
+      to: status,
+    },
+    { type: "data_request", id },
+  );
 }
