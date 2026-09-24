@@ -56,6 +56,8 @@ pub struct Config {
     /// 默认 1h 远大于 evaluator 硬上限（默认 300s）。worker 崩溃留下的 claim
     /// 会在超过该阈值后被其他 worker 自动清理。
     pub user_claim_ttl_ms: i64,
+    /// prediction 单容器路径 /workspace tmpfs 上限（MB，默认: 2048）
+    pub prediction_workspace_mb: u64,
 }
 
 impl std::fmt::Debug for Config {
@@ -91,6 +93,7 @@ impl std::fmt::Debug for Config {
             )
             .field("docker_host", &self.docker_host)
             .field("require_isolated_docker", &self.require_isolated_docker)
+            .field("prediction_workspace_mb", &self.prediction_workspace_mb)
             .finish()
     }
 }
@@ -119,6 +122,15 @@ pub const DEFAULT_MAX_SOLUTION_CALL_TIMEOUT_MS: u64 = 60_000;
 /// 否则长评测会被误判为过期而破坏互斥；同时又不至于让崩溃 worker 的残留 claim
 /// 长时间阻塞该用户。
 pub const DEFAULT_USER_CLAIM_TTL_MS: i64 = 3_600_000;
+
+/// prediction 单容器路径 evaluator /workspace tmpfs 默认上限（MB）。
+pub const DEFAULT_PREDICTION_WORKSPACE_MB: u64 = 2048;
+
+/// prediction workspace tmpfs 下限（MB）：低于该值不足以容纳评测支持包。
+pub const MIN_PREDICTION_WORKSPACE_MB: u64 = 512;
+
+/// prediction workspace tmpfs 上限（MB）：防止错误配置占满宿主内存。
+pub const MAX_PREDICTION_WORKSPACE_MB: u64 = 16384;
 
 /// 防止错误配置创建过大的 semaphore 或占满调度资源。
 const MAX_CONFIGURED_CONCURRENT_JUDGES: usize = 1024;
@@ -189,6 +201,9 @@ impl Config {
             user_claim_ttl_ms: env_var_parse::<i64>("JUDGE_USER_CLAIM_TTL_MS")
                 .filter(|v| *v > 0)
                 .unwrap_or(DEFAULT_USER_CLAIM_TTL_MS),
+            prediction_workspace_mb: env_var_parse::<u64>("JUDGE_PREDICTION_WORKSPACE_MB")
+                .filter(|v| (MIN_PREDICTION_WORKSPACE_MB..=MAX_PREDICTION_WORKSPACE_MB).contains(v))
+                .unwrap_or(DEFAULT_PREDICTION_WORKSPACE_MB),
         }
     }
 
@@ -353,6 +368,28 @@ mod tests {
             let _guard = EnvGuard::set(vec![("JUDGE_CPU_LIMIT_MILLICORES", value)]);
             let cfg = Config::from_env();
             assert_eq!(cfg.cpu_limit_millicores, DEFAULT_CPU_LIMIT_MILLICORES);
+        }
+    }
+
+    #[test]
+    fn test_prediction_workspace_default_and_custom() {
+        let _lock = ENV_TEST_MUTEX.lock().unwrap();
+        std::env::remove_var("JUDGE_PREDICTION_WORKSPACE_MB");
+        let cfg = Config::from_env();
+        assert_eq!(cfg.prediction_workspace_mb, DEFAULT_PREDICTION_WORKSPACE_MB);
+
+        let _guard = EnvGuard::set(vec![("JUDGE_PREDICTION_WORKSPACE_MB", "4096")]);
+        let cfg = Config::from_env();
+        assert_eq!(cfg.prediction_workspace_mb, 4096);
+    }
+
+    #[test]
+    fn test_config_invalid_prediction_workspace_falls_back_to_default() {
+        let _lock = ENV_TEST_MUTEX.lock().unwrap();
+        for value in ["0", "511", "16385", "not-a-number"] {
+            let _guard = EnvGuard::set(vec![("JUDGE_PREDICTION_WORKSPACE_MB", value)]);
+            let cfg = Config::from_env();
+            assert_eq!(cfg.prediction_workspace_mb, DEFAULT_PREDICTION_WORKSPACE_MB);
         }
     }
 }

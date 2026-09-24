@@ -11,6 +11,7 @@
 //! 8. RAII 清理两个容器
 
 pub mod container;
+pub mod inject;
 pub mod protocol;
 pub mod tracker;
 
@@ -22,16 +23,20 @@ use bollard::container::LogOutput;
 use bollard::query_parameters::StatsOptionsBuilder;
 use futures_util::StreamExt;
 use serde_json::Value;
-use tokio::io::AsyncWriteExt;
 use tracing::{debug, error, info, warn};
 
 use crate::dual::container::{start_exec, DualContainer, ExecSession};
+// `inject_support_package_to_evaluator` / `inject_file_stream_to_container` 供
+// `prediction/mod.rs` 经 `crate::dual::` 调用，重导出以保持既有路径。
+pub(crate) use crate::dual::inject::{
+    inject_file_stream_to_container, inject_file_to_container, inject_support_package_to_evaluator,
+};
 use crate::dual::protocol::{
     frame_type, EvaluatorLine, LineParser, FRAME_CALL, FRAME_CAPABILITY, FRAME_CAP_REG,
     FRAME_ERROR, FRAME_LOG, FRAME_READY, FRAME_RESULT, FRAME_SHUTDOWN, RESULT_MARKER,
 };
 use crate::dual::tracker::{InFlightTracker, WaitingSide};
-use crate::sandbox::container::{extract_zip_entries_from_file, parse_command};
+use crate::sandbox::container::parse_command;
 use crate::types::{JudgeResult, JudgeStatus, JudgeTaskLlm, RuntimeConfig};
 
 /// 评测输出全文/错误累积上限（1 MiB）。恶意提交可无限打印，
@@ -58,10 +63,6 @@ fn build_llm_env(llm: &JudgeTaskLlm, submission_id: &str, rejudge_seq: Option<i6
     ]
 }
 
-/// 文件注入 exec 完成轮询次数与间隔（50 × 100ms = 5s 上限）。
-const INJECT_POLL_ATTEMPTS: u32 = 50;
-const INJECT_POLL_INTERVAL_MS: u64 = 100;
-
 /// 校验镜像名最后一段是否匹配受信前缀。
 fn image_allowed(image: &str, prefix: &str) -> bool {
     if image.is_empty() || image.contains("..") || image.contains('\0') {
@@ -73,7 +74,7 @@ fn image_allowed(image: &str, prefix: &str) -> bool {
 }
 
 /// NOJ-190：judge 侧对 MQ 消息中的镜像/命令/网络做白名单复验。
-fn validate_runtime_config(
+pub(crate) fn validate_runtime_config(
     submission_id: &str,
     runtime_config: &RuntimeConfig,
     allow_evaluator_network: bool,
@@ -87,12 +88,14 @@ fn validate_runtime_config(
             runtime_config.evaluator.image
         );
     }
-    if !image_allowed(&runtime_config.solution.image, image_prefix) {
-        anyhow::bail!(
-            "submission {}: solution 镜像不在白名单前缀内: {}",
-            submission_id,
-            runtime_config.solution.image
-        );
+    if let Some(ref solution) = runtime_config.solution {
+        if !image_allowed(&solution.image, image_prefix) {
+            anyhow::bail!(
+                "submission {}: solution 镜像不在白名单前缀内: {}",
+                submission_id,
+                solution.image
+            );
+        }
     }
 
     let argv = parse_command(&runtime_config.evaluator.command);
@@ -124,7 +127,7 @@ fn validate_runtime_config(
 }
 
 /// 对任务中的资源限制字段执行硬上限收敛，防止 core 配置缺失或消息被篡改。
-fn clamp_runtime_config(
+pub(crate) fn clamp_runtime_config(
     rc: &RuntimeConfig,
     max_evaluator_time_ms: u64,
     max_solution_call_timeout_ms: u64,
@@ -134,16 +137,32 @@ fn clamp_runtime_config(
         clamped.evaluator.time_limit_ms =
             clamped.evaluator.time_limit_ms.min(max_evaluator_time_ms);
     }
-    if max_solution_call_timeout_ms > 0 {
-        clamped.solution.call_timeout_ms = clamped
-            .solution
-            .call_timeout_ms
-            .min(max_solution_call_timeout_ms);
+    if let Some(ref mut solution) = clamped.solution {
+        if max_solution_call_timeout_ms > 0 {
+            solution.call_timeout_ms = solution.call_timeout_ms.min(max_solution_call_timeout_ms);
+        }
+        // 内存硬上限与容器创建逻辑保持一致（0 由容器层规范化为 512MB，上限 4096MB）。
+        solution.memory_limit_mb = solution.memory_limit_mb.min(4096);
     }
     // 内存硬上限与容器创建逻辑保持一致（0 由容器层规范化为 512MB，上限 4096MB）。
     clamped.evaluator.memory_limit_mb = clamped.evaluator.memory_limit_mb.min(4096);
-    clamped.solution.memory_limit_mb = clamped.solution.memory_limit_mb.min(4096);
     clamped
+}
+
+/// prediction 路径的运行时收敛（不涉及 solution 调用超时）。
+///
+/// prediction 提交省略 `solution`，因此无需 `max_solution_call_timeout_ms`；
+/// evaluator 的时间/内存上限收敛规则与 [`clamp_runtime_config`] 保持一致。
+pub(crate) fn clamp_runtime_config_for_prediction(
+    rc: &RuntimeConfig,
+    max_evaluator_time_ms: u64,
+) -> RuntimeConfig {
+    let mut c = rc.clone();
+    if max_evaluator_time_ms > 0 {
+        c.evaluator.time_limit_ms = c.evaluator.time_limit_ms.min(max_evaluator_time_ms);
+    }
+    c.evaluator.memory_limit_mb = c.evaluator.memory_limit_mb.min(4096);
+    c
 }
 
 /// 取不小于 `idx` 的最小字符边界。
@@ -172,7 +191,10 @@ fn ceil_char_boundary(s: &str, idx: usize) -> usize {
 /// core sweeper 重投后再次 panic，形成无限循环。
 ///
 /// 现在截断点一律对齐到字符边界，且总长度硬性不超过 `MAX_OUTPUT_BYTES`。
-fn append_capped(buf: &mut String, s: &str) {
+///
+/// prediction 单容器路径同样复用本函数做输出累积上限（用户提供的预测文件可诱导
+/// evaluator 无限打印，无界累积会拖垮 judge 进程）。
+pub(crate) fn append_capped(buf: &mut String, s: &str) {
     if s.len() >= MAX_OUTPUT_BYTES {
         // 单次追加本身就超限（极端恶意输出）：只保留 s 的尾部。
         let start = ceil_char_boundary(s, s.len() - MAX_OUTPUT_BYTES);
@@ -190,97 +212,17 @@ fn append_capped(buf: &mut String, s: &str) {
     buf.push_str(s);
 }
 
-/// 注入支持包（zip）到 Evaluator 容器的 /workspace 目录。
+/// 双容器生产路径必须携带 Solution 运行时；缺失时返回明确的守卫错误。
 ///
-/// 先同步提取 zip 中所有文件到内存，再逐个异步注入到容器。
-async fn inject_support_package_to_evaluator(
-    docker: &bollard::Docker,
-    container_id: &str,
-    zip_path: &Path,
-) -> Result<()> {
-    // 直接以磁盘文件作为 zip 读取源，避免先把整个 zip 读进内存再 to_vec 拷贝。
-    // ZipFile 不是 Send，因此仍在 spawn_blocking 中做同步解压，但输入是文件流。
-    let entries = tokio::task::spawn_blocking({
-        let path = zip_path.to_path_buf();
-        move || extract_zip_entries_from_file(&path)
+/// prediction 提交（无 Solution 容器）走独立编排，不得进入双容器路径；
+/// 这里抽成纯函数以便无 Docker 单测覆盖该守卫。
+pub(crate) fn require_solution<'a>(
+    submission_id: &str,
+    runtime_config: &'a RuntimeConfig,
+) -> Result<&'a crate::types::SolutionRuntime> {
+    runtime_config.solution.as_ref().ok_or_else(|| {
+        anyhow::anyhow!("submission {}: 双容器路径缺少 solution 配置", submission_id)
     })
-    .await
-    .context("spawn_blocking 提取 zip 失败")??;
-
-    // 异步逐个注入到容器（目录条目由 tar 解压自动创建，无需注入）
-    for entry in &entries {
-        if entry.is_dir {
-            continue;
-        }
-        // 只传文件名（相对路径），因为 docker exec 的 tar 已 -C /workspace
-        inject_file_to_container(docker, container_id, &entry.file_name, &entry.data)
-            .await
-            .context(format!("注入支持包文件 {} 失败", entry.file_name))?;
-        info!("已注入支持包文件: {}", entry.file_name);
-    }
-
-    info!("支持包注入完成 (共 {} 个文件)", entries.len());
-    Ok(())
-}
-
-/// 使用 `tar | docker exec tar xf` 模式，注入文件到容器。
-async fn inject_file_to_container(
-    docker: &bollard::Docker,
-    container_id: &str,
-    file_name: &str,
-    content: &[u8],
-) -> Result<()> {
-    // 构造 tar in-memory
-    let mut header = tar::Header::new_gnu();
-    header.set_size(content.len() as u64);
-    header.set_mode(0o644);
-    header.set_cksum();
-
-    let mut tar_buf: Vec<u8> = Vec::new();
-    {
-        let mut builder = tar::Builder::new(&mut tar_buf);
-        builder.append_data(&mut header, file_name, content)?;
-        builder.finish()?;
-    }
-
-    // docker exec tar xf - -C /workspace
-    let exec = docker
-        .create_exec(
-            container_id,
-            bollard::models::ExecConfig {
-                cmd: Some(vec![
-                    "sh".to_string(),
-                    "-c".to_string(),
-                    "tar xf - -C /workspace".to_string(),
-                ]),
-                attach_stdin: Some(true),
-                attach_stdout: Some(false),
-                attach_stderr: Some(false),
-                ..Default::default()
-            },
-        )
-        .await
-        .context("创建 inject exec 失败")?;
-
-    let started = docker.start_exec(&exec.id, None).await?;
-    if let bollard::exec::StartExecResults::Attached { mut input, .. } = started {
-        input.write_all(&tar_buf).await?;
-        input.shutdown().await?;
-    }
-
-    // 等 exec 完成（简化处理：用 inspect_exec 轮询直到退出）
-    // 轮询上限 50 次 × 100ms = 5s；退出码非 0 时视为注入失败。
-    for _ in 0..INJECT_POLL_ATTEMPTS {
-        let inspect = docker.inspect_exec(&exec.id).await?;
-        if let Some(code) = inspect.exit_code {
-            if code != 0 {
-                anyhow::bail!("注入文件 {} 失败（exit_code={}）", file_name, code);
-            }
-            return Ok(());
-        }
-        tokio::time::sleep(Duration::from_millis(INJECT_POLL_INTERVAL_MS)).await;
-    }
-    anyhow::bail!("注入文件超时")
 }
 
 /// 从容器读取一次内存峰值（KB）。
@@ -288,7 +230,7 @@ async fn inject_file_to_container(
 /// Docker `stats` 的 `memory_stats.max_usage` 仅 cgroups v1 可用；
 /// cgroups v2 下该字段缺失，回退到 `usage` 近似值。读取失败或容器已销毁时
 /// 返回 `None`（不阻断评测主流程）。
-async fn read_container_memory_peak_kb(
+pub(crate) async fn read_container_memory_peak_kb(
     docker: &bollard::Docker,
     container_id: &str,
 ) -> Option<u64> {
@@ -340,6 +282,10 @@ pub async fn evaluate_dual_with_cpu_limit(
         image_prefix,
         command_whitelist,
     )?;
+    // 双容器生产路径必须携带 solution 运行时；prediction 提交等无 solution 的模式
+    // 走独立编排（`crate::prediction`），不应进入本函数。
+    // 绑定取自 clamp 后的副本，避免与收敛前的配置混用。
+    let solution = require_solution(task_submission_id, &runtime_config)?;
     let started = Instant::now();
     // F-08：启动期 30s 绝对时限从注入/容器准备阶段开始计时（注入耗时计入启动期）。
     let startup_deadline = Instant::now() + Duration::from_secs(30);
@@ -369,8 +315,8 @@ pub async fn evaluate_dual_with_cpu_limit(
 
     // 2. 创建 Solution 容器
     dual.create_solution(
-        &runtime_config.solution.image,
-        runtime_config.solution.memory_limit_mb,
+        &solution.image,
+        solution.memory_limit_mb,
         cpu_limit_millicores,
     )
     .await
@@ -450,7 +396,7 @@ pub async fn evaluate_dual_with_cpu_limit(
         evaluator_exec,
         solution_exec,
         runtime_config.evaluator.time_limit_ms,
-        runtime_config.solution.call_timeout_ms,
+        solution.call_timeout_ms,
         task_rejudge_seq,
         startup_deadline,
     )
@@ -1070,7 +1016,26 @@ async fn forward_frame(
     Ok(())
 }
 
-fn build_judge_result(
+/// 把结果 JSON 的 `score` 归一为 0–10000 的整数。
+///
+/// 接受整数与浮点（四舍五入）；负数 / NaN / Infinity / 非数值一律 0。
+/// 判定见 `build_judge_result` 的注释（浮点曾静默判 0，2026-09-24 评审修复）。
+fn score_to_i32(value: Option<&Value>) -> i32 {
+    let Some(v) = value else { return 0 };
+    if let Some(i) = v.as_i64() {
+        return i.clamp(0, 10_000) as i32;
+    }
+    if let Some(f) = v.as_f64() {
+        if !f.is_finite() {
+            return 0;
+        }
+        // 四舍五入到最接近的整数（与 SDK 的 int(round(score*100)) 口径一致）
+        return (f.round() as i64).clamp(0, 10_000) as i32;
+    }
+    0
+}
+
+pub(crate) fn build_judge_result(
     submission_id: &str,
     parsed: &serde_json::Value,
     stderr: &str,
@@ -1088,11 +1053,11 @@ fn build_judge_result(
         _ => "finished",
     }
     .to_string();
-    let score = parsed
-        .get("score")
-        .and_then(Value::as_i64)
-        .unwrap_or(0)
-        .clamp(0, 10_000) as i32;
+    // 分数取整：优先整数；浮点（如 `6666.666…`）按四舍五入取整后再夹取。
+    // 此前仅 `as_i64()`，绕过 SDK 直印浮点 score 的 evaluator 会被静默判 0 分
+    // 且外观与正常评测无异（2026-09-24 评审修复）；prediction 不可重测，
+    // 一次误判即作废。
+    let score = score_to_i32(parsed.get("score"));
     let details = parsed.get("details").cloned().unwrap_or(Value::Null);
 
     JudgeResult {
@@ -1681,18 +1646,70 @@ mod tests {
                 time_limit_ms: 999_999,
                 memory_limit_mb: 9999,
                 network: None,
+                workspace_size_mb: None,
             },
-            solution: SolutionRuntime {
+            solution: Some(SolutionRuntime {
                 image: "noj-solution".to_string(),
                 call_timeout_ms: 999_999,
                 memory_limit_mb: 9999,
-            },
+            }),
         };
         let clamped = clamp_runtime_config(&rc, 5000, 1000);
         assert_eq!(clamped.evaluator.time_limit_ms, 5000);
-        assert_eq!(clamped.solution.call_timeout_ms, 1000);
+        assert_eq!(clamped.solution.as_ref().unwrap().call_timeout_ms, 1000);
         assert_eq!(clamped.evaluator.memory_limit_mb, 4096);
-        assert_eq!(clamped.solution.memory_limit_mb, 4096);
+        assert_eq!(clamped.solution.as_ref().unwrap().memory_limit_mb, 4096);
+    }
+
+    /// prediction 提交没有 Solution 运行时；clamp 与 validate 都必须成功，
+    /// 不得因为 `solution == None` 报错（无 Docker，纯逻辑）。
+    #[test]
+    fn test_clamp_and_validate_allow_absent_solution() {
+        use crate::types::EvaluatorRuntime;
+
+        let rc = RuntimeConfig {
+            evaluator: EvaluatorRuntime {
+                image: "noj-evaluator".to_string(),
+                command: "python3 /workspace/evaluate.py".to_string(),
+                time_limit_ms: 999_999,
+                memory_limit_mb: 9999,
+                network: None,
+                workspace_size_mb: Some(4096),
+            },
+            solution: None,
+        };
+
+        let clamped = clamp_runtime_config(&rc, 5000, 1000);
+        assert!(clamped.solution.is_none(), "无 solution 时不应被凭空创建");
+        assert_eq!(clamped.evaluator.time_limit_ms, 5000);
+        assert_eq!(clamped.evaluator.memory_limit_mb, 4096);
+
+        assert!(
+            validate_runtime_config("sid-pred", &rc, false, "noj-", &["python3".to_string()])
+                .is_ok(),
+            "无 solution 的 prediction 配置应通过白名单复验"
+        );
+    }
+
+    /// 双容器生产路径必须携带 solution；缺失时给出明确的守卫错误
+    /// （prediction 提交不应进入双容器路径）。无 Docker。
+    #[test]
+    fn test_require_solution_rejects_absent_solution() {
+        use crate::types::EvaluatorRuntime;
+
+        let rc = RuntimeConfig {
+            evaluator: EvaluatorRuntime {
+                image: "noj-evaluator".to_string(),
+                command: "python3 /workspace/evaluate.py".to_string(),
+                time_limit_ms: 1000,
+                memory_limit_mb: 256,
+                network: None,
+                workspace_size_mb: None,
+            },
+            solution: None,
+        };
+        let err = require_solution("sid-pred-guard", &rc).unwrap_err();
+        assert!(err.to_string().contains("缺少 solution"), "err={}", err);
     }
 
     #[test]
@@ -1718,12 +1735,13 @@ mod tests {
                 time_limit_ms: 1000,
                 memory_limit_mb: 256,
                 network: None,
+                workspace_size_mb: None,
             },
-            solution: SolutionRuntime {
+            solution: Some(SolutionRuntime {
                 image: "noj-solution".to_string(),
                 call_timeout_ms: 1000,
                 memory_limit_mb: 256,
-            },
+            }),
         };
         let err = validate_runtime_config("sid-1", &rc, false, "noj-", &["python3".to_string()])
             .unwrap_err();
@@ -1741,12 +1759,13 @@ mod tests {
                 time_limit_ms: 1000,
                 memory_limit_mb: 256,
                 network: Some(crate::types::EvaluatorNetwork { enabled: true }),
+                workspace_size_mb: None,
             },
-            solution: SolutionRuntime {
+            solution: Some(SolutionRuntime {
                 image: "noj-solution".to_string(),
                 call_timeout_ms: 1000,
                 memory_limit_mb: 256,
-            },
+            }),
         };
         let err = validate_runtime_config("sid-2", &rc, false, "noj-", &["python3".to_string()])
             .unwrap_err();

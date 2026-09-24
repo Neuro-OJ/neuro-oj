@@ -131,6 +131,13 @@ export async function createSelfTest(
     runtimeConfig.evaluator.image,
     "evaluator",
   );
+  if (!runtimeConfig.solution) {
+    throw new AppError(
+      "题目缺少 solution 运行时配置，无法评测",
+      500,
+      "RUNTIME_CONFIG_SOLUTION_MISSING",
+    );
+  }
   await validateJudgeImageWithKind(
     runtimeConfig.solution.image,
     "solution",
@@ -144,6 +151,7 @@ export async function createSelfTest(
     problem_id: problemId,
     user_id: userId,
     priority: "medium",
+    submission_mode: "code",
     runtime_config: runtimeConfig,
     download_url,
     language: input.language,

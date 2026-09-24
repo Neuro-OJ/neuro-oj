@@ -54,7 +54,9 @@ noj-judge/
 │   │   └── host_config.rs  # 容器 HostConfig 构造（安全项）
 │   ├── judge/
 │   │   ├── mod.rs
-│   │   └── runner.rs       # 评测入口（支持包获取 + 双容器分发）
+│   │   └── runner.rs       # 评测入口（支持包获取 + 双容器 / prediction 分发）
+│   ├── prediction/
+│   │   └── mod.rs          # prediction 单容器数据评分路径（无 Solution 容器）
 │   └── dual/
 │       ├── mod.rs          # 双容器编排（Evaluator + Solution）
 │       ├── container.rs    # 双容器生命周期
@@ -75,6 +77,7 @@ noj-judge/
     ├── judge_task_contract.rs # JudgeTask wire 契约快照
     ├── user_claim_redis.rs    # 用户级 claim（需 Redis）
     ├── e2e_network_capability.rs  # evaluator 联网 + capability 转发 E2E
+    ├── e2e_prediction.rs     # prediction 单容器数据评分 E2E（无 Solution 容器）
     └── e2e_problem_limits.rs  # 验证 time_limit_ms/memory_limit_mb 实际生效
 ```
 
@@ -100,6 +103,7 @@ NOJ_RUN_E2E=1 cargo test --test e2e_security_isolation -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_support_package -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_dual_container -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_network_capability -- --ignored
+NOJ_RUN_E2E=1 cargo test --test e2e_prediction -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_problem_limits -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_abnormal -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_solution_ai -- --ignored
@@ -130,6 +134,10 @@ cargo fmt
 | `WORK_DIR`                       | `/tmp/noj-judge`     | 临时工作目录                                                                                     |
 | `JUDGE_MAX_CONCURRENT_JUDGES`    | `2`                  | 同时执行的评测任务数（有效范围 1-1024）                                                          |
 | `JUDGE_CPU_LIMIT_MILLICORES`     | `1000`               | 每个评测容器 CPU 上限（1000m = 1 核，有效范围 100-16000）                                        |
+| `JUDGE_PREDICTION_WORKSPACE_MB`  | `2048`               | prediction 题 Evaluator `/workspace`（tmpfs）缺省大小（MB，有效范围 512-16384；题目可用 `runtime_config.evaluator.workspace_size_mb` 覆盖） |
+
+> `JUDGE_PREDICTION_WORKSPACE_MB` **仅 judge 消费**：noj-core 不读取该变量，因此不登记
+> `settings-registry` / `noj-core/.env.example`。
 | `JUDGE_INSTANCE_ID`              | `{hostname}-{pid}`   | 实例标识（日志/claim 前缀用）                                                                    |
 | `JUDGE_IMAGE_PREFIX`             | `noj-`               | 允许的评测镜像名前缀（启动期与调度期复验）                                                       |
 | `JUDGE_COMMAND_WHITELIST`        | `python3,deno,node,bash,sh` | 允许的命令可执行文件白名单（逗号分隔）                                                   |
@@ -151,8 +159,10 @@ cargo fmt
 
 ## 评测流程（核心，双容器）
 
-> 所有评测统一走 `dual::evaluate_dual()`（Evaluator + Solution 双容器 NDJSON
-> 编排）， 旧的单容器路径已移除。核心流程（`src/dual/mod.rs`）：
+> 所有代码 / 产物评测统一走 `dual::evaluate_dual()`（Evaluator + Solution 双容器
+> NDJSON 编排）， 旧的单容器路径已移除。**prediction 模式是唯一例外**：走
+> `prediction::evaluate_prediction()` 单容器路径（见下节），不创建 Solution
+> 容器、无 NDJSON 编排。核心流程（`src/dual/mod.rs`）：
 
 ```
 任务到达
@@ -194,6 +204,34 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
 - 状态由 `finalize_outcome` 按超时来源与 CallTimeout 归因决定（总超时 →
   SystemError；仅调用级 CallTimeout → TLE）
 - 输出从 Bollard exec 流实时收集（非 `docker logs`）
+
+### prediction 单容器流程
+
+`runner.rs` 按 `submission_mode == "prediction"` 分派到
+`src/prediction/mod.rs::evaluate_prediction()`：
+
+```
+任务到达
+  │
+  ├─ 0. clamp/validate runtime_config（solution 为 None，自动跳过其校验）
+  ├─ 1. 获取支持包（与双容器同一套下载/校验路径）→ 注入 Evaluator /workspace
+  ├─ 2. 只创建 Evaluator 容器（无 Solution；workspace_size_mb 取题目值或
+  │     JUDGE_PREDICTION_WORKSPACE_MB）
+  ├─ 3. 流式注入预测文件到 /workspace/prediction/<file_name>
+  │     （inject_file_stream_to_container 自身无截止时间，调用方用启动期 30s 预算兜底）
+  ├─ 4. 启动唯一 exec — Evaluator 跑 evaluate.py，注入 NOJ_PREDICTION_DIR /
+  │     NOJ_PREDICTION_FILE
+  ├─ 5. 流式读 stdout/stderr（append_capped 硬上限 1 MiB；标记流式检测），
+  │     等 `---RESULT---` 后取下一非空行 JSON {score, details}
+  ├─ 6. 读一次 Docker stats 回填 memory_kb
+  └─ 7. dual.destroy() 清理 Evaluator 容器
+```
+
+- **绝不创建 Solution 容器**（E2E 以标签断言）。
+- 结果解析与双容器共用 `build_judge_result`；标记缺失 / JSON 非法 / 启动超时 /
+  `time_limit_ms` 超时均归 `SystemError`。
+- 输出全文经 `append_capped` 累积（1 MiB，超出丢头部保尾部），标记检测用
+  `LineParser` 流式完成，不依赖滚动缓冲重扫（避免 O(n²) 与标记被截断误判）。
 
 ## MQ 消息格式
 

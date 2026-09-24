@@ -76,7 +76,7 @@ export type ProblemType = typeof PROBLEM_TYPES[number];
 /**
  * 允许的提交模式。
  */
-export const SUBMISSION_MODES = ["code", "artifact"] as const;
+export const SUBMISSION_MODES = ["code", "artifact", "prediction"] as const;
 export type SubmissionMode = typeof SUBMISSION_MODES[number];
 
 /**
@@ -153,7 +153,7 @@ export interface CreateProblemInput {
   type?: string;
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective?: boolean;
-  /** 提交模式：code（默认）或 artifact */
+  /** 提交模式：code（默认）/ artifact / prediction */
   submission_mode?: string;
   /** artifact 提交大小上限（MB），可空 */
   artifact_max_size_mb?: number | null;
@@ -178,7 +178,7 @@ export interface UpdateProblemInput {
   tag_ids?: string[];
   /** 客观题标记变更（由客观题改回编程题时必须同时提供 runtime_config） */
   is_objective?: boolean;
-  /** 提交模式变更：code / artifact */
+  /** 提交模式变更：code / artifact / prediction */
   submission_mode?: string;
   /** artifact 提交大小上限（MB），可空 */
   artifact_max_size_mb?: number | null;
@@ -249,7 +249,7 @@ export interface ProblemResponseWithTags {
   visibility: "public" | "private";
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective: boolean;
-  /** 提交模式：code / artifact */
+  /** 提交模式：code / artifact / prediction */
   submission_mode: SubmissionMode;
   /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
   artifact_max_size_mb: number | null;

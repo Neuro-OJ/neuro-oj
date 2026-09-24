@@ -19,6 +19,8 @@ export interface EvaluatorRuntime {
   network?: {
     enabled: boolean;
   };
+  /** prediction 模式 /workspace tmpfs 上限（MB）；缺省用 judge 的 JUDGE_PREDICTION_WORKSPACE_MB */
+  workspace_size_mb?: number;
 }
 
 /** Solution 容器运行时配置。 */
@@ -31,8 +33,8 @@ export interface SolutionRuntime {
   memory_limit_mb: number;
 }
 
-/** 双容器模式的 Runtime 配置（必填）。 */
+/** 双容器模式的 Runtime 配置。prediction 模式省略 solution（不创建 Solution 容器）。 */
 export interface RuntimeConfig {
   evaluator: EvaluatorRuntime;
-  solution: SolutionRuntime;
+  solution?: SolutionRuntime;
 }

@@ -32,6 +32,7 @@ import {
   isValidSubmissionMode,
   type LlmConfig,
   type RuntimeConfig,
+  type SubmissionMode,
 } from "./problems.ts";
 
 /** 当前 manifest 格式版本。 */
@@ -71,7 +72,7 @@ export interface ProblemBundleManifest {
   samples?: ProblemBundleSample[];
   /** 模板文件索引（纯文件名，缺省默认 "template.py"）：前端编辑器初始代码 */
   template?: string;
-  /** 提交模式：code（默认）或 artifact */
+  /** 提交模式：code（默认）/ artifact / prediction */
   submission_mode?: string;
   /** artifact 提交大小上限（MB），可空 */
   artifact_max_size_mb?: number | null;
@@ -227,7 +228,9 @@ export function validateBundleManifest(
     !isValidSubmissionMode(m.submission_mode as string)
   ) {
     throw new BadRequestError(
-      `非法提交模式：${String(m.submission_mode)}，仅允许 code / artifact`,
+      `非法提交模式：${
+        String(m.submission_mode)
+      }，仅允许 code / artifact / prediction`,
     );
   }
 
@@ -252,6 +255,11 @@ export function validateBundleManifest(
     }
     if ((m.type ?? "U") !== "P") {
       throw new BadRequestError("仅 P 型/官方题可启用 LLM");
+    }
+    // prediction 路径不注入 NOJ_LLM_*（评测只跑 Evaluator），题目级 LLM 配置
+    // 不会生效，导入期即拒绝而不是拖到提交期。
+    if (m.submission_mode === "prediction") {
+      throw new BadRequestError("预测提交题不支持 LLM 配置");
     }
     llm = m.llm as LlmConfig;
   }
@@ -282,7 +290,12 @@ export function validateBundleManifest(
     runtimeConfig = resolveManifestCommand(
       m.runtime_config as RuntimeConfig,
     );
-    validateRuntimeConfig(runtimeConfig);
+    // 模式只由显式 submission_mode 判定，不靠字段缺席推断：code/artifact 仍需
+    // solution，prediction 可省略。
+    validateRuntimeConfig(
+      runtimeConfig,
+      (m.submission_mode as SubmissionMode) ?? "code",
+    );
 
     if (llm !== undefined && !runtimeConfig.evaluator.network?.enabled) {
       throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");

@@ -8,6 +8,7 @@ mod drain;
 mod dual;
 mod judge;
 mod mq;
+mod prediction;
 mod sandbox;
 mod types;
 
@@ -150,6 +151,7 @@ fn main() -> Result<()> {
         let cpu_limit_millicores = config.cpu_limit_millicores;
         let max_evaluator_time_ms = config.max_evaluator_time_ms;
         let max_solution_call_timeout_ms = config.max_solution_call_timeout_ms;
+        let prediction_workspace_mb = config.prediction_workspace_mb;
         // F-07：全局并发闸门 + 每用户分布式 claim（同一用户跨 worker 同时最多 1 个评测）。
         // 先获取全局 Semaphore 槽位，再做 per-user 公平调度，避免不同用户任务无限制 spawn。
         let semaphore = Arc::new(Semaphore::new(max_concurrent_judges));
@@ -392,6 +394,7 @@ fn main() -> Result<()> {
                             &command_whitelist,
                             max_evaluator_time_ms,
                             max_solution_call_timeout_ms,
+                            prediction_workspace_mb,
                         )
                         .await
                         {
@@ -486,14 +489,15 @@ mod tests {
                 time_limit_ms: 1000,
                 memory_limit_mb: 256,
                 network: None,
+                workspace_size_mb: None,
             },
-            solution: SolutionRuntime {
+            solution: Some(SolutionRuntime {
                 image: "img".to_string(),
                 call_timeout_ms: 1000,
                 memory_limit_mb: 256,
-            },
+            }),
         };
         assert_eq!(config.evaluator.time_limit_ms, 1000);
-        assert_eq!(config.solution.call_timeout_ms, 1000);
+        assert_eq!(config.solution.as_ref().unwrap().call_timeout_ms, 1000);
     }
 }

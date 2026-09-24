@@ -44,6 +44,7 @@ import {
   type LlmConfig,
   type ProblemResponseWithTags,
   type RuntimeConfig,
+  type SubmissionMode,
   type UpdateProblemInput,
 } from "./../../types/problems.ts";
 import { validateRuntimeConfig } from "./problems-types.ts";
@@ -98,7 +99,7 @@ export async function createProblem(
   const submissionMode = input.submission_mode ?? "code";
   if (!isValidSubmissionMode(submissionMode)) {
     throw new BadRequestError(
-      `非法提交模式：${input.submission_mode}，仅允许 code / artifact`,
+      `非法提交模式：${input.submission_mode}，仅允许 code / artifact / prediction`,
     );
   }
 
@@ -130,16 +131,18 @@ export async function createProblem(
   } else if (
     input.runtime_config !== undefined && input.runtime_config !== null
   ) {
-    validateRuntimeConfig(input.runtime_config);
+    validateRuntimeConfig(input.runtime_config, submissionMode);
     try {
       await validateJudgeImageWithKind(
         input.runtime_config.evaluator.image,
         "evaluator",
       );
-      await validateJudgeImageWithKind(
-        input.runtime_config.solution.image,
-        "solution",
-      );
+      if (input.runtime_config.solution) {
+        await validateJudgeImageWithKind(
+          input.runtime_config.solution.image,
+          "solution",
+        );
+      }
     } catch (err) {
       logger.error("createProblem: runtime_config 镜像校验失败", { err });
       throw err;
@@ -170,6 +173,12 @@ export async function createProblem(
   if (input.llm !== undefined && input.llm !== null) {
     if (isObjective) {
       throw new BadRequestError("客观题套卷不支持 LLM 配置");
+    }
+    // prediction 路径不注入 NOJ_LLM_* 环境变量（评测只跑 Evaluator、无 Solution
+    // 调用语义），题目级 LLM 配置不会生效。此处 fail-fast，避免出题人配好后在
+    // 提交期才拿到「环境变量未配置」的评测错误。
+    if (submissionMode === "prediction") {
+      throw new BadRequestError("预测提交题不支持 LLM 配置");
     }
     if (!isValidLlmConfig(input.llm)) {
       throw new BadRequestError("llm 配置格式非法");
@@ -370,7 +379,7 @@ export async function updateProblem(
     !isValidSubmissionMode(input.submission_mode)
   ) {
     throw new BadRequestError(
-      `非法提交模式：${input.submission_mode}，仅允许 code / artifact`,
+      `非法提交模式：${input.submission_mode}，仅允许 code / artifact / prediction`,
     );
   }
 
@@ -388,19 +397,44 @@ export async function updateProblem(
   //   undefined → 不变；null → 拒绝（编程题 runtime_config 是必填字段）；object → 校验并写入
   //   客观题套卷（is_objective）：忽略 runtime_config（无评测容器）
   const isObjective = input.is_objective ?? problem.is_objective;
+  // 校验/落库使用的提交模式：显式变更优先，否则沿用题目现值（PATCH 部分更新
+  // 不重述 submission_mode 时，prediction 题缺 solution 的 runtime_config 不应
+  // 被误判为 code 模式而拒绝）。
+  const effectiveSubmissionMode = (input.submission_mode ??
+    problem.submission_mode ?? "code") as SubmissionMode;
+  // 更新路径的模式切换完整性：prediction → code/artifact 时若客户端省略
+  // runtime_config，落库的仍是旧（prediction 形态）配置，可能缺 solution。
+  // 此处按「生效 runtime_config」（既有落库值）补校验，避免留下缺 solution 的
+  // code/artifact 题，直到提交期才 500。
+  if (
+    !isObjective &&
+    input.runtime_config === undefined &&
+    input.submission_mode !== undefined &&
+    effectiveSubmissionMode !== "prediction"
+  ) {
+    const persistedRuntimeConfig = problem.runtime_config as
+      | RuntimeConfig
+      | null;
+    if (!persistedRuntimeConfig) {
+      throw new BadRequestError("runtime_config 是必填字段");
+    }
+    validateRuntimeConfig(persistedRuntimeConfig, effectiveSubmissionMode);
+  }
   if (!isObjective && input.runtime_config !== undefined) {
     if (input.runtime_config === null) {
       throw new BadRequestError("runtime_config 是必填字段，不可清空");
     }
-    validateRuntimeConfig(input.runtime_config);
+    validateRuntimeConfig(input.runtime_config, effectiveSubmissionMode);
     await validateJudgeImageWithKind(
       input.runtime_config.evaluator.image,
       "evaluator",
     );
-    await validateJudgeImageWithKind(
-      input.runtime_config.solution.image,
-      "solution",
-    );
+    if (input.runtime_config.solution) {
+      await validateJudgeImageWithKind(
+        input.runtime_config.solution.image,
+        "solution",
+      );
+    }
 
     // evaluator 联网权限与题目编辑权限一致：U 型 owner/admin、P 型 admin
     // （上方权限检查已保证）。
@@ -420,6 +454,12 @@ export async function updateProblem(
     if (input.llm === null) {
       llmConfig = null;
     } else {
+      // prediction 路径不注入 NOJ_LLM_*（与创建路径同一理由：评测只跑 Evaluator）。
+      // 用 effectiveSubmissionMode（已在上方按「显式变更优先、否则沿用现值」解析）
+      // 判定，避免 prediction → code 切换时被误拒。
+      if (effectiveSubmissionMode === "prediction") {
+        throw new BadRequestError("预测提交题不支持 LLM 配置");
+      }
       if (!isValidLlmConfig(input.llm)) {
         throw new BadRequestError("llm 配置格式非法");
       }
@@ -448,6 +488,13 @@ export async function updateProblem(
   if (nextLlm) {
     if (isObjective) {
       llmConfig = null;
+    } else if (effectiveSubmissionMode === "prediction") {
+      // 反向切换：已配 LLM 的题目切为 prediction 会让该配置失效（judge 不注入
+      // NOJ_LLM_*）。显式拒绝而不是静默清空，避免出题人的配置被无声丢弃；
+      // 同一请求带 `llm: null` 即可完成切换。
+      throw new BadRequestError(
+        "启用 LLM 的题目不能切换为预测提交，请先移除 LLM 配置",
+      );
     } else if (
       input.runtime_config !== undefined &&
       input.runtime_config !== null &&

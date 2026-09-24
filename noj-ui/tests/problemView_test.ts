@@ -2,9 +2,14 @@
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
 import {
+  ARTIFACT_FILE_ACCEPT,
   formatMemoryLimit,
   formatTimeLimit,
+  isPredictionView,
+  PREDICTION_FILE_ACCEPT,
+  predictionHint,
   problemTypeLabel,
+  submissionModeLabel,
   toContestProblemView,
   toProblemView,
 } from '../utils/problemView.ts';
@@ -83,6 +88,57 @@ Deno.test('problemView: 客观题判定只认显式 true（后端字段可能缺
   assertEquals(toContestProblemView({ ...baseContest(), is_objective: undefined }).is_objective, false);
 });
 
+Deno.test('problemView: prediction 模式映射并在竞赛视图保留', () => {
+  const standalone = toProblemView({
+    id: 'uuid-p',
+    display_id: 'P9',
+    title: '预测题',
+    description: '题面',
+    difficulty: 'hard',
+    type: 'U',
+    owner_id: 'owner-p',
+    is_objective: false,
+    submission_mode: 'prediction',
+    artifact_max_size_mb: 128,
+    runtime_config: { evaluator: { time_limit_ms: 2000, memory_limit_mb: 1024 } },
+  });
+  assertEquals(standalone.submission_mode, 'prediction');
+  assertEquals(standalone.artifact_max_size_mb, 128);
+  assertEquals(isPredictionView(standalone), true);
+
+  const contest = toContestProblemView({
+    problem_id: 'uuid-pc',
+    display_id: 'C',
+    title: '竞赛预测题',
+    description: '',
+    difficulty: 'medium',
+    submission_mode: 'prediction',
+    artifact_max_size_mb: 64,
+  });
+  assertEquals(contest.submission_mode, 'prediction');
+  assertEquals(isPredictionView(contest), true);
+});
+
+Deno.test('problemView: isPrediction 只认显式 prediction，缺省与 artifact 均为 false', () => {
+  assertEquals(isPredictionView(toProblemView({ ...baseProblem(), submission_mode: undefined })), false);
+  assertEquals(isPredictionView(toProblemView({ ...baseProblem(), submission_mode: 'artifact' })), false);
+  assertEquals(isPredictionView(toProblemView({ ...baseProblem(), submission_mode: 'prediction' })), true);
+});
+
+Deno.test('problemView: 提交模式文案与预测 accept 白名单', () => {
+  assertEquals(submissionModeLabel('code'), '代码提交');
+  assertEquals(submissionModeLabel('artifact'), '产物提交');
+  assertEquals(submissionModeLabel('prediction'), '预测提交');
+  assertEquals(submissionModeLabel(undefined), '代码提交');
+  // prediction 是单文件而非 zip：accept 不得包含 zip，且覆盖后端白名单扩展名
+  assertEquals(PREDICTION_FILE_ACCEPT.includes('.zip'), false);
+  for (const ext of ['.csv', '.tsv', '.jsonl', '.json', '.txt', '.npy', '.npz', '.parquet']) {
+    assertEquals(PREDICTION_FILE_ACCEPT.includes(ext), true);
+  }
+  assertEquals(ARTIFACT_FILE_ACCEPT.includes('.zip'), true);
+  assertEquals(predictionHint().includes('本地 GPU'), true);
+});
+
 Deno.test('problemView: 类型文案与空值兜底', () => {
   assertEquals(problemTypeLabel('U'), '用户题库');
   assertEquals(problemTypeLabel('T'), '主题库');
@@ -103,5 +159,18 @@ function baseContest() {
     title: '题',
     description: '',
     difficulty: 'easy',
+  };
+}
+
+function baseProblem() {
+  return {
+    id: 'uuid-5',
+    display_id: 'C',
+    title: '题',
+    description: '',
+    difficulty: 'easy',
+    type: 'U',
+    owner_id: 'owner-5',
+    is_objective: false,
   };
 }

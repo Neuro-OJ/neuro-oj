@@ -14,12 +14,13 @@ fn sdk_runtime(evaluator_cmd: &str, time_limit_ms: u64) -> RuntimeConfig {
             time_limit_ms,
             memory_limit_mb: 256,
             network: None,
+            workspace_size_mb: None,
         },
-        solution: SolutionRuntime {
+        solution: Some(SolutionRuntime {
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 5000,
             memory_limit_mb: 128,
-        },
+        }),
     }
 }
 
@@ -131,12 +132,13 @@ async fn dual_container_failure_returns_err() {
             time_limit_ms: 5000,
             memory_limit_mb: 256,
             network: None,
+            workspace_size_mb: None,
         },
-        solution: SolutionRuntime {
+        solution: Some(SolutionRuntime {
             image: "noj-missing-image:latest".to_string(),
             call_timeout_ms: 1000,
             memory_limit_mb: 128,
-        },
+        }),
     };
 
     let result = noj_judge::dual::evaluate_dual_with_cpu_limit(

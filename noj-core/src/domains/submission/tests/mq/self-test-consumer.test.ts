@@ -14,6 +14,7 @@ import {
   recoverPendingSelfTests,
   recoverPendingSubmissions,
 } from "../../mq/sweeper.ts";
+import { JUDGE_QUEUES } from "../../mq/producer.ts";
 import {
   getRedis,
   resetRedisForTest,
@@ -264,6 +265,61 @@ Deno.test({
         .limit(1);
       assertEquals(row.status, "judging");
     } finally {
+      await fake.stop();
+      resetRedisForTest();
+      if (prevUrl !== null) {
+        Deno.env.set("REDIS_URL", prevUrl);
+      } else {
+        Deno.env.delete("REDIS_URL");
+      }
+    }
+  },
+});
+
+Deno.test({
+  name: "mq/consumer: pending 恢复任务固定 submission_mode=code",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    // 回归：pending 恢复查询条件为 artifact_storage_url IS NULL，只可能承载
+    // 代码提交。即便题目当前是 prediction，也必须以 code 入队，否则 judge
+    // 会走 prediction 分支却拿不到预测文件而静默失败。
+    const db = getDb();
+    await db.update(problems).set({ submission_mode: "prediction" })
+      .where(eq(problems.id, PROBLEM_ID));
+    // 前置用例可能已把该行恢复为 judging，这里重置回 pending 复现恢复条件。
+    await db.update(submissions).set({ status: "pending", created_at: oldNow })
+      .where(eq(submissions.id, RECOVERABLE_SUBMISSION_ID));
+
+    const fake = startFakeRedis();
+    const prevUrl = Deno.env.get("REDIS_URL") ?? null;
+    try {
+      resetRedisForTest();
+      Deno.env.set("REDIS_URL", fake.url);
+      const redis = getRedis();
+      await redis.connect();
+
+      await recoverPendingSubmissions(Date.now());
+
+      const messages = fake.getMessages(JUDGE_QUEUES.medium);
+      assertEquals(messages.length >= 1, true, "应至少有恢复任务入队");
+      const task = JSON.parse(messages[0]) as Record<string, unknown>;
+      assertEquals(
+        task.submission_mode,
+        "code",
+        "pending 恢复只承载代码提交，必须固定 code，不随题目当前模式漂移",
+      );
+      // 恢复后题目模式保持 prediction（本用例只读入队任务，不改题目语义）
+      const [problem] = await db
+        .select({ mode: problems.submission_mode })
+        .from(problems)
+        .where(eq(problems.id, PROBLEM_ID))
+        .limit(1);
+      assertEquals(problem.mode, "prediction");
+    } finally {
+      await db.update(problems).set({ submission_mode: "code" })
+        .where(eq(problems.id, PROBLEM_ID));
       await fake.stop();
       resetRedisForTest();
       if (prevUrl !== null) {

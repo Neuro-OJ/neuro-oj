@@ -610,6 +610,13 @@
       "when": 1789987890403,
       "tag": "0086_brainy_venus",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1790246809323,
+      "tag": "0087_green_hercules",
+      "breakpoints": true
     }
   ]
 }

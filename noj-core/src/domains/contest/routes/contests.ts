@@ -39,6 +39,7 @@ import {
 } from "../services/contests.ts";
 import {
   createArtifactSubmission,
+  createPredictionSubmission,
   createSubmission,
   listSubmissions,
 } from "../../submission/index.ts";
@@ -356,18 +357,29 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
   if (contentType.startsWith("multipart/form-data")) {
     const parsed = await parseContestArtifactMultipart(c);
     const contestProblems = await getContestProblems(contestId, userId);
-    if (
-      !contestProblems.some((item) => item.problem_id === parsed.problem_id)
-    ) {
+    const contestProblem = contestProblems.find(
+      (item) => item.problem_id === parsed.problem_id,
+    );
+    if (!contestProblem) {
       throw new BadRequestError("题目不属于该竞赛");
     }
-    const data = await createArtifactSubmission(
-      userId,
-      { ...parsed, contest_id: contestId },
-      contestId,
-      undefined,
-      isAdmin,
-    );
+    // 复用成员校验时已取得的 submission_mode，避免为分派再查一次题目。
+    const mode = contestProblem.submission_mode;
+    const data = mode === "prediction"
+      ? await createPredictionSubmission(
+        userId,
+        { ...parsed, contest_id: contestId },
+        contestId,
+        undefined,
+        isAdmin,
+      )
+      : await createArtifactSubmission(
+        userId,
+        { ...parsed, contest_id: contestId },
+        contestId,
+        undefined,
+        isAdmin,
+      );
     return c.json({ data }, 201);
   }
 

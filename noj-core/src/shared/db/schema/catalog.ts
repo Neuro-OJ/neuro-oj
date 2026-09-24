@@ -29,7 +29,8 @@ export const problems = pgTable(
     support_package_storage_url: text("support_package_storage_url"),
     /**
      * 双容器 Runtime 配置（U/P 型必填；客观题套卷 is_objective=true 时为 NULL）。
-     * 包含 evaluator 和 solution 两个容器的运行时配置。
+     * 包含 evaluator 和 solution 两个容器的运行时配置；prediction 模式无 Solution
+     * 容器，`solution` 可省略。
      */
     runtime_config: jsonb("runtime_config"),
     /** 题号（同一 type 内独立自增） */
@@ -41,7 +42,7 @@ export const problems = pgTable(
     /** 客观题标记：true 表示该题目是客观题套卷（无评测容器，服务端即时判定） */
     is_objective: boolean("is_objective").notNull().default(false),
     visibility: text("visibility").notNull().default("public"),
-    /** 提交模式：code=单文件代码提交（默认），artifact=zip 产物提交 */
+    /** 提交模式：code=单文件代码提交（默认），artifact=zip 产物提交，prediction=预测文件提交 */
     submission_mode: text("submission_mode").notNull().default("code"),
     /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
     artifact_max_size_mb: integer("artifact_max_size_mb"),
@@ -69,7 +70,7 @@ export const problems = pgTable(
     ),
     submissionModeCheck: check(
       "problems_submission_mode_check",
-      sql`${table.submission_mode} IN ('code', 'artifact')`,
+      sql`${table.submission_mode} IN ('code', 'artifact', 'prediction')`,
     ),
     visibilityCheck: check(
       "problems_visibility_check",

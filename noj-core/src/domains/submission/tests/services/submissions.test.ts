@@ -286,6 +286,58 @@ Deno.test({
 });
 
 Deno.test({
+  name: "submissions service: prediction 题目拒绝 JSON 代码提交",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const predictionProblemId = `tst-prediction-${Date.now()}`;
+    const predictionNumber = 70000 + (Date.now() & 0x7fff);
+    const now = new Date().toISOString();
+    await db.insert(problems).values({
+      id: predictionProblemId,
+      title: `预测题 ${Date.now()}`,
+      description: "预测题测试",
+      difficulty: "easy",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
+      number: predictionNumber,
+      owner_id: TEST_USER_ID,
+      type: "P",
+      submission_mode: "prediction",
+      created_at: now,
+      updated_at: now,
+    });
+    try {
+      await assertRejects(
+        () =>
+          createSubmission(TEST_USER_ID, {
+            problem_id: predictionProblemId,
+            language: "python3",
+            code: "print(1)",
+          }),
+        BadRequestError,
+        "预测",
+      );
+    } finally {
+      await db.delete(problems).where(eq(problems.id, predictionProblemId));
+    }
+  },
+});
+
+Deno.test({
   name: "submissions service: 不存在的题目抛出 NotFoundError",
   ignore: skip,
   sanitizeResources: false,

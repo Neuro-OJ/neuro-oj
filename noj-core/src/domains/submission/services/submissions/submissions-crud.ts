@@ -370,9 +370,16 @@ export async function createSubmission(
     throw new ForbiddenError("仅可在竞赛进行期间提交");
   }
 
-  // artifact 题目必须走 multipart zip 上传，拒绝 JSON 代码提交
-  if (problem.submission_mode === "artifact") {
-    throw new BadRequestError("该题目要求上传 zip 产物");
+  // artifact / prediction 题目必须走 multipart 上传，拒绝 JSON 代码提交
+  if (
+    problem.submission_mode === "artifact" ||
+    problem.submission_mode === "prediction"
+  ) {
+    throw new BadRequestError(
+      problem.submission_mode === "artifact"
+        ? "该题目要求上传 zip 产物"
+        : "该题目要求上传预测结果文件",
+    );
   }
 
   // 验证语言（与 LANGUAGE_EXT_MAP 键集保持一致）
@@ -427,6 +434,13 @@ export async function createSubmission(
     runtimeConfig.evaluator.image,
     "evaluator",
   );
+  if (!runtimeConfig.solution) {
+    throw new AppError(
+      "题目缺少 solution 运行时配置，无法评测",
+      500,
+      "RUNTIME_CONFIG_SOLUTION_MISSING",
+    );
+  }
   await validateJudgeImageWithKind(
     runtimeConfig.solution.image,
     "solution",
@@ -455,6 +469,7 @@ export async function createSubmission(
     problem_id: input.problem_id,
     user_id: userId,
     priority,
+    submission_mode: "code",
     runtime_config: runtimeConfig,
     download_url,
     language: input.language,

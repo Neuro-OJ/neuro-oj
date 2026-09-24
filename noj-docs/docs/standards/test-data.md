@@ -51,6 +51,17 @@ LMCC 官方标准区分可见与不可见测试数据。Neuro OJ 采用更严格
 - **正式评分**只使用不可见测试数据。
 - **可见数据**仅用于题面示例与调试，不计入正式评分。
 
+## 公开数据 / 隐藏标签分离（预测提交题）
+
+**预测提交（prediction）题**（选手在本地 GPU 训练 / 推理、提交单个预测文件）强制要求公开数据与隐藏标签**物理分离**：
+
+- **公开数据**：供选手训练 / 推理使用，由出题人**在题面外链**（HTTPS 地址）。平台**不托管**公开数据集，也不打包进支持包；平台无法校验公开数据与隐藏标签的一致性，这是出题人责任。
+- **隐藏标签**：随**支持包**只进入 Evaluator 容器，**永不出服务端、永不下发到选手机器**。
+- 隐藏标签必须与公开数据同源同版本、ID 可对齐；换数据 / 换标签前请重新核对对齐关系，否则分数会失真。
+- `evaluate.py` 只做「预测文件 ↔ 隐藏标签」的确定性计算，不得把标签内容回写进任何选手可见字段。
+
+> 完整出题约定见[出预测提交题](../problemsetters/prediction-problems.md)。
+
 ## 样例自测与调试输出
 
 - 题面中的样例应同时作为 evaluator 的**可见自测用例**，**参与评测但不计分**。
@@ -113,3 +124,14 @@ LMCC 官方标准区分可见与不可见测试数据。Neuro OJ 采用更严格
 - 提交结果投影（`applySubmissionProjection`）会按 `hidden` 标记在竞赛场景剥离隐藏用例；如果 `cases` 中任意用例缺少 `hidden`，视为旧脚本，fail-safe 整份用例详情不返回。
 - 历史格式 `visible.cases` / `hidden.cases` 以及旧字段 `id` / `expected` / `actual` 仍会被提交结果页兼容，但新评测器应使用上述标准字段，并确保每个用例都带 `hidden`。
 - 更完整的协议说明见 [Evaluator SDK](../mechanisms/evaluator-sdk.md)。
+
+## 预测提交题的结果要求
+
+预测提交题的评测**全部是隐藏用例**：选手只提交预测文件，没有可见输入 / 期望 / 实际的对照意义。因此：
+
+- `details.cases[]` 中**每个** case 必须带布尔 `hidden: true`，并且隐藏用例**只能**包含 `case_id`、`status`、`hidden`，以及可选的 `time_ms` / `memory_kb`。
+- **MUST NOT** 写入 `input`、`expected_output`、`actual_output`——预测题的这些字段会直接泄漏隐藏标签。
+- **MUST NOT** 把隐藏标签 / 标准答案 / 评分脚本内容写进 `output`、`details.message` 或任何诊断文本。
+- `case_id` 必须是稳定的预测行 ID（推荐与 ID 列 / 行号一致），便于选手定位错位或错误预测。
+
+推荐直接使用 `noj_evaluator_sdk.prediction.emit_case_scores()`，它会自动为每个 case 写入 `hidden: true` 且不携带隐藏标签内容。

@@ -364,7 +364,7 @@ cd dist
 |------|------|
 | `MonacoEditor.vue` | 基于 npm `monaco-editor` 包（postinstall 脚本自托管 `public/monaco`，非 CDN），`diff` 模式可选 |
 | `MarkdownRenderer.vue` | markdown-it + highlight.js + KaTeX 渲染，**DOMPurify 清洗 HTML** 防 XSS |
-| `CodingProblemEditor.vue` | 题目编辑器（`editor/` 目录），支持 U/P 类型切换、`submission_mode`（code/artifact）与 artifact 大小上限，必填字段校验 |
+| `CodingProblemEditor.vue` | 题目编辑器（`editor/` 目录），支持 U/P 类型切换、`submission_mode`（code/artifact/prediction）与 artifact 大小上限，必填字段校验；prediction 模式隐藏 Solution 卡片与 LLM 配置（后端 400 拒绝） |
 | `ProblemCard.vue` / `SubmissionCard.vue` | 题目卡片 / 提交卡片（状态标签着色，点击跳转详情） |
 | `AsyncContent.vue` | 异步内容容器，统一处理 loading / empty / error 状态 |
 | `TableSkeleton.vue` | 表格骨架屏加载态 |

@@ -3,6 +3,7 @@ import type { Contest, ContestProblem } from '~/composables/useContests'
 import type { WorkspaceSubmission } from '~/components/editor/EditorWorkspace.vue'
 import { getProblemTemplateUrl } from '~/utils/problemTemplate'
 import { publicUrl } from '~/utils/publicIdentifiers'
+import type { SubmissionMode } from '~/utils/problemView'
 
 /**
  * 独立做题页（标准题库与竞赛共用）。
@@ -35,7 +36,7 @@ type StandardProblem = {
   description: string
   difficulty: string
   type: 'U' | 'P'
-  submission_mode?: 'code' | 'artifact'
+  submission_mode?: SubmissionMode
   tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
 }
 
@@ -79,6 +80,10 @@ const workspaceProblem = computed(() => {
 })
 
 const isArtifact = computed(() => workspaceProblem.value?.submission_mode === 'artifact')
+/** prediction 单文件题：同样不使用代码编辑器，提示返回详情页上传。 */
+const isPrediction = computed(() => workspaceProblem.value?.submission_mode === 'prediction')
+/** artifact 与 prediction 均不走代码编辑器。 */
+const isFileUploadMode = computed(() => isArtifact.value || isPrediction.value)
 
 // 竞赛访问控制：仅进行中且参赛者/管理员可进入编辑器
 const canUseEditor = computed(() => {
@@ -179,16 +184,18 @@ const templateUrl = getProblemTemplateUrl
     </div>
   </div>
 
-  <!-- artifact 题：不使用代码编辑器，引导返回详情页上传 zip -->
+  <!-- artifact / prediction 题：不使用代码编辑器，引导返回详情页上传文件 -->
   <div
-    v-else-if="isArtifact"
+    v-else-if="isFileUploadMode"
     class="h-screen flex items-center justify-center bg-bg-page"
   >
     <div class="flex flex-col items-center gap-3 rounded-xl border border-border bg-white px-8 py-10 text-center">
       <span class="flex size-11 items-center justify-center rounded-full bg-signal/10 text-primary text-xl font-bold">
-        <UIcon name="i-lucide-package" class="size-5" />
+        <UIcon :name="isPrediction ? 'i-lucide-file-up' : 'i-lucide-package'" class="size-5" />
       </span>
-      <p class="text-sm font-medium text-text">该题为产物提交题，请返回题目详情上传 zip 文件。</p>
+      <p class="text-sm font-medium text-text">
+        {{ isPrediction ? '该题为预测提交题，请返回题目详情上传预测结果文件（单文件）。' : '该题为产物提交题，请返回题目详情上传 zip 文件。' }}
+      </p>
       <UButton color="primary" variant="outline" size="sm" :to="backUrl">
         返回题目详情
       </UButton>

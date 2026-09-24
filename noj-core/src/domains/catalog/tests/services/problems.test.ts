@@ -482,3 +482,383 @@ Deno.test({
     );
   },
 });
+
+// Task 4：schema CHECK 三值。
+//
+// 注意：本地 PGlite 模板由 `scripts/prepare-pglite-template.ts` 从 schema-ddl.ts
+// 生成，而 `deno task test:domain catalog` 在无 DATABASE_URL 时会先重建模板，
+// 因此以下用例在 PGlite 下直接覆盖 DDL 的三值 CHECK。
+Deno.test({
+  name: "problems service: 创建 prediction 模式题目成功（CHECK 允许第三值）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    // prediction 模式无 Solution 容器：runtime_config 省略 solution 也必须被接受。
+    const created = await createProblem({
+      title: `prediction 题 ${Date.now()}`,
+      description: "预测提交题",
+      difficulty: "medium",
+      submission_mode: "prediction",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+      },
+    });
+    assertEquals(created.submission_mode, "prediction");
+    assertEquals(created.runtime_config!.solution, undefined);
+  },
+});
+
+Deno.test({
+  name: "problems service: code 模式缺 solution 创建被拒（创建期强制）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await assertRejects(
+      () =>
+        createProblem({
+          title: `缺 solution 的 code 题 ${Date.now()}`,
+          description: "应被拒绝",
+          difficulty: "easy",
+          runtime_config: {
+            evaluator: {
+              image: "noj-evaluator-python",
+              command: "python3 /workspace/evaluate.py",
+              time_limit_ms: 5000,
+              memory_limit_mb: 512,
+            },
+          },
+        }),
+      BadRequestError,
+      "runtime_config.solution 必须是对象",
+    );
+  },
+});
+
+// 更新路径的模式切换完整性：prediction → code/artifact 时若省略 runtime_config，
+// 必须按「生效 runtime_config」（即既有落库值）补校验 solution，避免留下缺
+// solution 的 code/artifact 题（提交期才 500）。
+Deno.test({
+  name: "problems service: prediction 题改为 code 且省略 runtime_config 被拒",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const created = await createProblem({
+      title: `prediction 转 code 缺配置 ${Date.now()}`,
+      description: "切换模式但不提供 runtime_config",
+      difficulty: "easy",
+      submission_mode: "prediction",
+      // prediction 合法形态：省略 solution
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+      },
+    });
+    assertEquals(created.submission_mode, "prediction");
+
+    await assertRejects(
+      () => updateProblem(created.id, { submission_mode: "code" }, "0"),
+      BadRequestError,
+      "runtime_config.solution 必须是对象",
+    );
+
+    // 校验失败后不得落库：模式仍为 prediction
+    const [row] = await getDb()
+      .select({ submission_mode: problems.submission_mode })
+      .from(problems)
+      .where(eq(problems.id, created.id))
+      .limit(1);
+    assertEquals(row.submission_mode, "prediction");
+  },
+});
+
+Deno.test({
+  name:
+    "problems service: prediction 题改为 code 且提供缺 solution 的 runtime_config 被拒",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const created = await createProblem({
+      title: `prediction 转 code 显式缺 solution ${Date.now()}`,
+      description: "切换模式并显式给出不完整的 runtime_config",
+      difficulty: "easy",
+      submission_mode: "prediction",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+      },
+    });
+
+    await assertRejects(
+      () =>
+        updateProblem(
+          created.id,
+          {
+            submission_mode: "code",
+            runtime_config: {
+              evaluator: {
+                image: "noj-evaluator-python",
+                command: "python3 /workspace/evaluate.py",
+                time_limit_ms: 5000,
+                memory_limit_mb: 512,
+              },
+            },
+          },
+          "0",
+        ),
+      BadRequestError,
+      "runtime_config.solution 必须是对象",
+    );
+  },
+});
+
+// prediction → artifact 同样受约束（artifact 与 code 一致需要 Solution 容器）。
+Deno.test({
+  name:
+    "problems service: prediction 题改为 artifact 且省略 runtime_config 被拒",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const created = await createProblem({
+      title: `prediction 转 artifact 缺配置 ${Date.now()}`,
+      description: "切换模式但不提供 runtime_config",
+      difficulty: "easy",
+      submission_mode: "prediction",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+      },
+    });
+
+    await assertRejects(
+      () => updateProblem(created.id, { submission_mode: "artifact" }, "0"),
+      BadRequestError,
+      "runtime_config.solution 必须是对象",
+    );
+  },
+});
+
+Deno.test({
+  name: "problems service: 非法 submission_mode 被拒（CHECK 三值以外）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await assertRejects(
+      () =>
+        createProblem({
+          title: `非法提交模式题 ${Date.now()}`,
+          description: "应被拒绝",
+          difficulty: "easy",
+          submission_mode: "bogus",
+          runtime_config: VALID_RUNTIME_CONFIG,
+        }),
+      BadRequestError,
+    );
+  },
+});
+
+// 直连 DB 写入非法值：绕过服务层枚举校验，验证 DB CHECK 本身。
+Deno.test({
+  name: "problems service: DB CHECK 拒绝非法 submission_mode（bogus）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const now = new Date().toISOString();
+    await assertRejects(
+      () =>
+        db.insert(problems).values({
+          id: crypto.randomUUID(),
+          title: "bogus 模式直插",
+          description: "应被 CHECK 拒绝",
+          number: 999001,
+          submission_mode: "bogus",
+          created_at: now,
+          updated_at: now,
+        }),
+    );
+  },
+});
+
+// prediction 题禁止 LLM 配置：judge 的 prediction 路径不注入 NOJ_LLM_*，
+// 题目级 llm_config 不会生效。创建/更新期 fail-fast，避免提交期才暴露。
+Deno.test({
+  name: "problems service: prediction 题携带 llm 创建被拒",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await assertRejects(
+      () =>
+        createProblem(
+          {
+            title: `prediction 配 LLM ${Date.now()}`,
+            description: "应被拒绝",
+            difficulty: "easy",
+            type: "P",
+            submission_mode: "prediction",
+            runtime_config: {
+              evaluator: {
+                image: "noj-evaluator-python",
+                command: "python3 /workspace/evaluate.py",
+                time_limit_ms: 5000,
+                memory_limit_mb: 512,
+                network: { enabled: true },
+              },
+            },
+            llm: { max_calls: 10 },
+          },
+          "0",
+          "admin",
+        ),
+      BadRequestError,
+      "预测提交题不支持 LLM 配置",
+    );
+  },
+});
+
+Deno.test({
+  name: "problems service: 已配 LLM 的题目切为 prediction 被拒（需先移除 LLM）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const id = crypto.randomUUID();
+    // 直插一道已落库的「P 型 + 已配 LLM + 联网」题，绕过创建期的 provider 校验
+    // （本用例只关心更新路径的模式切换守卫）。
+    await db.insert(problems).values({
+      id,
+      title: `已有 LLM 的题 ${Date.now()}`,
+      description: "更新为 prediction 应被拒绝",
+      difficulty: "easy",
+      type: "P",
+      number: 999500,
+      owner_id: "0",
+      runtime_config: NETWORKED_RUNTIME_CONFIG,
+      llm_config: { max_calls: 10 },
+      submission_mode: "code",
+      created_at: now,
+      updated_at: now,
+    });
+
+    await assertRejects(
+      () =>
+        updateProblem(
+          id,
+          {
+            submission_mode: "prediction",
+            runtime_config: {
+              evaluator: {
+                image: "noj-evaluator-python",
+                command: "python3 /workspace/evaluate.py",
+                time_limit_ms: 5000,
+                memory_limit_mb: 512,
+                network: { enabled: true },
+              },
+            },
+          },
+          "0",
+          "admin",
+        ),
+      BadRequestError,
+      "启用 LLM 的题目不能切换为预测提交",
+    );
+
+    // 同时显式移除 LLM 即可完成切换
+    const updated = await updateProblem(
+      id,
+      {
+        submission_mode: "prediction",
+        llm: null,
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+            network: { enabled: true },
+          },
+        },
+      },
+      "0",
+      "admin",
+    );
+    assertEquals(updated.submission_mode, "prediction");
+  },
+});
+
+Deno.test({
+  name: "problems service: prediction 题更新时添加 llm 被拒",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const created = await createProblem(
+      {
+        title: `prediction 更新加 LLM ${Date.now()}`,
+        description: "更新期应被拒绝",
+        difficulty: "easy",
+        type: "P",
+        submission_mode: "prediction",
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+            network: { enabled: true },
+          },
+        },
+      },
+      "0",
+      "admin",
+    );
+    assertEquals(created.submission_mode, "prediction");
+
+    await assertRejects(
+      () =>
+        updateProblem(
+          created.id,
+          { llm: { max_calls: 10 } },
+          "0",
+          "admin",
+        ),
+      BadRequestError,
+      "预测提交题不支持 LLM 配置",
+    );
+  },
+});

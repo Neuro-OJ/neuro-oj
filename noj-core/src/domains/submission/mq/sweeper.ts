@@ -283,6 +283,10 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
       problem_id: row.problem_id,
       user_id: row.user_id ?? "",
       priority,
+      // pending 恢复只承载代码提交（查询条件 artifact_storage_url IS NULL），
+      // 自测与正式提交两条分支均恒为代码；固定 code，避免题目切到 prediction 后
+      // 把无预测文件的旧代码提交误路由到 prediction 分支而静默失败。
+      submission_mode: "code",
       runtime_config: runtimeConfig,
       download_url,
       language: row.language,

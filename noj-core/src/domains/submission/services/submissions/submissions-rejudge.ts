@@ -76,7 +76,7 @@ export async function rejudgeSubmission(id: string): Promise<void> {
   }
 
   if (submission.artifact_storage_url) {
-    throw new BadRequestError("artifact 提交不支持重测");
+    throw new BadRequestError("产物/预测提交不支持重测");
   }
 
   if (submission.status !== "finished" && submission.status !== "error") {
@@ -151,6 +151,10 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     problem_id: submission.problem_id,
     user_id: submission.user_id,
     priority: "low",
+    // 重测路径只承载代码提交（上方已拒绝 artifact_storage_url 非空的产物/预测提交），
+    // 因此固定为 code；若改从 problem.submission_mode 派生，题目被作者切换为
+    // prediction 后会把无预测文件的旧代码提交误路由到 prediction 分支而静默失败。
+    submission_mode: "code",
     runtime_config: runtimeConfig as NonNullable<typeof runtimeConfig>,
     download_url,
     language: submission.language,
@@ -272,7 +276,7 @@ export async function rejudgeProblemSubmissions(
 
     if (rows.some((r) => r.artifact_storage_url)) {
       return {
-        error: "该题目包含 artifact 提交，artifact 提交不支持重测",
+        error: "该题目包含产物/预测提交，产物/预测提交不支持重测",
       };
     }
 
@@ -351,6 +355,9 @@ export async function rejudgeProblemSubmissions(
         problem_id: problemId,
         user_id: sub.user_id,
         priority: "low",
+        // 批量重测同单条重测：候选行均满足 artifact_storage_url IS NULL 的代码提交，
+        // 固定 code，避免题目切到 prediction 后旧代码提交被误路由。
+        submission_mode: "code",
         runtime_config: runtimeConfig as NonNullable<typeof runtimeConfig>,
         download_url,
         language: sub.language,

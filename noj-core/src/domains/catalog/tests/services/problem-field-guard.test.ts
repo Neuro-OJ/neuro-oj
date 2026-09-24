@@ -585,3 +585,86 @@ Deno.test({
     }
   },
 });
+
+// ── prediction workspace 上限 ─────────────────────
+// evaluator.workspace_size_mb 直接决定 /workspace tmpfs 的 size，原先既不在
+// RESOURCE_LIMIT_SETTINGS（管理员无法设全局上限），judge 侧也不收敛题目级覆盖值。
+Deno.test({
+  name: "资源上限: prediction workspace_size_mb 超管理员上限被拒（400）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await updateSetting(
+      "judge_max_prediction_workspace_mb",
+      4096,
+      ROOT_USER_ID,
+    );
+    try {
+      await assertResourceLimitExceeded(
+        () =>
+          createProblem(
+            {
+              title: `workspace 超限 ${ts}`,
+              description: "超限",
+              difficulty: "easy",
+              type: "P",
+              submission_mode: "prediction",
+              runtime_config: {
+                evaluator: {
+                  image: "noj-evaluator-python",
+                  command: "python3 /workspace/evaluate.py",
+                  time_limit_ms: 5000,
+                  memory_limit_mb: 512,
+                  workspace_size_mb: 8192,
+                },
+              },
+            },
+            ROOT_USER_ID,
+            "admin",
+          ),
+      );
+    } finally {
+      await resetSetting("judge_max_prediction_workspace_mb", ROOT_USER_ID);
+    }
+  },
+});
+
+Deno.test({
+  name: "资源上限: prediction workspace_size_mb 未超限放行",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await updateSetting(
+      "judge_max_prediction_workspace_mb",
+      4096,
+      ROOT_USER_ID,
+    );
+    try {
+      const created = await createProblem(
+        {
+          title: `workspace 合规 ${ts}`,
+          description: "未超限",
+          difficulty: "easy",
+          type: "P",
+          submission_mode: "prediction",
+          runtime_config: {
+            evaluator: {
+              image: "noj-evaluator-python",
+              command: "python3 /workspace/evaluate.py",
+              time_limit_ms: 5000,
+              memory_limit_mb: 512,
+              workspace_size_mb: 2048,
+            },
+          },
+        },
+        ROOT_USER_ID,
+        "admin",
+      );
+      assertEquals(created.submission_mode, "prediction");
+    } finally {
+      await resetSetting("judge_max_prediction_workspace_mb", ROOT_USER_ID);
+    }
+  },
+});
