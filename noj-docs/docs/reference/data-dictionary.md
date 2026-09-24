@@ -15,12 +15,13 @@
 ## 如何使用本页
 
 - **字段表读法**：`列` 为数据库中的真实列名；`类型` 为 PostgreSQL 类型；`约束 / 默认` 汇总主键（PK）、唯一（UK）、外键（FK）、`CHECK`、`NOT NULL` 与默认值；`说明` 给出业务语义。
+- **索引清单读法**：各表小节中的 `索引：` / 「复合索引：」行只列**主要索引（不完整）**——为避免逐表穷举带来的漂移，这里只给出排障最常用的几条；**完整清单以 `\d+ <表名>` 为准**（例如 `submissions` 实际有 8 个索引，该节只列了 3 个）。
 - **风险标记**：
   - <span class="noj-danger-col">红色列名</span> 表示**敏感/危险列**（凭据、密钥、密文、用户内容、风控数据），读取或导出前需脱敏。
   - <span class="noj-danger-zone">DANGER ZONE</span> 徽标表示该表整体属于高风险区，误操作可能造成凭据泄露、账号接管或不可逆数据损坏。
 - **时间字段约定**：本项目的所有时间戳以 **ISO 8601 文本**存储（如 `2026-09-24T12:00:00.000Z`），而非原生 `timestamptz`。竞赛时间字段受 `CHECK` 约束强制为「UTC + 毫秒 + `Z`」形态。
 - **分数约定**：`score` 为 **×100 的整数**（例如 85.5 分存为 `8550`），应用层通过 `scoreToDb` / `scoreFromDb` 转换，避免浮点误差。
-- **多数据库连接**：`noj-core`、`noj-llm-gateway`（以及 `noj-judge` 的运维脚本）共用**同一个 PostgreSQL 库**。LLM 三张表物理上在同库，但**逻辑所有权归 noj-llm-gateway**（迁移由 `noj-llm-gateway/drizzle/` 管理），详情见下文「LLM 网关表（noj-llm-gateway）」。
+- **多数据库连接**：`noj-core`、`noj-llm-gateway` 共用**同一个 PostgreSQL 库**。LLM 三张表物理上在同库，但**逻辑所有权归 noj-llm-gateway**（迁移由 `noj-llm-gateway/drizzle/` 管理），详情见下文「LLM 网关表（noj-llm-gateway）」。
 
 ---
 
@@ -31,7 +32,7 @@
 | 对象 | 风险点 | 误操作后果 |
 | --- | --- | --- |
 | `llm_providers` | <span class="noj-danger-col">`encrypted_api_key`</span> 为上游 LLM 服务的 API Key（AES-256-GCM 信封加密） | 泄露即上游账单被盗刷；误删导致所有 LLM 题评测失败 |
-| `users` | <span class="noj-danger-col">`password_hash`</span>、<span class="noj-danger-col">`tfa_secret_encrypted`</span>、<span class="noj-danger-col">`email_verify_token`</span> | 泄露可离线爆破 / 绕过二次验证；误改 `session_version` 会强制全员下线 |
+| `users` | <span class="noj-danger-col">`password_hash`</span>、<span class="noj-danger-col">`tfa_secret_encrypted`</span>、<span class="noj-danger-col">`email_verify_token`</span> | 泄露可离线爆破 / 绕过二次验证；误改 `session_version` 会强制**该用户**全部会话下线 |
 | `password_reset_tokens` | <span class="noj-danger-col">`token_hash`</span>（密码重置令牌哈希） | 泄露可接管账号 |
 | `tfa_recovery_codes` | <span class="noj-danger-col">`code_hash`</span>（TFA 恢复码哈希） | 泄露可绕过 TOTP |
 | `oauth_accounts` | 第三方身份 ↔ 本地账号映射 | 误删导致 OAuth 用户失去登录入口 |
@@ -39,6 +40,9 @@
 | `audit_logs` | 全站审计留痕 | 误删破坏合规证据链 |
 | `submissions` / `self_tests` | <span class="noj-danger-col">`code`</span>、<span class="noj-danger-col">`artifact_storage_url`</span> | 用户代码/产物可能含隐私与密钥 |
 | `ip_bans` / `user_bans` / `contest_clarifications` | 风控与申诉数据 | 误删放开攻击者；误加封禁误伤用户 |
+| `search_entries` | <span class="noj-danger-col">`body`</span> 含私信原文（含撤回前内容） | 整表导出等同于导出用户私信，必须脱敏 |
+| `community_posts` / `community_comments` / `community_reports` | 用户生成内容与举报数据 | 泄露用户隐私；误删破坏审核证据 |
+| `messages` | <span class="noj-danger-col">私信原文</span>与撤回状态 | 泄露私信；误删破坏会话完整性 |
 | Redis 会话/限流键 | 见下文「Redis 键族」 | `DEL jwt:revoked:*` 会让已撤销令牌复活；`DEL` 评测队列会丢评测任务 |
 
 ---
@@ -75,7 +79,7 @@
 
 ::: tip 运维注意
 - **不要**直接改写 `password_hash` 或 `session_version`：前者会破坏登录校验，后者会强制目标用户全部会话失效。
-- 注销（软删除）走 `deleted_at`，不要物理删除——大量表以 `users.id` 为外键，物理删除会级联清空用户内容。
+- 注销（软删除）走 `deleted_at`，不要物理删除：部分表为 CASCADE（会连带删除用户内容），另有 `submissions` / `self_tests` / `messages.sender_id` / `conversations` 等为 **NO ACTION**，物理删除会因外键违约直接失败回滚，无法作为清理手段。
 :::
 
 #### `oauth_accounts` <span class="noj-danger-zone">DANGER ZONE</span>
@@ -319,10 +323,10 @@ RBAC 权限定义表，权限以 `resource:action` 唯一标识。
 | `judge_finished_at` | text | NULL | 完成评测时间 |
 | `created_at` | text | NOT NULL | 创建时间 |
 
-复合索引：`idx_submissions_user_id_created_at`、`idx_submissions_contest_problem_user`、`idx_submissions_contest_client_ip`。
+主要索引（不完整，完整清单见 `\d+ submissions`）：`idx_submissions_user_id_created_at`、`idx_submissions_contest_problem_user`、`idx_submissions_contest_client_ip`；另有 `idx_submissions_user_id` / `idx_submissions_problem_id` / `idx_submissions_status` / `idx_submissions_created_at` / `idx_submissions_contest_id`。
 
 ::: warning artifact 提交
-artifact 提交在评测完成后会**立即删除存储对象**，不支持重测。删除 `submissions` 行前请确认已评估对 `evaluation_results` 的级联影响。
+artifact 提交在评测完成后会**立即删除存储对象**，不支持重测。注意 `evaluation_results.submission_id` 外键为 **NO ACTION**（drizzle 源码未声明 `onDelete`，`0007_fk_cascade.sql` 未进 `_journal.json`、从未生效）：若提交仍有评测结果行，直接 `DELETE submissions` 会**因外键违约失败**；需先删除对应 `evaluation_results`（或走管理端删除流程）。
 :::
 
 #### `evaluation_results`
@@ -376,7 +380,7 @@ SSE 事件日志，供断线重连回放（`id` 作为 `Last-Event-ID`）。
 | `created_at` | text | NOT NULL | 创建时间 |
 
 ::: tip 保留策略
-超过 **7 天**（`SSE_EVENT_RETENTION_DAYS`）的事件由后台任务每日清理；超期客户端改以 REST 全量校准。
+超过 **7 天**的事件由后台任务每日清理（硬编码常量 `SSE_EVENT_RETENTION_DAYS`，不可配置）；超期客户端改以 REST 全量校准。
 :::
 
 ### 竞赛与客观题提交
@@ -793,7 +797,7 @@ PK 为 `(user_id, conversation_id)`。
 超过 `AUDIT_LOG_RETENTION_DAYS`（默认 **90 天**，0=禁用清理）的记录由后台任务清理。
 :::
 
-#### `ip_bans`
+#### `ip_bans` <span class="noj-danger-zone">DANGER ZONE</span>
 
 IP 黑名单，支持裸 IP 与 CIDR。
 
@@ -841,9 +845,9 @@ IP 黑名单，支持裸 IP 与 CIDR。
 
 ### 搜索
 
-#### `search_entries`
+#### `search_entries` <span class="noj-danger-zone">DANGER ZONE</span>
 
-统一搜索索引表，唯一写者是 search domain（源域通过 Redis 事件异步维护）。
+统一搜索索引表，唯一写者是 search domain（源域通过 Redis 事件异步维护）。**私信条目会写入 `body` 原文**，整表导出等同于导出用户私信，必须脱敏/加密。
 
 | 列 | 类型 | 约束 / 默认 | 说明 |
 | --- | --- | --- | --- |
@@ -851,7 +855,7 @@ IP 黑名单，支持裸 IP 与 CIDR。
 | `entity_type` | text | NOT NULL；与 `entity_id` 共同唯一（`idx_search_entries_entity`） | 实体类型 |
 | `entity_id` | text | NOT NULL | 实体 ID |
 | `title` | text | NOT NULL；DEFAULT `''` | 标题（权重 A） |
-| `body` | text | NOT NULL；DEFAULT `''` | 正文（权重 B） |
+| `body` | text | NOT NULL；DEFAULT `''` | <span class="noj-danger-col">正文（权重 B）；私信条目为私信原文（含撤回前内容）</span> |
 | `search_vector` | tsvector | GENERATED ALWAYS | 全文向量，GIN 索引 |
 | `metadata` | jsonb | NOT NULL；DEFAULT `{}` | 元数据 |
 | `owner_id` | text | NULL；索引 | 所有者 |
@@ -1035,7 +1039,7 @@ LLM 配额配置（按用户 / 题目 / 全局维度，日或月窗口）。
 | 列 | 类型 | 约束 / 默认 | 说明 |
 | --- | --- | --- | --- |
 | `id` | text | PK | 配额 UUID |
-| `scope_type` | text | NOT NULL；与 `scope_id`、`window_type` 联合索引 | 作用域：`user/problem/global` |
+| `scope_type` | text | NOT NULL；与 `scope_id`、`window_type` 联合索引 | 作用域：`user/problem/global/user_problem` |
 | `scope_id` | text | NOT NULL；DEFAULT `''` | 作用域 ID；`global` 时为空串 |
 | `window_type` | text | NOT NULL；DEFAULT `'day'` | 窗口：`day/month` |
 | `max_calls` | integer | NOT NULL；DEFAULT `0` | 最大调用次数 |
@@ -1096,7 +1100,7 @@ Redis 承担 MQ、限流、撤销、观测与跨副本事件分发。以下按�
 | `noj:judge:queue:high` / `:medium` / `:low` | List | noj-core LPUSH；noj-judge RPOPLPUSH | 无 | 三级优先级评测任务队列（前缀由 `JUDGE_QUEUE` 决定） | **否**（丢任务） |
 | `noj:judge:queue:{high,medium,low}:processing` | List | noj-judge（RPOPLPUSH/BRPOPLPUSH） | 无 | 已领取未确认任务；崩溃残留在 core sweeper 超时（约 10 分钟起，随最大时限放宽）后重投 | **否** |
 | `noj:judge:queue:{high,medium,low}:dead` | List | noj-judge（坏消息） | 无 | 反序列化失败的死信，便于审计 | 谨慎（审计后可清） |
-| `noj:judge:results` | List | noj-judge LPUSH；noj-core BRPOP | 无 | 评测结果队列 | **否**（丢结果） |
+| `noj:judge:results` | List | noj-judge LPUSH；noj-core BRPOPLPUSH（先入 `:processing` 再确认） | 无 | 评测结果队列 | **否**（丢结果） |
 | `noj:judge:results:processing` | List | noj-core（消费者移入） | 无 | 已取未确认结果；超时 2 分钟由 sweeper 重投 | **否** |
 
 ::: tip 背压
@@ -1108,7 +1112,7 @@ Redis 承担 MQ、限流、撤销、观测与跨副本事件分发。以下按�
 | 键模式 | 类型 | 写入方 | TTL | 作用 | 能否删除 |
 | --- | --- | --- | --- | --- | --- |
 | `noj:judge:active_users:<user_id>` | ZSet | noj-judge（Lua 原子 claim） | claim 级 + key 级兜底过期（约 2×claim TTL，最小 60s） | 每用户评测并发占用（member=`<instance>:<submission>`，score=占用时刻）；保证同一用户同时最多 1 个评测。旧 claim 按时间戳清理，崩溃可自愈 | 可（最坏是瞬时放宽互斥） |
-| `noj:observability:judge:<instance_id>` | String | noj-judge（`SET ... EX`） | 有（心跳 TTL，见源码常量） | Judge worker 心跳快照（活跃任务、完成/失败计数、缓存大小等），供 core 聚合平台指标 | 可（下一轮心跳重建） |
+| `noj:observability:judge:<instance_id>` | String | noj-judge（`SET ... EX`） | 30 秒（每 10 秒续期） | Judge worker 心跳快照（活跃任务、完成/失败计数、缓存大小等），供 core 聚合平台指标 | 可（下一轮心跳重建） |
 
 ### 跨副本事件与 SSE（noj-core）
 
@@ -1131,7 +1135,7 @@ Redis 承担 MQ、限流、撤销、观测与跨副本事件分发。以下按�
 
 | 键模式 | 类型 | 写入方 | TTL | 作用 | 能否删除 |
 | --- | --- | --- | --- | --- | --- |
-| `noj:search:index` | List | 源域写库后 fire-and-forget LPUSH | 无 | 异步搜索索引投影队列；消费失败会永久滞留（无自动自愈），导致搜索索引静默落后 | 谨慎（丢索引事件→索引落后） |
+| `noj:search:index` | List | 源域写库后 fire-and-forget LPUSH | 无 | 异步搜索索引投影队列；崩溃残留在 `:processing` 由启动期重投与 sweeper 兜底（默认 15 分钟）自动恢复，坏消息进 `:dead`；极端情况下仍可能落后，可用 `noj-cli search reindex` 对账 | 谨慎（丢索引事件→索引落后） |
 | `noj:search:index:processing` | List | search 消费者 | 无 | 已取未确认索引事件 | 谨慎 |
 | `noj:review:dm` | List | messaging 域 RPUSH | 无 | 私信异步内容审核队列 | 谨慎 |
 | `noj:review:dm:processing` | List | review 消费者 | 无 | 已取未确认审核任务 | 谨慎 |
@@ -1185,7 +1189,7 @@ namespace 默认 `login`；改密用 `pwchange`；TFA 用 `tfa`。
 
 | 键模式 | 类型 | TTL | 作用 |
 | --- | --- | --- | --- |
-| `contest:lim:<contestId>:u:<userId>:p:<problemId>` | String | 至竞赛结束 | 竞赛内单题提交次数预算（仅当题目配置了 `submission_limits`）；超限返回 429，所有提交（含 error）均计入 |
+| `contest:lim:<contestId>:u:<userId>:p:<problemId>` | String | 至竞赛结束 | 竞赛内单题提交次数预算（仅当题目配置了 `submission_limits`）；超限返回 429，所有提交（含 error）均计入；**`DEL` 该键会清零已用次数，等价于临时放宽该题预算** |
 
 ### JWT 撤销（noj-core）
 
@@ -1222,7 +1226,7 @@ namespace 默认 `login`；改密用 `pwchange`；TFA 用 `tfa`。
 
 ## 运维速查
 
-- **备份范围**：完整 PostgreSQL 备份应覆盖本文全部表；Redis 若仅做缓存/队列，可不做持久化，但**评测队列积压时重启会丢任务**，生产建议开启 AOF 或在上线维护窗口前排空队列。
+- **备份范围**：完整 PostgreSQL 备份应覆盖本文全部表；Redis **并非纯缓存**——`jwt:revoked:*`、登录/TFA/改密失败锁定等安全状态只存在于 Redis，生产必须开启 AOF（`docker-compose.prod.yml` 已默认 `--appendonly yes`），否则重启会**复活已撤销令牌并清空锁定**。评测队列也会在积压时因重启丢任务，维护窗口前建议先排空队列。
 - **不可手工维护的对象**：`drizzle.__drizzle_migrations`、`llm_schema_migrations`、`user_rankings` 物化视图（刷新由应用触发）。
 - **改动前复核**：任何 `ALTER` / `DROP` / 批量 `UPDATE` / Redis `DEL` 前，先用 `\d+ <表名>`、`redis-cli TYPE <key>` 与源码二次确认，并在变更窗口内先行备份。
 - **敏感数据导出**：涉及 DANGER ZONE 表（尤其 `llm_providers`、`users`、`oauth_accounts`、`system_settings`、`audit_logs`）必须脱敏/加密传输。
