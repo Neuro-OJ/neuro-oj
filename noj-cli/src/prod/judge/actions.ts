@@ -770,7 +770,7 @@ function hostArchDefault(): string {
 /** dry-run 首装时用于校验的默认值集合（不落盘）。 */
 function defaultsForDryRun(): Record<string, string> {
   return {
-    NOJ_VERSION: "v0.10.0",
+    NOJ_VERSION: "v0.10.1-alpha.1",
     REDIS_URL: "redis://127.0.0.1:6379/0",
     REDIS_CHECK_URL: "redis://127.0.0.1:6379/0",
     JUDGE_DOCKER_SOCKET: "/run/noj-judge/docker.sock",
