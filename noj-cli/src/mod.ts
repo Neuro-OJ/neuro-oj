@@ -1,5 +1,5 @@
 /** noj-cli 版本号，与 deno.json 的 version 保持一致。 */
-export const VERSION = "0.9.5";
+export const VERSION = "0.10.0";
 
 // 状态机与工具（P0）
 
