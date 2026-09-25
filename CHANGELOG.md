@@ -12,6 +12,31 @@
 
 ---
 
+## [0.10.1-alpha.1] - 2026-09-25
+
+### 修复
+
+- **生产镜像发布链路阻塞（网关运行镜像混入构建期依赖）**：`noj-llm-gateway` 的
+  `deno.json` `imports` 里登记了**仅构建期使用**的 `drizzle-kit`（只服务
+  `drizzle.config.ts` 与 `db:generate`），而 `nodeModulesDir: "auto"` 会把它整棵树
+  装进运行镜像；其传递依赖 `esbuild` 由 Go 编写，触发发布流水线 Trivy 门禁的
+  49 项 HIGH/CRITICAL Go stdlib CVE。
+  影响不止该镜像缺 `v0.10.0` 标签：`build-and-gate` 矩阵失败使 `verify-release` /
+  `publish-cli` / `publish-release` 全部不执行，Release 因此**没有 `noj-cli` 二进制，
+  也没有 `docker-compose.prod.yml` / `.env.prod.example` 资产**；而 `noj-cli install`
+  第 1 步会无条件从同版本 Release 下载这两个文件并校验 SHA-256，导致**任何版本、
+  任何 ref 的 `install` 都在 bootstrap 步骤 404**（`v0.9.5` 的 Release 缺同样资产，
+  同一个原因）。
+  修法：把 `drizzle-kit` 移出 `imports`，`drizzle.config.ts` 改用完整 URL 说明符，
+  使运行期依赖图不再包含该链。镜像 432 MB → **254 MB**，容器启动不再联网补装依赖。
+
+### 变更
+
+- 版本号同步为 `0.10.1-alpha.1`：noj-cli / noj-core / noj-llm-gateway / noj-ui /
+  noj-lmcc-extension / noj-judge，以及 CLI 的 `VERSION` 常量与其断言测试。
+
+---
+
 ## [0.10.0] - 2026-09-25
 
 ### 破坏性变更
