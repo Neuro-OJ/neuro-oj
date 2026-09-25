@@ -230,6 +230,7 @@ Deno.test({
         case_id: "c1",
         status: "Accepted",
         visibility: "visible",
+        memory_kb: 8192,
         secret: "x",
       }],
       score_content: 90,
@@ -242,7 +243,12 @@ Deno.test({
     assertEquals(result.hidden, undefined);
     assertEquals(
       (result.cases as Array<Record<string, unknown>>)[0],
-      { case_id: "c1", status: "Accepted", visibility: "visible" },
+      {
+        case_id: "c1",
+        status: "Accepted",
+        visibility: "visible",
+        memory_kb: 8192,
+      },
     );
   },
 });

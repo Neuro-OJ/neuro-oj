@@ -42,12 +42,6 @@ export const BUNDLE_METADATA_ENTRIES = [
   "statement.md",
 ] as const;
 
-/** manifest 中可选的样例对。 */
-export interface ProblemBundleSample {
-  input: string;
-  output: string;
-}
-
 /**
  * 统一题目包 manifest（`problem.json`）。
  *
@@ -64,7 +58,6 @@ export interface ProblemBundleManifest {
   number?: number;
   /** 标签名数组，按 name 匹配已有标签，缺省忽略 + warning（issue #223） */
   tags?: string[];
-  samples?: ProblemBundleSample[];
   /** 模板文件索引（纯文件名，缺省默认 "template.py"）：前端编辑器初始代码 */
   template?: string;
   /** 提交模式：code（默认）或 artifact */
@@ -125,7 +118,7 @@ export function isValidTemplateFileName(name: string): boolean {
  * - `difficulty`/`type` 枚举合法
  * - `number` 类型合法
  * - `tags` 为字符串数组
- * - `samples` 为 `{ input, output }` 数组
+ * - `samples` 已废弃（从不落库）：本层不校验、不拒绝；由服务层记一次 warning
  * - `runtime_config` 必填：先注入 command 默认值，再通过 `validateRuntimeConfig`
  *
  * @throws {BadRequestError} 任一字段非法，错误信息指明字段
@@ -188,22 +181,9 @@ export function validateBundleManifest(
     throw new BadRequestError("manifest.tags 必须是字符串数组");
   }
 
-  if (m.samples !== undefined) {
-    if (
-      !Array.isArray(m.samples) ||
-      m.samples.some(
-        (s) =>
-          typeof s !== "object" ||
-          s === null ||
-          typeof (s as ProblemBundleSample).input !== "string" ||
-          typeof (s as ProblemBundleSample).output !== "string",
-      )
-    ) {
-      throw new BadRequestError(
-        "manifest.samples 必须是 { input, output } 字符串对象数组",
-      );
-    }
-  }
+  // `samples` 已废弃（2026-09-24 审计 A2-2）：该字段从不落库、也没有任何消费者。
+  // 为兼容存量题包，这里**不校验、不拒绝**，由服务层（importProblemBundle）
+  // 记录一次 warning。新增题包不应再写该字段，题面样例请直接写在题面正文。
 
   if (m.template !== undefined) {
     if (typeof m.template !== "string" || !m.template.trim()) {
@@ -293,7 +273,6 @@ export function validateBundleManifest(
     type: m.type as string | undefined,
     number: m.number as number | undefined,
     tags: m.tags as string[] | undefined,
-    samples: m.samples as ProblemBundleSample[] | undefined,
     template: m.template as string | undefined,
     submission_mode: m.submission_mode as string | undefined,
     artifact_max_size_mb: m.artifact_max_size_mb as number | null | undefined,

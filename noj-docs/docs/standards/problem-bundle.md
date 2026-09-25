@@ -73,7 +73,7 @@
 | `difficulty` | ❌ | `easy` / `medium` / `hard`，缺省 `medium` |
 | `type` | ❌ | `U` / `P`，缺省 `U`（P 型仅 admin） |
 | `tags` | ❌ | 标签名数组，按 name 匹配已有标签；不存在的名字被忽略并 warning（字段缺省则不处理） |
-| `samples` | ❌ | 预留字段：仅做 `{ input, output }` 字符串数组的结构校验，**当前不会落库**；题面样例由题面正文承载 |
+| `samples` | ❌ | **已废弃**：该字段从不落库、没有任何消费者。为兼容存量题包，导入仍会容忍但会记录 warning 并忽略；新题包不要写它，题面样例请直接写进题面正文 |
 | `template` | ❌ | 模板文件索引（纯文件名，禁止 `/`、`\`、`..`），缺省 `"template.py"`；客观题包禁止提供 |
 | `submission_mode` | ❌ | 提交模式 `code`（缺省）/ `artifact`；客观题包禁止提供 |
 | `artifact_max_size_mb` | ❌ | artifact 提交大小上限（MB），正整数或 `null`（缺省 `null` = 用平台硬上限）；客观题包禁止提供 |

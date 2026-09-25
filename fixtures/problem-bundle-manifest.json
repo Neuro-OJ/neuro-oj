@@ -39,7 +39,7 @@
       }
     },
     {
-      "name": "artifact 提交 + 标签 + 样例",
+      "name": "artifact 提交 + 标签 + 已废弃 samples（非法形状仍被容忍）",
       "manifest": {
         "format_version": 1,
         "title": "产物题",
@@ -49,12 +49,7 @@
         "tags": [
           "模拟"
         ],
-        "samples": [
-          {
-            "input": "1 2",
-            "output": "3"
-          }
-        ],
+        "samples": "legacy-shape-must-be-tolerated",
         "runtime_config": {
           "evaluator": {
             "image": "noj/evaluator-python:1",

@@ -115,6 +115,19 @@ export function runQualityRules(ctx: QualityContext): LintFinding[] {
     });
   }
 
+  // Q4：已废弃字段 samples（2026-09-24 审计 A2-2）
+  // 该字段从不落库、没有任何消费者。导入仍会容忍（兼容存量题包），
+  // 但新增题包不应再写，题面样例请直接写进题面正文。
+  if (manifest.samples !== undefined) {
+    findings.push({
+      level: "warn",
+      rule: "quality/deprecated-samples",
+      message:
+        "manifest.samples 已废弃（从不落库，导入时被忽略）。题面样例请直接写进题面正文，删除该字段。",
+      file: "problem.json",
+    });
+  }
+
   return findings;
 }
 

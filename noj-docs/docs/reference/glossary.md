@@ -176,6 +176,15 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 样例 ≠ 用例。样例用于说明题意，用例用于评分（可见用例或隐藏用例）。
 
 :::
+### 初始代码模板
+
+（starter code，`GET /api/v1/problems/:id/template`）
+
+编辑器在无本地草稿或点击「重置模板」时填入代码框的起始代码，读取该题 `problem.json` 中 `template` 字段声明的模板文件（缺省 `template.py`）。返回 `{content, language}` JSON。当前实现从部署目录 `data/problems-src` 读取（生产计划改为对象存储，见源码 TODO）。
+
+::: warning 易混淆
+初始代码模板 ≠ 支持包。该端点**不是**"支持包模板下载"——系统没有支持包模板下载入口；支持包需按[题目包格式规范](../standards/problem-bundle.md)自行组织后上传。术语"模板"在本站默认指此初始代码模板。
+:::
 ## 存储与交付
 
 ### `noj-storage://`
