@@ -1,6 +1,6 @@
 {
   "name": "@noj/core",
-  "version": "0.9.5",
+  "version": "0.10.0",
   "exports": "./src/mod.ts",
   "tasks": {
     "dev": "deno run --watch --env-file=.env -A src/main.ts",
