@@ -2,6 +2,10 @@
 
 本文覆盖 noj-judge 的职责、运行时镜像、评测流程、队列监控、水平扩展与升级。
 
+> **一句话导览**：Judge 是无状态 Worker，从 Redis 拉任务、为每次评测即时创建
+> 双容器、把结果写回 Redis；生产环境**必须**让它连接独立的 rootless Docker
+> socket（见[Docker daemon 权限边界](#docker-daemon-权限边界)）。
+
 ## Worker 职责
 
 `noj-judge` 从 Redis 队列拉取评测任务，下载纯净评测包，为每次评测即时创建
@@ -28,15 +32,23 @@ noj-cli judge install --dir /srv/noj-judge \
 
 首次配置必填项（缺失会报"首装必须提供 …"，退出码 2）：
 
-- `--version`（`NOJ_VERSION`）：不可变 Release 版本，例如 `v0.1.0`；
-- `--redis-url`（`REDIS_URL`）：与 noj-core 相同的 Redis 地址、数据库和认证信息；
-- `--socket-path`（`JUDGE_DOCKER_SOCKET`）：只服务于 Judge 的 rootless Docker
-  daemon Unix socket 路径；
-- `--socket-gid`（`JUDGE_DOCKER_SOCKET_GID`）：该 socket 的组 ID，必须与
-  `stat -c '%g' <socket>` 的实际值一致，否则启动前的 socket 校验会失败。
+- **`--version`** → `NOJ_VERSION`：不可变 Release 版本，例如 `v0.9.5`；
+  不接受 `main`/`latest`。
+- **`--redis-url`** → `REDIS_URL`：与 noj-core 相同的 Redis 地址、数据库和认证信息。
+- **`--socket-path`** → `JUDGE_DOCKER_SOCKET`：只服务于 Judge 的 rootless
+  Docker daemon 的 Unix socket 路径。
+- **`--socket-gid`** → `JUDGE_DOCKER_SOCKET_GID`：该 socket 的组 ID，必须与
+  `stat -c '%g' <socket>` 一致，否则启动前的 socket 校验会失败。
 
 其余键（`JUDGE_QUEUE` / `RESULT_QUEUE` / 并发数等）使用内置默认值，需要改动时直接
 编辑安装目录下的 `.env.judge`（600）。
+
+::: tip `--redis-mode local` 可省去自建 Redis
+独立 Judge 节点若没有现成 Redis，可加 `--redis-mode local`，让 CLI 在本机创建
+一个**仅绑定回环地址**（`127.0.0.1`）的 Redis 容器（默认端口 `16379`，
+容器名 `noj-judge-redis`），并自动生成随机口令写入 600 权限的 `redis.conf`。
+容器只带 `com.neuro-oj.component` 标签、只管理自己创建的同名容器。
+:::
 
 > **既有配置优先**：`.env.judge` 已存在时 `judge install` 只更新 `--version`，
 > 其余旗标不会生效，并会打印"以下旗标未生效（既有配置优先）"提示。
@@ -45,10 +57,12 @@ noj-cli judge install --dir /srv/noj-judge \
 管理独立 Worker：
 
 ```bash
-noj-cli judge status --dir /srv/noj-judge
-noj-cli judge logs --dir /srv/noj-judge [--follow]
-noj-cli judge check  --dir /srv/noj-judge   # 配置 / Redis / 专用 socket / 镜像架构
-noj-cli judge stop | start | upgrade --dir /srv/noj-judge
+noj-cli judge status  --dir /srv/noj-judge                         # 状态 + 脱敏配置摘要
+noj-cli judge logs    --dir /srv/noj-judge [--follow]              # 日志
+noj-cli judge check   --dir /srv/noj-judge                         # 配置 / Redis / 专用 socket / 镜像架构
+noj-cli judge start   --dir /srv/noj-judge                         # 启动（保留现有容器）
+noj-cli judge stop    --dir /srv/noj-judge                         # 停止（保留配置与 Redis 任务）
+noj-cli judge upgrade --dir /srv/noj-judge                         # 升级镜像
 ```
 
 Judge 的部署与主站部署相互独立；`noj-cli` **不会安装、替换或配置**宿主 Docker
@@ -60,16 +74,29 @@ Docker socket 绕过该限制。
 
 ### 评测并发上限
 
-单个 Worker 同时执行的评测任务数由 `JUDGE_MAX_CONCURRENT_JUDGES` 控制，默认值为
-`2`，有效范围为 `1` 至 `1024`。未设置或超出范围时使用默认值；需要提高吞吐时，
-应结合 Docker、CPU、内存和数据库连接池容量调整该值。
+单个 Worker 同时执行的评测任务数由 `JUDGE_MAX_CONCURRENT_JUDGES` 控制：
+
+| 项 | 值 |
+|---|---|
+| 默认值 | `2` |
+| 有效范围 | `1` – `1024`（正整数） |
+| 超范围/未设置 | 回退默认值 `2` |
+
+需要提高吞吐时，应结合 Docker、CPU、内存和数据库连接池容量调整该值。
+跨 Worker 还会限制「同一用户同时最多 1 个评测」（按 Redis claim 协调）。
 
 ### 评测容器资源
 
 每个 Worker 创建的 Evaluator 和 Solution 容器默认限制为 1 个 CPU 核。可通过
-`JUDGE_CPU_LIMIT_MILLICORES` 调整该 Worker 的统一上限，单位为 millicores：
-`1000m = 1 核`，有效范围为 `100m` 至 `16000m`。未设置或超出范围时回退到
-`1000m`，不会因为配置为 `0` 而变成不限制 CPU。
+`JUDGE_CPU_LIMIT_MILLICORES` 调整该 Worker 的统一上限：
+
+| 项 | 值 |
+|---|---|
+| 单位 | millicores（`1000m = 1 核`） |
+| 默认值 | `1000m` |
+| 有效范围 | `100m` – `16000m` |
+
+未设置或超出范围时回退到 `1000m`，**不会**因为配置为 `0` 而变成不限制 CPU。
 
 ## Docker daemon 权限边界
 
@@ -202,8 +229,8 @@ cd noj-judge
 ```
 
 生产部署时，`init system` 会根据 `JUDGE_IMAGE_BASE`（默认
-`ghcr.io/neuro-oj/`）写入 ghcr
-全限定镜像名；若需要手工确认，见[生产部署](production-deploy.md#3-配置说明)。
+`ghcr.io/neuro-oj/`）写入 ghcr 全限定镜像名；若需要手工确认，见
+[生产部署的配置说明](production-deploy.md)。
 
 `noj-evaluator-python` 与 `noj-solution-python` 基于
 `python:3.12-slim`，不预装题目专用依赖，题目依赖由出题人在 evaluator
@@ -219,12 +246,12 @@ noj-core 维护评测镜像白名单（`judgeImages`），并在题目 CRUD /
 
 镜像规则包含：
 
-- `image`：镜像名。
+- `image`：镜像名（ghcr 全限定名或裸名）。
 - `kind`：`evaluator` 或 `solution`。
-- `mode`：版本匹配模式。
+- `mode`：版本匹配模式，`exact` 或 `all_versions`。
 
-新增或修改镜像后，需要在 noj-core 的白名单中登记（镜像白名单校验在 core 侧 题目
-CRUD 与调度阶段完成，judge 不再于启动时拉取）。
+新增或修改镜像后，需在 noj-core 的管理端「评测镜像」白名单中登记；校验在 core
+侧的题目 CRUD 与调度阶段完成。
 
 ## 评测流程
 
@@ -253,12 +280,15 @@ noj-cli status
 noj-cli logs judge --follow
 ```
 
-调高日志详细度排查问题（临时覆盖环境变量）：
+::: details 调高 judge 日志详细度（临时）
+judge 的日志级别同时读 `RUST_LOG` 与 `LOG_LEVEL`（`RUST_LOG` 优先）。
+用 compose 临时覆盖环境变量即可开启 debug，无需改 `.env.prod`：
 
 ```bash
 docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
   -e RUST_LOG=noj_judge=debug judge
 ```
+:::
 
 ## 队列监控 {#queue-monitoring}
 

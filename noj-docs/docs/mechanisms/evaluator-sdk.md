@@ -1,6 +1,8 @@
 # Evaluator SDK
 
-Evaluator SDK 运行在 Evaluator 容器中，用于调用用户解答并输出评测结果。
+> 一句话：Evaluator SDK（`noj_evaluator_sdk`）跑在 **Evaluator 容器**里，负责调用用户函数（`SolutionRunner`）、转发受限 capability，并写出最终结果（`result`）。
+
+Evaluator SDK 运行在 Evaluator 容器中，用于调用用户解答并输出评测结果。协议线格式见 [RPC 与可传递数据](rpc.md)。
 
 ## 导入
 
@@ -39,7 +41,9 @@ answer = runner.call("solve", 1, 2)                    # 用题目级默认超�
 answer = runner.call("solve", 1, 2, timeout_ms=5000)   # 本次调用 5s 超时
 ```
 
-`timeout_ms` 必须为正整数或 `None`，其他值（0 / 负数 / 非整数）抛出 `ValueError`。超时后 `runner.call()` 抛出 `SolutionTimeoutError`，可捕获后记为失败用例继续评测。
+::: warning `timeout_ms` 必须是正整数或 `None`
+其他值（`0` / 负数 / 非整数）会抛出 `ValueError`。超时后 `runner.call()` 抛出 `SolutionTimeoutError`，可捕获后记为失败用例继续评测——**不捕获则** evaluator 异常退出、没有 `---RESULT---`，最终状态为 `error`。
+:::
 
 调用参数会经过 Neuro OJ codec 编码后通过 RPC 传递。支持的类型和限制见 [RPC 与可传递数据](rpc.md)。
 
@@ -112,25 +116,37 @@ register_capability("request_llm_completion", handler, timeout_ms=10000)
 
 ## 输出评测结果
 
-Evaluator 使用 `result` 模块输出最终结果。
+Evaluator 使用 `result` 模块输出最终结果。`score` 参数以**实际分数**计（可为小数），SDK 内部乘以 100 写入结果 JSON。
 
 ```python
-result.accept(score=1000, details={"passed": 10})
-result.wrong_answer(score=500, details={"passed": 5})
+result.accept(score=10, details={"passed": 10})       # 满分，写入 score=1000
+result.wrong_answer(score=5, details={"passed": 5})   # 部分分，写入 score=500
 ```
+
+::: warning `result` 每次评测只能写入一次
+`accept` / `wrong_answer` 第二次调用会抛 `RuntimeError`。写入后进程应尽快退出。
+:::
 
 新协议下结果 JSON 不再输出 `status`，只输出 `score` 与 `details`；`accept` / `wrong_answer` 只是写入分数的便捷方法。评测脚本自身出错时应直接抛出异常或非零退出，由 judge 统一映射为 `error`；SDK 已移除会写入结果的 `runtime_error()`，`system_error()` 现在也是**直接抛出 `RuntimeError`**（不再写结果 JSON）。
 
-分数是整数，当前样例题使用“实际分数乘以 100”的方式。例如满分 10 分时，`1000` 表示 10.00 分。
+结果 JSON 中的 `score` 是 ×100 的整数（与数据库存储一致）。例如满分 10 分时，`accept(score=10)` 写入 `"score": 1000`，前端按 `(score / 100).toFixed(1)` 显示为 `10.0` 分。
 
 ## details
 
-`details` 会作为结构化结果透传给前端。若需要展示测试点明细，推荐使用扁平的
-`cases` 数组。每个测试点必须包含 `case_id`、`status` 和布尔标记 `hidden`
-（`true` 为隐藏用例，`false` 为可见用例）；请为每个用例都设置该字段，
-避免旧脚本被误判为“全部可见”。`visibility`（`visible`/`hidden`）是可选的
-兼容/人读字段，`time_ms`、`memory_kb`、`input`、`expected_output` 和
-`actual_output` 按可见性选用。
+`details` 会作为结构化结果透传给前端。若需要展示测试点明细，推荐使用扁平的 `cases` 数组。每个测试点必须包含 `case_id`、`status` 和布尔标记 `hidden`（`true` 为隐藏用例，`false` 为可见用例）；请为每个用例都设置该字段，避免旧脚本被误判为“全部可见”。`visibility`（`visible`/`hidden`）是可选的兼容/人读字段，`time_ms`、`memory_kb`、`input`、`expected_output` 和 `actual_output` 按可见性选用。
+
+| 字段 | 必填 | 说明 |
+| --- | :---: | --- |
+| `case_id` | ✅ | 用例标识 |
+| `status` | ✅ | 用例级状态（`Accepted` / `WrongAnswer` 等，仅参考） |
+| `hidden` | ✅ | 布尔：`true` 隐藏 / `false` 可见；**每个用例都要写** |
+| `visibility` | | `visible` / `hidden`，兼容与人读用 |
+| `time_ms` / `memory_kb` | | 耗时 / 内存，可见与隐藏用例都可给；两者都会被 core 结果白名单收录并落库（`memory_kb` 自 2026-09-24 起收录，此前会被静默丢弃） |
+| `input` / `expected_output` / `actual_output` | | 仅**可见**用例可给；隐藏用例**不得**出现 |
+
+::: warning 隐藏用例不能带输入/期望/实际输出
+隐藏测试点可以展示状态、耗时和内存，但 **MUST NOT** 在 `details` 中写入 `input` / `expected_output` / `actual_output`——否则会经结果投影泄露给做题人（竞赛场景尤其致命）。
+:::
 
 常见结构：
 
@@ -157,11 +173,33 @@ details = {
 }
 ```
 
-隐藏测试点可以展示状态、耗时和内存，但 MUST NOT 在 `details` 中写入输入、期望
-输出或实际输出。提交结果投影会按 `hidden` 标记在竞赛场景剥离隐藏用例；若
-`cases` 中任意用例缺少 `hidden`，视为旧脚本，整份用例详情 fail-safe 不返回。
-历史的 `visible.cases`/`hidden.cases` 以及 `id`/`expected`/`actual`
-字段仍可被提交结果页兼容，但新评测器应使用上述标准字段并带 `hidden`。
+::: info 投影与兼容
+提交结果投影会按 `hidden` 标记在竞赛场景剥离隐藏用例；判定“用例已标记”的条件是**含 `hidden` 或 `visibility` 字段**。若 `cases` 中任意用例两者都缺，视为旧脚本，整份用例详情 **fail-safe 不返回**。历史的 `visible.cases`/`hidden.cases` 以及 `id`/`expected`/`actual` 字段仍可被提交结果页兼容，但新评测器应使用上述标准字段并带 `hidden`。
+:::
+
+## 调用 LLM（LLM 题）
+
+启用 LLM 的题目由 Judge Worker 向 **Evaluator 容器**注入一组环境变量（Solution 容器始终不注入）：
+
+| 环境变量 | 含义 |
+| --- | --- |
+| `NOJ_LLM_GATEWAY_URL` | `noj-llm-gateway` 基址 |
+| `NOJ_LLM_TOKEN` | 短期 `eval_token` |
+| `NOJ_LLM_PROVIDER_ID` | Provider ID（由 gateway 校验） |
+| `NOJ_LLM_ALLOWED_MODELS` | 允许的模型名列表（逗号分隔） |
+| `NOJ_SUBMISSION_ID` | 提交 UUID（供题目侧做确定性随机） |
+| `NOJ_REJUDGE_SEQ` | 重测序号，缺省为 `0` |
+
+题目侧可以直接用 SDK 的 `llm.complete()` 调用 gateway，无需自己拼 HTTP：
+
+```python
+from noj_evaluator_sdk import llm
+
+resp = llm.complete(model="qwen-plus", messages=[{"role": "user", "content": "..."}])
+text = resp["choices"][0]["message"]["content"]
+```
+
+模型缺省取 `NOJ_LLM_ALLOWED_MODELS` 的第一个；接入细节与预算配置见 [出 LLM 调用题](../problemsetters/llm-problem.md)。
 
 ## 关闭 runner
 

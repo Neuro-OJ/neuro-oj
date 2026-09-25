@@ -1,5 +1,7 @@
 # 邮件退信与送达质量
 
+本页说明 NOJ 的邮件送达事件、抑制清单与告警处置，以及接入真实厂商回调前必须完成的验收。
+
 ## 当前边界
 
 Neuro OJ 当前已实现阿里云 DirectMail 和腾讯云 SES 的发信 Provider，但仓库没有预置真实生产回调地址、secret 或厂商事件协议。两家服务的 webhook 字段、签名和重放规则不能互换，因此代码不会把内部 fixture 格式冒充为厂商协议。
@@ -12,7 +14,11 @@ Neuro OJ 当前已实现阿里云 DirectMail 和腾讯云 SES 的发信 Provider
 - 永久退信和投诉进入抑制清单；验证邮件和密码重置邮件发送前查询清单，临时失败不会永久抑制。
 - 管理端查看和解除抑制：`GET /api/v1/admin/system/email-delivery/suppressions`、`POST /api/v1/admin/system/email-delivery/suppressions/:id/clear`。
 
-fixture 回调入口为 `POST /api/v1/email-events/fixture`，签名密钥使用 `EMAIL_WEBHOOK_SECRET`。该入口只用于本地/测试，不应暴露到生产公网。
+fixture 回调入口为 `POST /api/v1/email-events/fixture`，签名密钥使用 `EMAIL_WEBHOOK_SECRET`。
+
+::: danger fixture 入口禁止暴露到生产
+该入口只用于本地/测试；当 `NOJ_ENV=production` 时 core 会直接拒绝该 provider 的回调，但请仍勿将回调路径暴露到公网。
+:::
 
 ## 生产 Provider 上线清单
 

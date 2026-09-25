@@ -3,6 +3,10 @@
 本页面向运营者/管理员：如何在本实例上提供“LLM 调用能力”，让出题人可以创建
 调用真实 LLM API 的题目。
 
+> 若只需**能提交 LLM 题**，关键就三步：gateway 两个密钥就位 → 后台建一个启用
+> 的 Provider → 配齐平台默认 `provider_id` + `model`。缺任一项，LLM 题提交会
+> 以 400 失败。
+
 ## 总体流程
 
 1. 部署并配置 `noj-llm-gateway`。
@@ -20,12 +24,14 @@
 生产环境使用 `docker-compose.prod.yml`：
 
 - 必须设置 `NOJ_LLM_SERVICE_TOKEN`（core↔gateway 服务间鉴权 + eval_token
-  签发/校验）。
-- 必须设置 `NOJ_LLM_STORE_KEY`（加密 Provider API Key）。
+  签发/校验，≥16 字符）。
+- 必须设置 `NOJ_LLM_STORE_KEY`（加密 Provider API Key，≥16 字符）。
 - `llm-gateway` 容器加入 `noj-net`，core 通过 `http://llm-gateway:8001` 访问。
 
-由于 `docker-compose.prod.yml` 默认始终启动 `llm-gateway` 且对这两个密钥使用
-`${...:?}` 必填校验，**即使不使用 LLM 调用题也必须填写**这两个密钥。
+::: warning 即使不做 LLM 题也必须填这两个密钥
+`docker-compose.prod.yml` 默认**始终启动** `llm-gateway` 且对这两个密钥使用
+`${...:?}` 必填校验，缺失会导致 `docker compose config` 直接报错。
+:::
 
 网关分钟限流可通过环境变量调整：
 
@@ -63,13 +69,16 @@ LLM」中配置以下两项 **runtime 设置**（写库即时生效，无需重�
 
 ## 4. 配额（可选）
 
-在「LLM 用量 / 配额」管理能力中，可按用户、全局、题目，以及**用户×题目组合**
-维度维护 day/month 的 calls/tokens/cost 上限；`0` 表示不限制但仍计数。
+配额通过管理端接口维护（`GET/POST /api/v1/admin/llm/quotas`）：可按用户、全局、
+题目，以及**用户×题目组合**维度维护 day/month 的 calls/tokens/cost 上限；
+`0` 表示不限制但仍计数。
 
 用户×题目组合维度（`scope_type=user_problem`，`scope_id` 形如
 `<userId>:<problemId>`）用于防止一名选手反复提交打满**全选手共享**的题目日桶，
 导致他人 LLM 题评测因 `out_of_usage` 得 0 分。默认兜底值见网关 `.env.example` 的
-`NOJ_LLM_DEFAULT_USER_PROBLEM_*`。
+`NOJ_LLM_DEFAULT_USER_PROBLEM_*`（网关**启动期读取 env**，改动后需重启网关；`llm_quotas` 里的
+占位行按 `scope_id=''` 写入，与 `<userId>:<problemId>` 精确匹配不上，不参与限额计算——
+需要单条覆盖时请写 `scope_id` 为具体组合的行）。
 
 分钟维度限流对无客户端 IP 的评测流量（Evaluator 直连网关、无
 `X-Forwarded-For`）按 submission 隔离，不再共用全局 `unknown` 桶。

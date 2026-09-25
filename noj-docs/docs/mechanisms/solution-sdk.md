@@ -1,6 +1,8 @@
 # Solution SDK
 
-Solution SDK 运行在 Solution 容器中。用户主要通过定义函数供 evaluator 调用；Solution Host 会自动加载用户模块并注册其中的顶层函数。
+> 一句话：用户只需在 `main.py` 里定义题面要求的**顶层函数**；Solution 容器内的 Solution Host 会自动注册这些函数，等 Evaluator 按名调用，并在需要时用 `call_capability` 反向请求受限能力。
+
+Solution SDK 运行在 Solution 容器中。用户主要通过定义函数供 evaluator 调用；Solution Host 会自动加载用户模块并注册其中的顶层函数。协议线格式见 [RPC 与可传递数据](rpc.md)。
 
 ## 暴露函数
 
@@ -19,7 +21,9 @@ Evaluator 会通过函数名调用该函数。函数名、参数数量和返回�
 
 Solution Host 会导入用户的 `main.py`。因此顶层代码会在加载模块时执行。
 
-建议用户只在顶层定义函数和常量，避免执行耗时逻辑、读写外部资源或提前输出大量内容。
+::: tip 只在顶层定义函数与常量
+建议用户避免在顶层执行耗时逻辑、读写外部资源或提前输出大量内容——它们发生在任何 `runner.call()` 之前，会拖慢或干扰评测。
+:::
 
 ## stdout 和 stderr
 
@@ -41,9 +45,13 @@ def solve(input_str: str) -> str:
 
 ## 常见错误语义
 
-- 函数不存在：Evaluator 收到 `NotFoundError`（协议 code 为 `NotFound`）。
-- 用户函数抛异常：Solution Host 返回 `code="Exception"`，Evaluator 收到 `SystemError`（含清洗后的 traceback）。
-- 返回值类型非法：Solution Host 返回 `code="Rejected"`，Evaluator 收到 `RejectedError`。
+调用失败时，Solution Host 返回错误帧，Evaluator 侧收到对应异常：
+
+| 情况 | 协议 code | Evaluator 侧异常 |
+| --- | --- | --- |
+| 函数不存在 | `NotFound` | `NotFoundError` |
+| 用户函数抛异常 | `Exception`（含清洗后 traceback） | `SystemError` |
+| 返回值类型非法 | `Rejected` | `RejectedError` |
 
 用户函数的参数和返回值会经过 Neuro OJ codec 编码。支持的类型包括 `None`、布尔值、整数、有限浮点数、字符串、字节串、列表和字符串键字典（不支持 `tuple`/`set`）。更多限制见 [RPC 与可传递数据](rpc.md)。
 

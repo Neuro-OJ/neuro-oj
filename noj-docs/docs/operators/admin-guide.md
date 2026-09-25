@@ -31,7 +31,7 @@
 
 Neuro OJ 使用「角色 → 权限点」模型：权限格式为 `resource:action`（例如 `problem:create`、`submission:read_own`）。
 
-- 系统内置角色：`root`（UID=0 系统用户，不计入统计）、`admin`（管理后台）、`user`（普通用户默认权限集）。
+- 系统内置角色：<Badge text="root" type="danger" />（UID=0 系统用户，不可登录、不计入统计）、<Badge text="admin" type="warning" />（管理后台，判定依据是权限集含 `admin:full_access`）、<Badge text="user" type="info" />（普通用户默认权限集）。
 - 管理页「角色」可以创建自定义角色、编辑角色的权限点集合、删除不再使用的角色。
 - 用户的角色在「用户」页面通过「分配角色」调整。
 - 权限检查在服务端强制进行，前端菜单只是展示层。
@@ -45,34 +45,49 @@ Neuro OJ 使用「角色 → 权限点」模型：权限格式为 `resource:acti
 - **编辑资料**：修改用户昵称、邮箱等基础信息。
 - **封禁 / 解封**：封禁需填写原因，可设置封禁时长（临时封禁）；被封禁用户登录时会看到原因与解封时间。封禁历史可在该用户详情中查看。
 - **注销用户**：二次确认后软删除账户，清除登录凭据与角色、保留并匿名化公共内容，同时写入审计日志。root 和最后一个可登录管理员不可注销。
-- **IP 黑名单**：在黑名单页添加 / 移除 IP，黑名单内的来源会被拒绝访问。生产环境配合 `TRUSTED_PROXIES` 使用，否则所有请求都来自反向代理的 IP。
+- **IP 黑名单**：在黑名单页添加 / 移除 IP，黑名单内的来源会被拒绝访问。
+
+::: warning 黑名单依赖可信代理配置
+生产环境必须配合 `TRUSTED_PROXIES`（须与 compose 内 `noj-net` 子网一致），否则所有请求都被解析成反向代理的 IP，IP 黑名单会误伤或失效。
+:::
 
 ## 审计日志
 
 - 敏感操作（登录、封禁、角色变更、设置修改、删除等）会写入审计日志，可在「审计日志」页按操作类型与时间范围查询。
-- 保留时长由 `AUDIT_LOG_RETENTION_DAYS` 控制（默认 90 天；设为 0 表示禁用清理）。
+- 保留时长由 **bootstrap** 设置 `audit_log_retention_days`（env 键 `AUDIT_LOG_RETENTION_DAYS`）控制，默认 **90** 天；设为 `0` 表示禁用自动清理。改 `.env` 后需重启 core。
 - 审计写入失败不影响业务主流程（仅记录错误日志）。
 
 ## 系统设置
 
-运行时可改的系统配置以键值对形式存在「系统设置」页，包括但不限于：
+「系统设置」页按**生命周期**分两区，改动前务必分清：
+
+| 区 | 来源 | 是否热改 |
+|---|---|---|
+| **运行时配置**（runtime） | 写入数据库 | 下次请求即时生效，可随时重置 |
+| **环境配置**（bootstrap） | 由 `.env` 环境变量管理，后台**只读** | 需改 `.env` 后重启 core |
+
+运行时配置（可在本页编辑）包括但不限于：
 
 | 键 | 说明 |
 |------|------|
 | `allow_register` | 是否开放自助注册 |
 | `jwt_expires_in` | 登录令牌有效期 |
-| `maintenance_mode` | 维护模式开关 |
-| `email_provider` 及邮件相关键 | 邮件服务配置 |
+| `maintenance_mode` | 维护模式开关（启用后写操作返回 503，仅读可用） |
 | `rate_limit_*` | 登录 / 搜索限流参数 |
 | `community_*` | 社区总开关、只读、各模块开关、发布门槛、长度限制等 |
 | `judge_max_*` | 评测资源全局上限（evaluator/solution 时间与内存） |
-| `audit_log_retention_days` | 审计日志保留天数 |
 
-> **首页轮播已与公告解耦**（2026-09-24）：轮播由独立的「轮播管理」（`/admin/carousel`，
-> `carousel_slides` 表）驱动；公告提供双通道——首页常驻「公告」区块（不可关闭）与
-> 导航栏可关闭横幅（公告字段 `banner_text`，用户关闭仅存本地 localStorage）。
-> 不存在 `homepage_banner` 配置键（该键为无读取点的死配置，已于 issue #495 删除）。
->
+环境配置（只读）里与运营相关的键包括 `email_provider` 及邮件相关键、
+`audit_log_retention_days`、`anti_cheat_ip_retention_days` 等；这些**不能在面板里改**，
+须编辑 `.env.prod` 后重启 core。
+
+::: info 首页轮播已与公告解耦（2026-09-24）
+轮播由独立的「轮播管理」（`/admin/carousel`，`carousel_slides` 表）驱动；公告提供
+双通道——首页常驻「公告」区块（不可关闭）与导航栏可关闭横幅（公告字段
+`banner_text`，用户关闭仅存本地 localStorage）。不存在 `homepage_banner` 配置键
+（该键为无读取点的死配置，已于 issue #495 删除）。
+:::
+
 > LLM **默认配额**（`NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>`）由
 > **noj-llm-gateway** 消费，不在本面板中；见 `noj-llm-gateway/README.md`，修改后需重启
 > llm-gateway。平台默认 Provider/模型（`llm_default_provider_id` /

@@ -1,31 +1,49 @@
 # 生产可观测性与故障 Runbook
 
+本页覆盖生产观测入口、Prometheus/告警配置，以及常见故障的分步处置。
+每条告警的 `runbook` 注解都指向本页对应小节或 `deploy/monitoring/runbooks/*.md`。
+
 ## 观测入口
 
-- `/healthz`：经过 Nginx 的就绪探针；返回 503 时不应继续导入流量。
-- `core:8000/health/live`：进程存活检查。
-- `core:8000/health/ready`：检查 PostgreSQL、Redis 与结果消费者。
-- `core:8000/metrics`：Prometheus 指标端点，只应在内部网络抓取，不应映射到公网。
+| 入口 | 用途 |
+|---|---|
+| `/healthz` | 经过 Nginx 的就绪探针（转发到 core 的 `/health/ready`）；返回 503 时不应继续导入流量 |
+| `core:8000/health/live` | 进程存活检查，不检查外部依赖 |
+| `core:8000/health/ready` | 检查 PostgreSQL、Redis 与结果消费者，critical 探针全 up 才 200 |
+| `core:8000/metrics` | Prometheus 指标端点，只应在内部网络抓取，不应映射到公网 |
+
+::: warning `/healthz` 不返回依赖明细
+`/healthz` 经 Nginx 暴露且无鉴权，因此生产环境**不返回**依赖明细；调试请直连
+`core:8000/health/ready`。旧综合端点 `/health` 始终返回 200 +
+`healthy`/`degraded`。
+:::
 
 ## Prometheus 与告警
 
-对象存储盘点不是 core 请求路径的一部分。按日运行
-`cd noj-core && deno task
-storage:audit -- --prometheus-output <textfile-dir>/noj_storage.prom`，通过
-textfile collector 观察
-`noj_storage_objects_total`、`noj_storage_bytes`、`noj_storage_orphan_*` 和
-`noj_storage_missing_references`
-的趋势。该命令只读，不会删除对象；治理边界与复核
+对象存储盘点不是 core 请求路径的一部分。按日运行：
+
+```bash
+cd noj-core
+deno task storage:audit -- --prometheus-output <textfile-dir>/noj_storage.prom
+```
+
+通过 textfile collector 观察 `noj_storage_objects_total`、`noj_storage_bytes`、
+`noj_storage_orphan_objects`、`noj_storage_orphan_bytes` 和
+`noj_storage_missing_references` 的趋势。该命令只读，不会删除对象；治理边界与复核
 步骤见[对象存储生命周期治理](../system/object-storage-governance.md)。
 
 将 Prometheus 加入 `noj-net`，使用 `deploy/monitoring/prometheus.yml` 抓取
-`core:8000`（含 `up{job="noj-core"}`
-失联检测），并加载**两个**规则文件：`deploy/monitoring/noj-alerts.yml`
-（运维告警，手工维护）与 `deploy/monitoring/noj-slo-alerts.yml`（SLO
-燃烧率告警，由 `noj-core/src/domains/observability/slo.ts`
-生成，勿手工编辑）。Alertmanager 配置模板、 凭据注入与投递演练见
-`deploy/monitoring/README.md`。Grafana 可导入
-`deploy/monitoring/grafana-dashboard.json`。通知接收器凭据应保存在部署环境，不提交到仓库。
+`core:8000` 与 `llm-gateway:8001`（前者含 `up{job="noj-core"}` 失联检测；
+目标名必须与 compose 服务名一致），并加载**两个**规则文件：
+
+- `deploy/monitoring/noj-alerts.yml`：运维告警，手工维护；
+- `deploy/monitoring/noj-slo-alerts.yml`：SLO 燃烧率告警，由
+  `noj-core/src/domains/observability/slo.ts` 经 `scripts/gen-alert-rules.ts`
+  生成，**勿手工编辑**。
+
+Alertmanager 配置模板、凭据注入与投递演练见 `deploy/monitoring/README.md`。
+Grafana 可导入 `deploy/monitoring/grafana-dashboard.json`。通知接收器凭据应保存在
+部署环境，不提交到仓库。
 
 > **第二个规则文件缺失不会报错。** Prometheus 的 `rule_files`
 > 指向不存在的文件时照常启动， 只是整组 SLO 规则静默消失。安装后必须用
@@ -47,7 +65,7 @@ staging 演练一次 Judge 或 Redis
 ## 社区搜索性能
 
 社区题解和讨论搜索保留 `ILIKE '%关键词%'` 子串语义。生产 PostgreSQL 通过迁移追加标题和正文的
-`pg_trgm` GIN 部分索引；迁移 0017 已负责启用 `pg_trgm` 扩展，不能回改历史迁移。PGlite 测试环境未内置该扩展，
+`pg_trgm` GIN 部分索引；`pg_trgm` 扩展由迁移 0017 与 0070 先后以 `CREATE EXTENSION IF NOT EXISTS` 启用（前者用于搜索索引，后者为社区 ILIKE 子串搜索），不能回改历史迁移。PGlite 测试环境未内置该扩展，
 测试 DDL 会检测能力后跳过对应索引，但不影响生产迁移。
 
 搜索路由限制关键词为 2～100 个字符。短关键词、高命中率关键词或统计信息不足时，PostgreSQL 仍可能合理选择
@@ -78,15 +96,14 @@ Seq Scan；容量验收应使用约 10 万行代表性数据记录 `EXPLAIN (ANA
    OOM/磁盘/密码问题。
 3. 恢复依赖后确认队列逐步回落；Redis
    数据卷损坏时使用最近快照恢复（见生产部署文档 5.1 节）。
-4. 不要直接删除 Redis 数据卷或队列。
+4. 不要直接删除 Redis 数据卷或队列（包括 `FLUSHDB`/`FLUSHALL`）。
 
 ### 评测结果消费者异常 {#评测结果消费者异常}
 
 触发：`NojResultConsumerDown`、`NojResultQueueBacklog`。
 
 1. `noj-cli logs core` 查找结果消费者启动与写入错误；确认 PostgreSQL 可写。
-2. `result processing`
-   积压通常是数据库写入失败重试：先恢复数据库，再观察积压回落。
+2. results processing 积压通常是数据库写入失败重试：先恢复数据库，再观察积压回落。
 3. 消费者重启后确认 `noj_result_consumer_up == 1` 且积压清零。
 
 ### Judge Worker 异常 {#judge-worker-异常}
@@ -105,11 +122,11 @@ Seq Scan；容量验收应使用约 10 万行代表性数据记录 `EXPLAIN (ANA
 1. 确认 Judge Worker 在线且吞吐正常（见 Judge Worker 异常）。
 2. 评估是否为提交洪峰：必要时暂停新评测入口，扩容 Worker 后恢复。
 3. 观察磁盘与缓存压力，避免 Worker 因资源不足批量失败。
+4. 恢复后确认队列回落，且无新的 `NojStaleJudging` 触发。
 
 > `NojStaleJudging`（评测卡死）的处置步骤见
 > `deploy/monitoring/runbooks/queue-oldest-judging-age.md`——该告警的 runbook 注解已
 > 指向那里，此处不再重复，避免同一故障存在两份可能漂移的处置说明。
-3. 恢复后确认无新的 `NojStaleJudging` 触发。
 
 ### API 错误率或延迟升高 {#api-错误率或延迟升高}
 
@@ -126,7 +143,7 @@ Seq Scan；容量验收应使用约 10 万行代表性数据记录 `EXPLAIN (ANA
 触发：`NojJudgeWorkDirPressure`、`NojHostDiskLow`。
 
 1. 优先暂停新评测、保留备份和日志，再扩容或按缓存策略清理。
-2. 不得直接删除数据库、Redis 或对象存储卷。
+2. 不得直接删除数据库、Redis 或对象存储卷（包括 `FLUSHDB`/`FLUSHALL`）。
 3. 处理后确认 `node_filesystem_avail_bytes` 比例回升。
 
 ### 备份过期 {#备份过期}
@@ -137,7 +154,7 @@ Seq Scan；容量验收应使用约 10 万行代表性数据记录 `EXPLAIN (ANA
 2. 确认 textfile
    目录（`<备份目录>/metrics/noj_backup.prom`）在最近一次备份后有更新；
    `NojBackupMetricMissing` 通常说明 node_exporter textfile collector 未配置（见
-   `deploy/monitoring/README.md` 第 2 节）。
+   `deploy/monitoring/README.md` 第 4 节「node_exporter 与备份新鲜度指标」）。
 3. 备份长时间未成功期间发生的故障无法回滚，尽快手动执行一次备份并验证。
 
 ### 恢复演练过期 {#恢复演练过期}
@@ -148,3 +165,16 @@ Seq Scan；容量验收应使用约 10 万行代表性数据记录 `EXPLAIN (ANA
    `noj-cli backup drill <快照>`（见生产部署文档 5.1 节）。
 2. 演练完成后确认 textfile 目录中 `noj_restore_drill.prom`
    更新，告警在下一个评估周期解除。
+
+::: tip 先把 Prometheus 接上再谈告警
+最省事的方式是用 compose 的 `monitoring` profile 一键拉起 Prometheus +
+Alertmanager：
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml --profile monitoring up -d
+```
+
+启动前须把 `deploy/monitoring/alertmanager.yml.example` 复制为
+`deploy/monitoring/alertmanager.yml` 并填入接收器（否则 Alertmanager 会
+fail-fast）。详见 `deploy/monitoring/README.md`。
+:::
