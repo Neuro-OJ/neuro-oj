@@ -1,6 +1,6 @@
 {
   "name": "@noj/llm-gateway",
-  "version": "0.10.0",
+  "version": "0.10.1-alpha.1",
   "exports": "./src/mod.ts",
   "tasks": {
     "dev": "deno run --watch --env-file=.env -A src/main.ts",
@@ -24,7 +24,6 @@
     "postgres": "npm:postgres@3.4.5",
     "drizzle-orm": "npm:drizzle-orm@0.45.2",
     "drizzle-orm/": "npm:/drizzle-orm@0.45.2/",
-    "drizzle-kit": "npm:drizzle-kit@0.31.10",
     "@logtape/logtape": "jsr:@logtape/logtape@^2.3.4",
     "@std/encoding": "jsr:@std/encoding@^1"
   },
