@@ -101,6 +101,7 @@ Deno.test({
         username: "smoke_" + ts,
         email: "smoke_" + ts + "@test.com",
         password: "SmokeTestPass123",
+        accepted_legal: true,
       }),
     });
     assertEquals(res.status, 201, "注册应返回 201");
@@ -122,6 +123,7 @@ Deno.test({
         username: "smoke_b_" + ts,
         email: "smoke_b_" + ts + "@test.com",
         password: "SmokeTestPass123",
+        accepted_legal: true,
       }),
     });
     // 再登录
@@ -154,6 +156,7 @@ Deno.test({
         username: "smoke_c_" + ts,
         email: "smoke_c_" + ts + "@test.com",
         password: "SmokeTestPass123",
+        accepted_legal: true,
       }),
     });
     const loginRes = await app.request("/api/v1/auth/login", {

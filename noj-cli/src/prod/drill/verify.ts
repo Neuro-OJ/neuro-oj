@@ -387,6 +387,9 @@ class Verifier {
         username: `drill_${suffix}`.slice(0, 30),
         email: `drill-${suffix}@${DRILL_ADMIN_EMAIL_DOMAIN}`,
         password: DRILL_ADMIN_PASSWORD,
+        // PIPL 同意硬门槛（2026-09-25 评审）：不带该字段注册恒 400，探针会被永久
+        // 降级成 warning，且归因误导为"邮件提供方问题"。
+        accepted_legal: true,
       }),
     });
     if (res.status === 201) {

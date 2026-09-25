@@ -426,7 +426,7 @@ export const SCHEMA_DDL: string[] = [
       'community.sanction_created','community.sanction_revoked','community.preset_applied',
       'community.board_create','community.board_update',
       'community.board_role_grant_update','community.board_role_grant_delete','community.post_flag',
-      'announcement.create','announcement.update','announcement.delete',
+      'announcement.create','announcement.update','announcement.delete','carousel.create','carousel.update','carousel.delete','carousel.reorder',
       -- issue #413 内容合规审核动作
       'review.queued','review.rejected','review.resolved',
       'contest.ranking_snapshot',
@@ -435,7 +435,9 @@ export const SCHEMA_DDL: string[] = [
       'contest.kind_change','contest.reset_code',
       'judge_images.create','judge_images.update','judge_images.delete',
       'email_delivery.clear_suppression',
-      'llm_provider.create','llm_provider.update','llm_quota.upsert')
+      'llm_provider.create','llm_provider.update','llm_quota.upsert',
+      -- 2026-09-24 评审：legal 合规写操作留痕
+      'legal.publish_version','legal.data_request_update')
     ))
   `,
 
@@ -652,6 +654,7 @@ export const SCHEMA_DDL: string[] = [
     public_id TEXT NOT NULL DEFAULT ('ann-' || substr(md5(random()::text),1,8)) UNIQUE,
     title TEXT NOT NULL,
     content TEXT NOT NULL,
+    banner_text TEXT,
     is_pinned BOOLEAN NOT NULL DEFAULT false,
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_by TEXT NOT NULL REFERENCES users(id),
@@ -730,6 +733,84 @@ export const SCHEMA_DDL: string[] = [
     role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
     PRIMARY KEY (user_id, role_id)
   )`,
+
+  // 21. legal_documents / legal_document_versions / user_consents（PIPL 合规，2026-09-23）
+  `CREATE TABLE IF NOT EXISTS legal_documents (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    current_version INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CONSTRAINT legal_documents_kind_unique UNIQUE (kind),
+    CONSTRAINT legal_documents_kind_check CHECK (kind IN ('privacy', 'terms'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS legal_document_versions (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL REFERENCES legal_documents(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    change_summary TEXT,
+    is_material BOOLEAN NOT NULL DEFAULT false,
+    published_at TEXT NOT NULL,
+    created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    tsa_provider TEXT,
+    tsa_token TEXT,
+    tsa_chain TEXT,
+    tsa_query TEXT,
+    tsa_timestamp TEXT,
+    CONSTRAINT legal_document_versions_doc_version_unique UNIQUE (document_id, version)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_legal_versions_material ON legal_document_versions (document_id, is_material, version)`,
+  `CREATE TABLE IF NOT EXISTS user_consents (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    document_kind TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    content_hash TEXT NOT NULL,
+    agreed_at TEXT NOT NULL,
+    ip TEXT,
+    user_agent TEXT,
+    CONSTRAINT user_consents_user_doc_version_unique UNIQUE (user_id, document_kind, version),
+    CONSTRAINT user_consents_kind_check CHECK (document_kind IN ('privacy', 'terms'))
+  )`,
+
+  // 22. data_requests（PIPL 删除/更正请求）
+  `CREATE TABLE IF NOT EXISTS data_requests (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT,
+    detail TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    handled_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    handled_at TEXT,
+    resolution TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CONSTRAINT data_requests_kind_check CHECK (kind IN ('delete', 'correct')),
+    CONSTRAINT data_requests_status_check CHECK (status IN ('pending', 'processing', 'resolved', 'rejected'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_data_requests_status_created ON data_requests (status, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_data_requests_user ON data_requests (user_id, created_at)`,
+
+  // 23. carousel_slides（首页轮播，与公告解耦，2026-09-24）
+  `CREATE TABLE IF NOT EXISTS carousel_slides (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    image_storage_url TEXT,
+    title TEXT,
+    subtitle TEXT,
+    gradient_key TEXT,
+    link_url TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_enabled BOOLEAN NOT NULL DEFAULT true,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CONSTRAINT carousel_slides_kind_check CHECK (kind IN ('image', 'text'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_carousel_slides_enabled_sort ON carousel_slides (is_enabled, sort_order)`,
 ];
 
 export const SCHEMA_INDEXES: string[] = [
@@ -906,4 +987,15 @@ export const ALL_TABLES = [
   "search_entries",
   "email_delivery_events",
   "email_suppressions",
+  "legal_documents",
+  "legal_document_versions",
+  "user_consents",
+  "data_requests",
+  "carousel_slides",
+  // 2026-09-24 评审：以下 4 张表建表但长期漏登记，resetDbForTest 从不清理
+  // （跨用例污染隐患；守卫测试 tests/db/schema.test.ts 现已覆盖该类遗漏）。
+  "objective_questions",
+  "objective_submissions",
+  "self_tests",
+  "sse_events",
 ] as const;

@@ -127,7 +127,9 @@ export default withMermaid(defineConfig({
                 { text: "如何提供 LLM 调用能力", link: "/operators/llm-call-capability" },
                 { text: "CLI 初始化", link: "/operators/cli" },
                 { text: "Judge Worker 运维", link: "/operators/judge-workers" },
+                { text: "邮件退信与送达质量", link: "/operators/email-delivery" },
                 { text: "后台管理指南", link: "/operators/admin-guide" },
+                { text: "法律与合规", link: "/operators/legal-compliance" },
                 { text: "生产密钥", link: "/operators/production-secrets" },
               ],
             },
@@ -165,6 +167,8 @@ export default withMermaid(defineConfig({
                 { text: "系统架构", link: "/system/architecture" },
                 { text: "安全模型", link: "/system/security" },
                 { text: "存储与评测包交付", link: "/system/storage" },
+                { text: "对象存储生命周期治理", link: "/system/object-storage-governance" },
+                { text: "竞赛风控数据说明", link: "/system/anti-cheat" },
               ],
             },
             {

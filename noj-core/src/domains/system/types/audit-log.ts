@@ -56,6 +56,10 @@ export type AuditAction =
   | "announcement.create"
   | "announcement.update"
   | "announcement.delete"
+  | "carousel.create"
+  | "carousel.update"
+  | "carousel.delete"
+  | "carousel.reorder"
   | "review.queued"
   | "review.rejected"
   | "review.resolved"
@@ -73,7 +77,9 @@ export type AuditAction =
   | "email_delivery.clear_suppression"
   | "llm_provider.create"
   | "llm_provider.update"
-  | "llm_quota.upsert";
+  | "llm_quota.upsert"
+  | "legal.publish_version"
+  | "legal.data_request_update";
 
 /** 按 action 强类型的 detail（discriminated union） */
 export type AuditDetail =
@@ -241,6 +247,10 @@ export type AuditDetail =
   | { action: "announcement.create"; title: string }
   | { action: "announcement.update"; title: string }
   | { action: "announcement.delete"; title: string }
+  | { action: "carousel.create"; kind: string }
+  | { action: "carousel.update"; kind: string }
+  | { action: "carousel.delete"; kind: string }
+  | { action: "carousel.reorder"; count: number }
   | {
     action: "contest.ranking_snapshot";
     contest_id: string;
@@ -325,7 +335,20 @@ export type AuditDetail =
   | { action: "email_delivery.clear_suppression"; id: string }
   | { action: "llm_provider.create"; name: string }
   | { action: "llm_provider.update"; id: string; name?: string }
-  | { action: "llm_quota.upsert"; id?: string | null };
+  | { action: "llm_quota.upsert"; id?: string | null }
+  // ── legal 子域合规操作（2026-09-24 评审：合规关键写操作必须留痕） ──
+  | {
+    action: "legal.publish_version";
+    kind: string;
+    version: number;
+    is_material: boolean;
+  }
+  | {
+    action: "legal.data_request_update";
+    id: string;
+    from: string;
+    to: string;
+  };
 
 /** audit_logs 表的响应类型 */
 export interface AuditLogEntry {

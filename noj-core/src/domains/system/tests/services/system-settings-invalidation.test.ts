@@ -24,7 +24,7 @@ import {
   updateSetting,
 } from "../../services/system-settings.ts";
 
-const RUNTIME_KEY = "data_policy_contact";
+const RUNTIME_KEY = "legal_contact";
 const ACTOR_ID = "0";
 
 /** 轮询等待异步刷新生效（避免固定 sleep 造成的 flaky） */

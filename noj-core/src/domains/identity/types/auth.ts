@@ -5,6 +5,11 @@ export interface RegisterInput {
   username: string;
   email: string;
   password: string;
+  /**
+   * 是否已同意服务条款与隐私政策（PIPL 合规硬门槛）。
+   * 非 true 时注册端点返回 400。
+   */
+  accepted_legal?: boolean;
 }
 
 /**

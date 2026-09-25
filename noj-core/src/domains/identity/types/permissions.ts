@@ -138,6 +138,8 @@ export const PERMISSION_DEFS: Array<{
   { resource: "training", action: "pin", description: "置顶题单" },
   // 公告
   { resource: "announcement", action: "manage", description: "管理公告" },
+  // 法律与合规
+  { resource: "legal", action: "manage", description: "法律与合规管理" },
   // 系统
   { resource: "system", action: "settings", description: "系统设置" },
   { resource: "system", action: "judge_images", description: "管理评测镜像" },

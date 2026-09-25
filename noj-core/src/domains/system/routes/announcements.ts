@@ -17,6 +17,7 @@ import { Channels, onEvent } from "./../../../shared/sse/event-bus.ts";
 import { createSseStream } from "./../../../shared/sse/sse-stream.ts";
 import { parsePagination } from "./../../../shared/http/pagination.ts";
 import {
+  getLatestBannerAnnouncement,
   getPublicAnnouncement,
   listPublicAnnouncements,
   resolveAnnouncementId,
@@ -66,6 +67,18 @@ router.get("/events", authMiddleware, (c) => {
       );
     },
   );
+});
+
+/**
+ * 导航栏横幅公告。
+ * GET /api/v1/announcements/banner
+ *
+ * 返回最新一条带 `banner_text` 的 active 公告（无用户态）；无则 `{ data: null }`。
+ * 必须注册在 `/:id` 之前，避免 "banner" 被当作公告 id 解析。
+ */
+router.get("/banner", async (c) => {
+  const banner = await getLatestBannerAnnouncement();
+  return c.json({ data: banner });
 });
 
 /**

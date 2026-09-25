@@ -3,81 +3,9 @@
         <div class="mx-auto w-full max-w-[1320px] border border-border rounded-xl shadow-card flex flex-col overflow-hidden">
             <div class="flex flex-col flex-1">
                 <div class="flex flex-col lg:flex-row flex-1 min-h-[320px] bg-white">
-                    <!-- Carousel -->
+                    <!-- Carousel（slides 驱动） -->
                     <!-- 手机模式下内容为 absolute 定位，容器需 min-h 保底，避免高度塌缩被签到区顶塌 -->
-                    <div
-                        class="flex-1 min-w-0 relative overflow-hidden min-h-[320px]"
-                        role="region"
-                        aria-roledescription="轮播图"
-                        aria-label="公告轮播"
-                        aria-live="off"
-                        @mouseenter="stopAuto"
-                        @mouseleave="() => { if (!paused) startAuto() }"
-                    >
-                        <Transition name="carousel-fade">
-                            <div
-                                v-if="currentAnnouncement"
-                                :key="currentSlide"
-                                class="absolute inset-0 bg-gradient-to-br p-8 lg:p-12 flex flex-col justify-center text-text"
-                                :class="gradientFor(currentSlide)"
-                            >
-                                <h2 class="text-2xl lg:text-3xl font-bold mb-3 animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_both]">{{ currentAnnouncement.title }}</h2>
-                                <p class="text-sm lg:text-base text-text-secondary max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">{{ currentAnnouncement.excerpt }}</p>
-                                <!-- 点击跳转公告详情（整卡可点，按钮层 z-10 在其上不受影响） -->
-                                <NuxtLink
-                                    :to="publicUrl('announcement', currentAnnouncement.public_id || currentAnnouncement.id)"
-                                    class="absolute inset-0 z-[5]"
-                                    :aria-label="`查看公告：${currentAnnouncement.title}`"
-                                />
-                                <span class="relative z-[6] mt-4 inline-flex items-center gap-1 text-sm font-medium text-signal-deep pointer-events-none animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_300ms_both]">
-                                    查看详情
-                                    <UIcon name="i-lucide-arrow-right" class="size-4" />
-                                </span>
-                            </div>
-                            <!-- 空态：无 active 公告时显示默认欢迎占位 -->
-                            <div
-                                v-else
-                                class="absolute inset-0 bg-gradient-to-br from-[#f2f2ec] via-[#e8e8e2] to-[#dfe0d9] p-8 lg:p-12 flex flex-col justify-center text-text"
-                            >
-                                <h2 class="text-2xl lg:text-3xl font-bold mb-3 animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_both]">Neuro OJ 正式上线</h2>
-                                <p class="text-sm lg:text-base text-text-secondary max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">面向 AI 领域认证与竞赛的在线评测平台现已开放注册，提供代码评测、LLM 工程题与类 Kaggle 产物提交评测。</p>
-                            </div>
-                        </Transition>
-                        <!-- 暂停/继续（WCAG 2.2.2 自动更新内容可暂停） -->
-                        <button
-                            v-if="!paused"
-                            type="button"
-                            class="absolute bottom-4 right-4 z-10 p-2 flex items-center justify-center rounded-full bg-black/10 text-text hover:bg-black/20 transition-colors"
-                            aria-label="暂停轮播"
-                            @click="togglePause"
-                        >
-                            <UIcon name="i-lucide-pause" class="size-4" />
-                        </button>
-                        <button
-                            v-else
-                            type="button"
-                            class="absolute bottom-4 right-4 z-10 p-2 flex items-center justify-center rounded-full bg-black/20 text-text hover:bg-black/30 transition-colors"
-                            aria-label="继续轮播"
-                            @click="togglePause"
-                        >
-                            <UIcon name="i-lucide-play" class="size-4" />
-                        </button>
-                        <div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-10">
-                            <button
-                                v-for="(_, i) in announcements"
-                                :key="i"
-                                class="p-2 -m-2 rounded-full transition-opacity cursor-pointer group"
-                                :aria-label="`切换到第 ${i + 1} 张`"
-                                :aria-current="i === currentSlide"
-                                @click="goToSlide(i)"
-                            >
-                                <span
-                                    class="block size-2 rounded-full transition-all duration-300 bg-text"
-                                    :class="i === currentSlide ? 'opacity-100 scale-125' : 'opacity-40 group-hover:opacity-80'"
-                                />
-                            </button>
-                        </div>
-                    </div>
+                    <Carousel />
 
                     <!-- Check-in -->
                     <div class="w-full lg:w-[300px] lg:aspect-square lg:self-start shrink-0 flex flex-col bg-gradient-to-br from-white to-bg-page/50">
@@ -100,6 +28,7 @@
                         />
                     </div>
                 </div>
+                <AnnouncementSection />
                 <div class="border-b border-border" />
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
                     <RandomProblems />
@@ -112,111 +41,11 @@
 </template>
 
 <script setup lang="ts">
-import { useEventSource } from "~/composables/useEventSource"
-import { publicUrl } from "~/utils/publicIdentifiers"
-
 const { user, isLoggedIn } = useAuth()
 const { api } = useApi()
 
-// ── Announcement Carousel（公告驱动，issue #231）──
-interface CarouselAnnouncement {
-    id: string
-    public_id?: string
-    title: string
-    excerpt: string
-    is_pinned: boolean
-}
-
-/** 轮播背景渐变预设色板（按下标循环，不依赖公告数据） */
-const GRADIENTS = [
-    "from-[#f2f2ec] via-[#e8e8e2] to-[#dfe0d9]",
-    "from-[#e6fbf3] via-[#f2f2ec] to-[#e8e8e2]",
-    "from-[#eef0f5] via-[#f2f2ec] to-[#e8e8e2]",
-]
-
-function gradientFor(i: number): string {
-    // 下标对 length 取模后必然命中预设色板；?? 兜底满足 noUncheckedIndexedAccess
-    return GRADIENTS[i % GRADIENTS.length] ?? ""
-}
-
-const announcements = ref<CarouselAnnouncement[]>([])
-
-async function fetchAnnouncements() {
-    try {
-        const res = await api.get<{ data: CarouselAnnouncement[] }>(
-            "/api/v1/announcements?per_page=5",
-            { silent: true },
-        )
-        announcements.value = res.data
-        // 数据变化后修正轮播位置并（重新）启动自动轮播
-        if (currentSlide.value >= announcements.value.length) {
-            currentSlide.value = 0
-        }
-        if (announcements.value.length > 0) {
-            stopAuto()
-            startAuto()
-        }
-    } catch {
-        // silent：轮播保持空态占位
-    }
-}
-
-// SSE 实时刷新（端点需登录；未登录用户靠页面加载拉取）
-useEventSource({
-    url: "/api/v1/announcements/events",
-    onEvent: {
-        "announcement:updated": fetchAnnouncements,
-    },
-    fetchFn: fetchAnnouncements,
-    fallbackIntervalMs: 60000,
-    enabled: isLoggedIn,
-})
-
-const currentSlide = ref(0)
-// 当前公告（下标安全收窄：currentSlide 始终对 length 取模，供模板 v-if 收窄类型）
-const currentAnnouncement = computed(() => announcements.value[currentSlide.value])
-const paused = ref(false)
-let autoTimer: ReturnType<typeof setInterval> | null = null
-let idleTimer: ReturnType<typeof setTimeout> | null = null
-
-function startAuto() {
-    if (paused.value || announcements.value.length === 0) return
-    stopAuto()
-    autoTimer = setInterval(() => {
-        currentSlide.value = (currentSlide.value + 1) % announcements.value.length
-    }, 5000)
-}
-
-function stopAuto() {
-    if (autoTimer) {
-        clearInterval(autoTimer)
-        autoTimer = null
-    }
-}
-
-function togglePause() {
-    paused.value = !paused.value
-    if (paused.value) stopAuto()
-    else startAuto()
-}
-
-function goToSlide(i: number) {
-    if (i === currentSlide.value) return
-    currentSlide.value = i
-    resetIdle()
-}
-
-function resetIdle() {
-    stopAuto()
-    if (idleTimer) clearTimeout(idleTimer)
-    idleTimer = setTimeout(startAuto, 60000)
-}
-
-onMounted(fetchAnnouncements)
-onUnmounted(() => {
-    stopAuto()
-    if (idleTimer) clearTimeout(idleTimer)
-})
+// 轮播与公告已解耦：轮播见 components/feature/Carousel.vue，
+// 常驻公告区块见 components/feature/AnnouncementSection.vue。
 
 // ── Check-in ──
 const checkedIn = ref(false)
@@ -312,28 +141,3 @@ onUnmounted(() => {
     if (clockTimer) clearInterval(clockTimer)
 })
 </script>
-
-<style scoped>
-@keyframes slideInUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.carousel-fade-enter-active,
-.carousel-fade-leave-active {
-    transition: opacity 700ms ease-in-out;
-}
-
-.carousel-fade-enter-from,
-.carousel-fade-leave-to {
-    opacity: 0;
-}
-
-
-</style>

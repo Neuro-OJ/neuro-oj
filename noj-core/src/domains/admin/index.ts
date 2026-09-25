@@ -20,8 +20,10 @@ import submissionAdminRouter from "./routes/submission.ts";
 import queryAdminRouter from "./routes/query.ts";
 import contestAdminRouter from "./routes/contest.ts";
 import systemAdminRouter from "./routes/system.ts";
+import carouselAdminRouter from "./routes/carousel.ts";
 import communityAdminRouter from "./routes/community.ts";
 import gatewayAdminRouter from "./routes/gateway.ts";
+import legalAdminRouter from "../legal/routes/admin.ts";
 
 const router = new Hono<AuthEnv>();
 
@@ -29,6 +31,8 @@ const FINE_GRAINED_ADMIN_PREFIXES = [
   "/api/v1/admin/catalog",
   "/api/v1/admin/system/announcements",
   "/api/v1/admin/community",
+  "/api/v1/admin/legal",
+  "/api/v1/admin/carousel",
 ] as const;
 
 router.use("*", authMiddleware, async (c, next) => {
@@ -48,5 +52,7 @@ router.route("/contest", contestAdminRouter);
 router.route("/system", systemAdminRouter);
 router.route("/community", communityAdminRouter);
 router.route("/gateway", gatewayAdminRouter);
+router.route("/legal", legalAdminRouter);
+router.route("/carousel", carouselAdminRouter);
 
 export default router;

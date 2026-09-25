@@ -31,6 +31,7 @@ Deno.test('submitRegistration: 邮件发送成功时跳转 sent=1', async () => 
     'alice',
     'alice@example.com',
     'Passw0rd-X',
+    true,
   );
   assertEquals(calls, ['register', 'login']);
   assertEquals(result, {
@@ -48,6 +49,7 @@ Deno.test('submitRegistration: 注册成功但邮件未发出时跳转 sent=0', 
     'alice',
     'alice@example.com',
     'Passw0rd-X',
+    true,
   );
   assertEquals(result, {
     status: 'resend_needed',
@@ -64,6 +66,7 @@ Deno.test('submitRegistration: 自动登录失败时引导手动登录', async (
     'alice',
     'alice@example.com',
     'Passw0rd-X',
+    true,
   );
   assertEquals(result, {
     status: 'login_failed',
@@ -82,6 +85,7 @@ Deno.test('submitRegistration: 注册接口失败时错误向调用方传播', a
         'alice',
         'alice@example.com',
         'Passw0rd-X',
+        true,
       ),
     Error,
     '用户名已存在',

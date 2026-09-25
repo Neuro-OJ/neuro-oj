@@ -1,0 +1,1 @@
+ALTER TABLE "user_consents" ADD CONSTRAINT "user_consents_kind_check" CHECK ("user_consents"."document_kind" IN ('privacy', 'terms'));

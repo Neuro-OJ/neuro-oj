@@ -610,6 +610,55 @@
       "when": 1789987890403,
       "tag": "0086_brainy_venus",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1790166125073,
+      "tag": "0087_free_morlun",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1790167732994,
+      "tag": "0088_migrate_data_policy_to_legal",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1790208762096,
+      "tag": "0089_wooden_the_leader",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1790211666245,
+      "tag": "0090_colossal_whirlwind",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1790217610701,
+      "tag": "0091_black_fixer",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1790246049996,
+      "tag": "0092_material_darkstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1790343139131,
+      "tag": "0093_dazzling_red_hulk",
+      "breakpoints": true
     }
   ]
 }

@@ -18,6 +18,8 @@
                     <NuxtLink to="/contests" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">竞赛</NuxtLink>
                     <NuxtLink to="/community" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">社区</NuxtLink>
                     <NuxtLink to="/data-policy" class="block text-text-secondary text-sm mb-2 hover:text-primary">数据使用与注销说明</NuxtLink>
+                    <NuxtLink to="/legal/privacy" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">隐私政策</NuxtLink>
+                    <NuxtLink to="/legal/terms" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">服务条款</NuxtLink>
                     <NuxtLink to="/about" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">关于</NuxtLink>
                 </div>
 
@@ -42,11 +44,34 @@
             <div class="mt-8 pt-4 border-t border-border text-xs text-text-muted text-center flex flex-col sm:flex-row items-center justify-center gap-1">
                 <span>&copy; {{ year }} Neuro OJ. 独立社区项目，与 CCF 及 LMCC 无官方关系。</span>
                 <a href="https://github.com/Neuro-OJ/neuro-oj/blob/main/LICENSE" target="_blank" rel="noopener" class="text-text-muted hover:text-primary no-underline">AGPL-3.0</a>
+                <!-- 备案信息：未配置时不渲染（见 buildFilingLinks） -->
+                <template v-if="filingLinks.length > 0">
+                    <span class="hidden sm:inline">·</span>
+                    <a
+                        v-for="link in filingLinks"
+                        :key="link.label"
+                        :href="link.url"
+                        target="_blank"
+                        rel="noopener"
+                        class="text-text-muted hover:text-primary no-underline"
+                    >{{ link.label }}</a>
+                </template>
             </div>
         </div>
     </footer>
 </template>
 
 <script setup lang="ts">
-const year = new Date().getFullYear()
+import { buildFilingLinks, EMPTY_SITE_META } from "~/utils/siteMeta";
+
+const year = new Date().getFullYear();
+
+// 备案信息（公开端点，失败静默降级为不展示）
+const { api } = useApi();
+const { data: metaData } = await useAsyncData("site-meta", () =>
+    api.get<{ data: typeof EMPTY_SITE_META }>(
+        "/api/v1/site/meta",
+        { silent: true },
+    ));
+const filingLinks = computed(() => buildFilingLinks(metaData.value?.data ?? EMPTY_SITE_META));
 </script>

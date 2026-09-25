@@ -107,6 +107,11 @@ export const announcements = pgTable(
     title: text("title").notNull(),
     /** Markdown 正文，1–50000 字符 */
     content: text("content").notNull(),
+    /**
+     * 横幅文字（导航栏下方可关闭横幅的内容）。
+     * 与 `content`（详情页正文）独立；为空则此公告不出横幅。
+     */
+    banner_text: text("banner_text"),
     /** 是否置顶（公开列表优先展示） */
     is_pinned: boolean("is_pinned").notNull().default(false),
     /** 是否发布中（false = 已下架，公开列表不可见） */
@@ -202,6 +207,10 @@ export const auditLogs = pgTable(
         'announcement.create',
         'announcement.update',
         'announcement.delete',
+        'carousel.create',
+        'carousel.update',
+        'carousel.delete',
+        'carousel.reorder',
         'review.queued',
         'review.rejected',
         'review.resolved',
@@ -219,7 +228,9 @@ export const auditLogs = pgTable(
         'email_delivery.clear_suppression',
         'llm_provider.create',
         'llm_provider.update',
-        'llm_quota.upsert'
+        'llm_quota.upsert',
+        'legal.publish_version',
+        'legal.data_request_update'
       )`,
     ),
     adminIdx: index("audit_logs_admin_id_idx").on(table.admin_id),

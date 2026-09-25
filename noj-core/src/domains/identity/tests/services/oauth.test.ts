@@ -65,6 +65,8 @@ Deno.test("oauth: state is bound to cookie and can only be consumed once", async
       result.cookieValue,
     );
     assertEquals(state.intent, "login");
+    // 未声明同意时 state 不含 acceptedLegal
+    assertEquals(state.acceptedLegal, undefined);
     await assertRejects(
       () => consumeOAuthState("github", result.state, result.cookieValue),
       Error,

@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **995** 处（ignore=642 early-return=268 rust-ignore=45 rust-env-guard=27 env-guard=13）。
+> 当前命中 **1002** 处（ignore=649 early-return=268 rust-ignore=45 rust-env-guard=27 env-guard=13）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -229,47 +229,49 @@
 | noj-core/src/domains/identity/tests/routes/auth-ban-status.test.ts | 159 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 64 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 93 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 116 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 148 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 175 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 204 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 233 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 268 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 306 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 334 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 371 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 433 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 90 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 115 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 137 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 160 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 183 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 206 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 241 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 278 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 311 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 350 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 387 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 408 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 430 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 451 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 466 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 483 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 519 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 575 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 665 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 686 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 732 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 748 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 815 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 861 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 894 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 916 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 975 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 1043 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 1059 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 1078 | ignore |
-| noj-core/src/domains/identity/tests/routes/auth.test.ts | 1099 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 117 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 149 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 177 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 211 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 240 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 280 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 319 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 347 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 389 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth-dead-switches.test.ts | 456 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 95 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 121 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 143 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 166 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 189 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 212 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 249 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 287 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 321 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 361 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 399 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 420 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 442 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 464 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 479 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 496 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 532 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 588 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 679 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 700 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 747 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 763 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 831 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 878 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 912 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 934 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 993 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 1061 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 1077 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 1096 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 1117 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 1178 | ignore |
+| noj-core/src/domains/identity/tests/routes/auth.test.ts | 1199 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 79 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 91 | ignore |
 | noj-core/src/domains/identity/tests/routes/auth_change_password_test.ts | 116 | ignore |
@@ -367,6 +369,7 @@
 | noj-core/src/domains/identity/tests/services/rbac.test.ts | 759 | ignore |
 | noj-core/src/domains/identity/tests/services/rbac.test.ts | 806 | ignore |
 | noj-core/src/domains/identity/tests/services/rbac.test.ts | 849 | ignore |
+| noj-core/src/domains/identity/tests/services/rbac.test.ts | 882 | ignore |
 | noj-core/src/domains/identity/tests/services/tfa.test.ts | 44 | ignore |
 | noj-core/src/domains/identity/tests/services/tfa.test.ts | 62 | ignore |
 | noj-core/src/domains/identity/tests/services/tfa.test.ts | 77 | ignore |
@@ -599,6 +602,10 @@
 | noj-core/src/domains/system/tests/routes/announcements.test.ts | 257 | ignore |
 | noj-core/src/domains/system/tests/routes/announcements.test.ts | 286 | ignore |
 | noj-core/src/domains/system/tests/routes/announcements.test.ts | 359 | ignore |
+| noj-core/src/domains/system/tests/routes/announcements.test.ts | 391 | ignore |
+| noj-core/src/domains/system/tests/routes/announcements.test.ts | 406 | ignore |
+| noj-core/src/domains/system/tests/routes/announcements.test.ts | 433 | ignore |
+| noj-core/src/domains/system/tests/routes/announcements.test.ts | 466 | ignore |
 | noj-core/src/domains/system/tests/routes/judge-images.test.ts | 26 | ignore |
 | noj-core/src/domains/system/tests/routes/judge-images.test.ts | 47 | ignore |
 | noj-core/src/domains/system/tests/routes/judge-images.test.ts | 61 | ignore |
@@ -854,7 +861,7 @@
 | noj-tests/e2e/cross-domain/storage_failure.test.ts | 207 | early-return |
 | noj-tests/e2e/cross-domain/storage_failure.test.ts | 223 | early-return |
 | noj-tests/e2e/cross-domain/storage_failure.test.ts | 237 | early-return |
-| noj-tests/e2e/helper.ts | 502 | ignore |
+| noj-tests/e2e/helper.ts | 503 | ignore |
 | noj-tests/e2e/identity/auth.test.ts | 34 | early-return |
 | noj-tests/e2e/identity/auth.test.ts | 49 | early-return |
 | noj-tests/e2e/identity/auth.test.ts | 58 | early-return |

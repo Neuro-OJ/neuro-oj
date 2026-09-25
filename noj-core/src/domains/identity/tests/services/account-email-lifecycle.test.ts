@@ -56,6 +56,7 @@ Deno.test("邮箱验证：注册路由发送 mock 邮件并由验证路由完成
         username: `route_${suffix}`,
         email: `route_${suffix}@example.com`,
         password: "RouteVerify-2026-Ab1",
+        accepted_legal: true,
       },
     });
     assertEquals(registered.status, 201);

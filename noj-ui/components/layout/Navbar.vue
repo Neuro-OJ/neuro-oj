@@ -81,6 +81,8 @@
                 <UserMenu />
             </div>
         </div>
+        <!-- 公告横幅（可关闭，绑公告 id；导航栏下方） -->
+        <AnnouncementBanner />
     </header>
 </template>
 

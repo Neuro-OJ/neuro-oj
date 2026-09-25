@@ -263,6 +263,7 @@ export async function registerUser(
     username,
     email,
     password,
+    accepted_legal: true,
   });
 
   if (res.status !== 201) {

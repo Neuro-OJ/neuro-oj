@@ -79,6 +79,7 @@ const ADMIN_DEFAULT_PERMISSIONS: Array<{ resource: string; action: string }> = [
   { resource: "community_moderation", action: "sanction" },
   { resource: "community_board", action: "manage" },
   { resource: "announcement", action: "manage" },
+  { resource: "legal", action: "manage" },
 ];
 
 // ── 工具 ──────────────────────────────────────────────────
