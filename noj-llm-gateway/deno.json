@@ -1,6 +1,6 @@
 {
   "name": "@noj/llm-gateway",
-  "version": "0.10.1-alpha.1",
+  "version": "0.10.1-alpha.2",
   "exports": "./src/mod.ts",
   "tasks": {
     "dev": "deno run --watch --env-file=.env -A src/main.ts",
@@ -10,7 +10,7 @@
     "test:snapshot": "deno test -A --no-check tests/replay_test.ts",
     "test:snapshot:record": "deno run -A scripts/record-replay.ts",
     "db:migrate": "deno run --env-file=.env -A src/db/migrate-cli.ts",
-    "db:generate": "deno -A npm:drizzle-kit@0.31.10 generate --config=./drizzle.config.ts",
+    "db:generate": "deno -A --no-lock npm:drizzle-kit@0.31.10 generate --config=./drizzle.config.ts",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",

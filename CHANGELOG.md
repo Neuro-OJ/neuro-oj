@@ -12,6 +12,29 @@
 
 ---
 
+## [0.10.1-alpha.2] - 2026-09-25
+
+### 修复
+
+- **网关运行镜像的 dev 依赖仍未清除（`0.10.1-alpha.1` 的修法不充分）**：把 `drizzle-kit`
+  移出 `imports` 并不够——`nodeModulesDir: "auto"` 安装的是 **`deno.lock` 中解析出的整个
+  npm 包集合**，而 alpha.1 的 lock 仍把 dev 链（`drizzle-kit` → Go 编写的 `esbuild`）
+  解析在内，于是镜像里依旧出现 18 个 `@esbuild*` 目录、6 个 Go 二进制，Trivy 门禁继续失败
+  （已在本地完整复现 CI 的镜像内容）。
+  本版把 lock 收敛到**非 dev 图**（`src/main.ts`、`src/mod.ts`、`tests/*.ts`、`scripts/*.ts`，
+  排除 `drizzle.config.ts`）：25 262 B → **3 662 B**，dev 链 0 处提及；并给 `db:generate`
+  任务加 `--no-lock`，避免开发者运行生成迁移时把 dev 链写回 lock。
+  实测（同一 Dockerfile 构建）：镜像内 Go 二进制 **0 个**、`/app/node_modules` 仅
+  `drizzle-orm` / `hono` / `ioredis` / `postgres`、Trivy 同参数复扫**退出码 0**、
+  `--network none` 启动**无任何下载**、镜像 432 MB → **254 MB**。
+
+### 变更
+
+- 版本号同步为 `0.10.1-alpha.2`（noj-cli / noj-core / noj-llm-gateway / noj-ui /
+  noj-lmcc-extension / noj-judge + CLI `VERSION` 常量与断言）。
+
+---
+
 ## [0.10.1-alpha.1] - 2026-09-25
 
 ### 修复
