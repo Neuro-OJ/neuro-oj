@@ -89,8 +89,8 @@ export interface LlmQuotaInput {
   /** 配额 ID（更新时提供；缺省为新增） */
   id?: string;
   /** 配额作用域类型 */
-  scope_type: "user" | "problem" | "global";
-  /** 作用域对象 ID（user/problem 时必填） */
+  scope_type: "user" | "problem" | "global" | "user_problem";
+  /** 作用域对象 ID（user/problem 时必填；user_problem 时形如 `<userId>:<problemId>`） */
   scope_id?: string;
   /** 配额窗口类型 */
   window_type?: "day" | "month";

@@ -32,7 +32,7 @@ LLM 调用网关，作为 evaluator 与外部 OpenAI 兼容 LLM API 之间的可
 ### LLM 默认配额 fallback（`NOJ_LLM_DEFAULT_*`）
 
 `SCOPE` ∈ `GLOBAL|USER|PROBLEM`，`WINDOW` ∈ `DAY|MONTH`，`FIELD` ∈
-`CALLS|TOKENS|COST`， 共 **18 个**变量，例如
+`CALLS|TOKENS|COST`， 共 **24 个**变量，例如
 `NOJ_LLM_DEFAULT_PROBLEM_MONTH_COST`。
 
 - **生效条件**：仅当 `llm_quotas` 表没有对应记录时作为兜底 （`src/limits.ts` 的

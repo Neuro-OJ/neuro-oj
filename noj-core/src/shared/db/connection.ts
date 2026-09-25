@@ -135,7 +135,6 @@ export async function runDbResetSeeders(): Promise<void> {
 }
 
 // ── PGlite 模板缓存 ──────────────────────────────────────────
-
 /**
  * 计算 PGlite 模板内容 hash。
  *
@@ -467,6 +466,27 @@ export function disableTestTransactionForFile(): void {
 }
 
 /**
+ * 构造 postgres.js 的 `connection` 选项（libpq startup 参数）。
+ *
+ * - `TEST_SCHEMA` 非空时附带 `public`，使系统/扩展对象（如 pg_trgm 运算符）可解析；
+ * - `jitDisabled` 为真时发送 `-cjit=off`。
+ *
+ * 返回 `undefined` 表示无启动参数（保持 postgres.js 默认行为）。
+ *
+ * @param testSchema 测试分片 schema 名（空串表示不分片）。
+ * @param jitDisabled 是否关闭 PostgreSQL JIT。
+ */
+export function buildConnectionOptions(
+  testSchema: string,
+  jitDisabled: boolean,
+): { options: string } | undefined {
+  const opts: string[] = [];
+  if (testSchema) opts.push(`-csearch_path=${testSchema},public`);
+  if (jitDisabled) opts.push("-cjit=off");
+  return opts.length > 0 ? { options: opts.join(" ") } : undefined;
+}
+
+/**
  * 获取 Drizzle ORM 数据库实例（单例模式）。
  *
  * 双模式驱动：
@@ -515,6 +535,10 @@ export function getDb() {
       Deno.env.get("DATABASE_MAX_LIFETIME") || "3600",
       10,
     );
+    // JIT 默认关闭（OLTP）：退化查询（如中文 2 字短词触发全表扫描）会被 PG 判为
+    // 高代价而触发 JIT 编译，实测编译耗时 238ms 纯属开销。DATABASE_JIT=on 可恢复。
+    const jitDisabled = Deno.env.get("DATABASE_JIT")?.trim().toLowerCase() !==
+      "on";
     // TEST_SCHEMA：测试并行分片时每个 worker 进程指向独立的 PG schema，
     // 使 resetDbForTest() 的 TRUNCATE 只影响本分片（进程间互不干扰）。
     // 通过 libpq 的 startup 参数 `-csearch_path=...` 在每个物理连接建立时
@@ -533,10 +557,13 @@ export function getDb() {
       connect_timeout: connectTimeout,
       idle_timeout: idleTimeout,
       max_lifetime: maxLifetime,
-      // 附带 public 兜底：系统/扩展对象（如 pg_trgm 运算符）仍可解析
-      connection: testSchema
-        ? { options: `-csearch_path=${testSchema},public` }
-        : undefined,
+      // 启动参数（libpq startup packet）：
+      // - TEST_SCHEMA：附带 public 兜底，使系统/扩展对象（如 pg_trgm 运算符）仍可解析；
+      // - JIT：默认关闭。NOJ 是 OLTP 负载（多为短查询），而中文 2 字等退化查询会
+      //   命中全表扫描并被 PG 判定为高代价，触发 JIT 编译——实测 10 万行搜索中
+      //   JIT 编译占 238ms/309ms（纯开销，不改善结果）。关闭后同一查询降至 57ms。
+      //   长分析型查询确有需要时可设 DATABASE_JIT=on 恢复。
+      connection: buildConnectionOptions(testSchema, jitDisabled),
     });
     _db = drizzlePg(_client, { schema });
     return _db;

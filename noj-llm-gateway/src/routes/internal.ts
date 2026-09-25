@@ -218,7 +218,7 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     }>();
     if (
       !body.scope_type ||
-      !["user", "problem", "global"].includes(body.scope_type)
+      !["user", "problem", "global", "user_problem"].includes(body.scope_type)
     ) {
       return c.json({ error: "invalid_scope_type" }, 400);
     }

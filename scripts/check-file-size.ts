@@ -22,7 +22,8 @@ export const MAX_LINES = 1200;
  */
 export const SIZE_BASELINE: Record<string, number> = {
   // 2026-09-21 移除 BYOK：dual/mod.rs 从 2246 降至 1861 行，下调基线锁住成果。
-  "noj-judge/src/dual/mod.rs": 1861,
+  // 2026-09-23：LLM 环境变量构造拆到 dual/llm_env.rs，1861 → 1839 行；同步下调。
+  "noj-judge/src/dual/mod.rs": 1839,
   "noj-ui/pages/messages/index.vue": 1632,
   // 2026-09-13 拆分后已降到阈值以下，条目移除（棘轮只允许下调/删除）：
   // - noj-core/.../messaging/services/messages.ts 1517 →

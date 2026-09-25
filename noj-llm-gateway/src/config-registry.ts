@@ -43,7 +43,12 @@ export interface GatewayEnvDefinition {
 /** 网关配额窗口类型（day / month，与 limits.ts 默认表一致） */
 export const QUOTA_WINDOWS = ["day", "month"] as const;
 /** 网关配额作用域类型 */
-export const QUOTA_SCOPES = ["global", "user", "problem"] as const;
+export const QUOTA_SCOPES = [
+  "global",
+  "user",
+  "problem",
+  "user_problem",
+] as const;
 /** 网关配额字段 */
 export const QUOTA_FIELDS = ["CALLS", "TOKENS", "COST"] as const;
 
@@ -53,7 +58,7 @@ export const QUOTA_ENV_PREFIX = "NOJ_LLM_DEFAULT_";
 /**
  * 网关配置声明。
  *
- * `NOJ_LLM_DEFAULT_*` 的 18 个具体键不再逐个列举，而是由
+ * `NOJ_LLM_DEFAULT_*` 的 24 个具体键不再逐个列举，而是由
  * `QUOTA_SCOPES × QUOTA_WINDOWS × QUOTA_FIELDS` 生成（见 `quotaEnvDefinitions()`），
  * 避免“新增窗口忘登记”再次发生。
  */
@@ -142,8 +147,8 @@ export const GATEWAY_CONFIG_DEFINITIONS: GatewayEnvDefinition[] = [
     // 代表键：真实键由前缀模板生成，枚举见 QUOTA_ENV_KEYS
     key: "NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>",
     description:
-      "LLM 默认配额兜底值（llm_quotas 缺行时生效）。SCOPE ∈ global|user|problem，" +
-      "WINDOW ∈ day|month，FIELD ∈ CALLS|TOKENS|COST，共 18 个变量；" +
+      "LLM 默认配额兜底值（llm_quotas 缺行时生效）。SCOPE ∈ global|user|problem|user_problem，" +
+      "WINDOW ∈ day|month，FIELD ∈ CALLS|TOKENS|COST，共 24 个变量；" +
       "仅当配额表无对应记录时才作为兜底，改动需重启 llm-gateway",
     isSecret: false,
     readMode: "dynamic",
@@ -151,7 +156,7 @@ export const GATEWAY_CONFIG_DEFINITIONS: GatewayEnvDefinition[] = [
   },
 ];
 
-/** 生成全部 18 个配额 env 名（与 limits.ts 的模板拼接逐字一致） */
+/** 生成全部 24 个配额 env 名（与 limits.ts 的模板拼接逐字一致） */
 export function quotaEnvKeys(): string[] {
   const keys: string[] = [];
   for (const scope of QUOTA_SCOPES) {

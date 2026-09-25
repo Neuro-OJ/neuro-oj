@@ -3,7 +3,7 @@ import { logger } from "../logger.ts";
 
 interface DefaultQuota {
   id: string;
-  scope_type: "user" | "problem" | "global";
+  scope_type: "user" | "problem" | "global" | "user_problem";
   scope_id: string;
   window_type: "day" | "month";
   max_calls: number;
@@ -11,6 +11,25 @@ interface DefaultQuota {
   max_cost: number;
 }
 
+/**
+ * 启动兜底配额行。
+ *
+ * **解析顺序**（`limits.ts` 的 `getQuota`）：`scope_id` **精确匹配**的 DB 行 →
+ * `NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>` env → 代码内置默认值。
+ *
+ * 因此这里的行只在"监管键恰好等于该 `scope_id`"时生效：
+ * - `scope_type='global'`：计入键固定为 `llm:global`，与 `scope_id=""` 对应，
+ *   **本表的 global 行是真正生效的**（改这里即改全局默认）。
+ * - `scope_type='user' / 'problem' / 'user_problem'`：计入键分别带具体
+ *   `user_id` / `problem_id` / `<userId>:<problemId>`，与 `scope_id=""` **不相等**，
+ *   故这些行只是"占位记录"，**不参与限额计算**；实际默认值来自 env
+ *   （24 个 `NOJ_LLM_DEFAULT_*`，由 `docker-compose.prod.yml` 显式注入）。
+ *   需要为某个用户/题目/组合单独设预算时，写一条 `scope_id` 为具体 id 的行
+ *   （如 `user-1:problem-1`），精确行优先于 env。
+ *
+ * 2026-09-25 评审修正：此前新增的 `user_problem` 占位行注释写成"任意组合的兜底"，
+ * 与实现不符（不存在通配回退），会让运维以为改这行能改默认值。占位行已删除。
+ */
 const DEFAULTS: DefaultQuota[] = [
   {
     id: "llm-quota-global-day",

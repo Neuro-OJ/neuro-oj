@@ -333,12 +333,16 @@ export async function buildContestEntry(
              FROM contest_problems cp
              JOIN problems p ON p.id = cp.problem_id
              WHERE cp.contest_id = c.id
+               -- #554：仅公开题进入索引，避免公开赛引用私题时泄露题目标题
+               AND p.visibility = 'public'
            ), '{}') AS problem_titles,
            COALESCE((
              SELECT array_agg(p.type || p.number ORDER BY cp.sort_order)
              FROM contest_problems cp
              JOIN problems p ON p.id = cp.problem_id
              WHERE cp.contest_id = c.id
+               -- #554：display_id 同理，私题编号不进索引
+               AND p.visibility = 'public'
            ), '{}') AS problem_display_ids
     FROM contests c
     WHERE c.id = ${id}
