@@ -20,6 +20,10 @@ export {
   isProblemInRunningContest,
 } from "./services/problem-exposure.ts";
 export {
+  loadPublicContestSecrecy,
+  type PublicContestSecrecyRef,
+} from "./services/problem-secrecy.ts";
+export {
   CONTEST_TIME_ISO_REGEX_SQL,
   normalizeContestTime,
   normalizeOptionalContestTime,

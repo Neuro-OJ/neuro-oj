@@ -26,7 +26,7 @@ import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import type { JudgeResult } from "../types/index.ts";
 import { buildJudgeTask } from "../types/index.ts";
-import { resolveProblemAccess } from "./../../catalog/index.ts";
+import { evaluateProblemAccess } from "./../../catalog/index.ts";
 import type { RuntimeConfig } from "./../../catalog/index.ts";
 import {
   SELF_TEST_ID_PREFIX,
@@ -74,8 +74,9 @@ export async function createSelfTest(
   }
   const problem = rows[0];
 
-  // 统一访问解析：自测不允许携带竞赛上下文，private 题仅 owner/admin。
-  const access = resolveProblemAccess(problem, {
+  // 统一访问解析：自测不允许携带竞赛上下文，private 题仅 owner/admin；
+  // 被公开赛保密的题目同样只有 owner/管理员可自测。
+  const { result: access } = await evaluateProblemAccess(problem, {
     viewerId: userId,
     isAdmin,
   });

@@ -21,7 +21,7 @@ import {
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { checkPermission } from "./../../identity/index.ts";
-import { resolveProblemAccess } from "./../../catalog/index.ts";
+import { evaluateProblemAccess } from "./../../catalog/index.ts";
 import { judgePaper } from "./objective-judge.ts";
 import {
   assertObjectivePaper,
@@ -137,10 +137,11 @@ export async function submitObjectivePaper(
   const paperUuid = paper.id;
 
   // 练习/竞赛提交统一访问判定（F-05/C1）：private 套卷非 owner/admin 且无竞赛
-  // 上下文一律拒绝；竞赛上下文由 validateContestSubmission 独立校验，不接受伪造。
+  // 上下文一律拒绝；被公开赛保密的套卷同此口径（无法从独立路径提交）；
+  // 竞赛上下文由 validateContestSubmission 独立校验，不接受伪造。
   const contestId = input.contest_id ?? null;
   if (!contestId) {
-    const access = resolveProblemAccess(paper, {
+    const { result: access } = await evaluateProblemAccess(paper, {
       viewerId: userId,
       isAdmin,
     });

@@ -16,7 +16,7 @@ import {
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { assertPermission } from "./../../identity/index.ts";
-import { resolveProblemAccess } from "./../../catalog/index.ts";
+import { evaluateProblemAccess } from "./../../catalog/index.ts";
 import { verifyContestAccess } from "./../../contest/index.ts";
 import { isUuid } from "./../../../shared/security/public-id.ts";
 import {
@@ -208,7 +208,7 @@ export async function listPaperQuestionsWithAccess(
   const contestAccess = options.contestId
     ? await verifyContestAccess(options.viewerId, options.contestId, paper.id)
     : null;
-  const access = resolveProblemAccess(paper, {
+  const { result: access } = await evaluateProblemAccess(paper, {
     viewerId: options.viewerId,
     isAdmin: options.isAdmin,
     contestAccess,
