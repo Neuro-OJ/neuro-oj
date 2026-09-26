@@ -294,14 +294,16 @@ Deno.test("[ui/browser] 5/5 登录失败显示错误提示", async () => {
   }
 });
 
-Deno.test("[ui/browser] 6/6 题目加载失败显示错误反馈", async () => {
+Deno.test("[ui/browser] 6/6 不存在的题目呈现 404（不再退化为加载失败面板）", async () => {
   if (!BROWSER_E2E) return;
   let failed = true;
   try {
     await launch();
     const p = await goto("/editor/NOEXIST");
-    // 非竞赛模式题目加载失败时 EditorWorkspace 显示错误状态
-    await p.getByText("题目加载失败").waitFor({ timeout: 10_000 });
+    // 2026-09-26：题目不存在（含"被公开赛保密而对当前用户不可见"，后端同返 404）
+    // 统一呈现为 404 状态；非 404 的加载失败仍走 EditorWorkspace 的错误面板。
+    await p.getByText("404", { exact: true }).waitFor({ timeout: 10_000 });
+    await p.getByText("题目不存在").waitFor({ timeout: 10_000 });
     failed = false;
   } finally {
     await teardown(failed);

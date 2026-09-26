@@ -52,13 +52,8 @@ const { data, pending, error, refresh } = useFetch<{
   { server: false },
 )
 
-// 404（题目不存在，或被公开赛保密而对当前用户不可见）→ 404 页。
-// 本页 ssr:false，错误在客户端异步到达，故用 watch 而非 setup 顶层判断。
-watch(error, (err) => {
-  if (isNotFoundError(err)) {
-    showError({ statusCode: 404, statusMessage: '题目不存在' })
-  }
-})
+/** 404（题目不存在，或被公开赛保密而对当前用户不可见）→ 页面按"不存在"呈现。 */
+const notFound = computed(() => isNotFoundError(error.value))
 
 /** 公开赛保密提示数据（竞赛模式不提示：参赛者本身就是通过竞赛进入的）。 */
 const secrecyNotices = computed<ProblemContestSecrecyNotice[]>(() =>
@@ -185,9 +180,26 @@ const templateUrl = (pid: string) =>
     <!-- 公开赛保密提示：仅题目所有者/管理员能打开本页（其他人 404） -->
     <ProblemContestNotice :contests="secrecyNotices" class="mx-2 mt-2 shrink-0" />
 
+    <!-- 题目不存在 / 被公开赛保密而对当前用户不可见：后端对两者返回同一个 404，
+         此处按"不存在"呈现（本页 ssr:false，无 HTTP 状态语义，故用页面态而非抛错） -->
+    <div
+      v-if="notFound"
+      class="flex-1 min-h-0 flex items-center justify-center bg-bg-page"
+    >
+      <div class="flex flex-col items-center gap-3 rounded-xl border border-border bg-white px-8 py-10 text-center">
+        <span class="flex size-11 items-center justify-center rounded-full bg-sunken text-text-muted text-xl font-bold">
+          404
+        </span>
+        <p class="text-sm font-medium text-text">题目不存在</p>
+        <UButton color="neutral" variant="outline" size="sm" to="/problems">
+          返回题库
+        </UButton>
+      </div>
+    </div>
+
     <!-- 竞赛访问拦截：结束后 / 未报名 / 未开始 → 提示并返回详情页 -->
     <div
-      v-if="isContest && !pending && contest && !canUseEditor"
+      v-else-if="isContest && !pending && contest && !canUseEditor"
       class="flex-1 min-h-0 flex items-center justify-center bg-bg-page"
     >
       <div class="flex flex-col items-center gap-3 rounded-xl border border-border bg-white px-8 py-10 text-center">

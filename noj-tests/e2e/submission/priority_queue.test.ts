@@ -14,7 +14,9 @@
  * - 题目一旦被加入公开赛，独立入口对该题对非 owner/管理员一律 403
  *   （`resolveProblemAccess` 的 `contest-secret` 判定），所以 medium 提交必须在
  *   "题目加入竞赛之前"发出，而重测目标改用竞赛入口创建（重测任务优先级恒为 low，
- *   与初次提交优先级无关）。
+ *   与初次提交优先级无关）；
+ * - 本用例的竞赛改用**邀请赛**：见 `createRunningContestWithRegistration` 的说明
+ *   （公开赛会让共享题 P1001 在整轮 e2e 剩余时间里对独立入口不可用，污染同域后续用例）。
  */
 
 import {
@@ -38,8 +40,20 @@ let problemId = "";
 let contestId = "";
 let judgeOk = false;
 
+/** 邀请赛邀请码（`kind='invite'` 必须设置，报名时校验）。 */
+const CONTEST_PASSWORD = "PqInvitePass1";
+
 /**
- * 建一场进行中的公开赛并把题目挂进去，同时让 userToken 报名参赛。
+ * 建一场进行中的**邀请赛**并把题目挂进去，同时让 userToken 报名参赛。
+ *
+ * 为什么用邀请赛而不是公开赛（2026-09-26 CI 实测）：
+ * 本次改动引入了"被公开赛关联的题目对非 owner/管理员一律 404/403"的保密规则。
+ * 本用例只需要"题目处于进行中竞赛 ⇒ 提交推导为 high"，与竞赛是否公开无关；
+ * 但若用公开赛，共享题 P1001 会在整轮 e2e 的剩余时间里变成"公开赛关联题目"，
+ * 同域后续用例（`[e2e/queue] 7.2/7.3` 等）经独立入口 `POST /api/v1/submissions`
+ * 提交该题会被 403 —— 这就是 CI 上实际观测到的失败。
+ * 邀请赛不触发保密规则（规则显式排除 `kind='invite'`），因此天然隔离：
+ * 既不需要收尾清理，也不依赖测试文件执行顺序。
  *
  * @returns 竞赛 id（high 提交与报名身份都需要）。
  */
@@ -54,8 +68,9 @@ async function createRunningContestWithRegistration(): Promise<string> {
       end_time: new Date(now + 3_600_000).toISOString(),
       type: "kaggle",
       config: {},
-      is_public: true,
-      kind: "public",
+      is_public: false,
+      kind: "invite",
+      password: CONTEST_PASSWORD,
       affect_global_ranking: false,
       problems: [{
         problem_id: problemId,
@@ -76,7 +91,7 @@ async function createRunningContestWithRegistration(): Promise<string> {
   // 竞赛提交要求参赛者身份（verifyContestAccess 校验成员 + 窗口）
   const reg = await apiPost(
     `/api/v1/contests/${id}/register`,
-    {},
+    { password: CONTEST_PASSWORD },
     userToken,
   );
   if (reg.status !== 200 && reg.status !== 201) {
