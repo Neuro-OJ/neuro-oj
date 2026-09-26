@@ -2019,7 +2019,7 @@ jobs:
 
       - name: 安装依赖 (Deno BYONM)
         working-directory: noj-ui
-        run: deno install
+        run: deno install --frozen-lockfile
 
       # 全页面类型检查（issue #427）：`nuxt typecheck` 生成 .nuxt 类型上下文后
       # 运行显式 vue-tsc，覆盖 pages / components / composables / middleware /
@@ -2074,7 +2074,7 @@ jobs:
             npm-
       - name: 安装依赖 (Deno BYONM)
         working-directory: noj-ui
-        run: deno install
+        run: deno install --frozen-lockfile
       - name: 生成 Nuxt 类型上下文
         working-directory: noj-ui
         run: deno run -A npm:nuxt typecheck
