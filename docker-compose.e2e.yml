@@ -24,24 +24,34 @@ services:
       timeout: 3s
       retries: 10
 
+  # ── 对象存储（MinIO）──────────────────────────────────────────────────────
+  # 镜像来源变更（2026-09-26）：MinIO 已停止免费分发，官方镜像全部下架——
+  # `minio/minio`、`minio/mc`（Docker Hub 整组织）与 `quay.io/minio/*` 均返回
+  # 404 / 无 manifest，`dl.min.io` 二进制也返回 410。此前钉的
+  # `quay.io/minio/minio:RELEASE.2024-11-07` 已不可拉取，导致**全部 E2E job 在
+  # 「初始化 MinIO bucket」步失败**（`main` 分支同样全红，与本仓库改动无关）。
+  # 现改用 Bitnami 的冻结镜像源；MinIO 版本与原镜像**完全一致**
+  # （RELEASE.2024-11-07），且该镜像同时内置 `minio` 与 `mc` 两个二进制。
   minio:
-    image: quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z
+    image: bitnamilegacy/minio:2024.11.7-debian-12-r2
     container_name: noj-e2e-minio
     ports: ["9002:9000"]
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
-    command: server /data
+    # 不传 command：Bitnami 的 run.sh 自行拼 `minio server ... ${MINIO_DATA_DIR}`
+    # （原 `command: server /data` 会让其把 "/data" 当成未知参数追加到末尾）
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      # 原健康检查 `mc ready local` 依赖官方镜像预置的 mc 别名配置，此处改为直接探活 API
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 3s
       timeout: 3s
       retries: 10
 
   minio-init:
-    # mc 与 server 不同期：mc 最新 stable 在 2025-08，server 当前用 2024-11。
+    # mc 与 server 不同期：mc 用 2025-07，server 用 2024-11。
     # mc 是命令行客户端，跨 server 大半年版本无协议不兼容风险，比对齐版本更稳。
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: bitnamilegacy/minio-client:2025.7.21-debian-12-r3
     # 修复 finding C5：原 condition: service_started 在冷启动下过早触发，
     # mc alias set 连接偶尔被拒绝，entrypoint 里再 sleep 3 补补丁（脆弱）。
     # 改为 service_healthy 后等 minio 健康检查通过再起，sleep 3 也去掉。

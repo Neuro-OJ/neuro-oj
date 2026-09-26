@@ -21,24 +21,30 @@ services:
       - postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
 
+  # 镜像来源变更（2026-09-26）：MinIO 官方镜像已全部下架（`minio/minio`、`minio/mc`
+  # 在 Docker Hub 整组织 404，`quay.io/minio/*` 无 manifest，`dl.min.io` 返回 410），
+  # 原 `minio/minio:RELEASE.2024-11-07` 已无法拉取。改用 Bitnami 冻结镜像源，
+  # MinIO 版本与原镜像一致（RELEASE.2024-11-07），镜像内置 minio 与 mc。
   minio:
-    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    image: bitnamilegacy/minio:2024.11.7-debian-12-r2
     container_name: noj-minio
     ports:
       - "9000:9000"   # API
       - "9001:9001"   # Console
     volumes:
-      - minio-data:/data
+      # 数据目录随镜像改为 Bitnami 约定路径（挂到 /data 时非 root 用户无写权限）
+      - minio-data:/bitnami/minio/data
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
-    command: server /data --console-address :9001
+    # 不传 command：Bitnami 的 run.sh 自行拼 `minio server ... ${MINIO_DATA_DIR}`，
+    # 并按 MINIO_API_PORT_NUMBER / MINIO_CONSOLE_PORT_NUMBER（默认 9000/9001）监听
     restart: unless-stopped
 
   minio-init:
-    # mc 与 server 不同期：mc 最新 stable 在 2025-08，server 当前用 2024-11。
+    # mc 与 server 不同期：mc 用 2025-07，server 用 2024-11。
     # mc 是命令行客户端，跨 server 大半年版本无协议不兼容风险，比对齐版本更稳。
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: bitnamilegacy/minio-client:2025.7.21-debian-12-r3
     depends_on:
       - minio
     entrypoint: >

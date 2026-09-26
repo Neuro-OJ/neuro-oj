@@ -47,7 +47,7 @@ import {
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import { checkPermission } from "./../../../identity/index.ts";
-import { resolveProblemAccess } from "../../../catalog/index.ts";
+import { evaluateProblemAccess } from "../../../catalog/index.ts";
 import { verifyContestAccess } from "../../../contest/index.ts";
 import {
   generatePublicId,
@@ -352,12 +352,12 @@ export async function createSubmission(
   }
   const problem = lockedRows[0];
 
-  // 统一访问解析：普通入口 private 题非 owner/admin 拒绝；
-  // 竞赛入口先经 verifyContestAccess 校验成员+窗口。
+  // 统一访问解析：普通入口 private 题非 owner/admin 拒绝（被公开赛保密的题目同此
+  // 口径，无法从独立路径提交）；竞赛入口先经 verifyContestAccess 校验成员+窗口。
   const contestAccess = resolvedContestId
     ? await verifyContestAccess(userId, resolvedContestId, problem.id)
     : null;
-  const access = resolveProblemAccess(problem, {
+  const { result: access } = await evaluateProblemAccess(problem, {
     viewerId: userId,
     isAdmin,
     contestAccess,

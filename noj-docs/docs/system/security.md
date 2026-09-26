@@ -60,9 +60,22 @@ ZIP 解压防护按实际解压字节实时统计：单文件超过 64 MiB 或�
 
 访问判定由 catalog 域纯函数 `resolveProblemAccess` 统一完成，读取与提交路径共用，判定顺序为：
 
-`admin → owner → 竞赛上下文（不回退 public）→ visibility`
+`admin → owner → 竞赛上下文（不回退 public）→ 公开赛保密 → visibility`
 
 其中竞赛上下文不是可伪装的"额外放行"：`verifyContestAccess` 会校验题目确实属于该竞赛、查看者是参赛者、且竞赛处于 running/ended。普通用户创建竞赛时也只能加入 `public` 题或自己拥有的 `private` 题，不能把他人私有题塞进竞赛来绕过访问控制。
+
+### 公开赛关联题目的保密（2026-09-26）
+
+题目一旦被加入**公开赛**（`contests.kind = 'public'`，邀请赛除外），在竞赛 `end_time` 之前，除**题目所有者**与**管理员**外，任何人访问该题目的页面与接口都返回 404 —— 不论题目 `visibility` 为何（P 型恒为 `public`，因此这条规则是这类题目唯一的遮蔽手段）。
+
+- **时间窗口**：赛前（pending）与赛中（running）一律保密；`end_time` 一过**自动失效**，题目恢复常规可见性（赛后复盘、补题、题解链接继续可用）。判定纯派生自时间，无需状态翻转任务。
+- **不受竞赛 `is_public` 影响**：链式/隐链公开赛（不出现在公开列表）同样保密。
+- **返回码**：读取路径一律 `404 NOT_FOUND`，错误文案与"题目不存在"**完全一致**；独立提交 / 自测路径返回 `403 ForbiddenError`。注意题库列表不排除该题，因此**存在性本身不保密**（标题、编号、链接可见）——404 保护的是题面、评测数据、starter code 等内容。
+- **竞赛上下文豁免**：携带有效竞赛上下文（`verifyContestAccess` 通过）的参赛者仍可从竞赛入口访问。客观题套卷的 `GET /problems/:id/questions?contest_id=` 与编辑器 starter code 的 `GET /problems/:id/template?contest_id=` 依赖这条豁免；独立入口（`/problems/:id`、`/editor/:id`、`POST /submissions`）不携带上下文，因此对参赛者也返回 404 / 403。
+- **不受影响**：题目仍在题库/搜索列表中可见（列表不做过滤），但点入即 404；竞赛作用域路由（`/contests/:id/problems/:label`、`/contests/:id/submit`）完全不受影响。
+- **提示**：所有者与管理员打开该题时会看到"当前题目已经被关联到竞赛 XXX，仅管理员和题目所有者可见，请注意保密工作"横幅（数据来自 `GET /problems/:id` 的 `contest_secrecy` 字段，该字段只对这两类查看者下发）。
+
+> **对第三方客户端的已知影响**：`noj-lmcc-extension` 只调用独立入口（`GET /problems?type=P` + `POST /submissions`），因此竞赛关联的题目在插件里**可见于列表但无法提交**；LMCC 考试若以公开赛承载，需改用邀请赛或先扩展插件携带竞赛上下文。
 
 ## 竞赛分类（contests.kind）
 

@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **1003** 处（ignore=650 early-return=268 rust-ignore=45 rust-env-guard=27 env-guard=13）。
+> 当前命中 **1014** 处（ignore=661 early-return=268 rust-ignore=45 rust-env-guard=27 env-guard=13）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -35,6 +35,17 @@
 | noj-core/src/domains/catalog/tests/routes/problem-bundle.test.ts | 757 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problem-bundle.test.ts | 776 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problem-bundle.test.ts | 818 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-contest-secrecy.test.ts | 134 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-contest-secrecy.test.ts | 152 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-contest-secrecy.test.ts | 172 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-contest-secrecy.test.ts | 200 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-contest-secrecy.test.ts | 222 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-contest-secrecy.test.ts | 247 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-contest-secrecy.test.ts | 271 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-contest-secrecy.test.ts | 303 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-contest-secrecy.test.ts | 323 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-contest-secrecy.test.ts | 345 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-contest-secrecy.test.ts | 383 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problem-field-guard.test.ts | 228 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problem-field-guard.test.ts | 253 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problem-field-guard.test.ts | 281 | ignore |
@@ -937,10 +948,10 @@
 | noj-tests/e2e/submission/artifact_submission.test.ts | 26 | early-return |
 | noj-tests/e2e/submission/artifact_submission.test.ts | 31 | early-return |
 | noj-tests/e2e/submission/mq_invalid_message.test.ts | 50 | early-return |
-| noj-tests/e2e/submission/priority_queue.test.ts | 33 | early-return |
-| noj-tests/e2e/submission/priority_queue.test.ts | 39 | early-return |
-| noj-tests/e2e/submission/priority_queue.test.ts | 80 | early-return |
+| noj-tests/e2e/submission/priority_queue.test.ts | 104 | early-return |
+| noj-tests/e2e/submission/priority_queue.test.ts | 110 | early-return |
 | noj-tests/e2e/submission/priority_queue.test.ts | 125 | early-return |
+| noj-tests/e2e/submission/priority_queue.test.ts | 156 | early-return |
 | noj-tests/e2e/submission/queue.test.ts | 24 | early-return |
 | noj-tests/e2e/submission/queue.test.ts | 38 | early-return |
 | noj-tests/e2e/submission/queue.test.ts | 68 | early-return |
