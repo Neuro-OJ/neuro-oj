@@ -3,7 +3,7 @@ import { useRoute } from "vue-router"
 import type { PostRow } from "~/composables/useCommunity"
 import { isAdminUser } from "~/utils/isAdminUser"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
-import { extractApiError } from "~/utils/apiError"
+import { extractApiError, isNotFoundError } from "~/utils/apiError"
 import type { PublicProblemStats } from "~/utils/problemStats"
 import { useProblemStats } from "~/composables/useProblemStats"
 import { toProblemView, type ProblemResource } from "~/utils/problemView"
@@ -16,9 +16,17 @@ const { config, loadConfig } = useCommunity()
 
 const problemId = route.params.id as string
 
-const { data, pending, error, refresh } = useFetch<{ data: ProblemResource }>(
+const { data, pending, error, refresh } = await useFetch<{
+  data: ProblemResource
+}>(
   `/api/v1/problems/${problemId}`,
 )
+
+// 404 → 真正的 404 页（含"题目已被公开赛保密、对非所有者/管理员不可见"）。
+// 后端对"不存在"与"不可见"刻意返回同一个 404，前端不能降级成 200 + 加载失败面板。
+if (isNotFoundError(error.value)) {
+  throw createError({ statusCode: 404, statusMessage: '题目不存在' })
+}
 
 /** 原始资源 → 统一视图模型（#511：与竞赛做题页共用同一形状）。 */
 const problem = computed(() =>
@@ -199,6 +207,9 @@ const publishBlockReason = computed(() => {
 
       <!-- v-if="problem"：与 AsyncContent 的 'data' 状态等价，同时让模板对 problem 做类型收窄 -->
       <div v-if="problem" class="mx-auto max-w-7xl p-4 sm:p-6">
+        <!-- 公开赛保密提示：仅所有者/管理员能看到本页（其他人 404），此处提醒注意保密 -->
+        <ProblemContestNotice :contests="problem.contest_secrecy" />
+
         <!-- 页内锚点：题面 / 题解（客观题无题解区） -->
         <nav aria-label="页内导航" class="mb-4 flex items-center gap-4 text-sm">
           <NuxtLink to="/problems" class="text-text-secondary no-underline hover:text-primary">题库</NuxtLink>

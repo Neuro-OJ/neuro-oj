@@ -18,6 +18,14 @@ export interface ProblemTagView {
   kind: 'problem' | 'algorithm';
 }
 
+/** 关联到题目的、尚未结束的公开赛（仅题目所有者与管理员可见）。 */
+export interface ProblemContestSecrecyNotice {
+  /** 竞赛公开 ID（`ct-…`），用于构造竞赛首页链接。 */
+  public_id: string;
+  /** 竞赛标题。 */
+  title: string;
+}
+
 /** 独立题目与竞赛题目共用的展示视图。 */
 export interface ProblemView {
   /** 内部 UUID（竞赛题为 `problem_id`），用于提交与关联查询。 */
@@ -38,6 +46,13 @@ export interface ProblemView {
   /** 出题人用户名（仅用户题库有值）。 */
   owner_username: string | null;
   owner_id: string | null;
+  /**
+   * 关联的、尚未结束的公开赛（仅题目所有者与管理员能收到该字段）。
+   *
+   * 非空表示该题已加入公开赛：除所有者与管理员外所有人访问题目相关页面/接口都会
+   * 404，竞赛结束后自动恢复可见。页面据此渲染保密提示横幅。
+   */
+  contest_secrecy: ProblemContestSecrecyNotice[];
   /** 时间限制（ms）；null 表示该来源不提供（竞赛页无 runtime_config）。 */
   time_limit_ms: number | null;
   /** 内存限制（MB）；null 同上。 */
@@ -62,6 +77,8 @@ export interface ProblemResource {
   artifact_max_size_mb?: number | null;
   tags?: ProblemTagView[];
   has_hidden_algorithm_tags?: boolean;
+  /** 关联的未结束公开赛；仅所有者/管理员会收到（保密提示横幅）。 */
+  contest_secrecy?: ProblemContestSecrecyNotice[] | null;
   runtime_config?: {
     evaluator?: {
       time_limit_ms?: number;
@@ -101,6 +118,7 @@ export function toProblemView(resource: ProblemResource): ProblemView {
     memory_limit_mb: evaluator?.memory_limit_mb ?? null,
     tags: resource.tags ?? [],
     has_hidden_algorithm_tags: resource.has_hidden_algorithm_tags === true,
+    contest_secrecy: resource.contest_secrecy ?? [],
   };
 }
 
@@ -130,6 +148,8 @@ export function toContestProblemView(resource: ContestProblemResource): ProblemV
     memory_limit_mb: null,
     tags: [],
     has_hidden_algorithm_tags: false,
+    // 竞赛页本身就是"已在竞赛内"的视图，不渲染保密提示
+    contest_secrecy: [],
   };
 }
 
