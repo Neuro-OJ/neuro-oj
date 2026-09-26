@@ -791,7 +791,7 @@ dependencies = [
 
 [[package]]
 name = "noj-judge"
-version = "0.10.1-alpha.2"
+version = "0.10.1-alpha.3"
 dependencies = [
  "anyhow",
  "base64",

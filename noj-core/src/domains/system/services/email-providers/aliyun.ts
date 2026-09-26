@@ -11,6 +11,51 @@
 import type { SendEmail, SendPasswordResetEmail } from "./types.ts";
 import { buildResetPasswordHtml, getSettingOrThrow } from "./common.ts";
 
+/** SingleSendMail 请求参数（**camelCase**，由 SDK 模型映射为 wire 参数名）。 */
+export interface AliyunSendMailParams {
+  accountName: string;
+  replyToAddress: boolean;
+  addressType: number;
+  toAddress: string;
+  subject: string;
+  htmlBody: string;
+}
+
+/**
+ * 构造 SingleSendMail 请求参数。
+ *
+ * ⚠️ 字段名必须是 **camelCase**：`@alicloud/dm20151123` 的请求模型继承自
+ * `$dara.Model`，只识别 camelCase 属性，再由模型自带的 `names()`
+ * （`accountName → AccountName` 等）映射成 wire 参数。写成 PascalCase
+ * （`AccountName: ...`）时构造器**静默丢弃全部字段**，服务端只报
+ * `MissingAccountName: AccountName is mandatory for this action`——该报错看起来
+ * 像发信地址没配置，实际是字段名不被识别（2026-09-26 生产实测）。
+ *
+ * 这类缺陷此前长期不可见：Provider 模块在 `deno compile` 产物里被排除
+ * （见 email.ts 里 `PROVIDER_LOADERS` 的说明），这段请求从未真正发出过。
+ *
+ * @param fromEmail - 发信地址（ALIBABA_FROM_EMAIL）
+ * @param toEmail - 收件人地址
+ * @param subject - 邮件主题
+ * @param html - 邮件 HTML 正文
+ */
+export function buildSendMailParams(
+  fromEmail: string,
+  toEmail: string,
+  subject: string,
+  html: string,
+): AliyunSendMailParams {
+  return {
+    accountName: fromEmail,
+    // 不单独指定回复地址（replyToAddress=true 会要求同时提供 ReplyAddress）
+    replyToAddress: false,
+    addressType: 1, // 1 = 发信地址（触发邮件），0 = 随机账号
+    toAddress: toEmail,
+    subject,
+    htmlBody: html,
+  };
+}
+
 /**
  * 发送密码重置邮件（阿里云 DirectMail）。
  *
@@ -47,13 +92,9 @@ export const sendEmail: SendEmail = async (email, subject, html) => {
 
   const client = new DMClient(config);
 
-  const req = new SendMailRequest({
-    AccountName: fromEmail,
-    ToAddress: email,
-    Subject: subject,
-    HtmlBody: html,
-    AddressType: 1, // 触发邮件
-  });
+  const req = new SendMailRequest(
+    buildSendMailParams(fromEmail, email, subject, html),
+  );
 
   await client.singleSendMail(req);
   return true;

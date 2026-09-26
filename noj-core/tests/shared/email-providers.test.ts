@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { decodeBase64 } from "@std/encoding/base64";
 import { sendPasswordResetEmail as mockSend } from "./../../src/domains/system/services/email-providers/mock.ts";
 import { sendPasswordResetEmail as disabledSend } from "./../../src/domains/system/services/email-providers/disabled.ts";
 import type { SendPasswordResetEmail } from "./../../src/domains/system/services/email-providers/types.ts";
@@ -134,6 +135,78 @@ Deno.test({
       }
       if (originalFrom) Deno.env.set("ALIBABA_FROM_EMAIL", originalFrom);
     }
+  },
+});
+
+// ── 阿里云 Provider 请求契约 ──
+//
+// 2026-09-26 生产实测缺陷：请求字段写成 PascalCase（`AccountName`），而
+// `@alicloud/dm20151123` 的请求模型只识别 camelCase 属性，构造器静默丢弃全部字段，
+// 服务端报 `MissingAccountName`。这里直接拿 SDK 模型做契约校验（离线、无网络）。
+Deno.test({
+  name: "email-providers: aliyun 请求字段必须能被 SDK 模型映射为 wire 参数",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const { buildSendMailParams } = await import(
+      "./../../src/domains/system/services/email-providers/aliyun.ts"
+    );
+    // deno-lint-ignore no-explicit-any
+    const dm: any = await import("npm:@alicloud/dm20151123@^1.10.2");
+    const names: Record<string, string> = dm.SingleSendMailRequest.names();
+
+    const params = buildSendMailParams(
+      "service@neuro-oj.icu",
+      "user@example.com",
+      "主题",
+      "<p>正文</p>",
+    );
+
+    // ① 传入的每个字段都必须被模型识别（PascalCase 会在此失败）
+    for (const key of Object.keys(params)) {
+      assertEquals(
+        typeof names[key],
+        "string",
+        `SDK 模型不识别请求字段 ${key}（字段名大小写不符合模型定义）`,
+      );
+    }
+
+    // ② 按模型 names() 映射后，wire 参数必须齐备且值正确
+    const req = new dm.SingleSendMailRequest(params);
+    const wire: Record<string, unknown> = {};
+    for (const [camel, wireName] of Object.entries(names)) {
+      const value = req[camel];
+      if (value !== undefined) wire[wireName] = value;
+    }
+    assertEquals(wire.AccountName, "service@neuro-oj.icu");
+    assertEquals(wire.ToAddress, "user@example.com");
+    assertEquals(wire.Subject, "主题");
+    assertEquals(wire.HtmlBody, "<p>正文</p>");
+    assertEquals(wire.AddressType, 1);
+    assertEquals(wire.ReplyToAddress, false);
+  },
+});
+
+// ── 腾讯云 Provider 正文编码 ──
+//
+// 邮件模板正文含中文，而 `btoa` 只接受 Latin-1 字符，直接用它会在本地抛
+// InvalidCharacterError（邮件永远发不出去）。此处锁定 base64 必须按 UTF-8 编码。
+Deno.test({
+  name: "email-providers: tencent 中文 HTML 的 base64 编码按 UTF-8 字节",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const { encodeHtmlBase64 } = await import(
+      "./../../src/domains/system/services/email-providers/tencent.ts"
+    );
+    const html = "<p>欢迎注册 Neuro OJ。</p>";
+    const encoded = encodeHtmlBase64(html);
+    assertEquals(
+      decodeBase64(encoded),
+      new TextEncoder().encode(html),
+      "base64 必须可还原为原始 UTF-8 字节",
+    );
+    assert(!encoded.includes("<"), "编码结果不应包含原始 HTML");
   },
 });
 

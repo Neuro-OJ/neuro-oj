@@ -21,13 +21,39 @@ import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "system"]);
 import { observability as metrics } from "../../../domains/observability/write.ts";
 
-/** Provider 名称到模块路径的映射 */
-const PROVIDER_MODULES: Record<string, string> = {
-  disabled: "./email-providers/disabled.ts",
-  mock: "./email-providers/mock.ts",
-  aliyun: "./email-providers/aliyun.ts",
-  tencent: "./email-providers/tencent.ts",
+/** 每个 Provider 模块必须实现的最小接口。 */
+interface EmailProviderModule {
+  sendPasswordResetEmail: SendPasswordResetEmail;
+  sendEmail: SendEmail;
+}
+
+/**
+ * Provider 名称到**惰性加载器**的映射。
+ *
+ * ⚠️ 这里的动态 `import()` 必须写成**字面量说明符**，不得改回
+ * `import(modulePath)`（变量说明符）。`deno compile` 只对字面量动态导入做静态
+ * 分析并把模块内联进单文件二进制；变量说明符编译期不报错，运行时才抛
+ * `Module not found: file:///tmp/deno-compile-noj-server/...`——生产镜像是
+ * `deno compile` 产物，因此这条路径**只在生产容器里炸**，本地 `deno task dev`
+ * 与单元测试全绿（2026-09-25 实测：`noj-server:0.10.1-alpha.2` 发送邮件/邮箱验证
+ * 全部 500，日志见 `Module not found .../email-providers/aliyun.ts`）。
+ * 回归门禁：`scripts/verify-compile-safe-imports.ts`。
+ * 装配点白名单：`scripts/verify-capability-seams.ts`（静态/动态导入都算引用）。
+ */
+const PROVIDER_LOADERS: Record<
+  string,
+  () => Promise<EmailProviderModule>
+> = {
+  disabled: () => import("./email-providers/disabled.ts"),
+  mock: () => import("./email-providers/mock.ts"),
+  aliyun: () => import("./email-providers/aliyun.ts"),
+  tencent: () => import("./email-providers/tencent.ts"),
 };
+
+/** 当前生效的 Provider 名称（配置读取链：DB → env → 默认值 mock）。 */
+function currentProvider(): string {
+  return String(getSetting("email_provider")?.value ?? "mock");
+}
 
 /** 已缓存的 send 函数引用 */
 let sendFn: SendPasswordResetEmail | null = null;
@@ -42,30 +68,30 @@ let sendEmailFn: SendEmail | null = null;
 async function loadSendFn(): Promise<SendPasswordResetEmail> {
   if (sendFn) return sendFn;
 
-  const provider = String(getSetting("email_provider")?.value ?? "mock");
+  const provider = currentProvider();
 
   if (
     Deno.env.get("NOJ_ENV") === "production" &&
-    (provider === "mock" || !PROVIDER_MODULES[provider])
+    (provider === "mock" || !PROVIDER_LOADERS[provider])
   ) {
     throw new Error(
       "生产环境禁止使用 mock 邮件 Provider；请配置 email_provider=aliyun、tencent 或 disabled",
     );
   }
 
-  const modulePath = PROVIDER_MODULES[provider];
+  const load = PROVIDER_LOADERS[provider];
 
-  if (!modulePath) {
+  if (!load) {
     logger.warn("未知的 EMAIL_PROVIDER，使用 mock 替代", { provider });
     Deno.env.set("EMAIL_PROVIDER", "mock");
-    const mod = await import("./email-providers/mock.ts");
+    const mod = await PROVIDER_LOADERS.mock();
     sendFn = mod.sendPasswordResetEmail;
-    return sendFn!;
+    return sendFn;
   }
 
-  const mod = await import(modulePath);
+  const mod = await load();
   sendFn = mod.sendPasswordResetEmail;
-  return sendFn!;
+  return sendFn;
 }
 
 /**
@@ -80,17 +106,17 @@ export function resetEmailProvider(): void {
 
 async function loadGenericSendFn(): Promise<SendEmail> {
   if (sendEmailFn) return sendEmailFn;
-  const provider = String(getSetting("email_provider")?.value ?? "mock");
-  const modulePath = PROVIDER_MODULES[provider];
-  if (!modulePath) {
+  const provider = currentProvider();
+  const load = PROVIDER_LOADERS[provider];
+  if (!load) {
     throw new Error(`未知的 EMAIL_PROVIDER：${provider}`);
   }
   if (Deno.env.get("NOJ_ENV") === "production" && provider === "mock") {
     throw new Error("生产环境禁止使用 mock 邮件 Provider");
   }
-  const mod = await import(modulePath);
+  const mod = await load();
   sendEmailFn = mod.sendEmail;
-  return sendEmailFn!;
+  return sendEmailFn;
 }
 
 /**
@@ -108,7 +134,7 @@ export async function sendPasswordResetEmail(
   expiresInMinutes = 15,
 ): Promise<void> {
   metrics.inc("noj_email_send_attempts_total", {
-    provider: String(getSetting("email_provider")?.value ?? "mock"),
+    provider: currentProvider(),
     message_type: "password_reset",
   });
   const fn = await loadSendFn();
@@ -122,7 +148,7 @@ export async function sendEmailVerificationEmail(
   expiresInMinutes = 30,
 ): Promise<boolean> {
   metrics.inc("noj_email_send_attempts_total", {
-    provider: String(getSetting("email_provider")?.value ?? "mock"),
+    provider: currentProvider(),
     message_type: "verification",
   });
   const fn = await loadGenericSendFn();
@@ -141,7 +167,7 @@ export async function sendEmailVerificationEmail(
  */
 export async function sendTestEmail(to: string): Promise<boolean> {
   metrics.inc("noj_email_send_attempts_total", {
-    provider: String(getSetting("email_provider")?.value ?? "mock"),
+    provider: currentProvider(),
     message_type: "test",
   });
   const fn = await loadGenericSendFn();

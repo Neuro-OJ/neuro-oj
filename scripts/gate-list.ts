@@ -39,6 +39,7 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/check-migration-safety_test.ts",
   "scripts/check-migration-snapshot-chain_test.ts",
   "scripts/verify-capability-seams_test.ts",
+  "scripts/verify-compile-safe-imports_test.ts",
   "scripts/gen-route-catalog_test.ts",
   "scripts/silent-skip-report_test.ts",
   "scripts/check-file-size_test.ts",
@@ -66,6 +67,10 @@ export const REPO_GATES: Gate[] = [
   { args: ["deno", "run", "-A", "scripts/verify-md-links.ts"] },
   { args: ["deno", "run", "-A", "scripts/verify-export-jsdoc.ts"] },
   { args: ["deno", "run", "-A", "scripts/verify-capability-seams.ts"] },
+  // deno compile 导入安全：变量说明符的动态导入无法内联进生产二进制，
+  // 编译期不报错、源码运行与单元测试全绿，只在生产容器里抛 Module not found
+  //（2026-09-25 实测：noj-server 的阿里云邮件 Provider 不可用，邮件全链路 500）。
+  { args: ["deno", "run", "-A", "scripts/verify-compile-safe-imports.ts"] },
   { args: ["deno", "run", "-A", "scripts/verify-domain-ci.ts"] },
   // 静默跳过：与基线比对，**跳过数增长即失败**（2026-09-12 评审 §5.1）。
   {

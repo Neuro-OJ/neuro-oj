@@ -12,6 +12,45 @@
 
 ---
 
+## [0.10.1-alpha.3] - 2026-09-26
+
+### 修复
+
+- **生产镜像里邮件 Provider 从未被编译进二进制，所有发信链路不可用**（`0.10.1-alpha.2`
+  部署实例实测）：`deno compile` 只对**字面量**动态导入做静态分析，而 `email.ts` 的装配点
+  先用 `PROVIDER_MODULES[provider]` 取出模块路径字符串、再 `await import(modulePath)`，
+  于是 aliyun / tencent / disabled / mock 四个 Provider 全部不在产物内。本地开发与单元
+  测试跑的是源码、CI 也不执行该分支，缺陷只在生产容器里以
+  `Module not found: file:///tmp/deno-compile-noj-server/src/domains/system/services/email-providers/aliyun.ts`
+  暴露（管理后台测试邮件 503、注册邮箱验证与找回密码 500）。改为字面量加载器
+  `PROVIDER_LOADERS`（`() => import("./email-providers/x.ts")`），保留惰性加载与
+  `resetEmailProvider()` 语义。
+- **阿里云 DirectMail 请求字段大小写错误，SDK 静默丢弃全部字段**：`@alicloud/dm20151123`
+  的请求模型只识别 camelCase 属性（再由模型 `names()` 映射为 wire 上的 `AccountName` 等），
+  原实现传 PascalCase，服务端因此只报
+  `MissingAccountName: AccountName is mandatory for this action`——该报错看似"发信地址
+  未配置"，实为字段名不被识别。改为 camelCase，并抽出 `buildSendMailParams()` 供契约测试。
+- **腾讯云 SES 用 `btoa` 编码邮件正文，中文模板必然抛错**：`btoa` 只接受 Latin-1 字符，
+  而本站邮件正文含中文，调用即抛 `InvalidCharacterError`。改为对 UTF-8 字节做 base64
+  （`@std/encoding/base64`），并抽出 `encodeHtmlBase64()`。该修复仅静态验证（无腾讯云凭据）。
+
+### 新增
+
+- 仓库级门禁 `scripts/verify-compile-safe-imports.ts`（含 7 条自测，已注册进
+  `scripts/gate-list.ts`）：扫描 `deno compile` 产物对应的源码根（`noj-core/src`、
+  `noj-core/scripts`、`noj-cli/src`），禁止 `import(<非字面量>)`。门禁自带正/反例控制断言，
+  解析规则失效即失败；对修复前的同一份代码会报出 2 处违规，可直接复现该故障。
+- `tests/shared/email-providers.test.ts` 新增两条离线契约测试：阿里云请求字段必须能被 SDK
+  模型映射为 wire 参数、腾讯云中文正文 base64 必须可还原为原始 UTF-8 字节。
+
+### 变更
+
+- 版本号同步为 `0.10.1-alpha.3`（noj-cli / noj-core / noj-llm-gateway / noj-ui /
+  noj-lmcc-extension / noj-judge + CLI `VERSION` 常量与断言；`Cargo.lock` 由
+  `cargo metadata` 重新生成，仅版本行）。
+
+---
+
 ## [0.10.1-alpha.2] - 2026-09-25
 
 ### 修复
