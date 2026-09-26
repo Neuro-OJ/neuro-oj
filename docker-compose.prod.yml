@@ -432,23 +432,39 @@ services:
     logging: *default-logging
     # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
     mem_limit: "${MINIO_MEM_LIMIT:-1g}"
-    image: minio/minio:RELEASE.2024-11-07T00-52-20Z@sha256:d051d800a3025588f37f69f132bb5ef718547a9a4ee95ddee44e04ad952a0a96
-    command: server /data --console-address :9001
+    # 镜像来源变更（2026-09-26）：MinIO 已停止免费分发，`minio/minio`（Docker Hub）
+    # 与 `quay.io/minio/*` 均已 404/无 manifest、`dl.min.io` 返回 410，原镜像无法拉取
+    # （新装/换机部署会直接失败）。改用 Bitnami 冻结镜像源，MinIO 版本与原镜像一致
+    # （RELEASE.2024-11-07），digest 为多架构 manifest list。
+    image: bitnamilegacy/minio:2024.11.7-debian-12-r2@sha256:81cd091fb9f14b2e9e9bfa6dbc2bf2d46fdd5eafa6c5e7c9213baf4256ff13d6
+    # 以 root 启动入口脚本：Bitnami 入口会 `chown -R minio` 数据目录后把服务降到
+    # `minio` 用户运行（libminio.sh 的 minio_initialize）。这同时是**存量升级的自愈路径**：
+    # 旧镜像以 root 写入属主 0:0/0755，非 root 启动会 `Permission denied` 直接退出。
+    user: "0"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
     volumes:
-      - miniodata:/data
+      # 数据目录随镜像改为 Bitnami 约定路径 /bitnami/minio/data（卷内容不变，
+      # 仅挂载点变化，因此存量数据仍在卷根、升级不丢对象）
+      - miniodata:/bitnami/minio/data
     restart: unless-stopped
     networks:
       - noj-net
 
   # ── MinIO bucket 初始化（一次性，带重试等待 MinIO 就绪）──────────
+  #
+  # 脚本必须保持 **POSIX sh 兼容**：镜像从官方 mc（sh=bash）换到 Bitnami（sh=dash）后，
+  # 原先的 bash 专有展开 `${policy//__S3_BUCKET__/${S3_BUCKET}}` 会以
+  # `Bad substitution` 直接失败，导致 bucket/策略/应用用户全部没建、core 无法使用 S3。
+  # 这里改用 sed 做同一件事（两种 shell 下都可用）。
   minio-init:
     logging: *default-logging
     # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
     mem_limit: "${MINIO_INIT_MEM_LIMIT:-256m}"
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:eb4ea9884b77704230e2423e9004d2fa738dc272876b9cc41a297d29443b8780
+    # 同因镜像下架（2026-09-26）：mc 客户端改用 Bitnami 冻结源（2025-07-21 版本，
+    # 与原 2025-08-13 同代，管理命令语法不变，已对本镜像实测建桶/建策略/授权链路）。
+    image: bitnamilegacy/minio-client:2025.7.21-debian-12-r3@sha256:73bd39f7899a0cef12b8dd5df13aa93a3ed1aaa44236542442e9ac76819ac158
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
@@ -462,9 +478,7 @@ services:
               echo "S3 应用凭据不得复用 MinIO root 凭据" >&2; exit 1;
             fi;
             mc mb --ignore-existing "local/$$S3_BUCKET";
-            policy=$$(cat /etc/noj/minio-policy.json.tpl);
-            policy=$${policy//__S3_BUCKET__/$${S3_BUCKET}};
-            printf '%s' "$${policy}" > /tmp/noj-minio-policy.json;
+            sed "s/__S3_BUCKET__/$${S3_BUCKET}/g" /etc/noj/minio-policy.json.tpl > /tmp/noj-minio-policy.json;
             mc admin policy remove local noj-support-packages-app >/dev/null 2>&1 || true;
             mc admin policy create local noj-support-packages-app /tmp/noj-minio-policy.json;
             mc admin user add local "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" >/dev/null 2>&1 || true;

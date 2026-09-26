@@ -28,6 +28,9 @@ services:
   minio:
     image: bitnamilegacy/minio:2024.11.7-debian-12-r2
     container_name: noj-minio
+    # 以 root 启动入口：入口会 chown -R 数据目录后把服务降到 minio 用户运行；
+    # 这同时自愈"旧镜像写下的 root 属主卷"（本地已有 minio-data 卷的情况）
+    user: "0"
     ports:
       - "9000:9000"   # API
       - "9001:9001"   # Console

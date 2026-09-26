@@ -10,6 +10,43 @@
 
 ## [Unreleased]
 
+### 变更（需要运维注意）
+
+- **MinIO 镜像来源迁移（官方已停止免费分发）**：Docker Hub `minio/minio`、`minio/mc` 整组织
+  404（仓库已删除），`quay.io/minio/*` 无 manifest，`dl.min.io` 二进制返回 **410 Gone** —— 原先钉的
+  `minio/minio:RELEASE.2024-11-07` 与 `minio/mc:RELEASE.2025-08-13` 均无法拉取，**新装 / 换机部署会失败**
+  （运行中的实例因本地有镜像缓存暂未暴露）。
+  - `docker-compose.prod.yml`（以及 dev / E2E compose）改用 Bitnami 冻结镜像源，**MinIO 版本不变**
+    （RELEASE.2024-11-07），prod 按多架构 digest 钉死；`noj-cli` 的 mc 客户端常量同步更换。
+  - prod 的 `minio` 改为以 root 启动入口脚本：入口会 `chown -R` 数据卷属主后把服务**降权为 `minio` 用户**运行，
+    因此**存量实例升级无需手工步骤**；数据卷挂载点改为 `/bitnami/minio/data`（卷内容不变，对象不受影响）。
+  - `minio-init` 的策略模板替换由 bash 专有展开改为 POSIX `sed`（新镜像的 `/bin/sh` 是 dash，
+    否则会以 `Bad substitution` 失败、bucket 与策略不会被创建）。
+  - `docker-compose.prod.yml` 属发布资产：**该变更需随新版本发布**才对 `noj-cli install/update` 生效。
+  - 长期建议：评估迁移到受支持的托管 S3（`S3_ENDPOINT` 可指向阿里云 OSS / R2 等），以摆脱冻结镜像源。
+
+### 新增
+
+- **公开赛关联题目保密**：题目被加入**公开赛**（`contests.kind='public'`，邀请赛除外）
+  后，在竞赛结束时间之前，除**题目所有者**与**管理员**外，所有人访问该题目的题库页面与
+  独立接口都按"不存在"处理（读取 404、独立提交/自测 403）；竞赛 `end_time` 一过自动恢复
+  可见（赛后复盘、补题、题解继续可用）。所有者/管理员打开该题时会看到
+  "当前题目已经被关联到竞赛 XXX，仅管理员和题目所有者可见，请注意保密工作"横幅
+  （`GET /problems/:id` 新增 `contest_secrecy` 字段，只对这两类查看者下发）。
+  题库与搜索列表仍保留条目（点入即 404）。
+
+### 变更（破坏性）
+
+- **竞赛关联题目的独立入口在赛前/赛中对所有人关闭（含参赛者）**：参赛者必须通过竞赛
+  入口（`/contests/:id/problems/:label`、`/contests/:id/submit`）做题与提交；把题目
+  收藏成 `/problems/<编号>` 直链在赛前/赛中会 404。携带**有效竞赛上下文**的接口
+  （客观题套卷 `GET /problems/:id/questions?contest_id=`、starter code
+  `GET /problems/:id/template?contest_id=`）不受影响。
+- `noj-lmcc-extension` 只调用题库入口，因此被公开赛关联的题目在插件里"能搜到但无法
+  提交"；LMCC 若以公开赛承载考试，需改用邀请赛或先扩展插件携带竞赛上下文。
+- `GET /problems/:id/template` 补齐访问校验（此前**完全没有校验**，私有题的 starter
+  code 对任意登录用户可读）：现与题目详情同口径，无权限一律 404。
+
 ---
 
 ## [0.10.1-alpha.3] - 2026-09-26
