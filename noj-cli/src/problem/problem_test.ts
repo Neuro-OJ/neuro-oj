@@ -84,10 +84,10 @@ Deno.test("shouldExclude: 对齐 noj.ts 的排除规则", () => {
   assertEquals(shouldExclude(".git/config"), true);
   // 打包脚本
   assertEquals(shouldExclude("build_bundle.sh"), true);
-  // 模板文件必须**排除**（规范 problem-bundle.md:26 + 旧 noj.ts 行为；
-  // 编辑器模板从 data/problems-src 读取，不从包里读）
-  assertEquals(shouldExclude("template.py", "template.py"), true);
-  assertEquals(shouldExclude("my-template.py", "my-template.py"), true);
+  // 模板文件**保留**（2026-09 修正）：平台导入题目包时从这里取编辑器初始代码，
+  // 不再依赖服务器本地 data/problems-src（容器化生产没有该目录）
+  assertEquals(shouldExclude("template.py"), false);
+  assertEquals(shouldExclude("my-template.py"), false);
   // 正常文件保留
   assertEquals(shouldExclude("evaluate.py"), false);
   assertEquals(shouldExclude("problem.json"), false);
@@ -351,9 +351,11 @@ Deno.test("vendored 副本：每个文件都必须有同步警示与原始路径
   }
 });
 
-Deno.test("pack: 模板文件必须被排除（规范 problem-bundle.md:26）", () => {
-  // 评审修正：早先把 template.py 打进包，违背规范与旧 noj.ts 行为
-  assertEquals(shouldExclude("template.py", "template.py"), true);
-  assertEquals(shouldExclude("template.py"), true);
-  assertEquals(shouldExclude("custom-tpl.py", "custom-tpl.py"), true);
+Deno.test("pack: 模板文件必须进包（平台据此填充编辑器初始代码）", () => {
+  // 2026-09 修正：模板随包上传，由核心在导入时落库到 problems.template_content。
+  // 旧规则（模板排除）依赖服务器本地 problems-src，容器化生产没有该目录，
+  // 导致线上所有题目的编辑器都没有初始代码。
+  assertEquals(shouldExclude("template.py"), false);
+  assertEquals(shouldExclude("custom-tpl.py"), false);
+  assertEquals(shouldExclude("templates/template.py"), false);
 });

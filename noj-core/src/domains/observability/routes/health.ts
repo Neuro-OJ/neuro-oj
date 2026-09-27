@@ -9,6 +9,7 @@
 import { Hono } from "hono";
 import type { ObservabilityRegistry } from "../../../shared/observability/contracts.ts";
 import { collectSnapshot, runHealthProbes } from "../probes/registry.ts";
+import { getBuildInfo } from "../../../shared/base/build-info.ts";
 
 interface QueueHealthEntry {
   queue_length: number;
@@ -21,7 +22,12 @@ export function createHealthRouter(registry: ObservabilityRegistry): Hono {
 
   health.get(
     "/health/live",
-    (c) => c.json({ status: "alive", service: "noj-core", version: "0.9.5" }),
+    (c) =>
+      c.json({
+        status: "alive",
+        service: "noj-core",
+        version: getBuildInfo().version,
+      }),
   );
 
   health.get("/health/ready", async (c) => {
@@ -54,7 +60,7 @@ export function createHealthRouter(registry: ObservabilityRegistry): Hono {
     return c.json({
       status: ready ? "ready" : "not_ready",
       service: "noj-core",
-      version: "0.9.5",
+      version: getBuildInfo().version,
       // 依赖明细只在非生产环境返回：/healthz 经 nginx 暴露且无鉴权，
       // 生产环境披露依赖可用性属信息泄漏（与 checks 同一守卫）。
       ...(showDetails
@@ -130,7 +136,7 @@ export function createHealthRouter(registry: ObservabilityRegistry): Hono {
     return c.json({
       status: healthy ? "healthy" : "degraded",
       service: "noj-core",
-      version: "0.9.5",
+      version: getBuildInfo().version,
       database: dbProbe?.status === "up" ? "ok" : "error",
       redis: redisProbe?.status === "up" ? "ok" : "error",
       consumer: consumerStatus === "up" ? "ok" : "error",

@@ -35,8 +35,8 @@ import { listAllProblems } from "../../catalog/services/problems/problems.ts";
 import { resolveProblem } from "../../catalog/services/problem-resolve.ts";
 import { inspectEvaluationPackage } from "../../catalog/services/bundle-parser.ts";
 import {
-  getProblemTemplate,
   getSupportPackageBytes,
+  resolveProblemTemplate,
 } from "../../catalog/services/support-package.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
 import {
@@ -120,15 +120,7 @@ router.get("/problems/:id/preflight", async (c) => {
     }
   }
 
-  const template = problem.is_objective ? null : await getProblemTemplate({
-    number: problem.number,
-    title: problem.title,
-  });
-  add(
-    "template",
-    template ? "pass" : "warning",
-    template ? "模板可读取" : "未找到模板，发布后编辑器没有初始代码",
-  );
+  // 支持包先读取：模板解析第 2 级要用它（避免为同一份包下载两次）。
   const packageBytes = await getSupportPackageBytes(
     problem.id,
     c.var.userId,
@@ -139,6 +131,17 @@ router.get("/problems/:id/preflight", async (c) => {
     "support_package",
     packageBytes ? "pass" : "error",
     packageBytes ? "支持包可读取" : "缺少支持包",
+  );
+
+  const template = problem.is_objective ? null : await resolveProblemTemplate({
+    id: problem.id,
+    number: problem.number,
+    title: problem.title,
+  }, { packageBytes });
+  add(
+    "template",
+    template ? "pass" : "warning",
+    template ? "模板可读取" : "未找到模板，发布后编辑器没有初始代码",
   );
 
   if (packageBytes && !problem.is_objective) {

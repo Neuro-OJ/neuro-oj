@@ -125,6 +125,99 @@ describe('AdminTable', () => {
     expect(wrapper.text()).toContain('alice@test.com');
   });
 
+  it('部分覆盖的 #cell 插槽：未覆盖列回退显示原始值', () => {
+    // 回归：题目管理页的 #cell 只处理 type/difficulty/tags/created_at，
+    // 题号（display_id）与标题（title）两列曾整列空白。
+    const wrapper = mount(AdminTable, {
+      props: { columns, items: [items[0]], loading: false, totalPages: 1, currentPage: 1 },
+      global: { components: { UTable: UTableStub, UPagination: UPaginationStub } },
+      slots: {
+        cell:
+          `<template #cell="{ row, column }"><template v-if="column.key === 'username'"><b class="u">{{ row.username }}</b></template></template>`,
+      },
+    });
+    expect(wrapper.find('.u').text()).toBe('alice');
+    // email 列没有被插槽覆盖 → 必须回退为原始字段值，而不是空白
+    expect(wrapper.text()).toContain('alice@test.com');
+  });
+
+  it('插槽命中但渲染为空字符串时也回退原始值', () => {
+    const wrapper = mount(AdminTable, {
+      props: {
+        columns,
+        items: [{ id: 'u9', username: 'carol', email: 'carol@test.com' }],
+        loading: false,
+        totalPages: 1,
+        currentPage: 1,
+      },
+      global: { components: { UTable: UTableStub, UPagination: UPaginationStub } },
+      slots: {
+        cell:
+          `<template #cell="{ row, column }"><template v-if="column.key === 'username'">{{ '' }}</template></template>`,
+      },
+    });
+    expect(wrapper.text()).toContain('carol');
+  });
+
+  it('未覆盖列取值为 null/undefined 时渲染空串而非 "null"', () => {
+    const wrapper = mount(AdminTable, {
+      props: {
+        columns,
+        items: [{ id: 'u10', username: 'dave', email: null }],
+        loading: false,
+        totalPages: 1,
+        currentPage: 1,
+      },
+      global: { components: { UTable: UTableStub, UPagination: UPaginationStub } },
+      slots: {
+        cell:
+          `<template #cell="{ row, column }"><template v-if="column.key === 'username'">{{ row.username }}</template></template>`,
+      },
+    });
+    expect(wrapper.text()).toContain('dave');
+    expect(wrapper.text()).not.toContain('null');
+  });
+
+  it('标签管理页形态：名称与关联题目数回退原始值（含数值 0）', () => {
+    // 复刻 pages/admin/tags.vue：列 = 名称/类型/关联题目数/创建时间/操作，
+    // #cell 只处理 kind 与 created_at。「名称」「关联题目数」曾整列空白。
+    const tagColumns = [
+      { key: 'name', label: '名称' },
+      { key: 'kind', label: '类型' },
+      { key: 'problem_count', label: '关联题目数' },
+      { key: 'created_at', label: '创建时间' },
+      { key: 'actions', label: '操作' },
+    ];
+    const wrapper = mount(AdminTable, {
+      props: {
+        columns: tagColumns,
+        items: [{
+          id: 'tag-dp',
+          name: 'DP',
+          kind: 'algorithm',
+          problem_count: 0,
+          created_at: '2026-09-25T17:03:30.439Z',
+        }],
+        loading: false,
+        totalPages: 1,
+        currentPage: 1,
+      },
+      global: { components: { UTable: UTableStub, UPagination: UPaginationStub } },
+      slots: {
+        cell: `<template #cell="{ row, column }">
+          <template v-if="column.key === 'kind'"><span class="kind-badge">{{ row.kind }}</span></template>
+          <template v-else-if="column.key === 'created_at'">{{ row.created_at }}</template>
+        </template>`,
+      },
+    });
+    // 插槽命中列仍走插槽
+    expect(wrapper.find('.kind-badge').text()).toBe('algorithm');
+    // 未覆盖列回退原始值：名称
+    expect(wrapper.text()).toContain('DP');
+    // 数值 0 必须渲染为 "0"，不能被当成"空值"丢掉
+    expect(wrapper.text()).toContain('0');
+  });
+
   it('loading / error / 空数据按优先级展示状态而非表格', () => {
     expect(mountTable({ loading: true }).text()).toContain('加载中');
     expect(mountTable({ error: '后端炸了' }).text()).toContain('后端炸了');

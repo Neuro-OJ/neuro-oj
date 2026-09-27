@@ -179,6 +179,11 @@ export interface UpdateProblemInput {
   submission_mode?: string;
   /** artifact 提交大小上限（MB），可空 */
   artifact_max_size_mb?: number | null;
+  /**
+   * 编辑器初始代码模板内容。**仅服务端题目包导入流程可写**（从包内
+   * `manifest.template` 声明的文件读取）；设为 null 表示清空模板。
+   */
+  template_content?: string | null;
   /** LLM 配置变更（可空）；设为 null 表示移除 LLM 配置 */
   llm?: LlmConfig | null;
 }

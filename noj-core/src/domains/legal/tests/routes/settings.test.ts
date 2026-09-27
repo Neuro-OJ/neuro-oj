@@ -7,6 +7,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { resetDbForTest } from "../../../../shared/db/connection.ts";
 import { createApp } from "../../../../app.ts";
+import { getBuildInfo } from "../../../../shared/base/build-info.ts";
 
 Deno.test({
   name: "legal settings: 配置项已注册且分类为 legal",
@@ -118,7 +119,12 @@ Deno.test({
     assertEquals(body.data.operator_name, "示例社团");
     assertEquals(body.data.contact, "privacy@example.test");
     assertEquals(JSON.parse(body.data.third_parties).length, 1);
+    // 构建身份三要素：页脚技术信息条据此显示后端版本（与 /health* 同源）
+    assertEquals(body.data.build.version, getBuildInfo().version);
+    assertEquals(body.data.build.commit, getBuildInfo().commit);
+    assertEquals(body.data.build.builtAt, getBuildInfo().builtAt);
     // secret 项（tsa_root_cert）绝不出现
     assertEquals("tsa_root_cert" in body.data, false);
+    assertEquals("tsa_root_cert" in body.data.build, false);
   },
 });

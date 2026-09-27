@@ -25,6 +25,7 @@ const OWNER_ID = `bundle-owner-${ts}`;
  */
 export function makeBundleZip(
   manifestOverrides: Record<string, unknown> = {},
+  extraEntries: Record<string, string> = {},
 ): Uint8Array {
   const manifest = {
     format_version: 1,
@@ -46,6 +47,10 @@ export function makeBundleZip(
     ...manifestOverrides,
   };
   const enc = new TextEncoder();
+  const extras: Record<string, Uint8Array> = {};
+  for (const [name, content] of Object.entries(extraEntries)) {
+    extras[name] = enc.encode(content);
+  }
   return zipSync({
     "problem.json": enc.encode(JSON.stringify(manifest)),
     "statement.md": enc.encode(
@@ -53,11 +58,15 @@ export function makeBundleZip(
     ),
     "evaluate.py": enc.encode("print('evaluator')"),
     "visible.jsonl": enc.encode('{"input": "1 2", "output": "3"}\n'),
+    ...extras,
   }, { level: 6 });
 }
 
-function makeZipBlob(overrides: Record<string, unknown> = {}): Blob {
-  const zip = makeBundleZip(overrides);
+function makeZipBlob(
+  overrides: Record<string, unknown> = {},
+  extraEntries: Record<string, string> = {},
+): Blob {
+  const zip = makeBundleZip(overrides, extraEntries);
   return new Blob(
     [zip.buffer.slice(
       zip.byteOffset,
@@ -172,8 +181,12 @@ Deno.test({
   },
 });
 
+/** 模板内容样例（断言落库与端点返回用）。 */
+const TEMPLATE_SKELETON = "# 作答骨架\nprint('TODO')\n";
+
 Deno.test({
-  name: "import-bundle: manifest.template 合法值导入成功",
+  name:
+    "import-bundle: 模板随包落库、/template 可读、存量题目回退读包、重导入清空",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -182,19 +195,77 @@ Deno.test({
     const app = createApp();
     const token = await createUserToken("admin");
 
+    // ① 模板随包导入（默认名 template.py）
     const formData = new FormData();
     formData.append(
       "file",
-      makeZipBlob({ template: "starter.py" }),
+      makeZipBlob(
+        { title: `模板题 ${ts}` },
+        { "template.py": TEMPLATE_SKELETON },
+      ),
       "tpl1.zip",
     );
-
     const res = await app.request("/api/v1/problems/import-bundle", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
     assertEquals(res.status, 200);
+    const body = await res.json();
+    const problemId = body.data.id as string;
+
+    // ② 落库校验：运行期不再依赖服务器本地 data/problems-src
+    const db = getDb();
+    const [row] = await db.select().from(problems).where(
+      eq(problems.id, problemId),
+    ).limit(1);
+    assertEquals(row.template_content, TEMPLATE_SKELETON);
+
+    // ③ 端点校验：编辑器实际拿到的内容
+    const tplRes = await app.request(
+      `/api/v1/problems/${problemId}/template`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    assertEquals(tplRes.status, 200);
+    const tpl = await tplRes.json();
+    assertEquals(tpl.data.content, TEMPLATE_SKELETON);
+    assertEquals(tpl.data.language, "python3");
+
+    // ④ 存量题目（本次改动前导入、字段为空）：回退读支持包内的默认名模板
+    await db.update(problems).set({ template_content: null }).where(
+      eq(problems.id, problemId),
+    );
+    const fallbackRes = await app.request(
+      `/api/v1/problems/${problemId}/template`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    assertEquals(fallbackRes.status, 200);
+    assertEquals((await fallbackRes.json()).data.content, TEMPLATE_SKELETON);
+
+    // ⑤ 重新导入同一 (type, number)、包内无模板 → 落库为空串（"已核对无模板"，
+    //    解析时据此不再回源下载整个支持包），端点回到 404
+    const reimport = new FormData();
+    reimport.append(
+      "file",
+      makeZipBlob({ title: `模板题 ${ts}`, number: body.data.number }),
+      "tpl1-b.zip",
+    );
+    const reimportRes = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: reimport,
+    });
+    assertEquals(reimportRes.status, 200);
+    assertEquals((await reimportRes.json()).data.id, problemId);
+    const [afterRow] = await db.select().from(problems).where(
+      eq(problems.id, problemId),
+    ).limit(1);
+    assertEquals(afterRow.template_content, "");
+    const goneRes = await app.request(
+      `/api/v1/problems/${problemId}/template`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    assertEquals(goneRes.status, 404);
   },
 });
 

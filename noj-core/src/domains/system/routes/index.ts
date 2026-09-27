@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import announcements from "./announcements.ts";
 import carousel from "./carousel.ts";
 import emailDelivery from "./email-delivery.ts";
+import { getBuildInfo } from "../../../shared/base/build-info.ts";
 
 /**
  * 读取公开法务设置文本。
@@ -40,10 +41,15 @@ systemRouter.get("/data-policy", (c) =>
   }));
 
 /**
- * 站点元信息（公开）：备案信息、第三方服务清单与个人信息处理者。
+ * 站点元信息（公开）：备案信息、第三方服务清单、个人信息处理者与后端构建身份。
  *
- * 供页脚展示备案、政策页展示处理者与第三方清单。全部为公开展示字段，
- * 不含敏感值（`tsa_root_cert` 等 secret 项绝不在此暴露）。
+ * 供页脚展示备案、政策页展示处理者与第三方清单、页脚技术信息条展示后端版本。
+ * 全部为公开展示字段，不含敏感值（`tsa_root_cert` 等 secret 项绝不在此暴露）。
+ *
+ * `build` 来自镜像构建期注入的 ENV（见 `shared/base/build-info.ts`）：公开版本号与
+ * commit 不构成新的信息暴露面——同一份版本号已由 nginx 公开代理的 `/healthz` 返回，
+ * 且仓库本身是公开的。
+ *
  * GET /api/v1/site/meta
  */
 systemRouter.get("/site/meta", (c) =>
@@ -60,5 +66,6 @@ systemRouter.get("/site/meta", (c) =>
         "legal_deployment_notes",
         "data_policy_deployment",
       ),
+      build: getBuildInfo(),
     },
   }));

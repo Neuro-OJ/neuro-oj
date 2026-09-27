@@ -6,16 +6,18 @@
  * 教用户先 `mkdir -p data/packages` 来绕开首次失败）。
  *
  * 改用 `fflate` 在内存中打包，**零外部命令依赖**，排除规则与原实现对齐：
- * `submission*`（参考实现）、manifest 指定的模板文件、`__pycache__`、`.git`。
+ * `submission*`（参考实现）、`__pycache__`、`.git`、本地脚手架/报告文件。
  *
- * **模板必须排除**（评审修正）：`noj-docs/docs/standards/problem-bundle.md:26`
- * 明确「模板文件与参考实现**不要**放入包中」，旧 `noj.ts:resolveTemplateExclude()`
- * 也执行排除。编辑器模板由 `getProblemTemplate()` 从 `data/problems-src` 读取，
- * **不是**从包里读——因此把模板打进包既违背规范又无收益。
+ * **模板文件必须进包**（2026-09 修正）：编辑器初始代码（`manifest.template`，
+ * 缺省 `template.py`）由平台在导入题目包时读取并落库到
+ * `problems.template_content`，运行期据此返回
+ * （`GET /api/v1/problems/:id/template`）。此前规则是"模板不进入包"，平台只能去
+ * 服务器本地 `data/problems-src` 找模板——容器化生产没有该目录，于是所有线上
+ * 题目的编辑器都没有初始代码。参考实现仍必须排除（见 `submission*`）。
  */
 import { zipSync } from "fflate";
 
-/** 打包排除规则（与 `noj.ts:91-104` 及 quality.md 对齐）。 */
+/** 打包排除规则（与 `noj.ts` 及 quality.md 对齐）。 */
 export const PACK_EXCLUDES = {
   /** 参考实现一律排除（不得进入题目包）。 */
   submissionPrefix: "submission",
@@ -26,10 +28,7 @@ export const PACK_EXCLUDES = {
 } as const;
 
 /** 是否应把该相对路径排除出题目包。 */
-export function shouldExclude(
-  relativePath: string,
-  templateName?: string,
-): boolean {
+export function shouldExclude(relativePath: string): boolean {
   const normalized = relativePath.replace(/\\/g, "/");
   const base = normalized.split("/").pop() ?? normalized;
 
@@ -48,9 +47,8 @@ export function shouldExclude(
   }
   // 打包脚本本身（出题人本地工具，不属于题目内容）
   if (base.endsWith(".sh") && base.startsWith("build_")) return true;
-  // manifest 指定的模板文件：与旧实现一致**排除**（规范要求，见文件头说明）。
-  if (templateName !== undefined && base === templateName) return true;
-  if (base === "template.py") return true;
+  // 注意：题目模板文件（template.py / manifest.template 指定名）**不排除**——
+  // 平台导入题目包时从这里取编辑器初始代码，详见文件头说明。
   // lint 报告等本地产物
   if (base === ".DS_Store") return true;
   return false;
@@ -59,8 +57,6 @@ export function shouldExclude(
 /** 打包输入：相对路径 → 字节。 */
 export interface PackInput {
   entries: Record<string, Uint8Array>;
-  /** manifest.template 指定的模板文件名（保留在包内）。 */
-  templateName?: string;
 }
 
 /** 打包结果。 */
@@ -84,7 +80,7 @@ export function packBundle(input: PackInput): PackResult {
   const payload: Record<string, Uint8Array> = {};
 
   for (const [name, data] of Object.entries(input.entries)) {
-    if (shouldExclude(name, input.templateName)) {
+    if (shouldExclude(name)) {
       excluded.push(name);
       continue;
     }

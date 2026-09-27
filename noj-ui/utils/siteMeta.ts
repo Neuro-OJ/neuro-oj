@@ -2,7 +2,10 @@
  * 页脚备案展示逻辑（纯函数，便于单测）。
  *
  * 未配置备案号时不渲染任何备案节点；配置后按类型给出链接（缺省用官方查询页）。
+ * 同一响应还携带后端构建身份（`build`），供页脚技术信息条展示。
  */
+
+import type { BuildInfo } from './buildInfo.ts';
 
 export interface SiteMeta {
   icp_number: string;
@@ -17,6 +20,8 @@ export interface SiteMeta {
   deployment_notes: string;
   /** 第三方服务清单（JSON 字符串） */
   third_parties: string;
+  /** 后端构建身份（版本 / commit / 构建时间）；旧后端缺失时为 null */
+  build: BuildInfo | null;
 }
 
 export const EMPTY_SITE_META: SiteMeta = {
@@ -28,6 +33,7 @@ export const EMPTY_SITE_META: SiteMeta = {
   contact: '',
   deployment_notes: '',
   third_parties: '',
+  build: null,
 };
 
 export interface FilingLink {

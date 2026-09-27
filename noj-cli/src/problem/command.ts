@@ -240,18 +240,9 @@ export async function runProblemPack(args: ProblemArgs): Promise<number> {
   }
   await collect(dir, "");
 
-  let templateName: string | undefined;
-  const rawManifest = files.texts["problem.json"];
-  if (rawManifest) {
-    try {
-      const m = JSON.parse(rawManifest) as { template?: unknown };
-      if (typeof m.template === "string") templateName = m.template;
-    } catch {
-      // lint 已处理 JSON 错误
-    }
-  }
-
-  const result = packBundle({ entries, templateName });
+  // 注意：模板文件（manifest.template，缺省 template.py）**保留在包内**——
+  // 平台导入题目包时从这里取编辑器初始代码，不再依赖服务器本地 problems-src。
+  const result = packBundle({ entries });
   const outDir = resolve(args.out ?? join(dirname(dir), "packages"));
   await Deno.mkdir(outDir, { recursive: true });
   // 产物以**题目目录名（slug）**命名，而非父目录名——父目录是所有题共享的根。

@@ -76,6 +76,7 @@ export const SCHEMA_DDL: string[] = [
     submission_mode TEXT NOT NULL DEFAULT 'code'
       CHECK (submission_mode IN ('code', 'artifact')),
     artifact_max_size_mb INTEGER,
+    template_content TEXT,
     llm_config JSONB,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
