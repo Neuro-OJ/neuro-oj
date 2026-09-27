@@ -10,6 +10,10 @@
 
 ## [Unreleased]
 
+---
+
+## [0.10.1-beta.2] - 2026-09-27
+
 ### 修复
 
 - **`noj-cli install` / `update` 对 0.10.1-alpha.2 以来的所有 Release 必然失败**：GitHub 会把
@@ -26,6 +30,14 @@
   - **已发布的 `0.10.1-alpha.2` / `0.10.1-alpha.3` / `0.10.1-beta.1` 无法用 CLI 安装或升级**
     （也就取不到 `docker-compose.prod.yml` 的 MinIO 修复）；受影响的实例请手工同步 compose
     文件后 `docker compose up -d`，或直接升级到本版本及以后。
+
+### 变更
+
+- 版本号同步为 `0.10.1-beta.2`（noj-cli / noj-core / noj-llm-gateway / noj-ui /
+  noj-lmcc-extension / noj-judge + CLI `VERSION` 常量与断言；`Cargo.lock` 由
+  `cargo metadata` 重新生成，仅版本行）。
+- 本版在 `0.10.1-beta.1` 基础上只多出上面的 install / update 修复：**beta.1 的
+  公开赛题目保密与 MinIO 镜像源迁移同样包含在本版**。
 
 ---
 
