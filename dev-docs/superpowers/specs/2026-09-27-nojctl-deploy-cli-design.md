@@ -1,9 +1,9 @@
 # nojctl 部署运维 CLI 设计（Rust 重写）
 
-Status: draft-3（已吸收两轮 PM 审计；待项目所有者复审）
+Status: draft-4（已吸收三轮 PM 审计；待项目所有者复审）
 日期：2026-09-27
 范围：新增 `nojctl`（Rust，musl 静态二进制）；`noj-cli`（TS 版）冻结不再演进；发布链路（`release.yml` + CI）新增 manifest 资产与四道门禁；`noj-core` 增补三个**向后兼容的本地只读/本机授权**能力（`noj config check --json`、`noj db status --json`、`noj bootstrap first-admin --password-file`）；不改动 core / judge / ui / gateway 的既有行为
-基线：main @ `d9357987`（含本 spec draft-2 与两轮 PM 审计）
+基线：main @ `63615a81`（含本 spec draft-3 与三轮 PM 审计）
 
 ---
 
@@ -43,6 +43,25 @@ Status: draft-3（已吸收两轮 PM 审计；待项目所有者复审）
 2. **judge 改为 `deploy` 的可选二级项**：`deploy` 只做三个必答问题；"是否在本机安装 noj-judge"是**二级选项**，**默认跳过**；选"是"才进入 rootless 引导（打印脚本 → 等回车 → 7 项探测 → 可重试或放弃），选"否"则记 `JUDGE_ENABLED=false` 并把"第 2 步：开启判题（约 15 分钟）"写进完成页。
 3. **A 类修复全做**（本表的 N1–N12 与 Blocker 缺口）。
 
+### 0.4 draft-4 相对 draft-3（吸收第三轮复核 R1–R9）
+
+第三轮复核（[round3](../audit/2026-09-27-nojctl-design-pm-audit-round3.md)）判定 N1–N12 已关闭 9 / 部分关闭 3 / 未关闭 0，但**本轮修复自身带出 18 条新问题**。本稿按"范围受控：6 修 + 2 补"处理高优先项，其余降级为实现阶段注意事项（§13.12）。
+
+| 复核项 | 本稿改法 |
+| --- | --- |
+| **R1**（高）安装身份与实例级密钥不随数据延续：`uninstall` 删 `.nojctl/` → `install_id` 丢 → 项目名变 → 卷名（由项目名派生，`docker-compose.prod.yml:514-523` 无 `name:`/`external:`）变 → **重装后新建空卷、旧数据成孤儿**；同路径下密钥被重新生成 → Postgres 凭据不匹配起不来 / TFA 学生登录不上 / LLM 题静默失败 | **安装身份移入 `.env.prod`**（`# [仅 nojctl 使用]` 分区：`NOJCTL_INSTALL_ID`、`NOJCTL_PROJECT_NAME`）——`uninstall` 保留 `.env.prod`，因此身份与数据一起延续；§5.5 屏幕 2 增加**密钥沿用例外**（复用既有 `.env.prod` 时一切已有键**沿用原值**，只补缺失键；仅全新首装才生成新密钥）；§7.4 增加 fail-closed 校验（**已有数据卷但无对应身份/配置 → 拒绝**）；§10.5 与 §11 增加"卸载后重装不丢数据"的 e2e 与验收项 |
+| **R2**（高）"第 2 步：开启判题"没有命令落点（默认路径的必经下一步无路可走） | 新增 **`judge enable` / `judge disable`**（一个命令两个子命令）：`enable` 完整复用屏幕 3 子流程（打印 rootless 脚本 → 等回车 → 7 项探测 → 预拉评测镜像 → 写 `JUDGE_ENABLED`/socket/gid 键 → 走一次 `apply` 事务 + VERIFY #4）；完成页"第 2 步"直接打印这条命令；§9.3 同时收紧 `deploy` 在已初始化目录上的语义（不再有含糊的"续跑/复用"） |
+| **R3**（高）迁移手册缺"实例级加密密钥必须原样携带"清单（数据在但读不出来） | §12 批次 6.5 增加**实例级密钥携带清单**与验证步骤（`JWT_SECRET` / `TFA_ENCRYPTION_KEY` / `NOJ_LLM_STORE_KEY` / `NOJ_LLM_SERVICE_TOKEN` / `POSTGRES_PASSWORD` / `REDIS_PASSWORD` / `MINIO_ROOT_*` / `S3_*`），并要求抽查"一名启用 TFA 的用户能登录 + 一个 LLM 题能跑" |
+| **R4**（高）`deploy` 的 FINALIZE 无值可写（首装进入态是 `uninitialized`） | §6.3 FINALIZE 明确映射：`uninitialized`（首装）→ 写 `running`；`stopped` → 临时启动验证后回 `stopped`；`running` → `running`；§10.4 增加"首装后 `state=running` 且 `stop` 可用"的用例 |
+| **R5**（中）HTTPS 路径下登录冒烟可能被 `Secure` Cookie 规则误杀 | §6.6 #3 改为**与 Cookie 语义解耦**：用登录响应体里的 JWT 作 `Authorization: Bearer` 调 `/auth/me`（不依赖 Cookie 存储）；`Set-Cookie` 的 `Secure` 属性只做**非阻断断言**（http+放宽 → 非 Secure；https → Secure）。token 不落盘、不回显 |
+| **R6**（中）`--yes` + `--json` 时管理员密码无处安放（与 stdout 纯净冲突） | 新增 `--admin-password-out <path>`（0600，拒绝覆盖既有文件与宽松权限）；**`--json` 下密码永不进 stdout**；非交互且未给该参数时**跳过建号并显式 warning**（附 `core -- bootstrap first-admin` 命令）；交互式仍在完成页只显示一次 |
+| **R7**（中）`migrate` 日志只有三行（无计数、无"无待应用"标记）→ 四值表不可实现 | §12 批次 2.5 增补"迁移结果的机器可读日志行"（core 侧）；在镜像支持前，§6.3 的四值表**降级为两值**（"退出 0" → 仍**无法确认** → 按 §5.2 判据取 7，并在文案中如实写"无法确认"）；§6.7 同步 |
+| **R8**（中）复制目录会连 `install_id` 一起复制 → 冲突检查失效，两目录管同一 compose 项目 | §7.1 冲突检查改为**读 compose 项目标签**（`com.docker.compose.project` + `working_dir`）：同名项目已存在且 `working_dir` 不是本目录 → 拒绝（退出 3）并说明如何处置 |
+| **R9**（中）`NOJCTL_PROJECT_NAME` 与 `state.project_name` 谁权威未定义 | §7.1 明确权威顺序：`.env.prod` 的 `NOJCTL_PROJECT_NAME`（若存在）> 由 `NOJCTL_INSTALL_ID` 派生 > 首次部署时生成并写入；`state.project_name` 只是**镜像**，不一致即 fail-closed 并给指引 |
+| 门禁三条缓解（形态不变） | §5.3 增加：门禁前多打一行"建议先 `nojctl backup create`"；口令后附中文对照；备份新鲜度作为风险块的**标题行**（而非列表末行） |
+
+**降级为实现阶段注意事项**（不构成返工，写进第一批实施计划的验收清单）：`stop` 在 `partial` 下必须**允许**（应急停站）、`stopped` + 无变化时的 no-op 文案、PREPARE 失败也属"线上未被触碰"的 6、首装失败按"迁移是否可能已推进"判 6/7、`--password-file` 的 0600+owner 校验、密码临时文件优先走 `/dev/stdin` 以免落盘、`--dir` 相对路径规范化为绝对路径、`.env.prod` 由工具写前自动留 `.env.prod.bak-<时间>`、错误建议附"搜索键名"提示、CLI 生成类键注明"手改会在下次重写时被覆盖"。
+
 ### 0.3 draft-2 相对 draft-1（首轮审计吸收，索引保留）
 
 首轮 7 Blocker / 14 Major / 8 Minor / 6 处自相矛盾的逐条落点，见 draft-2 的变更记录（git 历史 `e798da71^..e798da71`）。要点：协议一问与 `NOJ_ALLOW_INSECURE_HTTP` 推导、生产配置判据前移、语义冒烟、首装失败语义、邮件后果披露、`start`/`stop`、目录判据、项目名派生、前置指引、文档批次；备份补回 Redis；`core --` 逃生舱；退出码单一判据；删除 monitoring 渲染；`.env.prod` 三类键；门禁明确为知情声明。
@@ -67,7 +86,7 @@ Status: draft-3（已吸收两轮 PM 审计；待项目所有者复审）
 - **不接管任何既有安装**，**不兼容 v1 产物**（不读 `snapshot-*.nojbackup`，不嗅探 `.bootstrap-*.tmp` / `.env.prod.staged`）。迁移走**人工手册**（§12 批次 6.5）。
 - **不做 `config` 子命令**：`.env.prod` 由用户手写 + 工具校验（无白名单代改）。
 - **不做恢复演练 `drill`**、不做定时/异地备份、不做出题包管理、不做判题机独立安装、不做全屏 TUI。
-- **不支持系统 Docker daemon 跑 judge**：judge 只有"同机 rootless 开"与"关"两个状态。
+- **不支持系统 Docker daemon 跑 judge**：judge 只有"同机 rootless 开"与"关"两个状态（用 `judge enable` / `judge disable` 切换）。
 - **不渲染 monitoring**：生成的 compose 不含 `prometheus` / `alertmanager` 与其挂载文件。
 - **不把 judge 网络收窄、不改 `JUDGE_ALLOW_HTTP_S3` 默认值、不在 production 下禁用 `local` 下载 scheme**（记为 follow-up，§13）。
 - **不提供 TLS 终止**：沿用"TLS 由外部边缘终止"的模型，nojctl 只把 `APP_URL` / CORS / Cookie 标志**配成一致**，并检查握手与到期。
@@ -90,7 +109,7 @@ Status: draft-3（已吸收两轮 PM 审计；待项目所有者复审）
 | --- | --- |
 | **`deploy_format`** | 部署描述的**格式版本**（整数，单调递增）。规定 compose + 挂载文件 + 必需配置键 + 健康语义的形状；只在"旧渲染器产不出新版本所需描述"时 +1。不是产品版本 |
 | **世代（generation）** | 一次可原样复原的**部署描述**快照：compose + 挂载文件 + 该世代实际生效的配置快照 + manifest + hash。**仅部署描述，不含任何数据**；`current` 为 live，`previous` 供回退 |
-| **`install_id`** | 部署时生成并持久化的安装标识；compose 项目名由它派生，因此搬目录/改名不影响项目名，也不影响 `artifact_hash` |
+| **`install_id`** | 安装身份，持久化在 **`.env.prod` 的 `NOJCTL_INSTALL_ID`**（state 里是镜像值）：compose 项目名由它派生，命名卷由项目名派生，因此"卸载后重装"与"搬目录"都不丢数据、也不影响 `artifact_hash` |
 | **`state`** | 栈的运行态：`uninitialized` / `stopped` / `running` / `partial`（另有 `last_error` 字段）。运行态由 `start` / `stop` 改变 |
 | **`apply`** | 唯一让"部署描述与期望一致"的命令（版本变更、配置变更、no-op、崩溃恢复四合一）；**不主动改变运行态**（§4.2 不变量 5） |
 | **manifest** | Release 资产 `nojctl-manifest.json`：`deploy_format`、7 个镜像 digest、迁移摘要、`min_nojctl`、`min_source_version` |
@@ -150,19 +169,21 @@ Status: draft-3（已吸收两轮 PM 审计；待项目所有者复审）
 9. **传输无关**：所有 IO 经 `Runner` / seams；状态可序列化、可在远端重建（B 模式的前提）。
 10. **确认前零写入**：向导/摘要在用户确认之前不落任何盘。
 11. **世代保留**：默认保留上一个可回退世代（`keep_generations`，缺省 1）；verify 通过前不清理被替换的世代；清理世代时同步回收其独占镜像。
-12. **秘密不外流**：口令、管理员密码、备份口令不进 `state.json`、不进世代快照、不进日志（脱敏断言进测试）；只允许一次性打印给用户。
+12. **秘密不外流**：口令、管理员密码、备份口令不进 `state.json`、不进世代快照、不进日志（脱敏断言进测试）；只允许一次性打印或写入 0600 的指定路径。
+13. **身份与密钥随数据延续**：安装身份（`NOJCTL_INSTALL_ID` / `NOJCTL_PROJECT_NAME`）与全部实例级密钥存放在 `.env.prod`；**复用既有 `.env.prod` 时一律沿用原值、只补缺失键**，只有全新首装才生成新密钥；卷名由身份派生，因此"卸载后重装"不丢数据（§7.4 有 fail-closed 校验兜底）。
 
 ---
 
 ## 5. 命令面与交互
 
-### 5.1 命令（11 条 + `--version`；下表 10 行，`start` / `stop` 合占一行）
+### 5.1 命令（12 条 + `--version`；下表 11 行，`start` / `stop` 与 `judge enable` / `judge disable` 各合占一行）
 
 | 命令 | 语义 |
 | --- | --- |
-| `deploy` | 首装：前置探测（非静默，含 Docker 指引、镜像仓库与 manifest 双可达性、项目名冲突）→ **三问向导** → **可选二级项：是否装 noj-judge（默认跳过；选"是"进入 rootless 引导）** → 渲染与空转 → 摘要确认 → 执行 → 完成页（五段，含可访问性检查与"第 2 步"） |
+| `deploy` | 首装：前置探测（非静默，含 Docker 指引、镜像仓库与 manifest 双可达性、项目名与卷冲突）→ **三问向导** → **可选二级项：是否装 noj-judge（默认跳过；选"是"进入 rootless 引导）** → 渲染与空转 → 摘要确认 → 执行 → 完成页（五段，含可访问性检查与"第 2 步"）。**已安装到位且无中断事务时拒绝执行**（退出 3）并指路：改配置 → `apply`；装判题 → `judge enable`；`state=partial` → 续跑本次中断的部署 |
 | `apply [版本\|别名]` | 唯一让"部署描述与期望一致"的命令：版本变更 / 配置变更 / no-op / 崩溃恢复；**不主动改变运行态**（§4.2 不变量 5） |
-| `start` / `stop` | 运行态：启动 / 停止栈。`uninitialized` → 退出 3（提示先 `deploy`）；`partial` → 退出 3 并建议 `doctor` 或重跑 `apply`；`stop` 需一次 `[Y/n]` |
+| `start` / `stop` | 运行态：启动 / 停止栈。`uninitialized` → 退出 3（提示先 `deploy`）；**`partial` 下 `stop` 始终允许**（应急停站优先）；`stop` 需一次 `[Y/n]` |
+| `judge enable` / `judge disable` | 判题开关：`enable` 完整复用屏幕 3 子流程（打印 rootless 脚本 → 等回车 → 7 项探测 → 预拉评测镜像 → 写 `JUDGE_ENABLED` 与 socket/gid 键 → 走一次 `apply` 事务 + VERIFY #4）；`disable` 反向（置 `JUDGE_ENABLED=false` + 一次 `apply`）。**完成页"第 2 步"给出的就是 `nojctl judge enable`** |
 | `versions` | 版本表：每个 tag 的渠道、是否资产就绪、`deploy_format`、迁移摘要、本机是否装得了；四个别名 → 解析到的具体 tag（空显示 `—`）；当前部署；最近备份时间 |
 | `status` | 当前世代、运行态、容器与健康、版本、`deploy_format`、世代/备份磁盘占用、**配置漂移**、**未应用的配置变更**、**邮件未配置等"能力未开启"提示** |
 | `logs [服务]` | `compose logs` 薄封装（`--follow` / `--tail` / `--since`） |
@@ -171,7 +192,7 @@ Status: draft-3（已吸收两轮 PM 审计；待项目所有者复审）
 | `uninstall` | 默认停栈 + 移除生成物，保留数据卷 / `.env.prod` / 备份；`--purge` 才删数据 |
 | `core -- <args…>` | 逃生舱：把参数透传给容器内 `/app/bin/noj`（`bootstrap first-admin` / `admin` / `db migrate` / `problem` / `search`）。文档标注"给专业维护者，不是给教练的" |
 
-全局：`--dir`（缺省当前目录）、`--dry-run`、`--json`、`-v/--quiet`。`apply` 额外：`--acknowledge-risk`。`backup restore`：`--acknowledge-restore`、`--skip-safety-snapshot`。`uninstall`：`--acknowledge-purge`。
+全局：`--dir`（缺省当前目录；相对路径**规范化为绝对路径**后使用与记录）、`--dry-run`、`--json`、`-v/--quiet`。`deploy` 额外：`--admin-password-out <path>`（非交互下管理员密码的落点，0600）。`apply` 额外：`--acknowledge-risk`。`backup restore`：`--acknowledge-restore`、`--skip-safety-snapshot`。`uninstall`：`--acknowledge-purge`。
 
 **别名语义**（四个都过资产就绪过滤；为空则报错不回落）：
 
@@ -194,8 +215,8 @@ Status: draft-3（已吸收两轮 PM 审计；待项目所有者复审）
 | 3 | 前置/配置不合法（docker 缺失、`.env.prod` 校验失败、目录判据不过、项目名冲突、生产配置判据不过、`start`/`stop` 遇 `uninitialized`/`partial`） |
 | 4 | 门禁未通过（口令错、缺 `--acknowledge-*`、用户拒绝、严格模式下无近期备份） |
 | 5 | 目标不可安装（`deploy_format` 太新、别名无解、资产不齐） |
-| 6 | 失败但**系统处于干净的已知状态**：已回退到上一世代并验证通过，**且确认未发生任何数据库迁移**（`migrate` 服务未运行，或退出 0 且日志显示无待应用迁移）；或首装失败后已清理到"未安装" |
-| 7 | 失败且**需要人工介入**：**迁移可能已前进**（`migrate` 退出非零，或已成功应用 ≥1 条）、回退失败、首装后留下 `partial` |
+| 6 | 失败但**系统处于干净的已知状态且确认未发生任何数据库迁移**：线上未被触碰（PREPARE 阶段失败），或已回退到上一世代并验证通过；判定"未发生迁移"的依据是 `migrate` 服务未运行，或（在镜像支持机器可读迁移结果后）退出 0 且结果为 0 条；**无法确认时按 7 处理**；首装失败后已清理到"未安装"且未发生迁移也属此码 |
+| 7 | 失败且**需要人工介入**：**迁移可能已前进**（`migrate` 退出非零，或已成功应用 ≥1 条，**或无法确认**）、回退失败、首装后留下 `partial` |
 
 判据只有一条：**数据库是否可能已被推进，以及是否确认未推进**。无法确认 → 按 7 处理（宁严不宽）。`--json` 与 CI 都依赖这条。
 
@@ -209,7 +230,7 @@ Status: draft-3（已吸收两轮 PM 审计；待项目所有者复审）
 
 规则：① TTY 下**先打印完整风险信息，再要求输入**；② 最多 2 次尝试，失败退出 4；③ 非 TTY 直接报错退出 4 并给出对应参数；④ **不支持环境变量绕过**；⑤ `--acknowledge-*` **只出现在对应子命令的 help**，不进全局 `--help` 首屏（避免把"绕过门禁"教给用户）；⑥ 豁免：失败自动回退、`--dry-run`、`apply` 的 no-op 与仅配置变更（`[Y/n]`）、`start`（不要求）、`stop`（需一次 `[Y/n]`，因其影响可用性）、所有非破坏性命令。
 
-**知情声明**（写进 `--help` 与该步输出）：口令**不校验**你是否真的备份过。可选严格模式 `NOJCTL_REQUIRE_RECENT_BACKUP_DAYS=N`（默认 `0`＝关）开启后，若 `backups/` 中没有 N 天内验证通过的快照，`apply`（版本变更）拒绝执行（退出 4）并给出可复制的 `nojctl backup create`。默认路径下，备份不新鲜只**升级提示语气**（不阻断）。
+**知情声明**（写进 `--help` 与该步输出）：口令**不校验**你是否真的备份过。**门禁的三条缓解（形态不变）**：① 提问前多打一行"建议先执行 `nojctl backup create`"（附当前 `backups/` 的最新时间）；② 口令下方附中文对照（"我已知晓风险，并已完成数据备份"），降低抄写门槛、不改变要求；③ 备份新鲜度作为风险块的**标题行**而不是列表末行，避免被跳过。可选严格模式 `NOJCTL_REQUIRE_RECENT_BACKUP_DAYS=N`（默认 `0`＝关）开启后，若 `backups/` 中没有 N 天内验证通过的快照，`apply`（版本变更）拒绝执行（退出 4）并给出可复制的 `nojctl backup create`。默认路径下，备份不新鲜只**升级提示语气**（不阻断）。
 
 ### 5.4 `--json` 契约
 
@@ -228,19 +249,19 @@ stdout 只含一个 JSON 文档，人话走 stderr，字段只增不改：
 | # | 屏 | 内容 |
 | --- | --- | --- |
 | 0 | 前置探测（**非静默**） | 首屏先说明"我是谁 / 大约要多久 / 我正在检查什么"，随后逐项显示进度：docker 与 compose 版本及权限、架构、磁盘、**目录判据**、**同名 compose 项目冲突**、**镜像仓库可达性**（`NOJ_IMAGE_REGISTRY`，默认 ghcr.io）与 **manifest 所在 GitHub 可达性**（两项分别检查、分别给指引）。失败输出**可复制的指引**：Debian/Ubuntu 与 RHEL 两族的 docker 安装、`usermod -aG docker`、compose 插件版本；受限网络给三种出路（配镜像源 / 走代理 / 别处 `docker pull` 后 `docker save` + `docker load`）。失败退出 3 |
-| 1 | **三问向导** | ① **对外协议**（`HTTPS`（有域名+证书/反代，推荐）或 `HTTP`（仅内网/临时试用））+ 域名或 IP + 端口（默认 8080）；② **邮件**：「不配置（**学生将无法自助注册**，只能由管理员手动建号，且之后必须修改服务器上的配置文件才能开放）」「阿里云 DirectMail」「腾讯云 SES」（无"稍后再配"）；③ **首个管理员**（`[Y/n]`，**默认 Y**：用户名 + 邮箱；密码由 nojctl 生成，见屏幕 7） |
-| 2 | 推导与生成（不问） | 由 ① 推导 `APP_URL` / `CORS_ALLOWED_ORIGINS` / `DOMAIN` / **`NOJ_ALLOW_INSECURE_HTTP`**（协议为 http 时为 `true`）；`TRUSTED_PROXIES` 由生成的 compose 子网确定性算出；`S3_*` 与内网端点固定；`JWT_SECRET` / `TFA_ENCRYPTION_KEY` / `POSTGRES_PASSWORD` / `REDIS_PASSWORD` / `MINIO_ROOT_*` / S3 凭据强随机生成；日志/保留期/资源上限取生产默认。**选 HTTPS 时**打印"TLS 不由本站点提供"，附两行可复制的 Caddy / Nginx 反代示例 |
+| 1 | **三问向导** | ① **对外协议**（`HTTPS`（有域名+证书/反代，推荐）或 `HTTP`（仅内网/临时试用））+ 域名或 IP + 端口（默认 8080）；② **邮件**：「不配置（**学生将无法自助注册**，只能由管理员手动建号，且之后必须修改服务器上的配置文件才能开放）」「阿里云 DirectMail」「腾讯云 SES」（无"稍后再配"）；③ **首个管理员**（`[Y/n]`，**默认 Y**：用户名 + 邮箱；密码由 nojctl 生成，交互式在完成页只显示一次，非交互式写入 `--admin-password-out`，见屏幕 6/7） |
+| 2 | 推导与生成（不问） | 由 ① 推导 `APP_URL` / `CORS_ALLOWED_ORIGINS` / `DOMAIN` / **`NOJ_ALLOW_INSECURE_HTTP`**（协议为 http 时为 `true`）；`TRUSTED_PROXIES` 由生成的 compose 子网确定性算出；`S3_*` 与内网端点固定；日志/保留期/资源上限取生产默认。**密钥例外（新增）**：若本次是**复用既有 `.env.prod`**（§9.3 第 3 行），则其中**一切已有键（含全部密钥与 `NOJCTL_*`）一律沿用原值，只补缺失键**；只有全新首装才强随机生成 `JWT_SECRET` / `TFA_ENCRYPTION_KEY` / `POSTGRES_PASSWORD` / `REDIS_PASSWORD` / `MINIO_ROOT_*` / S3 凭据 —— 否则会与既有数据卷里的状态不匹配（Postgres 角色口令、TFA secret、LLM Provider 信封加密都与此强绑定）。**选 HTTPS 时**打印"TLS 不由本站点提供"，附两行可复制的 Caddy / Nginx 反代示例 |
 | 3 | **可选二级项：是否在本机安装 noj-judge**（**默认跳过**） | 选"是"→ 打印发行版自适应的**幂等脚本** → **等待回车** → 探测 7 项（socket 存在且是 socket；gid 与将写入的 `JUDGE_DOCKER_SOCKET_GID` 一致且组有 rw；能 `docker -H … info`；确认是 rootless/userns 且 `Docker Root Dir` 在家目录，并与 `JUDGE_REQUIRE_ISOLATED_DOCKER=true` 自洽；`loginctl` linger 已开；**家目录**剩余空间；通过该 daemon 预拉评测镜像）→ 失败可重试或放弃（转"否"）；选"否"→ `JUDGE_ENABLED=false`，完成页写"第 2 步：开启判题（约 15 分钟）"。**向导不调用 sudo、不改宿主机** |
 | 4 | 渲染 + 空转（零写入） | 渲染世代 → `compose config -q` → **生产配置判据**（`APP_URL`/CORS 必须 https，除非 `NOJ_ALLOW_INSECURE_HTTP=true`）→ 端口占用 → 磁盘。任何一项不过 → 零写入，退出 3 |
 | 5 | 摘要 + 确认 | 版本/渠道/`deploy_format`、对外地址与协议、服务清单、启用的 profile、生成密钥数、**由我推导的键数**、需下载镜像体积与预估耗时、迁移摘要（§6.7）、judge 是否安装、`[Y/n]`。明文 HTTP 时额外一行："已放宽 Cookie 安全限制；配置 HTTPS 后运行 `nojctl apply` 收紧" |
-| 6 | 执行 | ① 写 `.env.prod`（0600）+ 世代目录 ② 拉镜像（**心跳 + 预估剩余 + 超时改为询问 + 明说断点续传**：已拉取的层不会重下）③ `up -d`（含 compose 内的 `migrate` 一次性服务）④ 等健康 ⑤ 建首个管理员（用生成的密码，经 0600 临时文件传入，用完即删） |
-| 7 | 完成页（**固定五段**） | ① **能用什么**（站点 URL + 可访问性检查：域名是否已解析、TLS 握手是否成功与剩余天数、是否需要外部反代）② **账号**（管理员用户名 + **生成的密码，只显示这一次**，首次登录强制改密）③ **必须抄写**（备份口令 + 指纹）④ **还没开启的功能**（邮件未配置 → `⚠ 公开注册目前是关闭的` + 要改的 4 个键 + `nojctl apply`；judge 未装 → 第 2 步指引）⑤ **现在就做的两件事**（`nojctl backup create`；把备份复制到服务器之外，附一行 `scp`/`rsync` 示例） |
+| 6 | 执行 | ① 写 `.env.prod`（0600，**写前自动留 `.env.prod.bak-<时间>`**）+ 世代目录 ② 拉镜像（**心跳 + 预估剩余 + 超时改为询问 + 明说断点续传**：已拉取的层不会重下）③ `up -d`（含 compose 内的 `migrate` 一次性服务）④ 等健康 ⑤ 建首个管理员（密码经 `--password-file /dev/stdin` 传入，**优先不落盘**；若必须落盘则 0600 且用完即删，崩溃残留由 `doctor` 报告） |
+| 7 | 完成页（**固定五段**） | ① **能用什么**（站点 URL + 可访问性检查：域名是否已解析、TLS 握手是否成功与剩余天数、是否需要外部反代）② **账号**（管理员用户名 + **密码**：交互式在此只显示一次、首次登录强制改密；非交互式在 `--admin-password-out` 指定的文件里，未指定则未建号并在下文提示）③ **必须抄写**（备份口令 + 指纹）④ **还没开启的功能**（邮件未配置 → `⚠ 公开注册目前是关闭的` + 要改的 4 个键 + `nojctl apply`；judge 未装 → **`nojctl judge enable`（约 15 分钟）**）⑤ **现在就做的两件事**（`nojctl backup create`；把备份复制到服务器之外，附一行 `scp`/`rsync` 示例） |
 
 **首装失败语义**（无 `previous` 世代）：不得宣称"已回退"。输出必须是"未安装成功，已清理到 `<状态>`；原因：`<具体键名/阶段>`；下一步：`<可复制命令>`"，并按 §5.2 判据给出 3 / 6 / 7。中断或失败后重跑 `deploy` **幂等续跑**（不重拉已缓存镜像）。
 
 **降级路径**：缺域名 → 走 HTTP + IP（完成页给出之后换域名的两步：改 `APP_URL`/CORS/`NOJ_ALLOW_INSECURE_HTTP` → `apply`）；缺证书 → 同上，并指明 TLS 在外部边缘做；2 GB 内存 → 摘要里提示建议关闭 judge、限制并发与内存上限（给出要设的键）；网络受限 → 屏幕 0 的三种出路。
 
-非交互等价：`--scheme=http|https`、`--domain`、`--port`、`--email=none|aliyun|tencent`、`--judge=on|off`、`--admin-email`、`--admin-username`，以及快路径 `deploy --domain oj.school.edu --scheme=https --yes`（`--yes` 时管理员密码同样由工具生成并打印一次）。
+非交互等价：`--scheme=http|https`、`--domain`、`--port`、`--email=none|aliyun|tencent`、`--judge=on|off`、`--admin-email`、`--admin-username`、`--admin-password-out <path>`，以及快路径 `deploy --domain oj.school.edu --scheme=https --yes`。非交互下：密码写入 `--admin-password-out`（0600，拒绝覆盖既有文件）；**未给该参数则跳过建号并显式 warning**，并打印 `nojctl core -- bootstrap first-admin --username … --email …`；`--json` 模式下密码**永不进 stdout**。
 
 ### 5.6 `apply` 交互编排
 
@@ -272,11 +293,12 @@ stdout 只含一个 JSON 文档，人话走 stderr，字段只增不改：
 
 | 类别 | 例子 | nojctl 的行为 |
 | --- | --- | --- |
-| **CLI 生成**（可覆盖） | 首装生成的密钥、推导的 `APP_URL` / CORS / `TRUSTED_PROXIES` / `NOJ_ALLOW_INSECURE_HTTP` | 向导写入；后续 `apply` 若发现缺失则补齐 |
+| **CLI 生成**（可覆盖） | 首装生成的密钥、推导的 `APP_URL` / CORS / `TRUSTED_PROXIES` / `NOJ_ALLOW_INSECURE_HTTP` | 向导写入；后续 `apply` 若发现缺失则补齐。**手改这些键会在下次重写时被覆盖**（错误提示里会注明） |
+| **安装身份**（可覆盖但**必须延续**） | `NOJCTL_INSTALL_ID`、`NOJCTL_PROJECT_NAME`（`# [仅 nojctl 使用]` 分区） | 首次部署生成并写入；**`uninstall` 保留 `.env.prod`**，因此重装沿用同一身份 → compose 项目名与命名卷不变 → **数据不丢**；搬目录时身份随文件一起走 |
 | **用户拥有**（永不写） | 用户后来手改的任何键、邮件凭据、资源上限、保留期 | 只读校验与报告，绝不改写 |
 | **代改** | —— | **不存在**：改配置 = 手改文件 + `apply` |
 
-- `.env.prod` 权限 0600；`deploy` / `apply` 前置做 schema、交叉约束、占位符校验，失败零写入、退出 3。错误信息必须是**三段式**（发生了什么 / 为什么 / 抄这条命令），交叉约束失败要给**二选一修复建议**，例如：
+- `.env.prod` 权限 0600；`deploy` / `apply` 前置做 schema、交叉约束、占位符校验，失败零写入、退出 3。**工具在写入 `.env.prod` 之前自动留一份 `.env.prod.bak-<时间>`**（手改者的后悔药，`doctor` 报告数量与占用）。错误信息必须是**三段式**（发生了什么 / 为什么 / 抄这条命令），交叉约束失败要给**二选一修复建议**，并提示"可用键名在编辑器里搜索定位"（行号仅供参考），例如：
   ```
   ✗ EMAIL_PROVIDER=aliyun 但 ALIBABA_FROM_EMAIL 为空（.env.prod:134）
   二选一：
@@ -300,8 +322,8 @@ stdout 只含一个 JSON 文档，人话走 stderr，字段只增不改：
 ```jsonc
 {
   "state_schema": 1,
-  "install_id": "6b0f2c1e-…",          // 部署时生成；项目名由它派生
-  "install_dir": "/opt/neuro-oj",        // 仅信息性；变更时 doctor 提示，不影响项目名
+  "install_id": "6b0f2c1e-…",          // 权威在 .env.prod 的 NOJCTL_INSTALL_ID；此处为镜像值
+  "install_dir": "/opt/neuro-oj",        // 绝对路径（相对 --dir 已规范化）；变更时 doctor 提示，不影响项目名
   "project_name": "noj-6b0f2c1e",
   "current":  { "generation": "g-20260927-0712-3f9c", "version": "0.10.1-beta.2",
                 "deploy_format": 3, "artifact_hash": "…", "image_digests": { }, "applied_at": "…" },
@@ -327,7 +349,7 @@ stdout 只含一个 JSON 文档，人话走 stderr，字段只增不改：
 | **PREPARE**（对线上零影响） | 渲染 → `compose config -q` → 生产配置判据 → 校验 manifest digest → 交付自检与必需键校验 → 拉镜像 → 写世代目录 → 算 hash | 干净中止，线上原样，退出 6（首装则 3/6，见 §5.5） |
 | **COMMIT**（唯一提交点） | 先写 journal（含 `entry_runtime_state`）→ 原子替换 live 文件 → `state.current` 前移、旧世代记为 `previous` → **一次** `up -d`（**显式 `--force-recreate nginx`**；judge 开启时带 `--profile judge`） | 崩溃落在此处 → journal 留在 `commit`，下次任何命令都能判定方向 |
 | **VERIFY** | §6.6（若进入时为 `stopped`，此处为临时启动后的验证） | 失败 → 自动回退 |
-| **FINALIZE** | 按 `entry_runtime_state` 落 `state`（`running` 或 `stopped`；后者需先 `stop`）→ 写 `last_verify` → 按 `keep_generations` 清理旧世代**并回收其独占镜像** | — |
+| **FINALIZE** | 落 `state`：`entry_runtime_state = uninitialized`（首装）→ 写 **`running`**；`stopped` → 先 `stop` 再写 `stopped`；`running` → `running`。随后写 `last_verify` → 按 `keep_generations` 清理旧世代**并回收其独占镜像** | — |
 
 **失败 → 自动回退**：恢复 `previous` 的文件与配置 → `up -d` → 再验证 → 按 `entry_runtime_state` 恢复运行态。输出只陈述**可证实**的事实：
 
@@ -338,14 +360,15 @@ stdout 只含一个 JSON 文档，人话走 stderr，字段只增不改：
 下一步：nojctl doctor
 ```
 
-数据库那句只允许四种取值，全部来自 `migrate` 服务的**退出码与日志**，不得推测：
+数据库那句只允许以下取值，全部来自 `migrate` 服务的**退出码 + 机器可读结果行（§12 批次 2.5）+ 日志**，不得推测：
 
-| migrate 服务事实 | 文案 |
-| --- | --- |
-| 未运行 | 无法判断本次是否推进（迁移服务未运行） |
-| 退出 0 + 日志无待应用 | 未发生迁移 |
-| 退出 0 + 日志显示已应用 | 已应用 N 条（其中最后一条 `<迁移号>`），不会回滚 |
-| 退出 ≠ 0 | 可能停在中间点（日志停在 `<迁移号>`），不会回滚 |
+| migrate 服务事实 | 文案 | 退出码影响 |
+| --- | --- | --- |
+| 未运行 | 无法判断本次是否推进（迁移服务未运行） | → 7 |
+| 退出 0，但镜像**未提供**机器可读结果行 | **无法确认**本次是否发生迁移（该版本镜像不支持迁移结果上报） | → 7（宁严不宽） |
+| 退出 0，结果为 0 条 | 未发生迁移 | 可判 6 |
+| 退出 0，结果为 N>0 条 | 已应用 N 条（最后一条 `<迁移号>`），不会回滚 | → 7 |
+| 退出 ≠ 0 | 可能停在中间点（日志停在 `<迁移号>`），不会回滚 | → 7 |
 
 退出码按 §5.2 判据：**确认未发生迁移且回退验证通过 → 6**；否则 → 7。回退本身失败 → 7 + `state=partial` + 恢复步骤 + 建议备份 id。
 
@@ -365,7 +388,7 @@ stdout 只含一个 JSON 文档，人话走 stderr，字段只增不改：
 
 1. 期望容器集合齐全且 healthy（judge 无 healthcheck → 运行中 + 日志新鲜）；
 2. HTTP **经回环** `127.0.0.1:<NGINX_PORT>` 并带 `Host: <DOMAIN>` 头：`/` 200、`/api/v1/problems` 200、`/healthz` 200 —— **不走外部域名**，避免 DNS/TLS 未就绪导致"正确部署自我失败"；
-3. **语义冒烟**：`POST /api/v1/auth/login`（同一回环 + Host 头）拿到 Cookie，再带 Cookie 调 `/api/v1/auth/me` 期望 200。密码来源 = 本次首装生成的管理员密码（仅驻留内存与 0600 临时文件）；若首装跳过了建号，则**显式 warning** 并跳过该检查（不静默）；
+3. **语义冒烟**：`POST /api/v1/auth/login`（同一回环 + Host 头）拿到响应体里的 **JWT**，再用 `Authorization: Bearer <jwt>` 调 `/api/v1/auth/me` 期望 200 —— **与 Cookie 语义解耦**，因此 HTTPS 部署（`Secure` Cookie 不会在明文回环上回传）不会被误杀。另外对登录响应的 `Set-Cookie` 做**非阻断断言**：`APP_URL` 为 http 且已放宽 → 不应带 `Secure`；为 https → 应带 `Secure`，不符只 warning。JWT 与密码都不落盘、不回显。密码来源 = 本次首装生成的管理员密码；若首装跳过了建号，则**显式 warning** 并跳过该检查（不静默）；
 4. **judge 执行面探测（judge 开启时）**：通过 rootless socket 跑一个一次性容器，**镜像用屏幕 3 已预拉的评测镜像**（`noj-evaluator-python:<版本>`，避免受限网络下拉不到最小镜像而误判）；
 5. 运行镜像 digest == manifest digest；
 6. `migrate` 一次性服务退出码与日志（§6.7），并据此决定是否允许报 6；
@@ -390,6 +413,7 @@ stdout 只含一个 JSON 文档，人话走 stderr，字段只增不改：
   | 失败 | 退出 0 且日志无待应用 | 应用层失败、数据面未变 → 切回上一世代，退出 **6** |
 
 - **精确增量的可选来源**：若目标镜像支持 `noj db status --json`（core 侧增补，§12 批次 2.5），`nojctl` 通过 `compose run` 调用它得到"待应用 N 条 / 末条 tag"；不支持时降级为"目标版本声明总数 + 增量未知"，摘要中如实标注。**这仍是"问镜像"，不是 CLI 查库。**
+- **迁移结果的机器可读上报（本次新增）**：`migrate` 服务在完成时输出一行结构化结果（形如 `NOJ_MIGRATE_RESULT {"applied":1,"pending":0,"last":"0094_…"}`，实现方式由 core 决定），供 §6.3 的判定表与 §5.2 的退出码判据使用。该能力进 §12 批次 2.5；**在支持之前，`migrate` 退出 0 也只算"无法确认"，一律按 7 处理**（宁严不宽）。
 - **manifest 的迁移字段**：`migrations: { server: {count,last_tag,last_hash}, gateway: {…} }`；跨多版本升级不需要中间版本 manifest；`min_source_version`（可选）用于"必须经由某中间版本"的未来场景。
 
 ---
@@ -405,7 +429,7 @@ render(deploy_format, config, probe) -> Artifacts
                 env.delivery.json, artifact_hash }
 ```
 
-无 IO、无时钟（时间戳参数注入）。**compose 项目名 = `noj-<install_id 前 8 位>`**，可用 `NOJCTL_PROJECT_NAME` 覆盖；与安装路径**无关**，因此搬目录不改变项目名、不改变 `artifact_hash`、不产生孤儿容器/卷。PREPARE 检查同名项目是否已被**其它 `install_id`** 占用，冲突即拒绝（退出 3）。被挂载的文件总是物化；**不含 monitoring**。
+无 IO、无时钟（时间戳参数注入）。**compose 项目名权威顺序**：`.env.prod` 的 `NOJCTL_PROJECT_NAME`（若存在）> 由 `NOJCTL_INSTALL_ID` 派生（`noj-<前 8 位>`）> 首次部署时生成并写回 `.env.prod`；与安装路径**无关**（搬目录不改变项目名与 `artifact_hash`）。PREPARE 的两项冲突检查：① 同名 compose 项目已存在且其 **`com.docker.compose.project.working_dir` 标签不是本目录** → 拒绝（退出 3，覆盖"复制目录导致 install_id 重复"的情形）；② `state.project_name` 与 `.env.prod` 的值不一致 → fail-closed 并给指引（改回或显式重置）。被挂载的文件总是物化；**不含 monitoring**。
 
 ### 7.2 Solver 注册表与选择（失败关闭）
 
@@ -438,7 +462,7 @@ trait Solver { fn deploy_format(&self) -> u32; fn render(&self, cfg, probe) -> R
 ### 7.4 "文档化的键必进容器"两层
 
 1. **构建期（CI 门禁）**：schema 里每个键要么出现在某服务的 `environment` / `env_file`，要么显式标记 `nojctl-only`。"文档化但无交付目标" = CI 失败。
-2. **运行期（`deploy` / `apply` 前置）**：`.env.prod` 存在的键对照 `env.delivery.json` → 存在但无人接收 = 警告并列出；必需但缺失 = 失败（三段式 + 二选一修复建议）。
+2. **运行期（`deploy` / `apply` 前置）**：`.env.prod` 存在的键对照 `env.delivery.json` → 存在但无人接收 = 警告并列出；必需但缺失 = 失败（三段式 + 二选一修复建议）。**另有一条 fail-closed 校验（R1 兜底）**：若发现属于本安装身份的命名卷已存在（`<project_name>_pgdata` 等），但 `.env.prod` 缺失、缺少 `NOJCTL_INSTALL_ID`、或身份与卷前缀不匹配 → **拒绝执行**（退出 3），输出"检测到已有数据卷 `noj-xxxx_pgdata`，但没有对应的配置文件；直接继续会导致数据不可访问"，并给两个可复制选项：`--adopt-install-id <id>`（把身份写回 `.env.prod` 以接管既有数据）或 `--purge`（明确放弃数据）。
 
 ### 7.5 模板与测试
 
@@ -527,13 +551,14 @@ snapshot-20260927-0712-<应用版本>.nojbackup      # tar → zstd → GPG 对�
 | 目录状态 | 行为 |
 | --- | --- |
 | 不存在 / 完全为空 | `deploy` 允许（不存在则创建） |
-| 含 `.nojctl/state.json` | 本工具目录：`deploy` 进入**续跑/复用**分支；`apply` / `start` / `stop` / `backup` / `uninstall` 正常 |
-| 无 state，仅含保留物 / 本工具生成物（例如 `uninstall` 之后的目录，或只剩 `.env.prod`） | `deploy` 允许：**复用既有 `.env.prod` 的值作为向导默认值**（明确提示"检测到既有配置，将作为默认值复用"），覆盖生成物、保留 `backups/` |
+| 含 `.nojctl/state.json` 且无中断事务 | **已安装：`deploy` 拒绝执行**（退出 3）并指路——改配置 → 编辑 `.env.prod` 后 `nojctl apply`；装判题 → `nojctl judge enable`；看状态 → `nojctl status`。不再有含糊的"续跑/复用" |
+| 含 `.nojctl/state.json` 且 `state=partial`（上次部署被中断） | `deploy` **续跑**：只补做未完成的阶段，**不重跑三问向导**；若要改配置请先 `apply` |
+| 无 state，仅含保留物 / 本工具生成物（例如 `uninstall` 之后的目录，或只剩 `.env.prod`） | `deploy` 允许：**沿用 `.env.prod` 中一切已有键（含密钥与 `NOJCTL_*` 安装身份），只补缺失键**（提示"检测到既有配置与安装身份，将沿用"），覆盖生成物、保留 `backups/` |
 | 无 state 且含**外来条目**（无我们头部声明的 compose、`deploy/`、v1 的 `.bak/.orig/.staged` 等） | **拒绝写操作**（退出 3），逐条列出外来条目并说明"本工具不接管既有安装；迁移见手册（§12 批次 6.5）" |
 
 只读命令（`status` / `doctor` / `logs` / `versions` / `backup list`）可在外来目录运行，输出置顶 `⚠ 该目录不是 nojctl 管理的，本工具不会改动它`。
 
-**结论**：① 原子性在第一次就成立；② 卸载后目录可直接重装；③ **不接管任何既有安装**（迁移走手册）。
+**结论**：① 原子性在第一次就成立；② **卸载后可直接重装且数据仍在**（身份与密钥都在 `.env.prod`，卷名不变）；③ **不接管任何既有安装**（迁移走手册）。
 
 ### 9.4 漂移守卫
 
@@ -541,7 +566,7 @@ live 文件与 `current` 世代的 `artifact_hash` 不一致（手改、被 v1 �
 
 ### 9.5 卸载与交接
 
-- `uninstall`（默认）：停栈 + 移除 `.nojctl/` 与生成物；**保留** `.env.prod`、数据卷、`backups/`；目录处于"可直接重装"状态。
+- `uninstall`（默认）：停栈 + 移除 `.nojctl/` 与生成物；**保留** `.env.prod`、数据卷、`backups/`；目录处于"可直接重装"状态。**因为 `.env.prod` 里保留了 `NOJCTL_INSTALL_ID` / `NOJCTL_PROJECT_NAME`，重装会沿用同一 compose 项目名与命名卷 → 数据不丢**（§7.4 另有 fail-closed 兜底）。
 - `--purge`：额外删数据卷 + `.env.prod` + 备份（口令 `I UNDERSTAND THIS DELETES ALL DATA`）。
 - **永不自动删除**：数据卷、备份、`.env.prod`（`--purge` 例外）。
 - **交接**：`doctor --bundle` + 文档的"权限与交接"小节（要移交的清单：安装目录、二进制位置、`backups/` 与异地副本、管理员账号、外部依赖如域名/证书/邮件服务商）。
@@ -572,11 +597,11 @@ live 文件与 `current` 世代的 `artifact_hash` 不一致（手改、被 v1 �
 
 ### 10.4 契约测试
 
-退出码表每个码至少一个用例（含 §5.2 判据的两侧与"无法确认迁移状态 → 7"）；`--json` schema 快照 + "字段只增不改"守卫；门禁三条路径（TTY 口令错/对/两次失败；非 TTY 报错与参数；豁免路径；严格模式下无近期备份 → 4）；目录判据四种状态；项目名冲突拒绝；**`stopped` 栈上 `apply` 后仍为 `stopped` 且验证通过**；`start` / `stop` 在 `uninitialized` / `partial` → 3；**秘密不外流**（断言 `state.json`、世代快照、日志中不含管理员密码与备份口令）。
+退出码表每个码至少一个用例（含 §5.2 判据的两侧与"无法确认迁移状态 → 7"）；`--json` schema 快照 + "字段只增不改"守卫；门禁三条路径（TTY 口令错/对/两次失败；非 TTY 报错与参数；豁免路径；严格模式下无近期备份 → 4）；目录判据**五种状态**（含"已安装且无中断 → `deploy` 拒绝"与"`partial` → 续跑"）；项目名冲突与**复制目录（同 `install_id`、不同 `working_dir`）**均被拒绝；**`stopped` 栈上 `apply` 后仍为 `stopped` 且验证通过**；**首装后 `state=running` 且 `stop` 可用**；**`partial` 下 `stop` 允许**；`start` / `stop` 在 `uninitialized` → 3；**HTTPS 配置下登录冒烟通过**（`Secure` Cookie 不回传也能过）；**秘密不外流**（断言 `state.json`、世代快照、日志中不含管理员密码与备份口令；`--json` 下 stdout 不含密码）；**`.env.prod` 写入前生成 `.env.prod.bak-<时间>`**。
 
 ### 10.5 e2e（真 docker，CI）
 
-空目录 `deploy`（http 与 https 各一次；judge 开与关各一次）→ 健康 → 语义冒烟 → `doctor` 通过 → `backup create` + `verify` → **仅配置变更**的 `apply` → **换版本**的 `apply`（含 `stopped` 栈场景）→ `stop` / `start` → 注入失败版本断言自动回退 → **跨机恢复**（新目录 `deploy` → `restore` → 验证）→ 目录判据与项目名冲突用例。
+空目录 `deploy`（http 与 https 各一次；judge 开与关各一次）→ 健康 → 语义冒烟 → `doctor` 通过 → `backup create` + `verify` → **仅配置变更**的 `apply` → **换版本**的 `apply`（含 `stopped` 栈场景）→ `stop` / `start` → 注入失败版本断言自动回退 → **跨机恢复**（新目录 `deploy` → `restore` → 验证）→ **`uninstall` → `deploy`（沿用身份与密钥）→ 抽查原有数据仍在** → **默认跳过判题后的 `judge enable` 真能开起判题（含预拉镜像与 VERIFY #4）** → 目录判据、项目名冲突、复制目录冲突用例。
 
 ### 10.6 发布门禁
 
@@ -595,7 +620,11 @@ live 文件与 `current` 世代的 `artifact_hash` 不一致（手改、被 v1 �
 - [ ] `start` / `stop` 覆盖应急停站与恢复；`apply` 不主动改变运行态
 - [ ] 任一注入点失败后系统要么回到上一世代且健康（6），要么 `partial` 且可判定恢复（7）；无混合状态；回退输出不出现无法证实的数据断言
 - [ ] 备份：单文件加密、含 Redis、`verify` 不依赖运行中的栈、`restore` 前自动安全网、`prune` 默认 dry-run、跨机恢复 e2e 通过
-- [ ] 目录判据四种状态、项目名冲突、漂移守卫按 §9.3–9.4 生效；**搬目录不触发漂移**
+- [ ] 目录判据五种状态、项目名冲突、复制目录冲突、漂移守卫按 §9.3–9.4 生效；**搬目录不触发漂移**
+- [ ] **卸载后重装不丢数据**：`uninstall` → `deploy` 沿用同一 `NOJCTL_INSTALL_ID` 与全部密钥，命名卷不变、抽查数据仍在
+- [ ] **默认跳过判题的部署能靠完成页给出的 `nojctl judge enable` 真的开起判题**（e2e 覆盖）
+- [ ] 首装成功后 `state=running` 且 `stop` / `start` 可用；`partial` 下 `stop` 允许
+- [ ] 已有数据卷但身份/配置不匹配时 fail-closed 并给出 `--adopt-install-id` / `--purge` 两个选项
 - [ ] `doctor` 报告 TLS 剩余天数、磁盘可回收量、备份新鲜度、安装目录变更；`doctor --bundle` 可发给维护者
 - [ ] 生成器：黄金文件（含 `NOJ_ALLOW_INSECURE_HTTP` 双服务断言）+ 确定性 + 双重结构校验通过；"文档化的键必进容器"CI 门禁通过
 - [ ] 现有运维文档（4 份）与新命令面同批发布；15 分钟上手材料与迁移手册同批交付
@@ -609,12 +638,12 @@ live 文件与 `current` 世代的 `artifact_hash` 不一致（手改、被 v1 �
 | --- | --- | --- |
 | **1** | 骨架：`Runner`/seams、`state` + `state.json`（含 `install_id`）、`cli`/`ui`（`--json`/退出码/心跳进度）、目录判据、锁 | — |
 | **2** | `render` + `deploy_format` 注册表 + 项目名派生（`install_id`）+ 黄金文件（含断言清单）+ manifest 取数与校验 | 1 |
-| **2.5** | core 侧三个向后兼容能力：`noj config check --json`、`noj db status --json`、`noj bootstrap first-admin --password-file`（保持本机授权语义） | — |
+| **2.5** | core 侧四个向后兼容能力：`noj config check --json`、`noj db status --json`、`noj bootstrap first-admin --password-file`（保持本机授权语义）、**`migrate` 的机器可读结果行**（供 §6.3/§5.2 判据） | — |
 | **3** | `plan` + `apply` 事务（PREPARE/COMMIT/VERIFY/回退/崩溃恢复/首装失败/运行态临时启动与恢复）+ 故障注入测试 | 2 |
-| **4** | `deploy` 向导（三问 + 可选二级项 + rootless 引导 + 完成页五段 + 降级路径）+ 非交互等价 | 3 |
+| **4** | `deploy` 向导（三问 + 可选二级项 + rootless 引导 + 完成页五段 + 降级路径）+ **`judge enable` / `judge disable`**（复用屏幕 3 子流程）+ 非交互等价 | 3 |
 | **5** | `backup` / `restore`（含 Redis、加密与口令二次确认、verify、安全网、跨机恢复） | 1 |
 | **6** | `status` / `logs` / `doctor`（TLS、磁盘、`--bundle`、安装目录变更）/ `versions` / `start` / `stop` / `core --` / `uninstall` | 3,5 |
-| **6.5** | **迁移手册**（人工步骤 + CI 演练）。大纲：① 老实例停写（`noj-cli stop` 或 compose stop 应用层）② 导出：`pg_dump -Fc`、Redis `BGSAVE` 后取 `dump.rdb`、`mc mirror` 导出桶、卷 tar ③ 记录一致性时间点与导出校验和 ④ 新机 `deploy`（空目录）⑤ 导入：`pg_restore`、写回 `dump.rdb`、`mc mirror` 反向同步、卷解包 ⑥ 验证：关键表行数、对象条数、管理员登录、抽题提交 ⑦ 切 DNS（注意 TTL）⑧ 观察期后下线老机 ⑨ 回滚点：老机保持可启动 N 天 + 迁移前快照 | 5 |
+| **6.5** | **迁移手册**（人工步骤 + CI 演练）。大纲：① 老实例停写（`noj-cli stop` 或 compose stop 应用层）② **原样携带实例级密钥**：`JWT_SECRET` / `TFA_ENCRYPTION_KEY` / `NOJ_LLM_STORE_KEY` / `NOJ_LLM_SERVICE_TOKEN` / `POSTGRES_PASSWORD` / `REDIS_PASSWORD` / `MINIO_ROOT_*` / `S3_*`（**换掉任何一个都会让数据"在但读不出来"**：Postgres 角色口令与数据目录绑定、TOTP secret 用 `TFA_ENCRYPTION_KEY` 加密、Provider Key 用 `NOJ_LLM_STORE_KEY` 信封加密）③ 导出：`pg_dump -Fc`、Redis `BGSAVE` 后取 `dump.rdb`、`mc mirror` 导出桶、卷 tar ④ 记录一致性时间点与导出校验和 ⑤ 新机 `deploy`（空目录）⑥ 导入：`pg_restore`、写回 `dump.rdb`、`mc mirror` 反向同步、卷解包 ⑦ 验证：关键表行数、对象条数、管理员登录、**一名启用 TFA 的用户能登录**、**一个 LLM 题能跑**、抽题提交 ⑧ 切 DNS（注意 TTL）⑨ 观察期后下线老机 ⑩ 回滚点：老机保持可启动 N 天 + 迁移前快照 | 5 |
 | **7** | 发布链路：manifest 资产 + CI 四道门禁 + 用上一版 CLI 的逆向验证 | 2,3 |
 | **7.5** | **文档切换**：`production-deploy.md` / `judge-workers.md` / `cli.md` / `noj-cli/README.md` + 权限与交接小节 + **15 分钟上手材料**（章节：这是什么/你需要什么/三问怎么答/看到什么算成功/学生怎么进来/第二步开启判题/出问题先跑 `doctor`） | 4,6 |
 
@@ -632,6 +661,7 @@ live 文件与 `current` 世代的 `artifact_hash` 不一致（手改、被 v1 �
 6. **B 模式（SSH 远端执行）**：`Runner` seam 已留。
 7. **aarch64 与 Windows / macOS 产物**。
 8. **`noj` 名字的收编**：容器内 `/app/bin/noj` 与宿主机 CLI 同名不同物；本次通过 `core --` 透传缓解。
-9. **独立判题机 / 第二 Worker**：v1 不支持，只能文档化。
-10. **多实例**：本稿用"`install_id` 派生项目名 + 冲突拒绝"支持同机多安装；"一个 nojctl 管多个安装目录"记为开放问题。
-11. **门禁的更强形态**（供未来评估）：若实践证明"抄全大写英文句子"成本过高，可评估"屏幕随机码"等替代；本稿按项目所有者决定保持不变。
+9. **独立判题机 / 第二 Worker**：v1 不支持（`judge enable` 只做**同机 rootless**），只能文档化说明"实验室机器分担负载"需要另外的拓扑与后续设计。
+10. **多实例**：本稿用"`.env.prod` 里的安装身份 + 项目名派生 + 标签级冲突拒绝"支持同机多安装；"一个 nojctl 管多个安装目录"记为开放问题。
+11. **门禁的更强形态**（供未来评估）：若实践证明"抄全大写英文句子"成本过高，可评估"屏幕随机码"等替代；本稿按项目所有者决定保持不变（并已加三条不改形态的缓解，§5.3）。
+12. **实现阶段注意事项**（第三轮复核的其余条目，不构成设计变更，但必须逐条进批次 1–3 的验收清单）：`--password-file` 的 0600 + owner 校验；密码优先经 `/dev/stdin` 不落盘、崩溃残留由 `doctor` 报告；`--dir` 相对路径规范化；CLI 生成类键的手改覆盖注记；`stopped` + 无变化时的 no-op 文案；`partial` 下 `stop` 必须允许；PREPARE 失败同属"线上未被触碰"的 6；首装失败按"迁移是否可能已推进"判 6/7；`.env.prod` 自动 `.bak`；错误提示附"搜索键名"。
