@@ -425,6 +425,13 @@ docker compose down     # 停止
 - `problems.number` 按 `type` 分别自增（`(type, number)` UNIQUE）
 - `problems.visibility` 取值 `public`/`private`，由 `resolveProblemAccess`
   统一判定读取/提交/竞赛上下文访问；新建 U 型默认 `private`，P 型恒 `public`
+- **公开赛题目保密**（2026-09-26）：题目被加入 `kind='public'` 且
+  `now < end_time` 的竞赛后，除
+  owner/admin（以及携带有效竞赛上下文的参赛者）外， 读取路径一律
+  404、独立提交/自测路径 403；`end_time` 一过自动失效。判定事实由 contest 域
+  `loadPublicContestSecrecy` 取得、经 catalog 域 `evaluateProblemAccess*`
+  统一取数判定（`src/domains/catalog/services/problem-access-check.ts`）；
+  查看者可见性字段 `contest_secrecy` 只下发给 owner/admin
 - `contests.kind` 取值 `public`/`invite`：public
   仅管理员可创建、可自助报名；invite 必须设置邀请码并校验；`is_public` 与 kind
   绑定：public 公开可见，invite 不进入公开列表

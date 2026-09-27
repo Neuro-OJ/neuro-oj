@@ -37,7 +37,10 @@ import {
   getPublicProblemStats,
 } from "../services/problems/problems-stats.ts";
 import { resolveProblem } from "./../services/problem-resolve.ts";
-import { resolveProblemAccess } from "./../services/problem-access.ts";
+import {
+  evaluateProblemAccess,
+  evaluateProblemAccessWithContestId,
+} from "./../services/problem-access-check.ts";
 import {
   ADMIN_FULL_ACCESS,
   assertPermission,
@@ -196,6 +199,9 @@ router.get("/submissions/:id", authMiddleware, async (c) => {
  *
  * 算法标签仅 admin / 题主 / 有通过提交（finished 且 score>0）的 viewer 可见；
  * 其余 viewer 收不到算法标签名，仅收到 has_hidden_algorithm_tags 占位标志。
+ *
+ * 无权限一律 404（防存在性探测）。被关联到**尚未结束的公开赛**的题目同此口径：
+ * 除 owner/管理员外一律 404，owner/管理员额外收到 `contest_secrecy` 提示字段。
  */
 router.get("/:id", optionalAuthMiddleware, async (c) => {
   const id = c.req.param("id") as string;
@@ -206,7 +212,7 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
 
   // 统一题目访问解析：无权限一律 404，防存在性探测。
   const problem = await resolveProblem(id, { userId, isAdmin });
-  const access = resolveProblemAccess(problem, {
+  const { result: access, secrecy } = await evaluateProblemAccess(problem, {
     viewerId: userId ?? null,
     isAdmin,
   });
@@ -216,7 +222,18 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
 
   const data = await applyAlgorithmTagVisibility(problem, { userId, isAdmin });
 
-  return c.json({ data });
+  // 保密提示：判定顺序保证能走到这里的非 owner/管理员不存在（上面已 404），
+  // 因此该字段的实际读者只有 owner 与管理员。
+  const secrecyNotice = secrecy.map((ref) => ({
+    public_id: ref.publicId,
+    title: ref.title,
+  }));
+
+  return c.json({
+    data: secrecyNotice.length > 0
+      ? { ...data, contest_secrecy: secrecyNotice }
+      : data,
+  });
 });
 
 /**
@@ -422,8 +439,22 @@ router.post("/import-bundle", authMiddleware, async (c) => {
 router.get("/:id/support-package", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const userId = c.get("userId");
+  const isAdmin = (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS);
 
   const problem = await resolveProblem(id);
+  // 公开赛保密：被加入未结束公开赛的题目对非 owner/管理员按"不存在"处理（404），
+  // 否则"403 无包权限"与"404 不存在"的差异会暴露该题目的存在。
+  //
+  // 这里**只**拦保密命中，不改动既有的包权限口径：私有题的 403 由
+  // `getSupportPackageBytes` 的 package_manage_own/_any 校验给出，属于另一套
+  // 基于角色的控制，不在本次规则范围内。
+  const { result: access } = await evaluateProblemAccess(problem, {
+    viewerId: userId,
+    isAdmin,
+  });
+  if (access.mode === "contest-secret") {
+    throw new NotFoundError("题目不存在");
+  }
   const zipBytes = await getSupportPackageBytes(
     problem.id,
     userId,
@@ -454,10 +485,23 @@ router.get("/:id/support-package", authMiddleware, async (c) => {
  *
  * 模板仅供前端编辑器初始填充（starter code），与评测参考实现解耦；
  * 不再回退 submission_sample.py / submission.py。
+ *
+ * 可见性与题目详情同口径（此前本 handler **完全没有访问校验**，私有题的模板对任意
+ * 登录用户可读）；竞赛模式编辑器携带 `?contest_id=` 时走竞赛上下文放行。
  */
 router.get("/:id/template", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
+  const userId = c.get("userId") as string;
+  const isAdmin = (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS);
   const problem = await resolveProblem(id);
+  const { result } = await evaluateProblemAccessWithContestId(problem, {
+    viewerId: userId,
+    isAdmin,
+    contestId: c.req.query("contest_id"),
+  });
+  if (!result.allowed) {
+    throw new NotFoundError("题目不存在");
+  }
   // 通过题号和标题共同确认源码目录归属，不能假定目录名就是展示题号。
   const tpl = await getProblemTemplate({
     number: problem.number,
@@ -492,9 +536,9 @@ router.get("/:id/stats/public", optionalAuthMiddleware, async (c) => {
     ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
     : false;
 
-  // 与 /:id 一致：无权限一律 404，避免成为私有题的存在性预言机
+  // 与 /:id 一致：无权限一律 404，避免成为私有题/保密题的存在性预言机
   const problem = await resolveProblem(id, { userId, isAdmin });
-  const access = resolveProblemAccess(problem, {
+  const { result: access } = await evaluateProblemAccess(problem, {
     viewerId: userId ?? null,
     isAdmin,
   });

@@ -1,9 +1,9 @@
 {
-  "total": 1003,
+  "total": 1014,
   "by_reason": {
     "early-return": 268,
     "env-guard": 13,
-    "ignore": 650,
+    "ignore": 661,
     "rust-env-guard": 27,
     "rust-ignore": 45
   },
@@ -11,6 +11,7 @@
     "noj-cli/src/prod/e2e/roundtrip_test.ts": 4,
     "noj-core/src/domains/admin/tests/services/admin-audit.test.ts": 3,
     "noj-core/src/domains/catalog/tests/routes/problem-bundle.test.ts": 19,
+    "noj-core/src/domains/catalog/tests/routes/problem-contest-secrecy.test.ts": 11,
     "noj-core/src/domains/catalog/tests/routes/problem-field-guard.test.ts": 8,
     "noj-core/src/domains/catalog/tests/routes/problems-stats.test.ts": 8,
     "noj-core/src/domains/catalog/tests/routes/problems.test.ts": 16,

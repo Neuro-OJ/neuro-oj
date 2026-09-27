@@ -54,6 +54,30 @@ Deno.test('problemView: 独立题目缺省字段降级为空而非崩溃', () =>
   assertEquals(view.has_hidden_algorithm_tags, false);
   assertEquals(view.time_limit_ms, null);
   assertEquals(view.memory_limit_mb, null);
+  // 无保密关联（或后端未下发该字段）时为空数组，横幅不渲染
+  assertEquals(view.contest_secrecy, []);
+});
+
+Deno.test('problemView: 公开赛保密提示字段透传（仅所有者/管理员会收到）', () => {
+  const view = toProblemView({
+    id: 'uuid-secret',
+    display_id: 'P9',
+    title: '保密题',
+    description: '题面',
+    difficulty: 'easy',
+    type: 'P',
+    owner_id: 'owner-9',
+    is_objective: false,
+    contest_secrecy: [
+      { public_id: 'ct-1', title: '春季公开赛' },
+      { public_id: 'ct-2', title: '夏季公开赛' },
+    ],
+  });
+
+  assertEquals(view.contest_secrecy, [
+    { public_id: 'ct-1', title: '春季公开赛' },
+    { public_id: 'ct-2', title: '夏季公开赛' },
+  ]);
 });
 
 Deno.test('problemView: 竞赛题目资源映射，id 取 problem_id 且无时限信息', () => {
