@@ -36,6 +36,7 @@ import {
 import { importProblemBundle } from "../src/domains/catalog/index.ts";
 import { reindexAll } from "../src/domains/search/index.ts";
 import { ROOT_USER_ID } from "./../src/shared/base/constants.ts";
+import { getBuildInfo } from "./../src/shared/base/build-info.ts";
 
 const PROJECT_ROOT = Deno.env.get("NOJ_PROJECT_ROOT") ??
   join(import.meta.dirname ?? ".", "..");
@@ -310,7 +311,7 @@ try {
   await new Command()
     .name("noj")
     .description("Neuro OJ 管理 CLI（迁移、初始化、管理员、题目包）")
-    .version("0.9.5")
+    .version(getBuildInfo().version)
     .command("db", dbCmd)
     .command("init", initCmd)
     .command("bootstrap", bootstrapCmd)

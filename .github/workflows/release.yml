@@ -228,6 +228,12 @@ jobs:
             echo "release=$release"
           } >> "$GITHUB_OUTPUT"
 
+      - name: 记录构建时间
+        # 构建身份三要素之一（页脚 / 站点元信息展示）。写成 UTC ISO 8601，
+        # 显示层按访问者本地时区渲染，避免 CI 与服务器时区不一致时误读。
+        id: buildtime
+        run: echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: 构建并推送候选镜像
         id: build
         uses: docker/build-push-action@v6
@@ -241,6 +247,12 @@ jobs:
           cache-to: type=gha,mode=min
           provenance: mode=max
           sbom: true
+          # 构建身份：noj-server 烘焙成容器 ENV，noj-ui 在构建期读入并编译进产物。
+          # 其余镜像未声明这些 ARG，传入即被忽略（Docker 不对未声明的 build-arg 报错）。
+          build-args: |
+            NOJ_BUILD_VERSION=${{ steps.meta.outputs.version }}
+            NOJ_BUILD_COMMIT=${{ github.sha }}
+            NOJ_BUILD_TIME=${{ steps.buildtime.outputs.time }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}

@@ -187,6 +187,29 @@ noj-cli update --latest
 数据库迁移只追加，不会自动回滚，因此跨大版本升级前必须确认迁移兼容性。
 注意：切回镜像标签不是数据库回滚；迁移只增不减，回退版本前需按迁移清单人工评估。
 
+### 确认线上正在运行哪个构建
+
+四个口径互为参照，任一即可确认"当前跑的是哪个版本、哪次提交"：
+
+| 口径 | 位置 | 说明 |
+|---|---|---|
+| 站点页脚 | 页脚品牌列「前端 / 后端」两行 | `前端` = noj-ui 构建身份（编译进产物），`后端` = noj-core 运行身份（来自镜像 ENV）。各含版本号、commit、构建时间；时间按访问者本地时区显示，悬停可见完整 SHA 与原始 ISO 时间 |
+| 健康探针 | `GET /healthz`（nginx 公开代理到 core `/health/ready`） | 响应里的 `version` 与页脚「后端」一致 |
+| 站点元信息 | `GET /api/v1/site/meta` → `data.build` | `{version, commit, builtAt}`，页脚「后端」即取此值 |
+| 镜像元数据 | `docker inspect <image> --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'` | Release 流水线写入的完整 commit，与前三者应一致 |
+
+三个构建身份变量由 Release 流水线以 build-arg 注入，**不需要**写进 `.env.prod`：
+
+| 变量 | 含义 |
+|---|---|
+| `NOJ_BUILD_VERSION` | Release 标签（如 `v0.10.1-beta.3`） |
+| `NOJ_BUILD_COMMIT` | 完整 commit SHA（`github.sha`） |
+| `NOJ_BUILD_TIME` | 构建时刻（UTC，ISO 8601） |
+
+本地源码运行时三者缺省回退：版本取模块清单（`deno.json` / `package.json`）、commit 取本地
+git 短 SHA（工作区有改动则缀 `-dirty`）、构建时间取进程启动时刻——因此本地页脚显示的
+`-dirty` 是正常现象，表示图像来自未提交的工作区。
+
 ### 升级前检查：题目引用的 LLM Provider 是否为用户自建
 
 **适用版本**：升级到移除 BYOK 的版本（`llm_providers.created_by` 列被删除）时必查。

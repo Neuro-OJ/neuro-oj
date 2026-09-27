@@ -74,6 +74,16 @@ RUN mkdir -p /app/data/packages /app/data/storage \
 ENV NOJ_PROJECT_ROOT=/app
 ENV NOJ_MIGRATIONS_DIR=/app/drizzle
 
+# 构建身份（release.yml build-arg 注入）：noj-core 从容器 ENV 读取，经
+# `/health*` 与公开的 `/api/v1/site/meta` 对外暴露，页脚据此显示后端版本。
+# 缺省空串 → 运行期回退 `unknown`（不阻塞启动；本地直接 build 镜像时即为此情形）。
+ARG NOJ_BUILD_VERSION=""
+ARG NOJ_BUILD_COMMIT=""
+ARG NOJ_BUILD_TIME=""
+ENV NOJ_BUILD_VERSION=$NOJ_BUILD_VERSION \
+    NOJ_BUILD_COMMIT=$NOJ_BUILD_COMMIT \
+    NOJ_BUILD_TIME=$NOJ_BUILD_TIME
+
 USER noj
 
 EXPOSE 8000

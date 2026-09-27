@@ -424,6 +424,40 @@ export const BOOTSTRAP_CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     envKey: "OAUTH_OIDC_NAME",
     category: "auth",
   },
+  // ── 构建身份（visible:true，后台只读展示"线上跑的是哪次构建"）──────
+  // 由 release.yml 以 build-arg 注入镜像 ENV（见 Dockerfile），**不需要**在 .env
+  // 里配置；登记于此是为了满足"代码读取的 env 必须已登记"的门禁，并让运维在
+  // 后台环境配置页直接看到构建身份。未注入时值为空串 → 运行期显示 unknown。
+  {
+    key: "NOJ_BUILD_VERSION",
+    type: "string",
+    description: "构建版本号（镜像构建期注入，如 v0.10.1-beta.2）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_BUILD_VERSION",
+    category: "other",
+    visible: true,
+  },
+  {
+    key: "NOJ_BUILD_COMMIT",
+    type: "string",
+    description: "构建 commit（镜像构建期注入，短/全长 hash）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_BUILD_COMMIT",
+    category: "other",
+    visible: true,
+  },
+  {
+    key: "NOJ_BUILD_TIME",
+    type: "string",
+    description: "构建时刻（镜像构建期注入，ISO 8601 UTC）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_BUILD_TIME",
+    category: "other",
+    visible: true,
+  },
   // ── 开发/测试专用（visible:false，仅参与校验不展示）────────
   {
     key: "NOJ_RUN_E2E",
