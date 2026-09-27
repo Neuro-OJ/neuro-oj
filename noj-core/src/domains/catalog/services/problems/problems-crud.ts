@@ -72,7 +72,7 @@ export async function createProblem(
   userId?: string,
   userRole?: string,
   c?: Context,
-  allowServerStorageUrl = false,
+  allowServerDerivedFields = false,
 ): Promise<ProblemResponseWithTags> {
   const db = getDb();
 
@@ -80,7 +80,7 @@ export async function createProblem(
   if (
     input.support_package_storage_url !== undefined &&
     input.support_package_storage_url !== null &&
-    !allowServerStorageUrl
+    !allowServerDerivedFields
   ) {
     throw new BadRequestError(
       "support_package_storage_url 仅允许由服务端支持包上传/导入流程生成",
@@ -309,7 +309,7 @@ export async function updateProblem(
   userId?: string,
   userRole?: string,
   c?: Context,
-  allowServerStorageUrl = false,
+  allowServerDerivedFields = false,
 ): Promise<ProblemResponseWithTags> {
   const db = getDb();
 
@@ -317,10 +317,22 @@ export async function updateProblem(
   if (
     input.support_package_storage_url !== undefined &&
     input.support_package_storage_url !== null &&
-    !allowServerStorageUrl
+    !allowServerDerivedFields
   ) {
     throw new BadRequestError(
       "support_package_storage_url 仅允许由服务端支持包上传/导入流程生成",
+    );
+  }
+
+  // 模板内容由导入流程从题包内派生（manifest.template，缺省 template.py），
+  // 与存储 URL 同一性质：客户端直传等于绕过题包往库里塞任意 starter code。
+  if (
+    input.template_content !== undefined &&
+    input.template_content !== null &&
+    !allowServerDerivedFields
+  ) {
+    throw new BadRequestError(
+      "template_content 仅允许由服务端题目包导入流程写入",
     );
   }
 
@@ -496,6 +508,14 @@ export async function updateProblem(
   }
   if (input.artifact_max_size_mb !== undefined) {
     updates.artifact_max_size_mb = input.artifact_max_size_mb;
+  }
+  // 模板：仅导入流程可写；转为客观题套卷时必须清空（套卷没有参赛代码）。
+  if (isObjective) {
+    if (input.template_content !== undefined || problem.template_content) {
+      updates.template_content = null;
+    }
+  } else if (input.template_content !== undefined) {
+    updates.template_content = input.template_content;
   }
   updates.updated_at = new Date().toISOString();
 

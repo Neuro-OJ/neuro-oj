@@ -33,9 +33,15 @@ import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "catalog"]);
 import { checkPermission } from "./../../../identity/index.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
-import { parseBundleZip, stripMetadataEntries } from "./../bundle-parser.ts";
 import {
+  parseBundleZip,
+  readBundleTemplate,
+  stripMetadataEntries,
+} from "./../bundle-parser.ts";
+import {
+  DEFAULT_TEMPLATE_FILE,
   isValidProblemBundleName,
+  MAX_TEMPLATE_BYTES,
   type ProblemBundleManifest,
   validateBundleManifest,
   validateObjectiveQuestions,
@@ -199,6 +205,14 @@ export async function importProblemBundle(
   const strippedZip = stripMetadataEntries(file.data);
   const storage = await getStorageProvider();
 
+  // 5.1 编辑器初始代码模板：**随包上传、导入时持久化**（与题面 `description`
+  //     同策略）。此前模板只在请求时按 `manifest.number + title` 去服务器本地
+  //     `data/problems-src/` 里找，而生产镜像既没有私有题源、题包 manifest 又
+  //     普遍不写 number（题号由导入自增分配）→ 线上所有题目的模板恒 404。
+  //     改为从上传包内读取并落库后，运行期不再依赖部署目录，也不需要为读一个
+  //     几 KB 的模板而下载整个支持包。
+  const templateContent = extractImportedTemplate(manifest, parsed.entries);
+
   // 6. 分发：manifest.number 提供时按 (type, number) 业务键匹配（命中 → 更新；
   //    未命中 → 创建）；未提供 → 创建（number 自动分配）。id 一律由服务端生成，
   //    (type, number) 由 DB 联合唯一约束保证唯一（problems_type_number_unique）。
@@ -224,6 +238,7 @@ export async function importProblemBundle(
         c,
         storage,
         strippedZip,
+        templateContent,
       );
     } else {
       result = await createViaCrud(
@@ -234,6 +249,7 @@ export async function importProblemBundle(
         c,
         storage,
         strippedZip,
+        templateContent,
       );
     }
   } else {
@@ -246,6 +262,7 @@ export async function importProblemBundle(
       c,
       storage,
       strippedZip,
+      templateContent,
     );
   }
 
@@ -267,6 +284,44 @@ export async function importProblemBundle(
 }
 
 /**
+ * 从上传包条目中取出编辑器初始代码模板内容。
+ *
+ * 返回值即 `problems.template_content` 的落库值：**空串表示"已核对、包内无模板"**
+ * （解析时据此跳过回源读包，避免无模板的题目每次打开编辑器都下载整个支持包）。
+ *
+ * 语义：
+ * - 包内没有模板文件 → `''`。**显式声明** `manifest.template` 却缺失时记 warning
+ *   （出题人以为写了模板、实际没进包，此前正是这类静默失配让线上模板恒 404）。
+ * - 条目超过 {@link MAX_TEMPLATE_BYTES} → `''` + warning（模板是骨架，不该是大文件）。
+ */
+function extractImportedTemplate(
+  manifest: ProblemBundleManifest,
+  entries: Record<string, Uint8Array>,
+): string {
+  const read = readBundleTemplate(entries, manifest.template);
+  if (read.status === "ok") return read.content;
+
+  if (read.status === "too_large") {
+    logger.warn(
+      "题目导入：模板文件超过大小上限，已忽略（模板应为作答骨架）",
+      {
+        template: manifest.template ?? DEFAULT_TEMPLATE_FILE,
+        size: read.size,
+        limit: MAX_TEMPLATE_BYTES,
+      },
+    );
+    return "";
+  }
+
+  if (manifest.template !== undefined) {
+    logger.warn("题目导入：manifest.template 声明的模板文件不在包内", {
+      template: manifest.template,
+    });
+  }
+  return "";
+}
+
+/**
  * 更新路径：替换评测包（尽力删除旧对象，失败不阻塞）+ 更新元数据。
  */
 async function updateExisting(
@@ -278,6 +333,7 @@ async function updateExisting(
   c: Context | undefined,
   storage: Awaited<ReturnType<typeof getStorageProvider>>,
   strippedZip: Uint8Array,
+  templateContent: string,
 ): Promise<ProblemResponseWithTags> {
   // issue #207：先于 storage 操作执行敏感字段权限 + 资源上限校验——
   // 若在 storage 操作之后才失败（updateProblem 内部），旧评测包已被删除、
@@ -316,6 +372,9 @@ async function updateExisting(
       artifact_max_size_mb: manifest.artifact_max_size_mb,
       llm: manifest.llm,
       support_package_storage_url: storageUrl,
+      // 模板与题包同源：重新导入即用新包内的模板覆盖（包内无模板则清空，
+      // 避免旧模板与新题包不一致）。
+      template_content: templateContent,
       tag_ids: await resolveTagIds(manifest.tags),
     },
     actor.userId,
@@ -404,6 +463,8 @@ async function importObjectivePaper(
         support_package_storage_url: null,
         submission_mode: "code",
         artifact_max_size_mb: null,
+        // 客观题套卷禁止 template（校验层已拦），从编程题转套卷时一并清空。
+        template_content: null,
         llm_config: null,
         updated_at: now,
       }).where(eq(problems.id, problemId));
@@ -514,6 +575,7 @@ async function createViaCrud(
   c: Context | undefined,
   storage: Awaited<ReturnType<typeof getStorageProvider>>,
   strippedZip: Uint8Array,
+  templateContent: string,
 ): Promise<ProblemResponseWithTags> {
   const type = manifest.type ?? "U";
 
@@ -585,6 +647,7 @@ async function createViaCrud(
         visibility: type === "P" ? "public" : "private",
         submission_mode: manifest.submission_mode ?? "code",
         artifact_max_size_mb: manifest.artifact_max_size_mb ?? null,
+        template_content: templateContent,
         llm_config: manifest.llm ?? null,
         number: finalNumber,
         owner_id: actor.userId ?? ROOT_USER_ID,

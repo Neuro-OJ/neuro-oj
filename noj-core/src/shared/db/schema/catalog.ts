@@ -46,6 +46,21 @@ export const problems = pgTable(
     /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
     artifact_max_size_mb: integer("artifact_max_size_mb"),
     /**
+     * 编辑器初始代码模板（starter code）内容。
+     *
+     * 导入题目包时从包内 `manifest.template` 声明的文件（缺省 `template.py`）
+     * 读取并落库——与题面（`description`）同源同策略：元数据随包上传、
+     * 导入时持久化，运行期不再依赖服务器本地源码目录。
+     *
+     * 取值语义（`resolveProblemTemplate` 据此决定是否回源读支持包）：
+     * - 非空字符串：模板内容；
+     * - `''`：导入时**已核对**过包内没有模板 → 不再为读模板下载整个支持包；
+     * - `NULL`：本列引入前的存量行（来源未知）→ 允许回源探测包内 `template.py`。
+     *
+     * 客观题套卷与未提供模板的题目为 NULL 或 `''`（套卷恒 NULL）。
+     */
+    template_content: text("template_content"),
+    /**
      * 题目 LLM 配置（可空）：`{ provider_id, model, max_calls?, max_tokens? }`。
      *
      * 2026-09-22 起语义收窄为「题目声明的能力与预算」：Provider/模型由**平台

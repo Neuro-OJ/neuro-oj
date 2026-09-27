@@ -7,6 +7,11 @@
  * 这里按 `columns` 生成列定义，并把单元格 / 操作列委托回本组件对外的
  * `#cell` / `#actions` 插槽，让各管理页保持「一张表一套插槽」的写法。
  *
+ * **单元格回退**：调用方的 `#cell` 插槽常常只覆盖需要自定义渲染的列
+ * （`v-if` / `v-else-if` 链没有 `v-else`），未命中列产出的是注释占位节点。
+ * 此时本组件回退渲染原始字段值，避免整列空白（2026-09 修复：题目管理页的
+ * 「题号」「标题」两列曾恒为空）。
+ *
  * 用法：
  * ```vue
  * <AdminTable
@@ -23,6 +28,8 @@
  * </AdminTable>
  * ```
  */
+import { Comment, Fragment, Text } from 'vue'
+
 export interface AdminColumn {
   key: string
   label: string
@@ -48,7 +55,28 @@ const emit = defineEmits<{
 
 const slots = useSlots()
 
-/** 列定义：cell 渲染函数转发到调用方插槽，未提供插槽时回退为原始值 */
+/**
+ * 插槽产出是否"真的渲染出了内容"。
+ *
+ * - `v-if` / `v-else-if` 全部未命中 → Vue 产出注释占位节点（`Comment`）
+ * - 命中了但只渲染出空文本（`{{ '' }}`）→ `Text` 节点内容为空
+ * - `Fragment` 递归查看子节点
+ *
+ * 上述情况都视为"该列没有自定义内容"，交由调用方之外的回退渲染原始值。
+ */
+function isRendered(node: unknown): boolean {
+  if (node === null || node === undefined || typeof node === 'boolean') return false
+  if (typeof node === 'string') return node.trim() !== ''
+  if (typeof node === 'number') return true
+  if (Array.isArray(node)) return node.some((child) => isRendered(child))
+  const vnode = node as { type?: unknown; children?: unknown }
+  if (vnode.type === Comment) return false
+  if (vnode.type === Text) return String(vnode.children ?? '').trim() !== ''
+  if (vnode.type === Fragment) return isRendered(vnode.children)
+  return true
+}
+
+/** 列定义：cell 渲染函数转发到调用方插槽，未覆盖的列回退为原始值 */
 const tableColumns = computed(() =>
   props.columns.map((column) => ({
     accessorKey: column.key,
@@ -57,7 +85,10 @@ const tableColumns = computed(() =>
     cell: (ctx: { row: { original: Record<string, unknown> } }) => {
       const row = ctx.row.original
       if (column.key === "actions" && slots.actions) return slots.actions({ row })
-      if (slots.cell) return slots.cell({ row, column })
+      if (slots.cell) {
+        const rendered = slots.cell({ row, column })
+        if (isRendered(rendered)) return rendered
+      }
       const value = row[column.key]
       return value === null || value === undefined ? "" : String(value)
     },

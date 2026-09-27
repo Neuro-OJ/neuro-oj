@@ -222,14 +222,20 @@ const publishBlockReason = computed(() => {
           <div class="min-w-0 space-y-6 lg:col-span-8">
             <ProblemHeader :problem="problem" :stats="publicStats">
               <template #actions>
-                <AddToTrainingMenu v-if="isLoggedIn" :problem-id="problem.id" />
+                <!-- 两个按钮必须同尺寸（size="lg"）：此前「加入题单」用默认 md，
+                     「开始编码」用自定义 px-5 py-2.5，并排时高度与内边距不一致。 -->
+                <AddToTrainingMenu
+                  v-if="isLoggedIn"
+                  :problem-id="problem.id"
+                  size="lg"
+                />
                 <UButton
                   v-if="editorUrl"
                   color="primary"
-                  class="inline-flex items-center gap-2 px-5 py-2.5 text-sm"
+                  size="lg"
                   :to="editorUrl"
                 >
-                  <UIcon name="i-lucide-code-2" class="size-4" />
+                  <UIcon name="i-lucide-code-2" class="size-5" />
                   开始编码
                 </UButton>
               </template>

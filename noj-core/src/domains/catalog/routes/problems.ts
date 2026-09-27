@@ -54,9 +54,9 @@ import type {
 } from "./../types/problems.ts";
 import {
   deleteSupportPackage,
-  getProblemTemplate,
   getSupportPackageBytes,
   MAX_SUPPORT_PACKAGE_SIZE,
+  resolveProblemTemplate,
 } from "../services/support-package.ts";
 import { importProblemBundle } from "../services/problems/problem-bundle.ts";
 import {
@@ -479,9 +479,12 @@ router.get("/:id/support-package", authMiddleware, async (c) => {
  * 获取题目初始代码模板（starter code）。
  * GET /api/v1/problems/:id/template
  *
- * 用于编辑器在没有用户本地草稿时填入的初始代码：
- * - 按 manifest `template` 字段索引题目源码目录中的模板文件（缺省 `template.py`）
- * - 模板文件不存在 → 404
+ * 用于编辑器在没有用户本地草稿时填入的初始代码。解析顺序见
+ * `resolveProblemTemplate`：导入时从题包持久化的内容 → 已存储支持包内的模板 →
+ * 本地源码目录（仅开发环境有效）。
+ *
+ * 模板来源曾经只有"服务器本地 `data/problems-src`"，容器化生产既没有私有题源、
+ * manifest 又普遍不写 number，导致线上所有题目的模板恒 404（编辑器空白且无提示）。
  *
  * 模板仅供前端编辑器初始填充（starter code），与评测参考实现解耦；
  * 不再回退 submission_sample.py / submission.py。
@@ -502,8 +505,8 @@ router.get("/:id/template", authMiddleware, async (c) => {
   if (!result.allowed) {
     throw new NotFoundError("题目不存在");
   }
-  // 通过题号和标题共同确认源码目录归属，不能假定目录名就是展示题号。
-  const tpl = await getProblemTemplate({
+  const tpl = await resolveProblemTemplate({
+    id: problem.id,
     number: problem.number,
     title: problem.title,
   });

@@ -25,7 +25,7 @@
 
 - `evaluate.py` **必须位于 zip 根级**——Judge Worker 将包解压到容器 `/workspace` 后路径固定为 `/workspace/evaluate.py`。
 - 测试数据格式**不强制**：`visible.jsonl` / `hidden.jsonl` 是推荐约定，你可以用 `cases/*.json`、SQLite、CSV 等任何方式组织，只要 `evaluate.py` 自己能读取。推荐约定见[测试数据与样例规范](test-data.md)。
-- 模板文件（如 `template.py`）与参考实现（如 `submission_sample.py`）**不要**放入包中；`problems:build` 打包时自动排除 `submission*`、manifest 声明的模板文件、`__pycache__` 与 `.git`（`noj-cli problem pack` 同规则）。
+- 模板文件（如 `template.py`，即 `manifest.template` 声明的文件）**必须放入包中**：平台在导入时读取它并落库，作为编辑器初始代码（starter code）；参考实现（如 `submission_sample.py`）**不要**放入包中。`problems:build` 与 `noj-cli problem pack` 打包时自动排除 `submission*`、`__pycache__` 与 `.git`。
 
 ::: danger 三种"根级缺失"会导致导入失败（400）
 - 编程题包根级缺 `problem.json`、`evaluate.py`，或题面（`statement.md` 与 `manifest.description` 皆缺）。

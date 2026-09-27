@@ -15,7 +15,7 @@ noj-core/data/problems-src/1001/
 ├── statement.md     # 题面
 ├── visible.jsonl    # 可见测试点
 ├── hidden.jsonl     # 隐藏测试点
-└── template.py      # 初始代码模板（不进入评测包）
+└── template.py      # 初始代码模板（随包上传，导入时落库）
 ```
 
 ## 题面接口
@@ -126,10 +126,10 @@ deno task problems:build
 noj-core/data/packages/1001.zip
 ```
 
-构建产物会包含 `evaluate.py`、`visible.jsonl` 和 `hidden.jsonl`；**不会**包含 `submission*`（参考实现）、`template.py`（manifest 声明的模板文件）与 `__pycache__`。
+构建产物会包含 `evaluate.py`、`visible.jsonl`、`hidden.jsonl` 与 `template.py`；**不会**包含 `submission*`（参考实现）与 `__pycache__`。
 
-::: tip 模板不进入评测包
-初始代码模板（`template.py`）仅供前端编辑器填充用户代码，与评测参考实现解耦，不属于评测内容。
+::: tip 模板进入题目包
+初始代码模板（`template.py`）是编辑器给出的作答骨架，与评测参考实现解耦，不属于评测内容；它随题目包上传，导入时由平台读取并落库（`problems.template_content`），编辑器据此填充代码框。因此打包时**不要**排除模板文件。
 :::
 
 ## 上传到题目

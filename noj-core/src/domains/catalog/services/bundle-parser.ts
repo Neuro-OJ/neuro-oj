@@ -15,7 +15,12 @@
 
 import { unzipSync, zipSync } from "fflate";
 import { BadRequestError } from "../../../shared/base/errors.ts";
-import { BUNDLE_METADATA_ENTRIES } from "./../types/problem-bundle.ts";
+import {
+  BUNDLE_METADATA_ENTRIES,
+  DEFAULT_TEMPLATE_FILE,
+  isValidTemplateFileName,
+  MAX_TEMPLATE_BYTES,
+} from "./../types/problem-bundle.ts";
 
 /** 对齐 judge 端 `MAX_ZIP_ENTRIES`。 */
 export const MAX_ZIP_ENTRIES = 1000;
@@ -236,4 +241,42 @@ export function stripMetadataEntries(data: Uint8Array): Uint8Array {
   }
 
   return zipSync(files, { level: 6 });
+}
+
+/** 读取题包内模板文件的结果。 */
+export type BundleTemplateReadResult =
+  | { status: "ok"; content: string }
+  /** 包内不存在该条目（题目可以不提供模板，不必然算错误） */
+  | { status: "missing" }
+  /** 条目存在但超过 {@link MAX_TEMPLATE_BYTES}，拒绝落库 */
+  | { status: "too_large"; size: number };
+
+/**
+ * 从已解析的题包条目中读取编辑器初始代码模板（starter code）。
+ *
+ * 文件名由 manifest `template` 声明（缺省 `template.py`），仅接受**纯文件名**
+ * （`isValidTemplateFileName`），非法值回退默认名——与打包侧、编辑器读取侧
+ * 共用同一规则，避免通过 `../` 读到包外条目。
+ *
+ * 兼容 `./name` 前缀形式：部分 zip 工具给根级条目加 `./`（本仓库的出题脚本
+ * `build_bundle.sh` 即如此）。
+ *
+ * @param entries `parseBundleZip` 返回的条目表（路径 → 字节）
+ * @param templateFile manifest 声明的模板文件名（可为空 → 默认 `template.py`）
+ */
+export function readBundleTemplate(
+  entries: Record<string, Uint8Array>,
+  templateFile?: string | null,
+): BundleTemplateReadResult {
+  const name = typeof templateFile === "string" &&
+      isValidTemplateFileName(templateFile)
+    ? templateFile
+    : DEFAULT_TEMPLATE_FILE;
+
+  const raw = entries[name] ?? entries[`./${name}`];
+  if (!raw) return { status: "missing" };
+  if (raw.byteLength > MAX_TEMPLATE_BYTES) {
+    return { status: "too_large", size: raw.byteLength };
+  }
+  return { status: "ok", content: new TextDecoder().decode(raw) };
 }

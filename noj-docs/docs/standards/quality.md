@@ -64,7 +64,7 @@ Neuro OJ 有双类标签：
 - 模板应与题面中的“你需要实现”一致，且能在不修改评测脚本的情况下直接作为提交入口。
 
 ::: tip 模板文件名可在 manifest 中更改
-模板默认取 `template.py`，也可用 `manifest.template` 指定其他纯文件名（禁止 `/`、`\`、`..`）。它是**代码编辑器的初始代码（starter code）**，由 `GET /api/v1/problems/:id/template` 拉取，与支持包无关。
+模板默认取 `template.py`，也可用 `manifest.template` 指定其他纯文件名（禁止 `/`、`\`、`..`）。它是**代码编辑器的初始代码（starter code）**：模板文件随题目包上传，导入时由平台落库，编辑器在无本地草稿或点击「重置模板」时通过 `GET /api/v1/problems/:id/template` 拉取（返回 `{"data":{"content","language"}}`，题目没有模板则 404）。
 :::
 
 ## 评测脚本质量

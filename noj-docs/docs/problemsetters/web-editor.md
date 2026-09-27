@@ -102,5 +102,5 @@
 4. 如需调整，修改后重新上传支持包，或对已提交记录触发 rejudge（管理端操作）。
 
 ::: tip 初始代码模板
-`GET /api/v1/problems/:id/template` 返回题目的**初始代码模板（starter code）**（读取 `problem.json` 的 `template` 字段，缺省 `template.py`），供编辑器在无本地草稿时填入代码框；**不是**支持包模板下载。支持包请按[题目包格式规范](../standards/problem-bundle.md)自行组织后上传。
+`GET /api/v1/problems/:id/template` 返回题目的**初始代码模板（starter code）**（来源：题目包内 `problem.json` 的 `template` 字段声明的文件，缺省 `template.py`；导入时读取并落库），供编辑器在无本地草稿时填入代码框；**不是**支持包模板下载。支持包请按[题目包格式规范](../standards/problem-bundle.md)自行组织后上传——注意模板文件要留在包里，否则选手看不到初始代码。
 :::
