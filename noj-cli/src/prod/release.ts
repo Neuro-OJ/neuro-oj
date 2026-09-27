@@ -62,11 +62,15 @@ export const DEFAULT_UPDATE_REPOSITORY = "https://github.com/Neuro-OJ/neuro-oj";
  *
  * 由 T9 的 {@link RELEASE_FILES}（compose / example）派生，不手抄第二份清单；
  * CLI 二进制与其校验文件是 bash `latest_release_version` 原本的过滤条件，保留。
+ *
+ * 这里比较的是 **Release 资产名**（`asset`）而非落盘文件名（`target`）：
+ * `env.prod.example` 资产落盘后叫 `.env.prod.example`，而 Release 上的资产名受
+ * GitHub "点号开头会被改写为 `default.<name>`" 约束（见 bootstrap.ts 模块头注释）。
  */
 export const UPDATE_RELEASE_ASSETS: readonly string[] = [
   "noj-cli-linux-amd64",
   "noj-cli-linux-amd64.sha256",
-  ...RELEASE_FILES.flatMap((name) => [name, `${name}.sha256`]),
+  ...RELEASE_FILES.flatMap(({ asset }) => [asset, `${asset}.sha256`]),
 ];
 
 /** 稳定版本标签报错文案（bash :253 逐字，仅版本号参数化）。 */

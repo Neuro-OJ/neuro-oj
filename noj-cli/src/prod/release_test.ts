@@ -41,8 +41,9 @@ const READY_ASSETS = [
   "noj-cli-linux-amd64.sha256",
   "docker-compose.prod.yml",
   "docker-compose.prod.yml.sha256",
-  ".env.prod.example",
-  ".env.prod.example.sha256",
+  // Release 资产名非点号开头（GitHub 会改写点号名为 default.<name>）。
+  "env.prod.example",
+  "env.prod.example.sha256",
 ];
 
 /** 资产就绪的稳定 Release 条目。 */

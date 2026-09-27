@@ -10,6 +10,23 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **`noj-cli install` / `update` 对 0.10.1-alpha.2 以来的所有 Release 必然失败**：GitHub 会把
+  **以 `.` 开头的 Release 资产名**改写成 `default.<name>`（服务端行为——即使用 uploads API
+  显式传 `name` 也一样），而 CLI 下载的是 `.env.prod.example` 原名，于是资产 URL 恒 404。
+  `install` 第 1 步 bootstrap 与 `update` 第 4 步部署文件同步都会以
+  `提交部署文件失败，已回滚：下载 .env.prod.example 失败：HTTP 404` 终止（两者都没有跳过
+  开关），`update --latest` 的"资产就绪"过滤按原名比对也永远不命中。
+  - 修复方式：Release 侧模板资产改用非点号名 `env.prod.example`（`release.yml` 先 `cp`
+    再 `sha256sum` 发布，并内置"资产名不得以点号开头 / 文件必须存在"的自检）；CLI 侧把
+    `RELEASE_FILES` 拆成 `{ asset, target }`——资产名用于拼下载 URL 与校验文件名，
+    `target` 仍是安装目录里的文件名 `.env.prod.example`。用户可见行为不变：模板依然落盘为
+    `.env.prod.example`，`.env.prod` 不受影响。
+  - **已发布的 `0.10.1-alpha.2` / `0.10.1-alpha.3` / `0.10.1-beta.1` 无法用 CLI 安装或升级**
+    （也就取不到 `docker-compose.prod.yml` 的 MinIO 修复）；受影响的实例请手工同步 compose
+    文件后 `docker compose up -d`，或直接升级到本版本及以后。
+
 ---
 
 ## [0.10.1-beta.1] - 2026-09-27
