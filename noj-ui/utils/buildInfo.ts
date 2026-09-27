@@ -21,7 +21,7 @@ export interface BuildInfo {
 }
 
 /** 字段缺失或无法解析时的占位文本。 */
-export const UNKNOWN_TEXT = 'unknown';
+export const UNKNOWN_TEXT = "unknown";
 
 /** commit 展示长度（GitHub 惯例的前缀位数）。 */
 const COMMIT_DISPLAY_LENGTH = 7;
@@ -33,9 +33,9 @@ const COMMIT_DISPLAY_LENGTH = 7;
  * @returns 展示用版本号；缺失时为 {@link UNKNOWN_TEXT}
  */
 export function normalizeVersion(version: string | null | undefined): string {
-  const value = (version ?? '').trim();
+  const value = (version ?? "").trim();
   if (!value || value === UNKNOWN_TEXT) return UNKNOWN_TEXT;
-  return value.startsWith('v') ? value : `v${value}`;
+  return value.startsWith("v") ? value : `v${value}`;
 }
 
 /**
@@ -46,10 +46,10 @@ export function normalizeVersion(version: string | null | undefined): string {
 function splitCommit(
   commit: string | null | undefined,
 ): { sha: string; dirty: boolean } | null {
-  const value = (commit ?? '').trim();
+  const value = (commit ?? "").trim();
   if (!value || value === UNKNOWN_TEXT) return null;
-  const dirty = value.endsWith('-dirty');
-  const sha = dirty ? value.slice(0, -'-dirty'.length) : value;
+  const dirty = value.endsWith("-dirty");
+  const sha = dirty ? value.slice(0, -"-dirty".length) : value;
   return sha ? { sha, dirty } : null;
 }
 
@@ -88,26 +88,27 @@ export function formatBuiltAt(
   builtAt: string | null | undefined,
   timeZone?: string,
 ): string {
-  const value = (builtAt ?? '').trim();
+  const value = (builtAt ?? "").trim();
   if (!value || value === UNKNOWN_TEXT) return UNKNOWN_TEXT;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return UNKNOWN_TEXT;
 
-  const parts = new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
     hour12: false,
-    timeZoneName: 'short',
+    timeZoneName: "short",
     ...(timeZone ? { timeZone } : {}),
   }).formatToParts(date);
 
-  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? '';
-  const dateText = `${get('year')}-${get('month')}-${get('day')}`;
-  const timeText = `${get('hour')}:${get('minute')}`;
-  const zone = get('timeZoneName');
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  const dateText = `${get("year")}-${get("month")}-${get("day")}`;
+  const timeText = `${get("hour")}:${get("minute")}`;
+  const zone = get("timeZoneName");
   return zone ? `${dateText} ${timeText} ${zone}` : `${dateText} ${timeText}`;
 }
 
@@ -115,12 +116,12 @@ export function formatBuiltAt(
  * 单端三要素的纯文本形式（供 `title` / `aria-label` / 无链接降级使用）。
  *
  * @param info 构建身份
- * @returns 形如 `v0.10.1-beta.2 · 4b7e3e2 · 2026-09-27 20:31 GMT+8`
+ * @returns 形如 `v0.10.1-beta.3 · 4b7e3e2 · 2026-09-27 20:31 GMT+8`
  */
 export function buildInfoText(info: BuildInfo): string {
   return [
     normalizeVersion(info.version),
     commitDisplay(info.commit),
     formatBuiltAt(info.builtAt),
-  ].join(' · ');
+  ].join(" · ");
 }
