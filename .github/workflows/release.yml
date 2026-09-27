@@ -103,13 +103,25 @@ jobs:
           cd bin
           sha256sum noj-cli-linux-amd64 > noj-cli-linux-amd64.sha256
       - name: 生成生产部署文件校验文件
-        # bootstrap 从 Release 下载 docker-compose.prod.yml 与 .env.prod.example
+        # bootstrap 从 Release 下载 docker-compose.prod.yml 与 env.prod.example
         # 并校验（noj-cli/src/prod/bootstrap.ts），因此两者必须与二进制同版本发布，
         # 校验文件生成方式与 CLI 资产一致（sha256sum 的"摘要  文件名"格式）。
+        #
+        # 资产名**不能以 `.` 开头**：GitHub 会把这类资产名改写成 `default.<name>`
+        # （服务端行为，显式传 name 也一样）→ 原名在 releases/download 下恒 404，
+        # 于是 noj-cli install / update 全线失败（0.10.1-alpha.2/3、beta.1 实测）。
+        # 因此这里把模板复制成非点号名再发布；CLI 侧负责落盘为 .env.prod.example。
         run: |
           set -Eeuo pipefail
           sha256sum docker-compose.prod.yml > docker-compose.prod.yml.sha256
-          sha256sum .env.prod.example > .env.prod.example.sha256
+          cp .env.prod.example env.prod.example
+          sha256sum env.prod.example > env.prod.example.sha256
+          # 兜底自检：资产名一律不得以 `.` 开头，否则上面的 404 会静默回流。
+          for asset in docker-compose.prod.yml docker-compose.prod.yml.sha256 \
+            env.prod.example env.prod.example.sha256; do
+            [[ "${asset:0:1}" != "." ]] || { echo "::error::资产名不得以点号开头：$asset"; exit 1; }
+            [[ -f "$asset" ]] || { echo "::error::缺少待发布资产：$asset"; exit 1; }
+          done
       - name: 发布同版本二进制资产
         env:
           GH_TOKEN: ${{ github.token }}
@@ -120,8 +132,8 @@ jobs:
             noj-cli/bin/noj-cli-linux-amd64.sha256 \
             docker-compose.prod.yml \
             docker-compose.prod.yml.sha256 \
-            .env.prod.example \
-            .env.prod.example.sha256 \
+            env.prod.example \
+            env.prod.example.sha256 \
             --clobber
 
   supply-chain-check:

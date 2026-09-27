@@ -23,8 +23,11 @@ Status: implemented
 新增 `noj-cli/src/prod/bootstrap.ts`，把"下载并校验部署文件"的职责吸收进 CLI：
 
 - `downloadReleaseFiles({ repository, ref, targetDir, overwrite?, fetcher? })`
-  从 `<repo>/releases/download/<ref>/<asset>` 下载 `RELEASE_FILES` 中的每个文件
-  及其 `.sha256`，复用 `util/hash.ts` 的 `sha256Hex` 校验后才落盘。
+  从 `<repo>/releases/download/<ref>/<asset>` 下载 `RELEASE_FILES` 中的每个资产
+  及其 `.sha256`，复用 `util/hash.ts` 的 `sha256Hex` 校验后才落盘。`RELEASE_FILES`
+  是 `{ asset, target }` 列表：`asset` 是 Release 侧资产名，`target` 是安装目录里的
+  文件名（两者可不同，原因见
+  [2026-09-27 Agent Note](../bug-fix/2026-09-27-release-asset-leading-dot-rename.md)）。
 - 使用 Deno 内置 `fetch()`（可注入），不 spawn `curl`/`wget`：去掉外部二进制
   依赖，并彻底消除拼接 shell 命令的注入面。
 - 仓库地址必须 HTTPS；`ref` 沿用 `install.sh:185-190` 的字符白名单
@@ -49,7 +52,9 @@ Status: implemented
 - 扩展 `.github/workflows/release.yml` 的 `publish-cli`：用 `sha256sum`
   生成并上传四个新资产
   `docker-compose.prod.yml`、`docker-compose.prod.yml.sha256`、
-  `.env.prod.example`、`.env.prod.example.sha256`。
+  `env.prod.example`、`env.prod.example.sha256`（2026-09-27 更正：模板资产侧叫
+  `env.prod.example`，CLI 落盘为 `.env.prod.example`；点号开头的资产名会被 GitHub
+  改写为 `default.<name>`，详见 bug-fix 笔记）。
 
 ## Alternatives considered
 
@@ -77,8 +82,11 @@ Status: implemented
   `install.sh` 与源码归档；T24 删除 `install.sh` 后仍有完整路径。
 - Release 资产契约变为六个文件：`noj-cli-linux-amd64`、`noj-cli-linux-amd64.sha256`、
   `docker-compose.prod.yml`、`docker-compose.prod.yml.sha256`、
-  `.env.prod.example`、`.env.prod.example.sha256`。后续修改安装流程必须同步
-  维护这组资产（`report` 中已声明给 T12）。
+  `env.prod.example`、`env.prod.example.sha256`。后续修改安装流程必须同步
+  维护这组资产（`report` 中已声明给 T12）。**资产名一律不得以 `.` 开头**：GitHub
+  会把这类名字改写成 `default.<name>`，使原名 URL 恒 404（0.10.1-alpha.2 ~ beta.1
+  的 `install` / `update` 因此全线失败，见
+  [2026-09-27 Agent Note](../bug-fix/2026-09-27-release-asset-leading-dot-rename.md)）。
 - `bootstrap_test.ts` 中一条测试直接读取 `release.yml`，以**行锚定**方式断言
   `gh release upload` 段逐行列出全部六个资产名（不用 substring，否则
   `x.yml.sha256`.includes(`x.yml`) 会让删掉普通资产行的变更漏网）；这正是"注入
