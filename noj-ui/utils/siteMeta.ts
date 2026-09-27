@@ -5,7 +5,7 @@
  * 同一响应还携带后端构建身份（`build`），供页脚技术信息条展示。
  */
 
-import type { BuildInfo } from './buildInfo';
+import type { BuildInfo } from './buildInfo.ts';
 
 export interface SiteMeta {
   icp_number: string;

@@ -20,14 +20,18 @@ const siteUrl = process.env.NUXT_SITE_URL ?? '';
  * `git rev-parse --short HEAD`（工作区脏则缀 `-dirty`），`builtAt` 取 dev server
  * 本次启动时刻（dev 没有"构建"这一步，用启动时刻才能回答"我重启过没有"）。
  * 镜像内没有 `.git`，所以生产路径不会调用 git。
+ *
+ * 返回类型刻意不用 `null`：`runtimeConfig.public` 的值类型由字面量推断，
+ * 可空字段会让生成的 RuntimeValue 类型不匹配（`nuxt typecheck` 报 TS2322）；
+ * 未知值统一用空串表示，展示层（`utils/buildInfo.ts`）把空串映射为 `unknown`。
  */
 function resolveBuildInfo(): {
   version: string;
-  commit: string | null;
+  commit: string;
   builtAt: string;
 } {
   /** 执行 git 并返回标准输出；无 git / 非仓库 / 出错一律返回 null。 */
-  const git = (args: string[]): string | null => {
+  const git = (args: string): string | null => {
     try {
       return execSync(`git ${args}`, {
         encoding: 'utf8',
@@ -53,7 +57,7 @@ function resolveBuildInfo(): {
     // package.json 不可读：保持 unknown
   }
 
-  let commit = envCommit || null;
+  let commit = envCommit ?? '';
   if (!commit) {
     const head = git('rev-parse --short HEAD');
     if (head) commit = git('status --porcelain') ? `${head}-dirty` : head;
