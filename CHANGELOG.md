@@ -10,6 +10,10 @@
 
 ## [Unreleased]
 
+---
+
+## [0.10.1-beta.1] - 2026-09-27
+
 ### 变更（需要运维注意）
 
 - **MinIO 镜像来源迁移（官方已停止免费分发）**：Docker Hub `minio/minio`、`minio/mc` 整组织
@@ -46,6 +50,12 @@
   提交"；LMCC 若以公开赛承载考试，需改用邀请赛或先扩展插件携带竞赛上下文。
 - `GET /problems/:id/template` 补齐访问校验（此前**完全没有校验**，私有题的 starter
   code 对任意登录用户可读）：现与题目详情同口径，无权限一律 404。
+
+### 变更
+
+- 版本号同步为 `0.10.1-beta.1`（noj-cli / noj-core / noj-llm-gateway / noj-ui /
+  noj-lmcc-extension / noj-judge + CLI `VERSION` 常量与断言；`Cargo.lock` 由
+  `cargo metadata` 重新生成，仅版本行）。
 
 ---
 

@@ -948,10 +948,10 @@
 | noj-tests/e2e/submission/artifact_submission.test.ts | 26 | early-return |
 | noj-tests/e2e/submission/artifact_submission.test.ts | 31 | early-return |
 | noj-tests/e2e/submission/mq_invalid_message.test.ts | 50 | early-return |
-| noj-tests/e2e/submission/priority_queue.test.ts | 104 | early-return |
-| noj-tests/e2e/submission/priority_queue.test.ts | 110 | early-return |
+| noj-tests/e2e/submission/priority_queue.test.ts | 119 | early-return |
 | noj-tests/e2e/submission/priority_queue.test.ts | 125 | early-return |
-| noj-tests/e2e/submission/priority_queue.test.ts | 156 | early-return |
+| noj-tests/e2e/submission/priority_queue.test.ts | 140 | early-return |
+| noj-tests/e2e/submission/priority_queue.test.ts | 171 | early-return |
 | noj-tests/e2e/submission/queue.test.ts | 24 | early-return |
 | noj-tests/e2e/submission/queue.test.ts | 38 | early-return |
 | noj-tests/e2e/submission/queue.test.ts | 68 | early-return |
