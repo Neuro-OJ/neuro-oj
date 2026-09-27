@@ -196,7 +196,7 @@ noj-cli update --latest
 | 站点页脚 | 页脚品牌列「前端 / 后端」两行 | `前端` = noj-ui 构建身份（编译进产物），`后端` = noj-core 运行身份（来自镜像 ENV）。各含版本号、commit、构建时间；时间按访问者本地时区显示，悬停可见完整 SHA 与原始 ISO 时间 |
 | 健康探针 | `GET /healthz`（nginx 公开代理到 core `/health/ready`） | 响应里的 `version` 与页脚「后端」一致 |
 | 站点元信息 | `GET /api/v1/site/meta` → `data.build` | `{version, commit, builtAt}`，页脚「后端」即取此值 |
-| 镜像元数据 | `docker inspect <image> --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'` | Release 流水线写入的完整 commit，与前三者应一致 |
+| 镜像元数据 | `docker inspect <image>` 输出的 `Config.Labels` 中 `org.opencontainers.image.revision` | Release 流水线写入的完整 commit，与前三者应一致 |
 
 三个构建身份变量由 Release 流水线以 build-arg 注入，**不需要**写进 `.env.prod`：
 
