@@ -1,0 +1,4 @@
+=== F-01 修复后（unended 口径，PGlite 真执行）===
+identity: 个人主页题解门控覆盖进行中与赛前筹备期（F-01 回归） ... ok (38ms)
+ok | 1 passed | 0 failed (52ms)
+=== 修复前（running 旧口径）===
