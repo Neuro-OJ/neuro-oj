@@ -9,10 +9,7 @@ import {
 } from "./../../../../shared/db/schema.ts";
 // 经 contest 域公开门面（index.ts）导入：域边界门禁要求跨域只能走 index.ts，
 // 深路径导入会被 check-domains.ts 判为违规。
-import {
-  runningContestExistsForProblem,
-  unendedPublicContestForProblem,
-} from "./../../../contest/index.ts";
+import { unendedPublicContestForProblem } from "./../../../contest/index.ts";
 import type {
   ProfileCommunityStatsRow,
   ProfileMomentRow,
@@ -195,9 +192,12 @@ export function queryProfileCommunityStats(
   moderator = false,
 ): Promise<ProfileCommunityStatsRow | undefined> {
   // 门控谓词只作用于题解计数；动态计数不受竞赛影响
+  // 口径必须是 **unended**（含 pending 赛前筹备期），不能用 running：
+  // 个人主页匿名可读，用 running 会让"已被未开始公开赛收编"的题解在赛前就可见
+  //（面 1.4 审计 F-01）。
   const solutionGate = moderator
     ? sql`true`
-    : sql`NOT ${runningContestExistsForProblem(communityPosts.problem_id)}`;
+    : sql`NOT ${unendedPublicContestForProblem(communityPosts.problem_id)}`;
   return db.select({
     following_count: sql<
       number
@@ -237,9 +237,11 @@ export function queryProfileSolutions(
   ];
   // 直接用 contest 域的共享谓词而非 community 域的 notGatedSolution()：
   // 本查询已固定 type='solution'，无需重复该判断，同时避免 identity → community 反向依赖
+  // 口径与 `queryProfileCommunityStats` 一致：**unended**（含 pending），
+  // 否则"计数 3、列表 2 条"本身就是侧信道，且赛前窗口会漏（面 1.4 审计 F-01）。
   if (!moderator) {
     conditions.push(
-      sql`NOT ${runningContestExistsForProblem(communityPosts.problem_id)}`,
+      sql`NOT ${unendedPublicContestForProblem(communityPosts.problem_id)}`,
     );
   }
   return db.select({
