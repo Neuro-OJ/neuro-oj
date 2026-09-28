@@ -236,7 +236,6 @@ Deno.test({
  */
 Deno.test({
   name: "self-tests service: 赛前筹备期保密题返回 404（存在性预言机回归 F-03）",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
