@@ -152,13 +152,46 @@ VULN-02 的整改在 community / search 换成了 `unended` 口径，却在 iden
 建议的收敛动作是：让 `runningContestExistsForProblem` 若无非保密用途则废弃或改为
 `unendedWindowCondition`，并在门禁层面禁止新增手写时间窗口比较。
 
-## 复核口径说明（诚实记录）
+## 复核与处置（Lead 亲自复核，时间盒内未另派 verifier）
 
-本面 finding 数 **9 > 5**，按 spec §5.4 应另派 verifier subagent 做证伪复核。**本轮未派**，
-原因是 08:45 硬停前只剩约 30 分钟，而修复 F-01 需要留出测试与门禁时间。因此：
+本面 finding 数 **9 > 5**，按 spec §5.4 应另派 verifier subagent 做证伪复核。**本轮未派**
+（08:45 硬停前的余量只够"审计 + 修复 + 门禁"），改由 **Lead 逐条读证复核**。按 L1 口径，
+凡未经复核的结论**不得视为已确认缺陷**；下表逐条给出 Lead 的复核状态与处置。
 
-- **F-01 由 Lead 亲自复核**（读码确认两处调用点确为 `running` 口径；SSOT 提供 `unended`
-  谓词且已在本文件导入；`noj-core/AGENTS.md` 明文禁止新增手写时间窗口比较）→ 结论：**确认成立**，
-  已修（见 `.agents/notes/implemented/bug-fix/2026-09-29-profile-solution-gating-pending-window.md`）。
-- **F-02–F-09 未经独立复核**，仅有审计员单方证据。按 L1 口径，它们**不得视为已确认缺陷**，
-  只能作为"待复核候选"进入报告。这是本轮取证的一处**强度不足**，已在 final-report 记录。
+| id | Lead 复核 | 处置 | 证据 |
+|---|---|---|---|
+| **F-01** | **确认成立** | ✅ **已修**：两处调用点改用 SSOT 的 `unendedPublicContestForProblem` | `evidence/04-F01-profile-gating.txt`（反向验证：撤掉修复 → FAILED，断言信息即"赛前筹备期不得泄露题解标题"） |
+| **F-02** | **确认成立**（读证：`rankings.ts` 共 7 处 `(s.contest_id IS NULL OR c.affect_global_ranking = TRUE)`，**无任何时间窗口条件**；`/api/v1/rankings` 匿名可读） | ⏸ **未修，出补丁提案**（见下） | `rankings.ts:253,265,281,298,355,367,383` |
+| **F-03** | **确认成立**（读证：`self-tests.ts:75` 不存在→404，`:84` 访问被拒→403） | ✅ **已修**：仅对 `access.mode === "contest-secret"` 改抛 404，其他拒绝语义不变 | `evidence/04-F03-selftest-404.txt`（反向验证：撤掉 404 分支 → `Expected NotFoundError, but was ForbiddenError`） |
+| F-04 | **部分确认**：`(a)` 主页 stats 查询（`total_submissions/accepted/solved_count`）确无保密谓词；`(b)(c)` 未逐行复核 | ⏸ 未修（计数口径不齐，Low-Med） | `users-profile-queries.ts:70-95` |
+| F-05 | **路由层确认**：`/submissions/total-stats` 无竞赛过滤；**oracle 可利用性未实测** | ⏸ 未修 | `submissions.ts:291-303` |
+| F-06 / F-07 | 未复核 | ⏸ 未修（Low） | — |
+| **F-08** | **确认成立**（读证：注释与 `problems-list.ts:210-215` 实现直接矛盾） | ✅ **已修**：改写为"存在性同样受保护"，并写明不得据旧注释删掉列表过滤 | `problem-access.ts:84-93` |
+| F-09 | 未复核 | ⏸ 未修（Low） | — |
+
+### F-02 补丁提案（未实施，需 Owner 裁决）
+
+**为什么不在本轮实施**：正确修法要同时动 **7 处 SQL**、向 contest 域门面新增窗口谓词导出
+（`unendedWindowCondition` 目前**未**从 `index.ts` 导出），并**改变全局榜单的语义**
+（未结束竞赛的提交是否计入全站榜是一个产品决策）——属 spec §7「设计级变更」，不在无人值守
+窗口的自主修复范围内。
+
+**提案**：全局榜只统计"已结束竞赛"的提交，与竞赛榜自身的隐私规则（进行中只给本人一行）
+对齐：
+
+1. `noj-core/src/domains/contest/index.ts` 的 contest-window 导出块新增
+   `unendedWindowCondition`（已存在，只是未导出）。
+2. `rankings.ts` 的 7 处条件由
+   `(s.contest_id IS NULL OR c.affect_global_ranking = TRUE)`
+   改为
+   `(s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND NOT ${unendedWindowCondition(sql`c.end_time`)}))`
+   —— 用 SSOT 谓词，**禁止**再手写时间比较（`noj-core/AGENTS.md` 明文）。
+3. 回归测试：`contest/query` 域各一条 —— 「进行中公开赛（`affect_global_ranking=true`）的提交
+   **不**计入全局榜」与「赛后**计入**」。
+4. 行为变化与回滚：全局榜数字在竞赛期间会变化（这是修复目的）；回滚 = revert 该 change。
+5. 交叉项：`VULN-04/05`（私有/邀请赛挂公开题）与 F-02 的交叉未判定，需一并确认
+   `affect_global_ranking` 在私有赛下的语义。
+
+**为什么不建议"改为登录可见"**：泄漏面是"任何登录用户/匿名都能看到他人的赛中进度"，
+加登录门槛不解决跨用户泄漏，只会缩小攻击面。
+
