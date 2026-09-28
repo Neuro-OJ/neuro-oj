@@ -1,105 +1,158 @@
-# 评测模型
+# 双容器评测模型（Judge Model）
 
-> 一句话：每次提交同时启动 **Evaluator 容器**（跑出题人的 `evaluate.py`）与 **Solution 容器**（跑用户代码 + Solution Host 进程），由 Evaluator 主动调用用户函数并按返回值判分。
+在 Neuro OJ
+中，代码评测基于**双容器协同沙箱**展开。每次代码提交均在后台并行拉起两个高度受控的
+Docker 容器：**Evaluator 容器**（运行出题人的评分程序）与 **Solution
+容器**（运行选手的解答代码），二者通过评测宿主进程（`noj-judge`）进行双向 RPC
+消息路由。
 
-Neuro OJ 当前支持双容器评测模型。每次提交会同时涉及 Evaluator 容器和 Solution 容器。核心术语见[术语表](../reference/glossary.md)。
+---
 
-::: info Solution Host 与 Solution 容器
-**Solution 容器**是 Docker 容器；**Solution Host** 是其中负责加载用户模块、转发函数调用的协议进程（即 `noj_solution_sdk.host`）。下文按此区分使用。
-:::
+## 与传统 OJ 的本质差异
+
+传统在线评测（如 ACM/ICPC、OI
+题目）通常将测试用例作为纯文本灌入用户程序的标准输入（`stdin`），再捕获标准输出（`stdout`）进行行级比对（Diff）。而在
+AI 算法、深度学习与智能体评测场景下，这种形式存在严重瓶颈：
+
+| 评测维度         | 传统 OJ 文本流评测                              | Neuro OJ 双容器 RPC 评测                                                 |
+| ---------------- | ----------------------------------------------- | ------------------------------------------------------------------------ |
+| **交互契约**     | 标准输入输出（`stdin` $\to$ `stdout` 文本比对） | **原生 Python 函数调用**（强类型入参与返回值）                           |
+| **测试数据管理** | 一次性文本文件重定向，容易被选手一次性预读取    | 由出题人 `evaluate.py` 动态加载，隐藏用例**物理隔离**于选手容器之外      |
+| **调试输出**     | `print()` 与答案混杂，易导致格式错误（PE）      | 选手 `print()` 写入协议通道后由底层自动剥离，不污染评测输出              |
+| **交互式评测**   | 需借助特殊交互器（Interactive Judge）管道       | **天然原生交互**：出题人可连续多次调用选手函数，支持多轮对话与智能体对抗 |
+
+---
+
+## 双容器角色分工与输出通道
+
+```mermaid
+flowchart TB
+    subgraph Host["宿主环境 (noj-judge Worker)"]
+        Router["NDJSON 协议转发 & 资源监控中心"]
+    end
+
+    subgraph EvalBox["Evaluator 容器 (出题人可信沙箱)"]
+        EvalMain["evaluate.py (评分脚本)"]
+        EvalOut["stdout: NDJSON 协议帧 + ---RESULT---<br/>stderr: 评测排错诊断日志"]
+    end
+
+    subgraph SolBox["Solution 容器 (选手隔离沙箱)"]
+        HostProc["Solution Host (协议加载守护进程)"]
+        UserMain["main.py (选手提交源码)"]
+        SolOut["stdout: 响应协议帧 (非帧文本被丢弃)<br/>stderr: 容器内部错误"]
+    end
+
+    EvalMain --> EvalOut
+    EvalOut -- "RPC 请求 / 最终结果" --> Router
+    Router -- "转发调用" --> HostProc
+    HostProc --> UserMain
+    UserMain --> HostProc
+    HostProc --> SolOut
+    SolOut -- "RPC 响应" --> Router
+    Router -- "结果写回" --> EvalMain
+```
+
+### 1. Evaluator 容器（裁判方）
+
+Evaluator 容器由出题人提供的 `evaluate.py`
+主导。它独占访问纯净题目包内的所有私密测试数据，拥有完全的评分控制权：
+
+- **核心判定权力**：决定调用选手的哪个函数、传递何种边界参数、如何比对返回值的数学/逻辑正确性、计算最终得分以及构造反馈给做题人的详细
+  `details.cases`；
+- **输出通道划分**：
+  - `stdout`：同时承载 NDJSON 协议帧、评测输出文本以及作为评测终结标志的
+    `---RESULT---` 行；
+  - `stderr`：仅作为评测执行日志使用，**绝对不承载任何 RPC 帧**。
+
+### 2. Solution 容器（做题方）
+
+Solution 容器负责隔离执行选手提交的解答：
+
+- **入口注入规范**：评测引擎将选手代码以硬编码文件名 **`main.py`**
+  注入沙箱工作目录 `/workspace`；
+- **Solution Host 协议守护**：容器拉起 `noj_solution_sdk.host` 守护进程，以
+  `--entry /workspace/main.py` 动态加载用户模块（模块名固定为
+  `user_solution`），自动提取顶层导出的公共函数并进入事件监听循环；
+- **常驻内存特性**：在单次评测生命周期内，**Solution Host
+  是单例常驻的**。同一选手的模块实例在多次 `runner.call()`
+  之间**共享全局变量与内存状态**（系统不提供重启重置功能）。
+
+---
+
+## 调用异常与提交终态映射
+
+在 RPC 交互过程中，选手的代码缺陷可能引发不同层次的错误。Evaluator SDK
+会将底层协议错误映射为对应的 Python 异常：
+
+| 异常情况         | 底层协议 code | Evaluator 捕获异常 | 典型排错原因                                                       |
+| ---------------- | ------------- | ------------------ | ------------------------------------------------------------------ |
+| **函数未定义**   | `NotFound`    | `NotFoundError`    | 选手没有定义题面要求的顶层函数（如拼写错误）                       |
+| **执行崩溃抛错** | `Exception`   | `SystemError`      | 选手代码内部抛出未捕获异常（包含清洗后的 Traceback）               |
+| **非法返回类型** | `Rejected`    | `RejectedError`    | 选手返回了不可序列化的对象（如函数引用、生成器）或帧体积超过 1 MiB |
+
+::: warning 关键准则：调用失败 ≠ 提交失败
+上述异常是选手代码在执行**单次测试点**时产生的错误，**绝不等于本次提交失败**！
+
+- 平台采用二元终态设计：提交终态**只有 `finished`（正常评测完成）与
+  `error`（评测系统异常）**；
+- 优秀的出题人应当在 `evaluate.py` 中使用 `try...except`
+  稳健捕获这些异常，将其记录为当前测试点的失败（如 `WrongAnswer` /
+  `RuntimeError`），并最终给出 `finished` + 0 分；
+- 只有当 `evaluate.py`
+  自身发生未捕获的严重崩溃、沙箱整体超时或容器无法启动时，终态才会归为 `error`。
+  :::
+
+---
+
+## 两层超时机制与终态仲裁
+
+系统在架构上设计了严格的两层超时时间锁，防止选手恶意利用死循环或出题人评分逻辑冗长导致评测节点挂起：
 
 ```mermaid
 flowchart TD
-    A[提交代码] --> B["Solution 容器<br/>main.py<br/>noj_solution_sdk<br/>Solution Host 加载用户模块<br/>等待 Evaluator 调用函数"]
-    B -->|runner.call| C["Evaluator 容器<br/>evaluate.py<br/>测试数据或其他支持文件<br/>noj_evaluator_sdk<br/>按题目自己的方式读取数据<br/>调用用户函数<br/>给出状态、分数和详情"]
+    Start[启动双容器评测] --> C1{Evaluator 整体运行时间<br>> time_limit_ms?}
+    C1 -- 是 --> E1[触发评测机强行 kill<br>终态: error (评测总超时)]
+    C1 -- 否 --> C2{单次 runner.call 耗时<br>> call_timeout_ms?}
+    C2 -- 否 --> Normal[正常执行评测流]
+    C2 -- 是 --> E2{evaluate.py 是否捕获了<br>SolutionTimeoutError?}
+    E2 -- 显式捕获 --> ScoreZero[记录用例超时并赋 0 分<br>终态: finished (按分数结算)]
+    E2 -- 未捕获/脚本崩塌 --> E3[未输出 ---RESULT--- 异常退出<br>终态: error (评测脚本崩溃)]
 ```
 
-## 与传统 OJ 的差异
+| 超时层级           | 监控主体                  | 默认控制权                                        | 终态表现与做题人可操作性                                                                             |
+| ------------------ | ------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **评测全局总超时** | `noj-judge` 评测宿主      | 题目 `runtime_config.time_limit_ms`               | **`error`**。系统直接熔断容器，选手无法仅凭优化单个函数规避                                          |
+| **单函数调用超时** | `SolutionRunner` 内部计时 | 题目 `call_timeout_ms`<br>或单次参数 `timeout_ms` | 若出题人正常捕获，体现为 **`finished` + 0 分**；<br>若出题人未捕获导致评测脚本终止，落为 **`error`** |
+| **容器冷启动超时** | `noj-judge` 容器生命周期  | 系统级宿主配置                                    | **`error`**。评测环境未按期就绪                                                                      |
 
-传统 OJ 通常运行用户程序，把 stdin 输入喂给程序，再比对 stdout。Neuro OJ 的 Python 题目不使用这种答案通道：
+---
 
-- 用户提交的是可被调用的 Python 代码。
-- 题面会声明必须实现的函数，例如 `solve(a, b)`。
-- `evaluate.py` 按题目自己的方式读取测试数据或生成测试输入，调用用户函数，并决定是否通过。
-- 用户代码的 `print()` 不是答案输出；当前实现中普通 `print()` 写到 Solution stdout 会被协议层丢弃，不应依赖它作为调试回传通道。
+## 单次函数调用全链路时序
 
-## Evaluator 容器
-
-Evaluator 容器运行出题人提供的 `evaluate.py`。它能读取纯净评测包中的测试数据和辅助文件，也可以自行生成测试输入或调用本地辅助逻辑，并通过 `noj_evaluator_sdk` 调用 Solution。
-
-Evaluator 是评分逻辑的所有者。它决定：
-
-- 调用哪个函数。
-- 给函数传什么参数。
-- 如何比较返回值。
-- 如何计算分数。
-- 向用户展示哪些详情。
-
-::: info Evaluator 的两个输出通道去向不同
-- **stdout**：进入评测输出，同时承载 NDJSON 协议帧与 `---RESULT---` 标记；Judge Worker 解析带 `type` 字段的协议帧，其余文本作为评测输出。
-- **stderr**：只作为普通日志/诊断输出，**不承载 RPC 帧**。
-:::
-
-## Solution 容器
-
-Solution 容器运行用户提交的代码（Judge Worker 以硬编码名 `main.py` 注入）和 Solution Host。Solution Host 会加载用户模块、自动注册其中的顶层函数，并等待 Evaluator 发起函数调用。
-
-调用失败时 Solution Host 返回错误帧，Evaluator SDK 将其转换为对应异常：
-
-| 情况 | 协议 code | Evaluator 侧异常 |
-| --- | --- | --- |
-| 用户函数不存在 | `NotFound` | `NotFoundError` |
-| 用户函数抛异常 | `Exception`（含清洗后 traceback） | `SystemError` |
-| 返回值类型非法 | `Rejected` | `RejectedError` |
-
-::: warning 调用失败 ≠ 提交失败
-上表说的是发回给 Evaluator 的**调用错误对象**，不等于最终提交结果（verdict）。新协议下最终状态只保留 `finished` / `error`，**分数是唯一结果**；`Accepted` / `WrongAnswer` 等只作为 `details.cases` 用例级参考信息。
-:::
-
-具体来说：
-
-- 用户函数抛异常后，Evaluator 可以把它记为失败用例，最终通常为 `finished` + 0 分。
-- 调用超时或调用阶段资源异常后，Evaluator 也可以把它当作普通失败用例处理，最终为 `finished` + 0 分。
-- 只有当 Evaluator 自身异常退出、整体超时，或 Solution Host 在调用前就无法正常工作时，最终状态才会是 `error`。
-- 用户代码语法错误、模块导入失败、Solution Host 启动失败，通常会在调用前被判为 `error`，因为这时 Evaluator 还没有拿到可继续评分的函数实例。
-
-### 超时与状态映射
-
-两层超时的最终状态映射：
-
-| 超时来源 | 触发 | 最终状态 |
-| --- | --- | --- |
-| evaluator 整体执行超时 | 评测总时长超过 `time_limit_ms` | `error`（Judge Worker 强制终止，做题人不可通过改代码解决） |
-| 单次调用超时且 evaluator 未捕获 | 调用超过 `call_timeout_ms`，evaluate.py 异常退出、无 `---RESULT---` | `error` |
-| 单次调用超时且 evaluator 捕获 | 同上，但 evaluator 记为失败用例 | 由 evaluator 决定（通常为 `finished` + 0 分） |
-| evaluator 异常退出且从未发生调用超时 | evaluate.py 自身 bug、环境问题、无 `---RESULT---` | `error` |
-
-evaluator 启动超时（评测环境未就绪）同样归 `error`。
-
-::: tip Solution Host 在同一次评测中是常驻的
-多次 `runner.call()` 默认调用**同一个** Python 模块实例，因此用户模块的全局状态会在调用之间保留。当前 SDK **不提供** `runner.restart()`。
-:::
-
-## 隔离边界
-
-Solution 不应直接读取隐藏用例。隐藏用例的数据位于 Evaluator 读取的纯净评测包中，或由 Evaluator 在运行时生成，由 Evaluator 控制使用方式。
-
-网络、内存、时间和进程数限制由 Judge Worker 和运行时配置控制。出题人应避免在 evaluator 中泄露隐藏用例内容。
-
-## 调用链路
-
-一次 `runner.call("solve", 1, 2)` 的链路是：
+以下展示一次标准的 `runner.call("solve", a, b)` 端到端执行链路：
 
 ```mermaid
 sequenceDiagram
-    participant E as evaluate.py
-    participant J as noj-judge
-    participant S as Solution Host
-    E->>J: 1. 写 NDJSON call 帧（evaluator stdout）
-    J->>S: 2. 解析并转发到 Solution Host stdin
-    S->>S: 3. 调用 main.py 中的 solve(1, 2)
-    J-->>E: 4. 把响应帧写回 evaluator stdin
-    E->>E: 5. runner.call() 返回结果或抛出对应异常，进入评分逻辑
-```
+    autonumber
+    participant E as evaluate.py (Evaluator)
+    participant J as noj-judge (Worker 宿主)
+    participant S as Solution Host (Solution)
+    participant U as main.py (选手函数)
 
-出题人正常情况下只使用 `SolutionRunner`，不需要手写 RPC 帧。RPC 细节见 [RPC 与可传递数据](rpc.md)。
+    E->>J: 向 stdout 发送 call 帧: {"type":"call","id":"...","fn":"solve","args":[...]}
+    Note over J: 宿主校验帧格式、大小 (<=1MiB)<br/>启动 call_timeout 计时器
+    J->>S: 经管道写入 Solution Host 的 stdin
+    S->>U: 本地反射调用 solve(*args)
+    alt 执行正常返回
+        U-->>S: 返回计算结果 ret
+        S->>J: 向 stdout 发送 result 帧: {"type":"result","id":"...","value":ret}
+        J-->>E: 经管道写入 Evaluator 的 stdin
+        E->>E: runner.call() 正常反序列化并返回
+    else 选手代码抛出异常
+        U-->>S: 抛出异常 (如 ZeroDivisionError)
+        S->>J: 发送 error 帧: {"type":"error","code":"Exception","message":"..."}
+        J-->>E: 经管道写入 Evaluator 的 stdin
+        E->>E: runner.call() 抛出 SystemError 异常
+    end
+    Note over E: 出题人执行断言判定，累加测试点得分
+```

@@ -1,108 +1,117 @@
-# 安全模型
+# 系统安全模型与基线（Security）
 
-> 本页汇总认证、密码、沙箱隔离、数据传输与日志脱敏的默认安全基线。**所有数值均为默认值，以源码与配置注册表为准。**
+Neuro OJ 面向高标准竞技与认证考务，构建了涵盖身份认证、会话吊销、Docker
+沙箱深层隔离、题目全域保密门控与结果防泄露投影的端到端纵深防御（Defense in
+Depth）体系。
 
-## 安全基线速览
+---
 
-| 领域 | 默认设置 | 说明 |
-| --- | --- | --- |
-| 认证 | JWT **HS256**，HTTP-only Cookie，24h 过期 | 无刷新机制；`jti` + `session_version` 支持撤销 |
-| 密码 | bcrypt cost 12，≥8 位含大小写字母与数字 | 不可与用户名/邮箱前缀相同 |
-| 容器 | `cap_drop ALL`、`no-new-privileges`、`network_mode none`、`ipc_mode none`、`pids_limit 256` | 另加只读 rootfs + tmpfs、CPU/内存上限 |
-| ZIP | 拒绝路径穿越；条目 ≤ 1000、单文件 ≤ 64 MiB、总解压 ≤ 512 MiB | 按实际解压字节实时限额，不信任条目声明 |
-| 日志 | 生产环境 UUID 截断、`score` 隐藏、DB 密码脱敏 | 由统一 logger 处理 |
-| 审计日志 | 保留 90 天后清理 | `AUDIT_LOG_RETENTION_DAYS`，`0` 表示禁用清理 |
+## 核心安全基线矩阵
 
-::: warning 生产环境必须配置可信代理
-未配置 `TRUSTED_PROXIES` 时，`X-Forwarded-For` / `X-Real-IP` 可被伪造，导致 IP 限流与 IP 黑名单被绕过。生产环境（`NOJ_ENV=production`）启动时会因缺少该配置而**拒绝启动**。
+| 安全领域         | 生产默认配置基线                                                           | 安全作用与合规原理                                                                    |
+| ---------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| **身份认证**     | JWT **HS256**，HTTP-Only Secure Cookie，24h 过期                           | 无刷新机制；配合 `jti` 黑名单与 `session_version` 实现毫秒级强退                      |
+| **密码强度**     | **bcrypt cost 12**，≥8 位字符，必须包含大小写字母与数字                    | 严禁与用户名或邮箱前缀相同，杜绝弱口令碰撞                                            |
+| **容器沙箱**     | `cap_drop ALL`、`no-new-privileges`、`network_mode none`、`pids_limit 256` | 根只读（`readonly_rootfs`），仅 `/workspace` 挂载 tmpfs，防提权与 fork 炸弹           |
+| **ZIP 炸弹防护** | 实时流式限额：单文件 ≤ 64 MiB、解压总容积 ≤ 512 MiB、条目 ≤ 1000           | 拒绝路径穿越；**按实际解压字节动态计数**，不信任 ZIP 头声明                           |
+| **可信代理**     | 生产强制配置 `TRUSTED_PROXIES`                                             | 杜绝通过伪造 `X-Forwarded-For` 绕过 IP 限流与黑名单。缺失此配置在生产环境**拒绝启动** |
+| **日志脱敏**     | 生产环境 UUID 截断、`score` 隐藏、数据库密码脱敏                           | 统一 Logger 拦截输出，防止排错日志意外泄露敏感资产与用例评分                          |
+| **审计追溯**     | 审计日志物理保留 **90 天**（`AUDIT_LOG_RETENTION_DAYS`）                   | 记录全部鉴权、管理操作与题目变更，支持合规审查与入侵溯源                              |
+
+---
+
+## 会话控制与全局吊销机制
+
+为防范凭据失窃与异常账号风险，系统支持两套互补的会话失效策略：
+
+```mermaid
+flowchart TD
+    Req[客户端携带 JWT 请求 API] --> BlkCheck{Redis 中是否存在<br>该 jti 撤销黑名单?}
+    BlkCheck -- 是 (主动登出) --> Exp401[401 Unauthorized<br>令牌已失效]
+    BlkCheck -- 否 --> VerCheck{JWT 内 session_version<br>== 数据库当前版本?}
+    VerCheck -- 否 (改密/重置/后台踢人) --> Exp401
+    VerCheck -- 是 --> OK[鉴权通过，注入 User 上下文]
+```
+
+1. **主动登出（Single-Token Revocation）**： 用户点击退出登录时，系统将该 JWT
+   的唯一标识符 `jti` 写入 Redis 撤销黑名单，有效时间与 JWT 剩余生存时间对齐；
+2. **全局改密强制下线（Global Session Revocation）**：
+   当用户修改密码、找回密码或管理员执行封禁时，系统在数据库中原子递增
+   `users.session_version`。任何带有历史版本号的旧 JWT
+   将在鉴权中间件被即刻拦截失效。
+
+---
+
+## 容器沙箱物理隔离规范
+
+评测沙箱基于最小特权原则创建，**禁止挂载任何宿主机目录或特权设备**：
+
+```mermaid
+flowchart LR
+    Host[Docker 宿主机] -. 严禁挂载宿主文件系统 .-> Container
+    subgraph Container["沙箱容器 (Evaluator / Solution)"]
+        RootFS["只读根文件系统 (readonly_rootfs=true)"]
+        TmpFS["内存临时工作区 (/workspace tmpfs)"]
+        Caps["Capabilities: 全部剥离 (cap_drop=ALL)"]
+        Priv["禁止提权 (no-new-privileges=true)"]
+        PIDs["进程配额限制 (pids_limit=256)"]
+        Net["网络隔离 (network_mode=none)"]
+    end
+```
+
+::: danger 绝不放宽沙箱隔离基线
+`cap_drop: ALL`、`no-new-privileges` 与 `network_mode: none` 是保护宿主机的生命红线。严禁为了让特定第三方包"跑起来"而给沙箱赋予 `privileged` 特权或挂载 Docker Socket。
 :::
 
-::: tip 会话撤销
-改密、重置密码、补设密码会原子递增 `users.session_version`，使全部旧会话立即失效；登出则把 `jti` 写入 Redis 黑名单。两者都在鉴权中间件实时校验。
-:::
+---
 
-## 认证与密码细节
+## 题目访问控制裁定逻辑（`resolveProblemAccess`）
 
-- **JWT**：HS256、校验 `iss`/`aud`、默认 24h 过期（`jwt_expires_in` 可热改）。签名密钥 `JWT_SECRET` ≥ 32 字符，且拒绝已知占位值。
-- **密码强度**：至少 8 字符，包含至少一个小写字母、一个大写字母和一个数字；不得与用户名或邮箱前缀相同。
-- **bcrypt**：默认 cost 12（`BCRYPT_SALT_ROUNDS` 启动期可覆盖，仅影响新哈希）。
+系统对题目访问（包含题面查阅、支持包下载、提交代码与在线自测）实施统一的纯函数仲裁机制：
 
-## 容器与 ZIP 隔离（noj-judge）
+```mermaid
+flowchart TD
+    Start[请求题目资源] --> IsAdmin{是系统管理员?}
+    IsAdmin -- 是 --> Grant[放行通过]
+    IsAdmin -- 否 --> IsOwner{是题目创建者?}
+    IsOwner -- 是 --> Grant
+    IsOwner -- 否 --> ContestCtx{持有有效竞赛上下文?}
+    ContestCtx -- 是 (已报名参赛者) --> Grant
+    ContestCtx -- 否 --> InPublicContest{该题属于<br>未结束的公开赛?}
+    InPublicContest -- 是 --> Resp404[响应 404 NOT_FOUND<br>与不存在完全同构]
+    InPublicContest -- 否 --> CheckVis{题目 visibility?}
+    CheckVis -- public --> Grant
+    CheckVis -- private --> Resp403[响应 403 Forbidden]
+```
 
-评测容器在创建时即收敛到最小权限，且不挂载任何宿主路径或设备：
+### 公开赛题目保密门控（Secrecy Gate）
 
-| 限制项 | 值 | 作用 |
-| --- | --- | --- |
-| `cap_drop` | `ALL` | 丢弃全部 Linux capabilities |
-| `security_opt` | `no-new-privileges:true` | 禁止提权 |
-| `network_mode` | `none`（默认） | 默认无网络；LLM 题由题目配置显式开启 |
-| `ipc_mode` | `none` | 不共享宿主 IPC；`pid_mode` 未设置（沿用 Docker 默认命名空间） |
-| `pids_limit` | `256` | 限制进程数，防 fork 炸弹 |
-| `readonly_rootfs` | `true` | 根文件系统只读，`/workspace` 用 tmpfs |
-| `nano_cpus` | 可配（默认 ≤ 1 核） | 越界值收敛到安全范围 |
+题目一旦收编入未结束的公开赛，直到到达 `end_time` 前：
 
-::: danger 不要放宽沙箱限制
-`cap_drop`、`no-new-privileges` 与 `network_mode none` 是不可逆的安全红线。为让题目"跑起来"而给容器加 capability、挂载宿主目录或改为 `privileged`，会直接打破多租户隔离。
-:::
+- 非特权用户通过独立端点访问题面一律响应
+  **`404 NOT_FOUND`**（错误文案与真实不存在完全一致，无法通过响应差异探测题面）；
+- 独立代码提交与自测端点直接响应 `403 Forbidden`；
+- 竞赛作用域内的合法答题通道不受影响。
 
-ZIP 解压防护按实际解压字节实时统计：单文件超过 64 MiB 或总量超过 512 MiB 即中止，条目数上限 1000。
+---
 
-## 题目可见性（problems.visibility）
+## 提交结果防泄露动态投影（`applySubmissionProjection`）
 
-`problems.visibility` 是题目访问控制的核心列，取值范围：
+在竞赛、考试或涉密题目场景下，评测结果的每一个字段都必须通过动态投影过滤器脱敏，杜绝判分依据与隐藏数据外泄：
 
-| 取值 | 语义 |
-| --- | --- |
-| `public` | 公开题：出现在题目列表 / 搜索 / 公开入口，匿名与登录用户可按规则访问和提交。 |
-| `private` | 私有题：默认仅题目创建者与管理员可见、可管理、可提交；他人不能通过普通列表、搜索或直链读取。 |
+```mermaid
+flowchart LR
+    RawResult[沙箱完整输出<br>details.cases 完整用例] --> Filter{当前用户角色与竞赛阶段}
+    Filter -- 管理员 / 题目所有者 --> Full[输出完整用例、耗时、实际输出与评测日志]
+    Filter -- 参赛选手本人 --> StripHidden[剥离隐藏用例 input/expected/actual<br>仅保留可见用例详情与终态总分]
+    Filter -- 竞赛期间的第三方访客 --> Mask[仅返回 id, problem_id, status<br>隐匿全部测试点与分数]
+```
 
-新建 U 型（用户题）默认 `private`，owner 可通过"我的题目"或 `PUT /problems/:id/visibility` 转 `public`；P 型（主题库题）恒为 `public`（数据库 CHECK 兜底，`problems_p_visibility_check`）。存量题目在迁移时保持 `public` 以延续升级前可见性。
+### Fail-Safe 用例保护机制
 
-访问判定由 catalog 域纯函数 `resolveProblemAccess` 统一完成，读取与提交路径共用，判定顺序为：
+为了防止因出题脚本失误导致盲测用例泄露，投影引擎执行 **Fail-Safe 熔断**：
 
-`admin → owner → 竞赛上下文（不回退 public）→ 公开赛保密 → visibility`
-
-其中竞赛上下文不是可伪装的"额外放行"：`verifyContestAccess` 会校验题目确实属于该竞赛、查看者是参赛者、且竞赛处于 running/ended。普通用户创建竞赛时也只能加入 `public` 题或自己拥有的 `private` 题，不能把他人私有题塞进竞赛来绕过访问控制。
-
-### 公开赛关联题目的保密（2026-09-26）
-
-题目一旦被加入**公开赛**（`contests.kind = 'public'`，邀请赛除外），在竞赛 `end_time` 之前，除**题目所有者**与**管理员**外，任何人访问该题目的页面与接口都返回 404 —— 不论题目 `visibility` 为何（P 型恒为 `public`，因此这条规则是这类题目唯一的遮蔽手段）。
-
-- **时间窗口**：赛前（pending）与赛中（running）一律保密；`end_time` 一过**自动失效**，题目恢复常规可见性（赛后复盘、补题、题解链接继续可用）。判定纯派生自时间，无需状态翻转任务。
-- **不受竞赛 `is_public` 影响**：链式/隐链公开赛（不出现在公开列表）同样保密。
-- **返回码**：读取路径一律 `404 NOT_FOUND`，错误文案与"题目不存在"**完全一致**；独立提交 / 自测路径返回 `403 ForbiddenError`。注意题库列表不排除该题，因此**存在性本身不保密**（标题、编号、链接可见）——404 保护的是题面、评测数据、starter code 等内容。
-- **竞赛上下文豁免**：携带有效竞赛上下文（`verifyContestAccess` 通过）的参赛者仍可从竞赛入口访问。客观题套卷的 `GET /problems/:id/questions?contest_id=` 与编辑器 starter code 的 `GET /problems/:id/template?contest_id=` 依赖这条豁免；独立入口（`/problems/:id`、`/editor/:id`、`POST /submissions`）不携带上下文，因此对参赛者也返回 404 / 403。
-- **不受影响**：题目仍在题库/搜索列表中可见（列表不做过滤），但点入即 404；竞赛作用域路由（`/contests/:id/problems/:label`、`/contests/:id/submit`）完全不受影响。
-- **提示**：所有者与管理员打开该题时会看到"当前题目已经被关联到竞赛 XXX，仅管理员和题目所有者可见，请注意保密工作"横幅（数据来自 `GET /problems/:id` 的 `contest_secrecy` 字段，该字段只对这两类查看者下发）。
-
-> **对第三方客户端的已知影响**：`noj-lmcc-extension` 只调用独立入口（`GET /problems?type=P` + `POST /submissions`），因此竞赛关联的题目在插件里**可见于列表但无法提交**；LMCC 考试若以公开赛承载，需改用邀请赛或先扩展插件携带竞赛上下文。
-
-## 竞赛分类（contests.kind）
-
-`contests.kind` 区分竞赛的公开/邀请模型，取值范围：
-
-| 取值 | 语义 |
-| --- | --- |
-| `public` | 公开赛：仅管理员可创建，出现在公开竞赛列表，参赛者可以自助注册；可额外设置密码（设置后报名需匹配）。 |
-| `invite` | 邀请赛：具备 `contest:create` 权限的普通用户可创建，创建时必须设置邀请码；报名时必须提供正确邀请码，否则拒绝。 |
-
-`is_public` 是列表/详情是否对外展示的字段，且**由 `kind` 派生**（`public ↔ true`、`invite ↔ false`）：写入路径统一收敛为 `kind` 语义，不单独接受 `is_public` 覆盖。邀请赛邀请码在写入时经 bcrypt 哈希存储，校验时兼容历史明文行。
-
-## 提交结果投影（applySubmissionProjection）
-
-竞赛场景下，提交详情/列表/SSE/队列等所有读路径都必须经过统一投影函数 `applySubmissionProjection`，防止判据、隐藏用例、标准答案经任何渠道泄露。
-
-投影上下文包括查看者身份、是否管理员、是否提交者本人、是否参赛者，以及竞赛是否 running。主要规则：
-
-- 管理员、无竞赛上下文的提交、题目 owner（非提交者本人）：维持既有 DTO 可见性（代码/输出/用例详情仍只对 owner/admin 开放）。
-- 竞赛进行中或结束后，参赛者 + 提交者本人：保留最终状态与分数，剥离 `details` 中的隐藏用例、`subtasks`、`testCases`、`output`；只保留 `details.cases` 中未被标记为隐藏的可见用例。
-- 竞赛中他人或非参赛者：仅返回 `{ id, problem_id, status }` 这类存在级信息。
-- 旧评测脚本若用例缺少 `hidden` 标记：按 fail-safe 处理，整份用例详情不返回，避免旧数据假设"未标记即可见"造成泄露。
-
-因此评测脚本契约要求：`details.cases` 中每个用例都必须带有布尔标记 `hidden`（`true` 为隐藏用例，`false` 为可见用例）。可见用例可附带输入、期望输出、实际输出；隐藏用例只允许返回 ID、状态、耗时/内存等非敏感元数据，MUST NOT 返回输入、期望输出、实际输出。
-
-::: info 客观题同样防泄露
-竞赛模式提交与详情中的解析、`expected`/标准答案会被剥离；练习模式只有公开套卷、套卷 owner 或管理员能看到解析。
-:::
-
-详细安全模型另见[架构总览](./architecture.md)与仓库根目录 `AGENTS.md`。
+- 评测契约要求每个测试点必须显式声明布尔值 `hidden`（`true` 为盲测用例，`false`
+  为公开样例）；
+- 若评测结果中的任何一个测试点缺失 `hidden` 与 `visibility`
+  标记，系统认定该脚本属于不合规旧格式，**整份测试点详情将被一键熔断清空，不予向任何普通选手返回**。

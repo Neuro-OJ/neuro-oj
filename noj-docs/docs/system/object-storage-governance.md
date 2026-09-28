@@ -1,11 +1,40 @@
-# 对象存储生命周期治理
+# 对象存储生命周期治理（Object Storage Governance）
 
-> 本页描述对象类型、数据库引用和当前生命周期边界，并说明只读盘点的运行方式。机器可检查的清单位于
-> [`dev-docs/engineering/object-storage-governance.json`](https://github.com/Neuro-OJ/neuro-oj/blob/main/dev-docs/engineering/object-storage-governance.json)。
+随着平台比赛频次与题目规模的增长，题目支持包、选手产物提交、用户头像与私信附件持续落盘。Neuro
+OJ
+建立了严谨的**只读对象盘点基线与对账治理机制**，旨在防止脏数据堆积，同时避免误删正在被引用的关键资产。
 
-## 当前阶段：只读盘点
+---
 
-第一阶段只建立事实基线，**不新增对象删除策略**：
+## 阶段原则：只读盘点，零自动破坏
+
+::: danger 黄金红线：孤儿对象（Orphan）绝不等于"可直接删除"
+盘点工具报告中识别出的孤儿对象仅代表**当前数据库业务主表没有直接引用它**。由于跨环境引用、历史容灾备份回放窗口或刚刚上传但尚未提交表单的草稿状态，**严禁运维人员写脚本批量执行物理 `DELETE`**！直接删除存储桶或目录可能导致生产数据永久丢失。
+:::
+
+系统当前实施**纯只读对账策略**：
+
+- 仅执行数据库 `SELECT` 汇总与对象存储 `LIST` 遍历；
+- 输出对象计数、容量占用、孤儿对象与悬挂引用（Missing References）；
+- 绝对不主动调用对象存储的 `DeleteObject` 接口，保持生产只读安全。
+
+---
+
+## 对象类型与引用映射字典
+
+| 对象资产类别       | 数据库主表关联字段                     | 标准 Key 路径模式                               | 当前生命周期治理策略                                               |
+| ------------------ | -------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------ |
+| **题目纯净评测包** | `problems.support_package_storage_url` | `packages/<problem_id>.zip`                     | 仅在出题人更新题包或物理删除题目时由业务代码事务清理               |
+| **选手产物提交包** | `submissions.artifact_storage_url`     | `artifacts/<uuid>.zip`                          | **高频暂态对象**。评测完毕、任务超时或入队失败后由宿主异步物理回收 |
+| **用户自定义头像** | `users.avatar_url`                     | `avatar/<user_id>.<ext>`                        | 用户更换或移除头像时，在确认无多处引用的前提下清理历史版本         |
+| **站内私信图片**   | `messages.image_url`                   | `message-images/<conversation_id>/<uuid>.<ext>` | 私信单向软删除不触发物理对象删除，留存备查违规证据                 |
+| **系统备份快照**   | 独立快照 Manifest（不在业务表）        | `backups/` 归档前缀                             | 遵照运营者灾备保留周期策略手动或归档脚本清理                       |
+
+---
+
+## 只读盘点运维执行指南
+
+运维人员可通过 `noj-core` 内置的治理工具生成全量盘点审计报告：
 
 ```bash
 cd noj-core
@@ -14,47 +43,32 @@ deno task storage:audit -- --pretty \
   --prometheus-output /var/lib/node_exporter/textfile/noj_storage.prom
 ```
 
-命令只执行数据库 `SELECT` 和对象存储 `LIST`，输出对象数量、字节数、按类型统计、未被数据库引用的对象、数据库引用但对象不存在的记录，以及非法存储 URL。它不会调用 `delete`、`put` 或修改数据库。
+该工具会输出结构化 JSON 汇总，并向 Prometheus Node Exporter 导出指标：
 
-::: danger orphan 不是"可直接删除"清单
-报告中的 orphan 只表示"当前 inventory 中未被引用"。跨环境引用、备份恢复窗口和历史迁移都必须先由运营者复核；**直接删除 bucket、目录或对象可能造成不可逆的数据丢失**。
-:::
+```mermaid
+flowchart LR
+    Audit[deno task storage:audit] --> JSON[生成审计报告 /var/lib/noj/storage-audit.json]
+    Audit --> Prom[写入指标 noj_storage.prom]
+    Prom --> Prometheus[Prometheus 定期刮取]
+    Prometheus --> Grafana[Grafana 趋势图与告警规则]
+```
 
-::: warning 先确认目标环境
-运行前必须确认 provider、bucket、存储目录与生产目标一致。对错误的存储目录（如挂载点写错）执行盘点，会得出误导性的 orphan/missing 结论。
-:::
+---
 
-## 对象类型与引用
+## 核心可观测性指标与告警阈值
 
-| 类型 | 数据库引用 | 常见 key | 当前生命周期 |
-| --- | --- | --- | --- |
-| 题目纯净评测包 | `problems.support_package_storage_url` | `packages/<problem_id>.zip`（local 为内容寻址） | 替换/删除题目时由业务路径清理；盘点不自动清理 |
-| artifact 提交 | `submissions.artifact_storage_url` | `artifacts/<uuid>.zip` | 评测完成、入队失败、pending 超时孤儿由既有流程清理；本阶段不扩大范围 |
-| 用户头像 | `users.avatar_url` | `avatar/<user_id>.<ext>` 或内容寻址 | 替换/清除时仅在确认没有其他引用后清理 |
-| 私信图片 | `messages.image_url` | `message-images/<conversation_id>/<uuid>.<ext>` | 当前无新增自动回收；撤回/删除消息不等于可立即删除对象 |
-| 备份快照 | 外部备份 manifest（不在业务表 URL 中） | `backups/` 或部署指定目的地 | 遵循备份保留与恢复演练要求，人工确认后处理 |
+| Prometheus 指标项                            | 采集类型 | 业务监控含义与告警水位                                              |
+| -------------------------------------------- | -------- | ------------------------------------------------------------------- |
+| **`noj_storage_objects_total`**              | Gauge    | 当前存储桶内对象总数统计                                            |
+| **`noj_storage_bytes`**                      | Gauge    | 当前存储桶消耗的实际物理字节数                                      |
+| **`noj_storage_orphan_objects`**             | Gauge    | 数据库无记录但存储中存在的孤儿对象数                                |
+| **`noj_storage_orphan_bytes`**               | Gauge    | 孤儿对象占用的总磁盘空间                                            |
+| **`noj_storage_missing_references`**         | Gauge    | **🚨 致命告警项**：数据库记录存在但存储中文件丢失（必须严格等于 0） |
+| **`noj_storage_audit_generated_at_seconds`** | Gauge    | 盘点任务最后成功执行的时间戳，用于探活治理定时任务                  |
 
-## 运行与告警
+### 🚨 必须人工介入挂起的异常场景
 
-盘点结果以低基数 Prometheus gauge 写入 node_exporter textfile collector，由 Prometheus 观察数量/容量增长趋势：
-
-| 指标 | 含义 |
-| --- | --- |
-| `noj_storage_objects_total` | 当前对象总数 |
-| `noj_storage_bytes` | 当前对象总字节数 |
-| `noj_storage_orphan_objects` / `noj_storage_orphan_bytes` | 未被数据库引用的对象数与字节数 |
-| `noj_storage_missing_references` | 数据库引用但 inventory 中不存在的引用数 |
-| `noj_storage_audit_generated_at_seconds` | 盘点报告生成时间 |
-
-建议每日盘点；对象数量或字节数异常增长时，先排查 artifact 入队失败、消息图片发送和备份任务，**不要直接删除 bucket 或目录**。
-
-::: warning 出现以下情况应暂停回收并人工复核
-- `missing_references_total > 0`（数据库仍引用但对象不存在）；
-- provider、bucket、存储目录与部署配置不一致；
-- orphan 对象的 `lastModified` 处于近期发布/恢复窗口；
-- local 内容寻址对象被多个用户共享，或存在跨 provider 的历史 URL。
-:::
-
-::: info 备份与支持包路径需区分
-`data/storage/` 是运行时纯净评测包（local provider 默认目录，可用 `SUPPORT_PACKAGE_DIR` 覆盖）；`data/packages/` 是可重建的导入载体（`problems:build` 产物）。生产环境必须使用 S3/兼容对象存储（`STORAGE_PROVIDER=s3`）。
-:::
+1. **`missing_references > 0`**：说明发生了非预期的文件丢失，已有题目或提交无法找到支持包，必须立即排查存储介质；
+2. **孤儿对象在短时间内暴增**：通常表明选手批量上传产物题后任务队列阻塞或任务退场异常；
+3. **盘点目标环境不匹配**：若部署配置的 Bucket
+   名称或存储驱动填写错误，将得出完全虚假的 Missing 报警，需优先核实环境变量。
