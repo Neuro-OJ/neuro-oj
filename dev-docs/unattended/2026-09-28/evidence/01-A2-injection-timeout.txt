@@ -1,0 +1,18 @@
+=== NOJ-A2 反向验证：超时被移除后的行为 ===
+命令: timeout 30 cargo test --lib sandbox::container::tests::test_write_all_with_timeout_fails_instead_of_hanging
+   Compiling noj-judge v0.10.2-alpha.1 (/home/xyber-nova/Github/neuro-oj/noj-judge)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.56s
+     Running unittests src/lib.rs (target/debug/deps/noj_judge-ff5f75ac48c757c6)
+
+running 1 test
+EXIT=0 (124 = 被 timeout 强杀 = 测试永久挂起，即缺陷形态)
+timeout 退出码 = 124 （124 = 被强杀 ⇒ 测试永久挂起，正是 NOJ-A2 的缺陷形态）
+--- 该次运行输出（关键：无 'test result' 行 = 从未结束）---
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running unittests src/lib.rs (target/debug/deps/noj_judge-ff5f75ac48c757c6)
+
+running 1 test
+=== 修复后（超时生效）===
+test sandbox::container::tests::test_write_all_with_timeout_passes_through_on_healthy_writer ... ok
+test sandbox::container::tests::test_write_all_with_timeout_fails_instead_of_hanging ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 188 filtered out; finished in 0.05s
