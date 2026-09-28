@@ -1,63 +1,69 @@
 # NOJ 设计 Token 规范
 
-> 本文是 NOJ 品牌视觉系统的单一事实来源。前端 token 定义在 `noj-ui/app.vue` 的 `:root`，Tailwind/Nuxt UI 映射在 `noj-ui/assets/css/main.css`。
+> 本文是 NOJ 品牌视觉系统的单一事实来源。前端 token 定义在 `noj-ui/app.vue` 的
+> `:root`，Tailwind/Nuxt UI 映射在 `noj-ui/assets/css/main.css`。
 
 ## 设计语言
 
-NOJ 采用「暖纸评测风」：
+NOJ 采用「Clean Cyber Azure (浅蓝科技调)」统一品牌视觉体系：
 
-- **纸与墨是主体**：暖纸底、暖墨文字；
-- **品牌蓝是身份**：蓝黑墨 `#1B2B4A`，用于 Logo、导航、品牌识别；
-- **评测绿是信号**：`#00d68a`，用于动作、选中、进行中、焦点；
-- **近直角**：2–6px 圆角，避免大圆角产品感。
+- **清爽天青底与纯白面板是主体**：页面底色 `#f5f8fc`，面板卡片 `#ffffff`，沉底块
+  `#edf2f9`，分割线边框 `#e1e8f2`，背景点阵微质感（28px radial dot grid）；
+- **品牌天青蓝是活力与交互核心**：`#0284c7`（亮色 Sky 600）/ `#38bdf8`（暗色 Sky
+  400），用于高亮链接、关键按钮、激活项、焦点环；
+- **深邃科技海军蓝是基底与品牌身份**：深海蓝黑 `#0b0f19` / `#131b2e` /
+  `#0f172a`（Slate 900），用于品牌 Logo、Hero 暗色沉浸块、代码终端与暗色模式；
+- **评测信号绿是核心状态反馈**：`#059669`（亮色 Emerald 600）/
+  `#00e07a`（暗色荧光绿），用于评测状态、提交通过、运行就绪、成功通知；
+- **近直角工业形态**：2–6px 圆角（默认 4px），数值文本使用 `tabular-nums`。
 
 ## 色板
 
 ### 亮色模式
 
-| Token | 值 | 用途 |
-| --- | --- | --- |
-| `--c-bg-page` | `#e8e8e2` | 页面纸底 |
-| `--c-bg-panel` | `#f2f2ec` | 卡片/面板 |
-| `--c-bg-sunken` | `#dfe0d9` | 沉底块 |
-| `--c-border` | `#d5d6cf` | 边框 |
-| `--c-text` | `#1c1e1b` | 正文 |
-| `--c-text-secondary` | `#4c4e4a` | 次要文字 |
-| `--c-text-muted` | `#6b6e68` | 弱化文字 |
-| `--c-primary` | `#1B2B4A` | 品牌蓝（蓝黑墨） |
-| `--c-primary-dark` | `#16233E` | 品牌蓝深色 |
-| `--c-primary-light` | `#2C4B9B` | 品牌蓝浅色 |
-| `--c-signal` | `#00d68a` | 评测信号绿 |
-| `--c-signal-deep` | `#007146` | 亮色纸面上的绿色文字/图标 |
-| `--c-signal-rgb` | `0,214,138` | 信号绿半透明层 |
-| `--c-on-signal` | `#1c1e1b` | 信号绿底上的文字（亮/暗通用） |
-| `--c-success-text` | `#007146` | 成功/通过 |
-| `--c-warning-text` | `#b45309` | 警告 |
-| `--c-error-text` | `#dc2626` | 错误 |
-| `--c-info-text` | `#1B2B4A` | 信息 |
+| Token                | 值          | 用途                              |
+| -------------------- | ----------- | --------------------------------- |
+| `--c-bg-page`        | `#f5f8fc`   | 页面天青浅蓝底                    |
+| `--c-bg-panel`       | `#ffffff`   | 纯白卡片/面板                     |
+| `--c-bg-sunken`      | `#edf2f9`   | 沉底块/表头/代码微层级            |
+| `--c-border`         | `#e1e8f2`   | 晶莹淡蓝灰边框                    |
+| `--c-text`           | `#0f172a`   | 正文 (Slate 900)                  |
+| `--c-text-secondary` | `#475569`   | 次要文字 (Slate 600)              |
+| `--c-text-muted`     | `#64748b`   | 弱化文字 (Slate 500)              |
+| `--c-primary`        | `#0284c7`   | 品牌天青蓝 (Sky 600)              |
+| `--c-primary-dark`   | `#0369a1`   | 品牌蓝深色 (Sky 700)              |
+| `--c-primary-light`  | `#38bdf8`   | 品牌蓝浅色 (Sky 400)              |
+| `--c-signal`         | `#059669`   | 评测信号绿 (Emerald 600)          |
+| `--c-signal-deep`    | `#047857`   | 亮色底绿色文字/图标 (Emerald 700) |
+| `--c-signal-rgb`     | `5,150,105` | 信号绿半透明层                    |
+| `--c-on-signal`      | `#ffffff`   | 信号绿底上的文字                  |
+| `--c-success-text`   | `#059669`   | 成功/通过                         |
+| `--c-warning-text`   | `#d97706`   | 警告 (Amber 600)                  |
+| `--c-error-text`     | `#e11d48`   | 错误 (Rose 600)                   |
+| `--c-info-text`      | `#0284c7`   | 信息 (Sky 600)                    |
 
 ### 暗色模式
 
-| Token | 值 | 用途 |
-| --- | --- | --- |
-| `--c-bg-page` | `#121310` | 暖黑纸底 |
-| `--c-bg-panel` | `#191b17` | 面板 |
-| `--c-bg-sunken` | `#0d0e0c` | 沉底块 |
-| `--c-border` | `#333631` | 边框 |
-| `--c-text` | `#f2f3ef` | 正文 |
-| `--c-text-secondary` | `#90938d` | 次要文字 |
-| `--c-text-muted` | `#6f736d` | 弱化文字 |
-| `--c-primary` | `#7C96D6` | 品牌蓝（暗色可读变体） |
-| `--c-primary-dark` | `#6C86C8` | 品牌蓝深色 |
-| `--c-primary-light` | `#8BA3DB` | 品牌蓝浅色 |
-| `--c-signal` | `#00e07a` | 评测信号绿 |
-| `--c-signal-deep` | `#00d68a` | 暗色纸面上的绿色文字/图标 |
-| `--c-signal-rgb` | `0,224,122` | 信号绿半透明层 |
-| `--c-on-signal` | `#1c1e1b` | 信号绿底上的文字（亮/暗通用） |
-| `--c-success-text` | `#00b377` | 成功/通过 |
-| `--c-warning-text` | `#fbbf24` | 警告 |
-| `--c-error-text` | `#ff6b61` | 错误 |
-| `--c-info-text` | `#7C96D6` | 信息 |
+| Token                | 值          | 用途                      |
+| -------------------- | ----------- | ------------------------- |
+| `--c-bg-page`        | `#0b0f19`   | 深邃海军蓝黑底            |
+| `--c-bg-panel`       | `#131b2e`   | 深蓝科技面板              |
+| `--c-bg-sunken`      | `#070a12`   | 沉底黑块                  |
+| `--c-border`         | `#1e293b`   | 暗色科技边框 (Slate 800)  |
+| `--c-text`           | `#f8fafc`   | 正文 (Slate 50)           |
+| `--c-text-secondary` | `#94a3b8`   | 次要文字 (Slate 400)      |
+| `--c-text-muted`     | `#64748b`   | 弱化文字 (Slate 500)      |
+| `--c-primary`        | `#38bdf8`   | 品牌蓝 (Sky 400 荧光高光) |
+| `--c-primary-dark`   | `#0ea5e9`   | 品牌蓝深色 (Sky 500)      |
+| `--c-primary-light`  | `#7dd3fc`   | 品牌蓝浅色 (Sky 300)      |
+| `--c-signal`         | `#00e07a`   | 评测信号绿 (荧光绿)       |
+| `--c-signal-deep`    | `#00d68a`   | 暗色底绿色文字/图标       |
+| `--c-signal-rgb`     | `0,224,122` | 信号绿半透明层            |
+| `--c-on-signal`      | `#0b0f19`   | 信号绿底上的文字          |
+| `--c-success-text`   | `#00e07a`   | 成功/通过                 |
+| `--c-warning-text`   | `#fbbf24`   | 警告 (Amber 400)          |
+| `--c-error-text`     | `#fb7185`   | 错误 (Rose 400)           |
+| `--c-info-text`      | `#38bdf8`   | 信息 (Sky 400)            |
 
 ## CLI / 终端
 
@@ -68,20 +74,21 @@ NOJ 采用「暖纸评测风」：
 
 ### 语义色 → ANSI 映射
 
-| Token | 亮色 hex | 暗色 hex | ANSI SGR | 终端效果 | 用途 |
-| --- | --- | --- | --- | --- | --- |
-| `--c-success-text` | `#007146` | `#00b377` | `\x1b[32m` | 绿色 | 成功/通过 |
-| `--c-warning-text` | `#b45309` | `#fbbf24` | `\x1b[33m` | 黄色 | 警告 |
-| `--c-error-text` | `#dc2626` | `#ff6b61` | `\x1b[31m` | 红色 | 错误/失败 |
-| `--c-info-text` | `#1B2B4A` | `#7C96D6` | `\x1b[36m` | 青色 | 信息 |
-| `--c-primary` | `#1B2B4A` | `#7C96D6` | `\x1b[34m` | 蓝色 | 品牌蓝（蓝黑墨）/强调 |
-| `--c-signal` | `#00d68a` | `#00e07a` | `\x1b[92m` | 亮绿色 | 评测信号（进行中/动作） |
-| `--c-text-muted` | `#6b6e68` | `#6f736d` | `\x1b[90m` | 亮黑（灰） | 弱化文字 |
-| `--c-text-secondary` | `#4c4e4a` | `#90938d` | `\x1b[2m` | 暗淡（SGR dim） | 次要文字 |
+| Token                | 亮色 hex  | 暗色 hex  | ANSI SGR   | 终端效果        | 用途                    |
+| -------------------- | --------- | --------- | ---------- | --------------- | ----------------------- |
+| `--c-success-text`   | `#059669` | `#00e07a` | `\x1b[32m` | 绿色            | 成功/通过               |
+| `--c-warning-text`   | `#d97706` | `#fbbf24` | `\x1b[33m` | 黄色            | 警告                    |
+| `--c-error-text`     | `#e11d48` | `#fb7185` | `\x1b[31m` | 红色            | 错误/失败               |
+| `--c-info-text`      | `#0284c7` | `#38bdf8` | `\x1b[36m` | 青色            | 信息                    |
+| `--c-primary`        | `#0284c7` | `#38bdf8` | `\x1b[36m` | 青色            | 品牌天青蓝/强调         |
+| `--c-signal`         | `#059669` | `#00e07a` | `\x1b[92m` | 亮绿色          | 评测信号（进行中/动作） |
+| `--c-text-muted`     | `#64748b` | `#64748b` | `\x1b[90m` | 亮黑（灰）      | 弱化文字                |
+| `--c-text-secondary` | `#475569` | `#94a3b8` | `\x1b[2m`  | 暗淡（SGR dim） | 次要文字                |
 
-- Reset 统一用 `\x1b[0m`；**只对语义片段（状态符号、模块前缀）着色，不整行着色**——
-  行内自带 SGR 的转发日志会被外层 reset 清掉，理由见 `noj-cli/src/util/color.ts`
-  的 `prefixLine` 注释。
+- Reset 统一用
+  `\x1b[0m`；**只对语义片段（状态符号、模块前缀）着色，不整行着色**—— 行内自带
+  SGR 的转发日志会被外层 reset 清掉，理由见 `noj-cli/src/util/color.ts` 的
+  `prefixLine` 注释。
 - 状态符号：`✓` 成功、`!` 警告、`✗` 错误、`ℹ` 信息。符号与颜色**成对**出现，
   于是颜色被关闭时仅靠符号也能区分语义（色盲友好）。
 
@@ -90,13 +97,13 @@ NOJ 采用「暖纸评测风」：
 任一「关」条件命中即**完全关闭着色**——输出中不得出现任何 ANSI 转义序列
 （不是「颜色变淡」）：
 
-| 触发条件 | 行为 | 判定顺序 |
-| --- | --- | --- |
-| `NO_COLOR` 非空 | 关 | 最高优先级，压过 `--color=always` |
-| `--color=never` | 关 | |
-| `--color=auto` 且目标流非 TTY（重定向/管道） | 关 | stdout 与 stderr **分别**探测 |
-| `--color=always` | 开 | |
-| `LOG_COLOR=never` / `LOG_COLOR=always` | 关 / 开 | 仅在 `auto` 下生效 |
+| 触发条件                                     | 行为    | 判定顺序                          |
+| -------------------------------------------- | ------- | --------------------------------- |
+| `NO_COLOR` 非空                              | 关      | 最高优先级，压过 `--color=always` |
+| `--color=never`                              | 关      |                                   |
+| `--color=auto` 且目标流非 TTY（重定向/管道） | 关      | stdout 与 stderr **分别**探测     |
+| `--color=always`                             | 开      |                                   |
+| `LOG_COLOR=never` / `LOG_COLOR=always`       | 关 / 开 | 仅在 `auto` 下生效                |
 
 判定唯一实现是 `noj-cli/src/util/color.ts` 的 `resolveColor(mode, stream)`；
 `noj-cli/src/output/theme.ts` 只消费其结果，**不得**复制一份 `NO_COLOR`/TTY 判定

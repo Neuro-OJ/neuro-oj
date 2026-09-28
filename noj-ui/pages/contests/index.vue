@@ -77,7 +77,7 @@ watch([selectedType, selectedStatus], () => {
             v-for="contest in pagedContests"
             :key="contest.id"
             :to="publicUrl('contest', contest.public_id || contest.id)"
-            class="group flex min-h-64 flex-col rounded-xl border border-border bg-white p-5 text-text no-underline shadow-sm transition-all hover:-translate-y-1 hover:border-signal/40 hover:shadow-card"
+            class="group flex min-h-64 flex-col rounded-xl border border-border bg-white p-5 text-text no-underline shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-card"
           >
             <div class="flex items-start justify-between gap-3">
               <span class="rounded-md bg-primary-bg px-2.5 py-1 text-xs font-semibold text-primary-text">{{ typeLabels[contest.type] }}</span>

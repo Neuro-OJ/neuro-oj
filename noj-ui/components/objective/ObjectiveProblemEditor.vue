@@ -369,7 +369,7 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
           <div class="flex flex-col gap-1">
             <input
               v-model="tagSearch"
-              class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)] bg-white"
+              class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:input-base-focus bg-white"
               placeholder="搜索标签..."
               aria-label="搜索标签"
             />
@@ -422,7 +422,7 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
             <div class="flex flex-col gap-1">
               <input
                 v-model="tagSearch"
-                class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)] bg-white"
+                class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:input-base-focus bg-white"
                 placeholder="搜索标签..."
               />
               <div class="flex flex-wrap gap-2">

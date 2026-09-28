@@ -61,50 +61,50 @@ useHead({
 
 <style>
 :root {
-    --c-primary: #1B2B4A; --c-primary-dark: #16233E; --c-primary-light: #2C4B9B;
-    --c-primary-bg: #e6fbf3; --c-primary-hover-bg: #c2f5e2; --c-primary-active-bg: #8aebc8; --c-primary-text: #007146;
-    --c-bg-dark: #121310; --c-bg-dark-2: #191b17; --c-bg-dark-3: #0d0e0c;
-    --c-success-text: #007146; --c-info-text: #1B2B4A; --c-warning-text: #b45309; --c-error-text: #dc2626;
-    --c-text: #1c1e1b; --c-text-secondary: #4c4e4a; --c-text-muted: #6b6e68;
+    --c-primary: #0284c7; --c-primary-dark: #0369a1; --c-primary-light: #38bdf8;
+    --c-primary-bg: #f0f9ff; --c-primary-hover-bg: #e0f2fe; --c-primary-active-bg: #bae6fd; --c-primary-text: #0284c7;
+    --c-bg-dark: #0b0f19; --c-bg-dark-2: #131b2e; --c-bg-dark-3: #070a12;
+    --c-success-text: #059669; --c-info-text: #0284c7; --c-warning-text: #d97706; --c-error-text: #e11d48;
+    --c-text: #0f172a; --c-text-secondary: #475569; --c-text-muted: #64748b;
     --header-h: 64px;
-    --c-border: #d5d6cf; --c-bg-page: #e8e8e2; --c-bg-panel: #f2f2ec; --c-bg-sunken: #dfe0d9; --c-white: #f2f2ec; --c-text-on-color: #ffffff;
-    --c-text-on-dark: #f2f3ef;
-    --c-signal: #00d68a; --c-signal-deep: #007146; --c-signal-rgb: 0,214,138;
+    --c-border: #e1e8f2; --c-bg-page: #f5f8fc; --c-bg-panel: #ffffff; --c-bg-sunken: #edf2f9; --c-white: #ffffff; --c-text-on-color: #ffffff;
+    --c-text-on-dark: #f8fafc;
+    --c-signal: #059669; --c-signal-deep: #047857; --c-signal-rgb: 5,150,105;
     --c-signal-dark: #00e07a; --c-signal-deep-dark: #00d68a; --c-signal-dark-rgb: 0,224,122;
-    --c-on-signal: #1c1e1b;
+    --c-on-signal: #ffffff;
 }
 
 .editor-dark {
-  --c-bg-page: #121310;
-  --c-bg-panel: #191b17;
-  --c-bg-sunken: #0d0e0c;
-  --c-white: #191b17;
-  --c-border: #333631;
-  --c-text: #f2f3ef;
-  --c-text-secondary: #90938d;
-  --c-text-muted: #6f736d;
-  --c-primary: #7C96D6;
-  --c-primary-dark: #6C86C8;
-  --c-primary-light: #8BA3DB;
-  --c-primary-hover-bg: #1a3d30;
-  --c-primary-bg: #12352a;
-  --c-primary-text: #00d68a;
+  --c-bg-page: #0b0f19;
+  --c-bg-panel: #131b2e;
+  --c-bg-sunken: #070a12;
+  --c-white: #131b2e;
+  --c-border: #1e293b;
+  --c-text: #f8fafc;
+  --c-text-secondary: #94a3b8;
+  --c-text-muted: #64748b;
+  --c-primary: #38bdf8;
+  --c-primary-dark: #0ea5e9;
+  --c-primary-light: #7dd3fc;
+  --c-primary-hover-bg: rgba(56, 189, 248, 0.2);
+  --c-primary-bg: rgba(56, 189, 248, 0.12);
+  --c-primary-text: #38bdf8;
   --c-signal: #00e07a;
   --c-signal-deep: #00d68a;
   --c-signal-rgb: 0,224,122;
-  --c-on-signal: #1c1e1b;
-  --c-success-text: #00b377;
-  --c-info-text: #7C96D6;
+  --c-on-signal: #0b0f19;
+  --c-success-text: #00e07a;
+  --c-info-text: #38bdf8;
   --c-warning-text: #fbbf24;
-  --c-error-text: #ff6b61;
-  --c-text-on-dark: #f2f3ef;
+  --c-error-text: #fb7185;
+  --c-text-on-dark: #f8fafc;
 }
 
 .editor-dark .prose-neuro {
-  --tw-prose-body: #f2f3ef;
-  --tw-prose-headings: #f2f3ef;
-  --tw-prose-links: #7C96D6;
-  --tw-prose-code: #00d68a;
+  --tw-prose-body: #f8fafc;
+  --tw-prose-headings: #f8fafc;
+  --tw-prose-links: #38bdf8;
+  --tw-prose-code: #00e07a;
 }
 
 /* CSS 变量（设计 Token）统一在 :root 中定义，main.css 的 @theme 通过 var() 引用。

@@ -7,16 +7,16 @@
 
 /** 渐变预设键 → Tailwind 渐变类。 */
 export const CAROUSEL_GRADIENTS: Record<string, string> = {
-  blue: 'from-[#eef0f5] via-[#f2f2ec] to-[#e8e8e2]',
-  green: 'from-[#e6fbf3] via-[#f2f2ec] to-[#e8e8e2]',
-  purple: 'from-[#f0ecf7] via-[#f2f2ec] to-[#e8e8e2]',
-  sunset: 'from-[#fdeee4] via-[#f2f2ec] to-[#e8e8e2]',
-  ocean: 'from-[#e4f1fb] via-[#f2f2ec] to-[#e8e8e2]',
-  slate: 'from-[#eef0f5] via-[#e8e8e2] to-[#dfe0d9]',
+  blue: 'from-[#e0f2fe] via-[#f0f9ff] to-[#ffffff]',
+  green: 'from-[#d1fae5] via-[#ecfdf5] to-[#ffffff]',
+  purple: 'from-[#ede9fe] via-[#f5f3ff] to-[#ffffff]',
+  sunset: 'from-[#ffedd5] via-[#fff7ed] to-[#ffffff]',
+  ocean: 'from-[#cffafe] via-[#f0fdfa] to-[#ffffff]',
+  slate: 'from-[#e2e8f0] via-[#f8fafc] to-[#ffffff]',
 };
 
 /** 默认渐变（无 slide / 未知 key 时）。 */
-export const DEFAULT_GRADIENT = 'from-[#f2f2ec] via-[#e8e8e2] to-[#dfe0d9]';
+export const DEFAULT_GRADIENT = 'from-[#e0f2fe] via-[#f0f9ff] to-[#ffffff]';
 
 /**
  * 取渐变类：优先用 `gradient_key`，未知 key 回退默认。

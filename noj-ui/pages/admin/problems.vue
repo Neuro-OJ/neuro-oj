@@ -258,10 +258,10 @@ async function batchReview(action: 'to_public' | 'to_p') {
           <input
             type="text"
             placeholder="搜索题号或标题…"
-            class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal transition-colors"
+            class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary transition-colors"
             @input="onSearchInput(($event.target as HTMLInputElement).value)"
           />
-          <NuxtLink to="/admin/problem-new" class="inline-flex items-center gap-1.5 px-4 py-2 text-13px font-semibold bg-signal text-on-signal border-[1.5px] border-signal rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-signal/80 hover:border-signal/80">
+          <NuxtLink to="/admin/problem-new" class="inline-flex items-center gap-1.5 px-4 py-2 text-13px font-semibold bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-primary/80 hover:border-primary/80">
             <UIcon name="i-lucide-plus" class="size-4" />
             创建题目
           </NuxtLink>

@@ -53,7 +53,7 @@ function formatNumber(n?: number): string {
 <template>
   <div class="max-w-[860px] mx-auto px-4 py-8 sm:px-6 sm:py-12 flex flex-col gap-8">
     <!-- Hero -->
-    <section class="bg-gradient-to-br from-[#1B2B4A] via-[#16233E] to-[#0B1322] rounded-2xl overflow-hidden shadow-modal">
+    <section class="bg-gradient-to-br from-[#0b0f19] via-[#131b2e] to-[#070a12] border border-slate-800 rounded-2xl overflow-hidden shadow-modal">
       <div class="p-8 sm:p-10 lg:p-12 flex flex-col gap-6 text-white">
         <span class="self-start inline-flex items-center gap-1.5 rounded-full bg-white/10 border border-white/15 px-3 py-1 text-xs font-medium text-signal">
           <UIcon name="i-lucide-sparkles" class="size-3.5" />
@@ -239,7 +239,7 @@ function formatNumber(n?: number): string {
             :href="repoUrl"
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-gray-50 px-4 py-2 text-sm font-medium text-text no-underline hover:bg-primary-bg hover:text-primary hover:border-signal/30 transition-colors shrink-0"
+            class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-gray-50 px-4 py-2 text-sm font-medium text-text no-underline hover:bg-primary-bg hover:text-primary hover:border-primary/30 transition-colors shrink-0"
           >
             <UIcon name="i-lucide-star" class="size-4 text-primary" />
             Neuro-OJ/neuro-oj
@@ -255,7 +255,7 @@ function formatNumber(n?: number): string {
             :href="`https://github.com/${c.login}`"
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center gap-3 px-3 py-2 bg-gray-50 border border-border rounded-lg no-underline hover:bg-primary-bg hover:border-signal/30 transition-colors"
+            class="inline-flex items-center gap-3 px-3 py-2 bg-gray-50 border border-border rounded-lg no-underline hover:bg-primary-bg hover:border-primary/30 transition-colors"
           >
             <img
               v-if="!brokenAvatars.has(c.login)"

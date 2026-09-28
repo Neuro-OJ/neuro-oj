@@ -417,7 +417,7 @@ async function cleanupBootstrapRow(s: SystemSetting) {
               v-model="testEmailTo"
               type="email"
               placeholder="测试收件邮箱"
-              class="px-2.5 py-1.5 w-64 text-13px font-mono border border-border rounded bg-white outline-none transition-colors focus:border-signal"
+              class="px-2.5 py-1.5 w-64 text-13px font-mono border border-border rounded bg-white outline-none transition-colors focus:border-primary"
             />
             <UButton
               size="xs"
@@ -514,7 +514,7 @@ async function cleanupBootstrapRow(s: SystemSetting) {
                     v-model="drafts[s.key]"
                     :disabled="drafts[s.key] === null"
                     :placeholder="drafts[s.key] === null ? '•••••••• 点击「编辑」以修改' : ''"
-                    class="w-full px-2.5 py-1.5 text-13px font-mono border border-border rounded outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="w-full px-2.5 py-1.5 text-13px font-mono border border-border rounded outline-none transition-colors focus:input-base-focus disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                   <UButton v-if="drafts[s.key] === null" size="xs" color="primary" variant="outline" @click="drafts[s.key] = ''">编辑</UButton>
                 </template>
@@ -522,7 +522,7 @@ async function cleanupBootstrapRow(s: SystemSetting) {
                 <input
                   v-else
                   v-model="drafts[s.key]"
-                  class="w-full px-2.5 py-1.5 text-13px font-mono border border-border rounded outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
+                  class="w-full px-2.5 py-1.5 text-13px font-mono border border-border rounded outline-none transition-colors focus:input-base-focus"
                 />
               </div>
 
@@ -532,7 +532,7 @@ async function cleanupBootstrapRow(s: SystemSetting) {
                 v-model="(drafts[s.key] as string)"
                 rows="2"
                 maxlength="1000"
-                class="w-full px-2.5 py-1.5 text-13px border border-border rounded outline-none transition-colors resize-y focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
+                class="w-full px-2.5 py-1.5 text-13px border border-border rounded outline-none transition-colors resize-y focus:input-base-focus"
               />
 
               <!-- integer：number input -->
@@ -543,7 +543,7 @@ async function cleanupBootstrapRow(s: SystemSetting) {
                 step="1"
                 :min="s.min"
                 :max="s.max"
-                class="w-full px-2.5 py-1.5 text-13px font-mono border border-border rounded outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
+                class="w-full px-2.5 py-1.5 text-13px font-mono border border-border rounded outline-none transition-colors focus:input-base-focus"
               />
             </td>
 

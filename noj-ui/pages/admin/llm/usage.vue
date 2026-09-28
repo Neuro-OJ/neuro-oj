@@ -138,19 +138,19 @@ function openDetail(row: LlmUsageRow) {
     <div class="flex flex-wrap items-end gap-3 p-4 bg-white border border-border rounded-xl">
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">用户 ID</label>
-        <input v-model="filterUser" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal" placeholder="user_id" />
+        <input v-model="filterUser" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary" placeholder="user_id" />
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">题目 ID</label>
-        <input v-model="filterProblem" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal" placeholder="problem_id" />
+        <input v-model="filterProblem" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary" placeholder="problem_id" />
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">提交 ID</label>
-        <input v-model="filterSubmission" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal" placeholder="submission_id" />
+        <input v-model="filterSubmission" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary" placeholder="submission_id" />
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">Provider ID</label>
-        <input v-model="filterProvider" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal" placeholder="provider_id" />
+        <input v-model="filterProvider" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary" placeholder="provider_id" />
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">状态</label>
@@ -158,11 +158,11 @@ function openDetail(row: LlmUsageRow) {
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">开始时间</label>
-        <input v-model="filterStart" type="datetime-local" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal" />
+        <input v-model="filterStart" type="datetime-local" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary" />
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">结束时间</label>
-        <input v-model="filterEnd" type="datetime-local" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal" />
+        <input v-model="filterEnd" type="datetime-local" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary" />
       </div>
       <UButton color="primary" size="sm" :loading="loading" @click="page = 1; load()">查询</UButton>
     </div>
