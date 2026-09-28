@@ -18,7 +18,7 @@
 ### 2. 丰富题型实战指南
 - [编写 LLM 智能体调用题](llm-problem.md)：配置大模型 Provider、开启受控联网，通过 `llm.complete` 或自建 Capability 评测选手的 Prompt 工程与 Agent 编排能力。
 - [产物提交题制作（类 Kaggle）](web-editor.md#产物提交题)：配置选手上传 ZIP 压缩包（如模型权重、生成的预测 CSV），在 Solution 容器中自动化跑分。
-- [客观题套卷制作](../features/objective.md)：单选题、多选题与判断题在线录入，即时自动判分，无需消耗沙箱评测算力。
+- [客观题套卷出题与导入](./objective-problem.md)：单选题、多选题与判断题题库规范、questions.json 自动化导入与防作弊机制。
 
 ### 3. 题目规范与质量要求
 - [题目规范与质量总览](../standards/index.md)：理解强制规范（MUST）与推荐质量（SHOULD）的界限。

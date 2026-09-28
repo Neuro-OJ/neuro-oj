@@ -17,7 +17,7 @@ Neuro OJ 生产环境统一采用纯 TypeScript 编写的单二进制运维工�
 
 ### 2. 核心组件与算力运维
 - [Judge Worker 评测机运维与水平扩展](./judge-workers.md)：沙箱环境依赖（Docker）、评测镜像预热、Redis 队列监控与 Worker 多节点水平扩展。
-- [存储配置与评测包交付体系](../system/storage.md)：MinIO 对象存储桶权限、预签名上传/下载策略、题目支持包与评测产物交付治理。
+- [对象存储配置与运维](./storage.md)：MinIO / S3 对象存储配置、Bucket 初始化与私有策略、预签名 URL 交付与常见排障（底层机制见 [存储与评测包交付架构](../system/storage.md)）。
 - [提供 LLM 调用能力 (Gateway)](./llm-call-capability.md)：部署 `noj-llm-gateway`，配置主流 LLM Provider、出题人额度分配与鉴权机制。
 - [邮件送达与退信处理](./email-delivery.md)：SMTP 邮件服务器配置、送达事件追踪、邮件抑制清单与退信告警处置。
 

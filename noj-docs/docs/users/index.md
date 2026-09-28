@@ -3,7 +3,7 @@
 欢迎来到 Neuro OJ 做题指南。无论你是准备参加 IOAI / NOAI / LMCC 竞赛，还是进行日常 AI 算法与工程练习，本指南将帮助你快速掌握平台的使用方式。
 
 ::: tip 新手第一步
-如果你是初次接触平台，建议先阅读 [什么是 Neuro OJ](../intro/what-is-noj.md) 了解评测原理，并跟随 [做题快速开始](../intro/getting-started.md) 在 3 分钟内跑通你的第一道题目。
+如果你是初次接触平台，建议先阅读 [什么是 Neuro OJ](../intro/what-is-noj.md) 了解评测原理，并跟随 [做题快速开始](./quick-start.md) 在 3 分钟内跑通你的第一道题目。
 :::
 
 ---
@@ -11,7 +11,7 @@
 ## 📚 知识导航
 
 ### 1. 做题起步与提交规则
-- [做题快速开始](../intro/getting-started.md)：账号注册、题目查找与第一次代码提交闭环。
+- [做题快速开始](./quick-start.md)：账号注册、题目查找与第一次代码提交闭环。
 - [提交代码与语言约定](./submit.md)：函数调用题实现规范、顶层输出约束、产物提交（Kaggle 模式）与自测方法。
 - [理解评测结果](./results.md)：评测状态（`finished` / `error` 等）流转、得分详情与调试日志查看。
 - [使用 Capability 网络能力](./capability.md)：当题目需要调用大模型或外部 API 时，通过 `call_capability` 安全交互。

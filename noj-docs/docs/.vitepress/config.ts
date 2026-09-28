@@ -115,7 +115,7 @@ export default withMermaid(defineConfig({
           text: "做题入门",
           items: [
             { text: "做题人概览", link: "/users/" },
-            { text: "快速开始", link: "/intro/getting-started" },
+            { text: "快速开始", link: "/users/quick-start" },
             { text: "提交代码与语言约定", link: "/users/submit" },
             { text: "理解评测结果", link: "/users/results" },
             { text: "使用 Capability 网络能力", link: "/users/capability" },
@@ -151,7 +151,7 @@ export default withMermaid(defineConfig({
           text: "做题入门",
           items: [
             { text: "做题人概览", link: "/users/" },
-            { text: "快速开始", link: "/intro/getting-started" },
+            { text: "快速开始", link: "/users/quick-start" },
             { text: "提交代码与语言约定", link: "/users/submit" },
             { text: "理解评测结果", link: "/users/results" },
             { text: "使用 Capability 网络能力", link: "/users/capability" },
@@ -202,7 +202,10 @@ export default withMermaid(defineConfig({
           text: "题型实战",
           items: [
             { text: "LLM 智能体调用题", link: "/problemsetters/llm-problem" },
-            { text: "客观题套卷制作", link: "/features/objective" },
+            {
+              text: "客观题套卷出题",
+              link: "/problemsetters/objective-problem",
+            },
           ],
         },
         {
@@ -215,20 +218,6 @@ export default withMermaid(defineConfig({
             },
             { text: "测试数据与样例规范", link: "/standards/test-data" },
             { text: "题目质量要求与自查清单", link: "/standards/quality" },
-          ],
-        },
-        {
-          text: "评测脚本开发 (SDK)",
-          items: [
-            {
-              text: "Evaluator SDK 接口指南",
-              link: "/mechanisms/evaluator-sdk",
-            },
-            { text: "Solution SDK 接口指南", link: "/mechanisms/solution-sdk" },
-            {
-              text: "提供受限网络能力",
-              link: "/mechanisms/capability-networking",
-            },
           ],
         },
       ],
@@ -252,7 +241,10 @@ export default withMermaid(defineConfig({
           text: "题型实战",
           items: [
             { text: "LLM 智能体调用题", link: "/problemsetters/llm-problem" },
-            { text: "客观题套卷制作", link: "/features/objective" },
+            {
+              text: "客观题套卷出题",
+              link: "/problemsetters/objective-problem",
+            },
           ],
         },
         {
@@ -265,20 +257,6 @@ export default withMermaid(defineConfig({
             },
             { text: "测试数据与样例规范", link: "/standards/test-data" },
             { text: "题目质量要求与自查清单", link: "/standards/quality" },
-          ],
-        },
-        {
-          text: "评测脚本开发 (SDK)",
-          items: [
-            {
-              text: "Evaluator SDK 接口指南",
-              link: "/mechanisms/evaluator-sdk",
-            },
-            { text: "Solution SDK 接口指南", link: "/mechanisms/solution-sdk" },
-            {
-              text: "提供受限网络能力",
-              link: "/mechanisms/capability-networking",
-            },
           ],
         },
       ],
@@ -305,7 +283,7 @@ export default withMermaid(defineConfig({
               text: "Judge Worker 评测机运维与伸缩",
               link: "/operators/judge-workers",
             },
-            { text: "存储配置与评测包交付", link: "/system/storage" },
+            { text: "对象存储配置与运维", link: "/operators/storage" },
             {
               text: "提供 LLM 调用能力 (Gateway)",
               link: "/operators/llm-call-capability",
