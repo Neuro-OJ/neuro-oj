@@ -33,9 +33,16 @@ features:
 
 <div class="role-guide-section" style="margin-top: 48px; margin-bottom: 32px;">
 
+<div class="tech-status-banner">
+  <span class="live-indicator"></span>
+  <span>Neuro OJ 知识体系 · 双容器沙箱评测引擎就绪 · 函数式契约调用</span>
+</div>
+
 ## 🧭 快速找到你的专属指南
 
 根据你的目标，选择最适合的阅读路径：
+
+<div class="role-cards-grid">
 
 ::: tip 👨‍💻 我是做题 / 参赛选手
 - **第一步**：阅读 [做题快速开始](/users/quick-start) 注册账号并跑通第一道题。
@@ -63,6 +70,8 @@ features:
 
 👉 **[前往运营部署文档中心 →](/operators/)**
 :::
+
+</div>
 
 </div>
 

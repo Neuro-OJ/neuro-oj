@@ -1,305 +1,514 @@
 /**
- * Customize default theme styling by overriding CSS variables:
- * https://github.com/vuejs/vitepress/blob/main/src/client/theme-default/styles/vars.css
+ * Neuro OJ Documentation Theme - Clean Cyber Azure (浅蓝科技调)
+ * 遵循近直角工业美学与高对比度易读性规范
  */
 
-/**
- * Colors
- *
- * Each colors have exact same color scale system with 3 levels of solid
- * colors with different brightness, and 1 soft color.
- *
- * - `XXX-1`: The most solid color used mainly for colored text. It must
- *   satisfy the contrast ratio against when used on top of `XXX-soft`.
- *
- * - `XXX-2`: The color used mainly for hover state of the button.
- *
- * - `XXX-3`: The color for solid background, such as bg color of the button.
- *   It must satisfy the contrast ratio with pure white (#ffffff) text on
- *   top of it.
- *
- * - `XXX-soft`: The color used for subtle background such as custom container
- *   or badges. It must satisfy the contrast ratio when putting `XXX-1` colors
- *   on top of it.
- *
- *   The soft color must be semi transparent alpha channel. This is crucial
- *   because it allows adding multiple "soft" colors on top of each other
- *   to create a accent, such as when having inline code block inside
- *   custom containers.
- *
- * - `default`: The color used purely for subtle indication without any
- *   special meanings attached to it such as bg color for menu hover state.
- *
- * - `brand`: Used for primary brand colors, such as link text, button with
- *   brand theme, etc.
- *
- * - `tip`: Used to indicate useful information. The default theme uses the
- *   brand color for this by default.
- *
- * - `warning`: Used to indicate warning to the users. Used in custom
- *   container, badges, etc.
- *
- * - `danger`: Used to show error, or dangerous message to the users. Used
- *   in custom container, badges, etc.
- * -------------------------------------------------------------------------- */
+/* ==========================================================================
+ * 1. 颜色体系 (Color Palette)
+ * ========================================================================== */
 
 :root {
-  --vp-c-default-1: var(--vp-c-gray-1);
-  --vp-c-default-2: var(--vp-c-gray-2);
-  --vp-c-default-3: var(--vp-c-gray-3);
-  --vp-c-default-soft: var(--vp-c-gray-soft);
+  /* 基础底色与层次：清爽天青浅蓝 */
+  --vp-c-bg: #f5f8fc;
+  --vp-c-bg-alt: #ffffff;
+  --vp-c-bg-elv: #edf2f9;
+  --vp-c-bg-soft: #e2eaf4;
 
-  --vp-c-brand-1: var(--vp-c-indigo-1);
-  --vp-c-brand-2: var(--vp-c-indigo-2);
-  --vp-c-brand-3: var(--vp-c-indigo-3);
-  --vp-c-brand-soft: var(--vp-c-indigo-soft);
+  /* 边框与分割线：晶莹淡蓝灰 */
+  --vp-c-border: #e1e8f2;
+  --vp-c-divider: #e1e8f2;
+  --vp-c-gutter: #e1e8f2;
 
-  --vp-c-tip-1: var(--vp-c-brand-1);
-  --vp-c-tip-2: var(--vp-c-brand-2);
-  --vp-c-tip-3: var(--vp-c-brand-3);
-  --vp-c-tip-soft: var(--vp-c-brand-soft);
+  /* 文字排版：深海蓝黑墨 (Slate 900) 保证顶级可读性 */
+  --vp-c-text-1: #0f172a;
+  --vp-c-text-2: #475569;
+  --vp-c-text-3: #64748b;
 
-  --vp-c-warning-1: var(--vp-c-yellow-1);
-  --vp-c-warning-2: var(--vp-c-yellow-2);
-  --vp-c-warning-3: var(--vp-c-yellow-3);
-  --vp-c-warning-soft: var(--vp-c-yellow-soft);
+  /* 品牌天青蓝 (Brand Azure) */
+  --vp-c-brand-1: #0284c7;
+  --vp-c-brand-2: #0369a1;
+  --vp-c-brand-3: #075985;
+  --vp-c-brand-soft: rgba(2, 132, 199, 0.08);
 
-  --vp-c-danger-1: var(--vp-c-red-1);
-  --vp-c-danger-2: var(--vp-c-red-2);
-  --vp-c-danger-3: var(--vp-c-red-3);
-  --vp-c-danger-soft: var(--vp-c-red-soft);
+  /* 评测信号绿 (Signal Green) */
+  --c-signal: #059669;
+  --c-signal-deep: #047857;
+  --c-signal-rgb: 5, 150, 105;
+
+  /* 状态语义色 */
+  --vp-c-tip-1: #0284c7;
+  --vp-c-tip-2: #0369a1;
+  --vp-c-tip-3: #075985;
+  --vp-c-tip-soft: rgba(2, 132, 199, 0.06);
+
+  --vp-c-warning-1: #d97706;
+  --vp-c-warning-2: #b45309;
+  --vp-c-warning-3: #92400e;
+  --vp-c-warning-soft: rgba(217, 119, 6, 0.07);
+
+  --vp-c-danger-1: #e11d48;
+  --vp-c-danger-2: #be123c;
+  --vp-c-danger-3: #9f1239;
+  --vp-c-danger-soft: rgba(225, 29, 72, 0.07);
+
+  /* 工业形态：2–6px 近直角规范 */
+  --vp-border-radius: 4px;
+  --vp-button-border-radius: 4px;
 }
 
-/**
- * Component: Button
- * -------------------------------------------------------------------------- */
+.dark {
+  /* 基础底色与层次：深邃海军蓝黑 */
+  --vp-c-bg: #0b0f19;
+  --vp-c-bg-alt: #131b2e;
+  --vp-c-bg-elv: #070a12;
+  --vp-c-bg-soft: #1e293b;
 
-:root {
-  --vp-button-brand-border: transparent;
-  --vp-button-brand-text: var(--vp-c-white);
-  --vp-button-brand-bg: var(--vp-c-brand-3);
-  --vp-button-brand-hover-border: transparent;
-  --vp-button-brand-hover-text: var(--vp-c-white);
-  --vp-button-brand-hover-bg: var(--vp-c-brand-2);
-  --vp-button-brand-active-border: transparent;
-  --vp-button-brand-active-text: var(--vp-c-white);
-  --vp-button-brand-active-bg: var(--vp-c-brand-1);
+  /* 边框与分割线：深海科技暗线 */
+  --vp-c-border: #1e293b;
+  --vp-c-divider: #1e293b;
+  --vp-c-gutter: #1e293b;
+
+  /* 文字排版：纯净冷白，对比锐利 */
+  --vp-c-text-1: #f8fafc;
+  --vp-c-text-2: #94a3b8;
+  --vp-c-text-3: #64748b;
+
+  /* 品牌天青蓝 (荧光高光) */
+  --vp-c-brand-1: #38bdf8;
+  --vp-c-brand-2: #0ea5e9;
+  --vp-c-brand-3: #0284c7;
+  --vp-c-brand-soft: rgba(56, 189, 248, 0.12);
+
+  /* 评测信号绿 (荧光绿) */
+  --c-signal: #00e07a;
+  --c-signal-deep: #00d68a;
+  --c-signal-rgb: 0, 224, 122;
+
+  /* 状态语义色 */
+  --vp-c-tip-1: #38bdf8;
+  --vp-c-tip-2: #0ea5e9;
+  --vp-c-tip-3: #0284c7;
+  --vp-c-tip-soft: rgba(56, 189, 248, 0.1);
+
+  --vp-c-warning-1: #fbbf24;
+  --vp-c-warning-2: #f59e0b;
+  --vp-c-warning-3: #d97706;
+  --vp-c-warning-soft: rgba(251, 191, 36, 0.1);
+
+  --vp-c-danger-1: #fb7185;
+  --vp-c-danger-2: #f43f5e;
+  --vp-c-danger-3: #e11d48;
+  --vp-c-danger-soft: rgba(251, 113, 133, 0.1);
 }
 
-/**
- * Component: Home
- * -------------------------------------------------------------------------- */
+/* ==========================================================================
+ * 2. 背景微质感装饰 (Azure Tech Grid)
+ * ========================================================================== */
 
-:root {
-  --vp-home-hero-name-color: transparent;
-  --vp-home-hero-name-background: -webkit-linear-gradient(
-    120deg,
-    #bd34fe 30%,
-    #41d1ff
-  );
-
-  --vp-home-hero-image-background-image: linear-gradient(
-    -45deg,
-    #bd34fe 50%,
-    #47caff 50%
-  );
-  --vp-home-hero-image-filter: blur(44px);
+.VPContent {
+  background-image: radial-gradient(rgba(2, 132, 199, 0.07) 1px, transparent 1px);
+  background-size: 28px 28px;
 }
 
-@media (min-width: 640px) {
-  :root {
-    --vp-home-hero-image-filter: blur(56px);
-  }
+.dark .VPContent {
+  background-image: radial-gradient(rgba(56, 189, 248, 0.08) 1px, transparent 1px);
+  background-size: 28px 28px;
 }
 
-@media (min-width: 960px) {
-  :root {
-    --vp-home-hero-image-filter: blur(68px);
-  }
+/* ==========================================================================
+ * 3. 导航与顶栏 (Nav & Local Nav)
+ * ========================================================================== */
+
+.VPNav {
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border-bottom: 1px solid var(--vp-c-border);
 }
 
-/**
- * Component: Custom Block
- * -------------------------------------------------------------------------- */
-
-:root {
-  --vp-custom-block-tip-border: transparent;
-  --vp-custom-block-tip-text: var(--vp-c-text-1);
-  --vp-custom-block-tip-bg: var(--vp-c-brand-soft);
-  --vp-custom-block-tip-code-bg: var(--vp-c-brand-soft);
+.VPNavBarTitle .logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
 }
 
-/**
- * Component: Sidebar
- * -------------------------------------------------------------------------- */
-
-:root {
-  --vp-sidebar-bg-color: transparent;
+.VPNavBarTitle .title > span {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--vp-c-text-1);
 }
 
-@media (max-width: 959px) {
-  :root {
-    --vp-sidebar-bg-color: var(--vp-c-bg-alt);
-  }
-
-  .VPSidebar {
-    background-color: var(--vp-c-bg-alt) !important;
-  }
+.VPNavBarMenuLink {
+  border-radius: 4px;
+  font-weight: 500;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.VPSidebarItem.is-link > .item > .link {
-  margin: 2px 0;
-  border-radius: 8px;
-  padding: 0 10px;
-  transition: none;
+.VPNavBarMenuLink.active {
+  color: var(--vp-c-brand-1) !important;
+  background-color: var(--vp-c-brand-soft);
 }
 
-.VPSidebarItem,
-.VPSidebarItem > .item,
-.VPSidebarItem > .item > .link {
-  border-bottom: none !important;
-}
-
-.VPSidebar .group + .group {
-  border-top: none !important;
-}
+/* ==========================================================================
+ * 4. 侧边栏 (Sidebar) - 近直角与微滚动槽
+ * ========================================================================== */
 
 .VPSidebar {
   scrollbar-width: thin;
   scrollbar-color: var(--vp-c-divider) transparent;
+  background-color: var(--vp-c-bg) !important;
+  border-right: 1px solid var(--vp-c-border);
 }
 
 .VPSidebar::-webkit-scrollbar {
-  width: 10px;
-}
-
-.VPSidebar::-webkit-scrollbar-track {
-  background: transparent;
+  width: 6px;
 }
 
 .VPSidebar::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background-clip: padding-box;
-  background-color: var(--vp-c-divider);
+  background-color: var(--vp-c-border);
+  border-radius: 3px;
 }
 
-.VPSidebar::-webkit-scrollbar-thumb:hover {
-  background-color: var(--vp-c-text-3);
+.VPSidebarItem.is-link > .item > .link {
+  margin: 3px 0;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 14px;
+  line-height: 20px;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .VPSidebarItem.is-link > .item > .link:hover {
-  background-color: var(--vp-c-default-soft);
+  background-color: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
 }
 
 .VPSidebarItem.is-link.is-active > .item > .link {
   background-color: var(--vp-c-brand-soft);
-}
-
-/**
- * Component: Algolia
- * -------------------------------------------------------------------------- */
-
-.DocSearch {
-  --docsearch-primary-color: var(--vp-c-brand-1) !important;
-}
-
-/**
- * Component: Nav
- * -------------------------------------------------------------------------- */
-
-.VPNavBarTitle .logo {
-  width: 40px;
-  height: 40px;
-}
-
-.VPNavBarTitle .title > span {
-  font-size: 26px;
-  color: var(--vp-c-text-1);
-}
-
-
-/**
- * Component: Local Nav
- * -------------------------------------------------------------------------- */
-
-@media (min-width: 960px) {
-  .VPLocalNav.has-sidebar {
-    border-bottom: none !important;
-  }
-
-  .VPLocalNav.has-sidebar::after {
-    content: "";
-    position: absolute;
-    left: var(--vp-sidebar-width);
-    right: 0;
-    bottom: 0;
-    height: 1px;
-    background-color: var(--vp-c-gutter);
-  }
-}
-
-@media (min-width: 1440px) {
-  .VPLocalNav.has-sidebar::after {
-    left: calc((100vw - var(--vp-layout-max-width)) / 2 + var(--vp-sidebar-width));
-  }
-}
-
-.VPDocAsideOutline.has-outline .content {
-  border-left: none !important;
-}
-
-
-.VPHomeHero:not(.has-image) .container {
-  text-align: center;
-}
-
-.VPHomeHero:not(.has-image) .heading {
-  align-items: center;
-}
-
-.VPHomeHero:not(.has-image) .name,
-.VPHomeHero:not(.has-image) .text,
-.VPHomeHero:not(.has-image) .tagline {
-  margin: 0 auto;
-}
-
-.VPHomeHero:not(.has-image) .actions {
-  justify-content: center;
+  color: var(--vp-c-brand-1);
+  font-weight: 600;
+  border-left: 2px solid var(--vp-c-brand-1);
 }
 
 /* ==========================================================================
- * NOJ 品牌覆盖（追加段，保持 AstrBot 样式原样在其上）
- * 品牌色与 noj-ui 一致（--c-primary: #1B2B4A / --c-signal: #00d68a）
+ * 5. 正文排版与标题前置信号柱 (Typography & Headings)
  * ========================================================================== */
-:root {
-  --vp-c-brand-1: #1B2B4A;
-  --vp-c-brand-2: #00d68a;
-  --vp-c-brand-3: #007146;
-  --vp-c-brand-soft: rgba(0, 214, 138, 0.14);
+
+.vp-doc {
+  line-height: 1.75;
+  font-size: 15.5px;
 }
 
-.dark {
-  --vp-c-brand-1: #7C96D6;
-  --vp-c-brand-2: #00e07a;
-  --vp-c-brand-3: #00d68a;
-  --vp-c-brand-soft: rgba(0, 224, 122, 0.16);
+.vp-doc p,
+.vp-doc ul,
+.vp-doc ol {
+  margin: 1.1em 0;
 }
 
-/* hero 品牌名：纯色（不用默认渐变，保持清晰） */
+/* 数值对齐统一启用 tabular-nums */
+.vp-doc,
+.vp-doc table,
+.vp-doc code {
+  font-variant-numeric: tabular-nums;
+}
+
+/* H1 标题 */
+.vp-doc h1 {
+  font-size: 32px;
+  letter-spacing: -0.025em;
+  font-weight: 800;
+  margin-bottom: 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--vp-c-border);
+}
+
+/* H2 标题：底部分割科技微光线，与左侧锚点完美对齐 */
+.vp-doc h2 {
+  position: relative;
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin-top: 38px;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-top: none;
+  border-bottom: 1px solid var(--vp-c-border);
+}
+
+.vp-doc h2::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 56px;
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, var(--vp-c-brand-1) 0%, transparent 100%);
+}
+
+/* 锚点链接 # 精致化 */
+.vp-doc .header-anchor {
+  color: var(--vp-c-brand-1) !important;
+  text-decoration: none !important;
+  font-weight: 600;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease;
+}
+
+.vp-doc h1:hover .header-anchor,
+.vp-doc h2:hover .header-anchor,
+.vp-doc h3:hover .header-anchor,
+.vp-doc h4:hover .header-anchor {
+  opacity: 0.85;
+}
+
+/* H3 标题 */
+.vp-doc h3 {
+  font-size: 19px;
+  font-weight: 600;
+  margin-top: 28px;
+  margin-bottom: 12px;
+  color: var(--vp-c-text-1);
+}
+
+/* 右侧大纲当前高亮项前加微脉冲点 */
+.VPDocAsideOutline .outline-link.active {
+  color: var(--vp-c-brand-1) !important;
+  font-weight: 600;
+  position: relative;
+}
+
+.VPDocAsideOutline .outline-link.active::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 8px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--vp-c-brand-1);
+}
+
+/* ==========================================================================
+ * 6. 数据表格精致化 (Tech Tables)
+ * ========================================================================== */
+
+.vp-doc table {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+  margin: 20px 0;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--vp-c-border);
+  font-size: 14px;
+}
+
+.vp-doc tr {
+  background-color: var(--vp-c-bg-alt);
+  border-top: 1px solid var(--vp-c-border);
+  transition: background-color 0.15s ease;
+}
+
+.vp-doc tr:nth-child(2n) {
+  background-color: rgba(2, 132, 199, 0.02);
+}
+
+.dark .vp-doc tr:nth-child(2n) {
+  background-color: rgba(56, 189, 248, 0.02);
+}
+
+.vp-doc tr:hover {
+  background-color: rgba(2, 132, 199, 0.05);
+}
+
+.dark .vp-doc tr:hover {
+  background-color: rgba(56, 189, 248, 0.05);
+}
+
+.vp-doc th {
+  background-color: var(--vp-c-bg-elv);
+  color: var(--vp-c-text-1);
+  font-weight: 600;
+  text-align: left;
+  padding: 10px 16px;
+  border: 1px solid var(--vp-c-border);
+}
+
+.vp-doc td {
+  padding: 10px 16px;
+  border: 1px solid var(--vp-c-border);
+}
+
+/* ==========================================================================
+ * 7. 代码块微质感 (Navy Terminal Code Blocks)
+ * ========================================================================== */
+
+.vp-doc div[class*="language-"] {
+  border-radius: 4px;
+  border: 1px solid var(--vp-c-border);
+  background-color: #0d1117 !important;
+  margin: 18px 0;
+  box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.08);
+}
+
+.dark .vp-doc div[class*="language-"] {
+  border-color: #1e293b;
+  background-color: #070a12 !important;
+}
+
+.vp-doc div[class*="language-"] pre {
+  padding: 14px 18px;
+}
+
+.vp-doc div[class*="language-"] button.copy {
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 行内代码徽章 */
+.vp-doc :not(pre) > code {
+  font-size: 0.88em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background-color: var(--vp-c-bg-elv);
+  border: 1px solid var(--vp-c-border);
+  color: var(--vp-c-brand-1);
+  font-weight: 500;
+}
+
+/* ==========================================================================
+ * 8. 首页微装饰与呼吸状态胶囊 (Hero & Status Badge)
+ * ========================================================================== */
+
 .VPHero .name {
   color: var(--vp-c-brand-1);
-  background: none;
-  -webkit-text-fill-color: var(--vp-c-brand-1);
+  background: linear-gradient(135deg, #0284c7 0%, #1e40af 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
 }
 
-/* ---------- 长内容换行兜底 ----------
- * 自定义容器与行内代码中的长 URL / 长标识符（如 noj-storage://...）
- * 默认不换行会撑出容器，这里允许在任意断点换行；
- * 代码块（pre）保留横向滚动，不受影响。
- */
+.dark .VPHero .name {
+  background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.VPHero .tagline {
+  color: var(--vp-c-text-2);
+  letter-spacing: 0.01em;
+}
+
+/* 角色引导卡片现代浅蓝悬浮效果 */
+.role-guide-section .custom-block {
+  border-radius: 6px !important;
+  border: 1px solid var(--vp-c-border) !important;
+  background-color: var(--vp-c-bg-alt) !important;
+  box-shadow: 0 2px 8px -1px rgba(15, 23, 42, 0.04);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.role-guide-section .custom-block:hover {
+  transform: translateY(-2px);
+  border-color: var(--vp-c-brand-1) !important;
+  box-shadow: 0 8px 24px -4px rgba(2, 132, 199, 0.12);
+}
+
+.dark .role-guide-section .custom-block:hover {
+  box-shadow: 0 8px 24px -4px rgba(56, 189, 248, 0.16);
+}
+
+/* 按钮统一近直角 4px */
+.VPButton {
+  border-radius: 4px !important;
+  font-weight: 600;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.VPButton.brand {
+  background-color: var(--vp-c-brand-1) !important;
+  border-color: var(--vp-c-brand-1) !important;
+  color: #ffffff !important;
+}
+
+.VPButton.brand:hover {
+  background-color: var(--vp-c-brand-2) !important;
+  border-color: var(--vp-c-brand-2) !important;
+}
+
+.VPButton.alt {
+  background-color: var(--vp-c-bg-alt) !important;
+  border: 1px solid var(--vp-c-border) !important;
+  color: var(--vp-c-text-1) !important;
+}
+
+.VPButton.alt:hover {
+  border-color: var(--vp-c-brand-1) !important;
+  color: var(--vp-c-brand-1) !important;
+}
+
+/* 状态脉冲呼吸动画 */
+@keyframes pulse-azure {
+  0% {
+    box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(2, 132, 199, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(2, 132, 199, 0);
+  }
+}
+
+.live-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--c-signal);
+  animation: pulse-azure 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+/* 科技状态条 (Status Banner) */
+.tech-status-banner {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  background-color: var(--vp-c-brand-soft);
+  border: 1px solid rgba(2, 132, 199, 0.22);
+  color: var(--vp-c-brand-1);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  margin-bottom: 24px;
+}
+
+.dark .tech-status-banner {
+  border-color: rgba(56, 189, 248, 0.25);
+}
+
+/* 角色引导卡片网格布局 */
+.role-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+@media (min-width: 768px) {
+  .role-cards-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+}
+
+/* 长内容换行兜底 */
 .vp-doc .custom-block,
 .vp-doc :not(pre) > code {
   overflow-wrap: break-word;
   word-break: break-word;
 }
+

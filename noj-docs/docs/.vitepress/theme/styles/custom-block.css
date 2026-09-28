@@ -1,238 +1,166 @@
-/* .vitepress/theme/style/custom-block.css */
-/* 深浅色卡 */
+/**
+ * Modern Transparent Callout Containers - Clean Cyber Azure Style
+ * 3px 坚实左边框 + 5% 半透明浅底 + 矢量线性图标
+ */
+
 :root {
-    --custom-block-info-left: #cccccc;
-    --custom-block-info-bg: #fafafa;
+  --cb-tip-border: #0284c7;
+  --cb-tip-bg: rgba(2, 132, 199, 0.05);
+  --cb-tip-title: #0284c7;
 
-    --custom-block-tip-left: #009400;
-    --custom-block-tip-bg: #b6dcc7;
+  --cb-info-border: #2563eb;
+  --cb-info-bg: rgba(37, 99, 235, 0.05);
+  --cb-info-title: #2563eb;
 
-    --custom-block-warning-left: #e6a700;
-    --custom-block-warning-bg: #ffe69d;
+  --cb-warning-border: #d97706;
+  --cb-warning-bg: rgba(217, 119, 6, 0.05);
+  --cb-warning-title: #b45309;
 
-    --custom-block-danger-left: #e13238;
-    --custom-block-danger-bg: #ffebec;
-
-    --custom-block-note-left: #4cb3d4;
-    --custom-block-note-bg: #d6eff7;
-
-    --custom-block-important-left: #a371f7;
-    --custom-block-important-bg: #f4eefe;
-
-    --custom-block-caution-left: #e0575b;
-    --custom-block-caution-bg: #fde4e8;
+  --cb-danger-border: #e11d48;
+  --cb-danger-bg: rgba(225, 29, 72, 0.05);
+  --cb-danger-title: #be123c;
 }
 
 .dark {
-    --custom-block-info-left: #cccccc;
-    --custom-block-info-bg: #474748;
+  --cb-tip-border: #38bdf8;
+  --cb-tip-bg: rgba(56, 189, 248, 0.08);
+  --cb-tip-title: #38bdf8;
 
-    --custom-block-tip-left: #009400;
-    --custom-block-tip-bg: #003100;
+  --cb-info-border: #60a5fa;
+  --cb-info-bg: rgba(96, 165, 250, 0.08);
+  --cb-info-title: #60a5fa;
 
-    --custom-block-warning-left: #e6a700;
-    --custom-block-warning-bg: #4d3800;
+  --cb-warning-border: #fbbf24;
+  --cb-warning-bg: rgba(251, 191, 36, 0.08);
+  --cb-warning-title: #fbbf24;
 
-    --custom-block-danger-left: #e13238;
-    --custom-block-danger-bg: #4b1113;
-
-    --custom-block-note-left: #4cb3d4;
-    --custom-block-note-bg: #193c47;
-
-    --custom-block-important-left: #a371f7;
-    --custom-block-important-bg: #230555;
-
-    --custom-block-caution-left: #e0575b;
-    --custom-block-caution-bg: #391c22;
+  --cb-danger-border: #fb7185;
+  --cb-danger-bg: rgba(251, 113, 133, 0.08);
+  --cb-danger-title: #fb7185;
 }
 
+/* 基础容器外观 */
+.custom-block {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-radius: 4px !important;
+  border: 1px solid var(--vp-c-border);
+  border-left-width: 4px !important;
+  line-height: 1.7;
+  font-size: 14.5px;
+  transition: all 0.15s ease;
+}
 
-/* 标题字体大小 */
+.custom-block p {
+  margin: 6px 0;
+}
+
+.custom-block p:first-child {
+  margin-top: 0;
+}
+
+.custom-block p:last-child {
+  margin-bottom: 0;
+}
+
+/* 容器标题 */
 .custom-block-title {
-    font-size: 16px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-/* info容器:背景色、左侧 */
-.custom-block.info {
-    background-color: var(--custom-block-info-bg);
-}
-
-/* info容器:svg图 */
-.custom-block.info [class*="custom-block-title"]::before {
-    content: '';
-    background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm-1-11v6h2v-6h-2zm0-4v2h2V7h-2z' fill='%23ccc'/%3E%3C/svg%3E");
-    width: 20px;
-    height: 20px;
-    display: inline-block;
-    vertical-align: middle;
-    position: relative;
-    margin-right: 4px;
-    left: -5px;
-    top: -1px;
-}
-
-/* 提示容器:边框色、背景色、左侧 */
+/* Tip 提示容器 */
 .custom-block.tip {
-    background-color: var(--custom-block-tip-bg);
+  border-left-color: var(--cb-tip-border) !important;
+  background-color: var(--cb-tip-bg) !important;
 }
 
-/* 提示容器:svg图 */
-.custom-block.tip [class*="custom-block-title"]::before {
-    content: '';
-    background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23009400' d='M7.941 18c-.297-1.273-1.637-2.314-2.187-3a8 8 0 1 1 12.49.002c-.55.685-1.888 1.726-2.185 2.998H7.94zM16 20v1a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-1h8zm-3-9.995V6l-4.5 6.005H11v4l4.5-6H13z'/%3E%3C/svg%3E");
-    width: 20px;
-    height: 20px;
-    display: inline-block;
-    vertical-align: middle;
-    position: relative;
-    margin-right: 4px;
-    left: -5px;
-    top: -2px;
+.custom-block.tip .custom-block-title {
+  color: var(--cb-tip-title);
 }
 
-/* 警告容器:背景色、左侧 */
+.custom-block.tip .custom-block-title::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  background-color: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83'/%3E%3C/svg%3E") no-repeat center / contain;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 16v-4M12 8h.01'/%3E%3C/svg%3E") no-repeat center / contain;
+}
+
+/* Info 信息容器 */
+.custom-block.info {
+  border-left-color: var(--cb-info-border) !important;
+  background-color: var(--cb-info-bg) !important;
+}
+
+.custom-block.info .custom-block-title {
+  color: var(--cb-info-title);
+}
+
+.custom-block.info .custom-block-title::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  background-color: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' y1='16' x2='12' y2='12'/%3E%3Cline x1='12' y1='8' x2='12.01' y2='8'/%3E%3C/svg%3E") no-repeat center / contain;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' y1='16' x2='12' y2='12'/%3E%3Cline x1='12' y1='8' x2='12.01' y2='8'/%3E%3C/svg%3E") no-repeat center / contain;
+}
+
+/* Warning 警告容器 */
 .custom-block.warning {
-    background-color: var(--custom-block-warning-bg);
+  border-left-color: var(--cb-warning-border) !important;
+  background-color: var(--cb-warning-bg) !important;
 }
 
-/* 警告容器:svg图 */
-.custom-block.warning [class*="custom-block-title"]::before {
-    content: '';
-    background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'%3E%3Cpath d='M576.286 752.57v-95.425q0-7.031-4.771-11.802t-11.3-4.772h-96.43q-6.528 0-11.3 4.772t-4.77 11.802v95.424q0 7.031 4.77 11.803t11.3 4.77h96.43q6.528 0 11.3-4.77t4.77-11.803zm-1.005-187.836 9.04-230.524q0-6.027-5.022-9.543-6.529-5.524-12.053-5.524H456.754q-5.524 0-12.053 5.524-5.022 3.516-5.022 10.547l8.538 229.52q0 5.023 5.022 8.287t12.053 3.265h92.913q7.032 0 11.803-3.265t5.273-8.287zM568.25 95.65l385.714 707.142q17.578 31.641-1.004 63.282-8.538 14.564-23.354 23.102t-31.892 8.538H126.286q-17.076 0-31.892-8.538T71.04 866.074q-18.582-31.641-1.004-63.282L455.75 95.65q8.538-15.57 23.605-24.61T512 62t32.645 9.04 23.605 24.61z' fill='%23e6a700'/%3E%3C/svg%3E");
-    width: 20px;
-    height: 20px;
-    display: inline-block;
-    vertical-align: middle;
-    position: relative;
-    margin-right: 4px;
-    left: -5px;
+.custom-block.warning .custom-block-title {
+  color: var(--cb-warning-title);
 }
 
-/* 危险容器:背景色、左侧 */
+.custom-block.warning .custom-block-title::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  background-color: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z'/%3E%3Cline x1='12' y1='9' x2='12' y2='13'/%3E%3Cline x1='12' y1='17' x2='12.01' y2='17'/%3E%3C/svg%3E") no-repeat center / contain;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z'/%3E%3Cline x1='12' y1='9' x2='12' y2='13'/%3E%3Cline x1='12' y1='17' x2='12.01' y2='17'/%3E%3C/svg%3E") no-repeat center / contain;
+}
+
+/* Danger 错误/危险容器 */
 .custom-block.danger {
-    background-color: var(--custom-block-danger-bg);
+  border-left-color: var(--cb-danger-border) !important;
+  background-color: var(--cb-danger-bg) !important;
 }
 
-/* 危险容器:svg图 */
-.custom-block.danger [class*="custom-block-title"]::before {
-    content: '';
-    background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2c5.523 0 10 4.477 10 10v3.764a2 2 0 0 1-1.106 1.789L18 19v1a3 3 0 0 1-2.824 2.995L14.95 23a2.5 2.5 0 0 0 .044-.33L15 22.5V22a2 2 0 0 0-1.85-1.995L13 20h-2a2 2 0 0 0-1.995 1.85L9 22v.5c0 .171.017.339.05.5H9a3 3 0 0 1-3-3v-1l-2.894-1.447A2 2 0 0 1 2 15.763V12C2 6.477 6.477 2 12 2zm-4 9a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm8 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z' fill='%23e13238'/%3E%3C/svg%3E");
-    width: 20px;
-    height: 20px;
-    display: inline-block;
-    vertical-align: middle;
-    position: relative;
-    margin-right: 4px;
-    left: -5px;
-    top: -1px;
+.custom-block.danger .custom-block-title {
+  color: var(--cb-danger-title);
 }
 
-/* 提醒容器:背景色、左侧 */
-.custom-block.note {
-    background-color: var(--custom-block-note-bg);
+.custom-block.danger .custom-block-title::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  background-color: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2'/%3E%3Cline x1='15' y1='9' x2='9' y2='15'/%3E%3Cline x1='9' y1='9' x2='15' y2='15'/%3E%3C/svg%3E") no-repeat center / contain;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2'/%3E%3Cline x1='15' y1='9' x2='9' y2='15'/%3E%3Cline x1='9' y1='9' x2='15' y2='15'/%3E%3C/svg%3E") no-repeat center / contain;
 }
 
-/* 提醒容器:svg图 */
-.custom-block.note [class*="custom-block-title"]::before {
-    content: '';
-    background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm-1-11v6h2v-6h-2zm0-4v2h2V7h-2z' fill='%234cb3d4'/%3E%3C/svg%3E");
-    width: 20px;
-    height: 20px;
-    display: inline-block;
-    vertical-align: middle;
-    position: relative;
-    margin-right: 4px;
-    left: -5px;
-    top: -1px;
+/* 容器内部的内联代码块背景自适应 */
+.custom-block code {
+  background-color: rgba(15, 23, 42, 0.06) !important;
+  border-color: rgba(15, 23, 42, 0.1) !important;
 }
 
-/* 重要容器:背景色、左侧 */
-.custom-block.important {
-    background-color: var(--custom-block-important-bg);
-}
-
-/* 重要容器:svg图 */
-.custom-block.important [class*="custom-block-title"]::before {
-    content: '';
-    background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'%3E%3Cpath d='M512 981.333a84.992 84.992 0 0 1-84.907-84.906h169.814A84.992 84.992 0 0 1 512 981.333zm384-128H128v-42.666l85.333-85.334v-256A298.325 298.325 0 0 1 448 177.92V128a64 64 0 0 1 128 0v49.92a298.325 298.325 0 0 1 234.667 291.413v256L896 810.667v42.666zm-426.667-256v85.334h85.334v-85.334h-85.334zm0-256V512h85.334V341.333h-85.334z' fill='%23a371f7'/%3E%3C/svg%3E");
-    width: 20px;
-    height: 20px;
-    display: inline-block;
-    vertical-align: middle;
-    position: relative;
-    margin-right: 4px;
-    left: -5px;
-    top: -1px;
-}
-
-/* 注意容器:背景色、左侧 */
-.custom-block.caution {
-    background-color: var(--custom-block-caution-bg);
-}
-
-/* 注意容器:svg图 */
-.custom-block.caution [class*="custom-block-title"]::before {
-    content: '';
-    background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2c5.523 0 10 4.477 10 10v3.764a2 2 0 0 1-1.106 1.789L18 19v1a3 3 0 0 1-2.824 2.995L14.95 23a2.5 2.5 0 0 0 .044-.33L15 22.5V22a2 2 0 0 0-1.85-1.995L13 20h-2a2 2 0 0 0-1.995 1.85L9 22v.5c0 .171.017.339.05.5H9a3 3 0 0 1-3-3v-1l-2.894-1.447A2 2 0 0 1 2 15.763V12C2 6.477 6.477 2 12 2zm-4 9a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm8 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z' fill='%23e13238'/%3E%3C/svg%3E");
-    width: 20px;
-    height: 20px;
-    display: inline-block;
-    vertical-align: middle;
-    position: relative;
-    margin-right: 4px;
-    left: -5px;
-    top: -1px;
-}
-
-/* ============================================================
-   数据字典专用：DANGER ZONE 徽标与危险列标记
-   用于 noj-docs/docs/reference/data-dictionary.md。
-   颜色复用 custom-block 的 danger 色，亮/暗两套；圆角 3px（近直角，
-   遵循品牌设计 token）。
-   ============================================================ */
-
-:root {
-    --noj-danger-zone-bg: #ffebec;
-    --noj-danger-zone-border: #e13238;
-    --noj-danger-zone-text: #8a1418;
-    --noj-danger-col: #c11f25;
-}
-
-/* 注意：:root 与 .dark 特异性相同，后定义者生效。
-   沿用本文件既有写法（见文件顶部）：:root 在前、.dark 在后，
-   使暗色模式覆盖亮色值。调整顺序会静默破坏暗色配色。 */
-.dark {
-    --noj-danger-zone-bg: #4b1113;
-    --noj-danger-zone-border: #e13238;
-    --noj-danger-zone-text: #ffd9db;
-    --noj-danger-col: #ff9ba0;
-}
-
-/* 行内徽标：置于表标题后，如 `llm_providers` <span class="noj-danger-zone">DANGER ZONE</span> */
-.noj-danger-zone {
-    display: inline-block;
-    vertical-align: middle;
-    margin-left: 8px;
-    padding: 1px 8px;
-    border: 1px solid var(--noj-danger-zone-border);
-    border-radius: 3px;
-    background-color: var(--noj-danger-zone-bg);
-    color: var(--noj-danger-zone-text);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    line-height: 18px;
-    text-transform: uppercase;
-    white-space: nowrap;
-}
-
-/* 危险列单元格标记（字段表中的红色文字） */
-.noj-danger-col {
-    color: var(--noj-danger-col);
-    font-weight: 600;
-}
-
-/* 危险列单元格标记旁的小图标（用于「加密存储」「凭据」等） */
-.noj-danger-col::before {
-    content: '⚠ ';
+.dark .custom-block code {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
 }
