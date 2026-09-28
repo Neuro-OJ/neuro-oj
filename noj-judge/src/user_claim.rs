@@ -135,6 +135,58 @@ pub async fn release_user(
     }
 }
 
+/// 启动期回收**本实例遗留的全部 claim**（NOJ-D2）。
+///
+/// worker 被 OOM-kill / SIGKILL / 宿主断电时，`ActiveUserGuard::drop` 来不及执行
+/// `release_user`，其 claim 会留在 `{prefix}:active_users:*` 里直到 `ttl`（默认
+/// 3600s）自然过期。这段时间内该用户的所有提交都会被判为"已有活跃评测"而被无限
+/// 重投（每 100ms 一轮，且每轮新建一条 Redis 连接），把一次崩溃放大成**该用户最长
+/// 1 小时不可评测**（而崩溃往往由别的用户触发，受害者是无辜的）。
+///
+/// 启动时本实例**不可能**有在跑的评测，因此凡是 member 前缀为本实例 ID 的 claim
+/// 一定是过期残留，可安全清除。member 形如 `{instance_id}:{submission_id}`
+/// （见 [`claim_member`]），按前缀匹配即可精确定位，不会误删其他实例的 claim。
+///
+/// 返回清除的 claim 条数（供启动日志记录）。调用方不应因失败而退出。
+pub async fn purge_instance_claims(
+    conn: &mut redis::aio::MultiplexedConnection,
+    prefix: &str,
+    instance_id: &str,
+) -> Result<u64> {
+    let pattern = format!("{prefix}:{ACTIVE_USERS_SUFFIX}:*");
+    let member_prefix = format!("{instance_id}:");
+    let mut cursor: u64 = 0;
+    let mut removed: u64 = 0;
+    loop {
+        // SCAN 而非 KEYS：claim key 数随活跃用户数增长，KEYS 会阻塞 Redis。
+        let (next, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+            .arg(cursor)
+            .arg("MATCH")
+            .arg(&pattern)
+            .arg("COUNT")
+            .arg(100)
+            .query_async(conn)
+            .await
+            .context("扫描活跃 claim key 失败")?;
+        for key in keys {
+            let members: Vec<String> = conn.zrange(&key, 0, -1).await.unwrap_or_default();
+            for member in members {
+                if !member.starts_with(&member_prefix) {
+                    continue;
+                }
+                if conn.zrem::<_, _, i64>(&key, &member).await.unwrap_or(0) > 0 {
+                    removed += 1;
+                }
+            }
+        }
+        if next == 0 {
+            break;
+        }
+        cursor = next;
+    }
+    Ok(removed)
+}
+
 /// 查询某用户当前**未过期**的 claim 数量（用于诊断与测试）。
 ///
 /// 只读实现（评审订正）：原实现用 `ZREMRANGEBYSCORE` 清理过期成员后 `ZCARD`——

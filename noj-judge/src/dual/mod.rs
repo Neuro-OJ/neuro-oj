@@ -39,8 +39,8 @@ mod tests;
 use pipe::{forward_frame, write_timeout_frame, PipeWriteOutcome};
 
 use crate::sandbox::container::{
-    extract_zip_entries_from_file, inject_file_to_container, inject_files_to_container,
-    parse_command,
+    extract_zip_entries_from_file, inject_file_to_container, inject_zip_entries_to_container,
+    parse_command, ZipEntry,
 };
 use crate::types::{JudgeResult, JudgeStatus, JudgeTaskLlm, RuntimeConfig};
 
@@ -198,21 +198,19 @@ async fn inject_support_package_to_evaluator(
     .await
     .context("spawn_blocking 提取 zip 失败")??;
 
-    // 目录条目由 tar 解压自动创建，无需注入；文件一次性批量注入。
-    let files: Vec<(&str, &[u8])> = entries
-        .iter()
-        .filter(|entry| !entry.is_dir)
-        .map(|entry| (entry.file_name.as_str(), entry.data.as_slice()))
-        .collect();
+    // 目录条目由 tar 解压自动创建，无需注入；文件**按值消费**注入
+    // （NOJ-A1：边写边释放条目数据，峰值内存不再随"条目 + tar"翻倍）。
+    let entry_count = entries.len();
+    let files: Vec<ZipEntry> = entries.into_iter().filter(|entry| !entry.is_dir).collect();
+    let file_count = files.len();
 
-    inject_files_to_container(docker, container_id, &files)
+    inject_zip_entries_to_container(docker, container_id, files)
         .await
         .context("批量注入支持包文件失败")?;
 
     info!(
         "支持包注入完成 (共 {} 个条目，其中 {} 个文件，单次 exec)",
-        entries.len(),
-        files.len()
+        entry_count, file_count
     );
     Ok(())
 }

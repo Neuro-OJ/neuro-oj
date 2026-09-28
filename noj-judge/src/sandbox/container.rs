@@ -1,11 +1,12 @@
 //! 支持包 zip 安全解压、文件批量注入与评测命令分词工具。
 //! 容器生命周期管理由 `dual/` 模块（双容器 RAII）负责。
 
-use std::io::{Read, Seek};
+use std::io::{Read, Seek, Write};
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use bollard::Docker;
+use tokio::io::AsyncWriteExt;
 
 /// 文件注入 exec 完成轮询次数与间隔（50 × 100ms = 5s 上限）。
 const INJECT_POLL_ATTEMPTS: u32 = 50;
@@ -13,6 +14,33 @@ const INJECT_POLL_INTERVAL_MS: u64 = 100;
 
 /// 容器内解包目录（注入目标）。
 const INJECT_TARGET_DIR: &str = "/workspace";
+
+/// 创建注入 exec 的本地超时。
+///
+/// bollard 的请求级超时（连接时传入的 120s）只包住"读到响应头"这一段，
+/// 对 hijack 后的流式连接不生效；因此每个会阻塞的调用都需要自己的上限。
+const INJECT_CREATE_EXEC_TIMEOUT: Duration = Duration::from_secs(10);
+/// 启动注入 exec 的本地超时。
+const INJECT_EXEC_START_TIMEOUT: Duration = Duration::from_secs(10);
+/// 写入 tar 流的超时。
+///
+/// **必须存在（NOJ-A2）**：该写入发生在任何评测总超时（启动 30s / 题目
+/// `time_limit_ms` / 调用级 `call_timeout_ms`）**之前**——那些时限都在
+/// `run_dual_loop` 内消费，此处一旦挂起，所有超时同时失效，任务会永久占住一个
+/// 评测槽位（全局 semaphore permit），`max_concurrent_judges` 次后本 worker
+/// 停止消费队列。触发条件很朴素：对端停止读取 stdin（内核管道缓冲约 64KB 写满
+/// 后再写即阻塞）。512MiB 上限下单次写入通常数秒完成，60s 有 10× 以上余量。
+const INJECT_WRITE_TIMEOUT: Duration = Duration::from_secs(60);
+/// 单次 `inspect_exec` 的本地超时（轮询次数本身已有上限，但单次调用也可能挂住）。
+const INJECT_INSPECT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// tar 流内存缓冲的增长粒度。
+///
+/// **关键（NOJ-A1）**：`Vec<u8>` 的几何翻倍增长会让"最后一次扩容"同时持有
+/// 旧缓冲与新缓冲（峰值 ≈2× 最终大小），叠加仍在内存中的 zip 条目后，512MiB
+/// 上限反而变成 ≈1GiB 峰值。按固定粒度精确增长可把峰值压到
+/// ≈max(tar 总量, 单条目最大值)。
+const TAR_GROWTH_CHUNK: usize = 4 * 1024 * 1024;
 
 /// 解压炸弹防护：最大条目数。
 pub const MAX_ZIP_ENTRIES: usize = 1000;
@@ -168,11 +196,104 @@ pub fn build_tar_archive(files: &[(&str, &[u8])]) -> Result<Vec<u8>> {
     Ok(tar_buf)
 }
 
+/// 精确增长的 `Vec<u8>` 写入器：按 [`TAR_GROWTH_CHUNK`] 追加容量，不做几何翻倍。
+///
+/// 存在的唯一理由见 `TAR_GROWTH_CHUNK` 的注释：`Vec` 的默认增长策略会在扩容瞬间
+/// 同时持有新旧两份缓冲，使峰值内存翻倍。
+struct ChunkedVec {
+    buf: Vec<u8>,
+}
+
+impl ChunkedVec {
+    fn new() -> Self {
+        Self { buf: Vec::new() }
+    }
+
+    fn into_inner(self) -> Vec<u8> {
+        self.buf
+    }
+}
+
+impl Write for ChunkedVec {
+    fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+        let needed = self.buf.len().saturating_add(data.len());
+        if needed > self.buf.capacity() {
+            // reserve_exact 而非 reserve：只要"刚好够这一段 + 固定粒度"，
+            // 避免翻倍式预留（峰值内存正是本函数要解决的问题）。
+            let extra = needed
+                .saturating_sub(self.buf.capacity())
+                .max(TAR_GROWTH_CHUNK);
+            self.buf.reserve_exact(extra);
+        }
+        self.buf.extend_from_slice(data);
+        Ok(data.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// 从**已拥有**的 zip 条目构造 tar 流：边追加边释放条目数据。
+///
+/// 与 [`build_tar_archive`] 的字节输出**完全等价**（同一 `tar::Builder` 参数、
+/// 同一 `Header` 设置、同一 `append_data`），但内存峰值显著更低（NOJ-A1）：
+/// `build_tar_archive` 要求"全部条目 + 完整 tar"同时驻留（512MiB 解压上限下
+/// 峰值 ≈1GiB）；本函数按值消费条目，每追加一条即释放该条目的数据，且 tar 缓冲
+/// 按固定粒度精确增长，因此峰值回落到 ≈max(tar 总量, 单条目最大值)。
+///
+/// 目录条目与文件条目走同一条路径（与旧行为一致：目录由容器内 tar 解包创建，
+/// 调用方负责过滤，见 `dual::inject_support_package_to_evaluator`）。
+pub fn build_tar_archive_consuming(entries: Vec<ZipEntry>) -> Result<Vec<u8>> {
+    let mut writer = ChunkedVec::new();
+    {
+        let mut builder = tar::Builder::new(&mut writer);
+        for mut entry in entries {
+            validate_entry_name(&entry.file_name)?;
+            // 取走数据所有权：append 结束后 entry 与 data 都可立即释放，
+            // 后续条目的内存峰值不再包含已写入的内容。
+            let data = std::mem::take(&mut entry.data);
+            let mut header = tar::Header::new_gnu();
+            header.set_size(data.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, &entry.file_name, data.as_slice())
+                .with_context(|| format!("写入 tar 条目失败: {}", entry.file_name))?;
+            drop(data);
+        }
+        builder.finish().context("结束 tar 归档失败")?;
+    }
+    Ok(writer.into_inner())
+}
+
+/// 带超时的整块写入。
+///
+/// 对端停止消费时必须**失败返回**而不是无限挂起。这是 NOJ-A2 的修复点：
+/// VULN-16 只给帧转发写加了 3s 上限（`dual::pipe`），批量注入这条**更大**的写
+/// 路径当时没有加固，而它恰恰发生在所有评测总超时生效之前。
+pub async fn write_all_with_timeout<W>(writer: &mut W, buf: &[u8], limit: Duration) -> Result<()>
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    match tokio::time::timeout(limit, writer.write_all(buf)).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(e).context("写入 tar 流失败"),
+        Err(_) => bail!(
+            "写入 tar 流超时（{}s）：对端可能已停止读取 stdin",
+            limit.as_secs()
+        ),
+    }
+}
+
 /// 批量注入文件到容器（VULN-17）。
 ///
 /// 用 `tar::Builder` 把所有文件一次性写入**同一个内存 tar 流**，容器内**只发起
 /// 一次** `tar xf - -C /workspace` exec 解包，彻底消除 N 次串行 `docker exec`。
 /// 目录条目由 tar 解包自动创建（与原先逐文件注入的语义一致）。
+///
+/// 注：本接口按**借用**接收内容，要求 tar 与调用方持有的数据同时驻留。持有
+/// [`ZipEntry`] 的调用方应用 [`inject_zip_entries_to_container`]（NOJ-A1）。
 pub async fn inject_files_to_container(
     docker: &Docker,
     container_id: &str,
@@ -182,10 +303,52 @@ pub async fn inject_files_to_container(
         return Ok(());
     }
     let tar_buf = build_tar_archive(files)?;
+    inject_tar_to_container(docker, container_id, &tar_buf, files.len()).await
+}
 
+/// 批量注入**已解码的 zip 条目**到容器（NOJ-A1：低内存峰值版本）。
+///
+/// 与 [`inject_files_to_container`] 的唯一差别是 tar 流由
+/// [`build_tar_archive_consuming`] 构造——按值消费条目、边写边释放，峰值内存
+/// 从 ≈1GiB（512MiB 条目 + 512MiB tar）降到 ≈512MiB。适用于支持包与 artifact
+/// 这两条**内容完全由提交者控制**的注入路径。
+pub async fn inject_zip_entries_to_container(
+    docker: &Docker,
+    container_id: &str,
+    entries: Vec<ZipEntry>,
+) -> Result<()> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+    let entry_count = entries.len();
+    let tar_buf = build_injection_tar(entries)?;
+    inject_tar_to_container(docker, container_id, &tar_buf, entry_count).await
+}
+
+/// 注入路径**实际使用**的 tar 构造入口。
+///
+/// 单独抽出一层是为了让"峰值内存"回归测试测的**就是生产路径**：把本函数改回
+/// 借用版（`build_tar_archive`）会让 `test_consuming_tar_path_halves_peak_memory`
+/// 直接失败，而不是出现"测试测的是旁路实现、生产仍走旧路径"的假绿。
+fn build_injection_tar(entries: Vec<ZipEntry>) -> Result<Vec<u8>> {
+    build_tar_archive_consuming(entries)
+}
+
+/// 把已构造好的 tar 流写入容器并等待解包 exec 结束。
+///
+/// 每个可能阻塞的调用都有本地超时（NOJ-A2）：`create_exec` / `start_exec` /
+/// 整块写入 / `shutdown` / 单次 `inspect_exec`。缺任何一处都可能让一个恶意或
+/// 异常提交永久占死评测槽位。
+async fn inject_tar_to_container(
+    docker: &Docker,
+    container_id: &str,
+    tar_buf: &[u8],
+    entry_count: usize,
+) -> Result<()> {
     // docker exec tar xf - -C /workspace
-    let exec = docker
-        .create_exec(
+    let exec = tokio::time::timeout(
+        INJECT_CREATE_EXEC_TIMEOUT,
+        docker.create_exec(
             container_id,
             bollard::models::ExecConfig {
                 cmd: Some(vec![
@@ -198,30 +361,62 @@ pub async fn inject_files_to_container(
                 attach_stderr: Some(false),
                 ..Default::default()
             },
+        ),
+    )
+    .await
+    .map_err(|_| {
+        anyhow::anyhow!(
+            "创建 inject exec 超时（{}s）",
+            INJECT_CREATE_EXEC_TIMEOUT.as_secs()
         )
-        .await
-        .context("创建 inject exec 失败")?;
+    })?
+    .context("创建 inject exec 失败")?;
 
-    let started = docker.start_exec(&exec.id, None).await?;
+    let started =
+        tokio::time::timeout(INJECT_EXEC_START_TIMEOUT, docker.start_exec(&exec.id, None))
+            .await
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "启动 inject exec 超时（{}s）",
+                    INJECT_EXEC_START_TIMEOUT.as_secs()
+                )
+            })?
+            .context("启动 inject exec 失败")?;
+
     if let bollard::exec::StartExecResults::Attached { mut input, .. } = started {
-        use tokio::io::AsyncWriteExt;
-        input.write_all(&tar_buf).await?;
-        input.shutdown().await?;
+        write_all_with_timeout(&mut input, tar_buf, INJECT_WRITE_TIMEOUT).await?;
+        // shutdown 同样可能阻塞（对端停读时也会挂住），必须有上限。
+        match tokio::time::timeout(INJECT_WRITE_TIMEOUT, input.shutdown()).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => return Err(e).context("关闭 tar 流失败"),
+            Err(_) => bail!(
+                "关闭 tar 流超时（{}s）：对端可能已停止读取 stdin",
+                INJECT_WRITE_TIMEOUT.as_secs()
+            ),
+        }
     }
 
     // 等 exec 完成（简化处理：用 inspect_exec 轮询直到退出）
     // 轮询上限 50 次 × 100ms = 5s；退出码非 0 时视为注入失败。
     for _ in 0..INJECT_POLL_ATTEMPTS {
-        let inspect = docker.inspect_exec(&exec.id).await?;
+        let inspect = tokio::time::timeout(INJECT_INSPECT_TIMEOUT, docker.inspect_exec(&exec.id))
+            .await
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "inspect inject exec 超时（{}s）",
+                    INJECT_INSPECT_TIMEOUT.as_secs()
+                )
+            })?
+            .context("查询 inject exec 状态失败")?;
         if let Some(code) = inspect.exit_code {
             if code != 0 {
-                bail!("注入 {} 个文件失败（exit_code={}）", files.len(), code);
+                bail!("注入 {} 个条目失败（exit_code={}）", entry_count, code);
             }
             return Ok(());
         }
         tokio::time::sleep(Duration::from_millis(INJECT_POLL_INTERVAL_MS)).await;
     }
-    bail!("注入 {} 个文件超时", files.len())
+    bail!("注入 {} 个条目超时", entry_count)
 }
 
 /// 单文件注入：批量接口的薄包装（单元素切片），行为/性能兼容。
@@ -652,5 +847,245 @@ mod tests {
     fn test_build_tar_archive_rejects_empty_name() {
         let err = build_tar_archive(&[("", b"x".as_slice())]).unwrap_err();
         assert!(err.to_string().contains("为空"), "实际: {}", err);
+    }
+
+    // ── NOJ-A1：按值消费构 tar（低内存峰值） ──
+
+    /// 按值消费版与借用版必须**逐字节等价**（只是内存占用不同）。
+    #[test]
+    fn test_build_tar_archive_consuming_matches_borrowed_byte_for_byte() {
+        let names = ["evaluate.py", "cases/a.txt", "cases/b.bin"];
+        let payloads: [&[u8]; 3] = [b"print(1)", b"case-a", b"\x00\x01\x02"];
+
+        let borrowed = build_tar_archive(&[
+            (names[0], payloads[0]),
+            (names[1], payloads[1]),
+            (names[2], payloads[2]),
+        ])
+        .unwrap();
+
+        let entries: Vec<ZipEntry> = (0..3)
+            .map(|i| ZipEntry {
+                file_name: names[i].to_string(),
+                data: payloads[i].to_vec(),
+                is_dir: false,
+            })
+            .collect();
+        let consuming = build_tar_archive_consuming(entries).unwrap();
+
+        assert_eq!(
+            borrowed, consuming,
+            "按值消费版必须与借用版逐字节一致（含 header/权限/校验和）"
+        );
+    }
+
+    /// 消费版同样要保留注入条目名校验（不得因为"改内存策略"而丢校验）。
+    #[test]
+    fn test_build_tar_archive_consuming_keeps_entry_name_validation() {
+        for name in ["/etc/passwd", "../escape.py", ""] {
+            let entries = vec![ZipEntry {
+                file_name: name.to_string(),
+                data: b"x".to_vec(),
+                is_dir: false,
+            }];
+            assert!(
+                build_tar_archive_consuming(entries).is_err(),
+                "非法条目名 {:?} 必须被拒绝",
+                name
+            );
+        }
+    }
+
+    /// 测试专用计数分配器：**线程局部**统计存活/峰值字节。
+    ///
+    /// 用线程局部而不是全局计数，是为了不受测试进程内其他并行测试线程的分配干扰
+    /// （cargo test 默认多线程跑用例，全局计数会让这个断言随机失败）。
+    mod mem_probe {
+        use std::alloc::{GlobalAlloc, Layout, System};
+        use std::cell::Cell;
+
+        thread_local! {
+            static LIVE: Cell<usize> = const { Cell::new(0) };
+            static PEAK: Cell<usize> = const { Cell::new(0) };
+        }
+
+        pub struct Counting;
+
+        fn on_alloc(size: usize) {
+            let _ = LIVE.try_with(|live| {
+                let now = live.get().saturating_add(size);
+                live.set(now);
+                let _ = PEAK.try_with(|peak| {
+                    if now > peak.get() {
+                        peak.set(now);
+                    }
+                });
+            });
+        }
+
+        fn on_dealloc(size: usize) {
+            let _ = LIVE.try_with(|live| live.set(live.get().saturating_sub(size)));
+        }
+
+        unsafe impl GlobalAlloc for Counting {
+            unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+                let ptr = System.alloc(layout);
+                if !ptr.is_null() {
+                    on_alloc(layout.size());
+                }
+                ptr
+            }
+
+            unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+                on_dealloc(layout.size());
+                System.dealloc(ptr, layout);
+            }
+
+            unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+                let ptr = System.alloc_zeroed(layout);
+                if !ptr.is_null() {
+                    on_alloc(layout.size());
+                }
+                ptr
+            }
+
+            unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+                let new_ptr = System.realloc(ptr, layout, new_size);
+                if !new_ptr.is_null() {
+                    if new_size >= layout.size() {
+                        on_alloc(new_size - layout.size());
+                    } else {
+                        on_dealloc(layout.size() - new_size);
+                    }
+                }
+                new_ptr
+            }
+        }
+
+        #[global_allocator]
+        pub static ALLOC: Counting = Counting;
+
+        /// 在区域内测量"峰值存活字节"（绝对量，含区域内已存在的存活对象）。
+        pub fn measure_peak<R>(f: impl FnOnce() -> R) -> (R, usize) {
+            let _ = PEAK.try_with(|peak| peak.set(LIVE.with(|live| live.get())));
+            let out = f();
+            (out, PEAK.with(|peak| peak.get()))
+        }
+    }
+
+    /// **NOJ-A1 的核心回归**：按值消费路径的峰值内存必须显著低于借用路径。
+    ///
+    /// 语义：借用路径要求"全部条目 + 完整 tar"同时驻留（512MiB 解压上限下
+    /// 峰值 ≈1GiB，两个并发任务即打到默认 `mem_limit 2g`）；按值消费路径边写边
+    /// 释放条目，峰值 ≈max(tar 总量, 单条目最大值)。
+    ///
+    /// 该断言在"把注入路径改回借用版"时会失败——即它锁住的是真正的行为，不是常量。
+    #[test]
+    fn test_consuming_tar_path_halves_peak_memory() {
+        const ENTRY_SIZE: usize = 1024 * 1024;
+        const ENTRY_COUNT: usize = 24;
+
+        let make_entries = || -> Vec<ZipEntry> {
+            (0..ENTRY_COUNT)
+                .map(|i| ZipEntry {
+                    file_name: format!("cases/{i:03}.bin"),
+                    data: vec![0xA5u8; ENTRY_SIZE],
+                    is_dir: false,
+                })
+                .collect()
+        };
+
+        // 旧路径：条目全部存活 + tar 缓冲几何增长。
+        let old_peak = {
+            let entries = make_entries();
+            let refs: Vec<(&str, &[u8])> = entries
+                .iter()
+                .map(|e| (e.file_name.as_str(), e.data.as_slice()))
+                .collect();
+            let (tar, peak) = mem_probe::measure_peak(|| build_tar_archive(&refs).unwrap());
+            assert!(!tar.is_empty());
+            peak
+        };
+
+        // 新路径：按值消费，边追加边释放（**生产路径**：`build_injection_tar`）。
+        let new_peak = {
+            let entries = make_entries();
+            let (tar, peak) = mem_probe::measure_peak(|| build_injection_tar(entries).unwrap());
+            assert!(!tar.is_empty());
+            peak
+        };
+
+        // 实测数字进证据（`cargo test -- --nocapture`）。
+        println!(
+            "[NOJ-A1 峰值内存] 借用路径={} 字节，生产注入路径={} 字节，降幅={:.1}%",
+            old_peak,
+            new_peak,
+            (1.0 - new_peak as f64 / old_peak as f64) * 100.0
+        );
+
+        assert!(
+            new_peak * 4 < old_peak * 3,
+            "按值消费路径的峰值内存应至少低于借用路径 25%：旧={} 字节，新={} 字节",
+            old_peak,
+            new_peak
+        );
+    }
+
+    // ── NOJ-A2：注入写路径必须有超时（对端停读不得永久挂起） ──
+
+    /// 永不就绪的写入器：模拟"容器侧停止读取 stdin"。
+    struct StalledWriter;
+
+    impl tokio::io::AsyncWrite for StalledWriter {
+        fn poll_write(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+            _buf: &[u8],
+        ) -> std::task::Poll<std::io::Result<usize>> {
+            std::task::Poll::Pending
+        }
+
+        fn poll_flush(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            std::task::Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            std::task::Poll::Ready(Ok(()))
+        }
+    }
+
+    /// 对端停止消费时必须**失败返回**，而不是无限挂起。
+    ///
+    /// 反向验证：把 `write_all_with_timeout` 换成裸 `write_all` 时本用例不会通过
+    /// （会永久 pending → 测试超时），这正是 NOJ-A2 的缺陷形态。
+    #[tokio::test]
+    async fn test_write_all_with_timeout_fails_instead_of_hanging() {
+        let mut writer = StalledWriter;
+        let started = std::time::Instant::now();
+        let err = write_all_with_timeout(&mut writer, b"payload", Duration::from_millis(50))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("超时"), "实际错误: {}", err);
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "应在超时上限附近立即返回，实际耗时 {:?}",
+            started.elapsed()
+        );
+    }
+
+    /// 正常写入路径不受超时影响（回归保护：别把超时写成恒失败）。
+    #[tokio::test]
+    async fn test_write_all_with_timeout_passes_through_on_healthy_writer() {
+        let mut sink = Vec::new();
+        write_all_with_timeout(&mut sink, b"hello", Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert_eq!(sink, b"hello");
     }
 }
