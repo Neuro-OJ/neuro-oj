@@ -28,12 +28,16 @@ import {
   getPaperOrThrow,
   resolvePaperId,
 } from "./objective-questions.ts";
-import { getContest, getContestProblems } from "../../contest/index.ts";
+import {
+  filterUnendedContestIds,
+  getContest,
+  getContestProblems,
+} from "../../contest/index.ts";
 import type {
   ObjectiveSubmissionResponse,
   QuestionJudgement,
   SubmitObjectiveInput,
-  SubmitObjectiveResult,
+  SubmitObjectiveResponse,
 } from "./../types/objective.ts";
 import { validateAnswersPayload } from "./../types/objective.ts";
 import type { ObjectiveAnswerValue } from "./../types/objective.ts";
@@ -96,6 +100,23 @@ function stripExpected(
 }
 
 /**
+ * 竞赛赛期屏蔽：只保留"用户自己的作答"，剥离逐题对错。
+ *
+ * 与 {@link stripExpected}（只剥离标准答案）的区别：本函数连 `correct` 一起剥离。
+ * 赛期返回逐题对错等于给出答案预言机——参赛者可用小号逐题试探、协同排除错误选项
+ * （审计 VULN-03）。
+ */
+function stripContestJudgement(
+  details: Record<string, QuestionJudgement>,
+): Record<string, QuestionJudgement> {
+  const result: Record<string, QuestionJudgement> = {};
+  for (const [qid, judgement] of Object.entries(details)) {
+    result[qid] = { given: judgement.given };
+  }
+  return result;
+}
+
+/**
  * 合并解析到判定详情（仅练习模式返回 explanation，防泄题）。
  * includeExpected=false 时同时剥离 expected（private 套卷练习响应不泄标准答案）。
  */
@@ -130,7 +151,7 @@ export async function submitObjectivePaper(
   input: SubmitObjectiveInput,
   userId: string,
   isAdmin = false,
-): Promise<SubmitObjectiveResult> {
+): Promise<SubmitObjectiveResponse> {
   const db = getDb();
   const paper = await getPaperOrThrow(paperId);
   assertObjectivePaper(paper);
@@ -208,6 +229,27 @@ export async function submitObjectivePaper(
     throw err;
   }
 
+  // ── 竞赛模式：只回执"已提交"事实（审计 VULN-03）──
+  //
+  // 此前这里返回 `stripExpected(details)`——虽剥离了标准答案，却**保留每题
+  // correct: true/false**，并即时返回精确分数。协同作弊者据此把小号提交当作答案
+  // 预言机，逐题试探即可拼出全套满分答案。
+  // 现赛期不返回任何判定与分数；竞赛结束后由详情/历史接口给出（见
+  // getObjectiveSubmission / listObjectiveSubmissions 的赛后放行逻辑）。
+  if (contestMode) {
+    return {
+      submission_id: submissionId,
+      paper_id: paperId,
+      status: "finished",
+      contest_mode: true,
+      score: null,
+      score_db: null,
+      correct_count: null,
+      total_count: judgement.total_count,
+      details: {},
+    };
+  }
+
   return {
     submission_id: submissionId,
     paper_id: paperId,
@@ -215,12 +257,10 @@ export async function submitObjectivePaper(
     score_db: judgement.score,
     correct_count: judgement.correct_count,
     total_count: judgement.total_count,
-    details: contestMode
-      ? stripExpected(judgement.details)
-      : paper.visibility === "public"
+    details: paper.visibility === "public"
       ? withExplanation(judgement.details, questions, true)
       : withExplanation(judgement.details, questions, false),
-    contest_mode: contestMode,
+    contest_mode: false,
   };
 }
 
@@ -278,7 +318,20 @@ export async function getObjectiveSubmission(
 
   const response = toSubmissionResponse(row);
   if (row.submission_type === "contest") {
-    // 竞赛模式：隐藏解析与期望答案（防泄题）
+    // 竞赛模式：隐藏解析与期望答案（防泄题）；竞赛**尚未结束**时进一步屏蔽逐题
+    // 对错与分数（审计 VULN-03）——否则参赛者提交后调用详情接口即可拿到答案预言机。
+    const unended = row.contest_id
+      ? await filterUnendedContestIds([row.contest_id])
+      : new Set<string>();
+    const contestUnended = row.contest_id !== null &&
+      unended.has(row.contest_id);
+    if (contestUnended) {
+      return {
+        ...response,
+        score: null,
+        details: stripContestJudgement(response.details),
+      };
+    }
     return {
       ...response,
       details: stripExpected(response.details),
@@ -389,8 +442,30 @@ export async function listObjectiveSubmissions(params: {
     bestScore = best[0]?.best ?? null;
   }
 
+  // 竞赛模式的赛期屏蔽（审计 VULN-03）：一次查询算出本页涉及的"未结束竞赛"集合，
+  // 再对命中行剥离逐题对错与分数。与详情接口同一口径，避免"列表是旁路"。
+  const unendedContests = await filterUnendedContestIds(
+    rows
+      .filter((row) => row.submission_type === "contest" && row.contest_id)
+      .map((row) => row.contest_id as string),
+  );
+  const data = rows.map((row) => {
+    const response = toSubmissionResponse(row);
+    if (
+      row.submission_type !== "contest" || !row.contest_id ||
+      !unendedContests.has(row.contest_id)
+    ) {
+      return response;
+    }
+    return {
+      ...response,
+      score: null,
+      details: stripContestJudgement(response.details),
+    };
+  });
+
   return {
-    data: rows.map(toSubmissionResponse),
+    data,
     total,
     best_score: bestScore,
   };

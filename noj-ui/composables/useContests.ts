@@ -88,6 +88,13 @@ export interface AdminProblemOption {
   display_id: string;
   title: string;
   difficulty: string;
+  /**
+   * 题目可见性（`GET /api/v1/admin/catalog/problems` 返回）。
+   *
+   * 邀请赛选题时需要据此提示"公开题无法全站保密"（VULN-04 / VULN-05），
+   * 故在此显式声明；旧后端未返回时为 undefined，调用方按"未知"处理、不做提示。
+   */
+  visibility?: 'public' | 'private';
 }
 
 export interface KaggleProblemScore {
@@ -140,34 +147,6 @@ export interface Pagination {
   total_pages: number;
 }
 
-export interface ContestAntiCheatAccount {
-  user_id: string;
-  username: string;
-  submission_count: number;
-  first_submission_at: string;
-  last_submission_at: string;
-}
-
-export interface ContestAntiCheatGroup {
-  ip: string;
-  account_count: number;
-  submission_count: number;
-  first_submission_at: string;
-  last_submission_at: string;
-  accounts: ContestAntiCheatAccount[];
-}
-
-export interface ContestAntiCheatTimelineItem {
-  submission_id: string;
-  user_id: string;
-  username: string;
-  problem_id: string;
-  problem_title: string;
-  language: string;
-  status: string;
-  created_at: string;
-}
-
 export function useContests() {
   const { api } = useApi();
   const { t, locale } = useI18n();
@@ -218,35 +197,11 @@ export function useContests() {
     );
   }
 
-  function listAntiCheatGroups(
-    contestId: string,
-    query?: { page?: number; per_page?: number; min_accounts?: number },
-  ) {
-    return api.get<
-      {
-        data: ContestAntiCheatGroup[];
-        pagination: Pagination;
-        data_policy: {
-          purpose: string;
-          retention_days: number;
-          automated_penalty: boolean;
-        };
-      }
-    >(
-      `/api/v1/admin/contest/contests/${contestId}/anti-cheat/ip-groups`,
-      { query, silent: true },
-    );
-  }
-
-  function listAntiCheatTimeline(contestId: string, ip: string) {
-    return api.get<{ data: ContestAntiCheatTimelineItem[] }>(
-      `/api/v1/admin/contest/contests/${contestId}/anti-cheat/timeline`,
-      { query: { ip }, silent: true },
-    );
-  }
-
   /**
    * 竞赛内互相高度相似的提交对（人工复核线索）。
+   *
+   * 基于 IP 碰撞的作弊判定（`anti-cheat/ip-groups`、`anti-cheat/timeline`）
+   * 已全面下线（VULN-06：机房 NAT 多 IP 共用误伤过高），只保留代码相似度查重。
    * 响应**不含源代码**；源码走 `/api/v1/admin/submission/submissions/:id`。
    */
   function listAntiCheatSimilarSubmissions(
@@ -289,8 +244,6 @@ export function useContests() {
     listClarifications,
     askClarification,
     replyClarification,
-    listAntiCheatGroups,
-    listAntiCheatTimeline,
     listAntiCheatSimilarSubmissions,
   };
 }

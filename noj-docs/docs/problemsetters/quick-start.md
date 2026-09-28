@@ -4,7 +4,7 @@
 
 ## 出题模型速览
 
-与传统 OJ「准备输入输出文件」不同，Neuro OJ 需要你编写一个 **evaluator**（`evaluate.py`）：它在独立的 Evaluator 容器中运行，加载用户提交的函数并调用评分；用户代码运行在另一个无网的 Solution 容器中。核心概念见[评测模型](judge-model.md)。
+与传统 OJ「准备输入输出文件」不同，Neuro OJ 需要你编写一个 **evaluator**（`evaluate.py`）：它在独立的 Evaluator 容器中运行，加载用户提交的函数并调用评分；用户代码运行在另一个无网的 Solution 容器中。核心概念见[评测模型](../mechanisms/judge-model.md)。
 
 ```text
 你编写：evaluate.py（评分逻辑）+ 测试数据 + 题面
@@ -44,7 +44,7 @@ U 型（用户题）任意登录用户可创建；**P 型（主题题）仅管�
 :::
 
 ## 进阶
-
-- 自定义 evaluator 的调用细节与可传递数据类型：[Evaluator SDK](evaluator-sdk.md) / [RPC 与可传递数据](rpc.md)
-- 镜像白名单与双容器运行时：[评测镜像与运行时](runtimes.md)
+ 
+- 自定义 evaluator 的调用细节与可传递数据类型：[Evaluator SDK](../mechanisms/evaluator-sdk.md) / [RPC 与可传递数据](../mechanisms/rpc.md)
+- 镜像白名单与双容器运行时：[评测镜像与运行时](../mechanisms/runtimes.md)
 - 发布前质量要求：[题目质量规范](../standards/quality.md)

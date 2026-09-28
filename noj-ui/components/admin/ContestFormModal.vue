@@ -7,6 +7,10 @@ import type {
   ContestProblemInput,
   ContestType,
 } from '~/composables/useContests'
+import {
+  invitePublicProblemIds,
+  INVITE_PUBLIC_PROBLEM_WARNING,
+} from '~/utils/contestSelection'
 
 const { contest, problems, saving = false, error = '' } = defineProps<{
   contest?: AdminContestDetail | null
@@ -60,6 +64,25 @@ const filteredProblems = computed(() => {
     return !query || problem.title.toLowerCase().includes(query) || problem.display_id.toLowerCase().includes(query)
   }).slice(0, 20)
 })
+
+/**
+ * 邀请赛挂载公开题的保密风险提示（VULN-04 / VULN-05）。
+ *
+ * 公开题不会被全站保密遮蔽（反 DoS 设计），管理员需要显式知情。
+ * 仅提示、不阻塞保存，也不改动任何权限模型。
+ */
+const publicInviteProblemIds = computed(() =>
+  invitePublicProblemIds(
+    kind.value,
+    selectedProblems.value.map((item) => item.problem_id),
+    problems,
+  )
+)
+const invitePublicWarning = computed(() => publicInviteProblemIds.value.length > 0)
+/** 公开题在选题列表里的标记：帮助管理员在选中前就做出判断。 */
+function isPublicProblem(problem: AdminProblemOption): boolean {
+  return problem.visibility === 'public'
+}
 
 function toLocalDateTime(value: string | undefined) {
   if (!value) return ''
@@ -225,15 +248,37 @@ function submit() {
 
         <section class="flex min-h-[520px] flex-col rounded-xl border border-border bg-bg-page p-4">
           <div class="mb-3 flex items-center justify-between"><div><h3 class="text-sm font-bold text-text">竞赛题目</h3><p class="text-xs text-text-muted">已选 {{ selectedProblems.length }} 题</p></div></div>
+
+          <!-- 邀请赛 + 公开题风险提示（VULN-04 / VULN-05）：内联警示条，不阻塞保存 -->
+          <div
+            v-if="invitePublicWarning"
+            role="status"
+            class="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+          >
+            <UIcon name="i-lucide-shield-alert" class="mt-0.5 size-3.5 shrink-0" />
+            <p class="min-w-0">
+              {{ INVITE_PUBLIC_PROBLEM_WARNING }}
+              <span class="mt-1 block">
+                已选中的公开题目：
+                <span class="font-mono">{{ publicInviteProblemIds.map(problemName).join('、') }}</span>
+              </span>
+            </p>
+          </div>
+
           <div class="relative mb-3"><UIcon name="i-lucide-search" class="absolute left-3 top-2.5 text-text-muted size-3.5" /><input v-model="problemQuery" class="w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-signal" placeholder="搜索题号或标题" @input="searchProblems"></div>
           <div class="mb-4 max-h-48 overflow-y-auto rounded-lg border border-border bg-white">
-            <button v-for="problem in filteredProblems" :key="problem.id" class="flex w-full items-center gap-2 border-b border-border px-3 py-2 text-left text-xs last:border-0 hover:bg-primary-bg" @click="addProblem(problem)"><UIcon name="i-lucide-plus" class="text-primary size-3.5" /><span class="font-mono text-primary">{{ problem.display_id }}</span><span class="truncate text-text">{{ problem.title }}</span></button>
+            <button v-for="problem in filteredProblems" :key="problem.id" class="flex w-full items-center gap-2 border-b border-border px-3 py-2 text-left text-xs last:border-0 hover:bg-primary-bg" @click="addProblem(problem)">
+              <UIcon name="i-lucide-plus" class="text-primary size-3.5" /><span class="font-mono text-primary">{{ problem.display_id }}</span><span class="truncate text-text">{{ problem.title }}</span>
+              <!-- 公开题标记：选中前即提示其无法全站保密（VULN-04） -->
+              <span v-if="isPublicProblem(problem)" class="ml-auto shrink-0 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800">公开</span>
+            </button>
             <p v-if="filteredProblems.length === 0" class="p-4 text-center text-xs text-text-muted">没有可添加的题目</p>
           </div>
           <div class="flex-1 space-y-2 overflow-y-auto">
             <div v-for="problem in selectedProblems" :key="problem.problem_id" class="flex items-center gap-2 rounded-lg border border-border bg-white p-3">
               <span class="flex size-8 shrink-0 items-center justify-center rounded-md bg-bg-dark font-mono text-xs font-bold text-white">{{ problem.label }}</span>
               <span class="min-w-0 flex-1 truncate text-xs font-medium text-text">{{ problemName(problem.problem_id) }}</span>
+              <span v-if="publicInviteProblemIds.includes(problem.problem_id)" class="shrink-0 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800">公开</span>
               <input :value="(problem.score ?? DEFAULT_FULL_SCORE) / 100" type="number" min="0" class="w-20 rounded border border-border px-2 py-1 text-xs" title="满分" @input="problem.score = Number(($event.target as HTMLInputElement).value) * 100">
               <input :value="submissionLimits[problem.problem_id] ?? ''" type="number" min="1" class="w-20 rounded border border-border px-2 py-1 text-xs" title="提交次数上限（留空不限）" placeholder="上限" @input="setSubmissionLimit(problem.problem_id, $event)">
               <button class="rounded p-1.5 text-text-muted hover:bg-red-50 hover:text-error-text" @click="removeProblem(problem.problem_id)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></button>

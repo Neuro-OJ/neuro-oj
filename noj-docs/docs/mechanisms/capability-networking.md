@@ -1,115 +1,148 @@
-# 如何提供受限网络能力
+# 受限网络能力供给（Capability Networking）
 
-> 一句话：当题目需要访问外部网络 API（LLM、检索等）时，**只有 evaluator 联网**，并把它封装成一个**精确的业务函数**（capability）交给 solution 调用；solution 容器始终无网。
+在现代人工智能赛题（如利用外部大模型补全、基于网络检索的 RAG
+智能体竞赛）中，选手的代码往往需要与外部网络服务交互。然而，若直接放开选手沙箱的公网访问权限，将引发代码泄露、内网探测、SSRF
+攻击以及刷爆外部 API 额度等灾难性安全隐患。
 
-本页面向出题人：当题目需要访问外部网络 API（LLM 接口、检索服务等）时，如何通过 capability 安全地把网络能力交给 solution 使用。
+Neuro OJ 提出了**非对称受限能力代理模型**：**Solution 沙箱保持严格物理断网，仅
+Evaluator 沙箱受限联网**，出题人通过向 Evaluator
+注册细粒度的业务能力（Capability），以反向 RPC 代理的方式向选手代码受控赋能。
 
-## 三步概览
+---
 
-1. **在题目配置中开启 evaluator 联网**：`runtime_config.evaluator.network.enabled = true`（Web 编辑器勾选「允许 Evaluator 联网」）。
-2. **在 evaluate.py 中注册 capability**：用 `register_capability` 暴露一个**精确封装**的函数。
-3. **在题面中声明 capability**：明确写出名称、参数、返回值语义，做题人用 `call_capability` 调用。
+## 核心架构：非对称网络拓扑
 
-::: warning 开启联网需要额外权限
-`evaluator.network` 是敏感字段，需要 `problem:field_evaluator_network` 权限。**默认普通用户没有此权限**（RBAC seed 会从默认 user 角色撤销），需由管理员在 RBAC 面板显式授权；P 型题目仍仅管理员可管理。同样地，`evaluator.command` 需要 `problem:field_evaluator_command`。
+```mermaid
+flowchart LR
+    subgraph SolutionBox["Solution 容器 (选手隔离区)"]
+        User["选手 main.py<br/>物理断网: network_mode=none"]
+    end
+
+    subgraph JudgeBox["评测宿主 (noj-judge)"]
+        Router["IPC 消息网关<br/>校验参数类型与 1 MiB 软限额"]
+    end
+
+    subgraph EvalBox["Evaluator 容器 (受信代理区)"]
+        Handler["精准封装业务函数<br/>(register_capability)"]
+    end
+
+    subgraph ExtNet["外部受限网络"]
+        Gateway["noj-llm-gateway<br/>(LLM 托管网关)"]
+        API["白名单公网 API"]
+    end
+
+    User -- "1. call_capability('request_llm', prompt)" --> Router
+    Router -- "2. 转发请求帧" --> Handler
+    Handler -- "3. 固定目标发起 HTTPS 请求<br/>(密钥仅存于 Evaluator)" --> ExtNet
+    ExtNet -- "4. 响应内容" --> Handler
+    Handler -- "5. 返回清洗后的业务数据" --> Router
+    Router -- "6. 回传结果" --> User
+```
+
+---
+
+## 三步接入流程
+
+### 步骤 1：在题目运行时中开启 Evaluator 联网
+
+在 Web 编辑器的题目运行时配置中，勾选「允许 Evaluator 联网」或在 `problem.json`
+中配置：
+
+```json
+{
+  "runtime_config": {
+    "evaluator": {
+      "network": { "enabled": true }
+    }
+  }
+}
+```
+
+::: warning 敏感字段权限控制
+`evaluator.network` 属于高危敏感属性，操作者必须拥有 **`problem:field_evaluator_network`** 权限（系统默认角色已剥离此权限，普通出题人需由系统管理员显式授权）。
 :::
 
-开启后 evaluator 容器以 Docker bridge 模式联网；solution 容器**始终无网**。
-
-::: tip LLM 调用题请优先使用 noj-llm-gateway
-如果外部 API 是 OpenAI 兼容的 LLM 服务，**不要**在 evaluator 里保存上游 API Key，而是使用系统提供的 `noj-llm-gateway`（`llm.complete`）。这样真实 Key 只存在于 gateway，并且自动获得 eval_token、限流/额度与用量审计。具体接入见 [出 LLM 调用题](../problemsetters/llm-problem.md)。
-:::
-
-## 注册 capability
+### 步骤 2：在 `evaluate.py` 中注册业务代理函数
 
 ```python
 from noj_evaluator_sdk import register_capability, result
 
 def request_llm_completion(prompt: str) -> str:
-    # ... 调用外部 LLM API（evaluator 已联网）
-    return completion_text
+    """仅接受字符串 prompt，目标 URL 完全写死，不给调用者自由控制权"""
+    if not isinstance(prompt, str) or len(prompt) > 2000:
+        raise ValueError("Prompt 格式非法或超出长度限制")
+    
+    # 向固定的公网端点或内部网关发起通信
+    return call_external_llm(prompt)
 
-register_capability("request_llm_completion", request_llm_completion)
+# 注册 capability 并指定选手调用该能力时的独立超时
+register_capability("request_llm_completion", request_llm_completion, timeout_ms=8000)
 ```
 
-- handler 是普通 Python 函数，在 evaluator 容器内执行，拥有该容器的网络能力。
-- 参数/返回值受 [RPC 类型约束](rpc.md)（`None / bool / int / float / str / bytes / list / dict`）。
-- 重复注册同名 capability 时，最近一次生效。
-- handler 抛异常时，错误帧（`code=Exception` + trace）会返回给 solution。
+### 步骤 3：在题目说明中公布协议契约
 
-## 核心原则：封装精确函数，而不是通用转发
+在题面 Markdown 中清晰定义该 Capability
+的名称、入参类型、返回值结构及频率/长度约束，选手即可在提交代码中使用
+`call_capability` 消费该能力。
 
-**这是最重要的安全边界。** capability 是 solution 调用网络**唯一**的入口，
-它的签名就是你的安全策略。请封装“业务意图”，而不是“网络能力”：
+---
 
-::: danger 反例：通用转发（会打开 SSRF 面）
+## 黄金准则：封装业务意图，杜绝通用转发
+
+出题人在设计 Capability 时，**其函数签名即为一道安全防护墙**：
+
+### ❌ 致命反例：通用 HTTP 代理（彻底打破安全隔离）
+
 ```python
+# 危险：暴露出全量 HTTP 代理能力，相当于向选手开放了公网和内网！
 def fetch_url(url: str) -> bytes:
-    # 任何 solution 代码都能请求任意地址：
-    # - http://169.254.169.254/... （云元数据服务，可能泄露凭据）
-    # - http://<内网>/...           （评测内网、judge 宿主机服务）
-    # - 任意公网地址（把评测服务器变成攻击跳板）
+    # 选手可借此传入:
+    # - http://169.254.169.254/ (云服务器元数据，泄漏基础设施密钥)
+    # - http://172.17.0.1:5432/ (探测评测内网数据库与宿主端口)
+    # - 任意外部肉鸡地址执行非法扫描
     return urllib.request.urlopen(url).read()
 
 register_capability("fetch_url", fetch_url)
 ```
-:::
 
-::: tip 推荐：封装业务意图
+### ✅ 推荐实践：强类型业务逻辑封装
+
 ```python
-def request_llm_completion(prompt: str) -> str:
-    """只允许调用固定的 LLM API，prompt 是唯一输入。"""
-    # URL 固定、方法固定、域名固定——solution 无法控制目标地址
-    payload = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}]}
-    resp = urllib.request.urlopen(
-        urllib.request.Request(
-            "https://api.example-llm.com/v1/chat/completions",
-            data=json.dumps(payload).encode(),
-            headers={"Authorization": "Bearer " + os.environ["LLM_API_KEY"]},
-        ),
-        timeout=10,
-    )
-    return json.loads(resp.read())["choices"][0]["message"]["content"]
+# 安全：选手仅能决定业务参数，目标端点、协议方法与鉴权标头完全受控
+def search_encyclopedia(keyword: str) -> list[str]:
+    # 严格校验入参类型与边界
+    if not isinstance(keyword, str) or len(keyword) > 50:
+        raise ValueError("Invalid keyword")
+    
+    # 目标域名严格固定，不可篡改
+    url = f"https://api.example-encyclopedia.org/v1/search?q={urllib.parse.quote(keyword)}"
+    return do_safe_http_get(url)
 
-register_capability("request_llm_completion", request_llm_completion)
+register_capability("search_encyclopedia", search_encyclopedia)
 ```
-:::
 
-**判断标准**：solution 通过你的 capability 最多能做到什么？如果“任意目标地址、任意方法、任意头”都能被控制，就等同于给 solution 开了全量网络。目标地址应当固定或来自受控枚举，而不是由调用方自由传入。
+---
 
-## 安全清单（出题人自查）
+## 生产网络拓扑物理切分（VULN-20 防御）
 
-- [ ] capability 名称与签名精确表达业务意图，**不暴露通用 HTTP 转发**
-- [ ] 目标 URL/域名固定（或来自白名单枚举），不由调用方任意指定
-- [ ] 若确需调用方传 URL，校验：仅允许 `https://`、拒绝 IP 字面量、拒绝内网/链路本地地址段（`10.x`、`172.16-31.x`、`192.168.x`、`169.254.x`、`127.x`、`0.0.0.0`、IPv6 对应段）、**跟随重定向前再校验一次目标**
-- [ ] 绝不访问云元数据服务（`169.254.169.254` / `fd00:ec2::254`）
-- [ ] 网络请求设置超时（如 `timeout=10`），不要无限阻塞
-- [ ] API 密钥放在 evaluator 镜像环境变量中，**不放进支持包或题面**；若是 LLM 调用题，密钥应只存在于 `noj-llm-gateway`，evaluator 不持有上游 Key
-- [ ] 题面明确声明 capability 名称、参数、返回值与限制
+为了彻底防范联网容器横向移动探测，Neuro OJ 在生产编排中实施了**Compose
+双网络拓扑物理隔离**：
 
-## 常见陷阱
+- **`noj-eval-net` 独立沙箱子网**：Evaluator 容器仅加入专用的
+  `noj-eval-net`。该网络内部**仅存在 `noj-llm-gateway` 一个中转服务**；
+- **核心基础设施零可达**：对承载业务数据库（PostgreSQL）、缓存（Redis）、对象存储（MinIO）及业务核心（`noj-core`）的生产主网络**无任何
+  DNS 记录与路由连通性**；
+- **启动级熔断**：评测引擎启动时强行校验网络配置，直接拒绝以 `bridge` 或 `host`
+  宿主模式启动联网容器。
 
-- **handler 内嵌套双向调用会死锁**：capability 在 evaluator 的 runner reader 线程中同步执行，handler 内再调用 `runner.call()`（回调 solution）会互相等待，只能等评测总超时兜底——**不要**在 handler 里嵌套调用 solution。
-- **重定向绕过**：请求 `https://safe.example.com` 被 302 到 `http://169.254.169.254/`。跟随重定向的库默认会跳转——每跳都要重新校验目标。
-- **DNS rebinding**：域名先解析到公网 IP 通过校验，随后解析到内网 IP。固定域名 + 服务端解析并校验实际 IP 可缓解。
-- **编码/别名绕过**：`http://127.0.0.1`、`http://2130706433`（十进制 IP）、`http://[::1]` 等写法都需要覆盖。
-- **secret 泄露**：把 `Authorization` 头、API key 写进 capability 参数或题面，会被任何提交者看到。普通网络能力中密钥必须留在 evaluator 侧；LLM 调用题则通过 `noj-llm-gateway` 托管，evaluator 不接触上游 Key。
+---
 
-## 网络模式说明
+## 出题人安全自查清单
 
-| 配置 | evaluator | solution |
-| --- | --- | --- |
-| `network.enabled = true` | Docker **bridge** 联网（**全量**出网，无网络层白名单）；网络名可由运维改为 compose 网络（`JUDGE_EVALUATOR_NETWORK`） | 无网 |
-| `network.enabled` 缺省 / `false` | 无网（默认，与旧行为一致） | 无网 |
-
-::: warning 横向移动面（威胁模型）
-Docker 默认 bridge 允许容器间互通（ICC），联网的 evaluator 可探测同宿主其他容器及网关（`172.17.0.1` 等）上的服务。由于 evaluator 只运行出题人编写的可信代码，此面由“不要注册通用转发 capability”约束兜底；生产加固方向（每任务独立 user-defined network + `icc=false`）已列入规划，当前版本请以 capability 封装为准。
-:::
-
-网络层白名单代理（egress proxy）同样已列入规划，届时可在网络层兜底限制域名/端口。
-
-## 验证方法
-
-1. 本地用 `deno task dev-setup` 环境跑一次真实提交，确认 solution 能通过 `call_capability` 拿到正确结果。
-2. 提交一个恶意尝试（如调用未注册 capability、传非预期参数）确认被拒绝（`CapabilityNotFoundError` / `CapabilityRejectedError`）。
-3. 如需确认 solution 确实无网，可在题面声明“不允许直接网络请求”，观察提交是否会失败。
+- [ ] Capability 名称与签名表达明确的业务意图，**绝不暴露通用 `fetch(url)`
+      转发**；
+- [ ] 外部请求的目标域名与端口严格写死或来自受控枚举；
+- [ ] 网络请求必须显式设置连接与读取超时（例如 `timeout=10`），禁止无脑阻塞；
+- [ ] API Token 与私钥**绝对不硬编码在题目支持包或题面中**；
+- [ ] 对于大语言模型调用，**优先使用系统预置的
+      `noj-llm-gateway`**，避免出题人个人 Key 被恶意消耗。

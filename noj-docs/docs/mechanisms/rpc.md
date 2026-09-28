@@ -1,164 +1,163 @@
-# RPC 与可传递数据
+# RPC 协议与数据线格式（Wire Format）
 
-> 一句话：Evaluator 与 Solution 之间用 **NDJSON 帧**（每行一个 JSON 对象）经 Judge Worker 双向转发；出题人通常只需用 `SolutionRunner`，理解线格式则有助于设计题目、解释错误与避开不可传递的数据。
+在双容器沙箱架构下，Evaluator 裁判容器、评测宿主网关（`noj-judge`）与 Solution
+选手容器之间通过基于标准 I/O 流的 **NDJSON（Newline Delimited JSON，换行符分隔的
+JSON）** 消息帧进行高性能双向解耦通讯。
 
-## 协议角色
+---
 
-当前双容器使用 **NDJSON 帧**在 Evaluator、Judge Worker、Solution Host 之间转发。
+## 通道拓扑与流向约束
 
-```text
-Evaluator SDK
-  |
-  | NDJSON 帧写到 evaluator stdout
-  v
-Judge Worker
-  |
-  | 帧写入 Solution Host stdin
-  v
-Solution Host
-  |
-  | 响应帧写到 Solution Host stdout
-  v
-Judge Worker
-  |
-  | 响应帧写回 evaluator stdin
-  v
-Evaluator SDK
+系统清晰规划了评测过程中的三组标准数据流：
+
+```mermaid
+flowchart LR
+    subgraph Evaluator["Evaluator 容器"]
+        EOut[stdout]
+        EErr[stderr]
+        EIn[stdin]
+    end
+
+    subgraph Judge["评测引擎 (noj-judge)"]
+        Parser["NDJSON 解析器<br/>(4 MiB 分块缓冲区)"]
+        Buffer["日志收集缓冲区<br/>(stdout/stderr 各 1 MiB)"]
+    end
+
+    subgraph Solution["Solution 容器"]
+        SIn[stdin]
+        SOut[stdout]
+        SErr[stderr]
+    end
+
+    EOut -- "带 type 的帧 & ---RESULT---" --> Parser
+    Parser -- "转发合规帧" --> SIn
+    SOut -- "响应协议帧 (杂质被滤除)" --> Parser
+    Parser -- "写回结果帧" --> EIn
+
+    EErr -. "仅诊断输出 (不解析帧)" .-> Buffer
 ```
 
-::: info 三个通道各司其职
-- Evaluator 的 **stdout** 同时承载协议帧、`---RESULT---` 标记和普通输出；Judge Worker 解析带 `type` 字段的 NDJSON 对象作为协议帧，其余文本作为评测输出。
-- Evaluator 的 **stderr** 不承载 RPC 帧，只作为普通日志/诊断输出。
-- Solution Host 的 **stdout** 是协议通道；Solution 用户代码若直接向 stdout `print()`，该文本不是合法协议帧，会被 Judge Worker 丢弃，不会作为评测输出展示。
-:::
+| 通道名称             | 所属实体 | 核心职责与过滤规则                                                                                                         |
+| -------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **Evaluator stdout** | 评测脚本 | **复合协议通道**：承载带有 `type` 字段的 NDJSON 协议帧、标志评测结束的 `---RESULT---` 结算元数据以及普通文本评测日志       |
+| **Evaluator stderr** | 评测脚本 | **纯净诊断信道**：仅收集脚本执行警告与错误日志，**绝对不解析任何 RPC 协议帧**                                              |
+| **Solution stdout**  | 选手解答 | **高危隔离协议通道**：仅由 Solution Host 守护发送合法协议帧；选手在代码中调用的任何非协议 `print()` 杂质在此被强行拦截抛弃 |
 
-## 调用请求
+---
 
-Evaluator SDK 调用：
+## 协议帧格式规范（Schemas）
 
-```python
-runner.call("solve", 1, 2)
-```
+所有协议帧必须是以 `\n` 结尾的单个 JSON 对象，顶层必须包含 `type` 与唯一追踪标识
+`id`。
 
-会生成类似下面的 NDJSON 帧：
+### 1. 函数调用帧（`call`）
 
-```json
-{"type":"call","id":"<uuid>","fn":"solve","args":[1,2]}
-```
-
-字段含义：
-
-| 字段 | 必填 | 含义 |
-| --- | :---: | --- |
-| `type` | ✅ | 帧类型，取值范围见下文「帧类型一览」 |
-| `id` | ✅ | 单次调用 ID，用于匹配响应 |
-| `fn` | ✅ | 要调用的用户函数名 |
-| `args` | ✅ | 编码后的定位参数列表 |
-| `timeout_ms` | | **可选**。正整数 = 本次调用超时（毫秒），仅由 Judge Worker 计时；缺省/非法时回退题目级 `runtime_config.solution.call_timeout_ms` |
-
-### cap_reg 帧（capability 默认超时上报）
-
-Evaluator 在 `register_capability(name, handler, timeout_ms=...)` 时向 stdout 写一次性 `cap_reg` 帧：
-
-```json
-{"type":"cap_reg","name":"request_llm_completion","timeout_ms":10000}
-```
-
-- `timeout_ms` 缺省表示删除映射（该 capability 回退题目级 `call_timeout_ms`）。
-- `cap_reg` 是 Evaluator → Judge 的私有协议帧，Judge 不转发给 Solution Host。
-- 重复注册同名 capability：最近一次生效。
-
-## 成功响应
-
-Solution Host 成功返回时，写出：
-
-```json
-{"type":"result","id":"<uuid>","value":3}
-```
-
-Evaluator SDK 会解码 `value` 并作为 `runner.call()` 的返回值。
-
-## 错误响应
-
-调用失败时，Solution Host 或 Judge Worker 返回：
-
-```json
-{"type":"error","id":"<uuid>","code":"NotFound","message":"function 'solve' not registered"}
-```
-
-Evaluator SDK 会把它转换成对应异常：
-
-| code | Evaluator SDK 异常 |
-| --- | --- |
-| `NotFound` | `NotFoundError` |
-| `Rejected` | `RejectedError` |
-| `CallTimeout` | `SolutionTimeoutError` |
-| `Exception` / `SystemError` 等 | `SystemError` |
-| 通道关闭 / host 退出 | `ConnectionError` |
-
-::: warning 函数不存在统一为 `NotFound`
-当前实现中没有 `FunctionNotFound`、`NotCallable`、`InvalidFunctionName`、`InvalidJson`、`UnknownMethod`、`HostWriteFailed`、`InvalidHostResponse`、`RestartFailed`、`InvalidRpcFrame` 这些旧错误码；函数不存在统一为 `NotFound`。
-:::
-
-## 帧类型一览
-
-Evaluator 与 Solution 使用同一组 `type` 值（源码常量见 `noj-judge/src/dual/protocol.rs`）：
-
-| `type` | 方向 | 含义 |
-| --- | --- | --- |
-| `ready` | Solution → Judge | host 启动完成（就绪前其余 Solution 帧被忽略） |
-| `call` | Evaluator → Solution | 调用用户函数 |
-| `result` | 双向 | 调用/capability 的成功返回值 |
-| `error` | 双向 | 调用/capability 失败，或 Judge Worker 写入的调用超时 |
-| `capability` | Solution → Evaluator | 请求调用 evaluator 注册的 capability |
-| `cap_reg` | Evaluator → Judge | capability 默认超时上报（**不转发**） |
-| `log` | Solution → Evaluator | 日志帧（judge 转发给 Evaluator 并收集；Evaluator 侧的 log 帧不转发） |
-| `shutdown` | （保留）发往 host / evaluator | 关闭通知；Solution→Evaluator 方向会被识别并转发，Evaluator→host 方向按"未知帧"记 `warn` 丢弃；当前编排循环**不发送**，靠 stdin EOF 兜底 |
-
-## 可传递的数据类型
-
-Neuro OJ RPC 使用 JSON 加一层 Neuro OJ codec。当前支持：
-
-| Python 类型 | 传递语义 |
-| --- | --- |
-| `None` | 原样传递为 JSON `null` |
-| `bool` | 原样传递 |
-| `int` | 原样传递 |
-| `float` | 原样传递；**建议只用有限浮点数**（`NaN`/`Infinity` 行为未定义，见下） |
-| `str` | 原样传递 |
-| `bytes` | 编码为 `{"__bytes__": "<base64>"}` 包装对象 |
-| `list` | 递归编码元素 |
-| `dict` | 递归编码值，但 key 必须是字符串 |
-
-`bytes` 的编码对象形如：
+由 Evaluator 发往 Solution：
 
 ```json
 {
-  "__bytes__": "SGVsbG8="
+  "type": "call",
+  "id": "e6a0d4b2-2940-42cf-9615-181512db7881",
+  "fn": "solve",
+  "args": [10, "test_input", { "k": 3.14 }],
+  "timeout_ms": 3000
 }
 ```
 
-::: danger 不在支持契约内的数据
-以下内容**不属于** RPC 支持契约，不要传递或返回：
+- `fn`：要调用的顶层函数名；
+- `args`：按顺序排列的位置参数列表；
+- `timeout_ms`（可选）：本次调用的毫秒级超时上限。
 
-- `NaN`、`Infinity`、`-Infinity` 等非有限浮点数（codec 类型白名单不单独拦截，但它们无法安全序列化为严格 JSON，行为未定义）。
-- key 不是字符串的字典。
-- 函数、类、模块、文件句柄、生成器、迭代器。
-- 自定义对象实例、异常对象本身。
+### 2. 成功响应帧（`result`）
+
+双向通行帧（Solution 返回执行结果，或 Evaluator 返回 capability 执行结论）：
+
+```json
+{
+  "type": "result",
+  "id": "e6a0d4b2-2940-42cf-9615-181512db7881",
+  "value": 42
+}
+```
+
+### 3. 错误响应帧（`error`）
+
+双向通行帧（声明调用异常）：
+
+```json
+{
+  "type": "error",
+  "id": "e6a0d4b2-2940-42cf-9615-181512db7881",
+  "code": "NotFound",
+  "message": "function 'solve' is not defined in user submission"
+}
+```
+
+### 4. 能力超时注册帧（`cap_reg`）
+
+由 Evaluator 容器向评测宿主上报私有配置（**宿主不向下转发给 Solution**）：
+
+```json
+{
+  "type": "cap_reg",
+  "name": "request_llm_completion",
+  "timeout_ms": 10000
+}
+```
+
+---
+
+## 协议帧类型全集（Frame Types）
+
+| 帧类型（`type`） | 数据流向                 | 语义解释与处理策略                                                         |
+| ---------------- | ------------------------ | -------------------------------------------------------------------------- |
+| **`ready`**      | Solution $\to$ Judge     | Solution Host 初始化完成信号。此信号到达前，其他发往该容器的请求均挂起排队 |
+| **`call`**       | Evaluator $\to$ Solution | 发起远程选手函数执行                                                       |
+| **`result`**     | 双向（两端互通）         | 返回函数或能力的执行结果数据负载                                           |
+| **`error`**      | 双向（两端互通）         | 报告执行崩溃、参数被拒或由宿主注入的单次调用超时熔断                       |
+| **`capability`** | Solution $\to$ Evaluator | 选手代码反向请求 Evaluator 的受限能力                                      |
+| **`cap_reg`**    | Evaluator $\to$ Judge    | 动态登记反向能力的默认调用超时                                             |
+| **`log`**        | Solution $\to$ Evaluator | 选手端受控结构化日志，转发 Evaluator 集中归集                              |
+| **`shutdown`**   | 保留保留指令             | 优雅停机信号（实际生产中依赖管道标准输入 EOF 自动退出）                    |
+
+---
+
+## 序列化数据类型白名单
+
+通信数据经过 Neuro OJ Codec 进行严格的双向序列化转换，仅允许以下受控类型传递：
+
+| Python 原生数据类型 | 序列化形态与传输特征                     | 示例                             |
+| ------------------- | ---------------------------------------- | -------------------------------- |
+| **`None`**          | 原样映射为 JSON `null`                   | `null`                           |
+| **`bool`**          | 原样映射为 JSON 布尔值                   | `true` / `false`                 |
+| **`int`**           | 原样映射为 JSON 整数数值                 | `1024`                           |
+| **`float`**         | 有限双精度浮点数（**严禁使用非有限值**） | `3.1415926`                      |
+| **`str`**           | UTF-8 字符串                             | `"Hello Neuro OJ"`               |
+| **`bytes`**         | 包装为 Base64 专有对象编码               | `{"__bytes__": "SGVsbG8="}`      |
+| **`list`**          | 深度递归编码的有序数组                   | `[1, "text", true]`              |
+| **`dict`**          | 映射为 JSON 对象（**键名必须为字符串**） | `{"name": "Alice", "score": 98}` |
+
+::: danger 严禁传输的非法数据类型
+以下对象绝对不属于 RPC 传输契约范围，一经发现立即触发 `RejectedError`：
+
+- **非有限浮点数**：`float('nan')`、`float('inf')`、`-float('inf')`；
+- **非字符串键的字典**：如 `{1: "value"}` 或 `{(1, 2): "coord"}`；
+- **原生复杂结构**：`tuple`（请转为 list）、`set`（请转为 list）；
+- **动态实体引用**：函数、方法、模块、生成器（Generator）、迭代器、文件句柄；
+- **自定义类对象与异常**：未序列化的类实例对象或原生 `Exception` 堆栈对象。
 :::
 
-### 行为
+---
 
-- **Evaluator 传参**：`runner.call()` 在发出帧前递归校验参数类型，遇到不允许的类型立即抛 `RejectedError`；RPC 帧不会发出。
-- **Solution 返回值**：Solution Host 序列化失败时返回 `code="Rejected"` 的错误帧，Evaluator 侧收到 `RejectedError`。
-- **单帧大小**：超过 1 MiB 软上限会被拒绝。
-- 出题人可用 `try/except RejectedError` 把这类调用按失败用例处理；不捕获则 `evaluate.py` 异常退出，该次评测落为 `error`。
+## 物理缓冲区与容量截断机制
 
-## 输出与截断
+为了抵御内存溢出攻击并保障评测宿主的高可用，系统设定了清晰的防卫边界：
 
-::: details 输出上限与缓冲区细节
-- Judge Worker 只收集 **Evaluator** 的 stdout / stderr；两者**各自**累计上限 1 MiB。超限时丢弃**头部**、保留尾部（诊断信息优先），并不额外追加截断提示。
-- Solution 的输出不被收集——只有合法协议帧会被转发，其余文本直接丢弃。
-- 协议行解析缓冲区为 4 MiB（用于跨 chunk 拼接单行），但**不**等同于最终收集的输出上限。
-- 调用失败时，错误帧只携带 `message` 和（部分场景）清洗后的 `trace`，不会自动附加完整 stderr。
-:::
+1. **单帧体量软上限（1 MiB）**：
+   单次调用入参序列化后，或单次返回值体积**不得超过 1
+   MiB**。超过该阈值的帧将被协议层直接抛弃并返回 `Rejected` 错误；
+2. **底层行切分流缓冲区（4 MiB）**： 评测宿主在底层处理跨分块 TCP/Pipe
+   拼接时，为单行 NDJSON 保留最多 4 MiB 缓冲区；
+3. **输出收集与尾部保留策略（1 MiB）**： Evaluator 的 `stdout` 与 `stderr`
+   由宿主独立收集，**上限各为 1
+   MiB**。若脚本输出过长发生截断，系统采取"**丢弃头部、保留尾部**"的诊断友好策略（保留最后崩溃或结论信息）。

@@ -903,6 +903,7 @@ export async function getContestProblems(
       p.difficulty,
       p.submission_mode,
       p.artifact_max_size_mb,
+      p.visibility,
       CONCAT(p.type, p.number::text) AS display_id,
       CASE
         WHEN ${userId ?? null}::text IS NULL THEN 'untouched'
@@ -945,6 +946,7 @@ export async function getContestProblems(
     artifact_max_size_mb: row.artifact_max_size_mb === null
       ? null
       : Number(row.artifact_max_size_mb),
+    visibility: row.visibility as ContestProblemResponse["visibility"],
     user_status: row.user_status as ContestProblemResponse["user_status"],
   }));
 }

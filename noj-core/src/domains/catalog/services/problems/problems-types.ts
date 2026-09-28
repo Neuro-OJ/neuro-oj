@@ -45,6 +45,16 @@ export interface ProblemResponse {
   /** LLM 配置（可空，仅 owner/admin 返回） */
   llm_config?: LlmConfig | null;
   display_id: string;
+  /**
+   * 该题目是否被**尚未结束的公开赛**收编（审计 VULN-07）。
+   *
+   * 语义：
+   * - 非特权用户（非管理员且非题目所有者）：这类题目**整行不会出现在列表里**
+   *   （后端 SQL 过滤），故该字段恒为 false/不出现——不存在"看得到但被隐藏"的中间态；
+   * - 特权用户（管理员 / 题目所有者）：行照常返回，`is_contest_hidden === true`
+   *   表示它对普通用户处于隐藏保密状态，前端据此展示浅灰斜纹底 + Tooltip。
+   */
+  is_contest_hidden?: boolean;
   created_at: string;
   updated_at: string;
 }

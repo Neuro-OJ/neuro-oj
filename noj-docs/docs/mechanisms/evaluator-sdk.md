@@ -1,206 +1,200 @@
-# Evaluator SDK
+# Evaluator SDK 规范手册
 
-> 一句话：Evaluator SDK（`noj_evaluator_sdk`）跑在 **Evaluator 容器**里，负责调用用户函数（`SolutionRunner`）、转发受限 capability，并写出最终结果（`result`）。
+Evaluator SDK（`noj_evaluator_sdk`）是运行在出题人 **Evaluator 评测裁判容器**
+中的核心基础库。它负责建立与选手容器的 RPC
+进程管道、执行强类型函数调用与超时熔断、提供反向能力代理（Capability），并按统一协议写出最终成绩与用例诊断详情。
 
-Evaluator SDK 运行在 Evaluator 容器中，用于调用用户解答并输出评测结果。协议线格式见 [RPC 与可传递数据](rpc.md)。
+---
 
-## 导入
+## 模块导入与快速概览
 
 ```python
 from noj_evaluator_sdk import (
+    # 核心调用控制器
     SolutionRunner,
+    # 异常错误类族
     NotFoundError,
     RejectedError,
     SolutionTimeoutError,
     SystemError,
     ConnectionError,
+    # 能力注册与结果上报
+    register_capability,
     result,
+    # 大模型调用辅助模块
+    llm,
 )
 ```
 
-## 调用用户函数
+---
 
-创建 runner：
+## 调用选手解答（`SolutionRunner`）
+
+### 1. 基础调用与实例创建
+
+在 `evaluate.py` 中初始化 `SolutionRunner` 实例即可发起 RPC 请求：
 
 ```python
 runner = SolutionRunner()
-```
 
-调用用户函数：
-
-```python
-answer = runner.call("solve", 1, 2)
-```
-
-`runner.call()` 会向 Solution Host 发起一次 RPC 调用。如果调用成功，返回用户函数的返回值。
-
-**调用级超时**：`runner.call()` 支持可选 `timeout_ms` 参数，每次调用可指定独立超时（毫秒）。缺省（`None`）时由 Judge Worker 回退到题目的 `runtime_config.solution.call_timeout_ms`：
-
-```python
-answer = runner.call("solve", 1, 2)                    # 用题目级默认超时
-answer = runner.call("solve", 1, 2, timeout_ms=5000)   # 本次调用 5s 超时
-```
-
-::: warning `timeout_ms` 必须是正整数或 `None`
-其他值（`0` / 负数 / 非整数）会抛出 `ValueError`。超时后 `runner.call()` 抛出 `SolutionTimeoutError`，可捕获后记为失败用例继续评测——**不捕获则** evaluator 异常退出、没有 `---RESULT---`，最终状态为 `error`。
-:::
-
-调用参数会经过 Neuro OJ codec 编码后通过 RPC 传递。支持的类型和限制见 [RPC 与可传递数据](rpc.md)。
-
-## 处理调用错误
-
-`runner.call()` 会根据错误类型抛出以下异常：
-
-| 异常 | 含义 |
-| --- | --- |
-| `NotFoundError` | 目标函数不存在 |
-| `RejectedError` | 参数/返回值类型不允许，或帧超过 1 MiB 软上限 |
-| `SolutionTimeoutError` | 单次调用超过 `call_timeout_ms`。若 evaluator 未捕获（evaluate.py 异常退出、无 `---RESULT---`），最终状态为 `error` |
-| `SystemError` | host 内部错误、异常执行、IPC 通道异常等不可恢复错误 |
-| `ConnectionError` | Solution Host 已关闭 / IPC 通道断开 |
-
-```python
+# 发起远程函数调用
 try:
-    answer = runner.call("solve", 1, 2)
-except SolutionTimeoutError:
-    # 超时按失败用例处理
-    result.wrong_answer(score=0, message="调用超时")
-except RejectedError as exc:
-    # 参数/返回值类型非法
-    result.wrong_answer(score=0, message=str(exc))
+    actual = runner.call("solve", 10, 20)
 except NotFoundError:
-    # 函数未实现
-    result.wrong_answer(score=0, message="函数不存在")
+    result.wrong_answer(score=0, details={"error": "未定义 solve 函数"})
 ```
 
-### 参数与返回值类型校验（RejectedError）
+### 2. 调用级独立超时设置（`timeout_ms`）
 
-`runner.call()` 在发出 RPC 帧之前会**递归校验参数类型**：只允许 `None / bool / int / float / str / bytes / list / dict`（dict 的 key 必须是 `str`），任何其他类型——包括嵌套在 list / dict 中的自定义对象、`set`、`tuple`、函数、生成器、文件句柄等——都会**直接抛出 `RejectedError`**，错误消息带路径与类型名：
-
-```text
-arg[0]: 不支持的类型 MyClass（仅 None/bool/int/float/str/bytes/list/dict）
-```
-
-此时 RPC 帧**不会发出**，Solution 侧完全不知情。帧序列化超过 1 MiB 软上限时同样抛出 `RejectedError`。
-
-返回值路径对称：Solution 返回不支持类型时，Judge Worker 以 `code="Rejected"` 的错误帧返回，Evaluator 侧同样收到 `RejectedError`。
-
-出题人可以用 `try/except RejectedError` 把这类调用按失败用例处理；不捕获则 `evaluate.py` 异常退出，该次评测落为 `error`。
-
-## 注册 capability（供 Solution 调用）
-
-当题目需要让 solution 使用网络等能力时，用 `register_capability` 暴露一个**精确封装**的 handler：
+`runner.call()`
+支持显式指定当前单次调用的超时时间（毫秒）。当处理测试点梯度较大（如小用例
+100ms，大用例 5000ms）时尤为实用：
 
 ```python
-from noj_evaluator_sdk import register_capability
+# 缺省时回退到题目级别的 call_timeout_ms
+ans1 = runner.call("solve", 1, 2)
 
-def request_llm_completion(prompt: str) -> str:
-    # evaluator 已联网（runtime_config.evaluator.network.enabled = true）
-    # ... 调用固定 URL 的外部 API，参数校验由 handler 负责
-    return completion_text
-
-register_capability("request_llm_completion", request_llm_completion)
+# 为复杂大用例显式分配 3000ms 独立超时配额
+ans2 = runner.call("solve", big_graph, timeout_ms=3000)
 ```
 
-**capability 默认超时**：`register_capability(name, handler, timeout_ms=None)` 可配置 solution 每次调用该 capability 的超时（毫秒）。注册时经 `cap_reg` 帧上报 Judge，缺省（`None`）回退题目级 `call_timeout_ms`：
+::: warning `timeout_ms` 参数契约
+`timeout_ms` 必须为**正整数**或 `None`。传递 `0`、负数或非整数将立即抛出 `ValueError`。若单次调用发生超时，SDK 抛出 `SolutionTimeoutError`：
 
-```python
-register_capability("request_llm_completion", handler, timeout_ms=10000)
-```
-
-- Solution 通过 `noj_solution_sdk.call_capability(name, *args)` 调用；请求经 judge 转发到 evaluator，在 **runner 的 reader 线程**中同步执行 handler，结果以 `result` 帧返回。
-- 返回值与 `runner.call()` 相同约束（`None / bool / int / float / str / bytes / list / dict`）；返回值类型非法或帧超限（> 1 MiB）→ `code="Rejected"`；handler 异常 → `code="Exception"`（含清洗后 trace），未注册 → `code="NotFound"`。
-- **不要嵌套双向调用**：capability handler 在 reader 线程中同步执行，若 handler 内再调用 `runner.call()`（回调 solution），双方会互相等待而死锁，只能等评测总超时兜底——不支持这种嵌套。
-- 重复注册同名 capability：最近一次生效。
-- **安全模型**：capability 是 solution 使用网络的唯一入口，**不要注册通用 URL 转发**（如 `fetch_url(url)`）；应封装固定目标的业务函数并做参数校验。详细指南见 [如何提供受限网络能力](capability-networking.md)。
-
-## 输出评测结果
-
-Evaluator 使用 `result` 模块输出最终结果。`score` 参数以**实际分数**计（可为小数），SDK 内部乘以 100 写入结果 JSON。
-
-```python
-result.accept(score=10, details={"passed": 10})       # 满分，写入 score=1000
-result.wrong_answer(score=5, details={"passed": 5})   # 部分分，写入 score=500
-```
-
-::: warning `result` 每次评测只能写入一次
-`accept` / `wrong_answer` 第二次调用会抛 `RuntimeError`。写入后进程应尽快退出。
+- **正确做法**：出题人应使用 `try...except SolutionTimeoutError` 捕获该异常，标记当前测试点超时，并给 0 分继续评测后续用例；
+- **严重后果**：若未捕获该异常，评测脚本将在没有写出 `---RESULT---` 的情况下中途溃退，评测终态将被系统判定为系统级 **`error`**。
 :::
 
-新协议下结果 JSON 不再输出 `status`，只输出 `score` 与 `details`；`accept` / `wrong_answer` 只是写入分数的便捷方法。评测脚本自身出错时应直接抛出异常或非零退出，由 judge 统一映射为 `error`；SDK 已移除会写入结果的 `runtime_error()`，`system_error()` 现在也是**直接抛出 `RuntimeError`**（不再写结果 JSON）。
+---
 
-结果 JSON 中的 `score` 是 ×100 的整数（与数据库存储一致）。例如满分 10 分时，`accept(score=10)` 写入 `"score": 1000`，前端按 `(score / 100).toFixed(1)` 显示为 `10.0` 分。
+## 异常模型与防御性捕获
 
-## details
+`runner.call()` 根据选手沙箱底层回传的状态码，结构化映射为以下 Python 异常：
 
-`details` 会作为结构化结果透传给前端。若需要展示测试点明细，推荐使用扁平的 `cases` 数组。每个测试点必须包含 `case_id`、`status` 和布尔标记 `hidden`（`true` 为隐藏用例，`false` 为可见用例）；请为每个用例都设置该字段，避免旧脚本被误判为“全部可见”。`visibility`（`visible`/`hidden`）是可选的兼容/人读字段，`time_ms`、`memory_kb`、`input`、`expected_output` 和 `actual_output` 按可见性选用。
+| 异常类型                   | 对应协议状态码              | 产生诱因与处理准则                                               |
+| -------------------------- | --------------------------- | ---------------------------------------------------------------- |
+| **`NotFoundError`**        | `NotFound`                  | 选手代码未声明该顶层函数。通常直接判定该用例 0 分                |
+| **`RejectedError`**        | `Rejected`                  | 参数/返回值不符合类型白名单，或序列化后单帧体量 > 1 MiB          |
+| **`SolutionTimeoutError`** | `CallTimeout`               | 单次函数执行耗时突破 `timeout_ms` 阈值                           |
+| **`SystemError`**          | `Exception` / `SystemError` | 选手函数执行崩溃抛错。异常消息包含由宿主清洗过绝对路径的安全堆栈 |
+| **`ConnectionError`**      | IPC 断开                    | Solution Host 进程提前闪退或 IPC 管道破裂                        |
 
-| 字段 | 必填 | 说明 |
-| --- | :---: | --- |
-| `case_id` | ✅ | 用例标识 |
-| `status` | ✅ | 用例级状态（`Accepted` / `WrongAnswer` 等，仅参考） |
-| `hidden` | ✅ | 布尔：`true` 隐藏 / `false` 可见；**每个用例都要写** |
-| `visibility` | | `visible` / `hidden`，兼容与人读用 |
-| `time_ms` / `memory_kb` | | 耗时 / 内存，可见与隐藏用例都可给；两者都会被 core 结果白名单收录并落库（`memory_kb` 自 2026-09-24 起收录，此前会被静默丢弃） |
-| `input` / `expected_output` / `actual_output` | | 仅**可见**用例可给；隐藏用例**不得**出现 |
+### 参数与返回值严格白名单校验
 
-::: warning 隐藏用例不能带输入/期望/实际输出
-隐藏测试点可以展示状态、耗时和内存，但 **MUST NOT** 在 `details` 中写入 `input` / `expected_output` / `actual_output`——否则会经结果投影泄露给做题人（竞赛场景尤其致命）。
+在发出网络帧之前，`SolutionRunner` 会在 Evaluator
+进程内**深度递归校验传参类型**：
+
+- **允许的合法类型**：`None`、`bool`、`int`、`float`、`str`、`bytes`、`list`、`dict`（**dict
+  的键名必须为字符串 `str`**）；
+- **非法类型即刻拦截**：若参数中包含自定义类实例、`set`、`tuple`、函数引用、生成器、文件句柄等，SDK
+  **立即在本地抛出 `RejectedError`**，底层**绝不会发送任何 RPC
+  帧**（保护选手容器不被非预期数据污染）。
+
+---
+
+## 注册受控能力（`register_capability`）
+
+当题目需要向零网络的选手提供受控外部网络能力（如调用特定公网
+API、大模型推理）时，由 Evaluator 注册反向代理能力：
+
+```python
+def query_weather_handler(city: str) -> dict:
+    """仅接受城市名参数，目标 API 严格由 Evaluator 写死"""
+    if not isinstance(city, str):
+        raise ValueError("City name must be string")
+    return fetch_from_weather_api(city)
+
+# 注册 capability 并设置其被调用时的独立超时（单位：ms）
+register_capability("query_weather", query_weather_handler, timeout_ms=5000)
+```
+
+::: danger 严禁双向嵌套调用（死锁红线） `register_capability` 绑定的 Handler
+是在 Evaluator 进程的 **Runner 内部读取线程** 中同步执行的。
+若在能力处理函数内部再次调用 `runner.call()`
+去回调选手代码，**双方将陷入不可解的相互等待死锁**，最终只能等待全局总超时强杀！
 :::
 
-常见结构：
+---
+
+## 成绩上报与用例详情（`result` 模块）
+
+评测结束前，出题人通过 `result` 模块写出评分结论并规范退出。
+
+### 1. 结果提交接口
+
+```python
+# 判定满分
+result.accept(score=100, details=summary_details)
+
+# 判定部分分或 0 分
+result.wrong_answer(score=60, details=summary_details)
+```
+
+::: warning 单次评测唯一提交准则
+`result.accept()` 或 `result.wrong_answer()` **在单次评测中仅允许调用一次**！重复调用会抛出 `RuntimeError`。出题人写出结果后应立即让 `evaluate.py` 正常退场（`sys.exit(0)`）。
+:::
+
+### 2. 规范化测试点结构（`details.cases`）
+
+为使前端能够渲染出清晰美观的测试点卡片，`details` 推荐使用扁平化的 `cases`
+数组：
 
 ```python
 details = {
     "cases": [
         {
-            "case_id": "v001",
+            "case_id": "v1",
             "status": "Accepted",
-            "hidden": False,
+            "hidden": False,  # 显式声明为公开可见用例
             "visibility": "visible",
-            "time_ms": 12,
-            "expected_output": "3",
-            "actual_output": "3",
+            "time_ms": 15,
+            "memory_kb": 24500,
+            "input": "solve(3, 5)",
+            "expected_output": "8",
+            "actual_output": "8",
         },
         {
-            "case_id": "h001",
+            "case_id": "h1",
             "status": "WrongAnswer",
-            "hidden": True,
+            "hidden": True,  # 显式声明为盲测隐藏用例
             "visibility": "hidden",
-            "time_ms": 15,
+            "time_ms": 22,
+            "memory_kb": 26800,
+            # 隐藏用例严禁出现 input / expected_output / actual_output !
         },
-    ],
+    ]
 }
 ```
 
-::: info 投影与兼容
-提交结果投影会按 `hidden` 标记在竞赛场景剥离隐藏用例；判定“用例已标记”的条件是**含 `hidden` 或 `visibility` 字段**。若 `cases` 中任意用例两者都缺，视为旧脚本，整份用例详情 **fail-safe 不返回**。历史的 `visible.cases`/`hidden.cases` 以及 `id`/`expected`/`actual` 字段仍可被提交结果页兼容，但新评测器应使用上述标准字段并带 `hidden`。
-:::
+### 3. 用例安全防泄漏红线与 Fail-Safe 机制
 
-## 调用 LLM（LLM 题）
+- **隐藏用例脱敏红线**：标记为 `hidden: True` 的用例，**绝对禁止**携带
+  `input`、`expected_output` 与 `actual_output`，防止在竞赛投影时向选手泄题；
+- **全量字段校验**：**每个测试点对象必须显式携带 `hidden` 布尔字段**；
+- **Fail-Safe 安全兜底**：若 `cases` 数组中存在任何一个用例缺少 `hidden` 或
+  `visibility`
+  标记，后端投影引擎为防止历史脚本意外泄密，将**对该次提交实施整体用例详情熔断（整份详情不予返回）**。
 
-启用 LLM 的题目由 Judge Worker 向 **Evaluator 容器**注入一组环境变量（Solution 容器始终不注入）：
+---
 
-| 环境变量 | 含义 |
-| --- | --- |
-| `NOJ_LLM_GATEWAY_URL` | `noj-llm-gateway` 基址 |
-| `NOJ_LLM_TOKEN` | 短期 `eval_token` |
-| `NOJ_LLM_PROVIDER_ID` | Provider ID（由 gateway 校验） |
-| `NOJ_LLM_ALLOWED_MODELS` | 允许的模型名列表（逗号分隔） |
-| `NOJ_SUBMISSION_ID` | 提交 UUID（供题目侧做确定性随机） |
-| `NOJ_REJUDGE_SEQ` | 重测序号，缺省为 `0` |
+## 托管大语言模型调用（`llm` 模块）
 
-题目侧可以直接用 SDK 的 `llm.complete()` 调用 gateway，无需自己拼 HTTP：
+对于 LLM 工程题，评测宿主自动向 Evaluator 容器注入 `NOJ_LLM_*`
+环境变量。出题人可直接通过 SDK
+预置的客户端发起请求，免去手动配置代理与签名的繁琐工作：
 
 ```python
 from noj_evaluator_sdk import llm
 
-resp = llm.complete(model="qwen-plus", messages=[{"role": "user", "content": "..."}])
-text = resp["choices"][0]["message"]["content"]
+# 直接与 noj-llm-gateway 交互，自动附带短期 eval_token
+response = llm.complete(
+    model="qwen-plus",
+    messages=[
+        {"role": "system", "content": "你是一名资深算法评审专家。"},
+        {"role": "user", "content": f"请为选手的输出给出评估意见：{actual_ans}"},
+    ],
+    temperature=0.2,
+)
+
+eval_opinion = response["choices"][0]["message"]["content"]
 ```
-
-模型缺省取 `NOJ_LLM_ALLOWED_MODELS` 的第一个；接入细节与预算配置见 [出 LLM 调用题](../problemsetters/llm-problem.md)。
-
-## 关闭 runner
-
-`runner.close()` 可主动关闭 runner（通常不需要，进程结束自动清理）。当前 SDK **不提供** `runner.restart()`。

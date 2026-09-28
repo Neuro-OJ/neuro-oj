@@ -77,16 +77,23 @@ export interface SubmitObjectiveInput {
 
 /** 单题判定结果。 */
 export interface QuestionJudgement {
-  correct: boolean;
+  /**
+   * 该题是否判定正确。
+   *
+   * **竞赛未结束前为 `undefined`**（审计 VULN-03）：赛期返回逐题对错会让参赛者
+   * 逐题试探、并联合作弊团伙把小号提交当"答案预言机"逐个排除错误选项，
+   * 迅速拼凑满分答案。故赛期一律屏蔽，赛后统一结算才下发。
+   */
+  correct?: boolean;
   /** 期望答案（判卷后展示；竞赛模式响应不包含，防泄题） */
   expected?: ObjectiveAnswerValue[];
-  /** 用户给定答案 */
+  /** 用户给定答案（非敏感：参赛者自己的作答） */
   given: ObjectiveAnswerValue[];
   /** 答案解析（练习模式响应/详情包含；竞赛模式不展示） */
   explanation?: string;
 }
 
-/** 提交判定结果响应。 */
+/** 练习模式提交判定结果（含逐题对错与解析）。 */
 export interface SubmitObjectiveResult {
   submission_id: string;
   paper_id: string;
@@ -97,9 +104,41 @@ export interface SubmitObjectiveResult {
   total_count: number;
   /** 逐题判定（练习模式含 explanation） */
   details: Record<string, QuestionJudgement>;
-  /** 竞赛模式为 true 时不展示解析 */
-  contest_mode: boolean;
+  /** 恒为 false（竞赛模式走 {@link SubmitObjectiveContestReceipt}） */
+  contest_mode: false;
 }
+
+/**
+ * 竞赛模式提交回执（审计 VULN-03）。
+ *
+ * 赛期**只回执"已提交"事实**，不返回分数、不返回逐题对错：
+ * ```json
+ * { "submission_id": "...", "status": "finished", "contest_mode": true }
+ * ```
+ * 竞赛结束后，参赛者可通过提交详情/历史接口看到完整分数与逐题判定
+ * （赛后复盘与申诉不受影响）。
+ */
+export interface SubmitObjectiveContestReceipt {
+  submission_id: string;
+  paper_id: string;
+  status: "finished";
+  contest_mode: true;
+  /** 赛期恒为 null；赛后由详情接口给出 */
+  score: null;
+  /** 赛期恒为 null；赛后由详情接口给出 */
+  score_db: null;
+  /** 赛期恒为 null；赛后由详情接口给出 */
+  correct_count: null;
+  /** 题量不敏感（套卷题面本就对参赛者可见），保留以便前端展示进度 */
+  total_count: number;
+  /** 赛期恒为空对象（不返回任何题目判定） */
+  details: Record<string, QuestionJudgement>;
+}
+
+/** 客观题提交响应联合类型：练习模式给完整判定，竞赛模式只给回执。 */
+export type SubmitObjectiveResponse =
+  | SubmitObjectiveResult
+  | SubmitObjectiveContestReceipt;
 
 /** 提交记录响应。 */
 export interface ObjectiveSubmissionResponse {
@@ -110,7 +149,11 @@ export interface ObjectiveSubmissionResponse {
   submission_type: "practice" | "contest";
   answers: Record<string, ObjectiveAnswerValue[]>;
   status: string;
-  score: number;
+  /**
+   * ×100 整数分。**竞赛未结束前为 null**（审计 VULN-03：赛期不得即时返回精确分数，
+   * 否则"提交一次看分数变化"即可二分探测答案）。赛后结算恢复为数值。
+   */
+  score: number | null;
   details: Record<string, QuestionJudgement>;
   created_at: string;
 }

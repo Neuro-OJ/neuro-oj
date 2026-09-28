@@ -535,7 +535,12 @@ async function prepareDrillEnvironment(
   await Deno.writeTextFile(
     ctx.composeEnvFile,
     `\n# ---- restore-drill 隔离覆盖（自动生成，勿提交） ----\n` +
-      `JUDGE_EVALUATOR_NETWORK=${ctx.projectName}_noj-net\n`,
+      // 演练 stack 使用**自己的**评测隔离网络（审计 VULN-20）：生产网络的
+      // `noj-eval-net` 是固定名（name: 常量），若演练沿用同名会与生产网络冲突
+      // （Compose 复用/重建会打在有活动端点的生产网络上）。两个变量必须同值：
+      // 前者是 compose 声明的网络名，后者是 judge 接入 Evaluator 容器时用的名字。
+      `NOJ_EVAL_NETWORK_NAME=${ctx.projectName}_noj-eval-net\n` +
+      `JUDGE_EVALUATOR_NETWORK=${ctx.projectName}_noj-eval-net\n`,
     { append: true },
   );
 

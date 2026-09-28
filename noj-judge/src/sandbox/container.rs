@@ -1,9 +1,18 @@
-//! 支持包 zip 安全解压与评测命令分词工具。
+//! 支持包 zip 安全解压、文件批量注入与评测命令分词工具。
 //! 容器生命周期管理由 `dual/` 模块（双容器 RAII）负责。
 
 use std::io::{Read, Seek};
+use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
+use bollard::Docker;
+
+/// 文件注入 exec 完成轮询次数与间隔（50 × 100ms = 5s 上限）。
+const INJECT_POLL_ATTEMPTS: u32 = 50;
+const INJECT_POLL_INTERVAL_MS: u64 = 100;
+
+/// 容器内解包目录（注入目标）。
+const INJECT_TARGET_DIR: &str = "/workspace";
 
 /// 解压炸弹防护：最大条目数。
 pub const MAX_ZIP_ENTRIES: usize = 1000;
@@ -115,6 +124,114 @@ fn extract_zip_entries_reader_with_limits<R: Read + Seek>(
     }
 
     Ok(entries)
+}
+
+/// 校验注入条目名：必须是相对路径，拒绝绝对路径 / `..` 穿越 / NUL。
+///
+/// 与 zip 解压的路径穿越防护保持一致（VULN-17 要求保留该校验）。
+pub fn validate_entry_name(name: &str) -> Result<()> {
+    if name.is_empty() {
+        bail!("注入条目名为空");
+    }
+    if name.contains('\0') {
+        bail!("注入条目名包含 NUL 字符: {}", name.escape_debug());
+    }
+    if name.starts_with('/') || name.starts_with('\\') {
+        bail!("注入条目名不得为绝对路径: {}", name);
+    }
+    if name.split(['/', '\\']).any(|part| part == "..") {
+        bail!("注入条目名包含路径穿越: {}", name);
+    }
+    Ok(())
+}
+
+/// 把所有文件写入**同一个**内存 tar 流（VULN-17）。
+///
+/// 条目名与内容一一对应；单文件注入即单元素切片，行为与原先逐文件构造的
+/// tar 完全等价（`tar::Header::new_gnu` + mode 0644 + 由 `append_data` 计算校验和）。
+pub fn build_tar_archive(files: &[(&str, &[u8])]) -> Result<Vec<u8>> {
+    let mut tar_buf: Vec<u8> = Vec::new();
+    {
+        let mut builder = tar::Builder::new(&mut tar_buf);
+        for (name, content) in files {
+            validate_entry_name(name)?;
+            let mut header = tar::Header::new_gnu();
+            header.set_size(content.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, name, *content)
+                .with_context(|| format!("写入 tar 条目失败: {}", name))?;
+        }
+        builder.finish().context("结束 tar 归档失败")?;
+    }
+    Ok(tar_buf)
+}
+
+/// 批量注入文件到容器（VULN-17）。
+///
+/// 用 `tar::Builder` 把所有文件一次性写入**同一个内存 tar 流**，容器内**只发起
+/// 一次** `tar xf - -C /workspace` exec 解包，彻底消除 N 次串行 `docker exec`。
+/// 目录条目由 tar 解包自动创建（与原先逐文件注入的语义一致）。
+pub async fn inject_files_to_container(
+    docker: &Docker,
+    container_id: &str,
+    files: &[(&str, &[u8])],
+) -> Result<()> {
+    if files.is_empty() {
+        return Ok(());
+    }
+    let tar_buf = build_tar_archive(files)?;
+
+    // docker exec tar xf - -C /workspace
+    let exec = docker
+        .create_exec(
+            container_id,
+            bollard::models::ExecConfig {
+                cmd: Some(vec![
+                    "sh".to_string(),
+                    "-c".to_string(),
+                    format!("tar xf - -C {}", INJECT_TARGET_DIR),
+                ]),
+                attach_stdin: Some(true),
+                attach_stdout: Some(false),
+                attach_stderr: Some(false),
+                ..Default::default()
+            },
+        )
+        .await
+        .context("创建 inject exec 失败")?;
+
+    let started = docker.start_exec(&exec.id, None).await?;
+    if let bollard::exec::StartExecResults::Attached { mut input, .. } = started {
+        use tokio::io::AsyncWriteExt;
+        input.write_all(&tar_buf).await?;
+        input.shutdown().await?;
+    }
+
+    // 等 exec 完成（简化处理：用 inspect_exec 轮询直到退出）
+    // 轮询上限 50 次 × 100ms = 5s；退出码非 0 时视为注入失败。
+    for _ in 0..INJECT_POLL_ATTEMPTS {
+        let inspect = docker.inspect_exec(&exec.id).await?;
+        if let Some(code) = inspect.exit_code {
+            if code != 0 {
+                bail!("注入 {} 个文件失败（exit_code={}）", files.len(), code);
+            }
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(INJECT_POLL_INTERVAL_MS)).await;
+    }
+    bail!("注入 {} 个文件超时", files.len())
+}
+
+/// 单文件注入：批量接口的薄包装（单元素切片），行为/性能兼容。
+pub async fn inject_file_to_container(
+    docker: &Docker,
+    container_id: &str,
+    file_name: &str,
+    content: &[u8],
+) -> Result<()> {
+    inject_files_to_container(docker, container_id, &[(file_name, content)]).await
 }
 
 /// 解析评测命令为字符串数组。
@@ -438,5 +555,102 @@ mod tests {
             let _ =
                 extract_zip_entries_reader_with_limits(std::io::Cursor::new(bytes), 10, 1024, 4096);
         }
+    }
+
+    // ── VULN-17：批量 tar 归档注入 ──
+
+    /// 读取 tar 归档中的 (条目名, 内容, mode) 列表。
+    fn read_tar_entries(bytes: &[u8]) -> Vec<(String, Vec<u8>, u32)> {
+        let mut archive = tar::Archive::new(std::io::Cursor::new(bytes));
+        let mut out = Vec::new();
+        for entry in archive.entries().unwrap() {
+            let mut entry = entry.unwrap();
+            let path = entry.path().unwrap().to_string_lossy().to_string();
+            let mode = entry.header().mode().unwrap();
+            let mut data = Vec::new();
+            entry.read_to_end(&mut data).unwrap();
+            out.push((path, data, mode));
+        }
+        out
+    }
+
+    #[test]
+    fn test_build_tar_archive_entries_and_contents() {
+        let archive = build_tar_archive(&[
+            ("evaluate.py", b"print(1)".as_slice()),
+            ("cases/a.txt", b"case-a".as_slice()),
+        ])
+        .unwrap();
+
+        let entries = read_tar_entries(&archive);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].0, "evaluate.py");
+        assert_eq!(entries[0].1, b"print(1)");
+        assert_eq!(entries[1].0, "cases/a.txt");
+        assert_eq!(entries[1].1, b"case-a");
+        for (_, _, mode) in &entries {
+            assert_eq!(*mode, 0o644, "归档条目权限应为 0644");
+        }
+    }
+
+    #[test]
+    fn test_build_tar_archive_empty_is_valid_empty_archive() {
+        let archive = build_tar_archive(&[]).unwrap();
+        assert!(read_tar_entries(&archive).is_empty());
+        // 空归档仍是合法 tar（1024 字节结束块）
+        assert!(!archive.is_empty());
+    }
+
+    /// 单文件包装层等价：`build_tar_archive` 的单元素结果必须与原先
+    /// 「逐文件构造 tar」的实现逐字节一致（行为/性能兼容）。
+    #[test]
+    fn test_build_tar_archive_single_file_matches_legacy_construction() {
+        let name = "main.py";
+        let content = b"def solve(): return 1";
+
+        // 旧实现（VULN-17 前的 inject_file_to_container 内联逻辑）
+        let mut legacy_buf: Vec<u8> = Vec::new();
+        {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(content.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            let mut builder = tar::Builder::new(&mut legacy_buf);
+            builder
+                .append_data(&mut header, name, &content[..])
+                .unwrap();
+            builder.finish().unwrap();
+        }
+
+        let batch = build_tar_archive(&[(name, content)]).unwrap();
+        assert_eq!(
+            batch, legacy_buf,
+            "批量接口的单文件包装层必须与旧实现逐字节等价"
+        );
+    }
+
+    #[test]
+    fn test_build_tar_archive_rejects_absolute_path() {
+        let err = build_tar_archive(&[("/etc/passwd", b"x".as_slice())]).unwrap_err();
+        assert!(err.to_string().contains("绝对路径"), "实际: {}", err);
+    }
+
+    #[test]
+    fn test_build_tar_archive_rejects_path_traversal() {
+        for name in ["../escape.py", "a/../../b.py", "..\\win.py"] {
+            let err = build_tar_archive(&[(name, b"x".as_slice())]).unwrap_err();
+            assert!(
+                err.to_string().contains("路径穿越"),
+                "name={} 应被拒绝，实际: {}",
+                name,
+                err
+            );
+        }
+    }
+
+    #[test]
+    fn test_build_tar_archive_rejects_empty_name() {
+        let err = build_tar_archive(&[("", b"x".as_slice())]).unwrap_err();
+        assert!(err.to_string().contains("为空"), "实际: {}", err);
     }
 }

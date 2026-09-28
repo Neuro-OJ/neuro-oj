@@ -28,7 +28,6 @@ import {
   listRuntimeEnvConflicts,
 } from "./domains/system/index.ts";
 import { startAuditLogRetentionTask } from "./domains/system/index.ts";
-import { startContestAntiCheatRetentionTask } from "./domains/contest/index.ts";
 import { describeLlmPlatformDefaultGap } from "./domains/gateway/index.ts";
 import { getLogger } from "@logtape/logtape";
 import { describePlaceholderSecret } from "./shared/security/secret-placeholders.ts";
@@ -318,7 +317,6 @@ async function main() {
 
   // 启动后台审计日志保留任务
   startAuditLogRetentionTask();
-  startContestAntiCheatRetentionTask();
 
   // 启动 SSE 事件保留任务（A4：事件表保留策略，默认 7 天）
   startSseEventRetentionTask();

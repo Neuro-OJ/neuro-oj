@@ -33,6 +33,16 @@ const problem = computed(() =>
   data.value?.data ? toProblemView(data.value.data) : null
 )
 
+/**
+ * 是否已被「尚未结束的公开赛」收编（VULN-02）。
+ *
+ * `contest_secrecy` 只对题目所有者 / 管理员下发（其他人对这类题目本就 404），
+ * 因此非空即表示"赛前或赛中的保密题"。此时题解与讨论入口必须**完全不渲染**
+ * （不是置灰、不是隐藏按钮），也不发起任何题解相关请求；比赛结束后后端不再下发
+ * 该字段，入口自动恢复——赛后复盘是正常需求，不做永久屏蔽。
+ */
+const isContestHidden = computed(() => (problem.value?.contest_secrecy?.length ?? 0) > 0)
+
 // ── 面包屑（#512）：数据到位后用题名精化末层文案 ──
 useBreadcrumbLabel(() => problem.value?.title)
 
@@ -140,12 +150,20 @@ watch(
   problem,
   async (p) => {
     if (!p) return
+    // 公开统计与题解并行拉取；失败时保持 null（不渲染），不影响主内容
+    void fetchPublic(p.id)
+      .then((res) => { publicStats.value = res.data })
+      .catch(() => { publicStats.value = null })
+    // 公开赛收编题目（VULN-02 短路）：连题解列表 / 发布资格都不请求，
+    // 避免无意义流量，也杜绝任何"题解/讨论"UI 残留（含只读入口与跳转按钮）。
+    if (isContestHidden.value) {
+      solutions.value = []
+      eligibility.value = null
+      loadingSolutions.value = false
+      return
+    }
     loadingSolutions.value = true
     try {
-      // 公开统计与题解并行拉取；失败时保持 null（不渲染），不影响主内容
-      void fetchPublic(p.id)
-        .then((res) => { publicStats.value = res.data })
-        .catch(() => { publicStats.value = null })
       const [solRes, cfg] = await Promise.all([
         api.get<{ data: PostRow[] }>(
           `/api/v1/community/posts?type=solution&problem_id=${p.id}&limit=5`,
@@ -210,11 +228,11 @@ const publishBlockReason = computed(() => {
         <!-- 公开赛保密提示：仅所有者/管理员能看到本页（其他人 404），此处提醒注意保密 -->
         <ProblemContestNotice :contests="problem.contest_secrecy" />
 
-        <!-- 页内锚点：题面 / 题解（客观题无题解区） -->
+        <!-- 页内锚点：题面 / 题解（客观题无题解区；公开赛收编题目不出现题解入口，VULN-02） -->
         <nav aria-label="页内导航" class="mb-4 flex items-center gap-4 text-sm">
           <NuxtLink to="/problems" class="text-text-secondary no-underline hover:text-primary">题库</NuxtLink>
           <a href="#statement" class="text-text-secondary no-underline hover:text-primary">题面</a>
-          <a v-if="!isObjective" href="#solutions" class="text-text-secondary no-underline hover:text-primary">题解</a>
+          <a v-if="!isObjective && !isContestHidden" href="#solutions" class="text-text-secondary no-underline hover:text-primary">题解</a>
         </nav>
 
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -300,8 +318,8 @@ const publishBlockReason = computed(() => {
               后即可提交代码
             </div>
 
-            <!-- 题解区（客观题不展示） -->
-            <section v-if="!isObjective" id="solutions" class="scroll-mt-20 rounded-xl border border-border bg-white p-6">
+            <!-- 题解区（客观题不展示；公开赛赛前/赛中整段不渲染，VULN-02） -->
+            <section v-if="!isObjective && !isContestHidden" id="solutions" class="scroll-mt-20 rounded-xl border border-border bg-white p-6">
               <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 class="text-base font-semibold text-text">题解与讨论</h2>

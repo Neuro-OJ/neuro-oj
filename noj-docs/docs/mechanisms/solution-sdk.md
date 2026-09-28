@@ -1,76 +1,95 @@
-# Solution SDK
+# Solution SDK 规范手册
 
-> 一句话：用户只需在 `main.py` 里定义题面要求的**顶层函数**；Solution 容器内的 Solution Host 会自动注册这些函数，等 Evaluator 按名调用，并在需要时用 `call_capability` 反向请求受限能力。
+在 Neuro OJ
+中，做题人无需编写庞杂的脚本启动命令，也无需处理标准输入流的文本切割解析。选手提交的代码被置于完全物理断网的
+**Solution 容器** 中执行，仅需以简洁的 Python 顶层函数形式导出算法实现。
 
-Solution SDK 运行在 Solution 容器中。用户主要通过定义函数供 evaluator 调用；Solution Host 会自动加载用户模块并注册其中的顶层函数。协议线格式见 [RPC 与可传递数据](rpc.md)。
+---
 
-## 暴露函数
+## 核心契约：顶层函数导出
 
-题面会声明必须实现的函数。例如：
+做题人只需按照题目要求，在提交代码中实现指定的顶层函数。例如在基础题目中：
 
 ```python
+# 按照题目要求的函数名与入参签名实现
 def solve(a: int, b: int) -> int:
     return a + b
 ```
 
-Evaluator 会通过函数名调用该函数。函数名、参数数量和返回值语义由题目定义。
+### 1. 宿主加载机制
 
-用户代码由 Judge Worker 以硬编码名 `main.py` 注入容器，Solution Host 通过 `--entry /workspace/main.py` 加载，模块名固定为 `user_solution`。出题人无需、也不能配置入口文件名。
+- **代码物理注入**：评测引擎将选手的提交内容固化为沙箱内的
+  `/workspace/main.py`；
+- **守护反射导出**：沙箱内部启动的 `noj_solution_sdk.host` 进程将 `main.py`
+  作为模块加载（内部模块名固定为
+  `user_solution`），自动利用反射机制识别并向裁判端注册所有顶层定义的函数。
 
-## 顶层代码
+### 2. 顶层作用域执行纪律
 
-Solution Host 会导入用户的 `main.py`。因此顶层代码会在加载模块时执行。
+在 `main.py` 模块加载阶段，**位于全局作用域（Top-Level）的代码会被即刻执行**：
 
-::: tip 只在顶层定义函数与常量
-建议用户避免在顶层执行耗时逻辑、读写外部资源或提前输出大量内容——它们发生在任何 `runner.call()` 之前，会拖慢或干扰评测。
+- **推荐实践**：仅在全局顶层定义函数、算法常量、预计算表格（Look-up
+  Tables）或类定义；
+- **禁止行为**：严禁在全局顶层执行死循环、耗时昂贵的预热运算或抛出未捕获异常。顶层崩溃将导致
+  Solution Host 加载失败，使得评测尚未开始即以 `error` 终结。
+
+---
+
+## 标准输入输出与调试日志准则
+
+::: danger print() 不是答案输出信道
+在 Neuro OJ 的评测体系中，**`print()` 语句绝对不会被作为算法答案进行比对**：
+
+1. Solution 容器的标准输出（`stdout`）是严密的 **NDJSON 进程间通讯协议管道**；
+2. 选手代码若随意调用 `print("...")`，该文本将被底层协议网关判定为非协议杂质并**自动丢弃过滤**，绝不会出现在最终结果面板中；
+3. **正确做法**：始终通过 `return` 语句返回计算答案。
 :::
 
-## stdout 和 stderr
+---
 
-用户代码中的 `print()` 不是答案输出。当前实现中，普通 `print()` 会写到 Solution 的 stdout，由于 stdout 是 NDJSON 协议通道，这些非协议文本会被 Judge Worker 丢弃，不会作为评测输出展示。因此不要把调试信息依赖在 `print()` 上。
+## 异常产生与协议错误码
 
-下面的提交不会被当作 A+B 的正确答案：
+当做题人的代码在被 Evaluator 远程调用时产生故障，Solution Host
+会捕获现场并回传结构化错误帧：
 
-```python
-print(3)
-```
+| 代码运行状况                         | 回传协议 Code | Evaluator 端表现 | 选手端诊断提示                                        |
+| ------------------------------------ | ------------- | ---------------- | ----------------------------------------------------- |
+| **拼写错误 / 缺少函数**              | `NotFound`    | `NotFoundError`  | "目标函数不存在，请检查函数名是否与题面一致"          |
+| **运行时异常（如除以零、数组越界）** | `Exception`   | `SystemError`    | 捕获具体异常类型及过滤敏感系统路径后的堆栈跟踪        |
+| **返回值不合法**                     | `Rejected`    | `RejectedError`  | "返回值类型不受支持，或返回值单帧体积超限（> 1 MiB）" |
 
-A+B 题需要实现函数：
+---
 
-```python
-def solve(input_str: str) -> str:
-    a, b = map(int, input_str.split())
-    return str(a + b)
-```
+## 反向调用受限能力（`call_capability`）
 
-## 常见错误语义
-
-调用失败时，Solution Host 返回错误帧，Evaluator 侧收到对应异常：
-
-| 情况 | 协议 code | Evaluator 侧异常 |
-| --- | --- | --- |
-| 函数不存在 | `NotFound` | `NotFoundError` |
-| 用户函数抛异常 | `Exception`（含清洗后 traceback） | `SystemError` |
-| 返回值类型非法 | `Rejected` | `RejectedError` |
-
-用户函数的参数和返回值会经过 Neuro OJ codec 编码。支持的类型包括 `None`、布尔值、整数、有限浮点数、字符串、字节串、列表和字符串键字典（不支持 `tuple`/`set`）。更多限制见 [RPC 与可传递数据](rpc.md)。
-
-## `noj_solution_sdk`
-
-当题目声明了 capability（如外部网络 API）时，可以在注册函数内调用：
+对于需要访问外部智能体、预训练模型或知识库的 AI
+工程题，由于选手沙箱处于物理断网状态（`network_mode="none"`），系统提供了反向能力调用机制：
 
 ```python
 from noj_solution_sdk import call_capability
 
-def solve(prompt: str) -> str:
-    return call_capability("request_llm_completion", prompt)
+def solve_query(prompt: str) -> str:
+    # 通过 Evaluator 注册的 capability 代理安全发起外部推理
+    response_text = call_capability("request_llm_completion", prompt)
+    return response_text
 ```
 
-`call_capability(name, *args)` 把请求经 judge 转发到 Evaluator 执行，返回解码后的结果。能力名称、参数与返回值语义由题面声明。
+### 1. 调用机制与参数约束
 
-- **RPC 方向**：Evaluator 主动调用 Solution（`runner.call()`）；Solution 通过 `call_capability` 反向调用 Evaluator 注册的能力（如网络请求）。Solution 不能读取 evaluator 的文件或隐藏用例数据。
-- **类型约束**：`call_capability` 的参数与返回值与 `runner.call()` **相同**：只允许 `None / bool / int / float / str / bytes / list / dict`，不可序列化的对象会被拒绝。
-- **错误**：未注册的 capability 抛 `CapabilityNotFoundError`；参数/返回值类型非法抛 `CapabilityRejectedError`；handler 异常抛 `CapabilityError`（含 `code` 与清洗后 trace）；通道断开抛 `CapabilityConnectionError`。
-- **安全**：Solution 容器始终无网；capability 由出题人显式注册并负责参数校验（见 [如何提供受限网络能力](capability-networking.md)）。
+- `call_capability(name, *args)`：通过双向 IPC 管道经评测宿主中转，由 Evaluator
+  容器内的受信 Handler 代理执行外部调用；
+- 传递参数与接收的返回值均须符合
+  [RPC 数据类型白名单](./rpc.md)（仅支持原生基础类型与嵌套结构，不支持任意对象引用）。
 
-普通不需要网络的题目无需导入该 SDK。
+### 2. 客户端异常捕获
+
+若能力调用发生异常，SDK 在选手侧抛出强类型异常：
+
+- **`CapabilityNotFoundError`**：请求的能力名称在题目中未声明；
+- **`CapabilityRejectedError`**：调用入参或返回值无法通过序列化白名单校验；
+- **`CapabilityError`**：服务端能力处理函数内部执行抛错；
+- **`CapabilityConnectionError`**：评测宿主间网络中断或 Evaluator 崩溃。
+
+::: tip 普适性原则
+对于绝大多数纯粹的算法训练与竞赛题目，选手**无需导入任何 SDK 模块**，编写纯正的原生 Python 代码即可。
+:::

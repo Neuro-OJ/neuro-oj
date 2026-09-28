@@ -13,6 +13,7 @@
  */
 
 import { and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { unendedPublicContestForProblem } from "./../../contest/index.ts";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
   evaluationResults,
@@ -515,14 +516,25 @@ export async function listTrainingProblems(
       visibility: problems.visibility,
       owner_id: problems.owner_id,
       is_objective: problems.is_objective,
+      // 是否被尚未结束的公开赛收编（审计 VULN-07）
+      is_contest_hidden: sql<boolean>`${
+        unendedPublicContestForProblem(problems.id)
+      }`
+        .as("is_contest_hidden"),
     })
     .from(trainingProblems)
     .innerJoin(problems, eq(trainingProblems.problem_id, problems.id))
     .where(eq(trainingProblems.training_id, trainingId))
     .orderBy(asc(trainingProblems.position));
+  // 非特权用户：private 题与"被未结束公开赛收编"的题一律不出现在题单里
+  // （此前只过滤 visibility，赛题的存在性/标题/难度/题面仍会泄露给任何人）。
   const visibleRows = canViewAll
     ? rows
-    : rows.filter((r) => r.visibility === "public");
+    : rows.filter((r) =>
+      r.visibility === "public" &&
+      // 题单所有者之外的查看者：即使题目 owner 是自己也保持一致口径
+      r.is_contest_hidden !== true
+    );
   const accepted = viewerId
     ? await getAcceptedProblemIds(
       viewerId,
@@ -540,6 +552,7 @@ export async function listTrainingProblems(
     type: r.type,
     is_objective: r.is_objective,
     accepted: accepted.has(r.problem_id),
+    is_contest_hidden: r.is_contest_hidden === true,
   }));
 }
 

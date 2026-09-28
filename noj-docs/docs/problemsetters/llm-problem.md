@@ -12,7 +12,8 @@
    [如何提供 LLM 调用能力（运营者）](../operators/llm-call-capability.md)；后台操作见
    [后台管理指南](../operators/admin-guide.md#llm-管理)。
 3. 题目必须开启 **Evaluator 联网**（`runtime_config.evaluator.network.enabled = true`），
-   且部署环境已让 evaluator 加入 `llm-gateway` 所在网络（生产为 `noj-net`）。
+   且部署环境已让 evaluator 加入 `llm-gateway` 所在网络（生产默认 `noj-eval-net`，
+   即评测隔离网络）。
 
 ::: info Solution 容器始终无网
 Solution 容器**始终无网**，也不会拿到任何 `NOJ_LLM_*` 环境变量。LLM 能力只能由 evaluator 经 capability 精确封装后转给 solution。
@@ -101,7 +102,7 @@ Judge Worker 还会注入 `NOJ_SUBMISSION_ID` 与 `NOJ_REJUDGE_SEQ`，便于题�
 - 每次评测使用短期 `eval_token`，绑定提交/题目/用户/Provider，并在评测时限内过期（TTL 由 `evaluator.time_limit_ms` 推算）。
 - 系统按单次提交、用户/全局/题目日/月维度限制 calls/tokens/cost；配额（`llm_quotas`）目前通过后台接口维护，管理后台可查询「LLM 用量」。
 - 请像普通网络能力一样封装**精确业务函数**，不要把通用 HTTP 转发注册为 capability
-  （参考[受限网络能力](capability-networking.md)的安全清单）。
+  （参考[受限网络能力](../mechanisms/capability-networking.md)的安全清单）。
 
 ## 验证方法
 

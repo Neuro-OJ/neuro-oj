@@ -32,7 +32,7 @@ deno task storage:audit -- --prometheus-output <textfile-dir>/noj_storage.prom
 `noj_storage_missing_references` 的趋势。该命令只读，不会删除对象；治理边界与复核
 步骤见[对象存储生命周期治理](../system/object-storage-governance.md)。
 
-将 Prometheus 加入 `noj-net`，使用 `deploy/monitoring/prometheus.yml` 抓取
+将 Prometheus 加入后端核心网络 `noj-net`（注：评测隔离网络 `noj-eval-net` **不应**加入监控组件），使用 `deploy/monitoring/prometheus.yml` 抓取
 `core:8000` 与 `llm-gateway:8001`（前者含 `up{job="noj-core"}` 失联检测；
 目标名必须与 compose 服务名一致），并加载**两个**规则文件：
 

@@ -8,7 +8,7 @@
  * 重测相关在 submissions-rejudge.ts；CRUD 在 submissions-crud.ts。
  */
 
-import { and, eq, ne, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   evaluationResults,
   sseEvents,
@@ -28,7 +28,6 @@ import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "submission"]);
 import { Channels } from "./../../../../shared/sse/event-bus.ts";
-import { createActivity } from "../../../community/index.ts";
 import { sanitizeJudgeResult } from "./sanitize-judge-result.ts";
 
 // 允许的状态转换
@@ -254,29 +253,11 @@ export async function saveEvaluationResult(
   // 失败仅 console.error（rankings.ts 内已处理）
   refreshRankingsView().catch(() => {/* ignore - rankings.ts 内已记录 */});
 
-  if (result.score > 0) {
-    const previousScored = await db.select({ id: submissions.id }).from(
-      submissions,
-    ).innerJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, submissions.id),
-    ).where(and(
-      eq(submissions.user_id, outcome.user_id),
-      eq(submissions.problem_id, outcome.problem_id),
-      eq(evaluationResults.status, "finished"),
-      sql`${evaluationResults.score} > 0`,
-      ne(submissions.id, result.submission_id),
-    )).limit(1);
-    if (!previousScored[0]) {
-      await createActivity(
-        outcome.user_id,
-        "first_accepted",
-        "problem",
-        outcome.problem_id,
-        { submission_id: result.submission_id },
-      );
-    }
-  }
+  // 注：此前此处会在选手首次通过题目时写入社区自动动态（`first_accepted`，metadata
+  // 含内部 submission_id）。该功能已按审计 VULN-08 整体下线：事件不携带竞赛上下文，
+  // 使全站用户（含场外人员）在**封榜期**刷新社区动态流即可看到"某选手首次通过题目
+  // X"，封榜因此完全失去意义；metadata 还直接暴露内部凭证 submission_id。
+  // 需要"首次通过"事实时请直接查 submissions / evaluation_results，不要广播。
 
   return {
     applied: true,

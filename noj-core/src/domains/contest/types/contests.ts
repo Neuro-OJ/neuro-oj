@@ -149,6 +149,14 @@ export interface ContestProblemResponse extends ContestProblemInput {
   display_id: string;
   submission_mode: "code" | "artifact";
   artifact_max_size_mb: number | null;
+  /**
+   * 题目可见性（public / private）。
+   *
+   * 审计 VULN-04/VULN-05：邀请赛若挂载**全站公开题**，平台不会对其做全站保密遮蔽
+   * （防普通用户借邀请赛劫持公共题库的 anti-DoS 设计），因此出题人必须在选题时
+   * 被告知"要保密请用自己名下的私有题"。前端据此提示，故需真实下发的 visibility。
+   */
+  visibility: "public" | "private";
   user_status: ContestProblemUserStatus;
 }
 

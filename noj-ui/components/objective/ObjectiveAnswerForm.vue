@@ -2,6 +2,13 @@
 import type { ObjectiveQuestion, ObjectiveSubmission, SubmitResult } from '~/composables/useObjective'
 import { QUESTION_TYPE_LABELS } from '~/composables/useObjective'
 import { formatObjectiveAnswer } from '~/utils/objectiveFormat'
+import {
+  correctnessByQuestion,
+  hasPendingObjectiveScore,
+  OBJECTIVE_PENDING_HINT,
+  objectiveScoreView,
+  objectiveSubmissionScoreText,
+} from '~/utils/objectiveResult'
 
 /**
  * 客观题作答表单（练习模式；并入 problems 详情页）。
@@ -41,6 +48,28 @@ const { data: histData, refresh: refreshHist } = await useFetch<{
 const bestScore = computed(() => histData.value?.data?.best_score ?? null)
 const submitCount = computed(() => histData.value?.data?.total ?? 0)
 const submissions = computed(() => histData.value?.data?.data ?? [])
+
+/**
+ * 单题对错：仅当服务端确实返回了 `correct` 时才有值（VULN-03）。
+ *
+ * 竞赛进行中后端只返回 `given`，此时表内没有该题 —— 模板据此**完全不渲染**
+ * 对错徽标与红绿色，而不是把缺失当成 `false` 显示"回答错误"。
+ */
+const correctness = computed(() => correctnessByQuestion(lastResult.value?.details))
+
+/** 判定汇总视图：`pending` 表示成绩未公布（score === null），不渲染分数与正确题数。 */
+const scoreView = computed(() =>
+  lastResult.value
+    ? objectiveScoreView(
+      lastResult.value.score,
+      lastResult.value.correct_count,
+      lastResult.value.total_count,
+    )
+    : null
+)
+
+/** 历史记录里存在"成绩未公布"的竞赛提交（用于给出统一说明）。 */
+const hasPendingContestScores = computed(() => hasPendingObjectiveScore(submissions.value))
 
 // 提交记录展开状态
 const showHistory = ref(false)
@@ -124,13 +153,14 @@ async function onSubmit() {
             <span class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-text-secondary">
               {{ idx + 1 }}. {{ QUESTION_TYPE_LABELS[q.type] }}
             </span>
+            <!-- 判定信息缺失（竞赛进行中）时整块不渲染：既不显示徽标也不着色（VULN-03） -->
             <span
-              v-if="lastResult?.details[q.id]"
+              v-if="correctness.has(q.id)"
               class="inline-flex items-center gap-1 text-xs font-medium"
-              :class="lastResult.details[q.id]?.correct ? 'text-green-600' : 'text-red-600'"
+              :class="correctness.get(q.id) ? 'text-green-600' : 'text-red-600'"
             >
-              <UIcon :name="lastResult.details[q.id]?.correct ? 'i-lucide-check-circle' : 'i-lucide-x-circle'" />
-              {{ lastResult.details[q.id]?.correct ? '回答正确' : '回答错误' }}
+              <UIcon :name="correctness.get(q.id) ? 'i-lucide-check-circle' : 'i-lucide-x-circle'" />
+              {{ correctness.get(q.id) ? '回答正确' : '回答错误' }}
             </span>
           </div>
           <p class="mb-3 whitespace-pre-wrap text-sm text-text">{{ q.prompt }}</p>
@@ -200,16 +230,20 @@ async function onSubmit() {
           </p>
         </section>
 
-        <!-- 判定汇总 -->
+        <!-- 判定汇总：score 为 null（竞赛进行中）时不显示分数与正确题数（VULN-03） -->
         <div
           v-if="lastResult"
           class="rounded-xl border px-5 py-4 text-sm"
           :class="lastResult.score === 100 ? 'border-green-200 bg-green-50 text-green-700' : 'border-border bg-white'"
         >
-          <span class="font-semibold">
-            本次得分：{{ lastResult.score.toFixed(0) }} 分（{{ lastResult.correct_count }}/{{ lastResult.total_count }}）
-          </span>
-          <span v-if="lastResult.contest_mode" class="ml-2 text-text-muted">竞赛提交（仅一次）</span>
+          <template v-if="scoreView?.pending">
+            <span class="font-semibold text-text">{{ OBJECTIVE_PENDING_HINT }}</span>
+            <span class="ml-2 text-text-muted">（本套卷共 {{ lastResult.total_count }} 题，已提交）</span>
+          </template>
+          <template v-else>
+            <span class="font-semibold">{{ scoreView?.text }}</span>
+            <span v-if="lastResult.contest_mode" class="ml-2 text-text-muted">竞赛提交（仅一次）</span>
+          </template>
         </div>
 
         <!-- 提交记录列表 -->
@@ -233,6 +267,9 @@ async function onSubmit() {
             <p v-if="submissions.length === 0" class="px-5 py-4 text-sm text-text-secondary">
               暂无提交记录
             </p>
+            <p v-else-if="hasPendingContestScores" class="px-5 py-3 text-xs text-text-muted">
+              竞赛进行中，成绩与解析将在比赛结束后开放。
+            </p>
             <div v-for="sub in submissions" :key="sub.id" class="px-5 py-3">
               <button
                 type="button"
@@ -240,22 +277,24 @@ async function onSubmit() {
                 @click="expandedSubmissionId = expandedSubmissionId === sub.id ? null : sub.id"
               >
                 <span class="text-sm text-text-secondary">{{ formatTime(sub.created_at) }}</span>
-                <span class="text-sm font-semibold text-primary">
-                  {{ (sub.score / 100).toFixed(0) }} 分
+                <span class="text-sm font-semibold" :class="sub.score === null ? 'text-text-muted' : 'text-primary'">
+                  {{ objectiveSubmissionScoreText(sub.score) }}
                 </span>
               </button>
 
               <div v-if="expandedSubmissionId === sub.id" class="mt-3 space-y-2 rounded-lg bg-bg-page p-3">
                 <div v-for="(detail, qid) in sub.details" :key="qid" class="text-xs">
                   <div class="flex items-center gap-2">
+                    <!-- correct 缺失（竞赛进行中）时不渲染对错图标与颜色（VULN-03） -->
                     <UIcon
+                      v-if="typeof detail.correct === 'boolean'"
                       :name="detail.correct ? 'i-lucide-check-circle' : 'i-lucide-x-circle'"
                       class="size-3.5"
                       :class="detail.correct ? 'text-green-600' : 'text-red-600'"
                     />
                     <span class="font-medium text-text">{{ questionMap.get(qid)?.prompt ?? '未知题目' }}</span>
                   </div>
-                  <p class="mt-1 pl-5 text-text-secondary">
+                  <p class="mt-1 text-text-secondary" :class="typeof detail.correct === 'boolean' ? 'pl-5' : ''">
                     作答：{{ formatObjectiveAnswer(questionMap.get(qid), detail.given) }}
                   </p>
                 </div>

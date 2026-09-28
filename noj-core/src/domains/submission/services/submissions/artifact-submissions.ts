@@ -116,7 +116,6 @@ export async function createArtifactSubmission(
     contest_id?: string;
   },
   contestId?: string,
-  clientIp?: string,
   isAdmin = false,
 ): Promise<SubmissionResponse> {
   const db = getDb();
@@ -300,7 +299,6 @@ export async function createArtifactSubmission(
       user_id: userId,
       problem_id: input.problem_id,
       contest_id: resolvedContestId,
-      client_ip: clientIp && clientIp !== "unknown" ? clientIp : null,
       language,
       code: "",
       file_name: input.file_name,

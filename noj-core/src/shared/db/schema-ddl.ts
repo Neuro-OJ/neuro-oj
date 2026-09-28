@@ -16,8 +16,6 @@ export const SCHEMA_DDL: string[] = [
     session_version INTEGER NOT NULL DEFAULT 0,
     bio TEXT NOT NULL DEFAULT '',
     must_change_password BOOLEAN NOT NULL DEFAULT false,
-    community_activity_visibility TEXT NOT NULL DEFAULT 'following'
-      CHECK (community_activity_visibility IN ('hidden', 'following', 'everyone')),
     avatar_url TEXT,
     tfa_secret_encrypted TEXT,
     tfa_enabled BOOLEAN NOT NULL DEFAULT false,
@@ -255,7 +253,6 @@ export const SCHEMA_DDL: string[] = [
     code TEXT NOT NULL,
     file_name TEXT,
     artifact_storage_url TEXT,
-    client_ip TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
     rejudge_seq INTEGER NOT NULL DEFAULT 0,
     judge_started_at TEXT,
@@ -582,17 +579,6 @@ export const SCHEMA_DDL: string[] = [
     CHECK (follower_id <> followee_id)
   )`,
 
-  `CREATE TABLE IF NOT EXISTS community_activity_events (
-    id TEXT PRIMARY KEY,
-    actor_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    type TEXT NOT NULL CHECK (type IN ('first_accepted', 'solution_published', 'contest_joined')),
-    subject_type TEXT NOT NULL,
-    subject_id TEXT NOT NULL,
-    metadata JSONB NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL,
-    UNIQUE (actor_id, type, subject_type, subject_id)
-  )`,
-
   `CREATE TABLE IF NOT EXISTS community_moderation_actions (
     id TEXT PRIMARY KEY,
     moderator_id TEXT REFERENCES users(id) ON DELETE SET NULL,
@@ -894,7 +880,6 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_community_comment_likes_user ON community_comment_likes (user_id)",
   "CREATE INDEX IF NOT EXISTS idx_community_bookmarks_user ON community_bookmarks (user_id, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_community_follows_followee ON community_follows (followee_id, created_at)",
-  "CREATE INDEX IF NOT EXISTS idx_community_activity_events_actor ON community_activity_events (actor_id, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_community_reports_pending ON community_reports (created_at) WHERE status = 'pending'",
   "CREATE INDEX IF NOT EXISTS idx_community_reports_reporter ON community_reports (reporter_id)",
   "CREATE INDEX IF NOT EXISTS idx_community_reports_post ON community_reports (post_id)",
@@ -978,7 +963,6 @@ export const ALL_TABLES = [
   "community_comment_likes",
   "community_bookmarks",
   "community_follows",
-  "community_activity_events",
   "community_reports",
   "community_moderation_actions",
   "community_sanctions",

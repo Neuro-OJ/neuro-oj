@@ -210,7 +210,13 @@ services:
       JUDGE_IMAGE_PREFIX: ${JUDGE_IMAGE_PREFIX:-noj-}
       JUDGE_COMMAND_WHITELIST: ${JUDGE_COMMAND_WHITELIST:-python3,deno,node,bash,sh}
       JUDGE_ALLOW_EVALUATOR_NETWORK: ${JUDGE_ALLOW_EVALUATOR_NETWORK:-false}
-      JUDGE_EVALUATOR_NETWORK: ${JUDGE_EVALUATOR_NETWORK:-noj-net}
+      # 评测隔离网络（审计 VULN-20）。**必须**与本文件底部 `noj-eval-net` 的实际
+      # 网络名一致（即 ${NOJ_EVAL_NETWORK_NAME:-noj-eval-net}）；judge 用
+      # `network_mode: <此值>` 把 Evaluator 容器接到该网络。
+      # 不得填 `bridge` / `host`：noj-judge 启动时会直接拒绝（生产强护栏），
+      # 因为默认 bridge 会让 Evaluator 经网关 IP 触达宿主机与内网基础设施，
+      # host 模式更是完全取消隔离。
+      JUDGE_EVALUATOR_NETWORK: ${JUDGE_EVALUATOR_NETWORK:-noj-eval-net}
       JUDGE_ALLOW_HTTP_S3: ${JUDGE_ALLOW_HTTP_S3:-false}
       JUDGE_DOCKER_HOST: ${JUDGE_DOCKER_HOST:-unix:///run/noj-judge/docker.sock}
       JUDGE_REQUIRE_ISOLATED_DOCKER: "true"
@@ -303,7 +309,11 @@ services:
       retries: 3
     restart: unless-stopped
     networks:
+      # 唯一同时加入后端网络与评测隔离网络的受控入口（审计 VULN-20）：
+      # 后端经 `http://llm-gateway:8001` 调用；Evaluator 沙箱经同一别名在本网络上
+      # 调用它，从而拿到"可访问 LLM、不可访问内网其余部分"的最小特权面。
       - noj-net
+      - noj-eval-net
 
   # ── 反向代理 / TLS ────────────────────────────────────────────────
   nginx:
@@ -505,11 +515,40 @@ services:
       - noj-net
 
 networks:
+  # ── 后端核心网络 ──────────────────────────────────────────────────
+  # postgres / redis / minio / core / ui / judge / nginx / 监控 均在此网络。
+  # 名称保持 `noj-net`（未按审计草案改名为 `noj-backend-net`）：改名会连带影响
+  # noj-cli 生成的 judge compose、restore-drill 覆盖文件、监控文档与告警脚本里的
+  # 网络名引用，而**隔离效果完全相同**——真正的隔离来自下面的 `noj-eval-net`
+  # 只承载 Evaluator 容器。语义上本网络即"后端网络"。
   noj-net:
     driver: bridge
     ipam:
       config:
         - subnet: 172.28.0.0/16
+
+  # ── 评测隔离网络（审计 VULN-20）────────────────────────────────────
+  #
+  # **只有 Evaluator 沙箱容器 + llm-gateway 在它上面。**
+  #
+  # 隔离效果（对应审计"方案 A：Compose 双网络拓扑物理切分"）：
+  # - Evaluator 容器加入本网络后：对 postgres / redis / minio / core / judge 的
+  #   **DNS 解析与网络路由为 0**（它们不在本网络上），内网横向穿透与 SSRF 被物理
+  #   切断；如需联网（LLM 题），只能访问本网络上唯一的受控入口 llm-gateway，
+  #   以及经网关 NAT 出公网；
+  # - llm-gateway 是唯一同时加入两个网络的服务（受控双网卡入口），因此
+  #   "评测需要访问 LLM"与"评测不得访问内网"两个目标同时成立；
+  # - judge 自身仍留在 noj-net（它需要 redis 与 minio）；被隔离的是它**创建的**
+  #   Evaluator 容器，不是 worker 本身。
+  #
+  # `name:` 显式固定为常量名：judge 通过 Docker API 以 `network_mode: <name>`
+  # 接入，需要的是**精确网络名**，而不是 Compose 默认的 `<项目名>_noj-eval-net`。
+  # 同一宿主机跑多套 stack（如 restore-drill 演练）时，用 `NOJ_EVAL_NETWORK_NAME`
+  # 覆盖本名，并同步设置 `JUDGE_EVALUATOR_NETWORK` 为同一个值。
+  # 不固定 ipam 子网：交由 Docker 自动分配，避免与演练/其他 stack 的子网池冲突。
+  noj-eval-net:
+    name: ${NOJ_EVAL_NETWORK_NAME:-noj-eval-net}
+    driver: bridge
 
 volumes:
   pgdata:

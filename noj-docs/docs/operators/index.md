@@ -1,40 +1,28 @@
-# 运营者文档
+# 运营与部署文档中心
 
-运营者文档覆盖从公测部署到日常维护的完整路径。
+本指南面向私有化部署、系统管理员及赛事技术运维人员，覆盖从系统首次上线部署、算力调度扩容、安全凭据轮换到日常管理运营的完整技术路径。
 
-## 建议阅读顺序
+::: tip 生产部署核心工具：noj-cli
+Neuro OJ 生产环境统一采用纯 TypeScript 编写的单二进制运维工具 **noj-cli** 进行全生命周期管理（安装、启停、无缝更新、备份、验证）。请首选阅读 [生产部署指南](./production-deploy.md)。
+:::
 
-1. [生产部署](./production-deploy.md)：基于 Docker Compose + ghcr.io 镜像的公测部署、初始化、升级与回滚。
-2. [生产密钥](./production-secrets.md)：secret 注入，S3/邮件/数据库/Redis 凭据轮换与回滚 Runbook。
-3. [公测容量基线](./capacity-baseline.md)：上线前的可重复容量验收方法。
-4. [可观测性与故障处理](./observability.md)：Prometheus/告警配置与常见故障处置。
+---
 
-## 文档内容
+## 🚀 运维知识导航
 
-| 文档 | 内容 |
-|---|---|
-| [生产部署](./production-deploy.md) | 安装、配置、升级/回滚、备份与恢复演练 |
-| [生产密钥](./production-secrets.md) | 各类凭据轮换 Runbook 与回滚 |
-| [公测容量基线](./capacity-baseline.md) | 固定测试条件、验收场景、报告模板 |
-| [可观测性与故障处理](./observability.md) | 观测入口、Prometheus/告警、故障 Runbook |
-| [如何提供 LLM 调用能力](./llm-call-capability.md) | 部署 gateway、配置 Provider、网络要求与出题人对接 |
-| [CLI 初始化](./cli.md) | 数据库迁移、系统初始化、管理员引导（生产容器内执行） |
-| [Judge Worker 运维](./judge-workers.md) | 评测镜像、评测流程、队列监控与水平扩展 |
-| [邮件退信与送达质量](./email-delivery.md) | 送达事件、抑制清单与告警处置 |
-| [后台管理指南](./admin-guide.md) | RBAC、用户封禁、审计日志、系统设置、公告、题单、社区审核、LLM 管理与题目管理 |
-| [法律与合规](./legal-compliance.md) | 隐私政策/服务条款版本化、注册同意、备案、内容审核、数据清单与 TSA |
+### 1. 安装、初始化与日常维护
+- [生产部署指南 (noj-cli)](./production-deploy.md)：基于 Docker Compose 与官方容器镜像的一键安装、`.env.prod` 核心配置、平滑更新与备份恢复。
+- [CLI 运维工具与命令](./cli.md)：服务管理、数据库迁移、系统初始化、管理员凭据引导等常用 CLI 命令清单。
+- [生产密钥管理与轮换 Runbook](./production-secrets.md)：JWT Secret、数据库密码、Redis、MinIO 与 SMTP 凭据的无停机轮换与应急回滚步骤。
 
-存储与评测包交付见[系统架构与运维主题](../system/storage.md)。
+### 2. 核心组件与算力运维
+- [Judge Worker 评测机运维与水平扩展](./judge-workers.md)：沙箱环境依赖（Docker）、评测镜像预热、Redis 队列监控与 Worker 多节点水平扩展。
+- [对象存储配置与运维](./storage.md)：MinIO / S3 对象存储配置、Bucket 初始化与私有策略、预签名 URL 交付与常见排障（底层机制见 [存储与评测包交付架构](../system/storage.md)）。
+- [提供 LLM 调用能力 (Gateway)](./llm-call-capability.md)：部署 `noj-llm-gateway`，配置主流 LLM Provider、出题人额度分配与鉴权机制。
+- [邮件送达与退信处理](./email-delivery.md)：SMTP 邮件服务器配置、送达事件追踪、邮件抑制清单与退信告警处置。
 
-## 你需要维护的组件
-
-| 组件 | 职责 |
-|---|---|
-| PostgreSQL | 持久化用户、题目、提交、结果和配置 |
-| Redis | 评测任务队列、结果队列和 core/judge RPC |
-| noj-core | Deno + Hono 后端 |
-| noj-ui | Nuxt 前端 |
-| noj-judge | Rust + Docker Judge Worker |
-| noj-llm-gateway | LLM 调用网关（Provider Key 托管、eval_token、限流/额度与用量审计） |
-| MinIO | 自建对象存储（支持包与头像等） |
-| Docker 镜像 | Evaluator 和 Solution 双容器运行时 |
+### 3. 系统管控、监控与合规
+- [管理后台使用指南 (Admin)](./admin-guide.md)：RBAC 权限分级分配、用户封禁、审计日志溯源、系统公告与社区发帖审核。
+- [可观测性与故障排查](./observability.md)：Prometheus 指标埋点、Grafana 仪表盘、系统核心日志与常见高频故障应急处置 Runbook。
+- [公测容量基线验收](./capacity-baseline.md)：上线前标准压测条件、并发评测吞吐量验收与性能基准报告模板。
+- [法律与合规指南](./legal-compliance.md)：用户服务协议与隐私政策版本化治理、实名备案、内容风控与合规审计要求。

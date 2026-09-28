@@ -126,7 +126,8 @@ Deno.test({
       content: "样例输入里的第三行是什么意思？",
       problem_id: problemA,
     });
-    assertEquals(withProblem.is_public, true);
+    // VULN-01：提问创建时**默认私密**，必须由主办方显式公开才对外可见
+    assertEquals(withProblem.is_public, false);
     assertEquals(withProblem.problem_id, problemA);
     assertEquals(withProblem.problem_label, "A");
     assertEquals(withProblem.replies.length, 0);
@@ -378,5 +379,50 @@ Deno.test({
       () => listClarifications(contestId, undefined, { perPage: 1000 }),
       BadRequestError,
     );
+  },
+});
+
+Deno.test({
+  name: "contest-clarifications: VULN-01 提问默认私密，主办方公开后才广播",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const adminId = await createUser("clar-v1-admin");
+    await makeAdmin(adminId);
+    const creatorId = await createUser("clar-v1-creator");
+    const askerId = await createUser("clar-v1-asker");
+    const otherParticipantId = await createUser("clar-v1-other");
+    const problemA = await createProblem(920006);
+    const contestId = await createContestWithWindow(creatorId, [problemA]);
+    await registerForContest(contestId, askerId, "InvitePass123");
+    await registerForContest(contestId, otherParticipantId, "InvitePass123");
+
+    // 选手提问（内容含解法思路）——修复前会对全场实时可见
+    const question = await createClarification(contestId, askerId, {
+      content: "B 题用状态压缩 DP，dp[mask] 表示…（含解法，不应广播）",
+      problem_id: problemA,
+    });
+    assertEquals(question.is_public, false);
+
+    // 匿名 / 其他参赛者均看不到这条未公开的提问
+    assertEquals((await listClarifications(contestId, undefined)).total, 0);
+    assertEquals(
+      (await listClarifications(contestId, otherParticipantId)).total,
+      0,
+    );
+    // 提问者本人与主办方可见
+    assertEquals((await listClarifications(contestId, askerId)).total, 1);
+    assertEquals((await listClarifications(contestId, creatorId)).total, 1);
+
+    // 主办方以"公告广播"方式公开答复 → 根提问与答复一并转为全员可见
+    await replyToClarification(contestId, question.id, adminId, {
+      content: "题意澄清：B 题数据范围已修正。",
+      is_public: true,
+    });
+    const anonymous = await listClarifications(contestId, undefined);
+    assertEquals(anonymous.total, 1);
+    assertEquals(anonymous.data[0].is_public, true);
+    assertEquals(anonymous.data[0].replies.length, 1);
+    assertEquals(anonymous.data[0].replies[0].is_public, true);
   },
 });

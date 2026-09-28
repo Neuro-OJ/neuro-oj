@@ -11,7 +11,6 @@ export interface CommunityConfig {
   solutions_enabled: boolean;
   discussions_enabled: boolean;
   moments_enabled: boolean;
-  activities_enabled: boolean;
   comments_enabled: boolean;
   reactions_enabled: boolean;
   bookmarks_enabled: boolean;
@@ -141,21 +140,15 @@ export interface CommunityCounts {
   moment: number;
 }
 
-/** 系统活动事件（动态流条目） */
-export interface FeedActivity {
-  id: string;
-  type: 'first_accepted' | 'solution_published' | 'contest_joined';
-  subject_type: string;
-  subject_id: string;
-  metadata: Record<string, unknown>;
-  created_at: string;
-}
-
-/** 动态流条目：短动态或系统活动 */
+/**
+ * 关注流条目。
+ *
+ * 系统活动事件（`community_activity_events`）已全栈下线（VULN-08）：
+ * `GET /api/v1/community/feed` 只返回帖子，故这里不再有 `activity` 分支。
+ */
 export interface FeedItem {
-  kind: 'moment' | 'activity';
-  post?: CommunityPost;
-  activity?: FeedActivity;
+  kind: 'moment';
+  post: CommunityPost;
   author: { id: string; username: string };
 }
 

@@ -29,27 +29,23 @@
       <div v-else class="flex flex-col gap-[10px] p-[10px] flex-1">
         <NuxtLink
           v-for="(item, i) in items"
-          :key="itemKey(item)"
-          :to="itemHref(item)"
+          :key="item.post.id"
+          :to="publicUrl('post', item.post.public_id || item.post.id)"
           :style="{ animationDelay: `${0.1 + i * 0.05}s` }"
           class="flex flex-col gap-1 rounded-lg border border-border p-3 no-underline animate-[fadeInUp_0.5s_ease_both] transition-colors duration-150 hover:bg-primary-bg"
         >
           <div class="flex items-center gap-2 text-xs">
             <UserIdentity :user="item.author" size="sm" />
-            <span v-if="item.kind === 'activity'" class="shrink-0 rounded bg-primary-bg px-1.5 py-0.5 text-primary">
-              {{ activityLabel(item.activity!) }}
-            </span>
             <NuxtTime
-              :datetime="itemTime(item)"
+              :datetime="item.post.created_at"
               relative
               locale="zh-CN"
               class="ml-auto shrink-0 text-text-muted"
             />
           </div>
-          <p v-if="item.kind === 'moment'" class="line-clamp-2 text-sm leading-relaxed text-text-secondary">
-            {{ stripMarkdown(item.post!.content) }}
+          <p class="line-clamp-2 text-sm leading-relaxed text-text-secondary">
+            {{ stripMarkdown(item.post.content) }}
           </p>
-          <p v-else class="text-sm text-primary">查看 →</p>
         </NuxtLink>
       </div>
     </div>
@@ -64,10 +60,10 @@
 </template>
 
 <script setup lang="ts">
-import type { FeedActivity, FeedItem } from "~/composables/useCommunity"
+import type { FeedItem } from "~/composables/useCommunity"
 import { stripMarkdown } from "~/utils/markdown"
 import { extractApiError } from "~/utils/apiError"
-import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
+import { publicUrl } from "~/utils/publicIdentifiers"
 
 const { api } = useApi()
 
@@ -79,45 +75,16 @@ const loading = ref(true)
 const refreshing = ref(false)
 const error = ref("")
 
-/** 卡片可用：已登录 + 关注功能开启 + 有内容模块（动态/活动）支撑 */
+/**
+ * 卡片可用：已登录 + 关注功能开启 + 短动态模块开启。
+ *
+ * 系统活动（activity events）已全栈下线（VULN-08），关注流只剩帖子，
+ * 因此不再把 `activities_enabled` 作为可用性条件。
+ */
 const available = computed(
   () => isLoggedIn.value && config.value?.follows_enabled === true &&
-    (config.value?.moments_enabled === true ||
-      config.value?.activities_enabled === true),
+    config.value?.moments_enabled === true,
 )
-
-const ACTIVITY_LABEL: Record<FeedActivity["type"], string> = {
-  first_accepted: "通过了题目",
-  solution_published: "发布了题解",
-  contest_joined: "参加了竞赛",
-}
-
-function activityLabel(a: FeedActivity): string {
-  return ACTIVITY_LABEL[a.type] ?? "产生了新动态"
-}
-
-function activityHref(a: FeedActivity): string {
-  if (a.subject_type === "post") return publicUrl("post", a.subject_id)
-  if (a.subject_type === "problem") return problemUrl(a.subject_id)
-  if (a.subject_type === "contest") return publicUrl("contest", a.subject_id)
-  return "/community"
-}
-
-function itemHref(item: FeedItem): string {
-  if (item.kind === "moment" && item.post) return publicUrl("post", item.post.public_id || item.post.id)
-  if (item.kind === "activity" && item.activity) return activityHref(item.activity)
-  return "/community"
-}
-
-function itemTime(item: FeedItem): string {
-  return item.kind === "moment"
-    ? item.post!.created_at
-    : item.activity!.created_at
-}
-
-function itemKey(item: FeedItem): string {
-  return `${item.kind}-${item.post?.id ?? item.activity?.id}`
-}
 
 async function fetchFeed() {
   if (!available.value) {
@@ -130,7 +97,8 @@ async function fetchFeed() {
       query: { view: "following", limit: 5 },
       silent: true,
     })
-    items.value = res.data ?? []
+    // 后端只返回帖子；仍按 kind 过滤一次，避免旧缓存/旧后端混入非帖子条目
+    items.value = (res.data ?? []).filter((item) => item.kind === "moment" && !!item.post)
   } catch (err: unknown) {
     error.value = extractApiError(err).message
   } finally {

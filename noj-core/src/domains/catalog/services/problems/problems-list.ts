@@ -35,6 +35,7 @@ import {
   BadRequestError,
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
+import { unendedPublicContestForProblem } from "./../../../contest/index.ts";
 import type { TagKind } from "../tags.ts";
 import {
   DIFFICULTIES,
@@ -61,6 +62,7 @@ import type {
 function toProblemResponse(
   row: typeof problems.$inferSelect,
   viewer: { isOwnerOrAdmin: boolean } = { isOwnerOrAdmin: true },
+  isContestHidden = false,
 ): ProblemResponse {
   const base = {
     id: row.id,
@@ -76,6 +78,9 @@ function toProblemResponse(
     submission_mode: row.submission_mode as ProblemResponse["submission_mode"],
     artifact_max_size_mb: row.artifact_max_size_mb,
     display_id: `${row.type}${row.number}`,
+    // 特权用户（admin/owner）看到"该题已被公开赛收编"的标记；对普通用户这些行
+    // 根本不会出现，故恒为 false（审计 VULN-07）
+    is_contest_hidden: viewer.isOwnerOrAdmin ? isContestHidden : false,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -190,6 +195,25 @@ export async function listProblems(
     conditions.push(eq(problems.visibility, "public"));
   }
 
+  // ── 公开赛题目全域隐藏（审计 VULN-07）──
+  //
+  // 此前保密只作用于"详情返回 404"，而**聚合列表照常返回题目行与完整 description**：
+  // 场外人员据此即可获知赛题的存在性、标题、难度、标签甚至题面大字段。
+  //
+  // 现按审计规范在 SQL 层直接排除：非特权用户（非 admin 且非该题 owner）一律
+  // 拿不到这些行；特权用户保留（便于备赛确认与管理），并额外下发
+  // `is_contest_hidden` 供前端做视觉标注。
+  //
+  // 谓词来自 contest 域单一真相源，口径 = `kind='public' AND now < end_time`
+  // （含赛前筹备期 pending），竞赛结束自动放行。
+  if (viewer.isAdmin !== true) {
+    const ownerId = viewer.userId ?? null;
+    conditions.push(sql`(
+      NOT (${unendedPublicContestForProblem(problems.id)})
+      OR ${problems.owner_id} = ${ownerId}
+    )`);
+  }
+
   // 按标签筛选——先查关联表拿到题目 ID，再通过 inArray 下推到 SQL WHERE 层
   if (query.tag) {
     const tagRows = await db
@@ -213,6 +237,11 @@ export async function listProblems(
     .select({
       problem: problems,
       owner_username: users.username,
+      // 是否被尚未结束的公开赛收编：与过滤条件同一谓词，语言层面不会漂移
+      is_contest_hidden: sql<boolean>`${
+        unendedPublicContestForProblem(problems.id)
+      }`
+        .as("is_contest_hidden"),
     })
     .from(problems)
     .leftJoin(users, eq(problems.owner_id, users.id))
@@ -238,7 +267,7 @@ export async function listProblems(
       ...toProblemResponse(r.problem, {
         isOwnerOrAdmin: viewer.isAdmin === true ||
           (viewer.userId !== undefined && viewer.userId === r.problem.owner_id),
-      }),
+      }, r.is_contest_hidden === true),
       owner_username: r.owner_username ?? "未知",
       tags: tagMap.get(r.problem.id) ?? [],
     })),
@@ -345,6 +374,11 @@ export async function listAllProblems(
       is_objective: problems.is_objective,
       submission_mode: problems.submission_mode,
       artifact_max_size_mb: problems.artifact_max_size_mb,
+      // 管理端为特权视图：不过滤，但要能看出"该题正被公开赛保密"
+      is_contest_hidden: sql<boolean>`${
+        unendedPublicContestForProblem(problems.id)
+      }`
+        .as("is_contest_hidden"),
     })
     .from(problems)
     .leftJoin(users, eq(problems.owner_id, users.id))
@@ -383,6 +417,7 @@ export async function listAllProblems(
       submission_mode: r.submission_mode as ProblemResponse["submission_mode"],
       artifact_max_size_mb: r.artifact_max_size_mb,
       display_id: `${r.type}${r.number}`,
+      is_contest_hidden: r.is_contest_hidden === true,
     })),
     total,
     page,

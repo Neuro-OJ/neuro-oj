@@ -49,4 +49,6 @@ export interface TrainingProblemResponse {
   type: string;
   is_objective: boolean;
   accepted: boolean;
+  /** 是否被尚未结束的公开赛收编（仅特权用户可见的行会带 true，见 ProblemResponse） */
+  is_contest_hidden?: boolean;
 }

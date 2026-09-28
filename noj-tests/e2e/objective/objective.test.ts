@@ -325,15 +325,40 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
   const submitted = (submit.body as {
     data: {
       submission_id: string;
+      status?: string;
       contest_mode: boolean;
-      details: Record<string, { expected?: unknown; explanation?: unknown }>;
+      score?: number | null;
+      correct_count?: number | null;
+      details: Record<
+        string,
+        {
+          expected?: unknown;
+          explanation?: unknown;
+          correct?: unknown;
+        }
+      >;
     };
   }).data;
   if (!submitted.contest_mode) throw new Error("竞赛提交应标记 contest_mode");
-  // 竞赛模式：响应不得包含期望答案或解析（防泄题）
+  // 审计 VULN-03：竞赛未结束前只回执"已提交"——不返回分数、正确题数与逐题对错。
+  // 否则协同作弊者可用小号提交当答案预言机，逐题试探即可拼出满分答案。
+  if (submitted.score !== null || submitted.correct_count !== null) {
+    throw new Error(
+      `竞赛模式赛期不得返回分数/正确题数: ${JSON.stringify(submitted)}`,
+    );
+  }
+  if (Object.keys(submitted.details).length !== 0) {
+    throw new Error(
+      `竞赛模式赛期不得返回逐题判定: ${JSON.stringify(submitted.details)}`,
+    );
+  }
+  // 防御性：即便未来放开字段，也不得包含期望答案/解析/对错
   for (const d of Object.values(submitted.details)) {
-    if (d.expected !== undefined || d.explanation !== undefined) {
-      throw new Error("竞赛模式提交响应不应包含期望答案或解析");
+    if (
+      d.expected !== undefined || d.explanation !== undefined ||
+      d.correct !== undefined
+    ) {
+      throw new Error("竞赛模式提交响应不应包含期望答案、解析或对错");
     }
   }
 
@@ -362,12 +387,25 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
   if (subDetail.status !== 200) throw new Error("竞赛提交详情查询失败");
   const detailData = (subDetail.body as {
     data: {
-      details: Record<string, { expected?: unknown; explanation?: unknown }>;
+      score?: number | null;
+      details: Record<
+        string,
+        { expected?: unknown; explanation?: unknown; correct?: unknown }
+      >;
     };
   }).data;
+  // 审计 VULN-03：竞赛未结束前详情同样屏蔽分数与逐题对错（仅保留"我的作答"）
+  if (detailData.score !== null) {
+    throw new Error(
+      `竞赛进行中详情不得返回分数: ${JSON.stringify(detailData.score)}`,
+    );
+  }
   for (const d of Object.values(detailData.details)) {
-    if (d.expected !== undefined || d.explanation !== undefined) {
-      throw new Error("竞赛模式提交详情不应包含期望答案或解析");
+    if (
+      d.expected !== undefined || d.explanation !== undefined ||
+      d.correct !== undefined
+    ) {
+      throw new Error("竞赛模式提交详情不应包含期望答案、解析或对错");
     }
   }
 

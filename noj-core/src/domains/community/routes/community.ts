@@ -56,11 +56,10 @@ import {
   toggleCommentLike,
   toggleFollow,
   togglePostLike,
-  updateActivityVisibility,
   updateComment,
   updatePost,
 } from "../services/community/community.ts";
-import { isProblemInRunningContest } from "../../contest/index.ts";
+import { isProblemInUnendedPublicContest } from "../../contest/index.ts";
 
 const router = new Hono<OptionalAuthEnv>();
 
@@ -226,11 +225,14 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
   const accepted = requiresAccepted
     ? await hasAcceptedSolution(actorId, problemId)
     : true;
-  // 赛期门控：进行中竞赛的题目，赛期不开放题解发布（赛后自动恢复）。
-  // 审核员不受限（复核需要），与读路径门控口径一致。
+  // 公开赛保密门控（审计 VULN-02）：归属于**尚未结束**公开赛（含赛前筹备期）的
+  // 题目不开放题解发布，赛后自动恢复。此前只判 `running`，赛前筹备期完全放行。
+  // 审核员不受限（复核需要），与读路径门控口径一致；判据复用 contest 域单一真相源。
   const moderator = await isModerator(c);
-  const inRunningContest = await isProblemInRunningContest(problemId);
-  const blockedByContest = inRunningContest && !moderator;
+  const inUnendedPublicContest = await isProblemInUnendedPublicContest(
+    problemId,
+  );
+  const blockedByContest = inUnendedPublicContest && !moderator;
   const canCreate = config.solutions_enabled &&
     (!config.read_only || moderator) &&
     (await checkPermission(c, "community:create_solution")) &&
@@ -242,7 +244,9 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
       requires_accepted: requiresAccepted,
       accepted,
       can_create: canCreate,
-      // 供前端展示禁用原因，而非让用户点击后吃 403
+      // 供前端展示禁用原因，而非让用户点击后吃 403。
+      // 机器码保持 `running_contest` 以兼容既有前端分支；语义已扩展为
+      // "归属尚未结束的公开赛（赛前筹备期 + 赛中）"。
       blocked_reason: blockedByContest ? "running_contest" : null,
     },
   });
@@ -512,24 +516,6 @@ router.post("/users/:userId/follow", authMiddleware, async (c) => {
     },
   });
 });
-/**
- * PUT /me/activity-visibility — 更新当前用户的活动可见性。
- * 认证：必填。body：{ visibility: "hidden" | "following" | "everyone" }。
- * 响应：{ data: 更新后的可见性 }。
- */
-router.put("/me/activity-visibility", authMiddleware, async (c) => {
-  const body = await parseJsonBody<
-    { visibility?: "hidden" | "following" | "everyone" }
-  >(c);
-  if (
-    !body.visibility ||
-    !["hidden", "following", "everyone"].includes(body.visibility)
-  ) throw new BadRequestError("无效活动可见性");
-  return c.json({
-    data: await updateActivityVisibility(userId(c), body.visibility),
-  });
-});
-
 /**
  * GET /feed — 获取社区动态流（最新 / 关注）。
  * 认证：可选。query：view（latest/following）、cursor、limit。

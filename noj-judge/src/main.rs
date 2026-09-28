@@ -95,6 +95,8 @@ fn main() -> Result<()> {
         noj_judge::logging::init();
 
         let config = Config::from_env();
+        // VULN-20：启动期配置校验（禁止 evaluator 使用 bridge/host 网络）。
+        config.validate()?;
         info!("noj-judge 启动");
 
         // 连接 Redis
@@ -133,6 +135,13 @@ fn main() -> Result<()> {
         mq::replay_fallback_results(&redis_client, &result_queue, &fallback_dir).await;
 
         // NOJ-154：启动时清理本实例残留的孤儿容器。
+        // VULN-15：实例 ID 是确定性派生值（env → WORK_DIR/.instance_id → 派生），
+        // 重启后保持不变，因此崩溃残留容器可被精准回收。
+        info!(
+            instance_id = %instance_id,
+            source = config.instance_id_source.as_str(),
+            "实例标识已解析（确定性，重启后不变）"
+        );
         crate::sandbox::cleanup::cleanup_orphan_containers(&docker, &instance_id).await;
 
         // ── 初始化缓存与下载配置 ────────────────────────
@@ -359,6 +368,7 @@ fn main() -> Result<()> {
                     let guard_prefix = user_claim_prefix.clone();
                     let guard_user_id = pulled.task.user_id.clone();
                     let guard_member = claim_member;
+                    let task_instance_id = instance_id.clone();
                     let task_metrics = Arc::clone(&judge_metrics);
                     task_metrics.task_started();
 
@@ -392,6 +402,7 @@ fn main() -> Result<()> {
                             &command_whitelist,
                             max_evaluator_time_ms,
                             max_solution_call_timeout_ms,
+                            &task_instance_id,
                         )
                         .await
                         {
@@ -430,6 +441,17 @@ fn main() -> Result<()> {
                 }
             }
         }
+
+        // VULN-15（Drain 优雅退出）：drain 超时被 abort 的评测任务来不及执行显式
+        // `DualContainer::destroy()`（Drop 里的 `tokio::spawn` 会被即将销毁的运行时
+        // 强杀）。这里在运行时仍存活时，按确定性实例标签做一次**有界、显式 await**
+        // 的兜底清扫，确保退出阶段不留下孤儿容器。
+        drain::cleanup_containers_after_drain(
+            &docker,
+            &instance_id,
+            drain::POST_DRAIN_CLEANUP_TIMEOUT_SECS,
+        )
+        .await;
 
         Ok(())
     })

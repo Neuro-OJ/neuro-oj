@@ -4,15 +4,12 @@ use bollard::models::ContainerSummaryStateEnum;
 use bollard::query_parameters::ListContainersOptionsBuilder;
 use bollard::Docker;
 use serde::Serialize;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::fs;
 use tracing::warn;
-
-use crate::sandbox::cleanup::INSTANCE_LABEL;
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 const HEARTBEAT_TTL_SECONDS: u64 = 30;
@@ -153,11 +150,8 @@ pub async fn heartbeat_loop(
 }
 
 async fn count_orphan_containers(docker: &Docker, instance_id: &str) -> usize {
-    let mut filters = HashMap::new();
-    filters.insert(
-        "label".to_string(),
-        vec![format!("{}={}", INSTANCE_LABEL, instance_id)],
-    );
+    // 与启动清扫共用同一过滤器（实例标签精准匹配，VULN-15）。
+    let filters = crate::sandbox::cleanup::instance_label_filter(instance_id);
     let options = ListContainersOptionsBuilder::new()
         .all(true)
         .filters(&filters)

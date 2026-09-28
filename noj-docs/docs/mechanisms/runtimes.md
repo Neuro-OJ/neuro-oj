@@ -1,56 +1,81 @@
-# 评测镜像与运行时
+# 评测镜像与沙箱运行时（Runtimes）
 
-> 一句话：评测只跑 **Python**——出题人代码（evaluator）与用户代码（solution）各用一个 Docker 镜像，分别运行在独立的 Evaluator 容器与 Solution 容器中。
+在 Neuro OJ 中，所有评测工作均被封装在纯净的 Docker
+容器镜像内执行。系统建立了三层运行时配置模型，依托严格的镜像白名单与沙箱隔离策略，为
+AI 模型训练与算法评测提供安全、确定性的执行环境。
 
-Neuro OJ 的评测通过 Docker 镜像承载：出题人代码（evaluator）与用户代码（solution）分别运行在独立镜像的容器中。本文说明镜像白名单机制、Python 双容器运行时、产物提交运行时与常见问题。
+---
 
-::: warning 现状：评测运行时仅实现 Python
-当前双容器 Evaluator / Solution SDK 均为 Python 实现；前端返回的**初始代码模板语言也固定为 `python3`**（`GET /problems/:id/template` 返回的 `language` 字段），这与支持包无关。多语言评测（C++/Java/JavaScript 等）是项目的**决策性不做**项——LMCC 仅要求 Python，项目不会提供其他语言的评测运行时。
+## 运行时架构与语言选型准则
+
+::: warning 平台决策：专注于 Python 生态评测
+当前 Neuro OJ 的双容器 Evaluator 与 Solution SDK 均为原生 Python 实现。前端代码编辑器的默认模板与语法高亮**全面收敛为 `python3`**。
+在 AI 考级与大模型竞技场景（如 LMCC、IOAI）中，Python 是事实上的工业标准。为了将系统调优重心置于深度学习依赖管理、大模型推理加速与多进程 RPC 效率，**暂不为 C++ / Java / Go 等传统语言提供双容器评测运行时**。数据库中保留的非 Python 语言标识仅作为历史提交查看的归档标记。
 :::
 
-## 运行时选择
+---
 
-提交接口按语言标识接受代码，当前已登记的语言标识（服务端 `LANGUAGE_EXT_MAP`）：
+## 运行时三层派生模型
 
-| 语言标识 | 默认文件名 | 是否可评测 |
-|----------|-----------|-----------|
-| `python3` / `python` | `main.py` | ✅ 唯一具备完整评测运行时的语言 |
-| `cpp` / `c` / `javascript` | `main.cpp` / `main.c` / `main.js` | ❌ 接口预留标识，无评测运行时，不可提交评测 |
+评测任务在从提交到落入 Docker 执行的过程中，经过三层清晰的模型解析：
 
-::: info `language` 只用于校验与默认命名
-`language` 是提交元数据：服务端据此校验是否受支持，并推导提交文件的默认名。**Judge Worker 注入 Solution 容器时统一使用硬编码入口名 `main.py`**，不读取 `language` 或提交文件名来选择运行方式。
-:::
+```mermaid
+flowchart TD
+    Sub[1. 提交元数据: language='python3'] --> Srv[noj-core 校验语言有效性并设定默认入口文件名]
+    Srv --> Conf[2. 题目配置: runtime_config]
+    Conf --> Whitelist{3. 校验镜像是否在 judge_images 白名单}
+    Whitelist -- 校验通过 --> Judge[noj-judge Worker 拉起对应容器]
+    Whitelist -- 校验失败 --> Err[阻断提交并报告非法镜像错误]
+```
 
-当前前端编辑器与题目详情页固定只提供 **Python 3**；提交记录筛选器仍列出其他预留标识，仅用于查看历史，不代表可评测。
+1. **第 1 层：提交语言标识（Language Identifier）**： 客户端提交时携带的
+   `language`
+   字段。仅用于接口基础格式校验，评测引擎向沙箱注入代码时**一律使用硬编码文件名
+   `/workspace/main.py`**，不依赖此字段决定运行方式；
+2. **第 2 层：题目运行时配置（`runtime_config`）**： 题目出题人在 Web 编辑器或
+   `problem.json` 中明确声明 Evaluator 与 Solution 分别使用的具体镜像名称、CPU
+   配额、内存配额以及 Evaluator 的启动指令（缺省为
+   `python3 /workspace/evaluate.py`）；
+3. **第 3 层：镜像白名单与纵深防御（Whitelist & Prefix Verification）**：
+   - **业务层准入**：`noj-core` 在创建或更新题目时，比对 `judge_images`
+     数据库注册表；
+   - **沙箱层熔断**：`noj-judge` 评测机在从 Redis
+     队列取出任务启动容器前，使用宿主环境变量 `JUDGE_IMAGE_PREFIX`
+     对目标镜像名称实施**二次前缀白名单校验**，阻断非官方镜像执行。
 
-## 运行时选择的三层模型
+---
 
-1. **语言标识**：提交时声明的 `language` 字段，用于校验与默认文件名推导（见上）。
-2. **运行时镜像**：Docker 镜像，分为 `evaluator`（跑出题人代码）与 `solution`（跑用户代码与容器内 host 进程）两类。
-3. **题目配置**：题目的 `runtime_config` 指定 evaluator / solution 的镜像与资源限制，evaluator 另有 `command`（缺省 `python3 /workspace/evaluate.py`）。
+## 官方标准评测镜像矩阵
 
-Judge Worker 只运行**白名单内**的镜像（`judge_images` 表，含 `image` / `kind` / `mode` 匹配规则）；白名单校验在 noj-core 侧完成，judge 侧用 `JUDGE_IMAGE_PREFIX` 前缀白名单对 MQ 消息做纵深复验。
+官方提供经过裁剪与安全加固的标准基础镜像（通过
+`noj-judge/scripts/build-sdk-images.sh` 脚本统一部署构建）：
 
-## Python 双容器是如何工作的
+| 镜像标识                   | 运行类别       | 预装依赖与适用场景                                                                                                 |
+| -------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **`noj-evaluator-python`** | Evaluator 容器 | 包含出题人 SDK（`noj_evaluator_sdk`）、标准测试工具库与 HTTP 客户端，用于运行 `evaluate.py`                        |
+| **`noj-solution-python`**  | Solution 容器  | 轻量级 Python 运行时，内置 `noj_solution_sdk.host` 协议服务，适用于绝大多数标准算法与客观推理题                    |
+| **`noj-solution-ai`**      | Solution 容器  | **数据科学与机器学习专享沙箱**。预装 CPU 版 PyTorch、NumPy、Pandas、Scikit-learn、OpenCV 与 SciPy 等科学计算全家桶 |
 
-Python 题目使用两个镜像：
+---
 
-- `noj-evaluator-python`：运行出题人的 `evaluate.py`。
-- `noj-solution-python`：运行用户提交的代码（Judge Worker 以硬编码名 `main.py` 注入），由 `noj_solution_sdk.host` 加载模块，并向 evaluator 暴露函数调用接口。Solution stdout 是协议通道，用户代码的普通 `print()` 文本会被协议层丢弃。
+## 产物提交（Kaggle 模式）运行时特征
 
-产物提交题使用 zip 文件作为提交物。需要 CPU PyTorch、CV/ML 依赖的题目可以选择
-`noj-solution-ai`；Judge Worker 会将产物解压到 Solution 容器的 `/workspace`，由约定的
-`submission.py` 入口加载。产物提交不支持重测，具体大小上限由题目配置和系统硬上限共同决定。
+针对提交离线训练成果（如预测结果 CSV、微调模型权重或生成策略代码）的题目：
 
-::: tip 镜像从哪来
-镜像由 `noj-judge/scripts/build-sdk-images.sh` 构建，默认 tag `:latest`，与 noj-core 种子数据 `judge_images` 登记的裸镜像名（Docker 解析为 `:latest`）一致。
-:::
+- **ZIP 解包交付**：选手上传打包的 `.zip` 成果，评测宿主自动解压至 Solution
+  沙箱工作区 `/workspace`；
+- **统一入口约定**：系统一律以约定入口 **`python3 /workspace/submission.py`**
+  启动选手程序；
+- **存储自洁与重测限制**：为避免海量模型权重迅速撑爆存储集群，选手上传的 ZIP
+  产物在沙箱评测完毕后**即刻触发物理垃圾回收**。因此，此类产物题**不支持管理员执行
+  Rejudge 重测**。
 
-Evaluator 通过 [Evaluator SDK](evaluator-sdk.md) 调用用户函数，双方协议见 [RPC 与可传递数据](rpc.md)。
+---
 
-## 常见问题
+## 常见运行时排错索引
 
-| 现象 | 可能原因 | 处理 |
-|------|----------|------|
-| 提交显示 `error` | 镜像未构建、不在白名单、或题目 `runtime_config` 的镜像名与白名单不一致 | 检查 `build-sdk-images.sh` 是否执行、`judge_images` 是否登记该镜像、题目配置是否一致 |
-| 语言选项不出现 | 前端固定只提供 Python 3 | 其他语言标识无法评测，请使用 Python 提交 |
+| 异常现象                              | 核心根因定位                                                                 | 权威解决方案                                                                                               |
+| ------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| 提交立即显示 **`error`**，无评测日志  | 题目配置的 Docker 镜像未在宿主机预先拉取，或未被录入 `judge_images` 白名单表 | 在评测宿主机执行 `bash scripts/build-sdk-images.sh` 构建基础镜像，并核实题目 `runtime_config` 镜像名称拼写 |
+| 无法在网页端切换至 C++ 或 Java        | 平台前端做题器当前仅对 Python 3 提供完整支持                                 | 请使用 Python 3 进行代码提交                                                                               |
+| 导入 `torch` 报 `ModuleNotFoundError` | 题目未配置使用 AI 专用镜像                                                   | 出题人在题目配置中将 Solution 镜像切换为 `noj-solution-ai`                                                 |

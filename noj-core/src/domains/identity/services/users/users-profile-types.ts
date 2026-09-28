@@ -70,6 +70,8 @@ export interface ProfileSolvedProblemRow {
   problem_title: string;
   difficulty: string;
   accepted_at: string;
+  /** 是否被尚未结束的公开赛收编（仅特权查看者会看到 true 的行，见 users-profile-queries） */
+  is_contest_hidden?: boolean;
 }
 
 /** 最近提交行（不含 code 字段）。 */

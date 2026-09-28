@@ -542,6 +542,10 @@ function assertRankingVisibility(
 /**
  * 返回带视图元数据的竞赛榜单。普通用户在封榜窗口及待结算期间只能读取
  * freeze_start_time 之前的稳定视图，正式快照发布后才切换为 official。
+ *
+ * **隐私不因视图切换而放宽（审计 VULN-09）**：非管理员在**任何**视图下都只会拿到
+ * 本人一行；`frozen` 视图只是"取封榜时刻的稳定数据"，不是"公开全量明细"。
+ * 身份（登录 / 参赛）与单人过滤守卫先于视图状态判定执行。
  */
 export async function getContestRankingView(
   contestId: string,
@@ -587,11 +591,32 @@ export async function getContestRankingView(
     };
   }
 
+  // ── 非管理员：身份与隐私守卫必须**先于**视图状态判定（审计 VULN-09）──
+  //
+  // 修复前：封榜窗口一到，代码在鉴权与"仅返回本人一行"过滤**之前**就直接 return
+  // 全量 Kaggle 榜。于是"平时看不到别人成绩"的选手，一旦进入封榜期，排行榜反而
+  // 向全员（含未登录匿名访客）透出全场所有选手封榜前的分数、提交尝试次数、
+  // 最后得分时间与名次——权限与隐私完全倒挂。
+  //
+  // 封榜窗口（freeze_start_time ~ end_time）是 running 的**子区间**，路由契约明确
+  // "进行中非管理员仅返回自己的排名"，因此守卫必须对封榜状态同样生效。
+  if (contest.status === "running" && !viewerId) {
+    throw new UnauthorizedError("竞赛进行期间需登录查看排名");
+  }
+  if (contest.status === "running" && contest.is_registered !== true) {
+    throw new ForbiddenError("仅参赛者可查看进行中的排名");
+  }
+
   const frozen = isContestFrozen(window) ||
     (contest.status === "ended" && window.start !== null);
   if (frozen) {
+    // 非管理员：只返回本人一行；匿名（无 viewerId）自然得到空列表，
+    // 而不是他人成绩 —— 隐私策略在封榜期与赛期完全一致。
+    const frozenRows = await getKaggleRanking(contestId, window.start!);
     return {
-      rows: await getKaggleRanking(contestId, window.start!),
+      rows: viewerId === undefined
+        ? []
+        : frozenRows.filter((row) => row.user_id === viewerId),
       view: "frozen",
       ranking_visibility: contest.ranking_visibility,
       freeze_start_time: window.start,
@@ -605,12 +630,6 @@ export async function getContestRankingView(
     throw new ConflictError("竞赛已结束，正式成绩尚未发布");
   }
 
-  if (contest.status === "running" && !viewerId) {
-    throw new UnauthorizedError("竞赛进行期间需登录查看排名");
-  }
-  if (contest.status === "running" && contest.is_registered !== true) {
-    throw new ForbiddenError("仅参赛者可查看进行中的排名");
-  }
   const rows = await getKaggleRanking(contestId);
   return {
     // 进行中非管理员保持旧语义：只返回自己的排名，避免泄露他人实时成绩。

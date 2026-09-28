@@ -2,6 +2,7 @@
     <NuxtLink
         :to="problemUrl(id, display_id)"
         class="orbit-card relative block px-2.5 py-1.5 border-2 border-border rounded-md bg-white no-underline transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-signal hover:shadow-dropdown group"
+        :class="contestHiddenRowClass(is_contest_hidden)"
     >
         <div class="grid grid-cols-[auto_1fr] gap-x-2">
             <span
@@ -18,8 +19,11 @@
                     :text="title"
                     text-class="text-sm text-text group-hover:text-primary transition-colors duration-150"
                 />
-                <!-- 右上：难度徽章 -->
-                <DifficultyBadge class="self-start" :difficulty="difficulty" />
+                <!-- 右上：难度徽章 + 公开赛收编标识（VULN-07，仅特权用户可见该字段） -->
+                <div class="flex flex-col items-end gap-1 self-start">
+                    <DifficultyBadge :difficulty="difficulty" />
+                    <ContestHiddenMark v-if="is_contest_hidden" />
+                </div>
 
                 <!-- 左下：标签（仅题目标签 kind='problem'，数据源已保证） -->
                 <div class="flex items-center gap-1 h-[18px] overflow-hidden">
@@ -41,6 +45,7 @@
 
 <script setup lang="ts">
 import { problemUrl } from "~/utils/publicIdentifiers";
+import { contestHiddenRowClass } from "~/utils/contestHidden";
 
 interface Tag {
     id: string
@@ -57,6 +62,11 @@ interface Props {
     runtime_config: { evaluator: { time_limit_ms: number; memory_limit_mb: number } } | null
     is_objective: boolean
     tags?: Tag[]
+    /**
+     * 是否被「尚未结束的公开赛」收编（VULN-07）。
+     * 仅特权用户（管理员 / 题目所有者）会收到该字段，用于渲染斜纹底 + 悬浮提示。
+     */
+    is_contest_hidden?: boolean
 }
 
 withDefaults(defineProps<Props>(), {

@@ -20,6 +20,7 @@ import {
   togglePostLike,
 } from "../../index.ts";
 import { createContest } from "../../../contest/index.ts";
+import { ForbiddenError } from "../../../../shared/base/errors.ts";
 import { getUserProfileAggregate } from "../../../identity/index.ts";
 import {
   _resetSystemSettingsForTest,
@@ -195,13 +196,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "solution-gating: 未开始（pending）竞赛不触发门控",
+  name:
+    "solution-gating: 赛前筹备期（pending）同样门控——赛前是最严重的泄密通道",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await setup();
     await seedSolution(contestProblemId, "竞赛题题解");
-    // 改为未开始
+    // 改为未开始（已挂题但尚未开赛）
     await getDb().update(contests)
       .set({
         start_time: new Date(Date.now() + 3_600_000).toISOString(),
@@ -209,11 +211,40 @@ Deno.test({
       })
       .where(eq(contests.id, contestId));
 
+    // 审计 VULN-02：保密窗口是「从公开赛收编该题起，直到 end_time」，
+    // 此前只查 running 使赛前筹备期完全放行——正是最需要保密的阶段。
     const list = await listPosts({
       type: "solution",
       problemId: contestProblemId,
     });
-    assertEquals(list.data.length, 1);
+    assertEquals(list.data.length, 0);
+    const counts = await countPostsByType();
+    assertEquals(counts.solution, 0);
+
+    // 赛前同样禁止发布题解（服务层写入门控）。
+    // 先关掉"需先通过题目"门槛，确保拦截原因确实是公开赛保密而非 AC 门槛
+    // （两道门都在 createPost 内，顺序上 AC 门槛在前）。
+    enterTestContext({
+      actorId: "0",
+      actorIp: "127.0.0.1",
+      actorRole: "admin",
+    });
+    try {
+      await updateSetting("community_solution_requires_accepted", false, "0");
+    } finally {
+      leaveTestContext();
+    }
+    await assertRejects(
+      () =>
+        createPost(ownerId, {
+          type: "solution",
+          title: "赛前抢发题解",
+          content: "不该被接受",
+          problem_id: contestProblemId,
+        }),
+      ForbiddenError,
+      "该题目当前归属于公开赛",
+    );
   },
 });
 
@@ -283,15 +314,10 @@ Deno.test({
       bookmarks.data.filter((row) => row.post.id === post.id).length,
       0,
     );
-    // 5. 动态流（solution_published 活动不出现）
+    // 5. 动态流不再携带任何自动事件（审计 VULN-08 已整体下线该功能），
+    //    因此不存在"某选手通过某题"的实时广播侧信道。
     const feed = await listFeed("latest", ownerId);
-    assertEquals(
-      feed.data.filter((item) =>
-        item.kind === "activity" &&
-        item.activity?.type === "solution_published"
-      ).length,
-      0,
-    );
+    assertEquals(feed.data.some((item) => item.kind !== "moment"), false);
 
     // 赛后全部恢复（含互动不再被拒）
     await getDb().update(contests)

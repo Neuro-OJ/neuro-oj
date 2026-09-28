@@ -264,38 +264,6 @@ export const communityFollows = pgTable(
   }),
 );
 
-/** 可展示在动态流中的系统活动。 */
-export const communityActivityEvents = pgTable(
-  "community_activity_events",
-  {
-    id: text("id").primaryKey(),
-    actor_id: text("actor_id").notNull().references(() => users.id, {
-      onDelete: "cascade",
-    }),
-    type: text("type").notNull(),
-    subject_type: text("subject_type").notNull(),
-    subject_id: text("subject_id").notNull(),
-    metadata: jsonb("metadata").notNull().default({}),
-    created_at: text("created_at").notNull(),
-  },
-  (table) => ({
-    typeCheck: check(
-      "community_activity_events_type_check",
-      sql`${table.type} IN ('first_accepted', 'solution_published', 'contest_joined')`,
-    ),
-    dedupeUnique: unique("community_activity_events_dedupe_unique").on(
-      table.actor_id,
-      table.type,
-      table.subject_type,
-      table.subject_id,
-    ),
-    actorIdx: index("idx_community_activity_events_actor").on(
-      table.actor_id,
-      table.created_at,
-    ),
-  }),
-);
-
 /** 帖子或评论举报。 */
 export const communityReports = pgTable(
   "community_reports",

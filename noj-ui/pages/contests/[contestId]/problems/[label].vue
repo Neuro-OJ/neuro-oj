@@ -142,6 +142,13 @@ const alreadySubmitted = computed(() =>
 const answers = ref<Record<string, (string | boolean)[]>>({})
 const submitting = ref(false)
 const submitError = ref('')
+/**
+ * 本次提交回执中的分数。
+ *
+ * 竞赛模式在比赛结束前后端返回 `score: null`（VULN-03），此时**不得**显示分数，
+ * 也不得把 null 当作 0 —— 改为提示"成绩赛后开放"。
+ * 非 null 时才是真实分数；页面刷新后回执丢失，则按竞赛状态给出对应说明。
+ */
 const lastScore = ref<number | null>(null)
 
 function toggleOption(qid: string, value: string | boolean) {
@@ -173,6 +180,7 @@ async function onSubmit() {
   submitting.value = true
   try {
     const res = await submitPaper(paperId.value, answers.value, contestId)
+    // 竞赛进行中 score 为 null：保留 null 语义，模板据此不渲染分数（VULN-03）
     lastScore.value = res.data.score
     await refreshSubs()
   } catch {
@@ -301,7 +309,9 @@ async function onSubmit() {
                   class="rounded-xl border border-success-text/30 bg-success-text/5 px-5 py-4 text-sm text-success-text"
                 >
                   <UIcon name="i-lucide-check-circle" class="mr-1" />
-                  本套卷已提交（竞赛内仅可提交一次）<span v-if="lastScore !== null">，得分 {{ lastScore.toFixed(0) }} 分</span>
+                  本套卷已提交（竞赛内仅可提交一次）<template v-if="lastScore !== null">，得分 {{ lastScore.toFixed(0) }} 分</template>
+                  <template v-else-if="contest?.status === 'ended'">，可在提交记录中查看成绩</template>
+                  <template v-else>，成绩与解析将在比赛结束后开放</template>
                 </div>
                 <p v-else-if="submitError" class="text-sm text-error-text">{{ submitError }}</p>
 

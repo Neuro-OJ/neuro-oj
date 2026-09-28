@@ -144,12 +144,19 @@ contestSse.get(
           (_channel, message) => {
             // 封榜/正式成绩期间普通用户不接收提交事件，避免从旁路推导实时变化。
             if (streamClosed || (!isAdmin && isNonLiveView())) return;
-            // 非 admin 订阅者隐藏 user_id，避免泄露“谁在提交哪题”。
+            // 非 admin 订阅者隐藏 user_id 与 submission_id（审计 VULN-10）。
+            //
+            // 只删 user_id 是不够的：保留了他人 submission_id 后，任何参赛者都能
+            // 用 `GET /api/v1/submissions/:id/events` 订阅该提交的 SSE 信道，
+            // 在评测完成瞬间收到推送，配合榜单异动精准锁定对手的提交状态。
+            // 现在两个标识都不下发，该监听链在源头断开（problem_id 保留，
+            // 供前端刷新"本题有人提交"的聚合提示，不指向具体提交）。
             let payload = message;
             if (!isAdmin) {
               try {
                 const event = JSON.parse(message) as Record<string, unknown>;
                 delete event.user_id;
+                delete event.submission_id;
                 payload = JSON.stringify(event);
               } catch {
                 // 解析失败时保持原样（不阻断推送）
@@ -185,7 +192,9 @@ contestSse.get(
           if (!isAdmin) {
             try {
               const parsed = JSON.parse(data) as Record<string, unknown>;
+              // 重放路径必须与实时路径同口径（否则重放成为旁路）
               delete parsed.user_id;
+              delete parsed.submission_id;
               data = JSON.stringify(parsed);
             } catch {
               // 保持原样
