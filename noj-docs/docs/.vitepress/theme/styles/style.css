@@ -135,7 +135,6 @@
 
 :root {
   --vp-sidebar-bg-color: transparent;
-  --vp-section-tabs-height: 44px;
 }
 
 @media (max-width: 959px) {
@@ -219,66 +218,6 @@
   color: var(--vp-c-text-1);
 }
 
-@media (min-width: 960px) {
-  .VPNavBar.has-sidebar .wrapper {
-    padding: 0 32px !important;
-    background-color: var(--vp-nav-bg-color) !important;
-  }
-
-  .VPNavBar.has-sidebar .container {
-    max-width: calc(var(--vp-layout-max-width) - 64px) !important;
-    justify-content: flex-start !important;
-    gap: 24px !important;
-    background-color: var(--vp-nav-bg-color) !important;
-  }
-
-  .VPNavBar.has-sidebar .container > .title {
-    position: relative !important;
-    z-index: 3 !important;
-    padding: 0 !important;
-    width: auto !important;
-    max-width: none !important;
-    background-color: var(--vp-nav-bg-color) !important;
-  }
-
-  .VPNavBar.has-sidebar .content {
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-  }
-
-  .VPNavBar.has-sidebar .content-body {
-    justify-content: flex-start !important;
-  }
-
-  .VPNavBar.has-sidebar .menu {
-    margin-right: auto !important;
-  }
-
-  .VPNavBar.has-sidebar .divider {
-    padding-left: 0 !important;
-  }
-
-  .VPNavBar.has-sidebar .VPNavBarTitle .title {
-    border-bottom: none !important;
-    background-color: var(--vp-nav-bg-color);
-  }
-}
-
-@media (min-width: 1440px) {
-  .VPNavBar.has-sidebar .container > .title {
-    padding-left: 0 !important;
-    width: auto !important;
-  }
-
-  .VPNavBar.has-sidebar .content {
-    padding-right: 0 !important;
-    padding-left: 0 !important;
-  }
-
-  .VPNavBar.has-sidebar .divider {
-    padding-left: 0 !important;
-  }
-}
 
 /**
  * Component: Local Nav
@@ -310,34 +249,6 @@
   border-left: none !important;
 }
 
-@media (min-width: 1280px) {
-  .VPNavBar.has-sidebar .divider {
-    display: none !important;
-  }
-
-  .VPSidebar {
-    padding-top: calc(var(--vp-nav-height) + var(--vp-section-tabs-height)) !important;
-  }
-
-  .Layout.sidebar-scope-intro-deploy .VPSidebar .group,
-  .Layout.sidebar-scope-platform .VPSidebar .group,
-  .Layout.sidebar-scope-providers .VPSidebar .group,
-  .Layout.sidebar-scope-use .VPSidebar .group,
-  .Layout.sidebar-scope-dev .VPSidebar .group {
-    display: none;
-  }
-
-  .Layout.sidebar-scope-intro-deploy .VPSidebar .group:nth-of-type(1),
-  .Layout.sidebar-scope-intro-deploy .VPSidebar .group:nth-of-type(2),
-  .Layout.sidebar-scope-intro-deploy .VPSidebar .group:nth-of-type(7),
-  .Layout.sidebar-scope-intro-deploy .VPSidebar .group:nth-of-type(8),
-  .Layout.sidebar-scope-platform .VPSidebar .group:nth-of-type(3),
-  .Layout.sidebar-scope-providers .VPSidebar .group:nth-of-type(4),
-  .Layout.sidebar-scope-use .VPSidebar .group:nth-of-type(5),
-  .Layout.sidebar-scope-dev .VPSidebar .group:nth-of-type(6) {
-    display: block;
-  }
-}
 
 .VPHomeHero:not(.has-image) .container {
   text-align: center;

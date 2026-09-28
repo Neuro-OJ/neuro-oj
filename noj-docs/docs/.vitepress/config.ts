@@ -6,7 +6,8 @@ import { withMermaid } from "vitepress-plugin-mermaid";
 export default withMermaid(defineConfig({
   lang: "zh-CN",
   title: "Neuro OJ 文档",
-  description: "Neuro OJ — 面向 IOAI、NOAI、LMCC 等 AI 认证与竞赛场景的在线评测系统文档",
+  description:
+    "Neuro OJ — 面向 IOAI、NOAI、LMCC 等 AI 认证与竞赛场景的在线评测系统文档",
 
   lastUpdated: true,
   cleanUrls: false,
@@ -21,7 +22,8 @@ export default withMermaid(defineConfig({
       "link",
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap",
+        href:
+          "https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap",
       },
     ],
     [
@@ -74,126 +76,367 @@ export default withMermaid(defineConfig({
       },
     },
     nav: [
-      // 顶部导航仅放外部链接；站内分区导航由胶囊 Tab 条（SectionTabs）承担
-      { text: "GitHub", link: "https://github.com/Neuro-OJ/neuro-oj" },
-      { text: "Issues", link: "https://github.com/Neuro-OJ/neuro-oj/issues" },
+      { text: "做题指南", link: "/users/", activeMatch: "^/(users|features)/" },
       {
-        text: "License",
-        link: "https://github.com/Neuro-OJ/neuro-oj/blob/main/LICENSE",
+        text: "出题指南",
+        link: "/problemsetters/",
+        activeMatch: "^/(problemsetters|standards)/",
+      },
+      { text: "运维部署", link: "/operators/", activeMatch: "^/operators/" },
+      {
+        text: "评测机制与架构",
+        link: "/mechanisms/",
+        activeMatch: "^/(mechanisms|system)/",
+      },
+      {
+        text: "参考手册",
+        link: "/reference/",
+        activeMatch: "^/(reference|intro)/",
+      },
+      {
+        text: "项目与源码",
+        items: [
+          { text: "GitHub 仓库", link: "https://github.com/Neuro-OJ/neuro-oj" },
+          {
+            text: "问题反馈 (Issues)",
+            link: "https://github.com/Neuro-OJ/neuro-oj/issues",
+          },
+          { text: "更新日志", link: "/reference/changelog" },
+          {
+            text: "许可证 (AGPL-3.0)",
+            link: "https://github.com/Neuro-OJ/neuro-oj/blob/main/LICENSE",
+          },
+        ],
       },
     ],
     sidebar: {
-      "/": [
+      "/users/": [
         {
-          text: "快速开始",
+          text: "做题入门",
+          items: [
+            { text: "做题人概览", link: "/users/" },
+            { text: "快速开始", link: "/intro/getting-started" },
+            { text: "提交代码与语言约定", link: "/users/submit" },
+            { text: "理解评测结果", link: "/users/results" },
+            { text: "使用 Capability 网络能力", link: "/users/capability" },
+          ],
+        },
+        {
+          text: "做题客户端",
+          items: [
+            { text: "LMCC IDE 插件", link: "/users/lmcc-extension" },
+          ],
+        },
+        {
+          text: "平台功能",
+          items: [
+            { text: "竞赛模式", link: "/features/contests" },
+            { text: "题单训练", link: "/features/trainings" },
+            { text: "客观题套卷", link: "/features/objective" },
+            { text: "排行榜与每日签到", link: "/features/ranking" },
+            { text: "社区与讨论", link: "/features/community" },
+            { text: "站内搜索与私信", link: "/features/search-messages" },
+            { text: "系统公告", link: "/features/announcements" },
+          ],
+        },
+        {
+          text: "账号与设置",
+          items: [
+            { text: "账号与密码安全", link: "/users/account" },
+          ],
+        },
+      ],
+      "/features/": [
+        {
+          text: "做题入门",
+          items: [
+            { text: "做题人概览", link: "/users/" },
+            { text: "快速开始", link: "/intro/getting-started" },
+            { text: "提交代码与语言约定", link: "/users/submit" },
+            { text: "理解评测结果", link: "/users/results" },
+            { text: "使用 Capability 网络能力", link: "/users/capability" },
+          ],
+        },
+        {
+          text: "做题客户端",
+          items: [
+            { text: "LMCC IDE 插件", link: "/users/lmcc-extension" },
+          ],
+        },
+        {
+          text: "平台功能",
+          items: [
+            { text: "竞赛模式", link: "/features/contests" },
+            { text: "题单训练", link: "/features/trainings" },
+            { text: "客观题套卷", link: "/features/objective" },
+            { text: "排行榜与每日签到", link: "/features/ranking" },
+            { text: "社区与讨论", link: "/features/community" },
+            { text: "站内搜索与私信", link: "/features/search-messages" },
+            { text: "系统公告", link: "/features/announcements" },
+          ],
+        },
+        {
+          text: "账号与设置",
+          items: [
+            { text: "账号与密码安全", link: "/users/account" },
+          ],
+        },
+      ],
+      "/problemsetters/": [
+        {
+          text: "出题起步",
+          items: [
+            { text: "出题人概览", link: "/problemsetters/" },
+            {
+              text: "快速出一题（5步路径）",
+              link: "/problemsetters/quick-start",
+            },
+            { text: "A+B 完整样例题拆解", link: "/problemsetters/ab-example" },
+            {
+              text: "Web 题目编辑器全流程",
+              link: "/problemsetters/web-editor",
+            },
+          ],
+        },
+        {
+          text: "题型实战",
+          items: [
+            { text: "LLM 智能体调用题", link: "/problemsetters/llm-problem" },
+            { text: "客观题套卷制作", link: "/features/objective" },
+          ],
+        },
+        {
+          text: "题目规范与质量",
+          items: [
+            { text: "题目规范总览", link: "/standards/" },
+            {
+              text: "统一题目包格式规范 (ZIP)",
+              link: "/standards/problem-bundle",
+            },
+            { text: "测试数据与样例规范", link: "/standards/test-data" },
+            { text: "题目质量要求与自查清单", link: "/standards/quality" },
+          ],
+        },
+        {
+          text: "评测脚本开发 (SDK)",
+          items: [
+            {
+              text: "Evaluator SDK 接口指南",
+              link: "/mechanisms/evaluator-sdk",
+            },
+            { text: "Solution SDK 接口指南", link: "/mechanisms/solution-sdk" },
+            {
+              text: "提供受限网络能力",
+              link: "/mechanisms/capability-networking",
+            },
+          ],
+        },
+      ],
+      "/standards/": [
+        {
+          text: "出题起步",
+          items: [
+            { text: "出题人概览", link: "/problemsetters/" },
+            {
+              text: "快速出一题（5步路径）",
+              link: "/problemsetters/quick-start",
+            },
+            { text: "A+B 完整样例题拆解", link: "/problemsetters/ab-example" },
+            {
+              text: "Web 题目编辑器全流程",
+              link: "/problemsetters/web-editor",
+            },
+          ],
+        },
+        {
+          text: "题型实战",
+          items: [
+            { text: "LLM 智能体调用题", link: "/problemsetters/llm-problem" },
+            { text: "客观题套卷制作", link: "/features/objective" },
+          ],
+        },
+        {
+          text: "题目规范与质量",
+          items: [
+            { text: "题目规范总览", link: "/standards/" },
+            {
+              text: "统一题目包格式规范 (ZIP)",
+              link: "/standards/problem-bundle",
+            },
+            { text: "测试数据与样例规范", link: "/standards/test-data" },
+            { text: "题目质量要求与自查清单", link: "/standards/quality" },
+          ],
+        },
+        {
+          text: "评测脚本开发 (SDK)",
+          items: [
+            {
+              text: "Evaluator SDK 接口指南",
+              link: "/mechanisms/evaluator-sdk",
+            },
+            { text: "Solution SDK 接口指南", link: "/mechanisms/solution-sdk" },
+            {
+              text: "提供受限网络能力",
+              link: "/mechanisms/capability-networking",
+            },
+          ],
+        },
+      ],
+      "/operators/": [
+        {
+          text: "安装与部署",
+          items: [
+            { text: "运营者概览", link: "/operators/" },
+            {
+              text: "生产部署 (noj-cli)",
+              link: "/operators/production-deploy",
+            },
+            { text: "CLI 运维工具与命令", link: "/operators/cli" },
+            {
+              text: "生产密钥管理与轮换 Runbook",
+              link: "/operators/production-secrets",
+            },
+          ],
+        },
+        {
+          text: "核心服务运维",
+          items: [
+            {
+              text: "Judge Worker 评测机运维与伸缩",
+              link: "/operators/judge-workers",
+            },
+            { text: "存储配置与评测包交付", link: "/system/storage" },
+            {
+              text: "提供 LLM 调用能力 (Gateway)",
+              link: "/operators/llm-call-capability",
+            },
+            { text: "邮件送达与退信处理", link: "/operators/email-delivery" },
+          ],
+        },
+        {
+          text: "系统管控与合规",
+          items: [
+            {
+              text: "管理后台使用指南 (Admin)",
+              link: "/operators/admin-guide",
+            },
+            { text: "可观测性与故障排查", link: "/operators/observability" },
+            { text: "公测容量基线验收", link: "/operators/capacity-baseline" },
+            { text: "法律与合规指南", link: "/operators/legal-compliance" },
+          ],
+        },
+      ],
+      "/mechanisms/": [
+        {
+          text: "评测内核机制",
+          items: [
+            { text: "评测机制总览", link: "/mechanisms/" },
+            {
+              text: "双容器评测模型与状态映射",
+              link: "/mechanisms/judge-model",
+            },
+            { text: "Evaluator SDK", link: "/mechanisms/evaluator-sdk" },
+            { text: "Solution SDK", link: "/mechanisms/solution-sdk" },
+            { text: "RPC 协议与数据帧格式", link: "/mechanisms/rpc" },
+            { text: "评测镜像与隔离运行时", link: "/mechanisms/runtimes" },
+            {
+              text: "受限网络 Capability 实现",
+              link: "/mechanisms/capability-networking",
+            },
+          ],
+        },
+        {
+          text: "系统底层架构",
+          items: [
+            { text: "系统架构总览", link: "/system/" },
+            { text: "系统分层架构设计", link: "/system/architecture" },
+            { text: "端到端安全模型", link: "/system/security" },
+            { text: "存储与评测包交付体系", link: "/system/storage" },
+            {
+              text: "对象存储生命周期治理",
+              link: "/system/object-storage-governance",
+            },
+            { text: "竞赛反作弊与风控数据", link: "/system/anti-cheat" },
+          ],
+        },
+      ],
+      "/system/": [
+        {
+          text: "评测内核机制",
+          items: [
+            { text: "评测机制总览", link: "/mechanisms/" },
+            {
+              text: "双容器评测模型与状态映射",
+              link: "/mechanisms/judge-model",
+            },
+            { text: "Evaluator SDK", link: "/mechanisms/evaluator-sdk" },
+            { text: "Solution SDK", link: "/mechanisms/solution-sdk" },
+            { text: "RPC 协议与数据帧格式", link: "/mechanisms/rpc" },
+            { text: "评测镜像与隔离运行时", link: "/mechanisms/runtimes" },
+            {
+              text: "受限网络 Capability 实现",
+              link: "/mechanisms/capability-networking",
+            },
+          ],
+        },
+        {
+          text: "系统底层架构",
+          items: [
+            { text: "系统架构总览", link: "/system/" },
+            { text: "系统分层架构设计", link: "/system/architecture" },
+            { text: "端到端安全模型", link: "/system/security" },
+            { text: "存储与评测包交付体系", link: "/system/storage" },
+            {
+              text: "对象存储生命周期治理",
+              link: "/system/object-storage-governance",
+            },
+            { text: "竞赛反作弊与风控数据", link: "/system/anti-cheat" },
+          ],
+        },
+      ],
+      "/intro/": [
+        {
+          text: "了解 Neuro OJ",
           items: [
             { text: "什么是 Neuro OJ", link: "/intro/what-is-noj" },
             { text: "快速开始", link: "/intro/getting-started" },
-            { text: "常见问题", link: "/intro/faq" },
+            { text: "常见问题 (FAQ)", link: "/intro/faq" },
           ],
         },
         {
-          text: "面向角色",
-          collapsed: true,
+          text: "速查参考",
           items: [
+            { text: "参考文档总览", link: "/reference/" },
+            { text: "评测结果状态代码", link: "/reference/result-status" },
             {
-              text: "做题人",
-              items: [
-                { text: "做题人文档", link: "/users/" },
-                { text: "提交代码", link: "/users/submit" },
-                { text: "LMCC IDE 插件", link: "/users/lmcc-extension" },
-                { text: "使用 capability", link: "/users/capability" },
-                { text: "理解结果", link: "/users/results" },
-                { text: "账号与密码", link: "/users/account" },
-              ],
+              text: "数据库与 Redis 数据字典",
+              link: "/reference/data-dictionary",
             },
-            {
-              text: "出题人",
-              items: [
-                { text: "出题人文档", link: "/problemsetters/" },
-                { text: "快速出一题", link: "/problemsetters/quick-start" },
-                { text: "Web 题目编辑器", link: "/problemsetters/web-editor" },
-                { text: "A+B 示例题", link: "/problemsetters/ab-example" },
-                { text: "出 LLM 调用题", link: "/problemsetters/llm-problem" },
-              ],
-            },
-            {
-              text: "运营者",
-              items: [
-                { text: "运营者文档", link: "/operators/" },
-                { text: "生产部署", link: "/operators/production-deploy" },
-                { text: "公测容量基线", link: "/operators/capacity-baseline" },
-                { text: "可观测性与故障处理", link: "/operators/observability" },
-                { text: "如何提供 LLM 调用能力", link: "/operators/llm-call-capability" },
-                { text: "CLI 初始化", link: "/operators/cli" },
-                { text: "Judge Worker 运维", link: "/operators/judge-workers" },
-                { text: "邮件退信与送达质量", link: "/operators/email-delivery" },
-                { text: "后台管理指南", link: "/operators/admin-guide" },
-                { text: "法律与合规", link: "/operators/legal-compliance" },
-                { text: "生产密钥", link: "/operators/production-secrets" },
-              ],
-            },
+            { text: "术语表 (Glossary)", link: "/reference/glossary" },
+            { text: "更新日志 (Changelog)", link: "/reference/changelog" },
+          ],
+        },
+      ],
+      "/reference/": [
+        {
+          text: "了解 Neuro OJ",
+          items: [
+            { text: "什么是 Neuro OJ", link: "/intro/what-is-noj" },
+            { text: "快速开始", link: "/intro/getting-started" },
+            { text: "常见问题 (FAQ)", link: "/intro/faq" },
           ],
         },
         {
-          text: "面向主题",
-          collapsed: true,
+          text: "速查参考",
           items: [
+            { text: "参考文档总览", link: "/reference/" },
+            { text: "评测结果状态代码", link: "/reference/result-status" },
             {
-              text: "题目规范及质量要求",
-              items: [
-                { text: "总览", link: "/standards/" },
-                { text: "题目包格式规范", link: "/standards/problem-bundle" },
-                { text: "测试数据与样例规范", link: "/standards/test-data" },
-                { text: "题目质量要求", link: "/standards/quality" },
-              ],
+              text: "数据库与 Redis 数据字典",
+              link: "/reference/data-dictionary",
             },
-            {
-              text: "评测机制与 SDK",
-              items: [
-                { text: "总览", link: "/mechanisms/" },
-                { text: "评测模型", link: "/mechanisms/judge-model" },
-                { text: "Evaluator SDK", link: "/mechanisms/evaluator-sdk" },
-                { text: "Solution SDK", link: "/mechanisms/solution-sdk" },
-                { text: "RPC 与可传递数据", link: "/mechanisms/rpc" },
-                { text: "评测镜像与运行时", link: "/mechanisms/runtimes" },
-                { text: "如何提供受限网络能力", link: "/mechanisms/capability-networking" },
-              ],
-            },
-            {
-              text: "系统架构与运维主题",
-              items: [
-                { text: "总览", link: "/system/" },
-                { text: "系统架构", link: "/system/architecture" },
-                { text: "安全模型", link: "/system/security" },
-                { text: "存储与评测包交付", link: "/system/storage" },
-                { text: "对象存储生命周期治理", link: "/system/object-storage-governance" },
-                { text: "竞赛风控数据说明", link: "/system/anti-cheat" },
-              ],
-            },
-            {
-              text: "功能主题",
-              items: [
-                { text: "总览", link: "/features/" },
-                { text: "排行榜与签到", link: "/features/ranking" },
-                { text: "搜索与私信", link: "/features/search-messages" },
-                { text: "社区", link: "/features/community" },
-                { text: "竞赛", link: "/features/contests" },
-                { text: "题单", link: "/features/trainings" },
-                { text: "公告", link: "/features/announcements" },
-                { text: "客观题套卷", link: "/features/objective" },
-              ],
-            },
-            {
-              text: "参考",
-              items: [
-                { text: "参考文档", link: "/reference/" },
-                { text: "术语表", link: "/reference/glossary" },
-                { text: "结果状态", link: "/reference/result-status" },
-                { text: "数据库与 Redis 数据字典", link: "/reference/data-dictionary" },
-                { text: "更新日志", link: "/reference/changelog" },
-              ],
-            },
+            { text: "术语表 (Glossary)", link: "/reference/glossary" },
+            { text: "更新日志 (Changelog)", link: "/reference/changelog" },
           ],
         },
       ],
@@ -202,7 +445,7 @@ export default withMermaid(defineConfig({
     docFooter: { prev: "上一页", next: "下一页" },
     footer: {
       message:
-      "Neuro OJ 是一个独立社区项目，与 CCF、LMCC、IOAI 及 NOAI 无官方关系。",
+        "Neuro OJ 是一个独立社区项目，与 CCF、LMCC、IOAI 及 NOAI 无官方关系。",
     },
     editLink: {
       pattern:

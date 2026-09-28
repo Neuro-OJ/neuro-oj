@@ -47,7 +47,7 @@ print(2)
 
 ::: warning 调用异常如何落地为状态
 `NotFoundError` 是**调用级错误**，不等于最终 verdict。样例 `1001` 的 `evaluate.py` 未捕获该异常、直接抛出，进程未输出 `---RESULT---`，judge 将其映射为 **`error`**。
-若你希望"函数缺失"算作一个失败用例（最终 `finished` + 0 分），应在 evaluator 中 `try/except NotFoundError` 并记录为失败用例。取舍见 [Evaluator SDK 错误处理](evaluator-sdk.md)。
+若你希望"函数缺失"算作一个失败用例（最终 `finished` + 0 分），应在 evaluator 中 `try/except NotFoundError` 并记录为失败用例。取舍见 [Evaluator SDK 错误处理](../mechanisms/evaluator-sdk.md)。
 :::
 
 ## 测试数据

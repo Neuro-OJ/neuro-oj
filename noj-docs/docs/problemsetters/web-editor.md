@@ -38,12 +38,12 @@
 | | `call_timeout_ms` | 单次 SDK 调用的题目级默认超时 |
 | | `memory_limit_mb` | Solution 容器内存上限 |
 
-`call_timeout_ms` 作为单次 SDK 调用的**默认**超时；出题人可在 `evaluate.py` 中用 `runner.call(..., timeout_ms=...)` 按调用覆盖（缺省时回退该默认值）。合理设置 Solution 的调用超时可以防止用户代码死循环拖垮整场评测（见[评测模型](judge-model.md)）。
+`call_timeout_ms` 作为单次 SDK 调用的**默认**超时；出题人可在 `evaluate.py` 中用 `runner.call(..., timeout_ms=...)` 按调用覆盖（缺省时回退该默认值）。合理设置 Solution 的调用超时可以防止用户代码死循环拖垮整场评测（见[评测模型](../mechanisms/judge-model.md)）。
 
 两层超时的状态语义不同：
 
 - `time_limit_ms` 超时 → 评测流程未正常完成，最终状态为 `error`。
-- `call_timeout_ms` 超时若**未被** evaluator 捕获 → 最终状态为 `error`；捕获后由 evaluator 自行决定（通常记为失败用例，最终为 `finished` + 部分分）。详见[评测模型](judge-model.md)。
+- `call_timeout_ms` 超时若**未被** evaluator 捕获 → 最终状态为 `error`；捕获后由 evaluator 自行决定（通常记为失败用例，最终为 `finished` + 部分分）。详见[评测模型](../mechanisms/judge-model.md)。
 
 ::: warning 敏感字段与资源上限
 `evaluator.command` 与 `evaluator.network` 是**敏感字段**，需要对应 RBAC 权限（`problem:field_evaluator_command` / `problem:field_evaluator_network`）；资源限制字段还受管理员配置的全局上限约束，超限会被拒绝。
