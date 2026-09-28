@@ -182,6 +182,13 @@ services:
     profiles:
       - judge
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-judge:${NOJ_VERSION:?NOJ_VERSION is required}"
+    # 优雅关闭窗口必须 ≥ judge 自身的 drain 上限（NOJ-D3）。
+    # judge 的 drain 上限 = max(30, SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT + 30)（默认 90s，
+    # 下载超时调到 300s 时为 330s），drain 之后还有一次 15s 有界的兜底清扫。
+    # Docker 默认只给 10s 就 SIGKILL —— 那会让 drain 与兜底清扫**在真实部署里
+    # 永远跑不到**（SIGTERM 后 10s 即硬杀），每次 restart / 升级都强杀在飞评测、
+    # 留下孤儿容器，只能靠下次启动的标签清扫回收。此处显式给足窗口。
+    stop_grace_period: "${JUDGE_STOP_GRACE_PERIOD:-120s}"
     # 无 healthcheck，这是**有意为之**（2026-09-12 评审 §5.2）：
     # judge 是纯 worker，没有 HTTP 端口或心跳文件可供探测；它的失败模式是进程退出，
     # 已由 `restart: unless-stopped` 覆盖。写一个 `CMD true` 式的 healthcheck 只会
