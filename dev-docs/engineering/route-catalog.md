@@ -82,9 +82,7 @@
 | GET | `/content-review/:id` | noj-core/src/domains/admin/routes/community.ts |
 | GET | `/contests` | noj-core/src/domains/admin/routes/contest.ts |
 | GET | `/contests/:id` | noj-core/src/domains/admin/routes/contest.ts |
-| GET | `/contests/:id/anti-cheat/ip-groups` | noj-core/src/domains/admin/routes/contest.ts |
 | GET | `/contests/:id/anti-cheat/similar-submissions` | noj-core/src/domains/admin/routes/contest.ts |
-| GET | `/contests/:id/anti-cheat/timeline` | noj-core/src/domains/admin/routes/contest.ts |
 | GET | `/contests/:id/events` | noj-core/src/domains/contest/routes/sse.ts |
 | GET | `/contests/:id/participants` | noj-core/src/domains/admin/routes/contest.ts |
 | GET | `/contests/:id/ranking-snapshots` | noj-core/src/domains/admin/routes/contest.ts |
@@ -270,7 +268,6 @@
 | PUT | `/judge-images/:id` | noj-core/src/domains/admin/routes/system.ts |
 | PUT | `/llm/providers/:id` | noj-core/src/domains/admin/routes/gateway.ts |
 | PUT | `/me` | noj-core/src/domains/identity/routes/users.ts |
-| PUT | `/me/activity-visibility` | noj-core/src/domains/community/routes/community.ts |
 | PUT | `/roles/:id` | noj-core/src/domains/admin/routes/identity.ts |
 | PUT | `/settings/:key` | noj-core/src/domains/admin/routes/system.ts |
 | PUT | `/users/:id` | noj-core/src/domains/admin/routes/identity.ts |

@@ -72,7 +72,6 @@
 | 项        | 配置键 / 取值                    | 默认 | 说明                                       |
 | --------- | ------------------------------- | ---- | ------------------------------------------ |
 | 审计日志  | `audit_log_retention_days`      | 90   | 操作审计留痕保留天数（`0` = 禁用清理）     |
-| 反作弊 IP | `anti_cheat_ip_retention_days`  | 180  | 提交来源 IP 保留；到期置空，保留提交与成绩 |
 | SSE 事件  | 源码常量（无配置键）            | 7    | 实时事件日志保留，见 `shared/sse/sse-events.ts` 的 `SSE_EVENT_RETENTION_DAYS` |
 
 > 前两项为 **bootstrap（env-owned）** 设置，改 `.env` 后需重启 core；SSE 事件保留

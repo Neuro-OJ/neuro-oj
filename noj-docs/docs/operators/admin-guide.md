@@ -78,7 +78,7 @@ Neuro OJ 使用「角色 → 权限点」模型：权限格式为 `resource:acti
 | `judge_max_*` | 评测资源全局上限（evaluator/solution 时间与内存） |
 
 环境配置（只读）里与运营相关的键包括 `email_provider` 及邮件相关键、
-`audit_log_retention_days`、`anti_cheat_ip_retention_days` 等；这些**不能在面板里改**，
+`audit_log_retention_days` 等；这些**不能在面板里改**，
 须编辑 `.env.prod` 后重启 core。
 
 ::: info 首页轮播已与公告解耦（2026-09-24）

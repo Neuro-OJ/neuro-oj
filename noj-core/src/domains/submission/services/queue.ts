@@ -357,12 +357,36 @@ export async function getPendingQueueSnapshot(): Promise<{
 // ─── 公开 API ───────────────────────────────────────────────────────
 
 /**
+ * 自测查询的用户隔离条件（审计 VULN-11）。
+ *
+ * 非管理员且已登录 → 限定 `self_tests.user_id = viewerUserId`；
+ * 非管理员且**未登录**（viewerUserId 缺失）→ `false`（一律看不到自测，
+ * fail-closed：宁可空列表，也不泄露全站自测）。
+ *
+ * @returns 可直接展开进 `and(...)` 的条件数组（管理员为空数组 = 不过滤）。
+ */
+function selfTestScope(
+  isAdmin: boolean,
+  viewerUserId?: string,
+): SQL[] {
+  if (isAdmin) return [];
+  if (!viewerUserId) return [sql`false`];
+  return [eq(selfTests.user_id, viewerUserId)];
+}
+
+/**
  * 获取完整的队列概览。
  *
- * @param isAdmin 管理员可看到竞赛提交；普通用户只能看到非竞赛提交。
+ * @param isAdmin 管理员可看到竞赛提交与**全站**自测；普通用户只能看到非竞赛提交。
+ * @param viewerUserId 当前查看者 id（审计 VULN-11）：非管理员时，`self_tests`
+ *        相关的 pending / judging / recently_completed / 统计全部按
+ *        `user_id = viewerUserId` 过滤。此前这些查询完全不带用户约束，任何登录用户
+ *        调用 `GET /api/v1/queue` 都能看到全站其他人的自测题目、提交者用户名与
+ *        自测最终得分（`score`），违反自测服务对非所有者隐蔽的承诺。
  */
 export async function getQueueOverview(
   isAdmin = false,
+  viewerUserId?: string,
 ): Promise<QueueResponse> {
   const db = getDb();
 
@@ -418,7 +442,11 @@ export async function getQueueOverview(
         userId: selfTests.user_id,
       },
       "self_test",
-      inArray(selfTests.id, pendingSelfIds),
+      // 非管理员只能看到自己的自测（审计 VULN-11）
+      and(
+        inArray(selfTests.id, pendingSelfIds),
+        ...selfTestScope(isAdmin, viewerUserId),
+      ),
     );
     for (const r of pendingSelfRows) pendingMap.set(r.id, r);
   }
@@ -476,7 +504,7 @@ export async function getQueueOverview(
       judgeStartedAt: selfTests.judge_started_at,
     },
     "self_test",
-    selfJudgingWhere,
+    and(selfJudgingWhere, ...selfTestScope(isAdmin, viewerUserId)),
     sql`${selfTests.judge_started_at} ASC`,
   );
 
@@ -524,7 +552,10 @@ export async function getQueueOverview(
         score: selfTests.score,
       },
       "self_test",
-      sql`${selfTests.status} IN ('finished', 'error')`,
+      and(
+        sql`${selfTests.status} IN ('finished', 'error')`,
+        ...selfTestScope(isAdmin, viewerUserId),
+      ),
       sql`${selfTests.judge_finished_at} DESC`,
       10,
     ),
@@ -557,7 +588,7 @@ export async function getQueueOverview(
   const [selfJudgingCountRow] = await db
     .select({ count: sql<number>`count(*)` })
     .from(selfTests)
-    .where(selfJudgingWhereStats);
+    .where(and(selfJudgingWhereStats, ...selfTestScope(isAdmin, viewerUserId)));
 
   const today = new Date().toISOString().slice(0, 10);
   const [completedTodayRow] = await db
@@ -591,9 +622,11 @@ export async function getQueueOverview(
 /**
  * 获取单个提交的队列状态。
  *
- * 权限控制：当传入 `viewerUserId` 时，仅返回该用户自己的提交状态（避免 IDOR）；
- * `viewerRole === 'admin'` 时可查看任意提交。两者均不传时按公开访问处理
- * （保留向后兼容，但生产路由不应走到此分支）。
+ * 权限控制（审计 VULN-13 修正）：**仅提交所有者本人或 admin** 可见。
+ * 此前判据是 `viewerUserId !== undefined && viewerRole !== "admin"`，于是**匿名**
+ * 访问（`viewerUserId === undefined`）反而跳过了归属校验、能拿到排队位置，
+ * 而已登录的非所有者却被返回 null —— 权限逻辑完全倒挂。
+ * 现在未登录访客与非所有者一样返回 null。
  *
  * @param submissionId 提交 ID
  * @param viewerUserId 当前查看者用户 ID（可选）
@@ -622,9 +655,9 @@ export async function getSubmissionQueueStatus(
 
   if (rows.length === 0) return null;
 
-  // 2. 权限校验：仅 admin 或提交所有者可查看
-  if (viewerUserId !== undefined && viewerRole !== "admin") {
-    if (rows[0].user_id !== viewerUserId) return null;
+  // 2. 权限校验：仅 admin 或提交所有者可查看（匿名访客同样被拒绝）
+  if (viewerRole !== "admin") {
+    if (!viewerUserId || rows[0].user_id !== viewerUserId) return null;
   }
 
   const row = rows[0];

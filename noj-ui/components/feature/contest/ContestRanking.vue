@@ -2,6 +2,12 @@
 import type { Contest, KaggleRankingRow } from '~/composables/useContests'
 import { extractApiError } from '~/utils/apiError'
 import { formatDateTime } from '~/utils/submissionFormat'
+import {
+  FROZEN_SELF_ONLY_HINT,
+  frozenAccessHint,
+  isFrozenSelfOnly,
+  type ContestRankingView,
+} from '~/utils/contestRanking'
 
 const props = defineProps<{ contestId: string }>()
 const { api } = useApi()
@@ -13,11 +19,20 @@ const { data: contestData, pending: contestPending } = await useFetch<{ data: Co
 )
 const contest = computed(() => contestData.value?.data ?? null)
 const rankingError = ref('')
+/** 榜单请求失败的 HTTP 状态：封榜语境下 401/403 需要降级为引导文案（VULN-09）。 */
+const rankingErrorStatus = ref<number | null>(null)
 const rankingLoading = ref(true)
 const officialSnapshot = ref<{ version: number; note: string; created_at: string } | null>(null)
-const rankingView = ref<'live' | 'frozen' | 'official'>('live')
+const rankingView = ref<ContestRankingView>('live')
 const settlementPending = ref(false)
 const adminLive = ref(false)
+/**
+ * 封榜且当前用户不是管理员：后端只返回本人一行（不是错误，也不是空榜）。
+ * 页面据此给出说明文案，避免把"只有自己"误读成榜单异常（VULN-09）。
+ */
+const frozenSelfOnly = computed(() => isFrozenSelfOnly(rankingView.value, adminLive.value))
+/** 401/403 的封榜引导文案；null 表示按普通错误渲染。 */
+const frozenErrorHint = computed(() => frozenAccessHint(rankingErrorStatus.value))
 const resultLabel = computed(() => officialSnapshot.value
   ? `正式成绩 · 版本 ${officialSnapshot.value.version}`
   : rankingView.value === 'frozen'
@@ -29,10 +44,11 @@ const resultLabel = computed(() => officialSnapshot.value
 async function loadRanking() {
   rankingLoading.value = true
   rankingError.value = ''
+  rankingErrorStatus.value = null
   try {
     const response = await api.get<{
       data: KaggleRankingRow[]
-      view?: 'live' | 'frozen' | 'official'
+      view?: ContestRankingView
       settlement_pending?: boolean
       admin_live?: boolean
     }>(`/api/v1/contests/${props.contestId}/ranking`, { silent: true })
@@ -55,7 +71,9 @@ async function loadRanking() {
       officialSnapshot.value = null
     }
   } catch (fetchError: unknown) {
-    rankingError.value = extractApiError(fetchError).message
+    const info = extractApiError(fetchError)
+    rankingError.value = info.message
+    rankingErrorStatus.value = info.status ?? null
   } finally {
     rankingLoading.value = false
   }
@@ -69,7 +87,7 @@ const { state: eventState } = useEventSource({
   onEvent: {
     'contest:ranking:snapshot': (payload) => {
       if (officialSnapshot.value) return
-      const event = payload as { data?: KaggleRankingRow[]; view?: 'live' | 'frozen' | 'official'; settlement_pending?: boolean; admin_live?: boolean }
+      const event = payload as { data?: KaggleRankingRow[]; view?: ContestRankingView; settlement_pending?: boolean; admin_live?: boolean }
       if (event.data) rows.value = event.data
       if (event.view) rankingView.value = event.view
       settlementPending.value = event.settlement_pending === true
@@ -78,7 +96,7 @@ const { state: eventState } = useEventSource({
     },
     'contest:ranking:updated': (payload) => {
       if (officialSnapshot.value) return
-      const event = payload as { data?: KaggleRankingRow[]; view?: 'live' | 'frozen' | 'official'; settlement_pending?: boolean; admin_live?: boolean }
+      const event = payload as { data?: KaggleRankingRow[]; view?: ContestRankingView; settlement_pending?: boolean; admin_live?: boolean }
       if (event.data) rows.value = event.data
       if (event.view) rankingView.value = event.view
       settlementPending.value = event.settlement_pending === true
@@ -120,18 +138,28 @@ function score(value: number) {
     </div>
     <div v-else-if="rankingView === 'frozen'" class="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
       <UIcon name="i-lucide-lock-keyhole" class="size-4" />
-      <span>当前为服务端封榜冻结视图，封榜期间的新提交与评测不会改变此榜单。</span>
+      <!-- 封榜非管理员只拿到本人一行：如实说明，而不是当成异常（VULN-09） -->
+      <span v-if="frozenSelfOnly">{{ FROZEN_SELF_ONLY_HINT }}（封榜期间的新提交与评测不会改变榜单。）</span>
+      <span v-else>当前为服务端封榜冻结视图，封榜期间的新提交与评测不会改变此榜单。</span>
     </div>
     <div v-else-if="rankingView === 'live' && settlementPending" class="flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
       <UIcon name="i-lucide-shield-check" class="size-4" />
       <span>管理员实时榜：比赛已结束但正式成绩仍在待结算，当前数据不会对普通参赛者公开。</span>
     </div>
 
-    <div v-if="rankingError" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-error-text">{{ rankingError }}</div>
+    <!-- 封榜 401/403：不是错误，而是"没有可见的完整榜单"，给引导而非裸露错误（VULN-09） -->
+    <div v-if="frozenErrorHint" class="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      <UIcon name="i-lucide-lock-keyhole" class="size-4" />
+      <span>{{ frozenErrorHint }}</span>
+      <NuxtLink v-if="rankingErrorStatus === 401" to="/login" class="font-medium underline hover:no-underline">去登录</NuxtLink>
+    </div>
+    <div v-else-if="rankingError" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-error-text">{{ rankingError }}</div>
 
     <div class="overflow-x-auto rounded-2xl border border-border bg-white shadow-sm">
       <div v-if="contestPending || rankingLoading" class="py-20 text-center text-sm text-text-muted">排名计算中...</div>
-      <div v-else-if="rows.length === 0" class="py-20 text-center text-sm text-text-muted">暂无排名数据</div>
+      <div v-else-if="rows.length === 0" class="py-20 text-center text-sm text-text-muted">
+        {{ frozenSelfOnly ? FROZEN_SELF_ONLY_HINT : '暂无排名数据' }}
+      </div>
       <table v-else class="w-full min-w-[760px] border-collapse">
         <thead>
           <tr class="border-b border-border bg-bg-page text-left text-xs font-semibold uppercase tracking-wide text-text-muted">

@@ -32,6 +32,7 @@
                     :title="p.title"
                     :difficulty="p.difficulty"
                     :is_objective="p.is_objective"
+                    :is_contest_hidden="p.is_contest_hidden"
                     :runtime_config="p.runtime_config"
                     :tags="p.tags"
                 />
@@ -57,6 +58,8 @@ interface ProblemItem {
     type: string
     difficulty: string
     is_objective: boolean
+    /** 是否被尚未结束的公开赛收编（VULN-07）：仅特权用户会收到该字段 */
+    is_contest_hidden?: boolean
     runtime_config: { evaluator: { time_limit_ms: number; memory_limit_mb: number } }
     tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
 }

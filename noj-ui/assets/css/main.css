@@ -69,6 +69,13 @@
   --color-warning: var(--c-warning-text);
   --color-warning-300: #fcd34d;
   --color-warning-600: #b45309;
+  /* 警示横幅底色/描边：此前 `bg-warning-bg` / `border-warning-border` 被
+     EmailVerificationBanner、TrainingCard、ProblemContestNotice 三处引用，
+     但 @theme 里**没有对应 token**（Tailwind v4 只在未知类名时静默丢弃），
+     导致这三处横幅实际只有文字、没有底色与边框。取值与仓库其它位置手写的
+     amber-50 / amber-200 一致，保持视觉统一。 */
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fde68a;
   --color-error: var(--c-error-text);
   --color-error-300: #fca5a5;
   --color-error-600: #dc2626;
@@ -99,6 +106,21 @@
   --text-17px: 1.0625rem; /* 17px */
   --text-22px: 1.375rem;  /* 22px */
   --text-28px: 1.75rem;   /* 28px */
+}
+
+/* ---- 公开赛收编题目标识（VULN-07）----
+ * 浅灰底 + 45° 斜线条纹：仅特权用户（管理员 / 题目所有者）能在列表中看到
+ * `is_contest_hidden: true` 的行/卡片，用于提醒"这题已被公开赛收编，对普通用户隐藏"。
+ * 用 Tailwind v4 的 @utility 定义（而非普通 CSS 类），以便叠加 hover:/dark: 变体，
+ * 并让类名成为 Tailwind 可识别的候选（`utils/contestHidden.ts` 引用同一类名）。 */
+@utility contest-hidden-stripes {
+  background-image: repeating-linear-gradient(
+    45deg,
+    #f3f4f6,
+    #f3f4f6 10px,
+    #e5e7eb,
+    #e5e7eb 20px
+  );
 }
 
 /* ---- 无障碍：键盘焦点可见（WCAG 2.4.7）----

@@ -69,7 +69,6 @@
 | `session_version` | integer | NOT NULL；DEFAULT `0` | 凭据变更时原子递增，用于撤销该用户此前签发的**全部**会话 |
 | `bio` | text | NOT NULL；DEFAULT `''` | 个人简介（Markdown，上限 5000 字符） |
 | `must_change_password` | boolean | NOT NULL；DEFAULT `false` | 引导管理员等账号下次登录须改密；中间件对非白名单请求返 403 |
-| `community_activity_visibility` | text | NOT NULL；DEFAULT `'following'`；CHECK `hidden/following/everyone` | 社区活动可见范围 |
 | `avatar_url` | text | NULL | 头像存储地址（`noj-storage://` 格式） |
 | `tfa_secret_encrypted` | text | NULL | <span class="noj-danger-col">TOTP secret 的 AES-256-GCM 密文</span> |
 | `tfa_enabled` | boolean | NOT NULL；DEFAULT `false` | 是否已启用二次验证 |
@@ -316,14 +315,13 @@ RBAC 权限定义表，权限以 `resource:action` 唯一标识。
 | `code` | text | NOT NULL | <span class="noj-danger-col">提交的代码原文</span>（上限 100KB） |
 | `file_name` | text | NULL | 提交文件名 |
 | `artifact_storage_url` | text | NULL | <span class="noj-danger-col">artifact 提交的存储地址</span>（`noj-storage://`）；code 模式为 NULL |
-| `client_ip` | text | NULL | <span class="noj-danger-col">风控用来源 IP</span>（可信代理解析，无法安全解析时为 NULL） |
 | `status` | text | NOT NULL；DEFAULT `'pending'` | 评测状态 |
 | `rejudge_seq` | integer | NOT NULL；DEFAULT `0` | 重测序列号，防止新旧结果竞态覆盖 |
 | `judge_started_at` | text | NULL | 开始评测时间 |
 | `judge_finished_at` | text | NULL | 完成评测时间 |
 | `created_at` | text | NOT NULL | 创建时间 |
 
-主要索引（不完整，完整清单见 `\d+ submissions`）：`idx_submissions_user_id_created_at`、`idx_submissions_contest_problem_user`、`idx_submissions_contest_client_ip`；另有 `idx_submissions_user_id` / `idx_submissions_problem_id` / `idx_submissions_status` / `idx_submissions_created_at` / `idx_submissions_contest_id`。
+主要索引（不完整，完整清单见 `\d+ submissions`）：`idx_submissions_user_id_created_at`、`idx_submissions_contest_problem_user`；另有 `idx_submissions_user_id` / `idx_submissions_problem_id` / `idx_submissions_status` / `idx_submissions_created_at` / `idx_submissions_contest_id`。
 
 ::: warning artifact 提交
 artifact 提交在评测完成后会**立即删除存储对象**，不支持重测。注意 `evaluation_results.submission_id` 外键为 **NO ACTION**（drizzle 源码未声明 `onDelete`，`0007_fk_cascade.sql` 未进 `_journal.json`、从未生效）：若提交仍有评测结果行，直接 `DELETE submissions` 会**因外键违约失败**；需先删除对应 `evaluation_results`（或走管理端删除流程）。
@@ -655,21 +653,6 @@ PK 为 `(user_id, conversation_id)`。
 | `created_at` | text | NOT NULL | 创建时间 |
 
 `CHECK community_follows_not_self_check`：不能关注自己。
-
-#### `community_activity_events`
-
-可展示在动态流的系统活动（去重）。
-
-| 列 | 类型 | 约束 / 默认 | 说明 |
-| --- | --- | --- | --- |
-| `id` | text | PK | 事件 UUID |
-| `actor_id` | text | NOT NULL；FK→`users(id)` ON DELETE CASCADE；索引 | 触发者 |
-| `type` | text | NOT NULL；CHECK `first_accepted/solution_published/contest_joined` | 事件类型 |
-| `subject_type` / `subject_id` | text | NOT NULL | 事件对象 |
-| `metadata` | jsonb | NOT NULL；DEFAULT `{}` | 附加数据 |
-| `created_at` | text | NOT NULL | 创建时间 |
-
-唯一约束 `community_activity_events_dedupe_unique(actor_id, type, subject_type, subject_id)`。
 
 #### `community_reports` <span class="noj-danger-zone">DANGER ZONE</span>
 

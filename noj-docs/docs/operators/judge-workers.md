@@ -262,8 +262,11 @@ noj-core 维护评测镜像白名单（`judgeImages`），并在题目 CRUD /
 3. 为本次评测即时创建 Evaluator + Solution 两个容器（安全 HostConfig：
    `cap_drop ALL` / `network_mode none` / `pids_limit` 等）。
    - LLM 调用题会按 `JUDGE_ALLOW_EVALUATOR_NETWORK` / `JUDGE_EVALUATOR_NETWORK`
-     让 Evaluator 加入指定网络（如 `noj-net`）以访问 `noj-llm-gateway`；
-     Solution 容器始终 `network_mode=none`。
+     让 Evaluator 加入**评测隔离网络**（生产为 `noj-eval-net`）以访问
+     `noj-llm-gateway`；Solution 容器始终 `network_mode=none`。
+   - `JUDGE_EVALUATOR_NETWORK` **不得**填 `bridge` / `host`：noj-judge 在生产启动
+     校验中会直接拒绝（默认 bridge 会让沙箱经网关 IP 触达宿主机与内网基础设施，
+     host 模式则完全取消隔离）。
 4. 注入用户代码与支持包，启动双容器 NDJSON 编排。
 5. 评测完成后按 RAII 顺序清理容器（先 Solution 后
    Evaluator），下次评测重新创建。

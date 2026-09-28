@@ -316,7 +316,10 @@ prepare_env() {
   chmod 600 "$COMPOSE_ENV_FILE"
   {
     printf '\n# ---- restore-drill 隔离覆盖（自动生成，勿提交） ----\n'
-    printf 'JUDGE_EVALUATOR_NETWORK=%s_noj-net\n' "$PROJECT_NAME"
+    # 演练 stack 使用自己的评测隔离网络（审计 VULN-20）：生产 `noj-eval-net`
+    # 是固定名，沿用同名会与生产网络冲突。两个变量必须同值。
+    printf 'NOJ_EVAL_NETWORK_NAME=%s_noj-eval-net\n' "$PROJECT_NAME"
+    printf 'JUDGE_EVALUATOR_NETWORK=%s_noj-eval-net\n' "$PROJECT_NAME"
   } >> "$COMPOSE_ENV_FILE"
   ok "已解密环境文件并叠加演练隔离配置"
 }

@@ -155,7 +155,13 @@ users.get("/:id/profile", optionalAuthMiddleware, async (c) => {
   const userId = await resolveUserId(c.req.param("id") as string);
   // admin:full_access 通配放行由 checkPermission 内部处理
   const moderator = await checkPermission(c, "community_moderation:review");
-  const profile = await getUserProfileAggregate(userId, moderator);
+  // 查看者上下文：非特权查看者看不到"被未结束公开赛保密的题目"的解题/提交记录
+  // （审计 VULN-07）。管理员判定走 submission:read_all（admin:full_access 通配）。
+  const viewer = {
+    viewerId: c.get("userId"),
+    isAdmin: await checkPermission(c, "submission:read_all"),
+  };
+  const profile = await getUserProfileAggregate(userId, moderator, viewer);
   // 追加 rank 字段：复用 rankings service 的 getMyRanking，确保排序逻辑一致
   const ranking = await getMyRanking(userId);
   return c.json({ data: { ...profile, rank: ranking?.rank ?? null } }, 200);

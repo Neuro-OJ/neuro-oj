@@ -12,7 +12,8 @@
    [如何提供 LLM 调用能力（运营者）](../operators/llm-call-capability.md)；后台操作见
    [后台管理指南](../operators/admin-guide.md#llm-管理)。
 3. 题目必须开启 **Evaluator 联网**（`runtime_config.evaluator.network.enabled = true`），
-   且部署环境已让 evaluator 加入 `llm-gateway` 所在网络（生产为 `noj-net`）。
+   且部署环境已让 evaluator 加入 `llm-gateway` 所在网络（生产默认 `noj-eval-net`，
+   即评测隔离网络）。
 
 ::: info Solution 容器始终无网
 Solution 容器**始终无网**，也不会拿到任何 `NOJ_LLM_*` 环境变量。LLM 能力只能由 evaluator 经 capability 精确封装后转给 solution。

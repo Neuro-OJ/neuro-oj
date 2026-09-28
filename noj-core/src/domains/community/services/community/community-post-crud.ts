@@ -27,7 +27,6 @@ import {
   getCommunityConfig,
 } from "./community-config.ts";
 import { listBoardRoleGrants } from "./community-boards.ts";
-import { createActivity } from "./community-feed.ts";
 import {
   featureForType,
   hasAcceptedSolution,
@@ -39,7 +38,7 @@ import {
   postStatsProjection,
 } from "./community-post-select.ts";
 import { reviewUgcContent } from "./community-review.ts";
-import { isProblemInRunningContest } from "./../../../contest/index.ts";
+import { isProblemInUnendedPublicContest } from "./../../../contest/index.ts";
 
 /**
  * 判断用户是否为指定题目的所有者（用于官方题解标记的写入校验）。
@@ -155,6 +154,31 @@ export async function createPost(
       throw new ForbiddenError("你没有在该板块发帖的权限");
     }
   }
+  // ── 公开赛保密写入门控（审计 VULN-02）──
+  //
+  // 此前**只有前端**的 `/solutions/eligibility` 提示"竞赛进行中"，底层落库的
+  // createPost **完全没有**公开赛归属校验：直接发包即可在赛中发布题解；讨论帖
+  // 同样不受任何限制。前端置灰按钮不是访问控制。
+  //
+  // 现由服务层强制：只要关联题目归属于尚未结束的公开赛（含赛前筹备期 pending），
+  // 非审核员一律禁止发布相关题解/讨论。判据复用 contest 域单一真相源
+  // `isProblemInUnendedPublicContest`，与列表/详情读取门控同口径。
+  // moderator（审核员）免门控，用于赛后归档与官方说明。
+  if (!moderator && input.type !== "moment" && input.problem_id) {
+    // 题解已在上面解析为 UUID；讨论帖的 problem_id 不落库，但同样必须过门控
+    const guardedProblemId = input.type === "solution"
+      ? input.problem_id
+      : await resolveProblemId(input.problem_id);
+    if (
+      guardedProblemId &&
+      await isProblemInUnendedPublicContest(guardedProblemId)
+    ) {
+      throw new ForbiddenError(
+        "该题目当前归属于公开赛，赛前及赛中禁止发布题解或讨论",
+        "CONTEST_SECRECY",
+      );
+    }
+  }
   // 发布频率限制：配置的间隔秒数内禁止再次发布（0 为不限制）
   const postIntervalSeconds = getCommunityConfig().post_interval_seconds;
   if (postIntervalSeconds > 0) {
@@ -212,11 +236,8 @@ export async function createPost(
   });
   const db = getDb();
   await db.insert(communityPosts).values(post);
-  if (status === "published" && input.type === "solution") {
-    await createActivity(authorId, "solution_published", "post", post.id, {
-      problem_id: input.problem_id,
-    });
-  }
+  // 注：社区自动动态（community_activity_events）已按审计 VULN-08 整体下线，
+  // 不再产生 solution_published 动态事件（该事件会实时广播题目被解出，击穿封榜）。
 
   await publishSearchIndexEvent("community_post", post.id, "upsert");
 
@@ -279,10 +300,16 @@ export async function getPost(
     row.post.status !== "published" && row.post.author_id !== viewerId &&
     !moderator
   ) throw new NotFoundError("社区内容不存在");
-  // 赛期题解门控：进行中竞赛的题解对普通用户（含作者本人）不可见。
-  // 含作者本人是为了避免"自己能看到 = 该题有题解"的侧信道确认。
-  if (!moderator && row.post.type === "solution" && row.post.problem_id) {
-    if (await isProblemInRunningContest(row.post.problem_id)) {
+  // 公开赛保密读取门控（审计 VULN-02）：归属于尚未结束的公开赛（含赛前筹备期）
+  // 的题解与讨论，对普通用户（含作者本人）一律按"不存在"处理。
+  // - 覆盖 `discussion`（此前只门控 solution，讨论区全量放行）；
+  // - 覆盖赛前 pending 窗口（此前只查 running，赛前是最严重的泄密通道）；
+  // - 含作者本人是为了避免"自己能看到 = 该题有内容"的侧信道确认。
+  if (
+    !moderator && row.post.problem_id &&
+    (row.post.type === "solution" || row.post.type === "discussion")
+  ) {
+    if (await isProblemInUnendedPublicContest(row.post.problem_id)) {
       throw new NotFoundError("社区内容不存在");
     }
   }

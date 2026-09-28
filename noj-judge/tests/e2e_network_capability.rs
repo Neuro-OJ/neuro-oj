@@ -939,6 +939,7 @@ def solve(msg: str) -> str:
         &["python3".to_string()],
         300_000,
         60_000,
+        "noj-e2e-test",
     )
     .await
     .expect("evaluate_dual 返回 Err");

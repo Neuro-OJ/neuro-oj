@@ -131,8 +131,12 @@ e2eTest("[e2e/clarifications] 2. 参赛者提问（挂题目 + 全局）", async
     );
   }
   const question = withProblem.body as { data: ClarificationData };
-  if (question.data.problem_label !== "A" || !question.data.is_public) {
-    throw new Error(`提问响应字段异常: ${JSON.stringify(question.data)}`);
+  // 审计 VULN-01：提问**默认私密**（is_public=false），只有主办方以"公开回复"
+  // 方式答复时才转为全员可见；否则答疑区会成为赛中解法广播信道。
+  if (question.data.problem_label !== "A" || question.data.is_public) {
+    throw new Error(
+      `提问应默认私密（is_public=false）: ${JSON.stringify(question.data)}`,
+    );
   }
 
   const globalQuestion = await apiPost(

@@ -130,11 +130,11 @@ cargo fmt
 | `WORK_DIR`                       | `/tmp/noj-judge`     | 临时工作目录                                                                                     |
 | `JUDGE_MAX_CONCURRENT_JUDGES`    | `2`                  | 同时执行的评测任务数（有效范围 1-1024）                                                          |
 | `JUDGE_CPU_LIMIT_MILLICORES`     | `1000`               | 每个评测容器 CPU 上限（1000m = 1 核，有效范围 100-16000）                                        |
-| `JUDGE_INSTANCE_ID`              | `{hostname}-{pid}`   | 实例标识（日志/claim 前缀用）                                                                    |
+| `JUDGE_INSTANCE_ID`              | 确定性派生 `noj-{hash12}` | 实例标识（日志/claim 前缀/容器实例标签）。解析优先级：环境变量 → `WORK_DIR/.instance_id` → `auto:{canonical_work_dir}:{hostname}:{machine_id}` 派生并落盘；重启后保持不变。**注意**：`WORK_DIR` 是实例 ID 的持久化位置，多副本部署若共享同一 `WORK_DIR`（命名卷）必须为每个副本显式设置唯一 `JUDGE_INSTANCE_ID`，否则副本间实例标签冲突（启动清扫会回收彼此的在跑容器） |
 | `JUDGE_IMAGE_PREFIX`             | `noj-`               | 允许的评测镜像名前缀（启动期与调度期复验）                                                       |
 | `JUDGE_COMMAND_WHITELIST`        | `python3,deno,node,bash,sh` | 允许的命令可执行文件白名单（逗号分隔）                                                   |
 | `JUDGE_ALLOW_EVALUATOR_NETWORK`  | `false`              | 是否允许 Evaluator 容器联网（LLM 题需开启）                                                      |
-| `JUDGE_EVALUATOR_NETWORK`        | `bridge`             | Evaluator 联网时加入的 Docker 网络名                                                            |
+| `JUDGE_EVALUATOR_NETWORK`        | `noj-eval-net`       | Evaluator 联网时加入的 Docker 网络名；生产校验**禁止** `bridge`/`host`                            |
 | `JUDGE_ALLOW_HTTP_S3`            | `false`              | 是否允许经 HTTP 下载支持包（自建 MinIO 内网常需开启）                                            |
 | `JUDGE_MAX_EVALUATOR_TIME_MS`    | `300000`             | 单次评测 Evaluator 总时长硬上限（毫秒）                                                          |
 | `JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS` | `60000`          | 单次调用超时硬上限（毫秒）                                                                       |
@@ -158,13 +158,13 @@ cargo fmt
 任务到达
   │
   ├─ 0. 白名单复验（镜像前缀 JUDGE_IMAGE_PREFIX / 命令可执行文件白名单 / 网络开关）
-  ├─ 1. 获取支持包 — 缓存优先 → 按 host 分派下载（仅 HTTPS，禁重定向）→ SHA-256 校验 → 写缓存（含 zip 路径穿越/实时解压限额）
+  ├─ 1. 获取支持包 — 缓存优先 → 按 host 分派下载（仅 HTTPS，禁重定向）→ SHA-256 校验 → 写缓存（含 zip 路径穿越/实时解压限额）；**获取或校验失败直接终止任务**（不静默放行空环境）
   ├─ 2. 创建 Evaluator + Solution 两个容器（cap_drop ALL / network none 默认 / pids_limit / 可配置 CPU 上限 / readonly rootfs + tmpfs）
   ├─ 3. 注入用户代码/artifact zip 到 Solution 容器（artifact 模式解压到 /workspace，入口 submission.py）
-  ├─ 4. 注入支持包 zip 到 Evaluator 容器 /workspace
+  ├─ 4. 注入支持包 zip 到 Evaluator 容器 /workspace（**全部文件写入同一个内存 tar 流，容器内只发起一次 `tar xf -` exec**）
   ├─ 5. 启动两个 exec — Evaluator 跑 evaluate.py；Solution 跑 host.py
   ├─ 6. Evaluator 首帧输出前受 30s 启动 deadline 约束；Solution 侧在就绪前只接受 `ready` 帧（其余忽略），无独立超时
-  ├─ 7. 双向消息转发 — evaluator stdout ↔ solution stdin/stderr（调用级超时）
+  ├─ 7. 双向消息转发 — evaluator stdout ↔ solution stdin/stderr（调用级超时；帧写入受 3s 超时约束，超时/EPIPE 判定对端 stdin 已死并立即异常收尾）
   │     ├─ 超时 → 向等待方写入 CallTimeout/error 帧
   │     └─ 正常 → 读取 stdout/stderr 直到 RESULT 或 EOF
   ├─ 8. 等待 Evaluator stdout 出现 ---RESULT--- 标记，解析 JSON {score, details}
@@ -257,10 +257,14 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
   512MB（硬编码；按实际解压字节实时限额，不信任条目声明大小）
 - **文件名安全**：拒绝含 `/`、`\`、`..` 的文件名
 - **容器安全**：`cap_drop ALL`、`no-new-privileges`、`network_mode none`（默认）、`ipc_mode none`、`pids_limit 256`、CPU
-  上限、readonly rootfs + tmpfs /workspace
+  上限、readonly rootfs + tmpfs `/tmp`（`size=256M,mode=1777,noexec,nosuid,nodev`）与
+  `/workspace`（`size=512M,mode=1777,noexec,nosuid,nodev`）
 - **结果重试**：推送结果最多重试 3
   次（指数退避），全部失败则序列化到本地文件系统
-- **孤儿容器清理**：启动时按标签清理残留容器
+- **孤儿容器清理**：启动时按**确定性实例标签** `com.noj.judge.instance=noj-{hash12}`
+  精准清理本实例残留容器（实例 ID 重启后不变）；同时打平台级归属标签
+  `com.noj.managed-by=noj-judge` 供运维兜底筛查（不进入启动清扫路径，避免误杀业务容器）。
+  退出阶段（drain 超时 abort 后）在运行时尚存活时按同一标签做一次有界兜底清扫
 - **JudgeResult::error()** 有意隐藏错误详情（不暴露内部路径/配置给用户）
 - **镜像白名单复验**：镜像前缀（`JUDGE_IMAGE_PREFIX`）、命令可执行文件白名单与网络开关在任务执行前复验；容器创建直接调 `docker.create_container`，不存在启动期的镜像拉取/探测辅助函数。
 

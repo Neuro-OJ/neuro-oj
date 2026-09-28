@@ -21,9 +21,9 @@ export const MAX_LINES = 1200;
  * 拆分后请把数值改成新的实际行数（或直接删除条目）。
  */
 export const SIZE_BASELINE: Record<string, number> = {
-  // 2026-09-21 移除 BYOK：dual/mod.rs 从 2246 降至 1861 行，下调基线锁住成果。
-  // 2026-09-23：LLM 环境变量构造拆到 dual/llm_env.rs，1861 → 1839 行；同步下调。
-  "noj-judge/src/dual/mod.rs": 1839,
+  // 2026-09-28：按审计 VULN-16/17 的改动把管道写入原语拆到 dual/pipe.rs、
+  // 单元测试拆到 dual/tests.rs（子模块，`use super::*` 语义不变），
+  // dual/mod.rs 1839 → 1153 行，**已低于阈值，条目移除**（棘轮只允许下调/删除）。
   "noj-ui/pages/messages/index.vue": 1632,
   // 2026-09-13 拆分后已降到阈值以下，条目移除（棘轮只允许下调/删除）：
   // - noj-core/.../messaging/services/messages.ts 1517 →

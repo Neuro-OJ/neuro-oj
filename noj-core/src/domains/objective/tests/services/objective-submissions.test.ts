@@ -220,9 +220,16 @@ Deno.test({
       answers: { [q1]: ["A"] },
       contest_id: contestId,
     }, user);
-    assertEquals(first.contest_mode, true);
-    assertEquals(first.details[q1].explanation, undefined); // 竞赛模式无解析
-    assertEquals(first.details[q1].expected, undefined); // 竞赛模式不返回期望答案（防泄题）
+    // ── 竞赛模式赛期只回执"已提交"（审计 VULN-03）──
+    // 不再返回分数、正确题数或逐题对错：否则参赛者可用小号提交当答案预言机，
+    // 逐题试探排除错误选项（协同套题）。
+    // 用字面量收窄联合类型：contest_mode === true ⇒ SubmitObjectiveContestReceipt
+    if (first.contest_mode !== true) throw new Error("竞赛模式应返回赛期回执");
+    assertEquals(first.status, "finished");
+    assertEquals(first.score, null);
+    assertEquals(first.score_db, null);
+    assertEquals(first.correct_count, null);
+    assertEquals(Object.keys(first.details).length, 0);
 
     // 第二次提交被拒（先查后插 + 唯一索引兜底）
     await assertRejects(
@@ -411,20 +418,92 @@ Deno.test({
       contest_id: contestId,
     }, user);
 
-    // 提交详情（竞赛模式）：提交者本人也看不到期望答案与解析（防泄题）
+    // 提交详情（竞赛未结束）：提交者本人也看不到期望答案、解析、**逐题对错与分数**
+    // （审计 VULN-03：逐题对错即答案预言机；精确分数可被二分探测）
     const mine = await getObjectiveSubmission(result.submission_id, user);
     assertEquals(mine.submission_type, "contest");
+    assertEquals(mine.score, null);
     assertEquals(mine.details[q1].expected, undefined);
     assertEquals(mine.details[q1].explanation, undefined);
-    assertEquals(mine.details[q1].correct, true);
+    assertEquals(mine.details[q1].correct, undefined);
+    // 自己的作答仍可见（非敏感，UI 用于回显）
+    assertEquals(mine.details[q1].given, ["A"]);
 
-    // admin 视图同样裁剪（统一防泄题立场；原始数据仍存 DB 供审计）
+    // admin 视图同样裁剪（"竞赛未结束前一律"的严格口径；原始数据仍存 DB 供审计）
     const byAdmin = await getObjectiveSubmission(
       result.submission_id,
       "0",
       "admin",
     );
+    assertEquals(byAdmin.score, null);
     assertEquals(byAdmin.details[q1].expected, undefined);
+    assertEquals(byAdmin.details[q1].correct, undefined);
+  },
+});
+
+Deno.test({
+  name: "objective submissions: 竞赛结束后恢复分数与逐题对错（赛后复盘）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const owner = await makeUser("endview-owner");
+    const user = await makeUser("endview");
+    const paper = await makePaper(owner);
+    const q1 = await makeQuestion(paper, 1, "single", ["A"], "赛后解析");
+    const now = new Date().toISOString();
+    const contestId = crypto.randomUUID();
+    await db.insert(contests).values({
+      id: contestId,
+      title: `赛后复盘竞赛 ${ts}`,
+      description: "",
+      start_time: new Date(Date.now() - 7_200_000).toISOString(),
+      end_time: new Date(Date.now() + 3_600_000).toISOString(),
+      type: "kaggle",
+      created_by: owner,
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: user,
+      registered_at: now,
+    });
+    await db.insert(contestProblems).values({
+      contest_id: contestId,
+      problem_id: paper,
+      sort_order: 1,
+      label: "A",
+      score: 10000,
+    });
+
+    const result = await submitObjectivePaper(paper, {
+      answers: { [q1]: ["A"] },
+      contest_id: contestId,
+    }, user);
+
+    // 赛期：无分数、无对错
+    const during = await getObjectiveSubmission(result.submission_id, user);
+    assertEquals(during.score, null);
+    assertEquals(during.details[q1].correct, undefined);
+
+    // 把竞赛改为已结束 → 对错与分数恢复（仍剥离期望答案，防泄题立场不变）
+    await db.update(contests).set({
+      end_time: new Date(Date.now() - 1_000).toISOString(),
+    }).where(eq(contests.id, contestId));
+
+    const after = await getObjectiveSubmission(result.submission_id, user);
+    assertEquals(after.score, 10000);
+    assertEquals(after.details[q1].correct, true);
+    assertEquals(after.details[q1].expected, undefined);
+
+    // 历史列表同样按竞赛是否结束切换口径
+    const duringList = await listObjectiveSubmissions({
+      viewerId: user,
+      contestId,
+      page: 1,
+      perPage: 10,
+    });
+    assertEquals(duringList.data[0]?.score, 10000);
   },
 });
 

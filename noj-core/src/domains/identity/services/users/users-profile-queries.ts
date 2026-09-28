@@ -1,4 +1,4 @@
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, type SQL, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityPosts,
@@ -9,7 +9,10 @@ import {
 } from "./../../../../shared/db/schema.ts";
 // 经 contest 域公开门面（index.ts）导入：域边界门禁要求跨域只能走 index.ts，
 // 深路径导入会被 check-domains.ts 判为违规。
-import { runningContestExistsForProblem } from "./../../../contest/index.ts";
+import {
+  runningContestExistsForProblem,
+  unendedPublicContestForProblem,
+} from "./../../../contest/index.ts";
 import type {
   ProfileCommunityStatsRow,
   ProfileMomentRow,
@@ -21,6 +24,36 @@ import type {
 } from "./users-profile-types.ts";
 
 type Db = ReturnType<typeof getDb>;
+
+/** 个人主页查看者上下文（用于公开赛题目隐藏判定，审计 VULN-07）。 */
+export interface ProfileViewerContext {
+  /** 查看者 id；匿名/缺省视为非特权 */
+  viewerId?: string;
+  /** 查看者是否管理员 */
+  isAdmin?: boolean;
+}
+
+/**
+ * 生成"公开赛题目行隐藏"条件；特权场景返回 `null`（不过滤）。
+ *
+ * 特权 = 管理员、主页本人（看自己的解题记录本就无害）、该题 owner。
+ * 其余查看者（含匿名访客与普通登录用户）看不到被尚未结束公开赛收编的题目行。
+ * 判据复用 contest 域单一真相源；`viewer` 缺省按非特权处理（fail-closed）。
+ */
+function contestSecrecyCondition(
+  viewer: ProfileViewerContext,
+  profileUserId: string,
+): SQL | null {
+  if (viewer.isAdmin) return null;
+  if (viewer.viewerId !== undefined && viewer.viewerId === profileUserId) {
+    return null;
+  }
+  // 题目 owner（本人创建的题被公开赛收编）保留可见；其余按谓词过滤
+  return sql`(
+    NOT (${unendedPublicContestForProblem(submissions.problem_id)})
+    OR ${problems.owner_id} = ${viewer.viewerId ?? null}
+  )`;
+}
 
 /** 1. 验证用户存在（同时取基础信息）。 */
 export function queryProfileUser(
@@ -63,16 +96,31 @@ export function queryProfileStats(
     .then((rows) => rows[0]);
 }
 
-/** 3. 已通过题目列表（去重，取首次通过时间）。 */
+/**
+ * 3. 已通过题目列表（去重，取首次通过时间）。
+ *
+ * **公开赛题目隐藏（审计 VULN-07）**：本路径匿名可访问，此前会把"某人已通过某道
+ * 正在保密中的公开赛题目"连题目标题一起展示出来——等于让场外人员实时读到赛题
+ * 存在性与解题进度。非特权查看者（非管理员、非主页本人、非该题 owner）看不到
+ * 这类行；`viewer` 缺省视为非特权（fail-closed）。
+ */
 export function querySolvedProblems(
   db: Db,
   userId: string,
+  viewer: ProfileViewerContext = {},
 ): Promise<ProfileSolvedProblemRow[]> {
+  const secrecy = contestSecrecyCondition(viewer, userId);
   return db.select({
     problem_id: submissions.problem_id,
     problem_title: problems.title,
     difficulty: problems.difficulty,
     accepted_at: sql<string>`min(${submissions.created_at})`,
+    // 特权查看者（管理员 / 主页本人 / 题目 owner）才可能看到这类行，
+    // 标记出来供前端做"已被公开赛收编"的视觉提示（审计 VULN-07）
+    is_contest_hidden: sql<boolean>`${
+      unendedPublicContestForProblem(submissions.problem_id)
+    }`
+      .as("is_contest_hidden"),
   })
     .from(submissions)
     .innerJoin(problems, eq(submissions.problem_id, problems.id))
@@ -84,16 +132,27 @@ export function querySolvedProblems(
         gt(evaluationResults.score, 0),
       ),
     )
-    .where(eq(submissions.user_id, userId))
+    .where(
+      secrecy
+        ? and(eq(submissions.user_id, userId), secrecy)
+        : eq(submissions.user_id, userId),
+    )
     .groupBy(submissions.problem_id, problems.title, problems.difficulty)
     .orderBy(sql`min(${submissions.created_at}) DESC`);
 }
 
-/** 4. 最近 10 条提交（不含 code 字段）。 */
+/**
+ * 4. 最近 10 条提交（不含 code 字段）。
+ *
+ * 同 {@link querySolvedProblems}：非特权查看者看不到归属于未结束公开赛的题目提交
+ * （否则"最近提交"列表会实时暴露赛题标题与评测状态）。
+ */
 export function queryRecentSubmissions(
   db: Db,
   userId: string,
+  viewer: ProfileViewerContext = {},
 ): Promise<ProfileRecentSubmissionRow[]> {
+  const secrecy = contestSecrecyCondition(viewer, userId);
   return db.select({
     id: submissions.id,
     problem_id: submissions.problem_id,
@@ -110,7 +169,11 @@ export function queryRecentSubmissions(
       evaluationResults,
       eq(evaluationResults.submission_id, submissions.id),
     )
-    .where(eq(submissions.user_id, userId))
+    .where(
+      secrecy
+        ? and(eq(submissions.user_id, userId), secrecy)
+        : eq(submissions.user_id, userId),
+    )
     .orderBy(sql`${submissions.created_at} DESC`)
     .limit(10);
 }

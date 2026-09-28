@@ -322,7 +322,6 @@ export async function createSubmission(
   userId: string,
   input: SubmissionInput,
   contestId?: string,
-  clientIp?: string,
   isAdmin = false,
 ): Promise<SubmissionResponse> {
   const db = getDb();
@@ -470,7 +469,6 @@ export async function createSubmission(
       user_id: userId,
       problem_id: input.problem_id,
       contest_id: resolvedContestId,
-      client_ip: clientIp && clientIp !== "unknown" ? clientIp : null,
       language: input.language,
       code: input.code,
       file_name: fileName,

@@ -48,7 +48,6 @@ export interface CommunityConfig {
   solutions_enabled: boolean;
   discussions_enabled: boolean;
   moments_enabled: boolean;
-  activities_enabled: boolean;
   comments_enabled: boolean;
   reactions_enabled: boolean;
   bookmarks_enabled: boolean;

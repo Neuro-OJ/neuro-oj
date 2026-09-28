@@ -44,7 +44,6 @@ import {
 } from "../../submission/index.ts";
 import type { CreateContestInput } from "./../types/contests.ts";
 import { isValidContestType } from "./../types/contests.ts";
-import { createActivity } from "../../community/index.ts";
 import {
   enforceContestRegisterRateLimit,
   enforceContestSubmissionRateLimit,
@@ -201,13 +200,8 @@ contests.post("/:id/register", authMiddleware, async (c) => {
     c.var.userId as string,
     body.password,
   );
-  await createActivity(
-    c.var.userId as string,
-    "contest_joined",
-    "contest",
-    contestId,
-    {},
-  );
+  // 注：此前此处广播 `contest_joined` 自动动态（会对外暴露私密邀请赛标题），
+  // 该功能已按审计 VULN-08 整体下线，不再产生任何社区动态事件。
   return c.json({ message: "竞赛注册成功" }, 201);
 });
 
@@ -365,7 +359,6 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
       userId,
       { ...parsed, contest_id: contestId },
       contestId,
-      undefined,
       isAdmin,
     );
     return c.json({ data }, 201);
@@ -403,7 +396,6 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
       contest_id: contestId,
     },
     contestId,
-    undefined,
     isAdmin,
   );
   return c.json({ data }, 201);

@@ -45,19 +45,35 @@ export interface ObjectivePaper {
   updated_at: string;
 }
 
+/**
+ * 单题判定结果。
+ *
+ * 竞赛模式（VULN-03）：比赛结束前后端**不返回** `correct` / `expected` / `explanation`，
+ * 只返回 `given`（你的作答）；因此 `correct` 为可选，缺失即"尚无判定信息"，
+ * 调用方不得把它当成 `false`（否则会把未公布渲染成"回答错误"）。
+ */
 export interface QuestionJudgement {
-  correct: boolean;
+  correct?: boolean;
   expected?: (string | boolean)[];
   given: (string | boolean)[];
   explanation?: string;
 }
 
+/**
+ * 客观题提交回执。
+ *
+ * 竞赛模式（VULN-03）在比赛结束前返回：
+ * `{ score: null, score_db: null, correct_count: null, total_count: <题数>, details: {} }`，
+ * 即"已提交但成绩未公布"。练习模式照旧为具体分数。
+ */
 export interface SubmitResult {
   submission_id: string;
   paper_id: string;
-  score: number;
-  score_db: number;
-  correct_count: number;
+  /** 百分制分数（0–100）；竞赛进行中为 null（成绩赛后开放）。 */
+  score: number | null;
+  score_db: number | null;
+  /** 答对题数；竞赛进行中为 null。 */
+  correct_count: number | null;
   total_count: number;
   details: Record<string, QuestionJudgement>;
   contest_mode: boolean;
@@ -71,7 +87,8 @@ export interface ObjectiveSubmission {
   submission_type: 'practice' | 'contest';
   answers: Record<string, (string | boolean)[]>;
   status: string;
-  score: number;
+  /** 百分制分数；竞赛进行中为 null（历史列表同样不公布，VULN-03）。 */
+  score: number | null;
   details: Record<string, QuestionJudgement>;
   created_at: string;
 }

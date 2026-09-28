@@ -88,8 +88,11 @@ LLM」中配置以下两项 **runtime 设置**（写库即时生效，无需重�
 LLM 调用题要求 evaluator 联网访问 gateway：
 
 - `JUDGE_ALLOW_EVALUATOR_NETWORK=true`
-- `JUDGE_EVALUATOR_NETWORK` 必须指向 `llm-gateway` 所在 Docker 网络（如
-  `noj-net`）。
+- `JUDGE_EVALUATOR_NETWORK` 必须指向 `llm-gateway` 所在 Docker 网络，生产默认
+  `noj-eval-net`（**评测隔离网络**：只承载 Evaluator 沙箱与 `llm-gateway`，
+  沙箱因此能出公网、能访问 `http://llm-gateway:8001`，但对 postgres / redis /
+  minio / core 的 DNS 与路由为 0）。**不得**填 `bridge` / `host`，noj-judge 会在
+  启动校验中直接拒绝。
 - Solution 容器始终无网，且不注入任何 `NOJ_LLM_*` 环境变量。
 
 ## 6. 验证

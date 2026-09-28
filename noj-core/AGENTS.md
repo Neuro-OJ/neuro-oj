@@ -405,16 +405,19 @@ docker compose down     # 停止
 | `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                                                                           | PK, FK→conversations, FK→users, UK(conversation_id,user_id)      |
 | `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                                                                  | PK, FK→messages, FK→users                                        |
 
-> 上表为核心表速查。完整 Schema 共 54
-> 张表（`src/shared/db/schema/`，按域拆分；`schema.ts` 为 barrel 导出），另有：
+> 上表为核心表速查。完整 Schema 共 58
+> 张表（`src/shared/db/schema/`，按域拆分；`schema.ts` 为 barrel
+> 导出；权威清单见 `src/shared/db/schema-ddl.ts` 的 `ALL_TABLES`，2026-09-28
+> 起为 58），另有：
 >
 > - **竞赛**：`contests` / `contest_problems` / `contest_participants` /
 >   `contest_clarifications`
 > - **RBAC**：`roles` / `permissions` / `role_permissions` / `user_roles`
 > - **社区**：`community_boards` / `community_posts` / `community_comments` /
->   `community_follows` / `community_activity_events` / `community_reports` /
->   `community_moderation_actions` / `community_sanctions` /
->   `community_notifications` 等 17 张
+>   `community_follows` / `community_reports` / `community_moderation_actions` /
+>   `community_sanctions` / `community_notifications` 等 16
+>   张（`community_activity_events` 已随 2026-09-28 审计 VULN-08
+>   整体下线，见迁移 `0095`）
 > - **其他**：`system_settings` / `audit_logs` / `ip_bans` / `user_bans`
 
 **设计要点**：
@@ -425,19 +428,46 @@ docker compose down     # 停止
 - `problems.number` 按 `type` 分别自增（`(type, number)` UNIQUE）
 - `problems.visibility` 取值 `public`/`private`，由 `resolveProblemAccess`
   统一判定读取/提交/竞赛上下文访问；新建 U 型默认 `private`，P 型恒 `public`
-- **公开赛题目保密**（2026-09-26）：题目被加入 `kind='public'` 且
-  `now < end_time` 的竞赛后，除
-  owner/admin（以及携带有效竞赛上下文的参赛者）外， 读取路径一律
-  404、独立提交/自测路径 403；`end_time` 一过自动失效。判定事实由 contest 域
-  `loadPublicContestSecrecy` 取得、经 catalog 域 `evaluateProblemAccess*`
-  统一取数判定（`src/domains/catalog/services/problem-access-check.ts`）；
-  查看者可见性字段 `contest_secrecy` 只下发给 owner/admin
+- **公开赛题目保密**（2026-09-26，2026-09-28 审计 VULN-02/VULN-07 扩展）：
+  题目被加入 `kind='public'` 且 `now < end_time` 的竞赛后（**含赛前筹备期
+  pending**），除 owner/admin（以及携带有效竞赛上下文的参赛者）外：
+  - 详情读取一律 404、独立提交/自测路径 403；
+  - **题库列表、题单、个人主页（已通过题目/最近提交）与全局搜索整行不返回**
+    （SQL 层过滤，非特权用户看不到存在性与任何元数据）；特权用户保留该行并收到
+    `is_contest_hidden: true`（前端渲染浅灰斜纹底 + Tooltip）；
+  - 题解与讨论的**读**（列表/详情/收藏/Tab 计数/搜索）与**写**（`createPost`）
+    一并封禁，只有 `moderator` 免门控；
+  - `end_time` 一过全部自动失效（赛后复盘正常）。 判定事实由 contest
+    域**单一真相源** `problem-secrecy.ts` 提供：内存判定
+    `isProblemInUnendedPublicContest`、Drizzle 谓词
+    `unendedPublicContestForProblem`、竞赛维度集合 `filterUnendedContestIds`
+    （另有 `loadPublicContestSecrecy` 供横幅展示，经 catalog 域
+    `evaluateProblemAccess*` 统一取数判定，见
+    `src/domains/catalog/services/problem-access-check.ts`）； 查看者可见性字段
+    `contest_secrecy` 只下发给 owner/admin。
+    所有新门控**禁止**再手写时间窗口比较（口径漂移正是上述漏洞的根因）
 - `contests.kind` 取值 `public`/`invite`：public
   仅管理员可创建、可自助报名；invite 必须设置邀请码并校验；`is_public` 与 kind
   绑定：public 公开可见，invite 不进入公开列表
 - `tags.kind`
   区分题目标签（problem，人人可见）与算法标签（algorithm，通过题目后可见，spoiler
   门控后端强制）
+- **已下线机制**（2026-09-28 审计）：
+  - 社区自动动态（`community_activity_events` 表、`community_activities_enabled`
+    配置、`users.community_activity_visibility`
+    列、`/community/me/activity-visibility`
+    端点）——它会在封榜期实时广播"某选手首次通过题目 X"并泄露内部 `submission_id`
+    与私密邀请赛标题（VULN-08）；
+  - 提交来源 IP 反作弊（`submissions.client_ip` 列与索引、
+    `anti_cheat_ip_retention_days`、`/contests/:id/anti-cheat/ip-groups` 与
+    `/anti-cheat/timeline` 端点）——机房 NAT 共用 IP 导致误伤率过高且可被 VPN
+    规避 （VULN-06）。代码相似度查重（`/anti-cheat/similar-submissions`）保留。
+- **竞赛提交隐私口径**：进行中（含封榜期）竞赛的排行榜对非管理员**只返回本人一行**
+  （匿名返回空列表）；竞赛提交 SSE 对非管理员不下发 `user_id` 与
+  `submission_id`； `/submissions/:id/events` 有归属校验；队列概览的自测记录按
+  `user_id` 隔离。
+- **延续既有口径**：客观题竞赛模式在竞赛结束前只回执"已提交" （不返回分数与逐题
+  `correct`）；竞赛答疑提问默认私密，仅主办方显式"公开回复" 才广播
 - `submissions` 有复合索引 `(user_id, created_at)` 优化"我的提交历史"查询
 - 评测脚本
   `details.cases[].hidden`（布尔）是提交结果投影判断隐藏用例的依据；旧脚本缺少该标记时

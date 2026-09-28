@@ -30,7 +30,6 @@ import {
 } from "./../../../shared/http/pagination.ts";
 import { SUBMISSION_STATUSES } from "../types/index.ts";
 import { enforceSubmissionRateLimit } from "../../system/index.ts";
-import { getClientIp } from "../../system/index.ts";
 
 // 扩展 Hono 类型，使 c.get("userId") 返回 string | undefined
 // （optionalAuthMiddleware 注入时可能为 undefined；authMiddleware 注入时一定有值）
@@ -180,7 +179,6 @@ function parseArtifactMultipart(
  */
 router.post("/", authMiddleware, async (c) => {
   const userId = c.var.userId as string;
-  const clientIp = getClientIp(c);
 
   // NOJ-069：提交创建 IP + 用户双维度限流。
   await enforceSubmissionRateLimit(c, userId);
@@ -193,7 +191,6 @@ router.post("/", authMiddleware, async (c) => {
       userId,
       parsed,
       undefined,
-      clientIp,
       isAdmin,
     );
     return c.json({ data: result }, 201);
@@ -230,7 +227,6 @@ router.post("/", authMiddleware, async (c) => {
       file_name: body.file_name as string | undefined,
     },
     undefined,
-    clientIp,
     isAdmin,
   );
 

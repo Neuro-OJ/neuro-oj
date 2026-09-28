@@ -48,10 +48,6 @@ import {
   publishContestRankingSnapshot,
 } from "../../contest/services/contest-ranking.ts";
 import {
-  listContestIpGroups,
-  listContestIpTimeline,
-} from "../../contest/services/contest-anti-cheat.ts";
-import {
   findSimilarSubmissions,
   MAX_SIMILAR_PAIR_LIMIT,
 } from "../../contest/services/contest-similarity.ts";
@@ -442,54 +438,6 @@ router.get("/contests/:id/submissions", async (c) => {
 });
 
 /**
- * GET /contests/:id/anti-cheat/ip-groups —— 竞赛内同 IP 多账号候选组。
- * 仅展示可信代理解析后的 IP；此结果是人工复核线索，不代表作弊结论。
- */
-router.get("/contests/:id/anti-cheat/ip-groups", async (c) => {
-  await assertPermission(c, "contest:anti_cheat_read");
-  const contestId = await resolveContestId(c.req.param("id") as string);
-  const minAccounts = Number(c.req.query("min_accounts") ?? "2");
-  const page = Number(c.req.query("page") ?? "1");
-  const perPage = Number(c.req.query("per_page") ?? "20");
-  const result = await listContestIpGroups(contestId, {
-    minAccounts: Number.isFinite(minAccounts) ? minAccounts : 2,
-    page: Number.isFinite(page) ? page : 1,
-    perPage: Number.isFinite(perPage) ? perPage : 20,
-  });
-  return c.json({
-    data: result.data,
-    pagination: {
-      page: result.page,
-      per_page: result.perPage,
-      total: result.total,
-      total_pages: Math.ceil(result.total / result.perPage),
-    },
-    data_policy: {
-      purpose: "竞赛期间账号关联与提交时间线人工复核",
-      retention_days: 180,
-      automated_penalty: false,
-    },
-  });
-});
-
-/** GET /contests/:id/anti-cheat/timeline?ip=... —— 同 IP 提交时间线。 */
-router.get("/contests/:id/anti-cheat/timeline", async (c) => {
-  await assertPermission(c, "contest:anti_cheat_read");
-  const ip = c.req.query("ip")?.trim();
-  if (!ip) throw new BadRequestError("缺少 ip 查询参数");
-  const contestId = await resolveContestId(c.req.param("id") as string);
-  const data = await listContestIpTimeline(contestId, ip);
-  return c.json({
-    data,
-    data_policy: {
-      purpose: "竞赛期间账号关联与提交时间线人工复核",
-      retention_days: 180,
-      automated_penalty: false,
-    },
-  });
-});
-
-/**
  * GET /contests/:id/anti-cheat/similar-submissions —— 竞赛内互相高度相似的提交对。
  *
  * 权限：contest:anti_cheat_read（与同文件其余风控端点一致）。
@@ -531,9 +479,9 @@ router.get("/contests/:id/anti-cheat/similar-submissions", async (c) => {
       max_submissions: result.max_submissions,
     },
     data_policy: {
-      // 与同文件的 ip-groups / timeline 保持同一形状（评审指出此处曾多出 source、
-      // 少了 retention_days，而 noj-ui/composables/useContests.ts 把
-      // retention_days 声明为必需字段）。
+      // 与 noj-ui/composables/useContests.ts 声明的 `retention_days` 必需字段
+      // 保持同一形状（评审指出此处曾多出 source、少了 retention_days）。
+      // 注：同文件的 ip-groups / timeline 端点已随 IP 反作弊机制下线（审计 VULN-06）。
       purpose: "竞赛期间代码相似度人工复核",
       retention_days: 180,
       automated_penalty: false,

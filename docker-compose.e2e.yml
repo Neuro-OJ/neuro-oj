@@ -182,6 +182,9 @@ services:
         condition: service_healthy
       noj-core:
         condition: service_healthy
+    networks:
+      - default
+      - noj-eval-net
 
   # Mock LLM：OpenAI 兼容的假上游，供 LLM Gateway E2E 使用
   llm-mock:
@@ -234,3 +237,15 @@ services:
 volumes:
   noj-judge-work:
   noj-data-storage:
+
+# ── 网络 ──────────────────────────────────────────────────────────────
+# 评测隔离网络（2026-09-28 审计 VULN-20）：与生产 docker-compose.prod.yml 同构。
+# - judge 默认 JUDGE_EVALUATOR_NETWORK=noj-eval-net，且启动校验**拒绝** bridge/host，
+#   故本网络必须存在（否则 network.enabled=true 的题在 E2E 中创建容器会失败）；
+# - 只有 judge 与由它创建的 Evaluator 容器使用它；core/redis/postgres/minio/gateway
+#   仍在 default 网络上，因此沙箱对数据库/缓存/应用**无 DNS 与路由**；
+# - bridge 驱动自带出网 NAT，满足 capability-network 用例的真实出网探测需求。
+networks:
+  noj-eval-net:
+    name: noj-eval-net
+    driver: bridge

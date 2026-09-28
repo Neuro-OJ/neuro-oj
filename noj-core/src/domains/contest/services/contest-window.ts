@@ -149,6 +149,15 @@ export function runningContestExistsForProblem(
 }
 
 /**
+ * 审计规范名称的别名：{@link runningContestExistsForProblem}。
+ *
+ * 「进行中竞赛 SQL 谓词」的**规范名**（审计报告 §4.1 公开赛-题目状态判定权威模块）。
+ * 旧名保留是因为已有多个调用点（community / identity / search）在用它；两者是同一
+ * 实现的别名，不存在口径漂移。新代码请优先使用本名。
+ */
+export const runningContestForProblem = runningContestExistsForProblem;
+
+/**
  * "进行中竞赛所包含的题目 id 集合"子查询，用于 `IN (...)` 反连接。
  *
  * 与 {@link runningContestExistsForProblem} 同一判定口径（共用

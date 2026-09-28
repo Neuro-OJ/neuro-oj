@@ -659,6 +659,7 @@ async fn evaluate_dual_end_to_end() {
         &["python3".to_string()],
         300_000,
         60_000,
+        "noj-e2e-test",
     )
     .await;
 
@@ -732,6 +733,7 @@ except Exception as e:
             &["python3".to_string()],
             300_000,
             60_000,
+            "noj-e2e-test",
         ),
     )
     .await
@@ -815,6 +817,7 @@ result.accept(score=1000, details={'cases': out})
             &["python3".to_string()],
             300_000,
             60_000,
+            "noj-e2e-test",
         ),
     )
     .await
@@ -898,6 +901,7 @@ except Exception as e:
             &["python3".to_string()],
             300_000,
             60_000,
+            "noj-e2e-test",
         ),
     )
     .await
@@ -971,6 +975,7 @@ while True:
             &["python3".to_string()],
             300_000,
             60_000,
+            "noj-e2e-test",
         ),
     )
     .await
@@ -1036,6 +1041,7 @@ runner.call('sleep_solution')
             &["python3".to_string()],
             300_000,
             60_000,
+            "noj-e2e-test",
         ),
     )
     .await
@@ -1108,6 +1114,7 @@ except SolutionTimeoutError:
             &["python3".to_string()],
             300_000,
             60_000,
+            "noj-e2e-test",
         ),
     )
     .await
@@ -1189,6 +1196,7 @@ except Exception as e:
             &["python3".to_string()],
             300_000,
             60_000,
+            "noj-e2e-test",
         ),
     )
     .await

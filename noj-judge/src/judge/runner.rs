@@ -13,6 +13,8 @@ fn package_size(pkg: &DownloadedPackage) -> u64 {
 }
 
 /// 评测任务入口，允许通过 Worker 配置传入每个容器的 CPU 上限。
+///
+/// `instance_id`：确定性实例 ID（`noj-{hash12}`），透传到容器实例标签（VULN-15）。
 #[allow(clippy::too_many_arguments)]
 pub async fn evaluate_with_cpu_limit(
     docker: bollard::Docker,
@@ -30,6 +32,7 @@ pub async fn evaluate_with_cpu_limit(
     command_whitelist: &[String],
     max_evaluator_time_ms: u64,
     max_solution_call_timeout_ms: u64,
+    instance_id: &str,
 ) -> Result<JudgeResult> {
     let work_dir = PathBuf::from(work_dir);
 
@@ -58,12 +61,16 @@ pub async fn evaluate_with_cpu_limit(
                     Some(pkg)
                 }
                 Err(e) => {
+                    // VULN-18：支持包获取/校验失败时**禁止静默放行**。
+                    // 原实现仅打一条 error 日志后携带 None 继续，评测容器在缺少
+                    // evaluate.py / 数据集的情况下启动，最终把「平台侧下载失败」
+                    // 归因成做题人的 SystemError（甚至用空环境给出错误分数）。
                     error!(
                         submission_id = %task.submission_id,
                         error = %e,
-                        "支持包获取失败，继续执行（可能缺少评测文件）"
+                        "支持包获取或 SHA-256 校验失败，评测任务终止"
                     );
-                    None
+                    return Err(e);
                 }
             }
         } else {
@@ -119,6 +126,7 @@ pub async fn evaluate_with_cpu_limit(
         command_whitelist,
         max_evaluator_time_ms,
         max_solution_call_timeout_ms,
+        instance_id,
     )
     .await
 }
@@ -188,4 +196,125 @@ async fn fetch_artifact_package(
     .await?;
     download::verify_checksum_file(&pkg.path, pkg.checksum.as_deref()).await?;
     Ok(pkg)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{EvaluatorRuntime, RuntimeConfig, SolutionRuntime};
+
+    /// 构造仅用于「支持包获取阶段失败」的测试任务：失败发生在触碰 Docker 之前。
+    fn task_with_download_url(download_url: &str) -> JudgeTask {
+        JudgeTask {
+            submission_id: "sid-support-fail".to_string(),
+            problem_id: "1001".to_string(),
+            user_id: "u-1".to_string(),
+            priority: "medium".to_string(),
+            download_url: Some(download_url.to_string()),
+            artifact_download_url: None,
+            runtime_config: RuntimeConfig {
+                evaluator: EvaluatorRuntime {
+                    image: "noj-evaluator-python".to_string(),
+                    command: "python3 /workspace/evaluate.py".to_string(),
+                    time_limit_ms: 1000,
+                    memory_limit_mb: 128,
+                    network: None,
+                },
+                solution: SolutionRuntime {
+                    image: "noj-solution-python".to_string(),
+                    call_timeout_ms: 1000,
+                    memory_limit_mb: 128,
+                },
+            },
+            language: "python3".to_string(),
+            code: "def solve(): return 1".to_string(),
+            file_name: None,
+            rejudge_seq: None,
+            llm: None,
+        }
+    }
+
+    /// 该测试只覆盖支持包获取/校验失败的早退路径，不会真正连 Docker
+    /// （daemon 不可用时也在下载失败之后，不会被触达）。
+    fn offline_docker() -> bollard::Docker {
+        bollard::Docker::connect_with_unix("/var/run/docker.sock", 1, bollard::API_DEFAULT_VERSION)
+            .expect("构造 Docker 客户端不应失败（不建立连接）")
+    }
+
+    #[tokio::test]
+    async fn support_package_download_failure_aborts_task() {
+        let tmp = tempfile::tempdir().unwrap();
+        // 不存在的本地支持包 → local 协议复制失败
+        let url = "noj-download://local?path=%2Fnonexistent%2Fnope.zip&checksum_sha256=deadbeef";
+        let task = task_with_download_url(url);
+
+        let err = evaluate_with_cpu_limit(
+            offline_docker(),
+            &task,
+            5,
+            tmp.path().join("cache").to_string_lossy().to_string(),
+            10,
+            10,
+            tmp.path().join("work").to_string_lossy().to_string(),
+            1000,
+            false,
+            "noj-eval-net",
+            false,
+            "noj-",
+            &["python3".to_string()],
+            300_000,
+            60_000,
+            "noj-testinstance",
+        )
+        .await
+        .expect_err("支持包获取失败必须终止评测任务（VULN-18）");
+
+        let msg = err.to_string();
+        assert!(
+            msg.contains("local 文件") || msg.contains("非法") || msg.contains("读取"),
+            "错误信息应指向支持包获取失败，实际: {}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn support_package_checksum_mismatch_aborts_task() {
+        let tmp = tempfile::tempdir().unwrap();
+        // 真实存在的 zip，但 checksum 不匹配 → 必须终止评测任务
+        let pkg_path = tmp.path().join("support.zip");
+        std::fs::write(&pkg_path, b"PK\x03\x04 not a real zip").unwrap();
+        let url = format!(
+            "noj-download://local?path={}&checksum_sha256={}",
+            pkg_path.to_string_lossy().replace('/', "%2F"),
+            "0".repeat(64)
+        );
+        let task = task_with_download_url(&url);
+
+        let err = evaluate_with_cpu_limit(
+            offline_docker(),
+            &task,
+            5,
+            tmp.path().join("cache").to_string_lossy().to_string(),
+            10,
+            10,
+            tmp.path().join("work").to_string_lossy().to_string(),
+            1000,
+            false,
+            "noj-eval-net",
+            false,
+            "noj-",
+            &["python3".to_string()],
+            300_000,
+            60_000,
+            "noj-testinstance",
+        )
+        .await
+        .expect_err("SHA-256 校验失败必须终止评测任务（VULN-18）");
+
+        assert!(
+            err.to_string().contains("SHA-256"),
+            "错误信息应指向校验失败，实际: {}",
+            err
+        );
+    }
 }

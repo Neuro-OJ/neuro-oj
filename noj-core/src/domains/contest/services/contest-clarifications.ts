@@ -1,12 +1,17 @@
 /**
  * 竞赛答疑服务。
  *
- * 数据模型 `contest_clarifications` 采用扁平线程：提问（reply_to_id 为 NULL，
- * is_public 固定 true）与回复（reply_to_id 指向根提问，is_public 由主办方指定）。
- * 可见性规则：
+ * 数据模型 `contest_clarifications` 采用扁平线程：提问（reply_to_id 为 NULL）与回复
+ * （reply_to_id 指向根提问）。可见性规则：
  * - 匿名 / 未参赛：仅公开问答
  * - 参赛者：公开问答 + 自己的提问（含挂在其下的私密回复）
  * - admin / 竞赛创建者：全部（含所有私密回复）
+ *
+ * **2026-09-28 安全整改（VULN-01）**：提问创建时 `is_public` **固定为 false**。
+ * 此前硬编码 `is_public: true` 使任何选手的提问未经主办方审核即对全场实时可见，
+ * 答疑区因此沦为赛中解法广播信道（公开赛甚至无需登录即可匿名读取）。
+ * 现在只有主办方在回复时显式勾选 `is_public: true`（公告广播模式），才会把
+ * **根提问连同该公开回复**一并转为对全员可见；其余问答仅主办方与提问者本人可见。
  */
 
 import { and, asc, eq, inArray } from "drizzle-orm";
@@ -161,7 +166,11 @@ async function getProblemLabels(
 
 /**
  * 参赛者提问（仅竞赛进行期间，可挂竞赛题目或全局）。
- * 提问本身始终公开（is_public=true），避免重复提问。
+ *
+ * 提问**默认私密**（`is_public = false`）：仅提问者本人与主办方可见，避免未经审核
+ * 的提问内容（可能含解法、代码片段、测试点边界）被实时广播给全场对手。主办方在
+ * 回复时勾选公开，才会把根提问与公开回复一并转为全员可见（见
+ * {@link replyToClarification}）。
  */
 export async function createClarification(
   contestId: string,
@@ -193,7 +202,8 @@ export async function createClarification(
     sender_id: userId,
     content,
     reply_to_id: null,
-    is_public: true,
+    // VULN-01：默认私密，必须由主办方显式公开（不做任何"默认公开"兜底）
+    is_public: false,
     created_at: createdAt,
   });
   const [senders, labels] = await Promise.all([
@@ -208,7 +218,7 @@ export async function createClarification(
     problem_id: problemId,
     problem_label: problemId ? labels.get(problemId) ?? null : null,
     content,
-    is_public: true,
+    is_public: false,
     created_at: createdAt,
     sender: senders.get(userId) ??
       { id: userId, username: "未知用户", avatar_url: null },
@@ -220,6 +230,10 @@ export async function createClarification(
  * 主办方回复（admin 或竞赛创建者），支持公开（全员可见）与私密（仅提问者可见）。
  * 回复仅允许指向根提问（reply_to_id IS NULL），不构成多层对话树。
  * 回复后向提问者发送 clarification 通知（经现有 SSE 通道推送）。
+ *
+ * **公开即公告（VULN-01）**：`is_public: true` 时同时把**根提问**置为公开——否则
+ * 全场只能看到一条没有问题的回复。这是唯一的"对全员公开"入口，且必须由主办方
+ * 显式选择；`is_public: false`（默认）时不会改变根提问的可见性。
  */
 export async function replyToClarification(
   contestId: string,
@@ -263,6 +277,14 @@ export async function replyToClarification(
     is_public: input.is_public,
     created_at: createdAt,
   });
+
+  // 公开回复 = 公告广播：把根提问一并转为公开，使全场能看到"问题 + 官方答复"。
+  // 私密回复不动根提问的可见性（提问者与主办方仍可见）。
+  if (input.is_public && !root.is_public) {
+    await db.update(contestClarifications)
+      .set({ is_public: true })
+      .where(eq(contestClarifications.id, clarId));
+  }
 
   // 通知提问者（回复者为提问者本人时由 createNotification 内部跳过）
   const problemLabel = root.problem_id

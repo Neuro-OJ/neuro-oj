@@ -150,7 +150,11 @@ export const JUDGE_DEFAULT_VALUES: Readonly<Record<string, string>> = {
   JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS: "60000",
   JUDGE_COMMAND_WHITELIST: "python3,deno,node,bash,sh",
   JUDGE_ALLOW_EVALUATOR_NETWORK: "false",
-  JUDGE_EVALUATOR_NETWORK: "bridge",
+  // 审计 VULN-20：评测隔离网络。此前默认 "bridge"（Docker 默认桥），会让
+  // Evaluator 沙箱经网关 IP 触达宿主机与同宿主机上的其他容器网络；noj-judge 的
+  // 生产启动校验现已**拒绝** bridge/host，故默认值改为专用隔离网络名。
+  // 该网络由渲染出的 docker-compose.judge.yml 声明并创建（见 compose.ts）。
+  JUDGE_EVALUATOR_NETWORK: "noj-eval-net",
   JUDGE_ALLOW_HTTP_S3: "false",
   SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT: "60",
   SUPPORT_CACHE_DIR: "/tmp/noj-judge/support-cache",

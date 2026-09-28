@@ -54,7 +54,8 @@ export const COMPOSE_ENV_DEFAULTS: Readonly<Record<string, string>> = {
   JUDGE_IMAGE_PREFIX: "noj-",
   JUDGE_COMMAND_WHITELIST: "python3,deno,node,bash,sh",
   JUDGE_ALLOW_EVALUATOR_NETWORK: "false",
-  JUDGE_EVALUATOR_NETWORK: "bridge",
+  // 审计 VULN-20：评测隔离网络（见同目录 config.ts 的同名默认值说明）。
+  JUDGE_EVALUATOR_NETWORK: "noj-eval-net",
   JUDGE_ALLOW_HTTP_S3: "false",
   SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT: "60",
   SUPPORT_CACHE_DIR: "/tmp/noj-judge/support-cache",
@@ -155,6 +156,28 @@ export function renderJudgeCompose(env: Record<string, string>): string {
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
+    networks:
+      - noj-eval-net
+
+# ── 评测隔离网络（审计 VULN-20）─────────────────────────────────────
+#
+# 由本 stack 声明并创建，保证 judge 启动时该网络**确实存在**（否则 judge 创建
+# Evaluator 容器会因 network not found 失败）。Evaluator 沙箱只接入本网络：
+# - 与独立 judge 部署中可能存在的其它容器网络（数据库/缓存/应用）**无任何路由**，
+#   内网横向穿透与 SSRF 被物理切断；
+# - 需要 LLM 调用题时，把 llm-gateway（同一 Docker daemon 上）也接入本网络即可，
+#   沙箱只会多得"访问该网关"这一项能力。
+#
+# 网络名取 JUDGE_EVALUATOR_NETWORK 的值（默认 noj-eval-net），必须与之保持一致。
+# 若你把它指向一个**外部已存在**的网络，请改成：
+#   noj-eval-net:
+#     name: <同名>
+#     external: true
+# 同一宿主机部署多套 judge stack 时，必须为每套设置不同的 JUDGE_EVALUATOR_NETWORK。
+networks:
+  noj-eval-net:
+    name: "${value("JUDGE_EVALUATOR_NETWORK")}"
+    driver: bridge
 
 volumes:
   judge-cache:

@@ -99,11 +99,11 @@ register_capability("request_llm_completion", request_llm_completion)
 
 | 配置 | evaluator | solution |
 | --- | --- | --- |
-| `network.enabled = true` | Docker **bridge** 联网（**全量**出网，无网络层白名单）；网络名可由运维改为 compose 网络（`JUDGE_EVALUATOR_NETWORK`） | 无网 |
+| `network.enabled = true` | 加入运维指定的**评测隔离网络**（`JUDGE_EVALUATOR_NETWORK`，生产默认 `noj-eval-net`）：可出公网、可访问该网络上的受控入口（如 `llm-gateway`），但对数据库/缓存/应用所在网络**无 DNS 与路由** | 无网 |
 | `network.enabled` 缺省 / `false` | 无网（默认，与旧行为一致） | 无网 |
 
 ::: warning 横向移动面（威胁模型）
-Docker 默认 bridge 允许容器间互通（ICC），联网的 evaluator 可探测同宿主其他容器及网关（`172.17.0.1` 等）上的服务。由于 evaluator 只运行出题人编写的可信代码，此面由“不要注册通用转发 capability”约束兜底；生产加固方向（每任务独立 user-defined network + `icc=false`）已列入规划，当前版本请以 capability 封装为准。
+联网的 Evaluator 始终存在"探测同网络其他容器与宿主网关（如 `172.17.0.1`）"的面。2026-09-28 安全审计（VULN-20）已按"方案 A：Compose 双网络拓扑物理切分"落地最小特权收敛：生产 `docker-compose.prod.yml` 中 Evaluator 只加入 `noj-eval-net`，该网络上**只有** `llm-gateway` 一个服务，`bridge` / `host` 模式被 noj-judge 启动校验硬性拒绝。因此对 postgres / redis / minio / core 的横向可达性为 0；剩余面为"出公网 + 访问 llm-gateway"，由 capability 封装与网关侧限流/额度兜底。
 :::
 
 网络层白名单代理（egress proxy）同样已列入规划，届时可在网络层兜底限制域名/端口。

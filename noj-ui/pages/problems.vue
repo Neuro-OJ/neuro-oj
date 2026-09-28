@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { difficultyBadgeColors, difficultyLabels, formatAcceptanceRate } from "~/utils/submissionFormat"
 import { problemUrl } from "~/utils/publicIdentifiers"
+import { contestHiddenRowClass } from "~/utils/contestHidden"
 import type { ObjectiveSubmission } from '~/composables/useObjective'
 
 definePageMeta({ breadcrumbWidth: '960px' })
@@ -23,6 +24,13 @@ interface ProblemItem {
   owner_username?: string
   number: number
   is_objective: boolean
+  /**
+   * 是否被「尚未结束的公开赛」收编（VULN-07）。
+   *
+   * 该字段只对特权用户（管理员 / 题目所有者）下发；普通用户看不到该行（后端 SQL 过滤）。
+   * 缺失（undefined）表示后端未下发，此时不做任何标识渲染。
+   */
+  is_contest_hidden?: boolean
   /** 代码题的评测配置；客观题套卷为 NULL（模板已按 is_objective 分支） */
   runtime_config?: {
     evaluator?: {
@@ -131,7 +139,9 @@ async function fetchUserProblemStatus() {
       if (gen !== statusFetchGen || !isLoggedIn.value) return // stale
       const list = res.data?.data ?? []
       for (const s of list) {
-        if (s.submission_type !== 'practice') continue
+        // 竞赛提交不计入练习最高分；score 为 null（竞赛进行中，VULN-03）时无法比较，
+        // 必须显式跳过，否则既会算错也会在渲染处对 null 调 toFixed
+        if (s.submission_type !== 'practice' || s.score === null) continue
         const prev = bestByPaper.get(s.paper_id)
         if (prev === undefined || s.score > prev) {
           bestByPaper.set(s.paper_id, s.score)
@@ -238,17 +248,26 @@ const columns = computed(() => {
 
       <!-- 题目表格 -->
       <div class="bg-white border border-border rounded-xl overflow-x-auto">
-        <UTable :columns="columns" :data="problems" :empty="t('problem.empty')">
+        <UTable
+          :columns="columns"
+          :data="problems"
+          :empty="t('problem.empty')"
+          :meta="{ class: { tr: (row) => contestHiddenRowClass(row.original.is_contest_hidden) } }"
+        >
           <template #display_id-cell="{ row }">
             <ProblemId :display-id="row.original.display_id" :type="row.original.type" />
           </template>
           <template #title-cell="{ row }">
-            <NuxtLink
-              :to="problemUrl(row.original.id, row.original.display_id)"
-              class="text-text no-underline font-medium hover:text-primary"
-            >
-              {{ row.original.title }}
-            </NuxtLink>
+            <div class="flex items-center gap-2">
+              <NuxtLink
+                :to="problemUrl(row.original.id, row.original.display_id)"
+                class="text-text no-underline font-medium hover:text-primary"
+              >
+                {{ row.original.title }}
+              </NuxtLink>
+              <!-- 公开赛收编标识（VULN-07）：斜纹底由行的 class 承担，此处提供悬浮说明 -->
+              <ContestHiddenMark v-if="row.original.is_contest_hidden" />
+            </div>
           </template>
           <template #owner-cell="{ row }">
             <UserIdentity

@@ -33,6 +33,7 @@ export type { UserProfileResponse } from "./users-profile-types.ts";
 export async function getUserProfileAggregate(
   userId: string,
   moderator = false,
+  viewer: { viewerId?: string; isAdmin?: boolean } = {},
 ): Promise<UserProfileResponse> {
   const db = getDb();
 
@@ -50,8 +51,8 @@ export async function getUserProfileAggregate(
   ] = await Promise.all([
     queryProfileUser(db, userId),
     queryProfileStats(db, userId),
-    querySolvedProblems(db, userId),
-    queryRecentSubmissions(db, userId),
+    querySolvedProblems(db, userId, viewer),
+    queryRecentSubmissions(db, userId, viewer),
     queryProfileCommunityStats(db, userId, moderator),
     queryProfileSolutions(db, userId, moderator),
     queryProfileMoments(db, userId),
@@ -73,6 +74,7 @@ export async function getUserProfileAggregate(
     problem_title: string;
     difficulty: string;
     accepted_at: string;
+    is_contest_hidden?: boolean;
   };
   type RecentSubmissionRow = {
     id: string;
@@ -90,6 +92,7 @@ export async function getUserProfileAggregate(
     title: row.problem_title,
     difficulty: row.difficulty,
     accepted_at: row.accepted_at,
+    is_contest_hidden: row.is_contest_hidden === true,
   }));
 
   const recentSubmissions = recentRows.map((row: RecentSubmissionRow) => ({

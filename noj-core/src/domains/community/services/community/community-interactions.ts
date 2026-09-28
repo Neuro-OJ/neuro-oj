@@ -6,7 +6,6 @@ import {
   communityComments,
   communityFollows,
   communityPostLikes,
-  users,
 } from "./../../../../shared/db/schema.ts";
 import {
   NotFoundError,
@@ -207,27 +206,4 @@ export async function toggleFollow(followerId: string, followeeId: string) {
   });
   await createNotification(followeeId, followerId, "follow", null, null, {});
   return true;
-}
-
-/**
- * 更新用户的活动可见性设置。
- * @param userId 用户 UUID。
- * @param visibility 可见性：hidden（隐藏）/ following（仅关注者）/ everyone（所有人）。
- * @returns 更新后的用户 id 与活动可见性。
- * @throws {NotFoundError} 用户不存在时抛出。
- */
-export async function updateActivityVisibility(
-  userId: string,
-  visibility: "hidden" | "following" | "everyone",
-) {
-  const db = getDb();
-  const rows = await db.update(users).set({
-    community_activity_visibility: visibility,
-    updated_at: nowIso(),
-  }).where(eq(users.id, userId)).returning({
-    id: users.id,
-    community_activity_visibility: users.community_activity_visibility,
-  });
-  if (!rows[0]) throw new NotFoundError("用户不存在");
-  return rows[0];
 }

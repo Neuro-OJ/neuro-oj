@@ -315,17 +315,45 @@ Deno.test({
 });
 
 Deno.test({
-  name: "queue service: getQueueOverview 最近完成包含自测并标记 kind",
+  name: "queue service: getQueueOverview 自测按查看者隔离（审计 VULN-11）",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const overview = await getQueueOverview();
-    const selfItem = overview.recently_completed.find(
+    // 本人视角：看得到自己的自测，并标记 kind === "self_test"
+    const mine = await getQueueOverview(false, USER_ID);
+    const selfItem = mine.recently_completed.find(
       (item) => item.id === SELF_TEST_FINISHED_ID,
     );
     assertEquals(selfItem !== undefined, true);
     assertEquals(selfItem?.kind, "self_test");
+
+    // 他人视角：完全看不到别人的自测（题目/用户名/得分都不泄露）
+    const others = await getQueueOverview(false, "another-viewer-user");
+    assertEquals(
+      others.recently_completed.some((item) => item.kind === "self_test"),
+      false,
+    );
+    assertEquals(
+      others.recently_completed.some((item) =>
+        item.id === SELF_TEST_FINISHED_ID
+      ),
+      false,
+    );
+
+    // 未登录（无 viewerUserId）：fail-closed，一律看不到自测
+    const anonymous = await getQueueOverview(false);
+    assertEquals(
+      anonymous.recently_completed.some((item) => item.kind === "self_test"),
+      false,
+    );
+
+    // 管理员：全站自测可见
+    const admin = await getQueueOverview(true);
+    assertEquals(
+      admin.recently_completed.some((item) => item.kind === "self_test"),
+      true,
+    );
   },
 });
 

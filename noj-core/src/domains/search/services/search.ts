@@ -4,8 +4,9 @@ import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import type { SearchPermissionContext } from "./permission-filter.ts";
 import {
   communityVisibilityWhere,
+  contestSecrecyProblemWhere,
+  notGatedContestContentWhere,
   permissionWhere,
-  runningContestSolutionWhere,
 } from "./permission-filter.ts";
 
 function escapeLikePattern(s: string): string {
@@ -75,7 +76,8 @@ export async function searchGrouped(params: {
         )
         AND ${permissionWhere(ctx)}
         AND ${communityVisibilityWhere(ctx)}
-        AND ${runningContestSolutionWhere(ctx)}
+        AND ${notGatedContestContentWhere(ctx)}
+        AND ${contestSecrecyProblemWhere(ctx)}
       ORDER BY rank DESC NULLS LAST, updated_at DESC
       LIMIT ${perType + 1}
     `);
@@ -133,7 +135,8 @@ export async function searchFlat(params: {
       )
       AND ${permissionWhere(ctx)}
       AND ${communityVisibilityWhere(ctx)}
-      AND ${runningContestSolutionWhere(ctx)}
+      AND ${notGatedContestContentWhere(ctx)}
+      AND ${contestSecrecyProblemWhere(ctx)}
       ${type ? sql`AND entity_type = ${type}` : sql``}
     ORDER BY rank DESC NULLS LAST, updated_at DESC
     LIMIT ${perPage + 1} OFFSET ${offset}
