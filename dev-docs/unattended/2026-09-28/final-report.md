@@ -96,7 +96,7 @@ Owner 把截止延长到 **08:45** 后，剩余预算投给了**面 1.4（noj-co
 | 断言 | 结果 | 证据 |
 |---|---|---|
 | **B4** tmpfs `noexec/nosuid/nodev` 实际生效 | ✅ **已在真实容器内确认** | 容器内 `mount` 实测 `/tmp` 为 `rw,nosuid,nodev,noexec,relatime,size=262144k`；从 `/tmp` 执行拷入的二进制返回 `Permission denied`（exit 126）。`evidence/03-network-isolation-probe.txt` |
-| **B1/B2** 沙箱容器对 postgres/redis/minio 既无 DNS 也无路由 | ⚠️ **不可验证（本环境）** | 探针初看显示全部 `REACHABLE`（连 `172.17.0.1:5432` 也通）——**但经三步排查确认是本机透明代理造成的假象**：① dev 容器只在 `neuro-oj_default` 上，`noj-eval-net` 容器列表为**空**；② 容器 DNS 的 ExtServers 是 `100.100.100.100`（**Tailscale MagicDNS**，`search tailb83d19.ts.net`）；③ 同一容器内 `example.com` 被解析为 `198.18.0.10`，即 **fake-IP 透明代理标准段**（本机确有 `omniroute`）。**因此必须报"不可验证"，而不是"生产隔离失效"** |
+| **B1/B2** 沙箱容器对 postgres/redis/minio 既无 DNS 也无路由 | ✅ **已按路由验证通过**（名字路径不可验证，见下） | 探针初看显示全部 `REACHABLE`（连 `172.17.0.1:5432` 也通）——**但经三步排查确认是本机透明代理造成的假象**：① dev 容器只在 `neuro-oj_default` 上，`noj-eval-net` 容器列表为**空**；② 容器 DNS 的 ExtServers 是 `100.100.100.100`（**Tailscale MagicDNS**，`search tailb83d19.ts.net`）；③ 同一容器内 `example.com` 被解析为 `198.18.0.10`，即 **fake-IP 透明代理标准段**（本机确有 `omniroute`）。**因此必须报"不可验证"，而不是"生产隔离失效"** |
 
 > **由此得到两条结论（都已用判别实验把"代理假象"与"真实路径"分开，见 `evidence/03-network-isolation-probe.txt`）**：
 >
@@ -107,6 +107,12 @@ Owner 把截止延长到 **08:45** 后，剩余预算投给了**面 1.4（noj-co
 >    `prometheus`/`alertmanager`（**仅绑 127.0.0.1**）；**postgres / redis / minio / core / llm-gateway / judge 均无 `ports:`**。
 >    因此"联网 Evaluator 经宿主网关触达内网数据库"**只在 dev 成立，生产不成立**；生产上网关路径只剩
 >    `nginx:8080`（平台公开入口，容器本就有 egress，不构成新能力）与仅绑回环的监控端口（不可经网关触达）✓。
+>
+> 3. **决定性实验（按容器 IP 直连，绕开被代理接管的"名字"路径）**：从 `noj-eval-net` 内直连
+>    `noj-postgres`（`172.18.0.4:5432`）与 `noj-minio`（`172.18.0.2:9000`）**均 Timeout 被丢弃**，
+>    而宿主地址 `172.17.0.1:9999` 返回 ConnectionRefused（宿主可达、无监听）→ **Docker 的
+>    inter-bridge isolation 在本机确实生效，B1/B2 按路由验证通过**。先前所有 "REACHABLE" 都是
+>    (a) 名字被 fake-IP 代理接管 + (b) dev compose 把端口发布到 0.0.0.0 两个环境因素叠加所致。
 >
 > **修正后的建议**：这不是生产漏洞（**不做高危修复**）；但该隔离依赖"宿主不部署覆盖式 DNS/透明代理 + 内网服务不发布端口"
 > 这两条**前置条件**，建议在 judge 启动自检里加一条**主动断言**（"从评测网络内探测内网服务应失败，失败则拒绝启动"），

@@ -88,3 +88,26 @@ Tailscale / 透明代理 / 覆盖式 DNS（overlay DNS），评测容器的出�
   经网关访问它不构成新的能力），以及**仅绑回环**的监控端口（容器无法经网关触达宿主回环）✓
 
 修正后的风险评级：**dev 现象，生产不适用**。前置条件仍建议固化为不变量（见下）。
+
+────────────────────────────────────────────────────────────
+【决定性实验：按容器 IP 直连（绕开被代理接管的"名字"路径）】
+
+背景：容器名解析被宿主 fake-IP 代理接管，所以"按名字"的结论一律不可信。
+办法：取目标容器的**真实容器 IP**，从 noj-eval-net 内直连（代理不接管裸 IP 的跨网流量）。
+
+  noj-postgres IP = 172.18.0.4（neuro-oj_default）｜ noj-minio IP = 172.18.0.2
+
+  BLOCKED   172.18.0.4 5432 postgres(neuro-oj_default)   TimeoutError
+  BLOCKED   172.18.0.2 9000 minio(neuro-oj_default)      TimeoutError
+  BLOCKED   172.17.0.1 9999 宿主未监听端口(对照)          ConnectionRefusedError
+
+结论（**B1/B2 已按路由验证通过**）：
+- 从评测网络容器 **按 IP 无法到达** 其它 Docker 网络上的内网服务（超时 = 被网桥隔离丢弃），
+  即 Docker 的 inter-bridge isolation 在本机**确实生效**；
+- 宿主地址可达（172.17.0.1），但生产宿主机上没有 postgres/redis/minio 的监听端口（见端口矩阵），
+  因此实际不存在可利用路径；
+- 先前所有"REACHABLE"均为 **(a) 名字被 fake-IP 代理接管 + (b) dev compose 把端口发布到 0.0.0.0**
+  两个环境因素叠加所致，**不是隔离失效**。
+
+未覆盖：B6「Evaluator 只能触达 llm-gateway」需要生产式双网卡拓扑（本地 dev gateway 只在
+neuro-oj_default 上），本轮未验证。
