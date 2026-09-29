@@ -25,6 +25,11 @@
    `release.yml` 持有 `packages/id-token/attestations/contents: write` 且 `--clobber` 上传资产
    → 上游 action tag 失陷可**污染所有后续 install/update**（详见 `findings/08-*`）。
 
+5. 🟠 **G-04（High，llm-gateway）**：沙箱可直接 `POST /v1/chat/completions` 带 50MB body，
+   **即使被 429 拒绝该行仍落库** `llm_usage`（jsonb、无清理）→ **无需任何前置的持久化 DoS**（约 3GB/min）
+   + 选手 prompt 全量长期留存。同面 G-01（`max_*=0` 在 Lua 里等于**无限**）与 G-03（`base_url` 可指内网，
+   而 gateway 是**唯一双网卡**服务 → SSRF 升级为横向移动，需 admin）同属开赛前应处理项 → `findings/09-*`。
+
 **已修 9 项**（全部带 before/after 或成对证据）：
 `评测机被卡` A1 注入内存峰值↓50%、A2 注入期 6 处阻塞调用加超时、A7 重投方向、D2 崩溃后 claim 回收、D3 优雅关闭窗口；
 `数据泄露` F-01 主页题解门控补齐赛前筹备期、F-03 自测 404 化、F-04a 计数与列表同口径、F-08 陈旧注释；
@@ -179,6 +184,18 @@ Owner 把截止延长到 **08:45** 后，剩余预算投给了**面 1.4（noj-co
 | S3/S4/S5/S6 | S3 发布资产**无独立信任锚**（产物与 `.sha256` 同源；证明只覆盖镜像 digest）；S4 `NOJ_UPDATE_API_URL/_REPOSITORY` 可换源（无 host 白名单）；S5 CI 无 `--frozen`/`--locked` → AGENTS.md 的"禁止手改 lock"**无机器门禁**；S6 `JWT_SECRET` 注入到执行 PR 代码的 job（write 权限账号即可外带） |
 | 受控面（已审无问题，含**独立复核我今晚的改动**） | **无** `pull_request_target`/`workflow_run`/`issue_comment`；**无** PR 标题/正文进 `run:`；**无** `eval`/`curl\|bash`；21 处 `continue-on-error` **全部**是日志/产物上传步骤（无测试被吞）；`ci`/`e2e`/`lint-workflows` 权限均为 `contents: read`；部署链除 S2 外**全部 fail-closed**（install 先验后拉、bootstrap 两阶段+回滚、update 备份失败即中止）；**2026-09-27 资产名/点号前缀修复完整且被回归测试钉住**；**本轮 A5/B3 两处改动经独立复核确认正确** |
 | 处置 | **未修任何一条**：S1 是 174 处机械化大改、S2 是**面向运维的默认策略变更**（改错会导致部署硬失败，且 Owner 可能在 beta 期有意关闭验签）、S3 需改 release.yml + CLI + 文档三处契约 → 按 spec §7 全部交 Owner 裁决 |
+
+---
+
+## 0.6 追加（2026-09-29 09:0x）：面 9 noj-llm-gateway（第二阶段）
+
+| 项 | 结果 |
+|---|---|
+| 交付物 | `findings/09-gateway.md`：**14 条 finding** + **"从沙箱出发的可达面"**（本面核心）+ 受控面清单 + 优先修 3 条 |
+| High 条目 | **G-01**：配额 `max_* = 0` 在 Lua 里等价于**无限**，而写入路径默认值就是 0（与 `limits.ts:95` 注释"缺失配额 MUST NOT 视为无限"完全相反）；**G-02**：`create` 路径漏掉 cost 夹取（`update` 有）→ 负 `cost_per_1k_tokens` 使 `INCRBY` 负值**回退共享 cost 桶**；**G-03**：`base_url` 可指向 `169.254.169.254`/内网且 gateway 是**唯一双网卡**服务 → 沙箱触发即获得内网 HTTP 读写（响应体原样回传），BYOK 时代的外网白名单函数**已随 BYOK 一起被删**（全 src 零命中）；**G-04**：入站无体积上限且**拒绝路径仍落库** → 沙箱无前置持久化 DoS；**G-05**：跨窗口 `settle` 负 delta → 配额超发 |
+| Medium | G-06（伪造 XFF 使 IP 限流维度失效 + 污染多来源 IP 告警）、G-07（**一个 secret 双用途**：eval_token 主密钥 == `/internal/*` 管理凭据，而 eval_token 被注入 Evaluator 容器）、G-08（LLM fetch 未设 `redirect:"error"` + `text()` 无上限）、G-09（`stream:true` → 200 + null body + 仍计费）、G-10（eval_token 无 `jti`、可重放）、G-11（解密失败伪装成 `provider_not_found`） |
+| 受控面（已审无问题，含**独立复核既有修复**） | `/internal/*` 全部要求 service token 且与 eval_token 不可互换（密文改一字节即 401，fail-closed）；**无法跨提交/跨用户**（标识与额度全封在 AES-GCM 密文内）；模型白名单强制；**无任何"调用方指定 URL"字段**；Provider 明文 key 与**他人**用量不可读；日志脱敏完整；gateway 未发布到宿主；启动配置 fail-closed；指标无业务标签；**2026-09-21 的分页上界/OFFSET 修复经核实彻底**（有回归测试守护） |
+| 处置 | **未修任何一条**：G-01/G-02/G-04 改配额语义或请求契约、G-03 属"恢复被删安全控制 + 新增出站白名单"（设计级）→ 按 spec §7 交 Owner 裁决 |
 
 ---
 
