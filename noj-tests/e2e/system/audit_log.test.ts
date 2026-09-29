@@ -287,7 +287,14 @@ e2eTest("[e2e/audit-log] 3.2b 分页正确", async () => {
 
 e2eTest("[e2e/audit-log] 3.2c 非 admin 返回 403", async () => {
   if (!isE2E) return;
-  const logs = await apiGet("/api/v1/admin/system/audit-logs", userToken);
+  // 前序 3.1b 封禁后递增了 session_version 导致原有 JWT 失效，重新登录获取新会话
+  const loginRes = await apiPost("/api/v1/auth/login", {
+    login: "audit_user_" + ts,
+    password: TEST_PASSWORD,
+  });
+  const currentToken =
+    (loginRes.body as { data?: { token?: string } })?.data?.token ?? userToken;
+  const logs = await apiGet("/api/v1/admin/system/audit-logs", currentToken);
   if (logs.status !== 403) {
     throw new Error("期望 403, 实际 " + logs.status);
   }

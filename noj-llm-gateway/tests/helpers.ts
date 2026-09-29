@@ -25,7 +25,7 @@ export class FakeRedis implements RedisClient {
     return Promise.resolve(1);
   }
 
-  get(): Promise<string | null> {
+  get(_key?: string): Promise<string | null> {
     return Promise.resolve(null);
   }
 

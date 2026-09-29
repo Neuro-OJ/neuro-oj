@@ -108,7 +108,10 @@ services:
     # 健康探测。noj-core 只跑 server（migrate + seed 在 noj-migrate 里跑完了），
     # 启动 < 1s，健康检查几乎立即通过；start_period/retries 调到小值即可。
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health > /dev/null || exit 1"]
+      test: [
+        "CMD-SHELL",
+        "wget -qO- http://localhost:8000/health > /dev/null || exit 1",
+      ]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -170,6 +173,8 @@ services:
       JUDGE_COMMAND_WHITELIST: python3,deno,node,bash,sh
       # E2E capability-network 用例需要 evaluator 联网能力
       JUDGE_ALLOW_EVALUATOR_NETWORK: "true"
+      # E2E 模式下使用 noj-download://local 共享挂载目录直接读取支持包
+      JUDGE_ALLOW_LOCAL_DOWNLOAD: "true"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - noj-judge-work:/tmp/noj-work

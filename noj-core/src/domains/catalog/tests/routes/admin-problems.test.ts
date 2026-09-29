@@ -279,18 +279,24 @@ Deno.test({
     const p2 = await createUProblem({ ownerId, visibility: "public" });
     const app = createApp();
 
-    const [res1, res2] = await Promise.all([
-      jsonRequest(app, "/api/v1/admin/catalog/problems/review", {
+    const res1 = await jsonRequest(
+      app,
+      "/api/v1/admin/catalog/problems/review",
+      {
         method: "POST",
         token: adminToken,
         body: { problem_ids: [p1.id], action: "to_p" },
-      }),
-      jsonRequest(app, "/api/v1/admin/catalog/problems/review", {
+      },
+    );
+    const res2 = await jsonRequest(
+      app,
+      "/api/v1/admin/catalog/problems/review",
+      {
         method: "POST",
         token: adminToken,
         body: { problem_ids: [p2.id], action: "to_p" },
-      }),
-    ]);
+      },
+    );
 
     assertEquals(res1.status, 200);
     assertEquals(res2.status, 200);

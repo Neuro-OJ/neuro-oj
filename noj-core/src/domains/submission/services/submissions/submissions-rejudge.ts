@@ -29,6 +29,7 @@ import {
   Channels,
   publishSseEvent,
 } from "./../../../../shared/sse/event-bus.ts";
+import { getRedis } from "./../../../../shared/mq/connection.ts";
 import { updateSubmissionStatus } from "./submissions-result.ts";
 import { getLogger } from "@logtape/logtape";
 
@@ -166,6 +167,16 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     },
     { type: "submission", id },
   );
+
+  // 决策 7 · AR-08：发起重测时清空前次评测的 Token 吊销标记，使重新签发的 eval_token 生效
+  try {
+    const redis = getRedis();
+    if (redis.status === "ready") {
+      void redis.del(`llm:token:revoked:${id}`);
+    }
+  } catch {
+    // ignore
+  }
 
   try {
     await pushJudgeTask(task);
@@ -323,6 +334,16 @@ export async function rejudgeProblemSubmissions(
       },
       { type: "problem", id: problemId },
     );
+  }
+
+  // 决策 7 · AR-08：批量重测清空前次评测的 Token 吊销标记
+  try {
+    const redis = getRedis();
+    if (redis.status === "ready" && allIds.length > 0) {
+      void redis.del(...allIds.map((subId) => `llm:token:revoked:${subId}`));
+    }
+  } catch {
+    // ignore
   }
 
   // 逐条入队（每条代码内容不同，无法合并）

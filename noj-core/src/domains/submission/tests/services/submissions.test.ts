@@ -131,6 +131,9 @@ async function handleConnection(
         case "EXPIRE":
           reply = renderRespInteger(1);
           break;
+        case "DEL":
+          reply = renderRespInteger(parsed.args.length);
+          break;
         case "EVAL": {
           // ioredis 参数顺序：script、numkeys、key、max、message。
           const queue = parsed.args[2] ?? "";
@@ -917,6 +920,89 @@ Deno.test({
       // 断言：丢弃日志被记录
       const ignoredLog = logs.find((l) => l.msg.includes("忽略过时的评测结果"));
       assertExists(ignoredLog, "应记录旧结果被丢弃的日志");
+    } finally {
+      await db.delete(evaluationResults).where(
+        eq(evaluationResults.submission_id, subId),
+      );
+      await db.delete(submissions).where(eq(submissions.id, subId));
+      await db.delete(users).where(eq(users.id, userId));
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "submissions service: saveEvaluationResult 重测场景：已有历史结果时，新 seq 的评测结果应成功替换历史结果（JA-02）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const subId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const userId = crypto.randomUUID();
+    await db.insert(users).values({
+      id: userId,
+      username: `rejudge_replace_${Date.now()}`,
+      email: `rejudge_replace_${Date.now()}@test.com`,
+      password_hash: "x",
+      created_at: now,
+      updated_at: now,
+    });
+
+    await db.insert(submissions).values({
+      id: subId,
+      user_id: userId,
+      problem_id: TEST_PROBLEM_ID,
+      language: "python3",
+      code: "print(1)",
+      status: "judging",
+      rejudge_seq: 0,
+      created_at: now,
+    });
+
+    try {
+      // 1) 首次评测结果（seq=0）落库
+      await saveEvaluationResult({
+        submission_id: subId,
+        status: "finished",
+        score: 100,
+        output: "---FIRST_RUN---",
+        details: { seq: 0 },
+        rejudge_seq: 0,
+      });
+
+      const firstRows = await db.select().from(evaluationResults)
+        .where(eq(evaluationResults.submission_id, subId));
+      assertEquals(firstRows.length, 1);
+      assertEquals(firstRows[0].output, "---FIRST_RUN---");
+
+      // 2) 模拟发起重测：rejudge_seq++ 且 status 变回 pending（JA-02 不预先物理删除 evaluationResults）
+      await db.update(submissions)
+        .set({
+          status: "pending",
+          rejudge_seq: 1,
+        })
+        .where(eq(submissions.id, subId));
+
+      // 3) 重测结果（seq=1）到达落库
+      const updatedSub = await saveEvaluationResult({
+        submission_id: subId,
+        status: "finished",
+        score: 1000,
+        output: "---REJUDGE_RUN---",
+        details: { seq: 1 },
+        rejudge_seq: 1,
+      });
+
+      assertExists(updatedSub, "重测结果不应被丢弃");
+
+      // 4) 断言：历史结果被替换，只有 1 条记录，内容为新重测结果
+      const finalRows = await db.select().from(evaluationResults)
+        .where(eq(evaluationResults.submission_id, subId));
+      assertEquals(finalRows.length, 1);
+      assertEquals(finalRows[0].score, 1000);
+      assertEquals(finalRows[0].output, "---REJUDGE_RUN---");
     } finally {
       await db.delete(evaluationResults).where(
         eq(evaluationResults.submission_id, subId),
