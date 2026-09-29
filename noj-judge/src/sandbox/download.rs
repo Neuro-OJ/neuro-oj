@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use percent_encoding::percent_decode_str;
+use reqwest::Url;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::warn;
@@ -37,6 +38,45 @@ impl Drop for DownloadedPackage {
             let _ = std::fs::remove_file(&self.path);
         }
     }
+}
+
+/// 校验 S3 下载 URL 的 Host，拦截环回地址、链路本地地址与云元数据服务器（SSRF 防御，SE-02）。
+fn validate_s3_host_not_ssrf(host: &str) -> Result<()> {
+    let lower_host = host.to_lowercase();
+    // 拦截常见云元数据端点域名
+    if lower_host == "instance-data"
+        || lower_host == "metadata.google.internal"
+        || lower_host.starts_with("metadata.")
+        || lower_host.ends_with(".metadata.google.internal")
+    {
+        bail!("S3 下载目标禁止访问云元数据服务: {}", host);
+    }
+
+    // 若 host 为 IP 地址，拦截环回与链路本地/云元数据 IP
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        match ip {
+            std::net::IpAddr::V4(ipv4) => {
+                if ipv4.is_loopback() {
+                    bail!("S3 下载目标禁止访问环回地址: {}", ipv4);
+                }
+                if ipv4.is_link_local() {
+                    bail!("S3 下载目标禁止访问链路本地/云元数据地址: {}", ipv4);
+                }
+                if ipv4.is_unspecified() || ipv4.is_broadcast() {
+                    bail!("S3 下载目标非法 IP: {}", ipv4);
+                }
+            }
+            std::net::IpAddr::V6(ipv6) => {
+                if ipv6.is_loopback() {
+                    bail!("S3 下载目标禁止访问环回地址: {}", ipv6);
+                }
+                if ipv6.is_unspecified() {
+                    bail!("S3 下载目标非法 IP: {}", ipv6);
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// 生成 WorkDir 下的唯一临时 zip 路径。
@@ -149,6 +189,12 @@ pub async fn fetch_support_package_to_path(
                 bail!("S3 下载 URL 必须使用 HTTPS: {}", redact_url(&decoded_url));
             }
 
+            // SE-02：SSRF 防御——校验 S3 Host，拦截云元数据服务、环回地址与未授权私有地址。
+            let parsed_url = Url::parse(&decoded_url).context("无效的 S3 下载 URL")?;
+            if let Some(host_str) = parsed_url.host_str() {
+                validate_s3_host_not_ssrf(host_str)?;
+            }
+
             let path = temp_package_path(dest_dir);
             if let Err(e) = http_download_to_file(&decoded_url, &path, download_timeout_secs).await
             {
@@ -163,6 +209,14 @@ pub async fn fetch_support_package_to_path(
             })
         }
         "local" => {
+            // SE-01：生产环境严格禁止使用 noj-download://local 协议直接读取本地文件。
+            let allow_local = std::env::var("JUDGE_ALLOW_LOCAL_DOWNLOAD")
+                .map(|v| v.trim() == "true" || v.trim() == "1")
+                .unwrap_or(false);
+            if !allow_local && !cfg!(test) {
+                bail!("生产环境禁止使用 noj-download://local 协议");
+            }
+
             let raw_path =
                 parse_query_param(&query, "path").context("noj-download://local 缺少 path 参数")?;
             let path = percent_decode_str(&raw_path)
@@ -580,5 +634,26 @@ mod tests {
         let copied = tokio::fs::read(&pkg.path).await.unwrap();
         assert_eq!(copied, b"PK\x03\x04payload");
         assert!(pkg.cleanup);
+    }
+
+    #[test]
+    fn test_validate_s3_host_not_ssrf() {
+        // 环回与未指定
+        assert!(validate_s3_host_not_ssrf("127.0.0.1").is_err());
+        assert!(validate_s3_host_not_ssrf("127.0.1.1").is_err());
+        assert!(validate_s3_host_not_ssrf("::1").is_err());
+        assert!(validate_s3_host_not_ssrf("0.0.0.0").is_err());
+
+        // 云元数据 IMDS (169.254.169.254 & 链路本地)
+        assert!(validate_s3_host_not_ssrf("169.254.169.254").is_err());
+        assert!(validate_s3_host_not_ssrf("169.254.1.1").is_err());
+        assert!(validate_s3_host_not_ssrf("instance-data").is_err());
+        assert!(validate_s3_host_not_ssrf("metadata.google.internal").is_err());
+        assert!(validate_s3_host_not_ssrf("metadata.aliyun.com").is_err());
+
+        // 合法公网/对象存储域名放行
+        assert!(validate_s3_host_not_ssrf("s3.amazonaws.com").is_ok());
+        assert!(validate_s3_host_not_ssrf("oss-cn-hangzhou.aliyuncs.com").is_ok());
+        assert!(validate_s3_host_not_ssrf("minio.internal.lan").is_ok());
     }
 }

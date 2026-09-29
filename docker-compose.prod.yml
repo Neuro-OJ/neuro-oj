@@ -556,6 +556,7 @@ networks:
   noj-eval-net:
     name: ${NOJ_EVAL_NETWORK_NAME:-noj-eval-net}
     driver: bridge
+    internal: true
 
 volumes:
   pgdata:

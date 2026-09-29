@@ -178,6 +178,7 @@ networks:
   noj-eval-net:
     name: "${value("JUDGE_EVALUATOR_NETWORK")}"
     driver: bridge
+    internal: true
 
 volumes:
   judge-cache:
