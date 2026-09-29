@@ -8,26 +8,33 @@
  * 重测相关在 submissions-rejudge.ts；CRUD 在 submissions-crud.ts。
  */
 
-import { eq } from 'drizzle-orm';
-import { evaluationResults, sseEvents, submissions } from './../../../../shared/db/schema.ts';
-import { BadRequestError, NotFoundError } from './../../../../shared/base/errors.ts';
-import { getDb } from './../../../../shared/db/connection.ts';
-import { publishSearchIndexEvent } from './../../../../shared/search-events.ts';
-import { getStorageProvider } from './../../../system/index.ts';
-import type { JudgeResult, SubmissionStatus } from '../../types/index.ts';
-import { applyNewResult, refreshRankingsView } from '../../../query/index.ts';
-import { filterUnendedContestIds } from '../../../contest/index.ts';
-import { getLogger } from '@logtape/logtape';
-import { getRedis } from './../../../../shared/mq/connection.ts';
+import { eq } from "drizzle-orm";
+import {
+  evaluationResults,
+  sseEvents,
+  submissions,
+} from "./../../../../shared/db/schema.ts";
+import {
+  BadRequestError,
+  NotFoundError,
+} from "./../../../../shared/base/errors.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
+import { getStorageProvider } from "./../../../system/index.ts";
+import type { JudgeResult, SubmissionStatus } from "../../types/index.ts";
+import { applyNewResult, refreshRankingsView } from "../../../query/index.ts";
+import { filterUnendedContestIds } from "../../../contest/index.ts";
+import { getLogger } from "@logtape/logtape";
+import { getRedis } from "./../../../../shared/mq/connection.ts";
 
-const logger = getLogger(['noj', 'submission']);
-import { Channels } from './../../../../shared/sse/event-bus.ts';
-import { sanitizeJudgeResult } from './sanitize-judge-result.ts';
+const logger = getLogger(["noj", "submission"]);
+import { Channels } from "./../../../../shared/sse/event-bus.ts";
+import { sanitizeJudgeResult } from "./sanitize-judge-result.ts";
 
 // 允许的状态转换
 const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
-  pending: ['judging', 'error'],
-  judging: ['finished', 'error'],
+  pending: ["judging", "error"],
+  judging: ["finished", "error"],
   finished: [],
   error: [],
 };
@@ -81,11 +88,11 @@ export async function saveEvaluationResult(
       })
       .from(submissions)
       .where(eq(submissions.id, result.submission_id))
-      .for('update')
+      .for("update")
       .limit(1);
 
     if (!sub) {
-      logger.warn('提交不存在，忽略评测结果', {
+      logger.warn("提交不存在，忽略评测结果", {
         submission_id: result.submission_id,
       });
       return null;
@@ -93,7 +100,7 @@ export async function saveEvaluationResult(
 
     // 过时结果：本次消息早于当前重测序号，直接丢弃。
     if (incomingSeq < sub.rejudge_seq) {
-      logger.warn('忽略过时的评测结果', {
+      logger.warn("忽略过时的评测结果", {
         submission_id: result.submission_id,
         result_seq: incomingSeq,
         current_seq: sub.rejudge_seq,
@@ -108,7 +115,7 @@ export async function saveEvaluationResult(
       .where(eq(evaluationResults.submission_id, result.submission_id))
       .limit(1);
     if (existingResult && incomingSeq === sub.rejudge_seq) {
-      logger.info('重复评测结果，跳过', {
+      logger.info("重复评测结果，跳过", {
         submission_id: result.submission_id,
         rejudge_seq: incomingSeq,
       });
@@ -119,10 +126,10 @@ export async function saveEvaluationResult(
     // error 提交重测时会先重置为 pending，因此也允许从 error 修复。
     const currentStatus = sub.status as SubmissionStatus;
     if (
-      currentStatus !== 'pending' && currentStatus !== 'judging' &&
-      currentStatus !== 'error'
+      currentStatus !== "pending" && currentStatus !== "judging" &&
+      currentStatus !== "error"
     ) {
-      logger.warn('提交状态不允许写入评测结果', {
+      logger.warn("提交状态不允许写入评测结果", {
         submission_id: result.submission_id,
         status: currentStatus,
       });
@@ -134,21 +141,21 @@ export async function saveEvaluationResult(
     // 榜单/竞赛排名 SQL。归一结果与修正清单一起记录，便于发现 judge 异常。
     const { result: safeResult, adjustments } = sanitizeJudgeResult(result);
     if (adjustments.length > 0) {
-      logger.warn('评测结果存在非法字段，已归一后落库', {
+      logger.warn("评测结果存在非法字段，已归一后落库", {
         submission_id: result.submission_id,
         adjustments,
       });
     }
 
     const submissionStatus: SubmissionStatus = [
-        'error',
-        'SystemError',
-        'TimeLimitExceeded',
-        'MemoryLimitExceeded',
-        'RuntimeError',
+        "error",
+        "SystemError",
+        "TimeLimitExceeded",
+        "MemoryLimitExceeded",
+        "RuntimeError",
       ].includes(safeResult.status)
-      ? 'error'
-      : 'finished';
+      ? "error"
+      : "finished";
 
     await tx
       .update(submissions)
@@ -182,12 +189,12 @@ export async function saveEvaluationResult(
     const outboxEvents: SseEventOutboxItem[] = [];
     const [submissionEventRow] = await tx.insert(sseEvents).values({
       channel: Channels.submission(result.submission_id),
-      payload: { type: 'submission:updated', id: result.submission_id },
+      payload: { type: "submission:updated", id: result.submission_id },
       created_at: now,
     }).returning({ id: sseEvents.id });
     outboxEvents.push({
       channel: Channels.submission(result.submission_id),
-      payload: { type: 'submission:updated', id: result.submission_id },
+      payload: { type: "submission:updated", id: result.submission_id },
       event_id: submissionEventRow.id,
     });
 
@@ -195,7 +202,7 @@ export async function saveEvaluationResult(
       const [contestEventRow] = await tx.insert(sseEvents).values({
         channel: Channels.contestRanking(sub.contest_id),
         payload: {
-          type: 'contest:ranking:updated',
+          type: "contest:ranking:updated",
           contest_id: sub.contest_id,
           submission_id: result.submission_id,
         },
@@ -204,7 +211,7 @@ export async function saveEvaluationResult(
       outboxEvents.push({
         channel: Channels.contestRanking(sub.contest_id),
         payload: {
-          type: 'contest:ranking:updated',
+          type: "contest:ranking:updated",
           contest_id: sub.contest_id,
           submission_id: result.submission_id,
         },
@@ -231,11 +238,11 @@ export async function saveEvaluationResult(
     try {
       const storage = await getStorageProvider();
       await storage.delete(outcome.artifact_storage_url);
-      logger.info('artifact 评测完成，已删除存储对象', {
+      logger.info("artifact 评测完成，已删除存储对象", {
         submission_id: result.submission_id,
       });
     } catch (err) {
-      logger.error('artifact 评测后删除失败', {
+      logger.error("artifact 评测后删除失败", {
         submission_id: result.submission_id,
         storage_url: outcome.artifact_storage_url,
         err,
@@ -264,11 +271,11 @@ export async function saveEvaluationResult(
   // 决策 7 · AR-08：评测完成立即在 Redis 原子吊销 eval_token
   try {
     const redis = getRedis();
-    if (redis.status === 'ready') {
+    if (redis.status === "ready") {
       void redis.set(
         `llm:token:revoked:${result.submission_id}`,
-        '1',
-        'EX',
+        "1",
+        "EX",
         3600,
       );
     }
@@ -311,7 +318,7 @@ export async function updateSubmissionStatus(
     .limit(1);
 
   if (existing.length === 0) {
-    throw new NotFoundError('提交不存在');
+    throw new NotFoundError("提交不存在");
   }
 
   const current = existing[0].status as SubmissionStatus;
@@ -323,12 +330,12 @@ export async function updateSubmissionStatus(
   const updates: Record<string, string | undefined> = { status };
 
   // 设置 judge_started_at：pending → judging
-  if (status === 'judging') {
+  if (status === "judging") {
     updates.judge_started_at = now;
   }
 
   // 设置 judge_finished_at：judging → finished / error
-  if (status === 'finished' || status === 'error') {
+  if (status === "finished" || status === "error") {
     updates.judge_finished_at = now;
   }
 
@@ -336,5 +343,5 @@ export async function updateSubmissionStatus(
     .update(submissions)
     .set(updates)
     .where(eq(submissions.id, id));
-  await publishSearchIndexEvent('submission', id, 'upsert');
+  await publishSearchIndexEvent("submission", id, "upsert");
 }

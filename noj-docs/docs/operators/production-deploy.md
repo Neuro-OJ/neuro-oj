@@ -131,6 +131,24 @@ Docker daemon（这是有意的边界：自动安装 daemon 需要 root 安装�
 容器内 Nginx 只处理 HTTP。使用 HTTPS 时，应在宝塔、宿主机 Nginx、Caddy 或云负载均衡中终止 TLS，
 再转发到 `127.0.0.1:8080`。脚本不会自动申请或安装证书。
 
+### 3.1 沙箱镜像签名与专网赛事环境配置（SC-02）
+
+在生产与赛事环境中，沙箱镜像（`noj-evaluator-python`、`noj-solution-python` 等）的完整性校验分为两种典型模式：
+
+1. **公网/联网高安全环境（强启 Cosign 验签）**：
+   - 将 `NOJ_ENFORCE_IMAGE_SIGNATURES=true` 写入 `.env.prod`。
+   - 配置 `NOJ_COSIGN_CERTIFICATE_IDENTITY_REGEXP`（如 `^https://github\.com/xyber-nova/neuro-oj/\.github/workflows/release\.yml@refs/tags/v.*$`）与 `NOJ_COSIGN_CERTIFICATE_OIDC_ISSUER=https://token.actions.githubusercontent.com`。
+   - `noj-cli verify` 将调用 `cosign verify` 强校验 GitHub Actions 无密钥 OIDC 签名。
+
+2. **离线/专网现场赛事环境（无法连接公网 OIDC 服务）**：
+   - 维持默认 `NOJ_ENFORCE_IMAGE_SIGNATURES=false`。
+   - **离线安全操作规范**：
+     - 在有网络的构建机上拉取官方 Release 镜像并校验 digest，执行 `docker save` 导出 `.tar`；
+     - 连同 Release 页面公布的 SHA-256 校验和文件，通过受信任介质拷贝至专网服务器；
+     - 校验介质文件 SHA-256 后，在专网服务器执行 `docker load -i <image.tar>` 灌装到 Judge 专属 Rootless Docker Daemon 中；
+     - 检查 `docker images --digests` 确认与官方发布的 digest 一致，防止赛事期间未授权镜像篡改。
+
+
 ## 4. 日常运维
 
 安装目录默认为 `/opt/neuro-oj`，可以直接执行：

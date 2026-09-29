@@ -21,6 +21,8 @@ import { resetPassword } from "../../services/passwordReset.ts";
 import { hashPassword } from "../../services/security/password.ts";
 import { hashResetToken } from "../../services/security/resetToken.ts";
 import { signToken, verifyToken } from "../../services/security/jwt.ts";
+import { banUser } from "../../services/users/users-bans.ts";
+import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
 
 const oldPassword = "Original-2026-Ab1";
 const newPassword = "Replacement-2026-Cd2";
@@ -331,3 +333,25 @@ sessionTest("新增迁移保留旧用户并赋予初始会话版本", async () =
     await db.close();
   }
 });
+
+sessionTest(
+  "封禁用户递增 session_version 并使现有 JWT 立即失效（AR-05）",
+  async () => {
+    const user = await seedUser();
+    const token =
+      (await loginUser({ login: user.username, password: oldPassword })).token;
+    assertEquals(
+      (await app().request("/protected", { headers: headers(token) })).status,
+      200,
+    );
+    await banUser(user.id, "违规封禁测试", null, ROOT_USER_ID, "platform");
+    const [row] = await getDb().select().from(users).where(
+      eq(users.id, user.id),
+    );
+    assertEquals(row.session_version, 1);
+    assertEquals(
+      (await app().request("/protected", { headers: headers(token) })).status,
+      401,
+    );
+  },
+);

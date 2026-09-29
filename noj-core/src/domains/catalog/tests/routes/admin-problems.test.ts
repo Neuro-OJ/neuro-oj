@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
@@ -263,5 +263,49 @@ Deno.test({
       },
     );
     assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name: "admin problem review: 并发 to_p 无 23505 唯一键冲突（AR-03）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const adminToken = await createAdminUser(`admin-top-conc-${Date.now()}`);
+    const { id: ownerId } = await createTestUser(
+      `owner-top-conc-${Date.now()}`,
+    );
+    const p1 = await createUProblem({ ownerId, visibility: "public" });
+    const p2 = await createUProblem({ ownerId, visibility: "public" });
+    const app = createApp();
+
+    const [res1, res2] = await Promise.all([
+      jsonRequest(app, "/api/v1/admin/catalog/problems/review", {
+        method: "POST",
+        token: adminToken,
+        body: { problem_ids: [p1.id], action: "to_p" },
+      }),
+      jsonRequest(app, "/api/v1/admin/catalog/problems/review", {
+        method: "POST",
+        token: adminToken,
+        body: { problem_ids: [p2.id], action: "to_p" },
+      }),
+    ]);
+
+    assertEquals(res1.status, 200);
+    assertEquals(res2.status, 200);
+
+    const db = getDb();
+    const rows = await db.select({
+      id: problems.id,
+      type: problems.type,
+      number: problems.number,
+    }).from(problems).where(inArray(problems.id, [p1.id, p2.id]));
+
+    assertEquals(rows.length, 2);
+    assertEquals(rows[0].type, "P");
+    assertEquals(rows[1].type, "P");
+    // 两个 P 题号必须互不相同
+    assertEquals(rows[0].number !== rows[1].number, true);
   },
 });
