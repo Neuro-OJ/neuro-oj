@@ -32,6 +32,7 @@ import {
   filterUnendedContestIds,
   getContest,
   getContestProblems,
+  isProblemInUnendedPublicContest,
 } from "../../contest/index.ts";
 import type {
   ObjectiveSubmissionResponse,
@@ -313,7 +314,7 @@ export async function getObjectiveSubmission(
     ? await checkPermission(c, "submission:read_all")
     : viewerRole === "admin";
   if (row.user_id !== viewerId && !isAdmin) {
-    throw new ForbiddenError("无权查看他人提交详情");
+    throw new NotFoundError("提交记录不存在");
   }
 
   const response = toSubmissionResponse(row);
@@ -339,8 +340,12 @@ export async function getObjectiveSubmission(
   }
   // 练习模式：仅公开套卷或 owner/admin 可看到解析（F-01 解析门）
   const paper = await getPaperOrThrow(row.paper_id);
-  const canExplain = paper.visibility === "public" ||
-    paper.owner_id === viewerId || isAdmin;
+  // 审计 DL-01：若该套卷归属于尚未结束的公开赛，严禁回传解析与标准答案！
+  const inUnendedContest = await isProblemInUnendedPublicContest(row.paper_id);
+  const canExplain = !inUnendedContest && (
+    paper.visibility === "public" ||
+    paper.owner_id === viewerId || isAdmin
+  );
   if (!canExplain) {
     return {
       ...response,
