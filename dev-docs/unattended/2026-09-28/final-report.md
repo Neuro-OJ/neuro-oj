@@ -30,10 +30,10 @@
    + 选手 prompt 全量长期留存。同面 G-01（`max_*=0` 在 Lua 里等于**无限**）与 G-03（`base_url` 可指内网，
    而 gateway 是**唯一双网卡**服务 → SSRF 升级为横向移动，需 admin）同属开赛前应处理项 → `findings/09-*`。
 
-**已修 9 项**（全部带 before/after 或成对证据）：
+**已修 11 项**（全部带 before/after 或成对证据）：
 `评测机被卡` A1 注入内存峰值↓50%、A2 注入期 6 处阻塞调用加超时、A7 重投方向、D2 崩溃后 claim 回收、D3 优雅关闭窗口；
 `数据泄露` F-01 主页题解门控补齐赛前筹备期、F-03 自测 404 化、F-04a 计数与列表同口径、F-08 陈旧注释；
-`公平性` N-02 举报路径口径 running→unended；`测试体系` A5 e2e 脚本项目名隔离（+纳入门禁）、B3 静默跳过死检查。
+`公平性` N-02 举报路径口径 running→unended；`前端与代理` U-1 Nitro 代理路径穿越（匿名可达 core 任意路径）、U-2 认证拦截被 `?query` 绕过（JWT 回吐给 JS）；`测试体系` A5 e2e 脚本项目名隔离（+纳入门禁）、B3 静默跳过死检查。
 
 **未完成**：B 轴的 B6（Evaluator 仅可达 llm-gateway，需生产式双网卡拓扑）、面 1.2 的专项实测（B1/B2/B4 已取证）、
 第二阶段其余 5 个面（core 残余 / CI 供应链 / gateway / ui / 文档漂移）。
@@ -52,7 +52,7 @@
 | L0 五条红线 | ✅ **零违反**（逐条证据见 §2） |
 | 四轴断言矩阵 | ⚠️ **A 轴部分完成**（A1–A5 有结论，A3 经复核证伪）；**C 轴审计完成 + 修 3 项**；**D 轴审计完成（未修，含 1 Critical + 1 High 待裁决）**；**B 轴（容器逃逸）仍未开始** |
 | 每轴"审计结论 + 已修项 + 未完成项说明" | ✅ A / C / D 三轴满足；⛔ B 轴只有"未开始" |
-| 面完成数 | **5 / 11**：1.1 judge 可用性（审计+对抗复核+5 修复）、1.3 生产拓扑隔离（端口矩阵+真实容器实测）、1.4 core 泄露（矩阵+Lead 复核+3 修复）、1.5 core 公平性（信道矩阵+VULN-04/05 升级+1 修复）、7 测试体系健康度（6 条一手伤痕验证+5 条新发现+2 修复） |
+| 面完成数 | **6 / 11**：1.1 judge 可用性（审计+对抗复核+5 修复）、1.3 生产拓扑隔离（端口矩阵+真实容器实测）、1.4 core 泄露（矩阵+Lead 复核+3 修复）、1.5 core 公平性（信道矩阵+VULN-04/05 升级+1 修复）、7 测试体系健康度（6 条一手伤痕验证+5 条新发现+2 修复） |
 
 **根因（不是能力问题，是执行窗口问题）**：会话在 2026-09-28 22:23 之后被挂起，
 直到 2026-09-29 07:29 才恢复执行——**无人值守窗口内实际只运行了约 40 分钟**。
@@ -196,6 +196,19 @@ Owner 把截止延长到 **08:45** 后，剩余预算投给了**面 1.4（noj-co
 | Medium | G-06（伪造 XFF 使 IP 限流维度失效 + 污染多来源 IP 告警）、G-07（**一个 secret 双用途**：eval_token 主密钥 == `/internal/*` 管理凭据，而 eval_token 被注入 Evaluator 容器）、G-08（LLM fetch 未设 `redirect:"error"` + `text()` 无上限）、G-09（`stream:true` → 200 + null body + 仍计费）、G-10（eval_token 无 `jti`、可重放）、G-11（解密失败伪装成 `provider_not_found`） |
 | 受控面（已审无问题，含**独立复核既有修复**） | `/internal/*` 全部要求 service token 且与 eval_token 不可互换（密文改一字节即 401，fail-closed）；**无法跨提交/跨用户**（标识与额度全封在 AES-GCM 密文内）；模型白名单强制；**无任何"调用方指定 URL"字段**；Provider 明文 key 与**他人**用量不可读；日志脱敏完整；gateway 未发布到宿主；启动配置 fail-closed；指标无业务标签；**2026-09-21 的分页上界/OFFSET 修复经核实彻底**（有回归测试守护） |
 | 处置 | **未修任何一条**：G-01/G-02/G-04 改配额语义或请求契约、G-03 属"恢复被删安全控制 + 新增出站白名单"（设计级）→ 按 spec §7 交 Owner 裁决 |
+
+---
+
+## 0.7 追加（2026-09-29 09:0x）：面 10 noj-ui（前端与 Nitro 代理，第二阶段）
+
+| 项 | 结果 |
+|---|---|
+| 交付物 | `findings/10-ui.md`：8 条 finding + **"SSR 阶段实际下发但不可见"清单**（数据泄露判据）+ 受控面清单 + 优先修 3 条 |
+| **已修 U-1（High，匿名可利用）** | Nitro 代理白名单用 `event.path.startsWith('/api/v1/')` 判定，而 `event.path` 是**未归一化**的路径 → `/api/v1/%2e%2e%2f%2e%2e%2fmetrics` 等可穿透到 **noj-core 任意路径**（`/metrics`/`/health`/调试路由），并携带访客 Cookie。**修法**：`new URL()` 归一化后校验 origin + pathname 前缀，**并加编码残留纵深防御**（`%2e`/`%2f`/`%5c` → 404）。**修复初版不够**：实测确认 `new URL()` **不会**归一化 `%2e%2e%2f`（视作字面量），故第二道防线是必需的 —— 这是我本轮**第 5 处自我纠错**（由我自己写的测试发现） |
+| **已修 U-2（High）** | `shouldInterceptAuth` 用 `event.path.endsWith('/api/v1/auth/login')`，而 `event.path` 含 query → `POST /api/v1/auth/login?x=1` 绕过拦截：**JWT 原样回给 JS**（破坏"JWT 只进 HttpOnly Cookie"不变量）且 Cookie 不更新。**修法**：改判 pathname |
+| 交付证据 | commit `c7804fba8`（含 5 条回归用例：字面/编码两类机制级 + 2 条源码级 + 1 条合法路径不误伤）；`deno task lint` 通过、`deno task test` **191 passed / 0 failed** |
+| 未修（附定级条件） | **U-3**（客户端 DOMPurify 未禁 `style`/`<style>` 而 SSR 侧禁了 → 存储型 **CSS 注入**，全站查看者受害；**需浏览器实测后定级**）、U-4（`<img src = "…">` 带空格形态绕过外链图开关 → 追踪像素）、U-5（被隐藏/审核中帖子正文仍进 SSR payload，**需 core 侧确认**是否本就过滤）、U-6（CSP 含 `unsafe-inline`/`unsafe-eval`，严格策略仅 Report-Only）、U-7/U-8（UI 守卫与 Cookie Secure 依赖部署变量） |
+| 受控面（已审无问题） | 仅 1 处 `v-html`（`MarkdownRenderer`）且无其他 HTML sink；9-21 的两处历史 XSS 经 8 条载荷实跑**未发现同类漏网**；代理 XFF 不信任客户端、OAuth 302 禁跟随（有源码级测试）；`routeRules` 全 `no-store`（无跨用户缓存复用）；前端**不放宽**任何权限判定；`runtimeConfig.public` 仅构建信息；无 source map 入库 |
 
 ---
 
