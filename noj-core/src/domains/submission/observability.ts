@@ -31,7 +31,7 @@ async function readDatabaseQueueStats(): Promise<DatabaseQueueStats> {
       .select({
         judging: sql<
           number
-        >`count(*) filter (where ${submissions.status} = 'judging')`,
+        >`count(*) filter (where ${submissions.status} = 'judging')::int`,
         oldest_judging_at: sql<
           string | null
         >`min(${submissions.judge_started_at}) filter (where ${submissions.status} = 'judging')`,

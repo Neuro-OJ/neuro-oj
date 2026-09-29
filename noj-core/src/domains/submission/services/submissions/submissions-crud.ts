@@ -201,7 +201,7 @@ export async function listSubmissions(
 
   // COUNT 总数（需 LEFT JOIN problems 以支持 problemSearch，users 以支持 userSearch）
   let countQuery = db
-    .select({ total: sql<number>`count(*)` })
+    .select({ total: sql<number>`count(*)::int` })
     .from(submissions)
     .leftJoin(problems, eq(submissions.problem_id, problems.id));
   // userSearch 需要关联 users 表

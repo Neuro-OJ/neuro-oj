@@ -581,18 +581,18 @@ export async function getQueueOverview(
     : eq(selfTests.status, "judging");
 
   const [judgingCountRow] = await db
-    .select({ count: sql<number>`count(*)` })
+    .select({ count: sql<number>`count(*)::int` })
     .from(submissions)
     .where(judgingWhereStats);
 
   const [selfJudgingCountRow] = await db
-    .select({ count: sql<number>`count(*)` })
+    .select({ count: sql<number>`count(*)::int` })
     .from(selfTests)
     .where(and(selfJudgingWhereStats, ...selfTestScope(isAdmin, viewerUserId)));
 
   const today = new Date().toISOString().slice(0, 10);
   const [completedTodayRow] = await db
-    .select({ count: sql<number>`count(*)` })
+    .select({ count: sql<number>`count(*)::int` })
     .from(submissions)
     .where(
       isAdmin

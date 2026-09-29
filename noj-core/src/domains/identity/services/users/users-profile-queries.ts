@@ -93,13 +93,13 @@ export function queryProfileStats(
   // 特权查看者（管理员 / 主页本人 / 题目 owner）不受过滤——与列表行为一致。
   const secrecy = contestSecrecyCondition(viewer, userId);
   return db.select({
-    total_submissions: sql<number>`count(*)`,
+    total_submissions: sql<number>`count(*)::int`,
     accepted: sql<
       number
-    >`count(*) filter (where ${evaluationResults.status} = 'finished' and ${evaluationResults.score} > 0)`,
+    >`count(*) filter (where ${evaluationResults.status} = 'finished' and ${evaluationResults.score} > 0)::int`,
     solved_count: sql<
       number
-    >`count(distinct ${submissions.problem_id}) filter (where ${evaluationResults.status} = 'finished' and ${evaluationResults.score} > 0)`,
+    >`count(distinct ${submissions.problem_id}) filter (where ${evaluationResults.status} = 'finished' and ${evaluationResults.score} > 0)::int`,
   })
     .from(submissions)
     // 关联 problems 以复用 `contestSecrecyCondition`（其题目 owner 分支需要该列）；
@@ -225,16 +225,16 @@ export function queryProfileCommunityStats(
   return db.select({
     following_count: sql<
       number
-    >`(select count(*) from community_follows where follower_id = ${userId})`,
+    >`(select count(*) from community_follows where follower_id = ${userId})::int`,
     follower_count: sql<
       number
-    >`(select count(*) from community_follows where followee_id = ${userId})`,
+    >`(select count(*) from community_follows where followee_id = ${userId})::int`,
     solution_count: sql<
       number
-    >`(select count(*) from community_posts where author_id = ${userId} and type = 'solution' and status = 'published' and ${solutionGate})`,
+    >`(select count(*) from community_posts where author_id = ${userId} and type = 'solution' and status = 'published' and ${solutionGate})::int`,
     moment_count: sql<
       number
-    >`(select count(*) from community_posts where author_id = ${userId} and type = 'moment' and status = 'published')`,
+    >`(select count(*) from community_posts where author_id = ${userId} and type = 'moment' and status = 'published')::int`,
   }).from(users).where(eq(users.id, userId)).limit(1).then((rows) => rows[0]);
 }
 

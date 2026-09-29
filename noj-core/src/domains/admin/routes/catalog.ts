@@ -31,6 +31,7 @@ import { parsePagination } from "../../../shared/http/pagination.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { problems } from "../../../shared/db/schema.ts";
+import { publishSearchIndexEvent } from "../../../shared/search-events.ts";
 import { listAllProblems } from "../../catalog/services/problems/problems.ts";
 import { resolveProblem } from "../../catalog/services/problem-resolve.ts";
 import { inspectEvaluationPackage } from "../../catalog/services/bundle-parser.ts";
@@ -379,6 +380,12 @@ router.post(
           visibility: "public",
           updated_at: updatedAt,
         }).where(inArray(problems.id, ids)).returning({ id: problems.id });
+
+        // AR-03: 补齐公开题目的搜索索引事件
+        for (const item of updated) {
+          await publishSearchIndexEvent("problem", item.id, "upsert");
+        }
+
         return c.json({
           data: {
             action,
@@ -389,30 +396,36 @@ router.post(
 
       if (action === "to_p") {
         const db = getDb();
-        const rows = await db.select({
-          id: problems.id,
-          title: problems.title,
-          type: problems.type,
-          number: problems.number,
-          owner_id: problems.owner_id,
-        }).from(problems).where(inArray(problems.id, ids));
-
-        if (rows.length !== ids.length) {
-          throw new NotFoundError("部分题目不存在");
-        }
-        const nonU = rows.find((row) => row.type !== "U");
-        if (nonU) {
-          throw new BadRequestError(`仅支持将 U 型题转为 P 型：${nonU.id}`);
-        }
-
-        const [maxRow] = await db.select({
-          max: sql<number>`COALESCE(MAX(${problems.number}), 0)`,
-        }).from(problems).where(eq(problems.type, "P"));
-        let nextNumber = Number(maxRow?.max ?? 0) + 1;
         const updatedAt = new Date().toISOString();
+        const updatedIds: string[] = [];
 
-        let updated = 0;
         await db.transaction(async (tx) => {
+          // AR-03: 事务级排他咨询锁，防止并发分配相同 P 题号引发 23505 唯一键冲突
+          await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(hashtext('to_p_problem_number'))`,
+          );
+
+          const rows = await tx.select({
+            id: problems.id,
+            title: problems.title,
+            type: problems.type,
+            number: problems.number,
+            owner_id: problems.owner_id,
+          }).from(problems).where(inArray(problems.id, ids)).for("update");
+
+          if (rows.length !== ids.length) {
+            throw new NotFoundError("部分题目不存在");
+          }
+          const nonU = rows.find((row) => row.type !== "U");
+          if (nonU) {
+            throw new BadRequestError(`仅支持将 U 型题转为 P 型：${nonU.id}`);
+          }
+
+          const [maxRow] = await tx.select({
+            max: sql<number>`COALESCE(MAX(${problems.number}), 0)::int`,
+          }).from(problems).where(eq(problems.type, "P"));
+          let nextNumber = Number(maxRow?.max ?? 0) + 1;
+
           for (const row of rows) {
             const result = await tx.update(problems).set({
               type: "P",
@@ -422,12 +435,17 @@ router.post(
             }).where(eq(problems.id, row.id)).returning({
               id: problems.id,
             });
-            if (result.length > 0) updated++;
+            if (result.length > 0) updatedIds.push(result[0].id);
           }
         });
 
+        // 事务成功提交后发布搜索索引事件（AR-03）
+        for (const id of updatedIds) {
+          await publishSearchIndexEvent("problem", id, "upsert");
+        }
+
         return c.json({
-          data: { action, updated },
+          data: { action, updated: updatedIds.length },
         });
       }
 

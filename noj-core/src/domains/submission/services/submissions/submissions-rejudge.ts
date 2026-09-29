@@ -225,7 +225,7 @@ export async function rejudgeProblemSubmissions(
 
   const txResult = await db.transaction<BatchTxResult>(async (tx) => {
     const activeCounts = await tx
-      .select({ status: submissions.status, count: sql<number>`count(*)` })
+      .select({ status: submissions.status, count: sql<number>`count(*)::int` })
       .from(submissions)
       .where(
         and(
