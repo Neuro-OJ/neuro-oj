@@ -207,7 +207,4 @@ export function scoreFromDb(value: number): number {
 export const LANGUAGE_EXT_MAP: Record<string, string> = {
   python3: "main.py",
   python: "main.py",
-  cpp: "main.cpp",
-  c: "main.c",
-  javascript: "main.js",
 };

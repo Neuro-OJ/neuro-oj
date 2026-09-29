@@ -164,6 +164,12 @@ export async function saveEvaluationResult(
       })
       .where(eq(submissions.id, safeResult.submission_id));
 
+    if (existingResult) {
+      await tx
+        .delete(evaluationResults)
+        .where(eq(evaluationResults.submission_id, safeResult.submission_id));
+    }
+
     await tx
       .insert(evaluationResults)
       .values({

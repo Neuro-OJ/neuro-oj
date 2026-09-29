@@ -179,14 +179,13 @@ function parseArtifactMultipart(
  */
 router.post("/", authMiddleware, async (c) => {
   const userId = c.var.userId as string;
-
-  // NOJ-069：提交创建 IP + 用户双维度限流。
-  await enforceSubmissionRateLimit(c, userId);
   const isAdmin = await checkPermission(c, "submission:read_all");
 
   const contentType = c.req.header("content-type") ?? "";
   if (contentType.startsWith("multipart/form-data")) {
     const parsed = await parseArtifactMultipart(c);
+    // 参数解析合法后执行提交限流
+    await enforceSubmissionRateLimit(c, userId);
     const result = await createArtifactSubmission(
       userId,
       parsed,
@@ -217,6 +216,9 @@ router.post("/", authMiddleware, async (c) => {
       `代码长度超过限制（${MAX_CODE_LENGTH} 字符），请精简后重新提交`,
     );
   }
+
+  // 校验通过后执行提交限流，避免格式错误消耗配额
+  await enforceSubmissionRateLimit(c, userId);
 
   const result = await createSubmission(
     userId,

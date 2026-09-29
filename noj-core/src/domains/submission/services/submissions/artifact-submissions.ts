@@ -133,12 +133,11 @@ export async function createArtifactSubmission(
     );
   }
 
-  // 行级锁 + 读取最新题目配置
+  // 读取最新题目配置（快照读，避免无事务包裹导致单语句 FOR UPDATE 锁即刻释放的伪锁缺陷）
   const lockedRows = await db
     .select()
     .from(problems)
     .where(eq(problems.id, input.problem_id))
-    .for("update")
     .limit(1);
   if (lockedRows.length === 0) {
     throw new NotFoundError("题目不存在");

@@ -143,6 +143,7 @@ fn main() -> Result<()> {
             "实例标识已解析（确定性，重启后不变）"
         );
         crate::sandbox::cleanup::cleanup_orphan_containers(&docker, &instance_id).await;
+        crate::sandbox::cleanup::cleanup_orphan_support_packages(&config.work_dir).await;
 
         // ── 初始化缓存与下载配置 ────────────────────────
         let cache_dir = config.support_cache_dir.clone();

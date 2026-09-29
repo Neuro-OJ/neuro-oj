@@ -81,7 +81,7 @@ fn test_build_judge_result_missing_fields() {
 
 #[test]
 fn test_finalize_outcome_mapping() {
-    // 总超时优先：无论是否发过 CallTimeout 都归 SystemError
+    // 启动等待超时（Startup）归因于平台侧 SystemError
     assert_eq!(
         finalize_outcome(Some(TimeoutKind::Startup), false),
         JudgeStatus::SystemError
@@ -90,13 +90,14 @@ fn test_finalize_outcome_mapping() {
         finalize_outcome(Some(TimeoutKind::Startup), true),
         JudgeStatus::SystemError
     );
+    // 运行总超时（Total）归因于用户代码慢 TimeLimitExceeded（决策 5 / AR-07）
     assert_eq!(
         finalize_outcome(Some(TimeoutKind::Total), false),
-        JudgeStatus::SystemError
+        JudgeStatus::TimeLimitExceeded
     );
     assert_eq!(
         finalize_outcome(Some(TimeoutKind::Total), true),
-        JudgeStatus::SystemError
+        JudgeStatus::TimeLimitExceeded
     );
     // 无总超时 + 发过 CallTimeout → TLE（用户代码慢是根因）
     assert_eq!(finalize_outcome(None, true), JudgeStatus::TimeLimitExceeded);

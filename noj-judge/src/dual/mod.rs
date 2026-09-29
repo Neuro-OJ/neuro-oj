@@ -444,13 +444,16 @@ enum TimeoutKind {
 /// 评测收尾判定：把「评测如何结束」映射为最终状态。
 ///
 /// 仅在 evaluator 未正常输出 ---RESULT--- 时调用（有 RESULT 走 build_judge_result）。
-/// 规则（顺序即优先级）：
-/// 1. 总超时（Startup/Total）→ SystemError：评测流程未正常完成，做题人不可通过改代码解决；
-/// 2. 曾向 evaluator 发送过 CallTimeout 错误帧 → TimeLimitExceeded：用户代码慢是根因；
+/// 规则（顺序即优先级，决策 5 / AR-07）：
+/// 1. 启动等待超时（Startup）→ SystemError：容器拉取/注入/运行时环境异常，平台侧故障；
+/// 2. 总执行超时（Total）或曾向 evaluator 发送过 CallTimeout 错误帧 → TimeLimitExceeded：做题人代码慢/超时；
 /// 3. 否则 → SystemError：evaluator 自身异常。
 fn finalize_outcome(timed_out: Option<TimeoutKind>, sent_call_timeout: bool) -> JudgeStatus {
-    if timed_out.is_some() {
-        return JudgeStatus::SystemError;
+    if let Some(kind) = timed_out {
+        match kind {
+            TimeoutKind::Startup => return JudgeStatus::SystemError,
+            TimeoutKind::Total => return JudgeStatus::TimeLimitExceeded,
+        }
     }
     if sent_call_timeout {
         return JudgeStatus::TimeLimitExceeded;
