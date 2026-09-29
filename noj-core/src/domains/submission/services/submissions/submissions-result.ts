@@ -108,19 +108,12 @@ export async function saveEvaluationResult(
       return null;
     }
 
-    // 重复结果幂等：同一 submission + rejudge_seq 已落库时跳过。
+    // 查询是否存在历史评测结果（重测时需替换）
     const [existingResult] = await tx
       .select({ id: evaluationResults.id })
       .from(evaluationResults)
       .where(eq(evaluationResults.submission_id, result.submission_id))
       .limit(1);
-    if (existingResult && incomingSeq === sub.rejudge_seq) {
-      logger.info("重复评测结果，跳过", {
-        submission_id: result.submission_id,
-        rejudge_seq: incomingSeq,
-      });
-      return null;
-    }
 
     // 状态机收紧：正常结果只允许 pending/judging → 终态。
     // error 提交重测时会先重置为 pending，因此也允许从 error 修复。

@@ -40,9 +40,10 @@ DOCKER_LOG="$TEST_ROOT/docker.log"
 : >"$DOCKER_LOG"
 
 run_deploy() {
-  # stdin 显式接 /dev/null：模拟非 TTY（闸门必须因此报错而非挂起）
+  # stdin 显式接 /dev/null 并指定不存在的 TTY 路径：模拟非 TTY（闸门必须因此报错而非挂起）
   NOJ_DEPLOY_DOCKER_BIN="$FAKE_BIN/docker" \
   NOJ_TEST_DOCKER_LOG="$DOCKER_LOG" \
+  NOJ_DEPLOY_TTY_PATH="/dev/nonexistent" \
     timeout 10 bash "$DEPLOY_DIR/deploy.sh" "$@" </dev/null
 }
 
@@ -61,6 +62,7 @@ pass "非 TTY：警告 + 退出码 2 + 零副作用 + 不挂起"
 # 同一行为对 restore-drill.sh 成立
 set +e
 out2="$(NOJ_DEPLOY_DOCKER_BIN="$FAKE_BIN/docker" NOJ_TEST_DOCKER_LOG="$DOCKER_LOG" \
+  NOJ_DEPLOY_TTY_PATH="/dev/nonexistent" \
   timeout 10 bash "$DEPLOY_DIR/restore-drill.sh" /nonexistent 2>&1 </dev/null)"
 status2=$?
 set -e
