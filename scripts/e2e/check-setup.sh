@@ -55,4 +55,13 @@ else
   echo "跳过 SDK 构建失败传播运行时检查：Docker daemon 未运行"
 fi
 
+# 项目名隔离（2026-09-28 缺陷回归）：缺少它时 `up`/`down -v` 会认领并重建 dev 栈
+for target in "$ROOT_DIR/scripts/e2e/setup.sh" "$ROOT_DIR/scripts/e2e/teardown.sh"; do
+  if ! grep -Fq 'COMPOSE_PROJECT_NAME' "$target"; then
+    echo "错误: $target 未隔离 compose 项目名（会认领并重建 dev 的 postgres/redis/minio）" >&2
+    exit 1
+  fi
+done
+echo "compose 项目名隔离检查通过"
+
 echo "E2E 启动脚本静态检查通过"
