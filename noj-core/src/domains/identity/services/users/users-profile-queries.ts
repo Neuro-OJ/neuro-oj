@@ -74,7 +74,13 @@ export function queryProfileUser(
 export function queryProfileStats(
   db: Db,
   userId: string,
+  viewer: ProfileViewerContext = {},
 ): Promise<ProfileStatsRow | undefined> {
+  // 计数必须与列表（{@link querySolvedProblems} / {@link queryRecentSubmissions}）
+  // **同口径**（面 1.4 审计 F-04a）：否则"solved_count=5 而列表只有 4 行"这一差额本身
+  // 就泄露"存在一道被未结束公开赛收编的题目且该用户已通过"，比直接显示该行更隐蔽。
+  // 特权查看者（管理员 / 主页本人 / 题目 owner）不受过滤——与列表行为一致。
+  const secrecy = contestSecrecyCondition(viewer, userId);
   return db.select({
     total_submissions: sql<number>`count(*)`,
     accepted: sql<
@@ -85,11 +91,18 @@ export function queryProfileStats(
     >`count(distinct ${submissions.problem_id}) filter (where ${evaluationResults.status} = 'finished' and ${evaluationResults.score} > 0)`,
   })
     .from(submissions)
+    // 关联 problems 以复用 `contestSecrecyCondition`（其题目 owner 分支需要该列）；
+    // problem_id 为 NOT NULL 外键，inner join 不会丢行。
+    .innerJoin(problems, eq(submissions.problem_id, problems.id))
     .leftJoin(
       evaluationResults,
       eq(evaluationResults.submission_id, submissions.id),
     )
-    .where(eq(submissions.user_id, userId))
+    .where(
+      secrecy
+        ? and(eq(submissions.user_id, userId), secrecy)
+        : eq(submissions.user_id, userId),
+    )
     .then((rows) => rows[0]);
 }
 
