@@ -72,6 +72,27 @@
 | 匿名可读面盘点 | `rg -c "optionalAuthMiddleware" domains/*/routes/*.ts` | 34 处，逐一抽查（见矩阵） |
 | 服务端强制项 | 提交上限 / rejudge / 迟到 / 赛前 / 封榜 | **全部服务端强制**（矩阵末 4 行 + `contest-ranking.ts:504-526`） |
 
+## 4.1 Lead 亲自读证：N-01 **确认成立**（机制已精确定位）
+
+复核方式：直接读三处代码，确认"写门控—落库—读门控"三者之间的**内部不一致**：
+
+| 步骤 | 代码 | 事实 |
+|---|---|---|
+| ① 写门控 | `community-post-crud.ts:167` | `if (!moderator && input.type !== "moment" && input.problem_id)` —— 门控**只在客户端自愿携带 `problem_id` 时**才被评估；讨论帖只强制 `board_id`，**省略 `problem_id` 即整段跳过**。紧邻的注释写着"讨论帖的 problem_id 不落库，但同样必须过门控"——**意图与实现不符** |
+| ② 落库 | `community-post-crud.ts:208` | `problem_id: input.type === "solution" ? input.problem_id! : null` —— 讨论帖的 `problem_id` **恒为 NULL** |
+| ③ 读门控 | `community-post-common.ts:100-106` | `NOT (type IN ('solution','discussion') AND problem_id IS NOT NULL AND unendedPublicContestForProblem(problem_id))` —— 对 `problem_id IS NULL` 的讨论帖，整个 `NOT(...)` **恒为真** → 列表/详情/收藏/Tab 计数/搜索**全部放行** |
+
+**结论**：`省略 problem_id → 写门控被跳过 → 落库为 NULL → 所有读门控结构上无法命中`。
+攻击者可稳定复现（`POST /api/v1/community/posts {"type":"discussion","title":"A 题","content":"<完整 AC 代码>","board_id":"<general>"}` → 201 且全场可见），
+`moment`（1000 字符/条、间隔默认 0）与评论（10000 字符、零门控）同理。
+**N-01 由"单方证据"升级为 Lead 已确认的 Critical。**
+
+> 顺带一条**修复层面的观察**（供 Owner 决策参考）：即使把讨论帖的 `problem_id` 落库（步骤②），
+> 攻击者仍可省略该字段——因此**仅靠"补落库"无法封堵**；要真正关闭必须做内容政策决策
+> （赛期限制广播类发帖 / 要求讨论帖必须关联题目 / 赛期内容加审核队列），这正属 Owner 明确
+> 排除在本轮之外的"反作弊系统设计"。另需注意：步骤①的 `input.problem_id` 存在性判断本身
+> 也是缺陷来源——门控的**适用性**不应由被审查对象（客户端载荷）来决定。
+
 ## 5. 结论与处置建议（本轮**未做任何修复**）
 
 **修复优先级（建议）**：**N-01**（Critical，两行改动即可封堵：diagnosis 讨论帖必须携带并落库 `problem_id`，或把写门控改为"正文所涉题目不可知即拒绝"）→ **N-03**（High，扩 `kind` 谓词）→ **N-02**（Medium，moderation 路径改用 SSOT）→ N-04/N-05/T-01（加固）。
