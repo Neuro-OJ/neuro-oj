@@ -190,9 +190,22 @@ fn machine_id() -> String {
     "unknown".to_string()
 }
 
-/// `<WORK_DIR>/.instance_id` 路径。
-fn instance_id_file_path(work_dir: &str) -> std::path::PathBuf {
-    Path::new(work_dir).join(INSTANCE_ID_FILE)
+/// `<WORK_DIR>/.instance_id_{hostname}` 路径。
+/// JA-01：带上 hostname 后缀以避免多 Worker 挂载同一共享存储 Volume 时相互覆盖或复用同一 ID。
+pub fn instance_id_file_path(work_dir: &str) -> std::path::PathBuf {
+    let host = hostname();
+    if host.is_empty() || host == "unknown" {
+        Path::new(work_dir).join(INSTANCE_ID_FILE)
+    } else {
+        // 优先使用带 hostname 的隔离文件；若存量仅存在无后缀的 INSTANCE_ID_FILE 则向前兼容
+        let per_host = Path::new(work_dir).join(format!("{}_{}", INSTANCE_ID_FILE, host));
+        let legacy = Path::new(work_dir).join(INSTANCE_ID_FILE);
+        if !per_host.exists() && legacy.exists() {
+            legacy
+        } else {
+            per_host
+        }
+    }
 }
 
 /// best-effort 落盘实例 ID（失败只告警：派生路径本身已确定性，不影响正确性）。

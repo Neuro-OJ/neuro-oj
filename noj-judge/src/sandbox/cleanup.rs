@@ -130,6 +130,39 @@ pub async fn cleanup_orphan_containers(docker: &Docker, instance_id: &str) -> us
     cleaned
 }
 
+/// JA-03：清理 WorkDir 下崩溃遗留的孤儿支持包/artifact 临时文件（`support-*.zip`）。
+/// 避免机器崩溃、OOM 或任务被强制 kill 时，临时 zip 残留撑爆磁盘。
+pub async fn cleanup_orphan_support_packages(work_dir: &str) -> usize {
+    let dir = std::path::Path::new(work_dir);
+    if !dir.exists() {
+        return 0;
+    }
+    let mut entries = match tokio::fs::read_dir(dir).await {
+        Ok(e) => e,
+        Err(e) => {
+            warn!(error = %e, "读取 work_dir 清理孤儿支持包失败");
+            return 0;
+        }
+    };
+    let mut cleaned = 0usize;
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        if let Some(file_name) = path.file_name().and_then(|f| f.to_str()) {
+            if file_name.starts_with("support-") && file_name.ends_with(".zip") {
+                if let Err(e) = tokio::fs::remove_file(&path).await {
+                    warn!(path = %path.display(), error = %e, "删除孤儿临时 zip 失败");
+                } else {
+                    cleaned += 1;
+                }
+            }
+        }
+    }
+    if cleaned > 0 {
+        info!(count = cleaned, "清理孤儿 support-*.zip 临时文件完成");
+    }
+    cleaned
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,5 +198,21 @@ mod tests {
             "精准清扫不得退化为平台级兜底匹配: {:?}",
             patterns
         );
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_orphan_support_packages() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path();
+        // 创建 support-*.zip 文件与非 support 文件
+        std::fs::write(path.join("support-1111.zip"), "mock-zip-1").unwrap();
+        std::fs::write(path.join("support-2222.zip"), "mock-zip-2").unwrap();
+        std::fs::write(path.join("other-file.txt"), "keep-me").unwrap();
+
+        let cleaned = cleanup_orphan_support_packages(&path.to_string_lossy()).await;
+        assert_eq!(cleaned, 2);
+        assert!(!path.join("support-1111.zip").exists());
+        assert!(!path.join("support-2222.zip").exists());
+        assert!(path.join("other-file.txt").exists());
     }
 }

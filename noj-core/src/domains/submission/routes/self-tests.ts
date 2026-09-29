@@ -27,10 +27,7 @@ router.post("/problems/:id/self-test", authMiddleware, async (c) => {
   const userId = c.var.userId as string;
   const problemId = c.req.param("id") as string;
 
-  // 自测专用限流（IP + 用户双维度）
-  await enforceSelfTestRateLimit(c, userId);
-
-  // 先做 body 解析与代码大小校验，再查询题目，避免超大请求先触发 DB 读
+  // 先做 body 解析与代码大小校验，再查询题目与限流，避免超大/格式错误请求消耗配额与 DB
   const body = await parseJsonBody<Record<string, unknown>>(c);
 
   if (!body.language || !body.code) {
@@ -48,6 +45,9 @@ router.post("/problems/:id/self-test", authMiddleware, async (c) => {
       `代码长度超过限制（${MAX_CODE_LENGTH} 字符），请精简后重新提交`,
     );
   }
+
+  // 自测专用限流（IP + 用户双维度）在校验通过后执行
+  await enforceSelfTestRateLimit(c, userId);
 
   // 题目双索引解析（不存在时抛 404；返回真实 UUID 供 service 使用）
   const problem = await resolveProblem(problemId);

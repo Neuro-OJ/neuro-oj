@@ -332,7 +332,6 @@ contests.get("/:id/final-ranking", optionalAuthMiddleware, async (c) => {
 contests.post("/:id/submit", authMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const userId = c.var.userId as string;
-  await enforceContestSubmissionRateLimit(c, userId);
   const contest = await getContest(contestId, userId);
   if (
     computeContestStatus(contest.start_time, contest.end_time) !== "running"
@@ -355,6 +354,7 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
     ) {
       throw new BadRequestError("题目不属于该竞赛");
     }
+    await enforceContestSubmissionRateLimit(c, userId);
     const data = await createArtifactSubmission(
       userId,
       { ...parsed, contest_id: contestId },
@@ -381,6 +381,8 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
       `代码长度超过限制（${MAX_CODE_LENGTH} 字符），请精简后重新提交`,
     );
   }
+
+  await enforceContestSubmissionRateLimit(c, userId);
   const contestProblems = await getContestProblems(contestId, userId);
   if (!contestProblems.some((item) => item.problem_id === body.problem_id)) {
     throw new BadRequestError("题目不属于该竞赛");
