@@ -126,7 +126,7 @@ Deno.test({
       "无竞赛时题解应可见",
     );
     assertEquals(
-      (await queryProfileCommunityStats(db, author))?.solution_count,
+      Number((await queryProfileCommunityStats(db, author))?.solution_count),
       1,
       "无竞赛时计数应为 1",
     );
@@ -147,7 +147,7 @@ Deno.test({
       "进行中公开赛必须隐藏题解标题",
     );
     assertEquals(
-      (await queryProfileCommunityStats(db, author))?.solution_count,
+      Number((await queryProfileCommunityStats(db, author))?.solution_count),
       0,
       "计数必须与列表同口径（否则数量本身即侧信道）",
     );
@@ -188,7 +188,7 @@ Deno.test({
       "赛前筹备期不得泄露题解标题（F-01）",
     );
     assertEquals(
-      (await queryProfileCommunityStats(db, author))?.solution_count,
+      Number((await queryProfileCommunityStats(db, author))?.solution_count),
       0,
       "赛前筹备期计数同样必须隐藏（F-01）",
     );
