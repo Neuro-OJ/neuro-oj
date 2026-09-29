@@ -356,45 +356,50 @@ async function confirmDeleteUser(user: User) {
     </AdminTable>
   </div>
 
-  <!-- 角色管理弹窗（RBAC role_ids） -->
-  <UModal v-model:open="showRoleModal" title="修改用户角色" :unmount-on-hide="true">
-    <template #body>
-      <p class="mb-3">为用户 <strong>{{ targetUser?.username }}</strong> 选择角色：</p>
-      <div class="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
+  <!-- 角色管理抽屉 (RBAC role_ids) -->
+  <AdminEditPanel
+    :open="showRoleModal"
+    :title="`修改用户角色 - ${targetUser?.username ?? ''}`"
+    :loading="switchingRole"
+    save-text="保存角色配置"
+    @close="showRoleModal = false"
+    @save="handleRoleSwitch"
+  >
+    <p class="text-xs text-text-secondary">为用户选择分配的 RBAC 角色：</p>
+    <div class="flex flex-col gap-2 max-h-[380px] overflow-y-auto">
       <label
         v-for="role in allRoles"
         :key="role.id"
-        class="flex items-center gap-2 p-2.5 border border-border rounded-lg cursor-pointer hover:bg-primary-bg transition-colors"
-        :class="{ 'border-signal bg-primary-bg': selectedRoleIds.includes(role.id) }"
+        class="flex items-center gap-2.5 p-3 border border-border rounded-lg cursor-pointer hover:bg-primary-bg transition-colors"
+        :class="{ 'border-primary bg-primary-bg': selectedRoleIds.includes(role.id) }"
       >
         <input
           type="checkbox"
           :checked="selectedRoleIds.includes(role.id)"
-          class="accent-primary size-4"
+          class="accent-primary size-4 rounded"
           @change="toggleRoleId(role.id)"
         />
         <div class="flex flex-col">
           <span class="text-sm font-semibold text-text">{{ role.name }}</span>
-          <span v-if="role.is_admin" class="text-xs text-info-text">管理员角色（隐式全权限）</span>
-          <span v-else-if="role.is_default" class="text-xs text-text-secondary">默认角色</span>
-          <span v-else class="text-xs text-text-secondary">自定义角色</span>
+          <span v-if="role.is_admin" class="text-xs text-primary font-medium">管理员角色（隐式全权限）</span>
+          <span v-else-if="role.is_default" class="text-xs text-text-muted">默认普通角色</span>
+          <span v-else class="text-xs text-text-muted">自定义角色</span>
         </div>
       </label>
-      </div>
-      <p v-if="switchError" class="mt-2 text-error-text text-13px">{{ switchError }}</p>
-    </template>
-  
-    <template #footer>
-      <UButton color="neutral" variant="ghost" :disabled="switchingRole" @click="showRoleModal = false">取消</UButton>
-      <UButton color="primary" :loading="switchingRole" @click="handleRoleSwitch">保存</UButton>
-    </template>
-  </UModal>
+    </div>
+    <p v-if="switchError" class="text-error-text text-xs">{{ switchError }}</p>
+  </AdminEditPanel>
 
-  <!-- 封禁用户弹窗（issue #102） -->
-  <UModal v-model:open="showBanModal" title="封禁用户" :unmount-on-hide="true">
-    <template #body>
-      <p class="mb-3">将封禁 <strong>{{ banTarget?.username }}</strong>。</p>
-      <div class="flex flex-col gap-3">
+  <!-- 封禁用户抽屉（issue #102） -->
+  <AdminEditPanel
+    :open="showBanModal"
+    :title="`封禁用户：${banTarget?.username ?? ''}`"
+    width-class="sm:max-w-md"
+    :loading="banning"
+    @update:open="(val: boolean) => showBanModal = val"
+    @close="showBanModal = false"
+  >
+    <div class="flex flex-col gap-3">
       <div>
         <label class="block text-sm font-semibold text-text mb-1">封禁类型</label>
         <div class="flex gap-4">
@@ -426,32 +431,35 @@ async function confirmDeleteUser(user: User) {
         />
         <p class="mt-1 text-[12px] text-text-secondary">留空表示永久封禁</p>
       </div>
-        <p v-if="banError" class="text-13px text-error-text">{{ banError }}</p>
-      </div>
-    </template>
-  
-    <template #footer>
-      <UButton color="neutral" variant="ghost" :disabled="banning" @click="showBanModal = false">取消</UButton>
-      <UButton color="error" :loading="banning" @click="handleBan">确认封禁</UButton>
-    </template>
-  </UModal>
+      <p v-if="banError" class="text-13px text-error-text">{{ banError }}</p>
+    </div>
 
-  <!-- 封禁历史弹窗（user-ban-table） -->
-  <UModal v-model:open="showHistoryModal" title="封禁历史" :unmount-on-hide="true">
-    <template #body>
-      <p v-if="historyTarget" class="mb-3">
-        <strong>{{ historyTarget.username }}</strong> 的封禁记录
-      </p>
-      <div v-if="historyLoading" class="text-center py-4 text-sm text-text-secondary">
-        加载中...
+    <template #footer>
+      <div class="flex items-center justify-between w-full">
+        <UButton color="neutral" variant="ghost" size="sm" :disabled="banning" @click="showBanModal = false">取消</UButton>
+        <UButton color="error" size="sm" :loading="banning" @click="handleBan">确认封禁</UButton>
       </div>
-      <div v-else-if="historyError" class="text-error-text text-sm">
-        {{ historyError }}
-      </div>
-      <div v-else-if="historyRecords.length === 0" class="text-center py-4 text-sm text-text-secondary">
-        暂无封禁记录
-      </div>
-      <div v-else class="space-y-3 max-h-[400px] overflow-y-auto">
+    </template>
+  </AdminEditPanel>
+
+  <!-- 封禁历史抽屉（user-ban-table） -->
+  <AdminDetailDrawer
+    :open="showHistoryModal"
+    :title="`${historyTarget?.username ?? ''} 的封禁记录`"
+    width-class="sm:max-w-lg"
+    @update:open="(val: boolean) => showHistoryModal = val"
+    @close="showHistoryModal = false"
+  >
+    <div v-if="historyLoading" class="text-center py-4 text-sm text-text-secondary">
+      加载中...
+    </div>
+    <div v-else-if="historyError" class="text-error-text text-sm">
+      {{ historyError }}
+    </div>
+    <div v-else-if="historyRecords.length === 0" class="text-center py-4 text-sm text-text-secondary">
+      暂无封禁记录
+    </div>
+    <div v-else class="space-y-3">
       <div
         v-for="rec in historyRecords"
         :key="rec.id"
@@ -480,12 +488,7 @@ async function confirmDeleteUser(user: User) {
             解封于 {{ formatDate(rec.unbanned_at) }}，由 {{ rec.unbanned_by?.username || '系统' }}执行
           </div>
         </div>
-        </div>
       </div>
-    </template>
-  
-    <template #footer>
-      <UButton color="neutral" variant="ghost" :disabled="historyLoading" @click="showHistoryModal = false">取消</UButton>
-    </template>
-  </UModal>
+    </div>
+  </AdminDetailDrawer>
 </template>

@@ -177,45 +177,45 @@ const columns: AdminColumn[] = [
       </template>
     </AdminTable>
 
-    <!-- 新增黑名单弹窗 -->
-    <UModal v-model:open="showForm" title="新增 IP 黑名单" :unmount-on-hide="true">
-      <template #body>
-        <div class="flex flex-col gap-3">
+    <!-- 新增黑名单抽屉 (Slideover) -->
+    <AdminEditPanel
+      :open="showForm"
+      title="新增 IP 封禁规则"
+      :loading="saving"
+      save-text="确认添加封禁"
+      @close="showForm = false"
+      @save="handleSave"
+    >
+      <div class="flex flex-col gap-3">
         <div>
-          <label class="block text-sm font-semibold text-text mb-1">
-            IP / CIDR <span class="text-error-text">*</span>
+          <label class="block text-xs font-semibold text-text mb-1">
+            IP / CIDR 地址段 <span class="text-error-text">*</span>
           </label>
           <input
             v-model="form.ip_or_cidr"
-            placeholder="1.2.3.4 或 10.0.0.0/8"
-            class="w-full px-3 py-2 text-sm font-mono border border-border rounded outline-none focus:input-base-focus"
+            placeholder="例如: 1.2.3.4 或 10.0.0.0/8"
+            class="w-full px-3 py-2 text-sm font-mono border border-border rounded outline-none focus:border-primary transition-colors"
           />
         </div>
         <div>
-          <label class="block text-sm font-semibold text-text mb-1">原因</label>
+          <label class="block text-xs font-semibold text-text mb-1">封禁原因</label>
           <input
             v-model="form.reason"
-            placeholder="可选，例如：恶意刷接口"
-            class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:input-base-focus"
+            placeholder="可选，例如：频繁恶意刷评测"
+            class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary transition-colors"
           />
         </div>
         <div>
-          <label class="block text-sm font-semibold text-text mb-1">过期时间</label>
+          <label class="block text-xs font-semibold text-text mb-1">过期解封时间</label>
           <input
             v-model="form.expires_at"
             type="datetime-local"
-            class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:input-base-focus"
+            class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary transition-colors"
           />
-          <p class="mt-1 text-[12px] text-text-secondary">留空表示永久封禁</p>
+          <p class="mt-1 text-[11px] text-text-muted">留空表示永久封禁，直到管理员手动解除</p>
         </div>
-        <p v-if="formError" class="text-13px text-error-text">{{ formError }}</p>
-        </div>
-      </template>
-    
-    <template #footer>
-      <UButton color="neutral" variant="ghost" :disabled="saving" @click="showForm = false">取消</UButton>
-      <UButton color="primary" :loading="saving" @click="handleSave">确认添加</UButton>
-    </template>
-  </UModal>
+        <p v-if="formError" class="text-xs text-error-text">{{ formError }}</p>
+      </div>
+    </AdminEditPanel>
   </div>
 </template>

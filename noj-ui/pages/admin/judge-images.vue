@@ -208,39 +208,39 @@ async function handleDelete() {
     </AdminTable>
   </div>
 
-  <!-- 创建/编辑弹窗 -->
-  <UModal v-model:open="showForm" :title="editingItem ? '编辑评测镜像' : '新增评测镜像'" :unmount-on-hide="true">
-    <template #body>
-      <div class="flex flex-col gap-3">
+  <!-- 创建/编辑抽屉 (Slideover) -->
+  <AdminEditPanel
+    :open="showForm"
+    :title="editingItem ? '编辑评测镜像' : '新增评测镜像'"
+    :loading="saving"
+    :save-text="editingItem ? '保存镜像' : '立即新增'"
+    @close="showForm = false"
+    @save="handleSave"
+  >
+    <div class="flex flex-col gap-3">
       <div class="flex flex-col gap-1">
-        <label class="text-13px font-semibold text-text">镜像名 <span class="text-error-text">*</span></label>
-        <input v-model="formImage" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:input-base-focus" placeholder="如：noj-judge-python" :disabled="!!editingItem" />
+        <label class="text-xs font-semibold text-text">镜像名 <span class="text-error-text">*</span></label>
+        <input v-model="formImage" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary font-mono" placeholder="如：noj-judge-python" :disabled="!!editingItem" />
       </div>
       <div class="flex flex-col gap-1">
-        <label class="text-13px font-semibold text-text">匹配模式</label>
+        <label class="text-xs font-semibold text-text">匹配模式</label>
         <USelect v-model="formMode" :items="[{ label: '精确版本：仅匹配指定镜像名（含标签）', value: 'exact' }, { label: '所有版本：匹配镜像名所有标签', value: 'all_versions' }]" class="min-w-[260px]" @change="onModeChange" />
       </div>
 
       <!-- 全版本安全警告 -->
-      <div v-if="showAllVersionsWarning" class="px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-        <p class="font-semibold mb-1 flex items-center gap-1.5"><UIcon name="i-lucide-triangle-alert" class="size-4" />安全风险</p>
-        <p>选择"所有版本"将允许该镜像的所有版本标签（如 <code>:latest</code>、<code>:dev</code> 等）。攻击者可能利用此宽松规则使用非预期镜像版本。</p>
+      <div v-if="showAllVersionsWarning" class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+        <p class="font-semibold mb-1 flex items-center gap-1.5"><UIcon name="i-lucide-triangle-alert" class="size-3.5 text-amber-600" />安全风险提示</p>
+        <p>选择"所有版本"将允许该镜像的所有版本标签（如 <code>:latest</code>、<code>:dev</code> 等）。</p>
         <p class="mt-1">请仅在完全信任该镜像所有版本的情况下使用此选项。</p>
       </div>
 
       <div class="flex flex-col gap-1">
-        <label class="text-13px font-semibold text-text">介绍</label>
-        <input v-model="formDescription" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:input-base-focus" placeholder="在题目编辑器中展示的说明文字" />
+        <label class="text-xs font-semibold text-text">介绍说明</label>
+        <input v-model="formDescription" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="在题目编辑器中展示的说明文字" />
       </div>
-      <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
-      </div>
-    </template>
-  
-    <template #footer>
-      <UButton color="neutral" variant="ghost" :disabled="saving" @click="showForm = false">取消</UButton>
-      <UButton color="primary" :loading="saving" @click="handleSave">{{ editingItem ? '保存' : '新增' }}</UButton>
-    </template>
-  </UModal>
+      <p v-if="formError" class="text-error-text text-xs">{{ formError }}</p>
+    </div>
+  </AdminEditPanel>
 
   <!-- 删除确认弹窗 -->
   <UModal v-model:open="showDeleteConfirm" title="删除评测镜像" :unmount-on-hide="true">

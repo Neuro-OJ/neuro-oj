@@ -180,35 +180,37 @@ async function handleSave() {
     </AdminTable>
   </div>
 
-  <UModal v-model:open="showForm" :title="editingItem ? '编辑 LLM Provider' : '新增 LLM Provider'" :unmount-on-hide="true">
-    <template #body>
-      <div class="flex flex-col gap-3">
-        <div class="flex flex-col gap-1">
-          <label class="text-13px font-semibold text-text">名称 <span class="text-error-text">*</span></label>
-          <input v-model="formName" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="如：学校 OpenAI 兼容网关" />
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-13px font-semibold text-text">Base URL <span class="text-error-text">*</span></label>
-          <input v-model="formBaseUrl" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="如：https://api.openai.com/v1" />
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-13px font-semibold text-text">费用 / 1K token</label>
-          <input v-model.number="formCostPer1k" type="number" min="0" step="0.01" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="0" />
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-13px font-semibold text-text">API Key {{ editingItem ? "（留空则保持不变）" : "" }} <span v-if="!editingItem" class="text-error-text">*</span></label>
-          <input v-model="formApiKey" type="password" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="sk-..." />
-        </div>
-        <div class="flex items-center gap-2">
-          <USwitch v-model="formEnabled" />
-          <span class="text-sm text-text-secondary">启用</span>
-        </div>
-        <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
+  <!-- Provider 编辑抽屉 (Slideover) -->
+  <AdminEditPanel
+    :open="showForm"
+    :title="editingItem ? '编辑 LLM Provider' : '新增 LLM Provider'"
+    :loading="saving"
+    :save-text="editingItem ? '保存 Provider' : '立即新增'"
+    @close="showForm = false"
+    @save="handleSave"
+  >
+    <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">名称 <span class="text-error-text">*</span></label>
+        <input v-model="formName" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="如：学校 OpenAI 兼容网关" />
       </div>
-    </template>
-    <template #footer>
-      <UButton color="neutral" variant="ghost" :disabled="saving" @click="showForm = false">取消</UButton>
-      <UButton color="primary" :loading="saving" @click="handleSave">{{ editingItem ? '保存' : '新增' }}</UButton>
-    </template>
-  </UModal>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">Base URL <span class="text-error-text">*</span></label>
+        <input v-model="formBaseUrl" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="如：https://api.openai.com/v1" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">费用 / 1K token</label>
+        <input v-model.number="formCostPer1k" type="number" min="0" step="0.01" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="0" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">API Key {{ editingItem ? "（留空则保持不变）" : "" }} <span v-if="!editingItem" class="text-error-text">*</span></label>
+        <input v-model="formApiKey" type="password" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="sk-..." />
+      </div>
+      <div class="flex items-center gap-2 pt-1">
+        <USwitch v-model="formEnabled" />
+        <span class="text-xs text-text-secondary font-medium">启用此 Provider</span>
+      </div>
+      <p v-if="formError" class="text-error-text text-xs">{{ formError }}</p>
+    </div>
+  </AdminEditPanel>
 </template>

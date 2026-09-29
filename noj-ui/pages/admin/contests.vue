@@ -724,13 +724,92 @@ async function removeParticipant(participant: Participant) {
     </div>
   </div>
 
-  <ContestFormModal v-if="formOpen" :contest="editingContest" :problems="problems" :saving="saving" :error="formError" @save="saveContest" @search-problems="loadProblems" @cancel="formOpen = false" />
+  <ContestFormModal
+    v-model:open="formOpen"
+    :contest="editingContest"
+    :problems="problems"
+    :saving="saving"
+    :error="formError"
+    @save="saveContest"
+    @search-problems="loadProblems"
+    @cancel="formOpen = false"
+  />
 
-  <div v-if="participantContest" class="fixed inset-0 z-300 flex items-center justify-center bg-black/45 p-4" @click.self="participantContest = null">
-    <div class="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-modal">
-      <header class="flex items-center justify-between border-b border-border px-6 py-4"><div><h2 class="text-lg font-bold text-text">参与者管理</h2><p class="mt-1 text-xs text-text-muted">{{ participantContest.title }} · {{ participants.length }} 人</p></div><button class="rounded-lg p-2 text-text-secondary hover:bg-primary-hover" @click="participantContest = null"><UIcon name="i-lucide-x" class="size-4.5" /></button></header>
-      <div class="border-b border-border p-5"><div class="flex gap-2"><input v-model="userQuery" class="min-w-0 flex-1 rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" placeholder="搜索用户名或邮箱" @keyup.enter="searchUsers"><UButton color="primary" size="md" :disabled="searchingUsers" @click="searchUsers"><UIcon name="i-lucide-user-plus" class="size-3.5" />搜索</UButton></div><div v-if="userResults.length" class="mt-2 max-h-36 overflow-y-auto rounded-lg border border-border"><button v-for="user in userResults" :key="user.id" class="flex w-full items-center justify-between border-b border-border px-3 py-2 text-left text-xs last:border-0 hover:bg-primary-bg" @click="addParticipant(user)"><span><strong class="text-text">{{ user.username }}</strong><span class="ml-2 text-text-muted">{{ user.email }}</span></span><UIcon name="i-lucide-plus" class="text-primary size-3.5" /></button></div></div>
-      <div class="flex-1 overflow-y-auto p-5"><div v-if="participantLoading" class="py-12 text-center text-sm text-text-muted">加载中...</div><div v-else-if="participants.length" class="divide-y divide-border rounded-xl border border-border"><div v-for="participant in participants" :key="participant.user_id" class="flex items-center gap-3 px-4 py-3"><UserIdentity :user="{ id: participant.user_id, username: participant.username, avatar_url: participant.avatar_url }" size="sm" :link="false" /><div class="min-w-0 flex-1"><div class="truncate text-sm font-semibold text-text">{{ participant.username }}</div><div class="text-xs text-text-muted">{{ formatDateTime(participant.registered_at) }} 报名</div></div><button class="rounded-lg p-2 text-text-muted hover:bg-red-50 hover:text-error-text" title="移除" @click="removeParticipant(participant)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></button></div></div><p v-else class="py-12 text-center text-sm text-text-muted">暂无参与者</p></div>
-    </div>
-  </div>
+  <!-- 参与者管理抽屉 -->
+  <USlideover
+    :open="participantContest !== null"
+    side="right"
+    :ui="{
+      content: 'w-full sm:max-w-xl h-screen flex flex-col',
+      header: 'px-6 py-4 border-b border-border bg-bg-page/40',
+      body: 'p-0 overflow-y-auto flex-1 flex flex-col',
+      footer: 'px-6 py-3 border-t border-border bg-bg-page/30 flex justify-end',
+    }"
+    @update:open="(val: boolean) => !val && (participantContest = null)"
+  >
+    <template #title>
+      <div class="flex items-center gap-2.5 text-base font-bold text-text">
+        <div class="size-8 rounded-md bg-primary-bg text-primary flex items-center justify-center shrink-0 border border-primary/20">
+          <UIcon name="i-lucide-users" class="size-4.5" />
+        </div>
+        <div class="flex flex-col">
+          <span>参与者管理</span>
+          <span class="text-xs font-normal text-text-muted">{{ participantContest?.title }} · {{ participants.length }} 人</span>
+        </div>
+      </div>
+    </template>
+
+    <template #body>
+      <div class="border-b border-border p-5 bg-bg-page/20">
+        <div class="flex gap-2">
+          <input
+            v-model="userQuery"
+            class="min-w-0 flex-1 rounded-md border border-border px-3 py-2 text-sm outline-none focus:border-primary transition-colors"
+            placeholder="搜索用户名或邮箱"
+            @keyup.enter="searchUsers"
+          />
+          <UButton color="primary" size="sm" :disabled="searchingUsers" @click="searchUsers">
+            <UIcon name="i-lucide-user-plus" class="size-3.5" />搜索
+          </UButton>
+        </div>
+        <div v-if="userResults.length" class="mt-2 max-h-36 overflow-y-auto rounded-md border border-border bg-white dark:bg-slate-900">
+          <button
+            v-for="user in userResults"
+            :key="user.id"
+            class="flex w-full items-center justify-between border-b border-border px-3 py-2 text-left text-xs last:border-0 hover:bg-primary-bg transition-colors"
+            @click="addParticipant(user)"
+          >
+            <span>
+              <strong class="text-text">{{ user.username }}</strong>
+              <span class="ml-2 text-text-muted">{{ user.email }}</span>
+            </span>
+            <UIcon name="i-lucide-plus" class="text-primary size-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-5">
+        <div v-if="participantLoading" class="py-12 text-center text-sm text-text-muted">加载中...</div>
+        <div v-else-if="participants.length" class="divide-y divide-border rounded-lg border border-border">
+          <div v-for="participant in participants" :key="participant.user_id" class="flex items-center gap-3 px-4 py-3">
+            <UserIdentity :user="{ id: participant.user_id, username: participant.username, avatar_url: participant.avatar_url }" size="sm" :link="false" />
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-semibold text-text">{{ participant.username }}</div>
+              <div class="text-xs text-text-muted tabular-nums">{{ formatDateTime(participant.registered_at) }} 报名</div>
+            </div>
+            <button class="rounded-md p-1.5 text-text-muted hover:bg-red-50 hover:text-error-text transition-colors" title="移除" @click="removeParticipant(participant)">
+              <UIcon name="i-lucide-trash-2" class="size-4" />
+            </button>
+          </div>
+        </div>
+        <p v-else class="py-12 text-center text-sm text-text-muted">暂无参与者</p>
+      </div>
+    </template>
+
+    <template #footer>
+      <UButton color="neutral" variant="outline" size="sm" @click="participantContest = null">
+        关闭
+      </UButton>
+    </template>
+  </USlideover>
 </template>

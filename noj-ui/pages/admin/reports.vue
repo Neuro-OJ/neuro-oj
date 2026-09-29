@@ -344,129 +344,129 @@ await Promise.all([load("pending"), load("resolved"), load("dismissed")])
       </article>
     </div>
 
-    <!-- 处理弹窗 -->
-    <UModal v-model:open="showProcess" title="处理举报" :description="processTarget ? contentLabel(processTarget) : ''">
-      <template #body>
-        <div class="space-y-4 py-2">
+    <!-- 处理举报抽屉 -->
+    <AdminEditPanel
+      :open="showProcess"
+      :title="processTarget ? `处理举报：${contentLabel(processTarget)}` : '处理举报'"
+      width-class="sm:max-w-xl"
+      :loading="processingId !== null"
+      save-text="确认处理"
+      @update:open="(val: boolean) => showProcess = val"
+      @close="showProcess = false"
+      @save="submitProcess"
+    >
+      <div class="space-y-4 py-2">
+        <label class="block">
+          <span class="mb-1 block text-xs text-text-secondary">处理方式</span>
+          <div class="flex gap-4">
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="processAction" type="radio" value="remove_content" class="accent-primary" />
+              仅移除内容
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="processAction" type="radio" value="ban" class="accent-primary" />
+              封禁处罚
+            </label>
+          </div>
+        </label>
+
+        <template v-if="processAction === 'ban'">
+          <div class="text-sm text-text-secondary">被处罚用户：<strong class="text-text">{{ processTarget?.reported_author?.username ?? processTarget?.reporter?.username }}</strong>（举报目标的作者）</div>
           <label class="block">
-            <span class="mb-1 block text-xs text-text-secondary">处理方式</span>
+            <span class="mb-1 block text-xs text-text-secondary">封禁类型</span>
             <div class="flex gap-4">
               <label class="flex items-center gap-2 text-sm">
-                <input v-model="processAction" type="radio" value="remove_content" class="accent-primary" />
-                仅移除内容
+                <input v-model="processScope" type="radio" value="platform" class="accent-primary" />
+                限制使用平台
               </label>
               <label class="flex items-center gap-2 text-sm">
-                <input v-model="processAction" type="radio" value="ban" class="accent-primary" />
-                封禁处罚
+                <input v-model="processScope" type="radio" value="social" class="accent-primary" />
+                仅限制社交
               </label>
             </div>
           </label>
-
-          <template v-if="processAction === 'ban'">
-            <div class="text-sm text-text-secondary">被处罚用户：<strong class="text-text">{{ processTarget?.reported_author?.username ?? processTarget?.reporter?.username }}</strong>（举报目标的作者）</div>
-            <label class="block">
-              <span class="mb-1 block text-xs text-text-secondary">封禁类型</span>
-              <div class="flex gap-4">
-                <label class="flex items-center gap-2 text-sm">
-                  <input v-model="processScope" type="radio" value="platform" class="accent-primary" />
-                  限制使用平台
-                </label>
-                <label class="flex items-center gap-2 text-sm">
-                  <input v-model="processScope" type="radio" value="social" class="accent-primary" />
-                  仅限制社交
-                </label>
-              </div>
-            </label>
-            <label class="block">
-              <span class="mb-1 block text-xs text-text-secondary">封禁期限（留空为永久）</span>
-              <input v-model="processExpiresAt" type="datetime-local" class="w-full rounded border border-border px-3 py-2 text-sm" />
-            </label>
-          </template>
-
           <label class="block">
-            <span class="mb-1 block text-xs text-text-secondary">理由（处理结果说明）</span>
-            <textarea v-model="processReason" class="min-h-20 w-full rounded border border-border px-3 py-2 text-sm" placeholder="例如：违反社区规范" />
+            <span class="mb-1 block text-xs text-text-secondary">封禁期限（留空为永久）</span>
+            <input v-model="processExpiresAt" type="datetime-local" class="w-full rounded border border-border px-3 py-2 text-sm" />
           </label>
-        </div>
-      </template>
-      <template #footer>
-        <div class="flex justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="showProcess = false">取消</UButton>
-          <UButton color="primary" :disabled="processingId !== null" @click="submitProcess">{{ processingId !== null ? "处理中…" : "确认处理" }}</UButton>
-        </div>
-      </template>
-    </UModal>
+        </template>
 
-    <!-- 举报附带的完整聊天记录预览 -->
-    <UModal v-model:open="showHistory" title="完整聊天记录" :ui="{ content: 'max-w-lg' }" :unmount-on-hide="true">
-      <template #body>
-        <div class="space-y-3">
-          <p class="text-xs text-text-secondary">被举报内容：{{ historyConversation }}</p>
-          <div v-if="historyLoading" class="py-8 text-center text-sm text-text-secondary">加载中…</div>
-          <div v-else-if="historyMessages.length === 0" class="py-8 text-center text-sm text-text-secondary">该会话暂无消息</div>
-          <div v-else class="max-h-[420px] space-y-2 overflow-y-auto rounded-md bg-bg-page p-3">
+        <label class="block">
+          <span class="mb-1 block text-xs text-text-secondary">理由（处理结果说明）</span>
+          <textarea v-model="processReason" class="min-h-20 w-full rounded border border-border px-3 py-2 text-sm" placeholder="例如：违反社区规范" />
+        </label>
+      </div>
+    </AdminEditPanel>
+
+    <!-- 举报附带的完整聊天记录抽屉 -->
+    <AdminDetailDrawer
+      :open="showHistory"
+      :title="`完整聊天记录：${historyConversation}`"
+      width-class="sm:max-w-xl"
+      @update:open="(val: boolean) => showHistory = val"
+      @close="showHistory = false"
+    >
+      <div class="space-y-3">
+        <p class="text-xs text-text-secondary">被举报会话：{{ historyConversation }}</p>
+        <div v-if="historyLoading" class="py-8 text-center text-sm text-text-secondary">加载中…</div>
+        <div v-else-if="historyMessages.length === 0" class="py-8 text-center text-sm text-text-secondary">该会话暂无消息</div>
+        <div v-else class="space-y-2 rounded-md bg-bg-page p-3">
+          <div
+            v-for="m in historyMessages"
+            :key="m.id"
+            class="flex gap-2 text-sm"
+            :class="m.sender_id === reporterUserId ? 'justify-end' : ''"
+          >
             <div
-              v-for="m in historyMessages"
-              :key="m.id"
-              class="flex gap-2 text-sm"
-              :class="m.sender_id === reporterUserId ? 'justify-end' : ''"
+              class="max-w-[80%] rounded-lg px-2.5 py-1.5 text-text-secondary"
+              :class="m.sender_id === reporterUserId ? 'bg-primary/10' : 'bg-default border border-border'"
             >
+              <div class="mb-0.5 flex items-center gap-1.5 text-xs text-text-muted">
+                <span>{{ m.sender_id === reporterUserId ? "举报者" : "被举报者" }}</span>
+                <span v-if="m.forwarded_from_user" class="inline-flex items-center gap-0.5 text-primary">
+                  <UIcon name="i-lucide-forward" class="size-3" />转自 @{{ m.forwarded_from_user.username }}
+                </span>
+              </div>
+              <!-- 回复引用框 -->
               <div
-                class="max-w-[80%] rounded-lg px-2.5 py-1.5 text-text-secondary"
-                :class="m.sender_id === reporterUserId ? 'bg-primary/10' : 'bg-default border border-border'"
+                v-if="m.reply_to"
+                class="mb-1 rounded-md border-l-[3px] border-primary bg-primary/5 px-2 py-1 text-xs leading-snug"
               >
-                <div class="mb-0.5 flex items-center gap-1.5 text-xs text-text-muted">
-                  <span>{{ m.sender_id === reporterUserId ? "举报者" : "被举报者" }}</span>
-                  <span v-if="m.forwarded_from_user" class="inline-flex items-center gap-0.5 text-primary">
-                    <UIcon name="i-lucide-forward" class="size-3" />转自 @{{ m.forwarded_from_user.username }}
-                  </span>
-                </div>
-                <!-- 回复引用框 -->
-                <div
-                  v-if="m.reply_to"
-                  class="mb-1 rounded-md border-l-[3px] border-primary bg-primary/5 px-2 py-1 text-xs leading-snug"
-                >
-                  <span class="font-semibold text-primary">{{ m.reply_to.sender_name }}</span>
-                  <span class="ml-1 text-text-secondary">{{ m.reply_to.content }}</span>
-                </div>
-                <!-- 撤回消息：管理员可见原文/原图（带已撤回标记），举报者本人场景后端已隐藏为"该消息已撤回" -->
-                <template v-if="m.recalled_at">
-                  <template v-if="m.content && m.content !== '该消息已撤回'">
-                    <span class="italic text-text-muted">（已撤回）</span>{{ m.content }}
-                  </template>
-                  <template v-else-if="m.type === 'image' && m.image_url">
-                    <span class="italic text-text-muted">（已撤回）</span>
-                    <img
-                      :src="`/api/v1/admin/community/reports/images/${m.conversation_id}/${m.id}`"
-                      alt="举报图片（已撤回）"
-                      class="max-h-40 rounded-md object-contain"
-                      loading="lazy"
-                    />
-                  </template>
-                  <span v-else class="italic opacity-60">该消息已撤回</span>
+                <span class="font-semibold text-primary">{{ m.reply_to.sender_name }}</span>
+                <span class="ml-1 text-text-secondary">{{ m.reply_to.content }}</span>
+              </div>
+              <!-- 撤回消息：管理员可见原文/原图（带已撤回标记），举报者本人场景后端已隐藏为"该消息已撤回" -->
+              <template v-if="m.recalled_at">
+                <template v-if="m.content && m.content !== '该消息已撤回'">
+                  <span class="italic text-text-muted">（已撤回）</span>{{ m.content }}
                 </template>
-                <!-- 图片消息 -->
-                <span v-else-if="m.type === 'image' && m.image_url">
+                <template v-else-if="m.type === 'image' && m.image_url">
+                  <span class="italic text-text-muted">（已撤回）</span>
                   <img
                     :src="`/api/v1/admin/community/reports/images/${m.conversation_id}/${m.id}`"
-                    alt="举报图片"
+                    alt="举报图片（已撤回）"
                     class="max-h-40 rounded-md object-contain"
                     loading="lazy"
                   />
-                </span>
-                <span v-else-if="m.type === 'image'">[图片]</span>
-                <!-- 文本 -->
-                <span v-else>{{ m.content }}</span>
-              </div>
+                </template>
+                <span v-else class="italic opacity-60">该消息已撤回</span>
+              </template>
+              <!-- 图片消息 -->
+              <span v-else-if="m.type === 'image' && m.image_url">
+                <img
+                  :src="`/api/v1/admin/community/reports/images/${m.conversation_id}/${m.id}`"
+                  alt="举报图片"
+                  class="max-h-40 rounded-md object-contain"
+                  loading="lazy"
+                />
+              </span>
+              <span v-else-if="m.type === 'image'">[图片]</span>
+              <!-- 文本 -->
+              <span v-else>{{ m.content }}</span>
             </div>
           </div>
         </div>
-      </template>
-      <template #footer>
-        <div class="flex justify-end">
-          <UButton color="neutral" variant="ghost" @click="showHistory = false">关闭</UButton>
-        </div>
-      </template>
-    </UModal>
+      </div>
+    </AdminDetailDrawer>
   </div>
 </template>
