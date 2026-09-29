@@ -105,7 +105,7 @@ export async function createReport(
     // 事实的两套口径，pending 阶段恰好是最需要保密的阶段。
     if (
       !moderator && target[0].author_id !== reporterId &&
-      target[0].type === "solution" && target[0].problem_id &&
+      target[0].problem_id &&
       await isProblemInUnendedPublicContest(target[0].problem_id)
     ) {
       throw new NotFoundError("举报目标不存在");

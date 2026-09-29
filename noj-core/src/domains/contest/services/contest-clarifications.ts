@@ -14,7 +14,7 @@
  * **根提问连同该公开回复**一并转为对全员可见；其余问答仅主办方与提问者本人可见。
  */
 
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
   contestClarifications,
@@ -27,10 +27,12 @@ import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
+  RateLimitedError,
 } from "./../../../shared/base/errors.ts";
 import { isUserAdmin } from "./../../identity/index.ts";
 import { computeContestStatus, isParticipant } from "./contests.ts";
 import { createNotification } from "../../community/index.ts";
+import { checkRateLimit } from "./../../../shared/rate-limit/rate-limit.ts";
 
 const MAX_CONTENT_LENGTH = 5000;
 const DEFAULT_PAGE_SIZE = 20;
@@ -192,6 +194,13 @@ export async function createClarification(
     await assertProblemBelongsToContest(contestId, problemId);
   }
 
+  // FC-04: 答疑频控（5 次/分钟），防止高并发恶意刷答疑
+  const rateKey = `contest:${contestId}:clarification:${userId}`;
+  const rate = await checkRateLimit(rateKey, { windowSec: 60, max: 5 });
+  if (!rate.allowed) {
+    throw new RateLimitedError("提问过于频繁，请稍后再试", rate.retryAfter);
+  }
+
   const db = getDb();
   const id = crypto.randomUUID();
   const createdAt = nowIso();
@@ -342,40 +351,75 @@ export async function listClarifications(
     (await isParticipant(contestId, userId));
 
   const db = getDb();
-  const rows = await db.select().from(contestClarifications).where(
-    eq(contestClarifications.contest_id, contestId),
-  ).orderBy(
-    asc(contestClarifications.created_at),
-    asc(contestClarifications.id),
-  );
-
   // 过滤可见提问（匿名/未参赛仅公开；参赛者公开 + 自己的）
-  const questions = rows.filter((row: ClarificationRow) =>
-    row.reply_to_id === null
-  )
-    .filter(
-      (row: ClarificationRow) =>
-        isManager || row.is_public || (isPart && row.sender_id === userId),
+  const visibilityCondition = isManager
+    ? isNull(contestClarifications.reply_to_id)
+    : and(
+      isNull(contestClarifications.reply_to_id),
+      isPart
+        ? or(
+          eq(contestClarifications.is_public, true),
+          eq(contestClarifications.sender_id, userId!),
+        )
+        : eq(contestClarifications.is_public, true),
     );
-  const total = questions.length;
-  const pageQuestions = questions.slice((page - 1) * perPage, page * perPage);
+
+  const [totalRow] = await db
+    .select({ count: count() })
+    .from(contestClarifications)
+    .where(and(
+      eq(contestClarifications.contest_id, contestId),
+      visibilityCondition,
+    ));
+  const total = Number(totalRow?.count ?? 0);
+  if (total === 0) {
+    return { data: [], total: 0 };
+  }
+
+  const pageQuestions = await db
+    .select()
+    .from(contestClarifications)
+    .where(and(
+      eq(contestClarifications.contest_id, contestId),
+      visibilityCondition,
+    ))
+    .orderBy(
+      asc(contestClarifications.created_at),
+      asc(contestClarifications.id),
+    )
+    .limit(perPage)
+    .offset((page - 1) * perPage);
+
   if (pageQuestions.length === 0) {
     return { data: [], total };
   }
 
   // 回复可见性：admin 全部；否则公开，或根提问属于自己（私密回复仅提问者可见）
-  const questionIds = new Set(pageQuestions.map((row) => row.id));
-  const rootSenderId = new Map(
-    pageQuestions.map((row) => [row.id, row.sender_id]),
-  );
-  const replies = rows.filter(
-    (row: ClarificationRow) =>
-      row.reply_to_id !== null && questionIds.has(row.reply_to_id),
-  ).filter(
-    (row: ClarificationRow) =>
-      isManager || row.is_public ||
-      (isPart && rootSenderId.get(row.reply_to_id as string) === userId),
-  );
+  const questionIds = pageQuestions.map((row) => row.id);
+  const myQuestionIds = isPart
+    ? pageQuestions.filter((q) => q.sender_id === userId).map((q) => q.id)
+    : [];
+  const replyVisibility = isManager
+    ? sql`true`
+    : (myQuestionIds.length > 0
+      ? or(
+        eq(contestClarifications.is_public, true),
+        inArray(contestClarifications.reply_to_id, myQuestionIds),
+      )
+      : eq(contestClarifications.is_public, true));
+
+  const replies = await db
+    .select()
+    .from(contestClarifications)
+    .where(and(
+      eq(contestClarifications.contest_id, contestId),
+      inArray(contestClarifications.reply_to_id, questionIds),
+      replyVisibility,
+    ))
+    .orderBy(
+      asc(contestClarifications.created_at),
+      asc(contestClarifications.id),
+    );
 
   const senderIds = [
     ...new Set([

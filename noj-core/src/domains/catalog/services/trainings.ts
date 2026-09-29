@@ -104,7 +104,12 @@ async function countProblems(
       count: sql<number>`count(*)::int`,
     })
     .from(trainingProblems)
-    .where(inArray(trainingProblems.training_id, trainingIds))
+    .innerJoin(problems, eq(trainingProblems.problem_id, problems.id))
+    .where(and(
+      inArray(trainingProblems.training_id, trainingIds),
+      eq(problems.visibility, "public"),
+      sql`NOT (${unendedPublicContestForProblem(problems.id)})`,
+    ))
     .groupBy(trainingProblems.training_id);
   return new Map(rows.map((r) => [r.training_id, r.count]));
 }

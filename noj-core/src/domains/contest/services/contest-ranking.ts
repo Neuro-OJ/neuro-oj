@@ -430,7 +430,12 @@ export async function getKaggleRanking(
         ps.user_id,
         ps.registered_at,
         SUM(ps.best_score)::int AS total_score,
-        MAX(ps.last_refresh_at) AS last_submission_at,
+        CASE
+          WHEN SUM(ps.best_score) > 0 THEN
+            MAX(ps.last_best_at) FILTER (WHERE ps.best_score > 0)
+          ELSE
+            MIN(ps.last_best_at) FILTER (WHERE ps.attempts > 0)
+        END AS last_submission_at,
         jsonb_agg(
           jsonb_build_object(
             'label', ps.label,
@@ -517,7 +522,7 @@ export function getContestFreezeWindow(contest: {
   return { start: new Date(startMs).toISOString(), end };
 }
 
-function isContestFrozen(
+export function isContestFrozen(
   window: { start: string | null; end: string },
   now = Date.now(),
 ): boolean {

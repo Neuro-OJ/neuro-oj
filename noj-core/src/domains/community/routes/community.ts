@@ -618,14 +618,14 @@ router.post("/reports", authMiddleware, async (c) => {
     }
   >(c);
   if (!body.reason?.trim()) throw new BadRequestError("缺少举报原因");
-  return c.json({
-    // 审核员免赛期门控（High#3）：普通用户举报被门控内容一律 404，不确认其存在
-    data: await createReport(
-      actorId,
-      { ...body, reason: body.reason },
-      await isModerator(c),
-    ),
-  }, 201);
+  const report = await createReport(
+    actorId,
+    { ...body, reason: body.reason },
+    await isModerator(c),
+  );
+  // FC-05: 举报接口响应体中仅返回举报记录信息，严禁回显 content_snapshot 全文
+  const { content_snapshot: _stripped, ...safeReport } = report;
+  return c.json({ data: safeReport }, 201);
 });
 /**
  * GET /reports/:reportId — 获取举报工单详情。

@@ -24,6 +24,7 @@ import {
 import {
   BadRequestError,
   ForbiddenError,
+  NotFoundError,
 } from "../../../../shared/base/errors.ts";
 
 await resetDbForTest();
@@ -345,10 +346,10 @@ Deno.test({
     assertEquals(mine.details[q1].explanation, "解析");
     assertEquals(mine.details[q1].expected, undefined);
 
-    // 他人读取被拒
+    // 他人读取被拒（抛出 NotFoundError 避免存在性侧信道，DL-05）
     await assertRejects(
       () => getObjectiveSubmission(result.submission_id, other),
-      ForbiddenError,
+      NotFoundError,
     );
 
     // admin 可读

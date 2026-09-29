@@ -7,9 +7,10 @@ import {
   submissions,
   users,
 } from "./../../../../shared/db/schema.ts";
-// 经 contest 域公开门面（index.ts）导入：域边界门禁要求跨域只能走 index.ts，
-// 深路径导入会被 check-domains.ts 判为违规。
-import { unendedPublicContestForProblem } from "./../../../contest/index.ts";
+import {
+  endedWindowCondition,
+  unendedPublicContestForProblem,
+} from "./../../../contest/index.ts";
 import type {
   ProfileCommunityStatsRow,
   ProfileMomentRow,
@@ -45,10 +46,20 @@ function contestSecrecyCondition(
   if (viewer.viewerId !== undefined && viewer.viewerId === profileUserId) {
     return null;
   }
-  // 题目 owner（本人创建的题被公开赛收编）保留可见；其余按谓词过滤
+  // 赛中数据隔离（决策 3 / DL-02）：非特权查看者彻底排除未结束竞赛提交与受保密公开赛收编的题目
   return sql`(
-    NOT (${unendedPublicContestForProblem(submissions.problem_id)})
-    OR ${problems.owner_id} = ${viewer.viewerId ?? null}
+    (
+      ${submissions.contest_id} IS NULL OR EXISTS (
+        SELECT 1 FROM contests c_sec
+        WHERE c_sec.id = ${submissions.contest_id}
+          AND c_sec.affect_global_ranking = TRUE
+          AND ${endedWindowCondition(sql`c_sec.end_time`)}
+      )
+    )
+    AND (
+      NOT (${unendedPublicContestForProblem(submissions.problem_id)})
+      OR ${problems.owner_id} = ${viewer.viewerId ?? null}
+    )
   )`;
 }
 

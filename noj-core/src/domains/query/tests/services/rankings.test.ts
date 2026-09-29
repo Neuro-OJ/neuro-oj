@@ -372,8 +372,8 @@ Deno.test({
       {
         id: excludedContestId,
         title: "不计入全局榜单",
-        start_time: new Date(Date.now() - 60_000).toISOString(),
-        end_time: new Date(Date.now() + 60_000).toISOString(),
+        start_time: new Date(Date.now() - 120_000).toISOString(),
+        end_time: new Date(Date.now() - 60_000).toISOString(),
         type: "kaggle",
         config: {},
         affect_global_ranking: false,
@@ -383,9 +383,9 @@ Deno.test({
       },
       {
         id: includedContestId,
-        title: "计入全局榜单",
-        start_time: new Date(Date.now() - 60_000).toISOString(),
-        end_time: new Date(Date.now() + 60_000).toISOString(),
+        title: "计入全局榜单（已结束）",
+        start_time: new Date(Date.now() - 120_000).toISOString(),
+        end_time: new Date(Date.now() - 60_000).toISOString(),
         type: "kaggle",
         config: {},
         affect_global_ranking: true,
@@ -415,7 +415,8 @@ Deno.test({
       const row = result.data.find((item) => item.user_id === userId);
       assertExists(row);
       assertEquals(row.solved_count, 2);
-      assertEquals(row.total_submissions, 3);
+      // DL-03 / 决策 3：不计入全局榜单（或未完赛）的提交不得进入分母，避免通过率波动泄露赛中行为
+      assertEquals(row.total_submissions, 2);
     } finally {
       await cleanupUser(userId);
       await db.delete(contests).where(eq(contests.id, excludedContestId));

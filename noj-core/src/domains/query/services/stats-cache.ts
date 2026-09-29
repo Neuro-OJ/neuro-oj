@@ -1,9 +1,14 @@
 import { and, eq, gte, type SQL, sql } from "drizzle-orm";
 import { todayUtc } from "./../../../shared/base/dates.ts";
 import { getDb } from "./../../../shared/db/connection.ts";
-import { evaluationResults, submissions } from "./../../../shared/db/schema.ts";
+import {
+  contests,
+  evaluationResults,
+  submissions,
+} from "./../../../shared/db/schema.ts";
 import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import { FULL_SCORE } from "./../../../shared/base/constants.ts";
+import { endedWindowCondition } from "./../../contest/index.ts";
 
 /**
  * 统计快照：提交总数、满分数与未满分数的快照值。
@@ -19,13 +24,20 @@ export interface StatsSnapshot {
 
 /**
  * 查询提交统计聚合行（总数 + 满分数）。
+ * 赛中数据隔离（DL-02/DL-03）：排除任何未结束竞赛中的提交记录。
  */
 async function selectStatsRow(
   where?: SQL | undefined,
 ): Promise<{ total: number; full_score: number }> {
   const db = getDb();
+  const secrecyCondition = sql`(
+    ${submissions.contest_id} IS NULL OR (
+      ${contests.affect_global_ranking} = TRUE AND
+      ${endedWindowCondition(contests.end_time)}
+    )
+  )`;
   // deno-lint-ignore no-explicit-any
-  let query: any = db
+  const query: any = db
     .select({
       total: sql<number>`count(*)::int`,
       full_score: sql<
@@ -36,8 +48,12 @@ async function selectStatsRow(
     .leftJoin(
       evaluationResults,
       eq(evaluationResults.submission_id, submissions.id),
-    );
-  if (where) query = query.where(where);
+    )
+    .leftJoin(
+      contests,
+      eq(contests.id, submissions.contest_id),
+    )
+    .where(where ? and(secrecyCondition, where) : secrecyCondition);
   // deno-lint-ignore no-explicit-any
   const [row]: any[] = await query;
   return {

@@ -22,8 +22,8 @@ import { getDb } from "./../../../../shared/db/connection.ts";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
 import type { JudgeResult, SubmissionStatus } from "../../types/index.ts";
-import { applyNewResult } from "../../../query/index.ts";
-import { refreshRankingsView } from "../../../query/index.ts";
+import { applyNewResult, refreshRankingsView } from "../../../query/index.ts";
+import { filterUnendedContestIds } from "../../../contest/index.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "submission"]);
@@ -250,8 +250,16 @@ export async function saveEvaluationResult(
   }
 
   // 统计缓存仅对首次结果递增；重测结果不计入（NOJ-068）。
+  // 赛中数据隔离（DL-03）：未结束竞赛的提交不计入全站实时统计，也不广播 stats:updated，防止成为满分判分预言机。
   if (!outcome.is_rejudge && outcome.created_at) {
-    applyNewResult(result.score, outcome.created_at);
+    if (outcome.contest_id) {
+      const unended = await filterUnendedContestIds([outcome.contest_id]);
+      if (!unended.has(outcome.contest_id)) {
+        applyNewResult(result.score, outcome.created_at);
+      }
+    } else {
+      applyNewResult(result.score, outcome.created_at);
+    }
   }
 
   // PR-4 评审修订：异步触发榜单物化视图刷新

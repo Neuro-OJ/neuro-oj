@@ -121,6 +121,25 @@ export async function isProblemInUnendedPublicContest(
 }
 
 /**
+ * 判定全站当前是否存在任何尚未结束的公开赛（含 pending 筹备期与 running 进行期）。
+ *
+ * 供赛时社区全局静默（决策 1）复用：普通用户在有未结束公开赛时禁止发讨论帖和动态。
+ *
+ * @returns 存在未结束公开赛时为 true。
+ */
+export async function hasUnendedPublicContest(): Promise<boolean> {
+  const rows = await getDb()
+    .select({ contestId: contests.id })
+    .from(contests)
+    .where(and(
+      eq(contests.kind, "public"),
+      unendedWindowCondition(contests.end_time),
+    ))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
  * 按竞赛 id 批量判定「尚未结束」（`now < end_time`，含 pending 与 running）。
  *
  * 供**竞赛维度的读路径门控**复用（客观题赛期屏蔽对错与分数：需要按提交所属竞赛
