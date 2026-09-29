@@ -237,6 +237,8 @@ PR #594 的 CI 在收尾时点**仍在运行**（最后推送 `8b13d2b1` 触发�
 | **E2E run `36503265634`（同一修订）** | ✅ **success（整条 workflow）**：**`Judge Sandbox E2E`**、`E2E identity` / `submission` / `contest` / `Cross Domain` 全部 success |
 | 历史失败与归因（全部可复现、全部已修） | ① `Root Gates` 两轮 fail：`verify-md-links` 相对链接少退一级（`final-report.md`）、静默跳过棘轮 +1（新增用例沿用 `ignore: skip`）→ 均已修 ② `Core identity` fail：**我新增测试**的 `solution_count` 断言在真 PG 下失败（`count(*)` 返回字符串）→ 用 `Number(...)` 修正 ③ 本地 `search-events` 家族红：**本地 PGlite 环境问题，CI 里为 success**（面 7 的 A2 给出了构造成因） |
 | 最新几次推送（A5/B3 门禁修复 + 文档） | 触发的新 run 在收尾时点仍在进行；这两处改动的验证由**本地 `check-all`（EXIT=0，含新纳入的 E2E 脚本门禁与已修复的 B3 检查）+ `gate-list_test` 7 passed** 承担 |
+| **CI run `0577f7bb`（含 A5 门禁 + B3 修复 + 面 8/9 文档）** | ✅ **success**（CI + E2E 两条 workflow 均 success） |
+| 收尾时点 | 面 10 的 UI 修复（`c7804fba`）与其后的文档推送触发的新 run 仍在进行/被 concurrency 取消；该修复的验证为**本地全套**：`deno task lint`、`deno task check`、`deno task test`（**191 passed / 0 failed**）、以及**全量 root 门禁 `check-all` EXIT=0** |
 
 > 这条差异值得记下：因我的改动触及 `noj-judge/**`，PR 触发了**完整 E2E 流水线**（含真实
 > Docker 沙箱 E2E）——这正是本轮在本地**无法取证**的那部分（本机无 e2e 栈、评测镜像未重建）。
