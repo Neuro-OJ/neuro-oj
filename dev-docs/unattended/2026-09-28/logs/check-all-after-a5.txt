@@ -927,3 +927,5 @@ Task check:types:nuxt deno run -A npm:nuxt typecheck && node --stack-size=4000 n
 
  WARN  Duplicated imports "Pagination", the one from "/home/xyber-nova/Github/neuro-oj/noj-ui/composables/useContests.ts" has been ignored and "/home/xyber-nova/Github/neuro-oj/noj-ui/composables/useMessages.ts" is used
 
+全部检查通过
+CHECK_ALL_AFTER_A5_EXIT=0
