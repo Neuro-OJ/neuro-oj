@@ -34,11 +34,19 @@ Owner 把截止延长到 **08:45** 后，剩余预算投给了**面 1.4（noj-co
 | 修复① | **F-01（High）**：个人主页题解门控补齐**赛前筹备期**（口径从 `running` 收敛到 SSOT 的 `unended`）→ commit `cd58542b` |
 | 修复② | **F-03（Medium）**：自测路径对赛前保密题改返 **404**（消除"403 vs 404"存在性预言机；其他拒绝语义不变）→ commit `7d8a81e9` |
 | 修复③ | **F-08（Low）**：修正 `problem-access.ts` 与实现矛盾的陈旧注释（"题库列表不排除该题"），并写明不得据此删掉列表过滤 → 同 commit |
-| 成对证据 | `evidence/04-F01-profile-gating.txt`、`evidence/04-F03-selftest-404.txt`：两处均做了**反向验证**——撤掉修复后用例 FAILED，且断言信息正是缺陷形态（"赛前筹备期不得泄露题解标题"／`Expected NotFoundError, but was ForbiddenError`） |
-| 门禁 | `deno task check`（core fmt/lint/types）**EXIT=0**（修复后重跑）；identity 域 **302 passed / 2 failed**；submission 域 **128 passed / 1 failed** |
+| 修复④ | **F-04a（Medium）**：个人主页 `total_submissions/accepted/solved_count` 与列表**改为同一按查看者门控口径**（复用 `contestSecrecyCondition`）——原实现三者**全无过滤**，而兄弟列表有，"计数 5 / 列表 4 行"的差额本身即泄露"存在一道保密题且该用户已通过"→ commit `1e1be020` |
+| 成对证据 | `evidence/04-F01-profile-gating.txt`、`evidence/04-F03-selftest-404.txt`、`evidence/04-F04a-profile-stats-count.txt`：三处均做**反向验证**——撤掉修复后用例 FAILED，断言信息正是缺陷形态 |
+| 门禁 | `deno task check`（core fmt/lint/types）**EXIT=0**（三度复核）；identity 域 **303 passed / 2 failed / 25 ignored**；submission 域 **128 passed / 1 failed** |
 | 失败定性（L2 #5） | 两处失败均为 `search-events.test.ts`（"搜索索引事件未发布"）家族。**真 A/B 定性**：撤销本次改动后 —— identity 域同样失败；submission 域由 128/1 变为 **127/2**（多出的那 1 条正是我新增的 F-03 用例，即"修复缺失时它必须失败"）。结论：**该失败家族为本环境既有问题，与本次改动无关** |
 | 未修（**F-02 High**，已出补丁提案） | `GET /api/v1/rankings` 共 **7 处** SQL 只判 `affect_global_ranking`、**无任何时间窗口**，且匿名可读 → 赛中他人进度/得分侧信道（正是公平性轴 D2 的目标）。正确修法要动 7 处 SQL + 向 contest 门面新增窗口谓词导出 + **改变全局榜语义**（产品决策）→ 按 spec §7「设计级变更」不下手，改为 findings 文件内的精确补丁提案（含测试与回滚） |
-| 未修（其余） | F-04（三处计数/列表口径不齐）、F-05（全局 `full_score` 聚合构成判分 oracle 旁路，路由层已确认无竞赛过滤，可利用性未实测）、F-06/F-07（聚合计数）、F-09（客观题提交 403 vs 404） |
+| 未修（其余） | F-05（全局 `full_score` 聚合构成判分 oracle 旁路，路由层已确认无竞赛过滤，可利用性未实测）、F-06/F-07（聚合计数）、F-09（客观题提交 403 vs 404） |
+
+**第四处自我纠错（由我自己造成、也由我发现）**：做 F-04a 的反向验证时，恢复步骤用了
+`replace(..., 1)`（只替换第一处匹配），而该文件存在多处同类文本，导致改动落到**错误的函数**上、
+把文件改坏——当时"修复后仍 FAILED"其实是我制造的假象。发现后未逐处猜测，而是
+`jj restore --from @-` 退回已提交状态再**重新施加修复**，并核对"改动只落在 `queryProfileStats`、
+其他函数的 `.where(` 形态未变"，复跑得到 `ok`；被污染的那一版证据文件也已作废重写。
+教训：**用脚本做临时改动时必须按唯一锚点精确替换，并在恢复后核对目标位置**。
 
 **口径偏离（必须记录）**：面 1.4 的 finding 数 **9 > 5**，按 spec §5.4 **本应另派 verifier subagent**。
 因时间盒只够"审计 + 修复 + 门禁"，**未派 verifier**，改由 **Lead 逐条读证复核**：F-01/F-02/F-03/F-08
