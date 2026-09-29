@@ -26,8 +26,30 @@ export interface UsageEntry {
   created_at: string;
 }
 
+/** 限制单条审计记录中 request_messages 大小，避免超大包塞爆 DB（GW-03）。 */
+const MAX_STORED_MESSAGES_BYTES = 64 * 1024;
+
+function sanitizeMessagesForStorage(messages: unknown): unknown {
+  try {
+    const serialized = JSON.stringify(messages);
+    if (serialized.length <= MAX_STORED_MESSAGES_BYTES) {
+      return messages;
+    }
+    return [
+      {
+        role: "system",
+        content:
+          `[messages_truncated: original size ${serialized.length} bytes exceeded 64KB limit]`,
+      },
+    ];
+  } catch {
+    return [];
+  }
+}
+
 /** 写入一条 LLM 用量审计记录；调用方负责在成功/失败/拒绝各分支调用。 */
 export async function recordUsage(db: Db, entry: UsageEntry): Promise<void> {
+  const safeMessages = sanitizeMessagesForStorage(entry.request_messages);
   await db`
     INSERT INTO llm_usage (
       id, submission_id, problem_id, user_id, provider_id, model,
@@ -37,9 +59,7 @@ export async function recordUsage(db: Db, entry: UsageEntry): Promise<void> {
       prompt_hash, created_at
     ) VALUES (
       ${entry.id}, ${entry.submission_id}, ${entry.problem_id}, ${entry.user_id},
-      ${entry.provider_id}, ${entry.model}, ${
-    JSON.stringify(entry.request_messages)
-  },
+      ${entry.provider_id}, ${entry.model}, ${JSON.stringify(safeMessages)},
       ${JSON.stringify(entry.request_params)}, ${entry.prompt_tokens},
       ${entry.completion_tokens}, ${entry.total_tokens},
       ${entry.cached_prompt_tokens ?? 0}, ${entry.billed_prompt_tokens ?? 0},

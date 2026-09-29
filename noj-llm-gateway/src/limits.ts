@@ -94,7 +94,7 @@ export const QUOTA_ENV_KEYS: string[] = (() => {
  * 默认值与 noj-core 初始化种子一致；可通过环境变量覆盖。
  * 缺失配额 MUST NOT 视为无限。
  */
-function fallbackQuota(
+export function fallbackQuota(
   scopeType: string,
   windowType: string,
 ): QuotaRow {
@@ -216,9 +216,10 @@ function scopeCounters(
   const date = new Date(now);
   const windowKey = window === "day" ? dayKey(date) : monthKey(date);
   const prefix = `${scopePrefix(scopeType, scopeId)}:${window}:${windowKey}`;
-  const maxCalls = quota?.max_calls ?? 0;
-  const maxTokens = quota?.max_tokens ?? 0;
-  const maxCost = quota?.max_cost ?? 0;
+  const fallback = fallbackQuota(scopeType, window);
+  const maxCalls = quota ? quota.max_calls : fallback.max_calls;
+  const maxTokens = quota ? quota.max_tokens : fallback.max_tokens;
+  const maxCost = quota ? quota.max_cost : fallback.max_cost;
   const end = window === "day" ? dayEndMs(now) : monthEndMs(now);
   const ttl = Math.max(1, Math.ceil((end - now) / 1000));
   const out: CounterSpec[] = [];
@@ -279,7 +280,9 @@ for i = 3, #KEYS do
   local j = i - 2
   local limit = tonumber(limits[j])
   local inc = tonumber(incs[j])
-  if limit > 0 then
+  if limit == 0 then
+    return 'limit_exceeded'
+  elseif limit > 0 then
     local cur = tonumber(redis.call('GET', KEYS[i]) or '0')
     if cur + inc > limit then
       return 'limit_exceeded'
@@ -303,14 +306,18 @@ local ttls = meta.ttls
 
 for i = 1, #KEYS do
   local new = redis.call('INCRBY', KEYS[i], tonumber(incs[i]))
-  if new == tonumber(incs[i]) then
+  if new < 0 then
+    redis.call('SET', KEYS[i], '0')
+  elseif new == tonumber(incs[i]) then
     redis.call('EXPIRE', KEYS[i], tonumber(ttls[i]))
   end
 end
 
 for i = 1, #KEYS do
   local limit = tonumber(limits[i])
-  if limit > 0 then
+  if limit == 0 then
+    return 'limit_exceeded'
+  elseif limit > 0 then
     local cur = tonumber(redis.call('GET', KEYS[i]) or '0')
     if cur > limit then
       return 'limit_exceeded'
@@ -428,7 +435,7 @@ export async function enforceAndCount(
     },
     {
       key: `llm:sub:${payload.submission_id}:cost`,
-      limit: 0,
+      limit: -1,
       inc: cost,
       ttl: opts.ttlSeconds,
     },
@@ -584,7 +591,7 @@ export async function settleUsage(
     },
     {
       key: `llm:sub:${payload.submission_id}:cost`,
-      limit: 0,
+      limit: -1,
       inc: deltaCost,
       ttl: opts.ttlSeconds,
     },

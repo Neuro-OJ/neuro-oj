@@ -119,14 +119,20 @@ export async function createProvider(
   input: ProviderInput,
   storeKey: string,
 ): Promise<ProviderView> {
+  const rawCost = input.cost_per_1k_tokens ?? 0;
+  const cost = Number(rawCost);
+  if (!Number.isFinite(cost) || cost < 0 || cost > MAX_COST_PER_1K_TOKENS) {
+    throw new Error("provider_invalid");
+  }
+
   const id = uuid();
   const createdAt = now();
   const encrypted = await encryptSecret(input.api_key, storeKey);
   await db`
     INSERT INTO llm_providers (id, name, base_url, cost_per_1k_tokens, encrypted_api_key, enabled, created_at, updated_at)
-    VALUES (${id}, ${input.name}, ${input.base_url}, ${
-    input.cost_per_1k_tokens ?? 0
-  }, ${encrypted}, ${input.enabled ?? true}, ${createdAt}, ${createdAt})
+    VALUES (${id}, ${input.name}, ${input.base_url}, ${cost}, ${encrypted}, ${
+    input.enabled ?? true
+  }, ${createdAt}, ${createdAt})
   `;
   const row = await getProviderById(db, id);
   if (!row) throw new Error("provider_not_found");
