@@ -156,11 +156,10 @@ PR #594 的 CI 在收尾时点**仍在运行**（最后推送 `8b13d2b1` 触发�
 
 | job | 结果 |
 |---|---|
-| **`Root Gates`**（含静默跳过棘轮） | ✅ **pass（20s）**。此前两轮 fail 均为**我可复现并已修的自身缺陷**：① `verify-md-links`（`final-report.md` 相对链接少退一级）② 静默跳过棘轮 +1（新增用例沿用了 `ignore: skip` 模式）。两者都在本地复现、修复、验证后推送 |
-| **`Judge Check`**（含 `cargo nextest --all-targets` + Redis） | ✅ **pass（1m26s）** —— 面 1.1 的 5 项 judge 修复在 CI 通过 |
-| `Core submission` / `Core catalog` / `Core Quick Check` / `Core Sharded (TEST_SCHEMA)` | ✅ pass |
-| **`Core identity`** | ❌ **首轮 fail（1m46s）→ 已修**：失败项是**我新增的** `users-profile-secrecy.test.ts`（`无竞赛时计数应为 1`），原因是 CI 用**真 PG**、`count(*)` 返回**字符串**，而本地 PGlite 返回数字。已用 `Number(...)` 包裹三处断言并推送（commit `01447e80`），**待新一轮 CI 确认** |
-| **`Judge Sandbox E2E`**、各 `E2E <domain>` | 收尾时点仍 pending（真实 Docker 沙箱 E2E 耗时长）。**注意：其覆盖内容已由本地 `NOJ_RUN_E2E=1` 的 4 个套件（27 passed / 0 failed）独立取证**，见 §0.3 |
+| **CI run `36503265747`（含全部实质修复的修订）** | ✅ **success（整条 workflow）**：`Root Gates`、`Judge Check`、**`Core identity`**、`Core submission`、`Core community`、`Core catalog`、`Core Sharded (TEST_SCHEMA)`、`Core Quick Check`、`Config Usage Check`、`Coverage Check` **全部 success** |
+| **E2E run `36503265634`（同一修订）** | ✅ **success（整条 workflow）**：**`Judge Sandbox E2E`**、`E2E identity` / `submission` / `contest` / `Cross Domain` 全部 success |
+| 历史失败与归因（全部可复现、全部已修） | ① `Root Gates` 两轮 fail：`verify-md-links` 相对链接少退一级（`final-report.md`）、静默跳过棘轮 +1（新增用例沿用 `ignore: skip`）→ 均已修 ② `Core identity` fail：**我新增测试**的 `solution_count` 断言在真 PG 下失败（`count(*)` 返回字符串）→ 用 `Number(...)` 修正 ③ 本地 `search-events` 家族红：**本地 PGlite 环境问题，CI 里为 success**（面 7 的 A2 给出了构造成因） |
+| 最新几次推送（A5/B3 门禁修复 + 文档） | 触发的新 run 在收尾时点仍在进行；这两处改动的验证由**本地 `check-all`（EXIT=0，含新纳入的 E2E 脚本门禁与已修复的 B3 检查）+ `gate-list_test` 7 passed** 承担 |
 
 > 这条差异值得记下：因我的改动触及 `noj-judge/**`，PR 触发了**完整 E2E 流水线**（含真实
 > Docker 沙箱 E2E）——这正是本轮在本地**无法取证**的那部分（本机无 e2e 栈、评测镜像未重建）。
