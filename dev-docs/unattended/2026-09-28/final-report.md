@@ -73,8 +73,36 @@ Owner 把截止延长到 **08:45** 后，剩余预算投给了**面 1.4（noj-co
 | **High** | **N-03**：**VULN-04/05 的裁定由上轮"维持现状"升级为 High** —— `problem-secrecy.ts` 硬编码 `kind='public'`，使邀请赛/私有赛**同时**失去题解写门控与主页/搜索/题库遮蔽（邀请赛=公开题库+公开题解，进度可匿名围观） |
 | Medium / Low | N-02（`/community/reports` 在 pending 期回显题解全文，第三处手写窗口）、N-04（bio/头像可作匿名 covert 公告板）、N-05、T-01（口径漂移残余 2 处） |
 | 受控面（已审无问题） | 手写时间比较 0 处、无"向全场推文本"的 SSE 信道、私信无竞赛门控需求、服务端强制项（提交上限/rejudge/迟到/赛前/封榜）**全部服务端强制** |
-| **未做任何修复** | N-01 的本质是**内容政策决策**（赛中是否允许全场广播任意文本），Owner 已明确"反作弊系统的功能设计不在本轮范围"，而该修法正属此类；N-03 要改保密 SSOT 的 `kind` 语义（同时改变题库/搜索/主页/社区四类读路径对邀请赛与私有赛的可见性），属 spec §7 的"设计级变更 + 需改契约"。截止前余量也不足以完成"7 处调用点 + 回归测试 + 门禁" |
+| **修复（本轮追加）** | **N-02（Medium）已修**：`/community/reports` 三处门控由 `isProblemInRunningContest`（running 窗口）改为 SSOT 的 `isProblemInUnendedPublicContest`（unended，含 pending）→ commit `01447e80`。修复前赛前筹备期里 `GET /community/posts/:id` 已 404，而举报接口仍**原样返回题解全文**（`content_snapshot`）；**反向验证**：只把"帖子举报"一处改回 running → 新增用例 FAILED，其余 10 个通过（`evidence/05-N02-report-window.txt`） |
+| **Lead 亲验（N-01）** | **N-01 由"单方证据"升级为已确认 Critical**：三处代码的**内部不一致**已被逐行读证 —— ①写门控 `type !== "moment" && input.problem_id`（省略字段即整段跳过）②落库讨论帖 `problem_id = null` ③读门控要求 `problem_id IS NOT NULL` → 结构上永远放行。详见 `findings/05-core-fairness-channels.md` §4.1 |
+| **未修（需 Owner 裁决）** | **N-01（Critical）**：本质是**内容政策决策**（赛中是否允许全场广播任意文本），Owner 已明确"反作弊系统的功能设计不在本轮范围"，而该修法正属此类；**N-03（High）**：要改保密 SSOT 的 `kind` 语义（同时改变题库/搜索/主页/社区四类读路径对邀请赛与私有赛的可见性），属 spec §7 的"设计级变更"；N-04/N-05/T-01 加固项 |
 | 复核状态 | 本面**未派 verifier、Lead 亦未逐条读证** → 按 L1 口径，全部结论**不得视为已确认缺陷**，仅为"待复核候选"。**建议优先复核 N-01 与 N-03：它们直接决定公开赛能否安全开赛** |
+
+## 0.3 追加（2026-09-29 08:22–）：B 轴取得**真实 Docker 证据**
+
+此前报告称"所有依赖真实容器的结论本轮均未取证"。这条**已被推翻**：不需要整条 e2e 栈
+（`scripts/e2e/setup.sh` 会接管 dev 基础设施，本轮已弃用），直接跑 judge 自己的 Docker E2E 即可
+——只需 Docker daemon + dev Redis（`redis://127.0.0.1:6379/9`）+ `DOCKER_CONFIG` 改道。
+
+| 套件 | 结果 | 对本轮的意义 |
+|---|---|---|
+| `e2e_security_isolation`（`NOJ_RUN_E2E=1`） | ✅ **3 passed / 0 failed**（8.72s，exit 0）：`test_network_isolation`、`test_container_no_sensitive_mounts`、`test_evaluation_container_host_boundary` | **B 轴（容器逃逸）首批真实证据**：用**生产路径的 HostConfig 构造器**（`build_host_config_with_cpu`）建容器并断言网络被阻断、无敏感挂载、宿主边界成立 |
+| `e2e_support_package` / `e2e_abnormal` / `e2e_dual_container` | ✅ **3 + 6 + 15 = 24 passed / 0 failed** | **覆盖我改过的注入路径**：`e2e_support_package` 的 `test_evaluation_with_support_package` 走真实支持包注入（我改成的 `inject_zip_entries_to_container`）；`e2e_abnormal` 覆盖 `result_payload_survives_solution_eof` 与 `support_package_missing_still_finished`；`e2e_dual_container` 覆盖双容器主编排、`dual_two_containers_isolated`、`dual_solution_readonly_rootfs`。合计 **27 passed / 0 failed**（含隔离套件 3 个），证据见 `evidence/01-judge-docker-e2e.txt` |
+
+**仍未覆盖的 B 轴断言**（诚实标注）：B1/B2 的"沙箱容器对 postgres/redis/minio/core **既无 DNS 也无路由**"（需 `noj-eval-net` 内探针容器）、B3 的宿主 docker socket 可达性、B6 的"Evaluator 只能触达 llm-gateway"。这些仍需面 1.2/1.3 的专项实测。
+
+### 0.3.1 追加：B4 已证；B1/B2 **本环境不可验证**（一次被拦下的假阳性）
+
+| 断言 | 结果 | 证据 |
+|---|---|---|
+| **B4** tmpfs `noexec/nosuid/nodev` 实际生效 | ✅ **已在真实容器内确认** | 容器内 `mount` 实测 `/tmp` 为 `rw,nosuid,nodev,noexec,relatime,size=262144k`；从 `/tmp` 执行拷入的二进制返回 `Permission denied`（exit 126）。`evidence/03-network-isolation-probe.txt` |
+| **B1/B2** 沙箱容器对 postgres/redis/minio 既无 DNS 也无路由 | ⚠️ **不可验证（本环境）** | 探针初看显示全部 `REACHABLE`（连 `172.17.0.1:5432` 也通）——**但经三步排查确认是本机透明代理造成的假象**：① dev 容器只在 `neuro-oj_default` 上，`noj-eval-net` 容器列表为**空**；② 容器 DNS 的 ExtServers 是 `100.100.100.100`（**Tailscale MagicDNS**，`search tailb83d19.ts.net`）；③ 同一容器内 `example.com` 被解析为 `198.18.0.10`，即 **fake-IP 透明代理标准段**（本机确有 `omniroute`）。**因此必须报"不可验证"，而不是"生产隔离失效"** |
+
+> **由此得到一条条件性风险（需 Owner 判断，非已确认缺陷）**：`noj-eval-net` 的拓扑隔离依赖一个前提
+> ——**宿主机不提供跨越 Docker 网络的名称解析/egress 代理**。若生产宿主机也装了 Tailscale/透明代理/
+> 覆盖式 DNS，评测容器的出网会被代理接走，从而**绕过物理隔离触达内网**。建议择一：生产不部署此类组件；
+> 或为评测容器加显式 egress 策略；或在 judge 启动自检里加**主动断言**（"从评测网络内探测内网服务应失败，
+> 失败则拒绝启动"），把这条前置条件变成可验证的不变量而非文档约定。
 
 ---
 
@@ -99,9 +127,11 @@ PR #594 的 CI 在收尾时点**仍在运行**（最后推送 `8b13d2b1` 触发�
 
 | job | 结果 |
 |---|---|
-| `Root Gates`（含静默跳过棘轮） | 首次两轮为 **fail**，均为**我可复现的自身缺陷**：① `verify-md-links` 因 `final-report.md` 相对链接少退一级；② 静默跳过棘轮因我新增用例沿用 `ignore: skip` 模式 +1。**两者均已定位、修复、本地复现验证通过**（`verify-md-links` PASS、棘轮 1014=基线），最新一轮结果待 Owner 确认 |
-| `Core Quick Check` / `Config Usage Check` / `Coverage Check` / `Production Supply Chain` / `Entrypoint Smoke` | pass |
-| **`Judge Sandbox E2E`**、全部 `E2E <domain>`、`Core identity/submission/catalog` 等 | **pending**（未能在 08:45 前取回结果） |
+| **`Root Gates`**（含静默跳过棘轮） | ✅ **pass（20s）**。此前两轮 fail 均为**我可复现并已修的自身缺陷**：① `verify-md-links`（`final-report.md` 相对链接少退一级）② 静默跳过棘轮 +1（新增用例沿用了 `ignore: skip` 模式）。两者都在本地复现、修复、验证后推送 |
+| **`Judge Check`**（含 `cargo nextest --all-targets` + Redis） | ✅ **pass（1m26s）** —— 面 1.1 的 5 项 judge 修复在 CI 通过 |
+| `Core submission` / `Core catalog` / `Core Quick Check` / `Core Sharded (TEST_SCHEMA)` | ✅ pass |
+| **`Core identity`** | ❌ **首轮 fail（1m46s）→ 已修**：失败项是**我新增的** `users-profile-secrecy.test.ts`（`无竞赛时计数应为 1`），原因是 CI 用**真 PG**、`count(*)` 返回**字符串**，而本地 PGlite 返回数字。已用 `Number(...)` 包裹三处断言并推送（commit `01447e80`），**待新一轮 CI 确认** |
+| **`Judge Sandbox E2E`**、各 `E2E <domain>` | 收尾时点仍 pending（真实 Docker 沙箱 E2E 耗时长）。**注意：其覆盖内容已由本地 `NOJ_RUN_E2E=1` 的 4 个套件（27 passed / 0 failed）独立取证**，见 §0.3 |
 
 > 这条差异值得记下：因我的改动触及 `noj-judge/**`，PR 触发了**完整 E2E 流水线**（含真实
 > Docker 沙箱 E2E）——这正是本轮在本地**无法取证**的那部分（本机无 e2e 栈、评测镜像未重建）。
@@ -121,7 +151,7 @@ PR #594 的 CI 在收尾时点**仍在运行**（最后推送 `8b13d2b1` 触发�
 | 轴 | 状态 | 说明 |
 |---|---|---|
 | **A 评测机可用性** | 🟡 **部分完成** | A1/A2/A4/A5 **已修且有证据**；A3 经复核判定**证伪**（原 finding 不成立） |
-| **B 容器逃逸** | ⛔ **未开始** | 面 1.2 / 1.3 未执行——需 e2e 栈与真实容器实测，本轮**未取证** |
+| **B 容器逃逸** | 🟡 **首批真实证据已取得，面未完成** | `NOJ_RUN_E2E=1` 的 judge Docker E2E：`e2e_security_isolation` **3 passed**（网络隔离 / 无敏感挂载 / 宿主边界，用生产 HostConfig 构造器）、`e2e_dual_container` **15 passed**（含 `dual_two_containers_isolated`、`dual_solution_readonly_rootfs`）。**未覆盖**：B1/B2 的"对 postgres/redis/minio/core 既无 DNS 也无路由"（需 `noj-eval-net` 探针）、B3 宿主 docker socket、B4 tmpfs noexec 实际生效、B6 Evaluator 仅可达 llm-gateway |
 | **C 数据泄露** | 🟡 **审计完成、部分修复** | 面 1.4 已执行：全域读路径矩阵 + 9 条 finding + 上一轮 8 项 VULN 逐条裁定；修 F-01/F-03/F-08；**F-02（High）出补丁提案待裁决**；F-04–F-07/F-09 未修（见 §0.1） |
 | **D 赛时公平性** | 🟡 **审计完成、未修复** | 面 1.5 已执行（信道矩阵 + 6 条 finding + VULN-04/05 升级为 High）；**N-01 Critical 与 N-03 High 均为内容政策/SSOT 语义级变更，按 spec §7 交 Owner 裁决**（见 §0.2）。另：F-02（全站榜单无时间窗口）也属本轴，已出补丁提案 |
 
@@ -201,14 +231,19 @@ dev 的 postgres/redis/minio；已用 `docker compose -f docker-compose.yml up -
 
 1. **没有干净的改动前基线**：首次 `check-all` 被我自己的缓存放置错误污染（5560 条假红），
    因此"不回归"的证据是"改动后各套件全绿"，而非"失败数不增加"。
-2. **A1 的内存证据是单元级的**：用线程局部计数分配器在同一进程内对比两条路径
-   （60.8MB → 30.4MB）。它**没有**在真实容器里触发过 OOM，因此"512MiB 上限下峰值约
-   1.0GiB"是**按比例外推**，不是实测。
-3. **A2 的证据是机制级的**：用"永不就绪的写入器"证明超时生效并证明移除超时后测试永久挂起；
-   **没有**用真实容器验证"容器侧 `tar xf -` 停读 stdin"这一触发路径。
-4. **redis 相关测试连的是 dev Redis DB 9**（不是 e2e 栈的 6380），因为 e2e 栈最终没有启动。
+2. ~~**A1 的内存证据是单元级的**~~ → **已补强**：除单元级线程局部分配器对比（60.8MB → 30.4MB）外，
+   真实 Docker E2E 已通过（`e2e_support_package` 的注入路径 + `e2e_dual_container`），
+   合计 27 passed / 0 failed。但仍**没有**在真实容器里触发过 OOM 来验证"512MiB 上限下的峰值外推"。
+3. ~~**A2 的证据是机制级的**~~ → **部分补强**：真实容器上的注入路径已跑通（未挂起、未超时失败）；
+   但"容器侧 `tar xf -` 停读 stdin"这一具体触发路径仍**未实测**（需要 SIGSTOP 容器内进程的构造）。
+4. **redis 相关测试连的是 dev Redis DB 9**（不是 e2e 栈的 6380），因为 e2e 栈最终没有启动；
+   judge 的 Docker E2E 亦同（结果套件不依赖 Redis 队列）。
 5. **`noj-judge/target/release/noj-judge` 虽已重建**，但本轮测试跑的是 debug 构建。
-6. **§2 曾把"栈上提交数 = 2"当作事实写下但未实测**，实际为 4（含栈基提交）。已在核验时
+6. **本地面板与 CI 环境不一致造成的假红**（面 1.4 新增测试时踩到）：本地 `test-domain.sh` 走
+   **PGlite**、CI 走**真 PostgreSQL**，而 PG 的 `count(*)` 返回**字符串** → 我的
+   `solution_count` 断言在 CI 失败（`Core identity` 红），本地却绿。已用 `Number(...)` 修正并推送。
+   这类"本地绿 CI 红"正是本仓反复治理的形态，**新增测试必须考虑两种后端**。
+7. **§2 曾把"栈上提交数 = 2"当作事实写下但未实测**，实际为 4（含栈基提交）。已在核验时
    发现并改正——这类"凭计划推断代替实测"的写法正是本仓库反复治理的假绿形态，记在此处
    作为对自己的警示。
 
