@@ -2,6 +2,7 @@
  * noj-llm-gateway Hono 应用工厂。
  */
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import type { GatewayConfig } from "./config.ts";
 import { requestIdMiddleware } from "./context.ts";
 import { createDb } from "./db.ts";
@@ -16,6 +17,15 @@ export function createApp(config: GatewayConfig) {
 
   // 请求上下文最先挂载：使后续所有路由/服务的日志自动带上同一 request_id。
   app.use("*", requestIdMiddleware());
+
+  // 入站请求体限制在 10MB 以内，超出直接 413，防止超大包 DoS（GW-01 / GW-03）。
+  app.use(
+    "*",
+    bodyLimit({
+      maxSize: 10 * 1024 * 1024,
+      onError: (c) => c.json({ error: "payload_too_large" }, 413),
+    }),
+  );
 
   const db = config.databaseUrl ? createDb(config.databaseUrl) : null;
   const redis = config.redisUrl ? createRedis(config.redisUrl) : null;

@@ -58,12 +58,23 @@ function renderMarkdown(src: string): string {
 }
 
 function secureExternalImages(html: string): string {
-  return html.replace(/<img\b[^>]*\bsrc="([^"]*)"[^>]*>/gi, (_tag, src: string) => {
-    if (!src.startsWith("https://")) return ""
-    if (!allowExternalImages) {
-      return `<a href="${md.utils.escapeHtml(src)}" rel="nofollow noopener noreferrer" target="_blank">外链图片</a>`
+  return html.replace(/<img\b[^>]*?\bsrc=(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>/gi, (tag, dq, sq, nq) => {
+    const src = (dq ?? sq ?? nq ?? '').trim()
+    // 提取原 alt（若存在）
+    const altMatch = tag.match(/\balt=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i)
+    const rawAlt = altMatch ? (altMatch[1] ?? altMatch[2] ?? altMatch[3] ?? '') : ''
+    const altAttr = rawAlt ? ` alt="${md.utils.escapeHtml(rawAlt)}"` : ''
+
+    // 允许站内相对路径（以 / 开头，但不允许协议相对路径 //）
+    if (src.startsWith('/') && !src.startsWith('//')) {
+      return `<img src="${md.utils.escapeHtml(src)}" loading="lazy"${altAttr}>`
     }
-    return `<img src="${md.utils.escapeHtml(src)}" loading="lazy" referrerpolicy="no-referrer" alt="外链图片">`
+    // 外链只允许 https://
+    if (!src.startsWith('https://')) return ''
+    if (!allowExternalImages) {
+      return `<a href="${md.utils.escapeHtml(src)}" rel="nofollow noopener noreferrer" target="_blank">${rawAlt ? md.utils.escapeHtml(rawAlt) : '外链图片'}</a>`
+    }
+    return `<img src="${md.utils.escapeHtml(src)}" loading="lazy" referrerpolicy="no-referrer"${altAttr || ' alt="外链图片"'}>`
   })
 }
 

@@ -217,3 +217,85 @@ Deno.test("llm route: settle 超限返回 429 并记录 rejected", async () => {
     restore();
   }
 });
+
+Deno.test("llm route: 已吊销的 eval_token 返回 401 token_revoked", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  // 模拟已吊销状态
+  redis.get = (key: string) =>
+    Promise.resolve(key.startsWith("llm:token:revoked:") ? "1" : null);
+  const app = createLlmRouter({ config: testConfig, db, redis });
+  const token = await makeToken(testConfig);
+
+  const res = await requestChat(app, token, {
+    model: "deepseek-chat",
+    messages: [{ role: "user", content: "ping" }],
+  });
+
+  assertEquals(res.status, 401);
+  const body = await res.json();
+  assertEquals(body.error, "token_revoked");
+});
+
+Deno.test("llm route: 拒绝 stream: true 请求返回 400", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  const app = createLlmRouter({ config: testConfig, db, redis });
+  const token = await makeToken(testConfig);
+
+  const res = await requestChat(app, token, {
+    model: "deepseek-chat",
+    messages: [{ role: "user", content: "ping" }],
+    stream: true,
+  });
+
+  assertEquals(res.status, 400);
+  const body = await res.json();
+  assertEquals(body.error, "stream_not_supported");
+});
+
+Deno.test("llm route: 超大上游响应触发 upstream_response_too_large 返回 502", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db, usageInserts } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  const app = createLlmRouter({ config: testConfig, db, redis });
+  const token = await makeToken(testConfig);
+
+  // 构造流式返回超过 10MB 的 Response
+  const stream = new ReadableStream({
+    start(controller) {
+      const chunk = new Uint8Array(2 * 1024 * 1024); // 2MB
+      chunk.fill(65);
+      for (let i = 0; i < 6; i++) {
+        controller.enqueue(chunk); // 12MB total
+      }
+      controller.close();
+    },
+  });
+
+  const restore = stubFetch(() =>
+    Promise.resolve(
+      new Response(stream, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    )
+  );
+
+  try {
+    const res = await requestChat(app, token, {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: "ping" }],
+    });
+
+    assertEquals(res.status, 502);
+    const body = await res.json();
+    assertEquals(body.error, "upstream_response_too_large");
+    assertEquals(usageInserts.length, 1);
+    assertEquals(usageInserts[0].error_code, "upstream_response_too_large");
+  } finally {
+    restore();
+  }
+});
