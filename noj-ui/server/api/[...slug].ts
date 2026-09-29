@@ -22,10 +22,29 @@ function shouldInterceptAuth(
   event: { path: string; method?: string },
 ): boolean {
   if (event.method !== 'POST') return false;
+  // 必须比较 **pathname**：h3 的 `event.path` 即 `req.url`，**含 query 字符串**，
+  // 因此 `endsWith('/api/v1/auth/login')` 会被 `POST /api/v1/auth/login?x=1` 绕过。
+  // 后果：登录/改密的 JWT **原样回给 JS**（破坏"JWT 只进 HttpOnly Cookie"的不变量），
+  // 且该路径不设置 Cookie → 会话陈旧（2026-09-29 前端审计 U-2）。
+  const pathname = toUrlPathname(event.path);
   return (
-    event.path.endsWith('/api/v1/auth/login') ||
-    event.path.endsWith('/api/v1/auth/change-password')
+    pathname === '/api/v1/auth/login' ||
+    pathname === '/api/v1/auth/change-password'
   );
+}
+
+/**
+ * 取 URL 的 pathname（用于**规范化比较**，避免 query/编码路径干扰判定）。
+ *
+ * 以哨兵 origin 解析相对路径；解析失败时退化为"首段问号截断"，绝不抛错。
+ */
+function toUrlPathname(pathOrUrl: string): string {
+  try {
+    return new URL(pathOrUrl, 'http://noj.internal').pathname;
+  } catch {
+    const q = pathOrUrl.indexOf('?');
+    return q === -1 ? pathOrUrl : pathOrUrl.slice(0, q);
+  }
 }
 
 /**
@@ -178,15 +197,40 @@ function getClientNetworkHeaders(event: {
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
 
-  // 路径白名单：仅允许转发到 noj-core v1 API
-  if (!event.path.startsWith('/api/v1/')) {
+  // 路径白名单：仅允许转发到 noj-core v1 API。
+  //
+  // **必须先规范化再校验**（2026-09-29 前端审计 U-1，匿名可利用）：
+  // `event.path` 携带的是**未归一化**的路径（h3 会解码 `%2e%2e%2f` → `../`），
+  // 裸 `startsWith('/api/v1/')` 会放过 `/api/v1/%2e%2e%2f%2e%2e%2fmetrics` 这类输入，
+  // 而随后的 `fetch()` 会按 URL 规范归一化 dot-segment，最终打到 noj-core 的**任意路径**
+  //（`/metrics`、`/health`、调试路由…），并带上该访客的 Cookie。
+  // 用 `new URL()` 归一化（它会同时消解字面 `..` 与 `%2e%2e` 形态），再校验 origin 与前缀。
+  const apiBaseOrigin = new URL(config.apiBase).origin;
+  let targetUrl: URL;
+  try {
+    targetUrl = new URL(event.path, apiBaseOrigin);
+  } catch {
     return sendError(
       event,
       createError({ statusCode: 404, statusMessage: 'Not Found' }),
     );
   }
+  // 纵深防御：`new URL()` **不会**把 `%2e%2e%2f` 归一化（视作字面量），
+  // 因此路径里若仍残留**编码形态**的 `.` / `/` / `\`（`%2e`/`%2f`/`%5c`），
+  // 无论上游是否已解码，一律拒绝——不给"依赖 Nitro 一定先解码"留假设。
+  // 该 API 的合法路径段只有 UUID / display_id / label / 数字，不会用到这些编码。
+  const target = /%(2e|2f|5c)/i.test(targetUrl.pathname) ? null : targetUrl.toString();
 
-  const target = `${config.apiBase}${event.path}`;
+  if (
+    target === null ||
+    targetUrl.origin !== apiBaseOrigin ||
+    !targetUrl.pathname.startsWith('/api/v1/')
+  ) {
+    return sendError(
+      event,
+      createError({ statusCode: 404, statusMessage: 'Not Found' }),
+    );
+  }
 
   const cookies = parseCookies(event);
   const token = cookies['noj:token'];
