@@ -50,7 +50,9 @@ export async function getUserProfileAggregate(
     moments,
   ] = await Promise.all([
     queryProfileUser(db, userId),
-    queryProfileStats(db, userId),
+    // 统计与列表同口径（面 1.4 审计 F-04a）：必须传 viewer，否则计数会包含被
+    // 未结束公开赛保密的题目，差额本身即泄露"该用户已通过一道保密题"。
+    queryProfileStats(db, userId, viewer),
     querySolvedProblems(db, userId, viewer),
     queryRecentSubmissions(db, userId, viewer),
     queryProfileCommunityStats(db, userId, moderator),
