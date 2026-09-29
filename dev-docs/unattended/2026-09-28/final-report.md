@@ -98,11 +98,19 @@ Owner 把截止延长到 **08:45** 后，剩余预算投给了**面 1.4（noj-co
 | **B4** tmpfs `noexec/nosuid/nodev` 实际生效 | ✅ **已在真实容器内确认** | 容器内 `mount` 实测 `/tmp` 为 `rw,nosuid,nodev,noexec,relatime,size=262144k`；从 `/tmp` 执行拷入的二进制返回 `Permission denied`（exit 126）。`evidence/03-network-isolation-probe.txt` |
 | **B1/B2** 沙箱容器对 postgres/redis/minio 既无 DNS 也无路由 | ⚠️ **不可验证（本环境）** | 探针初看显示全部 `REACHABLE`（连 `172.17.0.1:5432` 也通）——**但经三步排查确认是本机透明代理造成的假象**：① dev 容器只在 `neuro-oj_default` 上，`noj-eval-net` 容器列表为**空**；② 容器 DNS 的 ExtServers 是 `100.100.100.100`（**Tailscale MagicDNS**，`search tailb83d19.ts.net`）；③ 同一容器内 `example.com` 被解析为 `198.18.0.10`，即 **fake-IP 透明代理标准段**（本机确有 `omniroute`）。**因此必须报"不可验证"，而不是"生产隔离失效"** |
 
-> **由此得到一条条件性风险（需 Owner 判断，非已确认缺陷）**：`noj-eval-net` 的拓扑隔离依赖一个前提
-> ——**宿主机不提供跨越 Docker 网络的名称解析/egress 代理**。若生产宿主机也装了 Tailscale/透明代理/
-> 覆盖式 DNS，评测容器的出网会被代理接走，从而**绕过物理隔离触达内网**。建议择一：生产不部署此类组件；
-> 或为评测容器加显式 egress 策略；或在 judge 启动自检里加**主动断言**（"从评测网络内探测内网服务应失败，
-> 失败则拒绝启动"），把这条前置条件变成可验证的不变量而非文档约定。
+> **由此得到两条结论（都已用判别实验把"代理假象"与"真实路径"分开，见 `evidence/03-network-isolation-probe.txt`）**：
+>
+> 1. **判别实验**：同一容器对 `172.23.0.1`（eval-net 网关）的**已发布端口 5432** 与**未监听端口 9999** 都能连上
+>    → 该路径被代理无差别接管，**不可作为证据**；而对 `172.17.0.1`（docker0）：5432 `CONNECTED`、
+>    9999 `ConnectionRefused` → **真实路由**，容器确实能到宿主，5432 通是因为 **dev 的 postgres 发布了 `0.0.0.0:5432`**。
+> 2. **生产端口矩阵（决定性）**：`docker-compose.prod.yml` **只有三处发布端口** —— `nginx:${NGINX_PORT:-8080}:80`、
+>    `prometheus`/`alertmanager`（**仅绑 127.0.0.1**）；**postgres / redis / minio / core / llm-gateway / judge 均无 `ports:`**。
+>    因此"联网 Evaluator 经宿主网关触达内网数据库"**只在 dev 成立，生产不成立**；生产上网关路径只剩
+>    `nginx:8080`（平台公开入口，容器本就有 egress，不构成新能力）与仅绑回环的监控端口（不可经网关触达）✓。
+>
+> **修正后的建议**：这不是生产漏洞（**不做高危修复**）；但该隔离依赖"宿主不部署覆盖式 DNS/透明代理 + 内网服务不发布端口"
+> 这两条**前置条件**，建议在 judge 启动自检里加一条**主动断言**（"从评测网络内探测内网服务应失败，失败则拒绝启动"），
+> 把前置条件变成可验证的不变量而非文档约定。
 
 ---
 
