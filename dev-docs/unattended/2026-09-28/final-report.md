@@ -120,6 +120,21 @@ Owner 把截止延长到 **08:45** 后，剩余预算投给了**面 1.4（noj-co
 
 ---
 
+## 0.4 追加（2026-09-29 08:31–）：面 7 测试体系健康度（第二阶段）
+
+第二阶段的第一个面。方式：把我今晚**真实踩到的一手伤痕**交给审计员逐条验证（避免重新发现），
+再要求其独立扩展。
+
+| 项 | 结果 |
+|---|---|
+| 交付物 | `findings/07-test-health.md`（A 部分 6 条一手伤痕逐条裁定 + B 部分 5 条新发现） |
+| **A 部分：我给的 6 条全部确认** | A1 类型谎言（`sql<number>` 只是断言、真 PG `count(*)` 返回 string，全仓 **12 处裸 `count(*)`**，消费侧靠散落 `Number()` 兜底）；A2 `search-events` 用例依赖**全局 Redis 键**无隔离 → 本地稳定红、CI 绿；A3 静默跳过棘轮**既过严（`ignore: skip` 且 skip=false 也计数）又可绕过（`ignore: (skip)`/`!skipEnv`/跨行全漏检）**；A4 4 处门禁缺 `.deno_cache` 跳过项**而 CI 自己就把 DENO_DIR 指向仓库内**；A5 e2e 脚本无项目名隔离（**CI 有、本地没有**）；A6 根 scripts 自测无漏网 |
+| **B 部分：新发现（最有价值三条）** | **B1**：`countToNumber` 守卫**生产 0 调用**（死守卫），且注释把两种引擎的行为**写反了**；**B2**：`scripts/deploy/restore-drill-verify_test.ts` **从未被任何入口执行**（"写了却永不执行"）；**B3**：`silent-skip-report.ts --check` **先写报告再读回来跟同一字符串比** → "报告过期"是**死检查**，且 `--check` 会改写 git 跟踪文件；另有 B4（棘轮可被 `--update-baseline` 洗白）、B5（全套用例**无一条**断言 PGlite 与真 PG 等价） |
+| **本轮已修** | **A5（最高优先，唯一会毁掉他人环境的缺陷）**：`setup.sh` / `teardown.sh` 统一 `export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-noj-e2e-local}"`；`check-setup.sh` 增加静态断言；并把该脚本**纳入 `REPO_GATES`**（此前仅手工可跑，缺陷因此无人拦）→ commit `a3e37c9b9`。**前后对照证据**：不设该变量时项目名 = `neuro-oj`（即会认领 dev 栈）→ 设后 = `noj-e2e-local`；dev compose 仍是 `neuro-oj` 不受影响（`evidence/07-A5-e2e-project-name.txt`）。`gate-list_test` 入口一致性自测 7 passed |
+| **未修（列入待办，附优先级）** | ① **A1+B1**（"本地绿 CI 红"的根因类：12 处 `count(*)::int` + 一条跨引擎断言）；② **A3+B4**（棘轮口径与可洗白——改门禁语义属设计决策）；③ **B3**（死检查，修法明确）；④ **B2**（把 `restore-drill-verify_test.ts` 接入执行入口）；⑤ A4（共享 `EXCLUDED_DIRS`）；⑥ A2/B5（测试 Redis 隔离与跨引擎等价断言） |
+
+---
+
 ## 1. 交付物
 
 | 交付物 | 位置 / 链接 |
