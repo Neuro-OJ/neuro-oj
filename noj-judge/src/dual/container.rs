@@ -22,6 +22,9 @@ use crate::sandbox::cleanup::{
 };
 use crate::sandbox::host_config::build_host_config_with_cpu;
 
+/// 沙箱容器运行 UID（对应镜像中的 USER noj，UID 10001，SE-03 纵深防御）。
+pub const SANDBOX_USER: &str = "10001:10001";
+
 /// 容器模式标签前缀（`com.noj.judge.dual.{kind}`）。
 const DUAL_KIND_LABEL_PREFIX: &str = "com.noj.judge.dual.";
 
@@ -204,6 +207,7 @@ pub async fn start_exec(
                 attach_stdout: Some(true),
                 attach_stderr: Some(true),
                 attach_stdin: Some(true),
+                user: Some(SANDBOX_USER.to_string()),
                 ..Default::default()
             },
         ),
@@ -266,6 +270,7 @@ async fn create_container_with_security(
         labels: Some(labels),
         host_config: Some(host_config),
         working_dir: Some("/workspace".to_string()),
+        user: Some(SANDBOX_USER.to_string()),
         ..Default::default()
     };
 
