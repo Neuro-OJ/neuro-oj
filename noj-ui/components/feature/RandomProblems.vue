@@ -1,5 +1,5 @@
 <template>
-    <div class="bg-white border border-border rounded-xl shadow-card animate-[fadeInUp_0.5s_ease_0.15s_both] h-full flex flex-col">
+    <div class="bg-white border border-border rounded-lg shadow-card animate-[fadeInUp_0.5s_ease_0.15s_both] h-full flex flex-col">
         <div class="flex items-center gap-2 px-5 py-3.5 border-b border-border">
             <UIcon name="i-lucide-code" class="text-primary shrink-0 size-4" />
             <h3 class="text-sm font-semibold text-text m-0 leading-none">随机题目</h3>

@@ -165,31 +165,37 @@ onUnmounted(() => {
     <div class="mx-auto max-w-[960px] px-4 sm:px-7">
       <AsyncContent :status="pending ? 'loading' : error ? 'error' : contest ? 'data' : 'empty'" error="竞赛加载失败" @retry="refresh">
         <div v-if="contest" class="space-y-6">
-          <section class="overflow-hidden rounded-2xl border border-border bg-white shadow-card">
-            <div class="bg-bg-dark px-7 py-7 text-white">
+          <section class="overflow-hidden rounded-lg border border-border bg-white shadow-card">
+            <div class="p-6 sm:p-7">
               <div class="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <div class="mb-3 flex items-center gap-2 text-xs text-slate-300">
-                    <span class="rounded-md bg-white/10 px-2.5 py-1">{{ typeLabels[contest.type] }}</span>
-                    <span class="rounded-full border px-2.5 py-1" :class="statusClass(contest.status)">{{ statusLabels[contest.status] }}</span>
+                  <div class="mb-3 flex items-center gap-2 text-xs">
+                    <span class="rounded-md bg-primary-bg px-2.5 py-1 font-semibold text-primary border border-primary/20">{{ typeLabels[contest.type] }}</span>
+                    <span class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-semibold" :class="statusClass(contest.status)">
+                      <span v-if="contest.status === 'running'" class="relative flex size-2">
+                        <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-signal opacity-75"></span>
+                        <span class="relative inline-flex size-2 rounded-full bg-signal"></span>
+                      </span>
+                      {{ statusLabels[contest.status] }}
+                    </span>
                   </div>
-                  <h1 class="text-2xl font-bold md:text-3xl">{{ contest.title }}</h1>
+                  <h1 class="text-2xl font-bold text-text md:text-3xl">{{ contest.title }}</h1>
                 </div>
-                <div v-if="contest.status !== 'ended'" class="rounded-xl border border-white/15 bg-white/10 px-5 py-3 text-right">
-                  <div class="text-xs text-slate-300">{{ contest.status === 'pending' ? '距离开始' : '距离结束' }}</div>
-                  <div class="mt-1 font-mono text-xl font-bold tracking-wide">{{ countdown }}</div>
+                <div v-if="contest.status !== 'ended'" class="rounded-lg border border-border bg-bg-sunken px-5 py-3 text-right shadow-xs">
+                  <div class="text-xs text-text-muted">{{ contest.status === 'pending' ? '距离开始' : '距离结束' }}</div>
+                  <div class="mt-1 font-mono text-xl font-bold tracking-wide text-text tabular-nums">{{ countdown }}</div>
                 </div>
               </div>
-              <div class="mt-6 grid gap-3 text-sm text-slate-300 sm:grid-cols-2 lg:grid-cols-4">
-                <span class="flex items-center gap-2"><UIcon name="i-lucide-calendar-clock" class="size-4" />{{ formatDateTime(contest.start_time) }}</span>
-                <span class="flex items-center gap-2"><UIcon name="i-lucide-timer" class="size-4" />{{ formatDuration(contest.start_time, contest.end_time) }}</span>
-                <span class="flex items-center gap-2"><UIcon name="i-lucide-list-checks" class="size-4" />{{ contest.problem_count }} 道题</span>
-                <span class="flex items-center gap-2"><UIcon name="i-lucide-users" class="size-4" />{{ contest.participant_count }} 名参赛者</span>
+              <div class="mt-6 grid gap-3 text-sm text-text-secondary sm:grid-cols-2 lg:grid-cols-4 border-t border-border pt-4">
+                <span class="flex items-center gap-2"><UIcon name="i-lucide-calendar-clock" class="size-4 text-text-muted" />{{ formatDateTime(contest.start_time) }}</span>
+                <span class="flex items-center gap-2"><UIcon name="i-lucide-timer" class="size-4 text-text-muted" />{{ formatDuration(contest.start_time, contest.end_time) }}</span>
+                <span class="flex items-center gap-2"><UIcon name="i-lucide-list-checks" class="size-4 text-text-muted" />{{ contest.problem_count }} 道题</span>
+                <span class="flex items-center gap-2"><UIcon name="i-lucide-users" class="size-4 text-text-muted" />{{ contest.participant_count }} 名参赛者</span>
               </div>
             </div>
           </section>
 
-          <section class="overflow-hidden rounded-2xl border border-border bg-white p-4 shadow-card sm:p-6">
+          <section class="overflow-hidden rounded-lg border border-border bg-white p-4 shadow-card sm:p-6">
             <UTabs v-model="activeTab" :items="tabItems" class="w-full">
               <template #detail>
                 <div class="grid gap-6 p-2 pt-5 sm:p-4 sm:pt-6 lg:grid-cols-[1fr_300px]">
@@ -225,7 +231,7 @@ onUnmounted(() => {
                   <div v-else-if="problemsError" class="py-8 text-center text-sm text-error-text">{{ problemsError }}</div>
                   <div v-else-if="problems.length" class="divide-y divide-border overflow-hidden rounded-xl border border-border">
                     <div v-for="problem in problems" :key="problem.problem_id" class="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-primary-bg">
-                      <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-bg-dark font-mono text-sm font-bold text-white">{{ problem.label }}</span>
+                      <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-bg font-mono text-sm font-bold text-primary border border-primary/20">{{ problem.label }}</span>
                       <NuxtLink :to="`${publicUrl('contest', contest.public_id || contest.id)}/problems/${problem.label}`" class="min-w-0 flex-1 text-text no-underline">
                         <div class="font-semibold">{{ problem.title }}</div>
                         <div class="mt-1 text-xs text-text-muted">{{ problem.display_id }} · {{ problem.difficulty }}</div>

@@ -1,6 +1,6 @@
 <template>
     <div class="px-3 sm:px-5 py-6">
-        <div class="mx-auto w-full max-w-[1320px] border border-border rounded-xl shadow-card flex flex-col overflow-hidden bg-white">
+        <div class="mx-auto w-full max-w-[1320px] border border-border rounded-lg shadow-card flex flex-col overflow-hidden bg-white">
             <div class="flex flex-col flex-1">
                 <div class="flex flex-col lg:flex-row flex-1 min-h-[320px] bg-white">
                     <!-- Carousel（slides 驱动） -->
@@ -9,10 +9,11 @@
 
                     <!-- Check-in -->
                     <div class="w-full lg:w-[300px] lg:aspect-square lg:self-start shrink-0 flex flex-col bg-gradient-to-br from-white to-bg-sunken/60 border-t lg:border-t-0 lg:border-l border-border">
-                        <div class="flex flex-col items-center pt-5 text-xs text-text-muted leading-tight">
+                        <div class="flex items-center justify-center gap-1.5 pt-5 text-xs text-text-muted leading-tight">
+                            <UIcon name="i-lucide-calendar" class="size-3.5 text-primary shrink-0" />
                             <span>{{ todayDateStr }}</span>
                             <ClientOnly>
-                                <span class="tabular-nums mt-0.5">{{ todayTimeStr }}</span>
+                                <span class="tabular-nums font-mono text-text-secondary text-[11px]">· {{ todayTimeStr }}</span>
                             </ClientOnly>
                         </div>
                         <CheckInCard

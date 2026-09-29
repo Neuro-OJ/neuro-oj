@@ -34,10 +34,17 @@ function setPage(p: number) {
 
 <template>
   <div class="px-4 py-5 sm:px-7 sm:py-8 max-w-[960px] mx-auto">
-    <div class="flex items-baseline gap-3 mb-6">
-      <UIcon name="i-lucide-trophy" class="text-primary self-center size-[22px]" />
-      <h1 class="text-2xl font-bold text-text">榜单</h1>
-      <span class="text-sm text-text-muted">共 {{ total }} 位上榜用户</span>
+    <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-3">
+        <div class="flex size-10 items-center justify-center rounded-lg bg-primary-bg text-primary border border-primary/20 shadow-xs">
+          <UIcon name="i-lucide-trophy" class="size-5" />
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold text-text leading-tight">全站榜单</h1>
+          <p class="text-xs text-text-muted mt-0.5">解题成就与通过率竞技排行榜</p>
+        </div>
+      </div>
+      <span class="text-xs text-text-muted px-2.5 py-1 rounded-md bg-bg-sunken border border-border tabular-nums font-mono">共 {{ total }} 位上榜选手</span>
     </div>
 
     <!-- 异步内容 -->
@@ -56,15 +63,15 @@ function setPage(p: number) {
       </template>
 
       <!-- 榜单表格 -->
-      <div class="bg-white border border-border rounded-xl overflow-x-auto">
+      <div class="bg-white border border-border rounded-lg shadow-card overflow-x-auto">
         <table class="w-full border-collapse">
           <thead>
             <tr>
-              <th scope="col" class="w-20 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">排名</th>
-              <th scope="col" class="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">用户</th>
-              <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-right bg-gray-50 border-b border-border">解题数</th>
-              <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-right bg-gray-50 border-b border-border hidden sm:table-cell">通过率</th>
-              <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-right bg-gray-50 border-b border-border hidden sm:table-cell">提交数</th>
+              <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-bg-sunken/60 border-b border-border">排名</th>
+              <th scope="col" class="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-bg-sunken/60 border-b border-border">选手</th>
+              <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-right bg-bg-sunken/60 border-b border-border">解题数</th>
+              <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-right bg-bg-sunken/60 border-b border-border hidden sm:table-cell">通过率</th>
+              <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-right bg-bg-sunken/60 border-b border-border hidden sm:table-cell">总提交</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-border">
@@ -74,19 +81,41 @@ function setPage(p: number) {
               :class="[
                 'transition-colors duration-150',
                 isLoggedIn && currentUser?.id === row.user_id
-                  ? 'bg-signal/5 hover:bg-signal/10'
-                  : 'hover:bg-gray-50',
+                  ? 'bg-signal/5 hover:bg-signal/10 ring-1 ring-inset ring-signal/30'
+                  : row.rank === 1
+                  ? 'bg-amber-500/[0.03] hover:bg-amber-500/[0.06]'
+                  : row.rank === 2
+                  ? 'bg-slate-500/[0.02] hover:bg-slate-500/[0.05]'
+                  : row.rank === 3
+                  ? 'bg-orange-500/[0.02] hover:bg-orange-500/[0.05]'
+                  : 'hover:bg-bg-sunken/40',
               ]"
             >
-              <td class="w-20 px-4 py-3.5">
+              <td class="w-24 px-4 py-3.5">
                 <span
-                  class="inline-flex items-center justify-center min-w-[2.25rem] px-2 py-0.5 rounded-full text-sm font-bold tabular-nums"
-                  :class="{
-                    'bg-yellow-100 text-yellow-800': row.rank === 1,
-                    'bg-gray-200 text-gray-700': row.rank === 2,
-                    'bg-orange-100 text-orange-800': row.rank === 3,
-                    'bg-gray-50 text-text-secondary': row.rank > 3,
-                  }"
+                  v-if="row.rank === 1"
+                  class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold tabular-nums rank-badge-gold"
+                >
+                  <UIcon name="i-lucide-crown" class="size-3.5 text-amber-500 shrink-0" />
+                  #1
+                </span>
+                <span
+                  v-else-if="row.rank === 2"
+                  class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold tabular-nums rank-badge-silver"
+                >
+                  <UIcon name="i-lucide-medal" class="size-3.5 text-slate-400 shrink-0" />
+                  #2
+                </span>
+                <span
+                  v-else-if="row.rank === 3"
+                  class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold tabular-nums rank-badge-bronze"
+                >
+                  <UIcon name="i-lucide-medal" class="size-3.5 text-orange-600 shrink-0" />
+                  #3
+                </span>
+                <span
+                  v-else
+                  class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded text-xs font-medium tabular-nums bg-bg-sunken text-text-muted border border-border/60"
                 >
                   #{{ row.rank }}
                 </span>
