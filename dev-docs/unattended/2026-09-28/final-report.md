@@ -19,6 +19,12 @@
 3. 🟡 **F-02（High）**：全站榜单 `/api/v1/rankings` 7 处 SQL 无任何时间窗口且**匿名可读** → 赛中他人进度侧信道。
    已在 `findings/04-*` 给出精确补丁提案（含测试与回滚）。
 
+4. 🔴 **S2（High，部署链）**：模板 `.env.prod.example` 默认 `NOJ_ENFORCE_IMAGE_SIGNATURES=false`
+   → `release.yml` 里的 cosign 签名/证明**默认零校验价值**（fail-open）。**开赛前部署若不改这一项，
+   等于完全不校验镜像。** 另 **S1（High）**：`.github` 下 **174 处 `uses:` 无一 SHA 固定**，而
+   `release.yml` 持有 `packages/id-token/attestations/contents: write` 且 `--clobber` 上传资产
+   → 上游 action tag 失陷可**污染所有后续 install/update**（详见 `findings/08-*`）。
+
 **已修 9 项**（全部带 before/after 或成对证据）：
 `评测机被卡` A1 注入内存峰值↓50%、A2 注入期 6 处阻塞调用加超时、A7 重投方向、D2 崩溃后 claim 回收、D3 优雅关闭窗口；
 `数据泄露` F-01 主页题解门控补齐赛前筹备期、F-03 自测 404 化、F-04a 计数与列表同口径、F-08 陈旧注释；
@@ -160,6 +166,19 @@ Owner 把截止延长到 **08:45** 后，剩余预算投给了**面 1.4（noj-co
 | **B 部分：新发现（最有价值三条）** | **B1**：`countToNumber` 守卫**生产 0 调用**（死守卫），且注释把两种引擎的行为**写反了**；**B2**：`scripts/deploy/restore-drill-verify_test.ts` **从未被任何入口执行**（"写了却永不执行"）；**B3**：`silent-skip-report.ts --check` **先写报告再读回来跟同一字符串比** → "报告过期"是**死检查**，且 `--check` 会改写 git 跟踪文件；另有 B4（棘轮可被 `--update-baseline` 洗白）、B5（全套用例**无一条**断言 PGlite 与真 PG 等价） |
 | **本轮已修** | **A5（最高优先，唯一会毁掉他人环境的缺陷）**：`setup.sh` / `teardown.sh` 统一 `export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-noj-e2e-local}"`；`check-setup.sh` 增加静态断言；并把该脚本**纳入 `REPO_GATES`**（此前仅手工可跑，缺陷因此无人拦）→ commit `a3e37c9b9`。**前后对照证据**：不设该变量时项目名 = `neuro-oj`（即会认领 dev 栈）→ 设后 = `noj-e2e-local`；dev compose 仍是 `neuro-oj` 不受影响（`evidence/07-A5-e2e-project-name.txt`）。`gate-list_test` 入口一致性自测 7 passed |
 | **未修（列入待办，附优先级）** | ① **A1+B1**（"本地绿 CI 红"的根因类：12 处 `count(*)::int` + 一条跨引擎断言）；② **A3+B4**（棘轮口径与可洗白——改门禁语义属设计决策）；③ **B3**（死检查，修法明确）；④ **B2**（把 `restore-drill-verify_test.ts` 接入执行入口）；⑤ A4（共享 `EXCLUDED_DIRS`）；⑥ A2/B5（测试 Redis 隔离与跨引擎等价断言） |
+
+---
+
+## 0.5 追加（2026-09-29 08:5x）：面 8 root / scripts / CI 供应链（第二阶段）
+
+| 项 | 结果 |
+|---|---|
+| 交付物 | `findings/08-root-ci-supply-chain.md`（9 条 finding + **Release 资产校验链逐环节核对** + 受控面清单 + 优先修 3 条） |
+| **S1（High，影响面 Critical）** | **174 处 `uses:` 中 SHA 固定 = 0**；`release.yml` 全局 `packages/id-token/attestations/actions: write`、`publish-cli` 另有 `contents: write`，并用 `--clobber` 覆盖 Release 资产 → 上游 tag 失陷即污染所有后续 install/update。**且与自述矛盾**：`dependabot.yml` 注释声称已 SHA 钉、`check-supply-chain.sh` 只检察 Trivy → **虚假安全感** |
+| **S2（High）** | 模板默认 `NOJ_ENFORCE_IMAGE_SIGNATURES=false` → cosign 验签整体跳过（fail-open），且**验签得到的 digest 未回填到 pull 的镜像引用**（存在 tag 被移动的 TOCTOU 窗口） |
+| S3/S4/S5/S6 | S3 发布资产**无独立信任锚**（产物与 `.sha256` 同源；证明只覆盖镜像 digest）；S4 `NOJ_UPDATE_API_URL/_REPOSITORY` 可换源（无 host 白名单）；S5 CI 无 `--frozen`/`--locked` → AGENTS.md 的"禁止手改 lock"**无机器门禁**；S6 `JWT_SECRET` 注入到执行 PR 代码的 job（write 权限账号即可外带） |
+| 受控面（已审无问题，含**独立复核我今晚的改动**） | **无** `pull_request_target`/`workflow_run`/`issue_comment`；**无** PR 标题/正文进 `run:`；**无** `eval`/`curl\|bash`；21 处 `continue-on-error` **全部**是日志/产物上传步骤（无测试被吞）；`ci`/`e2e`/`lint-workflows` 权限均为 `contents: read`；部署链除 S2 外**全部 fail-closed**（install 先验后拉、bootstrap 两阶段+回滚、update 备份失败即中止）；**2026-09-27 资产名/点号前缀修复完整且被回归测试钉住**；**本轮 A5/B3 两处改动经独立复核确认正确** |
+| 处置 | **未修任何一条**：S1 是 174 处机械化大改、S2 是**面向运维的默认策略变更**（改错会导致部署硬失败，且 Owner 可能在 beta 期有意关闭验签）、S3 需改 release.yml + CLI + 文档三处契约 → 按 spec §7 全部交 Owner 裁决 |
 
 ---
 
