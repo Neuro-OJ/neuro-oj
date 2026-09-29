@@ -70,8 +70,22 @@ Owner 把截止延长到 **08:45** 后，剩余预算投给了**面 1.4（noj-co
 | 门禁原始输出 | `logs/check-all-baseline.txt`、`logs/check-all-final.txt` |
 | Agent Note | `.agents/notes/implemented/bug-fix/2026-09-28-judge-availability-hardening.md` |
 
-## 2. L0 红线核验（实测）
+## 1.1 CI 状态（收尾时点，需 Owner 复核）
 
+PR #594 的 CI 在收尾时点**仍在运行**（最后推送 `8b13d2b1` 触发的新 run 正在启动阶段）。
+按 spec §3.3 的口径，本轮验收**以本地全量门禁为主证据**，CI 为补充；已确认的部分：
+
+| job | 结果 |
+|---|---|
+| `Root Gates`（含静默跳过棘轮） | 首次两轮为 **fail**，均为**我可复现的自身缺陷**：① `verify-md-links` 因 `final-report.md` 相对链接少退一级；② 静默跳过棘轮因我新增用例沿用 `ignore: skip` 模式 +1。**两者均已定位、修复、本地复现验证通过**（`verify-md-links` PASS、棘轮 1014=基线），最新一轮结果待 Owner 确认 |
+| `Core Quick Check` / `Config Usage Check` / `Coverage Check` / `Production Supply Chain` / `Entrypoint Smoke` | pass |
+| **`Judge Sandbox E2E`**、全部 `E2E <domain>`、`Core identity/submission/catalog` 等 | **pending**（未能在 08:45 前取回结果） |
+
+> 这条差异值得记下：因我的改动触及 `noj-judge/**`，PR 触发了**完整 E2E 流水线**（含真实
+> Docker 沙箱 E2E）——这正是本轮在本地**无法取证**的那部分（本机无 e2e 栈、评测镜像未重建）。
+> 因此 **CI 的 `Judge Sandbox E2E` 结果是本次 judge 修复唯一可得的真实沙箱验证**，请务必复核。
+
+## 2. L0 红线核验（实测）
 | # | 红线 | 判据与实测 |
 |---|---|---|
 | 1 | **`main` 零改动** | ① `git rev-parse origin/main` = `6dbdd76b57d7d23ee776a292aebd9a1a8ece0511`（与冻结值一致）② `jj bookmark list main` = `qrsktulv 6dbdd76b`（未前进）③ `git rev-list --count origin/main..contest-readiness/01-judge-availability` = **4**（= 栈基 `4356fe18` 1 个 + `fix` 1 个 + `docs` 2 个；**含栈基提交**，因为栈基尚在 `style/cyber-azure-tokens` 分支、未进入 `main`）④ 远端 heads 只有 `style/cyber-azure-tokens` 与 `contest-readiness/01-judge-availability` **两条分支，无 main 改动** |
