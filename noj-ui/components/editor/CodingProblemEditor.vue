@@ -428,7 +428,7 @@ async function handleSubmit() {
 
         <div class="flex flex-col gap-1">
           <label class="text-xs font-semibold text-text">标题 <span class="text-red-600">*</span></label>
-          <input v-model="title" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)] bg-white" placeholder="题目标题" />
+          <input v-model="title" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:input-base-focus bg-white" placeholder="题目标题" />
           <p v-if="fieldErrors.title" class="text-xs text-red-600">{{ fieldErrors.title }}</p>
         </div>
 
@@ -451,7 +451,7 @@ async function handleSubmit() {
 
         <div v-if="submissionMode === 'artifact'" class="flex flex-col gap-1">
           <label class="text-xs font-semibold text-text">artifact 大小上限（MB）</label>
-          <input v-model.number="artifactMaxSizeMb" type="number" min="1" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)] bg-white" placeholder="留空使用 NOJ 默认上限" />
+          <input v-model.number="artifactMaxSizeMb" type="number" min="1" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:input-base-focus bg-white" placeholder="留空使用 NOJ 默认上限" />
         </div>
 
         <div class="flex flex-col gap-1 col-span-2">
@@ -464,7 +464,7 @@ async function handleSubmit() {
           </div>
           <input
             v-model="tagSearch"
-            class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)] bg-white"
+            class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:input-base-focus bg-white"
             placeholder="搜索标签..."
           />
           <div class="flex flex-wrap gap-2">
@@ -493,7 +493,7 @@ async function handleSubmit() {
       <textarea
         v-if="!previewMode"
         v-model="description"
-        class="w-full px-3 py-3 text-sm font-mono leading-relaxed border border-border rounded-md outline-none resize-y min-h-[200px] box-border transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
+        class="w-full px-3 py-3 text-sm font-mono leading-relaxed border border-border rounded-md outline-none resize-y min-h-[200px] box-border transition-colors focus:input-base-focus"
         placeholder="支持 Markdown 格式的题目描述..."
         rows="12"
       />
@@ -531,7 +531,7 @@ async function handleSubmit() {
             </div>
             <div class="flex flex-col gap-1">
               <label class="text-xs font-semibold text-text">评测命令 <span class="text-red-600">*</span></label>
-              <input v-model="evaluatorCommand" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none transition-colors focus:border-signal bg-white" placeholder="如：python3 /workspace/evaluate.py" />
+              <input v-model="evaluatorCommand" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" placeholder="如：python3 /workspace/evaluate.py" />
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div class="flex flex-col gap-1">
@@ -669,7 +669,7 @@ async function handleSubmit() {
       <div class="flex flex-col gap-3">
         <div class="flex flex-col gap-1">
           <label class="text-13px font-semibold text-text">名称 <span class="text-error-text">*</span></label>
-          <input v-model="newTagName" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]" placeholder="标签名称" />
+          <input v-model="newTagName" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:input-base-focus" placeholder="标签名称" />
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-13px font-semibold text-text">类型 <span class="text-error-text">*</span></label>

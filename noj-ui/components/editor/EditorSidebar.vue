@@ -219,7 +219,7 @@ function formatElapsed(iso: string) {
         <button
           v-for="sub in submissions"
           :key="sub.id"
-          class="w-full text-left p-3 rounded-md border border-border hover:border-signal hover:bg-bg-page transition-colors group relative mb-2"
+          class="w-full text-left p-3 rounded-md border border-border hover:border-primary hover:bg-bg-page transition-colors group relative mb-2"
           @click="emit('open-submission', sub.id)"
         >
           <div class="flex items-center justify-between mb-1">

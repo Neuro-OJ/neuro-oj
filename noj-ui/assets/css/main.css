@@ -7,19 +7,19 @@
 
 /* ---- Tailwind v4 主题：将现有 --c-* 设计 token 映射为 Tailwind 主题 ---- */
 @theme {
-  /* 主色（蓝黑墨）：基础 + 完整色阶（Nuxt UI color="primary" 需要 300/600 等档位） */
+  /* 主色（天青蓝 Brand Azure）：基础 + 完整色阶（Nuxt UI color="primary" 需要 300/600 等档位） */
   --color-primary: var(--c-primary);
-  --color-primary-50: #eef0f5;
-  --color-primary-100: #d6dbe6;
-  --color-primary-200: #aeb8cc;
-  --color-primary-300: #8492b3;
-  --color-primary-400: #5a6d99;
-  --color-primary-500: #3b4f7d;
-  --color-primary-600: #1B2B4A;
-  --color-primary-700: #16233E;
-  --color-primary-800: #101B30;
-  --color-primary-900: #0B1322;
-  --color-primary-950: #060B14;
+  --color-primary-50: #f0f9ff;
+  --color-primary-100: #e0f2fe;
+  --color-primary-200: #bae6fd;
+  --color-primary-300: #7dd3fc;
+  --color-primary-400: #38bdf8;
+  --color-primary-500: #0ea5e9;
+  --color-primary-600: #0284c7;
+  --color-primary-700: #0369a1;
+  --color-primary-800: #075985;
+  --color-primary-900: #0c4a6e;
+  --color-primary-950: #082f49;
 
   /* 语义主色变体（现有 bg-primary-dark 等工具类依赖） */
   --color-primary-dark: var(--c-primary-dark);
@@ -61,24 +61,20 @@
   --color-error-text: var(--c-error-text);
   /* 状态基础色 + 300/600 档（Nuxt UI color="success/error" 等需要） */
   --color-success: var(--c-success-text);
-  --color-success-300: #86efac;
-  --color-success-600: #00b377;
+  --color-success-300: #6ee7b7;
+  --color-success-600: #059669;
   --color-info: var(--c-info-text);
-  --color-info-300: #aeb8cc;
-  --color-info-600: #1B2B4A;
+  --color-info-300: #7dd3fc;
+  --color-info-600: #0284c7;
   --color-warning: var(--c-warning-text);
   --color-warning-300: #fcd34d;
-  --color-warning-600: #b45309;
-  /* 警示横幅底色/描边：此前 `bg-warning-bg` / `border-warning-border` 被
-     EmailVerificationBanner、TrainingCard、ProblemContestNotice 三处引用，
-     但 @theme 里**没有对应 token**（Tailwind v4 只在未知类名时静默丢弃），
-     导致这三处横幅实际只有文字、没有底色与边框。取值与仓库其它位置手写的
-     amber-50 / amber-200 一致，保持视觉统一。 */
+  --color-warning-600: #d97706;
+  /* 警示横幅底色/描边：保持视觉统一 */
   --color-warning-bg: #fffbeb;
   --color-warning-border: #fde68a;
   --color-error: var(--c-error-text);
-  --color-error-300: #fca5a5;
-  --color-error-600: #dc2626;
+  --color-error-300: #fda4af;
+  --color-error-600: #e11d48;
 
   /* 圆角：近直角 2–6px */
   --radius: 4px;
@@ -88,9 +84,9 @@
   --radius-xl: 14px;
 
   /* 阴影：card / dropdown / modal */
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-dropdown: 0 4px 12px rgba(0, 0, 0, 0.1);
-  --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.15);
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
+  --shadow-dropdown: 0 8px 24px -4px rgba(2, 132, 199, 0.12), 0 2px 6px -1px rgba(15, 23, 42, 0.06);
+  --shadow-modal: 0 20px 48px -8px rgba(15, 23, 42, 0.18);
 
   /* 加载动画：spin 0.8s（对齐现有 animate-spin-slow） */
   --animate-spin-slow: spin 0.8s linear infinite;
@@ -123,27 +119,46 @@
   );
 }
 
+/* ---- 背景微质感装饰 (Clean Cyber Azure Grid) ---- */
+@utility bg-tech-grid {
+  background-image: radial-gradient(rgba(2, 132, 199, 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* ---- native 输入框焦点样式（品牌天青蓝）---- */
+@utility input-base-focus {
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+}
+
 /* ---- 无障碍：键盘焦点可见（WCAG 2.4.7）----
  * 自定义链接/按钮无 focus-visible 样式类时，由浏览器默认 outline 兜底；
- * 此处统一为评测信号绿焦点环；Nuxt UI 组件自带 focus-visible:outline-3 类（utility 层）优先。 */
+ * 此处统一为品牌天青蓝焦点环；Nuxt UI 组件自带 focus-visible:outline-3 类（utility 层）优先。 */
 @layer base {
   a:focus-visible,
   button:focus-visible,
   [role="button"]:focus-visible,
   [tabindex]:focus-visible {
-    outline: 2px solid var(--c-signal);
+    outline: 2px solid var(--c-primary);
     outline-offset: 2px;
   }
 }
 
-/* ---- 全局暖纸背景 ---- */
+/* ---- 全局清爽天青底与高对比排版 ---- */
 @layer base {
   body {
     background-color: var(--c-bg-page);
+    color: var(--c-text);
   }
 
   .dark body {
     background-color: var(--c-bg-page);
+    color: var(--c-text);
+  }
+
+  .dark .bg-tech-grid,
+  .editor-dark .bg-tech-grid {
+    background-image: radial-gradient(rgba(56, 189, 248, 0.08) 1px, transparent 1px);
   }
 }
 
@@ -159,21 +174,33 @@
   }
 }
 
-/* ---- 将现有 token 映射到 Nuxt UI 语义变量，保持组件默认观感 ---- */
+/* ---- 将设计 token 映射到 Nuxt UI 语义变量，保持组件默认观感 ---- */
 :root {
-  /* Nuxt UI primary 使用评测信号绿：主按钮、选中 Tab、进行中状态 */
-  --ui-primary: var(--c-signal);
-  --ui-color-primary-50: #e6fbf3;
-  --ui-color-primary-100: #c2f5e2;
-  --ui-color-primary-200: #8aebc8;
-  --ui-color-primary-300: #4ddfab;
-  --ui-color-primary-400: #1fd694;
-  --ui-color-primary-500: #00d68a;
-  --ui-color-primary-600: #006b47;
-  --ui-color-primary-700: #005238;
-  --ui-color-primary-800: #00402c;
-  --ui-color-primary-900: #00301f;
-  --ui-color-primary-950: #002015;
+  /* Nuxt UI primary 使用品牌天青蓝（Sky 600）：主按钮、选中 Tab、进行中状态 */
+  --ui-primary: var(--c-primary);
+  --ui-color-primary-50: #f0f9ff;
+  --ui-color-primary-100: #e0f2fe;
+  --ui-color-primary-200: #bae6fd;
+  --ui-color-primary-300: #7dd3fc;
+  --ui-color-primary-400: #38bdf8;
+  --ui-color-primary-500: #0ea5e9;
+  --ui-color-primary-600: #0284c7;
+  --ui-color-primary-700: #0369a1;
+  --ui-color-primary-800: #075985;
+  --ui-color-primary-900: #0c4a6e;
+  --ui-color-primary-950: #082f49;
+  /* Nuxt UI success 使用评测信号绿（Emerald 600）：成功/通过状态组件 */
+  --ui-color-success-50: #ecfdf5;
+  --ui-color-success-100: #d1fae5;
+  --ui-color-success-200: #a7f3d0;
+  --ui-color-success-300: #6ee7b7;
+  --ui-color-success-400: #34d399;
+  --ui-color-success-500: #10b981;
+  --ui-color-success-600: #059669;
+  --ui-color-success-700: #047857;
+  --ui-color-success-800: #065f46;
+  --ui-color-success-900: #064e3b;
+  --ui-color-success-950: #022c22;
   --ui-radius: var(--radius);
   --ui-bg: var(--c-bg-page);
   --ui-bg-muted: var(--c-bg-panel);
@@ -197,7 +224,7 @@
   --tw-prose-headings: var(--c-text);
   --tw-prose-links: var(--c-primary);
   --tw-prose-bold: var(--c-text);
-  --tw-prose-code: #be123c;
+  --tw-prose-code: var(--c-primary);
   --tw-prose-quotes: var(--c-text-secondary);
   --tw-prose-quote-borders: var(--c-primary);
   --tw-prose-th-borders: var(--c-border);
@@ -212,12 +239,14 @@
 }
 
 .prose-neuro code:not(pre code) {
-  background: #f1f5f9;
+  background: var(--c-bg-sunken);
+  border: 1px solid var(--c-border);
   padding: 2px 6px;
   border-radius: 4px;
   font-family: "SF Mono", "Fira Code", monospace;
   font-size: 0.88em;
-  color: #be123c;
+  color: var(--c-primary);
+  font-weight: 500;
 }
 
 .prose-neuro strong {

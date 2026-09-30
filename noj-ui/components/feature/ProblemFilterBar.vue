@@ -105,7 +105,7 @@ const activeDifficulty = computed(() => difficulties.some((d) => d.value === pro
         type="text"
         placeholder="搜索题目..."
         aria-label="按标题或题号搜索"
-        class="w-full px-3 py-2 pr-8 text-sm border border-border rounded-lg bg-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-signal/30 focus:border-signal transition-colors duration-150"
+        class="w-full px-3 py-2 pr-8 text-sm border border-border rounded-lg bg-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors duration-150"
       />
       <button
         v-if="searchInput"
@@ -131,7 +131,7 @@ const activeDifficulty = computed(() => difficulties.some((d) => d.value === pro
           ? t.value === 'U' ? 'bg-blue-100 text-blue-700 border-blue-300'
             : t.value === 'P' ? 'bg-purple-100 text-purple-700 border-purple-300'
             : 'bg-signal text-on-signal border-signal'
-          : 'bg-white text-text-secondary border-border hover:border-signal/40'"
+          : 'bg-white text-text-secondary border-border hover:border-primary/40'"
         @click="selectType(t.value)"
       >
         {{ t.label }}
@@ -151,7 +151,7 @@ const activeDifficulty = computed(() => difficulties.some((d) => d.value === pro
         class="px-3 py-1.5 text-xs font-medium rounded-full border transition-colors duration-150"
         :class="difficulty === d.value
           ? 'bg-signal text-on-signal border-signal'
-          : 'bg-white text-text-secondary border-border hover:border-signal/40'"
+          : 'bg-white text-text-secondary border-border hover:border-primary/40'"
         @click="selectDifficulty(d.value)"
       >
         {{ d.label }}

@@ -1,5 +1,5 @@
 <template>
-    <header ref="headerRef" class="fixed top-0 left-0 right-0 z-[100] bg-white border-b border-border">
+    <header ref="headerRef" class="fixed top-0 left-0 right-0 z-[100] bg-white/80 backdrop-blur-md border-b border-border transition-colors">
         <!-- 临时密码提示横幅 -->
         <div v-if="user?.must_change_password === true" class="w-full bg-red-50 border-b border-red-200 px-6 py-2 text-center">
             <p class="text-sm text-red-700">检测到当前密码为临时密码，首次登录后必须修改密码才能使用完整功能。</p>
@@ -21,6 +21,7 @@
                         :key="item.to"
                         :to="item.to"
                         class="flex items-center gap-2 px-3 py-2.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-primary-hover hover:text-text"
+                        active-class="text-primary font-semibold bg-primary-bg"
                         @click="mobileOpen = false"
                     >
                         <UIcon :name="item.icon" class="size-4" />
@@ -36,7 +37,7 @@
                 :key="item.to"
                 :to="item.to"
                 class="whitespace-nowrap px-3 py-1.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-primary-hover hover:text-text"
-                active-class="text-primary font-semibold"
+                active-class="text-primary font-semibold bg-primary-bg"
               >{{ item.label }}</NuxtLink>
               <UDropdownMenu
                 v-if="overflowNavItems.length > 0"
@@ -56,13 +57,13 @@
             </nav>
             <button
                 type="button"
-                class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:bg-primary-hover rounded-md transition-colors"
+                class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:bg-primary-hover hover:text-text rounded-md transition-colors border border-transparent hover:border-border"
                 :aria-label="t('nav.searchFull')"
                 @click="openSearch"
             >
-                <UIcon name="i-lucide-search" class="w-4 h-4 size-4" />
+                <UIcon name="i-lucide-search" class="w-4 h-4 size-4 text-text-muted" />
                 <span class="hidden sm:inline">{{ t('nav.search') }}</span>
-                <kbd class="hidden md:inline-block px-1.5 py-0.5 text-xs bg-gray-100 border border-border rounded">Ctrl K</kbd>
+                <kbd class="hidden md:inline-block px-1.5 py-0.5 text-xs text-text-muted bg-bg-sunken border border-border rounded tabular-nums">Ctrl K</kbd>
             </button>
             <div class="flex items-center gap-3 ml-auto">
                 <NuxtLink v-if="user && communityConfig?.enabled" to="/community/notifications" class="relative flex items-center justify-center rounded-md p-2 text-text-secondary no-underline transition-colors hover:bg-primary-hover hover:text-text" :aria-label="t('nav.notifications')">

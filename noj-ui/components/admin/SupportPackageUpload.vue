@@ -189,7 +189,7 @@ async function handleDelete() {
             ? 'border-signal bg-primary-bg'
             : disabled || uploading
               ? 'border-border bg-gray-50 cursor-not-allowed'
-              : 'border-border hover:border-signal hover:bg-primary-bg',
+              : 'border-border hover:border-primary hover:bg-primary-bg',
         ]"
         @dragover="onDragOver"
         @dragleave="onDragLeave"

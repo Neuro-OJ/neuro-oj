@@ -129,7 +129,7 @@ const columns: AdminColumn[] = [
         <input
           type="text"
           placeholder="搜索 IP 或 CIDR"
-          class="px-3 py-1.5 text-sm border border-border rounded outline-none focus:border-signal"
+          class="px-3 py-1.5 text-sm border border-border rounded outline-none focus:border-primary"
           @input="searchInput(($event.target as HTMLInputElement).value)"
         />
       </div>
@@ -188,7 +188,7 @@ const columns: AdminColumn[] = [
           <input
             v-model="form.ip_or_cidr"
             placeholder="1.2.3.4 或 10.0.0.0/8"
-            class="w-full px-3 py-2 text-sm font-mono border border-border rounded outline-none focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
+            class="w-full px-3 py-2 text-sm font-mono border border-border rounded outline-none focus:input-base-focus"
           />
         </div>
         <div>
@@ -196,7 +196,7 @@ const columns: AdminColumn[] = [
           <input
             v-model="form.reason"
             placeholder="可选，例如：恶意刷接口"
-            class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
+            class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:input-base-focus"
           />
         </div>
         <div>
@@ -204,7 +204,7 @@ const columns: AdminColumn[] = [
           <input
             v-model="form.expires_at"
             type="datetime-local"
-            class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
+            class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:input-base-focus"
           />
           <p class="mt-1 text-[12px] text-text-secondary">留空表示永久封禁</p>
         </div>
