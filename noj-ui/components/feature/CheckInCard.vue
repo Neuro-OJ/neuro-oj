@@ -29,16 +29,22 @@
                     </button>
                 </template>
                 <div v-else class="inline-flex flex-col items-center animate-[moveUpCheckin_0.5s_ease_forwards] border border-transparent">
-                    <span class="inline-flex items-center gap-1.5 text-green-700 text-sm font-semibold py-2 px-4">
-                        <UIcon name="i-lucide-check-circle-2" class="shrink-0 size-4.5" />
+                    <span class="inline-flex items-center gap-1.5 text-signal font-semibold py-1.5 px-3.5 rounded-full bg-signal/10 border border-signal/20 text-sm">
+                        <UIcon name="i-lucide-check-circle-2" class="shrink-0 size-4" />
                         已签到
                     </span>
-                    <div class="overflow-hidden transition-all duration-500" :class="showStreak ? 'max-h-5 opacity-100' : 'max-h-0 opacity-0'">
-                        <span class="text-xs text-green-800 block pb-0.5">你已经连续签到 {{ streakCount }} 天</span>
+                    <div class="overflow-hidden transition-all duration-500 mt-2" :class="showStreak ? 'max-h-7 opacity-100' : 'max-h-0 opacity-0'">
+                        <span class="inline-flex items-center gap-1 text-xs text-text-secondary bg-white/90 dark:bg-bg-sunken px-2.5 py-1 rounded-full border border-border shadow-xs tabular-nums">
+                            <UIcon name="i-lucide-flame" class="size-3.5 text-amber-500" />
+                            已连续签到 <strong class="text-primary font-semibold">{{ streakCount }}</strong> 天
+                        </span>
                     </div>
                 </div>
-                <p v-if="!checkedIn && streakCount > 0" class="text-xs text-text-muted mt-3 animate-[fadeInItem_0.45s_cubic-bezier(0.16,1,0.3,1)_both] [animation-delay:0.6s]">已连续签到 {{ streakCount }} 天</p>
-                <p class="text-xs text-text-muted mt-3 animate-[fadeInItem_0.45s_cubic-bezier(0.16,1,0.3,1)_both] [animation-delay:0.6s]">按 UTC 日期统计 · UTC 0 点刷新</p>
+                <p v-if="!checkedIn && streakCount > 0" class="inline-flex items-center gap-1 text-xs text-text-secondary mt-3 animate-[fadeInItem_0.45s_cubic-bezier(0.16,1,0.3,1)_both] [animation-delay:0.6s] tabular-nums">
+                    <UIcon name="i-lucide-flame" class="size-3.5 text-amber-500" />
+                    已连续签到 {{ streakCount }} 天
+                </p>
+                <p class="text-xs text-text-muted mt-2 animate-[fadeInItem_0.45s_cubic-bezier(0.16,1,0.3,1)_both] [animation-delay:0.6s]">按 UTC 日期统计 · UTC 0 点刷新</p>
             </template>
         </template>
         <template v-else>

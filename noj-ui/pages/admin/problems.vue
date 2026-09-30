@@ -385,16 +385,21 @@ async function batchReview(action: 'to_public' | 'to_p') {
     </template>
   </UModal>
 
-  <UModal v-model:open="preflightOpen" title="发布前质量预检">
-    <template #body>
-      <p class="mb-3 text-sm text-text-secondary">结果指纹：<code>{{ preflight?.fingerprint }}</code></p>
-      <div class="space-y-2">
-        <div v-for="check in preflight?.checks" :key="check.name" class="flex gap-2 text-sm">
-          <UIcon :name="check.status === 'pass' ? 'i-lucide-check-circle' : check.status === 'error' ? 'i-lucide-x-circle' : 'i-lucide-alert-triangle'" :class="check.status === 'pass' ? 'text-success-text' : check.status === 'error' ? 'text-error-text' : 'text-warning-text'" class="size-4 shrink-0" />
-          <span>{{ check.message }}</span>
-        </div>
+  <!-- 发布前质量预检抽屉 -->
+  <AdminDetailDrawer
+    :open="preflightOpen"
+    title="发布前质量预检"
+    width-class="sm:max-w-lg"
+    @update:open="(val: boolean) => preflightOpen = val"
+    @close="preflightOpen = false"
+  >
+    <p class="mb-3 text-sm text-text-secondary">结果指纹：<code class="font-mono text-xs bg-bg-page px-1.5 py-0.5 rounded border border-border">{{ preflight?.fingerprint }}</code></p>
+    <div class="space-y-2">
+      <div v-for="check in preflight?.checks" :key="check.name" class="flex gap-2 text-sm">
+        <UIcon :name="check.status === 'pass' ? 'i-lucide-check-circle' : check.status === 'error' ? 'i-lucide-x-circle' : 'i-lucide-alert-triangle'" :class="check.status === 'pass' ? 'text-success-text' : check.status === 'error' ? 'text-error-text' : 'text-warning-text'" class="size-4 shrink-0 mt-0.5" />
+        <span>{{ check.message }}</span>
       </div>
-      <p class="mt-4 font-semibold" :class="preflight?.can_publish ? 'text-success-text' : 'text-error-text'">{{ preflight?.can_publish ? '可进入发布流程' : '存在阻断错误，暂不可发布' }}</p>
-    </template>
-  </UModal>
+    </div>
+    <p class="mt-4 font-semibold text-sm" :class="preflight?.can_publish ? 'text-success-text' : 'text-error-text'">{{ preflight?.can_publish ? '可进入发布流程' : '存在阻断错误，暂不可发布' }}</p>
+  </AdminDetailDrawer>
 </template>

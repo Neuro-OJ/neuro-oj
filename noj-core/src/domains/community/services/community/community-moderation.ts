@@ -37,7 +37,7 @@ import { reloadSingleKey, updateSetting } from "../../../system/index.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
 import { createNotification } from "../notifications.ts";
 import { invalidateBanCache } from "./../../../identity/index.ts";
-import { isProblemInRunningContest } from "./../../../contest/index.ts";
+import { isProblemInUnendedPublicContest } from "./../../../contest/index.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
 import { parseStorageUrl } from "./../../../system/index.ts";
 
@@ -98,10 +98,15 @@ export async function createReport(
     // 「匿名主页拿到 post id（High#1）→ 举报接口拿全文」即可链式绕过赛期隐藏。
     // 口径与读路径一致：无权限一律 404，不确认内容是否存在。
     // 作者本人与审核员例外（作者需要能举报/申诉自己的帖子）。
+    //
+    // **窗口口径必须是 unended（含赛前筹备期 pending）**（2026-09-29 面 1.4/1.5 审计 F-02/N-02）：
+    // 此前用 `isProblemInRunningContest`（仅 start≤now<end），于是赛前筹备期里
+    // `GET /community/posts/:id` 已 404、而本接口仍返回题解**全文**——同一份"未结束公开赛"
+    // 事实的两套口径，pending 阶段恰好是最需要保密的阶段。
     if (
       !moderator && target[0].author_id !== reporterId &&
-      target[0].type === "solution" && target[0].problem_id &&
-      await isProblemInRunningContest(target[0].problem_id)
+      target[0].problem_id &&
+      await isProblemInUnendedPublicContest(target[0].problem_id)
     ) {
       throw new NotFoundError("举报目标不存在");
     }
@@ -128,10 +133,11 @@ export async function createReport(
       throw new NotFoundError("举报目标不存在");
     }
     // 与帖子举报同口径：评论所属帖子处于赛期门控时一并隐藏（High#3/#4）
+    // 窗口口径 = unended（含 pending），见上方帖子举报处的说明（审计 N-02）。
     if (
       !moderator && target[0].author_id !== reporterId &&
       target[0].post_type === "solution" && target[0].post_problem_id &&
-      await isProblemInRunningContest(target[0].post_problem_id)
+      await isProblemInUnendedPublicContest(target[0].post_problem_id)
     ) {
       throw new NotFoundError("举报目标不存在");
     }
@@ -585,7 +591,7 @@ export async function getReportDetail(
     (row.comment ? row.parent_post?.type : null);
   if (
     !moderator && gatedProblemId && gatedType === "solution" &&
-    await isProblemInRunningContest(gatedProblemId)
+    await isProblemInUnendedPublicContest(gatedProblemId)
   ) {
     return {
       ...row,

@@ -60,7 +60,7 @@ const SAFE_TAGS = new Set([
 ]);
 
 // NOJ-249：移除 style 白名单（未做 CSS 清洗前不得放行）。
-const SAFE_ATTR_RE = /^(?:href|title|alt|src|class|width|height|target|rel|align|start)$/i;
+const SAFE_ATTR_RE = /^(?:href|title|alt|src|class|width|height|target|rel|align|start|loading|referrerpolicy)$/i;
 
 /** 允许的 URL 协议（相对 URL / 锚点直接放行）。 */
 const SAFE_URL_PROTOCOLS = /^(?:https?|mailto|tel):/i;
@@ -186,7 +186,10 @@ export function sanitizeHtmlSync(raw: string): string {
 export async function sanitizeHtmlAsync(raw: string): Promise<string> {
   try {
     const purify = await loadDompurify();
-    return purify.sanitize(raw);
+    return purify.sanitize(raw, {
+      FORBID_TAGS: ['style'],
+      FORBID_ATTR: ['style'],
+    });
   } catch {
     // DOMPurify 加载失败 → 使用标签白名单降级
     return simpleSanitize(raw);

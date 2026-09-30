@@ -38,7 +38,10 @@ import {
   postStatsProjection,
 } from "./community-post-select.ts";
 import { reviewUgcContent } from "./community-review.ts";
-import { isProblemInUnendedPublicContest } from "./../../../contest/index.ts";
+import {
+  hasUnendedPublicContest,
+  isProblemInUnendedPublicContest,
+} from "./../../../contest/index.ts";
 
 /**
  * 判断用户是否为指定题目的所有者（用于官方题解标记的写入校验）。
@@ -153,6 +156,22 @@ export async function createPost(
     if (!moderator && !await canPostToBoard(authorId, input.board_id)) {
       throw new ForbiddenError("你没有在该板块发帖的权限");
     }
+    if (input.problem_id) {
+      const resolvedProblemId = await resolveProblemId(input.problem_id);
+      if (!resolvedProblemId) throw new ValidationError("题目不存在");
+      input.problem_id = resolvedProblemId;
+    }
+  }
+  // ── 赛时社区全局静默（决策 1 · 方案 A · N-01/FC-01/AR-09）──
+  // 公开赛进行期间（含 pending 筹备期与 running 进行期），全站普通用户禁止创建任何讨论帖与动态；
+  // 仅审核员/管理员可发帖；参赛者提问严格收敛至赛中答疑。
+  if (!moderator && (input.type === "discussion" || input.type === "moment")) {
+    if (await hasUnendedPublicContest()) {
+      throw new ForbiddenError(
+        "比赛期间全站暂停公开发布讨论与动态，参赛提问请使用赛中答疑",
+        "CONTEST_SILENCE",
+      );
+    }
   }
   // ── 公开赛保密写入门控（审计 VULN-02）──
   //
@@ -165,14 +184,7 @@ export async function createPost(
   // `isProblemInUnendedPublicContest`，与列表/详情读取门控同口径。
   // moderator（审核员）免门控，用于赛后归档与官方说明。
   if (!moderator && input.type !== "moment" && input.problem_id) {
-    // 题解已在上面解析为 UUID；讨论帖的 problem_id 不落库，但同样必须过门控
-    const guardedProblemId = input.type === "solution"
-      ? input.problem_id
-      : await resolveProblemId(input.problem_id);
-    if (
-      guardedProblemId &&
-      await isProblemInUnendedPublicContest(guardedProblemId)
-    ) {
+    if (await isProblemInUnendedPublicContest(input.problem_id)) {
       throw new ForbiddenError(
         "该题目当前归属于公开赛，赛前及赛中禁止发布题解或讨论",
         "CONTEST_SECRECY",
@@ -205,7 +217,9 @@ export async function createPost(
     public_id: generatePublicId("post"),
     type: input.type,
     author_id: authorId,
-    problem_id: input.type === "solution" ? input.problem_id! : null,
+    problem_id: (input.type === "solution" || input.type === "discussion")
+      ? (input.problem_id ?? null)
+      : null,
     board_id: input.type === "discussion" ? input.board_id! : null,
     title: title ?? null,
     content,

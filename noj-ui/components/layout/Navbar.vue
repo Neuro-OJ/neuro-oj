@@ -57,13 +57,13 @@
             </nav>
             <button
                 type="button"
-                class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:bg-primary-hover hover:text-text rounded-md transition-colors border border-transparent hover:border-border"
+                class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:bg-primary-hover hover:text-text rounded-md transition-colors border border-border/60 hover:border-primary/40 bg-bg-sunken/40"
                 :aria-label="t('nav.searchFull')"
                 @click="openSearch"
             >
-                <UIcon name="i-lucide-search" class="w-4 h-4 size-4 text-text-muted" />
+                <UIcon name="i-lucide-search" class="size-4 text-text-muted" />
                 <span class="hidden sm:inline">{{ t('nav.search') }}</span>
-                <kbd class="hidden md:inline-block px-1.5 py-0.5 text-xs text-text-muted bg-bg-sunken border border-border rounded tabular-nums">Ctrl K</kbd>
+                <kbd class="hidden md:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-text-muted bg-white dark:bg-bg-sunken border border-border rounded shadow-[0_1px_0_rgba(0,0,0,0.06)] tabular-nums">Ctrl K</kbd>
             </button>
             <div class="flex items-center gap-3 ml-auto">
                 <NuxtLink v-if="user && communityConfig?.enabled" to="/community/notifications" class="relative flex items-center justify-center rounded-md p-2 text-text-secondary no-underline transition-colors hover:bg-primary-hover hover:text-text" :aria-label="t('nav.notifications')">

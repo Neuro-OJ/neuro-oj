@@ -212,9 +212,17 @@ const columns = computed(() => {
   <!-- /problems/:id 和 /problems/new 等子路由由 NuxtPage 渲染 -->
   <NuxtPage v-if="route.path !== '/problems'" />
   <div v-else class="px-4 py-5 sm:px-7 sm:py-8 max-w-[960px] mx-auto">
-    <div class="flex items-baseline gap-3 mb-6">
-      <h1 class="text-2xl font-bold text-text">{{ t('problem.title') }}</h1>
-      <span class="text-sm text-text-muted">{{ t('problem.count', { count: total }) }}</span>
+    <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-3">
+        <div class="flex size-10 items-center justify-center rounded-lg bg-primary-bg text-primary border border-primary/20 shadow-xs">
+          <UIcon name="i-lucide-book-open" class="size-5" />
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold text-text leading-tight">{{ t('problem.title') }}</h1>
+          <p class="text-xs text-text-muted mt-0.5">算法与 AI 精选题库 · 支持代码与客观题在线评测</p>
+        </div>
+      </div>
+      <span class="text-xs text-text-muted px-2.5 py-1 rounded-md bg-bg-sunken border border-border tabular-nums font-mono">{{ t('problem.count', { count: total }) }}</span>
     </div>
 
     <!-- 筛选栏 -->
@@ -247,12 +255,12 @@ const columns = computed(() => {
       </template>
 
       <!-- 题目表格 -->
-      <div class="bg-white border border-border rounded-xl overflow-x-auto">
+      <div class="bg-white border border-border rounded-lg shadow-card overflow-x-auto">
         <UTable
           :columns="columns"
           :data="problems"
           :empty="t('problem.empty')"
-          :meta="{ class: { tr: (row) => contestHiddenRowClass(row.original.is_contest_hidden) } }"
+          :meta="{ class: { tr: (row) => `${contestHiddenRowClass(row.original.is_contest_hidden)} transition-colors hover:bg-primary-50/40` } }"
         >
           <template #display_id-cell="{ row }">
             <ProblemId :display-id="row.original.display_id" :type="row.original.type" />
@@ -261,7 +269,7 @@ const columns = computed(() => {
             <div class="flex items-center gap-2">
               <NuxtLink
                 :to="problemUrl(row.original.id, row.original.display_id)"
-                class="text-text no-underline font-medium hover:text-primary"
+                class="text-text no-underline font-medium hover:text-primary transition-colors"
               >
                 {{ row.original.title }}
               </NuxtLink>
@@ -279,23 +287,21 @@ const columns = computed(() => {
             <!-- 客观题：在难度位置标记为「客观题」 -->
             <span
               v-if="row.original.is_objective"
-              class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700"
+              class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
             >
+              <UIcon name="i-lucide-file-question" class="size-3" />
               {{ t('problem.objective') }}
             </span>
-            <span
+            <DifficultyBadge
               v-else
-              class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
-              :class="difficultyBadgeColors[row.original.difficulty] || ''"
-            >
-              {{ difficultyLabels[row.original.difficulty] || row.original.difficulty }}
-            </span>
+              :difficulty="row.original.difficulty"
+            />
           </template>
           <template #tags-cell="{ row }">
             <span
               v-for="tag in row.original.tags"
               :key="tag.id"
-              class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 mr-1"
+              class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary-bg text-primary border border-primary/20 mr-1"
             >{{ tag.name }}</span>
             <span v-if="!row.original.tags?.length" class="text-xs text-text-muted">--</span>
           </template>

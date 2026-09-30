@@ -1,0 +1,974 @@
+== 仓库级门禁（与 CI root-gates 一致）==
+-- deno run -A scripts/verify-agent-note-format.ts
+Agent Note 格式校验通过（195 篇）
+-- deno run -A scripts/verify-md-links.ts
+Markdown 链接检查通过（扫描 512 个 Markdown 文件）
+-- deno run -A scripts/verify-export-jsdoc.ts
+noj-core/src: 文件 471，导出 1311，带 JSDoc 796，覆盖率 60.7%（阈值 59.6%）
+noj-llm-gateway/src: 文件 22，导出 101，带 JSDoc 83，覆盖率 82.2%（阈值 69.4%）
+导出 JSDoc 覆盖率门禁通过
+-- deno run -A scripts/verify-capability-seams.ts
+Capability Seam 校验通过（扫描 474 文件 / 9 个 Provider / 11 处装配点引用）
+-- deno run -A scripts/verify-compile-safe-imports.ts
+deno compile 导入安全校验通过（扫描 388 文件 / 32 处动态导入 / 0 处变量说明符）
+-- deno run -A scripts/verify-domain-ci.ts
+Domain CI 配置校验通过（core 15 个域 / e2e 14 个目录，受跟踪文件 2003 个全部有测试触发路径）
+-- 静默跳过棘轮（silent-skip-report --check）
+静默跳过清单已写入 dev-docs/engineering/test-silent-skips.md（扫描 397 个测试文件，命中 1014 处：ignore=661 early-return=268 rust-ignore=45 rust-env-guard=27 env-guard=13）
+静默跳过门禁通过（1014 处，未超过基线 1014 处）
+-- 测试文件可发现性（check-test-discovery）
+测试文件可发现性检查通过
+-- deno run -A scripts/check-dashboards.ts
+Grafana 看板表达式检查通过
+-- deno run -A scripts/deploy/verify-build-server.ts
+✅ noj-server 构建脚本门禁通过
+-- deno run -A scripts/deploy/verify-compose-server.ts
+✅ docker-compose.prod.yml 改名门禁通过
+-- deno test -A scripts/deploy/verify-build-server_test.ts scripts/deploy/verify-compose-server_test.ts
+running 1 test from ./scripts/deploy/verify-build-server_test.ts
+build-server 门禁：脚本与 task 缺一不可 ... ok (469µs)
+running 1 test from ./scripts/deploy/verify-compose-server_test.ts
+Compose 兼容门禁：有 core 服务并使用 noj-server 镜像 ... ok (486µs)
+
+ok | 2 passed | 0 failed (38ms)
+
+-- deno run -A scripts/gen-event-catalog.ts --check
+事件目录最新
+-- deno run -A scripts/gen-route-catalog.ts --check
+路由目录最新（36 个路由文件 / 266 条路由）
+-- deno run -A scripts/check-domains.ts
+域边界检查通过
+-- deno run -A scripts/check-migration-safety.ts
+迁移安全检查通过（无一步式 NOT NULL 加列）
+-- deno run -A scripts/check-migration-snapshot-chain.ts
+drizzle 快照链检查通过（表/列/索引单调且与代码一致）
+-- deno run -A scripts/check-metrics.ts
+指标 catalog 检查通过（含文档校验：35 个平台指标）
+-- deno run -A scripts/check-runtime-contract.ts
+运行时契约检查通过
+-- deno run -A scripts/check-runbooks.ts
+Runbook 链接检查通过
+-- deno run -A scripts/check-log-migration.ts
+[check-log-migration] 通过：扫描 221 个日志调用点，无模板语法问题
+-- deno run -A scripts/check-log-parity.ts
+[check-log-parity] 通过：9 个 fixture 在 core 与 gateway 渲染一致（direct + formatter 两条路径），且 production fixture 确认已脱敏
+-- deno run -A scripts/gen-alert-rules.ts --check
+SLO 告警规则与 SLO 定义一致
+-- deno run -A scripts/check-file-size.ts
+单文件规模检查通过（扫描 685 个源文件 / 超阈值 5 个均已登记：noj-cli/src/prod/lifecycle.ts=2097 noj-ui/pages/messages/index.vue=1632 noj-cli/src/cli.ts=1518）
+-- deno run -A scripts/check-write-rate-limits.ts
+写端点限流覆盖检查通过（路由文件 36 个 / 写路由 135 条 / 未限流文件 11 个全部已登记，其中待偿还欠债 2 个）
+-- deno run -A scripts/check-deno-version.ts
+Deno 版本一致性检查通过（.dvmrc 为唯一事实源）
+-- deno run -A scripts/check-schema-parity.ts
+Schema 一致性检查通过（Drizzle 58 表 / DDL 58 表 / 比对 477 列）
+-- deno test -A scripts/check-schema-parity_test.ts
+running 7 tests from ./scripts/check-schema-parity_test.ts
+schema-parity: 解析带引号/不带引号的表名与列 ... ok (970µs)
+schema-parity: 约束行被跳过，CHECK 内逗号不切分 ... ok (136µs)
+schema-parity: 名为 key 的列不被当成约束关键字 ... ok (78µs)
+schema-parity: 列注释不吞掉紧随其后的列 ... ok (198µs)
+schema-parity: 表/列的增删都能被发现 ... ok (170µs)
+schema-parity: Drizzle 侧能解析出全部表 ... ok (269µs)
+schema-parity: 真实仓库两侧一致 ... ok (2ms)
+
+ok | 7 passed | 0 failed (9ms)
+
+-- bash scripts/deploy/test-deprecation-gate.sh
+✓ 非 TTY：警告 + 退出码 2 + 零副作用 + 不挂起
+✓ restore-drill.sh 同样受闸门保护
+✓ NOJ_ACCEPT_DEPRECATED=1 可跳过
+✓ PTY + n：退出码 0 且零副作用
+✓ PTY + y：闸门放行并进入正常流程
+全部弃用闸门测试通过
+-- deno test -A scripts/check-domains_test.ts scripts/check-metrics_test.ts scripts/check-runtime-contract_test.ts scripts/check-runbooks_test.ts scripts/gen-alert-rules_test.ts scripts/check-test-discovery_test.ts scripts/check-dashboards_test.ts scripts/check-migration-safety_test.ts scripts/check-migration-snapshot-chain_test.ts scripts/verify-capability-seams_test.ts scripts/verify-compile-safe-imports_test.ts scripts/gen-route-catalog_test.ts scripts/silent-skip-report_test.ts scripts/check-file-size_test.ts scripts/check-write-rate-limits_test.ts scripts/check-log-migration_test.ts scripts/check-deno-version_test.ts scripts/gate-list_test.ts scripts/coverage-report_test.ts scripts/test-baseline_test.ts scripts/verify-md-links_test.ts scripts/verify-export-jsdoc_test.ts scripts/verify-agent-note-format_test.ts
+Check scripts/check-domains_test.ts
+Check scripts/check-metrics_test.ts
+Check scripts/check-runtime-contract_test.ts
+Check scripts/check-runbooks_test.ts
+Check scripts/gen-alert-rules_test.ts
+Check scripts/check-test-discovery_test.ts
+Check scripts/check-dashboards_test.ts
+Check scripts/check-migration-safety_test.ts
+Check scripts/check-migration-snapshot-chain_test.ts
+Check scripts/verify-capability-seams_test.ts
+Check scripts/verify-compile-safe-imports_test.ts
+Check scripts/gen-route-catalog_test.ts
+Check scripts/silent-skip-report_test.ts
+Check scripts/check-file-size_test.ts
+Check scripts/check-write-rate-limits_test.ts
+Check scripts/check-log-migration_test.ts
+Check scripts/check-deno-version_test.ts
+Check scripts/gate-list_test.ts
+Check scripts/coverage-report_test.ts
+Check scripts/test-baseline_test.ts
+Check scripts/verify-md-links_test.ts
+Check scripts/verify-export-jsdoc_test.ts
+Check scripts/verify-agent-note-format_test.ts
+running 22 tests from ./scripts/check-domains_test.ts
+domainOf: 遗留 auth 目录映射到 identity ... ok (403µs)
+domainOf: contest 服务目录映射到 contest ... ok (60µs)
+domainOf: 顶层 notifications.ts 映射到 community ... ok (39µs)
+domainOf: 非域文件返回 null ... ok (24µs)
+resolveRelativeImport: 解析相对导入到仓库相对路径 ... ok (6ms)
+checkFile: 跨域深路径导入报违规 ... ok (425µs)
+checkFile: 同域相对导入不报违规 ... ok (97µs)
+checkFile: 允许未来域门面 index.ts 导入 ... ok (55µs)
+checkFile: 业务域 import observability/index.ts 违规（spec §4.5 规则 2） ... ok (67µs)
+checkFile: admin import observability/index.ts 允许（唯一例外） ... ok (35µs)
+checkFile: 非受限域的 index.ts 仍是公开门面 ... ok (50µs)
+checkFile: 非相对导入不检查 ... ok (34µs)
+checkFile: 业务域 import observability/write.ts 不违规 ... ok (53µs)
+checkFile: 业务域 import observability/services 违规 ... ok (78µs)
+checkFile: observability 域 import 其他业务域违规 ... ok (47µs)
+domainOf: admin 门面域不参与通用边界检查 ... ok (17µs)
+checkAdminObservabilityReadSide: 真实仓库 admin 不导入观测域读侧 ... ok (3ms)
+checkAdminObservabilityReadSide: 用临时夹具验证违规可被检测 ... ok (3ms)
+domainOf: search 域必须被识别（此前遗漏致门禁完全不设防） ... ok (52µs)
+checkFile: search 域深路径跨域 import 报违规 ... ok (70µs)
+checkFile: search 域同域 import 与 shared 不报违规 ... ok (42µs)
+domainOf: 磁盘上每个 domains 子目录都被登记（防新域漏登记） ... ok (174µs)
+running 14 tests from ./scripts/check-metrics_test.ts
+check-metrics: 未定义指标写入报错 ... ok (437µs)
+check-metrics: metrics alias 的未定义写入同样报错 ... ok (43µs)
+check-metrics: 带标签的写入也要被检查 ... ok (25µs)
+check-metrics: 带增量的写入也要被检查 ... ok (25µs)
+check-metrics: 任意接收者变量名都要被检查 ... ok (71µs)
+check-metrics: 已注册指标不报错 ... ok (39µs)
+check-metrics: 无接收者的裸调用也要被检查（网关写法） ... ok (20µs)
+check-metrics: 裸调用的 observe 带标签与增量也要被检查 ... ok (17µs)
+check-metrics: 裸调用的已定义指标不报错 ... ok (23µs)
+check-metrics: 无关的 set/inc 调用不误报 ... ok (19µs)
+check-metrics: catalog 文档缺失平台指标时失败 ... ok (121µs)
+check-metrics: catalog 文档登记未注册指标时失败 ... ok (56µs)
+check-metrics: catalog 文档名集合一致时通过 ... ok (28µs)
+check-metrics: catalog 文档无指标名时判定门禁空转 ... ok (37µs)
+running 3 tests from ./scripts/check-runtime-contract_test.ts
+check-runtime-contract: prometheus.yml 缺失时返回错误而非抛出 ... ok (924µs)
+check-runtime-contract: 空 prometheus.yml 报缺失 job ... ok (2ms)
+check-runtime-contract: 真实仓库契约成立 ... ok (5ms)
+running 6 tests from ./scripts/check-runbooks_test.ts
+check-runbooks: 注解指向存在的 runbook 时通过 ... ok (4ms)
+check-runbooks: 注解指向缺失 runbook 时报错并含来源文件 ... ok (593µs)
+check-runbooks: 同一缺失 runbook 被两文件引用时只报一次 ... ok (339µs)
+check-runbooks: 告警文件缺失时报错 ... ok (299µs)
+check-runbooks: 零注解时失败而非静默通过 ... ok (272µs)
+check-runbooks: 真实仓库当前无死链 ... ok (6ms)
+running 2 tests from ./scripts/gen-alert-rules_test.ts
+gen-alert-rules: SLO id 唯一且 runbook 路径存在 ... ok (366µs)
+gen-alert-rules: 渲染结果包含每个 SLO 的告警且不含运维告警 ... ok (233µs)
+running 10 tests from ./scripts/check-test-discovery_test.ts
+isDiscoverable: 接受 Deno 运行器的常见命名 ... ok (488µs)
+isDiscoverable: 拒绝不会被发现的命名 ... ok (59µs)
+check-test-discovery: 仓库当前无可发现性问题 ... ok (94ms)
+check-test-discovery: 能报出夹具中的不可发现测试（非空转） ... ok (3ms)
+checkTestDiscovery: 扫描 noj-cli 中不可发现的测试（2026-09-21 补盲区） ... ok (693µs)
+hasFileLevelTest: 识别控制流块内的 Deno.test ... ok (114µs)
+hasFileLevelTest: 方法简写/class 方法内的调用不算文件级（防误红） ... ok (71µs)
+hasFileLevelTest: IIFE 内调用必须被视为执行（防漏判） ... ok (57µs)
+findUndiscoverableTests: 控制流块中的测试文件会被报出 ... ok (263µs)
+findUndiscoverableTests: 真实仓库的 helper.ts 测试工厂不被误报 ... ok (1ms)
+running 13 tests from ./scripts/check-dashboards_test.ts
+extractMetricNames: 提取指标名并排除标签值与函数名 ... ok (447µs)
+isExternalMetric: 标准导出器指标无需本仓库定义 ... ok (68µs)
+checkExpression: 裸用直方图家族名报错 ... ok (112µs)
+checkExpression: histogram_quantile + _bucket 用法不报错 ... ok (105µs)
+checkExpression: 计数器的裸用是合法的 ... ok (45µs)
+checkExpression: 未定义指标报错 ... ok (42µs)
+checkExpression: 直方图的 _sum/_count 直接使用是合法的 ... ok (50µs)
+check-dashboards: 真实看板无可报告问题 ... ok (22ms)
+check-dashboards: 能真正发现指标定义（非空转） ... ok (15ms)
+isExternalMetric: 不做裸前缀匹配（up*/postgres* 拼错不得放行） ... ok (129µs)
+checkExpression: 拼错的 up* 指标会被报为未定义 ... ok (99µs)
+collectDefinedMetrics: 调用点字面量不得被当作指标定义 ... ok (2ms)
+collectDefinedMetrics: 真实仓库不产生 unknown 兜底条目 ... ok (15ms)
+running 14 tests from ./scripts/check-migration-safety_test.ts
+migration-safety: 一步式 NOT NULL 加列应被判定为不安全 ... ok (567µs)
+migration-safety: 带 DEFAULT 的加列是安全的 ... ok (70µs)
+migration-safety: 三步式写法的三条语句均不被误报 ... ok (40µs)
+migration-safety: 非加列语句不被误报 ... ok (24µs)
+migration-safety: 行注释被剥离，说明文字不产生误报 ... ok (238µs)
+migration-safety: 无分隔标记的多语句块不产生误报（0017 场景） ... ok (104µs)
+migration-safety: 多语句块中的一步式加列仍能被发现（无假阴性） ... ok (48µs)
+migration-safety: 目录不存在时门禁失败（不静默通过） ... ok (302µs)
+migration-safety: 真实迁移目录当前无一步式 NOT NULL 加列 ... ok (9ms)
+migration-safety: REFERENCES "public". 前缀被识别（历史 0056/0063/0066 形态） ... ok (78µs)
+migration-safety: 不带 schema 前缀的 REFERENCES 不误报 ... ok (72µs)
+migration-safety: 字符串字面量中的 public. 不误报 ... ok (25µs)
+migration-safety: 含 public 前缀的迁移目录整体判定失败（非空转） ... ok (2ms)
+migration-safety: 真实迁移目录已无 public schema 前缀 ... ok (7ms)
+running 26 tests from ./scripts/check-migration-snapshot-chain_test.ts
+snapshot-chain: tableNamesOf 去掉 schema 前缀 ... ok (517µs)
+snapshot-chain: tableNamesOf 对空/异常结构返回空集合 ... ok (44µs)
+snapshot-chain: canonicalJson 对键序不敏感、对数组顺序敏感 ... ok (137µs)
+snapshot-chain: columnSignature 覆盖 name/type/notNull/primaryKey/default ... ok (130µs)
+snapshot-chain: columnSignature 对对象型 default 的键序稳定 ... ok (73µs)
+snapshot-chain: indexSignature 覆盖列顺序/唯一/where ... ok (105µs)
+snapshot-chain: tableStructuresOf 提取列与索引 ... ok (160µs)
+snapshot-chain: parseDropStatements 解析 DROP TABLE / COLUMN / INDEX / CONSTRAINT ... ok (606µs)
+snapshot-chain: parseDropStatements 处理多行单条 ALTER（0007/0054 写法） ... ok (89µs)
+snapshot-chain: dropsBetween 只保留区间内的 DROP（作用域不复用历史豁免） ... ok (78µs)
+snapshot-chain: 真实仓库的已创建表解析包含不带引号的早期迁移写法 ... ok (3ms)
+snapshot-chain: 真实仓库的 DROP TABLE 解析生效 ... ok (3ms)
+snapshot-chain: 真实仓库的代码表与最新快照一致（本次修复的核心不变量） ... ok (2ms)
+snapshot-chain: 门禁在当前仓库状态通过 ... ok (115ms)
+snapshot-chain: 自检——快照目录为空时 checkSnapshotChain 判定失败（而非静默通过） ... ok (2ms)
+snapshot-chain: 阳性回归——故意丢列必须被检出（missing_column_in_later_snapshot） ... ok (727µs)
+snapshot-chain: 阳性回归——故意丢表必须被检出（missing_in_later_snapshot） ... ok (608µs)
+snapshot-chain: 阳性回归——故意丢索引必须被检出（missing_index_in_later_snapshot） ... ok (497µs)
+snapshot-chain: 阳性回归——故意丢唯一约束必须被检出 ... ok (491µs)
+snapshot-chain: 合法显式 DROP COLUMN 不触发门禁 ... ok (512µs)
+snapshot-chain: 合法显式 DROP TABLE / DROP INDEX 不触发门禁 ... ok (517µs)
+snapshot-chain: DROP 豁免按区间作用域——历史 DROP 不能豁免后续快照的丢列 ... ok (623µs)
+snapshot-chain: 跨多个快照的 DROP 区间仍被认作合法（编号错位容错） ... ok (571µs)
+snapshot-chain: 自检——快照解析不到列时判定失败（列级摘要不得退化成空壳） ... ok (365µs)
+snapshot-chain: INTENTIONAL_REMOVALS 的每一项都写明理由 ... ok (54µs)
+snapshot-chain: LEGACY_RENUMBERING_ARTIFACTS 的每一项都写明证据 ... ok (92µs)
+running 9 tests from ./scripts/verify-capability-seams_test.ts
+capability-seam: 真实仓库通过且规则确实命中（非恒真） ... ok (13ms)
+capability-seam: 业务代码直接 import 具体 Provider 会被拦截 ... ok (3ms)
+capability-seam: 动态 import 同样被覆盖 ... ok (838µs)
+capability-seam: 装配点引用不报错 ... ok (792µs)
+capability-seam: 测试文件豁免 ... ok (827µs)
+capability-seam: 白名单路径漂移会被自检拦下 ... ok (933µs)
+capability-seam: 无任何 Provider 引用时判定门禁失效（恒真断言） ... ok (732µs)
+capability-seam: 相对说明符按导入文件目录解析 ... ok (31µs)
+capability-seam: 静态与动态 import 说明符都能提取 ... ok (50µs)
+running 7 tests from ./scripts/verify-compile-safe-imports_test.ts
+compile-safe-imports: 真实仓库通过且确实扫到了动态导入 ... ok (100ms)
+compile-safe-imports: 变量说明符被拦截 ... ok (8ms)
+compile-safe-imports: 字面量（含多行）动态导入放行 ... ok (555µs)
+compile-safe-imports: 测试文件不受约束 ... ok (539µs)
+compile-safe-imports: 扫描目录漂移会失败而非静默通过 ... ok (452µs)
+compile-safe-imports: 注释中的调用与 import.meta 不误报 ... ok (54µs)
+compile-safe-imports: isLiteralSpecifier 边界 ... ok (46µs)
+running 4 tests from ./scripts/gen-route-catalog_test.ts
+gen-route-catalog: 只提取真实路由，忽略上下文读取与环境变量 ... ok (741µs)
+gen-route-catalog: 路径必须以 / 开头（防御任何漏网误判） ... ok (111µs)
+gen-route-catalog: 生成结果按方法/路径/文件排序 ... ok (4ms)
+gen-route-catalog: 真实仓库目录中不存在伪造路径 ... ok (384µs)
+running 17 tests from ./scripts/silent-skip-report_test.ts
+silent-skip: 识别 ignore / env-guard / early-return / rust ... ok (817µs)
+silent-skip: 每个命中行只记一条原因 ... ok (37µs)
+silent-skip: renderReport 生成 Markdown ... ok (106µs)
+silent-skip: renderReport 输出与输入顺序无关（门禁逐字节比对） ... ok (84µs)
+silent-skip: 数量未变时通过 ... ok (175µs)
+silent-skip: 总数增长时失败 ... ok (63µs)
+silent-skip: 数量下降时通过（允许改进） ... ok (33µs)
+silent-skip: 文件间此消彼长也能发现（总数不变） ... ok (54µs)
+silent-skip: 原因分类增长时失败 ... ok (42µs)
+silent-skip: 基线非零而当前为 0 判定扫描器失效 ... ok (36µs)
+silent-skip: 基线为 0 且当前为 0 属正常 ... ok (23µs)
+silent-skip: 扫描根包含 noj-cli（正式模块不得被门禁遗漏） ... ok (18µs)
+silent-skip: 扫描根覆盖全部一等模块（防再次遗漏） ... ok (24µs)
+silent-skip: noj-cli 的 ignore 能被扫描到（端到端） ... ok (2ms)
+silent-skip: 识别 ignore: <标识符>（变量守卫） ... ok (68µs)
+silent-skip: ignore: true / false / ! 的分类不被新规则改变 ... ok (29µs)
+silent-skip: 真实仓库的变量守卫文件被计入 ... ok (985µs)
+running 7 tests from ./scripts/check-file-size_test.ts
+check-file-size: 行数统计正确 ... ok (513µs)
+check-file-size: 未登记的超阈值文件必须失败 ... ok (3ms)
+check-file-size: 阈值以下文件不参与 ... ok (479µs)
+check-file-size: 扫描不到文件时门禁失效 ... ok (242µs)
+check-file-size: 真实仓库当前通过（基线与实际一致） ... ok (28ms)
+check-file-size: noj-cli 的超阈值文件被纳入扫描 ... ok (26ms)
+check-file-size: 夹具中的 noj-cli 文件超阈值会失败 ... ok (515µs)
+running 5 tests from ./scripts/check-write-rate-limits_test.ts
+write-rate-limit: 只提取写方法路由且路径须以 / 开头 ... ok (706µs)
+write-rate-limit: 限流证据识别 ... ok (82µs)
+write-rate-limit: 新的无限流写路由文件必须失败 ... ok (2ms)
+write-rate-limit: 已限流的文件不报错 ... ok (343µs)
+write-rate-limit: 真实仓库通过且解析到足够多的写路由 ... ok (4ms)
+running 8 tests from ./scripts/check-log-migration_test.ts
+scanSource: 识别 logger.* 调用与级别 ... ok (11ms)
+findViolations: 残留 JS 模板插值被拒绝 ... ok (487µs)
+findViolations: 占位符无对应属性被拒绝 ... ok (313µs)
+findViolations: 占位符与属性匹配则通过 ... ok (228µs)
+findViolations: 字面花括号未转义被拒绝 ... ok (150µs)
+findViolations: {{ }} 转义合法 ... ok (123µs)
+findViolations: getLogger 数组形式的调用点也被扫描 ... ok (775µs)
+scanSource: 跨多行调用能取到属性键 ... ok (299µs)
+running 9 tests from ./scripts/check-deno-version_test.ts
+parseDvmrc: 去掉前导 v 与空白 ... ok (477µs)
+findPinnedDenoVersions: 只抓写死的 deno-version，不误抓 file 形式 ... ok (172µs)
+findPinnedDenoVersions: 全为 file 形式时返回空 ... ok (32µs)
+findDockerDenoTags: 提取镜像标签 ... ok (82µs)
+majorMinor: 提取主次版本 ... ok (72µs)
+真实仓库当前通过（.dvmrc 为唯一事实源） ... ok (15ms)
+checkDenoVersion: 缺少 .dvmrc 时报错 ... ok (298µs)
+checkDenoVersion: 非 noj-core 模块的 Dockerfile 版本漂移必须报错 ... ok (2ms)
+checkDenoVersion: 新模块任意深度的 Dockerfile 也在扫描范围内 ... ok (481µs)
+running 7 tests from ./scripts/gate-list_test.ts
+gate-list: 两个入口都从单一事实源派生 ... ok (670µs)
+gate-list: 本地入口覆盖 CI 入口的全部门禁 ... ok (253µs)
+gate-list: 关键门禁不得被删除 ... ok (103µs)
+gate-list: 全部门禁自测文件都存在 ... ok (526µs)
+gate-list: scripts/*_test.ts 必须全部登记（防假绿） ... ok (311µs)
+gate-list: gateLabel 有 label 用 label，否则拼接 args ... ok (43µs)
+gate-list: 清单无重复命令 ... ok (58µs)
+running 8 tests from ./scripts/coverage-report_test.ts
+coverage-report: 解析 deno coverage 表格行 ... ok (614µs)
+coverage-report: 表头与分隔行返回 null ... ok (49µs)
+coverage-report: summarizeModule 取文件平均覆盖率 ... ok (130µs)
+coverage-report: 无数据返回 null ... ok (19µs)
+coverage-report: renderMarkdown 生成表格 ... ok (62µs)
+coverage-report: 带 ANSI 转义码的行也能解析 ... ok (52µs)
+coverage-report: 带 ANSI 的完整表格仍能汇总 ... ok (55µs)
+coverage-report: stripAnsi 清理 SGR 序列 ... ok (21µs)
+running 2 tests from ./scripts/test-baseline_test.ts
+test-baseline: formatDuration 格式化毫秒 ... ok (562µs)
+test-baseline: renderBaseline 生成 Markdown ... ok (71µs)
+running 7 tests from ./scripts/verify-md-links_test.ts
+extractLinks 提取相对链接与锚点 ... ok (349µs)
+extractLinks 跳过围栏代码块与行内代码 ... ok (107µs)
+verifyMarkdownLinks 不因代码块内容误报 ... ok (587µs)
+有效相对链接与锚点通过 ... ok (534µs)
+缺失目标文件报错 ... ok (412µs)
+缺失锚点报错 ... ok (198µs)
+collectHeadings 收集显式锚点与 slug ... ok (128µs)
+running 4 tests from ./scripts/verify-export-jsdoc_test.ts
+有 JSDoc 的导出函数计为已文档化 ... ok (702µs)
+无 JSDoc 的导出函数计为未文档化 ... ok (136µs)
+analyzeRoot 聚合目录覆盖率 ... ok (216µs)
+阈值判断 ... ok (39µs)
+running 5 tests from ./scripts/verify-agent-note-format_test.ts
+合法 implemented note 通过路径与内容校验 ... ok (533µs)
+implemented 目录下 Status 必须是 implemented ... ok (149µs)
+缺少 Decision 章节报错 ... ok (144µs)
+缺少 Alternatives considered 章节报错 ... ok (144µs)
+路径分类不在白名单时报错 ... ok (48µs)
+
+ok | 209 passed | 0 failed (1s)
+
+== 模块级 check ==
+-- noj-core check
+Task check deno fmt --check && deno lint && deno task check:types
+Checked 644 files
+Checked 541 files
+Task check:types find src -name '*.ts' -print0 | xargs -0 deno check
+Check src/domains/contest/services/contest-row.ts
+Check src/domains/contest/services/contest-access.ts
+Check src/domains/contest/services/contest-similarity.ts
+Check src/domains/contest/services/contests.ts
+Check src/domains/contest/services/problem-exposure.ts
+Check src/domains/contest/services/contest-window.ts
+Check src/domains/contest/services/contest-clarifications.ts
+Check src/domains/contest/services/contest-anti-cheat.ts
+Check src/domains/contest/services/contest-ranking.ts
+Check src/domains/contest/services/problem-secrecy.ts
+Check src/domains/contest/routes/contests.ts
+Check src/domains/contest/routes/sse.ts
+Check src/domains/contest/routes/index.ts
+Check src/domains/contest/tests/routes/admin-contests.test.ts
+Check src/domains/contest/tests/routes/contests.test.ts
+Check src/domains/contest/tests/routes/sse.test.ts
+Check src/domains/contest/tests/routes/ranking-export.test.ts
+Check src/domains/contest/tests/services/contest-freeze.test.ts
+Check src/domains/contest/tests/services/contest-ranking.test.ts
+Check src/domains/contest/tests/services/contest-access.test.ts
+Check src/domains/contest/tests/services/contest-clarifications.test.ts
+Check src/domains/contest/tests/services/contest-similarity.test.ts
+Check src/domains/contest/tests/services/search-events.test.ts
+Check src/domains/contest/tests/services/contest-window.test.ts
+Check src/domains/contest/tests/services/contests.test.ts
+Check src/domains/contest/tests/services/problem-exposure.test.ts
+Check src/domains/contest/tests/services/problem-secrecy.test.ts
+Check src/domains/contest/tests/types/contests.test.ts
+Check src/domains/contest/types/contests.ts
+Check src/domains/contest/index.ts
+Check src/domains/submission/services/submissions/submissions.ts
+Check src/domains/submission/services/submissions/submissions-types.ts
+Check src/domains/submission/services/submissions/submission-projection.ts
+Check src/domains/submission/services/submissions/judge-priority.ts
+Check src/domains/submission/services/submissions/sanitize-judge-result.ts
+Check src/domains/submission/services/submissions/submissions-rejudge.ts
+Check src/domains/submission/services/submissions/artifact-submissions.ts
+Check src/domains/submission/services/submissions/submissions-crud.ts
+Check src/domains/submission/services/submissions/submissions-result.ts
+Check src/domains/submission/services/queue.ts
+Check src/domains/submission/services/self-tests.ts
+Check src/domains/submission/routes/sse.ts
+Check src/domains/submission/routes/self-tests.ts
+Check src/domains/submission/routes/queue.ts
+Check src/domains/submission/routes/submissions.ts
+Check src/domains/submission/routes/index.ts
+Check src/domains/submission/mq/legacy-judge-queue.ts
+Check src/domains/submission/mq/producer.ts
+Check src/domains/submission/mq/sweeper.ts
+Check src/domains/submission/mq/consumer.ts
+Check src/domains/submission/tests/mq/consumer-config.test.ts
+Check src/domains/submission/tests/mq/self-test-consumer.test.ts
+Check src/domains/submission/tests/mq/producer.test.ts
+Check src/domains/submission/tests/mq/_setup.ts
+Check src/domains/submission/tests/mq/legacy-judge-queue.test.ts
+Check src/domains/submission/tests/mq/consumer.test.ts
+Check src/domains/submission/tests/routes/sse.test.ts
+Check src/domains/submission/tests/routes/queue.test.ts
+Check src/domains/submission/tests/routes/submissions.test.ts
+Check src/domains/submission/tests/routes/self-tests.test.ts
+Check src/domains/submission/tests/services/artifact-submissions.test.ts
+Check src/domains/submission/tests/services/self-tests.test.ts
+Check src/domains/submission/tests/services/submission-projection.test.ts
+Check src/domains/submission/tests/services/judge-priority.test.ts
+Check src/domains/submission/tests/services/queue-health.test.ts
+Check src/domains/submission/tests/services/queue.test.ts
+Check src/domains/submission/tests/services/observability.test.ts
+Check src/domains/submission/tests/services/sanitize-judge-result.test.ts
+Check src/domains/submission/tests/services/search-events.test.ts
+Check src/domains/submission/tests/services/submissions.test.ts
+Check src/domains/submission/tests/types/index.test.ts
+Check src/domains/submission/tests/types/judge-task-contract.test.ts
+Check src/domains/submission/types/self-tests.ts
+Check src/domains/submission/types/index.ts
+Check src/domains/submission/index.ts
+Check src/domains/submission/observability.ts
+Check src/domains/community/services/community/community.ts
+Check src/domains/community/services/community/community-boards.ts
+Check src/domains/community/services/community/community-config.ts
+Check src/domains/community/services/community/community-post-select.ts
+Check src/domains/community/services/community/community-review.ts
+Check src/domains/community/services/community/community-seed.ts
+Check src/domains/community/services/community/community-comments.ts
+Check src/domains/community/services/community/community-post-moderation.ts
+Check src/domains/community/services/community/community-interactions.ts
+Check src/domains/community/services/community/community-moderation.ts
+Check src/domains/community/services/community/community-post-list.ts
+Check src/domains/community/services/community/query-limit.ts
+Check src/domains/community/services/community/community-post-common.ts
+Check src/domains/community/services/community/community-post-crud.ts
+Check src/domains/community/services/community/community-feed.ts
+Check src/domains/community/services/notifications.ts
+Check src/domains/community/routes/sse.ts
+Check src/domains/community/routes/index.ts
+Check src/domains/community/routes/community.ts
+Check src/domains/community/index.ts
+Check src/domains/community/tests/routes/sse.test.ts
+Check src/domains/community/tests/routes/community.test.ts
+Check src/domains/community/tests/services/search-events.test.ts
+Check src/domains/community/tests/services/community-official.test.ts
+Check src/domains/community/tests/services/community-solution-gating.test.ts
+Check src/domains/community/tests/services/community.test.ts
+Check src/domains/community/tests/services/query-limit.test.ts
+Check src/domains/community/types/community.ts
+Check src/domains/identity/services/auth/auth.ts
+Check src/domains/identity/services/auth/admin-initialization.ts
+Check src/domains/identity/services/auth/users.ts
+Check src/domains/identity/services/auth/auth-root.ts
+Check src/domains/identity/services/auth/auth-login.ts
+Check src/domains/identity/services/auth/auth-password.ts
+Check src/domains/identity/services/auth/auth-set-password.ts
+Check src/domains/identity/services/auth/auth-register.ts
+Check src/domains/identity/services/users/users-profile-types.ts
+Check src/domains/identity/services/users/users-id.ts
+Check src/domains/identity/services/users/users-search.ts
+Check src/domains/identity/services/users/users-avatar.ts
+Check src/domains/identity/services/users/users-profile-edit.ts
+Check src/domains/identity/services/users/users-bans.ts
+Check src/domains/identity/services/users/users-profile-queries.ts
+Check src/domains/identity/services/users/users-profile.ts
+Check src/domains/identity/services/auth.ts
+Check src/domains/identity/services/users.ts
+Check src/domains/identity/services/checkin.ts
+Check src/domains/identity/services/security/banCache.ts
+Check src/domains/identity/services/security/loginThrottle.ts
+Check src/domains/identity/services/security/permissions.ts
+Check src/domains/identity/services/security/resetToken.ts
+Check src/domains/identity/services/security/revokedTokens.ts
+Check src/domains/identity/services/security/tfa.ts
+Check src/domains/identity/services/security/password.ts
+Check src/domains/identity/services/security/jwt.ts
+Check src/domains/identity/services/tfa.ts
+Check src/domains/identity/services/account-deletion.ts
+Check src/domains/identity/services/admin-roles.ts
+Check src/domains/identity/services/banlist.ts
+Check src/domains/identity/services/email-verification.ts
+Check src/domains/identity/services/passwordReset.ts
+Check src/domains/identity/services/me-data-export.ts
+Check src/domains/identity/services/oauth.ts
+Check src/domains/identity/routes/checkin.ts
+Check src/domains/identity/routes/index.ts
+Check src/domains/identity/routes/users.ts
+Check src/domains/identity/routes/auth.ts
+Check src/domains/identity/middleware/banlist.ts
+Check src/domains/identity/middleware/login-rate-limit.ts
+Check src/domains/identity/middleware/auth.ts
+Check src/domains/identity/tests/lib/loginThrottle.test.ts
+Check src/domains/identity/tests/lib/password.test.ts
+Check src/domains/identity/tests/lib/revokedTokens.test.ts
+Check src/domains/identity/tests/lib/tfa.test.ts
+Check src/domains/identity/tests/lib/jwt.test.ts
+Check src/domains/identity/tests/middleware/auth.test.ts
+Check src/domains/identity/tests/middleware/auth_must_change_test.ts
+Check src/domains/identity/tests/middleware/banlist.test.ts
+Check src/domains/identity/tests/routes/auth_change_password_test.ts
+Check src/domains/identity/tests/routes/avatar.test.ts
+Check src/domains/identity/tests/routes/checkin.test.ts
+Check src/domains/identity/tests/routes/tfa.test.ts
+Check src/domains/identity/tests/routes/users.test.ts
+Check src/domains/identity/tests/routes/admin-blacklist.test.ts
+Check src/domains/identity/tests/routes/auth-ban-status.test.ts
+Check src/domains/identity/tests/routes/auth-admin.test.ts
+Check src/domains/identity/tests/routes/auth-dead-switches.test.ts
+Check src/domains/identity/tests/routes/auth-register-status.test.ts
+Check src/domains/identity/tests/routes/auth.test.ts
+Check src/domains/identity/tests/routes/data-export.test.ts
+Check src/domains/identity/tests/routes/oauth.test.ts
+Check src/domains/identity/tests/services/auth_tfa.test.ts
+Check src/domains/identity/tests/services/banlist.test.ts
+Check src/domains/identity/tests/services/checkin.test.ts
+Check src/domains/identity/tests/services/passwordReset.test.ts
+Check src/domains/identity/tests/services/tfa.test.ts
+Check src/domains/identity/tests/services/user-ban.test.ts
+Check src/domains/identity/tests/services/users.test.ts
+Check src/domains/identity/tests/services/admin-initialization.test.ts
+Check src/domains/identity/tests/services/auth.test.ts
+Check src/domains/identity/tests/services/search-events.test.ts
+Check src/domains/identity/tests/services/auth_change_password_test.ts
+Check src/domains/identity/tests/services/account-email-lifecycle.test.ts
+Check src/domains/identity/tests/services/oauth.test.ts
+Check src/domains/identity/tests/services/oauth_identity.test.ts
+Check src/domains/identity/tests/services/rbac.test.ts
+Check src/domains/identity/tests/services/session-revocation.test.ts
+Check src/domains/identity/types/auth.ts
+Check src/domains/identity/types/permissions.ts
+Check src/domains/identity/index.ts
+Check src/domains/messaging/services/messages-conversation-actions.ts
+Check src/domains/messaging/services/messages-shared.ts
+Check src/domains/messaging/services/messages.ts
+Check src/domains/messaging/routes/conversations.ts
+Check src/domains/messaging/routes/index.ts
+Check src/domains/messaging/index.ts
+Check src/domains/messaging/tests/routes/messages.test.ts
+Check src/domains/messaging/tests/services/messages.test.ts
+Check src/domains/messaging/tests/services/search-events.test.ts
+Check src/domains/objective/services/objective-judge.ts
+Check src/domains/objective/services/objective-questions.ts
+Check src/domains/objective/services/objective-submissions.ts
+Check src/domains/objective/tests/routes/objective.test.ts
+Check src/domains/objective/tests/services/objective-judge.test.ts
+Check src/domains/objective/tests/services/objective-submissions.test.ts
+Check src/domains/objective/types/objective.ts
+Check src/domains/objective/index.ts
+Check src/domains/system/services/seed/seed-system.ts
+Check src/domains/system/services/seed/seed-rbac.ts
+Check src/domains/system/services/email-providers/common.ts
+Check src/domains/system/services/email-providers/types.ts
+Check src/domains/system/services/email-providers/disabled.ts
+Check src/domains/system/services/email-providers/mock.ts
+Check src/domains/system/services/email-providers/aliyun.ts
+Check src/domains/system/services/email-providers/tencent.ts
+Check src/domains/system/services/judge-images.ts
+Check src/domains/system/services/request-context.ts
+Check src/domains/system/services/storage/audit.ts
+Check src/domains/system/services/storage/factory.ts
+Check src/domains/system/services/storage/mod.ts
+Check src/domains/system/services/storage/types.ts
+Check src/domains/system/services/storage/local.ts
+Check src/domains/system/services/storage/s3.ts
+Check src/domains/system/services/env-snapshot.ts
+Check src/domains/system/services/email-delivery/fixture-adapter.ts
+Check src/domains/system/services/email-delivery/types.ts
+Check src/domains/system/services/email-delivery/service.ts
+Check src/domains/system/services/email-status.ts
+Check src/domains/system/services/hardening-rate-limit.ts
+Check src/domains/system/services/system-settings.ts
+Check src/domains/system/services/audit-log.ts
+Check src/domains/system/services/rate-limit-env.ts
+Check src/domains/system/services/announcements.ts
+Check src/domains/system/services/carousel.ts
+Check src/domains/system/services/email.ts
+Check src/domains/system/routes/email-delivery.ts
+Check src/domains/system/routes/announcements.ts
+Check src/domains/system/routes/carousel.ts
+Check src/domains/system/routes/index.ts
+Check src/domains/system/middleware/rate-limit.ts
+Check src/domains/system/tests/middleware/rate-limit.test.ts
+Check src/domains/system/tests/routes/judge-images.test.ts
+Check src/domains/system/tests/routes/admin-settings.test.ts
+Check src/domains/system/tests/routes/admin-settings-email.test.ts
+Check src/domains/system/tests/routes/announcements.test.ts
+Check src/domains/system/tests/routes/admin-audit-logs.test.ts
+Check src/domains/system/tests/services/announcements.test.ts
+Check src/domains/system/tests/services/audit-log.test.ts
+Check src/domains/system/tests/services/judge-images.test.ts
+Check src/domains/system/tests/services/hardening-rate-limit.test.ts
+Check src/domains/system/tests/services/email-delivery.test.ts
+Check src/domains/system/tests/services/seed-system.test.ts
+Check src/domains/system/tests/services/observability.test.ts
+Check src/domains/system/tests/services/search-events.test.ts
+Check src/domains/system/tests/services/system-settings.test.ts
+Check src/domains/system/tests/services/system-settings-invalidation.test.ts
+Check src/domains/system/tests/services/carousel.test.ts
+Check src/domains/system/types/audit-log.ts
+Check src/domains/system/observability.ts
+Check src/domains/system/index.ts
+Check src/domains/gateway/services/llm-limits.ts
+Check src/domains/gateway/services/llm-token.ts
+Check src/domains/gateway/services/llm.ts
+Check src/domains/gateway/tests/services/llm-problem.test.ts
+Check src/domains/gateway/index.ts
+Check src/domains/query/services/dashboard.ts
+Check src/domains/query/services/stats-cache.ts
+Check src/domains/query/services/rankings.ts
+Check src/domains/query/routes/rankings.ts
+Check src/domains/query/routes/sse.ts
+Check src/domains/query/routes/stats.ts
+Check src/domains/query/routes/index.ts
+Check src/domains/query/tests/routes/rankings.test.ts
+Check src/domains/query/tests/routes/sse.test.ts
+Check src/domains/query/tests/routes/stats.test.ts
+Check src/domains/query/tests/services/rankings.test.ts
+Check src/domains/query/tests/services/stats-cache.test.ts
+Check src/domains/query/index.ts
+Check src/domains/catalog/services/problems/problems.ts
+Check src/domains/catalog/services/problems/problems-tags.ts
+Check src/domains/catalog/services/problems/problems-types.ts
+Check src/domains/catalog/services/problems/problems-list.ts
+Check src/domains/catalog/services/problems/problem-field-guard.ts
+Check src/domains/catalog/services/problems/problems-stats.ts
+Check src/domains/catalog/services/problems/problems-crud.ts
+Check src/domains/catalog/services/problems/problem-bundle.ts
+Check src/domains/catalog/services/contest-access-info.ts
+Check src/domains/catalog/services/problem-resolve.ts
+Check src/domains/catalog/services/trainings.ts
+Check src/domains/catalog/services/tags.ts
+Check src/domains/catalog/services/problem-access-check.ts
+Check src/domains/catalog/services/problem-access.ts
+Check src/domains/catalog/services/bundle-parser.ts
+Check src/domains/catalog/services/support-package.ts
+Check src/domains/catalog/routes/tags.ts
+Check src/domains/catalog/routes/trainings.ts
+Check src/domains/catalog/routes/index.ts
+Check src/domains/catalog/routes/problems.ts
+Check src/domains/catalog/tests/lib/bundle-parser.test.ts
+Check src/domains/catalog/tests/routes/problem-field-guard.test.ts
+Check src/domains/catalog/tests/routes/support-package.test.ts
+Check src/domains/catalog/tests/routes/tags.test.ts
+Check src/domains/catalog/tests/routes/trainings.test.ts
+Check src/domains/catalog/tests/routes/problems.test.ts
+Check src/domains/catalog/tests/routes/admin-problems.test.ts
+Check src/domains/catalog/tests/routes/admin-trainings.test.ts
+Check src/domains/catalog/tests/routes/problems-stats.test.ts
+Check src/domains/catalog/tests/routes/problem-contest-secrecy.test.ts
+Check src/domains/catalog/tests/routes/problem-bundle.test.ts
+Check src/domains/catalog/tests/services/problem-bundle.test.ts
+Check src/domains/catalog/tests/services/problems-tags.test.ts
+Check src/domains/catalog/tests/services/problems-types.test.ts
+Check src/domains/catalog/tests/services/rbac-training.test.ts
+Check src/domains/catalog/tests/services/support-package.test.ts
+Check src/domains/catalog/tests/services/tags.test.ts
+Check src/domains/catalog/tests/services/problems.test.ts
+Check src/domains/catalog/tests/services/trainings.test.ts
+Check src/domains/catalog/tests/services/search-events.test.ts
+Check src/domains/catalog/tests/services/problems-stats.test.ts
+Check src/domains/catalog/tests/services/problems-llm-limits.test.ts
+Check src/domains/catalog/tests/services/problem-field-guard.test.ts
+Check src/domains/catalog/tests/services/problem-access.test.ts
+Check src/domains/catalog/tests/services/problem-access-check.test.ts
+Check src/domains/catalog/tests/services/problem-template.test.ts
+Check src/domains/catalog/tests/types/problems.test.ts
+Check src/domains/catalog/tests/types/problem-bundle-contract.test.ts
+Check src/domains/catalog/types/runtime-config.ts
+Check src/domains/catalog/types/trainings.ts
+Check src/domains/catalog/types/problem-bundle.ts
+Check src/domains/catalog/types/problems.ts
+Check src/domains/catalog/index.ts
+Check src/domains/content-review/providers/mock.ts
+Check src/domains/content-review/providers/types.ts
+Check src/domains/content-review/providers/aliyun.ts
+Check src/domains/content-review/providers/index.ts
+Check src/domains/content-review/providers/tencent.ts
+Check src/domains/content-review/services/review-common.ts
+Check src/domains/content-review/services/review-decision.ts
+Check src/domains/content-review/services/review-detail.ts
+Check src/domains/content-review/services/review-queue.ts
+Check src/domains/content-review/services/dm-review.ts
+Check src/domains/content-review/services/review-runner.ts
+Check src/domains/content-review/index.ts
+Check src/domains/content-review/mq/review-consumer.ts
+Check src/domains/content-review/tests/services/content-review.test.ts
+Check src/domains/search/consumer/search-index-consumer.ts
+Check src/domains/search/index.ts
+Check src/domains/search/middleware/search-rate-limit.ts
+Check src/domains/search/routes/index.ts
+Check src/domains/search/routes/search.ts
+Check src/domains/search/services/search.ts
+Check src/domains/search/services/index-writer.ts
+Check src/domains/search/services/permission-filter.ts
+Check src/domains/search/tests/consumer/search-index-consumer.test.ts
+Check src/domains/search/tests/perf/search_bench.test.ts
+Check src/domains/search/tests/routes/search.test.ts
+Check src/domains/search/tests/services/search.test.ts
+Check src/domains/search/tests/services/search-events.test.ts
+Check src/domains/search/tests/services/search-solution-gating.test.ts
+Check src/domains/search/tests/services/index-writer.test.ts
+Check src/domains/search/types.ts
+Check src/domains/admin/middleware/admin-version.ts
+Check src/domains/admin/routes/contest.ts
+Check src/domains/admin/routes/query.ts
+Check src/domains/admin/routes/identity.ts
+Check src/domains/admin/routes/submission.ts
+Check src/domains/admin/routes/community.ts
+Check src/domains/admin/routes/gateway.ts
+Check src/domains/admin/routes/carousel.ts
+Check src/domains/admin/routes/system.ts
+Check src/domains/admin/routes/catalog.ts
+Check src/domains/admin/services/admin-version.ts
+Check src/domains/admin/services/admin-audit.ts
+Check src/domains/admin/tests/middleware/admin-version.test.ts
+Check src/domains/admin/tests/services/admin-audit.test.ts
+Check src/domains/admin/types/admin-audit.ts
+Check src/domains/admin/index.ts
+Check src/domains/observability/index.ts
+Check src/domains/observability/metrics/business-catalog.ts
+Check src/domains/observability/metrics/platform.ts
+Check src/domains/observability/middleware/http-metrics.ts
+Check src/domains/observability/middleware/request-context.ts
+Check src/domains/observability/probes/registry.ts
+Check src/domains/observability/routes/health.ts
+Check src/domains/observability/services/judge-heartbeat.ts
+Check src/domains/observability/services/runtime-contract.ts
+Check src/domains/observability/services/snapshot.ts
+Check src/domains/observability/slo.ts
+Check src/domains/observability/tests/health.test.ts
+Check src/domains/observability/tests/judge-heartbeat.test.ts
+Check src/domains/observability/tests/middleware.test.ts
+Check src/domains/observability/tests/platform-metrics.test.ts
+Check src/domains/observability/tests/probes.test.ts
+Check src/domains/observability/tests/slo.test.ts
+Check src/domains/observability/tests/snapshot.test.ts
+Check src/domains/observability/tests/write.test.ts
+Check src/domains/observability/types.ts
+Check src/domains/observability/write.ts
+Check src/domains/legal/routes/consent.ts
+Check src/domains/legal/routes/data-requests.ts
+Check src/domains/legal/routes/documents.ts
+Check src/domains/legal/routes/index.ts
+Check src/domains/legal/routes/admin.ts
+Check src/domains/legal/services/consent.ts
+Check src/domains/legal/services/tsa.ts
+Check src/domains/legal/services/data-requests.ts
+Check src/domains/legal/services/documents.ts
+Check src/domains/legal/tests/routes/consent.test.ts
+Check src/domains/legal/tests/routes/data-requests.test.ts
+Check src/domains/legal/tests/routes/documents.test.ts
+Check src/domains/legal/tests/routes/admin.test.ts
+Check src/domains/legal/tests/routes/settings.test.ts
+Check src/domains/legal/tests/services/consent.test.ts
+Check src/domains/legal/tests/services/data-requests.test.ts
+Check src/domains/legal/tests/services/documents.test.ts
+Check src/domains/legal/tests/services/tsa-fixtures.ts
+Check src/domains/legal/tests/services/tsa.test.ts
+Check src/domains/legal/types.ts
+Check src/domains/legal/index.ts
+Check src/mod.ts
+Check src/shared/base/constants.ts
+Check src/shared/base/dates.ts
+Check src/shared/base/errors.ts
+Check src/shared/base/sql-rows.ts
+Check src/shared/base/log-config.ts
+Check src/shared/base/log-format.ts
+Check src/shared/base/logging.ts
+Check src/shared/base/build-info.ts
+Check src/shared/config/production-config.ts
+Check src/shared/config/settings-registry.ts
+Check src/shared/config/settings-registry-bootstrap.ts
+Check src/shared/db/schema/common.ts
+Check src/shared/db/schema/content-review.ts
+Check src/shared/db/schema/messaging.ts
+Check src/shared/db/schema/objective.ts
+Check src/shared/db/schema/email.ts
+Check src/shared/db/schema/submission.ts
+Check src/shared/db/schema/search.ts
+Check src/shared/db/schema/community.ts
+Check src/shared/db/schema/contest.ts
+Check src/shared/db/schema/identity.ts
+Check src/shared/db/schema/carousel.ts
+Check src/shared/db/schema/index.ts
+Check src/shared/db/schema/legal.ts
+Check src/shared/db/schema/system.ts
+Check src/shared/db/schema/catalog.ts
+Check src/shared/db/schema.ts
+Check src/shared/db/migrate.ts
+Check src/shared/db/connection.ts
+Check src/shared/db/schema-ddl.ts
+Check src/shared/http/file-stream.ts
+Check src/shared/http/request.ts
+Check src/shared/http/hono-env.ts
+Check src/shared/http/security-headers.ts
+Check src/shared/http/pagination.ts
+Check src/shared/mq/judge-queues.ts
+Check src/shared/mq/sweep-targets.ts
+Check src/shared/mq/base-consumer.ts
+Check src/shared/mq/connection.ts
+Check src/shared/rate-limit/rate-limit.ts
+Check src/shared/security/cidr.ts
+Check src/shared/security/image-validation.ts
+Check src/shared/security/public-id.ts
+Check src/shared/security/admin-initialization.ts
+Check src/shared/security/secret-placeholders.ts
+Check src/shared/sse/server-helpers.ts
+Check src/shared/sse/sse-stream.ts
+Check src/shared/sse/event-bus.ts
+Check src/shared/sse/sse-events.ts
+Check src/shared/observability/contracts.ts
+Check src/shared/observability/index.ts
+Check src/shared/observability/labels.ts
+Check src/shared/observability/registry.ts
+Check src/shared/observability/context.ts
+Check src/shared/search-events.ts
+Check src/shared/testing/contest-fixtures.ts
+Check src/main.ts
+Check src/app.ts
+-- noj-llm-gateway check
+Task check deno fmt --check && deno lint && deno check src/mod.ts
+Checked 51 files
+Checked 37 files
+Download https://jsr.io/@std/encoding/1.0.11_meta.json
+Download https://jsr.io/@std/encoding/1.0.11/base64.ts
+Download https://jsr.io/@std/encoding/1.0.11/_common64.ts
+Download https://jsr.io/@std/encoding/1.0.11/_common_detach.ts
+Download https://jsr.io/@std/encoding/1.0.11/_types.ts
+Download https://jsr.io/@logtape/logtape/2.3.7/src/record.ts
+Check src/mod.ts
+-- noj-ui check
+Task check deno fmt --check && deno lint && deno task check:types && deno task check:types:nuxt
+Warning: "options" configuration is deprecated. Please use "flat" options instead.
+Checked 294 files
+Checked 142 files
+Task check:types deno check utils tests/*_test.ts tests/setup.ts
+Check tests/announcementDismiss_test.ts
+Check tests/apiError_test.ts
+Check tests/apiProxyCachePolicy_test.ts
+Check tests/apiProxyRedirect_test.ts
+Check tests/authSession_test.ts
+Check tests/avatarUpload_test.ts
+Check tests/breadcrumbRoutes_test.ts
+Check tests/breadcrumb_test.ts
+Check tests/buildInfo_test.ts
+Check tests/carouselGradient_test.ts
+Check tests/checkinCalendar_test.ts
+Check tests/checkinContributions_test.ts
+Check tests/codeEditorTemplate_test.ts
+Check tests/communityNotifications_test.ts
+Check tests/communityPostPreview_test.ts
+Check tests/contestAntiCheat_test.ts
+Check tests/contestHidden_test.ts
+Check tests/contestMutation_test.ts
+Check tests/contestRanking_test.ts
+Check tests/contestRegistration_test.ts
+Check tests/contestSelection_test.ts
+Check tests/i18n_test.ts
+Check tests/isAdminUser_test.ts
+Check tests/legalConsent_test.ts
+Check tests/objectiveFormat_test.ts
+Check tests/objectiveResult_test.ts
+Check tests/problemStats_test.ts
+Check tests/problemTemplate_test.ts
+Check tests/problemView_test.ts
+Check tests/publicIdentifiers_test.ts
+Check tests/recoveryCodes_test.ts
+Check tests/registerFlow_test.ts
+Check tests/sanitize_test.ts
+Check tests/securityHeaders_test.ts
+Check tests/siteMeta_test.ts
+Check tests/sitemapCache_test.ts
+Check tests/sitemapOrigin_test.ts
+Check tests/submissionCaseResults_test.ts
+Check tests/submissionFormat_test.ts
+Check tests/validatePassword_test.ts
+Check tests/setup.ts
+Check utils/announcementDismiss.ts
+Check utils/apiError.ts
+Check utils/avatarUpload.ts
+Check utils/breadcrumb.ts
+Check utils/buildInfo.ts
+Check utils/carouselGradient.ts
+Check utils/checkinCalendar.ts
+Check utils/checkinContributions.ts
+Check utils/codeEditorTemplate.ts
+Check utils/communityEdited.ts
+Check utils/communityNotifications.ts
+Check utils/communityPostPreview.ts
+Check utils/contestAntiCheat.ts
+Check utils/contestHidden.ts
+Check utils/contestMutation.ts
+Check utils/contestRanking.ts
+Check utils/contestRegistration.ts
+Check utils/contestSelection.ts
+Check utils/i18n.ts
+Check utils/isAdminUser.ts
+Check utils/legalConsent.ts
+Check utils/markdown.ts
+Check utils/objectiveFormat.ts
+Check utils/objectiveResult.ts
+Check utils/problemStats.ts
+Check utils/problemTemplate.ts
+Check utils/problemView.ts
+Check utils/publicIdentifiers.ts
+Check utils/recoveryCodes.ts
+Check utils/registerFlow.ts
+Check utils/reportCategories.ts
+Check utils/sanitize.ts
+Check utils/search-types.ts
+Check utils/searchFormat.ts
+Check utils/siteMeta.ts
+Check utils/submissionCaseResults.ts
+Check utils/submissionFormat.ts
+Check utils/validatePassword.ts
+Task check:types:nuxt deno run -A npm:nuxt typecheck && node --stack-size=4000 node_modules/vue-tsc/bin/vue-tsc.js --noEmit
+[nuxt:icon] ✔ Nuxt Icon discovered local-installed 1 collections: lucide
+
+ WARN  Runtime config option nitro.routeRules./api/v1/auth/**.headers may not be able to be serialized.
+
+
+ WARN  Runtime config option nitro.routeRules./api/v1/submissions/**.headers may not be able to be serialized.
+
+
+ WARN  Runtime config option nitro.routeRules./api/v1/queue/**.headers may not be able to be serialized.
+
+
+ WARN  Runtime config option nitro.routeRules./api/v1/community/**.headers may not be able to be serialized.
+
+
+ WARN  Runtime config option nitro.routeRules./api/v1/users/me/**.headers may not be able to be serialized.
+
+
+ WARN  Runtime config option public may not be able to be serialized.
+
+
+ WARN  Runtime config option icon may not be able to be serialized.
+
+
+ WARN  Duplicated imports "SearchType", the one from "/home/xyber-nova/Github/neuro-oj/noj-ui/composables/useSearch.ts" has been ignored and "/home/xyber-nova/Github/neuro-oj/noj-ui/utils/search-types.ts" is used
+
+
+ WARN  Duplicated imports "SearchState", the one from "/home/xyber-nova/Github/neuro-oj/noj-ui/composables/useSearch.ts" has been ignored and "/home/xyber-nova/Github/neuro-oj/noj-ui/utils/search-types.ts" is used
+
+
+ WARN  Duplicated imports "SearchItem", the one from "/home/xyber-nova/Github/neuro-oj/noj-ui/composables/useSearch.ts" has been ignored and "/home/xyber-nova/Github/neuro-oj/noj-ui/utils/search-types.ts" is used
+
+
+ WARN  Duplicated imports "SearchEntityType", the one from "/home/xyber-nova/Github/neuro-oj/noj-ui/composables/useSearch.ts" has been ignored and "/home/xyber-nova/Github/neuro-oj/noj-ui/utils/search-types.ts" is used
+
+
+ WARN  Duplicated imports "Pagination", the one from "/home/xyber-nova/Github/neuro-oj/noj-ui/composables/useContests.ts" has been ignored and "/home/xyber-nova/Github/neuro-oj/noj-ui/composables/useMessages.ts" is used
+
+ℹ Nuxt Icon client bundle consist of 161 icons with 45.66KB(uncompressed) in size
+
+ WARN  Duplicated imports "SearchType", the one from "/home/xyber-nova/Github/neuro-oj/noj-ui/composables/useSearch.ts" has been ignored and "/home/xyber-nova/Github/neuro-oj/noj-ui/utils/search-types.ts" is used
+
+
+ WARN  Duplicated imports "SearchState", the one from "/home/xyber-nova/Github/neuro-oj/noj-ui/composables/useSearch.ts" has been ignored and "/home/xyber-nova/Github/neuro-oj/noj-ui/utils/search-types.ts" is used
+
+
+ WARN  Duplicated imports "SearchItem", the one from "/home/xyber-nova/Github/neuro-oj/noj-ui/composables/useSearch.ts" has been ignored and "/home/xyber-nova/Github/neuro-oj/noj-ui/utils/search-types.ts" is used
+
+
+ WARN  Duplicated imports "SearchEntityType", the one from "/home/xyber-nova/Github/neuro-oj/noj-ui/composables/useSearch.ts" has been ignored and "/home/xyber-nova/Github/neuro-oj/noj-ui/utils/search-types.ts" is used
+
+
+ WARN  Duplicated imports "Pagination", the one from "/home/xyber-nova/Github/neuro-oj/noj-ui/composables/useContests.ts" has been ignored and "/home/xyber-nova/Github/neuro-oj/noj-ui/composables/useMessages.ts" is used
+
+全部检查通过
+CHECK_ALL_EXIT=0

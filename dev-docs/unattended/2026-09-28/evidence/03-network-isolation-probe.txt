@@ -1,0 +1,113 @@
+=== B 轴（容器逃逸）探针：B4 已证、B1/B2 **本环境不可验证**（含假阳性排查全过程）===
+
+环境：DOCKER_CONFIG=/tmp/docker-cfg ｜ 镜像 noj-evaluator-python:latest ｜ 网络 noj-eval-net（已存在）
+时间：2026-09-29 08:3x
+
+────────────────────────────────────────────────────────────
+【B4 已证：tmpfs 的 noexec/nosuid/nodev 实际生效】
+命令（复刻 judge 的挂载参数，见 noj-judge/src/dual/container.rs 的 /tmp 与 /workspace 定义）：
+  docker run --rm --tmpfs /tmp:size=256M,mode=1777,noexec,nosuid,nodev <img> \
+    sh -c 'mount | grep " /tmp "; cp /bin/sh /tmp/sh; /tmp/sh -c "echo ESCAPED"'
+
+输出（关键两行）：
+  tmpfs on /tmp type tmpfs (rw,nosuid,nodev,noexec,relatime,size=262144k,inode64)
+  sh: 1: /tmp/sh: Permission denied        → exec_exit=126
+
+结论：**已在真实容器内确认** /tmp 携带 noexec,nosuid,nodev，且从 /tmp 执行投放的二进制被拒
+（EACCES）。B4 由"代码写了参数"升级为"参数在容器内实际生效"。
+（对照组 `--tmpfs /tmp:size=256M,mode=1777` 同样报 Permission denied，说明该宿主的 exec-from-tmpfs
+ 还受其它机制约束；因此本探针**不主张"noexec 是唯一原因"**，只主张"生产参数确实挂上了且执行被拒"。）
+
+────────────────────────────────────────────────────────────
+【B1/B2：探针显示 REACHABLE —— 但经排查确认是**本机透明代理造成的假象，不得据此处以结论**】
+
+初次探针（从 noj-eval-net 内的容器）输出：
+  DNS_RESOLVED noj-postgres 198.18.0.4
+  DNS_RESOLVED noj-core 198.18.0.5
+  DNS_RESOLVED noj-redis 198.18.0.6
+  DNS_RESOLVED noj-minio 198.18.0.7
+  REACHABLE noj-postgres 5432 ｜ noj-redis 6379 ｜ noj-minio 9000 ｜ 172.17.0.1:5432
+
+**排查（三步，全部指向"环境假象"）**：
+1. `docker inspect` dev 容器：`noj-postgres/redis/minio/llm-gateway` **只在 `neuro-oj_default`** 上；
+   `docker network inspect noj-eval-net` 的容器列表为**空** → 拓扑上它们不共享任何网络。
+2. 容器内 DNS：resolv.conf 由 Docker 生成，`nameserver 127.0.0.11`，其 ExtServers 为
+   `host(100.100.100.100)`、`host(fd7a:115c:a1e0::53)` —— **Tailscale MagicDNS**，
+   且 `search tailb83d19.ts.net` 直接证实。
+3. 同一容器内 `example.com` 被解析为 **198.18.0.10** —— `198.18.0.0/15` 是
+   **fake-IP 透明代理（Clash/sing-box 类）的标准段**；本机确实跑着 `omniroute`。
+
+**推论**：本机存在"覆盖式 DNS + 透明代理"，它按**容器名**解析并转发流量，因此**任何网络内的容器
+都能"到达"任何容器名**——这与 `noj-eval-net` 的隔离能力无关。**必须报为"不可验证"，而不是
+"生产隔离失效"。** 把它写成漏洞就是一次典型的假阳性。
+
+**待复验条件**：在没有全局 DNS 覆盖/透明代理的生产型宿主机上重跑同一探针；
+期望 `NXDOMAIN` 或连接超时。
+
+────────────────────────────────────────────────────────────
+【由此得到的一条**条件性风险**（需 Owner 判断，非已确认缺陷）】
+
+拓扑隔离（`noj-eval-net` 只承载 Evaluator + llm-gateway）依赖一个前提：
+**宿主机不提供跨越 Docker 网络的名称解析或 egress 代理**。若生产宿主机上也装了
+Tailscale / 透明代理 / 覆盖式 DNS（overlay DNS），评测容器的出网流量会被代理接走，
+从而**绕过 `noj-eval-net` 的物理隔离**并触达内网服务。
+
+建议（择一）：
+- 生产宿主机不部署此类代理；或
+- 为评测容器加显式 egress 策略（iptables/nftables 或 docker 的 egress 能力限制）；或
+- 在 judge 启动自检里加一条"从评测网络内探测内网服务应失败"的**主动断言**（失败即拒绝启动），
+  把这条前置条件变成可验证的不变量，而不是文档约定。
+
+────────────────────────────────────────────────────────────
+【判别实验：把"代理假象"与"真实路径"分开】
+
+同一容器（noj-eval-net 内）对两条路径、两个端口做对照：
+  noj-eval-net 网关 = 172.23.0.1 ｜ docker0 宿主地址 = 172.17.0.1
+
+  CONNECTED 172.23.0.1 5432 已发布 postgres
+  CONNECTED 172.23.0.1 9999 未监听端口      ← 未监听也能连上 ⇒ 代理无差别接管
+  CONNECTED 172.17.0.1 5432 docker0:postgres
+  FAILED    172.17.0.1 9999 docker0:未监听  (ConnectionRefusedError) ← 真实路由
+
+结论：
+- **172.23.0.1（eval-net 网关）路径不可作为证据**（代理接管，任何端口都"通"）。
+- **172.17.0.1（docker0）是真实路由**：容器确实能到达宿主的该地址；
+  5432 能连通是因为 **dev 的 postgres 发布了 `0.0.0.0:5432`**。
+
+【生产端口矩阵（决定该路径是否真实存在于生产）】
+`docker-compose.prod.yml` 中**只有三处发布端口**：
+  nginx        : ${NGINX_PORT:-8080}:80          （默认 0.0.0.0，本就是公开入口）
+  prometheus   : ${PROMETHEUS_BIND:-127.0.0.1}:9090   （仅回环）
+  alertmanager : ${ALERTMANAGER_BIND:-127.0.0.1}:9093 （仅回环）
+**postgres / redis / minio / core / llm-gateway / judge 均无 `ports:` 段**（不发布任何端口）。
+
+因此：
+- "联网 Evaluator 经宿主网关触达内网数据库" **只在 dev 成立**（dev compose 为本地开发发布了
+  5432/6379/9000/8001），**生产不成立** —— 宿主上根本没有这些监听端口。
+- 生产上网关路径实际只剩 `nginx:8080`（= 平台的公开 API 入口，容器本就有公网 egress，
+  经网关访问它不构成新的能力），以及**仅绑回环**的监控端口（容器无法经网关触达宿主回环）✓
+
+修正后的风险评级：**dev 现象，生产不适用**。前置条件仍建议固化为不变量（见下）。
+
+────────────────────────────────────────────────────────────
+【决定性实验：按容器 IP 直连（绕开被代理接管的"名字"路径）】
+
+背景：容器名解析被宿主 fake-IP 代理接管，所以"按名字"的结论一律不可信。
+办法：取目标容器的**真实容器 IP**，从 noj-eval-net 内直连（代理不接管裸 IP 的跨网流量）。
+
+  noj-postgres IP = 172.18.0.4（neuro-oj_default）｜ noj-minio IP = 172.18.0.2
+
+  BLOCKED   172.18.0.4 5432 postgres(neuro-oj_default)   TimeoutError
+  BLOCKED   172.18.0.2 9000 minio(neuro-oj_default)      TimeoutError
+  BLOCKED   172.17.0.1 9999 宿主未监听端口(对照)          ConnectionRefusedError
+
+结论（**B1/B2 已按路由验证通过**）：
+- 从评测网络容器 **按 IP 无法到达** 其它 Docker 网络上的内网服务（超时 = 被网桥隔离丢弃），
+  即 Docker 的 inter-bridge isolation 在本机**确实生效**；
+- 宿主地址可达（172.17.0.1），但生产宿主机上没有 postgres/redis/minio 的监听端口（见端口矩阵），
+  因此实际不存在可利用路径；
+- 先前所有"REACHABLE"均为 **(a) 名字被 fake-IP 代理接管 + (b) dev compose 把端口发布到 0.0.0.0**
+  两个环境因素叠加所致，**不是隔离失效**。
+
+未覆盖：B6「Evaluator 只能触达 llm-gateway」需要生产式双网卡拓扑（本地 dev gateway 只在
+neuro-oj_default 上），本轮未验证。

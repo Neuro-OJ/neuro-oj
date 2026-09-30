@@ -39,8 +39,8 @@ mod tests;
 use pipe::{forward_frame, write_timeout_frame, PipeWriteOutcome};
 
 use crate::sandbox::container::{
-    extract_zip_entries_from_file, inject_file_to_container, inject_files_to_container,
-    parse_command,
+    extract_zip_entries_from_file, inject_file_to_container, inject_zip_entries_to_container,
+    parse_command, ZipEntry,
 };
 use crate::types::{JudgeResult, JudgeStatus, JudgeTaskLlm, RuntimeConfig};
 
@@ -198,21 +198,19 @@ async fn inject_support_package_to_evaluator(
     .await
     .context("spawn_blocking 提取 zip 失败")??;
 
-    // 目录条目由 tar 解压自动创建，无需注入；文件一次性批量注入。
-    let files: Vec<(&str, &[u8])> = entries
-        .iter()
-        .filter(|entry| !entry.is_dir)
-        .map(|entry| (entry.file_name.as_str(), entry.data.as_slice()))
-        .collect();
+    // 目录条目由 tar 解压自动创建，无需注入；文件**按值消费**注入
+    // （NOJ-A1：边写边释放条目数据，峰值内存不再随"条目 + tar"翻倍）。
+    let entry_count = entries.len();
+    let files: Vec<ZipEntry> = entries.into_iter().filter(|entry| !entry.is_dir).collect();
+    let file_count = files.len();
 
-    inject_files_to_container(docker, container_id, &files)
+    inject_zip_entries_to_container(docker, container_id, files)
         .await
         .context("批量注入支持包文件失败")?;
 
     info!(
         "支持包注入完成 (共 {} 个条目，其中 {} 个文件，单次 exec)",
-        entries.len(),
-        files.len()
+        entry_count, file_count
     );
     Ok(())
 }
@@ -446,13 +444,16 @@ enum TimeoutKind {
 /// 评测收尾判定：把「评测如何结束」映射为最终状态。
 ///
 /// 仅在 evaluator 未正常输出 ---RESULT--- 时调用（有 RESULT 走 build_judge_result）。
-/// 规则（顺序即优先级）：
-/// 1. 总超时（Startup/Total）→ SystemError：评测流程未正常完成，做题人不可通过改代码解决；
-/// 2. 曾向 evaluator 发送过 CallTimeout 错误帧 → TimeLimitExceeded：用户代码慢是根因；
+/// 规则（顺序即优先级，决策 5 / AR-07）：
+/// 1. 启动等待超时（Startup）→ SystemError：容器拉取/注入/运行时环境异常，平台侧故障；
+/// 2. 总执行超时（Total）或曾向 evaluator 发送过 CallTimeout 错误帧 → TimeLimitExceeded：做题人代码慢/超时；
 /// 3. 否则 → SystemError：evaluator 自身异常。
 fn finalize_outcome(timed_out: Option<TimeoutKind>, sent_call_timeout: bool) -> JudgeStatus {
-    if timed_out.is_some() {
-        return JudgeStatus::SystemError;
+    if let Some(kind) = timed_out {
+        match kind {
+            TimeoutKind::Startup => return JudgeStatus::SystemError,
+            TimeoutKind::Total => return JudgeStatus::TimeLimitExceeded,
+        }
     }
     if sent_call_timeout {
         return JudgeStatus::TimeLimitExceeded;

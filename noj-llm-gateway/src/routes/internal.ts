@@ -13,6 +13,7 @@ import {
   testProviderConnection,
   updateProvider,
 } from "../providers.ts";
+import { fallbackQuota } from "../limits.ts";
 
 export interface InternalDeps {
   config: GatewayConfig;
@@ -232,11 +233,19 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const now = new Date().toISOString();
     const scopeId = body.scope_id ?? "";
     const windowType = body.window_type ?? "day";
+    const fallback = fallbackQuota(body.scope_type, windowType);
+    const maxCalls = body.max_calls !== undefined
+      ? body.max_calls
+      : fallback.max_calls;
+    const maxTokens = body.max_tokens !== undefined
+      ? body.max_tokens
+      : fallback.max_tokens;
+    const maxCost = body.max_cost !== undefined
+      ? body.max_cost
+      : fallback.max_cost;
     await deps.db`
       INSERT INTO llm_quotas (id, scope_type, scope_id, window_type, max_calls, max_tokens, max_cost, created_at, updated_at)
-      VALUES (${id}, ${body.scope_type}, ${scopeId}, ${windowType}, ${
-      body.max_calls ?? 0
-    }, ${body.max_tokens ?? 0}, ${body.max_cost ?? 0}, ${now}, ${now})
+      VALUES (${id}, ${body.scope_type}, ${scopeId}, ${windowType}, ${maxCalls}, ${maxTokens}, ${maxCost}, ${now}, ${now})
       ON CONFLICT (id) DO UPDATE SET
         scope_type = EXCLUDED.scope_type,
         scope_id = EXCLUDED.scope_id,

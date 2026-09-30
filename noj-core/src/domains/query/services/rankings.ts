@@ -8,6 +8,7 @@ import { submissions } from "./../../../shared/db/schema.ts";
 import { users } from "./../../../shared/db/schema.ts";
 import { BadRequestError } from "./../../../shared/base/errors.ts";
 import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
+import { endedWindowCondition } from "./../../contest/index.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "query"]);
@@ -250,11 +251,18 @@ function readRankingsInline(
         COUNT(*)::int AS total_submissions,
         COUNT(DISTINCT s.problem_id) FILTER (
           WHERE er.status = 'finished' AND er.score > 0
-            AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
+            AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
+      endedWindowCondition(sql`c.end_time`)
+    }))
         )::int AS solved_count,
         CASE WHEN COUNT(*) = 0 THEN 0
              ELSE ROUND(
-               (COUNT(*) FILTER (WHERE er.status = 'finished' AND er.score > 0)::float / COUNT(*))::numeric,
+               (COUNT(*) FILTER (
+                 WHERE er.status = 'finished' AND er.score > 0
+                   AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
+      endedWindowCondition(sql`c.end_time`)
+    }))
+               )::float / COUNT(*))::numeric,
                3
              )::float
         END AS acceptance_rate,
@@ -262,10 +270,17 @@ function readRankingsInline(
           ORDER BY
             COUNT(DISTINCT s.problem_id) FILTER (
               WHERE er.status = 'finished' AND er.score > 0
-                AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
+                AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
+      endedWindowCondition(sql`c.end_time`)
+    }))
             ) DESC,
             CASE WHEN COUNT(*) = 0 THEN 0
-                 ELSE COUNT(*) FILTER (WHERE er.status = 'finished' AND er.score > 0)::float / COUNT(*)
+                 ELSE COUNT(*) FILTER (
+                   WHERE er.status = 'finished' AND er.score > 0
+                     AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
+      endedWindowCondition(sql`c.end_time`)
+    }))
+                 )::float / COUNT(*)
             END DESC,
             COUNT(*) ASC,
             u.created_at ASC
@@ -278,7 +293,9 @@ function readRankingsInline(
       GROUP BY u.id, u.username, u.avatar_url, u.created_at
       HAVING COUNT(*) FILTER (
         WHERE er.status = 'finished' AND er.score > 0
-          AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
+          AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
+      endedWindowCondition(sql`c.end_time`)
+    }))
       ) > 0
       ORDER BY rank
       LIMIT ${limit} OFFSET ${offset}
@@ -295,7 +312,9 @@ function readRankingsInline(
         GROUP BY u.id
         HAVING COUNT(*) FILTER (
           WHERE er.status = 'finished' AND er.score > 0
-            AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
+            AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
+      endedWindowCondition(sql`c.end_time`)
+    }))
         ) > 0
       ) AS ranked_users
     `),
@@ -352,11 +371,18 @@ export async function getMyRanking(
           COUNT(*)::int AS total_submissions,
           COUNT(DISTINCT s.problem_id) FILTER (
             WHERE er.status = 'finished' AND er.score > 0
-              AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
+              AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
+      endedWindowCondition(sql`c.end_time`)
+    }))
           )::int AS solved_count,
           CASE WHEN COUNT(*) = 0 THEN 0
                ELSE ROUND(
-                 (COUNT(*) FILTER (WHERE er.status = 'finished' AND er.score > 0)::float / COUNT(*))::numeric,
+                 (COUNT(*) FILTER (
+                   WHERE er.status = 'finished' AND er.score > 0
+                     AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
+      endedWindowCondition(sql`c.end_time`)
+    }))
+                 )::float / COUNT(*))::numeric,
                  3
                )::float
           END AS acceptance_rate,
@@ -364,10 +390,17 @@ export async function getMyRanking(
             ORDER BY
               COUNT(DISTINCT s.problem_id) FILTER (
                 WHERE er.status = 'finished' AND er.score > 0
-                  AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
+                  AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
+      endedWindowCondition(sql`c.end_time`)
+    }))
               ) DESC,
               CASE WHEN COUNT(*) = 0 THEN 0
-                   ELSE COUNT(*) FILTER (WHERE er.status = 'finished' AND er.score > 0)::float / COUNT(*)
+                   ELSE COUNT(*) FILTER (
+                     WHERE er.status = 'finished' AND er.score > 0
+                       AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
+      endedWindowCondition(sql`c.end_time`)
+    }))
+                   )::float / COUNT(*)
               END DESC,
               COUNT(*) ASC,
               u.created_at ASC
@@ -380,7 +413,9 @@ export async function getMyRanking(
         GROUP BY u.id, u.username, u.avatar_url, u.created_at
         HAVING COUNT(*) FILTER (
           WHERE er.status = 'finished' AND er.score > 0
-            AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
+            AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
+      endedWindowCondition(sql`c.end_time`)
+    }))
         ) > 0
       )
       SELECT * FROM ranked WHERE user_id = ${userId} LIMIT 1

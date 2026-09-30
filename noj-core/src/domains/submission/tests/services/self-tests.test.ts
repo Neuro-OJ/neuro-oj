@@ -3,11 +3,16 @@ import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 
 import {
+  contests,
   problems,
   selfTests,
   submissions,
   users,
 } from "../../../../shared/db/schema.ts";
+import {
+  pendingContestTimes,
+  seedRunningContest,
+} from "../../../../shared/testing/contest-fixtures.ts";
 import {
   BadRequestError,
   NotFoundError,
@@ -218,6 +223,57 @@ Deno.test({
     // 重复终态结果幂等忽略
     const appliedAgain = await saveSelfTestResult(result);
     assertEquals(appliedAgain, false);
+  },
+});
+
+/**
+ * 面 1.4 审计 F-03 回归：被**未结束公开赛**保密的题目，自测路径必须与详情/模板/
+ * 支持包路径同口径返回 **404（NotFoundError）**，而不是 403。
+ *
+ * 若返回 403，则"403＝存在但保密"与"404＝不存在"的差异本身就是**存在性预言机**
+ * ——display_id（P1001 形式）可枚举，攻击者据此即可在赛前确认某题已被某场尚未开始
+ * 的公开赛收编。
+ */
+Deno.test({
+  name: "self-tests service: 赛前筹备期保密题返回 404（存在性预言机回归 F-03）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const secretProblemId = `tst-st-secret-${ts}`;
+    const secretNow = new Date().toISOString();
+    await db.insert(problems).values({
+      id: secretProblemId,
+      title: "保密题（不得暴露存在性）",
+      description: "题面",
+      difficulty: "easy",
+      runtime_config: runtimeConfig,
+      number: 90000 + (ts % 10000),
+      // owner 不是 USER_ID：确保以普通用户身份访问会被拒
+      owner_id: "0",
+      type: "P",
+      visibility: "public",
+      created_at: secretNow,
+      updated_at: secretNow,
+    });
+    // 加入一场**尚未开始**（pending）的公开赛：最严重的泄密窗口
+    const contestId = await seedRunningContest({
+      problemIds: [secretProblemId],
+      times: pendingContestTimes(),
+    });
+
+    // NotFoundError（而非 ForbiddenError）＝对外口径为"题目不存在"
+    await assertRejects(
+      () =>
+        createSelfTest(USER_ID, secretProblemId, {
+          language: "python3",
+          code: "print(1)",
+        }),
+      NotFoundError,
+    );
+
+    await db.delete(contests).where(eq(contests.id, contestId));
+    await db.delete(problems).where(eq(problems.id, secretProblemId));
   },
 });
 

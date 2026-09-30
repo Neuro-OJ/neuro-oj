@@ -1,12 +1,12 @@
 /**
  * Admin 通用列表管理组合函数。
  *
- * 封装分页、加载/错误状态、搜索逻辑，
+ * 封装分页、加载/错误状态、搜索逻辑、URL Query 同步与自动轮询，
  * 消除 admin 管理页面中大量重复的数据获取样板代码。
  *
  * 用法：
  * ```ts
- * const { items, loading, error, load, onPageChange, searchInput } = useAdminList<User>({
+ * const { items, loading, error, load, onPageChange, searchInput, totalItems } = useAdminList<User>({
  *   path: "/api/v1/admin/identity/users",
  *   fetchOptions: { dataField: "data", totalField: "total" },
  * })
@@ -14,7 +14,7 @@
  */
 
 import { ref } from 'vue';
-import type { MaybeRefOrGetter } from 'vue';
+import type { MaybeRefOrGetter, Ref } from 'vue';
 import { extractApiError } from '~/utils/apiError';
 import { usePolling } from '~/composables/usePolling';
 
@@ -37,11 +37,14 @@ export interface AdminListOptions<T> {
     /** 返回 true 时自动停止轮询（如提交列表全部终态） */
     stopWhen?: () => boolean;
   };
+  /** 是否与浏览器 URL Query（?page=X&keyword=Y）双向同步，默认 true */
+  syncWithQuery?: boolean;
 }
 
 export interface AdminListResult<T> {
   items: Ref<T[]>;
   totalPages: Ref<number>;
+  totalItems: Ref<number | undefined>;
   loading: Ref<boolean>;
   error: Ref<string>;
   currentPage: Ref<number>;
@@ -76,23 +79,75 @@ export function useAdminList<T = Record<string, unknown>>(
   const items = ref<T[]>([]) as Ref<T[]>;
   const loading = ref(true);
   const error = ref('');
-  const currentPage = ref(1);
   const totalPages = ref(1);
+  const totalItems = ref<number | undefined>(undefined);
   const lastRefresh = ref<Date | null>(null);
   const perPageVal = options.perPage ?? 20;
-  const keyword = ref('');
+
+  // 初始化分页与搜索关键字（支持 URL Query 恢复）
+  let initPage = 1;
+  let initKeyword = '';
+  if (options.syncWithQuery !== false && import.meta.client) {
+    try {
+      const route = useRoute();
+      if (route.query) {
+        if (typeof route.query.page === 'string') {
+          const p = parseInt(route.query.page, 10);
+          if (!isNaN(p) && p > 0) initPage = p;
+        }
+        if (typeof route.query.keyword === 'string') {
+          initKeyword = route.query.keyword;
+        }
+      }
+    } catch {
+      // 容错：无 routing 容器时不抛错
+    }
+  }
+
+  const currentPage = ref(initPage);
+  const keyword = ref(initKeyword);
 
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   let requestVersion = 0;
 
+  /** 同步状态到 URL Query */
+  function syncQueryToUrl(page: number, kw: string) {
+    if (options.syncWithQuery === false || !import.meta.client) return;
+    try {
+      const route = useRoute();
+      const router = useRouter();
+      const newQuery = { ...route.query };
+
+      if (page > 1) {
+        newQuery.page = String(page);
+      } else {
+        delete newQuery.page;
+      }
+
+      if (kw) {
+        newQuery.keyword = kw;
+      } else {
+        delete newQuery.keyword;
+      }
+
+      router.replace({ query: newQuery });
+    } catch {
+      // 容错处理
+    }
+  }
+
   /** silent=true 用于轮询：不置 loading、不清 error，失败静默保留旧数据 */
-  async function load(page = 1, silent = false) {
+  async function load(page = currentPage.value, silent = false) {
     const currentRequest = ++requestVersion;
     if (!silent) {
       loading.value = true;
       error.value = '';
     }
     currentPage.value = page;
+
+    if (!silent) {
+      syncQueryToUrl(page, keyword.value);
+    }
 
     try {
       const params = new URLSearchParams({
@@ -107,6 +162,7 @@ export function useAdminList<T = Record<string, unknown>>(
         const r = options.transform(raw);
         if (currentRequest !== requestVersion) return;
         items.value = r.items;
+        totalItems.value = r.total;
         totalPages.value = Math.max(1, Math.ceil(r.total / perPageVal));
         lastRefresh.value = new Date();
       } else {
@@ -123,6 +179,7 @@ export function useAdminList<T = Record<string, unknown>>(
 
         const rawTotal = deepGet(res, totalField);
         if (typeof rawTotal === 'number') {
+          totalItems.value = rawTotal;
           totalPages.value = Math.max(1, Math.ceil(rawTotal / perPageVal));
         } else {
           // fallback: pagination.total_pages
@@ -169,6 +226,7 @@ export function useAdminList<T = Record<string, unknown>>(
   return {
     items,
     totalPages,
+    totalItems,
     loading,
     error,
     currentPage,

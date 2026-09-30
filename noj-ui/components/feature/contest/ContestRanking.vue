@@ -121,11 +121,22 @@ function score(value: number) {
 
 <template>
   <div class="space-y-5">
-    <header class="flex flex-wrap items-center gap-4 rounded-2xl bg-bg-dark px-6 py-6 text-white shadow-card">
-      <UIcon name="i-lucide-trophy" class="text-amber-300 size-6" />
-      <div class="min-w-0 flex-1"><h1 class="truncate text-xl font-bold">{{ contest?.title || '竞赛排名' }}</h1><p class="mt-1 text-xs text-slate-400">{{ resultLabel }} · 总分优先，同分按最后一次刷新最高分的时间排序</p></div>
-      <div class="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs text-slate-300"><UIcon name="i-lucide-radio" :class="eventState === 'connected' ? 'text-green-400' : 'text-amber-300'" class="size-3" />{{ eventState === 'connected' ? '实时更新' : eventState === 'fallback' ? '轮询更新' : '正在连接' }}</div>
-      <button class="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-xs hover:bg-white/10" @click="loadRanking"><UIcon name="i-lucide-refresh-cw" class="size-3.5" />刷新</button>
+    <header class="flex flex-wrap items-center gap-4 rounded-lg bg-white border border-border px-6 py-5 text-text shadow-card">
+      <div class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-bg text-primary border border-primary/20 shadow-xs">
+        <UIcon name="i-lucide-trophy" class="size-5" />
+      </div>
+      <div class="min-w-0 flex-1">
+        <h1 class="truncate text-xl font-bold text-text">{{ contest?.title || '竞赛排名' }}</h1>
+        <p class="mt-1 text-xs text-text-muted">{{ resultLabel }} · 总分优先，同分按最后一次刷新最高分的时间排序</p>
+      </div>
+      <div class="flex items-center gap-2 rounded-full bg-bg-sunken border border-border px-3 py-1.5 text-xs text-text-secondary">
+        <UIcon name="i-lucide-radio" :class="eventState === 'connected' ? 'text-signal' : 'text-amber-500'" class="size-3" />
+        {{ eventState === 'connected' ? '实时更新' : eventState === 'fallback' ? '轮询更新' : '正在连接' }}
+      </div>
+      <button class="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-bg-sunken hover:text-text transition-colors shadow-xs" @click="loadRanking">
+        <UIcon name="i-lucide-refresh-cw" class="size-3.5" />
+        刷新
+      </button>
     </header>
 
     <div v-if="officialSnapshot" class="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">

@@ -222,55 +222,61 @@ async function confirmDelete(tag: Tag) {
     </AdminTable>
   </div>
 
-  <!-- 创建/编辑弹窗 -->
-  <UModal v-model:open="showForm" :title="editingTag ? '编辑标签' : '新建标签'" :unmount-on-hide="true">
-    <template #body>
-      <div class="flex flex-col gap-3">
-        <div class="flex flex-col gap-1">
-          <label class="text-13px font-semibold text-text">名称 <span class="text-error-text">*</span></label>
-          <input v-model="formName" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:input-base-focus" placeholder="标签名称" />
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-13px font-semibold text-text">类型 <span class="text-error-text">*</span></label>
-          <USelect
-            v-model="formKind"
-            :items="[{ label: '题目标签', value: 'problem' }, { label: '算法标签', value: 'algorithm' }]"
-            class="w-full"
-          />
-        </div>
-        <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
+  <!-- 创建/编辑抽屉 (Slideover) -->
+  <AdminEditPanel
+    :open="showForm"
+    :title="editingTag ? '编辑标签' : '新建标签'"
+    :loading="saving"
+    :save-text="editingTag ? '保存标签' : '立即创建'"
+    @close="showForm = false"
+    @save="handleSave"
+  >
+    <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">名称 <span class="text-error-text">*</span></label>
+        <input
+          v-model="formName"
+          class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary"
+          placeholder="标签名称"
+        />
       </div>
-    </template>
-
-    <template #footer>
-      <UButton color="neutral" variant="ghost" :disabled="saving" @click="showForm = false">取消</UButton>
-      <UButton color="primary" :loading="saving" @click="handleSave">{{ editingTag ? '保存' : '创建' }}</UButton>
-    </template>
-  </UModal>
-
-  <!-- 合并弹窗 -->
-  <UModal v-model:open="showMergeModal" title="合并标签" :unmount-on-hide="true">
-    <template #body>
-      <div class="flex flex-col gap-3">
-        <p class="text-sm text-text-secondary">
-          将标签 <strong class="text-text">{{ mergeSource?.name }}</strong> 合并到目标标签，源标签下的题目会转移到目标标签。
-        </p>
-        <div class="flex flex-col gap-1">
-          <label class="text-13px font-semibold text-text">目标标签 <span class="text-error-text">*</span></label>
-          <USelect
-            v-model="mergeTargetId"
-            :items="mergeTargetOptions"
-            placeholder="选择目标标签"
-            class="w-full"
-          />
-        </div>
-        <p v-if="mergeError" class="text-error-text text-13px">{{ mergeError }}</p>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">类型 <span class="text-error-text">*</span></label>
+        <USelect
+          v-model="formKind"
+          :items="[{ label: '题目标签', value: 'problem' }, { label: '算法标签', value: 'algorithm' }]"
+          class="w-full"
+        />
       </div>
-    </template>
+      <p v-if="formError" class="text-error-text text-xs">{{ formError }}</p>
+    </div>
+  </AdminEditPanel>
 
-    <template #footer>
-      <UButton color="neutral" variant="ghost" :disabled="merging" @click="showMergeModal = false">取消</UButton>
-      <UButton color="primary" :loading="merging" @click="handleMerge">确认合并</UButton>
-    </template>
-  </UModal>
+  <!-- 合并标签抽屉 -->
+  <AdminEditPanel
+    :open="showMergeModal"
+    title="合并标签"
+    width-class="sm:max-w-md"
+    :loading="merging"
+    save-text="确认合并"
+    @update:open="(val: boolean) => showMergeModal = val"
+    @close="showMergeModal = false"
+    @save="handleMerge"
+  >
+    <div class="flex flex-col gap-3">
+      <p class="text-sm text-text-secondary">
+        将标签 <strong class="text-text">{{ mergeSource?.name }}</strong> 合并到目标标签，源标签下的题目会转移到目标标签。
+      </p>
+      <div class="flex flex-col gap-1">
+        <label class="text-13px font-semibold text-text">目标标签 <span class="text-error-text">*</span></label>
+        <USelect
+          v-model="mergeTargetId"
+          :items="mergeTargetOptions"
+          placeholder="选择目标标签"
+          class="w-full"
+        />
+      </div>
+      <p v-if="mergeError" class="text-error-text text-13px">{{ mergeError }}</p>
+    </div>
+  </AdminEditPanel>
 </template>

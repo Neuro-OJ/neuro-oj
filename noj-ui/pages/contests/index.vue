@@ -47,20 +47,22 @@ watch([selectedType, selectedStatus], () => {
 
 <template>
   <div class="min-h-full bg-bg-page py-10">
-    <div class="mx-auto max-w-[960px] space-y-7 px-4 sm:px-7">
-      <section class="relative overflow-hidden rounded-2xl bg-bg-dark px-8 py-9 text-white shadow-card">
-        <div class="absolute -right-20 -top-20 size-64 rounded-full bg-signal/30 blur-3xl" />
-        <div class="relative max-w-2xl">
-          <div class="mb-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs">
-            <UIcon name="i-lucide-trophy" class="size-3.5" />
-            NOJ Contest
+    <div class="mx-auto max-w-[960px] space-y-6 px-4 sm:px-7">
+      <!-- 页面头部（开放式轻量页头，对齐题库与榜单） -->
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="flex size-10 items-center justify-center rounded-lg bg-primary-bg text-primary border border-primary/20 shadow-xs">
+            <UIcon name="i-lucide-trophy" class="size-5" />
           </div>
-          <h1 class="text-3xl font-bold">{{ t('contest.title') }}</h1>
-          <p class="mt-3 text-sm leading-6 text-slate-300">{{ t('contest.description') }}</p>
+          <div>
+            <h1 class="text-2xl font-bold text-text leading-tight">{{ t('contest.title') }}</h1>
+            <p class="text-xs text-text-muted mt-0.5">{{ t('contest.description') }}</p>
+          </div>
         </div>
-      </section>
+        <span class="text-xs text-text-muted px-2.5 py-1 rounded-md bg-bg-sunken border border-border tabular-nums font-mono">{{ t('contest.count', { count: filteredContests.length }) }}</span>
+      </div>
 
-      <section class="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-white p-4">
+      <section class="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-white p-4 shadow-card">
         <USelect v-model="selectedType" :items="typeOptions" :placeholder="t('contest.allTypes')" class="min-w-[120px]" />
         <USelect v-model="selectedStatus" :items="[{ label: t('contest.pending'), value: 'pending' }, { label: t('contest.running'), value: 'running' }, { label: t('contest.ended'), value: 'ended' }]" :placeholder="t('contest.allStatuses')" class="min-w-[120px]" />
         <span class="ml-auto text-xs text-text-muted">{{ t('contest.count', { count: filteredContests.length }) }}</span>
@@ -77,11 +79,17 @@ watch([selectedType, selectedStatus], () => {
             v-for="contest in pagedContests"
             :key="contest.id"
             :to="publicUrl('contest', contest.public_id || contest.id)"
-            class="group flex min-h-64 flex-col rounded-xl border border-border bg-white p-5 text-text no-underline shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-card"
+            class="group flex min-h-64 flex-col rounded-lg border border-border bg-white p-5 text-text no-underline shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-dropdown"
           >
             <div class="flex items-start justify-between gap-3">
-              <span class="rounded-md bg-primary-bg px-2.5 py-1 text-xs font-semibold text-primary-text">{{ typeLabels[contest.type] }}</span>
-              <span class="rounded-full border px-2.5 py-1 text-xs font-semibold" :class="statusClass(contest.status)">{{ statusLabels[contest.status] }}</span>
+              <span class="rounded-md bg-primary-bg px-2.5 py-1 text-xs font-semibold text-primary-text border border-primary/20">{{ typeLabels[contest.type] }}</span>
+              <span class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold" :class="statusClass(contest.status)">
+                <span v-if="contest.status === 'running'" class="relative flex size-2">
+                  <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-signal opacity-75"></span>
+                  <span class="relative inline-flex size-2 rounded-full bg-signal"></span>
+                </span>
+                {{ statusLabels[contest.status] }}
+              </span>
             </div>
             <h2 class="mt-5 line-clamp-2 text-lg font-bold transition-colors group-hover:text-primary">{{ contest.title }}</h2>
             <p class="mt-2 line-clamp-2 text-sm leading-6 text-text-secondary">{{ contest.description || t('contest.noDescription') }}</p>

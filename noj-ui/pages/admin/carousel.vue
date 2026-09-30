@@ -217,57 +217,58 @@ async function move(index: number, delta: number) {
       </div>
     </AsyncContent>
 
-    <!-- 新建/编辑弹窗 -->
-    <UModal v-model:open="showForm" :title="editing ? '编辑幻灯片' : '新建幻灯片'">
-      <template #body>
-        <div class="flex flex-col gap-3">
-          <div class="flex flex-col gap-1">
-            <label class="text-13px font-semibold text-text">类型</label>
-            <USelect
-              v-model="formKind"
-              :items="[{ label: '文案（渐变）', value: 'text' }, { label: '图片', value: 'image' }]"
-            />
-          </div>
-
-          <template v-if="formKind === 'image'">
-            <div class="flex flex-col gap-1">
-              <label class="text-13px font-semibold text-text">图片 <span class="text-error-text">*</span></label>
-              <input type="file" accept="image/png,image/jpeg,image/webp" class="text-sm" @change="handleUpload" />
-              <p v-if="uploading" class="text-12px text-text-muted">上传中…</p>
-              <p v-else-if="formImageUrl" class="text-12px text-success-text">已上传</p>
-            </div>
-          </template>
-
-          <template v-else>
-            <div class="flex flex-col gap-1">
-              <label class="text-13px font-semibold text-text">标题 <span class="text-error-text">*</span></label>
-              <UInput v-model="formTitle" maxlength="100" placeholder="幻灯片标题" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-13px font-semibold text-text">渐变</label>
-              <USelect v-model="formGradient" :items="GRADIENT_ITEMS" />
-            </div>
-          </template>
-
-          <div class="flex flex-col gap-1">
-            <label class="text-13px font-semibold text-text">副标题</label>
-            <UInput v-model="formSubtitle" maxlength="200" placeholder="可选" />
-          </div>
-          <div class="flex flex-col gap-1">
-            <label class="text-13px font-semibold text-text">跳转地址</label>
-            <UInput v-model="formLinkUrl" placeholder="留空则整卡不可点（支持 / 站内路径或 http(s)）" />
-          </div>
-          <div class="flex items-center justify-between gap-4">
-            <label class="text-13px font-semibold text-text cursor-pointer select-none" for="car-form-enabled">启用</label>
-            <USwitch v-model="formEnabled" id="car-form-enabled" />
-          </div>
-          <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
+    <!-- 新建/编辑抽屉 (Slideover) -->
+    <AdminEditPanel
+      :open="showForm"
+      :title="editing ? '编辑幻灯片' : '新建幻灯片'"
+      :loading="saving"
+      :save-text="editing ? '保存幻灯片' : '立即创建'"
+      @close="showForm = false"
+      @save="handleSave"
+    >
+      <div class="flex flex-col gap-3">
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">类型</label>
+          <USelect
+            v-model="formKind"
+            :items="[{ label: '文案（渐变）', value: 'text' }, { label: '图片', value: 'image' }]"
+          />
         </div>
-      </template>
-      <template #footer>
-        <UButton color="neutral" variant="outline" :disabled="saving" @click="showForm = false">取消</UButton>
-        <UButton color="primary" :loading="saving" @click="handleSave">保存</UButton>
-      </template>
-    </UModal>
+
+        <template v-if="formKind === 'image'">
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-text">图片 <span class="text-error-text">*</span></label>
+            <input type="file" accept="image/png,image/jpeg,image/webp" class="text-sm" @change="handleUpload" />
+            <p v-if="uploading" class="text-[11px] text-text-muted">上传中…</p>
+            <p v-else-if="formImageUrl" class="text-[11px] text-success-600">已上传</p>
+          </div>
+        </template>
+
+        <template v-else>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-text">标题 <span class="text-error-text">*</span></label>
+            <UInput v-model="formTitle" maxlength="100" placeholder="幻灯片标题" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-text">渐变</label>
+            <USelect v-model="formGradient" :items="GRADIENT_ITEMS" />
+          </div>
+        </template>
+
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">副标题</label>
+          <UInput v-model="formSubtitle" maxlength="200" placeholder="可选" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">跳转地址</label>
+          <UInput v-model="formLinkUrl" placeholder="留空则整卡不可点（支持 / 站内路径或 http(s)）" />
+        </div>
+        <div class="flex items-center justify-between gap-4 pt-1">
+          <label class="text-xs font-semibold text-text cursor-pointer select-none" for="car-form-enabled">启用状态</label>
+          <USwitch v-model="formEnabled" id="car-form-enabled" />
+        </div>
+        <p v-if="formError" class="text-error-text text-xs">{{ formError }}</p>
+      </div>
+    </AdminEditPanel>
   </div>
 </template>

@@ -143,6 +143,7 @@ fn main() -> Result<()> {
             "实例标识已解析（确定性，重启后不变）"
         );
         crate::sandbox::cleanup::cleanup_orphan_containers(&docker, &instance_id).await;
+        crate::sandbox::cleanup::cleanup_orphan_support_packages(&config.work_dir).await;
 
         // ── 初始化缓存与下载配置 ────────────────────────
         let cache_dir = config.support_cache_dir.clone();
@@ -170,6 +171,34 @@ fn main() -> Result<()> {
             .get_multiplexed_async_connection()
             .await
             .context("创建 per-user claim 连接失败")?;
+
+        // NOJ-D2：启动时回收本实例遗留的用户 claim。
+        // worker 被 OOM-kill / SIGKILL 时 `ActiveUserGuard::drop` 来不及 release，
+        // claim 会一直存活到 ttl（默认 1 小时）；这期间该用户的**所有**提交都被判为
+        // "已有活跃评测"而无限重投（每 100ms 一轮 + 新建 Redis 连接），把一次崩溃
+        // 放大成该用户最长 1 小时不可评测。启动时本实例不可能有在跑的评测，因此按
+        // member 前缀（`{instance_id}:`）清除是安全的，且不会误删其他实例的 claim。
+        {
+            let mut purge_conn = claim_conn.clone();
+            match user_claim::purge_instance_claims(
+                &mut purge_conn,
+                &user_claim_prefix,
+                &instance_id,
+            )
+            .await
+            {
+                Ok(n) if n > 0 => info!(
+                    removed = n,
+                    instance_id = %instance_id,
+                    "已回收本实例遗留的用户 claim（上次退出未释放）"
+                ),
+                Ok(_) => {}
+                Err(e) => warn!(
+                    error = %e,
+                    "回收本实例遗留 claim 失败（将由 claim TTL 兜底）"
+                ),
+            }
+        }
         let judge_metrics = Arc::new(JudgeMetrics::new(max_concurrent_judges));
         let heartbeat_metrics = Arc::clone(&judge_metrics);
         let heartbeat_redis = redis_client.clone();

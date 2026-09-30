@@ -7,10 +7,8 @@ import {
   submissions,
   users,
 } from "./../../../../shared/db/schema.ts";
-// 经 contest 域公开门面（index.ts）导入：域边界门禁要求跨域只能走 index.ts，
-// 深路径导入会被 check-domains.ts 判为违规。
 import {
-  runningContestExistsForProblem,
+  endedWindowCondition,
   unendedPublicContestForProblem,
 } from "./../../../contest/index.ts";
 import type {
@@ -48,10 +46,20 @@ function contestSecrecyCondition(
   if (viewer.viewerId !== undefined && viewer.viewerId === profileUserId) {
     return null;
   }
-  // 题目 owner（本人创建的题被公开赛收编）保留可见；其余按谓词过滤
+  // 赛中数据隔离（决策 3 / DL-02）：非特权查看者彻底排除未结束竞赛提交与受保密公开赛收编的题目
   return sql`(
-    NOT (${unendedPublicContestForProblem(submissions.problem_id)})
-    OR ${problems.owner_id} = ${viewer.viewerId ?? null}
+    (
+      ${submissions.contest_id} IS NULL OR EXISTS (
+        SELECT 1 FROM contests c_sec
+        WHERE c_sec.id = ${submissions.contest_id}
+          AND c_sec.affect_global_ranking = TRUE
+          AND ${endedWindowCondition(sql`c_sec.end_time`)}
+      )
+    )
+    AND (
+      NOT (${unendedPublicContestForProblem(submissions.problem_id)})
+      OR ${problems.owner_id} = ${viewer.viewerId ?? null}
+    )
   )`;
 }
 
@@ -77,22 +85,35 @@ export function queryProfileUser(
 export function queryProfileStats(
   db: Db,
   userId: string,
+  viewer: ProfileViewerContext = {},
 ): Promise<ProfileStatsRow | undefined> {
+  // 计数必须与列表（{@link querySolvedProblems} / {@link queryRecentSubmissions}）
+  // **同口径**（面 1.4 审计 F-04a）：否则"solved_count=5 而列表只有 4 行"这一差额本身
+  // 就泄露"存在一道被未结束公开赛收编的题目且该用户已通过"，比直接显示该行更隐蔽。
+  // 特权查看者（管理员 / 主页本人 / 题目 owner）不受过滤——与列表行为一致。
+  const secrecy = contestSecrecyCondition(viewer, userId);
   return db.select({
-    total_submissions: sql<number>`count(*)`,
+    total_submissions: sql<number>`count(*)::int`,
     accepted: sql<
       number
-    >`count(*) filter (where ${evaluationResults.status} = 'finished' and ${evaluationResults.score} > 0)`,
+    >`count(*) filter (where ${evaluationResults.status} = 'finished' and ${evaluationResults.score} > 0)::int`,
     solved_count: sql<
       number
-    >`count(distinct ${submissions.problem_id}) filter (where ${evaluationResults.status} = 'finished' and ${evaluationResults.score} > 0)`,
+    >`count(distinct ${submissions.problem_id}) filter (where ${evaluationResults.status} = 'finished' and ${evaluationResults.score} > 0)::int`,
   })
     .from(submissions)
+    // 关联 problems 以复用 `contestSecrecyCondition`（其题目 owner 分支需要该列）；
+    // problem_id 为 NOT NULL 外键，inner join 不会丢行。
+    .innerJoin(problems, eq(submissions.problem_id, problems.id))
     .leftJoin(
       evaluationResults,
       eq(evaluationResults.submission_id, submissions.id),
     )
-    .where(eq(submissions.user_id, userId))
+    .where(
+      secrecy
+        ? and(eq(submissions.user_id, userId), secrecy)
+        : eq(submissions.user_id, userId),
+    )
     .then((rows) => rows[0]);
 }
 
@@ -195,22 +216,25 @@ export function queryProfileCommunityStats(
   moderator = false,
 ): Promise<ProfileCommunityStatsRow | undefined> {
   // 门控谓词只作用于题解计数；动态计数不受竞赛影响
+  // 口径必须是 **unended**（含 pending 赛前筹备期），不能用 running：
+  // 个人主页匿名可读，用 running 会让"已被未开始公开赛收编"的题解在赛前就可见
+  //（面 1.4 审计 F-01）。
   const solutionGate = moderator
     ? sql`true`
-    : sql`NOT ${runningContestExistsForProblem(communityPosts.problem_id)}`;
+    : sql`NOT ${unendedPublicContestForProblem(communityPosts.problem_id)}`;
   return db.select({
     following_count: sql<
       number
-    >`(select count(*) from community_follows where follower_id = ${userId})`,
+    >`(select count(*) from community_follows where follower_id = ${userId})::int`,
     follower_count: sql<
       number
-    >`(select count(*) from community_follows where followee_id = ${userId})`,
+    >`(select count(*) from community_follows where followee_id = ${userId})::int`,
     solution_count: sql<
       number
-    >`(select count(*) from community_posts where author_id = ${userId} and type = 'solution' and status = 'published' and ${solutionGate})`,
+    >`(select count(*) from community_posts where author_id = ${userId} and type = 'solution' and status = 'published' and ${solutionGate})::int`,
     moment_count: sql<
       number
-    >`(select count(*) from community_posts where author_id = ${userId} and type = 'moment' and status = 'published')`,
+    >`(select count(*) from community_posts where author_id = ${userId} and type = 'moment' and status = 'published')::int`,
   }).from(users).where(eq(users.id, userId)).limit(1).then((rows) => rows[0]);
 }
 
@@ -237,9 +261,11 @@ export function queryProfileSolutions(
   ];
   // 直接用 contest 域的共享谓词而非 community 域的 notGatedSolution()：
   // 本查询已固定 type='solution'，无需重复该判断，同时避免 identity → community 反向依赖
+  // 口径与 `queryProfileCommunityStats` 一致：**unended**（含 pending），
+  // 否则"计数 3、列表 2 条"本身就是侧信道，且赛前窗口会漏（面 1.4 审计 F-01）。
   if (!moderator) {
     conditions.push(
-      sql`NOT ${runningContestExistsForProblem(communityPosts.problem_id)}`,
+      sql`NOT ${unendedPublicContestForProblem(communityPosts.problem_id)}`,
     );
   }
   return db.select({

@@ -129,6 +129,25 @@ export function unendedWindowCondition(endTimeExpr: AnyColumn | SQL): SQL {
 }
 
 /**
+ * "竞赛窗口已结束"的判定条件（`end <= now`），按时刻比较。
+ *
+ * 供榜单/全局统计等排除赛期提交复用（决策 3 / DL-02 / DL-03）：
+ * 竞赛结束前，赛中提交不计入全站榜单与用户个人成就。
+ * 形态非法或不可解析时按"未结束"处理（返回 false，fail-closed）。
+ *
+ * @param endTimeExpr 竞赛结束时间列引用或 SQL 表达式。
+ * @returns 可直接放进 WHERE / AND 的布尔 SQL 片段。
+ */
+export function endedWindowCondition(endTimeExpr: AnyColumn | SQL): SQL {
+  return sql`CASE
+    WHEN ${endTimeExpr} ~ ${CONTEST_TIME_ISO_REGEX_SQL}
+     AND pg_input_is_valid(${endTimeExpr}, 'timestamptz')
+    THEN ${endTimeExpr}::timestamptz <= now()
+    ELSE false
+  END`;
+}
+
+/**
  * "该题目处于进行中竞赛"的共享 SQL 谓词：返回 `EXISTS (...)` 片段。
  *
  * 供 community 域（题解门控、动态流）复用——此前这些位置各持一份带错误字典序假设的

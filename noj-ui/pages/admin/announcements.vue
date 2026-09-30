@@ -184,45 +184,46 @@ async function handleDelete() {
     </AdminTable>
   </div>
 
-  <!-- 新建/编辑弹窗 -->
-  <UModal v-model:open="showForm" :title="editing ? '编辑公告' : '新建公告'" :unmount-on-hide="true">
-    <template #body>
-      <div class="flex flex-col gap-3">
-        <div class="flex flex-col gap-1">
-          <label class="text-13px font-semibold text-text">标题 <span class="text-error-text">*</span></label>
-          <input v-model="formTitle" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:input-base-focus" placeholder="公告标题（1–100 字符）" maxlength="100" />
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-13px font-semibold text-text">内容（Markdown） <span class="text-error-text">*</span></label>
-          <UTextarea v-model="formContent" :rows="10" maxlength="50000" placeholder="支持 Markdown 语法" />
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-13px font-semibold text-text">横幅文字</label>
-          <UInput
-            v-model="formBannerText"
-            maxlength="200"
-            placeholder="导航栏下方横幅显示的文字；留空则此公告不出横幅"
-          />
-          <p class="text-12px text-text-muted">横幅展示最新一条填了此字段的已发布公告；用户关闭后仅在其浏览器本地隐藏。</p>
-        </div>
-        <div class="flex items-center justify-between gap-4 pt-1">
-          <label class="text-13px font-semibold text-text cursor-pointer select-none" for="ann-form-pinned">置顶展示</label>
-          <USwitch v-model="formPinned" id="ann-form-pinned" />
-        </div>
-        <div class="flex items-center justify-between gap-4">
-          <label class="text-13px font-semibold text-text cursor-pointer select-none" for="ann-form-active">立即发布</label>
-          <USwitch v-model="formActive" id="ann-form-active" />
-        </div>
-        <p class="text-12px text-text-muted">关闭「立即发布」后公告将保存为草稿，仅后台可见；发布状态可在编辑时随时切换（即发布/下架）。</p>
-        <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
+  <!-- 新建/编辑抽屉 (Slideover) -->
+  <AdminEditPanel
+    :open="showForm"
+    :title="editing ? '编辑公告' : '新建公告'"
+    :loading="saving"
+    width-class="sm:max-w-2xl"
+    :save-text="editing ? '保存公告' : '立即发布'"
+    @close="showForm = false"
+    @save="handleSave"
+  >
+    <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">标题 <span class="text-error-text">*</span></label>
+        <input v-model="formTitle" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="公告标题（1–100 字符）" maxlength="100" />
       </div>
-    </template>
-
-    <template #footer>
-      <UButton color="neutral" variant="ghost" :disabled="saving" @click="showForm = false">取消</UButton>
-      <UButton color="primary" :loading="saving" @click="handleSave">{{ editing ? '保存' : '创建' }}</UButton>
-    </template>
-  </UModal>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">内容（Markdown） <span class="text-error-text">*</span></label>
+        <UTextarea v-model="formContent" :rows="12" maxlength="50000" placeholder="支持 Markdown 语法" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">横幅文字</label>
+        <UInput
+          v-model="formBannerText"
+          maxlength="200"
+          placeholder="导航栏下方横幅显示的文字；留空则此公告不出横幅"
+        />
+        <p class="text-[11px] text-text-muted">横幅展示最新一条填了此字段的已发布公告；用户关闭后仅在其浏览器本地隐藏。</p>
+      </div>
+      <div class="flex items-center justify-between gap-4 pt-1">
+        <label class="text-xs font-semibold text-text cursor-pointer select-none" for="ann-form-pinned">置顶展示</label>
+        <USwitch v-model="formPinned" id="ann-form-pinned" />
+      </div>
+      <div class="flex items-center justify-between gap-4">
+        <label class="text-xs font-semibold text-text cursor-pointer select-none" for="ann-form-active">立即发布</label>
+        <USwitch v-model="formActive" id="ann-form-active" />
+      </div>
+      <p class="text-[11px] text-text-muted">关闭「立即发布」后公告将保存为草稿，仅后台可见；发布状态可在编辑时随时切换。</p>
+      <p v-if="formError" class="text-error-text text-xs">{{ formError }}</p>
+    </div>
+  </AdminEditPanel>
 
   <!-- 删除确认弹窗 -->
   <UModal v-model:open="showDeleteConfirm" title="删除公告" :unmount-on-hide="true">

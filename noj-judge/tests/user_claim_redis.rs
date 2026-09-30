@@ -16,7 +16,8 @@
 use std::time::Duration;
 
 use noj_judge::user_claim::{
-    active_users_key, claim_member, count_active_claims, release_user, try_claim_user,
+    active_users_key, claim_member, count_active_claims, purge_instance_claims, release_user,
+    try_claim_user,
 };
 
 /// 连接 Redis。
@@ -165,6 +166,61 @@ async fn different_users_do_not_block_each_other() {
     .await
     .unwrap();
     assert!(a && b, "不同用户应可各自占用槽位");
+
+    cleanup(&mut conn, &prefix).await;
+}
+
+/// **NOJ-D2 回归**：启动期回收必须只清掉**本实例**遗留的 claim。
+///
+/// 崩溃（OOM-kill / SIGKILL）时 `ActiveUserGuard::drop` 来不及 release，claim 会
+/// 一直存活到 ttl（默认 1 小时）；这期间该用户的**所有**提交都被判为"已有活跃
+/// 评测"而无限重投——一次崩溃被放大成该用户最长 1 小时不可评测。
+///
+/// 反向验证：把 `purge_instance_claims` 里的 `member.starts_with(&member_prefix)`
+/// 判断去掉（即无条件清除），则另一实例的 claim 也会被删、本用例失败——那正是
+/// "多副本互删在跑评测"（NOJ-A10）的形态。
+#[tokio::test]
+async fn purge_instance_claims_removes_only_this_instances_claims() {
+    let Some(mut conn) = connect().await else {
+        eprintln!("跳过：未设置 REDIS_URL");
+        return;
+    };
+    let prefix = test_prefix("purge-instance");
+    cleanup(&mut conn, &prefix).await;
+
+    for (user, instance) in [
+        ("user-stale", "instance-self"),
+        ("user-other", "instance-peer"),
+    ] {
+        let claimed = try_claim_user(
+            &mut conn,
+            &prefix,
+            user,
+            &claim_member(instance, "sub-1"),
+            TTL_MS,
+        )
+        .await
+        .expect("claim 应成功返回");
+        assert!(claimed, "前置条件：{user} 应成功占用");
+    }
+
+    let removed = purge_instance_claims(&mut conn, &prefix, "instance-self")
+        .await
+        .expect("回收本实例 claim 应成功");
+    assert_eq!(removed, 1, "只应清除本实例的 1 条 claim");
+
+    let self_left = count_active_claims(&mut conn, &prefix, "user-stale", TTL_MS)
+        .await
+        .expect("查询应成功");
+    assert_eq!(self_left, 0, "本实例遗留 claim 必须被清除");
+
+    let peer_left = count_active_claims(&mut conn, &prefix, "user-other", TTL_MS)
+        .await
+        .expect("查询应成功");
+    assert_eq!(
+        peer_left, 1,
+        "其他实例的 claim 绝不能被误删（否则多副本会互删在跑评测）"
+    );
 
     cleanup(&mut conn, &prefix).await;
 }

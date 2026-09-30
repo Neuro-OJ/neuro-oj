@@ -1,9 +1,14 @@
 import { and, eq, gte, type SQL, sql } from "drizzle-orm";
 import { todayUtc } from "./../../../shared/base/dates.ts";
 import { getDb } from "./../../../shared/db/connection.ts";
-import { evaluationResults, submissions } from "./../../../shared/db/schema.ts";
+import {
+  contests,
+  evaluationResults,
+  submissions,
+} from "./../../../shared/db/schema.ts";
 import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import { FULL_SCORE } from "./../../../shared/base/constants.ts";
+import { endedWindowCondition } from "./../../contest/index.ts";
 
 /**
  * 统计快照：提交总数、满分数与未满分数的快照值。
@@ -19,13 +24,20 @@ export interface StatsSnapshot {
 
 /**
  * 查询提交统计聚合行（总数 + 满分数）。
+ * 赛中数据隔离（DL-02/DL-03）：排除任何未结束竞赛中的提交记录。
  */
 async function selectStatsRow(
   where?: SQL | undefined,
 ): Promise<{ total: number; full_score: number }> {
   const db = getDb();
+  const secrecyCondition = sql`(
+    ${submissions.contest_id} IS NULL OR (
+      ${contests.affect_global_ranking} = TRUE AND
+      ${endedWindowCondition(contests.end_time)}
+    )
+  )`;
   // deno-lint-ignore no-explicit-any
-  let query: any = db
+  const query: any = db
     .select({
       total: sql<number>`count(*)::int`,
       full_score: sql<
@@ -36,8 +48,12 @@ async function selectStatsRow(
     .leftJoin(
       evaluationResults,
       eq(evaluationResults.submission_id, submissions.id),
-    );
-  if (where) query = query.where(where);
+    )
+    .leftJoin(
+      contests,
+      eq(contests.id, submissions.contest_id),
+    )
+    .where(where ? and(secrecyCondition, where) : secrecyCondition);
   // deno-lint-ignore no-explicit-any
   const [row]: any[] = await query;
   return {
@@ -46,99 +62,182 @@ async function selectStatsRow(
   };
 }
 
-// ── 内存原子计数器 ──
+import { getRedis } from "./../../../shared/mq/connection.ts";
 
-let total: number | null = null;
-let totalFullScore: number | null = null;
+// ── Redis 键名与 TTL ──
+const REDIS_STATS_TOTAL_KEY = "noj:stats:total";
+const REDIS_STATS_TODAY_PREFIX = "noj:stats:today:";
+const STATS_CACHE_TTL_SECS = 10;
 
-let todayTotal: number | null = null;
-let todayFullScore: null | number = null;
-let todayDate: string | null = null;
-
-// ── 初始化（懒加载） ──
+// ── 内存备用计数器（无 Redis 离线测试回退） ──
+let fallbackTotal: number | null = null;
+let fallbackTotalFullScore: number | null = null;
+let fallbackTodayTotal: number | null = null;
+let fallbackTodayFullScore: number | null = null;
+let fallbackTodayDate: string | null = null;
 
 /**
- * 懒加载全站累计统计（内存缓存）。
- *
- * 若 total 已加载则直接返回；否则查询提交表聚合总数与满分数，
- * 写入模块级内存计数器。
- *
- * @returns 无返回值
+ * 尝试从 Redis 读取缓存快照。
  */
-async function ensureTotal(): Promise<void> {
-  if (total !== null) return;
-  const { total: t, full_score: f } = await selectStatsRow();
-  total = t;
-  totalFullScore = f;
+async function getFromRedis(key: string): Promise<StatsSnapshot | null> {
+  try {
+    const redis = getRedis();
+    if (redis.status !== "ready") return null;
+    const raw = await redis.get(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      typeof parsed?.total === "number" &&
+      typeof parsed?.full_score === "number"
+    ) {
+      return {
+        total: parsed.total,
+        full_score: parsed.full_score,
+        not_full_score: parsed.total - parsed.full_score,
+      };
+    }
+  } catch {
+    // Redis 故障时静默回退
+  }
+  return null;
 }
 
 /**
- * 懒加载今日统计（内存缓存，按 UTC 日期区分）。
- *
- * 当天已加载且日期未改变时直接返回；否则查询今日提交的总数与满分数。
- *
- * @returns 无返回值
+ * 尝试将快照写入 Redis。
  */
-async function ensureToday(): Promise<void> {
-  const today = todayUtc();
-  if (todayTotal !== null && todayDate === today) return;
-  const { total: t, full_score: f } = await selectStatsRow(
-    gte(submissions.created_at, today),
-  );
-  todayTotal = t;
-  todayFullScore = f;
-  todayDate = today;
+async function setInRedis(
+  key: string,
+  snapshot: { total: number; full_score: number },
+): Promise<void> {
+  try {
+    const redis = getRedis();
+    if (redis.status !== "ready") return;
+    await redis.set(
+      key,
+      JSON.stringify({
+        total: snapshot.total,
+        full_score: snapshot.full_score,
+      }),
+      "EX",
+      STATS_CACHE_TTL_SECS,
+    );
+  } catch {
+    // ignore
+  }
 }
 
 // ── 公开 API ──
 
 /**
- * 获取全站累计统计（内存缓存，懒加载）。
+ * 获取全站累计统计（Redis 缓存优先，DB 聚合兜底，支持多副本）。
  */
 export async function getCachedTotalStats(): Promise<StatsSnapshot> {
-  await ensureTotal();
+  const cached = await getFromRedis(REDIS_STATS_TOTAL_KEY);
+  if (cached) {
+    fallbackTotal = cached.total;
+    fallbackTotalFullScore = cached.full_score;
+    return cached;
+  }
+
+  // 内存回退（若已有非空值且处于非 Redis 模式）
+  if (fallbackTotal !== null && fallbackTotalFullScore !== null) {
+    return {
+      total: fallbackTotal,
+      full_score: fallbackTotalFullScore,
+      not_full_score: fallbackTotal - fallbackTotalFullScore,
+    };
+  }
+
+  const { total: t, full_score: f } = await selectStatsRow();
+  fallbackTotal = t;
+  fallbackTotalFullScore = f;
+  await setInRedis(REDIS_STATS_TOTAL_KEY, { total: t, full_score: f });
+
   return {
-    total: total!,
-    full_score: totalFullScore!,
-    not_full_score: total! - totalFullScore!,
+    total: t,
+    full_score: f,
+    not_full_score: t - f,
   };
 }
 
 /**
- * 获取今日统计（内存缓存，懒加载）。
+ * 获取今日统计（Redis 缓存优先，DB 聚合兜底，支持多副本）。
  * userId 提供时回退到 DB 查询（精确到人）。
  */
 export async function getCachedTodayStats(
   userId?: string,
 ): Promise<StatsSnapshot> {
   if (userId) {
-    // 用户级统计场景较少，不做缓存
     return getTodayStatsFromDb(userId);
   }
-  await ensureToday();
+
+  const today = todayUtc();
+  const redisKey = `${REDIS_STATS_TODAY_PREFIX}${today}`;
+  const cached = await getFromRedis(redisKey);
+  if (cached) {
+    fallbackTodayTotal = cached.total;
+    fallbackTodayFullScore = cached.full_score;
+    fallbackTodayDate = today;
+    return cached;
+  }
+
+  if (
+    fallbackTodayTotal !== null && fallbackTodayFullScore !== null &&
+    fallbackTodayDate === today
+  ) {
+    return {
+      total: fallbackTodayTotal,
+      full_score: fallbackTodayFullScore,
+      not_full_score: fallbackTodayTotal - fallbackTodayFullScore,
+    };
+  }
+
+  const { total: t, full_score: f } = await selectStatsRow(
+    gte(submissions.created_at, today),
+  );
+  fallbackTodayTotal = t;
+  fallbackTodayFullScore = f;
+  fallbackTodayDate = today;
+  await setInRedis(redisKey, { total: t, full_score: f });
+
   return {
-    total: todayTotal!,
-    full_score: todayFullScore!,
-    not_full_score: todayTotal! - todayFullScore!,
+    total: t,
+    full_score: f,
+    not_full_score: t - f,
   };
 }
 
 /**
- * 新评测结果到达时原子递增计数器并推送 SSE 事件。
+ * 新评测结果到达时失效 Redis 缓存并推送 SSE 事件（支持多副本同步）。
  * 在 saveEvaluationResult 成功后调用。
  */
 export function applyNewResult(score: number | null, createdAt: string): void {
-  // 全站累计
-  if (total !== null) {
-    total++;
-    if (score !== null && score >= FULL_SCORE) totalFullScore!++;
-  }
-  // 今日统计
   const today = todayUtc();
-  if (todayTotal !== null && todayDate === today && createdAt >= today) {
-    todayTotal++;
-    if (score !== null && score >= FULL_SCORE) todayFullScore!++;
+  try {
+    const redis = getRedis();
+    if (redis.status === "ready") {
+      void redis.del(
+        REDIS_STATS_TOTAL_KEY,
+        `${REDIS_STATS_TODAY_PREFIX}${today}`,
+      );
+    }
+  } catch {
+    // ignore
   }
+
+  // 内存备用递增（保证无 Redis 离线测试正确性）
+  if (fallbackTotal !== null) {
+    fallbackTotal++;
+    if (score !== null && score >= FULL_SCORE) fallbackTotalFullScore!++;
+  }
+  if (
+    fallbackTodayTotal !== null && fallbackTodayDate === today &&
+    createdAt >= today
+  ) {
+    fallbackTodayTotal++;
+    if (score !== null && score >= FULL_SCORE) fallbackTodayFullScore!++;
+  }
+
   // 写入 SSE 事件日志并发布 Redis 通知（fire-and-forget）
   void publishSseEvent(Channels.stats, { type: "stats:updated" });
 }
@@ -147,11 +246,23 @@ export function applyNewResult(score: number | null, createdAt: string): void {
  * 重置缓存（测试用）。
  */
 export function _resetStatsCacheForTest(): void {
-  total = null;
-  totalFullScore = null;
-  todayTotal = null;
-  todayFullScore = null;
-  todayDate = null;
+  fallbackTotal = null;
+  fallbackTotalFullScore = null;
+  fallbackTodayTotal = null;
+  fallbackTodayFullScore = null;
+  fallbackTodayDate = null;
+  try {
+    const redis = getRedis();
+    if (redis.status === "ready") {
+      const today = todayUtc();
+      void redis.del(
+        REDIS_STATS_TOTAL_KEY,
+        `${REDIS_STATS_TODAY_PREFIX}${today}`,
+      );
+    }
+  } catch {
+    // ignore
+  }
 }
 
 // ── 内部 DB 查询（备选路径） ──

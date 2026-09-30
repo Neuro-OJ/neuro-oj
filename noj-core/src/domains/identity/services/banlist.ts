@@ -74,7 +74,7 @@ export async function listIpBans(
     db.select().from(ipBans).where(where)
       .orderBy(ipBans.created_at)
       .limit(opts.perPage).offset(offset),
-    db.select({ count: sql<number>`count(*)` }).from(ipBans).where(where),
+    db.select({ count: sql<number>`count(*)::int` }).from(ipBans).where(where),
   ]);
 
   const total = Number(countResult[0]?.count ?? 0);

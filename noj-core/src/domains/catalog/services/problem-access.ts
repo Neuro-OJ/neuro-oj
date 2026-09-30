@@ -83,7 +83,12 @@ export function resolveProblemAccess(
   }
   if (ctx.secrecy && ctx.secrecy.contestIds.length > 0) {
     // 关联到尚未结束的公开赛：对外一律"不存在"（404），保护题面/评测数据等内容。
-    // 注：题库列表不排除该题，故存在性本身不保密，遮蔽的是内容与访问能力。
+    //
+    // **存在性同样受保护**（2026-09-28 VULN-07 起）：题库列表、题单、个人主页与全局
+    // 搜索都在 SQL 层整行剔除被保密题目，非特权用户连"这题存在"都看不到。
+    // 切勿依据旧注释（"题库列表不排除该题，故存在性本身不保密"）删掉列表侧过滤——
+    // 那会把口径改成 fail-open，并让 404 与 403 的差异重新变成存在性预言机
+    //（面 1.4 审计 F-03/F-08）。
     return { allowed: false, mode: "contest-secret" };
   }
   return problem.visibility === "public"

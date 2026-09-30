@@ -1,7 +1,7 @@
 <template>
   <div
     v-if="available"
-    class="flex h-full flex-col bg-white shadow-card animate-[fadeInUp_0.5s_ease_0.15s_both] border border-border rounded-xl"
+    class="flex h-full flex-col bg-white shadow-card animate-[fadeInUp_0.5s_ease_0.15s_both] border border-border rounded-lg"
   >
     <div class="flex items-center gap-2 px-5 py-3.5 border-b border-border">
       <UIcon name="i-lucide-users" class="text-primary shrink-0 size-4" />

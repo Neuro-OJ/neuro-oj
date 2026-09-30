@@ -18,8 +18,8 @@ export const authorProjection = {
 export const postStatsProjection = {
   likes: sql<
     number
-  >`(select count(*) from community_post_likes where post_id = ${communityPosts.id})`,
+  >`(select count(*)::int from community_post_likes where post_id = ${communityPosts.id})`,
   comments: sql<
     number
-  >`(select count(*) from community_comments where post_id = ${communityPosts.id} and status = 'published')`,
+  >`(select count(*)::int from community_comments where post_id = ${communityPosts.id} and status = 'published')`,
 } as const;

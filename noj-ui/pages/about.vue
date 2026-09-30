@@ -53,15 +53,17 @@ function formatNumber(n?: number): string {
 <template>
   <div class="max-w-[860px] mx-auto px-4 py-8 sm:px-6 sm:py-12 flex flex-col gap-8">
     <!-- Hero -->
-    <section class="bg-gradient-to-br from-[#0b0f19] via-[#131b2e] to-[#070a12] border border-slate-800 rounded-2xl overflow-hidden shadow-modal">
-      <div class="p-8 sm:p-10 lg:p-12 flex flex-col gap-6 text-white">
-        <span class="self-start inline-flex items-center gap-1.5 rounded-full bg-white/10 border border-white/15 px-3 py-1 text-xs font-medium text-signal">
+    <section class="relative overflow-hidden rounded-xl border border-border/80 bg-gradient-to-br from-white via-primary-50/30 to-sky-100/40 shadow-card">
+      <div class="absolute -right-24 -top-24 size-72 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
+      <div class="absolute -left-24 -bottom-24 size-72 rounded-full bg-signal/10 blur-3xl pointer-events-none" />
+      <div class="relative p-8 sm:p-10 lg:p-12 flex flex-col gap-6 text-text">
+        <span class="self-start inline-flex items-center gap-1.5 rounded-full bg-primary-bg border border-primary/20 px-3 py-1 text-xs font-semibold text-primary">
           <UIcon name="i-lucide-sparkles" class="size-3.5" />
           面向 AI 领域认证与竞赛的在线评测平台
         </span>
         <div class="flex flex-col gap-3">
-          <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight">Neuro OJ</h1>
-          <p class="text-white/80 leading-relaxed max-w-[520px]">
+          <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-text">Neuro OJ</h1>
+          <p class="text-text-secondary leading-relaxed max-w-[560px]">
             一个面向 AI 时代程序设计与工程能力评测的在线评测平台，
             以容器级资源隔离承载任意自定义评测逻辑，覆盖 IOAI / NOAI / LMCC 等认证与竞赛场景。
           </p>
@@ -69,7 +71,7 @@ function formatNumber(n?: number): string {
         <div class="flex flex-wrap items-center gap-3">
           <a
             href="/problems"
-            class="inline-flex items-center gap-1.5 rounded-lg bg-signal px-4 py-2 text-sm font-semibold text-on-signal no-underline hover:bg-signal/90 transition-colors"
+            class="inline-flex items-center gap-1.5 rounded-md bg-signal px-4 py-2 text-sm font-semibold text-on-signal no-underline hover:bg-signal/90 transition-colors shadow-xs"
           >
             <UIcon name="i-lucide-rocket" class="size-4" />
             开始做题
@@ -78,14 +80,14 @@ function formatNumber(n?: number): string {
             :href="repoUrl"
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center gap-1.5 rounded-lg border border-white/30 px-4 py-2 text-sm font-medium text-white no-underline hover:bg-white/10 transition-colors"
+            class="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-4 py-2 text-sm font-medium text-text no-underline hover:bg-bg-sunken transition-colors shadow-xs"
           >
             <UIcon name="i-lucide-github" class="size-4" />
             GitHub
           </a>
         </div>
-        <div class="flex items-start gap-2 rounded-lg bg-amber-400/10 border border-amber-300/30 px-4 py-3 text-xs text-amber-100">
-          <UIcon name="i-lucide-info" class="size-4 shrink-0 mt-px" />
+        <div class="flex items-start gap-2 rounded-md bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-xs text-amber-900 dark:text-amber-200">
+          <UIcon name="i-lucide-info" class="size-4 shrink-0 mt-px text-amber-600" />
           <span>Neuro OJ 与 CCF 及 LMCC 无任何官方关系，为独立社区项目。</span>
         </div>
       </div>

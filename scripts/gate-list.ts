@@ -72,6 +72,13 @@ export const REPO_GATES: Gate[] = [
   //（2026-09-25 实测：noj-server 的阿里云邮件 Provider 不可用，邮件全链路 500）。
   { args: ["deno", "run", "-A", "scripts/verify-compile-safe-imports.ts"] },
   { args: ["deno", "run", "-A", "scripts/verify-domain-ci.ts"] },
+  // E2E 启动脚本闸门：**项目名隔离**（2026-09-28 实测事故——setup.sh 与 dev 共用 compose
+  // 项目名 `neuro-oj`，执行它会把 dev 的 noj-postgres/redis/minio 认领并重建为 noj-e2e-*）
+  // 与"SDK 镜像构建失败必须阻止启动"。此前该脚本仅手工可跑，缺陷因此无人拦。
+  {
+    label: "E2E 启动脚本闸门（项目名隔离 + SDK 构建失败传播）",
+    args: ["bash", "scripts/e2e/check-setup.sh"],
+  },
   // 静默跳过：与基线比对，**跳过数增长即失败**（2026-09-12 评审 §5.1）。
   {
     label: "静默跳过棘轮（silent-skip-report --check）",

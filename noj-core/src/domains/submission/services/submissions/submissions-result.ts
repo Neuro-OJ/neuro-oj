@@ -22,9 +22,10 @@ import { getDb } from "./../../../../shared/db/connection.ts";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
 import type { JudgeResult, SubmissionStatus } from "../../types/index.ts";
-import { applyNewResult } from "../../../query/index.ts";
-import { refreshRankingsView } from "../../../query/index.ts";
+import { applyNewResult, refreshRankingsView } from "../../../query/index.ts";
+import { filterUnendedContestIds } from "../../../contest/index.ts";
 import { getLogger } from "@logtape/logtape";
+import { getRedis } from "./../../../../shared/mq/connection.ts";
 
 const logger = getLogger(["noj", "submission"]);
 import { Channels } from "./../../../../shared/sse/event-bus.ts";
@@ -107,19 +108,12 @@ export async function saveEvaluationResult(
       return null;
     }
 
-    // 重复结果幂等：同一 submission + rejudge_seq 已落库时跳过。
+    // 查询是否存在历史评测结果（重测时需替换）
     const [existingResult] = await tx
       .select({ id: evaluationResults.id })
       .from(evaluationResults)
       .where(eq(evaluationResults.submission_id, result.submission_id))
       .limit(1);
-    if (existingResult && incomingSeq === sub.rejudge_seq) {
-      logger.info("重复评测结果，跳过", {
-        submission_id: result.submission_id,
-        rejudge_seq: incomingSeq,
-      });
-      return null;
-    }
 
     // 状态机收紧：正常结果只允许 pending/judging → 终态。
     // error 提交重测时会先重置为 pending，因此也允许从 error 修复。
@@ -163,6 +157,12 @@ export async function saveEvaluationResult(
         judge_finished_at: now,
       })
       .where(eq(submissions.id, safeResult.submission_id));
+
+    if (existingResult) {
+      await tx
+        .delete(evaluationResults)
+        .where(eq(evaluationResults.submission_id, safeResult.submission_id));
+    }
 
     await tx
       .insert(evaluationResults)
@@ -244,14 +244,37 @@ export async function saveEvaluationResult(
   }
 
   // 统计缓存仅对首次结果递增；重测结果不计入（NOJ-068）。
+  // 赛中数据隔离（DL-03）：未结束竞赛的提交不计入全站实时统计，也不广播 stats:updated，防止成为满分判分预言机。
   if (!outcome.is_rejudge && outcome.created_at) {
-    applyNewResult(result.score, outcome.created_at);
+    if (outcome.contest_id) {
+      const unended = await filterUnendedContestIds([outcome.contest_id]);
+      if (!unended.has(outcome.contest_id)) {
+        applyNewResult(result.score, outcome.created_at);
+      }
+    } else {
+      applyNewResult(result.score, outcome.created_at);
+    }
   }
 
   // PR-4 评审修订：异步触发榜单物化视图刷新
   // 不 await：避免阻塞主业务（saveEvaluationResult 是热路径）
   // 失败仅 console.error（rankings.ts 内已处理）
   refreshRankingsView().catch(() => {/* ignore - rankings.ts 内已记录 */});
+
+  // 决策 7 · AR-08：评测完成立即在 Redis 原子吊销 eval_token
+  try {
+    const redis = getRedis();
+    if (redis.status === "ready") {
+      void redis.set(
+        `llm:token:revoked:${result.submission_id}`,
+        "1",
+        "EX",
+        3600,
+      );
+    }
+  } catch {
+    // ignore
+  }
 
   // 注：此前此处会在选手首次通过题目时写入社区自动动态（`first_accepted`，metadata
   // 含内部 submission_id）。该功能已按审计 VULN-08 整体下线：事件不携带竞赛上下文，

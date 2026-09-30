@@ -283,10 +283,18 @@ async function confirmDelete(role: Role) {
     </AdminTable>
   </div>
 
-  <!-- 角色编辑弹窗 -->
-  <UModal v-model:open="showEditor" :title="editingRole ? `编辑角色：${editingRole.name}` : '新建角色'" :unmount-on-hide="true">
-    <template #body>
-      <div class="flex flex-col gap-4">
+  <!-- 角色编辑抽屉 -->
+  <AdminEditPanel
+    :open="showEditor"
+    :title="editingRole ? `编辑角色：${editingRole.name}` : '新建角色'"
+    width-class="sm:max-w-2xl"
+    :loading="saving"
+    :save-text="editingRole ? '保存' : '创建'"
+    @update:open="(val: boolean) => showEditor = val"
+    @close="showEditor = false"
+    @save="handleSave"
+  >
+    <div class="flex flex-col gap-4">
       <!-- 名称 -->
       <div>
         <label class="block text-sm font-semibold text-text mb-1">角色名 *</label>
@@ -373,12 +381,6 @@ async function confirmDelete(role: Role) {
       </div>
 
       <p v-if="editorError" class="text-13px text-error-text">{{ editorError }}</p>
-      </div>
-    </template>
-  
-    <template #footer>
-      <UButton color="neutral" variant="ghost" :disabled="saving" @click="showEditor = false">取消</UButton>
-      <UButton color="primary" :loading="saving" @click="handleSave">{{ editingRole ? '保存' : '创建' }}</UButton>
-    </template>
-  </UModal>
+    </div>
+  </AdminEditPanel>
 </template>

@@ -6,6 +6,7 @@ import {
   communityBookmarks,
   communityComments,
   communityPostLikes,
+  communityPosts,
 } from "../../../../shared/db/schema.ts";
 import {
   countPostsByType,
@@ -20,7 +21,10 @@ import {
   togglePostLike,
 } from "../../index.ts";
 import { createContest } from "../../../contest/index.ts";
-import { ForbiddenError } from "../../../../shared/base/errors.ts";
+import {
+  ForbiddenError,
+  NotFoundError,
+} from "../../../../shared/base/errors.ts";
 import { getUserProfileAggregate } from "../../../identity/index.ts";
 import {
   _resetSystemSettingsForTest,
@@ -486,5 +490,67 @@ Deno.test({
     const detail = await getReportDetail(report.id, ownerId, false);
     assertEquals(detail.report.content_snapshot, body);
     assertEquals(detail.comment?.content, body);
+  },
+});
+
+/**
+ * 面 1.5 审计 N-02 回归：举报路径的窗口口径必须是 **unended（含赛前筹备期 pending）**。
+ *
+ * 此前该服务的三处门控都用 `isProblemInRunningContest`（仅 `start ≤ now < end`），
+ * 而所有读路径已改用 `unended`。于是把竞赛改成 pending 后：
+ * `GET /community/posts/:id` 已 404，但 `POST /api/v1/community/reports` 仍**原样返回**
+ * 题解全文（`content_snapshot`）——同一份"未结束公开赛"事实的两套口径，而赛前筹备期
+ * 恰是最需要保密的阶段。
+ */
+Deno.test({
+  name: "solution-gating(N-02): 赛前筹备期举报路径不得回显题解全文",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const reporterId = "gating-reporter";
+    const now = new Date().toISOString();
+    await getDb().insert(users).values({
+      id: reporterId,
+      username: reporterId,
+      email: `${reporterId}@example.com`,
+      password_hash: "hash",
+      created_at: now,
+      updated_at: now,
+    });
+    const secret = "赛前筹备期不得经举报回显的题解正文";
+    const post = await seedSolution(contestProblemId, "赛前题解");
+    await getDb().update(communityPosts).set({ content: secret }).where(
+      eq(communityPosts.id, post.id),
+    );
+
+    // 把竞赛推到"尚未开始"（pending）：start 与 end 都在未来
+    await getDb().update(contests).set({
+      start_time: new Date(Date.now() + 3_600_000).toISOString(),
+      end_time: new Date(Date.now() + 7_200_000).toISOString(),
+    }).where(eq(contests.id, contestId));
+
+    // 非作者、非审核员举报 → 必须 404（不确认内容是否存在）
+    await assertRejects(
+      () =>
+        createReport(reporterId, {
+          post_id: post.id,
+          reason: "赛前举报",
+          category: "其他",
+        }),
+      NotFoundError,
+    );
+
+    // 对照：竞赛结束（end_time 已过）后同一举报可正常拿到完整正文
+    await getDb().update(contests).set({
+      start_time: new Date(Date.now() - 7_200_000).toISOString(),
+      end_time: new Date(Date.now() - 1_000).toISOString(),
+    }).where(eq(contests.id, contestId));
+    const afterEnd = await createReport(reporterId, {
+      post_id: post.id,
+      reason: "赛后举报",
+      category: "其他",
+    });
+    assertEquals(afterEnd.content_snapshot, secret);
   },
 });

@@ -218,20 +218,25 @@ function openDetail(row: LlmUsageRow) {
       <UButton color="neutral" variant="outline" size="sm" :disabled="rows.length < limit" @click="page++; load()">下一页</UButton>
     </div>
 
-    <UModal v-model:open="showDetail" title="LLM 调用详情" :unmount-on-hide="true">
-      <template #body>
-        <div v-if="detail" class="flex flex-col gap-2 text-sm">
-          <p><strong>模型：</strong>{{ detail.model }}</p>
-          <p><strong>Token：</strong>{{ detail.prompt_tokens }} / {{ detail.completion_tokens }} / {{ detail.total_tokens }}</p>
-          <p><strong>费用：</strong>{{ detail.estimated_cost }}</p>
-          <p><strong>耗时：</strong>{{ detail.latency_ms }}ms</p>
-          <p><strong>状态：</strong>{{ detail.status }}{{ detail.error_code ? ` (${detail.error_code})` : "" }}</p>
-          <div class="mt-1">
-            <p class="font-semibold mb-1">请求消息</p>
-            <pre class="text-xs bg-bg-page p-3 rounded overflow-auto max-h-80">{{ JSON.stringify(detail.request_messages, null, 2) }}</pre>
-          </div>
+    <!-- LLM 调用详情抽屉 -->
+    <AdminDetailDrawer
+      :open="showDetail"
+      title="LLM 调用详情"
+      width-class="sm:max-w-xl"
+      @update:open="(val: boolean) => showDetail = val"
+      @close="showDetail = false"
+    >
+      <div v-if="detail" class="flex flex-col gap-2 text-sm">
+        <p><strong>模型：</strong>{{ detail.model }}</p>
+        <p><strong>Token：</strong>{{ detail.prompt_tokens }} / {{ detail.completion_tokens }} / {{ detail.total_tokens }}</p>
+        <p><strong>费用：</strong>{{ detail.estimated_cost }}</p>
+        <p><strong>耗时：</strong>{{ detail.latency_ms }}ms</p>
+        <p><strong>状态：</strong>{{ detail.status }}{{ detail.error_code ? ` (${detail.error_code})` : "" }}</p>
+        <div class="mt-2">
+          <p class="font-semibold mb-1">请求消息</p>
+          <pre class="text-xs bg-bg-page p-3 rounded border border-border overflow-auto max-h-80">{{ JSON.stringify(detail.request_messages, null, 2) }}</pre>
         </div>
-      </template>
-    </UModal>
+      </div>
+    </AdminDetailDrawer>
   </div>
 </template>

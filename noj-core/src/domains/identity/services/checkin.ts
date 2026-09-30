@@ -204,7 +204,7 @@ export async function getCheckinStats(
 
   const [[totalRow], [maxRow], [lastRow], [monthRow]] = await Promise.all([
     db
-      .select({ count: sql<number>`count(*)` })
+      .select({ count: sql<number>`count(*)::int` })
       .from(checkIns)
       .where(eq(checkIns.user_id, userId)),
     db
@@ -216,7 +216,7 @@ export async function getCheckinStats(
       .from(checkIns)
       .where(eq(checkIns.user_id, userId)),
     db
-      .select({ count: sql<number>`count(*)` })
+      .select({ count: sql<number>`count(*)::int` })
       .from(checkIns)
       .where(
         sql`${checkIns.user_id} = ${userId} AND ${checkIns.checkin_date} LIKE ${

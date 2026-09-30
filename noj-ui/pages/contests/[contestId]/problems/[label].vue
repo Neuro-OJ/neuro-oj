@@ -202,7 +202,7 @@ async function onSubmit() {
         <ProblemHeader :problem="problemView">
           <!-- 题号标识（「返回竞赛」已由 #512 面包屑承担，避免同页两套导航） -->
           <template #leading>
-            <span class="flex size-7 items-center justify-center rounded-lg bg-bg-dark font-mono text-xs font-bold text-white">{{ problem?.label }}</span>
+            <span class="flex size-7 items-center justify-center rounded-lg bg-primary-bg font-mono text-xs font-bold text-primary border border-primary/20">{{ problem?.label }}</span>
           </template>
           <template #titleSuffix>
             <span class="text-xs text-text-muted">{{ contest?.title }} · {{ problem?.display_id }}</span>

@@ -9,10 +9,7 @@
  */
 
 import { and, eq, inArray, sql } from "drizzle-orm";
-import {
-  evaluationResults,
-  submissions,
-} from "./../../../../shared/db/schema.ts";
+import { submissions } from "./../../../../shared/db/schema.ts";
 import {
   AppError,
   BadRequestError,
@@ -32,6 +29,7 @@ import {
   Channels,
   publishSseEvent,
 } from "./../../../../shared/sse/event-bus.ts";
+import { getRedis } from "./../../../../shared/mq/connection.ts";
 import { updateSubmissionStatus } from "./submissions-result.ts";
 import { getLogger } from "@logtape/logtape";
 
@@ -127,9 +125,8 @@ export async function rejudgeSubmission(id: string): Promise<void> {
   }
 
   await db.transaction(async (tx) => {
-    await tx.delete(evaluationResults)
-      .where(eq(evaluationResults.submission_id, id));
-
+    // JA-02：发起重测时不预先物理删除 evaluationResults，历史成绩保留至新结果落库时替换；
+    // 避免 Redis 入队失败或网络异常时导致历史成绩物理丢失。
     await tx.update(submissions)
       .set({
         status: "pending",
@@ -170,6 +167,16 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     },
     { type: "submission", id },
   );
+
+  // 决策 7 · AR-08：发起重测时清空前次评测的 Token 吊销标记，使重新签发的 eval_token 生效
+  try {
+    const redis = getRedis();
+    if (redis.status === "ready") {
+      void redis.del(`llm:token:revoked:${id}`);
+    }
+  } catch {
+    // ignore
+  }
 
   try {
     await pushJudgeTask(task);
@@ -229,7 +236,7 @@ export async function rejudgeProblemSubmissions(
 
   const txResult = await db.transaction<BatchTxResult>(async (tx) => {
     const activeCounts = await tx
-      .select({ status: submissions.status, count: sql<number>`count(*)` })
+      .select({ status: submissions.status, count: sql<number>`count(*)::int` })
       .from(submissions)
       .where(
         and(
@@ -285,9 +292,8 @@ export async function rejudgeProblemSubmissions(
 
     const ids = rows.map((r) => r.id);
 
-    await tx.delete(evaluationResults)
-      .where(inArray(evaluationResults.submission_id, ids));
-
+    // JA-02：发起重测时不预先物理删除 evaluationResults，历史成绩保留至新结果落库时替换；
+    // 避免批量入队中断时导致历史成绩物理丢失。
     await tx.update(submissions)
       .set({
         status: "pending",
@@ -328,6 +334,16 @@ export async function rejudgeProblemSubmissions(
       },
       { type: "problem", id: problemId },
     );
+  }
+
+  // 决策 7 · AR-08：批量重测清空前次评测的 Token 吊销标记
+  try {
+    const redis = getRedis();
+    if (redis.status === "ready" && allIds.length > 0) {
+      void redis.del(...allIds.map((subId) => `llm:token:revoked:${subId}`));
+    }
+  } catch {
+    // ignore
   }
 
   // 逐条入队（每条代码内容不同，无法合并）

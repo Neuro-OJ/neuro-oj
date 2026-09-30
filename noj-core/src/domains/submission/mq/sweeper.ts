@@ -96,14 +96,15 @@ function markRequeued(raw: string, now: number): void {
 /**
  * 原子执行「重投主队列 + 清空 processing 副本」。
  *
- * 旧实现先 RPUSH 再 LREM：两条命令之间断连/进程退出会让任务同时存在于
- * 主队列与 processing（重复评测），或先 LREM 后崩溃导致任务丢失。
+ * 必须使用 LPUSH（与 producer 入队方向一致）：
+ * noj-judge 通过 BRPOPLPUSH 从队列尾部消费（FIFO），若使用 RPUSH 会将
+ * 超时任务插队到队首（下一个立即被取走），导致 poison pill 任务死循环霸占 Worker。
  * 用单条 Lua 脚本保证二者原子完成；仅当 processing 中确实存在该消息时才重投。
  */
 const REQUEUE_SCRIPT = `
 local removed = redis.call('LREM', KEYS[1], 0, ARGV[1])
 if removed > 0 then
-  redis.call('RPUSH', KEYS[2], ARGV[1])
+  redis.call('LPUSH', KEYS[2], ARGV[1])
 end
 return removed
 `;

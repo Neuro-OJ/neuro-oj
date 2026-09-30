@@ -81,6 +81,13 @@ export async function createSelfTest(
     isAdmin,
   });
   if (!access.allowed) {
+    // 被未结束公开赛保密的题目对外一律"不存在"（面 1.4 审计 F-03）：
+    // 若此处统一 403，则 403（保密题）与 404（题目不存在）的差异本身就是
+    // **存在性预言机**——display_id 可枚举，攻击者据此即可在赛前确认某题已被
+    // 某场未开始的公开赛收编。详情/模板/支持包路径都已是 404，自测路径曾漏掉。
+    if (access.mode === "contest-secret") {
+      throw new NotFoundError("题目不存在");
+    }
     throw new ForbiddenError("无权对该题目自测");
   }
 

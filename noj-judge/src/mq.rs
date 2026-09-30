@@ -145,11 +145,17 @@ fn parse_task_message(value: &str) -> Option<JudgeTask> {
 ///
 /// 用于公平调度：同一用户已有评测在跑时，后续任务轮给其他用户。
 ///
-/// 使用 Lua 脚本原子完成 `LREM processing + RPUSH queue`，避免两命令之间
+/// 使用 Lua 脚本原子完成 `LREM processing + LPUSH queue`，避免两命令之间
 /// 断连/进程退出导致任务从 processing 和主队列同时消失、sweeper 无法恢复。
+///
+/// **方向必须与消费端相反（NOJ-A7）**：core 用 `LPUSH` 入队（队头=最新），
+/// judge 用 `RPOPLPUSH`/`BRPOPLPUSH` 从**队尾**弹出消费（FIFO）。因此"放回队尾"
+/// 必须 `LPUSH` 回队头；原实现用 `RPUSH`——与弹出端**同端**，重投的消息立刻又
+/// 成为下一个弹出候选，"退避"完全失效，退化成每 100ms 一轮的取回-重投空转
+/// （每轮还新建一条 Redis 连接）。
 const REQUEUE_SCRIPT: &str = r#"
 if redis.call('LREM', KEYS[1], 1, ARGV[1]) > 0 then
-    redis.call('RPUSH', KEYS[2], ARGV[1])
+    redis.call('LPUSH', KEYS[2], ARGV[1])
     return 1
 end
 return 0
