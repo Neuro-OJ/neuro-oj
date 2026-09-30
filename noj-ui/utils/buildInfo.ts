@@ -115,7 +115,7 @@ export function formatBuiltAt(
  * 单端三要素的纯文本形式（供 `title` / `aria-label` / 无链接降级使用）。
  *
  * @param info 构建身份
- * @returns 形如 `v0.10.2-alpha.1 · 4b7e3e2 · 2026-09-27 20:31 GMT+8`
+ * @returns 形如 `v0.10.3-alpha.1 · 4b7e3e2 · 2026-09-27 20:31 GMT+8`
  */
 export function buildInfoText(info: BuildInfo): string {
   return [

@@ -21,7 +21,7 @@ export const UNKNOWN_VERSION = "unknown";
 
 /** 构建身份三元组。 */
 export interface BuildInfo {
-  /** 版本号（如 `0.10.2-alpha.1`）；无法确定时为 {@link UNKNOWN_VERSION}。 */
+  /** 版本号（如 `0.10.3-alpha.1`）；无法确定时为 {@link UNKNOWN_VERSION}。 */
   version: string;
   /** 短 commit hash（可带 `-dirty` 后缀）；无法确定时为 null。 */
   commit: string | null;
