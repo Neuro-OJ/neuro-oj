@@ -38,7 +38,7 @@ import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "submission"]);
 import type { JudgeTaskLlm } from "../../types/index.ts";
-import { buildJudgeTask } from "../../types/index.ts";
+import { prepareJudgeTask } from "../prepare-judge-task.ts";
 import {
   isOiRuntimeConfig,
   type LlmConfig,
@@ -285,7 +285,7 @@ export async function createArtifactSubmission(
     "submission",
   );
 
-  const task = buildJudgeTask({
+  const task = await prepareJudgeTask({
     submission_id: id,
     problem_id: input.problem_id,
     user_id: userId,

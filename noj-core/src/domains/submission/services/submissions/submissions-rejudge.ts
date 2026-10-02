@@ -22,7 +22,7 @@ import { getStorageProvider } from "./../../../system/index.ts";
 import { logAudit } from "../../../system/index.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
 import type { JudgeTaskLlm } from "../../types/index.ts";
-import { buildJudgeTask } from "../../types/index.ts";
+import { prepareJudgeTask } from "../prepare-judge-task.ts";
 import {
   isOiRuntimeConfig,
   type ProblemRuntimeConfig,
@@ -148,7 +148,7 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     .where(eq(submissions.id, id))
     .limit(1);
 
-  const task = buildJudgeTask({
+  const task = await prepareJudgeTask({
     submission_id: id,
     problem_id: submission.problem_id,
     user_id: submission.user_id,
@@ -371,7 +371,7 @@ export async function rejudgeProblemSubmissions(
         );
       }
 
-      const task = buildJudgeTask({
+      const task = await prepareJudgeTask({
         submission_id: sub.id,
         problem_id: problemId,
         user_id: sub.user_id,

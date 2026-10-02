@@ -25,7 +25,7 @@ import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import type { JudgeResult } from "../types/index.ts";
-import { buildJudgeTask } from "../types/index.ts";
+import { prepareJudgeTask } from "./prepare-judge-task.ts";
 import { evaluateProblemAccess } from "./../../catalog/index.ts";
 import {
   isOiRuntimeConfig,
@@ -139,11 +139,11 @@ export async function createSelfTest(
   }
 
   if (isOiRuntimeConfig(runtimeConfig)) {
-    if (!runtimeConfig.languages.includes(input.language as "c" | "cpp")) {
+    if (!runtimeConfig.languages.includes(input.language as "c" | "cc")) {
       throw new BadRequestError(`该 OI 题目不支持语言: ${input.language}`);
     }
   } else {
-    if (input.language === "c" || input.language === "cpp") {
+    if (input.language === "c" || input.language === "cc") {
       throw new BadRequestError("C/C++ 自测仅适用于 judge_type=oi 的题目");
     }
     await validateJudgeImageWithKind(
@@ -159,7 +159,7 @@ export async function createSelfTest(
   const id = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
   const now = new Date().toISOString();
 
-  const task = buildJudgeTask({
+  const task = await prepareJudgeTask({
     submission_id: id,
     problem_id: problemId,
     user_id: userId,

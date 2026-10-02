@@ -146,10 +146,14 @@ pub async fn evaluate_native(
                         .iter()
                         .flat_map(|item| item.cases.iter())
                         .map(|item| OiCaseResult {
+                            case_id: Some(item.input.clone()),
                             input: item.input.clone(),
                             status: OiStatus::CompileError,
                             time_ms: Some(started.elapsed().as_millis() as u64),
                             memory_kb: None,
+                            cpu_time_ms: None,
+                            wall_time_ms: None,
+                            equivalent_time_ms: None,
                         })
                         .collect();
                     break;
@@ -327,10 +331,14 @@ async fn run_case_in_container(
         OiStatus::Accepted
     };
     Ok(CaseOutcome::Result(OiCaseResult {
+        case_id: Some(case.input.clone()),
         input: case.input.clone(),
         status,
         time_ms: Some(elapsed_ms),
         memory_kb: None,
+        cpu_time_ms: None,
+        wall_time_ms: Some(elapsed_ms),
+        equivalent_time_ms: Some(elapsed_ms),
     }))
 }
 

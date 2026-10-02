@@ -252,6 +252,7 @@ mod tests {
                     memory_limit_mb: 128,
                 },
             }),
+            oi_cost_profile: None,
             language: "python3".to_string(),
             code: "def solve(): return 1".to_string(),
             file_name: None,

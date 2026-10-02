@@ -2,6 +2,7 @@
 
 pub mod calibration;
 pub mod runner;
+pub mod wasm;
 
 use std::collections::{HashMap, HashSet};
 
@@ -9,6 +10,50 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::types::JudgeResult;
+
+/// WASM 运行时的可信成本快照，由 core 在构造任务时注入。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OiCostProfile {
+    pub schema_version: u32,
+    pub runtime_version: String,
+    #[serde(default)]
+    pub costs: HashMap<String, u8>,
+    #[serde(default)]
+    pub variable_costs: HashMap<String, u8>,
+    pub io_fuel_per_byte: u64,
+    pub fuel_per_ms: f64,
+    pub hash: String,
+    #[serde(default)]
+    pub toolchain: Option<String>,
+    #[serde(default)]
+    pub benchmark: Option<String>,
+    #[serde(default)]
+    pub hardware: Option<String>,
+}
+
+impl OiCostProfile {
+    /// 验证成本表边界，避免题目消息用极小或无限 fuel 伪造限制。
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_version != 1 || self.runtime_version.trim().is_empty() {
+            return Err("成本表版本或运行时版本无效".to_string());
+        }
+        if self.hash.len() != 64
+            || !self.hash.bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            return Err("成本表摘要必须为 64 位十六进制字符串".to_string());
+        }
+        if self.costs.is_empty()
+            || self.costs.values().any(|v| *v == 0)
+            || self.variable_costs.values().any(|v| *v == 0)
+            || self.io_fuel_per_byte == 0
+            || !self.fuel_per_ms.is_finite()
+            || self.fuel_per_ms <= 0.0
+        {
+            return Err("成本表必须包含正的、有限的成本".to_string());
+        }
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OiStatus {
@@ -125,10 +170,18 @@ fn default_priority() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OiCaseResult {
+    #[serde(default)]
+    pub case_id: Option<String>,
     pub input: String,
     pub status: OiStatus,
     pub time_ms: Option<u64>,
     pub memory_kb: Option<u64>,
+    #[serde(default)]
+    pub cpu_time_ms: Option<u64>,
+    #[serde(default)]
+    pub wall_time_ms: Option<u64>,
+    #[serde(default)]
+    pub equivalent_time_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -157,6 +210,7 @@ impl OiEvaluation {
         time_ms: Option<u64>,
         memory_kb: Option<u64>,
     ) -> JudgeResult {
+        let verdict = self.status;
         JudgeResult {
             submission_id: submission_id.to_string(),
             status: if self.status == OiStatus::SystemError {
@@ -167,7 +221,14 @@ impl OiEvaluation {
             .to_string(),
             score: self.score,
             output: String::new(),
-            details: json!({"oi_status": self.status, "subtasks": self.subtasks}),
+            details: json!({
+                "oi": {
+                    "verdict": verdict,
+                    "score": self.score,
+                    "max_score": 10000,
+                    "subtasks": self.subtasks,
+                }
+            }),
             time_ms,
             memory_kb,
             rejudge_seq,

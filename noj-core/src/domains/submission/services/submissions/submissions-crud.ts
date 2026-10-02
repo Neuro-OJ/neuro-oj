@@ -70,7 +70,8 @@ import {
 } from "./../../../catalog/index.ts";
 import type { JudgeTaskLlm, SubmissionStatus } from "../../types/index.ts";
 import type { Context } from "hono";
-import { buildJudgeTask, LANGUAGE_EXT_MAP } from "../../types/index.ts";
+import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
+import { prepareJudgeTask } from "../prepare-judge-task.ts";
 import {
   Channels,
   publishSseEvent,
@@ -425,13 +426,13 @@ export async function createSubmission(
   }
 
   if (isOiRuntimeConfig(runtimeConfig)) {
-    if (!runtimeConfig.languages.includes(input.language as "c" | "cpp")) {
+    if (!runtimeConfig.languages.includes(input.language as "c" | "cc")) {
       throw new BadRequestError(
         `该 OI 题目不支持语言: ${input.language}`,
       );
     }
   } else {
-    if (input.language === "c" || input.language === "cpp") {
+    if (input.language === "c" || input.language === "cc") {
       throw new BadRequestError("C/C++ 提交仅适用于 judge_type=oi 的题目");
     }
     // 防御性 final gate：校验双容器镜像 + kind
@@ -466,7 +467,7 @@ export async function createSubmission(
   );
 
   // 统一经 buildJudgeTask 构造（2026-09-12 评审 §3.1：收敛 6 处内联构造）
-  const task = buildJudgeTask({
+  const task = await prepareJudgeTask({
     submission_id: id,
     problem_id: input.problem_id,
     user_id: userId,

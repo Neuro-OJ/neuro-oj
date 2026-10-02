@@ -210,7 +210,7 @@ const OI_MANIFEST = JSON.stringify({
   judge_type: "oi",
   runtime_config: {
     backend: "native",
-    languages: ["c", "cpp"],
+    languages: ["c", "cc"],
     time_limit_ms: 1000,
     memory_limit_mb: 256,
     checker: { type: "testlib", path: "checker.cpp" },
@@ -259,4 +259,23 @@ Deno.test("inspectEvaluationPackage: 识别评测包条目与标准解", () => {
     hasHiddenCases: true,
     referenceSolution: "reference_solution.py",
   });
+});
+
+Deno.test("parseBundleZip: Hydro普通题YAML与sum子任务转换", () => {
+  const parsed = parseBundleZip(makeZip({
+    "problem.yaml": "title: A+B\npid: P1\n",
+    "problem.md": "# A+B",
+    "testdata/config.yaml":
+      "type: default\ntime: 1s\nmemory: 256m\nsubtasks:\n  - id: 1\n    type: sum\n    score: 100\n    cases:\n      - input: 1.in\n        output: 1.out\n",
+    "testdata/1.in": "1 2",
+    "testdata/1.out": "3",
+  }));
+  assertEquals(parsed.manifest.judge_type, "oi");
+  assertEquals(parsed.statement, "# A+B");
+  const rc = parsed.manifest.runtime_config as {
+    languages: string[];
+    subtasks: { cases: { input: string }[] }[];
+  };
+  assertEquals(rc.languages, ["c", "cc"]);
+  assertEquals(rc.subtasks[0].cases[0].input, "testdata/1.in");
 });

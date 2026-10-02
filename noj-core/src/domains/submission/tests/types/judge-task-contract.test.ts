@@ -65,13 +65,13 @@ Deno.test("JudgeTask 契约: 字段集合与登记表一致", async () => {
   });
   assertEquals(
     Object.keys(built).sort(),
-    [...JUDGE_TASK_FIELDS].sort(),
+    [...JUDGE_TASK_FIELDS].filter((key) => key !== "oi_cost_profile").sort(),
     "JudgeTask 字段集合变化时必须同步 JUDGE_TASK_FIELDS 与 Rust 结构体",
   );
   // fixture 自身也必须是完整字段集（防止 fixture 落后于契约）
   assertEquals(
     Object.keys(fixture).sort(),
-    [...JUDGE_TASK_FIELDS].sort(),
+    [...JUDGE_TASK_FIELDS].filter((key) => key !== "oi_cost_profile").sort(),
     "契约 fixture 必须包含全部字段",
   );
 });
@@ -135,5 +135,51 @@ Deno.test("JudgeTask 契约: 必填字段齐全时才构造（类型层面已强
   assert(
     "evaluator" in built.runtime_config &&
       typeof built.runtime_config.evaluator.image === "string",
+  );
+});
+
+Deno.test("buildJudgeTask: WASM缺少活动成本表明确拒绝", () => {
+  let rejected = false;
+  try {
+    buildJudgeTask({
+      submission_id: "s",
+      problem_id: "p",
+      user_id: "u",
+      priority: "medium",
+      language: "cc",
+      code: "int main(){}",
+      runtime_config: {
+        backend: "wasm",
+        languages: ["cc"],
+        time_limit_ms: 1000,
+        memory_limit_mb: 256,
+        checker: { type: "default" },
+        subtasks: [{
+          id: "all",
+          score: 100,
+          cases: [{ input: "1.in", output: "1.out" }],
+        }],
+      },
+    });
+  } catch {
+    rejected = true;
+  }
+  assertEquals(rejected, true);
+});
+
+Deno.test("JudgeTask 契约: OI WASM携带可信独立成本快照", async () => {
+  const fixture = JSON.parse(
+    await Deno.readTextFile(
+      new URL(
+        "../../../../../../noj-tests/fixtures/judge-task-oi.contract.json",
+        import.meta.url,
+      ),
+    ),
+  ) as JudgeTask;
+  const built = buildJudgeTask(fixture);
+  assertEquals(JSON.parse(JSON.stringify(built)), fixture);
+  assertEquals(
+    new Set([...Object.keys(await loadFixture()), ...Object.keys(fixture)]),
+    new Set(JUDGE_TASK_FIELDS),
   );
 });

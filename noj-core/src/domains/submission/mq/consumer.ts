@@ -1,3 +1,4 @@
+import { projectOiDetails } from "../services/submissions/oi-details.ts";
 import {
   type ConsumerOptions,
   createConsumer,
@@ -30,6 +31,7 @@ export const MAX_RESULT_CONSUMER_CONCURRENCY = 16;
 
 /** judge details 允许的顶层键（按当前 evaluate.py 契约白名单化）。 */
 const JUDGE_DETAIL_ALLOWED_KEYS = new Set([
+  "oi",
   "cases",
   "score",
   "score_content",
@@ -70,7 +72,9 @@ export function sanitizeJudgeDetails(
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(details)) {
     if (!JUDGE_DETAIL_ALLOWED_KEYS.has(key)) continue;
-    const normalized = key === "cases" && Array.isArray(value)
+    const normalized = key === "oi"
+      ? projectOiDetails(value)
+      : key === "cases" && Array.isArray(value)
       ? value.map(sanitizeCase)
       : value;
     const serialized = JSON.stringify(normalized);

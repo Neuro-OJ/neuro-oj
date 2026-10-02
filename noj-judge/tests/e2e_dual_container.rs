@@ -60,6 +60,7 @@ fn dual_task() -> JudgeTask {
             },
         }
         .into(),
+        oi_cost_profile: None,
         language: "python3".to_string(),
         code: String::new(),
         file_name: Some("solution.py".to_string()),

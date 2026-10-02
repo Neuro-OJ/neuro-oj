@@ -73,7 +73,7 @@ Deno.test("validateBundleManifest: 非客观题仍要求 runtime_config", () => 
 
 const oiRuntime: OiRuntimeConfig = {
   backend: "wasm",
-  languages: ["c", "cpp"],
+  languages: ["c", "cc"],
   time_limit_ms: 1000,
   memory_limit_mb: 256,
   checker: { type: "testlib", path: "checker.cpp" },

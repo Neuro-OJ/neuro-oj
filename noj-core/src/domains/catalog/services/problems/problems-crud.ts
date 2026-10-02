@@ -274,6 +274,9 @@ export async function createProblem(
         difficulty: input.difficulty ?? "medium",
         support_package_storage_url: input.support_package_storage_url ?? null,
         runtime_config: isObjective ? null : (input.runtime_config ?? null),
+        judge_type: isObjective
+          ? "dual"
+          : judgeTypeForRuntimeConfig(input.runtime_config),
         is_objective: isObjective,
         visibility: type === "P" ? "public" : "private",
         submission_mode: submissionMode,
@@ -554,6 +557,7 @@ export async function updateProblem(
     }
   } else if (input.runtime_config !== undefined) {
     updates.runtime_config = input.runtime_config;
+    updates.judge_type = judgeTypeForRuntimeConfig(input.runtime_config);
     if (isOiRuntimeConfig(input.runtime_config)) {
       // OI runner 只接受源码提交；切换模式时清理存量 artifact 配置。
       updates.submission_mode = "code";

@@ -24,10 +24,14 @@ fn config() -> OiRuntimeConfig {
 
 fn case(input: &str, status: OiStatus) -> OiCaseResult {
     OiCaseResult {
+        case_id: Some(input.to_string()),
         input: input.to_string(),
         status,
         time_ms: Some(12),
         memory_kb: Some(4096),
+        cpu_time_ms: None,
+        wall_time_ms: None,
+        equivalent_time_ms: None,
     }
 }
 

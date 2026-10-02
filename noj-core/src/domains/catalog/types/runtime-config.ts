@@ -60,11 +60,14 @@ export interface OiSubtask {
 /** OI 题在原生与 WASM 执行后端共用的时空限制配置。 */
 export interface OiRuntimeConfig {
   backend: "native" | "wasm";
-  languages: Array<"c" | "cpp">;
+  languages: Array<"c" | "cc">;
   time_limit_ms: number;
   memory_limit_mb: number;
   checker: { type: "default" | "strict" | "testlib"; path?: string };
   subtasks: OiSubtask[];
+  filename?: string;
+  compile_extra_files?: string[];
+  user_extra_files?: string[];
 }
 
 /** 按题目 judge_type 解释的运行配置。 */
@@ -86,7 +89,7 @@ export function isOiRuntimeConfig(
 function isSafeOiPath(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 &&
     !value.includes("\\") && !value.startsWith("/") &&
-    !value.includes("\0") &&
+    !value.includes("\0") && !/^[A-Za-z]:/.test(value) &&
     value.split("/").every((segment) =>
       segment !== "" && segment !== "." && segment !== ".."
     );
@@ -100,16 +103,38 @@ export function validateOiRuntimeConfig(
     throw new BadRequestError("runtime_config OI 配置必须是对象");
   }
   const rc = value;
+  for (
+    const key of [
+      "cost_profile",
+      "oi_cost_profile",
+      "wasm_costs",
+      "fuel_per_ms",
+    ]
+  ) {
+    if (key in rc) throw new BadRequestError("WASM 成本只能由服务器注入");
+  }
+  if (rc.filename !== undefined && !/^[A-Za-z0-9_-]+$/.test(rc.filename)) {
+    throw new BadRequestError("filename 必须是安全文件名前缀");
+  }
+  for (const paths of [rc.compile_extra_files, rc.user_extra_files]) {
+    if (
+      paths !== undefined &&
+      (!Array.isArray(paths) || paths.some((p) => !isSafeOiPath(p)) ||
+        new Set(paths).size !== paths.length)
+    ) {
+      throw new BadRequestError("extra_files 必须是不重复的安全相对路径数组");
+    }
+  }
   if (rc.backend !== "native" && rc.backend !== "wasm") {
     throw new BadRequestError("runtime_config.backend 仅允许 native / wasm");
   }
   if (
     !Array.isArray(rc.languages) || rc.languages.length === 0 ||
-    rc.languages.some((language) => language !== "c" && language !== "cpp") ||
+    rc.languages.some((language) => language !== "c" && language !== "cc") ||
     new Set(rc.languages).size !== rc.languages.length
   ) {
     throw new BadRequestError(
-      "runtime_config.languages 必须是非空且不重复的 c/cpp 数组",
+      "runtime_config.languages 必须是非空且不重复的 c/cc 数组",
     );
   }
   for (
@@ -162,11 +187,12 @@ export function validateOiRuntimeConfig(
     ids.add(subtask.id);
     if (
       typeof subtask.score !== "number" ||
-      !Number.isSafeInteger(subtask.score) ||
+      !Number.isFinite(subtask.score) ||
+      Math.abs(subtask.score * 100 - Math.round(subtask.score * 100)) > 1e-7 ||
       subtask.score <= 0
     ) {
       throw new BadRequestError(
-        `runtime_config.subtasks[${index}].score 必须为正整数`,
+        `runtime_config.subtasks[${index}].score 必须是最多两位小数的正数`,
       );
     }
     totalScore += subtask.score;
@@ -244,7 +270,29 @@ export function validateOiRuntimeConfig(
       }
     }
   }
-  if (totalScore !== 100) {
+  let caseCount = 0;
+  let totalTime = 0;
+  const checkMemory = (memory: number) => {
+    if (memory > 512) throw new BadRequestError("OI 内存上限为 512 MiB");
+  };
+  checkMemory(rc.memory_limit_mb);
+  for (const subtask of rc.subtasks) {
+    checkMemory(subtask.memory_limit_mb ?? rc.memory_limit_mb);
+    for (const testCase of subtask.cases) {
+      caseCount++;
+      totalTime += testCase.time_limit_ms ?? subtask.time_limit_ms ??
+        rc.time_limit_ms;
+      checkMemory(
+        testCase.memory_limit_mb ?? subtask.memory_limit_mb ??
+          rc.memory_limit_mb,
+      );
+    }
+  }
+  if (caseCount > 100) throw new BadRequestError("OI 最多 100 个测试点");
+  if (totalTime > 60000) {
+    throw new BadRequestError("OI 测试点总时限最多 60000ms");
+  }
+  if (Math.abs(totalScore - 100) > 1e-7) {
     throw new BadRequestError("runtime_config.subtasks.score 总和必须为 100");
   }
   // 先验证引用存在，再用 DFS 拒绝环，保证 scorer 可以按声明顺序稳定处理。

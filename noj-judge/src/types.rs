@@ -1,4 +1,5 @@
 use crate::oi::OiRuntimeConfig;
+use crate::oi::OiCostProfile;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -130,6 +131,9 @@ pub struct JudgeTask {
     pub artifact_download_url: Option<String>,
     /// 双容器或 OI Runtime 配置（必填）
     pub runtime_config: JudgeRuntimeConfig,
+    /// WASM 任务的受信成本表快照；绝不从题目配置推导或接受用户覆盖。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oi_cost_profile: Option<OiCostProfile>,
     /// 编程语言标识
     pub language: String,
     /// 用户源代码
