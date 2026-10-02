@@ -23,6 +23,24 @@
 └── statement.md      # 可选：套卷说明
 ```
 
+传统 OI 题包（`judge_type: "oi"`）不需要 `evaluate.py`，由固定的 C99/C++11
+评测后端读取题包中的测试数据和标准答案：
+
+```text
+<任意名>.zip
+├── problem.json      # 必需：包含 OI runtime_config
+├── statement.md      # 可选：题面
+└── testdata/
+    ├── 1.in
+    └── 1.out
+```
+
+OI 的 `runtime_config` 需要声明 `backend`、`languages`、`checker` 和
+`subtasks`；每个测试点的 `input`/`output` 必须引用包内文件，子任务分值总和为
+100。支持 `default`、`strict`、`testlib` checker，以及标准输入输出或
+`filename` 文件输入输出。题包导入时会拒绝路径穿越、缺失测试数据和不支持的
+Hydro 计分语义。
+
 - `evaluate.py` **必须位于 zip 根级**——Judge Worker 将包解压到容器 `/workspace` 后路径固定为 `/workspace/evaluate.py`。
 - 测试数据格式**不强制**：`visible.jsonl` / `hidden.jsonl` 是推荐约定，你可以用 `cases/*.json`、SQLite、CSV 等任何方式组织，只要 `evaluate.py` 自己能读取。推荐约定见[测试数据与样例规范](test-data.md)。
 - 模板文件（如 `template.py`，即 `manifest.template` 声明的文件）**必须放入包中**：平台在导入时读取它并落库，作为编辑器初始代码（starter code）；参考实现（如 `submission_sample.py`）**不要**放入包中。`problems:build` 与 `noj-cli problem pack` 打包时自动排除 `submission*`、`__pycache__` 与 `.git`。
@@ -65,6 +83,7 @@
 | `format_version` | ✅ | 当前唯一支持 `1`；其他值导入返回 400 |
 | `title` | ✅ | 非空字符串 |
 | `runtime_config` | ✅* | 双容器配置（编程题必填）；`evaluator.command` 可缺省（默认 `python3 /workspace/evaluate.py`）；`is_objective=true` 时禁止提供 |
+| `judge_type` | ❌ | `dual`（默认）或 `oi`；OI 题使用 C/C++ 测试点评测并禁止 `template`、`submission_mode`、`artifact_max_size_mb`、`llm` |
 | `is_objective` | ❌ | 布尔值，缺省 `false`；`true` 表示客观题套卷包，不要求 `runtime_config` / `evaluate.py`，必须含 `questions.json` |
 | `statement.md` 文件 | ❌ | 与 `manifest.description` 二选一（文件优先），二者皆缺 → 400 |
 | `evaluate.py` 文件 | ✅* | 编程题根级缺失 → 400；客观题包不要求 |

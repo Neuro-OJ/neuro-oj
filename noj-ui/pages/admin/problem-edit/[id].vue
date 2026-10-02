@@ -8,6 +8,11 @@ definePageMeta({
 const router = useRouter()
 const route = useRoute()
 const problemId = route.params.id as string
+const { data } = await useFetch<{ data: { judge_type?: 'dual' | 'oi'; is_objective?: boolean } }>(
+  `/api/v1/problems/${problemId}`,
+  { server: false },
+)
+const isOi = computed(() => data.value?.data?.judge_type === 'oi')
 
 function onSaved() {
   router.replace("/admin/problems")
@@ -25,6 +30,7 @@ function onSaved() {
       </template>
     </AdminPageHeader>
 
-    <CodingProblemEditor mode="edit" :problem-id="problemId" @saved="onSaved" />
+    <OiProblemEditor v-if="data && isOi" mode="edit" :problem-id="problemId" @saved="onSaved" />
+    <CodingProblemEditor v-else-if="data" mode="edit" :problem-id="problemId" @saved="onSaved" />
   </div>
 </template>

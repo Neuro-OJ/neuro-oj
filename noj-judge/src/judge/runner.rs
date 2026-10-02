@@ -18,6 +18,7 @@ fn package_size(pkg: &DownloadedPackage) -> u64 {
 #[allow(clippy::too_many_arguments)]
 pub async fn evaluate_with_cpu_limit(
     docker: bollard::Docker,
+    resource_lease_client: redis::Client,
     task: &JudgeTask,
     download_timeout_secs: u64,
     cache_dir: String,
@@ -119,15 +120,39 @@ pub async fn evaluate_with_cpu_limit(
             .as_ref()
             .map(|package| package.path.as_path())
             .ok_or_else(|| anyhow::anyhow!("OI 评测任务缺少支持包"))?;
-        return crate::oi::runner::evaluate_native(
-            &docker,
-            task,
-            support_package,
-            oi_image,
-            cpu_limit_millicores,
-            instance_id,
+        return match tokio::time::timeout(
+            std::time::Duration::from_secs(300),
+            crate::oi::runner::evaluate_native(
+                &docker,
+                task,
+                support_package,
+                oi_image,
+                cpu_limit_millicores,
+                instance_id,
+                Some(&resource_lease_client),
+            ),
         )
-        .await;
+        .await
+        {
+            Ok(result) => match result {
+                Ok(result) => Ok(result),
+                Err(error) => {
+                    tracing::error!(
+                        submission_id = %task.submission_id,
+                        error = %error,
+                        "OI 评测执行异常，归因为 SE"
+                    );
+                    Ok(crate::oi::runner::system_error_result(
+                        task,
+                        "OI 评测执行失败",
+                    ))
+                }
+            },
+            Err(_) => Ok(crate::oi::runner::system_error_result(
+                task,
+                "OI 评测超过 300 秒任务看门狗",
+            )),
+        };
     }
 
     let dual_runtime_config = task
@@ -277,6 +302,7 @@ mod tests {
 
         let err = evaluate_with_cpu_limit(
             offline_docker(),
+            redis::Client::open("redis://127.0.0.1/").unwrap(),
             &task,
             5,
             tmp.path().join("cache").to_string_lossy().to_string(),
@@ -320,6 +346,7 @@ mod tests {
 
         let err = evaluate_with_cpu_limit(
             offline_docker(),
+            redis::Client::open("redis://127.0.0.1/").unwrap(),
             &task,
             5,
             tmp.path().join("cache").to_string_lossy().to_string(),

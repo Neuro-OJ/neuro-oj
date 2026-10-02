@@ -98,16 +98,19 @@ Deno.test("JudgeTask 契约: 可选字段缺省时不写入消息体", () => {
     language: "python3",
     code: "print(1)",
   });
-  assertEquals(Object.keys(built).sort(), [
-    "code",
-    "language",
-    "priority",
-    "judge_type",
-    "problem_id",
-    "runtime_config",
-    "submission_id",
-    "user_id",
-  ]);
+  assertEquals(
+    Object.keys(built).sort(),
+    [
+      "code",
+      "language",
+      "priority",
+      "judge_type",
+      "problem_id",
+      "runtime_config",
+      "submission_id",
+      "user_id",
+    ].sort(),
+  );
   assert(
     !("download_url" in built) && !("llm" in built) &&
       !("artifact_download_url" in built),

@@ -241,7 +241,7 @@ export interface ProblemResponseWithTags {
    * 仅 owner/admin 返回；非 owner/admin 不返回该字段。
    */
   runtime_config?: ProblemRuntimeConfig | null;
-  /** 评测模式；由 runtime_config 推断，保留在响应中便于前端展示。 */
+  /** 评测模式；来自 problems.judge_type，保留在响应中便于前端展示。 */
   judge_type: JudgeType;
   tags: ProblemTagRef[];
   /**

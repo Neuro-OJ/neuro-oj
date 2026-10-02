@@ -1,5 +1,4 @@
-import { isOiRuntimeConfig } from "../../catalog/types/runtime-config.ts";
-import type { OiCostProfile } from "../../catalog/types/oi-cost-profile.ts";
+import { isOiRuntimeConfig, type OiCostProfile } from "../../catalog/index.ts";
 import {
   buildJudgeTask,
   type BuildJudgeTaskInput,

@@ -25,7 +25,14 @@ const META = [
   "cost_profile_hash",
   "compile_error",
 ];
-const SUBTASK_META = ["id", "score", "max_score", "verdict", "depends_on"];
+const SUBTASK_META = [
+  "id",
+  "score",
+  "max_score",
+  "verdict",
+  "status",
+  "depends_on",
+];
 const CASE_META = [
   "case_id",
   "id",

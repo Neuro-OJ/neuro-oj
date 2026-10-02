@@ -67,6 +67,8 @@ export interface OiRuntimeConfig {
   subtasks: OiSubtask[];
   filename?: string;
   compile_extra_files?: string[];
+  /** 仅注入受信 checker 编译/运行沙箱；Hydro judge_extra_files 映射到这里。 */
+  checker_extra_files?: string[];
   user_extra_files?: string[];
 }
 
@@ -116,7 +118,13 @@ export function validateOiRuntimeConfig(
   if (rc.filename !== undefined && !/^[A-Za-z0-9_-]+$/.test(rc.filename)) {
     throw new BadRequestError("filename 必须是安全文件名前缀");
   }
-  for (const paths of [rc.compile_extra_files, rc.user_extra_files]) {
+  for (
+    const paths of [
+      rc.compile_extra_files,
+      rc.checker_extra_files,
+      rc.user_extra_files,
+    ]
+  ) {
     if (
       paths !== undefined &&
       (!Array.isArray(paths) || paths.some((p) => !isSafeOiPath(p)) ||
@@ -172,7 +180,8 @@ export function validateOiRuntimeConfig(
     throw new BadRequestError("runtime_config.subtasks 必须是非空数组");
   }
   const ids = new Set<string>();
-  const inputPaths = new Set<string>();
+  const casePaths = new Set<string>();
+  const protectedPaths = new Set<string>();
   let totalScore = 0;
   for (const [index, subtask] of rc.subtasks.entries()) {
     if (
@@ -216,13 +225,18 @@ export function validateOiRuntimeConfig(
         );
       }
       if (
-        testCase.input === testCase.output || inputPaths.has(testCase.input)
+        testCase.input === testCase.output ||
+        casePaths.has(testCase.input) ||
+        casePaths.has(testCase.output)
       ) {
         throw new BadRequestError(
-          `runtime_config.subtasks[${index}].cases[${caseIndex}].input 重复或与 output 相同`,
+          `runtime_config.subtasks[${index}].cases[${caseIndex}] 的 input/output 路径重复或相同`,
         );
       }
-      inputPaths.add(testCase.input);
+      casePaths.add(testCase.input);
+      casePaths.add(testCase.output);
+      protectedPaths.add(testCase.input);
+      protectedPaths.add(testCase.output);
       for (
         const [field, value] of [
           ["time_limit_ms", testCase.time_limit_ms],
@@ -294,6 +308,36 @@ export function validateOiRuntimeConfig(
   }
   if (Math.abs(totalScore - 100) > 1e-7) {
     throw new BadRequestError("runtime_config.subtasks.score 总和必须为 100");
+  }
+  if (rc.filename) {
+    const generatedPaths = [`${rc.filename}.in`, `${rc.filename}.out`];
+    if (generatedPaths.some((path) => protectedPaths.has(path))) {
+      throw new BadRequestError(
+        "filename 生成的输入/输出文件不能与测试点文件重复",
+      );
+    }
+    for (const path of generatedPaths) protectedPaths.add(path);
+  }
+  if (rc.checker.path) {
+    if (protectedPaths.has(rc.checker.path)) {
+      throw new BadRequestError(
+        "checker.path 不能引用测试输入、标准答案或 filename 生成文件",
+      );
+    }
+    protectedPaths.add(rc.checker.path);
+  }
+  for (
+    const [field, paths] of [
+      ["compile_extra_files", rc.compile_extra_files],
+      ["checker_extra_files", rc.checker_extra_files],
+      ["user_extra_files", rc.user_extra_files],
+    ] as const
+  ) {
+    if (paths?.some((path) => protectedPaths.has(path))) {
+      throw new BadRequestError(
+        `${field} 不能引用测试输入、标准答案或 checker 文件`,
+      );
+    }
   }
   // 先验证引用存在，再用 DFS 拒绝环，保证 scorer 可以按声明顺序稳定处理。
   const byId = new Map(rc.subtasks.map((subtask) => [subtask.id, subtask]));

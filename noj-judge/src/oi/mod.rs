@@ -1,6 +1,8 @@
 //! 传统 OI 题的配置、状态与确定性子任务计分。
 
 pub mod calibration;
+pub mod go_judge;
+pub mod resource_lease;
 pub mod runner;
 pub mod wasm;
 
@@ -38,12 +40,20 @@ impl OiCostProfile {
             return Err("成本表版本或运行时版本无效".to_string());
         }
         if self.hash.len() != 64
-            || !self.hash.bytes().all(|b| b.is_ascii_hexdigit())
+            || !self
+                .hash
+                .bytes()
+                .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
         {
             return Err("成本表摘要必须为 64 位十六进制字符串".to_string());
         }
-        if self.costs.is_empty()
+        if self.costs.len() != 1
+            || !self.costs.contains_key("default")
             || self.costs.values().any(|v| *v == 0)
+            || self
+                .variable_costs
+                .keys()
+                .any(|key| !is_supported_variable_cost(key))
             || self.variable_costs.values().any(|v| *v == 0)
             || self.io_fuel_per_byte == 0
             || !self.fuel_per_ms.is_finite()
@@ -53,6 +63,30 @@ impl OiCostProfile {
         }
         Ok(())
     }
+}
+
+/// 成本表字段必须能映射到当前 Wasmtime 版本的公开变量成本字段；未知字段
+/// 若被静默接受，会导致校准报告与实际 fuel 计量不一致。
+pub fn is_supported_variable_cost(name: &str) -> bool {
+    matches!(
+        name,
+        "memory_copy_per_byte"
+            | "memory_fill_per_byte"
+            | "memory_init_per_byte"
+            | "memory_grow_per_page"
+            | "table_copy_per_element"
+            | "table_fill_per_element"
+            | "table_init_per_element"
+            | "table_grow_per_element"
+            | "array_copy_per_element"
+            | "array_fill_per_element"
+            | "array_new_data_per_element"
+            | "array_init_data_per_element"
+            | "array_new_elem_per_element"
+            | "array_init_elem_per_element"
+            | "array_new_default_per_element"
+            | "array_new_per_element"
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,6 +124,7 @@ pub enum OiBackend {
 #[serde(rename_all = "lowercase")]
 pub enum OiLanguage {
     C,
+    #[serde(rename = "cc")]
     Cpp,
 }
 
@@ -122,7 +157,8 @@ pub struct OiCase {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OiSubtask {
     pub id: String,
-    pub score: u32,
+    /// 子任务分数，允许与 core 契约一致的最多两位小数（总和为 100）。
+    pub score: f64,
     #[serde(default)]
     pub depends_on: Vec<String>,
     #[serde(default)]
@@ -140,6 +176,16 @@ pub struct OiRuntimeConfig {
     pub memory_limit_mb: u64,
     pub checker: OiChecker,
     pub subtasks: Vec<OiSubtask>,
+    /// Hydro 兼容的文件输入前缀；为空时使用 stdin/stdout。
+    #[serde(default)]
+    pub filename: Option<String>,
+    #[serde(default)]
+    pub compile_extra_files: Vec<String>,
+    /// 仅注入受信 checker 编译/运行沙箱；Hydro judge_extra_files 映射到这里。
+    #[serde(default)]
+    pub checker_extra_files: Vec<String>,
+    #[serde(default)]
+    pub user_extra_files: Vec<String>,
 }
 
 /// 可单独反序列化的 OI 任务视图，供执行器消费。
@@ -201,6 +247,29 @@ pub struct OiEvaluation {
     pub subtasks: Vec<OiSubtaskResult>,
 }
 
+/// 返回满足依赖关系的稳定拓扑顺序。声明顺序只用于打破同层并列关系，
+/// 因此题包可以先声明高阶子任务，再在 `depends_on` 中引用前置子任务。
+pub(crate) fn subtask_execution_order(config: &OiRuntimeConfig) -> Result<Vec<usize>, String> {
+    let mut pending: Vec<usize> = (0..config.subtasks.len()).collect();
+    let mut scheduled = HashSet::new();
+    let mut order = Vec::with_capacity(pending.len());
+    while !pending.is_empty() {
+        let next = pending.iter().position(|&index| {
+            config.subtasks[index]
+                .depends_on
+                .iter()
+                .all(|dependency| scheduled.contains(dependency.as_str()))
+        });
+        let Some(position) = next else {
+            return Err("子任务依赖存在环".to_string());
+        };
+        let index = pending.remove(position);
+        scheduled.insert(config.subtasks[index].id.as_str());
+        order.push(index);
+    }
+    Ok(order)
+}
+
 impl OiEvaluation {
     /// 转为现有 MQ 结果封套，细分状态与测试点保存在 details 中。
     pub fn to_judge_result(
@@ -222,11 +291,13 @@ impl OiEvaluation {
             score: self.score,
             output: String::new(),
             details: json!({
+                "oi_status": verdict,
+                "subtasks": &self.subtasks,
                 "oi": {
                     "verdict": verdict,
                     "score": self.score,
                     "max_score": 10000,
-                    "subtasks": self.subtasks,
+                    "subtasks": &self.subtasks,
                 }
             }),
             time_ms,
@@ -246,24 +317,26 @@ pub fn score_submission(
     }
     let mut known_subtasks = HashSet::new();
     let mut known_inputs = HashSet::new();
-    let mut total_points = 0_u32;
+    let mut total_points = 0.0_f64;
     for subtask in &config.subtasks {
         if subtask.id.is_empty() || !known_subtasks.insert(subtask.id.as_str()) {
             return Err(format!("重复或为空的子任务 ID: {}", subtask.id));
         }
-        if subtask.score == 0 || subtask.cases.is_empty() {
+        if !subtask.score.is_finite()
+            || subtask.score <= 0.0
+            || (subtask.score * 100.0 - (subtask.score * 100.0).round()).abs() > 1e-6
+            || subtask.cases.is_empty()
+        {
             return Err(format!("子任务 {} 的分数或测试点无效", subtask.id));
         }
-        total_points = total_points
-            .checked_add(subtask.score)
-            .ok_or_else(|| "子任务分数溢出".to_string())?;
+        total_points += subtask.score;
         for case in &subtask.cases {
             if case.input.is_empty() || !known_inputs.insert(case.input.as_str()) {
                 return Err(format!("重复或为空的测试点输入: {}", case.input));
             }
         }
     }
-    if total_points != 100 {
+    if (total_points - 100.0).abs() > 1e-6 {
         return Err(format!("子任务总分必须为 100，当前为 {total_points}"));
     }
     for subtask in &config.subtasks {
@@ -278,23 +351,7 @@ pub fn score_submission(
         }
     }
 
-    let mut pending: Vec<usize> = (0..config.subtasks.len()).collect();
-    let mut scheduled = HashSet::new();
-    let mut order = Vec::with_capacity(pending.len());
-    while !pending.is_empty() {
-        let next = pending.iter().position(|&index| {
-            config.subtasks[index]
-                .depends_on
-                .iter()
-                .all(|dependency| scheduled.contains(dependency.as_str()))
-        });
-        let Some(position) = next else {
-            return Err("子任务依赖存在环".to_string());
-        };
-        let index = pending.remove(position);
-        scheduled.insert(config.subtasks[index].id.as_str());
-        order.push(index);
-    }
+    let order = subtask_execution_order(config)?;
 
     let mut results = HashMap::new();
     for result in case_results {
@@ -327,12 +384,27 @@ pub fn score_submission(
         }
         let mut cases = Vec::with_capacity(subtask.cases.len());
         let mut subtask_status = OiStatus::Accepted;
+        let mut failure_seen = false;
         for case in &subtask.cases {
+            if failure_seen {
+                cases.push(OiCaseResult {
+                    case_id: Some(case.input.clone()),
+                    input: case.input.clone(),
+                    status: OiStatus::Ignored,
+                    time_ms: None,
+                    memory_kb: None,
+                    cpu_time_ms: None,
+                    wall_time_ms: None,
+                    equivalent_time_ms: None,
+                });
+                continue;
+            }
             let result = results
                 .get(case.input.as_str())
                 .ok_or_else(|| format!("缺少测试点结果: {}", case.input))?;
             if subtask_status == OiStatus::Accepted && result.status != OiStatus::Accepted {
                 subtask_status = result.status;
+                failure_seen = true;
                 if status == OiStatus::Accepted {
                     status = result.status;
                 }
@@ -341,7 +413,7 @@ pub fn score_submission(
         }
         let subtask_score = if subtask_status == OiStatus::Accepted {
             passed.insert(subtask.id.as_str());
-            (subtask.score as i32) * 100
+            (subtask.score * 100.0).round() as i32
         } else {
             0
         };

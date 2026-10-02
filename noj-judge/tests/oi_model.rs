@@ -1,11 +1,13 @@
-use noj_judge::oi::{score_submission, OiCaseResult, OiJudgeTask, OiRuntimeConfig, OiStatus};
+use noj_judge::oi::{
+    score_submission, OiCase, OiCaseResult, OiJudgeTask, OiRuntimeConfig, OiStatus,
+};
 use noj_judge::types::JudgeTask;
 use serde_json::json;
 
 fn config() -> OiRuntimeConfig {
     serde_json::from_value(json!({
         "backend": "native",
-        "languages": ["c", "cpp"],
+        "languages": ["c", "cc"],
         "time_limit_ms": 1000,
         "memory_limit_mb": 256,
         "checker": { "type": "default" },
@@ -39,12 +41,12 @@ fn case(input: &str, status: OiStatus) -> OiCaseResult {
 fn oi_task_uses_runtime_config_and_cpp_source() {
     let wire = json!({
         "submission_id": "s1", "problem_id": "p1", "user_id": "u1",
-        "judge_type": "oi", "language": "cpp", "code": "int main() {}",
+        "judge_type": "oi", "language": "cc", "code": "int main() {}",
         "runtime_config": config(), "download_url": "noj-download://base64/?content=abc"
     });
     let task: OiJudgeTask = serde_json::from_value(wire.clone()).unwrap();
     assert_eq!(task.judge_type, "oi");
-    assert_eq!(task.language, "cpp");
+    assert_eq!(task.language, "cc");
     assert_eq!(task.runtime_config.subtasks.len(), 2);
     assert_eq!(
         task.runtime_config.subtasks[1].cases[0].time_limit_ms,
@@ -92,6 +94,28 @@ fn failed_case_zeroes_entire_subtask_and_ignores_dependent() {
     assert_eq!(result.subtasks[0].status, OiStatus::WrongAnswer);
     assert_eq!(result.subtasks[1].score, 0);
     assert_eq!(result.subtasks[1].status, OiStatus::Ignored);
+}
+
+#[test]
+fn cases_after_first_failure_are_ignored_without_execution_results() {
+    let mut config = config();
+    config.subtasks[0].cases.push(OiCase {
+        input: "tests/4.in".to_string(),
+        output: "tests/4.out".to_string(),
+        time_limit_ms: None,
+        memory_limit_mb: None,
+    });
+    let result = score_submission(
+        &config,
+        &[
+            case("tests/1.in", OiStatus::Accepted),
+            case("tests/2.in", OiStatus::WrongAnswer),
+            case("tests/3.in", OiStatus::Accepted),
+        ],
+    )
+    .unwrap();
+    assert_eq!(result.subtasks[0].cases[2].status, OiStatus::Ignored);
+    assert_eq!(result.subtasks[0].score, 0);
 }
 
 #[test]

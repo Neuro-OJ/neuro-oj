@@ -101,18 +101,33 @@ noj-cli judge install-env      # 检查依赖并输出 rootless 准备指引
 noj-cli judge install          # 首次配置并启动独立 Judge
 noj-cli judge check            # 配置 / Redis / 专用 socket / 镜像架构
 noj-cli judge status | logs | stop | start | upgrade
+noj-cli judge calibrate --input benchmark.json --output oi-cost-profile.json \
+  --measurement-verified
 ```
+
+`judge calibrate` 在当前评测节点上读取真实 C/C++/WASM
+基准样本，拟合非负整数成本表， 并用独立留出集生成 P95
+与类别中位相对误差报告。只有明确提供 `--measurement-verified`
+且误差满足平台阈值的报告才能在管理后台启用；报告中的运行时、
+工具链、硬件标识、基准集和 SHA-256 摘要会随配置保存。校准特征必须对应 Wasmtime
+49 的变量成本字段，输出使用同一 等效 fuel
+单位（`fuel_per_ms=1`），不能提交运行时不会读取的自定义字段。比赛进行
+期间不能切换活动成本表。
 
 ## 题目包管理
 
 ```bash
-noj-cli problem init <slug> [--type P|U] [--difficulty easy|medium|hard]
+noj-cli problem init <slug> [--type P|U] [--judge-type dual|oi] \
+  [--difficulty easy|medium|hard]
 noj-cli problem lint <目录>
 noj-cli problem pack <目录> --out <目录>
 ```
 
 `problem init` 在 TTY 下进入交互引导（含校验与回退，输入 `:b` 退回上一步）； 非
 TTY 或 `--no-interactive` 需显式给出参数。
+
+`--judge-type oi` 会生成 C99/C++11 传统 OI 题包骨架（`testdata/`、default
+checker 与子任务配置），不生成双容器题所需的 `evaluate.py`。
 
 ## 开发与验证
 

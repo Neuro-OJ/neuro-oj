@@ -208,6 +208,7 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
     }
     referenced.push(
       ...(config.compile_extra_files ?? []),
+      ...(config.checker_extra_files ?? []),
       ...(config.user_extra_files ?? []),
     );
     for (const path of referenced) {

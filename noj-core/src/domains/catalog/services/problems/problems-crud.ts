@@ -483,6 +483,19 @@ export async function updateProblem(
     }
   }
 
+  // OI 题始终只接受源码提交；即使本次只修改提交模式/产物上限、没有同时
+  // 传 runtime_config，也必须沿用同一条边界，避免把现有 OI 题切成 artifact。
+  const effectiveRuntimeForSubmission = (input.runtime_config ??
+    problem.runtime_config) as ProblemRuntimeConfig | null;
+  if (
+    !isObjective && isOiRuntimeConfig(effectiveRuntimeForSubmission) &&
+    (input.submission_mode === "artifact" ||
+      (input.artifact_max_size_mb !== undefined &&
+        input.artifact_max_size_mb !== null))
+  ) {
+    throw new BadRequestError("OI 题仅支持 code 提交，不支持 artifact 配置");
+  }
+
   // LLM 配置变更校验：仅 P 型/官方题可启用，且必须保持 evaluator 网络开启。
   let llmConfig: LlmConfig | null | undefined;
   if (input.llm !== undefined) {
@@ -551,10 +564,11 @@ export async function updateProblem(
     }
   }
   if (isObjective) {
-    // 客观题套卷：runtime_config 恒为 NULL（无评测容器），忽略写入
-    if (input.runtime_config !== undefined) {
-      updates.runtime_config = null;
-    }
+    // 客观题套卷没有评测容器；切换类型时也要清理旧的运行配置，避免
+    // 题目列标记为 objective/dual 而残留一份可执行的 OI 或双容器配置。
+    updates.runtime_config = null;
+    // 客观题没有 OI/双容器执行器；无论原题模式为何，数据库列也必须归一为 dual。
+    updates.judge_type = "dual";
   } else if (input.runtime_config !== undefined) {
     updates.runtime_config = input.runtime_config;
     updates.judge_type = judgeTypeForRuntimeConfig(input.runtime_config);

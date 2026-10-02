@@ -19,9 +19,19 @@ fn fixture_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../noj-tests/fixtures/judge-task.contract.json")
 }
 
+fn oi_fixture_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../noj-tests/fixtures/judge-task-oi.contract.json")
+}
+
 fn load_fixture() -> Value {
     let raw = fs::read_to_string(fixture_path()).expect("读取契约 fixture 失败");
     serde_json::from_str(&raw).expect("fixture 不是合法 JSON")
+}
+
+fn load_oi_fixture() -> Value {
+    let raw = fs::read_to_string(oi_fixture_path()).expect("读取 OI 契约 fixture 失败");
+    serde_json::from_str(&raw).expect("OI fixture 不是合法 JSON")
 }
 
 #[test]
@@ -100,4 +110,23 @@ fn judge_task_contract_rejects_missing_required_field() {
     object.remove("runtime_config");
     let err = serde_json::from_value::<JudgeTask>(Value::Object(object));
     assert!(err.is_err(), "缺少 runtime_config 时必须反序列化失败");
+}
+
+#[test]
+fn oi_judge_task_contract_deserializes_trusted_cost_profile() {
+    let value = load_oi_fixture();
+    let task: JudgeTask = serde_json::from_value(value).expect("OI fixture 必须可反序列化");
+    assert_eq!(task.judge_type, "oi");
+    assert_eq!(task.language, "cc");
+    assert!(task.runtime_config.as_oi().is_some());
+    assert_eq!(
+        task.oi_cost_profile
+            .as_ref()
+            .map(|p| p.runtime_version.as_str()),
+        Some("wasmtime-49")
+    );
+    assert_eq!(
+        task.oi_cost_profile.as_ref().map(|p| p.hash.len()),
+        Some(64)
+    );
 }

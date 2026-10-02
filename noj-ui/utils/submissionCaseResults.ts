@@ -24,7 +24,9 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function asString(value: unknown): string | null {
   if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
   return null;
 }
 
@@ -35,7 +37,9 @@ function asNonNegativeNumber(value: unknown): number | null {
 function resolveStatus(raw: Record<string, unknown>): string | null {
   const status = asString(raw.status);
   if (status) return status;
-  if (typeof raw.content_ok === 'boolean') return raw.content_ok ? 'Accepted' : 'WrongAnswer';
+  if (typeof raw.content_ok === 'boolean') {
+    return raw.content_ok ? 'Accepted' : 'WrongAnswer';
+  }
   return null;
 }
 
@@ -82,12 +86,27 @@ function normalizeArray(
 }
 
 /** 将标准或历史评测详情转换为可安全展示的测试点数组。 */
-export function normalizeSubmissionCases(details: unknown): SubmissionCaseResult[] {
+export function normalizeSubmissionCases(
+  details: unknown,
+): SubmissionCaseResult[] {
   const record = asRecord(details);
   if (!record) return [];
 
   if (Array.isArray(record.cases)) {
     return normalizeArray(record.cases);
+  }
+
+  // 传统 OI 结果按子任务组织；这里仅读取公开的 case_id/input（题包相对路径）
+  // 与资源统计，不尝试展示输入、标准答案或 checker 诊断。
+  const oi = asRecord(record.oi);
+  if (Array.isArray(oi?.subtasks)) {
+    const cases: SubmissionCaseResult[] = [];
+    for (const rawSubtask of oi.subtasks) {
+      const subtask = asRecord(rawSubtask);
+      if (!subtask || !Array.isArray(subtask.cases)) continue;
+      cases.push(...normalizeArray(subtask.cases, 'hidden'));
+    }
+    if (cases.length > 0) return cases;
   }
 
   const visible = asRecord(record.visible);
@@ -100,5 +119,7 @@ export function normalizeSubmissionCases(details: unknown): SubmissionCaseResult
 
 /** 判断测试点是否通过，兼容评测器常见的状态命名。 */
 export function isSubmissionCasePassed(status: string): boolean {
-  return ['accepted', 'pass', 'passed', 'ok', 'correct'].includes(status.toLowerCase());
+  return ['accepted', 'ac', 'pass', 'passed', 'ok', 'correct'].includes(
+    status.toLowerCase(),
+  );
 }

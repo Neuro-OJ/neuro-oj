@@ -12,10 +12,12 @@ Neuro OJ 保留面向 AI 题目的 Python 双容器模式，同时提供传统 O
 `judge_type: "oi"` 模式。两种模式共享提交队列与结果协议，但不共享题目运行配置：
 
 - `dual`：Evaluator + Solution 双容器，面向 Python/LLM 题；
-- `oi`：固定 `noj-oi-cpp` 镜像执行 C/C++，题包只在 worker 侧读取输入与标准答案。
+- `oi`：固定 C/C++ 工具链执行，题包只在 worker 侧读取输入与标准答案；原生后端生产环境
+  经受控的 `go-judge` 节点编译/运行，WASM 后端由 Rust Wasmtime 执行。
 
-OI 的 `backend: "native"` 已接入 Docker 执行器；`backend: "wasm"` 和 `testlib`
-checker 会返回明确的 `SE`，在对应可信运行时接入前不会退化成不受控的宿主执行。
+OI 的 `backend` 按题目固定，不会在 native 与 WASM 之间静默回退。native 没有配置
+`JUDGE_GO_JUDGE_URL` 时只保留本地 Docker 兼容路径，便于开发和离线测试；testlib
+checker 在独立的受信 checker sandbox 中编译和运行。
 
 ---
 
@@ -58,7 +60,7 @@ flowchart TD
 | **`noj-evaluator-python`** | Evaluator 容器 | 包含出题人 SDK（`noj_evaluator_sdk`）、标准测试工具库与 HTTP 客户端，用于运行 `evaluate.py`                        |
 | **`noj-solution-python`**  | Solution 容器  | 轻量级 Python 运行时，内置 `noj_solution_sdk.host` 协议服务，适用于绝大多数标准算法与客观推理题                    |
 | **`noj-solution-ai`**      | Solution 容器  | **数据科学与机器学习专享沙箱**。预装 CPU 版 PyTorch、NumPy、Pandas、Scikit-learn、OpenCV 与 SciPy 等科学计算全家桶 |
-| **`noj-oi-cpp`**           | OI 容器        | GCC/G++ C17/C++20 编译器；每个测试点使用一次性非 root、无网络容器 |
+| **`noj-oi-cpp`**           | OI 容器        | GCC/G++ C99/C++11 编译器；每个测试点使用一次性非 root、无网络容器 |
 
 ## OI 题包配置
 
@@ -72,7 +74,7 @@ OI 题包的 `problem.json` 使用以下核心字段；`subtasks` 分数总和�
   "judge_type": "oi",
   "runtime_config": {
     "backend": "native",
-    "languages": ["c", "cpp"],
+    "languages": ["c", "cc"],
     "time_limit_ms": 1000,
     "memory_limit_mb": 256,
     "checker": {"type": "default"},
@@ -85,9 +87,20 @@ OI 题包的 `problem.json` 使用以下核心字段；`subtasks` 分数总和�
 }
 ```
 
-`default` checker 按 token 比较，`strict` 按字节比较。输入、输出和 checker 路径会在
-题包导入时做路径穿越与存在性校验；题目版本不单独保存，重测时读取题目的最新配置
-和支持包。
+`default` checker 按 Hydro 兼容的 token 比较，`strict` 按字节比较，`testlib` 使用
+题包中的受信 checker 源码并在隔离 checker sandbox 中以
+`checker input output answer` 参数运行。输入、输出和 checker 路径会在题包导入时
+做路径穿越与存在性校验；题目版本不单独保存，重测时读取题目的最新配置和支持包。
+题包辅助文件分为 `user_extra_files`（选手编译/运行可见）、`compile_extra_files`
+（用户与 checker 编译可见）和 `checker_extra_files`（仅 checker sandbox 可见）；导入
+Hydro 题包时，`user_extra_files` 与 `judge_extra_files` 分别保留在对应的用户和 checker
+范围。
+
+WASM 任务使用活动 OI 成本表把 `floor(time_limit_ms * fuel_per_ms)` 转成 Wasmtime
+fuel 预算，并同时记录等效耗时、执行线程 CPU 时间和墙钟时间。校准特征严格对应
+Wasmtime 49 的变量成本字段，当前导出的等效 fuel 单位固定为 `fuel_per_ms=1`，确保
+留出集验证和运行时实际使用同一套成本。成本表由管理员通过 `noj-cli judge calibrate`
+生成，必须通过独立留出集验证后才能启用；比赛进行期间不能切换。
 
 ---
 
@@ -110,5 +123,5 @@ OI 题包的 `problem.json` 使用以下核心字段；`subtasks` 分数总和�
 | 异常现象                              | 核心根因定位                                                                 | 权威解决方案                                                                                               |
 | ------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | 提交立即显示 **`error`**，无评测日志  | 题目配置的 Docker 镜像未在宿主机预先拉取，或未被录入 `judge_images` 白名单表 | 在评测宿主机执行 `bash scripts/build-sdk-images.sh` 构建基础镜像，并核实题目 `runtime_config` 镜像名称拼写 |
-| OI 提交显示 `SE`                       | Worker 未安装 `JUDGE_OI_IMAGE` 指定的 `noj-oi-cpp` 镜像，或使用了暂未启用的 WASM/testlib | 构建并预加载 OI 镜像；当前 worker 只接受 native + default/strict checker |
+| OI 提交显示 `SE`                       | Worker 未安装固定工具链/镜像、go-judge 或 checker sandbox 返回系统错误，或 WASM 成本表无效 | 检查 `JUDGE_OI_IMAGE`、`JUDGE_GO_JUDGE_URL`、WASI 工具链和活动成本表摘要；不要把题目命令或镜像写入提交消息 |
 | 导入 `torch` 报 `ModuleNotFoundError` | 题目未配置使用 AI 专用镜像                                                   | 出题人在题目配置中将 Solution 镜像切换为 `noj-solution-ai`                                                 |

@@ -56,6 +56,22 @@ function resource(
   if (factor === undefined) throw new BadRequestError("资源单位非法");
   return Number(match[1]) * factor;
 }
+
+/** 将 Hydro sum 子任务按百分之一分值拆开，并把舍入余数稳定地放到前几个点。 */
+function splitHydroScore(score: number, count: number): number[] {
+  const cents = Math.round(score * 100);
+  const base = Math.floor(cents / count);
+  const remainder = cents % count;
+  if (base < 1) {
+    throw new BadRequestError(
+      "Hydro sum 子任务分值过小，无法在保留两位小数的 OI 分值中分配给所有测试点",
+    );
+  }
+  return Array.from(
+    { length: count },
+    (_, index) => (base + (index < remainder ? 1 : 0)) / 100,
+  );
+}
 /** NOJ 的 OI YAML 配置填入批准的默认值，然后执行与 CRUD 相同的验证。 */
 export function normalizeNojOiConfig(value: unknown): OiRuntimeConfig {
   const raw = object(value);
@@ -100,7 +116,10 @@ export function normalizeHydroOiConfig(
     if (typeof v !== "string" || !v) {
       throw new BadRequestError("Hydro 文件引用必须是字符串");
     }
-    return `testdata/${v}`;
+    const normalized = v.replace(/^\.\//, "");
+    return normalized.startsWith("testdata/")
+      ? normalized
+      : `testdata/${normalized}`;
   };
   let subtasks = raw.subtasks;
   if (subtasks === undefined) {
@@ -120,6 +139,15 @@ export function normalizeHydroOiConfig(
   if (ids.size !== groups.length) {
     throw new BadRequestError("Hydro 子任务 id 重复");
   }
+  const scorePresence = groups.map((group) => group.score !== undefined);
+  if (scorePresence.some(Boolean) && !scorePresence.every(Boolean)) {
+    throw new BadRequestError(
+      "Hydro 子任务必须全部指定 score，或全部省略 score",
+    );
+  }
+  const groupScores = scorePresence.every(Boolean)
+    ? groups.map((group) => group.score)
+    : splitHydroScore(100, groups.length);
   const config: OiRuntimeConfig = {
     backend: "native",
     languages: ["c", "cc"],
@@ -132,13 +160,28 @@ export function normalizeHydroOiConfig(
     subtasks: [],
   };
   if (raw.filename !== undefined) config.filename = raw.filename as string;
-  if (raw.checker !== undefined) config.checker.path = prefix(raw.checker);
-  for (const key of ["compile_extra_files", "user_extra_files"] as const) {
-    if (raw[key] !== undefined) {
-      if (!Array.isArray(raw[key])) {
-        throw new BadRequestError(`${key} 必须是数组`);
+  if (raw.checker !== undefined) {
+    const checker = typeof raw.checker === "string"
+      ? raw.checker
+      : object(raw.checker).file;
+    config.checker.path = prefix(checker);
+  }
+  const extraFileAliases: Array<[keyof OiRuntimeConfig, string[]]> = [
+    ["compile_extra_files", ["compile_extra_files"]],
+    ["checker_extra_files", ["checker_extra_files", "judge_extra_files"]],
+    ["user_extra_files", ["user_extra_files"]],
+  ];
+  for (const [key, aliases] of extraFileAliases) {
+    const sourceKey = aliases.find((candidate) => raw[candidate] !== undefined);
+    if (sourceKey !== undefined) {
+      if (!Array.isArray(raw[sourceKey])) {
+        throw new BadRequestError(`${sourceKey} 必须是数组`);
       }
-      config[key] = raw[key].map(prefix);
+      const files = (raw[sourceKey] as unknown[]).map(prefix);
+      if (key === "compile_extra_files") config.compile_extra_files = files;
+      else if (key === "checker_extra_files") {
+        config.checker_extra_files = files;
+      } else config.user_extra_files = files;
     }
   }
   for (const [index, group] of groups.entries()) {
@@ -150,7 +193,7 @@ export function normalizeHydroOiConfig(
     if (scoring !== "min" && scoring !== "sum") {
       throw new BadRequestError("Hydro 子任务仅支持 min/sum");
     }
-    const score = group.score ?? (100 / groups.length);
+    const score = groupScores[index];
     if (typeof score !== "number" || !Number.isFinite(score) || score <= 0) {
       throw new BadRequestError("Hydro 分值非法");
     }
@@ -179,10 +222,11 @@ export function normalizeHydroOiConfig(
       };
     });
     if (scoring === "sum") {
+      const caseScores = splitHydroScore(score, cases.length);
       for (const [caseIndex, c] of cases.entries()) {
         config.subtasks.push({
           id: `${id}_${caseIndex + 1}`,
-          score: score / cases.length,
+          score: caseScores[caseIndex],
           cases: [c],
         });
       }

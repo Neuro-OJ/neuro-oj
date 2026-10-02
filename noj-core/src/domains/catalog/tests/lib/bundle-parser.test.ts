@@ -279,3 +279,78 @@ Deno.test("parseBundleZip: Hydro普通题YAML与sum子任务转换", () => {
   assertEquals(rc.languages, ["c", "cc"]);
   assertEquals(rc.subtasks[0].cases[0].input, "testdata/1.in");
 });
+
+Deno.test("parseBundleZip: Hydro sum 多测试点按百分之一分值稳定拆分", () => {
+  const parsed = parseBundleZip(makeZip({
+    "problem.yaml": "title: A+B\n",
+    "problem.md": "# A+B",
+    "testdata/config.yaml":
+      "type: default\nsubtasks:\n  - id: all\n    type: sum\n    score: 100\n    cases:\n      - input: 1.in\n        output: 1.out\n      - input: 2.in\n        output: 2.out\n      - input: 3.in\n        output: 3.out\n",
+    "testdata/1.in": "1",
+    "testdata/1.out": "1",
+    "testdata/2.in": "2",
+    "testdata/2.out": "2",
+    "testdata/3.in": "3",
+    "testdata/3.out": "3",
+  }));
+  const subtasks = (parsed.manifest.runtime_config as {
+    subtasks: { score: number }[];
+  }).subtasks;
+  assertEquals(subtasks.map((subtask) => subtask.score), [33.34, 33.33, 33.33]);
+});
+
+Deno.test("parseBundleZip: Hydro 未指定 min 分值时也按百分之一稳定分配", () => {
+  const parsed = parseBundleZip(makeZip({
+    "problem.yaml": "title: A+B\n",
+    "problem.md": "# A+B",
+    "testdata/config.yaml":
+      "type: default\nsubtasks:\n  - id: 1\n    cases:\n      - input: 1.in\n        output: 1.out\n  - id: 2\n    cases:\n      - input: 2.in\n        output: 2.out\n  - id: 3\n    cases:\n      - input: 3.in\n        output: 3.out\n",
+    "testdata/1.in": "1",
+    "testdata/1.out": "1",
+    "testdata/2.in": "2",
+    "testdata/2.out": "2",
+    "testdata/3.in": "3",
+    "testdata/3.out": "3",
+  }));
+  const subtasks = (parsed.manifest.runtime_config as {
+    subtasks: { score: number }[];
+  }).subtasks;
+  assertEquals(subtasks.map((subtask) => subtask.score), [33.34, 33.33, 33.33]);
+});
+
+Deno.test("parseBundleZip: Hydro checker对象、额外文件和testdata前缀保持兼容", () => {
+  const parsed = parseBundleZip(makeZip({
+    "problem.yaml": "title: A+B\n",
+    "problem.md": "# A+B",
+    "testdata/config.yaml":
+      "type: default\nchecker_type: testlib\nchecker:\n  file: ./chk.cc\njudge_extra_files:\n  - ./helper.h\nuser_extra_files:\n  - testdata/user.h\nsubtasks:\n  - id: 1\n    score: 100\n    cases:\n      - input: testdata/1.in\n        output: ./1.out\n",
+    "testdata/chk.cc": "int main() { return 0; }",
+    "testdata/helper.h": "#define HELPER 1",
+    "testdata/user.h": "#define USER 1",
+    "testdata/1.in": "1 2",
+    "testdata/1.out": "3",
+  }));
+  const rc = parsed.manifest.runtime_config as {
+    checker: { path?: string };
+    compile_extra_files?: string[];
+    checker_extra_files?: string[];
+    user_extra_files?: string[];
+    subtasks: {
+      cases: {
+        input: string;
+        output: string;
+        time_limit_ms?: number;
+        memory_limit_mb?: number;
+      }[];
+    }[];
+  };
+  assertEquals(rc.checker.path, "testdata/chk.cc");
+  assertEquals(rc.checker_extra_files, ["testdata/helper.h"]);
+  assertEquals(rc.user_extra_files, ["testdata/user.h"]);
+  assertEquals(rc.subtasks[0].cases[0], {
+    input: "testdata/1.in",
+    time_limit_ms: 1000,
+    memory_limit_mb: 256,
+    output: "testdata/1.out",
+  });
+});

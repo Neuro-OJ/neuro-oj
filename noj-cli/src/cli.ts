@@ -53,6 +53,7 @@ import { CONTAINER_COMMANDS, parseContainerCommand } from "./container.ts";
 import { runDrill } from "./prod/drill/drill.ts";
 import { readEnvValues } from "./prod/drill/plan.ts";
 import { createLocalRedis } from "./prod/judge/config.ts";
+import { calibrateFromFile } from "./prod/judge/calibrate.ts";
 import { PROD_ENV_FILE } from "./prod/compose.ts";
 import { realRunner } from "./runtime/command.ts";
 import { parseProblemArgs, runProblem } from "./problem/command.ts";
@@ -887,6 +888,10 @@ async function dispatchProduction(
   const parsed = parseProdArgs(args);
   let dir: string;
   try {
+    // 校准只读取输入 JSON 并写出报告，不依赖生产安装目录；允许在评测节点
+    // 尚未安装 NOJ 时先完成硬件计量。其它 judge 子命令仍按安装目录校验。
+    const standaloneCalibration = command === "judge" &&
+      positionals(args)[0] === "calibrate";
     // **`install` 是唯一允许目标目录不存在/为空的命令**（评审发现的 R4 阻塞）：
     // 首次安装的定义就是"往一个空目录里装东西"，而 `findProductionDir` 要求
     // 目录**已经**含两个生产标记——用它当 `install` 的入口等于"必须先装好才能装"。
@@ -902,7 +907,9 @@ async function dispatchProduction(
     // 要求"完整生产安装目录"等于让文档承诺的入口**永远无法执行**
     // （实测：两者都报"不是完整的 NOJ 生产安装目录"）。
     const allowsFreshDir = command === "install" || command === "judge";
-    dir = allowsFreshDir && parsed.dir !== undefined
+    dir = standaloneCalibration
+      ? resolve(ctx.cwd, parsed.dir ?? ".")
+      : allowsFreshDir && parsed.dir !== undefined
       ? resolve(ctx.cwd, parsed.dir)
       : await findProductionDir(parsed.dir, ctx.cwd);
   } catch (e) {
@@ -1044,6 +1051,34 @@ async function dispatchProdJudge(
   };
 
   switch (sub) {
+    case "calibrate": {
+      const input = flagValue(rest, "--input");
+      const output = flagValue(rest, "--output");
+      if (!input || !output) {
+        throw new UsageError(
+          "judge calibrate 必须提供 --input <samples.json> 与 --output <profile.json>",
+        );
+      }
+      const profile = await calibrateFromFile(input, output, {
+        measurementVerified: hasFlag(rest, "--measurement-verified"),
+        benchmark: flagValue(rest, "--benchmark"),
+      });
+      if (json) {
+        console.log(JSON.stringify({ output, profile }, null, 2));
+      } else {
+        say(
+          `✓ OI 成本表已生成：${output}（P95 ${
+            (profile.validation.p95_relative_error * 100).toFixed(2)
+          }%，` +
+            `类别中位 ${
+              (profile.validation.category_median_relative_error * 100).toFixed(
+                2,
+              )
+            }%）`,
+        );
+      }
+      return EXIT_OK;
+    }
     case "install-env": {
       const r = await judgeInstallEnv(base);
       say(r.message);
@@ -1486,6 +1521,9 @@ function renderProductionCommandHelp(command: string): string {
       "",
       "可选: --redis-mode local|existing、--redis-port、--redis-container、",
       "      --dry-run（零副作用预演）、--env-file、--compose-file",
+      "",
+      "judge calibrate: --input <samples.json> --output <profile.json>",
+      "  必须提供独立留出集，并显式传 --measurement-verified 才能启用",
     ]
     : [];
   const backupFlags = command === "backup"

@@ -1,6 +1,6 @@
 # Neuro OJ 传统 OI 评测实施计划
 
-Status: approved
+Status: implemented
 
 ## Global Constraints
 

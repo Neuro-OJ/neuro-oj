@@ -417,9 +417,10 @@ fn main() -> Result<()> {
                         // 持有全局并发槽位直到任务结束。
                         let _permit = permit;
 
-                        // 统一使用双容器模式（Evaluator + Solution）
+                        // 根据 judge_type 分发到双容器或传统 OI 执行器。
                         let result = match judge::runner::evaluate_with_cpu_limit(
                             docker,
+                            redis_client.clone(),
                             &task,
                             download_timeout,
                             cache_dir.clone(),
@@ -441,7 +442,7 @@ fn main() -> Result<()> {
                         {
                             Ok(r) => r,
                             Err(e) => {
-                                error!(submission_id = %task.submission_id, error = %e, "双容器评测失败");
+                                error!(submission_id = %task.submission_id, error = %e, "评测任务失败");
                                 types::JudgeResult::error(&task.submission_id, task.rejudge_seq)
                             }
                         };

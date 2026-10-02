@@ -52,3 +52,52 @@ Deno.test("OI: 用户不能注入成本表或windows绝对路径", () => {
     })
   );
 });
+Deno.test("OI: checker 额外文件不能泄露到测试数据或用户资源路径", () => {
+  assertThrows(() =>
+    validateOiRuntimeConfig({
+      ...base(),
+      checker_extra_files: ["1.in"],
+    })
+  );
+  assertThrows(() =>
+    validateOiRuntimeConfig({
+      ...base(),
+      checker_extra_files: ["helper.h"],
+      subtasks: [{
+        id: "all",
+        score: 100,
+        cases: [{ input: "1.in", output: "helper.h" }],
+      }],
+    })
+  );
+});
+
+Deno.test("OI: 测试点、checker 与 filename 生成文件不能互相覆盖", () => {
+  assertThrows(() =>
+    validateOiRuntimeConfig({
+      ...base(),
+      subtasks: [{
+        id: "all",
+        score: 100,
+        cases: [
+          { input: "1.in", output: "1.out" },
+          { input: "2.in", output: "1.out" },
+        ],
+      }],
+    })
+  );
+  assertThrows(() => validateOiRuntimeConfig({ ...base(), filename: "1" }));
+  assertThrows(() =>
+    validateOiRuntimeConfig({
+      ...base(),
+      checker: { type: "testlib", path: "1.out" },
+    })
+  );
+  assertThrows(() =>
+    validateOiRuntimeConfig({
+      ...base(),
+      filename: "answer",
+      user_extra_files: ["answer.out"],
+    })
+  );
+});

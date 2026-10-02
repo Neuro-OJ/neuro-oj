@@ -1,11 +1,9 @@
 import {
   isOiRuntimeConfig,
-  validateOiRuntimeConfig,
-} from "../../catalog/types/runtime-config.ts";
-import {
   isValidOiCostProfile,
   type OiCostProfile,
-} from "../../catalog/types/oi-cost-profile.ts";
+  validateOiRuntimeConfig,
+} from "../../catalog/index.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
   type JudgeType,
