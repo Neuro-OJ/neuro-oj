@@ -23,7 +23,10 @@ import { logAudit } from "../../../system/index.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
 import type { JudgeTaskLlm } from "../../types/index.ts";
 import { buildJudgeTask } from "../../types/index.ts";
-import type { RuntimeConfig } from "./../../../catalog/index.ts";
+import {
+  isOiRuntimeConfig,
+  type ProblemRuntimeConfig,
+} from "./../../../catalog/index.ts";
 import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
 import {
   Channels,
@@ -109,12 +112,14 @@ export async function rejudgeSubmission(id: string): Promise<void> {
   //
   // 前置后，解析失败不会产生任何状态变更，管理员补配后可直接重试。
   const runtimeConfig = problem.runtime_config as
-    | RuntimeConfig
+    | ProblemRuntimeConfig
     | null
     | undefined;
 
   let llmTask: JudgeTaskLlm | undefined;
-  if (problem.llm_config && runtimeConfig) {
+  if (
+    problem.llm_config && runtimeConfig && !isOiRuntimeConfig(runtimeConfig)
+  ) {
     llmTask = await buildJudgeTaskLlm(
       problem.llm_config,
       id,
@@ -351,8 +356,12 @@ export async function rejudgeProblemSubmissions(
   for (const sub of rejudgeRows) {
     try {
       let llmTask: JudgeTaskLlm | undefined;
-      const runtimeConfig = problem.runtime_config as RuntimeConfig | null;
-      if (problem.llm_config && runtimeConfig) {
+      const runtimeConfig = problem.runtime_config as
+        | ProblemRuntimeConfig
+        | null;
+      if (
+        problem.llm_config && runtimeConfig && !isOiRuntimeConfig(runtimeConfig)
+      ) {
         llmTask = await buildJudgeTaskLlm(
           problem.llm_config,
           sub.id,

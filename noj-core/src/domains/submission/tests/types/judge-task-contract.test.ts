@@ -102,6 +102,7 @@ Deno.test("JudgeTask 契约: 可选字段缺省时不写入消息体", () => {
     "code",
     "language",
     "priority",
+    "judge_type",
     "problem_id",
     "runtime_config",
     "submission_id",
@@ -131,5 +132,8 @@ Deno.test("JudgeTask 契约: 必填字段齐全时才构造（类型层面已强
       `${key} 必须是字符串`,
     );
   }
-  assert(typeof built.runtime_config.evaluator.image === "string");
+  assert(
+    "evaluator" in built.runtime_config &&
+      typeof built.runtime_config.evaluator.image === "string",
+  );
 });

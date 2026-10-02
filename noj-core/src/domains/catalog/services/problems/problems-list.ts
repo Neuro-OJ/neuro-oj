@@ -41,11 +41,12 @@ import {
   DIFFICULTIES,
   isValidDifficulty,
   isValidProblemType,
+  judgeTypeForRuntimeConfig,
   type LlmConfig,
   type ProblemListQuery,
   type ProblemResponseWithTags,
+  type ProblemRuntimeConfig,
   type ProblemTagRef,
-  type RuntimeConfig,
 } from "./../../types/problems.ts";
 import type {
   AdminProblemListResponse,
@@ -75,6 +76,7 @@ function toProblemResponse(
     type: row.type,
     visibility: row.visibility as "public" | "private",
     is_objective: row.is_objective,
+    judge_type: judgeTypeForRuntimeConfig(row.runtime_config),
     submission_mode: row.submission_mode as ProblemResponse["submission_mode"],
     artifact_max_size_mb: row.artifact_max_size_mb,
     display_id: `${row.type}${row.number}`,
@@ -90,7 +92,7 @@ function toProblemResponse(
   return {
     ...base,
     support_package_storage_url: row.support_package_storage_url,
-    runtime_config: row.runtime_config as RuntimeConfig,
+    runtime_config: row.runtime_config as ProblemRuntimeConfig,
     llm_config: row.llm_config as ProblemResponse["llm_config"],
   };
 }
@@ -403,7 +405,8 @@ export async function listAllProblems(
       title: r.title,
       difficulty: r.difficulty,
       support_package_storage_url: r.support_package_storage_url,
-      runtime_config: r.runtime_config as RuntimeConfig,
+      runtime_config: r.runtime_config as ProblemRuntimeConfig,
+      judge_type: judgeTypeForRuntimeConfig(r.runtime_config),
       llm_config: r.llm_config as LlmConfig | null,
       tags: tagMap.get(r.id) ?? [],
       created_at: r.created_at,

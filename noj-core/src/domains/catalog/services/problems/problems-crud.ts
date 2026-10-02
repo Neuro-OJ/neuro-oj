@@ -37,16 +37,18 @@ import { assertLlmLimitsWithinDefault } from "../../../gateway/index.ts";
 import {
   type CreateProblemInput,
   DIFFICULTIES,
+  isOiRuntimeConfig,
   isValidDifficulty,
   isValidLlmConfig,
   isValidProblemType,
   isValidSubmissionMode,
+  judgeTypeForRuntimeConfig,
   type LlmConfig,
   type ProblemResponseWithTags,
-  type RuntimeConfig,
+  type ProblemRuntimeConfig,
   type UpdateProblemInput,
 } from "./../../types/problems.ts";
-import { validateRuntimeConfig } from "./problems-types.ts";
+import { validateProblemRuntimeConfig } from "./problems-types.ts";
 import { syncProblemTags, validateProblemTagIds } from "./problems-tags.ts";
 import { getProblem } from "./problems-list.ts";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
@@ -130,19 +132,37 @@ export async function createProblem(
   } else if (
     input.runtime_config !== undefined && input.runtime_config !== null
   ) {
-    validateRuntimeConfig(input.runtime_config);
-    try {
-      await validateJudgeImageWithKind(
-        input.runtime_config.evaluator.image,
-        "evaluator",
+    validateProblemRuntimeConfig(input.runtime_config);
+    if (
+      input.judge_type !== undefined &&
+      input.judge_type !== judgeTypeForRuntimeConfig(input.runtime_config)
+    ) {
+      throw new BadRequestError(
+        "judge_type 必须与 runtime_config 的评测模式一致",
       );
-      await validateJudgeImageWithKind(
-        input.runtime_config.solution.image,
-        "solution",
-      );
-    } catch (err) {
-      logger.error("createProblem: runtime_config 镜像校验失败", { err });
-      throw err;
+    }
+    if (
+      isOiRuntimeConfig(input.runtime_config) &&
+      (input.submission_mode === "artifact" ||
+        (input.artifact_max_size_mb !== undefined &&
+          input.artifact_max_size_mb !== null))
+    ) {
+      throw new BadRequestError("OI 题仅支持 code 提交，不支持 artifact 配置");
+    }
+    if (!isOiRuntimeConfig(input.runtime_config)) {
+      try {
+        await validateJudgeImageWithKind(
+          input.runtime_config.evaluator.image,
+          "evaluator",
+        );
+        await validateJudgeImageWithKind(
+          input.runtime_config.solution.image,
+          "solution",
+        );
+      } catch (err) {
+        logger.error("createProblem: runtime_config 镜像校验失败", { err });
+        throw err;
+      }
     }
 
     // evaluator 联网权限与题目创建权限一致：U 型任意登录用户可开启，
@@ -151,13 +171,15 @@ export async function createProblem(
     // 开启联网的题目等于把外部网络能力交给出题人（出题人可信边界）。
     // issue #207：敏感字段权限检查（显式设置的字段）——默认放行（default
     // 角色默认授权），收紧后无权限者 403；资源限制字段受管理员全局上限约束。
-    await assertSensitiveFieldPermissions(
-      c,
-      userId,
-      userRole,
-      input.runtime_config,
-    );
-    enforceResourceLimits(input.runtime_config);
+    if (!isOiRuntimeConfig(input.runtime_config)) {
+      await assertSensitiveFieldPermissions(
+        c,
+        userId,
+        userRole,
+        input.runtime_config,
+      );
+      enforceResourceLimits(input.runtime_config);
+    }
   } else {
     logger.error("createProblem: runtime_config 缺失", {
       input: JSON.stringify(input),
@@ -179,7 +201,10 @@ export async function createProblem(
     }
     assertLlmLimitsWithinDefault(input.llm);
     const runtime = input.runtime_config;
-    if (!runtime || !runtime.evaluator.network?.enabled) {
+    if (
+      !runtime || isOiRuntimeConfig(runtime) ||
+      !runtime.evaluator.network?.enabled
+    ) {
       throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
     }
     llmConfig = input.llm;
@@ -400,30 +425,59 @@ export async function updateProblem(
   //   undefined → 不变；null → 拒绝（编程题 runtime_config 是必填字段）；object → 校验并写入
   //   客观题套卷（is_objective）：忽略 runtime_config（无评测容器）
   const isObjective = input.is_objective ?? problem.is_objective;
+  if (input.judge_type !== undefined) {
+    if (isObjective) {
+      if (input.judge_type !== "dual") {
+        throw new BadRequestError("客观题套卷仅允许 judge_type=dual");
+      }
+    } else {
+      const effectiveRuntime = input.runtime_config ?? problem.runtime_config;
+      if (
+        !effectiveRuntime ||
+        input.judge_type !== judgeTypeForRuntimeConfig(effectiveRuntime)
+      ) {
+        throw new BadRequestError(
+          "judge_type 必须与 runtime_config 的评测模式一致",
+        );
+      }
+    }
+  }
   if (!isObjective && input.runtime_config !== undefined) {
     if (input.runtime_config === null) {
       throw new BadRequestError("runtime_config 是必填字段，不可清空");
     }
-    validateRuntimeConfig(input.runtime_config);
-    await validateJudgeImageWithKind(
-      input.runtime_config.evaluator.image,
-      "evaluator",
-    );
-    await validateJudgeImageWithKind(
-      input.runtime_config.solution.image,
-      "solution",
-    );
+    validateProblemRuntimeConfig(input.runtime_config);
+    if (
+      isOiRuntimeConfig(input.runtime_config) &&
+      (input.submission_mode === "artifact" ||
+        (input.artifact_max_size_mb !== undefined &&
+          input.artifact_max_size_mb !== null))
+    ) {
+      throw new BadRequestError("OI 题仅支持 code 提交，不支持 artifact 配置");
+    }
+    if (!isOiRuntimeConfig(input.runtime_config)) {
+      await validateJudgeImageWithKind(
+        input.runtime_config.evaluator.image,
+        "evaluator",
+      );
+      await validateJudgeImageWithKind(
+        input.runtime_config.solution.image,
+        "solution",
+      );
+    }
 
     // evaluator 联网权限与题目编辑权限一致：U 型 owner/admin、P 型 admin
     // （上方权限检查已保证）。
     // issue #207：敏感字段权限检查 + 资源上限校验（与创建路径一致）
-    await assertSensitiveFieldPermissions(
-      c,
-      userId,
-      userRole,
-      input.runtime_config,
-    );
-    enforceResourceLimits(input.runtime_config);
+    if (!isOiRuntimeConfig(input.runtime_config)) {
+      await assertSensitiveFieldPermissions(
+        c,
+        userId,
+        userRole,
+        input.runtime_config,
+      );
+      enforceResourceLimits(input.runtime_config);
+    }
   }
 
   // LLM 配置变更校验：仅 P 型/官方题可启用，且必须保持 evaluator 网络开启。
@@ -443,9 +497,9 @@ export async function updateProblem(
       }
       assertLlmLimitsWithinDefault(input.llm);
       const effectiveRuntime = input.runtime_config ??
-        (problem.runtime_config as RuntimeConfig | null);
+        (problem.runtime_config as ProblemRuntimeConfig | null);
       if (
-        !effectiveRuntime ||
+        !effectiveRuntime || isOiRuntimeConfig(effectiveRuntime) ||
         !effectiveRuntime.evaluator.network?.enabled
       ) {
         throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
@@ -463,6 +517,7 @@ export async function updateProblem(
     } else if (
       input.runtime_config !== undefined &&
       input.runtime_config !== null &&
+      !isOiRuntimeConfig(input.runtime_config) &&
       !input.runtime_config.evaluator.network?.enabled
     ) {
       throw new BadRequestError("启用 LLM 的题目必须保持 evaluator 网络开启");
@@ -499,6 +554,11 @@ export async function updateProblem(
     }
   } else if (input.runtime_config !== undefined) {
     updates.runtime_config = input.runtime_config;
+    if (isOiRuntimeConfig(input.runtime_config)) {
+      // OI runner 只接受源码提交；切换模式时清理存量 artifact 配置。
+      updates.submission_mode = "code";
+      updates.artifact_max_size_mb = null;
+    }
   }
   if (llmConfig !== undefined) {
     updates.llm_config = llmConfig;

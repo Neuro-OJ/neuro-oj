@@ -63,7 +63,11 @@ import { getStorageProvider } from "./../../../system/index.ts";
 import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
 import { resolveJudgeTaskPriority } from "./judge-priority.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
-import type { LlmConfig, RuntimeConfig } from "./../../../catalog/index.ts";
+import {
+  isOiRuntimeConfig,
+  type LlmConfig,
+  type ProblemRuntimeConfig,
+} from "./../../../catalog/index.ts";
 import type { JudgeTaskLlm, SubmissionStatus } from "../../types/index.ts";
 import type { Context } from "hono";
 import { buildJudgeTask, LANGUAGE_EXT_MAP } from "../../types/index.ts";
@@ -408,7 +412,7 @@ export async function createSubmission(
   // ── 使用 runtime_config（双容器模式）──
   // 校验 evaluator/solution image + kind（spec §4 final gate）
   const runtimeConfig = problem.runtime_config as
-    | RuntimeConfig
+    | ProblemRuntimeConfig
     | null
     | undefined;
 
@@ -420,19 +424,33 @@ export async function createSubmission(
     );
   }
 
-  // 防御性 final gate：校验双容器镜像 + kind
-  await validateJudgeImageWithKind(
-    runtimeConfig.evaluator.image,
-    "evaluator",
-  );
-  await validateJudgeImageWithKind(
-    runtimeConfig.solution.image,
-    "solution",
-  );
+  if (isOiRuntimeConfig(runtimeConfig)) {
+    if (!runtimeConfig.languages.includes(input.language as "c" | "cpp")) {
+      throw new BadRequestError(
+        `该 OI 题目不支持语言: ${input.language}`,
+      );
+    }
+  } else {
+    if (input.language === "c" || input.language === "cpp") {
+      throw new BadRequestError("C/C++ 提交仅适用于 judge_type=oi 的题目");
+    }
+    // 防御性 final gate：校验双容器镜像 + kind
+    await validateJudgeImageWithKind(
+      runtimeConfig.evaluator.image,
+      "evaluator",
+    );
+    await validateJudgeImageWithKind(
+      runtimeConfig.solution.image,
+      "solution",
+    );
+  }
 
   let llmTask: JudgeTaskLlm | undefined;
   const llmConfig = problem.llm_config as LlmConfig | null;
   if (llmConfig) {
+    if (isOiRuntimeConfig(runtimeConfig)) {
+      throw new BadRequestError("OI 题目不支持 LLM 评测");
+    }
     llmTask = await buildJudgeTaskLlm(
       llmConfig,
       id,

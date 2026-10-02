@@ -132,6 +132,7 @@ cargo fmt
 | `JUDGE_CPU_LIMIT_MILLICORES`     | `1000`               | 每个评测容器 CPU 上限（1000m = 1 核，有效范围 100-16000）                                        |
 | `JUDGE_INSTANCE_ID`              | 确定性派生 `noj-{hash12}` | 实例标识（日志/claim 前缀/容器实例标签）。解析优先级：环境变量 → `WORK_DIR/.instance_id` → `auto:{canonical_work_dir}:{hostname}:{machine_id}` 派生并落盘；重启后保持不变。**注意**：`WORK_DIR` 是实例 ID 的持久化位置，多副本部署若共享同一 `WORK_DIR`（命名卷）必须为每个副本显式设置唯一 `JUDGE_INSTANCE_ID`，否则副本间实例标签冲突（启动清扫会回收彼此的在跑容器） |
 | `JUDGE_IMAGE_PREFIX`             | `noj-`               | 允许的评测镜像名前缀（启动期与调度期复验）                                                       |
+| `JUDGE_OI_IMAGE`                 | `noj-oi-cpp`         | OI C/C++ 固定编译/运行镜像；必须以 `JUDGE_IMAGE_PREFIX` 开头，不从题目消息读取                 |
 | `JUDGE_COMMAND_WHITELIST`        | `python3,deno,node,bash,sh` | 允许的命令可执行文件白名单（逗号分隔）                                                   |
 | `JUDGE_ALLOW_EVALUATOR_NETWORK`  | `false`              | 是否允许 Evaluator 容器联网（LLM 题需开启）                                                      |
 | `JUDGE_EVALUATOR_NETWORK`        | `noj-eval-net`       | Evaluator 联网时加入的 Docker 网络名；生产校验**禁止** `bridge`/`host`                            |

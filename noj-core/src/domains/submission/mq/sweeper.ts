@@ -25,7 +25,7 @@ import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "submission"]);
 import type { JudgeTaskPriority } from "../types/index.ts";
 import { buildJudgeTask } from "../types/index.ts";
-import type { RuntimeConfig } from "../../catalog/index.ts";
+import type { ProblemRuntimeConfig } from "../../catalog/index.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import { resolveJudgeTaskPriority } from "../services/submissions/judge-priority.ts";
 
@@ -235,7 +235,7 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
   source: "submission" | "self_test",
 ): Promise<void> {
   for (const row of rows) {
-    const runtimeConfig = row.runtime_config as RuntimeConfig | null;
+    const runtimeConfig = row.runtime_config as ProblemRuntimeConfig | null;
     if (!runtimeConfig) {
       await actions.onMissingRuntimeConfig(row);
       continue;

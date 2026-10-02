@@ -34,6 +34,7 @@ fn judge_task_contract_fixture_deserializes() {
     assert_eq!(task.problem_id, "22222222-2222-4222-8222-222222222222");
     assert_eq!(task.user_id, "33333333-3333-4333-8333-333333333333");
     assert_eq!(task.priority, "medium");
+    assert_eq!(task.judge_type, "dual");
     assert_eq!(task.language, "python3");
     assert_eq!(task.code, "print('hello')");
     assert_eq!(task.file_name.as_deref(), Some("main.py"));
@@ -41,7 +42,10 @@ fn judge_task_contract_fixture_deserializes() {
     assert!(task.download_url.is_some());
     assert!(task.artifact_download_url.is_some());
 
-    let runtime = &task.runtime_config;
+    let runtime = task
+        .runtime_config
+        .as_dual()
+        .expect("旧任务必须为双容器配置");
     assert_eq!(runtime.evaluator.image, "noj-evaluator-python");
     assert_eq!(runtime.evaluator.command, "python3 /workspace/evaluate.py");
     assert_eq!(runtime.evaluator.time_limit_ms, 5000);
@@ -66,6 +70,7 @@ fn judge_task_contract_has_no_unknown_fields() {
         "problem_id",
         "user_id",
         "priority",
+        "judge_type",
         "runtime_config",
         "download_url",
         "artifact_download_url",

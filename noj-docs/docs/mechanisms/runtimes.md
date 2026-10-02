@@ -8,10 +8,14 @@ AI 模型训练与算法评测提供安全、确定性的执行环境。
 
 ## 运行时架构与语言选型准则
 
-::: warning 平台决策：专注于 Python 生态评测
-当前 Neuro OJ 的双容器 Evaluator 与 Solution SDK 均为原生 Python 实现。前端代码编辑器的默认模板与语法高亮**全面收敛为 `python3`**。
-在 AI 考级与大模型竞技场景（如 LMCC、IOAI）中，Python 是事实上的工业标准。为了将系统调优重心置于深度学习依赖管理、大模型推理加速与多进程 RPC 效率，**暂不为 C++ / Java / Go 等传统语言提供双容器评测运行时**。数据库中保留的非 Python 语言标识仅作为历史提交查看的归档标记。
-:::
+Neuro OJ 保留面向 AI 题目的 Python 双容器模式，同时提供传统 OI 题的独立
+`judge_type: "oi"` 模式。两种模式共享提交队列与结果协议，但不共享题目运行配置：
+
+- `dual`：Evaluator + Solution 双容器，面向 Python/LLM 题；
+- `oi`：固定 `noj-oi-cpp` 镜像执行 C/C++，题包只在 worker 侧读取输入与标准答案。
+
+OI 的 `backend: "native"` 已接入 Docker 执行器；`backend: "wasm"` 和 `testlib`
+checker 会返回明确的 `SE`，在对应可信运行时接入前不会退化成不受控的宿主执行。
 
 ---
 
@@ -21,17 +25,16 @@ AI 模型训练与算法评测提供安全、确定性的执行环境。
 
 ```mermaid
 flowchart TD
-    Sub[1. 提交元数据: language='python3'] --> Srv[noj-core 校验语言有效性并设定默认入口文件名]
+    Sub[1. 提交元数据: language='python3' / 'c' / 'cpp'] --> Srv[noj-core 校验语言有效性并设定默认入口文件名]
     Srv --> Conf[2. 题目配置: runtime_config]
     Conf --> Whitelist{3. 校验镜像是否在 judge_images 白名单}
     Whitelist -- 校验通过 --> Judge[noj-judge Worker 拉起对应容器]
     Whitelist -- 校验失败 --> Err[阻断提交并报告非法镜像错误]
 ```
 
-1. **第 1 层：提交语言标识（Language Identifier）**： 客户端提交时携带的
-   `language`
-   字段。仅用于接口基础格式校验，评测引擎向沙箱注入代码时**一律使用硬编码文件名
-   `/workspace/main.py`**，不依赖此字段决定运行方式；
+1. **第 1 层：提交语言标识（Language Identifier）**：客户端提交时携带的
+   `language` 字段。双容器题使用 `/workspace/main.py`；OI 题按语言使用
+   `/workspace/main.c` 或 `/workspace/main.cpp`，编译器与入口由 worker 固定；
 2. **第 2 层：题目运行时配置（`runtime_config`）**： 题目出题人在 Web 编辑器或
    `problem.json` 中明确声明 Evaluator 与 Solution 分别使用的具体镜像名称、CPU
    配额、内存配额以及 Evaluator 的启动指令（缺省为
@@ -55,6 +58,36 @@ flowchart TD
 | **`noj-evaluator-python`** | Evaluator 容器 | 包含出题人 SDK（`noj_evaluator_sdk`）、标准测试工具库与 HTTP 客户端，用于运行 `evaluate.py`                        |
 | **`noj-solution-python`**  | Solution 容器  | 轻量级 Python 运行时，内置 `noj_solution_sdk.host` 协议服务，适用于绝大多数标准算法与客观推理题                    |
 | **`noj-solution-ai`**      | Solution 容器  | **数据科学与机器学习专享沙箱**。预装 CPU 版 PyTorch、NumPy、Pandas、Scikit-learn、OpenCV 与 SciPy 等科学计算全家桶 |
+| **`noj-oi-cpp`**           | OI 容器        | GCC/G++ C17/C++20 编译器；每个测试点使用一次性非 root、无网络容器 |
+
+## OI 题包配置
+
+OI 题包的 `problem.json` 使用以下核心字段；`subtasks` 分数总和必须为 100，子任务
+只有其全部测试点通过时才得分，依赖失败的子任务记为 `IGN`：
+
+```json
+{
+  "format_version": 1,
+  "title": "A+B",
+  "judge_type": "oi",
+  "runtime_config": {
+    "backend": "native",
+    "languages": ["c", "cpp"],
+    "time_limit_ms": 1000,
+    "memory_limit_mb": 256,
+    "checker": {"type": "default"},
+    "subtasks": [{
+      "id": "all",
+      "score": 100,
+      "cases": [{"input": "tests/1.in", "output": "tests/1.out"}]
+    }]
+  }
+}
+```
+
+`default` checker 按 token 比较，`strict` 按字节比较。输入、输出和 checker 路径会在
+题包导入时做路径穿越与存在性校验；题目版本不单独保存，重测时读取题目的最新配置
+和支持包。
 
 ---
 
@@ -77,5 +110,5 @@ flowchart TD
 | 异常现象                              | 核心根因定位                                                                 | 权威解决方案                                                                                               |
 | ------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | 提交立即显示 **`error`**，无评测日志  | 题目配置的 Docker 镜像未在宿主机预先拉取，或未被录入 `judge_images` 白名单表 | 在评测宿主机执行 `bash scripts/build-sdk-images.sh` 构建基础镜像，并核实题目 `runtime_config` 镜像名称拼写 |
-| 无法在网页端切换至 C++ 或 Java        | 平台前端做题器当前仅对 Python 3 提供完整支持                                 | 请使用 Python 3 进行代码提交                                                                               |
+| OI 提交显示 `SE`                       | Worker 未安装 `JUDGE_OI_IMAGE` 指定的 `noj-oi-cpp` 镜像，或使用了暂未启用的 WASM/testlib | 构建并预加载 OI 镜像；当前 worker 只接受 native + default/strict checker |
 | 导入 `torch` 报 `ModuleNotFoundError` | 题目未配置使用 AI 专用镜像                                                   | 出题人在题目配置中将 Solution 镜像切换为 `noj-solution-ai`                                                 |

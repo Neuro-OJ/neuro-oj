@@ -98,6 +98,10 @@ Docker socket 绕过该限制。
 
 未设置或超出范围时回退到 `1000m`，**不会**因为配置为 `0` 而变成不限制 CPU。
 
+传统 OI 题使用固定的 `JUDGE_OI_IMAGE`（默认 `noj-oi-cpp`）。Worker 启动时要求该
+镜像名以 `JUDGE_IMAGE_PREFIX` 开头；题目消息不能指定 OI 镜像。镜像应由部署流程
+预先构建并加载到每个评测节点。
+
 ## Docker daemon 权限边界
 
 `noj-judge` 需要调用 Docker API 创建评测容器。生产环境不得把应用宿主机的

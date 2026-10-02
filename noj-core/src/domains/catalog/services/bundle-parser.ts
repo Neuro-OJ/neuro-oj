@@ -21,6 +21,7 @@ import {
   isValidTemplateFileName,
   MAX_TEMPLATE_BYTES,
 } from "./../types/problem-bundle.ts";
+import { validateOiRuntimeConfig } from "../types/runtime-config.ts";
 
 /** 对齐 judge 端 `MAX_ZIP_ENTRIES`。 */
 export const MAX_ZIP_ENTRIES = 1000;
@@ -164,6 +165,20 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
       throw new BadRequestError(
         "客观题套卷包必须包含 questions.json（小题数组）",
       );
+    }
+  } else if (manifest.judge_type === "oi") {
+    validateOiRuntimeConfig(manifest.runtime_config);
+    const config = manifest.runtime_config;
+    const referenced = config.subtasks.flatMap((subtask) =>
+      subtask.cases.flatMap((testCase) => [testCase.input, testCase.output])
+    );
+    if (config.checker.type === "testlib") {
+      referenced.push(config.checker.path!);
+    }
+    for (const path of referenced) {
+      if (!Object.hasOwn(files, path)) {
+        throw new BadRequestError(`OI 题包缺少引用文件：${path}`);
+      }
     }
   } else if (!rootNames.has("evaluate.py")) {
     throw new BadRequestError(

@@ -42,6 +42,7 @@ fn dual_task() -> JudgeTask {
         problem_id: "1001".to_string(),
         user_id: "user-1".to_string(),
         priority: "medium".to_string(),
+        judge_type: "dual".to_string(),
         download_url: None,
         artifact_download_url: None,
         runtime_config: RuntimeConfig {
@@ -57,7 +58,8 @@ fn dual_task() -> JudgeTask {
                 call_timeout_ms: 1_000,
                 memory_limit_mb: 256,
             },
-        },
+        }
+        .into(),
         language: "python3".to_string(),
         code: String::new(),
         file_name: Some("solution.py".to_string()),
@@ -600,10 +602,17 @@ fn dual_task_runtime_config_serialization() {
     });
     let task: JudgeTask = serde_json::from_value(json).unwrap();
     assert_eq!(
-        task.runtime_config.evaluator.image,
+        task.runtime_config.as_dual().unwrap().evaluator.image,
         "noj-evaluator-python:3.12"
     );
-    assert_eq!(task.runtime_config.solution.call_timeout_ms, 1000);
+    assert_eq!(
+        task.runtime_config
+            .as_dual()
+            .unwrap()
+            .solution
+            .call_timeout_ms,
+        1000
+    );
 }
 
 #[allow(dead_code)]

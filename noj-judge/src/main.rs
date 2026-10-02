@@ -8,6 +8,7 @@ mod drain;
 mod dual;
 mod judge;
 mod mq;
+mod oi;
 mod sandbox;
 mod types;
 
@@ -154,6 +155,7 @@ fn main() -> Result<()> {
         let evaluator_network_mode = config.evaluator_network_mode.clone();
         let allow_http_s3 = config.allow_http_s3;
         let image_prefix = config.image_prefix.clone();
+        let oi_image = config.oi_image.clone();
         let command_whitelist = config.command_whitelist.clone();
         let drain_timeout = config.drain_timeout_secs();
         let max_concurrent_judges = config.max_concurrent_judges;
@@ -390,6 +392,7 @@ fn main() -> Result<()> {
                     let fallback_dir = fallback_dir.clone();
                     let task_work_dir = work_dir.clone();
                     let image_prefix = image_prefix.clone();
+                    let oi_image = oi_image.clone();
                     let evaluator_network_mode = evaluator_network_mode.clone();
                     let command_whitelist = command_whitelist.clone();
                     let docker = docker.clone();
@@ -428,6 +431,7 @@ fn main() -> Result<()> {
                             &evaluator_network_mode,
                             allow_http_s3,
                             &image_prefix,
+                            &oi_image,
                             &command_whitelist,
                             max_evaluator_time_ms,
                             max_solution_call_timeout_ms,

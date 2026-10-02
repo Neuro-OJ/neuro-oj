@@ -27,7 +27,10 @@ import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import type { JudgeResult } from "../types/index.ts";
 import { buildJudgeTask } from "../types/index.ts";
 import { evaluateProblemAccess } from "./../../catalog/index.ts";
-import type { RuntimeConfig } from "./../../catalog/index.ts";
+import {
+  isOiRuntimeConfig,
+  type ProblemRuntimeConfig,
+} from "./../../catalog/index.ts";
 import {
   SELF_TEST_ID_PREFIX,
   type SelfTestDetail,
@@ -124,7 +127,7 @@ export async function createSelfTest(
 
   // 双容器 runtime_config 校验
   const runtimeConfig = problem.runtime_config as
-    | RuntimeConfig
+    | ProblemRuntimeConfig
     | null
     | undefined;
   if (!runtimeConfig) {
@@ -135,14 +138,23 @@ export async function createSelfTest(
     );
   }
 
-  await validateJudgeImageWithKind(
-    runtimeConfig.evaluator.image,
-    "evaluator",
-  );
-  await validateJudgeImageWithKind(
-    runtimeConfig.solution.image,
-    "solution",
-  );
+  if (isOiRuntimeConfig(runtimeConfig)) {
+    if (!runtimeConfig.languages.includes(input.language as "c" | "cpp")) {
+      throw new BadRequestError(`该 OI 题目不支持语言: ${input.language}`);
+    }
+  } else {
+    if (input.language === "c" || input.language === "cpp") {
+      throw new BadRequestError("C/C++ 自测仅适用于 judge_type=oi 的题目");
+    }
+    await validateJudgeImageWithKind(
+      runtimeConfig.evaluator.image,
+      "evaluator",
+    );
+    await validateJudgeImageWithKind(
+      runtimeConfig.solution.image,
+      "solution",
+    );
+  }
 
   const id = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
   const now = new Date().toISOString();

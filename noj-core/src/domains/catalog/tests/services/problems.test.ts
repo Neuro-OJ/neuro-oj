@@ -20,6 +20,7 @@ import {
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import { enterTestContext } from "../../../system/index.ts";
+import type { RuntimeConfig } from "../../types/runtime-config.ts";
 
 // PGlite 内存数据库始终可用
 const dbAvailable = true;
@@ -442,7 +443,7 @@ Deno.test({
       },
     );
     assertEquals(
-      created.runtime_config!.evaluator.network?.enabled,
+      (created.runtime_config as RuntimeConfig).evaluator.network?.enabled,
       true,
     );
   },
@@ -477,7 +478,7 @@ Deno.test({
       "admin",
     );
     assertEquals(
-      created.runtime_config!.evaluator.network?.enabled,
+      (created.runtime_config as RuntimeConfig).evaluator.network?.enabled,
       true,
     );
   },

@@ -1,3 +1,4 @@
+use crate::oi::OiRuntimeConfig;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -29,6 +30,36 @@ impl JudgeStatus {
 pub struct RuntimeConfig {
     pub evaluator: EvaluatorRuntime,
     pub solution: SolutionRuntime,
+}
+
+/// 任务运行时配置。旧任务的 JSON 保持原样，OI 配置使用同一字段传输。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum JudgeRuntimeConfig {
+    Dual(RuntimeConfig),
+    Oi(OiRuntimeConfig),
+}
+
+impl JudgeRuntimeConfig {
+    pub fn as_dual(&self) -> Option<&RuntimeConfig> {
+        match self {
+            Self::Dual(config) => Some(config),
+            Self::Oi(_) => None,
+        }
+    }
+
+    pub fn as_oi(&self) -> Option<&OiRuntimeConfig> {
+        match self {
+            Self::Dual(_) => None,
+            Self::Oi(config) => Some(config),
+        }
+    }
+}
+
+impl From<RuntimeConfig> for JudgeRuntimeConfig {
+    fn from(value: RuntimeConfig) -> Self {
+        Self::Dual(value)
+    }
 }
 
 /// Evaluator 容器网络配置（可选，缺省 = 无网）。
@@ -76,7 +107,7 @@ pub struct JudgeTaskLlm {
 /// `noj-judge/tests/judge_task_contract.rs`（Rust 侧）
 /// 与 `noj-core .../tests/types/judge-task-contract.test.ts`（TS 侧）。
 /// 新增字段必须同时更新 fixture 与 noj-core 的 JUDGE_TASK_FIELDS。
-/// 所有评测统一使用双容器模式（Evaluator + Solution），由 `runtime_config` 提供配置。
+/// 缺少 judge_type 的历史任务沿用双容器模式。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JudgeTask {
     /// 提交 UUID
@@ -89,13 +120,16 @@ pub struct JudgeTask {
     /// 评测任务优先级（服务端推导；judge 调度只看队列，此字段用于 requeue/日志）
     #[serde(default = "default_priority")]
     pub priority: String,
+    /// 评测类型：历史任务默认 dual。
+    #[serde(default = "default_judge_type")]
+    pub judge_type: String,
     /// 支持包下载 URL（`noj-download://` 格式）
     pub download_url: Option<String>,
     /// artifact 提交的下载 URL（`noj-download://` 格式），仅 artifact 模式携带
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artifact_download_url: Option<String>,
-    /// 双容器 Runtime 配置（必填）
-    pub runtime_config: RuntimeConfig,
+    /// 双容器或 OI Runtime 配置（必填）
+    pub runtime_config: JudgeRuntimeConfig,
     /// 编程语言标识
     pub language: String,
     /// 用户源代码
@@ -112,6 +146,10 @@ pub struct JudgeTask {
 
 fn default_priority() -> String {
     "medium".to_string()
+}
+
+fn default_judge_type() -> String {
+    "dual".to_string()
 }
 
 /// 评测结果——从 noj-judge 返回到 noj-core 的消息。
@@ -248,9 +286,13 @@ mod tests {
         let task: JudgeTask = serde_json::from_value(json).unwrap();
         assert_eq!(task.submission_id, "sid-123");
         assert_eq!(task.problem_id, "1001");
-        assert_eq!(task.runtime_config.evaluator.image, "noj-evaluator-python");
+        assert_eq!(
+            task.runtime_config.as_dual().unwrap().evaluator.image,
+            "noj-evaluator-python"
+        );
         assert_eq!(task.language, "python3");
         assert_eq!(task.priority, "medium", "缺省优先级应为 medium");
+        assert_eq!(task.judge_type, "dual", "历史任务缺省为双容器模式");
         assert!(task.download_url.is_none());
         assert!(task.file_name.is_none());
     }

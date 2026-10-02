@@ -46,7 +46,10 @@ import {
   validateBundleManifest,
   validateObjectiveQuestions,
 } from "./../../types/problem-bundle.ts";
-import type { ProblemResponseWithTags } from "./../../types/problems.ts";
+import {
+  isOiRuntimeConfig,
+  type ProblemResponseWithTags,
+} from "./../../types/problems.ts";
 import { type CreateQuestionInput } from "../../../objective/index.ts";
 import { updateProblem } from "./problems-crud.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
@@ -338,13 +341,15 @@ async function updateExisting(
   // issue #207：先于 storage 操作执行敏感字段权限 + 资源上限校验——
   // 若在 storage 操作之后才失败（updateProblem 内部），旧评测包已被删除、
   // 新包已上传而 DB 未更新，造成评测包指向不存在的对象（评审 I4）。
-  await assertSensitiveFieldPermissions(
-    c,
-    actor.userId,
-    actor.userRole,
-    manifest.runtime_config!,
-  );
-  enforceResourceLimits(manifest.runtime_config!);
+  if (!isOiRuntimeConfig(manifest.runtime_config)) {
+    await assertSensitiveFieldPermissions(
+      c,
+      actor.userId,
+      actor.userRole,
+      manifest.runtime_config!,
+    );
+    enforceResourceLimits(manifest.runtime_config!);
+  }
   if (manifest.llm) {
     assertLlmLimitsWithinDefault(manifest.llm);
   }
@@ -593,27 +598,31 @@ async function createViaCrud(
     throw new ForbiddenError("无权创建题目");
   }
 
-  // 镜像白名单校验（与 createProblem 一致）
-  await validateJudgeImageWithKind(
-    manifest.runtime_config!.evaluator.image,
-    "evaluator",
-  );
-  await validateJudgeImageWithKind(
-    manifest.runtime_config!.solution.image,
-    "solution",
-  );
+  // 双容器题目才需要镜像白名单；OI 题使用 worker 的受信固定镜像。
+  if (!isOiRuntimeConfig(manifest.runtime_config)) {
+    await validateJudgeImageWithKind(
+      manifest.runtime_config!.evaluator.image,
+      "evaluator",
+    );
+    await validateJudgeImageWithKind(
+      manifest.runtime_config!.solution.image,
+      "solution",
+    );
+  }
 
   // evaluator 联网权限与题目创建权限一致：普通用户导入创建 U 型题可开网；
   // P 型由上方类型检查保证仅 admin。安全提醒：联网 + 可控 evaluator.command
   // = 联网容器任意命令执行，题目包 manifest.runtime_config 由上传者完全可控。
   // issue #207：与 CRUD 创建路径一致的敏感字段权限检查 + 资源上限校验
-  await assertSensitiveFieldPermissions(
-    c,
-    actor.userId,
-    actor.userRole,
-    manifest.runtime_config!,
-  );
-  enforceResourceLimits(manifest.runtime_config!);
+  if (!isOiRuntimeConfig(manifest.runtime_config)) {
+    await assertSensitiveFieldPermissions(
+      c,
+      actor.userId,
+      actor.userRole,
+      manifest.runtime_config!,
+    );
+    enforceResourceLimits(manifest.runtime_config!);
+  }
   if (manifest.llm) {
     assertLlmLimitsWithinDefault(manifest.llm);
   }

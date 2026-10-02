@@ -1,4 +1,8 @@
-import type { RuntimeConfig } from "../../catalog/index.ts";
+import {
+  type JudgeType,
+  judgeTypeForRuntimeConfig,
+  type ProblemRuntimeConfig,
+} from "../../catalog/index.ts";
 
 /** LLM 评测任务字段：携带 gateway 地址与短期 eval_token。 */
 export interface JudgeTaskLlm {
@@ -14,7 +18,7 @@ export type JudgeTaskPriority = "high" | "medium" | "low";
 /**
  * 评测任务——从 noj-core 发送到 noj-judge 的消息。
  *
- * 所有评测统一使用双容器模式（Evaluator + Solution）。
+ * `judge_type=dual` 使用双容器；`judge_type=oi` 使用传统 OI 测试点协议。
  */
 export interface JudgeTask {
   /** 提交 UUID */
@@ -25,8 +29,10 @@ export interface JudgeTask {
   user_id: string;
   /** 评测任务优先级（服务端推导，客户端不可声明） */
   priority: JudgeTaskPriority;
-  /** 双容器 Runtime 配置（必填） */
-  runtime_config: RuntimeConfig;
+  /** 评测模式；历史消息缺省由 judge 按 dual 兼容处理。 */
+  judge_type: JudgeType;
+  /** 双容器或 OI Runtime 配置（必填） */
+  runtime_config: ProblemRuntimeConfig;
   /** 支持包下载 URL（`noj-download://` 格式） */
   download_url?: string;
   /** artifact 提交的下载 URL（`noj-download://` 格式），仅 artifact 模式携带 */
@@ -51,7 +57,9 @@ export interface BuildJudgeTaskInput {
   problem_id: string;
   user_id: string;
   priority: JudgeTaskPriority;
-  runtime_config: RuntimeConfig;
+  runtime_config: ProblemRuntimeConfig;
+  /** 评测模式；缺省根据 runtime_config 推断。 */
+  judge_type?: JudgeType;
   language: string;
   code: string;
   file_name?: string;
@@ -82,6 +90,8 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
     problem_id: input.problem_id,
     user_id: input.user_id,
     priority: input.priority,
+    judge_type: input.judge_type ??
+      judgeTypeForRuntimeConfig(input.runtime_config),
     runtime_config: input.runtime_config,
     language: input.language,
     code: input.code,
@@ -107,6 +117,7 @@ export const JUDGE_TASK_FIELDS: readonly string[] = [
   "problem_id",
   "user_id",
   "priority",
+  "judge_type",
   "runtime_config",
   "download_url",
   "artifact_download_url",
@@ -207,4 +218,6 @@ export function scoreFromDb(value: number): number {
 export const LANGUAGE_EXT_MAP: Record<string, string> = {
   python3: "main.py",
   python: "main.py",
+  c: "main.c",
+  cpp: "main.cpp",
 };

@@ -204,6 +204,48 @@ Deno.test("parseBundleZip: 客观题包 questions.json 非法 JSON 被拒", () =
   assertMatch(err.message, /questions\.json/);
 });
 
+const OI_MANIFEST = JSON.stringify({
+  format_version: 1,
+  title: "A+B",
+  judge_type: "oi",
+  runtime_config: {
+    backend: "native",
+    languages: ["c", "cpp"],
+    time_limit_ms: 1000,
+    memory_limit_mb: 256,
+    checker: { type: "testlib", path: "checker.cpp" },
+    subtasks: [{
+      id: "all",
+      score: 100,
+      cases: [{ input: "tests/1.in", output: "tests/1.out" }],
+    }],
+  },
+});
+
+Deno.test("parseBundleZip: OI 包允许无 evaluate.py 并校验全部引用文件", () => {
+  const zip = makeZip({
+    "problem.json": OI_MANIFEST,
+    "checker.cpp": "int main() { return 0; }",
+    "tests/1.in": "1 2\n",
+    "tests/1.out": "3\n",
+  });
+  const parsed = parseBundleZip(zip);
+  assertEquals(parsed.manifest.judge_type, "oi");
+  assertEquals(parsed.entries["evaluate.py"], undefined);
+});
+
+Deno.test("parseBundleZip: OI 包缺少输入或 checker 文件时拒绝", () => {
+  for (
+    const files of [
+      { "checker.cpp": "int main() {}", "tests/1.out": "3\n" },
+      { "tests/1.in": "1 2\n", "tests/1.out": "3\n" },
+    ] as Record<string, string>[]
+  ) {
+    const zip = makeZip({ "problem.json": OI_MANIFEST, ...files });
+    assertThrows(() => parseBundleZip(zip), BadRequestError);
+  }
+});
+
 Deno.test("inspectEvaluationPackage: 识别评测包条目与标准解", () => {
   const zip = makeZip({
     "evaluate.py": "print('ok')",
