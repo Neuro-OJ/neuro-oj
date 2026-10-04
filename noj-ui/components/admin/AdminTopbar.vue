@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, onMounted } from "vue"
 import { commitDisplay, formatBuiltAt, normalizeVersion } from "~/utils/buildInfo"
 
 const props = defineProps<{
@@ -13,7 +13,15 @@ const emit = defineEmits<{
 }>()
 
 const route = useRoute()
-const { user } = useAuth()
+const { user, fetchUser } = useAuth()
+
+// 兼容部署前创建的旧 session：头像字段未知时刷新一次完整用户资料
+// （后台布局不挂载 UserMenu，需在此自行补齐，否则头像永远回落为首字母）。
+onMounted(() => {
+  if (user.value && user.value.avatar_url === undefined) {
+    void fetchUser()
+  }
+})
 const runtimeConfig = useRuntimeConfig()
 
 const buildInfo = computed(() => (runtimeConfig.public.buildInfo as any) ?? {})
@@ -161,9 +169,7 @@ const currentBreadcrumb = computed(() => {
 
       <!-- 管理员身份 Pill -->
       <div v-if="user" class="flex items-center gap-2 pl-1">
-        <div class="size-7 rounded-md bg-primary-bg text-primary border border-primary/30 flex items-center justify-center font-bold text-xs shrink-0 select-none">
-          {{ user.username.slice(0, 2).toUpperCase() }}
-        </div>
+        <UserIdentity :user="user" :show-username="false" size="sm" :link="false" />
         <div class="hidden xl:flex flex-col text-left">
           <span class="text-xs font-semibold text-text leading-none">{{ user.username }}</span>
           <span class="text-[10px] text-primary leading-tight mt-0.5">Admin</span>

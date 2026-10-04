@@ -46,7 +46,7 @@ const acceptanceText = computed(() => {
         <dd class="min-w-0">
           <UserIdentity
             v-if="problem.owner_username"
-            :user="{ id: problem.owner_id ?? '', username: problem.owner_username }"
+            :user="{ id: problem.owner_id ?? '', username: problem.owner_username, avatar_url: problem.owner_avatar_url }"
             size="sm"
             :show-avatar="false"
           />

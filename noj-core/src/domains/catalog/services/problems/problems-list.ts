@@ -237,6 +237,7 @@ export async function listProblems(
     .select({
       problem: problems,
       owner_username: users.username,
+      owner_avatar_url: users.avatar_url,
       // 是否被尚未结束的公开赛收编：与过滤条件同一谓词，语言层面不会漂移
       is_contest_hidden: sql<boolean>`${
         unendedPublicContestForProblem(problems.id)
@@ -269,6 +270,7 @@ export async function listProblems(
           (viewer.userId !== undefined && viewer.userId === r.problem.owner_id),
       }, r.is_contest_hidden === true),
       owner_username: r.owner_username ?? "未知",
+      owner_avatar_url: r.owner_avatar_url ?? null,
       tags: tagMap.get(r.problem.id) ?? [],
     })),
     total,
@@ -442,6 +444,7 @@ export async function getProblem(
     .select({
       problem: problems,
       owner_username: users.username,
+      owner_avatar_url: users.avatar_url,
     })
     .from(problems)
     .leftJoin(users, eq(problems.owner_id, users.id))
@@ -460,6 +463,7 @@ export async function getProblem(
         (viewer.userId !== undefined && viewer.userId === row.problem.owner_id),
     }),
     owner_username: row.owner_username ?? "未知",
+    owner_avatar_url: row.owner_avatar_url ?? null,
     tags: tagMap.get(id) ?? [],
     has_hidden_algorithm_tags: false,
   };
@@ -482,6 +486,7 @@ export async function getProblemByTypeAndNumber(
     .select({
       problem: problems,
       owner_username: users.username,
+      owner_avatar_url: users.avatar_url,
     })
     .from(problems)
     .leftJoin(users, eq(problems.owner_id, users.id))
@@ -505,6 +510,7 @@ export async function getProblemByTypeAndNumber(
         (viewer.userId !== undefined && viewer.userId === row.problem.owner_id),
     }),
     owner_username: row.owner_username ?? "未知",
+    owner_avatar_url: row.owner_avatar_url ?? null,
     tags: tagMap.get(row.problem.id) ?? [],
     has_hidden_algorithm_tags: false,
   };

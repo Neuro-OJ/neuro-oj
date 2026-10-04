@@ -245,6 +245,8 @@ export interface ProblemResponseWithTags {
   owner_id: string;
   /** 题目所有者用户名（详情/列表场景 JOIN users 返回；可能为"未知"） */
   owner_username?: string;
+  /** 题目所有者头像 URL（详情/列表场景 JOIN users 返回；未上传为 null） */
+  owner_avatar_url?: string | null;
   /** 题目类型：U / P */
   type: string;
   /** 题目可见性：public / private */

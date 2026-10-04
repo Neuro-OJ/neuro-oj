@@ -22,6 +22,7 @@ interface ProblemItem {
   type: string
   owner_id: string
   owner_username?: string
+  owner_avatar_url?: string | null
   number: number
   is_objective: boolean
   /**
@@ -279,7 +280,7 @@ const columns = computed(() => {
           </template>
           <template #owner-cell="{ row }">
             <UserIdentity
-              :user="{ id: row.original.owner_id, username: row.original.owner_username || '未知' }"
+              :user="{ id: row.original.owner_id, username: row.original.owner_username || '未知', avatar_url: row.original.owner_avatar_url }"
               size="sm"
             />
           </template>
