@@ -40,7 +40,8 @@ const filterUser = ref("")
 const filterProblem = ref("")
 const filterSubmission = ref("")
 const filterProvider = ref("")
-const filterStatus = ref("")
+// USelect 不允许空串作为选项值，"全部"用 all 哨兵表示
+const filterStatus = ref("all")
 const filterStart = ref("")
 const filterEnd = ref("")
 const limit = ref(100)
@@ -69,7 +70,7 @@ async function load() {
     if (filterProblem.value.trim()) params.set("problem_id", filterProblem.value.trim())
     if (filterSubmission.value.trim()) params.set("submission_id", filterSubmission.value.trim())
     if (filterProvider.value.trim()) params.set("provider_id", filterProvider.value.trim())
-    if (filterStatus.value.trim()) params.set("status", filterStatus.value.trim())
+    if (filterStatus.value !== "all") params.set("status", filterStatus.value)
     if (filterStart.value) params.set("start_time", filterStart.value)
     if (filterEnd.value) params.set("end_time", filterEnd.value)
     params.set("limit", String(limit.value))
@@ -154,7 +155,7 @@ function openDetail(row: LlmUsageRow) {
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">状态</label>
-        <USelect v-model="filterStatus" :items="['', 'ok', 'error', 'rejected'].map((s) => ({ label: s || '全部', value: s }))" class="w-32" />
+        <USelect v-model="filterStatus" :items="['all', 'ok', 'error', 'rejected'].map((s) => ({ label: s === 'all' ? '全部' : s, value: s }))" class="w-32" />
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">开始时间</label>

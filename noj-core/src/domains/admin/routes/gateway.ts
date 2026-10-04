@@ -131,14 +131,11 @@ router.get("/llm/usage", async (c) => {
  * GET /api/v1/admin/llm/quotas
  *
  * 权限/认证：管理员（adminMiddleware 组级保护）。
- * 说明：配额查询由 gateway 内部 API 提供；当前为占位路由，返回空列表，
- * 后续可在 gateway 增加 /internal/quotas GET 后直接透传，避免前端 404。
- * 响应：`{ data: unknown[] }`。
+ * 说明：透传 gateway `GET /internal/quotas`（`llm_quotas` 全表，按创建时间倒序），
+ * 供管理后台「LLM 配额」页使用（issue #579）。
+ * 响应：`{ data: unknown[] }`（gateway `llm_quotas` 行原样透传）。
  */
 router.get("/llm/quotas", async (c) => {
-  // 配额查询由 gateway 内部 API 提供；当前通过 usage 服务简化返回空列表，
-  // 后续可在 gateway 增加 /internal/quotas GET 后直接透传。
-  // 这里先保留 GET 路由占位，避免前端 404。
   const data = await fetchLlmQuotas();
   return c.json({ data });
 });

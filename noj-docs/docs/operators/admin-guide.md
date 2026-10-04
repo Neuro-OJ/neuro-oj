@@ -153,7 +153,7 @@ Neuro OJ 使用「角色 → 权限点」模型：权限格式为 `resource:acti
 
 - 管理后台「LLM 用量」支持按 `submission_id`、用户、题目、Provider、状态、起止时间与分页查询。
 - 每条记录包含请求消息哈希、prompt/completion/total token、估算费用、延迟与状态（`ok / error / rejected`）。
-- 配额（`llm_quotas`）目前通过后台接口维护，支持用户/全局/题目维度的 day/month 的 calls/tokens/cost 上限；`0` 表示不限制但仍计数。
+- 管理后台「LLM 配额」（`/admin/llm/quotas`）维护 `llm_quotas`，支持全局 / 用户 / 题目 / 用户×题目维度的 day/month 的 calls/tokens/cost 上限；`-1` 表示不限，`0` 表示禁止调用。详见 [LLM 调用能力](./llm-call-capability.md)「配额」一节。
 
 ## 提交管理
 

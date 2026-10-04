@@ -69,9 +69,14 @@ LLM」中配置以下两项 **runtime 设置**（写库即时生效，无需重�
 
 ## 4. 配额（可选）
 
-配额通过管理端接口维护（`GET/POST /api/v1/admin/llm/quotas`）：可按用户、全局、
-题目，以及**用户×题目组合**维度维护 day/month 的 calls/tokens/cost 上限；
-`0` 表示不限制但仍计数。
+配额在管理后台「评测与算力 → LLM 配额」（`/admin/llm/quotas`）中维护，底层接口为
+`GET/POST /api/v1/admin/gateway/llm/quotas`：可按用户、全局、题目，以及**用户×题目组合**
+维度维护 day/month 的 calls/tokens/cost 上限。
+
+- 取值语义：`-1` 表示不限，`0` 表示**禁止调用**，正数为上限；
+- 按「作用域 + 作用域 ID + 窗口」精确匹配，同一组合只应有一行——后台新增时若已存在会自动改为更新；
+- 新增时上限留空，由网关按 `NOJ_LLM_DEFAULT_*` 默认值填入；
+- 后台暂不支持删除配额行；如需恢复默认值，请把各项改回与 env 默认值一致。
 
 用户×题目组合维度（`scope_type=user_problem`，`scope_id` 形如
 `<userId>:<problemId>`）用于防止一名选手反复提交打满**全选手共享**的题目日桶，
