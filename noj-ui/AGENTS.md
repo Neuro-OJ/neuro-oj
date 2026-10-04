@@ -49,7 +49,7 @@ noj-ui/
 │   ├── layout/            # Navbar / FooterBar / Sidebar / UserMenu
 │   ├── editor/            # MonacoEditor / CodingProblemEditor / EditorSidebar / EditorToolbar / EditorStatusBar / ActivityBar / EditorWorkspace / ResizableSplitter
 │   ├── feature/           # ProblemFilterBar / CheckInCard / RandomProblems / StatsToggle / FollowingFeed / LatestSubmissions / ChatSidebar / search（SearchPalette / SearchResultItem）/ community（CommentCard）
-│   ├── shared/            # MarkdownRenderer（DOMPurify 清洗）/ PaginationNav / BrandLogo / MarqueeTitle
+│   ├── shared/            # MarkdownRenderer（DOMPurify 清洗）/ MarkdownEditor（分屏编辑 + 实时预览）/ PaginationNav / BrandLogo / MarqueeTitle
 │   ├── ui/                # AsyncContent / DialogModal / DifficultyBadge / StatusBadge / ProblemId / SubmissionResult / TableSkeleton / ToastBanner / AnimatedCounter
 │   ├── card/              # ProblemCard / SubmissionCard
 │   ├── form/              # TextInput / PasswordField
@@ -365,6 +365,7 @@ cd dist
 |------|------|
 | `MonacoEditor.vue` | 基于 npm `monaco-editor` 包（postinstall 脚本自托管 `public/monaco`，非 CDN），`diff` 模式可选 |
 | `MarkdownRenderer.vue` | markdown-it + highlight.js + KaTeX 渲染，**DOMPurify 清洗 HTML** 防 XSS |
+| `MarkdownEditor.vue` | `v-model` 分屏 Markdown 编辑器：左源码右 `MarkdownRenderer` 实时预览（编辑/分屏/预览三态、工具栏、Ctrl+B/I/K、防抖预览、滚动同步）；用于题目描述、法律政策、公告。新增 Markdown 输入优先复用它 |
 | `CodingProblemEditor.vue` | 题目编辑器（`editor/` 目录），支持 U/P 类型切换、`submission_mode`（code/artifact）与 artifact 大小上限，必填字段校验 |
 | `ProblemCard.vue` / `SubmissionCard.vue` | 题目卡片 / 提交卡片（状态标签着色，点击跳转详情） |
 | `AsyncContent.vue` | 异步内容容器，统一处理 loading / empty / error 状态 |

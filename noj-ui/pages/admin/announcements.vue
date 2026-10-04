@@ -189,7 +189,7 @@ async function handleDelete() {
     :open="showForm"
     :title="editing ? '编辑公告' : '新建公告'"
     :loading="saving"
-    width-class="sm:max-w-2xl"
+    width-class="sm:max-w-5xl"
     :save-text="editing ? '保存公告' : '立即发布'"
     @close="showForm = false"
     @save="handleSave"
@@ -201,7 +201,7 @@ async function handleDelete() {
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-xs font-semibold text-text">内容（Markdown） <span class="text-error-text">*</span></label>
-        <UTextarea v-model="formContent" :rows="12" maxlength="50000" placeholder="支持 Markdown 语法" />
+        <MarkdownEditor v-model="formContent" height="360px" :maxlength="50000" />
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-xs font-semibold text-text">横幅文字</label>

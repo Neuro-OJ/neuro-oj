@@ -284,9 +284,6 @@ onMounted(async () => {
   if (isEditMode.value) loadProblem()
 })
 
-// ── 预览 ──
-const previewMode = ref(false)
-
 // ── 提交 ──
 const saving = ref(false)
 const saveError = ref("")
@@ -480,27 +477,9 @@ async function handleSubmit() {
 
     <!-- 题目描述 -->
     <section class="px-6 py-5 border-b border-border last:border-b-0">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-semibold text-text mb-0">题目描述 <span class="text-red-600">*</span></h2>
-        <UButton color="neutral" variant="outline" size="sm" class="py-1 text-text-secondary border-border hover:border-text-secondary hover:text-text" @click="previewMode = !previewMode">
-          <UIcon name="i-lucide-eye" class="size-3.5" v-if="!previewMode"/>
-          <UIcon name="i-lucide-edit-3" class="size-3.5" v-else/>
-          {{ previewMode ? "编辑" : "预览" }}
-        </UButton>
-      </div>
+      <h2 class="text-sm font-semibold text-text mb-3">题目描述 <span class="text-red-600">*</span></h2>
       <p v-if="fieldErrors.description" class="text-xs text-red-600 mb-2">{{ fieldErrors.description }}</p>
-
-      <textarea
-        v-if="!previewMode"
-        v-model="description"
-        class="w-full px-3 py-3 text-sm font-mono leading-relaxed border border-border rounded-md outline-none resize-y min-h-[200px] box-border transition-colors focus:input-base-focus"
-        placeholder="支持 Markdown 格式的题目描述..."
-        rows="12"
-      />
-      <div v-else class="px-3 py-3 border border-border rounded-md min-h-[200px]">
-        <MarkdownRenderer v-if="description.trim()" :content="description" />
-        <p v-else class="text-xs text-text-muted">暂无内容</p>
-      </div>
+      <MarkdownEditor v-model="description" height="480px" placeholder="支持 Markdown 格式的题目描述..." />
     </section>
 
     <!-- 评测配置（双容器模式） -->
