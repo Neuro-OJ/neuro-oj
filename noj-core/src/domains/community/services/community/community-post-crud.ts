@@ -28,6 +28,7 @@ import {
 } from "./community-config.ts";
 import { listBoardRoleGrants } from "./community-boards.ts";
 import {
+  assertNotContestSilenced,
   featureForType,
   hasAcceptedSolution,
   publicationStatus,
@@ -38,10 +39,7 @@ import {
   postStatsProjection,
 } from "./community-post-select.ts";
 import { reviewUgcContent } from "./community-review.ts";
-import {
-  hasUnendedPublicContest,
-  isProblemInUnendedPublicContest,
-} from "./../../../contest/index.ts";
+import { isProblemInUnendedPublicContest } from "./../../../contest/index.ts";
 
 /**
  * 判断用户是否为指定题目的所有者（用于官方题解标记的写入校验）。
@@ -165,13 +163,8 @@ export async function createPost(
   // ── 赛时社区全局静默（决策 1 · 方案 A · N-01/FC-01/AR-09）──
   // 公开赛进行期间（含 pending 筹备期与 running 进行期），全站普通用户禁止创建任何讨论帖与动态；
   // 仅审核员/管理员可发帖；参赛者提问严格收敛至赛中答疑。
-  if (!moderator && (input.type === "discussion" || input.type === "moment")) {
-    if (await hasUnendedPublicContest()) {
-      throw new ForbiddenError(
-        "比赛期间全站暂停公开发布讨论与动态，参赛提问请使用赛中答疑",
-        "CONTEST_SILENCE",
-      );
-    }
+  if (input.type === "discussion" || input.type === "moment") {
+    await assertNotContestSilenced(moderator);
   }
   // ── 公开赛保密写入门控（审计 VULN-02）──
   //
@@ -352,6 +345,11 @@ export async function updatePost(
   }
   if (current.post.status === "deleted") {
     throw new ValidationError("已删除内容不能编辑");
+  }
+  // 赛时静默同样覆盖编辑：否则可把赛前发布的讨论/动态改写为完整解法向全场广播（N-01 残余）。
+  // 题解不在静默范围内（与 createPost 口径一致），赛期题目的题解已由 getPost 读门控拦截。
+  if (current.post.type === "discussion" || current.post.type === "moment") {
+    await assertNotContestSilenced(moderator);
   }
   const content = input.content === undefined
     ? current.post.content
