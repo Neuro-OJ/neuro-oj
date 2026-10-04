@@ -115,7 +115,8 @@ async function requirePostPermission(
 /**
  * GET /config — 获取社区配置与当前用户权限。
  * 认证：可选（optionalAuthMiddleware）。未登录时仅返回配置，不返回权限。
- * 响应：{ data: { ...config, permissions } }。
+ * 响应：{ data: { ...config, permissions, contest_silence } }。
+ * `contest_silence` 为 true 时（存在未结束公开赛且非审核员），社区写入入口应禁用。
  */
 router.get("/config", optionalAuthMiddleware, async (c) => {
   const config = getCommunityConfig();
@@ -133,7 +134,13 @@ router.get("/config", optionalAuthMiddleware, async (c) => {
       moderate: await isModerator(c),
     }
     : {};
-  return c.json({ data: { ...config, permissions } });
+  // 赛时社区全局静默：供前端预先禁用发帖/评论/编辑入口（服务层仍强制，此处仅展示）。
+  // 审核员免静默；匿名用户本就不能写入，统一按非审核员口径返回。
+  const contestSilence = !(loggedIn && await isModerator(c)) &&
+    await hasUnendedPublicContest();
+  return c.json({
+    data: { ...config, permissions, contest_silence: contestSilence },
+  });
 });
 
 /**

@@ -1,4 +1,4 @@
-# Agent Note: 赛时社区静默补齐评论与编辑写路径
+# Agent Note: 赛时社区静默补齐评论、题解与编辑写路径
 
 Status: implemented
 
@@ -26,6 +26,10 @@ Status: implemented
 - 题解发布资格接口 `GET /api/v1/community/solutions/eligibility` 新增
   `blocked_reason: "contest_silence"`，前端据此禁用发布入口并提示"赛后恢复"，
   避免用户点击后才收到 403；
+- `GET /api/v1/community/config` 新增 `contest_silence`（存在未结束公开赛且非审核员时为
+  true）。前端据此预先禁用：社区首页发布按钮、帖子详情页评论框、帖子与评论的编辑按钮；
+  **删除**按钮保留（`CommentCard` 拆出独立的 `canDelete`），允许用户在赛中撤回自己的内容。
+  帖子详情页与社区首页进入时强制刷新社区配置，避免单页导航期间沿用比赛开始前/结束前的缓存；
 - 新增 `community-contest-silence.test.ts`（5 个用例：评论、pending 期评论、
   编辑评论、编辑动态与题解、新建非赛题题解），并做反向验证（去掉检查后用例全部失败）。
 
@@ -40,4 +44,5 @@ Status: implemented
 
 - 公开赛未结束期间，普通用户无法发表/编辑任何帖子与评论，服务端返回 403
   `CONTEST_SILENCE`；练习区题解在比赛期间暂停，赛后自动恢复；
-- 评论框与编辑入口前端尚未按 `CONTEST_SILENCE` 预先禁用，用户提交后看到服务端提示。
+- 前端入口的禁用只是展示，服务端仍是唯一强制点；社区首页与帖子详情页每次进入多一次
+  `/community/config` 请求。

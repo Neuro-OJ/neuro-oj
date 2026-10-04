@@ -24,6 +24,8 @@ export interface CommunityConfig {
   comment_max_length?: number;
   post_interval_seconds?: number;
   permissions: Record<string, boolean>;
+  /** 赛时社区全局静默：存在未结束公开赛且当前用户非审核员时为 true，写入入口应禁用。 */
+  contest_silence?: boolean;
 }
 
 /** 社区帖子（来自后端完整行） */
