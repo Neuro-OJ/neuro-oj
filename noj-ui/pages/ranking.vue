@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatAcceptanceRate } from "~/utils/submissionFormat";
 import type { RankingRow } from "~/composables/useRankings"
+import { normalizeMonth } from "~/utils/checkinCalendar"
 
 definePageMeta({
   // 公开页面，无需登录（OJ 榜单标准）
@@ -30,6 +31,25 @@ const totalPages = computed<number>(() => {
 function setPage(p: number) {
   router.push({ query: { ...route.query, page: String(p) } })
 }
+
+// 榜单切换（#580）：`?board=checkin` 为签到活跃榜，缺省为解题榜
+// UTabs v-model 类型为 string | number，这里用 string 承接
+const board = computed<string>({
+  get: () => (route.query.board === "checkin" ? "checkin" : "solved"),
+  // 切换榜单时重置页码与月份，避免沿用另一榜单的分页
+  set: (value: string) => {
+    router.push({ query: value === "checkin" ? { board: "checkin" } : {} })
+  },
+})
+const boardItems = [
+  { label: "解题榜", value: "solved", icon: "i-lucide-trophy" },
+  { label: "签到活跃榜", value: "checkin", icon: "i-lucide-calendar-check" },
+]
+
+const checkinMonth = computed(() => normalizeMonth(route.query.month))
+function setCheckinMonth(month: string) {
+  router.push({ query: { board: "checkin", month } })
+}
 </script>
 
 <template>
@@ -41,14 +61,26 @@ function setPage(p: number) {
         </div>
         <div>
           <h1 class="text-2xl font-bold text-text leading-tight">全站榜单</h1>
-          <p class="text-xs text-text-muted mt-0.5">解题成就与通过率竞技排行榜</p>
+          <p class="text-xs text-text-muted mt-0.5">解题成就与每月签到活跃排行榜</p>
         </div>
       </div>
-      <span class="text-xs text-text-muted px-2.5 py-1 rounded-md bg-bg-sunken border border-border tabular-nums font-mono">共 {{ total }} 位上榜选手</span>
+      <span v-if="board === 'solved'" class="text-xs text-text-muted px-2.5 py-1 rounded-md bg-bg-sunken border border-border tabular-nums font-mono">共 {{ total }} 位上榜选手</span>
     </div>
 
-    <!-- 异步内容 -->
+    <UTabs v-model="board" :items="boardItems" :content="false" class="mb-5 w-fit" />
+
+    <!-- 签到活跃榜 -->
+    <CheckinLeaderboard
+      v-if="board === 'checkin'"
+      :month="checkinMonth"
+      :page="page"
+      @update:month="setCheckinMonth"
+      @update:page="setPage"
+    />
+
+    <!-- 解题榜 -->
     <AsyncContent
+      v-else
       :status="pending ? 'loading' : error ? 'error' : rows.length === 0 ? 'empty' : 'data'"
       error="榜单加载失败"
       @retry="refresh"
@@ -92,33 +124,7 @@ function setPage(p: number) {
               ]"
             >
               <td class="w-24 px-4 py-3.5">
-                <span
-                  v-if="row.rank === 1"
-                  class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold tabular-nums rank-badge-gold"
-                >
-                  <UIcon name="i-lucide-crown" class="size-3.5 text-amber-500 shrink-0" />
-                  #1
-                </span>
-                <span
-                  v-else-if="row.rank === 2"
-                  class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold tabular-nums rank-badge-silver"
-                >
-                  <UIcon name="i-lucide-medal" class="size-3.5 text-slate-400 shrink-0" />
-                  #2
-                </span>
-                <span
-                  v-else-if="row.rank === 3"
-                  class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold tabular-nums rank-badge-bronze"
-                >
-                  <UIcon name="i-lucide-medal" class="size-3.5 text-orange-600 shrink-0" />
-                  #3
-                </span>
-                <span
-                  v-else
-                  class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded text-xs font-medium tabular-nums bg-bg-sunken text-text-muted border border-border/60"
-                >
-                  #{{ row.rank }}
-                </span>
+                <RankBadge :rank="row.rank" />
               </td>
               <td class="px-4 py-3.5">
                 <UserIdentity :user="{ id: row.user_id, username: row.username, avatar_url: row.avatar_url }" size="sm" />

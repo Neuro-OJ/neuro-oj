@@ -4,8 +4,10 @@ import { extractApiError } from '~/utils/apiError'
 import { formatDateTime } from '~/utils/submissionFormat'
 import {
   FROZEN_SELF_ONLY_HINT,
+  LIVE_SELF_ONLY_HINT,
   frozenAccessHint,
   isFrozenSelfOnly,
+  isLiveSelfOnly,
   type ContestRankingView,
 } from '~/utils/contestRanking'
 
@@ -31,6 +33,8 @@ const adminLive = ref(false)
  * 页面据此给出说明文案，避免把"只有自己"误读成榜单异常（VULN-09）。
  */
 const frozenSelfOnly = computed(() => isFrozenSelfOnly(rankingView.value, adminLive.value))
+/** 进行中未封榜且非管理员：后端同样只返回本人一行（issue #583）。 */
+const liveSelfOnly = computed(() => isLiveSelfOnly(rankingView.value, adminLive.value, contest.value?.status))
 /** 401/403 的封榜引导文案；null 表示按普通错误渲染。 */
 const frozenErrorHint = computed(() => frozenAccessHint(rankingErrorStatus.value))
 const resultLabel = computed(() => officialSnapshot.value
@@ -153,6 +157,10 @@ function score(value: number) {
       <span v-if="frozenSelfOnly">{{ FROZEN_SELF_ONLY_HINT }}（封榜期间的新提交与评测不会改变榜单。）</span>
       <span v-else>当前为服务端封榜冻结视图，封榜期间的新提交与评测不会改变此榜单。</span>
     </div>
+    <div v-else-if="liveSelfOnly" class="flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+      <UIcon name="i-lucide-user-round" class="size-4" />
+      <span>{{ LIVE_SELF_ONLY_HINT }}</span>
+    </div>
     <div v-else-if="rankingView === 'live' && settlementPending" class="flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
       <UIcon name="i-lucide-shield-check" class="size-4" />
       <span>管理员实时榜：比赛已结束但正式成绩仍在待结算，当前数据不会对普通参赛者公开。</span>
@@ -169,7 +177,7 @@ function score(value: number) {
     <div class="overflow-x-auto rounded-2xl border border-border bg-white shadow-sm">
       <div v-if="contestPending || rankingLoading" class="py-20 text-center text-sm text-text-muted">排名计算中...</div>
       <div v-else-if="rows.length === 0" class="py-20 text-center text-sm text-text-muted">
-        {{ frozenSelfOnly ? FROZEN_SELF_ONLY_HINT : '暂无排名数据' }}
+        {{ frozenSelfOnly ? FROZEN_SELF_ONLY_HINT : liveSelfOnly ? '你还没有得分记录' : '暂无排名数据' }}
       </div>
       <table v-else class="w-full min-w-[760px] border-collapse">
         <thead>
