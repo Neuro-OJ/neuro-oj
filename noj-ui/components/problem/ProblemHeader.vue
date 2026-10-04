@@ -74,7 +74,7 @@ const suppressed = computed(
       </div>
       <UserIdentity
         v-if="problem.type === 'U' && problem.owner_username"
-        :user="{ id: problem.owner_id ?? '', username: problem.owner_username }"
+        :user="{ id: problem.owner_id ?? '', username: problem.owner_username, avatar_url: problem.owner_avatar_url }"
         size="sm"
         class="mt-2"
       />

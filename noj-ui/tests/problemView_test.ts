@@ -19,6 +19,7 @@ Deno.test('problemView: 独立题目资源映射为统一视图', () => {
     type: 'U',
     owner_id: 'owner-1',
     owner_username: 'alice',
+    owner_avatar_url: '/avatars/alice.png',
     is_objective: false,
     submission_mode: 'code',
     artifact_max_size_mb: null,
@@ -29,6 +30,7 @@ Deno.test('problemView: 独立题目资源映射为统一视图', () => {
 
   assertEquals(view.display_id, 'P1000');
   assertEquals(view.owner_username, 'alice');
+  assertEquals(view.owner_avatar_url, '/avatars/alice.png');
   assertEquals(view.time_limit_ms, 1000);
   assertEquals(view.memory_limit_mb, 256);
   assertEquals(view.tags, [{ id: 't1', name: '模拟', kind: 'problem' }]);

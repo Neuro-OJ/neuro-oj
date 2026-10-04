@@ -45,6 +45,8 @@ export interface ProblemView {
   artifact_max_size_mb: number | null;
   /** 出题人用户名（仅用户题库有值）。 */
   owner_username: string | null;
+  /** 出题人头像 URL；null 表示未上传或来源不提供。 */
+  owner_avatar_url: string | null;
   owner_id: string | null;
   /**
    * 关联的、尚未结束的公开赛（仅题目所有者与管理员能收到该字段）。
@@ -72,6 +74,7 @@ export interface ProblemResource {
   type: string;
   owner_id: string;
   owner_username?: string;
+  owner_avatar_url?: string | null;
   is_objective: boolean;
   submission_mode?: 'code' | 'artifact';
   artifact_max_size_mb?: number | null;
@@ -113,6 +116,7 @@ export function toProblemView(resource: ProblemResource): ProblemView {
     submission_mode: resource.submission_mode ?? 'code',
     artifact_max_size_mb: resource.artifact_max_size_mb ?? null,
     owner_username: resource.owner_username ?? null,
+    owner_avatar_url: resource.owner_avatar_url ?? null,
     owner_id: resource.owner_id ?? null,
     time_limit_ms: evaluator?.time_limit_ms ?? null,
     memory_limit_mb: evaluator?.memory_limit_mb ?? null,
@@ -143,6 +147,7 @@ export function toContestProblemView(resource: ContestProblemResource): ProblemV
     submission_mode: resource.submission_mode ?? 'code',
     artifact_max_size_mb: resource.artifact_max_size_mb ?? null,
     owner_username: null,
+    owner_avatar_url: null,
     owner_id: null,
     time_limit_ms: null,
     memory_limit_mb: null,
