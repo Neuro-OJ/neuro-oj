@@ -2,10 +2,12 @@
  * 题目敏感字段 RBAC 守卫测试（issue #207）。
  *
  * 服务层覆盖（无 Hono Context 的 CLI/内部调用路径 + seed + 资源上限）：
- * - seed：敏感字段权限项存在、user 角色默认拥有（默认放行）
- * - createProblem / updateProblem：内部调用放行、CLI admin 放行、CLI 显式非 admin 拒绝
+ * - seed：敏感字段权限项存在、user 角色默认不拥有（NOJ-062）
+ * - createProblem / updateProblem：内部调用放行、CLI admin 放行、CLI 显式非 admin
+ *   偏离默认值 / 改动既有值被拒，使用默认值放行
  * - enforceResourceLimits：超限 400 / 未超限放行
- * - importProblemBundle：CLI admin 放行 / CLI 显式非 admin 拒绝 / 超限 400
+ * - importProblemBundle：CLI admin 放行 / CLI 显式非 admin 自定义 command 拒绝、
+ *   缺省 command 放行 / 超限 400
  *
  * 真实 Hono Context（路由层）的权限路径见 tests/routes/problem-field-guard.test.ts。
  */
@@ -204,6 +206,19 @@ Deno.test({
   },
 });
 
+/** 确保测试用户存在（problems.owner_id 外键） */
+async function ensureCliUser(id: string): Promise<void> {
+  const isoNow = new Date().toISOString();
+  await getDb().insert(users).values({
+    id,
+    username: `${id}-${ts}`,
+    email: `${id}-${ts}@test.com`,
+    password_hash: "not-used",
+    created_at: isoNow,
+    updated_at: isoNow,
+  }).onConflictDoNothing();
+}
+
 // ── createProblem ────────────────────────────────
 
 Deno.test({
@@ -330,6 +345,46 @@ Deno.test({
       ForbiddenError,
       "权限不足",
     );
+  },
+});
+
+Deno.test({
+  name: "createProblem: CLI 显式非 admin 使用默认 command、不联网放行",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    // 回归：command 为必填字段，"显式设置即检查"会让无权限用户无法创建任何编程题
+    await ensureCliUser("cli-user-id");
+    const problem = await createProblem(
+      {
+        title: `CLI user 默认 ${ts}`,
+        description: "CLI",
+        difficulty: "easy",
+        runtime_config: VALID_RUNTIME_CONFIG,
+      },
+      "cli-user-id",
+      "user",
+    );
+    assertEquals(problem.title, `CLI user 默认 ${ts}`);
+  },
+});
+
+Deno.test({
+  name: "importProblemBundle: CLI 显式非 admin 导入缺省 command 的包放行",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await ensureCliUser("cli-user");
+    const { command: _omit, ...evaluator } = VALID_RUNTIME_CONFIG.evaluator;
+    const zip = makeBundleZip({
+      title: `CLI user 导入 ${ts}`,
+      runtime_config: { ...VALID_RUNTIME_CONFIG, evaluator },
+    });
+    const result = await importProblemBundle(
+      { name: "cli-bundle.zip", data: zip },
+      { userId: "cli-user", userRole: "user" },
+    );
+    assertEquals(result.title, `CLI user 导入 ${ts}`);
   },
 });
 
@@ -470,12 +525,20 @@ Deno.test({
 });
 
 Deno.test({
-  name: "importProblemBundle: CLI 显式非 admin 导入被拒（403）",
+  name: "importProblemBundle: CLI 显式非 admin 导入自定义 command 被拒（403）",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const zip = makeBundleZip();
+    const zip = makeBundleZip({
+      runtime_config: {
+        ...VALID_RUNTIME_CONFIG,
+        evaluator: {
+          ...VALID_RUNTIME_CONFIG.evaluator,
+          command: "bash /workspace/run.sh",
+        },
+      },
+    });
     await assertRejects(
       () =>
         importProblemBundle(

@@ -10,10 +10,15 @@
  * - RESOURCE_LIMIT_SETTINGS：资源限制字段 → 全局上限设置项 key 映射。
  *   设置值 > 0 时启用上限，超限拒绝。
  *
- * 检查语义：请求中**显式设置**的字段才触发检查（值为 null/undefined 视为
- * 未设置——如 `evaluator.network: null` 语义为"无网"，不触发检查；PATCH
- * 部分更新不触及字段则放行）。三条写入路径（CRUD 创建 / CRUD 更新 / 题目包
- * 导入）共用本守卫，行为一致。
+ * 检查语义：仅当敏感字段的**生效值相对基线发生变化**时才触发检查。
+ * - 创建 / 导入新题：基线为平台默认值（command = `DEFAULT_EVALUATOR_COMMAND`，
+ *   network = 不联网）；
+ * - 更新 / 按 number 覆盖导入：基线为库中既有 runtime_config。
+ * `evaluator.command` 是必填字段、前端每次保存都会回传完整 runtime_config，
+ * 若按"显式设置即检查"，无权限用户将无法创建或保存任何编程题（NOJ-062 撤销
+ * 默认授权后即触发）。生效值归一化：command 空白 → 默认命令；network 仅
+ * `enabled === true` 视为联网（null / `{enabled:false}` 等价于无网，与 judge
+ * 端解析一致）。三条写入路径（CRUD 创建 / CRUD 更新 / 题目包导入）共用本守卫。
  *
  * CLI 场景（无 Hono Context）fail-closed：仅 root 用户（显式 userId 或
  * 缺省默认）与显式 userRole="admin" 放行，其余拒绝——与既有权限检查模式
@@ -31,6 +36,7 @@ import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "catalog"]);
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import type { RuntimeConfig } from "../../index.ts";
+import { DEFAULT_EVALUATOR_COMMAND } from "../../types/problem-bundle.ts";
 
 /** 敏感字段路径 → RBAC 权限项（`<section>.<field>` 结构） */
 export const SENSITIVE_FIELD_PERMISSIONS: Record<string, string> = {
@@ -50,7 +56,43 @@ export const RESOURCE_LIMIT_SETTINGS: Record<string, string> = {
 const warnedInvalidLimits = new Set<string>();
 
 /**
- * 对请求中显式设置的敏感字段执行 RBAC 权限检查。
+ * 计算敏感字段的生效值（用于与基线比较）。
+ *
+ * - `evaluator.command`：非空字符串原样返回，否则为默认评测命令；
+ * - `evaluator.network`：仅 `enabled === true` 视为联网；
+ * - 其他（未来扩展）字段：原始值序列化，null/undefined 归一为 null。
+ */
+function effectiveSensitiveValue(
+  path: string,
+  rc: RuntimeConfig | null | undefined,
+): string {
+  const [section, field] = path.split(".");
+  const container = (rc as unknown as
+    | Record<string, Record<string, unknown> | undefined>
+    | null
+    | undefined)?.[section];
+  const value = container && typeof container === "object"
+    ? container[field]
+    : undefined;
+  switch (path) {
+    case "evaluator.command":
+      return typeof value === "string" && value.trim()
+        ? value
+        : DEFAULT_EVALUATOR_COMMAND;
+    case "evaluator.network":
+      return String(
+        (value as { enabled?: unknown } | null | undefined)?.enabled === true,
+      );
+    default:
+      return JSON.stringify(value ?? null);
+  }
+}
+
+/**
+ * 对生效值相对基线发生变化的敏感字段执行 RBAC 权限检查。
+ *
+ * 基线：`previous` 为库中既有 runtime_config（更新路径）；缺省时按平台默认
+ * 值比较（创建路径）——使用默认评测命令、不联网的题目无需敏感字段权限。
  *
  * 有 Hono Context 时走 checkPermission（admin:full_access 通配放行），
  * 无权限抛带 FORBIDDEN code 的 ForbiddenError（HTTP 403）。
@@ -64,40 +106,34 @@ export async function assertSensitiveFieldPermissions(
   userId: string | undefined,
   userRole: string | undefined,
   runtimeConfig: RuntimeConfig,
+  previous?: RuntimeConfig | null,
 ): Promise<void> {
   if (!runtimeConfig || typeof runtimeConfig !== "object") return;
-  const rc = runtimeConfig as unknown as Record<
-    string,
-    Record<string, unknown>
-  >;
 
   for (
     const [path, permission] of Object.entries(SENSITIVE_FIELD_PERMISSIONS)
   ) {
-    const [section, field] = path.split(".");
-    const container = rc[section];
-    // 显式设置即检查：字段存在且值非 null/undefined（null = 未设置，
-    // 如 `network: null` 语义为无网，与 problem-runtime-config spec 一致）
     if (
-      container && typeof container === "object" &&
-      container[field] != null
+      effectiveSensitiveValue(path, runtimeConfig) ===
+        effectiveSensitiveValue(path, previous)
     ) {
-      if (c) {
-        // 显式带 FORBIDDEN code（assertPermission 的 ForbiddenError 无 code）
-        if (!(await checkPermission(c, permission))) {
-          throw new ForbiddenError(
-            `权限不足：设置敏感字段 ${path} 需要权限 ${permission}`,
-            "FORBIDDEN",
-          );
-        }
-      } else if (
-        (userId ?? ROOT_USER_ID) !== ROOT_USER_ID && userRole !== "admin"
-      ) {
+      continue;
+    }
+    if (c) {
+      // 显式带 FORBIDDEN code（assertPermission 的 ForbiddenError 无 code）
+      if (!(await checkPermission(c, permission))) {
         throw new ForbiddenError(
           `权限不足：设置敏感字段 ${path} 需要权限 ${permission}`,
           "FORBIDDEN",
         );
       }
+    } else if (
+      (userId ?? ROOT_USER_ID) !== ROOT_USER_ID && userRole !== "admin"
+    ) {
+      throw new ForbiddenError(
+        `权限不足：设置敏感字段 ${path} 需要权限 ${permission}`,
+        "FORBIDDEN",
+      );
     }
   }
 }

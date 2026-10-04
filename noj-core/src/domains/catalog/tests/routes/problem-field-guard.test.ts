@@ -3,9 +3,10 @@
  *
  * 覆盖真实 Hono Context 的权限路径（服务层无 Context 路径见
  * tests/services/problem-field-guard.test.ts）：
- * - 默认放行：user 角色用户（默认授权）创建/更新含敏感字段的题目
- * - 收紧后拒绝：无敏感字段权限的用户设置/修改敏感字段 → 403
- * - 未触及字段放行：收紧用户仅更新标题 → 200
+ * - 默认值放行：无敏感字段权限的用户使用默认 command、不联网创建题目 → 201
+ * - 偏离默认值拒绝：无敏感字段权限的用户设置自定义 command / 开启联网 → 403
+ * - 未改动放行：收紧用户仅更新标题，或原样回传既有 runtime_config → 200
+ * - 改动拒绝：收紧用户修改 command / network → 403
  * - 导入路径行为一致：收紧用户导入 → 403，admin 导入 → 200
  * - 资源上限：配置后超限创建 → 400 RESOURCE_LIMIT_EXCEEDED
  */
@@ -56,6 +57,14 @@ const NETWORKED_RUNTIME_CONFIG = {
   evaluator: {
     ...VALID_RUNTIME_CONFIG.evaluator,
     network: { enabled: true },
+  },
+};
+
+const CUSTOM_COMMAND_RUNTIME_CONFIG = {
+  ...VALID_RUNTIME_CONFIG,
+  evaluator: {
+    ...VALID_RUNTIME_CONFIG.evaluator,
+    command: "bash /workspace/run.sh",
   },
 };
 
@@ -157,45 +166,13 @@ await db.insert(roles).values({
   }
 }
 
-// 仅收紧 network 权限的角色（保留 command 权限）：用于验证
-// `network: null` 不触发检查（I2 评审修复）
-const NET_TIGHTENED_ID = `field-net-tight-${ts}`;
-const netTightenedRoleId = `net-tightened-role-${ts}`;
-await db.insert(roles).values({
-  id: netTightenedRoleId,
-  name: `net-tightened-${ts}`,
-  description: "测试角色（仅无 network 敏感字段权限）",
-  is_system: false,
-  is_default: false,
-  parent_id: null,
-  created_at: now,
-  updated_at: now,
-}).onConflictDoNothing();
-const [cmdPerm] = await db.select({ id: permissions.id })
-  .from(permissions)
-  .where(
-    and(
-      eq(permissions.resource, "problem"),
-      eq(permissions.action, "field_evaluator_command"),
-    ),
-  )
-  .limit(1);
-if (cmdPerm) {
-  await db.insert(rolePermissions).values({
-    role_id: netTightenedRoleId,
-    permission_id: cmdPerm.id,
-  }).onConflictDoNothing();
-}
-
 // user_roles 直接插入（role_permissions 需要 permission_id，这里只关联角色）
 const { userRoles } = await import("../../../../shared/db/schema.ts");
-await ensureUser(NET_TIGHTENED_ID, `field-net-tight-${ts}`);
 for (
   const [userId, roleId] of [
     [ADMIN_ID, adminRole.id],
     [USER_ID, userRole.id],
     [TIGHTENED_ID, tightenedRoleId],
-    [NET_TIGHTENED_ID, netTightenedRoleId],
   ] as const
 ) {
   await db.insert(userRoles).values({ user_id: userId, role_id: roleId })
@@ -249,13 +226,37 @@ Deno.test({
 });
 
 Deno.test({
-  name: "POST /problems: 收紧用户设置敏感字段 → 403",
+  name: "POST /problems: 默认用户使用默认 command、不联网 → 201 放行",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await makeToken(USER_ID);
+    const res = await app.request("/api/v1/problems", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        title: `默认放行 ${ts}`,
+        description: "默认放行",
+        difficulty: "easy",
+        runtime_config: VALID_RUNTIME_CONFIG,
+      }),
+    });
+    assertEquals(res.status, 201);
+  },
+});
+
+Deno.test({
+  name: "POST /problems: 默认用户设置自定义 command → 403",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await makeToken(TIGHTENED_ID);
+    const token = await makeToken(USER_ID);
     const res = await app.request("/api/v1/problems", {
       method: "POST",
       headers: {
@@ -266,24 +267,24 @@ Deno.test({
         title: `收紧拒绝 ${ts}`,
         description: "收紧拒绝",
         difficulty: "easy",
-        runtime_config: VALID_RUNTIME_CONFIG, // command 必填 → 触发检查
+        runtime_config: CUSTOM_COMMAND_RUNTIME_CONFIG,
       }),
     });
     assertEquals(res.status, 403);
     const body = await res.json();
     assertEquals(body.code, "FORBIDDEN");
+    assertEquals(body.error.includes("evaluator.command"), true);
   },
 });
 
 Deno.test({
-  name:
-    "POST /problems: 默认用户即使 network:null，仍因 command 敏感字段被拒 → 403",
+  name: "POST /problems: 默认用户设置 network:null 不触发检查 → 201",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await makeToken(NET_TIGHTENED_ID);
+    const token = await makeToken(USER_ID);
     const res = await app.request("/api/v1/problems", {
       method: "POST",
       headers: {
@@ -300,18 +301,18 @@ Deno.test({
         },
       }),
     });
-    assertEquals(res.status, 403);
+    assertEquals(res.status, 201);
   },
 });
 
 Deno.test({
-  name: "POST /problems: network 收紧用户设置 network.enabled=true → 403",
+  name: "POST /problems: 默认用户设置 network.enabled=true → 403",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await makeToken(NET_TIGHTENED_ID);
+    const token = await makeToken(USER_ID);
     const res = await app.request("/api/v1/problems", {
       method: "POST",
       headers: {
@@ -328,6 +329,7 @@ Deno.test({
     assertEquals(res.status, 403);
     const body = await res.json();
     assertEquals(body.code, "FORBIDDEN");
+    assertEquals(body.error.includes("evaluator.network"), true);
   },
 });
 
@@ -357,7 +359,51 @@ Deno.test({
 });
 
 Deno.test({
-  name: "PUT /problems/:id: 收紧用户更新 runtime_config → 403",
+  name: "PUT /problems/:id: 收紧用户原样回传既有 runtime_config → 200 放行",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    // 前端编辑器保存时总会回传完整 runtime_config（含必填 command）
+    const app = createApp();
+    const token = await makeToken(TIGHTENED_ID);
+    const res = await app.request(`/api/v1/problems/${FIELD_OWN_PROBLEM_ID}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        runtime_config: {
+          ...VALID_RUNTIME_CONFIG,
+          evaluator: { ...VALID_RUNTIME_CONFIG.evaluator, time_limit_ms: 6000 },
+        },
+      }),
+    });
+    assertEquals(res.status, 200);
+  },
+});
+
+Deno.test({
+  name: "PUT /problems/:id: 收紧用户修改 command → 403",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await makeToken(TIGHTENED_ID);
+    const res = await app.request(`/api/v1/problems/${FIELD_OWN_PROBLEM_ID}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ runtime_config: CUSTOM_COMMAND_RUNTIME_CONFIG }),
+    });
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name: "PUT /problems/:id: 收紧用户开启联网 → 403",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
