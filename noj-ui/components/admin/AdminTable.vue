@@ -27,6 +27,12 @@ const props = withDefaults(
     rowKey?: string
     selectable?: boolean
     density?: "comfortable" | "compact"
+    /**
+     * 行点击回调（即 `@row-click`）。声明为 prop 而非 emit，以便判断父组件是否监听：
+     * UTable 的 onSelect 会对非 button/a 的点击调用 preventDefault，
+     * 无条件挂载会让单元格里的 checkbox 等原生控件无法勾选。
+     */
+    onRowClick?: (row: Record<string, unknown>) => void
   }>(),
   {
     loading: false,
@@ -37,13 +43,13 @@ const props = withDefaults(
     rowKey: "id",
     selectable: false,
     density: "comfortable",
+    onRowClick: undefined,
   },
 )
 
 const emit = defineEmits<{
   "update:page": [page: number]
   sort: [column: string]
-  "row-click": [row: Record<string, unknown>]
 }>()
 
 const selected = defineModel<Record<string, unknown>[]>("selected", { default: () => [] })
@@ -174,7 +180,7 @@ const tableColumns = computed(() => {
 })
 
 function onRowSelect(_event: Event, row: { original: Record<string, unknown> }) {
-  emit("row-click", row.original)
+  props.onRowClick?.(row.original)
 }
 </script>
 
@@ -231,7 +237,7 @@ function onRowSelect(_event: Event, row: { original: Record<string, unknown> }) 
           :data="items"
           :columns="tableColumns"
           :get-row-id="getRowId"
-          :on-select="onRowSelect"
+          :on-select="onRowClick ? onRowSelect : undefined"
           class="w-full"
         />
       </div>
