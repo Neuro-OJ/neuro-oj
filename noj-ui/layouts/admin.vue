@@ -64,6 +64,7 @@ const navGroups: NavGroup[] = [
       { label: "评测镜像", to: "/admin/judge-images", icon: "i-lucide-container" },
       { label: "LLM Provider", to: "/admin/llm/providers", icon: "i-lucide-server" },
       { label: "LLM 用量统计", to: "/admin/llm/usage", icon: "i-lucide-bar-chart-3" },
+      { label: "LLM 配额", to: "/admin/llm/quotas", icon: "i-lucide-gauge" },
     ],
   },
   {

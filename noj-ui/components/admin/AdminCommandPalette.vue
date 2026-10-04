@@ -38,6 +38,7 @@ const allItems: PaletteItem[] = [
   { id: "images", label: "评测镜像", to: "/admin/judge-images", icon: "i-lucide-container", group: "评测与算力", keywords: ["jingxiang", "docker", "image", "sandbox"] },
   { id: "providers", label: "LLM Provider", to: "/admin/llm/providers", icon: "i-lucide-server", group: "评测与算力", keywords: ["llm", "ai", "model", "apikey", "gateway"] },
   { id: "llmusage", label: "LLM 用量统计", to: "/admin/llm/usage", icon: "i-lucide-bar-chart-3", group: "评测与算力", keywords: ["token", "cost", "usage", "xiaohao"] },
+  { id: "llmquotas", label: "LLM 配额", to: "/admin/llm/quotas", icon: "i-lucide-gauge", group: "评测与算力", keywords: ["llm", "quota", "limit", "peie", "xianliang"] },
 
   // 社区与风控
   { id: "comm", label: "社区管理", to: "/admin/community", icon: "i-lucide-messages-square", group: "社区与风控", keywords: ["shequ", "community", "post", "comment"] },

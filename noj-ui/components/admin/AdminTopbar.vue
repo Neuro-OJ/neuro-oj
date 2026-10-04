@@ -55,6 +55,7 @@ const ROUTE_MAP: Record<string, RouteMetaMap> = {
   "/admin/judge-images": { group: "评测与算力", label: "评测镜像" },
   "/admin/llm/providers": { group: "评测与算力", label: "LLM Provider" },
   "/admin/llm/usage": { group: "评测与算力", label: "LLM 用量统计" },
+  "/admin/llm/quotas": { group: "评测与算力", label: "LLM 配额" },
   "/admin/community": { group: "社区与风控", label: "社区管理" },
   "/admin/content-review": { group: "社区与风控", label: "内容审查" },
   "/admin/reports": { group: "社区与风控", label: "举报中心" },
