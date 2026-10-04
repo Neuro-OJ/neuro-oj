@@ -133,6 +133,7 @@ export const testConfig: GatewayConfig = {
   databaseUrl: "postgres://fake",
   redisUrl: "redis://fake",
   usageRetentionDays: 90,
+  upstreamAllowedHosts: new Set(),
 };
 
 export async function makeToken(
@@ -182,4 +183,12 @@ export function stubFetch(
     // deno-lint-ignore no-explicit-any
     (globalThis as any).fetch = original;
   };
+}
+
+/** 测试用 DNS：任何主机都解析为公网地址，避免单测依赖真实网络。 */
+export function publicDns(
+  _host: string,
+  type: "A" | "AAAA",
+): Promise<string[]> {
+  return Promise.resolve(type === "A" ? ["93.184.216.34"] : []);
 }

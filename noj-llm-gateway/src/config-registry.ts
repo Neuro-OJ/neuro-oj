@@ -116,6 +116,14 @@ export const GATEWAY_CONFIG_DEFINITIONS: GatewayEnvDefinition[] = [
     readMode: "static",
     defaultValue: "90",
   },
+  {
+    key: "NOJ_LLM_UPSTREAM_ALLOWED_HOSTS",
+    description:
+      "允许 http 与内网地址的上游主机白名单（逗号分隔）；默认仅允许 https 公网地址",
+    isSecret: false,
+    readMode: "static",
+    defaultValue: "",
+  },
   // ── 日志（issue #497「谁读谁声明」：真实读取点是 src/logger.ts） ──
   {
     key: "NOJ_ENV",

@@ -210,6 +210,13 @@ export function mapLlmError(error: unknown): never {
     if (error.status >= 500) {
       throw new ServiceUnavailableError("模型服务暂时不可用");
     }
+    // 出站校验拦截（G-03）：给管理员可操作的提示，而非原始错误码
+    if (error.code === "provider_base_url_blocked") {
+      throw new BadRequestError(
+        "Base URL 不被允许：仅支持 https 公网地址；内网自建模型请在网关 NOJ_LLM_UPSTREAM_ALLOWED_HOSTS 中放行该主机",
+        error.code,
+      );
+    }
     if (error.status === 400) throw new BadRequestError(error.code, error.code);
     throw new BadRequestError("模型服务暂时不可用", "LLM_GATEWAY_UNAVAILABLE");
   }

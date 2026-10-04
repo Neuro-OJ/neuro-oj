@@ -14,6 +14,7 @@ import {
   updateProvider,
 } from "../providers.ts";
 import { fallbackQuota } from "../limits.ts";
+import { assertSafeBaseUrl, UPSTREAM_BLOCKED } from "../upstream-guard.ts";
 
 export interface InternalDeps {
   config: GatewayConfig;
@@ -58,6 +59,8 @@ export function createInternalRouter(deps: InternalDeps): Hono {
       return c.json({ error: "missing_required_fields" }, 400);
     }
     try {
+      // 出站地址校验（G-03）：禁止内网 / 回环 / 元数据地址与非 https（白名单除外）
+      assertSafeBaseUrl(body.base_url, deps.config.upstreamAllowedHosts);
       const provider = await createProvider(
         deps.db,
         body,
@@ -78,6 +81,9 @@ export function createInternalRouter(deps: InternalDeps): Hono {
       // BYOK 已全路径移除：不再有「用户自助 Provider」，`created_by` 归属列与
       // 用户路由都已删除，因此这里既不读 `created_by`，也不传作用域参数
       // （#541 引入的 `scope` 参数随 BYOK 一起消失）。
+      if (body.base_url !== undefined) {
+        assertSafeBaseUrl(body.base_url, deps.config.upstreamAllowedHosts);
+      }
       const provider = await updateProvider(
         deps.db,
         id,
@@ -111,13 +117,14 @@ export function createInternalRouter(deps: InternalDeps): Hono {
         c.req.param("id"),
         deps.config.storeKey,
         body.model ?? "",
+        deps.config.upstreamAllowedHosts,
       );
       return c.json({ data: { status: "ok" } });
     } catch (err) {
       const code = err instanceof Error ? err.message : "provider_error";
       const status = code === "provider_not_found"
         ? 404
-        : code === "model_required"
+        : code === "model_required" || code === UPSTREAM_BLOCKED
         ? 400
         : 502;
       return c.json({ error: code }, status);

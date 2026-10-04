@@ -5,6 +5,7 @@ import {
   FakeRedis,
   makeProvider,
   makeToken,
+  publicDns,
   requestChat,
   stubFetch,
   testConfig,
@@ -15,7 +16,12 @@ Deno.test("llm route: 限流超限返回 429 并记录 rejected", async () => {
   const { db, usageInserts } = createFakeDb(provider);
   const redis = new FakeRedis();
   redis.evalResults = ["limit_exceeded"];
-  const app = createLlmRouter({ config: testConfig, db, redis });
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
   const token = await makeToken(testConfig);
 
   const res = await requestChat(app, token, {
@@ -45,7 +51,12 @@ Deno.test("llm route: 调用前拒绝按提交+原因去重，重复拒绝不再
     "rate_limit_exceeded",
     "limit_exceeded",
   ];
-  const app = createLlmRouter({ config: testConfig, db, redis });
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
   const token = await makeToken(testConfig);
   const big = "x".repeat(32 * 1024);
 
@@ -72,7 +83,12 @@ Deno.test("llm route: 分钟速率超限返回 429 并记录 rejected", async ()
   const { db, usageInserts } = createFakeDb(provider);
   const redis = new FakeRedis();
   redis.evalResults = ["rate_limit_exceeded"];
-  const app = createLlmRouter({ config: testConfig, db, redis });
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
   const token = await makeToken(testConfig);
 
   const res = await requestChat(app, token, {
@@ -90,7 +106,12 @@ Deno.test("llm route: 上游超时/网络错误返回 502 并记录 error", asyn
   const provider = await makeProvider(testConfig.storeKey);
   const { db, usageInserts } = createFakeDb(provider);
   const redis = new FakeRedis();
-  const app = createLlmRouter({ config: testConfig, db, redis });
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
   const token = await makeToken(testConfig);
   const restore = stubFetch(() => {
     throw new Error("timeout");
@@ -117,7 +138,12 @@ Deno.test("llm route: 上游 5xx 透传状态码并记录 error", async () => {
   const provider = await makeProvider(testConfig.storeKey);
   const { db, usageInserts } = createFakeDb(provider);
   const redis = new FakeRedis();
-  const app = createLlmRouter({ config: testConfig, db, redis });
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
   const token = await makeToken(testConfig);
   const restore = stubFetch(() =>
     Promise.resolve(
@@ -149,7 +175,12 @@ Deno.test("llm route: 上游畸形 JSON 不崩溃并记录 ok", async () => {
   const provider = await makeProvider(testConfig.storeKey);
   const { db, usageInserts } = createFakeDb(provider);
   const redis = new FakeRedis();
-  const app = createLlmRouter({ config: testConfig, db, redis });
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
   const token = await makeToken(testConfig);
   const restore = stubFetch(() =>
     Promise.resolve(
@@ -180,7 +211,12 @@ Deno.test("llm route: 成功响应按 billed-token 审计", async () => {
   const provider = await makeProvider(testConfig.storeKey);
   const { db, usageInserts } = createFakeDb(provider);
   const redis = new FakeRedis();
-  const app = createLlmRouter({ config: testConfig, db, redis });
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
   const token = await makeToken(testConfig);
   const upstream = {
     choices: [{ message: { role: "assistant", content: "pong" } }],
@@ -223,7 +259,12 @@ Deno.test("llm route: settle 超限返回 429 并记录 rejected", async () => {
   const { db, usageInserts } = createFakeDb(provider);
   const redis = new FakeRedis();
   redis.evalResults = ["ok", "limit_exceeded"];
-  const app = createLlmRouter({ config: testConfig, db, redis });
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
   const token = await makeToken(testConfig);
   const upstream = {
     choices: [{ message: { role: "assistant", content: "pong" } }],
@@ -260,7 +301,12 @@ Deno.test("llm route: 已吊销的 eval_token 返回 401 token_revoked", async (
   // 模拟已吊销状态
   redis.get = (key: string) =>
     Promise.resolve(key.startsWith("llm:token:revoked:") ? "1" : null);
-  const app = createLlmRouter({ config: testConfig, db, redis });
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
   const token = await makeToken(testConfig);
 
   const res = await requestChat(app, token, {
@@ -277,7 +323,12 @@ Deno.test("llm route: 拒绝 stream: true 请求返回 400", async () => {
   const provider = await makeProvider(testConfig.storeKey);
   const { db } = createFakeDb(provider);
   const redis = new FakeRedis();
-  const app = createLlmRouter({ config: testConfig, db, redis });
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
   const token = await makeToken(testConfig);
 
   const res = await requestChat(app, token, {
@@ -295,7 +346,12 @@ Deno.test("llm route: 超大上游响应触发 upstream_response_too_large 返�
   const provider = await makeProvider(testConfig.storeKey);
   const { db, usageInserts } = createFakeDb(provider);
   const redis = new FakeRedis();
-  const app = createLlmRouter({ config: testConfig, db, redis });
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
   const token = await makeToken(testConfig);
 
   // 构造流式返回超过 10MB 的 Response

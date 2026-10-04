@@ -12,11 +12,18 @@ import { recordRejectedUsage, recordUsage } from "../usage.ts";
 import { calcBilledUsage } from "../billing.ts";
 import { inc, observe } from "../metrics.ts";
 import { logger } from "../logger.ts";
+import {
+  assertResolvesPublic,
+  type ResolveFn,
+  UPSTREAM_BLOCKED,
+} from "../upstream-guard.ts";
 
 export interface LlmDeps {
   config: GatewayConfig;
   db: Db;
   redis: RedisClient;
+  /** DNS 解析（测试注入）；缺省使用 Deno.resolveDns。 */
+  resolveDns?: ResolveFn;
 }
 
 interface ChatCompletionRequest {
@@ -191,6 +198,22 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     }
     if (!providerSecret.provider.enabled) {
       return c.json({ error: "provider_disabled" }, 403);
+    }
+    // 出站目标校验（G-03）：调用前解析 DNS，目标落在内网即拒绝（白名单除外）。
+    // 放在额度扣减之前，被拦截的调用不消耗配额。
+    try {
+      await assertResolvesPublic(
+        providerSecret.provider.base_url,
+        deps.config.upstreamAllowedHosts,
+        deps.resolveDns,
+      );
+    } catch {
+      inc("noj_llm_provider_errors_total");
+      logger.warn(
+        "Provider 上游地址被出站校验拦截: provider={provider_id}",
+        { provider_id: payload.provider_id },
+      );
+      return c.json({ error: UPSTREAM_BLOCKED }, 502);
     }
 
     const startedAt = Date.now();
