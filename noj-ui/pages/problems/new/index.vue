@@ -51,6 +51,26 @@ useHead({ title: '创建题目 - Neuro OJ' })
           <UIcon name="i-lucide-arrow-right" class="size-4 transition-transform group-hover:translate-x-0.5" />
         </span>
       </NuxtLink>
+
+      <!-- 传统 OI 题 -->
+      <NuxtLink
+        to="/problems/new/oi"
+        class="group flex flex-col gap-3 rounded-xl border border-border bg-white p-6 no-underline transition-all duration-150 hover:border-primary/50 hover:shadow-md"
+      >
+        <span class="flex size-11 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+          <UIcon name="i-lucide-gauge" class="size-5" />
+        </span>
+        <div>
+          <h2 class="text-base font-semibold text-text group-hover:text-primary">传统 OI 题</h2>
+          <p class="mt-1 text-sm leading-relaxed text-text-secondary">
+            C/C++ 非交互评测，支持测试点、全通过子任务、SPJ 与 WASM 等效计时。
+          </p>
+        </div>
+        <span class="mt-auto inline-flex items-center gap-1 text-sm font-medium text-primary">
+          创建 OI 题
+          <UIcon name="i-lucide-arrow-right" class="size-4 transition-transform group-hover:translate-x-0.5" />
+        </span>
+      </NuxtLink>
     </div>
   </div>
 </template>

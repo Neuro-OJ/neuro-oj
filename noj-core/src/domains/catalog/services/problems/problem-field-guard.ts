@@ -30,7 +30,7 @@ import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "catalog"]);
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
-import type { RuntimeConfig } from "../../index.ts";
+import { isOiRuntimeConfig, type ProblemRuntimeConfig } from "../../index.ts";
 
 /** 敏感字段路径 → RBAC 权限项（`<section>.<field>` 结构） */
 export const SENSITIVE_FIELD_PERMISSIONS: Record<string, string> = {
@@ -63,9 +63,12 @@ export async function assertSensitiveFieldPermissions(
   c: Context | undefined,
   userId: string | undefined,
   userRole: string | undefined,
-  runtimeConfig: RuntimeConfig,
+  runtimeConfig: ProblemRuntimeConfig,
 ): Promise<void> {
   if (!runtimeConfig || typeof runtimeConfig !== "object") return;
+  // OI 题目的限制是测试点级配置，不含双容器敏感字段；其后端不接受
+  // evaluator.command/network，因此跳过双容器字段守卫。
+  if (isOiRuntimeConfig(runtimeConfig)) return;
   const rc = runtimeConfig as unknown as Record<
     string,
     Record<string, unknown>
@@ -111,9 +114,10 @@ export async function assertSensitiveFieldPermissions(
  * @throws {AppError} HTTP 400 / RESOURCE_LIMIT_EXCEEDED（含上限与实际值）
  */
 export function enforceResourceLimits(
-  runtimeConfig: RuntimeConfig,
+  runtimeConfig: ProblemRuntimeConfig,
 ): void {
   if (!runtimeConfig || typeof runtimeConfig !== "object") return;
+  if (isOiRuntimeConfig(runtimeConfig)) return;
   const rc = runtimeConfig as unknown as Record<
     string,
     Record<string, unknown>

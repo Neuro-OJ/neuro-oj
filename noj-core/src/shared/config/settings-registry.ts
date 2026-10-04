@@ -881,6 +881,17 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     min: 0,
     scope: "runtime",
   },
+  {
+    key: "oi_cost_profile_active",
+    type: "string",
+    default: "",
+    description:
+      "传统 OI WASM 的活动硬件成本表 JSON；只能通过校准报告导入并启用",
+    is_secret: false,
+    envFallback: "OI_COST_PROFILE_ACTIVE",
+    category: "judge",
+    scope: "runtime",
+  },
 
   // ── review（内容合规审核，issue #413）───────────────────────
   {

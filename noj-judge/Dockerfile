@@ -11,7 +11,9 @@
 # Worker 使用非 root 用户运行；禁止挂载应用宿主机的 /var/run/docker.sock。
 
 # ── Builder：编译 release 二进制 ────────────────────────────────────
-FROM rust:1.86-slim-bookworm@sha256:a044f7ab9a762f95be2ee7eb2c49e4d4a4ec60011210de9f7da01d552cae3a55 AS builder
+# Wasmtime 49 requires Rust 1.96 or newer; keep this aligned with
+# rust-toolchain.toml so local, CI and production builds use the same toolchain.
+FROM rust:1.96.1-slim-bookworm AS builder
 
 WORKDIR /build
 

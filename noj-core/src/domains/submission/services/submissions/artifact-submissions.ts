@@ -38,8 +38,12 @@ import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "submission"]);
 import type { JudgeTaskLlm } from "../../types/index.ts";
-import { buildJudgeTask } from "../../types/index.ts";
-import type { LlmConfig, RuntimeConfig } from "./../../../catalog/index.ts";
+import { prepareJudgeTask } from "../prepare-judge-task.ts";
+import {
+  isOiRuntimeConfig,
+  type LlmConfig,
+  type ProblemRuntimeConfig,
+} from "./../../../catalog/index.ts";
 import type { SubmissionResponse } from "./submissions-types.ts";
 
 /** NOJ artifact 硬上限默认值：2GB。 */
@@ -229,7 +233,7 @@ export async function createArtifactSubmission(
 
   // 校验 runtime_config
   const runtimeConfig = problem.runtime_config as
-    | RuntimeConfig
+    | ProblemRuntimeConfig
     | null
     | undefined;
   if (!runtimeConfig) {
@@ -239,6 +243,10 @@ export async function createArtifactSubmission(
       500,
       "RUNTIME_CONFIG_MISSING",
     );
+  }
+  if (isOiRuntimeConfig(runtimeConfig)) {
+    await storage.delete(artifactStorageUrl).catch(() => {});
+    throw new BadRequestError("OI 题目不支持 artifact 提交");
   }
   await validateJudgeImageWithKind(runtimeConfig.evaluator.image, "evaluator");
   await validateJudgeImageWithKind(runtimeConfig.solution.image, "solution");
@@ -277,7 +285,7 @@ export async function createArtifactSubmission(
     "submission",
   );
 
-  const task = buildJudgeTask({
+  const task = await prepareJudgeTask({
     submission_id: id,
     problem_id: input.problem_id,
     user_id: userId,

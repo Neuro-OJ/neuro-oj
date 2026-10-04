@@ -147,3 +147,32 @@ Deno.test("projection: visibility=hidden 同样被剥离", () => {
     .cases;
   assertEquals(cases, [{ id: "c1", visibility: "visible", result: "ok" }]);
 });
+
+Deno.test("projection: OI在非竞赛中也禁止隐藏内容与checker诊断", () => {
+  const projected = applySubmissionProjection({
+    id: "s",
+    user_id: "u",
+    output: "secret",
+    details: {
+      oi: {
+        verdict: "WA",
+        backend: "native",
+        checker_message: "secret",
+        subtasks: [{
+          id: "s1",
+          score: 0,
+          verdict: "WA",
+          cases: [{
+            case_id: "1",
+            verdict: "WA",
+            input: "secret",
+            actual_output: "secret",
+            time_ms: 1,
+          }],
+        }],
+      },
+    },
+  }, { viewerId: "u", isAdmin: false, isOwner: true });
+  assertEquals(JSON.stringify(projected).includes("secret"), false);
+  assertEquals((projected as Record<string, unknown>).verdict, "WA");
+});

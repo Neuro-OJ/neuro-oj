@@ -71,6 +71,59 @@ const { api } = useApi()
 const { dialog } = useDialog()
 const { toast } = useToast()
 
+interface OiCostProfileStatus {
+  active: boolean
+  profile: Record<string, unknown> | null
+}
+const oiProfileText = ref("")
+const oiProfileStatus = ref<OiCostProfileStatus | null>(null)
+const oiProfileLoading = ref(false)
+const oiProfileSaving = ref(false)
+
+async function loadOiCostProfile() {
+  if (!isLoggedIn.value) return
+  oiProfileLoading.value = true
+  try {
+    const res = await api.get<{ data: OiCostProfileStatus }>(
+      "/api/v1/admin/system/oi-cost-profile",
+      { silent: true },
+    )
+    oiProfileStatus.value = res.data
+    oiProfileText.value = res.data.profile
+      ? JSON.stringify(res.data.profile, null, 2)
+      : ""
+  } catch {
+    oiProfileStatus.value = null
+  } finally {
+    oiProfileLoading.value = false
+  }
+}
+
+async function saveOiCostProfile() {
+  let profile: unknown
+  try {
+    profile = JSON.parse(oiProfileText.value)
+  } catch {
+    toast.error("成本表不是合法 JSON")
+    return
+  }
+  oiProfileSaving.value = true
+  try {
+    const res = await api.put<{ data: OiCostProfileStatus }>(
+      "/api/v1/admin/system/oi-cost-profile",
+      { profile },
+      { silent: true },
+    )
+    oiProfileStatus.value = res.data
+    oiProfileText.value = JSON.stringify(res.data.profile, null, 2)
+    toast.success("OI WASM 成本表已启用")
+  } catch (err) {
+    toast.error(extractApiError(err).message)
+  } finally {
+    oiProfileSaving.value = false
+  }
+}
+
 // ─── 邮件服务就绪状态（issue #426）────────────────────────
 
 interface EmailConfigStatus {
@@ -176,7 +229,10 @@ async function loadSettings() {
 }
 
 watch(isLoggedIn, (val) => {
-  if (val) loadSettings()
+  if (val) {
+    loadSettings()
+    loadOiCostProfile()
+  }
 }, { immediate: true })
 
 // ─── 草稿状态 ────────────────────────────────────────────
@@ -185,7 +241,9 @@ const drafts = ref<Record<string, unknown>>({})
 
 /** runtime（DB-owned）项：运行时可改 */
 const dbSettings = computed(() =>
-  settings.value.filter((s) => s.scope === "runtime")
+  settings.value.filter((s) =>
+    s.scope === "runtime" && s.key !== "oi_cost_profile_active"
+  )
 )
 
 /** bootstrap（env-owned）项：只读，改 env 重启生效 */
@@ -430,6 +488,19 @@ async function cleanupBootstrapRow(s: SystemSetting) {
         </div>
       </div>
     </div>
+
+    <!-- OI WASM 成本表：只接受 CLI 校准报告，启用时由后端校验摘要/留出集/赛期冻结 -->
+    <section class="rounded-xl border border-border bg-white p-5">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 class="flex items-center gap-2 text-base font-semibold text-text"><UIcon name="i-lucide-gauge" class="size-4 text-signal" /> OI WASM 硬件成本表</h2>
+          <p class="mt-1 text-xs leading-relaxed text-text-secondary">使用 <code class="font-mono">noj-cli judge calibrate</code> 生成 JSON 后导入。后端会验证 SHA-256、独立留出集误差与可信计量标记；进行中的比赛会冻结切换。</p>
+        </div>
+        <span v-if="oiProfileStatus" class="rounded-full px-2 py-1 text-xs font-semibold" :class="oiProfileStatus.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-text-secondary'">{{ oiProfileStatus.active ? '已启用' : '未启用' }}</span>
+      </div>
+      <textarea v-model="oiProfileText" rows="10" class="mt-3 w-full rounded-md border border-border bg-bg-page px-3 py-2 font-mono text-xs" placeholder="粘贴校准输出的 profile.json" :disabled="oiProfileLoading" />
+      <div class="mt-3 flex justify-end"><UButton color="primary" :loading="oiProfileSaving" :disabled="!oiProfileText.trim()" @click="saveOiCostProfile">校验并启用</UButton></div>
+    </section>
 
     <!-- 错误条 -->
     <div

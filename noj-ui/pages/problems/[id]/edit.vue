@@ -26,6 +26,7 @@ const problem = computed(() =>
   data.value?.data ? toProblemView(data.value.data) : null
 )
 const isObjective = computed(() => problem.value?.is_objective === true)
+const isOi = computed(() => data.value?.data?.judge_type === 'oi')
 
 function onSaved() {
   router.replace(`/problems/${problemId}`)
@@ -38,10 +39,11 @@ function onSaved() {
     <ProblemContestNotice :contests="problem?.contest_secrecy ?? []" />
 
     <h1 class="text-2xl font-bold text-text mb-5">
-      {{ isObjective ? '编辑客观题套卷' : '编辑题目' }}
+    {{ isObjective ? '编辑客观题套卷' : isOi ? '编辑传统 OI 题' : '编辑题目' }}
     </h1>
 
     <ObjectiveProblemEditor v-if="isObjective" :paper-id="problemId" />
-    <CodingProblemEditor v-else mode="edit" :problem-id="problemId" @saved="onSaved" />
+    <OiProblemEditor v-else-if="problem && isOi" mode="edit" :problem-id="problemId" @saved="onSaved" />
+    <CodingProblemEditor v-else-if="problem" mode="edit" :problem-id="problemId" @saved="onSaved" />
   </div>
 </template>

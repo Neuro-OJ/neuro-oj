@@ -18,6 +18,7 @@ fn package_size(pkg: &DownloadedPackage) -> u64 {
 #[allow(clippy::too_many_arguments)]
 pub async fn evaluate_with_cpu_limit(
     docker: bollard::Docker,
+    resource_lease_client: redis::Client,
     task: &JudgeTask,
     download_timeout_secs: u64,
     cache_dir: String,
@@ -29,6 +30,7 @@ pub async fn evaluate_with_cpu_limit(
     evaluator_network_mode: &str,
     allow_http_s3: bool,
     image_prefix: &str,
+    oi_image: &str,
     command_whitelist: &[String],
     max_evaluator_time_ms: u64,
     max_solution_call_timeout_ms: u64,
@@ -110,10 +112,58 @@ pub async fn evaluate_with_cpu_limit(
         None
     };
 
+    if task.judge_type == "oi" {
+        if artifact_zip.is_some() || task.llm.is_some() {
+            anyhow::bail!("OI 评测任务不支持 artifact 或 LLM 字段");
+        }
+        let support_package = support_pkg
+            .as_ref()
+            .map(|package| package.path.as_path())
+            .ok_or_else(|| anyhow::anyhow!("OI 评测任务缺少支持包"))?;
+        return match tokio::time::timeout(
+            std::time::Duration::from_secs(300),
+            crate::oi::runner::evaluate_native(
+                &docker,
+                task,
+                support_package,
+                oi_image,
+                cpu_limit_millicores,
+                instance_id,
+                Some(&resource_lease_client),
+            ),
+        )
+        .await
+        {
+            Ok(result) => match result {
+                Ok(result) => Ok(result),
+                Err(error) => {
+                    tracing::error!(
+                        submission_id = %task.submission_id,
+                        error = %error,
+                        "OI 评测执行异常，归因为 SE"
+                    );
+                    Ok(crate::oi::runner::system_error_result(
+                        task,
+                        "OI 评测执行失败",
+                    ))
+                }
+            },
+            Err(_) => Ok(crate::oi::runner::system_error_result(
+                task,
+                "OI 评测超过 300 秒任务看门狗",
+            )),
+        };
+    }
+
+    let dual_runtime_config = task
+        .runtime_config
+        .as_dual()
+        .ok_or_else(|| anyhow::anyhow!("judge_type 与 runtime_config 不匹配"))?;
+
     crate::dual::evaluate_dual_with_cpu_limit(
         docker,
         &task.submission_id,
-        &task.runtime_config,
+        dual_runtime_config,
         &task.code,
         support_pkg.as_ref().map(|p| p.path.as_path()),
         artifact_zip.as_ref().map(|p| p.path.as_path()),
@@ -201,7 +251,7 @@ async fn fetch_artifact_package(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{EvaluatorRuntime, RuntimeConfig, SolutionRuntime};
+    use crate::types::{EvaluatorRuntime, JudgeRuntimeConfig, RuntimeConfig, SolutionRuntime};
 
     /// 构造仅用于「支持包获取阶段失败」的测试任务：失败发生在触碰 Docker 之前。
     fn task_with_download_url(download_url: &str) -> JudgeTask {
@@ -210,9 +260,10 @@ mod tests {
             problem_id: "1001".to_string(),
             user_id: "u-1".to_string(),
             priority: "medium".to_string(),
+            judge_type: "dual".to_string(),
             download_url: Some(download_url.to_string()),
             artifact_download_url: None,
-            runtime_config: RuntimeConfig {
+            runtime_config: JudgeRuntimeConfig::Dual(RuntimeConfig {
                 evaluator: EvaluatorRuntime {
                     image: "noj-evaluator-python".to_string(),
                     command: "python3 /workspace/evaluate.py".to_string(),
@@ -225,7 +276,8 @@ mod tests {
                     call_timeout_ms: 1000,
                     memory_limit_mb: 128,
                 },
-            },
+            }),
+            oi_cost_profile: None,
             language: "python3".to_string(),
             code: "def solve(): return 1".to_string(),
             file_name: None,
@@ -250,6 +302,7 @@ mod tests {
 
         let err = evaluate_with_cpu_limit(
             offline_docker(),
+            redis::Client::open("redis://127.0.0.1/").unwrap(),
             &task,
             5,
             tmp.path().join("cache").to_string_lossy().to_string(),
@@ -261,6 +314,7 @@ mod tests {
             "noj-eval-net",
             false,
             "noj-",
+            "noj-oi-cpp",
             &["python3".to_string()],
             300_000,
             60_000,
@@ -292,6 +346,7 @@ mod tests {
 
         let err = evaluate_with_cpu_limit(
             offline_docker(),
+            redis::Client::open("redis://127.0.0.1/").unwrap(),
             &task,
             5,
             tmp.path().join("cache").to_string_lossy().to_string(),
@@ -303,6 +358,7 @@ mod tests {
             "noj-eval-net",
             false,
             "noj-",
+            "noj-oi-cpp",
             &["python3".to_string()],
             300_000,
             60_000,

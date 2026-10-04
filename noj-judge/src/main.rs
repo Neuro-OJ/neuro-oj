@@ -8,6 +8,7 @@ mod drain;
 mod dual;
 mod judge;
 mod mq;
+mod oi;
 mod sandbox;
 mod types;
 
@@ -154,6 +155,7 @@ fn main() -> Result<()> {
         let evaluator_network_mode = config.evaluator_network_mode.clone();
         let allow_http_s3 = config.allow_http_s3;
         let image_prefix = config.image_prefix.clone();
+        let oi_image = config.oi_image.clone();
         let command_whitelist = config.command_whitelist.clone();
         let drain_timeout = config.drain_timeout_secs();
         let max_concurrent_judges = config.max_concurrent_judges;
@@ -390,6 +392,7 @@ fn main() -> Result<()> {
                     let fallback_dir = fallback_dir.clone();
                     let task_work_dir = work_dir.clone();
                     let image_prefix = image_prefix.clone();
+                    let oi_image = oi_image.clone();
                     let evaluator_network_mode = evaluator_network_mode.clone();
                     let command_whitelist = command_whitelist.clone();
                     let docker = docker.clone();
@@ -414,9 +417,10 @@ fn main() -> Result<()> {
                         // 持有全局并发槽位直到任务结束。
                         let _permit = permit;
 
-                        // 统一使用双容器模式（Evaluator + Solution）
+                        // 根据 judge_type 分发到双容器或传统 OI 执行器。
                         let result = match judge::runner::evaluate_with_cpu_limit(
                             docker,
+                            redis_client.clone(),
                             &task,
                             download_timeout,
                             cache_dir.clone(),
@@ -428,6 +432,7 @@ fn main() -> Result<()> {
                             &evaluator_network_mode,
                             allow_http_s3,
                             &image_prefix,
+                            &oi_image,
                             &command_whitelist,
                             max_evaluator_time_ms,
                             max_solution_call_timeout_ms,
@@ -437,7 +442,7 @@ fn main() -> Result<()> {
                         {
                             Ok(r) => r,
                             Err(e) => {
-                                error!(submission_id = %task.submission_id, error = %e, "双容器评测失败");
+                                error!(submission_id = %task.submission_id, error = %e, "评测任务失败");
                                 types::JudgeResult::error(&task.submission_id, task.rejudge_seq)
                             }
                         };
