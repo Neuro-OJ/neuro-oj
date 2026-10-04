@@ -47,7 +47,10 @@ const UTableStub = defineComponent({
           (props.data as Record<string, unknown>[]).map((row) =>
             h(
               'tr',
-              { 'data-row-id': props.getRowId ? props.getRowId(row) : undefined },
+              {
+                'data-row-id': props.getRowId ? props.getRowId(row) : undefined,
+                'data-has-select': props.onSelect ? 'true' : 'false',
+              },
               (props.columns as { cell?: (ctx: unknown) => unknown }[]).map((column) =>
                 h('td', column.cell ? (column.cell({ row: { original: row } }) as never) : '')
               ),
@@ -84,6 +87,17 @@ function mountTable(props: Record<string, unknown> = {}) {
 }
 
 describe('AdminTable', () => {
+  it('未监听 row-click 时不向 UTable 传 onSelect（否则 preventDefault 会让单元格 checkbox 无法勾选）', () => {
+    // 回归：题目评定页的勾选框点击后不变，因 UTable onSelect 对非 button/a 点击 preventDefault。
+    const wrapper = mountTable();
+    expect(wrapper.find('tbody tr').attributes('data-has-select')).toBe('false');
+  });
+
+  it('监听 row-click 时才挂载 onSelect', () => {
+    const wrapper = mountTable({ onRowClick: () => {} });
+    expect(wrapper.find('tbody tr').attributes('data-has-select')).toBe('true');
+  });
+
   it('把行数据以 v4 的 data prop 传给 UTable 并渲染出所有行', () => {
     const wrapper = mountTable();
     const rows = wrapper.findAll('tbody tr');
