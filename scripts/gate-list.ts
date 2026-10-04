@@ -46,6 +46,7 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/check-write-rate-limits_test.ts",
   "scripts/check-log-migration_test.ts",
   "scripts/check-deno-version_test.ts",
+  "scripts/check-action-pins_test.ts",
   // 评审发现：下面两个是本次新增/扩展的守卫测试，却**不在任何执行入口内**
   // ——写了测试却永不执行，正是本仓库反复治理的"假绿"形态。
   "scripts/gate-list_test.ts",
@@ -130,6 +131,9 @@ export const REPO_GATES: Gate[] = [
   // Deno 版本一致性（2026-09-17）：CI 曾用浮动 v2.x，2.9.7 发布引入 BrokenPipe
   // 回归导致 UI Components 间歇红灯。.dvmrc 为唯一事实源，禁止写死 deno-version。
   { args: ["deno", "run", "-A", "scripts/check-deno-version.ts"] },
+  // Actions 引用固定（审计 S1，2026-10-04）：175 处 uses 曾零处固定 SHA，而 release.yml
+  // 持有写权限并 --clobber 覆盖 Release 资产——上游可变 tag 被篡改即污染所有后续安装。
+  { args: ["deno", "run", "-A", "scripts/check-action-pins.ts"] },
   // schema-ddl.ts（PGlite 测试用手工 SQL 镜像）与 Drizzle schema 的表/列一致性
   //（2026-09-12 评审 §3.3）。脚本置于 noj-core 下以便解析其导入映射。
   {
