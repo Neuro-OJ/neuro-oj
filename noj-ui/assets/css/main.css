@@ -315,19 +315,48 @@
   margin: 0.8em 0;
   width: 100%;
   font-size: 14px;
+  line-height: 1.6;
+  /* 窄屏下表格可横向滚动，而不是撑破/截断容器 */
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .prose-neuro thead th {
-  background: var(--c-bg-panel);
+  background: var(--c-bg-sunken);
+  color: var(--c-text);
   font-weight: 600;
   padding: 8px 12px;
   border: 1px solid var(--c-border);
   text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .prose-neuro tbody td {
   padding: 8px 12px;
   border: 1px solid var(--c-border);
+  color: var(--c-text);
+  vertical-align: top;
+  min-width: 8em;
+}
+
+.prose-neuro tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--c-bg-sunken) 40%, transparent);
+}
+
+/* 单元格内的行内代码：允许换行，避免一个签名撑出整行 */
+.prose-neuro td code:not(pre code),
+.prose-neuro th code:not(pre code) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: inline;
+  font-size: 0.85em;
+}
+
+.prose-neuro td p,
+.prose-neuro th p {
+  margin: 0;
 }
 
 .prose-neuro a {
