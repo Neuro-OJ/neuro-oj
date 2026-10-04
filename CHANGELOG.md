@@ -26,6 +26,15 @@
 - 调用前就被限流 / 额度拒绝的请求不再保存 prompt 原文，且同一提交同一原因 60 秒内只记录一条。
 - 新增 `NOJ_LLM_USAGE_RETENTION_DAYS`（默认 `90`，`0` 关闭），网关定期清理过期的 `llm_usage` 记录。
 
+### 生产 compose 环境变量注入修复
+
+- 修复生产部署启用邮件（`EMAIL_PROVIDER=aliyun` / `tencent`）时 core 启动失败：`.env.prod` 中的
+  `ALIBABA_*` / `TENCENT_*` 凭据此前未注入 core 容器，启动期生产配置校验必然报缺失。
+- 以下变量此前在 `.env.prod` 中设置**静默无效**，现已注入对应服务：`NOJ_LLM_UPSTREAM_ALLOWED_HOSTS`、
+  `NOJ_LLM_USAGE_RETENTION_DAYS`（llm-gateway）、`NOJ_LLM_MAX_CALLS` / `NOJ_LLM_MAX_TOKENS`、
+  `OBSERVABILITY_*`（core）、`NUXT_SITE_URL`（ui）。升级时需使用新版 `docker-compose.prod.yml`。
+- 新增 `check-prod-env-injection` 门禁：`.env.prod.example` 声明的变量必须被 compose 注入或登记原因。
+
 ### CI 供应链（审计 S1）
 
 - 全部 GitHub Actions 引用固定到 commit SHA（附版本注释），新增 `check-action-pins` 门禁防止回退。
