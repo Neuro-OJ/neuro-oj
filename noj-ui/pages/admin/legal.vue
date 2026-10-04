@@ -329,10 +329,9 @@ onMounted(loadAll);
         <div class="flex items-center gap-2 text-sm text-text-secondary">
           <span>当前版本：<b class="tabular-nums">{{ policyCurrent[activeTab] || "未发布" }}</b></span>
         </div>
-        <UTextarea
+        <MarkdownEditor
           v-model="policyContent[activeTab]"
-          :rows="16"
-          class="font-mono"
+          height="560px"
           placeholder="在此填写政策 Markdown 正文…"
         />
         <div class="flex flex-wrap items-center gap-3">
