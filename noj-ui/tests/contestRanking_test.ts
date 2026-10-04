@@ -7,6 +7,7 @@ import {
   FROZEN_SELF_ONLY_HINT,
   frozenAccessHint,
   isFrozenSelfOnly,
+  isLiveSelfOnly,
 } from '../utils/contestRanking.ts';
 
 Deno.test('isFrozenSelfOnly: 仅"封榜 + 非管理员实时榜"判定为只显示本人', () => {
@@ -30,4 +31,19 @@ Deno.test('frozenAccessHint: 401/403 降级为引导文案，其余状态交回�
   assertEquals(frozenAccessHint(500), null);
   assertEquals(frozenAccessHint(undefined), null);
   assertEquals(frozenAccessHint(null), null);
+});
+
+Deno.test('isLiveSelfOnly: 进行中非管理员实时榜判定为只显示本人（#583）', () => {
+  assertEquals(isLiveSelfOnly('live', false, 'running'), true);
+  // 旧后端未返回 view / admin_live 时按 live + 非管理员处理
+  assertEquals(isLiveSelfOnly(undefined, undefined, 'running'), true);
+  // 管理员实时完整榜
+  assertEquals(isLiveSelfOnly('live', true, 'running'), false);
+  // 封榜由 isFrozenSelfOnly 负责，避免两条提示重复
+  assertEquals(isLiveSelfOnly('frozen', false, 'running'), false);
+  // 未开始 / 已结束 / 状态未加载
+  assertEquals(isLiveSelfOnly('live', false, 'pending'), false);
+  assertEquals(isLiveSelfOnly('live', false, 'ended'), false);
+  assertEquals(isLiveSelfOnly('official', false, 'ended'), false);
+  assertEquals(isLiveSelfOnly('live', false, undefined), false);
 });

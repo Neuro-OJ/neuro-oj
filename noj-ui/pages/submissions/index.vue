@@ -2,6 +2,7 @@
 import { extractApiError } from "~/utils/apiError"
 import type { SubmissionListItem } from "~/utils/submissionFormat"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
+import { buildDateRangeParams } from "~/utils/submissionDateRange"
 import {
   getStatusColor,
   getStatusLabel,
@@ -49,6 +50,9 @@ const filters = reactive({
   submission_id: "",
   language: undefined as string | undefined,
   status: undefined as string | undefined,
+  // 本地日期 YYYY-MM-DD，发请求前换算为 UTC ISO（#581）
+  from_date: "",
+  to_date: "",
 })
 
 // 语言选项
@@ -77,6 +81,9 @@ function buildQuery(page: number): string {
   if (filters.submission_id) params.set("submission_id", filters.submission_id)
   if (filters.language) params.set("language", filters.language)
   if (filters.status) params.set("status", filters.status)
+  const { from, to } = buildDateRangeParams(filters.from_date, filters.to_date)
+  if (from) params.set("from", from)
+  if (to) params.set("to", to)
   return params.toString()
 }
 
@@ -117,6 +124,8 @@ function clearFilters() {
   filters.submission_id = ""
   filters.language = undefined
   filters.status = undefined
+  filters.from_date = ""
+  filters.to_date = ""
   loadSubmissions(1)
 }
 
@@ -139,7 +148,7 @@ function hasResult(
 
       <!-- 筛选栏 -->
       <div class="mb-4 rounded-lg border border-border bg-white p-4">
-        <div class="mb-3 flex flex-wrap gap-3">
+        <div class="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div class="flex min-w-[140px] flex-1 flex-col gap-1">
             <label class="text-xs font-semibold text-text-secondary">{{ t('submission.problem') }}</label>
             <input
@@ -165,6 +174,28 @@ function hasResult(
           <div class="flex min-w-[140px] flex-1 flex-col gap-1">
             <label class="text-xs font-semibold text-text-secondary">{{ t('submission.status') }}</label>
             <USelect v-model="filters.status" :items="statusOptions" :placeholder="t('common.all')" class="min-w-[140px]" @change="applyFilters" />
+          </div>
+          <div class="flex min-w-[140px] flex-1 flex-col gap-1">
+            <label for="submission-from-date" class="text-xs font-semibold text-text-secondary">{{ t('submission.fromDate') }}</label>
+            <input
+              id="submission-from-date"
+              v-model="filters.from_date"
+              type="date"
+              :max="filters.to_date || undefined"
+              class="rounded border border-border bg-white px-2.5 py-1.5 text-13px tabular-nums text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10"
+              @change="applyFilters"
+            />
+          </div>
+          <div class="flex min-w-[140px] flex-1 flex-col gap-1">
+            <label for="submission-to-date" class="text-xs font-semibold text-text-secondary">{{ t('submission.toDate') }}</label>
+            <input
+              id="submission-to-date"
+              v-model="filters.to_date"
+              type="date"
+              :min="filters.from_date || undefined"
+              class="rounded border border-border bg-white px-2.5 py-1.5 text-13px tabular-nums text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10"
+              @change="applyFilters"
+            />
           </div>
         </div>
         <p v-if="filters.problem_id" class="mb-3 flex items-center gap-2 text-xs text-text-secondary">
