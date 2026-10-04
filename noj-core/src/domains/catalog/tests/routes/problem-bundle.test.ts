@@ -407,8 +407,7 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "import-bundle: 普通用户导入含 evaluator.command 的 U 型题目被拒（NOJ-062）",
+  name: "import-bundle: 普通用户导入默认 command 的 U 型题目放行",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -420,6 +419,46 @@ Deno.test({
 
     const formData = new FormData();
     formData.append("file", makeZipBlob(), "u2.zip");
+
+    const res = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    assertEquals(res.status, 200);
+  },
+});
+
+Deno.test({
+  name: "import-bundle: 普通用户导入自定义 evaluator.command 被拒（NOJ-062）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await ensureUser(OWNER_ID);
+    const app = createApp();
+    const token = await signToken({ sub: OWNER_ID, role: "user" });
+
+    const formData = new FormData();
+    formData.append(
+      "file",
+      makeZipBlob({
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "bash /workspace/run.sh",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+          },
+          solution: {
+            image: "noj-solution-python",
+            call_timeout_ms: 2000,
+            memory_limit_mb: 512,
+          },
+        },
+      }),
+      "u3.zip",
+    );
 
     const res = await app.request("/api/v1/problems/import-bundle", {
       method: "POST",

@@ -46,7 +46,7 @@
 - `call_timeout_ms` 超时若**未被** evaluator 捕获 → 最终状态为 `error`；捕获后由 evaluator 自行决定（通常记为失败用例，最终为 `finished` + 部分分）。详见[评测模型](../mechanisms/judge-model.md)。
 
 ::: warning 敏感字段与资源上限
-`evaluator.command` 与 `evaluator.network` 是**敏感字段**，需要对应 RBAC 权限（`problem:field_evaluator_command` / `problem:field_evaluator_network`）；资源限制字段还受管理员配置的全局上限约束，超限会被拒绝。
+`evaluator.command` 与 `evaluator.network` 是**敏感字段**：将其设为非默认值（命令不是 `python3 /workspace/evaluate.py`、开启联网）或修改既有值时，需要对应 RBAC 权限（`problem:field_evaluator_command` / `problem:field_evaluator_network`），普通用户默认没有；保持默认值或不改动则无需权限。资源限制字段还受管理员配置的全局上限约束，超限会被拒绝。
 :::
 
 ### 统一题目包

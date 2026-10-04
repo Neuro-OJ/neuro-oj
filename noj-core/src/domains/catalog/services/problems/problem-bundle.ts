@@ -46,7 +46,10 @@ import {
   validateBundleManifest,
   validateObjectiveQuestions,
 } from "./../../types/problem-bundle.ts";
-import type { ProblemResponseWithTags } from "./../../types/problems.ts";
+import type {
+  ProblemResponseWithTags,
+  RuntimeConfig,
+} from "./../../types/problems.ts";
 import { type CreateQuestionInput } from "../../../objective/index.ts";
 import { updateProblem } from "./problems-crud.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
@@ -224,6 +227,7 @@ export async function importProblemBundle(
       .select({
         id: problems.id,
         storageUrl: problems.support_package_storage_url,
+        runtimeConfig: problems.runtime_config,
       })
       .from(problems)
       .where(and(eq(problems.type, type), eq(problems.number, number)))
@@ -232,6 +236,7 @@ export async function importProblemBundle(
       result = await updateExisting(
         byNumber[0].id,
         byNumber[0].storageUrl,
+        byNumber[0].runtimeConfig as RuntimeConfig | null,
         manifest,
         description,
         actor,
@@ -327,6 +332,7 @@ function extractImportedTemplate(
 async function updateExisting(
   problemId: string,
   oldStorageUrl: string | null,
+  oldRuntimeConfig: RuntimeConfig | null,
   manifest: ProblemBundleManifest,
   description: string,
   actor: BundleImportActor,
@@ -343,6 +349,7 @@ async function updateExisting(
     actor.userId,
     actor.userRole,
     manifest.runtime_config!,
+    oldRuntimeConfig,
   );
   enforceResourceLimits(manifest.runtime_config!);
   if (manifest.llm) {
