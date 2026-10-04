@@ -227,6 +227,8 @@ services:
       NOJ_LLM_STORE_KEY: e2e-ci-llm-store-key-0123456789abcdef
       DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e
       REDIS_URL: redis://redis:6379/1
+      # 出站校验白名单（G-03）：E2E mock 为内网 http 服务，需显式放行
+      NOJ_LLM_UPSTREAM_ALLOWED_HOSTS: noj-e2e-llm-mock
     depends_on:
       # 必须等 noj-migrate（core 迁移）成功后再启动，避免 core 与 gateway
       # 的迁移在同一批 LLM 表上并发执行 DDL。两侧迁移均为幂等，但串行化

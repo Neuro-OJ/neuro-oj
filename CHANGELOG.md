@@ -17,6 +17,19 @@
 - `GET /api/v1/community/config` 新增 `contest_silence` 字段，题解资格接口新增
   `blocked_reason: "contest_silence"`；前端据此预先禁用发布、评论与编辑入口，删除入口保留。
 
+### LLM 网关安全加固（审计 G-03 / G-04）
+
+- **破坏性**：Provider 的 Base URL 默认只允许 **https 公网地址**；指向 `localhost`、Docker 服务名、
+  私网 / 回环 / 云元数据 IP 的 Provider（含已登记的存量 Provider）将被拒绝，调用返回
+  `provider_base_url_blocked`。内网自建模型需在网关环境变量 `NOJ_LLM_UPSTREAM_ALLOWED_HOSTS`
+  中显式放行（逗号分隔）。
+- 调用前就被限流 / 额度拒绝的请求不再保存 prompt 原文，且同一提交同一原因 60 秒内只记录一条。
+- 新增 `NOJ_LLM_USAGE_RETENTION_DAYS`（默认 `90`，`0` 关闭），网关定期清理过期的 `llm_usage` 记录。
+
+### CI 供应链（审计 S1）
+
+- 全部 GitHub Actions 引用固定到 commit SHA（附版本注释），新增 `check-action-pins` 门禁防止回退。
+
 ---
 
 ## [0.10.3-alpha.1] - 2026-09-30

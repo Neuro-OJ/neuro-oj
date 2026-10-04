@@ -85,8 +85,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: denoland/setup-deno@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: 验证 CLI 与生产安装链路
@@ -143,8 +143,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 检查生产发布约束
         run: bash scripts/release/check-supply-chain.sh
 
@@ -193,16 +192,13 @@ jobs:
           fi
 
       - name: 检出代码
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 设置 Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: 安装 Cosign
-        uses: sigstore/cosign-installer@v3.10.1
-
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
       - name: 登录 ghcr.io
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -236,7 +232,7 @@ jobs:
 
       - name: 构建并推送候选镜像
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
@@ -260,7 +256,7 @@ jobs:
 
       - name: 扫描候选镜像漏洞
         # v0.28.0 会引用不存在的 setup-trivy@v0.2.1，导致任务在构建前直接失败。
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ steps.meta.outputs.candidate }}
           format: table
@@ -270,7 +266,7 @@ jobs:
           exit-code: "1"
 
       - name: 生成候选镜像 SBOM
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ steps.meta.outputs.candidate }}
           format: spdx-json
@@ -279,7 +275,7 @@ jobs:
           exit-code: "0"
 
       - name: 上传 SBOM 文件
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: sbom-${{ matrix.name }}-${{ steps.meta.outputs.version }}
           path: sbom-${{ matrix.name }}.spdx.json
@@ -300,7 +296,7 @@ jobs:
             "$IMAGE@$DIGEST"
 
       - name: 绑定 GitHub 构建来源证明
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.name }}
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -358,7 +354,7 @@ jobs:
           printf '%s %s %s\n' "$IMAGE" "$VERSION" "$DIGEST" > release-${{ matrix.name }}.txt
 
       - name: 上传发布元数据
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-metadata-${{ matrix.name }}
           path: release-${{ matrix.name }}.txt
@@ -373,23 +369,20 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 设置 Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: 安装 Cosign
-        uses: sigstore/cosign-installer@v3.10.1
-
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
       - name: 登录 ghcr.io
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 下载发布元数据
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: release-metadata-*
           path: release-metadata
@@ -473,8 +466,7 @@ jobs:
       contents: write
     steps:
       - name: 检出仓库以解析 Release
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 将预发布转正为正式 Release
         env:
           GH_TOKEN: ${{ github.token }}

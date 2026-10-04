@@ -100,6 +100,7 @@ export const SHARDS: Shard[] = [
       "src/domains/system/tests/routes",
       "src/domains/system/tests/services",
       "src/domains/admin/tests/services",
+      "src/domains/admin/tests/routes",
       "src/domains/gateway/tests/services",
       "src/domains/content-review/tests/services",
       "src/domains/legal/tests/routes",

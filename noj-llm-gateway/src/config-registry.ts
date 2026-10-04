@@ -108,6 +108,22 @@ export const GATEWAY_CONFIG_DEFINITIONS: GatewayEnvDefinition[] = [
     isSecret: false,
     readMode: "static",
   },
+  {
+    key: "NOJ_LLM_USAGE_RETENTION_DAYS",
+    description:
+      "llm_usage 用量审计保留天数（0 = 不清理）；启动时与每 6 小时清理一次",
+    isSecret: false,
+    readMode: "static",
+    defaultValue: "90",
+  },
+  {
+    key: "NOJ_LLM_UPSTREAM_ALLOWED_HOSTS",
+    description:
+      "允许 http 与内网地址的上游主机白名单（逗号分隔）；默认仅允许 https 公网地址",
+    isSecret: false,
+    readMode: "static",
+    defaultValue: "",
+  },
   // ── 日志（issue #497「谁读谁声明」：真实读取点是 src/logger.ts） ──
   {
     key: "NOJ_ENV",

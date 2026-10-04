@@ -81,11 +81,11 @@ jobs:
       e2e-domains: ${{ steps.domains.outputs.e2e-domains }}
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
       - name: 按 Domain 路径过滤
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
         id: filter
         with:
           filters: |
@@ -199,7 +199,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-identity
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/e2e-domain
         with:
           domain: identity
@@ -213,7 +213,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-catalog
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/e2e-domain
         with:
           domain: catalog
@@ -227,7 +227,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-submission
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/e2e-domain
         with:
           domain: submission
@@ -241,7 +241,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-contest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/e2e-domain
         with:
           domain: contest
@@ -255,7 +255,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-system
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/e2e-domain
         with:
           domain: system
@@ -269,7 +269,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-community
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/e2e-domain
         with:
           domain: community
@@ -283,7 +283,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-messaging
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/e2e-domain
         with:
           domain: messaging
@@ -297,7 +297,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-objective
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/e2e-domain
         with:
           domain: objective
@@ -311,7 +311,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-admin
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/e2e-domain
         with:
           domain: admin
@@ -331,7 +331,7 @@ jobs:
       RATE_LIMIT_LOGIN_ACC_MAX: "1000"
       RATE_LIMIT_LOGIN_BACKOFF_SEC: "0"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/e2e-domain
         with:
           domain: rate-limit
@@ -345,7 +345,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-cross-domain
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/e2e-domain
         with:
           domain: cross-domain
@@ -359,7 +359,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-browser
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/e2e-domain
         with:
           domain: browser
@@ -387,15 +387,17 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Rust 工具链
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          # 固定 SHA 后不再能从 ref 名推断工具链，显式声明（审计 S1）
+          toolchain: stable
         # 注意：不装 rustfmt/clippy 组件——本 job 只编译并运行测试，
         # 组件越少 rustup 下载失败面越小（曾因并行 cargo 触发 rustup
         # sync 竞争导致 clippy 组件下载失败、测试启动即死）
       - name: 启用 sccache（Rust 编译缓存）
-        uses: mozilla/sccache-action@v0.0.11
+        uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
         # mozilla/sccache-action 只安装二进制并导出 SCCACHE_PATH；
         # 必须显式设置 RUSTC_WRAPPER 与 SCCACHE_GHA_ENABLED 才会真正缓存
         # 编译产物（GHA cache backend，需要 job 级 actions: write）。
@@ -404,7 +406,7 @@ jobs:
           SCCACHE_GHA_ENABLED: "true"
 
       - name: 缓存 Cargo 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -460,7 +462,7 @@ jobs:
       # 失败时上传 Docker 沙箱产物
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: judge-sandbox-logs
           path: |

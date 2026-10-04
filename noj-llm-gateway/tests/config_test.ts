@@ -88,3 +88,22 @@ Deno.test("config: REDIS_URL 为空时拒绝启动", () => {
     "REDIS_URL",
   );
 });
+
+Deno.test("config: llm_usage 保留期默认 90 天，可设为 0 关闭", () => {
+  assertEquals(loadConfig(baseEnv).usageRetentionDays, 90);
+  assertEquals(
+    loadConfig({ ...baseEnv, NOJ_LLM_USAGE_RETENTION_DAYS: "0" })
+      .usageRetentionDays,
+    0,
+  );
+  assertEquals(
+    loadConfig({ ...baseEnv, NOJ_LLM_USAGE_RETENTION_DAYS: "30" })
+      .usageRetentionDays,
+    30,
+  );
+  assertThrows(
+    () => loadConfig({ ...baseEnv, NOJ_LLM_USAGE_RETENTION_DAYS: "-1" }),
+    Error,
+    "非负整数",
+  );
+});

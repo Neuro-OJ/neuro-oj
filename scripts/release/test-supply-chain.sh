@@ -56,7 +56,7 @@ if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
 fi
 pass "Python 打包工具安全更新拒绝"
 
-sed -i.bak 's#aquasecurity/trivy-action@v0.36.0#aquasecurity/trivy-action@v0.28.0#g' \
+sed -i.bak 's#aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 \# v0.36.0#aquasecurity/trivy-action@v0.28.0#g' \
   "$TEST_ROOT/.github/workflows/release.yml"
 if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
   >/dev/null 2>&1; then

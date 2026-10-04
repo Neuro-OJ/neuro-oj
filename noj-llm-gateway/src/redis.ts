@@ -13,6 +13,8 @@ export interface RedisClient {
   expire(key: string, seconds: number): Promise<number>;
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<unknown>;
+  /** SET key value EX ttl NX：仅在键不存在时写入，返回是否写入成功（去重 / 互斥锁）。 */
+  setNx(key: string, value: string, ttlSeconds: number): Promise<boolean>;
   sadd(key: string, member: string): Promise<number>;
   scard(key: string): Promise<number>;
   /** 执行 Lua 脚本；keys 为 KEYS，args 为 ARGV */
@@ -37,6 +39,8 @@ export function createRedis(redisUrl: string): RedisClient {
     expire: (key, seconds) => redis.expire(key, seconds),
     get: (key) => redis.get(key),
     set: (key, value) => redis.set(key, value),
+    setNx: async (key, value, ttlSeconds) =>
+      (await redis.set(key, value, "EX", ttlSeconds, "NX")) === "OK",
     sadd: (key, member) => redis.sadd(key, member),
     scard: (key) => redis.scard(key),
     eval: (script, keys, args) =>

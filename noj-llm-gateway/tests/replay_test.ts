@@ -7,6 +7,7 @@ import {
   FakeRedis,
   makeProvider,
   makeToken,
+  publicDns,
   requestChat,
   stubFetch,
   testConfig,
@@ -69,7 +70,12 @@ Deno.test("replay: simple-chat fixture 可驱动代理路由", async () => {
   const provider = await makeProvider(testConfig.storeKey);
   const { db } = createFakeDb(provider);
   const redis = new FakeRedis();
-  const app = createLlmRouter({ config: testConfig, db, redis });
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
   const token = await makeToken(testConfig, fixture.model);
   const restore = stubFetch(async () => {
     await Promise.resolve();

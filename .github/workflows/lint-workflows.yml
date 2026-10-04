@@ -41,10 +41,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: 检出仓库
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 运行 actionlint（rhysd/actionlint 官方 Docker 镜像）
-        uses: docker://rhysd/actionlint:1.7.7
+        uses: docker://rhysd/actionlint@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 # 1.7.7
         with:
           # -shellcheck="": 跳过内置 shellcheck（设空字符串禁用）。
           # 预存在的 .github/workflows/ 里有一些 SC2086/SC2016 info 级
@@ -57,7 +56,7 @@ jobs:
 
       - name: 上传 actionlint 日志（失败时下载排查）
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: actionlint-log
           path: ${{ runner.temp }}/_actions/**/lint.log
