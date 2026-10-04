@@ -4,7 +4,9 @@
  * 此前静默只覆盖 `createPost` 的讨论/动态，而以下三条写路径不受限：
  * - `createComment`：在任意可见帖下评论，向全场广播完整解法；
  * - `updateComment`：把赛前评论改写为解法；
- * - `updatePost`：把赛前发布的讨论/动态改写为解法。
+ * - `updatePost`：把赛前发布的讨论/动态/题解改写为解法；
+ * - `createPost(type=solution)`：给非赛题发题解，正文夹带赛题解法
+ *   （按挂靠题目判定的保密门控无法识别）。
  * 本文件锁定：公开赛未结束（含 pending）时普通用户上述写入一律 CONTEST_SILENCE，
  * 审核员免静默，赛后自动恢复。
  */
@@ -18,7 +20,12 @@ import {
   problems,
   users,
 } from "../../../../shared/db/schema.ts";
-import { createComment, updateComment, updatePost } from "../../index.ts";
+import {
+  createComment,
+  createPost,
+  updateComment,
+  updatePost,
+} from "../../index.ts";
 import { createContest } from "../../../contest/index.ts";
 import { ForbiddenError } from "../../../../shared/base/errors.ts";
 import {
@@ -213,7 +220,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "contest-silence: 赛中不能把旧动态改写为解法，题解编辑不受静默影响",
+  name: "contest-silence: 赛中不能把旧动态或旧题解改写为解法",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -235,16 +242,62 @@ Deno.test({
     });
     assertEquals(byModerator.content, "审核员修订");
 
-    // 题解不在静默范围内（与 createPost 口径一致）
-    const solution = await updatePost(solutionId, userId, false, {
-      content: "补充说明",
-    });
-    assertEquals(solution.content, "补充说明");
+    // 普通题的旧题解同样不能在赛中改写
+    await assertRejects(
+      () =>
+        updatePost(solutionId, userId, false, { content: "改写后的完整解法" }),
+      ForbiddenError,
+      "比赛期间",
+    );
 
     await endContest();
     const after = await updatePost(momentId, userId, false, {
       content: "赛后修改",
     });
     assertEquals(after.content, "赛后修改");
+  },
+});
+
+Deno.test({
+  name: "contest-silence: 赛中不能给非赛题发题解，赛题仍报 CONTEST_SECRECY",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    // 关掉"需先通过本题"门槛，确保拦截原因是静默而非 AC 门槛
+    enterTestContext({
+      actorId: "0",
+      actorIp: "127.0.0.1",
+      actorRole: "admin",
+    });
+    try {
+      await updateSetting("community_solution_requires_accepted", false, "0");
+    } finally {
+      leaveTestContext();
+    }
+    const input = {
+      type: "solution" as const,
+      title: "普通题题解",
+      content: "正文夹带赛题解法",
+      problem_id: normalProblemId,
+    };
+    await assertRejects(
+      () => createPost(userId, input),
+      ForbiddenError,
+      "比赛期间",
+    );
+    // 赛题本身仍得到更具体的保密提示
+    await assertRejects(
+      () => createPost(userId, { ...input, problem_id: contestProblemId }),
+      ForbiddenError,
+      "该题目当前归属于公开赛",
+    );
+    // 审核员免静默
+    const official = await createPost(ownerId, input, true);
+    assertEquals(official.type, "solution");
+
+    await endContest();
+    const after = await createPost(userId, input);
+    assertEquals(after.type, "solution");
   },
 });

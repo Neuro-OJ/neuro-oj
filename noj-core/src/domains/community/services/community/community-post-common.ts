@@ -26,7 +26,7 @@ import { getCommunityConfig } from "./community-config.ts";
  * 赛时社区全局静默（决策 1 · 方案 A · N-01）的单一入口。
  *
  * 公开赛未结束（含 pending 筹备期）时，普通用户禁止一切可向全场广播文本的社区写入：
- * 新建讨论/动态、编辑讨论/动态、发表评论、编辑评论。此前只拦了新建帖子，
+ * 新建与编辑讨论/动态/题解、发表评论、编辑评论。此前只拦了新建讨论/动态，
  * 评论与编辑旧帖仍可向全场广播完整解法。审核员免静默，用于官方说明与治理。
  *
  * @param moderator 是否为审核员。
@@ -38,7 +38,7 @@ export async function assertNotContestSilenced(
   if (moderator) return;
   if (await hasUnendedPublicContest()) {
     throw new ForbiddenError(
-      "比赛期间全站暂停公开发布讨论、动态与评论，参赛提问请使用赛中答疑",
+      "比赛期间全站暂停公开发布讨论、动态、题解与评论，参赛提问请使用赛中答疑",
       "CONTEST_SILENCE",
     );
   }
