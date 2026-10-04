@@ -43,7 +43,9 @@ const antiCheatError = ref('')
 const similarPairs = ref<SimilarSubmissionPair[]>([])
 const similarMeta = ref<SimilarSubmissionsMeta | null>(null)
 const similarThreshold = ref(0.8)
-const similarProblemId = ref('')
+// Reka UI 的 SelectItem 禁止空字符串 value（会抛错导致整页 500），“全部题目”用哨兵值表示
+const ALL_PROBLEMS = 'all'
+const similarProblemId = ref<string>(ALL_PROBLEMS)
 const similarLoading = ref(false)
 const similarError = ref('')
 /** 本场竞赛的题目，用于相似提交的题目筛选（比全局题目列表更贴合该场次）。 */
@@ -52,7 +54,7 @@ const antiCheatProblems = ref<ContestProblem[]>([])
 const similarCoverageText = computed(() => describeCoverage(similarMeta.value))
 const similarTruncated = computed(() => isTruncated(similarMeta.value))
 const similarProblemOptions = computed(() => [
-  { label: '全部题目', value: '' },
+  { label: '全部题目', value: ALL_PROBLEMS },
   ...antiCheatProblems.value.map((p) => ({
     label: `${p.label} ${p.display_id || p.problem_id} ${p.title}`,
     value: p.problem_id,
@@ -163,7 +165,7 @@ async function openAntiCheat(contest: Contest) {
   // 每次打开都重置相似提交状态，避免残留上一场竞赛的结果与筛选条件
   similarPairs.value = []
   similarMeta.value = null
-  similarProblemId.value = ''
+  similarProblemId.value = ALL_PROBLEMS
   similarThreshold.value = 0.8
   similarError.value = ''
   antiCheatProblems.value = []
@@ -191,7 +193,9 @@ async function loadSimilarSubmissions() {
       {
         threshold: similarThreshold.value,
         limit: 50,
-        ...(similarProblemId.value ? { problem_id: similarProblemId.value } : {}),
+        ...(similarProblemId.value && similarProblemId.value !== ALL_PROBLEMS
+          ? { problem_id: similarProblemId.value }
+          : {}),
       },
     )
     similarPairs.value = response.data

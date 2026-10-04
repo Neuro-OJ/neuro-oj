@@ -82,6 +82,8 @@ let problemSearchSeq = 0
 
 const canCreateCurrentType = computed(() => {
   if (!config.value || config.value.read_only) return false
+  // 赛时社区全局静默：服务端拒绝一切发帖，入口预先禁用
+  if (config.value.contest_silence) return false
   const permission = activeType.value === "discussion"
     ? "discussion"
     : activeType.value === "solution"
@@ -336,7 +338,8 @@ async function publish() {
 const { data: initialData } = await useAsyncData(
   'community-index',
   async () => {
-    const cfg = await loadConfig()
+    // 强制刷新：赛时静默随竞赛起止实时变化，不能沿用会话内缓存
+    const cfg = await loadConfig(true)
     const enabled = cfg?.enabled
       ? ENABLED_TYPES.filter((t) => cfg[typeFlag[t]] === true)
       : []
@@ -405,7 +408,7 @@ watch(initialData, (value) => {
       </div>
       <div class="flex items-center gap-2">
         <UButton color="primary" variant="outline" v-if="config?.enabled && isLoggedIn && config.bookmarks_enabled" to="/community/bookmarks"><UIcon name="i-lucide-bookmark" class="size-4" />我的收藏</UButton>
-        <UButton color="primary" v-if="config?.enabled && isLoggedIn && !config.read_only"  :disabled="!canCreateCurrentType" :title="canCreateCurrentType ? '发布内容' : '当前账号没有发布此类内容的权限'" @click="prepareEditor"><UIcon name="i-lucide-plus" class="size-4" />发布内容</UButton>
+        <UButton color="primary" v-if="config?.enabled && isLoggedIn && !config.read_only"  :disabled="!canCreateCurrentType" :title="canCreateCurrentType ? '发布内容' : config.contest_silence ? '公开赛进行期间全站暂停发布，赛后恢复' : '当前账号没有发布此类内容的权限'" @click="prepareEditor"><UIcon name="i-lucide-plus" class="size-4" />发布内容</UButton>
       </div>
     </div>
 

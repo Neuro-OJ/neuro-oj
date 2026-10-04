@@ -20,7 +20,10 @@ import {
   getCommunityConfig,
 } from "./community-config.ts";
 import { getPost } from "./community-post-crud.ts";
-import { publicationStatus } from "./community-post-common.ts";
+import {
+  assertNotContestSilenced,
+  publicationStatus,
+} from "./community-post-common.ts";
 import { authorProjection } from "./community-post-select.ts";
 import { reviewUgcContent } from "./community-review.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
@@ -130,6 +133,8 @@ export async function createComment(
   if (!content || content.length > getCommunityConfig().comment_max_length) {
     throw new ValidationError("评论内容无效或过长");
   }
+  // 赛时静默覆盖评论：评论挂在任意可见帖下即可向全场广播（N-01 残余）
+  await assertNotContestSilenced(moderator);
   const post = await getPost(postId, authorId);
   if (post.post.is_locked) throw new ForbiddenError("该内容已锁定");
   const db = getDb();
@@ -271,6 +276,8 @@ export async function updateComment(
   if (current.status === "deleted") {
     throw new ValidationError("已删除评论不能编辑");
   }
+  // 赛时静默同样覆盖编辑：否则可把赛前评论改写为解法
+  await assertNotContestSilenced(moderator);
   const content = contentInput.trim();
   if (!content || content.length > getCommunityConfig().comment_max_length) {
     throw new ValidationError("评论内容无效或过长");

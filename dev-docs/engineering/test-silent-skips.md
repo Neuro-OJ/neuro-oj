@@ -151,7 +151,7 @@
 | noj-core/src/domains/catalog/tests/services/tags.test.ts | 204 | ignore |
 | noj-core/src/domains/catalog/tests/services/tags.test.ts | 284 | ignore |
 | noj-core/src/domains/catalog/tests/services/tags.test.ts | 300 | ignore |
-| noj-core/src/domains/community/tests/routes/community.test.ts | 23 | env-guard |
+| noj-core/src/domains/community/tests/routes/community.test.ts | 25 | env-guard |
 | noj-core/src/domains/content-review/tests/services/content-review.test.ts | 85 | ignore |
 | noj-core/src/domains/content-review/tests/services/content-review.test.ts | 111 | ignore |
 | noj-core/src/domains/content-review/tests/services/content-review.test.ts | 159 | ignore |
