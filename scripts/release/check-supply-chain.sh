@@ -118,7 +118,8 @@ check_release_workflow() {
   [[ "$(printf '%s\n' "$trivy_refs" | sed '/^$/d' | wc -l | tr -d ' ')" == "2" ]] \
     || fail "Release workflow 必须配置两个 Trivy 步骤"
   while IFS= read -r line; do
-    [[ "$line" == *'aquasecurity/trivy-action@v0.36.0'* ]] \
+    # 固定到经核验的 v0.36.0 commit SHA（审计 S1：可变 tag 不可信，只认 SHA）
+    [[ "$line" == *'aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25'* ]] \
       || fail "Release workflow 使用了未经验证的 Trivy Action 版本：$line"
   done <<< "$trivy_refs"
   grep -q 'cosign' "$file" || fail "Release workflow 未配置镜像签名"
