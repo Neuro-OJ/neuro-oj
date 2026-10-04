@@ -67,15 +67,20 @@ class FakeRedis implements RedisClient {
       ttls: number[];
     };
     const counters = reserving ? keys.slice(2) : keys;
+    // 与 Lua 一致：0 = 禁止调用，负数 = 不设限，正数才比较当前值。
     const exceedsLimit = () =>
-      counters.some((key, i) =>
-        meta.limits[i] > 0 &&
-        (this.data.get(key) ?? 0) + (reserving ? meta.incs[i] : 0) >
-          meta.limits[i]
-      );
+      counters.some((key, i) => {
+        const limit = meta.limits[i];
+        if (limit === 0) return true;
+        if (limit < 0) return false;
+        return (this.data.get(key) ?? 0) + (reserving ? meta.incs[i] : 0) >
+          limit;
+      });
     if (reserving && exceedsLimit()) return "limit_exceeded";
     for (const [i, key] of counters.entries()) {
-      await this.incrby(key, meta.incs[i]);
+      const next = await this.incrby(key, meta.incs[i]);
+      // SETTLE_SCRIPT 会把被负 delta 扣成负数的计数器归零。
+      if (!reserving && next < 0) this.data.set(key, 0);
     }
     return !reserving && exceedsLimit() ? "limit_exceeded" : "ok";
   }
@@ -359,5 +364,38 @@ Deno.test("limits: user_problem 无精确行时由 env 提供默认值（F-06）
     } else {
       Deno.env.set("NOJ_LLM_DEFAULT_USER_PROBLEM_DAY_CALLS", original);
     }
+  }
+});
+
+Deno.test("limits: 配额 max_calls=0 禁止调用、-1 不设限（产品决策 2026-09-29）", async () => {
+  const userRow = (maxCalls: number) =>
+    dbWithQuota(
+      (scope, scopeId) => scope === "user" && scopeId === "user-1",
+      { max_calls: maxCalls, max_tokens: 100_000, max_cost: 100 },
+    );
+
+  // 0 = 禁止调用：首次调用即拒绝，且不预扣任何计数器
+  const blocked = new FakeRedis();
+  await assertRejects(
+    () => enforceAndCount(userRow(0), blocked, payload, reserveOptions),
+    Error,
+    "limit_exceeded",
+  );
+  assertEquals(
+    [...blocked.data.keys()].filter((key) => !key.startsWith("llm:rate:")),
+    [],
+  );
+
+  // -1 = 不设限：即使当前计数已很大也放行（固定时间避免跨日改变窗口 key）
+  const originalNow = Date.now;
+  Date.now = () => Date.UTC(2026, 8, 10, 12);
+  try {
+    const unlimited = new FakeRedis();
+    const dayCallsKey = "llm:user:user-1:day:2026-09-10:calls";
+    unlimited.data.set(dayCallsKey, 1_000_000);
+    await enforceAndCount(userRow(-1), unlimited, payload, reserveOptions);
+    assertEquals(unlimited.data.get(dayCallsKey), 1_000_001);
+  } finally {
+    Date.now = originalNow;
   }
 });
