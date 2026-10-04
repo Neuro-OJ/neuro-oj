@@ -44,6 +44,12 @@ class FakeRedis implements RedisClient {
     return await Promise.resolve("OK");
   }
 
+  async setNx(key: string, value: string): Promise<boolean> {
+    if (this.data.has(key)) return await Promise.resolve(false);
+    this.data.set(key, Number(value));
+    return await Promise.resolve(true);
+  }
+
   async sadd(_key: string, _member: string): Promise<number> {
     return await Promise.resolve(0);
   }

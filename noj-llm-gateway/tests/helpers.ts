@@ -37,6 +37,15 @@ export class FakeRedis implements RedisClient {
     return Promise.resolve("OK");
   }
 
+  /** 已通过 setNx 写入的键（模拟 NX 语义；TTL 不模拟）。 */
+  nxKeys = new Set<string>();
+
+  setNx(key: string): Promise<boolean> {
+    if (this.nxKeys.has(key)) return Promise.resolve(false);
+    this.nxKeys.add(key);
+    return Promise.resolve(true);
+  }
+
   sadd(): Promise<number> {
     return Promise.resolve(0);
   }
@@ -123,6 +132,7 @@ export const testConfig: GatewayConfig = {
   storeKey: "test-store-key-0123456789",
   databaseUrl: "postgres://fake",
   redisUrl: "redis://fake",
+  usageRetentionDays: 90,
 };
 
 export async function makeToken(

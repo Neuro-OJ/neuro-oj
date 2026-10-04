@@ -10,6 +10,7 @@ import { createRedis } from "./redis.ts";
 import { createLlmRouter } from "./routes/llm.ts";
 import { createInternalRouter } from "./routes/internal.ts";
 import { renderMetrics } from "./metrics.ts";
+import { startUsageRetention } from "./usage.ts";
 
 /** 创建 Hono 应用；DB/Redis 可用时挂载代理与内部管理路由。 */
 export function createApp(config: GatewayConfig) {
@@ -71,6 +72,8 @@ export function createApp(config: GatewayConfig) {
   if (db && redis) {
     app.route("/", createLlmRouter({ config, db, redis }));
     app.route("/", createInternalRouter({ config, db }));
+    // llm_usage 保留期清理（G-04）：多副本经 Redis 锁互斥，仅一个副本执行
+    startUsageRetention(db, redis, config.usageRetentionDays);
   }
 
   app.notFound((c) => c.json({ error: "not_found" }, 404));

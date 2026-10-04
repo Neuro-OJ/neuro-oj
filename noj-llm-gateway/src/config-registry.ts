@@ -108,6 +108,14 @@ export const GATEWAY_CONFIG_DEFINITIONS: GatewayEnvDefinition[] = [
     isSecret: false,
     readMode: "static",
   },
+  {
+    key: "NOJ_LLM_USAGE_RETENTION_DAYS",
+    description:
+      "llm_usage 用量审计保留天数（0 = 不清理）；启动时与每 6 小时清理一次",
+    isSecret: false,
+    readMode: "static",
+    defaultValue: "90",
+  },
   // ── 日志（issue #497「谁读谁声明」：真实读取点是 src/logger.ts） ──
   {
     key: "NOJ_ENV",

@@ -30,6 +30,41 @@ Deno.test("llm route: 限流超限返回 429 并记录 rejected", async () => {
   assertEquals(usageInserts.length, 1);
   assertEquals(usageInserts[0].status, "rejected");
   assertEquals(usageInserts[0].error_code, "limit_exceeded");
+  // G-04：调用前被拒不保存 prompt 原文，只留哈希
+  assertEquals(usageInserts[0].request_messages, "[]");
+  assertEquals(typeof usageInserts[0].prompt_hash, "string");
+});
+
+Deno.test("llm route: 调用前拒绝按提交+原因去重，重复拒绝不再落库（G-04）", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db, usageInserts } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  redis.evalResults = [
+    "rate_limit_exceeded",
+    "rate_limit_exceeded",
+    "rate_limit_exceeded",
+    "limit_exceeded",
+  ];
+  const app = createLlmRouter({ config: testConfig, db, redis });
+  const token = await makeToken(testConfig);
+  const big = "x".repeat(32 * 1024);
+
+  for (let i = 0; i < 4; i++) {
+    const res = await requestChat(app, token, {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: big }],
+    });
+    assertEquals(res.status, 429);
+  }
+  // 三次 rate_limit_exceeded 只记一条；不同原因 limit_exceeded 另记一条
+  assertEquals(usageInserts.length, 2);
+  assertEquals(
+    usageInserts.map((r) => r.error_code),
+    ["rate_limit_exceeded", "limit_exceeded"],
+  );
+  for (const row of usageInserts) {
+    assertEquals(row.request_messages, "[]");
+  }
 });
 
 Deno.test("llm route: 分钟速率超限返回 429 并记录 rejected", async () => {

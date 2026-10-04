@@ -8,7 +8,7 @@ import type { GatewayConfig } from "../config.ts";
 import { verifyEvalToken } from "../crypto.ts";
 import { getProviderSecret } from "../providers.ts";
 import { enforceAndCount, settleUsage } from "../limits.ts";
-import { recordUsage } from "../usage.ts";
+import { recordRejectedUsage, recordUsage } from "../usage.ts";
 import { calcBilledUsage } from "../billing.ts";
 import { inc, observe } from "../metrics.ts";
 import { logger } from "../logger.ts";
@@ -217,7 +217,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     } catch (err) {
       const message = err instanceof Error ? err.message : "limit_exceeded";
       inc("noj_llm_rate_limited_total");
-      await recordUsage(deps.db, {
+      // 调用前拒绝：不存原文 + 按提交去重（G-04），见 recordRejectedUsage
+      await recordRejectedUsage(deps.db, deps.redis, {
         id: crypto.randomUUID(),
         submission_id: payload.submission_id,
         problem_id: payload.problem_id,

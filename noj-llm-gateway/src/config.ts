@@ -18,6 +18,8 @@ export interface GatewayConfig {
   storeKey: string;
   databaseUrl: string;
   redisUrl: string;
+  /** llm_usage 保留天数（0 = 不清理），默认 90 */
+  usageRetentionDays: number;
 }
 
 export function loadConfig(
@@ -31,6 +33,11 @@ export function loadConfig(
   const ipRateLimitPerMinute = parsePositiveInteger(
     env.NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE,
     "NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE",
+  );
+  const usageRetentionDays = parseNonNegativeInteger(
+    env.NOJ_LLM_USAGE_RETENTION_DAYS,
+    "NOJ_LLM_USAGE_RETENTION_DAYS",
+    90,
   );
   const serviceToken = env.NOJ_LLM_SERVICE_TOKEN ?? "";
   const storeKey = env.NOJ_LLM_STORE_KEY ?? "";
@@ -58,6 +65,7 @@ export function loadConfig(
     storeKey,
     databaseUrl,
     redisUrl,
+    usageRetentionDays,
   };
 }
 
@@ -72,6 +80,22 @@ function parsePositiveInteger(
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     throw new Error(`${name} 必须是正整数`);
+  }
+  return parsed;
+}
+
+function parseNonNegativeInteger(
+  value: string | undefined,
+  name: string,
+  fallback: number,
+): number {
+  if (value === undefined || value === "") return fallback;
+  if (!/^\d+$/.test(value)) {
+    throw new Error(`${name} 必须是非负整数`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error(`${name} 必须是非负整数`);
   }
   return parsed;
 }
