@@ -142,7 +142,7 @@ const eligibility = ref<{
   requires_accepted: boolean
   accepted: boolean
   can_create: boolean
-  /** 赛期门控原因：running_contest 时禁用发布入口。 */
+  /** 赛期门控原因：running_contest（本题在赛中）/ contest_silence（全站赛时静默）时禁用发布入口。 */
   blocked_reason: string | null
 } | null>(null)
 
@@ -201,6 +201,7 @@ const publishBlockReason = computed(() => {
   if (el.can_create) return null
   // 赛期门控优先展示：这是"看得到题但暂时不能写题解"的场景，与权限不足不同
   if (el.blocked_reason === "running_contest") return "竞赛进行中，赛后开放题解"
+  if (el.blocked_reason === "contest_silence") return "公开赛进行期间全站暂停发布题解，赛后恢复"
   if (!el.enabled) return "题解区已关闭"
   if (config.value?.read_only) return "社区当前为只读模式"
   if (el.requires_accepted && !el.accepted) return "通过本题后可发布题解"
@@ -405,7 +406,7 @@ const publishBlockReason = computed(() => {
               <!-- 门槛禁用说明（community-ui spec 场景：未通过用户受门槛限制） -->
               <p v-if="isLoggedIn && eligibility && !eligibility.can_create && eligibility.enabled" class="mt-3 flex items-center gap-1.5 text-xs text-text-muted">
                 <UIcon name="i-lucide-lock" class="size-3" />
-                {{ publishBlockReason }}<template v-if="eligibility.blocked_reason !== 'running_contest'">。通过本题后即可发布题解。</template>
+                {{ publishBlockReason }}<template v-if="!eligibility.blocked_reason">。通过本题后即可发布题解。</template>
               </p>
             </section>
           </div>

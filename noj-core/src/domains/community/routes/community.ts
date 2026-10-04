@@ -59,7 +59,10 @@ import {
   updateComment,
   updatePost,
 } from "../services/community/community.ts";
-import { isProblemInUnendedPublicContest } from "../../contest/index.ts";
+import {
+  hasUnendedPublicContest,
+  isProblemInUnendedPublicContest,
+} from "../../contest/index.ts";
 
 const router = new Hono<OptionalAuthEnv>();
 
@@ -112,7 +115,8 @@ async function requirePostPermission(
 /**
  * GET /config — 获取社区配置与当前用户权限。
  * 认证：可选（optionalAuthMiddleware）。未登录时仅返回配置，不返回权限。
- * 响应：{ data: { ...config, permissions } }。
+ * 响应：{ data: { ...config, permissions, contest_silence } }。
+ * `contest_silence` 为 true 时（存在未结束公开赛且非审核员），社区写入入口应禁用。
  */
 router.get("/config", optionalAuthMiddleware, async (c) => {
   const config = getCommunityConfig();
@@ -130,7 +134,13 @@ router.get("/config", optionalAuthMiddleware, async (c) => {
       moderate: await isModerator(c),
     }
     : {};
-  return c.json({ data: { ...config, permissions } });
+  // 赛时社区全局静默：供前端预先禁用发帖/评论/编辑入口（服务层仍强制，此处仅展示）。
+  // 审核员免静默；匿名用户本就不能写入，统一按非审核员口径返回。
+  const contestSilence = !(loggedIn && await isModerator(c)) &&
+    await hasUnendedPublicContest();
+  return c.json({
+    data: { ...config, permissions, contest_silence: contestSilence },
+  });
 });
 
 /**
@@ -233,11 +243,15 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
     problemId,
   );
   const blockedByContest = inUnendedPublicContest && !moderator;
+  // 赛时社区全局静默：任一公开赛未结束时，非赛题题解同样暂停发布（与 createPost 同口径）
+  const blockedBySilence = !moderator && !blockedByContest &&
+    await hasUnendedPublicContest();
   const canCreate = config.solutions_enabled &&
     (!config.read_only || moderator) &&
     (await checkPermission(c, "community:create_solution")) &&
     (accepted || moderator) &&
-    !blockedByContest;
+    !blockedByContest &&
+    !blockedBySilence;
   return c.json({
     data: {
       enabled: config.solutions_enabled,
@@ -247,7 +261,12 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
       // 供前端展示禁用原因，而非让用户点击后吃 403。
       // 机器码保持 `running_contest` 以兼容既有前端分支；语义已扩展为
       // "归属尚未结束的公开赛（赛前筹备期 + 赛中）"。
-      blocked_reason: blockedByContest ? "running_contest" : null,
+      // `contest_silence`：本题不在赛中，但全站有未结束公开赛，暂停发布题解。
+      blocked_reason: blockedByContest
+        ? "running_contest"
+        : blockedBySilence
+        ? "contest_silence"
+        : null,
     },
   });
 });

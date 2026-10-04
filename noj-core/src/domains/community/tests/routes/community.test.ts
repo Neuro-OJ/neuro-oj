@@ -5,6 +5,7 @@ import { createApp } from "../../../../app.ts";
 import { signToken } from "../../../identity/index.ts";
 import {
   communityBoards,
+  contests,
   permissions,
   problems,
   rolePermissions,
@@ -19,6 +20,7 @@ import {
 import { ensureRbacSeeds } from "../../../system/index.ts";
 import { enterTestContext, leaveTestContext } from "../../../system/index.ts";
 import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
+import { createContest } from "../../../contest/index.ts";
 
 if (!Deno.env.get("JWT_SECRET")) {
   Deno.env.set(
@@ -1150,5 +1152,70 @@ Deno.test({
       const response = await jsonRequest(app, path, { token: authorToken });
       assertEquals(response.status, 200, `${path} 期望 200`);
     }
+  },
+});
+
+Deno.test({
+  name:
+    "community route: 赛时静默经 /config 与题解资格接口下发，供前端预先禁用入口",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const app = createApp();
+    const token = await signToken({ sub: authorId, role: "user" });
+    const readConfig = async () =>
+      (await (await jsonRequest(app, "/api/v1/community/config", { token }))
+        .json()).data;
+    const readEligibility = async () =>
+      (await (await jsonRequest(
+        app,
+        "/api/v1/community/solutions/eligibility?problem_id=community-search-problem",
+        { token },
+      )).json()).data;
+
+    assertEquals((await readConfig()).contest_silence, false);
+    assertEquals((await readEligibility()).blocked_reason, null);
+
+    // 一场与该题无关的进行中公开赛 → 全站静默
+    const now = new Date().toISOString();
+    await getDb().insert(problems).values({
+      id: "community-silence-contest-problem",
+      title: "赛题",
+      description: "x",
+      difficulty: "easy",
+      runtime_config: {},
+      number: 9998,
+      type: "P",
+      created_at: now,
+      updated_at: now,
+    });
+    const contest = await createContest(
+      {
+        title: `路由静默 ${Date.now()}`,
+        start_time: new Date(Date.now() - 60_000).toISOString(),
+        end_time: new Date(Date.now() + 3_600_000).toISOString(),
+        type: "kaggle",
+        problems: [{
+          problem_id: "community-silence-contest-problem",
+          label: "A",
+          sort_order: 0,
+          score: 10000,
+        }],
+      },
+      authorId,
+      true,
+    );
+    assertEquals((await readConfig()).contest_silence, true);
+    const eligibility = await readEligibility();
+    assertEquals(eligibility.can_create, false);
+    assertEquals(eligibility.blocked_reason, "contest_silence");
+
+    // 赛后自动解除
+    await getDb().update(contests).set({
+      start_time: new Date(Date.now() - 7_200_000).toISOString(),
+      end_time: new Date(Date.now() - 1_000).toISOString(),
+    }).where(eq(contests.id, contest.id));
+    assertEquals((await readConfig()).contest_silence, false);
   },
 });

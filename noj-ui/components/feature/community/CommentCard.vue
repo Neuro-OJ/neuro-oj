@@ -7,6 +7,8 @@ const props = defineProps<{
   row: CommentRow
   canComment: boolean
   canEdit: boolean
+  /** 删除权限独立于编辑：赛时静默只禁止编辑，不禁止删除自己的内容。 */
+  canDelete: boolean
   canReport: boolean
   commentMaxLength: number
 }>()
@@ -56,7 +58,7 @@ async function save() {
       <div class="flex items-center gap-1">
         <button v-if="canComment && !row.comment.parent_id" type="button" class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-text-secondary hover:bg-primary-bg hover:text-primary" @click="emit('start-reply')"><UIcon name="i-lucide-reply" class="size-3" />回复</button>
         <button v-if="canEdit" type="button" class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-text-secondary hover:bg-primary-bg hover:text-primary" @click="startEdit"><UIcon name="i-lucide-pencil" class="size-3" />编辑</button>
-        <button v-if="canEdit" type="button" class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50" @click="emit('remove')"><UIcon name="i-lucide-trash-2" class="size-3" />删除</button>
+        <button v-if="canDelete" type="button" class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50" @click="emit('remove')"><UIcon name="i-lucide-trash-2" class="size-3" />删除</button>
         <button v-if="canReport" type="button" class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-text-secondary hover:bg-primary-bg hover:text-primary" @click="emit('report')"><UIcon name="i-lucide-flag" class="size-3" />举报</button>
       </div>
     </div>

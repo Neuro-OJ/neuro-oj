@@ -28,6 +28,7 @@ import {
 } from "./community-config.ts";
 import { listBoardRoleGrants } from "./community-boards.ts";
 import {
+  assertNotContestSilenced,
   featureForType,
   hasAcceptedSolution,
   publicationStatus,
@@ -38,10 +39,7 @@ import {
   postStatsProjection,
 } from "./community-post-select.ts";
 import { reviewUgcContent } from "./community-review.ts";
-import {
-  hasUnendedPublicContest,
-  isProblemInUnendedPublicContest,
-} from "./../../../contest/index.ts";
+import { isProblemInUnendedPublicContest } from "./../../../contest/index.ts";
 
 /**
  * 判断用户是否为指定题目的所有者（用于官方题解标记的写入校验）。
@@ -162,17 +160,6 @@ export async function createPost(
       input.problem_id = resolvedProblemId;
     }
   }
-  // ── 赛时社区全局静默（决策 1 · 方案 A · N-01/FC-01/AR-09）──
-  // 公开赛进行期间（含 pending 筹备期与 running 进行期），全站普通用户禁止创建任何讨论帖与动态；
-  // 仅审核员/管理员可发帖；参赛者提问严格收敛至赛中答疑。
-  if (!moderator && (input.type === "discussion" || input.type === "moment")) {
-    if (await hasUnendedPublicContest()) {
-      throw new ForbiddenError(
-        "比赛期间全站暂停公开发布讨论与动态，参赛提问请使用赛中答疑",
-        "CONTEST_SILENCE",
-      );
-    }
-  }
   // ── 公开赛保密写入门控（审计 VULN-02）──
   //
   // 此前**只有前端**的 `/solutions/eligibility` 提示"竞赛进行中"，底层落库的
@@ -191,6 +178,12 @@ export async function createPost(
       );
     }
   }
+  // ── 赛时社区全局静默（决策 1 · 方案 A · N-01/FC-01/AR-09）──
+  // 公开赛进行期间（含 pending 筹备期与 running 进行期），全站普通用户禁止创建任何帖子
+  // （讨论、动态与题解）；仅审核员/管理员可发帖；参赛者提问严格收敛至赛中答疑。
+  // 题解同样纳入：挂在非赛题下的题解正文可夹带赛题解法，按挂靠题目判定的
+  // 保密门控（上方）无法识别。放在保密门控之后，使赛题题解仍得到更具体的 CONTEST_SECRECY。
+  await assertNotContestSilenced(moderator);
   // 发布频率限制：配置的间隔秒数内禁止再次发布（0 为不限制）
   const postIntervalSeconds = getCommunityConfig().post_interval_seconds;
   if (postIntervalSeconds > 0) {
@@ -353,6 +346,8 @@ export async function updatePost(
   if (current.post.status === "deleted") {
     throw new ValidationError("已删除内容不能编辑");
   }
+  // 赛时静默同样覆盖编辑（含题解）：否则可把赛前发布的帖子改写为完整解法向全场广播（N-01 残余）。
+  await assertNotContestSilenced(moderator);
   const content = input.content === undefined
     ? current.post.content
     : input.content.trim();
