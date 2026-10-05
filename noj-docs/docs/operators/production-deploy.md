@@ -220,7 +220,7 @@ noj-cli update --latest
 
 | 变量 | 含义 |
 |---|---|
-| `NOJ_BUILD_VERSION` | Release 标签（如 `v0.10.3-alpha.1`） |
+| `NOJ_BUILD_VERSION` | Release 标签（如 `v0.10.4-rc.1`） |
 | `NOJ_BUILD_COMMIT` | 完整 commit SHA（`github.sha`） |
 | `NOJ_BUILD_TIME` | 构建时刻（UTC，ISO 8601） |
 
