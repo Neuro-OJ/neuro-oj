@@ -17,13 +17,14 @@ amd64）。
 
 ```bash
 # 1) 下载并校验二进制（Release 资产含 .sha256）
-curl -fsSLO https://github.com/Neuro-OJ/neuro-oj/releases/download/v0.9.5/noj-cli-linux-amd64
-curl -fsSLO https://github.com/Neuro-OJ/neuro-oj/releases/download/v0.9.5/noj-cli-linux-amd64.sha256
+VERSION=v0.10.4-rc.1   # 替换为目标 Release 标签
+curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64"
+curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64.sha256"
 sha256sum -c noj-cli-linux-amd64.sha256
 chmod +x noj-cli-linux-amd64
 
-# 2) 安装到目标目录（空目录亦可：install 自己拉 compose/example 并校验 SHA-256）
-./noj-cli-linux-amd64 install --dir /opt/neuro-oj
+# 2) 安装到目标目录（空目录亦可：install 自己拉同版本 compose/example 并校验 SHA-256）
+./noj-cli-linux-amd64 install --dir /opt/neuro-oj --ref "$VERSION"
 
 # 3) 安装成功后 PATH 注册指向 <dir>/bin/noj-cli，可直接使用
 noj-cli status
@@ -37,10 +38,16 @@ SHA-256 → 生成 `.env.prod`（600，含自动生成的强随机密钥）→ �
 > Release 必须同时包含 CLI
 > 二进制、校验文件与两个部署文件；缺少资产时**明确报错**， 不会混用不同版本。
 
-> **兼容范围（重要）**：compose / `.env.prod.example` 资产是**本版本起**
-> 才纳入发布流程的。因此对**早于本版本的既有 Release**（如 v0.9.5），
-> `install`/`update --latest` 会在解析阶段报"没有发现资产就绪的正式 Release"，
-> 显式 `--ref v0.9.5` 同样找不到这两个资产。请使用本版本之后发布的 Release。
+> **兼容范围（重要）**：compose / `env.prod.example` 资产自 **0.10.1-beta.2**
+> 起才 以可用的名字纳入 Release（更早的 v0.9.5 没有这两个资产；0.10.1-beta.1
+> 及之前的 `.env.prod.example` 被 GitHub 改名为
+> `default.env.prod.example`，同样不可用）。
+>
+> **省略 `--ref` 时**，`install` / `update --latest` 只会选择标签为纯 `X.Y.Z`、
+> 非 draft、非 prerelease 且资产齐备的 Release；`-rc.N` / `-beta.N`
+> 等标签即使已转正 也不会被自动选中，此时会报"没有发现资产就绪的正式
+> Release"。在首个满足条件的 `X.Y.Z` 版本发布前，请始终用 `--ref <标签>`
+> 显式指定与二进制一致的版本。
 
 > **运行时依赖（重要）**：二进制是**动态链接 glibc** 的，因此需要 glibc 系统
 > （Debian / Ubuntu / RHEL / CentOS 等）。**Alpine 等 musl 发行版不能运行**

@@ -77,10 +77,13 @@ AI 技能由开发环境按需提供，仓库不再提交 Claude Code、OpenCode
 | 当前路径 | 优先加载 |
 |---|---|
 | 仓库根 | 本文档 |
-| `noj-core/` | `noj-core/CLAUDE.md` |
-| `noj-ui/` | `noj-ui/CLAUDE.md` |
-| `noj-judge/` | `noj-judge/CLAUDE.md` |
+| `noj-core/` | `noj-core/AGENTS.md`（`CLAUDE.md` 为其软链接） |
+| `noj-ui/` | `noj-ui/AGENTS.md`（`CLAUDE.md` 为其软链接） |
+| `noj-judge/` | `noj-judge/AGENTS.md`（`CLAUDE.md` 为其软链接） |
 | `noj-llm-gateway/` | `noj-llm-gateway/CLAUDE.md` |
+| `noj-cli/` | `noj-cli/README.md` |
+| `noj-tests/` | `noj-tests/E2E_TESTING.md` |
+| `noj-lmcc-extension/` | 暂无模块文档，以本文档与 `package.json` 为准 |
 
 ---
 
@@ -97,15 +100,18 @@ neuro-oj/
 ├── noj-problems/   # 题目源目录（**独立私有仓库**，主仓库 gitignore；构建输入在 noj-core/data/problems-src/）
 ├── noj-tests/      # 跨模块 E2E 测试
 ├── noj-docs/       # 用户/出题人/运营者文档站（VitePress）
-├── dev-docs/           # 设计文档、实施计划、工程规范、审计
-├── scripts/        # 构建与运维脚本（dev/e2e 等）
+├── dev-docs/       # 设计文档、实施计划、工程规范、审计
+├── openspec/       # OpenSpec 变更提案（changes/）
+├── deploy/         # 生产部署附属配置（nginx/minio/monitoring）
+├── fixtures/       # 跨模块共享契约夹具（如题目包 manifest）
+├── scripts/        # 构建、门禁与运维脚本（dev/e2e/deploy/release 等）
 ├── .agents/        # 工程决策记录（仅开发辅助）
 ├── .github/        # CI/CD 与 PR 模板
 ├── AGENTS.md       # 本文档
 └── README.md       # 用户面向 README
 ```
 
-详细目录见各模块 `CLAUDE.md`。
+详细目录见各模块 `AGENTS.md` / `CLAUDE.md`（见 §2.2）。
 
 ---
 
@@ -132,19 +138,23 @@ neuro-oj/
 |---|---|---|
 | PostgreSQL | 5432 | `noj / noj / noj` |
 | Redis | 6379 | 无认证 |
-| MinIO（e2e） | 9000/9001 | `minioadmin / minioadmin` |
+| MinIO | 9000/9001 | `minioadmin / minioadmin` |
 
 ### 5.2 两段式开发流程
 
 **生产运维**统一使用 `noj-cli`（纯 TS，单一配置真相源 `.env.prod`）：
 
 ```bash
-# 首次安装：手动下载 Release 中的 noj-cli 二进制后执行
-./noj-cli-linux-amd64 install --dir /opt/neuro-oj
+# 首次安装：手动下载 Release 中的 noj-cli 二进制后执行（--ref 与二进制版本一致）
+./noj-cli-linux-amd64 install --dir /opt/neuro-oj --ref <Release 标签>
 
 # 日常运维（在安装目录内可省略 --dir）
-noj-cli status|start|stop|restart|logs|update|backup|verify|config|uninstall
+noj-cli check|status|start|stop|restart|logs|update|backup|verify|config|uninstall
 ```
+
+> 以上仅列常用命令；另有 `backup <create|verify|restore|drill|list|prune|schedule>`、
+> 独立 Judge（`judge *`）、离线题目包（`problem *`）与服务端管理（`db`/`init`/`bootstrap`）
+> 等命令，完整列表以 `noj-cli --help` 为准。
 
 > **`setup.sh` 与 `scripts/deploy/install.sh` 已移除**：`install` 自己从 Release
 > 下载 `docker-compose.prod.yml` / `.env.prod.example` 并校验 SHA-256，无需自举脚本。
@@ -157,9 +167,14 @@ noj-cli status|start|stop|restart|logs|update|backup|verify|config|uninstall
 **源码开发**是两段式：先起基础设施，再按模块启动。
 
 ```bash
-docker compose up -d                 # 仅基础设施：postgres/redis/minio
+docker compose up -d                 # 基础设施 postgres/redis/minio，外加 llm-gateway 容器（见下）
+cd noj-core && deno task dev-setup   # 首次：迁移 + 系统数据 + 管理员引导 + 题目包导入（幂等）
 cd noj-core && deno task dev         # 各模块各自前台启动（ui/judge/gateway 同理）
 ```
+
+> 根目录 `docker-compose.yml` 除基础设施外还会构建并启动 `llm-gateway` 容器（端口 8001）。
+> 若要从源码运行 `noj-llm-gateway`（`deno task dev`），请先 `docker compose stop llm-gateway`，
+> 否则端口冲突。
 
 > 模块内的 `deno run -A src/cli.ts <命令>` 仅用于**开发该模块自身**（如 `--help`、
 > 单元测试），不再是部署入口。
@@ -172,20 +187,24 @@ cd noj-core && deno task dev         # 各模块各自前台启动（ui/judge/ga
 
 ```bash
 docker compose up -d
+cd noj-core && deno task dev-setup    # 首次初始化（幂等）
 cd noj-core && deno task dev
 cd noj-ui && deno task dev
 cd noj-judge && cargo run
-cd noj-llm-gateway && deno task dev   # 可选
+cd noj-llm-gateway && deno task dev   # 可选；需先 docker compose stop llm-gateway
 ```
 
 ### 5.4 noj-core 启动顺序
 
-1. JWT_SECRET 强度校验（≥32 字符，失败退出）
-2. 数据库迁移（失败致命）
-3. 确保 root 系统用户
-4. 连接 Redis（失败 → degraded）
-5. 启动评测结果消费者
-6. 启动 HTTP
+1. `JWT_SECRET` 强度与占位值校验（≥32 字符，失败退出）
+2. `TFA_ENCRYPTION_KEY` 校验（必须独立于 `JWT_SECRET`，失败退出）
+3. 数据库迁移、root 系统用户、RBAC 种子、系统设置注册表与缓存初始化（均为致命步骤）
+4. 邮件服务就绪检查（非致命）、生产配置校验（致命）与对象存储 bucket 检查（非致命）
+5. 连接 Redis（失败 → degraded，HTTP 仍启动）
+6. 启动后台消费者（评测结果、私信审核、搜索索引）、队列 sweeper 与 SSE 事件订阅
+7. 启动 HTTP
+
+以 [`noj-core/src/main.ts`](noj-core/src/main.ts) 中 `main()` 的实现为准。
 
 ---
 
@@ -204,8 +223,9 @@ cd noj-llm-gateway && deno task dev   # 可选
 
 ### 7.1 分支与发布纪律
 
-- 日常开发、功能实现、缺陷修复和实验性变更统一提交至 `main` 分支；需要 PR 评审时，从 `main` 派生功能分支并合入 `main`。
-- 允许直接在 `main` 上开发、提交和推送；提交前必须完成相关检查和验收，需要 PR 评审的变更须在合入前完成评审。
+- `main` 为唯一集成分支。**禁止直接推送 `main`**：所有变更（含功能、缺陷修复、文档）一律从
+  `main` 派生主题分支，通过 Pull Request 合入 `main`（流程见 §9.1）。
+- 合入前必须完成相关检查与验收，并等待 CI 通过。
 - `main` 分支必须始终保持可部署状态；发布应从已验证的 `main` 提交或版本标签构建。
 - AI 工具配置、编辑器配置、临时日志、备份文件和其他本地开发产物不得提交到 `main`。
 
@@ -214,17 +234,20 @@ cd noj-llm-gateway && deno task dev   # 可选
 - 本地使用 jj，推送使用 `jj git push`
 - `jj describe` 设提交信息，`jj new` 创建新提交，`jj undo` 回退
 
-### 7.2 提交信息
+### 7.3 提交信息
 
 - 格式：`<type>(<scope>): <中文描述>`
 - type：`feat` / `fix` / `docs` / `style` / `refactor` / `perf` / `test` / `chore` / `ci` / `build`
-- scope：`core` / `ui` / `judge` / `root`
+- scope：
+  - 模块：`core` / `ui` / `judge` / `gateway` / `cli` / `lmcc` / `docs`（noj-docs 文档站） / `tests`（noj-tests）
+  - 横切：`root`（根目录与 `scripts/`、`dev-docs/` 等）/ `ci`（工作流）/ `deps`（依赖升级）
+  - 一次改动涉及多个模块时用英文逗号分隔，不加空格，如 `feat(core,ui): ...`
 
-### 7.3 项目语言
+### 7.4 项目语言
 
 主要语言为中文：提交描述、注释、文档、PR/Issue 必须中文；代码标识符使用英文。
 
-### 7.4 GPG 签名（强制）
+### 7.5 GPG 签名（强制）
 
 所有提交必须 GPG 签名。AI 修改代码前必须确认签名可用。
 
@@ -234,7 +257,7 @@ cd noj-llm-gateway && deno task dev   # 可选
 
 ### 8.1 不可逾越的红线
 
-1. 提交和推送到 `main` 前必须完成相关检查和验收，确保其保持可部署状态
+1. 禁止直接推送 `main`；一律通过 PR 合入，合入前完成相关检查和验收，确保 `main` 保持可部署状态
 2. 禁止未签名提交
 3. 禁止修改 `_journal.json`
 4. 禁止手动修改 `deno.lock` / `Cargo.lock`
@@ -298,17 +321,18 @@ cd noj-llm-gateway && deno task dev   # 可选
 
 ## 9. 贡献流程
 
-### 9.1 PR 工作流（需要评审时）
+### 9.1 PR 工作流（所有变更）
 
 ```bash
+jj git fetch
 jj new main
 jj describe
-jj git push -b <branch-name>
-gh pr create --draft --base main
-# 迭代
+jj git push --named <branch-name>=@      # 首次推送时创建同名 bookmark
+gh pr create --draft --base main --head <branch-name>
+# 迭代：在新提交上修改后压回，再推送（jj 自带 force-with-lease 式安全检查，无需 --force）
 jj new
 jj squash
-jj git push -b <branch-name> --force
+jj git push -b <branch-name>
 ```
 
 ### 9.2 Agent GPG 检查
@@ -363,6 +387,8 @@ jj config get signing.key
 
 - `.github/workflows/ci.yml`：PR/推送静态检查、测试、构建；按模块路径过滤
 - `.github/workflows/e2e.yml`：跨模块全链路 E2E + judge 沙箱
+- `.github/workflows/release.yml`：创建预发布 Release 时构建并发布镜像、`noj-cli` 二进制与部署文件（均附 `.sha256`）
+- `.github/workflows/lint-workflows.yml`：工作流自身的 actionlint 检查
 - 文档链接、Agent Note 格式、导出 JSDoc 覆盖率均在 CI 检查
 
 ---

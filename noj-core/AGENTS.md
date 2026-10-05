@@ -238,14 +238,14 @@ deno task db:migrate
 # 生成 Drizzle 迁移文件
 deno task db:generate
 
-# 种子数据（示例题 + 标签 + 管理员）
+# 开发环境一键初始化（幂等：迁移 + 系统数据 + 管理员引导 + 题目包构建与导入 + E2E 用户）
 deno task dev-setup
+
+# 仅初始化系统基础数据（root/RBAC/镜像白名单/标签）
+deno task init:system
 
 # 构建支持包
 deno task problems:build
-
-# 一键初始化
-deno task dev-setup          # 开发环境一键初始化（迁移 + 系统数据 + 题目导入）
 
 # 对象存储只读盘点（仅 SELECT + LIST，不删除对象）
 deno task storage:audit -- --pretty --output /tmp/storage-audit.json
@@ -378,13 +378,24 @@ docker compose down     # 停止
 
 ## 启动顺序（main.ts）
 
-1. **JWT_SECRET 强度校验** — ≥32 字符，不足则拒绝启动
-2. **数据库迁移** — 失败为致命错误，终止启动
-3. **确保 root 系统用户** — UID=0，admin 角色，不可登录，不计入管理员统计
-4. **邮件 Provider 配置检查** — 非致命：配置缺失时降级到 mock 并 console.warn
-5. **连接 Redis** — 失败则 degraded 模式（HTTP 仍启动，评测功能不可用）
-6. **启动评测结果消费者** — 后台自动重连（指数退避 1s→2s→4s→…→30s）
-7. **启动 HTTP 服务**
+以 `src/main.ts` 的 `main()` 为准，当前顺序：
+
+1. **JWT_SECRET 校验** — ≥32 字符且不得为示例占位值，否则拒绝启动
+2. **TFA_ENCRYPTION_KEY 校验** — 必须配置且独立于 `JWT_SECRET`，否则拒绝启动
+3. **数据库迁移** — 失败为致命错误，终止启动
+4. **确保 root 系统用户** — UID=0，admin 角色，不可登录，不计入管理员统计
+5. **RBAC 种子、管理员初始化状态、系统设置注册表校验与缓存初始化** —
+   均为致命步骤
+6. **邮件服务就绪检查** —
+   非致命：未就绪时记录告警，邮箱验证/密码找回不可用且公开注册被禁止
+   （仅允许站点引导阶段的首次注册）
+7. **生产配置校验**（致命）与**对象存储 bucket 检查**（非致命，失败仅 warn）
+8. **连接 Redis** — 失败则 degraded 模式（HTTP
+   仍启动，评测功能不可用）；成功后迁移旧单队列残留任务
+9. **启动后台任务** —
+   评测结果消费者（自动重连，指数退避）、私信审核消费者、搜索索引消费者、 队列
+   sweeper、SSE 事件订阅
+10. **启动 HTTP 服务**
 
 ## 数据库 Schema 设计
 
@@ -678,11 +689,10 @@ API 或独立的安全通道部署，`support_package_path` 指向受控存储�
 
 ## 贡献要求
 
-- **所有提交必须 GPG 签名**（详见根目录 README.md）
-- 分支与推送纪律以根目录 [`AGENTS.md`](../AGENTS.md) §7.1
-  为准：日常开发与缺陷修复 可直接提交 `main`；需要评审的变更从 `main` 派生分支走
-  PR。无论走哪条路径， 提交前必须完成本模块的检查与验收（2026-09-12
-  更正：此处原写"禁止直接推送到 main"， 与顶层 AGENTS.md 冲突）
+- **所有提交必须 GPG 签名**（详见根目录 [`AGENTS.md`](../AGENTS.md) §7.5）
+- 分支与推送纪律以根目录 [`AGENTS.md`](../AGENTS.md) §7.1 为准：**禁止直接推送
+  `main`**，所有变更从 `main` 派生主题分支并通过 PR
+  合入；合入前必须完成本模块的检查与验收
 - 提交信息格式：`feat(core): 中文描述` / `fix(core): 中文描述`
 
 ## 相关文档

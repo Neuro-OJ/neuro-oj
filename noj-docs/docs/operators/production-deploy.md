@@ -42,7 +42,7 @@
 从 Release 手动下载二进制并校验：
 
 ```bash
-VERSION=v0.9.5   # 替换为目标 Release 标签
+VERSION=v0.10.4-rc.1   # 替换为目标 Release 标签
 curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64"
 curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64.sha256"
 sha256sum -c noj-cli-linux-amd64.sha256
@@ -52,7 +52,7 @@ chmod +x noj-cli-linux-amd64
 然后安装到目标目录（**目录可以是空的**：`install` 自己补齐部署文件）：
 
 ```bash
-./noj-cli-linux-amd64 install --dir /opt/neuro-oj
+./noj-cli-linux-amd64 install --dir /opt/neuro-oj --ref "$VERSION"
 ```
 
 ::: warning 非交互环境必须先备好配置
@@ -99,15 +99,16 @@ Docker daemon（这是有意的边界：自动安装 daemon 需要 root 安装�
 为避免"Release 已可见但镜像 / CLI 资产尚未就绪"的窗口（issue #431），发布采用
 预发布转正流程：
 
-1. 创建 GitHub Release 并勾选 **pre-release**（tag 形如 `vX.Y.Z` 或 `X.Y.Z-rc.N`）。
-2. `release.yml` 监听 `published` / `prereleased` 事件（只处理预发布 Release）：构建 7 个候选镜像 → 漏洞扫描 → 签名 / SBOM /
-   来源证明 → 验证 digest 与 smoke test → 上传同版本 `noj-cli` 二进制与校验文件。
+1. 创建 GitHub Release 并勾选 **pre-release**（tag 形如 `vX.Y.Z` 或 `vX.Y.Z-rc.N`；只有纯 `vX.Y.Z`
+   标签会被 `install`/`update --latest` 自动选中，`-rc.N` 等需用户显式 `--ref`）。
+2. `release.yml` 只监听 `prereleased` 事件（不监听 `published`，避免同一次预发布触发两条流水线）：构建 7 个候选镜像 → 漏洞扫描 → 签名 / SBOM /
+   来源证明 → 验证 digest 与 smoke test → 上传同版本 `noj-cli` 二进制、`docker-compose.prod.yml`、`env.prod.example` 及各自的校验文件。
 3. 全部通过后，工作流最后的 `publish-release` 任务把预发布转正为正式 Release（`--latest`）。
 
 由此保证：`/releases/latest` 指向的版本一定具备同版本镜像、CLI 资产与校验文件。
-`noj-cli update --latest` 自动选择版本时同样只接受非 draft、非 prerelease 且资产中
+`noj-cli install`（省略 `--ref`）与 `update --latest` 自动选择版本时只接受标签为纯 `X.Y.Z`、非 draft、非 prerelease 且资产中
 包含 `noj-cli-linux-amd64`、`.sha256` 与两个部署文件的 Release，双重过滤未就绪版本。
-直接发布正式 Release（published）会被工作流识别并跳过构建；重试时正式镜像 tag 指向不同构建
+直接发布正式 Release（不经预发布）不会触发构建；重试时正式镜像 tag 指向不同构建
 会被拒绝覆盖，避免版本混用。
 
 ## 3. 配置说明
@@ -116,7 +117,7 @@ Docker daemon（这是有意的边界：自动安装 daemon 需要 root 安装�
 
 | 配置项 | 说明 |
 |---|---|
-| `NOJ_VERSION` | 要使用的 Release 标签，例如 `v0.9.5`；不要填写 `latest` |
+| `NOJ_VERSION` | 要使用的 Release 标签，例如 `v0.10.4-rc.1`；不要填写 `latest` |
 | `DOMAIN` | 对外域名或服务器 IP，只填主机名，不要写 `http://`/`https://`（`install` 的向导会据此生成 `APP_URL`；不直接注入容器） |
 | `APP_URL` | 网站完整地址，例如 `http://1.2.3.4` 或 `https://oj.example.com` |
 | `CORS_ALLOWED_ORIGINS` | 通常与 `APP_URL` 相同 |
