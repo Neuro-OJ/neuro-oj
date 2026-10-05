@@ -76,6 +76,15 @@ export default defineNuxtConfig({
   modules: ['@nuxt/ui'],
   css: ['~/assets/css/main.css'],
 
+  // 关闭 Nuxt UI 内置的 @nuxtjs/color-mode：站点目前只有亮色主题
+  // （--c-* 仅在编辑器 .editor-dark 内切换，大量组件硬编码 bg-white），
+  // 而 color-mode 默认跟随系统给 <html> 加 .dark，触发 Nuxt UI body 上的
+  // dark:scheme-dark，使原生复选框/单选框在白底卡片上渲染成黑块，
+  // --ui-text-inverted 等变量也会半切换成暗色。正式支持全站暗色前保持关闭。
+  ui: {
+    colorMode: false,
+  },
+
   // @nuxt/icon：lucide 集合本地打包，SSR/单二进制离线渲染图标
   // （scan 扫描源码中实际用到的图标打包进客户端；@nuxt/icon 2.x 无
   //   collections / includeAllCollections 选项，配置会被忽略，已移除）

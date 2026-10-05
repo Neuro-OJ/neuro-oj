@@ -221,6 +221,7 @@ cd dist
 
 - 复杂或复用的样式组合使用 `@apply` 封装在 `<style>` 中
 - 全局主题定制（颜色、字体、阴影）统一在 `assets/css/main.css` 的 `@theme` 与 `--ui-*` 变量中配置
+- 全站目前仅支持亮色：`nuxt.config.ts` 中 `ui.colorMode: false`，不跟随系统暗色（否则 `<html>` 加 `.dark` 后 Nuxt UI 会让原生复选框等变成暗色外观）；暗色只存在于编辑器 `.editor-dark` 区域
 - CSS 变量（`--c-*`）仅在 `app.vue:root` 定义，`assets/css/main.css` 的 `@theme`/`--ui-*` 引用
 - Vue Transition（`<Transition name="...">`）、`::before`/`::after` 伪元素、`@keyframes` 可保留 `<style>` 块
 

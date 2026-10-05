@@ -74,7 +74,10 @@ useHead({
     --c-on-signal: #ffffff;
 }
 
+/* 编辑器暗色主题：唯一真正切换 --c-* 的暗色区域。color-scheme 随之置为 dark，
+   让区域内原生表单控件、滚动条与实际渲染的明暗保持一致（全站其余部分为亮色）。 */
 .editor-dark {
+  color-scheme: dark;
   --c-bg-page: #0b0f19;
   --c-bg-panel: #131b2e;
   --c-bg-sunken: #070a12;
