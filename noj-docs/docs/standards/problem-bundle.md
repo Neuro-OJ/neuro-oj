@@ -114,7 +114,7 @@
 ### LLM 调用题
 
 在 manifest 中增加 `llm` 字段，只声明**预算**；用哪个 Provider、哪个模型由平台全局
-默认统一决定（后台「系统设置 → LLM」），因此题包不含部署期 UUID 或模型名，可跨部署
+默认统一决定（后台「LLM → Provider 管理」页顶部），因此题包不含部署期 UUID 或模型名，可跨部署
 直接导入。
 
 下面是**与完整 manifest 合并的片段**（`runtime_config` 也需补齐 `image` / `time_limit_ms` / `memory_limit_mb`，此处省略）：
