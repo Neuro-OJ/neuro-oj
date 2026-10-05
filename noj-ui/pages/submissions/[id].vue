@@ -3,6 +3,7 @@ import { useRoute } from "vue-router"
 import hljs from "highlight.js"
 import "highlight.js/styles/github-dark.css"
 import SubmissionCaseResults from "~/components/submission/SubmissionCaseResults.vue"
+import SubmissionOutputPanel from "~/components/submission/SubmissionOutputPanel.vue"
 import { useCopyText } from "~/composables/useCopyText"
 import { getLanguageLabel, formatScore, formatTime, formatMemory, statusBadgeColors, getResultDef, verdictClasses, formatDateTime } from "~/utils/submissionFormat"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
@@ -58,7 +59,6 @@ useSeoMeta({
 const isFinished = computed(
   () => submission.value?.status === "finished" || submission.value?.status === "error",
 )
-const showOutput = ref(false)
 const showCode = ref(false)
 const { copyText } = useCopyText()
 // 自动轮询：基础数据公开访问，未登录也能查看；等 auth token 就绪后开始轮询
@@ -286,44 +286,14 @@ watch(
           </NuxtLink>
         </div>
       </div>
-      <!-- 输出区（仅 finished 有内容） -->
-      <div
-        v-if="submission.status === 'finished' && submission.result"
-        class="bg-[#0d1117] border border-[#30363d] rounded-xl overflow-hidden"
-      >
-        <button
-          class="flex items-center justify-between w-full px-4 py-3 bg-[#161b22] text-[#8b949e] text-xs font-mono border-b border-[#30363d] cursor-pointer hover:bg-[#1c2128]"
-          @click="showOutput = !showOutput"
-        >
-          <span class="flex items-center gap-2">
-            <UIcon name="i-lucide-terminal" class="size-4" />
-            <span>评测输出</span>
-          </span>
-          <span class="flex items-center gap-2">
-            <UIcon
-              v-if="submission.result?.output != null"
-              name="i-lucide-copy"
-              class="size-4 hover:text-[#e6edf3]"
-              title="复制评测输出"
-              @click.stop="copyText(submission.result?.output ?? null, '评测输出')"
-            />
-            <UIcon name="i-lucide-chevron-down" class="size-4" v-if="!showOutput"/>
-            <UIcon name="i-lucide-chevron-up" class="size-4" v-else/>
-          </span>
-        </button>
-        <pre v-if="submission.result.output != null" v-show="showOutput" class="p-4 overflow-x-auto text-xs leading-relaxed bg-[#0d1117] text-[#e6edf3]"><code class="font-mono whitespace-pre-wrap break-all">{{ submission.result.output }}</code></pre>
-        <div v-else class="flex flex-col items-center justify-center gap-2 py-8 text-text-muted text-sm">
-          <UIcon name="i-lucide-lock" class="size-5" />
-          <span>登录后查看评测输出</span>
-          <NuxtLink
-            v-if="!isLoggedIn"
-            to="/login"
-            class="inline-flex items-center px-4 py-1.5 rounded-md text-xs font-semibold bg-signal text-on-signal border border-signal no-underline hover:bg-signal/80 hover:border-signal/80"
-          >
-            登录
-          </NuxtLink>
-        </div>
-      </div>
+      <!-- 输出区：finished / error 终态均展示（error 的 output 携带出错原因） -->
+      <SubmissionOutputPanel
+        v-if="isFinished && submission.result"
+        :status="submission.status"
+        :output="submission.result.output"
+        :is-logged-in="isLoggedIn"
+        @copy="copyText($event, '评测输出')"
+      />
     </template>
   </div>
 </template>

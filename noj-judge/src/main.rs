@@ -438,7 +438,8 @@ fn main() -> Result<()> {
                             Ok(r) => r,
                             Err(e) => {
                                 error!(submission_id = %task.submission_id, error = %e, "双容器评测失败");
-                                types::JudgeResult::error(&task.submission_id, task.rejudge_seq)
+                                // 启动前的平台配置错误回传公开文案，其余仍隐藏为通用系统错误
+                                types::JudgeResult::from_error(&e, &task.submission_id, task.rejudge_seq)
                             }
                         };
 

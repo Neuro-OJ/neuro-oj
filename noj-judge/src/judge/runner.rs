@@ -5,7 +5,13 @@ use tracing::{error, info, warn};
 
 use crate::sandbox::cache::SupportPackageCache;
 use crate::sandbox::download::{self, DownloadedPackage};
-use crate::types::{JudgeResult, JudgeTask};
+use crate::types::{JudgeResult, JudgeTask, PublicJudgeError};
+
+/// 支持包 / artifact 获取失败时回传给提交详情页的公开文案（不含 URL/路径）。
+pub(crate) const MSG_SUPPORT_PACKAGE_FAILED: &str =
+    "评测环境错误：题目支持包获取或完整性校验失败，请联系管理员检查题目支持包与存储配置";
+pub(crate) const MSG_ARTIFACT_FAILED: &str =
+    "评测环境错误：提交的产物文件获取或完整性校验失败，请稍后重新提交；若持续失败请联系管理员";
 
 /// 读取支持包文件大小（用于日志展示；失败时返回 0，不阻断主流程）。
 fn package_size(pkg: &DownloadedPackage) -> u64 {
@@ -70,7 +76,9 @@ pub async fn evaluate_with_cpu_limit(
                         error = %e,
                         "支持包获取或 SHA-256 校验失败，评测任务终止"
                     );
-                    return Err(e);
+                    return Err(
+                        PublicJudgeError(MSG_SUPPORT_PACKAGE_FAILED).with_detail(format!("{e:#}"))
+                    );
                 }
             }
         } else {
@@ -100,7 +108,7 @@ pub async fn evaluate_with_cpu_limit(
                         error = %e,
                         "artifact 下载失败"
                     );
-                    return Err(e);
+                    return Err(PublicJudgeError(MSG_ARTIFACT_FAILED).with_detail(format!("{e:#}")));
                 }
             }
         } else {
@@ -275,6 +283,9 @@ mod tests {
             "错误信息应指向支持包获取失败，实际: {}",
             msg
         );
+        let r = JudgeResult::from_error(&err, &task.submission_id, None);
+        assert!(r.output.starts_with(MSG_SUPPORT_PACKAGE_FAILED));
+        assert!(!r.output.contains("nonexistent"), "公开文案不得包含路径");
     }
 
     #[tokio::test]
@@ -316,5 +327,7 @@ mod tests {
             "错误信息应指向校验失败，实际: {}",
             err
         );
+        let r = JudgeResult::from_error(&err, &task.submission_id, None);
+        assert!(r.output.starts_with(MSG_SUPPORT_PACKAGE_FAILED));
     }
 }
