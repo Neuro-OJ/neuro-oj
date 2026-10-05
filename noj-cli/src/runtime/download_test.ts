@@ -82,6 +82,17 @@ Deno.test("resolveLatestVersion: 跳过预发布、草稿和缺少 CLI 资产的
   }
 });
 
+Deno.test("resolveLatestVersion: 已转正的 rc 标签可被选中", async () => {
+  try {
+    mockFetch(() =>
+      jsonResponse([readyRelease("v0.3.0-rc.1"), readyRelease("v0.2.3")])
+    );
+    assertEquals(await resolveLatestVersion(), "0.3.0-rc.1");
+  } finally {
+    restoreFetch();
+  }
+});
+
 Deno.test("resolveLatestVersion: 没有资产就绪的正式 Release 时抛错", async () => {
   try {
     mockFetch(() =>

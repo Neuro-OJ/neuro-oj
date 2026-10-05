@@ -10,6 +10,10 @@
 
 ## [Unreleased]
 
+### 变更
+
+- `noj-cli install`（省略 `--ref`）与 `update --latest` 现在也会选中已转正的 `-rc.N` / `-beta.N` 等标签：可选与否只看 Release 是否为 draft/prerelease 以及资产是否齐备，不再要求纯 `X.Y.Z` 标签。
+
 ---
 
 ## [0.10.4-rc.1] - 2026-10-05

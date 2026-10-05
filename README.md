@@ -36,15 +36,15 @@ NOJ 提供从“注册 → 做题 → 提交 → 评测”的完整流程，可�
 
 ## 快速开始
 
-生产环境使用单机 Docker Compose 部署。从 Release 下载 `noj-cli` 二进制并校验，再由它完成安装：
+生产环境使用单机 Docker Compose 部署。从 Release 下载 `noj-cli` 二进制并校验，再由它完成安装。建议用 `--ref` 指定与二进制一致的版本（v0.10.4-rc.1 及更早的二进制必须指定）：
 
 ```bash
-VERSION=v0.9.5
+VERSION=v0.10.4-rc.1   # 替换为目标 Release 标签（见 Releases 页面）
 curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64"
 curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64.sha256"
 sha256sum -c noj-cli-linux-amd64.sha256
 chmod +x noj-cli-linux-amd64
-./noj-cli-linux-amd64 install --dir /opt/neuro-oj
+./noj-cli-linux-amd64 install --dir /opt/neuro-oj --ref "$VERSION"
 ```
 
 环境要求、资源配置、TLS、升级与备份详见文档站[生产部署](https://docs.noj.xyber-nova.space/operators/production-deploy.html)。

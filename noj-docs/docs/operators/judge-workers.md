@@ -24,7 +24,7 @@ noj-cli judge install-env
 
 # 配置并启动（必需参数必须显式给出；本命令不做交互式询问）
 noj-cli judge install --dir /srv/noj-judge \
-  --version v0.9.5 \
+  --version v0.10.4-rc.1 \
   --redis-url 'redis://:密码@127.0.0.1:6379/0' \
   --socket-path /run/noj-judge/docker.sock \
   --socket-gid "$(stat -c '%g' /run/noj-judge/docker.sock)"
@@ -32,7 +32,7 @@ noj-cli judge install --dir /srv/noj-judge \
 
 首次配置必填项（缺失会报"首装必须提供 …"，退出码 2）：
 
-- **`--version`** → `NOJ_VERSION`：不可变 Release 版本，例如 `v0.9.5`；
+- **`--version`** → `NOJ_VERSION`：不可变 Release 版本，建议与 noj-core 版本一致，例如 `v0.10.4-rc.1`；
   不接受 `main`/`latest`。
 - **`--redis-url`** → `REDIS_URL`：与 noj-core 相同的 Redis 地址、数据库和认证信息。
 - **`--socket-path`** → `JUDGE_DOCKER_SOCKET`：只服务于 Judge 的 rootless

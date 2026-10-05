@@ -6,6 +6,8 @@
 - [测试体系](testing.md)
 - [防御模式](defensive-patterns.md)
 - [系统架构评审（2026-09-01）](architecture-review-2026-09-01.md)
+- [系统架构评审（2026-09-12）](architecture-review-2026-09-12.md)
+- [noj-core 域边界与所有权（含多副本约束）](domain-boundaries.md)
 - [Capability Seam](capability-seams.md)
 - [事件域分离](event-domains.md)
 - [SSE 事件目录](event-catalog.md)
@@ -13,6 +15,10 @@
 - [配置分层](config-layering.md)
 - [可重放审计日志](audit-log.md)
 - [日志视觉契约](log-conventions.md)
+- [指标目录](metric-catalog.md)
+- [写接口限流矩阵](write-rate-limit-matrix.md)
+- [社区搜索索引验证](community-search-index.md)
+- [静默跳过测试清单（生成物）](test-silent-skips.md)
 
 根 `AGENTS.md` 中的“规则 + 链接”指向这里的详细文档。
 

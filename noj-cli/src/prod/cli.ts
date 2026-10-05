@@ -465,7 +465,7 @@ export async function runProdInstall(
     repository: flagValue(args, "--repo") ?? DEFAULT_REPOSITORY,
     // **缺省不再是分支名 `main`**（评审发现的 R4 阻塞）：
     // 删掉的 `install.sh:722` 在无 `--ref` 时调 `resolve_latest_ref`——
-    // 查询 Release 列表并选**最新的资产就绪稳定版**。这与 R4 的前提一致：
+    // 查询 Release 列表并选**最新的资产就绪正式版**（已转正的 `-rc.N` 等标签同样可选）。这与 R4 的前提一致：
     // 用户手动下载的是某个**标签**的二进制，`install` 必须从**同一个**标签取
     // 部署文件，否则会出现 issue #431 要避免的"CLI 与部署文件版本不一致"。
     //
