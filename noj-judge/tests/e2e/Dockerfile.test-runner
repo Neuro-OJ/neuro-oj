@@ -1,12 +1,18 @@
 # noj-judge E2E 测试用 Docker 镜像。
 #
-# 使用 docker.m.daocloud.io 镜像源：在网络受限环境（无法直连 docker.io）
-# 中也能拉到基础镜像。docker.m.daocloud.io 是 DaoCloud 维护的 Docker Hub
-# 公共镜像代理，与官方镜像内容一致。
+# 基础镜像仓库可配置（PYTHON_IMAGE_REPO）：
+# - 默认 docker.m.daocloud.io/library/python：DaoCloud 维护的 Docker Hub 公共
+#   镜像代理，网络受限环境（无法直连 docker.io）中也能拉到基础镜像
+#   （issue 64 评论 §6.3：原 FROM python:3.12-alpine 在部分环境 connection refused）；
+# - CI（GitHub Actions）通过 NOJ_E2E_PYTHON_IMAGE_REPO=python 直连 Docker Hub：
+#   2026-10-05 DaoCloud 从 GitHub runner 访问持续 TLS handshake timeout，导致
+#   Judge Sandbox E2E 整组失败，而 Docker Hub 在 runner 上稳定可达。
 #
-# 修复 issue 64 评论 §6.3：原 FROM python:3.12-alpine 在部分环境
-# (CI、沙箱) 中 connection refused，无法构建测试镜像。
-FROM docker.m.daocloud.io/library/python:3.12-alpine
+# 固定 digest（2026-08-15 审计：第三方镜像代理无 digest 存在投毒 / 漂移风险）：
+# digest 按内容寻址，两个仓库解析到同一份 OCI index，校验一致才会拉取成功。
+# 升级时用 `docker buildx imagetools inspect python:3.12-alpine` 获取新 digest。
+ARG PYTHON_IMAGE_REPO=docker.m.daocloud.io/library/python
+FROM ${PYTHON_IMAGE_REPO}:3.12-alpine@sha256:1b668429b3511ab407d8e00648891631b0b1a4d7e15e3ca70f38ab5b91ad4ab4
 
 RUN pip install --no-cache-dir requests urllib3
 

@@ -292,8 +292,9 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
 - 所有集成测试使用 `#[ignore]` + `NOJ_RUN_E2E=1` 守卫
 - 使用 `#[serial_test::serial]` 序列化执行（避免 Docker 资源竞争）
 - 30 秒外层超时：`tokio::time::timeout(Duration::from_secs(30), ...)`
-- 测试用镜像：`noj-judge-test-runner`（基于
-  `docker.m.daocloud.io/library/python:3.12-alpine`）
+- 测试用镜像：`noj-judge-test-runner`（基于 `python:3.12-alpine`，digest 固定；
+  基础镜像仓库默认 DaoCloud 代理 `docker.m.daocloud.io/library/python`，可用
+  `NOJ_E2E_PYTHON_IMAGE_REPO` 覆盖，CI 设为 `python` 直连 Docker Hub）
 - 测试用 evaluate.py
   支持标志：`--hang`（死循环）、`--memory-test`（OOM）、`--no-result`、`--result-json`、`--exit-code`
 - 测试镜像通过 docker CLI 子进程构建（bollard tar 构建在测试环境中不可靠）

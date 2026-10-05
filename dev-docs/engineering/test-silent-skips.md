@@ -681,7 +681,7 @@
 | noj-core/tests/smoke.test.ts | 36 | env-guard |
 | noj-core/tests/smoke.test.ts | 50 | env-guard |
 | noj-core/tests/smoke.test.ts | 66 | env-guard |
-| noj-judge/tests/common/mod.rs | 324 | rust-ignore |
+| noj-judge/tests/common/mod.rs | 326 | rust-ignore |
 | noj-judge/tests/e2e_abnormal.rs | 27 | rust-ignore |
 | noj-judge/tests/e2e_abnormal.rs | 31 | rust-env-guard |
 | noj-judge/tests/e2e_abnormal.rs | 75 | rust-ignore |
