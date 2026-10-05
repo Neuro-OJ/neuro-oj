@@ -67,15 +67,17 @@ pub async fn ensure_test_image(docker: &Docker) -> Result<()> {
         );
     }
 
-    let status = std::process::Command::new("docker")
-        .args([
-            "build",
-            "-t",
-            image_name,
-            "-f",
-            "Dockerfile.test-runner",
-            ".",
-        ])
+    let mut cmd = std::process::Command::new("docker");
+    cmd.args(["build", "-t", image_name, "-f", "Dockerfile.test-runner"]);
+    // 基础镜像仓库可由环境变量覆盖（CI 设为 `python` 直连 Docker Hub）；
+    // 未设置时使用 Dockerfile 默认的 DaoCloud 镜像代理
+    if let Ok(repo) = std::env::var("NOJ_E2E_PYTHON_IMAGE_REPO") {
+        if !repo.trim().is_empty() {
+            cmd.args(["--build-arg", &format!("PYTHON_IMAGE_REPO={}", repo.trim())]);
+        }
+    }
+    let status = cmd
+        .arg(".")
         .current_dir(&dockerfile_dir)
         .status()
         .context("执行 docker build 失败")?;

@@ -371,6 +371,9 @@ jobs:
     timeout-minutes: 30
     env:
       NOJ_RUN_E2E: "1"
+      # 测试镜像基础镜像直连 Docker Hub（digest 固定在 Dockerfile.test-runner）：
+      # 默认的 DaoCloud 代理从 GitHub runner 访问会间歇性 TLS handshake timeout
+      NOJ_E2E_PYTHON_IMAGE_REPO: python
     permissions:
       actions: write
 
