@@ -545,6 +545,10 @@ fn test_validate_runtime_config_rejects_bad_image() {
     let err =
         validate_runtime_config("sid-1", &rc, false, "noj-", &["python3".to_string()]).unwrap_err();
     assert!(err.to_string().contains("镜像"));
+    assert_eq!(
+        err.downcast_ref::<crate::types::PublicJudgeError>(),
+        Some(&crate::types::PublicJudgeError(MSG_IMAGE_NOT_ALLOWED)),
+    );
 }
 
 #[test]
@@ -568,6 +572,36 @@ fn test_validate_runtime_config_rejects_network_when_disallowed() {
     let err =
         validate_runtime_config("sid-2", &rc, false, "noj-", &["python3".to_string()]).unwrap_err();
     assert!(err.to_string().contains("网络"));
+    assert_eq!(
+        err.downcast_ref::<crate::types::PublicJudgeError>(),
+        Some(&crate::types::PublicJudgeError(MSG_NETWORK_NOT_ALLOWED)),
+    );
+}
+
+#[test]
+fn test_validate_runtime_config_rejects_command_not_in_whitelist() {
+    use crate::types::{EvaluatorRuntime, SolutionRuntime};
+
+    let rc = RuntimeConfig {
+        evaluator: EvaluatorRuntime {
+            image: "noj-evaluator".to_string(),
+            command: "/opt/secret/run.sh --flag".to_string(),
+            time_limit_ms: 1000,
+            memory_limit_mb: 256,
+            network: None,
+        },
+        solution: SolutionRuntime {
+            image: "noj-solution".to_string(),
+            call_timeout_ms: 1000,
+            memory_limit_mb: 256,
+        },
+    };
+    let err =
+        validate_runtime_config("sid-3", &rc, false, "noj-", &["python3".to_string()]).unwrap_err();
+    assert!(err.to_string().contains("/opt/secret/run.sh"));
+    let r = JudgeResult::from_error(&err, "sid-3", None);
+    assert!(r.output.starts_with(MSG_COMMAND_NOT_ALLOWED));
+    assert!(!r.output.contains("/opt/secret"));
 }
 
 #[test]

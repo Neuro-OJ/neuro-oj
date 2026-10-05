@@ -140,9 +140,51 @@ pub struct JudgeResult {
     pub rejudge_seq: Option<i64>,
 }
 
+/// 可对用户公开的平台侧错误（评测启动前的配置/环境问题）。
+///
+/// 只接受 `&'static str`：文案在编译期固定，不会把镜像名、下载 URL、内部路径等
+/// 动态内容带给做题人。详细原因请以 context 的形式附加（仅写入日志），见
+/// [`PublicJudgeError::with_detail`]。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PublicJudgeError(pub &'static str);
+
+impl PublicJudgeError {
+    /// 构造以本错误为根、`detail` 为外层 context 的 `anyhow::Error`。
+    ///
+    /// `Display` 仍输出详细信息（日志与既有断言不变），
+    /// [`JudgeResult::from_error`] 通过 `downcast_ref` 取出可公开文案。
+    pub fn with_detail<D>(self, detail: D) -> anyhow::Error
+    where
+        D: std::fmt::Display + Send + Sync + 'static,
+    {
+        anyhow::Error::new(self).context(detail)
+    }
+}
+
+impl std::fmt::Display for PublicJudgeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
+impl std::error::Error for PublicJudgeError {}
+
 impl JudgeResult {
     fn empty_details() -> Value {
         json!({})
+    }
+
+    /// 由评测失败的错误构造结果：携带 [`PublicJudgeError`] 时输出其公开文案，
+    /// 否则退化为 [`JudgeResult::error`] 的通用「系统内部错误」。
+    pub fn from_error(err: &anyhow::Error, submission_id: &str, rejudge_seq: Option<i64>) -> Self {
+        match err.downcast_ref::<PublicJudgeError>() {
+            Some(public) => Self::system_error(
+                submission_id,
+                &format!("{} (submission: {})", public, submission_id),
+                rejudge_seq,
+            ),
+            None => Self::error(submission_id, rejudge_seq),
+        }
     }
 
     /// 构造一个系统错误结果（对用户隐藏内部错误细节）。
@@ -352,6 +394,39 @@ mod tests {
         assert_eq!(r.score, 0);
         assert_eq!(r.details, json!({}));
         assert_eq!(r.rejudge_seq, Some(9));
+    }
+
+    #[test]
+    fn test_judge_result_from_error_exposes_public_message_only() {
+        let err = PublicJudgeError("评测环境配置错误：测试文案")
+            .with_detail("镜像 evil:latest 不在白名单 /internal/path");
+        // Display 仍是详细信息（供日志使用）
+        assert!(err.to_string().contains("evil:latest"));
+
+        let r = JudgeResult::from_error(&err, "sid-pub", Some(2));
+        assert_eq!(r.status, "error");
+        assert_eq!(r.score, 0);
+        assert_eq!(r.output, "评测环境配置错误：测试文案 (submission: sid-pub)");
+        assert!(!r.output.contains("evil"));
+        assert!(!r.output.contains("/internal"));
+        assert_eq!(r.rejudge_seq, Some(2));
+    }
+
+    #[test]
+    fn test_judge_result_from_error_survives_extra_context() {
+        use anyhow::Context;
+        let err: anyhow::Result<()> = Err(PublicJudgeError("公开文案").with_detail("细节"));
+        let err = err.context("外层上下文").unwrap_err();
+        let r = JudgeResult::from_error(&err, "sid-ctx", None);
+        assert_eq!(r.output, "公开文案 (submission: sid-ctx)");
+    }
+
+    #[test]
+    fn test_judge_result_from_error_hides_unknown_errors() {
+        let err = anyhow::anyhow!("docker: connection refused /var/run/docker.sock");
+        let r = JudgeResult::from_error(&err, "sid-unk", None);
+        assert_eq!(r.output, JudgeResult::error("sid-unk", None).output);
+        assert!(!r.output.contains("docker.sock"));
     }
 
     #[test]

@@ -265,7 +265,9 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
   精准清理本实例残留容器（实例 ID 重启后不变）；同时打平台级归属标签
   `com.noj.managed-by=noj-judge` 供运维兜底筛查（不进入启动清扫路径，避免误杀业务容器）。
   退出阶段（drain 超时 abort 后）在运行时尚存活时按同一标签做一次有界兜底清扫
-- **JudgeResult::error()** 有意隐藏错误详情（不暴露内部路径/配置给用户）
+- **JudgeResult::error()** 有意隐藏错误详情（不暴露内部路径/配置给用户）；
+  启动前的平台侧失败（白名单复验、支持包/artifact 获取或校验）以 `PublicJudgeError(&'static str)`
+  为根错误，`JudgeResult::from_error()` 只回传其固定公开文案，详细原因仍只写日志
 - **镜像白名单复验**：镜像前缀（`JUDGE_IMAGE_PREFIX`）、命令可执行文件白名单与网络开关在任务执行前复验；容器创建直接调 `docker.create_container`，不存在启动期的镜像拉取/探测辅助函数。
 
 ## 日志约定

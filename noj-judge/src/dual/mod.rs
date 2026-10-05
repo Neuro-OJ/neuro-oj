@@ -42,7 +42,7 @@ use crate::sandbox::container::{
     extract_zip_entries_from_file, inject_file_to_container, inject_zip_entries_to_container,
     parse_command, ZipEntry,
 };
-use crate::types::{JudgeResult, JudgeStatus, JudgeTaskLlm, RuntimeConfig};
+use crate::types::{JudgeResult, JudgeStatus, JudgeTaskLlm, PublicJudgeError, RuntimeConfig};
 
 /// 评测输出全文/错误累积上限（1 MiB）。恶意提交可无限打印，
 /// 若无限 append 会拖垮 judge 进程（容器内存限制不约束 judge）。
@@ -62,7 +62,18 @@ fn image_allowed(image: &str, prefix: &str) -> bool {
     name.starts_with(prefix)
 }
 
+/// 白名单复验失败时回传给提交详情页的公开文案（不含镜像名/命令等动态内容）。
+pub(crate) const MSG_IMAGE_NOT_ALLOWED: &str =
+    "评测环境配置错误：题目的评测镜像不在评测机白名单内，请联系管理员检查题目运行时配置";
+pub(crate) const MSG_COMMAND_NOT_ALLOWED: &str =
+    "评测环境配置错误：题目的评测命令不在评测机白名单内，请联系管理员检查题目运行时配置";
+pub(crate) const MSG_NETWORK_NOT_ALLOWED: &str =
+    "评测环境配置错误：题目需要评测容器联网，但评测机未开启联网（JUDGE_ALLOW_EVALUATOR_NETWORK），请联系管理员";
+
 /// NOJ-190：judge 侧对 MQ 消息中的镜像/命令/网络做白名单复验。
+///
+/// 失败时返回以 [`PublicJudgeError`] 为根的错误：`Display` 为详细原因（写日志），
+/// 提交详情页只展示固定的公开文案。
 fn validate_runtime_config(
     submission_id: &str,
     runtime_config: &RuntimeConfig,
@@ -71,30 +82,30 @@ fn validate_runtime_config(
     command_whitelist: &[String],
 ) -> Result<()> {
     if !image_allowed(&runtime_config.evaluator.image, image_prefix) {
-        anyhow::bail!(
+        return Err(PublicJudgeError(MSG_IMAGE_NOT_ALLOWED).with_detail(format!(
             "submission {}: evaluator 镜像不在白名单前缀内: {}",
-            submission_id,
-            runtime_config.evaluator.image
-        );
+            submission_id, runtime_config.evaluator.image
+        )));
     }
     if !image_allowed(&runtime_config.solution.image, image_prefix) {
-        anyhow::bail!(
+        return Err(PublicJudgeError(MSG_IMAGE_NOT_ALLOWED).with_detail(format!(
             "submission {}: solution 镜像不在白名单前缀内: {}",
-            submission_id,
-            runtime_config.solution.image
-        );
+            submission_id, runtime_config.solution.image
+        )));
     }
 
     let argv = parse_command(&runtime_config.evaluator.command);
     if argv.is_empty() {
-        anyhow::bail!("submission {}: evaluator 命令为空", submission_id);
+        return Err(PublicJudgeError(MSG_COMMAND_NOT_ALLOWED)
+            .with_detail(format!("submission {}: evaluator 命令为空", submission_id)));
     }
     let executable = &argv[0];
     if !command_whitelist.iter().any(|w| w == executable) {
-        anyhow::bail!(
-            "submission {}: evaluator 可执行文件不在白名单内: {}",
-            submission_id,
-            executable
+        return Err(
+            PublicJudgeError(MSG_COMMAND_NOT_ALLOWED).with_detail(format!(
+                "submission {}: evaluator 可执行文件不在白名单内: {}",
+                submission_id, executable
+            )),
         );
     }
 
@@ -105,10 +116,10 @@ fn validate_runtime_config(
         .map(|n| n.enabled)
         .unwrap_or(false);
     if network_enabled && !allow_evaluator_network {
-        anyhow::bail!(
+        return Err(PublicJudgeError(MSG_NETWORK_NOT_ALLOWED).with_detail(format!(
             "submission {}: 消息请求开启 evaluator 网络，但 judge 未允许（JUDGE_ALLOW_EVALUATOR_NETWORK=false）",
             submission_id
-        );
+        )));
     }
     Ok(())
 }
