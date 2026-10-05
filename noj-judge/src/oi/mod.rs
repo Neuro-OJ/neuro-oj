@@ -93,6 +93,16 @@ pub fn is_supported_variable_cost(name: &str) -> bool {
     )
 }
 
+/// testlib 0 为通过，1/2 为错答或格式不符；3（FAIL）及其他未知退出码
+/// 属于 checker/题包故障，不能归咎于选手。三个后端共用此映射。
+pub(crate) fn testlib_verdict_from_exit(code: Option<i64>) -> OiStatus {
+    match code {
+        Some(0) => OiStatus::Accepted,
+        Some(1 | 2) => OiStatus::WrongAnswer,
+        _ => OiStatus::SystemError,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OiStatus {
     #[serde(rename = "AC")]

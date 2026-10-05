@@ -1036,12 +1036,8 @@ async fn run_checker(
         .await?;
         if checker.output.output_limited {
             Ok(OiStatus::SystemError)
-        } else if checker.exit_code == 0 {
-            Ok(OiStatus::Accepted)
-        } else if checker.exit_code < 0 {
-            Ok(OiStatus::SystemError)
         } else {
-            Ok(OiStatus::WrongAnswer)
+            Ok(super::testlib_verdict_from_exit(Some(checker.exit_code)))
         }
     }
     .await;

@@ -27,6 +27,7 @@ async fn main() {
         ("无限循环", "c", "int main(){volatile unsigned x=0;while(1){x++;}}", "TLE", false, false),
         ("文件输入输出", "c", "#include <stdio.h>\nint main(){freopen(\"answer.in\",\"r\",stdin);freopen(\"answer.out\",\"w\",stdout);int a,b;scanf(\"%d%d\",&a,&b);printf(\"%d\\n\",a+b);}", "AC", true, false),
         ("独立 checker", "cc", cpp_source, "AC", false, true),
+        ("checker 自身失败", "c", c_source, "SE", false, true),
         ("checker 拒绝错解", "c", "#include <stdio.h>\nint main(){puts(\"0\");}", "WA", false, true),
         ("拒绝读取 Worker 私有文件", "c", forbidden_source.as_str(), "CE", false, false),
     ] {
@@ -37,10 +38,11 @@ async fn main() {
         if file_io { config.filename = Some("answer".into()); }
         if checker { config.checker.kind = OiCheckerType::Testlib; }
         let checker_source = b"#include <fstream>\nint main(int argc,char**argv){if(argc!=4)return 3;std::ifstream out(argv[2]),ans(argv[3]);int a=0,b=1;out>>a;ans>>b;return a==b?0:1;}";
+        let checker_source = if label == "checker 自身失败" { &b"int main(){return 3;}"[..] } else { &checker_source[..] };
         let cases = vec![("testdata/1.in".into(), b"2 40\n".to_vec(), b"42\n".to_vec())];
         let empty = HashMap::new();
         let result = evaluate_wasm(&task, &config, &cases, task.oi_cost_profile.as_ref().unwrap(),
-            checker.then_some(&checker_source[..]), &empty, &empty, &empty).await.unwrap();
+            checker.then_some(checker_source), &empty, &empty, &empty).await.unwrap();
         let value = serde_json::to_value(&result).unwrap();
         assert_eq!(value["details"]["oi"]["verdict"], expected, "{label}: {value}");
         println!("✓ {label}: {expected}");

@@ -123,7 +123,8 @@ Redis 服务端时间并在 Worker 异常退出后由 TTL 回收。TTL 默认且
 覆盖任务看门狗与仍在执行的远端请求窗口。容量应按 go-judge 节点实际 CPU/
 内存预算设置，不能把它当作题目资源限制的替代品。
 
-WASM 题目不使用 go-judge 执行用户代码。Worker 使用固定的 `JUDGE_WASI_CC` /
+WASM 题目不使用 go-judge 执行用户代码。正式 Worker 镜像内置固定的 WASI SDK，
+生产 Compose 与独立 Worker 均传递 OI 环境配置。Worker 使用固定的 `JUDGE_WASI_CC` /
 `JUDGE_WASI_CXX` 编译 C99/C++11，再由 Wasmtime 以活动成本表换算的 fuel 预算运行；
 `JUDGE_WASI_TARGET` 与可选 `JUDGE_WASI_SYSROOT` 必须由节点管理员统一配置。使用
 WASM `testlib` 时还要把可信 testlib 头文件放在 `JUDGE_WASI_TESTLIB_INCLUDE` 指定的

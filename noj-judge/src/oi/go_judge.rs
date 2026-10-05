@@ -182,9 +182,10 @@ impl GoJudgeClient {
             return Ok(None);
         };
         let base_url = raw.trim().trim_end_matches('/').to_string();
-        if base_url.is_empty()
-            || !(base_url.starts_with("http://") || base_url.starts_with("https://"))
-        {
+        if base_url.is_empty() {
+            return Ok(None);
+        }
+        if !(base_url.starts_with("http://") || base_url.starts_with("https://")) {
             anyhow::bail!("JUDGE_GO_JUDGE_URL 必须是 http(s) URL");
         }
         // 自定义认证头不能跟随重定向发往其他主机。
@@ -640,7 +641,7 @@ pub fn command_for_testlib_checker(
     }
 }
 
-/// testlib checker 在独立 sandbox 中运行；正常的非零退出码表示 checker 判 WA，
+/// testlib checker 在独立 sandbox 中运行；退出码 1/2 表示 checker 判 WA，
 /// 资源耗尽或 sandbox 错误仍由 go-judge 状态归因。
 pub fn map_testlib_status(response: &GoJudgeResponse) -> OiStatus {
     if response_output_exceeded(response) {
@@ -675,11 +676,7 @@ pub fn map_testlib_status(response: &GoJudgeResponse) -> OiStatus {
         | "format_error" => OiStatus::SystemError,
         "system error" | "system_error" | "se" | "file error" | "file_error" | "internal error"
         | "internal_error" => OiStatus::SystemError,
-        _ => match response.exit_status {
-            Some(0) => OiStatus::Accepted,
-            Some(_) => OiStatus::WrongAnswer,
-            None => OiStatus::SystemError,
-        },
+        _ => super::testlib_verdict_from_exit(response.exit_status),
     }
 }
 
@@ -850,9 +847,13 @@ mod tests {
             files: HashMap::new(),
             file_ids: HashMap::new(),
         };
-        assert_eq!(map_testlib_status(&response), OiStatus::WrongAnswer);
+        assert_eq!(map_testlib_status(&response), OiStatus::SystemError);
         response.exit_status = Some(1);
         assert_eq!(map_testlib_status(&response), OiStatus::WrongAnswer);
+        response.exit_status = Some(2);
+        assert_eq!(map_testlib_status(&response), OiStatus::WrongAnswer);
+        response.exit_status = Some(3);
+        assert_eq!(map_testlib_status(&response), OiStatus::SystemError);
     }
 
     #[test]

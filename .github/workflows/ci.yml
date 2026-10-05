@@ -2182,6 +2182,10 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/noj-wasi-sdk.tar.gz" -C "${RUNNER_TEMP}"
           bash scripts/check-oi-wasi-toolchain.sh "${RUNNER_TEMP}/wasi-sdk-34.0-x86_64-linux"
 
+      - name: 生产 WASI runtime 镜像验收
+        working-directory: noj-judge
+        run: bash scripts/check-oi-wasi-image.sh
+
       # 失败时上传 cargo 编译缓存（修复 finding M7）
       - name: 上传失败日志
         if: failure() || cancelled()

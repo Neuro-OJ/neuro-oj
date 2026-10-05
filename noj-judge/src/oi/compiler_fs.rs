@@ -66,7 +66,7 @@ pub(super) fn restrict_compiler(command: &mut Command, root: &Path) -> Result<()
         "JUDGE_WASI_SYSROOT",
         "JUDGE_WASI_TESTLIB_INCLUDE",
     ] {
-        if let Some(value) = std::env::var_os(name) {
+        if let Some(value) = std::env::var_os(name).filter(|value| !value.is_empty()) {
             let path = std::fs::canonicalize(&value)
                 .with_context(|| format!("{name} 必须指向存在的绝对工具链路径"))?;
             let directory = if path.is_file() {

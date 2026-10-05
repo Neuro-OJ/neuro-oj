@@ -29,6 +29,7 @@
  * 本模块不持有模块级可变状态（AGENTS.md §8.2 多副本约束）。
  */
 
+import { OI_ENV_DEFAULTS } from "./oi-env.ts";
 import { isAbsolute } from "@std/path";
 import type { CommandRunner } from "../../runtime/command.ts";
 import { UsageError } from "../../util/args.ts";
@@ -43,6 +44,7 @@ export const DEFAULT_JUDGE_IMAGE_REGISTRY = "ghcr.io/neuro-oj";
 
 /** 渲染环境变量的默认值（bash `:591-612` 的 `${VAR:-default}` 逐字）。 */
 export const COMPOSE_ENV_DEFAULTS: Readonly<Record<string, string>> = {
+  ...OI_ENV_DEFAULTS,
   JUDGE_QUEUE: "noj:judge:queue",
   RESULT_QUEUE: "noj:judge:results",
   JUDGE_PRIORITY_POLL_TIMEOUT_MS: "100",
@@ -128,6 +130,11 @@ export function renderJudgeCompose(env: Record<string, string>): string {
     value("JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS")
   }"
       JUDGE_IMAGE_PREFIX: "${value("JUDGE_IMAGE_PREFIX")}"
+${
+    Object.keys(OI_ENV_DEFAULTS).map((key) =>
+      `      ${key}: ${JSON.stringify(value(key)).replace(/\$/g, "$$$$")}`
+    ).join("\n")
+  }
       JUDGE_COMMAND_WHITELIST: "${value("JUDGE_COMMAND_WHITELIST")}"
       JUDGE_ALLOW_EVALUATOR_NETWORK: "${value("JUDGE_ALLOW_EVALUATOR_NETWORK")}"
       JUDGE_EVALUATOR_NETWORK: "${value("JUDGE_EVALUATOR_NETWORK")}"

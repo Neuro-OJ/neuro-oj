@@ -209,8 +209,6 @@ async fn run_module_with_files(
     wall_limit_ms: Option<u64>,
 ) -> Result<WasmRunResult> {
     profile.validate().map_err(anyhow::Error::msg)?;
-    let cpu_started_ns = thread_cpu_time_ns();
-    let started = Instant::now();
 
     let mut config = Config::new();
     config.epoch_interruption(true);
@@ -274,6 +272,9 @@ async fn run_module_with_files(
         .map_err(|error| anyhow::anyhow!("注册 WASI 导入失败: {error}"))?;
     // 必须在实例化前设置 deadline：Wasm start 段也能执行用户代码。
     store.set_epoch_deadline(if wall_limit_ms.is_some() { 1 } else { u64::MAX });
+    // JIT 属于编译准备，不能混入 guest 的 CPU/墙钟资源记录。
+    let cpu_started_ns = thread_cpu_time_ns();
+    let started = Instant::now();
     // epoch 中断负责打断纯计算 guest；tokio timeout 负责取消可取消的 WASI
     // 异步调用。两者同时使用，避免 guest 在无限循环或 sleep 中绕过墙钟限制。
     let timer = wall_limit_ms.map(|limit| {
@@ -807,7 +808,7 @@ async fn run_wasm_case(
             Some(checker)
                 if checker.status == WasmStatus::RuntimeError && checker.exit_code.is_some() =>
             {
-                OiStatus::WrongAnswer
+                super::testlib_verdict_from_exit(checker.exit_code.map(i64::from))
             }
             Some(_) | None => OiStatus::SystemError,
         },

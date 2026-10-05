@@ -13,7 +13,26 @@
  */
 
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { OI_ENV_DEFAULTS } from "./oi-env.ts";
 import { join } from "@std/path";
+
+Deno.test("OI 部署：独立 Worker 传递运行配置且保留认证 token 字面值", () => {
+  const env = {
+    NOJ_VERSION: "v0.10.4-rc.1",
+    REDIS_URL: "redis://127.0.0.1:6379/",
+    JUDGE_DOCKER_SOCKET: "/run/noj-judge/docker.sock",
+    JUDGE_DOCKER_SOCKET_GID: "10001",
+    JUDGE_GO_JUDGE_URL: "https://judge.internal",
+    JUDGE_GO_JUDGE_TOKEN: 'literal$token"suffix',
+  };
+  const compose = renderJudgeCompose(env);
+  for (const key of Object.keys(OI_ENV_DEFAULTS)) {
+    assertStringIncludes(compose, `${key}:`);
+  }
+  assertStringIncludes(compose, "https://judge.internal");
+  assertStringIncludes(compose, 'literal$$token\\"suffix');
+  assertStringIncludes(compose, "/opt/wasi-sdk/bin/clang++");
+});
 import type {
   CmdResult,
   CommandRunner,

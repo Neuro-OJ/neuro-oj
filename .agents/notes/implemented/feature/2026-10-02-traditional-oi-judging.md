@@ -51,7 +51,7 @@ Neuro OJ 原有任务协议只描述 Python 双容器评测，无法表达传统
 
 - 把 OI 题转换成双容器 `evaluate.py`：会重新引入墙钟/脚本协议，无法保证 C/C++ 编译和
   常见 OI 状态码的一致性，因此未采用。
-- 在 judge 宿主机直接执行编译器或 checker：安全边界不可接受，因此未采用。
+- 无额外隔离地在 judge 宿主机执行编译器或 checker：安全边界不可接受，因此未采用。
 - 让题目消息携带 OI 镜像：会绕过 Worker 的可信镜像配置，因此固定为 `JUDGE_OI_IMAGE`。
 
 ## Consequences
@@ -99,3 +99,12 @@ Neuro OJ 原有任务协议只描述 Python 双容器评测，无法表达传统
   编译地址空间超限、标准头文件兼容和成功 checker 未调用 proc_exit 的问题。默认
   target 更新为 wasm32-wasip1；lld 使用单线程；C++ 使用 SDK 无异常 libc++ 配置。
   新增可重复执行的工具链验收脚本并纳入 Judge CI，SDK 版本和 SHA-256 均固定。
+
+- Native Docker、go-judge 和 WASM 共用 testlib 退出码映射：0 为 AC，1/2 为 WA，
+  FAIL（3）及未知/信号退出为 SE，避免 checker 故障被归咎于选手；真实 SDK 验收
+  额外覆盖返回 FAIL 的 checker。
+
+- 部署复核补齐生产/独立 Worker 的 OI 环境注入，正式镜像内置经过摘要校验的 SDK
+  与动态库；生产 runtime 已在非 root、只读根目录、禁网配置下完成 C++ 编译验收。
+  独立 Worker 的环境默认值共用一份定义，认证 token 的美元符号按 Compose 字面值
+  转义；空 go-judge URL 保持开发 Docker 回退。JIT 准备不混入 guest 资源记录。

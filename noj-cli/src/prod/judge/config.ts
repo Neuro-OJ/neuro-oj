@@ -36,6 +36,7 @@
  * 本模块不持有模块级可变状态（AGENTS.md §8.2 多副本约束）。
  */
 
+import { OI_ENV_DEFAULTS } from "./oi-env.ts";
 import { dirname, isAbsolute, join, normalize } from "@std/path";
 import { isPlaceholder, validateEnv } from "../../core/config-schema.ts";
 import { parseEnvFile, writeEnvFileAtomic } from "../../core/env-file.ts";
@@ -132,6 +133,7 @@ export const JUDGE_REQUIRED_KEYS: readonly string[] = [
 
 /** 首装写入的键与默认值（bash `:550-580` 的 heredoc 逐字）。 */
 export const JUDGE_DEFAULT_VALUES: Readonly<Record<string, string>> = {
+  ...OI_ENV_DEFAULTS,
   JUDGE_QUEUE: "noj:judge:queue",
   RESULT_QUEUE: "noj:judge:results",
   JUDGE_PRIORITY_POLL_TIMEOUT_MS: "100",
