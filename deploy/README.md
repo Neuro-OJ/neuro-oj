@@ -71,7 +71,7 @@ noj-cli start
 noj-cli config check
 ```
 
-`noj-cli update` 按 `.env.prod` 中的版本升级，`noj-cli update --latest` 获取最新稳定版本（仅匹配纯 `X.Y.Z` 标签的正式 Release）。
+`noj-cli update` 按 `.env.prod` 中的版本升级，`noj-cli update --latest` 获取最新的资产就绪正式 Release（含已转正的 `-rc.N` 等标签）。
 `noj-cli uninstall` 默认保留数据卷，`noj-cli uninstall --all --yes` 才会执行完全删除。
 `install` 从同版本 Release 下载并校验部署文件，生产机无需安装 Deno。已有 `.env.prod`、备份和数据卷**逐字节保留**。
 `noj-cli backup verify/restore/drill` 提供快照校验、恢复和演练；恢复需要显式 `--confirm`。

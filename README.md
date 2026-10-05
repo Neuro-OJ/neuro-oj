@@ -36,7 +36,7 @@ NOJ 提供从“注册 → 做题 → 提交 → 评测”的完整流程，可�
 
 ## 快速开始
 
-生产环境使用单机 Docker Compose 部署。从 Release 下载 `noj-cli` 二进制并校验，再由它完成安装。`--ref` 须与下载的二进制版本一致；省略时只会选择纯 `X.Y.Z` 标签的正式 Release，在此类版本发布前必须显式指定：
+生产环境使用单机 Docker Compose 部署。从 Release 下载 `noj-cli` 二进制并校验，再由它完成安装。建议用 `--ref` 指定与二进制一致的版本（v0.10.4-rc.1 及更早的二进制必须指定）：
 
 ```bash
 VERSION=v0.10.4-rc.1   # 替换为目标 Release 标签（见 Releases 页面）

@@ -78,7 +78,8 @@ function jsonFetcher(body: unknown, status = 200): {
 
 Deno.test("T16 resolveLatestReleaseTag：排除 draft/prerelease，选中最新资产就绪 tag", async () => {
   const { fetcher, calls } = jsonFetcher([
-    ready("v0.3.0-rc.1"),
+    // 尚未转正的预发布 → 跳过
+    { ...ready("v0.3.0-rc.1"), prerelease: true },
     { tag_name: "v0.3.0", draft: true, prerelease: false, assets: [] },
     // 缺 compose 资产 → 未就绪（issue #431）
     {
@@ -102,12 +103,25 @@ Deno.test("T16 resolveLatestReleaseTag：排除 draft/prerelease，选中最新�
   );
 });
 
-Deno.test("T16 resolveLatestReleaseTag：prerelease 后缀（rc）不算稳定版本", async () => {
+Deno.test("T16 resolveLatestReleaseTag：已转正的 rc 标签可被选中", async () => {
   const { fetcher } = jsonFetcher([
     {
       tag_name: "0.1.1-rc.1",
       draft: false,
       prerelease: false,
+      assets: READY_ASSETS.map((name) => ({ name })),
+    },
+    ready("v0.1.0"),
+  ]);
+  assertEquals(await resolveLatestReleaseTag({ fetcher }), "0.1.1-rc.1");
+});
+
+Deno.test("T16 resolveLatestReleaseTag：未转正的 rc（prerelease=true）仍被跳过", async () => {
+  const { fetcher } = jsonFetcher([
+    {
+      tag_name: "v0.1.1-rc.2",
+      draft: false,
+      prerelease: true,
       assets: READY_ASSETS.map((name) => ({ name })),
     },
     ready("v0.1.0"),
@@ -118,7 +132,7 @@ Deno.test("T16 resolveLatestReleaseTag：prerelease 后缀（rc）不算稳定�
 Deno.test("T16 resolveLatestReleaseTag：无合规版本 → 报错", async () => {
   const { fetcher } = jsonFetcher([
     { tag_name: "v0.2.0", draft: false, prerelease: false, assets: [] },
-    ready("v0.3.0-rc.1"),
+    { ...ready("v0.3.0-rc.1"), prerelease: true },
   ]);
   await assertRejects(
     () => resolveLatestReleaseTag({ fetcher }),
@@ -220,11 +234,12 @@ Deno.test("T16 releasesApiUrl：仓库形态、自定义 API、HTTPS 与 .git �
   assertEquals(error?.message, UPDATE_API_URL_HINT);
 });
 
-Deno.test("T16 validateReleaseTag：非法 tag 被拒，v0.1.0 / 0.1.0 通过", () => {
-  assertEquals(validateReleaseTag("v0.1.0"), "v0.1.0");
-  assertEquals(validateReleaseTag("0.1.0"), "0.1.0");
+Deno.test("T16 validateReleaseTag：非法 tag 被拒，正式与预发布后缀标签通过", () => {
+  for (const good of ["v0.1.0", "0.1.0", "0.1.0-rc.1", "v0.10.4-beta.3"]) {
+    assertEquals(validateReleaseTag(good), good);
+  }
   for (
-    const bad of ["latest", "v0.1", "0.1.0-rc.1", "v1.2.3.4", "", " 0.1.0"]
+    const bad of ["latest", "main", "v0.1", "v1.2.3.4", "v0.1.0-", "", " 0.1.0"]
   ) {
     let message = "";
     try {

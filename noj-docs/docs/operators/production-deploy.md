@@ -99,14 +99,13 @@ Docker daemon（这是有意的边界：自动安装 daemon 需要 root 安装�
 为避免"Release 已可见但镜像 / CLI 资产尚未就绪"的窗口（issue #431），发布采用
 预发布转正流程：
 
-1. 创建 GitHub Release 并勾选 **pre-release**（tag 形如 `vX.Y.Z` 或 `vX.Y.Z-rc.N`；只有纯 `vX.Y.Z`
-   标签会被 `install`/`update --latest` 自动选中，`-rc.N` 等需用户显式 `--ref`）。
+1. 创建 GitHub Release 并勾选 **pre-release**（tag 形如 `vX.Y.Z` 或 `vX.Y.Z-rc.N`）。
 2. `release.yml` 只监听 `prereleased` 事件（不监听 `published`，避免同一次预发布触发两条流水线）：构建 7 个候选镜像 → 漏洞扫描 → 签名 / SBOM /
    来源证明 → 验证 digest 与 smoke test → 上传同版本 `noj-cli` 二进制、`docker-compose.prod.yml`、`env.prod.example` 及各自的校验文件。
 3. 全部通过后，工作流最后的 `publish-release` 任务把预发布转正为正式 Release（`--latest`）。
 
 由此保证：`/releases/latest` 指向的版本一定具备同版本镜像、CLI 资产与校验文件。
-`noj-cli install`（省略 `--ref`）与 `update --latest` 自动选择版本时只接受标签为纯 `X.Y.Z`、非 draft、非 prerelease 且资产中
+`noj-cli install`（省略 `--ref`）与 `update --latest` 自动选择版本时只接受非 draft、非 prerelease（即已转正，含 `-rc.N` 等标签）且资产中
 包含 `noj-cli-linux-amd64`、`.sha256` 与两个部署文件的 Release，双重过滤未就绪版本。
 直接发布正式 Release（不经预发布）不会触发构建；重试时正式镜像 tag 指向不同构建
 会被拒绝覆盖，避免版本混用。
@@ -191,14 +190,14 @@ sed -i 's/^NOJ_VERSION=.*/NOJ_VERSION=vX.Y.Z/' .env.prod
 noj-cli update
 ```
 
-自动升级到最新稳定 Release：
+自动升级到最新正式 Release：
 
 ```bash
 noj-cli update --latest
 ```
 
 `update --latest` 与安装器使用同一过滤规则（issue #431）：只选择非 draft、
-非 prerelease 且资产中包含 `noj-cli-linux-amd64` 与 `.sha256` 的 Release，
+非 prerelease 且资产中包含 `noj-cli-linux-amd64`、两个部署文件及各自 `.sha256` 的 Release，
 保证安装与升级使用同一版本集合，不会选中资产未就绪的版本。
 
 升级前会创建并校验备份，拉取镜像，执行数据库迁移并等待健康检查；不会删除数据卷。若失败，

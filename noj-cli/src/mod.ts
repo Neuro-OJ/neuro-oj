@@ -19,7 +19,7 @@ export { realRunner } from "./runtime/command.ts";
 export {
   DEFAULT_NOJ_SERVER_VERSION,
   ensureNojServerBinary,
-  isStableReleaseTag,
+  isReleaseTag,
   type ReleaseSummary,
   resolveLatestVersion,
   selectLatestAssetReadyRelease,

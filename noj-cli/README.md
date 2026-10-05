@@ -43,11 +43,11 @@ SHA-256 → 生成 `.env.prod`（600，含自动生成的强随机密钥）→ �
 > 及之前的 `.env.prod.example` 被 GitHub 改名为
 > `default.env.prod.example`，同样不可用）。
 >
-> **省略 `--ref` 时**，`install` / `update --latest` 只会选择标签为纯 `X.Y.Z`、
-> 非 draft、非 prerelease 且资产齐备的 Release；`-rc.N` / `-beta.N`
-> 等标签即使已转正 也不会被自动选中，此时会报"没有发现资产就绪的正式
-> Release"。在首个满足条件的 `X.Y.Z` 版本发布前，请始终用 `--ref <标签>`
-> 显式指定与二进制一致的版本。
+> **省略 `--ref` 时**，`install` / `update --latest` 选择最新的非 draft、非
+> prerelease 且资产齐备的 Release。发布流水线只在全部校验通过后才把预发布
+> 转正，因此已转正的 `-rc.N` / `-beta.N` 等标签同样会被选中。**v0.10.4-rc.1
+> 及更早**的 CLI 仍只认纯 `X.Y.Z` 标签，使用这些版本的二进制时请显式
+> `--ref <标签>`。推荐始终用 `--ref` 指定与二进制一致的版本。
 
 > **运行时依赖（重要）**：二进制是**动态链接 glibc** 的，因此需要 glibc 系统
 > （Debian / Ubuntu / RHEL / CentOS 等）。**Alpine 等 musl 发行版不能运行**
@@ -63,7 +63,7 @@ noj-cli status                 # 状态（含 compose ps 表）
 noj-cli logs core --follow     # 日志（着色契约 + 实时跟随）
 noj-cli start | stop | restart # 启停（stop 不删数据卷）
 noj-cli update                 # 按 .env.prod 的版本升级（升级前自动备份）
-noj-cli update --latest        # 升级到最新稳定 Release（已是最新则 no-op）
+noj-cli update --latest        # 升级到最新的资产就绪正式 Release（已是最新则 no-op）
 noj-cli backup create          # 创建 .nojbackup 单文件快照（整包加密）
 noj-cli backup verify <快照> --deep
 noj-cli backup list | prune    # prune 默认 dry-run，--confirm 才真正删除

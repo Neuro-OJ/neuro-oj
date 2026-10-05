@@ -48,7 +48,7 @@ import {
   writeEnvFileAtomic,
 } from "../core/env-file.ts";
 import {
-  isStableReleaseTag,
+  isReleaseTag,
   type ReleaseSummary,
   selectLatestAssetReadyRelease,
 } from "../runtime/download.ts";
@@ -75,7 +75,7 @@ export const UPDATE_RELEASE_ASSETS: readonly string[] = [
 
 /** 稳定版本标签报错文案（bash :253 逐字，仅版本号参数化）。 */
 export function releaseTagHint(version: string): string {
-  return `GitHub Release 不是稳定版本标签：${version}；请使用固定版本升级 RC/预发布版本`;
+  return `GitHub Release 标签格式非法：${version}；请使用固定版本升级`;
 }
 
 /** 解析最新版本的失败文案（bash :264 逐字）。 */
@@ -97,13 +97,13 @@ export const SINGLE_RELEASE_INVALID_HINT =
   "GitHub 返回的最新 Release 无效或仍是预发布版本";
 
 /**
- * 校验稳定版本标签（bash `validate_release_tag`，:249-254）。
+ * 校验 Release 标签格式（源自 bash `validate_release_tag`，:249-254；现允许预发布后缀）。
  *
- * 与 `runtime/download.ts` 的稳定标签判定**同源**（{@link isStableReleaseTag}），
+ * 与 `runtime/download.ts` 的标签判定**同源**（{@link isReleaseTag}），
  * 不在这里再写一遍正则。返回原标签（含 `v` 前缀），便于链式使用。
  */
 export function validateReleaseTag(tag: string): string {
-  if (!isStableReleaseTag(tag)) throw new Error(releaseTagHint(tag));
+  if (!isReleaseTag(tag)) throw new Error(releaseTagHint(tag));
   return tag;
 }
 
@@ -161,14 +161,14 @@ export function releasesApiUrl(opts: {
 }
 
 /**
- * 查询最新**资产就绪**的稳定 Release 标签（bash `latest_release_version`）。
+ * 查询最新**资产就绪**的正式（非 draft、非 prerelease）Release 标签（bash `latest_release_version`）。
  *
  * 两条分支与 bash 一致：
  * 1. 列表响应（`[` 开头）：按 {@link UPDATE_RELEASE_ASSETS} 过滤，命中即返回；
  *    无命中报"没有发现资产就绪的正式 Release…"；
  * 2. 单个 Release 对象（自定义 API 地址的常见形态）：要求 `draft`/`prerelease`
  *    **显式为 false**（bash 的 `json_field` 取不到字段即为空串 → 不通过，故字段
- *    缺失同样拒绝），再过稳定标签校验。
+ *    缺失同样拒绝），再过标签格式校验。
  *
  * 网络/HTTP 失败、响应非 JSON 都归到同一条可操作文案；**绝不**回退到
  * `/releases/latest`。
