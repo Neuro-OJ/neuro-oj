@@ -35,7 +35,7 @@ import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "catalog"]);
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
-import type { RuntimeConfig } from "../../index.ts";
+import { isOiRuntimeConfig, type ProblemRuntimeConfig } from "../../index.ts";
 import { DEFAULT_EVALUATOR_COMMAND } from "../../types/problem-bundle.ts";
 
 /** 敏感字段路径 → RBAC 权限项（`<section>.<field>` 结构） */
@@ -64,7 +64,7 @@ const warnedInvalidLimits = new Set<string>();
  */
 function effectiveSensitiveValue(
   path: string,
-  rc: RuntimeConfig | null | undefined,
+  rc: ProblemRuntimeConfig | null | undefined,
 ): string {
   const [section, field] = path.split(".");
   const container = (rc as unknown as
@@ -105,10 +105,11 @@ export async function assertSensitiveFieldPermissions(
   c: Context | undefined,
   userId: string | undefined,
   userRole: string | undefined,
-  runtimeConfig: RuntimeConfig,
-  previous?: RuntimeConfig | null,
+  runtimeConfig: ProblemRuntimeConfig,
+  previous?: ProblemRuntimeConfig | null,
 ): Promise<void> {
   if (!runtimeConfig || typeof runtimeConfig !== "object") return;
+  if (isOiRuntimeConfig(runtimeConfig)) return;
 
   for (
     const [path, permission] of Object.entries(SENSITIVE_FIELD_PERMISSIONS)
@@ -147,9 +148,10 @@ export async function assertSensitiveFieldPermissions(
  * @throws {AppError} HTTP 400 / RESOURCE_LIMIT_EXCEEDED（含上限与实际值）
  */
 export function enforceResourceLimits(
-  runtimeConfig: RuntimeConfig,
+  runtimeConfig: ProblemRuntimeConfig,
 ): void {
   if (!runtimeConfig || typeof runtimeConfig !== "object") return;
+  if (isOiRuntimeConfig(runtimeConfig)) return;
   const rc = runtimeConfig as unknown as Record<
     string,
     Record<string, unknown>

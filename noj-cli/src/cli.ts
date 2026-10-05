@@ -53,6 +53,7 @@ import { CONTAINER_COMMANDS, parseContainerCommand } from "./container.ts";
 import { runDrill } from "./prod/drill/drill.ts";
 import { readEnvValues } from "./prod/drill/plan.ts";
 import { createLocalRedis } from "./prod/judge/config.ts";
+import { dispatchCalibration } from "./prod/judge/calibrate.ts";
 import { PROD_ENV_FILE } from "./prod/compose.ts";
 import { realRunner } from "./runtime/command.ts";
 import { parseProblemArgs, runProblem } from "./problem/command.ts";
@@ -887,22 +888,15 @@ async function dispatchProduction(
   const parsed = parseProdArgs(args);
   let dir: string;
   try {
-    // **`install` 是唯一允许目标目录不存在/为空的命令**（评审发现的 R4 阻塞）：
-    // 首次安装的定义就是"往一个空目录里装东西"，而 `findProductionDir` 要求
-    // 目录**已经**含两个生产标记——用它当 `install` 的入口等于"必须先装好才能装"。
-    // 实测：`install --dir <空目录>` → "不是完整的 NOJ 生产安装目录"，
-    // 于是文档承诺的 `install --dir /opt/neuro-oj`（目录可以是空的）**永远无法执行**。
-    //
-    // 这里只做**路径归一化**（不要求标记），标记校验交给 `prod/lifecycle.ts:install`
-    // 自己的分支（它按 `.env.prod` 是否存在决定 seed 还是保留），那才是该判定的归属地。
-    // **`judge` 同样允许空/新建目录**（评审发现）：独立 Judge 节点
-    // （`noj-docs/docs/operators/judge-workers.md`）的文档流程就是
-    // `noj-cli judge install-env` → `noj-cli judge install --dir /srv/noj-judge`，
-    // 而该节点**不运行 noj-core/noj-ui**，目录里自然没有 `PRODUCTION_MARKERS`。
-    // 要求"完整生产安装目录"等于让文档承诺的入口**永远无法执行**
-    // （实测：两者都报"不是完整的 NOJ 生产安装目录"）。
+    // 校准只读取输入 JSON 并写出报告，不依赖生产安装目录；允许在评测节点
+    // 尚未安装 NOJ 时先完成硬件计量。其它 judge 子命令仍按安装目录校验。
+    const standaloneCalibration = command === "judge" &&
+      positionals(args)[0] === "calibrate";
+    // install 和独立 judge 允许首次安装时指定空目录。
     const allowsFreshDir = command === "install" || command === "judge";
-    dir = allowsFreshDir && parsed.dir !== undefined
+    dir = standaloneCalibration
+      ? resolve(ctx.cwd, parsed.dir ?? ".")
+      : allowsFreshDir && parsed.dir !== undefined
       ? resolve(ctx.cwd, parsed.dir)
       : await findProductionDir(parsed.dir, ctx.cwd);
   } catch (e) {
@@ -1044,6 +1038,9 @@ async function dispatchProdJudge(
   };
 
   switch (sub) {
+    case "calibrate":
+      await dispatchCalibration(rest, json);
+      return EXIT_OK;
     case "install-env": {
       const r = await judgeInstallEnv(base);
       say(r.message);
@@ -1486,6 +1483,9 @@ function renderProductionCommandHelp(command: string): string {
       "",
       "可选: --redis-mode local|existing、--redis-port、--redis-container、",
       "      --dry-run（零副作用预演）、--env-file、--compose-file",
+      "",
+      "judge calibrate: --input <samples.json> --output <profile.json>",
+      "  必须提供独立留出集，并显式传 --measurement-verified 才能启用",
     ]
     : [];
   const backupFlags = command === "backup"

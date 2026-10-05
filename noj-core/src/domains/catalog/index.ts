@@ -28,3 +28,4 @@ export * from "./types/problems.ts";
 export * from "./types/problem-bundle.ts";
 export * from "./types/trainings.ts";
 export * from "./types/runtime-config.ts";
+export * from "./types/oi-cost-profile.ts";

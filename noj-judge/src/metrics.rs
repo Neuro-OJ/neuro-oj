@@ -41,7 +41,7 @@ impl JudgeMetrics {
 
     pub fn task_finished(&self, failed: bool) {
         self.active_tasks
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
                 Some(value.saturating_sub(1))
             })
             .ok();

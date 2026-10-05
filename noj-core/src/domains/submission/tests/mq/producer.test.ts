@@ -19,6 +19,7 @@ import {
 } from "../../../../shared/mq/connection.ts";
 import { startFakeRedis } from "./_setup.ts";
 import type { JudgeTask } from "../../index.ts";
+import type { RuntimeConfig } from "../../../catalog/types/runtime-config.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 
@@ -48,6 +49,7 @@ function makeTask(overrides?: Partial<JudgeTask>): JudgeTask {
     code: "print(42)",
     file_name: "submission.py",
     priority: "medium",
+    judge_type: "dual",
     ...overrides,
   };
 }
@@ -79,7 +81,7 @@ Deno.test({
       const parsed = JSON.parse(messages[0]) as JudgeTask;
       assertEquals(parsed.submission_id, "test-sub-001");
       assertEquals(
-        parsed.runtime_config.evaluator.image,
+        (parsed.runtime_config as RuntimeConfig).evaluator.image,
         "noj-evaluator-python",
       );
       assertEquals(parsed.code, "print(42)");

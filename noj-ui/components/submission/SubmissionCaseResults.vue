@@ -32,6 +32,16 @@ function toggleExpand(item: SubmissionCaseResult) {
 }
 
 const statusLabels: Record<string, string> = {
+  AC: '通过',
+  WA: '错误',
+  TLE: '超时',
+  MLE: '内存超限',
+  OLE: '输出超限',
+  RE: '运行时错误',
+  CE: '编译错误',
+  SE: '系统错误',
+  FE: '格式错误',
+  IGN: '跳过',
   Accepted: '通过',
   PASS: '通过',
   Pass: '通过',

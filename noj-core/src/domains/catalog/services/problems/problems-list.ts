@@ -44,14 +44,18 @@ import {
   type LlmConfig,
   type ProblemListQuery,
   type ProblemResponseWithTags,
+  type ProblemRuntimeConfig,
   type ProblemTagRef,
-  type RuntimeConfig,
 } from "./../../types/problems.ts";
 import type {
   AdminProblemListResponse,
   ProblemListResponse,
   ProblemResponse,
 } from "./problems-types.ts";
+
+function persistedJudgeType(value: string | null | undefined): "dual" | "oi" {
+  return value === "oi" ? "oi" : "dual";
+}
 
 /**
  * 将数据库行转换为题目响应。
@@ -75,6 +79,7 @@ function toProblemResponse(
     type: row.type,
     visibility: row.visibility as "public" | "private",
     is_objective: row.is_objective,
+    judge_type: persistedJudgeType(row.judge_type),
     submission_mode: row.submission_mode as ProblemResponse["submission_mode"],
     artifact_max_size_mb: row.artifact_max_size_mb,
     display_id: `${row.type}${row.number}`,
@@ -90,7 +95,7 @@ function toProblemResponse(
   return {
     ...base,
     support_package_storage_url: row.support_package_storage_url,
-    runtime_config: row.runtime_config as RuntimeConfig,
+    runtime_config: row.runtime_config as ProblemRuntimeConfig,
     llm_config: row.llm_config as ProblemResponse["llm_config"],
   };
 }
@@ -365,6 +370,7 @@ export async function listAllProblems(
       difficulty: problems.difficulty,
       support_package_storage_url: problems.support_package_storage_url,
       runtime_config: problems.runtime_config,
+      judge_type: problems.judge_type,
       llm_config: problems.llm_config,
       created_at: problems.created_at,
       updated_at: problems.updated_at,
@@ -405,7 +411,8 @@ export async function listAllProblems(
       title: r.title,
       difficulty: r.difficulty,
       support_package_storage_url: r.support_package_storage_url,
-      runtime_config: r.runtime_config as RuntimeConfig,
+      runtime_config: r.runtime_config as ProblemRuntimeConfig,
+      judge_type: persistedJudgeType(r.judge_type),
       llm_config: r.llm_config as LlmConfig | null,
       tags: tagMap.get(r.id) ?? [],
       created_at: r.created_at,

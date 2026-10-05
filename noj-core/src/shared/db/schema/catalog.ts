@@ -32,6 +32,8 @@ export const problems = pgTable(
      * 包含 evaluator 和 solution 两个容器的运行时配置。
      */
     runtime_config: jsonb("runtime_config"),
+    /** 评测模式：存量题目默认 dual。 */
+    judge_type: text("judge_type").notNull().default("dual"),
     /** 题号（同一 type 内独立自增） */
     number: integer("number").notNull(),
     /** 题目所有者 ID，默认 root (UID=0) */
@@ -97,6 +99,10 @@ export const problems = pgTable(
     searchVectorIdx: index("idx_problems_search_vector").using(
       "gin",
       table.searchVector,
+    ),
+    judgeTypeCheck: check(
+      "problems_judge_type_check",
+      sql`${table.judge_type} IN ('dual', 'oi')`,
     ),
     runtimeConfigCheck: check(
       "problems_runtime_config_check",

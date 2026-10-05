@@ -132,6 +132,18 @@ cargo fmt
 | `JUDGE_CPU_LIMIT_MILLICORES`     | `1000`               | 每个评测容器 CPU 上限（1000m = 1 核，有效范围 100-16000）                                        |
 | `JUDGE_INSTANCE_ID`              | 确定性派生 `noj-{hash12}` | 实例标识（日志/claim 前缀/容器实例标签）。解析优先级：环境变量 → `WORK_DIR/.instance_id` → `auto:{canonical_work_dir}:{hostname}:{machine_id}` 派生并落盘；重启后保持不变。**注意**：`WORK_DIR` 是实例 ID 的持久化位置，多副本部署若共享同一 `WORK_DIR`（命名卷）必须为每个副本显式设置唯一 `JUDGE_INSTANCE_ID`，否则副本间实例标签冲突（启动清扫会回收彼此的在跑容器） |
 | `JUDGE_IMAGE_PREFIX`             | `noj-`               | 允许的评测镜像名前缀（启动期与调度期复验）                                                       |
+| `JUDGE_OI_IMAGE`                 | `noj-oi-cpp`         | OI C/C++ 固定编译/运行镜像；必须以 `JUDGE_IMAGE_PREFIX` 开头，不从题目消息读取                 |
+| `JUDGE_GO_JUDGE_URL`             | 未设置              | 生产 OI native 编译/运行服务的 HTTPS/HTTP 地址；设置后 native 任务不在本机 Docker 执行 |
+| `JUDGE_GO_JUDGE_TOKEN`           | 未设置              | go-judge 服务认证 token，通过 `X-Auth-Token` 发送                         |
+| `JUDGE_GO_JUDGE_RESOURCE_CAPACITY` | `2`              | 跨 Worker 的 go-judge 资源租约槽位数；所有远端 OI 子任务共享该上限                 |
+| `JUDGE_GO_JUDGE_RESOURCE_TTL_MS`  | `660000`          | go-judge 资源租约 TTL（毫秒，最小 660000）；Worker 崩溃后由 Redis 自动回收                      |
+| `JUDGE_GO_JUDGE_RESOURCE_WAIT_MS` | `300000`          | 等待远端资源槽位的最长时间（毫秒）                                                  |
+| `JUDGE_GO_JUDGE_RESOURCE_KEY`     | `noj:judge:oi:go-judge` | 资源租约 Redis 有序集合 key（只能使用无空格控制字符的短 key）                    |
+| `JUDGE_WASI_CC`                  | `clang`             | WASM C99 编译器固定路径；只由 Worker 配置提供                                 |
+| `JUDGE_WASI_CXX`                 | `clang++`            | WASM C++11 编译器固定路径；只由 Worker 配置提供                               |
+| `JUDGE_WASI_TARGET`              | `wasm32-wasip1`       | WASI 编译 target；必须与 Worker 的 Wasmtime/WASI SDK 匹配                      |
+| `JUDGE_WASI_SYSROOT`             | 未设置              | 可选的固定 WASI sysroot 路径，不从题目消息读取                                 |
+| `JUDGE_WASI_TESTLIB_INCLUDE`     | 未设置              | 可选的固定 testlib 头文件目录；WASM checker 编译时使用                       |
 | `JUDGE_COMMAND_WHITELIST`        | `python3,deno,node,bash,sh` | 允许的命令可执行文件白名单（逗号分隔）                                                   |
 | `JUDGE_ALLOW_EVALUATOR_NETWORK`  | `false`              | 是否允许 Evaluator 容器联网（LLM 题需开启）                                                      |
 | `JUDGE_EVALUATOR_NETWORK`        | `noj-eval-net`       | Evaluator 联网时加入的 Docker 网络名；生产校验**禁止** `bridge`/`host`                            |

@@ -7,6 +7,7 @@ import {
   validateBundleManifest,
   validateObjectiveQuestions,
 } from "../../types/problem-bundle.ts";
+import type { OiRuntimeConfig } from "../../types/runtime-config.ts";
 
 Deno.test("validateBundleManifest: 客观题 manifest 不要求 runtime_config", () => {
   const manifest = validateBundleManifest({
@@ -67,6 +68,180 @@ Deno.test("validateBundleManifest: 非客观题仍要求 runtime_config", () => 
       }),
     BadRequestError,
     "runtime_config",
+  );
+});
+
+const oiRuntime: OiRuntimeConfig = {
+  backend: "wasm",
+  languages: ["c", "cc"],
+  time_limit_ms: 1000,
+  memory_limit_mb: 256,
+  checker: { type: "testlib", path: "checker.cpp" },
+  subtasks: [
+    {
+      id: "basic",
+      score: 40,
+      cases: [{ input: "tests/1.in", output: "tests/1.out" }],
+    },
+    {
+      id: "full",
+      score: 60,
+      depends_on: ["basic"],
+      time_limit_ms: 2000,
+      cases: [{
+        input: "tests/2.in",
+        output: "tests/2.out",
+        memory_limit_mb: 512,
+      }],
+    },
+  ],
+};
+
+Deno.test("validateBundleManifest: OI C/C++ 子任务配置保留全部通过与依赖信息", () => {
+  const manifest = validateBundleManifest({
+    format_version: 1,
+    title: "A+B",
+    judge_type: "oi",
+    runtime_config: oiRuntime,
+  });
+  assertEquals(manifest.judge_type, "oi");
+  assertEquals(manifest.runtime_config, oiRuntime);
+});
+
+Deno.test("validateBundleManifest: OI 配置拒绝不存在或循环依赖", () => {
+  for (
+    const subtasks of [
+      [{
+        id: "a",
+        score: 100,
+        depends_on: ["missing"],
+        cases: [{ input: "1.in", output: "1.out" }],
+      }],
+      [
+        {
+          id: "a",
+          score: 50,
+          depends_on: ["b"],
+          cases: [{ input: "1.in", output: "1.out" }],
+        },
+        {
+          id: "b",
+          score: 50,
+          depends_on: ["a"],
+          cases: [{ input: "2.in", output: "2.out" }],
+        },
+      ],
+    ]
+  ) {
+    assertThrows(
+      () =>
+        validateBundleManifest({
+          format_version: 1,
+          title: "OI",
+          judge_type: "oi",
+          runtime_config: { ...oiRuntime, subtasks },
+        }),
+      BadRequestError,
+      "depends_on",
+    );
+  }
+});
+
+Deno.test("validateBundleManifest: OI 配置拒绝不安全路径和非全过计分", () => {
+  for (
+    const runtime_config of [
+      { ...oiRuntime, checker: { type: "testlib", path: "../checker.cpp" } },
+      {
+        ...oiRuntime,
+        subtasks: [{
+          id: "a",
+          score: 100,
+          cases: [{ input: "../secret.in", output: "1.out" }],
+        }],
+      },
+      {
+        ...oiRuntime,
+        subtasks: [{
+          id: "a",
+          score: 100,
+          scoring: "min",
+          cases: [{ input: "1.in", output: "1.out" }],
+        }],
+      },
+    ]
+  ) {
+    assertThrows(
+      () =>
+        validateBundleManifest({
+          format_version: 1,
+          title: "OI",
+          judge_type: "oi",
+          runtime_config,
+        }),
+      BadRequestError,
+    );
+  }
+});
+
+Deno.test("validateBundleManifest: OI 分值必须合计 100 且测试输入不得重复", () => {
+  for (
+    const subtasks of [
+      [{
+        id: "a",
+        score: 90,
+        cases: [{ input: "1.in", output: "1.out" }],
+      }],
+      [
+        {
+          id: "a",
+          score: 50,
+          cases: [{ input: "1.in", output: "1.out" }],
+        },
+        {
+          id: "b",
+          score: 50,
+          cases: [{ input: "1.in", output: "2.out" }],
+        },
+      ],
+    ]
+  ) {
+    assertThrows(
+      () =>
+        validateBundleManifest({
+          format_version: 1,
+          title: "OI",
+          judge_type: "oi",
+          runtime_config: { ...oiRuntime, subtasks },
+        }),
+      BadRequestError,
+    );
+  }
+});
+
+Deno.test("validateBundleManifest: 存量双容器题缺省 judge_type=dual", () => {
+  const manifest = validateBundleManifest({
+    format_version: 1,
+    title: "旧题",
+    runtime_config: {
+      evaluator: { image: "e", time_limit_ms: 1000, memory_limit_mb: 256 },
+      solution: { image: "s", call_timeout_ms: 1000, memory_limit_mb: 256 },
+    },
+  });
+  assertEquals(manifest.judge_type, "dual");
+});
+
+Deno.test("validateBundleManifest: OI 不接受双容器专有字段", () => {
+  assertThrows(
+    () =>
+      validateBundleManifest({
+        format_version: 1,
+        title: "OI",
+        judge_type: "oi",
+        llm: { max_calls: 1 },
+        runtime_config: oiRuntime,
+      }),
+    BadRequestError,
+    "llm",
   );
 });
 

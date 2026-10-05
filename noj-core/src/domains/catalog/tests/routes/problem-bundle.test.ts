@@ -755,6 +755,12 @@ Deno.test({
     );
     assertEquals(qs.length, 1);
     assertEquals(qs[0].type, "judge");
+    const [updatedProblem] = await db.select({
+      judge_type: problems.judge_type,
+      runtime_config: problems.runtime_config,
+    }).from(problems).where(eq(problems.id, id)).limit(1);
+    assertEquals(updatedProblem?.judge_type, "dual");
+    assertEquals(updatedProblem?.runtime_config, null);
   },
 });
 

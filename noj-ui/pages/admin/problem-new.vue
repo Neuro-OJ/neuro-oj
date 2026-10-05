@@ -25,6 +25,10 @@ function onSaved() {
       </template>
     </AdminPageHeader>
 
+    <NuxtLink to="/admin/problem-new-oi" class="inline-flex w-fit items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text no-underline hover:border-primary hover:text-primary">
+      <UIcon name="i-lucide-gauge" class="size-4" /> 创建传统 OI 题
+    </NuxtLink>
+
     <CodingProblemEditor mode="create" initial-type="P" @saved="onSaved" />
   </div>
 </template>

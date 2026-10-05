@@ -121,6 +121,7 @@
 | GET | `/oauth/:provider/callback` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `/oauth/accounts` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `/oauth/providers` | noj-core/src/domains/identity/routes/auth.ts |
+| GET | `/oi-cost-profile` | noj-core/src/domains/admin/routes/system.ts |
 | GET | `/permissions` | noj-core/src/domains/admin/routes/identity.ts |
 | GET | `/posts` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/posts/:postId` | noj-core/src/domains/community/routes/community.ts |
@@ -268,6 +269,7 @@
 | PUT | `/judge-images/:id` | noj-core/src/domains/admin/routes/system.ts |
 | PUT | `/llm/providers/:id` | noj-core/src/domains/admin/routes/gateway.ts |
 | PUT | `/me` | noj-core/src/domains/identity/routes/users.ts |
+| PUT | `/oi-cost-profile` | noj-core/src/domains/admin/routes/system.ts |
 | PUT | `/roles/:id` | noj-core/src/domains/admin/routes/identity.ts |
 | PUT | `/settings/:key` | noj-core/src/domains/admin/routes/system.ts |
 | PUT | `/users/:id` | noj-core/src/domains/admin/routes/identity.ts |

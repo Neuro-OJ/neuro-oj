@@ -11,6 +11,7 @@ bollard = "0.21"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
+libc = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
@@ -22,8 +23,11 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 sha2 = "0.10"
 percent-encoding = "2"
 filetime = "0.2"
+tempfile = "3"
+# OI WASM 后端：WASI 运行时与 fuel/线性内存限制。
+wasmtime = { version = "49", features = ["cranelift", "wat"] }
+wasmtime-wasi = "49"
 
 [dev-dependencies]
-tempfile = "3"
 serial_test = "3"
 bytes = "1.12.1"

@@ -1,3 +1,8 @@
+import {
+  normalizeHydroOiConfig,
+  normalizeNojOiConfig,
+  parseConfigYaml,
+} from "./oi-config-import.ts";
 /**
  * 统一题目包（Problem Bundle）zip 解析与剥离。
  *
@@ -21,6 +26,7 @@ import {
   isValidTemplateFileName,
   MAX_TEMPLATE_BYTES,
 } from "./../types/problem-bundle.ts";
+import { validateOiRuntimeConfig } from "../types/runtime-config.ts";
 
 /** 对齐 judge 端 `MAX_ZIP_ENTRIES`。 */
 export const MAX_ZIP_ENTRIES = 1000;
@@ -57,7 +63,10 @@ export interface EvaluationPackageInspection {
  * 与 judge 端 `extract_zip_entries` 的校验语义一致。
  */
 function assertSafeEntryPath(name: string): void {
-  if (name.startsWith("/")) {
+  if (
+    name.startsWith("/") || name.includes("\\") || name.includes("\0") ||
+    /^[A-Za-z]:/.test(name)
+  ) {
     throw new BadRequestError(`zip 条目含绝对路径：${name}`);
   }
   const segments = name.split("/");
@@ -136,26 +145,49 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
     }
   }
 
-  if (!rootNames.has("problem.json")) {
-    throw new BadRequestError(
-      "zip 根级缺少 problem.json（必须使用统一题目包格式）",
-    );
-  }
-  const manifestFile = files["problem.json"];
-  const statementFile = files["statement.md"];
-
   let manifest: Record<string, unknown>;
-  try {
-    const text = new TextDecoder().decode(manifestFile);
-    const parsed = JSON.parse(text);
-    if (
-      typeof parsed !== "object" || parsed === null || Array.isArray(parsed)
-    ) {
-      throw new Error("not-object");
+  let statementFile = files["statement.md"];
+  if (files["problem.json"]) {
+    try {
+      const parsed = JSON.parse(
+        new TextDecoder().decode(files["problem.json"]),
+      );
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error();
+      }
+      manifest = parsed;
+    } catch {
+      throw new BadRequestError("problem.json 不是合法的 JSON 对象");
     }
-    manifest = parsed as Record<string, unknown>;
-  } catch {
-    throw new BadRequestError("problem.json 不是合法的 JSON 对象");
+    if (manifest.judge_type === "oi") {
+      const configFile = files["config.yaml"] ?? files["config.yml"];
+      manifest.runtime_config = normalizeNojOiConfig(
+        configFile ? parseConfigYaml(configFile) : manifest.runtime_config,
+      );
+    }
+  } else if (files["problem.yaml"]) {
+    const metadata = parseConfigYaml(files["problem.yaml"]);
+    const configFile = files["testdata/config.yaml"] ??
+      files["testdata/config.yml"];
+    manifest = {
+      format_version: 1,
+      title: metadata.title,
+      type: "U",
+      judge_type: "oi",
+      runtime_config: normalizeHydroOiConfig(
+        configFile ? parseConfigYaml(configFile) : {},
+        files,
+      ),
+    };
+    statementFile = files["problem.md"] ?? files["problem_zh.md"] ??
+      files["statement.md"];
+    if (!statementFile) {
+      throw new BadRequestError("Hydro 题包缺少题面 problem.md");
+    }
+  } else {
+    throw new BadRequestError(
+      "zip 根级缺少 problem.json 或 Hydro problem.yaml",
+    );
   }
 
   const isObjective = manifest.is_objective === true;
@@ -164,6 +196,25 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
       throw new BadRequestError(
         "客观题套卷包必须包含 questions.json（小题数组）",
       );
+    }
+  } else if (manifest.judge_type === "oi") {
+    validateOiRuntimeConfig(manifest.runtime_config);
+    const config = manifest.runtime_config;
+    const referenced = config.subtasks.flatMap((subtask) =>
+      subtask.cases.flatMap((testCase) => [testCase.input, testCase.output])
+    );
+    if (config.checker.type === "testlib") {
+      referenced.push(config.checker.path!);
+    }
+    referenced.push(
+      ...(config.compile_extra_files ?? []),
+      ...(config.checker_extra_files ?? []),
+      ...(config.user_extra_files ?? []),
+    );
+    for (const path of referenced) {
+      if (!Object.hasOwn(files, path)) {
+        throw new BadRequestError(`OI 题包缺少引用文件：${path}`);
+      }
     }
   } else if (!rootNames.has("evaluate.py")) {
     throw new BadRequestError(

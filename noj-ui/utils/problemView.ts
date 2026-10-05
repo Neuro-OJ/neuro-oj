@@ -76,6 +76,7 @@ export interface ProblemResource {
   owner_username?: string;
   owner_avatar_url?: string | null;
   is_objective: boolean;
+  judge_type?: 'dual' | 'oi';
   submission_mode?: 'code' | 'artifact';
   artifact_max_size_mb?: number | null;
   tags?: ProblemTagView[];

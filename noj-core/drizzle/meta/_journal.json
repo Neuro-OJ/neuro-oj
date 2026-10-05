@@ -673,6 +673,13 @@
       "when": 1790574277375,
       "tag": "0095_steady_korg",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1790954538572,
+      "tag": "0096_round_squadron_sinister",
+      "breakpoints": true
     }
   ]
 }

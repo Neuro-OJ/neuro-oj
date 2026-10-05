@@ -5,7 +5,9 @@
 # 使依赖层缓存与源码变更解耦。日常代码改动只需重新编译业务代码（~10s），
 # 而非全部依赖（~90s）。
 
-FROM rust:1.86-slim-bookworm AS builder
+# Wasmtime 49 requires Rust 1.96 or newer; keep this aligned with
+# rust-toolchain.toml so local, CI and E2E builds use the same toolchain.
+FROM rust:1.96.1-slim-bookworm@sha256:e18a79fc84dfcfc3ab5ba72290398a644c135c97eaa881447fddc354ee4701a3 AS builder
 
 WORKDIR /build
 

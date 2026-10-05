@@ -1,0 +1,49 @@
+{
+  "submission_id": "11111111-1111-4111-8111-111111111111",
+  "problem_id": "22222222-2222-4222-8222-222222222222",
+  "user_id": "33333333-3333-4333-8333-333333333333",
+  "priority": "medium",
+  "judge_type": "oi",
+  "runtime_config": {
+    "backend": "wasm",
+    "languages": [
+      "c",
+      "cc"
+    ],
+    "time_limit_ms": 1000,
+    "memory_limit_mb": 256,
+    "checker": {
+      "type": "default"
+    },
+    "subtasks": [
+      {
+        "id": "all",
+        "score": 100,
+        "cases": [
+          {
+            "input": "testdata/1.in",
+            "output": "testdata/1.out"
+          }
+        ]
+      }
+    ]
+  },
+  "oi_cost_profile": {
+    "schema_version": 1,
+    "runtime_version": "wasmtime-49",
+    "costs": {
+      "default": 1
+    },
+    "variable_costs": {
+      "memory_copy_per_byte": 1
+    },
+    "io_fuel_per_byte": 1,
+    "fuel_per_ms": 1000,
+    "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "download_url": "noj-download://base64/?content=UEsDBBQAAAAI&checksum_sha256=abc123",
+  "language": "cc",
+  "code": "int main() { return 0; }",
+  "file_name": "main.cpp",
+  "rejudge_seq": 1
+}

@@ -4,8 +4,8 @@
 /**
  * 统一题目包（Problem Bundle）类型与校验。
  *
- * 导入载体 zip 根级必须包含 `problem.json`（manifest）与 `evaluate.py`，
- * 可包含 `statement.md`（题面）与任意评测内容（testcase 不标准化）。
+ * 导入载体 zip 根级必须包含 `problem.json`（manifest）；双容器题还需要
+ * `evaluate.py`，传统 OI 题则由 runtime_config 引用 `testdata/` 文件。
  *
  * 与 `problem-bundle-import` spec 对齐：
  * - manifest 顶层字段映射 `CreateProblemInput`（title/difficulty/type/number/runtime_config）
@@ -15,6 +15,12 @@
 
 // ⚠️ 本文件是 noj-core 的**刻意副本**，见文件头说明。
 import { BadRequestError } from "./errors.ts";
+import {
+  type OiRuntimeConfig,
+  type ProblemRuntimeConfig,
+  type RuntimeConfig,
+  validateOiRuntimeConfig,
+} from "./runtime-config.ts";
 import { validateRuntimeConfig } from "./runtime-config-validate.ts";
 import {
   type CreateQuestionInput,
@@ -31,7 +37,6 @@ import {
   isValidProblemType,
   isValidSubmissionMode,
   type LlmConfig,
-  type RuntimeConfig,
 } from "./problems.ts";
 
 /** 当前 manifest 格式版本。 */
@@ -74,10 +79,12 @@ export interface ProblemBundleManifest {
    * `provider_id` / `model` 容忍并忽略。
    */
   llm?: LlmConfig;
+  /** 评测模式；存量题包缺省为 dual。 */
+  judge_type: "dual" | "oi";
   /** 客观题套卷标记：true 时使用 questions.json，不要求 runtime_config/evaluate.py */
   is_objective?: boolean;
   /** 编程题必填；客观题缺省 */
-  runtime_config?: RuntimeConfig;
+  runtime_config?: ProblemRuntimeConfig;
 }
 
 /**
@@ -135,7 +142,7 @@ export const MAX_TEMPLATE_BYTES = 256 * 1024;
  * - `number` 类型合法
  * - `tags` 为字符串数组
  * - `samples` 已废弃（从不落库）：出于兼容不做校验，也不记 warning（cli 侧由 lint 规则 Q4 提示）
- * - `runtime_config` 必填：先注入 command 默认值，再通过 `validateRuntimeConfig`
+ * - `runtime_config` 必填：dual 先注入 command 默认值，OI 使用专用结构校验
  *
  * @throws {BadRequestError} 任一字段非法，错误信息指明字段
  */
@@ -153,6 +160,27 @@ export function validateBundleManifest(
     throw new BadRequestError("manifest.is_objective 必须是布尔值");
   }
   const isObjective = m.is_objective === true;
+  const judgeType = m.judge_type ?? "dual";
+  if (judgeType !== "dual" && judgeType !== "oi") {
+    throw new BadRequestError("manifest.judge_type 仅允许 dual/oi");
+  }
+  if (isObjective && judgeType === "oi") {
+    throw new BadRequestError("客观题套卷不允许 judge_type=oi");
+  }
+  if (judgeType === "oi") {
+    for (
+      const field of [
+        "llm",
+        "template",
+        "submission_mode",
+        "artifact_max_size_mb",
+      ] as const
+    ) {
+      if (m[field] !== undefined) {
+        throw new BadRequestError(`OI 题不允许提供 ${field}`);
+      }
+    }
+  }
 
   if (m.format_version !== BUNDLE_FORMAT_VERSION) {
     throw new BadRequestError(
@@ -248,7 +276,7 @@ export function validateBundleManifest(
     llm = m.llm as LlmConfig;
   }
 
-  let runtimeConfig: RuntimeConfig | undefined;
+  let runtimeConfig: ProblemRuntimeConfig | undefined;
   if (isObjective) {
     if (m.runtime_config !== undefined) {
       throw new BadRequestError("客观题套卷不允许提供 runtime_config");
@@ -270,14 +298,19 @@ export function validateBundleManifest(
       throw new BadRequestError("manifest.runtime_config 是必填字段");
     }
 
-    // 注入 command 默认值后执行既有结构校验（含镜像白名单由调用方在落库前校验）
-    runtimeConfig = resolveManifestCommand(
-      m.runtime_config as RuntimeConfig,
-    );
-    validateRuntimeConfig(runtimeConfig);
+    if (judgeType === "oi") {
+      validateOiRuntimeConfig(m.runtime_config);
+      runtimeConfig = structuredClone(m.runtime_config) as OiRuntimeConfig;
+    } else {
+      // 注入 command 默认值后执行既有结构校验（含镜像白名单由调用方在落库前校验）
+      runtimeConfig = resolveManifestCommand(
+        m.runtime_config as RuntimeConfig,
+      );
+      validateRuntimeConfig(runtimeConfig);
 
-    if (llm !== undefined && !runtimeConfig.evaluator.network?.enabled) {
-      throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
+      if (llm !== undefined && !runtimeConfig.evaluator.network?.enabled) {
+        throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
+      }
     }
   }
 
@@ -294,6 +327,7 @@ export function validateBundleManifest(
     artifact_max_size_mb: m.artifact_max_size_mb as number | null | undefined,
     llm,
     is_objective: isObjective,
+    judge_type: judgeType,
     runtime_config: isObjective ? undefined : runtimeConfig,
   };
 }

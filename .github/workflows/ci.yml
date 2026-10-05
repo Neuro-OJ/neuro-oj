@@ -2159,6 +2159,29 @@ jobs:
         # 本项目无 doctest（src 无 /// ``` 示例），覆盖等价。
         run: cargo nextest run --all-targets
 
+      - name: 缓存 WASI SDK 验收工具链
+        id: wasi-sdk-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/noj-wasi-sdk.tar.gz
+          key: wasi-sdk-34-linux-amd64-b761e3a0721dbae9
+
+      - name: 下载固定版本 WASI SDK
+        if: steps.wasi-sdk-cache.outputs.cache-hit != 'true'
+        run: >-
+          curl --fail --location --retry 3
+          --output "${RUNNER_TEMP}/noj-wasi-sdk.tar.gz"
+          https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-34/wasi-sdk-34.0-x86_64-linux.tar.gz
+
+      - name: 真实 WASI C/C++ 评测验收
+        working-directory: noj-judge
+        run: |
+          printf '%s  %s\n' \
+            'b761e3a0721dbae9c09a0059e5fdb2bf917d1b4a8a7b430fb3b5aafb0984b2c4' \
+            "${RUNNER_TEMP}/noj-wasi-sdk.tar.gz" | sha256sum --check -
+          tar -xzf "${RUNNER_TEMP}/noj-wasi-sdk.tar.gz" -C "${RUNNER_TEMP}"
+          bash scripts/check-oi-wasi-toolchain.sh "${RUNNER_TEMP}/wasi-sdk-34.0-x86_64-linux"
+
       # 失败时上传 cargo 编译缓存（修复 finding M7）
       - name: 上传失败日志
         if: failure() || cancelled()

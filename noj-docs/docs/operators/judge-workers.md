@@ -98,6 +98,52 @@ Docker socket 绕过该限制。
 
 未设置或超出范围时回退到 `1000m`，**不会**因为配置为 `0` 而变成不限制 CPU。
 
+传统 OI 题使用固定的 `JUDGE_OI_IMAGE`（默认 `noj-oi-cpp`）。Worker 启动时要求该
+镜像名以 `JUDGE_IMAGE_PREFIX` 开头；题目消息不能指定 OI 镜像。镜像应由部署流程
+预先构建并加载到每个评测节点。
+
+### OI 专用评测节点
+
+生产环境的 OI native 任务应配置独立的 go-judge 服务：
+
+```dotenv
+JUDGE_GO_JUDGE_URL=https://judge.example.internal
+JUDGE_GO_JUDGE_TOKEN=<secret>
+```
+
+Worker 只向该服务提交固定的 C99/C++11 编译命令、题目输入和资源限制；题目消息不能
+修改 URL、token、编译参数或镜像。每个测试点的 CPU 时间使用 `cpuLimit`，墙钟保护为
+三倍时限，标准输出和 checker 文件均限制为 32 MiB。`testlib` checker 会在另一个
+go-judge sandbox 中运行，不能读取用户程序容器的文件或进程。
+
+远端测试点还通过 Redis 有序集合租约做跨 Worker 并发闸门。默认最多同时占用 2 个
+远端子任务槽位，可用 `JUDGE_GO_JUDGE_RESOURCE_CAPACITY`、
+`JUDGE_GO_JUDGE_RESOURCE_TTL_MS` 和 `JUDGE_GO_JUDGE_RESOURCE_WAIT_MS` 调整；租约使用
+Redis 服务端时间并在 Worker 异常退出后由 TTL 回收。TTL 默认且最小为 660000 ms，
+覆盖任务看门狗与仍在执行的远端请求窗口。容量应按 go-judge 节点实际 CPU/
+内存预算设置，不能把它当作题目资源限制的替代品。
+
+WASM 题目不使用 go-judge 执行用户代码。Worker 使用固定的 `JUDGE_WASI_CC` /
+`JUDGE_WASI_CXX` 编译 C99/C++11，再由 Wasmtime 以活动成本表换算的 fuel 预算运行；
+`JUDGE_WASI_TARGET` 与可选 `JUDGE_WASI_SYSROOT` 必须由节点管理员统一配置。使用
+WASM `testlib` 时还要把可信 testlib 头文件放在 `JUDGE_WASI_TESTLIB_INCLUDE` 指定的
+固定目录中。每个测试点的真实墙钟上限为等效时限的三倍；文件输入题的工作目录新增
+数据上限为 32 MiB。WASI 编译器还受 10 秒墙钟/CPU、512 MiB 地址空间和 64 MiB 输出
+上限约束，超时会回收整个编译进程组。
+
+WASI 编译节点需要启用 Landlock ABI 3 或更新版本的 Linux 内核（Linux 6.2+）。
+编译器只能读取系统工具链及管理员指定的 SDK/sysroot/testlib 目录，写入仅限本次
+临时目录，不能用源码的 `include`/`incbin` 读取 Worker 配置或凭据。
+自定义 `JUDGE_WASI_CC` / `JUDGE_WASI_CXX` 应使用绝对路径；隔离不可用时返回 SE。
+默认 target 为 `wasm32-wasip1`，lld 固定一个链接线程；WASM C++ 使用 SDK 的无异常
+libc++ 配置（`-fno-exceptions`），显式使用 `throw`/`try` 的题目应选择 Native 后端。
+部署前可用以下命令验收真实工具链（含 C/C++、文件题、checker 与私有文件隔离）：
+
+```bash
+cd noj-judge
+bash scripts/check-oi-wasi-toolchain.sh /path/to/wasi-sdk
+```
+
 ## Docker daemon 权限边界
 
 `noj-judge` 需要调用 Docker API 创建评测容器。生产环境不得把应用宿主机的

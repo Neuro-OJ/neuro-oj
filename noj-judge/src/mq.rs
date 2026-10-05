@@ -436,7 +436,10 @@ mod tests {
         }"#;
         let task = parse_task_message(json).expect("应解析成功");
         assert_eq!(task.submission_id, "sid-1");
-        assert_eq!(task.runtime_config.evaluator.image, "noj-evaluator-python");
+        assert_eq!(
+            task.runtime_config.as_dual().unwrap().evaluator.image,
+            "noj-evaluator-python"
+        );
     }
 
     #[test]

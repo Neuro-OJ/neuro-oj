@@ -54,8 +54,12 @@ Deno.test('submissionCaseResults: 隐藏测试点清除所有敏感输出', () =
 Deno.test('submissionCaseResults: 兼容历史分组和旧字段名', () => {
   assertEquals(
     normalizeSubmissionCases({
-      visible: { cases: [{ id: 'v001', status: 'PASS', expected: 3, actual: 3 }] },
-      hidden: { cases: [{ id: 'h001', content_ok: true, expected: 4, actual: 4 }] },
+      visible: {
+        cases: [{ id: 'v001', status: 'PASS', expected: 3, actual: 3 }],
+      },
+      hidden: {
+        cases: [{ id: 'h001', content_ok: true, expected: 4, actual: 4 }],
+      },
     }),
     [
       {
@@ -84,7 +88,9 @@ Deno.test('submissionCaseResults: 兼容历史分组和旧字段名', () => {
 
 Deno.test('submissionCaseResults: 忽略无法识别的详情', () => {
   assertEquals(
-    normalizeSubmissionCases({ cases: [null, {}, { case_id: 'missing-status' }] }),
+    normalizeSubmissionCases({
+      cases: [null, {}, { case_id: 'missing-status' }],
+    }),
     [],
   );
   assertEquals(normalizeSubmissionCases(null), []);
@@ -93,6 +99,36 @@ Deno.test('submissionCaseResults: 忽略无法识别的详情', () => {
 
 Deno.test('submissionCaseResults: 兼容常见通过状态', () => {
   assertEquals(isSubmissionCasePassed('Accepted'), true);
+  assertEquals(isSubmissionCasePassed('AC'), true);
   assertEquals(isSubmissionCasePassed('PASS'), true);
   assertEquals(isSubmissionCasePassed('WrongAnswer'), false);
+});
+
+Deno.test('submissionCaseResults: 展示 OI 子任务测试点但不泄露答案', () => {
+  assertEquals(
+    normalizeSubmissionCases({
+      oi: {
+        subtasks: [{
+          id: 'basic',
+          status: 'AC',
+          cases: [{
+            case_id: 'testdata/1.in',
+            status: 'AC',
+            time_ms: 4,
+            memory_kb: 128,
+          }],
+        }],
+      },
+    }),
+    [{
+      caseId: 'testdata/1.in',
+      status: 'AC',
+      visibility: 'hidden',
+      timeMs: 4,
+      memoryKb: 128,
+      input: null,
+      expectedOutput: null,
+      actualOutput: null,
+    }],
+  );
 });

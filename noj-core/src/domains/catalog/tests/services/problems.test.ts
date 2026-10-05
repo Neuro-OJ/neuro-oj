@@ -20,6 +20,10 @@ import {
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import { enterTestContext } from "../../../system/index.ts";
+import type {
+  OiRuntimeConfig,
+  RuntimeConfig,
+} from "../../types/runtime-config.ts";
 
 // PGlite 内存数据库始终可用
 const dbAvailable = true;
@@ -55,6 +59,19 @@ const NETWORKED_RUNTIME_CONFIG = {
     call_timeout_ms: 2000,
     memory_limit_mb: 512,
   },
+};
+
+const OI_RUNTIME_CONFIG: OiRuntimeConfig = {
+  backend: "native",
+  languages: ["c", "cc"],
+  time_limit_ms: 1000,
+  memory_limit_mb: 256,
+  checker: { type: "default" },
+  subtasks: [{
+    id: "all",
+    score: 100,
+    cases: [{ input: "testdata/1.in", output: "testdata/1.out" }],
+  }],
 };
 
 const now = new Date().toISOString();
@@ -198,6 +215,25 @@ Deno.test({
     }, "0");
     assertEquals(updated.title, "更新的标题");
     assertEquals(updated.difficulty, "hard");
+  },
+});
+
+Deno.test({
+  name: "problems service: 切换客观题会清理 OI 运行配置",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const problem = await createProblem({
+      title: `待切换 OI 题 ${ts}`,
+      description: "切换客观题的边界",
+      difficulty: "easy",
+      runtime_config: OI_RUNTIME_CONFIG,
+    });
+    const updated = await updateProblem(problem.id, {
+      is_objective: true,
+    }, "0");
+    assertEquals(updated.judge_type, "dual");
+    assertEquals(updated.runtime_config, null);
   },
 });
 
@@ -442,7 +478,7 @@ Deno.test({
       },
     );
     assertEquals(
-      created.runtime_config!.evaluator.network?.enabled,
+      (created.runtime_config as RuntimeConfig).evaluator.network?.enabled,
       true,
     );
   },
@@ -477,7 +513,7 @@ Deno.test({
       "admin",
     );
     assertEquals(
-      created.runtime_config!.evaluator.network?.enabled,
+      (created.runtime_config as RuntimeConfig).evaluator.network?.enabled,
       true,
     );
   },

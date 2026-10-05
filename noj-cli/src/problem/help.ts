@@ -16,6 +16,7 @@ export function renderProblemHelp(): string {
     "",
     "init 选项:",
     "  --type U|P          题目归属（默认 P）",
+    "  --judge-type dual|oi 评测模式（默认 dual；oi 为 C/C++ 传统 OI）",
     "  --difficulty <d>    easy / medium / hard（默认 medium）",
     "  --title <t>         题目标题（默认同 slug）",
     "  --no-interactive    跳过 TUI 引导（自动化）",

@@ -57,7 +57,8 @@
     "npm:postgres@3": "3.4.5",
     "npm:postgres@3.4.5": "3.4.5",
     "npm:tencentcloud-sdk-nodejs-cms@^4.1.71": "4.1.71",
-    "npm:tencentcloud-sdk-nodejs-ses@^4.1.247": "4.1.247"
+    "npm:tencentcloud-sdk-nodejs-ses@^4.1.247": "4.1.247",
+    "npm:yaml@^2.9.1": "2.9.1"
   },
   "jsr": {
     "@cliffy/ansi@1.2.1": {
@@ -1575,6 +1576,10 @@
     },
     "xtend@4.0.2": {
       "integrity": "sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ=="
+    },
+    "yaml@2.9.1": {
+      "integrity": "sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw==",
+      "bin": true
     }
   },
   "remote": {
@@ -1880,14 +1885,16 @@
       "npm:otpauth@9",
       "npm:pkijs@3.2.4",
       "npm:postgres@3.4.5",
-      "npm:tencentcloud-sdk-nodejs-ses@^4.1.247"
+      "npm:tencentcloud-sdk-nodejs-ses@^4.1.247",
+      "npm:yaml@^2.9.1"
     ],
     "packageJson": {
       "dependencies": [
         "npm:@types/pg@^8.20.0",
         "npm:drizzle-orm@0.45.2",
         "npm:fflate@~0.8.3",
-        "npm:postgres@3.4.5"
+        "npm:postgres@3.4.5",
+        "npm:yaml@^2.9.1"
       ]
     }
   }

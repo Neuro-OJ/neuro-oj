@@ -291,6 +291,9 @@ export function positionals(args: string[]): string[] {
     "--redis-container",
     "--redis-mode",
     "--older-than",
+    "--input",
+    "--output",
+    "--benchmark",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;

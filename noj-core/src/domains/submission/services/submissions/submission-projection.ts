@@ -1,3 +1,4 @@
+import { oiVerdict, projectOiDetails } from "./oi-details.ts";
 /**
  * 统一提交结果投影（F-02/F-15 基础）。
  *
@@ -37,6 +38,22 @@ export function applySubmissionProjection<
   submission: T,
   ctx: ProjectionCtx,
 ): T {
+  submission = structuredClone(submission);
+  const record = submission as Record<string, unknown>;
+  for (const target of [record, record.result]) {
+    if (!target || typeof target !== "object") continue;
+    const item = target as Record<string, unknown>;
+    const verdict = oiVerdict(item.details);
+    if (verdict) {
+      item.verdict = verdict;
+      record.verdict = verdict;
+      item.output = null;
+      item.output_truncated = null;
+      item.details = {
+        oi: projectOiDetails((item.details as Record<string, unknown>).oi),
+      };
+    }
+  }
   // 管理员永远全量。
   if (ctx.isAdmin) {
     return structuredClone(submission);
@@ -66,24 +83,24 @@ export function applySubmissionProjection<
   }
 
   const result = structuredClone(submission);
-  const record = result as Record<string, unknown>;
-  delete record.subtasks;
-  delete record.testCases;
-  delete record.output;
+  const projectedRecord = result as Record<string, unknown>;
+  delete projectedRecord.subtasks;
+  delete projectedRecord.testCases;
+  delete projectedRecord.output;
 
   // details：保留 visible 用例，hidden 用例及无标记旧数据全部剥离。
-  if (record.details !== undefined) {
-    const sanitized = sanitizeContestDetails(record.details);
+  if (projectedRecord.details !== undefined) {
+    const sanitized = sanitizeContestDetails(projectedRecord.details);
     if (sanitized === undefined) {
-      delete record.details;
+      delete projectedRecord.details;
     } else {
-      record.details = sanitized;
+      projectedRecord.details = sanitized;
     }
   }
 
   // SubmissionDetail 形态：result 内嵌 details/output 同样需要裁剪。
-  if (record.result && typeof record.result === "object") {
-    const nested = record.result as Record<string, unknown>;
+  if (projectedRecord.result && typeof projectedRecord.result === "object") {
+    const nested = projectedRecord.result as Record<string, unknown>;
     delete nested.subtasks;
     delete nested.testCases;
     delete nested.output;
@@ -112,6 +129,7 @@ export function applySubmissionProjection<
 function sanitizeContestDetails(details: unknown): unknown {
   if (typeof details !== "object" || details === null) return undefined;
   const obj = details as Record<string, unknown>;
+  if (obj.oi) return { oi: projectOiDetails(obj.oi) };
   if (!Array.isArray(obj.cases)) return undefined;
   const cases = obj.cases;
   if (cases.length === 0) return undefined;

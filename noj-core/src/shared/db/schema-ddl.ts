@@ -64,6 +64,7 @@ export const SCHEMA_DDL: string[] = [
     difficulty TEXT NOT NULL DEFAULT 'medium',
     support_package_storage_url TEXT,
     runtime_config JSONB CHECK (jsonb_typeof(runtime_config) = 'object'),
+    judge_type TEXT NOT NULL DEFAULT 'dual' CHECK (judge_type IN ('dual', 'oi')),
     number INTEGER NOT NULL,
     owner_id TEXT NOT NULL DEFAULT '0',
     type TEXT NOT NULL DEFAULT 'U' CHECK (type IN ('U', 'P')),

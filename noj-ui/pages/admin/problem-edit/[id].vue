@@ -11,7 +11,6 @@ definePageMeta({
 const router = useRouter()
 const route = useRoute()
 const problemId = route.params.id as string
-
 // 客观题套卷（is_objective）走套卷编辑器，其余走编程题编辑器（与前台编辑页一致）。
 // 此前本页无条件渲染编程题编辑器，后台列表点「编辑」客观题会进入错误的表单。
 const { data, error, pending } = await useFetch<{ data: ProblemResource }>(
@@ -26,6 +25,7 @@ if (isNotFoundError(error.value)) {
 const problem = computed(() =>
   data.value?.data ? toProblemView(data.value.data) : null
 )
+const isOi = computed(() => data.value?.data?.judge_type === 'oi')
 const isObjective = computed(() => problem.value?.is_objective === true)
 
 function onSaved() {
@@ -47,9 +47,10 @@ function onSaved() {
       </template>
     </AdminPageHeader>
 
-    <!-- 题目类型确定前不渲染编辑器，避免先挂载编程题编辑器再切换 -->
+    <!-- 题目类型确定后才挂载对应编辑器 -->
     <template v-if="!pending">
       <ObjectiveProblemEditor v-if="isObjective" :paper-id="problemId" />
+      <OiProblemEditor v-else-if="isOi" mode="edit" :problem-id="problemId" @saved="onSaved" />
       <CodingProblemEditor v-else mode="edit" :problem-id="problemId" @saved="onSaved" />
     </template>
   </div>
