@@ -2,7 +2,7 @@
 import type {
   ObjectivePaper,
   ObjectiveQuestion,
-  ObjectiveQuestionType,
+  QuestionDraft,
   QuestionInput,
 } from '~/composables/useObjective'
 import { QUESTION_TYPE_LABELS } from '~/composables/useObjective'
@@ -202,73 +202,98 @@ async function onDeletePaper() {
   }
 }
 
-// ── 小题编辑器 ────────────────────────────────
+// ── 小题编辑器（在列表中原地展开） ────────────────────────────────
 
-const editing = ref<{
-  id: string | null // null = 新建
-  type: ObjectiveQuestionType
-  prompt: string
-  options: { key: string; text: string }[]
-  answer: (string | boolean)[]
-  explanation: string
-} | null>(null)
+const editing = ref<QuestionDraft | null>(null)
+// 打开时的快照，用于判断是否有未保存修改
+const editingSnapshot = ref('')
+// 每次打开新草稿递增，强制表单重新挂载（避免题型 watcher 误清空新草稿的答案）
+const draftKey = ref(0)
 
-function openCreate() {
-  editing.value = { id: null, type: 'single', prompt: '', options: [{ key: 'A', text: '' }], answer: [], explanation: '' }
+const isEditingDirty = computed(() =>
+  editing.value !== null && JSON.stringify(editing.value) !== editingSnapshot.value
+)
+
+/** 有未保存修改时确认是否放弃；无修改或确认放弃返回 true */
+async function confirmDiscard(): Promise<boolean> {
+  if (!isEditingDirty.value) return true
+  return await dialog.confirm('当前小题有未保存的修改，确定放弃？', {
+    title: '放弃修改',
+    danger: true,
+    confirmText: '放弃修改',
+  })
 }
 
-function openEdit(q: ObjectiveQuestion) {
-  editing.value = {
+function startEditing(draft: QuestionDraft) {
+  editing.value = draft
+  editingSnapshot.value = JSON.stringify(draft)
+  draftKey.value++
+  // 等表单渲染后滚动到可视区域（新建时表单位于列表末尾）
+  nextTick(() => {
+    document.getElementById('objective-question-editor')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  })
+}
+
+function blankDraft(): QuestionDraft {
+  return {
+    id: null,
+    type: 'single',
+    prompt: '',
+    options: ['A', 'B', 'C', 'D'].map((key) => ({ key, text: '' })),
+    answer: [],
+    explanation: '',
+  }
+}
+
+async function openCreate() {
+  if (editing.value?.id === null) {
+    document.getElementById('objective-question-editor')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    return
+  }
+  if (!(await confirmDiscard())) return
+  startEditing(blankDraft())
+}
+
+async function openEdit(q: ObjectiveQuestion) {
+  if (editing.value?.id === q.id) return
+  if (!(await confirmDiscard())) return
+  startEditing({
     id: q.id,
     type: q.type,
     prompt: q.prompt,
     options: q.options.map((o) => ({ ...o })),
     answer: q.answer ? [...q.answer] : [],
     explanation: q.explanation ?? '',
-  }
+  })
 }
 
 function closeEditor() {
   editing.value = null
+  editingSnapshot.value = ''
 }
 
-function addOption() {
-  if (!editing.value) return
-  const nextKey = String.fromCharCode(65 + editing.value.options.length)
-  editing.value.options.push({ key: nextKey, text: '' })
+async function onCancelEdit() {
+  if (!(await confirmDiscard())) return
+  closeEditor()
 }
 
-function removeOption(idx: number) {
-  if (!editing.value) return
-  editing.value.options.splice(idx, 1)
-}
+// 离开页面前提示未保存的小题修改
+onBeforeRouteLeave(async () => {
+  if (!(await confirmDiscard())) return false
+})
 
-function toggleAnswer(key: string) {
-  if (!editing.value) return
-  const arr = editing.value.answer
-  if (editing.value.type === 'single' || editing.value.type === 'judge') {
-    editing.value.answer = [key === 'true' ? true : key]
-    return
-  }
-  const idx = arr.indexOf(key)
-  if (idx >= 0) arr.splice(idx, 1)
-  else arr.push(key)
-  editing.value.answer = [...arr]
-}
-
-function isAnswer(key: string) {
-  if (!editing.value) return false
-  const arr = editing.value.answer
-  if (editing.value.type === 'judge') return arr.includes(key === 'true')
-  // 单选只允许一个答案被勾选；避免从多选/判断切换后旧答案导致多个 radio 同时高亮
-  if (editing.value.type === 'single') return arr.length === 1 && arr[0] === key
-  return arr.includes(key)
+/** 列表展示：该选项是否为正确答案（判断题选项键为 'true' / 'false'） */
+function isCorrectOption(q: ObjectiveQuestion, key: string): boolean {
+  if (!q.answer) return false
+  return q.type === 'judge' ? q.answer.includes(key === 'true') : q.answer.includes(key)
 }
 
 // 防止连点「保存小题」导致同一小题被重复创建
 const savingQuestion = ref(false)
 
-async function onSaveQuestion() {
+async function onSaveQuestion(next = false) {
   const e = editing.value
   if (!e || savingQuestion.value) return
   if (!e.prompt.trim()) {
@@ -318,6 +343,8 @@ async function onSaveQuestion() {
     closeEditor()
     // 重新拉取题单，确保新增/编辑的小题立即出现在列表中
     await loadQuestions()
+    // 「保存并继续添加」：直接打开下一道空白小题
+    if (next) startEditing(blankDraft())
   } catch {
     // useApi 已弹错误
   } finally {
@@ -325,10 +352,9 @@ async function onSaveQuestion() {
   }
 }
 
-async function onDeleteQuestion(q: ObjectiveQuestion) {
-  // 只对超长题干做截断并追加省略号；短题干不显示「…」
-  const preview = q.prompt.length > 20 ? `${q.prompt.slice(0, 20)}…` : q.prompt
-  const ok = await dialog.confirm(`确定删除小题「${preview}」？`, {
+async function onDeleteQuestion(q: ObjectiveQuestion, index: number) {
+  // 题干可能含表格 / 公式源码，确认框只显示题号
+  const ok = await dialog.confirm(`确定删除第 ${index + 1} 题？删除后不可恢复。`, {
     title: '删除小题',
     danger: true,
     confirmText: '删除',
@@ -336,6 +362,7 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
   if (!ok) return
   try {
     await deleteQuestion(activePaperId.value!, q.id)
+    if (editing.value?.id === q.id) closeEditor()
     toast.success('小题已删除')
     await loadQuestions()
   } catch {
@@ -360,10 +387,10 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
           />
         </UFormField>
         <UFormField label="标题">
-          <UInput v-model="createTitle" placeholder="套卷标题" />
+          <UInput v-model="createTitle" class="w-full" placeholder="套卷标题" />
         </UFormField>
         <UFormField label="描述">
-          <UTextarea v-model="createDescription" placeholder="套卷描述" :rows="3" />
+          <UTextarea v-model="createDescription" class="w-full" placeholder="套卷描述（支持 Markdown）" :rows="3" autoresize :maxrows="20" />
         </UFormField>
         <UFormField label="标签">
           <div class="flex flex-col gap-1">
@@ -413,10 +440,10 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
         <h2 class="mb-3 text-sm font-semibold text-text">套卷信息</h2>
         <div class="flex flex-col gap-3">
           <UFormField label="标题">
-            <UInput v-model="title" placeholder="套卷标题" />
+            <UInput v-model="title" class="w-full" placeholder="套卷标题" />
           </UFormField>
           <UFormField label="描述">
-            <UTextarea v-model="description" placeholder="套卷描述" :rows="3" />
+            <UTextarea v-model="description" class="w-full" placeholder="套卷描述（支持 Markdown）" :rows="3" autoresize :maxrows="20" />
           </UFormField>
           <UFormField label="标签">
             <div class="flex flex-col gap-1">
@@ -441,7 +468,7 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
         </div>
       </section>
 
-      <!-- 小题列表 -->
+      <!-- 小题列表：渲染后的题面 + 正确答案高亮；点「编辑」在原位置展开表单 -->
       <section class="rounded-xl border border-border bg-white p-5">
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-sm font-semibold text-text">小题（{{ questions.length }}）</h2>
@@ -449,95 +476,79 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
         </div>
 
         <AsyncContent
-          :status="qLoading ? 'loading' : qError ? 'error' : questions.length ? 'data' : 'empty'"
+          :status="qLoading && !questions.length ? 'loading' : qError ? 'error' : questions.length || editing ? 'data' : 'empty'"
           error="小题加载失败"
           empty-text="暂无小题，点击「添加小题」开始出题"
           @retry="loadQuestions"
         >
-          <div v-if="questions.length" class="flex flex-col gap-2">
-            <div
-              v-for="(q, idx) in questions"
-              :key="q.id"
-              class="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5"
+          <div class="flex flex-col gap-3">
+            <template v-for="(q, idx) in questions" :key="q.id">
+              <ObjectiveQuestionForm
+                v-if="editing && editing.id === q.id"
+                :key="draftKey"
+                v-model="editing"
+                :saving="savingQuestion"
+                @save="onSaveQuestion"
+                @cancel="onCancelEdit"
+              />
+              <article
+                v-else
+                class="rounded-lg border border-border p-4 transition-colors hover:border-primary/40"
+              >
+                <div class="mb-2 flex items-center gap-2">
+                  <span class="text-sm font-semibold tabular-nums text-text-muted">{{ idx + 1 }}.</span>
+                  <span class="inline-flex items-center rounded bg-bg-sunken px-2 py-0.5 text-xs text-text-secondary">
+                    {{ QUESTION_TYPE_LABELS[q.type] }}
+                  </span>
+                  <div class="ml-auto flex gap-1">
+                    <UButton color="neutral" variant="ghost" size="xs" icon="i-lucide-pencil" @click="openEdit(q)">编辑</UButton>
+                    <UButton color="error" variant="ghost" size="xs" icon="i-lucide-trash-2" :aria-label="`删除第 ${idx + 1} 题`" @click="onDeleteQuestion(q, idx)" />
+                  </div>
+                </div>
+                <ObjectiveRichText class="mb-2" :content="q.prompt" />
+                <div class="flex flex-col gap-1">
+                  <div
+                    v-for="opt in q.options"
+                    :key="opt.key"
+                    class="flex items-start gap-2 rounded px-2 py-1 text-sm"
+                    :class="isCorrectOption(q, opt.key) ? 'bg-success-text/10 text-success-text' : 'text-text'"
+                  >
+                    <UIcon
+                      :name="isCorrectOption(q, opt.key) ? 'i-lucide-check' : 'i-lucide-dot'"
+                      class="mt-1 size-3.5 shrink-0"
+                    />
+                    <span v-if="q.type !== 'judge'" class="shrink-0 font-medium">{{ opt.key }}.</span>
+                    <ObjectiveRichText class="flex-1" :content="opt.text" />
+                  </div>
+                </div>
+                <details v-if="q.explanation" class="mt-2 text-text-secondary">
+                  <summary class="cursor-pointer select-none text-xs">解析</summary>
+                  <ObjectiveRichText class="mt-1" :content="q.explanation" />
+                </details>
+              </article>
+            </template>
+
+            <!-- 新建小题：表单出现在列表末尾 -->
+            <ObjectiveQuestionForm
+              v-if="editing && editing.id === null"
+              :key="draftKey"
+              v-model="editing"
+              :saving="savingQuestion"
+              @save="onSaveQuestion"
+              @cancel="onCancelEdit"
+            />
+            <UButton
+              v-else-if="questions.length"
+              class="self-start"
+              size="sm"
+              variant="outline"
+              icon="i-lucide-plus"
+              @click="openCreate"
             >
-              <span class="w-6 shrink-0 text-sm text-text-muted">{{ idx + 1 }}</span>
-              <span class="inline-flex shrink-0 items-center rounded bg-gray-100 px-2 py-0.5 text-xs text-text-secondary">
-                {{ QUESTION_TYPE_LABELS[q.type] }}
-              </span>
-              <p class="min-w-0 flex-1 truncate text-sm text-text">{{ q.prompt }}</p>
-              <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-pencil" @click="openEdit(q)" />
-              <UButton color="error" variant="ghost" size="sm" icon="i-lucide-trash-2" @click="onDeleteQuestion(q)" />
-            </div>
+              添加小题
+            </UButton>
           </div>
         </AsyncContent>
-      </section>
-
-      <!-- 小题编辑器 -->
-      <section v-if="editing" class="rounded-xl border border-signal/30 bg-white p-5">
-        <h2 class="mb-3 text-sm font-semibold text-text">
-          {{ editing.id === null ? '添加小题' : '编辑小题' }}
-        </h2>
-        <div class="flex flex-col gap-3">
-          <UFormField label="题型">
-            <USelect
-              v-model="editing.type"
-              :items="[
-                { label: '单选', value: 'single' },
-                { label: '多选', value: 'multiple' },
-                { label: '判断', value: 'judge' },
-              ]"
-            />
-          </UFormField>
-
-          <UFormField label="题干">
-            <UTextarea v-model="editing.prompt" :rows="2" placeholder="输入题目内容" />
-          </UFormField>
-
-          <!-- 选项（判断题固定对/错） -->
-          <UFormField v-if="editing.type !== 'judge'" label="选项与答案">
-            <div class="flex flex-col gap-2">
-              <div
-                v-for="(opt, i) in editing.options"
-                :key="i"
-                class="flex items-center gap-2"
-              >
-                <input
-                  :type="editing.type === 'single' ? 'radio' : 'checkbox'"
-                  :checked="isAnswer(opt.key)"
-                  class="accent-primary"
-                  @change="toggleAnswer(opt.key)"
-                />
-                <span class="w-5 text-sm font-medium">{{ opt.key }}.</span>
-                <UInput v-model="opt.text" class="flex-1" :placeholder="`选项 ${opt.key} 内容`" />
-                <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-x" @click="removeOption(i)" />
-              </div>
-              <UButton size="sm" variant="outline" icon="i-lucide-plus" @click="addOption">添加选项</UButton>
-            </div>
-          </UFormField>
-
-          <!-- 判断题答案 -->
-          <UFormField v-else label="正确答案">
-            <div class="flex gap-4">
-              <label class="flex items-center gap-1.5 text-sm">
-                <input type="radio" class="accent-primary" :checked="isAnswer('true')" @change="toggleAnswer('true')" />
-                正确
-              </label>
-              <label class="flex items-center gap-1.5 text-sm">
-                <input type="radio" class="accent-primary" :checked="isAnswer('false')" @change="toggleAnswer('false')" />
-                错误
-              </label>
-            </div>
-          </UFormField>
-
-          <UFormField label="解析（判卷后展示，可选）">
-            <UTextarea v-model="editing.explanation" :rows="2" placeholder="答案解析" />
-          </UFormField>
-
-          <div class="flex gap-2">
-            <UButton color="primary" :loading="savingQuestion" :disabled="savingQuestion" @click="onSaveQuestion">保存小题</UButton>
-            <UButton color="neutral" variant="outline" @click="closeEditor">取消</UButton>
-          </div>
-        </div>
       </section>
     </div>
   </AsyncContent>

@@ -107,6 +107,16 @@ export interface QuestionInput {
   explanation?: string;
 }
 
+/** 套卷编辑器中的小题草稿（id 为 null 表示新建） */
+export interface QuestionDraft {
+  id: string | null;
+  type: ObjectiveQuestionType;
+  prompt: string;
+  options: ObjectiveOption[];
+  answer: (string | boolean)[];
+  explanation: string;
+}
+
 /** 题型中文标签 */
 export const QUESTION_TYPE_LABELS: Record<ObjectiveQuestionType, string> = {
   single: '单选',

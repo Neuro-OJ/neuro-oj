@@ -21,7 +21,7 @@ const props = defineProps<{
 
 const { listQuestions, submitPaper, listSubmissions } = useObjective()
 
-const { data: qData, error: qError, refresh: refreshQuestions } = await useFetch<
+const { data: qData, error: qError, status: qStatus, refresh: refreshQuestions } = await useFetch<
   { data: ObjectiveQuestion[] }
 >(`/api/v1/problems/${props.paperId}/questions`, { server: false })
 const questions = computed(() => qData.value?.data ?? [])
@@ -75,6 +75,8 @@ const hasPendingContestScores = computed(() => hasPendingObjectiveScore(submissi
 const showHistory = ref(false)
 const expandedSubmissionId = ref<string | null>(null)
 const questionMap = computed(() => new Map(questions.value.map((q) => [q.id, q])))
+/** 小题 ID → 题号（从 1 开始），用于提交记录展示 */
+const questionIndex = computed(() => new Map(questions.value.map((q, i) => [q.id, i + 1])))
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString('zh-CN', {
@@ -138,7 +140,7 @@ async function onSubmit() {
     </div>
 
     <AsyncContent
-      :status="qError ? 'error' : questions.length ? 'data' : 'empty'"
+      :status="qError ? 'error' : questions.length ? 'data' : qStatus === 'success' ? 'empty' : 'loading'"
       error="题目加载失败"
       empty-text="该套卷暂无小题"
       @retry="refreshQuestions"
@@ -163,24 +165,24 @@ async function onSubmit() {
               {{ correctness.get(q.id) ? '回答正确' : '回答错误' }}
             </span>
           </div>
-          <p class="mb-3 whitespace-pre-wrap text-sm text-text">{{ q.prompt }}</p>
+          <ObjectiveRichText class="mb-3" :content="q.prompt" />
 
           <!-- 判断：固定对/错 -->
           <div v-if="q.type === 'judge'" class="flex flex-col gap-2">
             <label
               v-for="opt in q.options"
               :key="opt.key"
-              class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+              class="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
               :class="isSelected(q.id, opt.key === 'true') ? 'border-signal bg-signal/5' : 'border-border hover:bg-gray-50'"
             >
               <input
                 type="radio"
                 :name="q.id"
-                class="accent-primary"
+                class="mt-1 shrink-0 accent-primary"
                 :checked="isSelected(q.id, opt.key === 'true')"
                 @change="toggleOption(q.id, opt.key === 'true')"
               />
-              {{ opt.text }}
+              <ObjectiveRichText class="flex-1" :content="opt.text" />
             </label>
           </div>
 
@@ -189,17 +191,18 @@ async function onSubmit() {
             <label
               v-for="opt in q.options"
               :key="opt.key"
-              class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+              class="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
               :class="isSelected(q.id, opt.key) ? 'border-signal bg-signal/5' : 'border-border hover:bg-gray-50'"
             >
               <input
                 type="radio"
                 :name="q.id"
-                class="accent-primary"
+                class="mt-1 shrink-0 accent-primary"
                 :checked="isSelected(q.id, opt.key)"
                 @change="toggleOption(q.id, opt.key)"
               />
-              <span class="font-medium">{{ opt.key }}.</span> {{ opt.text }}
+              <span class="shrink-0 font-medium">{{ opt.key }}.</span>
+              <ObjectiveRichText class="flex-1" :content="opt.text" />
             </label>
           </div>
 
@@ -208,26 +211,28 @@ async function onSubmit() {
             <label
               v-for="opt in q.options"
               :key="opt.key"
-              class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+              class="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
               :class="isSelected(q.id, opt.key) ? 'border-signal bg-signal/5' : 'border-border hover:bg-gray-50'"
             >
               <input
                 type="checkbox"
-                class="accent-primary"
+                class="mt-1 shrink-0 accent-primary"
                 :checked="isSelected(q.id, opt.key)"
                 @change="toggleOption(q.id, opt.key)"
               />
-              <span class="font-medium">{{ opt.key }}.</span> {{ opt.text }}
+              <span class="shrink-0 font-medium">{{ opt.key }}.</span>
+              <ObjectiveRichText class="flex-1" :content="opt.text" />
             </label>
           </div>
 
           <!-- 判定后解析（练习模式） -->
-          <p
+          <div
             v-if="lastResult?.details[q.id]?.explanation"
-            class="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-text-secondary"
+            class="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-text-secondary"
           >
-            解析：{{ lastResult.details[q.id]?.explanation }}
-          </p>
+            <div class="mb-1 text-xs font-medium">解析</div>
+            <ObjectiveRichText :content="lastResult.details[q.id]?.explanation ?? ''" />
+          </div>
         </section>
 
         <!-- 判定汇总：score 为 null（竞赛进行中）时不显示分数与正确题数（VULN-03） -->
@@ -292,7 +297,8 @@ async function onSubmit() {
                       class="size-3.5"
                       :class="detail.correct ? 'text-green-600' : 'text-red-600'"
                     />
-                    <span class="font-medium text-text">{{ questionMap.get(qid)?.prompt ?? '未知题目' }}</span>
+                    <!-- 题干可能含表格 / 公式，记录里只显示题号 -->
+                    <span class="font-medium text-text">{{ questionIndex.has(qid) ? `第 ${questionIndex.get(qid)} 题` : '未知题目' }}</span>
                   </div>
                   <p class="mt-1 text-text-secondary" :class="typeof detail.correct === 'boolean' ? 'pl-5' : ''">
                     作答：{{ formatObjectiveAnswer(questionMap.get(qid), detail.given) }}
