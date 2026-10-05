@@ -117,7 +117,7 @@ const qUrl = computed(() =>
     : null
 )
 // Nuxt UseFetch 的 url getter 类型不接受 null，运行时支持返回 null 跳过请求；断言仅类型层面。
-const { data: qData, error: qError } = await useFetch<{ data: ObjectiveQuestion[] }>(
+const { data: qData, error: qError, status: qStatus } = await useFetch<{ data: ObjectiveQuestion[] }>(
   qUrl as unknown as Ref<`/api/v1/problems/${string}`>,
   { server: false },
 )
@@ -230,7 +230,7 @@ async function onSubmit() {
         >
           <template #body>
             <AsyncContent
-              :status="qError ? 'error' : questions.length ? 'data' : 'empty'"
+              :status="qError ? 'error' : questions.length ? 'data' : qStatus === 'success' ? 'empty' : 'loading'"
               error="客观题加载失败"
               empty-text="该套卷暂无小题"
             >
@@ -245,24 +245,24 @@ async function onSubmit() {
                       {{ idx + 1 }}. {{ QUESTION_TYPE_LABELS[q.type] }}
                     </span>
                   </div>
-                  <p class="mb-3 whitespace-pre-wrap text-sm text-text">{{ q.prompt }}</p>
+                  <ObjectiveRichText class="mb-3" :content="q.prompt" />
 
                   <div v-if="q.type === 'judge'" class="flex flex-col gap-2">
                     <label
                       v-for="opt in q.options"
                       :key="opt.key"
-                      class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+                      class="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
                       :class="isSelected(q.id, opt.key === 'true') ? 'border-signal bg-signal/5' : 'border-border hover:bg-bg-page'"
                     >
                       <input
                         type="radio"
                         :name="q.id"
-                        class="accent-primary"
+                        class="mt-1 shrink-0 accent-primary"
                         :disabled="alreadySubmitted"
                         :checked="isSelected(q.id, opt.key === 'true')"
                         @change="toggleOption(q.id, opt.key === 'true')"
                       />
-                      {{ opt.text }}
+                      <ObjectiveRichText class="flex-1" :content="opt.text" />
                     </label>
                   </div>
 
@@ -270,18 +270,19 @@ async function onSubmit() {
                     <label
                       v-for="opt in q.options"
                       :key="opt.key"
-                      class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+                      class="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
                       :class="isSelected(q.id, opt.key) ? 'border-signal bg-signal/5' : 'border-border hover:bg-bg-page'"
                     >
                       <input
                         type="radio"
                         :name="q.id"
-                        class="accent-primary"
+                        class="mt-1 shrink-0 accent-primary"
                         :disabled="alreadySubmitted"
                         :checked="isSelected(q.id, opt.key)"
                         @change="toggleOption(q.id, opt.key)"
                       />
-                      <span class="font-medium">{{ opt.key }}.</span> {{ opt.text }}
+                      <span class="shrink-0 font-medium">{{ opt.key }}.</span>
+                      <ObjectiveRichText class="flex-1" :content="opt.text" />
                     </label>
                   </div>
 
@@ -289,17 +290,18 @@ async function onSubmit() {
                     <label
                       v-for="opt in q.options"
                       :key="opt.key"
-                      class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+                      class="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
                       :class="isSelected(q.id, opt.key) ? 'border-signal bg-signal/5' : 'border-border hover:bg-bg-page'"
                     >
                       <input
                         type="checkbox"
-                        class="accent-primary"
+                        class="mt-1 shrink-0 accent-primary"
                         :disabled="alreadySubmitted"
                         :checked="isSelected(q.id, opt.key)"
                         @change="toggleOption(q.id, opt.key)"
                       />
-                      <span class="font-medium">{{ opt.key }}.</span> {{ opt.text }}
+                      <span class="shrink-0 font-medium">{{ opt.key }}.</span>
+                      <ObjectiveRichText class="flex-1" :content="opt.text" />
                     </label>
                   </div>
                 </section>

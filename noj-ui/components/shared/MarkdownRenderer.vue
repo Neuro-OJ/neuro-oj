@@ -24,7 +24,23 @@ const md = markdownit({
   },
 })
 
-function renderMarkdown(src: string): string {
+/**
+ * 渲染 Markdown，并把 LaTeX 公式替换为占位符。
+ *
+ * KaTeX 依赖内联 style（height / top / vertical-align）定位分式、上下标等，
+ * 而 DOMPurify 配置了 FORBID_ATTR: ['style']；若先渲染公式再净化，样式被剥掉，
+ * 分式与上下标排版错乱。因此公式以占位符穿过 Markdown 与净化，净化后再回填
+ * KaTeX 输出（KaTeX 默认 trust=false，不会产出 \href / \htmlStyle 等可信指令）。
+ */
+function renderMarkdown(src: string): { html: string; formulas: string[]; nonce: string } {
+  // 占位符只含字母数字（不受 Markdown / linkify 影响），nonce 防止与正文撞车
+  const nonce = Math.random().toString(36).slice(2, 10)
+  const formulas: string[] = []
+  const placeholder = (html: string) => {
+    formulas.push(html)
+    return `NOJKATEX${nonce}X${formulas.length - 1}X`
+  }
+
   // 1. 提取代码块，用占位符替换
   const codeBlocks: string[] = []
   let text = src.replace(/```[\s\S]*?```/g, (match) => {
@@ -35,7 +51,7 @@ function renderMarkdown(src: string): string {
   // 2. 块级 LaTeX $$...$$
   text = text.replace(/\$\$([\s\S]*?)\$\$/g, (_match, math: string) => {
     try {
-      return katex.renderToString(math.trim(), { displayMode: true, throwOnError: false })
+      return placeholder(katex.renderToString(math.trim(), { displayMode: true, throwOnError: false }))
     } catch {
       return `$$\n${math}\n$$`
     }
@@ -44,7 +60,7 @@ function renderMarkdown(src: string): string {
   // 3. 行内 LaTeX $...$
   text = text.replace(/(?<!\$)(?<!\\)\$([^$\n]+?)\$(?!\$)(?!\\)/g, (_match, math: string) => {
     try {
-      return katex.renderToString(math.trim(), { displayMode: false, throwOnError: false })
+      return placeholder(katex.renderToString(math.trim(), { displayMode: false, throwOnError: false }))
     } catch {
       return `$${math}$`
     }
@@ -54,7 +70,25 @@ function renderMarkdown(src: string): string {
   text = text.replace(/\x00CODEBLOCK(\d+)\x00/g, (_match, idx: string) => codeBlocks[Number(idx)] ?? '')
 
   // 5. 渲染 Markdown
-  return md.render(text)
+  return { html: md.render(text), formulas, nonce }
+}
+
+/**
+ * 净化后回填 KaTeX 公式。
+ * 只在文本节点位置回填；落在标签内（如属性值 `<a title="$x$">`）的占位符直接丢弃，
+ * 避免把 KaTeX HTML 注入属性造成属性逃逸。
+ */
+function restoreFormulas(html: string, formulas: string[], nonce: string): string {
+  if (formulas.length === 0) return html
+  const pattern = new RegExp(`NOJKATEX${nonce}X(\\d+)X`, 'g')
+  return html
+    .split(/(<[^>]*>)/g)
+    .map((part) =>
+      part.startsWith('<')
+        ? part.replace(pattern, '')
+        : part.replace(pattern, (_match, idx: string) => formulas[Number(idx)] ?? '')
+    )
+    .join('')
 }
 
 function secureExternalImages(html: string): string {
@@ -87,10 +121,12 @@ watch(
   [() => content, () => allowExternalImages],
   async ([source]) => {
     const id = ++renderId
-    const raw = secureExternalImages(renderMarkdown(source))
-    const html = import.meta.client
+    const { html: rendered, formulas, nonce } = renderMarkdown(source)
+    const raw = secureExternalImages(rendered)
+    const sanitized = import.meta.client
       ? await sanitizeHtmlAsync(raw)
       : sanitizeHtmlSync(raw)
+    const html = restoreFormulas(sanitized, formulas, nonce)
     // 只应用最新的渲染结果，防止 async 完成顺序错乱
     if (id === renderId) renderedHtml.value = html
   },
