@@ -8,7 +8,7 @@
 
 1. 题目必须是 **P 型（主题题）**。源码校验只看 `type === "P"`，U 型题一律禁止启用 LLM。
 2. 平台已配置 **全局默认 LLM Provider 与模型**（`llm_default_provider_id` /
-   `llm_default_model`，**两项须同时配置**；后台「系统设置 → LLM」）。运营者接入步骤见
+   `llm_default_model`，**两项须同时配置**；后台「LLM → Provider 管理」页顶部）。运营者接入步骤见
    [如何提供 LLM 调用能力（运营者）](../operators/llm-call-capability.md)；后台操作见
    [后台管理指南](../operators/admin-guide.md#llm-管理)。
 3. 题目必须开启 **Evaluator 联网**（`runtime_config.evaluator.network.enabled = true`），
@@ -106,7 +106,7 @@ Judge Worker 还会注入 `NOJ_SUBMISSION_ID` 与 `NOJ_REJUDGE_SEQ`，便于题�
 
 ## 验证方法
 
-1. 在管理后台「系统设置 → LLM」确认平台默认 Provider / 模型已配置（两项同时配置），并创建/编辑 P 型题目勾选 LLM 配置与 Evaluator 联网。
+1. 在管理后台「LLM → Provider 管理」页顶部确认平台默认 Provider / 模型已配置（两项同时配置），并创建/编辑 P 型题目勾选 LLM 配置与 Evaluator 联网。
 2. 本地或 E2E 环境提交一次，确认 evaluator 能通过 `llm.complete` 拿到结果。
 3. 在「LLM 用量」页确认本次调用已落库（状态 `ok`），并检查 token/费用是否符合预期。
 4. 恶意用例：非 P 型创建 LLM 题、或未开 Evaluator 联网，应被服务端拒绝。

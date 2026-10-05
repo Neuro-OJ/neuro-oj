@@ -144,8 +144,9 @@ Neuro OJ 使用「角色 → 权限点」模型：权限格式为 `resource:acti
 ### LLM Providers
 
 - 新增 Provider 时填写名称、`base_url`、API Key、单价（每 1k tokens）与启停状态。
-- Provider 不再自带默认模型；具体调用哪个模型由「系统设置 → LLM」的平台默认
-  （`llm_default_provider_id` / `llm_default_model`，两项须同时配置）决定。
+- Provider 不再自带默认模型；具体调用哪个模型由本页顶部「平台默认 Provider / 模型」
+  卡片决定（对应系统设置 `llm_default_provider_id` / `llm_default_model`，两项须同时
+  配置）。列表中当前默认的 Provider 会带「默认」标记。
 - API Key 保存后**不会**再明文返回，列表中只显示掩码（如 `sk-****abcd`）；需要更新时重新填写 Key。
 - 只有 `enabled=true` 的 Provider 可用于 LLM 题目；停用后已有评测 token 仍可能继续调用到过期，请先停止相关题目或等待 token 自然过期。
 
