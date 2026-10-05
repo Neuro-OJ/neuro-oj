@@ -476,6 +476,9 @@ jobs:
         with:
           deno-version-file: .dvmrc
 
+      - name: 验证 WASM 统一标准
+        run: deno run -A scripts/verify-wasm-standard.ts
+
       - name: 仓库级门禁
         run: deno run -A scripts/check-ci.ts
 

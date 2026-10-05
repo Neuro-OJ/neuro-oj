@@ -44,9 +44,9 @@ pub(super) async fn create_container(
     instance_id: &str,
 ) -> Result<String> {
     let mut tmpfs = std::collections::HashMap::new();
-    // /workspace 必须可执行，否则 gcc 生成的程序会被 noexec 挂载拒绝执行；
+    // Docker 默认给 tmpfs 加 noexec，必须显式 exec 才能运行 gcc 产物；
     // rootfs 仍为只读，/tmp 继续 noexec/nosuid/nodev。
-    tmpfs.insert("/workspace", "size=512M,mode=1777,nosuid,nodev");
+    tmpfs.insert("/workspace", "size=512M,mode=1777,exec,nosuid,nodev");
     tmpfs.insert("/tmp", "size=256M,mode=1777,noexec,nosuid,nodev");
     let memory_bytes = (memory_limit_mb.clamp(1, 512) * 1024 * 1024) as i64;
     let host_config =

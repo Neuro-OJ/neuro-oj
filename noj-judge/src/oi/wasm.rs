@@ -113,8 +113,11 @@ pub async fn run_module(
 }
 
 pub(super) fn write_extra_files(root: &Path, files: &HashMap<String, Vec<u8>>) -> Result<()> {
-    let mut basenames = HashMap::new();
-    for (name, content) in files {
+    let mut basenames = std::collections::BTreeMap::new();
+    // 文件注入与同名头文件别名必须按固定顺序选择，不能依赖 HashMap 随机迭代。
+    let mut ordered: Vec<_> = files.iter().collect();
+    ordered.sort_by_key(|(path, _)| *path);
+    for (name, content) in ordered {
         let relative = Path::new(name);
         if relative.is_absolute()
             || relative.components().any(|component| {
@@ -213,6 +216,9 @@ async fn run_module_with_files(
     let mut config = Config::new();
     config.epoch_interruption(true);
     config.consume_fuel(true);
+    config.wasm_threads(false);
+    config.wasm_relaxed_simd(false);
+    config.cranelift_nan_canonicalization(true);
     config.operator_cost(operator_cost_from_profile(profile));
     config.wasm_multi_memory(false);
     config.wasm_memory64(false);
@@ -238,7 +244,9 @@ async fn run_module_with_files(
         .stderr(stderr)
         .wall_clock(DeterministicWallClock)
         .monotonic_clock(DeterministicMonotonicClock)
-        .insecure_random_seed(0);
+        .insecure_random_seed(0)
+        .secure_random(super::standard::GuestRandom::new())
+        .insecure_random(super::standard::GuestRandom::new());
     builder.args(args);
     if let Some(directory) = preopened_dir {
         // 传统文件输入代码通常以相对路径打开 `foo.in`；同时保留绝对
@@ -365,7 +373,7 @@ async fn run_module_with_files(
     {
         WasmStatus::OutputLimitExceeded
     } else if wall_timed_out {
-        WasmStatus::TimeLimitExceeded
+        WasmStatus::SystemError
     } else {
         match call.expect("WASM 调用结果必须存在") {
             Ok(()) if stdout.len() >= MAX_OUTPUT_BYTES || stderr.len() >= MAX_OUTPUT_BYTES => {
@@ -375,16 +383,14 @@ async fn run_module_with_files(
             Err(_error) if exit_code == Some(0) => WasmStatus::Accepted,
             Err(error) => {
                 let message = format!("{error:#}").to_ascii_lowercase();
-                let trap_is_limit = error.downcast_ref::<wasmtime::Trap>().is_some_and(|trap| {
-                    matches!(trap, wasmtime::Trap::OutOfFuel | wasmtime::Trap::Interrupt)
-                });
-                if trap_is_limit
-                    || message.contains("fuel")
-                    || message.contains("out of fuel")
-                    || message.contains("epoch")
-                    || message.contains("deadline")
-                {
+                let trap_is_limit = error
+                    .downcast_ref::<wasmtime::Trap>()
+                    .is_some_and(|trap| matches!(trap, wasmtime::Trap::OutOfFuel));
+                if trap_is_limit || message.contains("fuel") || message.contains("out of fuel") {
                     WasmStatus::TimeLimitExceeded
+                } else if error.downcast_ref::<wasmtime::Trap>() == Some(&wasmtime::Trap::Interrupt)
+                {
+                    WasmStatus::SystemError
                 } else if message.contains("beyond capacity") || message.contains("output") {
                     WasmStatus::OutputLimitExceeded
                 } else if is_memory_limit_message(&format!("{error:#}")) {
@@ -444,6 +450,104 @@ fn thread_cpu_time_ns() -> Option<u64> {
 /// 用户消息不能替换它们。
 #[allow(clippy::too_many_arguments)]
 pub async fn evaluate_wasm(
+    task: &JudgeTask,
+    config: &OiRuntimeConfig,
+    cases: &[(String, Vec<u8>, Vec<u8>)],
+    profile: &OiCostProfile,
+    checker_source: Option<&[u8]>,
+    extra_files: &HashMap<String, Vec<u8>>,
+    checker_compile_files: &HashMap<String, Vec<u8>>,
+    user_compile_files: &HashMap<String, Vec<u8>>,
+) -> Result<JudgeResult> {
+    let matches = super::standard::validate_profile(profile);
+    let mut result = if let Err(error) = &matches {
+        let mut result = uniform_status_result(task, config, OiStatus::SystemError)?;
+        result.output = error.to_string();
+        result
+    } else {
+        evaluate_wasm_inner(
+            task,
+            config,
+            cases,
+            profile,
+            checker_source,
+            extra_files,
+            checker_compile_files,
+            user_compile_files,
+        )
+        .await?
+    };
+    let mut files = std::collections::BTreeMap::new();
+    for subtask in &config.subtasks {
+        for case in &subtask.cases {
+            if let Some((_, input, output)) = cases.iter().find(|(path, _, _)| path == &case.input)
+            {
+                files.insert(case.input.clone(), super::standard::hash(input));
+                files.insert(case.output.clone(), super::standard::hash(output));
+            }
+        }
+    }
+    for path in config
+        .compile_extra_files
+        .iter()
+        .chain(&config.user_extra_files)
+        .chain(&config.checker_extra_files)
+    {
+        if let Some(bytes) = extra_files
+            .get(path)
+            .or_else(|| user_compile_files.get(path))
+            .or_else(|| checker_compile_files.get(path))
+        {
+            files.insert(path.clone(), super::standard::hash(bytes));
+        }
+    }
+    if let (Some(path), Some(bytes)) = (&config.checker.path, checker_source) {
+        files.insert(path.clone(), super::standard::hash(bytes));
+    }
+    let payload = serde_json::json!({"runtime_config":config,"files":files});
+    let evaluation_hash =
+        super::standard::hash(super::standard::canonical_json(&payload).as_bytes());
+    let source_hash = super::standard::hash(task.code.as_bytes());
+    let module_hash = result
+        .details
+        .as_object_mut()
+        .and_then(|map| map.remove("wasm_module_hash"));
+    let checker_module_hash = result
+        .details
+        .as_object_mut()
+        .and_then(|map| map.remove("wasm_checker_module_hash"));
+    let mut identity = serde_json::json!({"standard_hash":super::standard::profile().hash,"evaluation_hash":evaluation_hash,"source_hash":source_hash,"language":task.language,"module_hash":module_hash});
+    if let Some(hash) = &checker_module_hash {
+        identity["checker_module_hash"] = hash.clone();
+    }
+    result.details["oi"]["backend"] = serde_json::json!("wasm");
+    let comparable = matches.is_ok() && result.details["oi"]["verdict"] != "SE";
+    result.details["metering"] = serde_json::json!({"standard_version":"noj-wasm-v1","standard_hash":super::standard::profile().hash,
+        "source_hash":source_hash,"evaluation_hash":evaluation_hash,"module_hash":module_hash,
+        "comparison_hash":super::standard::hash(super::standard::canonical_json(&identity).as_bytes()),"comparable":comparable,"termination_reason":if matches.is_err() {Some("standard_mismatch")} else {None}});
+    if let Some(hash) = checker_module_hash {
+        result.details["metering"]["checker_module_hash"] = hash;
+    }
+    if result.details["oi"]["subtasks"]
+        .as_array()
+        .is_some_and(|subtasks| {
+            subtasks.iter().any(|s| {
+                s["cases"].as_array().is_some_and(|cases| {
+                    cases
+                        .iter()
+                        .any(|c| c["termination_reason"] == "host_watchdog")
+                })
+            })
+        })
+    {
+        result.output = "WASM 运行保护超时；请降低负载后重测".to_string();
+        result.details["metering"]["termination_reason"] = serde_json::json!("host_watchdog");
+    }
+    Ok(result)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn evaluate_wasm_inner(
     task: &JudgeTask,
     config: &OiRuntimeConfig,
     cases: &[(String, Vec<u8>, Vec<u8>)],
@@ -599,7 +703,18 @@ pub async fn evaluate_wasm(
         }
     }
     let evaluation = score_submission(config, &results).map_err(anyhow::Error::msg)?;
-    Ok(evaluation.to_judge_result(&task.submission_id, task.rejudge_seq, None, None))
+    let equivalent_time = results
+        .iter()
+        .filter_map(|case| case.equivalent_time_ms)
+        .max();
+    let mut result =
+        evaluation.to_judge_result(&task.submission_id, task.rejudge_seq, equivalent_time, None);
+    result.details["wasm_module_hash"] = serde_json::json!(super::standard::hash(&wasm));
+    if let Some(module) = &checker_module {
+        result.details["wasm_checker_module_hash"] =
+            serde_json::json!(super::standard::hash(module));
+    }
+    Ok(result)
 }
 
 /// 子任务内部仍按题目声明顺序运行测试点；不同的就绪子任务最多并发两个。
@@ -674,7 +789,7 @@ async fn run_wasm_case(
         .unwrap_or(default_time_limit_ms);
     let fuel_per_ms = profile.fuel_per_ms;
     // 输入大小不能奖励额外 CPU 预算，预算严格由等效时间换算。
-    let fuel = (limit as f64 * fuel_per_ms).floor() as u64;
+    let fuel = limit.checked_mul(1_000_000).context("WASM fuel 预算溢出")?;
     let file_io = file_io_names(filename)?;
     let user_directory = if user_extra_files.is_empty() && file_io.is_none() {
         None
@@ -769,7 +884,9 @@ async fn run_wasm_case(
     }
     let checker = if checker_kind == OiCheckerType::Testlib && user.status == WasmStatus::Accepted {
         let module = checker_module.context("WASM testlib checker 模块缺失")?;
-        let checker_fuel = (limit as f64 * profile.fuel_per_ms).floor() as u64;
+        let checker_fuel = limit
+            .checked_mul(1_000_000)
+            .context("checker fuel 预算溢出")?;
         let checker_module = module.to_vec();
         let checker_input = input.to_vec();
         let checker_expected = expected_for_run.clone();
@@ -827,7 +944,7 @@ async fn run_wasm_case(
     };
     let equivalent = run
         .fuel_consumed
-        .map(|fuel| ((fuel as f64 / fuel_per_ms).ceil() as u64).max(1));
+        .map(|fuel| fuel.div_ceil(fuel_per_ms as u64).max(1));
     Ok(OiCaseResult {
         case_id: Some(case.input.clone()),
         input: case.input.clone(),
@@ -837,6 +954,10 @@ async fn run_wasm_case(
         cpu_time_ms: run.cpu_time_ms,
         wall_time_ms: Some(run.wall_time_ms),
         equivalent_time_ms: equivalent,
+        fuel_consumed: run.fuel_consumed,
+        fuel_budget: Some(fuel),
+        termination_reason: (run.status == WasmStatus::SystemError)
+            .then(|| "host_watchdog".to_string()),
     })
 }
 
@@ -892,10 +1013,9 @@ fn directory_size(path: &Path) -> Result<u64> {
     Ok(total)
 }
 
-/// native OI 使用题目时限作为 CPU 预算；WASM 还需要给真实宿主调用留出
-/// 余量，因此墙钟上限固定为等效时限的三倍，并仍受外层任务看门狗约束。
+/// 墙钟只保护宿主可用性，触发后为 SE，不改变固定 fuel 算法判据。
 fn wall_budget_ms(limit_ms: u64) -> u64 {
-    limit_ms.saturating_mul(3).max(1)
+    limit_ms.saturating_mul(10).max(30_000)
 }
 
 fn file_io_names(filename: Option<&str>) -> Result<Option<(String, String)>> {
@@ -949,6 +1069,9 @@ fn uniform_status_result(
             cpu_time_ms: None,
             wall_time_ms: None,
             equivalent_time_ms: None,
+            fuel_consumed: None,
+            fuel_budget: None,
+            termination_reason: None,
         })
         .collect::<Vec<_>>();
     let evaluation: OiEvaluation =
@@ -958,181 +1081,11 @@ fn uniform_status_result(
 
 /// 建立与 Wasmtime 默认算子成本兼容的表。校准表的摘要仍绑定任务，
 /// 版本必须与当前 Wasmtime 一致；未知字段在执行前拒绝。
-pub fn operator_cost_from_profile(profile: &OiCostProfile) -> OperatorCost {
-    let mut cost = OperatorCost::default();
-    // 这些变量成本直接对应 Wasmtime 49 的公开字段；其余算子保留运行时默认值。
-    if let Some(value) = profile.variable_costs.get("memory_copy_per_byte") {
-        cost.variable.memory_copy_per_byte = *value;
-    }
-    if let Some(value) = profile.variable_costs.get("memory_fill_per_byte") {
-        cost.variable.memory_fill_per_byte = *value;
-    }
-    if let Some(value) = profile.variable_costs.get("memory_init_per_byte") {
-        cost.variable.memory_init_per_byte = *value;
-    }
-    if let Some(value) = profile.variable_costs.get("memory_grow_per_page") {
-        cost.variable.memory_grow_per_page = *value;
-    }
-    if let Some(value) = profile.variable_costs.get("table_copy_per_element") {
-        cost.variable.table_copy_per_element = *value;
-    }
-    if let Some(value) = profile.variable_costs.get("table_fill_per_element") {
-        cost.variable.table_fill_per_element = *value;
-    }
-    if let Some(value) = profile.variable_costs.get("table_init_per_element") {
-        cost.variable.table_init_per_element = *value;
-    }
-    if let Some(value) = profile.variable_costs.get("table_grow_per_element") {
-        cost.variable.table_grow_per_element = *value;
-    }
-    if let Some(value) = profile.variable_costs.get("array_copy_per_element") {
-        cost.variable.array_copy_per_element = *value;
-    }
-    if let Some(value) = profile.variable_costs.get("array_fill_per_element") {
-        cost.variable.array_fill_per_element = *value;
-    }
-    if let Some(value) = profile.variable_costs.get("array_new_data_per_element") {
-        cost.variable.array_new_data_per_element = *value;
-    }
-    if let Some(value) = profile.variable_costs.get("array_init_data_per_element") {
-        cost.variable.array_init_data_per_element = *value;
-    }
-    if let Some(value) = profile.variable_costs.get("array_new_elem_per_element") {
-        cost.variable.array_new_elem_per_element = *value;
-    }
-    if let Some(value) = profile.variable_costs.get("array_init_elem_per_element") {
-        cost.variable.array_init_elem_per_element = *value;
-    }
-    if let Some(value) = profile.variable_costs.get("array_new_default_per_element") {
-        cost.variable.array_new_default_per_element = *value;
-    }
-    if let Some(value) = profile.variable_costs.get("array_new_per_element") {
-        cost.variable.array_new_per_element = *value;
-    }
-    cost
+pub fn operator_cost_from_profile(_profile: &OiCostProfile) -> OperatorCost {
+    serde_json::from_value(super::standard::manifest()["operator_costs"].clone())
+        .expect("冻结算子表必须合法")
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::HashMap;
-
-    fn profile() -> OiCostProfile {
-        OiCostProfile {
-            schema_version: 1,
-            runtime_version: "wasmtime-49".to_string(),
-            costs: HashMap::from([(String::from("default"), 1)]),
-            variable_costs: HashMap::new(),
-            io_fuel_per_byte: 1,
-            fuel_per_ms: 1000.0,
-            hash: "a".repeat(64),
-            toolchain: None,
-            benchmark: None,
-            hardware: None,
-        }
-    }
-
-    #[tokio::test]
-    async fn fuel_exhaustion_is_tle() {
-        let wat = r#"(module (func (export "_start") (loop br 0)))"#;
-        let result = run_module(wat.as_bytes(), b"", 16, 100, &profile())
-            .await
-            .unwrap();
-        assert_eq!(result.status, WasmStatus::TimeLimitExceeded);
-        assert_eq!(result.fuel_consumed, Some(100));
-    }
-
-    #[tokio::test]
-    async fn wall_deadline_interrupts_guest() {
-        let wat = r#"(module (func (export "_start") (loop br 0)))"#;
-        let result = run_module_with_files(
-            wat.as_bytes(),
-            b"",
-            16,
-            u64::MAX / 4,
-            &profile(),
-            &[],
-            None,
-            FsPerms::ReadOnly,
-            Some(20),
-        )
-        .await
-        .unwrap();
-        assert_eq!(result.status, WasmStatus::TimeLimitExceeded);
-        assert!(result.wall_time_ms < 1_000);
-    }
-    #[tokio::test]
-    async fn instantiation_start_is_subject_to_wall_deadline() {
-        let wat = r#"(module (func $init (loop br 0)) (start $init) (func (export "_start")))"#;
-        let result = run_module_with_files(
-            wat.as_bytes(),
-            b"",
-            16,
-            u64::MAX / 4,
-            &profile(),
-            &[],
-            None,
-            FsPerms::ReadOnly,
-            Some(20),
-        )
-        .await
-        .unwrap();
-        assert_eq!(result.status, WasmStatus::TimeLimitExceeded);
-        assert!(result.wall_time_ms < 1000);
-    }
-
-    #[tokio::test]
-    async fn returning_guest_without_wall_deadline_is_accepted() {
-        let result = run_module(
-            b"(module (func (export \"_start\")))",
-            b"",
-            16,
-            100,
-            &profile(),
-        )
-        .await
-        .unwrap();
-        assert_eq!(result.status, WasmStatus::Accepted);
-    }
-    #[tokio::test]
-    async fn out_of_bounds_load_is_re_not_mle() {
-        let result = run_module(
-            br#"(module (memory 1) (func (export "_start") i32.const 65536 i32.load drop))"#,
-            b"",
-            16,
-            100,
-            &profile(),
-        )
-        .await
-        .unwrap();
-        assert_eq!(result.status, WasmStatus::RuntimeError);
-    }
-
-    #[tokio::test]
-    async fn memory_grow_beyond_limit_is_mle() {
-        let result = run_module(
-            br#"(module (memory 1) (func (export "_start") i32.const 1024 memory.grow drop))"#,
-            b"",
-            1,
-            u64::MAX / 4,
-            &profile(),
-        )
-        .await
-        .unwrap();
-        assert_eq!(result.status, WasmStatus::MemoryLimitExceeded);
-    }
-    #[tokio::test]
-    async fn wasi_stdout_limit_is_ole_even_when_guest_tries_to_exit_successfully() {
-        let wat = br#"(module
-            (import "wasi_snapshot_preview1" "fd_write" (func $write (param i32 i32 i32 i32) (result i32)))
-            (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
-            (memory (export "memory") 514)
-            (func (export "_start")
-                i32.const 0 i32.const 1024 i32.store
-                i32.const 4 i32.const 33554433 i32.store
-                i32.const 1 i32.const 0 i32.const 1 i32.const 8 call $write drop
-                i32.const 0 call $exit))"#;
-        let result = run_module(wat, b"", 64, 10000, &profile()).await.unwrap();
-        assert_eq!(result.status, WasmStatus::OutputLimitExceeded);
-    }
-}
+#[path = "wasm_tests.rs"]
+mod tests;

@@ -77,7 +77,7 @@
 | noj-core/src/domains/catalog/tests/routes/problems.test.ts | 363 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problems.test.ts | 376 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problems.test.ts | 399 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problems.test.ts | 416 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problems.test.ts | 447 | ignore |
 | noj-core/src/domains/catalog/tests/routes/support-package.test.ts | 103 | ignore |
 | noj-core/src/domains/catalog/tests/routes/support-package.test.ts | 130 | ignore |
 | noj-core/src/domains/catalog/tests/routes/support-package.test.ts | 166 | ignore |

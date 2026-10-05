@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from "vue"
+import { getMonacoLanguage } from '~/utils/editorLanguages'
 
 const props = defineProps<{
   modelValue: string
@@ -26,14 +27,6 @@ const DEFAULT_FONT_SIZE = 14
 let currentFontSize = DEFAULT_FONT_SIZE
 
 // Map our language identifiers to Monaco's
-const langMap: Record<string, string> = {
-  python3: "python",
-  python: "python",
-  cpp: "cpp",
-  c: "c",
-  javascript: "javascript",
-  js: "javascript",
-}
 
 async function initMonaco() {
   if (!containerRef.value || !import.meta.client) return
@@ -61,7 +54,7 @@ async function initMonaco() {
 
   editor = monaco.editor.create(containerRef.value, {
     value: props.modelValue,
-    language: langMap[props.language ?? "python3"] || "python",
+    language: getMonacoLanguage(props.language),
     theme: props.theme ?? "vs-dark",
     minimap: { enabled: false },
     fontSize: currentFontSize,
@@ -153,7 +146,7 @@ watch(
     if (!editor || !monacoModule) return
     const model = editor.getModel()
     if (model) {
-      monacoModule.editor.setModelLanguage(model, langMap[lang ?? "python3"] || "python")
+      monacoModule.editor.setModelLanguage(model, getMonacoLanguage(lang))
     }
   },
 )

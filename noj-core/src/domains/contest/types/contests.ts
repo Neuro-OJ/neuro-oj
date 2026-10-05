@@ -143,6 +143,8 @@ export interface ContestResponse {
 export type ContestProblemUserStatus = "solved" | "attempted" | "untouched";
 
 export interface ContestProblemResponse extends ContestProblemInput {
+  judge_type?: "dual" | "oi";
+  supported_languages?: string[];
   title: string;
   description: string;
   difficulty: string;

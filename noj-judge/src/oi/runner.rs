@@ -115,10 +115,13 @@ pub async fn evaluate_native(
     }
 
     if runtime_config.backend == OiBackend::Wasm {
-        let profile = task
-            .oi_cost_profile
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("WASM 任务缺少可信成本表"))?;
+        let Some(profile) = task.oi_cost_profile.as_ref() else {
+            let mut result = system_error_result(task, "WASM 任务缺少统一标准，请重测");
+            result.output = "WASM 任务缺少统一标准，请重测".to_string();
+            result.details["oi"]["backend"] = serde_json::json!("wasm");
+            result.details["metering"] = serde_json::json!({"comparable":false,"legacy":true,"termination_reason":"standard_mismatch"});
+            return Ok(result);
+        };
         let cases = runtime_config
             .subtasks
             .iter()
@@ -211,6 +214,9 @@ pub async fn evaluate_native(
                             cpu_time_ms: None,
                             wall_time_ms: None,
                             equivalent_time_ms: None,
+                            fuel_consumed: None,
+                            fuel_budget: None,
+                            termination_reason: None,
                         })
                         .collect();
                     break;
@@ -500,6 +506,9 @@ async fn run_go_judge_subtask_inner(
             cpu_time_ms,
             wall_time_ms,
             equivalent_time_ms: cpu_time_ms,
+            fuel_consumed: None,
+            fuel_budget: None,
+            termination_reason: None,
         });
         if status != OiStatus::Accepted {
             passed = false;
@@ -555,6 +564,9 @@ fn uniform_oi_status_result(
             cpu_time_ms: None,
             wall_time_ms: None,
             equivalent_time_ms: None,
+            fuel_consumed: None,
+            fuel_budget: None,
+            termination_reason: None,
         })
         .collect::<Vec<_>>();
     let evaluation = score_submission(config, &case_results)
@@ -579,6 +591,9 @@ pub(crate) fn system_error_result(task: &JudgeTask, reason: &str) -> JudgeResult
                 cpu_time_ms: None,
                 wall_time_ms: None,
                 equivalent_time_ms: None,
+                fuel_consumed: None,
+                fuel_budget: None,
+                termination_reason: None,
             })
             .collect::<Vec<_>>();
         if let Ok(evaluation) = score_submission(config, &case_results) {
@@ -932,6 +947,9 @@ async fn run_case_in_container(
         cpu_time_ms: None,
         wall_time_ms: Some(elapsed_ms),
         equivalent_time_ms: Some(elapsed_ms),
+        fuel_consumed: None,
+        fuel_budget: None,
+        termination_reason: None,
     };
     if config.checker.kind == OiCheckerType::Testlib && result.status == OiStatus::Accepted {
         Ok(CaseOutcome::NeedsChecker {

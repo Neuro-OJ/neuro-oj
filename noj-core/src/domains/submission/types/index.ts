@@ -108,7 +108,7 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
     if (
       input.runtime_config.backend === "wasm" &&
       !isValidOiCostProfile(input.oi_cost_profile)
-    ) throw new BadRequestError("WASM 尚未启用有效的活动成本表");
+    ) throw new BadRequestError("WASM 任务缺少有效的统一标准快照");
     if (input.llm || input.artifact_download_url) {
       throw new BadRequestError("OI 不支持 LLM/artifact 任务");
     }

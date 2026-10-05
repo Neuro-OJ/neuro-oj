@@ -312,3 +312,43 @@ Deno.test({
     assertEquals(res.status, 400);
   },
 });
+
+Deno.test({
+  name: "OI 标准只读：旧数据库成本无效，导入和通用修改入口不可用",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    await getDb().insert(systemSettings).values({
+      key: "oi_cost_profile_active",
+      value: "invalid-legacy-profile",
+      description: "历史成本",
+      is_secret: false,
+      updated_at: new Date().toISOString(),
+      updated_by: "0",
+    });
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const status = await jsonRequest(
+      app,
+      "/api/v1/admin/system/oi-cost-profile",
+      { token },
+    );
+    assertEquals(status.status, 200);
+    const data = (await status.json()).data;
+    assertEquals(data.standard.id, "noj-wasm-v1");
+    assertEquals(data.profile.fuel_per_ms, 1000000);
+    const put = await jsonRequest(app, "/api/v1/admin/system/oi-cost-profile", {
+      token,
+      method: "PUT",
+      body: { profile: { fuel_per_ms: 1 } },
+    });
+    assertEquals(put.status, 404);
+    const generic = await jsonRequest(
+      app,
+      "/api/v1/admin/system/settings/oi_cost_profile_active",
+      { token, method: "PUT", body: { value: "changed" } },
+    );
+    assertEquals(generic.status, 400);
+  },
+});

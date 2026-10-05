@@ -18,6 +18,7 @@ interface SubmissionResult {
   output: string | null
   output_truncated?: boolean
   details?: Record<string, unknown> | null
+  metering?: Record<string, unknown>
 }
 interface SubmissionData {
   id: string
@@ -246,6 +247,23 @@ watch(
         </div>
       </div>
       <!-- 测试点明细（挪到提交代码上方） -->
+      <section v-if="submission.result?.metering" class="rounded-md border border-border p-4 text-sm">
+        <h2 class="font-semibold">WASM 计量与可比标识</h2>
+        <p v-if="submission.result.metering.legacy" class="mt-2 text-text-secondary">旧计量结果：无统一 WASM 标识，不能用于跨实例比较；请重测以获得新结果。</p>
+        <template v-else>
+          <p class="mt-2">{{ submission.result.metering.standard_version }} · {{ submission.result.metering.comparable ? '具备可比标识' : '评测环境异常，不具备可比性' }}</p>
+          <p v-if="submission.result.metering.termination_reason === 'host_watchdog'" class="mt-2 text-error-text">运行保护超时，请降低负载后重测。</p>
+          <p v-if="submission.result.metering.termination_reason === 'standard_mismatch'" class="mt-2 text-error-text">任务标准不匹配，请重测。</p>
+          <p class="mt-1 text-xs text-text-secondary">等效时间表示固定工作量，不是实际 CPU 耗时。可比标识不代表来源可信。</p>
+          <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-xs">
+            <template v-for="(label, key) in { standard_hash: '标准摘要', source_hash: '源码摘要', evaluation_hash: '题目评测摘要', module_hash: '编译产物摘要', comparison_hash: '可比标识' }" :key="key">
+              <dt>{{ label }}</dt><dd class="break-all font-mono">{{ submission.result.metering[key] ?? '未生成' }}</dd>
+            </template>
+          </dl>
+          <details v-if="submission.result.details?.oi" class="mt-3"><summary class="cursor-pointer">查看测试点计量数据（fuel、预算和等效时间）</summary><pre class="mt-2 max-h-80 overflow-auto text-xs">{{ JSON.stringify(submission.result.details.oi, null, 2) }}</pre></details>
+        </template>
+      </section>
+
       <SubmissionCaseResults
         v-if="submission.status === 'finished' && submission.result"
         :details="submission.result.details"

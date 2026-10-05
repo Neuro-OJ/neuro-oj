@@ -59,21 +59,44 @@ pub fn compile_source_with_files(
         }
     });
     let target = std::env::var("JUDGE_WASI_TARGET").unwrap_or_else(|_| "wasm32-wasip1".to_string());
+    let standard = super::standard::manifest();
+    if target != standard["target"].as_str().unwrap() {
+        return Err(
+            anyhow::Error::new(CompilerInfrastructureError).context("WASM target 与统一标准不一致")
+        );
+    }
+    let mut version = Command::new(&compiler);
+    version
+        .env_clear()
+        .env("PATH", std::env::var("PATH").unwrap_or_default())
+        .arg("--version");
+    let info = run_compiler_with_limits(&mut version, &root)?;
+    if !info.status.success()
+        || !info
+            .stdout
+            .starts_with(standard["compiler_version"].as_str().unwrap())
+    {
+        return Err(
+            anyhow::Error::new(CompilerInfrastructureError).context("必须使用 WASI SDK 34 编译器")
+        );
+    }
     let mut command = Command::new(compiler);
     command
         .env_clear()
         .env("PATH", std::env::var("PATH").unwrap_or_default())
         .arg(format!("--target={target}"))
-        .arg(if language == "c" {
-            "-std=c99"
-        } else {
-            "-std=c++11"
-        })
-        .arg("-O2")
-        .arg("-Wall")
+        .arg(format!(
+            "-std={}",
+            standard[if language == "c" {
+                "c_standard"
+            } else {
+                "cpp_standard"
+            }]
+            .as_str()
+            .unwrap()
+        ))
         // LLVM lld 默认按宿主 CPU 数创建线程；固定线程数避免正常 C++ 链接
         // 在高核心数节点因线程栈/地址空间超过编译配额而被误判 CE。
-        .arg("-Wl,--threads=1")
         .arg("-I")
         .arg(root.join("include"))
         .arg("-I")
@@ -81,10 +104,19 @@ pub fn compile_source_with_files(
         .arg(&source_path)
         .arg("-o")
         .arg(&output_path);
+    for flag in standard["compiler_flags"].as_array().expect("固定编译参数") {
+        command.arg(
+            flag.as_str()
+                .unwrap()
+                .replace("WORKSPACE", &root.to_string_lossy()),
+        );
+    }
     if language == "cc" {
         // WASI SDK 的默认 libc++/libc++abi 不提供 C++ exception runtime。
         // 显式关闭异常，避免 std::function 等正常模板实例化生成缺失符号。
-        command.arg("-fno-exceptions");
+        for flag in standard["cpp_flags"].as_array().unwrap() {
+            command.arg(flag.as_str().unwrap());
+        }
     }
     if let Ok(sysroot) = std::env::var("JUDGE_WASI_SYSROOT") {
         if !sysroot.is_empty() {
@@ -140,12 +172,17 @@ fn run_compiler_with_limits(command: &mut Command, root: &Path) -> Result<Compil
         std::thread::sleep(std::time::Duration::from_millis(10));
     };
     let stderr = read_compile_diagnostic(&stderr_path)?;
-    Ok(CompileOutput { status, stderr })
+    Ok(CompileOutput {
+        status,
+        stderr,
+        stdout: read_compile_diagnostic(&stdout_path)?,
+    })
 }
 
 struct CompileOutput {
     status: ExitStatus,
     stderr: String,
+    stdout: String,
 }
 
 fn read_compile_diagnostic(path: &Path) -> Result<String> {

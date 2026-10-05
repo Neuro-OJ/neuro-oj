@@ -21,12 +21,13 @@ futures-util = "0.3"
 tar = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 sha2 = "0.10"
+rand_core = "=0.10.1"
 percent-encoding = "2"
 filetime = "0.2"
 tempfile = "3"
 # OI WASM 后端：WASI 运行时与 fuel/线性内存限制。
-wasmtime = { version = "49", features = ["cranelift", "wat"] }
-wasmtime-wasi = "49"
+wasmtime = { version = "=49.0.1", features = ["cranelift", "wat"] }
+wasmtime-wasi = "=49.0.1"
 
 [dev-dependencies]
 serial_test = "3"

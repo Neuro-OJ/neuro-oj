@@ -5,6 +5,7 @@ import { getProblemTemplateUrl } from '~/utils/problemTemplate'
 import { publicUrl } from '~/utils/publicIdentifiers'
 import { isNotFoundError } from '~/utils/apiError'
 import type { ProblemContestSecrecyNotice } from '~/utils/problemView'
+import type { EditorLanguageConfig } from '~/utils/editorLanguages'
 
 /**
  * 独立做题页（标准题库与竞赛共用）。
@@ -30,7 +31,7 @@ const { data: contestData } = useFetch<{ data: Contest }>(
 )
 const contest = computed(() => contestData.value?.data ?? null)
 
-type StandardProblem = {
+type StandardProblem = EditorLanguageConfig & {
   id: string
   display_id: string
   title: string
@@ -76,6 +77,8 @@ const workspaceProblem = computed(() => {
       difficulty: p.difficulty,
       type: 'P' as const,
       submission_mode: p.submission_mode ?? 'code',
+      judge_type: p.judge_type,
+      supported_languages: p.supported_languages,
       tags: [],
     }
   }
@@ -88,6 +91,8 @@ const workspaceProblem = computed(() => {
     difficulty: p.difficulty,
     type: p.type,
     submission_mode: p.submission_mode ?? 'code',
+    judge_type: p.judge_type,
+    supported_languages: p.supported_languages,
     tags: p.tags ?? [],
   }
 })

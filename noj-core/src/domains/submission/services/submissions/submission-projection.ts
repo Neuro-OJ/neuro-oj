@@ -1,4 +1,8 @@
-import { oiVerdict, projectOiDetails } from "./oi-details.ts";
+import {
+  oiVerdict,
+  projectMeteringDetails,
+  projectOiDetails,
+} from "./oi-details.ts";
 /**
  * 统一提交结果投影（F-02/F-15 基础）。
  *
@@ -49,7 +53,18 @@ export function applySubmissionProjection<
       record.verdict = verdict;
       item.output = null;
       item.output_truncated = null;
+      const metering = projectMeteringDetails(
+        (item.details as Record<string, unknown>).metering,
+      );
+      if (
+        (item.details as Record<string, unknown>).oi &&
+        ((item.details as Record<string, unknown>).oi as Record<
+            string,
+            unknown
+          >).backend !== "native"
+      ) item.metering = metering;
       item.details = {
+        metering,
         oi: projectOiDetails((item.details as Record<string, unknown>).oi),
       };
     }
@@ -129,7 +144,12 @@ export function applySubmissionProjection<
 function sanitizeContestDetails(details: unknown): unknown {
   if (typeof details !== "object" || details === null) return undefined;
   const obj = details as Record<string, unknown>;
-  if (obj.oi) return { oi: projectOiDetails(obj.oi) };
+  if (obj.oi) {
+    return {
+      oi: projectOiDetails(obj.oi),
+      metering: projectMeteringDetails(obj.metering),
+    };
+  }
   if (!Array.isArray(obj.cases)) return undefined;
   const cases = obj.cases;
   if (cases.length === 0) return undefined;

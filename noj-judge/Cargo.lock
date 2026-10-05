@@ -1330,6 +1330,7 @@ dependencies = [
  "futures-util",
  "libc",
  "percent-encoding",
+ "rand_core 0.10.1",
  "redis",
  "reqwest",
  "serde",

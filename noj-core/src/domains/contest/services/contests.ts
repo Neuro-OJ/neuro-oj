@@ -26,6 +26,10 @@ import {
   resolvePublicId,
 } from "./../../../shared/security/public-id.ts";
 import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
+import {
+  getSubmissionLanguages,
+  type ProblemRuntimeConfig,
+} from "../../catalog/index.ts";
 import { findContestRow } from "./contest-row.ts";
 import { normalizeContestTime } from "./contest-window.ts";
 import {
@@ -901,6 +905,8 @@ export async function getContestProblems(
       p.title,
       p.description,
       p.difficulty,
+      p.judge_type,
+      p.runtime_config,
       p.submission_mode,
       p.artifact_max_size_mb,
       p.visibility,
@@ -940,6 +946,11 @@ export async function getContestProblems(
     title: row.title as string,
     description: row.description as string,
     difficulty: row.difficulty as string,
+    judge_type: row.judge_type === "oi" ? "oi" : "dual",
+    supported_languages: getSubmissionLanguages(
+      row.judge_type as string,
+      row.runtime_config as ProblemRuntimeConfig | null,
+    ),
     display_id: row.display_id as string,
     submission_mode: row
       .submission_mode as ContestProblemResponse["submission_mode"],

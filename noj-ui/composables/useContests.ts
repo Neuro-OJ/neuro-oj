@@ -36,6 +36,8 @@ export interface Contest {
 }
 
 export interface ContestProblem {
+  judge_type?: 'dual' | 'oi';
+  supported_languages?: string[];
   problem_id: string;
   sort_order: number;
   label: string;

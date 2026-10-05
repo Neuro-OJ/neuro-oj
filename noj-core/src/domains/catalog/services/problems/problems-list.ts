@@ -39,6 +39,7 @@ import { unendedPublicContestForProblem } from "./../../../contest/index.ts";
 import type { TagKind } from "../tags.ts";
 import {
   DIFFICULTIES,
+  getSubmissionLanguages,
   isValidDifficulty,
   isValidProblemType,
   type LlmConfig,
@@ -80,6 +81,10 @@ function toProblemResponse(
     visibility: row.visibility as "public" | "private",
     is_objective: row.is_objective,
     judge_type: persistedJudgeType(row.judge_type),
+    supported_languages: getSubmissionLanguages(
+      row.judge_type,
+      row.runtime_config as ProblemRuntimeConfig | null,
+    ),
     submission_mode: row.submission_mode as ProblemResponse["submission_mode"],
     artifact_max_size_mb: row.artifact_max_size_mb,
     display_id: `${row.type}${row.number}`,

@@ -1,4 +1,6 @@
-/** 由受信硬件校准并由 system 域启用的 WASM 成本快照；用户题目配置不能指定。 */
+import standard from "./noj-wasm-v1.json" with { type: "json" };
+
+/** 由 NOJ 内置统一标准产生的 WASM 成本快照；实例和题目不能修改。 */
 export interface OiCostProfile {
   schema_version: 1;
   runtime_version: string;
@@ -57,4 +59,23 @@ export function isValidOiCostProfile(value: unknown): value is OiCostProfile {
     validVariableCosts(p.variable_costs) &&
     Number.isSafeInteger(p.io_fuel_per_byte) && p.io_fuel_per_byte > 0 &&
     Number.isFinite(p.fuel_per_ms) && p.fuel_per_ms > 0;
+}
+
+/** 返回内置统一成本快照；不读取环境变量或实例设置。 */
+export function getBuiltinOiCostProfile(): OiCostProfile {
+  return {
+    schema_version: 1,
+    runtime_version: "wasmtime-49",
+    costs: { default: 1 },
+    variable_costs: { ...standard.operator_costs.variable },
+    io_fuel_per_byte: 1,
+    fuel_per_ms: standard.fuel_per_ms,
+    hash: standard.hash,
+    toolchain: standard.toolchain,
+    benchmark: standard.id,
+  };
+}
+/** 返回只读统一标准清单的副本。 */
+export function getOiMeteringStandard() {
+  return structuredClone(standard);
 }

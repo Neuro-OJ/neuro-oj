@@ -32,6 +32,7 @@ async fn main() {
         ("拒绝读取 Worker 私有文件", "c", forbidden_source.as_str(), "CE", false, false),
     ] {
         let mut task: JudgeTask = serde_json::from_str(fixture).unwrap();
+        task.oi_cost_profile = Some(noj_judge::oi::standard::profile());
         task.language = language.into();
         task.code = source.into();
         let mut config = task.runtime_config.as_oi().unwrap().clone();

@@ -74,11 +74,11 @@ const { toast } = useToast()
 interface OiCostProfileStatus {
   active: boolean
   profile: Record<string, unknown> | null
+  standard: { id: string; hash: string; fuel_per_ms: number; toolchain: string; runtime_version: string }
 }
 const oiProfileText = ref("")
 const oiProfileStatus = ref<OiCostProfileStatus | null>(null)
 const oiProfileLoading = ref(false)
-const oiProfileSaving = ref(false)
 
 async function loadOiCostProfile() {
   if (!isLoggedIn.value) return
@@ -90,7 +90,7 @@ async function loadOiCostProfile() {
     )
     oiProfileStatus.value = res.data
     oiProfileText.value = res.data.profile
-      ? JSON.stringify(res.data.profile, null, 2)
+      ? JSON.stringify(res.data.standard, null, 2)
       : ""
   } catch {
     oiProfileStatus.value = null
@@ -99,30 +99,7 @@ async function loadOiCostProfile() {
   }
 }
 
-async function saveOiCostProfile() {
-  let profile: unknown
-  try {
-    profile = JSON.parse(oiProfileText.value)
-  } catch {
-    toast.error("成本表不是合法 JSON")
-    return
-  }
-  oiProfileSaving.value = true
-  try {
-    const res = await api.put<{ data: OiCostProfileStatus }>(
-      "/api/v1/admin/system/oi-cost-profile",
-      { profile },
-      { silent: true },
-    )
-    oiProfileStatus.value = res.data
-    oiProfileText.value = JSON.stringify(res.data.profile, null, 2)
-    toast.success("OI WASM 成本表已启用")
-  } catch (err) {
-    toast.error(extractApiError(err).message)
-  } finally {
-    oiProfileSaving.value = false
-  }
-}
+
 
 // ─── 邮件服务就绪状态（issue #426）────────────────────────
 
@@ -489,17 +466,17 @@ async function cleanupBootstrapRow(s: SystemSetting) {
       </div>
     </div>
 
-    <!-- OI WASM 成本表：只接受 CLI 校准报告，启用时由后端校验摘要/留出集/赛期冻结 -->
-    <section class="rounded-xl border border-border bg-white p-5">
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 class="flex items-center gap-2 text-base font-semibold text-text"><UIcon name="i-lucide-gauge" class="size-4 text-signal" /> OI WASM 硬件成本表</h2>
-          <p class="mt-1 text-xs leading-relaxed text-text-secondary">使用 <code class="font-mono">noj-cli judge calibrate</code> 生成 JSON 后导入。后端会验证 SHA-256、独立留出集误差与可信计量标记；进行中的比赛会冻结切换。</p>
-        </div>
-        <span v-if="oiProfileStatus" class="rounded-full px-2 py-1 text-xs font-semibold" :class="oiProfileStatus.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-text-secondary'">{{ oiProfileStatus.active ? '已启用' : '未启用' }}</span>
-      </div>
-      <textarea v-model="oiProfileText" rows="10" class="mt-3 w-full rounded-md border border-border bg-bg-page px-3 py-2 font-mono text-xs" placeholder="粘贴校准输出的 profile.json" :disabled="oiProfileLoading" />
-      <div class="mt-3 flex justify-end"><UButton color="primary" :loading="oiProfileSaving" :disabled="!oiProfileText.trim()" @click="saveOiCostProfile">校验并启用</UButton></div>
+    <section class="rounded-md border border-border bg-white p-5">
+      <h2 class="text-base font-semibold text-text">OI WASM 统一计量标准</h2>
+      <p class="mt-2 text-sm text-text-secondary">所有实例使用 NOJ 内置标准；不再提供本机校准或自定义成本表。等效毫秒表示固定计算工作量，不等于真实 CPU 耗时。</p>
+      <dl v-if="oiProfileStatus" class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+        <dt>标准版本</dt><dd>{{ oiProfileStatus.standard.id }}</dd>
+        <dt>计量单位</dt><dd class="tabular-nums">{{ oiProfileStatus.standard.fuel_per_ms.toLocaleString() }} fuel = 1 NOJ 等效毫秒</dd>
+        <dt>工具链</dt><dd>{{ oiProfileStatus.standard.toolchain }} / {{ oiProfileStatus.standard.runtime_version }}</dd>
+        <dt>标准摘要</dt><dd class="break-all font-mono text-xs">{{ oiProfileStatus.standard.hash }}</dd>
+      </dl>
+      <p class="mt-3 text-xs text-text-secondary">普通计算和内存操作按标准计费，批量操作按数据量计费；不计宿主 IO 等待。运行保护超时属于评测环境异常。仅相同标准、题目评测内容和源码的结果具有可比性。</p>
+      <details class="mt-3"><summary class="cursor-pointer text-sm">查看完整标准清单</summary><pre class="mt-2 max-h-80 overflow-auto text-xs">{{ oiProfileText }}</pre></details>
     </section>
 
     <!-- 错误条 -->

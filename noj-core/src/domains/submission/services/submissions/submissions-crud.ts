@@ -1,3 +1,4 @@
+import { oiVerdict, projectMeteringDetails } from "./oi-details.ts";
 /**
  * Submissions CRUD（PR-3 拆分）。
  *
@@ -623,9 +624,14 @@ export async function getSubmission(
         ? (output_truncated ? rawOutput.slice(0, MAX_OUTPUT_LENGTH) : rawOutput)
         : null;
       // 仅 owner/admin 解析 details JSON，其他访问者得到 null
-      const details = canSeeDetails
-        ? parseDetails(resultRows[0].details)
-        : null;
+      const rawDetails = parseDetails(resultRows[0].details);
+      const details = canSeeDetails ? rawDetails : null;
+      const metering = oiVerdict(rawDetails) &&
+          (rawDetails?.oi as Record<string, unknown>)?.backend !== "native"
+        ? projectMeteringDetails(
+          (rawDetails as Record<string, unknown>).metering,
+        )
+        : undefined;
       return {
         status: normalizeResultStatus(resultRows[0].status) ?? "finished",
         score: resultRows[0].score,
@@ -634,6 +640,7 @@ export async function getSubmission(
         time_ms: resultRows[0].time_ms,
         memory_kb: resultRows[0].memory_kb,
         details,
+        metering,
       };
     })()
     : null;

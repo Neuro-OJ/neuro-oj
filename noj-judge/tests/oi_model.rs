@@ -34,6 +34,9 @@ fn case(input: &str, status: OiStatus) -> OiCaseResult {
         cpu_time_ms: None,
         wall_time_ms: None,
         equivalent_time_ms: None,
+        fuel_consumed: None,
+        fuel_budget: None,
+        termination_reason: None,
     }
 }
 

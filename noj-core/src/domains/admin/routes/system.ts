@@ -71,7 +71,6 @@ import { withAudit } from "../services/admin-audit.ts";
 import type { AuditMeta } from "../types/admin-audit.ts";
 import { adminVersionMiddleware } from "../middleware/admin-version.ts";
 import {
-  activateOiCostProfile,
   getOiCostProfileStatus,
   OI_COST_PROFILE_SETTING_KEY,
 } from "../../system/services/oi-cost-profile.ts";
@@ -281,7 +280,7 @@ router.put(
     const key = c.req.param("key") as string;
     if (key === OI_COST_PROFILE_SETTING_KEY) {
       throw new BadRequestError(
-        "OI 成本表只能通过 /oi-cost-profile 校准报告接口导入",
+        "WASM 使用 NOJ 内置统一标准，不支持自定义成本表",
       );
     }
     const body = await parseJsonBody<{ value: unknown }>(c);
@@ -315,18 +314,9 @@ router.delete(
   },
 );
 
-// ── OI WASM 成本表（校准报告专用，不允许直接写任意 fuel） ───────────────
-router.get("/oi-cost-profile", async (c) => {
-  return c.json({ data: await getOiCostProfileStatus() });
-});
-
-router.put("/oi-cost-profile", async (c) => {
-  const body = await parseJsonBody<{ profile?: unknown }>(c);
-  if (!("profile" in body)) {
-    throw new BadRequestError("请求体必须包含 profile 字段");
-  }
-  const profile = await activateOiCostProfile(body.profile, c.get("userId"));
-  return c.json({ data: { active: true, profile } }, 200);
+// ── OI WASM 统一标准（只读，保留原查询地址） ──────────────────────────
+router.get("/oi-cost-profile", (c) => {
+  return c.json({ data: getOiCostProfileStatus() });
 });
 
 // ── 评测镜像（路由层审计） ───────────────────────────────────────────────

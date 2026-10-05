@@ -38,6 +38,10 @@ export interface SubmissionCaseResult {
   status: string;
   visibility?: SubmissionCaseVisibility;
   time_ms?: number | null;
+  equivalent_time_ms?: number | null;
+  fuel_consumed?: number | null;
+  fuel_budget?: number | null;
+  termination_reason?: string;
   memory_kb?: number | null;
   input?: string;
   expected_output?: string;
@@ -78,6 +82,8 @@ export interface SubmissionDetail {
     memory_kb: number | null;
     /** 评测用例级详情：仅 owner/admin 可见，否则为 null */
     details: SubmissionEvaluationDetails | null;
+    /** 公开的统一计量摘要，不包含源码或隐藏测试数据。 */
+    metering?: Record<string, unknown>;
   } | null;
   /** 排队位置（1-based），仅在 pending/等待中时有值。 */
   queue_position?: number | null;

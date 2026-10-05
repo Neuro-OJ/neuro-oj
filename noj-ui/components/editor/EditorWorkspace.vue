@@ -10,6 +10,7 @@ import { useResizableSplitter } from '~/composables/useResizableSplitter'
 import { useDialog } from '~/composables/useDialog'
 import { useToast } from '~/composables/useToast'
 import { restoreCodeTemplate } from '~/utils/codeEditorTemplate'
+import { getEditorLanguages, type EditorLanguageConfig } from '~/utils/editorLanguages'
 
 /**
  * 独立做题工作区（从 pages/editor/[id].vue 抽出，供标准题库与竞赛共用）。
@@ -19,7 +20,7 @@ import { restoreCodeTemplate } from '~/utils/codeEditorTemplate'
  * - historyUrl / submit / templateUrl / draftKey / openSubmissionUrl：提交链路
  * - backUrl / backLabel / subtitle / badge：页面上下文（竞赛标题、题号徽标等）
  */
-export interface WorkspaceProblem {
+export interface WorkspaceProblem extends EditorLanguageConfig {
   id: string
   display_id: string
   label?: string
@@ -153,14 +154,19 @@ const submissions = computed(() => {
   return props.submissionFilter ? all.filter(props.submissionFilter) : all
 })
 
-// 语言（仅 Python 3，多语言等待 judge 镜像就绪后启用）
-const languages = [{ value: 'python3', label: 'Python 3' }]
+// 题目异步加载后同步白名单，优先选择 C++，且不保留失效的语言选项。
+const languages = computed(() => getEditorLanguages(props.problem))
 const language = ref('python3')
+watch(languages, (options) => {
+  if (!options.some((option) => option.value === language.value)) {
+    language.value = options[0]?.value ?? ''
+  }
+}, { immediate: true })
 
 // 提交
 const submitting = ref(false)
 const submitError = ref('')
-const canSubmit = computed(() => props.canSubmit && isLoggedIn.value && code.value.trim().length > 0)
+const canSubmit = computed(() => props.canSubmit && isLoggedIn.value && code.value.trim().length > 0 && languages.value.some((option) => option.value === language.value))
 
 async function handleSubmit() {
   if (!props.problem) return

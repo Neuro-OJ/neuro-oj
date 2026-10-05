@@ -263,16 +263,6 @@ export type {
   JudgeSocketProbes,
   JudgeStatusResult,
 } from "./prod/judge/actions.ts";
-export {
-  calibrateFromFile,
-  fitOiCostProfile,
-  parseCalibrationInput,
-} from "./prod/judge/calibrate.ts";
-export type {
-  CalibrationInput,
-  CalibrationProfile,
-  CalibrationSample,
-} from "./prod/judge/calibrate.ts";
 // schedule（T20）：crontab 标记区块的原生迁移。核心承诺是**只动自己标记的行**：
 // 区块外的字节（含顺序与末尾换行）逐字节保留；危险 cron 表达式=注入防线，写入前拒绝。
 export {

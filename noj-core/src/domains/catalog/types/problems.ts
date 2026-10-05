@@ -123,6 +123,16 @@ export function isValidLlmConfig(value: unknown): value is LlmConfig {
  * 仅 admin 可设置；普通用户创建题目时该字段被忽略。
  */
 import type { JudgeType, ProblemRuntimeConfig } from "./runtime-config.ts";
+import { isOiRuntimeConfig } from "./runtime-config.ts";
+
+/** 提取可公开的提交语言，不向选手暴露测试点、checker 或存储配置。 */
+export function getSubmissionLanguages(
+  judgeType: string | null | undefined,
+  config: ProblemRuntimeConfig | null | undefined,
+): string[] {
+  if (judgeType !== "oi") return ["python3"];
+  return isOiRuntimeConfig(config) ? [...config.languages] : [];
+}
 export {
   type EvaluatorRuntime,
   isOiRuntimeConfig,
@@ -243,6 +253,8 @@ export interface ProblemResponseWithTags {
   runtime_config?: ProblemRuntimeConfig | null;
   /** 评测模式；来自 problems.judge_type，保留在响应中便于前端展示。 */
   judge_type: JudgeType;
+  /** 所有可见题目的访问者均可读取的提交语言白名单。 */
+  supported_languages?: string[];
   tags: ProblemTagRef[];
   /**
    * 存在被隐藏的算法标签时为 true（spoiler 门控：匿名/未 AC viewer

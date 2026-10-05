@@ -11,4 +11,12 @@ export JUDGE_WASI_CXX="$sdk_dir/bin/clang++"
 export JUDGE_WASI_SYSROOT="$sdk_dir/share/wasi-sysroot"
 export JUDGE_WASI_TARGET=wasm32-wasip1
 cd "$(dirname "$0")/.."
-exec cargo run --locked --example oi_wasi_acceptance
+cargo run --locked --example oi_wasi_acceptance
+report_dir="$(mktemp -d)"
+trap 'rm -rf "$report_dir"' EXIT
+# 两个独立进程使用同一基准，报告只包含确定性成本和摘要，不比较墙钟。
+cargo run --locked --example oi_standard_acceptance > "$report_dir/worker-a.json"
+cargo run --locked --example oi_standard_acceptance > "$report_dir/worker-b.json"
+cmp "$report_dir/worker-a.json" "$report_dir/worker-b.json"
+cmp "$report_dir/worker-a.json" ../fixtures/noj-wasm-v1-benchmarks.json
+cat "$report_dir/worker-a.json"

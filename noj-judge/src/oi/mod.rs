@@ -1,12 +1,12 @@
 //! 传统 OI 题的配置、状态与确定性子任务计分。
 
-pub mod calibration;
 #[cfg(target_os = "linux")]
 mod compiler_fs;
 mod docker_exec;
 pub mod go_judge;
 pub mod resource_lease;
 pub mod runner;
+pub mod standard;
 pub mod wasm;
 mod wasm_compile;
 
@@ -242,6 +242,12 @@ pub struct OiCaseResult {
     pub wall_time_ms: Option<u64>,
     #[serde(default)]
     pub equivalent_time_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fuel_consumed: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fuel_budget: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub termination_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -309,6 +315,7 @@ impl OiEvaluation {
                 "subtasks": &self.subtasks,
                 "oi": {
                     "verdict": verdict,
+                    "backend": "native",
                     "score": self.score,
                     "max_score": 10000,
                     "subtasks": &self.subtasks,
@@ -410,6 +417,9 @@ pub fn score_submission(
                     cpu_time_ms: None,
                     wall_time_ms: None,
                     equivalent_time_ms: None,
+                    fuel_consumed: None,
+                    fuel_budget: None,
+                    termination_reason: None,
                 });
                 continue;
             }

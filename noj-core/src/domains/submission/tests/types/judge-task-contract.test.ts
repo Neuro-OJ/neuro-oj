@@ -141,7 +141,7 @@ Deno.test("JudgeTask 契约: 必填字段齐全时才构造（类型层面已强
   );
 });
 
-Deno.test("buildJudgeTask: WASM缺少活动成本表明确拒绝", () => {
+Deno.test("buildJudgeTask: WASM缺少统一标准快照明确拒绝", () => {
   let rejected = false;
   try {
     buildJudgeTask({
