@@ -1,7 +1,7 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由锁文件固定
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { submissionMeteringCases } from '../utils/submissionMetering.ts';
+import { submissionMeteringCases, submissionMeteringTimeLabel } from '../utils/submissionMetering.ts';
 
 Deno.test('submissionMetering: 仅提取工作量字段，保留零值，不输出隐藏数据', () => {
   assertEquals(
@@ -43,4 +43,11 @@ Deno.test('submissionMetering: 缺失与非法统计显示为空，异常结构�
     }),
     [{ subtask: '—', caseId: '测试点 2', status: '—', fuel: null, budget: null, equivalentTimeMs: null }],
   );
+});
+
+Deno.test('WASM 时间单位按结果版本展示，历史结果不改写', () => {
+  assertEquals(submissionMeteringTimeLabel('noj-wasm-v3'), '参考时间');
+  assertEquals(submissionMeteringTimeLabel('noj-wasm-v2'), '等效时间');
+  assertEquals(submissionMeteringTimeLabel('noj-wasm-v1'), '等效时间');
+  assertEquals(submissionMeteringTimeLabel(), '等效时间');
 });

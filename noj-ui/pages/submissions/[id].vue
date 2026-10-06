@@ -9,7 +9,7 @@ import { getLanguageLabel, formatScore, formatTime, formatMemory, statusBadgeCol
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
 import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 import { problemJudgeTypeLabel, type ProblemResource } from '~/utils/problemView'
-import { submissionMeteringCases } from '~/utils/submissionMetering'
+import { submissionMeteringCases, submissionMeteringTimeLabel } from '~/utils/submissionMetering'
 
 interface SubmissionResult {
   status: string
@@ -61,6 +61,7 @@ watch(() => submission.value?.problem_id, async (id, _previous, onCleanup) => {
     // 不可见或已删除题目保留直达入口，不绕过题目的访问控制。
   }
 })
+const meteringTimeLabel = computed(() => submissionMeteringTimeLabel(submission.value?.result?.metering?.standard_version))
 const meteringCases = computed(() => submissionMeteringCases(submission.value?.result?.details))
 const actualBackend = computed(() => {
   const oi = submission.value?.result?.details?.oi as { backend?: string } | undefined
@@ -282,7 +283,7 @@ watch(
           <p class="mt-2">{{ submission.result.metering.standard_version }} · {{ submission.result.metering.comparable ? '具备可比标识' : '评测环境异常，不具备可比性' }}</p>
           <p v-if="submission.result.metering.termination_reason === 'host_watchdog'" class="mt-2 text-error-text">运行保护超时，请降低负载后重测。</p>
           <p v-if="submission.result.metering.termination_reason === 'standard_mismatch'" class="mt-2 text-error-text">任务标准不匹配，请重测。</p>
-          <p class="mt-1 text-xs text-text-secondary">等效时间表示固定工作量，不是实际 CPU 耗时。可比标识不代表来源可信。</p>
+          <p class="mt-1 text-xs text-text-secondary">{{ meteringTimeLabel }}表示固定工作量，不保证等于实际 CPU 耗时。可比标识不代表来源可信。</p>
           <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-xs">
             <template v-for="(label, key) in { standard_hash: '标准摘要', source_hash: '源码摘要', evaluation_hash: '题目评测摘要', module_hash: '编译产物摘要', comparison_hash: '可比标识' }" :key="key">
               <dt>{{ label }}</dt><dd class="break-all font-mono">{{ submission.result.metering[key] ?? '未生成' }}</dd>
@@ -293,7 +294,7 @@ watch(
               <caption class="mb-2 text-left font-semibold">测试点计量数据</caption>
               <thead class="border-b border-border text-text-secondary"><tr>
                 <th scope="col" class="p-2">子任务</th><th scope="col" class="p-2">测试点</th><th scope="col" class="p-2">状态</th>
-                <th scope="col" class="p-2 text-right">消耗 fuel</th><th scope="col" class="p-2 text-right">预算 fuel</th><th scope="col" class="p-2 text-right">等效时间（ms）</th>
+                <th scope="col" class="p-2 text-right">消耗 fuel</th><th scope="col" class="p-2 text-right">预算 fuel</th><th scope="col" class="p-2 text-right">{{ meteringTimeLabel }}（ms）</th>
               </tr></thead>
               <tbody><tr v-for="(item, index) in meteringCases" :key="index" class="border-b border-border">
                 <td class="p-2">{{ item.subtask }}</td><td class="p-2 font-mono">{{ item.caseId }}</td><td class="p-2">{{ item.status }}</td>

@@ -37,3 +37,8 @@ export function submissionMeteringCases(details: unknown): SubmissionMeteringCas
     });
   });
 }
+
+/** 历史标准沿用等效时间名称，v3 使用参考时间，避免追溯改写结果含义。 */
+export function submissionMeteringTimeLabel(standardVersion?: unknown): string {
+  return standardVersion === 'noj-wasm-v3' ? '参考时间' : '等效时间';
+}

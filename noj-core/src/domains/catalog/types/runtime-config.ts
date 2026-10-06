@@ -323,7 +323,7 @@ export function validateOiRuntimeConfig(
   if (totalTime > totalTimeLimit) {
     throw new BadRequestError(
       rc.backend === "wasm"
-        ? "OI WASM 测试点总预算最多 300000 NOJ 等效毫秒"
+        ? "OI WASM 测试点总预算最多 300000 NOJ 参考毫秒"
         : "OI 测试点总时限最多 60000ms",
     );
   }

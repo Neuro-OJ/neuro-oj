@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 pub fn manifest() -> Value {
-    serde_json::from_str(include_str!("noj-wasm-v2.json")).expect("内置标准必须是合法 JSON")
+    serde_json::from_str(include_str!("noj-wasm-v3.json")).expect("内置标准必须是合法 JSON")
 }
 
 pub fn profile() -> OiCostProfile {
@@ -18,12 +18,30 @@ pub fn profile() -> OiCostProfile {
     .expect("内置成本快照必须合法")
 }
 
+/// 时限使用整数换算为固定工作量预算，避免浮点取整或旧尺度残留。
+pub fn fuel_budget(time_limit_ms: u64) -> anyhow::Result<u64> {
+    let fuel_per_ms = manifest()["fuel_per_ms"]
+        .as_u64()
+        .expect("标准换算尺度必须为整数");
+    time_limit_ms
+        .checked_mul(fuel_per_ms)
+        .ok_or_else(|| anyhow::anyhow!("WASM fuel 预算溢出"))
+}
+
+/// 结果单位沿用 wire 字段，展示名称由结果的标准版本决定。
+pub fn reference_time_ms(fuel: u64) -> u64 {
+    let fuel_per_ms = manifest()["fuel_per_ms"]
+        .as_u64()
+        .expect("标准换算尺度必须为整数");
+    fuel.div_ceil(fuel_per_ms).max(1)
+}
+
 pub fn validate_profile(value: &OiCostProfile) -> anyhow::Result<()> {
     if value != &profile() {
         anyhow::bail!("WASM 任务使用旧成本表或不匹配的标准，请重测");
     }
     if !cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        anyhow::bail!("noj-wasm-v2 仅支持 Linux amd64");
+        anyhow::bail!("noj-wasm-v3 仅支持 Linux amd64");
     }
     Ok(())
 }
@@ -130,8 +148,22 @@ mod tests {
             standard["operator_costs"],
             serde_json::to_value(wasmtime::OperatorCost::default()).unwrap()
         );
-        assert_eq!(profile().fuel_per_ms, 1_000_000.0);
+        assert_eq!(profile().fuel_per_ms, 20_000_000.0);
         validate_profile(&profile()).unwrap();
+    }
+    #[test]
+    fn reference_scale_budget_and_rounding() {
+        assert_eq!(fuel_budget(1000).unwrap(), 20_000_000_000);
+        assert_eq!(reference_time_ms(20_000_000), 1);
+        assert_eq!(reference_time_ms(20_000_001), 2);
+        assert_eq!(reference_time_ms(0), 1);
+        assert!(fuel_budget(u64::MAX).is_err());
+        let v2: Value = serde_json::from_str(include_str!("noj-wasm-v2.json")).unwrap();
+        let mut old = profile();
+        old.hash = v2["hash"].as_str().unwrap().into();
+        old.benchmark = Some("noj-wasm-v2".into());
+        old.fuel_per_ms = 1_000_000.0;
+        assert!(validate_profile(&old).is_err());
     }
     #[test]
     fn rejects_legacy_or_modified_cost_profile() {

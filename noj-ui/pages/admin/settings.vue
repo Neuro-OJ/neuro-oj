@@ -115,7 +115,7 @@ const oiMemoryCopyExample = computed(() => {
   const standard = oiProfileStatus.value?.standard
   if (!standard) return ""
   const fuel = standard.operator_costs.MemoryCopy + 1048576 * standard.operator_costs.variable.memory_copy_per_byte
-  return `复制 1 MiB 的指令成本为 ${fuel.toLocaleString()} fuel，约 ${(fuel / standard.fuel_per_ms).toFixed(2)} NOJ 等效毫秒；地址计算、循环等指令另行计费。`
+  return `复制 1 MiB 的指令成本为 ${fuel.toLocaleString()} fuel，约 ${(fuel / standard.fuel_per_ms).toFixed(2)} NOJ 参考毫秒；地址计算、循环等指令另行计费。`
 })
 
 async function loadOiCostProfile() {
@@ -506,10 +506,10 @@ async function cleanupBootstrapRow(s: SystemSetting) {
 
     <section class="rounded-md border border-border bg-white p-5">
       <h2 class="text-base font-semibold text-text">OI WASM 统一计量标准</h2>
-      <p class="mt-2 text-sm text-text-secondary">所有实例使用 NOJ 内置标准；不再提供本机校准或自定义成本表。等效毫秒表示固定计算工作量，不等于真实 CPU 耗时。</p>
+      <p class="mt-2 text-sm text-text-secondary">所有实例使用 NOJ 内置标准；不再提供本机校准或自定义成本表。参考毫秒表示固定计算工作量，不保证等于实际 CPU 耗时。</p>
       <dl v-if="oiProfileStatus" class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
         <dt>标准版本</dt><dd>{{ oiProfileStatus.standard.id }}</dd>
-        <dt>计量单位</dt><dd class="tabular-nums">{{ oiProfileStatus.standard.fuel_per_ms.toLocaleString() }} fuel = 1 NOJ 等效毫秒</dd>
+        <dt>计量单位</dt><dd class="tabular-nums">{{ oiProfileStatus.standard.fuel_per_ms.toLocaleString() }} fuel = 1 NOJ 参考毫秒</dd>
         <dt>工具链修订</dt><dd>{{ oiProfileStatus.standard.toolchain }} / {{ oiProfileStatus.standard.runtime_version }}</dd>
         <template v-if="oiProfileStatus.standard.toolchain_components_sha256">
           <dt>工具链组件摘要</dt><dd class="break-all font-mono text-xs">{{ oiProfileStatus.standard.toolchain_components_sha256 }}</dd>

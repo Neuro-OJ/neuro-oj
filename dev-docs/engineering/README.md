@@ -33,3 +33,5 @@
 - **计数类陈述（表数量、文件行数、跳过数）不写死在文档里**，改由门禁的基线文件承载：
   `test-silent-skips.baseline.json`（静默跳过）、`scripts/check-file-size.ts`（巨型文件）、
   `scripts/check-write-rate-limits.ts`（限流覆盖）。
+
+- [NOJ WASM v3 参考毫秒](./wasm-reference-v3.md)

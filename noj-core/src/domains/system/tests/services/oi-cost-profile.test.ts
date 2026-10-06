@@ -5,11 +5,11 @@ import {
 } from "../../services/oi-cost-profile.ts";
 Deno.test("OI 统一标准：不依赖本机或历史成本表，且不暴露可变引用", async () => {
   const first = await getActiveOiCostProfile();
-  assertEquals(first.benchmark, "noj-wasm-v2");
-  assertEquals(first.fuel_per_ms, 1_000_000);
+  assertEquals(first.benchmark, "noj-wasm-v3");
+  assertEquals(first.fuel_per_ms, 20_000_000);
   first.fuel_per_ms = 3;
-  assertEquals((await getActiveOiCostProfile()).fuel_per_ms, 1_000_000);
+  assertEquals((await getActiveOiCostProfile()).fuel_per_ms, 20_000_000);
   const status = await getOiCostProfileStatus();
-  assertEquals(status.standard.id, "noj-wasm-v2");
+  assertEquals(status.standard.id, "noj-wasm-v3");
   assertEquals(status.profile.hash, status.standard.hash);
 });

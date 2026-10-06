@@ -18,14 +18,14 @@ trap 'rm -rf "$report_dir"' EXIT
 cargo run --locked --example oi_standard_acceptance > "$report_dir/worker-a.json"
 cargo run --locked --example oi_standard_acceptance > "$report_dir/worker-b.json"
 cmp "$report_dir/worker-a.json" "$report_dir/worker-b.json"
-cmp "$report_dir/worker-a.json" ../fixtures/noj-wasm-v2-benchmarks.json
+cmp "$report_dir/worker-a.json" ../fixtures/noj-wasm-v3-benchmarks.json
 cat "$report_dir/worker-a.json"
 cargo run --locked --example oi_wasi_v2_acceptance > "$report_dir/compat-a.json"
 cargo run --locked --example oi_wasi_v2_acceptance > "$report_dir/compat-b.json"
 cmp "$report_dir/compat-a.json" "$report_dir/compat-b.json"
 cat "$report_dir/compat-a.json"
-# 独立分析规则不进入 v2 清单；两个独立进程的分类成本/来源必须一致。
+# 独立分析规则不进入计量标准清单；两个独立进程的分类成本/来源必须一致。
 cargo run --locked --example oi_io_analysis_acceptance > "$report_dir/analysis-a.json"
 cargo run --locked --example oi_io_analysis_acceptance > "$report_dir/analysis-b.json"
 cmp "$report_dir/analysis-a.json" "$report_dir/analysis-b.json"
-cmp "$report_dir/analysis-a.json" ../fixtures/noj-wasm-io-analysis-v1.json
+cmp "$report_dir/analysis-a.json" ../fixtures/noj-wasm-v3-io-analysis-v1.json

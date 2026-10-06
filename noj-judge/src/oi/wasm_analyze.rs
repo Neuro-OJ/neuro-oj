@@ -112,9 +112,7 @@ async fn verdict(
             expected,
             &run.stdout,
             memory_limit_mb,
-            time_limit_ms
-                .checked_mul(1_000_000)
-                .context("checker 预算溢出")?,
+            standard::fuel_budget(time_limit_ms)?,
             &standard::profile(),
             checker_files,
             time_limit_ms.saturating_mul(10).max(30_000),
@@ -282,7 +280,7 @@ pub async fn analyze(options: Options) -> Result<Value> {
                 (1..=300_000).contains(&time) && (1..=512).contains(&memory),
                 "分析资源配置无效"
             );
-            let budget = time.checked_mul(1_000_000).context("预算溢出")?;
+            let budget = standard::fuel_budget(time)?;
             let raw_budget = budget.checked_mul(50).context("分析预算溢出")?;
             let input = &files[&case.input];
             let expected = &files[&case.output];
@@ -317,7 +315,7 @@ pub async fn analyze(options: Options) -> Result<Value> {
                     cpu_time_ms: run.cpu_time_ms,
                     wall_time_ms: run.wall_time_ms,
                     output_sha256: standard::hash(&run.stdout),
-                    equivalent_time_ms: run.fuel_consumed.map(|v| v.div_ceil(1_000_000).max(1)),
+                    equivalent_time_ms: run.fuel_consumed.map(standard::reference_time_ms),
                 });
                 let run = wasm::run_analysis_module(
                     &instrumented.bytes,
@@ -403,8 +401,13 @@ pub async fn analyze(options: Options) -> Result<Value> {
                     output_sha256: standard::hash(&run.stdout),
                     categories,
                     hotspots,
-                    hypothetical_without_io_candidate_ms: complete
-                        .then(|| without_io.div_ceil(1_000_000)),
+                    hypothetical_without_io_candidate_ms: complete.then(|| {
+                        if without_io == 0 {
+                            0
+                        } else {
+                            standard::reference_time_ms(without_io)
+                        }
+                    }),
                 });
             }
             let reproducible = (options.repeat >= 2).then(|| {
@@ -493,7 +496,7 @@ pub async fn analyze(options: Options) -> Result<Value> {
 }
 
 pub fn markdown(report: &Value) -> String {
-    let mut out = format!("# WASM IO 分类分析\n\n标准：{}；分析规则：{}。IO 候选不是已确认可豁免成本。\n\n| 测试点 | v2 状态 | 等效 ms | CPU ms | 选手成本 | IO 候选 | 其他 SDK | 未确认 | 分析完成 |\n|---|---|---:|---:|---:|---:|---:|---:|---|\n", report["standard_version"].as_str().unwrap_or(""), RULE_VERSION);
+    let mut out = format!("# WASM IO 分类分析\n\n标准：{}；分析规则：{}。IO 候选不是已确认可豁免成本。\n\n| 测试点 | 标准状态 | 参考 ms | CPU ms | 选手成本 | IO 候选 | 其他 SDK | 未确认 | 分析完成 |\n|---|---|---:|---:|---:|---:|---:|---:|---|\n", report["standard_version"].as_str().unwrap_or(""), RULE_VERSION);
     if let Some(cases) = report["cases"].as_array() {
         for case in cases {
             let b = &case["baseline"][0];

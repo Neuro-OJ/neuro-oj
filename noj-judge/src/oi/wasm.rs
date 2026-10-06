@@ -835,8 +835,8 @@ async fn run_wasm_case(
         .or(subtask_time_limit_ms)
         .unwrap_or(default_time_limit_ms);
     let fuel_per_ms = profile.fuel_per_ms;
-    // 输入大小不能奖励额外 CPU 预算，预算严格由等效时间换算。
-    let fuel = limit.checked_mul(1_000_000).context("WASM fuel 预算溢出")?;
+    // 输入大小不能奖励额外 CPU 预算，预算严格由参考时间换算。
+    let fuel = super::standard::fuel_budget(limit)?;
     let file_io = file_io_names(filename)?;
     let user_directory = if user_extra_files.is_empty() && file_io.is_none() {
         None
@@ -932,9 +932,7 @@ async fn run_wasm_case(
     }
     let checker = if checker_kind == OiCheckerType::Testlib && user.status == WasmStatus::Accepted {
         let module = checker_module.context("WASM testlib checker 模块缺失")?;
-        let checker_fuel = limit
-            .checked_mul(1_000_000)
-            .context("checker fuel 预算溢出")?;
+        let checker_fuel = super::standard::fuel_budget(limit)?;
         let checker_module = module.to_vec();
         let checker_input = input.to_vec();
         let checker_expected = expected_for_run.clone();

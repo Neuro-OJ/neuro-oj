@@ -336,8 +336,8 @@ Deno.test({
     );
     assertEquals(status.status, 200);
     const data = (await status.json()).data;
-    assertEquals(data.standard.id, "noj-wasm-v2");
-    assertEquals(data.profile.fuel_per_ms, 1000000);
+    assertEquals(data.standard.id, "noj-wasm-v3");
+    assertEquals(data.profile.fuel_per_ms, 20000000);
     const put = await jsonRequest(app, "/api/v1/admin/system/oi-cost-profile", {
       token,
       method: "PUT",
