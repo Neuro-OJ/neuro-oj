@@ -518,3 +518,91 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "problems service: 题型与后端筛选在分页前执行，客观题不计入 AI 后端",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const marker = `后端筛选-${crypto.randomUUID()}`;
+    const ids = Array.from({ length: 4 }, () => crypto.randomUUID());
+    const fixtures = [
+      {
+        judge_type: "dual",
+        is_objective: false,
+        runtime_config: VALID_RUNTIME_CONFIG,
+      },
+      {
+        judge_type: "oi",
+        is_objective: false,
+        runtime_config: OI_RUNTIME_CONFIG,
+      },
+      {
+        judge_type: "oi",
+        is_objective: false,
+        runtime_config: { ...OI_RUNTIME_CONFIG, backend: "wasm" },
+      },
+      { judge_type: "dual", is_objective: true, runtime_config: null },
+    ];
+    const db = getDb();
+    try {
+      await db.insert(problems).values(fixtures.map((fixture, index) => ({
+        ...fixture,
+        id: ids[index],
+        title: `${marker}-${index}`,
+        description: "筛选测试",
+        difficulty: "easy",
+        type: "U",
+        number: 9000000 + index,
+        owner_id: "0",
+        visibility: "public",
+        created_at: now,
+        updated_at: now,
+      })));
+      const query = { type: "U", keyword: marker, limit: 1 };
+      const oi = await listProblems({ ...query, judge_type: "oi" });
+      assertEquals(oi.total, 2);
+      assertEquals(oi.items.length, 1);
+      for (
+        const [backend, index] of [["dual", 0], ["oi-native", 1], [
+          "oi-wasm",
+          2,
+        ]] as const
+      ) {
+        const result = await listProblems({ ...query, judge_backend: backend });
+        assertEquals(result.total, 1);
+        assertEquals(result.items[0].id, ids[index]);
+        assertEquals(result.items[0].judge_backend, backend);
+        assertEquals(result.items[0].runtime_config, undefined);
+      }
+      assertEquals(
+        (await listProblems({ ...query, judge_type: "dual" })).total,
+        1,
+      );
+      assertEquals(
+        (await listProblems({ ...query, judge_type: "objective" })).items[0].id,
+        ids[3],
+      );
+      assertEquals(
+        (await listProblems({
+          ...query,
+          judge_type: "dual",
+          judge_backend: "oi-wasm",
+        })).total,
+        0,
+      );
+      await assertRejects(
+        () => listProblems({ judge_type: "invalid" }),
+        BadRequestError,
+      );
+      await assertRejects(
+        () => listProblems({ judge_backend: "invalid" }),
+        BadRequestError,
+      );
+    } finally {
+      for (const id of ids) {
+        await db.delete(problems).where(eq(problems.id, id));
+      }
+    }
+  },
+});

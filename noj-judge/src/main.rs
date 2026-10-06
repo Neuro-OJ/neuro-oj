@@ -98,6 +98,7 @@ fn main() -> Result<()> {
         let config = Config::from_env();
         // VULN-20：启动期配置校验（禁止 evaluator 使用 bridge/host 网络）。
         config.validate()?;
+        oi::toolchain::validate_at_startup()?;
         info!("noj-judge 启动");
 
         // 连接 Redis

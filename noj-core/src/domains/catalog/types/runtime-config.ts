@@ -3,6 +3,20 @@ import { BadRequestError } from "../../../shared/base/errors.ts";
 /** 题目评测模式。 */
 export type JudgeType = "dual" | "oi";
 
+/** 可公开的执行后端名称；客观题或无有效 OI 配置时为空。 */
+export type JudgeBackend = "dual" | "oi-native" | "oi-wasm";
+
+/** 提取执行后端标识，不暴露测试数据、checker 或存储配置。 */
+export function getJudgeBackend(
+  judgeType: string | null | undefined,
+  config: unknown,
+  isObjective = false,
+): JudgeBackend | null {
+  if (isObjective) return null;
+  if (judgeType !== "oi") return "dual";
+  return isOiRuntimeConfig(config) ? `oi-${config.backend}` : null;
+}
+
 /**
  * 双容器模式题目运行配置。
  */
@@ -303,8 +317,15 @@ export function validateOiRuntimeConfig(
     }
   }
   if (caseCount > 100) throw new BadRequestError("OI 最多 100 个测试点");
-  if (totalTime > 60000) {
-    throw new BadRequestError("OI 测试点总时限最多 60000ms");
+  // WASM 限额是固定工作量，不能沿用原生 CPU 毫秒的总预算上限。
+  // 宿主实际耗时仍由 Worker 的外层任务墙钟保护独立约束。
+  const totalTimeLimit = rc.backend === "wasm" ? 300000 : 60000;
+  if (totalTime > totalTimeLimit) {
+    throw new BadRequestError(
+      rc.backend === "wasm"
+        ? "OI WASM 测试点总预算最多 300000 NOJ 等效毫秒"
+        : "OI 测试点总时限最多 60000ms",
+    );
   }
   if (Math.abs(totalScore - 100) > 1e-7) {
     throw new BadRequestError("runtime_config.subtasks.score 总和必须为 100");

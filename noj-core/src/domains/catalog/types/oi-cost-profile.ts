@@ -1,4 +1,4 @@
-import standard from "./noj-wasm-v1.json" with { type: "json" };
+import standard from "./noj-wasm-v2.json" with { type: "json" };
 
 /** 由 NOJ 内置统一标准产生的 WASM 成本快照；实例和题目不能修改。 */
 export interface OiCostProfile {

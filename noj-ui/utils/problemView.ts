@@ -39,6 +39,9 @@ export interface ProblemView {
   type: string;
   /** 是否客观题（即时判定，无评测容器）。 */
   is_objective: boolean;
+  /** 评测题型与公开后端标识；不依赖仅管理员可见的运行配置。 */
+  judge_type?: 'dual' | 'oi';
+  judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
   /** 提交模式：`code` 代码 / `artifact` 产物 zip。 */
   submission_mode: 'code' | 'artifact';
   /** artifact 单文件大小上限（MB）；null 表示使用平台默认上限。 */
@@ -77,6 +80,7 @@ export interface ProblemResource {
   owner_avatar_url?: string | null;
   is_objective: boolean;
   judge_type?: 'dual' | 'oi';
+  judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
   submission_mode?: 'code' | 'artifact';
   artifact_max_size_mb?: number | null;
   tags?: ProblemTagView[];
@@ -101,6 +105,8 @@ export interface ContestProblemResource {
   submission_mode?: 'code' | 'artifact';
   artifact_max_size_mb?: number | null;
   is_objective?: boolean;
+  judge_type?: 'dual' | 'oi';
+  judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
 }
 
 /** 独立题目资源 → 视图。 */
@@ -114,6 +120,8 @@ export function toProblemView(resource: ProblemResource): ProblemView {
     difficulty: resource.difficulty,
     type: resource.type,
     is_objective: resource.is_objective === true,
+    judge_type: resource.judge_type,
+    judge_backend: resource.judge_backend ?? null,
     submission_mode: resource.submission_mode ?? 'code',
     artifact_max_size_mb: resource.artifact_max_size_mb ?? null,
     owner_username: resource.owner_username ?? null,
@@ -135,7 +143,9 @@ export function toProblemView(resource: ProblemResource): ProblemView {
  * - 时限/内存以 `null` 表达"未知"，让头部统计条隐藏对应项，
  *   而不是用 `0` 顶替（`0ms` 会被误读为真实限制）。
  */
-export function toContestProblemView(resource: ContestProblemResource): ProblemView {
+export function toContestProblemView(
+  resource: ContestProblemResource,
+): ProblemView {
   return {
     id: resource.problem_id,
     display_id: resource.display_id,
@@ -145,6 +155,8 @@ export function toContestProblemView(resource: ContestProblemResource): ProblemV
     type: 'T',
     // 后端 ContestProblemResponse 目前可能不返回该字段，故只认显式 true
     is_objective: resource.is_objective === true,
+    judge_type: resource.judge_type,
+    judge_backend: resource.judge_backend ?? null,
     submission_mode: resource.submission_mode ?? 'code',
     artifact_max_size_mb: resource.artifact_max_size_mb ?? null,
     owner_username: null,
@@ -162,6 +174,15 @@ export function toContestProblemView(resource: ContestProblemResource): ProblemV
 /** 题型展示文案。 */
 export function problemTypeLabel(type: string | undefined): string {
   return type === 'U' ? '用户题库' : '主题库';
+}
+
+/** 评测题型文案；不将缺失题型的旧响应误判为 AI 题。 */
+export function problemJudgeTypeLabel(
+  problem: Pick<ProblemView, 'is_objective' | 'judge_type'>,
+): string | null {
+  if (problem.is_objective) return '客观题';
+  if (problem.judge_type === 'oi') return 'OI 题';
+  return problem.judge_type === 'dual' ? 'AI 题' : null;
 }
 
 /** 时间限制展示文案；无该来源时为全角破折号占位。 */

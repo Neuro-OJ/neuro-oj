@@ -135,6 +135,27 @@ async fn provenance_ignores_site_ids_but_tracks_source_and_data() {
 }
 
 #[tokio::test]
+async fn published_v1_task_is_rejected_with_rejudge_guidance() {
+    let task: JudgeTask = serde_json::from_str(include_str!(
+        "../../../noj-tests/fixtures/judge-task-oi.contract.json"
+    ))
+    .unwrap();
+    let config = task.runtime_config.as_oi().unwrap();
+    let v1: serde_json::Value = serde_json::from_str(include_str!("noj-wasm-v1.json")).unwrap();
+    let mut old = super::super::standard::profile();
+    old.hash = v1["hash"].as_str().unwrap().into();
+    old.benchmark = Some("noj-wasm-v1".into());
+    old.toolchain = Some("wasi-sdk-34".into());
+    let empty = HashMap::new();
+    let result = evaluate_wasm(&task, config, &[], &old, None, &empty, &empty, &empty)
+        .await
+        .unwrap();
+    assert_eq!(result.details["oi"]["verdict"], "SE");
+    assert!(result.output.contains("重测"));
+    assert_eq!(result.details["metering"]["comparable"], false);
+}
+
+#[tokio::test]
 async fn fuel_exhaustion_is_tle() {
     let wat = r#"(module (func (export "_start") (loop br 0)))"#;
     let result = run_module(wat.as_bytes(), b"", 16, 100, &profile())

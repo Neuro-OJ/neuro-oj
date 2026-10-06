@@ -6,6 +6,7 @@ use noj_judge::{
 use std::collections::HashMap;
 #[tokio::main]
 async fn main() {
+    noj_judge::oi::toolchain::validate_configured_toolchain().unwrap();
     let programs = [
         ("sort", "#include <algorithm>\n#include <iostream>\n#include <vector>\nint main(){std::vector<int>a;for(int i=1000;i>0;--i)a.push_back(i);std::sort(a.begin(),a.end());std::cout<<a.front()+a.back();}", "1001"),
         ("graph", "#include <iostream>\n#include <queue>\n#include <vector>\nint main(){std::vector<int>d(1000,1000000);std::priority_queue<std::pair<int,int>>q;d[0]=0;q.push({0,0});while(!q.empty()){int u=q.top().second;q.pop();if(u+1<1000&&d[u+1]>d[u]+1){d[u+1]=d[u]+1;q.push({-d[u+1],u+1});}}std::cout<<d[999];}", "999"),

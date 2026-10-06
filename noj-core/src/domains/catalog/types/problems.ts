@@ -135,7 +135,9 @@ export function getSubmissionLanguages(
 }
 export {
   type EvaluatorRuntime,
+  getJudgeBackend,
   isOiRuntimeConfig,
+  type JudgeBackend,
   type JudgeType,
   judgeTypeForRuntimeConfig,
   type OiRuntimeConfig,
@@ -212,6 +214,10 @@ export interface UpdateProblemInput {
  * 题目列表查询参数。
  */
 export interface ProblemListQuery {
+  /** 按评测题型筛选：oi / dual（AI 代码题）/ objective。 */
+  judge_type?: string;
+  /** 按执行后端筛选：dual / oi-native / oi-wasm。 */
+  judge_backend?: string;
   page?: number;
   limit?: number;
   difficulty?: string;
@@ -253,6 +259,8 @@ export interface ProblemResponseWithTags {
   runtime_config?: ProblemRuntimeConfig | null;
   /** 评测模式；来自 problems.judge_type，保留在响应中便于前端展示。 */
   judge_type: JudgeType;
+  /** 公开执行后端名称，不包含隐藏运行配置。 */
+  judge_backend?: "dual" | "oi-native" | "oi-wasm" | null;
   /** 所有可见题目的访问者均可读取的提交语言白名单。 */
   supported_languages?: string[];
   tags: ProblemTagRef[];

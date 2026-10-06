@@ -27,6 +27,7 @@ import {
 } from "./../../../shared/security/public-id.ts";
 import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
 import {
+  getJudgeBackend,
   getSubmissionLanguages,
   type ProblemRuntimeConfig,
 } from "../../catalog/index.ts";
@@ -906,6 +907,7 @@ export async function getContestProblems(
       p.description,
       p.difficulty,
       p.judge_type,
+      p.is_objective,
       p.runtime_config,
       p.submission_mode,
       p.artifact_max_size_mb,
@@ -947,6 +949,12 @@ export async function getContestProblems(
     description: row.description as string,
     difficulty: row.difficulty as string,
     judge_type: row.judge_type === "oi" ? "oi" : "dual",
+    is_objective: row.is_objective === true,
+    judge_backend: getJudgeBackend(
+      row.judge_type as string,
+      row.runtime_config,
+      row.is_objective === true,
+    ),
     supported_languages: getSubmissionLanguages(
       row.judge_type as string,
       row.runtime_config as ProblemRuntimeConfig | null,

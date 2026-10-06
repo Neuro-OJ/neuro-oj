@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() {
+    noj_judge::oi::toolchain::validate_configured_toolchain().unwrap();
     tracing_subscriber::fmt().with_env_filter("warn").init();
     let fixture = include_str!("../../noj-tests/fixtures/judge-task-oi.contract.json");
     let c_source = "#include <stdio.h>\nint main(){int a,b;scanf(\"%d%d\",&a,&b);printf(\"%d\\n\",a+b);return 0;}";

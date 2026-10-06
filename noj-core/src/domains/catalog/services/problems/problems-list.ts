@@ -39,6 +39,7 @@ import { unendedPublicContestForProblem } from "./../../../contest/index.ts";
 import type { TagKind } from "../tags.ts";
 import {
   DIFFICULTIES,
+  getJudgeBackend,
   getSubmissionLanguages,
   isValidDifficulty,
   isValidProblemType,
@@ -81,6 +82,11 @@ function toProblemResponse(
     visibility: row.visibility as "public" | "private",
     is_objective: row.is_objective,
     judge_type: persistedJudgeType(row.judge_type),
+    judge_backend: getJudgeBackend(
+      row.judge_type,
+      row.runtime_config,
+      row.is_objective,
+    ),
     supported_languages: getSubmissionLanguages(
       row.judge_type,
       row.runtime_config as ProblemRuntimeConfig | null,
@@ -164,6 +170,35 @@ export async function listProblems(
 
   // 构建筛选条件
   const conditions: SQL[] = [];
+  if (query.judge_type) {
+    if (!["oi", "dual", "objective"].includes(query.judge_type)) {
+      throw new BadRequestError("judge_type 仅允许 oi/dual/objective");
+    }
+    if (query.judge_type === "objective") {
+      conditions.push(eq(problems.is_objective, true));
+    } else {
+      conditions.push(eq(problems.is_objective, false));
+      conditions.push(
+        sql`COALESCE(${problems.judge_type}, 'dual') = ${query.judge_type}`,
+      );
+    }
+  }
+  if (query.judge_backend) {
+    if (!["dual", "oi-native", "oi-wasm"].includes(query.judge_backend)) {
+      throw new BadRequestError("judge_backend 仅允许 dual/oi-native/oi-wasm");
+    }
+    conditions.push(eq(problems.is_objective, false));
+    if (query.judge_backend === "dual") {
+      conditions.push(sql`COALESCE(${problems.judge_type}, 'dual') = 'dual'`);
+    } else {
+      conditions.push(eq(problems.judge_type, "oi"));
+      conditions.push(
+        sql`${problems.runtime_config}->>'backend' = ${
+          query.judge_backend.slice(3)
+        }`,
+      );
+    }
+  }
 
   if (query.difficulty) {
     if (!isValidDifficulty(query.difficulty)) {

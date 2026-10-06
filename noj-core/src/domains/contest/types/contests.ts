@@ -144,6 +144,8 @@ export type ContestProblemUserStatus = "solved" | "attempted" | "untouched";
 
 export interface ContestProblemResponse extends ContestProblemInput {
   judge_type?: "dual" | "oi";
+  is_objective?: boolean;
+  judge_backend?: "dual" | "oi-native" | "oi-wasm" | null;
   supported_languages?: string[];
   title: string;
   description: string;

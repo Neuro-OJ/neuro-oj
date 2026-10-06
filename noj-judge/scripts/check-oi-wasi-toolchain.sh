@@ -18,5 +18,9 @@ trap 'rm -rf "$report_dir"' EXIT
 cargo run --locked --example oi_standard_acceptance > "$report_dir/worker-a.json"
 cargo run --locked --example oi_standard_acceptance > "$report_dir/worker-b.json"
 cmp "$report_dir/worker-a.json" "$report_dir/worker-b.json"
-cmp "$report_dir/worker-a.json" ../fixtures/noj-wasm-v1-benchmarks.json
+cmp "$report_dir/worker-a.json" ../fixtures/noj-wasm-v2-benchmarks.json
 cat "$report_dir/worker-a.json"
+cargo run --locked --example oi_wasi_v2_acceptance > "$report_dir/compat-a.json"
+cargo run --locked --example oi_wasi_v2_acceptance > "$report_dir/compat-b.json"
+cmp "$report_dir/compat-a.json" "$report_dir/compat-b.json"
+cat "$report_dir/compat-a.json"

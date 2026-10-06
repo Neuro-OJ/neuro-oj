@@ -129,24 +129,38 @@ WASM 题目不使用 go-judge 执行用户代码。正式 Worker 镜像内置固
 / `JUDGE_WASI_CXX` 编译 C99/C++11，再由 Wasmtime 以 NOJ 内置统一标准换算的 fuel
 预算运行； `JUDGE_WASI_TARGET` 与可选 `JUDGE_WASI_SYSROOT`
 必须由节点管理员统一配置。使用 WASM `testlib` 时还要把可信 testlib 头文件放在
-`JUDGE_WASI_TESTLIB_INCLUDE` 指定的
-固定目录中。每个测试点的真实墙钟上限为等效时限的三倍；文件输入题的工作目录新增
-数据上限为 32 MiB。WASI 编译器还受 10 秒墙钟/CPU、512 MiB 地址空间和 64 MiB 输出
+`JUDGE_WASI_TESTLIB_INCLUDE` 指定的 固定目录中。每个测试点的真实墙钟保护为
+`max(30 秒, 等效时限 × 10)`，触发判 SE；文件输入题的工作目录新增 数据上限为 32
+MiB。WASI 编译器还受 10 秒墙钟/CPU、512 MiB 地址空间和 64 MiB 输出
 上限约束，超时会回收整个编译进程组。
 
 WASI 编译节点需要启用 Landlock ABI 3 或更新版本的 Linux 内核（Linux 6.2+）。
 编译器只能读取系统工具链及管理员指定的 SDK/sysroot/testlib 目录，写入仅限本次
 临时目录，不能用源码的 `include`/`incbin` 读取 Worker 配置或凭据。 自定义
-`JUDGE_WASI_CC` / `JUDGE_WASI_CXX` 应使用绝对路径；隔离不可用时返回 SE。 默认
-target 为 `wasm32-wasip1`，lld 固定一个链接线程；WASM C++ 使用 SDK 的无异常
-libc++ 配置（`-fno-exceptions`），显式使用 `throw`/`try` 的题目应选择 Native
-后端。 部署前可用以下命令验收真实工具链（含 C/C++、文件题、checker
-与私有文件隔离）：
+`JUDGE_WASI_CC` / `JUDGE_WASI_CXX` 必须指向同一固定 SDK 的 `bin/clang` 和
+`bin/clang++`，sysroot 必须属于该 SDK。配置 WASI 的 Worker 启动时逐文件校验
+编译器、头文件、标准库和链接器内容，缺失或不匹配时启动失败；SDK 必须对 Worker
+只读。未配置 WASI 的原生专用 Worker 不执行该启动校验，收到 WASM 任务时返回 SE。
+编译隔离不可用时返回 SE。 默认 target 为 `wasm32-wasip1`，lld
+固定一个链接线程；WASM C++ 使用 SDK 的无异常 libc++
+配置（`-fno-exceptions`），显式使用 `throw`/`try` 的题目应选择 Native 后端。
+部署前可用以下命令验收真实工具链（含 C/C++、文件题、checker
+与私有文件隔离）。开发环境先构建 NOJ 修补版，不能直接使用未修补的官方 SDK：
 
 ```bash
 cd noj-judge
-bash scripts/check-oi-wasi-toolchain.sh /path/to/wasi-sdk
+bash scripts/build-oi-wasi-toolchain.sh \
+  /tmp/noj-wasi-cache /tmp/noj-wasi-build /tmp/noj-wasi-sdk
+bash scripts/check-oi-wasi-toolchain.sh /tmp/noj-wasi-sdk
 ```
+
+构建需要 Python 3.11+、CMake 3.20+、Ninja、Git 和 tar，源码与官方编译器下载均
+按固定 SHA-256 校验，产物必须匹配内置组件清单。构建和输出目录必须不存在，缓存
+目录可复用。生产镜像使用同一构建入口。
+
+升级 v2 时先暂停 WASM 提交入队并排空旧任务，再升级 Core 和全部 Worker，确认
+后台标准版本及摘要一致后恢复入队。旧任务不会自动切换标准；若携带 v1 快照交给 v2
+Worker，会返回 SE，需重新评测。历史成绩不自动重测。
 
 ## Docker daemon 权限边界
 

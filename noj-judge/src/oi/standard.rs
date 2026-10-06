@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 pub fn manifest() -> Value {
-    serde_json::from_str(include_str!("noj-wasm-v1.json")).expect("内置标准必须是合法 JSON")
+    serde_json::from_str(include_str!("noj-wasm-v2.json")).expect("内置标准必须是合法 JSON")
 }
 
 pub fn profile() -> OiCostProfile {
@@ -23,7 +23,7 @@ pub fn validate_profile(value: &OiCostProfile) -> anyhow::Result<()> {
         anyhow::bail!("WASM 任务使用旧成本表或不匹配的标准，请重测");
     }
     if !cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        anyhow::bail!("noj-wasm-v1 仅支持 Linux amd64");
+        anyhow::bail!("noj-wasm-v2 仅支持 Linux amd64");
     }
     Ok(())
 }
@@ -137,6 +137,12 @@ mod tests {
     fn rejects_legacy_or_modified_cost_profile() {
         let mut legacy = profile();
         legacy.fuel_per_ms = 10.0;
+        assert!(validate_profile(&legacy).is_err());
+        let v1: Value = serde_json::from_str(include_str!("noj-wasm-v1.json")).unwrap();
+        legacy = profile();
+        legacy.hash = v1["hash"].as_str().unwrap().into();
+        legacy.benchmark = Some("noj-wasm-v1".into());
+        legacy.toolchain = Some("wasi-sdk-34".into());
         assert!(validate_profile(&legacy).is_err());
         legacy = profile();
         legacy.hash = "a".repeat(64);

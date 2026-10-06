@@ -33,6 +33,7 @@ export const languageLabels: Record<string, string> = {
   python3: 'Python 3',
   python: 'Python',
   cpp: 'C++',
+  cc: 'C++',
   c: 'C',
   javascript: 'JavaScript',
   java: 'Java',

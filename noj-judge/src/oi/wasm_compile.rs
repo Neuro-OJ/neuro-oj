@@ -46,18 +46,12 @@ pub fn compile_source_with_files(
         )
         .context("写入 bits/stdc++.h 兼容头失败")?;
     }
-    let compiler = std::env::var(if language == "c" {
-        "JUDGE_WASI_CC"
+    let settings = super::toolchain::compiler_settings().context(CompilerInfrastructureError)?;
+    let compiler = if language == "c" {
+        &settings.c_compiler
     } else {
-        "JUDGE_WASI_CXX"
-    })
-    .unwrap_or_else(|_| {
-        if language == "c" {
-            "clang".to_string()
-        } else {
-            "clang++".to_string()
-        }
-    });
+        &settings.cpp_compiler
+    };
     let target = std::env::var("JUDGE_WASI_TARGET").unwrap_or_else(|_| "wasm32-wasip1".to_string());
     let standard = super::standard::manifest();
     if target != standard["target"].as_str().unwrap() {
@@ -65,7 +59,7 @@ pub fn compile_source_with_files(
             anyhow::Error::new(CompilerInfrastructureError).context("WASM target 与统一标准不一致")
         );
     }
-    let mut version = Command::new(&compiler);
+    let mut version = Command::new(compiler);
     version
         .env_clear()
         .env("PATH", std::env::var("PATH").unwrap_or_default())
@@ -108,7 +102,8 @@ pub fn compile_source_with_files(
         command.arg(
             flag.as_str()
                 .unwrap()
-                .replace("WORKSPACE", &root.to_string_lossy()),
+                .replace("WORKSPACE", &root.to_string_lossy())
+                .replace("SDKROOT", &settings.root.to_string_lossy()),
         );
     }
     if language == "cc" {
@@ -118,11 +113,7 @@ pub fn compile_source_with_files(
             command.arg(flag.as_str().unwrap());
         }
     }
-    if let Ok(sysroot) = std::env::var("JUDGE_WASI_SYSROOT") {
-        if !sysroot.is_empty() {
-            command.arg(format!("--sysroot={sysroot}"));
-        }
-    }
+    command.arg(format!("--sysroot={}", settings.sysroot.display()));
     if let Ok(testlib_include) = std::env::var("JUDGE_WASI_TESTLIB_INCLUDE") {
         if !testlib_include.is_empty() {
             command.arg("-I").arg(testlib_include);

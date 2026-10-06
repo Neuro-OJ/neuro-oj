@@ -74,11 +74,49 @@ const { toast } = useToast()
 interface OiCostProfileStatus {
   active: boolean
   profile: Record<string, unknown> | null
-  standard: { id: string; hash: string; fuel_per_ms: number; toolchain: string; runtime_version: string }
+  standard: {
+    id: string
+    hash: string
+    fuel_per_ms: number
+    toolchain: string
+    toolchain_components_sha256?: string
+    runtime_version: string
+    operator_costs: {
+      I32Load: number
+      I32Store: number
+      MemoryCopy: number
+      MemoryFill: number
+      MemoryInit: number
+      MemoryGrow: number
+      variable: {
+        memory_copy_per_byte: number
+        memory_fill_per_byte: number
+        memory_init_per_byte: number
+        memory_grow_per_page: number
+      }
+    }
+  }
 }
 const oiProfileText = ref("")
 const oiProfileStatus = ref<OiCostProfileStatus | null>(null)
 const oiProfileLoading = ref(false)
+const oiMemoryCosts = computed(() => {
+  const costs = oiProfileStatus.value?.standard.operator_costs
+  if (!costs) return []
+  return [
+    { operation: "普通读写（以 i32.load / i32.store 为例）", cost: `${costs.I32Load} / ${costs.I32Store} fuel / 条` },
+    { operation: "批量复制 memory.copy", cost: `${costs.MemoryCopy} + 字节数 × ${costs.variable.memory_copy_per_byte} fuel` },
+    { operation: "批量填充 memory.fill", cost: `${costs.MemoryFill} + 字节数 × ${costs.variable.memory_fill_per_byte} fuel` },
+    { operation: "批量初始化 memory.init", cost: `${costs.MemoryInit} + 字节数 × ${costs.variable.memory_init_per_byte} fuel` },
+    { operation: "内存增长 memory.grow", cost: `${costs.MemoryGrow} + 页数 × ${costs.variable.memory_grow_per_page} fuel（每页 64 KiB）` },
+  ]
+})
+const oiMemoryCopyExample = computed(() => {
+  const standard = oiProfileStatus.value?.standard
+  if (!standard) return ""
+  const fuel = standard.operator_costs.MemoryCopy + 1048576 * standard.operator_costs.variable.memory_copy_per_byte
+  return `复制 1 MiB 的指令成本为 ${fuel.toLocaleString()} fuel，约 ${(fuel / standard.fuel_per_ms).toFixed(2)} NOJ 等效毫秒；地址计算、循环等指令另行计费。`
+})
 
 async function loadOiCostProfile() {
   if (!isLoggedIn.value) return
@@ -472,9 +510,27 @@ async function cleanupBootstrapRow(s: SystemSetting) {
       <dl v-if="oiProfileStatus" class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
         <dt>标准版本</dt><dd>{{ oiProfileStatus.standard.id }}</dd>
         <dt>计量单位</dt><dd class="tabular-nums">{{ oiProfileStatus.standard.fuel_per_ms.toLocaleString() }} fuel = 1 NOJ 等效毫秒</dd>
-        <dt>工具链</dt><dd>{{ oiProfileStatus.standard.toolchain }} / {{ oiProfileStatus.standard.runtime_version }}</dd>
+        <dt>工具链修订</dt><dd>{{ oiProfileStatus.standard.toolchain }} / {{ oiProfileStatus.standard.runtime_version }}</dd>
+        <template v-if="oiProfileStatus.standard.toolchain_components_sha256">
+          <dt>工具链组件摘要</dt><dd class="break-all font-mono text-xs">{{ oiProfileStatus.standard.toolchain_components_sha256 }}</dd>
+        </template>
         <dt>标准摘要</dt><dd class="break-all font-mono text-xs">{{ oiProfileStatus.standard.hash }}</dd>
       </dl>
+      <div v-if="oiMemoryCosts.length" class="mt-4">
+        <h3 class="text-sm font-semibold text-text">内存操作换算</h3>
+        <div class="mt-2 overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="border-b border-border text-text-secondary"><tr><th scope="col" class="py-2 pr-4">操作</th><th scope="col" class="py-2">成本</th></tr></thead>
+            <tbody>
+              <tr v-for="row in oiMemoryCosts" :key="row.operation" class="border-b border-border">
+                <td class="py-2 pr-4">{{ row.operation }}</td><td class="py-2 tabular-nums">{{ row.cost }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="mt-2 text-xs text-text-secondary">{{ oiMemoryCopyExample }}</p>
+        <p class="mt-2 text-xs text-text-secondary">这是固定工作量成本，不模拟真实内存延迟、缓存或带宽。内存容量上限独立检查；内存增长按页计费，不按新增字节数计费。所有成本均读取内置标准清单。</p>
+      </div>
       <p class="mt-3 text-xs text-text-secondary">普通计算和内存操作按标准计费，批量操作按数据量计费；不计宿主 IO 等待。运行保护超时属于评测环境异常。仅相同标准、题目评测内容和源码的结果具有可比性。</p>
       <details class="mt-3"><summary class="cursor-pointer text-sm">查看完整标准清单</summary><pre class="mt-2 max-h-80 overflow-auto text-xs">{{ oiProfileText }}</pre></details>
     </section>

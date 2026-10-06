@@ -522,7 +522,7 @@ pub async fn evaluate_wasm(
     }
     result.details["oi"]["backend"] = serde_json::json!("wasm");
     let comparable = matches.is_ok() && result.details["oi"]["verdict"] != "SE";
-    result.details["metering"] = serde_json::json!({"standard_version":"noj-wasm-v1","standard_hash":super::standard::profile().hash,
+    result.details["metering"] = serde_json::json!({"standard_version":super::standard::manifest()["id"],"standard_hash":super::standard::profile().hash,
         "source_hash":source_hash,"evaluation_hash":evaluation_hash,"module_hash":module_hash,
         "comparison_hash":super::standard::hash(super::standard::canonical_json(&identity).as_bytes()),"comparable":comparable,"termination_reason":if matches.is_err() {Some("standard_mismatch")} else {None}});
     if let Some(hash) = checker_module_hash {
@@ -1079,8 +1079,7 @@ fn uniform_status_result(
     Ok(evaluation.to_judge_result(&task.submission_id, task.rejudge_seq, None, None))
 }
 
-/// 建立与 Wasmtime 默认算子成本兼容的表。校准表的摘要仍绑定任务，
-/// 版本必须与当前 Wasmtime 一致；未知字段在执行前拒绝。
+/// 使用发布标准冻结的完整算子表；任务标准不匹配时在执行前拒绝。
 pub fn operator_cost_from_profile(_profile: &OiCostProfile) -> OperatorCost {
     serde_json::from_value(super::standard::manifest()["operator_costs"].clone())
         .expect("冻结算子表必须合法")

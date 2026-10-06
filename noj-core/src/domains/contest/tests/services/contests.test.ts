@@ -168,10 +168,13 @@ Deno.test({
         "邀请码错误",
       );
       await registerForContest(contest.id, invitedId, "RotatedPass123");
-      assertEquals(
-        (await getContestProblems(contest.id, participantId)).length,
-        2,
+      const contestProblems = await getContestProblems(
+        contest.id,
+        participantId,
       );
+      assertEquals(contestProblems.length, 2);
+      assertEquals(contestProblems[0].judge_backend, "dual");
+      assertEquals(contestProblems[0].is_objective, false);
 
       await deleteContest(contest.id);
       await assertRejects(

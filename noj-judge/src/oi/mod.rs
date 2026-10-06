@@ -7,6 +7,7 @@ pub mod go_judge;
 pub mod resource_lease;
 pub mod runner;
 pub mod standard;
+pub mod toolchain;
 pub mod wasm;
 mod wasm_compile;
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ProblemView } from '~/utils/problemView'
-import { problemTypeLabel } from '~/utils/problemView'
+import { problemTypeLabel, problemJudgeTypeLabel } from '~/utils/problemView'
 import { formatAcceptanceRate } from '~/utils/submissionFormat'
 import { formatMemoryLimit, formatTimeLimit } from '~/utils/problemView'
 import type { PublicProblemStats } from '~/utils/problemStats'
@@ -56,10 +56,17 @@ const suppressed = computed(
           {{ typeLabel }}
         </span>
         <span
-          v-if="problem.is_objective"
-          class="inline-flex items-center rounded-full bg-success-text/10 px-2 py-0.5 text-xs font-semibold text-success-text"
+          v-if="problemJudgeTypeLabel(problem)"
+          class="inline-flex items-center rounded border border-primary/20 bg-primary/5 px-2 py-0.5 text-xs font-semibold text-primary"
         >
-          客观题
+          {{ problemJudgeTypeLabel(problem) }}
+        </span>
+        <span
+          v-if="!problem.is_objective && problem.judge_backend"
+          class="inline-flex items-center rounded border border-border px-2 py-0.5 font-mono text-xs text-text-secondary"
+          aria-label="评测后端"
+        >
+          {{ problem.judge_backend }}
         </span>
         <!--
           难度徽章（#511 评审修正）：早先难度只在独立页右栏的 ProblemMetaCard 渲染，

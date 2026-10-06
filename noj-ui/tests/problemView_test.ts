@@ -4,6 +4,7 @@ import { assertEquals } from 'jsr:@std/assert@^1';
 import {
   formatMemoryLimit,
   formatTimeLimit,
+  problemJudgeTypeLabel,
   problemTypeLabel,
   toContestProblemView,
   toProblemView,
@@ -25,7 +26,9 @@ Deno.test('problemView: 独立题目资源映射为统一视图', () => {
     artifact_max_size_mb: null,
     tags: [{ id: 't1', name: '模拟', kind: 'problem' }],
     has_hidden_algorithm_tags: true,
-    runtime_config: { evaluator: { time_limit_ms: 1000, memory_limit_mb: 256 } },
+    runtime_config: {
+      evaluator: { time_limit_ms: 1000, memory_limit_mb: 256 },
+    },
   });
 
   assertEquals(view.display_id, 'P1000');
@@ -105,8 +108,15 @@ Deno.test('problemView: 竞赛题目资源映射，id 取 problem_id 且无时�
 });
 
 Deno.test('problemView: 客观题判定只认显式 true（后端字段可能缺失）', () => {
-  assertEquals(toContestProblemView({ ...baseContest(), is_objective: true }).is_objective, true);
-  assertEquals(toContestProblemView({ ...baseContest(), is_objective: undefined }).is_objective, false);
+  assertEquals(
+    toContestProblemView({ ...baseContest(), is_objective: true }).is_objective,
+    true,
+  );
+  assertEquals(
+    toContestProblemView({ ...baseContest(), is_objective: undefined })
+      .is_objective,
+    false,
+  );
 });
 
 Deno.test('problemView: 类型文案与空值兜底', () => {
@@ -131,3 +141,36 @@ function baseContest() {
     difficulty: 'easy',
   };
 }
+
+Deno.test('problemView: OI 后端公开字段在独立页与竞赛页保留，缺失时不猜测后端', () => {
+  for (const backend of ['oi-native', 'oi-wasm'] as const) {
+    const view = toContestProblemView({
+      ...baseContest(),
+      judge_type: 'oi',
+      judge_backend: backend,
+    });
+    assertEquals(view.judge_backend, backend);
+    assertEquals(problemJudgeTypeLabel(view), 'OI 题');
+    const standalone = toProblemView({
+      ...baseContest(),
+      id: 'uuid-oi',
+      type: 'P',
+      owner_id: 'owner',
+      is_objective: false,
+      judge_type: 'oi',
+      judge_backend: backend,
+    });
+    assertEquals(standalone.judge_backend, backend);
+    assertEquals(problemJudgeTypeLabel(standalone), 'OI 题');
+  }
+  assertEquals(
+    problemJudgeTypeLabel({ is_objective: false, judge_type: 'dual' }),
+    'AI 题',
+  );
+  assertEquals(
+    problemJudgeTypeLabel({ is_objective: true, judge_type: 'dual' }),
+    '客观题',
+  );
+  assertEquals(problemJudgeTypeLabel({ is_objective: false }), null);
+  assertEquals(toContestProblemView(baseContest()).judge_backend, null);
+});

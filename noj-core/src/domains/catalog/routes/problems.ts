@@ -101,6 +101,8 @@ router.get("/", optionalAuthMiddleware, async (c) => {
   };
 
   const difficulty = c.req.query("difficulty");
+  query.judge_type = c.req.query("judge_type");
+  query.judge_backend = c.req.query("judge_backend");
   if (difficulty) query.difficulty = difficulty;
 
   const tagId = c.req.query("tag");

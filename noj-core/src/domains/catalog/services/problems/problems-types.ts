@@ -45,6 +45,8 @@ export interface ProblemResponse {
   is_objective: boolean;
   /** 评测模式；存量题目缺省推断为 dual。 */
   judge_type: "dual" | "oi";
+  /** 可公开的执行后端；客观题或配置不可用时为空。 */
+  judge_backend: "dual" | "oi-native" | "oi-wasm" | null;
   /** 提交模式：code / artifact */
   submission_mode: "code" | "artifact";
   /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
