@@ -28,10 +28,7 @@ pub(super) async fn native_case(
     )?;
     std::fs::write(root.join("input"), &files[&case.input])?;
     std::fs::write(root.join("expected"), &files[&case.output])?;
-    std::fs::write(
-        root.join("native.py"),
-        include_str!("../../../toolchain/tests/native-analyze.py"),
-    )?;
+    std::fs::write(root.join("native.py"), include_str!("native_runner.py"))?;
     let extra = select(
         config
             .compile_extra_files
