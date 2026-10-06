@@ -5,7 +5,7 @@
  * 不参与统计/榜单/AC 活动。
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { problems, selfTests } from "./../../../shared/db/schema.ts";
 import {
@@ -16,6 +16,7 @@ import {
 } from "./../../../shared/base/errors.ts";
 import { checkPermission } from "./../../identity/index.ts";
 import { getStorageProvider } from "./../../system/index.ts";
+import { getRedis } from "../../../shared/mq/connection.ts";
 import { isRetryableJudgeQueueError, pushJudgeTask } from "../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
 import { getLogger } from "@logtape/logtape";
@@ -27,6 +28,7 @@ import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import type { JudgeResult } from "../types/index.ts";
 import { prepareJudgeTask } from "./prepare-judge-task.ts";
 import { evaluateProblemAccess } from "./../../catalog/index.ts";
+import { buildOiSelfTestPackage } from "../../catalog/index.ts";
 import {
   isOiRuntimeConfig,
   type ProblemRuntimeConfig,
@@ -41,6 +43,39 @@ import {
 
 /** 详情接口返回的 output 最大长度（字节近似），与正式提交一致。 */
 const MAX_OUTPUT_LENGTH = 8 * 1024;
+
+/** 取消 OI 自测；先持久化共享取消信号，再锁住终态，保留已有进度结果。 */
+export async function cancelSelfTest(id: string, c: Context): Promise<void> {
+  const detail = await getSelfTest(id, c);
+  if (!["pending", "judging"].includes(detail.status)) return;
+  const db = getDb();
+  const [row] = await db.select().from(selfTests).where(eq(selfTests.id, id));
+  if (!row.judge_run_id) {
+    throw new BadRequestError("此自测使用旧协议，不支持取消");
+  }
+  await getRedis().set(
+    `noj:judge:cancel:${id}:${row.judge_run_id}`,
+    "1",
+    "EX",
+    3600,
+  );
+  await db.update(selfTests).set({
+    status: "cancelled",
+    result_status: "cancelled",
+    judge_finished_at: new Date().toISOString(),
+  })
+    .where(
+      and(
+        eq(selfTests.id, id),
+        eq(selfTests.judge_run_id, row.judge_run_id),
+        inArray(selfTests.status, ["pending", "judging"]),
+      ),
+    );
+  await publishSseEvent(Channels.submission(id), {
+    type: "submission:updated",
+    id,
+  });
+}
 
 /** 解析 details 字段（数据库存 JSON 字符串）。 */
 function parseDetails(raw: string | null): Record<string, unknown> | null {
@@ -159,13 +194,32 @@ export async function createSelfTest(
   const id = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
   const now = new Date().toISOString();
 
+  const oiSelfTest = isOiRuntimeConfig(runtimeConfig)
+    ? await buildOiSelfTestPackage(
+      runtimeConfig,
+      problem.support_package_storage_url,
+      input.cases ??
+        ((problem.samples ?? []) as {
+          id: string;
+          input: string;
+          output: string;
+        }[]).map((sample) => ({
+          id: sample.id,
+          input: sample.input,
+          expected_output: sample.output,
+        })),
+    )
+    : undefined;
+  if (!isOiRuntimeConfig(runtimeConfig) && input.cases !== undefined) {
+    throw new BadRequestError("自定义用例仅用于 OI 自测");
+  }
   const task = await prepareJudgeTask({
     submission_id: id,
     problem_id: problemId,
     user_id: userId,
     priority: "medium",
-    runtime_config: runtimeConfig,
-    download_url,
+    runtime_config: oiSelfTest?.runtime_config ?? runtimeConfig,
+    download_url: oiSelfTest?.download_url ?? download_url,
     language: input.language,
     code: input.code,
     file_name: fileName,
@@ -273,6 +327,9 @@ export async function getSelfTest(
     problem_id: row.problem_id,
     language: row.language,
     code: row.code,
+    progress: row.judge_progress as
+      | import("./oi-progress.ts").OiProgress
+      | null,
     file_name: row.file_name,
     status: row.status as SelfTestStatus,
     result_status: row.result_status,
@@ -299,15 +356,17 @@ export async function saveSelfTestResult(
   const db = getDb();
 
   const now = new Date().toISOString();
-  const status: SelfTestStatus =
-    result.status === "error" || result.status === "SystemError"
-      ? "error"
-      : "finished";
+  const status: SelfTestStatus = result.status === "cancelled"
+    ? "cancelled"
+    : result.status === "error" || result.status === "SystemError"
+    ? "error"
+    : "finished";
 
   const outcome = await db.transaction(async (tx) => {
     const [existing] = await tx
       .select({
         status: selfTests.status,
+        judge_run_id: selfTests.judge_run_id,
         judge_started_at: selfTests.judge_started_at,
       })
       .from(selfTests)
@@ -321,10 +380,15 @@ export async function saveSelfTestResult(
       });
       return null;
     }
+    if (
+      existing.judge_run_id && result.details.run_id !== existing.judge_run_id
+    ) return null;
 
     // 已终态：忽略重复结果
     const current = existing.status as SelfTestStatus;
-    if (current === "finished" || current === "error") {
+    if (
+      current === "finished" || current === "error" || current === "cancelled"
+    ) {
       logger.info("重复自测结果，跳过", {
         self_test_id: result.submission_id,
       });

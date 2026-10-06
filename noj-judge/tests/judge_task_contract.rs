@@ -76,6 +76,9 @@ fn judge_task_contract_has_no_unknown_fields() {
     let object = value.as_object().expect("fixture 顶层应为对象");
 
     let expected = [
+        "scheduling_version",
+        "resource_pool",
+        "run_id",
         "submission_id",
         "problem_id",
         "user_id",

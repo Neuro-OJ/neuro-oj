@@ -62,5 +62,7 @@
   "language": "cc",
   "code": "int main() { return 0; }",
   "file_name": "main.cpp",
-  "rejudge_seq": 1
+  "rejudge_seq": 1,
+  "scheduling_version": 1,
+  "resource_pool": "oi-wasm"
 }

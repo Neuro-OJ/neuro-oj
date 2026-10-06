@@ -2166,7 +2166,11 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ runner.temp }}/noj-wasi-cache
-          key: noj-wasi-v2-${{ hashFiles('noj-judge/toolchain/recipe.json', 'noj-judge/toolchain/patches/*.patch', 'noj-judge/scripts/build-oi-wasi-toolchain.*') }}
+          key: noj-wasi-v2-${{ hashFiles('noj-judge/toolchain/recipe.json', 'noj-judge/toolchain/archive-encodings.json', 'noj-judge/toolchain/patches/*.patch', 'noj-judge/scripts/build-oi-wasi-toolchain.*') }}
+
+      - name: 校验固定来源下载保护
+        working-directory: noj-judge
+        run: python3 -m unittest discover -s scripts -p test_build_oi_wasi_toolchain.py
 
       - name: 构建并验证固定 NOJ WASI SDK
         working-directory: noj-judge

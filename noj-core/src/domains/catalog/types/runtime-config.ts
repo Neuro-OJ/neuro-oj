@@ -55,16 +55,19 @@ export interface RuntimeConfig {
 
 /** OI 测试点文件名以评测包根目录为基准。 */
 export interface OiTestCase {
+  id?: string;
+  score?: number;
   input: string;
   output: string;
   time_limit_ms?: number;
   memory_limit_mb?: number;
 }
 
-/** OI 子任务采用全部通过得分。 */
+/** OI 子任务采用 Hydro 的 min/max/sum 聚合；旧配置默认 min。 */
 export interface OiSubtask {
   id: string;
   score: number;
+  scoring?: "all" | "min" | "max" | "sum";
   depends_on?: string[];
   time_limit_ms?: number;
   memory_limit_mb?: number;
@@ -73,6 +76,9 @@ export interface OiSubtask {
 
 /** OI 题在原生与 WASM 执行后端共用的时空限制配置。 */
 export interface OiRuntimeConfig {
+  /** 仅独立自测任务允许；CRUD 和题包配置禁止声明。 */
+  self_test?: { no_compare_inputs: string[] };
+  scoring_version?: 2;
   backend: "native" | "wasm";
   languages: Array<"c" | "cc">;
   time_limit_ms: number;
@@ -114,11 +120,15 @@ function isSafeOiPath(value: unknown): value is string {
 /** 校验 OI 题目运行配置。 */
 export function validateOiRuntimeConfig(
   value: unknown,
+  allowSelfTest = false,
 ): asserts value is OiRuntimeConfig {
   if (!isOiRuntimeConfig(value)) {
     throw new BadRequestError("runtime_config OI 配置必须是对象");
   }
   const rc = value;
+  if (rc.scoring_version !== undefined && rc.scoring_version !== 2) {
+    throw new BadRequestError("不支持的 OI 评分协议，请重新保存题目配置");
+  }
   for (
     const key of [
       "cost_profile",
@@ -128,6 +138,9 @@ export function validateOiRuntimeConfig(
     ]
   ) {
     if (key in rc) throw new BadRequestError("WASM 成本只能由服务器注入");
+  }
+  if (rc.self_test !== undefined && !allowSelfTest) {
+    throw new BadRequestError("题目配置不能携带自测模式");
   }
   if (rc.filename !== undefined && !/^[A-Za-z0-9_-]+$/.test(rc.filename)) {
     throw new BadRequestError("filename 必须是安全文件名前缀");
@@ -195,6 +208,7 @@ export function validateOiRuntimeConfig(
   }
   const ids = new Set<string>();
   const casePaths = new Set<string>();
+  const caseIds = new Set<string>();
   const protectedPaths = new Set<string>();
   let totalScore = 0;
   for (const [index, subtask] of rc.subtasks.entries()) {
@@ -219,9 +233,12 @@ export function validateOiRuntimeConfig(
       );
     }
     totalScore += subtask.score;
-    if ("scoring" in subtask && subtask.scoring !== "all") {
+    if (
+      subtask.scoring !== undefined &&
+      !["all", "min", "max", "sum"].includes(subtask.scoring)
+    ) {
       throw new BadRequestError(
-        `runtime_config.subtasks[${index}].scoring 仅允许 all`,
+        `runtime_config.subtasks[${index}].scoring 仅允许 min/max/sum（旧配置 all 兼容 min）`,
       );
     }
     if (!Array.isArray(subtask.cases) || subtask.cases.length === 0) {
@@ -230,6 +247,27 @@ export function validateOiRuntimeConfig(
       );
     }
     for (const [caseIndex, testCase] of subtask.cases.entries()) {
+      if (
+        testCase?.score !== undefined &&
+        (typeof testCase.score !== "number" ||
+          !Number.isFinite(testCase.score) ||
+          testCase.score < 0 || testCase.score > subtask.score ||
+          Math.abs(testCase.score * 100 - Math.round(testCase.score * 100)) >
+            1e-7)
+      ) {
+        throw new BadRequestError(
+          "测试点分数必须为不超过子任务分数、最多两位小数的非负数",
+        );
+      }
+      if (
+        testCase?.id !== undefined &&
+        (typeof testCase.id !== "string" ||
+          !/^[A-Za-z0-9_-]{1,100}$/.test(testCase.id) ||
+          caseIds.has(testCase.id))
+      ) {
+        throw new BadRequestError("测试点 id 必须是安全标识");
+      }
+      if (testCase?.id !== undefined) caseIds.add(testCase.id);
       if (
         !testCase || typeof testCase !== "object" ||
         !isSafeOiPath(testCase.input) || !isSafeOiPath(testCase.output)

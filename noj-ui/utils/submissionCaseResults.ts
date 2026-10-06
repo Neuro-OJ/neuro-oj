@@ -9,13 +9,63 @@ export type SubmissionCaseVisibility = 'visible' | 'hidden';
 
 export interface SubmissionCaseResult {
   caseId: string;
+  displayLabel?: string;
   status: string;
+  score?: number | null;
+  maxScore?: number | null;
+  terminationReason?: string | null;
   visibility: SubmissionCaseVisibility;
   timeMs: number | null;
   memoryKb: number | null;
   input: string | null;
   expectedOutput: string | null;
   actualOutput: string | null;
+}
+
+export interface SubmissionCaseProgress {
+  phase: string;
+  active_cases: { case_id: string; subtask_id: string }[];
+  completed_cases: Record<string, unknown>[];
+  total_cases: number;
+}
+
+/** 实时结果沿用明细表；未启动用例仅显示数量占位，不推测隐藏测试点标识。 */
+export function submissionCasesWithProgress(
+  details: unknown,
+  progress?: SubmissionCaseProgress | null,
+): SubmissionCaseResult[] {
+  if (!progress) return normalizeSubmissionCases(details);
+  const completed = normalizeArray(progress.completed_cases, 'hidden');
+  const rows = new Map(completed.map((item) => [item.caseId, item]));
+  for (const item of progress.active_cases) {
+    if (rows.has(item.case_id)) continue;
+    rows.set(item.case_id, {
+      caseId: item.case_id,
+      status: 'RUNNING',
+      visibility: 'hidden',
+      timeMs: null,
+      memoryKb: null,
+      input: null,
+      expectedOutput: null,
+      actualOutput: null,
+    });
+  }
+  const result = [...rows.values()];
+  const pending = Math.max(0, progress.total_cases - result.length);
+  for (let index = 0; index < pending; index++) {
+    result.push({
+      caseId: `__noj_waiting_${index}`,
+      displayLabel: `待开始测试点 ${index + 1}`,
+      status: 'PENDING',
+      visibility: 'hidden',
+      timeMs: null,
+      memoryKb: null,
+      input: null,
+      expectedOutput: null,
+      actualOutput: null,
+    });
+  }
+  return result;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -66,6 +116,9 @@ function normalizeCase(
   return {
     caseId,
     status,
+    ...(raw.score !== undefined ? { score: asNonNegativeNumber(raw.score) } : {}),
+    ...(raw.max_score !== undefined ? { maxScore: asNonNegativeNumber(raw.max_score) } : {}),
+    ...(raw.termination_reason !== undefined ? { terminationReason: asString(raw.termination_reason) } : {}),
     visibility,
     timeMs: asNonNegativeNumber(raw.time_ms),
     memoryKb: asNonNegativeNumber(raw.memory_kb),

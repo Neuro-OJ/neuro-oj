@@ -1,3 +1,4 @@
+import { oiCaseMaxScores } from "../../types/oi-scoring.ts";
 /**
  * bundle-parser 单元测试。
  *
@@ -280,7 +281,7 @@ Deno.test("parseBundleZip: Hydro普通题YAML与sum子任务转换", () => {
   assertEquals(rc.subtasks[0].cases[0].input, "testdata/1.in");
 });
 
-Deno.test("parseBundleZip: Hydro sum 多测试点按百分之一分值稳定拆分", () => {
+Deno.test("parseBundleZip: Hydro sum 保留分组并按整数分值给末尾分配余数", () => {
   const parsed = parseBundleZip(makeZip({
     "problem.yaml": "title: A+B\n",
     "problem.md": "# A+B",
@@ -294,12 +295,14 @@ Deno.test("parseBundleZip: Hydro sum 多测试点按百分之一分值稳定拆�
     "testdata/3.out": "3",
   }));
   const subtasks = (parsed.manifest.runtime_config as {
-    subtasks: { score: number }[];
+    subtasks: import("../../types/runtime-config.ts").OiSubtask[];
   }).subtasks;
-  assertEquals(subtasks.map((subtask) => subtask.score), [33.34, 33.33, 33.33]);
+  assertEquals(subtasks.length, 1);
+  assertEquals(subtasks[0].scoring, "sum");
+  assertEquals(oiCaseMaxScores(subtasks[0]), [33, 33, 34]);
 });
 
-Deno.test("parseBundleZip: Hydro 未指定 min 分值时也按百分之一稳定分配", () => {
+Deno.test("parseBundleZip: Hydro 未指定 min 分值时按整数稳定分配", () => {
   const parsed = parseBundleZip(makeZip({
     "problem.yaml": "title: A+B\n",
     "problem.md": "# A+B",
@@ -315,7 +318,7 @@ Deno.test("parseBundleZip: Hydro 未指定 min 分值时也按百分之一稳定
   const subtasks = (parsed.manifest.runtime_config as {
     subtasks: { score: number }[];
   }).subtasks;
-  assertEquals(subtasks.map((subtask) => subtask.score), [33.34, 33.33, 33.33]);
+  assertEquals(subtasks.map((subtask) => subtask.score), [33, 33, 34]);
 });
 
 Deno.test("parseBundleZip: Hydro checker对象、额外文件和testdata前缀保持兼容", () => {
@@ -348,9 +351,55 @@ Deno.test("parseBundleZip: Hydro checker对象、额外文件和testdata前缀�
   assertEquals(rc.checker_extra_files, ["testdata/helper.h"]);
   assertEquals(rc.user_extra_files, ["testdata/user.h"]);
   assertEquals(rc.subtasks[0].cases[0], {
+    id: "1_1",
     input: "testdata/1.in",
     time_limit_ms: 1000,
     memory_limit_mb: 256,
     output: "testdata/1.out",
   });
+});
+
+Deno.test("parseBundleZip: 唯一外层目录归一化元数据及评测路径", () => {
+  const files = {
+    "club/problem.yaml": "title: club\n",
+    "club/problem.md": "# club",
+    "club/testdata/config.yaml": "type: default\n",
+    "club/testdata/1.in": "1 2\n",
+    "club/testdata/1.out": "3\n",
+  };
+  const parsed = parseBundleZip(makeZip(files));
+  assertEquals(parsed.manifest.title, "club");
+  assertEquals(
+    parsed.entries["testdata/1.in"],
+    new TextEncoder().encode("1 2\n"),
+  );
+  assertEquals(parsed.entries["club/testdata/1.in"], undefined);
+  assertEquals(
+    unzipSync(stripMetadataEntries(makeZip(files)))["testdata/1.in"],
+    new TextEncoder().encode("1 2\n"),
+  );
+});
+Deno.test("parseBundleZip: 多个目录不猜测导入目标", () => {
+  assertThrows(
+    () =>
+      parseBundleZip(
+        makeZip({
+          "club/problem.yaml": "title: club\n",
+          "road/problem.yaml": "title: road\n",
+        }),
+      ),
+    BadRequestError,
+  );
+});
+Deno.test("parseBundleZip: 剥离外层目录之前拒绝原路径穿越", () => {
+  assertThrows(
+    () =>
+      parseBundleZip(
+        makeZip({
+          "../club/problem.yaml": "title: club\n",
+          "../club/problem.md": "# club",
+        }),
+      ),
+    BadRequestError,
+  );
 });

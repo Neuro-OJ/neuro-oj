@@ -99,6 +99,7 @@ export function applySubmissionProjection<
 
   const result = structuredClone(submission);
   const projectedRecord = result as Record<string, unknown>;
+  delete projectedRecord.progress;
   delete projectedRecord.subtasks;
   delete projectedRecord.testCases;
   delete projectedRecord.output;

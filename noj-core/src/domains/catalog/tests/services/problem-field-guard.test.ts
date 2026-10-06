@@ -22,7 +22,11 @@ import {
   roles,
   users,
 } from "../../../../shared/db/schema.ts";
-import { AppError, ForbiddenError } from "../../../../shared/base/errors.ts";
+import {
+  AppError,
+  BadRequestError,
+  ForbiddenError,
+} from "../../../../shared/base/errors.ts";
 import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
 import { ensureRbacSeeds } from "../../../system/index.ts";
 import { createProblem, updateProblem } from "../../index.ts";
@@ -652,18 +656,18 @@ Deno.test({
 Deno.test({
   // 2026-09-25 评审：软废弃后 samples 不再做形状校验，历史坏值必须能导入
   // （服务层只记 warning，不再 400）——此前非法形状会被拒绝，测试也从未覆盖。
-  name: "importProblemBundle: 已废弃 samples（含非法形状）导入成功且不报错",
+  name: "importProblemBundle: 独立样例保留且非法形状拒绝",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     for (const samples of ["legacy-shape", [{ input: 1 }], 42]) {
       const zip = makeBundleZip({ samples });
-      const result = await importProblemBundle(
-        { name: "legacy-samples.zip", data: zip },
-        { userId: ROOT_USER_ID, userRole: "admin" },
-      );
-      assertEquals(result.title, `导入测试题 ${ts}`);
+      await assertRejects(() =>
+        importProblemBundle(
+          { name: "invalid-samples.zip", data: zip },
+          { userId: ROOT_USER_ID, userRole: "admin" },
+        ), BadRequestError);
     }
   },
 });

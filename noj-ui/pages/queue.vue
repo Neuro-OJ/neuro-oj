@@ -11,6 +11,8 @@ interface QueueItem {
   submitted_at: string
   submitted_by: string
   kind?: 'submission' | 'self_test'
+  resource_pool?: 'oi-wasm' | 'oi-native' | 'ai'
+  waiting_reason?: 'pool_full' | 'user_busy' | 'memory'
   judge_started_at?: string | null
   judge_finished_at?: string | null
   status?: string
@@ -18,6 +20,8 @@ interface QueueItem {
 }
 
 interface QueueStats {
+  pools?: Record<string, { pending: number; processing: number; active?: number; compiling?: number; running?: number; task_capacity?: number; run_capacity?: number }>
+  resource_memory?: { reserved_mb: number; budget_mb: number }
   pending_count: number
   judging_count: number
   completed_today: number
@@ -95,6 +99,15 @@ useEventSource({
       </div>
 
       <template v-else>
+        <div v-if="data.stats.pools" class="mb-4 grid gap-3 sm:grid-cols-3">
+          <UCard v-for="(pool, name) in data.stats.pools" :key="name">
+            <p class="text-sm font-semibold">{{ name === 'ai' ? 'AI 评测' : name }}</p>
+            <p class="mt-2 text-xs tabular-nums text-text-secondary">排队 {{ pool.pending }} · 已领取 {{ pool.processing }}</p>
+            <p v-if="pool.task_capacity !== undefined" class="mt-2 text-xs tabular-nums text-text-secondary">活跃提交 {{ pool.active ?? 0 }} / {{ pool.task_capacity }}</p>
+            <p v-if="name === 'oi-wasm' && pool.run_capacity !== undefined" class="mt-2 text-xs tabular-nums text-text-secondary">编译 {{ pool.compiling ?? 0 }} · 运行测试点 {{ pool.running ?? 0 }} / {{ pool.run_capacity }}</p>
+          </UCard>
+        </div>
+        <p v-if="data.stats.resource_memory?.budget_mb" class="mb-4 text-xs tabular-nums text-text-muted">资源组预留内存 {{ data.stats.resource_memory.reserved_mb }} / {{ data.stats.resource_memory.budget_mb }} MiB · 容量按资源组去重，监控约每 10 秒更新</p>
         <!-- 正在评测 -->
         <section class="bg-white border border-border rounded-xl mb-4 overflow-x-auto">
           <h2 class="flex items-center gap-2 px-4 py-3 m-0 text-15px font-bold border-b border-border text-blue-700">

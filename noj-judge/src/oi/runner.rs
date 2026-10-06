@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use bollard::Docker;
-use futures_util::future::join_all;
+use futures_util::{future::join_all, TryStreamExt};
 use tracing::warn;
 
 use super::docker_exec::{create_container, exec_with_stdin, exec_without_stdin};
@@ -27,18 +27,49 @@ use crate::types::{JudgeResult, JudgeTask};
 const MAX_SOURCE_BYTES: usize = 4 * 1024 * 1024;
 /// 编译不计入题目运行时限，但必须有独立上限，避免编译器被卡死。
 const COMPILE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// 自测文本比较只忽略行末空白与末尾空行；行内空格仍参与比较。
+pub(crate) fn check_self_test_output(expected: &[u8], actual: &[u8]) -> bool {
+    fn normalized(bytes: &[u8]) -> Vec<Vec<u8>> {
+        let mut lines: Vec<Vec<u8>> = bytes
+            .split(|byte| *byte == b'\n')
+            .map(|line| {
+                let mut end = line.len();
+                while end > 0 && matches!(line[end - 1], b' ' | b'\t' | b'\r') {
+                    end -= 1;
+                }
+                line[..end].to_vec()
+            })
+            .collect();
+        while lines.last().is_some_and(Vec::is_empty) {
+            lines.pop();
+        }
+        lines
+    }
+    normalized(expected) == normalized(actual)
+}
+
+/// 分开截断 stdout/stderr；字节边界使用 UTF-8 lossy，避免切片 panic。
+pub(crate) fn limited_output(bytes: &[u8]) -> (String, bool) {
+    const LIMIT: usize = 8 * 1024;
+    (
+        String::from_utf8_lossy(&bytes[..bytes.len().min(LIMIT)]).into_owned(),
+        bytes.len() > LIMIT,
+    )
+}
 enum CaseOutcome {
     Result(OiCaseResult),
     NeedsChecker {
         result: OiCaseResult,
         output: Vec<u8>,
     },
-    CompileError,
     SystemError,
 }
 
 /// 执行一个 OI 任务。`trusted_image` 只能来自 Worker 配置，绝不从题目或 MQ
 /// 消息中读取。
+// 独立验收程序仍使用此入口，不连接共享调度资源。
+#[allow(dead_code)]
 pub async fn evaluate_native(
     docker: &Docker,
     task: &JudgeTask,
@@ -48,12 +79,48 @@ pub async fn evaluate_native(
     instance_id: &str,
     resource_lease_client: Option<&redis::Client>,
 ) -> Result<JudgeResult> {
+    evaluate_scheduled(
+        docker,
+        task,
+        support_package,
+        trusted_image,
+        cpu_limit_millicores,
+        instance_id,
+        resource_lease_client,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn evaluate_scheduled(
+    docker: &Docker,
+    task: &JudgeTask,
+    support_package: &Path,
+    trusted_image: &str,
+    cpu_limit_millicores: u64,
+    instance_id: &str,
+    resource_lease_client: Option<&redis::Client>,
+    scheduling: Option<(
+        &crate::scheduling::Scheduler,
+        &std::sync::Arc<crate::scheduling::Lease>,
+    )>,
+) -> Result<JudgeResult> {
     let runtime_config = task
         .runtime_config
         .as_oi()
         .context("OI runner 收到非 OI runtime_config")?;
     if task.judge_type != "oi" {
         bail!("OI runner 收到不匹配的 judge_type: {}", task.judge_type);
+    }
+    if runtime_config
+        .scoring_version
+        .is_some_and(|version| version != 2)
+    {
+        return Ok(system_error_result(task, "OI 评分协议不匹配，请重测"));
+    }
+    if runtime_config.self_test.is_some() && !task.submission_id.starts_with("st_") {
+        return Ok(system_error_result(task, "正式评测禁止自测模式"));
     }
     if task.code.len() > MAX_SOURCE_BYTES {
         return Ok(system_error_result(task, "提交源码超过 OI runner 限制"));
@@ -69,8 +136,21 @@ pub async fn evaluate_native(
             "提交语言不在题目允许的语言列表中",
         ));
     }
+    let progress =
+        super::progress::ProgressReporter::new(task, resource_lease_client, runtime_config)
+            .with_scheduling(scheduling);
+    progress
+        .phase(if runtime_config.backend == OiBackend::Wasm {
+            "queued"
+        } else {
+            "compiling"
+        })
+        .await;
     let entries = extract_zip_entries_from_file(support_package).context("读取 OI 支持包失败")?;
     let files = index_files(entries)?;
+    progress
+        .adjust_data_memory(files.values().map(Vec::len).sum())
+        .await?;
     validate_references(runtime_config, &files)?;
     let checker_source = if runtime_config.checker.kind == OiCheckerType::Testlib {
         Some(
@@ -98,6 +178,7 @@ pub async fn evaluate_native(
                 runtime_config,
                 &files,
                 lease_config.as_ref(),
+                &progress,
             )
             .await
             {
@@ -140,7 +221,7 @@ pub async fn evaluate_native(
                 ))
             })
             .collect::<Result<Vec<_>>>()?;
-        return crate::oi::wasm::evaluate_wasm(
+        return crate::oi::wasm::evaluate_wasm_with_progress(
             task,
             runtime_config,
             &cases,
@@ -149,11 +230,36 @@ pub async fn evaluate_native(
             &selected_user_runtime_files(runtime_config, &files),
             &selected_checker_compile_files(runtime_config, &files),
             &selected_user_compile_files(runtime_config, &files),
+            Some(&progress),
         )
         .await;
     }
 
     let started = Instant::now();
+    let executable = match compile_native_program(
+        docker,
+        task,
+        runtime_config,
+        &files,
+        trusted_image,
+        cpu_limit_millicores,
+        instance_id,
+        &progress,
+    )
+    .await?
+    {
+        Ok(bytes) => bytes,
+        Err(diagnostics) => {
+            let mut result = super::OiEvaluation {
+                status: OiStatus::CompileError,
+                score: 0,
+                subtasks: vec![],
+            }
+            .to_judge_result(&task.submission_id, task.rejudge_seq, None, None);
+            result.details["oi"]["compile_error"] = serde_json::json!(diagnostics);
+            return Ok(result);
+        }
+    };
     let mut case_results = Vec::new();
     let order = crate::oi::subtask_execution_order(runtime_config)
         .map_err(|error| anyhow::anyhow!("OI 子任务依赖无效: {error}"))?;
@@ -172,7 +278,22 @@ pub async fn evaluate_native(
             continue;
         }
         let mut subtask_passed = true;
-        for case in &subtask.cases {
+        let maximums = subtask.case_max_scores();
+        for (case_index, case) in subtask.cases.iter().enumerate() {
+            let case_id = case
+                .id
+                .clone()
+                .unwrap_or_else(|| format!("{}_{}", subtask.id, case_index + 1));
+            if progress.is_cancelled() {
+                let result = super::cancelled_case(case);
+                progress
+                    .finish_case(&subtask.id, &case_id, &result, maximums[case_index])
+                    .await;
+                case_results.push(result);
+                subtask_passed = false;
+                continue;
+            }
+            progress.start_case(&subtask.id, &case_id).await;
             let outcome = run_case(
                 docker,
                 task,
@@ -187,39 +308,24 @@ pub async fn evaluate_native(
                 trusted_image,
                 cpu_limit_millicores,
                 instance_id,
+                &executable,
+                &progress,
+                maximums[case_index],
             )
             .await?;
             match outcome {
                 CaseOutcome::Result(result) => {
+                    progress
+                        .finish_case(&subtask.id, &case_id, &result, maximums[case_index])
+                        .await;
                     let case_failed = result.status != OiStatus::Accepted;
                     case_results.push(result);
                     if case_failed {
                         subtask_passed = false;
+                    }
+                    if subtask.should_stop(&case_results) {
                         break;
                     }
-                }
-                CaseOutcome::CompileError => {
-                    // 编译错误与测试点无关，补齐所有测试点以便 scorer 返回 CE，
-                    // 而不是因缺少 case result 变成 SE。
-                    case_results = runtime_config
-                        .subtasks
-                        .iter()
-                        .flat_map(|item| item.cases.iter())
-                        .map(|item| OiCaseResult {
-                            case_id: Some(item.input.clone()),
-                            input: item.input.clone(),
-                            status: OiStatus::CompileError,
-                            time_ms: Some(started.elapsed().as_millis() as u64),
-                            memory_kb: None,
-                            cpu_time_ms: None,
-                            wall_time_ms: None,
-                            equivalent_time_ms: None,
-                            fuel_consumed: None,
-                            fuel_budget: None,
-                            termination_reason: None,
-                        })
-                        .collect();
-                    break;
                 }
                 CaseOutcome::SystemError => {
                     return Ok(system_error_result(task, "OI checker 执行失败"))
@@ -258,6 +364,7 @@ async fn evaluate_native_go_judge(
     config: &OiRuntimeConfig,
     files: &HashMap<String, Vec<u8>>,
     lease_config: Option<&crate::oi::resource_lease::ResourceLeaseConfig>,
+    progress: &super::progress::ProgressReporter,
 ) -> Result<JudgeResult> {
     let started = Instant::now();
     let user_compile_files = selected_user_compile_files(config, files);
@@ -276,7 +383,15 @@ async fn evaluate_native_go_judge(
         if compile_response_is_infrastructure_error(&compile_response) {
             return Ok(system_error_result(task, "go-judge 编译沙箱失败"));
         }
-        return uniform_oi_status_result(task, config, OiStatus::CompileError);
+        let mut result = uniform_oi_status_result(task, config, OiStatus::CompileError)?;
+        let diagnostics = compile_response
+            .files
+            .get("stderr")
+            .map(|file| file.content())
+            .unwrap_or_default();
+        result.details["oi"]["compile_error"] =
+            serde_json::json!(limited_output(diagnostics.as_bytes()).0);
+        return Ok(result);
     };
     cache_files.track(executable_file_id);
     let checker_source = if config.checker.kind == OiCheckerType::Testlib {
@@ -356,6 +471,7 @@ async fn evaluate_native_go_judge(
                 &checker_compile_files,
                 lease_config,
                 &task.submission_id,
+                progress,
             )
         }))
         .await;
@@ -391,6 +507,7 @@ async fn run_go_judge_subtask(
     checker_extra_files: &HashMap<String, Vec<u8>>,
     lease_config: Option<&crate::oi::resource_lease::ResourceLeaseConfig>,
     owner: &str,
+    progress: &super::progress::ProgressReporter,
 ) -> Result<(bool, Vec<OiCaseResult>)> {
     let lease = match lease_config {
         Some(config) => {
@@ -407,6 +524,7 @@ async fn run_go_judge_subtask(
         files,
         user_runtime_files,
         checker_extra_files,
+        progress,
     )
     .await;
     if let Some(lease) = lease {
@@ -425,11 +543,31 @@ async fn run_go_judge_subtask_inner(
     files: &HashMap<String, Vec<u8>>,
     user_runtime_files: &HashMap<String, Vec<u8>>,
     checker_extra_files: &HashMap<String, Vec<u8>>,
+    progress: &super::progress::ProgressReporter,
 ) -> Result<(bool, Vec<OiCaseResult>)> {
     let subtask = &config.subtasks[subtask_index];
     let mut passed = true;
     let mut results = Vec::with_capacity(subtask.cases.len());
-    for case in &subtask.cases {
+    let maximums = subtask.case_max_scores();
+    for (case_index, case) in subtask.cases.iter().enumerate() {
+        let case_id = case
+            .id
+            .clone()
+            .unwrap_or_else(|| format!("{}_{}", subtask.id, case_index + 1));
+        if progress.is_cancelled() {
+            results.push(super::cancelled_case(case));
+            progress
+                .finish_case(
+                    &subtask.id,
+                    &case_id,
+                    results.last().unwrap(),
+                    maximums[case_index],
+                )
+                .await;
+            passed = false;
+            continue;
+        }
+        progress.start_case(&subtask.id, &case_id).await;
         let time_limit_ms = case
             .time_limit_ms
             .or(subtask.time_limit_ms)
@@ -454,7 +592,23 @@ async fn run_go_judge_subtask_inner(
             user_runtime_files,
             config.filename.as_deref(),
         )?;
-        let response = client.run(command).await?;
+        let response = tokio::select! {
+            response=client.run(command)=>Some(response?),
+            _=progress.wait_cancelled()=>None,
+        };
+        let Some(response) = response else {
+            results.push(super::cancelled_case(case));
+            progress
+                .finish_case(
+                    &subtask.id,
+                    &case_id,
+                    results.last().unwrap(),
+                    maximums[case_index],
+                )
+                .await;
+            passed = false;
+            continue;
+        };
         let stdout = response
             .files
             .get("stdout")
@@ -469,7 +623,16 @@ async fn run_go_judge_subtask_inner(
         } else {
             (stdout, false)
         };
-        let mut status = if config.checker.kind == OiCheckerType::Testlib {
+        let mut checker_points = None;
+        let mut status = if config.self_test.is_some() {
+            crate::oi::go_judge::map_status(&response, expected, actual, |expected, actual| {
+                config
+                    .self_test
+                    .as_ref()
+                    .is_some_and(|mode| mode.no_compare_inputs.contains(&case.input))
+                    || check_self_test_output(expected, actual)
+            })
+        } else if config.checker.kind == OiCheckerType::Testlib {
             crate::oi::go_judge::map_status(&response, expected, actual, |_, _| true)
         } else {
             crate::oi::go_judge::map_status(&response, expected, actual, |expected, actual| {
@@ -494,10 +657,56 @@ async fn run_go_judge_subtask_inner(
             );
             let checker_response = client.run(checker).await?;
             status = crate::oi::go_judge::map_testlib_status(&checker_response);
+            let resource_status = checker_response
+                .status
+                .as_deref()
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if matches!(
+                resource_status.as_str(),
+                "accepted" | "nonzero exit status" | "nonzero_exit_status" | ""
+            ) {
+                let stderr = checker_response
+                    .files
+                    .get("stderr")
+                    .map(|file| file.content().as_bytes())
+                    .unwrap_or_default();
+                let parsed = super::testlib_points(
+                    checker_response.exit_status,
+                    stderr,
+                    maximums[case_index],
+                );
+                status = parsed.0;
+                checker_points = parsed.1;
+            }
         }
         let wall_time_ms = response.clock_time.map(|ns| ns / 1_000_000);
         let cpu_time_ms = response.time.map(|ns| ns / 1_000_000);
         results.push(OiCaseResult {
+            stdout: config.self_test.as_ref().map(|_| limited_output(actual).0),
+            stderr: config.self_test.as_ref().map(|_| {
+                limited_output(
+                    response
+                        .files
+                        .get("stderr")
+                        .map(|file| file.content().as_bytes())
+                        .unwrap_or_default(),
+                )
+                .0
+            }),
+            stdout_truncated: config.self_test.as_ref().map(|_| limited_output(actual).1),
+            stderr_truncated: config.self_test.as_ref().map(|_| {
+                limited_output(
+                    response
+                        .files
+                        .get("stderr")
+                        .map(|file| file.content().as_bytes())
+                        .unwrap_or_default(),
+                )
+                .1
+            }),
+            score: checker_points,
+            max_score: None,
             case_id: Some(case.input.clone()),
             input: case.input.clone(),
             status,
@@ -510,8 +719,18 @@ async fn run_go_judge_subtask_inner(
             fuel_budget: None,
             termination_reason: None,
         });
+        progress
+            .finish_case(
+                &subtask.id,
+                &case_id,
+                results.last().unwrap(),
+                maximums[case_index],
+            )
+            .await;
         if status != OiStatus::Accepted {
             passed = false;
+        }
+        if subtask.should_stop(&results) {
             break;
         }
     }
@@ -548,30 +767,15 @@ fn compile_response_is_infrastructure_error(
 
 fn uniform_oi_status_result(
     task: &JudgeTask,
-    config: &OiRuntimeConfig,
+    _config: &OiRuntimeConfig,
     status: OiStatus,
 ) -> Result<JudgeResult> {
-    let case_results = config
-        .subtasks
-        .iter()
-        .flat_map(|subtask| subtask.cases.iter())
-        .map(|case| OiCaseResult {
-            case_id: Some(case.input.clone()),
-            input: case.input.clone(),
-            status,
-            time_ms: None,
-            memory_kb: None,
-            cpu_time_ms: None,
-            wall_time_ms: None,
-            equivalent_time_ms: None,
-            fuel_consumed: None,
-            fuel_budget: None,
-            termination_reason: None,
-        })
-        .collect::<Vec<_>>();
-    let evaluation = score_submission(config, &case_results)
-        .map_err(|error| anyhow::anyhow!("OI 结果计分失败: {error}"))?;
-    Ok(evaluation.to_judge_result(&task.submission_id, task.rejudge_seq, None, None))
+    Ok(super::OiEvaluation {
+        status,
+        score: 0,
+        subtasks: vec![],
+    }
+    .to_judge_result(&task.submission_id, task.rejudge_seq, None, None))
 }
 
 pub(crate) fn system_error_result(task: &JudgeTask, reason: &str) -> JudgeResult {
@@ -583,6 +787,12 @@ pub(crate) fn system_error_result(task: &JudgeTask, reason: &str) -> JudgeResult
             .iter()
             .flat_map(|subtask| subtask.cases.iter())
             .map(|case| OiCaseResult {
+                stdout: None,
+                stderr: None,
+                stdout_truncated: None,
+                stderr_truncated: None,
+                score: None,
+                max_score: None,
                 case_id: Some(case.input.clone()),
                 input: case.input.clone(),
                 status: OiStatus::SystemError,
@@ -725,6 +935,82 @@ fn selected_extra_files_from_paths<'a>(
     selected
 }
 
+/// 独立编译一次，再把产物注入各测试点的一次性运行容器。
+#[allow(clippy::too_many_arguments)]
+async fn compile_native_program(
+    docker: &Docker,
+    task: &JudgeTask,
+    config: &OiRuntimeConfig,
+    files: &HashMap<String, Vec<u8>>,
+    image: &str,
+    cpu_limit: u64,
+    instance: &str,
+    progress: &super::progress::ProgressReporter,
+) -> Result<Result<Vec<u8>, String>> {
+    let container = create_container(docker, image, 512, cpu_limit, instance).await?;
+    let compile = async {
+        for (path, bytes) in selected_user_compile_files(config, files) {
+            inject_file_to_container(docker, &container, &path, &bytes).await?;
+        }
+        let (compiler, standard, source) = if task.language == "c" {
+            ("gcc", "c99", "main.c")
+        } else {
+            ("g++", "c++11", "main.cpp")
+        };
+        inject_file_to_container(docker, &container, source, task.code.as_bytes()).await?;
+        let response = exec_without_stdin(
+            docker,
+            &container,
+            vec![
+                compiler.into(),
+                format!("-std={standard}"),
+                "-O2".into(),
+                "-Wall".into(),
+                "-pipe".into(),
+                format!("/workspace/{source}"),
+                "-o".into(),
+                "/workspace/main".into(),
+            ],
+            COMPILE_TIMEOUT,
+        )
+        .await?;
+        if response.exit_code != 0 || response.output.output_limited {
+            let mut diagnostics = response.output.stderr;
+            diagnostics.extend(response.output.stdout);
+            return Ok(Err(limited_output(&diagnostics).0));
+        }
+        let mut stream = docker.download_from_container(
+            &container,
+            Some(bollard::query_parameters::DownloadFromContainerOptions {
+                path: "/workspace/main".into(),
+            }),
+        );
+        let mut archive = Vec::new();
+        while let Some(chunk) = stream.try_next().await? {
+            archive.extend_from_slice(&chunk);
+            if archive.len() > 64 * 1024 * 1024 {
+                bail!("编译产物超过 64 MiB");
+            }
+        }
+        let mut tar = tar::Archive::new(std::io::Cursor::new(archive));
+        use std::io::Read;
+        for entry in tar.entries()? {
+            let mut entry = entry?;
+            if entry.header().entry_type().is_file() {
+                let mut bytes = Vec::new();
+                entry.read_to_end(&mut bytes)?;
+                return Ok(Ok(bytes));
+            }
+        }
+        bail!("编译成功但没有可执行产物")
+    };
+    let result = tokio::select! {result=compile=>result,_=progress.wait_cancelled()=>Ok(Err("编译已取消".to_string()))};
+    if !remove_container_force(docker, &container).await {
+        warn!(container_id=%container,"OI 编译容器清理失败");
+    }
+    result
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_case(
     docker: &Docker,
@@ -740,6 +1026,9 @@ async fn run_case(
     trusted_image: &str,
     cpu_limit_millicores: u64,
     instance_id: &str,
+    executable: &[u8],
+    progress: &super::progress::ProgressReporter,
+    maximum: f64,
 ) -> Result<CaseOutcome> {
     let time_limit_ms = case
         .time_limit_ms
@@ -760,7 +1049,7 @@ async fn run_case(
         instance_id,
     )
     .await?;
-    let result = run_case_in_container(
+    let execution = run_case_in_container(
         docker,
         &container_id,
         task,
@@ -770,8 +1059,12 @@ async fn run_case(
         expected,
         files,
         time_limit_ms,
-    )
-    .await;
+        executable,
+    );
+    let result = tokio::select! {
+        result=execution=>result,
+        _=progress.wait_cancelled()=>Ok(CaseOutcome::Result(super::cancelled_case(case))),
+    };
     if !remove_container_force(docker, &container_id).await {
         warn!(container_id = %container_id, "OI 测试点容器清理失败");
     }
@@ -780,7 +1073,7 @@ async fn run_case(
             let Some(checker_source) = checker_source else {
                 return Ok(CaseOutcome::SystemError);
             };
-            result.status = run_checker(
+            let (status, points) = run_checker(
                 docker,
                 trusted_image,
                 memory_limit_mb,
@@ -793,12 +1086,15 @@ async fn run_case(
                 &output,
                 files,
                 time_limit_ms,
+                maximum,
             )
             .await
             .unwrap_or_else(|error| {
                 warn!(error = %error, "testlib checker 容器执行失败");
-                OiStatus::SystemError
+                (OiStatus::SystemError, None)
             });
+            result.status = status;
+            result.score = points;
             Ok(CaseOutcome::Result(result))
         }
         other => Ok(other),
@@ -809,89 +1105,35 @@ async fn run_case(
 async fn run_case_in_container(
     docker: &Docker,
     container_id: &str,
-    task: &JudgeTask,
+    _task: &JudgeTask,
     config: &OiRuntimeConfig,
     case: &OiCase,
     input: &[u8],
     expected: &[u8],
     files: &HashMap<String, Vec<u8>>,
     time_limit_ms: u64,
+    executable: &[u8],
 ) -> Result<CaseOutcome> {
-    let source_name = match task.language.as_str() {
-        "c" => "main.c",
-        "cc" => "main.cpp",
-        other => bail!("不支持的 OI 语言: {other}"),
-    };
     let file_io = file_io_names(config.filename.as_deref())?;
-    // `compile_extra_files` 只在用户编译阶段可见；`user_extra_files` 同时
-    // 在编译和运行阶段可见。先注入编译集合，编译成功后删除编译专用文件，
-    // 避免本地 Docker 回退路径与 go-judge/WASM 的文件范围不一致。
-    let user_compile_files = selected_user_compile_files(config, files);
-    let user_runtime_files = selected_user_runtime_files(config, files);
-    for (path, data) in &user_compile_files {
-        inject_file_to_container(docker, container_id, path, data)
-            .await
-            .context("注入 OI extra file 失败")?;
+    for (path, data) in selected_user_runtime_files(config, files) {
+        inject_file_to_container(docker, container_id, &path, &data).await?;
     }
     if let Some((input_name, _)) = &file_io {
         inject_file_to_container(docker, container_id, input_name, input)
             .await
             .context("注入 OI 文件输入失败")?;
     }
-    inject_file_to_container(docker, container_id, source_name, task.code.as_bytes())
-        .await
-        .context("注入 OI 源码失败")?;
-
-    let compiler = if task.language == "c" { "gcc" } else { "g++" };
-    let standard = if task.language == "c" { "c99" } else { "c++11" };
-    let compile = match exec_without_stdin(
+    inject_file_to_container(docker, container_id, "main", executable).await?;
+    let chmod = exec_without_stdin(
         docker,
         container_id,
-        vec![
-            compiler.to_string(),
-            format!("-std={standard}"),
-            "-O2".to_string(),
-            "-Wall".to_string(),
-            "-pipe".to_string(),
-            format!("/workspace/{source_name}"),
-            "-o".to_string(),
-            "/workspace/main".to_string(),
-        ],
-        COMPILE_TIMEOUT,
+        vec!["chmod".into(), "700".into(), "/workspace/main".into()],
+        Duration::from_secs(5),
     )
-    .await
-    {
-        Ok(result) => result,
-        Err(error) if error.to_string().contains("超时") => {
-            return Ok(CaseOutcome::CompileError);
-        }
-        Err(error) => return Err(error),
-    };
-    if compile.output.output_limited || compile.exit_code != 0 {
-        return Ok(CaseOutcome::CompileError);
+    .await?;
+    if chmod.exit_code != 0 {
+        bail!("设置 OI 编译产物执行权限失败");
     }
-    for path in user_compile_files.keys() {
-        if user_runtime_files.contains_key(path) {
-            continue;
-        }
-        let removed = exec_without_stdin(
-            docker,
-            container_id,
-            vec![
-                "rm".to_string(),
-                "-f".to_string(),
-                "--".to_string(),
-                format!("/workspace/{path}"),
-            ],
-            Duration::from_secs(5),
-        )
-        .await
-        .context("清理 OI 编译专用 extra file 失败")?;
-        if removed.exit_code != 0 {
-            bail!("清理 OI 编译专用 extra file 失败: {path}");
-        }
-    }
-
     let started = Instant::now();
     let execution = exec_with_stdin(
         docker,
@@ -934,14 +1176,36 @@ async fn run_case_in_container(
         OiStatus::FormatError
     } else if execution.exit_code != 0 {
         OiStatus::RuntimeError
-    } else if config.checker.kind != OiCheckerType::Testlib
-        && !check_output(config.checker.kind, expected, &actual_output)
-    {
+    } else if if let Some(mode) = config.self_test.as_ref() {
+        !mode.no_compare_inputs.contains(&case.input)
+            && !check_self_test_output(expected, &actual_output)
+    } else {
+        config.checker.kind != OiCheckerType::Testlib
+            && !check_output(config.checker.kind, expected, &actual_output)
+    } {
         OiStatus::WrongAnswer
     } else {
         OiStatus::Accepted
     };
     let result = OiCaseResult {
+        stdout: config
+            .self_test
+            .as_ref()
+            .map(|_| limited_output(&actual_output).0),
+        stderr: config
+            .self_test
+            .as_ref()
+            .map(|_| limited_output(&execution.output.stderr).0),
+        stdout_truncated: config
+            .self_test
+            .as_ref()
+            .map(|_| limited_output(&actual_output).1),
+        stderr_truncated: config
+            .self_test
+            .as_ref()
+            .map(|_| limited_output(&execution.output.stderr).1),
+        score: None,
+        max_score: None,
         case_id: Some(case.input.clone()),
         input: case.input.clone(),
         status,
@@ -993,7 +1257,8 @@ async fn run_checker(
     actual: &[u8],
     files: &HashMap<String, Vec<u8>>,
     time_limit_ms: u64,
-) -> Result<OiStatus> {
+    maximum: f64,
+) -> Result<(OiStatus, Option<f64>)> {
     // checker 在与用户程序完全不同的一次性容器中运行。即使用户程序创建了
     // 后台进程，也无法修改 checker 的源码、答案或用户输出文件。
     let container_id = create_container(
@@ -1041,7 +1306,7 @@ async fn run_checker(
         )
         .await?;
         if checker_compile.output.output_limited || checker_compile.exit_code != 0 {
-            return Ok(OiStatus::SystemError);
+            return Ok((OiStatus::SystemError, None));
         }
         let checker = exec_without_stdin(
             docker,
@@ -1056,9 +1321,13 @@ async fn run_checker(
         )
         .await?;
         if checker.output.output_limited {
-            Ok(OiStatus::SystemError)
+            Ok((OiStatus::SystemError, None))
         } else {
-            Ok(super::testlib_verdict_from_exit(Some(checker.exit_code)))
+            Ok(super::testlib_points(
+                Some(checker.exit_code),
+                &checker.output.stderr,
+                maximum,
+            ))
         }
     }
     .await;
@@ -1161,5 +1430,24 @@ mod tests {
             file_ids: HashMap::new(),
         };
         assert!(compile_response_is_infrastructure_error(&response));
+    }
+}
+
+#[cfg(test)]
+mod self_test_text_tests {
+    use super::*;
+    #[test]
+    fn text_comparison_keeps_internal_spaces_and_normalizes_line_endings() {
+        assert!(check_self_test_output(b"1 2\r\n3\r\n", b"1 2  \n3\t\n\n"));
+        assert!(!check_self_test_output(b"1 2\n", b"1  2\n"));
+        assert!(!check_self_test_output(b"1\n2\n", b"1 2\n"));
+        assert!(check_self_test_output(b"", b" \t\r\n\n"));
+    }
+    #[test]
+    fn truncation_uses_byte_limit_without_utf8_panics() {
+        let bytes = "中".repeat(30000).into_bytes();
+        let (text, truncated) = limited_output(&bytes);
+        assert!(truncated);
+        assert!(text.len() <= 64 * 1024 + 3);
     }
 }

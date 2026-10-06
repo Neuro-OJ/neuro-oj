@@ -35,6 +35,37 @@ export const MAX_FILE_SIZE = 64 * 1024 * 1024;
 /** 对齐 judge 端 `MAX_TOTAL_SIZE`（512 MiB）。 */
 export const MAX_TOTAL_SIZE = 512 * 1024 * 1024;
 
+/** 读取已发布的评测文件或编辑输入，解压前验证路径与大小，拒绝 ZIP 炸弹。 */
+export function readEvaluationEntries(
+  data: Uint8Array,
+  includeContents = true,
+  paths?: string[],
+): Record<string, Uint8Array> {
+  let count = 0;
+  let total = 0;
+  try {
+    return unzipSync(data, {
+      filter: (file) => {
+        assertSafeEntryPath(file.name);
+        count++;
+        total += file.originalSize;
+        if (
+          count > MAX_ZIP_ENTRIES || file.originalSize > MAX_FILE_SIZE ||
+          total > MAX_TOTAL_SIZE
+        ) {
+          throw new BadRequestError("评测包超过条目数量或解压大小限制");
+        }
+        if (file.name.endsWith("/")) return false;
+        paths?.push(file.name);
+        return includeContents;
+      },
+    });
+  } catch (error) {
+    if (error instanceof BadRequestError) throw error;
+    throw new BadRequestError("评测包不是有效的 ZIP");
+  }
+}
+
 /**
  * 解析后的统一题目包。
  */
@@ -85,6 +116,35 @@ function assertSafeEntryPath(name: string): void {
  * @throws {BadRequestError} 根级缺 problem.json / 根级缺 evaluate.py /
  *   ZIP 安全校验失败 / manifest 非法 JSON
  */
+/** 唯一外层目录可作为题包根；先验证原路径，避免隐藏路径穿越。 */
+function normalizeBundleRoot(
+  source: Record<string, Uint8Array>,
+): Record<string, Uint8Array> {
+  for (const path of Object.keys(source)) assertSafeEntryPath(path);
+  let files = source;
+  while (
+    !Object.hasOwn(files, "problem.json") &&
+    !Object.hasOwn(files, "problem.yaml")
+  ) {
+    const names = Object.keys(files).filter((path) => !path.endsWith("/"));
+    if (!names.length || names.some((path) => !path.includes("/"))) break;
+    const folders = new Set(names.map((path) => path.split("/")[0]));
+    if (folders.size !== 1) break;
+    const prefix = `${names[0].split("/")[0]}/`;
+    const unwrapped: Record<string, Uint8Array> = Object.create(null);
+    for (const [path, bytes] of Object.entries(files)) {
+      if (path.startsWith(prefix) && path.length > prefix.length) {
+        unwrapped[path.slice(prefix.length)] = bytes;
+      }
+    }
+    files = unwrapped;
+  }
+  return Object.hasOwn(files, "problem.json") ||
+      Object.hasOwn(files, "problem.yaml")
+    ? files
+    : source;
+}
+
 export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
   let files: Record<string, Uint8Array>;
   try {
@@ -145,6 +205,11 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
     }
   }
 
+  files = normalizeBundleRoot(files);
+  rootNames.clear();
+  for (const name of Object.keys(files)) {
+    if (!name.includes("/")) rootNames.add(name);
+  }
   let manifest: Record<string, unknown>;
   let statementFile = files["statement.md"];
   if (files["problem.json"]) {
@@ -281,16 +346,8 @@ export function inspectEvaluationPackage(
  * `evaluate.py` 保持根级。返回重建后的 zip 字节。
  */
 export function stripMetadataEntries(data: Uint8Array): Uint8Array {
-  let files: Record<string, Uint8Array>;
-  try {
-    files = unzipSync(data, {
-      filter: (file) =>
-        !(BUNDLE_METADATA_ENTRIES as readonly string[]).includes(file.name),
-    });
-  } catch {
-    throw new BadRequestError("zip 解析失败：文件不是有效的 zip 格式");
-  }
-
+  const files = normalizeBundleRoot(readEvaluationEntries(data));
+  for (const path of BUNDLE_METADATA_ENTRIES) delete files[path];
   return zipSync(files, { level: 6 });
 }
 

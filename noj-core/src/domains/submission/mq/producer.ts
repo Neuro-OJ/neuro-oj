@@ -1,14 +1,22 @@
 import type { JudgeTask, JudgeTaskPriority } from "../types/index.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
 import {
+  JUDGE_POOL_QUEUES,
+  JUDGE_QUEUE_LAYOUT,
   JUDGE_QUEUE_PREFIX,
   JUDGE_QUEUES,
+  JUDGE_RESOURCE_POOLS,
+  judgeQueueFor,
 } from "../../../shared/mq/judge-queues.ts";
 import { getLogger } from "@logtape/logtape";
+import { and, eq, inArray } from "drizzle-orm";
+import { getDb } from "../../../shared/db/connection.ts";
+import { selfTests, submissions } from "../../../shared/db/schema.ts";
 
 const logger = getLogger(["noj", "submission"]);
 
 export { JUDGE_QUEUE_PREFIX, JUDGE_QUEUES };
+export { ALL_JUDGE_QUEUES } from "../../../shared/mq/judge-queues.ts";
 
 /**
  * 每级评测队列最大待评测数：超过后拒绝新提交，避免 Redis 内存无限增长。
@@ -32,7 +40,8 @@ const MAX_MESSAGE_BYTES = 16 * 1024 * 1024; // 16MB
  * 返回 LPUSH 后的真实队列长度；容量已满时返回 -1。
  */
 const QUEUE_CAPACITY_SCRIPT = `
-local current = redis.call("LLEN", KEYS[1])
+local current = 0
+for _, key in ipairs(KEYS) do current = current + redis.call("LLEN", key) end
 local max = tonumber(ARGV[1])
 if current >= max then
   return -1
@@ -69,6 +78,12 @@ export async function pushJudgeTask(task: JudgeTask): Promise<number> {
       `Redis 连接不可用（状态: ${redis.status}），无法推送评测任务`,
     );
   }
+  if (
+    JUDGE_QUEUE_LAYOUT === "legacy" &&
+    await redis.get(`${JUDGE_QUEUE_PREFIX}:layout`) === "pools"
+  ) {
+    throw new Error("评测队列已升级为资源池布局，请协调升级 Core 配置后重试");
+  }
 
   const message = JSON.stringify(task);
 
@@ -80,14 +95,58 @@ export async function pushJudgeTask(task: JudgeTask): Promise<number> {
     );
   }
 
-  const queue = JUDGE_QUEUES[task.priority];
+  const queue = judgeQueueFor(task.resource_pool, task.priority);
+  const capacityQueues = JUDGE_QUEUE_LAYOUT === "legacy" ? [queue] : [
+    queue,
+    ...JUDGE_RESOURCE_POOLS
+      .filter((pool) => pool !== task.resource_pool).map((pool) =>
+        JUDGE_POOL_QUEUES[pool][task.priority]
+      ),
+  ];
   const capacity = JUDGE_QUEUE_CAPACITY[task.priority];
+  if (task.run_id) {
+    const db = getDb();
+    const initial = {
+      sequence: 0,
+      phase: "queued",
+      active_cases: [],
+      completed_cases: [],
+      total_cases: "subtasks" in task.runtime_config
+        ? task.runtime_config.subtasks.reduce(
+          (sum, subtask) => sum + subtask.cases.length,
+          0,
+        )
+        : 0,
+    };
+    if (task.submission_id.startsWith("st_")) {
+      await db.update(selfTests).set({
+        judge_run_id: task.run_id,
+        judge_progress: initial,
+      }).where(
+        and(
+          eq(selfTests.id, task.submission_id),
+          inArray(selfTests.status, ["pending", "judging"]),
+        ),
+      );
+    } else {
+      await db.update(submissions).set({
+        judge_run_id: task.run_id,
+        judge_progress: initial,
+      }).where(
+        and(
+          eq(submissions.id, task.submission_id),
+          eq(submissions.rejudge_seq, task.rejudge_seq ?? 0),
+          inArray(submissions.status, ["pending", "judging"]),
+        ),
+      );
+    }
+  }
 
   // NOJ-077：用单条 Lua 脚本原子完成容量检查和入队，拒绝而不是静默丢最老任务。
   const length = await redis.eval(
     QUEUE_CAPACITY_SCRIPT,
-    1,
-    queue,
+    capacityQueues.length,
+    ...capacityQueues,
     capacity,
     message,
   );

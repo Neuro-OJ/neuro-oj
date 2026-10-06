@@ -695,7 +695,7 @@ Deno.test("T21 配置：值校验（版本/并发/GID/UID/HOST）逐条", () => 
   for (const bad of ["0", "-1", "abc"]) {
     let message = "";
     try {
-      assertJudgeConfigValues({ ...valid, JUDGE_MAX_CONCURRENT_JUDGES: bad });
+      assertJudgeConfigValues({ ...valid, JUDGE_WASM_CASE_CONCURRENCY: bad });
     } catch (err) {
       message = (err as Error).message;
     }
@@ -1150,7 +1150,9 @@ Deno.test("T21 默认值：COMPOSE_ENV_DEFAULTS 与 JUDGE_DEFAULT_VALUES 覆盖 
     "unix:///run/noj-judge/docker.sock",
   );
   assertEquals(JUDGE_DEFAULT_VALUES["JUDGE_REQUIRE_ISOLATED_DOCKER"], "true");
-  assertEquals(JUDGE_DEFAULT_VALUES["JUDGE_MAX_CONCURRENT_JUDGES"], "2");
+  assertEquals(JUDGE_DEFAULT_VALUES["JUDGE_WASM_CASE_CONCURRENCY"], "16");
+  assertEquals(JUDGE_DEFAULT_VALUES["JUDGE_WASM_TASK_CONCURRENCY"], "4");
+  assertEquals(JUDGE_DEFAULT_VALUES["JUDGE_RESOURCE_MEMORY_MB"], "auto");
   // 必填清单包含 socket 两项（否则校验会漏掉最关键的安全配置）
   assert(JUDGE_REQUIRED_KEYS.includes("JUDGE_DOCKER_SOCKET"));
   assert(JUDGE_REQUIRED_KEYS.includes("JUDGE_DOCKER_SOCKET_GID"));

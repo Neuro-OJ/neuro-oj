@@ -40,6 +40,7 @@ RUN deno cache \
 # 编译 API server 与 CLI 两个独立二进制
 RUN mkdir -p /build/bin \
     && deno compile -A --no-check --unstable-byonm --unstable-node-globals \
+        --include src/domains/catalog/services/oi-archive-worker.ts \
         --output /build/bin/noj-server src/main.ts \
     && deno compile -A --no-check --unstable-byonm --unstable-node-globals \
         --output /build/bin/noj scripts/noj.ts

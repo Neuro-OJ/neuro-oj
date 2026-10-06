@@ -30,6 +30,7 @@ async function loadFixture(): Promise<JudgeTask> {
 Deno.test("JudgeTask 契约: 工厂按 fixture 构造出的消息与 fixture 完全一致", async () => {
   const fixture = await loadFixture();
   const built = buildJudgeTask({
+    run_id: fixture.run_id,
     submission_id: fixture.submission_id,
     problem_id: fixture.problem_id,
     user_id: fixture.user_id,
@@ -50,6 +51,7 @@ Deno.test("JudgeTask 契约: 工厂按 fixture 构造出的消息与 fixture 完
 Deno.test("JudgeTask 契约: 字段集合与登记表一致", async () => {
   const fixture = await loadFixture();
   const built = buildJudgeTask({
+    run_id: fixture.run_id,
     submission_id: fixture.submission_id,
     problem_id: fixture.problem_id,
     user_id: fixture.user_id,
@@ -101,6 +103,8 @@ Deno.test("JudgeTask 契约: 可选字段缺省时不写入消息体", () => {
   assertEquals(
     Object.keys(built).sort(),
     [
+      "scheduling_version",
+      "resource_pool",
       "code",
       "language",
       "priority",
@@ -121,6 +125,7 @@ Deno.test("JudgeTask 契约: 可选字段缺省时不写入消息体", () => {
 Deno.test("JudgeTask 契约: 必填字段齐全时才构造（类型层面已强制，这里验证运行期形态）", async () => {
   const fixture = await loadFixture();
   const built = buildJudgeTask({
+    run_id: fixture.run_id,
     submission_id: fixture.submission_id,
     problem_id: fixture.problem_id,
     user_id: fixture.user_id,

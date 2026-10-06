@@ -161,6 +161,12 @@ pub async fn analyze(options: Options) -> Result<Value> {
         .iter()
         .flat_map(|s| &s.cases)
         .map(|case| super::OiCaseResult {
+            stdout: None,
+            stderr: None,
+            stdout_truncated: None,
+            stderr_truncated: None,
+            score: None,
+            max_score: None,
             case_id: None,
             input: case.input.clone(),
             status: OiStatus::Accepted,

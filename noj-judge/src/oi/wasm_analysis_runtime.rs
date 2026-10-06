@@ -35,6 +35,7 @@ pub(crate) async fn run_analysis_module(
         },
         Some(wall_budget_ms(limit)),
         counters,
+        None,
     )
     .await;
     let mut result = match observed {

@@ -60,6 +60,7 @@ export interface SubmissionEvaluationDetails extends Record<string, unknown> {
  * - viewer 是匿名用户或登录非 owner → `code`/`output`/`details` 均为 null
  */
 export interface SubmissionDetail {
+  progress?: import("../oi-progress.ts").OiProgress | null;
   id: string;
   public_id: string;
   user_id: string;

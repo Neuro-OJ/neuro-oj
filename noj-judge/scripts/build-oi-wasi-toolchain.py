@@ -20,16 +20,19 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def download(url, checksum, path):
-    if path.exists() and digest(path) == checksum:
-        return
+def download(url, checksum, path, alternate_checksums=()):
+    accepted = {checksum, *alternate_checksums}
+    if path.exists() and digest(path) in accepted:
+        return digest(path)
     temporary = path.with_suffix(".download")
     with urllib.request.urlopen(url, timeout=120) as response, temporary.open("wb") as output:
         shutil.copyfileobj(response, output)
-    if digest(temporary) != checksum:
+    actual = digest(temporary)
+    if actual not in accepted:
         temporary.unlink()
-        raise RuntimeError(f"来源摘要不匹配: {url}")
+        raise RuntimeError(f"来源摘要不匹配: {url}，实际 SHA-256: {actual}")
     temporary.replace(path)
+    return actual
 
 
 def components(sdk, revision):
@@ -68,8 +71,14 @@ def build(args):
     sdk_archive = cache / "wasi-sdk-34.tar.gz"
     llvm_archive = cache / "llvm-source.tar.gz"
     download(recipe["sdk_url"], recipe["sdk_sha256"], sdk_archive)
-    download(f"https://codeload.github.com/llvm/llvm-project/tar.gz/{recipe['llvm_commit']}",
-             recipe["llvm_sha256"], llvm_archive)
+    encodings = json.loads((package / "archive-encodings.json").read_text())
+    if encodings["schema_version"] != 1 or encodings["llvm_commit"] != recipe["llvm_commit"]:
+        raise RuntimeError("归档封装白名单与固定源码提交不一致")
+    archive_hash = download(f"https://codeload.github.com/llvm/llvm-project/tar.gz/{recipe['llvm_commit']}",
+                            recipe["llvm_sha256"], llvm_archive, encodings["alternate_sha256"])
+    alternate_archive = archive_hash != recipe["llvm_sha256"]
+    if alternate_archive and args.record_manifest:
+        raise RuntimeError("替代归档封装必须验证冻结组件，禁止用于重新记录组件清单")
     work = args.work.resolve()
     if work.exists():
         raise RuntimeError("构建目录必须不存在，避免沿用未校验源码或配置")

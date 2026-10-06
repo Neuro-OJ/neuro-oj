@@ -14,12 +14,14 @@ export const SELF_TEST_STATUSES = [
   "judging",
   "finished",
   "error",
+  "cancelled",
 ] as const;
 
 export type SelfTestStatus = typeof SELF_TEST_STATUSES[number];
 
 /** 创建自测的请求体（problem_id 从 URL 获取，不放在 body）。 */
 export interface SelfTestInput {
+  cases?: import("../../catalog/index.ts").OiSelfTestCase[];
   language: string;
   code: string;
   file_name?: string;
@@ -42,6 +44,7 @@ export interface SelfTestResponse {
  * 仅 owner/admin 可见，output 按 API 层截断返回。
  */
 export interface SelfTestDetail {
+  progress?: import("../services/oi-progress.ts").OiProgress | null;
   id: string;
   user_id: string;
   problem_id: string;

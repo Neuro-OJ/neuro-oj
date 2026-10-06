@@ -13,6 +13,8 @@
 //! 现已在 `.github/workflows/ci.yml` 的 `judge-check` 中提供 Redis 服务并导出
 //! `REDIS_URL`，故它们在每次 CI 都真实执行。
 
+use noj_judge::scheduling::{Capacities, Pool, Scheduler, Settings};
+use redis::AsyncCommands;
 use std::time::Duration;
 
 use noj_judge::user_claim::{
@@ -74,7 +76,180 @@ async fn cleanup(conn: &mut redis::aio::MultiplexedConnection, prefix: &str) {
     }
 }
 
+#[tokio::test]
+async fn resource_groups_share_atomic_run_and_memory_limits() {
+    let Some(mut conn) = connect().await else {
+        return;
+    };
+    let url = std::env::var("REDIS_URL").unwrap();
+    let client = redis::Client::open(url).unwrap();
+    let prefix = format!("noj:test:pools:{}", uuid::Uuid::new_v4());
+    let settings = Settings {
+        group: "shared-node".into(),
+        enabled: Pool::ALL.to_vec(),
+        capacities: Capacities {
+            wasm_tasks: 4,
+            native_tasks: 2,
+            ai_tasks: 2,
+            wasm_compile: 2,
+            wasm_run: 16,
+            memory_mb: 2048,
+        },
+    };
+    let a = Scheduler::connect(client.clone(), settings.clone(), &prefix)
+        .await
+        .unwrap();
+    let b = Scheduler::connect(client.clone(), settings.clone(), &prefix)
+        .await
+        .unwrap();
+    let parent = a.try_task(Pool::Wasm, 128, 512).await.unwrap().unwrap();
+    let mut running = Vec::new();
+    for _ in 0..16 {
+        running.push(b.stage(&parent, "run", 32).await.unwrap());
+    }
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), a.stage(&parent, "run", 32))
+            .await
+            .is_err()
+    );
+    let compile_one = a.stage(&parent, "compile", 256).await.unwrap();
+    let compile_two = b.stage(&parent, "compile", 256).await.unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), a.stage(&parent, "compile", 256))
+            .await
+            .is_err()
+    );
+    drop((compile_one, compile_two));
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let native = b.try_task(Pool::Native, 128, 512).await.unwrap().unwrap();
+    let ai = a.try_task(Pool::Ai, 256, 512).await.unwrap().unwrap();
+    assert!(b.try_task(Pool::Ai, 512, 512).await.unwrap().is_none());
+    assert!(a.try_task(Pool::Wasm, 2048, 1).await.is_err());
+    let mut wrong = settings.clone();
+    wrong.capacities.wasm_run = 32;
+    assert!(Scheduler::connect(client.clone(), wrong, &prefix)
+        .await
+        .is_err());
+    assert!(
+        !Scheduler::reset_group_config(&client, &prefix, "shared-node")
+            .await
+            .unwrap()
+    );
+    let mut independent = settings;
+    independent.group = "other-node".into();
+    let other = Scheduler::connect(client.clone(), independent, &prefix)
+        .await
+        .unwrap();
+    let other_parent = other.try_task(Pool::Wasm, 128, 512).await.unwrap().unwrap();
+    let other_run = other.stage(&other_parent, "run", 32).await.unwrap();
+    drop((running, parent, native, ai, other_parent, other_run));
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert!(
+        Scheduler::reset_group_config(&client, &prefix, "shared-node")
+            .await
+            .unwrap()
+    );
+    let keys: Vec<String> = conn.keys(format!("{prefix}:*")).await.unwrap();
+    if !keys.is_empty() {
+        let _: usize = conn.del(keys).await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn pool_and_submission_kind_user_claims_are_independent() {
+    let Some(mut conn) = connect().await else {
+        return;
+    };
+    let prefix = format!("noj:test:user-pools:{}", uuid::Uuid::new_v4());
+    let user = "same-user";
+    for pool in Pool::ALL {
+        for kind in ["submission", "self-test"] {
+            let key = format!("{prefix}:{}:{kind}", pool.name());
+            assert!(try_claim_user(&mut conn, &key, user, "first", 60_000)
+                .await
+                .unwrap());
+            assert!(!try_claim_user(&mut conn, &key, user, "second", 60_000)
+                .await
+                .unwrap());
+            release_user(&mut conn, &key, user, "first").await;
+        }
+    }
+    let keys: Vec<String> = conn.keys(format!("{prefix}:*")).await.unwrap();
+    if !keys.is_empty() {
+        let _: usize = conn.del(keys).await.unwrap();
+    }
+}
+
 const TTL_MS: i64 = 60_000;
+
+#[tokio::test]
+async fn run_waiters_rotate_between_submissions_and_expired_parent_is_rejected() {
+    let Some(mut conn) = connect().await else {
+        return;
+    };
+    let prefix = format!("noj:test:fair-pools:{}", uuid::Uuid::new_v4());
+    let settings = Settings {
+        group: "node".into(),
+        enabled: Pool::ALL.to_vec(),
+        capacities: Capacities {
+            wasm_tasks: 4,
+            native_tasks: 2,
+            ai_tasks: 2,
+            wasm_compile: 2,
+            wasm_run: 1,
+            memory_mb: 2048,
+        },
+    };
+    let scheduler = Scheduler::connect(
+        redis::Client::open(std::env::var("REDIS_URL").unwrap()).unwrap(),
+        settings,
+        &prefix,
+    )
+    .await
+    .unwrap();
+    let first = scheduler
+        .try_task(Pool::Wasm, 128, 512)
+        .await
+        .unwrap()
+        .unwrap();
+    let second = scheduler
+        .try_task(Pool::Wasm, 128, 512)
+        .await
+        .unwrap()
+        .unwrap();
+    let occupied = scheduler.stage(&first, "run", 64).await.unwrap();
+    {
+        let first_wait = scheduler.stage(&first, "run", 64);
+        let second_wait = scheduler.stage(&second, "run", 64);
+        tokio::pin!(first_wait, second_wait);
+        // 两个等待者先注册；释放后两者都须在有限时间内取得槽位。
+        tokio::select! {
+            _ = &mut first_wait => panic!("容量已满时不应准入"),
+            _ = &mut second_wait => panic!("容量已满时不应准入"),
+            _ = tokio::time::sleep(Duration::from_millis(100)) => {},
+        }
+        drop(occupied);
+        tokio::time::timeout(Duration::from_secs(2), async {
+        tokio::select! {
+            lease = &mut first_wait => { drop(lease.unwrap()); drop(second_wait.await.unwrap()); },
+            lease = &mut second_wait => { drop(lease.unwrap()); drop(first_wait.await.unwrap()); },
+        }
+    })
+    .await
+    .unwrap();
+    }
+    let _: usize = conn
+        .hdel(scheduler.resource_key(), &second.id)
+        .await
+        .unwrap();
+    assert!(scheduler.stage(&second, "run", 64).await.is_err());
+    drop((first, second));
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let keys: Vec<String> = conn.keys(format!("{prefix}:*")).await.unwrap();
+    if !keys.is_empty() {
+        let _: usize = conn.del(keys).await.unwrap();
+    }
+}
 
 /// 同一用户的第二次占用必须失败（这正是跨 worker 公平性的核心保证：
 /// 两个 worker 各自调用本函数时，只有一方能拿到 claim）。

@@ -21,7 +21,8 @@ fn package_size(pkg: &DownloadedPackage) -> u64 {
 /// 评测任务入口，允许通过 Worker 配置传入每个容器的 CPU 上限。
 ///
 /// `instance_id`：确定性实例 ID（`noj-{hash12}`），透传到容器实例标签（VULN-15）。
-#[allow(clippy::too_many_arguments)]
+// 保留独立库调用入口；Worker 二进制使用带资源上下文的入口。
+#[allow(dead_code, clippy::too_many_arguments)]
 pub async fn evaluate_with_cpu_limit(
     docker: bollard::Docker,
     resource_lease_client: redis::Client,
@@ -41,6 +42,55 @@ pub async fn evaluate_with_cpu_limit(
     max_evaluator_time_ms: u64,
     max_solution_call_timeout_ms: u64,
     instance_id: &str,
+) -> Result<JudgeResult> {
+    evaluate_with_scheduler(
+        docker,
+        resource_lease_client,
+        task,
+        download_timeout_secs,
+        cache_dir,
+        cache_max_items,
+        cache_max_mb,
+        work_dir,
+        cpu_limit_millicores,
+        allow_evaluator_network,
+        evaluator_network_mode,
+        allow_http_s3,
+        image_prefix,
+        oi_image,
+        command_whitelist,
+        max_evaluator_time_ms,
+        max_solution_call_timeout_ms,
+        instance_id,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn evaluate_with_scheduler(
+    docker: bollard::Docker,
+    resource_lease_client: redis::Client,
+    task: &JudgeTask,
+    download_timeout_secs: u64,
+    cache_dir: String,
+    cache_max_items: usize,
+    cache_max_mb: u64,
+    work_dir: String,
+    cpu_limit_millicores: u64,
+    allow_evaluator_network: bool,
+    evaluator_network_mode: &str,
+    allow_http_s3: bool,
+    image_prefix: &str,
+    oi_image: &str,
+    command_whitelist: &[String],
+    max_evaluator_time_ms: u64,
+    max_solution_call_timeout_ms: u64,
+    instance_id: &str,
+    scheduling: Option<(
+        &crate::scheduling::Scheduler,
+        &std::sync::Arc<crate::scheduling::Lease>,
+    )>,
 ) -> Result<JudgeResult> {
     let work_dir = PathBuf::from(work_dir);
 
@@ -130,7 +180,7 @@ pub async fn evaluate_with_cpu_limit(
             .ok_or_else(|| anyhow::anyhow!("OI 评测任务缺少支持包"))?;
         return match tokio::time::timeout(
             std::time::Duration::from_secs(300),
-            crate::oi::runner::evaluate_native(
+            crate::oi::runner::evaluate_scheduled(
                 &docker,
                 task,
                 support_package,
@@ -138,6 +188,7 @@ pub async fn evaluate_with_cpu_limit(
                 cpu_limit_millicores,
                 instance_id,
                 Some(&resource_lease_client),
+                scheduling,
             ),
         )
         .await
@@ -264,6 +315,9 @@ mod tests {
     /// 构造仅用于「支持包获取阶段失败」的测试任务：失败发生在触碰 Docker 之前。
     fn task_with_download_url(download_url: &str) -> JudgeTask {
         JudgeTask {
+            scheduling_version: None,
+            resource_pool: None,
+            run_id: None,
             submission_id: "sid-support-fail".to_string(),
             problem_id: "1001".to_string(),
             user_id: "u-1".to_string(),

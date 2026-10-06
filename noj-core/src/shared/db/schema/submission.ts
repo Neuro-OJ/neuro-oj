@@ -22,7 +22,12 @@ import { contests } from "./contest.ts";
  * 因此 schema 内保留本地类型别名用于 Drizzle $type<>。
  */
 type SubmissionStatus = "pending" | "judging" | "finished" | "error";
-type SelfTestStatus = "pending" | "judging" | "finished" | "error";
+type SelfTestStatus =
+  | "pending"
+  | "judging"
+  | "finished"
+  | "error"
+  | "cancelled";
 
 /**
  * 提交记录表。
@@ -49,6 +54,8 @@ export const submissions = pgTable(
     ),
     /** 重测序列号，递增。用于区分新旧评测结果，防止竞态覆盖。 */
     rejudge_seq: integer("rejudge_seq").notNull().default(0),
+    judge_run_id: text("judge_run_id"),
+    judge_progress: jsonb("judge_progress"),
     /** ISO 8601，开始评测时间。 */
     judge_started_at: text("judge_started_at"),
     /** ISO 8601，评测完成时间。 */
@@ -130,6 +137,8 @@ export const selfTests = pgTable(
     ),
     /** 评测结果状态（新协议下为 finished / error），终态时由 JudgeResult 写入。 */
     result_status: text("result_status"),
+    judge_run_id: text("judge_run_id"),
+    judge_progress: jsonb("judge_progress"),
     score: integer("score").notNull().default(0),
     output: text("output").notNull().default(""),
     details: text("details").notNull().default("{}"),
@@ -153,7 +162,7 @@ export const selfTests = pgTable(
     ),
     statusCheck: check(
       "self_tests_status_check",
-      sql`${table.status} IN ('pending', 'judging', 'finished', 'error')`,
+      sql`${table.status} IN ('pending', 'judging', 'finished', 'error', 'cancelled')`,
     ),
   }),
 );

@@ -111,6 +111,13 @@ pub struct JudgeTaskLlm {
 /// 缺少 judge_type 的历史任务沿用双容器模式。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JudgeTask {
+    /// 调度协议；缺省仅为历史任务解码，生产消费必须显式验证。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduling_version: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_pool: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
     /// 提交 UUID
     pub submission_id: String,
     /// 题目 UUID（消息协议字段，与 noj-core 的 JudgeTask 对齐；judge 当前不消费）

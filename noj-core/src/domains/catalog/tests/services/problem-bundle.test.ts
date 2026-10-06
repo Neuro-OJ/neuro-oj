@@ -147,7 +147,7 @@ Deno.test("validateBundleManifest: OI 配置拒绝不存在或循环依赖", () 
   }
 });
 
-Deno.test("validateBundleManifest: OI 配置拒绝不安全路径和非全过计分", () => {
+Deno.test("validateBundleManifest: OI 配置拒绝不安全路径和非法计分", () => {
   for (
     const runtime_config of [
       { ...oiRuntime, checker: { type: "testlib", path: "../checker.cpp" } },
@@ -164,7 +164,7 @@ Deno.test("validateBundleManifest: OI 配置拒绝不安全路径和非全过计
         subtasks: [{
           id: "a",
           score: 100,
-          scoring: "min",
+          scoring: "invalid",
           cases: [{ input: "1.in", output: "1.out" }],
         }],
       },

@@ -331,7 +331,11 @@ function handleEval(
       return renderRespError("ERR invalid queue capacity");
     }
     const queue = queues.get(key) ?? [];
-    if (queue.length >= maxLength) return renderRespInteger(-1);
+    const total = keys.reduce(
+      (sum, item) => sum + (queues.get(item)?.length ?? 0),
+      0,
+    );
+    if (total >= maxLength) return renderRespInteger(-1);
     queue.unshift(argv[1]);
     queues.set(key, queue);
     return renderRespInteger(queue.length);

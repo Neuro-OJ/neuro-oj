@@ -43,7 +43,6 @@ function onSaved() {
     </h1>
 
     <ObjectiveProblemEditor v-if="isObjective" :paper-id="problemId" />
-    <OiProblemEditor v-else-if="problem && isOi" mode="edit" :problem-id="problemId" @saved="onSaved" />
-    <CodingProblemEditor v-else-if="problem" mode="edit" :problem-id="problemId" @saved="onSaved" />
+    <ProblemEditor v-else-if="problem" mode="edit" :initial-judge-type="isOi ? 'oi' : 'dual'" :problem-id="problemId" @saved="onSaved" />
   </div>
 </template>

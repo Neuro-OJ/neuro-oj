@@ -19,17 +19,23 @@ use std::time::Instant;
 /// 使用 worker 配置的 WASI SDK 编译器把用户源代码转换成 wasm。编译器是
 /// 受信路径，源码只作为文件输入；编译过程仍由调用方放入受限 worker 线程，
 /// 不会在 judge 宿主机直接运行用户生成的二进制。
-pub fn compile_source(language: &str, source: &str) -> Result<Vec<u8>> {
-    compile_source_with_files(language, source, &HashMap::new())
-}
-
 /// 使用固定 WASI 编译器编译源码，并提供题包声明的编译辅助文件。
 pub fn compile_source_with_files(
     language: &str,
     source: &str,
     extra_files: &HashMap<String, Vec<u8>>,
 ) -> Result<Vec<u8>> {
-    Ok(compile_impl(language, source, extra_files, false)?.module)
+    Ok(compile_impl(language, source, extra_files, false, None)?.module)
+}
+
+/// 生产编译可响应取消，整个编译进程组清理后才释放阶段租约。
+pub(super) fn compile_cancellable(
+    language: &str,
+    source: &str,
+    extra_files: &HashMap<String, Vec<u8>>,
+    cancellation: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<Vec<u8>> {
+    Ok(compile_impl(language, source, extra_files, false, cancellation)?.module)
 }
 
 pub(super) struct AnalysisCompilation {
@@ -44,7 +50,7 @@ pub(super) fn compile_for_analysis(
     source: &str,
     extra_files: &HashMap<String, Vec<u8>>,
 ) -> Result<AnalysisCompilation> {
-    compile_impl(language, source, extra_files, true)
+    compile_impl(language, source, extra_files, true, None)
 }
 
 fn compile_impl(
@@ -52,6 +58,7 @@ fn compile_impl(
     source: &str,
     extra_files: &HashMap<String, Vec<u8>>,
     analysis: bool,
+    cancellation: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<AnalysisCompilation> {
     anyhow::ensure!(matches!(language, "c" | "cc"), "分析语言必须是 c 或 cc");
     let tempdir = tempfile::tempdir().context("创建 WASI 编译临时目录失败")?;
@@ -89,7 +96,7 @@ fn compile_impl(
         .env_clear()
         .env("PATH", std::env::var("PATH").unwrap_or_default())
         .arg("--version");
-    let info = run_compiler_with_limits(&mut version, &root)?;
+    let info = run_compiler_with_limits(&mut version, &root, cancellation)?;
     if !info.status.success()
         || !info
             .stdout
@@ -148,7 +155,7 @@ fn compile_impl(
         // 仅分析编译保留对象来源；正式编译参数不变。
         command.arg("-fno-lto").arg("-c");
         command.arg("-o").arg(root.join("main.o"));
-        let output = run_compiler_with_limits(&mut command, &root)?;
+        let output = run_compiler_with_limits(&mut command, &root, cancellation)?;
         anyhow::ensure!(
             output.status.success(),
             "WASI 分析编译失败: {}",
@@ -165,7 +172,7 @@ fn compile_impl(
             .arg(root.join("main.o"))
             .arg("-o")
             .arg(&output_path);
-        let output = run_compiler_with_limits(&mut link, &root)?;
+        let output = run_compiler_with_limits(&mut link, &root, cancellation)?;
         anyhow::ensure!(
             output.status.success(),
             "WASI 分析链接失败: {}",
@@ -178,7 +185,7 @@ fn compile_impl(
             workspace: root,
         });
     }
-    let output = run_compiler_with_limits(&mut command, &root)?;
+    let output = run_compiler_with_limits(&mut command, &root, cancellation)?;
     if output.status.success() {
         Ok(AnalysisCompilation {
             module: std::fs::read(&output_path).context("读取编译后的 WASM 失败")?,
@@ -194,7 +201,11 @@ fn compile_impl(
 /// 编译器是宿主上的受信工具，但源码和题包辅助文件来自用户输入，仍须
 /// 作为不可信子进程处理。子进程使用独立进程组、512 MiB 地址空间、10 秒
 /// CPU/墙钟和有限诊断文件；超时会回收整个进程组，不能留下后台 clang。
-fn run_compiler_with_limits(command: &mut Command, root: &Path) -> Result<CompileOutput> {
+fn run_compiler_with_limits(
+    command: &mut Command,
+    root: &Path,
+    cancellation: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<CompileOutput> {
     let stdout_path = root.join("compiler.stdout");
     let stderr_path = root.join("compiler.stderr");
     let stdout = std::fs::File::create(&stdout_path).context("创建 WASI 编译 stdout 文件失败")?;
@@ -217,6 +228,12 @@ fn run_compiler_with_limits(command: &mut Command, root: &Path) -> Result<Compil
     let status = loop {
         if let Some(status) = child.try_wait().context("等待 WASI 编译器失败")? {
             break status;
+        }
+        if cancellation.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed)) {
+            kill_compiler_process_group(child.id());
+            let _ = child.kill();
+            let _ = child.wait();
+            anyhow::bail!("WASI 编译已取消或资源租约失效");
         }
         if started.elapsed() >= std::time::Duration::from_secs(10) {
             kill_compiler_process_group(child.id());

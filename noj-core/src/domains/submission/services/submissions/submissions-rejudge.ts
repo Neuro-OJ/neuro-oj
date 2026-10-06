@@ -135,6 +135,8 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     await tx.update(submissions)
       .set({
         status: "pending",
+        judge_run_id: null,
+        judge_progress: null,
         judge_started_at: null,
         judge_finished_at: null,
         rejudge_seq: sql`${submissions.rejudge_seq} + 1`,
@@ -302,6 +304,8 @@ export async function rejudgeProblemSubmissions(
     await tx.update(submissions)
       .set({
         status: "pending",
+        judge_run_id: null,
+        judge_progress: null,
         judge_started_at: null,
         judge_finished_at: null,
         rejudge_seq: sql`${submissions.rejudge_seq} + 1`,
@@ -400,6 +404,8 @@ export async function rejudgeProblemSubmissions(
         await db.update(submissions)
           .set({
             status: "error",
+            judge_run_id: null,
+            judge_progress: null,
             judge_started_at: null,
             judge_finished_at: errNow,
           })

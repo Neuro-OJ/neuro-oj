@@ -18,6 +18,103 @@ fn profile() -> OiCostProfile {
 }
 
 #[tokio::test]
+async fn reused_module_keeps_fuel_and_store_isolation() {
+    let module = wat::parse_str(
+        r#"(module
+        (memory (export "memory") 1)
+        (global $state (mut i32) (i32.const 0))
+        (func (export "_start") (local $i i32)
+          global.get $state if unreachable end
+          i32.const 1 global.set $state
+          i32.const 100000 local.set $i
+          (loop $again local.get $i i32.const 1 i32.sub local.tee $i br_if $again)))"#,
+    )
+    .unwrap();
+    let profile = profile();
+    let baseline = run_module(&module, &[], 16, 10_000_000, &profile)
+        .await
+        .unwrap();
+    let prepared = PreparedModule::new(&module, &profile).unwrap();
+    for parallelism in [1, 2, 4, 8, 16] {
+        let runs = join_all((0..parallelism).map(|_| {
+            let prepared = prepared.clone();
+            let module = module.clone();
+            let profile = profile.clone();
+            tokio::task::spawn_blocking(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                runtime
+                    .block_on(run_prepared_module(
+                        &module,
+                        &[],
+                        16,
+                        10_000_000,
+                        &profile,
+                        &[],
+                        None,
+                        FsPerms::ReadOnly,
+                        Some(10_000),
+                        0,
+                        None,
+                        Some(&prepared),
+                    ))
+                    .unwrap()
+            })
+        }))
+        .await;
+        for run in runs {
+            let run = run.unwrap();
+            assert_eq!(run.status, WasmStatus::Accepted);
+            assert_eq!(run.fuel_consumed, baseline.fuel_consumed);
+            assert_eq!(run.stdout, baseline.stdout);
+        }
+    }
+}
+
+#[tokio::test]
+async fn shared_engine_timeout_does_not_interrupt_another_store() {
+    let profile = profile();
+    let infinite = wat::parse_str("(module (func (export \"_start\") (loop br 0)))").unwrap();
+    let finite = wat::parse_str("(module (func (export \"_start\") (local $i i32) i32.const 10000000 local.set $i (loop $l local.get $i i32.const 1 i32.sub local.tee $i br_if $l)))").unwrap();
+    let first = PreparedModule::new(&infinite, &profile).unwrap();
+    let second = first.checker(&finite).unwrap();
+    let handles = join_all(
+        [(first, infinite, 10), (second, finite, 10_000)]
+            .into_iter()
+            .map(|(prepared, module, deadline)| {
+                let profile = profile.clone();
+                tokio::task::spawn_blocking(move || {
+                    let runtime = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .unwrap();
+                    runtime
+                        .block_on(run_prepared_module(
+                            &module,
+                            &[],
+                            16,
+                            u64::MAX,
+                            &profile,
+                            &[],
+                            None,
+                            FsPerms::ReadOnly,
+                            Some(deadline),
+                            0,
+                            None,
+                            Some(&prepared),
+                        ))
+                        .unwrap()
+                })
+            }),
+    )
+    .await;
+    assert_eq!(handles[0].as_ref().unwrap().status, WasmStatus::SystemError);
+    assert_eq!(handles[1].as_ref().unwrap().status, WasmStatus::Accepted);
+}
+
+#[tokio::test]
 async fn bulk_memory_is_charged_by_bytes() {
     let wat = br#"(module (memory 2) (func (export "_start") i32.const 0 i32.const 65536 i32.const 65536 memory.copy))"#;
     let small = run_module(wat, b"", 16, 100, &super::super::standard::profile())
@@ -50,6 +147,7 @@ async fn host_sleep_is_protection_error_not_algorithm_tle() {
         None,
         FsPerms::ReadOnly,
         Some(20),
+        None,
     )
     .await
     .unwrap();
@@ -97,8 +195,8 @@ async fn provenance_ignores_site_ids_but_tracks_source_and_data() {
     let empty = HashMap::new();
     let cases = vec![("testdata/1.in".into(), b"1 2".to_vec(), b"3".to_vec())];
     let legacy = profile();
-    let first = evaluate_wasm(
-        &task, &config, &cases, &legacy, None, &empty, &empty, &empty,
+    let first = evaluate_wasm_with_progress(
+        &task, &config, &cases, &legacy, None, &empty, &empty, &empty, None,
     )
     .await
     .unwrap();
@@ -106,15 +204,15 @@ async fn provenance_ignores_site_ids_but_tracks_source_and_data() {
     assert_eq!(first.details["metering"]["comparable"], false);
     task.submission_id = "another-instance".into();
     task.problem_id = "other-problem-id".into();
-    let same = evaluate_wasm(
-        &task, &config, &cases, &legacy, None, &empty, &empty, &empty,
+    let same = evaluate_wasm_with_progress(
+        &task, &config, &cases, &legacy, None, &empty, &empty, &empty, None,
     )
     .await
     .unwrap();
     assert_eq!(first.details["metering"], same.details["metering"]);
     task.code.push_str(" /* changed */");
-    let source = evaluate_wasm(
-        &task, &config, &cases, &legacy, None, &empty, &empty, &empty,
+    let source = evaluate_wasm_with_progress(
+        &task, &config, &cases, &legacy, None, &empty, &empty, &empty, None,
     )
     .await
     .unwrap();
@@ -123,8 +221,8 @@ async fn provenance_ignores_site_ids_but_tracks_source_and_data() {
         source.details["metering"]["source_hash"]
     );
     let cases = vec![("testdata/1.in".into(), b"2 3".to_vec(), b"5".to_vec())];
-    let data = evaluate_wasm(
-        &task, &config, &cases, &legacy, None, &empty, &empty, &empty,
+    let data = evaluate_wasm_with_progress(
+        &task, &config, &cases, &legacy, None, &empty, &empty, &empty, None,
     )
     .await
     .unwrap();
@@ -147,9 +245,10 @@ async fn published_v1_task_is_rejected_with_rejudge_guidance() {
     old.benchmark = Some("noj-wasm-v1".into());
     old.toolchain = Some("wasi-sdk-34".into());
     let empty = HashMap::new();
-    let result = evaluate_wasm(&task, config, &[], &old, None, &empty, &empty, &empty)
-        .await
-        .unwrap();
+    let result =
+        evaluate_wasm_with_progress(&task, config, &[], &old, None, &empty, &empty, &empty, None)
+            .await
+            .unwrap();
     assert_eq!(result.details["oi"]["verdict"], "SE");
     assert!(result.output.contains("重测"));
     assert_eq!(result.details["metering"]["comparable"], false);
@@ -178,6 +277,7 @@ async fn wall_deadline_interrupts_guest() {
         None,
         FsPerms::ReadOnly,
         Some(20),
+        None,
     )
     .await
     .unwrap();
@@ -197,6 +297,7 @@ async fn instantiation_start_is_subject_to_wall_deadline() {
         None,
         FsPerms::ReadOnly,
         Some(20),
+        None,
     )
     .await
     .unwrap();
@@ -277,4 +378,36 @@ fn duplicate_header_alias_uses_fixed_lexicographic_order() {
         std::fs::read(first.path().join("shared.h")).unwrap(),
         std::fs::read(second.path().join("shared.h")).unwrap()
     );
+}
+
+#[tokio::test]
+async fn self_test_cancel_interrupts_guest_without_algorithm_tle() {
+    let module = wat::parse_str(
+        "(module (memory (export \"memory\") 1) (func (export \"_start\") (loop br 0)))",
+    )
+    .unwrap();
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let flag = cancelled.clone();
+    let cancel_thread = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        flag.store(true, Ordering::Relaxed);
+    });
+    let started = Instant::now();
+    let result = run_module_with_files(
+        &module,
+        &[],
+        256,
+        u64::MAX,
+        &super::super::standard::profile(),
+        &[],
+        None,
+        FsPerms::ReadOnly,
+        Some(3000),
+        Some(cancelled),
+    )
+    .await
+    .unwrap();
+    cancel_thread.join().unwrap();
+    assert_eq!(result.status, WasmStatus::SystemError);
+    assert!(started.elapsed() < std::time::Duration::from_secs(2));
 }

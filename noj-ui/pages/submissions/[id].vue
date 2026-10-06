@@ -23,6 +23,7 @@ interface SubmissionResult {
   metering?: Record<string, unknown>
 }
 interface SubmissionData {
+  progress?: {phase:string;active_cases:{case_id:string;subtask_id:string}[];completed_cases:Record<string,unknown>[];total_cases:number} | null
   id: string
   public_id?: string
   problem_id: string
@@ -208,14 +209,14 @@ watch(
           <div
             v-else-if="submission.result"
             class="flex items-center gap-4 px-9 py-5 rounded-2xl flex-col text-center sm:flex-row sm:text-left"
-            :class="verdictClasses[getResultDef(submission.result.status).class] || verdictClasses.se"
+            :class="verdictClasses[getResultDef((submission.result.details?.oi as {verdict?:string})?.verdict ?? submission.result.status).class] || verdictClasses.se"
           >
-            <UIcon name="i-lucide-check-circle" class="size-8" v-if="getResultDef(submission.result.status).icon === 'check'"/>
-            <UIcon name="i-lucide-x-circle" class="size-8" v-else-if="getResultDef(submission.result.status).icon === 'x'"/>
+            <UIcon name="i-lucide-check-circle" class="size-8" v-if="getResultDef((submission.result.details?.oi as {verdict?:string})?.verdict ?? submission.result.status).icon === 'check'"/>
+            <UIcon name="i-lucide-x-circle" class="size-8" v-else-if="getResultDef((submission.result.details?.oi as {verdict?:string})?.verdict ?? submission.result.status).icon === 'x'"/>
             <UIcon name="i-lucide-alert-triangle" class="size-8" v-else/>
             <div class="flex flex-col gap-0.5">
               <span class="text-lg font-bold">
-                {{ getResultDef(submission.result.status).label }}
+                {{ getResultDef((submission.result.details?.oi as {verdict?:string})?.verdict ?? submission.result.status).label }}
               </span>
               <span class="text-2xl font-extrabold">
                 {{ formatScore(submission.result.score) }} 分
@@ -308,8 +309,9 @@ watch(
       </details>
 
       <SubmissionCaseResults
-        v-if="submission.status === 'finished' && submission.result"
-        :details="submission.result.details"
+        v-if="submission.progress || submission.result"
+        :details="submission.result?.details"
+        :progress="['pending','judging'].includes(submission.status) ? submission.progress : null"
       />
       <!-- 提交代码 -->
       <div class="bg-[#0d1117] border border-[#30363d] rounded-xl overflow-hidden">

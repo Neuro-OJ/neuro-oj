@@ -34,6 +34,7 @@ export interface ProblemView {
   display_id: string;
   title: string;
   description: string;
+  samples?: import('./oiWorkspace').ProblemSample[];
   difficulty: string;
   /** 题型：`U` 用户题库 / `T` 主题库。竞赛页无该字段，默认主题库。 */
   type: string;
@@ -73,6 +74,7 @@ export interface ProblemResource {
   display_id: string;
   title: string;
   description: string;
+  samples?: import('./oiWorkspace').ProblemSample[];
   difficulty: string;
   type: string;
   owner_id: string;
@@ -101,6 +103,7 @@ export interface ContestProblemResource {
   display_id: string;
   title: string;
   description: string;
+  samples?: import('./oiWorkspace').ProblemSample[];
   difficulty: string;
   submission_mode?: 'code' | 'artifact';
   artifact_max_size_mb?: number | null;
@@ -117,6 +120,7 @@ export function toProblemView(resource: ProblemResource): ProblemView {
     display_id: resource.display_id,
     title: resource.title,
     description: resource.description,
+    samples: resource.samples ?? [],
     difficulty: resource.difficulty,
     type: resource.type,
     is_objective: resource.is_objective === true,
@@ -151,6 +155,7 @@ export function toContestProblemView(
     display_id: resource.display_id,
     title: resource.title,
     description: resource.description,
+    samples: resource.samples ?? [],
     difficulty: resource.difficulty,
     type: 'T',
     // 后端 ContestProblemResponse 目前可能不返回该字段，故只认显式 true

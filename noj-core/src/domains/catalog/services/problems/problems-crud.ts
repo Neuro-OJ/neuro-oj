@@ -12,12 +12,13 @@
  * - getProblem / problems-list.ts：回读完整结果（避免与上面产生 init 顺序循环）
  *   —— getProblem 是函数级引用，运行时才解析，无循环问题
  */
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   contestProblems,
   evaluationResults,
   problems,
+  problemTags,
   selfTests,
   submissions,
 } from "./../../../../shared/db/schema.ts";
@@ -52,13 +53,17 @@ import { validateProblemRuntimeConfig } from "./problems-types.ts";
 import { syncProblemTags, validateProblemTagIds } from "./problems-tags.ts";
 import { getProblem } from "./problems-list.ts";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
-import { assertPermission } from "./../../../identity/index.ts";
+import {
+  assertPermission,
+  checkPermission,
+} from "./../../../identity/index.ts";
 import {
   assertSensitiveFieldPermissions,
   enforceResourceLimits,
 } from "./problem-field-guard.ts";
 import type { Context } from "hono";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
+import { validateProblemSamples } from "../../types/problem-samples.ts";
 
 /**
  * 创建题目。
@@ -77,6 +82,7 @@ export async function createProblem(
   allowServerDerivedFields = false,
 ): Promise<ProblemResponseWithTags> {
   const db = getDb();
+  if (input.samples !== undefined) validateProblemSamples(input.samples);
 
   // NOJ-115/116：服务端流程（import-bundle）以外禁止客户端直传存储 URL。
   if (
@@ -120,6 +126,13 @@ export async function createProblem(
     throw new BadRequestError(`非法题目类型：${input.type}，仅允许 U/P`);
   }
   const type = rawType;
+  if (
+    input.visibility !== undefined &&
+    !["public", "private"].includes(input.visibility)
+  ) throw new BadRequestError("visibility 必须为 public/private");
+  if (type === "P" && input.visibility === "private") {
+    throw new BadRequestError("P 型题目必须公开");
+  }
 
   // 客观题标记（并入 U/P 题库；无评测容器，服务端即时判定）
   const isObjective = input.is_objective === true;
@@ -268,6 +281,7 @@ export async function createProblem(
         id,
         title: input.title,
         description: input.description,
+        samples: input.samples ?? [],
         difficulty: input.difficulty ?? "medium",
         support_package_storage_url: input.support_package_storage_url ?? null,
         runtime_config: isObjective ? null : (input.runtime_config ?? null),
@@ -275,7 +289,7 @@ export async function createProblem(
           ? "dual"
           : judgeTypeForRuntimeConfig(input.runtime_config),
         is_objective: isObjective,
-        visibility: type === "P" ? "public" : "private",
+        visibility: type === "P" ? "public" : (input.visibility ?? "private"),
         submission_mode: submissionMode,
         artifact_max_size_mb: input.artifact_max_size_mb ?? null,
         llm_config: llmConfig,
@@ -335,6 +349,7 @@ export async function updateProblem(
   userRole?: string,
   c?: Context,
   allowServerDerivedFields = false,
+  expectedUpdatedAt?: string,
 ): Promise<ProblemResponseWithTags> {
   const db = getDb();
 
@@ -372,6 +387,20 @@ export async function updateProblem(
   }
 
   const problem = existing[0];
+  if (input.visibility !== undefined) {
+    if (!["public", "private"].includes(input.visibility)) {
+      throw new BadRequestError("visibility 必须为 public/private");
+    }
+    if (problem.type === "P" && input.visibility !== "public") {
+      throw new BadRequestError("P 型题目必须公开");
+    }
+    if (
+      problem.visibility === "public" && input.visibility === "private" &&
+      !(c
+        ? await checkPermission(c, "problem:write_any")
+        : userRole === "admin")
+    ) throw new ForbiddenError("仅管理员可将题目设为私有");
+  }
 
   // 权限检查（admin:full_access 通配放行由 assertPermission 内部处理）
   if (problem.type === "P") {
@@ -538,6 +567,17 @@ export async function updateProblem(
   delete (input as Record<string, unknown>)["number"];
 
   const updates: Record<string, unknown> = {};
+  if (input.visibility !== undefined) updates.visibility = input.visibility;
+  if (input.oi_data_files !== undefined) {
+    if (!allowServerDerivedFields) {
+      throw new BadRequestError("OI 文件引用只能由数据编辑服务生成");
+    }
+    updates.oi_data_files = input.oi_data_files;
+  }
+  if (input.samples !== undefined) {
+    validateProblemSamples(input.samples);
+    updates.samples = input.samples;
+  }
   if (input.title !== undefined) updates.title = input.title;
   if (input.description !== undefined) updates.description = input.description;
   if (input.difficulty !== undefined) updates.difficulty = input.difficulty;
@@ -592,16 +632,29 @@ export async function updateProblem(
 
   // 半写入防护：标签校验（存在性 + 客观题 kind 规则）在字段提交之前完成，
   // 校验失败（400）不产生「客户端以为未改、实际已改」的半写入。
-  if (input.tag_ids !== undefined) {
-    await validateProblemTagIds(input.tag_ids, isObjective);
-  }
+  const validatedTagIds = input.tag_ids === undefined
+    ? undefined
+    : await validateProblemTagIds(input.tag_ids, isObjective);
 
-  await db.update(problems).set(updates).where(eq(problems.id, id));
-
-  // 处理标签关联
-  if (input.tag_ids !== undefined) {
-    await syncProblemTags(id, input.tag_ids, isObjective);
-  }
+  // 配置、数据引用与标签同时发布，关联写入失败时回滚整次更新。
+  await db.transaction(async (tx) => {
+    const applied = await tx.update(problems).set(updates).where(
+      expectedUpdatedAt === undefined
+        ? eq(problems.id, id)
+        : and(eq(problems.id, id), eq(problems.updated_at, expectedUpdatedAt)),
+    ).returning({ id: problems.id });
+    if (applied.length === 0) {
+      throw new ConflictError("题目已被修改，请重新加载后保存");
+    }
+    if (validatedTagIds !== undefined) {
+      await tx.delete(problemTags).where(eq(problemTags.problem_id, id));
+      if (validatedTagIds.length > 0) {
+        await tx.insert(problemTags).values(
+          validatedTagIds.map((tagId) => ({ problem_id: id, tag_id: tagId })),
+        );
+      }
+    }
+  });
 
   // 审计日志：runtime_config 变更（客观题套卷无此字段，跳过）
   if (!isObjective && input.runtime_config !== undefined) {

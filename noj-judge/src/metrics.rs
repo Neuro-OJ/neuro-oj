@@ -101,6 +101,7 @@ fn chrono_like_now_ms() -> u64 {
 }
 
 /// 启动 Judge 心跳任务。Redis 暂时不可用只记录告警，不影响评测主循环。
+#[allow(dead_code)]
 pub async fn heartbeat_loop(
     redis_client: redis::Client,
     docker: Docker,
@@ -108,6 +109,28 @@ pub async fn heartbeat_loop(
     metrics: Arc<JudgeMetrics>,
     cache_dir: PathBuf,
     work_dir: PathBuf,
+) {
+    heartbeat_loop_with_resources(
+        redis_client,
+        docker,
+        instance_id,
+        metrics,
+        cache_dir,
+        work_dir,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn heartbeat_loop_with_resources(
+    redis_client: redis::Client,
+    docker: Docker,
+    instance_id: String,
+    metrics: Arc<JudgeMetrics>,
+    cache_dir: PathBuf,
+    work_dir: PathBuf,
+    resource: Option<(String, String, Vec<String>, serde_json::Value)>,
 ) {
     let mut interval = tokio::time::interval(HEARTBEAT_INTERVAL);
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -118,18 +141,93 @@ pub async fn heartbeat_loop(
             directory_stats(&cache_dir, true),
             directory_stats(&work_dir, false),
         );
-        let payload = match serde_json::to_string(&metrics.snapshot(
+        let mut heartbeat = serde_json::to_value(metrics.snapshot(
             orphan_containers,
             cache_items,
             cache_bytes,
             work_dir_bytes,
-        )) {
-            Ok(payload) => payload,
-            Err(err) => {
-                warn!(error = %err, "序列化 Judge 观测心跳失败");
-                continue;
+        ))
+        .expect("观测快照字段固定且可序列化");
+        if let Some((group, resource_key, enabled, capacities)) = &resource {
+            if let Ok(mut connection) = redis_client.get_multiplexed_async_connection().await {
+                use redis::AsyncCommands;
+                let rss = fs::read_to_string("/proc/self/statm")
+                    .await
+                    .ok()
+                    .and_then(|value| value.split_whitespace().nth(1)?.parse::<u64>().ok())
+                    .map(|pages| {
+                        // 当前正式平台为 Linux amd64；页大小按运行环境读取。
+                        let page_bytes = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+                        pages
+                            .saturating_mul(if page_bytes > 0 {
+                                page_bytes as u64
+                            } else {
+                                4096
+                            })
+                            .div_ceil(1024 * 1024)
+                    })
+                    .unwrap_or(0);
+                // 租约过期与准入都使用 Redis 时间，避免多 Worker 时钟偏差。
+                let server_time: redis::RedisResult<(u64, u64)> =
+                    redis::cmd("TIME").query_async(&mut connection).await;
+                let Ok((seconds, micros)) = server_time else {
+                    continue;
+                };
+                let now = seconds.saturating_mul(1000) + micros / 1000;
+                let rss_key = format!("{resource_key}:rss");
+                let sample = serde_json::json!({"mb":rss,"expires":now+30_000}).to_string();
+                let _: redis::RedisResult<usize> =
+                    connection.hset(&rss_key, &instance_id, sample).await;
+                let _: redis::RedisResult<bool> = connection.expire(&rss_key, 60).await;
+                let leases: redis::RedisResult<std::collections::HashMap<String, String>> =
+                    connection.hgetall(resource_key).await;
+                if let Ok(leases) = leases {
+                    let mut counts = std::collections::HashMap::<String, u64>::new();
+                    let mut parents = std::collections::HashMap::<String, (u64, u64)>::new();
+                    let mut children = std::collections::HashMap::<String, u64>::new();
+                    for (id, raw) in leases {
+                        let Ok(item) = serde_json::from_str::<serde_json::Value>(&raw) else {
+                            continue;
+                        };
+                        if item["expires"].as_u64().unwrap_or(0) <= now {
+                            continue;
+                        }
+                        let kind = item["kind"].as_str().unwrap_or_default().to_owned();
+                        let parent = item["parent"].as_str().unwrap_or_default();
+                        // 领取前的零内存容量探针不作为活跃提交展示。
+                        if !parent.is_empty()
+                            || item["base"].as_u64().unwrap_or(0) != 0
+                            || item["headroom"].as_u64().unwrap_or(0) != 0
+                        {
+                            *counts.entry(kind).or_default() += 1;
+                        }
+                        if parent.is_empty() {
+                            parents.insert(
+                                id,
+                                (
+                                    item["base"].as_u64().unwrap_or(0),
+                                    item["headroom"].as_u64().unwrap_or(0),
+                                ),
+                            );
+                        } else {
+                            *children.entry(parent.to_owned()).or_default() +=
+                                item["memory"].as_u64().unwrap_or(0);
+                        }
+                    }
+                    let reserved = parents
+                        .into_iter()
+                        .map(|(id, (base, headroom))| {
+                            base + headroom.max(children.get(&id).copied().unwrap_or(0))
+                        })
+                        .sum::<u64>();
+                    heartbeat["scheduling_version"] = serde_json::json!(1);
+                    heartbeat["resource_group"] = serde_json::json!(group);
+                    heartbeat["resource_pools"] = serde_json::json!(enabled);
+                    heartbeat["resources"] = serde_json::json!({"capacities":capacities,"active":counts,"reserved_memory_mb":reserved,"worker_rss_mb":rss});
+                }
             }
-        };
+        }
+        let payload = heartbeat.to_string();
         let key = format!("{}{}", HEARTBEAT_PREFIX, instance_id);
         match redis_client.get_multiplexed_async_connection().await {
             Ok(mut conn) => {

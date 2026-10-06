@@ -152,27 +152,6 @@ export async function importProblemBundle(
   const parsed = parseBundleZip(file.data);
   const manifest = validateBundleManifest(parsed.manifest);
 
-  // 2.5 已废弃字段告警（2026-09-24 审计 A2-2）：`samples` 从不落库、无消费者。
-  // 校验层为兼容存量题包而容忍该字段，这里补一条可见 warning，避免出题人
-  // 继续写一个"看起来生效、实际无效"的字段。
-  if (
-    typeof parsed.manifest === "object" && parsed.manifest !== null &&
-    !Array.isArray(parsed.manifest) &&
-    (parsed.manifest as Record<string, unknown>).samples !== undefined
-  ) {
-    const samples = (parsed.manifest as Record<string, unknown>).samples;
-    logger.warn(
-      "题目包 manifest.samples 已废弃（从不落库），本次导入已忽略；样例请直接写进题面",
-      {
-        file: file.name,
-        // 便于发现手写坏值：以前非法形状会 400，软废弃后只在 warning 里可见。
-        value_type: Array.isArray(samples)
-          ? `array(len=${samples.length})`
-          : typeof samples,
-      },
-    );
-  }
-
   // 3. 题面：statement.md 优先，manifest.description 兜底，二者皆缺 → 400
   const description = parsed.statement ?? manifest.description;
   if (!description || !description.trim()) {
@@ -357,40 +336,55 @@ async function updateExisting(
     assertLlmLimitsWithinDefault(manifest.llm);
   }
 
-  if (oldStorageUrl) {
-    try {
-      await storage.delete(oldStorageUrl);
-    } catch (err) {
-      logger.warn("题目导入：删除旧评测包失败", { problem_id: problemId, err });
-    }
-  }
   const storageUrl = await storage.put(
-    buildPackageKey(problemId),
+    buildPackageKey(`${problemId}/${crypto.randomUUID()}`),
     strippedZip,
     "application/zip",
   );
-  return updateProblem(
-    problemId,
-    {
-      title: manifest.title,
-      description,
-      difficulty: manifest.difficulty,
-      runtime_config: manifest.runtime_config!,
-      judge_type: isOiRuntimeConfig(manifest.runtime_config) ? "oi" : "dual",
-      submission_mode: manifest.submission_mode,
-      artifact_max_size_mb: manifest.artifact_max_size_mb,
-      llm: manifest.llm,
-      support_package_storage_url: storageUrl,
-      // 模板与题包同源：重新导入即用新包内的模板覆盖（包内无模板则清空，
-      // 避免旧模板与新题包不一致）。
-      template_content: templateContent,
-      tag_ids: await resolveTagIds(manifest.tags),
-    },
-    actor.userId,
-    actor.userRole,
-    c,
-    true, // import-bundle 是服务端生成 storage URL 的受控流程
-  );
+  try {
+    const updated = await updateProblem(
+      problemId,
+      {
+        title: manifest.title,
+        samples: manifest.samples ?? [],
+        description,
+        difficulty: manifest.difficulty,
+        runtime_config: manifest.runtime_config!,
+        judge_type: isOiRuntimeConfig(manifest.runtime_config) ? "oi" : "dual",
+        submission_mode: manifest.submission_mode,
+        artifact_max_size_mb: manifest.artifact_max_size_mb,
+        llm: manifest.llm,
+        support_package_storage_url: storageUrl,
+        // 模板与题包同源：重新导入即用新包内的模板覆盖（包内无模板则清空，
+        // 避免旧模板与新题包不一致）。
+        template_content: templateContent,
+        tag_ids: await resolveTagIds(manifest.tags),
+      },
+      actor.userId,
+      actor.userRole,
+      c,
+      true, // import-bundle 是服务端生成 storage URL 的受控流程
+    );
+    if (oldStorageUrl) {
+      try {
+        await storage.delete(oldStorageUrl);
+      } catch (err) {
+        logger.warn("题目导入：删除旧评测包失败", {
+          problem_id: problemId,
+          err,
+        });
+      }
+    }
+    return updated;
+  } catch (error) {
+    await storage.delete(storageUrl).catch((cleanupError) =>
+      logger.warn("导入回滚：新评测包清理失败", {
+        problem_id: problemId,
+        err: cleanupError,
+      })
+    );
+    throw error;
+  }
 }
 
 /**
@@ -464,6 +458,7 @@ async function importObjectivePaper(
       problemId = existingId;
       await tx.update(problems).set({
         title: manifest.title,
+        samples: manifest.samples ?? [],
         description,
         difficulty: manifest.difficulty ?? "medium",
         is_objective: true,
@@ -494,6 +489,7 @@ async function importObjectivePaper(
           await tx.insert(problems).values({
             id: problemId,
             title: manifest.title,
+            samples: manifest.samples ?? [],
             description,
             difficulty: manifest.difficulty ?? "medium",
             runtime_config: null,
@@ -656,6 +652,7 @@ async function createViaCrud(
       await db.insert(problems).values({
         id,
         title: manifest.title,
+        samples: manifest.samples ?? [],
         description,
         difficulty: manifest.difficulty ?? "medium",
         runtime_config: manifest.runtime_config!,

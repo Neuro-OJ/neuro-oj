@@ -155,6 +155,8 @@ export {
  * 但新题目主键空间完全使用 UUID v4。
  */
 export interface CreateProblemInput {
+  visibility?: "public" | "private";
+  samples?: import("./problem-samples.ts").ProblemSample[];
   title: string;
   description: string;
   difficulty?: string;
@@ -184,6 +186,13 @@ export interface CreateProblemInput {
  * 更新题目请求体。
  */
 export interface UpdateProblemInput {
+  visibility?: "public" | "private";
+  /** 仅数据编辑服务可写，客户端 CRUD 不允许指定对象存储引用。 */
+  oi_data_files?: Record<
+    string,
+    { storage_url: string; size: number; hash: string }
+  >;
+  samples?: import("./problem-samples.ts").ProblemSample[];
   title?: string;
   description?: string;
   difficulty?: string;
@@ -244,6 +253,7 @@ export interface ProblemTagRef {
  * 题目响应（含标签信息）。
  */
 export interface ProblemResponseWithTags {
+  samples: import("./problem-samples.ts").ProblemSample[];
   id: string;
   title: string;
   description: string;

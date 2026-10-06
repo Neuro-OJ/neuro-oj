@@ -6,6 +6,25 @@ use crate::types::{JudgeResult, JudgeTask};
 
 const PROCESSING_SUFFIX: &str = ":processing";
 
+/// 等待诊断只保留轮次和原因，不携带源码或题包；短 TTL 防止异常退出残留。
+pub async fn mark_resource_wait(
+    client: &redis::Client,
+    prefix: &str,
+    task: &JudgeTask,
+    reason: Option<&str>,
+) {
+    let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+        return;
+    };
+    let key = format!("{prefix}:waiting:{}", task.submission_id);
+    if let Some(reason) = reason {
+        let value = serde_json::json!({"run_id":task.run_id,"rejudge_seq":task.rejudge_seq.unwrap_or(0),"reason":reason}).to_string();
+        let _: redis::RedisResult<()> = conn.set_ex(key, value, 30).await;
+    } else {
+        let _: redis::RedisResult<usize> = conn.del(key).await;
+    }
+}
+
 /// 固定比例轮转序列：high:medium:low = 4:2:1。
 /// 下标对应 `[high, medium, low]` 队列数组。
 pub const PRIORITY_SEQUENCE: [usize; 7] = [0, 0, 0, 0, 1, 1, 2];

@@ -431,6 +431,8 @@ impl Config {
     }
 
     /// 返回三个评测任务队列名（high / medium / low）。
+    /// 历史队列布局用于配置兼容测试；生产调度使用资源池队列。
+    #[allow(dead_code)]
     pub fn judge_queues(&self) -> [String; 3] {
         [
             format!("{}:high", self.judge_queue),

@@ -21,11 +21,13 @@ import { getEditorLanguages, type EditorLanguageConfig } from '~/utils/editorLan
  * - backUrl / backLabel / subtitle / badge：页面上下文（竞赛标题、题号徽标等）
  */
 export interface WorkspaceProblem extends EditorLanguageConfig {
+  judge_backend?: "dual" | "oi-native" | "oi-wasm" | null
   id: string
   display_id: string
   label?: string
   title: string
   description: string
+  samples?: import("~/utils/oiWorkspace").ProblemSample[]
   difficulty: string
   type: 'U' | 'P'
   submission_mode?: 'code' | 'artifact'
@@ -196,6 +198,8 @@ async function handleSubmit() {
 }
 
 // 自测
+const oiPanel = ref<{runAll:()=>Promise<void>} | null>(null)
+const isOi = computed(() => props.problem?.judge_type === "oi")
 const selfTesting = ref(false)
 const selfTestError = ref('')
 const selfTestDisplayError = computed(
@@ -211,6 +215,9 @@ async function handleSelfTest() {
   if (!canSelfTest.value) {
     selfTestError.value = isLoggedIn.value ? '请先编写代码' : '请先登录'
     return
+  }
+  if(isOi.value) {
+    sidebarTab.value="self-test"; sidebarVisible.value=true; await nextTick(); await oiPanel.value?.runAll(); return
   }
   selfTesting.value = true
   selfTestError.value = ''
@@ -450,7 +457,9 @@ const toolbarProblem = computed(() => {
                 @update:draft-enabled="draftEnabled = $event"
                 @clear-draft="handleClearDraft"
                 @open-submission="openSubmission"
-              />
+              >
+                <template v-if="isOi && problem" #oi-self-test><OiSelfTestPanel ref="oiPanel" :problem-id="problem.id" :code="code" :language="language" :samples="problem.samples??[]" :backend="problem.judge_backend" /></template>
+              </EditorSidebar>
             </div>
             <ResizableSplitter
               v-model="sidebarWidth"

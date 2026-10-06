@@ -26,6 +26,7 @@ import type { JudgeResult } from "../../types/index.ts";
  * 也不把未定义状态写进数据库。
  */
 export const ALLOWED_JUDGE_STATUSES: readonly string[] = [
+  "cancelled",
   "finished",
   "error",
   "SystemError",

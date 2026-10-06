@@ -50,8 +50,7 @@ function onSaved() {
     <!-- 题目类型确定后才挂载对应编辑器 -->
     <template v-if="!pending">
       <ObjectiveProblemEditor v-if="isObjective" :paper-id="problemId" />
-      <OiProblemEditor v-else-if="isOi" mode="edit" :problem-id="problemId" @saved="onSaved" />
-      <CodingProblemEditor v-else mode="edit" :problem-id="problemId" @saved="onSaved" />
+      <ProblemEditor v-else-if="problem" mode="edit" :initial-judge-type="isOi ? 'oi' : 'dual'" :problem-id="problemId" @saved="onSaved" />
     </template>
   </div>
 </template>

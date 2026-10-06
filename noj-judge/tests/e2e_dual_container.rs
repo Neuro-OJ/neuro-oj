@@ -38,6 +38,9 @@ use zip::write::SimpleFileOptions;
 
 fn dual_task() -> JudgeTask {
     JudgeTask {
+        scheduling_version: None,
+        resource_pool: None,
+        run_id: None,
         submission_id: format!("sub-{}", uuid::Uuid::new_v4()),
         problem_id: "1001".to_string(),
         user_id: "user-1".to_string(),

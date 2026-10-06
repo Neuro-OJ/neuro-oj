@@ -1,3 +1,4 @@
+import { acceptedResultSql } from "../../../../shared/base/accepted-result.ts";
 /**
  * Problems 列表与查询（PR 拆分 PR-3；issue #223 分类 → 双类标签）。
  *
@@ -74,6 +75,8 @@ function toProblemResponse(
     id: row.id,
     title: row.title,
     description: row.description,
+    samples: (row.samples ??
+      []) as import("../../types/problem-samples.ts").ProblemSample[],
     difficulty: row.difficulty,
     has_support_package: row.support_package_storage_url !== null,
     number: row.number,
@@ -637,8 +640,11 @@ async function hasAcceptedSubmission(
       and(
         eq(submissions.problem_id, problemId),
         eq(submissions.user_id, userId),
-        eq(evaluationResults.status, "finished"),
-        sql`${evaluationResults.score} > 0`,
+        acceptedResultSql(
+          evaluationResults.status,
+          evaluationResults.score,
+          evaluationResults.details,
+        ),
       ),
     )
     .limit(1);

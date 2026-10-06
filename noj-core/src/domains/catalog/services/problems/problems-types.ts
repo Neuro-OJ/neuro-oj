@@ -27,6 +27,7 @@ import {
  * 公开题目响应（不含关联标签）。
  */
 export interface ProblemResponse {
+  samples: import("../../types/problem-samples.ts").ProblemSample[];
   id: string;
   title: string;
   description: string;

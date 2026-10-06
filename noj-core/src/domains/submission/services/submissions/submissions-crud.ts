@@ -657,6 +657,13 @@ export async function getSubmission(
   return {
     id: row.id,
     public_id: row.public_id,
+    ...(canSeeDetails
+      ? {
+        progress: row.judge_progress as
+          | import("../oi-progress.ts").OiProgress
+          | null,
+      }
+      : {}),
     user_id: row.user_id,
     problem_id: row.problem_id,
     contest_id: row.contest_id,

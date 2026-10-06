@@ -1,3 +1,4 @@
+import { SCHEDULING_ENV_DEFAULTS } from "./scheduling-env.ts";
 /**
  * `docker-compose.judge.yml` 的渲染与 socket 连接校验（T21）。
  *
@@ -45,11 +46,12 @@ export const DEFAULT_JUDGE_IMAGE_REGISTRY = "ghcr.io/neuro-oj";
 /** 渲染环境变量的默认值（bash `:591-612` 的 `${VAR:-default}` 逐字）。 */
 export const COMPOSE_ENV_DEFAULTS: Readonly<Record<string, string>> = {
   ...OI_ENV_DEFAULTS,
+  ...SCHEDULING_ENV_DEFAULTS,
   JUDGE_QUEUE: "noj:judge:queue",
   RESULT_QUEUE: "noj:judge:results",
   JUDGE_PRIORITY_POLL_TIMEOUT_MS: "100",
   WORK_DIR: "/tmp/noj-judge",
-  JUDGE_MAX_CONCURRENT_JUDGES: "2",
+
   JUDGE_CPU_LIMIT_MILLICORES: "1000",
   JUDGE_MAX_EVALUATOR_TIME_MS: "300000",
   JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS: "60000",
@@ -123,7 +125,10 @@ export function renderJudgeCompose(env: Record<string, string>): string {
     value("JUDGE_PRIORITY_POLL_TIMEOUT_MS")
   }"
       WORK_DIR: "${value("WORK_DIR")}"
-      JUDGE_MAX_CONCURRENT_JUDGES: "${value("JUDGE_MAX_CONCURRENT_JUDGES")}"
+      ${
+    Object.keys(SCHEDULING_ENV_DEFAULTS).map((key) => `${key}: "${value(key)}"`)
+      .join("\n      ")
+  }
       JUDGE_CPU_LIMIT_MILLICORES: "${value("JUDGE_CPU_LIMIT_MILLICORES")}"
       JUDGE_MAX_EVALUATOR_TIME_MS: "${value("JUDGE_MAX_EVALUATOR_TIME_MS")}"
       JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS: "${

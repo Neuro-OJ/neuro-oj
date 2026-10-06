@@ -24,6 +24,10 @@ export const problems = pgTable(
     id: text("id").primaryKey(),
     title: text("title").notNull(),
     description: text("description").notNull(),
+    /** 公开样例独立于题面，旧题目缺省为空数组。 */
+    samples: jsonb("samples").default(sql`'[]'::jsonb`),
+    /** OI 数据文件索引；NULL 表示尚未从旧评测包转换。 */
+    oi_data_files: jsonb("oi_data_files"),
     difficulty: text("difficulty").notNull().default("medium"),
     /** 支持包存储 URL（`noj-storage://` 格式） */
     support_package_storage_url: text("support_package_storage_url"),

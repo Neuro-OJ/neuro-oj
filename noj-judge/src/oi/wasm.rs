@@ -12,6 +12,7 @@ use std::time::Instant;
 
 use anyhow::{Context, Result};
 use futures_util::future::join_all;
+use futures_util::StreamExt;
 use wasmtime::{Config, Engine, Linker, Module, OperatorCost, Store, StoreLimitsBuilder};
 use wasmtime_wasi::{
     clocks::{HostMonotonicClock, HostWallClock},
@@ -24,7 +25,7 @@ use wasmtime_wasi::{
 mod analysis_runtime;
 pub(super) use analysis_runtime::run_analysis_module;
 
-use super::wasm_compile::{compile_source, compile_source_with_files, CompilerInfrastructureError};
+use super::wasm_compile::{compile_cancellable, CompilerInfrastructureError};
 use crate::types::{JudgeResult, JudgeTask};
 
 use super::{
@@ -114,6 +115,7 @@ pub async fn run_module(
         None,
         FsPerms::ReadOnly,
         None,
+        None,
     )
     .await
 }
@@ -175,6 +177,36 @@ pub async fn run_checker_module(
     extra_files: &HashMap<String, Vec<u8>>,
     wall_limit_ms: u64,
 ) -> Result<WasmRunResult> {
+    run_prepared_checker(
+        module_bytes,
+        input,
+        expected,
+        actual,
+        memory_limit_mb,
+        fuel_budget,
+        profile,
+        extra_files,
+        wall_limit_ms,
+        None,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_prepared_checker(
+    module_bytes: &[u8],
+    input: &[u8],
+    expected: &[u8],
+    actual: &[u8],
+    memory_limit_mb: u64,
+    fuel_budget: u64,
+    profile: &OiCostProfile,
+    extra_files: &HashMap<String, Vec<u8>>,
+    wall_limit_ms: u64,
+    prepared: Option<&PreparedModule>,
+    cancellation: Option<Arc<AtomicBool>>,
+) -> Result<WasmRunResult> {
     let directory = tempfile::tempdir().context("创建 WASM checker 临时目录失败")?;
     // 先放入题包声明的辅助文件，再写入 worker 生成的三份 checker 输入。
     // 这样即使题包中出现同名 extra，也不能覆盖真实的输入、标准答案或选手输出。
@@ -191,7 +223,7 @@ pub async fn run_checker_module(
         "checker.out".to_string(),
         "checker.ans".to_string(),
     ];
-    run_module_with_files(
+    run_prepared_module(
         module_bytes,
         &[],
         memory_limit_mb,
@@ -201,6 +233,9 @@ pub async fn run_checker_module(
         Some(directory.path()),
         FsPerms::ReadOnly,
         Some(wall_limit_ms),
+        0,
+        cancellation,
+        prepared,
     )
     .await
 }
@@ -216,6 +251,7 @@ async fn run_module_with_files(
     preopened_dir: Option<&Path>,
     preopened_perms: FsPerms,
     wall_limit_ms: Option<u64>,
+    cancellation: Option<Arc<AtomicBool>>,
 ) -> Result<WasmRunResult> {
     run_observed_module_with_files(
         module_bytes,
@@ -228,25 +264,12 @@ async fn run_module_with_files(
         preopened_perms,
         wall_limit_ms,
         0,
+        cancellation,
     )
     .await
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn run_observed_module_with_files(
-    module_bytes: &[u8],
-    input: &[u8],
-    memory_limit_mb: u64,
-    fuel_budget: u64,
-    profile: &OiCostProfile,
-    args: &[String],
-    preopened_dir: Option<&Path>,
-    preopened_perms: FsPerms,
-    wall_limit_ms: Option<u64>,
-    observe_count: usize,
-) -> Result<WasmRunResult> {
-    profile.validate().map_err(anyhow::Error::msg)?;
-
+fn engine_config(profile: &OiCostProfile) -> Config {
     let mut config = Config::new();
     config.epoch_interruption(true);
     config.consume_fuel(true);
@@ -261,10 +284,114 @@ async fn run_observed_module_with_files(
     config.max_wasm_stack(512 * 1024);
     // 允许 Wasmtime 在 Tokio worker 之外运行，但不让 guest 通过 epoch
     // 或 host callback 改写平台计时；fuel 是唯一的 guest 预算。
-    let engine = Engine::new(&config)
-        .map_err(|error| anyhow::anyhow!("创建 Wasmtime engine 失败: {error}"))?;
-    let module = Module::new(&engine, module_bytes)
-        .map_err(|error| anyhow::anyhow!("解析 Wasm 模块失败: {error}"))?;
+    config
+}
+
+struct EpochDriver {
+    stop: mpsc::Sender<()>,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+impl Drop for EpochDriver {
+    fn drop(&mut self) {
+        let _ = self.stop.send(());
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+#[derive(Clone)]
+struct PreparedModule {
+    engine: Engine,
+    module: Module,
+    _epoch: Arc<EpochDriver>,
+}
+impl PreparedModule {
+    fn new(bytes: &[u8], profile: &OiCostProfile) -> Result<Self> {
+        let engine = Engine::new(&engine_config(profile))?;
+        let module = Module::new(&engine, bytes)?;
+        let (stop, receiver) = mpsc::channel();
+        let timer_engine = engine.clone();
+        let handle = std::thread::spawn(move || {
+            while matches!(
+                receiver.recv_timeout(std::time::Duration::from_millis(10)),
+                Err(mpsc::RecvTimeoutError::Timeout)
+            ) {
+                timer_engine.increment_epoch();
+            }
+        });
+        Ok(Self {
+            engine,
+            module,
+            _epoch: Arc::new(EpochDriver {
+                stop,
+                handle: Some(handle),
+            }),
+        })
+    }
+    fn checker(&self, bytes: &[u8]) -> Result<Self> {
+        Ok(Self {
+            engine: self.engine.clone(),
+            module: Module::new(&self.engine, bytes)?,
+            _epoch: self._epoch.clone(),
+        })
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_observed_module_with_files(
+    module_bytes: &[u8],
+    input: &[u8],
+    memory_limit_mb: u64,
+    fuel_budget: u64,
+    profile: &OiCostProfile,
+    args: &[String],
+    preopened_dir: Option<&Path>,
+    preopened_perms: FsPerms,
+    wall_limit_ms: Option<u64>,
+    observe_count: usize,
+    cancellation: Option<Arc<AtomicBool>>,
+) -> Result<WasmRunResult> {
+    run_prepared_module(
+        module_bytes,
+        input,
+        memory_limit_mb,
+        fuel_budget,
+        profile,
+        args,
+        preopened_dir,
+        preopened_perms,
+        wall_limit_ms,
+        observe_count,
+        cancellation,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_prepared_module(
+    module_bytes: &[u8],
+    input: &[u8],
+    memory_limit_mb: u64,
+    fuel_budget: u64,
+    profile: &OiCostProfile,
+    args: &[String],
+    preopened_dir: Option<&Path>,
+    preopened_perms: FsPerms,
+    wall_limit_ms: Option<u64>,
+    observe_count: usize,
+    cancellation: Option<Arc<AtomicBool>>,
+    prepared: Option<&PreparedModule>,
+) -> Result<WasmRunResult> {
+    profile.validate().map_err(anyhow::Error::msg)?;
+
+    let (engine, module) = if let Some(prepared) = prepared {
+        (prepared.engine.clone(), prepared.module.clone())
+    } else {
+        let engine = Engine::new(&engine_config(profile))?;
+        let module = Module::new(&engine, module_bytes)?;
+        (engine, module)
+    };
 
     let stdin = MemoryInputPipe::new(input.to_vec());
     let stdout = MemoryOutputPipe::new(MAX_OUTPUT_BYTES);
@@ -319,11 +446,26 @@ async fn run_observed_module_with_files(
     let started = Instant::now();
     // epoch 中断负责打断纯计算 guest；tokio timeout 负责取消可取消的 WASI
     // 异步调用。两者同时使用，避免 guest 在无限循环或 sleep 中绕过墙钟限制。
-    let timer = wall_limit_ms.map(|limit| {
+    let timer = wall_limit_ms.filter(|_| prepared.is_none()).map(|limit| {
         let (cancel_tx, cancel_rx) = mpsc::channel();
         let timer_engine = engine.clone();
+        let timer_cancellation = cancellation.clone();
         let handle = std::thread::spawn(move || {
-            if cancel_rx
+            if let Some(cancelled) = timer_cancellation {
+                let deadline = Instant::now() + std::time::Duration::from_millis(limit);
+                loop {
+                    if cancelled.load(Ordering::Relaxed) || Instant::now() >= deadline {
+                        timer_engine.increment_epoch();
+                        break;
+                    }
+                    if cancel_rx
+                        .recv_timeout(std::time::Duration::from_millis(20))
+                        .is_ok()
+                    {
+                        break;
+                    }
+                }
+            } else if cancel_rx
                 .recv_timeout(std::time::Duration::from_millis(limit))
                 .is_err()
             {
@@ -361,6 +503,23 @@ async fn run_observed_module_with_files(
     } else {
         None
     };
+    if prepared.is_some() {
+        let deadline = wall_limit_ms.map(|limit| started + std::time::Duration::from_millis(limit));
+        let flag = cancellation.clone();
+        let output_flag = output_limit_triggered.clone();
+        store.epoch_deadline_callback(move |_| {
+            if deadline.is_some_and(|value| Instant::now() >= value)
+                || flag
+                    .as_ref()
+                    .is_some_and(|flag| flag.load(Ordering::Relaxed))
+                || output_flag.load(Ordering::Relaxed)
+            {
+                return Err(wasmtime::Error::new(wasmtime::Trap::Interrupt));
+            }
+            Ok(wasmtime::UpdateDeadline::Continue(1))
+        });
+        store.set_epoch_deadline(1);
+    }
     let mut observed_instance = None;
     let execute = async {
         let instance = linker.instantiate_async(&mut store, &module).await?;
@@ -369,9 +528,13 @@ async fn run_observed_module_with_files(
         start.call_async(&mut store, ()).await
     };
     let (call, wall_timed_out) = if let Some(limit) = wall_limit_ms {
-        match tokio::time::timeout(std::time::Duration::from_millis(limit), execute).await {
-            Ok(result) => (Some(result), false),
-            Err(_) => (None, true),
+        let timed = tokio::time::timeout(std::time::Duration::from_millis(limit), execute);
+        tokio::select! {
+            result=timed=>match result {Ok(result)=>(Some(result),false),Err(_)=>(None,true)},
+            _=async {
+                let Some(cancelled)=cancellation.as_ref() else {std::future::pending::<()>().await;return;};
+                while !cancelled.load(Ordering::Relaxed) {tokio::time::sleep(std::time::Duration::from_millis(20)).await;}
+            }=>(None,false),
         }
     } else {
         (Some(execute.await), false)
@@ -495,7 +658,7 @@ fn thread_cpu_time_ns() -> Option<u64> {
 
 /// 执行一个 OI WASM 任务。成本表和 WASI 编译器均来自 worker 配置/服务端，
 /// 用户消息不能替换它们。
-#[allow(clippy::too_many_arguments)]
+#[allow(dead_code, clippy::too_many_arguments)]
 pub async fn evaluate_wasm(
     task: &JudgeTask,
     config: &OiRuntimeConfig,
@@ -505,6 +668,32 @@ pub async fn evaluate_wasm(
     extra_files: &HashMap<String, Vec<u8>>,
     checker_compile_files: &HashMap<String, Vec<u8>>,
     user_compile_files: &HashMap<String, Vec<u8>>,
+) -> Result<JudgeResult> {
+    evaluate_wasm_with_progress(
+        task,
+        config,
+        cases,
+        profile,
+        checker_source,
+        extra_files,
+        checker_compile_files,
+        user_compile_files,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn evaluate_wasm_with_progress(
+    task: &JudgeTask,
+    config: &OiRuntimeConfig,
+    cases: &[(String, Vec<u8>, Vec<u8>)],
+    profile: &OiCostProfile,
+    checker_source: Option<&[u8]>,
+    extra_files: &HashMap<String, Vec<u8>>,
+    checker_compile_files: &HashMap<String, Vec<u8>>,
+    user_compile_files: &HashMap<String, Vec<u8>>,
+    progress: Option<&super::progress::ProgressReporter>,
 ) -> Result<JudgeResult> {
     let matches = super::standard::validate_profile(profile);
     let mut result = if let Err(error) = &matches {
@@ -521,9 +710,13 @@ pub async fn evaluate_wasm(
             extra_files,
             checker_compile_files,
             user_compile_files,
+            progress,
         )
         .await?
     };
+    if let Some(reporter) = progress {
+        reporter.ensure_resource_valid()?;
+    }
     let mut files = std::collections::BTreeMap::new();
     for subtask in &config.subtasks {
         for case in &subtask.cases {
@@ -551,7 +744,31 @@ pub async fn evaluate_wasm(
     if let (Some(path), Some(bytes)) = (&config.checker.path, checker_source) {
         files.insert(path.clone(), super::standard::hash(bytes));
     }
-    let payload = serde_json::json!({"runtime_config":config,"files":files});
+    // 未升级评分协议的存量配置保持原来的序列化摘要；新协议完整绑定新字段。
+    // 不能仅因反序列化补出的 null/default 字段破坏已发布的 v3 基准身份。
+    let mut metering_config = serde_json::to_value(config)?;
+    if config.scoring_version.is_none()
+        && config.subtasks.iter().all(|subtask| {
+            subtask.scoring == super::OiScoring::Min
+                && subtask
+                    .cases
+                    .iter()
+                    .all(|case| case.id.is_none() && case.score.is_none())
+        })
+    {
+        metering_config
+            .as_object_mut()
+            .unwrap()
+            .remove("scoring_version");
+        for subtask in metering_config["subtasks"].as_array_mut().unwrap() {
+            subtask.as_object_mut().unwrap().remove("scoring");
+            for case in subtask["cases"].as_array_mut().unwrap() {
+                case.as_object_mut().unwrap().remove("id");
+                case.as_object_mut().unwrap().remove("score");
+            }
+        }
+    }
+    let payload = serde_json::json!({"runtime_config":metering_config,"files":files});
     let evaluation_hash =
         super::standard::hash(super::standard::canonical_json(&payload).as_bytes());
     let source_hash = super::standard::hash(task.code.as_bytes());
@@ -603,20 +820,33 @@ async fn evaluate_wasm_inner(
     extra_files: &HashMap<String, Vec<u8>>,
     checker_compile_files: &HashMap<String, Vec<u8>>,
     user_compile_files: &HashMap<String, Vec<u8>>,
+    progress: Option<&super::progress::ProgressReporter>,
 ) -> Result<JudgeResult> {
     if config.backend != OiBackend::Wasm {
         anyhow::bail!("WASM runner 收到非 WASM 配置");
     }
     profile.validate().map_err(anyhow::Error::msg)?;
+    let compile_lease = if let Some(progress) = progress {
+        progress.stage("compile", 512).await?
+    } else {
+        None
+    };
+    if let Some(progress) = progress {
+        progress.phase("compiling").await;
+    }
     let language = task.language.clone();
     let source = task.code.clone();
     let compile_files = user_compile_files.clone();
+    let source_compile_lease = compile_lease.clone();
+    let compile_cancellation = progress.map(|reporter| reporter.cancel_flag());
     let wasm = match tokio::task::spawn_blocking(move || {
-        if compile_files.is_empty() {
-            compile_source(&language, &source)
-        } else {
-            compile_source_with_files(&language, &source, &compile_files)
-        }
+        let _lease = source_compile_lease;
+        compile_cancellable(
+            &language,
+            &source,
+            &compile_files,
+            compile_cancellation.as_deref(),
+        )
     })
     .await
     {
@@ -626,12 +856,14 @@ async fn evaluate_wasm_inner(
                 .downcast_ref::<CompilerInfrastructureError>()
                 .is_some() =>
         {
-            tracing::error!(error = %error, "WASI 编译基础设施不可用");
+            tracing::error!(error = %format!("{error:#}"), "WASI 编译基础设施不可用");
             return uniform_status_result(task, config, OiStatus::SystemError);
         }
         Ok(Err(error)) => {
             tracing::warn!(error = %error, "WASI 用户程序编译失败");
-            return uniform_status_result(task, config, OiStatus::CompileError);
+            let mut result = uniform_status_result(task, config, OiStatus::CompileError)?;
+            result.details["oi"]["compile_error"] = serde_json::json!(error.to_string());
+            return Ok(result);
         }
         Err(error) => {
             tracing::error!(error = %error, "WASI 用户程序编译线程异常");
@@ -647,8 +879,16 @@ async fn evaluate_wasm_inner(
                 return uniform_status_result(task, config, OiStatus::SystemError);
             }
         };
+        let checker_compile_lease = compile_lease.clone();
+        let checker_cancellation = progress.map(|reporter| reporter.cancel_flag());
         match tokio::task::spawn_blocking(move || {
-            compile_source_with_files("cc", &source, &checker_compile_files_for_compile)
+            let _lease = checker_compile_lease;
+            compile_cancellable(
+                "cc",
+                &source,
+                &checker_compile_files_for_compile,
+                checker_cancellation.as_deref(),
+            )
         })
         .await
         {
@@ -665,6 +905,22 @@ async fn evaluate_wasm_inner(
     } else {
         None
     };
+    let user_bytes = wasm.clone();
+    let checker_bytes = checker_module.clone();
+    let compiled_profile = profile.clone();
+    let module_compile_lease = compile_lease.clone();
+    let prepared = tokio::task::spawn_blocking(move || -> Result<_> {
+        let _lease = module_compile_lease;
+        let user = PreparedModule::new(&user_bytes, &compiled_profile)?;
+        let checker = checker_bytes
+            .as_deref()
+            .map(|bytes| user.checker(bytes))
+            .transpose()?;
+        Ok((user, checker))
+    })
+    .await
+    .context("创建提交级 WASM 模块失败")??;
+    drop(compile_lease);
     let mut results = Vec::with_capacity(cases.len());
     let user_extra_files = config
         .user_extra_files
@@ -681,7 +937,9 @@ async fn evaluate_wasm_inner(
     let checker_extra_files = checker_compile_files.clone();
     let case_data = cases
         .iter()
-        .map(|(case_id, input, expected)| (case_id.clone(), (input.clone(), expected.clone())))
+        .map(|(case_id, input, expected)| {
+            (case_id.as_str(), (input.as_slice(), expected.as_slice()))
+        })
         .collect::<HashMap<_, _>>();
     let mut pending: HashSet<usize> = (0..config.subtasks.len()).collect();
     let mut passed = HashSet::new();
@@ -716,7 +974,7 @@ async fn evaluate_wasm_inner(
             return Err(anyhow::anyhow!("WASM 子任务依赖无法调度"));
         }
         runnable.sort_unstable();
-        let batch = runnable.into_iter().take(2).collect::<Vec<_>>();
+        let batch = runnable;
         for index in &batch {
             pending.remove(index);
         }
@@ -727,9 +985,11 @@ async fn evaluate_wasm_inner(
                 config,
                 index,
                 &case_data,
+                &prepared,
                 profile,
                 &user_extra_files,
                 &checker_extra_files,
+                progress,
             )
         }))
         .await;
@@ -764,48 +1024,115 @@ async fn evaluate_wasm_inner(
     Ok(result)
 }
 
-/// 子任务内部仍按题目声明顺序运行测试点；不同的就绪子任务最多并发两个。
+/// sum 的用例共享节点槽位；min/max 保留声明顺序与短路。
 #[allow(clippy::too_many_arguments)]
 async fn run_wasm_subtask(
     wasm: &[u8],
     checker_module: Option<&[u8]>,
     config: &OiRuntimeConfig,
     subtask_index: usize,
-    case_data: &HashMap<String, (Vec<u8>, Vec<u8>)>,
+    case_data: &HashMap<&str, (&[u8], &[u8])>,
+    prepared: &(PreparedModule, Option<PreparedModule>),
     profile: &OiCostProfile,
     user_extra_files: &HashMap<String, Vec<u8>>,
     checker_extra_files: &HashMap<String, Vec<u8>>,
+    progress: Option<&super::progress::ProgressReporter>,
 ) -> Result<(bool, Vec<OiCaseResult>)> {
     let subtask = &config.subtasks[subtask_index];
-    let mut results = Vec::with_capacity(subtask.cases.len());
-    for case in &subtask.cases {
-        let (input, expected) = case_data
-            .get(&case.input)
-            .context("WASM 测试点数据数量或路径不一致")?;
-        let result = run_wasm_case(
-            wasm,
-            checker_module,
-            config.checker.kind,
-            config.filename.as_deref(),
-            case,
-            subtask.time_limit_ms,
-            subtask.memory_limit_mb,
-            config.time_limit_ms,
-            config.memory_limit_mb,
-            input,
-            expected,
-            profile,
-            user_extra_files,
-            checker_extra_files,
-        )
-        .await?;
-        let passed = result.status == OiStatus::Accepted;
-        results.push(result);
-        if !passed {
-            return Ok((false, results));
+    let maximums = subtask.case_max_scores();
+    let maximums = maximums.as_slice();
+    let run = |(index, _): (usize, &OiCase)| {
+        let case = &subtask.cases[index];
+        async move {
+            let id = case
+                .id
+                .clone()
+                .unwrap_or_else(|| format!("{}_{}", subtask.id, index + 1));
+            if progress.is_some_and(|reporter| reporter.is_cancelled()) {
+                return Ok::<_, anyhow::Error>((index, super::cancelled_case(case)));
+            }
+            let memory = case
+                .memory_limit_mb
+                .or(subtask.memory_limit_mb)
+                .unwrap_or(config.memory_limit_mb);
+            let _run_lease = if let Some(reporter) = progress {
+                reporter.stage("run", memory.saturating_add(128)).await?
+            } else {
+                None
+            };
+            if let Some(reporter) = progress {
+                reporter.start_case(&subtask.id, &id).await;
+            }
+            let (input, expected) = case_data
+                .get(case.input.as_str())
+                .context("WASM 测试点数据数量或路径不一致")?;
+            let result = run_wasm_case(
+                wasm,
+                checker_module,
+                config.checker.kind,
+                config.filename.as_deref(),
+                case,
+                subtask.time_limit_ms,
+                subtask.memory_limit_mb,
+                config.time_limit_ms,
+                config.memory_limit_mb,
+                input,
+                expected,
+                profile,
+                user_extra_files,
+                checker_extra_files,
+                maximums[index],
+                config
+                    .self_test
+                    .as_ref()
+                    .map(|mode| !mode.no_compare_inputs.contains(&case.input)),
+                progress.map(|reporter| reporter.cancel_flag()),
+                Some(prepared),
+                _run_lease.clone(),
+            )
+            .await?;
+            if let Some(reporter) = progress {
+                reporter
+                    .finish_case(&subtask.id, &id, &result, maximums[index])
+                    .await;
+            }
+            Ok((index, result))
         }
-    }
-    Ok((true, results))
+    };
+    let mut ordered = if subtask.scoring == super::OiScoring::Sum {
+        let window = progress
+            .map(|reporter| reporter.case_window())
+            .unwrap_or(16);
+        futures_util::stream::iter(subtask.cases.iter().enumerate().map(run))
+            .buffer_unordered(window)
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>>>()?
+    } else {
+        let mut results = Vec::new();
+        let mut scores = Vec::new();
+        for item in subtask.cases.iter().enumerate() {
+            let (index, result) = run(item).await?;
+            scores.push(result.clone());
+            results.push((index, result));
+            if subtask.should_stop(&scores) {
+                break;
+            }
+        }
+        results
+    };
+    ordered.sort_by_key(|(index, _)| *index);
+    let results = ordered
+        .into_iter()
+        .map(|(_, result)| result)
+        .collect::<Vec<_>>();
+    Ok((
+        results
+            .iter()
+            .all(|result| result.status == OiStatus::Accepted),
+        results,
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -824,6 +1151,11 @@ async fn run_wasm_case(
     profile: &OiCostProfile,
     user_extra_files: &HashMap<String, Vec<u8>>,
     checker_extra_files: &HashMap<String, Vec<u8>>,
+    maximum: f64,
+    self_test_compare: Option<bool>,
+    cancellation: Option<Arc<AtomicBool>>,
+    prepared: Option<&(PreparedModule, Option<PreparedModule>)>,
+    stage_lease: Option<Arc<super::progress::StageLease>>,
 ) -> Result<OiCaseResult> {
     let expected_for_run = expected.to_vec();
     let memory = case
@@ -849,6 +1181,7 @@ async fn run_wasm_case(
         }
         Some(directory)
     };
+    let user_directory = user_directory.map(Arc::new);
     let baseline_directory_bytes = user_directory
         .as_ref()
         .map(|directory| directory_size(directory.path()))
@@ -864,12 +1197,18 @@ async fn run_wasm_case(
     let user_directory_path = user_directory
         .as_ref()
         .map(|directory| directory.path().to_path_buf());
+    let user_cancellation = cancellation.clone();
+    let user_prepared = prepared.map(|modules| modules.0.clone());
+    let user_stage_lease = stage_lease.clone();
+    let user_directory_guard = user_directory.clone();
     let user = tokio::task::spawn_blocking(move || {
+        let _lease = user_stage_lease;
+        let _directory = user_directory_guard;
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .context("创建 WASM 测试点运行时失败")?;
-        runtime.block_on(run_module_with_files(
+        runtime.block_on(run_prepared_module(
             &user_bytes,
             &user_input,
             memory,
@@ -883,6 +1222,9 @@ async fn run_wasm_case(
                 FsPerms::ReadOnly
             },
             Some(wall_budget_ms(limit)),
+            0,
+            user_cancellation,
+            user_prepared.as_ref(),
         ))
     })
     .await
@@ -939,13 +1281,17 @@ async fn run_wasm_case(
         let checker_actual = user.stdout.clone();
         let checker_profile = profile.clone();
         let checker_extra_files = checker_extra_files.clone();
+        let checker_prepared = prepared.and_then(|modules| modules.1.clone());
+        let checker_cancellation = cancellation.clone();
+        let checker_stage_lease = stage_lease.clone();
         Some(
             tokio::task::spawn_blocking(move || {
+                let _lease = checker_stage_lease;
                 let runtime = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
                     .context("创建 WASM checker 运行时失败")?;
-                runtime.block_on(run_checker_module(
+                runtime.block_on(run_prepared_checker(
                     &checker_module,
                     &checker_input,
                     &checker_expected,
@@ -955,6 +1301,8 @@ async fn run_wasm_case(
                     &checker_profile,
                     &checker_extra_files,
                     wall_budget_ms(limit),
+                    checker_prepared.as_ref(),
+                    checker_cancellation,
                 ))
             })
             .await
@@ -964,34 +1312,72 @@ async fn run_wasm_case(
         None
     };
     let (run, checker) = (user, checker);
-    let status = match run.status {
-        WasmStatus::Accepted if checker_kind == OiCheckerType::Testlib => match checker {
-            // 新版 wasi-libc 在 main 返回 0 时直接从 _start 返回，不调用 proc_exit。
-            Some(checker) if checker.status == WasmStatus::Accepted => OiStatus::Accepted,
-            Some(checker)
-                if checker.status == WasmStatus::RuntimeError && checker.exit_code.is_some() =>
-            {
-                super::testlib_verdict_from_exit(checker.exit_code.map(i64::from))
+    let partial = checker
+        .as_ref()
+        .filter(|checker| {
+            checker.status == WasmStatus::Accepted || checker.status == WasmStatus::RuntimeError
+        })
+        .map(|checker| {
+            super::testlib_points(
+                checker.exit_code.map(i64::from).or(Some(0)),
+                &checker.stderr,
+                maximum,
+            )
+        });
+    let status = if cancellation
+        .as_ref()
+        .is_some_and(|flag| flag.load(Ordering::Relaxed))
+    {
+        OiStatus::Ignored
+    } else {
+        match run.status {
+            WasmStatus::Accepted if partial.is_some() => partial.unwrap().0,
+            WasmStatus::Accepted if self_test_compare.is_some() => {
+                if self_test_compare == Some(false)
+                    || crate::oi::runner::check_self_test_output(expected, &run.stdout)
+                {
+                    OiStatus::Accepted
+                } else {
+                    OiStatus::WrongAnswer
+                }
             }
-            Some(_) | None => OiStatus::SystemError,
-        },
-        WasmStatus::Accepted
-            if crate::oi::runner::check_output(checker_kind, expected, &run.stdout) =>
-        {
-            OiStatus::Accepted
+            WasmStatus::Accepted if checker_kind == OiCheckerType::Testlib => match checker {
+                // 新版 wasi-libc 在 main 返回 0 时直接从 _start 返回，不调用 proc_exit。
+                Some(checker) if checker.status == WasmStatus::Accepted => OiStatus::Accepted,
+                Some(checker)
+                    if checker.status == WasmStatus::RuntimeError
+                        && checker.exit_code.is_some() =>
+                {
+                    super::testlib_verdict_from_exit(checker.exit_code.map(i64::from))
+                }
+                Some(_) | None => OiStatus::SystemError,
+            },
+            WasmStatus::Accepted
+                if crate::oi::runner::check_output(checker_kind, expected, &run.stdout) =>
+            {
+                OiStatus::Accepted
+            }
+            WasmStatus::Accepted => OiStatus::WrongAnswer,
+            WasmStatus::TimeLimitExceeded => OiStatus::TimeLimitExceeded,
+            WasmStatus::MemoryLimitExceeded => OiStatus::MemoryLimitExceeded,
+            WasmStatus::OutputLimitExceeded => OiStatus::OutputLimitExceeded,
+            WasmStatus::RuntimeError => OiStatus::RuntimeError,
+            WasmStatus::FormatError => OiStatus::FormatError,
+            WasmStatus::SystemError => OiStatus::SystemError,
         }
-        WasmStatus::Accepted => OiStatus::WrongAnswer,
-        WasmStatus::TimeLimitExceeded => OiStatus::TimeLimitExceeded,
-        WasmStatus::MemoryLimitExceeded => OiStatus::MemoryLimitExceeded,
-        WasmStatus::OutputLimitExceeded => OiStatus::OutputLimitExceeded,
-        WasmStatus::RuntimeError => OiStatus::RuntimeError,
-        WasmStatus::FormatError => OiStatus::FormatError,
-        WasmStatus::SystemError => OiStatus::SystemError,
     };
     let equivalent = run
         .fuel_consumed
         .map(|fuel| fuel.div_ceil(fuel_per_ms as u64).max(1));
     Ok(OiCaseResult {
+        stdout: self_test_compare.map(|_| crate::oi::runner::limited_output(&run.stdout).0),
+        stderr: self_test_compare.map(|_| crate::oi::runner::limited_output(&run.stderr).0),
+        stdout_truncated: self_test_compare
+            .map(|_| crate::oi::runner::limited_output(&run.stdout).1),
+        stderr_truncated: self_test_compare
+            .map(|_| crate::oi::runner::limited_output(&run.stderr).1),
+        score: partial.and_then(|item| item.1),
+        max_score: None,
         case_id: Some(case.input.clone()),
         input: case.input.clone(),
         status,
@@ -1094,35 +1480,18 @@ fn read_limited_file(path: &Path) -> Result<(Option<Vec<u8>>, bool)> {
     ))
 }
 
-/// 编译阶段没有测试点执行结果时，仍按 OI scorer 的依赖语义补齐结果：首个
-/// 失败子任务得到 CE/SE，依赖它的子任务得到 IGN，而不会把用户错误提升成
-/// worker 未分类异常。
+/// 编译失败没有执行任何测试点，不生成虚假的逐点 CE/SE。
 fn uniform_status_result(
     task: &JudgeTask,
-    config: &OiRuntimeConfig,
+    _config: &OiRuntimeConfig,
     status: OiStatus,
 ) -> Result<JudgeResult> {
-    let case_results = config
-        .subtasks
-        .iter()
-        .flat_map(|subtask| subtask.cases.iter())
-        .map(|case| OiCaseResult {
-            case_id: Some(case.input.clone()),
-            input: case.input.clone(),
-            status,
-            time_ms: None,
-            memory_kb: None,
-            cpu_time_ms: None,
-            wall_time_ms: None,
-            equivalent_time_ms: None,
-            fuel_consumed: None,
-            fuel_budget: None,
-            termination_reason: None,
-        })
-        .collect::<Vec<_>>();
-    let evaluation: OiEvaluation =
-        score_submission(config, &case_results).map_err(anyhow::Error::msg)?;
-    Ok(evaluation.to_judge_result(&task.submission_id, task.rejudge_seq, None, None))
+    Ok(OiEvaluation {
+        status,
+        score: 0,
+        subtasks: vec![],
+    }
+    .to_judge_result(&task.submission_id, task.rejudge_seq, None, None))
 }
 
 /// 使用发布标准冻结的完整算子表；任务标准不匹配时在执行前拒绝。

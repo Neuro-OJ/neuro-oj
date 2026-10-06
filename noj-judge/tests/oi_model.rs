@@ -26,6 +26,12 @@ fn config() -> OiRuntimeConfig {
 
 fn case(input: &str, status: OiStatus) -> OiCaseResult {
     OiCaseResult {
+        stdout: None,
+        stderr: None,
+        stdout_truncated: None,
+        stderr_truncated: None,
+        score: None,
+        max_score: None,
         case_id: Some(input.to_string()),
         input: input.to_string(),
         status,
@@ -103,6 +109,8 @@ fn failed_case_zeroes_entire_subtask_and_ignores_dependent() {
 fn cases_after_first_failure_are_ignored_without_execution_results() {
     let mut config = config();
     config.subtasks[0].cases.push(OiCase {
+        id: None,
+        score: None,
         input: "tests/4.in".to_string(),
         output: "tests/4.out".to_string(),
         time_limit_ms: None,
@@ -209,4 +217,79 @@ fn evaluation_maps_to_existing_result_envelope() {
     assert_eq!(result.time_ms, Some(20));
     assert_eq!(result.memory_kb, Some(8192));
     assert_eq!(result.rejudge_seq, Some(4));
+}
+
+#[test]
+fn sum_keeps_running_and_uses_hydro_remainder_at_end() {
+    let mut config = config();
+    config.subtasks.truncate(1);
+    config.subtasks[0].score = 100.0;
+    config.subtasks[0].scoring = noj_judge::oi::OiScoring::Sum;
+    config.subtasks[0].cases.push(
+        serde_json::from_value(json!({"input":"tests/3.in","output":"tests/3.out"})).unwrap(),
+    );
+    assert_eq!(config.subtasks[0].case_max_scores(), vec![33.0, 33.0, 34.0]);
+    assert!(!config.subtasks[0].should_stop(&[case("tests/1.in", OiStatus::WrongAnswer)]));
+    let result = score_submission(
+        &config,
+        &[
+            case("tests/1.in", OiStatus::WrongAnswer),
+            case("tests/2.in", OiStatus::Accepted),
+            case("tests/3.in", OiStatus::Accepted),
+        ],
+    )
+    .unwrap();
+    assert_eq!(result.score, 6700);
+    assert_eq!(result.subtasks[0].cases[2].score, Some(34.0));
+    assert_eq!(result.status, OiStatus::WrongAnswer);
+}
+
+#[test]
+fn max_short_circuit_accepts_and_failed_full_score_blocks_dependency() {
+    let mut config = config();
+    config.subtasks[0].scoring = noj_judge::oi::OiScoring::Max;
+    let result = score_submission(
+        &config,
+        &[
+            case("tests/1.in", OiStatus::Accepted),
+            case("tests/3.in", OiStatus::Accepted),
+        ],
+    )
+    .unwrap();
+    assert_eq!(result.status, OiStatus::Accepted);
+    assert_eq!(result.score, 10000);
+    assert_eq!(result.subtasks[0].cases[1].status, OiStatus::Ignored);
+    let result = score_submission(
+        &config,
+        &[
+            case("tests/1.in", OiStatus::WrongAnswer),
+            case("tests/2.in", OiStatus::Accepted),
+        ],
+    )
+    .unwrap();
+    assert_eq!(result.score, 4000);
+    assert_eq!(result.status, OiStatus::WrongAnswer);
+    assert_eq!(result.subtasks[1].status, OiStatus::Ignored);
+}
+
+#[test]
+fn partial_points_and_failure_priority_ignore_arrival_order() {
+    let mut config = config();
+    config.subtasks[0].scoring = noj_judge::oi::OiScoring::Sum;
+    config.subtasks[1].depends_on.clear();
+    let mut partial = case("tests/1.in", OiStatus::WrongAnswer);
+    partial.score = Some(7.5);
+    let result = score_submission(
+        &config,
+        &[
+            case("tests/3.in", OiStatus::TimeLimitExceeded),
+            case("tests/2.in", OiStatus::Accepted),
+            partial,
+        ],
+    )
+    .unwrap();
+    assert_eq!(result.score, 2750);
+    assert_eq!(result.status, OiStatus::TimeLimitExceeded);
+    config.scoring_version = Some(99);
+    assert!(score_submission(&config, &[]).is_err());
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "problems" ADD COLUMN "oi_data_files" jsonb;

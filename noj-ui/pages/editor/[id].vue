@@ -36,6 +36,7 @@ type StandardProblem = EditorLanguageConfig & {
   display_id: string
   title: string
   description: string
+  samples?: import("~/utils/oiWorkspace").ProblemSample[]
   difficulty: string
   type: 'U' | 'P'
   submission_mode?: 'code' | 'artifact'

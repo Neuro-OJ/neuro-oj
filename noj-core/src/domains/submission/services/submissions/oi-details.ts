@@ -13,6 +13,7 @@ export const OI_VERDICTS = [
 ] as const;
 export type OiVerdict = typeof OI_VERDICTS[number];
 const META = [
+  "scoring_version",
   "verdict",
   "backend",
   "score",
@@ -34,6 +35,8 @@ const SUBTASK_META = [
   "depends_on",
 ];
 const CASE_META = [
+  "score",
+  "max_score",
   "case_id",
   "id",
   "verdict",
@@ -58,7 +61,14 @@ function pick(value: unknown, keys: string[]): Record<string, unknown> {
 }
 function projectCase(value: unknown): Record<string, unknown> {
   const projected = pick(value, CASE_META);
-  if (projected.termination_reason !== "host_watchdog") {
+  if (
+    ![
+      "host_watchdog",
+      "dependency_failed",
+      "scoring_short_circuit",
+      "cancelled",
+    ].includes(projected.termination_reason as string)
+  ) {
     delete projected.termination_reason;
   }
   return projected;
@@ -68,6 +78,9 @@ export function projectOiDetails(value: unknown): Record<string, unknown> {
   const result = pick(value, META);
   if (!value || typeof value !== "object") return result;
   const src = value as Record<string, unknown>;
+  if (typeof result.compile_error === "string") {
+    result.compile_error = result.compile_error.slice(0, 16 * 1024);
+  }
   if (Array.isArray(src.subtasks)) {
     result.subtasks = src.subtasks.slice(0, 100).map((v) => {
       const s = pick(v, SUBTASK_META);
@@ -81,6 +94,33 @@ export function projectOiDetails(value: unknown): Record<string, unknown> {
     result.cases = src.cases.slice(0, 100).map(projectCase);
   }
   return result;
+}
+
+/** 私有自测返回用户用例的 stdout/stderr；正式提交永不使用该投影。 */
+export function projectOiSelfTestDetails(
+  value: unknown,
+): Record<string, unknown> {
+  const projected = projectOiDetails(value);
+  const source = value as
+    | { subtasks?: { cases?: Record<string, unknown>[] }[] }
+    | null;
+  if (!Array.isArray(source?.subtasks)) return projected;
+  projected.subtasks = source.subtasks.slice(0, 30).map((subtask) => ({
+    ...pick(subtask, SUBTASK_META),
+    cases: (subtask.cases ?? []).slice(0, 30).map((testCase) => {
+      const result = projectCase(testCase);
+      for (const stream of ["stdout", "stderr"] as const) {
+        const text = testCase[stream];
+        if (typeof text === "string") {
+          result[stream] = text.slice(0, 64 * 1024);
+          result[`${stream}_truncated`] =
+            testCase[`${stream}_truncated`] === true || text.length > 64 * 1024;
+        }
+      }
+      return result;
+    }),
+  }));
+  return projected;
 }
 /** 取得合法只读判定。 */
 export function oiVerdict(details: unknown): OiVerdict | undefined {

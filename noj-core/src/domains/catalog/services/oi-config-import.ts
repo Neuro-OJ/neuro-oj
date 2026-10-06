@@ -1,4 +1,5 @@
 import { parseDocument } from "yaml";
+import { distributeOiPoints } from "../types/oi-scoring.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
   type OiRuntimeConfig,
@@ -57,21 +58,6 @@ function resource(
   return Number(match[1]) * factor;
 }
 
-/** 将 Hydro sum 子任务按百分之一分值拆开，并把舍入余数稳定地放到前几个点。 */
-function splitHydroScore(score: number, count: number): number[] {
-  const cents = Math.round(score * 100);
-  const base = Math.floor(cents / count);
-  const remainder = cents % count;
-  if (base < 1) {
-    throw new BadRequestError(
-      "Hydro sum 子任务分值过小，无法在保留两位小数的 OI 分值中分配给所有测试点",
-    );
-  }
-  return Array.from(
-    { length: count },
-    (_, index) => (base + (index < remainder ? 1 : 0)) / 100,
-  );
-}
 /** NOJ 的 OI YAML 配置填入批准的默认值，然后执行与 CRUD 相同的验证。 */
 export function normalizeNojOiConfig(value: unknown): OiRuntimeConfig {
   const raw = object(value);
@@ -121,13 +107,18 @@ export function normalizeHydroOiConfig(
       ? normalized
       : `testdata/${normalized}`;
   };
-  let subtasks = raw.subtasks;
+  let subtasks = raw.subtasks ??
+    (Array.isArray(raw.cases)
+      ? [{ id: "all", score: 100, type: "sum", cases: raw.cases }]
+      : undefined);
   if (subtasks === undefined) {
     const pairs = Object.keys(files).filter((p) =>
       p.startsWith("testdata/") && p.endsWith(".in")
-    ).sort().map((p) => ({
+    ).sort((a, b) => a.localeCompare(b, "en", { numeric: true })).map((p) => ({
       input: p.slice(9),
-      output: `${p.slice(9, -3)}.out`,
+      output: files[`${p.slice(0, -3)}.out`]
+        ? `${p.slice(9, -3)}.out`
+        : `${p.slice(9, -3)}.ans`,
     }));
     subtasks = [{ id: "all", score: 100, type: "sum", cases: pairs }];
   }
@@ -139,16 +130,20 @@ export function normalizeHydroOiConfig(
   if (ids.size !== groups.length) {
     throw new BadRequestError("Hydro 子任务 id 重复");
   }
-  const scorePresence = groups.map((group) => group.score !== undefined);
-  if (scorePresence.some(Boolean) && !scorePresence.every(Boolean)) {
-    throw new BadRequestError(
-      "Hydro 子任务必须全部指定 score，或全部省略 score",
-    );
-  }
-  const groupScores = scorePresence.every(Boolean)
-    ? groups.map((group) => group.score)
-    : splitHydroScore(100, groups.length);
+  const specified = groups.reduce(
+    (sum, group) => sum + (typeof group.score === "number" ? group.score : 0),
+    0,
+  );
+  const defaults = distributeOiPoints(
+    Math.max(0, 100 - specified),
+    groups.filter((group) => group.score === undefined).length,
+  );
+  let defaultIndex = 0;
+  const groupScores = groups.map((group) =>
+    group.score ?? defaults[defaultIndex++]
+  );
   const config: OiRuntimeConfig = {
+    scoring_version: 2,
     backend: "native",
     languages: ["c", "cc"],
     time_limit_ms: time,
@@ -190,8 +185,8 @@ export function normalizeHydroOiConfig(
     }
     const id = String(group.id ?? index + 1);
     const scoring = group.type ?? "min";
-    if (scoring !== "min" && scoring !== "sum") {
-      throw new BadRequestError("Hydro 子任务仅支持 min/sum");
+    if (scoring !== "min" && scoring !== "sum" && scoring !== "max") {
+      throw new BadRequestError("Hydro 子任务仅支持 min/max/sum");
     }
     const score = groupScores[index];
     if (typeof score !== "number" || !Number.isFinite(score) || score <= 0) {
@@ -201,12 +196,11 @@ export function normalizeHydroOiConfig(
     if (!Array.isArray(dependencies)) {
       throw new BadRequestError("Hydro 子任务依赖必须是数组");
     }
-    if (scoring === "sum" && dependencies.length) {
-      throw new BadRequestError("带依赖的 Hydro sum 子任务无法无损转换");
-    }
-    const cases = group.cases.map((entry) => {
+    const cases = group.cases.map((entry, caseIndex) => {
       const c = object(entry);
       return {
+        id: `${id}_${String(c.id ?? caseIndex + 1)}`,
+        ...(c.score !== undefined ? { score: c.score as number } : {}),
         input: prefix(c.input),
         output: prefix(c.output),
         time_limit_ms: resource(
@@ -221,23 +215,13 @@ export function normalizeHydroOiConfig(
         ),
       };
     });
-    if (scoring === "sum") {
-      const caseScores = splitHydroScore(score, cases.length);
-      for (const [caseIndex, c] of cases.entries()) {
-        config.subtasks.push({
-          id: `${id}_${caseIndex + 1}`,
-          score: caseScores[caseIndex],
-          cases: [c],
-        });
-      }
-    } else {
-      config.subtasks.push({
-        id,
-        score,
-        depends_on: dependencies.map(String),
-        cases,
-      });
-    }
+    config.subtasks.push({
+      id,
+      score,
+      scoring,
+      depends_on: dependencies.map(String),
+      cases,
+    });
   }
   validateOiRuntimeConfig(config);
   return config;

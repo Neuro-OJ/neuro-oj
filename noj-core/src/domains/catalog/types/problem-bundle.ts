@@ -10,6 +10,10 @@
  * - 校验失败抛 `BadRequestError`（HTTP 400）
  */
 
+import {
+  type ProblemSample,
+  validateProblemSamples,
+} from "./problem-samples.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import { validateRuntimeConfig } from "../index.ts";
 import {
@@ -52,6 +56,7 @@ export const BUNDLE_METADATA_ENTRIES = [
  * `runtime_config` 的 `evaluator.command` 允许缺省（运行时校验前注入默认值）。
  */
 export interface ProblemBundleManifest {
+  samples?: ProblemSample[];
   format_version: number;
   title: string;
   /** 题面 Markdown（`statement.md` 存在时以文件为准，本字段作为兜底） */
@@ -136,7 +141,7 @@ export const MAX_TEMPLATE_BYTES = 256 * 1024;
  * - `difficulty`/`type` 枚举合法
  * - `number` 类型合法
  * - `tags` 为字符串数组
- * - `samples` 已废弃（从不落库）：本层不校验、不拒绝；由服务层记一次 warning
+ * - `samples` 校验并作为独立公开样例保存
  * - `runtime_config` 必填：先注入 command 默认值，再通过 `validateRuntimeConfig`
  *
  * @throws {BadRequestError} 任一字段非法，错误信息指明字段
@@ -220,9 +225,7 @@ export function validateBundleManifest(
     throw new BadRequestError("manifest.tags 必须是字符串数组");
   }
 
-  // `samples` 已废弃（2026-09-24 审计 A2-2）：该字段从不落库、也没有任何消费者。
-  // 为兼容存量题包，这里**不校验、不拒绝**，由服务层（importProblemBundle）
-  // 记录一次 warning。新增题包不应再写该字段，题面样例请直接写在题面正文。
+  if (m.samples !== undefined) validateProblemSamples(m.samples);
 
   if (m.template !== undefined) {
     if (typeof m.template !== "string" || !m.template.trim()) {

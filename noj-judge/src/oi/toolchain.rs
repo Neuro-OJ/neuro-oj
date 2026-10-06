@@ -142,6 +142,8 @@ pub fn validate_at_startup() -> Result<()> {
     .any(|name| std::env::var_os(name).is_some())
     {
         validate_configured_toolchain().context("NOJ WASI 工具链启动校验失败")?;
+    } else {
+        tracing::info!("未显式配置 WASI 工具链；WASM 编译将使用 /opt/wasi-sdk，请确认已安装或设置 JUDGE_WASI_CC/JUDGE_WASI_CXX");
     }
     Ok(())
 }

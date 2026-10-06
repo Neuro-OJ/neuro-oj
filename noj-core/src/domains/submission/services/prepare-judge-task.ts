@@ -15,5 +15,14 @@ export function prepareJudgeTask(
       input.runtime_config.backend === "wasm"
     ? getBuiltinOiCostProfile()
     : undefined;
-  return buildJudgeTask({ ...input, oi_cost_profile: profile });
+  return buildJudgeTask({
+    ...input,
+    ...(isOiRuntimeConfig(input.runtime_config)
+      ? { run_id: crypto.randomUUID() }
+      : {}),
+    runtime_config: isOiRuntimeConfig(input.runtime_config)
+      ? { ...input.runtime_config, scoring_version: 2 }
+      : input.runtime_config,
+    oi_cost_profile: profile,
+  });
 }

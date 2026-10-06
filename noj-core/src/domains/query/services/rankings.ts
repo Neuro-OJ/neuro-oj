@@ -1,3 +1,4 @@
+import { acceptedResultSql } from "../../../shared/base/accepted-result.ts";
 import { sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
@@ -250,7 +251,9 @@ function readRankingsInline(
         u.avatar_url,
         COUNT(*)::int AS total_submissions,
         COUNT(DISTINCT s.problem_id) FILTER (
-          WHERE er.status = 'finished' AND er.score > 0
+          WHERE ${
+      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+    }
             AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
     }))
@@ -258,7 +261,9 @@ function readRankingsInline(
         CASE WHEN COUNT(*) = 0 THEN 0
              ELSE ROUND(
                (COUNT(*) FILTER (
-                 WHERE er.status = 'finished' AND er.score > 0
+                 WHERE ${
+      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+    }
                    AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
     }))
@@ -269,14 +274,18 @@ function readRankingsInline(
         ROW_NUMBER() OVER (
           ORDER BY
             COUNT(DISTINCT s.problem_id) FILTER (
-              WHERE er.status = 'finished' AND er.score > 0
+              WHERE ${
+      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+    }
                 AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
     }))
             ) DESC,
             CASE WHEN COUNT(*) = 0 THEN 0
                  ELSE COUNT(*) FILTER (
-                   WHERE er.status = 'finished' AND er.score > 0
+                   WHERE ${
+      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+    }
                      AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
     }))
@@ -292,7 +301,9 @@ function readRankingsInline(
       WHERE u.id <> '0' AND s.status = 'finished'
       GROUP BY u.id, u.username, u.avatar_url, u.created_at
       HAVING COUNT(*) FILTER (
-        WHERE er.status = 'finished' AND er.score > 0
+        WHERE ${
+      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+    }
           AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
     }))
@@ -311,7 +322,9 @@ function readRankingsInline(
         WHERE u.id <> '0' AND s.status = 'finished'
         GROUP BY u.id
         HAVING COUNT(*) FILTER (
-          WHERE er.status = 'finished' AND er.score > 0
+          WHERE ${
+      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+    }
             AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
     }))
@@ -370,7 +383,9 @@ export async function getMyRanking(
           u.avatar_url,
           COUNT(*)::int AS total_submissions,
           COUNT(DISTINCT s.problem_id) FILTER (
-            WHERE er.status = 'finished' AND er.score > 0
+            WHERE ${
+      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+    }
               AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
     }))
@@ -378,7 +393,9 @@ export async function getMyRanking(
           CASE WHEN COUNT(*) = 0 THEN 0
                ELSE ROUND(
                  (COUNT(*) FILTER (
-                   WHERE er.status = 'finished' AND er.score > 0
+                   WHERE ${
+      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+    }
                      AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
     }))
@@ -389,14 +406,18 @@ export async function getMyRanking(
           ROW_NUMBER() OVER (
             ORDER BY
               COUNT(DISTINCT s.problem_id) FILTER (
-                WHERE er.status = 'finished' AND er.score > 0
+                WHERE ${
+      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+    }
                   AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
     }))
               ) DESC,
               CASE WHEN COUNT(*) = 0 THEN 0
                    ELSE COUNT(*) FILTER (
-                     WHERE er.status = 'finished' AND er.score > 0
+                     WHERE ${
+      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+    }
                        AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
     }))
@@ -412,7 +433,9 @@ export async function getMyRanking(
         WHERE u.id <> '0' AND s.status = 'finished'
         GROUP BY u.id, u.username, u.avatar_url, u.created_at
         HAVING COUNT(*) FILTER (
-          WHERE er.status = 'finished' AND er.score > 0
+          WHERE ${
+      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+    }
             AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
     }))
