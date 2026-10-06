@@ -29,6 +29,31 @@ pub fn compile_source_with_files(
     source: &str,
     extra_files: &HashMap<String, Vec<u8>>,
 ) -> Result<Vec<u8>> {
+    Ok(compile_impl(language, source, extra_files, false)?.module)
+}
+
+pub(super) struct AnalysisCompilation {
+    pub module: Vec<u8>,
+    pub object: Vec<u8>,
+    pub link_map: String,
+    pub workspace: std::path::PathBuf,
+}
+
+pub(super) fn compile_for_analysis(
+    language: &str,
+    source: &str,
+    extra_files: &HashMap<String, Vec<u8>>,
+) -> Result<AnalysisCompilation> {
+    compile_impl(language, source, extra_files, true)
+}
+
+fn compile_impl(
+    language: &str,
+    source: &str,
+    extra_files: &HashMap<String, Vec<u8>>,
+    analysis: bool,
+) -> Result<AnalysisCompilation> {
+    anyhow::ensure!(matches!(language, "c" | "cc"), "分析语言必须是 c 或 cc");
     let tempdir = tempfile::tempdir().context("创建 WASI 编译临时目录失败")?;
     let root = tempdir.path().to_path_buf();
     let include = root.join("include/bits");
@@ -119,9 +144,48 @@ pub fn compile_source_with_files(
             command.arg("-I").arg(testlib_include);
         }
     }
+    if analysis {
+        // 仅分析编译保留对象来源；正式编译参数不变。
+        command.arg("-fno-lto").arg("-c");
+        command.arg("-o").arg(root.join("main.o"));
+        let output = run_compiler_with_limits(&mut command, &root)?;
+        anyhow::ensure!(
+            output.status.success(),
+            "WASI 分析编译失败: {}",
+            output.stderr
+        );
+        let mut link = Command::new(compiler);
+        link.env_clear()
+            .env("PATH", std::env::var("PATH").unwrap_or_default())
+            .arg(format!("--target={target}"))
+            .arg(format!("--sysroot={}", settings.sysroot.display()))
+            .arg("-fno-lto")
+            .arg("-Wl,--threads=1")
+            .arg(format!("-Wl,-Map={}", root.join("link.map").display()))
+            .arg(root.join("main.o"))
+            .arg("-o")
+            .arg(&output_path);
+        let output = run_compiler_with_limits(&mut link, &root)?;
+        anyhow::ensure!(
+            output.status.success(),
+            "WASI 分析链接失败: {}",
+            output.stderr
+        );
+        return Ok(AnalysisCompilation {
+            module: std::fs::read(output_path)?,
+            object: std::fs::read(root.join("main.o"))?,
+            link_map: std::fs::read_to_string(root.join("link.map"))?,
+            workspace: root,
+        });
+    }
     let output = run_compiler_with_limits(&mut command, &root)?;
     if output.status.success() {
-        std::fs::read(&output_path).context("读取编译后的 WASM 失败")
+        Ok(AnalysisCompilation {
+            module: std::fs::read(&output_path).context("读取编译后的 WASM 失败")?,
+            object: Vec::new(),
+            link_map: String::new(),
+            workspace: root,
+        })
     } else {
         Err(anyhow::anyhow!("WASI 编译失败: {}", output.stderr))
     }

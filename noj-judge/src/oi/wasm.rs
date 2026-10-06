@@ -20,6 +20,10 @@ use wasmtime_wasi::{
     FsPerms, WasiCtxBuilder,
 };
 
+#[path = "wasm_analysis_runtime.rs"]
+mod analysis_runtime;
+pub(super) use analysis_runtime::run_analysis_module;
+
 use super::wasm_compile::{compile_source, compile_source_with_files, CompilerInfrastructureError};
 use crate::types::{JudgeResult, JudgeTask};
 
@@ -52,6 +56,8 @@ pub struct WasmRunResult {
     pub cpu_time_ms: Option<u64>,
     pub wall_time_ms: u64,
     pub exit_code: Option<i32>,
+    /// 仅独立分析运行读取；正式评测始终为空，不进入 MQ 结果。
+    pub analysis_counters: Vec<u64>,
 }
 
 struct WasiState {
@@ -211,6 +217,34 @@ async fn run_module_with_files(
     preopened_perms: FsPerms,
     wall_limit_ms: Option<u64>,
 ) -> Result<WasmRunResult> {
+    run_observed_module_with_files(
+        module_bytes,
+        input,
+        memory_limit_mb,
+        fuel_budget,
+        profile,
+        args,
+        preopened_dir,
+        preopened_perms,
+        wall_limit_ms,
+        0,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_observed_module_with_files(
+    module_bytes: &[u8],
+    input: &[u8],
+    memory_limit_mb: u64,
+    fuel_budget: u64,
+    profile: &OiCostProfile,
+    args: &[String],
+    preopened_dir: Option<&Path>,
+    preopened_perms: FsPerms,
+    wall_limit_ms: Option<u64>,
+    observe_count: usize,
+) -> Result<WasmRunResult> {
     profile.validate().map_err(anyhow::Error::msg)?;
 
     let mut config = Config::new();
@@ -327,8 +361,10 @@ async fn run_module_with_files(
     } else {
         None
     };
+    let mut observed_instance = None;
     let execute = async {
         let instance = linker.instantiate_async(&mut store, &module).await?;
+        observed_instance = Some(instance);
         let start = instance.get_typed_func::<(), ()>(&mut store, "_start")?;
         start.call_async(&mut store, ()).await
     };
@@ -367,6 +403,16 @@ async fn run_module_with_files(
         .get_fuel()
         .ok()
         .map(|remaining| fuel_budget.saturating_sub(remaining));
+    let mut analysis_counters = Vec::new();
+    if let Some(instance) = observed_instance {
+        for index in 0..observe_count {
+            let global = instance
+                .get_global(&mut store, &format!("__noj_analysis_{index}"))
+                .context("插桩计数器缺失")?;
+            let value = global.get(&mut store).i64().context("插桩计数器类型错误")?;
+            analysis_counters.push(u64::try_from(value).context("插桩计数器溢出")?);
+        }
+    }
 
     let mut status = if output_limit_triggered.load(Ordering::Relaxed)
         || stdout.len().saturating_add(stderr.len()) >= MAX_OUTPUT_BYTES
@@ -418,6 +464,7 @@ async fn run_module_with_files(
         cpu_time_ms,
         wall_time_ms,
         exit_code,
+        analysis_counters,
     })
 }
 
@@ -850,6 +897,7 @@ async fn run_wasm_case(
             cpu_time_ms: None,
             wall_time_ms: 0,
             exit_code: None,
+            analysis_counters: Vec::new(),
         },
         Err(error) => return Err(error),
     };

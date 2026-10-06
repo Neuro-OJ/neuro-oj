@@ -4,6 +4,7 @@
 
 - [开发指南](development.md)
 - [测试体系](testing.md)
+- [WASM IO 分类分析工具](wasm-io-analysis.md)
 - [防御模式](defensive-patterns.md)
 - [系统架构评审（2026-09-01）](architecture-review-2026-09-01.md)
 - [系统架构评审（2026-09-12）](architecture-review-2026-09-12.md)
@@ -26,9 +27,9 @@
 
 - **评审/审计类文档是时点快照**，不回溯修改既有结论。被代码推翻时，在文档顶部加
   「修订指针」指向最新结论（示例见 `architecture-review-2026-09-01.md`）。
-- **可机检的目录改为生成产物**：`route-catalog.md`、`event-catalog.md` 由脚本生成并由
-  `--check` 门禁校验；`metric-catalog.md` 的指标名集合由 `scripts/check-metrics.ts`
-  双向比对（缺登记 / 登记了未注册指标都会失败）。
+- **可机检的目录改为生成产物**：`route-catalog.md`、`event-catalog.md`
+  由脚本生成并由 `--check` 门禁校验；`metric-catalog.md` 的指标名集合由
+  `scripts/check-metrics.ts` 双向比对（缺登记 / 登记了未注册指标都会失败）。
 - **计数类陈述（表数量、文件行数、跳过数）不写死在文档里**，改由门禁的基线文件承载：
   `test-silent-skips.baseline.json`（静默跳过）、`scripts/check-file-size.ts`（巨型文件）、
   `scripts/check-write-rate-limits.ts`（限流覆盖）。

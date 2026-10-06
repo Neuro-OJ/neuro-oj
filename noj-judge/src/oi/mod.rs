@@ -9,6 +9,9 @@ pub mod runner;
 pub mod standard;
 pub mod toolchain;
 pub mod wasm;
+// Worker 二进制不调用独立分析入口；lib/bin wasm-analyze 使用。
+#[allow(dead_code)]
+pub mod wasm_analyze;
 mod wasm_compile;
 
 use std::collections::{HashMap, HashSet};

@@ -12,7 +12,7 @@ pub(super) struct CompilerSettings {
     pub root: PathBuf,
 }
 
-fn expected_components() -> Value {
+pub(super) fn expected_components() -> Value {
     serde_json::from_str(include_str!("../../toolchain/components.json"))
         .expect("内置工具链清单必须合法")
 }

@@ -2,6 +2,7 @@
 name = "noj-judge"
 version = "0.10.4-rc.1"
 edition = "2021"
+default-run = "noj-judge"
 description = "Neuro OJ 评测 Worker — 通过 Redis MQ 接收任务，Docker 沙箱执行评测"
 
 [dependencies]
@@ -28,7 +29,10 @@ tempfile = "3"
 # OI WASM 后端：WASI 运行时与 fuel/线性内存限制。
 wasmtime = { version = "=49.0.1", features = ["cranelift", "wat"] }
 wasmtime-wasi = "=49.0.1"
+wasmparser = "=0.258.0"
+wasm-encoder = { version = "=0.258.0", features = ["wasmparser"] }
 
 [dev-dependencies]
 serial_test = "3"
 bytes = "1.12.1"
+wat = "=1.260.0"

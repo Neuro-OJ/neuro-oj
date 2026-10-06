@@ -608,7 +608,7 @@ pub(crate) fn system_error_result(task: &JudgeTask, reason: &str) -> JudgeResult
     .to_judge_result(&task.submission_id, task.rejudge_seq, None, None)
 }
 
-fn index_files(entries: Vec<ZipEntry>) -> Result<HashMap<String, Vec<u8>>> {
+pub(super) fn index_files(entries: Vec<ZipEntry>) -> Result<HashMap<String, Vec<u8>>> {
     let mut files = HashMap::with_capacity(entries.len());
     for entry in entries {
         if entry.is_dir {
@@ -621,7 +621,10 @@ fn index_files(entries: Vec<ZipEntry>) -> Result<HashMap<String, Vec<u8>>> {
     Ok(files)
 }
 
-fn validate_references(config: &OiRuntimeConfig, files: &HashMap<String, Vec<u8>>) -> Result<()> {
+pub(super) fn validate_references(
+    config: &OiRuntimeConfig,
+    files: &HashMap<String, Vec<u8>>,
+) -> Result<()> {
     for subtask in &config.subtasks {
         for case in &subtask.cases {
             if !files.contains_key(&case.input) {
