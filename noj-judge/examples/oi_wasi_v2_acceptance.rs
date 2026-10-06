@@ -32,6 +32,7 @@ async fn run(source: &str, input: Vec<u8>, expected: &str, filename: bool) -> se
     .unwrap();
     assert_eq!(result.details["oi"]["verdict"], "AC", "{}", result.details);
     let case = &result.details["oi"]["subtasks"][0]["cases"][0];
+    eprintln!("CPU 报告（不作为门禁）: {}ms", case["cpu_time_ms"]);
     serde_json::json!({"fuel":case["fuel_consumed"],"metering":result.details["metering"]})
 }
 
@@ -91,5 +92,41 @@ async fn main() {
         fuels[0] <= fuels[1] * 3,
         "cin 成本不得超过完整边界解析的三倍: {fuels:?}"
     );
+    // 固定生成大整数与优先队列输入，最优分组均衡，期望答案可独立求和。
+    let mut club_input = String::from("5\n");
+    let mut club_expected = String::new();
+    for case in 0..5_i64 {
+        club_input.push_str("120000\n");
+        let mut answer = 0_i64;
+        for i in 0..120000_i64 {
+            let value = (i * 1664525 + 1013904223 + case * 65537) % 40001;
+            let mut scores = [value, value / 2, value / 3];
+            let group = (i % 3) as usize;
+            scores[group] += 100000;
+            answer += scores[group];
+            club_input.push_str(&format!("{} {} {}\n", scores[0], scores[1], scores[2]));
+        }
+        club_expected.push_str(&format!("{answer}\n"));
+    }
+    let club_source = include_str!("../toolchain/tests/club-generated.cpp");
+    let baseline: serde_json::Value = serde_json::from_str(include_str!(
+        "../../fixtures/noj-wasm-v1-club-generated.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        baseline["source_hash"],
+        standard::hash(club_source.as_bytes())
+    );
+    assert_eq!(
+        baseline["input_hash"],
+        standard::hash(club_input.as_bytes())
+    );
+    let club = run(club_source, club_input.into_bytes(), &club_expected, false).await;
+    // 同一源程序和生成输入在冻结 v1 SDK 下测得，算子与尺度保持相同。
+    assert!(
+        club["fuel"].as_u64().unwrap() * 4 <= baseline["fuel"].as_u64().unwrap(),
+        "生成 club 的 fuel 必须较 v1 降低至少 75%: {club}"
+    );
+    report.insert("club-generated".into(), club);
     println!("{}", serde_json::to_string_pretty(&report).unwrap());
 }
