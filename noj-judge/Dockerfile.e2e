@@ -18,6 +18,7 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs && \
 
 # 第 2 层：只编译业务代码（频繁变动，但编译量小）
 COPY src/ ./src/
+COPY toolchain/components.json ./toolchain/components.json
 RUN cargo build --release --bin noj-judge && \
     cp /build/target/release/noj-judge /tmp/noj-judge && \
     test -f /tmp/noj-judge || { echo "ERROR: binary not found after build" >&2; exit 1; }
