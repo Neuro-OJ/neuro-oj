@@ -193,6 +193,13 @@ function handleCommand(
       return handleLlen(args, queues);
     case "DEL":
       return handleDel(args, queues);
+    case "GET":
+      return queues.has(args[0])
+        ? renderRespBulkString(queues.get(args[0])![0])
+        : renderRespNull();
+    case "SET":
+      queues.set(args[0], [args[1]]);
+      return renderRespString("OK");
     case "EVAL":
       return handleEval(args, queues);
     case "BRPOP":
@@ -323,6 +330,28 @@ function handleEval(
   const keys = args.slice(2, 2 + numKeys);
   const argv = args.slice(2 + numKeys);
 
+  // 离线迁移契约的锁与尾部比较搬运；真实 CI Redis 仍执行原 Lua 脚本。
+  if (script.includes("'SET',KEYS[1]") && script.includes("'NX'")) {
+    if (queues.has(keys[0])) return renderRespNull();
+    queues.set(keys[0], [argv[0]]);
+    return renderRespString("OK");
+  }
+  if (script.includes("'LINDEX',KEYS[1],-1")) {
+    if (queues.get(keys[2])?.[0] !== argv[2]) return renderRespInteger(-1);
+    const source = queues.get(keys[0]) ?? [];
+    if (source.at(-1) !== argv[0]) return renderRespInteger(0);
+    source.pop();
+    const destination = queues.get(keys[1]) ?? [];
+    destination.unshift(argv[1]);
+    queues.set(keys[1], destination);
+    return renderRespInteger(1);
+  }
+  if (script.includes("'GET',KEYS[1]") && script.includes("'DEL',KEYS[1]")) {
+    if (queues.get(keys[0])?.[0] !== argv[0]) return renderRespInteger(0);
+    queues.delete(keys[0]);
+    return renderRespInteger(1);
+  }
+
   // producer 的「容量检查 + LPUSH」脚本。
   if (script.includes("LLEN")) {
     const key = keys[0];
@@ -386,6 +415,15 @@ function handleBrpop(
 
 function renderRespString(s: string): Uint8Array {
   return new TextEncoder().encode(`+${s}\r\n`);
+}
+
+function renderRespBulkString(s: string): Uint8Array {
+  const bytes = new TextEncoder().encode(s);
+  return new TextEncoder().encode(`$${bytes.length}\r\n${s}\r\n`);
+}
+
+function renderRespNull(): Uint8Array {
+  return new TextEncoder().encode("$-1\r\n");
 }
 
 function renderRespError(s: string): Uint8Array {

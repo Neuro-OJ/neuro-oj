@@ -4,6 +4,7 @@ import {
   resetRedisForTest,
 } from "../../../../shared/mq/connection.ts";
 import { migratePoolJudgeQueues } from "../../mq/pool-judge-queue.ts";
+import { startFakeRedis } from "./_setup.ts";
 import fixture from "../../../../../../noj-tests/fixtures/judge-task.contract.json" with {
   type: "json",
 };
@@ -16,12 +17,13 @@ const testRedis = Deno.env.get("NOJ_TEST_SCHEDULING_REDIS_URL") ??
   Deno.env.get("REDIS_URL");
 Deno.test({
   name: "资源池迁移：排空保护、原子搬运、优先级、死信及幂等",
-  ignore: !testRedis,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
+    // CI 使用真实 Redis 验证 Lua；离线模式执行相同搬运契约，绝不静默跳过。
+    const fake = testRedis ? undefined : startFakeRedis();
     resetRedisForTest();
-    Deno.env.set("REDIS_URL", testRedis!);
+    Deno.env.set("REDIS_URL", testRedis ?? fake!.url);
     const redis = getRedis();
     await redis.connect();
     const prefix = `noj:test:pool-migration:${crypto.randomUUID()}`;
@@ -72,6 +74,7 @@ Deno.test({
     } finally {
       for (const key of keys) await redis.del(key);
       resetRedisForTest();
+      await fake?.stop();
     }
   },
 });

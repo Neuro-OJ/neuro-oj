@@ -1,3 +1,5 @@
+/// <reference lib="deno.ns" />
+// deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
 import { caseMaxScores, extractStatementSamples } from '../utils/oiWorkspace.ts';
 

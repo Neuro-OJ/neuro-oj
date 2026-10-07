@@ -25,6 +25,12 @@ Worker 仍须有独立实例标识，否则用户 claim 清理及观测心跳会
 `JUDGE_MAX_CONCURRENT_JUDGES`
 已弃用，不再约束新池；启动日志给出替代提示。每池分别允许同一用户占用一次正式提交和一次自测批次。
 
+生产 Compose 的 Worker 内存硬上限默认调整为 `8g`，它是上限而非启动预分配。 旧的
+`2g` 上限对应约 1 GiB auto 调度预算，不能准入完整题包预留和编译阶段。 已有显式
+`JUDGE_MEM_LIMIT` 保留原值，升级时需一起核对；小内存机器仍按实际物理
+上限计算预算，运行槽位会减少，最低需求放不下时明确返回 SE。独立 Worker 没有
+该容器上限时按宿主/cgroup 的实际有效上限计算。
+
 修改同组容量时，先暂停入队、排空并停止所有组内 Worker，等待心跳和租约结束，再用
 `cargo run --release --example resource_group_reset -- <claim-prefix> <resource-group>`
 解除配置锁。该工具需要显式 `REDIS_URL`，有效心跳或租约尚存时拒绝操作，不会停止

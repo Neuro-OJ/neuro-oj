@@ -1,4 +1,5 @@
 import { oiCaseMaxScores } from "../../types/oi-scoring.ts";
+import type { OiRuntimeConfig } from "../../types/runtime-config.ts";
 /**
  * bundle-parser 单元测试。
  *
@@ -333,20 +334,7 @@ Deno.test("parseBundleZip: Hydro checker对象、额外文件和testdata前缀�
     "testdata/1.in": "1 2",
     "testdata/1.out": "3",
   }));
-  const rc = parsed.manifest.runtime_config as {
-    checker: { path?: string };
-    compile_extra_files?: string[];
-    checker_extra_files?: string[];
-    user_extra_files?: string[];
-    subtasks: {
-      cases: {
-        input: string;
-        output: string;
-        time_limit_ms?: number;
-        memory_limit_mb?: number;
-      }[];
-    }[];
-  };
+  const rc = parsed.manifest.runtime_config as OiRuntimeConfig;
   assertEquals(rc.checker.path, "testdata/chk.cc");
   assertEquals(rc.checker_extra_files, ["testdata/helper.h"]);
   assertEquals(rc.user_extra_files, ["testdata/user.h"]);

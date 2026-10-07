@@ -350,7 +350,6 @@ Deno.test({
 
 Deno.test({
   name: "problems-tags: OI 题标签随字段保存、去重、拒绝过期更新并可清空",
-  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

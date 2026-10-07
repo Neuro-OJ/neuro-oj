@@ -197,7 +197,8 @@ services:
   judge:
     logging: *default-logging
     # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
-    mem_limit: "${JUDGE_MEM_LIMIT:-2g}"
+    # auto 调度预算取有效上限的 50%；旧 2g 上限不足以准入完整题包与编译阶段。
+    mem_limit: "${JUDGE_MEM_LIMIT:-8g}"
     profiles:
       - judge
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-judge:${NOJ_VERSION:?NOJ_VERSION is required}"
