@@ -149,6 +149,16 @@ async function collectModules(): Promise<ModuleResult[]> {
         `⚠ ${module} 未解析到覆盖率数据（exit ${result.code}），请检查 test:coverage 任务输出`,
       );
     }
+    if (result.code !== 0) {
+      // 聚合任务不能吞掉子任务的真实失败原因；保留有界尾部，便于 CI 定位。
+      const diagnostics = stripAnsi(`${result.stdout}\n${result.stderr}`)
+        .trim();
+      console.error(
+        `--- ${module} test:coverage 失败输出（末尾最多 8000 字符） ---\n${
+          diagnostics.slice(-8000)
+        }`,
+      );
+    }
     results.push({ module, summary, code: result.code });
   }
   return results;
