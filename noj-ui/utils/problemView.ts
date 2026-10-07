@@ -34,7 +34,7 @@ export interface ProblemView {
   display_id: string;
   title: string;
   description: string;
-  samples?: import('./oiWorkspace').ProblemSample[];
+  samples?: import('./oiWorkspace.ts').ProblemSample[];
   difficulty: string;
   /** 题型：`U` 用户题库 / `T` 主题库。竞赛页无该字段，默认主题库。 */
   type: string;
@@ -74,7 +74,7 @@ export interface ProblemResource {
   display_id: string;
   title: string;
   description: string;
-  samples?: import('./oiWorkspace').ProblemSample[];
+  samples?: import('./oiWorkspace.ts').ProblemSample[];
   difficulty: string;
   type: string;
   owner_id: string;
@@ -103,7 +103,7 @@ export interface ContestProblemResource {
   display_id: string;
   title: string;
   description: string;
-  samples?: import('./oiWorkspace').ProblemSample[];
+  samples?: import('./oiWorkspace.ts').ProblemSample[];
   difficulty: string;
   submission_mode?: 'code' | 'artifact';
   artifact_max_size_mb?: number | null;

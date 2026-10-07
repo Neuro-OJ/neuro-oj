@@ -10,11 +10,11 @@ use tracing::warn;
 pub struct Config {
     /// Redis 连接 URL
     pub redis_url: String,
-    /// 评测任务队列名前缀（实际队列为 `{prefix}:high/:medium/:low`）
+    /// 评测任务队列名前缀（实际队列为 `{prefix}:{pool}:{high|medium|low}`）
     pub judge_queue: String,
     /// 评测结果列表名
     pub result_queue: String,
-    /// 优先级轮询时每个队列 BRPOPLPUSH 的超时秒数
+    /// 兼容 API 的阻塞超时；分池消费者只用于空池退让，最多 25ms。
     pub priority_poll_timeout_secs: f64,
     /// 临时工作目录
     pub work_dir: String,
@@ -454,6 +454,10 @@ impl Config {
     /// VULN-20：禁止 evaluator 加入 `bridge`（默认桥接网络，可横向访问同宿主
     /// 业务容器）或 `host`（共享宿主网络栈）。
     pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.priority_poll_timeout_secs.is_finite() && self.priority_poll_timeout_secs > 0.0,
+            "配置校验失败：JUDGE_PRIORITY_POLL_TIMEOUT_MS 必须为有限正数"
+        );
         validate_evaluator_network_mode(&self.evaluator_network_mode)
             .map_err(|e| anyhow::anyhow!("配置校验失败：{}", e))?;
         if self.oi_image.is_empty()

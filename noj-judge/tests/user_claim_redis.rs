@@ -96,6 +96,27 @@ async fn resource_groups_share_atomic_run_and_memory_limits() {
             memory_mb: 2048,
         },
     };
+    let empty_ai_queues =
+        ["high", "medium", "low"].map(|priority| format!("{prefix}:queue:ai:{priority}"));
+    let wasm_queues =
+        ["high", "medium", "low"].map(|priority| format!("{prefix}:queue:oi-wasm:{priority}"));
+    let raw = include_str!("../../noj-tests/fixtures/judge-task-oi.contract.json");
+    let _: usize = conn.lpush(&wasm_queues[0], raw).await.unwrap();
+    let mut cursor = 0;
+    assert!(tokio::time::timeout(
+        Duration::from_secs(1),
+        noj_judge::mq::try_pull_task_priority(&mut conn, &empty_ai_queues, &mut cursor)
+    )
+    .await
+    .unwrap()
+    .unwrap()
+    .is_none());
+    let pulled = noj_judge::mq::try_pull_task_priority(&mut conn, &wasm_queues, &mut cursor)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(pulled.task.resource_pool.as_deref(), Some("oi-wasm"));
+    assert!(noj_judge::mq::ack_task(&client, &pulled.queue, &pulled.raw).await);
     let a = Scheduler::connect(client.clone(), settings.clone(), &prefix)
         .await
         .unwrap();

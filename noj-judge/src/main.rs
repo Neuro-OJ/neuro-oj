@@ -176,7 +176,7 @@ fn main() -> Result<()> {
         let mut priority_cursors = [0usize; 3];
         let mut pool_cursor = 0usize;
         let scheduler = Scheduler::connect(redis_client.clone(), resource_settings, &config.user_claim_prefix).await?;
-        let priority_poll_timeout = config.priority_poll_timeout_secs;
+        let idle_poll_delay = std::time::Duration::from_secs_f64(config.priority_poll_timeout_secs.clamp(0.001, 0.025));
         let work_dir = config.work_dir.clone();
         let instance_id = config.instance_id.clone();
 
@@ -372,9 +372,8 @@ fn main() -> Result<()> {
             };
 
             let judge_queues = ["high", "medium", "low"].map(|level| format!("{}:{}:{}", queue_prefix, pool.name(), level));
-            // 只允许在等待关闭信号时响应关闭。拿到任务后必须完整执行
-            // BRPOPLPUSH：Redis 可能已经把消息移入 processing，若此时取消
-            // future，消息会留在 processing 却永远不会进入评测任务。
+            // 空池只做非阻塞探测；领取后消息已在 processing，完成后再 ack。
+            // 关闭与 Redis 返回同时发生的遗留消息仍由现有 sweeper 恢复。
             let shutdown = &mut shutdown_rx;
             tokio::select! {
                 biased;
@@ -383,15 +382,14 @@ fn main() -> Result<()> {
                     drain::drain_tasks(&mut tasks, drain_timeout).await;
                     break;
                 }
-                task_result = mq::pull_task_priority(
+                task_result = mq::try_pull_task_priority(
                     &mut redis_conn,
                     &judge_queues,
                     &mut priority_cursors[pool.index()],
-                    priority_poll_timeout,
                 ) => {
                     let pulled: PulledTask = match task_result {
                         Ok(Some(pulled)) => pulled,
-                        Ok(None) => continue,
+                        Ok(None) => { drop(permit); tokio::time::sleep(idle_poll_delay).await; continue; },
                         Err(e) => {
                             error!("拉取任务失败: {}", e);
                             tokio::time::sleep(PULL_RETRY_DELAY).await;
@@ -407,6 +405,7 @@ fn main() -> Result<()> {
                                 mq::mark_resource_wait(&redis_client, &config.judge_queue, &pulled.task, Some("memory")).await;
                                 mq::requeue_task(&redis_client, &pulled.queue, &pulled.raw).await?;
                                 drop(permit);
+                                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                                 continue;
                             }
                             Err(error) => Some(error),
