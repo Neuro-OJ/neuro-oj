@@ -19,14 +19,19 @@ async fn native_docker_cpp_executes_compiled_binary() {
         zip.write_all(content.as_bytes()).unwrap();
     }
     zip.finish().unwrap();
+    for (label, source, filename) in [
+        ("标准 IO", "#include <iostream>\nint main(){int a,b;std::cin>>a>>b;std::cout<<a+b<<std::endl;}", None),
+        ("文件 IO", "#include <cstdio>\nint main(){freopen(\"answer.in\",\"r\",stdin);freopen(\"answer.out\",\"w\",stdout);int a,b;scanf(\"%d%d\",&a,&b);printf(\"%d\\n\",a+b);}", Some("answer")),
+        ("stderr 不参与比较", "#include <iostream>\nint main(){int a,b;std::cin>>a>>b;std::cerr<<\"debug\";std::cout<<a+b<<std::endl;}", None),
+    ] {
     let mut task: JudgeTask = serde_json::from_str(include_str!(
         "../../noj-tests/fixtures/judge-task-oi.contract.json"
     ))
     .unwrap();
-    task.code =
-        "#include <iostream>\nint main(){int a,b;std::cin>>a>>b;std::cout<<a+b<<std::endl;}".into();
+    task.code = source.into();
     let mut config = task.runtime_config.as_oi().unwrap().clone();
     config.backend = noj_judge::oi::OiBackend::Native;
+    config.filename = filename.map(str::to_owned);
     config.subtasks.truncate(1);
     config.subtasks[0].cases.truncate(1);
     task.runtime_config = serde_json::from_value(serde_json::to_value(config).unwrap()).unwrap();
@@ -41,5 +46,6 @@ async fn native_docker_cpp_executes_compiled_binary() {
     )
     .await
     .unwrap();
-    assert_eq!(result.details["oi"]["verdict"], "AC");
+    assert_eq!(result.details["oi"]["verdict"], "AC", "{label}: {:?}", result.details);
+    }
 }

@@ -10,10 +10,12 @@ use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use bollard::Docker;
-use futures_util::{future::join_all, TryStreamExt};
+use futures_util::future::join_all;
 use tracing::warn;
 
-use super::docker_exec::{create_container, exec_with_stdin, exec_without_stdin};
+use super::docker_exec::{
+    create_container, exec_with_stdin, exec_without_stdin, exec_without_stdin_with_output_limit,
+};
 use crate::oi::{
     score_submission, OiBackend, OiCase, OiCaseResult, OiCheckerType, OiRuntimeConfig, OiStatus,
 };
@@ -565,30 +567,21 @@ async fn compile_native_program(
             diagnostics.extend(response.output.stdout);
             return Ok(Err(limited_output(&diagnostics).0));
         }
-        let mut stream = docker.download_from_container(
+        // Docker archive API 不读取运行时 tmpfs；通过容器自己的挂载命名空间取回。
+        let artifact = exec_without_stdin_with_output_limit(
+            docker,
             &container,
-            Some(bollard::query_parameters::DownloadFromContainerOptions {
-                path: "/workspace/main".into(),
-            }),
+            vec!["cat".into(), "/workspace/main".into()],
+            COMPILE_TIMEOUT,
+            64 * 1024 * 1024,
+        )
+        .await?;
+        anyhow::ensure!(!artifact.output.output_limited, "编译产物超过 64 MiB");
+        anyhow::ensure!(
+            artifact.exit_code == 0 && !artifact.output.stdout.is_empty(),
+            "编译成功但无法读取可执行产物"
         );
-        let mut archive = Vec::new();
-        while let Some(chunk) = stream.try_next().await? {
-            archive.extend_from_slice(&chunk);
-            if archive.len() > 64 * 1024 * 1024 {
-                bail!("编译产物超过 64 MiB");
-            }
-        }
-        let mut tar = tar::Archive::new(std::io::Cursor::new(archive));
-        use std::io::Read;
-        for entry in tar.entries()? {
-            let mut entry = entry?;
-            if entry.header().entry_type().is_file() {
-                let mut bytes = Vec::new();
-                entry.read_to_end(&mut bytes)?;
-                return Ok(Ok(bytes));
-            }
-        }
-        bail!("编译成功但没有可执行产物")
+        Ok(Ok(artifact.output.stdout))
     };
     let result = tokio::select! {result=compile=>result,_=progress.wait_cancelled()=>Ok(Err("编译已取消".to_string()))};
     if !remove_container_force(docker, &container).await {

@@ -85,6 +85,17 @@ pub(super) async fn exec_without_stdin(
     cmd: Vec<String>,
     limit: Duration,
 ) -> Result<ExecOutcome> {
+    exec_without_stdin_with_output_limit(docker, container_id, cmd, limit, MAX_OUTPUT_BYTES).await
+}
+
+/// 固定内部命令可设置独立输出上限；正式测试点仍使用 32 MiB。
+pub(super) async fn exec_without_stdin_with_output_limit(
+    docker: &Docker,
+    container_id: &str,
+    cmd: Vec<String>,
+    limit: Duration,
+    maximum_output: usize,
+) -> Result<ExecOutcome> {
     let exec = timeout(
         EXEC_CREATE_TIMEOUT,
         docker.create_exec(
@@ -110,7 +121,7 @@ pub(super) async fn exec_without_stdin(
         StartExecResults::Attached { output, .. } => output,
         StartExecResults::Detached => bail!("OI exec 意外进入 detached 模式"),
     };
-    let captured = timeout(limit, collect_output(output))
+    let captured = timeout(limit, collect_output_limited(output, maximum_output))
         .await
         .map_err(|_| anyhow::anyhow!("OI exec 超时"))??;
     let exit_code = inspect_exec_exit(docker, &exec.id).await?;
@@ -230,7 +241,14 @@ pub(super) async fn exec_with_stdin(
     })
 }
 
-async fn collect_output(mut output: OutputStream) -> Result<CapturedOutput> {
+async fn collect_output(output: OutputStream) -> Result<CapturedOutput> {
+    collect_output_limited(output, MAX_OUTPUT_BYTES).await
+}
+
+async fn collect_output_limited(
+    mut output: OutputStream,
+    maximum_output: usize,
+) -> Result<CapturedOutput> {
     let mut captured = CapturedOutput {
         stdout: Vec::new(),
         stderr: Vec::new(),
@@ -246,7 +264,7 @@ async fn collect_output(mut output: OutputStream) -> Result<CapturedOutput> {
             LogOutput::StdErr { message } => (&mut captured.stderr, message),
             LogOutput::StdIn { message } => (&mut captured.stderr, message),
         };
-        if total_output.saturating_add(message.len()) > MAX_OUTPUT_BYTES {
+        if total_output.saturating_add(message.len()) > maximum_output {
             captured.output_limited = true;
             return Ok(captured);
         }
