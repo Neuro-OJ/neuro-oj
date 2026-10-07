@@ -1,6 +1,8 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "llvm_commit": "895aa2c896ada719451be2e3673c83da8ddf1141",
+  "tar_sha256": "5d8b03ee98a24c8167c69beddfdfcc7110daa79112c41079f76c32136c758ca1",
+  "tar_size": 2393579520,
   "alternate_sha256": [
     "b4525499be9ccd65a0da8c9efbeb59a5955130b302a190a51883727d8c5c7542"
   ]

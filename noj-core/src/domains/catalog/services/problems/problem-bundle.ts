@@ -365,7 +365,8 @@ async function updateExisting(
       c,
       true, // import-bundle 是服务端生成 storage URL 的受控流程
     );
-    if (oldStorageUrl) {
+    // 本地存储按内容寻址：重复导入可能返回同一对象，不能把新引用删除。
+    if (oldStorageUrl && oldStorageUrl !== storageUrl) {
       try {
         await storage.delete(oldStorageUrl);
       } catch (err) {
@@ -377,12 +378,14 @@ async function updateExisting(
     }
     return updated;
   } catch (error) {
-    await storage.delete(storageUrl).catch((cleanupError) =>
-      logger.warn("导入回滚：新评测包清理失败", {
-        problem_id: problemId,
-        err: cleanupError,
-      })
-    );
+    if (storageUrl !== oldStorageUrl) {
+      await storage.delete(storageUrl).catch((cleanupError) =>
+        logger.warn("导入回滚：新评测包清理失败", {
+          problem_id: problemId,
+          err: cleanupError,
+        })
+      );
+    }
     throw error;
   }
 }

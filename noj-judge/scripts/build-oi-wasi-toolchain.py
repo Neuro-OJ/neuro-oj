@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """从已校验的固定来源构建 NOJ WASI SDK；开发、CI 和生产共用。"""
 import argparse
+import gzip
 import hashlib
 import json
 import os
@@ -9,6 +10,7 @@ import shutil
 import subprocess
 import tarfile
 import urllib.request
+import zlib
 
 
 def canonical(value):
@@ -20,15 +22,41 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def download(url, checksum, path, alternate_checksums=()):
+def matches_gzip_content(path, checksum, size):
+    """校验完整未压缩 tar 字节；不接受源码变化或超出冻结大小的归档。"""
+    actual = hashlib.sha256()
+    total = 0
+    try:
+        with gzip.open(path, "rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                total += len(chunk)
+                if total > size:
+                    return False
+                actual.update(chunk)
+    except (OSError, EOFError, zlib.error):
+        return False
+    return total == size and actual.hexdigest() == checksum
+
+
+def download(url, checksum, path, alternate_checksums=(), *, gzip_checksum=None, gzip_size=None):
     accepted = {checksum, *alternate_checksums}
-    if path.exists() and digest(path) in accepted:
-        return digest(path)
+    if (gzip_checksum is None) != (gzip_size is None):
+        raise RuntimeError("未压缩来源摘要与大小必须同时提供")
+
+    def matches(candidate, actual):
+        return actual in accepted or (
+            gzip_checksum is not None and matches_gzip_content(candidate, gzip_checksum, gzip_size)
+        )
+
+    if path.exists():
+        actual = digest(path)
+        if matches(path, actual):
+            return actual
     temporary = path.with_suffix(".download")
     with urllib.request.urlopen(url, timeout=120) as response, temporary.open("wb") as output:
         shutil.copyfileobj(response, output)
     actual = digest(temporary)
-    if actual not in accepted:
+    if not matches(temporary, actual):
         temporary.unlink()
         raise RuntimeError(f"来源摘要不匹配: {url}，实际 SHA-256: {actual}")
     temporary.replace(path)
@@ -72,10 +100,11 @@ def build(args):
     llvm_archive = cache / "llvm-source.tar.gz"
     download(recipe["sdk_url"], recipe["sdk_sha256"], sdk_archive)
     encodings = json.loads((package / "archive-encodings.json").read_text())
-    if encodings["schema_version"] != 1 or encodings["llvm_commit"] != recipe["llvm_commit"]:
+    if encodings["schema_version"] != 2 or encodings["llvm_commit"] != recipe["llvm_commit"]:
         raise RuntimeError("归档封装白名单与固定源码提交不一致")
     archive_hash = download(f"https://codeload.github.com/llvm/llvm-project/tar.gz/{recipe['llvm_commit']}",
-                            recipe["llvm_sha256"], llvm_archive, encodings["alternate_sha256"])
+                            recipe["llvm_sha256"], llvm_archive, encodings["alternate_sha256"],
+                            gzip_checksum=encodings["tar_sha256"], gzip_size=encodings["tar_size"])
     alternate_archive = archive_hash != recipe["llvm_sha256"]
     if alternate_archive and args.record_manifest:
         raise RuntimeError("替代归档封装必须验证冻结组件，禁止用于重新记录组件清单")

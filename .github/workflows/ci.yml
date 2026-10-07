@@ -2190,19 +2190,23 @@ jobs:
 
       - name: 真实 WASI C/C++ 评测验收
         working-directory: noj-judge
-        run: bash scripts/check-oi-wasi-toolchain.sh "${RUNNER_TEMP}/noj-wasi-sdk-a"
+        shell: bash
+        run: >-
+          bash scripts/check-oi-wasi-toolchain.sh "${RUNNER_TEMP}/noj-wasi-sdk-a"
+          2>&1 | tee "${RUNNER_TEMP}/noj-wasi-toolchain-check.log"
 
       - name: 生产 WASI runtime 镜像验收
         working-directory: noj-judge
-        run: bash scripts/check-oi-wasi-image.sh
+        shell: bash
+        run: bash scripts/check-oi-wasi-image.sh 2>&1 | tee "${RUNNER_TEMP}/noj-wasi-image-check.log"
 
-      # 失败时上传 cargo 编译缓存（修复 finding M7）
+      # 仅上传诊断日志，避免整个 target 的数 GiB 编译缓存阻塞失败反馈与取消。
       - name: 上传失败日志
         if: failure() || cancelled()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: judge-check-logs
-          path: noj-judge/target/
+          path: ${{ runner.temp }}/noj-wasi-*-check.log
           retention-days: 7
           if-no-files-found: ignore
         continue-on-error: true
