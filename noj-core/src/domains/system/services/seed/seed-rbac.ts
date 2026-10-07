@@ -3,7 +3,7 @@
  *
  * 包含：
  * - ensureSystemRoles() — 创建预置角色（admin, user）
- * - ensurePermissions() — 创建系统权限定义（PERMISSION_DEFS）
+ * - ensurePermissions() — 创建系统权限定义并同步描述（PERMISSION_DEFS）
  * - ensureUserRolePermissions() — 为 user 角色分配默认权限
  * - ensureSensitiveFieldDefaultPermissions() — 敏感字段权限项一次性默认撤销
  * - migrateExistingUsers() — 将现有 users.role 同步到 user_roles 表
@@ -147,7 +147,9 @@ export async function ensureSystemRoles(): Promise<void> {
 /**
  * 幂等创建系统权限定义（来自 PERMISSION_DEFS）。
  *
- * 为每个权限项生成 UUID 主键，按 (resource, action) 冲突忽略插入。
+ * 为每个权限项生成 UUID 主键，按 (resource, action) 冲突时仅同步 description：
+ * 权限描述以代码为唯一真相源（管理端不可编辑），存量库在启动时自动更新为
+ * 最新文案，无需为改描述单独写数据迁移。主键与角色绑定保持不变。
  *
  * @returns 无返回值
  */
@@ -160,8 +162,12 @@ export async function ensurePermissions(): Promise<void> {
       resource: perm.resource,
       action: perm.action,
       description: perm.description,
-    }).onConflictDoNothing({
+    }).onConflictDoUpdate({
       target: [permissions.resource, permissions.action],
+      set: { description: sql`excluded.description` },
+      // 描述未变化时跳过写入，避免每次启动产生无意义的行更新
+      setWhere:
+        sql`${permissions.description} IS DISTINCT FROM excluded.description`,
     });
   }
 }

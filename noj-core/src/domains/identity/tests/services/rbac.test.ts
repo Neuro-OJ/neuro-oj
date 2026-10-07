@@ -3,12 +3,12 @@
  *
  * 覆盖：
  * - getUserPermissions 单元测试（直接调用，无需 Context）
- * - ensureRbacSeeds 幂等性
+ * - ensureRbacSeeds 幂等性与权限描述同步
  * - admin-roles API 路由层测试（CRUD + 权限约束）
  * - 服务层迁移验证：problems-crud Context 路径
  */
 import { assert, assertEquals } from "jsr:@std/assert@^1";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   auditLogs,
@@ -167,6 +167,35 @@ Deno.test({
       permissions,
     );
     assert(permCount[0].count >= 22, "至少有 22 个系统权限");
+  },
+});
+
+Deno.test({
+  name: "rbac: ensureRbacSeeds 将存量权限描述同步为代码定义",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const where = and(
+      eq(permissions.resource, "contest"),
+      eq(permissions.action, "anti_cheat_read"),
+    );
+    const [before] = await db.select({ id: permissions.id }).from(permissions)
+      .where(where);
+    assert(before, "contest:anti_cheat_read 应已存在");
+
+    // 模拟 VULN-06 前的存量库：描述仍为已下线的 IP 关联风控文案
+    await db.update(permissions)
+      .set({ description: "查看竞赛风控关联线索（IP 与提交时间线）" })
+      .where(where);
+
+    await ensureRbacSeeds();
+
+    const [after] = await db.select({
+      id: permissions.id,
+      description: permissions.description,
+    }).from(permissions).where(where);
+    assertEquals(after.description, "查看竞赛风控线索（代码相似度）");
+    assertEquals(after.id, before.id, "同步描述不得改变权限主键");
   },
 });
 
