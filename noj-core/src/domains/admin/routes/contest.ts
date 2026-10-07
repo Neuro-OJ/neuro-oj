@@ -440,7 +440,7 @@ router.get("/contests/:id/submissions", async (c) => {
 /**
  * GET /contests/:id/anti-cheat/similar-submissions —— 竞赛内互相高度相似的提交对。
  *
- * 权限：contest:anti_cheat_read（与同文件其余风控端点一致）。
+ * 权限：contest:anti_cheat_read（IP 关联风控下线后该权限仅用于本端点）。
  * query：
  * - `threshold`：相似度阈值，(0, 1]，默认 0.8；
  * - `limit`：返回对数上限，1-200，默认 50；

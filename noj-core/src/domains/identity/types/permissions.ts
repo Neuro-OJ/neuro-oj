@@ -84,7 +84,7 @@ export const PERMISSION_DEFS: Array<{
   {
     resource: "contest",
     action: "anti_cheat_read",
-    description: "查看竞赛风控关联线索（IP 与提交时间线）",
+    description: "查看竞赛风控线索（代码相似度）",
   },
   { resource: "contest", action: "participate", description: "参加竞赛" },
   // 社区内容与互动
