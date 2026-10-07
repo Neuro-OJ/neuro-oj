@@ -298,6 +298,10 @@ export default withMermaid(defineConfig({
               text: "管理后台使用指南 (Admin)",
               link: "/operators/admin-guide",
             },
+            {
+              text: "竞赛代码相似度：判定与申诉",
+              link: "/operators/contest-similarity",
+            },
             { text: "可观测性与故障排查", link: "/operators/observability" },
             { text: "公测容量基线验收", link: "/operators/capacity-baseline" },
             { text: "法律与合规指南", link: "/operators/legal-compliance" },
