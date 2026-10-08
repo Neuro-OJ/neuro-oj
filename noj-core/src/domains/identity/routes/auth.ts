@@ -51,7 +51,10 @@ import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { getUserPermissions } from "./../services/security/permissions.ts";
 import { signToken, verifyToken } from "./../services/security/jwt.ts";
 import { getLegalStatus } from "./../../legal/index.ts";
-import { revokeJti } from "./../services/security/revokedTokens.ts";
+import {
+  revocationTtl,
+  revokeJti,
+} from "./../services/security/revokedTokens.ts";
 import { getEmailConfigStatus, getSetting } from "../../system/index.ts";
 import { getClientIp } from "../../system/index.ts";
 import { getBannedIpDetail } from "../services/banlist.ts";
@@ -315,7 +318,8 @@ async function tfaAction<T>(
  * 用户登录端点。
  * POST /api/v1/auth/login
  *
- * 需登录名与密码；执行账号维度限流（限流 + 退避 + 锁定），成功后返回
+ * 需登录名与密码；可选 `remember: true` 签发长有效期 token（「记住我」）。
+ * 执行账号维度限流（限流 + 退避 + 锁定），成功后返回
  * `{ data: { user, token } }`，失败记录认证失败计数。
  */
 auth.post("/login", loginIpRateLimit(), async (c) => {
@@ -628,20 +632,22 @@ auth.post(
       );
       await clearLoginFailure(userId, PWCHANGE_NAMESPACE);
 
-      // 撤销旧 jti（issue #75 JWT 撤销机制）：jose 验证后拿不到原 exp，
-      // 直接用 24h 上限（jwt_expires_in 默认值）作为保守 TTL
+      // 撤销旧 jti（issue #75 JWT 撤销机制）：TTL 取旧 token 剩余有效期，
+      // 「记住我」token 可能长达 30d，固定 24h 会让撤销条目先于 token 过期
       const oldJti = c.get("jti");
+      const oldExp = c.get("tokenExp") as number | undefined;
       if (oldJti) {
-        await revokeJti(oldJti, SECONDS_PER_DAY);
+        await revokeJti(oldJti, revocationTtl(oldExp));
       }
 
-      // 签发新 token（must_change_password 必为 false，changePassword 已 UPDATE）
+      // 签发新 token（must_change_password 必为 false，changePassword 已 UPDATE）；
+      // 沿用旧 token 的过期时间，保持「记住我」会话时长不变
       const newToken = await signToken({
         sub: user.id,
         role: "user",
         must_change_password: false,
         session_version: sessionVersion,
-      });
+      }, oldExp && oldExp > Date.now() / 1000 ? { expiresAt: oldExp } : {});
 
       return c.json({ data: { user, token: newToken } }, 200);
     } catch (err) {
@@ -731,9 +737,11 @@ auth.post(
 auth.post("/logout", authMiddleware, async (c) => {
   const jti = c.get("jti");
   if (jti) {
-    // TTL 取保守 24h（与 jwt_expires_in 默认一致）；
-    // 精确的剩余 TTL 需要重新解析 token exp，复杂度高于收益。
-    await revokeJti(jti, SECONDS_PER_DAY);
+    // TTL 取 token 剩余有效期（「记住我」token 可能长达 30d）
+    await revokeJti(
+      jti,
+      revocationTtl(c.get("tokenExp") as number | undefined),
+    );
   }
   return c.json({ data: { ok: true } }, 200);
 });

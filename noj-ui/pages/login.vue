@@ -61,6 +61,18 @@
       </template>
     </TextInput>
 
+    <label class="flex items-center gap-2 text-sm text-text-secondary cursor-pointer select-none">
+      <input
+        id="remember"
+        v-model="form.remember"
+        type="checkbox"
+        class="size-4 accent-primary"
+        :disabled="loading"
+      >
+      <span>{{ t('auth.rememberMe') }}</span>
+      <span class="text-xs text-text-muted">{{ t('auth.rememberMeHint') }}</span>
+    </label>
+
     <template #footer>
       <p class="mb-2">
         {{ t('auth.noAccount') }} <NuxtLink to="/register" class="text-primary no-underline font-semibold hover:underline">{{ t('auth.registerNow') }}</NuxtLink>
@@ -251,7 +263,7 @@ const route = useRoute()
 const { t, locale } = useI18n()
 const { error, setError, clearError } = useFormError()
 
-const form = reactive({ login: "", password: "", code: "" })
+const form = reactive({ login: "", password: "", code: "", remember: false })
 const loading = ref(false)
 const tfaRequired = ref(false)
 const recoveryMode = ref(false)
@@ -400,6 +412,7 @@ async function handleLogin() {
       form.login.trim(),
       form.password,
       tfaRequired.value ? form.code.trim() : undefined,
+      form.remember,
     )
     // issue #75：临时引导管理员首次登录必须改密
     if (loggedInUser?.must_change_password === true) {

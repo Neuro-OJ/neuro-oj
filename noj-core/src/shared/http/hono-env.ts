@@ -13,6 +13,8 @@ export interface AuthEnv {
     mustChangePassword: boolean;
     emailVerified: boolean;
     jti?: string;
+    /** 当前 token 的过期时间（Unix 秒），用于撤销 TTL 与改密换发 */
+    tokenExp?: number;
   };
 }
 
@@ -24,5 +26,7 @@ export interface OptionalAuthEnv {
     mustChangePassword?: boolean;
     emailVerified?: boolean;
     jti?: string;
+    /** 当前 token 的过期时间（Unix 秒），用于撤销 TTL 与改密换发 */
+    tokenExp?: number;
   };
 }

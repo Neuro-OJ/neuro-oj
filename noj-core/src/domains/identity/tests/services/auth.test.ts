@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { decodeJwt } from "jose";
 import { getUserProfile, loginUser, registerUser } from "../../index.ts";
 import {
   disableTestTransactionForFile,
@@ -296,5 +297,37 @@ Deno.test({
 
     assertEquals(results.filter((user) => user.is_admin).length, 0);
     assertEquals(results.filter((user) => !user.is_admin).length, 2);
+  },
+});
+
+Deno.test({
+  name:
+    "auth service: loginUser 勾选记住我签发 30d token，非严格 true 维持 24h",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const DAY = 24 * 3600;
+    const lifetime = (token: string) => {
+      const { exp, iat } = decodeJwt(token);
+      return exp! - iat!;
+    };
+    // 独立用户：同文件其他用例会清理共享的 TEST_USER
+    const user = {
+      username: `remember-svc-${ts}`,
+      email: `remember-svc-${ts}@example.com`,
+      password: "TestPwd-2024-Xy9",
+    };
+    await registerUser(user);
+    const login = (remember?: unknown) =>
+      loginUser({
+        login: user.username,
+        password: user.password,
+        ...(remember === undefined ? {} : { remember: remember as boolean }),
+      });
+
+    assertEquals(lifetime((await login()).token), DAY);
+    assertEquals(lifetime((await login(false)).token), DAY);
+    assertEquals(lifetime((await login("true")).token), DAY);
+    assertEquals(lifetime((await login(true)).token), 30 * DAY);
   },
 });

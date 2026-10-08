@@ -108,11 +108,15 @@ export function useAuth() {
     loading.value = false;
   }
 
-  async function login(login: string, password: string, code?: string) {
+  /**
+   * 登录。remember=true 时后端签发长有效期 token（「记住我」），
+   * Nitro 代理按 token exp 同步延长 Cookie 有效期。
+   */
+  async function login(login: string, password: string, code?: string, remember = false) {
     // 5s 超时（评审修复 L2，与 fetchUser 一致），由 useApi timeout 选项实现
     const res = await api.post<{ data: { user: UserResponse } }>(
       '/api/v1/auth/login',
-      { login, password, ...(code ? { code } : {}) },
+      { login, password, ...(code ? { code } : {}), ...(remember ? { remember: true } : {}) },
       { silent: true, timeout: 5000 },
     );
     // token 已由 Nitro 代理设置为 HTTP-only cookie，客户端不接收 token 字段

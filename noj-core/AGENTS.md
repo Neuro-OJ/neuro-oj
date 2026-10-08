@@ -180,6 +180,7 @@ noj-core/
 | `JWT_SECRET`                      | —                         | HS256 签名密钥（≥32 字符）                                    |
 | `TFA_ENCRYPTION_KEY`              | —                         | TOTP secret 加密密钥（≥32 字符，与 JWT_SECRET 隔离）          |
 | `JWT_EXPIRES_IN`                  | `24h`                     | Token 有效期                                                  |
+| `JWT_REMEMBER_EXPIRES_IN`         | `30d`                     | 勾选「记住我」登录时的 Token 有效期                           |
 | `REDIS_URL`                       | `redis://127.0.0.1:6379/` | Redis 连接串                                                  |
 | `RESULT_CONSUMER_CONCURRENCY`     | `4`                       | 评测结果消费者连接数（1-16）                                  |
 | `PORT`                            | `8000`                    | HTTP 监听端口                                                 |
