@@ -1,4 +1,4 @@
-import { parseAuthSession } from '../utils/auth-session.ts';
+import { cookieMaxAgeFromJwt, parseAuthSession } from '../utils/auth-session.ts';
 import { withSecurityHeaders } from '../utils/security-headers.ts';
 
 const FORWARDABLE_HEADERS = new Set([
@@ -276,7 +276,8 @@ export default defineEventHandler(async (event) => {
           httpOnly: true,
           sameSite: 'lax' as const,
           path: '/',
-          maxAge: 60 * 60 * 24, // 24h，与 JWT_EXPIRES_IN 一致
+          // 与 JWT exp 同步：普通登录随 jwt_expires_in，「记住我」随 jwt_remember_expires_in
+          maxAge: cookieMaxAgeFromJwt(jwt),
           // 生产 HTTPS 场景下强制 secure：防止混合内容 / 重定向泄漏 JWT Cookie
           secure: isProductionEnv() && !allowsInsecureHttp(),
         };

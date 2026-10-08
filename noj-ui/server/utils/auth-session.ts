@@ -83,3 +83,31 @@ export function parseAuthSession(data: unknown): AuthSession | null {
     },
   };
 }
+
+/** 无法解析 JWT exp 时的 Cookie 有效期回退值（与后端 jwt_expires_in 默认值一致）。 */
+const FALLBACK_COOKIE_MAX_AGE = 60 * 60 * 24;
+
+/**
+ * 按 JWT 的 exp 计算 Cookie maxAge（秒），使 Cookie 与 token 同时过期。
+ *
+ * token 来自受信的 noj-core 上游响应，这里只解码 payload 读取 exp，不做签名校验
+ * （鉴权仍由后端完成）。exp 缺失或解析失败时回退 24h；已过期返回 0。
+ * 「记住我」登录的 token 有效期更长，Cookie 随之延长，避免 Cookie 先于 token 失效。
+ */
+export function cookieMaxAgeFromJwt(
+  token: string,
+  nowMs: number = Date.now(),
+): number {
+  try {
+    const segment = token.split('.')[1];
+    if (!segment) return FALLBACK_COOKIE_MAX_AGE;
+    const base64 = segment.replace(/-/g, '+').replace(/_/g, '/');
+    const payload: unknown = JSON.parse(atob(base64));
+    if (!isRecord(payload) || typeof payload.exp !== 'number' || !Number.isFinite(payload.exp)) {
+      return FALLBACK_COOKIE_MAX_AGE;
+    }
+    return Math.max(0, Math.floor(payload.exp - nowMs / 1000));
+  } catch {
+    return FALLBACK_COOKIE_MAX_AGE;
+  }
+}

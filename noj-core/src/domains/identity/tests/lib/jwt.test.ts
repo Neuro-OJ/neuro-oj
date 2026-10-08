@@ -3,7 +3,7 @@ import {
   assertNotEquals,
   assertRejects,
 } from "jsr:@std/assert@^1";
-import { SignJWT } from "jose";
+import { decodeJwt, SignJWT } from "jose";
 import { signToken, verifyToken } from "../../services/security/jwt.ts";
 
 // 本文件只测试 JWT 签发/校验的纯逻辑，不依赖真实数据库。
@@ -108,5 +108,27 @@ Deno.test({
       signToken({ sub: "u2", role: "user" }),
     ]);
     assertNotEquals(t1, t2);
+  },
+});
+
+Deno.test({
+  name:
+    "jwt: remember 使用长有效期，expiresAt 沿用指定过期时间，verifyToken 返回 exp",
+  fn: async () => {
+    const plain = decodeJwt(await signToken({ sub: "u", role: "user" }));
+    assertEquals(plain.exp! - plain.iat!, 24 * 3600);
+
+    const remembered = decodeJwt(
+      await signToken({ sub: "u", role: "user" }, { remember: true }),
+    );
+    assertEquals(remembered.exp! - remembered.iat!, 30 * 24 * 3600);
+
+    const expiresAt = Math.floor(Date.now() / 1000) + 3 * 24 * 3600;
+    const pinned = await signToken({ sub: "u", role: "user" }, {
+      remember: true,
+      expiresAt,
+    });
+    assertEquals(decodeJwt(pinned).exp, expiresAt);
+    assertEquals((await verifyToken(pinned)).exp, expiresAt);
   },
 });

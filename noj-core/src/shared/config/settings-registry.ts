@@ -244,6 +244,16 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     category: "auth",
     scope: "runtime",
   },
+  {
+    key: "jwt_remember_expires_in",
+    type: "string",
+    default: "30d",
+    description: "勾选「记住我」登录时的 JWT Token 有效期",
+    is_secret: false,
+    envFallback: "JWT_REMEMBER_EXPIRES_IN",
+    category: "auth",
+    scope: "runtime",
+  },
 
   // ── maintenance ───────────────────────────────────────────
   {

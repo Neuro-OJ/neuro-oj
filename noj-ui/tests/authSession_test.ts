@@ -1,7 +1,7 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { parseAuthSession } from '../server/utils/auth-session.ts';
+import { cookieMaxAgeFromJwt, parseAuthSession } from '../server/utils/auth-session.ts';
 
 const validResponse = {
   data: {
@@ -118,4 +118,27 @@ Deno.test('parseAuthSession: admin 角色名不能覆盖 false 标记', () => {
     },
   };
   assertEquals(parseAuthSession(response)?.user.is_admin, false);
+});
+
+/** 构造仅含指定 payload 的 JWT 形态字符串（签名段为占位）。 */
+function fakeJwt(payload: Record<string, unknown>): string {
+  const b64url = (v: unknown) => btoa(JSON.stringify(v)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `${b64url({ alg: 'HS256' })}.${b64url(payload)}.sig`;
+}
+
+const NOW_MS = 1_800_000_000_000;
+
+Deno.test('cookieMaxAgeFromJwt: 按 exp 计算剩余秒数（记住我 30d）', () => {
+  const exp = NOW_MS / 1000 + 30 * 24 * 3600;
+  assertEquals(cookieMaxAgeFromJwt(fakeJwt({ exp }), NOW_MS), 30 * 24 * 3600);
+});
+
+Deno.test('cookieMaxAgeFromJwt: 已过期返回 0', () => {
+  assertEquals(cookieMaxAgeFromJwt(fakeJwt({ exp: NOW_MS / 1000 - 10 }), NOW_MS), 0);
+});
+
+Deno.test('cookieMaxAgeFromJwt: exp 缺失或无法解析时回退 24h', () => {
+  assertEquals(cookieMaxAgeFromJwt(fakeJwt({ sub: 'u' }), NOW_MS), 24 * 3600);
+  assertEquals(cookieMaxAgeFromJwt('jwt-token', NOW_MS), 24 * 3600);
+  assertEquals(cookieMaxAgeFromJwt('a.@@@.c', NOW_MS), 24 * 3600);
 });

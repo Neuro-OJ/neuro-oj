@@ -88,3 +88,17 @@ export function remainingTtlFromExp(exp: number | undefined): number {
   const remaining = exp - nowSec;
   return remaining > 0 ? remaining : 0;
 }
+
+/** 缺少 exp 的历史 token 撤销时使用的保守 TTL（秒），与 jwt_expires_in 默认值一致。 */
+const LEGACY_REVOCATION_TTL_SECONDS = 24 * 60 * 60;
+
+/**
+ * 计算撤销条目的 Redis TTL：取 token 剩余有效期，使撤销覆盖 token 整个生命周期
+ * （「记住我」token 可能长达 30d，固定 24h 会让被撤销的 token 提前「复活」）。
+ *
+ * @param exp - JWT payload 中的 exp（秒）；缺失时回退 24h
+ * @returns TTL 秒数；已过期返回 0（revokeJti 会跳过写入）
+ */
+export function revocationTtl(exp: number | undefined): number {
+  return exp ? remainingTtlFromExp(exp) : LEGACY_REVOCATION_TTL_SECONDS;
+}

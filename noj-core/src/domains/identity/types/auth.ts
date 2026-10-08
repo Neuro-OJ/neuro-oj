@@ -21,6 +21,8 @@ export interface LoginInput {
   password: string;
   /** TFA 验证码或恢复码；用户已启用 TFA 时必填 */
   code?: string;
+  /** 「记住我」：为 true 时签发长有效期 token（jwt_remember_expires_in） */
+  remember?: boolean;
 }
 
 /**
