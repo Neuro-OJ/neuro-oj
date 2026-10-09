@@ -250,6 +250,9 @@ Deno.test({
         status: "finished",
         score: 10000,
         details: {},
+        // 客观题进度同样读有效成绩投影：满分通过由提交写入服务落 `is_accepted`
+        is_valid: true,
+        is_accepted: true,
         created_at: now,
       });
 

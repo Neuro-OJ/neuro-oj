@@ -57,21 +57,35 @@ export type ApplyAttemptOutcome =
   | { applied: "platform_error" }
   | { applied: "ignored"; reason: "not_found" | "already_terminal" | "stale" };
 
-/** 读取提交行并在事务内加锁（§5.1 锁顺序：先题目、再提交）。 */
+/**
+ * 读取提交行并在事务内加锁（§5.1 锁顺序：先题目、再提交）。
+ *
+ * 同时取出 `contest_id`：竞赛口径的投影必须知道提交的竞赛上下文，
+ * 否则结果写入后 `is_contest_*` 永远为空（竞赛固定版本策略形同失效）。
+ */
 async function lockSubmissionRow(
   source: ProjectionSource,
   executor: Executor,
-): Promise<{ active_attempt_id: string | null; status: string } | null> {
+): Promise<
+  | {
+    active_attempt_id: string | null;
+    status: string;
+    contest_id: string | null;
+  }
+  | null
+> {
   if (source.kind === "submission") {
     const [row] = await executor.select({
       active_attempt_id: submissions.active_attempt_id,
       status: submissions.status,
+      contest_id: submissions.contest_id,
     }).from(submissions).where(eq(submissions.id, source.id)).for("update");
     return row ?? null;
   }
   const [row] = await executor.select({
     active_attempt_id: objectiveSubmissions.active_attempt_id,
     status: objectiveSubmissions.status,
+    contest_id: objectiveSubmissions.contest_id,
   }).from(objectiveSubmissions).where(
     eq(objectiveSubmissions.id, source.id),
   ).for("update");
@@ -115,14 +129,24 @@ export async function applyAttemptResult(
   const db = executor ?? getDb();
   const attempt = await getAttempt(input.attemptId, db);
   if (!attempt) return { applied: "ignored", reason: "not_found" };
+  // 先锁提交行再取竞赛上下文：`contest_id` 是竞赛口径投影的必要输入，
+  // 且必须在同一事务的同一行锁内读到，避免与竞赛固定版本切换发生竞态。
+  const locked = await lockSubmissionRow(
+    {
+      kind: attempt.submission_id ? "submission" : "objective",
+      id: (attempt.submission_id ?? attempt.objective_submission_id) as string,
+      problem_id: attempt.problem_id,
+      contest_id: null,
+    },
+    db,
+  );
+  if (!locked) return { applied: "ignored", reason: "not_found" };
   const source: ProjectionSource = {
     kind: attempt.submission_id ? "submission" : "objective",
     id: (attempt.submission_id ?? attempt.objective_submission_id) as string,
     problem_id: attempt.problem_id,
-    contest_id: null,
+    contest_id: locked.contest_id,
   };
-  const locked = await lockSubmissionRow(source, db);
-  if (!locked) return { applied: "ignored", reason: "not_found" };
 
   // 过时结果：提交的活动尝试已经换成别的尝试
   if (

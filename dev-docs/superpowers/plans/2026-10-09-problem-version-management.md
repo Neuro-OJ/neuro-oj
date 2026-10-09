@@ -56,8 +56,8 @@
       content 内，key 跨版本稳定，新增生成 UUID、导入必须显式 key 且不猜测对应关系）
       与 `objective-regrade.ts`（按版本快照 key 匹配重判：新增小题按未作答、
       删除小题不计分、答案形式不兼容按未作答、原始 answers 不改写）。
-- [ ] 2d（收尾）客观题提交与重判接入统一尝试/投影写入服务；旧 `objective_questions`
-      运行期读取迁移（批次 5/7）。
+- [ ] 2d（收尾）旧 `objective_questions` 运行期读取迁移（批次 6/7：导入路径改草稿 +
+      可选发布；派生初值仅在无版本时兜底）。
 - [ ] 2e `createProblem` 建身份+草稿；内容更新转草稿；`updateProblem` 管理信息与内容
       分离；`deleteProblem` 补齐新表清理顺序；路由新增草稿/版本接口。
 
@@ -136,49 +136,44 @@
 - [ ] 3c（Judge 侧）Rust 任务/结果字段与契约夹具同步、`run_id = attempt_id`、
       OI 进度事件携带 run_id、LLM 生命周期（attempt 维度额度与吊销）、
       sweeper 从尝试快照恢复、自测携带版本与快照。
-- [ ] 3d 客观题提交走统一尝试与投影写入服务。
-- [ ] 3d 客观题提交走统一尝试与投影写入服务。
+- [x] 3d 客观题提交走统一尝试与投影写入服务：
+  - `submitObjectivePaper` 判卷事实源改为**提交时版本的小题快照**
+    （`loadPublishedVersionContent` → `content.questions`，key = 快照 `key`；
+    未版本化存量套卷回退旧小题表，key = 旧小题 UUID）；
+  - 「提交行 + 初次尝试（`source='initial'`，绑定版本，非敏感任务快照）+
+    `submission_version_results` 当前判定 + 双口径有效成绩投影 + revision 递增」
+    **同一事务**完成，任一步失败都不留半成品；`accepted = score >= 10000`（满分口径，
+    与迁移基线一致）；
+  - 提交行写入 `submitted_version_id` / `version_origin`（缺版本时诚实落
+    `legacy_unknown`）；
+  - **显式指定版本逐字生效**：题库提交携带 `version_id` 时不再有 catch 兜底
+    （跨题/未发布版本 → 404 `PROBLEM_VERSION_NOT_FOUND`）；只有**未携带**版本时才按
+    有效策略解析默认作答版本（`any` → 最新版 / `exact` → 要求版本）；
+  - 提交详情按 `submitted_version_id` 还原当时的卷面解析（草稿改动不影响历史详情）。
+- [x] 3d 附带修复：`applyAttemptResult` 之前把 `contest_id` 硬编码为 `null`，导致
+      竞赛提交结果写入后 `is_contest_*` 恒为空、竞赛作用域 revision 不递增。
+      现在提交行锁查询同时取回 `contest_id`，且 `computeSubmissionProjection` 在
+      `contest_id === undefined`（调用方未取）时自行回查兜底。
 - **严格化提醒（必须在上线前完成）**：`resolveSubmissionVersion` 目前对「题目尚未发布
   任何版本」的存量题目仍返回 `legacy_unknown`（迁移期兼容）。批次 7 回填迁移基线后，
   该分支必须收紧为拒绝；同时确认所有客户端（UI/IDE/CLI）都携带 `version_id`。
 
 ### 批次 2 验证证据（截至目前）
 
-- objective 域：**48 passed / 0 failed**（含新增 6 个小题草稿用例与 7 个重判用例）。
-- 本轮最终 `deno task test:parallel`：**1300 passed / 0 failed / 11 ignored**（+13 用例）；
-  域边界与全量类型检查通过。
-- 批次 3b/3c 追加后：submission 域 **169 passed / 0 failed**（新增 19 个用例，
-  含 4 个端到端链路用例：提交→尝试→结果→投影）。
-- 本轮最终 `deno task test:parallel`：**1319 passed / 0 failed / 11 ignored**（+4 用例）。
-- 批次 4a 追加后：submission 域 **174 passed / 0 failed**（新增 5 个策略切换用例）。
-- 批次 4b 受理追加后：submission 域 **185 passed / 0 failed**（新增 11 个批任务用例）。
-- 本轮最终 `deno task test:parallel`：**1335 passed / 0 failed / 11 ignored**（+11 用例）。
-- 批次 4b worker 原语追加后：submission 域 **194 passed / 0 failed**（新增 9 个 worker 用例）。
-- 本轮最终 `deno task test:parallel`：**1344 passed / 0 failed / 11 ignored**（+9 用例）；
-  域边界与全量类型检查通过。
-- 批次 4c 升级受理追加后：submission 域 **202 passed / 0 failed**（新增 8 个升级用例）。
-- 本轮最终 `deno task test:parallel`：**1352 passed / 0 failed / 11 ignored**（+8 用例）；
-  域边界与全量类型检查通过。
-- 本轮最终 `deno task test:parallel`：**1324 passed / 0 failed / 11 ignored**（+5 用例）；
-  域边界与全量类型检查通过。
-- 遗留一致性项：读路径仍用 `acceptedResultSql`（SQL）判定通过，与
-  `shared/versioning/verdict.ts`（TS）语义已对齐但尚未合并为单一定义——批次 5
-  统一读取时收敛。
-- 本轮最终 `deno task test:parallel`：**1315 passed / 0 failed / 11 ignored**（+15 用例）；
-  域边界与全量类型检查通过。
+> 只记录**当前有效**的证据（旧轮次的中间数字已合并，避免误读）。
 
-- **`deno task test:parallel`（PGlite + 真实 PG 双分片）：1271 passed / 0 failed / 11 ignored**（批次 1+2a/2b 时点）。
-- 批次 3a/2c 追加后：catalog **292 passed / 0 failed**、submission **150 passed / 0 failed / 21 ignored**。
-- 本轮最终 `deno task test:parallel`：**1287 passed / 0 failed / 11 ignored**（+16 用例）。
-- 静态门禁：schema parity（68 表/613 列）、迁移安全、域边界、导出 JSDoc 覆盖率全部通过。
-- catalog 域 `bash scripts/test-domain.sh catalog`：**284 passed / 0 failed**。
-- system 域 `bash scripts/test-domain.sh system`：**141 passed / 0 failed / 1 ignored**。
-- shared 共享套件 `bash scripts/test-shared.sh`：**291 passed / 0 failed / 7 ignored**。
+- **最新全量**：`deno task test:parallel`（PGlite unit 分片 + 真实 PG db 分片）
+  **1360 passed / 0 failed / 11 ignored**（批次 3d 时点；本轮最终数字见文末"最近一次验证"）。
+- 分域（最新）：catalog **292**、submission **203**（+21 ignored）、objective **55**、
+  identity 310（+25 ignored）、community 71、query 25。
+- 静态门禁：schema parity（68 表 / 613 列）、迁移安全、快照链、域边界、导出 JSDoc、
+  `deno lint`、`deno fmt --check` 全部通过（迁移两个脚本必须在**仓库根**运行）。
 - 环境注意：`queue.test.ts` 的"队列空"断言会被 **Redis 中遗留的池化队列条目**
   （如 `noj:judge:queue:ai:medium`）打破，属环境残留而非代码缺陷
   （清理该 key 后 11 个用例全绿）；`clearQueue()` 尚未覆盖资源池队列。
 - 新增用例：存储登记 7 个（引用守卫删除、共享对象不误删、stat）、草稿/发布 9 个、
-  内容模型与策略纯函数 7 个、有效成绩计算 9 个。
+  内容模型与策略纯函数 7 个、有效成绩计算 9 个、版本化客观题提交 7 个、
+  竞赛口径投影 1 个。
 - **踩坑（重要）**：事务回调内**禁止**调用 `getDb()`——PGlite 单连接下会自锁
   （表现为测试永久挂起），且在连接池模式下会读不到未提交数据。所有域内 helper
   必须接受 `Executor` 参数并在事务内传 `tx`（`draft.ts` 的 `getProblemDraft` /
@@ -189,7 +184,10 @@
   `SUPPORT_PACKAGE_DIR` 决定，测试需在模块加载时指向临时目录。
 - 踩坑记录：`@std/assert@1.0.19` 的 `assertRejects` **不接受同步 throw**，
   必须传返回 rejected promise 的函数；同步校验断言统一走 `assertThrows()` 包装。
-- 迁移门禁：parity 68 表 / 613 列；迁移安全通过；快照链通过。
+- 读路径不再自行比较分数：题单进度（`getAcceptedProblemIds`）与客观题练习最高分
+  都改读有效成绩投影（`is_accepted` / `effective_attempt_id`），因此测试夹具必须
+  像结果写入服务一样显式落投影（`is_valid` / `is_accepted`），否则用例会失败——
+  这是"投影即事实源"的预期行为，不是回归。
 - 真实 PG 存量演练：开发库克隆（85 条审计 + 123 条提交）→ 应用 `0102` →
   审计行全保留且新 CHECK 生效、提交标记 legacy_unknown。
 
@@ -209,7 +207,10 @@
 - [x] 5c（部分）通过门槛与进度改读有效成绩投影：
       community `hasAcceptedSolution`（题解门槛/发布入口）、
       identity `queryUserProfileAggregate` + `querySolvedProblems`（个人主页通过数/列表）、
-      trainings `getAcceptedProblemIds`（题单进度；客观题兼容 score=10000 直至 3d 接线）。
+      trainings `getAcceptedProblemIds`（题单进度；客观题已随 3d 接入投影，
+      `objective_submissions.is_accepted` 即为满分口径）、
+      客观题练习最高分（`listObjectiveSubmissions.best_score` 改读
+      `is_valid` 提交的 `effective_attempt_id` 分数，不再用 `MAX(score)`）。
 - [ ] 5c（收尾）problems-stats 公开统计（改读投影 + 最近尝试状态）、search 索引、
       正式成绩快照（5d）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
@@ -281,3 +282,18 @@
   → 应用 `0102` → 计数不变、123 行 `legacy_unknown`、10 张新表 + 守卫触发器就位；
   负例验证：跨题版本复合外键拒绝、已发布版本 UPDATE 被触发器拒绝、
   `exact` 缺要求版本被 CHECK 拒绝、基线哈希 NULL→哈希放行。
+
+## 最近一次验证
+
+- 批次 3d（客观题版本化提交 + 竞赛口径投影修复 + 读路径统一）：
+  - 分域：objective **55 passed / 0 failed**（新增 7 个版本化提交用例）、
+    submission **203 passed / 0 failed / 21 ignored**（新增 1 个竞赛口径投影用例）、
+    catalog **292 passed / 0 failed**。
+  - 静态门禁：`deno lint` / `deno fmt --check` 全绿（含修正 `dashboard.ts` 重复
+    lint-ignore 与 `rankings.ts` 未格式化）；schema parity 68 表 / 613 列、
+    迁移安全、快照链、域边界、导出 JSDoc 全部通过。
+  - 全量 `deno task test:parallel`：**1360 passed / 0 failed / 11 ignored**。
+  - `queue.test.ts` 的"队列空"flaky 已根治：`clearQueue()` 之前只清三级旧队列
+    （`noj:judge:queue:{high,medium,low}`），而 `getPendingSubmissionIds` 读**全部分池
+    队列**（`ALL_JUDGE_QUEUES`），池内残留条目会让断言失败。现改为 `redis.del` 全部
+    队列、推入/断言统一用 `JUDGE_QUEUES.medium`，不再手写队列名。

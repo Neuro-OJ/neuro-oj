@@ -73,6 +73,11 @@ export interface SubmitObjectiveInput {
   answers: Record<string, ObjectiveAnswerValue[]>;
   /** 竞赛提交时携带；练习模式省略 */
   contest_id?: string;
+  /**
+   * 提交时版本（Handbook §4.2）。竞赛提交携带时必须等于固定版本；
+   * 题库提交缺省时按有效策略解析默认作答版本（`any` → 最新版 / `exact` → 要求版本）。
+   */
+  version_id?: string;
 }
 
 /** 单题判定结果。 */

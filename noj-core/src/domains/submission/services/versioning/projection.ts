@@ -45,8 +45,11 @@ export interface ProjectionSource {
   kind: ProjectionSourceKind;
   id: string;
   problem_id: string;
-  /** 竞赛提交时非空；练习提交为 null。 */
-  contest_id: string | null;
+  /**
+   * 竞赛上下文：`string` = 竞赛提交；`null` = 已确认的练习提交；
+   * `undefined` = 调用方未取该字段，投影计算会自行回查（安全兜底，多一次 PK 查询）。
+   */
+  contest_id?: string | null;
 }
 
 /** 单条提交的完整投影计算结果（未写入）。 */
@@ -202,17 +205,25 @@ export async function computeSubmissionProjection(
   db: Executor,
   source: ProjectionSource,
 ): Promise<SubmissionProjectionPlan> {
-  const problemPolicy = await loadProblemPolicy(db, source.problem_id);
-  const results = await loadCurrentVersionResults(db, source);
+  // 竞赛上下文兜底补全：竞赛口径的投影必须在**所有**调用点都拿到 `contest_id`，
+  // 否则一次漏传就会把该提交的 `is_contest_*` 清零（竞赛固定版本策略失效）。
+  // 调用方已显式给出 `null`（练习提交）时不回查，避免批量重算多出 N 次查询。
+  const contestId = source.contest_id !== undefined
+    ? source.contest_id
+    : await loadSubmissionContestId(db, source);
+  const resolvedSource: ProjectionSource = { ...source, contest_id: contestId };
+
+  const problemPolicy = await loadProblemPolicy(db, resolvedSource.problem_id);
+  const results = await loadCurrentVersionResults(db, resolvedSource);
   const global = selectEffectiveResults(results, problemPolicy.policy);
 
   let contest: EffectiveSelection = { ...EMPTY_EFFECTIVE_SELECTION };
   let contestRevision: number | null = null;
-  if (source.contest_id) {
+  if (contestId) {
     const contestPolicy = await loadContestPolicy(
       db,
-      source.contest_id,
-      source.problem_id,
+      contestId,
+      resolvedSource.problem_id,
     );
     if (contestPolicy) {
       contest = selectEffectiveResults(results, contestPolicy.policy);
@@ -221,7 +232,7 @@ export async function computeSubmissionProjection(
   }
 
   return {
-    source,
+    source: resolvedSource,
     global,
     contest,
     global_policy_revision: problemPolicy.revision,
@@ -264,8 +275,11 @@ export async function recomputeSubmissionProjection(
   const plan = await computeSubmissionProjection(executor, source);
   await writeProjection(executor, plan);
   await bumpProjectionRevision(executor, problemScopeKey(source.problem_id));
-  if (source.contest_id) {
-    await bumpProjectionRevision(executor, contestScopeKey(source.contest_id));
+  if (plan.source.contest_id) {
+    await bumpProjectionRevision(
+      executor,
+      contestScopeKey(plan.source.contest_id),
+    );
   }
   return plan;
 }

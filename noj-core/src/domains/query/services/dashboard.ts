@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
-// deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
 import { problems } from "./../../../shared/db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
 import { submissions } from "./../../../shared/db/schema.ts";
@@ -105,9 +104,7 @@ async function queryDashboardStats(): Promise<DashboardStats> {
       (SELECT count(*)::text FROM problems) AS total_problems,
       (SELECT count(*)::text FROM tags) AS total_tags,
       count(*)::text AS total_submissions,
-      count(*) FILTER (WHERE ${
-    sql`s.is_accepted`
-  })::text AS total_accepted,
+      count(*) FILTER (WHERE ${sql`s.is_accepted`})::text AS total_accepted,
       count(*) FILTER (WHERE s.latest_attempt_id IS NOT NULL)::text AS total_judged,
       count(*) FILTER (WHERE s.status = 'pending')::text AS total_pending,
       count(*) FILTER (WHERE s.created_at >= ${twentyFourHoursAgo})::text AS recent_submissions_24h,

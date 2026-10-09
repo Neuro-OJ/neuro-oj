@@ -9,6 +9,8 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
+  contestProblems,
+  contests,
   evaluationAttempts,
   problems,
   problemVersions,
@@ -222,6 +224,70 @@ Deno.test("result write: graded 写入当前判定与双口径投影", async () 
   assertEquals(results.length, 1);
   assertEquals(results[0].problem_version_id, "rw-p4-v1");
   assertEquals(results[0].current_attempt_id, attempt.id);
+});
+
+Deno.test("result write: 竞赛提交自动补全竞赛上下文并写入竞赛口径投影", async () => {
+  const db = getDb();
+  await seedProblem("rw-p6", 990006);
+  const contestId = "rw-c6";
+  await db.insert(contests).values({
+    id: contestId,
+    title: "结果写入竞赛",
+    description: "",
+    start_time: new Date(Date.now() - 3600_000).toISOString(),
+    end_time: new Date(Date.now() + 3600_000).toISOString(),
+    type: "kaggle",
+    config: {},
+    created_at: now,
+    updated_at: now,
+  });
+  await db.insert(contestProblems).values({
+    contest_id: contestId,
+    problem_id: "rw-p6",
+    sort_order: 1,
+    label: "A",
+    score: 10000,
+    pinned_version_id: "rw-p6-v1",
+  });
+  await db.insert(submissions).values({
+    id: "rw-s6",
+    user_id: "0",
+    problem_id: "rw-p6",
+    contest_id: contestId,
+    language: "python",
+    code: "print(1)",
+    submitted_version_id: "rw-p6-v1",
+    version_origin: "known",
+    status: "judging",
+    created_at: now,
+  });
+
+  // 故意不传 contest_id：投影计算必须自行回查，否则竞赛口径恒为空
+  const attempt = await createAttempt({
+    source: { kind: "submission", id: "rw-s6", problem_id: "rw-p6" },
+    problemVersionId: "rw-p6-v1",
+    source_kind: "initial",
+  });
+  const outcome = await applyAttemptResult({
+    attemptId: attempt.id,
+    resultKind: "graded",
+    resultStatus: "finished",
+    score: 10000,
+    accepted: true,
+  });
+  assertEquals(outcome.applied, "graded");
+
+  const [submission] = await db.select().from(submissions).where(
+    eq(submissions.id, "rw-s6"),
+  );
+  assertEquals(submission.contest_id, contestId);
+  assertEquals(submission.is_valid, true);
+  assertEquals(submission.is_accepted, true);
+  // 竞赛口径与题库口径独立计算：固定版本 + any 策略 → 同样命中该次判定
+  assertEquals(submission.is_contest_valid, true);
+  assertEquals(submission.is_contest_accepted, true);
+  assertEquals(submission.contest_effective_attempt_id, attempt.id);
+  assertEquals(submission.contest_accepted_attempt_id, attempt.id);
 });
 
 Deno.test("result write: 重复/过时结果被忽略", async () => {
