@@ -45,8 +45,13 @@
       （哈希取 URL 内嵌 checksum、大小向后端核实，客户端不可注入）；下载/模板按
       「显式版本 → 最新版 → 草稿 → 迁移期投影」解析；删除草稿包走引用守卫，
       历史版本引用与字节保留。
-- [ ] 2c（OI 部分）`saveOiMetadata`/`saveOiData`/`loadOiData` 按 draft/version 来源读写；
-      OI 自测从版本构造临时包。
+- [x] 2c（OI 核心）新增 `versioning/oi-draft.ts`：`saveOiDraft` 在同一次草稿事务中
+      切换配置 + 逐文件引用 + 打包 ZIP（`saveProblemDraftWithObjects`），
+      revision 先行校验（428/409），metadata-only 复用引用并校验新配置路径，
+      上传失败按引用守卫补偿；`loadOiDataFromDraft` / `loadOiDataFromVersion` 显式
+      来源；`loadOiData(c, ref, { source })` 暴露来源参数（默认仍为迁移期兼容路径）。
+- [ ] 2c（OI 收尾）路由改走 `saveOiDraft`（`oi-author.ts`）；ZIP worker 结果绑定
+      revision；OI 自测从版本构造临时包并登记临时对象引用。
 - [ ] 2d 客观题小题写入草稿 content、稳定 key、按版本快照重判。
 - [ ] 2e `createProblem` 建身份+草稿；内容更新转草稿；`updateProblem` 管理信息与内容
       分离；`deleteProblem` 补齐新表清理顺序；路由新增草稿/版本接口。
@@ -72,7 +77,8 @@
 
 ### 批次 2 验证证据（截至目前）
 
-- **`deno task test:parallel`（PGlite + 真实 PG 双分片）：1271 passed / 0 failed / 11 ignored**。
+- **`deno task test:parallel`（PGlite + 真实 PG 双分片）：1271 passed / 0 failed / 11 ignored**（批次 1+2a/2b 时点）。
+- 批次 3a/2c 追加后：catalog **292 passed / 0 failed**、submission **150 passed / 0 failed / 21 ignored**。
 - catalog 域 `bash scripts/test-domain.sh catalog`：**284 passed / 0 failed**。
 - system 域 `bash scripts/test-domain.sh system`：**141 passed / 0 failed / 1 ignored**。
 - shared 共享套件 `bash scripts/test-shared.sh`：**291 passed / 0 failed / 7 ignored**。

@@ -277,6 +277,129 @@ export async function saveProblemDraft(
   });
 }
 
+/**
+ * 在一次草稿事务中同时替换内容与文件引用（Handbook §5.2 第 3–4 步）。
+ *
+ * 用途：OI 逐文件索引与打包 ZIP 必须与配置在同一次草稿事务中切换，
+ * 单独调用 `saveProblemDraft` + `replaceDraftObjectsForRole` 会产生两次 revision，
+ * 中间态一旦被发布就会得到"配置引用新文件、引用仍指旧文件"的坏版本。
+ *
+ * 调用方负责在事务外完成上传与登记；事务只做引用替换与 revision 递增。
+ *
+ * @throws {AppError} 428 缺少预期 revision；409 revision 过时；400 类别不可变
+ */
+export async function saveProblemDraftWithObjects(
+  problemId: string,
+  input: {
+    content: ProblemDraftContent;
+    expectedRevision: number | null | undefined;
+    actorId?: string | null;
+    /** 期望的最终引用集合；同一 role 下未列出的路径会被移除。 */
+    objects: readonly {
+      role: ProblemObjectRole;
+      path: string;
+      storage_url: string;
+    }[];
+  },
+): Promise<ProblemDraftView> {
+  if (input.expectedRevision == null) throw draftRevisionRequired();
+  const expected = Number(input.expectedRevision);
+  if (!Number.isInteger(expected) || expected < 0) {
+    throw new AppError("预期 revision 必须是非负整数", 400, "INVALID_REVISION");
+  }
+
+  const db = getDb();
+  const identity = await loadProblemIdentity(problemId);
+  const kind: ProblemContentKind = problemContentKindOf(identity);
+  if (input.content?.kind !== kind) {
+    throw new AppError(
+      `题目内容类别不可变：期望 ${kind}，实际 ${String(input.content?.kind)}`,
+      400,
+      "CONTENT_KIND_IMMUTABLE",
+    );
+  }
+
+  return await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT id FROM problems WHERE id = ${problemId} FOR UPDATE`,
+    );
+    const [row] = await tx.select().from(problemDrafts).where(
+      eq(problemDrafts.problem_id, problemId),
+    ).limit(1);
+    const current = row?.revision ?? PROBLEM_DRAFT_VIRTUAL_REVISION;
+    if (current !== expected) throw draftRevisionConflict(expected, current);
+
+    // 引用替换：先确认新引用可绑定，再删除多余引用、写入目标引用
+    for (const ref of input.objects) {
+      await assertStorageObjectBindable(ref.storage_url, tx);
+    }
+    const existing = await tx.select().from(problemDraftObjects).where(
+      eq(problemDraftObjects.problem_id, problemId),
+    );
+    const wanted = new Set(
+      input.objects.map((ref) => `${ref.role}\u0000${ref.path}`),
+    );
+    for (const old of existing) {
+      if (!wanted.has(`${old.role}\u0000${old.path}`)) {
+        await tx.delete(problemDraftObjects).where(
+          and(
+            eq(problemDraftObjects.problem_id, problemId),
+            eq(problemDraftObjects.role, old.role),
+            eq(problemDraftObjects.path, old.path),
+          ),
+        );
+      }
+    }
+    for (const ref of input.objects) {
+      await tx.insert(problemDraftObjects).values({
+        problem_id: problemId,
+        role: ref.role,
+        path: ref.path,
+        storage_url: ref.storage_url,
+      }).onConflictDoUpdate({
+        target: [
+          problemDraftObjects.problem_id,
+          problemDraftObjects.role,
+          problemDraftObjects.path,
+        ],
+        set: { storage_url: ref.storage_url },
+      });
+    }
+
+    const now = new Date().toISOString();
+    const nextRevision = current + 1;
+    const baseVersionId = row?.base_version_id ?? identity.latest_version_id;
+    if (row) {
+      await tx.update(problemDrafts).set({
+        content: input.content,
+        revision: nextRevision,
+        base_version_id: baseVersionId,
+        updated_by: input.actorId ?? null,
+        updated_at: now,
+      }).where(eq(problemDrafts.problem_id, problemId));
+    } else {
+      await tx.insert(problemDrafts).values({
+        problem_id: problemId,
+        base_version_id: baseVersionId,
+        revision: nextRevision,
+        content: input.content,
+        updated_by: input.actorId ?? null,
+        updated_at: now,
+      });
+    }
+
+    return {
+      problem_id: problemId,
+      base_version_id: baseVersionId,
+      revision: nextRevision,
+      content: input.content,
+      updated_by: input.actorId ?? null,
+      updated_at: now,
+      synthesized: false,
+    };
+  });
+}
+
 /** 草稿文件引用行。 */
 export interface DraftObjectRef {
   role: ProblemObjectRole;

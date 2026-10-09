@@ -24,6 +24,10 @@ import {
   validateOiRuntimeConfig,
 } from "../types/runtime-config.ts";
 import { buildOiArchive, readOiArchive } from "./oi-archive.ts";
+import {
+  loadOiDataFromDraft,
+  loadOiDataFromVersion,
+} from "./versioning/oi-draft.ts";
 import type {
   CreateProblemInput,
   UpdateProblemInput,
@@ -65,12 +69,27 @@ export async function authorizeOiData(c: Context, reference: string) {
   return { problem, row };
 }
 
-/** 按文件读取新索引，兼容未转换的旧评测包。 */
+/**
+ * 读取 OI 数据。
+ *
+ * **显式来源**（Handbook §6.3）：`draft` 读草稿引用、`version` 读指定/最新已发布
+ * 版本引用；未指定时走迁移期兼容路径（`problems.oi_data_files` → 支持包 ZIP）。
+ * 新代码一律应显式传 `source`，不得再依赖题目最新版投影。
+ */
 export async function loadOiData(
   c: Context,
   reference: string,
+  options: { source?: "draft" | "version" | "legacy"; versionId?: string } = {},
 ): Promise<Record<string, Uint8Array>> {
   const { row } = await authorizeOiData(c, reference);
+  if (options.source === "draft") {
+    return await loadOiDataFromDraft(row.id);
+  }
+  if (options.source === "version") {
+    const versionId = options.versionId ?? row.latest_version_id;
+    if (!versionId) return Object.create(null);
+    return await loadOiDataFromVersion(versionId);
+  }
   const storage = await getStorageProvider();
   if (row.oi_data_files != null) {
     const files: Record<string, Uint8Array> = Object.create(null);
