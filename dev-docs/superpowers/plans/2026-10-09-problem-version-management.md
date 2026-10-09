@@ -198,8 +198,14 @@
 - [x] 5a `problems-list.ts` 的「viewer 是否通过该题」改为读取有效成绩投影
       `submissions.is_accepted`（命中 `idx_submissions_problem_accepted_user`）；
       存量由迁移 0103 回填保证与旧 `acceptedResultSql` 口径一致。
-- [ ] 5b query 域（`rankings.ts` / `dashboard.ts` / `stats-cache.ts`）：按有效成绩聚合 +
-      revision 缓存键 + 物化视图落后回退；通过数按题目去重、通过率分母用有效提交数。
+- [x] 5b（部分）query 域 `rankings.ts` / `dashboard.ts` 改读有效成绩投影
+      （`s.is_accepted`），移除 `evaluation_results` JOIN；新增 **视图可信判定**
+      `isRankingViewTrusted()`：`materialized_revision < data_revision` 时（版本化后
+      回填把 global data_revision 置为 1）自动回退内联查询，策略切换与重测立即可见，
+      不依赖视图刷新（§3.5）。
+- [ ] 5b（收尾）`stats-cache.ts` 的进程内增量计数改为 revision 键控的数据库聚合 +
+      Redis 缓存；通过率分母改为"当前有效且已产生正式判定的提交数"并额外返回
+      `valid_submissions`；`user_rankings` 视图按新模型重建（7b）。
 - [ ] 5c identity / community / trainings / problems-stats / search 的通过门槛与统计。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 

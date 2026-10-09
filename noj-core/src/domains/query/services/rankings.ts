@@ -1,8 +1,5 @@
-import { acceptedResultSql } from "../../../shared/base/accepted-result.ts";
 import { sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
-// deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
-import { evaluationResults } from "./../../../shared/db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
 import { submissions } from "./../../../shared/db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
@@ -80,6 +77,38 @@ async function hasMaterializedView(): Promise<boolean> {
 }
 
 /**
+ * 物化视图是否**可信**（Handbook §3.5）。
+ *
+ * `user_rankings` 是版本化之前的视图（基于 `evaluation_results`），无法反映
+ * 精确版本策略与分版本判定。判定规则：
+ * - 视图不存在 → 不可信（PGlite / 未创建）；
+ * - `query_projection_revisions('global')` 不存在 → 迁移前状态，视图与旧口径一致，可信；
+ * - 存在且 `materialized_revision < data_revision` → **落后**，必须回退内联查询；
+ * - 只有视图已覆盖当前 data_revision（由 7b 重建后的刷新流程记录）才可信。
+ *
+ * 因此版本化上线后（回填把 global data_revision 置为 1）榜单自动走内联路径，
+ * 保证策略切换与重测立即可见，不依赖视图刷新。
+ */
+async function isRankingViewTrusted(): Promise<boolean> {
+  if (!(await hasMaterializedView())) return false;
+  try {
+    const db = getDb();
+    const result = await db.execute(
+      sql`SELECT data_revision, materialized_revision FROM query_projection_revisions WHERE scope_key = 'global'`,
+    );
+    const rows = unwrapRows<{ data_revision: number; materialized_revision: number }>(
+      result as never,
+    );
+    const row = rows[0];
+    if (!row) return true;
+    return Number(row.materialized_revision) >= Number(row.data_revision);
+  } catch {
+    // 读不到 revision 表（视图存在但 schema 异常）→ 保守使用内联路径
+    return false;
+  }
+}
+
+/**
  * 刷新 user_rankings 物化视图（PR-4 评审修订）。
  *
  * 评测结果写回后必须立即刷新，否则用户提交代码 → 通过 → 榜单仍显示旧数据
@@ -131,7 +160,7 @@ export function refreshRankingsView(): Promise<void> {
  * @returns 无返回值
  */
 async function doRefreshRankingsView(): Promise<void> {
-  if (!(await hasMaterializedView())) return;
+  if (!(await isRankingViewTrusted())) return;
   try {
     const db = getDb();
     await db.execute(
@@ -181,7 +210,7 @@ export async function getGlobalRankings(params: {
   const offset = (params.page - 1) * cappedLimit;
 
   const db = getDb();
-  const useView = await hasMaterializedView();
+  const useView = await isRankingViewTrusted();
 
   if (useView) {
     return readRankingsFromView(db, cappedLimit, offset);
@@ -252,7 +281,7 @@ function readRankingsInline(
         COUNT(*)::int AS total_submissions,
         COUNT(DISTINCT s.problem_id) FILTER (
           WHERE ${
-      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+      sql`s.is_accepted = TRUE`
     }
             AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
@@ -262,7 +291,7 @@ function readRankingsInline(
              ELSE ROUND(
                (COUNT(*) FILTER (
                  WHERE ${
-      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+      sql`s.is_accepted = TRUE`
     }
                    AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
@@ -275,7 +304,7 @@ function readRankingsInline(
           ORDER BY
             COUNT(DISTINCT s.problem_id) FILTER (
               WHERE ${
-      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+      sql`s.is_accepted = TRUE`
     }
                 AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
@@ -284,7 +313,7 @@ function readRankingsInline(
             CASE WHEN COUNT(*) = 0 THEN 0
                  ELSE COUNT(*) FILTER (
                    WHERE ${
-      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+      sql`s.is_accepted = TRUE`
     }
                      AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
@@ -296,13 +325,12 @@ function readRankingsInline(
         )::int AS rank
       FROM users u
       INNER JOIN submissions s ON s.user_id = u.id
-      LEFT JOIN evaluation_results er ON er.submission_id = s.id
       LEFT JOIN contests c ON c.id = s.contest_id
       WHERE u.id <> '0' AND s.status = 'finished'
       GROUP BY u.id, u.username, u.avatar_url, u.created_at
       HAVING COUNT(*) FILTER (
         WHERE ${
-      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+      sql`s.is_accepted = TRUE`
     }
           AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
@@ -317,13 +345,12 @@ function readRankingsInline(
         SELECT u.id
         FROM users u
         INNER JOIN submissions s ON s.user_id = u.id
-        LEFT JOIN evaluation_results er ON er.submission_id = s.id
-        LEFT JOIN contests c ON c.id = s.contest_id
+          LEFT JOIN contests c ON c.id = s.contest_id
         WHERE u.id <> '0' AND s.status = 'finished'
         GROUP BY u.id
         HAVING COUNT(*) FILTER (
           WHERE ${
-      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+      sql`s.is_accepted = TRUE`
     }
             AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
@@ -361,7 +388,7 @@ export async function getMyRanking(
   userId: string,
 ): Promise<RankingRow | null> {
   const db = getDb();
-  const useView = await hasMaterializedView();
+  const useView = await isRankingViewTrusted();
 
   const rows = useView
     // 物化视图路径：直接 WHERE user_id=? 查询（LEFT JOIN users 取头像）
@@ -384,7 +411,7 @@ export async function getMyRanking(
           COUNT(*)::int AS total_submissions,
           COUNT(DISTINCT s.problem_id) FILTER (
             WHERE ${
-      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+      sql`s.is_accepted = TRUE`
     }
               AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
@@ -394,7 +421,7 @@ export async function getMyRanking(
                ELSE ROUND(
                  (COUNT(*) FILTER (
                    WHERE ${
-      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+      sql`s.is_accepted = TRUE`
     }
                      AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
@@ -407,7 +434,7 @@ export async function getMyRanking(
             ORDER BY
               COUNT(DISTINCT s.problem_id) FILTER (
                 WHERE ${
-      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+      sql`s.is_accepted = TRUE`
     }
                   AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
@@ -416,7 +443,7 @@ export async function getMyRanking(
               CASE WHEN COUNT(*) = 0 THEN 0
                    ELSE COUNT(*) FILTER (
                      WHERE ${
-      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+      sql`s.is_accepted = TRUE`
     }
                        AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)
@@ -428,13 +455,12 @@ export async function getMyRanking(
           )::int AS rank
         FROM users u
         INNER JOIN submissions s ON s.user_id = u.id
-        LEFT JOIN evaluation_results er ON er.submission_id = s.id
-        LEFT JOIN contests c ON c.id = s.contest_id
+          LEFT JOIN contests c ON c.id = s.contest_id
         WHERE u.id <> '0' AND s.status = 'finished'
         GROUP BY u.id, u.username, u.avatar_url, u.created_at
         HAVING COUNT(*) FILTER (
           WHERE ${
-      acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+      sql`s.is_accepted = TRUE`
     }
             AND (s.contest_id IS NULL OR (c.affect_global_ranking = TRUE AND ${
       endedWindowCondition(sql`c.end_time`)

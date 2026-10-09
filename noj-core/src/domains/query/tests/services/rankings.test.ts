@@ -66,6 +66,10 @@ async function createSubmission(
     code: "print(1)",
     file_name: "main.py",
     status: resultStatus,
+    // 版本化后榜单读的是有效成绩投影（由结果服务维护）；此处直接落投影以模拟该状态
+    is_valid: resultStatus === "finished",
+    is_accepted: kind === "pass",
+    latest_attempt_id: null,
     created_at: now,
   });
   await db.insert(evaluationResults).values({
