@@ -81,8 +81,10 @@ export function draftBaselineConflict(): AppError {
 /** 读取题目身份行；不存在抛 404。 */
 export async function loadProblemIdentity(
   problemId: string,
+  executor?: Executor,
 ): Promise<ProblemIdentityRow> {
-  const [row] = await getDb().select().from(problems).where(
+  const db = executor ?? getDb();
+  const [row] = await db.select().from(problems).where(
     eq(problems.id, problemId),
   ).limit(1);
   if (!row) {
@@ -99,7 +101,9 @@ export async function loadProblemIdentity(
  */
 export async function deriveDraftContentFromProblem(
   problem: ProblemIdentityRow,
+  executor?: Executor,
 ): Promise<ProblemDraftContent> {
+  const db = executor ?? getDb();
   const kind = problemContentKindOf(problem);
   const base = {
     kind,
@@ -109,7 +113,7 @@ export async function deriveDraftContentFromProblem(
   } as ProblemDraftContent;
 
   if (kind === "objective") {
-    const questions = await getDb().select().from(objectiveQuestions).where(
+    const questions = await db.select().from(objectiveQuestions).where(
       eq(objectiveQuestions.paper_id, problem.id),
     ).orderBy(objectiveQuestions.sort_order);
     return {
@@ -150,9 +154,11 @@ export async function deriveDraftContentFromProblem(
 export async function getProblemDraft(
   problemId: string,
   problem?: ProblemIdentityRow,
+  executor?: Executor,
 ): Promise<ProblemDraftView> {
-  const identity = problem ?? await loadProblemIdentity(problemId);
-  const [row] = await getDb().select().from(problemDrafts).where(
+  const db = executor ?? getDb();
+  const identity = problem ?? await loadProblemIdentity(problemId, db);
+  const [row] = await db.select().from(problemDrafts).where(
     eq(problemDrafts.problem_id, problemId),
   ).limit(1);
 
@@ -171,7 +177,7 @@ export async function getProblemDraft(
   // 派生：优先最新版内容（内容事实源），否则退回题目行投影
   let content: ProblemDraftContent;
   if (identity.latest_version_id) {
-    const [version] = await getDb().select().from(problemVersions).where(
+    const [version] = await db.select().from(problemVersions).where(
       and(
         eq(problemVersions.problem_id, problemId),
         eq(problemVersions.id, identity.latest_version_id),
@@ -179,9 +185,9 @@ export async function getProblemDraft(
     ).limit(1);
     content = version
       ? version.content as ProblemDraftContent
-      : await deriveDraftContentFromProblem(identity);
+      : await deriveDraftContentFromProblem(identity, db);
   } else {
-    content = await deriveDraftContentFromProblem(identity);
+    content = await deriveDraftContentFromProblem(identity, db);
   }
 
   return {
@@ -281,8 +287,10 @@ export interface DraftObjectRef {
 /** 列出草稿的全部文件引用（按 role、path 排序）。 */
 export async function listDraftObjects(
   problemId: string,
+  executor?: Executor,
 ): Promise<DraftObjectRef[]> {
-  const rows = await getDb().select().from(problemDraftObjects).where(
+  const db = executor ?? getDb();
+  const rows = await db.select().from(problemDraftObjects).where(
     eq(problemDraftObjects.problem_id, problemId),
   );
   return rows

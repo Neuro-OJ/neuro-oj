@@ -360,7 +360,8 @@ export async function publishProblemVersion(
     const expectedKind = problemContentKindOf(identity);
     const content = assertPublishableContent(
       expectedKind,
-      draftRow?.content ?? (await getProblemDraft(problemId, identity)).content,
+      draftRow?.content ??
+        (await getProblemDraft(problemId, identity, tx)).content,
     );
 
     // 步骤 3/4：题型与提交模式不可变
@@ -380,7 +381,7 @@ export async function publishProblemVersion(
     }
 
     // 步骤 5：对象状态（DB 内复查，不重复 IO）
-    const refs = await listDraftObjects(problemId);
+    const refs = await listDraftObjects(problemId, tx);
     for (const ref of refs) {
       await assertStorageObjectBindable(ref.storage_url, tx);
     }

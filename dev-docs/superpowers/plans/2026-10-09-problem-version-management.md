@@ -41,8 +41,12 @@
 - [x] 2b `ProblemContentV1` 内容模型 `catalog/types/problem-content.ts`
       （canonical JSON 哈希、完整性校验、题型/提交模式不可变断言）。
 - [x] 2b 审计动作 `problems.version_published` 等 4 项（TS 联合 + DB CHECK + 迁移）。
-- [ ] 2c 支持包上传/下载绑定草稿与版本；OI `saveOiMetadata`/`saveOiData`/`loadOiData`
-      按 draft/version 来源读写；OI 自测从版本构造临时包。
+- [x] 2c（支持包部分）`support-package.ts`：`setSupportPackage` 写草稿引用并登记对象
+      （哈希取 URL 内嵌 checksum、大小向后端核实，客户端不可注入）；下载/模板按
+      「显式版本 → 最新版 → 草稿 → 迁移期投影」解析；删除草稿包走引用守卫，
+      历史版本引用与字节保留。
+- [ ] 2c（OI 部分）`saveOiMetadata`/`saveOiData`/`loadOiData` 按 draft/version 来源读写；
+      OI 自测从版本构造临时包。
 - [ ] 2d 客观题小题写入草稿 content、稳定 key、按版本快照重判。
 - [ ] 2e `createProblem` 建身份+草稿；内容更新转草稿；`updateProblem` 管理信息与内容
       分离；`deleteProblem` 补齐新表清理顺序；路由新增草稿/版本接口。
@@ -58,6 +62,14 @@
 - **投影**：发布同时更新 `problems` 最新版投影（含 `oi_data_files` 与
   `support_package_storage_url`），让既有列表/编辑器读取路径在迁移期不失效。
 
+### 批次 3 落点清单（提前完成的部分）
+
+- [x] 3a `submission/services/versioning/projection.ts`：§3.1 的四个唯一入口中的三个
+      （`recomputeSubmissionProjection` / `recomputeProblemProjections` /
+      `recomputeContestProblemProjections`）与 `upsertCurrentVersionResult`
+      （§2.9 当前判定写入），并在业务事务内递增 `query_projection_revisions`。
+- [ ] 3b 结果落库事务接入（§5.6）、协议 v2、LLM 生命周期、sweeper、自测。
+
 ### 批次 2 验证证据（截至目前）
 
 - **`deno task test:parallel`（PGlite + 真实 PG 双分片）：1271 passed / 0 failed / 11 ignored**。
@@ -69,6 +81,10 @@
   （清理该 key 后 11 个用例全绿）；`clearQueue()` 尚未覆盖资源池队列。
 - 新增用例：存储登记 7 个（引用守卫删除、共享对象不误删、stat）、草稿/发布 9 个、
   内容模型与策略纯函数 7 个、有效成绩计算 9 个。
+- **踩坑（重要）**：事务回调内**禁止**调用 `getDb()`——PGlite 单连接下会自锁
+  （表现为测试永久挂起），且在连接池模式下会读不到未提交数据。所有域内 helper
+  必须接受 `Executor` 参数并在事务内传 `tx`（`draft.ts` 的 `getProblemDraft` /
+  `listDraftObjects` / `loadProblemIdentity` 已按此改造）。
 - 域边界门禁 `deno task check:domains`：catalog 域必须经 `system/index.ts`、
   `objective/index.ts` **门面**导入（不得深路径）；跨域类型用 `import type` 避免运行时环。
 - 测试用本地对象存储：`LocalStorageProvider` 构造函数无参数，存储根目录由
