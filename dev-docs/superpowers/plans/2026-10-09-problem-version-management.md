@@ -102,6 +102,8 @@
 - 本轮最终 `deno task test:parallel`：**1300 passed / 0 failed / 11 ignored**（+13 用例）；
   域边界与全量类型检查通过。
 - 批次 3b/3c 追加后：submission 域 **165 passed / 0 failed**（新增 15 个用例）。
+- 本轮最终 `deno task test:parallel`：**1315 passed / 0 failed / 11 ignored**（+15 用例）；
+  域边界与全量类型检查通过。
 
 - **`deno task test:parallel`（PGlite + 真实 PG 双分片）：1271 passed / 0 failed / 11 ignored**（批次 1+2a/2b 时点）。
 - 批次 3a/2c 追加后：catalog **292 passed / 0 failed**、submission **150 passed / 0 failed / 21 ignored**。
