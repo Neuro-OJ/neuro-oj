@@ -110,6 +110,10 @@
   域边界与全量类型检查通过。
 - 批次 3b/3c 追加后：submission 域 **169 passed / 0 failed**（新增 19 个用例，
   含 4 个端到端链路用例：提交→尝试→结果→投影）。
+- 本轮最终 `deno task test:parallel`：**1319 passed / 0 failed / 11 ignored**（+4 用例）。
+- 遗留一致性项：读路径仍用 `acceptedResultSql`（SQL）判定通过，与
+  `shared/versioning/verdict.ts`（TS）语义已对齐但尚未合并为单一定义——批次 5
+  统一读取时收敛。
 - 本轮最终 `deno task test:parallel`：**1315 passed / 0 failed / 11 ignored**（+15 用例）；
   域边界与全量类型检查通过。
 
