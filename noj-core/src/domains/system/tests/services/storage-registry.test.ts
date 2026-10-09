@@ -30,10 +30,16 @@ import { LocalStorageProvider } from "../../services/storage/local.ts";
 
 const now = new Date().toISOString();
 
-/** 每个用例使用独立的本地存储目录，避免相互污染。 */
+/**
+ * 本地 provider 的存储根目录由 `SUPPORT_PACKAGE_DIR` 决定（构造函数无参数），
+ * 因此在模块加载时指向一次性临时目录，避免污染仓库的 data/storage。
+ */
+const tempStorageDir = Deno.makeTempDirSync({ prefix: "noj-registry-" });
+Deno.env.set("SUPPORT_PACKAGE_DIR", tempStorageDir);
+
+/** 每个用例重置 provider 单例（同一临时目录，内容寻址互不干扰）。 */
 function useTempStorage(): LocalStorageProvider {
-  const dir = Deno.makeTempDirSync({ prefix: "noj-registry-" });
-  const provider = new LocalStorageProvider(dir);
+  const provider = new LocalStorageProvider();
   setStorageProviderForTest(provider);
   return provider;
 }

@@ -11,7 +11,6 @@ import {
   problemDrafts,
   problems,
   problemVersionObjects,
-  problemVersions,
 } from "../../../../shared/db/schema.ts";
 import {
   getProblemDraft,
@@ -27,10 +26,7 @@ import {
   resolveProblemAnswerVersion,
 } from "../../services/versioning/publish.ts";
 import { registerReadyStorageObject } from "../../../system/services/storage/registry.ts";
-import {
-  getStorageProvider,
-  setStorageProviderForTest,
-} from "../../../system/services/storage/factory.ts";
+import { setStorageProviderForTest } from "../../../system/services/storage/factory.ts";
 import { LocalStorageProvider } from "../../../system/services/storage/local.ts";
 import type {
   AiProblemContent,
@@ -39,9 +35,16 @@ import type {
 
 const now = new Date().toISOString();
 
+/**
+ * 本地 provider 的存储根目录由 `SUPPORT_PACKAGE_DIR` 决定（构造函数无参数），
+ * 因此在模块加载时指向一次性临时目录，避免污染仓库的 data/storage。
+ */
+const tempStorageDir = Deno.makeTempDirSync({ prefix: "noj-publish-" });
+Deno.env.set("SUPPORT_PACKAGE_DIR", tempStorageDir);
+
+/** 每个用例重置 provider 单例（同一临时目录，内容寻址互不干扰）。 */
 function useTempStorage(): LocalStorageProvider {
-  const dir = Deno.makeTempDirSync({ prefix: "noj-publish-" });
-  const provider = new LocalStorageProvider(dir);
+  const provider = new LocalStorageProvider();
   setStorageProviderForTest(provider);
   return provider;
 }

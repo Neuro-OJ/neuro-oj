@@ -28,7 +28,7 @@ import type {
 } from "../../types/problem-content.ts";
 import { problemContentKindOf } from "../../types/problem-content.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
-import { assertStorageObjectBindable } from "../../../system/services/storage/registry.ts";
+import { assertStorageObjectBindable } from "../../../system/index.ts";
 
 /** 未保存过草稿时的虚拟 revision。 */
 export const PROBLEM_DRAFT_VIRTUAL_REVISION = 0;
@@ -205,7 +205,7 @@ export async function saveProblemDraft(
   input: {
     content: ProblemDraftContent;
     expectedRevision: number | null | undefined;
-    actorId: string | null;
+    actorId?: string | null;
   },
 ): Promise<ProblemDraftView> {
   if (input.expectedRevision == null) throw draftRevisionRequired();
@@ -245,7 +245,7 @@ export async function saveProblemDraft(
         content: input.content,
         revision: nextRevision,
         base_version_id: baseVersionId,
-        updated_by: input.actorId,
+        updated_by: input.actorId ?? null,
         updated_at: now,
       }).where(eq(problemDrafts.problem_id, problemId));
     } else {
@@ -254,7 +254,7 @@ export async function saveProblemDraft(
         base_version_id: baseVersionId,
         revision: nextRevision,
         content: input.content,
-        updated_by: input.actorId,
+        updated_by: input.actorId ?? null,
         updated_at: now,
       });
     }
@@ -264,7 +264,7 @@ export async function saveProblemDraft(
       base_version_id: baseVersionId,
       revision: nextRevision,
       content: input.content,
-      updated_by: input.actorId,
+      updated_by: input.actorId ?? null,
       updated_at: now,
       synthesized: false,
     };

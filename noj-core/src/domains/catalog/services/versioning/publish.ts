@@ -41,9 +41,9 @@ import {
 import {
   assertStorageObjectBindable,
   getStorageObject,
-} from "../../../system/services/storage/registry.ts";
-import { getStorageProvider } from "../../../system/services/storage/factory.ts";
-import { logAudit } from "../../../system/services/audit-log.ts";
+  getStorageProvider,
+  logAudit,
+} from "../../../system/index.ts";
 import {
   draftBaselineConflict,
   type DraftObjectRef,

@@ -62,7 +62,15 @@
 
 - catalog 域 `bash scripts/test-domain.sh catalog`：**284 passed / 0 failed**。
 - system 域 `bash scripts/test-domain.sh system`：**141 passed / 0 failed / 1 ignored**。
-- 新增用例：存储登记 7 个（引用守卫删除、共享对象不误删、stat）、草稿/发布 9 个。
+- shared 共享套件 `bash scripts/test-shared.sh`：**291 passed / 0 failed / 7 ignored**。
+- 新增用例：存储登记 7 个（引用守卫删除、共享对象不误删、stat）、草稿/发布 9 个、
+  内容模型与策略纯函数 7 个、有效成绩计算 9 个。
+- 域边界门禁 `deno task check:domains`：catalog 域必须经 `system/index.ts`、
+  `objective/index.ts` **门面**导入（不得深路径）；跨域类型用 `import type` 避免运行时环。
+- 测试用本地对象存储：`LocalStorageProvider` 构造函数无参数，存储根目录由
+  `SUPPORT_PACKAGE_DIR` 决定，测试需在模块加载时指向临时目录。
+- 踩坑记录：`@std/assert@1.0.19` 的 `assertRejects` **不接受同步 throw**，
+  必须传返回 rejected promise 的函数；同步校验断言统一走 `assertThrows()` 包装。
 - 迁移门禁：parity 68 表 / 613 列；迁移安全通过；快照链通过。
 - 真实 PG 存量演练：开发库克隆（85 条审计 + 123 条提交）→ 应用 `0102` →
   审计行全保留且新 CHECK 生效、提交标记 legacy_unknown。

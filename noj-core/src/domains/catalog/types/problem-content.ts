@@ -21,7 +21,7 @@ import type {
   ObjectiveAnswerValue,
   ObjectiveOption,
   QuestionType,
-} from "../../objective/types/objective.ts";
+} from "../../objective/index.ts";
 
 /** 当前内容 schema 版本；写入 `problem_versions.schema_version`。 */
 export const PROBLEM_CONTENT_SCHEMA_VERSION = 1;
@@ -188,6 +188,9 @@ export function validateObjectiveQuestionSnapshots(
 ): asserts value is ObjectiveQuestionSnapshot[] {
   if (!Array.isArray(value)) {
     throw new BadRequestError("客观题内容缺少小题数组");
+  }
+  if (value.length === 0) {
+    throw new BadRequestError("客观题发布前必须至少包含一道小题");
   }
   const keys = new Set<string>();
   for (const item of value) {
