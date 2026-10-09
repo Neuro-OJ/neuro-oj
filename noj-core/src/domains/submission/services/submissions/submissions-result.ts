@@ -63,6 +63,8 @@ export interface SaveEvaluationResultOutcome {
   is_rejudge?: boolean;
   /** 版本化尝试链路结论：`graded` / `platform_error` / `ignored`；无尝试时为 null。 */
   attempt_applied?: string | null;
+  /** 本次结果落到的评测尝试 ID（旧协议无尝试时为 null），供 token 吊销等使用。 */
+  attempt_id?: string | null;
 }
 
 /**
@@ -253,6 +255,7 @@ export async function saveEvaluationResult(
     return {
       applied: true,
       attempt_applied: attemptApplied,
+      attempt_id: attemptId,
       created_at: sub.created_at,
       contest_id: sub.contest_id,
       user_id: sub.user_id,
@@ -300,10 +303,22 @@ export async function saveEvaluationResult(
   // 失败仅 console.error（rankings.ts 内已处理）
   refreshRankingsView().catch(() => {/* ignore - rankings.ts 内已记录 */});
 
-  // 决策 7 · AR-08：评测完成立即在 Redis 原子吊销 eval_token
+  // 决策 7 · AR-08：评测完成立即在 Redis 原子吊销本次 eval_token。
+  //
+  // 版本化后按**尝试**吊销（Handbook §6.7）：`llm:attempt:revoked:<attempt_id>`
+  // 只终结这一次执行；同一提交重测签发的新 token 走新键，不会被旧吊销误杀。
+  // 提交维度的旧键继续写，用于吊销旧协议（无 attempt_id）token。
   try {
     const redis = getRedis();
     if (redis.status === "ready") {
+      if (outcome.attempt_id) {
+        void redis.set(
+          `llm:attempt:revoked:${outcome.attempt_id}`,
+          "1",
+          "EX",
+          3600,
+        );
+      }
       void redis.set(
         `llm:token:revoked:${result.submission_id}`,
         "1",
@@ -327,6 +342,7 @@ export async function saveEvaluationResult(
     created_at: outcome.created_at,
     is_rejudge: outcome.is_rejudge,
     attempt_applied: outcome.attempt_applied ?? null,
+    attempt_id: outcome.attempt_id ?? null,
   };
 }
 

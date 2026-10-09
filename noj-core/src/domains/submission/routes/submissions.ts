@@ -9,6 +9,7 @@ import {
   resolveSubmissionId,
 } from "../services/submissions/submissions.ts";
 import { applySubmissionProjection } from "../services/submissions/submission-projection.ts";
+import { versionRequired } from "../services/versioning/submission-version.ts";
 import { verifyContestAccess } from "../../contest/index.ts";
 import { getCachedTodayStats, getCachedTotalStats } from "../../query/index.ts";
 import { getSubmissionQueueStatus } from "../services/queue.ts";
@@ -117,6 +118,7 @@ function parseArtifactMultipart(
   problem_id: string;
   file_name: string;
   file_stream: ReadableStream<Uint8Array>;
+  version_id: string;
 }> {
   return new Promise((resolve, reject) => {
     const contentType = c.req.header("content-type");
@@ -127,6 +129,7 @@ function parseArtifactMultipart(
     const bb = busboy({ headers: { "content-type": contentType } });
     let problemId = "";
     let fileName = "";
+    let versionId = "";
     let fileStream: ReadableStream<Uint8Array> | null = null;
     let resolved = false;
 
@@ -136,18 +139,22 @@ function parseArtifactMultipart(
      */
     function maybeResolve() {
       if (resolved) return;
-      if (problemId && fileName && fileStream) {
+      // `version_id` 也是必需字段（Handbook §4.2）：必须等它到达再消费文件流，
+      // 否则先到的文件会让我们在不知道版本的情况下开始上传。
+      if (problemId && versionId && fileName && fileStream) {
         resolved = true;
         resolve({
           problem_id: problemId,
           file_name: fileName,
           file_stream: fileStream,
+          version_id: versionId,
         });
       }
     }
 
     bb.on("field", (name: string, val: string) => {
       if (name === "problem_id") problemId = val;
+      if (name === "version_id") versionId = val;
       maybeResolve();
     });
     bb.on("file", (name: string, file: unknown, info: { filename: string }) => {
@@ -163,9 +170,15 @@ function parseArtifactMultipart(
       if (!resolved) reject(err);
     });
     bb.on("close", () => {
-      if (!resolved) {
-        reject(new BadRequestError("缺少必填字段：problem_id 或 file"));
+      if (resolved) return;
+      // 已收到文件但缺版本：明确要求升级客户端，不静默绑定最新版。
+      // 未消费的文件流必须主动取消，否则连接会一直挂着。
+      if (fileStream) void fileStream.cancel().catch(() => {});
+      if (!versionId) {
+        reject(versionRequired());
+        return;
       }
+      reject(new BadRequestError("缺少必填字段：problem_id 或 file"));
     });
 
     Readable.fromWeb(

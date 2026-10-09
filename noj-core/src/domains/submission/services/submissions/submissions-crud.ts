@@ -481,6 +481,13 @@ export async function createSubmission(
       input.problem_id,
       userId,
       runtimeConfig,
+      {
+        // 额度与吊销按尝试隔离：重测拿到独立预算，旧尝试吊销不影响新尝试
+        attemptId,
+        problemVersionId: versionResolution.kind === "known"
+          ? versionResolution.version.version_id
+          : null,
+      },
     );
   }
 

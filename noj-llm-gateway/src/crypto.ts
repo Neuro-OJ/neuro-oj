@@ -63,6 +63,16 @@ export async function decryptSecret(
 export interface EvalTokenPayload {
   jti: string;
   submission_id: string;
+  /**
+   * 评测尝试 ID（版本化后一次评测一个预算）。
+   *
+   * 缺省（旧 core）= 按提交维度计费与吊销，保持向后兼容；存在时额度计数、
+   * 吊销键与审计归属全部按 attempt 维度隔离——同一提交的重测不会撞上旧尝试
+   * 已耗尽的预算，旧尝试被吊销也不会误杀新尝试。
+   */
+  attempt_id?: string;
+  /** 本次评测使用的题目版本（审计用；不参与限额计算）。 */
+  problem_version_id?: string;
   problem_id: string;
   user_id: string;
   provider_id: string;

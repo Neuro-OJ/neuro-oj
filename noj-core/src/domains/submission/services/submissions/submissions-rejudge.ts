@@ -9,7 +9,7 @@
  */
 
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { submissions } from "./../../../../shared/db/schema.ts";
+import { problems, submissions } from "./../../../../shared/db/schema.ts";
 import {
   AppError,
   BadRequestError,
@@ -23,6 +23,17 @@ import { logAudit } from "../../../system/index.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
 import type { JudgeTaskLlm } from "../../types/index.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
+import { createAttempt } from "../versioning/attempts.ts";
+
+/** 重测目标版本 = 题目当前最新已发布版本（未发布为 null）。 */
+async function loadLatestVersionId(problemId: string): Promise<string | null> {
+  const [row] = await getDb()
+    .select({ latest: problems.latest_version_id })
+    .from(problems)
+    .where(eq(problems.id, problemId))
+    .limit(1);
+  return row?.latest ?? null;
+}
 import {
   isOiRuntimeConfig,
   type ProblemRuntimeConfig,
@@ -116,6 +127,26 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     | null
     | undefined;
 
+  // 重测 = 一次新的评测尝试（Handbook §5.4/§5.7）：sequence 递增、绑定目标版本，
+  // 旧尝试的判定与有效成绩保留；本路径的目标版本为题目**当前最新版**
+  // （`latest` 语义），真正的版本化派发由统一任务服务接管后收敛。
+  const targetVersionId = await loadLatestVersionId(submission.problem_id);
+  const attempt = await createAttempt({
+    source: {
+      kind: "submission",
+      id,
+      problem_id: submission.problem_id,
+      contest_id: submission.contest_id ?? null,
+    },
+    problemVersionId: targetVersionId,
+    source_kind: "rejudge",
+    taskSnapshot: {
+      language: submission.language,
+      rejudge: true,
+      problem_version_id: targetVersionId,
+    },
+  });
+
   let llmTask: JudgeTaskLlm | undefined;
   if (
     problem.llm_config && runtimeConfig && !isOiRuntimeConfig(runtimeConfig)
@@ -126,6 +157,7 @@ export async function rejudgeSubmission(id: string): Promise<void> {
       submission.problem_id,
       submission.user_id,
       runtimeConfig,
+      { attemptId: attempt.id, problemVersionId: targetVersionId },
     );
   }
 
@@ -151,6 +183,8 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     .limit(1);
 
   const task = await prepareJudgeTask({
+    attempt_id: attempt.id,
+    problem_version_id: targetVersionId ?? undefined,
     submission_id: id,
     problem_id: submission.problem_id,
     user_id: submission.user_id,
@@ -355,10 +389,27 @@ export async function rejudgeProblemSubmissions(
     // ignore
   }
 
-  // 逐条入队（每条代码内容不同，无法合并）
+  // 逐条入队（每条代码内容不同，无法合并）；每条提交各建一次重测尝试
+  const batchTargetVersionId = await loadLatestVersionId(problemId);
   let queued = 0;
   for (const sub of rejudgeRows) {
     try {
+      const attempt = await createAttempt({
+        source: {
+          kind: "submission",
+          id: sub.id,
+          problem_id: problemId,
+          contest_id: sub.contest_id ?? null,
+        },
+        problemVersionId: batchTargetVersionId,
+        source_kind: "rejudge",
+        taskSnapshot: {
+          language: sub.language,
+          rejudge: true,
+          problem_version_id: batchTargetVersionId,
+        },
+      });
+
       let llmTask: JudgeTaskLlm | undefined;
       const runtimeConfig = problem.runtime_config as
         | ProblemRuntimeConfig
@@ -372,10 +423,13 @@ export async function rejudgeProblemSubmissions(
           problemId,
           sub.user_id,
           runtimeConfig,
+          { attemptId: attempt.id, problemVersionId: batchTargetVersionId },
         );
       }
 
       const task = await prepareJudgeTask({
+        attempt_id: attempt.id,
+        problem_version_id: batchTargetVersionId ?? undefined,
         submission_id: sub.id,
         problem_id: problemId,
         user_id: sub.user_id,

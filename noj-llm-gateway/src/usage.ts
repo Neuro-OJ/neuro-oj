@@ -8,6 +8,10 @@ import { logger } from "./logger.ts";
 export interface UsageEntry {
   id: string;
   submission_id: string;
+  /** 评测尝试 ID（版本化后必填；旧 core 缺省为 null） */
+  attempt_id?: string | null;
+  /** 评测使用的题目版本（版本化后必填；旧 core 缺省为 null） */
+  problem_version_id?: string | null;
   problem_id: string;
   user_id: string;
   provider_id: string;
@@ -54,13 +58,15 @@ export async function recordUsage(db: Db, entry: UsageEntry): Promise<void> {
   const safeMessages = sanitizeMessagesForStorage(entry.request_messages);
   await db`
     INSERT INTO llm_usage (
-      id, submission_id, problem_id, user_id, provider_id, model,
+      id, submission_id, attempt_id, problem_version_id, problem_id, user_id, provider_id, model,
       request_messages, request_params, prompt_tokens, completion_tokens,
       total_tokens, cached_prompt_tokens, billed_prompt_tokens,
       billed_total_tokens, estimated_cost, latency_ms, status, error_code,
       prompt_hash, created_at
     ) VALUES (
-      ${entry.id}, ${entry.submission_id}, ${entry.problem_id}, ${entry.user_id},
+      ${entry.id}, ${entry.submission_id}, ${entry.attempt_id ?? null},
+      ${entry.problem_version_id ?? null},
+      ${entry.problem_id}, ${entry.user_id},
       ${entry.provider_id}, ${entry.model}, ${JSON.stringify(safeMessages)},
       ${JSON.stringify(entry.request_params)}, ${entry.prompt_tokens},
       ${entry.completion_tokens}, ${entry.total_tokens},
@@ -92,9 +98,11 @@ export async function recordRejectedUsage(
   redis: RedisClient,
   entry: UsageEntry,
 ): Promise<boolean> {
-  const dedupKey = `llm:usage:rejected:${entry.submission_id}:${
-    entry.error_code ?? "unknown"
-  }`;
+  // 去重键按**尝试**优先：同一提交的重测是独立预算，拒绝窗口也必须独立，
+  // 否则新尝试的首次拒绝会被旧尝试的窗口吞掉（旧 core 回退提交维度）。
+  const dedupKey = `llm:usage:rejected:${
+    entry.attempt_id ?? entry.submission_id
+  }:${entry.error_code ?? "unknown"}`;
   let first = true;
   try {
     first = await redis.setNx(dedupKey, "1", REJECTED_DEDUP_WINDOW_SECONDS);

@@ -151,8 +151,30 @@
   - 契约夹具 `noj-tests/fixtures/judge-task.contract.json` 与两侧字段表
     （`JUDGE_TASK_FIELDS` / Rust `judge_task_contract.rs`）同步；
   - `details.run_id` 保留（旧 core 的乱序防护仍在使用）。
-- [ ] 3c（Judge 侧·收尾）LLM 生命周期（attempt 维度额度与吊销）、
-      sweeper 从尝试快照恢复、自测携带版本与快照。
+- [x] 3c（LLM 生命周期）attempt 维度额度与吊销（Handbook §6.7）：
+  - core `EvalTokenPayload` 增加 `attempt_id` / `problem_version_id` /
+    `protocol_version`（`LLM_TOKEN_PROTOCOL_VERSION = 2`）；`buildJudgeTaskLlm`
+    新增 scope 参数，正式提交必须传入（创建提交/artifact/重测均已接线）；
+  - gateway 新增作用域助手 `evalTokenScope/CounterKey/RevokedKey/IpSetKey`：
+    有 `attempt_id` 时单次额度键为 `llm:attempt:<id>:calls|tokens|cost`、吊销键
+    `llm:attempt:revoked:<id>`、IP 监控键 `llm:attempt-ips:<id>`；
+    旧 token（无 attempt_id）沿用 `llm:sub:*` / `llm:token:revoked:*`；
+  - 结果落库后 core 吊销**本次尝试**（并继续写提交维度旧键吊销旧协议 token）；
+  - `llm_usage` 增加可空 `attempt_id` / `problem_version_id` 与
+    `idx_llm_usage_attempt_id`（迁移 `0004_llm_usage_attempt_scope.sql`，
+    已在开发库执行验证）；拒绝审计去重键也改为 attempt 优先；
+  - 同一尝试重派共享额度（同一 attempt → 同一组键），用户/题目/全局日/月额度不变。
+- [x] 3b（artifact 提交版本绑定）`createArtifactSubmission` 与路由：
+  - multipart 必须携带 `version_id`（先于文件流到达才消费文件；缺版本返回 409
+    `VERSION_REQUIRED`，未消费的文件流主动取消）；
+  - 服务端解析提交时版本（竞赛固定版本 / 题库显式版本），校验版本接受 artifact
+    提交模式，产物大小上限以**目标版本** `artifact_max_size_mb` 为准；
+  - 提交行写入 `submitted_version_id` / `version_origin`，创建初次尝试
+    （`source='initial'`）并把 `run_id = attempt_id` 传给任务。
+- [x] 3b（重测尝试）`submissions-rejudge.ts` 单条与整题路径：每次重测创建
+      `source='rejudge'` 尝试（sequence 递增、绑定目标版本 = 题目当前最新版），
+      任务 `run_id` 与 LLM token 均绑定该尝试。
+- [ ] 3c（Judge 侧·收尾）sweeper 从尝试快照恢复、自测携带版本与快照。
 - [x] 3d 客观题提交走统一尝试与投影写入服务：
   - `submitObjectivePaper` 判卷事实源改为**提交时版本的小题快照**
     （`loadPublishedVersionContent` → `content.questions`，key = 快照 `key`；
@@ -302,6 +324,11 @@
 
 ## 最近一次验证
 
+- 批次 3c（LLM attempt 作用域 + artifact/重测版本绑定）：noj-core 全量
+  `deno task test:parallel` **1363 passed / 0 failed / 11 ignored**；gateway
+  `deno task test` **99 passed / 0 failed / 1 ignored**（新增 5 个作用域用例）、
+  `deno task check` 通过；gateway 迁移 0004 已在开发库执行（`attempt_id` /
+  `problem_version_id` / 索引就位，`llm_schema_migrations` 记录补齐）。
 - 批次 3c（Judge 协议封套）：Rust `cargo nextest run --all-targets`
   **554 passed / 45 skipped**（新增 1 个封套用例 + 契约字段断言）；noj-core 全量
   `deno task test:parallel` **1363 passed / 0 failed / 11 ignored**（+3 用例：

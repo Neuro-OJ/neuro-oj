@@ -125,6 +125,7 @@ Deno.test("llm-token: buildJudgeTaskLlm 生成可校验字段", async () => {
       "prob-1",
       "user-1",
       RUNTIME,
+      { attemptId: "att-1", problemVersionId: "ver-1" },
     );
     assertEquals(llmTask.provider_id, "prov-default");
     assertEquals(llmTask.allowed_models, ["qwen-plus"]);
@@ -472,7 +473,10 @@ Deno.test("llm-token: 未配置平台默认时抛错", async () => {
   Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");
   try {
     await assertRejects(
-      () => buildJudgeTaskLlm({}, "sub-1", "prob-1", "user-1", RUNTIME),
+      () =>
+        buildJudgeTaskLlm({}, "sub-1", "prob-1", "user-1", RUNTIME, {
+          attemptId: "att-err",
+        }),
       BadRequestError,
     );
   } finally {
@@ -494,6 +498,7 @@ Deno.test("llm-token: 使用平台默认填充 provider/model 与预算", async 
       "prob-1",
       "user-1",
       RUNTIME,
+      { attemptId: "att-2" },
     );
     assertEquals(task.provider_id, "prov-default");
     assertEquals(task.allowed_models, ["qwen-plus"]);
@@ -516,7 +521,10 @@ Deno.test("llm-token: 默认 Provider 停用时抛错", async () => {
   const restore = stubProviderFetch(false);
   try {
     await assertRejects(
-      () => buildJudgeTaskLlm({}, "sub-1", "prob-1", "user-1", RUNTIME),
+      () =>
+        buildJudgeTaskLlm({}, "sub-1", "prob-1", "user-1", RUNTIME, {
+          attemptId: "att-err",
+        }),
       BadRequestError,
     );
   } finally {
@@ -541,7 +549,10 @@ Deno.test("llm-token: Provider 不存在（provider_not_found）时抛 BadReques
   });
   try {
     await assertRejects(
-      () => buildJudgeTaskLlm({}, "sub-1", "prob-1", "user-1", RUNTIME),
+      () =>
+        buildJudgeTaskLlm({}, "sub-1", "prob-1", "user-1", RUNTIME, {
+          attemptId: "att-err",
+        }),
       BadRequestError,
     );
   } finally {
@@ -567,7 +578,9 @@ Deno.test("llm-token: gateway 故障（5xx）时上抛 LlmGatewayError 而非 40
   try {
     let thrown: unknown;
     try {
-      await buildJudgeTaskLlm({}, "sub-1", "prob-1", "user-1", RUNTIME);
+      await buildJudgeTaskLlm({}, "sub-1", "prob-1", "user-1", RUNTIME, {
+        attemptId: "att-err",
+      });
     } catch (e) {
       thrown = e;
     }
