@@ -147,6 +147,8 @@
 - 批次 4b 受理追加后：submission 域 **185 passed / 0 failed**（新增 11 个批任务用例）。
 - 本轮最终 `deno task test:parallel`：**1335 passed / 0 failed / 11 ignored**（+11 用例）。
 - 批次 4b worker 原语追加后：submission 域 **194 passed / 0 failed**（新增 9 个 worker 用例）。
+- 本轮最终 `deno task test:parallel`：**1344 passed / 0 failed / 11 ignored**（+9 用例）；
+  域边界与全量类型检查通过。
 - 本轮最终 `deno task test:parallel`：**1324 passed / 0 failed / 11 ignored**（+5 用例）；
   域边界与全量类型检查通过。
 - 遗留一致性项：读路径仍用 `acceptedResultSql`（SQL）判定通过，与
