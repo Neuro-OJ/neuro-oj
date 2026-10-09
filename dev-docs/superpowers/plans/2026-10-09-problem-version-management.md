@@ -83,9 +83,14 @@
       已版本化题目缺版本 409 `VERSION_REQUIRED`、跨题版本 404、版本内容校验提交模式与
       语言）；`createSubmission` 与 `POST /submissions` 已接线并落库
       `submitted_version_id` / `version_origin`。
-- [ ] 3c 评测尝试接入（§5.4 第 3–5 步）：创建 attempt + `active_attempt_id`、
-      协议 v2（`evaluation_protocol_version`/`attempt_id`/`problem_version_id`/`run_id`）、
-      结果落库事务（§5.6：终态、分版本当前判定、双口径投影）、LLM 生命周期、sweeper、自测。
+- [x] 3c（服务层）`attempts.ts`（创建/开始/一次性终态/superseded、sequence 递增、
+      设置 `active_attempt_id` 且不触碰有效成绩指针）与 `result-write.ts`
+      （§5.6 事务：锁提交行 → 忽略已处理/过时结果 → 写终态 → graded 更新分版本当前判定
+      → 双口径投影重算 → 清空在途尝试 + 最近尝试/运行状态；平台错误只记终态）。
+- [ ] 3c（接线）MQ 消费者改走 `applyAttemptResult`；Judge 协议 v2
+      （`evaluation_protocol_version`/`attempt_id`/`problem_version_id`/`run_id`/`result_kind`
+      透传与校验）、LLM 生命周期、sweeper 从尝试快照恢复、自测携带版本与快照。
+- [ ] 3d 客观题提交走统一尝试与投影写入服务。
 - [ ] 3d 客观题提交走统一尝试与投影写入服务。
 - **严格化提醒（必须在上线前完成）**：`resolveSubmissionVersion` 目前对「题目尚未发布
   任何版本」的存量题目仍返回 `legacy_unknown`（迁移期兼容）。批次 7 回填迁移基线后，
@@ -96,6 +101,7 @@
 - objective 域：**48 passed / 0 failed**（含新增 6 个小题草稿用例与 7 个重判用例）。
 - 本轮最终 `deno task test:parallel`：**1300 passed / 0 failed / 11 ignored**（+13 用例）；
   域边界与全量类型检查通过。
+- 批次 3b/3c 追加后：submission 域 **165 passed / 0 failed**（新增 15 个用例）。
 
 - **`deno task test:parallel`（PGlite + 真实 PG 双分片）：1271 passed / 0 failed / 11 ignored**（批次 1+2a/2b 时点）。
 - 批次 3a/2c 追加后：catalog **292 passed / 0 failed**、submission **150 passed / 0 failed / 21 ignored**。
