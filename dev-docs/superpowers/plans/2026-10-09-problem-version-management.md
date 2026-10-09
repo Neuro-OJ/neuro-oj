@@ -79,6 +79,8 @@
 
 - **`deno task test:parallel`（PGlite + 真实 PG 双分片）：1271 passed / 0 failed / 11 ignored**（批次 1+2a/2b 时点）。
 - 批次 3a/2c 追加后：catalog **292 passed / 0 failed**、submission **150 passed / 0 failed / 21 ignored**。
+- 本轮最终 `deno task test:parallel`：**1287 passed / 0 failed / 11 ignored**（+16 用例）。
+- 静态门禁：schema parity（68 表/613 列）、迁移安全、域边界、导出 JSDoc 覆盖率全部通过。
 - catalog 域 `bash scripts/test-domain.sh catalog`：**284 passed / 0 failed**。
 - system 域 `bash scripts/test-domain.sh system`：**141 passed / 0 failed / 1 ignored**。
 - shared 共享套件 `bash scripts/test-shared.sh`：**291 passed / 0 failed / 7 ignored**。
