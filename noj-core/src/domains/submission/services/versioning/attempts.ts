@@ -27,6 +27,13 @@ import type { ProjectionSource } from "./projection.ts";
 
 /** 尝试创建输入。 */
 export interface CreateAttemptInput {
+  /**
+   * 显式指定尝试 ID；缺省生成。
+   *
+   * 正式提交必须在派发任务**之前**确定该 ID：任务里的 `run_id` 等于它，
+   * judge 回传后 core 才能把结果精确落到对应尝试（Handbook §5.5）。
+   */
+  id?: string;
   source: ProjectionSource;
   /** 本次执行使用的题目版本；存量历史为 null。 */
   problemVersionId: string | null;
@@ -109,7 +116,7 @@ export async function createAttempt(
   const db = input.executor ?? getDb();
   const sequence = input.sequence ??
     await nextAttemptSequence(input.source, db);
-  const id = crypto.randomUUID();
+  const id = input.id ?? crypto.randomUUID();
   const now = new Date().toISOString();
   await db.insert(evaluationAttempts).values({
     id,

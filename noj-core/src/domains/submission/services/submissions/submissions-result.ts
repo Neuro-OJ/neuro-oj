@@ -190,10 +190,12 @@ export async function saveEvaluationResult(
         created_at: now,
       });
 
-    // 版本化评测链路（Handbook §5.6）：尝试终态 + 分版本当前判定 + 双口径投影。
-    // 旧协议（judge 未回传 attempt_id）用提交的 active_attempt_id 兜底解析；
-    // 没有在途尝试（历史数据/直接插入的测试提交）则整段跳过，保持既有行为。
-    const attemptId = result.attempt_id ?? sub.active_attempt_id ?? null;
+    // 版本化评测链路（Handbook §5.6）：尝试定位优先级
+    // `attempt_id`（显式）→ `run_id`（协议 v2 回显，正式提交下同值）→
+    // 提交的 `active_attempt_id`（旧协议兜底）。没有在途尝试（历史数据/直接插入的
+    // 测试提交）则整段跳过，保持既有行为。
+    const attemptId = result.attempt_id ?? result.run_id ??
+      sub.active_attempt_id ?? null;
     let attemptApplied: string | null = null;
     if (attemptId) {
       const outcome = await applyAttemptResult({

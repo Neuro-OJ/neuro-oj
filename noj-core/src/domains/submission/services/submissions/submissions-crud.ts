@@ -410,6 +410,9 @@ export async function createSubmission(
 
   // 创建提交记录并推送到评测队列（在同一个 try 块中保证一致性）
   const id = crypto.randomUUID();
+  // 评测尝试 ID 先于任务构造确定：任务 `run_id` 与之一致，结果才能精确回填到该尝试
+  // （Handbook §5.5）。sequence=0，`active_attempt_id` 在 createAttempt 内设置。
+  const attemptId = crypto.randomUUID();
   const publicId = generatePublicId("sub");
   const now = new Date().toISOString();
 
@@ -488,6 +491,10 @@ export async function createSubmission(
 
   // 统一经 buildJudgeTask 构造（2026-09-12 评审 §3.1：收敛 6 处内联构造）
   const task = await prepareJudgeTask({
+    attempt_id: attemptId,
+    problem_version_id: versionResolution.kind === "known"
+      ? versionResolution.version.version_id
+      : undefined,
     submission_id: id,
     problem_id: input.problem_id,
     user_id: userId,
@@ -533,6 +540,7 @@ export async function createSubmission(
   // `active_attempt_id` 指向它；已有分版本判定与有效成绩一概不动（新提交本来也没有）。
   try {
     await createAttempt({
+      id: attemptId,
       source: {
         kind: "submission",
         id,

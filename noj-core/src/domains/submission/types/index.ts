@@ -21,6 +21,14 @@ export interface JudgeTaskLlm {
 
 /** 评测任务优先级。 */
 export type JudgeTaskPriority = "high" | "medium" | "low";
+
+/**
+ * 当前评测协议版本（Handbook §5.5）。
+ *
+ * `2` = 任务携带 `run_id`（= 评测尝试 ID）与题目版本，judge 在结果里回显
+ * `run_id` 并显式给出 `result_kind`，core 因此能把结果精确落到对应尝试上。
+ */
+export const EVALUATION_PROTOCOL_VERSION = 2;
 /** 资源池由服务端运行配置决定，不能由提交者声明。 */
 export type JudgeResourcePool = "oi-wasm" | "oi-native" | "ai";
 
@@ -40,8 +48,16 @@ export function judgeResourcePool(
 export interface JudgeTask {
   scheduling_version: 1;
   resource_pool: JudgeResourcePool;
-  /** 评测尝试标识，与重测序列共同隔离迟到进度及结果。 */
+  /**
+   * 评测尝试标识（正式提交下 = `evaluation_attempts.id`，Handbook §5.5）。
+   *
+   * 同时用于 OI 进度/取消键与结果回填的尝试定位；自测等非尝试任务使用随机 ID。
+   */
   run_id?: string;
+  /** 本次评测使用的题目版本 UUID（版本化后正式提交必填）。 */
+  problem_version_id?: string;
+  /** 评测协议版本；`2` = run_id/attempt 绑定 + 显式 result_kind。 */
+  evaluation_protocol_version?: number;
   /** 提交 UUID */
   submission_id: string;
   /** 题目 UUID */
@@ -77,6 +93,10 @@ export interface JudgeTask {
  */
 export interface BuildJudgeTaskInput {
   run_id?: string;
+  /** 本次评测使用的题目版本；已知时由服务端注入（客户端不可声明）。 */
+  problem_version_id?: string;
+  /** 评测协议版本；正式提交走 `EVALUATION_PROTOCOL_VERSION`。 */
+  evaluation_protocol_version?: number;
   submission_id: string;
   problem_id: string;
   user_id: string;
@@ -150,6 +170,12 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
   ) task.oi_cost_profile = structuredClone(input.oi_cost_profile!);
   if (input.file_name !== undefined) task.file_name = input.file_name;
   if (input.run_id !== undefined) task.run_id = input.run_id;
+  if (input.problem_version_id !== undefined) {
+    task.problem_version_id = input.problem_version_id;
+  }
+  if (input.evaluation_protocol_version !== undefined) {
+    task.evaluation_protocol_version = input.evaluation_protocol_version;
+  }
   if (input.download_url !== undefined) task.download_url = input.download_url;
   if (input.artifact_download_url !== undefined) {
     task.artifact_download_url = input.artifact_download_url;
@@ -169,6 +195,8 @@ export const JUDGE_TASK_FIELDS: readonly string[] = [
   "scheduling_version",
   "resource_pool",
   "run_id",
+  "problem_version_id",
+  "evaluation_protocol_version",
   "submission_id",
   "problem_id",
   "user_id",
@@ -212,6 +240,8 @@ export interface JudgeResult {
   evaluation_protocol_version?: number;
   /** 本次执行的评测尝试 ID（正式提交下等于 `run_id`）。 */
   attempt_id?: string;
+  /** 本次执行的 run_id（新 judge 回显；与 `attempt_id` 同值，二者任一可定位尝试）。 */
+  run_id?: string;
   /** 本次执行使用的题目版本 UUID。 */
   problem_version_id?: string;
   /**

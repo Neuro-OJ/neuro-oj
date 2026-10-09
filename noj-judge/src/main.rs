@@ -556,6 +556,11 @@ fn main() -> Result<()> {
                             }
                         }
 
+                        // 版本化封套（协议 v2，Handbook §5.6）：回显 run_id（正式提交下
+                        // = 评测尝试 ID）、题目版本与协议号，并显式标注判定类别。必须在
+                        // 上面所有状态改写（取消标记）之后调用，result_kind 才不会失真。
+                        result.apply_protocol(&task);
+
                         // 使用带重试的推送；成功后确认任务，崩溃/失败则留给 sweeper。
                         let push_succeeded = mq::push_result_with_retry(
                             &redis_client,

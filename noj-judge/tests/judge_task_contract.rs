@@ -49,6 +49,15 @@ fn judge_task_contract_fixture_deserializes() {
     assert_eq!(task.code, "print('hello')");
     assert_eq!(task.file_name.as_deref(), Some("main.py"));
     assert_eq!(task.rejudge_seq, Some(1));
+    assert_eq!(
+        task.run_id.as_deref(),
+        Some("55555555-5555-4555-8555-555555555555")
+    );
+    assert_eq!(
+        task.problem_version_id.as_deref(),
+        Some("66666666-6666-4666-8666-666666666666")
+    );
+    assert_eq!(task.evaluation_protocol_version, Some(2));
     assert!(task.download_url.is_some());
     assert!(task.artifact_download_url.is_some());
 
@@ -79,6 +88,8 @@ fn judge_task_contract_has_no_unknown_fields() {
         "scheduling_version",
         "resource_pool",
         "run_id",
+        "problem_version_id",
+        "evaluation_protocol_version",
         "submission_id",
         "problem_id",
         "user_id",

@@ -31,6 +31,8 @@ Deno.test("JudgeTask 契约: 工厂按 fixture 构造出的消息与 fixture 完
   const fixture = await loadFixture();
   const built = buildJudgeTask({
     run_id: fixture.run_id,
+    problem_version_id: fixture.problem_version_id,
+    evaluation_protocol_version: fixture.evaluation_protocol_version,
     submission_id: fixture.submission_id,
     problem_id: fixture.problem_id,
     user_id: fixture.user_id,
@@ -52,6 +54,8 @@ Deno.test("JudgeTask 契约: 字段集合与登记表一致", async () => {
   const fixture = await loadFixture();
   const built = buildJudgeTask({
     run_id: fixture.run_id,
+    problem_version_id: fixture.problem_version_id,
+    evaluation_protocol_version: fixture.evaluation_protocol_version,
     submission_id: fixture.submission_id,
     problem_id: fixture.problem_id,
     user_id: fixture.user_id,
@@ -126,6 +130,8 @@ Deno.test("JudgeTask 契约: 必填字段齐全时才构造（类型层面已强
   const fixture = await loadFixture();
   const built = buildJudgeTask({
     run_id: fixture.run_id,
+    problem_version_id: fixture.problem_version_id,
+    evaluation_protocol_version: fixture.evaluation_protocol_version,
     submission_id: fixture.submission_id,
     problem_id: fixture.problem_id,
     user_id: fixture.user_id,

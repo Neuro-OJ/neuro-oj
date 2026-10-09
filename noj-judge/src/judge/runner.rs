@@ -318,6 +318,8 @@ mod tests {
             scheduling_version: None,
             resource_pool: None,
             run_id: None,
+            problem_version_id: None,
+            evaluation_protocol_version: None,
             submission_id: "sid-support-fail".to_string(),
             problem_id: "1001".to_string(),
             user_id: "u-1".to_string(),

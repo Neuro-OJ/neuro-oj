@@ -133,8 +133,25 @@
       `problem_version_id`/`result_kind`，全部可选以兼容旧 judge）；
       `shared/versioning/verdict.ts` 统一通过语义（与既有 `acceptedResultSql` 完全一致：
       OI 看 verdict=AC，其余正分）与平台错误状态兜底推导。
-- [ ] 3c（Judge 侧）Rust 任务/结果字段与契约夹具同步、`run_id = attempt_id`、
-      OI 进度事件携带 run_id、LLM 生命周期（attempt 维度额度与吊销）、
+- [x] 3c（Judge 侧·协议封套）版本化 wire 契约落地：
+  - `JudgeTask` 新增 `problem_version_id` / `evaluation_protocol_version`；
+    `run_id` 语义收紧为**正式提交的评测尝试 ID**（`attempt_id`）；
+  - core `prepareJudgeTask` 统一封套：`run_id = attempt_id`、已知版本随任务下发、
+    协议号恒为 `EVALUATION_PROTOCOL_VERSION = 2`；`createSubmission` 先定尝试 ID
+    再构造任务，`createAttempt({ id })` 复用同一 ID（旧行为：OI 随机 run_id、dual 无
+    run_id）；
+  - `JudgeResult` 新增 `run_id` / `problem_version_id` / `evaluation_protocol_version`
+    / `result_kind`，judge 侧 `JudgeResult::apply_protocol(&task)` 在**状态最终确定后**
+    统一回显（含取消覆写 status 之后），`result_kind` 由平台错误状态白名单推导
+    （`error/SystemError/SE/FE/cancelled` → `platform_error`，其余 `graded`，
+    含零分/WA）；`JudgeResult::error/system_error` 工厂恒标 `platform_error`，
+    且已显式标定的类别不被覆盖；
+  - core `saveEvaluationResult` 尝试定位优先级 `attempt_id → run_id →
+    active_attempt_id`（旧协议兜底），`result.result_kind` 优先于状态推导；
+  - 契约夹具 `noj-tests/fixtures/judge-task.contract.json` 与两侧字段表
+    （`JUDGE_TASK_FIELDS` / Rust `judge_task_contract.rs`）同步；
+  - `details.run_id` 保留（旧 core 的乱序防护仍在使用）。
+- [ ] 3c（Judge 侧·收尾）LLM 生命周期（attempt 维度额度与吊销）、
       sweeper 从尝试快照恢复、自测携带版本与快照。
 - [x] 3d 客观题提交走统一尝试与投影写入服务：
   - `submitObjectivePaper` 判卷事实源改为**提交时版本的小题快照**
@@ -285,8 +302,14 @@
 
 ## 最近一次验证
 
+- 批次 3c（Judge 协议封套）：Rust `cargo nextest run --all-targets`
+  **554 passed / 45 skipped**（新增 1 个封套用例 + 契约字段断言）；noj-core 全量
+  `deno task test:parallel` **1363 passed / 0 failed / 11 ignored**（+3 用例：
+  任务封套、OI run_id、run_id 定位尝试）；`cargo clippy` / `deno lint` /
+  `deno fmt --check` / 域边界 / JSDoc / parity / 迁移安全 / 快照链全绿。
 - 批次 3d（客观题版本化提交 + 竞赛口径投影修复 + 读路径统一）：
-  - 分域：objective **55 passed / 0 failed**（新增 7 个版本化提交用例）、
+  - 分域：submission **206 passed / 0 failed / 21 ignored**、
+    objective **55 passed / 0 failed**（新增 7 个版本化提交用例）、
     submission **203 passed / 0 failed / 21 ignored**（新增 1 个竞赛口径投影用例）、
     catalog **292 passed / 0 failed**。
   - 静态门禁：`deno lint` / `deno fmt --check` 全绿（含修正 `dashboard.ts` 重复

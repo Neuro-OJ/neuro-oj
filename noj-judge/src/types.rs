@@ -118,6 +118,15 @@ pub struct JudgeTask {
     pub resource_pool: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
+    /// 本次评测使用的题目版本（版本化管理后正式提交必填）。
+    ///
+    /// judge 只做日志与回显，**不作为事实源**：权威绑定在 noj-core 的
+    /// `evaluation_attempts.problem_version_id`，避免脏回传改写版本归属。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub problem_version_id: Option<String>,
+    /// 评测协议版本；`2` = 携带 attempt/version/result_kind 的版本化封套。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evaluation_protocol_version: Option<u8>,
     /// 提交 UUID
     pub submission_id: String,
     /// 题目 UUID（消息协议字段，与 noj-core 的 JudgeTask 对齐；judge 当前不消费）
@@ -166,6 +175,10 @@ fn default_judge_type() -> String {
 /// 评测结果——从 noj-judge 返回到 noj-core 的消息。
 ///
 /// 字段对齐 noj-core/src/domains/submission/types/index.ts 的 JudgeResult 接口。
+///
+/// 版本化封套（协议 v2，Handbook §5.6）：judge 必须回显 `run_id`
+/// （= 正式提交的 `evaluation_attempts.id`）并显式给出 `result_kind`，
+/// noj-core 才能把结果精确落到对应尝试上，而不是靠"当前在途尝试"猜测。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JudgeResult {
     /// 提交 UUID
@@ -187,6 +200,37 @@ pub struct JudgeResult {
     /// 重测序列号（由 noj-core 设置，透传回 saveEvaluationResult 做竞态校验）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rejudge_seq: Option<i64>,
+    /// 本次执行的 run_id（= 正式提交的评测尝试 ID）；旧任务为 None
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    /// 本次评测使用的题目版本（回显，便于审计与排查）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub problem_version_id: Option<String>,
+    /// 评测协议版本（回显任务字段）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evaluation_protocol_version: Option<u8>,
+    /// 判定类别：`graded`（正式判定，含 WA/TLE/MLE/RE）或 `platform_error`
+    /// （平台侧故障，不得替换已有正式判定）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result_kind: Option<String>,
+}
+
+/// 当前评测协议版本：`2` = run_id/attempt 绑定 + 显式 result_kind。
+pub const EVALUATION_PROTOCOL_VERSION: u8 = 2;
+
+/// 平台侧错误状态白名单（与 noj-core `shared/versioning/verdict.ts` 保持一致）。
+///
+/// **只有**评测平台自身故障才算 `platform_error`；用户代码的 WA/TLE/MLE/RE 都是
+/// `graded`——"没通过"不等于"评测坏了"（Handbook §2.9）。
+pub const PLATFORM_ERROR_STATUSES: [&str; 5] = ["error", "SystemError", "SE", "FE", "cancelled"];
+
+/// 由状态推导判定类别（旧协议任务与新协议共用同一张白名单）。
+pub fn result_kind_for_status(status: &str) -> &'static str {
+    if PLATFORM_ERROR_STATUSES.contains(&status) {
+        "platform_error"
+    } else {
+        "graded"
+    }
 }
 
 /// 可对用户公开的平台侧错误（评测启动前的配置/环境问题）。
@@ -221,6 +265,19 @@ impl std::error::Error for PublicJudgeError {}
 impl JudgeResult {
     fn empty_details() -> Value {
         json!({})
+    }
+
+    /// 补齐版本化封套（协议 v2）：回显 run_id / 题目版本与协议号，并显式标注
+    /// 判定类别。必须在本结果的状态最终确定之后调用（例如取消标记覆写 status 之后）。
+    ///
+    /// `result_kind` 已显式给出时不被覆盖，便于调用方标定特殊路径。
+    pub fn apply_protocol(&mut self, task: &JudgeTask) {
+        self.run_id = task.run_id.clone();
+        self.problem_version_id = task.problem_version_id.clone();
+        self.evaluation_protocol_version = Some(EVALUATION_PROTOCOL_VERSION);
+        if self.result_kind.is_none() {
+            self.result_kind = Some(result_kind_for_status(&self.status).to_string());
+        }
     }
 
     /// 由评测失败的错误构造结果：携带 [`PublicJudgeError`] 时输出其公开文案，
@@ -259,6 +316,11 @@ impl JudgeResult {
             time_ms: None,
             memory_kb: None,
             rejudge_seq,
+            run_id: None,
+            problem_version_id: None,
+            evaluation_protocol_version: None,
+            // 平台侧失败：绝不能被当成"用户代码判负"的正式判定
+            result_kind: Some("platform_error".to_string()),
         }
     }
 
@@ -273,6 +335,11 @@ impl JudgeResult {
             time_ms: None,
             memory_kb: None,
             rejudge_seq,
+            run_id: None,
+            problem_version_id: None,
+            evaluation_protocol_version: None,
+            // 平台侧失败：绝不能被当成"用户代码判负"的正式判定
+            result_kind: Some("platform_error".to_string()),
         }
     }
 }
@@ -407,6 +474,10 @@ mod tests {
             time_ms: Some(2340),
             memory_kb: Some(18432),
             rejudge_seq: Some(1),
+            run_id: None,
+            problem_version_id: None,
+            evaluation_protocol_version: None,
+            result_kind: None,
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["submission_id"], "sid-123");
@@ -429,12 +500,102 @@ mod tests {
             time_ms: None,
             memory_kb: None,
             rejudge_seq: None,
+            run_id: None,
+            problem_version_id: None,
+            evaluation_protocol_version: None,
+            result_kind: None,
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["score"], 500);
         assert!(json.get("time_ms").is_none());
         assert!(json.get("memory_kb").is_none());
         assert_eq!(json["output"], "");
+    }
+
+    // ── JudgeResult 版本化封套（协议 v2） ──
+
+    /// 从 JSON 构造最小 JudgeTask（测试辅助；避免逐字段字面量）。
+    fn protocol_task(run_id: Option<&str>, version: Option<&str>) -> JudgeTask {
+        let mut value = json!({
+            "submission_id": "sid-1",
+            "problem_id": "p-1",
+            "user_id": "u-1",
+            "runtime_config": {
+                "evaluator": {
+                    "image": "noj-evaluator-python",
+                    "command": "python3 /workspace/evaluate.py",
+                    "time_limit_ms": 1000,
+                    "memory_limit_mb": 128
+                },
+                "solution": {
+                    "image": "noj-solution-python",
+                    "call_timeout_ms": 1000,
+                    "memory_limit_mb": 128
+                }
+            },
+            "language": "python3",
+            "code": "print(1)"
+        });
+        if let Some(run_id) = run_id {
+            value["run_id"] = json!(run_id);
+        }
+        if let Some(version) = version {
+            value["problem_version_id"] = json!(version);
+        }
+        serde_json::from_value(value).expect("测试任务必须可反序列化")
+    }
+
+    fn bare_result(status: &str) -> JudgeResult {
+        JudgeResult {
+            submission_id: "sid-1".to_string(),
+            status: status.to_string(),
+            score: 0,
+            output: String::new(),
+            details: json!({}),
+            time_ms: None,
+            memory_kb: None,
+            rejudge_seq: None,
+            run_id: None,
+            problem_version_id: None,
+            evaluation_protocol_version: None,
+            result_kind: None,
+        }
+    }
+
+    #[test]
+    fn test_apply_protocol_echoes_attempt_and_marks_result_kind() {
+        let task = protocol_task(Some("attempt-1"), Some("ver-1"));
+
+        // 正式判定（含零分/WA）→ graded
+        let mut graded = bare_result("finished");
+        graded.apply_protocol(&task);
+        let value = serde_json::to_value(&graded).unwrap();
+        assert_eq!(value["run_id"], "attempt-1");
+        assert_eq!(value["problem_version_id"], "ver-1");
+        assert_eq!(value["evaluation_protocol_version"], 2);
+        assert_eq!(value["result_kind"], "graded");
+
+        // 平台错误 → platform_error，且不被状态推导覆盖
+        let mut platform = JudgeResult::error("sid-1", None);
+        platform.apply_protocol(&task);
+        assert_eq!(platform.result_kind.as_deref(), Some("platform_error"));
+        assert_eq!(platform.run_id.as_deref(), Some("attempt-1"));
+
+        // 取消（平台侧中止）→ platform_error
+        let mut cancelled = bare_result("cancelled");
+        cancelled.apply_protocol(&task);
+        assert_eq!(cancelled.result_kind.as_deref(), Some("platform_error"));
+
+        // 无 run_id 的旧任务：不产生空 run_id 字段，但仍标注协议与类别
+        let legacy_task = protocol_task(None, None);
+        let mut legacy = bare_result("finished");
+        legacy.score = 10000;
+        legacy.apply_protocol(&legacy_task);
+        let value = serde_json::to_value(&legacy).unwrap();
+        assert!(value.get("run_id").is_none());
+        assert!(value.get("problem_version_id").is_none());
+        assert_eq!(value["evaluation_protocol_version"], 2);
+        assert_eq!(value["result_kind"], "graded");
     }
 
     // ── JudgeResult 工厂函数 ──
