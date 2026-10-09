@@ -12,11 +12,10 @@
  *   `is_pinned` 仅管理员（`training:pin`）可设置。
  */
 
-import { and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { unendedPublicContestForProblem } from "./../../contest/index.ts";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
-  evaluationResults,
   objectiveSubmissions,
   problems,
   submissions,
@@ -464,26 +463,26 @@ async function getAcceptedProblemIds(
 ): Promise<Set<string>> {
   if (problemIds.length === 0) return new Set();
   const db = getDb();
+  // 编程题：读有效成绩投影（版本化后由唯一投影服务维护；存量由 0103 回填）
   const acceptedRows = await db
     .select({ problem_id: submissions.problem_id })
     .from(submissions)
-    .innerJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, submissions.id),
-    )
     .where(and(
       eq(submissions.user_id, userId),
       inArray(submissions.problem_id, problemIds),
-      eq(submissions.status, "finished"),
-      sql`${evaluationResults.score} > 0`,
+      eq(submissions.is_accepted, true),
     ));
+  // 客观题：投影已就位时读投影；未接线的存量路径仍按「满分」判定（二者等价）
   const objectiveRows = await db
     .select({ paper_id: objectiveSubmissions.paper_id })
     .from(objectiveSubmissions)
     .where(and(
       eq(objectiveSubmissions.user_id, userId),
       inArray(objectiveSubmissions.paper_id, problemIds),
-      eq(objectiveSubmissions.score, 10000),
+      or(
+        eq(objectiveSubmissions.is_accepted, true),
+        eq(objectiveSubmissions.score, 10000),
+      ),
     ));
   return new Set([
     ...acceptedRows.map((r) => r.problem_id),

@@ -206,7 +206,12 @@
 - [ ] 5b（收尾）`stats-cache.ts` 的进程内增量计数改为 revision 键控的数据库聚合 +
       Redis 缓存；通过率分母改为"当前有效且已产生正式判定的提交数"并额外返回
       `valid_submissions`；`user_rankings` 视图按新模型重建（7b）。
-- [ ] 5c identity / community / trainings / problems-stats / search 的通过门槛与统计。
+- [x] 5c（部分）通过门槛与进度改读有效成绩投影：
+      community `hasAcceptedSolution`（题解门槛/发布入口）、
+      identity `queryUserProfileAggregate` + `querySolvedProblems`（个人主页通过数/列表）、
+      trainings `getAcceptedProblemIds`（题单进度；客观题兼容 score=10000 直至 3d 接线）。
+- [ ] 5c（收尾）problems-stats 公开统计（改读投影 + 最近尝试状态）、search 索引、
+      正式成绩快照（5d）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 
 ## 批次 7 落点清单

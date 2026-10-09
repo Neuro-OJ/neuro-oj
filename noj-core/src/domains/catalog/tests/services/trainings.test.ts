@@ -226,6 +226,9 @@ Deno.test({
         status: "finished",
         language: "python3",
         code: "print(1)",
+        // 进度读有效成绩投影（由结果服务维护）；此处直接落投影
+        is_valid: true,
+        is_accepted: true,
         created_at: now,
       });
       await db.insert(evaluationResults).values({

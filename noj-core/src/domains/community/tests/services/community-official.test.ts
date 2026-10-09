@@ -173,6 +173,9 @@ Deno.test({
         language: "python3",
         code: "print(1)",
         status: "finished",
+        // 题解门槛读有效成绩投影；此处直接落投影
+        is_valid: true,
+        is_accepted: true,
         created_at: nowIso(),
       });
       await getDb().insert(evaluationResults).values({
