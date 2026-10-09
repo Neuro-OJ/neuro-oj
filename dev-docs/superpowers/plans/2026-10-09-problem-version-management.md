@@ -23,7 +23,7 @@
 | 1 | 基础模型（schema/类型/纯计算器/PGlite DDL/迁移） | 已完成 | 迁移 `0102`；1255 用例全绿；存量库演练通过 |
 | 2 | 版本写入（草稿、发布、文件引用、OI、客观题快照） | 进行中 | 2a 存储登记、2b 草稿/发布已完成；2c/2d/2e 待做 |
 | 3 | 评测链路（attempt、协议、结果事务、LLM、sweeper、自测） | 未开始 | |
-| 4 | 管理操作（策略、后台任务、管理员重测、用户升级） | 未开始 | |
+| 4 | 管理操作（策略、后台任务、管理员重测、用户升级） | 进行中 | 4a 策略切换已完成 |
 | 5 | 读取统一（通过状态、题单、排行、资料、社区、搜索、正式成绩） | 未开始 | |
 | 6 | 客户端（Web、IDE、CLI、演练） | 未开始 | |
 | 7 | 存量收尾（迁移回填、旧表删除、备份恢复验证） | 未开始 | |
@@ -72,6 +72,22 @@
 - **投影**：发布同时更新 `problems` 最新版投影（含 `oi_data_files` 与
   `support_package_storage_url`），让既有列表/编辑器读取路径在迁移期不失效。
 
+### 批次 4 落点清单
+
+- [x] 4a `submission/services/versioning/effective-policy.ts`：
+  - `setProblemEffectiveVersionPolicy`：乐观锁 + 版本校验 + **同事务重算全部该题提交投影**
+    （策略提交后立即生效），返回新 revision 与受影响提交数；
+  - `setContestProblemEffectiveVersionPolicy`：竞赛 `exact(X)` 同时固定作答版本为 X；
+  - `upgradeContestProblemPinnedVersion`：单独升级固定版本不改策略；与现有 exact 冲突
+    且未同时提交新策略 → 409（`CONTEST_PROBLEM_VERSION_POLICY_CONFLICT`）；
+  - 审计动作 `problems.effective_version_policy_changed` /
+    `contest.problem_effective_version_policy_changed` / `contest.problem_version_changed`。
+- [ ] 4b 批任务服务（`submission_jobs`/`items` 受理、幂等键、目标版本解析、500 条上限、
+  成员集合固定、`policy_changes` 校验）与 worker（SKIP LOCKED 领取、lease 续租、
+  指数退避、重试、条目终态聚合）。
+- [ ] 4c 管理员重测接口适配层（单提交/整题 → 统一任务服务）与用户升级任务
+  （`upgraded_from_id`、context、客观题竞赛限制、任务读取权限）。
+
 ### 批次 3 落点清单（提前完成的部分）
 
 - [x] 3a `submission/services/versioning/projection.ts`：§3.1 的四个唯一入口中的三个
@@ -111,6 +127,7 @@
 - 批次 3b/3c 追加后：submission 域 **169 passed / 0 failed**（新增 19 个用例，
   含 4 个端到端链路用例：提交→尝试→结果→投影）。
 - 本轮最终 `deno task test:parallel`：**1319 passed / 0 failed / 11 ignored**（+4 用例）。
+- 批次 4a 追加后：submission 域 **174 passed / 0 failed**（新增 5 个策略切换用例）。
 - 遗留一致性项：读路径仍用 `acceptedResultSql`（SQL）判定通过，与
   `shared/versioning/verdict.ts`（TS）语义已对齐但尚未合并为单一定义——批次 5
   统一读取时收敛。
