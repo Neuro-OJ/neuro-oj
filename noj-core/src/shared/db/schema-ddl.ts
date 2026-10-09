@@ -481,6 +481,10 @@ $$ LANGUAGE plpgsql`,
     ON evaluation_attempts (state, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_eval_attempts_problem
     ON evaluation_attempts (problem_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_eval_attempts_submission_finished
+    ON evaluation_attempts (submission_id, finished_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_submission_version_results_current_attempt
+    ON submission_version_results (current_attempt_id)`,
   // 提交表的尝试指针外键（见 schema/*.ts 中「故意不在 Drizzle 声明」的说明）
   `ALTER TABLE submissions ADD CONSTRAINT submissions_active_attempt_fk
     FOREIGN KEY (active_attempt_id) REFERENCES evaluation_attempts(id) ON DELETE SET NULL`,

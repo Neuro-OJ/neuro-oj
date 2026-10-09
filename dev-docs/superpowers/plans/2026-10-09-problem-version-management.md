@@ -193,6 +193,22 @@
 - 真实 PG 存量演练：开发库克隆（85 条审计 + 123 条提交）→ 应用 `0102` →
   审计行全保留且新 CHECK 生效、提交标记 legacy_unknown。
 
+## 批次 7 落点清单
+
+- [x] 迁移 `0103_version_backfill.sql`（drizzle-kit 生成的索引/默认值段 + 手写回填段）：
+  - A 为每道现有题目建 `migration_baseline` V1（内容取自题目投影；客观题小题用 UUID 作 key）；
+  - B 设置 `latest_version_id`；C 为现有竞赛固定基线版本；
+  - D 基线文件引用（支持包固定 `package.zip` + OI 逐文件；存量对象登记为 `unknown`）；
+  - E/F 既有结果转 `legacy_import` 尝试（普通题用 `evaluation_results`；客观题用提交自带分数，
+    通过标准 = 满分）；G 未知版本桶当前判定；
+  - H/I 初始有效属性（题库口径 + 竞赛口径，默认 `any` 策略）；
+  - J 初始化 `query_projection_revisions(global)`。
+- [x] **真实存量库演练**：克隆开发库（123 提交 / 7 题 / 123 结果）→ 应用 0102+0103 →
+  7 基线、123 legacy 尝试、123 未知桶判定、123 有效投影，**与旧读取口径逐条比对 0 差异**；
+  回填段重复执行幂等（无新增行）。开发库已按同路径升级。
+- [ ] 7b 大库分批重算投影、`pinned_version_id` 最终 NOT NULL、删除旧
+  `evaluation_results` / `objective_questions`、重建榜单物化视图与搜索索引。
+
 ## 批次 1 落点清单
 
 - [x] `src/shared/db/schema/catalog.ts`：`problems` 策略字段；`problem_versions`、

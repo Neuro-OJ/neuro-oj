@@ -152,6 +152,11 @@ export const evaluationAttempts = pgTable(
       table.created_at,
     ),
     problemIdx: index("idx_eval_attempts_problem").on(table.problem_id),
+    /** 「最近一次终态尝试」读取路径（提交详情/历史）。 */
+    submissionFinishedIdx: index("idx_eval_attempts_submission_finished").on(
+      table.submission_id,
+      table.finished_at.desc(),
+    ),
   }),
 );
 
@@ -357,6 +362,10 @@ export const submissionVersionResults = pgTable(
     ),
     problemVersionIdx: index("idx_submission_version_results_problem_version")
       .on(table.problem_id, table.problem_version_id),
+    /** 由尝试反查当前判定（历史查询与清理路径）。 */
+    currentAttemptIdx: index(
+      "idx_submission_version_results_current_attempt",
+    ).on(table.current_attempt_id),
   }),
 );
 
