@@ -100,7 +100,14 @@
 - [ ] 4b（派发 + 注册）条目派发：按目标版本构造 Judge 任务（版本内容为唯一配置来源）、
   建重测尝试（sequence 递增）、`run_id = attempt_id`、artifact 缺失 → `ARTIFACT_MISSING`、
   语言/大小校验；worker 注册进 `main()` 后台消费者并接入关闭流程。
-- [ ] 4c 管理员重测接口适配层（单提交/整题 → 统一任务服务）与用户升级任务。
+- [x] 4c（升级受理）`submission/services/versioning/upgrade-jobs.ts`：
+  `acceptUpgradeJob`（≤500、受理时去重与固定目标版本、`practice` 用最新版 /
+  `source_contest` 用竞赛固定版、幂等键含 context 哈希）、跳过原因
+  （`ALREADY_LATEST` / `SOURCE_DELETED` / `SOURCE_JUDGING` / `NO_PUBLISHED_VERSION` /
+  `CONTEST_VERSION_UNKNOWN`）、跨用户升级 403、`getUpgradeJobForActor`（本人或管理员）。
+- [ ] 4c（升级派发）`applyUpgradeItem`：建新提交（沿用原用户、`upgraded_from_id`、
+  当前时间、客观题一律练习提交）+ 建升级尝试 + 派发；正常提交权限/速率/大小校验。
+- [ ] 4c 管理员重测接口适配层（单提交/整题 → 统一任务服务并返回任务 ID）。
 - [ ] 4c 管理员重测接口适配层（单提交/整题 → 统一任务服务）与用户升级任务
   （`upgraded_from_id`、context、客观题竞赛限制、任务读取权限）。
 
@@ -149,6 +156,7 @@
 - 批次 4b worker 原语追加后：submission 域 **194 passed / 0 failed**（新增 9 个 worker 用例）。
 - 本轮最终 `deno task test:parallel`：**1344 passed / 0 failed / 11 ignored**（+9 用例）；
   域边界与全量类型检查通过。
+- 批次 4c 升级受理追加后：submission 域 **202 passed / 0 failed**（新增 8 个升级用例）。
 - 本轮最终 `deno task test:parallel`：**1324 passed / 0 failed / 11 ignored**（+5 用例）；
   域边界与全量类型检查通过。
 - 遗留一致性项：读路径仍用 `acceptedResultSql`（SQL）判定通过，与

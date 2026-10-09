@@ -541,6 +541,19 @@ export async function acceptRejudgeJob(
   };
 }
 
+/** 规范化载荷的 SHA-256（相同语义请求必须得到相同哈希）。 */
+export async function hashCanonical(value: unknown): Promise<string> {
+  const payload = canonicalJson(value);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(payload),
+  );
+  return Array.from(
+    new Uint8Array(digest),
+    (b) => b.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 /** 请求规范化哈希（相同请求必须得到相同哈希）。 */
 export async function hashRequest(request: RejudgeRequest): Promise<string> {
   const payload = canonicalJson({
