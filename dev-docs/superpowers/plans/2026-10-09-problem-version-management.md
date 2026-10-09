@@ -60,9 +60,13 @@
 
 ### 批次 2 验证证据（截至目前）
 
+- **`deno task test:parallel`（PGlite + 真实 PG 双分片）：1271 passed / 0 failed / 11 ignored**。
 - catalog 域 `bash scripts/test-domain.sh catalog`：**284 passed / 0 failed**。
 - system 域 `bash scripts/test-domain.sh system`：**141 passed / 0 failed / 1 ignored**。
 - shared 共享套件 `bash scripts/test-shared.sh`：**291 passed / 0 failed / 7 ignored**。
+- 环境注意：`queue.test.ts` 的"队列空"断言会被 **Redis 中遗留的池化队列条目**
+  （如 `noj:judge:queue:ai:medium`）打破，属环境残留而非代码缺陷
+  （清理该 key 后 11 个用例全绿）；`clearQueue()` 尚未覆盖资源池队列。
 - 新增用例：存储登记 7 个（引用守卫删除、共享对象不误删、stat）、草稿/发布 9 个、
   内容模型与策略纯函数 7 个、有效成绩计算 9 个。
 - 域边界门禁 `deno task check:domains`：catalog 域必须经 `system/index.ts`、
