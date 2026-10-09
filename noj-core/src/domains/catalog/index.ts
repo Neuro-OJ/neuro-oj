@@ -30,3 +30,7 @@ export * from "./types/trainings.ts";
 export * from "./types/runtime-config.ts";
 export * from "./types/oi-cost-profile.ts";
 export * from "./services/oi-self-test-package.ts";
+export * from "./types/problem-content.ts";
+export * from "./services/versioning/draft.ts";
+export * from "./services/versioning/publish.ts";
+export * from "./services/versioning/oi-draft.ts";

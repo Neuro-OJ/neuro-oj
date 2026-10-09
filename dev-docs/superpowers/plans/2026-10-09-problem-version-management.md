@@ -52,7 +52,12 @@
       来源；`loadOiData(c, ref, { source })` 暴露来源参数（默认仍为迁移期兼容路径）。
 - [ ] 2c（OI 收尾）路由改走 `saveOiDraft`（`oi-author.ts`）；ZIP worker 结果绑定
       revision；OI 自测从版本构造临时包并登记临时对象引用。
-- [ ] 2d 客观题小题写入草稿 content、稳定 key、按版本快照重判。
+- [x] 2d 客观题：`objective/services/versioning/objective-drafts.ts`（小题读写只在草稿
+      content 内，key 跨版本稳定，新增生成 UUID、导入必须显式 key 且不猜测对应关系）
+      与 `objective-regrade.ts`（按版本快照 key 匹配重判：新增小题按未作答、
+      删除小题不计分、答案形式不兼容按未作答、原始 answers 不改写）。
+- [ ] 2d（收尾）客观题提交与重判接入统一尝试/投影写入服务；旧 `objective_questions`
+      运行期读取迁移（批次 5/7）。
 - [ ] 2e `createProblem` 建身份+草稿；内容更新转草稿；`updateProblem` 管理信息与内容
       分离；`deleteProblem` 补齐新表清理顺序；路由新增草稿/版本接口。
 
@@ -76,6 +81,8 @@
 - [ ] 3b 结果落库事务接入（§5.6）、协议 v2、LLM 生命周期、sweeper、自测。
 
 ### 批次 2 验证证据（截至目前）
+
+- objective 域：**48 passed / 0 failed**（含新增 6 个小题草稿用例与 7 个重判用例）。
 
 - **`deno task test:parallel`（PGlite + 真实 PG 双分片）：1271 passed / 0 failed / 11 ignored**（批次 1+2a/2b 时点）。
 - 批次 3a/2c 追加后：catalog **292 passed / 0 failed**、submission **150 passed / 0 failed / 21 ignored**。
