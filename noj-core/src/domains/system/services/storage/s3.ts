@@ -19,6 +19,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -33,6 +34,7 @@ import {
   parseStorageUrl,
   sha256Hex,
   type StorageObjectInfo,
+  type StorageObjectStat,
   type StorageProvider,
   validateStorageKey,
 } from "./types.ts";
@@ -267,6 +269,34 @@ export class S3StorageProvider implements StorageProvider {
       const errMsg = String(err);
       if (errMsg.includes("NoSuchKey") || errMsg.includes("NotFound")) {
         return;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * 查询 S3 对象的存在性与大小（HEAD 元数据查询，不下载内容）。
+   */
+  async stat(url: string): Promise<StorageObjectStat> {
+    const parsed = parseStorageUrl(url);
+    if (parsed.provider !== "s3") {
+      throw new Error(`s3 provider 拒绝 ${parsed.provider} URL`);
+    }
+    try {
+      const response = await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: parsed.key }),
+      );
+      return {
+        exists: true,
+        sizeBytes: response.ContentLength ?? null,
+        lastModified: response.LastModified?.toISOString() ?? null,
+      };
+    } catch (err) {
+      const name = (err as { name?: string }).name;
+      const status = (err as { $metadata?: { httpStatusCode?: number } })
+        .$metadata?.httpStatusCode;
+      if (name === "NotFound" || name === "NoSuchKey" || status === 404) {
+        return { exists: false, sizeBytes: null, lastModified: null };
       }
       throw err;
     }

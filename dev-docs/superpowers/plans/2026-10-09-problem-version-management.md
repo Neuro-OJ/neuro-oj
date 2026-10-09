@@ -21,13 +21,51 @@
 | # | 批次 | 状态 | 备注 |
 |---|---|---|---|
 | 1 | 基础模型（schema/类型/纯计算器/PGlite DDL/迁移） | 已完成 | 迁移 `0102`；1255 用例全绿；存量库演练通过 |
-| 2 | 版本写入（草稿、发布、文件引用、OI、客观题快照） | 未开始 | |
+| 2 | 版本写入（草稿、发布、文件引用、OI、客观题快照） | 进行中 | 2a 存储登记、2b 草稿/发布已完成；2c/2d/2e 待做 |
 | 3 | 评测链路（attempt、协议、结果事务、LLM、sweeper、自测） | 未开始 | |
 | 4 | 管理操作（策略、后台任务、管理员重测、用户升级） | 未开始 | |
 | 5 | 读取统一（通过状态、题单、排行、资料、社区、搜索、正式成绩） | 未开始 | |
 | 6 | 客户端（Web、IDE、CLI、演练） | 未开始 | |
 | 7 | 存量收尾（迁移回填、旧表删除、备份恢复验证） | 未开始 | |
 | 8 | 文档与交付（现行文档、Agent Note、验收、PR） | 未开始 | |
+
+## 批次 2 落点清单
+
+- [x] 2a `StorageProvider.stat()`（local 文件元数据 / S3 HEAD）+ 存储对象登记服务
+      `src/domains/system/services/storage/registry.ts`：登记、核实、引用统计、
+      引用守卫删除、上传补偿（有引用时不误删共享对象）。
+- [x] 2b 草稿服务 `catalog/services/versioning/draft.ts`（revision 乐观锁 428/409、
+      派生初值、草稿文件引用 upsert/替换）与发布服务
+      `catalog/services/versioning/publish.ts`（预检 → 锁内复查 → 哈希去重 →
+      版本分配 → 引用复制 → 投影/基线更新 → 审计/搜索事件）。
+- [x] 2b `ProblemContentV1` 内容模型 `catalog/types/problem-content.ts`
+      （canonical JSON 哈希、完整性校验、题型/提交模式不可变断言）。
+- [x] 2b 审计动作 `problems.version_published` 等 4 项（TS 联合 + DB CHECK + 迁移）。
+- [ ] 2c 支持包上传/下载绑定草稿与版本；OI `saveOiMetadata`/`saveOiData`/`loadOiData`
+      按 draft/version 来源读写；OI 自测从版本构造临时包。
+- [ ] 2d 客观题小题写入草稿 content、稳定 key、按版本快照重判。
+- [ ] 2e `createProblem` 建身份+草稿；内容更新转草稿；`updateProblem` 管理信息与内容
+      分离；`deleteProblem` 补齐新表清理顺序；路由新增草稿/版本接口。
+
+### 批次 2 决策与偏差记录
+
+- **草稿 revision 语义**：数据库无草稿行表示 `revision = 0`（内容由最新版投影派生），
+  首次保存写入 1，与列默认值一致；每次成功保存 = 当前 + 1。发布成功后草稿保留、
+  基线指向新版本并再递增一次 revision。`unchanged` 发布**不**改 revision（没发生写入）。
+- **内容哈希去重**：发布把内容哈希（规范化内容 + 按 role/path 排序的文件哈希）作为
+  唯一性判据，说明/操作者/时间不入哈希，因此"内容相同 + 不同发布说明"仍是
+  `unchanged: true`。
+- **投影**：发布同时更新 `problems` 最新版投影（含 `oi_data_files` 与
+  `support_package_storage_url`），让既有列表/编辑器读取路径在迁移期不失效。
+
+### 批次 2 验证证据（截至目前）
+
+- catalog 域 `bash scripts/test-domain.sh catalog`：**284 passed / 0 failed**。
+- system 域 `bash scripts/test-domain.sh system`：**141 passed / 0 failed / 1 ignored**。
+- 新增用例：存储登记 7 个（引用守卫删除、共享对象不误删、stat）、草稿/发布 9 个。
+- 迁移门禁：parity 68 表 / 613 列；迁移安全通过；快照链通过。
+- 真实 PG 存量演练：开发库克隆（85 条审计 + 123 条提交）→ 应用 `0102` →
+  审计行全保留且新 CHECK 生效、提交标记 legacy_unknown。
 
 ## 批次 1 落点清单
 

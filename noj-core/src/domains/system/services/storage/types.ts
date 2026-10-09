@@ -48,6 +48,21 @@ export interface StorageObjectInfo {
   lastModified: string | null;
 }
 
+/**
+ * 对象存在性与大小的查询结果（`StorageProvider.stat`）。
+ *
+ * 用于**确认对象真实存在**（Handbook §2.5）：发布预检、存量对象首次核实、
+ * 删除前的存在性判断都依赖它，不能只看数据库登记行。
+ */
+export interface StorageObjectStat {
+  /** 对象是否存在于后端。 */
+  exists: boolean;
+  /** 对象字节数；后端无法提供时为 null。 */
+  sizeBytes: number | null;
+  /** 最后修改时间（ISO 8601）；无法提供时为 null。 */
+  lastModified: string | null;
+}
+
 // ── URL 常量 ─────────────────────────────────────────────────
 
 export const STORAGE_URL_PREFIX = "noj-storage://";
@@ -120,6 +135,17 @@ export interface StorageProvider {
    * 非致命——失败仅 warn，不阻止启动
    */
   ensureBucket?(): Promise<void>;
+
+  /**
+   * 查询对象存在性与大小（不读取内容）。
+   *
+   * - local：使用文件系统元数据；
+   * - S3：使用对象元数据查询（HEAD）。
+   *
+   * 对象不存在时返回 `{ exists: false }`，**不抛错**——调用方据此把登记行
+   * 标记为 `missing` 或让删除流程继续。
+   */
+  stat(url: string): Promise<StorageObjectStat>;
 
   /**
    * 只读列举对象，用于生命周期盘点和容量观测。

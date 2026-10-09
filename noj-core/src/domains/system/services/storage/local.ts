@@ -22,6 +22,7 @@ import {
   parseStorageUrl,
   sha256Hex,
   type StorageObjectInfo,
+  type StorageObjectStat,
   type StorageProvider,
   validateStorageKey,
 } from "./types.ts";
@@ -238,6 +239,30 @@ export class LocalStorageProvider implements StorageProvider {
       if (err instanceof Deno.errors.NotFound) {
         // 幂等删除
         return;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * 查询本地对象的存在性与大小（仅文件元数据，不读内容）。
+   */
+  async stat(url: string): Promise<StorageObjectStat> {
+    const parsed = parseStorageUrl(url);
+    if (parsed.provider !== "local") {
+      throw new Error(`local provider 拒绝 ${parsed.provider} URL`);
+    }
+    const filePath = filePathFor(this.storageDir, parsed.key);
+    try {
+      const info = await Deno.stat(filePath);
+      return {
+        exists: true,
+        sizeBytes: info.size,
+        lastModified: info.mtime?.toISOString() ?? null,
+      };
+    } catch (err) {
+      if (err instanceof Deno.errors.NotFound) {
+        return { exists: false, sizeBytes: null, lastModified: null };
       }
       throw err;
     }

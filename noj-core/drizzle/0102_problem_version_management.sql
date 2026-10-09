@@ -300,6 +300,32 @@ ALTER TABLE "objective_submissions" ADD CONSTRAINT "objective_submissions_contes
 ALTER TABLE "objective_submissions" ADD CONSTRAINT "objective_submissions_contest_accepted_attempt_fk"
   FOREIGN KEY ("contest_accepted_attempt_id") REFERENCES "evaluation_attempts"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 
+-- 1.5) 审计 action CHECK 增加版本管理动作（与 src/shared/db/schema/system.ts、
+--      src/domains/system/types/audit-log.ts 的联合类型保持一致）
+ALTER TABLE "audit_logs" DROP CONSTRAINT IF EXISTS "audit_logs_action_check";--> statement-breakpoint
+ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_action_check" CHECK ("action" IN (
+  'users.role_change','users.ban','users.unban','users.delete',
+  'roles.create','roles.update','roles.delete','problems.delete',
+  'problems.runtime_config_changed','problems.imported','problems.review','problems.version_published',
+  'problems.effective_version_policy_changed','contest.problem_version_changed','contest.problem_effective_version_policy_changed','trainings.update',
+  'trainings.delete','tags.create','tags.update','tags.delete',
+  'tags.merge','submissions.rejudge','submissions.queue_removed','submissions.delete',
+  'settings.update','ip_ban.create','ip_ban.delete','auth.login_success',
+  'auth.login_failure','auth.register','auth.email_verified','auth.delete_account',
+  'auth.change_password','auth.forgot_password_request','auth.password_reset','auth.tfa_setup',
+  'auth.tfa_enabled','auth.tfa_disabled','auth.tfa_recovery_regenerated','auth.tfa_recovery_used',
+  'community.post_moderated','community.report_resolved','community.sanction_created','community.sanction_revoked',
+  'community.preset_applied','community.board_create','community.board_update','community.board_role_grant_update',
+  'community.board_role_grant_delete','community.post_flag','announcement.create','announcement.update',
+  'announcement.delete','carousel.create','carousel.update','carousel.delete',
+  'carousel.reorder','review.queued','review.rejected','review.resolved',
+  'contest.ranking_snapshot','contest.create','contest.update','contest.delete',
+  'contest.participants_add','contest.participants_remove','contest.kind_change','contest.reset_code',
+  'judge_images.create','judge_images.update','judge_images.delete','email_delivery.clear_suppression',
+  'llm_provider.create','llm_provider.update','llm_quota.upsert','legal.publish_version',
+  'legal.data_request_update'
+));--> statement-breakpoint
+
 -- 2) 已发布版本不可修改（Handbook §2.3「数据库 UPDATE 守卫」）。
 --    唯一允许的例外：迁移基线的 content_sha256 由 NULL 回填为实际哈希。
 CREATE OR REPLACE FUNCTION noj_problem_versions_immutable() RETURNS trigger AS $$
