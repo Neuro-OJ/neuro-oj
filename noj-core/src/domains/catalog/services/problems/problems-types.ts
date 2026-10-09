@@ -14,14 +14,20 @@ import { BadRequestError } from "./../../../../shared/base/errors.ts";
 import type {
   LlmConfig,
   ProblemResponseWithTags,
+  ProblemRuntimeConfig,
   ProblemTagRef,
   RuntimeConfig,
+} from "./../../types/problems.ts";
+import {
+  isOiRuntimeConfig,
+  validateOiRuntimeConfig,
 } from "./../../types/problems.ts";
 
 /**
  * 公开题目响应（不含关联标签）。
  */
 export interface ProblemResponse {
+  samples: import("../../types/problem-samples.ts").ProblemSample[];
   id: string;
   title: string;
   description: string;
@@ -30,7 +36,7 @@ export interface ProblemResponse {
   support_package_storage_url?: string | null;
   has_support_package: boolean;
   /** 仅 owner/admin 返回；非 owner/admin 不返回该字段 */
-  runtime_config?: RuntimeConfig | null;
+  runtime_config?: ProblemRuntimeConfig | null;
   number: number;
   owner_id: string;
   type: string;
@@ -38,6 +44,10 @@ export interface ProblemResponse {
   visibility: "public" | "private";
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective: boolean;
+  /** 评测模式；存量题目缺省推断为 dual。 */
+  judge_type: "dual" | "oi";
+  /** 可公开的执行后端；客观题或配置不可用时为空。 */
+  judge_backend: "dual" | "oi-native" | "oi-wasm" | null;
   /** 提交模式：code / artifact */
   submission_mode: "code" | "artifact";
   /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
@@ -86,7 +96,8 @@ export interface AdminProblemListItem {
   title: string;
   difficulty: string;
   support_package_storage_url: string | null;
-  runtime_config: RuntimeConfig;
+  runtime_config: ProblemRuntimeConfig;
+  judge_type: "dual" | "oi";
   llm_config: LlmConfig | null;
   tags: ProblemTagRef[];
   created_at: string;
@@ -192,4 +203,15 @@ export function validateRuntimeConfig(rc: RuntimeConfig): void {
       "runtime_config.solution.memory_limit_mb 必须为正整数",
     );
   }
+}
+
+/** 校验题目的任一评测后端配置。 */
+export function validateProblemRuntimeConfig(
+  rc: ProblemRuntimeConfig,
+): void {
+  if (isOiRuntimeConfig(rc)) {
+    validateOiRuntimeConfig(rc);
+    return;
+  }
+  validateRuntimeConfig(rc as RuntimeConfig);
 }

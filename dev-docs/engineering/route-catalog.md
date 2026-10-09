@@ -48,6 +48,8 @@
 | GET | `/:id` | noj-core/src/domains/system/routes/announcements.ts |
 | GET | `/:id/avatar` | noj-core/src/domains/identity/routes/users.ts |
 | GET | `/:id/clarifications` | noj-core/src/domains/contest/routes/contests.ts |
+| GET | `/:id/file` | noj-core/src/domains/catalog/routes/oi-author.ts |
+| GET | `/:id/files` | noj-core/src/domains/catalog/routes/oi-author.ts |
 | GET | `/:id/final-ranking` | noj-core/src/domains/contest/routes/contests.ts |
 | GET | `/:id/messages` | noj-core/src/domains/messaging/routes/conversations.ts |
 | GET | `/:id/messages/:messageId/image` | noj-core/src/domains/messaging/routes/conversations.ts |
@@ -121,6 +123,7 @@
 | GET | `/oauth/:provider/callback` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `/oauth/accounts` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `/oauth/providers` | noj-core/src/domains/identity/routes/auth.ts |
+| GET | `/oi-cost-profile` | noj-core/src/domains/admin/routes/system.ts |
 | GET | `/permissions` | noj-core/src/domains/admin/routes/identity.ts |
 | GET | `/posts` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/posts/:postId` | noj-core/src/domains/community/routes/community.ts |
@@ -193,6 +196,7 @@
 | POST | `/:id/questions` | noj-core/src/domains/catalog/routes/problems.ts |
 | POST | `/:id/read` | noj-core/src/domains/messaging/routes/conversations.ts |
 | POST | `/:id/register` | noj-core/src/domains/contest/routes/contests.ts |
+| POST | `/:id/save` | noj-core/src/domains/catalog/routes/oi-author.ts |
 | POST | `/:id/submit` | noj-core/src/domains/catalog/routes/problems.ts |
 | POST | `/:id/submit` | noj-core/src/domains/contest/routes/contests.ts |
 | POST | `/announcements` | noj-core/src/domains/admin/routes/system.ts |
@@ -234,6 +238,7 @@
 | POST | `/posts/:postId/comments` | noj-core/src/domains/community/routes/community.ts |
 | POST | `/posts/:postId/like` | noj-core/src/domains/community/routes/community.ts |
 | POST | `/preset/:preset` | noj-core/src/domains/admin/routes/community.ts |
+| POST | `/preview` | noj-core/src/domains/catalog/routes/oi-author.ts |
 | POST | `/problems/:id/rejudge` | noj-core/src/domains/admin/routes/submission.ts |
 | POST | `/problems/:id/self-test` | noj-core/src/domains/submission/routes/self-tests.ts |
 | POST | `/problems/review` | noj-core/src/domains/admin/routes/catalog.ts |
@@ -244,6 +249,7 @@
 | POST | `/reset-password` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/roles` | noj-core/src/domains/admin/routes/identity.ts |
 | POST | `/sanctions` | noj-core/src/domains/admin/routes/community.ts |
+| POST | `/self-tests/:id/cancel` | noj-core/src/domains/submission/routes/self-tests.ts |
 | POST | `/set-password` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/settings/email/test-send` | noj-core/src/domains/admin/routes/system.ts |
 | POST | `/slides` | noj-core/src/domains/admin/routes/carousel.ts |

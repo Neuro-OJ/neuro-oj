@@ -1,4 +1,9 @@
 import {
+  projectMeteringDetails,
+  projectOiDetails,
+  projectOiSelfTestDetails,
+} from "../services/submissions/oi-details.ts";
+import {
   type ConsumerOptions,
   createConsumer,
   requestConsumerShutdown,
@@ -16,6 +21,7 @@ import type { JudgeResult } from "../types/index.ts";
 import { observability as metrics } from "../../../domains/observability/write.ts";
 
 const logger = getLogger(["noj", "submission"]);
+import { saveOiProgress } from "../services/oi-progress.ts";
 
 /**
  * 评测结果队列名称。
@@ -30,6 +36,9 @@ export const MAX_RESULT_CONSUMER_CONCURRENCY = 16;
 
 /** judge details 允许的顶层键（按当前 evaluate.py 契约白名单化）。 */
 const JUDGE_DETAIL_ALLOWED_KEYS = new Set([
+  "run_id",
+  "oi",
+  "metering",
   "cases",
   "score",
   "score_content",
@@ -63,6 +72,7 @@ const MAX_DETAIL_VALUE_BYTES = 64 * 1024;
  */
 export function sanitizeJudgeDetails(
   details: Record<string, unknown>,
+  selfTest = false,
 ): Record<string, unknown> {
   if (!details || typeof details !== "object" || Array.isArray(details)) {
     return {};
@@ -70,12 +80,18 @@ export function sanitizeJudgeDetails(
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(details)) {
     if (!JUDGE_DETAIL_ALLOWED_KEYS.has(key)) continue;
-    const normalized = key === "cases" && Array.isArray(value)
+    const normalized = key === "oi"
+      ? (selfTest ? projectOiSelfTestDetails(value) : projectOiDetails(value))
+      : key === "metering"
+      ? projectMeteringDetails(value)
+      : key === "cases" && Array.isArray(value)
       ? value.map(sanitizeCase)
       : value;
     const serialized = JSON.stringify(normalized);
     if (
-      serialized !== undefined && serialized.length > MAX_DETAIL_VALUE_BYTES
+      serialized !== undefined &&
+      serialized.length >
+        (selfTest && key === "oi" ? 4 * 1024 * 1024 : MAX_DETAIL_VALUE_BYTES)
     ) {
       continue;
     }
@@ -161,6 +177,10 @@ export function createResultConsumerPool(
 export async function handleResultMessage(
   data: Record<string, unknown>,
 ): Promise<void> {
+  if (data.kind === "oi_progress") {
+    await saveOiProgress(data);
+    return;
+  }
   const judgeResult = data as unknown as JudgeResult;
 
   if (!judgeResult.submission_id) {
@@ -169,7 +189,10 @@ export async function handleResultMessage(
   }
 
   // F-11：落库前白名单化 details（未知 key / 超大值一律丢弃）。
-  judgeResult.details = sanitizeJudgeDetails(judgeResult.details ?? {});
+  judgeResult.details = sanitizeJudgeDetails(
+    judgeResult.details ?? {},
+    judgeResult.submission_id.startsWith(SELF_TEST_ID_PREFIX),
+  );
 
   metrics.inc("noj_evaluation_results_total");
 

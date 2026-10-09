@@ -119,6 +119,11 @@ pub async fn fetch_support_package_to_path(
         "base64" => {
             let content = parse_query_param(&query, "content")
                 .context("noj-download://base64 缺少 content 参数")?;
+            // 兼容百分号编码的参数；不能用表单解码把原始 base64 的 + 转为空格。
+            let content = percent_decode_str(&content)
+                .decode_utf8()
+                .context("base64 content percent 解码失败")?
+                .into_owned();
             let estimated_len = content.len().div_ceil(4).saturating_mul(3);
             if estimated_len > MAX_SUPPORT_PACKAGE_BYTES {
                 bail!("支持包大小超过上限 {}", MAX_SUPPORT_PACKAGE_BYTES);
@@ -558,6 +563,30 @@ mod tests {
         assert_eq!(bytes, b"hello");
         assert_eq!(pkg.checksum, None);
         assert!(pkg.cleanup);
+    }
+
+    #[tokio::test]
+    async fn test_fetch_support_package_preserves_raw_and_encoded_base64_symbols() {
+        // 包含 +、/ 和 =，覆盖旧协议及 URL 编码后的协议。
+        let expected = [0xfb, 0xff, 0xff, 0xfb];
+        let content = base64::engine::general_purpose::STANDARD.encode(expected);
+        assert!(content.contains('+') && content.contains('/') && content.contains('='));
+        let encoded = content
+            .replace('+', "%2B")
+            .replace('/', "%2F")
+            .replace('=', "%3D");
+        let checksum = format!("{:x}", Sha256::digest(expected));
+        for value in [content, encoded] {
+            let tmp = tempfile::tempdir().unwrap();
+            let url = format!("noj-download://base64/?content={value}&checksum_sha256={checksum}");
+            let pkg = fetch_support_package_to_path(&url, tmp.path(), 5, false)
+                .await
+                .unwrap();
+            assert_eq!(tokio::fs::read(&pkg.path).await.unwrap(), expected);
+            verify_checksum_file(&pkg.path, pkg.checksum.as_deref())
+                .await
+                .unwrap();
+        }
     }
 
     #[tokio::test]

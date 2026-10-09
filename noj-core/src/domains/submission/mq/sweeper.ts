@@ -16,16 +16,16 @@ import { getSetting } from "../../system/index.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
 import { listSweepTargets } from "../../../shared/mq/sweep-targets.ts";
 import {
+  ALL_JUDGE_QUEUES,
   isRetryableJudgeQueueError,
   JUDGE_QUEUE_CAPACITY,
-  JUDGE_QUEUES,
 } from "./producer.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "submission"]);
 import type { JudgeTaskPriority } from "../types/index.ts";
-import { buildJudgeTask } from "../types/index.ts";
-import type { RuntimeConfig } from "../../catalog/index.ts";
+import { prepareJudgeTask } from "../services/prepare-judge-task.ts";
+import type { ProblemRuntimeConfig } from "../../catalog/index.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import { resolveJudgeTaskPriority } from "../services/submissions/judge-priority.ts";
 
@@ -235,7 +235,7 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
   source: "submission" | "self_test",
 ): Promise<void> {
   for (const row of rows) {
-    const runtimeConfig = row.runtime_config as RuntimeConfig | null;
+    const runtimeConfig = row.runtime_config as ProblemRuntimeConfig | null;
     if (!runtimeConfig) {
       await actions.onMissingRuntimeConfig(row);
       continue;
@@ -279,7 +279,7 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
     // 题目执行（LLM 能力不可用）。这与移除 BYOK 之前的行为一致，属**已知取舍**。
     // 后续若要支持"恢复时重建 llm"，必须同时把解析失败降级为"跳过本轮重试"，
     // 而不是让整个恢复流程永久失败。
-    const task = buildJudgeTask({
+    const task = await prepareJudgeTask({
       submission_id: row.id,
       problem_id: row.problem_id,
       user_id: row.user_id ?? "",
@@ -528,21 +528,12 @@ async function logQueueAlertsIfNeeded(): Promise<void> {
   }
 
   const queues = [
-    {
-      key: "judge:high",
-      main: JUDGE_QUEUES.high,
-      capacity: JUDGE_QUEUE_CAPACITY.high,
-    },
-    {
-      key: "judge:medium",
-      main: JUDGE_QUEUES.medium,
-      capacity: JUDGE_QUEUE_CAPACITY.medium,
-    },
-    {
-      key: "judge:low",
-      main: JUDGE_QUEUES.low,
-      capacity: JUDGE_QUEUE_CAPACITY.low,
-    },
+    ...ALL_JUDGE_QUEUES.map((queue) => ({
+      key: `judge:${queue}`,
+      main: queue,
+      capacity:
+        JUDGE_QUEUE_CAPACITY[queue.split(":").at(-1) as JudgeTaskPriority],
+    })),
     {
       key: "result",
       main: RESULT_QUEUE,
@@ -592,11 +583,7 @@ async function logQueueAlertsIfNeeded(): Promise<void> {
 
 export async function runQueueSweeperOnce(): Promise<void> {
   const now = Date.now();
-  const judgeQueues = [
-    JUDGE_QUEUES.high,
-    JUDGE_QUEUES.medium,
-    JUDGE_QUEUES.low,
-  ] as const;
+  const judgeQueues = ALL_JUDGE_QUEUES;
 
   // 评测三级队列与结果队列由 core/judge 直接约定（judge 侧写入 processing），
   // 保持硬编码；其余消费者队列从登记表读取（createConsumer 自动登记），

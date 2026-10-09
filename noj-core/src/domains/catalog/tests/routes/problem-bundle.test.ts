@@ -602,6 +602,40 @@ Deno.test({
       eq(problems.id, body.data.id),
     );
     assertEquals(rows.length, 1, "重复导入不应产生新行");
+
+    // LocalStorageProvider 按内容寻址，两次上传可返回同一 URL；发布后不能回收它。
+    const download = await app.request(
+      `/api/v1/problems/${body.data.id}/support-package`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    assertEquals(download.status, 200, "重复导入后支持包仍可下载");
+    const packageBytes = new Uint8Array(await download.arrayBuffer());
+    assertEquals(packageBytes.length > 0, true);
+
+    // 注入数据库写入失败，复用已有对象的回滚也不能删除当前可用包。
+    const originalUpdate = db.update;
+    db.update = () => {
+      throw new Error("测试注入：题目更新失败");
+    };
+    try {
+      const failed = await app.request("/api/v1/problems/import-bundle", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      assertEquals(failed.status, 500);
+    } finally {
+      db.update = originalUpdate;
+    }
+    const afterFailure = await app.request(
+      `/api/v1/problems/${body.data.id}/support-package`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    assertEquals(afterFailure.status, 200, "回滚后旧支持包仍可下载");
+    assertEquals(
+      new Uint8Array(await afterFailure.arrayBuffer()),
+      packageBytes,
+    );
   },
 });
 
@@ -755,6 +789,12 @@ Deno.test({
     );
     assertEquals(qs.length, 1);
     assertEquals(qs[0].type, "judge");
+    const [updatedProblem] = await db.select({
+      judge_type: problems.judge_type,
+      runtime_config: problems.runtime_config,
+    }).from(problems).where(eq(problems.id, id)).limit(1);
+    assertEquals(updatedProblem?.judge_type, "dual");
+    assertEquals(updatedProblem?.runtime_config, null);
   },
 });
 

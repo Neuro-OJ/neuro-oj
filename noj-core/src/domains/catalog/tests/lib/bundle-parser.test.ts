@@ -1,3 +1,5 @@
+import { oiCaseMaxScores } from "../../types/oi-scoring.ts";
+import type { OiRuntimeConfig } from "../../types/runtime-config.ts";
 /**
  * bundle-parser 单元测试。
  *
@@ -204,6 +206,48 @@ Deno.test("parseBundleZip: 客观题包 questions.json 非法 JSON 被拒", () =
   assertMatch(err.message, /questions\.json/);
 });
 
+const OI_MANIFEST = JSON.stringify({
+  format_version: 1,
+  title: "A+B",
+  judge_type: "oi",
+  runtime_config: {
+    backend: "native",
+    languages: ["c", "cc"],
+    time_limit_ms: 1000,
+    memory_limit_mb: 256,
+    checker: { type: "testlib", path: "checker.cpp" },
+    subtasks: [{
+      id: "all",
+      score: 100,
+      cases: [{ input: "tests/1.in", output: "tests/1.out" }],
+    }],
+  },
+});
+
+Deno.test("parseBundleZip: OI 包允许无 evaluate.py 并校验全部引用文件", () => {
+  const zip = makeZip({
+    "problem.json": OI_MANIFEST,
+    "checker.cpp": "int main() { return 0; }",
+    "tests/1.in": "1 2\n",
+    "tests/1.out": "3\n",
+  });
+  const parsed = parseBundleZip(zip);
+  assertEquals(parsed.manifest.judge_type, "oi");
+  assertEquals(parsed.entries["evaluate.py"], undefined);
+});
+
+Deno.test("parseBundleZip: OI 包缺少输入或 checker 文件时拒绝", () => {
+  for (
+    const files of [
+      { "checker.cpp": "int main() {}", "tests/1.out": "3\n" },
+      { "tests/1.in": "1 2\n", "tests/1.out": "3\n" },
+    ] as Record<string, string>[]
+  ) {
+    const zip = makeZip({ "problem.json": OI_MANIFEST, ...files });
+    assertThrows(() => parseBundleZip(zip), BadRequestError);
+  }
+});
+
 Deno.test("inspectEvaluationPackage: 识别评测包条目与标准解", () => {
   const zip = makeZip({
     "evaluate.py": "print('ok')",
@@ -217,4 +261,133 @@ Deno.test("inspectEvaluationPackage: 识别评测包条目与标准解", () => {
     hasHiddenCases: true,
     referenceSolution: "reference_solution.py",
   });
+});
+
+Deno.test("parseBundleZip: Hydro普通题YAML与sum子任务转换", () => {
+  const parsed = parseBundleZip(makeZip({
+    "problem.yaml": "title: A+B\npid: P1\n",
+    "problem.md": "# A+B",
+    "testdata/config.yaml":
+      "type: default\ntime: 1s\nmemory: 256m\nsubtasks:\n  - id: 1\n    type: sum\n    score: 100\n    cases:\n      - input: 1.in\n        output: 1.out\n",
+    "testdata/1.in": "1 2",
+    "testdata/1.out": "3",
+  }));
+  assertEquals(parsed.manifest.judge_type, "oi");
+  assertEquals(parsed.statement, "# A+B");
+  const rc = parsed.manifest.runtime_config as {
+    languages: string[];
+    subtasks: { cases: { input: string }[] }[];
+  };
+  assertEquals(rc.languages, ["c", "cc"]);
+  assertEquals(rc.subtasks[0].cases[0].input, "testdata/1.in");
+});
+
+Deno.test("parseBundleZip: Hydro sum 保留分组并按整数分值给末尾分配余数", () => {
+  const parsed = parseBundleZip(makeZip({
+    "problem.yaml": "title: A+B\n",
+    "problem.md": "# A+B",
+    "testdata/config.yaml":
+      "type: default\nsubtasks:\n  - id: all\n    type: sum\n    score: 100\n    cases:\n      - input: 1.in\n        output: 1.out\n      - input: 2.in\n        output: 2.out\n      - input: 3.in\n        output: 3.out\n",
+    "testdata/1.in": "1",
+    "testdata/1.out": "1",
+    "testdata/2.in": "2",
+    "testdata/2.out": "2",
+    "testdata/3.in": "3",
+    "testdata/3.out": "3",
+  }));
+  const subtasks = (parsed.manifest.runtime_config as {
+    subtasks: import("../../types/runtime-config.ts").OiSubtask[];
+  }).subtasks;
+  assertEquals(subtasks.length, 1);
+  assertEquals(subtasks[0].scoring, "sum");
+  assertEquals(oiCaseMaxScores(subtasks[0]), [33, 33, 34]);
+});
+
+Deno.test("parseBundleZip: Hydro 未指定 min 分值时按整数稳定分配", () => {
+  const parsed = parseBundleZip(makeZip({
+    "problem.yaml": "title: A+B\n",
+    "problem.md": "# A+B",
+    "testdata/config.yaml":
+      "type: default\nsubtasks:\n  - id: 1\n    cases:\n      - input: 1.in\n        output: 1.out\n  - id: 2\n    cases:\n      - input: 2.in\n        output: 2.out\n  - id: 3\n    cases:\n      - input: 3.in\n        output: 3.out\n",
+    "testdata/1.in": "1",
+    "testdata/1.out": "1",
+    "testdata/2.in": "2",
+    "testdata/2.out": "2",
+    "testdata/3.in": "3",
+    "testdata/3.out": "3",
+  }));
+  const subtasks = (parsed.manifest.runtime_config as {
+    subtasks: { score: number }[];
+  }).subtasks;
+  assertEquals(subtasks.map((subtask) => subtask.score), [33, 33, 34]);
+});
+
+Deno.test("parseBundleZip: Hydro checker对象、额外文件和testdata前缀保持兼容", () => {
+  const parsed = parseBundleZip(makeZip({
+    "problem.yaml": "title: A+B\n",
+    "problem.md": "# A+B",
+    "testdata/config.yaml":
+      "type: default\nchecker_type: testlib\nchecker:\n  file: ./chk.cc\njudge_extra_files:\n  - ./helper.h\nuser_extra_files:\n  - testdata/user.h\nsubtasks:\n  - id: 1\n    score: 100\n    cases:\n      - input: testdata/1.in\n        output: ./1.out\n",
+    "testdata/chk.cc": "int main() { return 0; }",
+    "testdata/helper.h": "#define HELPER 1",
+    "testdata/user.h": "#define USER 1",
+    "testdata/1.in": "1 2",
+    "testdata/1.out": "3",
+  }));
+  const rc = parsed.manifest.runtime_config as OiRuntimeConfig;
+  assertEquals(rc.checker.path, "testdata/chk.cc");
+  assertEquals(rc.checker_extra_files, ["testdata/helper.h"]);
+  assertEquals(rc.user_extra_files, ["testdata/user.h"]);
+  assertEquals(rc.subtasks[0].cases[0], {
+    id: "1_1",
+    input: "testdata/1.in",
+    time_limit_ms: 1000,
+    memory_limit_mb: 256,
+    output: "testdata/1.out",
+  });
+});
+
+Deno.test("parseBundleZip: 唯一外层目录归一化元数据及评测路径", () => {
+  const files = {
+    "club/problem.yaml": "title: club\n",
+    "club/problem.md": "# club",
+    "club/testdata/config.yaml": "type: default\n",
+    "club/testdata/1.in": "1 2\n",
+    "club/testdata/1.out": "3\n",
+  };
+  const parsed = parseBundleZip(makeZip(files));
+  assertEquals(parsed.manifest.title, "club");
+  assertEquals(
+    parsed.entries["testdata/1.in"],
+    new TextEncoder().encode("1 2\n"),
+  );
+  assertEquals(parsed.entries["club/testdata/1.in"], undefined);
+  assertEquals(
+    unzipSync(stripMetadataEntries(makeZip(files)))["testdata/1.in"],
+    new TextEncoder().encode("1 2\n"),
+  );
+});
+Deno.test("parseBundleZip: 多个目录不猜测导入目标", () => {
+  assertThrows(
+    () =>
+      parseBundleZip(
+        makeZip({
+          "club/problem.yaml": "title: club\n",
+          "road/problem.yaml": "title: road\n",
+        }),
+      ),
+    BadRequestError,
+  );
+});
+Deno.test("parseBundleZip: 剥离外层目录之前拒绝原路径穿越", () => {
+  assertThrows(
+    () =>
+      parseBundleZip(
+        makeZip({
+          "../club/problem.yaml": "title: club\n",
+          "../club/problem.md": "# club",
+        }),
+      ),
+    BadRequestError,
+  );
 });

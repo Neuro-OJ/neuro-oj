@@ -1,3 +1,4 @@
+import { acceptedResultSql } from "../../../shared/base/accepted-result.ts";
 import { sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
@@ -106,7 +107,9 @@ async function queryDashboardStats(): Promise<DashboardStats> {
       (SELECT count(*)::text FROM problems) AS total_problems,
       (SELECT count(*)::text FROM tags) AS total_tags,
       count(*)::text AS total_submissions,
-      count(*) FILTER (WHERE er.status = 'finished' AND er.score > 0)::text AS total_accepted,
+      count(*) FILTER (WHERE ${
+    acceptedResultSql(sql`er.status`, sql`er.score`, sql`er.details`)
+  })::text AS total_accepted,
       count(*) FILTER (WHERE er.status IS NOT NULL)::text AS total_judged,
       count(*) FILTER (WHERE s.status = 'pending')::text AS total_pending,
       count(*) FILTER (WHERE s.created_at >= ${twentyFourHoursAgo})::text AS recent_submissions_24h,

@@ -122,12 +122,30 @@ export function isValidLlmConfig(value: unknown): value is LlmConfig {
  *
  * 仅 admin 可设置；普通用户创建题目时该字段被忽略。
  */
-import {
+import type { JudgeType, ProblemRuntimeConfig } from "./runtime-config.ts";
+import { isOiRuntimeConfig } from "./runtime-config.ts";
+
+/** 提取可公开的提交语言，不向选手暴露测试点、checker 或存储配置。 */
+export function getSubmissionLanguages(
+  judgeType: string | null | undefined,
+  config: ProblemRuntimeConfig | null | undefined,
+): string[] {
+  if (judgeType !== "oi") return ["python3"];
+  return isOiRuntimeConfig(config) ? [...config.languages] : [];
+}
+export {
   type EvaluatorRuntime,
+  getJudgeBackend,
+  isOiRuntimeConfig,
+  type JudgeBackend,
+  type JudgeType,
+  judgeTypeForRuntimeConfig,
+  type OiRuntimeConfig,
+  type ProblemRuntimeConfig,
   type RuntimeConfig,
   type SolutionRuntime,
+  validateOiRuntimeConfig,
 } from "./runtime-config.ts";
-export { type EvaluatorRuntime, type RuntimeConfig, type SolutionRuntime };
 
 /**
  * 创建题目请求体。
@@ -137,6 +155,8 @@ export { type EvaluatorRuntime, type RuntimeConfig, type SolutionRuntime };
  * 但新题目主键空间完全使用 UUID v4。
  */
 export interface CreateProblemInput {
+  visibility?: "public" | "private";
+  samples?: import("./problem-samples.ts").ProblemSample[];
   title: string;
   description: string;
   difficulty?: string;
@@ -144,7 +164,9 @@ export interface CreateProblemInput {
   /**
    * 双容器 Runtime 配置。仅 admin 可设置。
    */
-  runtime_config?: RuntimeConfig | null;
+  runtime_config?: ProblemRuntimeConfig | null;
+  /** 评测模式；缺省根据 runtime_config 兼容推断。 */
+  judge_type?: JudgeType;
   tag_ids?: string[];
   /** 题目类型：U（用户题）/ P（主题题），默认 U */
   type?: string;
@@ -164,6 +186,13 @@ export interface CreateProblemInput {
  * 更新题目请求体。
  */
 export interface UpdateProblemInput {
+  visibility?: "public" | "private";
+  /** 仅数据编辑服务可写，客户端 CRUD 不允许指定对象存储引用。 */
+  oi_data_files?: Record<
+    string,
+    { storage_url: string; size: number; hash: string }
+  >;
+  samples?: import("./problem-samples.ts").ProblemSample[];
   title?: string;
   description?: string;
   difficulty?: string;
@@ -171,7 +200,9 @@ export interface UpdateProblemInput {
   /**
    * 双容器 Runtime 配置。设为 null 即清空。
    */
-  runtime_config?: RuntimeConfig | null;
+  runtime_config?: ProblemRuntimeConfig | null;
+  /** 评测模式；缺省根据 runtime_config 兼容推断。 */
+  judge_type?: JudgeType;
   tag_ids?: string[];
   /** 客观题标记变更（由客观题改回编程题时必须同时提供 runtime_config） */
   is_objective?: boolean;
@@ -192,6 +223,10 @@ export interface UpdateProblemInput {
  * 题目列表查询参数。
  */
 export interface ProblemListQuery {
+  /** 按评测题型筛选：oi / dual（AI 代码题）/ objective。 */
+  judge_type?: string;
+  /** 按执行后端筛选：dual / oi-native / oi-wasm。 */
+  judge_backend?: string;
   page?: number;
   limit?: number;
   difficulty?: string;
@@ -218,6 +253,7 @@ export interface ProblemTagRef {
  * 题目响应（含标签信息）。
  */
 export interface ProblemResponseWithTags {
+  samples: import("./problem-samples.ts").ProblemSample[];
   id: string;
   title: string;
   description: string;
@@ -230,7 +266,13 @@ export interface ProblemResponseWithTags {
    * 双容器 Runtime 配置（所有题目统一使用双容器模式）。
    * 仅 owner/admin 返回；非 owner/admin 不返回该字段。
    */
-  runtime_config?: RuntimeConfig | null;
+  runtime_config?: ProblemRuntimeConfig | null;
+  /** 评测模式；来自 problems.judge_type，保留在响应中便于前端展示。 */
+  judge_type: JudgeType;
+  /** 公开执行后端名称，不包含隐藏运行配置。 */
+  judge_backend?: "dual" | "oi-native" | "oi-wasm" | null;
+  /** 所有可见题目的访问者均可读取的提交语言白名单。 */
+  supported_languages?: string[];
   tags: ProblemTagRef[];
   /**
    * 存在被隐藏的算法标签时为 true（spoiler 门控：匿名/未 AC viewer

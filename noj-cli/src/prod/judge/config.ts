@@ -1,3 +1,7 @@
+import {
+  assertSchedulingEnv,
+  SCHEDULING_ENV_DEFAULTS,
+} from "./scheduling-env.ts";
 /**
  * 独立 Judge Worker 的配置层与**安全守卫**（T21）。
  *
@@ -36,6 +40,7 @@
  * 本模块不持有模块级可变状态（AGENTS.md §8.2 多副本约束）。
  */
 
+import { OI_ENV_DEFAULTS } from "./oi-env.ts";
 import { dirname, isAbsolute, join, normalize } from "@std/path";
 import { isPlaceholder, validateEnv } from "../../core/config-schema.ts";
 import { parseEnvFile, writeEnvFileAtomic } from "../../core/env-file.ts";
@@ -121,7 +126,7 @@ export const JUDGE_REQUIRED_KEYS: readonly string[] = [
   "JUDGE_QUEUE",
   "RESULT_QUEUE",
   "WORK_DIR",
-  "JUDGE_MAX_CONCURRENT_JUDGES",
+
   "JUDGE_IMAGE_PREFIX",
   "JUDGE_IMAGE_REGISTRY",
   "JUDGE_DOCKER_SOCKET",
@@ -132,11 +137,13 @@ export const JUDGE_REQUIRED_KEYS: readonly string[] = [
 
 /** 首装写入的键与默认值（bash `:550-580` 的 heredoc 逐字）。 */
 export const JUDGE_DEFAULT_VALUES: Readonly<Record<string, string>> = {
+  ...OI_ENV_DEFAULTS,
+  ...SCHEDULING_ENV_DEFAULTS,
   JUDGE_QUEUE: "noj:judge:queue",
   RESULT_QUEUE: "noj:judge:results",
   JUDGE_PRIORITY_POLL_TIMEOUT_MS: "100",
   WORK_DIR: "/tmp/noj-judge",
-  JUDGE_MAX_CONCURRENT_JUDGES: "2",
+
   JUDGE_IMAGE_PREFIX: "noj-",
   JUDGE_IMAGE_REGISTRY: "ghcr.io/neuro-oj",
   JUDGE_DOCKER_SOCKET: JUDGE_SOCKET_CONTAINER_PATH,
@@ -366,12 +373,7 @@ export function assertJudgeConfigValues(env: Record<string, string>): void {
   }
   assertJudgeVersion(envValue(env, "NOJ_VERSION"));
 
-  const concurrency = envValue(env, "JUDGE_MAX_CONCURRENT_JUDGES");
-  if (!/^[1-9][0-9]*$/.test(concurrency)) {
-    throw new UsageError(
-      `JUDGE_MAX_CONCURRENT_JUDGES 必须是正整数：${concurrency}`,
-    );
-  }
+  assertSchedulingEnv(env);
   for (const key of ["JUDGE_DOCKER_SOCKET_GID", "JUDGE_UID", "JUDGE_GID"]) {
     if (!/^[0-9]+$/.test(envValue(env, key))) {
       throw new UsageError(`${key} 必须是数字：${envValue(env, key)}`);

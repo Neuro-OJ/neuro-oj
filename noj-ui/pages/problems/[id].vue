@@ -270,6 +270,7 @@ const publishBlockReason = computed(() => {
             >
               <template #body>
                 <ObjectiveAnswerForm :paper-id="problem.display_id || problem.id" />
+            <section v-if="problem.samples?.length" class="mt-6 space-y-4"><h2 class="text-lg font-semibold">样例</h2><div v-for="(sample,index) in problem.samples" :key="sample.id" class="space-y-2"><h3 class="font-medium">样例 {{index+1}}</h3><div class="grid gap-3 sm:grid-cols-2"><div><p class="mb-1 text-sm text-text-secondary">输入</p><pre class="overflow-auto rounded-md bg-sunken p-3 text-sm">{{sample.input}}</pre></div><div><p class="mb-1 text-sm text-text-secondary">输出</p><pre class="overflow-auto rounded-md bg-sunken p-3 text-sm">{{sample.output}}</pre></div></div><MarkdownRenderer v-if="sample.explanation" :content="sample.explanation" /></div></section>
               </template>
             </ProblemStatement>
 

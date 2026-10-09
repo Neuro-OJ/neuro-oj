@@ -21,8 +21,11 @@ import {
   tags,
   users,
 } from "../../../../shared/db/schema.ts";
-import { BadRequestError } from "../../../../shared/base/errors.ts";
-import { syncProblemTags } from "../../index.ts";
+import {
+  BadRequestError,
+  ConflictError,
+} from "../../../../shared/base/errors.ts";
+import { syncProblemTags, updateProblem } from "../../index.ts";
 import { applyAlgorithmTagVisibility, getProblem } from "../../index.ts";
 import { createTag } from "../../index.ts";
 
@@ -342,6 +345,82 @@ Deno.test({
     await db.delete(problemTags).where(eq(problemTags.problem_id, problemId));
     await db.delete(problems).where(eq(problems.id, problemId));
     await db.delete(tags).where(eq(tags.id, probTag.id));
+  },
+});
+
+Deno.test({
+  name: "problems-tags: OI 题标签随字段保存、去重、拒绝过期更新并可清空",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const problemId = await createTestProblem();
+    const topic = await createTag({
+      name: `门控OI主题-${ts}`,
+      kind: "problem",
+    });
+    const algorithm = await createTag({
+      name: `门控OI算法-${ts}`,
+      kind: "algorithm",
+    });
+    try {
+      await db.update(problems).set({ judge_type: "oi" }).where(
+        eq(problems.id, problemId),
+      );
+      const saved = await updateProblem(
+        problemId,
+        {
+          title: "OI 标签更新",
+          tag_ids: [topic.id, algorithm.id, algorithm.id],
+        },
+        undefined,
+        "admin",
+      );
+      assertEquals(
+        saved.tags.map((tag) => tag.id).sort(),
+        [topic.id, algorithm.id].sort(),
+      );
+      await assertRejects(() =>
+        updateProblem(
+          problemId,
+          {
+            title: "不应保存",
+            tag_ids: [],
+          },
+          undefined,
+          "admin",
+          undefined,
+          false,
+          "2000-01-01T00:00:00.000Z",
+        ), ConflictError);
+      await assertRejects(() =>
+        updateProblem(
+          problemId,
+          {
+            title: "不应保存",
+            tag_ids: ["nonexistent-tag-id"],
+          },
+          undefined,
+          "admin",
+        ), BadRequestError);
+      const unchanged = await getProblem(problemId);
+      assertEquals(unchanged.title, "OI 标签更新");
+      assertEquals(
+        unchanged.tags.map((tag) => tag.id).sort(),
+        [topic.id, algorithm.id].sort(),
+      );
+      const cleared = await updateProblem(
+        problemId,
+        { tag_ids: [] },
+        undefined,
+        "admin",
+      );
+      assertEquals(cleared.tags, []);
+    } finally {
+      await db.delete(problemTags).where(eq(problemTags.problem_id, problemId));
+      await db.delete(problems).where(eq(problems.id, problemId));
+      await db.delete(tags).where(inArray(tags.id, [topic.id, algorithm.id]));
+    }
   },
 });
 

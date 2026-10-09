@@ -8,6 +8,8 @@ import { useCopyText } from "~/composables/useCopyText"
 import { getLanguageLabel, formatScore, formatTime, formatMemory, statusBadgeColors, getResultDef, verdictClasses, formatDateTime } from "~/utils/submissionFormat"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
 import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
+import { problemJudgeTypeLabel, type ProblemResource } from '~/utils/problemView'
+import { submissionMeteringCases, submissionMeteringTimeLabel } from '~/utils/submissionMetering'
 
 interface SubmissionResult {
   status: string
@@ -18,8 +20,10 @@ interface SubmissionResult {
   output: string | null
   output_truncated?: boolean
   details?: Record<string, unknown> | null
+  metering?: Record<string, unknown>
 }
 interface SubmissionData {
+  progress?: {phase:string;active_cases:{case_id:string;subtask_id:string}[];completed_cases:Record<string,unknown>[];total_cases:number} | null
   id: string
   public_id?: string
   problem_id: string
@@ -45,6 +49,29 @@ const submissionId = route.params.id as string
 const isMounted = ref(true)
 const data = ref<SubmissionResponse | null>(null)
 const submission = computed(() => data.value?.data ?? null)
+const linkedProblem = ref<ProblemResource | null>(null)
+watch(() => submission.value?.problem_id, async (id, _previous, onCleanup) => {
+  linkedProblem.value = null
+  if (!id) return
+  let active = true
+  onCleanup(() => { active = false })
+  try {
+    const result = await api.get<{ data: ProblemResource }>(`/api/v1/problems/${id}`, { silent: true })
+    if (active) linkedProblem.value = result.data
+  } catch {
+    // 不可见或已删除题目保留直达入口，不绕过题目的访问控制。
+  }
+})
+const meteringTimeLabel = computed(() => submissionMeteringTimeLabel(submission.value?.result?.metering?.standard_version))
+const meteringCases = computed(() => submissionMeteringCases(submission.value?.result?.details))
+const actualBackend = computed(() => {
+  const oi = submission.value?.result?.details?.oi as { backend?: string } | undefined
+  if (oi?.backend === 'native' || oi?.backend === 'wasm') return `oi-${oi.backend}`
+  const metering = submission.value?.result?.metering
+  if (metering?.standard_version && !metering.legacy) return 'oi-wasm'
+  return linkedProblem.value?.judge_backend ?? null
+})
+const judgeTypeLabel = computed(() => actualBackend.value?.startsWith('oi-') ? 'OI 题' : linkedProblem.value ? problemJudgeTypeLabel(linkedProblem.value) : null)
 
 // 面包屑（#512）：末层显示提交公开编号，而非裸 UUID
 useBreadcrumbLabel(() => submission.value?.public_id)
@@ -112,6 +139,7 @@ const hljsLangMap: Record<string, string> = {
   python3: "python",
   python: "python",
   cpp: "cpp",
+  cc: "cpp",
   c: "c",
   javascript: "javascript",
 }
@@ -181,14 +209,14 @@ watch(
           <div
             v-else-if="submission.result"
             class="flex items-center gap-4 px-9 py-5 rounded-2xl flex-col text-center sm:flex-row sm:text-left"
-            :class="verdictClasses[getResultDef(submission.result.status).class] || verdictClasses.se"
+            :class="verdictClasses[getResultDef((submission.result.details?.oi as {verdict?:string})?.verdict ?? submission.result.status).class] || verdictClasses.se"
           >
-            <UIcon name="i-lucide-check-circle" class="size-8" v-if="getResultDef(submission.result.status).icon === 'check'"/>
-            <UIcon name="i-lucide-x-circle" class="size-8" v-else-if="getResultDef(submission.result.status).icon === 'x'"/>
+            <UIcon name="i-lucide-check-circle" class="size-8" v-if="getResultDef((submission.result.details?.oi as {verdict?:string})?.verdict ?? submission.result.status).icon === 'check'"/>
+            <UIcon name="i-lucide-x-circle" class="size-8" v-else-if="getResultDef((submission.result.details?.oi as {verdict?:string})?.verdict ?? submission.result.status).icon === 'x'"/>
             <UIcon name="i-lucide-alert-triangle" class="size-8" v-else/>
             <div class="flex flex-col gap-0.5">
               <span class="text-lg font-bold">
-                {{ getResultDef(submission.result.status).label }}
+                {{ getResultDef((submission.result.details?.oi as {verdict?:string})?.verdict ?? submission.result.status).label }}
               </span>
               <span class="text-2xl font-extrabold">
                 {{ formatScore(submission.result.score) }} 分
@@ -200,12 +228,15 @@ watch(
         <div class="px-6 pb-4 flex flex-col gap-2">
           <div class="flex gap-3 text-sm">
             <span class="text-text-muted min-w-[70px] shrink-0">题目</span>
-            <NuxtLink
-              :to="problemUrl(submission.problem_id)"
-              class="text-primary no-underline hover:underline"
-            >
-              {{ submission.problem_id }}
-            </NuxtLink>
+            <ProblemReference :id="submission.problem_id" :display-id="linkedProblem?.display_id" :title="linkedProblem?.title" />
+          </div>
+          <div v-if="judgeTypeLabel" class="flex gap-3 text-sm">
+            <span class="text-text-muted min-w-[70px] shrink-0">题目类型</span>
+            <span>{{ judgeTypeLabel }}</span>
+          </div>
+          <div v-if="actualBackend || linkedProblem?.is_objective" class="flex gap-3 text-sm">
+            <span class="text-text-muted min-w-[70px] shrink-0">评测后端</span>
+            <span class="font-mono">{{ actualBackend || '即时判定' }}</span>
           </div>
           <div class="flex gap-3 text-sm">
             <span class="text-text-muted min-w-[70px] shrink-0">语言</span>
@@ -246,9 +277,41 @@ watch(
         </div>
       </div>
       <!-- 测试点明细（挪到提交代码上方） -->
+      <details v-if="submission.result?.metering" class="rounded-md border border-border bg-white p-4 text-sm">
+        <summary class="cursor-pointer font-semibold">{{ submission.result.metering.legacy ? '旧计量结果，详情如下' : `本题使用 ${submission.result.metering.standard_version || '统一 WASM'} 标准评测，详情如下` }}</summary>
+        <p v-if="submission.result.metering.legacy" class="mt-2 text-text-secondary">旧计量结果：无统一 WASM 标识，不能用于跨实例比较；请重测以获得新结果。</p>
+        <template v-else>
+          <p class="mt-2">{{ submission.result.metering.standard_version }} · {{ submission.result.metering.comparable ? '具备可比标识' : '评测环境异常，不具备可比性' }}</p>
+          <p v-if="submission.result.metering.termination_reason === 'host_watchdog'" class="mt-2 text-error-text">运行保护超时，请降低负载后重测。</p>
+          <p v-if="submission.result.metering.termination_reason === 'standard_mismatch'" class="mt-2 text-error-text">任务标准不匹配，请重测。</p>
+          <p class="mt-1 text-xs text-text-secondary">{{ meteringTimeLabel }}表示固定工作量，不保证等于实际 CPU 耗时。可比标识不代表来源可信。</p>
+          <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-xs">
+            <template v-for="(label, key) in { standard_hash: '标准摘要', source_hash: '源码摘要', evaluation_hash: '题目评测摘要', module_hash: '编译产物摘要', comparison_hash: '可比标识' }" :key="key">
+              <dt>{{ label }}</dt><dd class="break-all font-mono">{{ submission.result.metering[key] ?? '未生成' }}</dd>
+            </template>
+          </dl>
+          <div v-if="meteringCases.length" class="mt-4 overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <caption class="mb-2 text-left font-semibold">测试点计量数据</caption>
+              <thead class="border-b border-border text-text-secondary"><tr>
+                <th scope="col" class="p-2">子任务</th><th scope="col" class="p-2">测试点</th><th scope="col" class="p-2">状态</th>
+                <th scope="col" class="p-2 text-right">消耗 fuel</th><th scope="col" class="p-2 text-right">预算 fuel</th><th scope="col" class="p-2 text-right">{{ meteringTimeLabel }}（ms）</th>
+              </tr></thead>
+              <tbody><tr v-for="(item, index) in meteringCases" :key="index" class="border-b border-border">
+                <td class="p-2">{{ item.subtask }}</td><td class="p-2 font-mono">{{ item.caseId }}</td><td class="p-2">{{ item.status }}</td>
+                <td class="p-2 text-right tabular-nums">{{ item.fuel?.toLocaleString() ?? '—' }}</td>
+                <td class="p-2 text-right tabular-nums">{{ item.budget?.toLocaleString() ?? '—' }}</td>
+                <td class="p-2 text-right tabular-nums">{{ item.equivalentTimeMs ?? '—' }}</td>
+              </tr></tbody>
+            </table>
+          </div>
+        </template>
+      </details>
+
       <SubmissionCaseResults
-        v-if="submission.status === 'finished' && submission.result"
-        :details="submission.result.details"
+        v-if="submission.progress || submission.result"
+        :details="submission.result?.details"
+        :progress="['pending','judging'].includes(submission.status) ? submission.progress : null"
       />
       <!-- 提交代码 -->
       <div class="bg-[#0d1117] border border-[#30363d] rounded-xl overflow-hidden">

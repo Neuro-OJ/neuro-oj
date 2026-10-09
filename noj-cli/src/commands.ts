@@ -177,6 +177,11 @@ export const COMMANDS: readonly CommandSpec[] = [
         summary: "检查依赖并输出 rootless 准备指引",
       },
       {
+        name: "calibrate",
+        tier: "prod",
+        summary: "根据可信基准留出集拟合并导出 WASM 成本表",
+      },
+      {
         name: "install",
         tier: "prod",
         summary:

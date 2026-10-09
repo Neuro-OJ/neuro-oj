@@ -423,6 +423,9 @@ jobs:
         working-directory: noj-judge
         run: cargo build --tests
 
+      - name: 构建 OI 原生评测镜像
+        run: docker build -t noj-oi-cpp:latest noj-judge/docker/oi-cpp
+
       - name: Judge E2E 测试（Docker 沙箱，2 组并行）
         working-directory: noj-judge
         env:
@@ -452,7 +455,7 @@ jobs:
           }
           run_group e2e_docker_basic e2e_resource_limits e2e_security_isolation &
           p1=$!
-          run_group e2e_support_package e2e_problem_limits e2e_abnormal &
+          run_group e2e_support_package e2e_problem_limits e2e_abnormal e2e_oi_native &
           p2=$!
           run_group e2e_dual_container e2e_network_capability e2e_solution_ai &
           p3=$!

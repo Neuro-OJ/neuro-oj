@@ -5,7 +5,8 @@
 # 使依赖层缓存与源码变更解耦。日常代码改动只需重新编译业务代码（~10s），
 # 而非全部依赖（~90s）。
 
-FROM rust:1.86-slim-bookworm AS builder
+# Wasmtime 49 要求 Rust 1.96+；与 rust-toolchain.toml 保持同一工具链版本。
+FROM rust:1.96.1-slim-bookworm@sha256:e18a79fc84dfcfc3ab5ba72290398a644c135c97eaa881447fddc354ee4701a3 AS builder
 
 WORKDIR /build
 
@@ -17,6 +18,7 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs && \
 
 # 第 2 层：只编译业务代码（频繁变动，但编译量小）
 COPY src/ ./src/
+COPY toolchain/components.json ./toolchain/components.json
 RUN cargo build --release --bin noj-judge && \
     cp /build/target/release/noj-judge /tmp/noj-judge && \
     test -f /tmp/noj-judge || { echo "ERROR: binary not found after build" >&2; exit 1; }

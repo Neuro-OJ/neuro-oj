@@ -30,6 +30,7 @@ async function loadFixture(): Promise<JudgeTask> {
 Deno.test("JudgeTask 契约: 工厂按 fixture 构造出的消息与 fixture 完全一致", async () => {
   const fixture = await loadFixture();
   const built = buildJudgeTask({
+    run_id: fixture.run_id,
     submission_id: fixture.submission_id,
     problem_id: fixture.problem_id,
     user_id: fixture.user_id,
@@ -50,6 +51,7 @@ Deno.test("JudgeTask 契约: 工厂按 fixture 构造出的消息与 fixture 完
 Deno.test("JudgeTask 契约: 字段集合与登记表一致", async () => {
   const fixture = await loadFixture();
   const built = buildJudgeTask({
+    run_id: fixture.run_id,
     submission_id: fixture.submission_id,
     problem_id: fixture.problem_id,
     user_id: fixture.user_id,
@@ -65,13 +67,13 @@ Deno.test("JudgeTask 契约: 字段集合与登记表一致", async () => {
   });
   assertEquals(
     Object.keys(built).sort(),
-    [...JUDGE_TASK_FIELDS].sort(),
+    [...JUDGE_TASK_FIELDS].filter((key) => key !== "oi_cost_profile").sort(),
     "JudgeTask 字段集合变化时必须同步 JUDGE_TASK_FIELDS 与 Rust 结构体",
   );
   // fixture 自身也必须是完整字段集（防止 fixture 落后于契约）
   assertEquals(
     Object.keys(fixture).sort(),
-    [...JUDGE_TASK_FIELDS].sort(),
+    [...JUDGE_TASK_FIELDS].filter((key) => key !== "oi_cost_profile").sort(),
     "契约 fixture 必须包含全部字段",
   );
 });
@@ -98,15 +100,21 @@ Deno.test("JudgeTask 契约: 可选字段缺省时不写入消息体", () => {
     language: "python3",
     code: "print(1)",
   });
-  assertEquals(Object.keys(built).sort(), [
-    "code",
-    "language",
-    "priority",
-    "problem_id",
-    "runtime_config",
-    "submission_id",
-    "user_id",
-  ]);
+  assertEquals(
+    Object.keys(built).sort(),
+    [
+      "scheduling_version",
+      "resource_pool",
+      "code",
+      "language",
+      "priority",
+      "judge_type",
+      "problem_id",
+      "runtime_config",
+      "submission_id",
+      "user_id",
+    ].sort(),
+  );
   assert(
     !("download_url" in built) && !("llm" in built) &&
       !("artifact_download_url" in built),
@@ -117,6 +125,7 @@ Deno.test("JudgeTask 契约: 可选字段缺省时不写入消息体", () => {
 Deno.test("JudgeTask 契约: 必填字段齐全时才构造（类型层面已强制，这里验证运行期形态）", async () => {
   const fixture = await loadFixture();
   const built = buildJudgeTask({
+    run_id: fixture.run_id,
     submission_id: fixture.submission_id,
     problem_id: fixture.problem_id,
     user_id: fixture.user_id,
@@ -131,5 +140,54 @@ Deno.test("JudgeTask 契约: 必填字段齐全时才构造（类型层面已强
       `${key} 必须是字符串`,
     );
   }
-  assert(typeof built.runtime_config.evaluator.image === "string");
+  assert(
+    "evaluator" in built.runtime_config &&
+      typeof built.runtime_config.evaluator.image === "string",
+  );
+});
+
+Deno.test("buildJudgeTask: WASM缺少统一标准快照明确拒绝", () => {
+  let rejected = false;
+  try {
+    buildJudgeTask({
+      submission_id: "s",
+      problem_id: "p",
+      user_id: "u",
+      priority: "medium",
+      language: "cc",
+      code: "int main(){}",
+      runtime_config: {
+        backend: "wasm",
+        languages: ["cc"],
+        time_limit_ms: 1000,
+        memory_limit_mb: 256,
+        checker: { type: "default" },
+        subtasks: [{
+          id: "all",
+          score: 100,
+          cases: [{ input: "1.in", output: "1.out" }],
+        }],
+      },
+    });
+  } catch {
+    rejected = true;
+  }
+  assertEquals(rejected, true);
+});
+
+Deno.test("JudgeTask 契约: OI WASM携带可信独立成本快照", async () => {
+  const fixture = JSON.parse(
+    await Deno.readTextFile(
+      new URL(
+        "../../../../../../noj-tests/fixtures/judge-task-oi.contract.json",
+        import.meta.url,
+      ),
+    ),
+  ) as JudgeTask;
+  const built = buildJudgeTask(fixture);
+  assertEquals(JSON.parse(JSON.stringify(built)), fixture);
+  assertEquals(
+    new Set([...Object.keys(await loadFixture()), ...Object.keys(fixture)]),
+    new Set(JUDGE_TASK_FIELDS),
+  );
 });

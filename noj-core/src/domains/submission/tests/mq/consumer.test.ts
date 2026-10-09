@@ -263,3 +263,22 @@ Deno.test({
     assertEquals(result.summary, undefined);
   },
 });
+
+Deno.test("mq/consumer: 统一标准摘要落库前保留，任意原始数据仍被裁剪", () => {
+  const hash = "b".repeat(64);
+  const projected = sanitizeJudgeDetails({
+    metering: {
+      standard_version: "noj-wasm-v1",
+      standard_hash: hash,
+      source_hash: hash,
+      evaluation_hash: hash,
+      comparison_hash: hash,
+      comparable: true,
+      hidden_data: "never-store",
+    },
+  });
+  const metering = projected.metering as Record<string, unknown>;
+  assertEquals(metering.standard_hash, hash);
+  assertEquals(metering.comparable, true);
+  assertEquals(metering.hidden_data, undefined);
+});

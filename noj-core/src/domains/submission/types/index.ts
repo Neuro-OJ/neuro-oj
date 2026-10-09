@@ -1,4 +1,15 @@
-import type { RuntimeConfig } from "../../catalog/index.ts";
+import {
+  isOiRuntimeConfig,
+  isValidOiCostProfile,
+  type OiCostProfile,
+  validateOiRuntimeConfig,
+} from "../../catalog/index.ts";
+import { BadRequestError } from "../../../shared/base/errors.ts";
+import {
+  type JudgeType,
+  judgeTypeForRuntimeConfig,
+  type ProblemRuntimeConfig,
+} from "../../catalog/index.ts";
 
 /** LLM 评测任务字段：携带 gateway 地址与短期 eval_token。 */
 export interface JudgeTaskLlm {
@@ -10,13 +21,27 @@ export interface JudgeTaskLlm {
 
 /** 评测任务优先级。 */
 export type JudgeTaskPriority = "high" | "medium" | "low";
+/** 资源池由服务端运行配置决定，不能由提交者声明。 */
+export type JudgeResourcePool = "oi-wasm" | "oi-native" | "ai";
+
+export function judgeResourcePool(
+  config: ProblemRuntimeConfig,
+): JudgeResourcePool {
+  return isOiRuntimeConfig(config)
+    ? config.backend === "wasm" ? "oi-wasm" : "oi-native"
+    : "ai";
+}
 
 /**
  * 评测任务——从 noj-core 发送到 noj-judge 的消息。
  *
- * 所有评测统一使用双容器模式（Evaluator + Solution）。
+ * `judge_type=dual` 使用双容器；`judge_type=oi` 使用传统 OI 测试点协议。
  */
 export interface JudgeTask {
+  scheduling_version: 1;
+  resource_pool: JudgeResourcePool;
+  /** 评测尝试标识，与重测序列共同隔离迟到进度及结果。 */
+  run_id?: string;
   /** 提交 UUID */
   submission_id: string;
   /** 题目 UUID */
@@ -25,8 +50,12 @@ export interface JudgeTask {
   user_id: string;
   /** 评测任务优先级（服务端推导，客户端不可声明） */
   priority: JudgeTaskPriority;
-  /** 双容器 Runtime 配置（必填） */
-  runtime_config: RuntimeConfig;
+  /** 评测模式；历史消息缺省由 judge 按 dual 兼容处理。 */
+  judge_type: JudgeType;
+  /** 双容器或 OI Runtime 配置（必填） */
+  runtime_config: ProblemRuntimeConfig;
+  /** WASM 活动成本快照，仅服务端任务构造允许注入。 */
+  oi_cost_profile?: OiCostProfile;
   /** 支持包下载 URL（`noj-download://` 格式） */
   download_url?: string;
   /** artifact 提交的下载 URL（`noj-download://` 格式），仅 artifact 模式携带 */
@@ -47,11 +76,16 @@ export interface JudgeTask {
  * `buildJudgeTask` 的输入。`code` 允许为空串（artifact 提交不带源码）。
  */
 export interface BuildJudgeTaskInput {
+  run_id?: string;
   submission_id: string;
   problem_id: string;
   user_id: string;
   priority: JudgeTaskPriority;
-  runtime_config: RuntimeConfig;
+  runtime_config: ProblemRuntimeConfig;
+  /** WASM 活动成本快照，仅服务端任务构造允许注入。 */
+  oi_cost_profile?: OiCostProfile;
+  /** 评测模式；缺省根据 runtime_config 推断。 */
+  judge_type?: JudgeType;
   language: string;
   code: string;
   file_name?: string;
@@ -77,16 +111,45 @@ export interface BuildJudgeTaskInput {
  * `Option` + `#[serde(skip_serializing_if)]`，两者语义一致。
  */
 export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
+  const inferredType = judgeTypeForRuntimeConfig(input.runtime_config);
+  if (input.judge_type !== undefined && input.judge_type !== inferredType) {
+    throw new BadRequestError("judge_type 与 runtime_config 不一致");
+  }
+  if (isOiRuntimeConfig(input.runtime_config)) {
+    validateOiRuntimeConfig(
+      input.runtime_config,
+      input.submission_id.startsWith("st_"),
+    );
+    if (
+      !input.runtime_config.languages.includes(input.language as "c" | "cc")
+    ) throw new BadRequestError("OI 提交语言不在允许列表");
+    if (
+      input.runtime_config.backend === "wasm" &&
+      !isValidOiCostProfile(input.oi_cost_profile)
+    ) throw new BadRequestError("WASM 任务缺少有效的统一标准快照");
+    if (input.llm || input.artifact_download_url) {
+      throw new BadRequestError("OI 不支持 LLM/artifact 任务");
+    }
+  }
   const task: JudgeTask = {
+    scheduling_version: 1,
+    resource_pool: judgeResourcePool(input.runtime_config),
     submission_id: input.submission_id,
     problem_id: input.problem_id,
     user_id: input.user_id,
     priority: input.priority,
-    runtime_config: input.runtime_config,
+    judge_type: input.judge_type ??
+      judgeTypeForRuntimeConfig(input.runtime_config),
+    runtime_config: structuredClone(input.runtime_config),
     language: input.language,
     code: input.code,
   };
+  if (
+    isOiRuntimeConfig(input.runtime_config) &&
+    input.runtime_config.backend === "wasm"
+  ) task.oi_cost_profile = structuredClone(input.oi_cost_profile!);
   if (input.file_name !== undefined) task.file_name = input.file_name;
+  if (input.run_id !== undefined) task.run_id = input.run_id;
   if (input.download_url !== undefined) task.download_url = input.download_url;
   if (input.artifact_download_url !== undefined) {
     task.artifact_download_url = input.artifact_download_url;
@@ -103,11 +166,16 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
  * 因此新增字段忘记登记会立刻失败。
  */
 export const JUDGE_TASK_FIELDS: readonly string[] = [
+  "scheduling_version",
+  "resource_pool",
+  "run_id",
   "submission_id",
   "problem_id",
   "user_id",
   "priority",
+  "judge_type",
   "runtime_config",
+  "oi_cost_profile",
   "download_url",
   "artifact_download_url",
   "language",
@@ -207,4 +275,6 @@ export function scoreFromDb(value: number): number {
 export const LANGUAGE_EXT_MAP: Record<string, string> = {
   python3: "main.py",
   python: "main.py",
+  c: "main.c",
+  cc: "main.cpp",
 };

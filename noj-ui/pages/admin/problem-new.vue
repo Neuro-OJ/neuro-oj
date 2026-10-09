@@ -6,6 +6,7 @@ definePageMeta({
 })
 
 const router = useRouter()
+const route = useRoute()
 
 useRequireLogin()
 
@@ -25,6 +26,8 @@ function onSaved() {
       </template>
     </AdminPageHeader>
 
-    <CodingProblemEditor mode="create" initial-type="P" @saved="onSaved" />
+
+
+    <ProblemEditor mode="create" :initial-judge-type="route.query.type === 'oi' ? 'oi' : 'dual'" initial-type="P" @saved="onSaved" />
   </div>
 </template>

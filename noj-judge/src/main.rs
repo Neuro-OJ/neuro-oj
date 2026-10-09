@@ -8,18 +8,20 @@ mod drain;
 mod dual;
 mod judge;
 mod mq;
+mod oi;
 mod sandbox;
+mod scheduling;
 mod types;
 
+use crate::scheduling::{Pool, Scheduler, Settings};
 use anyhow::{Context, Result};
 use futures_util::{stream::FuturesUnordered, FutureExt, StreamExt};
 use std::sync::Arc;
-use tokio::sync::Semaphore;
 use tracing::{error, info, warn};
 
 use crate::config::Config;
 use crate::mq::PulledTask;
-use noj_judge::metrics::{heartbeat_loop, JudgeMetrics};
+use noj_judge::metrics::{heartbeat_loop_with_resources, JudgeMetrics};
 // 跨 worker 的每用户评测占用（分布式 claim）：替代原先的进程内 HashSet。
 use noj_judge::user_claim;
 
@@ -84,6 +86,50 @@ impl Drop for ActiveUserGuard {
     }
 }
 
+async fn next_pool_admission(
+    scheduler: &Scheduler,
+    cursor: &mut usize,
+) -> Result<(Pool, Arc<scheduling::Lease>)> {
+    loop {
+        for _ in 0..scheduler.settings.enabled.len() {
+            let pool = scheduler.settings.enabled[*cursor % scheduler.settings.enabled.len()];
+            *cursor = (*cursor + 1) % scheduler.settings.enabled.len();
+            if let Some(lease) = scheduler.try_task(pool, 0, 0).await? {
+                return Ok((pool, Arc::new(lease)));
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+}
+
+fn task_memory_reservation(task: &types::JudgeTask) -> (u64, u64) {
+    if let Some(config) = task.runtime_config.as_oi() {
+        let memory = config
+            .subtasks
+            .iter()
+            .flat_map(|group| {
+                group.cases.iter().map(move |case| {
+                    case.memory_limit_mb
+                        .or(group.memory_limit_mb)
+                        .unwrap_or(config.memory_limit_mb)
+                })
+            })
+            .max()
+            .unwrap_or(config.memory_limit_mb);
+        (2 * 512 + 128, 512.max(memory.saturating_add(128)))
+    } else if let Some(config) = task.runtime_config.as_dual() {
+        (
+            512 + 64,
+            config
+                .evaluator
+                .memory_limit_mb
+                .saturating_add(config.solution.memory_limit_mb),
+        )
+    } else {
+        (512, 512)
+    }
+}
+
 /// 初始化 Tokio 运行时，连接 Redis 与 Docker，进入主循环阻塞拉取评测任务。
 fn main() -> Result<()> {
     let rt = tokio::runtime::Runtime::new().context("创建 Tokio 运行时失败")?;
@@ -97,6 +143,10 @@ fn main() -> Result<()> {
         let config = Config::from_env();
         // VULN-20：启动期配置校验（禁止 evaluator 使用 bridge/host 网络）。
         config.validate()?;
+        let resource_settings = Settings::from_env(&config.instance_id)?;
+        if resource_settings.enabled.contains(&Pool::Wasm) {
+            oi::toolchain::validate_configured_toolchain().context("启用 oi-wasm 资源池必须安装匹配的 WASI SDK")?;
+        } else { oi::toolchain::validate_at_startup()?; }
         info!("noj-judge 启动");
 
         // 连接 Redis
@@ -122,9 +172,11 @@ fn main() -> Result<()> {
         info!("Docker 连接成功");
 
         let result_queue = config.result_queue.clone();
-        let judge_queues = config.judge_queues();
-        let mut priority_cursor = 0usize;
-        let priority_poll_timeout = config.priority_poll_timeout_secs;
+        let queue_prefix = config.judge_queue.clone();
+        let mut priority_cursors = [0usize; 3];
+        let mut pool_cursor = 0usize;
+        let scheduler = Scheduler::connect(redis_client.clone(), resource_settings, &config.user_claim_prefix).await?;
+        let idle_poll_delay = std::time::Duration::from_secs_f64(config.priority_poll_timeout_secs.clamp(0.001, 0.025));
         let work_dir = config.work_dir.clone();
         let instance_id = config.instance_id.clone();
 
@@ -154,15 +206,19 @@ fn main() -> Result<()> {
         let evaluator_network_mode = config.evaluator_network_mode.clone();
         let allow_http_s3 = config.allow_http_s3;
         let image_prefix = config.image_prefix.clone();
+        let oi_image = config.oi_image.clone();
         let command_whitelist = config.command_whitelist.clone();
         let drain_timeout = config.drain_timeout_secs();
-        let max_concurrent_judges = config.max_concurrent_judges;
+        let capacity = &scheduler.settings.capacities;
+        let max_concurrent_judges = scheduler.settings.enabled.iter().map(|pool| match pool { Pool::Wasm => capacity.wasm_tasks, Pool::Native => capacity.native_tasks, Pool::Ai => capacity.ai_tasks }).sum::<u64>() as usize;
         let cpu_limit_millicores = config.cpu_limit_millicores;
         let max_evaluator_time_ms = config.max_evaluator_time_ms;
         let max_solution_call_timeout_ms = config.max_solution_call_timeout_ms;
         // F-07：全局并发闸门 + 每用户分布式 claim（同一用户跨 worker 同时最多 1 个评测）。
         // 先获取全局 Semaphore 槽位，再做 per-user 公平调度，避免不同用户任务无限制 spawn。
-        let semaphore = Arc::new(Semaphore::new(max_concurrent_judges));
+        if std::env::var_os("JUDGE_MAX_CONCURRENT_JUDGES").is_some() {
+            warn!("JUDGE_MAX_CONCURRENT_JUDGES 已弃用，使用分池任务与阶段容量");
+        }
         // 跨 worker 的每用户占用走 Redis（见 noj_judge::user_claim 的模块文档）。
         let user_claim_prefix = config.user_claim_prefix.clone();
         let user_claim_ttl_ms = config.user_claim_ttl_ms;
@@ -179,10 +235,13 @@ fn main() -> Result<()> {
         // 放大成该用户最长 1 小时不可评测。启动时本实例不可能有在跑的评测，因此按
         // member 前缀（`{instance_id}:`）清除是安全的，且不会误删其他实例的 claim。
         {
+            let mut prefixes = vec![user_claim_prefix.clone()];
+            for pool in Pool::ALL { for kind in ["submission", "self-test"] { prefixes.push(format!("{}:{}:{}", user_claim_prefix, pool.name(), kind)); } }
+            for prefix in prefixes {
             let mut purge_conn = claim_conn.clone();
             match user_claim::purge_instance_claims(
                 &mut purge_conn,
-                &user_claim_prefix,
+                &prefix,
                 &instance_id,
             )
             .await
@@ -198,6 +257,7 @@ fn main() -> Result<()> {
                     "回收本实例遗留 claim 失败（将由 claim TTL 兜底）"
                 ),
             }
+            }
         }
         let judge_metrics = Arc::new(JudgeMetrics::new(max_concurrent_judges));
         let heartbeat_metrics = Arc::clone(&judge_metrics);
@@ -206,14 +266,18 @@ fn main() -> Result<()> {
         let heartbeat_instance_id = instance_id.clone();
         let heartbeat_cache_dir = std::path::PathBuf::from(cache_dir.clone());
         let heartbeat_work_dir = std::path::PathBuf::from(work_dir.clone());
+        let heartbeat_resources = (scheduler.settings.group.clone(), scheduler.resource_key().to_owned(),
+            scheduler.settings.enabled.iter().map(|pool| pool.name().to_owned()).collect::<Vec<_>>(),
+            serde_json::to_value(&scheduler.settings.capacities)?);
         tokio::spawn(async move {
-            heartbeat_loop(
+            heartbeat_loop_with_resources(
                 heartbeat_redis,
                 heartbeat_docker,
                 heartbeat_instance_id,
                 heartbeat_metrics,
                 heartbeat_cache_dir,
                 heartbeat_work_dir,
+                Some(heartbeat_resources),
             )
             .await;
         });
@@ -290,13 +354,13 @@ fn main() -> Result<()> {
             // 若先拉取再等槽位，任务已被移入 processing 却只是在排队等槽位，
             // 会被 sweeper 误判超时重投，造成同一提交重复评测。
             let shutdown = &mut shutdown_rx;
-            let permit = tokio::select! {
+            let (pool, permit) = tokio::select! {
                 biased;
                 _ = shutdown => {
                     drain::drain_tasks(&mut tasks, drain_timeout).await;
                     break;
                 }
-                acquired = semaphore.clone().acquire_owned() => {
+                acquired = next_pool_admission(&scheduler, &mut pool_cursor) => {
                     match acquired {
                         Ok(permit) => permit,
                         Err(e) => {
@@ -307,9 +371,9 @@ fn main() -> Result<()> {
                 }
             };
 
-            // 只允许在等待关闭信号时响应关闭。拿到任务后必须完整执行
-            // BRPOPLPUSH：Redis 可能已经把消息移入 processing，若此时取消
-            // future，消息会留在 processing 却永远不会进入评测任务。
+            let judge_queues = ["high", "medium", "low"].map(|level| format!("{}:{}:{}", queue_prefix, pool.name(), level));
+            // 空池只做非阻塞探测；领取后消息已在 processing，完成后再 ack。
+            // 关闭与 Redis 返回同时发生的遗留消息仍由现有 sweeper 恢复。
             let shutdown = &mut shutdown_rx;
             tokio::select! {
                 biased;
@@ -318,15 +382,14 @@ fn main() -> Result<()> {
                     drain::drain_tasks(&mut tasks, drain_timeout).await;
                     break;
                 }
-                task_result = mq::pull_task_priority(
+                task_result = mq::try_pull_task_priority(
                     &mut redis_conn,
                     &judge_queues,
-                    &mut priority_cursor,
-                    priority_poll_timeout,
+                    &mut priority_cursors[pool.index()],
                 ) => {
                     let pulled: PulledTask = match task_result {
                         Ok(Some(pulled)) => pulled,
-                        Ok(None) => continue,
+                        Ok(None) => { drop(permit); tokio::time::sleep(idle_poll_delay).await; continue; },
                         Err(e) => {
                             error!("拉取任务失败: {}", e);
                             tokio::time::sleep(PULL_RETRY_DELAY).await;
@@ -334,6 +397,23 @@ fn main() -> Result<()> {
                         }
                     };
 
+                    let admission = pool.validate_task(&pulled.task).map(|_| task_memory_reservation(&pulled.task));
+                    let admission_error = match admission {
+                        Ok((base, headroom)) => match permit.try_resize_task(pool, base, headroom).await {
+                            Ok(true) => None,
+                            Ok(false) => {
+                                mq::mark_resource_wait(&redis_client, &config.judge_queue, &pulled.task, Some("memory")).await;
+                                mq::requeue_task(&redis_client, &pulled.queue, &pulled.raw).await?;
+                                drop(permit);
+                                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                                continue;
+                            }
+                            Err(error) => Some(error),
+                        },
+                        Err(error) => Some(error),
+                    };
+                    let task_claim_prefix = format!("{}:{}:{}", user_claim_prefix, pool.name(),
+                        if pulled.task.submission_id.starts_with("st_") { "self-test" } else { "submission" });
                     // F-07 公平调度（跨 worker）：同一用户已有**未过期**评测 claim 时，
                     // 释放槽位并把任务放回队尾轮给他人。
                     // 判定走 Redis 全局状态，因此 N 个 worker 也严格保持「每用户 1 个」。
@@ -343,7 +423,7 @@ fn main() -> Result<()> {
                         let mut claim_conn = claim_conn.clone();
                         match user_claim::try_claim_user(
                             &mut claim_conn,
-                            &user_claim_prefix,
+                            &task_claim_prefix,
                             &pulled.task.user_id,
                             &claim_member,
                             user_claim_ttl_ms,
@@ -364,6 +444,7 @@ fn main() -> Result<()> {
                         }
                     };
                     if is_active_user {
+                        mq::mark_resource_wait(&redis_client, &config.judge_queue, &pulled.task, Some("user_busy")).await;
                         drop(permit);
                         if let Err(e) =
                             mq::requeue_task(&redis_client, &pulled.queue, &pulled.raw).await
@@ -378,6 +459,7 @@ fn main() -> Result<()> {
                         continue;
                     }
 
+                    mq::mark_resource_wait(&redis_client, &config.judge_queue, &pulled.task, None).await;
                     info!(
                         "收到评测任务: submission_id={}, language={}",
                         pulled.task.submission_id, pulled.task.language
@@ -390,17 +472,19 @@ fn main() -> Result<()> {
                     let fallback_dir = fallback_dir.clone();
                     let task_work_dir = work_dir.clone();
                     let image_prefix = image_prefix.clone();
+                    let oi_image = oi_image.clone();
                     let evaluator_network_mode = evaluator_network_mode.clone();
                     let command_whitelist = command_whitelist.clone();
                     let docker = docker.clone();
                     let guard_conn = claim_conn.clone();
-                    let guard_prefix = user_claim_prefix.clone();
+                    let guard_prefix = task_claim_prefix;
                     let guard_user_id = pulled.task.user_id.clone();
                     let guard_member = claim_member;
                     let task_instance_id = instance_id.clone();
                     let task_metrics = Arc::clone(&judge_metrics);
                     task_metrics.task_started();
 
+                    let task_scheduler = scheduler.clone();
                     let handle = tokio::spawn(async move {
                         let raw = pulled.raw;
                         let task = pulled.task;
@@ -414,9 +498,10 @@ fn main() -> Result<()> {
                         // 持有全局并发槽位直到任务结束。
                         let _permit = permit;
 
-                        // 统一使用双容器模式（Evaluator + Solution）
-                        let result = match judge::runner::evaluate_with_cpu_limit(
+                        // 根据 judge_type 分发到双容器或传统 OI 执行器。
+                        let execution = judge::runner::evaluate_with_scheduler(
                             docker,
+                            redis_client.clone(),
                             &task,
                             download_timeout,
                             cache_dir.clone(),
@@ -428,20 +513,48 @@ fn main() -> Result<()> {
                             &evaluator_network_mode,
                             allow_http_s3,
                             &image_prefix,
+                            &oi_image,
                             &command_whitelist,
                             max_evaluator_time_ms,
                             max_solution_call_timeout_ms,
                             &task_instance_id,
-                        )
-                        .await
-                        {
-                            Ok(r) => r,
-                            Err(e) => {
-                                error!(submission_id = %task.submission_id, error = %e, "双容器评测失败");
-                                // 启动前的平台配置错误回传公开文案，其余仍隐藏为通用系统错误
-                                types::JudgeResult::from_error(&e, &task.submission_id, task.rejudge_seq)
+                            Some((&task_scheduler, &_permit)),
+                        );
+                        let admission_failed = admission_error.is_some();
+                        let outcome = if let Some(error) = admission_error { Err(error) } else {
+                            tokio::select! {
+                                result = execution => result,
+                                _ = _permit.wait_lost() => Err(anyhow::anyhow!("资源租约续租失败，评测中止")),
                             }
                         };
+                        let mut result = match outcome {
+                            Ok(r) => r,
+                            Err(e) => {
+                                error!(submission_id = %task.submission_id, error = %e, "评测任务失败");
+                                let mut failed = types::JudgeResult::from_error(&e, &task.submission_id, task.rejudge_seq);
+                                if admission_failed {
+                                    failed.output = if e.to_string().contains("最低资源需求") {
+                                        "当前评测节点内存预算不足，请联系管理员".into()
+                                    } else { "调度协议或资源准入失败，请重测".into() };
+                                }
+                                if task.judge_type == "oi" {
+                                    failed.details["oi"] = serde_json::json!({"scoring_version":2,"verdict":"SE","backend":if pool == Pool::Wasm { "wasm" } else { "native" },"score":0,"max_score":10000,"subtasks":[]});
+                                }
+                                failed
+                            }
+                        };
+
+                        if let Some(run_id) = &task.run_id { result.details["run_id"] = serde_json::json!(run_id); }
+
+                        if task.submission_id.starts_with("st_") {
+                            if let Some(run_id)=&task.run_id {
+                                use redis::AsyncCommands;
+                                if let Ok(mut connection)=redis_client.get_multiplexed_async_connection().await {
+                                    let cancelled:redis::RedisResult<bool>=connection.exists(format!("noj:judge:cancel:{}:{}",task.submission_id,run_id)).await;
+                                    if matches!(cancelled,Ok(true)) {result.status="cancelled".to_string();result.score=0;}
+                                }
+                            }
+                        }
 
                         // 使用带重试的推送；成功后确认任务，崩溃/失败则留给 sweeper。
                         let push_succeeded = mq::push_result_with_retry(

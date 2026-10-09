@@ -1,3 +1,4 @@
+import { oiVerdict, projectMeteringDetails } from "./oi-details.ts";
 /**
  * Submissions CRUD（PR-3 拆分）。
  *
@@ -63,10 +64,15 @@ import { getStorageProvider } from "./../../../system/index.ts";
 import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
 import { resolveJudgeTaskPriority } from "./judge-priority.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
-import type { LlmConfig, RuntimeConfig } from "./../../../catalog/index.ts";
+import {
+  isOiRuntimeConfig,
+  type LlmConfig,
+  type ProblemRuntimeConfig,
+} from "./../../../catalog/index.ts";
 import type { JudgeTaskLlm, SubmissionStatus } from "../../types/index.ts";
 import type { Context } from "hono";
-import { buildJudgeTask, LANGUAGE_EXT_MAP } from "../../types/index.ts";
+import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
+import { prepareJudgeTask } from "../prepare-judge-task.ts";
 import {
   Channels,
   publishSseEvent,
@@ -408,7 +414,7 @@ export async function createSubmission(
   // ── 使用 runtime_config（双容器模式）──
   // 校验 evaluator/solution image + kind（spec §4 final gate）
   const runtimeConfig = problem.runtime_config as
-    | RuntimeConfig
+    | ProblemRuntimeConfig
     | null
     | undefined;
 
@@ -420,19 +426,33 @@ export async function createSubmission(
     );
   }
 
-  // 防御性 final gate：校验双容器镜像 + kind
-  await validateJudgeImageWithKind(
-    runtimeConfig.evaluator.image,
-    "evaluator",
-  );
-  await validateJudgeImageWithKind(
-    runtimeConfig.solution.image,
-    "solution",
-  );
+  if (isOiRuntimeConfig(runtimeConfig)) {
+    if (!runtimeConfig.languages.includes(input.language as "c" | "cc")) {
+      throw new BadRequestError(
+        `该 OI 题目不支持语言: ${input.language}`,
+      );
+    }
+  } else {
+    if (input.language === "c" || input.language === "cc") {
+      throw new BadRequestError("C/C++ 提交仅适用于 judge_type=oi 的题目");
+    }
+    // 防御性 final gate：校验双容器镜像 + kind
+    await validateJudgeImageWithKind(
+      runtimeConfig.evaluator.image,
+      "evaluator",
+    );
+    await validateJudgeImageWithKind(
+      runtimeConfig.solution.image,
+      "solution",
+    );
+  }
 
   let llmTask: JudgeTaskLlm | undefined;
   const llmConfig = problem.llm_config as LlmConfig | null;
   if (llmConfig) {
+    if (isOiRuntimeConfig(runtimeConfig)) {
+      throw new BadRequestError("OI 题目不支持 LLM 评测");
+    }
     llmTask = await buildJudgeTaskLlm(
       llmConfig,
       id,
@@ -448,7 +468,7 @@ export async function createSubmission(
   );
 
   // 统一经 buildJudgeTask 构造（2026-09-12 评审 §3.1：收敛 6 处内联构造）
-  const task = buildJudgeTask({
+  const task = await prepareJudgeTask({
     submission_id: id,
     problem_id: input.problem_id,
     user_id: userId,
@@ -604,9 +624,14 @@ export async function getSubmission(
         ? (output_truncated ? rawOutput.slice(0, MAX_OUTPUT_LENGTH) : rawOutput)
         : null;
       // 仅 owner/admin 解析 details JSON，其他访问者得到 null
-      const details = canSeeDetails
-        ? parseDetails(resultRows[0].details)
-        : null;
+      const rawDetails = parseDetails(resultRows[0].details);
+      const details = canSeeDetails ? rawDetails : null;
+      const metering = oiVerdict(rawDetails) &&
+          (rawDetails?.oi as Record<string, unknown>)?.backend !== "native"
+        ? projectMeteringDetails(
+          (rawDetails as Record<string, unknown>).metering,
+        )
+        : undefined;
       return {
         status: normalizeResultStatus(resultRows[0].status) ?? "finished",
         score: resultRows[0].score,
@@ -615,6 +640,7 @@ export async function getSubmission(
         time_ms: resultRows[0].time_ms,
         memory_kb: resultRows[0].memory_kb,
         details,
+        metering,
       };
     })()
     : null;
@@ -631,6 +657,13 @@ export async function getSubmission(
   return {
     id: row.id,
     public_id: row.public_id,
+    ...(canSeeDetails
+      ? {
+        progress: row.judge_progress as
+          | import("../oi-progress.ts").OiProgress
+          | null,
+      }
+      : {}),
     user_id: row.user_id,
     problem_id: row.problem_id,
     contest_id: row.contest_id,

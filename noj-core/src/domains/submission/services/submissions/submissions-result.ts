@@ -79,6 +79,7 @@ export async function saveEvaluationResult(
     const [sub] = await tx
       .select({
         rejudge_seq: submissions.rejudge_seq,
+        judge_run_id: submissions.judge_run_id,
         created_at: submissions.created_at,
         contest_id: submissions.contest_id,
         user_id: submissions.user_id,
@@ -108,6 +109,9 @@ export async function saveEvaluationResult(
       return null;
     }
 
+    if (sub.judge_run_id && result.details.run_id !== sub.judge_run_id) {
+      return null;
+    }
     // 查询是否存在历史评测结果（重测时需替换）
     const [existingResult] = await tx
       .select({ id: evaluationResults.id })

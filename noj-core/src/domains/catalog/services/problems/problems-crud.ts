@@ -12,12 +12,13 @@
  * - getProblem / problems-list.ts：回读完整结果（避免与上面产生 init 顺序循环）
  *   —— getProblem 是函数级引用，运行时才解析，无循环问题
  */
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   contestProblems,
   evaluationResults,
   problems,
+  problemTags,
   selfTests,
   submissions,
 } from "./../../../../shared/db/schema.ts";
@@ -37,26 +38,32 @@ import { assertLlmLimitsWithinDefault } from "../../../gateway/index.ts";
 import {
   type CreateProblemInput,
   DIFFICULTIES,
+  isOiRuntimeConfig,
   isValidDifficulty,
   isValidLlmConfig,
   isValidProblemType,
   isValidSubmissionMode,
+  judgeTypeForRuntimeConfig,
   type LlmConfig,
   type ProblemResponseWithTags,
-  type RuntimeConfig,
+  type ProblemRuntimeConfig,
   type UpdateProblemInput,
 } from "./../../types/problems.ts";
-import { validateRuntimeConfig } from "./problems-types.ts";
+import { validateProblemRuntimeConfig } from "./problems-types.ts";
 import { syncProblemTags, validateProblemTagIds } from "./problems-tags.ts";
 import { getProblem } from "./problems-list.ts";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
-import { assertPermission } from "./../../../identity/index.ts";
+import {
+  assertPermission,
+  checkPermission,
+} from "./../../../identity/index.ts";
 import {
   assertSensitiveFieldPermissions,
   enforceResourceLimits,
 } from "./problem-field-guard.ts";
 import type { Context } from "hono";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
+import { validateProblemSamples } from "../../types/problem-samples.ts";
 
 /**
  * 创建题目。
@@ -75,6 +82,7 @@ export async function createProblem(
   allowServerDerivedFields = false,
 ): Promise<ProblemResponseWithTags> {
   const db = getDb();
+  if (input.samples !== undefined) validateProblemSamples(input.samples);
 
   // NOJ-115/116：服务端流程（import-bundle）以外禁止客户端直传存储 URL。
   if (
@@ -118,6 +126,13 @@ export async function createProblem(
     throw new BadRequestError(`非法题目类型：${input.type}，仅允许 U/P`);
   }
   const type = rawType;
+  if (
+    input.visibility !== undefined &&
+    !["public", "private"].includes(input.visibility)
+  ) throw new BadRequestError("visibility 必须为 public/private");
+  if (type === "P" && input.visibility === "private") {
+    throw new BadRequestError("P 型题目必须公开");
+  }
 
   // 客观题标记（并入 U/P 题库；无评测容器，服务端即时判定）
   const isObjective = input.is_objective === true;
@@ -130,27 +145,44 @@ export async function createProblem(
   } else if (
     input.runtime_config !== undefined && input.runtime_config !== null
   ) {
-    validateRuntimeConfig(input.runtime_config);
-    try {
-      await validateJudgeImageWithKind(
-        input.runtime_config.evaluator.image,
-        "evaluator",
+    validateProblemRuntimeConfig(input.runtime_config);
+    if (
+      input.judge_type !== undefined &&
+      input.judge_type !== judgeTypeForRuntimeConfig(input.runtime_config)
+    ) {
+      throw new BadRequestError(
+        "judge_type 必须与 runtime_config 的评测模式一致",
       );
-      await validateJudgeImageWithKind(
-        input.runtime_config.solution.image,
-        "solution",
-      );
-    } catch (err) {
-      logger.error("createProblem: runtime_config 镜像校验失败", { err });
-      throw err;
+    }
+    if (
+      isOiRuntimeConfig(input.runtime_config) &&
+      (input.submission_mode === "artifact" ||
+        (input.artifact_max_size_mb !== undefined &&
+          input.artifact_max_size_mb !== null))
+    ) {
+      throw new BadRequestError("OI 题仅支持 code 提交，不支持 artifact 配置");
+    }
+    if (!isOiRuntimeConfig(input.runtime_config)) {
+      try {
+        await validateJudgeImageWithKind(
+          input.runtime_config.evaluator.image,
+          "evaluator",
+        );
+        await validateJudgeImageWithKind(
+          input.runtime_config.solution.image,
+          "solution",
+        );
+      } catch (err) {
+        logger.error("createProblem: runtime_config 镜像校验失败", { err });
+        throw err;
+      }
     }
 
     // evaluator 联网权限与题目创建权限一致：U 型任意登录用户可开启，
     // P 型仅 admin（由下方类型权限检查保证）。
     // 安全提醒：联网 + 可控 evaluator.command = 联网容器任意命令执行，
     // 开启联网的题目等于把外部网络能力交给出题人（出题人可信边界）。
-    // issue #207：敏感字段权限检查——command/network 偏离平台默认值时才需
-    // 对应权限（NOJ-062 后普通用户默认无权限）；资源限制字段受全局上限约束。
+    // 复用平台默认值基线；OI 不含双容器敏感字段。
     await assertSensitiveFieldPermissions(
       c,
       userId,
@@ -179,7 +211,10 @@ export async function createProblem(
     }
     assertLlmLimitsWithinDefault(input.llm);
     const runtime = input.runtime_config;
-    if (!runtime || !runtime.evaluator.network?.enabled) {
+    if (
+      !runtime || isOiRuntimeConfig(runtime) ||
+      !runtime.evaluator.network?.enabled
+    ) {
       throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
     }
     llmConfig = input.llm;
@@ -246,11 +281,15 @@ export async function createProblem(
         id,
         title: input.title,
         description: input.description,
+        samples: input.samples ?? [],
         difficulty: input.difficulty ?? "medium",
         support_package_storage_url: input.support_package_storage_url ?? null,
         runtime_config: isObjective ? null : (input.runtime_config ?? null),
+        judge_type: isObjective
+          ? "dual"
+          : judgeTypeForRuntimeConfig(input.runtime_config),
         is_objective: isObjective,
-        visibility: type === "P" ? "public" : "private",
+        visibility: type === "P" ? "public" : (input.visibility ?? "private"),
         submission_mode: submissionMode,
         artifact_max_size_mb: input.artifact_max_size_mb ?? null,
         llm_config: llmConfig,
@@ -310,6 +349,7 @@ export async function updateProblem(
   userRole?: string,
   c?: Context,
   allowServerDerivedFields = false,
+  expectedUpdatedAt?: string,
 ): Promise<ProblemResponseWithTags> {
   const db = getDb();
 
@@ -347,6 +387,20 @@ export async function updateProblem(
   }
 
   const problem = existing[0];
+  if (input.visibility !== undefined) {
+    if (!["public", "private"].includes(input.visibility)) {
+      throw new BadRequestError("visibility 必须为 public/private");
+    }
+    if (problem.type === "P" && input.visibility !== "public") {
+      throw new BadRequestError("P 型题目必须公开");
+    }
+    if (
+      problem.visibility === "public" && input.visibility === "private" &&
+      !(c
+        ? await checkPermission(c, "problem:write_any")
+        : userRole === "admin")
+    ) throw new ForbiddenError("仅管理员可将题目设为私有");
+  }
 
   // 权限检查（admin:full_access 通配放行由 assertPermission 内部处理）
   if (problem.type === "P") {
@@ -400,33 +454,68 @@ export async function updateProblem(
   //   undefined → 不变；null → 拒绝（编程题 runtime_config 是必填字段）；object → 校验并写入
   //   客观题套卷（is_objective）：忽略 runtime_config（无评测容器）
   const isObjective = input.is_objective ?? problem.is_objective;
+  if (input.judge_type !== undefined) {
+    if (isObjective) {
+      if (input.judge_type !== "dual") {
+        throw new BadRequestError("客观题套卷仅允许 judge_type=dual");
+      }
+    } else {
+      const effectiveRuntime = input.runtime_config ?? problem.runtime_config;
+      if (
+        !effectiveRuntime ||
+        input.judge_type !== judgeTypeForRuntimeConfig(effectiveRuntime)
+      ) {
+        throw new BadRequestError(
+          "judge_type 必须与 runtime_config 的评测模式一致",
+        );
+      }
+    }
+  }
   if (!isObjective && input.runtime_config !== undefined) {
     if (input.runtime_config === null) {
       throw new BadRequestError("runtime_config 是必填字段，不可清空");
     }
-    validateRuntimeConfig(input.runtime_config);
-    await validateJudgeImageWithKind(
-      input.runtime_config.evaluator.image,
-      "evaluator",
-    );
-    await validateJudgeImageWithKind(
-      input.runtime_config.solution.image,
-      "solution",
-    );
+    validateProblemRuntimeConfig(input.runtime_config);
+    if (
+      isOiRuntimeConfig(input.runtime_config) &&
+      (input.submission_mode === "artifact" ||
+        (input.artifact_max_size_mb !== undefined &&
+          input.artifact_max_size_mb !== null))
+    ) {
+      throw new BadRequestError("OI 题仅支持 code 提交，不支持 artifact 配置");
+    }
+    if (!isOiRuntimeConfig(input.runtime_config)) {
+      await validateJudgeImageWithKind(
+        input.runtime_config.evaluator.image,
+        "evaluator",
+      );
+      await validateJudgeImageWithKind(
+        input.runtime_config.solution.image,
+        "solution",
+      );
+    }
 
     // evaluator 联网权限与题目编辑权限一致：U 型 owner/admin、P 型 admin
     // （上方权限检查已保证）。
-    // issue #207：敏感字段权限检查 + 资源上限校验（与创建路径一致）。
-    // 以库中既有配置为基线：前端每次回传完整 runtime_config，未改动的
-    // command/network 不应要求敏感字段权限。
+    // 更新以库中已有配置为基线，未修改的敏感字段不重复要求权限。
     await assertSensitiveFieldPermissions(
       c,
       userId,
       userRole,
       input.runtime_config,
-      problem.runtime_config as RuntimeConfig | null,
+      problem.runtime_config as ProblemRuntimeConfig | null,
     );
     enforceResourceLimits(input.runtime_config);
+  }
+  const effectiveRuntimeForSubmission = (input.runtime_config ??
+    problem.runtime_config) as ProblemRuntimeConfig | null;
+  if (
+    !isObjective && isOiRuntimeConfig(effectiveRuntimeForSubmission) &&
+    (input.submission_mode === "artifact" ||
+      (input.artifact_max_size_mb !== undefined &&
+        input.artifact_max_size_mb !== null))
+  ) {
+    throw new BadRequestError("OI 题仅支持 code 提交，不支持 artifact 配置");
   }
 
   // LLM 配置变更校验：仅 P 型/官方题可启用，且必须保持 evaluator 网络开启。
@@ -446,9 +535,9 @@ export async function updateProblem(
       }
       assertLlmLimitsWithinDefault(input.llm);
       const effectiveRuntime = input.runtime_config ??
-        (problem.runtime_config as RuntimeConfig | null);
+        (problem.runtime_config as ProblemRuntimeConfig | null);
       if (
-        !effectiveRuntime ||
+        !effectiveRuntime || isOiRuntimeConfig(effectiveRuntime) ||
         !effectiveRuntime.evaluator.network?.enabled
       ) {
         throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
@@ -466,6 +555,7 @@ export async function updateProblem(
     } else if (
       input.runtime_config !== undefined &&
       input.runtime_config !== null &&
+      !isOiRuntimeConfig(input.runtime_config) &&
       !input.runtime_config.evaluator.network?.enabled
     ) {
       throw new BadRequestError("启用 LLM 的题目必须保持 evaluator 网络开启");
@@ -477,6 +567,17 @@ export async function updateProblem(
   delete (input as Record<string, unknown>)["number"];
 
   const updates: Record<string, unknown> = {};
+  if (input.visibility !== undefined) updates.visibility = input.visibility;
+  if (input.oi_data_files !== undefined) {
+    if (!allowServerDerivedFields) {
+      throw new BadRequestError("OI 文件引用只能由数据编辑服务生成");
+    }
+    updates.oi_data_files = input.oi_data_files;
+  }
+  if (input.samples !== undefined) {
+    validateProblemSamples(input.samples);
+    updates.samples = input.samples;
+  }
   if (input.title !== undefined) updates.title = input.title;
   if (input.description !== undefined) updates.description = input.description;
   if (input.difficulty !== undefined) updates.difficulty = input.difficulty;
@@ -496,12 +597,19 @@ export async function updateProblem(
     }
   }
   if (isObjective) {
-    // 客观题套卷：runtime_config 恒为 NULL（无评测容器），忽略写入
-    if (input.runtime_config !== undefined) {
-      updates.runtime_config = null;
-    }
+    // 客观题套卷没有评测容器；切换类型时也要清理旧的运行配置，避免
+    // 题目列标记为 objective/dual 而残留一份可执行的 OI 或双容器配置。
+    updates.runtime_config = null;
+    // 客观题没有 OI/双容器执行器；无论原题模式为何，数据库列也必须归一为 dual。
+    updates.judge_type = "dual";
   } else if (input.runtime_config !== undefined) {
     updates.runtime_config = input.runtime_config;
+    updates.judge_type = judgeTypeForRuntimeConfig(input.runtime_config);
+    if (isOiRuntimeConfig(input.runtime_config)) {
+      // OI runner 只接受源码提交；切换模式时清理存量 artifact 配置。
+      updates.submission_mode = "code";
+      updates.artifact_max_size_mb = null;
+    }
   }
   if (llmConfig !== undefined) {
     updates.llm_config = llmConfig;
@@ -524,16 +632,29 @@ export async function updateProblem(
 
   // 半写入防护：标签校验（存在性 + 客观题 kind 规则）在字段提交之前完成，
   // 校验失败（400）不产生「客户端以为未改、实际已改」的半写入。
-  if (input.tag_ids !== undefined) {
-    await validateProblemTagIds(input.tag_ids, isObjective);
-  }
+  const validatedTagIds = input.tag_ids === undefined
+    ? undefined
+    : await validateProblemTagIds(input.tag_ids, isObjective);
 
-  await db.update(problems).set(updates).where(eq(problems.id, id));
-
-  // 处理标签关联
-  if (input.tag_ids !== undefined) {
-    await syncProblemTags(id, input.tag_ids, isObjective);
-  }
+  // 配置、数据引用与标签同时发布，关联写入失败时回滚整次更新。
+  await db.transaction(async (tx) => {
+    const applied = await tx.update(problems).set(updates).where(
+      expectedUpdatedAt === undefined
+        ? eq(problems.id, id)
+        : and(eq(problems.id, id), eq(problems.updated_at, expectedUpdatedAt)),
+    ).returning({ id: problems.id });
+    if (applied.length === 0) {
+      throw new ConflictError("题目已被修改，请重新加载后保存");
+    }
+    if (validatedTagIds !== undefined) {
+      await tx.delete(problemTags).where(eq(problemTags.problem_id, id));
+      if (validatedTagIds.length > 0) {
+        await tx.insert(problemTags).values(
+          validatedTagIds.map((tagId) => ({ problem_id: id, tag_id: tagId })),
+        );
+      }
+    }
+  });
 
   // 审计日志：runtime_config 变更（客观题套卷无此字段，跳过）
   if (!isObjective && input.runtime_config !== undefined) {

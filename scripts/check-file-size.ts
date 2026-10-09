@@ -39,7 +39,7 @@ export const SIZE_BASELINE: Record<string, number> = {
   "noj-cli/src/prod/lifecycle.ts": 2097,
   // 2026-09-23：`backup` 参数解析抽到 `backup-args.ts`，cli.ts 1518 行；同步下调
   // 以锁住成果（棘轮只允许下调）。
-  "noj-cli/src/cli.ts": 1518,
+  "noj-cli/src/cli.ts": 1506,
   "noj-cli/src/prod/config.ts": 1218,
 };
 

@@ -43,10 +43,7 @@ const { toast } = useToast()
 const isAdmin = computed(() => isAdminUser(user.value))
 
 // ── 表单数据 ──
-const title = ref("")
-const description = ref("")
-const difficulty = ref("medium")
-const tagIds = ref<string[]>([])
+const { title, description, difficulty, samples, tagIds, visibility } = useProblemAuthorFields()
 const problemType = ref(props.initialType)
 const submissionMode = ref<'code' | 'artifact'>('code')
 const artifactMaxSizeMb = ref<number | null>(null)
@@ -220,6 +217,7 @@ async function loadProblem() {
   pageLoading.value = true
   try {
     const res = await api.get<{ data: {
+      samples?: import("~/utils/oiWorkspace").ProblemSample[]; visibility: "public" | "private";
       title: string; description: string; difficulty: string
       time_limit_ms: number; memory_limit_mb: number
       display_id: string; type: string; number: number
@@ -232,6 +230,8 @@ async function loadProblem() {
     displayId.value = p.display_id
     problemType.value = p.type === 'U' ? 'U' : 'P'
     title.value = p.title; description.value = p.description
+    samples.value = p.samples ?? []
+    visibility.value = p.visibility
     difficulty.value = p.difficulty
     tagIds.value = p.tags.map((c) => c.id)
     submissionMode.value = p.submission_mode ?? 'code'
@@ -341,7 +341,7 @@ async function handleSubmit() {
     const artifactMaxSizePayload = artifactMaxSizeMb.value
     if (isEditMode.value) {
       await api.put(`/api/v1/problems/${props.problemId}`, {
-        title: title.value.trim(), description: description.value.trim(),
+        title: title.value.trim(), description: description.value.trim(), samples: samples.value, visibility: visibility.value,
         difficulty: difficulty.value,
         tag_ids: tagIds.value,
         runtime_config: runtimeConfigPayload,
@@ -352,7 +352,7 @@ async function handleSubmit() {
       emit("saved", props.problemId!)
     } else {
       const res = await api.post<{ data: { id: string } }>("/api/v1/problems", {
-        title: title.value.trim(), description: description.value.trim(),
+        title: title.value.trim(), description: description.value.trim(), samples: samples.value, visibility: visibility.value,
         difficulty: difficulty.value,
         tag_ids: tagIds.value,
         type: problemType.value,
@@ -610,6 +610,8 @@ async function handleSubmit() {
 
     <!-- 支持包上传 -->
     <section class="px-6 py-5 border-b border-border last:border-b-0">
+      <UFormField v-if="problemType === 'U'" label="可见性"><USelect v-model="visibility" :items="[{label:'公开',value:'public'},{label:'私有',value:'private'}]" class="w-full" /></UFormField>
+      <ProblemSampleEditor v-model="samples" v-model:statement="description" />
       <SupportPackageUpload :problem-id="uploadProblemId" :has-package="hasSupportPackage" :disabled="!uploadProblemId" @package-changed="(val: boolean) => hasSupportPackage = val" />
     </section>
 

@@ -46,9 +46,10 @@ import {
   validateBundleManifest,
   validateObjectiveQuestions,
 } from "./../../types/problem-bundle.ts";
-import type {
-  ProblemResponseWithTags,
-  RuntimeConfig,
+import {
+  isOiRuntimeConfig,
+  type ProblemResponseWithTags,
+  type ProblemRuntimeConfig as RuntimeConfig,
 } from "./../../types/problems.ts";
 import { type CreateQuestionInput } from "../../../objective/index.ts";
 import { updateProblem } from "./problems-crud.ts";
@@ -150,27 +151,6 @@ export async function importProblemBundle(
   // 2. 解析 + 校验（含 ZIP 安全与 manifest 结构校验、command 默认注入）
   const parsed = parseBundleZip(file.data);
   const manifest = validateBundleManifest(parsed.manifest);
-
-  // 2.5 已废弃字段告警（2026-09-24 审计 A2-2）：`samples` 从不落库、无消费者。
-  // 校验层为兼容存量题包而容忍该字段，这里补一条可见 warning，避免出题人
-  // 继续写一个"看起来生效、实际无效"的字段。
-  if (
-    typeof parsed.manifest === "object" && parsed.manifest !== null &&
-    !Array.isArray(parsed.manifest) &&
-    (parsed.manifest as Record<string, unknown>).samples !== undefined
-  ) {
-    const samples = (parsed.manifest as Record<string, unknown>).samples;
-    logger.warn(
-      "题目包 manifest.samples 已废弃（从不落库），本次导入已忽略；样例请直接写进题面",
-      {
-        file: file.name,
-        // 便于发现手写坏值：以前非法形状会 400，软废弃后只在 warning 里可见。
-        value_type: Array.isArray(samples)
-          ? `array(len=${samples.length})`
-          : typeof samples,
-      },
-    );
-  }
 
   // 3. 题面：statement.md 优先，manifest.description 兜底，二者皆缺 → 400
   const description = parsed.statement ?? manifest.description;
@@ -356,39 +336,58 @@ async function updateExisting(
     assertLlmLimitsWithinDefault(manifest.llm);
   }
 
-  if (oldStorageUrl) {
-    try {
-      await storage.delete(oldStorageUrl);
-    } catch (err) {
-      logger.warn("题目导入：删除旧评测包失败", { problem_id: problemId, err });
-    }
-  }
   const storageUrl = await storage.put(
-    buildPackageKey(problemId),
+    buildPackageKey(`${problemId}/${crypto.randomUUID()}`),
     strippedZip,
     "application/zip",
   );
-  return updateProblem(
-    problemId,
-    {
-      title: manifest.title,
-      description,
-      difficulty: manifest.difficulty,
-      runtime_config: manifest.runtime_config!,
-      submission_mode: manifest.submission_mode,
-      artifact_max_size_mb: manifest.artifact_max_size_mb,
-      llm: manifest.llm,
-      support_package_storage_url: storageUrl,
-      // 模板与题包同源：重新导入即用新包内的模板覆盖（包内无模板则清空，
-      // 避免旧模板与新题包不一致）。
-      template_content: templateContent,
-      tag_ids: await resolveTagIds(manifest.tags),
-    },
-    actor.userId,
-    actor.userRole,
-    c,
-    true, // import-bundle 是服务端生成 storage URL 的受控流程
-  );
+  try {
+    const updated = await updateProblem(
+      problemId,
+      {
+        title: manifest.title,
+        samples: manifest.samples ?? [],
+        description,
+        difficulty: manifest.difficulty,
+        runtime_config: manifest.runtime_config!,
+        judge_type: isOiRuntimeConfig(manifest.runtime_config) ? "oi" : "dual",
+        submission_mode: manifest.submission_mode,
+        artifact_max_size_mb: manifest.artifact_max_size_mb,
+        llm: manifest.llm,
+        support_package_storage_url: storageUrl,
+        // 模板与题包同源：重新导入即用新包内的模板覆盖（包内无模板则清空，
+        // 避免旧模板与新题包不一致）。
+        template_content: templateContent,
+        tag_ids: await resolveTagIds(manifest.tags),
+      },
+      actor.userId,
+      actor.userRole,
+      c,
+      true, // import-bundle 是服务端生成 storage URL 的受控流程
+    );
+    // 本地存储按内容寻址：重复导入可能返回同一对象，不能把新引用删除。
+    if (oldStorageUrl && oldStorageUrl !== storageUrl) {
+      try {
+        await storage.delete(oldStorageUrl);
+      } catch (err) {
+        logger.warn("题目导入：删除旧评测包失败", {
+          problem_id: problemId,
+          err,
+        });
+      }
+    }
+    return updated;
+  } catch (error) {
+    if (storageUrl !== oldStorageUrl) {
+      await storage.delete(storageUrl).catch((cleanupError) =>
+        logger.warn("导入回滚：新评测包清理失败", {
+          problem_id: problemId,
+          err: cleanupError,
+        })
+      );
+    }
+    throw error;
+  }
 }
 
 /**
@@ -462,11 +461,13 @@ async function importObjectivePaper(
       problemId = existingId;
       await tx.update(problems).set({
         title: manifest.title,
+        samples: manifest.samples ?? [],
         description,
         difficulty: manifest.difficulty ?? "medium",
         is_objective: true,
         visibility: type === "P" ? "public" : "private",
         runtime_config: null,
+        judge_type: "dual",
         support_package_storage_url: null,
         submission_mode: "code",
         artifact_max_size_mb: null,
@@ -491,9 +492,11 @@ async function importObjectivePaper(
           await tx.insert(problems).values({
             id: problemId,
             title: manifest.title,
+            samples: manifest.samples ?? [],
             description,
             difficulty: manifest.difficulty ?? "medium",
             runtime_config: null,
+            judge_type: "dual",
             is_objective: true,
             visibility: type === "P" ? "public" : "private",
             number: finalNumber,
@@ -600,27 +603,31 @@ async function createViaCrud(
     throw new ForbiddenError("无权创建题目");
   }
 
-  // 镜像白名单校验（与 createProblem 一致）
-  await validateJudgeImageWithKind(
-    manifest.runtime_config!.evaluator.image,
-    "evaluator",
-  );
-  await validateJudgeImageWithKind(
-    manifest.runtime_config!.solution.image,
-    "solution",
-  );
+  // 双容器题目才需要镜像白名单；OI 题使用 worker 的受信固定镜像。
+  if (!isOiRuntimeConfig(manifest.runtime_config)) {
+    await validateJudgeImageWithKind(
+      manifest.runtime_config!.evaluator.image,
+      "evaluator",
+    );
+    await validateJudgeImageWithKind(
+      manifest.runtime_config!.solution.image,
+      "solution",
+    );
+  }
 
   // evaluator 联网权限与题目创建权限一致：普通用户导入创建 U 型题可开网；
   // P 型由上方类型检查保证仅 admin。安全提醒：联网 + 可控 evaluator.command
   // = 联网容器任意命令执行，题目包 manifest.runtime_config 由上传者完全可控。
   // issue #207：与 CRUD 创建路径一致的敏感字段权限检查 + 资源上限校验
-  await assertSensitiveFieldPermissions(
-    c,
-    actor.userId,
-    actor.userRole,
-    manifest.runtime_config!,
-  );
-  enforceResourceLimits(manifest.runtime_config!);
+  if (!isOiRuntimeConfig(manifest.runtime_config)) {
+    await assertSensitiveFieldPermissions(
+      c,
+      actor.userId,
+      actor.userRole,
+      manifest.runtime_config!,
+    );
+    enforceResourceLimits(manifest.runtime_config!);
+  }
   if (manifest.llm) {
     assertLlmLimitsWithinDefault(manifest.llm);
   }
@@ -648,9 +655,11 @@ async function createViaCrud(
       await db.insert(problems).values({
         id,
         title: manifest.title,
+        samples: manifest.samples ?? [],
         description,
         difficulty: manifest.difficulty ?? "medium",
         runtime_config: manifest.runtime_config!,
+        judge_type: isOiRuntimeConfig(manifest.runtime_config) ? "oi" : "dual",
         visibility: type === "P" ? "public" : "private",
         submission_mode: manifest.submission_mode ?? "code",
         artifact_max_size_mb: manifest.artifact_max_size_mb ?? null,

@@ -1,3 +1,4 @@
+import { isAcceptedResult } from "../../../../shared/base/accepted-result.ts";
 /**
  * 题目统计聚合：公开通过率 + 出题人数据洞察。
  *
@@ -164,7 +165,7 @@ export async function getProblemStatsDetail(
 
     const status = row.status ?? "unknown";
     statusDistribution[status] = (statusDistribution[status] ?? 0) + 1;
-    if (row.status === "finished" && row.score > 0) {
+    if (isAcceptedResult(row.status, row.score, row.details)) {
       acceptedCount += 1;
       if (Number.isFinite(submittedAt) && !firstAcAt.has(row.user_id)) {
         firstAcAt.set(row.user_id, submittedAt);

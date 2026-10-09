@@ -476,6 +476,9 @@ jobs:
         with:
           deno-version-file: .dvmrc
 
+      - name: 验证 WASM 统一标准
+        run: deno run -A scripts/verify-wasm-standard.ts
+
       - name: 仓库级门禁
         run: deno run -A scripts/check-ci.ts
 
@@ -2159,13 +2162,51 @@ jobs:
         # 本项目无 doctest（src 无 /// ``` 示例），覆盖等价。
         run: cargo nextest run --all-targets
 
-      # 失败时上传 cargo 编译缓存（修复 finding M7）
+      - name: 缓存固定 WASI 构建来源
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/noj-wasi-cache
+          key: noj-wasi-v2-${{ hashFiles('noj-judge/toolchain/recipe.json', 'noj-judge/toolchain/archive-encodings.json', 'noj-judge/toolchain/patches/*.patch', 'noj-judge/scripts/build-oi-wasi-toolchain.*') }}
+
+      - name: 校验固定来源下载保护
+        working-directory: noj-judge
+        run: python3 -m unittest discover -s scripts -p test_build_oi_wasi_toolchain.py
+
+      - name: 构建并验证固定 NOJ WASI SDK
+        working-directory: noj-judge
+        run: >-
+          bash scripts/build-oi-wasi-toolchain.sh
+          "${RUNNER_TEMP}/noj-wasi-cache"
+          "${RUNNER_TEMP}/noj-wasi-build-a"
+          "${RUNNER_TEMP}/noj-wasi-sdk-a"
+
+      - name: 不同目录构建产物一致性
+        working-directory: noj-judge
+        run: >-
+          bash scripts/build-oi-wasi-toolchain.sh
+          "${RUNNER_TEMP}/noj-wasi-cache"
+          "${RUNNER_TEMP}/noj-wasi-build-b"
+          "${RUNNER_TEMP}/noj-wasi-sdk-b"
+
+      - name: 真实 WASI C/C++ 评测验收
+        working-directory: noj-judge
+        shell: bash
+        run: >-
+          bash scripts/check-oi-wasi-toolchain.sh "${RUNNER_TEMP}/noj-wasi-sdk-a"
+          2>&1 | tee "${RUNNER_TEMP}/noj-wasi-toolchain-check.log"
+
+      - name: 生产 WASI runtime 镜像验收
+        working-directory: noj-judge
+        shell: bash
+        run: bash scripts/check-oi-wasi-image.sh 2>&1 | tee "${RUNNER_TEMP}/noj-wasi-image-check.log"
+
+      # 仅上传诊断日志，避免整个 target 的数 GiB 编译缓存阻塞失败反馈与取消。
       - name: 上传失败日志
         if: failure() || cancelled()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: judge-check-logs
-          path: noj-judge/target/
+          path: ${{ runner.temp }}/noj-wasi-*-check.log
           retention-days: 7
           if-no-files-found: ignore
         continue-on-error: true

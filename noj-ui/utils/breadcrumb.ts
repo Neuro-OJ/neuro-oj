@@ -59,6 +59,12 @@ const ROUTES: BreadcrumbRoute[] = [
   { pattern: '/problems', trail: [{ key: 'nav.problems' }] },
   { pattern: '/problems/new', trail: [{ key: 'nav.problems', to: '/problems' }, { key: 'breadcrumb.newProblem' }] },
   {
+    pattern: '/problems/new/oi',
+    trail: [{ key: 'nav.problems', to: '/problems' }, { key: 'breadcrumb.newProblem', to: '/problems/new' }, {
+      key: 'breadcrumb.newCodingProblem',
+    }],
+  },
+  {
     pattern: '/problems/new/coding',
     trail: [{ key: 'nav.problems', to: '/problems' }, { key: 'breadcrumb.newProblem', to: '/problems/new' }, {
       key: 'breadcrumb.newCodingProblem',

@@ -21,5 +21,6 @@ mkdir -p bin
 deno compile \
   -A --no-check --unstable-byonm --unstable-node-globals \
   --target x86_64-unknown-linux-gnu \
+  --include src/domains/catalog/services/oi-archive-worker.ts \
   --output bin/noj-server \
   src/main.ts
