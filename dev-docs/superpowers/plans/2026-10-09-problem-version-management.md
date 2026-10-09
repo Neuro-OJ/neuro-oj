@@ -83,6 +83,8 @@
 ### 批次 2 验证证据（截至目前）
 
 - objective 域：**48 passed / 0 failed**（含新增 6 个小题草稿用例与 7 个重判用例）。
+- 本轮最终 `deno task test:parallel`：**1300 passed / 0 failed / 11 ignored**（+13 用例）；
+  域边界与全量类型检查通过。
 
 - **`deno task test:parallel`（PGlite + 真实 PG 双分片）：1271 passed / 0 failed / 11 ignored**（批次 1+2a/2b 时点）。
 - 批次 3a/2c 追加后：catalog **292 passed / 0 failed**、submission **150 passed / 0 failed / 21 ignored**。
