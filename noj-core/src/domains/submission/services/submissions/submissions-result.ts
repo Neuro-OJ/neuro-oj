@@ -30,6 +30,11 @@ import { getRedis } from "./../../../../shared/mq/connection.ts";
 const logger = getLogger(["noj", "submission"]);
 import { Channels } from "./../../../../shared/sse/event-bus.ts";
 import { sanitizeJudgeResult } from "./sanitize-judge-result.ts";
+import {
+  deriveResultKind,
+  isAcceptedResult,
+} from "../../../../shared/versioning/verdict.ts";
+import { applyAttemptResult } from "../versioning/result-write.ts";
 
 // 允许的状态转换
 const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
@@ -56,6 +61,8 @@ export interface SaveEvaluationResultOutcome {
   created_at?: string;
   /** 是否为重测结果；重测不参与首次 e2e 延迟统计。 */
   is_rejudge?: boolean;
+  /** 版本化尝试链路结论：`graded` / `platform_error` / `ignored`；无尝试时为 null。 */
+  attempt_applied?: string | null;
 }
 
 /**
@@ -86,6 +93,7 @@ export async function saveEvaluationResult(
         problem_id: submissions.problem_id,
         status: submissions.status,
         artifact_storage_url: submissions.artifact_storage_url,
+        active_attempt_id: submissions.active_attempt_id,
       })
       .from(submissions)
       .where(eq(submissions.id, result.submission_id))
@@ -182,6 +190,30 @@ export async function saveEvaluationResult(
         created_at: now,
       });
 
+    // 版本化评测链路（Handbook §5.6）：尝试终态 + 分版本当前判定 + 双口径投影。
+    // 旧协议（judge 未回传 attempt_id）用提交的 active_attempt_id 兜底解析；
+    // 没有在途尝试（历史数据/直接插入的测试提交）则整段跳过，保持既有行为。
+    const attemptId = result.attempt_id ?? sub.active_attempt_id ?? null;
+    let attemptApplied: string | null = null;
+    if (attemptId) {
+      const outcome = await applyAttemptResult({
+        attemptId,
+        resultKind: result.result_kind ?? deriveResultKind(safeResult.status),
+        resultStatus: safeResult.status,
+        score: safeResult.score,
+        accepted: isAcceptedResult({
+          status: safeResult.status,
+          score: safeResult.score,
+          details: safeResult.details,
+        }),
+        output: safeResult.output,
+        details: safeResult.details,
+        timeMs: safeResult.time_ms ?? null,
+        memoryKb: safeResult.memory_kb ?? null,
+      }, tx);
+      attemptApplied = outcome.applied;
+    }
+
     // 事务性 Outbox：在同一事务内写入 SSE 事件，提交后由调用方发布 Redis。
     const outboxEvents: SseEventOutboxItem[] = [];
     const [submissionEventRow] = await tx.insert(sseEvents).values({
@@ -218,6 +250,7 @@ export async function saveEvaluationResult(
 
     return {
       applied: true,
+      attempt_applied: attemptApplied,
       created_at: sub.created_at,
       contest_id: sub.contest_id,
       user_id: sub.user_id,
@@ -291,6 +324,7 @@ export async function saveEvaluationResult(
     outbox_events: outcome.outbox_events,
     created_at: outcome.created_at,
     is_rejudge: outcome.is_rejudge,
+    attempt_applied: outcome.attempt_applied ?? null,
   };
 }
 

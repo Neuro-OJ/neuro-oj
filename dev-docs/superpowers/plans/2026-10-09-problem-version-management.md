@@ -87,9 +87,16 @@
       设置 `active_attempt_id` 且不触碰有效成绩指针）与 `result-write.ts`
       （§5.6 事务：锁提交行 → 忽略已处理/过时结果 → 写终态 → graded 更新分版本当前判定
       → 双口径投影重算 → 清空在途尝试 + 最近尝试/运行状态；平台错误只记终态）。
-- [ ] 3c（接线）MQ 消费者改走 `applyAttemptResult`；Judge 协议 v2
-      （`evaluation_protocol_version`/`attempt_id`/`problem_version_id`/`run_id`/`result_kind`
-      透传与校验）、LLM 生命周期、sweeper 从尝试快照恢复、自测携带版本与快照。
+- [x] 3c（接线）`createSubmission` 创建初次尝试（sequence 0 + `active_attempt_id` +
+      非敏感任务快照）；`saveEvaluationResult` 在**同一事务**内调用 `applyAttemptResult`
+      （旧协议用 `active_attempt_id` 兜底解析，新协议用 `result.attempt_id`）；
+      `JudgeResult` 增加协议字段（`evaluation_protocol_version`/`attempt_id`/
+      `problem_version_id`/`result_kind`，全部可选以兼容旧 judge）；
+      `shared/versioning/verdict.ts` 统一通过语义（与既有 `acceptedResultSql` 完全一致：
+      OI 看 verdict=AC，其余正分）与平台错误状态兜底推导。
+- [ ] 3c（Judge 侧）Rust 任务/结果字段与契约夹具同步、`run_id = attempt_id`、
+      OI 进度事件携带 run_id、LLM 生命周期（attempt 维度额度与吊销）、
+      sweeper 从尝试快照恢复、自测携带版本与快照。
 - [ ] 3d 客观题提交走统一尝试与投影写入服务。
 - [ ] 3d 客观题提交走统一尝试与投影写入服务。
 - **严格化提醒（必须在上线前完成）**：`resolveSubmissionVersion` 目前对「题目尚未发布
@@ -101,7 +108,8 @@
 - objective 域：**48 passed / 0 failed**（含新增 6 个小题草稿用例与 7 个重判用例）。
 - 本轮最终 `deno task test:parallel`：**1300 passed / 0 failed / 11 ignored**（+13 用例）；
   域边界与全量类型检查通过。
-- 批次 3b/3c 追加后：submission 域 **165 passed / 0 failed**（新增 15 个用例）。
+- 批次 3b/3c 追加后：submission 域 **169 passed / 0 failed**（新增 19 个用例，
+  含 4 个端到端链路用例：提交→尝试→结果→投影）。
 - 本轮最终 `deno task test:parallel`：**1315 passed / 0 failed / 11 ignored**（+15 用例）；
   域边界与全量类型检查通过。
 

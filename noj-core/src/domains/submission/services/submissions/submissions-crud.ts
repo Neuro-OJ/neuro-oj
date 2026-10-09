@@ -77,6 +77,7 @@ import {
   assertVersionAcceptsSubmission,
   resolveSubmissionVersion,
 } from "../versioning/submission-version.ts";
+import { createAttempt } from "../versioning/attempts.ts";
 import {
   Channels,
   publishSseEvent,
@@ -525,6 +526,40 @@ export async function createSubmission(
       "提交失败：数据库写入错误，请稍后重试",
       500,
       "SUBMISSION_DB_ERROR",
+    );
+  }
+
+  // 创建初次评测尝试（Handbook §5.4 第 3–5 步）：sequence=0，并把提交的
+  // `active_attempt_id` 指向它；已有分版本判定与有效成绩一概不动（新提交本来也没有）。
+  try {
+    await createAttempt({
+      source: {
+        kind: "submission",
+        id,
+        problem_id: input.problem_id,
+        contest_id: resolvedContestId,
+      },
+      problemVersionId: versionResolution.kind === "known"
+        ? versionResolution.version.version_id
+        : null,
+      source_kind: "initial",
+      // 非敏感执行快照：语言、版本、提交模式与题型（不含 token / 下载凭据）
+      taskSnapshot: {
+        language: input.language,
+        problem_version_id: versionResolution.kind === "known"
+          ? versionResolution.version.version_id
+          : null,
+        submission_mode: problem.submission_mode,
+        judge_type: problem.judge_type,
+      },
+      createdBy: userId,
+    });
+  } catch (attemptErr) {
+    logger.error("评测尝试创建失败", { submission_id: id, err: attemptErr });
+    throw new AppError(
+      "提交失败：无法创建评测尝试，请稍后重试",
+      500,
+      "SUBMISSION_ATTEMPT_ERROR",
     );
   }
 

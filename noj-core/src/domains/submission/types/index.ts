@@ -205,6 +205,21 @@ export interface JudgeResult {
   memory_kb?: number;
   /** 重测序列号，由 noj-judge 透传。用于 saveEvaluationResult 校验。 */
   rejudge_seq?: number;
+  /**
+   * 评测协议版本（Handbook §5.5）。
+   * 缺省（undefined）= 旧协议：core 用提交的 `active_attempt_id` 兜底解析尝试。
+   */
+  evaluation_protocol_version?: number;
+  /** 本次执行的评测尝试 ID（正式提交下等于 `run_id`）。 */
+  attempt_id?: string;
+  /** 本次执行使用的题目版本 UUID。 */
+  problem_version_id?: string;
+  /**
+   * 判定类别：`graded`（正式判定）/ `platform_error`（平台错误）。
+   * 缺省时 core 按状态白名单兜底推导（见 `deriveResultKind`），
+   * 新 judge 必须显式携带。
+   */
+  result_kind?: "graded" | "platform_error";
 }
 
 /** 提交的状态枚举。 */
