@@ -13,6 +13,14 @@ export interface SubmissionInput {
   code: string;
   file_name?: string;
   contest_id?: string;
+  /**
+   * 提交时版本（Handbook §4.2）。
+   *
+   * 题库提交必须携带该题的已发布版本；竞赛提交携带时必须等于竞赛固定版本，
+   * 否则 `409 CONTEST_PROBLEM_VERSION_CHANGED`。缺失且题目已版本化时返回
+   * `VERSION_REQUIRED`——服务端**不静默绑定最新版**。
+   */
+  version_id?: string;
 }
 
 /** 创建提交成功后的响应（基础字段，不含 result） */

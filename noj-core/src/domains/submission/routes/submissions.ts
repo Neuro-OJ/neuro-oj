@@ -227,6 +227,9 @@ router.post("/", authMiddleware, async (c) => {
       language: body.language as string,
       code: body.code as string,
       file_name: body.file_name as string | undefined,
+      version_id: typeof body.version_id === "string" && body.version_id
+        ? body.version_id
+        : undefined,
     },
     undefined,
     isAdmin,

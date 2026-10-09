@@ -78,7 +78,18 @@
       （`recomputeSubmissionProjection` / `recomputeProblemProjections` /
       `recomputeContestProblemProjections`）与 `upsertCurrentVersionResult`
       （§2.9 当前判定写入），并在业务事务内递增 `query_projection_revisions`。
-- [ ] 3b 结果落库事务接入（§5.6）、协议 v2、LLM 生命周期、sweeper、自测。
+- [x] 3b 提交时版本绑定：`submission/services/versioning/submission-version.ts`
+      （题库显式版本、竞赛固定版本 + 客户端覆盖 409 `CONTEST_PROBLEM_VERSION_CHANGED`、
+      已版本化题目缺版本 409 `VERSION_REQUIRED`、跨题版本 404、版本内容校验提交模式与
+      语言）；`createSubmission` 与 `POST /submissions` 已接线并落库
+      `submitted_version_id` / `version_origin`。
+- [ ] 3c 评测尝试接入（§5.4 第 3–5 步）：创建 attempt + `active_attempt_id`、
+      协议 v2（`evaluation_protocol_version`/`attempt_id`/`problem_version_id`/`run_id`）、
+      结果落库事务（§5.6：终态、分版本当前判定、双口径投影）、LLM 生命周期、sweeper、自测。
+- [ ] 3d 客观题提交走统一尝试与投影写入服务。
+- **严格化提醒（必须在上线前完成）**：`resolveSubmissionVersion` 目前对「题目尚未发布
+  任何版本」的存量题目仍返回 `legacy_unknown`（迁移期兼容）。批次 7 回填迁移基线后，
+  该分支必须收紧为拒绝；同时确认所有客户端（UI/IDE/CLI）都携带 `version_id`。
 
 ### 批次 2 验证证据（截至目前）
 

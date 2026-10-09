@@ -74,6 +74,10 @@ import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
 import {
+  assertVersionAcceptsSubmission,
+  resolveSubmissionVersion,
+} from "../versioning/submission-version.ts";
+import {
   Channels,
   publishSseEvent,
 } from "./../../../../shared/sse/event-bus.ts";
@@ -379,6 +383,20 @@ export async function createSubmission(
     throw new BadRequestError("该题目要求上传 zip 产物");
   }
 
+  // 提交时版本：竞赛用固定版本（客户端覆盖 → 409），题库用显式指定版本；
+  // 版本内容参与提交模式与语言校验（Handbook §5.4 第 1 步）。
+  const versionResolution = await resolveSubmissionVersion(problem.id, {
+    contestId: resolvedContestId,
+    requestedVersionId: input.version_id,
+    latestVersionId: problem.latest_version_id,
+  });
+  if (versionResolution.kind === "known") {
+    assertVersionAcceptsSubmission(versionResolution.version.content, {
+      language: input.language,
+      submissionMode: problem.submission_mode as "code" | "artifact",
+    });
+  }
+
   // 验证语言（与 LANGUAGE_EXT_MAP 键集保持一致）
   const supportedLanguages = Object.keys(LANGUAGE_EXT_MAP);
   if (!supportedLanguages.includes(input.language)) {
@@ -492,6 +510,13 @@ export async function createSubmission(
       code: input.code,
       file_name: fileName,
       status: "pending",
+      // 提交时版本不可变：`known` 必须有版本，`legacy_unknown` 必须为空
+      submitted_version_id: versionResolution.kind === "known"
+        ? versionResolution.version.version_id
+        : null,
+      version_origin: versionResolution.kind === "known"
+        ? "known"
+        : "legacy_unknown",
       created_at: now,
     });
   } catch (dbErr) {
