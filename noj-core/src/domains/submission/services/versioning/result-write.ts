@@ -19,6 +19,7 @@ import type { Executor } from "../../../../shared/db/executor.ts";
 import {
   evaluationAttempts,
   objectiveSubmissions,
+  submissionJobItems,
   submissions,
 } from "../../../../shared/db/schema.ts";
 import type { AttemptResultKind } from "../../../../shared/versioning/types.ts";
@@ -33,6 +34,7 @@ import {
   type SubmissionProjectionPlan,
   upsertCurrentVersionResult,
 } from "./projection.ts";
+import { completeJobItem } from "./job-worker.ts";
 
 /** 结果写入输入（可信封套字段，来自 JudgeResult）。 */
 export interface ApplyAttemptResultInput {
@@ -152,6 +154,8 @@ export async function applyAttemptResult(
       status: "error",
       judge_finished_at: new Date().toISOString(),
     }, db);
+    // 批任务条目：平台错误属于条目 failed（WA/零分才是成功完成）
+    await completeAttemptJobItem(input.attemptId, "failed", db);
     return { applied: "platform_error" };
   }
 
@@ -167,7 +171,34 @@ export async function applyAttemptResult(
     status: "finished",
     judge_finished_at: new Date().toISOString(),
   }, db);
+  // 批任务条目：正式判定（含 WA、零分）即条目成功完成
+  await completeAttemptJobItem(input.attemptId, "succeeded", db);
   return { applied: "graded", projection };
+}
+
+/**
+ * 结果回写时完成对应的批任务条目（§5.6 第 8 步）。
+ *
+ * - 正式判定（含 WA/零分）→ 条目 `succeeded`；
+ * - 平台错误 → 条目 `failed` + `PLATFORM_ERROR`；
+ * - 条目已是终态时 `completeJobItem` 幂等跳过（重复消息不会重复计数）。
+ */
+async function completeAttemptJobItem(
+  attemptId: string,
+  status: "succeeded" | "failed",
+  executor: Executor,
+): Promise<void> {
+  const [item] = await executor.select({ id: submissionJobItems.id })
+    .from(submissionJobItems).where(
+      eq(submissionJobItems.attempt_id, attemptId),
+    ).limit(1);
+  if (!item) return;
+  await completeJobItem(item.id, {
+    status,
+    attemptId,
+    reasonCode: status === "failed" ? "PLATFORM_ERROR" : null,
+    reasonMessage: status === "failed" ? "评测平台错误，未产生正式判定" : null,
+  }, executor);
 }
 
 /** 供测试与读路径使用的尝试列表（按 sequence 升序）。 */

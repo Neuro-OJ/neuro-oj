@@ -89,8 +89,17 @@
       空集合直接完成、`policy_changes` 作用域与 revision 校验（全部校验通过才应用）、
       `retryRejudgeJob`（仅 failed/skipped、保留版本映射、不改策略）、
       `refreshJobStatus`（由条目聚合，无进程内计数器）。
-- [ ] 4b（worker）SKIP LOCKED 领取 + lease 续租 + 指数退避重派 + 条目终态写入，
-      注册进 `main()` 后台消费者。
+- [x] 4b（worker 原语）`submission/services/versioning/job-worker.ts`：
+  `claimJobItems`（独立短事务 + `FOR UPDATE SKIP LOCKED` + preparing/lease）、
+  `renewJobItemLease`、`markJobItemDispatched`（条件更新，结果早到不回退终态）、
+  `completeJobItem`（幂等终态 + 自动聚合任务状态）、
+  `scheduleDispatchRetryOrFail`（1/2/4/8/16 秒退避，超限 failed）、
+  `requeueJobItem`（容量不足不计失败）、`requeueExpiredLeases`（崩溃恢复）。
+  结果落库时自动完成条目：graded（含 WA/零分）→ `succeeded`；
+  平台错误 → `failed` + `PLATFORM_ERROR`。
+- [ ] 4b（派发 + 注册）条目派发：按目标版本构造 Judge 任务（版本内容为唯一配置来源）、
+  建重测尝试（sequence 递增）、`run_id = attempt_id`、artifact 缺失 → `ARTIFACT_MISSING`、
+  语言/大小校验；worker 注册进 `main()` 后台消费者并接入关闭流程。
 - [ ] 4c 管理员重测接口适配层（单提交/整题 → 统一任务服务）与用户升级任务。
 - [ ] 4c 管理员重测接口适配层（单提交/整题 → 统一任务服务）与用户升级任务
   （`upgraded_from_id`、context、客观题竞赛限制、任务读取权限）。
@@ -137,6 +146,7 @@
 - 批次 4a 追加后：submission 域 **174 passed / 0 failed**（新增 5 个策略切换用例）。
 - 批次 4b 受理追加后：submission 域 **185 passed / 0 failed**（新增 11 个批任务用例）。
 - 本轮最终 `deno task test:parallel`：**1335 passed / 0 failed / 11 ignored**（+11 用例）。
+- 批次 4b worker 原语追加后：submission 域 **194 passed / 0 failed**（新增 9 个 worker 用例）。
 - 本轮最终 `deno task test:parallel`：**1324 passed / 0 failed / 11 ignored**（+5 用例）；
   域边界与全量类型检查通过。
 - 遗留一致性项：读路径仍用 `acceptedResultSql`（SQL）判定通过，与
