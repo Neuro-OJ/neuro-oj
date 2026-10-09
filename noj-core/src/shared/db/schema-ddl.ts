@@ -79,6 +79,16 @@ export const SCHEMA_DDL: string[] = [
     artifact_max_size_mb INTEGER,
     template_content TEXT,
     llm_config JSONB,
+    latest_version_id TEXT,
+    effective_version_mode TEXT NOT NULL DEFAULT 'any'
+      CHECK (effective_version_mode IN ('any', 'exact')),
+    required_version_id TEXT,
+    effective_policy_revision INTEGER NOT NULL DEFAULT 0
+      CHECK (effective_policy_revision >= 0),
+    CONSTRAINT problems_effective_version_policy_check CHECK (
+      (effective_version_mode = 'any' AND required_version_id IS NULL)
+      OR (effective_version_mode = 'exact' AND required_version_id IS NOT NULL)
+    ),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     search_vector tsvector GENERATED ALWAYS AS (
@@ -88,6 +98,108 @@ export const SCHEMA_DDL: string[] = [
       ), 'B')
     ) STORED
   )`,
+
+  // 3.0.1 problem_versions（题目版本；发布后不可修改，DB 触发器/服务层双重守卫）
+  `CREATE TABLE IF NOT EXISTS problem_versions (
+    id TEXT PRIMARY KEY,
+    problem_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL CHECK (version >= 1),
+    schema_version INTEGER NOT NULL DEFAULT 1 CHECK (schema_version >= 1),
+    origin TEXT NOT NULL DEFAULT 'published'
+      CHECK (origin IN ('published', 'migration_baseline')),
+    content JSONB NOT NULL CHECK (jsonb_typeof(content) = 'object'),
+    content_sha256 TEXT,
+    change_note TEXT NOT NULL DEFAULT '',
+    published_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    published_at TEXT NOT NULL,
+    UNIQUE (problem_id, version),
+    UNIQUE (problem_id, id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_problem_versions_problem_published
+    ON problem_versions (problem_id, published_at)`,
+  // 复合外键：最新版/要求版本必须属于该题（Handbook §2.2）
+  `ALTER TABLE problems ADD CONSTRAINT problems_latest_version_fk
+    FOREIGN KEY (id, latest_version_id)
+    REFERENCES problem_versions (problem_id, id)`,
+  `ALTER TABLE problems ADD CONSTRAINT problems_required_version_fk
+    FOREIGN KEY (id, required_version_id)
+    REFERENCES problem_versions (problem_id, id)`,
+
+  // 3.0.1.1 problem_versions 不可变守卫（与迁移 0102 的手写段一致）
+  `CREATE OR REPLACE FUNCTION noj_problem_versions_immutable() RETURNS trigger AS $$
+BEGIN
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.problem_id IS DISTINCT FROM OLD.problem_id
+     OR NEW.version IS DISTINCT FROM OLD.version
+     OR NEW.schema_version IS DISTINCT FROM OLD.schema_version
+     OR NEW.origin IS DISTINCT FROM OLD.origin
+     OR NEW.content IS DISTINCT FROM OLD.content
+     OR NEW.change_note IS DISTINCT FROM OLD.change_note
+     OR NEW.published_by IS DISTINCT FROM OLD.published_by
+     OR NEW.published_at IS DISTINCT FROM OLD.published_at
+  THEN
+    RAISE EXCEPTION 'problem_versions 已发布版本不可修改（id=%）', OLD.id
+      USING ERRCODE = '55000';
+  END IF;
+  IF NEW.content_sha256 IS DISTINCT FROM OLD.content_sha256
+     AND NOT (OLD.content_sha256 IS NULL
+              AND NEW.content_sha256 IS NOT NULL
+              AND OLD.origin = 'migration_baseline')
+  THEN
+    RAISE EXCEPTION 'problem_versions 内容哈希不可修改（id=%）', OLD.id
+      USING ERRCODE = '55000';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql`,
+  `CREATE TRIGGER problem_versions_immutable_guard
+    BEFORE UPDATE ON problem_versions
+    FOR EACH ROW EXECUTE FUNCTION noj_problem_versions_immutable()`,
+
+  // 3.0.2 storage_objects（对象登记；删除互斥与引用守卫的唯一事实源）
+  `CREATE TABLE IF NOT EXISTS storage_objects (
+    storage_url TEXT PRIMARY KEY,
+    sha256 TEXT,
+    byte_size BIGINT,
+    state TEXT NOT NULL DEFAULT 'unknown'
+      CHECK (state IN ('unknown', 'ready', 'missing', 'deleting', 'deleted')),
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_storage_objects_state ON storage_objects (state)`,
+  `CREATE INDEX IF NOT EXISTS idx_storage_objects_sha256 ON storage_objects (sha256)`,
+
+  // 3.0.3 problem_drafts（每题一个共享草稿；revision 乐观锁）
+  `CREATE TABLE IF NOT EXISTS problem_drafts (
+    problem_id TEXT PRIMARY KEY REFERENCES problems(id) ON DELETE CASCADE,
+    base_version_id TEXT,
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+    content JSONB NOT NULL CHECK (jsonb_typeof(content) = 'object'),
+    updated_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `ALTER TABLE problem_drafts ADD CONSTRAINT problem_drafts_base_version_fk
+    FOREIGN KEY (problem_id, base_version_id)
+    REFERENCES problem_versions (problem_id, id)`,
+
+  // 3.0.4 草稿 / 版本文件引用（role=support_package|oi_file）
+  `CREATE TABLE IF NOT EXISTS problem_draft_objects (
+    problem_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('support_package', 'oi_file')),
+    path TEXT NOT NULL,
+    storage_url TEXT NOT NULL REFERENCES storage_objects(storage_url),
+    PRIMARY KEY (problem_id, role, path)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_problem_draft_objects_storage_url
+    ON problem_draft_objects (storage_url)`,
+  `CREATE TABLE IF NOT EXISTS problem_version_objects (
+    version_id TEXT NOT NULL REFERENCES problem_versions(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('support_package', 'oi_file')),
+    path TEXT NOT NULL,
+    storage_url TEXT NOT NULL REFERENCES storage_objects(storage_url),
+    PRIMARY KEY (version_id, role, path)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_problem_version_objects_storage_url
+    ON problem_version_objects (storage_url)`,
 
   // 3.1 objective_questions（客观题小题，必须绑定套卷）
   `CREATE TABLE IF NOT EXISTS objective_questions (
@@ -174,10 +286,28 @@ export const SCHEMA_DDL: string[] = [
     sort_order INTEGER NOT NULL DEFAULT 0,
     label TEXT NOT NULL,
     score INTEGER NOT NULL,
+    pinned_version_id TEXT,
+    effective_version_mode TEXT NOT NULL DEFAULT 'any'
+      CHECK (effective_version_mode IN ('any', 'exact')),
+    required_version_id TEXT,
+    effective_policy_revision INTEGER NOT NULL DEFAULT 0
+      CHECK (effective_policy_revision >= 0),
     PRIMARY KEY (contest_id, problem_id),
     UNIQUE (contest_id, label),
-    UNIQUE (contest_id, sort_order)
+    UNIQUE (contest_id, sort_order),
+    CONSTRAINT contest_problems_effective_version_policy_check CHECK (
+      (effective_version_mode = 'any' AND required_version_id IS NULL)
+      OR (effective_version_mode = 'exact'
+          AND required_version_id IS NOT NULL
+          AND required_version_id = pinned_version_id)
+    )
   )`,
+  `ALTER TABLE contest_problems ADD CONSTRAINT contest_problems_pinned_version_fk
+    FOREIGN KEY (problem_id, pinned_version_id)
+    REFERENCES problem_versions (problem_id, id)`,
+  `ALTER TABLE contest_problems ADD CONSTRAINT contest_problems_required_version_fk
+    FOREIGN KEY (problem_id, required_version_id)
+    REFERENCES problem_versions (problem_id, id)`,
 
   `CREATE TABLE IF NOT EXISTS contest_participants (
     contest_id TEXT NOT NULL REFERENCES contests(id) ON DELETE CASCADE,
@@ -197,9 +327,33 @@ export const SCHEMA_DDL: string[] = [
     status TEXT NOT NULL DEFAULT 'finished',
     score INTEGER NOT NULL DEFAULT 0,
     details JSONB NOT NULL DEFAULT '{}',
+    submitted_version_id TEXT,
+    version_origin TEXT NOT NULL DEFAULT 'legacy_unknown'
+      CHECK (
+        (version_origin = 'known' AND submitted_version_id IS NOT NULL)
+        OR (version_origin = 'legacy_unknown' AND submitted_version_id IS NULL)
+      ),
+    upgraded_from_id TEXT REFERENCES objective_submissions(id) ON DELETE SET NULL,
+    active_attempt_id TEXT,
+    latest_attempt_id TEXT,
+    is_valid BOOLEAN NOT NULL DEFAULT false,
+    is_accepted BOOLEAN NOT NULL DEFAULT false,
+    effective_attempt_id TEXT,
+    accepted_attempt_id TEXT,
+    is_contest_valid BOOLEAN NOT NULL DEFAULT false,
+    is_contest_accepted BOOLEAN NOT NULL DEFAULT false,
+    contest_effective_attempt_id TEXT,
+    contest_accepted_attempt_id TEXT,
+    global_policy_revision INTEGER NOT NULL DEFAULT 0,
+    contest_policy_revision INTEGER,
+    rejudge_seq INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     UNIQUE (paper_id, user_id, contest_id)
   )`,
+  `ALTER TABLE objective_submissions
+    ADD CONSTRAINT objective_submissions_submitted_version_fk
+    FOREIGN KEY (paper_id, submitted_version_id)
+    REFERENCES problem_versions (problem_id, id)`,
 
   `CREATE TABLE IF NOT EXISTS contest_clarifications (
     id TEXT PRIMARY KEY,
@@ -256,6 +410,25 @@ export const SCHEMA_DDL: string[] = [
     code TEXT NOT NULL,
     file_name TEXT,
     artifact_storage_url TEXT,
+    submitted_version_id TEXT,
+    version_origin TEXT NOT NULL DEFAULT 'legacy_unknown'
+      CHECK (
+        (version_origin = 'known' AND submitted_version_id IS NOT NULL)
+        OR (version_origin = 'legacy_unknown' AND submitted_version_id IS NULL)
+      ),
+    upgraded_from_id TEXT REFERENCES submissions(id) ON DELETE SET NULL,
+    active_attempt_id TEXT,
+    latest_attempt_id TEXT,
+    is_valid BOOLEAN NOT NULL DEFAULT false,
+    is_accepted BOOLEAN NOT NULL DEFAULT false,
+    effective_attempt_id TEXT,
+    accepted_attempt_id TEXT,
+    is_contest_valid BOOLEAN NOT NULL DEFAULT false,
+    is_contest_accepted BOOLEAN NOT NULL DEFAULT false,
+    contest_effective_attempt_id TEXT,
+    contest_accepted_attempt_id TEXT,
+    global_policy_revision INTEGER NOT NULL DEFAULT 0,
+    contest_policy_revision INTEGER,
     status TEXT NOT NULL DEFAULT 'pending',
     rejudge_seq INTEGER NOT NULL DEFAULT 0,
     judge_run_id TEXT,
@@ -264,6 +437,149 @@ export const SCHEMA_DDL: string[] = [
     judge_finished_at TEXT,
     created_at TEXT NOT NULL
   )`,
+  `ALTER TABLE submissions ADD CONSTRAINT submissions_submitted_version_fk
+    FOREIGN KEY (problem_id, submitted_version_id)
+    REFERENCES problem_versions (problem_id, id)`,
+
+  // 6.5 evaluation_attempts（统一评测尝试；终态只写一次）
+  `CREATE TABLE IF NOT EXISTS evaluation_attempts (
+    id TEXT PRIMARY KEY,
+    submission_id TEXT REFERENCES submissions(id) ON DELETE CASCADE,
+    objective_submission_id TEXT REFERENCES objective_submissions(id) ON DELETE CASCADE,
+    problem_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    problem_version_id TEXT REFERENCES problem_versions(id) ON DELETE CASCADE,
+    sequence INTEGER NOT NULL CHECK (sequence >= 0),
+    source TEXT NOT NULL
+      CONSTRAINT evaluation_attempts_source_kind_check
+      CHECK (source IN ('initial', 'rejudge', 'upgrade', 'legacy_import')),
+    state TEXT NOT NULL DEFAULT 'queued'
+      CHECK (state IN ('queued', 'judging', 'finished', 'error', 'superseded')),
+    result_kind TEXT CHECK (result_kind IS NULL OR result_kind IN ('graded', 'platform_error')),
+    result_status TEXT,
+    score INTEGER CHECK (score IS NULL OR (score >= 0 AND score <= 10000)),
+    accepted BOOLEAN NOT NULL DEFAULT false,
+    output TEXT NOT NULL DEFAULT '',
+    details JSONB NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(details) = 'object'),
+    time_ms INTEGER,
+    memory_kb INTEGER,
+    task_snapshot JSONB,
+    created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT,
+    CONSTRAINT evaluation_attempts_source_check CHECK (
+      (submission_id IS NULL) <> (objective_submission_id IS NULL)
+    ),
+    UNIQUE (submission_id, sequence),
+    UNIQUE (objective_submission_id, sequence)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_eval_attempts_submission_version_sequence
+    ON evaluation_attempts (submission_id, problem_version_id, sequence DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_eval_attempts_objective_version_sequence
+    ON evaluation_attempts (objective_submission_id, problem_version_id, sequence DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_eval_attempts_state_created
+    ON evaluation_attempts (state, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_eval_attempts_problem
+    ON evaluation_attempts (problem_id)`,
+  // 提交表的尝试指针外键（见 schema/*.ts 中「故意不在 Drizzle 声明」的说明）
+  `ALTER TABLE submissions ADD CONSTRAINT submissions_active_attempt_fk
+    FOREIGN KEY (active_attempt_id) REFERENCES evaluation_attempts(id) ON DELETE SET NULL`,
+  `ALTER TABLE submissions ADD CONSTRAINT submissions_latest_attempt_fk
+    FOREIGN KEY (latest_attempt_id) REFERENCES evaluation_attempts(id) ON DELETE SET NULL`,
+  `ALTER TABLE submissions ADD CONSTRAINT submissions_effective_attempt_fk
+    FOREIGN KEY (effective_attempt_id) REFERENCES evaluation_attempts(id) ON DELETE SET NULL`,
+  `ALTER TABLE submissions ADD CONSTRAINT submissions_accepted_attempt_fk
+    FOREIGN KEY (accepted_attempt_id) REFERENCES evaluation_attempts(id) ON DELETE SET NULL`,
+  `ALTER TABLE submissions ADD CONSTRAINT submissions_contest_effective_attempt_fk
+    FOREIGN KEY (contest_effective_attempt_id) REFERENCES evaluation_attempts(id) ON DELETE SET NULL`,
+  `ALTER TABLE submissions ADD CONSTRAINT submissions_contest_accepted_attempt_fk
+    FOREIGN KEY (contest_accepted_attempt_id) REFERENCES evaluation_attempts(id) ON DELETE SET NULL`,
+  `ALTER TABLE objective_submissions ADD CONSTRAINT objective_submissions_active_attempt_fk
+    FOREIGN KEY (active_attempt_id) REFERENCES evaluation_attempts(id) ON DELETE SET NULL`,
+  `ALTER TABLE objective_submissions ADD CONSTRAINT objective_submissions_latest_attempt_fk
+    FOREIGN KEY (latest_attempt_id) REFERENCES evaluation_attempts(id) ON DELETE SET NULL`,
+  `ALTER TABLE objective_submissions ADD CONSTRAINT objective_submissions_effective_attempt_fk
+    FOREIGN KEY (effective_attempt_id) REFERENCES evaluation_attempts(id) ON DELETE SET NULL`,
+  `ALTER TABLE objective_submissions ADD CONSTRAINT objective_submissions_accepted_attempt_fk
+    FOREIGN KEY (accepted_attempt_id) REFERENCES evaluation_attempts(id) ON DELETE SET NULL`,
+  `ALTER TABLE objective_submissions ADD CONSTRAINT objective_submissions_contest_effective_attempt_fk
+    FOREIGN KEY (contest_effective_attempt_id) REFERENCES evaluation_attempts(id) ON DELETE SET NULL`,
+  `ALTER TABLE objective_submissions ADD CONSTRAINT objective_submissions_contest_accepted_attempt_fk
+    FOREIGN KEY (contest_accepted_attempt_id) REFERENCES evaluation_attempts(id) ON DELETE SET NULL`,
+
+  // 6.6 submission_version_results（分版本当前正式判定）
+  `CREATE TABLE IF NOT EXISTS submission_version_results (
+    id TEXT PRIMARY KEY,
+    submission_id TEXT REFERENCES submissions(id) ON DELETE CASCADE,
+    objective_submission_id TEXT REFERENCES objective_submissions(id) ON DELETE CASCADE,
+    problem_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    problem_version_id TEXT REFERENCES problem_versions(id) ON DELETE CASCADE,
+    current_attempt_id TEXT NOT NULL REFERENCES evaluation_attempts(id) ON DELETE CASCADE,
+    updated_at TEXT NOT NULL,
+    CONSTRAINT submission_version_results_source_check CHECK (
+      (submission_id IS NULL) <> (objective_submission_id IS NULL)
+    )
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS submission_version_results_submission_known_unique
+    ON submission_version_results (submission_id, problem_version_id)
+    WHERE submission_id IS NOT NULL AND problem_version_id IS NOT NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS submission_version_results_objective_known_unique
+    ON submission_version_results (objective_submission_id, problem_version_id)
+    WHERE objective_submission_id IS NOT NULL AND problem_version_id IS NOT NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS submission_version_results_submission_unknown_unique
+    ON submission_version_results (submission_id)
+    WHERE submission_id IS NOT NULL AND problem_version_id IS NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS submission_version_results_objective_unknown_unique
+    ON submission_version_results (objective_submission_id)
+    WHERE objective_submission_id IS NOT NULL AND problem_version_id IS NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_submission_version_results_problem_version
+    ON submission_version_results (problem_id, problem_version_id)`,
+
+  // 6.7 批量任务（管理员重测 / 用户升级共用）
+  `CREATE TABLE IF NOT EXISTS submission_jobs (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('rejudge', 'upgrade')),
+    actor_id TEXT NOT NULL REFERENCES users(id),
+    idempotency_key TEXT NOT NULL,
+    request_hash TEXT NOT NULL,
+    request JSONB NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(request) = 'object'),
+    status TEXT NOT NULL DEFAULT 'queued'
+      CHECK (status IN ('queued', 'running', 'completed', 'completed_with_errors')),
+    created_at TEXT NOT NULL,
+    finished_at TEXT,
+    UNIQUE (actor_id, kind, idempotency_key)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_submission_jobs_status_created
+    ON submission_jobs (status, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_submission_jobs_actor_created
+    ON submission_jobs (actor_id, created_at)`,
+  `CREATE TABLE IF NOT EXISTS submission_job_items (
+    id TEXT PRIMARY KEY,
+    job_id TEXT NOT NULL REFERENCES submission_jobs(id) ON DELETE CASCADE,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    source_kind TEXT NOT NULL CHECK (source_kind IN ('submission', 'objective')),
+    source_id TEXT NOT NULL,
+    problem_id TEXT NOT NULL,
+    target_version_id TEXT REFERENCES problem_versions(id) ON DELETE SET NULL,
+    target_version_ref TEXT,
+    status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (status IN ('pending', 'preparing', 'dispatched', 'succeeded', 'failed', 'skipped')),
+    attempt_id TEXT REFERENCES evaluation_attempts(id) ON DELETE SET NULL,
+    result_submission_id TEXT,
+    lease_owner TEXT,
+    lease_until TEXT,
+    dispatch_retries INTEGER NOT NULL DEFAULT 0 CHECK (dispatch_retries >= 0),
+    next_dispatch_at TEXT,
+    reason_code TEXT,
+    reason_message TEXT,
+    created_at TEXT NOT NULL,
+    finished_at TEXT,
+    UNIQUE (job_id, source_kind, source_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_submission_job_items_dispatch
+    ON submission_job_items (status, next_dispatch_at, lease_until)`,
+  `CREATE INDEX IF NOT EXISTS idx_submission_job_items_job_status
+    ON submission_job_items (job_id, status)`,
 
   // 7. evaluation_results
   `CREATE TABLE IF NOT EXISTS evaluation_results (
@@ -283,6 +599,8 @@ export const SCHEMA_DDL: string[] = [
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id),
     problem_id TEXT NOT NULL REFERENCES problems(id),
+    problem_version_id TEXT,
+    task_snapshot JSONB,
     language TEXT NOT NULL,
     code TEXT NOT NULL,
     file_name TEXT,
@@ -300,6 +618,9 @@ export const SCHEMA_DDL: string[] = [
     judge_finished_at TEXT,
     created_at TEXT NOT NULL
   )`,
+  `ALTER TABLE self_tests ADD CONSTRAINT self_tests_problem_version_fk
+    FOREIGN KEY (problem_id, problem_version_id)
+    REFERENCES problem_versions (problem_id, id)`,
 
   // 8. check_ins
   `CREATE TABLE IF NOT EXISTS check_ins (
@@ -790,6 +1111,19 @@ export const SCHEMA_DDL: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_data_requests_user ON data_requests (user_id, created_at)`,
 
   // 23. carousel_slides（首页轮播，与公告解耦，2026-09-24）
+  // 7.9 query_projection_revisions（query 域所有：revision 缓存与物化视图回退）
+  `CREATE TABLE IF NOT EXISTS query_projection_revisions (
+    scope_key TEXT PRIMARY KEY,
+    data_revision BIGINT NOT NULL DEFAULT 0,
+    materialized_revision BIGINT NOT NULL DEFAULT 0,
+    CONSTRAINT query_projection_revisions_revision_check CHECK (
+      data_revision >= 0 AND materialized_revision >= 0
+      AND materialized_revision <= data_revision
+    )
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_query_projection_revisions_lagging
+    ON query_projection_revisions (data_revision, materialized_revision)`,
+
   `CREATE TABLE IF NOT EXISTS carousel_slides (
     id TEXT PRIMARY KEY,
     kind TEXT NOT NULL,
@@ -816,6 +1150,9 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_community_posts_search_fts ON community_posts USING GIN (to_tsvector('simple', coalesce(title, '') || ' ' || content))",
   "CREATE UNIQUE INDEX IF NOT EXISTS problems_type_number_unique ON problems (type, number)",
   "CREATE INDEX IF NOT EXISTS idx_submissions_user_id ON submissions (user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_submissions_problem_accepted_user ON submissions (problem_id, is_accepted, user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_submissions_problem_valid_user ON submissions (problem_id, is_valid, user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_submissions_contest_valid_user ON submissions (contest_id, problem_id, is_contest_valid, user_id)",
   "CREATE INDEX IF NOT EXISTS idx_submissions_problem_id ON submissions (problem_id)",
   "CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions (status)",
   "CREATE INDEX IF NOT EXISTS idx_submissions_created_at ON submissions (created_at)",
@@ -842,6 +1179,9 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_user_id ON objective_submissions (user_id)",
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_user_paper_created ON objective_submissions (user_id, paper_id, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_contest_id ON objective_submissions (contest_id)",
+  "CREATE INDEX IF NOT EXISTS idx_objective_submissions_paper_accepted_user ON objective_submissions (paper_id, is_accepted, user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_objective_submissions_paper_valid_user ON objective_submissions (paper_id, is_valid, user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_objective_submissions_contest_valid_user ON objective_submissions (contest_id, paper_id, is_contest_valid, user_id)",
   // LLM 网关表索引已移交 noj-llm-gateway 管理，PGlite 不再创建
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_results_submission_id ON evaluation_results (submission_id)",
   "CREATE INDEX IF NOT EXISTS idx_eval_results_created_at ON evaluation_results (created_at)",
@@ -933,6 +1273,16 @@ export const ALL_TABLES = [
   "users",
   "oauth_accounts",
   "problems",
+  "problem_versions",
+  "problem_drafts",
+  "problem_draft_objects",
+  "problem_version_objects",
+  "storage_objects",
+  "query_projection_revisions",
+  "evaluation_attempts",
+  "submission_version_results",
+  "submission_jobs",
+  "submission_job_items",
   "judge_images",
   "tags",
   "problem_tags",
