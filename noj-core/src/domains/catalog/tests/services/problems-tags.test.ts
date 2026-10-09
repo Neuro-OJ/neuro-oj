@@ -230,7 +230,8 @@ Deno.test({
     const userId = await createTestUser();
     await syncProblemTags(problemId, [algoTag.id]);
 
-    // 造一条通过提交（finished 且 score>0）
+    // 造一条通过提交。版本化后「是否通过」读的是提交的**有效成绩投影**
+    // （`submissions.is_accepted`），由结果服务写入；这里直接落投影以模拟该状态。
     const db = getDb();
     const submissionId = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -241,6 +242,8 @@ Deno.test({
       status: "finished",
       language: "python3",
       code: "print(1)",
+      is_valid: true,
+      is_accepted: true,
       created_at: now,
     });
     await db.insert(evaluationResults).values({

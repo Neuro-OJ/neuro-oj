@@ -1,4 +1,3 @@
-import { acceptedResultSql } from "../../../../shared/base/accepted-result.ts";
 /**
  * Problems 列表与查询（PR 拆分 PR-3；issue #223 分类 → 双类标签）。
  *
@@ -25,7 +24,6 @@ import {
 } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
-  evaluationResults,
   problems,
   problemTags,
   submissions,
@@ -622,7 +620,14 @@ export async function applyAlgorithmTagVisibility(
 }
 
 /**
- * 查询 viewer 是否在指定题目存在通过提交（finished 且 score>0）。
+ * 查询 viewer 是否在指定题目存在**有效通过**提交。
+ *
+ * 版本化后（Handbook §3.4）通过状态改为读取提交的有效成绩投影
+ * `submissions.is_accepted`：它由唯一投影服务按当前有效版本策略计算，
+ * 覆盖历史版本、`exact(X)` 策略与升级提交，且命中索引
+ * `idx_submissions_problem_accepted_user (problem_id, is_accepted, user_id)`。
+ *
+ * 存量数据由迁移 0103 回填投影，因此读取口径与旧 `acceptedResultSql` 完全一致。
  */
 async function hasAcceptedSubmission(
   problemId: string,
@@ -632,19 +637,11 @@ async function hasAcceptedSubmission(
   const rows = await db
     .select({ id: submissions.id })
     .from(submissions)
-    .innerJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, submissions.id),
-    )
     .where(
       and(
         eq(submissions.problem_id, problemId),
         eq(submissions.user_id, userId),
-        acceptedResultSql(
-          evaluationResults.status,
-          evaluationResults.score,
-          evaluationResults.details,
-        ),
+        eq(submissions.is_accepted, true),
       ),
     )
     .limit(1);
