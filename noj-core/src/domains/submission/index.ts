@@ -20,3 +20,4 @@ export * from "./services/versioning/result-write.ts";
 export * from "./services/versioning/projection.ts";
 export * from "./services/versioning/submission-version.ts";
 export * from "./services/versioning/effective-policy.ts";
+export * from "./services/versioning/rejudge-jobs.ts";
