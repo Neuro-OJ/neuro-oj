@@ -8,12 +8,10 @@
 > 使任何一轮中断后都能从本文件直接续接。
 
 - 目标分支：`feat/problem-version-management`（GPG 签名，禁止直推 main）
-- 当前轮次：goal round 43
-- 最近更新：批次 8 收尾——真实 E2E 栈验收：E2E 用例同步到版本化契约
-  （题包导入/建题需显式发布、内容更新写草稿、自测携带 version_id、重测 202 任务化、
-  客观题小题 If-Match 草稿锁），已跑 domain：catalog 32、submission 37（8 ignored）、
-  contest 27、objective 4、admin 11、identity 34（5 ignored）、messaging 17、
-  community 4、system 38、rate-limit 1，全部 0 失败
+- 当前轮次：goal round 44
+- 最近更新：批次 8 收尾——真实 E2E 全栈验收（10 个 domain 全绿 + cross-domain 51），
+  并借 E2E 抓出并修复两处真实缺陷（题型发布后不可变；任务化重测结果被误判过时），
+  core 全量 1410 passed / parity 66 表 594 列；剩余：PR 合入与删除本跟踪文件
 
 ## 一、批次状态总览
 
@@ -165,7 +163,7 @@
       同步 `schema-ddl.ts`（建表段/索引/ALL_TABLES）与顶层 schema 测试；
       parity 门禁自动收敛为 **67 表 / 604 列**；PGlite 模板已重建；
       开发库已应用（`public.evaluation_results` 已不存在，`user_rankings` 视图在）。
-- [ ] 搜索索引重建；备份/恢复演练验证。
+- [x] 搜索索引重建（`search reindex`）与备份/恢复演练（独立库核对）均已完成。
 
 ### E2E 契约同步（批次 6/8 收尾）
 - `catalog/problems.test.ts`：建题后内容更新写草稿，2.4 增加「更新 → 发布 V2 →
@@ -202,8 +200,8 @@
 - [x] 跨模块 E2E（真实栈，本地）：catalog / submission / contest / objective /
       admin / identity / messaging / community / system / rate-limit 全绿；
       E2E 用例同步的版本化契约见下「E2E 契约同步」。
-- [ ] cross-domain E2E（含双容器评测与 LLM 网关链路）与 noj-tests 浏览器门禁、
-      PR 合入 `main`、删除本临时跟踪文件。
+- [x] cross-domain E2E（含双容器评测与 LLM 网关链路）：**51 passed / 0 failed**。
+- [ ] noj-tests 浏览器门禁（需构建 noj-ui，交 CI）、PR 合入 `main`、删除本临时跟踪文件。
 - [ ] PR：从 `feat/problem-version-management` 合入 `main`（GPG 签名、CI 全绿）。
 - [ ] **删除本跟踪文件**（见文末清单）。
 
@@ -232,6 +230,21 @@
       不一致 → 409 `CONTEST_PROBLEM_VERSION_CHANGED`，并回传
       `expected_version_id`/`submitted_version_id`。
 
+### 已修缺陷（E2E 实测暴露）
+
+- **题型发布后仍可改（§2.3）**：`PUT /problems/:id {is_objective:true}` 会改写题目行，
+  而内容类别切换只落草稿 → 「行说客观题、已发布版本是 AI」的不一致状态（提交会按错
+  题型执行）。已改为：已发布题目改题型或改 AI `submission_mode` 一律
+  `409 CONTENT_KIND_IMMUTABLE`，跨类型转换必须新建题目；未发布题目的切换路径不变。
+  测试：`problems service: 已发布题目的题型与提交模式不可变更`。
+- **任务化重测的结果被丢弃**：`createAttempt` 只写 `active_attempt_id`，提交仍停在
+  `finished`；producer 只在 pending/judging 时写 `judge_run_id`，导致新尝试的 run_id
+  永远落不了库，结果落库前的 run_id 归属校验把重测结果判为「重复/过时」→ 重测静默不生效
+  （E2E：重测后 LLM 用量不增、attempt 永远 `queued`）。已改为 `createAttempt` 置
+  `pending` 并写 `judge_run_id = attempt id`（正式提交 `run_id = attempt_id`，§5.5），
+  且 run_id 归属校验收紧为「结果声明了 run_id 才必须匹配」以保留旧协议兼容路径。
+  测试：`versioning-result-write` 的 attempt 断言 + cross-domain「7.3 重测重新签发 token」。
+
 ### 已知偏差 / 待收紧
 - [x] **客观题旧表已删除**（0107）：`legacy_unknown` 存量提交（无提交时版本）
       的卷面按空卷面处理（0 分、全部按未作答），原始 answers 仍保留可读；
@@ -258,6 +271,8 @@
 | 备份/恢复演练 | `pg_dump -Fc` → `createdb noj_drill` → `pg_restore` → 完整性查询 | 迁移数 108、无悬空固定版本/最新版指针、已删旧表不存在、`user_rankings` 视图在 |
 | 跨模块验收（本轮） | `bash scripts/test-shared.sh`、`cargo fmt/clippy/nextest`、gateway/CLI/UI `deno task test`、`vitepress build` | shared 291 passed；judge 554 passed（45 skipped）；gateway/CLI/UI 全绿（UI 235 passed）；docs 站构建通过 |
 | 跨模块 E2E（真实栈） | `bash noj-tests/scripts/run-e2e-domain.sh <domain>` | catalog 32 / submission 37（8 ignored）/ contest 27 / objective 4 / admin 11 / identity 34（5 ignored）/ messaging 17 / community 4 / system 38 / rate-limit 1，均 0 失败 |
+| 跨域 E2E（真实栈） | `run-e2e-domain.sh cross-domain` | **51 passed / 0 failed**（双容器评测、LLM 网关重测重新签发 token、存储故障降级） |
+| core 全量（修复后复跑） | `deno task test:parallel` | **1410 passed / 0 failed / 11 ignored**；parity 66 表 / 594 列 |
 | noj-core 全量（PGlite 单进程） | `cd noj-core && env -u DATABASE_URL deno task test` | **1734 passed / 0 failed / 59 ignored** |
 | contest 域 | `bash scripts/test-domain.sh contest` | **86 passed / 0 failed**（未发布题目入赛 400 取代迁移期 null 固定） |
 | catalog 域 | `bash scripts/test-domain.sh catalog` | **308 passed / 0 failed** |
