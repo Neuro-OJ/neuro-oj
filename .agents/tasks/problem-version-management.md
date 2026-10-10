@@ -70,6 +70,13 @@
       开关、勾选列与「批量升级到最新版」（≤500、幂等键、轮询到终态、失败原因聚合）。
 - [x] `pages/admin/*`：三种重测范围、固定版本映射、独立策略切换、任务进度与重试。
 
+### 批次 5/7（读路径去旧结果表）
+- [x] 用户主页最近提交、个人数据导出、评测队列最近完成分数、站点统计 accepted
+      全部改读尝试/有效成绩投影（不再 JOIN `evaluation_results`）。
+- [ ] 剩余 `evaluation_results` 引用：`submissions-crud.ts`（列表摘要/删除清理）、
+      `submissions-result.ts`（结果写入双写）、`problems-crud.ts`（删除清理）——
+      必须在删表前完成迁移。
+
 ### 批次 7（存量收尾）
 - [ ] 大库分批重算投影（`recomputeProblemProjections` 当前逐条）。
 - [ ] `contest_problems.pinned_version_id` 最终 `SET NOT NULL`。
@@ -124,9 +131,11 @@
 
 | 范围 | 命令 | 结果 |
 |---|---|---|
-| noj-core 全量 | `cd noj-core && deno task test:parallel` | **1388+ passed / 0 failed**（本轮新增 3 个用例后复跑） |
+| noj-core 全量 | `cd noj-core && deno task test:parallel` | **1397 passed / 0 failed / 11 ignored** |
 | contest 域 | `bash scripts/test-domain.sh contest` | **82 passed / 0 failed**（新增固定版本 2 + 提交版本 1） |
 | submission 域 | `bash scripts/test-domain.sh submission` | **223 passed / 0 failed / 21 ignored**（读路径版本 2 + 筛选 2） |
+| identity 域 | `bash scripts/test-domain.sh identity` | **310 passed / 0 failed / 26 ignored**（+1 最近提交读尝试） |
+| query 域 | `bash scripts/test-domain.sh query` | **23 passed / 0 failed**（+1 站点统计读投影） |
 | catalog 域 | `bash scripts/test-domain.sh catalog` | **301 passed / 0 failed** |
 | submission 域 | `bash scripts/test-domain.sh submission` | **219 passed / 0 failed / 21 ignored** |
 | identity 域 | `bash scripts/test-domain.sh identity` | **310 passed / 0 failed / 25 ignored** |

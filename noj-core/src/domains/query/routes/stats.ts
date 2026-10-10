@@ -1,12 +1,7 @@
 import { Hono } from "hono";
-import { and, count, eq, sql } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
-import {
-  evaluationResults,
-  problems,
-  submissions,
-  users,
-} from "./../../../shared/db/schema.ts";
+import { problems, submissions, users } from "./../../../shared/db/schema.ts";
 
 const stats = new Hono();
 
@@ -26,11 +21,10 @@ stats.get("/stats", async (c) => {
       db.select({ n: count() }).from(problems),
       db.select({ n: count() }).from(submissions),
       db.select({ n: count() }).from(users),
-      db.select({ n: count() }).from(evaluationResults).where(
-        and(
-          eq(evaluationResults.status, "finished"),
-          sql`${evaluationResults.score} > 0`,
-        ),
+      // 通过数读有效成绩投影（Handbook §3.2/§3.4）：不再依赖即将删除的
+      // evaluation_results，且 exact 策略收紧后立即反映
+      db.select({ n: count() }).from(submissions).where(
+        eq(submissions.is_accepted, true),
       ),
     ]);
 

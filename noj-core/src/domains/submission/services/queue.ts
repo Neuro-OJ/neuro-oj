@@ -2,7 +2,7 @@ import { and, eq, inArray, isNull, not, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
-  evaluationResults,
+  evaluationAttempts,
   problems,
   selfTests,
   submissions,
@@ -123,7 +123,11 @@ interface QueueTableColumns {
 }
 
 /**
- * 查询正式提交或自测的队列行，统一 JOIN problems/users（及可选的 evaluation_results）。
+ * 查询正式提交或自测的队列行，统一 JOIN problems/users（及可选的最近尝试）。
+ *
+ * `scoreFromAttempt` 给定时，分数取该提交**最近一次终态尝试**（优先
+ * `latest_attempt_id`，存量行回退 `effective_attempt_id`）——不再读已停止写入的
+ * `evaluation_results`。
  */
 async function queryQueueRows(
   table: AnyPgTable,
@@ -132,7 +136,7 @@ async function queryQueueRows(
   where: SQL | undefined,
   orderBy?: SQL,
   limit?: number,
-  scoreFromEval = false,
+  scoreFromAttempt?: { latest: AnyPgColumn; effective: AnyPgColumn },
 ): Promise<QueueItem[]> {
   const db = getDb();
   const selectFields: Record<string, unknown> = {
@@ -148,8 +152,8 @@ async function queryQueueRows(
     selectFields.judge_finished_at = cols.judgeFinishedAt;
   }
   if (cols.status) selectFields.status = cols.status;
-  if (scoreFromEval) {
-    selectFields.score = evaluationResults.score;
+  if (scoreFromAttempt) {
+    selectFields.score = evaluationAttempts.score;
   } else if (cols.score) {
     selectFields.score = cols.score;
   }
@@ -162,10 +166,13 @@ async function queryQueueRows(
     .from(table)
     .innerJoin(problems, eq(cols.problemId, problems.id))
     .innerJoin(users, eq(cols.userId, users.id));
-  if (scoreFromEval) {
+  if (scoreFromAttempt) {
     query = query.leftJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, cols.id),
+      evaluationAttempts,
+      eq(
+        evaluationAttempts.id,
+        sql`coalesce(${scoreFromAttempt.latest}, ${scoreFromAttempt.effective})`,
+      ),
     );
   }
   if (where) query = query.where(where);
@@ -607,7 +614,10 @@ export async function getQueueOverview(
       ),
       sql`${submissions.judge_finished_at} DESC`,
       10,
-      true,
+      {
+        latest: submissions.latest_attempt_id,
+        effective: submissions.effective_attempt_id,
+      },
     ),
     ...await queryQueueRows(
       selfTests,

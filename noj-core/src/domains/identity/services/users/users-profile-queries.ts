@@ -2,7 +2,7 @@ import { and, eq, type SQL, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityPosts,
-  evaluationResults,
+  evaluationAttempts,
   problems,
   submissions,
   users,
@@ -176,15 +176,20 @@ export function queryRecentSubmissions(
     problem_title: problems.title,
     language: submissions.language,
     status: submissions.status,
-    result_status: evaluationResults.status,
-    result_score: evaluationResults.score,
+    // 最近一次运行的判定：优先最近终态尝试，存量行回退到有效成绩指针
+    // （两套成绩事实并存期结束前，这里不再读 evaluation_results）
+    result_status: evaluationAttempts.result_status,
+    result_score: evaluationAttempts.score,
     created_at: submissions.created_at,
   })
     .from(submissions)
     .leftJoin(problems, eq(submissions.problem_id, problems.id))
     .leftJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, submissions.id),
+      evaluationAttempts,
+      eq(
+        evaluationAttempts.id,
+        sql`coalesce(${submissions.latest_attempt_id}, ${submissions.effective_attempt_id})`,
+      ),
     )
     .where(
       secrecy

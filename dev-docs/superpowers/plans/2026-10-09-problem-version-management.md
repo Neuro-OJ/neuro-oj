@@ -400,6 +400,15 @@
     三种范围（整题 / 整场 / 手选 ≤500）× 三种目标（提交时版本 / 最新版 /
     「全部用 V<n>」前端展开为逐题映射，任一题缺该版本即取消受理）、条目进度与
     `reason_code`、重试 failed/skipped 生成关联新任务。
+- [x] 5/7（运行期读路径去 `evaluation_results`，第二批）
+  - 用户主页「最近提交」改读**最近一次终态尝试**（`latest_attempt_id`，
+    存量行回退 `effective_attempt_id`），不再 JOIN 旧结果表；
+  - 个人数据导出（`me-data-export`）分数同口径；
+  - 评测队列「最近完成」的分数改为尝试分数（`scoreFromEval` 布尔参数改为
+    显式尝试指针，杜绝再次误接旧表）；
+  - 站点统计 `GET /api/v1/stats` 的 `accepted` 改读 `submissions.is_accepted`
+    有效成绩投影；
+  - 四处均补测试（identity +1、query +1）。
 - [ ] 5c（收尾）search 索引发布内容、正式成绩快照（5d）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 
@@ -481,6 +490,12 @@
 
 ## 最近一次验证
 
+- 批次 5/7（读路径去 `evaluation_results`，为删旧表铺路）：identity 域
+  **310 passed / 0 failed / 26 ignored**（+1：最近提交读最近终态尝试与存量回退）、
+  query 域 **23 passed / 0 failed**（+1：站点统计 accepted 读有效成绩投影）、
+  submission 域 **223 passed / 0 failed / 21 ignored**；noj-core 全量
+  `deno task test:parallel` **1397 passed / 0 failed / 11 ignored**；
+  `deno lint` / `deno fmt --check` / 域边界 / JSDoc / 类型检查全绿。
 - 批次 4/5（§4.5 策略端点 + 竞赛通过状态读投影 + 管理端页面）：
   admin 域 `bash scripts/test-domain.sh admin` **16 passed / 0 failed**（+2：
   题库策略乐观锁与参数校验、竞赛策略与固定版本升级的相互作用）；contest 域
