@@ -10,7 +10,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { zipSync } from "fflate";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
-import { objectiveQuestions, problems } from "../../../../shared/db/schema.ts";
+import { problems } from "../../../../shared/db/schema.ts";
 import { createProblem } from "../../index.ts";
 import {
   importProblemBundle,
@@ -151,9 +151,6 @@ Deno.test({
 
     await db.update(problems).set({ latest_version_id: null }).where(
       eq(problems.id, created.id),
-    );
-    await db.delete(objectiveQuestions).where(
-      eq(objectiveQuestions.paper_id, created.id),
     );
     await db.delete(problems).where(eq(problems.id, created.id));
   },

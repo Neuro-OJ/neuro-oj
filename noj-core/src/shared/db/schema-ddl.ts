@@ -201,21 +201,6 @@ $$ LANGUAGE plpgsql`,
   `CREATE INDEX IF NOT EXISTS idx_problem_version_objects_storage_url
     ON problem_version_objects (storage_url)`,
 
-  // 3.1 objective_questions（客观题小题，必须绑定套卷）
-  `CREATE TABLE IF NOT EXISTS objective_questions (
-    id TEXT PRIMARY KEY,
-    paper_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
-    sort_order INTEGER NOT NULL DEFAULT 0,
-    type TEXT NOT NULL CHECK (type IN ('single', 'multiple', 'judge')),
-    prompt TEXT NOT NULL,
-    options JSONB NOT NULL DEFAULT '[]',
-    answer JSONB NOT NULL,
-    explanation TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    UNIQUE (paper_id, sort_order)
-  )`,
-
   // 3. judge_images
   `CREATE TABLE IF NOT EXISTS judge_images (
     id TEXT PRIMARY KEY,
@@ -1153,7 +1138,6 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_trainings_created_by ON trainings (created_by)",
   "CREATE INDEX IF NOT EXISTS idx_training_problems_training_position ON training_problems (training_id, position)",
   // 客观题表索引（与 schema.ts 定义一致，PGlite 测试模式）
-  "CREATE INDEX IF NOT EXISTS idx_objective_questions_paper_id ON objective_questions (paper_id)",
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_paper_id ON objective_submissions (paper_id)",
   // 公告公开列表查询索引（与 schema.ts 定义一致，PGlite 测试模式）
   "CREATE INDEX IF NOT EXISTS idx_announcements_active_pinned_created ON announcements (is_active, is_pinned, created_at)",
@@ -1314,9 +1298,9 @@ export const ALL_TABLES = [
   "user_consents",
   "data_requests",
   "carousel_slides",
-  // 2026-09-24 评审：以下 4 张表建表但长期漏登记，resetDbForTest 从不清理
+  // 2026-09-24 评审：以下表建表但长期漏登记，resetDbForTest 从不清理
   // （跨用例污染隐患；守卫测试 tests/db/schema.test.ts 现已覆盖该类遗漏）。
-  "objective_questions",
+  // 注：`objective_questions` 已随 0107 删除（小题迁入草稿/版本快照）。
   "objective_submissions",
   "self_tests",
   "sse_events",

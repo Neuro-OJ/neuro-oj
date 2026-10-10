@@ -17,47 +17,6 @@ import { contests } from "./contest.ts";
 import type { SubmissionVersionOrigin } from "../../versioning/types.ts";
 
 /**
- * 客观题小题表。
- * 每道小题必须通过 paper_id 绑定所属套卷（problems 表 is_objective=true 行），
- * 不可孤立存在；删除套卷时级联删除全部小题。
- */
-export const objectiveQuestions = pgTable(
-  "objective_questions",
-  {
-    id: text("id").primaryKey(),
-    /** 所属套卷 ID（problems.id，is_objective=true） */
-    paper_id: text("paper_id")
-      .notNull()
-      .references(() => problems.id, { onDelete: "cascade" }),
-    /** 卷内排序，同一套卷内唯一 */
-    sort_order: integer("sort_order").notNull().default(0),
-    /** 题型：single=单选, multiple=多选, judge=判断 */
-    type: text("type").notNull(),
-    /** 题干（Markdown） */
-    prompt: text("prompt").notNull(),
-    /** 选项数组 [{key, text}]；judge 型为空数组 */
-    options: jsonb("options").notNull().default([]),
-    /** 标准答案：["A"] / ["A","C"] / [true] */
-    answer: jsonb("answer").notNull(),
-    /** 答案解析（判卷后展示） */
-    explanation: text("explanation").notNull().default(""),
-    created_at: text("created_at").notNull(),
-    updated_at: text("updated_at").notNull(),
-  },
-  (table) => ({
-    paperSortUnique: unique("objective_questions_paper_sort_unique").on(
-      table.paper_id,
-      table.sort_order,
-    ),
-    typeCheck: check(
-      "objective_questions_type_check",
-      sql`${table.type} IN ('single', 'multiple', 'judge')`,
-    ),
-    paperIdx: index("idx_objective_questions_paper_id").on(table.paper_id),
-  }),
-);
-
-/**
  * 客观题提交表。
  * 服务端即时判定（不走评测队列），status 直接为 finished。
  * score 为 ×100 整数（0-10000），与评测尝试的分数约定一致。

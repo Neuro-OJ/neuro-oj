@@ -431,8 +431,8 @@ export async function createProblem(
  *
  * - `kind` 由目标题型决定（objective / oi / ai），补丁里没有的字段沿用草稿现值，
  *   草稿缺失时回退题目投影；
- * - 客观题小题不接受客户端任意注入：转为客观题时从现有 `objective_questions`
- *   派生快照（迁移期来源，2d 后改为草稿直接维护）；
+ * - 客观题小题不接受客户端任意注入：转为客观题时保留草稿内既有小题（旧
+ *   `objective_questions` 表已删除，小题由客观题编辑接口写入草稿）；
  * - 题型专属字段按目标 kind 归一，避免 AI 字段残留在 OI 内容里。
  *
  * @throws {BadRequestError} 缺少目标类别必需的配置

@@ -271,6 +271,9 @@ export async function publishBaselineVersionForTest(
     eq(problems.id, problemId),
   ).limit(1);
   if (!row) throw new Error(`题目不存在：${problemId}`);
+  // 已有最新已发布版本：直接复用（幂等）。避免在已有 version=1 的题目上插入
+  // 冲突版本被 `onConflictDoNothing` 跳过后，把指针写成不存在的版本 id（外键失败）。
+  if (row.latest_version_id) return row.latest_version_id;
   const versionId = `baseline-${problemId}`;
   const now = new Date().toISOString();
   // 内容按题目 kind 派生（客观题必须带 questions，否则判卷会拒绝该版本）

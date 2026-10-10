@@ -13,7 +13,6 @@ import type { Context } from "hono";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
   evaluationAttempts,
-  objectiveQuestions,
   objectiveSubmissions,
 } from "./../../../shared/db/schema.ts";
 import { FULL_SCORE } from "./../../../shared/base/constants.ts";
@@ -61,27 +60,15 @@ const SCORE_SCALE_FACTOR = 100;
 /**
  * 卷内小题（判分与展示的公共形态）。
  *
- * `key` 是**版本内的稳定小题键**（Handbook §1.2）：已发布版本取快照的 `key`，
- * 未版本化的存量套卷回退旧小题表的主键 UUID——两者都是用户答案映射的键，
- * 也保证了「同一份答案在 `any` 策略下跨版本重判仍能按 key 匹配」。
+ * `key` 是**版本内的稳定小题键**（Handbook §1.2）：已发布版本取快照的 `key`；
+ * 迁移存量（`legacy_unknown`，无提交时版本）的卷面已无法还原，按未作答处理
+ * （Handbook §8.1「历史信息无法恢复，保留未知状态」）。
  */
 interface JudgedQuestion {
   key: string;
   type: string;
   answer: ObjectiveAnswerValue[];
   explanation: string;
-}
-
-/** 旧小题表行 → 判分形态（存量套卷回退路径）。 */
-function fromLegacyRows(
-  rows: readonly (typeof objectiveQuestions.$inferSelect)[],
-): JudgedQuestion[] {
-  return rows.map((q) => ({
-    key: q.id,
-    type: q.type,
-    answer: q.answer as ObjectiveAnswerValue[],
-    explanation: q.explanation,
-  }));
 }
 
 /** 版本小题快照 → 判分形态。 */
@@ -99,8 +86,9 @@ function fromSnapshot(
 /**
  * 读取某条提交实际使用的卷面小题（展示解析用）。
  *
- * 优先按 `submitted_version_id` 读**提交时版本**的小题快照——套卷在小题增删
- * 后仍要还原当时的卷面；`legacy_unknown`（迁移存量）回退旧小题表。
+ * 按 `submitted_version_id` 读**提交时版本**的小题快照——套卷在小题增删后仍要
+ * 还原当时的卷面；`legacy_unknown`（迁移存量、无提交时版本）返回空卷面，
+ * 原始 answers 仍保留可读。
  */
 async function loadSubmissionQuestions(
   row: typeof objectiveSubmissions.$inferSelect,
@@ -114,12 +102,7 @@ async function loadSubmissionQuestions(
       return fromSnapshot(loaded.content.questions);
     }
   }
-  const db = getDb();
-  const legacy = await db
-    .select()
-    .from(objectiveQuestions)
-    .where(eq(objectiveQuestions.paper_id, row.paper_id));
-  return fromLegacyRows(legacy);
+  return [];
 }
 
 /**
@@ -294,15 +277,11 @@ export async function submitObjectivePaper(
     versionQuestions = fromSnapshot(loaded.content.questions);
   }
 
-  const questions = versionQuestions ?? fromLegacyRows(
-    await db
-      .select()
-      .from(objectiveQuestions)
-      .where(eq(objectiveQuestions.paper_id, paperUuid)),
-  );
+  // 判卷事实源是**提交时版本的卷面**；`legacy_unknown`（迁移存量、无版本可解析）
+  // 只可能来自尚未版本化且已不可访问的题目，按空卷面处理（全部按未作答）。
+  const questions = versionQuestions ?? [];
 
-  // 服务端即时判定（纯函数）。判卷事实源是**提交时版本的卷面**，
-  // 未版本化的存量套卷回退旧小题表（key = 旧小题 UUID，与迁移基线一致）。
+  // 服务端即时判定（纯函数）。
   const judgement = judgePaper({
     questions: questions.map((q) => ({
       id: q.key,

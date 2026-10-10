@@ -566,6 +566,15 @@
 
 ## 最近一次验证
 
+- 批次 7b（删除旧表 `objective_questions`）：迁移 `0107_military_zarek.sql`
+  （`DROP TABLE ... CASCADE` + 前置条件说明）；运行期读写全部迁离（客观题判卷
+  只用版本快照、`legacy_unknown` 按空卷面、草稿派生不再读旧表、题包导入不再镜像
+  写入）；schema/DDL/parity 收敛为 **66 表 / 594 列**；PGlite 模板重建；
+  开发库已应用（迁移数 108，`public.objective_questions` 不存在）。
+  证据：noj-core 全量 PG 分片 **1409 passed / 0 failed / 11 ignored**；
+  PGlite 单进程 **1734 passed / 0 failed / 59 ignored**；parity / 迁移安全 /
+  快照链 / 域边界 / JSDoc 全绿。
+
 - 批次 7b（竞赛固定版本收紧 NOT NULL）：迁移 `0106_flowery_iceman.sql`
   （未发布且被竞赛引用的题目补 `migration_baseline` V1 → 回填固定版本 → DO 块门禁 →
   `SET NOT NULL`）；`assertContestProblemAddable` 拒绝未发布题目（400）；

@@ -8,11 +8,10 @@
 > 使任何一轮中断后都能从本文件直接续接。
 
 - 目标分支：`feat/problem-version-management`（GPG 签名，禁止直推 main）
-- 当前轮次：goal round 37
-- 最近更新：批次 7b 第一步——`contest_problems.pinned_version_id` 收紧 NOT NULL
-  （迁移 0106：未发布题目补迁移基线 → 回填 → 门禁 → SET NOT NULL）、竞赛服务
-  拒绝未发布题目入赛、31 处夹具统一走 `insertContestProblems` 自动补固定版本、
-  存量数据演练通过；顺带修掉测试 `SUPPORT_PACKAGE_DIR` 进程级污染
+- 当前轮次：goal round 40
+- 最近更新：批次 7b 第二项——删除 `objective_questions`（迁移 0107）：小题事实源
+  只剩草稿与版本快照，`legacy_unknown` 存量提交按空卷面处理；schema/DDL/parity
+  收敛为 **66 表 / 594 列**，开发库已应用；PG 分片与 PGlite 全量均绿
 
 ## 一、批次状态总览
 
@@ -24,7 +23,7 @@
 | 4 | 管理操作（策略、批任务、重测、升级） | ✅ 完成 | 派发 + 路由 + 旧入口适配层；竞赛固定版本创建/编辑写入；§4.5 三个策略/固定版本端点已补；仅「代他人升级」旁路未做 |
 | 5 | 读取统一（通过状态、题单、排行、资料、社区、搜索、正式成绩） | ✅ 完成 | 5a/5b/5c/5d 全部落地：stats-cache 去进程内状态、未发布题目不进公共面、搜索只索引已发布、提交读路径版本信息、Kaggle 计分读竞赛有效成绩、正式快照记录策略与尝试归因 |
 | 6 | 客户端（Web、IDE、CLI、演练） | ✅ 完成 | CLI/LMCC/E2E 完成；noj-ui 提交侧、提交列表/详情版本展示、管理端（版本策略 + 批量重测）、AI/代码 + OI + 客观题编辑器草稿发布流全部完成 |
-| 7 | 存量收尾（回填、旧表删除、视图/索引重建、备份恢复验证） | 🟡 部分 | 0103 回填 + 0104 视图重建 + 0105 删 `evaluation_results` + **0106 竞赛固定版本收紧** 全部落地；剩删除 `objective_questions`、搜索索引重建与备份/恢复演练 |
+| 7 | 存量收尾（回填、旧表删除、视图/索引重建、备份恢复验证） | 🟡 部分 | 0103 回填 + 0104 视图重建 + 0105 删 `evaluation_results` + 0106 竞赛固定版本收紧 + **0107 删 `objective_questions`** 全部落地；剩搜索索引重建与备份/恢复演练 |
 | 8 | 文档与交付（现行文档、Agent Note、验收、PR） | ⬜ 未开始 | 含删除本跟踪文件 |
 
 图例：✅ 完成　🟡 部分　⬜ 未开始
@@ -139,6 +138,21 @@
 - [x] 顺带修复测试隔离缺陷：`LocalStorageProvider` 支持显式存储根目录，7 个测试文件
       不再用 `Deno.env.set("SUPPORT_PACKAGE_DIR")` 污染同进程其他用例（PGlite 全量
       模式此前因此报 2 个假失败）。
+- [x] **删除旧表 `objective_questions`**（迁移 `0107_military_zarek.sql`，
+  `deno task db:generate` 生成后补前置条件说明）：
+  - 运行期读写全部迁离：`objective-submissions.ts` 移除旧表回退
+    （`legacy_unknown` 存量提交按**空卷面**处理，原始 answers 仍保留可读，
+    符合 §8.1「历史信息无法恢复，保留未知状态」）；`draft.ts` 的
+    `deriveDraftContentFromProblem` 不再读旧表（改为同步函数，客观题初值空小题）；
+    `problem-bundle.ts` 停止镜像写入旧表（只写草稿）。
+  - schema/`schema-ddl.ts` 同步移除建表、索引与 `ALL_TABLES` 登记；
+    parity 自动收敛为 **66 表 / 594 列**；PGlite 模板已重建；开发库已应用
+    （`public.objective_questions` 已不存在，迁移数 108）。
+  - 用例调整：`objective-submissions.test.ts` 小题夹具改为「写草稿 + 发布版本」
+    （判卷事实源是版本快照）；`objective-submissions-versioning.test.ts` 的
+    「回退旧小题表」用例改写为「无卷面可还原 → 空卷面、有效但不通过」；
+    题包导入路由/服务测试改断言草稿小题；`publishBaselineVersionForTest`
+    增加"已有最新版直接复用"幂等短路（避免指针写成不存在的版本 id）。
 - [x] 重建用户榜单物化视图：迁移 `0104_rebuild_user_rankings_view.sql`（`drizzle-kit
       generate --custom` 生成，journal 由工具维护）把 `user_rankings` 从
       `evaluation_results` 改读 `submissions.is_accepted`；已应用到开发库。
@@ -149,8 +163,6 @@
       同步 `schema-ddl.ts`（建表段/索引/ALL_TABLES）与顶层 schema 测试；
       parity 门禁自动收敛为 **67 表 / 604 列**；PGlite 模板已重建；
       开发库已应用（`public.evaluation_results` 已不存在，`user_rankings` 视图在）。
-- [ ] 删除旧表 `objective_questions`（其运行期读取迁移完成后；小题事实源已逐步转向
-      版本快照与草稿）。
 - [ ] 搜索索引重建；备份/恢复演练验证。
 
 ### 批次 8（文档与交付）
@@ -189,10 +201,9 @@
       `expected_version_id`/`submitted_version_id`。
 
 ### 已知偏差 / 待收紧
-- [ ] **客观题小题的旧表镜像**（2d 后仍写 `objective_questions`）：仅用于
-      `legacy_unknown` 存量提交的展示回退与 `deriveDraftContentFromProblem` 派生；
-      批次 7b 删除该表时同步移除镜像写入。删表后 `legacy_unknown` 存量提交将
-      只显示"无小题"（Handbook §8.1 允许"历史信息无法恢复，保留未知状态"）。
+- [x] **客观题旧表已删除**（0107）：`legacy_unknown` 存量提交（无提交时版本）
+      的卷面按空卷面处理（0 分、全部按未作答），原始 answers 仍保留可读；
+      Handbook §8.1 允许「历史信息无法恢复，保留未知状态」。
 - [ ] `resolveSubmissionVersion` 对「题目尚未发布任何版本」的存量题目仍返回
       `legacy_unknown`；批次 7 基线回填完成后收紧为拒绝。
 - [ ] `rejudgeProblemSubmissions` 整题范围仍按 `submitted` 目标受理（适配层），
@@ -206,7 +217,11 @@
 
 | 范围 | 命令 | 结果 |
 |---|---|---|
-| noj-core 全量（PG 分片） | `cd noj-core && deno task test:parallel` | **1409 passed / 0 failed / 11 ignored**（批次 7b 后） |
+| noj-core 全量（PG 分片） | `cd noj-core && deno task test:parallel` | **1409 passed / 0 failed / 11 ignored**（0107 删表后） |
+| noj-core 全量（PGlite 单进程） | `cd noj-core && env -u DATABASE_URL deno task test` | **1734 passed / 0 failed / 59 ignored** |
+| schema parity | `scripts/check-schema-parity.ts` | **66 表 / 594 列**（原 67/604，`objective_questions` 10 列） |
+| 迁移安全 / 快照链 | `check-migration-safety` / `check-migration-snapshot-chain` | 无一步式 NOT NULL；快照链单调 |
+| 开发库 | `deno task db:migrate` + information_schema 查询 | `public.objective_questions` 已不存在，迁移数 108 |
 | noj-core 全量（PGlite 单进程） | `cd noj-core && env -u DATABASE_URL deno task test` | **1734 passed / 0 failed / 59 ignored** |
 | contest 域 | `bash scripts/test-domain.sh contest` | **86 passed / 0 failed**（未发布题目入赛 400 取代迁移期 null 固定） |
 | catalog 域 | `bash scripts/test-domain.sh catalog` | **308 passed / 0 failed** |
@@ -250,8 +265,8 @@
 
 ## 四、下一步（按优先级）
 
-1. **批次 7b 收尾**：删除 `objective_questions`（先移除导入镜像写入、迁移历史答案的
-   展示口径复核）→ 重建搜索索引 → 备份/恢复演练（生产升级 §8.3 的核对清单）。
+1. **批次 7b 收尾**：重建搜索索引（发布后索引公开版本）→ 备份/恢复演练
+   （生产升级 §8.3 的核对清单）。
 2. **批次 8**：版本管理文档、同步现行文档（README/AGENTS/题型/题包/题单/提交/竞赛/升级）、
    implemented Agent Note、全量验收（core 各域 + shared + judge + gateway + UI + E2E）、
    PR 合入 `main`。

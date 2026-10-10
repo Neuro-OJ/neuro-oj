@@ -18,10 +18,7 @@
 import type { Context } from "hono";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
-import {
-  objectiveQuestions,
-  problems,
-} from "./../../../../shared/db/schema.ts";
+import { problems } from "./../../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ForbiddenError,
@@ -598,28 +595,12 @@ async function importObjectivePaper(
       }
     }
 
-    // 全量替换小题：**草稿是事实源**（Handbook §6.4），旧表同步镜像以兼容
-    // `legacy_unknown` 存量提交的展示，批次 7b 删表后移除镜像写入。
-    await tx.delete(objectiveQuestions).where(
-      eq(objectiveQuestions.paper_id, problemId),
-    );
+    // 全量替换小题：**草稿是唯一事实源**（Handbook §6.4，旧 `objective_questions`
+    // 表已在 0107 删除）。key 取包内显式 key 或新生成 UUID。
     const snapshots: ObjectiveQuestionSnapshot[] = [];
     for (const q of questions) {
       const options = q.type === "judge" ? judgeOptions() : (q.options ?? []);
-      // 迁移规则：小题 UUID 即跨版本稳定的 key
       const key = q.key?.trim() || crypto.randomUUID();
-      await tx.insert(objectiveQuestions).values({
-        id: key,
-        paper_id: problemId,
-        sort_order: q.sort_order ?? 0,
-        type: q.type,
-        prompt: q.prompt,
-        options,
-        answer: q.answer,
-        explanation: q.explanation ?? "",
-        created_at: now,
-        updated_at: now,
-      });
       snapshots.push({
         key,
         sort_order: q.sort_order ?? snapshots.length,

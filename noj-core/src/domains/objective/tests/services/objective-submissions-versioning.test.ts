@@ -13,7 +13,6 @@ import {
   contestParticipants,
   contests,
   evaluationAttempts,
-  objectiveQuestions,
   objectiveSubmissions,
   problems,
   queryProjectionRevisions,
@@ -403,56 +402,46 @@ Deno.test({
 });
 
 Deno.test({
-  name: "objective versioning: 存量未版本化套卷回退旧小题表（legacy_unknown）",
+  name:
+    "objective versioning: 存量未版本化套卷无卷面可还原（legacy_unknown → 空卷面）",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const owner = await makeUser("owner");
     const user = await makeUser("legacy");
     const paper = await makePaper(owner);
-    const q1 = await createDraftQuestion(
+    // 只写草稿、不发布版本：模拟尚未版本化的存量套卷。
+    // 旧 `objective_questions` 表已随 0107 删除（Handbook §8.1「历史信息无法恢复」），
+    // 因此 legacy_unknown 提交的卷面为空，原 answers 仍保留可读。
+    await createDraftQuestion(
       paper,
       singleQuestion("存量题"),
       await rev(paper),
     );
-    // 直接写旧小题表（不发布版本），模拟迁移前的存量套卷
-    await db.insert(objectiveQuestions).values({
-      id: q1.key,
-      paper_id: paper,
-      sort_order: 0,
-      type: "single",
-      prompt: "存量题",
-      options: [
-        { key: "A", text: "选项 A" },
-        { key: "B", text: "选项 B" },
-      ],
-      answer: ["A"],
-      explanation: "存量解析",
-      created_at: now,
-      updated_at: now,
-    });
 
     const result = await submitObjectivePaper(paper, {
-      answers: { [q1.key]: ["A"] },
+      answers: {},
     }, user);
     if (result.contest_mode !== false) {
       throw new Error("练习模式应返回完整判定");
     }
-    assertEquals(result.score_db, 10000);
-    assertEquals(result.details[q1.key].explanation, "存量解析");
+    assertEquals(result.score_db, 0);
+    assertEquals(result.total_count, 0);
+    assertEquals(Object.keys(result.details).length, 0);
 
     const [row] = await db.select().from(objectiveSubmissions).where(
       eq(objectiveSubmissions.id, result.submission_id),
     );
     assertEquals(row.submitted_version_id, null);
     assertEquals(row.version_origin, "legacy_unknown");
-    // 未知版本桶的判定仍计入 any 策略的候选 → 有效且通过
+    // 空卷面产生"未知版本桶"的 0 分判定：`any` 下算候选（有效）但未通过
     assertEquals(row.is_valid, true);
-    assertEquals(row.is_accepted, true);
+    assertEquals(row.is_accepted, false);
     const versionResults = await db.select().from(submissionVersionResults)
       .where(eq(submissionVersionResults.objective_submission_id, row.id));
     assertEquals(versionResults.length, 1);
     assertEquals(versionResults[0].problem_version_id, null);
+    assertEquals(versionResults[0].current_attempt_id === null, false);
   },
 });
 

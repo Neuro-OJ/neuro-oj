@@ -716,12 +716,13 @@ Deno.test({
     assertEquals(row.runtime_config, null);
     assertEquals(row.support_package_storage_url, null);
 
-    const { objectiveQuestions } = await import(
-      "../../../../shared/db/schema.ts"
+    // 小题事实源是共享草稿（旧表已随 0107 删除）
+    const { getProblemDraft } = await import(
+      "../../services/versioning/draft.ts"
     );
-    const qs = await db.select().from(objectiveQuestions).where(
-      eq(objectiveQuestions.paper_id, body.data.id),
-    );
+    const draft = await getProblemDraft(body.data.id);
+    const qs = (draft.content as { questions?: { prompt: string }[] })
+      .questions ?? [];
     assertEquals(qs.length, 1);
     assertEquals(qs[0].prompt, "1+1=?");
   },
@@ -781,12 +782,12 @@ Deno.test({
     assertEquals(body2.data.title, "新客观题");
 
     const db = getDb();
-    const { objectiveQuestions } = await import(
-      "../../../../shared/db/schema.ts"
+    const { getProblemDraft } = await import(
+      "../../services/versioning/draft.ts"
     );
-    const qs = await db.select().from(objectiveQuestions).where(
-      eq(objectiveQuestions.paper_id, id),
-    );
+    const draft = await getProblemDraft(id);
+    const qs = (draft.content as { questions?: { type: string }[] })
+      .questions ?? [];
     assertEquals(qs.length, 1);
     assertEquals(qs[0].type, "judge");
     const [updatedProblem] = await db.select({

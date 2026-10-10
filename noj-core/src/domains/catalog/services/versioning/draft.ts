@@ -15,7 +15,6 @@ import { and, eq, sql } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
-  objectiveQuestions,
   problemDraftObjects,
   problemDrafts,
   problems,
@@ -94,16 +93,15 @@ export async function loadProblemIdentity(
 }
 
 /**
- * 从题目行 + 当前客观题小题派生草稿内容。
+ * 从题目行派生草稿内容。
  *
- * 这是**迁移期**的派生路径：客观题小题尚未迁入版本快照前，草稿初值只能来自
- * 现有 `objective_questions` 表；迁移完成后该表退役，派生来源改为最新版内容。
+ * 内容事实源是**版本记录**（`getProblemDraft` 优先读最新版内容）；只有在题目
+ * 尚未发布任何版本时才走到这里，用题目行投影拼出初值。客观题小题在旧表退役后
+ * 不再有派生来源：未发布套卷的初值为空小题列表，由编辑器写入草稿。
  */
-export async function deriveDraftContentFromProblem(
+export function deriveDraftContentFromProblem(
   problem: ProblemIdentityRow,
-  executor?: Executor,
-): Promise<ProblemDraftContent> {
-  const db = executor ?? getDb();
+): ProblemDraftContent {
   const kind = problemContentKindOf(problem);
   const base = {
     kind,
@@ -113,22 +111,7 @@ export async function deriveDraftContentFromProblem(
   } as ProblemDraftContent;
 
   if (kind === "objective") {
-    const questions = await db.select().from(objectiveQuestions).where(
-      eq(objectiveQuestions.paper_id, problem.id),
-    ).orderBy(objectiveQuestions.sort_order);
-    return {
-      ...base,
-      questions: questions.map((question) => ({
-        // 迁移规则：现有小题 UUID 直接作为稳定 key
-        key: question.id,
-        sort_order: question.sort_order,
-        type: question.type,
-        prompt: question.prompt,
-        options: question.options,
-        answer: question.answer,
-        explanation: question.explanation,
-      })),
-    };
+    return { ...base, questions: [] };
   }
 
   if (kind === "oi") {
@@ -185,9 +168,9 @@ export async function getProblemDraft(
     ).limit(1);
     content = version
       ? version.content as ProblemDraftContent
-      : await deriveDraftContentFromProblem(identity, db);
+      : deriveDraftContentFromProblem(identity);
   } else {
-    content = await deriveDraftContentFromProblem(identity, db);
+    content = deriveDraftContentFromProblem(identity);
   }
 
   return {
