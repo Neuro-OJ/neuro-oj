@@ -58,8 +58,23 @@
       删除小题不计分、答案形式不兼容按未作答、原始 answers 不改写）。
 - [ ] 2d（收尾）旧 `objective_questions` 运行期读取迁移（批次 6/7：导入路径改草稿 +
       可选发布；派生初值仅在无版本时兜底）。
-- [ ] 2e `createProblem` 建身份+草稿；内容更新转草稿；`updateProblem` 管理信息与内容
-      分离；`deleteProblem` 补齐新表清理顺序；路由新增草稿/版本接口。
+- [x] 2e（草稿/版本路由）`catalog/routes/problems.ts` 新增 Handbook §4.1 接口面：
+  - `GET /problems/:id/draft`（编辑者，派生初值 `synthesized`）、
+    `PUT /problems/:id/draft`（`If-Match` 优先、body `expected_revision` 其次；
+    缺 revision → 428，过时 → 409）、
+    `GET /problems/:id/draft/preflight`（`?verify=false` 跳过物理对象核实）、
+    `POST /problems/:id/versions`（发布，`unchanged` 时 200，新版本 201）、
+    `GET /problems/:id/versions`（分页元数据）、
+    `GET /problems/:id/versions/:versionId`（历史版本内容，非编辑者裁剪客观题
+    标准答案与解析；读取沿用题目当前访问权限与竞赛保密，选旧版不能绕过保密）；
+  - 编辑权限抽成唯一入口 `assertProblemEditPermission`（P 型 `write_any`、
+    U 型 owner `write_own`、其余 `write_any`），既有 `PUT /problems/:id` 与新路由
+    共用，避免"草稿接口是旁路"；
+  - 路由测试 5 个（派生草稿、428/409、预检→发布→重复发布 unchanged、客观题版本
+    裁剪、非编辑者 403）。
+- [ ] 2e（收尾）`createProblem` 显式建草稿（当前派生路径已可用）；`updateProblem`
+      管理信息与内容分离（内容写草稿，不直接改投影）；`deleteProblem` 补齐新表
+      清理顺序。
 
 ### 批次 2 决策与偏差记录
 
@@ -335,6 +350,8 @@
 
 ## 最近一次验证
 
+- 批次 2e（草稿/版本路由）：catalog 域 **297 passed / 0 failed**（新增 5 个路由用例）；
+  noj-core 全量 `deno task test:parallel` **1372 passed / 0 failed / 11 ignored**。
 - 批次 3c（sweeper 版本恢复 + 自测版本）：noj-core 全量
   `deno task test:parallel` **1367 passed / 0 failed / 11 ignored**（submission 域
   **210 passed**，新增 3 个恢复用例 + 1 个自测版本用例）；lint / fmt / 域边界 /

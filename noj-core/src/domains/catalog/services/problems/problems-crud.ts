@@ -66,6 +66,44 @@ import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import { validateProblemSamples } from "../../types/problem-samples.ts";
 
 /**
+ * 题目内容编辑权限（唯一判定入口）。
+ *
+ * 草稿读写、发布版本与既有 PUT 内容更新共用同一口径，避免"草稿接口是旁路"：
+ * - P 型：`problem:write_any`（原则上仅管理员）；
+ * - U 型 owner：`problem:write_own`；
+ * - U 型非 owner：`problem:write_any`。
+ *
+ * `admin:full_access` 通配由 `assertPermission` 内部放行。
+ *
+ * @throws {ForbiddenError} 权限不足
+ */
+export async function assertProblemEditPermission(
+  c: Context | undefined,
+  problem: { type: string; owner_id: string },
+  userId?: string,
+  userRole?: string,
+): Promise<void> {
+  if (problem.type === "P") {
+    if (c) {
+      await assertPermission(c, "problem:write_any");
+    } else if (userRole !== "admin") {
+      throw new ForbiddenError("仅管理员可编辑管理题");
+    }
+    return;
+  }
+  if (problem.owner_id === (c?.var.userId ?? userId)) {
+    // NOJ-102：U 型 owner 也必须持有 problem:write_own。
+    if (c) await assertPermission(c, "problem:write_own");
+    return;
+  }
+  if (c) {
+    await assertPermission(c, "problem:write_any");
+  } else if (userRole !== "admin") {
+    throw new ForbiddenError("无权编辑此题目");
+  }
+}
+
+/**
  * 创建题目。
  *
  * admin 可创建任意 type，普通用户仅限 U 型。
@@ -402,26 +440,7 @@ export async function updateProblem(
     ) throw new ForbiddenError("仅管理员可将题目设为私有");
   }
 
-  // 权限检查（admin:full_access 通配放行由 assertPermission 内部处理）
-  if (problem.type === "P") {
-    if (c) {
-      await assertPermission(c, "problem:write_any");
-    } else if (userRole !== "admin") {
-      throw new ForbiddenError("仅管理员可编辑管理题");
-    }
-  } else if (problem.owner_id === (c?.var.userId ?? userId)) {
-    // NOJ-102：U 型 owner 也必须持有 problem:write_own。
-    if (c) {
-      await assertPermission(c, "problem:write_own");
-    }
-  } else {
-    // U 型：非 owner 需 write_any（管理员）
-    if (c) {
-      await assertPermission(c, "problem:write_any");
-    } else if (userRole !== "admin") {
-      throw new ForbiddenError("无权编辑此题目");
-    }
-  }
+  await assertProblemEditPermission(c, problem, userId, userRole);
 
   // 校验难度
   if (input.difficulty && !isValidDifficulty(input.difficulty)) {
