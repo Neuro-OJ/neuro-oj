@@ -449,6 +449,17 @@
 
 ## 批次 7 落点清单
 
+- [x] 7b 第一步：**停止写入旧结果表**。`submissions-result.ts` 移除
+      `evaluation_results` 的 select/delete/insert 双写——评测事实唯一来源为
+      `evaluation_attempts` 终态 + `submission_version_results` 当前判定 + 有效成绩投影；
+      7 个断言旧表的用例改写为断言新事实（尝试终态字段、重复消费不产生多次尝试、
+      重测时旧尝试历史保留且投影 `latest_attempt_id` 指向新尝试、非法 seq 不覆盖终态、
+      自测不产生正式尝试）。
+- [ ] 7b 第二步：**删除旧表**。剩余引用只在测试夹具（约 12 个文件）与
+      `problems-crud.ts` 删除清理、两处 schema 定义；夹具迁移完成后生成
+      `DROP TABLE evaluation_results` 迁移、同步 `schema-ddl.ts` 与 parity 门禁。
+- [ ] 7b 第三步：`contest_problems.pinned_version_id` 收紧 NOT NULL；重建用户榜单
+      物化视图与搜索索引；备份/恢复演练。
 - [x] 迁移 `0103_version_backfill.sql`（drizzle-kit 生成的索引/默认值段 + 手写回填段）：
   - A 为每道现有题目建 `migration_baseline` V1（内容取自题目投影；客观题小题用 UUID 作 key）；
   - B 设置 `latest_version_id`；C 为现有竞赛固定基线版本；
@@ -517,6 +528,15 @@
 
 ## 最近一次验证
 
+- 批次 7b（第一步：停止写入旧结果表）：submission 域
+  `bash scripts/test-domain.sh submission` **224 passed / 0 failed / 21 ignored**
+  （7 个旧断言改写为断言尝试终态/历史保留/投影指针后仍全绿）；contest 域
+  **86 passed / 0 failed**；noj-core 全量 `deno task test:parallel`
+  **1403 passed / 0 failed / 11 ignored**（移除双写后未出现其它域回归）；
+  `deno fmt --check` / `deno lint` / 域边界 / JSDoc / 类型检查全绿。
+- 批次 5d + Kaggle 计分迁移：contest 域 **86 passed / 0 failed**（+1 快照归因、
+  +1 投影计分）；`getKaggleRanking` 改 JOIN `evaluation_attempts` +
+  `is_contest_valid`，测试夹具 `insertSubmission` 改为产出"提交 + 尝试 + 竞赛有效指针"。
 - 批次 5d（正式成绩快照归因）：contest 域
   `bash scripts/test-domain.sh contest` **85 passed / 0 failed**（+1：快照记录每题
   版本策略、固定版本、有效尝试与提交时版本）；noj-core 全量
