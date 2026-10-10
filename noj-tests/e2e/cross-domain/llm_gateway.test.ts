@@ -23,7 +23,9 @@ import {
   isE2E,
   isJudgeAvailable,
   pollSubmission,
+  publishProblemVersion,
   submitCode,
+  waitForJobCompleted,
   waitForServer,
 } from "../helper.ts";
 
@@ -237,6 +239,8 @@ e2eTest("[e2e/llm-gateway] 7.1 导入 P 型 LLM 题并提交评测", async () =>
     );
   }
   problemId = (imported.body as { data: { id: string } }).data.id;
+  // 题包导入只写共享草稿；提交前必须显式发布作答版本（Handbook §6.2）
+  await publishProblemVersion(adminToken, problemId, "E2E LLM 题 V1");
 
   submissionId = await submitCode(
     adminToken,
@@ -290,12 +294,17 @@ e2eTest("[e2e/llm-gateway] 7.3 重测重新签发 token", async () => {
     {},
     adminToken,
   );
-  if (rejudge.status !== 200) {
+  // 统一任务受理（Handbook §4.3）：202 + 任务 ID
+  if (rejudge.status !== 202) {
     throw new Error(
       `重测失败: ${rejudge.status} ${JSON.stringify(rejudge.body)}`,
     );
   }
+  const jobId = (rejudge.body as { data: { job_id: string } }).data.job_id;
 
+  // 先等任务终态：只轮询提交会在"上一条 finished 仍可见"时提前返回，
+  // 从而在重测真正执行前就检查用量（实测误报"token 未重新签发"）。
+  await waitForJobCompleted(adminToken, jobId);
   await pollSubmission(adminToken, submissionId, 60, 2000, true);
 
   const after = await apiGet(
@@ -345,23 +354,31 @@ e2eTest("[e2e/llm-gateway] 更新 LLM 题关闭网络被拒", async () => {
 });
 
 e2eTest(
-  "[e2e/llm-gateway] 更新 LLM 题为客观题后自动清空 llm_config",
+  "[e2e/llm-gateway] 已发布 LLM 题不允许改为客观题（题型不可变）",
   async () => {
     if (!isE2E || !problemId) return;
+    // Handbook §2.3：首次发布后固定 kind 与 AI 提交模式，跨题型转换必须新建题目。
+    // 因此对已发布的 LLM 题改 is_objective 应被 409 拒绝，而不是静默改行后
+    // 与已发布版本内容不一致。
     const res = await apiPut(
       `/api/v1/problems/${problemId}`,
       { is_objective: true },
       adminToken,
     );
-    if (res.status !== 200) {
+    if (res.status !== 409) {
       throw new Error(
-        `更新为客观题失败: ${res.status} ${JSON.stringify(res.body)}`,
+        `题型不可变应返回 409，实际 ${res.status} ${JSON.stringify(res.body)}`,
       );
     }
     const detail = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
-    const problem = (detail.body as { data?: { llm_config?: unknown } }).data;
-    if (problem?.llm_config != null) {
-      throw new Error("LLM 题改为客观题后 llm_config 应被清空");
+    const problem = (detail.body as {
+      data?: { is_objective?: boolean; llm_config?: unknown };
+    }).data;
+    if (problem?.is_objective !== false) {
+      throw new Error("被拒的题型切换不得改写题目行");
+    }
+    if (problem?.llm_config == null) {
+      throw new Error("被拒的题型切换不得清空已发布版本的 llm_config");
     }
   },
 );

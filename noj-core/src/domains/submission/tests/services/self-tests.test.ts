@@ -1,10 +1,11 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 
 import {
   contests,
   problems,
+  problemVersions,
   selfTests,
   submissions,
   users,
@@ -274,6 +275,102 @@ Deno.test({
 
     await db.delete(contests).where(eq(contests.id, contestId));
     await db.delete(problems).where(eq(problems.id, secretProblemId));
+  },
+});
+
+Deno.test({
+  name: "self-tests service: 自测携带版本与执行快照（Handbook §4.2/§5.5）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const problemId = `tst-st-versioned-${ts}`;
+    const versionId = `tst-st-versioned-v1-${ts}`;
+    const versionConfig = {
+      evaluator: {
+        image: "noj-evaluator-python",
+        command: "python3 /workspace/evaluate.py",
+        time_limit_ms: 4321,
+        memory_limit_mb: 321,
+      },
+      solution: {
+        image: "noj-solution-python",
+        call_timeout_ms: 4321,
+        memory_limit_mb: 321,
+      },
+    };
+    await db.insert(problems).values({
+      id: problemId,
+      title: "版本化自测题",
+      description: "题面",
+      difficulty: "easy",
+      runtime_config: runtimeConfig,
+      number: 91000 + (ts % 5000),
+      owner_id: USER_ID,
+      type: "P",
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(problemVersions).values({
+      id: versionId,
+      problem_id: problemId,
+      version: 1,
+      origin: "published",
+      content: {
+        kind: "ai",
+        title: "版本化自测题",
+        description: "题面",
+        samples: [],
+        submission_mode: "code",
+        runtime_config: versionConfig,
+        template_content: "",
+        artifact_max_size_mb: null,
+        llm_config: null,
+      },
+      published_at: now,
+    });
+    await db.update(problems).set({ latest_version_id: versionId })
+      .where(eq(problems.id, problemId));
+
+    // 不属于该题的版本：逐字生效（404），不静默换版本
+    let code: string | undefined;
+    try {
+      await createSelfTest(USER_ID, problemId, {
+        language: "python3",
+        code: "print(1)",
+        version_id: `other-${ts}`,
+      });
+    } catch (err) {
+      code = (err as { code?: string }).code;
+    }
+    assertEquals(code, "PROBLEM_VERSION_NOT_FOUND");
+
+    // 正确版本：落库提交时版本 + 非敏感执行快照（评测队列不可用时也已完成写入）
+    await createSelfTest(USER_ID, problemId, {
+      language: "python3",
+      code: "print(2)",
+      version_id: versionId,
+    }).catch(() => {/* 评测队列不可用属预期 */});
+
+    const rows = await db.select().from(selfTests).where(
+      and(
+        eq(selfTests.user_id, USER_ID),
+        eq(selfTests.problem_id, problemId),
+      ),
+    );
+    assertEquals(rows.length, 1);
+    assertEquals(rows[0].problem_version_id, versionId);
+    const snapshot = rows[0].task_snapshot as Record<string, unknown>;
+    assertEquals(snapshot.problem_version_id, versionId);
+    assertEquals(snapshot.language, "python3");
+    assertEquals("eval_token" in snapshot, false);
+
+    await db.delete(selfTests).where(eq(selfTests.problem_id, problemId));
+    // 先摘掉最新版指针（复合外键 problems_latest_version_fk），再删版本
+    await db.update(problems).set({ latest_version_id: null })
+      .where(eq(problems.id, problemId));
+    await db.delete(problemVersions).where(eq(problemVersions.id, versionId));
+    await db.delete(problems).where(eq(problems.id, problemId));
   },
 });
 

@@ -10,6 +10,8 @@ interface Props {
   difficulty: string
   tagId: string | null
   problemType: string
+  judgeType?: string
+  judgeBackend?: string
   tags: Tag[]
 }
 
@@ -19,6 +21,9 @@ const emit = defineEmits<{
   'update:difficulty': [value: string]
   'update:tagId': [value: string | null]
   'update:problemType': [value: string]
+  'update:judgeType': [value: string]
+  'update:judgeBackend': [value: string]
+  reset: []
 }>()
 
 const searchInput = ref(props.keyword)
@@ -42,8 +47,14 @@ onUnmounted(() => {
   clearTimeout(debounceTimer)
 })
 
+const allFilterValue = '__all__'
+
+function filterValue(value: string | undefined): string {
+  return value === allFilterValue ? '' : value ?? ''
+}
+
 const difficulties = [
-  { value: '', label: '全部' },
+  { value: allFilterValue, label: '全部' },
   { value: 'easy', label: '简单' },
   { value: 'medium', label: '中等' },
   { value: 'hard', label: '困难' },
@@ -53,123 +64,65 @@ const types = [
   { value: 'P', label: '主题库' },
   { value: 'U', label: '用户题库' },
 ]
-
-function selectDifficulty(value: string) {
-  emit('update:difficulty', value === props.difficulty ? '' : value)
-}
-
-function selectTag(value: string) {
-  emit('update:tagId', value === props.tagId ? null : value)
-}
+const judgeTypes = [
+  { value: allFilterValue, label: '全部' },
+  { value: 'oi', label: 'OI 题' },
+  { value: 'dual', label: 'AI 题' },
+  { value: 'objective', label: '客观题' },
+]
+const judgeBackends = [
+  { value: allFilterValue, label: '全部' },
+  { value: 'dual', label: 'dual' },
+  { value: 'oi-native', label: 'oi-native' },
+  { value: 'oi-wasm', label: 'oi-wasm' },
+]
 
 // 标签选项：按 kind 排序（题目标签在前），label 带 kind 前缀区分
 const tagItems = computed(() =>
-  [...props.tags]
-    .sort((a, b) => {
-      if (a.kind !== b.kind) return a.kind === 'problem' ? -1 : 1
-      return a.name.localeCompare(b.name)
-    })
-    .map((t) => ({
-      label: `${t.kind === 'algorithm' ? '算法标签' : '题目标签'}: ${t.name}`,
-      value: t.id,
-    })),
+  [
+    { label: '全部标签', value: allFilterValue },
+    ...[...props.tags]
+      .sort((a, b) => {
+        if (a.kind !== b.kind) return a.kind === 'problem' ? -1 : 1
+        return a.name.localeCompare(b.name)
+      })
+      .map((t) => ({
+        label: `${t.kind === 'algorithm' ? '算法标签' : '题目标签'}: ${t.name}`,
+        value: t.id,
+      })),
+  ],
 )
 
-function selectType(value: string) {
-  emit('update:problemType', value === props.problemType ? '' : value)
-}
-
-// radio 组方向键导航（WCAG 2.1.1）：左右/上下移动选中项并跟随焦点
-function onGroupKeydown(e: KeyboardEvent, values: { value: string }[], current: string, onSelect: (v: string) => void) {
-  let idx = values.findIndex((v) => v.value === current)
-  if (idx < 0) idx = 0
-  if (e.key === "ArrowRight" || e.key === "ArrowDown") idx = Math.min(idx + 1, values.length - 1)
-  else if (e.key === "ArrowLeft" || e.key === "ArrowUp") idx = Math.max(idx - 1, 0)
-  else return
-  e.preventDefault()
-  onSelect(values[idx]!.value)
-  ;(e.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('[role="radio"]')[idx]?.focus()
-}
-
-// roving tabindex：当前值不在选项内时默认聚焦第一项（如"全部"）
-const activeType = computed(() => types.some((t) => t.value === props.problemType) ? props.problemType : types[0]!.value)
-const activeDifficulty = computed(() => difficulties.some((d) => d.value === props.difficulty) ? props.difficulty : difficulties[0]!.value)
 </script>
 
 <template>
-  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 mb-5">
-    <!-- 搜索框 -->
-    <div class="relative flex-1 max-w-sm">
-      <input
-        v-model="searchInput"
-        type="text"
-        placeholder="搜索题目..."
-        aria-label="按标题或题号搜索"
-        class="w-full px-3 py-2 pr-8 text-sm border border-border rounded-lg bg-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors duration-150"
-      />
-      <button
-        v-if="searchInput"
-        class="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors"
-        aria-label="清除搜索"
-        @click="searchInput = ''"
-      >
-        <span class="text-sm leading-none">&times;</span>
-      </button>
+  <UCard class="mb-5 rounded-md shadow-none" :ui="{ body: 'p-4 sm:p-4' }" aria-label="题库筛选">
+    <div class="flex items-center gap-3">
+      <UInput v-model="searchInput" icon="i-lucide-search" type="search" size="md"
+        placeholder="搜索题目名称或题号" aria-label="按标题或题号搜索" class="min-w-0 flex-1" />
+      <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-filter-x" class="shrink-0" @click="emit('reset')">清空筛选</UButton>
     </div>
-
-    <!-- 类型筛选 -->
-    <div class="flex items-center gap-1.5 flex-wrap" role="radiogroup" aria-labelledby="type-label" @keydown="onGroupKeydown($event, types, problemType, selectType)">
-      <span class="text-xs text-text-muted mr-1" id="type-label">类型:</span>
-      <button
-        v-for="t in types"
-        :key="t.value"
-        role="radio"
-        :aria-checked="activeType === t.value"
-        :tabindex="activeType === t.value ? 0 : -1"
-        class="px-3 py-1.5 text-xs font-medium rounded-full border transition-colors duration-150"
-        :class="activeType === t.value
-          ? t.value === 'U' ? 'bg-blue-100 text-blue-700 border-blue-300'
-            : t.value === 'P' ? 'bg-purple-100 text-purple-700 border-purple-300'
-            : 'bg-signal text-on-signal border-signal'
-          : 'bg-white text-text-secondary border-border hover:border-primary/40'"
-        @click="selectType(t.value)"
-      >
-        {{ t.label }}
-      </button>
+    <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <UFormField label="题库" class="min-w-0">
+        <USelect :model-value="problemType || 'P'" :items="types" size="sm" class="w-full" aria-label="题库"
+          @update:model-value="emit('update:problemType', $event)" />
+      </UFormField>
+      <UFormField label="难度" class="min-w-0">
+        <USelect :model-value="difficulty || allFilterValue" :items="difficulties" size="sm" class="w-full" aria-label="难度"
+          @update:model-value="emit('update:difficulty', filterValue($event))" />
+      </UFormField>
+      <UFormField label="题目类型" class="min-w-0">
+        <USelect :model-value="judgeType || allFilterValue" :items="judgeTypes" size="sm" class="w-full" aria-label="题目类型"
+          @update:model-value="emit('update:judgeType', filterValue($event))" />
+      </UFormField>
+      <UFormField label="评测后端" class="min-w-0">
+        <USelect :model-value="judgeBackend || allFilterValue" :items="judgeBackends" size="sm" class="w-full" aria-label="评测后端"
+          @update:model-value="emit('update:judgeBackend', filterValue($event))" />
+      </UFormField>
+      <UFormField label="标签" class="min-w-0">
+        <USelect :model-value="tagId || allFilterValue" :items="tagItems" size="sm" class="w-full" aria-label="标签"
+          @update:model-value="emit('update:tagId', filterValue($event) || null)" />
+      </UFormField>
     </div>
-
-    <!-- 难度筛选 -->
-    <div class="flex items-center gap-1.5 flex-wrap" role="radiogroup" aria-labelledby="diff-label" @keydown="onGroupKeydown($event, difficulties, difficulty, selectDifficulty)">
-      <span class="text-xs text-text-muted mr-1" id="diff-label">难度:</span>
-      <button
-        v-for="d in difficulties"
-        :key="d.value"
-        role="radio"
-        :aria-checked="difficulty === d.value"
-        :aria-label="d.label"
-        :tabindex="activeDifficulty === d.value ? 0 : -1"
-        class="px-3 py-1.5 text-xs font-medium rounded-full border transition-colors duration-150"
-        :class="difficulty === d.value
-          ? 'bg-signal text-on-signal border-signal'
-          : 'bg-white text-text-secondary border-border hover:border-primary/40'"
-        @click="selectDifficulty(d.value)"
-      >
-        {{ d.label }}
-      </button>
-    </div>
-
-    <!-- 标签筛选 -->
-    <div v-if="tags.length > 0" class="flex items-center gap-1.5">
-      <span class="text-xs text-text-muted mr-1" id="tag-label">标签:</span>
-      <USelect
-        :model-value="tagId ?? undefined"
-        :items="tagItems"
-        size="xs"
-        class="min-w-[150px]"
-        placeholder="全部标签"
-        aria-label="按标签筛选"
-        @update:model-value="selectTag"
-      />
-    </div>
-  </div>
+  </UCard>
 </template>

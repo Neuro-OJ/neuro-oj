@@ -1,7 +1,16 @@
 # 双容器评测模型（Judge Model）
 
-在 Neuro OJ
-中，代码评测基于**双容器协同沙箱**展开。每次代码提交均在后台并行拉起两个高度受控的
+::: tip 适用范围 本文描述 **AI 题的 dual 双容器评测**。NOJ
+共有三条评测路径：**OI 题**（`judge_type=oi`， native / WASM runner
+直接执行测试点）、**AI 题**（本文的双容器 RPC 评测）、
+**客观题**（`is_objective=true`，core 内即时判定）。dual 不是 NOJ
+的唯一评测模型。
+三条路径都遵循[题目版本管理](../features/problem-versioning.md)：每次执行记录
+`evaluation_attempts`（含 `problem_version_id`
+与任务快照），结果按提交时版本落库。 :::
+
+在 Neuro OJ 中，AI
+代码题评测基于**双容器协同沙箱**展开。每次代码提交均在后台并行拉起两个高度受控的
 Docker 容器：**Evaluator 容器**（运行出题人的评分程序）与 **Solution
 容器**（运行选手的解答代码），二者通过评测宿主进程（`noj-judge`）进行双向 RPC
 消息路由。

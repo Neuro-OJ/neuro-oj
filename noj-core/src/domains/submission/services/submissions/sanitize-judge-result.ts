@@ -26,12 +26,24 @@ import type { JudgeResult } from "../../types/index.ts";
  * 也不把未定义状态写进数据库。
  */
 export const ALLOWED_JUDGE_STATUSES: readonly string[] = [
+  "cancelled",
   "finished",
   "error",
   "SystemError",
   "TimeLimitExceeded",
   "MemoryLimitExceeded",
   "RuntimeError",
+  // OI 评测细分状态（分数与详情仍按既有结果封套落库）。
+  "AC",
+  "WA",
+  "TLE",
+  "MLE",
+  "OLE",
+  "RE",
+  "CE",
+  "SE",
+  "FE",
+  "IGN",
 ];
 
 /** output 字段的防御性上限（judge 侧为 1 MiB，这里留一倍余量） */

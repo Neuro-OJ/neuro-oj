@@ -2,7 +2,7 @@
  * `resetDbForTest()` 的表覆盖回归测试（2026-09-24 评审）。
  *
  * 评审实测：`ALL_TABLES` 长期漏登记 5 张表（`carousel_slides`、
- * `objective_questions`、`objective_submissions`、`self_tests`、`sse_events`），
+ * `objective_submissions`、`self_tests`、`sse_events`），
  * 导致 `resetDbForTest()` 的 TRUNCATE 漏表、同进程用例相互污染；而
  * schema parity / 迁移门禁都看不到该名单遗漏。
  *

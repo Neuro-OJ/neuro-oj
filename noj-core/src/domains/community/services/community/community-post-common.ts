@@ -1,8 +1,7 @@
-import { and, eq, gt, type SQL, sql } from "drizzle-orm";
+import { and, eq, type SQL, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityPosts,
-  evaluationResults,
   submissions,
   users,
 } from "./../../../../shared/db/schema.ts";
@@ -88,22 +87,23 @@ export function resolveProblemId(
   return resolveProblemIdOrNull(reference);
 }
 
-/** 查询用户是否已通过指定题目（finished 且 score>0，供门槛判定与题解发布入口使用）。 */
+/**
+ * 查询用户是否已通过指定题目（题解门槛与发布入口共用）。
+ *
+ * 版本化后读**有效成绩投影** `submissions.is_accepted`：它由唯一投影服务按当前
+ * 有效版本策略维护，覆盖历史版本、精确版本策略与升级提交；存量由迁移 0103 回填，
+ * 口径与旧「finished 且 score>0」一致（OI 仍按 verdict=AC）。
+ */
 export async function hasAcceptedSolution(
   authorId: string,
   problemId: string,
 ): Promise<boolean> {
   const db = getDb();
   const rows = await db.select({ id: submissions.id }).from(submissions)
-    .innerJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, submissions.id),
-    )
     .where(and(
       eq(submissions.user_id, authorId),
       eq(submissions.problem_id, problemId),
-      eq(evaluationResults.status, "finished"),
-      gt(evaluationResults.score, 0),
+      eq(submissions.is_accepted, true),
     )).limit(1);
   return !!rows[0];
 }

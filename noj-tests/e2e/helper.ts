@@ -81,20 +81,65 @@ export function apiPost(path: string, body: unknown, token?: string) {
   return api("POST", path, { body, token });
 }
 
-export function apiPut(path: string, body: unknown, token?: string) {
-  return api("PUT", path, { body, token });
+export function apiPut(
+  path: string,
+  body: unknown,
+  token?: string,
+  headers?: Record<string, string>,
+) {
+  return api("PUT", path, { body, token, headers });
 }
 
 export function apiPatch(path: string, body: unknown, token?: string) {
   return api("PATCH", path, { body, token });
 }
 
-export function apiDelete(path: string, token?: string) {
-  return api("DELETE", path, { token });
+export function apiDelete(
+  path: string,
+  token?: string,
+  headers?: Record<string, string>,
+) {
+  return api("DELETE", path, { token, headers });
 }
 
 export function apiGet(path: string, token?: string) {
   return api("GET", path, { token });
+}
+
+/**
+ * 等待批量任务进入终态（Handbook §4.3/§5.7）。
+ *
+ * 重测/升级任务受理后立即返回 202，真正的评测由后台 worker 异步派发：
+ * 只轮询提交状态会在"上一条尝试的 finished 仍然可见"时提前返回，因此断言
+ * 重测效果前必须等任务终态（completed / completed_with_errors）。
+ */
+export async function waitForJobCompleted(
+  token: string,
+  jobId: string,
+  maxRetries = 60,
+  intervalMs = 1000,
+): Promise<{ status: string; total_items: number }> {
+  let lastStatus = "(未取得)";
+  for (let i = 0; i < maxRetries; i++) {
+    const res = await apiGet(`/api/v1/admin/submission-jobs/${jobId}`, token);
+    if (res.status === 200) {
+      const data = (res.body as {
+        data: { status: string; total_items: number };
+      }).data;
+      lastStatus = data.status;
+      if (
+        data.status === "completed" || data.status === "completed_with_errors"
+      ) {
+        return data;
+      }
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(
+    `任务 ${jobId} 超时（${
+      maxRetries * intervalMs
+    }ms 未完成），最后状态 ${lastStatus}`,
+  );
 }
 
 // ── 用户辅助 ──────────────────────────────────────
@@ -402,17 +447,72 @@ export async function loginAndChangePassword(
 }
 
 /**
+ * 为题目把当前内容显式发布为版本，返回作答版本 ID（Handbook §4.1）。
+ *
+ * 版本化后**提交必须携带 `version_id`**：只创建不发布的题目没有作答版本，
+ * 提交会被 409 拒绝。E2E 建题后应先调用本函数固定版本。
+ */
+export async function publishProblemVersion(
+  token: string,
+  problemId: string,
+  changeNote = "e2e",
+): Promise<string> {
+  const draft = await apiGet(`/api/v1/problems/${problemId}/draft`, token);
+  if (draft.status !== 200) {
+    throw new Error(
+      `读取草稿失败: ${draft.status} ${JSON.stringify(draft.body)}`,
+    );
+  }
+  const revision = (draft.body as { data: { revision: number } }).data.revision;
+
+  const pub = await api("POST", `/api/v1/problems/${problemId}/versions`, {
+    body: { change_note: changeNote },
+    token,
+    headers: { "If-Match": String(revision) },
+  });
+  if (pub.status !== 200 && pub.status !== 201) {
+    throw new Error(
+      `发布版本失败: ${pub.status} ${JSON.stringify(pub.body)}`,
+    );
+  }
+  return (pub.body as { data: { version_id: string } }).data.version_id;
+}
+
+/**
+ * 读取题目默认作答版本 ID（`any` → 最新版 / `exact` → 要求版本）。
+ */
+export async function getAnswerVersionId(
+  token: string,
+  problemId: string,
+): Promise<string | null> {
+  const res = await apiGet(`/api/v1/problems/${problemId}`, token);
+  if (res.status !== 200) {
+    throw new Error(`读取题目失败: ${res.status} ${JSON.stringify(res.body)}`);
+  }
+  return (res.body as { data: { version_id: string | null } }).data.version_id;
+}
+
+/**
  * 提交代码并返回 submission ID。
+ *
+ * `versionId` 缺省时自动读取题目**默认作答版本**（新客户端必须携带版本）。
  */
 export async function submitCode(
   token: string,
   problemId: string,
   code: string,
   language = "python3",
+  versionId?: string | null,
 ): Promise<string> {
+  const version = versionId ?? await getAnswerVersionId(token, problemId);
+  if (!version) {
+    throw new Error(
+      `题目 ${problemId} 尚未发布任何版本，无法提交（先调用 publishProblemVersion）`,
+    );
+  }
   const res = await apiPost(
     "/api/v1/submissions",
-    { problem_id: problemId, language, code },
+    { problem_id: problemId, language, code, version_id: version },
     token,
   );
 

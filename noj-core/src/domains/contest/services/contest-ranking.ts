@@ -119,18 +119,24 @@ export async function getContestSettlementStatus(
     WITH contest_tasks AS (
       SELECT s.id AS submission_id, s.user_id, u.username, s.problem_id,
         p.title AS problem_title, s.status,
-        er.status AS result_status, s.created_at, 'submission'::text AS kind
+        ea.result_status AS result_status,
+        (ea.result_kind = 'platform_error') AS platform_error,
+        s.created_at, 'submission'::text AS kind
       FROM submissions s
       JOIN users u ON u.id = s.user_id
       JOIN problems p ON p.id = s.problem_id
       JOIN contests c ON c.id = s.contest_id
-      LEFT JOIN evaluation_results er ON er.submission_id = s.id
+      -- 最近一次运行的判定读尝试指针（evaluation_results 即将删除）：
+      -- 优先最近终态尝试，存量行回退有效成绩指针
+      LEFT JOIN evaluation_attempts ea
+        ON ea.id = coalesce(s.latest_attempt_id, s.effective_attempt_id)
       WHERE s.contest_id = ${contestId}
         AND s.created_at <= c.end_time
       UNION ALL
       SELECT os.id AS submission_id, os.user_id, u.username, os.paper_id,
         p.title AS problem_title, os.status,
-        os.status AS result_status, os.created_at, 'objective'::text AS kind
+        os.status AS result_status, FALSE AS platform_error,
+        os.created_at, 'objective'::text AS kind
       FROM objective_submissions os
       JOIN users u ON u.id = os.user_id
       JOIN problems p ON p.id = os.paper_id
@@ -139,12 +145,29 @@ export async function getContestSettlementStatus(
         AND os.created_at <= c.end_time
     )
     SELECT
-      COUNT(*) FILTER (WHERE status IN ('pending', 'judging')
-        OR result_status IS NULL
-        OR result_status NOT IN ('finished', 'error'))::int AS pending_count,
-      COUNT(*) FILTER (WHERE status = 'error' OR result_status = 'error')::int
-        AS failed_count
-    FROM contest_tasks
+      -- 待处理 = 未终结的评测任务；已判定为失败的提交不重复计入待处理
+      COUNT(*) FILTER (
+        WHERE NOT failed
+          AND (
+            status IN ('pending', 'judging')
+            OR result_status IS NULL
+            OR result_status NOT IN ('finished', 'error')
+          )
+      )::int AS pending_count,
+      -- 失败 = 提交级 error 或平台错误（result_kind = platform_error）；
+      -- 正常 WA / 零分不算失败（Handbook §6.6：不把未通过等同于评测故障）
+      COUNT(*) FILTER (WHERE failed)::int AS failed_count
+    FROM (
+      SELECT status, result_status,
+        -- 三值逻辑必须显式收敛：OR 链遇到 NULL 会得到 NULL，
+        -- 否则"无尝试的提交"既不算 failed 也不算 pending（结算门禁 fail-open）
+        COALESCE(
+          status = 'error' OR result_status = 'error'
+            OR platform_error IS TRUE,
+          FALSE
+        ) AS failed
+      FROM contest_tasks
+    ) classified
   `);
   const [counts] = unwrapRows<Record<string, unknown>>(result as never);
   const pendingCount = Number(counts?.pending_count ?? 0);
@@ -167,18 +190,24 @@ export async function getContestSettlementStatus(
     WITH contest_tasks AS (
       SELECT s.id AS submission_id, s.user_id, u.username, s.problem_id,
         p.title AS problem_title, s.status,
-        er.status AS result_status, s.created_at, 'submission'::text AS kind
+        ea.result_status AS result_status,
+        (ea.result_kind = 'platform_error') AS platform_error,
+        s.created_at, 'submission'::text AS kind
       FROM submissions s
       JOIN users u ON u.id = s.user_id
       JOIN problems p ON p.id = s.problem_id
       JOIN contests c ON c.id = s.contest_id
-      LEFT JOIN evaluation_results er ON er.submission_id = s.id
+      -- 最近一次运行的判定读尝试指针（evaluation_results 即将删除）：
+      -- 优先最近终态尝试，存量行回退有效成绩指针
+      LEFT JOIN evaluation_attempts ea
+        ON ea.id = coalesce(s.latest_attempt_id, s.effective_attempt_id)
       WHERE s.contest_id = ${contestId}
         AND s.created_at <= c.end_time
       UNION ALL
       SELECT os.id AS submission_id, os.user_id, u.username, os.paper_id,
         p.title AS problem_title, os.status,
-        os.status AS result_status, os.created_at, 'objective'::text AS kind
+        os.status AS result_status, FALSE AS platform_error,
+        os.created_at, 'objective'::text AS kind
       FROM objective_submissions os
       JOIN users u ON u.id = os.user_id
       JOIN problems p ON p.id = os.paper_id
@@ -320,13 +349,17 @@ export async function getKaggleRanking(
       WHERE id = ${contestId}
     ),
     submission_scores AS (
-      SELECT s.id, s.user_id, s.problem_id, s.created_at, er.score,
-        er.status AS evaluation_status, er.created_at AS evaluation_created_at,
+      -- 竞赛计分只取「竞赛口径有效成绩」（Handbook §3.4/§6.6）：
+      -- 有效成绩指针指向的已完成正式尝试，不再读 evaluation_results
+      SELECT s.id, s.user_id, s.problem_id, s.created_at, ea.score,
+        ea.result_status AS evaluation_status,
+        coalesce(ea.finished_at, ea.created_at) AS evaluation_created_at,
         s.rejudge_seq
       FROM submissions s
-      JOIN evaluation_results er ON er.submission_id = s.id
+      JOIN evaluation_attempts ea ON ea.id = s.contest_effective_attempt_id
       JOIN contest_data c ON c.id = s.contest_id
       WHERE s.contest_id = ${contestId}
+        AND s.is_contest_valid = TRUE
         AND s.created_at <= c.end_time
         ${cutoffTime ? sql`AND s.created_at <= ${cutoffTime}` : sql``}
       UNION ALL
@@ -410,12 +443,21 @@ export async function getKaggleRanking(
         bs.rejudge_seq,
         bs.evaluation_status,
         bs.evaluation_created_at,
-        rt.last_refresh_at
+        rt.last_refresh_at,
+        -- 正式成绩归因（Handbook §6.6）：记录最佳成绩所属提交的有效尝试与提交时版本，
+        -- 以及该「竞赛 × 题目」当时的版本策略与固定版本
+        best_submission.contest_effective_attempt_id,
+        best_submission.submitted_version_id,
+        cp.pinned_version_id,
+        cp.effective_version_mode,
+        cp.required_version_id,
+        cp.effective_policy_revision
       FROM contest_participants participant
       CROSS JOIN contest_problems cp
       LEFT JOIN best_scores bs
         ON bs.user_id = participant.user_id
         AND bs.problem_id = cp.problem_id
+      LEFT JOIN submissions best_submission ON best_submission.id = bs.submission_id
       LEFT JOIN attempts at
         ON at.user_id = participant.user_id
         AND at.problem_id = cp.problem_id
@@ -445,7 +487,19 @@ export async function getKaggleRanking(
             'submission_id', ps.submission_id,
             'rejudge_seq', ps.rejudge_seq,
             'evaluation_status', ps.evaluation_status,
-            'evaluation_created_at', ps.evaluation_created_at
+            'evaluation_created_at', ps.evaluation_created_at,
+            'effective_attempt_id', ps.contest_effective_attempt_id,
+            'submitted_version_id', ps.submitted_version_id,
+            'pinned_version_id', ps.pinned_version_id,
+            'policy_revision', ps.effective_policy_revision,
+            'version_policy', CASE
+              WHEN ps.effective_version_mode = 'exact'
+                THEN jsonb_build_object(
+                  'mode', 'exact',
+                  'version_id', ps.required_version_id
+                )
+              ELSE jsonb_build_object('mode', 'any')
+            END
           ) ORDER BY ps.sort_order, ps.label
         ) AS problem_scores
       FROM problem_stats ps

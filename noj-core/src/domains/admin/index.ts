@@ -4,6 +4,8 @@
  * 提供（挂载前缀 /api/v1/admin，见 app.ts）：
  * - /identity/users、/identity/roles、/identity/permissions、/identity/blacklist
  * - /catalog/problems、/catalog/trainings
+ * - /problems/:id/effective-version-policy、
+ *   /contests/:contestId/problems/:problemId/{effective-version-policy,version}（版本策略）
  * - /submissions、/contest/contests、/judge-images、
  *   /dashboard/stats、/settings、/audit-logs、/announcements、/llm/...
  *
@@ -17,6 +19,8 @@ import { adminMiddleware, authMiddleware } from "../identity/index.ts";
 import identityAdminRouter from "./routes/identity.ts";
 import catalogAdminRouter from "./routes/catalog.ts";
 import submissionAdminRouter from "./routes/submission.ts";
+import submissionJobsAdminRouter from "./routes/submission-jobs.ts";
+import problemVersionsAdminRouter from "./routes/problem-versions.ts";
 import queryAdminRouter from "./routes/query.ts";
 import contestAdminRouter from "./routes/contest.ts";
 import systemAdminRouter from "./routes/system.ts";
@@ -47,6 +51,9 @@ router.use("*", authMiddleware, async (c, next) => {
 router.route("/identity", identityAdminRouter);
 router.route("/catalog", catalogAdminRouter);
 router.route("/submission", submissionAdminRouter);
+router.route("/submission-jobs", submissionJobsAdminRouter);
+// 版本策略路由按 Handbook §4.5 的路径挂在 /api/v1/admin 根下（不是 /admin/catalog）
+router.route("/", problemVersionsAdminRouter);
 router.route("/query", queryAdminRouter);
 router.route("/contest", contestAdminRouter);
 router.route("/system", systemAdminRouter);

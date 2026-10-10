@@ -1,0 +1,130 @@
+[
+  {
+    "fuel_budget": 1000000000,
+    "fuel_consumed": 156897,
+    "metering": {
+      "comparable": true,
+      "comparison_hash": "eb4e15abf5822b59275a8bbb2970973c3b73d6128e52b18745c66060b8d46d5c",
+      "evaluation_hash": "7d48e5d4be6dcdee60c1c1a84b94427f7465b9654a382fdd67931a1c2b0b3031",
+      "module_hash": "4d299d49140540e4c97bb6313d553f40fec1d594ee75eaa5cacdbc5e09bbc826",
+      "source_hash": "18d385e9aaa42ab11f431ed1057daa376f817abfb1cf00c43ee3e1fa45bccef9",
+      "standard_hash": "dd45773b77ab74fa69e15427760a86dc8defcac79d2dfb61ec91c18eba08a906",
+      "standard_version": "noj-wasm-v1",
+      "termination_reason": null
+    },
+    "name": "sort",
+    "verdict": "AC"
+  },
+  {
+    "fuel_budget": 1000000000,
+    "fuel_consumed": 147273,
+    "metering": {
+      "comparable": true,
+      "comparison_hash": "fb7397c9979e8d892c2b002847422ecb1244d24ac6e3475f6bf24a7fdb46f58c",
+      "evaluation_hash": "09ae7a02bd4cc564de09e8ae16fb3d431b3ba1e2d2d25aabf6b64bbd571c203c",
+      "module_hash": "f7e62793baedf60998594c33b32fd356fbe084fbcfadb9341c14bdcecbdc34a8",
+      "source_hash": "86183f985bb182af4f8642cd6a5c8536cdd0ef1c4cb4a43315eb84d803f12846",
+      "standard_hash": "dd45773b77ab74fa69e15427760a86dc8defcac79d2dfb61ec91c18eba08a906",
+      "standard_version": "noj-wasm-v1",
+      "termination_reason": null
+    },
+    "name": "graph",
+    "verdict": "AC"
+  },
+  {
+    "fuel_budget": 1000000000,
+    "fuel_consumed": 25662,
+    "metering": {
+      "comparable": true,
+      "comparison_hash": "59d082484fc1bce1e8ed67d6ac61e8159875ec9b3d88979e5f5885e7cbf8ee5c",
+      "evaluation_hash": "91442250e1d47b8af81688d41ee7d4b29896a44d196f87d46ac6ed1be0e878d1",
+      "module_hash": "22651b116e0c7214e10053ab83b4f54a6c020674ddca58e7670075d5b5406970",
+      "source_hash": "261faf1ebe2ed1387c97a7635ff8326da4714596031393dfda032c6dd61f13fb",
+      "standard_hash": "dd45773b77ab74fa69e15427760a86dc8defcac79d2dfb61ec91c18eba08a906",
+      "standard_version": "noj-wasm-v1",
+      "termination_reason": null
+    },
+    "name": "dp",
+    "verdict": "AC"
+  },
+  {
+    "fuel_budget": 1000000000,
+    "fuel_consumed": 164849,
+    "metering": {
+      "comparable": true,
+      "comparison_hash": "fb44d9e4e74954c02429f84fc7e5163f41c08c3d2ce52aa25420fbda8f7c0c2a",
+      "evaluation_hash": "6360e8c8f60045d25f7298a6b84a0e4f5c02282fe2de7e793bc44a1340ba44cb",
+      "module_hash": "ff52ce7467250c80ddfc86c76a5867e8fa3111eee39d46ba1b29a5a6603a0480",
+      "source_hash": "190f575dc9f56560e0d4bce6ebcc3d437232deeb9569c7b685f5201c5a69cad9",
+      "standard_hash": "dd45773b77ab74fa69e15427760a86dc8defcac79d2dfb61ec91c18eba08a906",
+      "standard_version": "noj-wasm-v1",
+      "termination_reason": null
+    },
+    "name": "string",
+    "verdict": "AC"
+  },
+  {
+    "fuel_budget": 1000000000,
+    "fuel_consumed": 876393,
+    "metering": {
+      "comparable": true,
+      "comparison_hash": "e7c9b690f23cddd00026b2b7c41388dd48196c5d476099f4855220b0ce12bfc8",
+      "evaluation_hash": "635c7bf9f5fe4fd55776df3b68655d4aac821ca3c635dd7ef3f7088166e61e87",
+      "module_hash": "7dc3872570ad954df2271f7ca0cf76abb62b3a2f2f4330e087bbc22240b796a3",
+      "source_hash": "ce3f9a3fbc5e2c1299aa47561c0755128281e72d36dc6b27f97e7802be1f3d4b",
+      "standard_hash": "dd45773b77ab74fa69e15427760a86dc8defcac79d2dfb61ec91c18eba08a906",
+      "standard_version": "noj-wasm-v1",
+      "termination_reason": null
+    },
+    "name": "numeric",
+    "verdict": "AC"
+  },
+  {
+    "fuel_budget": 1000000000,
+    "fuel_consumed": 526982,
+    "metering": {
+      "comparable": true,
+      "comparison_hash": "6f4d027c9bf0407ec2fbbaf2c01b835d22ad8201f1ebc069051753eb9dd6c273",
+      "evaluation_hash": "cebddb12d5df0afe7f6d9cd5cad51cce451791a15be170aa469e9776a92e5c03",
+      "module_hash": "c90d34025b3172e4e42d9824941b7239a85275c407e113140157fd1926b10514",
+      "source_hash": "6273839ccafa104ff8e093723f564f50cefeec2d0ef997b77ec6e3c53572cbbe",
+      "standard_hash": "dd45773b77ab74fa69e15427760a86dc8defcac79d2dfb61ec91c18eba08a906",
+      "standard_version": "noj-wasm-v1",
+      "termination_reason": null
+    },
+    "name": "bulk-memory",
+    "verdict": "AC"
+  },
+  {
+    "fuel_budget": 1000000000,
+    "fuel_consumed": 18873,
+    "metering": {
+      "comparable": true,
+      "comparison_hash": "635cd0f66429039113ba5b6c0207c5d92af69d4374a2ee0945ddb2c4aa29bd38",
+      "evaluation_hash": "6f39a8790e22ffbb7c469754cd6cceb265d4312834399e50a54da68a99e152eb",
+      "module_hash": "30dcd9040dd09442bcec8636c42ab613973b2aabb1410deaee3b92de20fffa76",
+      "source_hash": "dcc7e4640119c94e501b7ebf26d4460dca355fcaeeb4c3ff5a626e05fcf0a420",
+      "standard_hash": "dd45773b77ab74fa69e15427760a86dc8defcac79d2dfb61ec91c18eba08a906",
+      "standard_version": "noj-wasm-v1",
+      "termination_reason": null
+    },
+    "name": "wrong-answer",
+    "verdict": "WA"
+  },
+  {
+    "fuel_budget": 10000000,
+    "fuel_consumed": 10000000,
+    "metering": {
+      "comparable": true,
+      "comparison_hash": "9eb61723a62e905dd7d1d60550e2f6e93a4431a6a4c27c9bef9515e2749e6549",
+      "evaluation_hash": "1472f4957457e40a4a3bc31510def4d9af182b517a3447764aad8d4820febe45",
+      "module_hash": "261e57e6f72dbfef3fe4f9971145b62d2d957c061af0bba704a2ea9044c1a848",
+      "source_hash": "e39fc8f4a46586d159c861e07b96ee8553f0bb8ed721a17e0144ddf8862fa4b6",
+      "standard_hash": "dd45773b77ab74fa69e15427760a86dc8defcac79d2dfb61ec91c18eba08a906",
+      "standard_version": "noj-wasm-v1",
+      "termination_reason": null
+    },
+    "name": "fuel-limit",
+    "verdict": "TLE"
+  }
+]

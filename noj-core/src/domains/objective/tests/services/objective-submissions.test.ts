@@ -9,9 +9,7 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 
 import {
   contestParticipants,
-  contestProblems,
   contests,
-  objectiveQuestions,
   objectiveSubmissions,
   problems,
   users,
@@ -26,6 +24,12 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
+import { insertContestProblems } from "../../../../../tests/helper.ts";
+import {
+  getProblemDraft,
+  saveProblemDraft,
+} from "../../../catalog/services/versioning/draft.ts";
+import { publishProblemVersion } from "../../../catalog/services/versioning/publish.ts";
 
 await resetDbForTest();
 const db = getDb();
@@ -89,7 +93,12 @@ async function makeCodeProblem(): Promise<string> {
   return id;
 }
 
-/** 创建小题并返回 {id, sort_order}。 */
+/**
+ * 创建小题：写入**共享草稿**并立即发布一个版本。
+ *
+ * 判卷事实源是已发布版本的卷面快照（旧 `objective_questions` 表已随 0107 删除），
+ * 因此夹具必须在提交前发布版本。
+ */
 async function makeQuestion(
   paperId: string,
   sortOrder: number,
@@ -97,26 +106,36 @@ async function makeQuestion(
   answer: unknown[],
   explanation = "",
 ): Promise<string> {
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  await db.insert(objectiveQuestions).values({
-    id,
-    paper_id: paperId,
-    sort_order: sortOrder,
-    type,
-    prompt: `题目 ${sortOrder}`,
-    options: type === "judge"
-      ? [{ key: "true", text: "正确" }, { key: "false", text: "错误" }]
-      : [{ key: "A", text: "A" }, { key: "B", text: "B" }, {
-        key: "C",
-        text: "C",
-      }],
-    answer,
-    explanation,
-    created_at: now,
-    updated_at: now,
+  const draft = await getProblemDraft(paperId);
+  const key = crypto.randomUUID();
+  const existing = (draft.content as { questions?: unknown[] }).questions ?? [];
+  const options = type === "judge"
+    ? [{ key: "true", text: "正确" }, { key: "false", text: "错误" }]
+    : [{ key: "A", text: "A" }, { key: "B", text: "B" }, {
+      key: "C",
+      text: "C",
+    }];
+  const saved = await saveProblemDraft(paperId, {
+    content: {
+      ...draft.content,
+      kind: "objective",
+      questions: [
+        ...existing,
+        {
+          key,
+          sort_order: sortOrder,
+          type,
+          prompt: `题目 ${sortOrder}`,
+          options,
+          answer,
+          explanation,
+        },
+      ],
+    },
+    expectedRevision: draft.revision,
   });
-  return id;
+  await publishProblemVersion(paperId, { expectedRevision: saved.revision });
+  return key;
 }
 
 Deno.test({
@@ -209,7 +228,7 @@ Deno.test({
       user_id: user,
       registered_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: paper,
       sort_order: 1,
@@ -303,7 +322,7 @@ Deno.test({
     );
 
     // 套卷在题单但竞赛未开始
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: paper,
       sort_order: 1,
@@ -406,7 +425,7 @@ Deno.test({
       user_id: user,
       registered_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: paper,
       sort_order: 1,
@@ -469,7 +488,7 @@ Deno.test({
       user_id: user,
       registered_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: paper,
       sort_order: 1,

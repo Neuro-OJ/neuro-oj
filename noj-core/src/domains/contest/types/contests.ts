@@ -143,6 +143,10 @@ export interface ContestResponse {
 export type ContestProblemUserStatus = "solved" | "attempted" | "untouched";
 
 export interface ContestProblemResponse extends ContestProblemInput {
+  judge_type?: "dual" | "oi";
+  is_objective?: boolean;
+  judge_backend?: "dual" | "oi-native" | "oi-wasm" | null;
+  supported_languages?: string[];
   title: string;
   description: string;
   difficulty: string;
@@ -158,6 +162,26 @@ export interface ContestProblemResponse extends ContestProblemInput {
    */
   visibility: "public" | "private";
   user_status: ContestProblemUserStatus;
+  /**
+   * 竞赛固定的作答版本（Handbook §2.6/§4.2）。
+   *
+   * 竞赛提交只接受该版本：客户端必须原样回传，服务端不一致时返回
+   * `409 CONTEST_PROBLEM_VERSION_CHANGED`（保留已写内容、提示刷新），绝不自动换版。
+   * 迁移期尚未固定的存量竞赛为 null。
+   */
+  version_id: string | null;
+  /** 固定版本的版本号（展示用；无固定版本为 null）。 */
+  version: number | null;
+  /**
+   * 该「竞赛 × 题目」的有效版本策略（与题库策略独立，Handbook §1.2）。
+   *
+   * `exact(X)` 时要求版本必然等于固定作答版本；管理端切换策略时按此项回显。
+   */
+  effective_version_policy?:
+    | { mode: "any" }
+    | { mode: "exact"; version_id: string | null };
+  /** 策略乐观锁版本（管理端切换策略/升级固定版本时必须回传）。 */
+  effective_version_policy_revision?: number;
 }
 
 export interface KaggleProblemScore {
@@ -169,6 +193,23 @@ export interface KaggleProblemScore {
   rejudge_seq?: number | null;
   evaluation_status?: string | null;
   evaluation_created_at?: string | null;
+  /**
+   * 正式成绩归因（Handbook §3.4/§6.6）：最佳成绩所属提交的**竞赛口径有效尝试**。
+   *
+   * 快照据此把成绩固定到具体一次执行；后续重测只改实时榜，不自动改写已发布快照。
+   */
+  effective_attempt_id?: string | null;
+  /** 该最佳成绩所属提交的提交时版本（迁移期未知版本为 null）。 */
+  submitted_version_id?: string | null;
+  /** 该「竞赛 × 题目」当时的固定作答版本。 */
+  pinned_version_id?: string | null;
+  /** 该「竞赛 × 题目」当时的有效版本策略。 */
+  version_policy?: { mode: "any" } | {
+    mode: "exact";
+    version_id: string | null;
+  };
+  /** 该「竞赛 × 题目」策略的乐观锁版本（快照归因用）。 */
+  policy_revision?: number | null;
 }
 
 export interface KaggleRankingRow {

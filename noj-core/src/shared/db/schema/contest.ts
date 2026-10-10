@@ -1,6 +1,7 @@
 import {
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -12,7 +13,7 @@ import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { manyToManyPk, publicIdColumn } from "./common.ts";
 import { users } from "./identity.ts";
-import { problems } from "./catalog.ts";
+import { problems, problemVersions } from "./catalog.ts";
 
 /**
  * 竞赛主表。
@@ -109,6 +110,10 @@ export const contests = pgTable(
 /**
  * 竞赛题目关联表。
  * label 和 sort_order 在单个竞赛内保持唯一。
+ *
+ * 版本化后（Handbook §2.6）：每道竞赛题**固定**一个已发布版本，该竞赛的作答
+ * 与评测使用固定版本；题库发布新版不影响已开赛的竞赛。「竞赛×题目」另有独立的
+ * 有效版本策略，与题库策略互不影响。
  */
 export const contestProblems = pgTable(
   "contest_problems",
@@ -122,6 +127,23 @@ export const contestProblems = pgTable(
     sort_order: integer("sort_order").notNull().default(0),
     label: text("label").notNull(),
     score: integer("score").notNull(),
+    /**
+     * 竞赛固定的题目版本（必填）。
+     *
+     * 首次迁移中该列可空（存量行无法立即回填真实版本），存量回填迁移
+     * （`0106_contest_problem_pinned_version_not_null`）为未发布题目补迁移基线、
+     * 回填后 `SET NOT NULL`（Handbook §2.6/§8.1 第 7 步）。
+     */
+    pinned_version_id: text("pinned_version_id").notNull(),
+    /** 该竞赛题目的有效版本策略：any / exact。 */
+    effective_version_mode: text("effective_version_mode").notNull().default(
+      "any",
+    ),
+    /** `exact` 时的要求版本；必须等于固定作答版本。 */
+    required_version_id: text("required_version_id"),
+    /** 策略乐观锁与投影版本号。 */
+    effective_policy_revision: integer("effective_policy_revision").notNull()
+      .default(0),
   },
   (table) => ({
     ...manyToManyPk([table.contest_id, table.problem_id]),
@@ -133,6 +155,33 @@ export const contestProblems = pgTable(
       table.contest_id,
       table.sort_order,
     ),
+    effectiveVersionModeCheck: check(
+      "contest_problems_effective_version_mode_check",
+      sql`${table.effective_version_mode} IN ('any', 'exact')`,
+    ),
+    /** `any` ⇔ 无要求版本；`exact` ⇔ 有要求版本且等于固定作答版本。 */
+    effectiveVersionPolicyCheck: check(
+      "contest_problems_effective_version_policy_check",
+      sql`(${table.effective_version_mode} = 'any' AND ${table.required_version_id} IS NULL)
+        OR (${table.effective_version_mode} = 'exact'
+            AND ${table.required_version_id} IS NOT NULL
+            AND ${table.required_version_id} = ${table.pinned_version_id})`,
+    ),
+    effectivePolicyRevisionCheck: check(
+      "contest_problems_effective_policy_revision_check",
+      sql`${table.effective_policy_revision} >= 0`,
+    ),
+    /** 固定版本 / 要求版本必须属于关联题目。 */
+    pinnedVersionFk: foreignKey({
+      name: "contest_problems_pinned_version_fk",
+      columns: [table.problem_id, table.pinned_version_id],
+      foreignColumns: [problemVersions.problem_id, problemVersions.id],
+    }),
+    requiredVersionFk: foreignKey({
+      name: "contest_problems_required_version_fk",
+      columns: [table.problem_id, table.required_version_id],
+      foreignColumns: [problemVersions.problem_id, problemVersions.id],
+    }),
   }),
 );
 

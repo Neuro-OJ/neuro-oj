@@ -3,7 +3,7 @@ import type { Contest, ContestProblem } from '~/composables/useContests'
 import type { ObjectiveQuestion } from '~/composables/useObjective'
 import { QUESTION_TYPE_LABELS } from '~/composables/useObjective'
 import { publicUrl } from '~/utils/publicIdentifiers'
-import { extractApiError } from '~/utils/apiError'
+import { extractApiError, isVersionConflictError } from '~/utils/apiError'
 import { toContestProblemView } from '~/utils/problemView'
 import { useBreadcrumbParams } from '~/composables/useBreadcrumb'
 
@@ -45,6 +45,13 @@ useBreadcrumbParams({
   label: () => label,
 })
 
+/**
+ * 竞赛固定作答版本（Handbook §4.1/§4.2）：提交必须原样回传。
+ *
+ * `null` = 迁移期尚未固定版本的存量竞赛题目（服务端按存量路径作答）。
+ */
+const answerVersionId = computed(() => problemView.value?.version_id ?? null)
+
 const isObjective = computed(() => problemView.value?.is_objective === true)
 const isArtifact = computed(() => problemView.value?.submission_mode === 'artifact')
 
@@ -71,6 +78,8 @@ async function handleArtifactSubmit() {
   try {
     const form = new FormData()
     form.append('problem_id', problem.value.problem_id)
+    // 竞赛提交必须携带固定版本：不一致时服务端返回 409（不自动换版）
+    if (answerVersionId.value) form.append('version_id', answerVersionId.value)
     form.append('language', 'python3')
     form.append('file', artifactFile.value)
     const res = await api.post<{ data: { id: string; public_id?: string } }>(
@@ -81,6 +90,8 @@ async function handleArtifactSubmit() {
     artifactFile.value = null
   } catch (err: unknown) {
     artifactError.value = extractApiError(err).message
+    // 竞赛换版后旧页面提交会 409：刷新题目拿到新的固定版本，保留已选文件
+    if (isVersionConflictError(err)) await refresh()
   } finally {
     artifactSubmitting.value = false
   }
@@ -179,12 +190,18 @@ async function onSubmit() {
   submitError.value = ''
   submitting.value = true
   try {
-    const res = await submitPaper(paperId.value, answers.value, contestId)
+    const res = await submitPaper(
+      paperId.value,
+      answers.value,
+      contestId,
+      answerVersionId.value,
+    )
     // 竞赛进行中 score 为 null：保留 null 语义，模板据此不渲染分数（VULN-03）
     lastScore.value = res.data.score
     await refreshSubs()
-  } catch {
-    // useApi 已弹错误
+  } catch (err: unknown) {
+    // useApi 已弹错误；版本冲突（竞赛换版）额外刷新题目拿新固定版本
+    if (isVersionConflictError(err)) await refresh()
   } finally {
     submitting.value = false
   }
@@ -219,6 +236,16 @@ async function onSubmit() {
             <span v-else-if="!isObjective && !isArtifact && accessHint" class="text-xs text-text-muted">{{ accessHint }}</span>
           </template>
         </ProblemHeader>
+
+        <!-- 竞赛固定作答版本（Handbook §4.1）：提示选手本次作答针对哪一版 -->
+        <div class="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-white px-4 py-3 text-sm">
+          <span class="text-text-secondary">作答版本</span>
+          <UBadge v-if="answerVersionId" color="primary" variant="subtle">v{{ problemView.version }}</UBadge>
+          <UBadge v-else color="warning" variant="subtle">未固定</UBadge>
+          <span class="text-text-muted">
+            竞赛固定版本：比赛期间题库发布新版本不影响本场评测；若版本已变更，请刷新后重新提交。
+          </span>
+        </div>
 
         <!-- 客观题：内联答题表单（竞赛一次性提交） -->
         <ProblemStatement

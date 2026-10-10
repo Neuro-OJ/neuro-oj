@@ -33,10 +33,12 @@
 | 关注/取关 | `POST /users/:userId/follow` | hardening IP+user | 60s/120 |
 | 举报 | `POST /reports` | hardening IP+user | 60s/30 |
 | 社区发帖/评论 | `POST/PATCH/DELETE /community/posts|comments` | 服务层发布频率 + 内容审核 | 按社区配置 |
+| 升级任务受理 | `POST /submission-upgrade-jobs` | hardening IP+user | 60s/10；user 60s/3 |
 
 ## 已知未覆盖/可接受
 
-- **管理后台写操作**（admin settings/announcements/roles/blacklist/sanctions）：默认由管理员权限 + 审计日志兜底；不建议做宽松限流以免误伤合法管理操作。若未来公网管理员接口被扫描，可再按 IP 加宽限流。
+- **管理后台写操作**（admin settings/announcements/roles/blacklist/sanctions/版本策略/批量重测）：默认由管理员权限 + 审计日志兜底；不建议做宽松限流以免误伤合法管理操作。若未来公网管理员接口被扫描，可再按 IP 加宽限流。
+  - 版本管理相关：`admin/routes/problem-versions.ts`（策略切换、竞赛固定版本、发布/草稿管理）与 `admin/routes/submission-jobs.ts`（批量重测受理/重试）同属此类；单条重测的旧接口在 `admin/routes/submission.ts` 内，同样由 admin 权限兜底。
 - **通知已读、活动可见性**：幂等且低频，暂不限流。
 - **题单/标签 CRUD**：权限受限、频率低，暂用服务层/权限兜底。
 

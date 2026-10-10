@@ -66,6 +66,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
+    const originalRedis = Deno.env.get("REDIS_URL");
     const fake = startFakeRedis();
     try {
       resetRedisForTest();
@@ -101,7 +102,8 @@ Deno.test({
     } finally {
       await fake.stop();
       resetRedisForTest();
-      Deno.env.delete("REDIS_URL");
+      if (originalRedis === undefined) Deno.env.delete("REDIS_URL");
+      else Deno.env.set("REDIS_URL", originalRedis);
     }
   },
 });

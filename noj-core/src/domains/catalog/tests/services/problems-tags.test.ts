@@ -14,15 +14,17 @@ import { eq, inArray } from "drizzle-orm";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
-  evaluationResults,
   problems,
   problemTags,
   submissions,
   tags,
   users,
 } from "../../../../shared/db/schema.ts";
-import { BadRequestError } from "../../../../shared/base/errors.ts";
-import { syncProblemTags } from "../../index.ts";
+import {
+  BadRequestError,
+  ConflictError,
+} from "../../../../shared/base/errors.ts";
+import { syncProblemTags, updateProblem } from "../../index.ts";
 import { applyAlgorithmTagVisibility, getProblem } from "../../index.ts";
 import { createTag } from "../../index.ts";
 
@@ -227,7 +229,8 @@ Deno.test({
     const userId = await createTestUser();
     await syncProblemTags(problemId, [algoTag.id]);
 
-    // 造一条通过提交（finished 且 score>0）
+    // 造一条通过提交。版本化后「是否通过」读的是提交的**有效成绩投影**
+    // （`submissions.is_accepted`），由结果服务写入；这里直接落投影以模拟该状态。
     const db = getDb();
     const submissionId = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -238,13 +241,8 @@ Deno.test({
       status: "finished",
       language: "python3",
       code: "print(1)",
-      created_at: now,
-    });
-    await db.insert(evaluationResults).values({
-      id: crypto.randomUUID(),
-      submission_id: submissionId,
-      status: "finished",
-      score: 10000,
+      is_valid: true,
+      is_accepted: true,
       created_at: now,
     });
 
@@ -254,9 +252,6 @@ Deno.test({
     assertEquals(visible.has_hidden_algorithm_tags, false);
     assertEquals(visible.tags.some((t) => t.kind === "algorithm"), true);
 
-    await db.delete(evaluationResults).where(
-      eq(evaluationResults.submission_id, submissionId),
-    );
     await db.delete(submissions).where(eq(submissions.id, submissionId));
     await db.delete(problemTags).where(eq(problemTags.problem_id, problemId));
     await db.delete(problems).where(eq(problems.id, problemId));
@@ -342,6 +337,82 @@ Deno.test({
     await db.delete(problemTags).where(eq(problemTags.problem_id, problemId));
     await db.delete(problems).where(eq(problems.id, problemId));
     await db.delete(tags).where(eq(tags.id, probTag.id));
+  },
+});
+
+Deno.test({
+  name: "problems-tags: OI 题标签随字段保存、去重、拒绝过期更新并可清空",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const problemId = await createTestProblem();
+    const topic = await createTag({
+      name: `门控OI主题-${ts}`,
+      kind: "problem",
+    });
+    const algorithm = await createTag({
+      name: `门控OI算法-${ts}`,
+      kind: "algorithm",
+    });
+    try {
+      await db.update(problems).set({ judge_type: "oi" }).where(
+        eq(problems.id, problemId),
+      );
+      const saved = await updateProblem(
+        problemId,
+        {
+          title: "OI 标签更新",
+          tag_ids: [topic.id, algorithm.id, algorithm.id],
+        },
+        undefined,
+        "admin",
+      );
+      assertEquals(
+        saved.tags.map((tag) => tag.id).sort(),
+        [topic.id, algorithm.id].sort(),
+      );
+      await assertRejects(() =>
+        updateProblem(
+          problemId,
+          {
+            title: "不应保存",
+            tag_ids: [],
+          },
+          undefined,
+          "admin",
+          undefined,
+          false,
+          "2000-01-01T00:00:00.000Z",
+        ), ConflictError);
+      await assertRejects(() =>
+        updateProblem(
+          problemId,
+          {
+            title: "不应保存",
+            tag_ids: ["nonexistent-tag-id"],
+          },
+          undefined,
+          "admin",
+        ), BadRequestError);
+      const unchanged = await getProblem(problemId);
+      assertEquals(unchanged.title, "OI 标签更新");
+      assertEquals(
+        unchanged.tags.map((tag) => tag.id).sort(),
+        [topic.id, algorithm.id].sort(),
+      );
+      const cleared = await updateProblem(
+        problemId,
+        { tag_ids: [] },
+        undefined,
+        "admin",
+      );
+      assertEquals(cleared.tags, []);
+    } finally {
+      await db.delete(problemTags).where(eq(problemTags.problem_id, problemId));
+      await db.delete(problems).where(eq(problems.id, problemId));
+      await db.delete(tags).where(inArray(tags.id, [topic.id, algorithm.id]));
+    }
   },
 });
 

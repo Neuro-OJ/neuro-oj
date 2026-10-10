@@ -80,7 +80,9 @@ export async function buildProblemEntry(
              WHERE pt.problem_id = p.id
            ), '') AS tags
     FROM problems p
-    WHERE p.id = ${id}
+    -- 只索引**已发布**题目（Handbook §3.5/§6.6）：草稿内容不进公开索引；
+    -- 未发布题目对普通访问者本就不存在，索引出现行等于泄露存在性
+    WHERE p.id = ${id} AND p.latest_version_id IS NOT NULL
   `);
   const row = unwrapFirstRow<{
     id: string;

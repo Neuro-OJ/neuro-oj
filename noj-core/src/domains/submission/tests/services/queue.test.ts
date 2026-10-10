@@ -13,7 +13,7 @@ import {
 } from "../../../../shared/mq/connection.ts";
 import {
   auditLogs,
-  evaluationResults,
+  evaluationAttempts,
   problems,
   selfTests,
   submissions,
@@ -22,6 +22,10 @@ import {
 import { eq } from "drizzle-orm";
 import { SELF_TEST_ID_PREFIX } from "../../types/self-tests.ts";
 import { enterTestContext } from "../../../system/index.ts";
+import {
+  ALL_JUDGE_QUEUES,
+  JUDGE_QUEUES,
+} from "../../../../shared/mq/judge-queues.ts";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 const skip = !hasDb;
@@ -102,14 +106,27 @@ async function setup() {
       created_at: now,
     },
   ]);
-  await db.insert(evaluationResults).values({
-    id: `tst-er-${ts}`,
+  // 最近完成项的结果读「最近终态尝试」：为已完成提交补一条尝试并回填指针
+  await db.insert(evaluationAttempts).values({
+    id: `tst-att-${ts}`,
     submission_id: SUBMISSION_FINISHED_ID,
-    status: "finished",
+    problem_id: PROBLEM_ID,
+    sequence: 0,
+    source: "initial",
+    state: "finished",
+    result_kind: "graded",
+    result_status: "finished",
     score: 1000,
-    output: "---RESULT---\n{}",
+    accepted: true,
     created_at: now,
+    finished_at: now,
   });
+  await db.update(submissions).set({
+    latest_attempt_id: `tst-att-${ts}`,
+    effective_attempt_id: `tst-att-${ts}`,
+    is_valid: true,
+    is_accepted: true,
+  }).where(eq(submissions.id, SUBMISSION_FINISHED_ID));
   await db.insert(selfTests).values({
     id: SELF_TEST_FINISHED_ID,
     user_id: USER_ID,
@@ -130,9 +147,6 @@ async function setup() {
 async function teardown() {
   try {
     const db = getDb();
-    await db.delete(evaluationResults).where(
-      eq(evaluationResults.submission_id, SUBMISSION_FINISHED_ID),
-    );
     await db.delete(selfTests).where(
       eq(selfTests.user_id, USER_ID),
     );
@@ -169,27 +183,23 @@ async function pushToQueue(submissionId: string) {
     language: "python3",
     code: "print('test')",
   });
-  await redis.lpush("noj:judge:queue:medium", task);
+  await redis.lpush(JUDGE_QUEUES.medium, task);
 }
 
+/**
+ * 清空**全部**评测队列（含分池队列）。
+ *
+ * 生产按资源池分队列（`noj:judge:queue:<pool>:<priority>`），只清三级旧队列会让
+ * 池内残留条目污染"队列为空"的断言——历史上这是本套用例的已知 flake 源。
+ */
 async function clearQueue() {
   try {
     const redis = getRedis();
     if (redis.status !== "ready") {
       await redis.connect();
     }
-    for (
-      const queue of [
-        "noj:judge:queue:high",
-        "noj:judge:queue:medium",
-        "noj:judge:queue:low",
-      ]
-    ) {
-      await redis.lrange(queue, 0, -1).then(async (items) => {
-        for (const _ of items) {
-          await redis.brpop(queue, 1).catch(() => {});
-        }
-      });
+    for (const queue of ALL_JUDGE_QUEUES) {
+      await redis.del(queue);
     }
   } catch { /* ignore */ }
 }
@@ -260,7 +270,7 @@ Deno.test({
     }
 
     const redis = getRedis();
-    const tasks = await redis.lrange("noj:judge:queue:medium", 0, -1);
+    const tasks = await redis.lrange(JUDGE_QUEUES.medium, 0, -1);
     assertEquals(
       tasks.some((task) =>
         JSON.parse(task).submission_id === SUBMISSION_JUDGING_ID
@@ -291,7 +301,7 @@ Deno.test({
     const redis = getRedis();
     await clearQueue();
     await pushToQueue(SUBMISSION_PENDING_ID);
-    await redis.lpush("noj:judge:queue:medium", "invalid json");
+    await redis.lpush(JUDGE_QUEUES.medium, "invalid json");
     const ids = await getPendingSubmissionIds();
     // judge 运行中会实时消费队列，但函数不应抛出异常
     assertEquals(Array.isArray(ids), true);

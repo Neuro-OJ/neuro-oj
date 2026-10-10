@@ -69,6 +69,20 @@ export const CONTEST_SUBMISSION_USER_LIMIT: RateLimitConfig = {
   max: 120,
 };
 
+/**
+ * 升级任务受理：一次受理最多 500 条提交，因此比普通提交更严格
+ * （Handbook §4.4：升级仍执行正常提交速率限制）。
+ */
+export const UPGRADE_JOB_IP_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 10,
+};
+
+export const UPGRADE_JOB_USER_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 3,
+};
+
 export const OBJECTIVE_SUBMIT_IP_LIMIT: RateLimitConfig = {
   windowSec: 60,
   max: 60,
@@ -291,6 +305,26 @@ export async function enforceObjectiveSubmitRateLimit(
   await enforceRateLimit(
     `objective-submit:user:${userId}`,
     OBJECTIVE_SUBMIT_USER_LIMIT,
+  );
+}
+
+/**
+ * 升级任务受理：IP + 用户双维度。
+ *
+ * 一次受理最多 500 条提交（Handbook §4.4），因此阈值比普通提交更严格：默认
+ * 每用户 60s 3 次、每 IP 60s 10 次，防止「批量升级」被当作评测放大器滥用。
+ */
+export async function enforceUpgradeJobRateLimit(
+  c: Context,
+  userId: string,
+): Promise<void> {
+  await enforceRateLimit(
+    `upgrade-job:ip:${getClientIp(c)}`,
+    UPGRADE_JOB_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `upgrade-job:user:${userId}`,
+    UPGRADE_JOB_USER_LIMIT,
   );
 }
 

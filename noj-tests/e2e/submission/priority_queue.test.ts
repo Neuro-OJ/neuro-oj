@@ -159,7 +159,8 @@ e2eTest("[e2e/priority-queue] high/medium/low 均能被消费", async () => {
     {},
     adminToken,
   );
-  if (rejudge.status !== 200) {
+  // 统一任务受理后单条重测返回 202 + 任务 ID（Handbook §4.3）
+  if (rejudge.status !== 202) {
     throw new Error(
       `重测失败: ${rejudge.status} ${JSON.stringify(rejudge.body)}`,
     );
@@ -195,7 +196,8 @@ e2eTest("[e2e/priority-queue] high 洪峰下 low 仍能完成（不饿死）", a
     {},
     adminToken,
   );
-  if (rejudge.status !== 200) {
+  // 统一任务受理后单条重测返回 202 + 任务 ID（Handbook §4.3）
+  if (rejudge.status !== 202) {
     throw new Error(
       `重测失败: ${rejudge.status} ${JSON.stringify(rejudge.body)}`,
     );

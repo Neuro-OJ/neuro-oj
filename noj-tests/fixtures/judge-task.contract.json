@@ -3,6 +3,7 @@
   "problem_id": "22222222-2222-4222-8222-222222222222",
   "user_id": "33333333-3333-4333-8333-333333333333",
   "priority": "medium",
+  "judge_type": "dual",
   "runtime_config": {
     "evaluator": {
       "image": "noj-evaluator-python",
@@ -26,6 +27,14 @@
     "gateway_url": "http://llm-gateway:8001",
     "eval_token": "eval-token-abc",
     "provider_id": "44444444-4444-4444-8444-444444444444",
-    "allowed_models": ["qwen-plus", "gpt-4o-mini"]
-  }
+    "allowed_models": [
+      "qwen-plus",
+      "gpt-4o-mini"
+    ]
+  },
+  "run_id": "55555555-5555-4555-8555-555555555555",
+  "problem_version_id": "66666666-6666-4666-8666-666666666666",
+  "evaluation_protocol_version": 2,
+  "scheduling_version": 1,
+  "resource_pool": "ai"
 }

@@ -16,7 +16,6 @@ import { and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { unendedPublicContestForProblem } from "./../../contest/index.ts";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
-  evaluationResults,
   objectiveSubmissions,
   problems,
   submissions,
@@ -452,7 +451,8 @@ async function assertWritable(
 
 /**
  * 计算用户对给定题目集合的 AC 集合。
- * 编程题：finished 且 score>0；客观题：满分（score=10000）。
+ * 编程题与客观题都读有效成绩投影：客观题的通过口径是**满分**，由迁移回填与
+ * 提交写入服务（批次 3d）统一保证，读路径不再自行比较分数。
  *
  * @param userId 用户 id
  * @param problemIds 题目 id 列表
@@ -464,26 +464,23 @@ async function getAcceptedProblemIds(
 ): Promise<Set<string>> {
   if (problemIds.length === 0) return new Set();
   const db = getDb();
+  // 编程题：读有效成绩投影（版本化后由唯一投影服务维护；存量由 0103 回填）
   const acceptedRows = await db
     .select({ problem_id: submissions.problem_id })
     .from(submissions)
-    .innerJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, submissions.id),
-    )
     .where(and(
       eq(submissions.user_id, userId),
       inArray(submissions.problem_id, problemIds),
-      eq(submissions.status, "finished"),
-      sql`${evaluationResults.score} > 0`,
+      eq(submissions.is_accepted, true),
     ));
+  // 客观题：同一投影口径（`is_accepted` = 满分通过，写入侧唯一判定）
   const objectiveRows = await db
     .select({ paper_id: objectiveSubmissions.paper_id })
     .from(objectiveSubmissions)
     .where(and(
       eq(objectiveSubmissions.user_id, userId),
       inArray(objectiveSubmissions.paper_id, problemIds),
-      eq(objectiveSubmissions.score, 10000),
+      eq(objectiveSubmissions.is_accepted, true),
     ));
   return new Set([
     ...acceptedRows.map((r) => r.problem_id),

@@ -8,13 +8,14 @@
  *
  * 判定详情权限：仅提交者本人或 admin 可读；竞赛模式不展示解析（防泄题）。
  */
-import { and, count, desc, eq, max } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
-  objectiveQuestions,
+  evaluationAttempts,
   objectiveSubmissions,
 } from "./../../../shared/db/schema.ts";
+import { FULL_SCORE } from "./../../../shared/base/constants.ts";
 import {
   BadRequestError,
   ForbiddenError,
@@ -23,6 +24,16 @@ import {
 import { checkPermission } from "./../../identity/index.ts";
 import { evaluateProblemAccess } from "./../../catalog/index.ts";
 import { judgePaper } from "./objective-judge.ts";
+import {
+  applyAttemptResult,
+  createAttempt,
+  loadPublishedVersionContent,
+  resolveSubmissionVersion,
+} from "./../../submission/index.ts";
+import type { SubmissionVersionResolution } from "./../../submission/index.ts";
+import { resolveDefaultAnswerVersion } from "./../../../shared/versioning/policy.ts";
+import type { ObjectiveQuestionSnapshot } from "./../../catalog/index.ts";
+import { loadProblemIdentity } from "./../../catalog/index.ts";
 import {
   assertObjectivePaper,
   getPaperOrThrow,
@@ -46,8 +57,53 @@ import type { ObjectiveAnswerValue } from "./../types/objective.ts";
 /** ×100 分换算回百分制。 */
 const SCORE_SCALE_FACTOR = 100;
 
-/** 卷内小题（含答案，判分用）。 */
-type QuestionWithAnswer = typeof objectiveQuestions.$inferSelect;
+/**
+ * 卷内小题（判分与展示的公共形态）。
+ *
+ * `key` 是**版本内的稳定小题键**（Handbook §1.2）：已发布版本取快照的 `key`；
+ * 迁移存量（`legacy_unknown`，无提交时版本）的卷面已无法还原，按未作答处理
+ * （Handbook §8.1「历史信息无法恢复，保留未知状态」）。
+ */
+interface JudgedQuestion {
+  key: string;
+  type: string;
+  answer: ObjectiveAnswerValue[];
+  explanation: string;
+}
+
+/** 版本小题快照 → 判分形态。 */
+function fromSnapshot(
+  questions: readonly ObjectiveQuestionSnapshot[],
+): JudgedQuestion[] {
+  return questions.map((q) => ({
+    key: q.key,
+    type: q.type,
+    answer: [...q.answer] as ObjectiveAnswerValue[],
+    explanation: q.explanation,
+  }));
+}
+
+/**
+ * 读取某条提交实际使用的卷面小题（展示解析用）。
+ *
+ * 按 `submitted_version_id` 读**提交时版本**的小题快照——套卷在小题增删后仍要
+ * 还原当时的卷面；`legacy_unknown`（迁移存量、无提交时版本）返回空卷面，
+ * 原始 answers 仍保留可读。
+ */
+async function loadSubmissionQuestions(
+  row: typeof objectiveSubmissions.$inferSelect,
+): Promise<JudgedQuestion[]> {
+  if (row.submitted_version_id) {
+    const loaded = await loadPublishedVersionContent(
+      row.paper_id,
+      row.submitted_version_id,
+    );
+    if (loaded && loaded.content.kind === "objective") {
+      return fromSnapshot(loaded.content.questions);
+    }
+  }
+  return [];
+}
 
 /**
  * 竞赛模式提交校验（specs/contest-participation）：
@@ -123,12 +179,12 @@ function stripContestJudgement(
  */
 function withExplanation(
   details: Record<string, QuestionJudgement>,
-  questions: QuestionWithAnswer[],
+  questions: readonly JudgedQuestion[],
   includeExpected = true,
 ): Record<string, QuestionJudgement> {
   const result: Record<string, QuestionJudgement> = {};
   for (const q of questions) {
-    const judgement = details[q.id] ?? { correct: false, given: [] };
+    const judgement = details[q.key] ?? { correct: false, given: [] };
     const entry: QuestionJudgement = {
       correct: judgement.correct,
       given: judgement.given,
@@ -137,7 +193,7 @@ function withExplanation(
       entry.expected = judgement.expected;
     }
     entry.explanation = q.explanation || undefined;
-    result[q.id] = entry;
+    result[q.key] = entry;
   }
   return result;
 }
@@ -179,22 +235,58 @@ export async function submitObjectivePaper(
     throw new BadRequestError((err as Error).message);
   }
 
-  const questions = await db
-    .select()
-    .from(objectiveQuestions)
-    .where(eq(objectiveQuestions.paper_id, paperUuid));
-
   const contestMode = contestId !== null;
   if (contestMode) {
     await validateContestSubmission(contestId, paperUuid, userId);
   }
 
-  // 服务端即时判定（纯函数）
+  // 提交时版本（Handbook §4.2/§6.4）：竞赛用固定版本；题库**显式指定**的版本必须
+  // 逐字生效（不属于该题一律 404，绝不静默换版本）；题库**未指定**时才按有效策略
+  // 解析默认作答版本（any → 最新版、exact → 要求版本）。已发布版本的小题快照是
+  // 判卷事实源，未版本化的存量套卷回退旧小题表（key = 旧小题 UUID，与迁移基线一致）。
+  const identity = await loadProblemIdentity(paperUuid);
+  const requestedVersionId = input.version_id?.trim() || null;
+  let resolved: SubmissionVersionResolution;
+  if (contestId || requestedVersionId) {
+    resolved = await resolveSubmissionVersion(paperUuid, {
+      contestId,
+      requestedVersionId,
+      latestVersionId: identity.latest_version_id,
+    });
+  } else {
+    const defaultVersionId = resolveDefaultAnswerVersion(identity);
+    resolved = defaultVersionId
+      ? await resolveSubmissionVersion(paperUuid, {
+        requestedVersionId: defaultVersionId,
+        latestVersionId: identity.latest_version_id,
+      })
+      : { kind: "legacy_unknown" };
+  }
+
+  let versionQuestions: JudgedQuestion[] | null = null;
+  let submittedVersionId: string | null = null;
+  if (resolved.kind === "known") {
+    submittedVersionId = resolved.version.version_id;
+    const loaded = await loadPublishedVersionContent(
+      paperUuid,
+      submittedVersionId,
+    );
+    if (!loaded || loaded.content.kind !== "objective") {
+      throw new BadRequestError("该套卷版本内容不可用于判卷，请联系管理员");
+    }
+    versionQuestions = fromSnapshot(loaded.content.questions);
+  }
+
+  // 判卷事实源是**提交时版本的卷面**；`legacy_unknown`（迁移存量、无版本可解析）
+  // 只可能来自尚未版本化且已不可访问的题目，按空卷面处理（全部按未作答）。
+  const questions = versionQuestions ?? [];
+
+  // 服务端即时判定（纯函数）。
   const judgement = judgePaper({
     questions: questions.map((q) => ({
-      id: q.id,
+      id: q.key,
       type: q.type,
-      answer: q.answer as ObjectiveAnswerValue[],
+      answer: q.answer,
       explanation: q.explanation,
     })),
     answers: input.answers,
@@ -214,11 +306,54 @@ export async function submitObjectivePaper(
     status: "finished",
     score: judgement.score,
     details: storedDetails,
+    // 提交时版本不可变：`known` 必须有版本，`legacy_unknown` 必须为空
+    submitted_version_id: submittedVersionId,
+    version_origin: submittedVersionId ? ("known" as const) : (
+      "legacy_unknown" as const
+    ),
     created_at: now,
   };
 
+  // 客观题判定是同步纯函数，因此「提交行 + 初次尝试 + 当前正式判定 + 有效成绩
+  // 投影」可以在**一个事务**内完成（Handbook §5.4 第 3–8 步）：任何一步失败都不会
+  // 留下"有提交行却没有成绩"的半成品。
+  const source = {
+    kind: "objective" as const,
+    id: submissionId,
+    problem_id: paperUuid,
+    contest_id: contestId,
+  };
+
   try {
-    await db.insert(objectiveSubmissions).values(row);
+    await db.transaction(async (tx) => {
+      await tx.insert(objectiveSubmissions).values(row);
+      const attempt = await createAttempt({
+        source,
+        problemVersionId: submittedVersionId,
+        source_kind: "initial",
+        // 非敏感执行快照：版本、题型与卷面题量（不含标准答案）
+        taskSnapshot: {
+          kind: "objective",
+          problem_version_id: submittedVersionId,
+          submission_mode: contestMode ? "contest" : "practice",
+          total_count: judgement.total_count,
+        },
+        createdBy: userId,
+        executor: tx,
+      });
+      const outcome = await applyAttemptResult({
+        attemptId: attempt.id,
+        resultKind: "graded",
+        resultStatus: "finished",
+        score: judgement.score,
+        // 客观题通过口径 = 满分（与迁移基线 `score >= 10000` 及题单进度一致）
+        accepted: judgement.score >= FULL_SCORE,
+        details: storedDetails as unknown as Record<string, unknown>,
+      }, tx);
+      if (outcome.applied !== "graded") {
+        throw new Error(`客观题判定写入未生效：${outcome.applied}`);
+      }
+    });
   } catch (err) {
     // 竞赛一次性提交唯一索引兜底（23505）
     const pgCode = (err as Record<string, unknown>)?.code ??
@@ -352,10 +487,7 @@ export async function getObjectiveSubmission(
       details: stripExpected(response.details),
     };
   }
-  const questions = await db
-    .select()
-    .from(objectiveQuestions)
-    .where(eq(objectiveQuestions.paper_id, row.paper_id));
+  const questions = await loadSubmissionQuestions(row);
   const details = withExplanation(
     row.details as Record<string, QuestionJudgement>,
     questions,
@@ -431,20 +563,30 @@ export async function listObjectiveSubmissions(params: {
     .limit(perPage)
     .offset((page - 1) * perPage);
 
-  // 练习模式最高分（仅按套卷筛选时有意义；竞赛提交不计入最高分）
+  // 练习模式最高分（仅按套卷筛选时有意义；竞赛提交不计入最高分）。
+  // 读**有效成绩**：取 `is_valid` 提交的有效尝试分数，因此 `exact(X)` 策略下
+  // 非 X 版本的历史提交不再计入最高分（Handbook §3.2 读取统一）。
   let bestScore: number | null = null;
   if (paperUuid) {
-    const best = await db
-      .select({ best: max(objectiveSubmissions.score) })
+    const effective = await db
+      .select({ score: evaluationAttempts.score })
       .from(objectiveSubmissions)
+      .innerJoin(
+        evaluationAttempts,
+        eq(evaluationAttempts.id, objectiveSubmissions.effective_attempt_id),
+      )
       .where(
         and(
           eq(objectiveSubmissions.user_id, userId),
           eq(objectiveSubmissions.paper_id, paperUuid),
           eq(objectiveSubmissions.submission_type, "practice"),
+          eq(objectiveSubmissions.is_valid, true),
         ),
       );
-    bestScore = best[0]?.best ?? null;
+    for (const row of effective) {
+      const score = row.score ?? 0;
+      bestScore = bestScore === null ? score : Math.max(bestScore, score);
+    }
   }
 
   // 竞赛模式的赛期屏蔽（审计 VULN-03）：一次查询算出本页涉及的"未结束竞赛"集合，

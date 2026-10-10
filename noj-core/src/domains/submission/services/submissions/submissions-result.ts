@@ -9,11 +9,7 @@
  */
 
 import { eq } from "drizzle-orm";
-import {
-  evaluationResults,
-  sseEvents,
-  submissions,
-} from "./../../../../shared/db/schema.ts";
+import { sseEvents, submissions } from "./../../../../shared/db/schema.ts";
 import {
   BadRequestError,
   NotFoundError,
@@ -30,6 +26,11 @@ import { getRedis } from "./../../../../shared/mq/connection.ts";
 const logger = getLogger(["noj", "submission"]);
 import { Channels } from "./../../../../shared/sse/event-bus.ts";
 import { sanitizeJudgeResult } from "./sanitize-judge-result.ts";
+import {
+  deriveResultKind,
+  isAcceptedResult,
+} from "../../../../shared/versioning/verdict.ts";
+import { applyAttemptResult } from "../versioning/result-write.ts";
 
 // 允许的状态转换
 const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
@@ -56,6 +57,10 @@ export interface SaveEvaluationResultOutcome {
   created_at?: string;
   /** 是否为重测结果；重测不参与首次 e2e 延迟统计。 */
   is_rejudge?: boolean;
+  /** 版本化尝试链路结论：`graded` / `platform_error` / `ignored`；无尝试时为 null。 */
+  attempt_applied?: string | null;
+  /** 本次结果落到的评测尝试 ID（旧协议无尝试时为 null），供 token 吊销等使用。 */
+  attempt_id?: string | null;
 }
 
 /**
@@ -79,12 +84,14 @@ export async function saveEvaluationResult(
     const [sub] = await tx
       .select({
         rejudge_seq: submissions.rejudge_seq,
+        judge_run_id: submissions.judge_run_id,
         created_at: submissions.created_at,
         contest_id: submissions.contest_id,
         user_id: submissions.user_id,
         problem_id: submissions.problem_id,
         status: submissions.status,
         artifact_storage_url: submissions.artifact_storage_url,
+        active_attempt_id: submissions.active_attempt_id,
       })
       .from(submissions)
       .where(eq(submissions.id, result.submission_id))
@@ -108,12 +115,21 @@ export async function saveEvaluationResult(
       return null;
     }
 
-    // 查询是否存在历史评测结果（重测时需替换）
-    const [existingResult] = await tx
-      .select({ id: evaluationResults.id })
-      .from(evaluationResults)
-      .where(eq(evaluationResults.submission_id, result.submission_id))
-      .limit(1);
+    // 结果若**声明了** run_id（协议 v2 封套或 evaluator details.run_id），必须与
+    // 当前在途尝试（`judge_run_id` = attempt id）一致，否则视为过时消息丢弃。
+    // 未声明 run_id 的旧协议结果不在此处拦截，仍按 rejudge_seq / active_attempt_id
+    // 归属（Handbook §5.5 的兼容路径）。
+    const declaredRunId = (result.details as { run_id?: unknown } | undefined)
+      ?.run_id ?? result.run_id ?? null;
+    if (
+      sub.judge_run_id && declaredRunId &&
+      declaredRunId !== sub.judge_run_id
+    ) {
+      return null;
+    }
+    // 旧结果表 `evaluation_results` 已停止写入（Handbook §6.5）：评测事实的唯一来源是
+    // `evaluation_attempts` 终态 + `submission_version_results` 当前判定 + 有效成绩投影。
+    // 所有运行期读取均已迁离旧表，旧表只剩存量数据，等待整体删除迁移。
 
     // 状态机收紧：正常结果只允许 pending/judging → 终态。
     // error 提交重测时会先重置为 pending，因此也允许从 error 修复。
@@ -158,25 +174,31 @@ export async function saveEvaluationResult(
       })
       .where(eq(submissions.id, safeResult.submission_id));
 
-    if (existingResult) {
-      await tx
-        .delete(evaluationResults)
-        .where(eq(evaluationResults.submission_id, safeResult.submission_id));
-    }
-
-    await tx
-      .insert(evaluationResults)
-      .values({
-        id: crypto.randomUUID(),
-        submission_id: safeResult.submission_id,
-        status: safeResult.status,
+    // 版本化评测链路（Handbook §5.6）：尝试定位优先级
+    // `attempt_id`（显式）→ `run_id`（协议 v2 回显，正式提交下同值）→
+    // 提交的 `active_attempt_id`（旧协议兜底）。没有在途尝试（历史数据/直接插入的
+    // 测试提交）则整段跳过，保持既有行为。
+    const attemptId = result.attempt_id ?? result.run_id ??
+      sub.active_attempt_id ?? null;
+    let attemptApplied: string | null = null;
+    if (attemptId) {
+      const outcome = await applyAttemptResult({
+        attemptId,
+        resultKind: result.result_kind ?? deriveResultKind(safeResult.status),
+        resultStatus: safeResult.status,
         score: safeResult.score,
+        accepted: isAcceptedResult({
+          status: safeResult.status,
+          score: safeResult.score,
+          details: safeResult.details,
+        }),
         output: safeResult.output,
-        details: JSON.stringify(safeResult.details),
-        time_ms: safeResult.time_ms ?? null,
-        memory_kb: safeResult.memory_kb ?? null,
-        created_at: now,
-      });
+        details: safeResult.details,
+        timeMs: safeResult.time_ms ?? null,
+        memoryKb: safeResult.memory_kb ?? null,
+      }, tx);
+      attemptApplied = outcome.applied;
+    }
 
     // 事务性 Outbox：在同一事务内写入 SSE 事件，提交后由调用方发布 Redis。
     const outboxEvents: SseEventOutboxItem[] = [];
@@ -214,6 +236,8 @@ export async function saveEvaluationResult(
 
     return {
       applied: true,
+      attempt_applied: attemptApplied,
+      attempt_id: attemptId,
       created_at: sub.created_at,
       contest_id: sub.contest_id,
       user_id: sub.user_id,
@@ -249,10 +273,10 @@ export async function saveEvaluationResult(
     if (outcome.contest_id) {
       const unended = await filterUnendedContestIds([outcome.contest_id]);
       if (!unended.has(outcome.contest_id)) {
-        applyNewResult(result.score, outcome.created_at);
+        applyNewResult();
       }
     } else {
-      applyNewResult(result.score, outcome.created_at);
+      applyNewResult();
     }
   }
 
@@ -261,10 +285,22 @@ export async function saveEvaluationResult(
   // 失败仅 console.error（rankings.ts 内已处理）
   refreshRankingsView().catch(() => {/* ignore - rankings.ts 内已记录 */});
 
-  // 决策 7 · AR-08：评测完成立即在 Redis 原子吊销 eval_token
+  // 决策 7 · AR-08：评测完成立即在 Redis 原子吊销本次 eval_token。
+  //
+  // 版本化后按**尝试**吊销（Handbook §6.7）：`llm:attempt:revoked:<attempt_id>`
+  // 只终结这一次执行；同一提交重测签发的新 token 走新键，不会被旧吊销误杀。
+  // 提交维度的旧键继续写，用于吊销旧协议（无 attempt_id）token。
   try {
     const redis = getRedis();
     if (redis.status === "ready") {
+      if (outcome.attempt_id) {
+        void redis.set(
+          `llm:attempt:revoked:${outcome.attempt_id}`,
+          "1",
+          "EX",
+          3600,
+        );
+      }
       void redis.set(
         `llm:token:revoked:${result.submission_id}`,
         "1",
@@ -287,6 +323,8 @@ export async function saveEvaluationResult(
     outbox_events: outcome.outbox_events,
     created_at: outcome.created_at,
     is_rejudge: outcome.is_rejudge,
+    attempt_applied: outcome.attempt_applied ?? null,
+    attempt_id: outcome.attempt_id ?? null,
   };
 }
 

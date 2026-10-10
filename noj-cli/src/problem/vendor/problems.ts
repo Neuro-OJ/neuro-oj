@@ -127,10 +127,18 @@ export function isValidLlmConfig(value: unknown): value is LlmConfig {
  */
 import {
   type EvaluatorRuntime,
+  type OiRuntimeConfig,
+  type ProblemRuntimeConfig,
   type RuntimeConfig,
   type SolutionRuntime,
 } from "./runtime-config.ts";
-export { type EvaluatorRuntime, type RuntimeConfig, type SolutionRuntime };
+export {
+  type EvaluatorRuntime,
+  type OiRuntimeConfig,
+  type ProblemRuntimeConfig,
+  type RuntimeConfig,
+  type SolutionRuntime,
+};
 
 /**
  * 创建题目请求体。
@@ -147,7 +155,7 @@ export interface CreateProblemInput {
   /**
    * 双容器 Runtime 配置。仅 admin 可设置。
    */
-  runtime_config?: RuntimeConfig | null;
+  runtime_config?: ProblemRuntimeConfig | null;
   tag_ids?: string[];
   /** 题目类型：U（用户题）/ P（主题题），默认 U */
   type?: string;
@@ -174,7 +182,7 @@ export interface UpdateProblemInput {
   /**
    * 双容器 Runtime 配置。设为 null 即清空。
    */
-  runtime_config?: RuntimeConfig | null;
+  runtime_config?: ProblemRuntimeConfig | null;
   tag_ids?: string[];
   /** 客观题标记变更（由客观题改回编程题时必须同时提供 runtime_config） */
   is_objective?: boolean;
@@ -228,7 +236,7 @@ export interface ProblemResponseWithTags {
    * 双容器 Runtime 配置（所有题目统一使用双容器模式）。
    * 仅 owner/admin 返回；非 owner/admin 不返回该字段。
    */
-  runtime_config?: RuntimeConfig | null;
+  runtime_config?: ProblemRuntimeConfig | null;
   tags: ProblemTagRef[];
   /**
    * 存在被隐藏的算法标签时为 true（spoiler 门控：匿名/未 AC viewer

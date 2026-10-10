@@ -14,15 +14,25 @@ export const SELF_TEST_STATUSES = [
   "judging",
   "finished",
   "error",
+  "cancelled",
 ] as const;
 
 export type SelfTestStatus = typeof SELF_TEST_STATUSES[number];
 
 /** 创建自测的请求体（problem_id 从 URL 获取，不放在 body）。 */
 export interface SelfTestInput {
+  cases?: import("../../catalog/index.ts").OiSelfTestCase[];
   language: string;
   code: string;
   file_name?: string;
+  /**
+   * 自测使用的题目版本（Handbook §4.2）。
+   *
+   * 与正式提交同一口径：显式指定的版本逐字生效（不属于该题 → 404）；
+   * 未指定时按题库有效策略解析默认作答版本。自测使用**独立运行标识**，
+   * 但仍携带版本与协议版本，恢复时可从版本重建任务。
+   */
+  version_id?: string;
 }
 
 /** 创建自测成功后的响应（基础字段，不含 result）。 */
@@ -42,6 +52,7 @@ export interface SelfTestResponse {
  * 仅 owner/admin 可见，output 按 API 层截断返回。
  */
 export interface SelfTestDetail {
+  progress?: import("../services/oi-progress.ts").OiProgress | null;
   id: string;
   user_id: string;
   problem_id: string;

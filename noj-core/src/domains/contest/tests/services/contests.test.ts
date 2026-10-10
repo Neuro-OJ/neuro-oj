@@ -23,6 +23,7 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 
 await resetDbForTest();
 
@@ -68,6 +69,8 @@ async function createProblem(number: number): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  // 竞赛只能固定已发布版本（Handbook §2.6）：夹具题目补迁移基线
+  await publishBaselineVersionForTest(id);
   return id;
 }
 
@@ -168,10 +171,13 @@ Deno.test({
         "邀请码错误",
       );
       await registerForContest(contest.id, invitedId, "RotatedPass123");
-      assertEquals(
-        (await getContestProblems(contest.id, participantId)).length,
-        2,
+      const contestProblems = await getContestProblems(
+        contest.id,
+        participantId,
       );
+      assertEquals(contestProblems.length, 2);
+      assertEquals(contestProblems[0].judge_backend, "dual");
+      assertEquals(contestProblems[0].is_objective, false);
 
       await deleteContest(contest.id);
       await assertRejects(

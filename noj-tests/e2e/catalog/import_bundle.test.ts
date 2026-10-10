@@ -15,6 +15,7 @@ import {
   isE2E,
   isJudgeAvailable,
   pollSubmission,
+  publishProblemVersion,
   submitCode,
   waitForServer,
 } from "../helper.ts";
@@ -202,6 +203,8 @@ e2eTest("[e2e/import-bundle] 重复导入幂等（不产生新题）", async () 
 
 e2eTest("[e2e/import-bundle] 提交评测闭环（judge 可用时）", async () => {
   if (!isE2E || !problemId || !judgeAvailable) return;
+  // 统一题包导入只写共享草稿（Handbook §6.2），提交前必须显式发布版本
+  await publishProblemVersion(adminToken, problemId, "e2e 导入后发布");
   const submissionId = await submitCode(
     adminToken,
     problemId,

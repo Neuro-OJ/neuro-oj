@@ -1,4 +1,5 @@
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
+import { ROOT_USER_ID } from "./../../../shared/base/constants.ts";
 import {
   type AuthEnv,
   authMiddleware,
@@ -7,7 +8,7 @@ import {
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { eq } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
-import { problems } from "./../../../shared/db/schema.ts";
+import { problems, problemVersions } from "./../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ForbiddenError,
@@ -25,12 +26,26 @@ import {
 } from "../../system/index.ts";
 import { withActorContext } from "../../system/index.ts";
 import {
+  assertProblemEditPermission,
   createProblem,
   deleteProblem,
   getProblem,
   listProblems,
   updateProblem,
 } from "../services/problems/problems.ts";
+import {
+  draftRevisionRequired,
+  getProblemDraft,
+  saveProblemDraft,
+} from "../services/versioning/draft.ts";
+import {
+  getProblemVersionOrThrow,
+  listProblemVersions,
+  preflightProblemDraft,
+  publishProblemVersion,
+  resolveProblemAnswerVersion,
+} from "../services/versioning/publish.ts";
+import type { ProblemContentV1 } from "../types/problem-content.ts";
 import { applyAlgorithmTagVisibility } from "../services/problems/problems-list.ts";
 import {
   getProblemStatsDetail,
@@ -58,21 +73,29 @@ import {
   MAX_SUPPORT_PACKAGE_SIZE,
   resolveProblemTemplate,
 } from "../services/support-package.ts";
-import { importProblemBundle } from "../services/problems/problem-bundle.ts";
 import {
-  createQuestion,
-  deleteQuestion,
+  importProblemBundle,
+  publishImportedProblem,
+} from "../services/problems/problem-bundle.ts";
+import {
+  assertObjectivePaper,
+  assertPaperManageable,
+  createDraftQuestion,
+  deleteDraftQuestion,
   getObjectiveSubmission,
+  getPaperOrThrow,
   listObjectiveSubmissions,
   listPaperQuestionsWithAccess,
+  serializeQuestion,
   submitObjectivePaper,
-  updateQuestion,
+  updateDraftQuestion,
 } from "../../objective/index.ts";
 import type {
   CreateQuestionInput,
   SubmitObjectiveInput,
   UpdateQuestionInput,
 } from "../../objective/index.ts";
+import type { ObjectiveQuestionSnapshot } from "../types/problem-content.ts";
 
 const router = new Hono<AuthEnv>();
 
@@ -101,6 +124,8 @@ router.get("/", optionalAuthMiddleware, async (c) => {
   };
 
   const difficulty = c.req.query("difficulty");
+  query.judge_type = c.req.query("judge_type");
+  query.judge_backend = c.req.query("judge_backend");
   if (difficulty) query.difficulty = difficulty;
 
   const tagId = c.req.query("tag");
@@ -229,12 +254,205 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
     title: ref.title,
   }));
 
+  // 版本信息（Handbook §4.1）：默认作答版本（`exact` → 要求版本，`any` → 最新版）
+  // 与最新版元数据。`?version_id=` 时按该版本内容回答（历史版本遵循同一访问权限，
+  // 选择旧版不能绕过保密/竞赛封禁）。
+  const [identity] = await getDb().select({
+    latest_version_id: problems.latest_version_id,
+    effective_version_mode: problems.effective_version_mode,
+    required_version_id: problems.required_version_id,
+    effective_policy_revision: problems.effective_policy_revision,
+  }).from(problems).where(eq(problems.id, problem.id)).limit(1);
+
+  const requestedVersionId = c.req.query("version_id")?.trim() || null;
+  let answerVersion: {
+    version_id: string;
+    version: number;
+    content: ProblemContentV1;
+    is_latest: boolean;
+  } | null = null;
+  if (requestedVersionId) {
+    const row = await getProblemVersionOrThrow(problem.id, requestedVersionId);
+    answerVersion = {
+      version_id: row.id,
+      version: row.version,
+      content: row.content as ProblemContentV1,
+      is_latest: identity?.latest_version_id === row.id,
+    };
+  } else {
+    answerVersion = await resolveProblemAnswerVersion(problem.id);
+  }
+
+  const latestVersion =
+    answerVersion?.version_id === identity?.latest_version_id
+      ? answerVersion?.version ?? null
+      : await resolveLatestVersionNumber(identity?.latest_version_id ?? null);
+
+  const withVersion = {
+    ...data,
+    version_id: answerVersion?.version_id ?? null,
+    version: answerVersion?.version ?? null,
+    latest_version_id: identity?.latest_version_id ?? null,
+    latest_version: latestVersion,
+    effective_version_policy: identity?.effective_version_mode === "exact"
+      ? { mode: "exact" as const, version_id: identity.required_version_id }
+      : { mode: "any" as const },
+    // 策略乐观锁版本（管理端切换策略时必须回传 `expected_revision`）。
+    // 只是单调计数器，不含内容，对普通读者无敏感信息。
+    effective_version_policy_revision: identity?.effective_policy_revision ?? 0,
+    is_latest: answerVersion
+      ? answerVersion.version_id === identity?.latest_version_id
+      : false,
+    ...(requestedVersionId && answerVersion
+      ? versionContentOverrides(answerVersion.content)
+      : {}),
+  };
+
   return c.json({
     data: secrecyNotice.length > 0
-      ? { ...data, contest_secrecy: secrecyNotice }
-      : data,
+      ? { ...withVersion, contest_secrecy: secrecyNotice }
+      : withVersion,
   });
 });
+
+/** 读取版本号（用于 `latest_version`；缺失返回 null）。 */
+async function resolveLatestVersionNumber(
+  versionId: string | null,
+): Promise<number | null> {
+  if (!versionId) return null;
+  const [row] = await getDb().select({ version: problemVersions.version })
+    .from(problemVersions).where(eq(problemVersions.id, versionId)).limit(1);
+  return row?.version ?? null;
+}
+
+/**
+ * 把版本内容投影回题目响应字段（只覆盖**内容**字段）。
+ *
+ * 难度、标签、可见性、所有权属于题目管理信息，历史版本沿用当前值；支持包存储位置
+ * 与客观题答案绝不下发（用户响应不含存储位置、隐藏数据与标准答案）。
+ */
+function versionContentOverrides(
+  content: ProblemContentV1,
+): Record<string, unknown> {
+  const overrides: Record<string, unknown> = {
+    title: content.title,
+    description: content.description,
+    samples: content.samples,
+  };
+  if (content.kind === "ai") {
+    overrides.runtime_config = content.runtime_config;
+    overrides.submission_mode = content.submission_mode;
+    overrides.artifact_max_size_mb = content.artifact_max_size_mb;
+    overrides.judge_type = "dual";
+    overrides.is_objective = false;
+  } else if (content.kind === "oi") {
+    overrides.runtime_config = content.runtime_config;
+    overrides.submission_mode = "code";
+    overrides.judge_type = "oi";
+    overrides.is_objective = false;
+  } else {
+    overrides.is_objective = true;
+    overrides.runtime_config = null;
+    overrides.judge_type = "dual";
+  }
+  return overrides;
+}
+
+/**
+ * 解析草稿写入的预期 revision。
+ *
+ * 优先 `If-Match` 请求头（HTTP 语义），其次 body.expected_revision；
+ * 两者都没有时返回 428（`draftRevisionRequired`），避免"盲写覆盖他人编辑"。
+ */
+function parseExpectedRevision(
+  c: { req: { header: (name: string) => string | undefined } },
+  bodyRevision?: number,
+): number {
+  const ifMatch = c.req.header("if-match")?.trim().replace(/^W\//, "")
+    .replace(/^"|"$/g, "");
+  const raw = ifMatch ||
+    (bodyRevision !== undefined ? String(bodyRevision) : "");
+  if (!raw) throw draftRevisionRequired();
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new BadRequestError("预期 revision 必须是非负整数");
+  }
+  return parsed;
+}
+
+/** 读取题目是否允许当前查看者编辑（用于内容裁剪，不在此处抛错）。 */
+async function canEditProblem(
+  c: Context<AuthEnv>,
+  problem: { type: string; owner_id: string },
+): Promise<boolean> {
+  const userId = c.get("userId") as string | undefined;
+  if (!userId) return false;
+  try {
+    await assertProblemEditPermission(c, problem, userId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 题目读取权限：与详情接口同口径（无权限一律 404，防存在性探测）。
+ *
+ * 管理员用 `admin:full_access` 走 fast path；非管理员沿用统一访问解析，
+ * 因此历史版本读取同样无法绕过竞赛保密。
+ */
+async function assertProblemReadable(
+  c: Context<AuthEnv>,
+  problem: Awaited<ReturnType<typeof resolveProblem>>,
+): Promise<void> {
+  const userId = c.get("userId") as string | undefined;
+  const isAdmin = userId
+    ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
+    : false;
+  const { result: access } = await evaluateProblemAccess(problem, {
+    viewerId: userId ?? null,
+    isAdmin,
+  });
+  if (!access.allowed) {
+    throw new NotFoundError("题目不存在");
+  }
+  // 未发布题目（尚无已发布版本）对普通访问者一律 404（Handbook §4.1）：
+  // 编辑者改用草稿接口读取，避免把"草稿内容"当作公开题面下发。
+  if (!isAdmin && !await isProblemPublished(problem.id)) {
+    if (!await canEditProblem(c, problem)) {
+      throw new NotFoundError("题目不存在");
+    }
+  }
+}
+
+/** 题目是否已有已发布版本（`problems.latest_version_id` 非空）。 */
+async function isProblemPublished(problemId: string): Promise<boolean> {
+  const [row] = await getDb()
+    .select({ latest: problems.latest_version_id })
+    .from(problems)
+    .where(eq(problems.id, problemId))
+    .limit(1);
+  return row?.latest != null;
+}
+
+/**
+ * 版本内容的权限裁剪：非编辑者不下发客观题标准答案与存储位置。
+ */
+function trimVersionContent(
+  content: ProblemContentV1,
+  canEdit: boolean,
+): ProblemContentV1 {
+  if (canEdit) return content;
+  if (content.kind !== "objective") return content;
+  return {
+    ...content,
+    questions: content.questions.map((question) => ({
+      ...question,
+      answer: [],
+      explanation: "",
+    })),
+  };
+}
 
 /**
  * 创建题目。
@@ -272,6 +490,149 @@ router.post("/", authMiddleware, async (c) => {
   await enforceProblemCreateRateLimit(c, userId);
   const problem = await createProblem(body, userId, undefined, c);
   return c.json({ data: problem }, 201);
+});
+
+/**
+ * 读取共享草稿（编辑者）。
+ *
+ * 没有草稿行时返回基于最新版内容（其次题目投影）的编辑初值，`synthesized: true`。
+ * 未发布题目对普通访问者不可见，但编辑者必须能通过本接口拿到初值。
+ *
+ * GET /api/v1/problems/:id/draft
+ */
+router.get("/:id/draft", authMiddleware, async (c) => {
+  const problem = await resolveProblem(c.req.param("id") as string);
+  await assertProblemEditPermission(c, problem, c.get("userId"));
+  const draft = await getProblemDraft(problem.id);
+  return c.json({ data: draft });
+});
+
+/**
+ * 保存共享草稿（编辑者，乐观锁）。
+ *
+ * 请求头 `If-Match: <revision>` 或 body.expected_revision 二者之一必填；
+ * 缺少预期 revision 返回 428，过时返回 409。
+ *
+ * PUT /api/v1/problems/:id/draft
+ */
+router.put("/:id/draft", authMiddleware, async (c) => {
+  const problem = await resolveProblem(c.req.param("id") as string);
+  await assertProblemEditPermission(c, problem, c.get("userId"));
+  const body = await parseJsonBody<{
+    content?: unknown;
+    expected_revision?: number;
+  }>(c);
+  if (body.content === undefined || body.content === null) {
+    throw new BadRequestError("缺少必填字段：content");
+  }
+  const revision = parseExpectedRevision(c, body.expected_revision);
+  const saved = await withActorContext(
+    c,
+    async () =>
+      await saveProblemDraft(problem.id, {
+        content: body.content as never,
+        expectedRevision: revision,
+        actorId: c.get("userId"),
+      }),
+  );
+  return c.json({ data: saved });
+});
+
+/**
+ * 发布预检（编辑者）：对**当前**草稿 revision 执行完整校验，不写库。
+ *
+ * GET /api/v1/problems/:id/draft/preflight
+ */
+router.get("/:id/draft/preflight", authMiddleware, async (c) => {
+  const problem = await resolveProblem(c.req.param("id") as string);
+  await assertProblemEditPermission(c, problem, c.get("userId"));
+  const report = await preflightProblemDraft(problem.id, {
+    verifyObjects: c.req.query("verify") !== "false",
+  });
+  return c.json({ data: report });
+});
+
+/**
+ * 发布草稿为新版本（编辑者）。
+ *
+ * 发布与"切换有效版本策略"、"重测指定版本"是三个独立动作：本接口只新增版本，
+ * 不改策略、不触发重测。相同内容重复发布返回 `unchanged: true` 与既有版本。
+ *
+ * POST /api/v1/problems/:id/versions
+ */
+router.post("/:id/versions", authMiddleware, async (c) => {
+  const problem = await resolveProblem(c.req.param("id") as string);
+  await assertProblemEditPermission(c, problem, c.get("userId"));
+  const body = await parseJsonBody<{
+    change_note?: string;
+    expected_revision?: number;
+  }>(c);
+  const revision = parseExpectedRevision(c, body.expected_revision);
+  const published = await withActorContext(
+    c,
+    async () =>
+      await publishProblemVersion(problem.id, {
+        expectedRevision: revision,
+        changeNote: typeof body.change_note === "string"
+          ? body.change_note
+          : "",
+        actorId: c.get("userId"),
+      }),
+  );
+  return c.json({ data: published }, published.unchanged ? 200 : 201);
+});
+
+/**
+ * 版本元数据列表（分页，新→旧）。
+ *
+ * GET /api/v1/problems/:id/versions
+ */
+router.get("/:id/versions", optionalAuthMiddleware, async (c) => {
+  const problem = await resolveProblem(c.req.param("id") as string);
+  await assertProblemReadable(c, problem);
+  const { page, perPage } = parsePagination(c);
+  const versions = await listProblemVersions(problem.id, { page, perPage });
+  return c.json({
+    data: versions.data,
+    total: versions.total,
+    page,
+    per_page: perPage,
+  });
+});
+
+/**
+ * 指定版本内容（经过权限裁剪）。
+ *
+ * 历史版本遵循题目**当前**访问权限与竞赛保密规则：选择旧版本不能绕过保密。
+ * 非编辑者拿不到客观题标准答案与存储位置。
+ *
+ * GET /api/v1/problems/:id/versions/:versionId
+ */
+router.get("/:id/versions/:versionId", optionalAuthMiddleware, async (c) => {
+  const problem = await resolveProblem(c.req.param("id") as string);
+  const canEdit = await canEditProblem(c, problem);
+  await assertProblemReadable(c, problem);
+  const version = await getProblemVersionOrThrow(
+    problem.id,
+    c.req.param("versionId") as string,
+  );
+  const [identityRow] = await getDb().select({
+    latest_version_id: problems.latest_version_id,
+  }).from(problems).where(eq(problems.id, problem.id)).limit(1);
+  return c.json({
+    data: {
+      version_id: version.id,
+      version: version.version,
+      origin: version.origin,
+      change_note: version.change_note,
+      published_at: version.published_at,
+      is_latest: identityRow?.latest_version_id === version.id,
+      content: trimVersionContent(
+        version.content as ProblemContentV1,
+        canEdit,
+      ),
+    },
+  });
 });
 
 /**
@@ -428,7 +789,17 @@ router.post("/import-bundle", authMiddleware, async (c) => {
       c,
     ));
 
-  return c.json({ data: result });
+  // `publish=true`：导入后显式发布为版本（与 `problems import --publish` 同口径）。
+  // 不发布时题目只有草稿：普通访问者读不到、也无法按版本提交。
+  const wantsPublish = String(body["publish"] ?? "").toLowerCase() === "true";
+  if (!wantsPublish) {
+    return c.json({ data: { ...result, published: null } });
+  }
+  const published = await publishImportedProblem(
+    result.id,
+    userId ?? ROOT_USER_ID,
+  );
+  return c.json({ data: { ...result, published } });
 });
 
 /**
@@ -595,9 +966,11 @@ router.delete("/:id/support-package", authMiddleware, async (c) => {
 // ── 客观题（并入 problems 体系，is_objective 标记）───────────────────────────
 
 /**
- * 获取客观题套卷小题列表（公开可读）。
+ * 获取客观题套卷小题列表。
  * GET /api/v1/problems/:id/questions
- * U 型：owner/admin 视图含答案与解析；P 型：仅 admin；其余裁剪。
+ *
+ * 编辑者（owner/admin）读**共享草稿**含答案与解析；其余读**默认作答版本**
+ * 快照并裁剪答案（Handbook §6.4）。未发布套卷对非编辑者 404。
  */
 router.get("/:id/questions", optionalAuthMiddleware, async (c) => {
   const paperId = c.req.param("id") as string;
@@ -624,44 +997,96 @@ router.get("/:id/questions", optionalAuthMiddleware, async (c) => {
 });
 
 /**
- * 创建客观题小题（绑定套卷）。
+ * 解析可管理套卷（编辑者），返回规范 UUID。
+ *
+ * 小题写入落在**共享草稿**上，因此必须先在身份层解析 display_id、校验
+ * `is_objective` 与管理权限（与旧小题 CRUD 同口径）。
+ */
+async function requireManageablePaper(
+  c: Context<AuthEnv>,
+  paperId: string,
+): Promise<string> {
+  const paper = await getPaperOrThrow(paperId);
+  assertObjectivePaper(paper);
+  await assertPaperManageable(paper, c.get("userId"), c.get("userRole"), c);
+  return paper.id;
+}
+
+/** 小题响应：附带写入后的草稿 revision，供客户端继续做乐观锁。 */
+async function questionEnvelope(
+  paperId: string,
+  question: ObjectiveQuestionSnapshot,
+) {
+  const draft = await getProblemDraft(paperId);
+  return {
+    ...serializeQuestion(paperId, question, true),
+    draft_revision: draft.revision,
+  };
+}
+
+/**
+ * 创建客观题小题（写共享草稿）。
  * POST /api/v1/problems/:id/questions
+ * 要求 `If-Match: <draft revision>` 或 body.expected_revision（缺失 428、过时 409）。
  */
 router.post("/:id/questions", authMiddleware, async (c) => {
-  const paperId = c.req.param("id") as string;
   const userId = c.get("userId");
-  const userRole = c.get("userRole");
-  const body = await parseJsonBody<CreateQuestionInput>(c);
-
-  const data = await createQuestion(paperId, body, userId, userRole, c);
-  return c.json({ data }, 201);
+  const body = await parseJsonBody<
+    CreateQuestionInput & {
+      expected_revision?: number;
+    }
+  >(c);
+  const paperId = await requireManageablePaper(c, c.req.param("id") as string);
+  const revision = parseExpectedRevision(c, body.expected_revision);
+  const data = await createDraftQuestion(paperId, body, revision, userId);
+  return c.json({ data: await questionEnvelope(paperId, data) }, 201);
 });
 
 /**
- * 更新客观题小题。
+ * 更新客观题小题（写共享草稿，`key` 跨版本稳定）。
  * PUT /api/v1/problems/:id/questions/:qid
  */
 router.put("/:id/questions/:qid", authMiddleware, async (c) => {
-  const qid = c.req.param("qid") as string;
   const userId = c.get("userId");
-  const userRole = c.get("userRole");
-  const body = await parseJsonBody<UpdateQuestionInput>(c);
-
-  const data = await updateQuestion(qid, body, userId, userRole, c);
-  return c.json({ data });
+  const body = await parseJsonBody<
+    UpdateQuestionInput & {
+      expected_revision?: number;
+    }
+  >(c);
+  const paperId = await requireManageablePaper(c, c.req.param("id") as string);
+  const revision = parseExpectedRevision(c, body.expected_revision);
+  const data = await updateDraftQuestion(
+    paperId,
+    c.req.param("qid") as string,
+    body,
+    revision,
+    userId,
+  );
+  return c.json({ data: await questionEnvelope(paperId, data) });
 });
 
 /**
- * 删除客观题小题。
+ * 删除客观题小题（写共享草稿；删除后不参与判分）。
  * DELETE /api/v1/problems/:id/questions/:qid
+ *
+ * 返回 `200 { draft_revision }`（不再用 204）：删除同样递增草稿 revision，
+ * 客户端需要新的 revision 才能继续编辑。
  */
 router.delete("/:id/questions/:qid", authMiddleware, async (c) => {
-  const qid = c.req.param("qid") as string;
   const userId = c.get("userId");
-  const userRole = c.get("userRole");
-
-  await deleteQuestion(qid, userId, userRole, c);
-  return c.body(null, 204);
+  const body = await parseJsonBody<
+    { expected_revision?: number } | undefined
+  >(c).catch(() => undefined);
+  const paperId = await requireManageablePaper(c, c.req.param("id") as string);
+  const revision = parseExpectedRevision(c, body?.expected_revision);
+  await deleteDraftQuestion(
+    paperId,
+    c.req.param("qid") as string,
+    revision,
+    userId,
+  );
+  const draft = await getProblemDraft(paperId);
+  return c.json({ data: { draft_revision: draft.revision } });
 });
 
 /**

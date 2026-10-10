@@ -11,6 +11,7 @@ import {
   apiGet,
   apiPost,
   e2eTest,
+  getAnswerVersionId,
   getOrCreateUser,
   getProblemIdByNumber,
   isE2E,
@@ -78,10 +79,14 @@ e2eTest("[e2e/self-test] Setup", async () => {
 
 e2eTest("[e2e/self-test] 创建自测并返回 id", async () => {
   if (!isE2E) return;
+  // 自测与正式提交一样必须携带作答版本（Handbook §4.2）
+  const versionId = await getAnswerVersionId(token, problemId);
+  if (!versionId) throw new Error("题目没有可作答的已发布版本");
   const res = await apiPost(
     `/api/v1/problems/${problemId}/self-test`,
     {
       language: "python3",
+      version_id: versionId,
       code: `from noj_solution_sdk import register
 
 @register

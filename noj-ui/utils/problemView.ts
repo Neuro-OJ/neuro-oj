@@ -34,11 +34,15 @@ export interface ProblemView {
   display_id: string;
   title: string;
   description: string;
+  samples?: import('./oiWorkspace.ts').ProblemSample[];
   difficulty: string;
   /** 题型：`U` 用户题库 / `T` 主题库。竞赛页无该字段，默认主题库。 */
   type: string;
   /** 是否客观题（即时判定，无评测容器）。 */
   is_objective: boolean;
+  /** 评测题型与公开后端标识；不依赖仅管理员可见的运行配置。 */
+  judge_type?: 'dual' | 'oi';
+  judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
   /** 提交模式：`code` 代码 / `artifact` 产物 zip。 */
   submission_mode: 'code' | 'artifact';
   /** artifact 单文件大小上限（MB）；null 表示使用平台默认上限。 */
@@ -62,6 +66,27 @@ export interface ProblemView {
   tags: ProblemTagView[];
   /** 是否存在当前不可见的算法标签（通过本题后可见）。 */
   has_hidden_algorithm_tags: boolean;
+  /**
+   * 作答版本（Handbook §4.1/§4.2）。
+   *
+   * 独立题目页：题库有效策略解析出的默认作答版本；竞赛页：该竞赛固定版本。
+   * 提交必须原样回传——服务端据此判断"在评测哪一版"，不携带会被 409 拒绝。
+   * `null` 表示题目尚未发布任何版本（此时不能提交）。
+   */
+  version_id: string | null;
+  /** 作答版本的版本号（展示用）。 */
+  version: number | null;
+  /** 最新已发布版本 ID（独立题目页；竞赛页为 null）。 */
+  latest_version_id: string | null;
+  /** 最新已发布版本号。 */
+  latest_version: number | null;
+  /** 题库有效版本策略（竞赛页为 null：竞赛策略独立于题库）。 */
+  effective_version_policy:
+    | { mode: 'any' }
+    | { mode: 'exact'; version_id: string | null }
+    | null;
+  /** 当前作答版本是否就是最新版。 */
+  is_latest: boolean;
 }
 
 /** `GET /api/v1/problems/:id` 的 data 形状。 */
@@ -70,18 +95,32 @@ export interface ProblemResource {
   display_id: string;
   title: string;
   description: string;
+  samples?: import('./oiWorkspace.ts').ProblemSample[];
   difficulty: string;
   type: string;
   owner_id: string;
   owner_username?: string;
   owner_avatar_url?: string | null;
   is_objective: boolean;
+  judge_type?: 'dual' | 'oi';
+  judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
   submission_mode?: 'code' | 'artifact';
   artifact_max_size_mb?: number | null;
   tags?: ProblemTagView[];
   has_hidden_algorithm_tags?: boolean;
   /** 关联的未结束公开赛；仅所有者/管理员会收到（保密提示横幅）。 */
   contest_secrecy?: ProblemContestSecrecyNotice[] | null;
+  /** 作答版本（题库策略解析；未发布为 null）。 */
+  version_id?: string | null;
+  version?: number | null;
+  latest_version_id?: string | null;
+  latest_version?: number | null;
+  effective_version_policy?:
+    | { mode: 'any' }
+    | { mode: 'exact'; version_id: string | null };
+  /** 策略乐观锁版本（管理端切换策略时回传 `expected_revision`）。 */
+  effective_version_policy_revision?: number;
+  is_latest?: boolean;
   runtime_config?: {
     evaluator?: {
       time_limit_ms?: number;
@@ -96,10 +135,16 @@ export interface ContestProblemResource {
   display_id: string;
   title: string;
   description: string;
+  samples?: import('./oiWorkspace.ts').ProblemSample[];
   difficulty: string;
   submission_mode?: 'code' | 'artifact';
   artifact_max_size_mb?: number | null;
   is_objective?: boolean;
+  judge_type?: 'dual' | 'oi';
+  judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
+  /** 竞赛固定作答版本；提交必须原样回传（不一致 → 409）。 */
+  version_id?: string | null;
+  version?: number | null;
 }
 
 /** 独立题目资源 → 视图。 */
@@ -110,9 +155,12 @@ export function toProblemView(resource: ProblemResource): ProblemView {
     display_id: resource.display_id,
     title: resource.title,
     description: resource.description,
+    samples: resource.samples ?? [],
     difficulty: resource.difficulty,
     type: resource.type,
     is_objective: resource.is_objective === true,
+    judge_type: resource.judge_type,
+    judge_backend: resource.judge_backend ?? null,
     submission_mode: resource.submission_mode ?? 'code',
     artifact_max_size_mb: resource.artifact_max_size_mb ?? null,
     owner_username: resource.owner_username ?? null,
@@ -123,6 +171,12 @@ export function toProblemView(resource: ProblemResource): ProblemView {
     tags: resource.tags ?? [],
     has_hidden_algorithm_tags: resource.has_hidden_algorithm_tags === true,
     contest_secrecy: resource.contest_secrecy ?? [],
+    version_id: resource.version_id ?? null,
+    version: resource.version ?? null,
+    latest_version_id: resource.latest_version_id ?? null,
+    latest_version: resource.latest_version ?? null,
+    effective_version_policy: resource.effective_version_policy ?? null,
+    is_latest: resource.is_latest === true,
   };
 }
 
@@ -134,16 +188,21 @@ export function toProblemView(resource: ProblemResource): ProblemView {
  * - 时限/内存以 `null` 表达"未知"，让头部统计条隐藏对应项，
  *   而不是用 `0` 顶替（`0ms` 会被误读为真实限制）。
  */
-export function toContestProblemView(resource: ContestProblemResource): ProblemView {
+export function toContestProblemView(
+  resource: ContestProblemResource,
+): ProblemView {
   return {
     id: resource.problem_id,
     display_id: resource.display_id,
     title: resource.title,
     description: resource.description,
+    samples: resource.samples ?? [],
     difficulty: resource.difficulty,
     type: 'T',
     // 后端 ContestProblemResponse 目前可能不返回该字段，故只认显式 true
     is_objective: resource.is_objective === true,
+    judge_type: resource.judge_type,
+    judge_backend: resource.judge_backend ?? null,
     submission_mode: resource.submission_mode ?? 'code',
     artifact_max_size_mb: resource.artifact_max_size_mb ?? null,
     owner_username: null,
@@ -155,12 +214,30 @@ export function toContestProblemView(resource: ContestProblemResource): ProblemV
     has_hidden_algorithm_tags: false,
     // 竞赛页本身就是"已在竞赛内"的视图，不渲染保密提示
     contest_secrecy: [],
+    // 竞赛题目按竞赛固定版本（pinned_version_id）作答，与题库有效策略无关；
+    // 竞赛接口不返回 latest_version_*，故 is_latest 恒为 false——
+    // 前端只在 latest_version != null 时渲染"是否有更新版本"提示。
+    version_id: resource.version_id ?? null,
+    version: resource.version ?? null,
+    latest_version_id: null,
+    latest_version: null,
+    effective_version_policy: null,
+    is_latest: false,
   };
 }
 
 /** 题型展示文案。 */
 export function problemTypeLabel(type: string | undefined): string {
   return type === 'U' ? '用户题库' : '主题库';
+}
+
+/** 评测题型文案；不将缺失题型的旧响应误判为 AI 题。 */
+export function problemJudgeTypeLabel(
+  problem: Pick<ProblemView, 'is_objective' | 'judge_type'>,
+): string | null {
+  if (problem.is_objective) return '客观题';
+  if (problem.judge_type === 'oi') return 'OI 题';
+  return problem.judge_type === 'dual' ? 'AI 题' : null;
 }
 
 /** 时间限制展示文案；无该来源时为全角破折号占位。 */

@@ -24,6 +24,26 @@ export interface SubmissionListItem {
     time_ms: number | null;
     memory_kb: number | null;
   } | null;
+  /** 提交时版本 ID（Handbook §2.7）；未版本化历史提交为 null。 */
+  submitted_version_id?: string | null;
+  /** 版本来源：`known`（提交时明确版本）/ `legacy_unknown`（迁移前未知）。 */
+  version_origin?: string;
+  /** 提交时版本号（展示用）；未知历史版本为 null。 */
+  submitted_version?: number | null;
+}
+
+/**
+ * 提交时版本的展示文案。
+ *
+ * 迁移期存量提交的来源是 `legacy_unknown`，必须显式说明"未知历史版本"，
+ * 不能显示成 v0 或留空——否则读者会以为该提交针对某个真实版本。
+ */
+export function submissionVersionLabel(input: {
+  version_origin?: string;
+  submitted_version?: number | null;
+}): string {
+  if (input.submitted_version != null) return `v${input.submitted_version}`;
+  return input.version_origin === 'known' ? '版本已删除' : '未知历史版本';
 }
 
 /**
@@ -33,6 +53,7 @@ export const languageLabels: Record<string, string> = {
   python3: 'Python 3',
   python: 'Python',
   cpp: 'C++',
+  cc: 'C++',
   c: 'C',
   javascript: 'JavaScript',
   java: 'Java',
@@ -181,6 +202,16 @@ export interface ResultDef {
  * 评测结果状态 → 详细定义映射。
  */
 export const resultDefMap: Record<string, ResultDef> = {
+  AC: { label: 'AC · 通过', icon: 'check', class: 'accepted' },
+  WA: { label: 'WA · 答案错误', icon: 'x', class: 'wa' },
+  TLE: { label: 'TLE · 超时', icon: 'x', class: 'tle' },
+  MLE: { label: 'MLE · 内存超限', icon: 'x', class: 'mle' },
+  OLE: { label: 'OLE · 输出超限', icon: 'x', class: 'ole' },
+  RE: { label: 'RE · 运行错误', icon: 'x', class: 're' },
+  CE: { label: 'CE · 编译错误', icon: 'x', class: 'ce' },
+  SE: { label: 'SE · 系统错误', icon: 'x', class: 'se' },
+  FE: { label: 'FE · 格式错误', icon: 'x', class: 'wa' },
+  IGN: { label: 'IGN · 已跳过', icon: 'x', class: 'se' },
   finished: { label: '已评测', icon: 'check', class: 'accepted' },
   error: { label: '出错', icon: 'x', class: 'se' },
 };

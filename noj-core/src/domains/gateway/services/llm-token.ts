@@ -31,6 +31,19 @@ async function deriveKey(secret: string): Promise<CryptoKey> {
 
 interface EvalTokenPayload {
   jti: string;
+  /**
+   * 本次评测的尝试 ID（Handbook §6.7）。
+   *
+   * 存在时 gateway 的单次额度键与吊销键按 attempt 维度隔离：
+   * `llm:attempt:<attempt_id>:calls|tokens|cost` 与
+   * `llm:attempt:revoked:<attempt_id>`。同一提交的重测因此拿到独立预算，
+   * 且旧尝试的吊销不会误杀新尝试。
+   */
+  attempt_id: string;
+  /** 本次评测使用的题目版本（审计与排查用，不参与限额计算）。 */
+  problem_version_id: string | null;
+  /** token 协议版本：`2` = 携带 attempt/version 维度。 */
+  protocol_version: number;
   submission_id: string;
   problem_id: string;
   user_id: string;
@@ -41,6 +54,9 @@ interface EvalTokenPayload {
   max_calls: number;
   max_tokens: number;
 }
+
+/** 当前 LLM eval_token 协议版本（`2` = attempt 维度额度与吊销）。 */
+export const LLM_TOKEN_PROTOCOL_VERSION = 2;
 
 /** 使用 NOJ_LLM_SERVICE_TOKEN 签发 AEAD eval_token（base64url）。 */
 export async function mintEvalToken(
@@ -72,6 +88,7 @@ export async function mintEvalToken(
  * @param problemId 题目 ID
  * @param userId 提交用户 ID
  * @param runtimeConfig 题目 runtime_config（用于 TTL）
+ * @param scope 本次评测的尝试与版本；正式提交必须传入（尝试维度预算与吊销）
  */
 export async function buildJudgeTaskLlm(
   llmConfig: LlmConfig,
@@ -79,6 +96,10 @@ export async function buildJudgeTaskLlm(
   problemId: string,
   userId: string,
   runtimeConfig: RuntimeConfig,
+  scope: {
+    attemptId: string;
+    problemVersionId?: string | null;
+  },
 ): Promise<JudgeTaskLlm> {
   const platform = getLlmPlatformDefault();
   if (!platform) {
@@ -110,6 +131,9 @@ export async function buildJudgeTaskLlm(
   const limits = resolveLlmLimits(llmConfig);
   const token = await mintEvalToken({
     jti: crypto.randomUUID(),
+    attempt_id: scope.attemptId,
+    problem_version_id: scope.problemVersionId ?? null,
+    protocol_version: LLM_TOKEN_PROTOCOL_VERSION,
     submission_id: submissionId,
     problem_id: problemId,
     user_id: userId,

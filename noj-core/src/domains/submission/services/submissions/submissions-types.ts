@@ -5,6 +5,7 @@
  * SubmissionListItem 等公开 DTO，避免拆分后多文件互相 import 形成循环依赖。
  */
 import type { SubmissionStatus } from "../../types/index.ts";
+import type { EffectiveVersionPolicy } from "../../../../shared/versioning/types.ts";
 
 /** 创建提交的请求体 */
 export interface SubmissionInput {
@@ -13,6 +14,14 @@ export interface SubmissionInput {
   code: string;
   file_name?: string;
   contest_id?: string;
+  /**
+   * 提交时版本（Handbook §4.2）。
+   *
+   * 题库提交必须携带该题的已发布版本；竞赛提交携带时必须等于竞赛固定版本，
+   * 否则 `409 CONTEST_PROBLEM_VERSION_CHANGED`。缺失且题目已版本化时返回
+   * `VERSION_REQUIRED`——服务端**不静默绑定最新版**。
+   */
+  version_id?: string;
 }
 
 /** 创建提交成功后的响应（基础字段，不含 result） */
@@ -38,6 +47,10 @@ export interface SubmissionCaseResult {
   status: string;
   visibility?: SubmissionCaseVisibility;
   time_ms?: number | null;
+  equivalent_time_ms?: number | null;
+  fuel_consumed?: number | null;
+  fuel_budget?: number | null;
+  termination_reason?: string;
   memory_kb?: number | null;
   input?: string;
   expected_output?: string;
@@ -55,7 +68,35 @@ export interface SubmissionEvaluationDetails extends Record<string, unknown> {
  * - viewer 是 owner 或 admin → `code`/`output`/`details` 完整返回（output 可能被截断）
  * - viewer 是匿名用户或登录非 owner → `code`/`output`/`details` 均为 null
  */
+/**
+ * 单个题目版本的当前正式判定（跨版本保留，Handbook 核心不变量 3）。
+ *
+ * 每条来自 `submission_version_results` ⋈ `evaluation_attempts`：一个（提交，版本）
+ * 只有一条当前判定，重测只会替换该版本的判定，不影响其他版本。
+ */
+export interface SubmissionVersionResultView {
+  /** 题目版本 ID；迁移期"未知版本桶"为 null。 */
+  problem_version_id: string | null;
+  /** 版本号（展示用）；未知版本桶为 null。 */
+  version: number | null;
+  /** 产生该判定的已完成正式尝试 ID。 */
+  attempt_id: string;
+  /** 同一提交内递增的尝试序号（同分稳定排序依据）。 */
+  sequence: number;
+  /** 判定状态（finished / error 等）。 */
+  status: string;
+  /** ×100 整数，0..10000。 */
+  score: number;
+  time_ms: number | null;
+  memory_kb: number | null;
+  /** 是否为当前有效成绩（按题目作用域的有效版本策略解析）。 */
+  is_effective: boolean;
+  /** 是否为当前"通过"指针（通过候选中 sequence 最小者）。 */
+  is_accepted: boolean;
+}
+
 export interface SubmissionDetail {
+  progress?: import("../oi-progress.ts").OiProgress | null;
   id: string;
   public_id: string;
   user_id: string;
@@ -78,6 +119,8 @@ export interface SubmissionDetail {
     memory_kb: number | null;
     /** 评测用例级详情：仅 owner/admin 可见，否则为 null */
     details: SubmissionEvaluationDetails | null;
+    /** 公开的统一计量摘要，不包含源码或隐藏测试数据。 */
+    metering?: Record<string, unknown>;
   } | null;
   /** 排队位置（1-based），仅在 pending/等待中时有值。 */
   queue_position?: number | null;
@@ -87,6 +130,18 @@ export interface SubmissionDetail {
   judge_started_at?: string | null;
   /** 评测完成时间。 */
   judge_finished_at?: string | null;
+  /** 提交时版本 ID（Handbook §2.7）；`legacy_unknown` 的历史提交为 null。 */
+  submitted_version_id: string | null;
+  /** 版本来源：`known`（提交时明确版本）/ `legacy_unknown`（迁移前未知）。 */
+  version_origin: string;
+  /** 提交时版本号（展示用）；未知历史版本为 null。 */
+  submitted_version: number | null;
+  /** 由升级任务派生时指向源提交（同题旧版）；普通提交为 null。 */
+  upgraded_from_id: string | null;
+  /** 题目作用域的有效版本策略——各版本判定的选择依据（竞赛另有独立策略）。 */
+  effective_version_policy: EffectiveVersionPolicy;
+  /** 各版本当前正式判定；无版本化判定时为 null（与 `result` 同源展示）。 */
+  version_results: SubmissionVersionResultView[] | null;
 }
 
 /**
@@ -110,6 +165,12 @@ export interface SubmissionListItem {
     id: string;
     title: string;
   };
+  /** 提交时版本 ID（未版本化历史提交为 null）。 */
+  submitted_version_id: string | null;
+  /** 版本来源：known / legacy_unknown。 */
+  version_origin: string;
+  /** 提交时版本号（展示用）；未知历史版本为 null。 */
+  submitted_version: number | null;
   result: {
     status: string;
     score: number;
@@ -132,6 +193,20 @@ export interface ListSubmissionsParams {
   to?: string;
   /** 为 true 时排除所有竞赛提交（contest_id IS NULL），用于公开列表。 */
   excludeContest?: boolean;
+  /** 提交时版本 ID 精确筛选（Handbook §4.4「按版本筛选」）。 */
+  versionId?: string;
+  /** 按版本来源筛选：known（提交时明确版本）/ legacy_unknown（迁移前未知）。 */
+  versionOrigin?: "known" | "legacy_unknown";
+  /** 仅返回当前口径有效的提交（`is_valid = true`）。 */
+  validOnly?: boolean;
+  /** 仅返回当前口径通过的提交（`is_accepted = true`）。 */
+  acceptedOnly?: boolean;
+  /**
+   * 仅返回"可升级"的提交：题目已有最新已发布版，且本提交的提交时版本不是最新版。
+   *
+   * 这是用户批量升级的候选集合（`ALREADY_LATEST` 不算可升级）。
+   */
+  upgradable?: boolean;
   page: number;
   perPage: number;
 }

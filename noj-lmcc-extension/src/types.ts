@@ -36,6 +36,27 @@ export interface EvaluationResult {
   details: Record<string, unknown> | null;
 }
 
+/** 题目详情的版本元数据（`GET /problems/:id`）。 */
+export interface ProblemVersionInfo {
+  version_id: string | null;
+  version: number | null;
+  latest_version_id: string | null;
+  latest_version: number | null;
+  effective_version_policy: EffectiveVersionPolicy;
+  is_latest: boolean;
+}
+
+/** 有效版本策略（与 core 的 `EffectiveVersionPolicy` 对齐）。 */
+export type EffectiveVersionPolicy =
+  | { mode: "any" }
+  | { mode: "exact"; version_id: string | null };
+
+/** 题目详情（版本元数据 + 列表字段）。 */
+export interface ProblemDetail extends ProblemVersionInfo {
+  id: string;
+  title: string;
+}
+
 /** 提交详情响应。 */
 export interface SubmissionDetail extends CreatedSubmission {
   problem_id: string;
@@ -50,4 +71,13 @@ export interface SelectedProblem {
   id: string;
   displayId: string;
   title: string;
+  /**
+   * 选定题目时固定的**作答版本**（Handbook §4.2）。
+   *
+   * 提交必须携带它：新客户端不携带版本会被服务端 409 拒绝，而"静默绑定最新版"
+   * 会让用户以为在评测自己看到的卷面。选择题目时读取一次，提交时原样发送；
+   * 服务端返回 409 CONTEST_PROBLEM_VERSION_CHANGED 时提示刷新重选。
+   */
+  versionId: string | null;
+  version: number | null;
 }

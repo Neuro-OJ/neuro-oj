@@ -19,6 +19,7 @@ import {
 } from "../../../../shared/mq/connection.ts";
 import { startFakeRedis } from "./_setup.ts";
 import type { JudgeTask } from "../../index.ts";
+import type { RuntimeConfig } from "../../../catalog/types/runtime-config.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 
@@ -26,6 +27,8 @@ const hasDb = true; // PGlite 内存数据库始终可用
 
 function makeTask(overrides?: Partial<JudgeTask>): JudgeTask {
   return {
+    scheduling_version: 1,
+    resource_pool: "ai",
     submission_id: "test-sub-001",
     problem_id: "1001",
     user_id: "test-user-001",
@@ -48,9 +51,38 @@ function makeTask(overrides?: Partial<JudgeTask>): JudgeTask {
     code: "print(42)",
     file_name: "submission.py",
     priority: "medium",
+    judge_type: "dual",
     ...overrides,
   };
 }
+
+Deno.test({
+  name: "mq/producer: 同优先级容量跨资源池共享，不因拆池放大",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const fake = startFakeRedis();
+    try {
+      resetRedisForTest();
+      Deno.env.set("REDIS_URL", fake.url);
+      await getRedis().connect();
+      await getRedis().ping();
+      fake.seedQueue(
+        "noj:judge:queue:oi-native:high",
+        JUDGE_QUEUE_CAPACITY.high,
+      );
+      await assertRejects(
+        () => pushJudgeTask(makeTask({ priority: "high" })),
+        Error,
+        "队列已满",
+      );
+      assertEquals(fake.getMessages("noj:judge:queue:ai:high").length, 0);
+    } finally {
+      resetRedisForTest();
+      await fake.stop();
+    }
+  },
+});
 
 Deno.test({
   name: "mq/producer: pushJudgeTask 成功 LPUSH",
@@ -72,14 +104,14 @@ Deno.test({
       assertEquals(queueLen, 1, "首次入队应返回真实队列长度");
 
       // 验证消息被推送
-      const messages = fake.getMessages("noj:judge:queue:medium");
+      const messages = fake.getMessages("noj:judge:queue:ai:medium");
       assertEquals(messages.length, 1, "应有 1 条消息在队列中");
 
       // 验证消息可反序列化为合法的 JudgeTask
       const parsed = JSON.parse(messages[0]) as JudgeTask;
       assertEquals(parsed.submission_id, "test-sub-001");
       assertEquals(
-        parsed.runtime_config.evaluator.image,
+        (parsed.runtime_config as RuntimeConfig).evaluator.image,
         "noj-evaluator-python",
       );
       assertEquals(parsed.code, "print(42)");
@@ -112,9 +144,9 @@ Deno.test({
         makeTask({ submission_id: "low-1", priority: "low" }),
       );
 
-      assertEquals(fake.getMessages("noj:judge:queue:high").length, 1);
-      assertEquals(fake.getMessages("noj:judge:queue:low").length, 1);
-      assertEquals(fake.getMessages("noj:judge:queue:medium").length, 0);
+      assertEquals(fake.getMessages("noj:judge:queue:ai:high").length, 1);
+      assertEquals(fake.getMessages("noj:judge:queue:ai:low").length, 1);
+      assertEquals(fake.getMessages("noj:judge:queue:ai:medium").length, 0);
     } finally {
       await fake.stop();
       resetRedisForTest();
@@ -165,7 +197,7 @@ Deno.test({
       await redis.connect();
       await redis.ping();
 
-      fake.seedQueue("noj:judge:queue:high", JUDGE_QUEUE_CAPACITY.high);
+      fake.seedQueue("noj:judge:queue:ai:high", JUDGE_QUEUE_CAPACITY.high);
       await assertRejects(
         async () => {
           await pushJudgeTask(makeTask({
@@ -243,7 +275,7 @@ Deno.test({
       });
       await pushJudgeTask(task);
 
-      const messages = fake.getMessages("noj:judge:queue:medium");
+      const messages = fake.getMessages("noj:judge:queue:ai:medium");
       const parsed = JSON.parse(messages[0]) as Record<string, unknown>;
 
       // 验证所有关键字段存在且类型正确

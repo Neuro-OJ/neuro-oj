@@ -41,6 +41,82 @@ async function makePaperPublic(
   }
 }
 
+/**
+ * 小题写入的草稿 revision 追踪（Handbook §2.4：小题编辑与草稿共用乐观锁）。
+ *
+ * 写入成功 → 采用响应里的新 `draft_revision`；失败（4xx）不递增，沿用当前值。
+ */
+const draftRevisions = new Map<string, number>();
+
+async function draftRevision(
+  app: ReturnType<typeof createApp>,
+  paperId: string,
+  token: string,
+): Promise<number> {
+  const cached = draftRevisions.get(paperId);
+  if (cached !== undefined) return cached;
+  const res = await jsonRequest(app, `/api/v1/problems/${paperId}/draft`, {
+    token,
+  });
+  const revision = (await res.json()).data.revision as number;
+  draftRevisions.set(paperId, revision);
+  return revision;
+}
+
+/** 带草稿乐观锁的小题写入请求（`If-Match` + 响应回写新 revision）。 */
+async function questionRequest(
+  app: ReturnType<typeof createApp>,
+  paperId: string,
+  path: string,
+  options: {
+    method: "POST" | "PUT" | "DELETE";
+    token: string;
+    body?: Record<string, unknown>;
+  },
+): Promise<Response> {
+  const revision = await draftRevision(app, paperId, options.token);
+  const res = await jsonRequest(app, path, {
+    method: options.method,
+    token: options.token,
+    headers: { "If-Match": String(revision) },
+    ...(options.body ? { body: options.body } : {}),
+  });
+  if (res.ok) {
+    const data = (await res.clone().json())?.data;
+    if (data && typeof data.draft_revision === "number") {
+      draftRevisions.set(paperId, data.draft_revision);
+    }
+  }
+  return res;
+}
+
+/**
+ * 发布套卷当前草稿为 V1（局部用例模板）。
+ *
+ * 已发布内容是**作答与公开读取**的事实源：非编辑者读小题、提交判卷都需要先发布。
+ */
+async function publishPaper(
+  app: ReturnType<typeof createApp>,
+  paperId: string,
+  token: string,
+): Promise<string> {
+  const revision = await draftRevision(app, paperId, token);
+  const res = await jsonRequest(app, `/api/v1/problems/${paperId}/versions`, {
+    method: "POST",
+    token,
+    headers: { "If-Match": String(revision) },
+    body: { change_note: "测试发布" },
+  });
+  if (res.status !== 201 && res.status !== 200) {
+    throw new Error(
+      `发布套卷失败: ${res.status} ${JSON.stringify(await res.json())}`,
+    );
+  }
+  const data = (await res.json()).data;
+  draftRevisions.set(paperId, data.draft_revision);
+  return data.version_id as string;
+}
+
 Deno.test({
   name:
     "objective route: 创建客观题套卷（is_objective 无需 runtime_config）→ 201",
@@ -153,9 +229,10 @@ Deno.test({
     const displayId = `${paper.type}${paper.number}`;
     await makePaperPublic(app, paper.id, owner);
 
-    // 用 display_id 创建小题（不再只支持 UUID）
-    const qRes = await jsonRequest(
+    // 用 display_id 创建小题（不再只支持 UUID；写入走共享草稿 + 乐观锁）
+    const qRes = await questionRequest(
       app,
+      paper.id,
       `/api/v1/problems/${displayId}/questions`,
       {
         method: "POST",
@@ -170,6 +247,9 @@ Deno.test({
     );
     assertEquals(qRes.status, 201);
     const q = (await qRes.json()).data;
+
+    // 非编辑者读取需要已发布版本：发布 V1 后再读
+    await publishPaper(app, paper.id, owner);
 
     // 用 display_id 读取小题列表
     const listRes = await jsonRequest(
@@ -249,8 +329,9 @@ Deno.test({
     await makePaperPublic(app, paperId, owner);
 
     // 创建单选小题
-    const qRes = await jsonRequest(
+    const qRes = await questionRequest(
       app,
+      paperId,
       `/api/v1/problems/${paperId}/questions`,
       {
         method: "POST",
@@ -270,8 +351,9 @@ Deno.test({
     assertEquals(q1.explanation, "1+1=2");
 
     // 创建判断题
-    const jRes = await jsonRequest(
+    const jRes = await questionRequest(
       app,
+      paperId,
       `/api/v1/problems/${paperId}/questions`,
       {
         method: "POST",
@@ -283,7 +365,10 @@ Deno.test({
     const j1 = (await jRes.json()).data;
     assertEquals(j1.options.length, 2); // 固定对/错
 
-    // owner 视图含答案
+    // 发布 V1：非编辑者读的是版本快照
+    await publishPaper(app, paperId, owner);
+
+    // owner 视图含答案（读草稿）
     const ownerView = await jsonRequest(
       app,
       `/api/v1/problems/${paperId}/questions`,
@@ -304,7 +389,7 @@ Deno.test({
     assertEquals(otherQuestions[0].answer, undefined);
     assertEquals(otherQuestions[0].explanation, undefined);
 
-    // 非 owner 管理小题被拒
+    // 非 owner 管理小题被拒（权限判定先于乐观锁，无需携带 revision）
     const forbidden = await jsonRequest(
       app,
       `/api/v1/problems/${paperId}/questions/${q1.id}`,
@@ -312,9 +397,22 @@ Deno.test({
     );
     assertEquals(forbidden.status, 403);
 
-    // 更新小题（owner）
-    const upd = await jsonRequest(
+    // 缺少预期 revision → 428（不静默覆盖他人草稿）
+    const missingRevision = await jsonRequest(
       app,
+      `/api/v1/problems/${paperId}/questions/${q1.id}`,
+      {
+        method: "PUT",
+        token: owner,
+        body: { explanation: "不应保存" },
+      },
+    );
+    assertEquals(missingRevision.status, 428);
+
+    // 更新小题（owner）
+    const upd = await questionRequest(
+      app,
+      paperId,
       `/api/v1/problems/${paperId}/questions/${q1.id}`,
       {
         method: "PUT",
@@ -323,18 +421,30 @@ Deno.test({
       },
     );
     assertEquals(upd.status, 200);
-    assertEquals((await upd.json()).data.explanation, "更新解析");
+    const updBody = (await upd.json()).data;
+    assertEquals(updBody.explanation, "更新解析");
+    assertEquals(typeof updBody.draft_revision, "number");
 
-    // 删除小题（owner）
-    const del = await jsonRequest(
+    // 删除小题（owner）：200 + 新 revision（不再 204）
+    const del = await questionRequest(
       app,
+      paperId,
       `/api/v1/problems/${paperId}/questions/${q1.id}`,
-      {
-        method: "DELETE",
-        token: owner,
-      },
+      { method: "DELETE", token: owner },
     );
-    assertEquals(del.status, 204);
+    assertEquals(del.status, 200);
+    assertEquals(
+      typeof (await del.json()).data.draft_revision,
+      "number",
+    );
+
+    // 已发布 V1 的快照不受草稿删除影响（作答视图仍能看到两题）
+    const publicAfterDelete = await jsonRequest(
+      app,
+      `/api/v1/problems/${paperId}/questions`,
+      { token: other },
+    );
+    assertEquals((await publicAfterDelete.json()).data.length, 2);
   },
 });
 
@@ -360,8 +470,9 @@ Deno.test({
     const paperId = (await created.json()).data.id;
     await makePaperPublic(app, paperId, owner);
 
-    const qRes = await jsonRequest(
+    const qRes = await questionRequest(
       app,
+      paperId,
       `/api/v1/problems/${paperId}/questions`,
       {
         method: "POST",
@@ -376,6 +487,9 @@ Deno.test({
       },
     );
     const q1 = (await qRes.json()).data;
+
+    // 判卷事实源是**已发布版本**快照：发布 V1 后再提交
+    await publishPaper(app, paperId, owner);
 
     // 答对 → 满分
     const okRes = await jsonRequest(
@@ -449,16 +563,21 @@ Deno.test({
     });
     const paperId = (await created.json()).data.id;
 
-    await jsonRequest(app, `/api/v1/problems/${paperId}/questions`, {
-      method: "POST",
-      token: owner,
-      body: {
-        type: "single",
-        prompt: "q",
-        options: [{ key: "A", text: "a" }],
-        answer: ["A"],
+    await questionRequest(
+      app,
+      paperId,
+      `/api/v1/problems/${paperId}/questions`,
+      {
+        method: "POST",
+        token: owner,
+        body: {
+          type: "single",
+          prompt: "q",
+          options: [{ key: "A", text: "a" }],
+          answer: ["A"],
+        },
       },
-    });
+    );
 
     const del = await jsonRequest(app, `/api/v1/problems/${paperId}`, {
       method: "DELETE",
@@ -531,8 +650,9 @@ Deno.test({
     const paperId = (await created.json()).data.id;
 
     // 指定 sort_order=5 创建第一题
-    const first = await jsonRequest(
+    const first = await questionRequest(
       app,
+      paperId,
       `/api/v1/problems/${paperId}/questions`,
       {
         method: "POST",
@@ -548,9 +668,10 @@ Deno.test({
     );
     assertEquals(first.status, 201);
 
-    // 第二题同样 sort_order=5 → 400
-    const dup = await jsonRequest(
+    // 第二题同样 sort_order=5 → 400（草稿内排序号唯一）
+    const dup = await questionRequest(
       app,
+      paperId,
       `/api/v1/problems/${paperId}/questions`,
       {
         method: "POST",
@@ -588,8 +709,9 @@ Deno.test({
     const paperId = (await created.json()).data.id;
 
     for (const bad of [-1, 1.5]) {
-      const res = await jsonRequest(
+      const res = await questionRequest(
         app,
+        paperId,
         `/api/v1/problems/${paperId}/questions`,
         {
           method: "POST",
@@ -649,8 +771,9 @@ Deno.test({
     assertEquals(qRes.status, 403);
 
     // admin 可创建小题并查看答案
-    const adminQ = await jsonRequest(
+    const adminQ = await questionRequest(
       app,
+      paperId,
       `/api/v1/problems/${paperId}/questions`,
       {
         method: "POST",
@@ -664,6 +787,9 @@ Deno.test({
       },
     );
     assertEquals(adminQ.status, 201);
+
+    // 非编辑者读版本快照：先发布 V1
+    await publishPaper(app, paperId, admin);
 
     // 普通用户公开视图：题目可读但答案被裁剪
     const view = await jsonRequest(
@@ -706,8 +832,9 @@ Deno.test({
     const paperId = (await created.json()).data.id;
 
     // 单选 → 判断题：旧答案 ["A"] 不是布尔 → 400（需同时传新 answer）
-    const single = await jsonRequest(
+    const single = await questionRequest(
       app,
+      paperId,
       `/api/v1/problems/${paperId}/questions`,
       {
         method: "POST",
@@ -721,8 +848,9 @@ Deno.test({
       },
     );
     const singleQ = (await single.json()).data;
-    const toJudge = await jsonRequest(
+    const toJudge = await questionRequest(
       app,
+      paperId,
       `/api/v1/problems/${paperId}/questions/${singleQ.id}`,
       {
         method: "PUT",
@@ -733,8 +861,9 @@ Deno.test({
     assertEquals(toJudge.status, 400);
 
     // 判断题 → 单选：不传 options 固定对/错不可复用 → 400
-    const judge = await jsonRequest(
+    const judge = await questionRequest(
       app,
+      paperId,
       `/api/v1/problems/${paperId}/questions`,
       {
         method: "POST",
@@ -743,8 +872,9 @@ Deno.test({
       },
     );
     const judgeQ = (await judge.json()).data;
-    const toSingle = await jsonRequest(
+    const toSingle = await questionRequest(
       app,
+      paperId,
       `/api/v1/problems/${paperId}/questions/${judgeQ.id}`,
       {
         method: "PUT",
@@ -755,8 +885,9 @@ Deno.test({
     assertEquals(toSingle.status, 400);
 
     // 单选 → 多选：旧答案 1 项对多选仍合法（非空不重复）→ 200
-    const toMultiple = await jsonRequest(
+    const toMultiple = await questionRequest(
       app,
+      paperId,
       `/api/v1/problems/${paperId}/questions/${singleQ.id}`,
       {
         method: "PUT",
@@ -766,5 +897,108 @@ Deno.test({
     );
     assertEquals(toMultiple.status, 200);
     assertEquals((await toMultiple.json()).data.answer, ["A"]);
+  },
+});
+
+Deno.test({
+  name:
+    "objective route: 编辑者读草稿、作答者读版本快照（发布 V2 后才可见新小题）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const owner = await createUserToken("user");
+    const solver = await createUserToken("user");
+
+    const created = await jsonRequest(app, "/api/v1/problems", {
+      method: "POST",
+      token: owner,
+      body: {
+        type: "U",
+        is_objective: true,
+        title: `快照隔离卷 ${Date.now()}`,
+        description: "d",
+      },
+    });
+    const paperId = (await created.json()).data.id;
+    await makePaperPublic(app, paperId, owner);
+
+    // V1：一题
+    const q1Res = await questionRequest(
+      app,
+      paperId,
+      `/api/v1/problems/${paperId}/questions`,
+      {
+        method: "POST",
+        token: owner,
+        body: {
+          type: "single",
+          prompt: "V1 题目",
+          options: [{ key: "A", text: "a" }, { key: "B", text: "b" }],
+          answer: ["A"],
+        },
+      },
+    );
+    const q1 = (await q1Res.json()).data;
+    await publishPaper(app, paperId, owner);
+
+    // 草稿：改题干 + 加第二题（发布前不影响作答视图）
+    const edited = await questionRequest(
+      app,
+      paperId,
+      `/api/v1/problems/${paperId}/questions/${q1.id}`,
+      {
+        method: "PUT",
+        token: owner,
+        body: { prompt: "V2 题目" },
+      },
+    );
+    assertEquals(edited.status, 200);
+    await questionRequest(
+      app,
+      paperId,
+      `/api/v1/problems/${paperId}/questions`,
+      {
+        method: "POST",
+        token: owner,
+        body: {
+          type: "judge",
+          prompt: "V2 新增判断",
+          answer: [true],
+        },
+      },
+    );
+
+    // 编辑者读草稿：两题、新题干
+    const draftView = await jsonRequest(
+      app,
+      `/api/v1/problems/${paperId}/questions`,
+      { token: owner },
+    );
+    const draftQuestions = (await draftView.json()).data;
+    assertEquals(draftQuestions.length, 2);
+    assertEquals(draftQuestions[0].prompt, "V2 题目");
+
+    // 作答者读版本快照：仍是一题、旧题干
+    const solverView = await jsonRequest(
+      app,
+      `/api/v1/problems/${paperId}/questions`,
+      { token: solver },
+    );
+    const solverQuestions = (await solverView.json()).data;
+    assertEquals(solverQuestions.length, 1);
+    assertEquals(solverQuestions[0].prompt, "V1 题目");
+    assertEquals(solverQuestions[0].answer, undefined);
+
+    // 发布 V2 后作答视图切到新快照
+    await publishPaper(app, paperId, owner);
+    const solverView2 = await jsonRequest(
+      app,
+      `/api/v1/problems/${paperId}/questions`,
+      { token: solver },
+    );
+    const solverQuestions2 = (await solverView2.json()).data;
+    assertEquals(solverQuestions2.length, 2);
+    assertEquals(solverQuestions2[0].prompt, "V2 题目");
   },
 });

@@ -147,3 +147,76 @@ Deno.test("projection: visibility=hidden 同样被剥离", () => {
     .cases;
   assertEquals(cases, [{ id: "c1", visibility: "visible", result: "ok" }]);
 });
+
+Deno.test("projection: OI在非竞赛中也禁止隐藏内容与checker诊断", () => {
+  const projected = applySubmissionProjection({
+    id: "s",
+    user_id: "u",
+    output: "secret",
+    details: {
+      oi: {
+        verdict: "WA",
+        backend: "native",
+        checker_message: "secret",
+        subtasks: [{
+          id: "s1",
+          score: 0,
+          verdict: "WA",
+          cases: [{
+            case_id: "1",
+            verdict: "WA",
+            input: "secret",
+            actual_output: "secret",
+            time_ms: 1,
+          }],
+        }],
+      },
+    },
+  }, { viewerId: "u", isAdmin: false, isOwner: true });
+  assertEquals(JSON.stringify(projected).includes("secret"), false);
+  assertEquals((projected as Record<string, unknown>).verdict, "WA");
+});
+
+Deno.test("projection: 仅公开标准摘要和 fuel，不暴露隐藏测试或任意计量字段", () => {
+  const hash = "a".repeat(64);
+  const projected = applySubmissionProjection({
+    id: "s",
+    user_id: "u",
+    result: {
+      details: {
+        metering: {
+          standard_version: "noj-wasm-v1",
+          standard_hash: hash,
+          source_hash: hash,
+          evaluation_hash: hash,
+          comparison_hash: hash,
+          comparable: true,
+          secret: "hidden-data",
+        },
+        oi: {
+          backend: "wasm",
+          verdict: "AC",
+          subtasks: [{
+            id: "all",
+            cases: [{
+              status: "AC",
+              fuel_consumed: 10,
+              fuel_budget: 100,
+              input: "hidden-data",
+            }],
+          }],
+        },
+      },
+    },
+  }, { viewerId: "u", isAdmin: false, isOwner: true });
+  assertEquals(JSON.stringify(projected).includes("hidden-data"), false);
+  assertEquals((projected.result as Record<string, unknown>).metering, {
+    standard_version: "noj-wasm-v1",
+    standard_hash: hash,
+    source_hash: hash,
+    evaluation_hash: hash,
+    comparison_hash: hash,
+    comparable: true,
+    legacy: false,
+  });
+});

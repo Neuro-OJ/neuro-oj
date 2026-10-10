@@ -32,6 +32,7 @@ export interface ProblemArgs {
   title?: string;
   type?: string;
   difficulty?: string;
+  judgeType?: "dual" | "oi";
 }
 
 /** 解析 problem 子命令参数。 */
@@ -74,6 +75,15 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
         out.difficulty = takeValue("--difficulty", i);
         i++;
         break;
+      case "--judge-type": {
+        const value = takeValue("--judge-type", i);
+        if (value !== "dual" && value !== "oi") {
+          throw new UsageError("--judge-type 仅支持 dual/oi");
+        }
+        out.judgeType = value;
+        i++;
+        break;
+      }
       case "--strict":
         out.strict = true;
         break;
@@ -294,16 +304,21 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
     title?: string;
     type?: string;
     difficulty?: string;
+    judgeType?: "dual" | "oi";
   } = {
     slug: args.slug,
     title: args.title,
     type: args.type,
     difficulty: args.difficulty,
+    judgeType: args.judgeType,
   };
 
   if (interactive) {
     try {
-      answers = await guideProblemInit(realIO(), answers);
+      answers = {
+        ...(await guideProblemInit(realIO(), answers)),
+        judgeType: args.judgeType,
+      };
     } catch (err) {
       // 用户在确认环节取消：不是错误，用 0 退出（与常见 CLI 一致）
       if ((err as Error).message === "已取消") {
@@ -338,6 +353,14 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
         `--difficulty 仅支持 easy/medium/hard，收到 "${answers.difficulty}"`,
       );
     }
+    if (
+      answers.judgeType !== undefined &&
+      answers.judgeType !== "dual" && answers.judgeType !== "oi"
+    ) {
+      throw new UsageError(
+        `--judge-type 仅支持 dual/oi，收到 "${answers.judgeType}"`,
+      );
+    }
   } catch (err) {
     if (err instanceof UsageError) throw err;
     throw new UsageError((err as Error).message);
@@ -348,6 +371,7 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
     title: answers.title,
     type: answers.type,
     difficulty: answers.difficulty,
+    judgeType: answers.judgeType,
     root: args.dir,
   });
   console.log(`已生成题目骨架：${result.dir}`);

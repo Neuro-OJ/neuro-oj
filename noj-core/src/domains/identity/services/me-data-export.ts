@@ -5,12 +5,12 @@
  * 仅导出**本人**数据；不含他人信息。
  */
 
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
   communityComments,
   communityPosts,
-  evaluationResults,
+  evaluationAttempts,
   submissions,
   userConsents,
   users,
@@ -85,12 +85,16 @@ export async function buildUserDataExport(
       code: submissions.code,
       status: submissions.status,
       created_at: submissions.created_at,
-      score: evaluationResults.score,
+      // 导出最近一次运行的分数（优先最近终态尝试，存量行回退有效成绩指针）
+      score: evaluationAttempts.score,
     })
     .from(submissions)
     .leftJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, submissions.id),
+      evaluationAttempts,
+      eq(
+        evaluationAttempts.id,
+        sql`coalesce(${submissions.latest_attempt_id}, ${submissions.effective_attempt_id})`,
+      ),
     )
     .where(eq(submissions.user_id, userId))
     .orderBy(desc(submissions.created_at));

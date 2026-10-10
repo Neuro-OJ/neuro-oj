@@ -1,11 +1,15 @@
 # Neuro OJ (NOJ) — AI 编码助手项目知识库
 
 > 本文档面向 AI 编码助手（Claude Code、OpenCode 等）撰写，记录项目架构、规范、AI
-> 必须遵守的要求与开发约定。**本文档只放“规则 + 链接”，详细内容见各模块文档与 `dev-docs/engineering/`。**
+> 必须遵守的要求与开发约定。**本文档只放“规则 + 链接”，详细内容见各模块文档与
+> `dev-docs/engineering/`。**
 
-Neuro OJ 是一个面向 **AI 领域认证与竞赛** 的在线评测（Online Judge）平台，覆盖 **IOAI / NOAI / LMCC** 等场景，支持客观题、代码题、LLM 工程题与产物提交（类 Kaggle）评测。
+Neuro OJ 是一个面向 **AI 领域认证与竞赛** 的在线评测（Online Judge）平台，覆盖
+**IOAI / NOAI / LMCC** 等场景，支持客观题、代码题、LLM 工程题与产物提交（类
+Kaggle）评测。
 
-> **注意：** Neuro OJ 与 CCF、LMCC、IOAI 及 NOAI 无任何官方关系，为独立社区项目。
+> **注意：** Neuro OJ 与 CCF、LMCC、IOAI 及 NOAI
+> 无任何官方关系，为独立社区项目。
 
 ---
 
@@ -44,16 +48,24 @@ NOJ 分为多个模块，通过 RESTful API、Redis MQ 和内部 HTTP 服务协�
                               +---------+
 ```
 
-| 模块 | 运行时 | 职责 |
-|---|---|---|
-| noj-core | Deno 2 + Hono | RESTful API、JWT + RBAC、业务 CRUD、Redis MQ Producer/Consumer、审计 |
-| noj-ui | Nuxt 4 + Vue 3 | Web 前端、Nitro 代理注入 JWT Cookie |
-| noj-judge | Rust + Tokio | Docker 沙箱评测、双容器 Evaluator + Solution |
-| noj-llm-gateway | Deno + Hono | LLM 调用可信代理、Provider Key 加密、eval_token、限流/额度/审计 |
-| noj-lmcc-extension | VS Code Extension API + TypeScript | LMCC IDE 登录、题目选择、Python 代码提交与结果反馈 |
-| noj-cli | Deno 2（`deno compile` 单二进制） | 生产安装、启停、升级、备份/恢复/演练、配置校验 |
+> **题目版本管理（2026-10-10 起）**：题目内容以「共享草稿 → 不可变版本」发布，
+> 提交绑定提交时版本，评测写入 `evaluation_attempts` 并按有效版本策略（`any` /
+> `exact(X)`）物化有效成绩；详见[用户文档](./noj-docs/docs/features/problem-versioning.md)。
+> 本次为 core / judge / gateway / UI / IDE / CLI
+> 的协调升级，不支持新旧评测协议混跑。
 
-详细架构见 [noj-docs/docs/system/architecture.md](noj-docs/docs/system/architecture.md) 和各模块文档。
+| 模块               | 运行时                             | 职责                                                                 |
+| ------------------ | ---------------------------------- | -------------------------------------------------------------------- |
+| noj-core           | Deno 2 + Hono                      | RESTful API、JWT + RBAC、业务 CRUD、Redis MQ Producer/Consumer、审计 |
+| noj-ui             | Nuxt 4 + Vue 3                     | Web 前端、Nitro 代理注入 JWT Cookie                                  |
+| noj-judge          | Rust + Tokio                       | Docker 沙箱评测、双容器 Evaluator + Solution                         |
+| noj-llm-gateway    | Deno + Hono                        | LLM 调用可信代理、Provider Key 加密、eval_token、限流/额度/审计      |
+| noj-lmcc-extension | VS Code Extension API + TypeScript | LMCC IDE 登录、题目选择、Python 代码提交与结果反馈                   |
+| noj-cli            | Deno 2（`deno compile` 单二进制）  | 生产安装、启停、升级、备份/恢复/演练、配置校验                       |
+
+详细架构见
+[noj-docs/docs/system/architecture.md](noj-docs/docs/system/architecture.md)
+和各模块文档。
 
 ---
 
@@ -61,29 +73,30 @@ NOJ 分为多个模块，通过 RESTful API、Redis MQ 和内部 HTTP 服务协�
 
 ### 2.1 AI 技能
 
-AI 技能由开发环境按需提供，仓库不再提交 Claude Code、OpenCode、Codex 等工具的个人配置或重复技能副本。适用领域如下：
+AI 技能由开发环境按需提供，仓库不再提交 Claude Code、OpenCode、Codex
+等工具的个人配置或重复技能副本。适用领域如下：
 
-| 技能 | 适用场景 |
-|---|---|
-| `deno-expert` / `hono` | Deno / Hono 开发 |
-| `nuxt` / `vue` | 前端开发 |
-| `redis-core` | Redis MQ / 缓存 |
-| `docker-expert` | judge 沙箱、docker-compose |
-| `supabase-postgres-best-practices` | PostgreSQL + Drizzle |
-| `review` | 代码评审 |
+| 技能                               | 适用场景                   |
+| ---------------------------------- | -------------------------- |
+| `deno-expert` / `hono`             | Deno / Hono 开发           |
+| `nuxt` / `vue`                     | 前端开发                   |
+| `redis-core`                       | Redis MQ / 缓存            |
+| `docker-expert`                    | judge 沙箱、docker-compose |
+| `supabase-postgres-best-practices` | PostgreSQL + Drizzle       |
+| `review`                           | 代码评审                   |
 
 ### 2.2 子模块文档优先加载
 
-| 当前路径 | 优先加载 |
-|---|---|
-| 仓库根 | 本文档 |
-| `noj-core/` | `noj-core/AGENTS.md`（`CLAUDE.md` 为其软链接） |
-| `noj-ui/` | `noj-ui/AGENTS.md`（`CLAUDE.md` 为其软链接） |
-| `noj-judge/` | `noj-judge/AGENTS.md`（`CLAUDE.md` 为其软链接） |
-| `noj-llm-gateway/` | `noj-llm-gateway/CLAUDE.md` |
-| `noj-cli/` | `noj-cli/README.md` |
-| `noj-tests/` | `noj-tests/E2E_TESTING.md` |
-| `noj-lmcc-extension/` | 暂无模块文档，以本文档与 `package.json` 为准 |
+| 当前路径              | 优先加载                                        |
+| --------------------- | ----------------------------------------------- |
+| 仓库根                | 本文档                                          |
+| `noj-core/`           | `noj-core/AGENTS.md`（`CLAUDE.md` 为其软链接）  |
+| `noj-ui/`             | `noj-ui/AGENTS.md`（`CLAUDE.md` 为其软链接）    |
+| `noj-judge/`          | `noj-judge/AGENTS.md`（`CLAUDE.md` 为其软链接） |
+| `noj-llm-gateway/`    | `noj-llm-gateway/CLAUDE.md`                     |
+| `noj-cli/`            | `noj-cli/README.md`                             |
+| `noj-tests/`          | `noj-tests/E2E_TESTING.md`                      |
+| `noj-lmcc-extension/` | 暂无模块文档，以本文档与 `package.json` 为准    |
 
 ---
 
@@ -117,14 +130,14 @@ neuro-oj/
 
 ## 4. 技术栈
 
-| 模块 | 关键依赖 |
-|---|---|
-| noj-core | Deno 2、Hono、Drizzle ORM、postgres.js、ioredis、jose、bcryptjs |
-| noj-ui | Nuxt 4、Vue 3、Nuxt UI、Tailwind CSS、Monaco Editor |
-| noj-judge | Rust、Tokio、bollard、redis-rs、reqwest、zip |
-| noj-llm-gateway | Deno 2、Hono、ioredis、postgres.js |
-| noj-lmcc-extension | VS Code Extension API、TypeScript、Node.js 内置 HTTP |
-| 基础设施 | PostgreSQL 16、Redis 7、MinIO/S3 |
+| 模块               | 关键依赖                                                        |
+| ------------------ | --------------------------------------------------------------- |
+| noj-core           | Deno 2、Hono、Drizzle ORM、postgres.js、ioredis、jose、bcryptjs |
+| noj-ui             | Nuxt 4、Vue 3、Nuxt UI、Tailwind CSS、Monaco Editor             |
+| noj-judge          | Rust、Tokio、bollard、redis-rs、reqwest、zip                    |
+| noj-llm-gateway    | Deno 2、Hono、ioredis、postgres.js                              |
+| noj-lmcc-extension | VS Code Extension API、TypeScript、Node.js 内置 HTTP            |
+| 基础设施           | PostgreSQL 16、Redis 7、MinIO/S3                                |
 
 完整依赖清单见各模块 `CLAUDE.md` / `deno.json` / `Cargo.toml`。
 
@@ -134,11 +147,11 @@ neuro-oj/
 
 ### 5.1 默认凭据（仅开发）
 
-| 服务 | 端口 | 凭据 |
-|---|---|---|
-| PostgreSQL | 5432 | `noj / noj / noj` |
-| Redis | 6379 | 无认证 |
-| MinIO | 9000/9001 | `minioadmin / minioadmin` |
+| 服务       | 端口      | 凭据                      |
+| ---------- | --------- | ------------------------- |
+| PostgreSQL | 5432      | `noj / noj / noj`         |
+| Redis      | 6379      | 无认证                    |
+| MinIO      | 9000/9001 | `minioadmin / minioadmin` |
 
 ### 5.2 两段式开发流程
 
@@ -152,16 +165,19 @@ neuro-oj/
 noj-cli check|status|start|stop|restart|logs|update|backup|verify|config|uninstall
 ```
 
-> 以上仅列常用命令；另有 `backup <create|verify|restore|drill|list|prune|schedule>`、
-> 独立 Judge（`judge *`）、离线题目包（`problem *`）与服务端管理（`db`/`init`/`bootstrap`）
+> 以上仅列常用命令；另有
+> `backup <create|verify|restore|drill|list|prune|schedule>`、 独立
+> Judge（`judge *`）、离线题目包（`problem *`）与服务端管理（`db`/`init`/`bootstrap`）
 > 等命令，完整列表以 `noj-cli --help` 为准。
 
 > **`setup.sh` 与 `scripts/deploy/install.sh` 已移除**：`install` 自己从 Release
-> 下载 `docker-compose.prod.yml` / `.env.prod.example` 并校验 SHA-256，无需自举脚本。
-> 手动下载步骤见 `noj-docs/docs/operators/production-deploy.md`。
+> 下载 `docker-compose.prod.yml` / `.env.prod.example` 并校验
+> SHA-256，无需自举脚本。 手动下载步骤见
+> `noj-docs/docs/operators/production-deploy.md`。
 
-> **`deploy` / `maintain` / `stack` / `run-server` / `doctor` 命令已移除**：它们承载的
-> JSON 编排模式（`noj-deploy.json` + `noj-secrets.json`）与开发部署模式实测从未被
+> **`deploy` / `maintain` / `stack` / `run-server` / `doctor`
+> 命令已移除**：它们承载的 JSON 编排模式（`noj-deploy.json` +
+> `noj-secrets.json`）与开发部署模式实测从未被
 > 使用且已损坏，已随重写删除。若目录里仍有这两个 JSON 配置，可直接删除。
 
 **源码开发**是两段式：先起基础设施，再按模块启动。
@@ -172,16 +188,17 @@ cd noj-core && deno task dev-setup   # 首次：迁移 + 系统数据 + 管理�
 cd noj-core && deno task dev         # 各模块各自前台启动（ui/judge/gateway 同理）
 ```
 
-> 根目录 `docker-compose.yml` 除基础设施外还会构建并启动 `llm-gateway` 容器（端口 8001）。
-> 若要从源码运行 `noj-llm-gateway`（`deno task dev`），请先 `docker compose stop llm-gateway`，
-> 否则端口冲突。
+> 根目录 `docker-compose.yml` 除基础设施外还会构建并启动 `llm-gateway`
+> 容器（端口 8001）。 若要从源码运行 `noj-llm-gateway`（`deno task dev`），请先
+> `docker compose stop llm-gateway`， 否则端口冲突。
 
-> 模块内的 `deno run -A src/cli.ts <命令>` 仅用于**开发该模块自身**（如 `--help`、
-> 单元测试），不再是部署入口。
+> 模块内的 `deno run -A src/cli.ts <命令>` 仅用于**开发该模块自身**（如
+> `--help`、 单元测试），不再是部署入口。
 
-> **过渡期**：`scripts/deploy/deploy.sh` 与 `restore-drill.sh` 仍在仓库中，但已加弃用
-> 闸门（每次执行需输入 `y` 确认；自动化可用 `NOJ_ACCEPT_DEPRECATED=1` 跳过）。
-> 新流程请使用 `noj-cli`；这两个脚本将在后续版本删除。
+> **过渡期**：`scripts/deploy/deploy.sh` 与 `restore-drill.sh`
+> 仍在仓库中，但已加弃用 闸门（每次执行需输入 `y` 确认；自动化可用
+> `NOJ_ACCEPT_DEPRECATED=1` 跳过）。 新流程请使用
+> `noj-cli`；这两个脚本将在后续版本删除。
 
 ### 5.3 手动启动
 
@@ -198,8 +215,10 @@ cd noj-llm-gateway && deno task dev   # 可选；需先 docker compose stop llm-
 
 1. `JWT_SECRET` 强度与占位值校验（≥32 字符，失败退出）
 2. `TFA_ENCRYPTION_KEY` 校验（必须独立于 `JWT_SECRET`，失败退出）
-3. 数据库迁移、root 系统用户、RBAC 种子、系统设置注册表与缓存初始化（均为致命步骤）
-4. 邮件服务就绪检查（非致命）、生产配置校验（致命）与对象存储 bucket 检查（非致命）
+3. 数据库迁移、root 系统用户、RBAC
+   种子、系统设置注册表与缓存初始化（均为致命步骤）
+4. 邮件服务就绪检查（非致命）、生产配置校验（致命）与对象存储 bucket
+   检查（非致命）
 5. 连接 Redis（失败 → degraded，HTTP 仍启动）
 6. 启动后台消费者（评测结果、私信审核、搜索索引）、队列 sweeper 与 SSE 事件订阅
 7. 启动 HTTP
@@ -223,11 +242,14 @@ cd noj-llm-gateway && deno task dev   # 可选；需先 docker compose stop llm-
 
 ### 7.1 分支与发布纪律
 
-- `main` 为唯一集成分支。**禁止直接推送 `main`**：所有变更（含功能、缺陷修复、文档）一律从
-  `main` 派生主题分支，通过 Pull Request 合入 `main`（流程见 §9.1）。
+- `main` 为唯一集成分支。**禁止直接推送
+  `main`**：所有变更（含功能、缺陷修复、文档）一律从 `main` 派生主题分支，通过
+  Pull Request 合入 `main`（流程见 §9.1）。
 - 合入前必须完成相关检查与验收，并等待 CI 通过。
-- `main` 分支必须始终保持可部署状态；发布应从已验证的 `main` 提交或版本标签构建。
-- AI 工具配置、编辑器配置、临时日志、备份文件和其他本地开发产物不得提交到 `main`。
+- `main` 分支必须始终保持可部署状态；发布应从已验证的 `main`
+  提交或版本标签构建。
+- AI 工具配置、编辑器配置、临时日志、备份文件和其他本地开发产物不得提交到
+  `main`。
 
 ### 7.2 Jujutsu (jj)
 
@@ -237,10 +259,13 @@ cd noj-llm-gateway && deno task dev   # 可选；需先 docker compose stop llm-
 ### 7.3 提交信息
 
 - 格式：`<type>(<scope>): <中文描述>`
-- type：`feat` / `fix` / `docs` / `style` / `refactor` / `perf` / `test` / `chore` / `ci` / `build`
+- type：`feat` / `fix` / `docs` / `style` / `refactor` / `perf` / `test` /
+  `chore` / `ci` / `build`
 - scope：
-  - 模块：`core` / `ui` / `judge` / `gateway` / `cli` / `lmcc` / `docs`（noj-docs 文档站） / `tests`（noj-tests）
-  - 横切：`root`（根目录与 `scripts/`、`dev-docs/` 等）/ `ci`（工作流）/ `deps`（依赖升级）
+  - 模块：`core` / `ui` / `judge` / `gateway` / `cli` / `lmcc` /
+    `docs`（noj-docs 文档站） / `tests`（noj-tests）
+  - 横切：`root`（根目录与 `scripts/`、`dev-docs/` 等）/ `ci`（工作流）/
+    `deps`（依赖升级）
   - 一次改动涉及多个模块时用英文逗号分隔，不加空格，如 `feat(core,ui): ...`
 
 ### 7.4 项目语言
@@ -257,7 +282,8 @@ cd noj-llm-gateway && deno task dev   # 可选；需先 docker compose stop llm-
 
 ### 8.1 不可逾越的红线
 
-1. 禁止直接推送 `main`；一律通过 PR 合入，合入前完成相关检查和验收，确保 `main` 保持可部署状态
+1. 禁止直接推送 `main`；一律通过 PR 合入，合入前完成相关检查和验收，确保 `main`
+   保持可部署状态
 2. 禁止未签名提交
 3. 禁止修改 `_journal.json`
 4. 禁止手动修改 `deno.lock` / `Cargo.lock`
@@ -274,11 +300,12 @@ cd noj-llm-gateway && deno task dev   # 可选；需先 docker compose stop llm-
 - Deno 错误用 `AppError` 继承体系；Rust 用 `anyhow::Result`
 - 日志生产环境自动脱敏，不得直接输出敏感字段
 - **多副本约束**：禁止新增进程内可变状态（配置缓存、计数器、节流/去重标记等）。
-  若确有必要，必须在 [`dev-docs/engineering/domain-boundaries.md`](dev-docs/engineering/domain-boundaries.md#多副本约束2026-09-12-架构评审-26)
-  的「多副本约束」表中登记为"单副本专用"并写明多副本后果。
-  跨副本共享状态一律走 Redis（Pub/Sub 或 INCR）/DB；
-  **配置失效必须"重新加载"而非仅 `cache.delete()`**（`getSetting()` 缓存未命中
-  不回查 DB，只删缓存会读到 env/default 而非真实新值）。
+  若确有必要，必须在
+  [`dev-docs/engineering/domain-boundaries.md`](dev-docs/engineering/domain-boundaries.md#多副本约束2026-09-12-架构评审-26)
+  的「多副本约束」表中登记为"单副本专用"并写明多副本后果。 跨副本共享状态一律走
+  Redis（Pub/Sub 或 INCR）/DB； **配置失效必须"重新加载"而非仅
+  `cache.delete()`**（`getSetting()` 缓存未命中 不回查 DB，只删缓存会读到
+  env/default 而非真实新值）。
 - **迁移安全**：禁止 `ALTER TABLE ... ADD COLUMN ... NOT NULL` 不带 `DEFAULT`
   （存量库升级必失败，空库测试无法发现）。必须用三步式：加可空列 → 回填 →
   `SET NOT NULL`。由 `scripts/check-migration-safety.ts` 强制。
@@ -310,7 +337,8 @@ cd noj-llm-gateway && deno task dev   # 可选；需先 docker compose stop llm-
   - noj-core 共享测试：`cd noj-core && bash scripts/test-shared.sh`
   - noj-tests E2E：`cd noj-tests && deno task test:domain <domain>`
   - 跨域 E2E：`cd noj-tests && deno task test:domain cross-domain`
-- 这些命令会统一处理迁移/种子、环境变量与测试路径；手拼 `deno test` 会丢失必要配置，CI 与本地必须使用同一套命令。
+- 这些命令会统一处理迁移/种子、环境变量与测试路径；手拼 `deno test`
+  会丢失必要配置，CI 与本地必须使用同一套命令。
 
 ### 8.6 搜索工具要求
 
@@ -348,9 +376,11 @@ jj config get signing.key
 
 非平凡变更必须新增或更新 `.agents/notes/implemented/` 下对应记录。
 
-- 分类：`feature` / `bug-fix` / `simplification` / `architecture` / `process` / `testing`
+- 分类：`feature` / `bug-fix` / `simplification` / `architecture` / `process` /
+  `testing`
 - 路径：`implemented/<分类>/yyyy-mm-dd-topic-title.md`
-- 格式：`# Agent Note: <标题>` + `Status: implemented` + `## Problem` / `## Decision` / `## Alternatives considered` / `## Consequences`
+- 格式：`# Agent Note: <标题>` + `Status: implemented` + `## Problem` /
+  `## Decision` / `## Alternatives considered` / `## Consequences`
 - 校验：`deno run -A scripts/verify-agent-note-format.ts`
 - 详细约定见 `.agents/notes/README.md`
 
@@ -358,7 +388,9 @@ jj config get signing.key
 
 ## 10. 安全模型
 
-详细安全模型见 [noj-docs/docs/system/security.md](noj-docs/docs/system/security.md) 与 [dev-docs/engineering/defensive-patterns.md](dev-docs/engineering/defensive-patterns.md)。
+详细安全模型见
+[noj-docs/docs/system/security.md](noj-docs/docs/system/security.md) 与
+[dev-docs/engineering/defensive-patterns.md](dev-docs/engineering/defensive-patterns.md)。
 
 关键规则：
 
@@ -373,7 +405,8 @@ jj config get signing.key
 
 ## 11. 测试体系
 
-详细命令与分层见 [dev-docs/engineering/testing.md](dev-docs/engineering/testing.md)。
+详细命令与分层见
+[dev-docs/engineering/testing.md](dev-docs/engineering/testing.md)。
 
 - noj-core：`deno task test` / `test:parallel` / `test:smoke`
 - noj-ui：`deno task test`
@@ -387,7 +420,8 @@ jj config get signing.key
 
 - `.github/workflows/ci.yml`：PR/推送静态检查、测试、构建；按模块路径过滤
 - `.github/workflows/e2e.yml`：跨模块全链路 E2E + judge 沙箱
-- `.github/workflows/release.yml`：创建预发布 Release 时构建并发布镜像、`noj-cli` 二进制与部署文件（均附 `.sha256`）
+- `.github/workflows/release.yml`：创建预发布 Release
+  时构建并发布镜像、`noj-cli` 二进制与部署文件（均附 `.sha256`）
 - `.github/workflows/lint-workflows.yml`：工作流自身的 actionlint 检查
 - 文档链接、Agent Note 格式、导出 JSDoc 覆盖率均在 CI 检查
 
@@ -395,40 +429,49 @@ jj config get signing.key
 
 ## 13. 故障排查
 
-常见问题与处理见[常见问题](https://docs.noj.xyber-nova.space/intro/faq.html)和 `noj-cli status --dir <安装目录>`。
+常见问题与处理见[常见问题](https://docs.noj.xyber-nova.space/intro/faq.html)和
+`noj-cli status --dir <安装目录>`。
 
 ---
 
 ## 14. 参考文档
 
-| 文档 | 路径 |
-|---|---|
-| 用户 README | [`README.md`](./README.md) |
-| noj-core 详细文档 | [`noj-core/CLAUDE.md`](./noj-core/CLAUDE.md) |
-| noj-ui 详细文档 | [`noj-ui/CLAUDE.md`](./noj-ui/CLAUDE.md) |
-| noj-judge 详细文档 | [`noj-judge/CLAUDE.md`](./noj-judge/CLAUDE.md) |
-| noj-llm-gateway 详细文档 | [`noj-llm-gateway/CLAUDE.md`](./noj-llm-gateway/CLAUDE.md) |
-| E2E 测试指南 | [`noj-tests/E2E_TESTING.md`](./noj-tests/E2E_TESTING.md) |
-| noj-cli 使用说明 | [`noj-cli/README.md`](./noj-cli/README.md) |
-| 工程规范 | [`dev-docs/engineering/README.md`](./dev-docs/engineering/README.md) |
-| 系统架构 | [`noj-docs/docs/system/architecture.md`](./noj-docs/docs/system/architecture.md) |
-| 安全模型 | [`noj-docs/docs/system/security.md`](./noj-docs/docs/system/security.md) |
-| Superpowers 设计稿 | [`dev-docs/superpowers/specs/`](./dev-docs/superpowers/specs/) |
-| Superpowers 实施计划 | [`dev-docs/superpowers/plans/`](./dev-docs/superpowers/plans/) |
-| 品牌设计 Token | [`dev-docs/design/noj-design-tokens.md`](./dev-docs/design/noj-design-tokens.md) |
+| 文档                               | 路径                                                                                                                                                                   |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 用户 README                        | [`README.md`](./README.md)                                                                                                                                             |
+| 题目版本管理（草稿/发布/有效成绩） | [`noj-docs/docs/features/problem-versioning.md`](./noj-docs/docs/features/problem-versioning.md)                                                                       |
+| 题目版本管理决策记录               | [`.agents/notes/implemented/architecture/2026-10-10-problem-version-management.md`](./.agents/notes/implemented/architecture/2026-10-10-problem-version-management.md) |
+| noj-core 详细文档                  | [`noj-core/CLAUDE.md`](./noj-core/CLAUDE.md)                                                                                                                           |
+| noj-ui 详细文档                    | [`noj-ui/CLAUDE.md`](./noj-ui/CLAUDE.md)                                                                                                                               |
+| noj-judge 详细文档                 | [`noj-judge/CLAUDE.md`](./noj-judge/CLAUDE.md)                                                                                                                         |
+| noj-llm-gateway 详细文档           | [`noj-llm-gateway/CLAUDE.md`](./noj-llm-gateway/CLAUDE.md)                                                                                                             |
+| E2E 测试指南                       | [`noj-tests/E2E_TESTING.md`](./noj-tests/E2E_TESTING.md)                                                                                                               |
+| noj-cli 使用说明                   | [`noj-cli/README.md`](./noj-cli/README.md)                                                                                                                             |
+| 工程规范                           | [`dev-docs/engineering/README.md`](./dev-docs/engineering/README.md)                                                                                                   |
+| 系统架构                           | [`noj-docs/docs/system/architecture.md`](./noj-docs/docs/system/architecture.md)                                                                                       |
+| 安全模型                           | [`noj-docs/docs/system/security.md`](./noj-docs/docs/system/security.md)                                                                                               |
+| Superpowers 设计稿                 | [`dev-docs/superpowers/specs/`](./dev-docs/superpowers/specs/)                                                                                                         |
+| Superpowers 实施计划               | [`dev-docs/superpowers/plans/`](./dev-docs/superpowers/plans/)                                                                                                         |
+| 品牌设计 Token                     | [`dev-docs/design/noj-design-tokens.md`](./dev-docs/design/noj-design-tokens.md)                                                                                       |
 
 ---
 
 ## 15. 品牌与设计系统
 
-NOJ 使用统一的品牌视觉系统，所有前端与文档站颜色、圆角必须遵循 `dev-docs/design/noj-design-tokens.md` 中的 token 规范。
+NOJ 使用统一的品牌视觉系统，所有前端与文档站颜色、圆角必须遵循
+`dev-docs/design/noj-design-tokens.md` 中的 token 规范。
 
-- 品牌天青蓝：`#0284c7`（亮色 Sky 600）/ `#38bdf8`（暗色 Sky 400），用于高亮链接、关键按钮、激活项与品牌交互；
-- 深邃科技海军蓝：`#0b0f19`（暗色底）/ `#131b2e`（暗色面板）/ `#0f172a`（Slate 900 正文），用于品牌身份、暗色沉浸 Hero、终端；
-- 评测信号绿：`#059669`（亮色）/ `#00e07a`（暗色），用于评测状态、提交通过、运行就绪、动作；
+- 品牌天青蓝：`#0284c7`（亮色 Sky 600）/ `#38bdf8`（暗色 Sky
+  400），用于高亮链接、关键按钮、激活项与品牌交互；
+- 深邃科技海军蓝：`#0b0f19`（暗色底）/ `#131b2e`（暗色面板）/ `#0f172a`（Slate
+  900 正文），用于品牌身份、暗色沉浸 Hero、终端；
+- 评测信号绿：`#059669`（亮色）/
+  `#00e07a`（暗色），用于评测状态、提交通过、运行就绪、动作；
 - 圆角：2–6px 近直角（默认 4px）；数值文本使用 `tabular-nums`。
-- 修改品牌 token 时，必须同步更新 `noj-ui/app.vue`、`noj-ui/assets/css/main.css`、`noj-docs` 主题与本文档。
+- 修改品牌 token 时，必须同步更新
+  `noj-ui/app.vue`、`noj-ui/assets/css/main.css`、`noj-docs` 主题与本文档。
 
 ---
 
-_本文档为顶层 AI 入口。各模块详细约定、API 端点、Schema 字段、组件层级请参考对应子目录 `CLAUDE.md`。_
+_本文档为顶层 AI 入口。各模块详细约定、API 端点、Schema
+字段、组件层级请参考对应子目录 `CLAUDE.md`。_

@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   check,
   index,
@@ -10,6 +11,7 @@ import {
 import { sql } from "drizzle-orm";
 import { publicIdColumn } from "./common.ts";
 import { users } from "./identity.ts";
+import type { StorageObjectState } from "../../versioning/types.ts";
 
 /**
  * 评测镜像白名单表。
@@ -169,6 +171,10 @@ export const auditLogs = pgTable(
         'problems.runtime_config_changed',
         'problems.imported',
         'problems.review',
+        'problems.version_published',
+        'problems.effective_version_policy_changed',
+        'contest.problem_version_changed',
+        'contest.problem_effective_version_policy_changed',
         'trainings.update',
         'trainings.delete',
         'tags.create',
@@ -261,5 +267,40 @@ export const ipBans = pgTable(
   (table) => ({
     ipCidrIdx: index("idx_ip_bans_ip_or_cidr").on(table.ip_or_cidr),
     expiresIdx: index("idx_ip_bans_expires_at").on(table.expires_at),
+  }),
+);
+
+/**
+ * 存储对象登记表（Handbook §2.5）。
+ *
+ * 对象存储里的物理对象与业务引用之间的**唯一登记点**：删除必须锁定登记行、
+ * 检查全部引用，再进入 `deleting`；新引用不能绑定 `deleting/deleted` 对象。
+ * 上传补偿不得直接 `storage.delete()`——本地内容寻址会返回共享对象。
+ */
+export const storageObjects = pgTable(
+  "storage_objects",
+  {
+    /** `noj-storage://` 形式的稳定存储 URL，作为主键。 */
+    storage_url: text("storage_url").primaryKey(),
+    /** 内容哈希；存量登记允许为空，首次预检/使用时核实回填。 */
+    sha256: text("sha256"),
+    /** 字节数；存量登记允许为空。 */
+    byte_size: bigint("byte_size", { mode: "number" }),
+    /**
+     * 状态机：新对象登记为 `ready`；存量对象登记为 `unknown`（首次预检核实）；
+     * 删除流程依次经过 `deleting` → `deleted`。
+     */
+    state: text("state").$type<StorageObjectState>().notNull().default(
+      "unknown",
+    ),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    stateCheck: check(
+      "storage_objects_state_check",
+      sql`${table.state} IN ('unknown', 'ready', 'missing', 'deleting', 'deleted')`,
+    ),
+    stateIdx: index("idx_storage_objects_state").on(table.state),
+    sha256Idx: index("idx_storage_objects_sha256").on(table.sha256),
   }),
 );

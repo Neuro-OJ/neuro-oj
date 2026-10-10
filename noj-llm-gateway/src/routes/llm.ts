@@ -7,7 +7,12 @@ import type { RedisClient } from "../redis.ts";
 import type { GatewayConfig } from "../config.ts";
 import { verifyEvalToken } from "../crypto.ts";
 import { getProviderSecret } from "../providers.ts";
-import { enforceAndCount, settleUsage } from "../limits.ts";
+import {
+  enforceAndCount,
+  evalTokenIpSetKey,
+  evalTokenRevokedKey,
+  settleUsage,
+} from "../limits.ts";
 import { recordRejectedUsage, recordUsage } from "../usage.ts";
 import { calcBilledUsage } from "../billing.ts";
 import { inc, observe } from "../metrics.ts";
@@ -138,10 +143,10 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       return c.json({ error: "invalid_token" }, 401);
     }
 
-    // 校验 eval_token 是否已被吊销（决策 7 · AR-08 · 单次生命周期绑定）
-    const isRevoked = await deps.redis.get(
-      `llm:token:revoked:${payload.submission_id}`,
-    );
+    // 校验 eval_token 是否已被吊销（决策 7 · AR-08 · 单次生命周期绑定）。
+    // 版本化后按**评测尝试**吊销：同一提交的重测不受旧尝试吊销影响；
+    // 旧 core（token 无 attempt_id）继续读提交维度的旧键。
+    const isRevoked = await deps.redis.get(evalTokenRevokedKey(payload));
     if (isRevoked !== null) {
       return c.json({ error: "token_revoked" }, 401);
     }
@@ -150,7 +155,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     const ttlSeconds = Math.max(60, Math.floor(payload.exp - payload.iat));
     const clientIp = c.req.header("x-forwarded-for") ?? "unknown";
     try {
-      const ipKey = `llm:token-ips:${payload.submission_id}`;
+      const ipKey = evalTokenIpSetKey(payload);
       const added = await deps.redis.sadd(ipKey, clientIp);
       if (added === 0) {
         const ipCount = await deps.redis.scard(ipKey);
@@ -162,6 +167,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
             "eval_token 多来源 IP 调用: submission={submission_id} ip={client_ip} ips={ips}",
             {
               submission_id: payload.submission_id,
+              attempt_id: payload.attempt_id ?? null,
+              problem_version_id: payload.problem_version_id ?? null,
               client_ip: clientIp,
               ips: ipCount,
             },
@@ -244,6 +251,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       await recordRejectedUsage(deps.db, deps.redis, {
         id: crypto.randomUUID(),
         submission_id: payload.submission_id,
+        attempt_id: payload.attempt_id ?? null,
+        problem_version_id: payload.problem_version_id ?? null,
         problem_id: payload.problem_id,
         user_id: payload.user_id,
         provider_id: payload.provider_id,
@@ -281,6 +290,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       await recordUsage(deps.db, {
         id: crypto.randomUUID(),
         submission_id: payload.submission_id,
+        attempt_id: payload.attempt_id ?? null,
+        problem_version_id: payload.problem_version_id ?? null,
         problem_id: payload.problem_id,
         user_id: payload.user_id,
         provider_id: payload.provider_id,
@@ -315,6 +326,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       await recordUsage(deps.db, {
         id: crypto.randomUUID(),
         submission_id: payload.submission_id,
+        attempt_id: payload.attempt_id ?? null,
+        problem_version_id: payload.problem_version_id ?? null,
         problem_id: payload.problem_id,
         user_id: payload.user_id,
         provider_id: payload.provider_id,
@@ -381,6 +394,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       await recordUsage(deps.db, {
         id: crypto.randomUUID(),
         submission_id: payload.submission_id,
+        attempt_id: payload.attempt_id ?? null,
+        problem_version_id: payload.problem_version_id ?? null,
         problem_id: payload.problem_id,
         user_id: payload.user_id,
         provider_id: payload.provider_id,
@@ -406,6 +421,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     await recordUsage(deps.db, {
       id: crypto.randomUUID(),
       submission_id: payload.submission_id,
+      attempt_id: payload.attempt_id ?? null,
+      problem_version_id: payload.problem_version_id ?? null,
       problem_id: payload.problem_id,
       user_id: payload.user_id,
       provider_id: payload.provider_id,

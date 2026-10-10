@@ -13,11 +13,11 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   auditLogs,
   contestParticipants,
-  contestProblems,
   contests,
-  evaluationResults,
+  evaluationAttempts,
   problems,
   sseEvents,
+  submissionJobs,
   submissions,
   users,
 } from "../../../../shared/db/schema.ts";
@@ -38,6 +38,7 @@ import {
   getRedis,
   resetRedisForTest,
 } from "../../../../shared/mq/connection.ts";
+import { insertContestProblems } from "../../../../../tests/helper.ts";
 
 /**
  * 启动一个极简的 Redis RESP 协议 mock 服务器，响应 EVAL/LPUSH/LLEN/PING，
@@ -404,7 +405,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: TEST_PROBLEM_ID,
       sort_order: 0,
@@ -483,7 +484,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: TEST_PROBLEM_ID,
       sort_order: 0,
@@ -518,6 +519,8 @@ Deno.test({
         problem_id: TEST_PROBLEM_ID,
         language: "python3",
         code: "print(2)",
+        // 题目已版本化（夹具补了迁移基线）：题库提交必须显式携带版本
+        version_id: `baseline-${TEST_PROBLEM_ID}`,
       });
       ids.push(normalSub.id);
 
@@ -565,7 +568,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: TEST_PROBLEM_ID,
       sort_order: 0,
@@ -629,7 +632,8 @@ Deno.test({
     const now = new Date().toISOString();
     const submissionId = `tst-sr-${ts}`;
 
-    // 先插入一条 pending 状态的提交
+    // 先插入一条 pending 状态的提交 + 在途尝试（协议 v2 下结果按 attempt_id 落库）
+    const attemptId = crypto.randomUUID();
     await db.insert(submissions).values({
       id: submissionId,
       user_id: TEST_USER_ID,
@@ -640,10 +644,20 @@ Deno.test({
       status: "judging",
       created_at: now,
     });
+    await db.insert(evaluationAttempts).values({
+      id: attemptId,
+      submission_id: submissionId,
+      problem_id: TEST_PROBLEM_ID,
+      sequence: 0,
+      source: "initial",
+      state: "judging",
+      created_at: now,
+    });
 
-    // 保存评测结果
+    // 保存评测结果（尝试终态是唯一的评测事实来源）
     await saveEvaluationResult({
       submission_id: submissionId,
+      attempt_id: attemptId,
       status: "finished",
       score: 1000,
       output: "---RESULT---\n{}",
@@ -660,17 +674,19 @@ Deno.test({
       .limit(1);
     assertEquals(sub[0].status, "finished");
 
-    // 验证评测结果已插入
-    const result = await db
+    // 验证评测尝试已写入终态（评测事实唯一来源：attempts + 投影）
+    const [attempt] = await db
       .select()
-      .from(evaluationResults)
-      .where(eq(evaluationResults.submission_id, submissionId))
+      .from(evaluationAttempts)
+      .where(eq(evaluationAttempts.id, attemptId))
       .limit(1);
-    assertEquals(result.length, 1);
-    assertEquals(result[0].status, "finished");
-    assertEquals(result[0].score, 1000);
-    assertEquals(result[0].time_ms, 2340);
-    assertEquals(result[0].memory_kb, 18432);
+    assertExists(attempt);
+    assertEquals(attempt.state, "finished");
+    assertEquals(attempt.result_kind, "graded");
+    assertEquals(attempt.result_status, "finished");
+    assertEquals(attempt.score, 1000);
+    assertEquals(attempt.time_ms, 2340);
+    assertEquals(attempt.memory_kb, 18432);
 
     // A4：事务性 Outbox——应同时写入一条 submission:updated SSE 事件
     const events = await db
@@ -693,7 +709,8 @@ Deno.test({
     const now = new Date().toISOString();
     const submissionId = `tst-idemp-${ts}`;
 
-    // 插入提交
+    // 插入提交 + 在途尝试
+    const attemptId = crypto.randomUUID();
     await db.insert(submissions).values({
       id: submissionId,
       user_id: TEST_USER_ID,
@@ -704,10 +721,20 @@ Deno.test({
       status: "judging",
       created_at: now,
     });
+    await db.insert(evaluationAttempts).values({
+      id: attemptId,
+      submission_id: submissionId,
+      problem_id: TEST_PROBLEM_ID,
+      sequence: 0,
+      source: "initial",
+      state: "judging",
+      created_at: now,
+    });
 
     // 第一次保存
     await saveEvaluationResult({
       submission_id: submissionId,
+      attempt_id: attemptId,
       status: "finished",
       score: 1000,
       output: "",
@@ -717,18 +744,21 @@ Deno.test({
     // 第二次保存（模拟重复消费）
     await saveEvaluationResult({
       submission_id: submissionId,
+      attempt_id: attemptId,
       status: "finished",
       score: 1000,
       output: "",
       details: {},
     });
 
-    // 验证 evaluation_results 只有一条
-    const rows = await db
+    // 验证：尝试仍只有一条且终态未被重复改写（重复消费不产生额外事实）
+    const attemptRows = await db
       .select()
-      .from(evaluationResults)
-      .where(eq(evaluationResults.submission_id, submissionId));
-    assertEquals(rows.length, 1, "重复消费不应插入多行");
+      .from(evaluationAttempts)
+      .where(eq(evaluationAttempts.submission_id, submissionId));
+    assertEquals(attemptRows.length, 1, "重复消费不应插入多次尝试");
+    assertEquals(attemptRows[0].state, "finished");
+    assertEquals(attemptRows[0].score, 1000);
   },
 });
 
@@ -797,7 +827,8 @@ Deno.test({
       updated_at: now,
     });
 
-    // 准备 submission（status=judging 让 UPDATE 通行）
+    // 准备 submission（status=judging 让 UPDATE 通行）+ 在途尝试
+    const attemptId = crypto.randomUUID();
     await db.insert(submissions).values({
       id: subId,
       user_id: userId,
@@ -807,11 +838,21 @@ Deno.test({
       status: "judging",
       created_at: now,
     });
+    await db.insert(evaluationAttempts).values({
+      id: attemptId,
+      submission_id: subId,
+      problem_id: TEST_PROBLEM_ID,
+      sequence: 0,
+      source: "initial",
+      state: "judging",
+      created_at: now,
+    });
 
     try {
       // 第一次写入：WrongAnswer
       await saveEvaluationResult({
         submission_id: subId,
+        attempt_id: attemptId,
         status: "finished",
         score: 500,
         output: '---RESULT---\n{"first":true}',
@@ -821,6 +862,7 @@ Deno.test({
       // NOJ-068/182：同 rejudge_seq 的重复结果必须幂等忽略。
       const appliedAgain = await saveEvaluationResult({
         submission_id: subId,
+        attempt_id: attemptId,
         status: "finished",
         score: 1000,
         output: '---RESULT---\n{"new":true}',
@@ -830,21 +872,16 @@ Deno.test({
       });
       assertEquals(appliedAgain.applied, false);
 
-      // 断言：只有 1 行，内容保持第一次结果。
-      const rows = await db.select().from(evaluationResults)
-        .where(eq(evaluationResults.submission_id, subId));
-      assertEquals(rows.length, 1);
-      assertEquals(rows[0].status, "finished");
-      assertEquals(rows[0].score, 500);
-      assertEquals(rows[0].output, '---RESULT---\n{"first":true}');
-      assertEquals(JSON.parse(rows[0].details), {});
-      assertEquals(rows[0].time_ms, null);
-      assertEquals(rows[0].memory_kb, null);
+      // 断言：尝试终态保持第一次结果（终态只写一次，重复结果不覆盖）
+      const [attempt] = await db.select().from(evaluationAttempts)
+        .where(eq(evaluationAttempts.id, attemptId));
+      assertExists(attempt);
+      assertEquals(attempt.state, "finished");
+      assertEquals(attempt.score, 500);
+      assertEquals(attempt.time_ms, null);
+      assertEquals(attempt.memory_kb, null);
     } finally {
       // 清理
-      await db.delete(evaluationResults).where(
-        eq(evaluationResults.submission_id, subId),
-      );
       await db.delete(submissions).where(eq(submissions.id, subId));
       await db.delete(users).where(eq(users.id, userId));
     }
@@ -872,6 +909,7 @@ Deno.test({
       updated_at: now,
     });
 
+    const attemptId = crypto.randomUUID();
     await db.insert(submissions).values({
       id: subId,
       user_id: userId,
@@ -882,11 +920,21 @@ Deno.test({
       rejudge_seq: 2, // 当前序列号=2
       created_at: now,
     });
+    await db.insert(evaluationAttempts).values({
+      id: attemptId,
+      submission_id: subId,
+      problem_id: TEST_PROBLEM_ID,
+      sequence: 2,
+      source: "rejudge",
+      state: "judging",
+      created_at: now,
+    });
 
     try {
       // 写入 seq=2 的新结果（应成功）
       await saveEvaluationResult({
         submission_id: subId,
+        attempt_id: attemptId,
         status: "finished",
         score: 1000,
         output: "---NEW---",
@@ -900,6 +948,7 @@ Deno.test({
       try {
         await saveEvaluationResult({
           submission_id: subId,
+          attempt_id: attemptId,
           status: "finished",
           score: 500,
           output: "---OLD---",
@@ -910,20 +959,18 @@ Deno.test({
         resetLogSink();
       }
 
-      // 断言：evaluation_results 仍只有 1 行，且是 seq=2 的内容
-      const rows = await db.select().from(evaluationResults)
-        .where(eq(evaluationResults.submission_id, subId));
-      assertEquals(rows.length, 1);
-      assertEquals(rows[0].status, "finished");
-      assertEquals(rows[0].output, "---NEW---");
+      // 断言：尝试终态仍是 seq=2 的内容（旧结果既不覆盖终态也不写新事实）
+      const [attempt] = await db.select().from(evaluationAttempts)
+        .where(eq(evaluationAttempts.id, attemptId));
+      assertExists(attempt);
+      assertEquals(attempt.state, "finished");
+      assertEquals(attempt.score, 1000);
+      assertEquals(attempt.output, "---NEW---");
 
       // 断言：丢弃日志被记录
       const ignoredLog = logs.find((l) => l.msg.includes("忽略过时的评测结果"));
       assertExists(ignoredLog, "应记录旧结果被丢弃的日志");
     } finally {
-      await db.delete(evaluationResults).where(
-        eq(evaluationResults.submission_id, subId),
-      );
       await db.delete(submissions).where(eq(submissions.id, subId));
       await db.delete(users).where(eq(users.id, userId));
     }
@@ -950,6 +997,8 @@ Deno.test({
       updated_at: now,
     });
 
+    const firstAttemptId = crypto.randomUUID();
+    const rejudgeAttemptId = crypto.randomUUID();
     await db.insert(submissions).values({
       id: subId,
       user_id: userId,
@@ -960,11 +1009,21 @@ Deno.test({
       rejudge_seq: 0,
       created_at: now,
     });
+    await db.insert(evaluationAttempts).values({
+      id: firstAttemptId,
+      submission_id: subId,
+      problem_id: TEST_PROBLEM_ID,
+      sequence: 0,
+      source: "initial",
+      state: "judging",
+      created_at: now,
+    });
 
     try {
-      // 1) 首次评测结果（seq=0）落库
+      // 1) 首次评测结果（seq=0）落到初次尝试
       await saveEvaluationResult({
         submission_id: subId,
+        attempt_id: firstAttemptId,
         status: "finished",
         score: 100,
         output: "---FIRST_RUN---",
@@ -972,22 +1031,34 @@ Deno.test({
         rejudge_seq: 0,
       });
 
-      const firstRows = await db.select().from(evaluationResults)
-        .where(eq(evaluationResults.submission_id, subId));
-      assertEquals(firstRows.length, 1);
-      assertEquals(firstRows[0].output, "---FIRST_RUN---");
+      const [firstAttempt] = await db.select().from(evaluationAttempts)
+        .where(eq(evaluationAttempts.id, firstAttemptId));
+      assertExists(firstAttempt);
+      assertEquals(firstAttempt.output, "---FIRST_RUN---");
+      assertEquals(firstAttempt.score, 100);
 
-      // 2) 模拟发起重测：rejudge_seq++ 且 status 变回 pending（JA-02 不预先物理删除 evaluationResults）
+      // 2) 模拟发起重测：新增尝试（seq=1），提交回到 pending
+      await db.insert(evaluationAttempts).values({
+        id: rejudgeAttemptId,
+        submission_id: subId,
+        problem_id: TEST_PROBLEM_ID,
+        sequence: 1,
+        source: "rejudge",
+        state: "judging",
+        created_at: now,
+      });
       await db.update(submissions)
         .set({
           status: "pending",
           rejudge_seq: 1,
+          active_attempt_id: rejudgeAttemptId,
         })
         .where(eq(submissions.id, subId));
 
       // 3) 重测结果（seq=1）到达落库
       const updatedSub = await saveEvaluationResult({
         submission_id: subId,
+        attempt_id: rejudgeAttemptId,
         status: "finished",
         score: 1000,
         output: "---REJUDGE_RUN---",
@@ -997,16 +1068,26 @@ Deno.test({
 
       assertExists(updatedSub, "重测结果不应被丢弃");
 
-      // 4) 断言：历史结果被替换，只有 1 条记录，内容为新重测结果
-      const finalRows = await db.select().from(evaluationResults)
-        .where(eq(evaluationResults.submission_id, subId));
-      assertEquals(finalRows.length, 1);
-      assertEquals(finalRows[0].score, 1000);
-      assertEquals(finalRows[0].output, "---REJUDGE_RUN---");
+      // 4) 断言：重测结果落到新尝试；旧尝试的终态（历史）保持可读，不被覆盖
+      const [rejudgeAttempt] = await db.select().from(evaluationAttempts)
+        .where(eq(evaluationAttempts.id, rejudgeAttemptId));
+      assertExists(rejudgeAttempt);
+      assertEquals(rejudgeAttempt.state, "finished");
+      assertEquals(rejudgeAttempt.score, 1000);
+      assertEquals(rejudgeAttempt.output, "---REJUDGE_RUN---");
+
+      const [preservedFirst] = await db.select().from(evaluationAttempts)
+        .where(eq(evaluationAttempts.id, firstAttemptId));
+      assertExists(preservedFirst);
+      assertEquals(preservedFirst.score, 100);
+      assertEquals(preservedFirst.output, "---FIRST_RUN---");
+
+      // 投影指向最近一次终态尝试
+      const [submissionRow] = await db.select().from(submissions)
+        .where(eq(submissions.id, subId));
+      assertEquals(submissionRow.latest_attempt_id, rejudgeAttemptId);
+      assertEquals(submissionRow.active_attempt_id, null);
     } finally {
-      await db.delete(evaluationResults).where(
-        eq(evaluationResults.submission_id, subId),
-      );
       await db.delete(submissions).where(eq(submissions.id, subId));
       await db.delete(users).where(eq(users.id, userId));
     }
@@ -1112,22 +1193,13 @@ Deno.test({
         rejudge_seq: 0,
         created_at: now,
       });
-      await db.insert(evaluationResults).values({
-        id: crypto.randomUUID(),
-        submission_id: subId,
-        status: "finished",
-        score: 1000,
-        output: "---RESULT---",
-        details: "{}",
-        created_at: now,
-      });
 
       // 清空本测试前可能存在的审计行，避免行数偏差
       await db.delete(auditLogs);
 
       try {
         // 执行：单条重测
-        await rejudgeSubmission(subId);
+        await rejudgeSubmission(subId, adminId);
 
         // 验证：审计日志写入
         const rows = await db.select().from(auditLogs).where(
@@ -1149,9 +1221,9 @@ Deno.test({
         assertEquals(detail.problem_id, undefined);
         assertEquals(detail.count, undefined);
       } finally {
-        // 清理本测试数据
-        await db.delete(evaluationResults).where(
-          eq(evaluationResults.submission_id, subId),
+        // 清理本测试数据（统一任务受理会写 submission_jobs，需先清理）
+        await db.delete(submissionJobs).where(
+          eq(submissionJobs.actor_id, adminId),
         );
         await db.delete(submissions).where(eq(submissions.id, subId));
         await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
@@ -1171,8 +1243,7 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "submissions service: LLM 题缺平台默认时重测必须在改状态前失败（不卡 pending）",
+  name: "submissions service: 重测受理不改写提交状态（LLM 缺配不再卡 pending）",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -1260,16 +1331,13 @@ Deno.test({
         created_at: now,
       });
 
-      // 执行：平台默认缺失 → 必须抛错
-      await assertRejects(
-        () => rejudgeSubmission(subId),
-        Error,
-        "平台未配置默认 LLM Provider",
-      );
+      // 执行：平台默认缺失。统一任务受理**不在受理阶段**解析 LLM Provider
+      // （解析发生在派发阶段并记入条目原因码），因此受理本身必须成功——
+      // 关键在于提交状态与 rejudge_seq 都不被改写（不会卡在 pending）。
+      const accepted = await rejudgeSubmission(subId, adminId);
+      assertEquals(typeof accepted.job_id, "string");
 
-      // **关键断言**：提交状态必须仍是 finished（未被置回 pending），
-      // 且 rejudge_seq 未递增——修复前这两处已被事务改写，
-      // 表现为"重测报错但提交卡在评测中"。
+      // **关键断言**：提交状态必须仍是 finished，且 rejudge_seq 未递增。
       const [after] = await db.select().from(submissions).where(
         eq(submissions.id, subId),
       );
@@ -1278,9 +1346,14 @@ Deno.test({
         "finished",
         "前置校验失败时不得改变提交状态（否则会卡在 pending）",
       );
-      assertEquals(after?.rejudge_seq, 0, "前置校验失败时不得递增 rejudge_seq");
+      assertEquals(after?.rejudge_seq, 0, "受理重测不得改写提交的重测序号");
 
+      await db.delete(submissionJobs).where(
+        eq(submissionJobs.actor_id, adminId),
+      );
       await db.delete(submissions).where(eq(submissions.id, subId));
+      // 受理会写 submissions.rejudge 审计（admin_id 外键），先清审计再删用户
+      await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
       await db.delete(problems).where(eq(problems.id, localProblemId));
       await db.delete(users).where(eq(users.id, adminId));
       await db.delete(users).where(eq(users.id, localUserId));
@@ -1389,15 +1462,6 @@ Deno.test({
           rejudge_seq: 0,
           created_at: now,
         });
-        await db.insert(evaluationResults).values({
-          id: crypto.randomUUID(),
-          submission_id: sid,
-          status: "finished",
-          score: 1000,
-          output: "---RESULT---",
-          details: "{}",
-          created_at: now,
-        });
       }
 
       // 清空本测试前可能存在的审计行
@@ -1405,8 +1469,11 @@ Deno.test({
 
       try {
         // 执行：批量重测
-        const result = await rejudgeProblemSubmissions(localProblemId);
-        assertEquals(result.total, 3);
+        const result = await rejudgeProblemSubmissions(localProblemId, adminId);
+        // 统一任务契约：受理返回任务 ID 与条目数（`submitted` 目标下 3 条均为
+        // legacy_unknown → 受理成功但条目在受理阶段即被标记无法按提交时版本重测）
+        assertEquals(result.total_items, 3);
+        assertEquals(typeof result.job_id, "string");
 
         // 验证：审计日志写入
         const rows = await db.select().from(auditLogs).where(
@@ -1428,11 +1495,11 @@ Deno.test({
         assertEquals(detail.count, 3);
         assertEquals(detail.submission_id, undefined);
       } finally {
-        // 清理本测试数据
+        // 清理本测试数据（统一任务受理会写 submission_jobs）
+        await db.delete(submissionJobs).where(
+          eq(submissionJobs.actor_id, adminId),
+        );
         for (const sid of subIds) {
-          await db.delete(evaluationResults).where(
-            eq(evaluationResults.submission_id, sid),
-          );
           await db.delete(submissions).where(eq(submissions.id, sid));
         }
         await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));

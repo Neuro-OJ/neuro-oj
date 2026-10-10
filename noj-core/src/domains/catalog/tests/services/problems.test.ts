@@ -16,10 +16,16 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import {
+  AppError,
   BadRequestError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import { enterTestContext } from "../../../system/index.ts";
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
+import type {
+  OiRuntimeConfig,
+  RuntimeConfig,
+} from "../../types/runtime-config.ts";
 
 // PGlite 内存数据库始终可用
 const dbAvailable = true;
@@ -55,6 +61,19 @@ const NETWORKED_RUNTIME_CONFIG = {
     call_timeout_ms: 2000,
     memory_limit_mb: 512,
   },
+};
+
+const OI_RUNTIME_CONFIG: OiRuntimeConfig = {
+  backend: "native",
+  languages: ["c", "cc"],
+  time_limit_ms: 1000,
+  memory_limit_mb: 256,
+  checker: { type: "default" },
+  subtasks: [{
+    id: "all",
+    score: 100,
+    cases: [{ input: "testdata/1.in", output: "testdata/1.out" }],
+  }],
 };
 
 const now = new Date().toISOString();
@@ -202,6 +221,79 @@ Deno.test({
 });
 
 Deno.test({
+  name: "problems service: 切换客观题会清理 OI 运行配置",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const problem = await createProblem({
+      title: `待切换 OI 题 ${ts}`,
+      description: "切换客观题的边界",
+      difficulty: "easy",
+      runtime_config: OI_RUNTIME_CONFIG,
+    });
+    const updated = await updateProblem(problem.id, {
+      is_objective: true,
+    }, "0");
+    assertEquals(updated.judge_type, "dual");
+    assertEquals(updated.runtime_config, null);
+  },
+});
+
+Deno.test({
+  name: "problems service: 已发布题目的题型与提交模式不可变更（Handbook §2.3）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    // 未发布：仍允许切换题型（切换后投影同步，供编辑器继续编辑）
+    const draftOnly = await createProblem({
+      title: `未发布可切换 ${ts}`,
+      description: "未发布题目允许改题型",
+      difficulty: "easy",
+      runtime_config: OI_RUNTIME_CONFIG,
+    });
+    const switched = await updateProblem(draftOnly.id, {
+      is_objective: true,
+    }, "0");
+    assertEquals(switched.is_objective, true);
+
+    // 已发布：切换题型必须 409 CONTENT_KIND_IMMUTABLE，且题目行不被改写
+    const published = await createProblem({
+      title: `已发布不可切换 ${ts}`,
+      description: "已发布题目禁止跨题型转换",
+      difficulty: "easy",
+      runtime_config: OI_RUNTIME_CONFIG,
+    });
+    await publishBaselineVersionForTest(published.id);
+    await assertRejects(
+      () => updateProblem(published.id, { is_objective: true }, "0"),
+      AppError,
+      "首次发布后不可变更",
+    );
+    const [row] = await getDb().select({
+      is_objective: problems.is_objective,
+      judge_type: problems.judge_type,
+    }).from(problems).where(eq(problems.id, published.id)).limit(1);
+    assertEquals(row.is_objective, false);
+    assertEquals(row.judge_type, "oi");
+
+    // 已发布 AI 题的提交模式同样固定
+    const ai = await createProblem({
+      title: `已发布 AI 不可换模式 ${ts}`,
+      description: "提交模式在首次发布后固定",
+      difficulty: "easy",
+      submission_mode: "code",
+      runtime_config: VALID_RUNTIME_CONFIG,
+    });
+    await publishBaselineVersionForTest(ai.id);
+    await assertRejects(
+      () => updateProblem(ai.id, { submission_mode: "artifact" }, "0"),
+      AppError,
+      "提交模式在首次发布后不可变更",
+    );
+  },
+});
+
+Deno.test({
   name: "problems service: 更新非法难度返回 BadRequestError",
   ignore: skip,
   sanitizeResources: false,
@@ -248,11 +340,12 @@ Deno.test({
       difficulty: "easy",
       runtime_config: VALID_RUNTIME_CONFIG,
     });
-    // 搜索只覆盖 public 题；新建 U 默认 private，先转 public
+    // 搜索只覆盖 public 且**已发布**的题；新建 U 默认 private，先转 public 并发布基线版本
     await getDb().update(problems).set({
       visibility: "public",
       updated_at: new Date().toISOString(),
     }).where(eq(problems.id, created.id));
+    await publishBaselineVersionForTest(created.id);
     const result = await listProblems({ keyword, type: "U" });
     assertEquals(result.items.length, 1);
     assertEquals(result.items[0].id, created.id);
@@ -442,7 +535,7 @@ Deno.test({
       },
     );
     assertEquals(
-      created.runtime_config!.evaluator.network?.enabled,
+      (created.runtime_config as RuntimeConfig).evaluator.network?.enabled,
       true,
     );
   },
@@ -477,8 +570,98 @@ Deno.test({
       "admin",
     );
     assertEquals(
-      created.runtime_config!.evaluator.network?.enabled,
+      (created.runtime_config as RuntimeConfig).evaluator.network?.enabled,
       true,
     );
+  },
+});
+
+Deno.test({
+  name: "problems service: 题型与后端筛选在分页前执行，客观题不计入 AI 后端",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const marker = `后端筛选-${crypto.randomUUID()}`;
+    const ids = Array.from({ length: 4 }, () => crypto.randomUUID());
+    const fixtures = [
+      {
+        judge_type: "dual",
+        is_objective: false,
+        runtime_config: VALID_RUNTIME_CONFIG,
+      },
+      {
+        judge_type: "oi",
+        is_objective: false,
+        runtime_config: OI_RUNTIME_CONFIG,
+      },
+      {
+        judge_type: "oi",
+        is_objective: false,
+        runtime_config: { ...OI_RUNTIME_CONFIG, backend: "wasm" },
+      },
+      { judge_type: "dual", is_objective: true, runtime_config: null },
+    ];
+    const db = getDb();
+    try {
+      await db.insert(problems).values(fixtures.map((fixture, index) => ({
+        ...fixture,
+        id: ids[index],
+        title: `${marker}-${index}`,
+        description: "筛选测试",
+        difficulty: "easy",
+        type: "U",
+        number: 9000000 + index,
+        owner_id: "0",
+        visibility: "public",
+        created_at: now,
+        updated_at: now,
+      })));
+      // 公共列表只含已发布题目：为每个夹具补基线版本
+      for (const id of ids) await publishBaselineVersionForTest(id);
+      const query = { type: "U", keyword: marker, limit: 1 };
+      const oi = await listProblems({ ...query, judge_type: "oi" });
+      assertEquals(oi.total, 2);
+      assertEquals(oi.items.length, 1);
+      for (
+        const [backend, index] of [["dual", 0], ["oi-native", 1], [
+          "oi-wasm",
+          2,
+        ]] as const
+      ) {
+        const result = await listProblems({ ...query, judge_backend: backend });
+        assertEquals(result.total, 1);
+        assertEquals(result.items[0].id, ids[index]);
+        assertEquals(result.items[0].judge_backend, backend);
+        assertEquals(result.items[0].runtime_config, undefined);
+      }
+      assertEquals(
+        (await listProblems({ ...query, judge_type: "dual" })).total,
+        1,
+      );
+      assertEquals(
+        (await listProblems({ ...query, judge_type: "objective" })).items[0].id,
+        ids[3],
+      );
+      assertEquals(
+        (await listProblems({
+          ...query,
+          judge_type: "dual",
+          judge_backend: "oi-wasm",
+        })).total,
+        0,
+      );
+      await assertRejects(
+        () => listProblems({ judge_type: "invalid" }),
+        BadRequestError,
+      );
+      await assertRejects(
+        () => listProblems({ judge_backend: "invalid" }),
+        BadRequestError,
+      );
+    } finally {
+      for (const id of ids) {
+        await db.delete(problems).where(eq(problems.id, id));
+      }
+    }
   },
 });

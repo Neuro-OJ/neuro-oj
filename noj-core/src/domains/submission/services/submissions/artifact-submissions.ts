@@ -38,9 +38,18 @@ import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "submission"]);
 import type { JudgeTaskLlm } from "../../types/index.ts";
-import { buildJudgeTask } from "../../types/index.ts";
-import type { LlmConfig, RuntimeConfig } from "./../../../catalog/index.ts";
+import { prepareJudgeTask } from "../prepare-judge-task.ts";
+import {
+  isOiRuntimeConfig,
+  type LlmConfig,
+  type ProblemRuntimeConfig,
+} from "./../../../catalog/index.ts";
 import type { SubmissionResponse } from "./submissions-types.ts";
+import { createAttempt } from "../versioning/attempts.ts";
+import {
+  assertVersionAcceptsSubmission,
+  resolveSubmissionVersion,
+} from "../versioning/submission-version.ts";
 
 /** NOJ artifact 硬上限默认值：2GB。 */
 export const DEFAULT_ARTIFACT_MAX_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
@@ -114,6 +123,8 @@ export async function createArtifactSubmission(
     file_name: string;
     file_stream: ReadableStream<Uint8Array>;
     contest_id?: string;
+    /** 提交时版本（Handbook §4.2）：artifact 提交必填，不静默绑定最新版。 */
+    version_id?: string;
   },
   contestId?: string,
   isAdmin = false,
@@ -172,10 +183,30 @@ export async function createArtifactSubmission(
   // 固定语言 python3
   const language = "python3";
 
-  // 双层大小限制
+  // 提交时版本（Handbook §4.2）：竞赛用固定版本（客户端覆盖 → 409），题库必须显式
+  // 指定已发布版本。产物题的时机校验与产物大小上限都以**目标版本**为准，题目投影
+  // 只在迁移期兜底。
+  const versionResolution = await resolveSubmissionVersion(problem.id, {
+    contestId: resolvedContestId,
+    requestedVersionId: input.version_id,
+    latestVersionId: problem.latest_version_id,
+  });
+  let versionMaxSizeMb = problem.artifact_max_size_mb;
+  if (versionResolution.kind === "known") {
+    const content = versionResolution.version.content;
+    assertVersionAcceptsSubmission(content, {
+      language,
+      submissionMode: "artifact",
+    });
+    if (content.kind === "ai" && content.artifact_max_size_mb != null) {
+      versionMaxSizeMb = content.artifact_max_size_mb;
+    }
+  }
+
+  // 双层大小限制（目标版本上限 + NOJ 硬上限）
   const hardLimit = getArtifactHardLimit();
-  const problemLimit = problem.artifact_max_size_mb
-    ? problem.artifact_max_size_mb * 1024 * 1024
+  const problemLimit = versionMaxSizeMb
+    ? versionMaxSizeMb * 1024 * 1024
     : hardLimit;
   const maxSizeBytes = Math.min(problemLimit, hardLimit);
 
@@ -209,6 +240,8 @@ export async function createArtifactSubmission(
   }
 
   const id = crypto.randomUUID();
+  // 尝试 ID 先于任务构造确定：任务 `run_id` 与之一致（Handbook §5.5）
+  const attemptId = crypto.randomUUID();
   const publicId = generatePublicId("sub");
   const now = new Date().toISOString();
 
@@ -229,7 +262,7 @@ export async function createArtifactSubmission(
 
   // 校验 runtime_config
   const runtimeConfig = problem.runtime_config as
-    | RuntimeConfig
+    | ProblemRuntimeConfig
     | null
     | undefined;
   if (!runtimeConfig) {
@@ -239,6 +272,10 @@ export async function createArtifactSubmission(
       500,
       "RUNTIME_CONFIG_MISSING",
     );
+  }
+  if (isOiRuntimeConfig(runtimeConfig)) {
+    await storage.delete(artifactStorageUrl).catch(() => {});
+    throw new BadRequestError("OI 题目不支持 artifact 提交");
   }
   await validateJudgeImageWithKind(runtimeConfig.evaluator.image, "evaluator");
   await validateJudgeImageWithKind(runtimeConfig.solution.image, "solution");
@@ -252,6 +289,13 @@ export async function createArtifactSubmission(
       input.problem_id,
       userId,
       runtimeConfig,
+      {
+        // 额度与吊销按尝试隔离：重测拿到独立预算，旧尝试吊销不影响新尝试
+        attemptId,
+        problemVersionId: versionResolution.kind === "known"
+          ? versionResolution.version.version_id
+          : null,
+      },
     );
   }
 
@@ -277,7 +321,11 @@ export async function createArtifactSubmission(
     "submission",
   );
 
-  const task = buildJudgeTask({
+  const task = await prepareJudgeTask({
+    attempt_id: attemptId,
+    problem_version_id: versionResolution.kind === "known"
+      ? versionResolution.version.version_id
+      : undefined,
     submission_id: id,
     problem_id: input.problem_id,
     user_id: userId,
@@ -303,6 +351,13 @@ export async function createArtifactSubmission(
       file_name: input.file_name,
       artifact_storage_url: artifactStorageUrl,
       status: "pending",
+      // 提交时版本不可变：`known` 必须有版本，`legacy_unknown` 必须为空
+      submitted_version_id: versionResolution.kind === "known"
+        ? versionResolution.version.version_id
+        : null,
+      version_origin: versionResolution.kind === "known"
+        ? "known"
+        : "legacy_unknown",
       created_at: now,
     });
   } catch (dbErr) {
@@ -312,6 +367,42 @@ export async function createArtifactSubmission(
       "提交失败：数据库写入错误，请稍后重试",
       500,
       "SUBMISSION_DB_ERROR",
+    );
+  }
+
+  // 初次评测尝试（sequence=0，指向 active_attempt_id）；已有判定一概不动
+  try {
+    await createAttempt({
+      id: attemptId,
+      source: {
+        kind: "submission",
+        id,
+        problem_id: input.problem_id,
+        contest_id: resolvedContestId,
+      },
+      problemVersionId: versionResolution.kind === "known"
+        ? versionResolution.version.version_id
+        : null,
+      source_kind: "initial",
+      taskSnapshot: {
+        language,
+        submission_mode: "artifact",
+        problem_version_id: versionResolution.kind === "known"
+          ? versionResolution.version.version_id
+          : null,
+      },
+      createdBy: userId,
+    });
+  } catch (attemptErr) {
+    await storage.delete(artifactStorageUrl).catch(() => {});
+    logger.error("artifact 评测尝试创建失败", {
+      submission_id: id,
+      err: attemptErr,
+    });
+    throw new AppError(
+      "提交失败：无法创建评测尝试，请稍后重试",
+      500,
+      "SUBMISSION_ATTEMPT_ERROR",
     );
   }
 

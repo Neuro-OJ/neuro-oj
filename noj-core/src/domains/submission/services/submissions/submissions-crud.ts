@@ -1,3 +1,4 @@
+import { oiVerdict, projectMeteringDetails } from "./oi-details.ts";
 /**
  * Submissions CRUD（PR-3 拆分）。
  *
@@ -33,11 +34,19 @@
 
 import { and, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm";
 import {
-  evaluationResults,
+  evaluationAttempts,
   problems,
+  problemVersions,
   submissions,
+  submissionVersionResults,
   users,
 } from "./../../../../shared/db/schema.ts";
+import {
+  type CurrentVersionResult,
+  type EffectiveVersionPolicy,
+  policyFromColumns,
+} from "./../../../../shared/versioning/types.ts";
+import { selectEffectiveResults } from "./../../../../shared/versioning/effective-results.ts";
 import {
   AppError,
   BadRequestError,
@@ -63,10 +72,20 @@ import { getStorageProvider } from "./../../../system/index.ts";
 import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
 import { resolveJudgeTaskPriority } from "./judge-priority.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
-import type { LlmConfig, RuntimeConfig } from "./../../../catalog/index.ts";
+import {
+  isOiRuntimeConfig,
+  type LlmConfig,
+  type ProblemRuntimeConfig,
+} from "./../../../catalog/index.ts";
 import type { JudgeTaskLlm, SubmissionStatus } from "../../types/index.ts";
 import type { Context } from "hono";
-import { buildJudgeTask, LANGUAGE_EXT_MAP } from "../../types/index.ts";
+import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
+import { prepareJudgeTask } from "../prepare-judge-task.ts";
+import {
+  assertVersionAcceptsSubmission,
+  resolveSubmissionVersion,
+} from "../versioning/submission-version.ts";
+import { createAttempt } from "../versioning/attempts.ts";
 import {
   Channels,
   publishSseEvent,
@@ -79,6 +98,7 @@ import type {
   SubmissionInput,
   SubmissionListItem,
   SubmissionResponse,
+  SubmissionVersionResultView,
 } from "./submissions-types.ts";
 import { getLogger } from "@logtape/logtape";
 
@@ -106,6 +126,21 @@ function parseDetails(raw: string | null): SubmissionEvaluationDetails | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * 归一化尝试 details：`evaluation_attempts.details` 是 jsonb 对象，
+ * 迁移导入的历史行可能存 JSON 文本；两种形态都收敛为对象或 null。
+ */
+function normalizeAttemptDetails(
+  raw: unknown,
+): SubmissionEvaluationDetails | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "string") return parseDetails(raw);
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as SubmissionEvaluationDetails;
+  }
+  return null;
 }
 
 /**
@@ -146,6 +181,11 @@ export async function listSubmissions(
     from,
     to,
     excludeContest,
+    versionId,
+    versionOrigin,
+    validOnly,
+    acceptedOnly,
+    upgradable,
     page,
     perPage,
   } = params;
@@ -167,6 +207,24 @@ export async function listSubmissions(
   }
   if (from) conditions.push(gte(submissions.created_at, from));
   if (to) conditions.push(lte(submissions.created_at, to));
+  if (versionId) {
+    conditions.push(eq(submissions.submitted_version_id, versionId));
+  }
+  if (versionOrigin) {
+    conditions.push(eq(submissions.version_origin, versionOrigin));
+  }
+  if (validOnly) conditions.push(eq(submissions.is_valid, true));
+  if (acceptedOnly) conditions.push(eq(submissions.is_accepted, true));
+  if (upgradable) {
+    // 可升级 = 题目已发布版本，且本提交不是针对最新版提交的（`IS DISTINCT FROM`
+    // 让"未知历史版本"也进入候选，其升级由任务条目按 `LEGACY_VERSION_UNKNOWN` 处理）
+    conditions.push(
+      sql`${problems.latest_version_id} IS NOT NULL
+        AND ${submissions.submitted_version_id} IS DISTINCT FROM ${problems.latest_version_id}` as unknown as ReturnType<
+        typeof eq
+      >,
+    );
+  }
 
   // problemSearch: problem_id 精确匹配 OR problems.title ILIKE 模糊搜索
   if (problemSearch) {
@@ -233,17 +291,30 @@ export async function listSubmissions(
       created_at: submissions.created_at,
       judge_started_at: submissions.judge_started_at,
       judge_finished_at: submissions.judge_finished_at,
+      submitted_version_id: submissions.submitted_version_id,
+      version_origin: submissions.version_origin,
       problem_title: problems.title,
-      result_status: evaluationResults.status,
-      result_score: evaluationResults.score,
-      result_time_ms: evaluationResults.time_ms,
-      result_memory_kb: evaluationResults.memory_kb,
+      submitted_version: problemVersions.version,
+      // 最近一次运行的判定：优先最近终态尝试，存量行回退有效成绩指针
+      result_status: evaluationAttempts.result_status ??
+        evaluationAttempts.state,
+      result_score: evaluationAttempts.score,
+      result_time_ms: evaluationAttempts.time_ms,
+      result_memory_kb: evaluationAttempts.memory_kb,
     })
     .from(submissions)
     .leftJoin(problems, eq(submissions.problem_id, problems.id))
+    // 提交时版本号（展示用）：unknown 历史提交 submitted_version_id 为 null → 版本号也 null
     .leftJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, submissions.id),
+      problemVersions,
+      eq(problemVersions.id, submissions.submitted_version_id),
+    )
+    .leftJoin(
+      evaluationAttempts,
+      eq(
+        evaluationAttempts.id,
+        sql`coalesce(${submissions.latest_attempt_id}, ${submissions.effective_attempt_id})`,
+      ),
     );
   if (userSearch) {
     dataQuery = dataQuery.leftJoin(
@@ -299,6 +370,9 @@ export async function listSubmissions(
         id: row.problem_id,
         title: row.problem_title ?? "",
       },
+      submitted_version_id: row.submitted_version_id ?? null,
+      version_origin: row.version_origin ?? "legacy_unknown",
+      submitted_version: row.submitted_version ?? null,
       result: row.result_status
         ? {
           status: normalizeResultStatus(row.result_status) ?? "finished",
@@ -373,6 +447,20 @@ export async function createSubmission(
     throw new BadRequestError("该题目要求上传 zip 产物");
   }
 
+  // 提交时版本：竞赛用固定版本（客户端覆盖 → 409），题库用显式指定版本；
+  // 版本内容参与提交模式与语言校验（Handbook §5.4 第 1 步）。
+  const versionResolution = await resolveSubmissionVersion(problem.id, {
+    contestId: resolvedContestId,
+    requestedVersionId: input.version_id,
+    latestVersionId: problem.latest_version_id,
+  });
+  if (versionResolution.kind === "known") {
+    assertVersionAcceptsSubmission(versionResolution.version.content, {
+      language: input.language,
+      submissionMode: problem.submission_mode as "code" | "artifact",
+    });
+  }
+
   // 验证语言（与 LANGUAGE_EXT_MAP 键集保持一致）
   const supportedLanguages = Object.keys(LANGUAGE_EXT_MAP);
   if (!supportedLanguages.includes(input.language)) {
@@ -385,6 +473,9 @@ export async function createSubmission(
 
   // 创建提交记录并推送到评测队列（在同一个 try 块中保证一致性）
   const id = crypto.randomUUID();
+  // 评测尝试 ID 先于任务构造确定：任务 `run_id` 与之一致，结果才能精确回填到该尝试
+  // （Handbook §5.5）。sequence=0，`active_attempt_id` 在 createAttempt 内设置。
+  const attemptId = crypto.randomUUID();
   const publicId = generatePublicId("sub");
   const now = new Date().toISOString();
 
@@ -408,7 +499,7 @@ export async function createSubmission(
   // ── 使用 runtime_config（双容器模式）──
   // 校验 evaluator/solution image + kind（spec §4 final gate）
   const runtimeConfig = problem.runtime_config as
-    | RuntimeConfig
+    | ProblemRuntimeConfig
     | null
     | undefined;
 
@@ -420,25 +511,46 @@ export async function createSubmission(
     );
   }
 
-  // 防御性 final gate：校验双容器镜像 + kind
-  await validateJudgeImageWithKind(
-    runtimeConfig.evaluator.image,
-    "evaluator",
-  );
-  await validateJudgeImageWithKind(
-    runtimeConfig.solution.image,
-    "solution",
-  );
+  if (isOiRuntimeConfig(runtimeConfig)) {
+    if (!runtimeConfig.languages.includes(input.language as "c" | "cc")) {
+      throw new BadRequestError(
+        `该 OI 题目不支持语言: ${input.language}`,
+      );
+    }
+  } else {
+    if (input.language === "c" || input.language === "cc") {
+      throw new BadRequestError("C/C++ 提交仅适用于 judge_type=oi 的题目");
+    }
+    // 防御性 final gate：校验双容器镜像 + kind
+    await validateJudgeImageWithKind(
+      runtimeConfig.evaluator.image,
+      "evaluator",
+    );
+    await validateJudgeImageWithKind(
+      runtimeConfig.solution.image,
+      "solution",
+    );
+  }
 
   let llmTask: JudgeTaskLlm | undefined;
   const llmConfig = problem.llm_config as LlmConfig | null;
   if (llmConfig) {
+    if (isOiRuntimeConfig(runtimeConfig)) {
+      throw new BadRequestError("OI 题目不支持 LLM 评测");
+    }
     llmTask = await buildJudgeTaskLlm(
       llmConfig,
       id,
       input.problem_id,
       userId,
       runtimeConfig,
+      {
+        // 额度与吊销按尝试隔离：重测拿到独立预算，旧尝试吊销不影响新尝试
+        attemptId,
+        problemVersionId: versionResolution.kind === "known"
+          ? versionResolution.version.version_id
+          : null,
+      },
     );
   }
 
@@ -448,7 +560,11 @@ export async function createSubmission(
   );
 
   // 统一经 buildJudgeTask 构造（2026-09-12 评审 §3.1：收敛 6 处内联构造）
-  const task = buildJudgeTask({
+  const task = await prepareJudgeTask({
+    attempt_id: attemptId,
+    problem_version_id: versionResolution.kind === "known"
+      ? versionResolution.version.version_id
+      : undefined,
     submission_id: id,
     problem_id: input.problem_id,
     user_id: userId,
@@ -472,6 +588,13 @@ export async function createSubmission(
       code: input.code,
       file_name: fileName,
       status: "pending",
+      // 提交时版本不可变：`known` 必须有版本，`legacy_unknown` 必须为空
+      submitted_version_id: versionResolution.kind === "known"
+        ? versionResolution.version.version_id
+        : null,
+      version_origin: versionResolution.kind === "known"
+        ? "known"
+        : "legacy_unknown",
       created_at: now,
     });
   } catch (dbErr) {
@@ -480,6 +603,41 @@ export async function createSubmission(
       "提交失败：数据库写入错误，请稍后重试",
       500,
       "SUBMISSION_DB_ERROR",
+    );
+  }
+
+  // 创建初次评测尝试（Handbook §5.4 第 3–5 步）：sequence=0，并把提交的
+  // `active_attempt_id` 指向它；已有分版本判定与有效成绩一概不动（新提交本来也没有）。
+  try {
+    await createAttempt({
+      id: attemptId,
+      source: {
+        kind: "submission",
+        id,
+        problem_id: input.problem_id,
+        contest_id: resolvedContestId,
+      },
+      problemVersionId: versionResolution.kind === "known"
+        ? versionResolution.version.version_id
+        : null,
+      source_kind: "initial",
+      // 非敏感执行快照：语言、版本、提交模式与题型（不含 token / 下载凭据）
+      taskSnapshot: {
+        language: input.language,
+        problem_version_id: versionResolution.kind === "known"
+          ? versionResolution.version.version_id
+          : null,
+        submission_mode: problem.submission_mode,
+        judge_type: problem.judge_type,
+      },
+      createdBy: userId,
+    });
+  } catch (attemptErr) {
+    logger.error("评测尝试创建失败", { submission_id: id, err: attemptErr });
+    throw new AppError(
+      "提交失败：无法创建评测尝试，请稍后重试",
+      500,
+      "SUBMISSION_ATTEMPT_ERROR",
     );
   }
 
@@ -587,12 +745,18 @@ export async function getSubmission(
   // 类 Kaggle 赛制不隐藏进行中的评测结果（实时榜按排名接口权限控制）
   const hideResult = false;
 
-  // 查询评测结果
-  const resultRows = await db
-    .select()
-    .from(evaluationResults)
-    .where(eq(evaluationResults.submission_id, id))
-    .limit(1);
+  // 查询最近一次运行的判定：优先最近终态尝试，存量行回退有效成绩指针。
+  // 不再读 evaluation_results（该表只保留最近一次结果且即将随存量收尾删除）。
+  const latestAttemptId = row.latest_attempt_id ?? row.effective_attempt_id ??
+    null;
+  const attemptRows = latestAttemptId
+    ? await db
+      .select()
+      .from(evaluationAttempts)
+      .where(eq(evaluationAttempts.id, latestAttemptId))
+      .limit(1)
+    : [];
+  const resultRows = attemptRows;
 
   const result = !hideResult && resultRows.length > 0
     ? (() => {
@@ -604,20 +768,113 @@ export async function getSubmission(
         ? (output_truncated ? rawOutput.slice(0, MAX_OUTPUT_LENGTH) : rawOutput)
         : null;
       // 仅 owner/admin 解析 details JSON，其他访问者得到 null
-      const details = canSeeDetails
-        ? parseDetails(resultRows[0].details)
-        : null;
+      const rawDetails = normalizeAttemptDetails(resultRows[0].details);
+      const details = canSeeDetails ? rawDetails : null;
+      const metering = oiVerdict(rawDetails) &&
+          (rawDetails?.oi as Record<string, unknown>)?.backend !== "native"
+        ? projectMeteringDetails(
+          (rawDetails as Record<string, unknown>).metering,
+        )
+        : undefined;
       return {
-        status: normalizeResultStatus(resultRows[0].status) ?? "finished",
-        score: resultRows[0].score,
+        status: normalizeResultStatus(resultRows[0].result_status) ??
+          "finished",
+        score: resultRows[0].score ?? 0,
         output,
         output_truncated: canSeeDetails ? output_truncated : null,
         time_ms: resultRows[0].time_ms,
         memory_kb: resultRows[0].memory_kb,
         details,
+        metering,
       };
     })()
     : null;
+
+  // 提交时版本号（展示用）：`submitted_version_id` 已由 DB 复合外键保证属于本题。
+  let submittedVersion: number | null = null;
+  if (row.submitted_version_id) {
+    const [versionRow] = await db
+      .select({ version: problemVersions.version })
+      .from(problemVersions)
+      .where(eq(problemVersions.id, row.submitted_version_id))
+      .limit(1);
+    submittedVersion = versionRow?.version ?? null;
+  }
+
+  // 题目作用域的有效版本策略：各版本判定的选择依据（竞赛作用域策略在竞赛读路径）。
+  const [policyRow] = await db
+    .select({
+      effective_version_mode: problems.effective_version_mode,
+      required_version_id: problems.required_version_id,
+    })
+    .from(problems)
+    .where(eq(problems.id, row.problem_id))
+    .limit(1);
+  const effectiveVersionPolicy: EffectiveVersionPolicy = policyFromColumns(
+    policyRow?.effective_version_mode,
+    policyRow?.required_version_id,
+  ) ?? { mode: "any" };
+
+  // 跨版本判定（Handbook 核心不变量 3）：每（提交，版本）一条当前正式判定。
+  const versionRows = await db
+    .select({
+      problem_version_id: submissionVersionResults.problem_version_id,
+      version: problemVersions.version,
+      attempt_id: evaluationAttempts.id,
+      sequence: evaluationAttempts.sequence,
+      result_kind: evaluationAttempts.result_kind,
+      state: evaluationAttempts.state,
+      result_status: evaluationAttempts.result_status,
+      score: evaluationAttempts.score,
+      accepted: evaluationAttempts.accepted,
+      time_ms: evaluationAttempts.time_ms,
+      memory_kb: evaluationAttempts.memory_kb,
+    })
+    .from(submissionVersionResults)
+    .innerJoin(
+      evaluationAttempts,
+      eq(evaluationAttempts.id, submissionVersionResults.current_attempt_id),
+    )
+    .leftJoin(
+      problemVersions,
+      eq(problemVersions.id, submissionVersionResults.problem_version_id),
+    )
+    .where(eq(submissionVersionResults.submission_id, id));
+
+  const currentVersionResults: CurrentVersionResult[] = versionRows.map((
+    versionRow,
+  ) => ({
+    attempt_id: versionRow.attempt_id,
+    problem_version_id: versionRow.problem_version_id,
+    score: versionRow.score ?? 0,
+    accepted: versionRow.accepted === true,
+    sequence: versionRow.sequence,
+    result_kind: versionRow.result_kind,
+    state: versionRow.state,
+  }));
+  const effectiveSelection = selectEffectiveResults(
+    currentVersionResults,
+    effectiveVersionPolicy,
+  );
+  const versionResults: SubmissionVersionResultView[] = versionRows
+    .map((versionRow) => ({
+      problem_version_id: versionRow.problem_version_id,
+      version: versionRow.version ?? null,
+      attempt_id: versionRow.attempt_id,
+      sequence: versionRow.sequence,
+      status: normalizeResultStatus(versionRow.result_status) ??
+        (versionRow.state === "queued" ? "pending" : "error"),
+      score: versionRow.score ?? 0,
+      time_ms: versionRow.time_ms ?? null,
+      memory_kb: versionRow.memory_kb ?? null,
+      is_effective: effectiveSelection.effective_attempt_id ===
+        versionRow.attempt_id,
+      is_accepted: effectiveSelection.accepted_attempt_id ===
+        versionRow.attempt_id,
+    }))
+    .sort((a, b) =>
+      a.sequence - b.sequence || a.attempt_id.localeCompare(b.attempt_id)
+    );
 
   // 查询队列状态信息（排队位置、时间戳）
   // getSubmissionQueueStatus 已实现三态权限：未登录 + owner + admin 可见，登录非 owner 不可见
@@ -631,6 +888,13 @@ export async function getSubmission(
   return {
     id: row.id,
     public_id: row.public_id,
+    ...(canSeeDetails
+      ? {
+        progress: row.judge_progress as
+          | import("../oi-progress.ts").OiProgress
+          | null,
+      }
+      : {}),
     user_id: row.user_id,
     problem_id: row.problem_id,
     contest_id: row.contest_id,
@@ -646,6 +910,12 @@ export async function getSubmission(
       null,
     judge_finished_at: queueStatus?.judge_finished_at ??
       row.judge_finished_at ?? null,
+    submitted_version_id: row.submitted_version_id ?? null,
+    version_origin: row.version_origin ?? "legacy_unknown",
+    submitted_version: submittedVersion,
+    upgraded_from_id: row.upgraded_from_id ?? null,
+    effective_version_policy: effectiveVersionPolicy,
+    version_results: versionResults,
   };
 }
 

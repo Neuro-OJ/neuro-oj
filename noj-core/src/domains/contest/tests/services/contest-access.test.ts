@@ -8,6 +8,7 @@ import {
   deleteContest,
   verifyContestAccess,
 } from "../../index.ts";
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 
 await resetDbForTest();
 
@@ -53,6 +54,8 @@ async function createProblem(number: number): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  // 竞赛只能固定已发布版本（Handbook §2.6）：夹具题目补迁移基线
+  await publishBaselineVersionForTest(id);
   return id;
 }
 

@@ -1,0 +1,1486 @@
+{
+  "analysis_version": "noj-wasm-analysis-v1",
+  "baseline_fuel": 6433426,
+  "categories": {
+    "contestant": 1036364,
+    "io_candidate": 3147885,
+    "other_sdk": 2165725,
+    "unconfirmed": 1
+  },
+  "hotspots": [
+    {
+      "cost": 2073920,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 203,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNKSt3__27num_getIcNS_19istreambuf_iteratorIcNS_11char_traitsIcEEEEE17__do_get_integralIlEES4_S4_S4_RNS_8ios_baseERjRT_"
+      }
+    },
+    {
+      "cost": 939556,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 32,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(algorithm.cpp.o)",
+        "object_sha256": "9f20fa8484ccd37480f2a7078ff09c5e9a59527d5865a70842f3e024a4fe334c",
+        "symbol": "_ZNSt3__218__bitset_partitionB9nqn230100INS_17_ClassicAlgPolicyEPlNS_6ranges4lessEEENS_4pairIT0_bEES6_S6_T1_"
+      }
+    },
+    {
+      "cost": 724992,
+      "origin": {
+        "category": "contestant",
+        "function_index": 13,
+        "object": "contestant/main.o",
+        "object_sha256": "14e858f241856d033b86d92128247f33997210f588b08fbbdba0572ad9b4ead9",
+        "symbol": "_ZrsRNSt3__213basic_istreamIcNS_11char_traitsIcEEEER6Number"
+      }
+    },
+    {
+      "cost": 701018,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 78,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_istreamIcNS_11char_traitsIcEEE6sentryC2ERS3_b"
+      }
+    },
+    {
+      "cost": 398947,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 30,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(algorithm.cpp.o)",
+        "object_sha256": "9f20fa8484ccd37480f2a7078ff09c5e9a59527d5865a70842f3e024a4fe334c",
+        "symbol": "_ZNSt3__211__introsortB9nqn230100INS_17_ClassicAlgPolicyENS_6ranges4lessEPlLb1EEEvT1_S5_T0_NS_15iterator_traitsIS5_E15difference_typeEb"
+      }
+    },
+    {
+      "cost": 320580,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 385,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNKSt3__26locale9use_facetERNS0_2idE"
+      }
+    },
+    {
+      "cost": 319722,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 83,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__218__input_arithmeticB9nqn230100IlcNS_11char_traitsIcEEEERNS_13basic_istreamIT0_T1_EES7_RT_"
+      }
+    },
+    {
+      "cost": 292774,
+      "origin": {
+        "category": "contestant",
+        "function_index": 15,
+        "object": "contestant/main.o",
+        "object_sha256": "14e858f241856d033b86d92128247f33997210f588b08fbbdba0572ad9b4ead9",
+        "symbol": "__original_main"
+      }
+    },
+    {
+      "cost": 148038,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 379,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__26localeC1ERKS0_"
+      }
+    },
+    {
+      "cost": 135867,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 380,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__26localeD1Ev"
+      }
+    },
+    {
+      "cost": 65664,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 476,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNKSt3__28numpunctIcE11do_groupingEv"
+      }
+    },
+    {
+      "cost": 61555,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 51,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.cpp.o)",
+        "object_sha256": "2ee691217e037cfcd1e40ba78fa796877c7c0f9eb183d0d30fa2e60cf679ec4a",
+        "symbol": "_ZNKSt3__28ios_base6getlocEv"
+      }
+    },
+    {
+      "cost": 57498,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 55,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.cpp.o)",
+        "object_sha256": "2ee691217e037cfcd1e40ba78fa796877c7c0f9eb183d0d30fa2e60cf679ec4a",
+        "symbol": "_ZNSt3__28ios_base5clearEj"
+      }
+    },
+    {
+      "cost": 28693,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 202,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNKSt3__27num_getIcNS_19istreambuf_iteratorIcNS_11char_traitsIcEEEEE6do_getES4_S4_RNS_8ios_baseERjRl"
+      }
+    },
+    {
+      "cost": 17427,
+      "origin": {
+        "category": "contestant",
+        "function_index": 16,
+        "object": "contestant/main.o",
+        "object_sha256": "14e858f241856d033b86d92128247f33997210f588b08fbbdba0572ad9b4ead9",
+        "symbol": "_ZZNSt3__26vectorIlNS_9allocatorIlEEE12emplace_backB9nqn230100IJRKlEEEvDpOT_ENKUlvE0_clB9nqn230100Ev"
+      }
+    },
+    {
+      "cost": 12297,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 82,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_istreamIcNS_11char_traitsIcEEErsERl"
+      }
+    },
+    {
+      "cost": 8198,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 474,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNKSt3__28numpunctIcE16do_thousands_sepEv"
+      }
+    },
+    {
+      "cost": 5739,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 666,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(fread.c.obj)",
+        "object_sha256": "eec02aed0b58cc6c4acd2bc6d0fbcd7c3549cc3a51bc30c6cd04e17d30bb1e87",
+        "symbol": "fread"
+      }
+    },
+    {
+      "cost": 3240,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 608,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(pthread_mutex_unlock.c.obj)",
+        "object_sha256": "689428b8843a9b0b2b004e7bb54570b00c70d5cc3fd135a0e272f06c20306b05",
+        "symbol": "__pthread_mutex_unlock"
+      }
+    },
+    {
+      "cost": 3142,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 730,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(dlmalloc.c.obj)",
+        "object_sha256": "ff4713d967e07b384dc13f5b378e650a79ec04cb98d208fdab81e70dc197bd79",
+        "symbol": "dlmalloc"
+      }
+    },
+    {
+      "cost": 2677,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 369,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__26locale5__impC2Em"
+      }
+    },
+    {
+      "cost": 2583,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 733,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(dlmalloc.c.obj)",
+        "object_sha256": "ff4713d967e07b384dc13f5b378e650a79ec04cb98d208fdab81e70dc197bd79",
+        "symbol": "dlfree"
+      }
+    },
+    {
+      "cost": 2400,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 602,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(pthread_cond_timedwait.c.obj)",
+        "object_sha256": "f196b129fb8cc9db364ff72963bb486e554fa38fbc1311dfc7db59f40a04275d",
+        "symbol": "__private_cond_signal"
+      }
+    },
+    {
+      "cost": 2351,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 33,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(algorithm.cpp.o)",
+        "object_sha256": "9f20fa8484ccd37480f2a7078ff09c5e9a59527d5865a70842f3e024a4fe334c",
+        "symbol": "_ZNSt3__227__insertion_sort_incompleteB9nqn230100INS_17_ClassicAlgPolicyENS_6ranges4lessEPlEEbT1_S5_T0_"
+      }
+    },
+    {
+      "cost": 1500,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 370,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__26vectorIPNS_6locale5facetENS_15__sso_allocatorIS3_Lm30EEEE6resizeB9nqn230100Em"
+      }
+    },
+    {
+      "cost": 1140,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 604,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(pthread_mutex_lock.c.obj)",
+        "object_sha256": "3863665c969f5b586556b61f9e61764377ae09172798758fca645c70643d2dba",
+        "symbol": "__pthread_mutex_lock"
+      }
+    },
+    {
+      "cost": 1119,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 375,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__26locale5__impC2ERKS1_PNS0_5facetEl"
+      }
+    },
+    {
+      "cost": 1050,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 188,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(call_once.cpp.o)",
+        "object_sha256": "3a59e872a0692e295469b318d451d018f8d036337b35fd5bafcd996ec66630d9",
+        "symbol": "_ZNSt3__211__call_onceERVmPvPFvS2_E"
+      }
+    },
+    {
+      "cost": 917,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 376,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__26locale5__impD2Ev"
+      }
+    },
+    {
+      "cost": 832,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 656,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(__stdio_read.c.obj)",
+        "object_sha256": "b9b12103a1b445db6045b4b5198e05b8b9e00f5fd5bee404aebc7098d859ce2a",
+        "symbol": "__stdio_read"
+      }
+    },
+    {
+      "cost": 771,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 146,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(iostream.cpp.o)",
+        "object_sha256": "9fe45f7e5d0a2e3ddeaec8379714a8790c7287aaffda2b104e97fb567fd317c5",
+        "symbol": "_ZNSt3__29DoIOSInitC2Ev"
+      }
+    },
+    {
+      "cost": 630,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 248,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNKSt3__27num_putIcNS_19ostreambuf_iteratorIcNS_11char_traitsIcEEEEE17__do_put_integralB9nqn230100IlEES4_S4_RNS_8ios_baseEcT_"
+      }
+    },
+    {
+      "cost": 626,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 128,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_filebufIcNS_11char_traitsIcEEE9underflowEv"
+      }
+    },
+    {
+      "cost": 615,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 250,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__29__num_putIcE21__widen_and_group_intEPcS2_S2_S2_RS2_S3_RKNS_6localeE"
+      }
+    },
+    {
+      "cost": 595,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 378,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__26localeC2Ev"
+      }
+    },
+    {
+      "cost": 581,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 671,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(fwrite.c.obj)",
+        "object_sha256": "7a2838f66b845f6122a5e30f35c3d82986b1ac4c38c8eb791365b3fa99c79e5a",
+        "symbol": "fwrite"
+      }
+    },
+    {
+      "cost": 561,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 144,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_filebufIcNS_11char_traitsIcEEE6xsputnEPKcl"
+      }
+    },
+    {
+      "cost": 528,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 665,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(__toread.c.obj)",
+        "object_sha256": "11331d4833024109af117f6ac8fb4a10298f2d27ea7fd43ea691f8148dacd614",
+        "symbol": "__toread"
+      }
+    },
+    {
+      "cost": 495,
+      "origin": {
+        "category": "contestant",
+        "function_index": 28,
+        "object": "contestant/main.o",
+        "object_sha256": "14e858f241856d033b86d92128247f33997210f588b08fbbdba0572ad9b4ead9",
+        "symbol": "_ZNSt3__216__pad_and_outputB9nqn230100IcNS_11char_traitsIcEEEENS_19ostreambuf_iteratorIT_T0_EES6_PKS4_S8_S8_RNS_8ios_baseES4_"
+      }
+    },
+    {
+      "cost": 450,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 200,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__217__call_once_proxyB9nqn230100INS_5tupleIJOZNS_6locale2id5__getEvE3$_0EEEEEvPv"
+      }
+    },
+    {
+      "cost": 385,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 56,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.cpp.o)",
+        "object_sha256": "2ee691217e037cfcd1e40ba78fa796877c7c0f9eb183d0d30fa2e60cf679ec4a",
+        "symbol": "_ZNSt3__28ios_base4initEPv"
+      }
+    },
+    {
+      "cost": 374,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 89,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_ostreamIcNS_11char_traitsIcEEE6sentryC1ERS3_"
+      }
+    },
+    {
+      "cost": 341,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 409,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNKSt3__25ctypeIcE8do_widenEPKcS3_Pc"
+      }
+    },
+    {
+      "cost": 330,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 124,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_filebufIcNS_11char_traitsIcEEEC2Ev"
+      }
+    },
+    {
+      "cost": 330,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 151,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(iostream.cpp.o)",
+        "object_sha256": "9fe45f7e5d0a2e3ddeaec8379714a8790c7287aaffda2b104e97fb567fd317c5",
+        "symbol": "_ZNSt3__213basic_filebufIwNS_11char_traitsIwEEEC2Ev"
+      }
+    },
+    {
+      "cost": 303,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 150,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(iostream.cpp.o)",
+        "object_sha256": "9fe45f7e5d0a2e3ddeaec8379714a8790c7287aaffda2b104e97fb567fd317c5",
+        "symbol": "_ZNSt3__28ios_base15sync_with_stdioEb"
+      }
+    },
+    {
+      "cost": 301,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 627,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(locale_map.c.obj)",
+        "object_sha256": "5dabb91cb306ed15c0e0a1e6c415db99576224ab757f68e8a10684b9305b3de2",
+        "symbol": "__get_locale"
+      }
+    },
+    {
+      "cost": 300,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 569,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++abi.a(stdlib_new_delete.cpp.o)",
+        "object_sha256": "ba52394886e280714e40879a8b19ef7472c35b07ce9ae54cae1fb980c05cb4e0",
+        "symbol": "_Znwm"
+      }
+    },
+    {
+      "cost": 275,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 641,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(__lockfile.c.obj)",
+        "object_sha256": "1ec895d684ed70ae0c48358aa3ceff38053627c4b0dabd0c3fccde0a717b88f5",
+        "symbol": "__lockfile"
+      }
+    },
+    {
+      "cost": 253,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 90,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_ostreamIcNS_11char_traitsIcEEE6sentryD1Ev"
+      }
+    },
+    {
+      "cost": 252,
+      "origin": {
+        "category": "contestant",
+        "function_index": 18,
+        "object": "contestant/main.o",
+        "object_sha256": "14e858f241856d033b86d92128247f33997210f588b08fbbdba0572ad9b4ead9",
+        "symbol": "_ZNSt3__224__put_character_sequenceB9nqn230100IcNS_11char_traitsIcEEEERNS_13basic_ostreamIT_T0_EES7_PKS4_m"
+      }
+    },
+    {
+      "cost": 252,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 383,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNKSt3__26locale9has_facetERNS0_2idE"
+      }
+    },
+    {
+      "cost": 248,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 94,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_ostreamIcNS_11char_traitsIcEEE9__put_numB9nqn230100IlEERS3_T_"
+      }
+    },
+    {
+      "cost": 246,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 178,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(iostream.cpp.o)",
+        "object_sha256": "9fe45f7e5d0a2e3ddeaec8379714a8790c7287aaffda2b104e97fb567fd317c5",
+        "symbol": "_ZNSt3__213basic_filebufIwNS_11char_traitsIwEEE6setbufEPwl"
+      }
+    },
+    {
+      "cost": 220,
+      "origin": {
+        "category": "contestant",
+        "function_index": 17,
+        "object": "contestant/main.o",
+        "object_sha256": "14e858f241856d033b86d92128247f33997210f588b08fbbdba0572ad9b4ead9",
+        "symbol": "_ZNSt3__219basic_istringstreamIcNS_11char_traitsIcEENS_9allocatorIcEEEC1B9nqn230100ERKNS_12basic_stringIcS2_S4_EEj"
+      }
+    },
+    {
+      "cost": 219,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 46,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(string.cpp.o)",
+        "object_sha256": "0405fb50cf6f05f6f053c589a431b06310ce9cfc4c066763c0a18718ea207919",
+        "symbol": "_ZNSt3__26__itoa13__base_10_u32B9nqn230100EPcj"
+      }
+    },
+    {
+      "cost": 203,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 654,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(readv.c.obj)",
+        "object_sha256": "3fe3625a77c42715617ec7dfce915682f931e626bb2f36434e467dfa0c78d520",
+        "symbol": "readv"
+      }
+    },
+    {
+      "cost": 189,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 132,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_filebufIcNS_11char_traitsIcEEE6setbufEPcl"
+      }
+    },
+    {
+      "cost": 180,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 594,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(pthread_cond_broadcast.c.obj)",
+        "object_sha256": "094790d2903fc4d94d8c35514a627a2cb8b382be1f1bbd460786bfc58cf94349",
+        "symbol": "pthread_cond_broadcast"
+      }
+    },
+    {
+      "cost": 175,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 629,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(newlocale.c.obj)",
+        "object_sha256": "f79529c8ddce89d0796f1d44e4fda11bf83f18dcdc2477c232236e8286b609ef",
+        "symbol": "__newlocale"
+      }
+    },
+    {
+      "cost": 159,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 131,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_filebufIcNS_11char_traitsIcEEE8overflowEi"
+      }
+    },
+    {
+      "cost": 155,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 372,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__26vectorIPNS_6locale5facetENS_15__sso_allocatorIS3_Lm30EEEE18__assign_with_sizeB9nqn230100INS_17_ClassicAlgPolicyEPKS3_SA_EEvT0_T1_l"
+      }
+    },
+    {
+      "cost": 155,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 655,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(read.c.obj)",
+        "object_sha256": "30cd7fe1c484ecf2a3f13c25099deedada33d5541de9cc470147e14627a834c3",
+        "symbol": "read"
+      }
+    },
+    {
+      "cost": 150,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 92,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_ostreamIcNS_11char_traitsIcEEE25__put_num_integer_promoteB9nqn230100IiEERS3_T_"
+      }
+    },
+    {
+      "cost": 131,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 126,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_filebufIcNS_11char_traitsIcEEE4syncEv"
+      }
+    },
+    {
+      "cost": 115,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 249,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__219__to_chars_integralB9nqn230100ImTnNS_9enable_ifIXntsr9is_signedIT_EE5valueEiE4typeELi0EEENS_17__to_chars_resultEPcS6_S2_i"
+      }
+    },
+    {
+      "cost": 100,
+      "origin": {
+        "category": "contestant",
+        "function_index": 19,
+        "object": "contestant/main.o",
+        "object_sha256": "14e858f241856d033b86d92128247f33997210f588b08fbbdba0572ad9b4ead9",
+        "symbol": "_ZNSt3__215basic_stringbufIcNS_11char_traitsIcEENS_9allocatorIcEEE15__init_buf_ptrsB9nqn230100Ev"
+      }
+    },
+    {
+      "cost": 100,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 79,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_ostreamIcNS_11char_traitsIcEEE5flushEv"
+      }
+    },
+    {
+      "cost": 100,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 113,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_ostreamIwNS_11char_traitsIwEEE5flushEv"
+      }
+    },
+    {
+      "cost": 99,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 53,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.cpp.o)",
+        "object_sha256": "2ee691217e037cfcd1e40ba78fa796877c7c0f9eb183d0d30fa2e60cf679ec4a",
+        "symbol": "_ZNSt3__28ios_baseD2Ev"
+      }
+    },
+    {
+      "cost": 96,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 381,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__26localeaSERKS0_"
+      }
+    },
+    {
+      "cost": 96,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 633,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(uselocale.c.obj)",
+        "object_sha256": "7f12b45f62e2e6d160d063c9f386bb348465ab04a4ce242fdfebf2639bdf47e6",
+        "symbol": "__uselocale"
+      }
+    },
+    {
+      "cost": 94,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 587,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(atexit.c.obj)",
+        "object_sha256": "a18744982c8937d58808608db2ff013f92fc7fa48bb04a28a01896f1b7abe26f",
+        "symbol": "__funcs_on_exit"
+      }
+    },
+    {
+      "cost": 84,
+      "origin": {
+        "category": "contestant",
+        "function_index": 23,
+        "object": "contestant/main.o",
+        "object_sha256": "14e858f241856d033b86d92128247f33997210f588b08fbbdba0572ad9b4ead9",
+        "symbol": "_ZNK5Facet6do_getENSt3__219istreambuf_iteratorIcNS0_11char_traitsIcEEEES4_RNS0_8ios_baseERjRl"
+      }
+    },
+    {
+      "cost": 84,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 582,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(__wasilibc_real.c.obj)",
+        "object_sha256": "3ee037f54cbe6aa9d5e396a520b3384c5f3a5277a15cea691f8099114cfc84f0",
+        "symbol": "__wasi_fd_read"
+      }
+    },
+    {
+      "cost": 83,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 658,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(__stdio_exit.c.obj)",
+        "object_sha256": "e7aeab69dc08ae136aa74bc6ac7a90cc7311cf0fb1b705a94376efa73efd2b45",
+        "symbol": "__stdio_exit"
+      }
+    },
+    {
+      "cost": 81,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 588,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(atexit.c.obj)",
+        "object_sha256": "a18744982c8937d58808608db2ff013f92fc7fa48bb04a28a01896f1b7abe26f",
+        "symbol": "__cxa_atexit"
+      }
+    },
+    {
+      "cost": 78,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 81,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__238__input_arithmetic_with_numeric_limitsB9nqn230100IicNS_11char_traitsIcEEEERNS_13basic_istreamIT0_T1_EES7_RT_"
+      }
+    },
+    {
+      "cost": 70,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 653,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(__stdio_write.c.obj)",
+        "object_sha256": "ffc7d4cb5e77ef479508595630abfecde3e7c4c159debbf08b96b4d6a0441d0b",
+        "symbol": "__stdio_write"
+      }
+    },
+    {
+      "cost": 68,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 84,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_istreamIcNS_11char_traitsIcEEE3getEv"
+      }
+    },
+    {
+      "cost": 68,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 118,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_ostreamIwNS_11char_traitsIwEEE6sentryC1ERS3_"
+      }
+    },
+    {
+      "cost": 66,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 175,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(iostream.cpp.o)",
+        "object_sha256": "9fe45f7e5d0a2e3ddeaec8379714a8790c7287aaffda2b104e97fb567fd317c5",
+        "symbol": "_ZNSt3__213basic_filebufIwNS_11char_traitsIwEEE4syncEv"
+      }
+    },
+    {
+      "cost": 58,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 120,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__215basic_stringbufIcNS_11char_traitsIcEENS_9allocatorIcEEE9underflowEv"
+      }
+    },
+    {
+      "cost": 56,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 732,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(dlmalloc.c.obj)",
+        "object_sha256": "ff4713d967e07b384dc13f5b378e650a79ec04cb98d208fdab81e70dc197bd79",
+        "symbol": "free"
+      }
+    },
+    {
+      "cost": 50,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 729,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(dlmalloc.c.obj)",
+        "object_sha256": "ff4713d967e07b384dc13f5b378e650a79ec04cb98d208fdab81e70dc197bd79",
+        "symbol": "malloc"
+      }
+    },
+    {
+      "cost": 48,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 645,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(fflush.c.obj)",
+        "object_sha256": "e55af6dce2d22ddc985c8195cd1eccef9a1eb183e351d626f13ede08ac43873d",
+        "symbol": "fflush"
+      }
+    },
+    {
+      "cost": 46,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 119,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_ostreamIwNS_11char_traitsIwEEE6sentryD1Ev"
+      }
+    },
+    {
+      "cost": 41,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 595,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(__init_tls.c.obj)",
+        "object_sha256": "ffd4989df7aae93d999b3beb59aa3724db636c31b00313923fd8c2af3abe8ebc",
+        "symbol": "__init_tp"
+      }
+    },
+    {
+      "cost": 38,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 420,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__27codecvtIwc11__mbstate_tEC1Em"
+      }
+    },
+    {
+      "cost": 36,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 50,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.cpp.o)",
+        "object_sha256": "2ee691217e037cfcd1e40ba78fa796877c7c0f9eb183d0d30fa2e60cf679ec4a",
+        "symbol": "_ZNSt3__28ios_base5imbueERKNS_6localeE"
+      }
+    },
+    {
+      "cost": 34,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 425,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNKSt3__27codecvtIwc11__mbstate_tE11do_encodingEv"
+      }
+    },
+    {
+      "cost": 34,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 659,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(__towrite.c.obj)",
+        "object_sha256": "3f7f8804aa7fb8c38030675f7dfdb8c6ca7c30e1dc7fd84e0a8862b196b13ff5",
+        "symbol": "__towrite"
+      }
+    },
+    {
+      "cost": 32,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 571,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++abi.a(stdlib_new_delete.cpp.o)",
+        "object_sha256": "ba52394886e280714e40879a8b19ef7472c35b07ce9ae54cae1fb980c05cb4e0",
+        "symbol": "_ZdlPv"
+      }
+    },
+    {
+      "cost": 32,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 652,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(writev.c.obj)",
+        "object_sha256": "2709c14bb708b62933d11684341a8710ec82ed58544e43c3cf89484312bdc431",
+        "symbol": "writev"
+      }
+    },
+    {
+      "cost": 30,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 59,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__215basic_streambufIcNS_11char_traitsIcEEED2Ev"
+      }
+    },
+    {
+      "cost": 30,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 95,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__215basic_streambufIwNS_11char_traitsIwEEED2Ev"
+      }
+    },
+    {
+      "cost": 30,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 247,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNKSt3__27num_putIcNS_19ostreambuf_iteratorIcNS_11char_traitsIcEEEEE6do_putES4_RNS_8ios_baseEcl"
+      }
+    },
+    {
+      "cost": 29,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 649,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(isatty.c.obj)",
+        "object_sha256": "df7d060969502ead49228fe290f85926e36e05be7c21df1df9bb469193055f68",
+        "symbol": "__isatty"
+      }
+    },
+    {
+      "cost": 27,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 153,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(iostream.cpp.o)",
+        "object_sha256": "9fe45f7e5d0a2e3ddeaec8379714a8790c7287aaffda2b104e97fb567fd317c5",
+        "symbol": "_ZNSt3__210__stdinbufIcE5imbueERKNS_6localeE"
+      }
+    },
+    {
+      "cost": 27,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 164,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(iostream.cpp.o)",
+        "object_sha256": "9fe45f7e5d0a2e3ddeaec8379714a8790c7287aaffda2b104e97fb567fd317c5",
+        "symbol": "_ZNSt3__210__stdinbufIwE5imbueERKNS_6localeE"
+      }
+    },
+    {
+      "cost": 25,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 728,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(sbrk.c.obj)",
+        "object_sha256": "b2a8c13c310efcbaf3f766e69c06b615a172a3e33c0ac3ac0d74c46890ea2d95",
+        "symbol": "sbrk"
+      }
+    },
+    {
+      "cost": 24,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 147,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(iostream.cpp.o)",
+        "object_sha256": "9fe45f7e5d0a2e3ddeaec8379714a8790c7287aaffda2b104e97fb567fd317c5",
+        "symbol": "_ZNSt3__28ios_base4InitC2Ev"
+      }
+    },
+    {
+      "cost": 24,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 401,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__25ctypeIcEC1EPKmbm"
+      }
+    },
+    {
+      "cost": 23,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 384,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__26locale2id5__getEv"
+      }
+    },
+    {
+      "cost": 21,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 69,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__215basic_streambufIcNS_11char_traitsIcEEE5uflowEv"
+      }
+    },
+    {
+      "cost": 20,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 382,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__26locale14__install_ctorERKS0_PNS0_5facetEl"
+      }
+    },
+    {
+      "cost": 20,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 466,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__28numpunctIcEC1Em"
+      }
+    },
+    {
+      "cost": 20,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 467,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__28numpunctIwEC1Em"
+      }
+    },
+    {
+      "cost": 19,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 683,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(__stdout_write.c.obj)",
+        "object_sha256": "ccd8d635ee8a8452e2d9aec49eaa420e01d38667a159a454e44d7b76f3424346",
+        "symbol": "__stdout_write"
+      }
+    },
+    {
+      "cost": 18,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 29,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(algorithm.cpp.o)",
+        "object_sha256": "9f20fa8484ccd37480f2a7078ff09c5e9a59527d5865a70842f3e024a4fe334c",
+        "symbol": "_ZNSt3__26__sortIRNS_6__lessIllEEPlEEvT0_S5_T_"
+      }
+    },
+    {
+      "cost": 18,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 570,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++abi.a(stdlib_new_delete.cpp.o)",
+        "object_sha256": "ba52394886e280714e40879a8b19ef7472c35b07ce9ae54cae1fb980c05cb4e0",
+        "symbol": "_Znam"
+      }
+    },
+    {
+      "cost": 16,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 12,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/crt1-command.o",
+        "object_sha256": "5c915e8a62ed0175d59e90514b208ae4ee7094ba57e1eb8019433bd41c1d3361",
+        "symbol": "_start"
+      }
+    },
+    {
+      "cost": 16,
+      "origin": {
+        "category": "contestant",
+        "function_index": 21,
+        "object": "contestant/main.o",
+        "object_sha256": "14e858f241856d033b86d92128247f33997210f588b08fbbdba0572ad9b4ead9",
+        "symbol": "_ZN6Buffer9underflowEv"
+      }
+    },
+    {
+      "cost": 13,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 186,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(iostream.cpp.o)",
+        "object_sha256": "9fe45f7e5d0a2e3ddeaec8379714a8790c7287aaffda2b104e97fb567fd317c5",
+        "symbol": "_GLOBAL__I_000100"
+      }
+    },
+    {
+      "cost": 10,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 387,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__26locale5facet16__on_zero_sharedEv"
+      }
+    },
+    {
+      "cost": 9,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 93,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_ostreamIcNS_11char_traitsIcEEElsEl"
+      }
+    },
+    {
+      "cost": 9,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 616,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(__ctype_get_mb_cur_max.c.obj)",
+        "object_sha256": "a3276705364854a3e0c7aae70265daaaf5a2d0f5a2ef22d4261249c5dc03c794",
+        "symbol": "__ctype_get_mb_cur_max"
+      }
+    },
+    {
+      "cost": 8,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 148,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(iostream.cpp.o)",
+        "object_sha256": "9fe45f7e5d0a2e3ddeaec8379714a8790c7287aaffda2b104e97fb567fd317c5",
+        "symbol": "__cxx_global_array_dtor.1"
+      }
+    },
+    {
+      "cost": 8,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 373,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__26locale7classicEv"
+      }
+    },
+    {
+      "cost": 7,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 417,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNKSt3__27codecvtIcc11__mbstate_tE16do_always_noconvEv"
+      }
+    },
+    {
+      "cost": 7,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 426,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNKSt3__27codecvtIwc11__mbstate_tE16do_always_noconvEv"
+      }
+    },
+    {
+      "cost": 7,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 584,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(__wasilibc_real.c.obj)",
+        "object_sha256": "3ee037f54cbe6aa9d5e396a520b3384c5f3a5277a15cea691f8099114cfc84f0",
+        "symbol": "__wasi_fd_write"
+      }
+    },
+    {
+      "cost": 6,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 91,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_ostreamIcNS_11char_traitsIcEEElsEi"
+      }
+    },
+    {
+      "cost": 5,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 74,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_istreamIcNS_11char_traitsIcEEED1Ev"
+      }
+    },
+    {
+      "cost": 5,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 579,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(__wasilibc_real.c.obj)",
+        "object_sha256": "3ee037f54cbe6aa9d5e396a520b3384c5f3a5277a15cea691f8099114cfc84f0",
+        "symbol": "__wasi_fd_fdstat_get"
+      }
+    },
+    {
+      "cost": 4,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 58,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__29basic_iosIcNS_11char_traitsIcEEED2Ev"
+      }
+    },
+    {
+      "cost": 4,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 145,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(iostream.cpp.o)",
+        "object_sha256": "9fe45f7e5d0a2e3ddeaec8379714a8790c7287aaffda2b104e97fb567fd317c5",
+        "symbol": "__cxx_global_array_dtor"
+      }
+    },
+    {
+      "cost": 4,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 377,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__26locale5__impD0Ev"
+      }
+    },
+    {
+      "cost": 4,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 415,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNKSt3__27codecvtIcc11__mbstate_tE10do_unshiftERS1_PcS4_RS4_"
+      }
+    },
+    {
+      "cost": 4,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 572,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++abi.a(stdlib_new_delete.cpp.o)",
+        "object_sha256": "ba52394886e280714e40879a8b19ef7472c35b07ce9ae54cae1fb980c05cb4e0",
+        "symbol": "_ZdlPvm"
+      }
+    },
+    {
+      "cost": 3,
+      "origin": {
+        "category": "contestant",
+        "function_index": 22,
+        "object": "contestant/main.o",
+        "object_sha256": "14e858f241856d033b86d92128247f33997210f588b08fbbdba0572ad9b4ead9",
+        "symbol": "_ZN5FacetD0Ev"
+      }
+    },
+    {
+      "cost": 3,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 80,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_istreamIcNS_11char_traitsIcEEErsERi"
+      }
+    },
+    {
+      "cost": 3,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 638,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(mbtowc.c.obj)",
+        "object_sha256": "b699dc40ef7209349cee1d4a6be4224b3301babd0ae3a8443128a9909bc2ddb5",
+        "symbol": "mbtowc"
+      }
+    },
+    {
+      "cost": 2,
+      "origin": {
+        "category": "io_candidate",
+        "function_index": 73,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(ios.instantiations.cpp.o)",
+        "object_sha256": "93c8b8920127408872e7feedf8ba443cd5adeb96b69683b58291b647d5db6f34",
+        "symbol": "_ZNSt3__213basic_istreamIcNS_11char_traitsIcEEED2Ev"
+      }
+    },
+    {
+      "cost": 2,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 187,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(memory.cpp.o)",
+        "object_sha256": "00a39e4a270c6347c67797126d7299470324744c416d76b8c6e3a49ec28ac71c",
+        "symbol": "_ZNSt3__214__shared_countD2Ev"
+      }
+    },
+    {
+      "cost": 2,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 540,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNSt3__27codecvtIcc11__mbstate_tED2Ev"
+      }
+    },
+    {
+      "cost": 2,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 590,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(exit.c.obj)",
+        "object_sha256": "84292d5f714d1535b004404ef4cc1103a24c6f36cad4a69139cea492ee5d7f2c",
+        "symbol": "__wasm_call_dtors"
+      }
+    },
+    {
+      "cost": 1,
+      "origin": {
+        "category": "unconfirmed",
+        "function_index": 11,
+        "object": "<unconfirmed>",
+        "object_sha256": null,
+        "symbol": "__wasm_call_ctors"
+      }
+    },
+    {
+      "cost": 1,
+      "origin": {
+        "category": "contestant",
+        "function_index": 14,
+        "object": "contestant/main.o",
+        "object_sha256": "14e858f241856d033b86d92128247f33997210f588b08fbbdba0572ad9b4ead9",
+        "symbol": "atoi"
+      }
+    },
+    {
+      "cost": 1,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 149,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(iostream.cpp.o)",
+        "object_sha256": "9fe45f7e5d0a2e3ddeaec8379714a8790c7287aaffda2b104e97fb567fd317c5",
+        "symbol": "_ZNSt3__28ios_base4InitD1Ev"
+      }
+    },
+    {
+      "cost": 1,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 408,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNKSt3__25ctypeIcE8do_widenEc"
+      }
+    },
+    {
+      "cost": 1,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 416,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a(locale.cpp.o)",
+        "object_sha256": "e4271997b9b758452d349df639afb5e9ae318a0f60ecf98e500eae95c91f7372",
+        "symbol": "_ZNKSt3__27codecvtIcc11__mbstate_tE11do_encodingEv"
+      }
+    },
+    {
+      "cost": 1,
+      "origin": {
+        "category": "other_sdk",
+        "function_index": 677,
+        "object": "sdk/share/wasi-sysroot/lib/wasm32-wasip1/libc.a(ofl.c.obj)",
+        "object_sha256": "a4b67da2cb7bacf19787c9e12196178a36aea2c41648106965681e7ab23310ed",
+        "symbol": "__ofl_lock"
+      }
+    }
+  ],
+  "instrumented_module_hash": "f57195483881958beaee09fdefb0eca113104f1a7dcea4fb703dcd9f75c9e1c8",
+  "linked_module_hash": "80c246ecca1e42f8afae3db0c0a03eb6ea0f3909d9ac6fae8037a1fc0238163d",
+  "origin_map_hash": "ad97db553d9f5528d81b005a33efdaa6f9ffda643664332d75c580c34641f8c2",
+  "raw_fuel": 13135094,
+  "source_hash": "2285adef4f3dc192b9abd8a1000ead33385851f27b3a3b680821643adf2f55ba",
+  "standard_hash": "c48b2438327c128ae798599f554dd7e2bb186b282827324a32c84116e7f39360",
+  "streams": {
+    "freopen-after": {
+      "baseline_fuel": 28477,
+      "categories": {
+        "contestant": 31,
+        "io_candidate": 3568,
+        "other_sdk": 24166,
+        "unconfirmed": 1
+      },
+      "module_hash": "a5759106e0ac62d9f045f97249807e33893006b95e1429108e549f7a85f4e4cb",
+      "origin_map_hash": "e337e49b5552dc9058912e26f821f311798bf79d3ecbc5f1fa62d5eaffe70518",
+      "raw_fuel": 59553
+    },
+    "freopen-before": {
+      "baseline_fuel": 28477,
+      "categories": {
+        "contestant": 31,
+        "io_candidate": 3568,
+        "other_sdk": 24166,
+        "unconfirmed": 1
+      },
+      "module_hash": "4813841377f64250e09a434cf714f14a9b8914cffbe5b1b6af2f0dd553c78650",
+      "origin_map_hash": "6ae40c7c1187033e93da4699cf35a14c2501cbc9304aee03787886294f90919d",
+      "raw_fuel": 59553
+    },
+    "stdio": {
+      "baseline_fuel": 23629,
+      "categories": {
+        "contestant": 21,
+        "io_candidate": 3412,
+        "other_sdk": 19622,
+        "unconfirmed": 1
+      },
+      "module_hash": "0c772727d56d869bb07c7e7e375ac6cdfcb5965a651f7033f6b1675ffd30d4be",
+      "origin_map_hash": "038e1ad39894b145935b14e067ea63758bfc314f3bdfb7f5438dd53ff8ef73a8",
+      "raw_fuel": 49957
+    }
+  }
+}

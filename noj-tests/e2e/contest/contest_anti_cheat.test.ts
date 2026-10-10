@@ -14,6 +14,7 @@
  * 若该 setter 尚未实现，测试会以明确的 setup 错误提示阻塞。
  */
 import {
+  api,
   apiGet,
   apiPost,
   apiPut,
@@ -23,6 +24,7 @@ import {
   getOrCreateUser,
   getProblemIdByNumber,
   isE2E,
+  publishProblemVersion,
   TEST_PASSWORD,
   waitForServer,
 } from "../helper.ts";
@@ -238,10 +240,23 @@ e2eTest("[e2e/anti-cheat] Setup", async () => {
     `E2E 防作弊私有套卷 ${ts}`,
   );
 
-  // 给私有套卷加一题，供场景 7 练习提交使用
-  const q = await apiPost(
-    `/api/v1/problems/${privatePaperId}/questions`,
-    {
+  // 给私有套卷加一题，供场景 7 练习提交使用。
+  // 客观题小题写共享草稿：必须携带 If-Match（Handbook §4.1/§6.4）。
+  const draftRes = await apiGet(
+    `/api/v1/problems/${privatePaperId}/draft`,
+    ownerToken,
+  );
+  if (draftRes.status !== 200) {
+    throw new Error(
+      `读取私有套卷草稿失败: ${draftRes.status} ${
+        JSON.stringify(draftRes.body)
+      }`,
+    );
+  }
+  const draftRevision =
+    (draftRes.body as { data: { revision: number } }).data.revision;
+  const q = await api("POST", `/api/v1/problems/${privatePaperId}/questions`, {
+    body: {
       type: "single",
       prompt: "私有套卷唯一题",
       options: [
@@ -251,14 +266,17 @@ e2eTest("[e2e/anti-cheat] Setup", async () => {
       answer: ["A"],
       explanation: "这道题的解析不应泄露给非 owner",
     },
-    ownerToken,
-  );
+    token: ownerToken,
+    headers: { "If-Match": String(draftRevision) },
+  });
   if (q.status !== 201) {
     throw new Error(
       `创建私有套卷小题失败: ${q.status} ${JSON.stringify(q.body)}`,
     );
   }
   privateQuestionId = (q.body as { data: QuestionData }).data.id;
+  // 发布作答版本：未发布题目无法练习提交（也读不到默认作答版本）
+  await publishProblemVersion(ownerToken, privatePaperId, "E2E 私有套卷 V1");
 
   // SSE 隔离场景使用非公开邀请赛；注册参赛者供后续触发提交
   sseContestId = await createContest(`E2E SSE 防作弊赛 ${ts}`, {

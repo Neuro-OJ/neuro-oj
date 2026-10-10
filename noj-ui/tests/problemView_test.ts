@@ -4,6 +4,7 @@ import { assertEquals } from 'jsr:@std/assert@^1';
 import {
   formatMemoryLimit,
   formatTimeLimit,
+  problemJudgeTypeLabel,
   problemTypeLabel,
   toContestProblemView,
   toProblemView,
@@ -25,7 +26,9 @@ Deno.test('problemView: 独立题目资源映射为统一视图', () => {
     artifact_max_size_mb: null,
     tags: [{ id: 't1', name: '模拟', kind: 'problem' }],
     has_hidden_algorithm_tags: true,
-    runtime_config: { evaluator: { time_limit_ms: 1000, memory_limit_mb: 256 } },
+    runtime_config: {
+      evaluator: { time_limit_ms: 1000, memory_limit_mb: 256 },
+    },
   });
 
   assertEquals(view.display_id, 'P1000');
@@ -58,6 +61,57 @@ Deno.test('problemView: 独立题目缺省字段降级为空而非崩溃', () =>
   assertEquals(view.memory_limit_mb, null);
   // 无保密关联（或后端未下发该字段）时为空数组，横幅不渲染
   assertEquals(view.contest_secrecy, []);
+  // 未下发版本字段（旧响应）→ 全部降级为 null/false，界面按"未发布"呈现
+  assertEquals(view.version_id, null);
+  assertEquals(view.version, null);
+  assertEquals(view.latest_version_id, null);
+  assertEquals(view.latest_version, null);
+  assertEquals(view.effective_version_policy, null);
+  assertEquals(view.is_latest, false);
+});
+
+Deno.test('problemView: 作答版本字段透传（题库有效策略 / 竞赛固定版本）', () => {
+  const practice = toProblemView({
+    id: 'uuid-v1',
+    display_id: 'P1001',
+    title: '版本化题',
+    description: '题面',
+    difficulty: 'easy',
+    type: 'P',
+    owner_id: 'owner-1',
+    is_objective: false,
+    version_id: 'v-old',
+    version: 3,
+    latest_version_id: 'v-new',
+    latest_version: 5,
+    effective_version_policy: { mode: 'exact', version_id: 'v-old' },
+    is_latest: false,
+  });
+  assertEquals(practice.version_id, 'v-old');
+  assertEquals(practice.version, 3);
+  assertEquals(practice.latest_version_id, 'v-new');
+  assertEquals(practice.latest_version, 5);
+  assertEquals(practice.effective_version_policy, {
+    mode: 'exact',
+    version_id: 'v-old',
+  });
+  assertEquals(practice.is_latest, false);
+
+  const contest = toContestProblemView({
+    ...baseContest(),
+    version_id: 'v-pinned',
+    version: 2,
+  });
+  assertEquals(contest.version_id, 'v-pinned');
+  assertEquals(contest.version, 2);
+  // 竞赛固定版本与题库最新版无关：接口不下发 latest_*，界面不得提示"有更新版本"
+  assertEquals(contest.latest_version_id, null);
+  assertEquals(contest.latest_version, null);
+  assertEquals(contest.effective_version_policy, null);
+  assertEquals(contest.is_latest, false);
+
+  // 迁移期尚未固定版本的存量竞赛题：version_id 为 null
+  assertEquals(toContestProblemView(baseContest()).version_id, null);
 });
 
 Deno.test('problemView: 公开赛保密提示字段透传（仅所有者/管理员会收到）', () => {
@@ -105,8 +159,15 @@ Deno.test('problemView: 竞赛题目资源映射，id 取 problem_id 且无时�
 });
 
 Deno.test('problemView: 客观题判定只认显式 true（后端字段可能缺失）', () => {
-  assertEquals(toContestProblemView({ ...baseContest(), is_objective: true }).is_objective, true);
-  assertEquals(toContestProblemView({ ...baseContest(), is_objective: undefined }).is_objective, false);
+  assertEquals(
+    toContestProblemView({ ...baseContest(), is_objective: true }).is_objective,
+    true,
+  );
+  assertEquals(
+    toContestProblemView({ ...baseContest(), is_objective: undefined })
+      .is_objective,
+    false,
+  );
 });
 
 Deno.test('problemView: 类型文案与空值兜底', () => {
@@ -131,3 +192,36 @@ function baseContest() {
     difficulty: 'easy',
   };
 }
+
+Deno.test('problemView: OI 后端公开字段在独立页与竞赛页保留，缺失时不猜测后端', () => {
+  for (const backend of ['oi-native', 'oi-wasm'] as const) {
+    const view = toContestProblemView({
+      ...baseContest(),
+      judge_type: 'oi',
+      judge_backend: backend,
+    });
+    assertEquals(view.judge_backend, backend);
+    assertEquals(problemJudgeTypeLabel(view), 'OI 题');
+    const standalone = toProblemView({
+      ...baseContest(),
+      id: 'uuid-oi',
+      type: 'P',
+      owner_id: 'owner',
+      is_objective: false,
+      judge_type: 'oi',
+      judge_backend: backend,
+    });
+    assertEquals(standalone.judge_backend, backend);
+    assertEquals(problemJudgeTypeLabel(standalone), 'OI 题');
+  }
+  assertEquals(
+    problemJudgeTypeLabel({ is_objective: false, judge_type: 'dual' }),
+    'AI 题',
+  );
+  assertEquals(
+    problemJudgeTypeLabel({ is_objective: true, judge_type: 'dual' }),
+    '客观题',
+  );
+  assertEquals(problemJudgeTypeLabel({ is_objective: false }), null);
+  assertEquals(toContestProblemView(baseContest()).judge_backend, null);
+});

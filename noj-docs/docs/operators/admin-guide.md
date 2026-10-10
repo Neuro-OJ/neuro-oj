@@ -1,141 +1,178 @@
 # 后台管理指南
 
-管理后台面向 `admin` / 社区审核员等角色，前端入口为「管理」页面（`/admin`）。大部分管理端点位于 `/api/v1/admin/*` 并强制校验管理员权限；公告与题单使用细粒度权限（`announcement:manage`、`training:*`），社区管理端点为 `/api/v1/admin/community/*`（管理域下的 community 子域）并校验社区审核权限。
+管理后台面向 `admin` /
+社区审核员等角色，前端入口为「管理」页面（`/admin`）。大部分管理端点位于
+`/api/v1/admin/*`
+并强制校验管理员权限；公告与题单使用细粒度权限（`announcement:manage`、`training:*`），社区管理端点为
+`/api/v1/admin/community/*`（管理域下的 community 子域）并校验社区审核权限。
 
 ## 概览
 
 后台按功能区分为以下页面：
 
-| 页面 | 功能 |
-|------|------|
-| 用户 | 用户列表、编辑资料、分配角色、封禁 / 解封 |
-| 角色与权限 | RBAC 角色、权限点管理 |
-| 题目 | 题目列表、创建 / 编辑 / 删除（含 U 型、P 型与客观题套卷） |
-| 标签 | 双类标签（problem / algorithm）管理 |
-| 公告 | 公告创建、编辑、发布 / 下架、删除；可填横幅文字 |
-| 轮播 | 首页轮播幻灯片 CRUD、排序、启停与图片上传 |
-| 法律与合规 | 隐私政策/服务条款发布、备案与主体、第三方清单、TSA 与请求处置 |
-| 题单 | 全部题单列表、任意题单编辑 / 发布 / 置顶 / 删除 |
-| 社区 | 社区板块、举报、帖子/评论审核、锁定/置顶、处罚管理 |
-| 提交 | 查看全部提交、删除提交、重测（rejudge） |
-| 竞赛 | 竞赛 CRUD 与参赛者管理 |
-| 评测镜像 | 评测镜像白名单维护 |
+| 页面          | 功能                                                            |
+| ------------- | --------------------------------------------------------------- |
+| 用户          | 用户列表、编辑资料、分配角色、封禁 / 解封                       |
+| 角色与权限    | RBAC 角色、权限点管理                                           |
+| 题目          | 题目列表、创建 / 编辑 / 删除（含 U 型、P 型与客观题套卷）       |
+| 标签          | 双类标签（problem / algorithm）管理                             |
+| 公告          | 公告创建、编辑、发布 / 下架、删除；可填横幅文字                 |
+| 轮播          | 首页轮播幻灯片 CRUD、排序、启停与图片上传                       |
+| 法律与合规    | 隐私政策/服务条款发布、备案与主体、第三方清单、TSA 与请求处置   |
+| 题单          | 全部题单列表、任意题单编辑 / 发布 / 置顶 / 删除                 |
+| 社区          | 社区板块、举报、帖子/评论审核、锁定/置顶、处罚管理              |
+| 提交          | 查看全部提交、删除提交、重测（rejudge）                         |
+| 竞赛          | 竞赛 CRUD 与参赛者管理                                          |
+| 评测镜像      | 评测镜像白名单维护                                              |
 | LLM Providers | 上游 LLM Provider 的新增、编辑、启停与 API Key 更新（脱敏展示） |
-| LLM 用量 | 按用户/题目/Provider/状态/时间范围查询 LLM 调用与费用 |
-| 黑名单 | IP 黑名单管理 |
-| 审计日志 | 操作审计记录查询 |
-| 系统设置 | 运行时可改的系统配置 |
-| 仪表盘 | 运行统计概览 |
+| LLM 用量      | 按用户/题目/Provider/状态/时间范围查询 LLM 调用与费用           |
+| 黑名单        | IP 黑名单管理                                                   |
+| 审计日志      | 操作审计记录查询                                                |
+| 系统设置      | 运行时可改的系统配置                                            |
+| 仪表盘        | 运行统计概览                                                    |
 
 ## RBAC 角色与权限
 
-Neuro OJ 使用「角色 → 权限点」模型：权限格式为 `resource:action`（例如 `problem:create`、`submission:read_own`）。
+Neuro OJ 使用「角色 → 权限点」模型：权限格式为 `resource:action`（例如
+`problem:create`、`submission:read_own`）。
 
-- 系统内置角色：<Badge text="root" type="danger" />（UID=0 系统用户，不可登录、不计入统计）、<Badge text="admin" type="warning" />（管理后台，判定依据是权限集含 `admin:full_access`）、<Badge text="user" type="info" />（普通用户默认权限集）。
+- 系统内置角色：<Badge text="root" type="danger" />（UID=0
+  系统用户，不可登录、不计入统计）、<Badge text="admin" type="warning" />（管理后台，判定依据是权限集含
+  `admin:full_access`）、<Badge text="user" type="info" />（普通用户默认权限集）。
 - 管理页「角色」可以创建自定义角色、编辑角色的权限点集合、删除不再使用的角色。
 - 用户的角色在「用户」页面通过「分配角色」调整。
 - 权限检查在服务端强制进行，前端菜单只是展示层。
 
-::: warning 安全约束
-系统禁止降级最后一个可登录管理员——若当前只剩一个 admin，不能移除其管理角色，防止后台失守。
+::: warning 安全约束 系统禁止降级最后一个可登录管理员——若当前只剩一个
+admin，不能移除其管理角色，防止后台失守。
 
 :::
+
 ## 用户管理
 
 - **编辑资料**：修改用户昵称、邮箱等基础信息。
-- **封禁 / 解封**：封禁需填写原因，可设置封禁时长（临时封禁）；被封禁用户登录时会看到原因与解封时间。封禁历史可在该用户详情中查看。
-- **注销用户**：二次确认后软删除账户，清除登录凭据与角色、保留并匿名化公共内容，同时写入审计日志。root 和最后一个可登录管理员不可注销。
+- **封禁 /
+  解封**：封禁需填写原因，可设置封禁时长（临时封禁）；被封禁用户登录时会看到原因与解封时间。封禁历史可在该用户详情中查看。
+- **注销用户**：二次确认后软删除账户，清除登录凭据与角色、保留并匿名化公共内容，同时写入审计日志。root
+  和最后一个可登录管理员不可注销。
 - **IP 黑名单**：在黑名单页添加 / 移除 IP，黑名单内的来源会被拒绝访问。
 
-::: warning 黑名单依赖可信代理配置
-生产环境必须配合 `TRUSTED_PROXIES`（须与 compose 内 `noj-net` 子网一致），否则所有请求都被解析成反向代理的 IP，IP 黑名单会误伤或失效。
-:::
+::: warning 黑名单依赖可信代理配置 生产环境必须配合 `TRUSTED_PROXIES`（须与
+compose 内 `noj-net` 子网一致），否则所有请求都被解析成反向代理的 IP，IP
+黑名单会误伤或失效。 :::
 
 ## 审计日志
 
 - 敏感操作（登录、封禁、角色变更、设置修改、删除等）会写入审计日志，可在「审计日志」页按操作类型与时间范围查询。
-- 保留时长由 **bootstrap** 设置 `audit_log_retention_days`（env 键 `AUDIT_LOG_RETENTION_DAYS`）控制，默认 **90** 天；设为 `0` 表示禁用自动清理。改 `.env` 后需重启 core。
+- 保留时长由 **bootstrap** 设置 `audit_log_retention_days`（env 键
+  `AUDIT_LOG_RETENTION_DAYS`）控制，默认 **90** 天；设为 `0`
+  表示禁用自动清理。改 `.env` 后需重启 core。
 - 审计写入失败不影响业务主流程（仅记录错误日志）。
 
 ## 系统设置
 
 「系统设置」页按**生命周期**分两区，改动前务必分清：
 
-| 区 | 来源 | 是否热改 |
-|---|---|---|
-| **运行时配置**（runtime） | 写入数据库 | 下次请求即时生效，可随时重置 |
-| **环境配置**（bootstrap） | 由 `.env` 环境变量管理，后台**只读** | 需改 `.env` 后重启 core |
+| 区                        | 来源                                 | 是否热改                     |
+| ------------------------- | ------------------------------------ | ---------------------------- |
+| **运行时配置**（runtime） | 写入数据库                           | 下次请求即时生效，可随时重置 |
+| **环境配置**（bootstrap） | 由 `.env` 环境变量管理，后台**只读** | 需改 `.env` 后重启 core      |
 
 运行时配置（可在本页编辑）包括但不限于：
 
-| 键 | 说明 |
-|------|------|
-| `allow_register` | 是否开放自助注册 |
-| `jwt_expires_in` | 登录令牌有效期 |
-| `maintenance_mode` | 维护模式开关（启用后写操作返回 503，仅读可用） |
-| `rate_limit_*` | 登录 / 搜索限流参数 |
-| `community_*` | 社区总开关、只读、各模块开关、发布门槛、长度限制等 |
-| `judge_max_*` | 评测资源全局上限（evaluator/solution 时间与内存） |
+| 键                 | 说明                                               |
+| ------------------ | -------------------------------------------------- |
+| `allow_register`   | 是否开放自助注册                                   |
+| `jwt_expires_in`   | 登录令牌有效期                                     |
+| `maintenance_mode` | 维护模式开关（启用后写操作返回 503，仅读可用）     |
+| `rate_limit_*`     | 登录 / 搜索限流参数                                |
+| `community_*`      | 社区总开关、只读、各模块开关、发布门槛、长度限制等 |
+| `judge_max_*`      | 评测资源全局上限（evaluator/solution 时间与内存）  |
 
 环境配置（只读）里与运营相关的键包括 `email_provider` 及邮件相关键、
-`audit_log_retention_days` 等；这些**不能在面板里改**，
-须编辑 `.env.prod` 后重启 core。
+`audit_log_retention_days` 等；这些**不能在面板里改**， 须编辑 `.env.prod`
+后重启 core。
 
 ::: info 首页轮播已与公告解耦（2026-09-24）
-轮播由独立的「轮播管理」（`/admin/carousel`，`carousel_slides` 表）驱动；公告提供
+轮播由独立的「轮播管理」（`/admin/carousel`，`carousel_slides`
+表）驱动；公告提供
 双通道——首页常驻「公告」区块（不可关闭）与导航栏可关闭横幅（公告字段
 `banner_text`，用户关闭仅存本地 localStorage）。不存在 `homepage_banner` 配置键
-（该键为无读取点的死配置，已于 issue #495 删除）。
-:::
+（该键为无读取点的死配置，已于 issue #495 删除）。 :::
 
 > LLM **默认配额**（`NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>`）由
-> **noj-llm-gateway** 消费，不在本面板中；见 `noj-llm-gateway/README.md`，修改后需重启
-> llm-gateway。平台默认 Provider/模型（`llm_default_provider_id` /
-> `llm_default_model`）则属于本面板的 runtime 设置。
+> **noj-llm-gateway** 消费，不在本面板中；见
+> `noj-llm-gateway/README.md`，修改后需重启 llm-gateway。平台默认
+> Provider/模型（`llm_default_provider_id` / `llm_default_model`）则属于本面板的
+> runtime 设置。
 
 修改即时生效；涉及邮件、限流等键时请先确认新值正确，避免锁死服务。
 
-**邮件服务与公开注册**：`email_provider` 为 `disabled` 或邮件必需配置缺失时，邮箱验证与密码找回不可用，
-公开注册会被禁止（`allow_register` 之外的第二道门槛，仅允许站点引导阶段的首次注册）。「系统设置」页顶部
-会展示邮件就绪状态横幅，可填写收件邮箱点击「发送测试邮件」验证配置；确认就绪后再开放 `allow_register`。
+**邮件服务与公开注册**：`email_provider` 为 `disabled`
+或邮件必需配置缺失时，邮箱验证与密码找回不可用，
+公开注册会被禁止（`allow_register`
+之外的第二道门槛，仅允许站点引导阶段的首次注册）。「系统设置」页顶部
+会展示邮件就绪状态横幅，可填写收件邮箱点击「发送测试邮件」验证配置；确认就绪后再开放
+`allow_register`。
 
 ## 题目与标签 {#problem-tags}
 
-- **题目类型**：U 型（用户题，创建者本人与 admin 可管理）与 P 型（主题题，仅 admin 管理）。admin 可创建任意类型。
-- **创建 / 编辑**：在管理页填写题面、限制条件、语言与运行时配置，并上传统一题目包 zip（见[题目包格式规范](../standards/problem-bundle.md)）。
-- **重测**：题目或单条提交支持 rejudge（仅已完成或出错的提交可重测），用于修正题目配置或评测环境后的批量重判。
-- **标签**：双类标签（problem / algorithm），题目与标签为多对多关系；标签管理见[标签管理](../standards/quality.md)。
-- **评测镜像**：白名单登记 evaluator / solution 镜像名与匹配模式；新增镜像后需在 Judge Worker 侧构建并重启使其生效。
+- **题目类型**：U 型（用户题，创建者本人与 admin 可管理）与 P 型（主题题，仅
+  admin 管理）。admin 可创建任意类型。
+- **创建 /
+  编辑**：在管理页填写题面、限制条件、语言与运行时配置，并上传统一题目包
+  zip（见[题目包格式规范](../standards/problem-bundle.md)）。
+- **重测**：单条 / 整题 /
+  整场三种范围，目标可选「提交时版本」「最新版」或「全部用
+  V3」；受理时固定提交集合与目标版本，逐条给出进度与失败原因（`reason_code`），失败条目可一键重试（重试不再改策略）。正在评测的提交会被跳过，不影响其它条目。历史提交没有提交时版本时跳过（`LEGACY_VERSION_UNKNOWN`）。
+- **版本策略**：在「题目版本」页切换题库策略（`any` 历史均有效 / `exact(X)`
+  只认某版）与竞赛固定版本；策略切换在事务提交后立即生效，不会自动重测，也不改最新版指针。
+- **选手升级**：选手可在「我的提交」批量升级到最新版（生成新提交）；管理员可在管理端为指定用户代做。
+- **标签**：双类标签（problem /
+  algorithm），题目与标签为多对多关系；标签管理见[标签管理](../standards/quality.md)。
+- **评测镜像**：白名单登记 evaluator / solution 镜像名与匹配模式；新增镜像后需在
+  Judge Worker 侧构建并重启使其生效。
 
 ## 公告管理
 
 - 在「公告」页创建、编辑、发布 / 下架与删除公告。
-- 公告支持 Markdown 正文、置顶排序与 `is_active` 状态；公开列表只展示已发布公告。
+- 公告支持 Markdown 正文、置顶排序与 `is_active`
+  状态；公开列表只展示已发布公告。
 - 权限：需要 `announcement:manage`（`admin:full_access` 通配放行）。
 
 ## 题单管理
 
 - 在「题单」页可查看全部题单，编辑任意题单、设置公开 / 私有、置顶或删除。
-- 题单也可由普通用户创建并管理自己的题单，管理员拥有 `training:read_any` / `write_any` / `publish` / `pin` 等权限。
+- 题单也可由普通用户创建并管理自己的题单，管理员拥有 `training:read_any` /
+  `write_any` / `publish` / `pin` 等权限。
 
 ## 社区管理
 
-- 「社区」管理页提供板块管理、角色授权、举报处理、帖子/评论状态变更（published / hidden / deleted）、锁定 / 置顶、社区处罚等功能。
-- 权限模型使用 `community_moderation:*` 与 `community_board:manage`，不要求必须是 `admin`，但默认仅管理员角色被授予。
+- 「社区」管理页提供板块管理、角色授权、举报处理、帖子/评论状态变更（published /
+  hidden / deleted）、锁定 / 置顶、社区处罚等功能。
+- 权限模型使用 `community_moderation:*` 与
+  `community_board:manage`，不要求必须是 `admin`，但默认仅管理员角色被授予。
 
 ### 内容审查（统一人工审查队列）
 
 - 「内容审查」页（`/admin/content-review`）聚合**主动合规审核**产生的待审/留痕记录，与举报流程互补：
-  - UGC（帖子 / 评论）发布或编辑时若启用云审核，高置信违规会被同步拦截（提示「内容疑似违规」）；疑似内容放行并进入本队列。
+  - UGC（帖子 /
+    评论）发布或编辑时若启用云审核，高置信违规会被同步拦截（提示「内容疑似违规」）；疑似内容放行并进入本队列。
   - 私信文本发送后**异步**送审，命中/疑似进入本队列；送审仅上传文本内容，不包含图片/附件，且不即时影响收发双方。
-  - 云审核服务不可用 / 超时时自动降级（fail-open）：内容正常发布 / 送达，同时生成一条待人工复核记录，不阻断功能。
+  - 云审核服务不可用 / 超时时自动降级（fail-open）：内容正常发布 /
+    送达，同时生成一条待人工复核记录，不阻断功能。
 - 在队列中可查看内容快照、命中标签/词、风险级别；私信记录附会话双方与聊天上下文（仅审核员可见）。
-- 处置：帖子 / 评论可选择「隐藏违规内容」（调既有状态端点）或「仅记录」；私信为「仅记录」留痕，如需封禁/禁言用户请走「举报管理」。所有处置写入 `audit_logs`（`review.*` 动作）。
-- 配置：系统设置「内容合规审核」分类下可配置总开关、Provider（`mock` / `aliyun` / `tencent` / `none`）、密钥、风险阈值与异步队列开关；`mock` Provider 的 `content_review_provider_key` 可作为逗号分隔的违禁词表用于试用。
+- 处置：帖子 /
+  评论可选择「隐藏违规内容」（调既有状态端点）或「仅记录」；私信为「仅记录」留痕，如需封禁/禁言用户请走「举报管理」。所有处置写入
+  `audit_logs`（`review.*` 动作）。
+- 配置：系统设置「内容合规审核」分类下可配置总开关、Provider（`mock` / `aliyun`
+  / `tencent` / `none`）、密钥、风险阈值与异步队列开关；`mock` Provider 的
+  `content_review_provider_key` 可作为逗号分隔的违禁词表用于试用。
 
 ## 客观题套卷
 
-- 客观题套卷（`is_objective=true`）没有 `evaluate.py` / `runtime_config`，通过 Web 编辑器创建和管理小题（单选 / 多选 / 判断）。
+- 客观题套卷（`is_objective=true`）没有 `evaluate.py` / `runtime_config`，通过
+  Web 编辑器创建和管理小题（单选 / 多选 / 判断）。
 - 做题人在题目页直接作答，服务端即时判定；竞赛中的客观题套卷同样内联渲染。
 - 题目规范中客观题不得关联算法标签，且不通过统一题目包导入。
 
@@ -143,18 +180,27 @@ Neuro OJ 使用「角色 → 权限点」模型：权限格式为 `resource:acti
 
 ### LLM Providers
 
-- 新增 Provider 时填写名称、`base_url`、API Key、单价（每 1k tokens）与启停状态。
-- Provider 不再自带默认模型；具体调用哪个模型由本页顶部「平台默认 Provider / 模型」
-  卡片决定（对应系统设置 `llm_default_provider_id` / `llm_default_model`，两项须同时
-  配置）。列表中当前默认的 Provider 会带「默认」标记。
-- API Key 保存后**不会**再明文返回，列表中只显示掩码（如 `sk-****abcd`）；需要更新时重新填写 Key。
-- 只有 `enabled=true` 的 Provider 可用于 LLM 题目；停用后已有评测 token 仍可能继续调用到过期，请先停止相关题目或等待 token 自然过期。
+- 新增 Provider 时填写名称、`base_url`、API Key、单价（每 1k
+  tokens）与启停状态。
+- Provider 不再自带默认模型；具体调用哪个模型由本页顶部「平台默认 Provider /
+  模型」 卡片决定（对应系统设置 `llm_default_provider_id` /
+  `llm_default_model`，两项须同时 配置）。列表中当前默认的 Provider
+  会带「默认」标记。
+- API Key 保存后**不会**再明文返回，列表中只显示掩码（如
+  `sk-****abcd`）；需要更新时重新填写 Key。
+- 只有 `enabled=true` 的 Provider 可用于 LLM 题目；停用后已有评测 token
+  仍可能继续调用到过期，请先停止相关题目或等待 token 自然过期。
 
 ### LLM 用量
 
-- 管理后台「LLM 用量」支持按 `submission_id`、用户、题目、Provider、状态、起止时间与分页查询。
-- 每条记录包含请求消息哈希、prompt/completion/total token、估算费用、延迟与状态（`ok / error / rejected`）。
-- 管理后台「LLM 配额」（`/admin/llm/quotas`）维护 `llm_quotas`，支持全局 / 用户 / 题目 / 用户×题目维度的 day/month 的 calls/tokens/cost 上限；`-1` 表示不限，`0` 表示禁止调用。详见 [LLM 调用能力](./llm-call-capability.md)「配额」一节。
+- 管理后台「LLM 用量」支持按
+  `submission_id`、用户、题目、Provider、状态、起止时间与分页查询。
+- 每条记录包含请求消息哈希、prompt/completion/total
+  token、估算费用、延迟与状态（`ok / error / rejected`）。
+- 管理后台「LLM 配额」（`/admin/llm/quotas`）维护 `llm_quotas`，支持全局 / 用户
+  / 题目 / 用户×题目维度的 day/month 的 calls/tokens/cost 上限；`-1`
+  表示不限，`0` 表示禁止调用。详见
+  [LLM 调用能力](./llm-call-capability.md)「配额」一节。
 
 ## 提交管理
 

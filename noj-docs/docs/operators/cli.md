@@ -6,10 +6,11 @@
 下载，负责生产部署和运维。
 
 ::: info 两个 `noj` 别混淆
+
 - **`noj-cli`**：宿主机上的部署/运维 CLI（`status`/`logs`/`update`/`backup`…）。
-- **`/app/bin/noj`**：`noj-server` 容器内的一次性管理 CLI（`db`/`init`/`bootstrap`/`problem`）。
-  本页讲的是后者，需在 `core` 容器内以 `--entrypoint` 方式执行。
-:::
+- **`/app/bin/noj`**：`noj-server` 容器内的一次性管理
+  CLI（`db`/`init`/`bootstrap`/`problem`）。 本页讲的是后者，需在 `core`
+  容器内以 `--entrypoint` 方式执行。 :::
 
 ## 生产环境执行方式
 
@@ -21,9 +22,8 @@ docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compos
   --entrypoint /app/bin/noj core <子命令>
 ```
 
-::: tip 更短的等价写法
-上面那些 Tier 3 命令都可由宿主机上的 `noj-cli` 自动包装（它自动带上
-`--env-file`、`-f` 与 `--entrypoint`），无需手写长命令：
+::: tip 更短的等价写法 上面那些 Tier 3 命令都可由宿主机上的 `noj-cli`
+自动包装（它自动带上 `--env-file`、`-f` 与 `--entrypoint`），无需手写长命令：
 
 ```
 noj-cli db migrate            # 等价于 core db migrate
@@ -34,9 +34,8 @@ noj-cli search reindex
 ```
 
 指定安装目录用 `--install-dir <path>`（**不要用 `--dir`**，那会被原样透传给
-容器内的 `noj`，例如 `problems import --dir <包目录>`）；`--dry-run` 只打印将执行的
-compose 命令。
-:::
+容器内的 `noj`，例如 `problems import --dir <包目录>`）；`--dry-run`
+只打印将执行的 compose 命令。 :::
 
 常用子命令：
 
@@ -44,6 +43,10 @@ compose 命令。
 # 数据库迁移
 docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
   --entrypoint /app/bin/noj core db migrate
+
+# 全量重建搜索索引（升级收尾步骤；只索引已发布题目）
+docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
+  --entrypoint /app/bin/noj core search reindex
 
 # 系统基础数据：root + RBAC + 评测镜像白名单 + 标签
 docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
@@ -57,9 +60,10 @@ docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compos
 docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
   --entrypoint /app/bin/noj core problems build
 
-# 导入统一题目包
+# 导入统一题目包：**必须显式加 --publish**，否则题目只有草稿（普通访问者读不到、
+# 也无法按版本提交）。dev-setup 与生产演练内部即用 --publish。
 docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
-  --entrypoint /app/bin/noj core problems import
+  --entrypoint /app/bin/noj core problems import --publish
 ```
 
 > 说明：compose 的一次性 `migrate` 服务本身已按顺序执行
