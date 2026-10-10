@@ -4,6 +4,7 @@ import {
   createProblem,
   deleteProblem,
   getProblem,
+  getProblemDraft,
   listProblems,
   updateProblem,
 } from "../../index.ts";
@@ -215,8 +216,14 @@ Deno.test({
       title: "更新的标题",
       difficulty: "hard",
     }, "0");
-    assertEquals(updated.title, "更新的标题");
+    // 新语义（Handbook §2.2/§6.2）：**内容**字段（title/description/样例/评测配置）
+    // 写共享草稿，公开投影只由发布服务更新；管理信息（difficulty 等）立即生效。
     assertEquals(updated.difficulty, "hard");
+    const draft = await getProblemDraft(TEST_PROBLEM_ID);
+    assertEquals(draft.content.title, "更新的标题");
+    // 内容入口不直写投影：题目行仍是创建时的标题，直到发布新版本才切换
+    const persisted = await getProblem(TEST_PROBLEM_ID);
+    assertEquals(persisted.title, `测试题目 ${ts}`);
   },
 });
 
@@ -391,12 +398,14 @@ Deno.test({
       runtime_config: VALID_RUNTIME_CONFIG,
     });
     const now = new Date().toISOString();
+    // 已终态的历史自测记录（`pending`/`judging` 属于活动评测，删除入口会拒绝并保留题目）
     await getDb().insert(selfTests).values({
       id: crypto.randomUUID(),
       user_id: "0",
       problem_id: problem.id,
       language: "python",
       code: "print(1)",
+      status: "finished",
       created_at: now,
     });
 

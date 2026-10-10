@@ -50,10 +50,7 @@ import {
   type ProblemResponseWithTags,
   type ProblemRuntimeConfig as RuntimeConfig,
 } from "./../../types/problems.ts";
-import type {
-  ObjectiveQuestionSnapshot,
-  ProblemDraftContent,
-} from "./../../types/problem-content.ts";
+import type { ObjectiveQuestionSnapshot } from "./../../types/problem-content.ts";
 import { assertProblemEditPermission, updateProblem } from "./problems-crud.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import {
@@ -70,6 +67,7 @@ import { MAX_SUPPORT_PACKAGE_SIZE } from "../support-package.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import {
   deriveDraftContentFromProblem,
+  draftRevisionConflict,
   draftRevisionRequired,
   getProblemDraft,
   loadProblemIdentity,
@@ -201,8 +199,20 @@ export async function importProblemBundle(
   file: { name: string; data: Uint8Array },
   actor: BundleImportActor,
   c?: Context,
-  targetProblemId?: string,
+  target?: string | {
+    /** 目标题目：内容写入该题的**共享草稿**，不新建题目。 */
+    problemId: string;
+    /** 客户端编辑基线（target 模式下必填）：缺失 428、过时 409。 */
+    expectedRevision?: number | null;
+  },
 ): Promise<ProblemResponseWithTags> {
+  const targetProblemId = typeof target === "string"
+    ? target
+    : target?.problemId;
+  const targetExpectedRevision = typeof target === "string"
+    ? undefined
+    : target?.expectedRevision;
+
   // 1. 基础校验：后缀 + 大小（与 support-package 上传约定一致）
   if (!isValidProblemBundleName(file.name)) {
     throw new ValidationError("仅支持 .zip 格式文件");
@@ -227,16 +237,9 @@ export async function importProblemBundle(
     );
   }
 
-  // 4. 权限与 number 语义：number 是 admin 幂等键——admin 提供时按 (type, number)
-  //    匹配既有题目 → 更新、未命中 → 新建；非 admin 提供 number 直接拒绝（400），
-  //    普通用户导入仅走创建路径（number 自动分配）。
-  const admin = await isAdminActor(actor, c);
-  if (!admin && manifest.number !== undefined) {
-    throw new BadRequestError(
-      "仅管理员可指定 number（按 (type, number) 幂等更新既有题目）；普通用户导入时题号由系统自动分配",
-    );
-  }
-  let number = admin ? manifest.number : undefined;
+  // 4. 目标题目模式（编辑器支持包上传，tracking #55）：题号由**目标题目**决定，
+  //    包内 `number` 不再参与匹配，也不再因非管理员而被拒；内容只写该题的草稿。
+  let number: number | undefined;
   if (targetProblemId) {
     const identity = await loadProblemIdentity(targetProblemId);
     await assertProblemEditPermission(
@@ -250,6 +253,31 @@ export async function importProblemBundle(
     }
     manifest.type = identity.type;
     number = identity.number;
+    if (!identity.latest_version_id) {
+      // 未发布题目 API 无法提交，也不存在编辑基线：target 模式必须有 draft revision。
+      throw draftRevisionRequired();
+    }
+    if (targetExpectedRevision === undefined) throw draftRevisionRequired();
+    const currentRevision = (await getProblemDraft(targetProblemId, identity))
+      .revision;
+    if (currentRevision !== Number(targetExpectedRevision)) {
+      throw draftRevisionConflict(
+        Number(targetExpectedRevision),
+        currentRevision,
+      );
+    }
+  }
+
+  // 4.1 number 幂等键语义：admin 提供时按 (type, number) 匹配既有题目 → 更新、
+  //     未命中 → 新建；非 admin 提供 number 直接拒绝（400），普通用户仅走创建路径。
+  const admin = await isAdminActor(actor, c);
+  if (!targetProblemId) {
+    if (!admin && manifest.number !== undefined) {
+      throw new BadRequestError(
+        "仅管理员可指定 number（按 (type, number) 幂等更新既有题目）；普通用户导入时题号由系统自动分配",
+      );
+    }
+    number = admin ? manifest.number : undefined;
   }
 
   // 4.5 客观题套卷：走独立导入路径（无评测包，事务性创建/更新 + 全量替换小题）
@@ -558,6 +586,7 @@ async function importObjectivePaper(
     }
 
     let problemId: string;
+    let isNewProblem = false;
     if (existingId) {
       problemId = existingId;
       const identity = await loadProblemIdentity(problemId, tx);
@@ -567,9 +596,12 @@ async function importObjectivePaper(
         actor.userId,
         actor.userRole,
       );
-      if (identity.latest_version_id && !identity.is_objective) {
+      // 题型不可变（Handbook §2.3）：编程题（AI/OI）导入客观题包必须冲突，
+      // 而不是把题目行改成客观题、清空运行配置/模板后再另写草稿——即使发布被
+      // 拒绝，身份行也已与版本内容不一致（公开投影被提前改写）。
+      if (!identity.is_objective) {
         throw new AppError(
-          "已发布题目不能改为客观题",
+          "已存在的编程题不能通过导入客观题包改为客观题；跨题型转换请新建题目",
           409,
           "CONTENT_KIND_IMMUTABLE",
         );
@@ -579,11 +611,10 @@ async function importObjectivePaper(
       ).for("update");
       await tx.update(problems).set({
         difficulty: manifest.difficulty ?? "medium",
-        is_objective: true,
-        judge_type: "dual",
         updated_at: now,
       }).where(eq(problems.id, problemId));
     } else {
+      isNewProblem = true;
       problemId = crypto.randomUUID();
       let finalNumber = number;
       const MAX_RETRIES = 3;
@@ -665,23 +696,50 @@ async function importObjectivePaper(
         tagIds.map((tag_id) => ({ problem_id: problemId, tag_id })),
       );
     }
+    const draftContent = {
+      kind: "objective" as const,
+      title: manifest.title,
+      description,
+      samples: manifest.samples ?? [],
+      questions: snapshots,
+    };
     await saveProblemDraftWithObjects(problemId, {
-      content: {
-        kind: "objective",
-        title: manifest.title,
-        description,
-        samples: manifest.samples ?? [],
-        questions: snapshots,
-      },
+      content: draftContent,
       expectedRevision,
       actorId: actor.userId,
       context: c,
       objects: [],
     }, tx);
+    // 公开投影只由**发布**更新（Handbook §2.2）：已发布题目导入只改草稿，
+    // 题面/运行配置等投影保持不变，导入被拒绝或未发布时对外内容零变化。
+    // 未发布题目除外——尚无版本可发布，投影是它唯一的读取来源，必须与草稿一致。
+    if (isNewProblem) {
+      await tx.update(problems).set({
+        title: draftContent.title,
+        description: draftContent.description,
+        samples: draftContent.samples,
+        runtime_config: null,
+        template_content: null,
+        judge_type: "dual",
+        updated_at: now,
+      }).where(eq(problems.id, problemId));
+    }
     return { problemId, snapshots };
   });
 
-  if (oldStorageUrl) await deleteStorageObject(oldStorageUrl);
+  // 旧投影引用（仅未发布存量行会有）统一走引用守卫：历史版本/提交仍引用时保留字节。
+  if (oldStorageUrl) {
+    try {
+      const outcome = await deleteStorageObject(oldStorageUrl);
+      if (outcome.outcome === "referenced") {
+        logger.info("客观题导入：旧投影支持包仍被引用，保留字节", {
+          problem_id: outcome.references.total,
+        });
+      }
+    } catch (err) {
+      logger.warn("客观题导入：清理旧投影支持包失败", { err });
+    }
+  }
 
   return getProblem(outcome.problemId);
 }

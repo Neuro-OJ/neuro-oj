@@ -177,8 +177,20 @@ Deno.test("content: 发布完整性校验拒绝不完整内容", async () => {
       description: "d",
       samples: [],
       questions: [
-        { key: "k", type: "single", prompt: "p", answer: ["A"] },
-        { key: "k", type: "single", prompt: "q", answer: ["B"] },
+        {
+          key: "k",
+          type: "single",
+          prompt: "p",
+          options: [{ key: "A", text: "a" }],
+          answer: ["A"],
+        },
+        {
+          key: "k",
+          type: "single",
+          prompt: "q",
+          options: [{ key: "B", text: "b" }],
+          answer: ["B"],
+        },
       ],
     })
   );
@@ -196,7 +208,7 @@ Deno.test("content: 发布完整性校验拒绝不完整内容", async () => {
         sort_order: 0,
         type: "single",
         prompt: "p",
-        options: [],
+        options: [{ key: "A", text: "选项 A" }],
         answer: ["A"],
         explanation: "",
       },

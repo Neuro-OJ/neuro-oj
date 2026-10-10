@@ -4,6 +4,7 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import {
   evaluationAttempts,
   submissionJobItems,
+  submissionJobs,
   submissions,
 } from "../../../../shared/db/schema.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
@@ -15,6 +16,17 @@ import { createAttempt } from "./attempts.ts";
 import { lockProjectionHosts } from "./projection.ts";
 import type { ClaimedJobItem } from "./job-worker.ts";
 import type { DispatchSource, JobUpgradeContext } from "./dispatch-job-item.ts";
+import type { Executor } from "../../../../shared/db/executor.ts";
+
+/** 读取任务的操作者（管理员代原用户升级时用于记录 actor）。 */
+async function jobActorId(
+  executor: Executor,
+  jobId: string,
+): Promise<string | null> {
+  const [job] = await executor.select({ actor_id: submissionJobs.actor_id })
+    .from(submissionJobs).where(eq(submissionJobs.id, jobId)).limit(1);
+  return job?.actor_id ?? null;
+}
 
 /** 重试复用原尝试和升级副本；租约已经换主的执行者不能创建任何副作用。 */
 export async function ensureJobAttempt(input: {
@@ -107,6 +119,8 @@ export async function ensureJobAttempt(input: {
         runtime_config: content.runtime_config,
         batch_job_id: item.job_id,
       },
+      // §4.4：管理员可代原用户升级；新提交归**原用户**，操作者 actor 记录在尝试上。
+      createdBy: await jobActorId(tx, item.job_id),
       executor: tx,
     });
     await tx.update(submissionJobItems).set({

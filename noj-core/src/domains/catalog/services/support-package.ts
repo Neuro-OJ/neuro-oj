@@ -4,6 +4,7 @@ import { unzipSync } from "fflate";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
   problemDraftObjects,
+  problemDrafts,
   problems,
   problemVersionObjects,
   problemVersions,
@@ -140,8 +141,8 @@ export async function resolveSupportPackageRef(
 /**
  * 设置草稿支持包引用（上传路径）。
  *
- * 已登记对象为 `ready`；未发布题目（尚无版本）额外同步投影，保证迁移期既有
- * 下载/评测读取路径不失效。
+ * 已登记对象为 `ready`；引用写入**草稿**（`problem_draft_objects`），
+ * 发布时才复制到版本引用。未发布题目的下载路径由草稿引用兜底，不需要写投影。
  */
 export async function setSupportPackage(
   problemId: string,
@@ -282,10 +283,8 @@ export async function deleteSupportPackage(
 ): Promise<void> {
   await checkSupportPackagePermission(problemId, userId, userRole, problem, c);
 
-  const draft = await getProblemDraft(
-    problemId,
-    await loadProblemIdentity(problemId),
-  );
+  const identity = await loadProblemIdentity(problemId);
+  const draft = await getProblemDraft(problemId, identity);
   const raw = c?.req.header("if-match");
   if (c && raw === undefined) throw draftRevisionRequired();
   const expectedRevision = raw === undefined
@@ -300,6 +299,22 @@ export async function deleteSupportPackage(
     context: c,
     objects: objects.filter((ref) => ref.role !== "support_package"),
   });
+
+  // 未发布题目（尚无已发布版本）的题目投影是**唯一**读取来源之一：删包时必须同步
+  // 清空，否则 `resolveSupportPackageRef` 会从投影兜底返回刚被删除的对象（下载端点
+  // 继续交付已删文件）。已发布题目的投影由发布服务维护、历史版本仍引用旧包，
+  // 因此不能在这里改写。
+  if (!identity.latest_version_id) {
+    const [current] = await getDb().select({
+      url: problems.support_package_storage_url,
+    }).from(problems).where(eq(problems.id, problemId)).limit(1);
+    if (current?.url) {
+      await getDb().update(problems).set({
+        support_package_storage_url: null,
+        updated_at: new Date().toISOString(),
+      }).where(eq(problems.id, problemId));
+    }
+  }
 
   // 3) 物理删除统一经过引用守卫：仍被历史版本引用的对象不会被删掉
   for (const { storage_url: url } of removed) {
@@ -503,6 +518,9 @@ export function extractTemplateFromPackage(
  * 解析题目的初始代码模板（编辑器 starter code 的运行期唯一入口）。
  *
  * 解析顺序：
+ * 0. **显式目标版本**（`options.versionId`，历史版本/竞赛固定版本作答）：
+ *    只读该版本快照，模板为空串（导入时已核对"包内无模板"）时返回 null——
+ *    **不回退**最新版投影或本地源码，否则历史版本会拿到不属于它的模板；
  * 1. `problems.template_content`——导入题目包时从包内持久化（生产主路径）
  * 2. 已存储支持包内的模板文件（仅当第 1 级为 `NULL`：本列引入前的存量行）
  * 3. 本地源码目录 `data/problems-src`（仅开发环境/样例题有意义）
@@ -514,15 +532,39 @@ export function extractTemplateFromPackage(
  * 同样能返回模板；这正是此前线上所有题目模板恒 404 的根因所在。
  *
  * @param problem 题目元数据（需 `id` 以读取持久化内容/支持包）
+ * @param options.versionId 显式目标版本（历史/竞赛作答）；缺省按最新版
  * @param options.packageBytes 调用方已读取的支持包字节（传入可省一次下载）
  * @param options.srcRoot 本地源码根（缺省 `data/problems-src`，测试注入）
  * @returns 模板内容；无任何可用来源时返回 null（路由据此返回 404）
  */
 export async function resolveProblemTemplate(
   problem: { id: string; number: number; title: string },
-  options: { packageBytes?: Uint8Array | null; srcRoot?: string } = {},
+  options: {
+    packageBytes?: Uint8Array | null;
+    srcRoot?: string;
+    /** 目标版本（Handbook §4.1「历史下载绑定版本」）。 */
+    versionId?: string | null;
+  } = {},
 ): Promise<{ content: string; language: string } | null> {
   const db = getDb();
+
+  // 0. 显式目标版本：模板是该版本内容的一部分，空模板即"该版本没有模板"。
+  if (options.versionId) {
+    const [version] = await db.select({ content: problemVersions.content })
+      .from(problemVersions).where(eq(problemVersions.id, options.versionId))
+      .limit(1);
+    if (!version) return null;
+    const content = version.content as AiProblemContent | undefined;
+    if (
+      content?.kind === "ai" && typeof content.template_content === "string" &&
+      content.template_content !== ""
+    ) {
+      // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
+      return { content: content.template_content, language: "python3" };
+    }
+    return null;
+  }
+
   const [row] = await db
     .select({
       templateContent: problems.template_content,
@@ -546,11 +588,29 @@ export async function resolveProblemTemplate(
         // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
         return { content: content.template_content, language: "python3" };
       }
-      // 版本快照已核对"包内无模板"：不下载支持包，走本地源码回退
-      return await getProblemTemplate(
-        { number: problem.number, title: problem.title },
-        options.srcRoot,
-      );
+      // 版本快照已核对"包内无模板"：该版本的模板就是"没有模板"，
+      // 不能从当前源码目录补内容（那不属于这个版本快照，tracking #4）。
+      return null;
+    }
+  }
+
+  // 0.5 未发布题目：模板的事实源是**共享草稿**（内容字段只写草稿，题目投影只由发布
+  //     服务更新）。空串表示"编辑器已核对无模板"，按该语义返回 null，不回退支持包/
+  //     本地源码——否则删掉模板的包会重新从旧包里读出不存在的模板。
+  if (!row?.latestVersionId) {
+    const [draftRow] = await db.select({ content: problemDrafts.content })
+      .from(problemDrafts).where(eq(problemDrafts.problem_id, problem.id))
+      .limit(1);
+    const draftContent = draftRow?.content as AiProblemContent | undefined;
+    if (
+      draftContent?.kind === "ai" &&
+      typeof draftContent.template_content === "string"
+    ) {
+      if (draftContent.template_content !== "") {
+        // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
+        return { content: draftContent.template_content, language: "python3" };
+      }
+      return null;
     }
   }
 

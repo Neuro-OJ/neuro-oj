@@ -44,6 +44,29 @@ import {
 export const MAX_SELECTED_SUBMISSIONS = 500;
 /** worker 单次领取上限（§5.7）。 */
 export const MAX_JOB_ITEMS_PER_CLAIM = 100;
+/**
+ * 单条 `INSERT` 的条目批大小（#41）。
+ *
+ * 整题/整场任务没有 500 条上限，条目数可达数万；一次插入全部行会超出 PostgreSQL
+ * 单语句 65535 个绑定参数的上限。所有写条目的路径统一走 `insertJobItemsBatched`。
+ */
+export const JOB_ITEM_INSERT_BATCH = MAX_JOB_ITEMS_PER_CLAIM;
+
+/**
+ * 分批插入任务条目（#41）。
+ *
+ * 保持调用方的事务上下文：分批只影响单语句规模，成员集合仍在受理事务内固定。
+ */
+export async function insertJobItemsBatched(
+  executor: Executor,
+  rows: ReadonlyArray<typeof submissionJobItems.$inferInsert>,
+): Promise<void> {
+  for (let offset = 0; offset < rows.length; offset += JOB_ITEM_INSERT_BATCH) {
+    await executor.insert(submissionJobItems).values(
+      rows.slice(offset, offset + JOB_ITEM_INSERT_BATCH),
+    );
+  }
+}
 
 /** 条目来源。 */
 export type JobSourceKind = "submission" | "objective";
@@ -452,9 +475,12 @@ export async function acceptRejudgeJob(
     await db.transaction(async (tx) => {
       const members = await resolveScopeItems(normalized.scope, tx);
       planned = await planItems(members, normalized.target, tx);
+      // §4.3：策略变更必须显式作用域，且只能作用于任务包含的题目/竞赛。
+      // 任何写入前完成全部校验（题目维度 + 竞赛维度 + revision 形态）。
       validatePolicyChanges(
         normalized.policy_changes ?? [],
         new Set(planned.map((item) => item.problem_id)),
+        members,
       );
       // 策略与任务必须原子提交。按宿主排序获取锁，避免不同批次反向修改导致死锁。
       const changes = [...(normalized.policy_changes ?? [])].sort((a, b) =>
@@ -471,19 +497,6 @@ export async function acceptRejudgeJob(
         ).for("update");
       }
       for (const change of changes) {
-        if (
-          change.contest_id &&
-          !members.some((member) =>
-            member.problem_id === change.problem_id &&
-            member.contest_id === change.contest_id
-          )
-        ) {
-          throw new AppError(
-            "策略变更作用于任务范围之外的竞赛",
-            400,
-            "POLICY_CHANGE_OUT_OF_SCOPE",
-          );
-        }
         const input = {
           policy: change.policy,
           expectedRevision: change.expected_revision,
@@ -517,32 +530,27 @@ export async function acceptRejudgeJob(
         finished_at: jobStatus === "completed" ? now : null,
       });
       if (planned.length > 0) {
-        for (
-          let offset = 0;
-          offset < planned.length;
-          offset += MAX_JOB_ITEMS_PER_CLAIM
-        ) {
-          await tx.insert(submissionJobItems).values(
-            planned.slice(offset, offset + MAX_JOB_ITEMS_PER_CLAIM).map((
-              item,
-              index,
-            ): typeof submissionJobItems.$inferInsert => ({
-              id: crypto.randomUUID(),
-              job_id: jobId,
-              ordinal: offset + index,
-              source_kind: item.source_kind,
-              source_id: item.source_id,
-              problem_id: item.problem_id,
-              target_version_id: item.target_version_id,
-              target_version_ref: item.target_version_ref,
-              status: item.skipped_reason ? "skipped" : "pending",
-              reason_code: item.skipped_reason?.code ?? null,
-              reason_message: item.skipped_reason?.message ?? null,
-              created_at: now,
-              finished_at: item.skipped_reason ? now : null,
-            })),
-          );
-        }
+        await insertJobItemsBatched(
+          tx,
+          planned.map((
+            item,
+            index,
+          ): typeof submissionJobItems.$inferInsert => ({
+            id: crypto.randomUUID(),
+            job_id: jobId,
+            ordinal: index,
+            source_kind: item.source_kind,
+            source_id: item.source_id,
+            problem_id: item.problem_id,
+            target_version_id: item.target_version_id,
+            target_version_ref: item.target_version_ref,
+            status: item.skipped_reason ? "skipped" : "pending",
+            reason_code: item.skipped_reason?.code ?? null,
+            reason_message: item.skipped_reason?.message ?? null,
+            created_at: now,
+            finished_at: item.skipped_reason ? now : null,
+          })),
+        );
       }
     });
   } catch (error) {
@@ -613,16 +621,33 @@ export async function hashRequest(request: RejudgeRequest): Promise<string> {
 /**
  * 校验策略变更：作用域必须落在任务包含的题目/竞赛内，且 revision 匹配。
  *
- * 只做校验与读取，不写库。
+ * 竞赛维度（#32）：`contest_id` 必须出现在任务实际包含的 `(contest_id, problem_id)`
+ * 组合里——只按题目判断会允许"顺带改另一场竞赛同题的策略"。
+ * 只做校验与读取，不写库；调用方在任何写入前调用。
  */
 function validatePolicyChanges(
   changes: readonly PolicyChangeRequest[],
   jobProblemIds: ReadonlySet<string>,
+  members: ReadonlyArray<{ problem_id: string; contest_id: string | null }> =
+    [],
 ): void {
   for (const change of changes) {
     if (!jobProblemIds.has(change.problem_id)) {
       throw new AppError(
         `策略变更作用于任务范围之外的题目：${change.problem_id}`,
+        400,
+        "POLICY_CHANGE_OUT_OF_SCOPE",
+      );
+    }
+    if (
+      change.contest_id &&
+      !members.some((member) =>
+        member.problem_id === change.problem_id &&
+        member.contest_id === change.contest_id
+      )
+    ) {
+      throw new AppError(
+        `策略变更作用于任务范围之外的竞赛：${change.contest_id}`,
         400,
         "POLICY_CHANGE_OUT_OF_SCOPE",
       );
@@ -732,6 +757,11 @@ export async function listRejudgeJobItems(
  *
  * 全部条目进入终态（succeeded/failed/skipped）后：有 failed → `completed_with_errors`，
  * 否则 `completed`。
+ *
+ * #39（不得从 completed 回退 running）：聚合读取与任务更新必须在**同一事务内、
+ * 持有任务行锁之后**执行。`FOR UPDATE` 先把并发聚合串行化，随后在同一事务内
+ * 重新统计条目，因此后进入的调用必然看到先前调用已提交的条目终态，
+ * 过时的「还有在途条目」结果无法再写回任务行。
  */
 export async function refreshJobStatus(
   jobId: string,
@@ -765,6 +795,38 @@ export async function refreshJobStatus(
 }
 
 /**
+ * 重试任务的幂等身份（#40）。
+ *
+ * 必须覆盖**父任务类型 + 父任务 ID + 规范化重试条目 + 固定目标版本映射**：
+ * 只哈希 `retry_of` 无法区分条目集合已经变化的重试，也无法区分不同 kind 的父任务；
+ * 不同父任务复用同一 Idempotency-Key 必须 409，不能错误返回同一个重试任务。
+ */
+export async function hashRetryRequest(
+  parentKind: string,
+  parentJobId: string,
+  items: ReadonlyArray<{
+    ordinal: number;
+    source_kind: JobSourceKind;
+    source_id: string;
+    target_version_id: string | null;
+    target_version_ref: string | null;
+  }>,
+): Promise<string> {
+  return await hashCanonical({
+    kind: "rejudge_retry",
+    parent_kind: parentKind,
+    parent_job_id: parentJobId,
+    items: [...items].sort((a, b) => a.ordinal - b.ordinal).map((item) => ({
+      ordinal: item.ordinal,
+      source_kind: item.source_kind,
+      source_id: item.source_id,
+      target_version_id: item.target_version_id,
+      target_version_ref: item.target_version_ref,
+    })),
+  });
+}
+
+/**
  * 重试任务：只包含 `failed` / `skipped` 条目，生成**关联新任务**，
  * 保留目标版本映射，**不再次修改有效策略**。
  */
@@ -774,11 +836,22 @@ export async function retryRejudgeJob(
   idempotencyKey: string,
 ): Promise<AcceptJobResult> {
   const db = getDb();
+  if (!idempotencyKey || idempotencyKey.length > 128) {
+    throw new AppError(
+      "必须提供 Idempotency-Key（≤128 字符）",
+      400,
+      "IDEMPOTENCY_KEY_REQUIRED",
+    );
+  }
   const [job] = await db.select().from(submissionJobs).where(
     eq(submissionJobs.id, jobId),
   ).limit(1);
   if (!job) {
     throw new AppError("任务不存在", 404, "JOB_NOT_FOUND");
+  }
+  // 父任务必须存在且为 rejudge：升级任务不能被解释成重测（#40）
+  if (job.kind !== "rejudge") {
+    throw new AppError("仅能重试重测任务", 400, "INVALID_JOB_KIND");
   }
   const retryable = await db.select().from(submissionJobItems).where(
     and(
@@ -798,17 +871,7 @@ export async function retryRejudgeJob(
   }
 
   const request = job.request as unknown as RejudgeRequest;
-  if (!idempotencyKey || idempotencyKey.length > 128) {
-    throw new AppError(
-      "必须提供 Idempotency-Key（≤128 字符）",
-      400,
-      "IDEMPOTENCY_KEY_REQUIRED",
-    );
-  }
-  if (job.kind !== "rejudge") {
-    throw new AppError("仅能重试重测任务", 400, "INVALID_JOB_KIND");
-  }
-  const requestHash = await hashCanonical({ retry_of: jobId });
+  const requestHash = await hashRetryRequest(job.kind, jobId, retryable);
   const existing = await db.select().from(submissionJobs).where(
     and(
       eq(submissionJobs.actor_id, actorId),
@@ -828,36 +891,60 @@ export async function retryRejudgeJob(
 
   const now = new Date().toISOString();
   const newJobId = crypto.randomUUID();
-  await db.transaction(async (tx) => {
-    await tx.insert(submissionJobs).values({
-      id: newJobId,
-      kind: "rejudge",
-      actor_id: actorId,
-      idempotency_key: idempotencyKey,
-      request_hash: requestHash,
-      request: {
-        ...request,
-        retry_of: jobId,
-        policy_changes: [],
-      } as unknown as Record<string, unknown>,
-      status: "queued",
+  const rows = retryable.map(
+    (item, index): typeof submissionJobItems.$inferInsert => ({
+      id: crypto.randomUUID(),
+      job_id: newJobId,
+      ordinal: index,
+      source_kind: item.source_kind,
+      source_id: item.source_id,
+      problem_id: item.problem_id,
+      target_version_id: item.target_version_id,
+      target_version_ref: item.target_version_ref,
+      status: "pending",
       created_at: now,
-    });
-    await tx.insert(submissionJobItems).values(
-      retryable.map((item, index): typeof submissionJobItems.$inferInsert => ({
-        id: crypto.randomUUID(),
-        job_id: newJobId,
-        ordinal: index,
-        source_kind: item.source_kind,
-        source_id: item.source_id,
-        problem_id: item.problem_id,
-        target_version_id: item.target_version_id,
-        target_version_ref: item.target_version_ref,
-        status: "pending",
+    }),
+  );
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(submissionJobs).values({
+        id: newJobId,
+        kind: "rejudge",
+        actor_id: actorId,
+        idempotency_key: idempotencyKey,
+        request_hash: requestHash,
+        request: {
+          ...request,
+          retry_of: jobId,
+          policy_changes: [],
+        } as unknown as Record<string, unknown>,
+        status: "queued",
         created_at: now,
-      })),
-    );
-  });
+      });
+      // 整题/整场任务的重试条目数可达数万：分批插入（#41）
+      await insertJobItemsBatched(tx, rows);
+    });
+  } catch (error) {
+    // 并发受理同一幂等键：唯一索引 (actor_id, kind, idempotency_key) 冲突后
+    // 必须重读已提交任务并核对请求哈希，而不是把 23505 抛给调用方（#40）
+    const [raced] = await db.select().from(submissionJobs).where(
+      and(
+        eq(submissionJobs.actor_id, actorId),
+        eq(submissionJobs.kind, "rejudge"),
+        eq(submissionJobs.idempotency_key, idempotencyKey),
+      ),
+    ).limit(1);
+    if (raced) {
+      if (raced.request_hash !== requestHash) throw idempotencyConflict();
+      return {
+        job_id: raced.id,
+        status: raced.status,
+        total_items: await countItems(raced.id, db),
+        existing: true,
+      };
+    }
+    throw error;
+  }
 
   return {
     job_id: newJobId,

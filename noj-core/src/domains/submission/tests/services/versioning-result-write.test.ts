@@ -371,11 +371,11 @@ Deno.test("result write: 重复/过时结果被忽略", async () => {
 
 Deno.test("result write: 平台错误不替换已有正式判定", async () => {
   const db = getDb();
-  await seedProblem("rw-p6", 990006);
-  const source = await seedSubmission("rw-s6", "rw-p6");
+  await seedProblem("rw-p10", 990010);
+  const source = await seedSubmission("rw-s10", "rw-p10");
   const good = await createAttempt({
     source,
-    problemVersionId: "rw-p6-v1",
+    problemVersionId: "rw-p10-v1",
     source_kind: "initial",
   });
   await applyAttemptResult({
@@ -388,7 +388,7 @@ Deno.test("result write: 平台错误不替换已有正式判定", async () => {
 
   const failing = await createAttempt({
     source,
-    problemVersionId: "rw-p6-v1",
+    problemVersionId: "rw-p10-v1",
     source_kind: "rejudge",
   });
   const outcome = await applyAttemptResult({
@@ -402,7 +402,7 @@ Deno.test("result write: 平台错误不替换已有正式判定", async () => {
   assertEquals(outcome.applied, "platform_error");
 
   const [submission] = await db.select().from(submissions).where(
-    eq(submissions.id, "rw-s6"),
+    eq(submissions.id, "rw-s10"),
   );
   // 已有正式判定保留：仍然通过、指针仍指向失败的旧尝试
   assertEquals(submission.is_accepted, true);
@@ -415,7 +415,7 @@ Deno.test("result write: 平台错误不替换已有正式判定", async () => {
 
   // 分版本当前判定仍指向旧的成功尝试
   const results = await db.select().from(submissionVersionResults).where(
-    eq(submissionVersionResults.submission_id, "rw-s6"),
+    eq(submissionVersionResults.submission_id, "rw-s10"),
   );
   assertEquals(results.length, 1);
   assertEquals(results[0].current_attempt_id, good.id);

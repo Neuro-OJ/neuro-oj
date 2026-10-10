@@ -84,11 +84,8 @@ import {
 import { createAttempt } from "../versioning/attempts.ts";
 import { applyAttemptResult } from "../versioning/result-write.ts";
 import {
-  bumpProjectionRevision,
-  contestScopeKey,
-  globalScopeKey,
+  bumpSubmissionCountRevisions,
   lockProjectionHosts,
-  problemScopeKey,
 } from "../versioning/projection.ts";
 import {
   executionSnapshot,
@@ -101,6 +98,8 @@ import {
 import type {
   ListSubmissionsParams,
   ListSubmissionsResult,
+  SubmissionAttemptSummary,
+  SubmissionAttemptView,
   SubmissionDetail,
   SubmissionEvaluationDetails,
   SubmissionInput,
@@ -165,6 +164,21 @@ function normalizeResultStatus(status: string | null): string | null {
     return "error";
   }
   return "finished";
+}
+
+/**
+ * 尝试历史条目的展示状态：与 `result.status` 同口径（finished / error），
+ * 未终结的排队/执行中分别回落到 pending / judging。
+ */
+function attemptDisplayStatus(
+  state: string,
+  resultStatus: string | null,
+): string {
+  const normalized = normalizeResultStatus(resultStatus);
+  if (normalized) return normalized;
+  if (state === "queued") return "pending";
+  if (state === "judging") return "judging";
+  return "error";
 }
 
 /**
@@ -626,6 +640,12 @@ export async function createSubmission(
         },
         createdBy: userId,
       });
+      // 新提交改变实际提交计数：同一事务递增题目/竞赛/global 作用域 revision
+      // （Handbook §3.5，tracking #48）。
+      await bumpSubmissionCountRevisions(tx, {
+        problem_id: input.problem_id,
+        contest_id: resolvedContestId,
+      });
     });
   } catch (err) {
     if (err instanceof AppError) throw err;
@@ -804,6 +824,7 @@ export async function getSubmission(
     .select({
       effective_version_mode: problems.effective_version_mode,
       required_version_id: problems.required_version_id,
+      latest_version_id: problems.latest_version_id,
     })
     .from(problems)
     .where(eq(problems.id, row.problem_id))
@@ -812,6 +833,82 @@ export async function getSubmission(
     policyRow?.effective_version_mode,
     policyRow?.required_version_id,
   ) ?? { mode: "any" };
+  const isSubmittedVersionLatest = !!row.submitted_version_id &&
+    row.submitted_version_id === policyRow?.latest_version_id;
+
+  // 全部执行历史（含 queued/judging/superseded 与平台错误，tracking #53）。
+  // 只投影非敏感字段：output/details 仍只经 `result` 返回并按权限裁剪，
+  // 因此本数组在竞赛视角下被 `applySubmissionProjection` 统一处理（非参赛者整条剥离）。
+  const attemptHistoryRows = await db
+    .select({
+      attempt_id: evaluationAttempts.id,
+      sequence: evaluationAttempts.sequence,
+      problem_version_id: evaluationAttempts.problem_version_id,
+      version: problemVersions.version,
+      source: evaluationAttempts.source,
+      state: evaluationAttempts.state,
+      result_kind: evaluationAttempts.result_kind,
+      result_status: evaluationAttempts.result_status,
+      score: evaluationAttempts.score,
+      time_ms: evaluationAttempts.time_ms,
+      memory_kb: evaluationAttempts.memory_kb,
+      created_at: evaluationAttempts.created_at,
+      finished_at: evaluationAttempts.finished_at,
+    })
+    .from(evaluationAttempts)
+    .leftJoin(
+      problemVersions,
+      eq(problemVersions.id, evaluationAttempts.problem_version_id),
+    )
+    .where(eq(evaluationAttempts.submission_id, id));
+
+  const effectiveAttemptId = row.effective_attempt_id ?? null;
+  const acceptedAttemptId = row.accepted_attempt_id ?? null;
+  const latestPointerId = row.latest_attempt_id ?? null;
+  const attempts: SubmissionAttemptView[] = attemptHistoryRows
+    .map((item) => ({
+      attempt_id: item.attempt_id,
+      sequence: item.sequence,
+      problem_version_id: item.problem_version_id,
+      version: item.version ?? null,
+      source: item.source as SubmissionAttemptView["source"],
+      state: item.state as SubmissionAttemptView["state"],
+      result_kind: item.result_kind ?? null,
+      status: attemptDisplayStatus(item.state, item.result_status),
+      score: item.score ?? 0,
+      time_ms: item.time_ms ?? null,
+      memory_kb: item.memory_kb ?? null,
+      is_effective: effectiveAttemptId === item.attempt_id,
+      is_accepted: acceptedAttemptId === item.attempt_id,
+      is_latest: latestPointerId === item.attempt_id,
+      created_at: item.created_at,
+      finished_at: item.finished_at ?? null,
+    }))
+    .sort((a, b) =>
+      a.sequence - b.sequence || a.attempt_id.localeCompare(b.attempt_id)
+    );
+
+  const summarizeAttempt = (
+    attemptId: string | null,
+  ): SubmissionAttemptSummary | null => {
+    if (!attemptId) return null;
+    const found = attempts.find((item) => item.attempt_id === attemptId);
+    if (!found) return null;
+    return {
+      attempt_id: found.attempt_id,
+      sequence: found.sequence,
+      problem_version_id: found.problem_version_id,
+      version: found.version,
+      state: found.state,
+      result_kind: found.result_kind,
+      status: found.status,
+      score: found.score,
+      time_ms: found.time_ms,
+      memory_kb: found.memory_kb,
+      created_at: found.created_at,
+      finished_at: found.finished_at,
+    };
+  };
 
   // 跨版本判定（Handbook 核心不变量 3）：每（提交，版本）一条当前正式判定。
   const versionRows = await db
@@ -911,9 +1008,16 @@ export async function getSubmission(
     submitted_version_id: row.submitted_version_id ?? null,
     version_origin: row.version_origin ?? "legacy_unknown",
     submitted_version: submittedVersion,
+    is_latest: isSubmittedVersionLatest,
     upgraded_from_id: row.upgraded_from_id ?? null,
     effective_version_policy: effectiveVersionPolicy,
     version_results: versionResults,
+    attempts,
+    latest_attempt: summarizeAttempt(latestPointerId),
+    effective_attempt: summarizeAttempt(effectiveAttemptId),
+    latest_attempt_id: latestPointerId,
+    effective_attempt_id: effectiveAttemptId,
+    accepted_attempt_id: acceptedAttemptId,
   };
 }
 
@@ -952,7 +1056,9 @@ export async function deleteSubmission(id: string): Promise<void> {
       problem_id: identity.problem_id,
       contest_id: identity.contest_id,
     });
-    const [current] = await tx.select().from(submissions).where(eq(submissions.id, id)).for("update");
+    const [current] = await tx.select().from(submissions).where(
+      eq(submissions.id, id),
+    ).for("update");
     if (
       current?.active_attempt_id ||
       (current && ["pending", "judging"].includes(current.status))
@@ -960,11 +1066,11 @@ export async function deleteSubmission(id: string): Promise<void> {
     const [row] = await tx.delete(submissions).where(eq(submissions.id, id))
       .returning();
     if (!row) throw new NotFoundError("提交不存在");
-    await bumpProjectionRevision(tx, problemScopeKey(row.problem_id));
-    if (row.contest_id) {
-      await bumpProjectionRevision(tx, contestScopeKey(row.contest_id));
-    }
-    await bumpProjectionRevision(tx, globalScopeKey());
+    // 删除同样改变实际提交计数：题目/竞赛/global 全部递增。
+    await bumpSubmissionCountRevisions(tx, {
+      problem_id: row.problem_id,
+      contest_id: row.contest_id,
+    });
     return row;
   });
   // 先提交引用删除，再调用带共享引用守卫的物理清理；升级副本仍有引用时保留。

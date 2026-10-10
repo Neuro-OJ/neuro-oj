@@ -28,6 +28,49 @@ import {
 import { SELF_TEST_ID_PREFIX } from "../../types/self-tests.ts";
 import type { JudgeResult } from "../../index.ts";
 import type { Context } from "hono";
+import { recoverPendingSelfTests } from "../../mq/sweeper.ts";
+import { startFakeRedis } from "../mq/_setup.ts";
+import {
+  getRedis,
+  resetRedisForTest,
+} from "../../../../shared/mq/connection.ts";
+
+const oldNow = new Date(Date.now() - 3 * 60_000).toISOString();
+
+/** 在假 Redis 环境中跑一次自测恢复，返回主队列消息（JSON）。 */
+async function recoverSelfTestsAndReadMessages(): Promise<
+  Record<string, unknown>[]
+> {
+  const fake = startFakeRedis();
+  const prevUrl = Deno.env.get("REDIS_URL") ?? null;
+  try {
+    resetRedisForTest();
+    Deno.env.set("REDIS_URL", fake.url);
+    const redis = getRedis();
+    await redis.connect();
+    await recoverPendingSelfTests(Date.now());
+    const messages: Record<string, unknown>[] = [];
+    for (
+      const queue of [
+        "noj:judge:queue:ai:high",
+        "noj:judge:queue:ai:medium",
+        "noj:judge:queue:ai:low",
+        "noj:judge:queue:oi-native:medium",
+        "noj:judge:queue:oi-wasm:medium",
+      ]
+    ) {
+      for (const raw of fake.getMessages(queue)) {
+        messages.push(JSON.parse(raw));
+      }
+    }
+    return messages;
+  } finally {
+    await fake.stop();
+    resetRedisForTest();
+    if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
+    else Deno.env.delete("REDIS_URL");
+  }
+}
 
 const skip = false; // PGlite 内存数据库始终可用
 
@@ -226,7 +269,9 @@ Deno.test({
     assertEquals(sub, undefined);
 
     // 重复终态结果幂等忽略
-    const appliedAgain = await saveSelfTestResult(await v2ResultForTest(result));
+    const appliedAgain = await saveSelfTestResult(
+      await v2ResultForTest(result),
+    );
     assertEquals(appliedAgain, false);
   },
 });
@@ -374,6 +419,137 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: null })
       .where(eq(problems.id, problemId));
     await db.delete(problemVersions).where(eq(problemVersions.id, versionId));
+    await db.delete(problems).where(eq(problems.id, problemId));
+  },
+});
+
+Deno.test({
+  name:
+    "self-tests service: 自测按所选版本配置与用例，最新版发布后恢复不漂移（#8）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const problemId = `tst-st-oi-${ts}`;
+    const v1 = `tst-st-oi-v1-${ts}`;
+    const v2 = `tst-st-oi-v2-${ts}`;
+    const v1Config = {
+      backend: "native",
+      languages: ["c"],
+      time_limit_ms: 1111,
+      memory_limit_mb: 111,
+      checker: { type: "default" },
+      subtasks: [],
+    };
+    const v2Config = {
+      ...v1Config,
+      time_limit_ms: 9999,
+      memory_limit_mb: 999,
+    };
+    await db.insert(problems).values({
+      id: problemId,
+      title: "OI 版本化自测题",
+      description: "题面",
+      difficulty: "easy",
+      judge_type: "oi",
+      // 题目投影 = V2：任何"读当前投影"的实现都会拿到 9999
+      runtime_config: v2Config,
+      number: 92000 + (ts % 1000),
+      owner_id: USER_ID,
+      type: "P",
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(problemVersions).values([
+      {
+        id: v1,
+        problem_id: problemId,
+        version: 1,
+        origin: "published",
+        content: {
+          kind: "oi",
+          title: "OI 版本化自测题",
+          description: "题面",
+          samples: [{ id: "s1", input: "1", output: "1" }],
+          runtime_config: v1Config,
+        },
+        published_at: now,
+      },
+      {
+        id: v2,
+        problem_id: problemId,
+        version: 2,
+        origin: "published",
+        content: {
+          kind: "oi",
+          title: "OI 版本化自测题",
+          description: "题面",
+          samples: [{ id: "s2", input: "2", output: "4" }],
+          runtime_config: v2Config,
+        },
+        published_at: now,
+      },
+    ]);
+    await db.update(problems).set({ latest_version_id: v2 }).where(
+      eq(problems.id, problemId),
+    );
+
+    // 显式选择 V1 + 自定义用例（评测队列不可用时记录仍已落库）
+    await createSelfTest(USER_ID, problemId, {
+      language: "c",
+      code: "int main(){return 0;}",
+      version_id: v1,
+      cases: [{ id: "c1", input: "7", expected_output: "8" }],
+    }).catch(() => {/* Redis 不可用属预期 */});
+
+    const [row] = await db.select().from(selfTests).where(
+      and(
+        eq(selfTests.user_id, USER_ID),
+        eq(selfTests.problem_id, problemId),
+      ),
+    );
+    assertEquals(row.problem_version_id, v1);
+    const snapshot = row.task_snapshot as Record<string, unknown>;
+    // 运行配置来自所选版本 V1，而不是题目最新版投影 V2
+    assertEquals(
+      (snapshot.runtime_config as { time_limit_ms: number }).time_limit_ms,
+      1111,
+    );
+    // 实际自定义用例被持久化（崩溃恢复的唯一来源）
+    const cases = snapshot.self_test_cases as Array<Record<string, unknown>>;
+    assertEquals(cases.length, 1);
+    assertEquals(cases[0].input, "7");
+    assertEquals(cases[0].expected_output, "8");
+
+    // "自测过程中发布 V2"：最新版指针与题目投影都换成 V2
+    await db.update(problems).set({
+      runtime_config: v2Config,
+      latest_version_id: v2,
+    }).where(eq(problems.id, problemId));
+    // 让恢复窗口生效
+    await db.update(selfTests).set({ created_at: oldNow }).where(
+      eq(selfTests.id, row.id),
+    );
+
+    const messages = await recoverSelfTestsAndReadMessages();
+    const task = messages.find((m) => m.submission_id === row.id);
+    assertEquals(task !== undefined, true, "自测 pending 必须按快照恢复");
+    assertEquals(task!.problem_version_id, v1);
+    assertEquals(task!.run_id, row.judge_run_id);
+    assertEquals(
+      (task!.runtime_config as { time_limit_ms: number }).time_limit_ms,
+      1111,
+      "恢复必须使用快照中的 V1 配置，不能漂移到最新版",
+    );
+
+    // 清理（复合外键：先摘指针再删版本/题目）
+    await db.delete(selfTests).where(eq(selfTests.id, row.id));
+    await db.update(problems).set({ latest_version_id: null }).where(
+      eq(problems.id, problemId),
+    );
+    await db.delete(problemVersions).where(
+      eq(problemVersions.problem_id, problemId),
+    );
     await db.delete(problems).where(eq(problems.id, problemId));
   },
 });

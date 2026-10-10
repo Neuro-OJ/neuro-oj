@@ -20,6 +20,7 @@ import {
   problemDraftObjects,
   problemDrafts,
   problems,
+  problemVersionObjects,
   problemVersions,
 } from "../../../../shared/db/schema.ts";
 import type { ProblemObjectRole } from "../../../../shared/versioning/types.ts";
@@ -131,6 +132,58 @@ export function deriveDraftContentFromProblem(
 }
 
 /**
+ * 首次物化草稿时复制最新已发布版本的**文件引用**（Handbook §8.1、tracking #24）。
+ *
+ * 迁移只回填了 `problem_version_objects`（版本文件引用），草稿引用表在存量题目上
+ * 是空的；而草稿的文件读取只看 `problem_draft_objects`。若首次编辑/发布只复制内容
+ * 不复制引用，存量题的支持包与 OI 逐文件引用会**静默丢失**（OI 仅改题面也会因缺少
+ * 文件引用无法发布）。
+ *
+ * 条件（与 0109 的存量补数同一规则，幂等）：
+ * - 尚无草稿行；
+ * - 题目有最新已发布版本；
+ * - 最新版本确有文件引用。
+ *
+ * 只复制文件引用，不改内容与 revision：内容仍由 `getProblemDraft` 从最新版快照派生
+ * （`synthesized = true`），后续保存/发布按乐观锁正常写入自己的 revision。
+ * 仍处于"虚拟草稿"（revision 0）语义，因此首次保存写入 revision 1，与既有基线一致。
+ */
+async function materializeDraftObjectsFromLatestVersion(
+  tx: Executor,
+  problemId: string,
+  latestVersionId: string | null,
+): Promise<boolean> {
+  // 优先最新版；基线不一致时（理论上不会发生）退回题目的 latest 指针。
+  let versionId = latestVersionId;
+  if (versionId) {
+    const [exists] = await tx.select({ id: problemVersions.id })
+      .from(problemVersions).where(
+        and(
+          eq(problemVersions.problem_id, problemId),
+          eq(problemVersions.id, versionId),
+        ),
+      ).limit(1);
+    if (!exists) versionId = null;
+  }
+  if (!versionId) return false;
+
+  const refs = await tx.select().from(problemVersionObjects).where(
+    eq(problemVersionObjects.version_id, versionId),
+  );
+  if (refs.length === 0) return false;
+
+  for (const ref of refs) {
+    await tx.insert(problemDraftObjects).values({
+      problem_id: problemId,
+      role: ref.role,
+      path: ref.path,
+      storage_url: ref.storage_url,
+    }).onConflictDoNothing();
+  }
+  return true;
+}
+
+/**
  * 读取共享草稿。
  *
  * 没有草稿行时返回**派生初值**（基于最新版内容，其次题目投影），
@@ -233,6 +286,13 @@ export async function saveProblemDraft(
     if (input.content.kind !== problemContentKindOf(identity)) {
       throw new AppError("题目类别已变化", 409, "CONTENT_KIND_IMMUTABLE");
     }
+    // 无草稿行但题目已有最新版：保存前把**基线文件引用**复制进草稿引用表，
+    // 否则本次编辑会以空文件集合覆盖基线，存量支持包/OI 文件静默丢失（#24）。
+    await materializeDraftObjectsFromLatestVersion(
+      tx,
+      problemId,
+      identity.latest_version_id,
+    );
     const [row] = await tx.select().from(problemDrafts).where(
       eq(problemDrafts.problem_id, problemId),
     ).limit(1);
@@ -335,6 +395,12 @@ export async function saveProblemDraftWithObjects(
     if (input.content.kind !== problemContentKindOf(identity)) {
       throw new AppError("题目类别已变化", 409, "CONTENT_KIND_IMMUTABLE");
     }
+    // 同 saveProblemDraft：先把基线文件引用物化进草稿引用表（#24）。
+    await materializeDraftObjectsFromLatestVersion(
+      tx,
+      problemId,
+      identity.latest_version_id,
+    );
     const [row] = await tx.select().from(problemDrafts).where(
       eq(problemDrafts.problem_id, problemId),
     ).limit(1);

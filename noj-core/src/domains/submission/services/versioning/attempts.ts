@@ -132,6 +132,10 @@ export async function createAttempt(
     active: sourceTable.active_attempt_id,
     problem_id: problemColumn,
     contest_id: sourceTable.contest_id,
+    // 迁移前旧协议在提交行上维护的重测序号。新尝试的 sequence 不得低于它，
+    // 否则"rejudge_seq=5、无尝试行"的存量提交再重测会得到 sequence 0，
+    // 任务透传与结果封套校验随之错位（tracking #27）。
+    rejudge_seq: sourceTable.rejudge_seq,
   })
     .from(sourceTable).where(eq(sourceTable.id, input.source.id)).for("update");
   if (!locked) throw new AppError("提交不存在", 404, "SUBMISSION_NOT_FOUND");
@@ -166,8 +170,12 @@ export async function createAttempt(
       throw new AppError("源提交正在评测", 409, "SOURCE_JUDGING");
     }
   }
-  const sequence = input.sequence ??
-    await nextAttemptSequence(input.source, db);
+  // sequence 单调不减：取 MAX(尝试)+1 与提交行既有 `rejudge_seq` 的较大者。
+  // 旧协议迁移过来的提交可能带着更大的源序号而没有任何尝试行（tracking #27）。
+  const sequence = Math.max(
+    input.sequence ?? await nextAttemptSequence(input.source, db),
+    locked.rejudge_seq ?? 0,
+  );
   const id = input.id ?? crypto.randomUUID();
   const now = new Date().toISOString();
   await db.insert(evaluationAttempts).values({

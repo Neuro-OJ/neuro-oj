@@ -117,7 +117,83 @@ export interface ContestSettlementStatus {
 }
 
 /**
- * 读取结算门禁状态。pending/judging、缺失结果均属于待处理；error 属于失败。
+ * 结算候选集合 + 判定分类（Handbook §3.3/§6.6，缺陷 #47）。
+ *
+ * 分类只用**权威字段**：`submissions.status` 与
+ * `evaluation_attempts.state` / `result_kind`；`result_status` 只作展示。
+ *
+ * 为什么不能再看 `result_status` 字符串：正式 TLE/WA/CE 等 graded 判定会把
+ * 具体 verdict（`TimeLimitExceeded`、`WA`…）写进该列，用 `finished`/`error`
+ * 白名单判断"是否完成"会把**已完成**的正式判定永久当成待处理，结算门禁被
+ * 误报卡死（原缺陷 #47）。
+ *
+ * 最近一次运行优先取**在途**尝试：重测期间 `active_attempt_id` 指向新尝试，
+ * 若只看最近终态/有效指针就会漏掉正在跑的评测。
+ */
+function contestTasksCte(contestId: string) {
+  return sql`
+    WITH contest_tasks AS (
+      SELECT s.id AS submission_id, s.user_id, u.username, s.problem_id,
+        p.title AS problem_title,
+        s.status AS submission_status,
+        ea.result_status AS result_status,
+        ea.state AS attempt_state,
+        ea.result_kind AS attempt_result_kind,
+        (ea.id IS NOT NULL) AS has_attempt,
+        s.created_at, 'submission'::text AS kind
+      FROM submissions s
+      JOIN users u ON u.id = s.user_id
+      JOIN problems p ON p.id = s.problem_id
+      JOIN contests c ON c.id = s.contest_id
+      -- 在途尝试优先（重测门禁），其次最近终态尝试，最后有效成绩指针
+      LEFT JOIN evaluation_attempts ea
+        ON ea.id = coalesce(s.active_attempt_id, s.latest_attempt_id, s.effective_attempt_id)
+      WHERE s.contest_id = ${contestId}
+        AND s.created_at <= c.end_time
+      UNION ALL
+      SELECT os.id AS submission_id, os.user_id, u.username, os.paper_id,
+        p.title AS problem_title,
+        os.status AS submission_status,
+        ea.result_status AS result_status,
+        ea.state AS attempt_state,
+        ea.result_kind AS attempt_result_kind,
+        (ea.id IS NOT NULL) AS has_attempt,
+        os.created_at, 'objective'::text AS kind
+      FROM objective_submissions os
+      LEFT JOIN evaluation_attempts ea
+        ON ea.id = coalesce(os.active_attempt_id, os.latest_attempt_id, os.effective_attempt_id)
+      JOIN users u ON u.id = os.user_id
+      JOIN problems p ON p.id = os.paper_id
+      JOIN contests c ON c.id = os.contest_id
+      WHERE os.contest_id = ${contestId}
+        AND os.created_at <= c.end_time
+    ),
+    classified AS (
+      SELECT *,
+        -- 失败 = 提交级 error、尝试级 error 或平台错误；正常 WA / 零分 / 用户超时
+        -- 都是 graded 正式判定，不算评测故障（Handbook §6.6）
+        (
+          COALESCE(submission_status = 'error', FALSE)
+          OR COALESCE(attempt_state = 'error', FALSE)
+          OR COALESCE(attempt_result_kind = 'platform_error', FALSE)
+        ) AS failed,
+        -- 待处理 = 未终结（提交级或尝试级），或根本没有尝试记录（fail-closed）
+        (
+          COALESCE(submission_status IN ('pending', 'judging'), FALSE)
+          OR COALESCE(attempt_state IN ('queued', 'judging'), FALSE)
+          OR has_attempt = FALSE
+        ) AS unfinished
+      FROM contest_tasks
+    )
+  `;
+}
+
+/** 结算门禁尚未终态的任务条目状态（queued/preparing 尚未创建尝试时同样计入）。 */
+const OPEN_JOB_ITEM_STATUSES = sql`('pending', 'preparing', 'dispatched')`;
+
+/**
+ * 读取结算门禁状态。未终结的评测尝试与尚未终态的任务条目属于待处理；
+ * 提交级/尝试级 error 与平台错误属于失败（正常 WA/零分不算失败）。
  * 该查询只读，不会改变队列或提交状态，管理员可据此决定处理或带说明发布。
  */
 export async function getContestSettlementStatus(
@@ -127,66 +203,22 @@ export async function getContestSettlementStatus(
   const db = executor ?? getDb();
   const contest = await getContest(contestId, undefined, db);
   const result = await db.execute(sql`
-    WITH contest_tasks AS (
-      SELECT s.id AS submission_id, s.user_id, u.username, s.problem_id,
-        p.title AS problem_title, s.status,
-        ea.result_status AS result_status,
-        (ea.result_kind = 'platform_error') AS platform_error,
-        s.created_at, 'submission'::text AS kind
-      FROM submissions s
-      JOIN users u ON u.id = s.user_id
-      JOIN problems p ON p.id = s.problem_id
-      JOIN contests c ON c.id = s.contest_id
-      -- 最近一次运行的判定读尝试指针（evaluation_results 即将删除）：
-      -- 优先最近终态尝试，存量行回退有效成绩指针
-      LEFT JOIN evaluation_attempts ea
-        ON ea.id = coalesce(s.latest_attempt_id, s.effective_attempt_id)
-      WHERE s.contest_id = ${contestId}
-        AND s.created_at <= c.end_time
-      UNION ALL
-      SELECT os.id AS submission_id, os.user_id, u.username, os.paper_id,
-        p.title AS problem_title, os.status,
-        ea.result_status AS result_status, (ea.result_kind = 'platform_error') AS platform_error,
-        os.created_at, 'objective'::text AS kind
-      FROM objective_submissions os
-      LEFT JOIN evaluation_attempts ea ON ea.id = coalesce(os.latest_attempt_id, os.effective_attempt_id)
-      JOIN users u ON u.id = os.user_id
-      JOIN problems p ON p.id = os.paper_id
-      JOIN contests c ON c.id = os.contest_id
-      WHERE os.contest_id = ${contestId}
-        AND os.created_at <= c.end_time
-    )
+    ${contestTasksCte(contestId)}
     SELECT
-      -- 待处理 = 未终结的评测任务；已判定为失败的提交不重复计入待处理
-      COUNT(*) FILTER (
-        WHERE NOT failed
-          AND (
-            status IN ('pending', 'judging')
-            OR result_status IS NULL
-            OR result_status NOT IN ('finished', 'error')
-          )
-      )::int AS pending_count,
-      -- 失败 = 提交级 error 或平台错误（result_kind = platform_error）；
-      -- 正常 WA / 零分不算失败（Handbook §6.6：不把未通过等同于评测故障）
+      -- 已判定为失败的提交不重复计入待处理
+      COUNT(*) FILTER (WHERE NOT failed AND unfinished)::int AS pending_count,
       COUNT(*) FILTER (WHERE failed)::int AS failed_count
-    FROM (
-      SELECT status, result_status,
-        -- 三值逻辑必须显式收敛：OR 链遇到 NULL 会得到 NULL，
-        -- 否则"无尝试的提交"既不算 failed 也不算 pending（结算门禁 fail-open）
-        COALESCE(
-          status = 'error' OR result_status = 'error'
-            OR platform_error IS TRUE,
-          FALSE
-        ) AS failed
-      FROM contest_tasks
-    ) classified
+    FROM classified
   `);
   const [counts] = unwrapRows<Record<string, unknown>>(result as never);
+  // 批任务在**受理事务**里就落库条目（可能还没有 attempt_id），因此
+  // pending/preparing/dispatched 都必须进入结算门禁（缺陷 #46）。
   const jobs = await db.execute(
     sql`SELECT count(*)::int AS pending FROM submission_job_items ji
     LEFT JOIN submissions s ON ji.source_kind = 'submission' AND ji.source_id = s.id
     LEFT JOIN objective_submissions os ON ji.source_kind = 'objective' AND ji.source_id = os.id
-    WHERE ji.status IN ('pending', 'preparing') AND coalesce(s.contest_id, os.contest_id) = ${contestId}`,
+    WHERE ji.status IN ${OPEN_JOB_ITEM_STATUSES}
+      AND coalesce(s.contest_id, os.contest_id) = ${contestId}`,
   );
   const pendingCount = Number(counts?.pending_count ?? 0) +
     Number(unwrapRows<{ pending: number }>(jobs as never)[0]?.pending ?? 0);
@@ -206,42 +238,11 @@ export async function getContestSettlementStatus(
   }
 
   const itemResult = await db.execute(sql`
-    WITH contest_tasks AS (
-      SELECT s.id AS submission_id, s.user_id, u.username, s.problem_id,
-        p.title AS problem_title, s.status,
-        ea.result_status AS result_status,
-        (ea.result_kind = 'platform_error') AS platform_error,
-        s.created_at, 'submission'::text AS kind
-      FROM submissions s
-      JOIN users u ON u.id = s.user_id
-      JOIN problems p ON p.id = s.problem_id
-      JOIN contests c ON c.id = s.contest_id
-      -- 最近一次运行的判定读尝试指针（evaluation_results 即将删除）：
-      -- 优先最近终态尝试，存量行回退有效成绩指针
-      LEFT JOIN evaluation_attempts ea
-        ON ea.id = coalesce(s.latest_attempt_id, s.effective_attempt_id)
-      WHERE s.contest_id = ${contestId}
-        AND s.created_at <= c.end_time
-      UNION ALL
-      SELECT os.id AS submission_id, os.user_id, u.username, os.paper_id,
-        p.title AS problem_title, os.status,
-        ea.result_status AS result_status, (ea.result_kind = 'platform_error') AS platform_error,
-        os.created_at, 'objective'::text AS kind
-      FROM objective_submissions os
-      LEFT JOIN evaluation_attempts ea ON ea.id = coalesce(os.latest_attempt_id, os.effective_attempt_id)
-      JOIN users u ON u.id = os.user_id
-      JOIN problems p ON p.id = os.paper_id
-      JOIN contests c ON c.id = os.contest_id
-      WHERE os.contest_id = ${contestId}
-        AND os.created_at <= c.end_time
-    )
+    ${contestTasksCte(contestId)}
     SELECT submission_id, user_id, username, problem_id, problem_title,
-      status, result_status, created_at, kind
-    FROM contest_tasks
-    WHERE status IN ('pending', 'judging', 'error')
-      OR result_status IS NULL
-      OR result_status NOT IN ('finished', 'error')
-      OR result_status = 'error'
+      submission_status AS status, result_status, created_at, kind
+    FROM classified
+    WHERE failed OR unfinished
     ORDER BY created_at ASC, submission_id ASC
     LIMIT 501
   `);

@@ -39,7 +39,10 @@ export async function verifyContestAccess(
 
   const db = getDb();
   const [problem] = await db
-    .select({ problem_id: contestProblems.problem_id })
+    .select({
+      problem_id: contestProblems.problem_id,
+      pinned_version_id: contestProblems.pinned_version_id,
+    })
     .from(contestProblems)
     .where(and(
       eq(contestProblems.contest_id, contestId),
@@ -57,5 +60,7 @@ export async function verifyContestAccess(
     contestId,
     allowed,
     running: status === "running",
+    // 竞赛固定作答版本：竞赛题面/小题目按它展示（否则展示最新版、判卷固定版）。
+    pinnedVersionId: problem.pinned_version_id ?? null,
   };
 }

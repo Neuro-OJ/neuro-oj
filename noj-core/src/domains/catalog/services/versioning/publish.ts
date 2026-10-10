@@ -30,10 +30,10 @@ import {
   problems,
   problemVersionObjects,
   problemVersions,
+  storageObjects,
 } from "../../../../shared/db/schema.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
-import { getLogger } from "@logtape/logtape";
 import {
   assertContentKindTransition,
   computeProblemContentHash,
@@ -45,10 +45,15 @@ import {
 } from "../../types/problem-content.ts";
 import {
   assertStorageObjectBindable,
+  getRequestContext,
   getStorageObject,
   getStorageProvider,
-  logAudit,
+  parseStorageUrl,
 } from "../../../system/index.ts";
+import { auditLogs } from "../../../../shared/db/schema.ts";
+// 经 search 域公开门面（index.ts）引用：域边界只允许跨域门面导入（tracking #23）。
+// 索引写入与版本提交共享同一事务执行器，因此必须拿到可注入 executor 的实现。
+import { buildProblemEntry, upsertSearchEntry } from "../../../search/index.ts";
 import {
   draftBaselineConflict,
   type DraftObjectRef,
@@ -58,8 +63,6 @@ import {
   listDraftObjects,
   loadProblemIdentity,
 } from "./draft.ts";
-
-const logger = getLogger(["noj", "catalog"]);
 
 /** 支持包固定逻辑路径（Handbook §2.5）。 */
 export const SUPPORT_PACKAGE_PATH = "package.zip";
@@ -164,6 +167,63 @@ function toHashFileRefs(
 }
 
 /**
+ * 解析文件引用参与内容哈希的**实际 SHA**（tracking #22）。
+ *
+ * 优先级：
+ * 1. `storage_objects.sha256`（服务端登记的真实哈希）；
+ * 2. 存储 URL 内嵌的 `checksum_sha256`（内容寻址 URL 自带，local/s3 均支持）。
+ *
+ * 两者都没有时返回 null——调用方必须**拒绝发布**，绝不能拿空串参与哈希：
+ * 两个不同字节、相同逻辑路径且哈希未知的对象会算出同一个内容哈希，被误判为
+ * `unchanged`，进而发布出与预检对象不一致的版本。
+ */
+function resolveFileSha(
+  ref: DraftObjectRef,
+  record: { sha256: string | null } | null,
+): string | null {
+  if (record?.sha256) return record.sha256;
+  try {
+    return parseStorageUrl(ref.storage_url).checksumSha256 ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 补齐所有引用的实际 SHA（发布前调用）。
+ *
+ * 返回 `{ shaByUrl, missing }`：`missing` 非空表示存在无法取得实际哈希的引用，
+ * 发布必须失败（存量未知哈希可在本次核实后升级为已知）。
+ * `persist` 为事务执行器时把解析出的哈希写回登记行，后续发布无需重复解析。
+ */
+async function resolveFileShas(
+  refs: readonly DraftObjectRef[],
+  persist?: Executor,
+): Promise<{
+  shaByUrl: Map<string, string | null>;
+  missing: DraftObjectRef[];
+}> {
+  const shaByUrl = new Map<string, string | null>();
+  const missing: DraftObjectRef[] = [];
+  for (const ref of refs) {
+    const record = await getStorageObject(ref.storage_url, persist);
+    const sha = resolveFileSha(ref, record);
+    shaByUrl.set(ref.storage_url, sha);
+    if (!sha) {
+      missing.push(ref);
+      continue;
+    }
+    // 存量登记为未知哈希时补齐实际值（不再把空串当作哈希输入）。
+    if (persist && !record?.sha256) {
+      await persist.update(storageObjects).set({ sha256: sha }).where(
+        eq(storageObjects.storage_url, ref.storage_url),
+      );
+    }
+  }
+  return { shaByUrl, missing };
+}
+
+/**
  * 发布预检（不写库）。
  *
  * `verifyObjects` 为 true 时对每个引用做一次后端存在性查询（发布路径使用；
@@ -211,7 +271,8 @@ export async function preflightProblemDraft(
   const provider = options.verifyObjects ? await getStorageProvider() : null;
   for (const ref of refs) {
     const record = await getStorageObject(ref.storage_url);
-    shaByUrl.set(ref.storage_url, record?.sha256 ?? null);
+    const sha = resolveFileSha(ref, record);
+    shaByUrl.set(ref.storage_url, sha);
     let exists: boolean | null = null;
     if (provider) {
       try {
@@ -226,8 +287,17 @@ export async function preflightProblemDraft(
       state: record?.state ?? "unknown",
       exists,
       byte_size: record?.byte_size ?? null,
-      sha256: record?.sha256 ?? null,
+      sha256: sha,
     });
+    // 实际 SHA 缺失时禁止发布（tracking #22）：空哈希参与内容哈希会让不同字节、
+    // 相同路径的两个对象被判为"内容未变"。
+    if (!sha) {
+      errors.push({
+        code: "STORAGE_OBJECT_SHA_UNKNOWN",
+        message: `无法取得文件实际 SHA-256，禁止发布：${ref.path}`,
+        path: ref.path,
+      });
+    }
     if (record && (record.state === "deleting" || record.state === "deleted")) {
       errors.push({
         code: "STORAGE_OBJECT_DELETING",
@@ -413,21 +483,30 @@ export async function publishProblemVersion(
     }
 
     // 步骤 6：内容哈希；相同内容返回现有版本
-    const shaByUrl = new Map<string, string | null>();
+    const { shaByUrl, missing } = await resolveFileShas(refs, tx);
+    if (missing.length > 0) {
+      throw new AppError(
+        `无法取得文件实际 SHA-256，禁止发布：${
+          missing.map((ref) => ref.path).join("、")
+        }`,
+        409,
+        "STORAGE_OBJECT_SHA_UNKNOWN",
+      );
+    }
     const oiDataFiles: Record<
       string,
       { storage_url: string; size: number; hash: string }
     > = {};
     let supportPackageUrl: string | null = null;
     for (const ref of refs) {
-      const record = await getStorageObject(ref.storage_url, tx);
-      shaByUrl.set(ref.storage_url, record?.sha256 ?? null);
       if (ref.role === "support_package") supportPackageUrl = ref.storage_url;
       if (ref.role === "oi_file") {
+        const record = await getStorageObject(ref.storage_url, tx);
         oiDataFiles[ref.path] = {
           storage_url: ref.storage_url,
           size: record?.byte_size ?? 0,
-          hash: record?.sha256 ?? "",
+          // 文件实际 SHA 已在上一步核实并写回登记行：这里绝不再用空串。
+          hash: shaByUrl.get(ref.storage_url) ?? "",
         };
       }
     }
@@ -535,6 +614,18 @@ export async function publishProblemVersion(
       });
     }
 
+    // 步骤 9：审计与搜索索引**随发布事务持久化**（Handbook §5.3 第 9 步）。
+    // 只在提交后写会出现"版本已发布、审计/索引永久缺失"（tracking #23）；
+    // 这里与版本提交同事务，提交后只需再做一次 Redis 通知加速索引可见性。
+    await writePublishAudit(tx, problemId, {
+      version: nextVersion,
+      versionId,
+      changeNote: input.changeNote ?? "",
+      actorId: input.actorId ?? null,
+      now,
+    });
+    await writeProblemSearchIndex(tx, problemId);
+
     return {
       problem_id: problemId,
       version_id: versionId,
@@ -544,25 +635,69 @@ export async function publishProblemVersion(
     };
   });
 
-  // 步骤 9：提交后写审计与搜索索引事件
+  // 提交后的 Redis 通知：索引已随事务持久化，通知只是缩短可见延迟；
+  // 通知失败不再造成"永久缺索引"，可由 reindexAll 或下一次发布收敛。
   if (!outcome.unchanged) {
-    try {
-      await logAudit(
-        "problems.version_published",
-        {
-          action: "problems.version_published",
-          version: outcome.version,
-          version_id: outcome.version_id,
-          change_note: input.changeNote ?? "",
-        },
-        { type: "problem", id: problemId },
-      );
-    } catch (error) {
-      logger.warn("发布审计写入失败（发布已生效）", { problemId, error });
-    }
     await publishSearchIndexEvent("problem", problemId, "upsert");
   }
   return outcome;
+}
+
+/**
+ * 在发布事务内写审计行（tracking #23）。
+ *
+ * 直接写 `audit_logs` 而不调用 `logAudit`：后者的实现（system 域）只接受根连接，
+ * 无法参与本事务。无 RequestContext 的 CLI/脚本路径静默跳过（与 `logAudit` 一致）。
+ */
+async function writePublishAudit(
+  tx: Executor,
+  problemId: string,
+  detail: {
+    version: number;
+    versionId: string;
+    changeNote: string;
+    actorId: string | null;
+    now: string;
+  },
+): Promise<void> {
+  let actorId: string | null = detail.actorId;
+  let actorIp = "unknown";
+  try {
+    const ctx = getRequestContext();
+    actorId = ctx.actorId ?? actorId;
+    actorIp = ctx.actorIp || "unknown";
+  } catch {
+    // 无 RequestContext：CLI/脚本发布，仅记录 actorId（不产生请求 IP）
+  }
+  await tx.insert(auditLogs).values({
+    id: crypto.randomUUID(),
+    admin_id: actorId,
+    action: "problems.version_published",
+    target_type: "problem",
+    target_id: problemId,
+    detail: {
+      action: "problems.version_published",
+      version: detail.version,
+      version_id: detail.versionId,
+      change_note: detail.changeNote,
+    },
+    ip_address: actorIp,
+    created_at: detail.now,
+  });
+}
+
+/**
+ * 在发布事务内写题目搜索索引条目（tracking #23）。
+ *
+ * `buildProblemEntry` 已过滤未发布题目；发布事务内最新版指针与投影已更新，
+ * 因此能够取到新内容。索引是派生读模型，写入幂等（consumer 之后会再次 upsert）。
+ */
+async function writeProblemSearchIndex(
+  tx: Executor,
+  problemId: string,
+): Promise<void> {
+  const entry = await buildProblemEntry(problemId, tx);
+  if (entry) await upsertSearchEntry(entry, tx);
 }
 
 /**

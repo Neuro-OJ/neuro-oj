@@ -229,14 +229,25 @@ export function useProblemVersions() {
       .then((r) => r.data);
   }
 
-  /** 版本元数据列表（分页，新→旧）。 */
-  function listVersions(problemId: string, page = 1, perPage = 20) {
+  /**
+   * 版本元数据列表（分页，新→旧）。
+   *
+   * `options.silent` 用于非关键渲染（如题目详情页的版本选择器）：失败不弹 toast，
+   * 由调用方降级为"不展示选择器"。
+   */
+  function listVersions(
+    problemId: string,
+    page = 1,
+    perPage = 20,
+    options: { silent?: boolean } = {},
+  ) {
+    const url = `/api/v1/problems/${problemId}/versions?page=${page}&per_page=${perPage}`;
     return api.get<{
       data: ProblemVersionSummary[];
       total: number;
       page: number;
       per_page: number;
-    }>(`/api/v1/problems/${problemId}/versions?page=${page}&per_page=${perPage}`);
+    }>(url, options.silent ? { silent: true } : undefined);
   }
 
   /** 指定版本内容（历史版本遵循题目当前访问权限）。 */

@@ -181,7 +181,8 @@ Deno.test("upgrade: source_contest 使用竞赛固定作答版本", async () => 
   );
   assertEquals(practiceItem.target_version_id, "up-p3-v2");
 
-  // 竞赛上下文 → 固定版 v1（与源相同 → ALREADY_LATEST）
+  // 竞赛上下文 → 必须先固定最新版 v2，并要求 v2 == 竞赛固定版 v1；
+  // 两者不一致 → 条目 skipped + CONTEST_VERSION_MISMATCH（不落错版本，也不改练习）
   const contest = await acceptUpgradeJob(
     "up-user-a",
     {
@@ -194,10 +195,21 @@ Deno.test("upgrade: source_contest 使用竞赛固定作答版本", async () => 
   const [contestItem] = await db.select().from(submissionJobItems).where(
     eq(submissionJobItems.job_id, contest.job_id),
   );
-  assertEquals(contestItem.reason_code, "ALREADY_LATEST");
+  assertEquals(contestItem.reason_code, "CONTEST_VERSION_MISMATCH");
+  assertEquals(contestItem.target_version_id, null);
+  assertEquals(contestItem.target_version_ref, "up-p3-v1");
+  assertEquals(contestItem.status, "skipped");
+  // 未创建任何新提交
+  assertEquals(
+    (await db.select().from(submissions).where(eq(
+      submissions.contest_id,
+      "up-c3",
+    ))).length,
+    1,
+  );
 });
 
-Deno.test("upgrade: 竞赛固定版本与最新版不同且源在旧版 → 目标为固定版", async () => {
+Deno.test("upgrade: 竞赛固定版本与最新版不同 → source_contest 拒绝升级（不落固定版）", async () => {
   const db = getDb();
   await seedProblem("up-p4", 995004);
   await db.insert(contests).values({
@@ -212,7 +224,8 @@ Deno.test("upgrade: 竞赛固定版本与最新版不同且源在旧版 → 目�
     created_at: now,
     updated_at: now,
   });
-  // 竞赛固定在 v1，但题目最新版是 v2；源提交未记录版本（历史）→ 目标 = v1
+  // 竞赛固定在 v1，但题目最新版是 v2（受理时固定的"新版"）→ 不匹配固定版：
+  // 必须 skipped + CONTEST_VERSION_MISMATCH，且不产生任何新提交
   await insertContestProblems({
     contest_id: "up-c4",
     problem_id: "up-p4",
@@ -236,9 +249,25 @@ Deno.test("upgrade: 竞赛固定版本与最新版不同且源在旧版 → 目�
   const [item] = await db.select().from(submissionJobItems).where(
     eq(submissionJobItems.job_id, accepted.job_id),
   );
-  assertEquals(item.target_version_id, "up-p4-v1");
+  assertEquals(item.reason_code, "CONTEST_VERSION_MISMATCH");
+  assertEquals(item.status, "skipped");
+  // 目标未固定（不落固定版），原始引用保留竞赛固定版用于历史记录
+  assertEquals(item.target_version_id, null);
   assertEquals(item.target_version_ref, "up-p4-v1");
-  assertEquals(item.status, "pending");
+  // 同一请求在 practice 下仍按最新版 v2 升级
+  const practice = await acceptUpgradeJob(
+    "up-user-a",
+    {
+      submissions: [{ kind: "submission", id: "up-s-legacy" }],
+      context: "practice",
+    },
+    "up-key-4b",
+  );
+  const [practiceItem] = await db.select().from(submissionJobItems).where(
+    eq(submissionJobItems.job_id, practice.job_id),
+  );
+  assertEquals(practiceItem.target_version_id, "up-p4-v2");
+  assertEquals(practiceItem.status, "pending");
 });
 
 Deno.test("upgrade: 跨用户升级被拒（403）", async () => {

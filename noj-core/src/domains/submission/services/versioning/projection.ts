@@ -120,6 +120,25 @@ export async function bumpProjectionRevision(
   return rows[0]?.data_revision ?? 1;
 }
 
+/**
+ * 新增/删除提交时递增**全部受影响作用域**的 revision，包含 `global`
+ * （Handbook §3.5，tracking #48）。
+ *
+ * 提交数量本身参与 `total_submissions` 等统计口径：新提交插入与提交删除都必须
+ * 让缓存键失效。此前只在投影写入时递增 problem/contest，缓存却按 `global` 读取，
+ * 导致计数变化要等 TTL 才可见。
+ */
+export async function bumpSubmissionCountRevisions(
+  executor: Executor,
+  scope: { problem_id: string; contest_id?: string | null },
+): Promise<void> {
+  await bumpProjectionRevision(executor, problemScopeKey(scope.problem_id));
+  if (scope.contest_id) {
+    await bumpProjectionRevision(executor, contestScopeKey(scope.contest_id));
+  }
+  await bumpProjectionRevision(executor, globalScopeKey());
+}
+
 /** 读取当前题库策略（缺行/非法形态按 `any` 兜底）。 */
 async function loadProblemPolicy(
   db: Executor,

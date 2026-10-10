@@ -21,6 +21,16 @@ const problemId = computed(() => route.params.id as string)
 const contestId = computed(() => (route.query.contest as string) || '')
 const label = computed(() => (route.query.label as string) || '')
 const isContest = computed(() => !!contestId.value)
+/**
+ * 题目详情页「选择版本作答」带来的指定版本（Handbook §4.2）。
+ *
+ * 只有题库模式接受它（竞赛只接受竞赛固定版本，客户端不能覆盖）；带该参数时按
+ * 指定版本读取题面，提交/自测回传的就是这一版。
+ */
+const requestedVersionId = computed(() => {
+  const value = route.query.version_id
+  return !isContest.value && typeof value === 'string' && value.length > 0 ? value : null
+})
 const { user } = useAuth()
 const { api } = useApi()
 
@@ -59,7 +69,11 @@ const { data, pending, error, refresh } = useFetch<{
 }>(
   () => isContest.value
     ? `/api/v1/contests/${contestId.value}/problems/${label.value}`
-    : `/api/v1/problems/${problemId.value}`,
+    : `/api/v1/problems/${problemId.value}${
+      requestedVersionId.value
+        ? `?version_id=${encodeURIComponent(requestedVersionId.value)}`
+        : ''
+    }`,
   { server: false },
 )
 
@@ -206,11 +220,17 @@ const draftKey = computed(() => isContest.value
  * 保密题在竞赛中对参赛者不可见"独立路径"，模板接口因此也做同口径校验；
  * 带上竞赛上下文后，赛中改题/重置模板仍能取到 starter code。
  */
+/** 指定版本作答且不是最新版：副标题显式标注"历史版本"。 */
+const isHistoricalVersion = computed(() => {
+  if (!requestedVersionId.value) return false
+  return (data.value?.data as StandardProblem | undefined)?.is_latest === false
+})
+
 /** 工作区副标题：竞赛标题 + 作答版本（让选手始终知道在答哪一版）。 */
 const editorSubtitle = computed(() => {
   const base = isContest.value ? (contest.value?.title ?? '') : ''
   const versionText = answerVersionNumber.value != null
-    ? `作答版本 v${answerVersionNumber.value}`
+    ? `作答版本 v${answerVersionNumber.value}${isHistoricalVersion.value ? '（历史版本）' : ''}`
     : (answerVersion.value ? '作答版本' : '尚未发布版本')
   return base ? `${base} · ${versionText}` : versionText
 })

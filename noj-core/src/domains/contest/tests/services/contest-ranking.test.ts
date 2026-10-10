@@ -495,9 +495,13 @@ Deno.test({
         registered_at: atMinutes(0),
       },
     ]);
+    // 竞赛计分读「竞赛口径有效成绩」（有效尝试指针 + is_contest_valid）：
+    // 只插 objective_submissions 行不足以进入榜单（缺陷 #45 的回归点）。
+    const fullSubmissionId = crypto.randomUUID();
+    const partialSubmissionId = crypto.randomUUID();
     await db.insert(objectiveSubmissions).values([
       {
-        id: crypto.randomUUID(),
+        id: fullSubmissionId,
         paper_id: paperId,
         user_id: userFull,
         contest_id: contestId,
@@ -509,7 +513,7 @@ Deno.test({
         created_at: atMinutes(10),
       },
       {
-        id: crypto.randomUUID(),
+        id: partialSubmissionId,
         paper_id: paperId,
         user_id: userPartial,
         contest_id: contestId,
@@ -521,6 +525,35 @@ Deno.test({
         created_at: atMinutes(10),
       },
     ]);
+    for (
+      const { submissionId, score } of [
+        { submissionId: fullSubmissionId, score: 10000 },
+        { submissionId: partialSubmissionId, score: 6000 },
+      ]
+    ) {
+      const attemptId = crypto.randomUUID();
+      await db.insert(evaluationAttempts).values({
+        id: attemptId,
+        objective_submission_id: submissionId,
+        problem_id: paperId,
+        sequence: 0,
+        source: "initial",
+        state: "finished",
+        result_kind: "graded",
+        result_status: "finished",
+        score,
+        accepted: score === 10000,
+        created_at: atMinutes(10),
+        finished_at: atMinutes(10),
+      });
+      await db.update(objectiveSubmissions).set({
+        is_contest_valid: true,
+        is_valid: true,
+        latest_attempt_id: attemptId,
+        effective_attempt_id: attemptId,
+        contest_effective_attempt_id: attemptId,
+      }).where(eq(objectiveSubmissions.id, submissionId));
+    }
 
     try {
       const ranking = await getContestRanking(contestId, "kaggle");

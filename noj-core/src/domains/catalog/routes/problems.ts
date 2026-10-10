@@ -10,6 +10,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { problems, problemVersions } from "./../../../shared/db/schema.ts";
 import {
+  AppError,
   BadRequestError,
   ForbiddenError,
   NotFoundError,
@@ -45,6 +46,14 @@ import {
   publishProblemVersion,
   resolveProblemAnswerVersion,
 } from "../services/versioning/publish.ts";
+import {
+  projectProblemContent,
+  trimProblemContentForViewer,
+} from "../services/versioning/version-read-view.ts";
+import {
+  getVersionSupportPackageUrl,
+  resolveProblemTemplate,
+} from "../services/support-package.ts";
 import type { ProblemContentV1 } from "../types/problem-content.ts";
 import { applyAlgorithmTagVisibility } from "../services/problems/problems-list.ts";
 import {
@@ -71,7 +80,6 @@ import {
   deleteSupportPackage,
   getSupportPackageBytes,
   MAX_SUPPORT_PACKAGE_SIZE,
-  resolveProblemTemplate,
 } from "../services/support-package.ts";
 import {
   importProblemBundle,
@@ -265,6 +273,7 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
   }).from(problems).where(eq(problems.id, problem.id)).limit(1);
 
   const requestedVersionId = c.req.query("version_id")?.trim() || null;
+  const canEdit = await canEditProblem(c, problem);
   let answerVersion: {
     version_id: string;
     version: number;
@@ -288,8 +297,20 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
       ? answerVersion?.version ?? null
       : await resolveLatestVersionNumber(identity?.latest_version_id ?? null);
 
+  // 内容与版本号必须来自**同一个已解析版本**（Handbook §4.1）：
+  // 默认详情同样经过版本内容投影，避免"版本号 V1、题面/配置却是 V2"。
+  // 敏感字段（评测配置、LLM、模板、支持包位置、客观题答案）由编辑者权限决定。
+  const contentOverrides = answerVersion
+    ? await buildVersionResponseOverrides(
+      answerVersion.version_id,
+      answerVersion.content,
+      canEdit,
+    )
+    : {};
+
   const withVersion = {
     ...data,
+    ...contentOverrides,
     version_id: answerVersion?.version_id ?? null,
     version: answerVersion?.version ?? null,
     latest_version_id: identity?.latest_version_id ?? null,
@@ -303,9 +324,6 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
     is_latest: answerVersion
       ? answerVersion.version_id === identity?.latest_version_id
       : false,
-    ...(requestedVersionId && answerVersion
-      ? versionContentOverrides(answerVersion.content)
-      : {}),
   };
 
   return c.json({
@@ -315,6 +333,24 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
   });
 });
 
+/**
+ * 版本内容 → 题目响应覆盖字段（含**该版本**的支持包存在性）。
+ *
+ * 支持包存在性必须按版本的文件引用解析：题目行投影是"最新版"口径，用它回答
+ * 历史版本会出现"看 V1 却按 V2 报 has_support_package"。
+ */
+async function buildVersionResponseOverrides(
+  versionId: string,
+  content: ProblemContentV1,
+  canEdit: boolean,
+): Promise<Record<string, unknown>> {
+  const overrides = projectProblemContent(content, canEdit);
+  const supportPackageUrl = await getVersionSupportPackageUrl(versionId);
+  overrides.has_support_package = supportPackageUrl !== null;
+  if (canEdit) overrides.support_package_storage_url = supportPackageUrl;
+  return overrides;
+}
+
 /** 读取版本号（用于 `latest_version`；缺失返回 null）。 */
 async function resolveLatestVersionNumber(
   versionId: string | null,
@@ -323,39 +359,6 @@ async function resolveLatestVersionNumber(
   const [row] = await getDb().select({ version: problemVersions.version })
     .from(problemVersions).where(eq(problemVersions.id, versionId)).limit(1);
   return row?.version ?? null;
-}
-
-/**
- * 把版本内容投影回题目响应字段（只覆盖**内容**字段）。
- *
- * 难度、标签、可见性、所有权属于题目管理信息，历史版本沿用当前值；支持包存储位置
- * 与客观题答案绝不下发（用户响应不含存储位置、隐藏数据与标准答案）。
- */
-function versionContentOverrides(
-  content: ProblemContentV1,
-): Record<string, unknown> {
-  const overrides: Record<string, unknown> = {
-    title: content.title,
-    description: content.description,
-    samples: content.samples,
-  };
-  if (content.kind === "ai") {
-    overrides.runtime_config = content.runtime_config;
-    overrides.submission_mode = content.submission_mode;
-    overrides.artifact_max_size_mb = content.artifact_max_size_mb;
-    overrides.judge_type = "dual";
-    overrides.is_objective = false;
-  } else if (content.kind === "oi") {
-    overrides.runtime_config = content.runtime_config;
-    overrides.submission_mode = "code";
-    overrides.judge_type = "oi";
-    overrides.is_objective = false;
-  } else {
-    overrides.is_objective = true;
-    overrides.runtime_config = null;
-    overrides.judge_type = "dual";
-  }
-  return overrides;
 }
 
 /**
@@ -436,22 +439,16 @@ async function isProblemPublished(problemId: string): Promise<boolean> {
 }
 
 /**
- * 版本内容的权限裁剪：非编辑者不下发客观题标准答案与存储位置。
+ * 版本内容的权限裁剪：与题目详情**同一**按字段允许的公开响应
+ * （{@link trimProblemContentForViewer}）——非编辑者不下发评测配置
+ * （`runtime_config`：评测命令、镜像、网络权限、测试点路径）、LLM 配置、
+ * 模板内容与客观题标准答案。
  */
 function trimVersionContent(
   content: ProblemContentV1,
   canEdit: boolean,
 ): ProblemContentV1 {
-  if (canEdit) return content;
-  if (content.kind !== "objective") return content;
-  return {
-    ...content,
-    questions: content.questions.map((question) => ({
-      ...question,
-      answer: [],
-      explanation: "",
-    })),
-  };
+  return trimProblemContentForViewer(content, canEdit);
 }
 
 /**
@@ -743,6 +740,11 @@ router.delete("/:id", authMiddleware, async (c) => {
  * 唯一上传入口：id 一律服务端生成；admin 可指定 number（幂等键，按 (type, number)
  * 匹配既有题目 → 更新元数据 + 替换评测包；未命中 → 创建）；非 admin 提供 number
  * 被拒（400），普通用户导入仅创建（number 自动分配）。
+ *
+ * **目标题目模式**（编辑器支持包上传，tracking #55）：body 带 `problem_id` 时内容只
+ * 写该题的**共享草稿**，不新建题目、不按包内题号匹配；此时必须携带编辑基线
+ * （`If-Match: <revision>` 或 body `expected_revision`），缺失 428、过时 409，
+ * 冲突时零写入。响应回传新 `draft_revision`，且 `id` 恒等于目标题目。
  */
 router.post("/import-bundle", authMiddleware, async (c) => {
   const userId = c.get("userId");
@@ -784,25 +786,71 @@ router.post("/import-bundle", authMiddleware, async (c) => {
     throw new BadRequestError("文件不是有效的 zip 格式");
   }
 
+  const targetProblemId = typeof body["problem_id"] === "string"
+    ? body["problem_id"]
+    : undefined;
+  let targetExpectedRevision: number | undefined;
+  if (targetProblemId) {
+    const bodyRevision = typeof body["expected_revision"] === "string"
+      ? body["expected_revision"]
+      : typeof body["expected_revision"] === "number"
+      ? String(body["expected_revision"])
+      : undefined;
+    // 与 PUT /problems/:id/draft 同一乐观锁语义：缺失 428、过时 409。
+    targetExpectedRevision = parseExpectedRevision(
+      c,
+      bodyRevision ? Number(bodyRevision) : undefined,
+    );
+  }
+
   const result = await withActorContext(c, () =>
     importProblemBundle(
       { name: file.name, data: fileBytes },
       { userId, userRole },
       c,
-      typeof body["problem_id"] === "string" ? body["problem_id"] : undefined,
+      targetProblemId
+        ? {
+          problemId: targetProblemId,
+          expectedRevision: targetExpectedRevision,
+        }
+        : undefined,
     ));
+
+  // 目标题目模式：包身份必须与目标题目一致（双保险：前端已校验），
+  // 且回传新 draft revision（客户端据此继续编辑，无需再读一次草稿）。
+  if (targetProblemId && result.id !== targetProblemId) {
+    throw new AppError(
+      "导入结果与目标题目不一致，已拒绝",
+      409,
+      "BUNDLE_TARGET_MISMATCH",
+    );
+  }
+  const draftRevision = targetProblemId
+    ? (await getProblemDraft(targetProblemId)).revision
+    : null;
 
   // `publish=true`：导入后显式发布为版本（与 `problems import --publish` 同口径）。
   // 不发布时题目只有草稿：普通访问者读不到、也无法按版本提交。
   const wantsPublish = String(body["publish"] ?? "").toLowerCase() === "true";
   if (!wantsPublish) {
-    return c.json({ data: { ...result, published: null } });
+    return c.json({
+      data: { ...result, draft_revision: draftRevision, published: null },
+    });
   }
   const published = await publishImportedProblem(
     result.id,
     userId ?? ROOT_USER_ID,
   );
-  return c.json({ data: { ...result, published } });
+  const afterPublishRevision = targetProblemId
+    ? (await getProblemDraft(targetProblemId)).revision
+    : null;
+  return c.json({
+    data: {
+      ...result,
+      draft_revision: afterPublishRevision ?? draftRevision,
+      published,
+    },
+  });
 });
 
 /**
@@ -879,10 +927,16 @@ router.get("/:id/template", authMiddleware, async (c) => {
   if (!result.allowed) {
     throw new NotFoundError("题目不存在");
   }
+  const requestedTemplateVersionId = c.req.query("version_id")?.trim() || null;
   const tpl = await resolveProblemTemplate({
     id: problem.id,
     number: problem.number,
     title: problem.title,
+  }, {
+    // 模板必须与作答版本一致（Handbook §4.1）：显式 `?version_id=` 优先，
+    // 否则取默认作答版本（exact → 要求版本、any → 最新版），绝不无条件取最新版。
+    versionId: requestedTemplateVersionId ??
+      (await resolveProblemAnswerVersion(problem.id))?.version_id ?? null,
   });
   if (!tpl) {
     return c.json({ error: "该题目没有初始代码模板" }, 404);
@@ -970,10 +1024,13 @@ router.delete("/:id/support-package", authMiddleware, async (c) => {
 
 /**
  * 获取客观题套卷小题列表。
- * GET /api/v1/problems/:id/questions
+ * GET /api/v1/problems/:id/questions?contest_id=&version_id=
  *
- * 编辑者（owner/admin）读**共享草稿**含答案与解析；其余读**默认作答版本**
- * 快照并裁剪答案（Handbook §6.4）。未发布套卷对非编辑者 404。
+ * 编辑者（owner/admin）读**共享草稿**含答案与解析；其余读**作答版本**快照并裁剪
+ * 答案（Handbook §6.4）。作答版本：竞赛 → 该竞赛**固定版本**；否则显式
+ * `?version_id=`；再否则题库默认作答版本（`exact` → 要求版本、`any` → 最新版）。
+ * 响应回传实际版本号，客户端须用它提交（竞赛里不一致将
+ * `409 CONTEST_PROBLEM_VERSION_CHANGED`）。未发布套卷对非编辑者 404。
  */
 router.get("/:id/questions", optionalAuthMiddleware, async (c) => {
   const paperId = c.req.param("id") as string;
@@ -988,15 +1045,20 @@ router.get("/:id/questions", optionalAuthMiddleware, async (c) => {
     ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
     : false;
   const contestId = c.req.query("contest_id");
-  const data = await listPaperQuestionsWithAccess(paperId, {
+  const result = await listPaperQuestionsWithAccess(paperId, {
     viewerId,
     isAdmin,
     contestId,
+    versionId: c.req.query("version_id"),
     userId,
     userRole,
     c,
   });
-  return c.json({ data });
+  return c.json({
+    data: result.questions,
+    version_id: result.version_id,
+    version: result.version,
+  });
 });
 
 /**

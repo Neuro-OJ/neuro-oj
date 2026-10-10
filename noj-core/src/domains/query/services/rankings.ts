@@ -1,5 +1,8 @@
 import { sql } from "drizzle-orm";
-import { getDb } from "./../../../shared/db/connection.ts";
+import {
+  getDb,
+  isInsideTestTransaction,
+} from "./../../../shared/db/connection.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
 import { submissions } from "./../../../shared/db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
@@ -85,8 +88,16 @@ async function isRankingViewTrusted(): Promise<boolean> {
 /**
  * 从同一事务快照刷新榜单并登记覆盖 revision。
  * 数据库锁跨副本串行化刷新；只要 revision 落后，读取仍使用内联查询。
+ *
+ * **测试事务内直接跳过**：`REFRESH MATERIALIZED VIEW CONCURRENTLY` 本身不允许在
+ * 事务块内执行（PG 25001），而本函数是结果写入后的 fire-and-forget 调用
+ * （`refreshRankingsView().catch(...)`），它会与测试用例的长事务并发地创建/释放
+ * savepoint，破坏该事务（表现为 `savepoint "noj_sp_N" does not exist` →
+ * `current transaction is aborted` 的假失败）。测试期读取本就一律走内联查询
+ * （`isRankingViewTrusted` 在回填后 revision 落后），因此跳过刷新不改变被测语义。
  */
 export async function refreshRankingsView(): Promise<void> {
+  if (isInsideTestTransaction()) return;
   try {
     if (!await hasMaterializedView()) return;
     await getDb().transaction(async (tx) => {

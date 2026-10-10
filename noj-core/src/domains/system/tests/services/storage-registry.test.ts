@@ -27,8 +27,25 @@ import {
   setStorageProviderForTest,
 } from "../../services/storage/factory.ts";
 import { LocalStorageProvider } from "../../services/storage/local.ts";
+import type { StorageObjectStat } from "../../services/storage/types.ts";
 
 const now = new Date().toISOString();
+
+/**
+ * 模拟"后端不可达/无权限"的 provider：`stat` 抛错（而非返回 `exists:false`）。
+ *
+ * Handbook §2.5 / tracking #13：`stat` 异常表示**无法确认**，不能被当成不存在，
+ * 更不能据此把登记行永久写成 `deleted` / `missing`。
+ */
+class UnreachableStatProvider extends LocalStorageProvider {
+  constructor(dir: string, private readonly error: Error) {
+    super(dir);
+  }
+
+  override stat(_url: string): Promise<StorageObjectStat> {
+    return Promise.reject(this.error);
+  }
+}
 
 /**
  * 本地 provider 的存储根目录由 `SUPPORT_PACKAGE_DIR` 决定（构造函数无参数），
@@ -151,6 +168,96 @@ Deno.test("storage registry: 对象不存在时删除返回 missing 且登记为
   await registerReadyStorageObject({ storageUrl: ghost });
   assertEquals((await deleteStorageObject(ghost)).outcome, "missing");
   assertEquals((await getStorageObject(ghost))?.state, "deleted");
+});
+
+Deno.test("storage registry: stat 异常不得当成不存在（#13）", async () => {
+  const provider = useTempStorage();
+  const bytes = new TextEncoder().encode("still-here");
+  const url = await provider.put("unreachable", bytes);
+  const byteSize = bytes.byteLength;
+  await registerReadyStorageObject({
+    storageUrl: url,
+    sha256: "h",
+    byteSize,
+  });
+
+  // 后端不可达：核实必须抛错，且不得把真实存在的对象写成 missing。
+  setStorageProviderForTest(
+    new UnreachableStatProvider(tempStorageDir, new Error("ETIMEDOUT")),
+  );
+  await assertRejects(() => verifyStorageObject(url), Error, "ETIMEDOUT");
+  assertEquals((await getStorageObject(url))?.state, "ready");
+
+  // 删除同样必须抛错并回滚，绝不写 deleted（此前会永久谎称已删除）。
+  await assertRejects(() => deleteStorageObject(url), Error, "ETIMEDOUT");
+  assertEquals((await getStorageObject(url))?.state, "ready");
+
+  // 403（无权限）与超时同样属于"无法确认"。
+  setStorageProviderForTest(
+    new UnreachableStatProvider(tempStorageDir, new Error("AccessDenied: 403")),
+  );
+  await assertRejects(() => verifyStorageObject(url), Error, "AccessDenied");
+  await assertRejects(() => deleteStorageObject(url), Error, "AccessDenied");
+  assertEquals((await getStorageObject(url))?.state, "ready");
+
+  // 后端恢复后对象仍在，核实为 ready
+  const restored = useTempStorage();
+  const statAfter = await restored.stat(url);
+  assertEquals(statAfter.exists, true);
+  assertEquals(statAfter.sizeBytes, byteSize);
+  assertEquals(await verifyStorageObject(url), "ready");
+});
+
+Deno.test("storage registry: 明确的 NotFound 仍然写 missing/deleted", async () => {
+  const provider = useTempStorage();
+  // 明确不存在（provider 返回 exists:false，不抛错）→ 允许进入 missing / deleted
+  const ghost = "noj-storage://local/YWJzZW50?checksum_sha256=abc";
+  await registerReadyStorageObject({ storageUrl: ghost });
+  assertEquals(await verifyStorageObject(ghost), "missing");
+  assertEquals((await getStorageObject(ghost))?.state, "missing");
+  assertEquals((await deleteStorageObject(ghost)).outcome, "missing");
+  assertEquals((await getStorageObject(ghost))?.state, "deleted");
+  assertEquals((await provider.stat(ghost)).exists, false);
+});
+
+Deno.test("storage registry: 崩溃遗留的 deleting 可续做删除（#14）", async () => {
+  const provider = useTempStorage();
+  const url = await provider.put(
+    "crashed-delete",
+    new TextEncoder().encode("crashed"),
+  );
+  await registerReadyStorageObject({ storageUrl: url });
+  // 模拟"进程在标记 deleting 后崩溃"：状态卡在 deleting，对象仍在后端。
+  await getDb().update(storageObjects).set({ state: "deleting" }).where(
+    eq(storageObjects.storage_url, url),
+  );
+  assertEquals((await provider.stat(url)).exists, true);
+
+  // 下一次删除必须续做而不是返回 referenced：能拿到行锁说明上一次删除已崩溃。
+  assertEquals((await deleteStorageObject(url)).outcome, "deleted");
+  assertEquals((await provider.stat(url)).exists, false);
+  assertEquals((await getStorageObject(url))?.state, "deleted");
+});
+
+Deno.test("storage registry: 删除后重传相同内容恢复 ready 并可绑定（#14）", async () => {
+  const provider = useTempStorage();
+  const bytes = new TextEncoder().encode("reupload-bytes");
+  const first = await provider.put("reupload", bytes);
+  await registerReadyStorageObject({ storageUrl: first, sha256: "same" });
+  assertEquals((await deleteStorageObject(first)).outcome, "deleted");
+  await assertRejects(() => assertStorageObjectBindable(first));
+
+  // 内容寻址：重传相同字节得到同一 URL；成功上传后必须恢复 ready（不能永久粘 deleted）。
+  const again = await provider.put("reupload", bytes);
+  assertEquals(again, first);
+  await registerReadyStorageObject({
+    storageUrl: again,
+    sha256: "same",
+    byteSize: bytes.byteLength,
+  });
+  assertEquals((await getStorageObject(again))?.state, "ready");
+  await assertStorageObjectBindable(again);
+  assertEquals((await provider.stat(again)).exists, true);
 });
 
 Deno.test("storage registry: stat 对 local provider 返回大小", async () => {

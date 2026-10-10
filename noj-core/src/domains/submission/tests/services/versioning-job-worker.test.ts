@@ -33,6 +33,8 @@ import { getRejudgeJob } from "../../services/versioning/rejudge-jobs.ts";
 
 const now = new Date().toISOString();
 
+// 幂等 seed：本文件在**无 preload 事务隔离**（例如单文件直接 `deno test`）时，
+// 模块级与逐用例 seed 会共享同一份持久数据，重复插入 `problems_pkey` 会失败。
 await getDb().insert(users).values({
   id: "jw-admin",
   username: "jw-admin",
@@ -40,7 +42,7 @@ await getDb().insert(users).values({
   password_hash: "hash",
   created_at: now,
   updated_at: now,
-});
+}).onConflictDoNothing();
 
 /** 建一个含 n 个 pending 条目的任务。 */
 async function seedJob(jobId: string, itemCount: number): Promise<string[]> {
@@ -74,7 +76,7 @@ async function seedJob(jobId: string, itemCount: number): Promise<string[]> {
   return ids;
 }
 
-/** 建题 + 版本（每个用例都需自建：测试事务逐用例回滚）。 */
+/** 建题 + 版本（幂等：preload 事务下逐用例回滚，无隔离时重复调用不得报错）。 */
 async function seedProblemAndVersion(): Promise<void> {
   const db = getDb();
   await db.insert(problems).values({
@@ -87,7 +89,7 @@ async function seedProblemAndVersion(): Promise<void> {
     judge_type: "dual",
     created_at: now,
     updated_at: now,
-  });
+  }).onConflictDoNothing();
   await db.insert(problemVersions).values({
     id: "jw-prob-v1",
     problem_id: "jw-prob",
@@ -95,7 +97,7 @@ async function seedProblemAndVersion(): Promise<void> {
     origin: "published",
     content: { kind: "ai", title: "jw" },
     published_at: now,
-  });
+  }).onConflictDoNothing();
   await db.update(problems).set({ latest_version_id: "jw-prob-v1" }).where(
     eq(problems.id, "jw-prob"),
   );

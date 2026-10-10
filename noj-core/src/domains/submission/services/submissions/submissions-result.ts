@@ -26,8 +26,12 @@ import { getRedis } from "./../../../../shared/mq/connection.ts";
 
 const logger = getLogger(["noj", "submission"]);
 import { Channels } from "./../../../../shared/sse/event-bus.ts";
-import { sanitizeJudgeResult } from "./sanitize-judge-result.ts";
+import {
+  isValidGradedScore,
+  sanitizeJudgeResult,
+} from "./sanitize-judge-result.ts";
 import { isAcceptedResult } from "../../../../shared/versioning/verdict.ts";
+import type { AttemptResultKind } from "../../../../shared/versioning/types.ts";
 import { applyAttemptResult } from "../versioning/result-write.ts";
 
 // 允许的状态转换
@@ -145,6 +149,24 @@ export async function saveEvaluationResult(
     // 防御性归一（2026-09-12 评审 §4.3）：Redis 队列是 core↔judge 的信任边界，
     // judge 侧虽已 clamp，但 core 不能假设回传值一定合法——脏 score 会直接进入
     // 榜单/竞赛排名 SQL。归一结果与修正清单一起记录，便于发现 judge 异常。
+    //
+    // tracking #29（core 侧防御）：非法评分（缺字段、字符串、非整数、越界）**不得**
+    // 被静默写成正式 0/满分——那会用一条假判定替换已有正式成绩。判定为平台错误：
+    // 只写尝试终态与运行状态，`submission_version_results` 与有效字段保持原样。
+    const declaredKind = result.result_kind!;
+    const scoreInvalid = declaredKind === "graded" &&
+      !isValidGradedScore(result.score);
+    const resultKind: AttemptResultKind = scoreInvalid
+      ? "platform_error"
+      : declaredKind;
+    if (scoreInvalid) {
+      logger.error("评测结果评分非法，按平台错误处理（保留已有正式判定）", {
+        submission_id: result.submission_id,
+        attempt_id: result.attempt_id,
+        score_type: typeof result.score,
+      });
+    }
+
     const { result: safeResult, adjustments } = sanitizeJudgeResult(result);
     if (adjustments.length > 0) {
       logger.warn("评测结果存在非法字段，已归一后落库", {
@@ -156,10 +178,10 @@ export async function saveEvaluationResult(
     const attemptId = attempt.id;
     const appliedAttempt = await applyAttemptResult({
       attemptId,
-      resultKind: result.result_kind!,
-      resultStatus: safeResult.status,
-      score: result.result_kind === "platform_error" ? null : safeResult.score,
-      accepted: result.result_kind === "graded" && isAcceptedResult({
+      resultKind,
+      resultStatus: scoreInvalid ? "INVALID_SCORE" : safeResult.status,
+      score: resultKind === "platform_error" ? null : safeResult.score,
+      accepted: resultKind === "graded" && isAcceptedResult({
         status: safeResult.status,
         score: safeResult.score,
         details: safeResult.details,

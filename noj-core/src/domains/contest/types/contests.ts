@@ -199,6 +199,13 @@ export interface KaggleProblemScore {
    * 快照据此把成绩固定到具体一次执行；后续重测只改实时榜，不自动改写已发布快照。
    */
   effective_attempt_id?: string | null;
+  /**
+   * 产生该最佳成绩的尝试**实际评测的题目版本**（Handbook §3.4/§6.6）。
+   *
+   * 与 `submitted_version_id` 可能不同：重测/升级会用其他版本执行，正式成绩
+   * 归因必须记录“哪一版判出来的”，快照据此固定成绩来源。
+   */
+  evaluated_version_id?: string | null;
   /** 该最佳成绩所属提交的提交时版本（迁移期未知版本为 null）。 */
   submitted_version_id?: string | null;
   /** 该「竞赛 × 题目」当时的固定作答版本。 */

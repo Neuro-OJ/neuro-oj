@@ -174,14 +174,25 @@ export function createResultConsumerPool(
   };
 }
 
-export async function handleResultMessage(
-  data: Record<string, unknown>,
-): Promise<void> {
-  if (data.kind === "oi_progress") {
-    await saveOiProgress(data);
+/**
+ * 处理一条结果队列消息（**不可信输入**）。
+ *
+ * 参数类型是 `unknown` 而非 `Record<string, unknown>`：Redis 队列是信任边界，
+ * 消息可能是任意 JSON（字符串、数组、null）。同时 `JudgeResult` 是 interface，
+ * 没有隐式索引签名，把他声明成 `Record<string, unknown>` 会让调用方无法直接
+ * 传入一个结构化结果（TS2345）。这里显式做形状收窄。
+ */
+export async function handleResultMessage(data: unknown): Promise<void> {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    logger.error("评测结果消息格式非法，跳过", { kind: typeof data });
     return;
   }
-  const judgeResult = data as unknown as JudgeResult;
+  const record = data as Record<string, unknown>;
+  if (record.kind === "oi_progress") {
+    await saveOiProgress(record);
+    return;
+  }
+  const judgeResult = record as unknown as JudgeResult;
 
   if (!judgeResult.submission_id) {
     logger.error("评测结果缺少 submission_id，跳过");

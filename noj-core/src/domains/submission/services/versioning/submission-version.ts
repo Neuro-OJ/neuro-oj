@@ -14,6 +14,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { AppError, BadRequestError } from "../../../../shared/base/errors.ts";
+import { assertVersionAcceptance } from "./version-execution.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
@@ -99,28 +100,15 @@ export async function loadPublishedVersionContent(
  *
  * - AI 版本：提交模式必须与版本内容一致（code/artifact）；
  * - OI 版本：语言必须在版本的语言列表内（`LANGUAGE_NOT_SUPPORTED` 的判定点）。
+ *
+ * 与 {@link assertVersionAcceptance} 同一实现（提交入口 / 自测 / 批任务派发共用），
+ * 只是保留既有导出名与签名不变。
  */
 export function assertVersionAcceptsSubmission(
   content: ProblemContentV1,
   input: { language: string; submissionMode: "code" | "artifact" },
 ): void {
-  if (content.kind === "ai") {
-    if (content.submission_mode !== input.submissionMode) {
-      throw new BadRequestError(
-        `目标版本的提交模式为 ${content.submission_mode}，与本次提交不一致`,
-      );
-    }
-    return;
-  }
-  if (content.kind === "oi") {
-    if (!content.runtime_config.languages.includes(input.language as never)) {
-      throw new BadRequestError(
-        `目标版本不支持该语言：${input.language}`,
-      );
-    }
-    return;
-  }
-  throw new BadRequestError("客观题版本不接受代码提交");
+  assertVersionAcceptance(content, input);
 }
 
 /**

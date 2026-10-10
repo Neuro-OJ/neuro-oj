@@ -33,4 +33,5 @@ export * from "./services/oi-self-test-package.ts";
 export * from "./types/problem-content.ts";
 export * from "./services/versioning/draft.ts";
 export * from "./services/versioning/publish.ts";
+export * from "./services/versioning/version-read-view.ts";
 export * from "./services/versioning/oi-draft.ts";

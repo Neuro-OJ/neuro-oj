@@ -388,7 +388,13 @@ Deno.test({
       const row = result.data.find((item) => item.user_id === userId);
       assertExists(row);
       assertEquals(row.solved_count, 2);
-      assertEquals(row.total_submissions, 3);
+      // 全站榜单的聚合输入**整体**共用竞赛过滤（Handbook §3.4「保留赛期与
+      // affect_global_ranking 过滤」）：不计入全局榜的竞赛提交既不算通过，
+      // 也不进入提交总数与通过率分母。物化视图（0108）与内联查询口径一致：
+      // problem1（练习）+ problem3（计入全局榜且已结束）= 2；problem2 属
+      // affect_global_ranking=false 的竞赛 → 排除。
+      assertEquals(row.total_submissions, 2);
+      assertEquals(row.valid_submissions, 2);
     } finally {
       await cleanupUser(userId);
       await db.delete(contests).where(eq(contests.id, excludedContestId));

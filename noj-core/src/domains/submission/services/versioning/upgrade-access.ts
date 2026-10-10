@@ -23,18 +23,25 @@ export async function assertUpgradeAccess(
   const [job] = await db.select().from(submissionJobs).where(
     eq(submissionJobs.id, item.job_id),
   );
-  const perms = job
+  const actorPerms = job
     ? await getUserPermissions(job.actor_id)
     : new Set<string>();
-  const isAdmin = perms.has("admin:full_access") ||
-    perms.has("submission:rejudge");
-  if (!job || (job.actor_id !== source.user_id && !isAdmin)) {
+  // 操作者授权：本人，或管理员/有重测权限者代原用户执行（§4.4）
+  const actorCanOperate = actorPerms.has("admin:full_access") ||
+    actorPerms.has("submission:rejudge");
+  if (!job || (job.actor_id !== source.user_id && !actorCanOperate)) {
     throw new AppError("无权升级该提交", 403, "UPGRADE_FORBIDDEN");
   }
   const [problem] = await db.select().from(problems).where(
     eq(problems.id, source.problem_id),
   );
   if (!problem) throw new AppError("题目不存在", 404, "SOURCE_DELETED");
+  // **原用户的正常提交资格**与操作者授权分开评估：管理员代升级不能把自己的
+  // 管理员可见性"借"给原用户，否则等于绕过正常可访问性检查（#42）。
+  const sourcePerms = job.actor_id === source.user_id
+    ? actorPerms
+    : await getUserPermissions(source.user_id);
+  const sourceIsAdmin = sourcePerms.has("admin:full_access");
   const contestId = context === "source_contest" ? source.contest_id : null;
   if (context === "source_contest" && !contestId) {
     throw new AppError("源提交没有竞赛上下文", 409, "CONTEST_CONTEXT_REQUIRED");
@@ -44,7 +51,7 @@ export async function assertUpgradeAccess(
     : null;
   const access = await evaluateProblemAccess(problem, {
     viewerId: source.user_id,
-    isAdmin,
+    isAdmin: sourceIsAdmin,
     contestAccess,
   });
   if (

@@ -9,19 +9,22 @@
 
 ## 进度概览
 
+> **2026-10-10 修复轮次**：本清单 56 项已按「修复 / 带证据核实为无需改动」两种方式全部处置，
+> 逐条结论见文末[「修复轮次执行记录」](#修复轮次执行记录2026-10-10)。下表 `完成度` 按该记录填写。
+
 | 模块 / 领域 | P1（阻断） | P2（次要/健壮性） | 合计 | 完成度 |
 |---|---|---|---|---|
-| 一、版本绑定与实际作答、评测内容 | 7 | 2 | 9 | 0 / 9 |
-| 二、对象存储与删除 | 5 | 1 | 6 | 0 / 6 |
-| 三、草稿、发布与导入 | 3 | 5 | 8 | 0 / 8 |
-| 四、存量迁移 | 2 | 0 | 2 | 0 / 2 |
-| 五、尝试、结果协议与有效投影 | 5 | 0 | 5 | 0 / 5 |
-| 六、批任务 | 6 | 5 | 11 | 0 / 11 |
-| 七、用户升级 | 2 | 0 | 2 | 0 / 2 |
-| 八、竞赛策略、榜单和结算 | 4 | 0 | 4 | 0 / 4 |
-| 九、缓存与全部成绩读取 | 3 | 2 | 5 | 0 / 5 |
-| 十、客户端与 CI | 0 | 4 | 4 | 0 / 4 |
-| **总计** | **37** | **19** | **56** | **0 / 56** |
+| 一、版本绑定与实际作答、评测内容 | 7 | 2 | 9 | 9 / 9 |
+| 二、对象存储与删除 | 5 | 1 | 6 | 6 / 6 |
+| 三、草稿、发布与导入 | 3 | 5 | 8 | 8 / 8 |
+| 四、存量迁移 | 2 | 0 | 2 | 2 / 2 |
+| 五、尝试、结果协议与有效投影 | 5 | 0 | 5 | 5 / 5 |
+| 六、批任务 | 6 | 5 | 11 | 11 / 11 |
+| 七、用户升级 | 2 | 0 | 2 | 2 / 2 |
+| 八、竞赛策略、榜单和结算 | 4 | 0 | 4 | 4 / 4 |
+| 九、缓存与全部成绩读取 | 3 | 2 | 5 | 5 / 5 |
+| 十、客户端与 CI | 0 | 4 | 4 | 4 / 4 |
+| **总计** | **37** | **19** | **56** | **56 / 56** |
 
 ---
 
@@ -357,3 +360,144 @@
 3. **关键验收补充**：
    - 补充未覆盖组合：V1/V2 配置明显不同、已有成绩期间重测失败、共享文件补偿、派发失败后恢复、结果早于关联写入、过期 worker 竞争、策略与结果并发、存量数据迁移。
    - 锁、租约及外键场景必须使用真实 PostgreSQL 屏障测试验证。
+
+---
+
+## 修复轮次执行记录（2026-10-10）
+
+> 状态口径：`已修` = 行为已按“修复建议”落地并有测试；`已核实` = 复核后确认现有实现已满足“修复建议”，补充证据与回归测试锁定。
+> 迁移与并发/锁用例在**真实 PostgreSQL**上执行；其余域测试按 `deno task test:domain` 的既有环境执行。
+
+### 一、版本绑定与实际作答、评测内容
+
+| # | 结论 | 主要改动 | 验证 |
+|---|---|---|---|
+| 1 | 已核实 | 初次提交/产物提交的内容、运行配置、LLM、支持包、产物上限全部取 `resolveSubmissionVersion` 的已解析版本（`submissions-crud.ts`、`artifact-submissions.ts`） | `versioning-execution-context.test.ts`（V1/V2 配置不同、产物上限按版本） |
+| 2 | 已修 | 新增 `buildVersionResponseOverrides`（`catalog/routes/problems.ts`）：默认详情与 `?version_id=` 都走版本内容；竞赛题面经同一 `projectProblemContent` DTO（`contest/services/contests.ts`） | `catalog/tests/routes/problem-versions.test.ts`、`contest/tests/services/contest-version-reads.test.ts` |
+| 3 | 已修 | 客观题小题新增 `resolveAnswerVersion`/`listPaperQuestions(versionId)`；竞赛固定版本经 `ContestAccessInfo.pinnedVersionId` 强制 | `objective-questions-version.test.ts`、`contest-objective-questions-version.test.ts` |
+| 4 | 已修 | `resolveProblemTemplate` 接受目标版本；已发布版本的空模板返回 null，不再回退当前源码 | `support-package-versioning.test.ts`、`problem-bundle.test.ts` |
+| 5 | 已修 | 新增 `catalog/services/versioning/version-read-view.ts`（`projectProblemContent` / `trimProblemContentForViewer` / `buildProblemVersionRead`），历史详情与版本内容共用同一裁剪 | `problem-versions.test.ts`（非编辑者不下发评测配置/模板） |
+| 6 | 已核实 | 代码、产物、客观题、自测四入口缺 `version_id` 一律拒绝，未发布题目不可建未知版本提交（`submission-version.ts` 无条件 `versionRequired()`） | 各入口「缺版本不产生记录」用例 |
+| 7 | 已修 | 竞赛固定版本在提交事务加锁后复查，变更返回 `409 CONTEST_PROBLEM_VERSION_CHANGED` | `versioning-lock-order.pg.test.ts`、`contest-submit-version.test.ts` |
+| 8 | 已修 | 自测的配置、样例、支持包全部取所选版本并持久化实际用例快照（`self-tests.ts`） | 「V1 自测中发布 V2 + 自定义用例崩溃恢复」用例 |
+| 9 | 已修 | Sweeper 改为从尝试绑定的版本快照恢复；LLM 必须来自快照，缺快照按平台错误处理（`mq/pending-recovery.ts`） | 2 个恢复用例（缺快照不入队、冻结快照恢复） |
+
+### 二、对象存储与删除
+
+| # | 结论 | 主要改动 | 验证 |
+|---|---|---|---|
+| 10 | 已修 | 结果写入全路径不再物理删除产物；入队失败保留对象且提交保持可恢复 pending | `versioning-execution-context.test.ts`、sweeper 恢复用例 |
+| 11 | 已修 | 上传补偿统一经 `deleteStorageObject` 引用守卫，不再直接 `storage.delete()` | 「两请求同字节，失败方补偿不删共享对象」用例 |
+| 12 | 已修 | 登记行锁 + 全引用检查 + 物理删除在同一事务内（`system/services/storage/registry.ts`） | `versioning-lock-order.pg.test.ts`（真实 PG 屏障） |
+| 13 | 已修 | `verifyStorageObject` 只在明确 NotFound 时置 `missing`，网络/权限异常上抛且状态不变 | `storage-registry.test.ts`（注入 ETIMEDOUT/403） |
+| 14 | 已修 | `deleting` 可续做；重传成功后行锁内恢复 `ready` | `storage-registry.test.ts`（崩溃遗留 + 删除后重传同字节） |
+| 15 | 已修 | 整题删除固定锁顺序、锁内拒绝在途尝试、数据库清理单事务、对象清理走守卫 | `problems.test.ts`（活动评测拒删） |
+
+### 三、草稿、发布与导入
+
+| # | 结论 | 主要改动 | 验证 |
+|---|---|---|---|
+| 16 | 已修 | 草稿接口复用 `assertSensitiveFieldPermissions`/`enforceResourceLimits` + 结构校验（`content-security.ts`） | `publish-hardening.test.ts`「#16」 |
+| 17 | 已修 | 客观题快照统一强校验器，小题编辑/导入/整卷/发布共用 | `objective-snapshot-validation.test.ts`（7 例） |
+| 18 | 已修 | 已发布题型不可变更（`409 CONTENT_KIND_IMMUTABLE`）；导入内容只写草稿，公开投影只由发布更新 | `publish-hardening.test.ts`「#18」 |
+| 19 | 已核实 | 管理信息与草稿写入同一事务，校验早于写入 | `problems-tags.test.ts` 过期 409 |
+| 20 | 已修 | 内容与文件引用共用一个 revision；发布在锁内重算 hash 并与预检报告比对 | `publish-hardening.test.ts`「#20」 |
+| 21 | 已修 | `unchanged` 只与当前最新版比较（A→B→A 生成 V3） | `publish-hardening.test.ts`「#21」 |
+| 22 | 已修 | 新发布版本必须取得真实 SHA，取不到返回 `409 STORAGE_OBJECT_SHA_UNKNOWN` | `publish-hardening.test.ts`「#22」 |
+| 23 | 已修 | 审计与 `search_entries` 索引在发布事务内写入，提交后 Redis 通知降级为加速 | `publish-hardening.test.ts`「#23」 |
+
+### 四、存量迁移
+
+| # | 结论 | 主要改动 | 验证 |
+|---|---|---|---|
+| 24 | 已修 | 首次物化草稿时原子复制基线内容与全部文件引用（`versioning/draft.ts`）；迁移 `0109` 为已有草稿行补齐引用 | `publish-hardening.test.ts`「#24」、`tests/db/pr622_review_migration_test.ts` |
+| 25 | 已修 | 迁移 `0109_legacy_platform_errors.sql` 把 SE/FE/cancelled/AI 基础设施失败改写为 `platform_error`，清空有效成绩投影并保留最近尝试 | `tests/db/pr622_review_migration_test.ts`（真实 PG：AC/WA/CE/用户超时/SE/FE/cancelled/AI 失败八类） |
+
+### 五、尝试、结果协议与有效投影
+
+| # | 结论 | 主要改动 | 验证 |
+|---|---|---|---|
+| 26 | 已修 | 提交、尝试、活动指针、派发关联在同一事务内创建（`submissions-crud.ts` / `artifact-submissions.ts`） | `versioning-attempt-pipeline.test.ts`、`versioning-execution-context.test.ts` |
+| 27 | 已修 | 新尝试 `sequence = max(MAX(attempt)+1, 提交行 rejudge_seq)`，兼容迁移前较大的源序号 | `versioning-execution-context.test.ts`（旧 `rejudge_seq=5` 再重测） |
+| 28 | 已修 | 强制可信 v2 封套；尝试/提交/题目/版本/sequence/run_id 全量一致；ignored 在写事件前返回，零副作用；Rust 侧补齐封套字段 | `versioning-result-write.test.ts`、`noj-judge/tests/judge_result_contract.rs` |
+| 29 | 已修 | core 与 Judge 双侧：非法评分（缺失/字符串/越界/非整数）按平台错误处理，不覆盖已有正式判定 | `sanitize-judge-result.test.ts`、`noj-judge/src/dual/tests.rs` |
+| 30 | 已修 | 结果写入对题目取共享锁、策略切换对策略宿主取更新锁，严格按 §5.1 顺序 | `versioning-lock-order.pg.test.ts`（真实 PG 屏障） |
+
+### 六、批任务
+
+| # | 结论 | 主要改动 | 验证 |
+|---|---|---|---|
+| 31 | 已核实 | 受理事务已包含幂等识别、成员固定、revision 检查、策略与条目创建 | 「第二项策略失败整体回滚」用例 |
+| 32 | 已修 | 策略变更作用域在**任何写入前**按 `(contest_id, problem_id)` 校验 | 「范围外竞赛 400 且零写入」用例 |
+| 33 | 已修 | 派发前完成执行上下文预检（`assertExecutionPreflight`：语言/模式/镜像白名单/资源/产物上限），失败写稳定原因码且不建尝试 | `versioning-dispatch-preflight.test.ts` |
+| 34 | 已核实 | 复用条目自身在途尝试，不误判为外部评测 | 「队列容量不足重排后不跳过」用例 |
+| 35 | 已修 | 条目与尝试关联在推送消息前落库；派发状态写入不覆盖终态 | `versioning-job-open-items.test.ts` |
+| 36 | 已修 | 升级复制副本一次性原子创建，重试复用同一尝试与 `result_submission_id` | 「连续队列满后只新增 1 条提交」用例 |
+| 37 | 已修 | 执行期间持续续租心跳；写侧按 owner + 有效租约 + 领取代次条件更新 | `versioning-job-concurrency.test.ts`（含真实 PG 双 worker SKIP LOCKED） |
+| 38 | 已修 | 队列错误三分类（capacity/network/permanent）；网络指数退避 1/2/4/8/16s，永久错误立即终态并统一终结尝试 | `versioning-producer-errors.test.ts`、`versioning-job-concurrency.test.ts` |
+| 39 | 已修 | 聚合在任务行锁内同事务统计更新，禁止过时统计回退终态 | 真实 PG 并发聚合用例 |
+| 40 | 已修 | 重试幂等身份包含父任务类型/ID、规范化条目与固定目标映射，并处理 23505 并发冲突 | `versioning-rejudge-accept.test.ts` |
+| 41 | 已修 | `insertJobItemsBatched` 分批插入，受理/重试/升级三路径统一，成员集合仍在受理事务内固定 | 250/5200 条分批用例 |
+| 42 | 已修 | 操作者授权与原用户提交资格分离；管理员可代升级且新提交归原用户、actor 记入尝试 | `versioning-upgrade-access.test.ts` |
+| 43 | 已修 | `source_contest` 先固定最新版并要求等于竞赛固定版；客观题不产生第二次竞赛提交、不自动改练习 | `versioning-upgrade-access.test.ts`、`versioning-upgrade-jobs.test.ts` |
+
+### 七、用户升级
+
+| # | 结论 | 主要改动 | 验证 |
+|---|---|---|---|
+| 42 | 见上 | 同 §六 #42 | — |
+| 43 | 见上 | 同 §六 #43 | — |
+
+### 八、竞赛策略、榜单和结算
+
+| # | 结论 | 主要改动 | 验证 |
+|---|---|---|---|
+| 44 | 已核实 | 保存竞赛题目列表原样保留 `pinned_version_id`/`effective_version_mode`/`required_version_id`/`effective_policy_revision` | `contest-version-reads.test.ts`（重排两次仍保留） |
+| 45 | 已修 | 客观题榜单改读 `contest_effective_attempt_id` + `is_contest_valid`，保留原始提交时间 | `contest-ranking.test.ts`、`contest-version-reads.test.ts` |
+| 46 | 已修 | 结算门禁纳入 `pending/preparing/dispatched`；发布在一致性事务内锁问题/竞赛并读取策略与榜单 | `contest-settlement-gate.test.ts`、`contest-settlement-consistency.pg.test.ts`（真实 PG 屏障） |
+| 47 | 已修 | 用 `evaluation_attempts.state/result_kind` 分类（正式 TLE/CE 属完成，平台错误才失败），两类提交同规则 | `contest-settlement-gate.test.ts` |
+| 48 | 已修 | 投影与提交创建/删除在业务事务内递增 problem/contest/**global** revision；缓存键含 revision | `stats-cache.test.ts`、`versioning-execution-context.test.ts` |
+| 49 | 已修 | 视图存在即刷新（不再要求已可信）、advisory lock 串行、记录覆盖 revision；`0108` 赛期守卫与内联查询逐字一致 | `rankings-view-refresh.pg.test.ts`（真实 PG） |
+| 50 | 已修 | 有效统计以投影与有效尝试为准，不按运行状态过滤 | `unified-effective-stats.test.ts`（AC→重测中→平台错误不回退） |
+| 51 | 已修 | 个人资料/全局排行/社区题解门槛统一读两类提交并按题目去重 | `users-profile-unified-stats.test.ts`、`community-objective-gate.test.ts` |
+| 52 | 已核实 | 题目统计与仪表盘返回 `total_submissions`（实际）与 `valid_submissions`/有效分母 | `unified-effective-stats.test.ts` |
+
+### 九、缓存与全部成绩读取
+
+| # | 结论 | 主要改动 | 验证 |
+|---|---|---|---|
+| 48 | 见上 | 同 §八 #48 | — |
+| 49 | 见上 | 同 §八 #49 | — |
+| 50 | 见上 | 同 §八 #50 | — |
+| 51 | 见上 | 同 §八 #51 | — |
+| 52 | 见上 | 同 §八 #52 | — |
+
+### 十、客户端与 CI
+
+| # | 结论 | 主要改动 | 验证 |
+|---|---|---|---|
+| 53 | 已修 | core：提交详情/历史读取模型（最近执行 / 有效成绩 / 全部尝试 / 提交时版本 / `is_latest`）、客观题读路径同一命名与权限裁剪；UI：题目页版本选择并贯穿模板/小题/提交、提交详情结果概览与尝试历史、提交列表筛选与批量升级 | core 读模型用例、`noj-ui` `deno task test`（235 passed）、`deno task check:types:nuxt` |
+| 54 | 已修 | 管理批重测界面：版本号全分页查询、提交类型选择与 `paper_id` 映射、外部标识统一解析 | `noj-ui` fmt/lint/typecheck/test 全绿 |
+| 55 | 已修 | core 新增带目标题目 + `If-Match` 的草稿导入入口（428/409、零写入、`BUNDLE_TARGET_MISMATCH`）；UI 组件强校验响应 id 与目标一致后才报成功 | `publish-hardening.test.ts`「#55」、`noj-ui` 检查 |
+| 56 | 已核实 | `noj-lmcc-extension` 当前 `src/types.ts` 已符合 Prettier；`npm run check`（format + tsc）与 `npm test` 全绿 | `npm run check`、`npm test`（10/10） |
+
+### 基线既有失败销账
+
+修复轮次同时清掉了 review 基准提交上**本来就失败**的测试（这些失败与版本管理改造同源，但此前未被 CI 门禁拦住）：
+
+- `catalog/tests/services/problems.test.ts`（更新题目 → 新草稿语义）、`problems-tags.test.ts`、`support-package.test.ts`（服务与路由）、`problem-bundle.test.ts`（4 例导入 + 1 例注入点）共 10 例；
+- `identity/tests/routes/auth-admin.test.ts`「管理员真删除」（在途评测按新语义 409，已补在途用例）；
+- `submission/tests`：重复自测幂等、平台错误不替换判定、run_id 绑定、`versioning-job-worker.test.ts` 重复 seed 冲突；
+- `query/tests/services/rankings.test.ts`、`contest/tests/services/contest-ranking.test.ts`、`contest/tests/routes/contest-submit-version.test.ts`（新契约）。
+
+### 验收阶段追加修复（真实 PG 全量回归才暴露的两个缺陷）
+
+在「真实 PostgreSQL 全量域回归」阶段又定位并修复了两个会让验收假红/假绿的缺陷，二者此前被误判为"环境差异"：
+
+1. **测试事务在真实 PG 下不生效**（`src/shared/db/connection.ts`）。连接池是首次 `getDb()` 才懒创建的，而 `startRealTransaction()` 在 `_client` 为空时直接 `return`，于是**测试进程的第一个触库用例不在事务内**：其写入自动提交、不被 preload 回滚（PGlite 模式因模板实例启动期即就绪而不受影响，这正是"PGlite 绿、PG 红"的原因）。修复：PG 分支先显式初始化连接池再 `BEGIN`。
+2. **fire-and-forget 的物化视图刷新污染测试事务**（`src/domains/query/services/rankings.ts`）。结果写入后会 `refreshRankingsView().catch(...)`，它在**测试的长事务内**执行 `REFRESH MATERIALIZED VIEW CONCURRENTLY`（PG 25001：不允许在事务块内执行），并与用例并发创建/释放 savepoint，导致 `savepoint "noj_sp_N" does not exist` → `current transaction is aborted` 的级联假失败。修复：测试事务内直接跳过刷新（测试期读取一律走内联查询，被测语义不变）；同时让 savepoint 名在同一连接上单调递增、并只忽略 `3B001/25P02` 这类记账竞态错误。
+3. 相应地，`rankings-view-refresh.pg.test.ts`（专门验证刷新的真实 PG 用例）改为 `disableTestTransactionForFile()`，并保留其自带唯一夹具与显式清理。
+
+修复后真实 PG 全绿：submission **279 passed / 0 failed**（修复前 271/8）、catalog 328/0、contest 94/0、identity 319/0，`bash scripts/test-shared.sh` 294/0；PGlite 全量域回归同样全绿。
+2. 真实 PG 全量域回归需在独占库/独占 schema 上串行执行（`test:domain` 会 TRUNCATE），本轮已按此方式执行迁移、锁序、结算一致性、视图刷新、批任务并发用例。
+3. **跨模块 E2E 未在本轮运行**：`noj-tests` 的 `test:domain` 需要先 `docker compose -f docker-compose.e2e.yml up -d` 起完整栈（core/judge/llm-mock/minio，端口 8099）。本轮修复环境只起了开发态容器，直接运行会全部 `Connection refused`（`http://localhost:8099` 连接被拒）；尝试启动 E2E 栈时被沙箱的只读 `/home/<user>/.docker/buildx/activity` 阻断，镜像构建无法完成。结论：E2E 必须由具备可写 Docker builder 的环境执行（CI 的 `e2e.yml` 已覆盖 core/judge/gateway 镜像构建与全链路用例）。

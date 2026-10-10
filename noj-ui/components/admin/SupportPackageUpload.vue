@@ -54,6 +54,8 @@ function onDragLeave() {
 function onDrop(e: DragEvent) {
   e.preventDefault()
   isDragOver.value = false
+  // 与点击路径一致：禁用 / 上传中不接受拖拽投放（否则绕过 disabled 直接发请求）
+  if (props.disabled || uploading.value) return
   const file = e.dataTransfer?.files?.[0]
   if (file) handleFile(file)
 }
@@ -70,20 +72,67 @@ function handleFile(file: File) {
   doUpload(file)
 }
 
+/** UUID 判定：只有 UUID 才能与导入响应里的 `data.id` 直接比对。 */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * 解析目标题目的内部 UUID。
+ *
+ * 组件收到的 `problemId` 可能是题号/display_id（编辑器路由参数），而导入响应里的
+ * `data.id` 一律是 UUID；直接比对会误报。先解析出内部 UUID，再校验导入结果的
+ * 归属（缺陷 #55：绝不能让上传悄悄创建另一道题）。
+ */
+async function resolveTargetProblemId(problemId: string): Promise<string> {
+  if (UUID_RE.test(problemId)) return problemId
+  const res = await api.get<{ data: { id: string } }>(
+    `/api/v1/problems/${encodeURIComponent(problemId)}`,
+    { silent: true },
+  )
+  if (!res.data?.id) throw new Error("未返回题目 ID")
+  return res.data.id
+}
+
 async function doUpload(file: File) {
-  if (!props.problemId) return
+  // 缺陷 #55：必须携带明确的目标题目与草稿 revision。缺任一项都不能走通用
+  // 导入端点——普通用户路径会**新建一道题**，管理员路径则依赖包内题号匹配，
+  // 而组件随后仍向原编辑器报告「上传成功」。
+  if (!props.problemId) {
+    uploadError.value = "缺少目标题目，已取消上传（支持包必须绑定到当前编辑的题目）"
+    return
+  }
+  if (props.draftRevision == null) {
+    uploadError.value = "缺少草稿 revision，请先保存草稿后再上传支持包"
+    return
+  }
 
   uploading.value = true
   uploadError.value = ""
   try {
-    // 统一题目包导入端点（problem-bundle-import）：manifest.number 仅管理员
-    // 生效——按 (type, number) 匹配既有题目则更新（未命中则新建）；普通用户
-    // 提供 number 会被 400 拒绝，上传仅创建新题（题号自动分配）。
+    const targetId = await resolveTargetProblemId(props.problemId)
+
     const formData = new FormData()
     formData.append("file", file)
-    formData.append("problem_id", props.problemId)
+    // 目标题目 + 期望 revision：同时放 body 与 `If-Match`，服务端据此做乐观锁，
+    // 并把包写入**该题**的共享草稿，而不是创建另一道题。
+    formData.append("problem_id", targetId)
+    formData.append("expected_revision", String(props.draftRevision))
 
-    await api.post(`/api/v1/problems/import-bundle`, formData, { headers: { "If-Match": String(props.draftRevision) } })
+    const res = await api.post<{
+      data: { id?: string; display_id?: string; draft_revision?: number; revision?: number }
+    }>(`/api/v1/problems/import-bundle`, formData, {
+      headers: { "If-Match": String(props.draftRevision) },
+    })
+
+    // 校验包身份：导入结果必须是当前题目。若服务端走了创建路径（生成了另一个
+    // 题目 ID），这里必须报错而不是向上报告成功——否则编辑器显示「已上传」而
+    // 玩家的包里其实多出一道新题。
+    const resultId = res.data?.id
+    if (!resultId || resultId !== targetId) {
+      uploadError.value = `导入结果不属于当前题目（目标 ${targetId}，返回 ${
+        resultId ?? "无题目标识"
+      }），已阻止创建另一道题；请确认包内 manifest 的题型与当前题目一致`
+      return
+    }
 
     emit("package-changed", true)
   } catch (err: unknown) {
@@ -99,6 +148,10 @@ const { dialog } = useDialog()
 
 async function handleDelete() {
   if (!props.problemId || deleting.value) return
+  if (props.draftRevision == null) {
+    uploadError.value = "缺少草稿 revision，请先保存草稿后再删除支持包"
+    return
+  }
 
   const confirmed = await dialog.confirm(
     "确定要删除此题目的支持包吗？此操作不可撤销。",
@@ -146,7 +199,7 @@ async function handleDelete() {
 └── ...               # 其他 evaluate.py 需要的文件</pre>
         <div class="mt-1.5 text-blue-700">
           <p>• <strong>problem.json</strong> 与 <strong>evaluate.py</strong> 必须位于 zip 根目录</p>
-          <p>• 上传将创建新题（题号自动分配）；管理员在 manifest 中提供 <code>number</code> 时按 (type, number) 幂等更新既有题目，普通用户提供 <code>number</code> 会被拒绝</p>
+          <p>• 上传会<strong>绑定到当前编辑的题目</strong>（携带草稿 revision 乐观锁，冲突返回 409/428），不会创建新题；包内 manifest 的题型须与当前题目一致，题号由目标题目决定</p>
           <p>• <code>submission_sample.py</code> 等参考实现<strong>不要</strong>放入包中（打包时自动排除）</p>
           <p>• 上传后系统会剥离 problem.json / statement.md，仅存储纯净评测包</p>
         </div>

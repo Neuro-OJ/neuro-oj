@@ -49,8 +49,14 @@ type StorageExecutor = Executor;
 /**
  * 登记一个新上传对象（`state = ready`）。
  *
- * 同 URL 重复登记是幂等的（内容寻址下同一字节内容会得到同一 URL），
- * 已存在的行只补空字段，**不回退状态**（`deleted` 不会被改回 `ready`）。
+ * 同 URL 重复登记是幂等的（内容寻址下同一字节内容会得到同一 URL）。调用方只在
+ * **物理上传成功之后**调用本函数，因此这里可以在登记行锁内把
+ * `deleted` / `missing` / `unknown` 恢复为 `ready`——这正是 Handbook §2.5 要求的
+ * "删除后重新上传相同内容必须重新可用"（`deleted` 状态不能永久粘住）。
+ *
+ * 恢复与删除共用同一登记行锁：物理删除全程持有该行锁（见
+ * {@link deleteStorageObject}），所以本函数一旦拿到锁，就不存在"旧删除任务还在
+ * 后台跑"的窗口，不会把刚恢复的对象再删掉。
  */
 export async function registerReadyStorageObject(
   input: {
@@ -60,15 +66,25 @@ export async function registerReadyStorageObject(
   },
   executor?: StorageExecutor,
 ): Promise<void> {
-  await registerStorageObject(
-    {
-      storageUrl: input.storageUrl,
+  const db = (executor ?? getDb()) as RootDb;
+  await db.transaction(async (tx) => {
+    await tx.insert(storageObjects).values({
+      storage_url: input.storageUrl,
       sha256: input.sha256 ?? null,
-      byteSize: input.byteSize ?? null,
+      byte_size: input.byteSize ?? null,
       state: "ready",
-    },
-    executor,
-  );
+      created_at: new Date().toISOString(),
+    }).onConflictDoNothing();
+    const [existing] = await tx.select().from(storageObjects).where(
+      eq(storageObjects.storage_url, input.storageUrl),
+    ).for("update");
+    if (!existing) return;
+    await tx.update(storageObjects).set({
+      state: "ready",
+      sha256: input.sha256 ?? existing.sha256,
+      byte_size: input.byteSize ?? existing.byte_size,
+    }).where(eq(storageObjects.storage_url, input.storageUrl));
+  });
 }
 
 /**
@@ -153,8 +169,13 @@ export async function assertStorageObjectBindable(
 /**
  * 用后端真实元数据核实对象，并升级登记状态。
  *
- * 返回核实后的状态：`ready`（存在）/ `missing`（后端不存在）。
- * 只在状态不是 `deleting` 时更新，避免与删除流程竞争。
+ * 返回核实后的状态：`ready`（存在）/ `missing`（后端**明确**不存在）。
+ * 只在状态不是 `deleting` / `deleted` 时更新，避免与删除流程竞争。
+ *
+ * `stat()` 抛错（网络超时、403、S3 5xx）表示"无法确认"，**不能**当成不存在：
+ * 后端实现只对明确的 NotFound/404 返回 `{ exists: false }`，其余异常在这里
+ * 原样上抛，登记状态保持原值——否则一次网络抖动就会把真实存在的对象永久写成
+ * `missing`（Handbook §2.5，tracking #13）。
  */
 export async function verifyStorageObject(
   storageUrl: string,
@@ -162,12 +183,7 @@ export async function verifyStorageObject(
 ): Promise<StorageObjectState> {
   const db = executor ?? getDb();
   const storage = await getStorageProvider();
-  let stat: { exists: boolean; sizeBytes: number | null };
-  try {
-    stat = await storage.stat(storageUrl);
-  } catch {
-    return "missing";
-  }
+  const stat = await storage.stat(storageUrl);
   const nextState: StorageObjectState = stat.exists ? "ready" : "missing";
   await db.update(storageObjects).set({
     state: nextState,
@@ -216,17 +232,25 @@ export type StorageDeleteOutcome =
   | { outcome: "missing" };
 
 /**
- * 引用守卫删除：锁定登记行 → 检查引用 → 进入 `deleting` → 物理删除 → `deleted`。
+ * 引用守卫删除：锁定登记行 → 检查全部引用 → 进入 `deleting` → 物理删除 →
+ * `deleted`，**全过程在同一个持有登记行锁的事务内**。
  *
  * 有引用时**不删除**并返回 `referenced`，调用方据此保留对象（上传补偿路径必须
  * 接受这个结果，而不是绕过守卫直接删除）。
+ *
+ * 为什么物理删除也必须在锁内（tracking #12/#14）：
+ * - 若先提交 `deleting` 再在事务外物理删除，"检查无引用 → 新引用建立 → 对象被删"
+ *   的窗口就重新出现；把删除放在锁内后，绑定方（`assertStorageObjectBindable`）
+ *   会阻塞到本事务提交，然后看到 `deleted` 而被拒绝。
+ * - 崩溃或后端报错时整个事务回滚，状态回到删除前，**不会留下卡死的 `deleting`**；
+ *   反之，能拿到行锁却读到 `deleting`，说明上一次删除已回滚/崩溃，本次直接续做。
  */
 export async function deleteStorageObject(
   storageUrl: string,
   executor?: StorageExecutor,
 ): Promise<StorageDeleteOutcome> {
   const db = (executor ?? getDb()) as RootDb;
-  const decision = await db.transaction(async (tx) => {
+  return await db.transaction(async (tx) => {
     await tx.insert(storageObjects).values({
       storage_url: storageUrl,
       state: "unknown",
@@ -235,36 +259,31 @@ export async function deleteStorageObject(
     const [existing] = await tx.select().from(storageObjects).where(
       eq(storageObjects.storage_url, storageUrl),
     ).for("update");
+    if (existing.state === "deleted") return { outcome: "deleted" } as const;
+
     const references = await collectStorageReferences(storageUrl, tx);
-    if (references.total > 0 || existing.state === "deleting") {
+    if (references.total > 0) {
       return { outcome: "referenced", references } as const;
     }
-    if (existing.state === "deleted") return { outcome: "deleted" } as const;
-    // 锁、引用检查与删除标记不可分开提交：新引用必须等到这里提交后检查状态。
+
+    // 标记与物理删除同事务：新引用必须等到本事务提交后看到 `deleted` 再被拒绝。
     await tx.update(storageObjects).set({ state: "deleting" }).where(
       eq(storageObjects.storage_url, storageUrl),
     );
-    return null;
-  });
-  if (decision) return decision;
 
-  const storage = await getStorageProvider();
-  try {
+    // 后端不可达时抛错 → 事务回滚（状态不变），绝不谎称 deleted。
+    const storage = await getStorageProvider();
     const stat = await storage.stat(storageUrl);
     if (stat.exists) {
       await storage.delete(storageUrl);
     }
-    await db.update(storageObjects).set({ state: "deleted" }).where(
+    await tx.update(storageObjects).set({ state: "deleted" }).where(
       eq(storageObjects.storage_url, storageUrl),
     );
-    return stat.exists ? { outcome: "deleted" } : { outcome: "missing" };
-  } catch (error) {
-    // 后端不可达不能被解释为对象缺失，否则登记会永久谎称 deleted。
-    await db.update(storageObjects).set({ state: "unknown" }).where(
-      eq(storageObjects.storage_url, storageUrl),
-    );
-    throw error;
-  }
+    return stat.exists
+      ? ({ outcome: "deleted" } as const)
+      : ({ outcome: "missing" } as const);
+  });
 }
 
 /**

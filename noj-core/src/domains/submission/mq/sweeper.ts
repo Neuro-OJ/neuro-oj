@@ -438,6 +438,8 @@ export async function recoverPendingSelfTests(now: number): Promise<void> {
       await db.update(selfTests)
         .set({
           status: "error",
+          // 永久失败保留可解释的原因码（不写成泛化的 PLATFORM_ERROR）
+          result_status: "RECOVERY_FAILED",
           judge_finished_at: new Date().toISOString(),
         })
         .where(

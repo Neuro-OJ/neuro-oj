@@ -2,8 +2,11 @@ import { unifiedSubmissionSources } from "../../../../shared/versioning/submissi
 /**
  * 题目统计聚合：公开通过率 + 出题人数据洞察。
  *
- * 口径约定（设计 spec §5.4/§5.5）：
- * - 仅统计 `submissions.status = 'finished'` 且有评测结果的提交；
+ * 口径约定（设计 spec §5.4/§5.5 + Handbook §3.4）：
+ * - **不按运行状态过滤**：重测期间源状态为 `pending`、平台错误后为 `error`，但已有
+ *   有效判定必须继续计入（缺陷 #50）；
+ * - 实际提交数（`submit_count`）与当前口径有效数（`valid_submissions`）分离，
+ *   公开通过率分母为有效数（缺陷 #52）；
  * - 隐藏用例只进**匿名聚合桶**（`hidden-1`、`hidden-2`…），**绝不返回真实 case_id**；
  * - 取数上限 `MAX_STATS_SAMPLE`，超出返回 `truncated = true`（**不静默截断**）。
  */
@@ -100,7 +103,7 @@ export function median(values: number[]): number | null {
  *
  * @param problemId 题目 UUID。
  * @param windowDays 统计窗口天数（默认 90）；仅统计该窗口内的提交。
- * @returns 聚合结果；缓存命中时直接返回缓存值。
+ * @returns 聚合结果（直查数据库投影，无进程内缓存——多副本口径一致）。
  */
 export async function getProblemStatsDetail(
   problemId: string,

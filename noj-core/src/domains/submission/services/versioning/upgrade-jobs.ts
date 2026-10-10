@@ -27,7 +27,11 @@ import {
   submissions,
 } from "../../../../shared/db/schema.ts";
 import { getUserPermissions } from "../../../identity/index.ts";
-import { hashCanonical, MAX_SELECTED_SUBMISSIONS } from "./rejudge-jobs.ts";
+import {
+  hashCanonical,
+  insertJobItemsBatched,
+  MAX_SELECTED_SUBMISSIONS,
+} from "./rejudge-jobs.ts";
 
 /** 升级上下文。 */
 export type UpgradeContext = "practice" | "source_contest";
@@ -246,6 +250,8 @@ export async function acceptUpgradeJob(
     const planned: Array<{
       source: UpgradeSource;
       targetVersionId: string | null;
+      /** 原始版本引用（历史记录用；目标未固定时保留竞赛固定版等原始引用）。 */
+      targetVersionRef?: string | null;
       skipped?: { code: string; message: string };
     }> = [];
     for (const entry of normalized.submissions) {
@@ -297,29 +303,58 @@ export async function acceptUpgradeJob(
         continue;
       }
 
-      const targetVersionId = context === "source_contest"
-        ? (source.contest_id
+      // §4.4 / #43：**最新版在受理时固定**；`source_contest` 额外要求
+      // 「新版（受理时固定的最新版）恰好等于竞赛固定作答版本」。
+      // 直接拿 pinned 当目标会掩盖"最新版并未固定"的问题，也因此无法与竞赛
+      // 要求比对：两者不一致时整条升级被跳过（明确原因），既不落到错误的版本，
+      // 也不自动改成练习提交。
+      const latestVersionId = await latestVersionOf(source.problem_id, tx);
+      if (!latestVersionId) {
+        planned.push({
+          source,
+          targetVersionId: null,
+          skipped: {
+            code: "NO_PUBLISHED_VERSION",
+            message: "题目尚未发布任何版本",
+          },
+        });
+        continue;
+      }
+      let targetVersionId = latestVersionId;
+      if (context === "source_contest") {
+        const pinned = source.contest_id
           ? await contestPinnedVersionOf(
             source.contest_id,
             source.problem_id,
             tx,
           )
-          : null)
-        : await latestVersionOf(source.problem_id, tx);
-      if (!targetVersionId) {
-        planned.push({
-          source,
-          targetVersionId: null,
-          skipped: {
-            code: context === "source_contest"
-              ? "CONTEST_VERSION_UNKNOWN"
-              : "NO_PUBLISHED_VERSION",
-            message: context === "source_contest"
-              ? "竞赛未固定作答版本，无法按竞赛版本升级"
-              : "题目尚未发布任何版本",
-          },
-        });
-        continue;
+          : null;
+        if (!pinned) {
+          planned.push({
+            source,
+            targetVersionId: null,
+            skipped: {
+              code: "CONTEST_VERSION_UNKNOWN",
+              message: "竞赛未固定作答版本，无法按竞赛版本升级",
+            },
+          });
+          continue;
+        }
+        if (pinned !== latestVersionId) {
+          planned.push({
+            source,
+            targetVersionId: null,
+            targetVersionRef: pinned,
+            skipped: {
+              code: "CONTEST_VERSION_MISMATCH",
+              message:
+                `竞赛固定作答版本 ${pinned} 与题目最新版 ${latestVersionId} 不一致：` +
+                `source_contest 升级要求新版恰好为固定版本；如需按最新版升级请显式选择 practice`,
+            },
+          });
+          continue;
+        }
+        targetVersionId = pinned;
       }
       if (source.submitted_version_id === targetVersionId) {
         planned.push({
@@ -351,7 +386,9 @@ export async function acceptUpgradeJob(
       finished_at: allSkipped ? now : null,
     });
     if (planned.length > 0) {
-      await tx.insert(submissionJobItems).values(
+      // #41：与重测任务一致，统一走分批插入（单条 INSERT 有参数上限）
+      await insertJobItemsBatched(
+        tx,
         planned.map((entry, index): typeof submissionJobItems.$inferInsert => ({
           id: crypto.randomUUID(),
           job_id: jobId,
@@ -360,7 +397,7 @@ export async function acceptUpgradeJob(
           source_id: entry.source.id,
           problem_id: entry.source.problem_id,
           target_version_id: entry.targetVersionId,
-          target_version_ref: entry.targetVersionId,
+          target_version_ref: entry.targetVersionRef ?? entry.targetVersionId,
           status: entry.skipped ? "skipped" : "pending",
           reason_code: entry.skipped?.code ?? null,
           reason_message: entry.skipped?.message ?? null,
@@ -379,12 +416,34 @@ export async function acceptUpgradeJob(
       existing: false,
     };
   }).catch(async (error) => {
-    // 同键并发受理可能在唯一索引等待后输掉竞争；重读已提交任务并核对请求哈希。
-    const code = error?.code ?? error?.cause?.code;
-    if (code === "23505") {
-      return await acceptUpgradeJob(actorId, request, idempotencyKey);
+    // 同键并发受理可能在唯一索引等待后输掉竞争：重读已提交任务并核对请求哈希，
+    // 而不是把 23505 抛给调用方，也不做无界递归重试。
+    const code = (error as { code?: string })?.code ??
+      (error as { cause?: { code?: string } })?.cause?.code;
+    if (code !== "23505") throw error;
+    const [raced] = await db.select().from(submissionJobs).where(
+      and(
+        eq(submissionJobs.actor_id, actorId),
+        eq(submissionJobs.kind, "upgrade"),
+        eq(submissionJobs.idempotency_key, idempotencyKey),
+      ),
+    ).limit(1);
+    if (!raced) throw error;
+    if (raced.request_hash !== requestHash) {
+      throw new AppError(
+        "该 Idempotency-Key 已用于不同的请求",
+        409,
+        "IDEMPOTENCY_KEY_REUSED",
+      );
     }
-    throw error;
+    const racedItems = await listUpgradeItems(raced.id, db);
+    return {
+      job_id: raced.id,
+      status: raced.status,
+      total_items: racedItems.total,
+      skipped_items: racedItems.skipped,
+      existing: true,
+    };
   });
 }
 

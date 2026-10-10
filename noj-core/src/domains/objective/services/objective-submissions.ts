@@ -8,12 +8,14 @@
  *
  * 判定详情权限：仅提交者本人或 admin 可读；竞赛模式不展示解析（防泄题）。
  */
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import type { Context } from "hono";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
   evaluationAttempts,
   objectiveSubmissions,
+  problems,
+  problemVersions,
 } from "./../../../shared/db/schema.ts";
 import { FULL_SCORE } from "./../../../shared/base/constants.ts";
 import {
@@ -44,6 +46,8 @@ import {
   isProblemInUnendedPublicContest,
 } from "../../contest/index.ts";
 import type {
+  ObjectiveAttemptSummary,
+  ObjectiveAttemptView,
   ObjectiveSubmissionResponse,
   QuestionJudgement,
   SubmitObjectiveInput,
@@ -238,10 +242,11 @@ export async function submitObjectivePaper(
     await validateContestSubmission(contestId, paperUuid, userId);
   }
 
-  // 提交时版本（Handbook §4.2/§6.4）：竞赛用固定版本；题库**显式指定**的版本必须
-  // 逐字生效（不属于该题一律 404，绝不静默换版本）；题库**未指定**时才按有效策略
-  // 解析默认作答版本（any → 最新版、exact → 要求版本）。已发布版本的小题快照是
-  // 判卷事实源，未版本化的存量套卷回退旧小题表（key = 旧小题 UUID，与迁移基线一致）。
+  // 提交时版本（Handbook §4.2/§6.4）：**必须显式携带** `version_id`——竞赛只接受该
+  // 竞赛的固定版本（不一致 → 409 `CONTEST_PROBLEM_VERSION_CHANGED`），题库显式版本
+  // 逐字生效（不属于该题 → 404），未携带版本一律 409 `VERSION_REQUIRED`，绝不静默绑定
+  // 最新版；`legacy_unknown` 仅供存量迁移，线上入口不再产生。已发布版本的小题快照是
+  // 判卷事实源（旧 `objective_questions` 表已随 0107 删除，未知版本无卷面可还原）。
   const identity = await loadProblemIdentity(paperUuid);
   const resolved = await resolveSubmissionVersion(paperUuid, {
     contestId,
@@ -386,14 +391,217 @@ export async function submitObjectivePaper(
 }
 
 /**
+ * 版本元信息：提交时版本号 + 该版本是否仍是本套卷最新已发布版本。
+ *
+ * 批量查询（列表路径一次取回，避免 N+1）：一次查全部 `problem_versions` 与
+ * 涉及的套卷行。
+ */
+interface ObjectiveReadMeta {
+  submitted_version: number | null;
+  is_latest: boolean;
+}
+
+async function loadReadMeta(
+  rows: readonly (typeof objectiveSubmissions.$inferSelect)[],
+): Promise<Map<string, ObjectiveReadMeta>> {
+  const meta = new Map<string, ObjectiveReadMeta>();
+  if (rows.length === 0) return meta;
+  const db = getDb();
+  const versionIds = [
+    ...new Set(
+      rows.map((row) => row.submitted_version_id).filter((
+        id,
+      ): id is string => !!id),
+    ),
+  ];
+  const paperIds = [...new Set(rows.map((row) => row.paper_id))];
+
+  const versionNumberById = new Map<string, number>();
+  if (versionIds.length > 0) {
+    const versions = await db.select({
+      id: problemVersions.id,
+      version: problemVersions.version,
+    }).from(problemVersions).where(inArray(problemVersions.id, versionIds));
+    for (const version of versions) {
+      versionNumberById.set(version.id, version.version);
+    }
+  }
+  const latestByPaper = new Map<string, string | null>();
+  if (paperIds.length > 0) {
+    const papers = await db.select({
+      id: problems.id,
+      latest_version_id: problems.latest_version_id,
+    }).from(problems).where(inArray(problems.id, paperIds));
+    for (const paper of papers) {
+      latestByPaper.set(paper.id, paper.latest_version_id);
+    }
+  }
+  for (const row of rows) {
+    const versionId = row.submitted_version_id ?? null;
+    meta.set(row.id, {
+      submitted_version: versionId
+        ? (versionNumberById.get(versionId) ?? null)
+        : null,
+      is_latest: versionId !== null &&
+        latestByPaper.get(row.paper_id) === versionId,
+    });
+  }
+  return meta;
+}
+
+/** 尝试展示状态：与普通提交侧同口径（finished/error，未终结回落 pending/judging）。 */
+function attemptDisplayStatus(
+  state: string,
+  resultStatus: string | null,
+): string {
+  if (resultStatus) {
+    if (
+      resultStatus === "error" || resultStatus === "SystemError" ||
+      resultStatus === "TimeLimitExceeded" ||
+      resultStatus === "MemoryLimitExceeded" || resultStatus === "RuntimeError"
+    ) {
+      return "error";
+    }
+    return "finished";
+  }
+  if (state === "queued") return "pending";
+  if (state === "judging") return "judging";
+  return "error";
+}
+
+/**
+ * 批量加载逐次执行历史（`evaluation_attempts.objective_submission_id`）。
+ *
+ * 只取非敏感字段；`maskCorrectness` 为 true（竞赛未结束）时 `is_accepted` /
+ * `is_effective` 一律 false——否则相对分差可被当作答案预言机（审计 VULN-03）。
+ */
+async function loadAttempts(
+  submissionIds: readonly string[],
+  maskCorrectness = false,
+): Promise<Map<string, ObjectiveAttemptView[]>> {
+  const bySubmission = new Map<string, ObjectiveAttemptView[]>();
+  if (submissionIds.length === 0) return bySubmission;
+  const db = getDb();
+  const rows = await db.select({
+    attempt_id: evaluationAttempts.id,
+    submission_id: evaluationAttempts.objective_submission_id,
+    sequence: evaluationAttempts.sequence,
+    problem_version_id: evaluationAttempts.problem_version_id,
+    version: problemVersions.version,
+    source: evaluationAttempts.source,
+    state: evaluationAttempts.state,
+    result_kind: evaluationAttempts.result_kind,
+    result_status: evaluationAttempts.result_status,
+    score: evaluationAttempts.score,
+    time_ms: evaluationAttempts.time_ms,
+    memory_kb: evaluationAttempts.memory_kb,
+    created_at: evaluationAttempts.created_at,
+    finished_at: evaluationAttempts.finished_at,
+  })
+    .from(evaluationAttempts)
+    .leftJoin(
+      problemVersions,
+      eq(problemVersions.id, evaluationAttempts.problem_version_id),
+    )
+    .where(
+      inArray(evaluationAttempts.objective_submission_id, [...submissionIds]),
+    );
+
+  const pointers = new Map<
+    string,
+    { accepted: string | null; effective: string | null; latest: string | null }
+  >();
+  const pointerRows = await db.select({
+    id: objectiveSubmissions.id,
+    accepted: objectiveSubmissions.accepted_attempt_id,
+    effective: objectiveSubmissions.effective_attempt_id,
+    latest: objectiveSubmissions.latest_attempt_id,
+  }).from(objectiveSubmissions).where(
+    inArray(objectiveSubmissions.id, [...submissionIds]),
+  );
+  for (const pointer of pointerRows) {
+    pointers.set(pointer.id, {
+      accepted: pointer.accepted,
+      effective: pointer.effective,
+      latest: pointer.latest,
+    });
+  }
+
+  for (const item of rows) {
+    const submissionId = item.submission_id;
+    if (!submissionId) continue;
+    const pointer = pointers.get(submissionId);
+    const view: ObjectiveAttemptView = {
+      attempt_id: item.attempt_id,
+      sequence: item.sequence,
+      problem_version_id: item.problem_version_id ?? null,
+      version: item.version ?? null,
+      source: item.source as ObjectiveAttemptView["source"],
+      state: item.state as ObjectiveAttemptView["state"],
+      result_kind: item.result_kind ?? null,
+      status: attemptDisplayStatus(item.state, item.result_status),
+      score: item.score ?? 0,
+      time_ms: item.time_ms ?? null,
+      memory_kb: item.memory_kb ?? null,
+      is_effective: !maskCorrectness && pointer?.effective === item.attempt_id,
+      is_accepted: !maskCorrectness && pointer?.accepted === item.attempt_id,
+      is_latest: pointer?.latest === item.attempt_id,
+      created_at: item.created_at,
+      finished_at: item.finished_at ?? null,
+    };
+    const list = bySubmission.get(submissionId) ?? [];
+    list.push(view);
+    bySubmission.set(submissionId, list);
+  }
+  for (const list of bySubmission.values()) {
+    list.sort((a, b) =>
+      a.sequence - b.sequence || a.attempt_id.localeCompare(b.attempt_id)
+    );
+  }
+  return bySubmission;
+}
+
+/** 尝试摘要（与普通提交侧 `summarizeAttempt` 同字段）。 */
+function summarizeAttempt(
+  attempts: readonly ObjectiveAttemptView[],
+  attemptId: string | null,
+): ObjectiveAttemptSummary | null {
+  if (!attemptId) return null;
+  const found = attempts.find((item) => item.attempt_id === attemptId);
+  if (!found) return null;
+  return {
+    attempt_id: found.attempt_id,
+    sequence: found.sequence,
+    problem_version_id: found.problem_version_id,
+    version: found.version,
+    state: found.state,
+    result_kind: found.result_kind,
+    status: found.status,
+    score: found.score,
+    time_ms: found.time_ms,
+    memory_kb: found.memory_kb,
+    created_at: found.created_at,
+    finished_at: found.finished_at,
+  };
+}
+
+/**
  * 将数据库行转换为对外返回的提交响应对象。
  *
  * @param row 客观题提交记录（数据库行）
- * @returns 面向 API 的提交响应（ObjectiveSubmissionResponse）
+ * @param options.meta 版本元信息（缺省时版本号/最新标记为未知）
+ * @param options.attempts 逐次执行历史
+ * @param options.maskCorrectness 竞赛未结束：屏蔽通过与否（防答案预言机）
  */
 function toSubmissionResponse(
   row: typeof objectiveSubmissions.$inferSelect,
+  options: {
+    meta?: ObjectiveReadMeta;
+    attempts?: ObjectiveAttemptView[];
+    maskCorrectness?: boolean;
+  } = {},
 ): ObjectiveSubmissionResponse {
+  const attempts = options.attempts ?? [];
   return {
     id: row.id,
     paper_id: row.paper_id,
@@ -405,6 +613,26 @@ function toSubmissionResponse(
     score: row.score,
     details: row.details as ObjectiveSubmissionResponse["details"],
     created_at: row.created_at,
+    submitted_version_id: row.submitted_version_id ?? null,
+    submitted_version: options.meta?.submitted_version ?? null,
+    version_origin: (row.version_origin ?? "legacy_unknown") as
+      | "known"
+      | "legacy_unknown",
+    is_latest: options.meta?.is_latest ?? false,
+    is_valid: row.is_valid,
+    is_accepted: options.maskCorrectness ? null : row.is_accepted,
+    active_attempt_id: row.active_attempt_id ?? null,
+    latest_attempt_id: row.latest_attempt_id ?? null,
+    effective_attempt_id: row.effective_attempt_id ?? null,
+    accepted_attempt_id: options.maskCorrectness
+      ? null
+      : (row.accepted_attempt_id ?? null),
+    upgraded_from_id: row.upgraded_from_id ?? null,
+    attempts,
+    latest_attempt: summarizeAttempt(attempts, row.latest_attempt_id ?? null),
+    effective_attempt: options.maskCorrectness
+      ? null
+      : summarizeAttempt(attempts, row.effective_attempt_id ?? null),
   };
 }
 
@@ -437,15 +665,24 @@ export async function getObjectiveSubmission(
     throw new NotFoundError("提交记录不存在");
   }
 
-  const response = toSubmissionResponse(row);
+  // 竞赛未结束：屏蔽通过与否（防答案预言机，审计 VULN-03）。版本/尝试元信息不泄题，
+  // 但逐条尝试的相对分差同样可用于试探，因此一并屏蔽 is_effective/is_accepted。
+  const contestUnended = row.submission_type === "contest" && row.contest_id
+    ? (await filterUnendedContestIds([row.contest_id])).has(row.contest_id)
+    : false;
+
+  const meta = (await loadReadMeta([row])).get(row.id);
+  const attempts = (await loadAttempts([row.id], contestUnended)).get(row.id) ??
+    [];
+  const response = toSubmissionResponse(row, {
+    meta,
+    attempts,
+    maskCorrectness: contestUnended,
+  });
+
   if (row.submission_type === "contest") {
     // 竞赛模式：隐藏解析与期望答案（防泄题）；竞赛**尚未结束**时进一步屏蔽逐题
     // 对错与分数（审计 VULN-03）——否则参赛者提交后调用详情接口即可拿到答案预言机。
-    const unended = row.contest_id
-      ? await filterUnendedContestIds([row.contest_id])
-      : new Set<string>();
-    const contestUnended = row.contest_id !== null &&
-      unended.has(row.contest_id);
     if (contestUnended) {
       return {
         ...response,
@@ -575,20 +812,35 @@ export async function listObjectiveSubmissions(params: {
   }
 
   // 竞赛模式的赛期屏蔽（审计 VULN-03）：一次查询算出本页涉及的"未结束竞赛"集合，
-  // 再对命中行剥离逐题对错与分数。与详情接口同一口径，避免"列表是旁路"。
+  // 再对命中行剥离逐题对错、分数与通过标记。与详情接口同一口径，避免"列表是旁路"。
   const unendedContests = await filterUnendedContestIds(
     rows
       .filter((row) => row.submission_type === "contest" && row.contest_id)
       .map((row) => row.contest_id as string),
   );
+  // 版本元信息与逐次执行历史批量加载（避免按行 N+1）；未结束竞赛的行屏蔽通过标记。
+  const maskedRows = rows.filter((row) =>
+    row.submission_type === "contest" && row.contest_id !== null &&
+    unendedContests.has(row.contest_id)
+  );
+  const plainRows = rows.filter((row) => !maskedRows.includes(row));
+  const metaBySubmission = await loadReadMeta(rows);
+  const maskedAttempts = await loadAttempts(
+    maskedRows.map((row) => row.id),
+    true,
+  );
+  const plainAttempts = await loadAttempts(plainRows.map((row) => row.id));
   const data = rows.map((row) => {
-    const response = toSubmissionResponse(row);
-    if (
-      row.submission_type !== "contest" || !row.contest_id ||
-      !unendedContests.has(row.contest_id)
-    ) {
-      return response;
-    }
+    const contestUnended = maskedRows.includes(row);
+    const attempts = contestUnended
+      ? (maskedAttempts.get(row.id) ?? [])
+      : (plainAttempts.get(row.id) ?? []);
+    const response = toSubmissionResponse(row, {
+      meta: metaBySubmission.get(row.id),
+      attempts,
+      maskCorrectness: contestUnended,
+    });
+    if (!contestUnended) return response;
     return {
       ...response,
       score: null,

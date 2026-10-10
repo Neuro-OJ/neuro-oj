@@ -700,3 +700,202 @@ Deno.test({
     assertEquals(draftBody.revision, 2);
   },
 });
+
+Deno.test({
+  name:
+    "problem versions route: exact 策略下默认详情内容与版本号一致（#2 默认/竞赛口径统一）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const problemId = await makeDraftProblem("U");
+    const app = createApp();
+    const token = await adminToken();
+    const auth = { Authorization: `Bearer ${token}` };
+
+    // V1：题面与评测命令都与 V2 明显不同
+    const v1Content = {
+      ...draftContent("V1 题面"),
+      runtime_config: {
+        ...runtimeConfig,
+        evaluator: {
+          ...runtimeConfig.evaluator,
+          command: "python3 /workspace/v1.py",
+        },
+      },
+    };
+    await jsonRequest(app, `/api/v1/problems/${problemId}/draft`, {
+      method: "PUT",
+      headers: { ...auth, "If-Match": "1" },
+      body: { content: v1Content },
+    });
+    const v1 = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}/versions`,
+      {
+        method: "POST",
+        headers: { ...auth, "If-Match": "2" },
+        body: { change_note: "V1" },
+      },
+    );
+    const v1Id = (await v1.json()).data.version_id as string;
+
+    // V2：最新版
+    const v2Content = {
+      ...draftContent("V2 题面"),
+      runtime_config: {
+        ...runtimeConfig,
+        evaluator: {
+          ...runtimeConfig.evaluator,
+          command: "python3 /workspace/v2.py",
+        },
+      },
+      template_content: "print('v2')",
+    };
+    await jsonRequest(app, `/api/v1/problems/${problemId}/draft`, {
+      method: "PUT",
+      headers: { ...auth, "If-Match": "3" },
+      body: { content: v2Content },
+    });
+    await jsonRequest(app, `/api/v1/problems/${problemId}/versions`, {
+      method: "POST",
+      headers: { ...auth, "If-Match": "4" },
+      body: { change_note: "V2" },
+    });
+
+    // 题库策略切到 exact(V1)
+    const policy = await jsonRequest(
+      app,
+      `/api/v1/admin/problems/${problemId}/effective-version-policy`,
+      {
+        method: "PUT",
+        headers: auth,
+        body: {
+          policy: { mode: "exact", version_id: v1Id },
+          expected_revision: 0,
+        },
+      },
+    );
+    assertEquals(policy.status, 200);
+
+    // 默认详情必须回答 V1：版本号、题面、评测命令三者一致（内容不能来自 V2 投影）
+    const detail = await jsonRequest(app, `/api/v1/problems/${problemId}`, {
+      headers: auth,
+    });
+    assertEquals(detail.status, 200);
+    const body = (await detail.json()).data;
+    assertEquals(body.version_id, v1Id);
+    assertEquals(body.version, 1);
+    assertEquals(body.is_latest, false);
+    assertEquals(body.latest_version, 2);
+    assertEquals(body.effective_version_policy.mode, "exact");
+    assertEquals(body.title, "V1 题面");
+    assertEquals(
+      body.runtime_config.evaluator.command,
+      "python3 /workspace/v1.py",
+    );
+
+    // 编辑者读草稿仍是 V2 编辑态（内容事实源分离）
+    const draft = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}/draft`,
+      { headers: auth },
+    );
+    assertEquals((await draft.json()).data.content.title, "V2 题面");
+  },
+});
+
+Deno.test({
+  name:
+    "problem versions route: 非编辑者读历史版本不下发评测配置/模板（#5 按字段裁剪）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    // 公开题：非 owner 的普通用户也能读
+    const created = await createProblem({
+      title: `公开版本裁剪题 ${ts}_${Math.random().toString(36).slice(2, 8)}`,
+      description: "初始题面",
+      difficulty: "easy",
+      samples: [],
+      runtime_config: runtimeConfig,
+      type: "U",
+      visibility: "public",
+    });
+    const problemId = created.id;
+    const app = createApp();
+    const admin = await adminToken();
+    const adminAuth = { Authorization: `Bearer ${admin}` };
+    const { createUserToken } = await import("../../../../../tests/helper.ts");
+    const userToken = await createUserToken("user");
+    const userAuth = { Authorization: `Bearer ${userToken}` };
+
+    await jsonRequest(app, `/api/v1/problems/${problemId}/draft`, {
+      method: "PUT",
+      headers: { ...adminAuth, "If-Match": "1" },
+      body: {
+        content: {
+          ...draftContent("带敏感配置的题面"),
+          template_content: "print('secret-template')",
+        },
+      },
+    });
+    const published = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}/versions`,
+      {
+        method: "POST",
+        headers: { ...adminAuth, "If-Match": "2" },
+        body: { change_note: "V1" },
+      },
+    );
+    const v1Id = (await published.json()).data.version_id as string;
+
+    // 普通用户：默认详情与版本内容接口都必须裁剪 runtime_config / 模板
+    const userDetail = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}`,
+      { headers: userAuth },
+    );
+    assertEquals(userDetail.status, 200);
+    const userBody = (await userDetail.json()).data;
+    assertEquals(userBody.runtime_config, undefined);
+    assertEquals(userBody.template_content, undefined);
+    assertEquals(userBody.support_package_storage_url, undefined);
+    assertEquals(userBody.title, "带敏感配置的题面");
+
+    const userVersion = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}/versions/${v1Id}`,
+      { headers: userAuth },
+    );
+    assertEquals(userVersion.status, 200);
+    const userVersionContent = (await userVersion.json()).data.content;
+    assertEquals(userVersionContent.runtime_config, undefined);
+    assertEquals(userVersionContent.template_content, undefined);
+
+    // 编辑者（admin）全量可见
+    const adminDetail = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}`,
+      { headers: adminAuth },
+    );
+    const adminBody = (await adminDetail.json()).data;
+    assertEquals(
+      adminBody.runtime_config.evaluator.command,
+      "python3 /workspace/evaluate.py",
+    );
+    assertEquals(adminBody.template_content, "print('secret-template')");
+
+    const adminVersion = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}/versions/${v1Id}`,
+      { headers: adminAuth },
+    );
+    const adminVersionContent = (await adminVersion.json()).data.content;
+    assertEquals(
+      adminVersionContent.runtime_config.evaluator.command,
+      "python3 /workspace/evaluate.py",
+    );
+  },
+});

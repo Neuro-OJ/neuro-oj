@@ -7,7 +7,8 @@
  * - 客户端携带与固定版本不一致的 `version_id` → 409 `CONTEST_PROBLEM_VERSION_CHANGED`
  *   （不自动改用其他版本）；
  * - 携带一致版本 → 放行（写入 `submitted_version_id`）；
- * - 未携带版本且题目已固定 → 迁移期兼容路径仍用固定版本（不得 409）。
+ * - **未携带版本 → 409 `VERSION_REQUIRED`**：迁移期兼容路径已关闭（缺陷 #6），
+ *   新提交必须显式携带版本，服务端不得替客户端猜版本（Handbook §4.2）。
  */
 import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
@@ -30,7 +31,7 @@ await initRedisForTest();
 const now = new Date().toISOString();
 
 Deno.test({
-  name: "contest submit version: 固定版本不一致 → 409，一致/缺省放行",
+  name: "contest submit version: 固定版本不一致/缺省版本 → 409，一致放行",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -182,8 +183,8 @@ Deno.test({
         createdSubmissionIds.push((await fresh.json()).data.id);
       }
 
-      // 缺省版本：迁移期兼容（旧客户端）→ 仍用固定版本，不得 409
-      const legacy = await jsonRequest(
+      // 缺省版本：新契约下必须 409 VERSION_REQUIRED（不猜固定版本、不落库）
+      const missingVersion = await jsonRequest(
         app,
         `/api/v1/contests/${contestId}/submit`,
         {
@@ -196,12 +197,10 @@ Deno.test({
           },
         },
       );
-      assertNotEquals(legacy.status, 409);
-      if (legacy.status === 201) {
-        createdSubmissionIds.push((await legacy.json()).data.id);
-      }
+      assertEquals(missingVersion.status, 409);
+      assertEquals((await missingVersion.json()).code, "VERSION_REQUIRED");
 
-      // 落库版本必须是固定版本（v2），无论是显式携带还是缺省
+      // 落库版本必须是客户端显式携带的固定版本（v2）
       if (createdSubmissionIds.length > 0) {
         const rows = await db.select({
           submitted_version_id: submissions.submitted_version_id,

@@ -270,10 +270,21 @@ Deno.test({
     const v2 = await publishDraft(paper, "V2");
     assertEquals(v2.version, 2);
 
-    // 库内（policy=any → 默认最新版）提交：按 V2 判卷——第一题 A 已错，
-    // 且分母变为 2 题
+    // 库内提交必须**显式携带版本**（Handbook §4.2 / tracking #6：不再静默绑定最新版）
+    let requiredCode: string | undefined;
+    try {
+      await submitObjectivePaper(paper, {
+        answers: { [q1.key]: ["A"], [q2.key]: ["B"] },
+      }, user);
+    } catch (err) {
+      requiredCode = (err as { code?: string }).code;
+    }
+    assertEquals(requiredCode, "VERSION_REQUIRED");
+
+    // 显式指定 V2：按 V2 判卷——第一题 A 已错，且分母变为 2 题
     const second = await submitObjectivePaper(paper, {
       answers: { [q1.key]: ["A"], [q2.key]: ["B"] },
+      version_id: v2.version_id,
     }, user);
     if (second.contest_mode !== false) {
       throw new Error("练习模式应返回完整判定");
@@ -288,7 +299,7 @@ Deno.test({
     assertEquals(firstRow.score, 10000);
     assertEquals(firstRow.is_accepted, true);
 
-    // 未携带版本的库内提交绑定当前最新版（any 策略）
+    // 显式携带的版本逐字生效（不再有"未携带版本 → 绑定最新版"的静默路径）
     const [secondRow] = await db.select().from(objectiveSubmissions).where(
       eq(objectiveSubmissions.id, second.submission_id),
     );
@@ -341,6 +352,7 @@ Deno.test({
     const result = await submitObjectivePaper(paper, {
       answers: { [q1.key]: ["A"] },
       contest_id: contestId,
+      version_id: v1.version_id,
     }, user);
     if (result.contest_mode !== true) throw new Error("竞赛模式应返回赛期回执");
 
@@ -403,7 +415,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "objective versioning: 存量未版本化套卷无卷面可还原（legacy_unknown → 空卷面）",
+    "objective versioning: 未发布套卷/未携带版本拒绝新提交（不再静默 legacy_unknown）",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -411,37 +423,26 @@ Deno.test({
     const user = await makeUser("legacy");
     const paper = await makePaper(owner);
     // 只写草稿、不发布版本：模拟尚未版本化的存量套卷。
-    // 旧 `objective_questions` 表已随 0107 删除（Handbook §8.1「历史信息无法恢复」），
-    // 因此 legacy_unknown 提交的卷面为空，原 answers 仍保留可读。
+    // `legacy_unknown` 仅供存量迁移，线上提交入口不得再新建（Handbook §4.2、
+    // tracking #6）：未发布题目无法按版本提交，必须明确拒绝。
     await createDraftQuestion(
       paper,
       singleQuestion("存量题"),
       await rev(paper),
     );
 
-    const result = await submitObjectivePaper(paper, {
-      answers: {},
-    }, user);
-    if (result.contest_mode !== false) {
-      throw new Error("练习模式应返回完整判定");
+    let code: string | undefined;
+    try {
+      await submitObjectivePaper(paper, { answers: {} }, user);
+    } catch (err) {
+      code = (err as { code?: string }).code;
     }
-    assertEquals(result.score_db, 0);
-    assertEquals(result.total_count, 0);
-    assertEquals(Object.keys(result.details).length, 0);
-
-    const [row] = await db.select().from(objectiveSubmissions).where(
-      eq(objectiveSubmissions.id, result.submission_id),
+    assertEquals(code, "VERSION_REQUIRED");
+    // 未产生任何提交记录
+    const rows = await db.select().from(objectiveSubmissions).where(
+      eq(objectiveSubmissions.paper_id, paper),
     );
-    assertEquals(row.submitted_version_id, null);
-    assertEquals(row.version_origin, "legacy_unknown");
-    // 空卷面产生"未知版本桶"的 0 分判定：`any` 下算候选（有效）但未通过
-    assertEquals(row.is_valid, true);
-    assertEquals(row.is_accepted, false);
-    const versionResults = await db.select().from(submissionVersionResults)
-      .where(eq(submissionVersionResults.objective_submission_id, row.id));
-    assertEquals(versionResults.length, 1);
-    assertEquals(versionResults[0].problem_version_id, null);
-    assertEquals(versionResults[0].current_attempt_id === null, false);
+    assertEquals(rows.length, 0);
   },
 });
 
@@ -480,5 +481,282 @@ Deno.test({
     const detail = await getObjectiveSubmission(result.submission_id, user);
     assertEquals(detail.details[q1.key].explanation, "V1 解析");
     assertEquals(detail.score, 10000);
+  },
+});
+
+/**
+ * 读路径字段（tracking #53）：详情/列表必须下发提交时版本、有效性指针与逐次尝试，
+ * 命名与普通提交侧一致；竞赛未结束时通过与否必须屏蔽（防答案预言机）。
+ */
+Deno.test({
+  name: "objective versioning: 详情下发版本/有效性/尝试指针字段",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const owner = await makeUser("owner");
+    const user = await makeUser("readmeta");
+    const paper = await makePaper(owner);
+    const q1 = await createDraftQuestion(
+      paper,
+      singleQuestion("第一题"),
+      await rev(paper),
+    );
+    const v1 = await publishDraft(paper, "V1");
+
+    const result = await submitObjectivePaper(paper, {
+      answers: { [q1.key]: ["A"] },
+      version_id: v1.version_id,
+    }, user);
+    if (result.contest_mode !== false) {
+      throw new Error("练习模式应返回完整判定");
+    }
+
+    // 发布 V2：提交时版本不再是该题最新版（is_latest 必须为 false）
+    await saveProblemDraft(paper, {
+      content: { ...(await draftContent(paper)), title: "V2 题面" },
+      expectedRevision: await rev(paper),
+    });
+    const v2 = await publishProblemVersion(paper, {
+      expectedRevision: await rev(paper),
+      changeNote: "V2",
+    });
+
+    const { getObjectiveSubmission, listObjectiveSubmissions } = await import(
+      "../../index.ts"
+    );
+    const detail = await getObjectiveSubmission(result.submission_id, user);
+    assertEquals(detail.submitted_version_id, v1.version_id);
+    assertEquals(detail.submitted_version, 1);
+    assertEquals(detail.version_origin, "known");
+    assertEquals(detail.is_latest, false);
+    assertEquals(detail.is_valid, true);
+    assertEquals(detail.is_accepted, true);
+    assertEquals(detail.effective_attempt_id !== null, true);
+    assertEquals(detail.accepted_attempt_id !== null, true);
+    assertEquals(detail.active_attempt_id, null);
+    assertEquals(detail.latest_attempt_id !== null, true);
+    assertEquals(detail.attempts.length, 1);
+    assertEquals(detail.attempts[0].source, "initial");
+    assertEquals(detail.attempts[0].state, "finished");
+    assertEquals(detail.attempts[0].result_kind, "graded");
+    assertEquals(detail.attempts[0].version, 1);
+    assertEquals(detail.attempts[0].is_effective, true);
+    assertEquals(detail.attempts[0].is_accepted, true);
+    assertEquals(detail.attempts[0].is_latest, true);
+    assertEquals(
+      detail.latest_attempt?.attempt_id,
+      detail.attempts[0].attempt_id,
+    );
+    assertEquals(
+      detail.effective_attempt?.attempt_id,
+      detail.effective_attempt_id,
+    );
+    assertEquals(
+      detail.effective_attempt_id,
+      detail.accepted_attempt_id,
+      "满分判定应同时是有效指针与通过指针",
+    );
+
+    // 列表路径字段一致（批量加载不得丢字段或错标 is_latest）
+    const list = await listObjectiveSubmissions({
+      viewerId: user,
+      paperId: paper,
+      page: 1,
+      perPage: 10,
+    });
+    const item = list.data.find((row) => row.id === result.submission_id)!;
+    assertEquals(item.submitted_version_id, v1.version_id);
+    assertEquals(item.submitted_version, 1);
+    assertEquals(item.is_latest, false);
+    assertEquals(item.is_valid, true);
+    assertEquals(item.is_accepted, true);
+    assertEquals(item.attempts.length, 1);
+    assertEquals(item.attempts[0].is_latest, true);
+    // 发布 V2 后，V2 才是最新版；上面断言基于"提交 V1"这一事实
+    assertEquals(v2.version, 2);
+  },
+});
+
+Deno.test({
+  name: "objective versioning: 平台错误尝试保留历史但不改写有效判定",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const owner = await makeUser("owner");
+    const user = await makeUser("platformerr");
+    const paper = await makePaper(owner);
+    const q1 = await createDraftQuestion(
+      paper,
+      singleQuestion("第一题"),
+      await rev(paper),
+    );
+    const v1 = await publishDraft(paper, "V1");
+
+    const result = await submitObjectivePaper(paper, {
+      answers: { [q1.key]: ["A"] },
+      version_id: v1.version_id,
+    }, user);
+    if (result.contest_mode !== false) {
+      throw new Error("练习模式应返回完整判定");
+    }
+
+    // 追加一次平台错误尝试（判卷服务异常）：不得替换已有正式判定
+    const errAttemptId = crypto.randomUUID();
+    await db.insert(evaluationAttempts).values({
+      id: errAttemptId,
+      objective_submission_id: result.submission_id,
+      problem_id: paper,
+      problem_version_id: v1.version_id,
+      sequence: 1,
+      source: "rejudge",
+      state: "error",
+      result_kind: "platform_error",
+      result_status: "SystemError",
+      score: null,
+      accepted: false,
+      created_at: new Date().toISOString(),
+      finished_at: new Date().toISOString(),
+    });
+    await db.update(objectiveSubmissions).set({
+      latest_attempt_id: errAttemptId,
+      active_attempt_id: null,
+    }).where(eq(objectiveSubmissions.id, result.submission_id));
+
+    const { getObjectiveSubmission } = await import("../../index.ts");
+    const detail = await getObjectiveSubmission(result.submission_id, user);
+    assertEquals(detail.attempts.length, 2);
+    const platformError = detail.attempts.find((a) =>
+      a.attempt_id === errAttemptId
+    )!;
+    assertEquals(platformError.result_kind, "platform_error");
+    assertEquals(platformError.state, "error");
+    assertEquals(platformError.status, "error");
+    assertEquals(platformError.is_latest, true);
+    assertEquals(platformError.is_effective, false);
+    // 已有正式判定与通过标记保持不变
+    assertEquals(detail.is_valid, true);
+    assertEquals(detail.is_accepted, true);
+    assertEquals(detail.effective_attempt_id !== errAttemptId, true);
+    assertEquals(detail.accepted_attempt_id !== errAttemptId, true);
+    assertEquals(detail.latest_attempt_id, errAttemptId);
+  },
+});
+
+Deno.test({
+  name: "objective versioning: 升级派生提交下发 upgraded_from_id",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const owner = await makeUser("owner");
+    const user = await makeUser("upgraded");
+    const paper = await makePaper(owner);
+    const q1 = await createDraftQuestion(
+      paper,
+      singleQuestion("第一题"),
+      await rev(paper),
+    );
+    const v1 = await publishDraft(paper, "V1");
+
+    const result = await submitObjectivePaper(paper, {
+      answers: { [q1.key]: ["A"] },
+      version_id: v1.version_id,
+    }, user);
+    if (result.contest_mode !== false) {
+      throw new Error("练习模式应返回完整判定");
+    }
+
+    // 升级生成的新提交：指向来源提交
+    const derivedId = crypto.randomUUID();
+    const nowIso = new Date().toISOString();
+    await db.insert(objectiveSubmissions).values({
+      id: derivedId,
+      paper_id: paper,
+      user_id: user,
+      submission_type: "practice",
+      answers: { [q1.key]: ["A"] },
+      status: "finished",
+      score: 10000,
+      details: {},
+      submitted_version_id: v1.version_id,
+      version_origin: "known",
+      upgraded_from_id: result.submission_id,
+      is_valid: true,
+      is_accepted: true,
+      created_at: nowIso,
+    });
+
+    const { getObjectiveSubmission } = await import("../../index.ts");
+    const derived = await getObjectiveSubmission(derivedId, user);
+    assertEquals(derived.upgraded_from_id, result.submission_id);
+    assertEquals(derived.submitted_version_id, v1.version_id);
+    assertEquals(derived.is_latest, true);
+    const source = await getObjectiveSubmission(result.submission_id, user);
+    assertEquals(source.upgraded_from_id, null);
+  },
+});
+
+Deno.test({
+  name: "objective versioning: 竞赛未结束时详情屏蔽通过标记（防答案预言机）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const owner = await makeUser("owner");
+    const user = await makeUser("oracle");
+    const paper = await makePaper(owner);
+    const q1 = await createDraftQuestion(
+      paper,
+      singleQuestion("第一题"),
+      await rev(paper),
+    );
+    const v1 = await publishDraft(paper, "V1");
+
+    const contestId = crypto.randomUUID();
+    await db.insert(contests).values({
+      id: contestId,
+      title: `防预言机竞赛 ${ts}`,
+      description: "",
+      start_time: new Date(Date.now() - 3600_000).toISOString(),
+      end_time: new Date(Date.now() + 3600_000).toISOString(),
+      type: "kaggle",
+      config: {},
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: user,
+      registered_at: now,
+    });
+    await insertContestProblems({
+      contest_id: contestId,
+      problem_id: paper,
+      sort_order: 1,
+      label: "A",
+      score: 10000,
+      pinned_version_id: v1.version_id,
+    });
+
+    const result = await submitObjectivePaper(paper, {
+      answers: { [q1.key]: ["A"] },
+      contest_id: contestId,
+      version_id: v1.version_id,
+    }, user);
+    if (result.contest_mode !== true) throw new Error("竞赛模式应返回赛期回执");
+
+    const { getObjectiveSubmission } = await import("../../index.ts");
+    const detail = await getObjectiveSubmission(result.submission_id, user);
+    // 分数、逐题对错与"是否通过"在赛期一律不可见
+    assertEquals(detail.score, null);
+    assertEquals(detail.is_accepted, null);
+    assertEquals(detail.accepted_attempt_id, null);
+    assertEquals(detail.effective_attempt, null);
+    assertEquals(detail.attempts.length, 1);
+    assertEquals(detail.attempts[0].is_accepted, false);
+    assertEquals(detail.attempts[0].is_effective, false);
+    // 版本信息不泄题：照常下发
+    assertEquals(detail.submitted_version_id, v1.version_id);
+    assertEquals(detail.submitted_version, 1);
+    assertEquals(detail.version_origin, "known");
+    assertEquals(detail.is_latest, true);
   },
 });

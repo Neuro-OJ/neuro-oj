@@ -15,6 +15,7 @@ export * from "./types/self-tests.ts";
 export * from "./mq/consumer.ts";
 export * from "./mq/producer.ts";
 export * from "./mq/sweeper.ts";
+export * from "./services/versioning/version-execution.ts";
 export * from "./services/versioning/attempts.ts";
 export * from "./services/versioning/result-write.ts";
 export * from "./services/versioning/projection.ts";

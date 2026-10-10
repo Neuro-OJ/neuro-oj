@@ -277,14 +277,54 @@ impl JudgeResult {
     /// 判定类别。必须在本结果的状态最终确定之后调用（例如取消标记覆写 status 之后）。
     ///
     /// `result_kind` 已显式给出时不被覆盖，便于调用方标定特殊路径。
+    ///
+    /// `attempt_id` 回退（defect #28）：Handbook §5.5 要求正式提交
+    /// `run_id = attempt_id`，且 noj-core 的 `saveEvaluationResult` **强制**校验
+    /// `attempt_id === run_id`（任一缺失即整体拒绝结果）。任务侧仅在非自测提交上
+    /// 显式携带 `attempt_id`，因此这里按 `attempt_id ?? run_id` 补齐，保证所有成功、
+    /// 失败、超时构造入口产出的封套都完整。
     pub fn apply_protocol(&mut self, task: &JudgeTask) {
         self.run_id = task.run_id.clone();
-        self.attempt_id = task.attempt_id.clone();
+        self.attempt_id = task.attempt_id.clone().or_else(|| task.run_id.clone());
         self.problem_version_id = task.problem_version_id.clone();
         self.evaluation_protocol_version = Some(EVALUATION_PROTOCOL_VERSION);
         if self.result_kind.is_none() {
             self.result_kind = Some(result_kind_for_status(&self.status).to_string());
         }
+    }
+
+    /// 返回版本化封套缺失/不一致的字段清单；空表示封套完整。
+    ///
+    /// 与 noj-core `saveEvaluationResult` 的准入条件逐条对齐：协议号必须为
+    /// [`EVALUATION_PROTOCOL_VERSION`]，`run_id` / `problem_version_id` 必须非空，
+    /// `result_kind` 必须是 `graded` / `platform_error`，且 `attempt_id` 与
+    /// `run_id` 一致。core 对不满足者直接 `applied=false`（零写入、零事件），
+    /// 因此 judge 侧必须在推送前把不一致显式暴露到日志（defect #28）。
+    pub fn envelope_gaps(&self) -> Vec<&'static str> {
+        let mut gaps = Vec::new();
+        if self.evaluation_protocol_version != Some(EVALUATION_PROTOCOL_VERSION) {
+            gaps.push("evaluation_protocol_version");
+        }
+        if self.run_id.as_deref().is_none_or(str::is_empty) {
+            gaps.push("run_id");
+        }
+        match self.attempt_id.as_deref() {
+            None | Some("") => gaps.push("attempt_id"),
+            Some(attempt) if Some(attempt) != self.run_id.as_deref() => {
+                gaps.push("attempt_id!=run_id")
+            }
+            Some(_) => {}
+        }
+        if self.problem_version_id.as_deref().is_none_or(str::is_empty) {
+            gaps.push("problem_version_id");
+        }
+        if !matches!(
+            self.result_kind.as_deref(),
+            Some("graded") | Some("platform_error")
+        ) {
+            gaps.push("result_kind");
+        }
+        gaps
     }
 
     /// 由评测失败的错误构造结果：携带 [`PublicJudgeError`] 时输出其公开文案，
@@ -526,8 +566,8 @@ mod tests {
     // ── JudgeResult 版本化封套（协议 v2） ──
 
     /// 从 JSON 构造最小 JudgeTask（测试辅助；避免逐字段字面量）。
-    fn protocol_task(run_id: Option<&str>, version: Option<&str>) -> JudgeTask {
-        let mut value = json!({
+    fn protocol_task_value() -> Value {
+        json!({
             "submission_id": "sid-1",
             "problem_id": "p-1",
             "user_id": "u-1",
@@ -546,7 +586,12 @@ mod tests {
             },
             "language": "python3",
             "code": "print(1)"
-        });
+        })
+    }
+
+    /// 正式提交任务：`run_id` / `attempt_id` / `problem_version_id` 齐备。
+    fn protocol_task(run_id: Option<&str>, version: Option<&str>) -> JudgeTask {
+        let mut value = protocol_task_value();
         if let Some(run_id) = run_id {
             value["run_id"] = json!(run_id);
             value["attempt_id"] = json!(run_id);
@@ -554,6 +599,15 @@ mod tests {
         if let Some(version) = version {
             value["problem_version_id"] = json!(version);
         }
+        serde_json::from_value(value).expect("测试任务必须可反序列化")
+    }
+
+    /// 自测任务：core 只为非 `st_` 提交补 `attempt_id`，因此任务里只有 `run_id`。
+    fn self_test_task(run_id: &str, version: &str) -> JudgeTask {
+        let mut value = protocol_task_value();
+        value["submission_id"] = json!("st_1");
+        value["run_id"] = json!(run_id);
+        value["problem_version_id"] = json!(version);
         serde_json::from_value(value).expect("测试任务必须可反序列化")
     }
 
@@ -584,15 +638,21 @@ mod tests {
         graded.apply_protocol(&task);
         let value = serde_json::to_value(&graded).unwrap();
         assert_eq!(value["run_id"], "attempt-1");
+        assert_eq!(
+            value["attempt_id"], "attempt-1",
+            "封套必须同时携带 attempt_id"
+        );
         assert_eq!(value["problem_version_id"], "ver-1");
         assert_eq!(value["evaluation_protocol_version"], 2);
         assert_eq!(value["result_kind"], "graded");
+        assert!(graded.envelope_gaps().is_empty());
 
         // 平台错误 → platform_error，且不被状态推导覆盖
         let mut platform = JudgeResult::error("sid-1", None);
         platform.apply_protocol(&task);
         assert_eq!(platform.result_kind.as_deref(), Some("platform_error"));
         assert_eq!(platform.run_id.as_deref(), Some("attempt-1"));
+        assert_eq!(platform.attempt_id.as_deref(), Some("attempt-1"));
 
         // 取消（平台侧中止）→ platform_error
         let mut cancelled = bare_result("cancelled");
@@ -606,9 +666,124 @@ mod tests {
         legacy.apply_protocol(&legacy_task);
         let value = serde_json::to_value(&legacy).unwrap();
         assert!(value.get("run_id").is_none());
+        assert!(value.get("attempt_id").is_none());
         assert!(value.get("problem_version_id").is_none());
         assert_eq!(value["evaluation_protocol_version"], 2);
         assert_eq!(value["result_kind"], "graded");
+    }
+
+    // ── 结果封套完整性（defect #28） ──
+
+    #[test]
+    fn test_apply_protocol_backfills_attempt_id_from_run_id_for_self_test() {
+        // 自测任务没有 attempt_id；core 强制 attempt_id === run_id，
+        // 不补齐就会让整条结果被静默丢弃。
+        let task = self_test_task("run-self-1", "ver-self-1");
+        assert!(task.attempt_id.is_none());
+
+        let mut result = bare_result("finished");
+        result.score = 500;
+        result.apply_protocol(&task);
+
+        assert_eq!(result.run_id.as_deref(), Some("run-self-1"));
+        assert_eq!(result.attempt_id.as_deref(), Some("run-self-1"));
+        assert_eq!(result.problem_version_id.as_deref(), Some("ver-self-1"));
+        assert!(result.envelope_gaps().is_empty(), "自测封套必须完整");
+    }
+
+    #[test]
+    fn test_envelope_gaps_reports_every_missing_field() {
+        let mut result = bare_result("finished");
+        assert_eq!(
+            result.envelope_gaps(),
+            vec![
+                "evaluation_protocol_version",
+                "run_id",
+                "attempt_id",
+                "problem_version_id",
+                "result_kind",
+            ]
+        );
+
+        // 协议号/结果类别正确但 attempt_id 与 run_id 不一致 → 仍视为不完整
+        result.evaluation_protocol_version = Some(EVALUATION_PROTOCOL_VERSION);
+        result.run_id = Some("attempt-1".to_string());
+        result.attempt_id = Some("attempt-2".to_string());
+        result.problem_version_id = Some("ver-1".to_string());
+        result.result_kind = Some("graded".to_string());
+        assert_eq!(result.envelope_gaps(), vec!["attempt_id!=run_id"]);
+
+        // 空字符串与非法 result_kind 同样不能通过（空 run_id 同时导致 attempt 不一致）
+        result.attempt_id = Some("attempt-1".to_string());
+        result.run_id = Some(String::new());
+        result.problem_version_id = Some(String::new());
+        result.result_kind = Some("ignored".to_string());
+        assert_eq!(
+            result.envelope_gaps(),
+            vec![
+                "run_id",
+                "attempt_id!=run_id",
+                "problem_version_id",
+                "result_kind"
+            ]
+        );
+    }
+
+    /// defect #28：成功 / 失败 / 超时 / 取消 —— 全部构造入口经
+    /// `apply_protocol` 后必须产出完整封套（core 拒绝不完整封套 = 提交卡 judging）。
+    #[test]
+    fn test_all_result_construction_entries_produce_complete_envelope() {
+        let task = protocol_task(Some("attempt-9"), Some("ver-9"));
+
+        let mut candidates = [
+            // 成功路径（含 0 分正式判定）
+            bare_result("finished"),
+            // 超时（统一映射为平台错误）
+            JudgeResult::timeout("sid-1", "Evaluator 启动超时", Some(3)),
+            // 系统错误 / 通用失败
+            JudgeResult::system_error("sid-1", "评测脚本未输出结果标记", Some(3)),
+            JudgeResult::error("sid-1", Some(3)),
+            // 由 anyhow 错误构造（runner/main 的失败路径）
+            JudgeResult::from_error(&anyhow::anyhow!("docker 连接失败"), "sid-1", Some(3)),
+            // 取消（自测被用户中止）
+            bare_result("cancelled"),
+        ];
+        for result in candidates.iter_mut() {
+            result.apply_protocol(&task);
+            assert!(
+                result.envelope_gaps().is_empty(),
+                "构造入口产出封套不完整: status={} gaps={:?}",
+                result.status,
+                result.envelope_gaps()
+            );
+            assert_eq!(result.run_id.as_deref(), Some("attempt-9"));
+            assert_eq!(result.attempt_id.as_deref(), Some("attempt-9"));
+            assert_eq!(result.problem_version_id.as_deref(), Some("ver-9"));
+            assert_eq!(
+                result.evaluation_protocol_version,
+                Some(EVALUATION_PROTOCOL_VERSION)
+            );
+            assert!(
+                matches!(
+                    result.result_kind.as_deref(),
+                    Some("graded") | Some("platform_error")
+                ),
+                "result_kind 必须在白名单内: {:?}",
+                result.result_kind
+            );
+        }
+
+        // 平台错误类构造入口必须是 platform_error，不得成为正式判定
+        let mut platform_entries = [
+            JudgeResult::timeout("sid-1", "timeout", None),
+            JudgeResult::system_error("sid-1", "se", None),
+            JudgeResult::error("sid-1", None),
+            JudgeResult::from_error(&anyhow::anyhow!("boom"), "sid-1", None),
+        ];
+        for result in platform_entries.iter_mut() {
+            result.apply_protocol(&task);
+            assert_eq!(result.result_kind.as_deref(), Some("platform_error"));
+        }
     }
 
     // ── JudgeResult 工厂函数 ──

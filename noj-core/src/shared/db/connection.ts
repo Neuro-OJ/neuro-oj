@@ -355,6 +355,12 @@ function createTestTransactionDb(realDb: DbClient): DbClient {
 
 /**
  * 在测试事务内模拟嵌套事务：SAVEPOINT / RELEASE / ROLLBACK TO。
+ *
+ * `_savepointSeq` **不随测试事务重启而重置**：savepoint 名在同一连接上必须单调
+ * 递增。若按用例重置为 0，上一个用例的迟到语句（连接池 max:1 下排队/延迟执行的
+ * 查询）会与新用例新建的 savepoint 重名，导致 `RELEASE/ROLLBACK TO SAVEPOINT`
+ * 命中错误的 savepoint 甚至把它释放掉，把一个正常的用例变成
+ * `savepoint "noj_sp_N" does not exist` → `current transaction is aborted` 的假失败。
  */
 async function savepointTransaction(
   callback: (tx: DbClient) => unknown,
@@ -369,12 +375,34 @@ async function savepointTransaction(
   await db.execute(sql`SAVEPOINT ${sql.raw(name)}`);
   try {
     const result = await callback(_testTransactionProxy!);
-    await db.execute(sql`RELEASE SAVEPOINT ${sql.raw(name)}`);
+    await savepointBookkeeping(db, `RELEASE SAVEPOINT ${name}`);
     return result;
   } catch (err) {
-    await db.execute(sql`ROLLBACK TO SAVEPOINT ${sql.raw(name)}`);
-    await db.execute(sql`RELEASE SAVEPOINT ${sql.raw(name)}`);
+    // 先按序回滚 savepoint，再释放；两者都只是记账，不能覆盖回调抛出的真实错误。
+    await savepointBookkeeping(db, `ROLLBACK TO SAVEPOINT ${name}`);
+    await savepointBookkeeping(db, `RELEASE SAVEPOINT ${name}`);
     throw err;
+  }
+}
+
+/**
+ * savepoint 记账语句：只忽略"已被外层/迟到语句连带释放"这类竞态错误。
+ *
+ * - `3B001` savepoint 不存在：外层 RELEASE 会连带释放内层 savepoint，属并发/迟到
+ *   语句竞态；此时数据变更已发生，测试继续更接近真实语义。
+ * - `25P02` 事务已中止：回调自身的真实错误已在 catch 中重新抛出，记账阶段的
+ *   "事务已中止"不能让真实错误被替换成误导性的 savepoint 报错。
+ */
+async function savepointBookkeeping(
+  db: DbClient,
+  statement: string,
+): Promise<void> {
+  try {
+    await db.execute(sql.raw(statement));
+  } catch (err) {
+    const code = (err as { code?: string }).code ??
+      (err as { cause?: { code?: string } }).cause?.code;
+    if (code !== "3B001" && code !== "25P02") throw err;
   }
 }
 
@@ -392,7 +420,6 @@ async function startRealTransaction(): Promise<void> {
     await _pgliteInstance.query("BEGIN");
     const realDb = getDb();
     const proxy = createTestTransactionDb(realDb);
-    _savepointSeq = 0;
     _testTransactionState = {
       status: "active",
       db: proxy,
@@ -404,12 +431,24 @@ async function startRealTransaction(): Promise<void> {
     return;
   }
 
-  // PG 模式：测试模式连接池为 max:1，直接在同一连接上 BEGIN
-  if (!_client) return; // DB 尚未初始化，保持 pending
+  // PG 模式：测试模式连接池为 max:1，直接在同一连接上 BEGIN。
+  //
+  // 连接池（`_client`/`_db`）是**首次 `getDb()` 时才懒创建**的，因此不能在这里
+  // 只看 `_client`：某个测试进程的「第一个触库用例」此时 `_client` 仍为 null，
+  // 若直接 `return` 就会让该用例**不进入事务**——它的写入自动提交、不被 preload
+  // 回滚（PGlite 模式不受影响，因为模板实例在启动期已同步就绪）。
+  //
+  // 后果是真实 PG 下出现与测试顺序无关的假失败：固定 fixture id 的重复主键
+  // （如 problems_pkey）以及随后用例的「current transaction is aborted」级联。
+  // 这里先显式初始化连接池，保证每个用例（含第一个）都在真实事务内执行。
+  if (!_client) {
+    if (!Deno.env.get("DATABASE_URL")) return; // 无外部库：保持 pending
+    getDb(); // 同步创建 _client/_db（幂等；pending 状态下不会返回事务代理）
+    if (!_client) return;
+  }
   const realDb = getDb();
   await realDb.execute(sql`BEGIN`);
   const proxy = createTestTransactionDb(realDb);
-  _savepointSeq = 0;
   _testTransactionState = {
     status: "active",
     db: proxy,

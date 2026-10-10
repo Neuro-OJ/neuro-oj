@@ -25,7 +25,11 @@ import {
   ConflictError,
 } from "../../../../shared/base/errors.ts";
 import { syncProblemTags, updateProblem } from "../../index.ts";
-import { applyAlgorithmTagVisibility, getProblem } from "../../index.ts";
+import {
+  applyAlgorithmTagVisibility,
+  getProblem,
+  getProblemDraft,
+} from "../../index.ts";
 import { createTag } from "../../index.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
@@ -396,11 +400,13 @@ Deno.test({
           "admin",
         ), BadRequestError);
       const unchanged = await getProblem(problemId);
-      assertEquals(unchanged.title, "OI 标签更新");
       assertEquals(
         unchanged.tags.map((tag) => tag.id).sort(),
         [topic.id, algorithm.id].sort(),
       );
+      // 内容字段（title）写共享草稿；题目投影只由发布服务更新（Handbook §2.2）
+      const draft = await getProblemDraft(problemId);
+      assertEquals(draft.content.title, "OI 标签更新");
       const cleared = await updateProblem(
         problemId,
         { tag_ids: [] },

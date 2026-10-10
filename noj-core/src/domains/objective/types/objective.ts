@@ -161,6 +161,88 @@ export interface ObjectiveSubmissionResponse {
   score: number | null;
   details: Record<string, QuestionJudgement>;
   created_at: string;
+
+  // ── 版本与有效性投影（tracking #53；命名与普通提交侧完全一致）────────────
+  /** 提交时版本 ID；`legacy_unknown` 的历史提交为 null。 */
+  submitted_version_id: string | null;
+  /** 提交时版本号（展示用）；未知历史版本为 null。 */
+  submitted_version: number | null;
+  /** 版本来源：`known`（提交时明确版本）/ `legacy_unknown`（迁移前未知）。 */
+  version_origin: "known" | "legacy_unknown";
+  /** 提交时版本是否仍是该套卷最新已发布版本。 */
+  is_latest: boolean;
+  /** 当前口径是否存在有效判定（投影结果，前端不得自行推断）。 */
+  is_valid: boolean;
+  /**
+   * 当前口径是否通过（客观题通过标准 = 满分）。
+   *
+   * **竞赛未结束前为 null**：与 `score` 同一防泄题口径——即时返回通过与否等于给
+   * 出"这套答案对不对"的预言机（审计 VULN-03）。
+   */
+  is_accepted: boolean | null;
+  /** 在途执行指针；无在途任务为 null。 */
+  active_attempt_id: string | null;
+  /** 最近一次终态执行指针。 */
+  latest_attempt_id: string | null;
+  /** 当前有效成绩指针（最高分候选）；无有效判定为 null。 */
+  effective_attempt_id: string | null;
+  /** 当前通过成绩指针（竞赛未结束时为 null，防泄题）。 */
+  accepted_attempt_id: string | null;
+  /** 由升级任务派生时指向来源提交（同题旧版）；否则为 null。 */
+  upgraded_from_id: string | null;
+  /**
+   * 全部执行历史（含 superseded 重测与平台错误），按 sequence 升序。
+   *
+   * 只含非敏感字段（无 output/details）；竞赛未结束时 `is_accepted` / `is_effective`
+   * 一律为 false，避免用相对分数探测答案。
+   */
+  attempts: ObjectiveAttemptView[];
+  /** 最近一次执行摘要（`latest_attempt_id` 所指）；无执行为 null。 */
+  latest_attempt: ObjectiveAttemptSummary | null;
+  /** 当前有效成绩摘要（`effective_attempt_id` 所指）；无有效判定为 null。 */
+  effective_attempt: ObjectiveAttemptSummary | null;
+}
+
+/**
+ * 客观题逐次执行历史条目（字段与普通提交侧 `SubmissionAttemptView` 同源，
+ * 便于前端零改动切换）。
+ */
+export interface ObjectiveAttemptView {
+  attempt_id: string;
+  sequence: number;
+  problem_version_id: string | null;
+  /** 版本号（展示用）；未知历史版本为 null。 */
+  version: number | null;
+  source: "initial" | "rejudge" | "upgrade" | "legacy_import";
+  state: "queued" | "judging" | "finished" | "error" | "superseded";
+  result_kind: "graded" | "platform_error" | null;
+  /** 展示用结果状态（finished / error / pending / judging）。 */
+  status: string;
+  /** ×100 整数；未终结为 0。 */
+  score: number;
+  time_ms: number | null;
+  memory_kb: number | null;
+  is_effective: boolean;
+  is_accepted: boolean;
+  is_latest: boolean;
+  created_at: string;
+  finished_at: string | null;
+}
+
+/** 最近执行 / 当前有效成绩的定位摘要（字段与 {@link ObjectiveAttemptView} 同源）。 */
+export interface ObjectiveAttemptSummary {
+  attempt_id: string;
+  sequence: number;
+  problem_version_id: string | null;
+  version: number | null;
+  state: ObjectiveAttemptView["state"];
+  result_kind: "graded" | "platform_error" | null;
+  status: string;
+  score: number;
+  time_ms: number | null;
+  memory_kb: number | null;
+  created_at: string;
+  finished_at: string | null;
 }
 
 /** 历史查询结果。 */

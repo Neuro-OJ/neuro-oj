@@ -93,6 +93,20 @@ export interface ObjectiveSubmission {
   score: number | null;
   details: Record<string, QuestionJudgement>;
   created_at: string;
+  // ── 版本与有效性（Handbook §4.1/§4.2：与普通提交同口径返回）──
+  // 均为可选：老响应缺失时前端不渲染对应徽标（优雅降级）。
+  /** 提交时版本 ID；迁移前历史提交为 null。 */
+  submitted_version_id?: string | null;
+  /** 提交时版本号（展示用）；未知历史版本为 null。 */
+  submitted_version?: number | null;
+  /** 版本来源：known / legacy_unknown。 */
+  version_origin?: string;
+  /** 是否为当前有效成绩（按套卷有效版本策略解析）。 */
+  is_valid?: boolean;
+  /** 是否为当前"通过"指针。 */
+  is_accepted?: boolean;
+  /** 由升级任务派生时指向源提交。 */
+  upgraded_from_id?: string | null;
 }
 
 export interface ObjectiveSubmissionList {

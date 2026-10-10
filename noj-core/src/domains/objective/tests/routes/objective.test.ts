@@ -248,8 +248,8 @@ Deno.test({
     assertEquals(qRes.status, 201);
     const q = (await qRes.json()).data;
 
-    // 非编辑者读取需要已发布版本：发布 V1 后再读
-    await publishPaper(app, paper.id, owner);
+    // 非编辑者读取需要已发布版本：发布 V1 后再读（提交必须显式携带该版本）
+    const v1Id = await publishPaper(app, paper.id, owner);
 
     // 用 display_id 读取小题列表
     const listRes = await jsonRequest(
@@ -268,7 +268,7 @@ Deno.test({
       {
         method: "POST",
         token: owner,
-        body: { answers: { [q.id]: ["B"] } },
+        body: { answers: { [q.id]: ["B"] }, version_id: v1Id },
       },
     );
     assertEquals(subRes.status, 201);
@@ -488,8 +488,8 @@ Deno.test({
     );
     const q1 = (await qRes.json()).data;
 
-    // 判卷事实源是**已发布版本**快照：发布 V1 后再提交
-    await publishPaper(app, paperId, owner);
+    // 判卷事实源是**已发布版本**快照：发布 V1 后再提交（提交显式携带版本）
+    const publishedVersionId = await publishPaper(app, paperId, owner);
 
     // 答对 → 满分
     const okRes = await jsonRequest(
@@ -498,7 +498,7 @@ Deno.test({
       {
         method: "POST",
         token: solver,
-        body: { answers: { [q1.id]: ["B"] } },
+        body: { answers: { [q1.id]: ["B"] }, version_id: publishedVersionId },
       },
     );
     assertEquals(okRes.status, 201);
@@ -514,7 +514,7 @@ Deno.test({
       {
         method: "POST",
         token: solver,
-        body: { answers: { [q1.id]: ["A"] } },
+        body: { answers: { [q1.id]: ["A"] }, version_id: publishedVersionId },
       },
     );
     assertEquals(badRes.status, 201);

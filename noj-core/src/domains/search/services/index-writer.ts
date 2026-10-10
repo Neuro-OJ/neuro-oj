@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
+import type { Executor } from "../../../shared/db/executor.ts";
 import { ROOT_USER_ID } from "../../../shared/base/constants.ts";
 import { unwrapFirstRow, unwrapRows } from "../../../shared/base/sql-rows.ts";
 import { searchEntries } from "../../../shared/db/schema.ts";
@@ -55,10 +56,16 @@ export async function deleteSearchEntry(
   );
 }
 
+/**
+ * 构造题目的搜索索引条目。
+ *
+ * @param db 可传入**事务执行器**：发布事务内需要把索引写入与版本提交原子化
+ *   （否则"已发布但索引永久缺失"，tracking #23）。
+ */
 export async function buildProblemEntry(
   id: string,
+  db: Executor = getDb(),
 ): Promise<SearchEntryInput | null> {
-  const db = getDb();
   const rows = await db.execute<{
     id: string;
     title: string;

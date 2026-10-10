@@ -544,8 +544,6 @@ fn main() -> Result<()> {
                             }
                         };
 
-                        if let Some(run_id) = &task.run_id { result.details["run_id"] = serde_json::json!(run_id); }
-
                         if task.submission_id.starts_with("st_") {
                             if let Some(run_id)=&task.run_id {
                                 use redis::AsyncCommands;
@@ -559,7 +557,24 @@ fn main() -> Result<()> {
                         // 版本化封套（协议 v2，Handbook §5.6）：回显 run_id（正式提交下
                         // = 评测尝试 ID）、题目版本与协议号，并显式标注判定类别。必须在
                         // 上面所有状态改写（取消标记）之后调用，result_kind 才不会失真。
+                        //
+                        // defect #28：协议字段**只**走可信结果封套（Handbook §5.5）。
+                        // 这里不再把 run_id 写进 evaluator 可控的 details——那是旧协议
+                        // 的兜底通道，core 一旦回退读取就等于把尝试归属交给评测脚本。
                         result.apply_protocol(&task);
+
+                        // defect #28：成功/失败/超时全部构造入口都在此处收敛，推送前
+                        // 复核封套完整性。缺失字段的结果会被 core 整体拒绝，提交将静默
+                        // 卡在 judging，因此必须留下可定位的 error 日志。
+                        let envelope_gaps = result.envelope_gaps();
+                        if !envelope_gaps.is_empty() {
+                            error!(
+                                submission_id = %task.submission_id,
+                                run_id = ?task.run_id,
+                                gaps = ?envelope_gaps,
+                                "评测结果封套不完整，core 将拒绝该结果（检查任务是否携带 attempt/version 标识）"
+                            );
+                        }
 
                         // 使用带重试的推送；成功后确认任务，崩溃/失败则留给 sweeper。
                         let push_succeeded = mq::push_result_with_retry(

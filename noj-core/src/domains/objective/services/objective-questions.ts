@@ -11,11 +11,12 @@
  *
  * 权限：套卷遵循 U 型规则（owner/admin 可管理小题）。
  */
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { getDb } from "./../../../shared/db/connection.ts";
-import { problems } from "./../../../shared/db/schema.ts";
+import { problems, problemVersions } from "./../../../shared/db/schema.ts";
 import {
+  AppError,
   BadRequestError,
   ForbiddenError,
   NotFoundError,
@@ -172,16 +173,20 @@ export function serializeQuestion(
 }
 
 /**
- * 读取套卷小题：编辑者读草稿（含答案），其他人读**默认作答版本**快照。
+ * 读取套卷小题：编辑者读草稿（含答案），其他人读**作答版本**快照。
  *
  * 已发布内容以版本快照为准（作答与历史查看不随草稿变化）；未发布套卷对
  * 非编辑者按 404 处理，与题目详情口径一致。
  *
+ * @param options.versionId 显式目标版本（竞赛固定版本 / 客户端携带的作答版本）；
+ *   缺省解析题库默认作答版本（`exact` → 要求版本、`any` → 最新版）。竞赛场景必须
+ *   传固定版本，否则会出现"展示最新版小题、判卷按固定版"。
  * @throws {NotFoundError} 套卷不存在或尚未发布（非编辑者）
  */
 export async function listPaperQuestions(
   paperId: string,
   includeAnswer: boolean,
+  options: { versionId?: string | null } = {},
 ): Promise<ObjectiveQuestionResponse[]> {
   const paper = await getPaperOrThrow(paperId);
   assertObjectivePaper(paper);
@@ -191,7 +196,7 @@ export async function listPaperQuestions(
       serializeQuestion(paper.id, question, true)
     );
   }
-  const version = await resolveProblemAnswerVersion(paper.id, paper);
+  const version = await resolveAnswerVersion(paper, options.versionId);
   if (!version) throw new NotFoundError("题目不存在");
   const questions = await listVersionQuestions(version.version_id);
   return questions.map((question) =>
@@ -200,11 +205,56 @@ export async function listPaperQuestions(
 }
 
 /**
+ * 解析作答版本：显式版本优先（必须属于该题且已发布），否则题库默认作答版本。
+ *
+ * 与提交路径 `resolveSubmissionVersion` 口径一致：竞赛固定版本由调用方（catalog
+ * 路由经 `verifyContestAccess`）解析后作为显式版本传入，objective 域不反向依赖
+ * contest 域的业务规则。
+ */
+async function resolveAnswerVersion(
+  paper: PaperRow,
+  requestedVersionId?: string | null,
+): Promise<
+  { version_id: string; version: number } | null
+> {
+  const requested = requestedVersionId?.trim() || null;
+  if (requested) {
+    const db = getDb();
+    const [row] = await db.select({
+      id: problemVersions.id,
+      version: problemVersions.version,
+    }).from(problemVersions).where(
+      and(
+        eq(problemVersions.problem_id, paper.id),
+        eq(problemVersions.id, requested),
+      ),
+    ).limit(1);
+    if (!row) {
+      // 与提交路径同一错误码：客户端据此提示"版本不存在/未发布"
+      throw new AppError(
+        `题目版本不存在或未发布：${requested}`,
+        404,
+        "PROBLEM_VERSION_NOT_FOUND",
+      );
+    }
+    return { version_id: row.id, version: row.version };
+  }
+  const fallback = await resolveProblemAnswerVersion(paper.id, paper);
+  if (!fallback) return null;
+  return { version_id: fallback.version_id, version: fallback.version };
+}
+
+/**
  * 获取套卷小题列表（带统一访问判定）。
  *
  * 供 catalog 路由在 `?contest_id=` 场景下使用：竞赛上下文由 contest 域
  * `verifyContestAccess` 校验后传入 `resolveProblemAccess`，避免 catalog 域
  * 反向依赖 contest 域（域边界约束）。
+ *
+ * 版本绑定（Handbook §2.6/§6.4）：
+ * - 编辑者读**共享草稿**（编辑不看成答版本）；
+ * - 竞赛场景使用 `contestAccess.pinnedVersionId`（**竞赛固定版本**）；
+ * - 题库作答按 `versionId` 显式指定，缺省走默认作答版本。
  */
 export async function listPaperQuestionsWithAccess(
   paperId: string,
@@ -212,11 +262,17 @@ export async function listPaperQuestionsWithAccess(
     viewerId: string | null;
     isAdmin: boolean;
     contestId?: string | null;
+    /** 客户端携带的作答版本（题库显式选择）。 */
+    versionId?: string | null;
     userId?: string;
     userRole?: string;
     c?: Context;
   },
-): Promise<ObjectiveQuestionResponse[]> {
+): Promise<{
+  questions: ObjectiveQuestionResponse[];
+  version_id: string | null;
+  version: number | null;
+}> {
   const paper = await getPaperOrThrow(paperId);
   assertObjectivePaper(paper);
 
@@ -238,5 +294,20 @@ export async function listPaperQuestionsWithAccess(
     options.userRole,
     options.c,
   );
-  return listPaperQuestions(paper.id, includeAnswer);
+  // 竞赛 > 显式版本 > 默认作答版本：竞赛固定版本不可被客户端参数覆盖。
+  const effectiveVersionId = contestAccess?.allowed
+    ? (contestAccess.pinnedVersionId ?? null)
+    : (options.versionId?.trim() || null);
+  const questions = await listPaperQuestions(paper.id, includeAnswer, {
+    versionId: effectiveVersionId,
+  });
+  // 回传实际展示的版本：客户端据此提交同一版本（竞赛里不匹配将 409）。
+  const version = includeAnswer
+    ? null
+    : await resolveAnswerVersion(paper, effectiveVersionId);
+  return {
+    questions,
+    version_id: version?.version_id ?? null,
+    version: version?.version ?? null,
+  };
 }

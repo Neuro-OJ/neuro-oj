@@ -32,6 +32,7 @@ use crate::dual::protocol::{
 };
 use crate::dual::tracker::{InFlightTracker, WaitingSide};
 mod pipe;
+mod result;
 
 #[cfg(test)]
 mod tests;
@@ -852,13 +853,13 @@ async fn run_dual_loop(
         // payload 是 `---RESULT---` 后第一行 JSON
         let parsed: serde_json::Value =
             serde_json::from_str(payload).context("---RESULT--- JSON 解析失败")?;
-        return Ok(build_judge_result(
+        return result::build_judge_result(
             submission_id,
             &parsed,
             &eval_stderr_buf,
             &eval_stdout_full,
             rejudge_seq,
-        ));
+        );
     }
 
     // 已见 RESULT 标记但 payload 行未以换行结束（EOF 残留）时，
@@ -869,13 +870,13 @@ async fn run_dual_loop(
     if let Some(payload) = result_payload.as_deref().filter(|p| !p.is_empty()) {
         let parsed: serde_json::Value =
             serde_json::from_str(payload).context("---RESULT--- JSON 解析失败")?;
-        return Ok(build_judge_result(
+        return result::build_judge_result(
             submission_id,
             &parsed,
             &eval_stderr_buf,
             &eval_stdout_full,
             rejudge_seq,
-        ));
+        );
     }
 
     // 未拿到 RESULT 标记
@@ -1082,50 +1083,6 @@ async fn handle_sol_chunk(
         }
     }
     Ok(true)
-}
-
-fn build_judge_result(
-    submission_id: &str,
-    parsed: &serde_json::Value,
-    stderr: &str,
-    stdout: &str,
-    rejudge_seq: Option<i64>,
-) -> JudgeResult {
-    let full_output = crate::merge_output(stdout, stderr);
-    // evaluate.py 结果 JSON 不再输出 status；即使携带旧 status 也统一映射为
-    // finished / error，分数是唯一结果。
-    let raw_status = parsed.get("status").and_then(Value::as_str);
-    let status = match raw_status {
-        Some(
-            "error" | "SystemError" | "TimeLimitExceeded" | "MemoryLimitExceeded" | "RuntimeError",
-        ) => "error",
-        _ => "finished",
-    }
-    .to_string();
-    let score = parsed
-        .get("score")
-        .and_then(Value::as_i64)
-        .unwrap_or(0)
-        .clamp(0, 10_000) as i32;
-    let details = parsed.get("details").cloned().unwrap_or(Value::Null);
-
-    JudgeResult {
-        submission_id: submission_id.to_string(),
-        status,
-        score,
-        output: full_output,
-        details,
-        time_ms: None,
-        memory_kb: None,
-        // NOJ-161：成功路径必须透传任务 rejudge_seq。
-        rejudge_seq,
-        // 版本化封套由 main.rs 在状态最终确定后统一补齐（apply_protocol）。
-        run_id: None,
-        attempt_id: None,
-        problem_version_id: None,
-        evaluation_protocol_version: None,
-        result_kind: None,
-    }
 }
 
 /// 集成测试辅助（tests/ 目录 E2E 使用，复用真实转发逻辑）。

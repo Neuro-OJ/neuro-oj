@@ -285,6 +285,180 @@ Deno.test({
 });
 
 Deno.test({
+  name: "sweeper: LLM 题缺执行快照 → 平台错误，不静默降级为无 LLM（#9）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const { problemId, versionId, userId } = await seedProblem(
+      "llm-missing",
+      95400 + (ts % 500),
+      {
+        kind: "ai",
+        title: "恢复测试题 llm-missing",
+        description: "d",
+        samples: [],
+        submission_mode: "code",
+        runtime_config: versionConfig,
+        template_content: "",
+        artifact_max_size_mb: null,
+        llm_config: { provider_id: "cfg-prov", model: "cfg-model" },
+      },
+    );
+    const submissionId = `tst-sweep-sub-llm-miss-${ts}`;
+    const attemptId = `tst-sweep-att-llm-miss-${ts}`;
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      status: "pending",
+      language: "python3",
+      code: "print('llm')",
+      submitted_version_id: versionId,
+      version_origin: "known",
+      created_at: oldNow,
+    });
+    await db.insert(evaluationAttempts).values({
+      id: attemptId,
+      submission_id: submissionId,
+      problem_id: problemId,
+      problem_version_id: versionId,
+      sequence: 0,
+      source: "initial",
+      state: "queued",
+      // 只有运行配置，**没有** llm_execution：Provider/模型/预算未固定
+      task_snapshot: { runtime_config: versionConfig },
+      created_at: oldNow,
+    });
+    await db.update(submissions).set({ active_attempt_id: attemptId })
+      .where(eq(submissions.id, submissionId));
+
+    const messages = await recoverAndReadMessages();
+    // 绝不静默改成"无 LLM 执行"：不入队任何任务
+    assertEquals(
+      messages.find((m) => m.submission_id === submissionId),
+      undefined,
+    );
+
+    const [attempt] = await db.select().from(evaluationAttempts).where(
+      eq(evaluationAttempts.id, attemptId),
+    );
+    assertEquals(attempt.state, "error");
+    assertEquals(attempt.result_kind, "platform_error");
+    assertEquals(attempt.result_status, "RECOVERY_FAILED");
+
+    const [row] = await db.select().from(submissions).where(
+      eq(submissions.id, submissionId),
+    );
+    assertEquals(row.status, "error");
+    assertEquals(row.active_attempt_id, null);
+  },
+});
+
+Deno.test({
+  name: "sweeper: LLM 题按冻结快照恢复 Provider/模型与预算（#9）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const { problemId, versionId, userId } = await seedProblem(
+      "llm-frozen",
+      95500 + (ts % 500),
+      {
+        kind: "ai",
+        title: "恢复测试题 llm-frozen",
+        description: "d",
+        samples: [],
+        submission_mode: "code",
+        runtime_config: versionConfig,
+        template_content: "",
+        artifact_max_size_mb: null,
+        llm_config: { provider_id: "cfg-prov", model: "cfg-model" },
+      },
+    );
+    const submissionId = `tst-sweep-sub-llm-frozen-${ts}`;
+    const attemptId = `tst-sweep-att-llm-frozen-${ts}`;
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      status: "pending",
+      language: "python3",
+      code: "print('llm')",
+      submitted_version_id: versionId,
+      version_origin: "known",
+      created_at: oldNow,
+    });
+    await db.insert(evaluationAttempts).values({
+      id: attemptId,
+      submission_id: submissionId,
+      problem_id: problemId,
+      problem_version_id: versionId,
+      sequence: 0,
+      source: "initial",
+      state: "queued",
+      task_snapshot: {
+        language: "python3",
+        problem_version_id: versionId,
+        runtime_config: versionConfig,
+        llm_execution: {
+          provider_id: "snap-prov",
+          model: "snap-model",
+          max_calls: 7,
+          max_tokens: 12345,
+        },
+      },
+      created_at: oldNow,
+    });
+    await db.update(submissions).set({ active_attempt_id: attemptId })
+      .where(eq(submissions.id, submissionId));
+
+    const prevToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN") ?? null;
+    const prevGateway = Deno.env.get("NOJ_LLM_GATEWAY_URL") ?? null;
+    const originalFetch = globalThis.fetch;
+    Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "test-service-token-0123456789");
+    Deno.env.set("NOJ_LLM_GATEWAY_URL", "http://llm-gateway.test");
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/internal/providers/")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: {
+                id: "snap-prov",
+                name: "snap",
+                base_url: "http://provider.test",
+                cost_per_1k_tokens: 0,
+                api_key_masked: "sk-****",
+                enabled: true,
+                created_at: now,
+                updated_at: now,
+              },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+        );
+      }
+      return originalFetch(input as RequestInfo, init);
+    }) as typeof fetch;
+
+    try {
+      const messages = await recoverAndReadMessages();
+      const task = messages.find((m) => m.submission_id === submissionId);
+      assertEquals(task !== undefined, true, "LLM 题必须按快照恢复入队");
+      const llm = task!.llm as Record<string, unknown>;
+      assertEquals(llm.provider_id, "snap-prov");
+      assertEquals(llm.allowed_models, ["snap-model"]);
+      assertEquals(typeof llm.eval_token, "string");
+      assertEquals((llm.eval_token as string).length > 0, true);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (prevToken === null) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
+      else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", prevToken);
+      if (prevGateway === null) Deno.env.delete("NOJ_LLM_GATEWAY_URL");
+      else Deno.env.set("NOJ_LLM_GATEWAY_URL", prevGateway);
+    }
+  },
+});
+
+Deno.test({
   name: "sweeper: 无尝试的 pending 行拒绝猜测最新版并标记错误",
   sanitizeResources: false,
   sanitizeOps: false,
@@ -318,7 +492,9 @@ Deno.test({
     const messages = await recoverAndReadMessages();
     const task = messages.find((m) => m.submission_id === submissionId);
     assertEquals(task, undefined);
-    const [row] = await db.select().from(submissions).where(eq(submissions.id, submissionId));
+    const [row] = await db.select().from(submissions).where(
+      eq(submissions.id, submissionId),
+    );
     assertEquals(row.status, "error");
   },
 });

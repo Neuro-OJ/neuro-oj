@@ -286,9 +286,12 @@ export async function createSelfTest(
   } catch (mqErr) {
     logger.error("自测任务推送失败", { self_test_id: id, err: mqErr });
     if (!isRetryableJudgeQueueError(mqErr)) {
+      // 永久错误（消息超限 / 队列布局需协调升级）：立刻终态，并保留**具体原因码**，
+      // 不能被泛化的 PLATFORM_ERROR 覆盖（capacity/network 仍保留 pending 等下轮）。
       await db.update(selfTests)
         .set({
           status: "error",
+          result_status: "DISPATCH_FAILED",
           judge_finished_at: new Date().toISOString(),
         })
         .where(eq(selfTests.id, id));

@@ -47,7 +47,10 @@ import { isOiRuntimeConfig } from "./../../../catalog/index.ts";
 import type { SubmissionResponse } from "./submissions-types.ts";
 import { createAttempt } from "../versioning/attempts.ts";
 import { applyAttemptResult } from "../versioning/result-write.ts";
-import { lockProjectionHosts } from "../versioning/projection.ts";
+import {
+  bumpSubmissionCountRevisions,
+  lockProjectionHosts,
+} from "../versioning/projection.ts";
 import {
   executionSnapshot,
   versionSupportPackageDownload,
@@ -390,6 +393,11 @@ export async function createArtifactSubmission(
           submission_mode: "artifact",
         },
         createdBy: userId,
+      });
+      // 新提交改变实际提交计数：同一事务递增题目/竞赛/global revision（§3.5）。
+      await bumpSubmissionCountRevisions(tx, {
+        problem_id: input.problem_id,
+        contest_id: resolvedContestId,
       });
     });
   } catch (err) {

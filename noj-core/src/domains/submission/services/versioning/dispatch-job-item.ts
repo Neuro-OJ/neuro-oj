@@ -29,12 +29,13 @@ import type { LlmConfig } from "../../../catalog/index.ts";
 import type { ProblemContentV1 } from "../../../catalog/index.ts";
 import { buildJudgeTaskLlm } from "../../../gateway/index.ts";
 import type { FrozenLlmExecution } from "../../../gateway/index.ts";
-import { pushJudgeTask } from "../../mq/producer.ts";
+import { classifyJudgeQueueError, pushJudgeTask } from "../../mq/producer.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
 import { ensureJobAttempt } from "./job-attempt.ts";
 import { assertUpgradeAccess } from "./upgrade-access.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import {
+  assertExecutionPreflight,
   executionSnapshot,
   versionSupportPackageDownload,
 } from "./version-execution.ts";
@@ -46,6 +47,7 @@ import {
   renewJobItemLease,
   requeueJobItem,
   scheduleDispatchRetryOrFail,
+  startJobItemLeaseHeartbeat,
 } from "./job-worker.ts";
 import { loadPublishedVersionContent } from "./submission-version.ts";
 import { refreshJobStatus } from "./rejudge-jobs.ts";
@@ -129,15 +131,6 @@ async function loadSource(
 /** 升级上下文：`source_contest` 时新提交仍需留在原竞赛内（与受理侧同名词区分）。 */
 export type JobUpgradeContext = "practice" | "source_contest";
 
-/** 目标版本是否接受该语言的源码提交（OI/dual 一致口径）。 */
-function languageAccepted(
-  content: ProblemContentV1,
-  language: string,
-): boolean {
-  if (content.kind !== "oi") return true;
-  return content.runtime_config.languages.includes(language as "c" | "cc");
-}
-
 /**
  * 派发单个已领取条目。
  *
@@ -150,6 +143,23 @@ export async function dispatchJobItem(
   upgradeContext: JobUpgradeContext = "practice",
 ): Promise<DispatchOutcome> {
   if (!await renewJobItemLease(item.id, owner)) return "deferred";
+  // §5.7「执行期间续租」：单次派发含支持包下载、LLM token 签发与 MQ 推送等长 IO，
+  // 仅在开始时续租一次会让 lease 中途过期，另一个 worker 遂重复领取同一条目。
+  const heartbeat = startJobItemLeaseHeartbeat(item.id, owner);
+  try {
+    return await dispatchClaimedJobItem(item, owner, jobKind, upgradeContext);
+  } finally {
+    heartbeat.stop();
+  }
+}
+
+/** 派发主体（调用方已持有有效 lease 并启动续租心跳）。 */
+async function dispatchClaimedJobItem(
+  item: ClaimedJobItem,
+  owner: string,
+  jobKind: "rejudge" | "upgrade",
+  upgradeContext: JobUpgradeContext,
+): Promise<DispatchOutcome> {
   const source = await loadSource(item);
   if (!source) {
     await completeJobItem(item.id, {
@@ -283,17 +293,8 @@ export async function dispatchJobItem(
     return "failed";
   }
 
-  // 语言与交付物复检
-  if (!languageAccepted(content, source.language)) {
-    await completeJobItem(item.id, {
-      leaseOwner: owner,
-      status: "failed",
-      reasonCode: "LANGUAGE_NOT_SUPPORTED",
-      reasonMessage: `原语言 ${source.language} 不在目标版本允许列表`,
-    });
-    return "failed";
-  }
-
+  // 交付物存在性复检：对象可能已被清理，属永久失败，保留历史判定
+  let artifactByteSize: number | null = null;
   if (source.artifact_storage_url) {
     const storage = await getStorageProvider();
     const stat = await storage.stat(source.artifact_storage_url);
@@ -306,21 +307,34 @@ export async function dispatchJobItem(
       });
       return "failed";
     }
-    const limitMb = content.kind === "ai" ? content.artifact_max_size_mb : null;
-    if (
-      limitMb !== null && limitMb !== undefined && stat.sizeBytes !== null &&
-      stat.sizeBytes > limitMb * 1024 * 1024
-    ) {
-      await completeJobItem(item.id, {
-        leaseOwner: owner,
-        status: "failed",
-        reasonCode: "ARTIFACT_TOO_LARGE_FOR_VERSION",
-        reasonMessage:
-          `原产物 ${stat.sizeBytes} 字节超过目标版本上限 ${limitMb}MB`,
-      });
-      return "failed";
-    }
+    artifactByteSize = stat.sizeBytes;
     // 下载地址在派发阶段重新签发（重派允许换凭据，但不改目标版本）
+  }
+
+  // 执行前预检（#33、§7、§5.4 第 1 步）：**提交模式/语言被目标版本接受、
+  // 平台镜像仍在当前白名单、资源上限、版本级产物大小上限**统一复用
+  // `assertExecutionPreflight`，与初次提交同一套校验。必须在**创建尝试之前**
+  // 完成——预检失败属永久失败（带稳定原因码），不得留下无消息的活动尝试，
+  // 也不得静默降级执行（如换镜像/去掉 LLM）。
+  try {
+    await assertExecutionPreflight(content, {
+      language: source.language,
+      submissionMode: source.artifact_storage_url ? "artifact" : "code",
+      artifactMaxSizeMb: content.kind === "ai"
+        ? content.artifact_max_size_mb
+        : null,
+      artifactByteSize,
+    });
+  } catch (err) {
+    await completeJobItem(item.id, {
+      leaseOwner: owner,
+      status: "failed",
+      reasonCode: err instanceof AppError
+        ? err.code
+        : "PLATFORM_PREFLIGHT_FAILED",
+      reasonMessage: err instanceof Error ? err.message : String(err),
+    });
+    return "failed";
   }
 
   // 升级：先在目标版本上创建**新提交**（沿用原用户、记录升级来源、使用当前时间），
@@ -463,10 +477,23 @@ async function dispatchJudgeAttempt(input: {
   try {
     await pushJudgeTask(task);
   } catch (err) {
-    if (err instanceof Error && err.message.includes("评测队列已满")) {
-      // 容量不足属"稍后重试"，不计失败（退避计数不动）
+    // §5.7：容量不足属"稍后重试"（不计失败、不退避）；网络失败按 1/2/4/8/16
+    // 秒指数退避；永久错误（消息过大、队列布局需协调升级）重试不可能成功，
+    // 必须立即终结条目并统一终结已创建的在途尝试（保留历史判定）。
+    const queueErrorKind = classifyJudgeQueueError(err);
+    if (queueErrorKind === "capacity") {
       await requeueJobItem(item.id, 5, owner);
       return "deferred";
+    }
+    if (queueErrorKind === "permanent") {
+      await completeJobItem(item.id, {
+        leaseOwner: owner,
+        status: "failed",
+        attemptId: attempt.id,
+        reasonCode: "DISPATCH_PERMANENT_FAILURE",
+        reasonMessage: err instanceof Error ? err.message : String(err),
+      });
+      return "failed";
     }
     await scheduleDispatchRetryOrFail(item.id, {
       leaseOwner: owner,

@@ -175,7 +175,9 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
   if (input.file_name !== undefined) task.file_name = input.file_name;
   if (input.run_id !== undefined) {
     task.run_id = input.run_id;
-    if (!input.submission_id.startsWith("st_")) task.attempt_id = input.attempt_id ?? input.run_id;
+    if (!input.submission_id.startsWith("st_")) {
+      task.attempt_id = input.attempt_id ?? input.run_id;
+    }
   }
   if (input.problem_version_id !== undefined) {
     task.problem_version_id = input.problem_version_id;

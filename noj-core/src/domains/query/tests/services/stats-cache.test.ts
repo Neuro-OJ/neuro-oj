@@ -22,7 +22,10 @@ import {
   evaluationAttempts,
   problems,
   submissions,
+  submissionVersionResults,
 } from "../../../../shared/db/schema.ts";
+import { recomputeSubmissionProjection } from "../../../submission/index.ts";
+import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 
 const now = new Date().toISOString();
 
@@ -215,6 +218,67 @@ Deno.test({
     const after = await getCachedTotalStats();
     assertEquals(after.total, 1);
     assertEquals(after.full_score, 0);
+  },
+});
+
+Deno.test({
+  name:
+    "stats-cache(#48): 投影写入（判定替换）确实递增 global revision，缓存立即换键",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    _resetStatsCacheForTest();
+    await seedProblem("sc-p4", 989004);
+    // 提交先落库（未投影）：分版本当前判定存在，但提交行还没算有效成绩
+    await seedSubmission({
+      id: "sc-s7",
+      problemId: "sc-p4",
+      attemptId: null,
+      is_valid: false,
+    });
+    await seedAttempt({
+      id: "sc-a5",
+      submissionId: "sc-s7",
+      problemId: "sc-p4",
+      score: 10000,
+    });
+    await getDb().insert(submissionVersionResults).values({
+      id: "sc-svr1",
+      submission_id: "sc-s7",
+      problem_id: "sc-p4",
+      problem_version_id: null,
+      current_attempt_id: "sc-a5",
+      updated_at: now,
+    });
+
+    const revisionOf = async (): Promise<number> => {
+      const result = await getDb().execute(
+        sql`SELECT data_revision FROM query_projection_revisions WHERE scope_key = 'global'`,
+      );
+      const rows = unwrapRows<{ data_revision: number }>(result as never);
+      return Number(rows[0]?.data_revision ?? 0);
+    };
+
+    // 先缓存旧口径（0 满分），确认缓存键已写入
+    applyNewResult();
+    assertEquals((await getCachedTotalStats()).full_score, 0);
+    const before = await revisionOf();
+
+    // 唯一投影写入入口：算有效成绩并**递增 global revision**（Handbook §3.5）
+    await recomputeSubmissionProjection(getDb(), {
+      kind: "submission",
+      id: "sc-s7",
+      problem_id: "sc-p4",
+      contest_id: null,
+    });
+
+    const after = await revisionOf();
+    assertEquals(after, before + 1, "投影写入必须递增 global data_revision");
+    // 缓存键含 revision：无需 TTL 到期即可读到新口径
+    const stats = await getCachedTotalStats();
+    assertEquals(stats.total, 1);
+    assertEquals(stats.full_score, 1);
   },
 });
 

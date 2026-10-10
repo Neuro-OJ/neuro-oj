@@ -55,6 +55,18 @@ export interface SanitizedJudgeResult {
   adjustments: string[];
 }
 
+/**
+ * 合法正式评分：×100 整数，范围 `0..FULL_SCORE`（Handbook §2.1）。
+ *
+ * 缺字段、字符串、`NaN`、非整数、负数、越界都**不是**合法评分。core 不能把它们
+ * 静默改写成正式 0/满分——那会用一条假判定替换已有正式成绩
+ * （tracking #29）。判定入口必须先用本函数校验，非法时按平台错误处理。
+ */
+export function isValidGradedScore(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 &&
+    value <= FULL_SCORE;
+}
+
 /** 把任意值收窄为非负有限整数；不合法时返回 null。 */
 function toNonNegativeIntOrNull(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
@@ -77,16 +89,16 @@ export function sanitizeJudgeResult(result: JudgeResult): SanitizedJudgeResult {
     safe.status = "error";
   }
 
-  // ── score：整数 + 0..FULL_SCORE clamp ──
-  if (typeof safe.score !== "number" || !Number.isFinite(safe.score)) {
-    adjustments.push(`score ${JSON.stringify(safe.score)} → 0`);
-    safe.score = 0;
-  } else {
-    const clamped = Math.min(Math.max(Math.round(safe.score), 0), FULL_SCORE);
-    if (clamped !== safe.score) {
-      adjustments.push(`score ${safe.score} → ${clamped}`);
-      safe.score = clamped;
-    }
+  // ── score：只报告非法，**绝不伪造** ──
+  // 这里刻意不做 clamp/置 0：`score` 非法属于平台错误，必须由调用方
+  // （`saveEvaluationResult`）整体降级为 `platform_error`，从而保留已有正式判定。
+  // 若在此处改成 0 或 FULL_SCORE，脏结果会以"正式 0 分/满分"落库并替换历史成绩。
+  if (!isValidGradedScore(safe.score)) {
+    adjustments.push(
+      `score ${
+        JSON.stringify(safe.score)
+      } 非法（要求 0..${FULL_SCORE} 的整数），保留原值由调用方判定`,
+    );
   }
 
   // ── output：类型 + 字节上限 ──

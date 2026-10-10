@@ -95,6 +95,63 @@ export interface SubmissionVersionResultView {
   is_accepted: boolean;
 }
 
+/**
+ * 一次评测尝试的读模型（Handbook §2.8、§6.8）。
+ *
+ * 与 `SubmissionVersionResultView` 的区别：后者只含「当前正式判定」的
+ * 每版本聚合，本类型是**逐次执行**的完整历史（含 queued/judging/superseded、
+ * 平台错误与已被替换的重测）。
+ *
+ * 不含 `output` / `details`：尝试历史面向所有可见者，敏感内容仍只走
+ * `result`（经 `applySubmissionProjection` 统一裁剪）。
+ */
+export interface SubmissionAttemptView {
+  /** 尝试 ID（正式评测的 `run_id`）。 */
+  attempt_id: string;
+  /** 同一提交内递增的尝试序号。 */
+  sequence: number;
+  /** 本次执行使用的题目版本；迁移历史尝试为 null。 */
+  problem_version_id: string | null;
+  /** 版本号（展示用）；未知历史版本为 null。 */
+  version: number | null;
+  /** 尝试来源：初次 / 重测 / 升级 / 迁移导入。 */
+  source: "initial" | "rejudge" | "upgrade" | "legacy_import";
+  /** 尝试状态机：queued / judging / finished / error / superseded。 */
+  state: "queued" | "judging" | "finished" | "error" | "superseded";
+  /** 判定类别：正式判定 / 平台错误；未终结为 null。 */
+  result_kind: "graded" | "platform_error" | null;
+  /** 展示用结果状态，与 `result.status` 同口径（finished / error / pending / judging）。 */
+  status: string;
+  /** ×100 整数；未终结为 0。 */
+  score: number;
+  time_ms: number | null;
+  memory_kb: number | null;
+  /** 是否为当前有效成绩指针（与投影一致，前端不得自行推断）。 */
+  is_effective: boolean;
+  /** 是否为当前"通过"成绩指针。 */
+  is_accepted: boolean;
+  /** 是否为最近一次执行（提交的 `latest_attempt_id` 所指）。 */
+  is_latest: boolean;
+  created_at: string;
+  finished_at: string | null;
+}
+
+/** 最近一次执行 / 当前有效成绩的定位摘要（字段与 {@link SubmissionAttemptView} 同源）。 */
+export interface SubmissionAttemptSummary {
+  attempt_id: string;
+  sequence: number;
+  problem_version_id: string | null;
+  version: number | null;
+  state: SubmissionAttemptView["state"];
+  result_kind: "graded" | "platform_error" | null;
+  status: string;
+  score: number;
+  time_ms: number | null;
+  memory_kb: number | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
 export interface SubmissionDetail {
   progress?: import("../oi-progress.ts").OiProgress | null;
   id: string;
@@ -136,12 +193,26 @@ export interface SubmissionDetail {
   version_origin: string;
   /** 提交时版本号（展示用）；未知历史版本为 null。 */
   submitted_version: number | null;
+  /** 提交时版本是否仍是该题最新已发布版本（tracking #53）。 */
+  is_latest: boolean;
   /** 由升级任务派生时指向源提交（同题旧版）；普通提交为 null。 */
   upgraded_from_id: string | null;
   /** 题目作用域的有效版本策略——各版本判定的选择依据（竞赛另有独立策略）。 */
   effective_version_policy: EffectiveVersionPolicy;
   /** 各版本当前正式判定；无版本化判定时为 null（与 `result` 同源展示）。 */
   version_results: SubmissionVersionResultView[] | null;
+  /** 全部执行历史（含被 superseded 的重测与平台错误），按 sequence 升序。 */
+  attempts: SubmissionAttemptView[];
+  /** 最近一次执行（提交的 `latest_attempt_id`），无执行历史时为 null。 */
+  latest_attempt: SubmissionAttemptSummary | null;
+  /** 当前有效成绩指针所指的执行（`effective_attempt_id`），无有效成绩时为 null。 */
+  effective_attempt: SubmissionAttemptSummary | null;
+  /** 最近一次执行 ID；与 `latest_attempt.attempt_id` 一致。 */
+  latest_attempt_id: string | null;
+  /** 当前有效成绩指针 ID。 */
+  effective_attempt_id: string | null;
+  /** 当前通过成绩指针 ID。 */
+  accepted_attempt_id: string | null;
 }
 
 /**

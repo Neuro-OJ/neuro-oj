@@ -30,7 +30,9 @@ import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
 import {
   getJudgeBackend,
   getSubmissionLanguages,
+  type ProblemContentV1,
   type ProblemRuntimeConfig,
+  projectProblemContent,
 } from "../../catalog/index.ts";
 import { findContestRow } from "./contest-row.ts";
 import { normalizeContestTime } from "./contest-window.ts";
@@ -1005,6 +1007,9 @@ export async function getContestProblems(
       cp.score,
       cp.pinned_version_id,
       pv.version AS pinned_version_number,
+      -- 题面与派生字段一律以**固定版本的版本内容**为准（缺陷 #2）：
+      -- 读 problems 投影会得到"最新版"题面，出现"版本号 V1、内容 V2"的不一致
+      pv.content AS pinned_content,
       cp.effective_version_mode,
       cp.required_version_id,
       cp.effective_policy_revision,
@@ -1046,21 +1051,85 @@ export async function getContestProblems(
     ORDER BY cp.sort_order ASC, cp.label ASC
   `);
 
-  return unwrapRows<Record<string, unknown>>(rows as never).map((row) => ({
+  return unwrapRows<Record<string, unknown>>(rows as never).map(
+    toContestProblemResponse,
+  );
+}
+
+/**
+ * 竞赛题目行 → 响应对象。
+ *
+ * **内容字段必须以竞赛固定版本（`contest_problems.pinned_version_id`）为准**
+ * （Handbook §2.6/§4.1，缺陷 #2）：
+ *
+ * - 修复前 `title`/`description`/`judge_type`/`submission_mode`/支持语言/评测后端
+ *   均取 `problems` 投影（即"最新版"口径）。竞赛固定 V1、题库已发布 V2 时，
+ *   竞赛页展示 V2 题面却按 V1 判卷；
+ * - 派生字段（`supported_languages`、`judge_backend`）同样由该版本内容计算，
+ *   避免"版本号说 V1、语言/后端却是 V2"；
+ * - 难度、可见性、所有权、`display_id` 属于题目**管理信息**，沿用题目身份值。
+ *
+ * 非编辑者视角（`projectProblemContent(content, false)`）：不下发
+ * `runtime_config` / `llm_config`，与竞赛题目响应既有形态一致（竞赛响应本就不含
+ * 评测配置）。固定版本内容缺失（数据损坏）时退回题目投影，保证列表不 500。
+ */
+function toContestProblemResponse(
+  row: Record<string, unknown>,
+): ContestProblemResponse {
+  const versionFields = row.pinned_content === null ||
+      row.pinned_content === undefined
+    ? null
+    : projectProblemContent(row.pinned_content as ProblemContentV1, false);
+
+  // 无版本内容时的兜底口径：题目投影（仅数据损坏时走到）
+  const fallbackJudgeType = row.judge_type === "oi" ? "oi" : "dual";
+  const fallbackConfig = row.runtime_config as ProblemRuntimeConfig | null;
+
+  const judgeType: "dual" | "oi" = versionFields?.["judge_type"] === "oi" ||
+      versionFields?.["judge_type"] === "dual"
+    ? versionFields["judge_type"]
+    : fallbackJudgeType;
+  const isObjective = typeof versionFields?.["is_objective"] === "boolean"
+    ? versionFields["is_objective"]
+    : row.is_objective === true;
+  const judgeBackend = versionFields !== null &&
+      "judge_backend" in versionFields
+    ? versionFields["judge_backend"] as ContestProblemResponse["judge_backend"]
+    : getJudgeBackend(fallbackJudgeType, fallbackConfig, isObjective);
+  const supportedLanguages = versionFields !== null &&
+      Array.isArray(versionFields["supported_languages"])
+    ? versionFields["supported_languages"] as string[]
+    : getSubmissionLanguages(fallbackJudgeType, fallbackConfig);
+  const submissionMode = versionFields?.["submission_mode"] === "artifact" ||
+      versionFields?.["submission_mode"] === "code"
+    ? versionFields["submission_mode"]
+    : row.submission_mode as ContestProblemResponse["submission_mode"];
+  // 注意区分"版本内容显式声明 null"与"版本内容缺失"：前者表示该版本无产物上限，
+  // 不能回退到题目投影里的其他版本取值
+  const artifactMaxSizeMb = versionFields !== null &&
+      "artifact_max_size_mb" in versionFields
+    ? versionFields["artifact_max_size_mb"] as number | null
+    : row.artifact_max_size_mb === null ||
+        row.artifact_max_size_mb === undefined
+    ? null
+    : Number(row.artifact_max_size_mb);
+
+  return {
     problem_id: row.problem_id as string,
     sort_order: Number(row.sort_order),
     label: row.label as string,
     score: Number(row.score),
-    title: row.title as string,
-    description: row.description as string,
+    title: typeof versionFields?.["title"] === "string"
+      ? versionFields["title"]
+      : row.title as string,
+    description: typeof versionFields?.["description"] === "string"
+      ? versionFields["description"]
+      : row.description as string,
+    // 难度 / 可见性 / display_id 属于题目管理信息，沿用题目身份值
     difficulty: row.difficulty as string,
-    judge_type: row.judge_type === "oi" ? "oi" : "dual",
-    is_objective: row.is_objective === true,
-    judge_backend: getJudgeBackend(
-      row.judge_type as string,
-      row.runtime_config,
-      row.is_objective === true,
-    ),
+    judge_type: judgeType,
+    is_objective: isObjective,
+    judge_backend: judgeBackend,
     // 竞赛固定作答版本：客户端提交时原样回传（不一致 → 409，绝不自动换版）
     version_id: (row.pinned_version_id as string | null) ?? null,
     version: row.pinned_version_number == null
@@ -1076,17 +1145,11 @@ export async function getContestProblems(
     effective_version_policy_revision: Number(
       row.effective_policy_revision ?? 0,
     ),
-    supported_languages: getSubmissionLanguages(
-      row.judge_type as string,
-      row.runtime_config as ProblemRuntimeConfig | null,
-    ),
+    supported_languages: supportedLanguages,
     display_id: row.display_id as string,
-    submission_mode: row
-      .submission_mode as ContestProblemResponse["submission_mode"],
-    artifact_max_size_mb: row.artifact_max_size_mb === null
-      ? null
-      : Number(row.artifact_max_size_mb),
+    submission_mode: submissionMode,
+    artifact_max_size_mb: artifactMaxSizeMb,
     visibility: row.visibility as ContestProblemResponse["visibility"],
     user_status: row.user_status as ContestProblemResponse["user_status"],
-  }));
+  };
 }

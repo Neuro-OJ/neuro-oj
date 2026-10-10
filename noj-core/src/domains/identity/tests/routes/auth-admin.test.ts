@@ -805,7 +805,9 @@ Deno.test({
       updated_at: now,
     });
 
-    // 直接插 DB 提交行（避免 createSubmission 触发 Redis MQ）
+    // 直接插 DB 提交行（避免 createSubmission 触发 Redis MQ）。
+    // 状态必须是终态：版本化后删除入口**按设计拒绝**在途评测
+    // （`pending`/`judging` 或存在 `active_attempt_id` → 409 SOURCE_JUDGING）。
     await db.insert(submissions).values({
       id: submissionId,
       user_id: userId,
@@ -813,7 +815,7 @@ Deno.test({
       language: "python3",
       code: "print('hi')",
       file_name: "main.py",
-      status: "pending",
+      status: "finished",
       created_at: now,
     });
 
@@ -833,6 +835,69 @@ Deno.test({
       .limit(1);
     assertEquals(rows.length, 0);
     // 事务回滚会自动清理本用例数据，无需手动 cleanup
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: DELETE 在途评测（pending/judging 或 active_attempt_id）返回 409 且不删除",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const db = getDb();
+
+    const { problems } = await import("../../../../shared/db/schema.ts");
+    const userId = `adm-busy-user-${ts}`;
+    const problemId = `adm-busy-prob-${ts}`;
+    const submissionId = `adm-busy-sub-${ts}`;
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+      id: userId,
+      username: userId,
+      email: `${userId}@example.com`,
+      password_hash: "x",
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(problems).values({
+      id: problemId,
+      title: `busy-test-${ts}`,
+      description: "x",
+      difficulty: "easy",
+      owner_id: userId,
+      type: "U",
+      number: 71000 + (ts & 0x7fff),
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      language: "python3",
+      code: "print('hi')",
+      status: "judging",
+      created_at: now,
+    });
+
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/submission/submissions/${submissionId}`,
+      { method: "DELETE", token },
+    );
+    assertEquals(res.status, 409);
+
+    // 在途提交必须保留（不能"删一半"）
+    const rows = await db
+      .select()
+      .from(submissions)
+      .where(eq(submissions.id, submissionId))
+      .limit(1);
+    assertEquals(rows.length, 1);
   },
 });
 

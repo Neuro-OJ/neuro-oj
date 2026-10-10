@@ -133,7 +133,7 @@ cargo fmt
 | `JUDGE_RESOURCE_GROUP`               | 实例标识                       | 共享硬件的 Worker 必须设置相同组，Redis 协调容量及内存租约                                                                                                                                                                                                                                                                                                              |
 | `JUDGE_WASM_TASK_CONCURRENCY`        | `4`                            | WASM 活跃提交上限                                                                                                                                                                                                                                                                                                                                                       |
 | `JUDGE_WASM_COMPILE_CONCURRENCY`     | `2`                            | WASM 编译槽位上限                                                                                                                                                                                                                                                                                                                                                       |
-| `JUDGE_WASM_CASE_CONCURRENCY`         | `16`                           | 同资源组所有 WASM 测试点与 checker 的运行槽位上限                                                                                                                                                                                                                                                                                                                       |
+| `JUDGE_WASM_CASE_CONCURRENCY`        | `16`                           | 同资源组所有 WASM 测试点与 checker 的运行槽位上限                                                                                                                                                                                                                                                                                                                       |
 | `JUDGE_NATIVE_TASK_CONCURRENCY`      | `2`                            | Native 活跃提交上限                                                                                                                                                                                                                                                                                                                                                     |
 | `JUDGE_AI_TASK_CONCURRENCY`          | `2`                            | AI 活跃提交上限                                                                                                                                                                                                                                                                                                                                                         |
 | `JUDGE_RESOURCE_MEMORY_MB`           | `auto`                         | 有效宿主/cgroup 内存的 50%，也可指定 MiB；同组配置必须一致                                                                                                                                                                                                                                                                                                              |
@@ -188,7 +188,8 @@ cargo fmt
   │     ├─ 超时 → 向等待方写入 CallTimeout/error 帧
   │     └─ 正常 → 读取 stdout/stderr 直到 RESULT 或 EOF
   ├─ 8. 等待 Evaluator stdout 出现 ---RESULT--- 标记，解析 JSON {score, details}
-  │     ├─ 有标记 → 统一映射 finished/error（分数是唯一结果）
+  │     ├─ 有标记 + 评分合法 → 统一映射 finished/error（分数是唯一结果）
+  │     ├─ 有标记 + 评分非法（缺 score/非整数/越界）→ 平台错误（result_kind=platform_error）
   │     ├─ 总超时（启动超时 / time_limit_ms）→ SystemError（finalize_outcome 优先）
   │     ├─ 无标记 + 曾发送 CallTimeout 错误帧 → TimeLimitExceeded
   │     └─ 无标记 + 未发送 → SystemError
@@ -266,9 +267,34 @@ OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExcee
   "output": "---RESULT---\n{\"score\":1000,\"details\":{}}",
   "details": { "cases": [...] },
   "time_ms": 42,
-  "memory_kb": null
+  "memory_kb": null,
+  "rejudge_seq": 0,
+  "evaluation_protocol_version": 2,
+  "run_id": "attempt-uuid",
+  "attempt_id": "attempt-uuid",
+  "problem_version_id": "version-uuid",
+  "result_kind": "graded"
 }
 ```
+
+> **版本化封套（协议 v2，Handbook §5.5/§5.6）**：`main.rs`
+> 在推送前对**全部**成功 / 失败 / 超时结果统一调用
+> `JudgeResult::apply_protocol`，回显 `run_id` （=
+> `evaluation_attempts.id`）、`attempt_id`（缺省回退为 `run_id`，自测任务也
+> 因此完整）、`problem_version_id` 与
+> `evaluation_protocol_version=2`，并显式给出 `result_kind`（`graded` /
+> `platform_error`）。协议字段**只**走可信封套，不写入 evaluator 可控的
+> `details`。`envelope_gaps()` 在推送前复核，不完整时记 error 日志 ——core
+> 会整体拒绝这类结果（`applied=false`），提交将卡在 judging。 Wire 字段集合由
+> `tests/judge_result_contract.rs` 钉住，平台错误白名单与 core
+> `shared/versioning/verdict.ts` 同表。
+>
+> **非法评分（defect #29）**：`---RESULT---` 的 payload 必须是 JSON 对象且
+> `score` 为 `0..=10000` 的整数值（与 core `isValidGradedScore` 的
+> `Number.isInteger` 语义一致）。缺
+> `score`、字符串/非整数/布尔、越界一律转成**平台错误**
+> （`result_kind=platform_error`，固定公开文案），**绝不** `unwrap_or(0)` 或
+> clamp 成正式零分/满分去覆盖已有成绩。
 
 ## 关键安全措施
 

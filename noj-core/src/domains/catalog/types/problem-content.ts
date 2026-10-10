@@ -23,6 +23,11 @@ import type {
   ObjectiveOption,
   QuestionType,
 } from "../../objective/index.ts";
+import {
+  JUDGE_OPTIONS,
+  validateAnswerForType,
+  validateOptions,
+} from "../../objective/index.ts";
 
 /** 当前内容 schema 版本；写入 `problem_versions.schema_version`。 */
 export const PROBLEM_CONTENT_SCHEMA_VERSION = 1;
@@ -183,7 +188,20 @@ function validateBase(value: Record<string, unknown>): void {
   }
 }
 
-/** 校验客观题小题快照数组：key 非空且不重复。 */
+/**
+ * 校验客观题小题快照数组。
+ *
+ * 与小题编辑器/导入**共用同一套规则**（Handbook §6.4）：
+ * - `key` 非空（≤128）、同卷不重复；
+ * - `type` ∈ single/multiple/judge；
+ * - 题干非空；
+ * - 选项结构合法且答案引用的选项必须存在（judge 使用固定对/错选项）；
+ * - 答案形式合法（single 恰好一个、multiple 无重复、judge 布尔）；
+ * - `sort_order` 非负整数且同卷不重复。
+ *
+ * 发布验证弱于小题编辑验证会让"直接 PUT 草稿"绕过编辑器校验并发布无法正常判卷
+ * 的小题，因此这里必须是唯一的强校验器。
+ */
 export function validateObjectiveQuestionSnapshots(
   value: unknown,
 ): asserts value is ObjectiveQuestionSnapshot[] {
@@ -194,8 +212,9 @@ export function validateObjectiveQuestionSnapshots(
     throw new BadRequestError("客观题发布前必须至少包含一道小题");
   }
   const keys = new Set<string>();
+  const sortOrders = new Set<number>();
   for (const item of value) {
-    if (!item || typeof item !== "object") {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
       throw new BadRequestError("客观题小题格式不合法");
     }
     const question = item as Record<string, unknown>;
@@ -209,18 +228,66 @@ export function validateObjectiveQuestionSnapshots(
       throw new BadRequestError(`客观题小题 key 重复：${question.key}`);
     }
     keys.add(question.key);
+
+    const type = question.type;
     if (
-      typeof question.type !== "string" ||
-      !["single", "multiple", "judge"].includes(question.type)
+      typeof type !== "string" ||
+      !["single", "multiple", "judge"].includes(type)
     ) {
       throw new BadRequestError(`客观题小题题型不合法：${question.key}`);
     }
-    if (typeof question.prompt !== "string") {
+    if (typeof question.prompt !== "string" || question.prompt.length === 0) {
       throw new BadRequestError(`客观题小题缺少题干：${question.key}`);
     }
-    if (!Array.isArray(question.answer) || question.answer.length === 0) {
-      throw new BadRequestError(`客观题小题缺少标准答案：${question.key}`);
+
+    // 答案形式：题型专属规则（single 单答案 / judge 布尔 / 非空）
+    try {
+      validateAnswerForType(type, question.answer);
+    } catch (error) {
+      throw new BadRequestError(
+        `客观题小题 ${question.key} 答案不合法：${
+          error instanceof Error ? error.message : "未知错误"
+        }`,
+      );
     }
+
+    // 选项：judge 固定对/错；single/multiple 必须给出合法选项且答案引用存在
+    let options: ObjectiveOption[];
+    if (type === "judge") {
+      options = JUDGE_OPTIONS.map((option) => ({ ...option }));
+    } else {
+      if (question.options === undefined) {
+        throw new BadRequestError(`客观题小题缺少选项：${question.key}`);
+      }
+      try {
+        validateOptions(question.options);
+      } catch (error) {
+        throw new BadRequestError(
+          `客观题小题 ${question.key} 选项不合法：${
+            error instanceof Error ? error.message : "未知错误"
+          }`,
+        );
+      }
+      options = question.options as ObjectiveOption[];
+      for (const answerKey of question.answer as string[]) {
+        if (!options.some((option) => option.key === answerKey)) {
+          throw new BadRequestError(
+            `客观题小题 ${question.key} 的答案选项不存在：${answerKey}`,
+          );
+        }
+      }
+    }
+
+    const sortOrder = question.sort_order;
+    if (!Number.isInteger(sortOrder) || (sortOrder as number) < 0) {
+      throw new BadRequestError(
+        `客观题小题排序号必须是非负整数：${question.key}`,
+      );
+    }
+    if (sortOrders.has(sortOrder as number)) {
+      throw new BadRequestError(`客观题小题排序号重复：${sortOrder}`);
+    }
+    sortOrders.add(sortOrder as number);
   }
 }
 

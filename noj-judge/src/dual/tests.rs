@@ -6,6 +6,7 @@
  * 让 `dual/mod.rs` 回到单文件规模棘轮（`scripts/check-file-size.ts`）允许的范围。
  */
 use super::pipe::forward_frame_with_timeout;
+use super::result::{build_judge_result, MSG_INVALID_SCORE};
 use super::*;
 
 /// handle_eval_chunk 测试公共状态。
@@ -53,7 +54,7 @@ fn test_build_judge_result_legacy_accepted_maps_to_finished() {
         "score": 10000,
         "details": {"cases": []}
     });
-    let r = build_judge_result("sid-1", &parsed, "", "", Some(7));
+    let r = build_judge_result("sid-1", &parsed, "", "", Some(7)).expect("合法评分必须构造成功");
     assert_eq!(r.rejudge_seq, Some(7));
     assert_eq!(r.status, "finished");
     assert_eq!(r.score, 10000);
@@ -66,17 +67,184 @@ fn test_build_judge_result_legacy_wrong_answer_maps_to_finished() {
         "score": 0,
         "details": {"message": "expected 3 got 4"}
     });
-    let r = build_judge_result("sid-2", &parsed, "stderr", "stdout", None);
+    let r = build_judge_result("sid-2", &parsed, "stderr", "stdout", None).expect("合法评分");
     assert_eq!(r.status, "finished");
     assert!(r.output.contains("stderr"));
 }
 
+// ── defect #29：非法评分必须归为平台错误，绝不退化成正式零分/满分 ──
+
+/// 构造平台错误结果并断言「不覆盖已有正式判定」所需的封套性质。
+fn platform_error_from_invalid_score(
+    submission_id: &str,
+    parsed: &serde_json::Value,
+) -> crate::types::JudgeResult {
+    let err = build_judge_result(submission_id, parsed, "", "", Some(4))
+        .expect_err("非法评分不得构造出正式判定结果");
+    let r = JudgeResult::from_error(&err, submission_id, Some(4));
+    assert_eq!(r.status, "error", "非法评分必须是平台错误状态");
+    assert_eq!(
+        r.result_kind.as_deref(),
+        Some("platform_error"),
+        "非法评分必须标注 platform_error（core 据此跳过正式判定指针更新）"
+    );
+    assert!(
+        r.output.starts_with(MSG_INVALID_SCORE),
+        "必须回传固定公开文案，实际: {}",
+        r.output
+    );
+    r
+}
+
 #[test]
-fn test_build_judge_result_missing_fields() {
-    let parsed = serde_json::json!({});
-    let r = build_judge_result("sid-3", &parsed, "", "", None);
-    assert_eq!(r.status, "finished");
+fn test_build_judge_result_rejects_empty_payload_as_platform_error() {
+    // 基线缺陷场景：`{}` 曾被 unwrap_or(0) + 缺省 finished 转成 graded 零分。
+    let r = platform_error_from_invalid_score("sid-3", &serde_json::json!({}));
     assert_eq!(r.score, 0);
+    assert_eq!(r.rejudge_seq, Some(4));
+}
+
+#[test]
+fn test_build_judge_result_rejects_string_score() {
+    let parsed = serde_json::json!({"score": "1000", "details": {}});
+    let r = platform_error_from_invalid_score("sid-str", &parsed);
+    // 原始字符串评分（带引号的 JSON 字符串）不得出现在面向用户的公开输出里
+    assert!(!r.output.contains("\"1000\""), "实际输出: {}", r.output);
+}
+
+#[test]
+fn test_build_judge_result_rejects_out_of_range_score_without_clamping() {
+    // 越界（>MAX_SCORE）：绝不能被 clamp 成满分 10000
+    let high = serde_json::json!({"score": 99999, "details": {}});
+    let err = build_judge_result("sid-high", &high, "", "", None).expect_err("越界评分");
+    let r = JudgeResult::from_error(&err, "sid-high", None);
+    assert_eq!(r.result_kind.as_deref(), Some("platform_error"));
+    assert_eq!(r.score, 0, "越界评分不得被 clamp 成 10000");
+
+    // 越界（负数）：绝不能被 clamp 成 0 分正式判定
+    let low = serde_json::json!({"score": -5, "details": {}});
+    let err = build_judge_result("sid-low", &low, "", "", None).expect_err("负分");
+    let r = JudgeResult::from_error(&err, "sid-low", None);
+    assert_eq!(r.result_kind.as_deref(), Some("platform_error"));
+
+    // 边界内仍必须接受（0 分与满分都是合法正式判定，Handbook §3.3）
+    assert_eq!(
+        build_judge_result("sid-zero", &serde_json::json!({"score": 0}), "", "", None)
+            .expect("0 分合法")
+            .score,
+        0
+    );
+    assert_eq!(
+        build_judge_result(
+            "sid-full",
+            &serde_json::json!({"score": 10000}),
+            "",
+            "",
+            None
+        )
+        .expect("满分合法")
+        .score,
+        10000
+    );
+}
+
+#[test]
+fn test_build_judge_result_rejects_invalid_score_types() {
+    for parsed in [
+        serde_json::json!({"score": 800.5, "details": {}}),
+        serde_json::json!({"score": null, "details": {}}),
+        serde_json::json!({"score": true, "details": {}}),
+        serde_json::json!({"score": [1000], "details": {}}),
+        serde_json::json!({"score": {"value": 1000}, "details": {}}),
+        serde_json::json!({"details": {"cases": []}}),
+    ] {
+        let err = build_judge_result("sid-type", &parsed, "", "", None).unwrap_err();
+        let r = JudgeResult::from_error(&err, "sid-type", None);
+        assert_eq!(
+            r.result_kind.as_deref(),
+            Some("platform_error"),
+            "非法评分类型必须平台错误: {parsed}"
+        );
+    }
+}
+
+#[test]
+fn test_build_judge_result_accepts_integral_float_score_like_core() {
+    // 与 core `isValidGradedScore`（`Number.isInteger(800.0) === true`）对齐：
+    // JSON 的 800.0 数值上就是 800，不能比 core 更严而误判平台错误。
+    let r = build_judge_result(
+        "sid-float",
+        &serde_json::json!({"score": 800.0, "details": {}}),
+        "",
+        "",
+        None,
+    )
+    .expect("整数值浮点必须与 core 语义一致地接受");
+    assert_eq!(r.score, 800);
+    assert_eq!(r.status, "finished");
+
+    // 但真正的越界浮点仍必须拒绝
+    assert!(build_judge_result(
+        "sid-float-oob",
+        &serde_json::json!({"score": 1.5e9, "details": {}}),
+        "",
+        "",
+        None,
+    )
+    .is_err());
+}
+
+#[test]
+fn test_build_judge_result_rejects_non_object_payload() {
+    for parsed in [
+        serde_json::json!([]),
+        serde_json::json!(1000),
+        serde_json::json!("1000"),
+        serde_json::Value::Null,
+    ] {
+        let err = build_judge_result("sid-nonobj", &parsed, "", "", None).unwrap_err();
+        let r = JudgeResult::from_error(&err, "sid-nonobj", None);
+        assert_eq!(r.result_kind.as_deref(), Some("platform_error"));
+    }
+}
+
+#[test]
+fn test_build_judge_result_valid_score_without_status_is_graded_finished() {
+    // 新协议：evaluate.py 不再输出 status，评分合法时缺省 finished（graded）。
+    // 这正是 #29 的修复边界——非法评分被拦下后，缺省 status 不再构成风险。
+    let task_json = serde_json::json!({
+        "submission_id": "sid-ok",
+        "problem_id": "p-1",
+        "user_id": "u-1",
+        "run_id": "attempt-ok",
+        "attempt_id": "attempt-ok",
+        "problem_version_id": "ver-ok",
+        "runtime_config": {
+            "evaluator": {
+                "image": "noj-evaluator-python",
+                "command": "python3 /workspace/evaluate.py",
+                "time_limit_ms": 1000,
+                "memory_limit_mb": 128
+            },
+            "solution": {
+                "image": "noj-solution-python",
+                "call_timeout_ms": 1000,
+                "memory_limit_mb": 128
+            }
+        },
+        "language": "python3",
+        "code": "print(1)"
+    });
+    let task: crate::types::JudgeTask = serde_json::from_value(task_json).unwrap();
+    let parsed = serde_json::json!({"score": 1000, "details": {}});
+
+    let mut graded = build_judge_result(&task.submission_id, &parsed, "", "", task.rejudge_seq)
+        .expect("合法评分 + 缺省 status 必须构造正式判定");
+    assert_eq!(graded.status, "finished");
+    assert_eq!(graded.score, 1000);
+    graded.apply_protocol(&task);
+    assert_eq!(graded.result_kind.as_deref(), Some("graded"));
+    assert!(graded.envelope_gaps().is_empty(), "封套必须完整");
 }
 
 #[test]
@@ -605,27 +773,6 @@ fn test_validate_runtime_config_rejects_command_not_in_whitelist() {
 }
 
 #[test]
-fn test_build_judge_result_clamps_score() {
-    let r = build_judge_result(
-        "sid-clamp",
-        &serde_json::json!({"score": 99999, "details": {}}),
-        "",
-        "",
-        None,
-    );
-    assert_eq!(r.score, 10000);
-
-    let r2 = build_judge_result(
-        "sid-clamp2",
-        &serde_json::json!({"score": -5, "details": {}}),
-        "",
-        "",
-        None,
-    );
-    assert_eq!(r2.score, 0);
-}
-
-#[test]
 fn test_build_judge_result_maps_error_statuses() {
     for status in [
         "error",
@@ -640,7 +787,8 @@ fn test_build_judge_result_maps_error_statuses() {
             "",
             "",
             None,
-        );
+        )
+        .expect("合法评分");
         assert_eq!(r.status, "error", "status={}", status);
     }
     for status in ["Accepted", "WrongAnswer", "finished"] {
@@ -650,7 +798,8 @@ fn test_build_judge_result_maps_error_statuses() {
             "",
             "",
             None,
-        );
+        )
+        .expect("合法评分");
         assert_eq!(r.status, "finished", "status={}", status);
     }
 }
@@ -663,7 +812,8 @@ fn test_build_judge_result_missing_details_is_null() {
         "",
         "",
         None,
-    );
+    )
+    .expect("合法评分");
     assert_eq!(r.details, serde_json::Value::Null);
 }
 
