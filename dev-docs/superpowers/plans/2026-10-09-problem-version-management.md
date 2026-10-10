@@ -395,7 +395,11 @@
   - 竞赛题目列表 `user_status` 改读 `submissions.is_contest_accepted` 投影
     （去掉对 `evaluation_results` 的运行期依赖，策略收紧后通过状态立即变化）；
   - noj-ui 新增 `pages/admin/problem-versions.vue`（管理端导航「版本策略」）：
-    题库策略 any/exact 切换、竞赛逐题固定版本升级与策略切换。
+    题库策略 any/exact 切换、竞赛逐题固定版本升级与策略切换；
+  - noj-ui 新增 `pages/admin/submission-jobs.vue`（管理端导航「批量重测」）：
+    三种范围（整题 / 整场 / 手选 ≤500）× 三种目标（提交时版本 / 最新版 /
+    「全部用 V<n>」前端展开为逐题映射，任一题缺该版本即取消受理）、条目进度与
+    `reason_code`、重试 failed/skipped 生成关联新任务。
 - [ ] 5c（收尾）search 索引发布内容、正式成绩快照（5d）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 
