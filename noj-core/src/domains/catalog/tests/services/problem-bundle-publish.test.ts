@@ -1,20 +1,24 @@
 /**
- * 题目包导入后的草稿同步与显式发布（Handbook §6.8）。
+ * 题目包导入后的草稿写入与显式发布（Handbook §6.2/§6.4/§6.8）。
  *
- * 导入流程写的是题目投影（兼容期读路径），`problems import --publish` 需要先把同一份
- * 内容同步进共享草稿再发布：否则发布的版本会缺少导入内容（客观题甚至会是没有小题的
- * 空卷）。这里覆盖 AI 与客观题两种内容形态，以及"相同内容重复发布不制造空版本"。
+ * 导入流程直接写**共享草稿**（编程题经 createProblem/updateProblem、客观题小题
+ * 连同 UUID key 一起写入），`problems import --publish` 只需发布当前草稿 revision。
+ * 这里覆盖 AI 与客观题两种内容形态，以及"相同内容重复发布不制造空版本"、
+ * "客观题小题 key 稳定（显式 key 保留、缺省生成 UUID）"。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
+import { zipSync } from "fflate";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { objectiveQuestions, problems } from "../../../../shared/db/schema.ts";
 import { createProblem } from "../../index.ts";
 import {
+  importProblemBundle,
   publishImportedProblem,
   syncProblemDraftFromProjection,
 } from "../../services/problems/problem-bundle.ts";
 import { listVersionQuestions } from "../../../objective/index.ts";
+import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasEnv;
@@ -94,57 +98,56 @@ Deno.test({
 });
 
 Deno.test({
-  name: "bundle publish: 客观题小题以旧 UUID 作 key 进入版本",
+  name: "bundle publish: 客观题导入写草稿并以稳定 key 进入版本",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const created = await createProblem({
-      title: `导入客观题 ${ts}`,
-      description: "套卷",
-      difficulty: "easy",
-      is_objective: true,
-      visibility: "public",
+    const encoder = new TextEncoder();
+    // 真实题包：problem.json + questions.json（第一题显式 key，第二题缺省）
+    const explicitKey = crypto.randomUUID();
+    const bundle = zipSync({
+      "problem.json": encoder.encode(JSON.stringify({
+        format_version: 1,
+        title: `导入客观题 ${ts}`,
+        description: "套卷",
+        is_objective: true,
+        type: "U",
+        difficulty: "easy",
+        tags: [],
+      })),
+      "questions.json": encoder.encode(JSON.stringify([
+        {
+          key: explicitKey,
+          type: "single",
+          prompt: "1+1=?",
+          options: [{ key: "A", text: "2" }, { key: "B", text: "3" }],
+          answer: ["A"],
+        },
+        { type: "judge", prompt: "地球是圆的", answer: [true] },
+      ])),
     });
 
-    // 模拟题包导入：小题写入旧表（UUID 即稳定 key）
-    const q1 = crypto.randomUUID();
-    const q2 = crypto.randomUUID();
-    await db.insert(objectiveQuestions).values([
-      {
-        id: q1,
-        paper_id: created.id,
-        sort_order: 0,
-        type: "single",
-        prompt: "1+1=?",
-        options: [{ key: "A", text: "2" }, { key: "B", text: "3" }],
-        answer: ["A"],
-        explanation: "",
-        created_at: now,
-        updated_at: now,
-      },
-      {
-        id: q2,
-        paper_id: created.id,
-        sort_order: 1,
-        type: "judge",
-        prompt: "地球是圆的",
-        options: [{ key: "true", text: "正确" }, {
-          key: "false",
-          text: "错误",
-        }],
-        answer: [true],
-        explanation: "",
-        created_at: now,
-        updated_at: now,
-      },
-    ]);
+    const created = await importProblemBundle(
+      { name: "objective.zip", data: bundle },
+      { userId: ROOT_USER_ID, userRole: "admin" },
+    );
 
-    const published = await publishImportedProblem(created.id, "0");
+    // 导入即写草稿（旧表只是兼容镜像）
+    const published = await publishImportedProblem(created.id, ROOT_USER_ID);
     const questions = await listVersionQuestions(published.version_id);
-    assertEquals(questions.map((q) => q.key), [q1, q2]);
+    assertEquals(questions.length, 2);
+    // 显式 key 原样保留；缺省 key 生成 UUID（不是按序号猜测）
+    assertEquals(questions[0].key, explicitKey);
+    assertEquals(questions[1].key.length > 0, true);
+    assertEquals(questions[1].key === explicitKey, false);
     assertEquals(questions[0].answer, ["A"]);
     assertEquals(questions[1].answer, [true]);
+
+    // 重复发布相同内容 → unchanged，不制造空版本
+    const again = await publishImportedProblem(created.id, ROOT_USER_ID);
+    assertEquals(again.unchanged, true);
+    assertEquals(again.version, published.version);
 
     await db.update(problems).set({ latest_version_id: null }).where(
       eq(problems.id, created.id),

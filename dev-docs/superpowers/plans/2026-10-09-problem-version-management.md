@@ -50,6 +50,20 @@
       revision 先行校验（428/409），metadata-only 复用引用并校验新配置路径，
       上传失败按引用守卫补偿；`loadOiDataFromDraft` / `loadOiDataFromVersion` 显式
       来源；`loadOiData(c, ref, { source })` 暴露来源参数（默认仍为迁移期兼容路径）。
+- [x] 2d 客观题读取分流与小题草稿路由：`objective-questions.ts` 只保留套卷身份/权限
+      与读取（编辑者读 `listDraftQuestions` 含答案、其他人读 `resolveProblemAnswerVersion`
+      → `listVersionQuestions` 快照并裁剪答案、未发布对非编辑者 404），旧
+      `createQuestion/updateQuestion/deleteQuestion`（写 `objective_questions`）删除；
+      `catalog/routes/problems.ts` 四个小题端点改走 `objective-drafts` 服务，
+      `If-Match`/`expected_revision` 必填（428/409），成功响应回传 `draft_revision`，
+      删除由 204 改为 200 + revision；`serializeQuestion` 的 `id` 返回稳定 `key`；
+      草稿内 `sort_order` 唯一（保留原 400 语义）。
+- [x] 2d 导入直写草稿：`importObjectivePaper` 生成/保留小题 UUID 作 key 并写草稿
+      content（旧表保留兼容镜像供 `legacy_unknown` 展示），`publishImportedProblem`
+      统一发布当前草稿 revision；`questions.json` 新增可选 `key`
+      （`ObjectiveQuestionBundleInput`，非空 / 同包不重复）。
+      证据：catalog 域 **307 passed / 0 failed**；objective 域 **56 passed / 0 failed**；
+      noj-core 全量 **1408 passed / 0 failed / 11 ignored**。
 - [x] 2c（OI 收尾 / 2e）路由改走 `saveOiDraft`（`oi-author.ts`）：
       `POST /problems/oi-author/:id/save` 以 `metadata.draft_revision` 为唯一乐观锁
       （缺失 → 428、过时 → 409、不再用 `updated_at`），管理信息（难度/标签/可见性）
@@ -551,6 +565,15 @@
   `exact` 缺要求版本被 CHECK 拒绝、基线哈希 NULL→哈希放行。
 
 ## 最近一次验证
+
+- 批次 2d（客观题小题写草稿 + 读取分流 + 导入直写草稿 + 客观题编辑器发布流）：
+  noj-core 全量 `deno task test:parallel` **1408 passed / 0 failed / 11 ignored**；
+  objective 域 **56 passed / 0 failed**（新增"编辑者读草稿、作答者读版本快照"用例；
+  7 个原用例改为草稿 revision 链 + 先发布 V1）；catalog 域 **307 passed / 0 failed**
+  （小题 key 解析用例；客观题导入用例改走真实题包 + 显式 key/缺省生成断言）；
+  noj-ui `deno task test` **235 passed**、`test:components` **102 passed / 19 文件**、
+  `check:types` / `check:types:nuxt` 0 error；noj-tests `deno check` 通过
+  （本地无 E2E 栈）；lint / fmt / 域边界 / 导出 JSDoc / 迁移安全全绿。
 
 - 批次 2c/2e（OI 路由切草稿 + 内容写草稿、管理信息写题目行 + 编辑器两动作）：
   noj-core 全量 `deno task test:parallel` **1406 passed / 0 failed / 11 ignored**；

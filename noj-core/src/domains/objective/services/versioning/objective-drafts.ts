@@ -206,6 +206,15 @@ export async function createDraftQuestion(
     throw new ConflictError(`小题 key 已存在：${key}`);
   }
   const normalized = normalizeQuestionInput(input, questions.length);
+  // 草稿内排序号唯一（与旧小题表 UNIQUE(paper_id, sort_order) 同口径）：
+  // 冲突直接 400，避免同一位置出现两题后排序不稳定。
+  if (
+    questions.some((question) => question.sort_order === normalized.sort_order)
+  ) {
+    throw new BadRequestError(
+      `排序号 ${normalized.sort_order} 已存在，请调整后重试`,
+    );
+  }
   const created: ObjectiveQuestionSnapshot = { key, ...normalized };
   await persistQuestions(
     problemId,
@@ -243,6 +252,15 @@ export async function updateDraftQuestion(
   const updated: ObjectiveQuestionSnapshot = { key, ...normalized };
   const next = [...questions];
   next[index] = updated;
+  if (
+    next.some((question) =>
+      question.key !== key && question.sort_order === updated.sort_order
+    )
+  ) {
+    throw new BadRequestError(
+      `排序号 ${updated.sort_order} 已存在，请调整后重试`,
+    );
+  }
   await persistQuestions(problemId, content, next, expectedRevision, actorId);
   return updated;
 }

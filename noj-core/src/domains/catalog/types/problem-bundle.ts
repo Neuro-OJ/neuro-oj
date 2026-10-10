@@ -328,19 +328,31 @@ export function validateBundleManifest(
 }
 
 /**
+ * 客观题题包中小题的可选稳定 key。
+ *
+ * Handbook §6.4：`questions.json` 支持可选 `key`（同题跨版本稳定，重判时按 key
+ * 匹配旧答案）；重复 key 拒绝；未提供时由导入流程生成新 key。导入**不得**按序号
+ * 或题干猜测旧小题对应关系。
+ */
+export type ObjectiveQuestionBundleInput = CreateQuestionInput & {
+  key?: string;
+};
+
+/**
  * 校验客观题小题数组（questions.json）。
  *
- * 每项对应 CreateQuestionInput；sort_order 缺省按数组下标；至少 1 道。
+ * 每项对应 CreateQuestionInput（可选 `key`）；sort_order 缺省按数组下标；至少 1 道。
  *
  * @throws {BadRequestError} 任一小题非法
  */
 export function validateObjectiveQuestions(
   raw: unknown,
-): CreateQuestionInput[] {
+): ObjectiveQuestionBundleInput[] {
   if (!Array.isArray(raw) || raw.length === 0) {
     throw new BadRequestError("questions.json 必须是非空数组");
   }
   const seenSort = new Set<number>();
+  const seenKeys = new Set<string>();
   return raw.map((item, index) => {
     if (typeof item !== "object" || item === null || Array.isArray(item)) {
       throw new BadRequestError(`questions.json[${index}] 必须是对象`);
@@ -356,6 +368,20 @@ export function validateObjectiveQuestions(
       throw new BadRequestError(
         `questions.json[${index}].prompt 必须是非空字符串`,
       );
+    }
+    // 可选稳定 key：非空字符串且同包内不重复
+    let key: string | undefined;
+    if (q.key !== undefined) {
+      if (typeof q.key !== "string" || !q.key.trim()) {
+        throw new BadRequestError(
+          `questions.json[${index}].key 必须是非空字符串`,
+        );
+      }
+      key = q.key.trim();
+      if (seenKeys.has(key)) {
+        throw new BadRequestError(`questions.json 中 key ${key} 重复`);
+      }
+      seenKeys.add(key);
     }
 
     let options: ObjectiveOption[] | undefined;
@@ -418,6 +444,7 @@ export function validateObjectiveQuestions(
     seenSort.add(sortOrder);
 
     return {
+      ...(key !== undefined ? { key } : {}),
       type,
       prompt: q.prompt,
       options: type === "judge" ? undefined : options,

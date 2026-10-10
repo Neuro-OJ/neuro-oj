@@ -321,3 +321,48 @@ Deno.test("validateObjectiveQuestions: 非法题型/答案/选项/重复 sort_or
     "sort_order",
   );
 });
+
+Deno.test("validateObjectiveQuestions: 可选 key 保留，重复/空 key 拒绝", () => {
+  const questions = validateObjectiveQuestions([
+    {
+      key: "stable-key-1",
+      type: "single",
+      prompt: "p1",
+      options: [{ key: "A", text: "a" }],
+      answer: ["A"],
+    },
+    { type: "judge", prompt: "p2", answer: [true] },
+  ]);
+  assertEquals(questions[0].key, "stable-key-1");
+  assertEquals(questions[1].key, undefined);
+
+  assertThrows(
+    () =>
+      validateObjectiveQuestions([
+        {
+          key: "dup",
+          type: "single",
+          prompt: "p1",
+          options: [{ key: "A", text: "a" }],
+          answer: ["A"],
+        },
+        {
+          key: "dup",
+          type: "judge",
+          prompt: "p2",
+          answer: [true],
+        },
+      ]),
+    BadRequestError,
+    "key",
+  );
+
+  assertThrows(
+    () =>
+      validateObjectiveQuestions([
+        { key: "   ", type: "judge", prompt: "p2", answer: [true] },
+      ]),
+    BadRequestError,
+    "key",
+  );
+});

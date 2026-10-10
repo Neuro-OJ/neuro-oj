@@ -78,19 +78,24 @@ import {
   publishImportedProblem,
 } from "../services/problems/problem-bundle.ts";
 import {
-  createQuestion,
-  deleteQuestion,
+  assertObjectivePaper,
+  assertPaperManageable,
+  createDraftQuestion,
+  deleteDraftQuestion,
   getObjectiveSubmission,
+  getPaperOrThrow,
   listObjectiveSubmissions,
   listPaperQuestionsWithAccess,
+  serializeQuestion,
   submitObjectivePaper,
-  updateQuestion,
+  updateDraftQuestion,
 } from "../../objective/index.ts";
 import type {
   CreateQuestionInput,
   SubmitObjectiveInput,
   UpdateQuestionInput,
 } from "../../objective/index.ts";
+import type { ObjectiveQuestionSnapshot } from "../types/problem-content.ts";
 
 const router = new Hono<AuthEnv>();
 
@@ -961,9 +966,11 @@ router.delete("/:id/support-package", authMiddleware, async (c) => {
 // ── 客观题（并入 problems 体系，is_objective 标记）───────────────────────────
 
 /**
- * 获取客观题套卷小题列表（公开可读）。
+ * 获取客观题套卷小题列表。
  * GET /api/v1/problems/:id/questions
- * U 型：owner/admin 视图含答案与解析；P 型：仅 admin；其余裁剪。
+ *
+ * 编辑者（owner/admin）读**共享草稿**含答案与解析；其余读**默认作答版本**
+ * 快照并裁剪答案（Handbook §6.4）。未发布套卷对非编辑者 404。
  */
 router.get("/:id/questions", optionalAuthMiddleware, async (c) => {
   const paperId = c.req.param("id") as string;
@@ -990,44 +997,96 @@ router.get("/:id/questions", optionalAuthMiddleware, async (c) => {
 });
 
 /**
- * 创建客观题小题（绑定套卷）。
+ * 解析可管理套卷（编辑者），返回规范 UUID。
+ *
+ * 小题写入落在**共享草稿**上，因此必须先在身份层解析 display_id、校验
+ * `is_objective` 与管理权限（与旧小题 CRUD 同口径）。
+ */
+async function requireManageablePaper(
+  c: Context<AuthEnv>,
+  paperId: string,
+): Promise<string> {
+  const paper = await getPaperOrThrow(paperId);
+  assertObjectivePaper(paper);
+  await assertPaperManageable(paper, c.get("userId"), c.get("userRole"), c);
+  return paper.id;
+}
+
+/** 小题响应：附带写入后的草稿 revision，供客户端继续做乐观锁。 */
+async function questionEnvelope(
+  paperId: string,
+  question: ObjectiveQuestionSnapshot,
+) {
+  const draft = await getProblemDraft(paperId);
+  return {
+    ...serializeQuestion(paperId, question, true),
+    draft_revision: draft.revision,
+  };
+}
+
+/**
+ * 创建客观题小题（写共享草稿）。
  * POST /api/v1/problems/:id/questions
+ * 要求 `If-Match: <draft revision>` 或 body.expected_revision（缺失 428、过时 409）。
  */
 router.post("/:id/questions", authMiddleware, async (c) => {
-  const paperId = c.req.param("id") as string;
   const userId = c.get("userId");
-  const userRole = c.get("userRole");
-  const body = await parseJsonBody<CreateQuestionInput>(c);
-
-  const data = await createQuestion(paperId, body, userId, userRole, c);
-  return c.json({ data }, 201);
+  const body = await parseJsonBody<
+    CreateQuestionInput & {
+      expected_revision?: number;
+    }
+  >(c);
+  const paperId = await requireManageablePaper(c, c.req.param("id") as string);
+  const revision = parseExpectedRevision(c, body.expected_revision);
+  const data = await createDraftQuestion(paperId, body, revision, userId);
+  return c.json({ data: await questionEnvelope(paperId, data) }, 201);
 });
 
 /**
- * 更新客观题小题。
+ * 更新客观题小题（写共享草稿，`key` 跨版本稳定）。
  * PUT /api/v1/problems/:id/questions/:qid
  */
 router.put("/:id/questions/:qid", authMiddleware, async (c) => {
-  const qid = c.req.param("qid") as string;
   const userId = c.get("userId");
-  const userRole = c.get("userRole");
-  const body = await parseJsonBody<UpdateQuestionInput>(c);
-
-  const data = await updateQuestion(qid, body, userId, userRole, c);
-  return c.json({ data });
+  const body = await parseJsonBody<
+    UpdateQuestionInput & {
+      expected_revision?: number;
+    }
+  >(c);
+  const paperId = await requireManageablePaper(c, c.req.param("id") as string);
+  const revision = parseExpectedRevision(c, body.expected_revision);
+  const data = await updateDraftQuestion(
+    paperId,
+    c.req.param("qid") as string,
+    body,
+    revision,
+    userId,
+  );
+  return c.json({ data: await questionEnvelope(paperId, data) });
 });
 
 /**
- * 删除客观题小题。
+ * 删除客观题小题（写共享草稿；删除后不参与判分）。
  * DELETE /api/v1/problems/:id/questions/:qid
+ *
+ * 返回 `200 { draft_revision }`（不再用 204）：删除同样递增草稿 revision，
+ * 客户端需要新的 revision 才能继续编辑。
  */
 router.delete("/:id/questions/:qid", authMiddleware, async (c) => {
-  const qid = c.req.param("qid") as string;
   const userId = c.get("userId");
-  const userRole = c.get("userRole");
-
-  await deleteQuestion(qid, userId, userRole, c);
-  return c.body(null, 204);
+  const body = await parseJsonBody<
+    { expected_revision?: number } | undefined
+  >(c).catch(() => undefined);
+  const paperId = await requireManageablePaper(c, c.req.param("id") as string);
+  const revision = parseExpectedRevision(c, body?.expected_revision);
+  await deleteDraftQuestion(
+    paperId,
+    c.req.param("qid") as string,
+    revision,
+    userId,
+  );
+  const draft = await getProblemDraft(paperId);
+  return c.json({ data: { draft_revision: draft.revision } });
 });
 
 /**

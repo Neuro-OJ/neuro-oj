@@ -42,6 +42,7 @@ import {
   DEFAULT_TEMPLATE_FILE,
   isValidProblemBundleName,
   MAX_TEMPLATE_BYTES,
+  type ObjectiveQuestionBundleInput,
   type ProblemBundleManifest,
   validateBundleManifest,
   validateObjectiveQuestions,
@@ -51,7 +52,10 @@ import {
   type ProblemResponseWithTags,
   type ProblemRuntimeConfig as RuntimeConfig,
 } from "./../../types/problems.ts";
-import { type CreateQuestionInput } from "../../../objective/index.ts";
+import type {
+  ObjectiveQuestionSnapshot,
+  ProblemDraftContent,
+} from "./../../types/problem-content.ts";
 import { updateProblem } from "./problems-crud.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import {
@@ -73,7 +77,6 @@ import {
   replaceDraftObjectsForRole,
   saveProblemDraft,
 } from "../versioning/draft.ts";
-import { problemContentKindOf } from "../../types/problem-content.ts";
 import { registerLegacyStorageObject } from "../../../system/index.ts";
 import { deleteStorageObject } from "../../../system/index.ts";
 import { publishProblemVersion } from "../versioning/publish.ts";
@@ -107,10 +110,9 @@ export async function syncProblemDraftFromProjection(
 /**
  * 导入后显式发布当前内容为新版本（`problems import --publish`）。
  *
- * 内容事实源是**草稿**：编程题导入经 `createProblem`/`updateProblem` 写入草稿
- * （含支持包引用），此处直接发布当前草稿 revision；客观题小题仍写在
- * `objective_questions`（2d 迁移前），需先把投影与小题同步进草稿再发布。
- * 相同内容重复发布返回既有版本（`unchanged: true`），不制造空版本。
+ * 内容事实源是**草稿**：编程题与客观题导入都直接写草稿（客观题小题 key 取
+ * 现有/生成的 UUID），此处发布当前草稿 revision。相同内容重复发布返回既有版本
+ * （`unchanged: true`），不制造空版本。
  */
 export async function publishImportedProblem(
   problemId: string,
@@ -118,9 +120,7 @@ export async function publishImportedProblem(
   changeNote = "题目包导入",
 ): Promise<{ version_id: string; version: number; unchanged: boolean }> {
   const identity = await loadProblemIdentity(problemId);
-  const revision = problemContentKindOf(identity) === "objective"
-    ? await syncProblemDraftFromProjection(problemId, actorId)
-    : (await getProblemDraft(problemId, identity)).revision;
+  const revision = (await getProblemDraft(problemId, identity)).revision;
   const published = await publishProblemVersion(problemId, {
     expectedRevision: revision,
     changeNote,
@@ -473,7 +473,7 @@ async function updateExisting(
 async function importObjectivePaper(
   manifest: ProblemBundleManifest,
   description: string,
-  questions: CreateQuestionInput[],
+  questions: ObjectiveQuestionBundleInput[],
   number: number | undefined,
   actor: BundleImportActor,
   c?: Context,
@@ -598,14 +598,18 @@ async function importObjectivePaper(
       }
     }
 
-    // 全量替换小题
+    // 全量替换小题：**草稿是事实源**（Handbook §6.4），旧表同步镜像以兼容
+    // `legacy_unknown` 存量提交的展示，批次 7b 删表后移除镜像写入。
     await tx.delete(objectiveQuestions).where(
       eq(objectiveQuestions.paper_id, problemId),
     );
+    const snapshots: ObjectiveQuestionSnapshot[] = [];
     for (const q of questions) {
       const options = q.type === "judge" ? judgeOptions() : (q.options ?? []);
+      // 迁移规则：小题 UUID 即跨版本稳定的 key
+      const key = q.key?.trim() || crypto.randomUUID();
       await tx.insert(objectiveQuestions).values({
-        id: crypto.randomUUID(),
+        id: key,
         paper_id: problemId,
         sort_order: q.sort_order ?? 0,
         type: q.type,
@@ -616,9 +620,18 @@ async function importObjectivePaper(
         created_at: now,
         updated_at: now,
       });
+      snapshots.push({
+        key,
+        sort_order: q.sort_order ?? snapshots.length,
+        type: q.type as ObjectiveQuestionSnapshot["type"],
+        prompt: q.prompt,
+        options,
+        answer: q.answer,
+        explanation: q.explanation ?? "",
+      });
     }
 
-    return { problemId };
+    return { problemId, snapshots };
   });
 
   // 标签同步（独立事务，与既有导入一致）
@@ -639,9 +652,24 @@ async function importObjectivePaper(
     }
   }
 
-  // 客观题小题当前写在 `objective_questions`（2d 迁移前）：把投影与小题同步进
-  // 草稿，并清空从编程题继承的草稿文件引用（客观题没有评测包）。
-  await syncProblemDraftFromProjection(outcome.problemId, actor.userId);
+  // 小题写入**共享草稿**（Handbook §6.4）：key 取刚写入的 UUID（与迁移基线同规则，
+  // 保证历史答案可按 key 匹配）；草稿 content 的题面/描述取自本次导入的投影。
+  // `--publish` 随后直接发布该草稿。
+  const identity = await loadProblemIdentity(outcome.problemId);
+  const draft = await getProblemDraft(outcome.problemId, identity);
+  await saveProblemDraft(outcome.problemId, {
+    content: {
+      kind: "objective",
+      title: identity.title,
+      description: identity.description,
+      samples: (identity.samples as ProblemDraftContent["samples"] | null) ??
+        [],
+      questions: outcome.snapshots,
+    },
+    expectedRevision: draft.revision,
+    actorId: actor.userId ?? null,
+  });
+  // 清空从编程题继承的草稿文件引用（客观题没有评测包）
   await replaceDraftObjectsForRole(outcome.problemId, "support_package", []);
   await replaceDraftObjectsForRole(outcome.problemId, "oi_file", []);
 

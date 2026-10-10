@@ -7,6 +7,7 @@
  * 3. 竞赛集成：套卷挂入 contest_problems、竞赛内一次性提交、排名计入
  */
 import {
+  api,
   apiDelete,
   apiGet,
   apiPost,
@@ -42,6 +43,63 @@ let paperId = "";
 let singleId = "";
 let multipleId = "";
 let judgeId = "";
+/** 共享草稿 revision（小题写入与发布的乐观锁，Handbook §2.4/§6.4）。 */
+let draftRevision = 0;
+
+/** 读取套卷草稿 revision（小题写入前刷新）。 */
+async function refreshDraftRevision(): Promise<number> {
+  const res = await apiGet(`/api/v1/problems/${paperId}/draft`, ownerToken);
+  if (res.status !== 200) {
+    throw new Error(`读取草稿失败: ${res.status} ${JSON.stringify(res.body)}`);
+  }
+  draftRevision = (res.body as { data: { revision: number } }).data.revision;
+  return draftRevision;
+}
+
+/**
+ * 带草稿乐观锁的小题写入（复用同一个 revision 链）。
+ *
+ * 成功响应回传新 `draft_revision`，失败（4xx）不递增。
+ */
+async function questionWrite(
+  method: "POST" | "PUT" | "DELETE",
+  path: string,
+  body?: unknown,
+  token = ownerToken,
+): Promise<{ status: number; body: unknown }> {
+  const res = await api(method, path, {
+    body,
+    token,
+    headers: { "If-Match": String(draftRevision) },
+  });
+  const data = (res.body as { data?: { draft_revision?: number } } | null)
+    ?.data;
+  if (
+    res.status >= 200 && res.status < 300 &&
+    typeof data?.draft_revision === "number"
+  ) {
+    draftRevision = data.draft_revision;
+  }
+  return res;
+}
+
+/** 发布当前草稿为新版本（作答与公开读取的事实源）。 */
+async function publishPaper(changeNote = "E2E 发布"): Promise<number> {
+  const revision = draftRevision || await refreshDraftRevision();
+  const res = await api("POST", `/api/v1/problems/${paperId}/versions`, {
+    token: ownerToken,
+    headers: { "If-Match": String(revision) },
+    body: { change_note: changeNote },
+  });
+  if (res.status !== 201 && res.status !== 200) {
+    throw new Error(`发布套卷失败: ${res.status} ${JSON.stringify(res.body)}`);
+  }
+  const data = (res.body as {
+    data: { draft_revision: number; version: number; unchanged: boolean };
+  }).data;
+  draftRevision = data.draft_revision;
+  return data.version;
+}
 
 e2eTest("[e2e/objective] Setup: 管理端 + 出题人 + 答题人", async () => {
   if (!isE2E) return;
@@ -78,6 +136,8 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
   const paper = (paperRes.body as { data: PaperData }).data;
   if (!paper.is_objective) throw new Error("套卷 is_objective 应为 true");
   paperId = paper.id;
+  // 小题写入走共享草稿：先取当前 revision（创建即建草稿）
+  await refreshDraftRevision();
 
   // U 型新建默认 private；练习提交需要公开可见
   const pubRes = await apiPut(
@@ -92,7 +152,8 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
   }
 
   // 1.2 单选小题
-  const single = await apiPost(
+  const single = await questionWrite(
+    "POST",
     `/api/v1/problems/${paperId}/questions`,
     {
       type: "single",
@@ -114,7 +175,8 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
   singleId = (single.body as { data: QuestionData }).data.id;
 
   // 1.3 多选小题
-  const multiple = await apiPost(
+  const multiple = await questionWrite(
+    "POST",
     `/api/v1/problems/${paperId}/questions`,
     {
       type: "multiple",
@@ -136,7 +198,8 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
   multipleId = (multiple.body as { data: QuestionData }).data.id;
 
   // 1.4 判断题
-  const judge = await apiPost(
+  const judge = await questionWrite(
+    "POST",
     `/api/v1/problems/${paperId}/questions`,
     { type: "judge", prompt: "大语言模型具备逻辑推理能力", answer: [true] },
     ownerToken,
@@ -147,6 +210,9 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
     );
   }
   judgeId = (judge.body as { data: QuestionData }).data.id;
+
+  // 1.4 发布 V1：作答与公开读取都以版本快照为准（未发布时非编辑者 404）
+  await publishPaper("E2E 初始卷");
 
   // 1.5 答对提交 → 即时判定满分
   const okRes = await apiPost(
@@ -264,12 +330,23 @@ e2eTest(
     }
 
     // 2.6 owner 更新小题解析
-    const upd = await apiPut(
+    const upd = await questionWrite(
+      "PUT",
       `/api/v1/problems/${paperId}/questions/${singleId}`,
       { explanation: "更新后的解析" },
       ownerToken,
     );
     if (upd.status !== 200) throw new Error("更新小题失败");
+
+    // 2.7 缺少预期 revision → 428（不静默覆盖他人草稿）
+    const noRevision = await apiPut(
+      `/api/v1/problems/${paperId}/questions/${singleId}`,
+      { explanation: "不应保存" },
+      ownerToken,
+    );
+    if (noRevision.status !== 428) {
+      throw new Error(`缺少 If-Match 应 428，实际 ${noRevision.status}`);
+    }
   },
 );
 

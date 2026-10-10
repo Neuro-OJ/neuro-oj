@@ -81,16 +81,25 @@ export function apiPost(path: string, body: unknown, token?: string) {
   return api("POST", path, { body, token });
 }
 
-export function apiPut(path: string, body: unknown, token?: string) {
-  return api("PUT", path, { body, token });
+export function apiPut(
+  path: string,
+  body: unknown,
+  token?: string,
+  headers?: Record<string, string>,
+) {
+  return api("PUT", path, { body, token, headers });
 }
 
 export function apiPatch(path: string, body: unknown, token?: string) {
   return api("PATCH", path, { body, token });
 }
 
-export function apiDelete(path: string, token?: string) {
-  return api("DELETE", path, { token });
+export function apiDelete(
+  path: string,
+  token?: string,
+  headers?: Record<string, string>,
+) {
+  return api("DELETE", path, { token, headers });
 }
 
 export function apiGet(path: string, token?: string) {
