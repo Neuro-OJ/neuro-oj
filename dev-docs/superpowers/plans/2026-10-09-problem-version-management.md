@@ -129,11 +129,24 @@
   `source_contest` 用竞赛固定版、幂等键含 context 哈希）、跳过原因
   （`ALREADY_LATEST` / `SOURCE_DELETED` / `SOURCE_JUDGING` / `NO_PUBLISHED_VERSION` /
   `CONTEST_VERSION_UNKNOWN`）、跨用户升级 403、`getUpgradeJobForActor`（本人或管理员）。
-- [ ] 4c（升级派发）`applyUpgradeItem`：建新提交（沿用原用户、`upgraded_from_id`、
-  当前时间、客观题一律练习提交）+ 建升级尝试 + 派发；正常提交权限/速率/大小校验。
-- [ ] 4c 管理员重测接口适配层（单提交/整题 → 统一任务服务并返回任务 ID）。
-- [ ] 4c 管理员重测接口适配层（单提交/整题 → 统一任务服务）与用户升级任务
-  （`upgraded_from_id`、context、客观题竞赛限制、任务读取权限）。
+- [x] 4c（升级派发）升级条目创建**新提交**后再评测，原提交与原成绩完全不动：
+  - 代码/产物：新提交沿用原用户与原始代码/产物、`upgraded_from_id`、当前时间、
+    `context=source_contest` 时保留原竞赛（否则落练习）；入队成功后条件置
+    `judging`；派发失败删除新提交（不留孤儿）；
+  - 客观题：新提交一律落**练习**（竞赛一次性提交限制不适用于升级），按目标版本
+    快照同步重判，并同步提交行的 `score`/`details`（最近一次 graded 执行的投影）；
+  - 条目写 `result_submission_id`，`ALREADY_LATEST` 在派发侧兜底跳过。
+- [x] 4b/4c（HTTP 路由）
+  - `POST /admin/submission-jobs`（`Idempotency-Key` 必填、202 + 任务 ID）、
+    `GET /admin/submission-jobs/:id`、`/items`（分页 + status 过滤）、
+    `POST /:id/retry`（无 failed/skipped 条目 → 400；重试保留目标版本映射且不改策略）；
+  - `POST /submission-upgrade-jobs`（用户受理升级）、
+    `GET /submission-upgrade-jobs/:id`（本人可读、他人 403、管理员可读任意）；
+  - 新路由独立挂载 `/api/v1/admin/submission-jobs`（不复用 `/admin/submission` 前缀）。
+- [ ] 4c（收尾）既有单条/整题重测接口（`POST /admin/submissions/:id/rejudge`、
+      `POST /admin/problems/:id/rejudge`）改为统一任务受理的**适配层**（默认
+      `submitted` 目标、返回任务 ID）；管理入口「代他人升级」需给 `acceptUpgradeJob`
+      增加管理员旁路。
 
 ### 批次 3 落点清单（提前完成的部分）
 
@@ -359,6 +372,11 @@
 
 ## 最近一次验证
 
+- 批次 4c（升级派发 + 批量任务路由）：submission 域 **219 passed / 0 failed /
+  21 ignored**（新增 3 个升级用例）、admin 域 **14 passed / 0 failed**（新增 6 个
+  路由用例）；noj-core 全量 `deno task test:parallel`
+  **1385 passed / 0 failed / 11 ignored**；`deno lint` / `deno fmt --check` /
+  域边界 / JSDoc 全绿。
 - 批次 4b（条目派发 + worker 注册）：submission 域 **216 passed / 0 failed /
   21 ignored**（新增 6 个派发用例：latest 目标按版本内容构造任务、语言不接受、
   源已删除、未知历史版本、源在评测、客观题按快照重判并保留 V1 成绩）；

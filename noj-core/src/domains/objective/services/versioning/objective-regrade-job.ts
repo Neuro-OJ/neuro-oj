@@ -113,6 +113,13 @@ export async function rejudgeObjectiveSubmissionForJob(
     if (outcome.applied !== "graded") {
       throw new Error(`客观题重判结果未生效：${outcome.applied}`);
     }
+    // 提交行的 `score`/`details` 是"最近一次 graded 执行"的投影（与
+    // `latest_attempt_id` 同源）；多版本差异由有效成绩指针表达（§3.2）。
+    await tx.update(objectiveSubmissions).set({
+      score: regrade.score,
+      details: details as never,
+      status: "finished",
+    }).where(eq(objectiveSubmissions.id, row.id));
   });
 
   return { attempt_id: attempt.id, score: regrade.score, accepted };

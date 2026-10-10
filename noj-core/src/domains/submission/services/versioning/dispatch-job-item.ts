@@ -21,9 +21,11 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import {
   objectiveSubmissions,
   problemVersionObjects,
+  submissionJobItems,
   submissions,
 } from "../../../../shared/db/schema.ts";
 import { getLogger } from "@logtape/logtape";
+import { generatePublicId } from "../../../../shared/security/public-id.ts";
 import { getStorageProvider } from "../../../system/index.ts";
 import type { LlmConfig } from "../../../catalog/index.ts";
 import type { ProblemContentV1 } from "../../../catalog/index.ts";
@@ -67,6 +69,8 @@ interface DispatchSource {
   active_attempt_id: string | null;
   artifact_storage_url: string | null;
   submitted_version_id: string | null;
+  /** 客观题原始答案（升级时原样复制到新提交；重判永不改写它）。 */
+  answers: Record<string, unknown> | null;
 }
 
 /** 读取源提交；已删除返回 null。 */
@@ -87,7 +91,7 @@ async function loadSource(
       artifact_storage_url: submissions.artifact_storage_url,
       submitted_version_id: submissions.submitted_version_id,
     }).from(submissions).where(eq(submissions.id, item.source_id)).limit(1);
-    return row ?? null;
+    return row ? { ...row, answers: null } : null;
   }
   const [row] = await db.select({
     id: objectiveSubmissions.id,
@@ -99,6 +103,7 @@ async function loadSource(
     contest_id: objectiveSubmissions.contest_id,
     active_attempt_id: objectiveSubmissions.active_attempt_id,
     submitted_version_id: objectiveSubmissions.submitted_version_id,
+    answers: objectiveSubmissions.answers,
   }).from(objectiveSubmissions).where(
     eq(objectiveSubmissions.id, item.source_id),
   ).limit(1);
@@ -114,8 +119,12 @@ async function loadSource(
     active_attempt_id: row.active_attempt_id,
     artifact_storage_url: null,
     submitted_version_id: row.submitted_version_id,
+    answers: (row.answers ?? {}) as Record<string, unknown>,
   };
 }
+
+/** 升级上下文：`source_contest` 时新提交仍需留在原竞赛内（与受理侧同名词区分）。 */
+export type JobUpgradeContext = "practice" | "source_contest";
 
 /** 版本文件引用中的支持包下载地址。 */
 async function resolveVersionSupportPackage(
@@ -153,6 +162,7 @@ export async function dispatchJobItem(
   item: ClaimedJobItem,
   owner: string,
   jobKind: "rejudge" | "upgrade",
+  upgradeContext: JobUpgradeContext = "practice",
 ): Promise<DispatchOutcome> {
   const source = await loadSource(item);
   if (!source) {
@@ -200,15 +210,30 @@ export async function dispatchJobItem(
   }
   const content = loaded.content;
 
-  // 客观题：无 Judge 任务，按目标版本快照同步重判（Handbook §6.4）
-  if (item.source_kind === "objective") {
-    if (content.kind !== "objective") {
+  // 客观题版本：只服务客观题提交；判卷是纯函数，直接按目标版本快照处理（无 MQ）
+  if (content.kind === "objective") {
+    if (item.source_kind !== "objective") {
       await completeJobItem(item.id, {
         status: "failed",
         reasonCode: "CONTENT_KIND_MISMATCH",
-        reasonMessage: "目标版本类型与提交类型不一致",
+        reasonMessage: "代码提交不能使用客观题版本重测",
       });
       return "failed";
+    }
+    if (jobKind === "upgrade") {
+      if (source.submitted_version_id === item.target_version_id) {
+        await completeJobItem(item.id, {
+          status: "skipped",
+          reasonCode: "ALREADY_LATEST",
+          reasonMessage: "原提交已在目标版本，无需升级",
+        });
+        return "skipped";
+      }
+      return await dispatchObjectiveUpgrade({
+        item,
+        source,
+        targetVersionId: item.target_version_id,
+      });
     }
     const { rejudgeObjectiveSubmissionForJob } = await import(
       "../../../objective/index.ts"
@@ -217,7 +242,7 @@ export async function dispatchJobItem(
       const result = await rejudgeObjectiveSubmissionForJob({
         submissionId: source.id,
         targetVersionId: item.target_version_id,
-        jobKind,
+        jobKind: "rejudge",
       });
       await completeJobItem(item.id, {
         status: "succeeded",
@@ -235,11 +260,12 @@ export async function dispatchJobItem(
     }
   }
 
-  if (content.kind === "objective") {
+  // 走到这里 content 必为 ai/oi，源必须是普通提交
+  if (item.source_kind === "objective") {
     await completeJobItem(item.id, {
       status: "failed",
       reasonCode: "CONTENT_KIND_MISMATCH",
-      reasonMessage: "代码提交不能使用客观题版本重测",
+      reasonMessage: "客观题提交不能使用代码题版本",
     });
     return "failed";
   }
@@ -254,7 +280,6 @@ export async function dispatchJobItem(
     return "failed";
   }
 
-  let artifactDownloadUrl: string | undefined;
   if (source.artifact_storage_url) {
     const storage = await getStorageProvider();
     const stat = await storage.stat(source.artifact_storage_url).catch(() => ({
@@ -283,29 +308,88 @@ export async function dispatchJobItem(
       });
       return "failed";
     }
-    artifactDownloadUrl = await storage.downloadUrl(
-      source.artifact_storage_url,
-    );
+    // 下载地址在派发阶段重新签发（重派允许换凭据，但不改目标版本）
   }
 
-  // 创建新尝试：sequence 递增、绑定目标版本，旧尝试与历史判定全部保留
-  const attempt = await createAttempt({
-    source: {
+  // 升级：先在目标版本上创建**新提交**（沿用原用户、记录升级来源、使用当前时间），
+  // 再对新提交派发评测；原提交与原成绩完全不动（Handbook §4.4）
+  if (jobKind === "upgrade") {
+    if (source.submitted_version_id === item.target_version_id) {
+      await completeJobItem(item.id, {
+        status: "skipped",
+        reasonCode: "ALREADY_LATEST",
+        reasonMessage:
+          "原提交已在目标版本，无需升级（再次评测请使用管理员重测）",
+      });
+      return "skipped";
+    }
+    return await dispatchCodeUpgrade({
+      item,
+      owner,
+      source,
+      content,
+      upgradeContext,
+    });
+  }
+
+  return await dispatchJudgeAttempt({
+    item,
+    owner,
+    attemptSource: {
       kind: "submission",
       id: source.id,
       problem_id: source.problem_id,
       contest_id: source.contest_id,
     },
-    problemVersionId: item.target_version_id,
-    source_kind: jobKind === "upgrade" ? "upgrade" : "rejudge",
+    submissionId: source.id,
+    source,
+    content,
+    sourceKind: "rejudge",
+    priority: "low",
+  });
+}
+
+/** 派发一次 Judge 执行（重测与升级共用）。 */
+async function dispatchJudgeAttempt(input: {
+  item: ClaimedJobItem;
+  owner: string;
+  attemptSource: {
+    kind: "submission";
+    id: string;
+    problem_id: string;
+    contest_id: string | null;
+  };
+  /** 任务/LLM token 使用的提交 ID（升级时为**新提交**）。 */
+  submissionId: string;
+  source: DispatchSource;
+  content: Exclude<ProblemContentV1, { kind: "objective" }>;
+  sourceKind: "rejudge" | "upgrade";
+  priority: "low" | "medium";
+}): Promise<DispatchOutcome> {
+  const { item, owner, source, content, submissionId } = input;
+  const targetVersionId = item.target_version_id as string;
+
+  // 创建新尝试：sequence 递增、绑定目标版本，旧尝试与历史判定全部保留
+  const attempt = await createAttempt({
+    source: input.attemptSource,
+    problemVersionId: targetVersionId,
+    source_kind: input.sourceKind,
     taskSnapshot: {
       language: source.language,
-      problem_version_id: item.target_version_id,
+      problem_version_id: targetVersionId,
       submission_mode: content.kind === "ai" ? content.submission_mode : "code",
       batch_job_id: item.job_id,
     },
     createdBy: null,
   });
+
+  let artifactDownloadUrl: string | undefined;
+  if (source.artifact_storage_url) {
+    const storage = await getStorageProvider();
+    artifactDownloadUrl = await storage.downloadUrl(
+      source.artifact_storage_url,
+    );
+  }
 
   let llmTask;
   const llmConfig = content.kind === "ai"
@@ -314,27 +398,27 @@ export async function dispatchJobItem(
   if (llmConfig && content.kind === "ai") {
     llmTask = await buildJudgeTaskLlm(
       llmConfig,
-      source.id,
+      submissionId,
       source.problem_id,
       source.user_id,
       content.runtime_config,
       {
         // 同一尝试重派共享预算：重新签发 token 不重置额度
         attemptId: attempt.id,
-        problemVersionId: item.target_version_id,
+        problemVersionId: targetVersionId,
       },
     );
   }
 
   const task = await prepareJudgeTask({
     attempt_id: attempt.id,
-    problem_version_id: item.target_version_id,
-    submission_id: source.id,
+    problem_version_id: targetVersionId,
+    submission_id: submissionId,
     problem_id: source.problem_id,
     user_id: source.user_id,
-    priority: jobKind === "upgrade" ? "medium" : "low",
+    priority: input.priority,
     runtime_config: content.runtime_config,
-    download_url: await resolveVersionSupportPackage(item.target_version_id),
+    download_url: await resolveVersionSupportPackage(targetVersionId),
     artifact_download_url: artifactDownloadUrl,
     language: source.language,
     code: source.artifact_storage_url ? "" : source.code,
@@ -365,9 +449,135 @@ export async function dispatchJobItem(
     job_id: item.job_id,
     item_id: item.id,
     attempt_id: attempt.id,
-    target_version_id: item.target_version_id,
+    target_version_id: targetVersionId,
   });
   return "dispatched";
+}
+
+/**
+ * 客观题升级：创建新的**练习**提交并同步重判。
+ *
+ * 客观题竞赛只允许一次提交，因此升级一律落练习提交（原竞赛提交仍可被管理员重测）；
+ * 新提交记录 `upgraded_from_id` 并使用当前时间。
+ */
+async function dispatchObjectiveUpgrade(input: {
+  item: ClaimedJobItem;
+  source: DispatchSource;
+  targetVersionId: string;
+}): Promise<DispatchOutcome> {
+  const { item, source, targetVersionId } = input;
+  const db = getDb();
+  const newId = crypto.randomUUID();
+  await db.insert(objectiveSubmissions).values({
+    id: newId,
+    paper_id: source.problem_id,
+    user_id: source.user_id,
+    contest_id: null,
+    submission_type: "practice",
+    answers: source.answers ?? {},
+    status: "finished",
+    score: 0,
+    details: {},
+    submitted_version_id: targetVersionId,
+    version_origin: "known",
+    upgraded_from_id: source.id,
+    created_at: new Date().toISOString(),
+  });
+  try {
+    const { rejudgeObjectiveSubmissionForJob } = await import(
+      "../../../objective/index.ts"
+    );
+    const result = await rejudgeObjectiveSubmissionForJob({
+      submissionId: newId,
+      targetVersionId,
+      jobKind: "upgrade",
+    });
+    await completeJobItem(item.id, {
+      status: "succeeded",
+      attemptId: result.attempt_id,
+      reasonMessage: "已按目标版本生成客观题升级提交",
+    });
+    await db.update(submissionJobItems).set({ result_submission_id: newId })
+      .where(eq(submissionJobItems.id, item.id));
+    return "dispatched";
+  } catch (err) {
+    // 升级失败不留"无评测"的新提交
+    await db.delete(objectiveSubmissions).where(
+      eq(objectiveSubmissions.id, newId),
+    );
+    logger.error("客观题升级失败", { item_id: item.id, err });
+    await scheduleDispatchRetryOrFail(item.id, {
+      reasonCode: "UPGRADE_FAILED",
+      reasonMessage: err instanceof Error ? err.message : String(err),
+    });
+    return "retry";
+  }
+}
+
+/**
+ * 代码/产物升级：创建新提交（沿用原用户与原始代码/产物，记录升级来源、使用当前
+ * 时间；`context = source_contest` 时保留原竞赛），再对新提交派发评测。
+ */
+async function dispatchCodeUpgrade(input: {
+  item: ClaimedJobItem;
+  owner: string;
+  source: DispatchSource;
+  content: Exclude<ProblemContentV1, { kind: "objective" }>;
+  upgradeContext: JobUpgradeContext;
+}): Promise<DispatchOutcome> {
+  const { item, owner, source, content, upgradeContext } = input;
+  const db = getDb();
+  const targetVersionId = item.target_version_id as string;
+  const newId = crypto.randomUUID();
+  await db.insert(submissions).values({
+    id: newId,
+    public_id: generatePublicId("sub"),
+    user_id: source.user_id,
+    problem_id: source.problem_id,
+    contest_id: upgradeContext === "source_contest" ? source.contest_id : null,
+    language: source.language,
+    code: source.code,
+    file_name: source.file_name,
+    artifact_storage_url: source.artifact_storage_url,
+    status: "pending",
+    submitted_version_id: targetVersionId,
+    version_origin: "known",
+    upgraded_from_id: source.id,
+    created_at: new Date().toISOString(),
+  });
+
+  const outcome = await dispatchJudgeAttempt({
+    item,
+    owner,
+    attemptSource: {
+      kind: "submission",
+      id: newId,
+      problem_id: source.problem_id,
+      contest_id: upgradeContext === "source_contest"
+        ? source.contest_id
+        : null,
+    },
+    submissionId: newId,
+    source,
+    content,
+    sourceKind: "upgrade",
+    priority: "medium",
+  });
+
+  if (outcome === "dispatched") {
+    // 与正常提交同一口径：入队成功后置 judging（条件更新，结果早到不回退终态）
+    await db.update(submissions).set({ status: "judging" }).where(
+      and(eq(submissions.id, newId), eq(submissions.status, "pending")),
+    );
+  }
+  if (outcome === "dispatched" || outcome === "deferred") {
+    await db.update(submissionJobItems).set({ result_submission_id: newId })
+      .where(eq(submissionJobItems.id, item.id));
+  } else {
+    // 派发失败：删除新提交，避免留下永远 pending 的孤儿
+    await db.delete(submissions).where(eq(submissions.id, newId));
+  }
+  return outcome;
 }
 
 /**
@@ -405,10 +615,13 @@ export async function runSubmissionJobWorkerOnce(
     let outcome: DispatchOutcome;
     try {
       const job = await findJobById(item.job_id);
+      const requestContext = (job?.request as { context?: string } | null)
+        ?.context;
       outcome = await dispatchJobItem(
         item,
         owner,
         job?.kind === "upgrade" ? "upgrade" : "rejudge",
+        requestContext === "source_contest" ? "source_contest" : "practice",
       );
     } catch (err) {
       logger.error("批任务条目派发异常", { item_id: item.id, err });

@@ -10,6 +10,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
+  contests,
   evaluationAttempts,
   objectiveSubmissions,
   problems,
@@ -665,5 +666,319 @@ Deno.test({
     assertEquals(row.effective_attempt_id, initialAttemptId);
     assertEquals(row.accepted_attempt_id, initialAttemptId);
     assertEquals(row.latest_attempt_id, item.attempt_id);
+  },
+});
+
+/** 受理升级任务（practice 上下文）。 */
+async function acceptUpgrade(
+  actorId: string,
+  items: Array<{ kind: "submission" | "objective"; id: string }>,
+  context: "practice" | "source_contest" = "practice",
+): Promise<string> {
+  const { acceptUpgradeJob } = await import(
+    "../../services/versioning/upgrade-jobs.ts"
+  );
+  const accepted = await acceptUpgradeJob(
+    actorId,
+    { submissions: items, context },
+    `idem-upgrade-${crypto.randomUUID()}`,
+  );
+  return accepted.job_id;
+}
+
+/** 在假 Redis 环境里领取并派发某升级任务的条目。 */
+async function dispatchUpgradeJob(
+  jobId: string,
+): Promise<{ messages: Record<string, unknown>[]; outcomes: string[] }> {
+  const fake = startFakeRedis();
+  const prevUrl = Deno.env.get("REDIS_URL") ?? null;
+  try {
+    resetRedisForTest();
+    Deno.env.set("REDIS_URL", fake.url);
+    const redis = getRedis();
+    await redis.connect();
+    const items = (await claimJobItems("worker-up", { limit: 100 }))
+      .filter((item) => item.job_id === jobId);
+    const outcomes: string[] = [];
+    for (const item of items) {
+      outcomes.push(await dispatchJobItem(item, "worker-up", "upgrade"));
+    }
+    const messages: Record<string, unknown>[] = [];
+    for (
+      const queue of [
+        "noj:judge:queue:ai:medium",
+        "noj:judge:queue:ai:low",
+        "noj:judge:queue:oi-native:medium",
+        "noj:judge:queue:oi-wasm:medium",
+      ]
+    ) {
+      for (const raw of fake.getMessages(queue)) messages.push(JSON.parse(raw));
+    }
+    return { messages, outcomes };
+  } finally {
+    await fake.stop();
+    resetRedisForTest();
+    if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
+    else Deno.env.delete("REDIS_URL");
+  }
+}
+
+Deno.test({
+  name: "dispatch: 代码升级创建新提交并派发（原提交不动）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const actor = await makeUser("up-code");
+    const { problemId, v1, v2 } = await seedProblemWithVersions(
+      "up-code",
+      {
+        kind: "ai",
+        title: "V1",
+        description: "d",
+        samples: [],
+        submission_mode: "code",
+        runtime_config: dualConfig(1111),
+        template_content: "",
+        artifact_max_size_mb: null,
+        llm_config: null,
+      },
+      {
+        kind: "ai",
+        title: "V2",
+        description: "d",
+        samples: [],
+        submission_mode: "code",
+        runtime_config: dualConfig(2222),
+        template_content: "",
+        artifact_max_size_mb: null,
+        llm_config: null,
+      },
+      dualConfig(1111),
+    );
+    const { submissionId } = await seedSubmission(problemId, actor, v1);
+    const jobId = await acceptUpgrade(actor, [{
+      kind: "submission",
+      id: submissionId,
+    }]);
+
+    const { messages, outcomes } = await dispatchUpgradeJob(jobId);
+    assertEquals(outcomes, ["dispatched"]);
+
+    const item = await loadItem(jobId);
+    assertEquals(item.status, "dispatched");
+    const newId = item.result_submission_id as string;
+    assertEquals(typeof newId, "string");
+    assertEquals(newId !== submissionId, true);
+
+    const [created] = await db.select().from(submissions).where(
+      eq(submissions.id, newId),
+    );
+    assertEquals(created.upgraded_from_id, submissionId);
+    assertEquals(created.submitted_version_id, v2);
+    assertEquals(created.version_origin, "known");
+    assertEquals(created.contest_id, null);
+    assertEquals(created.status, "judging");
+    assertEquals(created.code, "print(1)");
+
+    // 原提交保持原样（版本、状态、判定都不动）
+    const [original] = await db.select().from(submissions).where(
+      eq(submissions.id, submissionId),
+    );
+    assertEquals(original.submitted_version_id, v1);
+    assertEquals(original.status, "finished");
+    assertEquals(original.upgraded_from_id, null);
+
+    // 任务是针对**新提交**的，run_id 指向新提交的新尝试
+    const task = messages.find((m) => m.submission_id === newId);
+    assertEquals(task !== undefined, true);
+    assertEquals(task!.run_id, item.attempt_id);
+    assertEquals(task!.problem_version_id, v2);
+    const [attempt] = await db.select().from(evaluationAttempts).where(
+      eq(evaluationAttempts.id, item.attempt_id as string),
+    );
+    assertEquals(attempt.submission_id, newId);
+    assertEquals(attempt.source, "upgrade");
+    assertEquals(attempt.sequence, 0);
+  },
+});
+
+Deno.test({
+  name: "dispatch: 原提交已在目标版本 → skipped + ALREADY_LATEST",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const actor = await makeUser("up-latest");
+    const { problemId, v1, v2 } = await seedProblemWithVersions(
+      "up-latest",
+      {
+        kind: "ai",
+        title: "V1",
+        description: "d",
+        samples: [],
+        submission_mode: "code",
+        runtime_config: dualConfig(1111),
+        template_content: "",
+        artifact_max_size_mb: null,
+        llm_config: null,
+      },
+      {
+        kind: "ai",
+        title: "V2",
+        description: "d",
+        samples: [],
+        submission_mode: "code",
+        runtime_config: dualConfig(2222),
+        template_content: "",
+        artifact_max_size_mb: null,
+        llm_config: null,
+      },
+      dualConfig(1111),
+    );
+    // 直接以 V2 提交（= 最新版）后升级 → 受理侧本来就会跳过；这里验证派发侧兜底
+    const { submissionId } = await seedSubmission(problemId, actor, v2);
+    const jobId = await acceptUpgrade(actor, [{
+      kind: "submission",
+      id: submissionId,
+    }]);
+    const { messages } = await dispatchUpgradeJob(jobId);
+    const item = await loadItem(jobId);
+    if (item.status === "skipped") {
+      assertEquals(item.reason_code, "ALREADY_LATEST");
+    } else {
+      // 受理侧未跳过时，派发侧必须给出同一原因码
+      assertEquals(item.reason_code, "ALREADY_LATEST");
+    }
+    assertEquals(messages.length, 0);
+    assertEquals(item.result_submission_id, null);
+    void v1;
+  },
+});
+
+Deno.test({
+  name: "dispatch: 客观题升级落练习提交并按目标版本重判",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const actor = await makeUser("up-obj");
+    const problemId = `tst-dispatch-upobj-${ts}`;
+    const v1 = `tst-dispatch-upobj-v1-${ts}`;
+    const v2 = `tst-dispatch-upobj-v2-${ts}`;
+    const contestId = `tst-dispatch-upobj-contest-${ts}`;
+    const question = (answer: string) => ({
+      key: "q-1",
+      sort_order: 0,
+      type: "single",
+      prompt: "1+1=?",
+      options: [{ key: "A", text: "2" }, { key: "B", text: "3" }],
+      answer: [answer],
+      explanation: "",
+    });
+    await db.insert(problems).values({
+      id: problemId,
+      title: "客观题升级题",
+      description: "d",
+      difficulty: "easy",
+      type: "P",
+      number: 99500 + Math.floor(Math.random() * 400),
+      owner_id: "0",
+      is_objective: true,
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(problemVersions).values([
+      {
+        id: v1,
+        problem_id: problemId,
+        version: 1,
+        origin: "published",
+        content: {
+          kind: "objective",
+          title: "V1",
+          description: "d",
+          samples: [],
+          questions: [question("A")],
+        },
+        published_at: now,
+      },
+      {
+        id: v2,
+        problem_id: problemId,
+        version: 2,
+        origin: "published",
+        content: {
+          kind: "objective",
+          title: "V2",
+          description: "d",
+          samples: [],
+          questions: [question("A"), { ...question("B"), key: "q-2" }],
+        },
+        published_at: now,
+      },
+    ]);
+    await db.update(problems).set({ latest_version_id: v2 }).where(
+      eq(problems.id, problemId),
+    );
+    await db.insert(contests).values({
+      id: contestId,
+      title: `客观题升级竞赛 ${ts}`,
+      description: "",
+      start_time: new Date(Date.now() - 3600_000).toISOString(),
+      end_time: new Date(Date.now() + 3600_000).toISOString(),
+      type: "kaggle",
+      config: {},
+      created_at: now,
+      updated_at: now,
+    });
+
+    const sourceId = crypto.randomUUID();
+    await db.insert(objectiveSubmissions).values({
+      id: sourceId,
+      paper_id: problemId,
+      user_id: actor,
+      contest_id: contestId,
+      submission_type: "contest",
+      answers: { "q-1": ["A"] },
+      status: "finished",
+      score: 10000,
+      details: {},
+      submitted_version_id: v1,
+      version_origin: "known",
+      created_at: now,
+    });
+
+    const jobId = await acceptUpgrade(actor, [{
+      kind: "objective",
+      id: sourceId,
+    }]);
+    const { outcomes } = await dispatchUpgradeJob(jobId);
+    assertEquals(outcomes, ["dispatched"]);
+
+    const item = await loadItem(jobId);
+    assertEquals(item.status, "succeeded");
+    const newId = item.result_submission_id as string;
+    assertEquals(typeof newId, "string");
+
+    const [created] = await db.select().from(objectiveSubmissions).where(
+      eq(objectiveSubmissions.id, newId),
+    );
+    // 竞赛提交升级后落练习提交（竞赛一次性提交限制不适用于升级）
+    assertEquals(created.contest_id, null);
+    assertEquals(created.submission_type, "practice");
+    assertEquals(created.upgraded_from_id, sourceId);
+    assertEquals(created.submitted_version_id, v2);
+    assertEquals(created.answers, { "q-1": ["A"] });
+
+    // 新提交按 V2 判卷：只有 1/2 题正确 → 5000，且有效但未通过（满分口径）
+    assertEquals(created.score, 5000);
+    assertEquals(created.is_valid, true);
+    assertEquals(created.is_accepted, false);
+
+    // 原竞赛提交不动
+    const [original] = await db.select().from(objectiveSubmissions).where(
+      eq(objectiveSubmissions.id, sourceId),
+    );
+    assertEquals(original.contest_id, contestId);
+    assertEquals(original.submission_type, "contest");
+    assertEquals(original.score, 10000);
   },
 });

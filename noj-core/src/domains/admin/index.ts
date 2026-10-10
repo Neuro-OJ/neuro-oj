@@ -17,6 +17,7 @@ import { adminMiddleware, authMiddleware } from "../identity/index.ts";
 import identityAdminRouter from "./routes/identity.ts";
 import catalogAdminRouter from "./routes/catalog.ts";
 import submissionAdminRouter from "./routes/submission.ts";
+import submissionJobsAdminRouter from "./routes/submission-jobs.ts";
 import queryAdminRouter from "./routes/query.ts";
 import contestAdminRouter from "./routes/contest.ts";
 import systemAdminRouter from "./routes/system.ts";
@@ -47,6 +48,7 @@ router.use("*", authMiddleware, async (c, next) => {
 router.route("/identity", identityAdminRouter);
 router.route("/catalog", catalogAdminRouter);
 router.route("/submission", submissionAdminRouter);
+router.route("/submission-jobs", submissionJobsAdminRouter);
 router.route("/query", queryAdminRouter);
 router.route("/contest", contestAdminRouter);
 router.route("/system", systemAdminRouter);
