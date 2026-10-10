@@ -325,6 +325,14 @@
 - [ ] 5c（收尾）search 索引发布内容、正式成绩快照（5d）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 
+## 批次 8 落点清单
+
+- [ ] 新增用户/管理员版本管理文档 + 同步现行文档（README/AGENTS/题型/题包/题单/提交/竞赛/升级）。
+- [ ] Agent Note（`.agents/notes/implemented/`）：有效成绩物化、独立作用域、跨版本保留、协调升级。
+- [ ] 全量验收（core 各域 + shared + judge + gateway + UI + E2E）与迁移演练，PR 合入 `main`。
+- [ ] **删除临时进度跟踪文件** `.agents/tasks/problem-version-management.md`（实施期脚手架，
+      交付后不得留在仓库；删除前确认无其它引用，见该文件文末清单）。
+
 ## 批次 7 落点清单
 
 - [x] 迁移 `0103_version_backfill.sql`（drizzle-kit 生成的索引/默认值段 + 手写回填段）：
