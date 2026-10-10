@@ -17,13 +17,15 @@ import type { Executor } from "../../../../shared/db/executor.ts";
 import {
   evaluationAttempts,
   objectiveSubmissions,
+  problemVersions,
   submissions,
 } from "../../../../shared/db/schema.ts";
 import type {
   AttemptResultKind,
   AttemptSource,
 } from "../../../../shared/versioning/types.ts";
-import type { ProjectionSource } from "./projection.ts";
+import { lockProjectionHosts, type ProjectionSource } from "./projection.ts";
+import { AppError } from "../../../../shared/base/errors.ts";
 
 /** 尝试创建输入。 */
 export interface CreateAttemptInput {
@@ -113,7 +115,57 @@ export async function nextAttemptSequence(
 export async function createAttempt(
   input: CreateAttemptInput,
 ): Promise<AttemptRecord> {
+  if (!input.executor) {
+    return await getDb().transaction((tx) =>
+      createAttempt({ ...input, executor: tx })
+    );
+  }
   const db = input.executor ?? getDb();
+  await lockProjectionHosts(db, input.source);
+  const sourceTable = input.source.kind === "submission"
+    ? submissions
+    : objectiveSubmissions;
+  const problemColumn = input.source.kind === "submission"
+    ? submissions.problem_id
+    : objectiveSubmissions.paper_id;
+  const [locked] = await db.select({
+    active: sourceTable.active_attempt_id,
+    problem_id: problemColumn,
+    contest_id: sourceTable.contest_id,
+  })
+    .from(sourceTable).where(eq(sourceTable.id, input.source.id)).for("update");
+  if (!locked) throw new AppError("提交不存在", 404, "SUBMISSION_NOT_FOUND");
+  if (
+    locked.problem_id !== input.source.problem_id ||
+    (input.source.contest_id !== undefined &&
+      input.source.contest_id !== locked.contest_id)
+  ) {
+    throw new AppError(
+      "尝试与源提交不属于同一题目或竞赛",
+      409,
+      "ATTEMPT_SOURCE_MISMATCH",
+    );
+  }
+  if (!input.problemVersionId && input.source_kind !== "legacy_import") {
+    throw new AppError("新尝试必须使用已发布版本", 400, "VERSION_REQUIRED");
+  }
+  if (input.problemVersionId) {
+    const [version] = await db.select({ id: problemVersions.id }).from(
+      problemVersions,
+    ).where(and(
+      eq(problemVersions.id, input.problemVersionId),
+      eq(problemVersions.problem_id, locked.problem_id),
+    ));
+    if (!version) {
+      throw new AppError("评测版本不属于该题", 400, "PROBLEM_VERSION_MISMATCH");
+    }
+  }
+  if (locked.active) {
+    const active = await getAttempt(locked.active, db);
+    if (active && !isTerminalAttemptState(active.state)) {
+      throw new AppError("源提交正在评测", 409, "SOURCE_JUDGING");
+    }
+  }
   const sequence = input.sequence ??
     await nextAttemptSequence(input.source, db);
   const id = input.id ?? crypto.randomUUID();
@@ -144,10 +196,14 @@ export async function createAttempt(
       active_attempt_id: id,
       status: "pending",
       judge_run_id: id,
+      rejudge_seq: sequence,
       judge_finished_at: null,
     }).where(eq(submissions.id, input.source.id));
   } else {
-    await db.update(objectiveSubmissions).set({ active_attempt_id: id }).where(
+    await db.update(objectiveSubmissions).set({
+      active_attempt_id: id,
+      rejudge_seq: sequence,
+    }).where(
       eq(objectiveSubmissions.id, input.source.id),
     );
   }

@@ -37,8 +37,7 @@ export function prepareJudgeTask(
       input.runtime_config.backend === "wasm"
     ? getBuiltinOiCostProfile()
     : undefined;
-  const runId = input.attempt_id ??
-    (isOiRuntimeConfig(input.runtime_config) ? crypto.randomUUID() : undefined);
+  const runId = input.attempt_id ?? input.run_id ?? crypto.randomUUID();
   return buildJudgeTask({
     ...input,
     ...(runId ? { run_id: runId } : {}),

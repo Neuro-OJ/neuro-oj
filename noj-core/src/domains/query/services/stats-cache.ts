@@ -1,3 +1,4 @@
+import { unifiedSubmissionSources } from "../../../shared/versioning/submission-sources.ts";
 import { and, eq, gte, type SQL, sql } from "drizzle-orm";
 import { todayUtc } from "./../../../shared/base/dates.ts";
 import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
@@ -52,7 +53,7 @@ async function selectStatsRow(
           AND ${evaluationAttempts.score} >= ${FULL_SCORE}
       )::int`,
     })
-    .from(submissions)
+    .from(unifiedSubmissionSources)
     // 有效成绩指针指向的已完成正式判定（无效/迁移未知版本时指针为空 → 不计满分）
     .leftJoin(
       evaluationAttempts,

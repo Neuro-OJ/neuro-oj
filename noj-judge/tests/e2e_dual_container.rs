@@ -41,6 +41,7 @@ fn dual_task() -> JudgeTask {
         scheduling_version: None,
         resource_pool: None,
         run_id: None,
+        attempt_id: None,
         problem_version_id: None,
         evaluation_protocol_version: None,
         submission_id: format!("sub-{}", uuid::Uuid::new_v4()),

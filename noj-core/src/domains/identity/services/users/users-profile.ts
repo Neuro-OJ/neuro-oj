@@ -67,8 +67,9 @@ export async function getUserProfileAggregate(
   const totalSubmissions = Number(statsRow?.total_submissions ?? 0);
   const accepted = Number(statsRow?.accepted ?? 0);
   const solvedCount = Number(statsRow?.solved_count ?? 0);
-  const acceptanceRate = totalSubmissions > 0
-    ? Math.round((accepted / totalSubmissions) * 1000) / 1000
+  const validSubmissions = Number(statsRow?.valid_submissions ?? 0);
+  const acceptanceRate = validSubmissions > 0
+    ? Math.round((accepted / validSubmissions) * 1000) / 1000
     : 0;
 
   type SolvedProblemRow = {
@@ -118,6 +119,7 @@ export async function getUserProfileAggregate(
     },
     stats: {
       total_submissions: totalSubmissions,
+      valid_submissions: validSubmissions,
       accepted,
       acceptance_rate: acceptanceRate,
       solved_count: solvedCount,

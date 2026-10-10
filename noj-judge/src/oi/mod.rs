@@ -527,6 +527,7 @@ impl OiEvaluation {
             rejudge_seq,
             // 版本化封套由 main.rs 在状态最终确定后统一补齐（apply_protocol）。
             run_id: None,
+            attempt_id: None,
             problem_version_id: None,
             evaluation_protocol_version: None,
             result_kind: None,

@@ -9,6 +9,8 @@
  */
 
 import { eq } from "drizzle-orm";
+import { evaluationAttempts } from "../../../../shared/db/schema.ts";
+import { lockProjectionHosts } from "../versioning/projection.ts";
 import { sseEvents, submissions } from "./../../../../shared/db/schema.ts";
 import {
   BadRequestError,
@@ -16,7 +18,6 @@ import {
 } from "./../../../../shared/base/errors.ts";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
-import { getStorageProvider } from "./../../../system/index.ts";
 import type { JudgeResult, SubmissionStatus } from "../../types/index.ts";
 import { applyNewResult, refreshRankingsView } from "../../../query/index.ts";
 import { filterUnendedContestIds } from "../../../contest/index.ts";
@@ -26,10 +27,7 @@ import { getRedis } from "./../../../../shared/mq/connection.ts";
 const logger = getLogger(["noj", "submission"]);
 import { Channels } from "./../../../../shared/sse/event-bus.ts";
 import { sanitizeJudgeResult } from "./sanitize-judge-result.ts";
-import {
-  deriveResultKind,
-  isAcceptedResult,
-} from "../../../../shared/versioning/verdict.ts";
+import { isAcceptedResult } from "../../../../shared/versioning/verdict.ts";
 import { applyAttemptResult } from "../versioning/result-write.ts";
 
 // 允许的状态转换
@@ -77,10 +75,30 @@ export async function saveEvaluationResult(
 ): Promise<SaveEvaluationResultOutcome> {
   const db = getDb();
 
-  const incomingSeq = result.rejudge_seq ?? 0;
+  if (
+    result.evaluation_protocol_version !== 2 || !result.run_id ||
+    !result.problem_version_id ||
+    (result.result_kind !== "graded" &&
+      result.result_kind !== "platform_error") ||
+    result.attempt_id !== result.run_id ||
+    !Number.isInteger(result.rejudge_seq) || result.rejudge_seq! < 0
+  ) {
+    return { applied: false, outbox_events: [] };
+  }
+  const incomingSeq = result.rejudge_seq!;
   const now = new Date().toISOString();
 
   const outcome = await db.transaction(async (tx) => {
+    const [identity] = await tx.select({
+      problem_id: submissions.problem_id,
+      contest_id: submissions.contest_id,
+    }).from(submissions).where(eq(submissions.id, result.submission_id));
+    if (!identity) return null;
+    await lockProjectionHosts(tx, {
+      kind: "submission",
+      id: result.submission_id,
+      ...identity,
+    });
     const [sub] = await tx
       .select({
         rejudge_seq: submissions.rejudge_seq,
@@ -105,42 +123,21 @@ export async function saveEvaluationResult(
       return null;
     }
 
-    // 过时结果：本次消息早于当前重测序号，直接丢弃。
-    if (incomingSeq < sub.rejudge_seq) {
-      logger.warn("忽略过时的评测结果", {
-        submission_id: result.submission_id,
-        result_seq: incomingSeq,
-        current_seq: sub.rejudge_seq,
-      });
-      return null;
-    }
-
-    // 结果若**声明了** run_id（协议 v2 封套或 evaluator details.run_id），必须与
-    // 当前在途尝试（`judge_run_id` = attempt id）一致，否则视为过时消息丢弃。
-    // 未声明 run_id 的旧协议结果不在此处拦截，仍按 rejudge_seq / active_attempt_id
-    // 归属（Handbook §5.5 的兼容路径）。
-    const declaredRunId = (result.details as { run_id?: unknown } | undefined)
-      ?.run_id ?? result.run_id ?? null;
+    const [attempt] = await tx.select().from(evaluationAttempts).where(
+      eq(evaluationAttempts.id, result.run_id!),
+    );
+    // 封套绑定必须同时校验来源、题目、版本与序列；不从 evaluator 可控 details 取 run_id。
     if (
-      sub.judge_run_id && declaredRunId &&
-      declaredRunId !== sub.judge_run_id
+      !attempt || attempt.submission_id !== result.submission_id ||
+      attempt.problem_id !== sub.problem_id ||
+      attempt.problem_version_id !== result.problem_version_id ||
+      attempt.sequence !== incomingSeq || sub.rejudge_seq !== incomingSeq ||
+      sub.active_attempt_id !== attempt.id || sub.judge_run_id !== attempt.id
     ) {
-      return null;
-    }
-    // 旧结果表 `evaluation_results` 已停止写入（Handbook §6.5）：评测事实的唯一来源是
-    // `evaluation_attempts` 终态 + `submission_version_results` 当前判定 + 有效成绩投影。
-    // 所有运行期读取均已迁离旧表，旧表只剩存量数据，等待整体删除迁移。
-
-    // 状态机收紧：正常结果只允许 pending/judging → 终态。
-    // error 提交重测时会先重置为 pending，因此也允许从 error 修复。
-    const currentStatus = sub.status as SubmissionStatus;
-    if (
-      currentStatus !== "pending" && currentStatus !== "judging" &&
-      currentStatus !== "error"
-    ) {
-      logger.warn("提交状态不允许写入评测结果", {
+      logger.warn("忽略过时的评测结果或不匹配封套", {
         submission_id: result.submission_id,
-        status: currentStatus,
+        run_id: result.run_id,
+        incoming_seq: incomingSeq,
       });
       return null;
     }
@@ -156,49 +153,24 @@ export async function saveEvaluationResult(
       });
     }
 
-    const submissionStatus: SubmissionStatus = [
-        "error",
-        "SystemError",
-        "TimeLimitExceeded",
-        "MemoryLimitExceeded",
-        "RuntimeError",
-      ].includes(safeResult.status)
-      ? "error"
-      : "finished";
-
-    await tx
-      .update(submissions)
-      .set({
-        status: submissionStatus,
-        judge_finished_at: now,
-      })
-      .where(eq(submissions.id, safeResult.submission_id));
-
-    // 版本化评测链路（Handbook §5.6）：尝试定位优先级
-    // `attempt_id`（显式）→ `run_id`（协议 v2 回显，正式提交下同值）→
-    // 提交的 `active_attempt_id`（旧协议兜底）。没有在途尝试（历史数据/直接插入的
-    // 测试提交）则整段跳过，保持既有行为。
-    const attemptId = result.attempt_id ?? result.run_id ??
-      sub.active_attempt_id ?? null;
-    let attemptApplied: string | null = null;
-    if (attemptId) {
-      const outcome = await applyAttemptResult({
-        attemptId,
-        resultKind: result.result_kind ?? deriveResultKind(safeResult.status),
-        resultStatus: safeResult.status,
+    const attemptId = attempt.id;
+    const appliedAttempt = await applyAttemptResult({
+      attemptId,
+      resultKind: result.result_kind!,
+      resultStatus: safeResult.status,
+      score: result.result_kind === "platform_error" ? null : safeResult.score,
+      accepted: result.result_kind === "graded" && isAcceptedResult({
+        status: safeResult.status,
         score: safeResult.score,
-        accepted: isAcceptedResult({
-          status: safeResult.status,
-          score: safeResult.score,
-          details: safeResult.details,
-        }),
-        output: safeResult.output,
         details: safeResult.details,
-        timeMs: safeResult.time_ms ?? null,
-        memoryKb: safeResult.memory_kb ?? null,
-      }, tx);
-      attemptApplied = outcome.applied;
-    }
+      }),
+      output: safeResult.output,
+      details: safeResult.details,
+      timeMs: safeResult.time_ms ?? null,
+      memoryKb: safeResult.memory_kb ?? null,
+    }, tx);
+    if (appliedAttempt.applied === "ignored") return null;
+    const attemptApplied = appliedAttempt.applied;
 
     // 事务性 Outbox：在同一事务内写入 SSE 事件，提交后由调用方发布 Redis。
     const outboxEvents: SseEventOutboxItem[] = [];
@@ -242,30 +214,13 @@ export async function saveEvaluationResult(
       contest_id: sub.contest_id,
       user_id: sub.user_id,
       problem_id: sub.problem_id,
-      is_rejudge: sub.rejudge_seq > 0,
+      is_rejudge: attempt.source !== "initial",
       artifact_storage_url: sub.artifact_storage_url,
       outbox_events: outboxEvents,
     };
   });
 
   if (!outcome) return { applied: false, outbox_events: [] };
-
-  // artifact 评测完成（finished/error）后立即删除存储对象
-  if (outcome.artifact_storage_url) {
-    try {
-      const storage = await getStorageProvider();
-      await storage.delete(outcome.artifact_storage_url);
-      logger.info("artifact 评测完成，已删除存储对象", {
-        submission_id: result.submission_id,
-      });
-    } catch (err) {
-      logger.error("artifact 评测后删除失败", {
-        submission_id: result.submission_id,
-        storage_url: outcome.artifact_storage_url,
-        err,
-      });
-    }
-  }
 
   // 统计缓存仅对首次结果递增；重测结果不计入（NOJ-068）。
   // 赛中数据隔离（DL-03）：未结束竞赛的提交不计入全站实时统计，也不广播 stats:updated，防止成为满分判分预言机。

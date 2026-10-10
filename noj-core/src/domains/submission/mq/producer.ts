@@ -135,6 +135,9 @@ export async function pushJudgeTask(task: JudgeTask): Promise<number> {
       }).where(
         and(
           eq(submissions.id, task.submission_id),
+          ...(task.run_id
+            ? [eq(submissions.active_attempt_id, task.run_id)]
+            : []),
           eq(submissions.rejudge_seq, task.rejudge_seq ?? 0),
           inArray(submissions.status, ["pending", "judging"]),
         ),

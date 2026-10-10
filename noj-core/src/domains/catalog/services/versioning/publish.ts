@@ -16,6 +16,11 @@
  * 9. 提交后写审计与搜索索引事件。
  */
 
+import type { Context } from "hono";
+import {
+  assertDraftContentSecurity,
+  assertPublishedRuntimeSafety,
+} from "./content-security.ts";
 import { and, eq, sql } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -190,6 +195,7 @@ export async function preflightProblemDraft(
   if (errors.length === 0) {
     try {
       publishable = assertPublishableContent(expectedKind, draft.content);
+      await assertPublishedRuntimeSafety(publishable);
       contentComplete = true;
     } catch (error) {
       errors.push({
@@ -297,6 +303,7 @@ export async function publishProblemVersion(
     expectedRevision: number | null | undefined;
     changeNote?: string;
     actorId?: string | null;
+    context?: Context;
   },
 ): Promise<PublishProblemVersionResult> {
   if (input.expectedRevision == null) throw draftRevisionRequired();
@@ -318,6 +325,20 @@ export async function publishProblemVersion(
     );
   }
 
+  if (preflight.revision !== expected) {
+    throw draftRevisionConflict(expected, preflight.revision);
+  }
+  const checkedIdentity = await loadProblemIdentity(problemId);
+  const checkedDraft = await getProblemDraft(problemId, checkedIdentity);
+  if (checkedDraft.revision !== preflight.revision) {
+    throw draftRevisionConflict(preflight.revision, checkedDraft.revision);
+  }
+  await assertDraftContentSecurity(
+    checkedIdentity,
+    checkedDraft.content,
+    input.actorId,
+    input.context,
+  );
   const db = getDb();
   const outcome = await db.transaction(async (tx) => {
     // 步骤 2：锁定题目与草稿
@@ -345,8 +366,13 @@ export async function publishProblemVersion(
     );
     const draftRow = draftRows[0];
     const currentRevision = draftRow?.revision ?? 0;
-    const baseVersionId = draftRow?.base_version_id ?? null;
+    const baseVersionId = draftRow
+      ? draftRow.base_version_id
+      : identity.latest_version_id;
 
+    if (currentRevision !== preflight.revision) {
+      throw draftRevisionConflict(preflight.revision, currentRevision);
+    }
     // 步骤 2 续：复查 revision 与基线
     if (currentRevision !== expected) {
       throw draftRevisionConflict(expected, currentRevision);
@@ -409,10 +435,20 @@ export async function publishProblemVersion(
       content,
       toHashFileRefs(refs, shaByUrl),
     );
+    if (contentHash !== preflight.content_hash) {
+      throw new AppError(
+        "预检后内容或文件引用已变化",
+        409,
+        "DRAFT_REVISION_CONFLICT",
+      );
+    }
     const [existing] = await tx.select().from(problemVersions).where(
       and(
         eq(problemVersions.problem_id, problemId),
         eq(problemVersions.content_sha256, contentHash),
+        identity.latest_version_id
+          ? eq(problemVersions.id, identity.latest_version_id)
+          : sql`FALSE`,
       ),
     ).limit(1);
     if (existing) {

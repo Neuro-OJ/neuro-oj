@@ -68,15 +68,11 @@ import {
 } from "../../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import { assertContestSubmissionLimit } from "../../../contest/index.ts";
-import { getStorageProvider } from "./../../../system/index.ts";
+import { deleteStorageObject } from "./../../../system/index.ts";
 import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
 import { resolveJudgeTaskPriority } from "./judge-priority.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
-import {
-  isOiRuntimeConfig,
-  type LlmConfig,
-  type ProblemRuntimeConfig,
-} from "./../../../catalog/index.ts";
+import { isOiRuntimeConfig } from "./../../../catalog/index.ts";
 import type { JudgeTaskLlm, SubmissionStatus } from "../../types/index.ts";
 import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
@@ -86,6 +82,18 @@ import {
   resolveSubmissionVersion,
 } from "../versioning/submission-version.ts";
 import { createAttempt } from "../versioning/attempts.ts";
+import { applyAttemptResult } from "../versioning/result-write.ts";
+import {
+  bumpProjectionRevision,
+  contestScopeKey,
+  globalScopeKey,
+  lockProjectionHosts,
+  problemScopeKey,
+} from "../versioning/projection.ts";
+import {
+  executionSnapshot,
+  versionSupportPackageDownload,
+} from "../versioning/version-execution.ts";
 import {
   Channels,
   publishSseEvent,
@@ -457,7 +465,7 @@ export async function createSubmission(
   if (versionResolution.kind === "known") {
     assertVersionAcceptsSubmission(versionResolution.version.content, {
       language: input.language,
-      submissionMode: problem.submission_mode as "code" | "artifact",
+      submissionMode: "code",
     });
   }
 
@@ -479,29 +487,19 @@ export async function createSubmission(
   const publicId = generatePublicId("sub");
   const now = new Date().toISOString();
 
-  // 获取支持包 download URL
-  let download_url: string | undefined;
-  if (problem.support_package_storage_url) {
-    try {
-      const storage = await getStorageProvider();
-      download_url = await storage.downloadUrl(
-        problem.support_package_storage_url,
-      );
-    } catch (err) {
-      logger.error("获取支持包 download URL 失败", {
-        storage_url: problem.support_package_storage_url,
-        err,
-      });
-      // 支持包获取失败不阻塞提交，但会跳过支持包
-    }
+  if (versionResolution.kind !== "known") {
+    throw new BadRequestError("必须指定已发布版本");
   }
-
-  // ── 使用 runtime_config（双容器模式）──
-  // 校验 evaluator/solution image + kind（spec §4 final gate）
-  const runtimeConfig = problem.runtime_config as
-    | ProblemRuntimeConfig
-    | null
-    | undefined;
+  const content = versionResolution.kind === "known"
+    ? versionResolution.version.content
+    : null;
+  if (!content || content.kind === "objective") {
+    throw new BadRequestError("必须选择已发布的编程题版本");
+  }
+  const download_url = await versionSupportPackageDownload(
+    versionResolution.version.version_id,
+  );
+  const runtimeConfig = content.runtime_config;
 
   if (!runtimeConfig) {
     throw new AppError(
@@ -533,7 +531,7 @@ export async function createSubmission(
   }
 
   let llmTask: JudgeTaskLlm | undefined;
-  const llmConfig = problem.llm_config as LlmConfig | null;
+  const llmConfig = content.kind === "ai" ? content.llm_config : null;
   if (llmConfig) {
     if (isOiRuntimeConfig(runtimeConfig)) {
       throw new BadRequestError("OI 题目不支持 LLM 评测");
@@ -578,66 +576,64 @@ export async function createSubmission(
   });
 
   try {
-    await db.insert(submissions).values({
-      id,
-      public_id: publicId,
-      user_id: userId,
-      problem_id: input.problem_id,
-      contest_id: resolvedContestId,
-      language: input.language,
-      code: input.code,
-      file_name: fileName,
-      status: "pending",
-      // 提交时版本不可变：`known` 必须有版本，`legacy_unknown` 必须为空
-      submitted_version_id: versionResolution.kind === "known"
-        ? versionResolution.version.version_id
-        : null,
-      version_origin: versionResolution.kind === "known"
-        ? "known"
-        : "legacy_unknown",
-      created_at: now,
-    });
-  } catch (dbErr) {
-    logger.error("提交记录插入失败", { err: dbErr });
-    throw new AppError(
-      "提交失败：数据库写入错误，请稍后重试",
-      500,
-      "SUBMISSION_DB_ERROR",
-    );
-  }
-
-  // 创建初次评测尝试（Handbook §5.4 第 3–5 步）：sequence=0，并把提交的
-  // `active_attempt_id` 指向它；已有分版本判定与有效成绩一概不动（新提交本来也没有）。
-  try {
-    await createAttempt({
-      id: attemptId,
-      source: {
+    await db.transaction(async (tx) => {
+      await lockProjectionHosts(tx, {
         kind: "submission",
         id,
         problem_id: input.problem_id,
         contest_id: resolvedContestId,
-      },
-      problemVersionId: versionResolution.kind === "known"
-        ? versionResolution.version.version_id
-        : null,
-      source_kind: "initial",
-      // 非敏感执行快照：语言、版本、提交模式与题型（不含 token / 下载凭据）
-      taskSnapshot: {
+      });
+      // 固定版本可能在外部 IO 期间切换；同一宿主锁内复查后才能写入。
+      await resolveSubmissionVersion(input.problem_id, {
+        contestId: resolvedContestId,
+        requestedVersionId: input.version_id,
+      }, tx);
+      await tx.insert(submissions).values({
+        id,
+        public_id: publicId,
+        user_id: userId,
+        problem_id: input.problem_id,
+        contest_id: resolvedContestId,
         language: input.language,
-        problem_version_id: versionResolution.kind === "known"
+        code: input.code,
+        file_name: fileName,
+        status: "pending",
+        // 提交时版本不可变：`known` 必须有版本，`legacy_unknown` 必须为空
+        submitted_version_id: versionResolution.kind === "known"
           ? versionResolution.version.version_id
           : null,
-        submission_mode: problem.submission_mode,
-        judge_type: problem.judge_type,
-      },
-      createdBy: userId,
+        version_origin: versionResolution.kind === "known"
+          ? "known"
+          : "legacy_unknown",
+        created_at: now,
+      });
+      await createAttempt({
+        executor: tx,
+        id: attemptId,
+        source: {
+          kind: "submission",
+          id,
+          problem_id: input.problem_id,
+          contest_id: resolvedContestId,
+        },
+        problemVersionId: versionResolution.kind === "known"
+          ? versionResolution.version.version_id
+          : null,
+        source_kind: "initial",
+        taskSnapshot: {
+          ...executionSnapshot(task, llmConfig),
+          submission_mode: "code",
+        },
+        createdBy: userId,
+      });
     });
-  } catch (attemptErr) {
-    logger.error("评测尝试创建失败", { submission_id: id, err: attemptErr });
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    logger.error("提交与初次评测尝试原子创建失败", { submission_id: id, err });
     throw new AppError(
-      "提交失败：无法创建评测尝试，请稍后重试",
+      "提交失败：数据库写入错误，请稍后重试",
       500,
-      "SUBMISSION_ATTEMPT_ERROR",
+      "SUBMISSION_DB_ERROR",
     );
   }
 
@@ -667,12 +663,14 @@ export async function createSubmission(
     logger.error("评测任务推送失败", { submission_id: id, err: mqErr });
     if (!isRetryableJudgeQueueError(mqErr)) {
       // 永久错误（如消息超过大小限制）直接置为 error，避免 sweeper 无限重试成永久 pending。
-      await db.update(submissions)
-        .set({
-          status: "error",
-          judge_finished_at: new Date().toISOString(),
-        })
-        .where(eq(submissions.id, id));
+      await applyAttemptResult({
+        attemptId,
+        resultKind: "platform_error",
+        resultStatus: "DISPATCH_FAILED",
+        score: null,
+        accepted: false,
+        output: "评测任务无法入队",
+      });
     }
     // NOJ-067：DB 写入与 LPUSH 无法事务化；瞬时失败保留 pending，
     // 由 mq/sweeper.ts 按超时恢复，避免永久 Pending 孤儿。
@@ -943,16 +941,35 @@ export function resolveSubmissionId(value: string): Promise<string> {
 export async function deleteSubmission(id: string): Promise<void> {
   const db = getDb();
 
-  const existing = await db
-    .select({ id: submissions.id })
-    .from(submissions)
-    .where(eq(submissions.id, id))
-    .limit(1);
-
-  if (existing.length === 0) {
-    throw new NotFoundError("提交不存在");
+  const deleted = await db.transaction(async (tx) => {
+    const [identity] = await tx.select().from(submissions).where(
+      eq(submissions.id, id),
+    );
+    if (!identity) throw new NotFoundError("提交不存在");
+    await lockProjectionHosts(tx, {
+      kind: "submission",
+      id,
+      problem_id: identity.problem_id,
+      contest_id: identity.contest_id,
+    });
+    const [current] = await tx.select().from(submissions).where(eq(submissions.id, id)).for("update");
+    if (
+      current?.active_attempt_id ||
+      (current && ["pending", "judging"].includes(current.status))
+    ) throw new AppError("提交正在评测，不能删除", 409, "SOURCE_JUDGING");
+    const [row] = await tx.delete(submissions).where(eq(submissions.id, id))
+      .returning();
+    if (!row) throw new NotFoundError("提交不存在");
+    await bumpProjectionRevision(tx, problemScopeKey(row.problem_id));
+    if (row.contest_id) {
+      await bumpProjectionRevision(tx, contestScopeKey(row.contest_id));
+    }
+    await bumpProjectionRevision(tx, globalScopeKey());
+    return row;
+  });
+  // 先提交引用删除，再调用带共享引用守卫的物理清理；升级副本仍有引用时保留。
+  if (deleted.artifact_storage_url) {
+    await deleteStorageObject(deleted.artifact_storage_url);
   }
-
-  await db.delete(submissions).where(eq(submissions.id, id));
   await publishSearchIndexEvent("submission", id, "delete");
 }

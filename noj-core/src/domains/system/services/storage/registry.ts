@@ -13,7 +13,7 @@
  * `ready`/`missing` → `deleting` → `deleted`。
  */
 
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor, RootDb } from "../../../../shared/db/executor.ts";
 import {
@@ -23,7 +23,6 @@ import {
   submissions,
 } from "../../../../shared/db/schema.ts";
 import type { StorageObjectState } from "../../../../shared/versioning/types.ts";
-import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import { getStorageProvider } from "./factory.ts";
 
 /** 登记行读模型。 */
@@ -136,11 +135,16 @@ export async function assertStorageObjectBindable(
   executor?: StorageExecutor,
 ): Promise<void> {
   const db = executor ?? getDb();
-  const record = await getStorageObject(storageUrl, db);
-  if (!record) {
-    await registerLegacyStorageObject(storageUrl, db);
-    return;
-  }
+  // 插入与加锁都在调用方绑定引用的同一事务里完成。先读后插会与删除争抢，
+  // 只读不加锁则允许删除方在检查引用之后移除即将被绑定的对象。
+  await db.insert(storageObjects).values({
+    storage_url: storageUrl,
+    state: "unknown",
+    created_at: new Date().toISOString(),
+  }).onConflictDoNothing();
+  const [record] = await db.select().from(storageObjects).where(
+    eq(storageObjects.storage_url, storageUrl),
+  ).for("update");
   if (record.state === "deleting" || record.state === "deleted") {
     throw new Error(`存储对象已进入删除流程，不能建立新引用：${storageUrl}`);
   }
@@ -222,61 +226,45 @@ export async function deleteStorageObject(
   executor?: StorageExecutor,
 ): Promise<StorageDeleteOutcome> {
   const db = (executor ?? getDb()) as RootDb;
-  await db.transaction(async (tx) => {
-    // 锁定登记行（无行则按存量对象补登记，再参与后续守卫）
-    const locked = await tx.execute(
-      sql`SELECT storage_url, state FROM storage_objects WHERE storage_url = ${storageUrl} FOR UPDATE`,
-    );
-    if (unwrapRows(locked as unknown[]).length === 0) {
-      await registerLegacyStorageObject(storageUrl, tx);
+  const decision = await db.transaction(async (tx) => {
+    await tx.insert(storageObjects).values({
+      storage_url: storageUrl,
+      state: "unknown",
+      created_at: new Date().toISOString(),
+    }).onConflictDoNothing();
+    const [existing] = await tx.select().from(storageObjects).where(
+      eq(storageObjects.storage_url, storageUrl),
+    ).for("update");
+    const references = await collectStorageReferences(storageUrl, tx);
+    if (references.total > 0 || existing.state === "deleting") {
+      return { outcome: "referenced", references } as const;
     }
+    if (existing.state === "deleted") return { outcome: "deleted" } as const;
+    // 锁、引用检查与删除标记不可分开提交：新引用必须等到这里提交后检查状态。
+    await tx.update(storageObjects).set({ state: "deleting" }).where(
+      eq(storageObjects.storage_url, storageUrl),
+    );
+    return null;
   });
-
-  const existing = await getStorageObject(storageUrl, db);
-  if (existing?.state === "deleted") return { outcome: "deleted" };
-
-  const references = await collectStorageReferences(storageUrl, db);
-  if (references.total > 0) return { outcome: "referenced", references };
-
-  const marked = await db.update(storageObjects).set({ state: "deleting" })
-    .where(
-      and(
-        eq(storageObjects.storage_url, storageUrl),
-        or(
-          eq(storageObjects.state, "ready"),
-          eq(storageObjects.state, "unknown"),
-          eq(storageObjects.state, "missing"),
-        ),
-      ),
-    ).returning({ storage_url: storageObjects.storage_url });
-  if (marked.length === 0) {
-    // 并发删除已在进行或已完成
-    const current = await getStorageObject(storageUrl, db);
-    return current?.state === "deleted"
-      ? { outcome: "deleted" }
-      : { outcome: "referenced", references };
-  }
+  if (decision) return decision;
 
   const storage = await getStorageProvider();
-  const stat = await storage.stat(storageUrl).catch(() => ({
-    exists: false,
-    sizeBytes: null,
-  }));
-  if (stat.exists) {
-    try {
+  try {
+    const stat = await storage.stat(storageUrl);
+    if (stat.exists) {
       await storage.delete(storageUrl);
-    } catch (error) {
-      // 删除失败必须回退状态，否则对象永远卡在 deleting
-      await db.update(storageObjects).set({ state: "ready" }).where(
-        eq(storageObjects.storage_url, storageUrl),
-      );
-      throw error;
     }
+    await db.update(storageObjects).set({ state: "deleted" }).where(
+      eq(storageObjects.storage_url, storageUrl),
+    );
+    return stat.exists ? { outcome: "deleted" } : { outcome: "missing" };
+  } catch (error) {
+    // 后端不可达不能被解释为对象缺失，否则登记会永久谎称 deleted。
+    await db.update(storageObjects).set({ state: "unknown" }).where(
+      eq(storageObjects.storage_url, storageUrl),
+    );
+    throw error;
   }
-  await db.update(storageObjects).set({ state: "deleted" }).where(
-    eq(storageObjects.storage_url, storageUrl),
-  );
-  return stat.exists ? { outcome: "deleted" } : { outcome: "missing" };
 }
 
 /**

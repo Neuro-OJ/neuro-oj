@@ -18,6 +18,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
   contestProblems,
+  contests,
   evaluationAttempts,
   objectiveSubmissions,
   problems,
@@ -50,6 +51,24 @@ export interface ProjectionSource {
    * `undefined` = 调用方未取该字段，投影计算会自行回查（安全兜底，多一次 PK 查询）。
    */
   contest_id?: string | null;
+}
+
+/** 写入统一锁顺序：题目 → 竞赛 → 提交。结果、策略与创建尝试必须共用。 */
+export async function lockProjectionHosts(
+  db: Executor,
+  source: ProjectionSource,
+): Promise<void> {
+  await db.select({ id: problems.id }).from(problems).where(
+    eq(problems.id, source.problem_id),
+  ).for("share");
+  const contestId = source.contest_id === undefined
+    ? await loadSubmissionContestId(db, source)
+    : source.contest_id;
+  if (contestId) {
+    await db.select({ id: contests.id }).from(contests).where(
+      eq(contests.id, contestId),
+    ).for("share");
+  }
 }
 
 /** 单条提交的完整投影计算结果（未写入）。 */
@@ -281,6 +300,7 @@ export async function recomputeSubmissionProjection(
       contestScopeKey(plan.source.contest_id),
     );
   }
+  await bumpProjectionRevision(executor, globalScopeKey());
   return plan;
 }
 
@@ -335,6 +355,7 @@ export async function recomputeProblemProjections(
     await writeProjection(executor, plan);
   }
   await bumpProjectionRevision(executor, problemScopeKey(problemId));
+  await bumpProjectionRevision(executor, globalScopeKey());
   return sources.length;
 }
 
@@ -369,6 +390,7 @@ export async function recomputeContestProblemProjections(
     await writeProjection(executor, plan);
   }
   await bumpProjectionRevision(executor, contestScopeKey(contestId));
+  await bumpProjectionRevision(executor, globalScopeKey());
   return plainRows.length + objectiveRows.length;
 }
 
@@ -536,4 +558,16 @@ export async function loadCurrentVersionResultsForSources(
   await fetch(plainIds, "submission");
   await fetch(objectiveIds, "objective");
   return out;
+}
+
+/** 宿主锁之后、尝试/条目锁之前取得提交更新锁。 */
+export async function lockProjectionSource(
+  db: Executor,
+  source: ProjectionSource,
+): Promise<void> {
+  const table = source.kind === "submission"
+    ? submissions
+    : objectiveSubmissions;
+  await db.select({ id: table.id }).from(table).where(eq(table.id, source.id))
+    .for("update");
 }

@@ -8,14 +8,8 @@
  *   `409 CONTEST_PROBLEM_VERSION_CHANGED`（保留客户端代码/答案并要求刷新）。
  * - 版本内容随提交参与校验：提交模式与语言必须被目标版本接受。
  *
- * 迁移期注意：`legacy_unknown`（无提交时版本）只应来自存量回填。新提交在客户端
- * 携带 `version_id` 后即走严格路径；未携带且题库已有已发布版本时返回
- * `VERSION_REQUIRED`，**绝不静默绑定最新版**。
- *
- * 竞赛分支的迁移期例外：竞赛题目已固定版本（`pinned_version_id` 非空）时，
- * 客户端未携带版本仍按**固定版本**作答（固定版本不会漂移到最新版，风险面仅限
- * "不知道自己在答哪一版"）；携带但与固定版本不一致仍一律 409。批次 7 存量收尾
- * 完成后，此处收紧为 `VERSION_REQUIRED`（与题库路径对齐）。
+ * 新提交必须显式指定已发布版本；`legacy_unknown` 仅供存量迁移，
+ * 不能由线上提交入口新建。竞赛省略版本同样拒绝，不能静默绑定固定版。
  */
 
 import { and, eq } from "drizzle-orm";
@@ -168,14 +162,8 @@ export async function resolveSubmissionVersion(
       throw new BadRequestError("该题目不属于此竞赛");
     }
     const pinned = contestProblem.pinned;
-    // 迁移期：竞赛关联尚未固定版本时按存量路径处理（无已知提交时版本）
-    if (!pinned) {
-      if (requested) {
-        throw versionNotFound(requested);
-      }
-      return { kind: "legacy_unknown" };
-    }
-    if (requested && requested !== pinned) {
+    if (!requested) throw versionRequired();
+    if (!pinned || requested !== pinned) {
       throw contestVersionChanged(pinned, requested);
     }
     const loaded = await loadPublishedVersionContent(problemId, pinned, db);
@@ -207,10 +195,5 @@ export async function resolveSubmissionVersion(
     };
   }
 
-  // 未携带版本：题目已版本化则拒绝（不静默绑定最新版）；尚未发布任何版本的
-  // 存量题目继续走 legacy_unknown，由迁移批次补齐。
-  if (latestVersionId) {
-    throw versionRequired();
-  }
-  return { kind: "legacy_unknown" };
+  throw versionRequired();
 }

@@ -5,6 +5,7 @@ const { api } = useApi()
 interface Props {
   problemId: string | null
   hasPackage: boolean
+  draftRevision: number | null
   disabled?: boolean
 }
 
@@ -80,8 +81,9 @@ async function doUpload(file: File) {
     // 提供 number 会被 400 拒绝，上传仅创建新题（题号自动分配）。
     const formData = new FormData()
     formData.append("file", file)
+    formData.append("problem_id", props.problemId)
 
-    await api.post(`/api/v1/problems/import-bundle`, formData)
+    await api.post(`/api/v1/problems/import-bundle`, formData, { headers: { "If-Match": String(props.draftRevision) } })
 
     emit("package-changed", true)
   } catch (err: unknown) {
@@ -107,7 +109,7 @@ async function handleDelete() {
   deleting.value = true
   uploadError.value = ""
   try {
-    await api.delete(`/api/v1/problems/${props.problemId}/support-package`)
+    await api.delete(`/api/v1/problems/${props.problemId}/support-package`, { headers: { "If-Match": String(props.draftRevision) } })
     emit("package-changed", false)
   } catch (err: unknown) {
     uploadError.value = extractApiError(err).message

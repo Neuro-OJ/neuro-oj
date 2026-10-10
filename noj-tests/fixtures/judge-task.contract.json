@@ -36,5 +36,6 @@
   "problem_version_id": "66666666-6666-4666-8666-666666666666",
   "evaluation_protocol_version": 2,
   "scheduling_version": 1,
-  "resource_pool": "ai"
+  "resource_pool": "ai",
+  "attempt_id": "55555555-5555-4555-8555-555555555555"
 }

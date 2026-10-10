@@ -1,3 +1,8 @@
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
+import {
+  seedActiveAttemptForTest,
+  v2ResultForTest,
+} from "../_versioning-fixtures.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -91,6 +96,8 @@ await db.insert(problems).values([
 await db.insert(selfTests).values([
   {
     id: SELF_TEST_ID,
+    judge_run_id: "self-test-run",
+    problem_version_id: await publishBaselineVersionForTest(PROBLEM_ID),
     user_id: USER_ID,
     problem_id: PROBLEM_ID,
     language: "python3",
@@ -109,6 +116,8 @@ await db.insert(selfTests).values([
   },
   {
     id: RECOVERABLE_SELF_TEST_ID,
+    judge_run_id: "recovery-run",
+    problem_version_id: await publishBaselineVersionForTest(PROBLEM_ID),
     user_id: USER_ID,
     problem_id: PROBLEM_ID,
     language: "python3",
@@ -128,7 +137,7 @@ await db.insert(submissions).values({
   created_at: now,
 });
 // 正式提交的在途尝试：协议 v2 下结果按 attempt_id 落到尝试终态
-await db.insert(evaluationAttempts).values({
+await seedActiveAttemptForTest({
   id: ATTEMPT_ID,
   submission_id: SUBMISSION_ID,
   problem_id: PROBLEM_ID,
@@ -162,15 +171,17 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await handleResultMessage({
-      submission_id: SELF_TEST_ID,
-      status: "finished",
-      score: 10000,
-      output: "---RESULT---\n{}",
-      details: { cases: [] },
-      time_ms: 12,
-      memory_kb: 1024,
-    });
+    await handleResultMessage(
+      await v2ResultForTest({
+        submission_id: SELF_TEST_ID,
+        status: "finished",
+        score: 10000,
+        output: "---RESULT---\n{}",
+        details: { cases: [] },
+        time_ms: 12,
+        memory_kb: 1024,
+      }),
+    );
 
     const db = getDb();
     const [st] = await db
@@ -197,14 +208,16 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await handleResultMessage({
-      submission_id: SUBMISSION_ID,
-      attempt_id: ATTEMPT_ID,
-      status: "finished",
-      score: 1000,
-      output: "---RESULT---\n{}",
-      details: {},
-    });
+    await handleResultMessage(
+      await v2ResultForTest({
+        submission_id: SUBMISSION_ID,
+        attempt_id: ATTEMPT_ID,
+        status: "finished",
+        score: 1000,
+        output: "---RESULT---\n{}",
+        details: {},
+      }),
+    );
 
     const db = getDb();
     const [attempt] = await db
@@ -226,23 +239,27 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     // 先产生一个终态 finished（本用例独立完成，不依赖上一个用例）
-    await handleResultMessage({
-      submission_id: SELF_TEST_ID,
-      status: "finished",
-      score: 10000,
-      output: "---RESULT---\n{}",
-      details: { cases: [] },
-      time_ms: 12,
-      memory_kb: 1024,
-    });
+    await handleResultMessage(
+      await v2ResultForTest({
+        submission_id: SELF_TEST_ID,
+        status: "finished",
+        score: 10000,
+        output: "---RESULT---\n{}",
+        details: { cases: [] },
+        time_ms: 12,
+        memory_kb: 1024,
+      }),
+    );
     // 再发送重复终态，应被幂等忽略
-    await handleResultMessage({
-      submission_id: SELF_TEST_ID,
-      status: "finished",
-      score: 0,
-      output: "---RESULT---\n{}",
-      details: {},
-    });
+    await handleResultMessage(
+      await v2ResultForTest({
+        submission_id: SELF_TEST_ID,
+        status: "finished",
+        score: 0,
+        output: "---RESULT---\n{}",
+        details: {},
+      }),
+    );
 
     const db = getDb();
     const [st] = await db
@@ -269,6 +286,15 @@ Deno.test({
       const redis = getRedis();
       await redis.connect();
 
+      await seedActiveAttemptForTest({
+        id: `${RECOVERABLE_SUBMISSION_ID}-attempt`,
+        submission_id: RECOVERABLE_SUBMISSION_ID,
+        problem_id: PROBLEM_ID,
+        sequence: 0,
+        source: "initial",
+        state: "queued",
+        created_at: oldNow,
+      });
       await recoverPendingSubmissions(Date.now());
 
       const db = getDb();

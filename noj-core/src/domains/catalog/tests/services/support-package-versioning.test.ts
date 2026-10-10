@@ -58,13 +58,13 @@ function aiContent(template: string): ProblemDraftContent {
     submission_mode: "code",
     runtime_config: {
       evaluator: {
-        image: "noj/evaluator:test",
+        image: "noj-evaluator-python",
         command: "python3 /workspace/evaluate.py",
         time_limit_ms: 60000,
         memory_limit_mb: 512,
       },
       solution: {
-        image: "noj/solution:test",
+        image: "noj-solution-python",
         call_timeout_ms: 60000,
         memory_limit_mb: 512,
       },
@@ -85,18 +85,18 @@ Deno.test("support package: 下载绑定已发布版本，草稿替换不影响�
     byteSize: bytesA.length,
   });
 
-  // 草稿引用已就位，投影同步（未发布题目）
+  // 草稿引用已就位，递增草稿 revision，不改题目投影
   assertEquals(await getDraftSupportPackageUrl("sp-p1"), urlA);
   const [row] = await getDb().select().from(problems).where(
     eq(problems.id, "sp-p1"),
   );
-  assertEquals(row.support_package_storage_url, urlA);
+  assertEquals(row.support_package_storage_url, null);
 
   await saveProblemDraft("sp-p1", {
     content: aiContent("print(1)"),
-    expectedRevision: 0,
+    expectedRevision: 1,
   });
-  const v1 = await publishProblemVersion("sp-p1", { expectedRevision: 1 });
+  const v1 = await publishProblemVersion("sp-p1", { expectedRevision: 2 });
 
   const ref = await resolveSupportPackageRef("sp-p1");
   assertEquals(ref?.source, "version");
@@ -134,7 +134,7 @@ Deno.test("support package: 下载绑定已发布版本，草稿替换不影响�
   );
 
   // 发布第二版后下载切到 B
-  const v2 = await publishProblemVersion("sp-p1", { expectedRevision: 2 });
+  const v2 = await publishProblemVersion("sp-p1", { expectedRevision: 4 });
   assertEquals(v2.version, 2);
   assertEquals(
     new TextDecoder().decode(
@@ -152,9 +152,9 @@ Deno.test("support package: 删除草稿包不删除历史版本引用的对象"
   await setSupportPackage("sp-p2", { storageUrl: url, byteSize: bytes.length });
   await saveProblemDraft("sp-p2", {
     content: aiContent("t"),
-    expectedRevision: 0,
+    expectedRevision: 1,
   });
-  await publishProblemVersion("sp-p2", { expectedRevision: 1 });
+  await publishProblemVersion("sp-p2", { expectedRevision: 2 });
 
   await deleteSupportPackage("sp-p2", "0", "admin");
 
@@ -204,9 +204,9 @@ Deno.test("support package: 模板优先从版本内容读取（不下载支持�
   await setSupportPackage("sp-p4", { storageUrl: url, byteSize: bytes.length });
   await saveProblemDraft("sp-p4", {
     content: aiContent("# 版本内模板\nprint(42)"),
-    expectedRevision: 0,
+    expectedRevision: 1,
   });
-  await publishProblemVersion("sp-p4", { expectedRevision: 1 });
+  await publishProblemVersion("sp-p4", { expectedRevision: 2 });
 
   const template = await resolveProblemTemplate({
     id: "sp-p4",

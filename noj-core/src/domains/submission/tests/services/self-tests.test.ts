@@ -1,3 +1,5 @@
+import { v2ResultForTest } from "../_versioning-fixtures.ts";
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -171,7 +173,7 @@ Deno.test({
       output: "ok",
       details: {},
     };
-    const applied = await saveSelfTestResult(result);
+    const applied = await saveSelfTestResult(await v2ResultForTest(result));
     assertEquals(applied, false);
   },
 });
@@ -184,6 +186,8 @@ Deno.test({
   fn: async () => {
     const db = getDb();
     await db.insert(selfTests).values({
+      judge_run_id: "result-self-test-run",
+      problem_version_id: await publishBaselineVersionForTest(PROBLEM_ID),
       id: SELF_TEST_ID,
       user_id: USER_ID,
       problem_id: PROBLEM_ID,
@@ -202,7 +206,7 @@ Deno.test({
       time_ms: 12,
       memory_kb: 1024,
     };
-    const applied = await saveSelfTestResult(result);
+    const applied = await saveSelfTestResult(await v2ResultForTest(result));
     assertEquals(applied, true);
 
     const [row] = await db
@@ -222,7 +226,7 @@ Deno.test({
     assertEquals(sub, undefined);
 
     // 重复终态结果幂等忽略
-    const appliedAgain = await saveSelfTestResult(result);
+    const appliedAgain = await saveSelfTestResult(await v2ResultForTest(result));
     assertEquals(appliedAgain, false);
   },
 });

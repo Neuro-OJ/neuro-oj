@@ -15,6 +15,14 @@ import { resolveLlmLimits } from "./llm-limits.ts";
 
 const IV_LENGTH = 12;
 
+/** 一次尝试已解析的 LLM 执行配置；重新派发只续签凭据，不改 Provider/模型/单次预算。 */
+export interface FrozenLlmExecution {
+  provider_id: string;
+  model: string;
+  max_calls: number;
+  max_tokens: number;
+}
+
 async function deriveKey(secret: string): Promise<CryptoKey> {
   const digest = await crypto.subtle.digest(
     "SHA-256",
@@ -99,9 +107,10 @@ export async function buildJudgeTaskLlm(
   scope: {
     attemptId: string;
     problemVersionId?: string | null;
+    frozen?: FrozenLlmExecution;
   },
 ): Promise<JudgeTaskLlm> {
-  const platform = getLlmPlatformDefault();
+  const platform = scope.frozen ?? getLlmPlatformDefault();
   if (!platform) {
     throw new BadRequestError(
       "平台未配置默认 LLM Provider / 模型，无法评测 LLM 题",
@@ -128,7 +137,7 @@ export async function buildJudgeTaskLlm(
   const timeLimitMs = runtimeConfig.evaluator.time_limit_ms;
   const ttlSeconds = Math.max(60, Math.ceil((timeLimitMs * 4) / 1000));
   const now = Math.floor(Date.now() / 1000);
-  const limits = resolveLlmLimits(llmConfig);
+  const limits = scope.frozen ?? resolveLlmLimits(llmConfig);
   const token = await mintEvalToken({
     jti: crypto.randomUUID(),
     attempt_id: scope.attemptId,

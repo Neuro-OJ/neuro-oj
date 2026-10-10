@@ -54,6 +54,8 @@ export interface JudgeTask {
    * 同时用于 OI 进度/取消键与结果回填的尝试定位；自测等非尝试任务使用随机 ID。
    */
   run_id?: string;
+  /** 正式尝试 ID，与 run_id 同值。 */
+  attempt_id?: string;
   /** 本次评测使用的题目版本 UUID（版本化后正式提交必填）。 */
   problem_version_id?: string;
   /** 评测协议版本；`2` = run_id/attempt 绑定 + 显式 result_kind。 */
@@ -93,6 +95,8 @@ export interface JudgeTask {
  */
 export interface BuildJudgeTaskInput {
   run_id?: string;
+  /** 正式尝试 ID，与 run_id 同值。 */
+  attempt_id?: string;
   /** 本次评测使用的题目版本；已知时由服务端注入（客户端不可声明）。 */
   problem_version_id?: string;
   /** 评测协议版本；正式提交走 `EVALUATION_PROTOCOL_VERSION`。 */
@@ -169,7 +173,10 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
     input.runtime_config.backend === "wasm"
   ) task.oi_cost_profile = structuredClone(input.oi_cost_profile!);
   if (input.file_name !== undefined) task.file_name = input.file_name;
-  if (input.run_id !== undefined) task.run_id = input.run_id;
+  if (input.run_id !== undefined) {
+    task.run_id = input.run_id;
+    if (!input.submission_id.startsWith("st_")) task.attempt_id = input.attempt_id ?? input.run_id;
+  }
   if (input.problem_version_id !== undefined) {
     task.problem_version_id = input.problem_version_id;
   }
@@ -195,6 +202,7 @@ export const JUDGE_TASK_FIELDS: readonly string[] = [
   "scheduling_version",
   "resource_pool",
   "run_id",
+  "attempt_id",
   "problem_version_id",
   "evaluation_protocol_version",
   "submission_id",

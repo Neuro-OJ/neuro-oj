@@ -285,7 +285,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "sweeper: 无尝试的存量 pending 行仍回退题目投影（迁移期兼容）",
+  name: "sweeper: 无尝试的 pending 行拒绝猜测最新版并标记错误",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -317,12 +317,8 @@ Deno.test({
 
     const messages = await recoverAndReadMessages();
     const task = messages.find((m) => m.submission_id === submissionId);
-    assertEquals(task !== undefined, true);
-    // 没有尝试 → 用题目投影配置，且不伪造 run_id（dual 任务没有运行标识）
-    const runtime = task!.runtime_config as {
-      evaluator: { time_limit_ms: number };
-    };
-    assertEquals(runtime.evaluator.time_limit_ms, 9999);
-    assertEquals(task!.run_id, undefined);
+    assertEquals(task, undefined);
+    const [row] = await db.select().from(submissions).where(eq(submissions.id, submissionId));
+    assertEquals(row.status, "error");
   },
 });

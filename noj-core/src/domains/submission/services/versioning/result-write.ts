@@ -29,6 +29,7 @@ import {
   isTerminalAttemptState,
 } from "./attempts.ts";
 import {
+  lockProjectionHosts,
   type ProjectionSource,
   recomputeSubmissionProjection,
   type SubmissionProjectionPlan,
@@ -126,9 +127,17 @@ export async function applyAttemptResult(
   input: ApplyAttemptResultInput,
   executor?: Executor,
 ): Promise<ApplyAttemptOutcome> {
-  const db = executor ?? getDb();
+  if (!executor) {
+    return await getDb().transaction((tx) => applyAttemptResult(input, tx));
+  }
+  const db = executor;
   const attempt = await getAttempt(input.attemptId, db);
   if (!attempt) return { applied: "ignored", reason: "not_found" };
+  await lockProjectionHosts(db, {
+    kind: attempt.submission_id ? "submission" : "objective",
+    id: (attempt.submission_id ?? attempt.objective_submission_id) as string,
+    problem_id: attempt.problem_id,
+  });
   // 先锁提交行再取竞赛上下文：`contest_id` 是竞赛口径投影的必要输入，
   // 且必须在同一事务的同一行锁内读到，避免与竞赛固定版本切换发生竞态。
   const locked = await lockSubmissionRow(
@@ -150,7 +159,7 @@ export async function applyAttemptResult(
 
   // 过时结果：提交的活动尝试已经换成别的尝试
   if (
-    locked.active_attempt_id && locked.active_attempt_id !== input.attemptId
+    locked.active_attempt_id !== input.attemptId
   ) {
     return { applied: "ignored", reason: "stale" };
   }

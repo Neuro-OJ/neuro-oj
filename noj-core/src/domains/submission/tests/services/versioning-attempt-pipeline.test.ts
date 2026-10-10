@@ -1,3 +1,7 @@
+import {
+  saveV2ResultForTest,
+  seedActiveAttemptForTest,
+} from "../_versioning-fixtures.ts";
 /**
  * 版本化评测链路端到端（核心服务层）：提交 → 尝试 → 结果落库（Handbook §5.4、§5.6）。
  *
@@ -17,11 +21,7 @@ import {
   submissions,
   submissionVersionResults,
 } from "../../../../shared/db/schema.ts";
-import {
-  createSubmission,
-  EVALUATION_PROTOCOL_VERSION,
-  saveEvaluationResult,
-} from "../../index.ts";
+import { createSubmission, EVALUATION_PROTOCOL_VERSION } from "../../index.ts";
 import { prepareJudgeTask } from "../../services/prepare-judge-task.ts";
 import {
   deriveResultKind,
@@ -134,12 +134,12 @@ Deno.test("pipeline: 提交创建初次尝试并指向 active_attempt_id", async
   assertEquals("eval_token" in snapshot, false);
 });
 
-Deno.test("pipeline: 旧协议结果经 active_attempt_id 落库并重算投影", async () => {
+Deno.test("pipeline: 协议 v2 结果经活动尝试落库并重算投影", async () => {
   const db = getDb();
   await seedProblem("ap-p2", 991002);
   const submissionId = await submit("ap-p2");
 
-  const outcome = await saveEvaluationResult({
+  const outcome = await saveV2ResultForTest({
     submission_id: submissionId,
     status: "finished",
     score: 10000,
@@ -185,7 +185,7 @@ Deno.test("pipeline: 平台错误结果不替换已有正式判定", async () =>
   const submissionId = await submit("ap-p3");
 
   // 第一次正式判定：通过
-  await saveEvaluationResult({
+  await saveV2ResultForTest({
     submission_id: submissionId,
     status: "finished",
     score: 10000,
@@ -211,7 +211,7 @@ Deno.test("pipeline: 平台错误结果不替换已有正式判定", async () =>
   await db.update(submissions).set({ status: "judging" }).where(
     eq(submissions.id, submissionId),
   );
-  const outcome = await saveEvaluationResult({
+  const outcome = await saveV2ResultForTest({
     submission_id: submissionId,
     status: "SystemError",
     score: 0,
@@ -321,7 +321,7 @@ Deno.test("pipeline: 任务 run_id 绑定尝试 ID 并携带版本与协议号",
 
   // 无尝试的 dual 任务（历史路径）：不下发 run_id，也不谎报版本
   const legacy = prepareJudgeTask(base);
-  assertEquals(legacy.run_id, undefined);
+  assertEquals(typeof legacy.run_id, "string");
   assertEquals(legacy.problem_version_id, undefined);
   assertEquals(
     legacy.evaluation_protocol_version,
@@ -395,7 +395,7 @@ Deno.test("pipeline: 协议 v2 结果经 run_id 精确落到尝试", async () =>
     status: "judging",
     created_at: now,
   });
-  await db.insert(evaluationAttempts).values({
+  await seedActiveAttemptForTest({
     id: attemptId,
     submission_id: submissionId,
     problem_id: "ap-p6",
@@ -406,7 +406,7 @@ Deno.test("pipeline: 协议 v2 结果经 run_id 精确落到尝试", async () =>
     created_at: now,
   });
 
-  const outcome = await saveEvaluationResult({
+  const outcome = await saveV2ResultForTest({
     submission_id: submissionId,
     run_id: attemptId,
     evaluation_protocol_version: 2,

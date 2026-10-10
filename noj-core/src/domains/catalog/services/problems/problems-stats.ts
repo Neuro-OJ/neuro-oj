@@ -1,3 +1,4 @@
+import { unifiedSubmissionSources } from "../../../../shared/versioning/submission-sources.ts";
 /**
  * 题目统计聚合：公开通过率 + 出题人数据洞察。
  *
@@ -6,11 +7,10 @@
  * - 隐藏用例只进**匿名聚合桶**（`hidden-1`、`hidden-2`…），**绝不返回真实 case_id**；
  * - 取数上限 `MAX_STATS_SAMPLE`，超出返回 `truncated = true`（**不静默截断**）。
  */
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   evaluationAttempts,
-  queryProjectionRevisions,
   submissions,
 } from "./../../../../shared/db/schema.ts";
 import { isProblemInRunningContest } from "./../../../contest/index.ts";
@@ -65,38 +65,8 @@ export interface ProblemStatsDetail {
   window_days: number;
 }
 
-/**
- * 进程内统计缓存（5 分钟 TTL）。
- *
- * **单副本专用**：多副本部署下各副本各自缓存，最多 5 分钟内可能读到旧统计。
- * 已登记于 `dev-docs/engineering/domain-boundaries.md` 的多副本约束表。
- */
-const statsCache = new Map<
-  string,
-  { at: number; revision: number; value: ProblemStatsDetail }
->();
-
-/**
- * 读取题目作用域的投影 revision。
- *
- * 统计缓存**必须**带上 revision：策略切换（`exact(X)`）会立刻改变"有效提交"集合，
- * 只用 TTL 会让后台看到旧口径（Handbook §3.5「策略立即生效不能依赖 TTL」）。
- */
-async function loadProblemProjectionRevision(
-  problemId: string,
-): Promise<number> {
-  const [row] = await getDb().select({
-    data_revision: queryProjectionRevisions.data_revision,
-  }).from(queryProjectionRevisions).where(
-    eq(queryProjectionRevisions.scope_key, `problem:${problemId}`),
-  ).limit(1);
-  return Number(row?.data_revision ?? 0);
-}
-
-/** 测试用：清空统计缓存，避免用例间互相污染。 */
-export function _resetProblemStatsCacheForTest(): void {
-  statsCache.clear();
-}
+/** 保留测试入口；统计直接使用当前数据库投影。 */
+export function _resetProblemStatsCacheForTest(): void {}
 
 /**
  * 判定用例是否为隐藏用例。
@@ -136,17 +106,6 @@ export async function getProblemStatsDetail(
   problemId: string,
   windowDays = 90,
 ): Promise<ProblemStatsDetail> {
-  const revision = await loadProblemProjectionRevision(problemId);
-  const cached = statsCache.get(problemId);
-  if (
-    cached &&
-    cached.revision === revision &&
-    Date.now() - cached.at < STATS_CACHE_TTL_MS &&
-    cached.value.window_days === windowDays
-  ) {
-    return cached.value;
-  }
-
   const since = new Date(
     Date.now() - windowDays * 24 * 60 * 60 * 1000,
   ).toISOString();
@@ -156,22 +115,21 @@ export async function getProblemStatsDetail(
   // 是否通过与"有效提交"口径直接读投影（策略切换后立即生效）。
   const rows = await db
     .select({
-      user_id: submissions.user_id,
-      created_at: submissions.created_at,
+      user_id: sql<string>`${submissions.user_id}`,
+      created_at: sql<string>`${submissions.created_at}`,
       status: evaluationAttempts.result_status,
       score: evaluationAttempts.score,
       details: evaluationAttempts.details,
-      is_accepted: submissions.is_accepted,
-      is_valid: submissions.is_valid,
+      is_accepted: sql<boolean>`${submissions.is_accepted}`,
+      is_valid: sql<boolean>`${submissions.is_valid}`,
     })
-    .from(submissions)
-    .innerJoin(
+    .from(unifiedSubmissionSources)
+    .leftJoin(
       evaluationAttempts,
       eq(evaluationAttempts.id, submissions.effective_attempt_id),
     )
     .where(and(
       eq(submissions.problem_id, problemId),
-      eq(submissions.status, "finished"),
       gte(submissions.created_at, since),
     ))
     .orderBy(desc(submissions.created_at))
@@ -275,7 +233,6 @@ export async function getProblemStatsDetail(
     window_days: windowDays,
   };
 
-  statsCache.set(problemId, { at: Date.now(), revision, value });
   return value;
 }
 

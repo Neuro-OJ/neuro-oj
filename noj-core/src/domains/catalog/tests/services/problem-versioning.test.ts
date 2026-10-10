@@ -75,13 +75,13 @@ function aiContent(title: string): ProblemDraftContent {
     submission_mode: "code",
     runtime_config: {
       evaluator: {
-        image: "noj/evaluator:test",
+        image: "noj-evaluator-python",
         command: "python3 /workspace/evaluate.py",
         time_limit_ms: 60000,
         memory_limit_mb: 512,
       },
       solution: {
-        image: "noj/solution:test",
+        image: "noj-solution-python",
         call_timeout_ms: 60000,
         memory_limit_mb: 512,
       },

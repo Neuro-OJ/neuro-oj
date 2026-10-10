@@ -118,6 +118,9 @@ pub struct JudgeTask {
     pub resource_pool: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
+    /// 正式评测的尝试标识，必须与 run_id 一致。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt_id: Option<String>,
     /// 本次评测使用的题目版本（版本化管理后正式提交必填）。
     ///
     /// judge 只做日志与回显，**不作为事实源**：权威绑定在 noj-core 的
@@ -203,6 +206,9 @@ pub struct JudgeResult {
     /// 本次执行的 run_id（= 正式提交的评测尝试 ID）；旧任务为 None
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
+    /// 正式评测的尝试标识，必须与 run_id 一致。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt_id: Option<String>,
     /// 本次评测使用的题目版本（回显，便于审计与排查）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub problem_version_id: Option<String>,
@@ -273,6 +279,7 @@ impl JudgeResult {
     /// `result_kind` 已显式给出时不被覆盖，便于调用方标定特殊路径。
     pub fn apply_protocol(&mut self, task: &JudgeTask) {
         self.run_id = task.run_id.clone();
+        self.attempt_id = task.attempt_id.clone();
         self.problem_version_id = task.problem_version_id.clone();
         self.evaluation_protocol_version = Some(EVALUATION_PROTOCOL_VERSION);
         if self.result_kind.is_none() {
@@ -317,6 +324,7 @@ impl JudgeResult {
             memory_kb: None,
             rejudge_seq,
             run_id: None,
+            attempt_id: None,
             problem_version_id: None,
             evaluation_protocol_version: None,
             // 平台侧失败：绝不能被当成"用户代码判负"的正式判定
@@ -336,6 +344,7 @@ impl JudgeResult {
             memory_kb: None,
             rejudge_seq,
             run_id: None,
+            attempt_id: None,
             problem_version_id: None,
             evaluation_protocol_version: None,
             // 平台侧失败：绝不能被当成"用户代码判负"的正式判定
@@ -475,6 +484,7 @@ mod tests {
             memory_kb: Some(18432),
             rejudge_seq: Some(1),
             run_id: None,
+            attempt_id: None,
             problem_version_id: None,
             evaluation_protocol_version: None,
             result_kind: None,
@@ -501,6 +511,7 @@ mod tests {
             memory_kb: None,
             rejudge_seq: None,
             run_id: None,
+            attempt_id: None,
             problem_version_id: None,
             evaluation_protocol_version: None,
             result_kind: None,
@@ -538,6 +549,7 @@ mod tests {
         });
         if let Some(run_id) = run_id {
             value["run_id"] = json!(run_id);
+            value["attempt_id"] = json!(run_id);
         }
         if let Some(version) = version {
             value["problem_version_id"] = json!(version);
@@ -556,6 +568,7 @@ mod tests {
             memory_kb: None,
             rejudge_seq: None,
             run_id: None,
+            attempt_id: None,
             problem_version_id: None,
             evaluation_protocol_version: None,
             result_kind: None,

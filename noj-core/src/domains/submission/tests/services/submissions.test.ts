@@ -1,3 +1,8 @@
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
+import {
+  saveV2ResultForTest,
+  seedActiveAttemptForTest,
+} from "../_versioning-fixtures.ts";
 import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert@^1";
 import {
   createSubmission,
@@ -5,7 +10,6 @@ import {
   listSubmissions,
   rejudgeProblemSubmissions,
   rejudgeSubmission,
-  saveEvaluationResult,
   updateSubmissionStatus,
 } from "../../index.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -277,9 +281,10 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await assertRejects(
-      () =>
+      async () =>
         createSubmission(TEST_USER_ID, {
           problem_id: TEST_PROBLEM_ID,
+          version_id: await publishBaselineVersionForTest(TEST_PROBLEM_ID),
           language: "brainfuck",
           code: "test code",
         }),
@@ -430,6 +435,7 @@ Deno.test({
     try {
       const created = await createSubmission(TEST_USER_ID, {
         problem_id: TEST_PROBLEM_ID,
+        version_id: await publishBaselineVersionForTest(TEST_PROBLEM_ID),
         language: "python3",
         code: "print(1)",
         contest_id: contestId,
@@ -509,6 +515,7 @@ Deno.test({
     try {
       const contestSub = await createSubmission(TEST_USER_ID, {
         problem_id: TEST_PROBLEM_ID,
+        version_id: await publishBaselineVersionForTest(TEST_PROBLEM_ID),
         language: "python3",
         code: "print(1)",
         contest_id: contestId,
@@ -517,10 +524,10 @@ Deno.test({
 
       const normalSub = await createSubmission(TEST_USER_ID, {
         problem_id: TEST_PROBLEM_ID,
+        version_id: await publishBaselineVersionForTest(TEST_PROBLEM_ID),
         language: "python3",
         code: "print(2)",
         // 题目已版本化（夹具补了迁移基线）：题库提交必须显式携带版本
-        version_id: `baseline-${TEST_PROBLEM_ID}`,
       });
       ids.push(normalSub.id);
 
@@ -593,15 +600,17 @@ Deno.test({
     try {
       const first = await createSubmission(TEST_USER_ID, {
         problem_id: TEST_PROBLEM_ID,
+        version_id: await publishBaselineVersionForTest(TEST_PROBLEM_ID),
         language: "python3",
         code: "print(1)",
         contest_id: contestId,
       }, contestId);
       firstId = first.id;
       await assertRejects(
-        () =>
+        async () =>
           createSubmission(TEST_USER_ID, {
             problem_id: TEST_PROBLEM_ID,
+            version_id: await publishBaselineVersionForTest(TEST_PROBLEM_ID),
             language: "python3",
             code: "print(2)",
             contest_id: contestId,
@@ -644,7 +653,7 @@ Deno.test({
       status: "judging",
       created_at: now,
     });
-    await db.insert(evaluationAttempts).values({
+    await seedActiveAttemptForTest({
       id: attemptId,
       submission_id: submissionId,
       problem_id: TEST_PROBLEM_ID,
@@ -655,7 +664,7 @@ Deno.test({
     });
 
     // 保存评测结果（尝试终态是唯一的评测事实来源）
-    await saveEvaluationResult({
+    await saveV2ResultForTest({
       submission_id: submissionId,
       attempt_id: attemptId,
       status: "finished",
@@ -721,7 +730,7 @@ Deno.test({
       status: "judging",
       created_at: now,
     });
-    await db.insert(evaluationAttempts).values({
+    await seedActiveAttemptForTest({
       id: attemptId,
       submission_id: submissionId,
       problem_id: TEST_PROBLEM_ID,
@@ -732,7 +741,7 @@ Deno.test({
     });
 
     // 第一次保存
-    await saveEvaluationResult({
+    await saveV2ResultForTest({
       submission_id: submissionId,
       attempt_id: attemptId,
       status: "finished",
@@ -742,7 +751,7 @@ Deno.test({
     });
 
     // 第二次保存（模拟重复消费）
-    await saveEvaluationResult({
+    await saveV2ResultForTest({
       submission_id: submissionId,
       attempt_id: attemptId,
       status: "finished",
@@ -838,7 +847,7 @@ Deno.test({
       status: "judging",
       created_at: now,
     });
-    await db.insert(evaluationAttempts).values({
+    await seedActiveAttemptForTest({
       id: attemptId,
       submission_id: subId,
       problem_id: TEST_PROBLEM_ID,
@@ -850,7 +859,7 @@ Deno.test({
 
     try {
       // 第一次写入：WrongAnswer
-      await saveEvaluationResult({
+      await saveV2ResultForTest({
         submission_id: subId,
         attempt_id: attemptId,
         status: "finished",
@@ -860,7 +869,7 @@ Deno.test({
       });
 
       // NOJ-068/182：同 rejudge_seq 的重复结果必须幂等忽略。
-      const appliedAgain = await saveEvaluationResult({
+      const appliedAgain = await saveV2ResultForTest({
         submission_id: subId,
         attempt_id: attemptId,
         status: "finished",
@@ -920,7 +929,7 @@ Deno.test({
       rejudge_seq: 2, // 当前序列号=2
       created_at: now,
     });
-    await db.insert(evaluationAttempts).values({
+    await seedActiveAttemptForTest({
       id: attemptId,
       submission_id: subId,
       problem_id: TEST_PROBLEM_ID,
@@ -932,7 +941,7 @@ Deno.test({
 
     try {
       // 写入 seq=2 的新结果（应成功）
-      await saveEvaluationResult({
+      await saveV2ResultForTest({
         submission_id: subId,
         attempt_id: attemptId,
         status: "finished",
@@ -946,7 +955,7 @@ Deno.test({
       const logs: LogRecord[] = [];
       setLogSink((r) => logs.push(r));
       try {
-        await saveEvaluationResult({
+        await saveV2ResultForTest({
           submission_id: subId,
           attempt_id: attemptId,
           status: "finished",
@@ -1009,7 +1018,7 @@ Deno.test({
       rejudge_seq: 0,
       created_at: now,
     });
-    await db.insert(evaluationAttempts).values({
+    await seedActiveAttemptForTest({
       id: firstAttemptId,
       submission_id: subId,
       problem_id: TEST_PROBLEM_ID,
@@ -1021,7 +1030,7 @@ Deno.test({
 
     try {
       // 1) 首次评测结果（seq=0）落到初次尝试
-      await saveEvaluationResult({
+      await saveV2ResultForTest({
         submission_id: subId,
         attempt_id: firstAttemptId,
         status: "finished",
@@ -1038,7 +1047,7 @@ Deno.test({
       assertEquals(firstAttempt.score, 100);
 
       // 2) 模拟发起重测：新增尝试（seq=1），提交回到 pending
-      await db.insert(evaluationAttempts).values({
+      await seedActiveAttemptForTest({
         id: rejudgeAttemptId,
         submission_id: subId,
         problem_id: TEST_PROBLEM_ID,
@@ -1056,7 +1065,7 @@ Deno.test({
         .where(eq(submissions.id, subId));
 
       // 3) 重测结果（seq=1）到达落库
-      const updatedSub = await saveEvaluationResult({
+      const updatedSub = await saveV2ResultForTest({
         submission_id: subId,
         attempt_id: rejudgeAttemptId,
         status: "finished",

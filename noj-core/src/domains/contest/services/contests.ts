@@ -1,3 +1,4 @@
+import type { Executor } from "../../../shared/db/executor.ts";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";
@@ -553,6 +554,23 @@ export async function updateContest(
   let latestVersions: Map<string, string> | null = null;
 
   await db.transaction(async (tx) => {
+    const previousProblems = await tx.select({
+      problem_id: contestProblems.problem_id,
+    }).from(contestProblems).where(eq(contestProblems.contest_id, id));
+    const hostIds = [
+      ...new Set([
+        ...previousProblems.map((row) => row.problem_id),
+        ...(problemInputs ?? []).map((row) => row.problem_id),
+      ]),
+    ].sort();
+    if (hostIds.length) {
+      await tx.select({ id: problems.id }).from(problems).where(
+        inArray(problems.id, hostIds),
+      ).orderBy(problems.id).for("share");
+    }
+    await tx.select({ id: contests.id }).from(contests).where(
+      eq(contests.id, id),
+    ).for("update");
     if (problemInputs) {
       latestVersions = await assertContestProblemAddable(
         problemInputs,
@@ -600,14 +618,10 @@ export async function updateContest(
     if (problemInputs) {
       // 题目关联是「整体替换」：必须先读旧固定版本，否则编辑竞赛（改名/改时间）
       // 会把已固定的版本重置到最新版，等于静默换版（Handbook §4.3）。
-      const existingPins = new Map<string, string | null>(
-        (await tx.select({
-          problem_id: contestProblems.problem_id,
-          pinned_version_id: contestProblems.pinned_version_id,
-        }).from(contestProblems).where(eq(contestProblems.contest_id, id)))
-          .map((
-            row: { problem_id: string; pinned_version_id: string | null },
-          ) => [row.problem_id, row.pinned_version_id ?? null]),
+      const previousBindings = new Map(
+        (await tx.select().from(contestProblems).where(
+          eq(contestProblems.contest_id, id),
+        )).map((row) => [row.problem_id, row]),
       );
       await tx.delete(contestProblems).where(
         eq(contestProblems.contest_id, id),
@@ -616,12 +630,15 @@ export async function updateContest(
         problemInputs.map((value) => {
           // 已有固定版本原样保留（编辑竞赛不得静默换版）；新加入的题目用本次
           // 解析出的最新已发布版本（assert 已保证存在，未发布题目直接 400）。
-          const existingPin = existingPins.get(value.problem_id);
+          const binding = previousBindings.get(value.problem_id);
           return {
             contest_id: id,
             ...value,
-            pinned_version_id: existingPin ??
+            pinned_version_id: binding?.pinned_version_id ??
               latestVersions!.get(value.problem_id)!,
+            effective_version_mode: binding?.effective_version_mode ?? "any",
+            required_version_id: binding?.required_version_id ?? null,
+            effective_policy_revision: binding?.effective_policy_revision ?? 0,
           };
         }),
       );
@@ -663,8 +680,9 @@ export async function deleteContest(id: string): Promise<void> {
 export async function getContest(
   id: string,
   userId?: string,
+  executor?: Executor,
 ): Promise<ContestResponse> {
-  const db = getDb();
+  const db = executor ?? getDb();
   const rows = await db.execute(sql`
     SELECT c.*,
       (SELECT COUNT(*)::int FROM contest_problems cp WHERE cp.contest_id = c.id) AS problem_count,
@@ -895,6 +913,7 @@ export async function assertContestSubmissionLimit(
   contestId: string,
   userId: string,
   problemId: string,
+  reservationId?: string,
 ): Promise<void> {
   const contest = await findContestRow(contestId);
   const config = contest.config as ContestConfig;
@@ -903,6 +922,31 @@ export async function assertContestSubmissionLimit(
 
   const redis = getRedis();
   const key = `contest:lim:${contestId}:u:${userId}:p:${problemId}`;
+  const ttl = Math.max(
+    1,
+    Math.floor((Date.parse(contest.end_time) - Date.now()) / 1000),
+  );
+  if (reservationId) {
+    const reserved = Number(
+      await redis.eval(
+        `
+      if redis.call('EXISTS', KEYS[2]) == 1 then return 1 end
+      if tonumber(redis.call('GET', KEYS[1]) or '0') >= tonumber(ARGV[1]) then return 0 end
+      redis.call('INCR', KEYS[1])
+      redis.call('EXPIRE', KEYS[1], ARGV[2])
+      redis.call('SET', KEYS[2], '1', 'EX', ARGV[2])
+      return 1
+    `,
+        2,
+        key,
+        `${key}:reservation:${reservationId}`,
+        limit,
+        ttl,
+      ),
+    );
+    if (!reserved) throw new RateLimitedError("提交次数已达上限");
+    return;
+  }
   const used = await redis.incr(key);
   if (used === 1) {
     const ttl = Math.max(

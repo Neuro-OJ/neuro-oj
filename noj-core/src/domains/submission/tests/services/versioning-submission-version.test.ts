@@ -3,7 +3,7 @@
  *
  * 覆盖：显式版本、跨题版本拒绝、竞赛固定版本（客户端覆盖 → 409）、
  * 已版本化题目缺版本 → VERSION_REQUIRED（不静默绑定最新版）、
- * 迁移期未发布题目 → legacy_unknown、版本内容对提交模式/语言的校验。
+ * 未发布题目也不能创建未知版本提交、版本内容对提交模式/语言的校验。
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
@@ -152,10 +152,13 @@ Deno.test("submission version: 已版本化题目缺版本 → VERSION_REQUIRED"
   );
 });
 
-Deno.test("submission version: 迁移期未发布题目 → legacy_unknown", async () => {
+Deno.test("submission version: 未发布题目也不能创建未知版本提交", async () => {
   await seedProblem("sv-p5", 980005, { publish: false });
-  const resolved = await resolveSubmissionVersion("sv-p5", {});
-  assertEquals(resolved.kind, "legacy_unknown");
+  await assertRejects(
+    () => resolveSubmissionVersion("sv-p5", {}),
+    Error,
+    "必须携带 version_id",
+  );
 });
 
 Deno.test("submission version: 竞赛使用固定版本，客户端覆盖 → 409", async () => {
@@ -181,15 +184,12 @@ Deno.test("submission version: 竞赛使用固定版本，客户端覆盖 → 40
     pinned_version_id: "sv-p6-v1",
   });
 
-  // 未携带版本 → 使用固定版本
-  const resolved = await resolveSubmissionVersion("sv-p6", {
-    contestId: "sv-c6",
-  });
-  assertEquals(resolved.kind, "known");
-  if (resolved.kind === "known") {
-    assertEquals(resolved.version.version_id, "sv-p6-v1");
-    assertEquals(resolved.version.source, "contest");
-  }
+  // 未携带版本必须拒绝；已知固定版本也不能代替客户端确认
+  await assertRejects(
+    () => resolveSubmissionVersion("sv-p6", { contestId: "sv-c6" }),
+    Error,
+    "必须携带 version_id",
+  );
 
   // 客户端携带同一版本 → 允许
   const same = await resolveSubmissionVersion("sv-p6", {

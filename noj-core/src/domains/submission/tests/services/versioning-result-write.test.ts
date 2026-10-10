@@ -101,6 +101,7 @@ Deno.test("attempt: 初次尝试 sequence=0 并设置 active_attempt_id", async 
   );
   assertEquals(row.active_attempt_id, attempt.id);
 
+  await supersedeAttempt(attempt.id);
   // 重测递增 sequence
   assertEquals(await nextAttemptSequence(source), 1);
   const second = await createAttempt({
@@ -482,11 +483,12 @@ Deno.test("result write: exact 策略下 graded 结果不产生有效成绩", as
 Deno.test("attempt: listAttempts 按 sequence 升序", async () => {
   await seedProblem("rw-p8", 990008);
   const source = await seedSubmission("rw-s8", "rw-p8");
-  await createAttempt({
+  const first = await createAttempt({
     source,
     problemVersionId: "rw-p8-v1",
     source_kind: "initial",
   });
+  await supersedeAttempt(first.id);
   await createAttempt({
     source,
     problemVersionId: "rw-p8-v1",

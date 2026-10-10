@@ -6,7 +6,7 @@
  * - 流式上传 zip 到存储（local 临时文件 / S3 multipart）
  * - 双层大小限制（题目 artifact_max_size_mb + NOJ 硬上限）
  * - 创建提交记录并推送评测任务
- * - 评测/入队失败时立即删除 artifact
+ * - 产物保留到提交删除；上传补偿通过共享引用守卫
  */
 
 import { and, eq } from "drizzle-orm";
@@ -18,7 +18,11 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
-import { getStorageProvider } from "./../../../system/index.ts";
+import {
+  assertStorageObjectBindable,
+  deleteStorageObject,
+  getStorageProvider,
+} from "./../../../system/index.ts";
 import { generatePublicId } from "./../../../../shared/security/public-id.ts";
 import {
   isRetryableJudgeQueueError,
@@ -39,13 +43,15 @@ import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "submission"]);
 import type { JudgeTaskLlm } from "../../types/index.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
-import {
-  isOiRuntimeConfig,
-  type LlmConfig,
-  type ProblemRuntimeConfig,
-} from "./../../../catalog/index.ts";
+import { isOiRuntimeConfig } from "./../../../catalog/index.ts";
 import type { SubmissionResponse } from "./submissions-types.ts";
 import { createAttempt } from "../versioning/attempts.ts";
+import { applyAttemptResult } from "../versioning/result-write.ts";
+import { lockProjectionHosts } from "../versioning/projection.ts";
+import {
+  executionSnapshot,
+  versionSupportPackageDownload,
+} from "../versioning/version-execution.ts";
 import {
   assertVersionAcceptsSubmission,
   resolveSubmissionVersion,
@@ -191,14 +197,14 @@ export async function createArtifactSubmission(
     requestedVersionId: input.version_id,
     latestVersionId: problem.latest_version_id,
   });
-  let versionMaxSizeMb = problem.artifact_max_size_mb;
+  let versionMaxSizeMb: number | null = null;
   if (versionResolution.kind === "known") {
     const content = versionResolution.version.content;
     assertVersionAcceptsSubmission(content, {
       language,
       submissionMode: "artifact",
     });
-    if (content.kind === "ai" && content.artifact_max_size_mb != null) {
+    if (content.kind === "ai") {
       versionMaxSizeMb = content.artifact_max_size_mb;
     }
   }
@@ -245,28 +251,21 @@ export async function createArtifactSubmission(
   const publicId = generatePublicId("sub");
   const now = new Date().toISOString();
 
-  // 获取支持包 download URL
-  let download_url: string | undefined;
-  if (problem.support_package_storage_url) {
-    try {
-      download_url = await storage.downloadUrl(
-        problem.support_package_storage_url,
-      );
-    } catch (err) {
-      logger.error("获取支持包 download URL 失败", {
-        storage_url: problem.support_package_storage_url,
-        err,
-      });
-    }
+  if (versionResolution.kind !== "known") {
+    throw new BadRequestError("必须指定已发布版本");
   }
-
-  // 校验 runtime_config
-  const runtimeConfig = problem.runtime_config as
-    | ProblemRuntimeConfig
-    | null
-    | undefined;
+  const content = versionResolution.kind === "known"
+    ? versionResolution.version.content
+    : null;
+  if (!content || content.kind !== "ai") {
+    throw new BadRequestError("必须选择已发布的产物题版本");
+  }
+  const download_url = await versionSupportPackageDownload(
+    versionResolution.version.version_id,
+  );
+  const runtimeConfig = content.runtime_config;
   if (!runtimeConfig) {
-    await storage.delete(artifactStorageUrl).catch(() => {});
+    await deleteStorageObject(artifactStorageUrl).catch(() => {});
     throw new AppError(
       "题目缺少 runtime_config 配置，无法评测",
       500,
@@ -274,14 +273,14 @@ export async function createArtifactSubmission(
     );
   }
   if (isOiRuntimeConfig(runtimeConfig)) {
-    await storage.delete(artifactStorageUrl).catch(() => {});
+    await deleteStorageObject(artifactStorageUrl).catch(() => {});
     throw new BadRequestError("OI 题目不支持 artifact 提交");
   }
   await validateJudgeImageWithKind(runtimeConfig.evaluator.image, "evaluator");
   await validateJudgeImageWithKind(runtimeConfig.solution.image, "solution");
 
   let llmTask: JudgeTaskLlm | undefined;
-  const llmConfig = problem.llm_config as LlmConfig | null;
+  const llmConfig = content.llm_config;
   if (llmConfig) {
     llmTask = await buildJudgeTaskLlm(
       llmConfig,
@@ -304,7 +303,7 @@ export async function createArtifactSubmission(
   try {
     artifactDownloadUrl = await storage.downloadUrl(artifactStorageUrl);
   } catch (err) {
-    await storage.delete(artifactStorageUrl).catch(() => {});
+    await deleteStorageObject(artifactStorageUrl).catch(() => {});
     logger.error("获取 artifact download URL 失败", {
       storage_url: artifactStorageUrl,
       err,
@@ -340,69 +339,67 @@ export async function createArtifactSubmission(
   });
 
   try {
-    await db.insert(submissions).values({
-      id,
-      public_id: publicId,
-      user_id: userId,
-      problem_id: input.problem_id,
-      contest_id: resolvedContestId,
-      language,
-      code: "",
-      file_name: input.file_name,
-      artifact_storage_url: artifactStorageUrl,
-      status: "pending",
-      // 提交时版本不可变：`known` 必须有版本，`legacy_unknown` 必须为空
-      submitted_version_id: versionResolution.kind === "known"
-        ? versionResolution.version.version_id
-        : null,
-      version_origin: versionResolution.kind === "known"
-        ? "known"
-        : "legacy_unknown",
-      created_at: now,
-    });
-  } catch (dbErr) {
-    await storage.delete(artifactStorageUrl).catch(() => {});
-    logger.error("artifact 提交记录插入失败", { err: dbErr });
-    throw new AppError(
-      "提交失败：数据库写入错误，请稍后重试",
-      500,
-      "SUBMISSION_DB_ERROR",
-    );
-  }
-
-  // 初次评测尝试（sequence=0，指向 active_attempt_id）；已有判定一概不动
-  try {
-    await createAttempt({
-      id: attemptId,
-      source: {
+    await db.transaction(async (tx) => {
+      await lockProjectionHosts(tx, {
         kind: "submission",
         id,
         problem_id: input.problem_id,
         contest_id: resolvedContestId,
-      },
-      problemVersionId: versionResolution.kind === "known"
-        ? versionResolution.version.version_id
-        : null,
-      source_kind: "initial",
-      taskSnapshot: {
+      });
+      // 固定版本可能在外部 IO 期间切换；同一宿主锁内复查后才能写入。
+      await resolveSubmissionVersion(input.problem_id, {
+        contestId: resolvedContestId,
+        requestedVersionId: input.version_id,
+      }, tx);
+      await assertStorageObjectBindable(artifactStorageUrl, tx);
+      await tx.insert(submissions).values({
+        id,
+        public_id: publicId,
+        user_id: userId,
+        problem_id: input.problem_id,
+        contest_id: resolvedContestId,
         language,
-        submission_mode: "artifact",
-        problem_version_id: versionResolution.kind === "known"
+        code: "",
+        file_name: input.file_name,
+        artifact_storage_url: artifactStorageUrl,
+        status: "pending",
+        // 提交时版本不可变：`known` 必须有版本，`legacy_unknown` 必须为空
+        submitted_version_id: versionResolution.kind === "known"
           ? versionResolution.version.version_id
           : null,
-      },
-      createdBy: userId,
+        version_origin: versionResolution.kind === "known"
+          ? "known"
+          : "legacy_unknown",
+        created_at: now,
+      });
+      await createAttempt({
+        executor: tx,
+        id: attemptId,
+        source: {
+          kind: "submission",
+          id,
+          problem_id: input.problem_id,
+          contest_id: resolvedContestId,
+        },
+        problemVersionId: versionResolution.kind === "known"
+          ? versionResolution.version.version_id
+          : null,
+        source_kind: "initial",
+        taskSnapshot: {
+          ...executionSnapshot(task, llmConfig),
+          submission_mode: "artifact",
+        },
+        createdBy: userId,
+      });
     });
-  } catch (attemptErr) {
-    await storage.delete(artifactStorageUrl).catch(() => {});
-    logger.error("artifact 评测尝试创建失败", {
-      submission_id: id,
-      err: attemptErr,
-    });
+  } catch (err) {
+    await deleteStorageObject(artifactStorageUrl).catch(() => {});
+    if (err instanceof AppError) throw err;
+    logger.error("提交与初次评测尝试原子创建失败", { submission_id: id, err });
     throw new AppError(
-      "提交失败：无法创建评测尝试，请稍后重试",
+      "提交失败：数据库写入错误，请稍后重试",
       500,
-      "SUBMISSION_ATTEMPT_ERROR",
+      "SUBMISSION_DB_ERROR",
     );
   }
 
@@ -429,15 +426,16 @@ export async function createArtifactSubmission(
       submission_id: id,
       err: mqErr,
     });
-    // 入队失败：删除 artifact 并标记 error（artifact 不支持重测，不留孤儿）
-    await storage.delete(artifactStorageUrl).catch(() => {});
+    // 已落库产物必须保留，瞬时入队失败由 sweeper 复用原尝试恢复。
     if (!isRetryableJudgeQueueError(mqErr)) {
-      await db.update(submissions)
-        .set({
-          status: "error",
-          judge_finished_at: new Date().toISOString(),
-        })
-        .where(eq(submissions.id, id));
+      await applyAttemptResult({
+        attemptId,
+        resultKind: "platform_error",
+        resultStatus: "DISPATCH_FAILED",
+        score: null,
+        accepted: false,
+        output: "评测任务无法入队",
+      });
     }
     throw new AppError(
       "提交失败：评测队列暂时不可用，请稍后重试",

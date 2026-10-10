@@ -58,6 +58,7 @@ fn judge_task_contract_fixture_deserializes() {
         Some("66666666-6666-4666-8666-666666666666")
     );
     assert_eq!(task.evaluation_protocol_version, Some(2));
+    assert_eq!(task.attempt_id, task.run_id);
     assert!(task.download_url.is_some());
     assert!(task.artifact_download_url.is_some());
 
@@ -88,6 +89,7 @@ fn judge_task_contract_has_no_unknown_fields() {
         "scheduling_version",
         "resource_pool",
         "run_id",
+        "attempt_id",
         "problem_version_id",
         "evaluation_protocol_version",
         "submission_id",

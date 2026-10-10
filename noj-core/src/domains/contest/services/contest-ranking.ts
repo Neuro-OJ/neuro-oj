@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
   BadRequestError,
@@ -15,7 +15,13 @@ import type {
   RankingVisibility,
 } from "./../types/contests.ts";
 import { getContest } from "./contests.ts";
-import { contestRankingSnapshots } from "../../../shared/db/schema.ts";
+import type { Executor } from "../../../shared/db/executor.ts";
+import {
+  contestProblems,
+  contestRankingSnapshots,
+  contests,
+  problems,
+} from "../../../shared/db/schema.ts";
 import { logAudit } from "../../system/index.ts";
 
 export async function publishContestRankingSnapshot(
@@ -26,34 +32,37 @@ export async function publishContestRankingSnapshot(
 ): Promise<
   { id: string; version: number; rows: KaggleRankingRow[]; created_at: string }
 > {
-  const contest = await getContest(contestId);
-  if (contest.status !== "ended") {
-    throw new ConflictError("竞赛尚未结束，不能发布正式成绩");
-  }
-  const settlement = await getContestSettlementStatus(contestId);
-  if (settlement.pending_count > 0) {
-    throw new ConflictError(
-      `仍有 ${settlement.pending_count} 条评测待处理，请完成评测后再结算`,
-    );
-  }
-  if (
-    settlement.failed_count > 0 &&
-    (!options.allowFailed || !note.trim())
-  ) {
-    throw new ConflictError(
-      `发现 ${settlement.failed_count} 条失败评测；请处理失败任务，或填写说明并明确允许带失败评测发布`,
-    );
-  }
   const db = getDb();
-  // 快照需要保留提交/评测明细供 CSV/JSON 导出核对；实时榜默认不返回这些内部字段。
-  const rows = await getKaggleRanking(contestId, undefined, true);
   const created_at = new Date().toISOString();
   const id = crypto.randomUUID();
-  const version = await db.transaction(async (tx) => {
-    // 锁定竞赛行，串行化同一竞赛的版本分配，避免 max(version)+1 竞态。
-    await tx.execute(
-      sql`SELECT id FROM contests WHERE id = ${contestId} FOR UPDATE`,
-    );
+  const result = await db.transaction(async (tx) => {
+    const refs = await tx.select({ problem_id: contestProblems.problem_id })
+      .from(contestProblems).where(eq(contestProblems.contest_id, contestId));
+    const ids = refs.map((row) => row.problem_id).sort();
+    if (ids.length) {
+      await tx.select({ id: problems.id }).from(problems).where(
+        inArray(problems.id, ids),
+      ).orderBy(problems.id).for("share");
+    }
+    await tx.select({ id: contests.id }).from(contests).where(
+      eq(contests.id, contestId),
+    ).for("update");
+    const contest = await getContest(contestId, undefined, tx);
+    if (contest.status !== "ended") {
+      throw new ConflictError("竞赛尚未结束，不能发布正式成绩");
+    }
+    const settlement = await getContestSettlementStatus(contestId, tx);
+    if (settlement.pending_count) {
+      throw new ConflictError(
+        `仍有 ${settlement.pending_count} 条评测待处理，请完成评测后再结算`,
+      );
+    }
+    if (settlement.failed_count && (!options.allowFailed || !note.trim())) {
+      throw new ConflictError(
+        `发现 ${settlement.failed_count} 条失败评测；请处理失败任务，或填写说明并明确允许带失败评测发布`,
+      );
+    }
+    const rows = await getKaggleRanking(contestId, undefined, true, tx);
     const [latest] = await tx.select({
       version: contestRankingSnapshots.version,
     })
@@ -71,8 +80,9 @@ export async function publishContestRankingSnapshot(
       created_by: actorId,
       created_at,
     });
-    return nextVersion;
+    return { version: nextVersion, rows, settlement };
   });
+  const { version, rows, settlement } = result;
   await logAudit("contest.ranking_snapshot", {
     action: "contest.ranking_snapshot",
     contest_id: contestId,
@@ -112,9 +122,10 @@ export interface ContestSettlementStatus {
  */
 export async function getContestSettlementStatus(
   contestId: string,
+  executor?: Executor,
 ): Promise<ContestSettlementStatus> {
-  const contest = await getContest(contestId);
-  const db = getDb();
+  const db = executor ?? getDb();
+  const contest = await getContest(contestId, undefined, db);
   const result = await db.execute(sql`
     WITH contest_tasks AS (
       SELECT s.id AS submission_id, s.user_id, u.username, s.problem_id,
@@ -135,9 +146,10 @@ export async function getContestSettlementStatus(
       UNION ALL
       SELECT os.id AS submission_id, os.user_id, u.username, os.paper_id,
         p.title AS problem_title, os.status,
-        os.status AS result_status, FALSE AS platform_error,
+        ea.result_status AS result_status, (ea.result_kind = 'platform_error') AS platform_error,
         os.created_at, 'objective'::text AS kind
       FROM objective_submissions os
+      LEFT JOIN evaluation_attempts ea ON ea.id = coalesce(os.latest_attempt_id, os.effective_attempt_id)
       JOIN users u ON u.id = os.user_id
       JOIN problems p ON p.id = os.paper_id
       JOIN contests c ON c.id = os.contest_id
@@ -170,7 +182,14 @@ export async function getContestSettlementStatus(
     ) classified
   `);
   const [counts] = unwrapRows<Record<string, unknown>>(result as never);
-  const pendingCount = Number(counts?.pending_count ?? 0);
+  const jobs = await db.execute(
+    sql`SELECT count(*)::int AS pending FROM submission_job_items ji
+    LEFT JOIN submissions s ON ji.source_kind = 'submission' AND ji.source_id = s.id
+    LEFT JOIN objective_submissions os ON ji.source_kind = 'objective' AND ji.source_id = os.id
+    WHERE ji.status IN ('pending', 'preparing') AND coalesce(s.contest_id, os.contest_id) = ${contestId}`,
+  );
+  const pendingCount = Number(counts?.pending_count ?? 0) +
+    Number(unwrapRows<{ pending: number }>(jobs as never)[0]?.pending ?? 0);
   const failedCount = Number(counts?.failed_count ?? 0);
 
   // 没有待处理/失败任务时无需再查明细，避免大竞赛每次 readiness 都扫描 500 行。
@@ -206,9 +225,10 @@ export async function getContestSettlementStatus(
       UNION ALL
       SELECT os.id AS submission_id, os.user_id, u.username, os.paper_id,
         p.title AS problem_title, os.status,
-        os.status AS result_status, FALSE AS platform_error,
+        ea.result_status AS result_status, (ea.result_kind = 'platform_error') AS platform_error,
         os.created_at, 'objective'::text AS kind
       FROM objective_submissions os
+      LEFT JOIN evaluation_attempts ea ON ea.id = coalesce(os.latest_attempt_id, os.effective_attempt_id)
       JOIN users u ON u.id = os.user_id
       JOIN problems p ON p.id = os.paper_id
       JOIN contests c ON c.id = os.contest_id
@@ -336,12 +356,13 @@ export async function getKaggleRanking(
   contestId: string,
   cutoffTime?: string,
   includeDetails = false,
+  executor?: Executor,
 ): Promise<KaggleRankingRow[]> {
-  const contest = await getContest(contestId);
+  const db = executor ?? getDb();
+  const contest = await getContest(contestId, undefined, db);
   if (contest.type !== "kaggle") {
     throw new BadRequestError("该竞赛不是类 Kaggle 赛制");
   }
-  const db = getDb();
   const result = await db.execute(sql`
     WITH contest_data AS (
       SELECT id, start_time, end_time
@@ -354,7 +375,7 @@ export async function getKaggleRanking(
       SELECT s.id, s.user_id, s.problem_id, s.created_at, ea.score,
         ea.result_status AS evaluation_status,
         coalesce(ea.finished_at, ea.created_at) AS evaluation_created_at,
-        s.rejudge_seq
+        ea.sequence AS rejudge_seq, ea.id AS contest_effective_attempt_id, s.submitted_version_id, ea.problem_version_id AS evaluated_version_id
       FROM submissions s
       JOIN evaluation_attempts ea ON ea.id = s.contest_effective_attempt_id
       JOIN contest_data c ON c.id = s.contest_id
@@ -363,12 +384,14 @@ export async function getKaggleRanking(
         AND s.created_at <= c.end_time
         ${cutoffTime ? sql`AND s.created_at <= ${cutoffTime}` : sql``}
       UNION ALL
-      SELECT os.id, os.user_id, os.paper_id, os.created_at, os.score,
-        os.status AS evaluation_status, os.created_at AS evaluation_created_at,
-        0 AS rejudge_seq
+      SELECT os.id, os.user_id, os.paper_id, os.created_at, ea.score,
+        ea.result_status AS evaluation_status, coalesce(ea.finished_at, ea.created_at) AS evaluation_created_at,
+        ea.sequence AS rejudge_seq, ea.id AS contest_effective_attempt_id, os.submitted_version_id, ea.problem_version_id AS evaluated_version_id
       FROM objective_submissions os
+      JOIN evaluation_attempts ea ON ea.id = os.contest_effective_attempt_id
       JOIN contest_data c ON c.id = os.contest_id
       WHERE os.contest_id = ${contestId}
+        AND os.is_contest_valid = TRUE
         AND os.created_at <= c.end_time
         ${cutoffTime ? sql`AND os.created_at <= ${cutoffTime}` : sql``}
     ),
@@ -403,6 +426,7 @@ export async function getKaggleRanking(
         created_at,
         score,
         rejudge_seq,
+        contest_effective_attempt_id, submitted_version_id, evaluated_version_id,
         evaluation_status,
         evaluation_created_at,
         ROW_NUMBER() OVER (
@@ -419,6 +443,7 @@ export async function getKaggleRanking(
         created_at AS last_best_at,
         id AS submission_id,
         rejudge_seq,
+        contest_effective_attempt_id, submitted_version_id, evaluated_version_id,
         evaluation_status,
         evaluation_created_at
       FROM best_rows
@@ -446,8 +471,9 @@ export async function getKaggleRanking(
         rt.last_refresh_at,
         -- 正式成绩归因（Handbook §6.6）：记录最佳成绩所属提交的有效尝试与提交时版本，
         -- 以及该「竞赛 × 题目」当时的版本策略与固定版本
-        best_submission.contest_effective_attempt_id,
-        best_submission.submitted_version_id,
+        bs.contest_effective_attempt_id,
+        bs.submitted_version_id,
+        bs.evaluated_version_id,
         cp.pinned_version_id,
         cp.effective_version_mode,
         cp.required_version_id,
@@ -457,7 +483,6 @@ export async function getKaggleRanking(
       LEFT JOIN best_scores bs
         ON bs.user_id = participant.user_id
         AND bs.problem_id = cp.problem_id
-      LEFT JOIN submissions best_submission ON best_submission.id = bs.submission_id
       LEFT JOIN attempts at
         ON at.user_id = participant.user_id
         AND at.problem_id = cp.problem_id
@@ -489,6 +514,7 @@ export async function getKaggleRanking(
             'evaluation_status', ps.evaluation_status,
             'evaluation_created_at', ps.evaluation_created_at,
             'effective_attempt_id', ps.contest_effective_attempt_id,
+            'evaluated_version_id', ps.evaluated_version_id,
             'submitted_version_id', ps.submitted_version_id,
             'pinned_version_id', ps.pinned_version_id,
             'policy_revision', ps.effective_policy_revision,

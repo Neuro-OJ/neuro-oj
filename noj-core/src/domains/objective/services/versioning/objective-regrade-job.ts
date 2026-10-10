@@ -12,10 +12,18 @@
  */
 
 import { eq } from "drizzle-orm";
+import type { Executor } from "../../../../shared/db/executor.ts";
+import {
+  lockProjectionHosts,
+  lockProjectionSource,
+} from "../../../submission/index.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
-import { objectiveSubmissions } from "../../../../shared/db/schema.ts";
+import {
+  objectiveSubmissions,
+  submissionJobItems,
+} from "../../../../shared/db/schema.ts";
 import { FULL_SCORE } from "../../../../shared/base/constants.ts";
-import { NotFoundError } from "../../../../shared/base/errors.ts";
+import { AppError, NotFoundError } from "../../../../shared/base/errors.ts";
 import {
   applyAttemptResult,
   createAttempt,
@@ -35,6 +43,8 @@ export interface ObjectiveRegradeJobInput {
   targetVersionId: string;
   /** 批任务类别：重测或升级。 */
   jobKind: "rejudge" | "upgrade";
+  jobItemId?: string;
+  leaseOwner?: string;
 }
 
 /** 客观题重判结果。 */
@@ -67,14 +77,41 @@ function stripExpectedForStorage(
  */
 export async function rejudgeObjectiveSubmissionForJob(
   input: ObjectiveRegradeJobInput,
+  executor?: Executor,
 ): Promise<ObjectiveRegradeJobResult> {
-  const db = getDb();
+  if (!executor) {
+    return await getDb().transaction((tx) =>
+      rejudgeObjectiveSubmissionForJob(input, tx)
+    );
+  }
+  const db = executor;
   const [row] = await db.select().from(objectiveSubmissions).where(
     eq(objectiveSubmissions.id, input.submissionId),
   ).limit(1);
   if (!row) throw new NotFoundError("客观题提交不存在");
 
-  const questions = await listVersionQuestions(input.targetVersionId);
+  await lockProjectionHosts(db, {
+    kind: "objective",
+    id: row.id,
+    problem_id: row.paper_id,
+    contest_id: row.contest_id,
+  });
+  await lockProjectionSource(db, {
+    kind: "objective",
+    id: row.id,
+    problem_id: row.paper_id,
+  });
+  if (input.jobItemId) {
+    const [item] = await db.select().from(submissionJobItems).where(
+      eq(submissionJobItems.id, input.jobItemId),
+    ).for("update");
+    if (
+      !item || item.status !== "preparing" ||
+      item.lease_owner !== input.leaseOwner || !item.lease_until ||
+      item.lease_until <= new Date().toISOString()
+    ) throw new AppError("任务租约已失效", 409, "JOB_LEASE_LOST");
+  }
+  const questions = await listVersionQuestions(input.targetVersionId, db);
   const regrade = regradeAgainstSnapshot(
     (row.answers ?? {}) as Record<string, ObjectiveAnswerValue[]>,
     questions,
@@ -83,6 +120,7 @@ export async function rejudgeObjectiveSubmissionForJob(
   const accepted = regrade.score >= FULL_SCORE;
   const details = stripExpectedForStorage(regrade.details);
   const attempt = await createAttempt({
+    executor: db,
     source: {
       kind: "objective",
       id: row.id,
@@ -101,7 +139,13 @@ export async function rejudgeObjectiveSubmissionForJob(
     },
   });
 
-  await db.transaction(async (tx) => {
+  if (input.jobItemId) {
+    await db.update(submissionJobItems).set({ attempt_id: attempt.id }).where(
+      eq(submissionJobItems.id, input.jobItemId),
+    );
+  }
+  const tx = db;
+  {
     const outcome = await applyAttemptResult({
       attemptId: attempt.id,
       resultKind: "graded",
@@ -120,7 +164,7 @@ export async function rejudgeObjectiveSubmissionForJob(
       details: details as never,
       status: "finished",
     }).where(eq(objectiveSubmissions.id, row.id));
-  });
+  }
 
   return { attempt_id: attempt.id, score: regrade.score, accepted };
 }

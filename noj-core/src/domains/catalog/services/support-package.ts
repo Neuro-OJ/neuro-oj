@@ -28,6 +28,13 @@ import {
   MAX_TEMPLATE_BYTES,
 } from "./../types/problem-bundle.ts";
 import type { Context } from "hono";
+import {
+  draftRevisionRequired,
+  getProblemDraft,
+  listDraftObjects,
+  loadProblemIdentity,
+  saveProblemDraftWithObjects,
+} from "./versioning/draft.ts";
 import { SUPPORT_PACKAGE_PATH } from "./versioning/publish.ts";
 import type { AiProblemContent } from "./../types/problem-content.ts";
 
@@ -142,10 +149,9 @@ export async function setSupportPackage(
     storageUrl: string;
     sha256?: string | null;
     byteSize?: number | null;
+    expectedRevision?: number;
   },
 ): Promise<void> {
-  const db = getDb();
-
   // 哈希与大小由**服务端**产生：优先取调用方在上传时算出的值，其次读存储 URL
   // 内嵌的 checksum，最后向后端核实大小。客户端不能注入这些元数据。
   let sha256 = input.sha256 ?? null;
@@ -171,29 +177,22 @@ export async function setSupportPackage(
     sha256,
     byteSize,
   });
-  await db.insert(problemDraftObjects).values({
-    problem_id: problemId,
-    role: "support_package",
-    path: SUPPORT_PACKAGE_PATH,
-    storage_url: input.storageUrl,
-  }).onConflictDoUpdate({
-    target: [
-      problemDraftObjects.problem_id,
-      problemDraftObjects.role,
-      problemDraftObjects.path,
-    ],
-    set: { storage_url: input.storageUrl },
+  const draft = await getProblemDraft(
+    problemId,
+    await loadProblemIdentity(problemId),
+  );
+  const objects = (await listDraftObjects(problemId)).filter((ref) =>
+    ref.role !== "support_package"
+  );
+  await saveProblemDraftWithObjects(problemId, {
+    content: draft.content,
+    expectedRevision: input.expectedRevision ?? draft.revision,
+    objects: [...objects, {
+      role: "support_package",
+      path: SUPPORT_PACKAGE_PATH,
+      storage_url: input.storageUrl,
+    }],
   });
-
-  // 迁移期兜底：尚无已发布版本的题目仍以投影为内容事实源
-  const [row] = await db.select({ latest: problems.latest_version_id })
-    .from(problems).where(eq(problems.id, problemId)).limit(1);
-  if (row && row.latest === null) {
-    await db.update(problems).set({
-      support_package_storage_url: input.storageUrl,
-      updated_at: new Date().toISOString(),
-    }).where(eq(problems.id, problemId));
-  }
 }
 
 /**
@@ -283,41 +282,27 @@ export async function deleteSupportPackage(
 ): Promise<void> {
   await checkSupportPackagePermission(problemId, userId, userRole, problem, c);
 
-  const db = getDb();
-
-  // 1) 移除草稿引用（发布后：历史版本的文件引用与字节都保留）
-  const [draftRef] = await db.select({
-    storage_url: problemDraftObjects.storage_url,
-  }).from(problemDraftObjects).where(
-    and(
-      eq(problemDraftObjects.problem_id, problemId),
-      eq(problemDraftObjects.role, "support_package"),
-      eq(problemDraftObjects.path, SUPPORT_PACKAGE_PATH),
-    ),
-  ).limit(1);
-  await db.delete(problemDraftObjects).where(
-    and(
-      eq(problemDraftObjects.problem_id, problemId),
-      eq(problemDraftObjects.role, "support_package"),
-      eq(problemDraftObjects.path, SUPPORT_PACKAGE_PATH),
-    ),
+  const draft = await getProblemDraft(
+    problemId,
+    await loadProblemIdentity(problemId),
   );
-
-  // 2) 迁移期兜底：尚无已发布版本的题目以投影为内容事实源，需要一并清理
-  const [row] = await db.select({
-    latest: problems.latest_version_id,
-    projection: problems.support_package_storage_url,
-  }).from(problems).where(eq(problems.id, problemId)).limit(1);
-  const legacyUrl = row && row.latest === null ? row.projection : null;
-  if (legacyUrl) {
-    await db.update(problems).set({
-      support_package_storage_url: null,
-      updated_at: new Date().toISOString(),
-    }).where(eq(problems.id, problemId));
-  }
+  const raw = c?.req.header("if-match");
+  if (c && raw === undefined) throw draftRevisionRequired();
+  const expectedRevision = raw === undefined
+    ? draft.revision
+    : Number(raw.replace(/^"|"$/g, ""));
+  const objects = await listDraftObjects(problemId);
+  const removed = objects.filter((ref) => ref.role === "support_package");
+  await saveProblemDraftWithObjects(problemId, {
+    content: draft.content,
+    expectedRevision,
+    actorId: c?.get("userId") ?? userId,
+    context: c,
+    objects: objects.filter((ref) => ref.role !== "support_package"),
+  });
 
   // 3) 物理删除统一经过引用守卫：仍被历史版本引用的对象不会被删掉
-  for (const url of [draftRef?.storage_url, legacyUrl]) {
+  for (const { storage_url: url } of removed) {
     if (!url) continue;
     try {
       const outcome = await deleteStorageObject(url);

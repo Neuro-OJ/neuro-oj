@@ -48,8 +48,7 @@ export interface ProblemVersionInfo {
 
 /** 有效版本策略（与 core 的 `EffectiveVersionPolicy` 对齐）。 */
 export type EffectiveVersionPolicy =
-  | { mode: "any" }
-  | { mode: "exact"; version_id: string | null };
+  { mode: "any" } | { mode: "exact"; version_id: string | null };
 
 /** 题目详情（版本元数据 + 列表字段）。 */
 export interface ProblemDetail extends ProblemVersionInfo {

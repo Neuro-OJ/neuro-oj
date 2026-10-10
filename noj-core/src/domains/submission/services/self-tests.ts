@@ -15,7 +15,6 @@ import {
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { checkPermission } from "./../../identity/index.ts";
-import { getStorageProvider } from "./../../system/index.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
 import { isRetryableJudgeQueueError, pushJudgeTask } from "../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
@@ -27,6 +26,11 @@ import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import type { JudgeResult } from "../types/index.ts";
 import { prepareJudgeTask } from "./prepare-judge-task.ts";
+import {
+  executionSnapshot,
+  versionSupportPackageDownload,
+  versionSupportPackageUrl,
+} from "./versioning/version-execution.ts";
 import {
   assertVersionAcceptsSubmission,
   resolveSubmissionVersion,
@@ -147,29 +151,22 @@ export async function createSelfTest(
   const fileName = input.file_name || LANGUAGE_EXT_MAP[input.language] ||
     "main.txt";
 
-  // 获取支持包 download URL
-  let download_url: string | undefined;
-  if (problem.support_package_storage_url) {
-    try {
-      const storage = await getStorageProvider();
-      download_url = await storage.downloadUrl(
-        problem.support_package_storage_url,
-      );
-    } catch (err) {
-      logger.error("自测获取支持包 download URL 失败", {
-        storage_url: problem.support_package_storage_url,
-        err,
-      });
-      // 获取失败不阻塞自测，但会跳过支持包
-    }
-  }
-
   // 自测版本解析（Handbook §4.2）：与正式提交同一口径——显式版本逐字生效，
   // 未指定时按有效策略取默认作答版本；存量未版本化题目回退题目投影。
   const versionResolution = await resolveSubmissionVersion(problemId, {
     requestedVersionId: input.version_id,
     latestVersionId: problem.latest_version_id,
   });
+  if (
+    versionResolution.kind !== "known" ||
+    versionResolution.version.content.kind === "objective"
+  ) {
+    throw new BadRequestError("自测必须选择已发布的编程题版本");
+  }
+  const versionContent = versionResolution.version.content;
+  const download_url = await versionSupportPackageDownload(
+    versionResolution.version.version_id,
+  );
   let selfTestVersionId: string | null = null;
   let versionRuntimeConfig: ProblemRuntimeConfig | null = null;
   if (versionResolution.kind === "known") {
@@ -177,7 +174,7 @@ export async function createSelfTest(
     const content = versionResolution.version.content;
     assertVersionAcceptsSubmission(content, {
       language: input.language,
-      submissionMode: problem.submission_mode as "code" | "artifact",
+      submissionMode: "code",
     });
     if (content.kind === "ai" || content.kind === "oi") {
       versionRuntimeConfig = content.runtime_config;
@@ -220,20 +217,16 @@ export async function createSelfTest(
   const id = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
   const now = new Date().toISOString();
 
+  const cases = input.cases ?? (versionContent.samples ?? []).map((sample) => ({
+    id: sample.id,
+    input: sample.input,
+    expected_output: sample.output,
+  }));
   const oiSelfTest = isOiRuntimeConfig(runtimeConfig)
     ? await buildOiSelfTestPackage(
       runtimeConfig,
-      problem.support_package_storage_url,
-      input.cases ??
-        ((problem.samples ?? []) as {
-          id: string;
-          input: string;
-          output: string;
-        }[]).map((sample) => ({
-          id: sample.id,
-          input: sample.input,
-          expected_output: sample.output,
-        })),
+      await versionSupportPackageUrl(versionResolution.version.version_id),
+      cases,
     )
     : undefined;
   if (!isOiRuntimeConfig(runtimeConfig) && input.cases !== undefined) {
@@ -262,13 +255,12 @@ export async function createSelfTest(
       code: input.code,
       file_name: fileName,
       status: "pending",
+      judge_run_id: task.run_id,
       // 自测同样记录版本与执行快照：sweeper 据此从版本恢复（不读当前投影）
       problem_version_id: selfTestVersionId,
       task_snapshot: {
-        language: input.language,
-        problem_version_id: selfTestVersionId,
-        judge_type: task.judge_type,
-        submission_mode: problem.submission_mode,
+        ...executionSnapshot(task),
+        ...(oiSelfTest ? { self_test_cases: cases } : {}),
       },
       created_at: now,
     });
@@ -390,6 +382,11 @@ export async function saveSelfTestResult(
   result: JudgeResult,
 ): Promise<boolean> {
   const db = getDb();
+  if (
+    result.evaluation_protocol_version !== 2 || !result.run_id ||
+    !result.problem_version_id ||
+    !["graded", "platform_error"].includes(result.result_kind ?? "")
+  ) return false;
 
   const now = new Date().toISOString();
   const status: SelfTestStatus = result.status === "cancelled"
@@ -403,6 +400,8 @@ export async function saveSelfTestResult(
       .select({
         status: selfTests.status,
         judge_run_id: selfTests.judge_run_id,
+        problem_version_id: selfTests.problem_version_id,
+        problem_id: selfTests.problem_id,
         judge_started_at: selfTests.judge_started_at,
       })
       .from(selfTests)
@@ -417,7 +416,8 @@ export async function saveSelfTestResult(
       return null;
     }
     if (
-      existing.judge_run_id && result.details.run_id !== existing.judge_run_id
+      existing.judge_run_id !== result.run_id ||
+      existing.problem_version_id !== result.problem_version_id
     ) return null;
 
     // 已终态：忽略重复结果

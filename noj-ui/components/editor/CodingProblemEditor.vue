@@ -96,6 +96,14 @@ const uploadProblemId = computed(() =>
 )
 const savedProblemId = ref<string | null>(null)
 
+async function onPackageChanged(hasPackage: boolean) {
+  hasSupportPackage.value = hasPackage
+  if (!uploadProblemId.value) return
+  const draft = await versions.getDraft(uploadProblemId.value)
+  draftRevision.value = draft.revision
+  applyDraftContent(draft.content)
+}
+
 // 评测镜像白名单（含 kind）
 const judgeImages = ref<{ image: string; kind?: string }[]>([])
 const judgeImagesLoading = ref(false)
@@ -728,7 +736,7 @@ async function handleSubmit() {
     <section class="px-6 py-5 border-b border-border last:border-b-0">
       <UFormField v-if="problemType === 'U'" label="可见性"><USelect v-model="visibility" :items="[{label:'公开',value:'public'},{label:'私有',value:'private'}]" class="w-full" /></UFormField>
       <ProblemSampleEditor v-model="samples" v-model:statement="description" />
-      <SupportPackageUpload :problem-id="uploadProblemId" :has-package="hasSupportPackage" :disabled="!uploadProblemId" @package-changed="(val: boolean) => hasSupportPackage = val" />
+      <SupportPackageUpload :problem-id="uploadProblemId" :has-package="hasSupportPackage" :draft-revision="draftRevision" :disabled="!uploadProblemId || draftRevision === null" @package-changed="onPackageChanged" />
     </section>
 
     <!-- 题目数据（仅编辑模式）：出题人视角的评测洞察 -->

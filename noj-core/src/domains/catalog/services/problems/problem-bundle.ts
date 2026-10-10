@@ -18,8 +18,9 @@
 import type { Context } from "hono";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
-import { problems } from "./../../../../shared/db/schema.ts";
+import { problems, problemTags } from "./../../../../shared/db/schema.ts";
 import {
+  AppError,
   BadRequestError,
   ForbiddenError,
   NotFoundError,
@@ -53,7 +54,7 @@ import type {
   ObjectiveQuestionSnapshot,
   ProblemDraftContent,
 } from "./../../types/problem-content.ts";
-import { updateProblem } from "./problems-crud.ts";
+import { assertProblemEditPermission, updateProblem } from "./problems-crud.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import {
   assertSensitiveFieldPermissions,
@@ -69,10 +70,12 @@ import { MAX_SUPPORT_PACKAGE_SIZE } from "../support-package.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import {
   deriveDraftContentFromProblem,
+  draftRevisionRequired,
   getProblemDraft,
   loadProblemIdentity,
   replaceDraftObjectsForRole,
   saveProblemDraft,
+  saveProblemDraftWithObjects,
 } from "../versioning/draft.ts";
 import { registerLegacyStorageObject } from "../../../system/index.ts";
 import { deleteStorageObject } from "../../../system/index.ts";
@@ -198,6 +201,7 @@ export async function importProblemBundle(
   file: { name: string; data: Uint8Array },
   actor: BundleImportActor,
   c?: Context,
+  targetProblemId?: string,
 ): Promise<ProblemResponseWithTags> {
   // 1. 基础校验：后缀 + 大小（与 support-package 上传约定一致）
   if (!isValidProblemBundleName(file.name)) {
@@ -232,7 +236,21 @@ export async function importProblemBundle(
       "仅管理员可指定 number（按 (type, number) 幂等更新既有题目）；普通用户导入时题号由系统自动分配",
     );
   }
-  const number = admin ? manifest.number : undefined;
+  let number = admin ? manifest.number : undefined;
+  if (targetProblemId) {
+    const identity = await loadProblemIdentity(targetProblemId);
+    await assertProblemEditPermission(
+      c,
+      identity,
+      actor.userId,
+      actor.userRole,
+    );
+    if (manifest.type && manifest.type !== identity.type) {
+      throw new BadRequestError("题包类型与目标题目不一致");
+    }
+    manifest.type = identity.type;
+    number = identity.number;
+  }
 
   // 4.5 客观题套卷：走独立导入路径（无评测包，事务性创建/更新 + 全量替换小题）
   if (manifest.is_objective) {
@@ -244,6 +262,7 @@ export async function importProblemBundle(
       number,
       actor,
       c,
+      !!targetProblemId,
     );
   }
 
@@ -399,6 +418,15 @@ async function updateExisting(
     assertLlmLimitsWithinDefault(manifest.llm);
   }
 
+  const draft = await getProblemDraft(
+    problemId,
+    await loadProblemIdentity(problemId),
+  );
+  const rawRevision = c?.req.header("if-match");
+  if (c && rawRevision === undefined) throw draftRevisionRequired();
+  const expectedRevision = rawRevision === undefined
+    ? draft.revision
+    : Number(rawRevision.replace(/^"|"$/g, ""));
   const storageUrl = await storage.put(
     buildPackageKey(`${problemId}/${crypto.randomUUID()}`),
     strippedZip,
@@ -411,6 +439,7 @@ async function updateExisting(
         title: manifest.title,
         samples: manifest.samples ?? [],
         description,
+        expected_revision: expectedRevision,
         difficulty: manifest.difficulty,
         runtime_config: manifest.runtime_config!,
         judge_type: isOiRuntimeConfig(manifest.runtime_config) ? "oi" : "dual",
@@ -474,11 +503,14 @@ async function importObjectivePaper(
   number: number | undefined,
   actor: BundleImportActor,
   c?: Context,
+  explicitTarget = false,
 ): Promise<ProblemResponseWithTags> {
   const type = manifest.type ?? "U";
 
   // number 权限（与编程题一致，防御性重复校验）
-  if (!(await isAdminActor(actor, c)) && number !== undefined) {
+  if (
+    !explicitTarget && !(await isAdminActor(actor, c)) && number !== undefined
+  ) {
     throw new BadRequestError(
       "仅管理员可指定 number（按 (type, number) 幂等更新既有题目）；普通用户导入时题号由系统自动分配",
     );
@@ -528,21 +560,27 @@ async function importObjectivePaper(
     let problemId: string;
     if (existingId) {
       problemId = existingId;
+      const identity = await loadProblemIdentity(problemId, tx);
+      await assertProblemEditPermission(
+        c,
+        identity,
+        actor.userId,
+        actor.userRole,
+      );
+      if (identity.latest_version_id && !identity.is_objective) {
+        throw new AppError(
+          "已发布题目不能改为客观题",
+          409,
+          "CONTENT_KIND_IMMUTABLE",
+        );
+      }
+      await tx.select({ id: problems.id }).from(problems).where(
+        eq(problems.id, problemId),
+      ).for("update");
       await tx.update(problems).set({
-        title: manifest.title,
-        samples: manifest.samples ?? [],
-        description,
         difficulty: manifest.difficulty ?? "medium",
         is_objective: true,
-        visibility: type === "P" ? "public" : "private",
-        runtime_config: null,
         judge_type: "dual",
-        support_package_storage_url: null,
-        submission_mode: "code",
-        artifact_max_size_mb: null,
-        // 客观题套卷禁止 template（校验层已拦），从编程题转套卷时一并清空。
-        template_content: null,
-        llm_config: null,
         updated_at: now,
       }).where(eq(problems.id, problemId));
     } else {
@@ -612,47 +650,38 @@ async function importObjectivePaper(
       });
     }
 
+    const identity = await loadProblemIdentity(problemId, tx);
+    const draft = await getProblemDraft(problemId, identity, tx);
+    const rawRevision = c?.req.header("if-match");
+    if (existingId && c && rawRevision === undefined) {
+      throw draftRevisionRequired();
+    }
+    const expectedRevision = rawRevision === undefined
+      ? draft.revision
+      : Number(rawRevision.replace(/^"|"$/g, ""));
+    await tx.delete(problemTags).where(eq(problemTags.problem_id, problemId));
+    if (tagIds.length) {
+      await tx.insert(problemTags).values(
+        tagIds.map((tag_id) => ({ problem_id: problemId, tag_id })),
+      );
+    }
+    await saveProblemDraftWithObjects(problemId, {
+      content: {
+        kind: "objective",
+        title: manifest.title,
+        description,
+        samples: manifest.samples ?? [],
+        questions: snapshots,
+      },
+      expectedRevision,
+      actorId: actor.userId,
+      context: c,
+      objects: [],
+    }, tx);
     return { problemId, snapshots };
   });
 
-  // 标签同步（独立事务，与既有导入一致）
-  if (tagIds.length > 0) {
-    await syncProblemTags(outcome.problemId, tagIds, true);
-  }
-
-  // 若从编程题转换为客观题，尽力清理旧评测包（失败不阻塞）
-  if (oldStorageUrl) {
-    try {
-      const storage = await getStorageProvider();
-      await storage.delete(oldStorageUrl);
-    } catch (err) {
-      logger.warn("客观题导入：删除旧评测包失败", {
-        problem_id: outcome.problemId,
-        err,
-      });
-    }
-  }
-
-  // 小题写入**共享草稿**（Handbook §6.4）：key 取刚写入的 UUID（与迁移基线同规则，
-  // 保证历史答案可按 key 匹配）；草稿 content 的题面/描述取自本次导入的投影。
-  // `--publish` 随后直接发布该草稿。
-  const identity = await loadProblemIdentity(outcome.problemId);
-  const draft = await getProblemDraft(outcome.problemId, identity);
-  await saveProblemDraft(outcome.problemId, {
-    content: {
-      kind: "objective",
-      title: identity.title,
-      description: identity.description,
-      samples: (identity.samples as ProblemDraftContent["samples"] | null) ??
-        [],
-      questions: outcome.snapshots,
-    },
-    expectedRevision: draft.revision,
-    actorId: actor.userId ?? null,
-  });
-  // 清空从编程题继承的草稿文件引用（客观题没有评测包）
-  await replaceDraftObjectsForRole(outcome.problemId, "support_package", []);
-  await replaceDraftObjectsForRole(outcome.problemId, "oi_file", []);
+  if (oldStorageUrl) await deleteStorageObject(oldStorageUrl);
 
   return getProblem(outcome.problemId);
 }

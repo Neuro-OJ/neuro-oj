@@ -15,6 +15,7 @@ import type { ProblemSample } from "./problem-samples.ts";
 import { validateProblemSamples } from "./problem-samples.ts";
 import type { OiRuntimeConfig, RuntimeConfig } from "./runtime-config.ts";
 import { validateOiRuntimeConfig } from "./runtime-config.ts";
+import { validateProblemRuntimeConfig } from "../services/problems/problems-types.ts";
 import type { LlmConfig, SubmissionMode } from "./problems.ts";
 import { isValidLlmConfig, isValidSubmissionMode } from "./problems.ts";
 import type {
@@ -275,6 +276,7 @@ export function validateProblemContent(
   if (!runtime.evaluator || !runtime.solution) {
     throw new BadRequestError("AI 题目运行配置必须包含 evaluator 与 solution");
   }
+  validateProblemRuntimeConfig(runtimeConfig as RuntimeConfig);
   if (typeof content.template_content !== "string") {
     throw new BadRequestError("AI 题目必须给出模板内容（可为空串）");
   }

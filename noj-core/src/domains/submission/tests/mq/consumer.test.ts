@@ -1,3 +1,7 @@
+import {
+  saveV2ResultForTest,
+  seedActiveAttemptForTest,
+} from "../_versioning-fixtures.ts";
 /**
  * MQ Consumer 单元测试。
  *
@@ -75,7 +79,7 @@ async function setupTestData() {
     created_at: now,
   });
   // 在途尝试：协议 v2 下评测结果按 attempt_id 落到尝试终态（唯一事实来源）
-  await db.insert(evaluationAttempts).values({
+  await seedActiveAttemptForTest({
     id: ATTEMPT_ID,
     submission_id: SUBMISSION_ID,
     problem_id: PROBLEM_ID,
@@ -186,10 +190,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await setupTestData();
-    const { saveEvaluationResult } = await import(
-      "../../index.ts"
-    );
-    await saveEvaluationResult({
+    await saveV2ResultForTest({
       submission_id: SUBMISSION_ID,
       attempt_id: ATTEMPT_ID,
       status: "finished",

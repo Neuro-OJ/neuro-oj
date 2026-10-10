@@ -74,6 +74,7 @@ import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import { validateProblemSamples } from "../../types/problem-samples.ts";
 import {
   deriveDraftContentFromProblem,
+  draftRevisionRequired,
   getProblemDraft,
   PROBLEM_DRAFT_VIRTUAL_REVISION,
   type ProblemDraftView,
@@ -87,6 +88,11 @@ import {
   type ProblemDraftContent,
 } from "../../types/problem-content.ts";
 import type { RuntimeConfig } from "../../types/runtime-config.ts";
+import {
+  bumpProjectionRevision,
+  globalScopeKey,
+  problemScopeKey,
+} from "../../../submission/index.ts";
 import { registerLegacyStorageObject } from "./../../../system/index.ts";
 
 /**
@@ -393,6 +399,7 @@ export async function createProblem(
       content: draftContent,
       expectedRevision: PROBLEM_DRAFT_VIRTUAL_REVISION,
       actorId: ownerId,
+      context: c,
     });
   } catch (err) {
     // 草稿建立失败不能留下"有题目没草稿"的半成品（发布入口依赖草稿 revision）
@@ -844,29 +851,6 @@ export async function updateProblem(
       nextKind,
       contentPatch,
     ) as unknown as ProblemContentV1;
-    // 迁移期：未发布题目没有版本，投影仍是唯一读取面（题库列表、编辑器初值），
-    // 内容同时写入投影，避免"保存成功但刷新后消失"。
-    if (!hasPublishedVersion) {
-      updates.title = nextContent.title;
-      updates.description = nextContent.description;
-      updates.samples = nextContent.samples ?? [];
-      if (nextContent.kind === "objective") {
-        updates.runtime_config = null;
-        updates.template_content = null;
-      } else if (nextContent.kind === "oi") {
-        updates.runtime_config = nextContent.runtime_config;
-        updates.submission_mode = "code";
-        updates.artifact_max_size_mb = null;
-        updates.template_content = null;
-        updates.llm_config = null;
-      } else {
-        updates.runtime_config = nextContent.runtime_config;
-        updates.submission_mode = nextContent.submission_mode;
-        updates.artifact_max_size_mb = nextContent.artifact_max_size_mb;
-        updates.template_content = nextContent.template_content;
-        updates.llm_config = nextContent.llm_config;
-      }
-    }
   }
 
   // 半写入防护：标签校验（存在性 + 客观题 kind 规则）在字段提交之前完成，
@@ -875,11 +859,29 @@ export async function updateProblem(
     ? undefined
     : await validateProblemTagIds(input.tag_ids, isObjective);
 
-  if (Object.keys(updates).length > 0 || validatedTagIds !== undefined) {
+  const hasDerivedPackage = allowServerDerivedFields &&
+    !!input.support_package_storage_url;
+  let expectedRevision = problemDraft.revision;
+  if (c && (hasContentChange || hasDerivedPackage)) {
+    const header = c.req.header("if-match");
+    const raw = header === undefined
+      ? input.expected_revision
+      : Number(header.replace(/^"|"$/g, ""));
+    if (raw == null) throw draftRevisionRequired();
+    if (!Number.isInteger(raw) || raw < 0) {
+      throw new BadRequestError("预期 revision 必须是非负整数");
+    }
+    expectedRevision = raw;
+  }
+  if (
+    Object.keys(updates).length > 0 || validatedTagIds !== undefined ||
+    hasContentChange || hasDerivedPackage
+  ) {
     updates.updated_at = new Date().toISOString();
-
-    // 管理信息、数据引用与标签同时发布，关联写入失败时回滚整次更新。
     await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT id FROM problems WHERE id = ${id} FOR UPDATE`,
+      );
       const applied = await tx.update(problems).set(updates).where(
         expectedUpdatedAt === undefined ? eq(problems.id, id) : and(
           eq(problems.id, id),
@@ -897,36 +899,27 @@ export async function updateProblem(
           );
         }
       }
+      // 身份、标签、内容与支持包引用必须共同提交，revision 冲突会回滚全部修改。
+      if (hasContentChange || hasDerivedPackage) {
+        await saveProblemDraft(id, {
+          content: (nextContent ?? problemDraft.content) as ProblemDraftContent,
+          expectedRevision,
+          actorId: c ? c.get("userId") : userId,
+          context: c,
+        }, tx);
+      }
+      if (hasDerivedPackage) {
+        await registerLegacyStorageObject(
+          input.support_package_storage_url!,
+          tx,
+        );
+        await setDraftObject(id, {
+          role: "support_package",
+          path: "package.zip",
+          storage_url: input.support_package_storage_url!,
+        }, tx);
+      }
     });
-  }
-
-  // 内容写入共享草稿：必须**在投影更新之后**，`saveProblemDraft` 会按题目行
-  // 校验内容类别（题型切换时投影先落库才能写入新类别）。
-  if (hasContentChange && nextContent) {
-    await saveProblemDraft(id, {
-      content: nextContent as unknown as ProblemDraftContent,
-      expectedRevision: problemDraft.revision,
-      actorId: c ? (c.get("userId") as string | undefined) : userId,
-    });
-  }
-
-  // 服务端派生支持包（题包导入）：登记对象并绑定**草稿**引用，发布时随版本固定，
-  // 避免重复导入后发布仍指向旧包。
-  if (allowServerDerivedFields && input.support_package_storage_url) {
-    try {
-      await registerLegacyStorageObject(input.support_package_storage_url);
-      await setDraftObject(id, {
-        role: "support_package",
-        path: "package.zip",
-        storage_url: input.support_package_storage_url,
-      });
-    } catch (err) {
-      logger.error("updateProblem: 支持包对象登记失败", {
-        id,
-        storage_url: input.support_package_storage_url,
-        err,
-      });
-    }
   }
 
   // 审计日志：runtime_config 变更（客观题套卷无此字段，跳过）
@@ -1040,55 +1033,90 @@ export async function deleteProblem(
     .where(eq(problemVersions.problem_id, id));
   for (const row of versionObjectRows) objectUrls.add(row.storage_url);
 
-  // 清理关联提交（submissions 无 ON DELETE CASCADE，需手动清理；
-  // 评测尝试/分版本判定随提交级联删除）
-  await db.delete(submissions).where(eq(submissions.problem_id, id));
+  await db.transaction(async (tx) => {
+    // 排他题目锁与尝试创建互斥；检查与全部关联清理必须原子提交。
+    await tx.select({ id: problems.id }).from(problems).where(
+      eq(problems.id, id),
+    ).for("update");
+    const [contestRef] = await tx.select().from(contestProblems).where(
+      eq(contestProblems.problem_id, id),
+    ).limit(1);
+    if (contestRef) throw new ConflictError("题目已被竞赛引用，无法删除");
+    const [active] = await tx.select({ id: submissions.id }).from(submissions)
+      .where(and(
+        eq(submissions.problem_id, id),
+        sql`(${submissions.active_attempt_id} IS NOT NULL OR ${submissions.status} IN ('pending', 'judging'))`,
+      )).limit(1);
+    const [activeObjective] = await tx.select({ id: objectiveSubmissions.id })
+      .from(objectiveSubmissions).where(and(
+        eq(objectiveSubmissions.paper_id, id),
+        sql`${objectiveSubmissions.active_attempt_id} IS NOT NULL`,
+      )).limit(1);
+    const [activeSelfTest] = await tx.select({ id: selfTests.id }).from(
+      selfTests,
+    ).where(and(
+      eq(selfTests.problem_id, id),
+      sql`${selfTests.status} IN ('pending', 'judging')`,
+    )).limit(1);
+    if (active || activeObjective || activeSelfTest) {
+      throw new AppError(
+        "题目存在正在执行的评测，不能删除",
+        409,
+        "SOURCE_JUDGING",
+      );
+    }
+    // 清理关联提交（submissions 无 ON DELETE CASCADE，需手动清理；
+    // 评测尝试/分版本判定随提交级联删除）
+    await tx.delete(submissions).where(eq(submissions.problem_id, id));
 
-  // 清理自测记录。
-  //
-  // 2026-09-21 修复：`self_tests.problem_id → problems.id` 是 `ON DELETE no action`
-  // （drizzle/0042 + schema-ddl.ts），但本函数从未清理 self_tests。只要该题
-  // 被任何人自测过一次，`DELETE FROM problems` 就会触发
-  //   `update or delete on table "problems" violates foreign key constraint
-  //    "self_tests_problem_id_fkey" on table "self_tests"`
-  // → 全局 onError 转成 500，题目永久无法删除（运维死锁），且报错信息对
-  // 调用方完全不可解释。与上面 submissions 的手动清理同一模式。
-  await db.delete(selfTests).where(eq(selfTests.problem_id, id));
+    // 清理自测记录。
+    //
+    // 2026-09-21 修复：`self_tests.problem_id → problems.id` 是 `ON DELETE no action`
+    // （drizzle/0042 + schema-ddl.ts），但本函数从未清理 self_tests。只要该题
+    // 被任何人自测过一次，`DELETE FROM problems` 就会触发
+    //   `update or delete on table "problems" violates foreign key constraint
+    //    "self_tests_problem_id_fkey" on table "self_tests"`
+    // → 全局 onError 转成 500，题目永久无法删除（运维死锁），且报错信息对
+    // 调用方完全不可解释。与上面 submissions 的手动清理同一模式。
+    await tx.delete(selfTests).where(eq(selfTests.problem_id, id));
 
-  // 客观题提交：`paper_id` 有 CASCADE，但其 `submitted_version_id` 复合外键
-  // （NO ACTION）会阻止随后删除版本行 → 必须先删提交。
-  await db.delete(objectiveSubmissions).where(
-    eq(objectiveSubmissions.paper_id, id),
-  );
+    // 客观题提交：`paper_id` 有 CASCADE，但其 `submitted_version_id` 复合外键
+    // （NO ACTION）会阻止随后删除版本行 → 必须先删提交。
+    await tx.delete(objectiveSubmissions).where(
+      eq(objectiveSubmissions.paper_id, id),
+    );
 
-  // 版本与草稿（Handbook §7「补齐新表清理顺序」）：
-  // 1. 先删引用行的文件引用（storage_objects 引用守卫依赖"引用已消失"）；
-  // 2. 摘掉题目行上的版本指针（problems.latest_version_id / required_version_id
-  //    是 NO ACTION 复合外键，不清空则版本行删不掉）；
-  // 3. 草稿的 base_version_id 也指向版本（NO ACTION）→ 草稿必须先删；
-  // 4. 最后删版本行本身。
-  await db.delete(problemDraftObjects).where(
-    eq(problemDraftObjects.problem_id, id),
-  );
-  await db.delete(problemVersionObjects).where(
-    inArray(
-      problemVersionObjects.version_id,
-      db.select({ id: problemVersions.id }).from(problemVersions).where(
-        eq(problemVersions.problem_id, id),
+    // 版本与草稿（Handbook §7「补齐新表清理顺序」）：
+    // 1. 先删引用行的文件引用（storage_objects 引用守卫依赖"引用已消失"）；
+    // 2. 摘掉题目行上的版本指针（problems.latest_version_id / required_version_id
+    //    是 NO ACTION 复合外键，不清空则版本行删不掉）；
+    // 3. 草稿的 base_version_id 也指向版本（NO ACTION）→ 草稿必须先删；
+    // 4. 最后删版本行本身。
+    await tx.delete(problemDraftObjects).where(
+      eq(problemDraftObjects.problem_id, id),
+    );
+    await tx.delete(problemVersionObjects).where(
+      inArray(
+        problemVersionObjects.version_id,
+        tx.select({ id: problemVersions.id }).from(problemVersions).where(
+          eq(problemVersions.problem_id, id),
+        ),
       ),
-    ),
-  );
-  await db.update(problems).set({
-    latest_version_id: null,
-    required_version_id: null,
-    effective_version_mode: "any",
-  }).where(eq(problems.id, id));
-  await db.delete(problemDrafts).where(eq(problemDrafts.problem_id, id));
-  await db.delete(problemVersions).where(eq(problemVersions.problem_id, id));
+    );
+    await tx.update(problems).set({
+      latest_version_id: null,
+      required_version_id: null,
+      effective_version_mode: "any",
+    }).where(eq(problems.id, id));
+    await tx.delete(problemDrafts).where(eq(problemDrafts.problem_id, id));
+    await tx.delete(problemVersions).where(eq(problemVersions.problem_id, id));
 
-  // 级联删除（problem_tags 的 ON DELETE CASCADE 会自动清理关联）
-  await db.delete(problems).where(eq(problems.id, id));
+    // 级联删除（problem_tags 的 ON DELETE CASCADE 会自动清理关联）
+    await tx.delete(problems).where(eq(problems.id, id));
 
+    await bumpProjectionRevision(tx, globalScopeKey());
+    await bumpProjectionRevision(tx, problemScopeKey(id));
+  });
   // 存储对象统一经引用守卫删除：仍被其他题目/版本引用时保留字节
   for (const url of objectUrls) {
     try {

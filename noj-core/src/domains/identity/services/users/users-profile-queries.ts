@@ -1,3 +1,4 @@
+import { unifiedSubmissionSources } from "../../../../shared/versioning/submission-sources.ts";
 import { and, eq, type SQL, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
@@ -94,6 +95,9 @@ export function queryProfileStats(
   const secrecy = contestSecrecyCondition(viewer, userId);
   return db.select({
     total_submissions: sql<number>`count(*)::int`,
+    valid_submissions: sql<
+      number
+    >`count(*) FILTER (WHERE ${submissions.is_valid})::int`,
     // 通过口径：读有效成绩投影（版本化后由唯一投影服务维护；存量由 0103 回填）
     accepted: sql<
       number
@@ -102,7 +106,7 @@ export function queryProfileStats(
       number
     >`count(distinct ${submissions.problem_id}) filter (where ${submissions.is_accepted})::int`,
   })
-    .from(submissions)
+    .from(unifiedSubmissionSources)
     // 关联 problems 以复用 `contestSecrecyCondition`（其题目 owner 分支需要该列）；
     // problem_id 为 NOT NULL 外键，inner join 不会丢行。
     .innerJoin(problems, eq(submissions.problem_id, problems.id))
@@ -129,7 +133,7 @@ export function querySolvedProblems(
 ): Promise<ProfileSolvedProblemRow[]> {
   const secrecy = contestSecrecyCondition(viewer, userId);
   return db.select({
-    problem_id: submissions.problem_id,
+    problem_id: sql<string>`${submissions.problem_id}`,
     problem_title: problems.title,
     difficulty: problems.difficulty,
     accepted_at: sql<string>`min(${submissions.created_at})`,
@@ -140,7 +144,7 @@ export function querySolvedProblems(
     }`
       .as("is_contest_hidden"),
   })
-    .from(submissions)
+    .from(unifiedSubmissionSources)
     .innerJoin(problems, eq(submissions.problem_id, problems.id))
     .where(
       secrecy
@@ -171,18 +175,18 @@ export function queryRecentSubmissions(
 ): Promise<ProfileRecentSubmissionRow[]> {
   const secrecy = contestSecrecyCondition(viewer, userId);
   return db.select({
-    id: submissions.id,
-    problem_id: submissions.problem_id,
+    id: sql<string>`${submissions.id}`,
+    problem_id: sql<string>`${submissions.problem_id}`,
     problem_title: problems.title,
-    language: submissions.language,
-    status: submissions.status,
+    language: sql<string>`${submissions.language}`,
+    status: sql<string>`${submissions.status}`,
     // 最近一次运行的判定：优先最近终态尝试，存量行回退到有效成绩指针
     // （两套成绩事实并存期结束前，这里不再读 evaluation_results）
     result_status: evaluationAttempts.result_status,
     result_score: evaluationAttempts.score,
-    created_at: submissions.created_at,
+    created_at: sql<string>`${submissions.created_at}`,
   })
-    .from(submissions)
+    .from(unifiedSubmissionSources)
     .leftJoin(problems, eq(submissions.problem_id, problems.id))
     .leftJoin(
       evaluationAttempts,

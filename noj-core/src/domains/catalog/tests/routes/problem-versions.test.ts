@@ -612,7 +612,7 @@ Deno.test({
     // 已发布：内容 + 管理信息一起 PUT
     const updated = await jsonRequest(app, `/api/v1/problems/${problemId}`, {
       method: "PUT",
-      headers: auth,
+      headers: { ...auth, "If-Match": "3" },
       body: {
         title: "草稿标题",
         description: "草稿题面",
@@ -669,8 +669,7 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "problem versions route: 未发布题目的内容更新立即反映在投影（迁移期兼容）",
+  name: "problem versions route: 未发布内容仅保存草稿，不修改题目投影",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -682,11 +681,12 @@ Deno.test({
 
     const updated = await jsonRequest(app, `/api/v1/problems/${problemId}`, {
       method: "PUT",
-      headers: auth,
+      headers: { ...auth, "If-Match": "1" },
       body: { title: "未发布新标题", description: "未发布新题面" },
     });
     assertEquals(updated.status, 200);
-    assertEquals((await updated.json()).data.title, "未发布新标题");
+    const identity = (await updated.json()).data;
+    assertEquals(identity.title === "未发布新标题", false);
 
     const draft = await jsonRequest(
       app,

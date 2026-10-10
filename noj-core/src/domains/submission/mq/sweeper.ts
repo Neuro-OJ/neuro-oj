@@ -7,17 +7,10 @@
  *    提交，超过 2 分钟后自动重新构建 JudgeTask 入队。
  */
 
-import { and, asc, eq, lte, type SQL } from "drizzle-orm";
+import { and, asc, eq, lte, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { getDb } from "../../../shared/db/connection.ts";
-import {
-  evaluationAttempts,
-  problems,
-  problemVersions,
-  selfTests,
-  submissions,
-} from "../../../shared/db/schema.ts";
-import { getStorageProvider } from "../../system/index.ts";
+import { problems, selfTests, submissions } from "../../../shared/db/schema.ts";
 import { getSetting } from "../../system/index.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
 import { listSweepTargets } from "../../../shared/mq/sweep-targets.ts";
@@ -30,11 +23,9 @@ import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "submission"]);
 import type { JudgeTaskPriority } from "../types/index.ts";
-import { isOiRuntimeConfig, type JudgeType } from "../../catalog/index.ts";
-import { prepareJudgeTask } from "../services/prepare-judge-task.ts";
-import type { ProblemRuntimeConfig } from "../../catalog/index.ts";
-import { LANGUAGE_EXT_MAP } from "../types/index.ts";
-import { resolveJudgeTaskPriority } from "../services/submissions/judge-priority.ts";
+import { AppError } from "../../../shared/base/errors.ts";
+import { rebuildPendingTask } from "./pending-recovery.ts";
+import { applyAttemptResult } from "../services/versioning/result-write.ts";
 
 const RESULT_QUEUE = "noj:judge:results";
 
@@ -152,7 +143,7 @@ async function sweepProcessingQueue(
   }
 }
 
-interface PendingRecoveryRow {
+export interface PendingRecoveryRow {
   id: string;
   language: string;
   code: string;
@@ -170,83 +161,8 @@ interface PendingRecoveryRow {
   problem_version_id?: string | null;
   /** 产物对象引用（artifact 提交）：保留到提交显式删除，恢复时重新生成下载 URL。 */
   artifact_storage_url?: string | null;
-}
-
-/**
- * 尝试/自测绑定版本的恢复上下文（Handbook §5.4、§6.5）。
- *
- * 恢复**不得**重新读取题目当前投影：题库更新后用它重建任务会把旧提交拿去评测
- * 新版配置。这里的版本内容是不可变的，恢复出来的任务与首次派发完全一致。
- */
-interface RecoveryVersionContext {
-  attemptId?: string;
-  problemVersionId: string;
-  runtimeConfig: ProblemRuntimeConfig;
-  judgeType: JudgeType;
-}
-
-/** 由版本内容取评测配置（客观题没有 Judge 任务）。 */
-function runtimeConfigFromVersionContent(
-  content: unknown,
-): { runtimeConfig: ProblemRuntimeConfig; judgeType: JudgeType } | null {
-  if (!content || typeof content !== "object") return null;
-  const kind = (content as { kind?: unknown }).kind;
-  if (kind === "ai") {
-    const config = (content as { runtime_config?: unknown }).runtime_config;
-    if (!config || typeof config !== "object") return null;
-    return {
-      runtimeConfig: config as ProblemRuntimeConfig,
-      judgeType: isOiRuntimeConfig(config as ProblemRuntimeConfig)
-        ? "oi"
-        : "dual",
-    };
-  }
-  if (kind === "oi") {
-    const config = (content as { runtime_config?: unknown }).runtime_config;
-    if (!config || typeof config !== "object") return null;
-    return { runtimeConfig: config as ProblemRuntimeConfig, judgeType: "oi" };
-  }
-  return null;
-}
-
-/** 读取尝试绑定的版本配置；尝试不存在/无版本返回 null（调用方回退旧路径）。 */
-async function loadAttemptRecoveryContext(
-  attemptId: string,
-): Promise<RecoveryVersionContext | null> {
-  const db = getDb();
-  const [attempt] = await db.select({
-    id: evaluationAttempts.id,
-    problem_version_id: evaluationAttempts.problem_version_id,
-  }).from(evaluationAttempts).where(eq(evaluationAttempts.id, attemptId)).limit(
-    1,
-  );
-  if (!attempt?.problem_version_id) return null;
-  const [version] = await db.select({ content: problemVersions.content })
-    .from(problemVersions).where(
-      eq(problemVersions.id, attempt.problem_version_id),
-    ).limit(1);
-  const fromVersion = runtimeConfigFromVersionContent(version?.content);
-  if (!fromVersion) return null;
-  return {
-    attemptId: attempt.id,
-    problemVersionId: attempt.problem_version_id,
-    ...fromVersion,
-  };
-}
-
-/** 读取自测绑定版本的配置；无版本返回 null（调用方回退旧路径）。 */
-async function loadSelfTestVersionContext(
-  problemVersionId: string,
-): Promise<RecoveryVersionContext | null> {
-  const db = getDb();
-  const [version] = await db.select({ content: problemVersions.content })
-    .from(problemVersions).where(eq(problemVersions.id, problemVersionId))
-    .limit(
-      1,
-    );
-  const fromVersion = runtimeConfigFromVersionContent(version?.content);
-  if (!fromVersion) return null;
-  return { problemVersionId, ...fromVersion };
+  judge_run_id?: string | null;
+  task_snapshot?: Record<string, unknown> | null;
 }
 
 interface PendingRecoveryActions<T extends PendingRecoveryRow> {
@@ -279,6 +195,8 @@ interface PendingRecoveryTableColumns {
   activeAttemptId?: AnyPgColumn;
   problemVersionIdCol?: AnyPgColumn;
   artifactStorageUrl?: AnyPgColumn;
+  judgeRunId?: AnyPgColumn;
+  taskSnapshot?: AnyPgColumn;
 }
 
 /**
@@ -313,6 +231,9 @@ async function selectPendingRecoveryRows(
     selectFields.artifact_storage_url = cols.artifactStorageUrl;
   }
 
+  if (cols.judgeRunId) selectFields.judge_run_id = cols.judgeRunId;
+  if (cols.taskSnapshot) selectFields.task_snapshot = cols.taskSnapshot;
+
   // 动态列集合无法保留 Drizzle 的精确查询类型，这里使用 any 收窄到内部契约。
   // deno-lint-ignore no-explicit-any
   const rows: any[] = await (db
@@ -336,110 +257,21 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
   source: "submission" | "self_test",
 ): Promise<void> {
   for (const row of rows) {
-    // 恢复来源优先级（Handbook §5.4/§6.5）：
-    // 1. 在途尝试绑定的版本（正式提交）；
-    // 2. 自测绑定版本；
-    // 3. 题目当前投影（迁移期存量行：没有尝试也没有版本记录）。
-    let recovery: RecoveryVersionContext | null = null;
-    if (row.active_attempt_id) {
-      recovery = await loadAttemptRecoveryContext(row.active_attempt_id);
-      if (!recovery) {
-        logger.error("pending 恢复找不到尝试绑定版本，回退题目投影", {
+    let task;
+    try {
+      task = await rebuildPendingTask(row, source);
+    } catch (err) {
+      // 缺失不可变版本/交付物或退役 Provider 是永久失败；基础设施暂时不可达继续等待。
+      if (err instanceof AppError && err.statusCode < 500) {
+        await actions.onPermanentError(row, err);
+      } else {
+        logger.error("pending 恢复暂时失败，等待下轮", {
           [actions.idKey]: row.id,
-          attempt_id: row.active_attempt_id,
+          err,
         });
       }
-    } else if (row.problem_version_id) {
-      recovery = await loadSelfTestVersionContext(row.problem_version_id);
-    }
-    const runtimeConfig = (recovery?.runtimeConfig ??
-      row.runtime_config) as ProblemRuntimeConfig | null;
-    if (!runtimeConfig) {
-      await actions.onMissingRuntimeConfig(row);
       continue;
     }
-
-    // artifact 提交：产物对象保留到提交显式删除，恢复时重新签发下载 URL。
-    // 对象已缺失（被外部清理）→ 永久错误，保留既有正式判定（Handbook §7）。
-    let artifact_download_url: string | undefined;
-    if (row.artifact_storage_url) {
-      try {
-        const storage = await getStorageProvider();
-        artifact_download_url = await storage.downloadUrl(
-          row.artifact_storage_url,
-        );
-      } catch (err) {
-        logger.error("pending 恢复无法生成产物下载地址（ARTIFACT_MISSING）", {
-          [actions.idKey]: row.id,
-          err,
-        });
-        await actions.onPermanentError(row, err);
-        continue;
-      }
-    }
-
-    let download_url: string | undefined;
-    if (row.support_package_storage_url) {
-      try {
-        const storage = await getStorageProvider();
-        download_url = await storage.downloadUrl(
-          row.support_package_storage_url,
-        );
-      } catch (err) {
-        logger.error("pending 恢复获取支持包失败，将以无支持包任务继续", {
-          [actions.idKey]: row.id,
-          err,
-        });
-      }
-    }
-
-    let priority: JudgeTaskPriority;
-    if (source === "self_test") {
-      priority = "medium";
-    } else if ((row.rejudge_seq ?? 0) > 0) {
-      priority = "low";
-    } else {
-      priority = await resolveJudgeTaskPriority(
-        row.contest_id ?? null,
-        "submission",
-      );
-    }
-
-    // **注意：此处刻意不组装 `llm`**（2026-09-22 评审）。
-    //
-    // 平台默认 Provider 的解析（`buildJudgeTaskLlm`）在缺配或 Provider 停用时
-    // 会抛错（400/5xx）。若在 sweeper 里补上 `llm`，一次 gateway 抖动或漏配就
-    // 会让每轮重试都以失败告终，进而把提交永久标记为 `error`
-    // （`onPermanentError`）——那比"少一次 LLM 调用"严重得多。
-    //
-    // 现状语义：pending 恢复出来的 LLM 题任务不带 `llm`，evaluator 侧按普通
-    // 题目执行（LLM 能力不可用）。这与移除 BYOK 之前的行为一致，属**已知取舍**。
-    // 后续若要支持"恢复时重建 llm"，必须同时把解析失败降级为"跳过本轮重试"，
-    // 而不是让整个恢复流程永久失败。
-    const task = await prepareJudgeTask({
-      // 恢复必须复用**原尝试**的 run_id：judge 回传结果时按它定位尝试，
-      // 否则恢复出来的执行会被当成一次新运行（结果无处落地）。
-      ...(recovery?.attemptId ? { attempt_id: recovery.attemptId } : {}),
-      ...(recovery?.problemVersionId
-        ? { problem_version_id: recovery.problemVersionId }
-        : {}),
-      submission_id: row.id,
-      problem_id: row.problem_id,
-      user_id: row.user_id ?? "",
-      priority,
-      runtime_config: runtimeConfig,
-      download_url,
-      language: row.language,
-      // artifact 提交不带源码，只有产物下载地址
-      code: row.artifact_storage_url ? "" : row.code,
-      ...(artifact_download_url ? { artifact_download_url } : {}),
-      file_name: row.file_name ??
-        (LANGUAGE_EXT_MAP[row.language] || "main.txt"),
-      ...(recovery?.judgeType ? { judge_type: recovery.judgeType } : {}),
-      ...(row.rejudge_seq !== undefined
-        ? { rejudge_seq: row.rejudge_seq }
-        : {}),
-    });
 
     const { pushJudgeTask } = await import("./producer.ts");
     try {
@@ -497,6 +329,8 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
     and(
       eq(submissions.status, "pending"),
       lte(submissions.created_at, cutoff),
+      // 批任务由自己的持久化租约与退避负责派发，不能被 sweeper 抢先执行。
+      sql`NOT EXISTS (SELECT 1 FROM submission_job_items ji WHERE ji.attempt_id = ${submissions.active_attempt_id} AND ji.status IN ('pending', 'preparing', 'dispatched'))`,
     ),
   );
 
@@ -523,15 +357,24 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
           and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
         );
     },
-    onPermanentError: async (row) => {
-      await db.update(submissions)
-        .set({
+    onPermanentError: async (row, err) => {
+      if (row.active_attempt_id) {
+        await applyAttemptResult({
+          attemptId: row.active_attempt_id,
+          resultKind: "platform_error",
+          resultStatus: "RECOVERY_FAILED",
+          score: null,
+          accepted: false,
+          output: err instanceof Error ? err.message : String(err),
+        });
+      } else {
+        await db.update(submissions).set({
           status: "error",
           judge_finished_at: new Date().toISOString(),
-        })
-        .where(
+        }).where(
           and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
         );
+      }
     },
   }, "submission");
 }
@@ -556,6 +399,9 @@ export async function recoverPendingSelfTests(now: number): Promise<void> {
       supportPackageStorageUrl: problems.support_package_storage_url,
       judgeStartedAt: selfTests.judge_started_at,
       problemVersionIdCol: selfTests.problem_version_id,
+      judgeRunId: selfTests.judge_run_id,
+      taskSnapshot: selfTests.task_snapshot,
+      userId: selfTests.user_id,
     },
     and(
       eq(selfTests.status, "pending"),

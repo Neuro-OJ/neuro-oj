@@ -29,7 +29,10 @@
 
 import type { Context } from "hono";
 import { AppError, ForbiddenError } from "./../../../../shared/base/errors.ts";
-import { checkPermission } from "./../../../identity/index.ts";
+import {
+  checkPermission,
+  getUserPermissions,
+} from "./../../../identity/index.ts";
 import { getSetting } from "../../../system/index.ts";
 import { getLogger } from "@logtape/logtape";
 
@@ -131,10 +134,15 @@ export async function assertSensitiveFieldPermissions(
     } else if (
       (userId ?? ROOT_USER_ID) !== ROOT_USER_ID && userRole !== "admin"
     ) {
-      throw new ForbiddenError(
-        `权限不足：设置敏感字段 ${path} 需要权限 ${permission}`,
-        "FORBIDDEN",
-      );
+      const permissions = await getUserPermissions(userId!);
+      if (
+        !permissions.has("admin:full_access") && !permissions.has(permission)
+      ) {
+        throw new ForbiddenError(
+          `权限不足：设置敏感字段 ${path} 需要权限 ${permission}`,
+          "FORBIDDEN",
+        );
+      }
     }
   }
 }

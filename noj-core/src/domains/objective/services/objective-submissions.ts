@@ -30,8 +30,6 @@ import {
   loadPublishedVersionContent,
   resolveSubmissionVersion,
 } from "./../../submission/index.ts";
-import type { SubmissionVersionResolution } from "./../../submission/index.ts";
-import { resolveDefaultAnswerVersion } from "./../../../shared/versioning/policy.ts";
 import type { ObjectiveQuestionSnapshot } from "./../../catalog/index.ts";
 import { loadProblemIdentity } from "./../../catalog/index.ts";
 import {
@@ -245,24 +243,11 @@ export async function submitObjectivePaper(
   // 解析默认作答版本（any → 最新版、exact → 要求版本）。已发布版本的小题快照是
   // 判卷事实源，未版本化的存量套卷回退旧小题表（key = 旧小题 UUID，与迁移基线一致）。
   const identity = await loadProblemIdentity(paperUuid);
-  const requestedVersionId = input.version_id?.trim() || null;
-  let resolved: SubmissionVersionResolution;
-  if (contestId || requestedVersionId) {
-    resolved = await resolveSubmissionVersion(paperUuid, {
-      contestId,
-      requestedVersionId,
-      latestVersionId: identity.latest_version_id,
-    });
-  } else {
-    const defaultVersionId = resolveDefaultAnswerVersion(identity);
-    resolved = defaultVersionId
-      ? await resolveSubmissionVersion(paperUuid, {
-        requestedVersionId: defaultVersionId,
-        latestVersionId: identity.latest_version_id,
-      })
-      : { kind: "legacy_unknown" };
-  }
-
+  const resolved = await resolveSubmissionVersion(paperUuid, {
+    contestId,
+    requestedVersionId: input.version_id,
+    latestVersionId: identity.latest_version_id,
+  });
   let versionQuestions: JudgedQuestion[] | null = null;
   let submittedVersionId: string | null = null;
   if (resolved.kind === "known") {

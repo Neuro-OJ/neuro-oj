@@ -11,6 +11,8 @@
  * 每次成功保存写入 `当前 revision + 1`，与列默认值 1 对齐。
  */
 
+import type { Context } from "hono";
+import { assertDraftContentSecurity } from "./content-security.ts";
 import { and, eq, sql } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -195,7 +197,9 @@ export async function saveProblemDraft(
     content: ProblemDraftContent;
     expectedRevision: number | null | undefined;
     actorId?: string | null;
+    context?: Context;
   },
+  executor?: Executor,
 ): Promise<ProblemDraftView> {
   if (input.expectedRevision == null) throw draftRevisionRequired();
   const expected = Number(input.expectedRevision);
@@ -204,7 +208,13 @@ export async function saveProblemDraft(
   }
 
   const db = getDb();
-  const identity = await loadProblemIdentity(problemId);
+  const identity = await loadProblemIdentity(problemId, executor);
+  await assertDraftContentSecurity(
+    identity,
+    input.content,
+    input.actorId,
+    input.context,
+  );
   const kind: ProblemContentKind = problemContentKindOf(identity);
   if (input.content?.kind !== kind) {
     throw new AppError(
@@ -214,11 +224,15 @@ export async function saveProblemDraft(
     );
   }
 
-  return await db.transaction(async (tx) => {
+  const write = async (tx: Executor): Promise<ProblemDraftView> => {
     // 锁定题目行：串行化同一题的草稿编辑与发布，防止 revision 丢失
     await tx.execute(
       sql`SELECT id FROM problems WHERE id = ${problemId} FOR UPDATE`,
     );
+    const identity = await loadProblemIdentity(problemId, tx);
+    if (input.content.kind !== problemContentKindOf(identity)) {
+      throw new AppError("题目类别已变化", 409, "CONTENT_KIND_IMMUTABLE");
+    }
     const [row] = await tx.select().from(problemDrafts).where(
       eq(problemDrafts.problem_id, problemId),
     ).limit(1);
@@ -227,7 +241,9 @@ export async function saveProblemDraft(
 
     const now = new Date().toISOString();
     const nextRevision = current + 1;
-    const baseVersionId = row?.base_version_id ?? identity.latest_version_id;
+    const baseVersionId = row
+      ? row.base_version_id
+      : identity.latest_version_id;
 
     if (row) {
       await tx.update(problemDrafts).set({
@@ -257,7 +273,8 @@ export async function saveProblemDraft(
       updated_at: now,
       synthesized: false,
     };
-  });
+  };
+  return executor ? await write(executor) : await db.transaction(write);
 }
 
 /**
@@ -277,6 +294,7 @@ export async function saveProblemDraftWithObjects(
     content: ProblemDraftContent;
     expectedRevision: number | null | undefined;
     actorId?: string | null;
+    context?: Context;
     /** 期望的最终引用集合；同一 role 下未列出的路径会被移除。 */
     objects: readonly {
       role: ProblemObjectRole;
@@ -284,6 +302,7 @@ export async function saveProblemDraftWithObjects(
       storage_url: string;
     }[];
   },
+  executor?: Executor,
 ): Promise<ProblemDraftView> {
   if (input.expectedRevision == null) throw draftRevisionRequired();
   const expected = Number(input.expectedRevision);
@@ -292,7 +311,13 @@ export async function saveProblemDraftWithObjects(
   }
 
   const db = getDb();
-  const identity = await loadProblemIdentity(problemId);
+  const identity = await loadProblemIdentity(problemId, executor);
+  await assertDraftContentSecurity(
+    identity,
+    input.content,
+    input.actorId,
+    input.context,
+  );
   const kind: ProblemContentKind = problemContentKindOf(identity);
   if (input.content?.kind !== kind) {
     throw new AppError(
@@ -302,10 +327,14 @@ export async function saveProblemDraftWithObjects(
     );
   }
 
-  return await db.transaction(async (tx) => {
+  const write = async (tx: Executor): Promise<ProblemDraftView> => {
     await tx.execute(
       sql`SELECT id FROM problems WHERE id = ${problemId} FOR UPDATE`,
     );
+    const identity = await loadProblemIdentity(problemId, tx);
+    if (input.content.kind !== problemContentKindOf(identity)) {
+      throw new AppError("题目类别已变化", 409, "CONTENT_KIND_IMMUTABLE");
+    }
     const [row] = await tx.select().from(problemDrafts).where(
       eq(problemDrafts.problem_id, problemId),
     ).limit(1);
@@ -351,7 +380,9 @@ export async function saveProblemDraftWithObjects(
 
     const now = new Date().toISOString();
     const nextRevision = current + 1;
-    const baseVersionId = row?.base_version_id ?? identity.latest_version_id;
+    const baseVersionId = row
+      ? row.base_version_id
+      : identity.latest_version_id;
     if (row) {
       await tx.update(problemDrafts).set({
         content: input.content,
@@ -380,7 +411,8 @@ export async function saveProblemDraftWithObjects(
       updated_at: now,
       synthesized: false,
     };
-  });
+  };
+  return executor ? await write(executor) : await db.transaction(write);
 }
 
 /** 草稿文件引用行。 */
@@ -423,6 +455,11 @@ export async function setDraftObject(
   ref: DraftObjectRef,
   executor?: Executor,
 ): Promise<void> {
+  if (!executor) {
+    return await getDb().transaction((tx) =>
+      setDraftObject(problemId, ref, tx)
+    );
+  }
   const db = executor ?? getDb();
   await assertStorageObjectBindable(ref.storage_url, executor);
   await db.insert(problemDraftObjects).values({

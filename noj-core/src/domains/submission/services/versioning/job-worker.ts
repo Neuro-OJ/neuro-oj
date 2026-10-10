@@ -12,15 +12,18 @@
  * - 全部条目终态后由 `refreshJobStatus` 推导任务状态（无进程内计数器）。
  */
 
-import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
+  evaluationAttempts,
   submissionJobItems,
   submissionJobs,
 } from "../../../../shared/db/schema.ts";
 import type { SubmissionJobItemStatus } from "../../../../shared/versioning/types.ts";
 import { refreshJobStatus } from "./rejudge-jobs.ts";
+import { lockProjectionHosts, lockProjectionSource } from "./projection.ts";
+import { applyAttemptResult } from "./result-write.ts";
 
 /** 默认 lease 时长（秒）。 */
 export const JOB_ITEM_LEASE_SECONDS = 60;
@@ -40,6 +43,8 @@ export interface ClaimedJobItem {
   target_version_id: string | null;
   target_version_ref: string | null;
   dispatch_retries: number;
+  attempt_id: string | null;
+  result_submission_id: string | null;
 }
 
 /** 条目终态。 */
@@ -82,6 +87,8 @@ export async function claimJobItems(
       target_version_id: submissionJobItems.target_version_id,
       target_version_ref: submissionJobItems.target_version_ref,
       dispatch_retries: submissionJobItems.dispatch_retries,
+      attempt_id: submissionJobItems.attempt_id,
+      result_submission_id: submissionJobItems.result_submission_id,
     }).from(submissionJobItems).where(
       or(
         and(
@@ -125,6 +132,7 @@ export async function renewJobItemLease(
       eq(submissionJobItems.id, itemId),
       eq(submissionJobItems.lease_owner, owner),
       eq(submissionJobItems.status, "preparing"),
+      gt(submissionJobItems.lease_until, nowIso()),
     ),
   ).returning({ id: submissionJobItems.id });
   return rows.length > 0;
@@ -141,22 +149,24 @@ export async function markJobItemDispatched(
   attemptId: string,
   owner: string,
 ): Promise<boolean> {
-  const db = getDb();
-  const rows = await db.update(submissionJobItems).set({
-    status: "dispatched",
-    attempt_id: attemptId,
-    lease_owner: null,
-    lease_until: null,
-  }).where(
-    and(
-      eq(submissionJobItems.id, itemId),
-      eq(submissionJobItems.status, "preparing"),
-      eq(submissionJobItems.lease_owner, owner),
-    ),
-  ).returning({ id: submissionJobItems.id });
-  if (rows.length === 0) return false;
-  await touchJobStatus(itemId, db);
-  return true;
+  return await getDb().transaction(async (db) => {
+    const rows = await db.update(submissionJobItems).set({
+      status: "dispatched",
+      attempt_id: attemptId,
+      lease_owner: null,
+      lease_until: null,
+    }).where(
+      and(
+        eq(submissionJobItems.id, itemId),
+        eq(submissionJobItems.status, "preparing"),
+        eq(submissionJobItems.lease_owner, owner),
+        gt(submissionJobItems.lease_until, nowIso()),
+      ),
+    ).returning({ id: submissionJobItems.id });
+    if (rows.length === 0) return false;
+    await touchJobStatus(itemId, db);
+    return true;
+  });
 }
 
 /**
@@ -172,13 +182,61 @@ export async function completeJobItem(
     attemptId?: string | null;
     reasonCode?: string | null;
     reasonMessage?: string | null;
+    /** worker 写终态必须提供租约所有者；可信结果回写不依赖派发租约。 */
+    leaseOwner?: string;
   },
   executor?: Executor,
 ): Promise<boolean> {
-  const db = executor ?? getDb();
+  if (!executor) {
+    return await getDb().transaction((tx) =>
+      completeJobItem(itemId, terminal, tx)
+    );
+  }
+  const db = executor;
+  if (terminal.status === "failed" && terminal.leaseOwner) {
+    const [identity] = await db.select().from(submissionJobItems).where(
+      eq(submissionJobItems.id, itemId),
+    );
+    const [attempt] = identity?.attempt_id
+      ? await db.select().from(evaluationAttempts).where(
+        eq(evaluationAttempts.id, identity.attempt_id),
+      )
+      : [];
+    if (attempt) {
+      await lockProjectionHosts(db, {
+        kind: attempt.submission_id ? "submission" : "objective",
+        id: (attempt.submission_id ?? attempt.objective_submission_id)!,
+        problem_id: attempt.problem_id,
+      });
+      await lockProjectionSource(db, {
+        kind: attempt.submission_id ? "submission" : "objective",
+        id: (attempt.submission_id ?? attempt.objective_submission_id)!,
+        problem_id: attempt.problem_id,
+      });
+      const [current] = await db.select().from(submissionJobItems).where(
+        eq(submissionJobItems.id, itemId),
+      ).for("update");
+      if (
+        !current || current.status !== "preparing" ||
+        current.lease_owner !== terminal.leaseOwner || !current.lease_until ||
+        current.lease_until <= nowIso()
+      ) return false;
+      const applied = await applyAttemptResult({
+        attemptId: attempt.id,
+        resultKind: "platform_error",
+        resultStatus: terminal.reasonCode ?? "DISPATCH_FAILED",
+        score: null,
+        accepted: false,
+        output: terminal.reasonMessage ?? "批任务执行失败",
+      }, db);
+      if (applied.applied !== "ignored") return true;
+    }
+  }
   const rows = await db.update(submissionJobItems).set({
     status: terminal.status,
-    attempt_id: terminal.attemptId ?? null,
+    ...(terminal.attemptId !== undefined
+      ? { attempt_id: terminal.attemptId }
+      : {}),
     reason_code: terminal.reasonCode ?? null,
     reason_message: terminal.reasonMessage ?? null,
     lease_owner: null,
@@ -189,6 +247,13 @@ export async function completeJobItem(
     and(
       eq(submissionJobItems.id, itemId),
       sql`${submissionJobItems.status} NOT IN ('succeeded', 'failed', 'skipped')`,
+      ...(terminal.leaseOwner
+        ? [
+          eq(submissionJobItems.status, "preparing"),
+          eq(submissionJobItems.lease_owner, terminal.leaseOwner),
+          gt(submissionJobItems.lease_until, nowIso()),
+        ]
+        : []),
     ),
   ).returning({ id: submissionJobItems.id });
   if (rows.length === 0) return false;
@@ -213,36 +278,74 @@ async function touchJobStatus(
  */
 export async function scheduleDispatchRetryOrFail(
   itemId: string,
-  options: { reasonCode: string; reasonMessage: string },
+  options: { reasonCode: string; reasonMessage: string; leaseOwner?: string },
 ): Promise<boolean> {
-  const db = getDb();
-  const [item] = await db.select({
-    retries: submissionJobItems.dispatch_retries,
-  }).from(submissionJobItems).where(eq(submissionJobItems.id, itemId)).limit(1);
-  if (!item) return false;
-  const retries = item.retries;
-  if (retries >= DISPATCH_BACKOFF_SECONDS.length) {
-    await completeJobItem(itemId, {
-      status: "failed",
-      reasonCode: options.reasonCode,
-      reasonMessage: options.reasonMessage,
-    });
-    return false;
-  }
-  const backoff = DISPATCH_BACKOFF_SECONDS[retries];
-  await db.update(submissionJobItems).set({
-    status: "pending",
-    dispatch_retries: retries + 1,
-    next_dispatch_at: plusSeconds(backoff),
-    lease_owner: null,
-    lease_until: null,
-  }).where(
-    and(
+  return await getDb().transaction(async (db) => {
+    // 与结果落库遵循同一锁序：策略宿主 → 提交 → 条目 → 任务。
+    const [identity] = await db.select().from(submissionJobItems).where(
       eq(submissionJobItems.id, itemId),
-      sql`${submissionJobItems.status} NOT IN ('succeeded', 'failed', 'skipped')`,
-    ),
-  );
-  return true;
+    );
+    const [attempt] = identity?.attempt_id
+      ? await db.select().from(evaluationAttempts).where(
+        eq(evaluationAttempts.id, identity.attempt_id),
+      )
+      : [];
+    if (attempt) {
+      await lockProjectionHosts(db, {
+        kind: attempt.submission_id ? "submission" : "objective",
+        id: (attempt.submission_id ?? attempt.objective_submission_id)!,
+        problem_id: attempt.problem_id,
+      });
+      await lockProjectionSource(db, {
+        kind: attempt.submission_id ? "submission" : "objective",
+        id: (attempt.submission_id ?? attempt.objective_submission_id)!,
+        problem_id: attempt.problem_id,
+      });
+    }
+    const [item] = await db.select().from(submissionJobItems).where(
+      eq(submissionJobItems.id, itemId),
+    ).for("update");
+    if (
+      !item || ["succeeded", "failed", "skipped"].includes(item.status) ||
+      (options.leaseOwner &&
+        (item.status !== "preparing" ||
+          item.lease_owner !== options.leaseOwner || !item.lease_until ||
+          item.lease_until <= nowIso()))
+    ) return false;
+    const retries = item.dispatch_retries;
+    if (retries >= DISPATCH_BACKOFF_SECONDS.length) {
+      if (attempt) {
+        await applyAttemptResult({
+          attemptId: attempt.id,
+          resultKind: "platform_error",
+          resultStatus: "DISPATCH_FAILED",
+          score: null,
+          accepted: false,
+          output: options.reasonMessage,
+        }, db);
+      }
+      await completeJobItem(itemId, {
+        status: "failed",
+        reasonCode: options.reasonCode,
+        reasonMessage: options.reasonMessage,
+      }, db);
+      return false;
+    }
+    const backoff = DISPATCH_BACKOFF_SECONDS[retries];
+    await db.update(submissionJobItems).set({
+      status: "pending",
+      dispatch_retries: retries + 1,
+      next_dispatch_at: plusSeconds(backoff),
+      lease_owner: null,
+      lease_until: null,
+    }).where(
+      and(
+        eq(submissionJobItems.id, itemId),
+        sql`${submissionJobItems.status} NOT IN ('succeeded', 'failed', 'skipped')`,
+      ),
+    );
+    return true;
+  });
 }
 
 /**
@@ -251,6 +354,7 @@ export async function scheduleDispatchRetryOrFail(
 export async function requeueJobItem(
   itemId: string,
   delaySeconds = 5,
+  owner?: string,
 ): Promise<void> {
   const db = getDb();
   await db.update(submissionJobItems).set({
@@ -262,6 +366,13 @@ export async function requeueJobItem(
     and(
       eq(submissionJobItems.id, itemId),
       sql`${submissionJobItems.status} NOT IN ('succeeded', 'failed', 'skipped')`,
+      ...(owner
+        ? [
+          eq(submissionJobItems.status, "preparing"),
+          eq(submissionJobItems.lease_owner, owner),
+          gt(submissionJobItems.lease_until, nowIso()),
+        ]
+        : []),
     ),
   );
 }

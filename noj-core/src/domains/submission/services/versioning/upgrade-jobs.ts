@@ -13,18 +13,20 @@
  * worker 端 `applyUpgradeItem` 负责真正建新提交与派发（下一批次实现）。
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
   contestProblems,
+  contests,
   objectiveSubmissions,
   problems,
   submissionJobItems,
   submissionJobs,
   submissions,
 } from "../../../../shared/db/schema.ts";
+import { getUserPermissions } from "../../../identity/index.ts";
 import { hashCanonical, MAX_SELECTED_SUBMISSIONS } from "./rejudge-jobs.ts";
 
 /** 升级上下文。 */
@@ -142,22 +144,47 @@ export async function acceptUpgradeJob(
       "TOO_MANY_SUBMISSIONS",
     );
   }
+  if (
+    request.context !== undefined &&
+    !["practice", "source_contest"].includes(request.context)
+  ) {
+    throw new AppError(
+      "context 必须是 practice/source_contest",
+      400,
+      "INVALID_UPGRADE_REQUEST",
+    );
+  }
+  if (
+    entries.some((entry) =>
+      !entry || !["objective", "submission"].includes(entry.kind) ||
+      typeof entry.id !== "string" || !entry.id.trim()
+    )
+  ) throw new AppError("提交引用格式不正确", 400, "INVALID_UPGRADE_REQUEST");
+  const permissions = await getUserPermissions(actorId);
+  const mayUpgradeOthers = permissions.has("admin:full_access") ||
+    permissions.has("submission:rejudge");
   const context: UpgradeContext = request.context === "source_contest"
     ? "source_contest"
     : "practice";
   const normalized = {
-    submissions: entries.map((entry) => ({
-      kind: entry.kind === "objective"
-        ? "objective" as const
-        : "submission" as const,
-      id: entry.id,
-    })),
+    submissions: [
+      ...new Map(entries.map((entry) => [`${entry.kind}:${entry.id}`, entry]))
+        .values(),
+    ]
+      .map((entry) => ({
+        kind: entry.kind === "objective"
+          ? "objective" as const
+          : "submission" as const,
+        id: entry.id,
+      })),
     context,
   };
   // 哈希覆盖 kind / 提交集合 / context：同键不同请求必须 409
   const requestHash = await hashCanonical({
     kind: "upgrade",
-    submissions: normalized.submissions,
+    submissions: [...normalized.submissions].sort((a, b) =>
+      `${a.kind}:${a.id}`.localeCompare(`${b.kind}:${b.id}`)
+    ),
     context: normalized.context,
   });
 
@@ -187,93 +214,131 @@ export async function acceptUpgradeJob(
     };
   }
 
-  // 去重（同一提交只生成一个条目）
-  const seen = new Set<string>();
-  const planned: Array<{
-    source: UpgradeSource;
-    targetVersionId: string | null;
-    skipped?: { code: string; message: string };
-  }> = [];
-  for (const entry of normalized.submissions) {
-    const key = `${entry.kind}:${entry.id}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+  return await db.transaction(async (tx) => {
+    // 固定所有目标的同一受理边界；锁住宿主后再读取最新版和竞赛固定版本。
+    const identities = [];
+    for (const entry of normalized.submissions) {
+      const source = await loadSource(entry.kind, entry.id, tx);
+      if (source) identities.push(source);
+    }
+    const problemIds = [
+      ...new Set(identities.map((source) => source.problem_id)),
+    ].sort();
+    if (problemIds.length) {
+      await tx.select({ id: problems.id }).from(problems).where(
+        inArray(problems.id, problemIds),
+      ).orderBy(problems.id).for("share");
+    }
+    const contestIds = [
+      ...new Set(
+        identities.map((source) => source.contest_id).filter((
+          id,
+        ): id is string => !!id),
+      ),
+    ].sort();
+    if (contestIds.length) {
+      await tx.select({ id: contests.id }).from(contests).where(
+        inArray(contests.id, contestIds),
+      ).orderBy(contests.id).for("share");
+    }
+    // 去重（同一提交只生成一个条目）
+    const seen = new Set<string>();
+    const planned: Array<{
+      source: UpgradeSource;
+      targetVersionId: string | null;
+      skipped?: { code: string; message: string };
+    }> = [];
+    for (const entry of normalized.submissions) {
+      const key = `${entry.kind}:${entry.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
 
-    const source = await loadSource(entry.kind, entry.id, db);
-    if (!source) {
-      // 源提交已删除：保留原始引用用于解释（不泄露内容）
-      planned.push({
-        source: {
-          kind: entry.kind,
-          id: entry.id,
-          user_id: actorId,
-          problem_id: "",
-          contest_id: null,
-          submitted_version_id: null,
-          active_attempt_id: null,
-        },
-        targetVersionId: null,
-        skipped: { code: "SOURCE_DELETED", message: "源提交已删除" },
-      });
-      continue;
-    }
-    if (source.user_id !== actorId) {
-      throw new AppError(
-        "只能升级自己的提交",
-        403,
-        "UPGRADE_FORBIDDEN",
-      );
-    }
-    if (source.active_attempt_id) {
-      planned.push({
-        source,
-        targetVersionId: null,
-        skipped: {
-          code: "SOURCE_JUDGING",
-          message: "源提交正在评测，稍后可重试",
-        },
-      });
-      continue;
+      const source = await loadSource(entry.kind, entry.id, tx);
+      if (!source) {
+        // 源提交已删除：保留原始引用用于解释（不泄露内容）
+        planned.push({
+          source: {
+            kind: entry.kind,
+            id: entry.id,
+            user_id: actorId,
+            problem_id: "",
+            contest_id: null,
+            submitted_version_id: null,
+            active_attempt_id: null,
+          },
+          targetVersionId: null,
+          skipped: { code: "SOURCE_DELETED", message: "源提交已删除" },
+        });
+        continue;
+      }
+      if (source.user_id !== actorId && !mayUpgradeOthers) {
+        throw new AppError(
+          "只能升级自己的提交",
+          403,
+          "UPGRADE_FORBIDDEN",
+        );
+      }
+      if (context === "source_contest" && source.kind === "objective") {
+        throw new AppError(
+          "客观题竞赛仅允许一次提交，请使用练习升级或管理员重测",
+          409,
+          "OBJECTIVE_CONTEST_UPGRADE_FORBIDDEN",
+        );
+      }
+      if (source.active_attempt_id) {
+        planned.push({
+          source,
+          targetVersionId: null,
+          skipped: {
+            code: "SOURCE_JUDGING",
+            message: "源提交正在评测，稍后可重试",
+          },
+        });
+        continue;
+      }
+
+      const targetVersionId = context === "source_contest"
+        ? (source.contest_id
+          ? await contestPinnedVersionOf(
+            source.contest_id,
+            source.problem_id,
+            tx,
+          )
+          : null)
+        : await latestVersionOf(source.problem_id, tx);
+      if (!targetVersionId) {
+        planned.push({
+          source,
+          targetVersionId: null,
+          skipped: {
+            code: context === "source_contest"
+              ? "CONTEST_VERSION_UNKNOWN"
+              : "NO_PUBLISHED_VERSION",
+            message: context === "source_contest"
+              ? "竞赛未固定作答版本，无法按竞赛版本升级"
+              : "题目尚未发布任何版本",
+          },
+        });
+        continue;
+      }
+      if (source.submitted_version_id === targetVersionId) {
+        planned.push({
+          source,
+          targetVersionId,
+          skipped: {
+            code: "ALREADY_LATEST",
+            message: "源提交已在该版本；如需再次评测请使用管理员重测",
+          },
+        });
+        continue;
+      }
+      planned.push({ source, targetVersionId });
     }
 
-    const targetVersionId = context === "source_contest"
-      ? (source.contest_id
-        ? await contestPinnedVersionOf(source.contest_id, source.problem_id, db)
-        : null)
-      : await latestVersionOf(source.problem_id, db);
-    if (!targetVersionId) {
-      planned.push({
-        source,
-        targetVersionId: null,
-        skipped: {
-          code: context === "source_contest"
-            ? "CONTEST_VERSION_UNKNOWN"
-            : "NO_PUBLISHED_VERSION",
-          message: context === "source_contest"
-            ? "竞赛未固定作答版本，无法按竞赛版本升级"
-            : "题目尚未发布任何版本",
-        },
-      });
-      continue;
-    }
-    if (source.submitted_version_id === targetVersionId) {
-      planned.push({
-        source,
-        targetVersionId,
-        skipped: {
-          code: "ALREADY_LATEST",
-          message: "源提交已在该版本；如需再次评测请使用管理员重测",
-        },
-      });
-      continue;
-    }
-    planned.push({ source, targetVersionId });
-  }
-
-  const now = new Date().toISOString();
-  const jobId = crypto.randomUUID();
-  const jobStatus = planned.length === 0 ? "completed" : "queued";
-  await db.transaction(async (tx) => {
+    const now = new Date().toISOString();
+    const jobId = crypto.randomUUID();
+    const allSkipped = planned.every((entry) => entry.skipped);
+    const jobStatus = allSkipped ? "completed" : "queued";
     await tx.insert(submissionJobs).values({
       id: jobId,
       kind: "upgrade",
@@ -283,7 +348,7 @@ export async function acceptUpgradeJob(
       request: normalized as unknown as Record<string, unknown>,
       status: jobStatus,
       created_at: now,
-      finished_at: planned.length === 0 ? now : null,
+      finished_at: allSkipped ? now : null,
     });
     if (planned.length > 0) {
       await tx.insert(submissionJobItems).values(
@@ -304,16 +369,23 @@ export async function acceptUpgradeJob(
         })),
       );
     }
-  });
 
-  const skipped = planned.filter((entry) => entry.skipped).length;
-  return {
-    job_id: jobId,
-    status: jobStatus,
-    total_items: planned.length,
-    skipped_items: skipped,
-    existing: false,
-  };
+    const skipped = planned.filter((entry) => entry.skipped).length;
+    return {
+      job_id: jobId,
+      status: jobStatus,
+      total_items: planned.length,
+      skipped_items: skipped,
+      existing: false,
+    };
+  }).catch(async (error) => {
+    // 同键并发受理可能在唯一索引等待后输掉竞争；重读已提交任务并核对请求哈希。
+    const code = error?.code ?? error?.cause?.code;
+    if (code === "23505") {
+      return await acceptUpgradeJob(actorId, request, idempotencyKey);
+    }
+    throw error;
+  });
 }
 
 /** 统计任务的条目与 skipped 数。 */

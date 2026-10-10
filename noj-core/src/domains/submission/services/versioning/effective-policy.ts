@@ -19,7 +19,11 @@ import { and, eq } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
-import { contestProblems, problems } from "../../../../shared/db/schema.ts";
+import {
+  contestProblems,
+  contests,
+  problems,
+} from "../../../../shared/db/schema.ts";
 import { logAudit } from "../../../system/index.ts";
 import {
   type EffectiveVersionPolicy,
@@ -98,9 +102,10 @@ export async function setProblemEffectiveVersionPolicy(
     expectedRevision: number;
     actorId?: string | null;
   },
+  executor?: Executor,
 ): Promise<PolicyChangeResult> {
   const db = getDb();
-  const result = await db.transaction(async (tx) => {
+  const write = async (tx: Executor) => {
     const [row] = await tx.select({
       mode: problems.effective_version_mode,
       required: problems.required_version_id,
@@ -136,27 +141,30 @@ export async function setProblemEffectiveVersionPolicy(
       displayId: `${row.type}${row.number}`,
       title: row.title,
     };
-  });
+  };
+  const result = executor ? await write(executor) : await db.transaction(write);
 
-  try {
-    await logAudit(
-      "problems.effective_version_policy_changed",
-      {
-        action: "problems.effective_version_policy_changed",
-        title: result.title,
-        display_id: result.displayId,
-        from_mode: result.previous.mode,
-        to_mode: result.policy.mode,
-        required_version_id: result.policy.mode === "exact"
-          ? result.policy.version_id
-          : null,
-        expected_revision: input.expectedRevision,
-        affected_submissions: result.affected_submissions,
-      },
-      { type: "problem", id: problemId },
-    );
-  } catch {
-    // 审计失败不影响已生效的策略（logAudit 内部已记录）
+  if (!executor) {
+    try {
+      await logAudit(
+        "problems.effective_version_policy_changed",
+        {
+          action: "problems.effective_version_policy_changed",
+          title: result.title,
+          display_id: result.displayId,
+          from_mode: result.previous.mode,
+          to_mode: result.policy.mode,
+          required_version_id: result.policy.mode === "exact"
+            ? result.policy.version_id
+            : null,
+          expected_revision: input.expectedRevision,
+          affected_submissions: result.affected_submissions,
+        },
+        { type: "problem", id: problemId },
+      );
+    } catch {
+      // 审计失败不影响已生效的策略（logAudit 内部已记录）
+    }
   }
 
   return {
@@ -180,9 +188,16 @@ export async function setContestProblemEffectiveVersionPolicy(
     expectedRevision: number;
     actorId?: string | null;
   },
+  executor?: Executor,
 ): Promise<PolicyChangeResult> {
   const db = getDb();
-  const result = await db.transaction(async (tx) => {
+  const write = async (tx: Executor) => {
+    await tx.select({ id: problems.id }).from(problems).where(
+      eq(problems.id, problemId),
+    ).for("share");
+    await tx.select({ id: contests.id }).from(contests).where(
+      eq(contests.id, contestId),
+    ).for("update");
     const [row] = await tx.select({
       pinned: contestProblems.pinned_version_id,
       mode: contestProblems.effective_version_mode,
@@ -235,27 +250,30 @@ export async function setContestProblemEffectiveVersionPolicy(
       pinned,
       previous: { mode: row.mode, required: row.required },
     };
-  });
+  };
+  const result = executor ? await write(executor) : await db.transaction(write);
 
-  try {
-    await logAudit(
-      "contest.problem_effective_version_policy_changed",
-      {
-        action: "contest.problem_effective_version_policy_changed",
-        contest_id: contestId,
-        problem_id: problemId,
-        from_mode: result.previous.mode,
-        to_mode: result.policy.mode,
-        required_version_id: result.policy.mode === "exact"
-          ? result.policy.version_id
-          : null,
-        expected_revision: input.expectedRevision,
-        affected_submissions: result.affected_submissions,
-      },
-      { type: "contest_problem", id: `${contestId}:${problemId}` },
-    );
-  } catch {
-    // 同上：审计失败不回滚已生效的策略
+  if (!executor) {
+    try {
+      await logAudit(
+        "contest.problem_effective_version_policy_changed",
+        {
+          action: "contest.problem_effective_version_policy_changed",
+          contest_id: contestId,
+          problem_id: problemId,
+          from_mode: result.previous.mode,
+          to_mode: result.policy.mode,
+          required_version_id: result.policy.mode === "exact"
+            ? result.policy.version_id
+            : null,
+          expected_revision: input.expectedRevision,
+          affected_submissions: result.affected_submissions,
+        },
+        { type: "contest_problem", id: `${contestId}:${problemId}` },
+      );
+    } catch {
+      // 同上：审计失败不回滚已生效的策略
+    }
   }
 
   return {
@@ -285,6 +303,12 @@ export async function upgradeContestProblemPinnedVersion(
 ): Promise<PolicyChangeResult & { pinned_version_id: string }> {
   const db = getDb();
   const result = await db.transaction(async (tx) => {
+    await tx.select({ id: problems.id }).from(problems).where(
+      eq(problems.id, problemId),
+    ).for("share");
+    await tx.select({ id: contests.id }).from(contests).where(
+      eq(contests.id, contestId),
+    ).for("update");
     const [row] = await tx.select({
       pinned: contestProblems.pinned_version_id,
       mode: contestProblems.effective_version_mode,

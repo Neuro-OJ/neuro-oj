@@ -444,40 +444,67 @@ export async function acceptRejudgeJob(
     };
   }
 
-  // 全部校验在写入前完成（"整场统一 V3，某题没有 V3 → 受理失败，不产生任务"）
-  const members = await resolveScopeItems(normalized.scope, db);
-  const planned = await planItems(members, normalized.target, db);
-  validatePolicyChanges(
-    normalized.policy_changes ?? [],
-    new Set(planned.map((item) => item.problem_id)),
-  );
-
-  // 应用策略变更（每项自带事务与乐观锁；校验已全部通过）
-  for (const change of normalized.policy_changes ?? []) {
-    if (change.contest_id) {
-      await setContestProblemEffectiveVersionPolicy(
-        change.contest_id,
-        change.problem_id,
-        {
+  let planned: PlannedItem[] = [];
+  const now = new Date().toISOString();
+  const jobId = crypto.randomUUID();
+  let jobStatus: "queued" | "completed" = "queued";
+  try {
+    await db.transaction(async (tx) => {
+      const members = await resolveScopeItems(normalized.scope, tx);
+      planned = await planItems(members, normalized.target, tx);
+      validatePolicyChanges(
+        normalized.policy_changes ?? [],
+        new Set(planned.map((item) => item.problem_id)),
+      );
+      // 策略与任务必须原子提交。按宿主排序获取锁，避免不同批次反向修改导致死锁。
+      const changes = [...(normalized.policy_changes ?? [])].sort((a, b) =>
+        a.problem_id.localeCompare(b.problem_id) ||
+        (a.contest_id ?? "").localeCompare(b.contest_id ?? "")
+      );
+      for (
+        const problemId of [
+          ...new Set(changes.map((change) => change.problem_id)),
+        ].sort()
+      ) {
+        await tx.select({ id: problems.id }).from(problems).where(
+          eq(problems.id, problemId),
+        ).for("update");
+      }
+      for (const change of changes) {
+        if (
+          change.contest_id &&
+          !members.some((member) =>
+            member.problem_id === change.problem_id &&
+            member.contest_id === change.contest_id
+          )
+        ) {
+          throw new AppError(
+            "策略变更作用于任务范围之外的竞赛",
+            400,
+            "POLICY_CHANGE_OUT_OF_SCOPE",
+          );
+        }
+        const input = {
           policy: change.policy,
           expectedRevision: change.expected_revision,
           actorId,
-        },
-      );
-    } else {
-      await setProblemEffectiveVersionPolicy(change.problem_id, {
-        policy: change.policy,
-        expectedRevision: change.expected_revision,
-        actorId,
-      });
-    }
-  }
-
-  const now = new Date().toISOString();
-  const jobId = crypto.randomUUID();
-  const jobStatus = planned.length === 0 ? "completed" : "queued";
-  try {
-    await db.transaction(async (tx) => {
+        };
+        if (change.contest_id) {
+          await setContestProblemEffectiveVersionPolicy(
+            change.contest_id,
+            change.problem_id,
+            input,
+            tx,
+          );
+        } else {await setProblemEffectiveVersionPolicy(
+            change.problem_id,
+            input,
+            tx,
+          );}
+      }
+      jobStatus = planned.every((item) => item.skipped_reason)
+        ? "completed"
+        : "queued";
       await tx.insert(submissionJobs).values({
         id: jobId,
         kind: "rejudge",
@@ -487,29 +514,35 @@ export async function acceptRejudgeJob(
         request: normalized as unknown as Record<string, unknown>,
         status: jobStatus,
         created_at: now,
-        finished_at: planned.length === 0 ? now : null,
+        finished_at: jobStatus === "completed" ? now : null,
       });
       if (planned.length > 0) {
-        await tx.insert(submissionJobItems).values(
-          planned.map((
-            item,
-            index,
-          ): typeof submissionJobItems.$inferInsert => ({
-            id: crypto.randomUUID(),
-            job_id: jobId,
-            ordinal: index,
-            source_kind: item.source_kind,
-            source_id: item.source_id,
-            problem_id: item.problem_id,
-            target_version_id: item.target_version_id,
-            target_version_ref: item.target_version_ref,
-            status: item.skipped_reason ? "skipped" : "pending",
-            reason_code: item.skipped_reason?.code ?? null,
-            reason_message: item.skipped_reason?.message ?? null,
-            created_at: now,
-            finished_at: item.skipped_reason ? now : null,
-          })),
-        );
+        for (
+          let offset = 0;
+          offset < planned.length;
+          offset += MAX_JOB_ITEMS_PER_CLAIM
+        ) {
+          await tx.insert(submissionJobItems).values(
+            planned.slice(offset, offset + MAX_JOB_ITEMS_PER_CLAIM).map((
+              item,
+              index,
+            ): typeof submissionJobItems.$inferInsert => ({
+              id: crypto.randomUUID(),
+              job_id: jobId,
+              ordinal: offset + index,
+              source_kind: item.source_kind,
+              source_id: item.source_id,
+              problem_id: item.problem_id,
+              target_version_id: item.target_version_id,
+              target_version_ref: item.target_version_ref,
+              status: item.skipped_reason ? "skipped" : "pending",
+              reason_code: item.skipped_reason?.code ?? null,
+              reason_message: item.skipped_reason?.message ?? null,
+              created_at: now,
+              finished_at: item.skipped_reason ? now : null,
+            })),
+          );
+        }
       }
     });
   } catch (error) {
@@ -704,13 +737,19 @@ export async function refreshJobStatus(
   jobId: string,
   executor?: Executor,
 ): Promise<string> {
-  const db = executor ?? getDb();
+  if (!executor) {
+    return await getDb().transaction((tx) => refreshJobStatus(jobId, tx));
+  }
+  const db = executor;
+  await db.select({ id: submissionJobs.id }).from(submissionJobs).where(
+    eq(submissionJobs.id, jobId),
+  ).for("update");
   const counts = await countItemsByStatus(jobId, db);
   const pending = (counts.pending ?? 0) + (counts.preparing ?? 0) +
     (counts.dispatched ?? 0);
   if (pending > 0) {
     const status = (counts.dispatched ?? 0) > 0 ? "running" : "queued";
-    await db.update(submissionJobs).set({ status }).where(
+    await db.update(submissionJobs).set({ status, finished_at: null }).where(
       eq(submissionJobs.id, jobId),
     );
     return status;
@@ -759,10 +798,17 @@ export async function retryRejudgeJob(
   }
 
   const request = job.request as unknown as RejudgeRequest;
-  const requestHash = await hashRequest({
-    ...request,
-    policy_changes: [],
-  });
+  if (!idempotencyKey || idempotencyKey.length > 128) {
+    throw new AppError(
+      "必须提供 Idempotency-Key（≤128 字符）",
+      400,
+      "IDEMPOTENCY_KEY_REQUIRED",
+    );
+  }
+  if (job.kind !== "rejudge") {
+    throw new AppError("仅能重试重测任务", 400, "INVALID_JOB_KIND");
+  }
+  const requestHash = await hashCanonical({ retry_of: jobId });
   const existing = await db.select().from(submissionJobs).where(
     and(
       eq(submissionJobs.actor_id, actorId),

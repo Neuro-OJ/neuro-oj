@@ -186,6 +186,8 @@ export interface CreateProblemInput {
  * 更新题目请求体。
  */
 export interface UpdateProblemInput {
+  /** 在线内容写入的预期共享草稿 revision。 */
+  expected_revision?: number;
   visibility?: "public" | "private";
   /** 仅数据编辑服务可写，客户端 CRUD 不允许指定对象存储引用。 */
   oi_data_files?: Record<

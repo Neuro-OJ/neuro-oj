@@ -533,6 +533,7 @@ router.put("/:id/draft", authMiddleware, async (c) => {
         content: body.content as never,
         expectedRevision: revision,
         actorId: c.get("userId"),
+        context: c,
       }),
   );
   return c.json({ data: saved });
@@ -577,6 +578,7 @@ router.post("/:id/versions", authMiddleware, async (c) => {
           ? body.change_note
           : "",
         actorId: c.get("userId"),
+        context: c,
       }),
   );
   return c.json({ data: published }, published.unchanged ? 200 : 201);
@@ -787,6 +789,7 @@ router.post("/import-bundle", authMiddleware, async (c) => {
       { name: file.name, data: fileBytes },
       { userId, userRole },
       c,
+      typeof body["problem_id"] === "string" ? body["problem_id"] : undefined,
     ));
 
   // `publish=true`：导入后显式发布为版本（与 `problems import --publish` 同口径）。
