@@ -35,7 +35,6 @@ import { oiVerdict, projectMeteringDetails } from "./oi-details.ts";
 import { and, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm";
 import {
   evaluationAttempts,
-  evaluationResults,
   problems,
   problemVersions,
   submissions,
@@ -127,6 +126,21 @@ function parseDetails(raw: string | null): SubmissionEvaluationDetails | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * 归一化尝试 details：`evaluation_attempts.details` 是 jsonb 对象，
+ * 迁移导入的历史行可能存 JSON 文本；两种形态都收敛为对象或 null。
+ */
+function normalizeAttemptDetails(
+  raw: unknown,
+): SubmissionEvaluationDetails | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "string") return parseDetails(raw);
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as SubmissionEvaluationDetails;
+  }
+  return null;
 }
 
 /**
@@ -281,10 +295,12 @@ export async function listSubmissions(
       version_origin: submissions.version_origin,
       problem_title: problems.title,
       submitted_version: problemVersions.version,
-      result_status: evaluationResults.status,
-      result_score: evaluationResults.score,
-      result_time_ms: evaluationResults.time_ms,
-      result_memory_kb: evaluationResults.memory_kb,
+      // 最近一次运行的判定：优先最近终态尝试，存量行回退有效成绩指针
+      result_status: evaluationAttempts.result_status ??
+        evaluationAttempts.state,
+      result_score: evaluationAttempts.score,
+      result_time_ms: evaluationAttempts.time_ms,
+      result_memory_kb: evaluationAttempts.memory_kb,
     })
     .from(submissions)
     .leftJoin(problems, eq(submissions.problem_id, problems.id))
@@ -294,8 +310,11 @@ export async function listSubmissions(
       eq(problemVersions.id, submissions.submitted_version_id),
     )
     .leftJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, submissions.id),
+      evaluationAttempts,
+      eq(
+        evaluationAttempts.id,
+        sql`coalesce(${submissions.latest_attempt_id}, ${submissions.effective_attempt_id})`,
+      ),
     );
   if (userSearch) {
     dataQuery = dataQuery.leftJoin(
@@ -726,12 +745,18 @@ export async function getSubmission(
   // 类 Kaggle 赛制不隐藏进行中的评测结果（实时榜按排名接口权限控制）
   const hideResult = false;
 
-  // 查询评测结果
-  const resultRows = await db
-    .select()
-    .from(evaluationResults)
-    .where(eq(evaluationResults.submission_id, id))
-    .limit(1);
+  // 查询最近一次运行的判定：优先最近终态尝试，存量行回退有效成绩指针。
+  // 不再读 evaluation_results（该表只保留最近一次结果且即将随存量收尾删除）。
+  const latestAttemptId = row.latest_attempt_id ?? row.effective_attempt_id ??
+    null;
+  const attemptRows = latestAttemptId
+    ? await db
+      .select()
+      .from(evaluationAttempts)
+      .where(eq(evaluationAttempts.id, latestAttemptId))
+      .limit(1)
+    : [];
+  const resultRows = attemptRows;
 
   const result = !hideResult && resultRows.length > 0
     ? (() => {
@@ -743,7 +768,7 @@ export async function getSubmission(
         ? (output_truncated ? rawOutput.slice(0, MAX_OUTPUT_LENGTH) : rawOutput)
         : null;
       // 仅 owner/admin 解析 details JSON，其他访问者得到 null
-      const rawDetails = parseDetails(resultRows[0].details);
+      const rawDetails = normalizeAttemptDetails(resultRows[0].details);
       const details = canSeeDetails ? rawDetails : null;
       const metering = oiVerdict(rawDetails) &&
           (rawDetails?.oi as Record<string, unknown>)?.backend !== "native"
@@ -752,8 +777,9 @@ export async function getSubmission(
         )
         : undefined;
       return {
-        status: normalizeResultStatus(resultRows[0].status) ?? "finished",
-        score: resultRows[0].score,
+        status: normalizeResultStatus(resultRows[0].result_status) ??
+          "finished",
+        score: resultRows[0].score ?? 0,
         output,
         output_truncated: canSeeDetails ? output_truncated : null,
         time_ms: resultRows[0].time_ms,

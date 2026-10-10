@@ -6,6 +6,7 @@ import {
   contestProblems,
   contestRankingSnapshots,
   contests,
+  evaluationAttempts,
   evaluationResults,
   objectiveSubmissions,
   problems,
@@ -783,6 +784,126 @@ Deno.test({
       await db.delete(contests).where(eq(contests.id, contestId));
       await db.delete(problems).where(eq(problems.id, problemA));
       await db.delete(users).where(inArray(users.id, [userA]));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest settlement: 就绪状态读尝试，区分平台失败与正常未通过",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userId = crypto.randomUUID();
+    const problemId = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await insertUser(userId, "settlement-attempts");
+    await insertProblem(problemId, 920098, "结算尝试题");
+    await db.insert(contests).values({
+      id: contestId,
+      title: "就绪状态尝试口径测试",
+      start_time: atMinutes(-120),
+      end_time: atMinutes(-1),
+      type: "kaggle",
+      config: {},
+      created_by: userId,
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contestProblems).values({
+      contest_id: contestId,
+      problem_id: problemId,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: userId,
+      registered_at: atMinutes(-100),
+    });
+    // 两条提交：一条平台失败（platform_error），一条正常 WA（零分、正式判定）
+    const failedId = crypto.randomUUID();
+    const gradedId = crypto.randomUUID();
+    await db.insert(submissions).values([
+      {
+        id: failedId,
+        user_id: userId,
+        problem_id: problemId,
+        contest_id: contestId,
+        language: "python3",
+        code: "print(1)",
+        status: "error",
+        version_origin: "legacy_unknown",
+        created_at: atMinutes(-50),
+      },
+      {
+        id: gradedId,
+        user_id: userId,
+        problem_id: problemId,
+        contest_id: contestId,
+        language: "python3",
+        code: "print(2)",
+        status: "finished",
+        version_origin: "legacy_unknown",
+        created_at: atMinutes(-40),
+      },
+    ]);
+    await db.insert(evaluationAttempts).values([
+      {
+        id: "settle-att-empty",
+        submission_id: failedId,
+        problem_id: problemId,
+        sequence: 0,
+        source: "initial",
+        state: "error",
+        result_kind: "platform_error",
+        result_status: "error",
+        score: 0,
+        created_at: atMinutes(-49),
+      },
+      {
+        id: "settle-att-wa",
+        submission_id: gradedId,
+        problem_id: problemId,
+        sequence: 0,
+        source: "initial",
+        state: "finished",
+        result_kind: "graded",
+        result_status: "finished",
+        score: 0,
+        accepted: false,
+        created_at: atMinutes(-39),
+      },
+    ]);
+    await db.update(submissions).set({
+      latest_attempt_id: "settle-att-empty",
+      effective_attempt_id: "settle-att-empty",
+    }).where(eq(submissions.id, failedId));
+    await db.update(submissions).set({
+      latest_attempt_id: "settle-att-wa",
+      effective_attempt_id: "settle-att-wa",
+      is_valid: true,
+    }).where(eq(submissions.id, gradedId));
+
+    try {
+      const readiness = await getContestSettlementStatus(contestId);
+      // 平台失败计入 failed；正常零分是正式判定，两者都不算待处理
+      assertEquals(readiness.failed_count, 1);
+      assertEquals(readiness.pending_count, 0);
+      assertEquals(
+        readiness.items.map((item) => item.submission_id).sort(),
+        [failedId],
+      );
+    } finally {
+      await db.delete(evaluationAttempts).where(
+        eq(evaluationAttempts.problem_id, problemId),
+      );
+      await db.delete(submissions).where(eq(submissions.contest_id, contestId));
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await db.delete(problems).where(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, userId));
     }
   },
 });

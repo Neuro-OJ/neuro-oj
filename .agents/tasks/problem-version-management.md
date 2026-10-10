@@ -75,9 +75,11 @@
 ### 批次 5/7（读路径去旧结果表）
 - [x] 用户主页最近提交、个人数据导出、评测队列最近完成分数、站点统计 accepted
       全部改读尝试/有效成绩投影（不再 JOIN `evaluation_results`）。
-- [ ] 剩余 `evaluation_results` 引用：`submissions-crud.ts`（列表摘要/删除清理）、
-      `submissions-result.ts`（结果写入双写）、`problems-crud.ts`（删除清理）——
-      必须在删表前完成迁移。
+- [x] 提交详情/列表最近结果、竞赛结算就绪状态改读尝试（含 `platform_error` 区分）。
+- [ ] 剩余 `evaluation_results` 引用（删表前必须清空）：
+      `contest-ranking.ts` **Kaggle 排名 SQL 3 处**（需改按 `submissions.is_contest_valid`
+      + `contest_effective_attempt_id` 计分）、`submissions-result.ts` 结果写入双写、
+      `submissions-crud.ts`/`problems-crud.ts` 的删除清理与两处 schema 定义。
 
 ### 批次 7（存量收尾）
 - [ ] 大库分批重算投影（`recomputeProblemProjections` 当前逐条）。
@@ -134,10 +136,10 @@
 | 范围 | 命令 | 结果 |
 |---|---|---|
 | noj-core 全量 | `cd noj-core && deno task test:parallel` | **1397 passed / 0 failed / 11 ignored** |
-| contest 域 | `bash scripts/test-domain.sh contest` | **83 passed / 0 failed** |
+| contest 域 | `bash scripts/test-domain.sh contest` | **84 passed / 0 failed**（+1 结算就绪读尝试） |
 | catalog 域 | `bash scripts/test-domain.sh catalog` | **303 passed / 0 failed**（+2 未发布可见性） |
 | search 域 | `bash scripts/test-domain.sh search` | **30 passed / 0 failed / 1 ignored** |
-| submission 域 | `bash scripts/test-domain.sh submission` | **223 passed / 0 failed / 21 ignored**（读路径版本 2 + 筛选 2） |
+| submission 域 | `bash scripts/test-domain.sh submission` | **224 passed / 0 failed / 21 ignored**（+1 最近结果读尝试） |
 | identity 域 | `bash scripts/test-domain.sh identity` | **310 passed / 0 failed / 26 ignored**（+1 最近提交读尝试） |
 | query 域 | `bash scripts/test-domain.sh query` | **23 passed / 0 failed**（+1 站点统计读投影） |
 | catalog 域 | `bash scripts/test-domain.sh catalog` | **301 passed / 0 failed** |

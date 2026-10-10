@@ -119,18 +119,24 @@ export async function getContestSettlementStatus(
     WITH contest_tasks AS (
       SELECT s.id AS submission_id, s.user_id, u.username, s.problem_id,
         p.title AS problem_title, s.status,
-        er.status AS result_status, s.created_at, 'submission'::text AS kind
+        ea.result_status AS result_status,
+        (ea.result_kind = 'platform_error') AS platform_error,
+        s.created_at, 'submission'::text AS kind
       FROM submissions s
       JOIN users u ON u.id = s.user_id
       JOIN problems p ON p.id = s.problem_id
       JOIN contests c ON c.id = s.contest_id
-      LEFT JOIN evaluation_results er ON er.submission_id = s.id
+      -- 最近一次运行的判定读尝试指针（evaluation_results 即将删除）：
+      -- 优先最近终态尝试，存量行回退有效成绩指针
+      LEFT JOIN evaluation_attempts ea
+        ON ea.id = coalesce(s.latest_attempt_id, s.effective_attempt_id)
       WHERE s.contest_id = ${contestId}
         AND s.created_at <= c.end_time
       UNION ALL
       SELECT os.id AS submission_id, os.user_id, u.username, os.paper_id,
         p.title AS problem_title, os.status,
-        os.status AS result_status, os.created_at, 'objective'::text AS kind
+        os.status AS result_status, FALSE AS platform_error,
+        os.created_at, 'objective'::text AS kind
       FROM objective_submissions os
       JOIN users u ON u.id = os.user_id
       JOIN problems p ON p.id = os.paper_id
@@ -139,12 +145,24 @@ export async function getContestSettlementStatus(
         AND os.created_at <= c.end_time
     )
     SELECT
-      COUNT(*) FILTER (WHERE status IN ('pending', 'judging')
-        OR result_status IS NULL
-        OR result_status NOT IN ('finished', 'error'))::int AS pending_count,
-      COUNT(*) FILTER (WHERE status = 'error' OR result_status = 'error')::int
-        AS failed_count
-    FROM contest_tasks
+      -- 待处理 = 未终结的评测任务；已判定为失败的提交不重复计入待处理
+      COUNT(*) FILTER (
+        WHERE NOT failed
+          AND (
+            status IN ('pending', 'judging')
+            OR result_status IS NULL
+            OR result_status NOT IN ('finished', 'error')
+          )
+      )::int AS pending_count,
+      -- 失败 = 提交级 error 或平台错误（result_kind = platform_error）；
+      -- 正常 WA / 零分不算失败（Handbook §6.6：不把未通过等同于评测故障）
+      COUNT(*) FILTER (WHERE failed)::int AS failed_count
+    FROM (
+      SELECT status, result_status,
+        (status = 'error' OR result_status = 'error'
+          OR platform_error IS TRUE) AS failed
+      FROM contest_tasks
+    ) classified
   `);
   const [counts] = unwrapRows<Record<string, unknown>>(result as never);
   const pendingCount = Number(counts?.pending_count ?? 0);
@@ -167,18 +185,24 @@ export async function getContestSettlementStatus(
     WITH contest_tasks AS (
       SELECT s.id AS submission_id, s.user_id, u.username, s.problem_id,
         p.title AS problem_title, s.status,
-        er.status AS result_status, s.created_at, 'submission'::text AS kind
+        ea.result_status AS result_status,
+        (ea.result_kind = 'platform_error') AS platform_error,
+        s.created_at, 'submission'::text AS kind
       FROM submissions s
       JOIN users u ON u.id = s.user_id
       JOIN problems p ON p.id = s.problem_id
       JOIN contests c ON c.id = s.contest_id
-      LEFT JOIN evaluation_results er ON er.submission_id = s.id
+      -- 最近一次运行的判定读尝试指针（evaluation_results 即将删除）：
+      -- 优先最近终态尝试，存量行回退有效成绩指针
+      LEFT JOIN evaluation_attempts ea
+        ON ea.id = coalesce(s.latest_attempt_id, s.effective_attempt_id)
       WHERE s.contest_id = ${contestId}
         AND s.created_at <= c.end_time
       UNION ALL
       SELECT os.id AS submission_id, os.user_id, u.username, os.paper_id,
         p.title AS problem_title, os.status,
-        os.status AS result_status, os.created_at, 'objective'::text AS kind
+        os.status AS result_status, FALSE AS platform_error,
+        os.created_at, 'objective'::text AS kind
       FROM objective_submissions os
       JOIN users u ON u.id = os.user_id
       JOIN problems p ON p.id = os.paper_id

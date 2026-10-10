@@ -12,6 +12,7 @@ import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   evaluationAttempts,
+  evaluationResults,
   problems,
   problemVersions,
   submissions,
@@ -309,5 +310,94 @@ Deno.test({
       eq(problems.id, "srv-p3"),
     );
     assertEquals(await ids({ ...base, upgradable: true }), []);
+  },
+});
+
+Deno.test({
+  name: "submission read: 详情与列表的最近结果读最近终态尝试",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const { v1 } = await seedProblem("srv-p4", 987004);
+    const source = await seedSubmission({
+      id: "srv-s7",
+      problemId: "srv-p4",
+      versionId: v1,
+    });
+    await seedAttempt({
+      attemptId: "srv-a7",
+      source,
+      problemVersionId: v1,
+      score: 8000,
+      accepted: false,
+      sequence: 0,
+    });
+    // 尝试终态带 details/time（详情 result 必须取自它，而不是旧结果表）
+    await db.update(evaluationAttempts).set({
+      details: { cases: [{ case_id: "c1", status: "WA", hidden: false }] },
+      time_ms: 123,
+      memory_kb: 4567,
+    }).where(eq(evaluationAttempts.id, "srv-a7"));
+    await db.update(submissions).set({
+      latest_attempt_id: "srv-a7",
+      effective_attempt_id: "srv-a7",
+    }).where(eq(submissions.id, "srv-s7"));
+    // 旧结果表里放一条"不同的"成绩：读取路径不得再采信它
+    await db.insert(evaluationResults).values({
+      id: "srv-legacy-result-1",
+      submission_id: "srv-s7",
+      status: "finished",
+      score: 100,
+      output: "旧表输出",
+      details: JSON.stringify({ cases: [] }),
+      created_at: now,
+    });
+
+    const detail = await getSubmission("srv-s7", "0");
+    assertEquals(detail.result?.status, "finished");
+    assertEquals(detail.result?.score, 8000);
+    assertEquals(detail.result?.time_ms, 123);
+    assertEquals(detail.result?.memory_kb, 4567);
+    assertEquals(
+      (detail.result?.details as { cases?: unknown[] })?.cases?.length,
+      1,
+    );
+
+    const list = await listSubmissions({
+      userId: "0",
+      problemId: "srv-p4",
+      page: 1,
+      perPage: 10,
+    });
+    assertEquals(list.data[0].result?.score, 8000);
+    assertEquals(list.data[0].result?.time_ms, 123);
+
+    // 无尝试指针的提交：result 为 null（不再回退旧结果表）
+    await db.insert(submissions).values({
+      id: "srv-s8",
+      user_id: "0",
+      problem_id: "srv-p4",
+      language: "python",
+      code: "print(2)",
+      version_origin: "legacy_unknown",
+      created_at: now,
+    });
+    await db.insert(evaluationResults).values({
+      id: "srv-legacy-result-2",
+      submission_id: "srv-s8",
+      status: "finished",
+      score: 6000,
+      created_at: now,
+    });
+    const noAttempt = await getSubmission("srv-s8", "0");
+    assertEquals(noAttempt.result, null);
+
+    await db.delete(evaluationResults).where(
+      eq(evaluationResults.submission_id, "srv-s7"),
+    );
+    await db.delete(evaluationResults).where(
+      eq(evaluationResults.submission_id, "srv-s8"),
+    );
   },
 });

@@ -419,7 +419,16 @@
   - 测试夹具补齐：新增 `tests/helper.ts` 的 `publishBaselineVersionForTest` /
     `publishAllProblemsForTest`（直接插题目行的夹具需显式发布基线版本），
     修正 catalog 3 处、search 4 处夹具。
-- [ ] 5c（收尾）正式成绩快照（5d，记录每题版本策略/有效尝试/提交时间）。
+- [x] 5/7（运行期读路径去 `evaluation_results`，第三批）
+  - `getSubmission` 的最近结果、`listSubmissions` 的列表摘要改读最近终态尝试
+    （`latest_attempt_id` → 存量回退 `effective_attempt_id`），无尝试指针时
+    `result` 为 null（**不回退旧结果表**）；尝试 details 兼容 jsonb 与历史文本；
+  - 竞赛**结算就绪**（`getContestSettlementStatus`）改读尝试指针，并按
+    `result_kind = platform_error` 区分平台失败与正常未通过（pending 不再吞掉失败行）；
+  - 剩余 `evaluation_results` 运行期引用：`contest-ranking.ts` 的 Kaggle 排名
+    SQL（3 处，需按 `is_contest_valid` + 竞赛有效尝试迁移）、`submissions-result.ts`
+    的双写、`submissions-crud.ts`/`problems-crud.ts` 的删除清理与 schema 定义。
+- [ ] 5d 正式成绩快照（结算记录每题版本策略/有效尝试/提交时间）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 
 ## 批次 8 落点清单
@@ -500,6 +509,12 @@
 
 ## 最近一次验证
 
+- 批次 5/7（提交详情/列表与竞赛结算就绪读尝试）：submission 域
+  `bash scripts/test-domain.sh submission` **224 passed / 0 failed / 21 ignored**
+  （+1：详情/列表最近结果读最近终态尝试，且无尝试时 result 为 null 不回退旧表）；
+  contest 域 **84 passed / 0 failed**（+1：结算就绪区分平台失败与正常未通过）；
+  noj-core 全量 `deno task test:parallel` **1401 passed / 0 failed / 11 ignored**；
+  `deno fmt --check` / `deno lint` / 域边界 / JSDoc / 类型检查全绿。
 - 批次 5（未发布题目不进公共读取面）：catalog 域
   `bash scripts/test-domain.sh catalog` **303 passed / 0 failed**（+2：
   未发布题目对普通访问者 404 而编辑者可读、公共列表排除未发布题目）；
