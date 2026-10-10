@@ -736,6 +736,13 @@
       "when": 1791613662596,
       "tag": "0104_rebuild_user_rankings_view",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1791614703631,
+      "tag": "0105_superb_major_mapleleaf",
+      "breakpoints": true
     }
   ]
 }

@@ -462,8 +462,13 @@
          也不算 pending，"无尝试的提交"被静默放过；改为 `COALESCE(..., FALSE)`；
       2. `user_rankings` 物化视图仍基于旧表——停写后视图必然为空，
          迁移 `0104_rebuild_user_rankings_view.sql` 重建到 `submissions.is_accepted`。
-- [ ] 7b 第三步：**删除旧表**。生成 `DROP TABLE evaluation_results` 迁移、
-      移除 Drizzle schema 定义、同步 `schema-ddl.ts` 与 parity 门禁、重建 PGlite 模板。
+- [x] 7b 第三步：**删除旧表 `evaluation_results`**。迁移
+      `0105_superb_major_mapleleaf.sql`（`deno task db:generate` 生成，附中文前置条件
+      说明：读路径迁移、双写移除、0103 回填、0104 视图重建）；移除 Drizzle schema 定义；
+      同步 `schema-ddl.ts`（建表段/两个索引/`ALL_TABLES`）；顶层 `tests/db/schema.test.ts`
+      的旧表契约用例改写为 `evaluation_attempts` 契约；parity 门禁自动收敛为
+      **67 表 / 604 列**；PGlite 模板重建；开发库应用后 `public.evaluation_results`
+      已不存在。全量 `deno task test:parallel` **1403 passed / 0 failed / 11 ignored**。
 - [ ] 7b 第三步：`contest_problems.pinned_version_id` 收紧 NOT NULL；重建用户榜单
       物化视图与搜索索引；备份/恢复演练。
 - [x] 迁移 `0103_version_backfill.sql`（drizzle-kit 生成的索引/默认值段 + 手写回填段）：
@@ -534,6 +539,10 @@
 
 ## 最近一次验证
 
+- 批次 7b（第三步：删除旧表）：迁移 0105 生成并应用；schema/DDL/parity/PGlite 模板
+  同步完成（parity 67 表 / 604 列）；noj-core 全量 `deno task test:parallel`
+  **1403 passed / 0 failed / 11 ignored**；迁移安全与快照链门禁通过；
+  `deno fmt --check` / `deno lint` / 域边界 / JSDoc / 类型检查全绿。
 - 批次 7b（第二步：清空旧表引用 + 视图重建）：submission 224 / contest 86 /
   catalog 303 / identity 310 / community 71 / query 23 全绿；noj-core 全量
   `deno task test:parallel` **1403 passed / 0 failed / 11 ignored**；

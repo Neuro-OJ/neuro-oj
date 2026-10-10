@@ -99,8 +99,13 @@
       `evaluation_results` 改读 `submissions.is_accepted`；已应用到开发库。
       这是"停写旧表"暴露的必然依赖：旧视图在新模型下必然为空，测试
       `refreshRankingsView()` 后会读到空榜。
-- [ ] 删除旧表 `evaluation_results`（引用已清零，只剩 schema 定义与 parity/DDL 收尾）、
-      以及 `objective_questions`（运行期读取迁完后）。
+- [x] **删除旧表 `evaluation_results`**：迁移 `0105_superb_major_mapleleaf.sql`
+      （`deno task db:generate` 生成，含中文前置条件说明）、移除 Drizzle schema 定义、
+      同步 `schema-ddl.ts`（建表段/索引/ALL_TABLES）与顶层 schema 测试；
+      parity 门禁自动收敛为 **67 表 / 604 列**；PGlite 模板已重建；
+      开发库已应用（`public.evaluation_results` 已不存在，`user_rankings` 视图在）。
+- [ ] 删除旧表 `objective_questions`（其运行期读取迁移完成后；小题事实源已逐步转向
+      版本快照与草稿）。
 - [ ] 搜索索引重建；备份/恢复演练验证。
 
 ### 批次 8（文档与交付）

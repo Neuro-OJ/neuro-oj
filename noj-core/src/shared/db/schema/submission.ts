@@ -494,36 +494,6 @@ export const submissionJobItems = pgTable(
 );
 
 /**
- * 评测结果表（**待退役**）。
- *
- * 版本化迁移完成后删除：所有运行期读取迁移至「有效尝试」或「最近尝试」，
- * 历史数据回填为 `legacy_import` 尝试（Handbook §6.5、§8.1 第 8 步）。
- */
-export const evaluationResults = pgTable(
-  "evaluation_results",
-  {
-    id: text("id").primaryKey(),
-    submission_id: text("submission_id")
-      .notNull()
-      .references(() => submissions.id),
-    status: text("status").notNull(),
-    score: integer("score").notNull().default(0),
-    output: text("output").notNull().default(""),
-    details: text("details").notNull().default("{}"),
-    time_ms: integer("time_ms"),
-    memory_kb: integer("memory_kb"),
-    created_at: text("created_at").notNull(),
-  },
-  (table) => ({
-    submission_idx: uniqueIndex("idx_eval_results_submission_id").on(
-      table.submission_id,
-    ),
-    // created_at 索引：评测结果按时间分页与归档（issue 64 评论 §6.4）
-    created_at_idx: index("idx_eval_results_created_at").on(table.created_at),
-  }),
-);
-
-/**
  * 自测记录表（issue #221）。
  * 与正式提交完全隔离，不参与统计/榜单/AC 活动。
  *

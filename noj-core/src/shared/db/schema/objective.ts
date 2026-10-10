@@ -60,7 +60,7 @@ export const objectiveQuestions = pgTable(
 /**
  * 客观题提交表。
  * 服务端即时判定（不走评测队列），status 直接为 finished。
- * score 为 ×100 整数（0-10000），与 evaluationResults.score 约定一致。
+ * score 为 ×100 整数（0-10000），与评测尝试的分数约定一致。
  */
 export const objectiveSubmissions = pgTable(
   "objective_submissions",

@@ -585,19 +585,6 @@ $$ LANGUAGE plpgsql`,
   `CREATE INDEX IF NOT EXISTS idx_submission_job_items_job_status
     ON submission_job_items (job_id, status)`,
 
-  // 7. evaluation_results
-  `CREATE TABLE IF NOT EXISTS evaluation_results (
-    id TEXT PRIMARY KEY,
-    submission_id TEXT NOT NULL UNIQUE REFERENCES submissions(id),
-    status TEXT NOT NULL,
-    score INTEGER NOT NULL DEFAULT 0,
-    output TEXT NOT NULL DEFAULT '',
-    details TEXT NOT NULL DEFAULT '{}',
-    time_ms INTEGER,
-    memory_kb INTEGER,
-    created_at TEXT NOT NULL
-  )`,
-
   // 7.1 self_tests（issue #221）
   `CREATE TABLE IF NOT EXISTS self_tests (
     id TEXT PRIMARY KEY,
@@ -1179,8 +1166,6 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_paper_valid_user ON objective_submissions (paper_id, is_valid, user_id)",
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_contest_valid_user ON objective_submissions (contest_id, paper_id, is_contest_valid, user_id)",
   // LLM 网关表索引已移交 noj-llm-gateway 管理，PGlite 不再创建
-  "CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_results_submission_id ON evaluation_results (submission_id)",
-  "CREATE INDEX IF NOT EXISTS idx_eval_results_created_at ON evaluation_results (created_at)",
   "CREATE INDEX IF NOT EXISTS idx_self_tests_user_id ON self_tests (user_id)",
   "CREATE INDEX IF NOT EXISTS idx_self_tests_problem_id ON self_tests (problem_id)",
   "CREATE INDEX IF NOT EXISTS idx_self_tests_created_at ON self_tests (created_at)",
@@ -1290,7 +1275,6 @@ export const ALL_TABLES = [
   "trainings",
   "training_problems",
   "submissions",
-  "evaluation_results",
   "check_ins",
   "password_reset_tokens",
   "tfa_recovery_codes",
