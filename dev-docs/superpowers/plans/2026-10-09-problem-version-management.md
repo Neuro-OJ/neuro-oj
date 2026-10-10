@@ -409,7 +409,17 @@
   - 站点统计 `GET /api/v1/stats` 的 `accepted` 改读 `submissions.is_accepted`
     有效成绩投影；
   - 四处均补测试（identity +1、query +1）。
-- [ ] 5c（收尾）search 索引发布内容、正式成绩快照（5d）。
+- [x] 5c（未发布题目不进公共读取面 + 搜索只索引已发布题目）
+  - `GET /problems/:id`：尚未发布任何版本的题目对普通访问者一律 404，
+    编辑者（owner/admin）仍可读取——编辑入口依赖该路径；发布后自动开放；
+  - `GET /problems` 公共列表（非 owner/admin 视角）新增
+    `problems.latest_version_id IS NOT NULL`，草稿题目不进公共列表；
+  - 搜索索引 `buildProblemEntry` 只索引已发布题目（`latest_version_id IS NOT NULL`），
+    草稿内容不进公开索引，未发布题目的存在性也不经索引泄露；
+  - 测试夹具补齐：新增 `tests/helper.ts` 的 `publishBaselineVersionForTest` /
+    `publishAllProblemsForTest`（直接插题目行的夹具需显式发布基线版本），
+    修正 catalog 3 处、search 4 处夹具。
+- [ ] 5c（收尾）正式成绩快照（5d，记录每题版本策略/有效尝试/提交时间）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 
 ## 批次 8 落点清单
@@ -490,6 +500,12 @@
 
 ## 最近一次验证
 
+- 批次 5（未发布题目不进公共读取面）：catalog 域
+  `bash scripts/test-domain.sh catalog` **303 passed / 0 failed**（+2：
+  未发布题目对普通访问者 404 而编辑者可读、公共列表排除未发布题目）；
+  search 域 **30 passed / 0 failed / 1 ignored**（索引只收已发布题目）；
+  noj-core 全量 `deno task test:parallel` **1399 passed / 0 failed / 11 ignored**；
+  `deno fmt --check` / `deno lint` / 域边界 / JSDoc / 类型检查全绿。
 - 批次 5/7（读路径去 `evaluation_results`，为删旧表铺路）：identity 域
   **310 passed / 0 failed / 26 ignored**（+1：最近提交读最近终态尝试与存量回退）、
   query 域 **23 passed / 0 failed**（+1：站点统计 accepted 读有效成绩投影）、

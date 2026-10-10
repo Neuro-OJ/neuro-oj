@@ -40,14 +40,15 @@ const runtimeConfig = {
   },
 };
 
-/** 建一道 U 型题（内容完整，仅用于草稿/版本接口）。 */
-async function makeDraftProblem(): Promise<string> {
+/** 建一道题（内容完整，仅用于草稿/版本接口；默认 U 型）。 */
+async function makeDraftProblem(type: "U" | "P" = "U"): Promise<string> {
   const created = await createProblem({
     title: `草稿路由题 ${ts}_${Math.random().toString(36).slice(2, 8)}`,
     description: "初始题面",
     difficulty: "easy",
     samples: [],
     runtime_config: runtimeConfig,
+    type,
   });
   return created.id;
 }
@@ -453,5 +454,127 @@ Deno.test({
     assertEquals(v1Body.title, "V1 题面");
     // 管理信息（难度/可见性）沿用当前值，不随版本回退
     assertEquals(v1Body.difficulty, detailBody.difficulty);
+  },
+});
+
+Deno.test({
+  name: "problem versions route: 未发布题目对普通访问者 404，编辑者可读",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const { createUserToken } = await import("../../../../../tests/helper.ts");
+    // admin：既验证"编辑者仍可读取草稿题"，也避免依赖 U 型题的 owner 关系
+    const editorToken = await createUserToken("admin");
+    const problemId = await makeDraftProblem();
+
+    // 尚未发布任何版本：匿名访问者一律 404（不泄露草稿题面存在性）
+    const anonymous = await jsonRequest(app, `/api/v1/problems/${problemId}`);
+    assertEquals(anonymous.status, 404);
+
+    // 编辑者仍可读取（编辑入口依赖的路径），并明确看到"尚无最新版"
+    const editorRead = await jsonRequest(app, `/api/v1/problems/${problemId}`, {
+      token: editorToken,
+    });
+    assertEquals(editorRead.status, 200);
+    assertEquals((await editorRead.json()).data.latest_version_id, null);
+
+    // 发布 V1 并转为公开后对匿名访问者开放
+    const draft = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}/draft`,
+      { token: editorToken },
+    );
+    assertEquals(draft.status, 200);
+    const revision = (await draft.json()).data.revision as number;
+    const published = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}/versions`,
+      {
+        method: "POST",
+        token: editorToken,
+        headers: { "If-Match": String(revision) },
+        body: { change_note: "首个版本" },
+      },
+    );
+    assertEquals(published.status, 201);
+    const versionId = (await published.json()).data.version_id as string;
+    assertEquals(typeof versionId, "string");
+    await getDb().update(problems).set({ visibility: "public" }).where(
+      eq(problems.id, problemId),
+    );
+
+    const anonymousAfter = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}`,
+    );
+    assertEquals(anonymousAfter.status, 200);
+    const afterBody = (await anonymousAfter.json()).data;
+    assertEquals(afterBody.version_id, versionId);
+    assertEquals(afterBody.latest_version, 1);
+
+    // 清理顺序：草稿（base_version_id 为 NO ACTION）→ 最新版指针 → 版本行
+    await getDb().delete(problemDrafts).where(
+      eq(problemDrafts.problem_id, problemId),
+    );
+    await getDb().update(problems).set({
+      latest_version_id: null,
+      required_version_id: null,
+    }).where(eq(problems.id, problemId));
+    await getDb().delete(problemVersions).where(
+      eq(problemVersions.problem_id, problemId),
+    );
+  },
+});
+
+Deno.test({
+  name: "problem versions route: 公共列表排除未发布题目，发布后纳入",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const { publishBaselineVersionForTest } = await import(
+      "../../../../../tests/helper.ts"
+    );
+    // 直接落一行 P 型公开题（无已发布版本）：模拟"新建但尚未发布"
+    const problemId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await getDb().insert(problems).values({
+      id: problemId,
+      title: `未发布列表题 ${ts}`,
+      description: "草稿题面",
+      difficulty: "easy",
+      type: "P",
+      number: 8900000 + (ts % 10000),
+      owner_id: "0",
+      created_at: now,
+      updated_at: now,
+    });
+
+    const listBefore = await jsonRequest(app, "/api/v1/problems?per_page=100");
+    assertEquals(listBefore.status, 200);
+    const idsBefore = (await listBefore.json()).data.map(
+      (item: { id: string }) => item.id,
+    );
+    assertEquals(idsBefore.includes(problemId), false);
+
+    // 发布基线版本（存量题目的既有形态）后进入公共列表
+    await publishBaselineVersionForTest(problemId);
+    const listAfter = await jsonRequest(app, "/api/v1/problems?per_page=100");
+    const idsAfter = (await listAfter.json()).data.map(
+      (item: { id: string }) => item.id,
+    );
+    assertEquals(idsAfter.includes(problemId), true);
+
+    await getDb().update(problems).set({
+      latest_version_id: null,
+      required_version_id: null,
+    }).where(eq(problems.id, problemId));
+    await getDb().delete(problemVersions).where(
+      eq(problemVersions.problem_id, problemId),
+    );
+    await getDb().delete(problems).where(eq(problems.id, problemId));
   },
 });

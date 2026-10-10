@@ -411,6 +411,23 @@ async function assertProblemReadable(
   if (!access.allowed) {
     throw new NotFoundError("题目不存在");
   }
+  // 未发布题目（尚无已发布版本）对普通访问者一律 404（Handbook §4.1）：
+  // 编辑者改用草稿接口读取，避免把"草稿内容"当作公开题面下发。
+  if (!isAdmin && !await isProblemPublished(problem.id)) {
+    if (!await canEditProblem(c, problem)) {
+      throw new NotFoundError("题目不存在");
+    }
+  }
+}
+
+/** 题目是否已有已发布版本（`problems.latest_version_id` 非空）。 */
+async function isProblemPublished(problemId: string): Promise<boolean> {
+  const [row] = await getDb()
+    .select({ latest: problems.latest_version_id })
+    .from(problems)
+    .where(eq(problems.id, problemId))
+    .limit(1);
+  return row?.latest != null;
 }
 
 /**

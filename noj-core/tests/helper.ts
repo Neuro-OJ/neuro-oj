@@ -241,3 +241,82 @@ export async function createUserToken(
   await insertWithRetry();
   return await signToken({ sub: id, role });
 }
+
+/**
+ * 为已存在的题目登记"迁移基线"已发布版本，并推进最新版指针。
+ *
+ * 版本化后公共列表/详情只对**已发布**题目可见（Handbook §4.1/§6.2），
+ * 存量库里的题目都有基线 V1；因此直接插入题目行的测试夹具需要显式补齐这一步，
+ * 否则题目对普通访问者等同不存在。
+ *
+ * @param problemId 题目 UUID
+ * @param content 版本内容（缺省按题目行派生最小 AI 内容）
+ * @returns 新版本 ID
+ */
+export async function publishBaselineVersionForTest(
+  problemId: string,
+  content?: Record<string, unknown>,
+): Promise<string> {
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { problems, problemVersions } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const { eq } = await import("drizzle-orm");
+  const db = getDb();
+  const [row] = await db.select().from(problems).where(
+    eq(problems.id, problemId),
+  ).limit(1);
+  if (!row) throw new Error(`题目不存在：${problemId}`);
+  const versionId = `baseline-${problemId}`;
+  const now = new Date().toISOString();
+  await db.insert(problemVersions).values({
+    id: versionId,
+    problem_id: problemId,
+    version: 1,
+    origin: "migration_baseline",
+    content: content ?? {
+      kind: "ai",
+      title: row.title,
+      description: row.description,
+      samples: [],
+      submission_mode: "code",
+      runtime_config: row.runtime_config ?? {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
+      template_content: "",
+      artifact_max_size_mb: null,
+      llm_config: null,
+    },
+    published_at: now,
+  }).onConflictDoNothing();
+  await db.update(problems).set({ latest_version_id: versionId }).where(
+    eq(problems.id, problemId),
+  );
+  return versionId;
+}
+
+/**
+ * 把当前库中所有题目补成"已发布"（迁移基线版本）。
+ *
+ * 供直接插入题目行的测试夹具使用：版本化后只有已发布题目会进公共列表与搜索索引
+ * （Handbook §4.1/§6.2/§6.6），夹具若不补这一步，题目在读取路径上等同不存在。
+ * 幂等：已发布题目重复调用不产生新版本行（`onConflictDoNothing` + 指针回写）。
+ */
+export async function publishAllProblemsForTest(): Promise<void> {
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { problems } = await import("../src/shared/db/schema.ts");
+  const rows = await getDb().select({ id: problems.id }).from(problems);
+  for (const row of rows) {
+    await publishBaselineVersionForTest(row.id);
+  }
+}

@@ -19,6 +19,7 @@ import {
   eq,
   ilike,
   inArray,
+  isNotNull,
   type SQL,
   sql,
 } from "drizzle-orm";
@@ -239,6 +240,9 @@ export async function listProblems(
     (query.owner_id !== undefined && viewer.userId === query.owner_id);
   if (!canSeeOwnPrivate) {
     conditions.push(eq(problems.visibility, "public"));
+    // 未发布题目（无已发布版本）不进公共列表（Handbook §4.1/§6.2）：
+    // 普通访问者对未发布题目一律 404，列表里出现行等于泄露草稿题目的存在性。
+    conditions.push(isNotNull(problems.latest_version_id));
   }
 
   // ── 公开赛题目全域隐藏（审计 VULN-07）──

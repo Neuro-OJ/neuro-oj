@@ -20,6 +20,7 @@ import {
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import { enterTestContext } from "../../../system/index.ts";
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import type {
   OiRuntimeConfig,
   RuntimeConfig,
@@ -284,11 +285,12 @@ Deno.test({
       difficulty: "easy",
       runtime_config: VALID_RUNTIME_CONFIG,
     });
-    // 搜索只覆盖 public 题；新建 U 默认 private，先转 public
+    // 搜索只覆盖 public 且**已发布**的题；新建 U 默认 private，先转 public 并发布基线版本
     await getDb().update(problems).set({
       visibility: "public",
       updated_at: new Date().toISOString(),
     }).where(eq(problems.id, created.id));
+    await publishBaselineVersionForTest(created.id);
     const result = await listProblems({ keyword, type: "U" });
     assertEquals(result.items.length, 1);
     assertEquals(result.items[0].id, created.id);
@@ -559,6 +561,8 @@ Deno.test({
         created_at: now,
         updated_at: now,
       })));
+      // 公共列表只含已发布题目：为每个夹具补基线版本
+      for (const id of ids) await publishBaselineVersionForTest(id);
       const query = { type: "U", keyword: marker, limit: 1 };
       const oi = await listProblems({ ...query, judge_type: "oi" });
       assertEquals(oi.total, 2);

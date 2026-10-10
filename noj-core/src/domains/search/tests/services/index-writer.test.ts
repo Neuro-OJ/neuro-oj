@@ -30,6 +30,10 @@ import {
   upsertSearchEntry,
 } from "../../services/index-writer.ts";
 import { sql } from "drizzle-orm";
+import {
+  publishAllProblemsForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 
 await resetDbForTest();
 
@@ -61,6 +65,8 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
+    // 版本化后只有已发布题目进索引（Handbook §3.5/§6.6）
+    await publishBaselineVersionForTest("p-search-1");
     const entry = await buildProblemEntry("p-search-1");
     assertEquals(entry !== null, true);
     await upsertSearchEntry(entry!);
@@ -585,6 +591,7 @@ Deno.test({
       createdAt: now,
       updatedAt: now,
     });
+    await publishAllProblemsForTest();
     const counts = await reindexAll();
     assertEquals(counts.problem, 1);
     const keepRows = await db.select().from(searchEntries).where(

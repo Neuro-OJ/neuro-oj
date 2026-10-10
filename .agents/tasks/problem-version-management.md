@@ -20,7 +20,7 @@
 | 2 | 版本写入（草稿、发布、文件引用、OI、客观题快照） | 🟡 部分 | 2a/2b/2c（OI 核心）/2d/2e（创建即建草稿+删除清理+路由）完成；剩 2c 收尾、2e 收尾 |
 | 3 | 评测链路（attempt、协议、结果事务、LLM、sweeper、自测） | ✅ 完成 | 含协议 v2、contest 口径修复、LLM attempt 作用域 |
 | 4 | 管理操作（策略、批任务、重测、升级） | ✅ 完成 | 派发 + 路由 + 旧入口适配层；竞赛固定版本创建/编辑写入；§4.5 三个策略/固定版本端点已补；仅「代他人升级」旁路未做 |
-| 5 | 读取统一（通过状态、题单、排行、资料、社区、搜索、正式成绩） | 🟡 部分 | 5a/5b/5c 完成（含 stats-cache 去进程内状态 + 有效投影口径）+ 提交读路径版本信息；剩 search 索引、5d 快照 |
+| 5 | 读取统一（通过状态、题单、排行、资料、社区、搜索、正式成绩） | 🟡 部分 | 5a/5b/5c 完成（stats-cache 去进程内状态、未发布题目不进公共面、搜索只索引已发布）+ 提交读路径版本信息；剩 5d 快照 |
 | 6 | 客户端（Web、IDE、CLI、演练） | 🟡 部分 | CLI/LMCC/E2E 完成；noj-ui 提交侧（详情/编辑器/竞赛/客观题）完成，剩草稿发布编辑流、提交列表/详情版本展示、管理页 |
 | 7 | 存量收尾（回填、旧表删除、视图/索引重建、备份恢复验证） | 🟡 部分 | 0103 回填 + 真实库演练完成；剩 7b |
 | 8 | 文档与交付（现行文档、Agent Note、验收、PR） | ⬜ 未开始 | 含删除本跟踪文件 |
@@ -40,7 +40,9 @@
 - [x] `query/services/stats-cache.ts`：删除全部进程内计数器（含 Redis 离线回退），
       改 revision 键控的数据库聚合 + Redis 缓存；满分口径读有效成绩投影，
       不再依赖待删除的 `evaluation_results`。
-- [ ] `search/services/index-writer.ts`：发布后索引**公开版本内容**，草稿不入公开索引。
+- [x] `search/services/index-writer.ts`：只索引已发布题目（草稿不入公开索引）。
+- [x] 未发布题目不进公共读取面：详情对普通访问者 404（编辑者可读）、公共列表排除、
+      搜索索引排除（新增测试夹具助手 `publishBaselineVersionForTest`）。
 - [ ] 5d 正式成绩快照：结算时记录每题版本策略、有效尝试与提交时间；修订走新快照。
 
 ### 批次 6（客户端 · noj-ui）
@@ -132,7 +134,9 @@
 | 范围 | 命令 | 结果 |
 |---|---|---|
 | noj-core 全量 | `cd noj-core && deno task test:parallel` | **1397 passed / 0 failed / 11 ignored** |
-| contest 域 | `bash scripts/test-domain.sh contest` | **82 passed / 0 failed**（新增固定版本 2 + 提交版本 1） |
+| contest 域 | `bash scripts/test-domain.sh contest` | **83 passed / 0 failed** |
+| catalog 域 | `bash scripts/test-domain.sh catalog` | **303 passed / 0 failed**（+2 未发布可见性） |
+| search 域 | `bash scripts/test-domain.sh search` | **30 passed / 0 failed / 1 ignored** |
 | submission 域 | `bash scripts/test-domain.sh submission` | **223 passed / 0 failed / 21 ignored**（读路径版本 2 + 筛选 2） |
 | identity 域 | `bash scripts/test-domain.sh identity` | **310 passed / 0 failed / 26 ignored**（+1 最近提交读尝试） |
 | query 域 | `bash scripts/test-domain.sh query` | **23 passed / 0 failed**（+1 站点统计读投影） |
