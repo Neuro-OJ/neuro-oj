@@ -134,9 +134,18 @@ export async function createAttempt(
     created_at: now,
   });
   if (input.source.kind === "submission") {
-    await db.update(submissions).set({ active_attempt_id: id }).where(
-      eq(submissions.id, input.source.id),
-    );
+    // 在途尝试期间提交必须是 `pending`：
+    // - 结果写入的状态机只接受 pending/judging（否则整条结果被丢弃）；
+    // - producer 只在 pending/judging 时记录 `judge_run_id`，而该字段是结果
+    //   归属校验（协议 v2 `run_id`）的兜底依据——重测不刷新它会把新结果误判为
+    //   过时消息（2026-10-10 实测：任务化重测的结果被"重复/过时"忽略）。
+    // 正式提交 `run_id = attempt_id`（Handbook §5.5），因此这里直接落 attempt id。
+    await db.update(submissions).set({
+      active_attempt_id: id,
+      status: "pending",
+      judge_run_id: id,
+      judge_finished_at: null,
+    }).where(eq(submissions.id, input.source.id));
   } else {
     await db.update(objectiveSubmissions).set({ active_attempt_id: id }).where(
       eq(objectiveSubmissions.id, input.source.id),

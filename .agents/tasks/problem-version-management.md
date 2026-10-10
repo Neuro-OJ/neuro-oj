@@ -8,10 +8,12 @@
 > 使任何一轮中断后都能从本文件直接续接。
 
 - 目标分支：`feat/problem-version-management`（GPG 签名，禁止直推 main）
-- 当前轮次：goal round 40
-- 最近更新：批次 7b 第二项——删除 `objective_questions`（迁移 0107）：小题事实源
-  只剩草稿与版本快照，`legacy_unknown` 存量提交按空卷面处理；schema/DDL/parity
-  收敛为 **66 表 / 594 列**，开发库已应用；PG 分片与 PGlite 全量均绿
+- 当前轮次：goal round 43
+- 最近更新：批次 8 收尾——真实 E2E 栈验收：E2E 用例同步到版本化契约
+  （题包导入/建题需显式发布、内容更新写草稿、自测携带 version_id、重测 202 任务化、
+  客观题小题 If-Match 草稿锁），已跑 domain：catalog 32、submission 37（8 ignored）、
+  contest 27、objective 4、admin 11、identity 34（5 ignored）、messaging 17、
+  community 4、system 38、rate-limit 1，全部 0 失败
 
 ## 一、批次状态总览
 
@@ -165,13 +167,43 @@
       开发库已应用（`public.evaluation_results` 已不存在，`user_rankings` 视图在）。
 - [ ] 搜索索引重建；备份/恢复演练验证。
 
+### E2E 契约同步（批次 6/8 收尾）
+- `catalog/problems.test.ts`：建题后内容更新写草稿，2.4 增加「更新 → 发布 V2 →
+  公开标题生效」断言（为 2.6 关键词搜索提供已发布题目）。
+- `catalog/import_bundle.test.ts`：导入只写草稿，提交评测闭环前显式
+  `publishProblemVersion`。
+- `submission/abnormal_rejudge.test.ts`、`submission/rejudge.test.ts`：重测改为
+  统一任务受理契约（202 + `job_id`/`total_items`；不存在的提交受理为空任务）。
+- `submission/priority_queue.test.ts`：单条重测期望 202。
+- `system/self_test.test.ts`：自测请求携带 `version_id`。
+- `contest/contest_anti_cheat.test.ts`：客观题小题写草稿需 `If-Match`，随后发布
+  版本供练习提交。
+
 ### 批次 8（文档与交付）
-- [ ] 新增用户/管理员版本管理文档（草稿发布、提交时版本、any/exact、升级/重测/进度、
-      客观题标识与强行重判、产物保留与历史缺失）。
-- [ ] 同步现行文档：根 README/AGENTS、题型与出题指南、题包规范与 `--publish`、
+- [x] 新增用户/管理员版本管理文档：`noj-docs/docs/features/problem-versioning.md`
+      （草稿与发布、提交时版本与评测版本、any/exact 与跨版本保留表、用户升级与
+      管理员重测三范围×三目标与 reason_code、客观题 key 与强行重判、产物保留与
+      历史缺失、速查表），注册进 VitePress 两处侧边栏。
+- [x] implemented Agent Note：
+      `.agents/notes/implemented/architecture/2026-10-10-problem-version-management.md`
+      （四概念分离、内容事实源、有效成绩物化与双口径、协议 v2、批任务、迁移链、
+      回滚要求、后续收紧项），格式校验通过。
+- [x] 同步现行文档（本轮）：根 `AGENTS.md`/`README.md`；`noj-core/AGENTS.md`
+      （新增「题目版本管理」章节 + Schema/服务规则/启动顺序/CLI/评测适用范围事实修正）；
+      `noj-docs` 的 `reference/data-dictionary.md`、`mechanisms/judge-model.md`、
+      `standards/problem-bundle.md`（`questions.json` 的 key + 导入需显式发布）、
+      `standards/quality.md`、`problemsetters/web-editor.md`、
+      `problemsetters/objective-problem.md`、`operators/admin-guide.md`、
+      `operators/production-deploy.md`（协调升级维护窗口 + 回滚）、
+      `operators/cli.md`（`--publish` / `search reindex`）、`users/submit.md`。
+- [ ] 同步现行文档（剩余）：题单/竞赛/通过状态章节复核、生产演练文档复核。
       题单/提交/竞赛/重测说明、生产升级与备份恢复文档。
 - [ ] 新增或更新 implemented Agent Note（有效成绩物化、独立作用域、跨版本保留、协调升级）。
-- [ ] 全量验收：core 各域 + shared + judge + gateway + UI + E2E；迁移安全与真实库演练。
+- [x] 跨模块 E2E（真实栈，本地）：catalog / submission / contest / objective /
+      admin / identity / messaging / community / system / rate-limit 全绿；
+      E2E 用例同步的版本化契约见下「E2E 契约同步」。
+- [ ] cross-domain E2E（含双容器评测与 LLM 网关链路）与 noj-tests 浏览器门禁、
+      PR 合入 `main`、删除本临时跟踪文件。
 - [ ] PR：从 `feat/problem-version-management` 合入 `main`（GPG 签名、CI 全绿）。
 - [ ] **删除本跟踪文件**（见文末清单）。
 
@@ -222,6 +254,10 @@
 | schema parity | `scripts/check-schema-parity.ts` | **66 表 / 594 列**（原 67/604，`objective_questions` 10 列） |
 | 迁移安全 / 快照链 | `check-migration-safety` / `check-migration-snapshot-chain` | 无一步式 NOT NULL；快照链单调 |
 | 开发库 | `deno task db:migrate` + information_schema 查询 | `public.objective_questions` 已不存在，迁移数 108 |
+| 搜索索引重建 | `scripts/noj.ts search reindex`（开发库） | 重建完成（problem 7 / user 2 / submission 123，未发布不入索引） |
+| 备份/恢复演练 | `pg_dump -Fc` → `createdb noj_drill` → `pg_restore` → 完整性查询 | 迁移数 108、无悬空固定版本/最新版指针、已删旧表不存在、`user_rankings` 视图在 |
+| 跨模块验收（本轮） | `bash scripts/test-shared.sh`、`cargo fmt/clippy/nextest`、gateway/CLI/UI `deno task test`、`vitepress build` | shared 291 passed；judge 554 passed（45 skipped）；gateway/CLI/UI 全绿（UI 235 passed）；docs 站构建通过 |
+| 跨模块 E2E（真实栈） | `bash noj-tests/scripts/run-e2e-domain.sh <domain>` | catalog 32 / submission 37（8 ignored）/ contest 27 / objective 4 / admin 11 / identity 34（5 ignored）/ messaging 17 / community 4 / system 38 / rate-limit 1，均 0 失败 |
 | noj-core 全量（PGlite 单进程） | `cd noj-core && env -u DATABASE_URL deno task test` | **1734 passed / 0 failed / 59 ignored** |
 | contest 域 | `bash scripts/test-domain.sh contest` | **86 passed / 0 failed**（未发布题目入赛 400 取代迁移期 null 固定） |
 | catalog 域 | `bash scripts/test-domain.sh catalog` | **308 passed / 0 failed** |

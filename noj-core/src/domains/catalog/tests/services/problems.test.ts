@@ -16,6 +16,7 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import {
+  AppError,
   BadRequestError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
@@ -235,6 +236,60 @@ Deno.test({
     }, "0");
     assertEquals(updated.judge_type, "dual");
     assertEquals(updated.runtime_config, null);
+  },
+});
+
+Deno.test({
+  name: "problems service: 已发布题目的题型与提交模式不可变更（Handbook §2.3）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    // 未发布：仍允许切换题型（切换后投影同步，供编辑器继续编辑）
+    const draftOnly = await createProblem({
+      title: `未发布可切换 ${ts}`,
+      description: "未发布题目允许改题型",
+      difficulty: "easy",
+      runtime_config: OI_RUNTIME_CONFIG,
+    });
+    const switched = await updateProblem(draftOnly.id, {
+      is_objective: true,
+    }, "0");
+    assertEquals(switched.is_objective, true);
+
+    // 已发布：切换题型必须 409 CONTENT_KIND_IMMUTABLE，且题目行不被改写
+    const published = await createProblem({
+      title: `已发布不可切换 ${ts}`,
+      description: "已发布题目禁止跨题型转换",
+      difficulty: "easy",
+      runtime_config: OI_RUNTIME_CONFIG,
+    });
+    await publishBaselineVersionForTest(published.id);
+    await assertRejects(
+      () => updateProblem(published.id, { is_objective: true }, "0"),
+      AppError,
+      "首次发布后不可变更",
+    );
+    const [row] = await getDb().select({
+      is_objective: problems.is_objective,
+      judge_type: problems.judge_type,
+    }).from(problems).where(eq(problems.id, published.id)).limit(1);
+    assertEquals(row.is_objective, false);
+    assertEquals(row.judge_type, "oi");
+
+    // 已发布 AI 题的提交模式同样固定
+    const ai = await createProblem({
+      title: `已发布 AI 不可换模式 ${ts}`,
+      description: "提交模式在首次发布后固定",
+      difficulty: "easy",
+      submission_mode: "code",
+      runtime_config: VALID_RUNTIME_CONFIG,
+    });
+    await publishBaselineVersionForTest(ai.id);
+    await assertRejects(
+      () => updateProblem(ai.id, { submission_mode: "artifact" }, "0"),
+      AppError,
+      "提交模式在首次发布后不可变更",
+    );
   },
 });
 

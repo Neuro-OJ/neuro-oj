@@ -106,6 +106,42 @@ export function apiGet(path: string, token?: string) {
   return api("GET", path, { token });
 }
 
+/**
+ * 等待批量任务进入终态（Handbook §4.3/§5.7）。
+ *
+ * 重测/升级任务受理后立即返回 202，真正的评测由后台 worker 异步派发：
+ * 只轮询提交状态会在"上一条尝试的 finished 仍然可见"时提前返回，因此断言
+ * 重测效果前必须等任务终态（completed / completed_with_errors）。
+ */
+export async function waitForJobCompleted(
+  token: string,
+  jobId: string,
+  maxRetries = 60,
+  intervalMs = 1000,
+): Promise<{ status: string; total_items: number }> {
+  let lastStatus = "(未取得)";
+  for (let i = 0; i < maxRetries; i++) {
+    const res = await apiGet(`/api/v1/admin/submission-jobs/${jobId}`, token);
+    if (res.status === 200) {
+      const data = (res.body as {
+        data: { status: string; total_items: number };
+      }).data;
+      lastStatus = data.status;
+      if (
+        data.status === "completed" || data.status === "completed_with_errors"
+      ) {
+        return data;
+      }
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(
+    `任务 ${jobId} 超时（${
+      maxRetries * intervalMs
+    }ms 未完成），最后状态 ${lastStatus}`,
+  );
+}
+
 // ── 用户辅助 ──────────────────────────────────────
 
 // ── Token 缓存 ──────────────────────────────────────

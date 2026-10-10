@@ -115,7 +115,16 @@ export async function saveEvaluationResult(
       return null;
     }
 
-    if (sub.judge_run_id && result.details.run_id !== sub.judge_run_id) {
+    // 结果若**声明了** run_id（协议 v2 封套或 evaluator details.run_id），必须与
+    // 当前在途尝试（`judge_run_id` = attempt id）一致，否则视为过时消息丢弃。
+    // 未声明 run_id 的旧协议结果不在此处拦截，仍按 rejudge_seq / active_attempt_id
+    // 归属（Handbook §5.5 的兼容路径）。
+    const declaredRunId = (result.details as { run_id?: unknown } | undefined)
+      ?.run_id ?? result.run_id ?? null;
+    if (
+      sub.judge_run_id && declaredRunId &&
+      declaredRunId !== sub.judge_run_id
+    ) {
       return null;
     }
     // 旧结果表 `evaluation_results` 已停止写入（Handbook §6.5）：评测事实的唯一来源是

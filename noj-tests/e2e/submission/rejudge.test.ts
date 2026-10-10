@@ -22,6 +22,7 @@ import {
   registerUser,
   submitCode,
   TEST_PASSWORD,
+  waitForJobCompleted,
   waitForServer,
 } from "../helper.ts";
 
@@ -80,7 +81,8 @@ e2eTest("[e2e/rejudge] 5.1 管理员单条重测完成提交", async () => {
     adminToken,
   );
 
-  if (rejudgeRes.status !== 200) {
+  // 统一任务受理（Handbook §4.3）：202 + 任务 ID + 条目数
+  if (rejudgeRes.status !== 202) {
     throw new Error(
       "重测返回异常: " + rejudgeRes.status + " " +
         JSON.stringify(rejudgeRes.body),
@@ -91,14 +93,25 @@ e2eTest("[e2e/rejudge] 5.1 管理员单条重测完成提交", async () => {
     data?: {
       message?: string;
       submission_id?: string;
+      job_id?: string;
+      total_items?: number;
     };
   };
-  if (!body.data?.submission_id) {
-    throw new Error("重测响应缺少 submission_id: " + JSON.stringify(body));
+  if (!body.data?.submission_id || !body.data?.job_id) {
+    throw new Error(
+      "重测响应缺少 submission_id/job_id: " + JSON.stringify(body),
+    );
   }
-  console.log("  ✓ 重测已发起: " + (body.data.message || ""));
+  if (body.data.total_items !== 1) {
+    throw new Error("单条重测应固定 1 个条目，实际 " + body.data.total_items);
+  }
+  console.log(
+    "  ✓ 重测已受理: " + (body.data.message || "") +
+      " job=" + body.data.job_id.slice(0, 8),
+  );
 
-  // 等待重测完成
+  // 等任务终态（重测由后台 worker 异步派发），再等提交完成
+  await waitForJobCompleted(adminToken, body.data.job_id);
   const result = await pollSubmission(adminToken, submissionId);
   if (result.status !== "finished" || result.score <= 0) {
     throw new Error("重测结果期望 finished 且分数 >0, 实际 " + result.status);
@@ -110,17 +123,23 @@ e2eTest("[e2e/rejudge] 5.1 管理员单条重测完成提交", async () => {
 
 // ── 404 / 403 ──
 
-e2eTest("[e2e/rejudge] 5.2a 不存在的提交返回 404", async () => {
+e2eTest("[e2e/rejudge] 5.2a 不存在的提交受理为空任务", async () => {
   if (!isE2E || !judgeOk) return;
+  // 统一任务化后不存在的提交不会进入条目集合：返回 202 且总数为 0
+  // （Handbook §4.3「空集合返回已完成、总数为 0 的任务」）。
   const res = await apiPost(
     "/api/v1/admin/submission/submissions/00000000-0000-0000-0000-000000000000/rejudge",
     {},
     adminToken,
   );
-  if (res.status !== 404) {
-    throw new Error("期望 404, 实际 " + res.status);
+  if (res.status !== 202) {
+    throw new Error("期望 202, 实际 " + res.status);
   }
-  console.log("  ✓ 不存在的提交返回 404");
+  const d = res.body as { data?: { job_id?: string; total_items?: number } };
+  if (!d.data?.job_id || d.data.total_items !== 0) {
+    throw new Error("应受理为空任务: " + JSON.stringify(res.body));
+  }
+  console.log("  ✓ 不存在的提交受理为空任务");
 });
 
 e2eTest("[e2e/rejudge] 5.2b 非管理员重测被拒 403", async () => {
@@ -146,24 +165,20 @@ e2eTest("[e2e/rejudge] 5.3a 批量重测返回正确结构", async () => {
     adminToken,
   );
 
-  if (res.status !== 200) {
-    // 如果批重在有活跃提交时返回 400，也是预期行为
-    if (res.status === 400) {
-      console.log("  ⚠ 批量重测返回 400（有活跃提交）");
-      return;
-    }
+  if (res.status !== 202) {
     throw new Error("批量重测返回异常: " + res.status);
   }
 
   const body = res.body as {
-    data?: { total?: number; queued?: number; skipped?: number };
+    data?: { job_id?: string; status?: string; total_items?: number };
   };
-  if (body.data) {
-    console.log(
-      "  ✓ 批量重测: total=" + body.data.total + " queued=" +
-        body.data.queued + " skipped=" + body.data.skipped,
-    );
+  if (!body.data?.job_id || typeof body.data.total_items !== "number") {
+    throw new Error("批量重测响应结构异常: " + JSON.stringify(res.body));
   }
+  console.log(
+    "  ✓ 批量重测: 条目=" + body.data.total_items + " 状态=" +
+      body.data.status,
+  );
 });
 
 e2eTest("[e2e/rejudge] 5.3b 重测在审计日志中有记录", async () => {

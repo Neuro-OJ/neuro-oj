@@ -15,6 +15,7 @@ import {
   e2eTest,
   getAdminToken,
   isE2E,
+  publishProblemVersion,
   submitCode,
   waitForServer,
 } from "../helper.ts";
@@ -186,6 +187,9 @@ e2eTest("[e2e/storage-failure] 存储文件缺失时下载返回 5xx", async () 
     "noj-storage://local/",
     "",
   );
+
+  // 先发布作答版本（发布预检需要支持包存在），随后再删除存储文件模拟故障
+  await publishProblemVersion(adminToken, brokenProblemId, "E2E 存储故障 V1");
 
   // 删除容器内存储文件模拟存储故障（与 pipeline.test.ts 的 docker exec 模式一致）
   try {

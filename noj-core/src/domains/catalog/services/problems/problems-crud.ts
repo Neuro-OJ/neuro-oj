@@ -27,6 +27,7 @@ import {
   submissions,
 } from "./../../../../shared/db/schema.ts";
 import {
+  AppError,
   BadRequestError,
   ConflictError,
   ForbiddenError,
@@ -79,11 +80,13 @@ import {
   saveProblemDraft,
   setDraftObject,
 } from "../versioning/draft.ts";
-import type {
-  ProblemContentKind,
-  ProblemContentV1,
-  ProblemDraftContent,
+import {
+  type ProblemContentKind,
+  problemContentKindOf,
+  type ProblemContentV1,
+  type ProblemDraftContent,
 } from "../../types/problem-content.ts";
+import type { RuntimeConfig } from "../../types/runtime-config.ts";
 import { registerLegacyStorageObject } from "./../../../system/index.ts";
 
 /**
@@ -721,6 +724,41 @@ export async function updateProblem(
   // 防御性忽略 type 和 number（spec 承诺这两个字段不可变更）
   delete (input as Record<string, unknown>)["type"];
   delete (input as Record<string, unknown>)["number"];
+
+  // ── 首次发布后固定题型与提交模式（Handbook §2.3）─────────────────────────
+  // 题目内容类别（objective / oi / ai）与 AI 的 submission_mode 由题目身份承载，
+  // 一旦有已发布版本就不可再改：跨类型转换必须新建题目。否则题目行会与最新版
+  // 内容不一致（行说客观题、版本内容是 AI），提交路径会按错的题型执行。
+  if (hasPublishedVersion) {
+    const publishedKind = problemContentKindOf(problem);
+    const requestedKind = input.is_objective === true
+      ? "objective"
+      : ((input.runtime_config !== undefined || input.judge_type !== undefined)
+        ? (input.judge_type === "oi" ||
+            (input.runtime_config != null &&
+              isOiRuntimeConfig(input.runtime_config as RuntimeConfig))
+          ? "oi"
+          : "ai")
+        : publishedKind);
+    if (requestedKind !== publishedKind) {
+      throw new AppError(
+        `题目题型在首次发布后不可变更（当前 ${publishedKind}，请求 ${requestedKind}）；跨题型转换请新建题目`,
+        409,
+        "CONTENT_KIND_IMMUTABLE",
+      );
+    }
+    if (
+      publishedKind === "ai" &&
+      input.submission_mode !== undefined &&
+      input.submission_mode !== problem.submission_mode
+    ) {
+      throw new AppError(
+        `AI 题提交模式在首次发布后不可变更（当前 ${problem.submission_mode}）；请新建题目`,
+        409,
+        "CONTENT_KIND_IMMUTABLE",
+      );
+    }
+  }
 
   // ── 管理信息（题目身份）：难度、可见性、题型、服务端派生引用 ─────────────
   const updates: Record<string, unknown> = {};

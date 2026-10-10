@@ -113,6 +113,12 @@ Deno.test("attempt: 初次尝试 sequence=0 并设置 active_attempt_id", async 
     eq(submissions.id, "rw-s1"),
   );
   assertEquals(row2.active_attempt_id, second.id);
+  // 重测期间必须是 pending 且 judge_run_id 指向新尝试：
+  // 否则结果写入的状态机与 run_id 归属校验会把新结果判为过时消息而丢弃
+  // （2026-10-10 任务化重测实测缺陷）。
+  assertEquals(row2.status, "pending");
+  assertEquals(row2.judge_run_id, second.id);
+  assertEquals(row2.judge_finished_at, null);
 
   await markAttemptStarted(second.id);
   assertEquals((await getAttempt(second.id))?.state, "judging");
