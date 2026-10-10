@@ -10,6 +10,7 @@ import {
   e2eTest,
   getAdminToken,
   isE2E,
+  publishProblemVersion,
   registerUser,
   TEST_PASSWORD,
   waitForServer,
@@ -70,9 +71,13 @@ e2eTest("[e2e/artifact] 创建 artifact 题目并上传 zip 评测", async () =>
   }
   const problemId = (createRes.body as { data: { id: string } }).data.id;
 
+  // 发布作答版本：版本化后提交必须携带 version_id，未发布的题目无法提交
+  const versionId = await publishProblemVersion(adminToken, problemId, "e2e");
+
   // 上传 zip
   const form = new FormData();
   form.append("problem_id", problemId);
+  form.append("version_id", versionId);
   form.append("language", "python3");
   form.append("file", makeZip(), "submission.zip");
   const uploadRes = await fetch(`${BASE_URL}/api/v1/submissions`, {

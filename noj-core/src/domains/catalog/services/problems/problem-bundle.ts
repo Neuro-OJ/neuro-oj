@@ -66,6 +66,62 @@ import { logAudit } from "../../../system/index.ts";
 import { assertLlmLimitsWithinDefault } from "../../../gateway/index.ts";
 import { MAX_SUPPORT_PACKAGE_SIZE } from "../support-package.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
+import {
+  deriveDraftContentFromProblem,
+  getProblemDraft,
+  saveProblemDraft,
+} from "../versioning/draft.ts";
+import { publishProblemVersion } from "../versioning/publish.ts";
+
+/**
+ * 把当前题目投影（题面/配置/模板/客观题小题）同步进**共享草稿**。
+ *
+ * 导入流程是"写入者"：它先把内容落成题目投影，再调用本函数把同一份内容写进草稿，
+ * 使 `--publish` 与后续编辑都以草稿为起点。客观题小题的 `key` 取旧小题 UUID
+ * （与迁移基线规则一致，保证历史答案可按 key 匹配）。
+ */
+export async function syncProblemDraftFromProjection(
+  problemId: string,
+  actorId?: string | null,
+): Promise<number> {
+  const db = getDb();
+  const [identity] = await db.select().from(problems).where(
+    eq(problems.id, problemId),
+  ).limit(1);
+  if (!identity) throw new BadRequestError("题目不存在");
+  const content = await deriveDraftContentFromProblem(identity);
+  const draft = await getProblemDraft(problemId, identity);
+  const saved = await saveProblemDraft(problemId, {
+    content,
+    expectedRevision: draft.revision,
+    actorId: actorId ?? null,
+  });
+  return saved.revision;
+}
+
+/**
+ * 导入后显式发布当前题目内容为新版本（`problems import --publish`）。
+ *
+ * 先同步草稿（导入写的是投影），再发布；相同内容重复发布返回既有版本
+ * （`unchanged: true`），不制造空版本。
+ */
+export async function publishImportedProblem(
+  problemId: string,
+  actorId?: string | null,
+  changeNote = "题目包导入",
+): Promise<{ version_id: string; version: number; unchanged: boolean }> {
+  const revision = await syncProblemDraftFromProjection(problemId, actorId);
+  const published = await publishProblemVersion(problemId, {
+    expectedRevision: revision,
+    changeNote,
+    actorId: actorId ?? null,
+  });
+  return {
+    version_id: published.version_id,
+    version: published.version,
+    unchanged: published.unchanged,
+  };
+}
 
 /** 导入执行者（CLI 场景无 Hono Context）。 */
 export interface BundleImportActor {

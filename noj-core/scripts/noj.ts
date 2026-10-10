@@ -33,7 +33,10 @@ import {
   seedJudgeImages,
   seedTags,
 } from "../src/domains/system/index.ts";
-import { importProblemBundle } from "../src/domains/catalog/index.ts";
+import {
+  importProblemBundle,
+  publishImportedProblem,
+} from "../src/domains/catalog/index.ts";
 import { reindexAll } from "../src/domains/search/index.ts";
 import { ROOT_USER_ID } from "./../src/shared/base/constants.ts";
 import { getBuildInfo } from "./../src/shared/base/build-info.ts";
@@ -112,8 +115,14 @@ async function buildAllPackages(): Promise<void> {
 /**
  * 批量导入目录下的统一题目包（默认 data/packages）。
  * 以 root/admin 身份执行（CLI 为运维工具），幂等 upsert。
+ *
+ * `--publish`：导入后把内容显式发布为版本（Handbook §6.8）。不发布时题目只有
+ * 草稿，普通访问者读不到、也无法按版本提交——生产演练与开发初始化必须发布。
  */
-async function importProblemPackages(dir: string): Promise<void> {
+async function importProblemPackages(
+  dir: string,
+  options: { publish?: boolean } = {},
+): Promise<void> {
   let imported = 0;
   try {
     for await (const entry of Deno.readDir(dir)) {
@@ -121,11 +130,22 @@ async function importProblemPackages(dir: string): Promise<void> {
         continue;
       }
       const data = await Deno.readFile(join(dir, entry.name));
-      await importProblemBundle(
+      const problem = await importProblemBundle(
         { name: entry.name, data },
         { userId: ROOT_USER_ID, userRole: "admin" },
       );
-      console.log(`  已导入: ${entry.name}`);
+      if (options.publish) {
+        const published = await publishImportedProblem(
+          problem.id,
+          ROOT_USER_ID,
+        );
+        console.log(
+          `  已导入并发布: ${entry.name} → V${published.version}` +
+            (published.unchanged ? "（内容未变，复用既有版本）" : ""),
+        );
+      } else {
+        console.log(`  已导入: ${entry.name}（未发布，仅草稿）`);
+      }
       imported++;
     }
   } catch (err) {
@@ -184,8 +204,9 @@ async function runDevSetup(): Promise<void> {
   console.log("\n[4/5] 构建题目包");
   await buildAllPackages();
 
-  console.log("\n[5/5] 导入题目包 + dev 专用数据");
-  await importProblemPackages(OUT_DIR);
+  console.log("\n[5/5] 导入题目包（显式发布）+ dev 专用数据");
+  // 开发初始化必须发布：否则题目只有草稿，提交/自测会因缺少已发布版本而拒绝
+  await importProblemPackages(OUT_DIR, { publish: true });
   await ensureE2EPwChangeUser();
 
   console.log("\ndev-setup 完成");
@@ -294,8 +315,12 @@ const problemsCmd = new Command()
   })
   .command("import", "批量导入统一题目包（幂等 upsert）")
   .option("--dir <dir:string>", "题目包目录", { default: OUT_DIR })
-  .action((opts: { dir: string }) => {
-    return importProblemPackages(opts.dir);
+  .option(
+    "--publish",
+    "导入后显式发布为题目版本（不加则只写草稿，普通用户不可见）",
+  )
+  .action((opts: { dir: string; publish?: boolean }) => {
+    return importProblemPackages(opts.dir, { publish: opts.publish === true });
   });
 
 const searchCmd = new Command()

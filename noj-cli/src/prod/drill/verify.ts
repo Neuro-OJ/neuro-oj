@@ -415,6 +415,9 @@ class Verifier {
         type: "application/zip",
       }),
     );
+    // 演练必须**显式发布**：否则题目只有草稿，后续"演练提交"会因缺少已发布版本
+    // 被服务端拒绝，演练结论会误报为平台故障（Handbook §6.8）。
+    form.append("publish", "true");
     const importRes = await this.api("POST", "/problems/import-bundle", {
       body: form,
     });
@@ -424,11 +427,16 @@ class Verifier {
         (payload as { data?: { problem?: { id?: string }; id?: string } })?.data
           ?.problem?.id ??
           (payload as { data?: { id?: string } })?.data?.id ?? null;
+      const published = (payload as {
+        data?: { published?: { version?: number } | null };
+      })?.data?.published;
       this.record(
         "problem_import",
         "passed",
         problemId
-          ? `演练题目导入成功：${problemId}`
+          ? `演练题目导入并发布成功：${problemId}${
+            published?.version ? `（V${published.version}）` : ""
+          }`
           : "演练题目导入成功（响应中未解析到题目 ID）",
       );
       return problemId;

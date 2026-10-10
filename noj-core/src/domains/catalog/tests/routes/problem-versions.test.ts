@@ -377,3 +377,81 @@ Deno.test({
     assertEquals(code, "PROBLEM_NOT_FOUND");
   },
 });
+
+Deno.test({
+  name:
+    "problem versions route: 详情返回默认作答版本，?version_id 显式读取历史版本",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const problemId = await makeDraftProblem();
+    const app = createApp();
+    const token = await adminToken();
+    const auth = { Authorization: `Bearer ${token}` };
+
+    // V1
+    await jsonRequest(app, `/api/v1/problems/${problemId}/draft`, {
+      method: "PUT",
+      headers: { ...auth, "If-Match": "1" },
+      body: { content: draftContent("V1 题面") },
+    });
+    const v1 = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}/versions`,
+      {
+        method: "POST",
+        headers: { ...auth, "If-Match": "2" },
+        body: { change_note: "V1" },
+      },
+    );
+    const v1Id = (await v1.json()).data.version_id as string;
+
+    // V2
+    await jsonRequest(app, `/api/v1/problems/${problemId}/draft`, {
+      method: "PUT",
+      headers: { ...auth, "If-Match": "3" },
+      body: { content: draftContent("V2 题面") },
+    });
+    const v2 = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}/versions`,
+      {
+        method: "POST",
+        headers: { ...auth, "If-Match": "4" },
+        body: { change_note: "V2" },
+      },
+    );
+    const v2Id = (await v2.json()).data.version_id as string;
+
+    // 默认（any 策略）→ 最新版 V2
+    const detail = await jsonRequest(app, `/api/v1/problems/${problemId}`, {
+      headers: auth,
+    });
+    assertEquals(detail.status, 200);
+    const detailBody = (await detail.json()).data;
+    assertEquals(detailBody.version_id, v2Id);
+    assertEquals(detailBody.version, 2);
+    assertEquals(detailBody.latest_version_id, v2Id);
+    assertEquals(detailBody.latest_version, 2);
+    assertEquals(detailBody.is_latest, true);
+    assertEquals(detailBody.effective_version_policy, { mode: "any" });
+    assertEquals(detailBody.title, "V2 题面");
+
+    // 显式读取历史版本 V1：内容切换为 V1，且标记非最新
+    const asV1 = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}?version_id=${v1Id}`,
+      { headers: auth },
+    );
+    assertEquals(asV1.status, 200);
+    const v1Body = (await asV1.json()).data;
+    assertEquals(v1Body.version_id, v1Id);
+    assertEquals(v1Body.version, 1);
+    assertEquals(v1Body.is_latest, false);
+    assertEquals(v1Body.latest_version, 2);
+    assertEquals(v1Body.title, "V1 题面");
+    // 管理信息（难度/可见性）沿用当前值，不随版本回退
+    assertEquals(v1Body.difficulty, detailBody.difficulty);
+  },
+});

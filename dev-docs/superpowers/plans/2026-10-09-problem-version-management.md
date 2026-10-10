@@ -308,6 +308,20 @@
     公开通过率分母改为 `valid_submissions`（新增字段，赛期与通过率一并抑制）；
   - 缓存键加入题目作用域 `query_projection_revisions`，策略切换后统计立即按新口径
     重算（不再只依赖 5 分钟 TTL）；`details` 兼容对象与历史文本两种形态。
+- [x] 4.1（题目读取版本字段）`GET /problems/:id` 返回 `version_id` / `version` /
+      `latest_version_id` / `latest_version` / `effective_version_policy` /
+      `is_latest`（默认作答版本：`exact` → 要求版本，`any` → 最新版）；
+      `?version_id=` 显式读取历史版本内容（沿用同一访问权限与竞赛保密，管理信息不随
+      版本回退；不下发支持包存储位置与客观题答案）。
+- [x] 6（CLI / IDE / E2E 携带版本）
+  - `noj-core` CLI：`problems import --publish`（同步投影到草稿后显式发布，相同内容
+    复用既有版本），`dev-setup` 默认带 `--publish`；`POST /problems/import-bundle`
+    新增 `publish=true` 表单字段（生产演练使用）；
+  - `noj-cli` 演练：导入表单带 `publish=true`，结论文案显示发布版本号；
+  - `noj-lmcc-extension`：选择题目时读取并固定作答版本，提交携带 `version_id`；
+    未发布题目给出明确提示（不再静默提交）；
+  - `noj-tests` E2E：新增 `publishProblemVersion` / `getAnswerVersionId` 助手，
+    `submitCode` 自动携带默认作答版本；artifact E2E 改为先发布再带 `version_id` 上传。
 - [ ] 5c（收尾）search 索引发布内容、正式成绩快照（5d）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 
@@ -381,6 +395,14 @@
 
 ## 最近一次验证
 
+- 批次 4.1 / 6（题目读取版本字段 + CLI/IDE/E2E 携带版本）：catalog 域
+  **301 passed / 0 failed**（新增"详情返回默认作答版本与 ?version_id 读取历史版本"
+  用例 + 2 个导入发布用例）；noj-core 全量 `deno task test:parallel`
+  **1388 passed / 0 failed / 11 ignored**；`noj-cli` 类型检查通过；
+  `noj-tests` 助手与 artifact E2E 类型检查通过；lint / fmt / 域边界 / JSDoc 全绿。
+  环境说明：`noj-lmcc-extension` 的 `npm run check` 在本机因缺 `@types/node`
+  与 tsconfig `moduleResolution=node10` 弃用报错（预先存在），改动文件的类型错误
+  仅为这些环境性报错。
 - 批次 5c（题目统计读有效成绩）：catalog 域 **298 passed / 0 failed**（统计夹具改为
   写入"提交 + graded 尝试 + 投影"真实链路）；noj-core 全量
   `deno task test:parallel` **1385 passed / 0 failed / 11 ignored**；

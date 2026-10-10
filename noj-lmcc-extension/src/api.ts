@@ -3,6 +3,7 @@ import * as https from "node:https";
 import type {
   CreatedSubmission,
   Problem,
+  ProblemVersionInfo,
   SubmissionDetail,
   User,
 } from "./types";
@@ -180,10 +181,25 @@ export class NeuroOjApi {
     );
   }
 
+  /**
+   * 读取题目详情（含作答版本元数据）。
+   *
+   * 选择题目时调用一次，把 `version_id` 固定进扩展状态；提交时原样发送。
+   */
+  async problem(
+    problemId: string,
+  ): Promise<ProblemVersionInfo & { id: string; title: string }> {
+    const response = await this.request<
+      { data: ProblemVersionInfo & { id: string; title: string } }
+    >(`/api/v1/problems/${encodeURIComponent(problemId)}`);
+    return response.data;
+  }
+
   async submitCode(
     problemId: string,
     code: string,
     fileName: string,
+    versionId?: string | null,
   ): Promise<CreatedSubmission> {
     const response = await this.request<{ data: CreatedSubmission }>(
       "/api/v1/submissions",
@@ -194,6 +210,8 @@ export class NeuroOjApi {
           language: "python3",
           code,
           file_name: fileName,
+          // 新客户端必须携带作答版本；缺失会被服务端 409 拒绝（明确升级提示）
+          ...(versionId ? { version_id: versionId } : {}),
         },
       },
     );
