@@ -143,10 +143,13 @@
   - `POST /submission-upgrade-jobs`（用户受理升级）、
     `GET /submission-upgrade-jobs/:id`（本人可读、他人 403、管理员可读任意）；
   - 新路由独立挂载 `/api/v1/admin/submission-jobs`（不复用 `/admin/submission` 前缀）。
-- [ ] 4c（收尾）既有单条/整题重测接口（`POST /admin/submissions/:id/rejudge`、
-      `POST /admin/problems/:id/rejudge`）改为统一任务受理的**适配层**（默认
-      `submitted` 目标、返回任务 ID）；管理入口「代他人升级」需给 `acceptUpgradeJob`
-      增加管理员旁路。
+- [x] 4c（旧入口适配）`submissions-rejudge.ts` 从 ~460 行的自带派发实现收敛为
+      薄适配层（~130 行）：单条/整题重测一律调用 `acceptRejudgeJob`，目标固定
+      `submitted`，整题**无 500 条总量限制**；不再改提交状态、不再预增
+      `rejudge_seq`、不再直推 MQ；`submissions.rejudge` 审计保留（单条
+      submission 维度 / 整题 problem + count）；管理端两个旧接口返回 202 +
+      `job_id`/`total_items`。
+- [ ] 4c（收尾）管理入口「代他人升级」需给 `acceptUpgradeJob` 增加管理员旁路。
 
 ### 批次 3 落点清单（提前完成的部分）
 
@@ -372,6 +375,12 @@
 
 ## 最近一次验证
 
+- 批次 4c（旧重测入口适配统一任务服务）：submission 域 **219 passed / 0 failed /
+  21 ignored**（两个旧入口测试改为断言"受理不改写提交状态 + 任务已创建"，
+  LLM 缺配不再卡 pending）；identity 域 **310 passed / 0 failed / 25 ignored**
+  （4 个旧管理路由测试改为统一任务契约：源不存在/活跃提交/空集合均按新语义断言）；
+  noj-core 全量 `deno task test:parallel` **1385 passed / 0 failed / 11 ignored**；
+  `deno lint` / `deno fmt --check` / 域边界 / JSDoc / 类型检查全绿。
 - 批次 4c（升级派发 + 批量任务路由）：submission 域 **219 passed / 0 failed /
   21 ignored**（新增 3 个升级用例）、admin 域 **14 passed / 0 failed**（新增 6 个
   路由用例）；noj-core 全量 `deno task test:parallel`

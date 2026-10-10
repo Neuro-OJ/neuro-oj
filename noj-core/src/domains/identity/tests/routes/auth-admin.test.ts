@@ -9,6 +9,8 @@ import {
   auditLogs,
   problems,
   roles,
+  submissionJobItems,
+  submissionJobs,
   submissions,
   users,
 } from "../../../../shared/db/schema.ts";
@@ -895,7 +897,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 不存在的提交返回 404",
+    "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 不存在的提交仍受理并记录",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -911,7 +913,12 @@ Deno.test({
         token,
       },
     );
-    assertEquals(res.status, 404);
+    // 统一任务契约：源不存在不再整批拒绝，而是受理成任务（该 ID 从来不是成员，
+    // 因此条目数为 0）；若提交是"受理后被删除"，条目保留并由 worker 标 skipped
+    assertEquals(res.status, 202);
+    const body = await res.json();
+    assertEquals(typeof body.data.job_id, "string");
+    assertEquals(body.data.total_items, 0);
   },
 });
 
@@ -979,7 +986,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 有活跃提交时拒绝",
+    "admin route: POST /api/v1/admin/submission/problems/:id/rejudge 活跃提交被跳过而非整批拒绝",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -1040,10 +1047,27 @@ Deno.test({
       `/api/v1/admin/submission/problems/${problemId}/rejudge`,
       { method: "POST", token },
     );
-    assertEquals(res.status, 400);
+    // Handbook §5.7：活动提交属于条目 skipped，不整批拒绝
+    assertEquals(res.status, 202);
     const body = await res.json();
-    assertEquals(body.error.includes("活跃评测"), true);
+    assertEquals(body.data.total_items, 1);
+    const [item] = await db.select().from(submissionJobItems).where(
+      eq(submissionJobItems.job_id, body.data.job_id),
+    );
+    assertEquals(item.source_id, judgingSubId);
+    // 该提交没有提交时版本（存量 unknown）→ 受理阶段即不可按版本重测；
+    // 有版本的活动提交由 worker 在派发阶段标 SOURCE_JUDGING（见 dispatch 测试）
+    assertEquals(["skipped", "pending"].includes(item.status), true);
+    if (item.status === "skipped") {
+      assertEquals(item.reason_code, "LEGACY_VERSION_UNKNOWN");
+    }
 
+    await db.delete(submissionJobItems).where(
+      eq(submissionJobItems.job_id, body.data.job_id),
+    );
+    await db.delete(submissionJobs).where(
+      eq(submissionJobs.id, body.data.job_id),
+    );
     await db.delete(submissions).where(eq(submissions.id, judgingSubId));
     await db.delete(problems).where(eq(problems.id, problemId));
   },
@@ -1051,7 +1075,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 评测中时拒绝",
+    "admin route: POST /api/v1/admin/submission/submissions/:id/rejudge 评测中受理但不改状态",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -1109,14 +1133,25 @@ Deno.test({
       `/api/v1/admin/submission/submissions/${submissionId}/rejudge`,
       { method: "POST", token },
     );
-    assertEquals(res.status, 400);
+    // 统一任务受理不再改写提交状态：评测中的提交保持 judging（不会卡 pending）
+    assertEquals(res.status, 202);
     const body = await res.json();
-    assertEquals(body.error.includes("已完成或出错"), true);
+    assertEquals(typeof body.data.job_id, "string");
 
     const [submission] = await db.select().from(submissions).where(
       eq(submissions.id, submissionId),
     );
     assertEquals(submission.status, "judging");
+    assertEquals(submission.active_attempt_id, null);
+
+    await db.delete(submissionJobItems).where(
+      eq(submissionJobItems.job_id, body.data.job_id),
+    );
+    await db.delete(submissionJobs).where(
+      eq(submissionJobs.id, body.data.job_id),
+    );
+    await db.delete(submissions).where(eq(submissions.id, submissionId));
+    await db.delete(problems).where(eq(problems.id, problemId));
   },
 });
 
@@ -1166,12 +1201,18 @@ Deno.test({
       `/api/v1/admin/submission/problems/${problemId}/rejudge`,
       { method: "POST", token },
     );
-    assertEquals(res.status, 200);
+    // 空集合返回已完成、总数为 0 的任务（Handbook §4.3）
+    assertEquals(res.status, 202);
     const body = await res.json();
-    assertEquals(body.data.total, 0);
-    assertEquals(body.data.queued, 0);
-    assertEquals(body.data.skipped, 0);
+    assertEquals(body.data.total_items, 0);
+    assertEquals(
+      ["completed", "completed_with_errors"].includes(body.data.status),
+      true,
+    );
 
+    await db.delete(submissionJobs).where(
+      eq(submissionJobs.id, body.data.job_id),
+    );
     await db.delete(problems).where(eq(problems.id, problemId));
   },
 });

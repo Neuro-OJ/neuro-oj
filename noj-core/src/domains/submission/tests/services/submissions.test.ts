@@ -18,6 +18,7 @@ import {
   evaluationResults,
   problems,
   sseEvents,
+  submissionJobs,
   submissions,
   users,
 } from "../../../../shared/db/schema.ts";
@@ -1127,7 +1128,7 @@ Deno.test({
 
       try {
         // 执行：单条重测
-        await rejudgeSubmission(subId);
+        await rejudgeSubmission(subId, adminId);
 
         // 验证：审计日志写入
         const rows = await db.select().from(auditLogs).where(
@@ -1149,7 +1150,10 @@ Deno.test({
         assertEquals(detail.problem_id, undefined);
         assertEquals(detail.count, undefined);
       } finally {
-        // 清理本测试数据
+        // 清理本测试数据（统一任务受理会写 submission_jobs，需先清理）
+        await db.delete(submissionJobs).where(
+          eq(submissionJobs.actor_id, adminId),
+        );
         await db.delete(evaluationResults).where(
           eq(evaluationResults.submission_id, subId),
         );
@@ -1171,8 +1175,7 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "submissions service: LLM 题缺平台默认时重测必须在改状态前失败（不卡 pending）",
+  name: "submissions service: 重测受理不改写提交状态（LLM 缺配不再卡 pending）",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -1260,16 +1263,13 @@ Deno.test({
         created_at: now,
       });
 
-      // 执行：平台默认缺失 → 必须抛错
-      await assertRejects(
-        () => rejudgeSubmission(subId),
-        Error,
-        "平台未配置默认 LLM Provider",
-      );
+      // 执行：平台默认缺失。统一任务受理**不在受理阶段**解析 LLM Provider
+      // （解析发生在派发阶段并记入条目原因码），因此受理本身必须成功——
+      // 关键在于提交状态与 rejudge_seq 都不被改写（不会卡在 pending）。
+      const accepted = await rejudgeSubmission(subId, adminId);
+      assertEquals(typeof accepted.job_id, "string");
 
-      // **关键断言**：提交状态必须仍是 finished（未被置回 pending），
-      // 且 rejudge_seq 未递增——修复前这两处已被事务改写，
-      // 表现为"重测报错但提交卡在评测中"。
+      // **关键断言**：提交状态必须仍是 finished，且 rejudge_seq 未递增。
       const [after] = await db.select().from(submissions).where(
         eq(submissions.id, subId),
       );
@@ -1278,9 +1278,14 @@ Deno.test({
         "finished",
         "前置校验失败时不得改变提交状态（否则会卡在 pending）",
       );
-      assertEquals(after?.rejudge_seq, 0, "前置校验失败时不得递增 rejudge_seq");
+      assertEquals(after?.rejudge_seq, 0, "受理重测不得改写提交的重测序号");
 
+      await db.delete(submissionJobs).where(
+        eq(submissionJobs.actor_id, adminId),
+      );
       await db.delete(submissions).where(eq(submissions.id, subId));
+      // 受理会写 submissions.rejudge 审计（admin_id 外键），先清审计再删用户
+      await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
       await db.delete(problems).where(eq(problems.id, localProblemId));
       await db.delete(users).where(eq(users.id, adminId));
       await db.delete(users).where(eq(users.id, localUserId));
@@ -1405,8 +1410,11 @@ Deno.test({
 
       try {
         // 执行：批量重测
-        const result = await rejudgeProblemSubmissions(localProblemId);
-        assertEquals(result.total, 3);
+        const result = await rejudgeProblemSubmissions(localProblemId, adminId);
+        // 统一任务契约：受理返回任务 ID 与条目数（`submitted` 目标下 3 条均为
+        // legacy_unknown → 受理成功但条目在受理阶段即被标记无法按提交时版本重测）
+        assertEquals(result.total_items, 3);
+        assertEquals(typeof result.job_id, "string");
 
         // 验证：审计日志写入
         const rows = await db.select().from(auditLogs).where(
@@ -1428,7 +1436,10 @@ Deno.test({
         assertEquals(detail.count, 3);
         assertEquals(detail.submission_id, undefined);
       } finally {
-        // 清理本测试数据
+        // 清理本测试数据（统一任务受理会写 submission_jobs）
+        await db.delete(submissionJobs).where(
+          eq(submissionJobs.actor_id, adminId),
+        );
         for (const sid of subIds) {
           await db.delete(evaluationResults).where(
             eq(evaluationResults.submission_id, sid),
