@@ -66,6 +66,27 @@ export interface ProblemView {
   tags: ProblemTagView[];
   /** 是否存在当前不可见的算法标签（通过本题后可见）。 */
   has_hidden_algorithm_tags: boolean;
+  /**
+   * 作答版本（Handbook §4.1/§4.2）。
+   *
+   * 独立题目页：题库有效策略解析出的默认作答版本；竞赛页：该竞赛固定版本。
+   * 提交必须原样回传——服务端据此判断"在评测哪一版"，不携带会被 409 拒绝。
+   * `null` 表示题目尚未发布任何版本（此时不能提交）。
+   */
+  version_id: string | null;
+  /** 作答版本的版本号（展示用）。 */
+  version: number | null;
+  /** 最新已发布版本 ID（独立题目页；竞赛页为 null）。 */
+  latest_version_id: string | null;
+  /** 最新已发布版本号。 */
+  latest_version: number | null;
+  /** 题库有效版本策略（竞赛页为 null：竞赛策略独立于题库）。 */
+  effective_version_policy:
+    | { mode: 'any' }
+    | { mode: 'exact'; version_id: string | null }
+    | null;
+  /** 当前作答版本是否就是最新版。 */
+  is_latest: boolean;
 }
 
 /** `GET /api/v1/problems/:id` 的 data 形状。 */
@@ -89,6 +110,15 @@ export interface ProblemResource {
   has_hidden_algorithm_tags?: boolean;
   /** 关联的未结束公开赛；仅所有者/管理员会收到（保密提示横幅）。 */
   contest_secrecy?: ProblemContestSecrecyNotice[] | null;
+  /** 作答版本（题库策略解析；未发布为 null）。 */
+  version_id?: string | null;
+  version?: number | null;
+  latest_version_id?: string | null;
+  latest_version?: number | null;
+  effective_version_policy?:
+    | { mode: 'any' }
+    | { mode: 'exact'; version_id: string | null };
+  is_latest?: boolean;
   runtime_config?: {
     evaluator?: {
       time_limit_ms?: number;
@@ -110,6 +140,9 @@ export interface ContestProblemResource {
   is_objective?: boolean;
   judge_type?: 'dual' | 'oi';
   judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
+  /** 竞赛固定作答版本；提交必须原样回传（不一致 → 409）。 */
+  version_id?: string | null;
+  version?: number | null;
 }
 
 /** 独立题目资源 → 视图。 */
@@ -136,6 +169,12 @@ export function toProblemView(resource: ProblemResource): ProblemView {
     tags: resource.tags ?? [],
     has_hidden_algorithm_tags: resource.has_hidden_algorithm_tags === true,
     contest_secrecy: resource.contest_secrecy ?? [],
+    version_id: resource.version_id ?? null,
+    version: resource.version ?? null,
+    latest_version_id: resource.latest_version_id ?? null,
+    latest_version: resource.latest_version ?? null,
+    effective_version_policy: resource.effective_version_policy ?? null,
+    is_latest: resource.is_latest === true,
   };
 }
 
@@ -173,6 +212,15 @@ export function toContestProblemView(
     has_hidden_algorithm_tags: false,
     // 竞赛页本身就是"已在竞赛内"的视图，不渲染保密提示
     contest_secrecy: [],
+    // 竞赛题目按竞赛固定版本（pinned_version_id）作答，与题库有效策略无关；
+    // 竞赛接口不返回 latest_version_*，故 is_latest 恒为 false——
+    // 前端只在 latest_version != null 时渲染"是否有更新版本"提示。
+    version_id: resource.version_id ?? null,
+    version: resource.version ?? null,
+    latest_version_id: null,
+    latest_version: null,
+    effective_version_policy: null,
+    is_latest: false,
   };
 }
 

@@ -61,6 +61,57 @@ Deno.test('problemView: 独立题目缺省字段降级为空而非崩溃', () =>
   assertEquals(view.memory_limit_mb, null);
   // 无保密关联（或后端未下发该字段）时为空数组，横幅不渲染
   assertEquals(view.contest_secrecy, []);
+  // 未下发版本字段（旧响应）→ 全部降级为 null/false，界面按"未发布"呈现
+  assertEquals(view.version_id, null);
+  assertEquals(view.version, null);
+  assertEquals(view.latest_version_id, null);
+  assertEquals(view.latest_version, null);
+  assertEquals(view.effective_version_policy, null);
+  assertEquals(view.is_latest, false);
+});
+
+Deno.test('problemView: 作答版本字段透传（题库有效策略 / 竞赛固定版本）', () => {
+  const practice = toProblemView({
+    id: 'uuid-v1',
+    display_id: 'P1001',
+    title: '版本化题',
+    description: '题面',
+    difficulty: 'easy',
+    type: 'P',
+    owner_id: 'owner-1',
+    is_objective: false,
+    version_id: 'v-old',
+    version: 3,
+    latest_version_id: 'v-new',
+    latest_version: 5,
+    effective_version_policy: { mode: 'exact', version_id: 'v-old' },
+    is_latest: false,
+  });
+  assertEquals(practice.version_id, 'v-old');
+  assertEquals(practice.version, 3);
+  assertEquals(practice.latest_version_id, 'v-new');
+  assertEquals(practice.latest_version, 5);
+  assertEquals(practice.effective_version_policy, {
+    mode: 'exact',
+    version_id: 'v-old',
+  });
+  assertEquals(practice.is_latest, false);
+
+  const contest = toContestProblemView({
+    ...baseContest(),
+    version_id: 'v-pinned',
+    version: 2,
+  });
+  assertEquals(contest.version_id, 'v-pinned');
+  assertEquals(contest.version, 2);
+  // 竞赛固定版本与题库最新版无关：接口不下发 latest_*，界面不得提示"有更新版本"
+  assertEquals(contest.latest_version_id, null);
+  assertEquals(contest.latest_version, null);
+  assertEquals(contest.effective_version_policy, null);
+  assertEquals(contest.is_latest, false);
+
+  // 迁移期尚未固定版本的存量竞赛题：version_id 为 null
+  assertEquals(toContestProblemView(baseContest()).version_id, null);
 });
 
 Deno.test('problemView: 公开赛保密提示字段透传（仅所有者/管理员会收到）', () => {

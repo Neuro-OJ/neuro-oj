@@ -162,6 +162,16 @@ export interface ContestProblemResponse extends ContestProblemInput {
    */
   visibility: "public" | "private";
   user_status: ContestProblemUserStatus;
+  /**
+   * 竞赛固定的作答版本（Handbook §2.6/§4.2）。
+   *
+   * 竞赛提交只接受该版本：客户端必须原样回传，服务端不一致时返回
+   * `409 CONTEST_PROBLEM_VERSION_CHANGED`（保留已写内容、提示刷新），绝不自动换版。
+   * 迁移期尚未固定的存量竞赛为 null。
+   */
+  version_id: string | null;
+  /** 固定版本的版本号（展示用；无固定版本为 null）。 */
+  version: number | null;
 }
 
 export interface KaggleProblemScore {

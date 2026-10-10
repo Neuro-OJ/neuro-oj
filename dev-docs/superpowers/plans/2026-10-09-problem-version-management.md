@@ -23,9 +23,9 @@
 | 1 | 基础模型（schema/类型/纯计算器/PGlite DDL/迁移） | 已完成 | 迁移 `0102`；1255 用例全绿；存量库演练通过 |
 | 2 | 版本写入（草稿、发布、文件引用、OI、客观题快照） | 进行中 | 2a 存储登记、2b 草稿/发布已完成；2c/2d/2e 待做 |
 | 3 | 评测链路（attempt、协议、结果事务、LLM、sweeper、自测） | 未开始 | |
-| 4 | 管理操作（策略、后台任务、管理员重测、用户升级） | 进行中 | 4a 策略切换已完成 |
+| 4 | 管理操作（策略、后台任务、管理员重测、用户升级） | 进行中 | 4a 策略切换、4b/4c 派发与路由已完成；本轮补竞赛固定版本写入 |
 | 5 | 读取统一（通过状态、题单、排行、资料、社区、搜索、正式成绩） | 进行中 | 5a 题目通过状态已切投影 |
-| 6 | 客户端（Web、IDE、CLI、演练） | 未开始 | |
+| 6 | 客户端（Web、IDE、CLI、演练） | 进行中 | CLI/IDE/E2E 与 noj-ui 提交侧已完成；草稿发布编辑流、提交列表/详情、管理页待做 |
 | 7 | 存量收尾（迁移回填、旧表删除、备份恢复验证） | 未开始 | |
 | 8 | 文档与交付（现行文档、Agent Note、验收、PR） | 未开始 | |
 
@@ -327,6 +327,31 @@
       竞赛固定版本升级、批任务受理（`Idempotency-Key`）/详情/条目/重试、升级任务受理与
       读取、终态轮询（不依赖进程内计数）；配套 8 个 vitest 用例
       （`noj-ui/tests/composables/useProblemVersions.spec.ts`）。
+- [x] 4（竞赛固定版本落库 + 提交携带版本）
+  - `createContest` 创建时把每题钉在**当时的**最新已发布版
+    （`contest_problems.pinned_version_id`）；`updateContest` 整体替换题目关联时
+    先读旧固定版本，已有固定版本原样保留，旧 null（加入时题目尚无版本）按当前最新版
+    回填——否则"改个竞赛名"就会静默换版；
+  - `POST /contests/:id/submit`（JSON 与 multipart）转发客户端 `version_id`：
+    与固定版本不一致 → `409 CONTEST_PROBLEM_VERSION_CHANGED`
+    （响应含 `expected_version_id`/`submitted_version_id`）；缺省版本仍按固定版本
+    作答（迁移期兼容，批次 7 后收紧为 `VERSION_REQUIRED`）；
+  - 新增 3 个用例：contest 域固定版本 2 个（创建即固定 / 编辑保留 + 新题固定）、
+    contest 路由 1 个（固定版本下发、旧版本 409、一致与缺省放行、落库
+    `submitted_version_id` 均为固定版本）。
+- [x] 6（noj-ui 提交侧版本贯通）
+  - `pages/problems/[id].vue`：作答版本提示条（题库固定 / 最新版 / 未发布）+ artifact
+    提交携带 `version_id`，409（`VERSION_REQUIRED` / `CONTEST_PROBLEM_VERSION_CHANGED`）
+    只刷新题目、不自动换版；
+  - `pages/editor/[id].vue`：`submit()` 与 `selfTest()` 携带 `version_id`，工作区副标题
+    显示"作答版本 vN"，409 刷新题目且代码留在编辑器；
+  - `composables/useObjective.ts` + `components/objective/ObjectiveAnswerForm.vue`：
+    客观题提交（练习/竞赛）携带 `version_id`；
+  - `pages/contests/[contestId]/problems/[label].vue`：固定版本提示条 + artifact/客观题
+    提交携带 `version_id` + 409 保留已写内容并刷新固定版本；
+  - 新增 `isVersionConflictError()`（`utils/apiError.ts`）与 3 个版本错误码中英文案；
+    `ProblemView` / `ProblemResource` / `ContestProblemResource` / `ContestProblem`
+    补齐版本字段；8 → 10 个相关单测。
 - [ ] 5c（收尾）search 索引发布内容、正式成绩快照（5d）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 
@@ -408,6 +433,13 @@
 
 ## 最近一次验证
 
+- 批次 4（竞赛固定版本）/ 6（noj-ui 提交侧）：contest 域
+  `bash scripts/test-domain.sh contest` **82 passed / 0 failed**（+3 用例）；
+  noj-core 全量 `deno task test:parallel` **1391 passed / 0 failed / 11 ignored**；
+  noj-ui `deno task test` **234 passed / 0 failed**、
+  `deno task test:components`（vitest）**102 passed / 19 files**；
+  `deno task check:types` + `deno task check:types:nuxt`（nuxt typecheck + vue-tsc）
+  **0 error**；`deno lint` / `deno fmt --check` 全绿。
 - 批次 4.1 / 6（题目读取版本字段 + CLI/IDE/E2E 携带版本）：catalog 域
   **301 passed / 0 failed**（新增"详情返回默认作答版本与 ?version_id 读取历史版本"
   用例 + 2 个导入发布用例）；noj-core 全量 `deno task test:parallel`

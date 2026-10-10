@@ -185,15 +185,22 @@ export function useObjective() {
     return api.delete<null>(`/api/v1/problems/${paperId}/questions/${questionId}`);
   }
 
-  /** 提交套卷答案（即时判定；竞赛提交携带 contest_id） */
+  /**
+   * 提交套卷答案（即时判定；竞赛提交携带 contest_id）。
+   *
+   * `versionId` 为作答版本（Handbook §4.2）：已发布版本的套卷必须携带，
+   * 服务端据此记录"在评哪一版"，缺省会被 409 拒绝。
+   */
   function submitPaper(
     paperId: string,
     answers: Record<string, (string | boolean)[]>,
     contestId?: string,
+    versionId?: string | null,
   ) {
     return api.post<{ data: SubmitResult }>(`/api/v1/problems/${paperId}/submit`, {
       answers,
       ...(contestId ? { contest_id: contestId } : {}),
+      ...(versionId ? { version_id: versionId } : {}),
     });
   }
 

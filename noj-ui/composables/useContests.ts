@@ -54,6 +54,15 @@ export interface ContestProblem {
    * （运行时恒为 undefined），保留以便后续后端支持时无需改动调用方。
    */
   is_objective?: boolean;
+  /**
+   * 竞赛固定作答版本（Handbook §4.1/§4.2）。
+   *
+   * 提交必须原样回传；与固定版本不一致 → 409 `CONTEST_PROBLEM_VERSION_CHANGED`。
+   * 迁移期尚未固定版本的竞赛题目为 null（此时按存量路径作答）。
+   */
+  version_id?: string | null;
+  /** 固定版本的版本号（展示用）。 */
+  version?: number | null;
 }
 
 export interface ContestProblemInput {

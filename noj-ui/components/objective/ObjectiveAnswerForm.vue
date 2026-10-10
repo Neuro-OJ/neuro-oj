@@ -17,6 +17,11 @@ import {
 const props = defineProps<{
   /** 套卷题目 ID（problems.id） */
   paperId: string
+  /**
+   * 作答版本 ID（Handbook §4.2）：套卷已发布版本时必须由父组件传入，
+   * 服务端据此记录提交时版本；未发布版本的存量套卷为 null。
+   */
+  versionId?: string | null
 }>()
 
 const { listQuestions, submitPaper, listSubmissions } = useObjective()
@@ -120,7 +125,12 @@ async function onSubmit() {
   submitting.value = true
   lastResult.value = null
   try {
-    const res = await submitPaper(props.paperId, answers.value)
+    const res = await submitPaper(
+      props.paperId,
+      answers.value,
+      undefined,
+      props.versionId,
+    )
     lastResult.value = res.data
     await refreshQuestions()
     await refreshHist()

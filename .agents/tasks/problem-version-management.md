@@ -8,8 +8,9 @@
 > 使任何一轮中断后都能从本文件直接续接。
 
 - 目标分支：`feat/problem-version-management`（GPG 签名，禁止直推 main）
-- 当前轮次：goal round 24
-- 最近更新：批次 6 客户端（CLI/IDE/E2E 完成；noj-ui 新增版本/批任务 composable）
+- 当前轮次：goal round 25
+- 最近更新：批次 6 客户端（noj-ui 提交侧版本贯通：题目详情/编辑器/竞赛页 + 客观题表单）与
+  批次 4 竞赛固定版本落库（创建即固定、编辑不清零）
 
 ## 一、批次状态总览
 
@@ -18,9 +19,9 @@
 | 1 | 基础模型（schema/类型/纯计算器/PGlite DDL/迁移 0102） | ✅ 完成 | parity 68 表/613 列 |
 | 2 | 版本写入（草稿、发布、文件引用、OI、客观题快照） | 🟡 部分 | 2a/2b/2c（OI 核心）/2d/2e（创建即建草稿+删除清理+路由）完成；剩 2c 收尾、2e 收尾 |
 | 3 | 评测链路（attempt、协议、结果事务、LLM、sweeper、自测） | ✅ 完成 | 含协议 v2、contest 口径修复、LLM attempt 作用域 |
-| 4 | 管理操作（策略、批任务、重测、升级） | ✅ 完成 | 派发 + 路由 + 旧入口适配层；仅「代他人升级」旁路未做 |
+| 4 | 管理操作（策略、批任务、重测、升级） | ✅ 完成 | 派发 + 路由 + 旧入口适配层；竞赛固定版本创建/编辑写入已补；仅「代他人升级」旁路未做 |
 | 5 | 读取统一（通过状态、题单、排行、资料、社区、搜索、正式成绩） | 🟡 部分 | 5a/5b/5c 主体完成；剩 stats-cache、search 索引、5d 快照 |
-| 6 | 客户端（Web、IDE、CLI、演练） | 🟡 部分 | CLI/LMCC/E2E 完成；noj-ui Web 端进行中 |
+| 6 | 客户端（Web、IDE、CLI、演练） | 🟡 部分 | CLI/LMCC/E2E 完成；noj-ui 提交侧（详情/编辑器/竞赛/客观题）完成，剩草稿发布编辑流、提交列表/详情版本展示、管理页 |
 | 7 | 存量收尾（回填、旧表删除、视图/索引重建、备份恢复验证） | 🟡 部分 | 0103 回填 + 真实库演练完成；剩 7b |
 | 8 | 文档与交付（现行文档、Agent Note、验收、PR） | ⬜ 未开始 | 含删除本跟踪文件 |
 
@@ -45,11 +46,16 @@
 - [x] `composables/useProblemVersions.ts`：草稿读写（`If-Match` 乐观锁）、发布预检/发布、
       版本列表与指定版本、题库/竞赛策略切换、竞赛固定版本升级、批任务受理（幂等键）/
       详情/条目/重试、升级任务受理与读取、终态轮询；配套 8 个 vitest 用例。
-- [ ] `pages/problems/[id].vue`：版本选择 + 「当前通过要求」提示 + 提交携带 `version_id`。
+- [x] `pages/problems/[id].vue`：作答版本提示（含「题库固定/最新版/未发布」）+ artifact
+      提交携带 `version_id` + 409 `VERSION_REQUIRED`/`CONTEST_PROBLEM_VERSION_CHANGED` 刷新题目。
+- [x] `pages/editor/[id].vue`：`submit()`/`selfTest()` 携带 `version_id`，副标题展示作答版本，
+      409 时刷新题目（不自动换版、代码留在编辑器）。
+- [x] `composables/useObjective.ts` + `components/objective/ObjectiveAnswerForm.vue`：
+      客观题提交携带 `version_id`（练习与竞赛两处调用点）。
+- [x] `pages/contests/[contestId]/problems/[label].vue`：固定版本提示 + artifact/客观题提交
+      携带 `version_id` + 409 保留已选内容并刷新固定版本。
 - [ ] `components/editor/*`：保存草稿 / 发布版本两个动作，统一草稿 revision。
 - [ ] `components/objective/ObjectiveProblemEditor.vue`：小题写草稿、稳定 key、整卷发布。
-- [ ] `pages/contests/[contestId]/problems/[label].vue`：固定版本作答；409
-      `CONTEST_PROBLEM_VERSION_CHANGED` 保留已写内容并提示刷新。
 - [ ] `pages/submissions/index.vue` / `[id].vue`：版本与有效性筛选、批量升级入口、
       提交时版本 / 各版本当前判定 / 来源关联展示。
 - [ ] `pages/admin/*`：三种重测范围、固定版本映射、独立策略切换、任务进度与重试。
@@ -70,25 +76,38 @@
 - [ ] PR：从 `feat/problem-version-management` 合入 `main`（GPG 签名、CI 全绿）。
 - [ ] **删除本跟踪文件**（见文末清单）。
 
+### 批次 4 补充（本轮新增）
+- [x] 竞赛创建即固定每题当时最新已发布版（`contest_problems.pinned_version_id`）。
+- [x] 编辑竞赛整体替换题目关联时保留既有固定版本（旧 null 按当前最新版回填），
+      避免改名/改时间静默换版。
+- [x] `POST /contests/:id/submit`（JSON 与 multipart）转发 `version_id`，
+      不一致 → 409 `CONTEST_PROBLEM_VERSION_CHANGED`，并回传
+      `expected_version_id`/`submitted_version_id`。
+
 ### 已知偏差 / 待收紧
 - [ ] `resolveSubmissionVersion` 对「题目尚未发布任何版本」的存量题目仍返回
       `legacy_unknown`；批次 7 基线回填完成后收紧为拒绝。
 - [ ] `rejudgeProblemSubmissions` 整题范围仍按 `submitted` 目标受理（适配层），
       界面「统一用 V3」需通过 `specified` 目标走统一任务服务。
 - [ ] `acceptUpgradeJob` 尚无管理员旁路（管理入口「代他人升级」）。
+- [ ] 竞赛提交**缺省** `version_id` 且题目已固定版本时仍按固定版本作答（迁移期兼容，
+      批次 7 后收紧为 409 `VERSION_REQUIRED`，与题库路径对齐；已写入
+      `submission-version.ts` 头注释）。
 
 ## 三、最近验证证据
 
 | 范围 | 命令 | 结果 |
 |---|---|---|
-| noj-core 全量 | `cd noj-core && deno task test:parallel` | **1388 passed / 0 failed / 11 ignored** |
+| noj-core 全量 | `cd noj-core && deno task test:parallel` | **1388+ passed / 0 failed**（本轮新增 3 个用例后复跑） |
+| contest 域 | `bash scripts/test-domain.sh contest` | **82 passed / 0 failed**（新增固定版本 2 + 提交版本 1） |
 | catalog 域 | `bash scripts/test-domain.sh catalog` | **301 passed / 0 failed** |
 | submission 域 | `bash scripts/test-domain.sh submission` | **219 passed / 0 failed / 21 ignored** |
 | identity 域 | `bash scripts/test-domain.sh identity` | **310 passed / 0 failed / 25 ignored** |
 | admin 域 | `bash scripts/test-domain.sh admin` | **14 passed / 0 failed** |
 | noj-judge | `cargo nextest run --all-targets` | **554 passed / 45 skipped** |
 | llm-gateway | `deno task test` | **99 passed / 0 failed / 1 ignored** |
-| noj-ui 单测 | `cd noj-ui && deno task test` | **232 passed / 0 failed** |
+| noj-ui 单测 | `cd noj-ui && deno task test` | **234 passed / 0 failed** |
+| noj-ui 类型 | `deno task check:types` + `deno task check:types:nuxt`（nuxt typecheck + vue-tsc） | **0 error** |
 | noj-ui 组件/composable | `deno task test:components`（vitest） | **102 passed / 19 files**（含新增 8 个版本 API 用例） |
 | 静态门禁 | lint / fmt / 域边界 / JSDoc / parity / 迁移安全 / 快照链 | 全绿 |
 

@@ -7,7 +7,13 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本，与 noj-core 测试写法一致
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { extractApiError, isNetworkError, isNotFoundError, isTimeoutError } from '../utils/apiError.ts';
+import {
+  extractApiError,
+  isNetworkError,
+  isNotFoundError,
+  isTimeoutError,
+  isVersionConflictError,
+} from '../utils/apiError.ts';
 
 /** 构造一个带 $fetch 错误对象结构的 Error（data/status 为 ofetch FetchError 字段） */
 function makeFetchError(
@@ -114,4 +120,24 @@ Deno.test('isNotFoundError: 识别 404（status 或 statusCode），其余一律
     isNotFoundError(extractApiError(makeFetchError({ status: 404 }))),
     true,
   );
+});
+
+Deno.test('isVersionConflictError: 只认版本相关错误码，其余一律 false', () => {
+  const withCode = (code: string) => ({ data: { code, error: 'x' }, status: 409 });
+  assertEquals(isVersionConflictError(withCode('VERSION_REQUIRED')), true);
+  assertEquals(
+    isVersionConflictError(withCode('CONTEST_PROBLEM_VERSION_CHANGED')),
+    true,
+  );
+  assertEquals(
+    isVersionConflictError({ data: { code: 'PROBLEM_VERSION_NOT_FOUND' }, status: 404 }),
+    true,
+  );
+  // 普通冲突/校验失败不能触发"刷新题目重取版本"分支
+  assertEquals(isVersionConflictError(withCode('CONFLICT_ERROR')), false);
+  assertEquals(isVersionConflictError(withCode('VALIDATION_ERROR')), false);
+  assertEquals(isVersionConflictError({ status: 409 }), false);
+  assertEquals(isVersionConflictError({ data: 'CONTEST_PROBLEM_VERSION_CHANGED' }), false);
+  assertEquals(isVersionConflictError(undefined), false);
+  assertEquals(isVersionConflictError(null), false);
 });

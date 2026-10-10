@@ -3,7 +3,7 @@ import type { Contest, ContestProblem } from '~/composables/useContests'
 import type { WorkspaceSubmission } from '~/components/editor/EditorWorkspace.vue'
 import { getProblemTemplateUrl } from '~/utils/problemTemplate'
 import { publicUrl } from '~/utils/publicIdentifiers'
-import { isNotFoundError } from '~/utils/apiError'
+import { isNotFoundError, isVersionConflictError } from '~/utils/apiError'
 import type { ProblemContestSecrecyNotice } from '~/utils/problemView'
 import type { EditorLanguageConfig } from '~/utils/editorLanguages'
 
@@ -43,6 +43,15 @@ type StandardProblem = EditorLanguageConfig & {
   tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
   /** 关联的未结束公开赛（仅所有者/管理员会收到）；非空时页面顶部提示保密。 */
   contest_secrecy?: ProblemContestSecrecyNotice[]
+  /** 作答版本（题库有效版本策略解析；未发布为 null）。 */
+  version_id?: string | null
+  version?: number | null
+  latest_version_id?: string | null
+  latest_version?: number | null
+  effective_version_policy?:
+    | { mode: 'any' }
+    | { mode: 'exact'; version_id: string | null }
+  is_latest?: boolean
 }
 
 const { data, pending, error, refresh } = useFetch<{
@@ -100,6 +109,17 @@ const workspaceProblem = computed(() => {
 
 const isArtifact = computed(() => workspaceProblem.value?.submission_mode === 'artifact')
 
+/**
+ * 作答版本（Handbook §4.2）：题库页取有效策略解析出的版本，竞赛页取竞赛固定版本。
+ *
+ * 提交与自测都必须原样回传，服务端据此判定"在评哪一版"；`null`（题目尚未发布
+ * 任何版本）时不能提交。
+ */
+const answerVersion = computed(() => data.value?.data?.version_id ?? null)
+
+/** 作答版本号（展示用；竞赛接口同样返回）。 */
+const answerVersionNumber = computed(() => data.value?.data?.version ?? null)
+
 // 竞赛访问控制：仅进行中且参赛者/管理员可进入编辑器
 const canUseEditor = computed(() => {
   if (!isContest.value) return true
@@ -126,6 +146,13 @@ const canSubmit = computed(
   () => !isContest.value || contest.value?.status === 'running',
 )
 
+/**
+ * 提交代码。
+ *
+ * 必须携带 `version_id`（Handbook §4.2）：题库提交按有效版本策略解析出的版本，
+ * 竞赛提交为竞赛固定版本；服务端不一致时返回 409，此处刷新题目让用户确认新版本
+ * （**不自动换版重提**，代码留在编辑器里）。
+ */
 function submit(pid: string, language: string, code: string) {
   const url = isContest.value
     ? `/api/v1/contests/${contestId.value}/submit`
@@ -135,15 +162,22 @@ function submit(pid: string, language: string, code: string) {
       problem_id: pid,
       language,
       code,
+      ...(answerVersion.value ? { version_id: answerVersion.value } : {}),
     })
     .then((r) => r.data)
+    .catch(async (err: unknown) => {
+      if (isVersionConflictError(err)) await refresh()
+      throw err
+    })
 }
 
+/** 自测同样携带版本：自测按目标版本的运行时配置与语言集合执行。 */
 function selfTest(pid: string, language: string, code: string) {
   return api
     .post<{ data: { id: string } }>(`/api/v1/problems/${pid}/self-test`, {
       language,
       code,
+      ...(answerVersion.value ? { version_id: answerVersion.value } : {}),
     })
     .then((r) => r.data)
 }
@@ -172,6 +206,15 @@ const draftKey = computed(() => isContest.value
  * 保密题在竞赛中对参赛者不可见"独立路径"，模板接口因此也做同口径校验；
  * 带上竞赛上下文后，赛中改题/重置模板仍能取到 starter code。
  */
+/** 工作区副标题：竞赛标题 + 作答版本（让选手始终知道在答哪一版）。 */
+const editorSubtitle = computed(() => {
+  const base = isContest.value ? (contest.value?.title ?? '') : ''
+  const versionText = answerVersionNumber.value != null
+    ? `作答版本 v${answerVersionNumber.value}`
+    : (answerVersion.value ? '作答版本' : '尚未发布版本')
+  return base ? `${base} · ${versionText}` : versionText
+})
+
 const templateUrl = (pid: string) =>
   isContest.value
     ? `${getProblemTemplateUrl(pid)}?contest_id=${encodeURIComponent(contestId.value)}`
@@ -263,7 +306,7 @@ const templateUrl = (pid: string) =>
       :open-submission-url="(id: string) => publicUrl('submission', id)"
       :back-url="backUrl"
       :back-label="'返回题目详情'"
-      :subtitle="isContest ? (contest?.title ?? '') : ''"
+      :subtitle="editorSubtitle"
       :can-submit="canSubmit"
       :submission-filter="submissionFilter"
       @accepted="refresh"
