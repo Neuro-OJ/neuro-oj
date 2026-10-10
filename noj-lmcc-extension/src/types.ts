@@ -36,19 +36,28 @@ export interface EvaluationResult {
   details: Record<string, unknown> | null;
 }
 
-/** 提交详情响应。 */
 /** 题目详情的版本元数据（`GET /problems/:id`）。 */
 export interface ProblemVersionInfo {
   version_id: string | null;
   version: number | null;
   latest_version_id: string | null;
   latest_version: number | null;
-  effective_version_policy:
-    | { mode: "any" }
-    | { mode: "exact"; version_id: string | null };
+  effective_version_policy: EffectiveVersionPolicy;
   is_latest: boolean;
 }
 
+/** 有效版本策略（与 core 的 `EffectiveVersionPolicy` 对齐）。 */
+export type EffectiveVersionPolicy =
+  | { mode: "any" }
+  | { mode: "exact"; version_id: string | null };
+
+/** 题目详情（版本元数据 + 列表字段）。 */
+export interface ProblemDetail extends ProblemVersionInfo {
+  id: string;
+  title: string;
+}
+
+/** 提交详情响应。 */
 export interface SubmissionDetail extends CreatedSubmission {
   problem_id: string;
   file_name: string;

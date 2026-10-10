@@ -72,7 +72,14 @@ export interface EvalTokenPayload {
    */
   attempt_id?: string;
   /** 本次评测使用的题目版本（审计用；不参与限额计算）。 */
-  problem_version_id?: string;
+  problem_version_id?: string | null;
+  /**
+   * token 协议版本（Handbook §6.7）。
+   *
+   * core 侧常量 `LLM_TOKEN_PROTOCOL_VERSION`；缺省（旧 core）按第 1 版语义处理：
+   * 按提交维度计费与吊销。新增协议字段时必须同步 core 的签发与这里的校验。
+   */
+  protocol_version?: number;
   problem_id: string;
   user_id: string;
   provider_id: string;

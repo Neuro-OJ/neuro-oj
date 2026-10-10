@@ -3,7 +3,7 @@ import * as https from "node:https";
 import type {
   CreatedSubmission,
   Problem,
-  ProblemVersionInfo,
+  ProblemDetail,
   SubmissionDetail,
   User,
 } from "./types";
@@ -186,12 +186,10 @@ export class NeuroOjApi {
    *
    * 选择题目时调用一次，把 `version_id` 固定进扩展状态；提交时原样发送。
    */
-  async problem(
-    problemId: string,
-  ): Promise<ProblemVersionInfo & { id: string; title: string }> {
-    const response = await this.request<
-      { data: ProblemVersionInfo & { id: string; title: string } }
-    >(`/api/v1/problems/${encodeURIComponent(problemId)}`);
+  async problem(problemId: string): Promise<ProblemDetail> {
+    const response = await this.request<{ data: ProblemDetail }>(
+      `/api/v1/problems/${encodeURIComponent(problemId)}`,
+    );
     return response.data;
   }
 

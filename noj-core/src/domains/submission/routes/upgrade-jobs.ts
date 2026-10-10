@@ -23,6 +23,7 @@ import {
   getUpgradeJobForActor,
   type UpgradeRequest,
 } from "../services/versioning/upgrade-jobs.ts";
+import { enforceUpgradeJobRateLimit } from "../../system/index.ts";
 
 const router = new Hono<AuthEnv>();
 
@@ -38,6 +39,9 @@ router.post("/submission-upgrade-jobs", authMiddleware, async (c) => {
   if (!body || typeof body !== "object" || !Array.isArray(body.submissions)) {
     throw new BadRequestError("缺少必填字段：submissions");
   }
+  // 参数合法后限流：一次受理最多 500 条提交，必须按 §4.4 执行提交速率限制
+  // （避免格式错误消耗配额，与 /submissions 的校验后限流顺序一致）。
+  await enforceUpgradeJobRateLimit(c, actorId);
   const accepted = await acceptUpgradeJob(actorId, body, idempotencyKey);
   return c.json({ data: accepted }, 202);
 });
