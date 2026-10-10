@@ -8,9 +8,10 @@
 > 使任何一轮中断后都能从本文件直接续接。
 
 - 目标分支：`feat/problem-version-management`（GPG 签名，禁止直推 main）
-- 当前轮次：goal round 25
-- 最近更新：批次 4/5 收尾（§4.5 策略与固定版本 HTTP 路由落地、竞赛通过状态改读投影）
-  与批次 6 管理端「版本策略」页面
+- 当前轮次：goal round 31
+- 最近更新：批次 5/7/5d 读路径统一收尾——提交详情/列表与竞赛结算就绪改读评测尝试、
+  Kaggle 竞赛计分改读竞赛有效成绩投影、正式成绩快照记录版本策略与尝试归因；
+  未发布题目不进公共读取面（详情 404 / 列表排除 / 搜索索引排除）
 
 ## 一、批次状态总览
 
@@ -20,9 +21,9 @@
 | 2 | 版本写入（草稿、发布、文件引用、OI、客观题快照） | 🟡 部分 | 2a/2b/2c（OI 核心）/2d/2e（创建即建草稿+删除清理+路由）完成；剩 2c 收尾、2e 收尾 |
 | 3 | 评测链路（attempt、协议、结果事务、LLM、sweeper、自测） | ✅ 完成 | 含协议 v2、contest 口径修复、LLM attempt 作用域 |
 | 4 | 管理操作（策略、批任务、重测、升级） | ✅ 完成 | 派发 + 路由 + 旧入口适配层；竞赛固定版本创建/编辑写入；§4.5 三个策略/固定版本端点已补；仅「代他人升级」旁路未做 |
-| 5 | 读取统一（通过状态、题单、排行、资料、社区、搜索、正式成绩） | 🟡 部分 | 5a/5b/5c 完成（stats-cache 去进程内状态、未发布题目不进公共面、搜索只索引已发布）+ 提交读路径版本信息；剩 5d 快照 |
-| 6 | 客户端（Web、IDE、CLI、演练） | 🟡 部分 | CLI/LMCC/E2E 完成；noj-ui 提交侧（详情/编辑器/竞赛/客观题）完成，剩草稿发布编辑流、提交列表/详情版本展示、管理页 |
-| 7 | 存量收尾（回填、旧表删除、视图/索引重建、备份恢复验证） | 🟡 部分 | 0103 回填 + 真实库演练完成；剩 7b |
+| 5 | 读取统一（通过状态、题单、排行、资料、社区、搜索、正式成绩） | ✅ 完成 | 5a/5b/5c/5d 全部落地：stats-cache 去进程内状态、未发布题目不进公共面、搜索只索引已发布、提交读路径版本信息、Kaggle 计分读竞赛有效成绩、正式快照记录策略与尝试归因 |
+| 6 | 客户端（Web、IDE、CLI、演练） | 🟡 部分 | CLI/LMCC/E2E 完成；noj-ui 提交侧、提交列表/详情版本展示、管理端（版本策略 + 批量重测）均完成；剩**编辑器草稿/发布编辑流**（与批次 2c/2e 同步落地） |
+| 7 | 存量收尾（回填、旧表删除、视图/索引重建、备份恢复验证） | 🟡 部分 | 0103 回填 + 真实库演练完成；全部运行期**读**已迁离 `evaluation_results`；剩写入双写移除、旧表删除、`pinned_version_id` 收紧、视图/索引重建与备份恢复演练 |
 | 8 | 文档与交付（现行文档、Agent Note、验收、PR） | ⬜ 未开始 | 含删除本跟踪文件 |
 
 图例：✅ 完成　🟡 部分　⬜ 未开始
@@ -45,7 +46,7 @@
       搜索索引排除（新增测试夹具助手 `publishBaselineVersionForTest`）。
 - [x] 5d 正式成绩快照归因：快照每题结果记录版本策略/固定版本/有效尝试/提交时版本
       （Kaggle 排名 SQL 加列 + payload + 类型 + 用例）。
-- [ ] 5d 收尾：实时 Kaggle**计分来源**迁移到 `is_contest_valid` + 竞赛有效尝试。
+- [x] 5d 收尾：实时 Kaggle 计分来源迁移到 `is_contest_valid` + 竞赛有效尝试。
 
 ### 批次 6（客户端 · noj-ui）
 - [x] `composables/useProblemVersions.ts`：草稿读写（`If-Match` 乐观锁）、发布预检/发布、
@@ -78,10 +79,11 @@
 - [x] 用户主页最近提交、个人数据导出、评测队列最近完成分数、站点统计 accepted
       全部改读尝试/有效成绩投影（不再 JOIN `evaluation_results`）。
 - [x] 提交详情/列表最近结果、竞赛结算就绪状态改读尝试（含 `platform_error` 区分）。
+- [x] `contest-ranking.ts`：结算就绪与 Kaggle 计分全部改读尝试/竞赛有效成绩投影。
 - [ ] 剩余 `evaluation_results` 引用（删表前必须清空）：
-      `contest-ranking.ts` **Kaggle 排名 SQL 3 处**（需改按 `submissions.is_contest_valid`
-      + `contest_effective_attempt_id` 计分）、`submissions-result.ts` 结果写入双写、
-      `submissions-crud.ts`/`problems-crud.ts` 的删除清理与两处 schema 定义。
+      `submissions-result.ts` 结果写入双写（移除后需同步改写 7 个断言旧表的用例：
+      `saveEvaluationResult` 5 个 + mq/consumer 2 个）、
+      `problems-crud.ts` 删除清理与两处 schema 定义。
 
 ### 批次 7（存量收尾）
 - [ ] 大库分批重算投影（`recomputeProblemProjections` 当前逐条）。
@@ -116,6 +118,7 @@
       × 三种目标（提交时版本 / 最新版 / 全部用 V<n> 逐题展开，缺版即取消受理）、
       条目进度与 `reason_code` 说明、重试 failed/skipped 生成关联新任务。
 
+### 批次 4 补充（竞赛固定版本落库）
 - [x] 竞赛创建即固定每题当时最新已发布版（`contest_problems.pinned_version_id`）。
 - [x] 编辑竞赛整体替换题目关联时保留既有固定版本（旧 null 按当前最新版回填），
       避免改名/改时间静默换版。
@@ -137,8 +140,8 @@
 
 | 范围 | 命令 | 结果 |
 |---|---|---|
-| noj-core 全量 | `cd noj-core && deno task test:parallel` | **1397 passed / 0 failed / 11 ignored** |
-| contest 域 | `bash scripts/test-domain.sh contest` | **84 passed / 0 failed**（+1 结算就绪读尝试） |
+| noj-core 全量 | `cd noj-core && deno task test:parallel` | **1403 passed / 0 failed / 11 ignored** |
+| contest 域 | `bash scripts/test-domain.sh contest` | **86 passed / 0 failed**（+1 结算就绪读尝试、+1 快照归因、+1 投影计分） |
 | catalog 域 | `bash scripts/test-domain.sh catalog` | **303 passed / 0 failed**（+2 未发布可见性） |
 | search 域 | `bash scripts/test-domain.sh search` | **30 passed / 0 failed / 1 ignored** |
 | submission 域 | `bash scripts/test-domain.sh submission` | **224 passed / 0 failed / 21 ignored**（+1 最近结果读尝试） |
@@ -157,17 +160,26 @@
 
 - 真实 PostgreSQL 存量演练（0102+0103）：7 基线 / 123 legacy 尝试 / 123 未知桶判定 /
   123 有效投影，与旧读取口径 **0 差异**；开发库已升级。
+- 读路径收敛进度（本轮后）：`evaluation_results` 的**运行期读取已全部迁离**
+  （列表/详情/队列/站点统计/个人主页/数据导出/竞赛题目通过状态/结算就绪/Kaggle 计分）；
+  仅剩结果写入双写与删除清理 + schema 定义。
 - 提交历史：**41 个 GPG 签名提交**在 `feat/problem-version-management`，工作副本干净。
 - 环境注意：`noj-lmcc-extension` 的 `npm run check` 因缺 `@types/node` 与
   `moduleResolution=node10` 弃用报错（预先存在，非本次改动引入）。
 
 ## 四、下一步（按优先级）
 
-1. **noj-ui 编辑器**（批次 6 收尾）：编辑器「保存草稿 / 发布版本」两动作，
-   客观题编辑器小题写草稿（稳定 key、整卷发布）。
-2. 2c/2e 收尾（OI 草稿路径 + `updateProblem` 内容写草稿）。
-3. 批次 5 收尾（stats-cache 去进程内状态、搜索索引发布内容、正式成绩快照）。
-4. 批次 7b 与批次 8（文档、Agent Note、验收、PR），最后删除本文件。
+1. **批次 2c/2e + 编辑器 UI（必须同步落地）**：`updateProblem` 内容改写草稿、
+   OI 路由走 `saveOiDraft`、客观题小题写草稿；noj-ui 编辑器「保存草稿 / 发布版本」
+   两动作与整卷发布。这是最后一个"模型与实现不一致"的大项。
+2. **批次 7b**：移除 `submissions-result.ts` 结果写入双写（需同步改写 7 个断言旧表的
+   用例）→ 生成删表迁移（`DROP evaluation_results`）并清理全部测试夹具 →
+   `contest_problems.pinned_version_id` 收紧 NOT NULL → 重建榜单视图与搜索索引 →
+   备份/恢复演练。
+3. **批次 8**：版本管理文档、同步现行文档（README/AGENTS/题型/题包/题单/提交/竞赛/升级）、
+   implemented Agent Note、全量验收（core 各域 + shared + judge + gateway + UI + E2E）、
+   PR 合入 `main`。
+4. 交付前删除本跟踪文件（见文末清单）。
 
 ## 五、交付前删除清单（本文件生命周期的收口）
 

@@ -435,8 +435,8 @@
   - `KaggleProblemScore` 类型同步；快照仍是"既有快照保留、修订走新快照"（版本递增）；
   - 新增用例：exact(V2) 竞赛 + 已知提交时版本的提交 → 快照 payload 含
     `version_policy = {mode:'exact',version_id}`、`policy_revision = 3` 与尝试/版本归因。
-  - 说明：实时 Kaggle 榜的**计分来源**仍是 `evaluation_results`（下一步迁移到
-    `is_contest_valid` + `contest_effective_attempt_id`，随后才能删旧表）。
+  - 说明：实时 Kaggle 榜的计分来源已在同一轮迁移到
+    `is_contest_valid` + `contest_effective_attempt_id`（见下一条落点）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 
 ## 批次 8 落点清单
@@ -520,8 +520,8 @@
 - 批次 5d（正式成绩快照归因）：contest 域
   `bash scripts/test-domain.sh contest` **85 passed / 0 failed**（+1：快照记录每题
   版本策略、固定版本、有效尝试与提交时版本）；noj-core 全量
-  `deno task test:parallel` 见下方；`deno fmt --check` / `deno lint` / 域边界 /
-  JSDoc / 类型检查全绿。
+  `deno task test:parallel` **1403 passed / 0 failed / 11 ignored**；
+  `deno fmt --check` / `deno lint` / 域边界 / JSDoc / 类型检查全绿。
 - 批次 5/7（提交详情/列表与竞赛结算就绪读尝试）：submission 域
   `bash scripts/test-domain.sh submission` **224 passed / 0 failed / 21 ignored**
   （+1：详情/列表最近结果读最近终态尝试，且无尝试时 result 为 null 不回退旧表）；

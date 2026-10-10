@@ -53,6 +53,30 @@ async function insertSubmission(
     status: "finished",
     created_at: createdAt,
   });
+  // 竞赛计分读「竞赛口径有效成绩」：提交 + 尝试 + 有效指针（Handbook §3.4）
+  const attemptId = crypto.randomUUID();
+  await getDb().insert(evaluationAttempts).values({
+    id: attemptId,
+    submission_id: id,
+    problem_id: problemId,
+    sequence: 0,
+    source: "initial",
+    state: "finished",
+    result_kind: "graded",
+    result_status: "finished",
+    score,
+    accepted: score > 0,
+    created_at: createdAt,
+    finished_at: createdAt,
+  });
+  await getDb().update(submissions).set({
+    is_contest_valid: true,
+    is_valid: true,
+    latest_attempt_id: attemptId,
+    effective_attempt_id: attemptId,
+    contest_effective_attempt_id: attemptId,
+  }).where(eq(submissions.id, id));
+  // 兼容旧读取（结算/通知等仍可能读最近结果表）
   await getDb().insert(evaluationResults).values({
     id: crypto.randomUUID(),
     submission_id: id,
@@ -1055,6 +1079,132 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
+      await db.delete(problems).where(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, userId));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking: 计分只认竞赛有效成绩投影，旧结果表不参与",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userId = crypto.randomUUID();
+    const problemId = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const submissionId = crypto.randomUUID();
+    const attemptId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await insertUser(userId, "kaggle-projection");
+    await insertProblem(problemId, 920096, "投影计分题");
+    await db.insert(contests).values({
+      id: contestId,
+      title: "投影计分测试",
+      start_time: atMinutes(-120),
+      end_time: atMinutes(-1),
+      type: "kaggle",
+      config: {},
+      created_by: userId,
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contestProblems).values({
+      contest_id: contestId,
+      problem_id: problemId,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: userId,
+      registered_at: atMinutes(-100),
+    });
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      contest_id: contestId,
+      language: "python3",
+      code: "print(1)",
+      status: "finished",
+      version_origin: "legacy_unknown",
+      created_at: atMinutes(-50),
+    });
+    await db.insert(evaluationAttempts).values({
+      id: attemptId,
+      submission_id: submissionId,
+      problem_id: problemId,
+      sequence: 0,
+      source: "initial",
+      state: "finished",
+      result_kind: "graded",
+      result_status: "finished",
+      score: 9000,
+      accepted: true,
+      created_at: atMinutes(-49),
+    });
+    // 旧结果表里有分数；投影未标记竞赛有效 → 不得计入竞赛成绩
+    await db.insert(evaluationResults).values({
+      id: crypto.randomUUID(),
+      submission_id: submissionId,
+      status: "finished",
+      score: 9000,
+      created_at: atMinutes(-49),
+    });
+
+    try {
+      const ignored = await getContestRanking(contestId, "kaggle");
+      assertEquals(ignored.length, 1);
+      assertEquals(ignored[0].total_score, 0);
+      assertEquals(ignored[0].problem_scores[0].best_score, 0);
+      assertEquals(ignored[0].problem_scores[0].attempts, 0);
+      assertEquals(ignored[0].problem_scores[0].submission_id ?? null, null);
+
+      // 投影标记为竞赛有效并指向该尝试 → 计分立即生效
+      await db.update(submissions).set({
+        is_contest_valid: true,
+        is_valid: true,
+        latest_attempt_id: attemptId,
+        effective_attempt_id: attemptId,
+        contest_effective_attempt_id: attemptId,
+      }).where(eq(submissions.id, submissionId));
+      const counted = await getContestRanking(contestId, "kaggle");
+      assertEquals(counted[0].total_score, 9000);
+      assertEquals(counted[0].problem_scores[0].best_score, 9000);
+      assertEquals(counted[0].problem_scores[0].attempts, 1);
+
+      // 归因（有效尝试）随正式快照记录：实时榜只回最小字段集
+      await publishContestRankingSnapshot(contestId, userId, "投影计分发版");
+      const snapshot = await getLatestContestRankingSnapshot(contestId);
+      assertExists(snapshot);
+      const snapshotRows = snapshot.rows as Array<{
+        user_id: string;
+        problem_scores: Array<Record<string, unknown>>;
+      }>;
+      const snapshotScore = snapshotRows.find((row) => row.user_id === userId)
+        ?.problem_scores.find((item) => item.label === "A");
+      assertExists(snapshotScore);
+      assertEquals(snapshotScore!.effective_attempt_id, attemptId);
+      assertEquals(snapshotScore!.evaluation_status, "finished");
+    } finally {
+      await db.delete(evaluationResults).where(
+        eq(evaluationResults.submission_id, submissionId),
+      );
+      await db.delete(evaluationAttempts).where(
+        eq(evaluationAttempts.problem_id, problemId),
+      );
+      await db.delete(submissions).where(eq(submissions.id, submissionId));
+      await db.delete(contestProblems).where(
+        eq(contestProblems.contest_id, contestId),
+      );
+      await db.delete(contestParticipants).where(
+        eq(contestParticipants.contest_id, contestId),
+      );
+      await db.delete(contests).where(eq(contests.id, contestId));
       await db.delete(problems).where(eq(problems.id, problemId));
       await db.delete(users).where(eq(users.id, userId));
     }

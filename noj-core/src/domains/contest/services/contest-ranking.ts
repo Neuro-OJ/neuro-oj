@@ -344,13 +344,17 @@ export async function getKaggleRanking(
       WHERE id = ${contestId}
     ),
     submission_scores AS (
-      SELECT s.id, s.user_id, s.problem_id, s.created_at, er.score,
-        er.status AS evaluation_status, er.created_at AS evaluation_created_at,
+      -- 竞赛计分只取「竞赛口径有效成绩」（Handbook §3.4/§6.6）：
+      -- 有效成绩指针指向的已完成正式尝试，不再读 evaluation_results
+      SELECT s.id, s.user_id, s.problem_id, s.created_at, ea.score,
+        ea.result_status AS evaluation_status,
+        coalesce(ea.finished_at, ea.created_at) AS evaluation_created_at,
         s.rejudge_seq
       FROM submissions s
-      JOIN evaluation_results er ON er.submission_id = s.id
+      JOIN evaluation_attempts ea ON ea.id = s.contest_effective_attempt_id
       JOIN contest_data c ON c.id = s.contest_id
       WHERE s.contest_id = ${contestId}
+        AND s.is_contest_valid = TRUE
         AND s.created_at <= c.end_time
         ${cutoffTime ? sql`AND s.created_at <= ${cutoffTime}` : sql``}
       UNION ALL
