@@ -63,6 +63,12 @@ export interface ContestProblem {
   version_id?: string | null;
   /** 固定版本的版本号（展示用）。 */
   version?: number | null;
+  /** 该「竞赛 × 题目」的有效版本策略（与题库策略独立）。 */
+  effective_version_policy?:
+    | { mode: 'any' }
+    | { mode: 'exact'; version_id: string | null };
+  /** 策略乐观锁版本（管理端切换策略/升级固定版本时必须回传）。 */
+  effective_version_policy_revision?: number;
 }
 
 export interface ContestProblemInput {

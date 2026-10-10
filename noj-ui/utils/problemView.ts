@@ -118,6 +118,8 @@ export interface ProblemResource {
   effective_version_policy?:
     | { mode: 'any' }
     | { mode: 'exact'; version_id: string | null };
+  /** 策略乐观锁版本（管理端切换策略时回传 `expected_revision`）。 */
+  effective_version_policy_revision?: number;
   is_latest?: boolean;
   runtime_config?: {
     evaluator?: {

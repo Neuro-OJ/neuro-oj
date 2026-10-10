@@ -12,8 +12,10 @@ import { and, eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   contestProblems,
+  contests,
   problems,
   problemVersions,
+  submissions,
   users,
 } from "../../../../shared/db/schema.ts";
 import {
@@ -214,5 +216,88 @@ Deno.test({
         ?.version,
       2,
     );
+  },
+});
+
+Deno.test({
+  name: "contest pinning: 题目列表下发竞赛策略与通过状态读投影",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const creatorId = await createUser("pinning-list-creator");
+    const solverId = await createUser("pinning-list-solver");
+    await createProblem("cp-pin-p5", 985005);
+    const v1 = await publishVersion("cp-pin-p5", 1);
+    await publishVersion("cp-pin-p5", 2);
+
+    const contest = await createContest({
+      title: "策略下发测试赛",
+      start_time: new Date(Date.now() + 60_000).toISOString(),
+      end_time: new Date(Date.now() + 3_600_000).toISOString(),
+      type: "kaggle",
+      password: "ContestPass123",
+      problems: [{
+        problem_id: "cp-pin-p5",
+        label: "A",
+        sort_order: 0,
+        score: 10000,
+      }],
+    }, creatorId);
+
+    // 通过状态只读投影：仅有提交但没有 is_contest_accepted → attempted
+    await getDb().insert(submissions).values({
+      id: "cp-pin-sub-1",
+      user_id: solverId,
+      problem_id: "cp-pin-p5",
+      contest_id: contest.id,
+      language: "python",
+      code: "print(1)",
+      submitted_version_id: v1,
+      version_origin: "known",
+      created_at: now,
+    });
+    const attempted = await getContestProblems(contest.id, solverId);
+    assertEquals(attempted[0].user_status, "attempted");
+
+    // 投影置为竞赛口径通过 → solved（不依赖已废弃的 evaluation_results）
+    await getDb().update(submissions).set({ is_contest_accepted: true })
+      .where(eq(submissions.id, "cp-pin-sub-1"));
+    const solved = await getContestProblems(contest.id, solverId);
+    assertEquals(solved[0].user_status, "solved");
+
+    // 策略与乐观锁版本随列表下发（管理端切换策略时回传）
+    assertEquals(solved[0].effective_version_policy, { mode: "any" });
+    assertEquals(solved[0].effective_version_policy_revision, 0);
+    await getDb().update(contestProblems).set({
+      effective_version_mode: "exact",
+      required_version_id: v1,
+      effective_policy_revision: 1,
+      pinned_version_id: v1,
+    }).where(and(
+      eq(contestProblems.contest_id, contest.id),
+      eq(contestProblems.problem_id, "cp-pin-p5"),
+    ));
+    const exact = await getContestProblems(contest.id, solverId);
+    assertEquals(exact[0].effective_version_policy, {
+      mode: "exact",
+      version_id: v1,
+    });
+    assertEquals(exact[0].effective_version_policy_revision, 1);
+    // 固定版本同步为 V1（exact 下的作答版本）
+    assertEquals(exact[0].version_id, v1);
+
+    // 策略收紧后投影未重算：通过状态仍来自投影（读侧不自行推导）
+    await getDb().delete(submissions).where(eq(submissions.id, "cp-pin-sub-1"));
+    await getDb().delete(contestProblems).where(
+      eq(contestProblems.contest_id, contest.id),
+    );
+    await getDb().delete(contests).where(eq(contests.id, contest.id));
+    await getDb().update(problems).set({ latest_version_id: null }).where(
+      eq(problems.id, "cp-pin-p5"),
+    );
+    await getDb().delete(problemVersions).where(
+      eq(problemVersions.problem_id, "cp-pin-p5"),
+    );
+    await getDb().delete(problems).where(eq(problems.id, "cp-pin-p5"));
   },
 });

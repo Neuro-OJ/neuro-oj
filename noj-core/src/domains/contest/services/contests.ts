@@ -950,6 +950,9 @@ export async function getContestProblems(
       cp.score,
       cp.pinned_version_id,
       pv.version AS pinned_version_number,
+      cp.effective_version_mode,
+      cp.required_version_id,
+      cp.effective_policy_revision,
       p.title,
       p.description,
       p.difficulty,
@@ -962,15 +965,15 @@ export async function getContestProblems(
       CONCAT(p.type, p.number::text) AS display_id,
       CASE
         WHEN ${userId ?? null}::text IS NULL THEN 'untouched'
+        -- 通过状态读「竞赛口径有效通过」投影（Handbook §3.4）：
+        -- 不再 JOIN 待删除的 evaluation_results，且 exact 策略收紧后立即不再算通过
         WHEN EXISTS (
           SELECT 1
           FROM submissions s
-          JOIN evaluation_results er ON er.submission_id = s.id
           WHERE s.contest_id = cp.contest_id
             AND s.problem_id = cp.problem_id
             AND s.user_id = ${userId ?? null}
-            AND er.status = 'finished'
-            AND er.score > 0
+            AND s.is_contest_accepted = TRUE
         ) THEN 'solved'
         WHEN EXISTS (
           SELECT 1
@@ -1008,6 +1011,16 @@ export async function getContestProblems(
     version: row.pinned_version_number == null
       ? null
       : Number(row.pinned_version_number),
+    // 竞赛 × 题目 有效版本策略与乐观锁版本（管理端切换策略/升级固定版本用）
+    effective_version_policy: row.effective_version_mode === "exact"
+      ? {
+        mode: "exact" as const,
+        version_id: (row.required_version_id as string | null) ?? null,
+      }
+      : { mode: "any" as const },
+    effective_version_policy_revision: Number(
+      row.effective_policy_revision ?? 0,
+    ),
     supported_languages: getSubmissionLanguages(
       row.judge_type as string,
       row.runtime_config as ProblemRuntimeConfig | null,

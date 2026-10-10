@@ -256,6 +256,7 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
     latest_version_id: problems.latest_version_id,
     effective_version_mode: problems.effective_version_mode,
     required_version_id: problems.required_version_id,
+    effective_policy_revision: problems.effective_policy_revision,
   }).from(problems).where(eq(problems.id, problem.id)).limit(1);
 
   const requestedVersionId = c.req.query("version_id")?.trim() || null;
@@ -291,6 +292,9 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
     effective_version_policy: identity?.effective_version_mode === "exact"
       ? { mode: "exact" as const, version_id: identity.required_version_id }
       : { mode: "any" as const },
+    // 策略乐观锁版本（管理端切换策略时必须回传 `expected_revision`）。
+    // 只是单调计数器，不含内容，对普通读者无敏感信息。
+    effective_version_policy_revision: identity?.effective_policy_revision ?? 0,
     is_latest: answerVersion
       ? answerVersion.version_id === identity?.latest_version_id
       : false,

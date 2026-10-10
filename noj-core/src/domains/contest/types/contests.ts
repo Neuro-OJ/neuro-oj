@@ -172,6 +172,16 @@ export interface ContestProblemResponse extends ContestProblemInput {
   version_id: string | null;
   /** 固定版本的版本号（展示用；无固定版本为 null）。 */
   version: number | null;
+  /**
+   * 该「竞赛 × 题目」的有效版本策略（与题库策略独立，Handbook §1.2）。
+   *
+   * `exact(X)` 时要求版本必然等于固定作答版本；管理端切换策略时按此项回显。
+   */
+  effective_version_policy?:
+    | { mode: "any" }
+    | { mode: "exact"; version_id: string | null };
+  /** 策略乐观锁版本（管理端切换策略/升级固定版本时必须回传）。 */
+  effective_version_policy_revision?: number;
 }
 
 export interface KaggleProblemScore {

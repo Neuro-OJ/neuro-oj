@@ -9,8 +9,8 @@
 
 - 目标分支：`feat/problem-version-management`（GPG 签名，禁止直推 main）
 - 当前轮次：goal round 25
-- 最近更新：批次 6 提交侧（版本筛选 + 批量升级入口）与批次 5 stats-cache
-  多副本合规化（去进程内计数器、revision 键控、读有效投影）
+- 最近更新：批次 4/5 收尾（§4.5 策略与固定版本 HTTP 路由落地、竞赛通过状态改读投影）
+  与批次 6 管理端「版本策略」页面
 
 ## 一、批次状态总览
 
@@ -19,7 +19,7 @@
 | 1 | 基础模型（schema/类型/纯计算器/PGlite DDL/迁移 0102） | ✅ 完成 | parity 68 表/613 列 |
 | 2 | 版本写入（草稿、发布、文件引用、OI、客观题快照） | 🟡 部分 | 2a/2b/2c（OI 核心）/2d/2e（创建即建草稿+删除清理+路由）完成；剩 2c 收尾、2e 收尾 |
 | 3 | 评测链路（attempt、协议、结果事务、LLM、sweeper、自测） | ✅ 完成 | 含协议 v2、contest 口径修复、LLM attempt 作用域 |
-| 4 | 管理操作（策略、批任务、重测、升级） | ✅ 完成 | 派发 + 路由 + 旧入口适配层；竞赛固定版本创建/编辑写入已补；仅「代他人升级」旁路未做 |
+| 4 | 管理操作（策略、批任务、重测、升级） | ✅ 完成 | 派发 + 路由 + 旧入口适配层；竞赛固定版本创建/编辑写入；§4.5 三个策略/固定版本端点已补；仅「代他人升级」旁路未做 |
 | 5 | 读取统一（通过状态、题单、排行、资料、社区、搜索、正式成绩） | 🟡 部分 | 5a/5b/5c 完成（含 stats-cache 去进程内状态 + 有效投影口径）+ 提交读路径版本信息；剩 search 索引、5d 快照 |
 | 6 | 客户端（Web、IDE、CLI、演练） | 🟡 部分 | CLI/LMCC/E2E 完成；noj-ui 提交侧（详情/编辑器/竞赛/客观题）完成，剩草稿发布编辑流、提交列表/详情版本展示、管理页 |
 | 7 | 存量收尾（回填、旧表删除、视图/索引重建、备份恢复验证） | 🟡 部分 | 0103 回填 + 真实库演练完成；剩 7b |
@@ -86,7 +86,20 @@
 - [ ] PR：从 `feat/problem-version-management` 合入 `main`（GPG 签名、CI 全绿）。
 - [ ] **删除本跟踪文件**（见文末清单）。
 
-### 批次 4 补充（本轮新增）
+### 批次 4 补充（§4.5 端点 + 管理端页面）
+- [x] `PUT /api/v1/admin/problems/:id/effective-version-policy`、
+      `PUT /api/v1/admin/contests/:contestId/problems/:problemId/effective-version-policy`、
+      `PUT /api/v1/admin/contests/:contestId/problems/:problemId/version`
+      （新路由文件 `noj-core/src/domains/admin/routes/problem-versions.ts`，挂在
+      `/api/v1/admin` 根下以匹配 Handbook 路径；policy/expected_revision 服务端校验）。
+- [x] 题目详情下发 `effective_version_policy_revision`；竞赛题目列表下发
+      `effective_version_policy` 与 `effective_version_policy_revision`
+      （管理端乐观锁所需）。
+- [x] 竞赛题目列表的 `user_status` 改读 `submissions.is_contest_accepted`
+      投影，不再 JOIN 待删除的 `evaluation_results`。
+- [x] noj-ui `pages/admin/problem-versions.vue`：题库策略切换（any/exact + 版本选择）+
+      竞赛固定版本/策略逐题编辑（带 revision 乐观锁，冲突后自动重载）。
+
 - [x] 竞赛创建即固定每题当时最新已发布版（`contest_problems.pinned_version_id`）。
 - [x] 编辑竞赛整体替换题目关联时保留既有固定版本（旧 null 按当前最新版回填），
       避免改名/改时间静默换版。

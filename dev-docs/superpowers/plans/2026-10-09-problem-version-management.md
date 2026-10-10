@@ -384,6 +384,18 @@
     分数/时间参数（进程内不再需要它们）；
   - 测试改为数据库驱动：重复 `applyNewResult()` 不重复计数、revision 换键后立即读
     新口径、今日口径按提交时间过滤。
+- [x] 4.5（策略与固定版本 HTTP 端点 + 管理端页面）
+  - 新增 `noj-core/src/domains/admin/routes/problem-versions.ts` 并在 admin 组合路由
+    中以 `/` 前缀挂载（路径与 Handbook §4.5 完全一致）：题库策略、竞赛×题目策略、
+    竞赛固定版本升级；`policy` 与 `expected_revision` 一律服务端校验（400），
+    过时 revision → 409 `EFFECTIVE_POLICY_REVISION_CONFLICT`，
+    固定版本与现有 exact 策略冲突 → 409 `CONTEST_PROBLEM_VERSION_POLICY_CONFLICT`；
+  - 题目详情新增 `effective_version_policy_revision`；竞赛题目列表新增
+    `effective_version_policy` / `effective_version_policy_revision`（管理端乐观锁）；
+  - 竞赛题目列表 `user_status` 改读 `submissions.is_contest_accepted` 投影
+    （去掉对 `evaluation_results` 的运行期依赖，策略收紧后通过状态立即变化）；
+  - noj-ui 新增 `pages/admin/problem-versions.vue`（管理端导航「版本策略」）：
+    题库策略 any/exact 切换、竞赛逐题固定版本升级与策略切换。
 - [ ] 5c（收尾）search 索引发布内容、正式成绩快照（5d）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 
@@ -465,6 +477,14 @@
 
 ## 最近一次验证
 
+- 批次 4/5（§4.5 策略端点 + 竞赛通过状态读投影 + 管理端页面）：
+  admin 域 `bash scripts/test-domain.sh admin` **16 passed / 0 failed**（+2：
+  题库策略乐观锁与参数校验、竞赛策略与固定版本升级的相互作用）；contest 域
+  **83 passed / 0 failed**（+1：题目列表下发策略与通过状态读投影）；catalog 域
+  **301 passed / 0 failed**；noj-core 全量 `deno task test:parallel`
+  **1395 passed / 0 failed / 11 ignored**；noj-ui `deno task test`
+  **235 passed / 0 failed**、`check:types:nuxt`（nuxt typecheck + vue-tsc）0 error、
+  `deno lint` / `deno fmt --check` 全绿。
 - 批次 5（stats-cache 去进程内状态 + 有效投影口径）：query 域
   `bash scripts/test-domain.sh query` **22 passed / 0 failed**（4 个用例重写为
   数据库驱动）；noj-core 全量 `deno task test:parallel`
