@@ -164,6 +164,12 @@
       `expected_version_id`/`submitted_version_id`。
 
 ### 已知偏差 / 待收紧
+- [ ] **客观题套卷仍走旧小题表**（2d 收尾）：`POST/PUT/DELETE /problems/:id/questions`
+  仍写 `objective_questions`，`GET` 仍读该表；草稿小题服务
+  `objective-drafts.ts` 已就绪但未接路由。后果：已发布套卷的小题编辑不会进入草稿
+  （再次发布为 `unchanged`），套卷元信息（标题/题面）在已发布套卷上经
+  `PUT /problems/:id` 只落草稿、编辑器刷新会看到旧标题。**下一轮整批落地**
+  （路由 + `useObjective`/`ObjectiveProblemEditor` + noj-tests 客观题 E2E 先发布 V1）。
 - [ ] `resolveSubmissionVersion` 对「题目尚未发布任何版本」的存量题目仍返回
       `legacy_unknown`；批次 7 基线回填完成后收紧为拒绝。
 - [ ] `rejudgeProblemSubmissions` 整题范围仍按 `submitted` 目标受理（适配层），
