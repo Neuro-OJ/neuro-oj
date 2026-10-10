@@ -9,7 +9,6 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 
 import {
   contestParticipants,
-  contestProblems,
   contests,
   objectiveQuestions,
   objectiveSubmissions,
@@ -26,6 +25,7 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
+import { insertContestProblems } from "../../../../../tests/helper.ts";
 
 await resetDbForTest();
 const db = getDb();
@@ -209,7 +209,7 @@ Deno.test({
       user_id: user,
       registered_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: paper,
       sort_order: 1,
@@ -303,7 +303,7 @@ Deno.test({
     );
 
     // 套卷在题单但竞赛未开始
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: paper,
       sort_order: 1,
@@ -406,7 +406,7 @@ Deno.test({
       user_id: user,
       registered_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: paper,
       sort_order: 1,
@@ -469,7 +469,7 @@ Deno.test({
       user_id: user,
       registered_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: paper,
       sort_order: 1,

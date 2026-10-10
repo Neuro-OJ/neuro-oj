@@ -31,6 +31,7 @@ import {
   recomputeSubmissionProjection,
   upsertCurrentVersionResult,
 } from "../../services/versioning/projection.ts";
+import { insertContestProblems } from "../../../../../tests/helper.ts";
 
 const now = new Date().toISOString();
 
@@ -323,7 +324,7 @@ Deno.test("projection: 题库与竞赛两个作用域独立计算", async () => 
     created_at: now,
     updated_at: now,
   });
-  await db.insert(contestProblems).values({
+  await insertContestProblems({
     contest_id: "proj-c5",
     problem_id: "proj-p5",
     label: "A",
@@ -415,7 +416,7 @@ Deno.test("projection: 写入投影并递增题目/竞赛 revision", async () =>
     created_at: now,
     updated_at: now,
   });
-  await db.insert(contestProblems).values({
+  await insertContestProblems({
     contest_id: "proj-c6",
     problem_id: "proj-p6",
     label: "A",

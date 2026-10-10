@@ -9,7 +9,6 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
-  contestProblems,
   contests,
   evaluationAttempts,
   problems,
@@ -30,6 +29,7 @@ import {
   listAttempts,
 } from "../../services/versioning/result-write.ts";
 import type { ProjectionSource } from "../../services/versioning/projection.ts";
+import { insertContestProblems } from "../../../../../tests/helper.ts";
 
 const now = new Date().toISOString();
 
@@ -241,7 +241,7 @@ Deno.test("result write: 竞赛提交自动补全竞赛上下文并写入竞赛�
     created_at: now,
     updated_at: now,
   });
-  await db.insert(contestProblems).values({
+  await insertContestProblems({
     contest_id: contestId,
     problem_id: "rw-p6",
     sort_order: 1,

@@ -40,11 +40,10 @@ const now = new Date().toISOString();
  * 因此在模块加载时指向一次性临时目录，避免污染仓库的 data/storage。
  */
 const tempStorageDir = Deno.makeTempDirSync({ prefix: "noj-publish-" });
-Deno.env.set("SUPPORT_PACKAGE_DIR", tempStorageDir);
 
 /** 每个用例重置 provider 单例（同一临时目录，内容寻址互不干扰）。 */
 function useTempStorage(): LocalStorageProvider {
-  const provider = new LocalStorageProvider();
+  const provider = new LocalStorageProvider(tempStorageDir);
   setStorageProviderForTest(provider);
   return provider;
 }

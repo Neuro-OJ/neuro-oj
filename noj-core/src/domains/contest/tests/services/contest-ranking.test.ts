@@ -25,6 +25,7 @@ import {
   ForbiddenError,
   UnauthorizedError,
 } from "../../../../shared/base/errors.ts";
+import { insertContestProblems } from "../../../../../tests/helper.ts";
 
 await resetDbForTest({ refreshRankings: true });
 
@@ -183,7 +184,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: problemId,
       label: "A",
@@ -301,7 +302,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values([
+    await insertContestProblems([
       {
         contest_id: contestId,
         problem_id: problemA,
@@ -388,7 +389,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values([
+    await insertContestProblems([
       {
         contest_id: contestId,
         problem_id: problemA,
@@ -479,7 +480,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: paperId,
       label: "A",
@@ -570,7 +571,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: problemA,
       label: "A",
@@ -642,7 +643,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: problemA,
       label: "A",
@@ -710,7 +711,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: problemA,
       label: "A",
@@ -768,7 +769,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: problemId,
       label: "A",
@@ -904,7 +905,7 @@ Deno.test({
       updated_at: now,
     });
     // 竞赛固定 V2 且策略收紧为 exact(V2)：快照必须记录这一事实
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: problemId,
       label: "A",
@@ -1032,7 +1033,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: problemId,
       label: "A",

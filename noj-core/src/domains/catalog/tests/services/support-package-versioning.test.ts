@@ -26,10 +26,9 @@ import type { ProblemDraftContent } from "../../types/problem-content.ts";
 
 const now = new Date().toISOString();
 const tempStorageDir = Deno.makeTempDirSync({ prefix: "noj-support-" });
-Deno.env.set("SUPPORT_PACKAGE_DIR", tempStorageDir);
 
 function useTempStorage(): LocalStorageProvider {
-  const provider = new LocalStorageProvider();
+  const provider = new LocalStorageProvider(tempStorageDir);
   setStorageProviderForTest(provider);
   return provider;
 }

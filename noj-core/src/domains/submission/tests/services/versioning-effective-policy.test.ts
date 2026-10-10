@@ -29,6 +29,7 @@ import {
   recomputeSubmissionProjection,
   upsertCurrentVersionResult,
 } from "../../services/versioning/projection.ts";
+import { insertContestProblems } from "../../../../../tests/helper.ts";
 
 const now = new Date().toISOString();
 
@@ -131,7 +132,7 @@ async function seedContest(
     created_at: now,
     updated_at: now,
   });
-  await db.insert(contestProblems).values({
+  await insertContestProblems({
     contest_id: contestId,
     problem_id: problemId,
     label: "A",

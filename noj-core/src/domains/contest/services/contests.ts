@@ -262,18 +262,20 @@ function normalizeProblems(
 }
 
 /**
- * 断言竞赛题目均可加入：题目必须真实存在；
+ * 断言竞赛题目均可加入：题目必须真实存在、**已发布至少一个版本**；
  * 普通用户只能加入 public 题或自己拥有的题（堵“造竞赛上下文套他人私有题”洞）。
  *
  * 同时返回各题当前的最新已发布版本，供调用方写入竞赛固定版本
- * （`contest_problems.pinned_version_id`，Handbook §4.1「竞赛默认 = 固定版本」）。
+ * （`contest_problems.pinned_version_id`，Handbook §2.6/§4.1「竞赛默认 = 固定版本」）。
+ * 未发布题目不能加入竞赛：固定版本是竞赛作答与判卷的唯一来源，空固定版本会让
+ * 竞赛题目无法确定"评哪一版"。
  *
  * @param problemInputs 竞赛题目输入列表
  * @param creatorId 竞赛创建者/更新者用户 ID
  * @param isAdmin 是否为管理员
  * @param db 数据库连接或事务对象
- * @returns problem_id → 最新已发布版本 ID（题目尚未发布任何版本时为 null）
- * @throws {BadRequestError} 存在不存在的题目时
+ * @returns problem_id → 最新已发布版本 ID（保证非空）
+ * @throws {BadRequestError} 存在不存在或尚未发布任何版本的题目时
  * @throws {ForbiddenError} 普通用户加入他人私有题时
  */
 async function assertContestProblemAddable(
@@ -282,7 +284,7 @@ async function assertContestProblemAddable(
   isAdmin: boolean,
   // deno-lint-ignore no-explicit-any -- postgres.js 与 PGlite 事务共享接口
   db: any,
-): Promise<Map<string, string | null>> {
+): Promise<Map<string, string>> {
   const ids = problemInputs.map((value) => value.problem_id);
   const rows = await db.select({
     id: problems.id,
@@ -300,10 +302,19 @@ async function assertContestProblemAddable(
       }
     }
   }
+  const unpublished = rows.filter(
+    (row: { latest_version_id: string | null }) => !row.latest_version_id,
+  );
+  if (unpublished.length > 0) {
+    // 固定版本不可为空（NOT NULL + 复合外键）；未发布题目必须先发布版本
+    throw new BadRequestError(
+      `竞赛只能包含已发布题目：${unpublished.length} 道题尚未发布任何版本（请先发布题目版本）`,
+    );
+  }
   return new Map(
     rows.map((
       row: { id: string; latest_version_id: string | null },
-    ) => [row.id, row.latest_version_id ?? null]),
+    ) => [row.id, row.latest_version_id as string]),
   );
 }
 
@@ -457,7 +468,7 @@ export async function createContest(
         ...value,
         // 创建即固定版本：钉在当时的已发布最新版，之后题库发布新版本不影响本竞赛
         // （换版必须走显式的「竞赛固定版本升级」操作，Handbook §4.1/§4.3）。
-        pinned_version_id: latestVersions.get(value.problem_id) ?? null,
+        pinned_version_id: latestVersions.get(value.problem_id)!,
       })),
     );
   });
@@ -539,7 +550,7 @@ export async function updateContest(
     : null;
   const db = getDb();
   /** 本次更新涉及题目的最新已发布版本（在事务内校验题目可加入时一并取得）。 */
-  let latestVersions: Map<string, string | null> | null = null;
+  let latestVersions: Map<string, string> | null = null;
 
   await db.transaction(async (tx) => {
     if (problemInputs) {
@@ -603,14 +614,14 @@ export async function updateContest(
       );
       await tx.insert(contestProblems).values(
         problemInputs.map((value) => {
-          const existingPin = existingPins.get(value.problem_id) ?? null;
+          // 已有固定版本原样保留（编辑竞赛不得静默换版）；新加入的题目用本次
+          // 解析出的最新已发布版本（assert 已保证存在，未发布题目直接 400）。
+          const existingPin = existingPins.get(value.problem_id);
           return {
             contest_id: id,
             ...value,
-            // 已有固定版本原样保留；旧行为 null（加入时题目尚未发布版本，走存量路径）
-            // 时按当前最新已发布版回填——与批次 7 存量收尾口径一致。
             pinned_version_id: existingPin ??
-              latestVersions?.get(value.problem_id) ?? null,
+              latestVersions!.get(value.problem_id)!,
           };
         }),
       );

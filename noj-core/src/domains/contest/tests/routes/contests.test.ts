@@ -16,7 +16,11 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../identity/index.ts";
-import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
+import {
+  initRedisForTest,
+  jsonRequest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 
 await resetDbForTest();
 await initRedisForTest();
@@ -92,6 +96,9 @@ Deno.test({
         updated_at: now,
       },
     ]);
+    // 竞赛只能固定已发布版本（Handbook §2.6）：夹具题目补迁移基线
+    await publishBaselineVersionForTest(problemId);
+    await publishBaselineVersionForTest(otherProblemId);
 
     const adminToken = await signToken({ sub: adminId, role: "admin" });
     const userToken = await signToken({ sub: userId, role: "user" });
@@ -484,6 +491,8 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
+    // 竞赛只能固定已发布版本（Handbook §2.6）：夹具题目补迁移基线
+    await publishBaselineVersionForTest(problemId);
 
     const adminToken = await signToken({ sub: adminId, role: "admin" });
     const userToken = await signToken({ sub: userId, role: "user" });

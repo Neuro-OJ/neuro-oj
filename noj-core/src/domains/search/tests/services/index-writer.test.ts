@@ -5,7 +5,6 @@ import {
   communityBoards,
   communityComments,
   communityPosts,
-  contestProblems,
   contests,
   conversations,
   messageDeletions,
@@ -31,6 +30,7 @@ import {
 } from "../../services/index-writer.ts";
 import { sql } from "drizzle-orm";
 import {
+  insertContestProblems,
   publishAllProblemsForTest,
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
@@ -444,7 +444,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: "contest-entry-1",
       problem_id: "p-contest-entry",
       sort_order: 0,
@@ -515,7 +515,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values([
+    await insertContestProblems([
       {
         contest_id: "contest-entry-2",
         problem_id: "p-contest-public",

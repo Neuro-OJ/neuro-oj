@@ -31,8 +31,7 @@ import {
 import { startFakeRedis } from "./_setup.ts";
 
 const tempStorageDir = Deno.makeTempDirSync({ prefix: "noj-sweeper-" });
-Deno.env.set("SUPPORT_PACKAGE_DIR", tempStorageDir);
-setStorageProviderForTest(new LocalStorageProvider());
+setStorageProviderForTest(new LocalStorageProvider(tempStorageDir));
 
 const db = getDb();
 const ts = Date.now();

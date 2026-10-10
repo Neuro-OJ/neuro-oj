@@ -30,10 +30,9 @@ import type { OiRuntimeConfig } from "../../types/runtime-config.ts";
 
 const now = new Date().toISOString();
 const tempStorageDir = Deno.makeTempDirSync({ prefix: "noj-oi-draft-" });
-Deno.env.set("SUPPORT_PACKAGE_DIR", tempStorageDir);
 
 function useTempStorage(): void {
-  setStorageProviderForTest(new LocalStorageProvider());
+  setStorageProviderForTest(new LocalStorageProvider(tempStorageDir));
 }
 
 async function seedOiProblem(id: string, number: number): Promise<void> {

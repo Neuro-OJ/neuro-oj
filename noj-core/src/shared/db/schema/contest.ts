@@ -128,14 +128,13 @@ export const contestProblems = pgTable(
     label: text("label").notNull(),
     score: integer("score").notNull(),
     /**
-     * 竞赛固定的题目版本（必填语义）。
+     * 竞赛固定的题目版本（必填）。
      *
-     * 本列在**首次迁移**中必须可空（存量行无法立即回填真实版本），
-     * 由存量回填迁移（Handbook §8.1 第 7 步）回填后再 `SET NOT NULL`：
-     * 直接 `ADD COLUMN ... NOT NULL` 会让存量库升级失败，参见
-     * `scripts/check-migration-safety.ts`。
+     * 首次迁移中该列可空（存量行无法立即回填真实版本），存量回填迁移
+     * （`0106_contest_problem_pinned_version_not_null`）为未发布题目补迁移基线、
+     * 回填后 `SET NOT NULL`（Handbook §2.6/§8.1 第 7 步）。
      */
-    pinned_version_id: text("pinned_version_id"),
+    pinned_version_id: text("pinned_version_id").notNull(),
     /** 该竞赛题目的有效版本策略：any / exact。 */
     effective_version_mode: text("effective_version_mode").notNull().default(
       "any",

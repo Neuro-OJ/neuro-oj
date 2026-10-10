@@ -33,7 +33,6 @@ const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasEnv;
 
 const tempStorageDir = Deno.makeTempDirSync({ prefix: "noj-oi-author-" });
-Deno.env.set("SUPPORT_PACKAGE_DIR", tempStorageDir);
 
 await resetDbForTest();
 await initRedisForTest();
@@ -94,7 +93,7 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const token = await createUserToken("admin");
-    setStorageProviderForTest(new LocalStorageProvider());
+    setStorageProviderForTest(new LocalStorageProvider(tempStorageDir));
     try {
       const metadata = {
         problem: {
@@ -191,7 +190,7 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const token = await createUserToken("admin");
-    setStorageProviderForTest(new LocalStorageProvider());
+    setStorageProviderForTest(new LocalStorageProvider(tempStorageDir));
     let problemId = "";
     try {
       const created = await save(

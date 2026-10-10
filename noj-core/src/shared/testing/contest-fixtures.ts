@@ -24,7 +24,13 @@
  * ```
  */
 import { getDb } from "../db/connection.ts";
-import { contestProblems, contests, problems } from "../db/schema.ts";
+import {
+  contestProblems,
+  contests,
+  problems,
+  problemVersions,
+} from "../db/schema.ts";
+import { eq } from "drizzle-orm";
 
 /** 竞赛时间对（开始/结束）。 */
 export interface ContestTimes {
@@ -159,6 +165,34 @@ export async function seedRunningContest(options: {
         updated_at: now,
       })),
     ).onConflictDoNothing();
+    // 竞赛固定版本必填（Handbook §2.6）：为每题补迁移基线 V1（id 稳定，
+    // 重复调用幂等），并回写最新版指针，再写关联。
+    await db.insert(problemVersions).values(
+      options.problemIds.map((problemId) => ({
+        id: baselineVersionId(problemId),
+        problem_id: problemId,
+        version: 1,
+        schema_version: 1,
+        origin: "migration_baseline" as const,
+        content: {
+          kind: "ai",
+          title: `夹具题目 ${problemId}`,
+          description: "",
+          samples: [],
+          submission_mode: "code",
+          runtime_config: {},
+          template_content: "",
+          artifact_max_size_mb: null,
+          llm_config: null,
+        },
+        published_at: now,
+      })),
+    ).onConflictDoNothing();
+    for (const problemId of options.problemIds) {
+      await db.update(problems).set({
+        latest_version_id: baselineVersionId(problemId),
+      }).where(eq(problems.id, problemId));
+    }
     await db.insert(contestProblems).values(
       options.problemIds.map((problemId, index) => ({
         contest_id: id,
@@ -166,10 +200,16 @@ export async function seedRunningContest(options: {
         sort_order: index,
         label: String.fromCharCode(65 + index),
         score: 10000,
+        pinned_version_id: baselineVersionId(problemId),
       })),
     );
   }
   return id;
+}
+
+/** 夹具迁移基线版本 id（同一题目稳定，便于幂等重入）。 */
+function baselineVersionId(problemId: string): string {
+  return `baseline-${problemId}`;
 }
 
 /**

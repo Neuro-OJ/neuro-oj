@@ -8,10 +8,11 @@
 > 使任何一轮中断后都能从本文件直接续接。
 
 - 目标分支：`feat/problem-version-management`（GPG 签名，禁止直推 main）
-- 当前轮次：goal round 36
-- 最近更新：批次 2d 落地——客观题小题路由改走共享草稿（`If-Match` 乐观锁）、
-  编辑者读草稿/作答者读版本快照、题包导入直写草稿（小题稳定 key 支持显式指定）、
-  web 客观题编辑器「保存信息 + 发布版本」；noj-tests 客观题 E2E 与 helper 同步
+- 当前轮次：goal round 37
+- 最近更新：批次 7b 第一步——`contest_problems.pinned_version_id` 收紧 NOT NULL
+  （迁移 0106：未发布题目补迁移基线 → 回填 → 门禁 → SET NOT NULL）、竞赛服务
+  拒绝未发布题目入赛、31 处夹具统一走 `insertContestProblems` 自动补固定版本、
+  存量数据演练通过；顺带修掉测试 `SUPPORT_PACKAGE_DIR` 进程级污染
 
 ## 一、批次状态总览
 
@@ -23,7 +24,7 @@
 | 4 | 管理操作（策略、批任务、重测、升级） | ✅ 完成 | 派发 + 路由 + 旧入口适配层；竞赛固定版本创建/编辑写入；§4.5 三个策略/固定版本端点已补；仅「代他人升级」旁路未做 |
 | 5 | 读取统一（通过状态、题单、排行、资料、社区、搜索、正式成绩） | ✅ 完成 | 5a/5b/5c/5d 全部落地：stats-cache 去进程内状态、未发布题目不进公共面、搜索只索引已发布、提交读路径版本信息、Kaggle 计分读竞赛有效成绩、正式快照记录策略与尝试归因 |
 | 6 | 客户端（Web、IDE、CLI、演练） | ✅ 完成 | CLI/LMCC/E2E 完成；noj-ui 提交侧、提交列表/详情版本展示、管理端（版本策略 + 批量重测）、AI/代码 + OI + 客观题编辑器草稿发布流全部完成 |
-| 7 | 存量收尾（回填、旧表删除、视图/索引重建、备份恢复验证） | 🟡 部分 | 0103 回填 + 真实库演练完成；旧表**读写引用已全部清零**（仅剩 schema 定义）、写入双写移除、`user_rankings` 视图已重建（0104）；剩删表迁移、`pinned_version_id` 收紧、索引重建与备份恢复演练 |
+| 7 | 存量收尾（回填、旧表删除、视图/索引重建、备份恢复验证） | 🟡 部分 | 0103 回填 + 0104 视图重建 + 0105 删 `evaluation_results` + **0106 竞赛固定版本收紧** 全部落地；剩删除 `objective_questions`、搜索索引重建与备份/恢复演练 |
 | 8 | 文档与交付（现行文档、Agent Note、验收、PR） | ⬜ 未开始 | 含删除本跟踪文件 |
 
 图例：✅ 完成　🟡 部分　⬜ 未开始
@@ -119,7 +120,25 @@
 
 ### 批次 7（存量收尾）
 - [ ] 大库分批重算投影（`recomputeProblemProjections` 当前逐条）。
-- [ ] `contest_problems.pinned_version_id` 最终 `SET NOT NULL`。
+- [x] **`contest_problems.pinned_version_id` 收紧 NOT NULL**（迁移
+      `0106_flowery_iceman.sql`，`deno task db:generate` 生成后补数据回填）：
+      ① 被竞赛引用但未发布任何版本的题目补 `migration_baseline` V1（内容按题目
+      kind 构造：客观题取现有 `objective_questions` 且 UUID 作 key、OI 带运行配置、
+      AI 带提交模式/模板/LLM），版本号取该题 MAX(version)+1 避免冲突；
+      ② 回填竞赛固定版本；③ DO 块门禁：仍有空值即报错中止；④ `SET NOT NULL`。
+      代码侧：schema/`schema-ddl.ts` 标 NOT NULL，`assertContestProblemAddable`
+      拒绝未发布题目（400），创建/编辑竞赛写入非空固定版本。
+      夹具：新增 `insertContestProblems`（单行/数组皆可，自动补迁移基线）替换
+      10 个测试文件的 31 处直接插入；`seedRunningContest` 同步补题目版本行与指针；
+      `publishBaselineVersionForTest` 改为按题目 kind 派生内容（客观题必须带小题）。
+      用例：`contest-problem-pinning` 两条迁移期用例改写为"未发布题目入赛 400"。
+- [x] **存量数据演练（真实 PostgreSQL）**：独立 schema 应用全部迁移 → 复现迁移前
+      状态（列可空 + 2 行空固定版本：一道未发布客观题、一道有版本行但指针为空）→
+      执行 0106 → 核对：两行均回填、客观题基线 `kind=objective` 且小题 key 保留旧
+      UUID、列可空性 `NO`、复合外键成立；演练 schema 跑完即清理。
+- [x] 顺带修复测试隔离缺陷：`LocalStorageProvider` 支持显式存储根目录，7 个测试文件
+      不再用 `Deno.env.set("SUPPORT_PACKAGE_DIR")` 污染同进程其他用例（PGlite 全量
+      模式此前因此报 2 个假失败）。
 - [x] 重建用户榜单物化视图：迁移 `0104_rebuild_user_rankings_view.sql`（`drizzle-kit
       generate --custom` 生成，journal 由工具维护）把 `user_rankings` 从
       `evaluation_results` 改读 `submissions.is_accepted`；已应用到开发库。
@@ -187,6 +206,12 @@
 
 | 范围 | 命令 | 结果 |
 |---|---|---|
+| noj-core 全量（PG 分片） | `cd noj-core && deno task test:parallel` | **1409 passed / 0 failed / 11 ignored**（批次 7b 后） |
+| noj-core 全量（PGlite 单进程） | `cd noj-core && env -u DATABASE_URL deno task test` | **1734 passed / 0 failed / 59 ignored** |
+| contest 域 | `bash scripts/test-domain.sh contest` | **86 passed / 0 failed**（未发布题目入赛 400 取代迁移期 null 固定） |
+| catalog 域 | `bash scripts/test-domain.sh catalog` | **308 passed / 0 failed** |
+| 迁移门禁 | parity / 迁移安全 / 快照链 | 67 表 604 列；无一步式 NOT NULL；快照链单调 |
+| 存量演练 | 独立 schema 应用全量迁移 + 复现迁移前状态 + 执行 0106 | 2 行空固定版本全部回填；客观题基线 `kind=objective`、小题 key 保留；列 `NOT NULL` |
 | noj-core 全量 | `cd noj-core && deno task test:parallel` | **1408 passed / 0 failed / 11 ignored**（批次 2d 后） |
 | objective 域 | `bash scripts/test-domain.sh objective` | **56 passed / 0 failed**（+1 草稿/快照分流、7 个原用例改走 revision 链） |
 | catalog 域 | `bash scripts/test-domain.sh catalog` | **308 passed / 0 failed**（+1 小题 key 解析、+1 ZIP 陈旧结果并发；客观题导入用例改走真实题包） |
@@ -225,15 +250,12 @@
 
 ## 四、下一步（按优先级）
 
-1. **批次 2 收尾**：ZIP worker 陈旧结果并发用例；OI 自测从所选版本构造临时包
-   （登记临时对象引用）。
-2. **批次 7b**：`contest_problems.pinned_version_id` 收紧 NOT NULL（含存量回填）→
-   删除 `objective_questions`（含移除导入镜像写入、存量回填后的读取口径复核）→
-   重建搜索索引 → 备份/恢复演练。
-3. **批次 8**：版本管理文档、同步现行文档（README/AGENTS/题型/题包/题单/提交/竞赛/升级）、
+1. **批次 7b 收尾**：删除 `objective_questions`（先移除导入镜像写入、迁移历史答案的
+   展示口径复核）→ 重建搜索索引 → 备份/恢复演练（生产升级 §8.3 的核对清单）。
+2. **批次 8**：版本管理文档、同步现行文档（README/AGENTS/题型/题包/题单/提交/竞赛/升级）、
    implemented Agent Note、全量验收（core 各域 + shared + judge + gateway + UI + E2E）、
    PR 合入 `main`。
-4. 交付前删除本跟踪文件（见文末清单）。
+3. 交付前删除本跟踪文件（见文末清单）。
 
 ## 五、交付前删除清单（本文件生命周期的收口）
 

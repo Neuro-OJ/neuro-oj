@@ -7,7 +7,8 @@
  * - 编辑竞赛会整体替换题目关联，但必须保留既有固定版本（否则改名/改时间等于静默换版）；
  * - 新加入竞赛的题目按当前最新已发布版固定；题库尚无已发布版本的题目固定为 null（存量路径）。
  */
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { BadRequestError } from "../../../../shared/base/errors.ts";
 import { and, eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
@@ -126,7 +127,33 @@ Deno.test({
     await createProblem("cp-pin-p2", 985002);
     await publishVersion("cp-pin-p1", 1);
     const p1v2 = await publishVersion("cp-pin-p1", 2);
-    // p2 尚未发布任何版本 → 固定为 null（迁移期存量路径）
+
+    // cp-pin-p2 尚未发布任何版本 → 不能加入竞赛（Handbook §2.6）
+    await assertRejects(
+      () =>
+        createContest({
+          title: "未发布题目入赛",
+          start_time: new Date(Date.now() + 60_000).toISOString(),
+          end_time: new Date(Date.now() + 3_600_000).toISOString(),
+          type: "kaggle",
+          password: "ContestPass123",
+          problems: [
+            {
+              problem_id: "cp-pin-p1",
+              label: "A",
+              sort_order: 0,
+              score: 10000,
+            },
+            {
+              problem_id: "cp-pin-p2",
+              label: "B",
+              sort_order: 1,
+              score: 10000,
+            },
+          ],
+        }, creatorId),
+      BadRequestError,
+    );
 
     const contest = await createContest({
       title: "固定版本测试赛",
@@ -136,12 +163,10 @@ Deno.test({
       password: "ContestPass123",
       problems: [
         { problem_id: "cp-pin-p1", label: "A", sort_order: 0, score: 10000 },
-        { problem_id: "cp-pin-p2", label: "B", sort_order: 1, score: 10000 },
       ],
     }, creatorId);
 
     assertEquals(await pinnedVersionOf(contest.id, "cp-pin-p1"), p1v2);
-    assertEquals(await pinnedVersionOf(contest.id, "cp-pin-p2"), null);
 
     // 题库发布 v3：竞赛固定版本不变，竞赛接口仍回答 v2
     await publishVersion("cp-pin-p1", 3);
@@ -152,11 +177,6 @@ Deno.test({
     );
     assertEquals(itemA?.version_id, p1v2);
     assertEquals(itemA?.version, 2);
-    const itemB = problemsInContest.find((item) =>
-      item.problem_id === "cp-pin-p2"
-    );
-    assertEquals(itemB?.version_id, null);
-    assertEquals(itemB?.version, null);
   },
 });
 
@@ -187,16 +207,36 @@ Deno.test({
 
     // 题库再发 v3，之后编辑竞赛（改名 + 重传同一题目列表）：固定版本必须仍是创建时的 v2
     await publishVersion("cp-pin-p3", 3);
+    // 新加入的 cp-pin-p4 尚未发布 → 整次编辑被拒（不产生半更新的关联）
+    await assertRejects(
+      () =>
+        updateContest(contest.id, {
+          title: "改名后仍固定 v2",
+          problems: [
+            {
+              problem_id: "cp-pin-p3",
+              label: "A",
+              sort_order: 0,
+              score: 10000,
+            },
+            {
+              problem_id: "cp-pin-p4",
+              label: "B",
+              sort_order: 1,
+              score: 10000,
+            },
+          ],
+        }),
+      BadRequestError,
+    );
     await updateContest(contest.id, {
       title: "改名后仍固定 v2",
       problems: [
         { problem_id: "cp-pin-p3", label: "A", sort_order: 0, score: 10000 },
-        { problem_id: "cp-pin-p4", label: "B", sort_order: 1, score: 10000 },
       ],
     });
     assertEquals(await pinnedVersionOf(contest.id, "cp-pin-p3"), p3v2);
-    // 新加入的 cp-pin-p4 尚无版本 → null；先发版本再加题则按当时最新版固定
-    assertEquals(await pinnedVersionOf(contest.id, "cp-pin-p4"), null);
+    // 先发布再加题：按加入时的最新版固定
     await publishVersion("cp-pin-p4", 1);
     await updateContest(contest.id, {
       problems: [

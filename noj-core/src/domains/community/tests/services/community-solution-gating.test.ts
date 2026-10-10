@@ -34,6 +34,7 @@ import {
   leaveTestContext,
   updateSetting,
 } from "../../../system/index.ts";
+import { publishAllProblemsForTest } from "../../../../../tests/helper.ts";
 
 const ownerId = "gating-owner";
 const normalProblemId = "gating-normal-problem";
@@ -82,6 +83,8 @@ async function setup(): Promise<void> {
       updated_at: now,
     },
   ]);
+  // 竞赛只能固定已发布版本（Handbook §2.6）：夹具题目补迁移基线
+  await publishAllProblemsForTest();
   enterTestContext({ actorId: "0", actorIp: "127.0.0.1", actorRole: "admin" });
   try {
     await updateSetting("community_enabled", true, "0");

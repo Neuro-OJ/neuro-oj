@@ -9,7 +9,6 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
-  contestProblems,
   contests,
   problems,
   problemVersions,
@@ -21,6 +20,7 @@ import {
 } from "../../services/versioning/submission-version.ts";
 import { createSubmission } from "../../index.ts";
 import type { ProblemContentV1 } from "../../../catalog/index.ts";
+import { insertContestProblems } from "../../../../../tests/helper.ts";
 
 const now = new Date().toISOString();
 
@@ -172,7 +172,7 @@ Deno.test("submission version: 竞赛使用固定版本，客户端覆盖 → 40
     created_at: now,
     updated_at: now,
   });
-  await getDb().insert(contestProblems).values({
+  await insertContestProblems({
     contest_id: "sv-c6",
     problem_id: "sv-p6",
     label: "A",

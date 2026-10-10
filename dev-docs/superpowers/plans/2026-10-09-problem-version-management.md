@@ -566,6 +566,18 @@
 
 ## 最近一次验证
 
+- 批次 7b（竞赛固定版本收紧 NOT NULL）：迁移 `0106_flowery_iceman.sql`
+  （未发布且被竞赛引用的题目补 `migration_baseline` V1 → 回填固定版本 → DO 块门禁 →
+  `SET NOT NULL`）；`assertContestProblemAddable` 拒绝未发布题目（400）；
+  新增 `insertContestProblems` 夹具替换 31 处直接插入；`seedRunningContest` 补版本行。
+  证据：noj-core 全量 PG 分片 **1409 passed / 0 failed / 11 ignored**、
+  PGlite 单进程 **1734 passed / 0 failed / 59 ignored**；contest 域 **86**、
+  catalog 域 **308**；parity 67 表 604 列、迁移安全、快照链全绿；
+  **真实库存量演练**（独立 schema 复现迁移前 2 行空固定版本 → 执行 0106 → 全部回填 +
+  客观题基线 kind/small题 key 正确 + 列 NOT NULL）通过。
+  顺带修复测试隔离缺陷：`LocalStorageProvider(storageDir?)` 显式目录取代
+  7 个测试文件的 `Deno.env.set("SUPPORT_PACKAGE_DIR")` 进程级污染。
+
 - 批次 2d（客观题小题写草稿 + 读取分流 + 导入直写草稿 + 客观题编辑器发布流）：
   noj-core 全量 `deno task test:parallel` **1408 passed / 0 failed / 11 ignored**；
   objective 域 **56 passed / 0 failed**（新增"编辑者读草稿、作答者读版本快照"用例；

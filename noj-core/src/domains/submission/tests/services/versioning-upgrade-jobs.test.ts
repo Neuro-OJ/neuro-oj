@@ -9,7 +9,6 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
-  contestProblems,
   contests,
   objectiveSubmissions,
   problems,
@@ -22,6 +21,7 @@ import {
   acceptUpgradeJob,
   getUpgradeJobForActor,
 } from "../../services/versioning/upgrade-jobs.ts";
+import { insertContestProblems } from "../../../../../tests/helper.ts";
 
 const now = new Date().toISOString();
 
@@ -154,7 +154,7 @@ Deno.test("upgrade: source_contest 使用竞赛固定作答版本", async () => 
     created_at: now,
     updated_at: now,
   });
-  await db.insert(contestProblems).values({
+  await insertContestProblems({
     contest_id: "up-c3",
     problem_id: "up-p3",
     label: "A",
@@ -213,7 +213,7 @@ Deno.test("upgrade: 竞赛固定版本与最新版不同且源在旧版 → 目�
     updated_at: now,
   });
   // 竞赛固定在 v1，但题目最新版是 v2；源提交未记录版本（历史）→ 目标 = v1
-  await db.insert(contestProblems).values({
+  await insertContestProblems({
     contest_id: "up-c4",
     problem_id: "up-p4",
     label: "A",
@@ -304,7 +304,7 @@ Deno.test("upgrade: 客观题竞赛提交可升级为练习（新提交仍是练
     created_at: now,
     updated_at: now,
   });
-  await db.insert(contestProblems).values({
+  await insertContestProblems({
     contest_id: "up-c7",
     problem_id: "up-p7",
     label: "A",

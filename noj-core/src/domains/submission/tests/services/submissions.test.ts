@@ -13,7 +13,6 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   auditLogs,
   contestParticipants,
-  contestProblems,
   contests,
   evaluationAttempts,
   problems,
@@ -39,6 +38,7 @@ import {
   getRedis,
   resetRedisForTest,
 } from "../../../../shared/mq/connection.ts";
+import { insertContestProblems } from "../../../../../tests/helper.ts";
 
 /**
  * 启动一个极简的 Redis RESP 协议 mock 服务器，响应 EVAL/LPUSH/LLEN/PING，
@@ -405,7 +405,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: TEST_PROBLEM_ID,
       sort_order: 0,
@@ -484,7 +484,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: TEST_PROBLEM_ID,
       sort_order: 0,
@@ -519,6 +519,8 @@ Deno.test({
         problem_id: TEST_PROBLEM_ID,
         language: "python3",
         code: "print(2)",
+        // 题目已版本化（夹具补了迁移基线）：题库提交必须显式携带版本
+        version_id: `baseline-${TEST_PROBLEM_ID}`,
       });
       ids.push(normalSub.id);
 
@@ -566,7 +568,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: TEST_PROBLEM_ID,
       sort_order: 0,

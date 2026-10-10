@@ -11,7 +11,6 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contestParticipants,
-  contestProblems,
   contests,
   evaluationAttempts,
   objectiveQuestions,
@@ -32,6 +31,7 @@ import {
   publishProblemVersion,
   saveProblemDraft,
 } from "../../../catalog/index.ts";
+import { insertContestProblems } from "../../../../../tests/helper.ts";
 
 const db = getDb();
 const now = new Date().toISOString();
@@ -330,7 +330,7 @@ Deno.test({
       registered_at: now,
     });
     // 竞赛固定作答版本（effective policy 仍为 any：竞赛口径与题库口径独立）
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: paper,
       sort_order: 1,

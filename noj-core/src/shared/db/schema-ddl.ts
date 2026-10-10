@@ -286,7 +286,7 @@ $$ LANGUAGE plpgsql`,
     sort_order INTEGER NOT NULL DEFAULT 0,
     label TEXT NOT NULL,
     score INTEGER NOT NULL,
-    pinned_version_id TEXT,
+    pinned_version_id TEXT NOT NULL,
     effective_version_mode TEXT NOT NULL DEFAULT 'any'
       CHECK (effective_version_mode IN ('any', 'exact')),
     required_version_id TEXT,
