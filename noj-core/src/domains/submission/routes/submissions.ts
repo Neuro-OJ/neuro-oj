@@ -55,6 +55,12 @@ const router = new Hono<Env>();
  */
 const MAX_CODE_LENGTH = 100 * 1024;
 
+/** 解析布尔筛选参数：`1` / `true` 为真，其余（含缺省）为假。 */
+function parseFlag(value: string | undefined): boolean | undefined {
+  if (value === undefined || value === "") return undefined;
+  return value === "1" || value === "true";
+}
+
 /**
  * 提交列表（分页 + 筛选）。
  * GET /api/v1/submissions
@@ -77,12 +83,26 @@ router.get("/", authMiddleware, async (c) => {
   const status = c.req.query("status") || undefined;
   const from = c.req.query("from") || undefined;
   const to = c.req.query("to") || undefined;
+  const versionId = c.req.query("version_id") || undefined;
+  const versionOrigin = c.req.query("version_origin") || undefined;
+  const validOnly = parseFlag(c.req.query("valid_only"));
+  const acceptedOnly = parseFlag(c.req.query("accepted_only"));
+  const upgradable = parseFlag(c.req.query("upgradable"));
 
   // status 参数校验
   const validStatuses = SUBMISSION_STATUSES;
   if (status && !(validStatuses as readonly string[]).includes(status)) {
     throw new BadRequestError(
       `无效的状态值：${status}，有效值：${validStatuses.join("、")}`,
+    );
+  }
+  // 版本来源筛选（Handbook §4.4）：只允许两个已知取值
+  if (
+    versionOrigin && versionOrigin !== "known" &&
+    versionOrigin !== "legacy_unknown"
+  ) {
+    throw new BadRequestError(
+      `无效的版本来源：${versionOrigin}，有效值：known、legacy_unknown`,
     );
   }
 
@@ -95,6 +115,11 @@ router.get("/", authMiddleware, async (c) => {
     status,
     from,
     to,
+    versionId,
+    versionOrigin: versionOrigin as "known" | "legacy_unknown" | undefined,
+    validOnly,
+    acceptedOnly,
+    upgradable,
     page,
     perPage,
   });

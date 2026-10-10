@@ -68,6 +68,8 @@ async function seedSubmission(input: {
   id: string;
   problemId: string;
   versionId: string | null;
+  is_valid?: boolean;
+  is_accepted?: boolean;
 }): Promise<ProjectionSource> {
   await getDb().insert(submissions).values({
     id: input.id,
@@ -77,6 +79,8 @@ async function seedSubmission(input: {
     code: "print(1)",
     submitted_version_id: input.versionId,
     version_origin: input.versionId ? "known" : "legacy_unknown",
+    is_valid: input.is_valid ?? false,
+    is_accepted: input.is_accepted ?? false,
     created_at: now,
   });
   return {
@@ -254,5 +258,56 @@ Deno.test({
     }).where(eq(problems.id, "srv-p2"));
     const exact = await getSubmission("srv-s2", "0");
     assertEquals(exact.version_results?.[0].is_effective, false);
+  },
+});
+
+Deno.test({
+  name: "submission read: 版本/有效性/可升级筛选",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const { v1, v2 } = await seedProblem("srv-p3", 987003);
+    // 最新版仍是 V2：V1 提交与未知历史提交都可升级，最新版提交不可升级
+    await seedSubmission({
+      id: "srv-s3",
+      problemId: "srv-p3",
+      versionId: v1,
+      is_valid: true,
+      is_accepted: true,
+    });
+    await seedSubmission({ id: "srv-s4", problemId: "srv-p3", versionId: v2 });
+    await seedSubmission({
+      id: "srv-s5",
+      problemId: "srv-p3",
+      versionId: null,
+    });
+
+    const ids = async (
+      params: Parameters<typeof listSubmissions>[0],
+    ): Promise<string[]> =>
+      (await listSubmissions(params)).data.map((item) => item.id).sort();
+
+    const base = { userId: "0", problemId: "srv-p3", page: 1, perPage: 20 };
+    assertEquals(await ids(base), ["srv-s3", "srv-s4", "srv-s5"]);
+    assertEquals(await ids({ ...base, versionId: v1 }), ["srv-s3"]);
+    assertEquals(await ids({ ...base, versionOrigin: "known" }), [
+      "srv-s3",
+      "srv-s4",
+    ]);
+    assertEquals(await ids({ ...base, versionOrigin: "legacy_unknown" }), [
+      "srv-s5",
+    ]);
+    assertEquals(await ids({ ...base, validOnly: true }), ["srv-s3"]);
+    assertEquals(await ids({ ...base, acceptedOnly: true }), ["srv-s3"]);
+    // 批量升级候选：V1 提交 + 未知历史提交（最新版提交不在候选内）
+    assertEquals(await ids({ ...base, upgradable: true }), [
+      "srv-s3",
+      "srv-s5",
+    ]);
+    // 题目尚未发布任何版本时不产生可升级候选（避免把 legacy 提交送去升级）
+    await getDb().update(problems).set({ latest_version_id: null }).where(
+      eq(problems.id, "srv-p3"),
+    );
+    assertEquals(await ids({ ...base, upgradable: true }), []);
   },
 });

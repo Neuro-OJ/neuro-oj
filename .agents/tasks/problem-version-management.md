@@ -9,8 +9,8 @@
 
 - 目标分支：`feat/problem-version-management`（GPG 签名，禁止直推 main）
 - 当前轮次：goal round 25
-- 最近更新：批次 4 竞赛固定版本落库 + 批次 5/6 提交读路径版本信息（core 详情/列表 +
-  noj-ui 展示）与提交侧版本贯通（题目详情/编辑器/竞赛页/客观题表单）
+- 最近更新：批次 6 提交侧（版本筛选 + 批量升级入口）与批次 4/5 收尾
+  （竞赛固定版本、提交读路径版本信息）
 
 ## 一、批次状态总览
 
@@ -62,7 +62,11 @@
       `is_accepted`）；列表项新增提交时版本三字段；
       `noj-ui/pages/submissions/[id].vue` 增加"作答版本"元信息 + 「各版本判定」表格 +
       「由旧版本提交升级而来」来源链接，`pages/submissions/index.vue` 增加版本列。
-- [ ] 提交列表**按版本/有效性筛选**（需要 core 列表查询参数）、批量升级入口。
+- [x] 提交列表按版本/有效性筛选 + 用户批量升级入口：
+      core `GET /submissions` 新增 `version_id` / `version_origin` / `valid_only` /
+      `accepted_only` / `upgradable`（可升级 = 题目已发布且提交时版本 ≠ 最新版），
+      非法 `version_origin` → 400；noj-ui 提交列表新增作答版本筛选、仅可升级/仅有效
+      开关、勾选列与「批量升级到最新版」（≤500、幂等键、轮询到终态、失败原因聚合）。
 - [ ] `pages/admin/*`：三种重测范围、固定版本映射、独立策略切换、任务进度与重试。
 
 ### 批次 7（存量收尾）
@@ -105,7 +109,7 @@
 |---|---|---|
 | noj-core 全量 | `cd noj-core && deno task test:parallel` | **1388+ passed / 0 failed**（本轮新增 3 个用例后复跑） |
 | contest 域 | `bash scripts/test-domain.sh contest` | **82 passed / 0 failed**（新增固定版本 2 + 提交版本 1） |
-| submission 域 | `bash scripts/test-domain.sh submission` | **221 passed / 0 failed / 21 ignored**（新增提交读路径版本信息 2） |
+| submission 域 | `bash scripts/test-domain.sh submission` | **223 passed / 0 failed / 21 ignored**（读路径版本 2 + 筛选 2） |
 | catalog 域 | `bash scripts/test-domain.sh catalog` | **301 passed / 0 failed** |
 | submission 域 | `bash scripts/test-domain.sh submission` | **219 passed / 0 failed / 21 ignored** |
 | identity 域 | `bash scripts/test-domain.sh identity` | **310 passed / 0 failed / 25 ignored** |
@@ -125,9 +129,8 @@
 
 ## 四、下一步（按优先级）
 
-1. **noj-ui 客户端**（批次 6 主体）：提交侧与提交读展示已完成；下一步编辑器草稿/发布
-   两个动作（`components/editor/*`）、客观题编辑器小题写草稿、管理页三种重测范围与策略切换、
-   提交列表按版本/有效性筛选与批量升级入口。
+1. **noj-ui 管理端 + 编辑器**（批次 6 收尾）：管理页三种重测范围 / 固定版本映射 /
+   策略切换 / 任务进度与重试；编辑器「保存草稿 / 发布版本」两动作与客观题编辑器小题写草稿。
 2. 2c/2e 收尾（OI 草稿路径 + `updateProblem` 内容写草稿）。
 3. 批次 5 收尾（stats-cache 去进程内状态、搜索索引发布内容、正式成绩快照）。
 4. 批次 7b 与批次 8（文档、Agent Note、验收、PR），最后删除本文件。
@@ -138,5 +141,8 @@
    `.agents/tasks/` 目录）。
 2. 确认仓库无其它引用：`rg -n "problem-version-management.md" --hidden` 只在
    `dev-docs/` 的实施计划中出现（计划文档本身是长期交付物，保留）。
-3. 确认该文件未进入任何提交：`jj log --no-graph -r 'all()' -T 'description' | rg -n "临时任务跟踪"`。
+3. 确认删除提交落在本分支最后：该跟踪文件在实施期**随轮次一起提交**（已进入本分支
+   历史，合入后不再存在于 `main` 工作树），删除动作必须出现在批次 8 的收尾提交里；
+   `jj log --no-graph -r 'feat/problem-version-management' -T 'description.first_line() ++ "\n"' | head -3`
+   确认最新提交即"删除跟踪文件"。
 4. 交付 PR 前最后一遍：`jj status` 干净、`git log --show-signature -1` 为 `G`。

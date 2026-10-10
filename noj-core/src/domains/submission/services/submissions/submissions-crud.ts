@@ -43,8 +43,8 @@ import {
   users,
 } from "./../../../../shared/db/schema.ts";
 import {
-  type EffectiveVersionPolicy,
   type CurrentVersionResult,
+  type EffectiveVersionPolicy,
   policyFromColumns,
 } from "./../../../../shared/versioning/types.ts";
 import { selectEffectiveResults } from "./../../../../shared/versioning/effective-results.ts";
@@ -167,6 +167,11 @@ export async function listSubmissions(
     from,
     to,
     excludeContest,
+    versionId,
+    versionOrigin,
+    validOnly,
+    acceptedOnly,
+    upgradable,
     page,
     perPage,
   } = params;
@@ -188,6 +193,24 @@ export async function listSubmissions(
   }
   if (from) conditions.push(gte(submissions.created_at, from));
   if (to) conditions.push(lte(submissions.created_at, to));
+  if (versionId) {
+    conditions.push(eq(submissions.submitted_version_id, versionId));
+  }
+  if (versionOrigin) {
+    conditions.push(eq(submissions.version_origin, versionOrigin));
+  }
+  if (validOnly) conditions.push(eq(submissions.is_valid, true));
+  if (acceptedOnly) conditions.push(eq(submissions.is_accepted, true));
+  if (upgradable) {
+    // 可升级 = 题目已发布版本，且本提交不是针对最新版提交的（`IS DISTINCT FROM`
+    // 让"未知历史版本"也进入候选，其升级由任务条目按 `LEGACY_VERSION_UNKNOWN` 处理）
+    conditions.push(
+      sql`${problems.latest_version_id} IS NOT NULL
+        AND ${submissions.submitted_version_id} IS DISTINCT FROM ${problems.latest_version_id}` as unknown as ReturnType<
+        typeof eq
+      >,
+    );
+  }
 
   // problemSearch: problem_id 精确匹配 OR problems.title ILIKE 模糊搜索
   if (problemSearch) {
@@ -761,11 +784,10 @@ export async function getSubmission(
     .from(problems)
     .where(eq(problems.id, row.problem_id))
     .limit(1);
-  const effectiveVersionPolicy: EffectiveVersionPolicy =
-    policyFromColumns(
-      policyRow?.effective_version_mode,
-      policyRow?.required_version_id,
-    ) ?? { mode: "any" };
+  const effectiveVersionPolicy: EffectiveVersionPolicy = policyFromColumns(
+    policyRow?.effective_version_mode,
+    policyRow?.required_version_id,
+  ) ?? { mode: "any" };
 
   // 跨版本判定（Handbook 核心不变量 3）：每（提交，版本）一条当前正式判定。
   const versionRows = await db

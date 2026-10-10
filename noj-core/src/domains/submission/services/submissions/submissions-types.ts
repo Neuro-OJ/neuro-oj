@@ -193,6 +193,20 @@ export interface ListSubmissionsParams {
   to?: string;
   /** 为 true 时排除所有竞赛提交（contest_id IS NULL），用于公开列表。 */
   excludeContest?: boolean;
+  /** 提交时版本 ID 精确筛选（Handbook §4.4「按版本筛选」）。 */
+  versionId?: string;
+  /** 按版本来源筛选：known（提交时明确版本）/ legacy_unknown（迁移前未知）。 */
+  versionOrigin?: "known" | "legacy_unknown";
+  /** 仅返回当前口径有效的提交（`is_valid = true`）。 */
+  validOnly?: boolean;
+  /** 仅返回当前口径通过的提交（`is_accepted = true`）。 */
+  acceptedOnly?: boolean;
+  /**
+   * 仅返回"可升级"的提交：题目已有最新已发布版，且本提交的提交时版本不是最新版。
+   *
+   * 这是用户批量升级的候选集合（`ALREADY_LATEST` 不算可升级）。
+   */
+  upgradable?: boolean;
   page: number;
   perPage: number;
 }

@@ -363,6 +363,15 @@
   - `noj-ui`：详情页新增"作答版本"元信息（未知历史版本显式标注，不显示成 v0）、
     「各版本判定」表格与"由旧版本提交升级而来"来源链接；列表页新增版本列；
     新增 `submissionVersionLabel()` 与单测。
+- [x] 6（提交列表筛选与批量升级入口）
+  - core：`listSubmissions` 新增 `versionId` / `versionOrigin` / `validOnly` /
+    `acceptedOnly` / `upgradable`；`upgradable` 口径为"题目已有最新已发布版且
+    本提交的提交时版本 ≠ 最新版"（未知历史版本也进入候选，由任务条目按
+    `LEGACY_VERSION_UNKNOWN` 处理）；路由校验非法 `version_origin` → 400；
+  - noj-ui `pages/submissions/index.vue`：作答版本筛选（已知 / 未知历史）、
+    "仅显示可升级""仅显示有效成绩"开关、行勾选与全选、批量升级按钮
+    （≤500 条、幂等键、轮询任务到终态、按 `reason_code` 聚合失败原因）、
+    版本列展示（`submissionVersionLabel`）。
 - [ ] 5c（收尾）search 索引发布内容、正式成绩快照（5d）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 
@@ -444,6 +453,14 @@
 
 ## 最近一次验证
 
+- 批次 6（提交列表筛选 + 用户批量升级入口）：core `GET /submissions` 新增
+  `version_id` / `version_origin` / `valid_only` / `accepted_only` / `upgradable`
+  筛选（服务层 + 路由参数校验）；submission 域
+  `bash scripts/test-domain.sh submission` **223 passed / 0 failed / 21 ignored**
+  （+2：筛选组合与非法参数 400）；noj-core 全量 `deno task test:parallel`
+  **1395 passed / 0 failed / 11 ignored**；noj-ui `deno task test`
+  **235 passed / 0 failed**、`check:types:nuxt`（nuxt typecheck + vue-tsc）0 error、
+  `deno lint` / `deno fmt --check` 全绿。
 - 批次 5/6（提交读路径版本信息）：submission 域
   `bash scripts/test-domain.sh submission` **221 passed / 0 failed / 21 ignored**
   （+2 用例：详情/列表返回提交时版本与各版本判定、策略切换后指针变化、
