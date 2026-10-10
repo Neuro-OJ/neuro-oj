@@ -1,8 +1,9 @@
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 
 import {
+  evaluationAttempts,
   evaluationResults,
   problems,
   selfTests,
@@ -28,6 +29,7 @@ const USER_ID = `tst-consumer-st-user-${ts}`;
 const PROBLEM_ID = `tst-consumer-st-problem-${ts}`;
 const SELF_TEST_ID = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
 const SUBMISSION_ID = `tst-consumer-st-sub-${ts}`;
+const ATTEMPT_ID = `tst-consumer-st-att-${ts}`;
 const BAD_PROBLEM_ID = `tst-consumer-st-bad-problem-${ts}`;
 const PENDING_SELF_TEST_ID = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
 const RECOVERABLE_SELF_TEST_ID = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
@@ -126,6 +128,16 @@ await db.insert(submissions).values({
   code: "print('hi')",
   created_at: now,
 });
+// 正式提交的在途尝试：协议 v2 下结果按 attempt_id 落到尝试终态
+await db.insert(evaluationAttempts).values({
+  id: ATTEMPT_ID,
+  submission_id: SUBMISSION_ID,
+  problem_id: PROBLEM_ID,
+  sequence: 0,
+  source: "initial",
+  state: "judging",
+  created_at: now,
+});
 await db.insert(submissions).values({
   id: RECOVERABLE_SUBMISSION_ID,
   user_id: USER_ID,
@@ -177,6 +189,12 @@ Deno.test({
       .where(eq(evaluationResults.submission_id, SELF_TEST_ID))
       .limit(1);
     assertEquals(er, undefined);
+    // 自测同样不得产生正式评测尝试（与正式提交统计/成绩隔离）
+    const selfTestAttempts = await db
+      .select({ id: evaluationAttempts.id })
+      .from(evaluationAttempts)
+      .where(eq(evaluationAttempts.submission_id, SELF_TEST_ID));
+    assertEquals(selfTestAttempts.length, 0);
   },
 });
 
@@ -188,6 +206,7 @@ Deno.test({
   fn: async () => {
     await handleResultMessage({
       submission_id: SUBMISSION_ID,
+      attempt_id: ATTEMPT_ID,
       status: "finished",
       score: 1000,
       output: "---RESULT---\n{}",
@@ -195,12 +214,15 @@ Deno.test({
     });
 
     const db = getDb();
-    const [er] = await db
+    const [attempt] = await db
       .select()
-      .from(evaluationResults)
-      .where(eq(evaluationResults.submission_id, SUBMISSION_ID))
+      .from(evaluationAttempts)
+      .where(eq(evaluationAttempts.id, ATTEMPT_ID))
       .limit(1);
-    assertEquals(er.status, "finished");
+    assertExists(attempt);
+    assertEquals(attempt.state, "finished");
+    assertEquals(attempt.result_status, "finished");
+    assertEquals(attempt.score, 1000);
   },
 });
 

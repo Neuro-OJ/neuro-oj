@@ -80,10 +80,13 @@
       全部改读尝试/有效成绩投影（不再 JOIN `evaluation_results`）。
 - [x] 提交详情/列表最近结果、竞赛结算就绪状态改读尝试（含 `platform_error` 区分）。
 - [x] `contest-ranking.ts`：结算就绪与 Kaggle 计分全部改读尝试/竞赛有效成绩投影。
-- [ ] 剩余 `evaluation_results` 引用（删表前必须清空）：
-      `submissions-result.ts` 结果写入双写（移除后需同步改写 7 个断言旧表的用例：
-      `saveEvaluationResult` 5 个 + mq/consumer 2 个）、
-      `problems-crud.ts` 删除清理与两处 schema 定义。
+- [x] `submissions-result.ts` 结果写入双写已移除：评测事实唯一来源是
+      `evaluation_attempts` 终态 + `submission_version_results` 当前判定 + 有效成绩投影；
+      7 个断言旧表的用例改写为断言尝试终态/历史保留/投影指针
+      （`saveEvaluationResult` 5 个 + mq/consumer 1 个 + self-test-consumer 1 个）。
+- [ ] 剩余 `evaluation_results` 引用（删表前必须清空）：全部在**测试夹具**中
+      （约 12 个文件：submission 4 / contest 2 / query 1 / catalog 2 / identity 1 /
+      community 1 等），以及 `problems-crud.ts` 的删除清理与两处 schema 定义。
 
 ### 批次 7（存量收尾）
 - [ ] 大库分批重算投影（`recomputeProblemProjections` 当前逐条）。
@@ -160,9 +163,9 @@
 
 - 真实 PostgreSQL 存量演练（0102+0103）：7 基线 / 123 legacy 尝试 / 123 未知桶判定 /
   123 有效投影，与旧读取口径 **0 差异**；开发库已升级。
-- 读路径收敛进度（本轮后）：`evaluation_results` 的**运行期读取已全部迁离**
-  （列表/详情/队列/站点统计/个人主页/数据导出/竞赛题目通过状态/结算就绪/Kaggle 计分）；
-  仅剩结果写入双写与删除清理 + schema 定义。
+- 读路径收敛进度：`evaluation_results` 的**运行期读取已全部迁离**
+  （列表/详情/队列/站点统计/个人主页/数据导出/竞赛题目通过状态/结算就绪/Kaggle 计分），
+  **写入双写也已移除**；剩余引用只在测试夹具与两处 schema 定义，删表迁移是下一步。
 - 提交历史：**41 个 GPG 签名提交**在 `feat/problem-version-management`，工作副本干净。
 - 环境注意：`noj-lmcc-extension` 的 `npm run check` 因缺 `@types/node` 与
   `moduleResolution=node10` 弃用报错（预先存在，非本次改动引入）。

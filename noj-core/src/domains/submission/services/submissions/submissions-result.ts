@@ -9,11 +9,7 @@
  */
 
 import { eq } from "drizzle-orm";
-import {
-  evaluationResults,
-  sseEvents,
-  submissions,
-} from "./../../../../shared/db/schema.ts";
+import { sseEvents, submissions } from "./../../../../shared/db/schema.ts";
 import {
   BadRequestError,
   NotFoundError,
@@ -122,12 +118,9 @@ export async function saveEvaluationResult(
     if (sub.judge_run_id && result.details.run_id !== sub.judge_run_id) {
       return null;
     }
-    // 查询是否存在历史评测结果（重测时需替换）
-    const [existingResult] = await tx
-      .select({ id: evaluationResults.id })
-      .from(evaluationResults)
-      .where(eq(evaluationResults.submission_id, result.submission_id))
-      .limit(1);
+    // 旧结果表 `evaluation_results` 已停止写入（Handbook §6.5）：评测事实的唯一来源是
+    // `evaluation_attempts` 终态 + `submission_version_results` 当前判定 + 有效成绩投影。
+    // 所有运行期读取均已迁离旧表，旧表只剩存量数据，等待整体删除迁移。
 
     // 状态机收紧：正常结果只允许 pending/judging → 终态。
     // error 提交重测时会先重置为 pending，因此也允许从 error 修复。
@@ -171,26 +164,6 @@ export async function saveEvaluationResult(
         judge_finished_at: now,
       })
       .where(eq(submissions.id, safeResult.submission_id));
-
-    if (existingResult) {
-      await tx
-        .delete(evaluationResults)
-        .where(eq(evaluationResults.submission_id, safeResult.submission_id));
-    }
-
-    await tx
-      .insert(evaluationResults)
-      .values({
-        id: crypto.randomUUID(),
-        submission_id: safeResult.submission_id,
-        status: safeResult.status,
-        score: safeResult.score,
-        output: safeResult.output,
-        details: JSON.stringify(safeResult.details),
-        time_ms: safeResult.time_ms ?? null,
-        memory_kb: safeResult.memory_kb ?? null,
-        created_at: now,
-      });
 
     // 版本化评测链路（Handbook §5.6）：尝试定位优先级
     // `attempt_id`（显式）→ `run_id`（协议 v2 回显，正式提交下同值）→
