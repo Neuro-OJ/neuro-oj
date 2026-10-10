@@ -22,4 +22,5 @@ export * from "./services/versioning/submission-version.ts";
 export * from "./services/versioning/effective-policy.ts";
 export * from "./services/versioning/rejudge-jobs.ts";
 export * from "./services/versioning/job-worker.ts";
+export * from "./services/versioning/dispatch-job-item.ts";
 export * from "./services/versioning/upgrade-jobs.ts";

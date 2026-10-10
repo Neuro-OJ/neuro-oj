@@ -29,3 +29,4 @@ export {
 export * from "./types/objective.ts";
 export * from "./services/versioning/objective-drafts.ts";
 export * from "./services/versioning/objective-regrade.ts";
+export * from "./services/versioning/objective-regrade-job.ts";

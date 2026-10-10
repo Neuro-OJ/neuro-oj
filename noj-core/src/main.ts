@@ -1,7 +1,10 @@
 import { createApp } from "./app.ts";
 import { closeDbForShutdown } from "./shared/db/connection.ts";
 import { runMigrations } from "./shared/db/migrate.ts";
-import { startQueueSweeper } from "./domains/submission/index.ts";
+import {
+  startQueueSweeper,
+  startSubmissionJobWorker,
+} from "./domains/submission/index.ts";
 import { closeRedisForShutdown, connectRedis } from "./shared/mq/connection.ts";
 import {
   requestResultConsumerShutdown,
@@ -309,6 +312,9 @@ async function main() {
 
   // 启动 processing 超时重投 + pending 提交恢复 sweeper
   startQueueSweeper();
+
+  // 启动批量任务 worker（管理员重测 / 用户升级条目派发；Handbook §5.7）
+  startSubmissionJobWorker();
 
   // 初始化 Redis Pub/Sub 事件订阅者（后台运行，用于 SSE 推送）
   initEventSubscriber();

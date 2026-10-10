@@ -359,6 +359,10 @@
 
 ## 最近一次验证
 
+- 批次 4b（条目派发 + worker 注册）：submission 域 **216 passed / 0 failed /
+  21 ignored**（新增 6 个派发用例：latest 目标按版本内容构造任务、语言不接受、
+  源已删除、未知历史版本、源在评测、客观题按快照重判并保留 V1 成绩）；
+  noj-core 全量 `deno task test:parallel` **1379 passed / 0 failed / 11 ignored**。
 - 批次 2e（创建即建草稿 + 删除清理）：catalog 域 **298 passed / 0 failed**（新增
   "删除带版本的题目清理干净"用例）；noj-core 全量 `deno task test:parallel`
   **1373 passed / 0 failed / 11 ignored**。
