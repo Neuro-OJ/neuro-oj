@@ -301,8 +301,14 @@
       `objective_submissions.is_accepted` 即为满分口径）、
       客观题练习最高分（`listObjectiveSubmissions.best_score` 改读
       `is_valid` 提交的 `effective_attempt_id` 分数，不再用 `MAX(score)`）。
-- [ ] 5c（收尾）problems-stats 公开统计（改读投影 + 最近尝试状态）、search 索引、
-      正式成绩快照（5d）。
+- [x] 5c（problems-stats）题目统计改读**有效成绩**（§3.2/§3.4）：
+  - 样本由 `submissions ⋈ evaluation_attempts(effective_attempt_id)` 取
+    `result_status`/`score`/`details`，不再 JOIN `evaluation_results`；
+  - 通过数与"有效提交"直接读投影（`is_accepted` / `is_valid`），
+    公开通过率分母改为 `valid_submissions`（新增字段，赛期与通过率一并抑制）；
+  - 缓存键加入题目作用域 `query_projection_revisions`，策略切换后统计立即按新口径
+    重算（不再只依赖 5 分钟 TTL）；`details` 兼容对象与历史文本两种形态。
+- [ ] 5c（收尾）search 索引发布内容、正式成绩快照（5d）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 
 ## 批次 7 落点清单
@@ -375,6 +381,10 @@
 
 ## 最近一次验证
 
+- 批次 5c（题目统计读有效成绩）：catalog 域 **298 passed / 0 failed**（统计夹具改为
+  写入"提交 + graded 尝试 + 投影"真实链路）；noj-core 全量
+  `deno task test:parallel` **1385 passed / 0 failed / 11 ignored**；
+  `deno lint` / `deno fmt --check` / 域边界 / JSDoc / 类型检查全绿。
 - 批次 4c（旧重测入口适配统一任务服务）：submission 域 **219 passed / 0 failed /
   21 ignored**（两个旧入口测试改为断言"受理不改写提交状态 + 任务已创建"，
   LLM 缺配不再卡 pending）；identity 域 **310 passed / 0 failed / 25 ignored**
