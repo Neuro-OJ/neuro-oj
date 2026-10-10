@@ -16,7 +16,6 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   contestProblems,
-  evaluationResults,
   objectiveSubmissions,
   problemDraftObjects,
   problemDrafts,
@@ -839,16 +838,8 @@ export async function deleteProblem(
     .where(eq(problemVersions.problem_id, id));
   for (const row of versionObjectRows) objectUrls.add(row.storage_url);
 
-  // 清理关联提交（submissions 无 ON DELETE CASCADE，需手动清理）
-  await db.delete(evaluationResults)
-    .where(
-      inArray(
-        evaluationResults.submission_id,
-        db.select({ id: submissions.id })
-          .from(submissions)
-          .where(eq(submissions.problem_id, id)),
-      ),
-    );
+  // 清理关联提交（submissions 无 ON DELETE CASCADE，需手动清理；
+  // 评测尝试/分版本判定随提交级联删除）
   await db.delete(submissions).where(eq(submissions.problem_id, id));
 
   // 清理自测记录。

@@ -729,6 +729,13 @@
       "when": 1791556042443,
       "tag": "0103_version_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1791613662596,
+      "tag": "0104_rebuild_user_rankings_view",
+      "breakpoints": true
     }
   ]
 }

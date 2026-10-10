@@ -9,7 +9,7 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   auditLogs,
   contests,
-  evaluationResults,
+  evaluationAttempts,
   problems,
   submissions,
   userRoles,
@@ -332,15 +332,32 @@ Deno.test({
       assertEquals(update.status, 200);
       assertEquals((await update.json()).data.announcement, "测试公告");
 
-      await db.insert(evaluationResults).values({
-        id: crypto.randomUUID(),
+      // 结算就绪读「最近终态尝试」：为已完成的提交补一条终态尝试并回填指针，
+      // 否则门禁会把它算作未评测（fail-closed）
+      const settleAttemptId = crypto.randomUUID();
+      await db.insert(evaluationAttempts).values({
+        id: settleAttemptId,
         submission_id: submissionId,
-        status: "finished",
+        problem_id: problemId,
+        sequence: 0,
+        source: "initial",
+        state: "finished",
+        result_kind: "graded",
+        result_status: "finished",
         score: 10000,
-        output: "",
-        details: "{}",
+        accepted: true,
         created_at: now,
+        finished_at: now,
       });
+      await db.update(submissions).set({
+        is_valid: true,
+        is_accepted: true,
+        is_contest_valid: true,
+        is_contest_accepted: true,
+        latest_attempt_id: settleAttemptId,
+        effective_attempt_id: settleAttemptId,
+        contest_effective_attempt_id: settleAttemptId,
+      }).where(eq(submissions.id, submissionId));
       const readiness = await jsonRequest(
         app,
         `/api/v1/admin/contest/contests/${contestId}/ranking-snapshots/readiness`,
@@ -370,9 +387,6 @@ Deno.test({
       assertEquals(finalBody.snapshot.version, 1);
     } finally {
       if (submissionId) {
-        await db.delete(evaluationResults).where(
-          eq(evaluationResults.submission_id, submissionId),
-        );
         await db.delete(submissions).where(eq(submissions.id, submissionId));
       }
       const ids = [contestId, privateContestId].filter(

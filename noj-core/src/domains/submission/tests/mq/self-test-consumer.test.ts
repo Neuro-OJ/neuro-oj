@@ -4,7 +4,6 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 
 import {
   evaluationAttempts,
-  evaluationResults,
   problems,
   selfTests,
   submissions,
@@ -183,13 +182,7 @@ Deno.test({
     assertEquals(st.result_status, "finished");
     assertEquals(st.score, 10000);
 
-    const [er] = await db
-      .select({ id: evaluationResults.id })
-      .from(evaluationResults)
-      .where(eq(evaluationResults.submission_id, SELF_TEST_ID))
-      .limit(1);
-    assertEquals(er, undefined);
-    // 自测同样不得产生正式评测尝试（与正式提交统计/成绩隔离）
+    // 自测不得产生正式评测尝试（与正式提交统计/成绩隔离）
     const selfTestAttempts = await db
       .select({ id: evaluationAttempts.id })
       .from(evaluationAttempts)
@@ -377,9 +370,6 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const db = getDb();
-    await db.delete(evaluationResults).where(
-      eq(evaluationResults.submission_id, SUBMISSION_ID),
-    );
     await db.delete(submissions).where(eq(submissions.id, SUBMISSION_ID));
     await db.delete(submissions).where(
       eq(submissions.id, RECOVERABLE_SUBMISSION_ID),

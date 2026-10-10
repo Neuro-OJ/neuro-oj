@@ -159,8 +159,13 @@ export async function getContestSettlementStatus(
       COUNT(*) FILTER (WHERE failed)::int AS failed_count
     FROM (
       SELECT status, result_status,
-        (status = 'error' OR result_status = 'error'
-          OR platform_error IS TRUE) AS failed
+        -- 三值逻辑必须显式收敛：OR 链遇到 NULL 会得到 NULL，
+        -- 否则"无尝试的提交"既不算 failed 也不算 pending（结算门禁 fail-open）
+        COALESCE(
+          status = 'error' OR result_status = 'error'
+            OR platform_error IS TRUE,
+          FALSE
+        ) AS failed
       FROM contest_tasks
     ) classified
   `);

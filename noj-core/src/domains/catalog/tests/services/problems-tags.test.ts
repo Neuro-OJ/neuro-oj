@@ -14,7 +14,6 @@ import { eq, inArray } from "drizzle-orm";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
-  evaluationResults,
   problems,
   problemTags,
   submissions,
@@ -246,13 +245,6 @@ Deno.test({
       is_accepted: true,
       created_at: now,
     });
-    await db.insert(evaluationResults).values({
-      id: crypto.randomUUID(),
-      submission_id: submissionId,
-      status: "finished",
-      score: 10000,
-      created_at: now,
-    });
 
     const problem = await getProblem(problemId);
     const visible = await applyAlgorithmTagVisibility(problem, { userId });
@@ -260,9 +252,6 @@ Deno.test({
     assertEquals(visible.has_hidden_algorithm_tags, false);
     assertEquals(visible.tags.some((t) => t.kind === "algorithm"), true);
 
-    await db.delete(evaluationResults).where(
-      eq(evaluationResults.submission_id, submissionId),
-    );
     await db.delete(submissions).where(eq(submissions.id, submissionId));
     await db.delete(problemTags).where(eq(problemTags.problem_id, problemId));
     await db.delete(problems).where(eq(problems.id, problemId));

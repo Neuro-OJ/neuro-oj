@@ -16,7 +16,6 @@ import {
   contestProblems,
   contests,
   evaluationAttempts,
-  evaluationResults,
   problems,
   sseEvents,
   submissionJobs,
@@ -881,9 +880,6 @@ Deno.test({
       assertEquals(attempt.memory_kb, null);
     } finally {
       // 清理
-      await db.delete(evaluationResults).where(
-        eq(evaluationResults.submission_id, subId),
-      );
       await db.delete(submissions).where(eq(submissions.id, subId));
       await db.delete(users).where(eq(users.id, userId));
     }
@@ -973,9 +969,6 @@ Deno.test({
       const ignoredLog = logs.find((l) => l.msg.includes("忽略过时的评测结果"));
       assertExists(ignoredLog, "应记录旧结果被丢弃的日志");
     } finally {
-      await db.delete(evaluationResults).where(
-        eq(evaluationResults.submission_id, subId),
-      );
       await db.delete(submissions).where(eq(submissions.id, subId));
       await db.delete(users).where(eq(users.id, userId));
     }
@@ -1093,9 +1086,6 @@ Deno.test({
       assertEquals(submissionRow.latest_attempt_id, rejudgeAttemptId);
       assertEquals(submissionRow.active_attempt_id, null);
     } finally {
-      await db.delete(evaluationResults).where(
-        eq(evaluationResults.submission_id, subId),
-      );
       await db.delete(submissions).where(eq(submissions.id, subId));
       await db.delete(users).where(eq(users.id, userId));
     }
@@ -1201,15 +1191,6 @@ Deno.test({
         rejudge_seq: 0,
         created_at: now,
       });
-      await db.insert(evaluationResults).values({
-        id: crypto.randomUUID(),
-        submission_id: subId,
-        status: "finished",
-        score: 1000,
-        output: "---RESULT---",
-        details: "{}",
-        created_at: now,
-      });
 
       // 清空本测试前可能存在的审计行，避免行数偏差
       await db.delete(auditLogs);
@@ -1241,9 +1222,6 @@ Deno.test({
         // 清理本测试数据（统一任务受理会写 submission_jobs，需先清理）
         await db.delete(submissionJobs).where(
           eq(submissionJobs.actor_id, adminId),
-        );
-        await db.delete(evaluationResults).where(
-          eq(evaluationResults.submission_id, subId),
         );
         await db.delete(submissions).where(eq(submissions.id, subId));
         await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
@@ -1482,15 +1460,6 @@ Deno.test({
           rejudge_seq: 0,
           created_at: now,
         });
-        await db.insert(evaluationResults).values({
-          id: crypto.randomUUID(),
-          submission_id: sid,
-          status: "finished",
-          score: 1000,
-          output: "---RESULT---",
-          details: "{}",
-          created_at: now,
-        });
       }
 
       // 清空本测试前可能存在的审计行
@@ -1529,9 +1498,6 @@ Deno.test({
           eq(submissionJobs.actor_id, adminId),
         );
         for (const sid of subIds) {
-          await db.delete(evaluationResults).where(
-            eq(evaluationResults.submission_id, sid),
-          );
           await db.delete(submissions).where(eq(submissions.id, sid));
         }
         await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));

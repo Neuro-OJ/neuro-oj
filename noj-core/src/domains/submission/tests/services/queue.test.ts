@@ -13,7 +13,7 @@ import {
 } from "../../../../shared/mq/connection.ts";
 import {
   auditLogs,
-  evaluationResults,
+  evaluationAttempts,
   problems,
   selfTests,
   submissions,
@@ -106,14 +106,27 @@ async function setup() {
       created_at: now,
     },
   ]);
-  await db.insert(evaluationResults).values({
-    id: `tst-er-${ts}`,
+  // 最近完成项的结果读「最近终态尝试」：为已完成提交补一条尝试并回填指针
+  await db.insert(evaluationAttempts).values({
+    id: `tst-att-${ts}`,
     submission_id: SUBMISSION_FINISHED_ID,
-    status: "finished",
+    problem_id: PROBLEM_ID,
+    sequence: 0,
+    source: "initial",
+    state: "finished",
+    result_kind: "graded",
+    result_status: "finished",
     score: 1000,
-    output: "---RESULT---\n{}",
+    accepted: true,
     created_at: now,
+    finished_at: now,
   });
+  await db.update(submissions).set({
+    latest_attempt_id: `tst-att-${ts}`,
+    effective_attempt_id: `tst-att-${ts}`,
+    is_valid: true,
+    is_accepted: true,
+  }).where(eq(submissions.id, SUBMISSION_FINISHED_ID));
   await db.insert(selfTests).values({
     id: SELF_TEST_FINISHED_ID,
     user_id: USER_ID,
@@ -134,9 +147,6 @@ async function setup() {
 async function teardown() {
   try {
     const db = getDb();
-    await db.delete(evaluationResults).where(
-      eq(evaluationResults.submission_id, SUBMISSION_FINISHED_ID),
-    );
     await db.delete(selfTests).where(
       eq(selfTests.user_id, USER_ID),
     );

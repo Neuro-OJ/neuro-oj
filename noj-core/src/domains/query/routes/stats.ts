@@ -10,7 +10,7 @@ const stats = new Hono();
  *
  * 返回题目数、提交总数、注册用户数、评测通过数，
  * 供「关于」页数据面板展示。统计口径与 rankings / dashboard 服务一致：
- * 通过数 = evaluation_results.status = 'finished' 且 score > 0 的行数。
+ * 通过数 = `submissions.is_accepted`（有效成绩投影）为真的提交数。
  *
  * 四个 count() 并发执行；MVP 阶段数据量可接受，后续量大时可加缓存（见 design.md Risks）。
  */

@@ -7,7 +7,6 @@ import {
   contestRankingSnapshots,
   contests,
   evaluationAttempts,
-  evaluationResults,
   objectiveSubmissions,
   problems,
   problemVersions,
@@ -76,16 +75,6 @@ async function insertSubmission(
     effective_attempt_id: attemptId,
     contest_effective_attempt_id: attemptId,
   }).where(eq(submissions.id, id));
-  // 兼容旧读取（结算/通知等仍可能读最近结果表）
-  await getDb().insert(evaluationResults).values({
-    id: crypto.randomUUID(),
-    submission_id: id,
-    status: "finished",
-    score,
-    output: "",
-    details: "{}",
-    created_at: createdAt,
-  });
 }
 
 async function insertUser(id: string, prefix: string): Promise<void> {
@@ -216,15 +205,6 @@ Deno.test({
       status: "error",
       created_at: atMinutes(-50),
     });
-    await db.insert(evaluationResults).values({
-      id: crypto.randomUUID(),
-      submission_id: submissionId,
-      status: "error",
-      score: 0,
-      output: "judge error",
-      details: "{}",
-      created_at: atMinutes(-49),
-    });
     try {
       const readiness = await getContestSettlementStatus(contestId);
       assertEquals(readiness.pending_count, 0);
@@ -243,9 +223,6 @@ Deno.test({
       );
       assertEquals(result.version, 1);
     } finally {
-      await db.delete(evaluationResults).where(
-        eq(evaluationResults.submission_id, submissionId),
-      );
       await db.delete(submissions).where(eq(submissions.id, submissionId));
       await db.delete(contests).where(eq(contests.id, contestId));
       await db.delete(problems).where(eq(problems.id, problemId));
@@ -369,15 +346,6 @@ Deno.test({
       assertEquals(rowA.problem_scores[1].best_score, 10000);
       assertEquals(rowA.problem_scores[1].attempts, 1);
     } finally {
-      const submissionRows = await db.select({ id: submissions.id }).from(
-        submissions,
-      ).where(inArray(submissions.contest_id, [contestId]));
-      if (submissionRows.length > 0) {
-        await db.delete(evaluationResults).where(inArray(
-          evaluationResults.submission_id,
-          submissionRows.map((row) => row.id),
-        ));
-      }
       await db.delete(submissions).where(inArray(
         submissions.contest_id,
         [contestId],
@@ -461,15 +429,6 @@ Deno.test({
       assertEquals(ranking.map((row) => row.total_score), [15000, 15000]);
       assertEquals(ranking.map((row) => row.rank), [1, 2]);
     } finally {
-      const submissionRows = await db.select({ id: submissions.id }).from(
-        submissions,
-      ).where(inArray(submissions.contest_id, [contestId]));
-      if (submissionRows.length > 0) {
-        await db.delete(evaluationResults).where(inArray(
-          evaluationResults.submission_id,
-          submissionRows.map((row) => row.id),
-        ));
-      }
       await db.delete(submissions).where(inArray(
         submissions.contest_id,
         [contestId],
@@ -645,15 +604,6 @@ Deno.test({
       const admin = await getContestRanking(contestId, "kaggle", true);
       assertEquals(admin.length, 2);
     } finally {
-      const submissionRows = await db.select({ id: submissions.id }).from(
-        submissions,
-      ).where(inArray(submissions.contest_id, [contestId]));
-      if (submissionRows.length > 0) {
-        await db.delete(evaluationResults).where(inArray(
-          evaluationResults.submission_id,
-          submissionRows.map((row) => row.id),
-        ));
-      }
       await db.delete(submissions).where(inArray(
         submissions.contest_id,
         [contestId],
@@ -724,15 +674,6 @@ Deno.test({
       assertEquals(score.evaluation_status, undefined);
       assertEquals(score.evaluation_created_at, undefined);
     } finally {
-      const submissionRows = await db.select({ id: submissions.id }).from(
-        submissions,
-      ).where(inArray(submissions.contest_id, [contestId]));
-      if (submissionRows.length > 0) {
-        await db.delete(evaluationResults).where(inArray(
-          evaluationResults.submission_id,
-          submissionRows.map((row) => row.id),
-        ));
-      }
       await db.delete(submissions).where(inArray(
         submissions.contest_id,
         [contestId],
@@ -793,15 +734,6 @@ Deno.test({
       assertExists(score.submission_id);
       assertExists(score.evaluation_status);
     } finally {
-      const submissionRows = await db.select({ id: submissions.id }).from(
-        submissions,
-      ).where(inArray(submissions.contest_id, [contestId]));
-      if (submissionRows.length > 0) {
-        await db.delete(evaluationResults).where(inArray(
-          evaluationResults.submission_id,
-          submissionRows.map((row) => row.id),
-        ));
-      }
       await db.delete(submissions).where(inArray(
         submissions.contest_id,
         [contestId],
@@ -1021,14 +953,6 @@ Deno.test({
       effective_attempt_id: attemptId,
       latest_attempt_id: attemptId,
     }).where(eq(submissions.id, submissionId));
-    // 实时榜分数仍读旧结果表（本次改动只做加法：把归因写进快照）
-    await db.insert(evaluationResults).values({
-      id: crypto.randomUUID(),
-      submission_id: submissionId,
-      status: "finished",
-      score: 10000,
-      created_at: atMinutes(-49),
-    });
 
     try {
       const published = await publishContestRankingSnapshot(
@@ -1058,9 +982,6 @@ Deno.test({
     } finally {
       await db.delete(contestRankingSnapshots).where(
         eq(contestRankingSnapshots.contest_id, contestId),
-      );
-      await db.delete(evaluationResults).where(
-        eq(evaluationResults.submission_id, submissionId),
       );
       await db.delete(evaluationAttempts).where(
         eq(evaluationAttempts.problem_id, problemId),
@@ -1147,14 +1068,7 @@ Deno.test({
       accepted: true,
       created_at: atMinutes(-49),
     });
-    // 旧结果表里有分数；投影未标记竞赛有效 → 不得计入竞赛成绩
-    await db.insert(evaluationResults).values({
-      id: crypto.randomUUID(),
-      submission_id: submissionId,
-      status: "finished",
-      score: 9000,
-      created_at: atMinutes(-49),
-    });
+    // 投影未标记竞赛有效 → 即使尝试已有 9000 分也不得计入竞赛成绩
 
     try {
       const ignored = await getContestRanking(contestId, "kaggle");
@@ -1191,9 +1105,6 @@ Deno.test({
       assertEquals(snapshotScore!.effective_attempt_id, attemptId);
       assertEquals(snapshotScore!.evaluation_status, "finished");
     } finally {
-      await db.delete(evaluationResults).where(
-        eq(evaluationResults.submission_id, submissionId),
-      );
       await db.delete(evaluationAttempts).where(
         eq(evaluationAttempts.problem_id, problemId),
       );

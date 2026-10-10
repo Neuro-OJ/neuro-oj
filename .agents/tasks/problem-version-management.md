@@ -23,7 +23,7 @@
 | 4 | 管理操作（策略、批任务、重测、升级） | ✅ 完成 | 派发 + 路由 + 旧入口适配层；竞赛固定版本创建/编辑写入；§4.5 三个策略/固定版本端点已补；仅「代他人升级」旁路未做 |
 | 5 | 读取统一（通过状态、题单、排行、资料、社区、搜索、正式成绩） | ✅ 完成 | 5a/5b/5c/5d 全部落地：stats-cache 去进程内状态、未发布题目不进公共面、搜索只索引已发布、提交读路径版本信息、Kaggle 计分读竞赛有效成绩、正式快照记录策略与尝试归因 |
 | 6 | 客户端（Web、IDE、CLI、演练） | 🟡 部分 | CLI/LMCC/E2E 完成；noj-ui 提交侧、提交列表/详情版本展示、管理端（版本策略 + 批量重测）均完成；剩**编辑器草稿/发布编辑流**（与批次 2c/2e 同步落地） |
-| 7 | 存量收尾（回填、旧表删除、视图/索引重建、备份恢复验证） | 🟡 部分 | 0103 回填 + 真实库演练完成；全部运行期**读**已迁离 `evaluation_results`；剩写入双写移除、旧表删除、`pinned_version_id` 收紧、视图/索引重建与备份恢复演练 |
+| 7 | 存量收尾（回填、旧表删除、视图/索引重建、备份恢复验证） | 🟡 部分 | 0103 回填 + 真实库演练完成；旧表**读写引用已全部清零**（仅剩 schema 定义）、写入双写移除、`user_rankings` 视图已重建（0104）；剩删表迁移、`pinned_version_id` 收紧、索引重建与备份恢复演练 |
 | 8 | 文档与交付（现行文档、Agent Note、验收、PR） | ⬜ 未开始 | 含删除本跟踪文件 |
 
 图例：✅ 完成　🟡 部分　⬜ 未开始
@@ -84,15 +84,24 @@
       `evaluation_attempts` 终态 + `submission_version_results` 当前判定 + 有效成绩投影；
       7 个断言旧表的用例改写为断言尝试终态/历史保留/投影指针
       （`saveEvaluationResult` 5 个 + mq/consumer 1 个 + self-test-consumer 1 个）。
-- [ ] 剩余 `evaluation_results` 引用（删表前必须清空）：全部在**测试夹具**中
-      （约 12 个文件：submission 4 / contest 2 / query 1 / catalog 2 / identity 1 /
-      community 1 等），以及 `problems-crud.ts` 的删除清理与两处 schema 定义。
+- [x] 全部 `evaluation_results` 引用已清空（除 `src/shared/db/**` 的 schema 定义）：
+      12 个测试文件夹具改写为「提交 + 尝试 + 投影指针」或直接删除旧结果行；
+      `problems-crud.ts` 删除清理移除（尝试随提交级联）。
+- [x] 顺带修复结算门禁 **fail-open**：`failed` 表达式在三值逻辑下为 NULL 时既不算
+      failed 也不算 pending（"无尝试的提交"会被静默放过）；改为 `COALESCE(..., FALSE)`
+      收敛为布尔，并给路由夹具补上终态尝试。
 
 ### 批次 7（存量收尾）
 - [ ] 大库分批重算投影（`recomputeProblemProjections` 当前逐条）。
 - [ ] `contest_problems.pinned_version_id` 最终 `SET NOT NULL`。
-- [ ] 删除旧表 `evaluation_results`、`objective_questions`（运行期读取已迁完的项目先删）。
-- [ ] 重建用户榜单物化视图与搜索索引；备份/恢复演练验证。
+- [x] 重建用户榜单物化视图：迁移 `0104_rebuild_user_rankings_view.sql`（`drizzle-kit
+      generate --custom` 生成，journal 由工具维护）把 `user_rankings` 从
+      `evaluation_results` 改读 `submissions.is_accepted`；已应用到开发库。
+      这是"停写旧表"暴露的必然依赖：旧视图在新模型下必然为空，测试
+      `refreshRankingsView()` 后会读到空榜。
+- [ ] 删除旧表 `evaluation_results`（引用已清零，只剩 schema 定义与 parity/DDL 收尾）、
+      以及 `objective_questions`（运行期读取迁完后）。
+- [ ] 搜索索引重建；备份/恢复演练验证。
 
 ### 批次 8（文档与交付）
 - [ ] 新增用户/管理员版本管理文档（草稿发布、提交时版本、any/exact、升级/重测/进度、

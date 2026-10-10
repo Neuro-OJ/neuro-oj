@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   contests,
-  evaluationResults,
   problems,
   submissions,
   users,
@@ -56,7 +55,6 @@ async function createSubmission(
   const submissionId = crypto.randomUUID();
   const now = new Date().toISOString();
   const resultStatus = kind === "error" ? "error" : "finished";
-  const score = kind === "pass" ? 10000 : 0;
   await db.insert(submissions).values({
     id: submissionId,
     user_id: userId,
@@ -66,19 +64,10 @@ async function createSubmission(
     code: "print(1)",
     file_name: "main.py",
     status: resultStatus,
-    // 版本化后榜单读的是有效成绩投影（由结果服务维护）；此处直接落投影以模拟该状态
+    // 榜单读的是有效成绩投影（由结果服务维护）；此处直接落投影以模拟该状态
     is_valid: resultStatus === "finished",
     is_accepted: kind === "pass",
     latest_attempt_id: null,
-    created_at: now,
-  });
-  await db.insert(evaluationResults).values({
-    id: crypto.randomUUID(),
-    submission_id: submissionId,
-    status: resultStatus,
-    score,
-    output: "",
-    details: "{}",
     created_at: now,
   });
 }
@@ -119,20 +108,10 @@ async function createTestProblem(problemNumber: number): Promise<string> {
 }
 
 /**
- * 清理测试用户的提交 + 评测结果 + 用户记录。
+ * 清理测试用户的提交 + 用户记录（尝试随提交级联删除）。
  */
 async function cleanupUser(userId: string): Promise<void> {
   const db = getDb();
-  // 先删除 evaluation_results（FK → submissions）
-  const userSubs = await db
-    .select({ id: submissions.id })
-    .from(submissions)
-    .where(eq(submissions.user_id, userId));
-  for (const sub of userSubs) {
-    await db.delete(evaluationResults).where(
-      eq(evaluationResults.submission_id, sub.id),
-    );
-  }
   await db.delete(submissions).where(eq(submissions.user_id, userId));
   await db.delete(users).where(eq(users.id, userId));
 }
@@ -142,16 +121,6 @@ async function cleanupUser(userId: string): Promise<void> {
  */
 async function cleanupProblem(problemId: string): Promise<void> {
   const db = getDb();
-  // 先删除关联的 submissions + evaluation_results
-  const problemSubs = await db
-    .select({ id: submissions.id })
-    .from(submissions)
-    .where(eq(submissions.problem_id, problemId));
-  for (const sub of problemSubs) {
-    await db.delete(evaluationResults).where(
-      eq(evaluationResults.submission_id, sub.id),
-    );
-  }
   await db.delete(submissions).where(eq(submissions.problem_id, problemId));
   await db.delete(problems).where(eq(problems.id, problemId));
 }

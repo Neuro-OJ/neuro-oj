@@ -455,9 +455,15 @@
       7 个断言旧表的用例改写为断言新事实（尝试终态字段、重复消费不产生多次尝试、
       重测时旧尝试历史保留且投影 `latest_attempt_id` 指向新尝试、非法 seq 不覆盖终态、
       自测不产生正式尝试）。
-- [ ] 7b 第二步：**删除旧表**。剩余引用只在测试夹具（约 12 个文件）与
-      `problems-crud.ts` 删除清理、两处 schema 定义；夹具迁移完成后生成
-      `DROP TABLE evaluation_results` 迁移、同步 `schema-ddl.ts` 与 parity 门禁。
+- [x] 7b 第二步：**清空全部旧表引用**。12 个测试文件的夹具改写为「提交 + 尝试 +
+      投影指针」或直接删除旧结果行；`problems-crud.ts` 删除清理移除（尝试随提交级联）。
+      这一步暴露并修复了两处真实问题：
+      1. 结算门禁 fail-open——`failed` 表达式在三值逻辑下为 NULL 时既不算 failed
+         也不算 pending，"无尝试的提交"被静默放过；改为 `COALESCE(..., FALSE)`；
+      2. `user_rankings` 物化视图仍基于旧表——停写后视图必然为空，
+         迁移 `0104_rebuild_user_rankings_view.sql` 重建到 `submissions.is_accepted`。
+- [ ] 7b 第三步：**删除旧表**。生成 `DROP TABLE evaluation_results` 迁移、
+      移除 Drizzle schema 定义、同步 `schema-ddl.ts` 与 parity 门禁、重建 PGlite 模板。
 - [ ] 7b 第三步：`contest_problems.pinned_version_id` 收紧 NOT NULL；重建用户榜单
       物化视图与搜索索引；备份/恢复演练。
 - [x] 迁移 `0103_version_backfill.sql`（drizzle-kit 生成的索引/默认值段 + 手写回填段）：
@@ -528,6 +534,12 @@
 
 ## 最近一次验证
 
+- 批次 7b（第二步：清空旧表引用 + 视图重建）：submission 224 / contest 86 /
+  catalog 303 / identity 310 / community 71 / query 23 全绿；noj-core 全量
+  `deno task test:parallel` **1403 passed / 0 failed / 11 ignored**；
+  迁移 `0104` 通过 `check-migration-safety` 与 `check-migration-snapshot-chain`，
+  并已应用到开发库；`deno fmt --check` / `deno lint` / 域边界 / JSDoc / 类型检查全绿。
+  （并行测试分片 schema 因新增迁移需先 DROP 重建，脚本已按提示处理。）
 - 批次 7b（第一步：停止写入旧结果表）：submission 域
   `bash scripts/test-domain.sh submission` **224 passed / 0 failed / 21 ignored**
   （7 个旧断言改写为断言尝试终态/历史保留/投影指针后仍全绿）；contest 域
