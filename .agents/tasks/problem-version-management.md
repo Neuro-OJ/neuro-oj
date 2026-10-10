@@ -18,7 +18,7 @@
 | # | 批次 | 状态 | 备注 |
 |---|---|---|---|
 | 1 | 基础模型（schema/类型/纯计算器/PGlite DDL/迁移 0102） | ✅ 完成 | parity 68 表/613 列 |
-| 2 | 版本写入（草稿、发布、文件引用、OI、客观题快照） | 🟡 部分 | 2a/2b/2c/2d/2e 全部落地（含客观题小题路由与导入直写草稿）；剩 ZIP worker revision 绑定用例、OI 自测临时包 |
+| 2 | 版本写入（草稿、发布、文件引用、OI、客观题快照） | 🟡 部分 | 2a–2e 全部落地（含客观题小题路由、导入直写草稿、ZIP 陈旧结果并发用例）；剩 OI 自测临时包 |
 | 3 | 评测链路（attempt、协议、结果事务、LLM、sweeper、自测） | ✅ 完成 | 含协议 v2、contest 口径修复、LLM attempt 作用域 |
 | 4 | 管理操作（策略、批任务、重测、升级） | ✅ 完成 | 派发 + 路由 + 旧入口适配层；竞赛固定版本创建/编辑写入；§4.5 三个策略/固定版本端点已补；仅「代他人升级」旁路未做 |
 | 5 | 读取统一（通过状态、题单、排行、资料、社区、搜索、正式成绩） | ✅ 完成 | 5a/5b/5c/5d 全部落地：stats-cache 去进程内状态、未发布题目不进公共面、搜索只索引已发布、提交读路径版本信息、Kaggle 计分读竞赛有效成绩、正式快照记录策略与尝试归因 |
@@ -51,9 +51,11 @@
 - [x] 2d noj-tests 同步：`e2e/helper.ts` 的 `apiPut`/`apiDelete` 支持自定义头；
       客观题 E2E 建立 revision 链、创建小题后**显式发布 V1**（作答与公开读取的
       事实源）、更新小题走 `If-Match`、补 428 断言。
-- [ ] ZIP worker 结果绑定草稿 revision 的**并发用例**（当前由「先打包、后带
-      `expectedRevision` 提交」结构性保证：陈旧 ZIP 会被 409 拒绝并补偿已上传对象，
-      缺一个显式用例把这个不变量钉住）。
+- [x] ZIP worker 结果绑定草稿 revision 的并发用例：`oi-draft.test.ts` 新增
+      「打包期间草稿被他人改动 → 陈旧 ZIP 被 409 拒绝、草稿内容/引用不变、
+      上传补偿后登记表无悬挂对象」。上传与打包在事务外完成，提交由
+      `saveProblemDraftWithObjects` 的 `expectedRevision` 守住，因此陈旧结果
+      不可能覆盖新草稿。
 - [ ] OI 自测从所选版本构造临时包并登记临时对象引用。
 
 ### 批次 5（读取统一）
@@ -187,7 +189,7 @@
 |---|---|---|
 | noj-core 全量 | `cd noj-core && deno task test:parallel` | **1408 passed / 0 failed / 11 ignored**（批次 2d 后） |
 | objective 域 | `bash scripts/test-domain.sh objective` | **56 passed / 0 failed**（+1 草稿/快照分流、7 个原用例改走 revision 链） |
-| catalog 域 | `bash scripts/test-domain.sh catalog` | **307 passed / 0 failed**（+1 小题 key 解析；客观题导入用例改走真实题包） |
+| catalog 域 | `bash scripts/test-domain.sh catalog` | **308 passed / 0 failed**（+1 小题 key 解析、+1 ZIP 陈旧结果并发；客观题导入用例改走真实题包） |
 | noj-ui 单测 | `cd noj-ui && deno task test` | **235 passed / 0 failed** |
 | noj-ui 类型 | `deno task check:types` + `deno task check:types:nuxt` | **0 error** |
 | noj-ui 组件 | `deno task test:components`（vitest） | **102 passed / 19 files** |

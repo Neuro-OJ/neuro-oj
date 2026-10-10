@@ -5,17 +5,24 @@
  * - 配置 + 逐文件引用 + 打包 ZIP 在同一次草稿事务中切换（revision 只涨一次）；
  * - metadata-only 保存复用引用并校验新配置引用路径；
  * - 读取显式区分 draft / version 来源，历史版本数据不随草稿变化；
- * - revision 乐观锁（428 / 409）。
+ * - revision 乐观锁（428 / 409）；
+ * - ZIP 打包期间草稿被他人改动时，陈旧结果被拒绝且不留悬挂存储对象。
  */
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
-import { problems } from "../../../../shared/db/schema.ts";
+import {
+  problemDraftObjects,
+  problems,
+  storageObjects,
+} from "../../../../shared/db/schema.ts";
 import {
   listDraftOiFileRefs,
   loadOiDataFromDraft,
   loadOiDataFromVersion,
   saveOiDraft,
 } from "../../services/versioning/oi-draft.ts";
+import { getProblemDraft } from "../../services/versioning/draft.ts";
 import { publishProblemVersion } from "../../services/versioning/publish.ts";
 import { setStorageProviderForTest } from "../../../system/services/storage/factory.ts";
 import { LocalStorageProvider } from "../../../system/services/storage/local.ts";
@@ -186,3 +193,71 @@ Deno.test("oi draft: 发布后版本数据与草稿分离", async () => {
     "1.out": "v1-output",
   });
 });
+
+Deno.test("oi draft: 打包期间草稿被他人改动 → 陈旧 ZIP 被拒绝且不留悬挂对象", async () => {
+  useTempStorage();
+  await seedOiProblem("oid-p5", 960005);
+  // 基线草稿（revision 1）
+  await saveOiDraft("oid-p5", {
+    runtime_config: oiConfig(),
+    expectedRevision: 0,
+  }, entriesOf({ "1.in": "base-in", "1.out": "base-out" }));
+  const baselineRefs = await listDraftOiFileRefs("oid-p5");
+  const baselinePackage = await draftPackageRef("oid-p5");
+
+  // 并发编辑：另一次保存把 revision 推到 2（模拟"ZIP 打包期间草稿已变化"）
+  await saveOiDraft("oid-p5", {
+    runtime_config: { ...oiConfig(), time_limit_ms: 3000 },
+    expectedRevision: 1,
+  });
+
+  // 陈旧调用携带 revision 1：ZIP 已经打包上传，但提交必须被 409 拒绝
+  await assertRejects(() =>
+    saveOiDraft("oid-p5", {
+      runtime_config: oiConfig(),
+      expectedRevision: 1,
+    }, entriesOf({ "1.in": "stale-in", "1.out": "stale-out" }))
+  );
+
+  // 草稿内容仍是并发写入者的版本（陈旧 ZIP 没有覆盖它）
+  const draft = await getProblemDraft("oid-p5");
+  assertEquals(draft.revision, 2);
+  assertEquals(
+    (draft.content as unknown as { runtime_config: OiRuntimeConfig })
+      .runtime_config.time_limit_ms,
+    3000,
+  );
+  assertEquals(
+    decode(await loadOiDataFromDraft("oid-p5")),
+    { "1.in": "base-in", "1.out": "base-out" },
+  );
+  // 引用未被替换：陈旧上传的逐文件对象没有绑定到草稿
+  assertEquals(
+    (await listDraftOiFileRefs("oid-p5")).map((ref) => ref.storage_url),
+    baselineRefs.map((ref) => ref.storage_url),
+  );
+  assertEquals(await draftPackageRef("oid-p5"), baselinePackage);
+  // 上传补偿已回收陈旧对象：登记表中不存在"无人引用却没有进入删除流程"的残留
+  const dangling = await getDb().select().from(storageObjects).where(
+    and(
+      eq(storageObjects.state, "ready"),
+      sql`NOT EXISTS (
+        SELECT 1 FROM problem_draft_objects d WHERE d.storage_url = ${storageObjects.storage_url}
+        UNION ALL
+        SELECT 1 FROM problem_version_objects v WHERE v.storage_url = ${storageObjects.storage_url}
+      )`,
+    ),
+  );
+  assertEquals(dangling.map((row) => row.storage_url), []);
+});
+
+/** 读取草稿的支持包（打包 ZIP）引用，用于确认"陈旧 ZIP 未替换引用"。 */
+async function draftPackageRef(problemId: string): Promise<string | null> {
+  const rows = await getDb().select().from(problemDraftObjects).where(
+    and(
+      eq(problemDraftObjects.problem_id, problemId),
+      eq(problemDraftObjects.role, "support_package"),
+    ),
+  );
+  return rows[0]?.storage_url ?? null;
+}
