@@ -24,6 +24,26 @@ export interface SubmissionListItem {
     time_ms: number | null;
     memory_kb: number | null;
   } | null;
+  /** 提交时版本 ID（Handbook §2.7）；未版本化历史提交为 null。 */
+  submitted_version_id?: string | null;
+  /** 版本来源：`known`（提交时明确版本）/ `legacy_unknown`（迁移前未知）。 */
+  version_origin?: string;
+  /** 提交时版本号（展示用）；未知历史版本为 null。 */
+  submitted_version?: number | null;
+}
+
+/**
+ * 提交时版本的展示文案。
+ *
+ * 迁移期存量提交的来源是 `legacy_unknown`，必须显式说明"未知历史版本"，
+ * 不能显示成 v0 或留空——否则读者会以为该提交针对某个真实版本。
+ */
+export function submissionVersionLabel(input: {
+  version_origin?: string;
+  submitted_version?: number | null;
+}): string {
+  if (input.submitted_version != null) return `v${input.submitted_version}`;
+  return input.version_origin === 'known' ? '版本已删除' : '未知历史版本';
 }
 
 /**

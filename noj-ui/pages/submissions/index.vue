@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { extractApiError } from "~/utils/apiError"
-import type { SubmissionListItem } from "~/utils/submissionFormat"
+import { type SubmissionListItem, submissionVersionLabel } from "~/utils/submissionFormat"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
 import { buildDateRangeParams } from "~/utils/submissionDateRange"
 import {
@@ -241,6 +241,7 @@ function hasResult(
               <th class="w-[100px] whitespace-nowrap border-b border-border bg-bg-page px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">{{ t('submission.id') }}</th>
               <th class="whitespace-nowrap border-b border-border bg-bg-page px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">{{ t('submission.problem') }}</th>
               <th class="whitespace-nowrap border-b border-border bg-bg-page px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">{{ t('submission.language') }}</th>
+              <th class="w-[90px] whitespace-nowrap border-b border-border bg-bg-page px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">作答版本</th>
               <th class="whitespace-nowrap border-b border-border bg-bg-page px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">{{ t('submission.status') }}</th>
               <th class="w-[70px] whitespace-nowrap border-b border-border bg-bg-page px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-text-muted">{{ t('submission.score') }}</th>
               <th class="w-[70px] whitespace-nowrap border-b border-border bg-bg-page px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-text-muted">{{ t('submission.time') }}</th>
@@ -258,6 +259,16 @@ function hasResult(
                 </NuxtLink>
               </td>
               <td class="px-3.5 py-3 text-13px text-text">{{ getLanguageLabel(sub.language) }}</td>
+              <!-- 提交时版本：换版后旧提交仍能看出当时在评哪一版（未知历史版本显式标注） -->
+              <td class="px-3.5 py-3 text-13px">
+                <UBadge
+                  :color="sub.submitted_version != null ? 'primary' : 'neutral'"
+                  variant="subtle"
+                  size="sm"
+                >
+                  {{ submissionVersionLabel(sub) }}
+                </UBadge>
+              </td>
               <td class="px-3.5 py-3 text-13px text-text">
                 <span
                   class="inline-block whitespace-nowrap rounded px-2 py-0.5 text-xs font-semibold"

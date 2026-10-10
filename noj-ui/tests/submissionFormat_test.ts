@@ -14,6 +14,7 @@ import {
   getResultDef,
   getStatusColor,
   getStatusLabel,
+  submissionVersionLabel,
 } from '../utils/submissionFormat.ts';
 
 Deno.test('formatScore: 正常值、零值与空值', () => {
@@ -75,4 +76,22 @@ Deno.test('getResultDef: 已知/未知状态返回定义', () => {
   assertEquals(getResultDef('error').label, '出错');
   assertEquals(getResultDef('Nope').label, 'Nope');
   assertEquals(getResultDef(undefined).label, '未知');
+});
+
+Deno.test('submissionVersionLabel: 版本号优先，未知历史版本显式标注', () => {
+  assertEquals(
+    submissionVersionLabel({ version_origin: 'known', submitted_version: 3 }),
+    'v3',
+  );
+  // 迁移前提交：来源为 legacy_unknown，绝不能显示成 v0 或留空
+  assertEquals(
+    submissionVersionLabel({ version_origin: 'legacy_unknown', submitted_version: null }),
+    '未知历史版本',
+  );
+  // 版本行已被删除（来源已知但版本号取不到）与"未知历史"区分开
+  assertEquals(
+    submissionVersionLabel({ version_origin: 'known', submitted_version: null }),
+    '版本已删除',
+  );
+  assertEquals(submissionVersionLabel({}), '未知历史版本');
 });

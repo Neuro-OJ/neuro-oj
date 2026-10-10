@@ -352,6 +352,17 @@
   - 新增 `isVersionConflictError()`（`utils/apiError.ts`）与 3 个版本错误码中英文案；
     `ProblemView` / `ProblemResource` / `ContestProblemResource` / `ContestProblem`
     补齐版本字段；8 → 10 个相关单测。
+- [x] 5/6（提交读路径版本信息）
+  - `GET /submissions/:id` 新增 `submitted_version_id` / `version_origin` /
+    `submitted_version` / `upgraded_from_id` / `effective_version_policy` /
+    `version_results[]`：每（提交，版本）一条当前正式判定（尝试序号、状态、分数、
+    耗时/内存），`is_effective` / `is_accepted` 由 `selectEffectiveResults` 按**题目
+    作用域策略**统一解析（`exact(X)` 下通过指针同样只在 X 内选择，与写侧口径一致）；
+  - 列表项新增 `submitted_version_id` / `version_origin` / `submitted_version`
+    （LEFT JOIN `problem_versions` 取版本号）；
+  - `noj-ui`：详情页新增"作答版本"元信息（未知历史版本显式标注，不显示成 v0）、
+    「各版本判定」表格与"由旧版本提交升级而来"来源链接；列表页新增版本列；
+    新增 `submissionVersionLabel()` 与单测。
 - [ ] 5c（收尾）search 索引发布内容、正式成绩快照（5d）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 
@@ -433,6 +444,13 @@
 
 ## 最近一次验证
 
+- 批次 5/6（提交读路径版本信息）：submission 域
+  `bash scripts/test-domain.sh submission` **221 passed / 0 failed / 21 ignored**
+  （+2 用例：详情/列表返回提交时版本与各版本判定、策略切换后指针变化、
+  `legacy_unknown` 未知版本桶）；noj-core 全量 `deno task test:parallel`
+  **1393 passed / 0 failed / 11 ignored**；noj-ui `deno task test`
+  **235 passed / 0 failed**；`deno task check:types` /
+  `check:types:nuxt` / `deno lint` / `deno fmt --check` 全绿。
 - 批次 4（竞赛固定版本）/ 6（noj-ui 提交侧）：contest 域
   `bash scripts/test-domain.sh contest` **82 passed / 0 failed**（+3 用例）；
   noj-core 全量 `deno task test:parallel` **1391 passed / 0 failed / 11 ignored**；

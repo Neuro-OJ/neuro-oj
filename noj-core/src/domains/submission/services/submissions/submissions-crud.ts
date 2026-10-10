@@ -34,11 +34,20 @@ import { oiVerdict, projectMeteringDetails } from "./oi-details.ts";
 
 import { and, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm";
 import {
+  evaluationAttempts,
   evaluationResults,
   problems,
+  problemVersions,
   submissions,
+  submissionVersionResults,
   users,
 } from "./../../../../shared/db/schema.ts";
+import {
+  type EffectiveVersionPolicy,
+  type CurrentVersionResult,
+  policyFromColumns,
+} from "./../../../../shared/versioning/types.ts";
+import { selectEffectiveResults } from "./../../../../shared/versioning/effective-results.ts";
 import {
   AppError,
   BadRequestError,
@@ -90,6 +99,7 @@ import type {
   SubmissionInput,
   SubmissionListItem,
   SubmissionResponse,
+  SubmissionVersionResultView,
 } from "./submissions-types.ts";
 import { getLogger } from "@logtape/logtape";
 
@@ -244,7 +254,10 @@ export async function listSubmissions(
       created_at: submissions.created_at,
       judge_started_at: submissions.judge_started_at,
       judge_finished_at: submissions.judge_finished_at,
+      submitted_version_id: submissions.submitted_version_id,
+      version_origin: submissions.version_origin,
       problem_title: problems.title,
+      submitted_version: problemVersions.version,
       result_status: evaluationResults.status,
       result_score: evaluationResults.score,
       result_time_ms: evaluationResults.time_ms,
@@ -252,6 +265,11 @@ export async function listSubmissions(
     })
     .from(submissions)
     .leftJoin(problems, eq(submissions.problem_id, problems.id))
+    // 提交时版本号（展示用）：unknown 历史提交 submitted_version_id 为 null → 版本号也 null
+    .leftJoin(
+      problemVersions,
+      eq(problemVersions.id, submissions.submitted_version_id),
+    )
     .leftJoin(
       evaluationResults,
       eq(evaluationResults.submission_id, submissions.id),
@@ -310,6 +328,9 @@ export async function listSubmissions(
         id: row.problem_id,
         title: row.problem_title ?? "",
       },
+      submitted_version_id: row.submitted_version_id ?? null,
+      version_origin: row.version_origin ?? "legacy_unknown",
+      submitted_version: row.submitted_version ?? null,
       result: row.result_status
         ? {
           status: normalizeResultStatus(row.result_status) ?? "finished",
@@ -720,6 +741,93 @@ export async function getSubmission(
     })()
     : null;
 
+  // 提交时版本号（展示用）：`submitted_version_id` 已由 DB 复合外键保证属于本题。
+  let submittedVersion: number | null = null;
+  if (row.submitted_version_id) {
+    const [versionRow] = await db
+      .select({ version: problemVersions.version })
+      .from(problemVersions)
+      .where(eq(problemVersions.id, row.submitted_version_id))
+      .limit(1);
+    submittedVersion = versionRow?.version ?? null;
+  }
+
+  // 题目作用域的有效版本策略：各版本判定的选择依据（竞赛作用域策略在竞赛读路径）。
+  const [policyRow] = await db
+    .select({
+      effective_version_mode: problems.effective_version_mode,
+      required_version_id: problems.required_version_id,
+    })
+    .from(problems)
+    .where(eq(problems.id, row.problem_id))
+    .limit(1);
+  const effectiveVersionPolicy: EffectiveVersionPolicy =
+    policyFromColumns(
+      policyRow?.effective_version_mode,
+      policyRow?.required_version_id,
+    ) ?? { mode: "any" };
+
+  // 跨版本判定（Handbook 核心不变量 3）：每（提交，版本）一条当前正式判定。
+  const versionRows = await db
+    .select({
+      problem_version_id: submissionVersionResults.problem_version_id,
+      version: problemVersions.version,
+      attempt_id: evaluationAttempts.id,
+      sequence: evaluationAttempts.sequence,
+      result_kind: evaluationAttempts.result_kind,
+      state: evaluationAttempts.state,
+      result_status: evaluationAttempts.result_status,
+      score: evaluationAttempts.score,
+      accepted: evaluationAttempts.accepted,
+      time_ms: evaluationAttempts.time_ms,
+      memory_kb: evaluationAttempts.memory_kb,
+    })
+    .from(submissionVersionResults)
+    .innerJoin(
+      evaluationAttempts,
+      eq(evaluationAttempts.id, submissionVersionResults.current_attempt_id),
+    )
+    .leftJoin(
+      problemVersions,
+      eq(problemVersions.id, submissionVersionResults.problem_version_id),
+    )
+    .where(eq(submissionVersionResults.submission_id, id));
+
+  const currentVersionResults: CurrentVersionResult[] = versionRows.map((
+    versionRow,
+  ) => ({
+    attempt_id: versionRow.attempt_id,
+    problem_version_id: versionRow.problem_version_id,
+    score: versionRow.score ?? 0,
+    accepted: versionRow.accepted === true,
+    sequence: versionRow.sequence,
+    result_kind: versionRow.result_kind,
+    state: versionRow.state,
+  }));
+  const effectiveSelection = selectEffectiveResults(
+    currentVersionResults,
+    effectiveVersionPolicy,
+  );
+  const versionResults: SubmissionVersionResultView[] = versionRows
+    .map((versionRow) => ({
+      problem_version_id: versionRow.problem_version_id,
+      version: versionRow.version ?? null,
+      attempt_id: versionRow.attempt_id,
+      sequence: versionRow.sequence,
+      status: normalizeResultStatus(versionRow.result_status) ??
+        (versionRow.state === "queued" ? "pending" : "error"),
+      score: versionRow.score ?? 0,
+      time_ms: versionRow.time_ms ?? null,
+      memory_kb: versionRow.memory_kb ?? null,
+      is_effective: effectiveSelection.effective_attempt_id ===
+        versionRow.attempt_id,
+      is_accepted: effectiveSelection.accepted_attempt_id ===
+        versionRow.attempt_id,
+    }))
+    .sort((a, b) =>
+      a.sequence - b.sequence || a.attempt_id.localeCompare(b.attempt_id)
+    );
+
   // 查询队列状态信息（排队位置、时间戳）
   // getSubmissionQueueStatus 已实现三态权限：未登录 + owner + admin 可见，登录非 owner 不可见
   // Redis 不可用时内部静默失败，返回 null 时间戳回退至 DB 值
@@ -754,6 +862,12 @@ export async function getSubmission(
       null,
     judge_finished_at: queueStatus?.judge_finished_at ??
       row.judge_finished_at ?? null,
+    submitted_version_id: row.submitted_version_id ?? null,
+    version_origin: row.version_origin ?? "legacy_unknown",
+    submitted_version: submittedVersion,
+    upgraded_from_id: row.upgraded_from_id ?? null,
+    effective_version_policy: effectiveVersionPolicy,
+    version_results: versionResults,
   };
 }
 

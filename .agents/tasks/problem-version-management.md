@@ -9,8 +9,8 @@
 
 - 目标分支：`feat/problem-version-management`（GPG 签名，禁止直推 main）
 - 当前轮次：goal round 25
-- 最近更新：批次 6 客户端（noj-ui 提交侧版本贯通：题目详情/编辑器/竞赛页 + 客观题表单）与
-  批次 4 竞赛固定版本落库（创建即固定、编辑不清零）
+- 最近更新：批次 4 竞赛固定版本落库 + 批次 5/6 提交读路径版本信息（core 详情/列表 +
+  noj-ui 展示）与提交侧版本贯通（题目详情/编辑器/竞赛页/客观题表单）
 
 ## 一、批次状态总览
 
@@ -20,7 +20,7 @@
 | 2 | 版本写入（草稿、发布、文件引用、OI、客观题快照） | 🟡 部分 | 2a/2b/2c（OI 核心）/2d/2e（创建即建草稿+删除清理+路由）完成；剩 2c 收尾、2e 收尾 |
 | 3 | 评测链路（attempt、协议、结果事务、LLM、sweeper、自测） | ✅ 完成 | 含协议 v2、contest 口径修复、LLM attempt 作用域 |
 | 4 | 管理操作（策略、批任务、重测、升级） | ✅ 完成 | 派发 + 路由 + 旧入口适配层；竞赛固定版本创建/编辑写入已补；仅「代他人升级」旁路未做 |
-| 5 | 读取统一（通过状态、题单、排行、资料、社区、搜索、正式成绩） | 🟡 部分 | 5a/5b/5c 主体完成；剩 stats-cache、search 索引、5d 快照 |
+| 5 | 读取统一（通过状态、题单、排行、资料、社区、搜索、正式成绩） | 🟡 部分 | 5a/5b/5c 主体完成 + 提交读路径版本信息（详情/列表）；剩 stats-cache、search 索引、5d 快照 |
 | 6 | 客户端（Web、IDE、CLI、演练） | 🟡 部分 | CLI/LMCC/E2E 完成；noj-ui 提交侧（详情/编辑器/竞赛/客观题）完成，剩草稿发布编辑流、提交列表/详情版本展示、管理页 |
 | 7 | 存量收尾（回填、旧表删除、视图/索引重建、备份恢复验证） | 🟡 部分 | 0103 回填 + 真实库演练完成；剩 7b |
 | 8 | 文档与交付（现行文档、Agent Note、验收、PR） | ⬜ 未开始 | 含删除本跟踪文件 |
@@ -56,8 +56,13 @@
       携带 `version_id` + 409 保留已选内容并刷新固定版本。
 - [ ] `components/editor/*`：保存草稿 / 发布版本两个动作，统一草稿 revision。
 - [ ] `components/objective/ObjectiveProblemEditor.vue`：小题写草稿、稳定 key、整卷发布。
-- [ ] `pages/submissions/index.vue` / `[id].vue`：版本与有效性筛选、批量升级入口、
-      提交时版本 / 各版本当前判定 / 来源关联展示。
+- [x] 提交时版本展示（core + UI）：`GET /submissions/:id` 新增
+      `submitted_version_id`/`version_origin`/`submitted_version`/`upgraded_from_id`/
+      `effective_version_policy`/`version_results[]`（各版本当前判定，含 `is_effective`/
+      `is_accepted`）；列表项新增提交时版本三字段；
+      `noj-ui/pages/submissions/[id].vue` 增加"作答版本"元信息 + 「各版本判定」表格 +
+      「由旧版本提交升级而来」来源链接，`pages/submissions/index.vue` 增加版本列。
+- [ ] 提交列表**按版本/有效性筛选**（需要 core 列表查询参数）、批量升级入口。
 - [ ] `pages/admin/*`：三种重测范围、固定版本映射、独立策略切换、任务进度与重试。
 
 ### 批次 7（存量收尾）
@@ -100,13 +105,14 @@
 |---|---|---|
 | noj-core 全量 | `cd noj-core && deno task test:parallel` | **1388+ passed / 0 failed**（本轮新增 3 个用例后复跑） |
 | contest 域 | `bash scripts/test-domain.sh contest` | **82 passed / 0 failed**（新增固定版本 2 + 提交版本 1） |
+| submission 域 | `bash scripts/test-domain.sh submission` | **221 passed / 0 failed / 21 ignored**（新增提交读路径版本信息 2） |
 | catalog 域 | `bash scripts/test-domain.sh catalog` | **301 passed / 0 failed** |
 | submission 域 | `bash scripts/test-domain.sh submission` | **219 passed / 0 failed / 21 ignored** |
 | identity 域 | `bash scripts/test-domain.sh identity` | **310 passed / 0 failed / 25 ignored** |
 | admin 域 | `bash scripts/test-domain.sh admin` | **14 passed / 0 failed** |
 | noj-judge | `cargo nextest run --all-targets` | **554 passed / 45 skipped** |
 | llm-gateway | `deno task test` | **99 passed / 0 failed / 1 ignored** |
-| noj-ui 单测 | `cd noj-ui && deno task test` | **234 passed / 0 failed** |
+| noj-ui 单测 | `cd noj-ui && deno task test` | **235 passed / 0 failed** |
 | noj-ui 类型 | `deno task check:types` + `deno task check:types:nuxt`（nuxt typecheck + vue-tsc） | **0 error** |
 | noj-ui 组件/composable | `deno task test:components`（vitest） | **102 passed / 19 files**（含新增 8 个版本 API 用例） |
 | 静态门禁 | lint / fmt / 域边界 / JSDoc / parity / 迁移安全 / 快照链 | 全绿 |
@@ -119,8 +125,9 @@
 
 ## 四、下一步（按优先级）
 
-1. **noj-ui 客户端**（批次 6 主体）：composables 已完成；下一步题目详情页版本选择与
-   提交携带版本，然后编辑器草稿/发布、管理页三种重测范围与策略切换、提交列表/详情版本展示。
+1. **noj-ui 客户端**（批次 6 主体）：提交侧与提交读展示已完成；下一步编辑器草稿/发布
+   两个动作（`components/editor/*`）、客观题编辑器小题写草稿、管理页三种重测范围与策略切换、
+   提交列表按版本/有效性筛选与批量升级入口。
 2. 2c/2e 收尾（OI 草稿路径 + `updateProblem` 内容写草稿）。
 3. 批次 5 收尾（stats-cache 去进程内状态、搜索索引发布内容、正式成绩快照）。
 4. 批次 7b 与批次 8（文档、Agent Note、验收、PR），最后删除本文件。
