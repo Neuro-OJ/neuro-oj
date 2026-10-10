@@ -10,6 +10,7 @@ import {
   evaluationResults,
   objectiveSubmissions,
   problems,
+  problemVersions,
   submissions,
   users,
 } from "../../../../shared/db/schema.ts";
@@ -902,6 +903,158 @@ Deno.test({
       );
       await db.delete(submissions).where(eq(submissions.contest_id, contestId));
       await db.delete(contests).where(eq(contests.id, contestId));
+      await db.delete(problems).where(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, userId));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking snapshot: 正式快照记录每题版本策略与有效尝试归因",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userId = crypto.randomUUID();
+    const problemId = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const submissionId = crypto.randomUUID();
+    const attemptId = crypto.randomUUID();
+    const versionId = `${problemId}-v2`;
+    const now = new Date().toISOString();
+
+    await insertUser(userId, "snapshot-attribution");
+    await insertProblem(problemId, 920097, "快照归因题");
+    await db.insert(problemVersions).values({
+      id: versionId,
+      problem_id: problemId,
+      version: 2,
+      origin: "published",
+      content: { kind: "ai", title: "快照归因题" },
+      published_at: now,
+    });
+    await db.update(problems).set({ latest_version_id: versionId }).where(
+      eq(problems.id, problemId),
+    );
+    await db.insert(contests).values({
+      id: contestId,
+      title: "快照归因测试",
+      start_time: atMinutes(-120),
+      end_time: atMinutes(-1),
+      type: "kaggle",
+      config: {},
+      created_by: userId,
+      created_at: now,
+      updated_at: now,
+    });
+    // 竞赛固定 V2 且策略收紧为 exact(V2)：快照必须记录这一事实
+    await db.insert(contestProblems).values({
+      contest_id: contestId,
+      problem_id: problemId,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+      pinned_version_id: versionId,
+      effective_version_mode: "exact",
+      required_version_id: versionId,
+      effective_policy_revision: 3,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: userId,
+      registered_at: atMinutes(-100),
+    });
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      contest_id: contestId,
+      language: "python3",
+      code: "print(1)",
+      status: "finished",
+      submitted_version_id: versionId,
+      version_origin: "known",
+      is_contest_valid: true,
+      created_at: atMinutes(-50),
+    });
+    await db.insert(evaluationAttempts).values({
+      id: attemptId,
+      submission_id: submissionId,
+      problem_id: problemId,
+      problem_version_id: versionId,
+      sequence: 0,
+      source: "initial",
+      state: "finished",
+      result_kind: "graded",
+      result_status: "finished",
+      score: 10000,
+      accepted: true,
+      created_at: atMinutes(-49),
+    });
+    // 循环外键：提交 → 尝试 → 回填有效尝试指针
+    await db.update(submissions).set({
+      contest_effective_attempt_id: attemptId,
+      effective_attempt_id: attemptId,
+      latest_attempt_id: attemptId,
+    }).where(eq(submissions.id, submissionId));
+    // 实时榜分数仍读旧结果表（本次改动只做加法：把归因写进快照）
+    await db.insert(evaluationResults).values({
+      id: crypto.randomUUID(),
+      submission_id: submissionId,
+      status: "finished",
+      score: 10000,
+      created_at: atMinutes(-49),
+    });
+
+    try {
+      const published = await publishContestRankingSnapshot(
+        contestId,
+        userId,
+        "正式成绩发布",
+      );
+      assertEquals(published.version, 1);
+      const latest = await getLatestContestRankingSnapshot(contestId);
+      assertExists(latest);
+      const rows = latest.rows as Array<{
+        user_id: string;
+        problem_scores: Array<Record<string, unknown>>;
+      }>;
+      const score = rows.find((row) => row.user_id === userId)
+        ?.problem_scores.find((item) => item.label === "A");
+      assertExists(score);
+      assertEquals(score!.best_score, 10000);
+      assertEquals(score!.effective_attempt_id, attemptId);
+      assertEquals(score!.submitted_version_id, versionId);
+      assertEquals(score!.pinned_version_id, versionId);
+      assertEquals(score!.version_policy, {
+        mode: "exact",
+        version_id: versionId,
+      });
+      assertEquals(score!.policy_revision, 3);
+    } finally {
+      await db.delete(contestRankingSnapshots).where(
+        eq(contestRankingSnapshots.contest_id, contestId),
+      );
+      await db.delete(evaluationResults).where(
+        eq(evaluationResults.submission_id, submissionId),
+      );
+      await db.delete(evaluationAttempts).where(
+        eq(evaluationAttempts.problem_id, problemId),
+      );
+      await db.delete(submissions).where(eq(submissions.id, submissionId));
+      await db.delete(contestProblems).where(
+        eq(contestProblems.contest_id, contestId),
+      );
+      await db.delete(contestParticipants).where(
+        eq(contestParticipants.contest_id, contestId),
+      );
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await db.update(problems).set({ latest_version_id: null }).where(
+        eq(problems.id, problemId),
+      );
+      await db.delete(problemVersions).where(
+        eq(problemVersions.problem_id, problemId),
+      );
       await db.delete(problems).where(eq(problems.id, problemId));
       await db.delete(users).where(eq(users.id, userId));
     }

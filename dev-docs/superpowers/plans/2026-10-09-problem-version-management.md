@@ -428,7 +428,15 @@
   - 剩余 `evaluation_results` 运行期引用：`contest-ranking.ts` 的 Kaggle 排名
     SQL（3 处，需按 `is_contest_valid` + 竞赛有效尝试迁移）、`submissions-result.ts`
     的双写、`submissions-crud.ts`/`problems-crud.ts` 的删除清理与 schema 定义。
-- [ ] 5d 正式成绩快照（结算记录每题版本策略/有效尝试/提交时间）。
+- [x] 5d（正式成绩快照归因，第一步）
+  - Kaggle 排名 SQL 的每题结果新增 `effective_attempt_id`（竞赛口径有效尝试）、
+    `submitted_version_id`、`pinned_version_id`、`version_policy`（any/exact）、
+    `policy_revision`，随 `jsonb_build_object` 写入正式快照 payload；
+  - `KaggleProblemScore` 类型同步；快照仍是"既有快照保留、修订走新快照"（版本递增）；
+  - 新增用例：exact(V2) 竞赛 + 已知提交时版本的提交 → 快照 payload 含
+    `version_policy = {mode:'exact',version_id}`、`policy_revision = 3` 与尝试/版本归因。
+  - 说明：实时 Kaggle 榜的**计分来源**仍是 `evaluation_results`（下一步迁移到
+    `is_contest_valid` + `contest_effective_attempt_id`，随后才能删旧表）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 
 ## 批次 8 落点清单
@@ -509,6 +517,11 @@
 
 ## 最近一次验证
 
+- 批次 5d（正式成绩快照归因）：contest 域
+  `bash scripts/test-domain.sh contest` **85 passed / 0 failed**（+1：快照记录每题
+  版本策略、固定版本、有效尝试与提交时版本）；noj-core 全量
+  `deno task test:parallel` 见下方；`deno fmt --check` / `deno lint` / 域边界 /
+  JSDoc / 类型检查全绿。
 - 批次 5/7（提交详情/列表与竞赛结算就绪读尝试）：submission 域
   `bash scripts/test-domain.sh submission` **224 passed / 0 failed / 21 ignored**
   （+1：详情/列表最近结果读最近终态尝试，且无尝试时 result 为 null 不回退旧表）；

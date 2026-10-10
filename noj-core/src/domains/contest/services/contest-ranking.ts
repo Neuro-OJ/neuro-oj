@@ -434,12 +434,21 @@ export async function getKaggleRanking(
         bs.rejudge_seq,
         bs.evaluation_status,
         bs.evaluation_created_at,
-        rt.last_refresh_at
+        rt.last_refresh_at,
+        -- 正式成绩归因（Handbook §6.6）：记录最佳成绩所属提交的有效尝试与提交时版本，
+        -- 以及该「竞赛 × 题目」当时的版本策略与固定版本
+        best_submission.contest_effective_attempt_id,
+        best_submission.submitted_version_id,
+        cp.pinned_version_id,
+        cp.effective_version_mode,
+        cp.required_version_id,
+        cp.effective_policy_revision
       FROM contest_participants participant
       CROSS JOIN contest_problems cp
       LEFT JOIN best_scores bs
         ON bs.user_id = participant.user_id
         AND bs.problem_id = cp.problem_id
+      LEFT JOIN submissions best_submission ON best_submission.id = bs.submission_id
       LEFT JOIN attempts at
         ON at.user_id = participant.user_id
         AND at.problem_id = cp.problem_id
@@ -469,7 +478,19 @@ export async function getKaggleRanking(
             'submission_id', ps.submission_id,
             'rejudge_seq', ps.rejudge_seq,
             'evaluation_status', ps.evaluation_status,
-            'evaluation_created_at', ps.evaluation_created_at
+            'evaluation_created_at', ps.evaluation_created_at,
+            'effective_attempt_id', ps.contest_effective_attempt_id,
+            'submitted_version_id', ps.submitted_version_id,
+            'pinned_version_id', ps.pinned_version_id,
+            'policy_revision', ps.effective_policy_revision,
+            'version_policy', CASE
+              WHEN ps.effective_version_mode = 'exact'
+                THEN jsonb_build_object(
+                  'mode', 'exact',
+                  'version_id', ps.required_version_id
+                )
+              ELSE jsonb_build_object('mode', 'any')
+            END
           ) ORDER BY ps.sort_order, ps.label
         ) AS problem_scores
       FROM problem_stats ps

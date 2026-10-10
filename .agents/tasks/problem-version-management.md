@@ -43,7 +43,9 @@
 - [x] `search/services/index-writer.ts`：只索引已发布题目（草稿不入公开索引）。
 - [x] 未发布题目不进公共读取面：详情对普通访问者 404（编辑者可读）、公共列表排除、
       搜索索引排除（新增测试夹具助手 `publishBaselineVersionForTest`）。
-- [ ] 5d 正式成绩快照：结算时记录每题版本策略、有效尝试与提交时间；修订走新快照。
+- [x] 5d 正式成绩快照归因：快照每题结果记录版本策略/固定版本/有效尝试/提交时版本
+      （Kaggle 排名 SQL 加列 + payload + 类型 + 用例）。
+- [ ] 5d 收尾：实时 Kaggle**计分来源**迁移到 `is_contest_valid` + 竞赛有效尝试。
 
 ### 批次 6（客户端 · noj-ui）
 - [x] `composables/useProblemVersions.ts`：草稿读写（`If-Match` 乐观锁）、发布预检/发布、

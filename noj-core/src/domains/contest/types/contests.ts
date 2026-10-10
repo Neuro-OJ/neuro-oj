@@ -193,6 +193,23 @@ export interface KaggleProblemScore {
   rejudge_seq?: number | null;
   evaluation_status?: string | null;
   evaluation_created_at?: string | null;
+  /**
+   * 正式成绩归因（Handbook §3.4/§6.6）：最佳成绩所属提交的**竞赛口径有效尝试**。
+   *
+   * 快照据此把成绩固定到具体一次执行；后续重测只改实时榜，不自动改写已发布快照。
+   */
+  effective_attempt_id?: string | null;
+  /** 该最佳成绩所属提交的提交时版本（迁移期未知版本为 null）。 */
+  submitted_version_id?: string | null;
+  /** 该「竞赛 × 题目」当时的固定作答版本。 */
+  pinned_version_id?: string | null;
+  /** 该「竞赛 × 题目」当时的有效版本策略。 */
+  version_policy?: { mode: "any" } | {
+    mode: "exact";
+    version_id: string | null;
+  };
+  /** 该「竞赛 × 题目」策略的乐观锁版本（快照归因用）。 */
+  policy_revision?: number | null;
 }
 
 export interface KaggleRankingRow {
