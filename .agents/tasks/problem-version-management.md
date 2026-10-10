@@ -9,7 +9,7 @@
 
 - 目标分支：`feat/problem-version-management`（GPG 签名，禁止直推 main）
 - 当前轮次：goal round 24
-- 最近更新：批次 6 客户端（CLI/IDE/E2E 完成，noj-ui 进行中）
+- 最近更新：批次 6 客户端（CLI/IDE/E2E 完成；noj-ui 新增版本/批任务 composable）
 
 ## 一、批次状态总览
 
@@ -42,7 +42,9 @@
 - [ ] 5d 正式成绩快照：结算时记录每题版本策略、有效尝试与提交时间；修订走新快照。
 
 ### 批次 6（客户端 · noj-ui）
-- [ ] `composables/`：版本/草稿/发布/批任务 API 封装（含幂等键、终态轮询、SSE 后重取）。
+- [x] `composables/useProblemVersions.ts`：草稿读写（`If-Match` 乐观锁）、发布预检/发布、
+      版本列表与指定版本、题库/竞赛策略切换、竞赛固定版本升级、批任务受理（幂等键）/
+      详情/条目/重试、升级任务受理与读取、终态轮询；配套 8 个 vitest 用例。
 - [ ] `pages/problems/[id].vue`：版本选择 + 「当前通过要求」提示 + 提交携带 `version_id`。
 - [ ] `components/editor/*`：保存草稿 / 发布版本两个动作，统一草稿 revision。
 - [ ] `components/objective/ObjectiveProblemEditor.vue`：小题写草稿、稳定 key、整卷发布。
@@ -86,6 +88,8 @@
 | admin 域 | `bash scripts/test-domain.sh admin` | **14 passed / 0 failed** |
 | noj-judge | `cargo nextest run --all-targets` | **554 passed / 45 skipped** |
 | llm-gateway | `deno task test` | **99 passed / 0 failed / 1 ignored** |
+| noj-ui 单测 | `cd noj-ui && deno task test` | **232 passed / 0 failed** |
+| noj-ui 组件/composable | `deno task test:components`（vitest） | **102 passed / 19 files**（含新增 8 个版本 API 用例） |
 | 静态门禁 | lint / fmt / 域边界 / JSDoc / parity / 迁移安全 / 快照链 | 全绿 |
 
 - 真实 PostgreSQL 存量演练（0102+0103）：7 基线 / 123 legacy 尝试 / 123 未知桶判定 /
@@ -96,8 +100,8 @@
 
 ## 四、下一步（按优先级）
 
-1. **noj-ui 客户端**（批次 6 主体）：先做 composables，再题目详情页版本选择与提交携带版本，
-   然后编辑器草稿/发布、管理页三种重测范围与策略切换、提交列表/详情版本展示。
+1. **noj-ui 客户端**（批次 6 主体）：composables 已完成；下一步题目详情页版本选择与
+   提交携带版本，然后编辑器草稿/发布、管理页三种重测范围与策略切换、提交列表/详情版本展示。
 2. 2c/2e 收尾（OI 草稿路径 + `updateProblem` 内容写草稿）。
 3. 批次 5 收尾（stats-cache 去进程内状态、搜索索引发布内容、正式成绩快照）。
 4. 批次 7b 与批次 8（文档、Agent Note、验收、PR），最后删除本文件。

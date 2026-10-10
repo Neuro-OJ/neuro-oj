@@ -322,6 +322,11 @@
     未发布题目给出明确提示（不再静默提交）；
   - `noj-tests` E2E：新增 `publishProblemVersion` / `getAnswerVersionId` 助手，
     `submitCode` 自动携带默认作答版本；artifact E2E 改为先发布再带 `version_id` 上传。
+- [x] 6（noj-ui composable）`noj-ui/composables/useProblemVersions.ts`：草稿读写
+      （`If-Match` 乐观锁）、发布预检/发布、版本列表与指定版本、题库/竞赛策略切换、
+      竞赛固定版本升级、批任务受理（`Idempotency-Key`）/详情/条目/重试、升级任务受理与
+      读取、终态轮询（不依赖进程内计数）；配套 8 个 vitest 用例
+      （`noj-ui/tests/composables/useProblemVersions.spec.ts`）。
 - [ ] 5c（收尾）search 索引发布内容、正式成绩快照（5d）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 
