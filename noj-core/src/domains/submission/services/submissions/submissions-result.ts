@@ -291,10 +291,10 @@ export async function saveEvaluationResult(
     if (outcome.contest_id) {
       const unended = await filterUnendedContestIds([outcome.contest_id]);
       if (!unended.has(outcome.contest_id)) {
-        applyNewResult(result.score, outcome.created_at);
+        applyNewResult();
       }
     } else {
-      applyNewResult(result.score, outcome.created_at);
+      applyNewResult();
     }
   }
 

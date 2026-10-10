@@ -372,6 +372,18 @@
     "仅显示可升级""仅显示有效成绩"开关、行勾选与全选、批量升级按钮
     （≤500 条、幂等键、轮询任务到终态、按 `reason_code` 聚合失败原因）、
     版本列展示（`submissionVersionLabel`）。
+- [x] 5（stats-cache 去进程内状态 + 读有效投影）
+  - 删除 `fallbackTotal` / `fallbackTotalFullScore` / `fallbackTodayTotal` /
+    `fallbackTodayFullScore` / `fallbackTodayDate` 全部进程内计数器：缓存未命中或
+    Redis 不可用时直接走数据库聚合，任何副本口径一致（AGENTS 多副本约束）；
+  - 满分计数改读**有效成绩投影**（`submissions.is_valid` + 有效尝试
+    `evaluation_attempts.score`），不再 JOIN 即将删除的 `evaluation_results`；
+  - Redis 缓存键包含全局投影 revision（`noj:stats:total:r<rev>` /
+    `noj:stats:today:<date>:r<rev>`）：策略切换/判定替换后立即换键，
+    不依赖 10s TTL；`applyNewResult()` 只做 SCAN 前缀失效 + SSE 通知，签名去掉
+    分数/时间参数（进程内不再需要它们）；
+  - 测试改为数据库驱动：重复 `applyNewResult()` 不重复计数、revision 换键后立即读
+    新口径、今日口径按提交时间过滤。
 - [ ] 5c（收尾）search 索引发布内容、正式成绩快照（5d）。
 - [ ] 5d 正式成绩快照记录每题版本策略、有效尝试与提交时间。
 
@@ -453,6 +465,10 @@
 
 ## 最近一次验证
 
+- 批次 5（stats-cache 去进程内状态 + 有效投影口径）：query 域
+  `bash scripts/test-domain.sh query` **22 passed / 0 failed**（4 个用例重写为
+  数据库驱动）；noj-core 全量 `deno task test:parallel`
+  **1395 passed / 0 failed / 11 ignored**（提交列表筛选批次）后再次全量验证见下。
 - 批次 6（提交列表筛选 + 用户批量升级入口）：core `GET /submissions` 新增
   `version_id` / `version_origin` / `valid_only` / `accepted_only` / `upgradable`
   筛选（服务层 + 路由参数校验）；submission 域
