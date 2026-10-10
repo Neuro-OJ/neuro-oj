@@ -50,8 +50,21 @@
       revision 先行校验（428/409），metadata-only 复用引用并校验新配置路径，
       上传失败按引用守卫补偿；`loadOiDataFromDraft` / `loadOiDataFromVersion` 显式
       来源；`loadOiData(c, ref, { source })` 暴露来源参数（默认仍为迁移期兼容路径）。
-- [ ] 2c（OI 收尾）路由改走 `saveOiDraft`（`oi-author.ts`）；ZIP worker 结果绑定
-      revision；OI 自测从版本构造临时包并登记临时对象引用。
+- [x] 2c（OI 收尾 / 2e）路由改走 `saveOiDraft`（`oi-author.ts`）：
+      `POST /problems/oi-author/:id/save` 以 `metadata.draft_revision` 为唯一乐观锁
+      （缺失 → 428、过时 → 409、不再用 `updated_at`），管理信息（难度/标签/可见性）
+      与内容分离（前者 `updateProblem`、后者 `saveOiDraft`）；`GET /:id/files` 与
+      `GET /:id/file` 改为**草稿作用域**（新增 `listDraftOiFiles` 用存储登记字节数
+      列目录，避免为列目录下载测试数据）；`saveOiMetadata` / `saveOiData` 删除。
+      `updateProblem` 内容→草稿、管理信息→题目行（未发布题目同步投影以保持迁移期
+      可读）；导入路径改为「写草稿 → 显式 publish」（客观题先同步小题），
+      `createViaCrud` 补建草稿 + 支持包草稿引用，旧评测包删除统一走引用守卫。
+      剩：ZIP worker 结果绑定 revision、OI 自测从版本构造临时包。
+      证据：catalog 域 **306 passed / 0 failed**（新增 OI 路由 2 例 + 版本路由 2 例）；
+      noj-core 全量 `deno task test:parallel` **1406 passed / 0 failed / 11 ignored**；
+      noj-ui `deno task test` **235 passed** + `test:components` **102 passed / 19 文件** +
+      `check:types` / `check:types:nuxt` 0 error；lint / fmt / 域边界 / JSDoc /
+      迁移安全 全绿。
 - [x] 2d 客观题：`objective/services/versioning/objective-drafts.ts`（小题读写只在草稿
       content 内，key 跨版本稳定，新增生成 UUID、导入必须显式 key 且不猜测对应关系）
       与 `objective-regrade.ts`（按版本快照 key 匹配重判：新增小题按未作答、
@@ -538,6 +551,12 @@
   `exact` 缺要求版本被 CHECK 拒绝、基线哈希 NULL→哈希放行。
 
 ## 最近一次验证
+
+- 批次 2c/2e（OI 路由切草稿 + 内容写草稿、管理信息写题目行 + 编辑器两动作）：
+  noj-core 全量 `deno task test:parallel` **1406 passed / 0 failed / 11 ignored**；
+  catalog 域 **306 passed / 0 failed**；noj-ui `deno task test` **235 passed**、
+  `test:components` **102 passed / 19 文件**、`check:types` / `check:types:nuxt`
+  0 error；`deno lint` / `deno fmt --check` / 域边界 / 导出 JSDoc / 迁移安全全绿。
 
 - 批次 7b（第三步：删除旧表）：迁移 0105 生成并应用；schema/DDL/parity/PGlite 模板
   同步完成（parity 67 表 / 604 列）；noj-core 全量 `deno task test:parallel`

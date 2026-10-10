@@ -17,6 +17,7 @@ import {
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 import {
   compensateUploadedObject,
+  getStorageObject,
   getStorageProvider,
   parseStorageUrl,
   sha256Hex,
@@ -173,6 +174,42 @@ export async function loadOiDataFromVersion(
     ? await versionPackageUrl(versionId)
     : null;
   return await readRefsOrPackage(refs, packageUrl);
+}
+
+/**
+ * 列出**草稿**作用域的 OI 文件（路径 + 大小），不解压整包。
+ *
+ * 逐文件引用存在时用 `storage_objects.byte_size`（避免为列目录下载测试数据）；
+ * 只有整合包（存量 OI 题首次逐文件保存前）时才解压读取。
+ */
+export async function listDraftOiFiles(
+  problemId: string,
+): Promise<{ path: string; size: number }[]> {
+  const refs = await listDraftOiFileRefs(problemId);
+  if (refs.length === 0) {
+    const files = await loadOiDataFromDraft(problemId);
+    return Object.entries(files)
+      .map(([path, bytes]) => ({ path, size: bytes.length }))
+      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  }
+  const records = await Promise.all(
+    refs.map((ref) => getStorageObject(ref.storage_url)),
+  );
+  let entries = refs.map((ref, index) => ({
+    path: ref.path,
+    size: records[index]?.byte_size ?? -1,
+  }));
+  if (entries.some((item) => item.size < 0)) {
+    const files = await loadOiDataFromDraft(problemId);
+    entries = entries.map((item) => ({
+      path: item.path,
+      size: item.size >= 0 ? item.size : (files[item.path]?.length ?? 0),
+    }));
+  }
+  return entries.sort((
+    a,
+    b,
+  ) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 
 /** 保存 OI 草稿的结果。 */

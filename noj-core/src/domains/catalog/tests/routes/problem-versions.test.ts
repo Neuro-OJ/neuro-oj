@@ -578,3 +578,125 @@ Deno.test({
     await getDb().delete(problems).where(eq(problems.id, problemId));
   },
 });
+
+Deno.test({
+  name:
+    "problem versions route: 已发布题目的内容更新只进草稿、管理信息立即生效（批次 2e）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const problemId = await makeDraftProblem();
+    const app = createApp();
+    const token = await adminToken();
+    const auth = { Authorization: `Bearer ${token}` };
+
+    // 草稿（revision 1，创建即建）→ 发布 V1（revision 2）
+    await jsonRequest(app, `/api/v1/problems/${problemId}/draft`, {
+      method: "PUT",
+      headers: { ...auth, "If-Match": "1" },
+      body: { content: draftContent("V1 题面") },
+    });
+    const v1 = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}/versions`,
+      {
+        method: "POST",
+        headers: { ...auth, "If-Match": "2" },
+        body: { change_note: "V1" },
+      },
+    );
+    assertEquals(v1.status, 201);
+    const v1Id = (await v1.json()).data.version_id as string;
+
+    // 已发布：内容 + 管理信息一起 PUT
+    const updated = await jsonRequest(app, `/api/v1/problems/${problemId}`, {
+      method: "PUT",
+      headers: auth,
+      body: {
+        title: "草稿标题",
+        description: "草稿题面",
+        difficulty: "hard",
+        runtime_config: runtimeConfig,
+      },
+    });
+    assertEquals(updated.status, 200);
+    const updatedBody = (await updated.json()).data;
+    // 管理信息立即生效；考试内容投影保持 V1（只有发布才更新）
+    assertEquals(updatedBody.difficulty, "hard");
+    assertEquals(updatedBody.title, "V1 题面");
+
+    const draft = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}/draft`,
+      {
+        headers: auth,
+      },
+    );
+    const draftBody = (await draft.json()).data;
+    assertEquals(draftBody.content.title, "草稿标题");
+    assertEquals(draftBody.content.description, "草稿题面");
+    // 发布后 revision 3，内容保存再 +1
+    assertEquals(draftBody.revision, 4);
+
+    // 作答内容仍是 V1
+    const detail = await jsonRequest(app, `/api/v1/problems/${problemId}`, {
+      headers: auth,
+    });
+    const detailBody = (await detail.json()).data;
+    assertEquals(detailBody.version_id, v1Id);
+    assertEquals(detailBody.title, "V1 题面");
+
+    // 显式发布 → 投影与版本内容才更新
+    const v2 = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}/versions`,
+      {
+        method: "POST",
+        headers: { ...auth, "If-Match": "4" },
+        body: { change_note: "V2" },
+      },
+    );
+    assertEquals(v2.status, 201);
+    const detail2 = await jsonRequest(app, `/api/v1/problems/${problemId}`, {
+      headers: auth,
+    });
+    const detailBody2 = (await detail2.json()).data;
+    assertEquals(detailBody2.version, 2);
+    assertEquals(detailBody2.title, "草稿标题");
+    assertEquals(detailBody2.difficulty, "hard");
+  },
+});
+
+Deno.test({
+  name:
+    "problem versions route: 未发布题目的内容更新立即反映在投影（迁移期兼容）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const problemId = await makeDraftProblem();
+    const app = createApp();
+    const token = await adminToken();
+    const auth = { Authorization: `Bearer ${token}` };
+
+    const updated = await jsonRequest(app, `/api/v1/problems/${problemId}`, {
+      method: "PUT",
+      headers: auth,
+      body: { title: "未发布新标题", description: "未发布新题面" },
+    });
+    assertEquals(updated.status, 200);
+    assertEquals((await updated.json()).data.title, "未发布新标题");
+
+    const draft = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}/draft`,
+      {
+        headers: auth,
+      },
+    );
+    const draftBody = (await draft.json()).data;
+    assertEquals(draftBody.content.title, "未发布新标题");
+    assertEquals(draftBody.revision, 2);
+  },
+});

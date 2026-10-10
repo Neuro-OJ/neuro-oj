@@ -39,8 +39,22 @@ const router = useRouter()
 const { user, fetchUser } = useAuth()
 const { api } = useApi()
 const { toast } = useToast()
+const versions = useProblemVersions()
 
 const isAdmin = computed(() => isAdminUser(user.value))
+
+/**
+ * 草稿与版本（Handbook §6.8）：编辑模式下的两个动作。
+ *
+ * - 内容（题面/样例/运行配置/模板/LLM）写**共享草稿**，携带 `If-Match` 乐观锁；
+ * - 管理信息（难度/可见性/标签）仍直接维护在题目行；
+ * - 发布是新版本的唯一入口：发布前先保存草稿，避免"改了没发"。
+ * 未发布题目的投影仍是唯一读取面，但编辑器一律以草稿为编辑初值。
+ */
+const draftRevision = ref<number | null>(null)
+const latestVersion = ref<number | null>(null)
+const draftSaving = ref(false)
+const publishing = ref(false)
 
 // ── 表单数据 ──
 const { title, description, difficulty, samples, tagIds, visibility } = useProblemAuthorFields()
@@ -225,6 +239,7 @@ async function loadProblem() {
       submission_mode?: 'code' | 'artifact'
       artifact_max_size_mb?: number | null
       runtime_config: RuntimeConfigPayload | null
+      latest_version?: number | null
     } }>(`/api/v1/problems/${props.problemId}`, { silent: true })
     const p = res.data
     displayId.value = p.display_id
@@ -236,19 +251,12 @@ async function loadProblem() {
     tagIds.value = p.tags.map((c) => c.id)
     submissionMode.value = p.submission_mode ?? 'code'
     artifactMaxSizeMb.value = p.artifact_max_size_mb ?? null
+    latestVersion.value = p.latest_version ?? null
     hasSupportPackage.value = (p as Record<string, unknown>).has_support_package === true
 
     // 加载 runtime_config
     if (p.runtime_config) {
-      const rc = p.runtime_config
-      evaluatorImage.value = rc.evaluator.image
-      evaluatorCommand.value = rc.evaluator.command
-      evaluatorTimeLimitMs.value = rc.evaluator.time_limit_ms
-      evaluatorMemoryLimitMb.value = rc.evaluator.memory_limit_mb
-      evaluatorNetworkEnabled.value = rc.evaluator.network?.enabled === true
-      solutionImage.value = rc.solution.image
-      solutionCallTimeoutMs.value = rc.solution.call_timeout_ms
-      solutionMemoryLimitMb.value = rc.solution.memory_limit_mb
+      applyRuntimeConfig(p.runtime_config)
     }
     // 加载 LLM 配置
     const llmConfig = (p as {
@@ -262,6 +270,11 @@ async function loadProblem() {
       llmMaxCalls.value = llmConfig.max_calls != null ? String(llmConfig.max_calls) : ""
       llmMaxTokens.value = llmConfig.max_tokens != null ? String(llmConfig.max_tokens) : ""
     }
+
+    // 内容以**草稿**为编辑初值（投影只在发布时更新，可能落后于草稿）
+    const draft = await versions.getDraft(props.problemId)
+    draftRevision.value = draft.revision
+    applyDraftContent(draft.content)
   } catch (err: unknown) {
     if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 404) {
       notFound.value = true
@@ -270,6 +283,41 @@ async function loadProblem() {
     }
   } finally {
     pageLoading.value = false
+  }
+}
+
+function applyRuntimeConfig(rc: RuntimeConfigPayload) {
+  evaluatorImage.value = rc.evaluator.image
+  evaluatorCommand.value = rc.evaluator.command
+  evaluatorTimeLimitMs.value = rc.evaluator.time_limit_ms
+  evaluatorMemoryLimitMb.value = rc.evaluator.memory_limit_mb
+  evaluatorNetworkEnabled.value = rc.evaluator.network?.enabled === true
+  solutionImage.value = rc.solution.image
+  solutionCallTimeoutMs.value = rc.solution.call_timeout_ms
+  solutionMemoryLimitMb.value = rc.solution.memory_limit_mb
+}
+
+/** 用草稿内容覆盖表单（kind=ai 的内容快照）。 */
+function applyDraftContent(content: Record<string, unknown>) {
+  if (typeof content.title === "string") title.value = content.title
+  if (typeof content.description === "string") description.value = content.description
+  if (Array.isArray(content.samples)) {
+    samples.value = content.samples as import("~/utils/oiWorkspace").ProblemSample[]
+  }
+  if (content.submission_mode === "code" || content.submission_mode === "artifact") {
+    submissionMode.value = content.submission_mode
+  }
+  if (content.artifact_max_size_mb === null || typeof content.artifact_max_size_mb === "number") {
+    artifactMaxSizeMb.value = content.artifact_max_size_mb as number | null
+  }
+  if (content.runtime_config) {
+    applyRuntimeConfig(content.runtime_config as RuntimeConfigPayload)
+  }
+  const llmConfig = content.llm_config as { max_calls?: number | null; max_tokens?: number | null } | null
+  if (llmConfig) {
+    llmEnabled.value = true
+    llmMaxCalls.value = llmConfig.max_calls != null ? String(llmConfig.max_calls) : ""
+    llmMaxTokens.value = llmConfig.max_tokens != null ? String(llmConfig.max_tokens) : ""
   }
 }
 
@@ -310,60 +358,128 @@ function validate(): boolean {
   return Object.keys(errors).length === 0
 }
 
+/** 双容器运行配置负载（AI 题内容的一部分）。 */
+function buildRuntimeConfig(): RuntimeConfigPayload {
+  return {
+    evaluator: {
+      image: evaluatorImage.value.trim(),
+      command: evaluatorCommand.value.trim(),
+      time_limit_ms: evaluatorTimeLimitMs.value,
+      memory_limit_mb: evaluatorMemoryLimitMb.value,
+      ...(evaluatorNetworkEnabled.value ? { network: { enabled: true } } : {}),
+    },
+    solution: {
+      image: solutionImage.value.trim(),
+      call_timeout_ms: solutionCallTimeoutMs.value,
+      memory_limit_mb: solutionMemoryLimitMb.value,
+    },
+  }
+}
+
+function buildLlmPayload() {
+  const llmMaxCallsNum = llmMaxCalls.value === "" ? null : Number(llmMaxCalls.value)
+  const llmMaxTokensNum = llmMaxTokens.value === "" ? null : Number(llmMaxTokens.value)
+  return llmEnabled.value
+    ? {
+        ...(llmMaxCallsNum !== null ? { max_calls: llmMaxCallsNum } : {}),
+        ...(llmMaxTokensNum !== null ? { max_tokens: llmMaxTokensNum } : {}),
+      }
+    : null
+}
+
+/** 草稿内容（kind=ai）：题面 + 评测配置 + 模板 + 产物上限 + LLM。 */
+function buildContent(): Record<string, unknown> {
+  return {
+    kind: "ai",
+    title: title.value.trim(),
+    description: description.value.trim(),
+    samples: samples.value,
+    submission_mode: submissionMode.value,
+    runtime_config: buildRuntimeConfig(),
+    template_content: "",
+    artifact_max_size_mb: artifactMaxSizeMb.value,
+    llm_config: buildLlmPayload(),
+  }
+}
+
+/** 管理信息（题目行）：难度、可见性、标签；内容不在这里提交。 */
+async function saveManagement(): Promise<void> {
+  await api.put(`/api/v1/problems/${props.problemId}`, {
+    difficulty: difficulty.value,
+    visibility: visibility.value,
+    tag_ids: tagIds.value,
+  })
+}
+
+/** 保存草稿（编辑模式）：管理信息 + 共享草稿内容，两个动作都成功才算保存。 */
+async function handleSaveDraft() {
+  if (!validate() || !props.problemId) return
+  draftSaving.value = true
+  saveError.value = ""
+  try {
+    await saveManagement()
+    const saved = await versions.saveDraft(
+      props.problemId,
+      buildContent(),
+      draftRevision.value ?? 0,
+    )
+    draftRevision.value = saved.revision
+    toast.success("草稿已保存（发布后才会成为新的作答版本）")
+  } catch (err: unknown) {
+    saveError.value = extractApiError(err).message
+  } finally {
+    draftSaving.value = false
+  }
+}
+
+/** 发布草稿为新版本：先保存当前编辑内容，再显式发布。 */
+async function handlePublish() {
+  if (!validate() || !props.problemId) return
+  publishing.value = true
+  saveError.value = ""
+  try {
+    await saveManagement()
+    const saved = await versions.saveDraft(
+      props.problemId,
+      buildContent(),
+      draftRevision.value ?? 0,
+    )
+    draftRevision.value = saved.revision
+    const published = await versions.publish(props.problemId, saved.revision)
+    draftRevision.value = published.draft_revision
+    latestVersion.value = published.version
+    toast.success(
+      published.unchanged
+        ? `内容未变化，继续使用 V${published.version}`
+        : `已发布 V${published.version}`,
+    )
+    await loadProblem()
+  } catch (err: unknown) {
+    saveError.value = extractApiError(err).message
+  } finally {
+    publishing.value = false
+  }
+}
+
 async function handleSubmit() {
+  if (isEditMode.value) return
   if (!validate()) return
   saving.value = true
   saveError.value = ""
   try {
-    const runtimeConfigPayload = {
-      evaluator: {
-        image: evaluatorImage.value.trim(),
-        command: evaluatorCommand.value.trim(),
-        time_limit_ms: evaluatorTimeLimitMs.value,
-        memory_limit_mb: evaluatorMemoryLimitMb.value,
-        ...(evaluatorNetworkEnabled.value ? { network: { enabled: true } } : {}),
-      },
-      solution: {
-        image: solutionImage.value.trim(),
-        call_timeout_ms: solutionCallTimeoutMs.value,
-        memory_limit_mb: solutionMemoryLimitMb.value,
-      },
-    }
-    const llmMaxCallsNum = llmMaxCalls.value === "" ? null : Number(llmMaxCalls.value)
-    const llmMaxTokensNum = llmMaxTokens.value === "" ? null : Number(llmMaxTokens.value)
-    const llmPayload = llmEnabled.value
-      ? {
-          ...(llmMaxCallsNum !== null ? { max_calls: llmMaxCallsNum } : {}),
-          ...(llmMaxTokensNum !== null ? { max_tokens: llmMaxTokensNum } : {}),
-        }
-      : null
-    const submissionModePayload = submissionMode.value
-    const artifactMaxSizePayload = artifactMaxSizeMb.value
-    if (isEditMode.value) {
-      await api.put(`/api/v1/problems/${props.problemId}`, {
-        title: title.value.trim(), description: description.value.trim(), samples: samples.value, visibility: visibility.value,
-        difficulty: difficulty.value,
-        tag_ids: tagIds.value,
-        runtime_config: runtimeConfigPayload,
-        submission_mode: submissionModePayload,
-        artifact_max_size_mb: artifactMaxSizePayload,
-        llm: llmPayload,
-      })
-      emit("saved", props.problemId!)
-    } else {
-      const res = await api.post<{ data: { id: string } }>("/api/v1/problems", {
-        title: title.value.trim(), description: description.value.trim(), samples: samples.value, visibility: visibility.value,
-        difficulty: difficulty.value,
-        tag_ids: tagIds.value,
-        type: problemType.value,
-        runtime_config: runtimeConfigPayload,
-        submission_mode: submissionModePayload,
-        artifact_max_size_mb: artifactMaxSizePayload,
-        llm: llmPayload,
-      })
-      savedProblemId.value = res.data.id
-      emit("saved", res.data.id)
-    }
+    const res = await api.post<{ data: { id: string } }>("/api/v1/problems", {
+      title: title.value.trim(), description: description.value.trim(), samples: samples.value, visibility: visibility.value,
+      difficulty: difficulty.value,
+      tag_ids: tagIds.value,
+      type: problemType.value,
+      runtime_config: buildRuntimeConfig(),
+      submission_mode: submissionMode.value,
+      artifact_max_size_mb: artifactMaxSizeMb.value,
+      llm: buildLlmPayload(),
+    })
+    savedProblemId.value = res.data.id
+    toast.success("题目已创建（尚未发布：发布后才可作答）")
+    emit("saved", res.data.id)
   } catch (err: unknown) {
     saveError.value = extractApiError(err).message
   } finally {
@@ -635,11 +751,44 @@ async function handleSubmit() {
       </p>
     </section>
 
-    <!-- 提交按钮 -->
-    <div class="flex gap-2.5 justify-end px-6 py-4">
-      <UButton color="primary" class="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold rounded-lg border border-transparent bg-signal text-on-signal cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:bg-signal/80 hover:border-signal/80" :disabled="saving" @click="handleSubmit">
+    <!-- 提交按钮：创建 = 建题；编辑 = 保存草稿 / 发布版本两个独立动作 -->
+    <div class="flex flex-wrap items-center justify-end gap-2.5 px-6 py-4">
+      <span v-if="isEditMode" class="mr-auto text-xs text-text-secondary">
+        {{ latestVersion ? `当前最新版 V${latestVersion}` : "尚未发布（发布后才可作答）" }}
+        <span v-if="draftRevision !== null" class="text-text-muted">· 草稿 revision {{ draftRevision }}</span>
+      </span>
+      <template v-if="isEditMode">
+        <UButton
+          color="neutral"
+          variant="outline"
+          class="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="draftSaving || publishing"
+          :loading="draftSaving"
+          @click="handleSaveDraft"
+        >
+          <UIcon name="i-lucide-save" class="size-4" />
+          保存草稿
+        </UButton>
+        <UButton
+          color="primary"
+          class="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold rounded-lg border border-transparent bg-signal text-on-signal cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:bg-signal/80 hover:border-signal/80"
+          :disabled="draftSaving || publishing"
+          :loading="publishing"
+          @click="handlePublish"
+        >
+          <UIcon name="i-lucide-upload" class="size-4" />
+          发布版本
+        </UButton>
+      </template>
+      <UButton
+        v-else
+        color="primary"
+        class="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold rounded-lg border border-transparent bg-signal text-on-signal cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:bg-signal/80 hover:border-signal/80"
+        :disabled="saving"
+        @click="handleSubmit"
+      >
         <UIcon name="i-lucide-save" class="size-4" />
-        {{ saving ? (isEditMode ? "保存中..." : "创建中...") : (isEditMode ? "保存修改" : "创建题目") }}
+        {{ saving ? "创建中..." : "创建题目" }}
       </UButton>
     </div>
   </div>

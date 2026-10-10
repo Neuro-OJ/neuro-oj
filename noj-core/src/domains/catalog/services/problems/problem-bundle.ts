@@ -69,8 +69,13 @@ import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import {
   deriveDraftContentFromProblem,
   getProblemDraft,
+  loadProblemIdentity,
+  replaceDraftObjectsForRole,
   saveProblemDraft,
 } from "../versioning/draft.ts";
+import { problemContentKindOf } from "../../types/problem-content.ts";
+import { registerLegacyStorageObject } from "../../../system/index.ts";
+import { deleteStorageObject } from "../../../system/index.ts";
 import { publishProblemVersion } from "../versioning/publish.ts";
 
 /**
@@ -100,17 +105,22 @@ export async function syncProblemDraftFromProjection(
 }
 
 /**
- * 导入后显式发布当前题目内容为新版本（`problems import --publish`）。
+ * 导入后显式发布当前内容为新版本（`problems import --publish`）。
  *
- * 先同步草稿（导入写的是投影），再发布；相同内容重复发布返回既有版本
- * （`unchanged: true`），不制造空版本。
+ * 内容事实源是**草稿**：编程题导入经 `createProblem`/`updateProblem` 写入草稿
+ * （含支持包引用），此处直接发布当前草稿 revision；客观题小题仍写在
+ * `objective_questions`（2d 迁移前），需先把投影与小题同步进草稿再发布。
+ * 相同内容重复发布返回既有版本（`unchanged: true`），不制造空版本。
  */
 export async function publishImportedProblem(
   problemId: string,
   actorId?: string | null,
   changeNote = "题目包导入",
 ): Promise<{ version_id: string; version: number; unchanged: boolean }> {
-  const revision = await syncProblemDraftFromProjection(problemId, actorId);
+  const identity = await loadProblemIdentity(problemId);
+  const revision = problemContentKindOf(identity) === "objective"
+    ? await syncProblemDraftFromProjection(problemId, actorId)
+    : (await getProblemDraft(problemId, identity)).revision;
   const published = await publishProblemVersion(problemId, {
     expectedRevision: revision,
     changeNote,
@@ -421,10 +431,16 @@ async function updateExisting(
       c,
       true, // import-bundle 是服务端生成 storage URL 的受控流程
     );
-    // 本地存储按内容寻址：重复导入可能返回同一对象，不能把新引用删除。
+    // 旧包不能直删：历史版本仍引用它（重测要按版本取包），统一走引用守卫；
+    // 引用存在时保留字节，只解绑草稿引用。
     if (oldStorageUrl && oldStorageUrl !== storageUrl) {
       try {
-        await storage.delete(oldStorageUrl);
+        const outcome = await deleteStorageObject(oldStorageUrl);
+        if (outcome.outcome === "referenced") {
+          logger.info("题目导入：旧评测包仍被历史版本引用，保留字节", {
+            problem_id: problemId,
+          });
+        }
       } catch (err) {
         logger.warn("题目导入：删除旧评测包失败", {
           problem_id: problemId,
@@ -435,7 +451,7 @@ async function updateExisting(
     return updated;
   } catch (error) {
     if (storageUrl !== oldStorageUrl) {
-      await storage.delete(storageUrl).catch((cleanupError) =>
+      await deleteStorageObject(storageUrl).catch((cleanupError) =>
         logger.warn("导入回滚：新评测包清理失败", {
           problem_id: problemId,
           err: cleanupError,
@@ -623,6 +639,12 @@ async function importObjectivePaper(
     }
   }
 
+  // 客观题小题当前写在 `objective_questions`（2d 迁移前）：把投影与小题同步进
+  // 草稿，并清空从编程题继承的草稿文件引用（客观题没有评测包）。
+  await syncProblemDraftFromProjection(outcome.problemId, actor.userId);
+  await replaceDraftObjectsForRole(outcome.problemId, "support_package", []);
+  await replaceDraftObjectsForRole(outcome.problemId, "oi_file", []);
+
   return getProblem(outcome.problemId);
 }
 
@@ -760,6 +782,15 @@ async function createViaCrud(
     .update(problems)
     .set({ support_package_storage_url: storageUrl, updated_at: now })
     .where(eq(problems.id, id));
+
+  // 导入是内容写入者：创建路径直接插题目行，需补建共享草稿并把支持包绑定到
+  // **草稿**引用，`--publish` 才有内容与文件可固定（Handbook §5.3 第 7 步）。
+  await syncProblemDraftFromProjection(id, actor.userId);
+  await registerLegacyStorageObject(storageUrl);
+  await replaceDraftObjectsForRole(id, "support_package", [{
+    path: "package.zip",
+    storage_url: storageUrl,
+  }]);
 
   return getProblem(id);
 }

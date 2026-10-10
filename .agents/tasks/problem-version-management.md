@@ -8,21 +8,22 @@
 > 使任何一轮中断后都能从本文件直接续接。
 
 - 目标分支：`feat/problem-version-management`（GPG 签名，禁止直推 main）
-- 当前轮次：goal round 31
-- 最近更新：批次 5/7/5d 读路径统一收尾——提交详情/列表与竞赛结算就绪改读评测尝试、
-  Kaggle 竞赛计分改读竞赛有效成绩投影、正式成绩快照记录版本策略与尝试归因；
-  未发布题目不进公共读取面（详情 404 / 列表排除 / 搜索索引排除）
+- 当前轮次：goal round 35
+- 最近更新：批次 2c/2e 落地——OI 保存路由改走草稿（`draft_revision` 乐观锁、
+  草稿作用域读写、管理信息与内容分离）、`updateProblem` 内容写草稿（未发布题目
+  同步投影）、导入路径改为「写草稿 → 显式发布」、web 编辑器（AI/代码 + OI）
+  「保存草稿 / 发布版本」两动作
 
 ## 一、批次状态总览
 
 | # | 批次 | 状态 | 备注 |
 |---|---|---|---|
 | 1 | 基础模型（schema/类型/纯计算器/PGlite DDL/迁移 0102） | ✅ 完成 | parity 68 表/613 列 |
-| 2 | 版本写入（草稿、发布、文件引用、OI、客观题快照） | 🟡 部分 | 2a/2b/2c（OI 核心）/2d/2e（创建即建草稿+删除清理+路由）完成；剩 2c 收尾、2e 收尾 |
+| 2 | 版本写入（草稿、发布、文件引用、OI、客观题快照） | 🟡 部分 | 2a/2b/2c（OI 含路由切换）/2d/2e（创建即建草稿 + 内容写草稿 + 删除清理 + 路由）完成；剩 ZIP worker 绑定 revision、OI 自测临时包、客观题小题直接写草稿 |
 | 3 | 评测链路（attempt、协议、结果事务、LLM、sweeper、自测） | ✅ 完成 | 含协议 v2、contest 口径修复、LLM attempt 作用域 |
 | 4 | 管理操作（策略、批任务、重测、升级） | ✅ 完成 | 派发 + 路由 + 旧入口适配层；竞赛固定版本创建/编辑写入；§4.5 三个策略/固定版本端点已补；仅「代他人升级」旁路未做 |
 | 5 | 读取统一（通过状态、题单、排行、资料、社区、搜索、正式成绩） | ✅ 完成 | 5a/5b/5c/5d 全部落地：stats-cache 去进程内状态、未发布题目不进公共面、搜索只索引已发布、提交读路径版本信息、Kaggle 计分读竞赛有效成绩、正式快照记录策略与尝试归因 |
-| 6 | 客户端（Web、IDE、CLI、演练） | 🟡 部分 | CLI/LMCC/E2E 完成；noj-ui 提交侧、提交列表/详情版本展示、管理端（版本策略 + 批量重测）均完成；剩**编辑器草稿/发布编辑流**（与批次 2c/2e 同步落地） |
+| 6 | 客户端（Web、IDE、CLI、演练） | 🟡 部分 | CLI/LMCC/E2E 完成；noj-ui 提交侧、提交列表/详情版本展示、管理端（版本策略 + 批量重测）、**AI/代码与 OI 编辑器草稿发布流**完成；剩客观题编辑器整卷发布 |
 | 7 | 存量收尾（回填、旧表删除、视图/索引重建、备份恢复验证） | 🟡 部分 | 0103 回填 + 真实库演练完成；旧表**读写引用已全部清零**（仅剩 schema 定义）、写入双写移除、`user_rankings` 视图已重建（0104）；剩删表迁移、`pinned_version_id` 收紧、索引重建与备份恢复演练 |
 | 8 | 文档与交付（现行文档、Agent Note、验收、PR） | ⬜ 未开始 | 含删除本跟踪文件 |
 
@@ -31,11 +32,26 @@
 ## 二、逐项清单（未完成项）
 
 ### 批次 2（版本写入）
-- [ ] 2c 收尾：OI 路由改走 `saveOiDraft`（`oi-author.ts`）；ZIP worker 结果绑定 revision；
-      OI 自测从版本构造临时包并登记临时对象引用。
-- [ ] 2e 收尾：`updateProblem` 管理信息与内容分离（内容写草稿、不直接改投影）——
-      必须与 2c 的 OI 草稿路径切换同步落地，否则 OI 保存会「只落草稿不生效」。
-- [ ] 题包导入的客观题小题直接写草稿（当前仍写旧 `objective_questions` 表后同步）。
+- [x] 2c 收尾（路由）：`oi-author.ts` 改走 `saveOiDraft`——`draft_revision` 乐观锁
+      （缺失 428 / 过时 409）、管理信息与内容分离、`/:id/files` 与 `/:id/file` 走
+      草稿作用域（新增 `listDraftOiFiles` 用登记字节数列目录）；删除
+      `saveOiMetadata` / `saveOiData`（旧 `problems.oi_data_files` 写入路径退役）；
+      新增路由测试 `tests/routes/oi-author-save.test.ts`（新建写草稿 + metadata-only
+      不访问存储 + 428/409 + 发布后固定文件引用）。
+- [x] 2e 收尾（内容/管理分离）：`updateProblem` 内容（题面/样例/运行配置/模板/LLM）
+      写**共享草稿**，管理信息（难度/可见性/标签）与题型（kind）写题目行；已发布题目
+      的投影只由发布服务更新，未发布题目同步投影保持迁移期可读；服务端派生支持包
+      绑定草稿引用；导入路径改「写草稿 → 显式 publish」（客观题先同步小题）、
+      `createViaCrud` 补建草稿、旧评测包删除改走引用守卫。
+- [x] 2c/6（编辑器 UI）：`CodingProblemEditor.vue` 编辑模式读草稿为编辑初值 +
+      「保存草稿 / 发布版本」两动作（`If-Match` 乐观锁、发布前先保存、版本状态提示）；
+      `OiProblemEditor.vue` 传 `draft_revision`、保存后回到全新 revision、
+      新增「发布版本」按钮（草稿不改变公开内容）。
+- [ ] ZIP worker 结果绑定草稿 revision（完成时草稿已变化则拒绝覆盖）。
+- [ ] OI 自测从所选版本构造临时包并登记临时对象引用。
+- [ ] 题包导入的客观题小题直接写草稿（当前仍写旧 `objective_questions` 表后同步，
+      见 `publishImportedProblem` 的 kind 分支）；客观题编辑器「整卷发布」
+      （`ObjectiveProblemEditor.vue`）未接草稿。
 
 ### 批次 5（读取统一）
 - [x] `query/services/stats-cache.ts`：删除全部进程内计数器（含 Redis 离线回退），
@@ -60,7 +76,11 @@
       客观题提交携带 `version_id`（练习与竞赛两处调用点）。
 - [x] `pages/contests/[contestId]/problems/[label].vue`：固定版本提示 + artifact/客观题提交
       携带 `version_id` + 409 保留已选内容并刷新固定版本。
-- [ ] `components/editor/*`：保存草稿 / 发布版本两个动作，统一草稿 revision。
+- [x] `components/editor/CodingProblemEditor.vue`：编辑模式以 `GET /problems/:id/draft`
+      为编辑初值，新增「保存草稿」（`If-Match` + 管理信息同批提交）与「发布版本」
+      （先存后发、相同内容复用既有版本、页内显示最新版与草稿 revision）。
+- [x] `components/editor/OiProblemEditor.vue`：保存携带 `draft_revision`、保存后刷新
+      文件列表与新 revision、新增「发布版本」按钮；内容以草稿为编辑初值。
 - [ ] `components/objective/ObjectiveProblemEditor.vue`：小题写草稿、稳定 key、整卷发布。
 - [x] 提交时版本展示（core + UI）：`GET /submissions/:id` 新增
       `submitted_version_id`/`version_origin`/`submitted_version`/`upgraded_from_id`/
@@ -157,6 +177,12 @@
 
 | 范围 | 命令 | 结果 |
 |---|---|---|
+| noj-core 全量 | `cd noj-core && deno task test:parallel` | **1406 passed / 0 failed / 11 ignored**（批次 2c/2e 后） |
+| catalog 域 | `bash scripts/test-domain.sh catalog` | **306 passed / 0 failed**（+2 OI 路由、+2 版本路由内容/管理分离） |
+| noj-ui 单测 | `cd noj-ui && deno task test` | **235 passed / 0 failed** |
+| noj-ui 类型 | `deno task check:types` + `deno task check:types:nuxt` | **0 error** |
+| noj-ui 组件 | `deno task test:components`（vitest） | **102 passed / 19 files** |
+| 静态门禁 | lint / fmt / 域边界 / JSDoc / 迁移安全 | 全绿 |
 | noj-core 全量 | `cd noj-core && deno task test:parallel` | **1403 passed / 0 failed / 11 ignored** |
 | contest 域 | `bash scripts/test-domain.sh contest` | **86 passed / 0 failed**（+1 结算就绪读尝试、+1 快照归因、+1 投影计分） |
 | catalog 域 | `bash scripts/test-domain.sh catalog` | **303 passed / 0 failed**（+2 未发布可见性） |
@@ -186,12 +212,11 @@
 
 ## 四、下一步（按优先级）
 
-1. **批次 2c/2e + 编辑器 UI（必须同步落地）**：`updateProblem` 内容改写草稿、
-   OI 路由走 `saveOiDraft`、客观题小题写草稿；noj-ui 编辑器「保存草稿 / 发布版本」
-   两动作与整卷发布。这是最后一个"模型与实现不一致"的大项。
-2. **批次 7b**：移除 `submissions-result.ts` 结果写入双写（需同步改写 7 个断言旧表的
-   用例）→ 生成删表迁移（`DROP evaluation_results`）并清理全部测试夹具 →
-   `contest_problems.pinned_version_id` 收紧 NOT NULL → 重建榜单视图与搜索索引 →
+1. **批次 2 收尾 + 客观题编辑流**：题包导入的客观题小题直接写草稿（`objective-drafts`
+   服务已有，路由仍写旧表）；`ObjectiveProblemEditor.vue` 整卷发布（小题 key 稳定）；
+   ZIP worker 结果绑定草稿 revision；OI 自测从版本构造临时包。
+2. **批次 7b**：`contest_problems.pinned_version_id` 收紧 NOT NULL（含存量回填）→
+   删除 `objective_questions`（运行期读取迁移完成后）→ 重建搜索索引 →
    备份/恢复演练。
 3. **批次 8**：版本管理文档、同步现行文档（README/AGENTS/题型/题包/题单/提交/竞赛/升级）、
    implemented Agent Note、全量验收（core 各域 + shared + judge + gateway + UI + E2E）、

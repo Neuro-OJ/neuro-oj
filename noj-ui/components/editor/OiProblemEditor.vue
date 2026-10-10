@@ -9,6 +9,7 @@ const props = withDefaults(defineProps<{initialType?: "U" | "P"; mode?: "create"
 const emit = defineEmits<{saved:[id:string]}>()
 const { api } = useApi()
 const { toast } = useToast()
+const versions = useProblemVersions()
 const { title, description, difficulty, samples, tagIds, visibility } = useProblemAuthorFields()
 const tagOptions = ref<{label:string;value:string}[]>([])
 async function loadTags() { const response=await api.get<{data:{id:string;name:string;kind:string}[]}>("/api/v1/tags");tagOptions.value=response.data.map(tag=>({label:`${tag.kind==='algorithm'?'算法':'题目'} · ${tag.name}`,value:tag.id})) }
@@ -25,7 +26,11 @@ const fileList = ref<{path:string;size:number}[]>([])
 const addedFiles = shallowRef<{path:string;file:File}[]>([])
 const changedFiles = ref<Record<string,string>>({})
 const removedFiles = ref<string[]>([])
-const updatedAt = ref<string>()
+/** 草稿乐观锁（`GET /:id/files` 下发，保存时原样回传）。 */
+const draftRevision = ref<number | null>(null)
+/** 当前最新已发布版本号（null = 尚未发布）。 */
+const latestVersion = ref<number | null>(null)
+const publishing = ref(false)
 const selectedPath = ref("")
 const fileText = ref("")
 const originalTexts = ref<Record<string,string>>({})
@@ -91,22 +96,52 @@ async function save() {
   saving.value=true;error.value=""
   try {
     const payload={title:title.value.trim(),description:description.value,samples:samples.value,difficulty:difficulty.value,tag_ids:tagIds.value,visibility:visibility.value,judge_type:"oi",runtime_config:{...runtime.value,scoring_version:2}}
-    const form=new FormData();form.append("metadata",JSON.stringify({problem:{...payload,type:props.initialType},changes:changedFiles.value,removed:removedFiles.value,updated_at:updatedAt.value,upload_paths:addedFiles.value.map(item=>item.path)}))
+    const form=new FormData();form.append("metadata",JSON.stringify({problem:{...payload,type:props.initialType},changes:changedFiles.value,removed:removedFiles.value,
+      // 草稿 revision 是唯一乐观锁（迁移期不再用 updated_at）
+      draft_revision:draftRevision.value??undefined,upload_paths:addedFiles.value.map(item=>item.path)}))
     if(packageFile.value)form.append("file",packageFile.value)
     for(const item of addedFiles.value)form.append("data_files",item.file,item.path)
-    const res=await api.post<{data:{id:string}}>(`/api/v1/problems/oi-author/${props.mode==="edit"?props.problemId:"new"}/save`,form)
-    toast.success("OI 题目已保存");emit("saved",res.data.id)
+    const res=await api.post<{data:{id:string;draft_revision:number;files_changed:boolean}}>(`/api/v1/problems/oi-author/${props.mode==="edit"?props.problemId:"new"}/save`,form)
+    draftRevision.value=res.data.draft_revision
+    changedFiles.value={};removedFiles.value=[];addedFiles.value=[];packageFile.value=null
+    if(props.mode==="edit"){ await reloadFiles(); toast.success("OI 草稿已保存（发布后才会成为新的作答版本）") }
+    else { toast.success("OI 题目已创建（尚未发布：发布后才可作答）");emit("saved",res.data.id) }
   } catch(err) {error.value=extractApiError(err).message} finally {saving.value=false}
+}
+async function reloadFiles() {
+  if(!props.problemId)return
+  const filesResponse=await api.get<{data:{draft_revision:number;updated_at:string;files:{path:string;size:number}[]}}>(`/api/v1/problems/oi-author/${props.problemId}/files`)
+  fileList.value=filesResponse.data.files;draftRevision.value=filesResponse.data.draft_revision
+}
+async function publish() {
+  if(!props.problemId)return
+  if(title.value.trim()=== "" || description.value.trim()==="") {error.value="标题和题面不能为空";return}
+  publishing.value=true;error.value=""
+  try {
+    // 发布前先保存当前编辑内容，避免"改了没发"
+    await save()
+    const published=await versions.publish(props.problemId,draftRevision.value??0)
+    draftRevision.value=published.draft_revision;latestVersion.value=published.version
+    toast.success(published.unchanged?`内容未变化，继续使用 V${published.version}`:`已发布 V${published.version}`)
+  } catch(err) {error.value=extractApiError(err).message} finally {publishing.value=false}
 }
 onMounted(async()=> {
   if(props.mode!=="edit" || !props.problemId)return
   loading.value=true
   try {
-    const res=await api.get<{data:{title:string;description:string;difficulty:string;samples:typeof samples.value;runtime_config:Runtime;tags:{id:string}[];visibility:"public" | "private"}}>(`/api/v1/problems/${props.problemId}`)
-    const filesResponse=await api.get<{data:{updated_at:string;files:{path:string;size:number}[]}}>(`/api/v1/problems/oi-author/${props.problemId}/files`)
-    fileList.value=filesResponse.data.files;updatedAt.value=filesResponse.data.updated_at
+    const res=await api.get<{data:{title:string;description:string;difficulty:string;samples:typeof samples.value;runtime_config:Runtime;tags:{id:string}[];visibility:"public" | "private";latest_version?:number|null}}>(`/api/v1/problems/${props.problemId}`)
+    await reloadFiles()
     const data=res.data;title.value=data.title;description.value=data.description;difficulty.value=data.difficulty;samples.value=data.samples??[];tagIds.value=data.tags.map((tag)=>tag.id);visibility.value=data.visibility
-    runtime.value={...data.runtime_config,subtasks:data.runtime_config.subtasks.map((item)=>({...item,scoring:["min","max","sum"].includes(item.scoring)?item.scoring:"min",depends_on:item.depends_on??[],cases:item.cases.map((test,index)=>({...test,id:test.id??`${item.id}_${index+1}`}))}))}
+    latestVersion.value=data.latest_version??null
+    if(data.runtime_config){runtime.value={...data.runtime_config,subtasks:data.runtime_config.subtasks.map((item)=>({...item,scoring:["min","max","sum"].includes(item.scoring)?item.scoring:"min",depends_on:item.depends_on??[],cases:item.cases.map((test,index)=>({...test,id:test.id??`${item.id}_${index+1}`}))}))}}
+    // 内容以草稿为编辑初值（投影只在发布时更新，可能落后于草稿）
+    const draft=await versions.getDraft(props.problemId)
+    draftRevision.value=draft.revision
+    const content=draft.content as {title?:string;description?:string;samples?:typeof samples.value;runtime_config?:Runtime}
+    if(typeof content.title==="string")title.value=content.title
+    if(typeof content.description==="string")description.value=content.description
+    if(Array.isArray(content.samples))samples.value=content.samples
+    if(content.runtime_config)runtime.value={...content.runtime_config,subtasks:content.runtime_config.subtasks.map((item)=>({...item,scoring:["min","max","sum"].includes(item.scoring)?item.scoring:"min",depends_on:item.depends_on??[],cases:item.cases.map((test,index)=>({...test,id:test.id??`${item.id}_${index+1}`}))}))}
   } catch(err) {error.value=extractApiError(err).message} finally {loading.value=false}
 })
 </script>
@@ -162,6 +197,13 @@ testdata/
         </div>
       </div>
     </section>
-    <div class="flex justify-end border-t border-border pt-4"><UButton :loading="saving" @click="save">保存题目</UButton></div>
+    <div class="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
+      <span class="mr-auto text-xs text-text-secondary">
+        {{ latestVersion ? `当前最新版 V${latestVersion}` : "尚未发布（发布后才可作答）" }}
+        <span v-if="draftRevision !== null" class="text-text-muted">· 草稿 revision {{ draftRevision }}</span>
+      </span>
+      <UButton variant="outline" :loading="saving" :disabled="publishing" @click="save">保存草稿</UButton>
+      <UButton v-if="mode === 'edit' && problemId" color="primary" :loading="publishing" :disabled="saving" @click="publish">发布版本</UButton>
+    </div>
   </div>
 </template>
