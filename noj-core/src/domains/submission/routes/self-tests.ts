@@ -61,6 +61,9 @@ router.post("/problems/:id/self-test", authMiddleware, async (c) => {
     code: body.code as string,
     file_name: body.file_name as string | undefined,
     cases: body.cases as SelfTestInput["cases"],
+    version_id: typeof body.version_id === "string" && body.version_id
+      ? body.version_id
+      : undefined,
   };
 
   const isAdmin = await checkPermission(c, "submission:read_all");

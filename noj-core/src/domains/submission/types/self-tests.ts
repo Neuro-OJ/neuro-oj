@@ -25,6 +25,14 @@ export interface SelfTestInput {
   language: string;
   code: string;
   file_name?: string;
+  /**
+   * 自测使用的题目版本（Handbook §4.2）。
+   *
+   * 与正式提交同一口径：显式指定的版本逐字生效（不属于该题 → 404）；
+   * 未指定时按题库有效策略解析默认作答版本。自测使用**独立运行标识**，
+   * 但仍携带版本与协议版本，恢复时可从版本重建任务。
+   */
+  version_id?: string;
 }
 
 /** 创建自测成功后的响应（基础字段，不含 result）。 */

@@ -174,7 +174,18 @@
 - [x] 3b（重测尝试）`submissions-rejudge.ts` 单条与整题路径：每次重测创建
       `source='rejudge'` 尝试（sequence 递增、绑定目标版本 = 题目当前最新版），
       任务 `run_id` 与 LLM token 均绑定该尝试。
-- [ ] 3c（Judge 侧·收尾）sweeper 从尝试快照恢复、自测携带版本与快照。
+- [x] 3c（sweeper 从版本恢复）`submission/mq/sweeper.ts`：
+  - pending 正式提交优先取 `active_attempt_id` 绑定的**版本内容**作为配置来源
+    （`runtime_config` / `judge_type`），任务复用原尝试 `run_id` 与
+    `problem_version_id`；仅当没有尝试（迁移期存量行）才回退题目投影；
+  - pending 自测走 `self_tests.problem_version_id` 的版本内容；
+  - **移除产物 pending 清理路径**（`cleanupOrphanArtifacts` 删除对象 + 标记 error）：
+    产物对象保留到提交显式删除，pending 产物提交改为正常恢复（重新签发下载地址、
+    `code: ""`、带 `artifact_download_url`），对象缺失时按永久错误收尾并保留历史判定。
+- [x] 3c（自测版本）`self-tests.ts` + 路由 + 类型：自测请求支持 `version_id`
+      （显式版本逐字生效、不属于该题 404），配置以**版本内容**为准，落库
+      `problem_version_id` 与非敏感 `task_snapshot`；任务携带版本与协议版本，
+      自测仍使用独立运行标识。
 - [x] 3d 客观题提交走统一尝试与投影写入服务：
   - `submitObjectivePaper` 判卷事实源改为**提交时版本的小题快照**
     （`loadPublishedVersionContent` → `content.questions`，key = 快照 `key`；
@@ -324,6 +335,10 @@
 
 ## 最近一次验证
 
+- 批次 3c（sweeper 版本恢复 + 自测版本）：noj-core 全量
+  `deno task test:parallel` **1367 passed / 0 failed / 11 ignored**（submission 域
+  **210 passed**，新增 3 个恢复用例 + 1 个自测版本用例）；lint / fmt / 域边界 /
+  JSDoc 全绿。
 - 批次 3c（LLM attempt 作用域 + artifact/重测版本绑定）：noj-core 全量
   `deno task test:parallel` **1363 passed / 0 failed / 11 ignored**；gateway
   `deno task test` **99 passed / 0 failed / 1 ignored**（新增 5 个作用域用例）、

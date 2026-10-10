@@ -27,6 +27,10 @@ import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import type { JudgeResult } from "../types/index.ts";
 import { prepareJudgeTask } from "./prepare-judge-task.ts";
+import {
+  assertVersionAcceptsSubmission,
+  resolveSubmissionVersion,
+} from "./versioning/submission-version.ts";
 import { evaluateProblemAccess } from "./../../catalog/index.ts";
 import { buildOiSelfTestPackage } from "../../catalog/index.ts";
 import {
@@ -160,11 +164,33 @@ export async function createSelfTest(
     }
   }
 
-  // 双容器 runtime_config 校验
-  const runtimeConfig = problem.runtime_config as
-    | ProblemRuntimeConfig
-    | null
-    | undefined;
+  // 自测版本解析（Handbook §4.2）：与正式提交同一口径——显式版本逐字生效，
+  // 未指定时按有效策略取默认作答版本；存量未版本化题目回退题目投影。
+  const versionResolution = await resolveSubmissionVersion(problemId, {
+    requestedVersionId: input.version_id,
+    latestVersionId: problem.latest_version_id,
+  });
+  let selfTestVersionId: string | null = null;
+  let versionRuntimeConfig: ProblemRuntimeConfig | null = null;
+  if (versionResolution.kind === "known") {
+    selfTestVersionId = versionResolution.version.version_id;
+    const content = versionResolution.version.content;
+    assertVersionAcceptsSubmission(content, {
+      language: input.language,
+      submissionMode: problem.submission_mode as "code" | "artifact",
+    });
+    if (content.kind === "ai" || content.kind === "oi") {
+      versionRuntimeConfig = content.runtime_config;
+    }
+  }
+
+  // 双容器 runtime_config 校验：已版本化时**以版本内容为准**（题目投影只是最新版
+  // 的影子，版本才是判卷事实源）
+  const runtimeConfig = (versionRuntimeConfig ??
+    problem.runtime_config) as
+      | ProblemRuntimeConfig
+      | null
+      | undefined;
   if (!runtimeConfig) {
     throw new AppError(
       "题目缺少 runtime_config 配置，无法评测",
@@ -214,8 +240,10 @@ export async function createSelfTest(
     throw new BadRequestError("自定义用例仅用于 OI 自测");
   }
   const task = await prepareJudgeTask({
+    // 自测使用独立运行标识（不是评测尝试），但仍携带版本与协议版本
     submission_id: id,
     problem_id: problemId,
+    ...(selfTestVersionId ? { problem_version_id: selfTestVersionId } : {}),
     user_id: userId,
     priority: "medium",
     runtime_config: oiSelfTest?.runtime_config ?? runtimeConfig,
@@ -234,6 +262,14 @@ export async function createSelfTest(
       code: input.code,
       file_name: fileName,
       status: "pending",
+      // 自测同样记录版本与执行快照：sweeper 据此从版本恢复（不读当前投影）
+      problem_version_id: selfTestVersionId,
+      task_snapshot: {
+        language: input.language,
+        problem_version_id: selfTestVersionId,
+        judge_type: task.judge_type,
+        submission_mode: problem.submission_mode,
+      },
       created_at: now,
     });
   } catch (dbErr) {
