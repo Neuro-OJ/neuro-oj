@@ -9,7 +9,13 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
 import { createProblem } from "../../index.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import {
+  problemDrafts,
+  problems,
+  problemVersions,
+} from "../../../../shared/db/schema.ts";
+import { eq } from "drizzle-orm";
 import { jsonRequest } from "../../../../../tests/helper.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
@@ -67,7 +73,7 @@ function draftContent(title: string, description = "题面") {
 }
 
 Deno.test({
-  name: "problem versions route: 读取派生草稿（revision=0，synthesized）",
+  name: "problem versions route: 创建即建草稿（revision=1，非派生）",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -84,9 +90,11 @@ Deno.test({
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.data.problem_id, problemId);
-    assertEquals(body.data.revision, 0);
-    assertEquals(body.data.synthesized, true);
+    // 创建即写入草稿行（Handbook §6.2），编辑者拿到的是真实 revision 而非派生初值
+    assertEquals(body.data.revision, 1);
+    assertEquals(body.data.synthesized, false);
     assertEquals(body.data.content.kind, "ai");
+    assertEquals(body.data.content.title.length > 0, true);
   },
 });
 
@@ -109,21 +117,21 @@ Deno.test({
     });
     assertEquals(missing.status, 428);
 
-    // 正确 revision → 写入成功并递增
+    // 正确 revision（创建后的 1）→ 写入成功并递增
     const saved = await jsonRequest(app, url, {
       method: "PUT",
-      headers: { Authorization: `Bearer ${token}`, "If-Match": "0" },
+      headers: { Authorization: `Bearer ${token}`, "If-Match": "1" },
       body: { content: draftContent("改后题面") },
     });
     assertEquals(saved.status, 200);
     const savedBody = await saved.json();
-    assertEquals(savedBody.data.revision, 1);
+    assertEquals(savedBody.data.revision, 2);
     assertEquals(savedBody.data.content.title, "改后题面");
 
     // 过时 revision → 409
     const stale = await jsonRequest(app, url, {
       method: "PUT",
-      headers: { Authorization: `Bearer ${token}`, "If-Match": "0" },
+      headers: { Authorization: `Bearer ${token}`, "If-Match": "1" },
       body: { content: draftContent("再次修改") },
     });
     assertEquals(stale.status, 409);
@@ -144,7 +152,7 @@ Deno.test({
 
     await jsonRequest(app, `/api/v1/problems/${problemId}/draft`, {
       method: "PUT",
-      headers: { ...auth, "If-Match": "0" },
+      headers: { ...auth, "If-Match": "1" },
       body: { content: draftContent("V1 题面") },
     });
 
@@ -157,7 +165,7 @@ Deno.test({
     assertEquals(preflight.status, 200);
     const report = await preflight.json();
     assertEquals(report.data.ready, true);
-    assertEquals(report.data.revision, 1);
+    assertEquals(report.data.revision, 2);
 
     // 发布 V1
     const published = await jsonRequest(
@@ -165,7 +173,7 @@ Deno.test({
       `/api/v1/problems/${problemId}/versions`,
       {
         method: "POST",
-        headers: { ...auth, "If-Match": "1" },
+        headers: { ...auth, "If-Match": "2" },
         body: { change_note: "首版" },
       },
     );
@@ -255,7 +263,7 @@ Deno.test({
     };
     const saved = await jsonRequest(app, `/api/v1/problems/${paper.id}/draft`, {
       method: "PUT",
-      headers: { ...auth, "If-Match": "0" },
+      headers: { ...auth, "If-Match": "1" },
       body: { content },
     });
     assertEquals(saved.status, 200);
@@ -265,7 +273,7 @@ Deno.test({
       `/api/v1/problems/${paper.id}/versions`,
       {
         method: "POST",
-        headers: { ...auth, "If-Match": "1" },
+        headers: { ...auth, "If-Match": "2" },
         body: { change_note: "V1" },
       },
     );
@@ -312,5 +320,60 @@ Deno.test({
       headers: { Authorization: `Bearer ${viewer}` },
     });
     assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name: "problem versions route: 删除带版本的题目清理干净（不再被外键阻塞）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const problemId = await makeDraftProblem();
+    const app = createApp();
+    const token = await adminToken();
+    const auth = { Authorization: `Bearer ${token}` };
+
+    await jsonRequest(app, `/api/v1/problems/${problemId}/draft`, {
+      method: "PUT",
+      headers: { ...auth, "If-Match": "1" },
+      body: { content: draftContent("待删题面") },
+    });
+    const published = await jsonRequest(
+      app,
+      `/api/v1/problems/${problemId}/versions`,
+      {
+        method: "POST",
+        headers: { ...auth, "If-Match": "2" },
+        body: { change_note: "V1" },
+      },
+    );
+    assertEquals(published.status, 201);
+
+    const db = getDb();
+    const { deleteProblem, getProblemDraft } = await import("../../index.ts");
+    // 版本、草稿与文件引用都必须先清理，否则 problems 行删不掉（NO ACTION 外键）
+    await deleteProblem(problemId, undefined, "admin");
+
+    const [problemRow] = await db.select().from(problems).where(
+      eq(problems.id, problemId),
+    );
+    assertEquals(problemRow, undefined);
+    const versionRows = await db.select().from(problemVersions).where(
+      eq(problemVersions.problem_id, problemId),
+    );
+    assertEquals(versionRows.length, 0);
+    const draftRows = await db.select().from(problemDrafts).where(
+      eq(problemDrafts.problem_id, problemId),
+    );
+    assertEquals(draftRows.length, 0);
+    // 删除后再读草稿：题目已不存在 → 明确 404（不返回幽灵草稿）
+    let code: string | undefined;
+    try {
+      await getProblemDraft(problemId);
+    } catch (err) {
+      code = (err as { code?: string }).code;
+    }
+    assertEquals(code, "PROBLEM_NOT_FOUND");
   },
 });

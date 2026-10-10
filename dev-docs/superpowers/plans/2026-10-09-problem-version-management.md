@@ -72,9 +72,18 @@
     共用，避免"草稿接口是旁路"；
   - 路由测试 5 个（派生草稿、428/409、预检→发布→重复发布 unchanged、客观题版本
     裁剪、非编辑者 403）。
-- [ ] 2e（收尾）`createProblem` 显式建草稿（当前派生路径已可用）；`updateProblem`
-      管理信息与内容分离（内容写草稿，不直接改投影）；`deleteProblem` 补齐新表
-      清理顺序。
+- [x] 2e（创建即建草稿）`createProblem` 在写入题目行后**显式建立共享草稿**
+      （初值 `deriveDraftContentFromProblem`，revision 1），失败回滚题目行；
+      服务端派生的支持包对象同时登记并写入草稿文件引用（发布时随版本固定）。
+- [x] 2e（删除清理）`deleteProblem` 补齐版本化新表清理顺序：收集投影支持包 +
+      草稿/版本文件引用 → 删 evaluation_results/submissions → 删 self_tests →
+      删客观题提交（`submitted_version_id` 复合外键 NO ACTION 会挡版本删除）→
+      删草稿/版本文件引用 → 摘掉 `latest_version_id`/`required_version_id` 指针 →
+      删草稿（base_version 外键）→ 删版本 → 删题目行 → 存储对象统一走
+      **引用守卫**删除（内容寻址共享对象不误删）。此前任何已发布版本的题目都
+      无法删除（FK 违约 → 500），属批次 1 引入的运维死锁。
+- [ ] 2e（收尾）`updateProblem` 管理信息与内容分离（内容写草稿，不直接改投影，
+      需与 2c 的 OI 草稿路径切换同步落地）。
 
 ### 批次 2 决策与偏差记录
 
@@ -350,8 +359,12 @@
 
 ## 最近一次验证
 
+- 批次 2e（创建即建草稿 + 删除清理）：catalog 域 **298 passed / 0 failed**（新增
+  "删除带版本的题目清理干净"用例）；noj-core 全量 `deno task test:parallel`
+  **1373 passed / 0 failed / 11 ignored**。
 - 批次 2e（草稿/版本路由）：catalog 域 **297 passed / 0 failed**（新增 5 个路由用例）；
-  noj-core 全量 `deno task test:parallel` **1372 passed / 0 failed / 11 ignored**。
+  noj-core 全量 `deno task test:parallel` **1372 passed / 0 failed / 11 ignored**；
+  noj-core 全量 `deno task test:parallel` 见下方最新数字。
 - 批次 3c（sweeper 版本恢复 + 自测版本）：noj-core 全量
   `deno task test:parallel` **1367 passed / 0 failed / 11 ignored**（submission 域
   **210 passed**，新增 3 个恢复用例 + 1 个自测版本用例）；lint / fmt / 域边界 /

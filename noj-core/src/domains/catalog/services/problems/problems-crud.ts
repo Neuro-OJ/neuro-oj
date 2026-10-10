@@ -17,8 +17,13 @@ import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   contestProblems,
   evaluationResults,
+  objectiveSubmissions,
+  problemDraftObjects,
+  problemDrafts,
   problems,
   problemTags,
+  problemVersionObjects,
+  problemVersions,
   selfTests,
   submissions,
 } from "./../../../../shared/db/schema.ts";
@@ -28,7 +33,10 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
-import { getStorageProvider } from "./../../../system/index.ts";
+import {
+  deleteStorageObject,
+  getStorageProvider,
+} from "./../../../system/index.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "catalog"]);
@@ -64,6 +72,13 @@ import {
 import type { Context } from "hono";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import { validateProblemSamples } from "../../types/problem-samples.ts";
+import {
+  deriveDraftContentFromProblem,
+  PROBLEM_DRAFT_VIRTUAL_REVISION,
+  saveProblemDraft,
+  setDraftObject,
+} from "../versioning/draft.ts";
+import { registerLegacyStorageObject } from "./../../../system/index.ts";
 
 /**
  * 题目内容编辑权限（唯一判定入口）。
@@ -354,6 +369,44 @@ export async function createProblem(
         continue;
       }
       throw err; // 非唯一冲突，直接抛出
+    }
+  }
+
+  // 每题一个共享草稿（Handbook §2.4/§6.2）：创建即建草稿，初值取自刚写入的
+  // 题目投影。此后**所有内容修改走草稿 + 显式发布**，投影只由发布服务更新。
+  try {
+    const draftContent = await deriveDraftContentFromProblem({
+      ...(await db.select().from(problems).where(eq(problems.id, id)).limit(1))[
+        0
+      ],
+    });
+    await saveProblemDraft(id, {
+      content: draftContent,
+      expectedRevision: PROBLEM_DRAFT_VIRTUAL_REVISION,
+      actorId: ownerId,
+    });
+  } catch (err) {
+    // 草稿建立失败不能留下"有题目没草稿"的半成品（发布入口依赖草稿 revision）
+    await db.delete(problems).where(eq(problems.id, id));
+    logger.error("createProblem: 草稿建立失败，已回滚题目行", { id, err });
+    throw err;
+  }
+
+  // 服务端派生支持包（题包导入）：登记对象并写入**草稿**文件引用，发布时随版本固定
+  if (input.support_package_storage_url) {
+    try {
+      await registerLegacyStorageObject(input.support_package_storage_url);
+      await setDraftObject(id, {
+        role: "support_package",
+        path: "package.zip",
+        storage_url: input.support_package_storage_url,
+      });
+    } catch (err) {
+      logger.error("createProblem: 支持包对象登记失败", {
+        id,
+        storage_url: input.support_package_storage_url,
+        err,
+      });
     }
   }
 
@@ -765,16 +818,26 @@ export async function deleteProblem(
     throw new ConflictError("题目已被竞赛引用，无法删除");
   }
 
-  // 清理支持包（通过 StorageProvider，幂等）
-  const storageUrl = problem.support_package_storage_url;
-  if (storageUrl) {
-    try {
-      const storage = await getStorageProvider();
-      await storage.delete(storageUrl);
-    } catch (err) {
-      logger.error("清理支持包失败", { storage_url: storageUrl, err });
-    }
+  // 收集待清理的存储对象（题目投影支持包 + 草稿/版本文件引用）。
+  // 统一走引用守卫删除：内容寻址下同一对象可能被其他题目共享，绝不能直接
+  // `storage.delete()`（会误删共享字节）。
+  const objectUrls = new Set<string>();
+  if (problem.support_package_storage_url) {
+    objectUrls.add(problem.support_package_storage_url);
   }
+  const draftObjectRows = await db.select({
+    storage_url: problemDraftObjects.storage_url,
+  }).from(problemDraftObjects).where(eq(problemDraftObjects.problem_id, id));
+  for (const row of draftObjectRows) objectUrls.add(row.storage_url);
+  const versionObjectRows = await db
+    .select({ storage_url: problemVersionObjects.storage_url })
+    .from(problemVersionObjects)
+    .innerJoin(
+      problemVersions,
+      eq(problemVersions.id, problemVersionObjects.version_id),
+    )
+    .where(eq(problemVersions.problem_id, id));
+  for (const row of versionObjectRows) objectUrls.add(row.storage_url);
 
   // 清理关联提交（submissions 无 ON DELETE CASCADE，需手动清理）
   await db.delete(evaluationResults)
@@ -799,8 +862,49 @@ export async function deleteProblem(
   // 调用方完全不可解释。与上面 submissions 的手动清理同一模式。
   await db.delete(selfTests).where(eq(selfTests.problem_id, id));
 
+  // 客观题提交：`paper_id` 有 CASCADE，但其 `submitted_version_id` 复合外键
+  // （NO ACTION）会阻止随后删除版本行 → 必须先删提交。
+  await db.delete(objectiveSubmissions).where(
+    eq(objectiveSubmissions.paper_id, id),
+  );
+
+  // 版本与草稿（Handbook §7「补齐新表清理顺序」）：
+  // 1. 先删引用行的文件引用（storage_objects 引用守卫依赖"引用已消失"）；
+  // 2. 摘掉题目行上的版本指针（problems.latest_version_id / required_version_id
+  //    是 NO ACTION 复合外键，不清空则版本行删不掉）；
+  // 3. 草稿的 base_version_id 也指向版本（NO ACTION）→ 草稿必须先删；
+  // 4. 最后删版本行本身。
+  await db.delete(problemDraftObjects).where(
+    eq(problemDraftObjects.problem_id, id),
+  );
+  await db.delete(problemVersionObjects).where(
+    inArray(
+      problemVersionObjects.version_id,
+      db.select({ id: problemVersions.id }).from(problemVersions).where(
+        eq(problemVersions.problem_id, id),
+      ),
+    ),
+  );
+  await db.update(problems).set({
+    latest_version_id: null,
+    required_version_id: null,
+    effective_version_mode: "any",
+  }).where(eq(problems.id, id));
+  await db.delete(problemDrafts).where(eq(problemDrafts.problem_id, id));
+  await db.delete(problemVersions).where(eq(problemVersions.problem_id, id));
+
   // 级联删除（problem_tags 的 ON DELETE CASCADE 会自动清理关联）
   await db.delete(problems).where(eq(problems.id, id));
+
+  // 存储对象统一经引用守卫删除：仍被其他题目/版本引用时保留字节
+  for (const url of objectUrls) {
+    try {
+      await deleteStorageObject(url);
+    } catch (err) {
+      await getStorageProvider().catch(() => null);
+      logger.error("清理题目存储对象失败", { storage_url: url, err });
+    }
+  }
 
   // 审计日志：删除成功后才记录（display_id 由 type+number 派生）
   await logAudit(
