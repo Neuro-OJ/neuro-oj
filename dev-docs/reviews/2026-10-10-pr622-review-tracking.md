@@ -592,3 +592,23 @@
 |---|---|---|
 | Judge Sandbox E2E 三个双容器夹具输出越界评分 | 已修：`result.accept()` 的输入单位是百分制，夹具将 `1000/10000` 改为 `10/100`，保持平台存储分数不变；见 Agent Note `2026-10-11-pr622-judge-sdk-score-fixtures.md` | `NOJ_RUN_E2E=1 cargo test --test e2e_dual_container -- --ignored --test-threads=1` → **15 passed / 0 failed**；相关 Docker E2E 套件全绿 |
 | objective/contest E2E 请求缺少必填 `version_id` | 已修：发布辅助函数返回 `version_id`，所有客观题与竞赛代码提交夹具显式传入绑定版本 | 本地 objective **4 passed / 0 failed**；contest **27 passed / 0 failed** |
+
+## 第五轮跨模块回归修复（2026-10-11）
+
+| 问题                                                                              | 结论与修复                                                                                                                 | 验收证据                                                                                                                                         |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 初次代码/产物任务缺少 `rejudge_seq`，真实结果被 v2 归属校验忽略，提交卡在 judging | 已修：统一 `prepareJudgeTask` 入口显式发送初次序列 `0`，保留重测非零序列；结果入口仍拒绝缺失序列                           | JSON 往返封套契约回归；core submission PGlite **299 passed / 0 failed / 40 ignored**；真实 Judge submission **37 passed / 0 failed / 8 ignored** |
+| 修改草稿和重复导入的旧 E2E 夹具未携带 revision                                    | 已修：读取草稿 revision 后发送 `expected_revision` / `If-Match`；标题更新断言改为草稿已更新、公开 V1 不变、发布后 V2 生效  | catalog **32 passed / 0 failed**                                                                                                                 |
+| artifact SDK 分数仍使用平台整数单位                                               | 已修：`result.accept(score=100)` 输出平台满分 `10000`，不放宽评分校验                                                      | 真实 artifact 上传 → Judge → finished 闭环通过                                                                                                   |
+| 竞赛生命周期与双容器跨模块用例缺少版本；公开赛保密使 Judge 探测误报不可用         | 已修：竞赛从竞赛题目响应读取固定 `version_id`；双容器提交先发布版本；worker 探测使用管理员，避免把权限拒绝当成 worker 离线 | contest **27 passed / 0 failed**，实际执行提交、排名与正式成绩断言；cross-domain **51 passed / 0 failed**                                        |
+| 存储故障 E2E 仍期待缺失支持包后创建提交                                           | 已修：遵守版本执行预检规则，断言 `409 SUPPORT_PACKAGE_MISSING` 且提交分页总数仍为 0                                        | cross-domain 存储故障用例实际删除文件并验证拒绝、无新增记录和清理                                                                                |
+
+静态检查：core `deno task lint`、任务契约 `deno check`、改动文件
+`deno fmt --check`、E2E 改动文件 lint、仓库 `scripts/check-ci.ts`（216
+测试）均通过。静默跳过报告已重新生成，总数仍为 1070；submission 的 8 项 ignored
+为未配置 S3 环境的专用测试，Judge 优先级和重测断言实际执行。
+
+本地重复使用 E2E 栈时，上一轮公开竞赛会使样例题 P1001
+对普通用户临时保密；复跑不同域前结束该独立测试库的残留竞赛，避免跨域夹具污染。CI
+每域独立栈，不需要此步骤。修复决定见 Agent Note
+`2026-10-11-pr622-initial-attempt-envelope.md`。

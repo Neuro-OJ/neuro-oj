@@ -40,6 +40,8 @@ export function prepareJudgeTask(
   const runId = input.attempt_id ?? input.run_id ?? crypto.randomUUID();
   return buildJudgeTask({
     ...input,
+    // 初次尝试也必须显式下发 sequence=0；协议 v2 结果拒绝缺失的序列号。
+    rejudge_seq: input.rejudge_seq ?? 0,
     ...(runId ? { run_id: runId } : {}),
     ...(input.problem_version_id
       ? { problem_version_id: input.problem_version_id }

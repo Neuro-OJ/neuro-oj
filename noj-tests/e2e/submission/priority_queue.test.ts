@@ -24,6 +24,7 @@ import {
   CODE_SAMPLES,
   e2eTest,
   getAdminToken,
+  getContestAnswerVersionId,
   getProblemIdByNumber,
   isE2E,
   isJudgeAvailable,
@@ -102,9 +103,14 @@ async function createRunningContestWithRegistration(): Promise<string> {
 
 /** 竞赛入口提交（服务端据此推导为 high 优先级）。 */
 async function submitInContest(code = CODE_SAMPLES.accepted): Promise<string> {
+  const versionId = await getContestAnswerVersionId(
+    userToken,
+    contestId,
+    problemId,
+  );
   const res = await apiPost(
     `/api/v1/contests/${contestId}/submit`,
-    { problem_id: problemId, language: "python3", code },
+    { problem_id: problemId, language: "python3", code, version_id: versionId },
     userToken,
   );
   if (res.status !== 201) {

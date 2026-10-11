@@ -12,6 +12,7 @@
  * Rust 侧的对应断言见 `noj-judge/tests/judge_task_contract.rs`。
  */
 import { assert, assertEquals } from "jsr:@std/assert@^1";
+import { prepareJudgeTask } from "../../services/prepare-judge-task.ts";
 import {
   buildJudgeTask,
   JUDGE_TASK_FIELDS,
@@ -26,6 +27,35 @@ const FIXTURE_URL = new URL(
 async function loadFixture(): Promise<JudgeTask> {
   return JSON.parse(await Deno.readTextFile(FIXTURE_URL)) as JudgeTask;
 }
+
+Deno.test("JudgeTask 协议 v2: 初次代码和产物发送序列 0，重测保留显式序列", async () => {
+  const fixture = await loadFixture();
+  for (const artifact of [false, true]) {
+    const input = {
+      submission_id: "initial-submission",
+      problem_id: fixture.problem_id,
+      user_id: fixture.user_id,
+      priority: fixture.priority,
+      runtime_config: fixture.runtime_config,
+      language: fixture.language,
+      code: artifact ? "" : fixture.code,
+      attempt_id: "initial-attempt",
+      problem_version_id: "published-version",
+      ...(artifact
+        ? { artifact_download_url: fixture.artifact_download_url }
+        : {}),
+    };
+    const initial = JSON.parse(JSON.stringify(prepareJudgeTask(input)));
+    assertEquals(initial.evaluation_protocol_version, 2);
+    assertEquals(initial.rejudge_seq, 0);
+    assertEquals(initial.run_id, input.attempt_id);
+    assertEquals(initial.attempt_id, input.attempt_id);
+    assertEquals(
+      prepareJudgeTask({ ...input, rejudge_seq: 7 }).rejudge_seq,
+      7,
+    );
+  }
+});
 
 Deno.test("JudgeTask 契约: 工厂按 fixture 构造出的消息与 fixture 完全一致", async () => {
   const fixture = await loadFixture();

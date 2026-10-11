@@ -1,11 +1,11 @@
 /**
- * 存储故障 E2E：本地存储文件缺失/无支持包时，下载可观测失败且提交主流程不被阻塞。
+ * 存储故障 E2E：本地支持包缺失时，下载可观测失败且新提交在预检阶段被拒绝。
  *
  * E2E 栈使用 `STORAGE_PROVIDER=local`（见 docker-compose.e2e.yml），因此本测试
  * 不验证 S3 presigned URL，而是验证：
  * - 无支持包题目下载返回 404（local 存储路径不存在）
  * - 存储文件被删除后下载返回 5xx（存储故障可观测）
- * - 存储故障不阻塞代码提交创建（评测阶段才读取支持包）
+ * - 已发布版本的支持包缺失时拒绝新提交，不产生无从执行的记录
  */
 
 import {
@@ -14,9 +14,9 @@ import {
   BASE_URL,
   e2eTest,
   getAdminToken,
+  getAnswerVersionId,
   isE2E,
   publishProblemVersion,
-  submitCode,
   waitForServer,
 } from "../helper.ts";
 
@@ -222,17 +222,40 @@ e2eTest("[e2e/storage-failure] 存储文件缺失时下载返回 5xx", async () 
 });
 
 e2eTest(
-  "[e2e/storage-failure] 提交仍可创建（存储故障不阻塞主流程）",
+  "[e2e/storage-failure] 支持包缺失在预检阶段拒绝提交且不创建记录",
   async () => {
     if (!isE2E) return;
-    // 针对存储已损坏的题目提交：接口仍应接受（评测阶段才读取支持包），
-    // 不能因为存储故障在创建提交时直接报错。
+    // 按版本执行需要目标支持包存在，预检失败不能落库后再等待 Judge。
     // import-bundle 创建的是 admin 名下的私有 U 型题，必须用 admin 身份提交，
     // 普通用户会被 resolveProblemAccess 判为无权访问（403）。
     if (!brokenProblemId) throw new Error("缺少 brokenProblemId");
-    const id = await submitCode(adminToken, brokenProblemId, "print(1)");
-    if (!id) {
-      throw new Error("提交未返回 ID");
+    const listPath = `/api/v1/submissions?problem_id=${brokenProblemId}`;
+    const before = await apiGet(listPath, adminToken);
+    if (
+      before.status !== 200 ||
+      (before.body as { pagination: { total: number } }).pagination.total !== 0
+    ) {
+      throw new Error("故障夹具的提交基线应为空");
+    }
+    const versionId = await getAnswerVersionId(adminToken, brokenProblemId);
+    const rejected = await apiPost("/api/v1/submissions", {
+      problem_id: brokenProblemId,
+      version_id: versionId,
+      language: "python3",
+      code: "print(1)",
+    }, adminToken);
+    if (
+      rejected.status !== 409 ||
+      (rejected.body as { code: string }).code !== "SUPPORT_PACKAGE_MISSING"
+    ) {
+      throw new Error(`缺失支持包应在预检拒绝: ${JSON.stringify(rejected)}`);
+    }
+    const after = await apiGet(listPath, adminToken);
+    if (
+      after.status !== 200 ||
+      (after.body as { pagination: { total: number } }).pagination.total !== 0
+    ) {
+      throw new Error("支持包预检失败不应创建提交记录");
     }
   },
 );

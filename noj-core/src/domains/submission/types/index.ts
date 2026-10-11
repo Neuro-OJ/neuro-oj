@@ -84,7 +84,7 @@ export interface JudgeTask {
   code: string;
   /** 用户代码的文件名（用于界面展示；容器内由 judge 以硬编码名 `main.py` 注入） */
   file_name?: string;
-  /** 重测序列号（重测时递增）。首次提交不传，默认 0。 */
+  /** 尝试序列号（重测时递增）；协议 v2 首次提交也显式传 0。 */
   rejudge_seq?: number;
   /** LLM 评测字段（启用 LLM 的题目携带） */
   llm?: JudgeTaskLlm;

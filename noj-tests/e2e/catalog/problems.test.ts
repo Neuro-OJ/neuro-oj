@@ -57,6 +57,7 @@ e2eTest("[e2e/problems] 2.2 管理员创建题目", async () => {
   if (status !== 201) throw new Error("创建失败: " + status);
   problemId = (body as { data: { id: string } }).data.id;
   if (!problemId) throw new Error("未返回 ID");
+  await publishProblemVersion(adminToken, problemId, "e2e v1");
   console.log("  ✓ 创建题目: " + problemId.slice(0, 8));
 });
 
@@ -86,15 +87,34 @@ e2eTest("[e2e/problems] 2.3 未认证创建被拒", async () => {
 
 e2eTest("[e2e/problems] 2.4 管理员更新题目", async () => {
   if (!isE2E) return;
+  const draft = await apiGet(`/api/v1/problems/${problemId}/draft`, adminToken);
+  if (draft.status !== 200) throw new Error("读取更新基线失败");
+  const revision = (draft.body as { data: { revision: number } }).data.revision;
   const { status, body } = await apiPut("/api/v1/problems/" + problemId, {
     title: "E2E v2",
     difficulty: "hard",
+    expected_revision: revision,
   }, adminToken);
   if (status !== 200) throw new Error("更新失败: " + status);
-  // 内容字段（标题/题面）写入共享草稿：未发布题目的投影会同步（迁移期可读），
-  // 已发布题目则必须发布新版本才对作答者生效（Handbook §6.2）。
-  const d = body as { data: { title: string; difficulty: string } };
-  if (d.data.title !== "E2E v2") throw new Error("标题未更新");
+  // 内容更新只写共享草稿，公开版本在发布前仍保持原内容（Handbook §6.2）。
+  const d = body as { data: { difficulty: string } };
+  if (d.data.difficulty !== "hard") throw new Error("管理信息未更新");
+  const updatedDraft = await apiGet(
+    `/api/v1/problems/${problemId}/draft`,
+    adminToken,
+  );
+  const content =
+    (updatedDraft.body as { data: { content: { title: string } } }).data
+      .content;
+  if (content.title !== "E2E v2") throw new Error("草稿标题未更新");
+  const beforePublish = await apiGet(`/api/v1/problems/${problemId}`);
+  if (
+    beforePublish.status !== 200 ||
+    (beforePublish.body as { data: { title: string } }).data.title !==
+      "E2E 两数之和"
+  ) {
+    throw new Error("发布前公开题面没有保持 V1");
+  }
   await publishProblemVersion(adminToken, problemId, "e2e v2");
   const afterPublish = await apiGet(
     "/api/v1/problems/" + problemId,

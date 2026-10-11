@@ -12,6 +12,7 @@ import {
   CODE_SAMPLES,
   e2eTest,
   getAdminToken,
+  getContestAnswerVersionId,
   getProblemIdByNumber,
   isE2E,
   isJudgeAvailable,
@@ -114,10 +115,17 @@ e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
   }
   if (!judgeAvailable) return;
 
+  const versionId = await getContestAnswerVersionId(
+    participantToken,
+    contestId,
+    problemId,
+  );
+
   const submitResult = await apiPost(
     `/api/v1/contests/${contestId}/submit`,
     {
       problem_id: problemId,
+      version_id: versionId,
       language: "python3",
       code: CODE_SAMPLES.accepted,
     },

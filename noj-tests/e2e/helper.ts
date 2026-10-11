@@ -264,12 +264,9 @@ export async function getProblemIdByNumber(
  */
 export async function isJudgeAvailable(): Promise<boolean> {
   try {
-    const ts = Date.now().toString(36);
-    const t = await registerUser(
-      "judge_chk_" + ts,
-      "judge_chk_" + ts + "@test.com",
-      TEST_PASSWORD,
-    );
+    // 探测仅判断 worker 是否消费任务；用管理员避免同域公开赛保密使基础题 404，
+    // 从而把实际在线的 Judge 误判为不可用并静默跳过后续评测断言。
+    const t = await getAdminToken();
     // 题目 id 为 UUID（统一题目包导入），须动态获取
     const problemId = await getProblemIdByNumber(1001);
     const id = await submitCode(t, problemId, "print(1)");
@@ -490,6 +487,25 @@ export async function getAnswerVersionId(
     throw new Error(`读取题目失败: ${res.status} ${JSON.stringify(res.body)}`);
   }
   return (res.body as { data: { version_id: string | null } }).data.version_id;
+}
+
+/** 读取竞赛固定作答版本；不使用题库默认版本，也不绕过公开赛保密规则。 */
+export async function getContestAnswerVersionId(
+  token: string,
+  contestId: string,
+  problemId: string,
+): Promise<string> {
+  const res = await apiGet(`/api/v1/contests/${contestId}/problems`, token);
+  if (res.status !== 200) {
+    throw new Error(
+      `读取竞赛题目失败: ${res.status} ${JSON.stringify(res.body)}`,
+    );
+  }
+  const problem = (res.body as {
+    data: { problem_id: string; version_id: string | null }[];
+  }).data.find((item) => item.problem_id === problemId);
+  if (!problem?.version_id) throw new Error("竞赛没有固定作答版本");
+  return problem.version_id;
 }
 
 /**

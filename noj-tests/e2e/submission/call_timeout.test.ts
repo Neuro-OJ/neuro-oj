@@ -15,7 +15,8 @@ import {
   apiPost,
   e2eTest,
   getAdminToken,
-  isE2E,
+  getAnswerVersionId,
+  publishProblemVersion,
   registerUser,
 } from "../helper.ts";
 
@@ -72,7 +73,7 @@ from noj_evaluator_sdk import SolutionRunner, result
 runner = SolutionRunner()
 try:
     ${call}
-    result.accept(score=1000, details={'cases': [{'id': 'c1', 'status': 'Accepted'}]})
+    result.accept(score=10, details={'cases': [{'id': 'c1', 'status': 'Accepted'}]})
 except Exception as e:
     result.accept(score=0, details={'cases': [{'id': 'c1', 'status': type(e).__name__}]})
 "`;
@@ -116,7 +117,9 @@ async function createDualProblem(
       }`,
     );
   }
-  return (res.body as { data: { id: string } }).data.id;
+  const problemId = (res.body as { data: { id: string } }).data.id;
+  await publishProblemVersion(adminToken, problemId, "E2E 调用超时版本");
+  return problemId;
 }
 
 /** 提交并轮询到终态，返回完整 submission data（含 details） */
@@ -125,9 +128,11 @@ async function submitAndWait(
   problemId: string,
   code: string,
 ): Promise<Record<string, unknown>> {
+  const versionId = await getAnswerVersionId(userToken, problemId);
+  if (!versionId) throw new Error("调用超时题没有已发布作答版本");
   const sub = await apiPost(
     "/api/v1/submissions",
-    { problem_id: problemId, language: "python3", code },
+    { problem_id: problemId, language: "python3", code, version_id: versionId },
     userToken,
   );
   if (sub.status !== 201) {
