@@ -21,6 +21,7 @@ import {
   BASE_URL,
   e2eTest,
   getAdminToken,
+  getAnswerVersionId,
   getOrCreateUser,
   getProblemIdByNumber,
   isE2E,
@@ -36,7 +37,9 @@ let ownerToken = "";
 let attackerToken = "";
 let participantToken = "";
 let publicProblemId = "";
+let publicVersionId = "";
 let privatePaperId = "";
+let privateVersionId = "";
 let privateQuestionId = "";
 
 // 竞赛上下文
@@ -276,7 +279,15 @@ e2eTest("[e2e/anti-cheat] Setup", async () => {
   }
   privateQuestionId = (q.body as { data: QuestionData }).data.id;
   // 发布作答版本：未发布题目无法练习提交（也读不到默认作答版本）
-  await publishProblemVersion(ownerToken, privatePaperId, "E2E 私有套卷 V1");
+  privateVersionId = await publishProblemVersion(
+    ownerToken,
+    privatePaperId,
+    "E2E 私有套卷 V1",
+  );
+  publicVersionId = await getAnswerVersionId(adminToken, publicProblemId) ?? "";
+  if (!publicVersionId) {
+    throw new Error(`共享题目 ${publicProblemId} 没有已发布作答版本`);
+  }
 
   // SSE 隔离场景使用非公开邀请赛；注册参赛者供后续触发提交
   sseContestId = await createContest(`E2E SSE 防作弊赛 ${ts}`, {
@@ -357,6 +368,7 @@ e2eTest("[e2e/anti-cheat] 2. 伪造 contestId 提交 → 403/400", async () => {
     {
       answers: { [privateQuestionId]: ["A"] },
       contest_id: sseContestId,
+      version_id: privateVersionId,
     },
     attackerToken,
   );
@@ -375,6 +387,7 @@ e2eTest(
         problem_id: publicProblemId,
         language: "python3",
         code: "print(1)",
+        version_id: publicVersionId,
       },
       participantToken,
     );
@@ -393,6 +406,7 @@ e2eTest(
         problem_id: publicProblemId,
         language: "python3",
         code: "print(2)",
+        version_id: publicVersionId,
       },
       participantToken,
     );
@@ -406,6 +420,7 @@ e2eTest(
         problem_id: privatePaperId,
         language: "python3",
         code: "print('steal')",
+        version_id: privateVersionId,
       },
       attackerToken,
     );
@@ -487,6 +502,7 @@ e2eTest(
         problem_id: publicProblemId,
         language: "python3",
         code: "print(1)",
+        version_id: publicVersionId,
       },
       participantToken,
     );
@@ -583,6 +599,7 @@ e2eTest(
       `/api/v1/problems/${privatePaperId}/submit`,
       {
         answers: { [privateQuestionId]: ["A"] },
+        version_id: privateVersionId,
       },
       attackerToken,
     );
@@ -599,6 +616,7 @@ e2eTest(
       `/api/v1/problems/${privatePaperId}/submit`,
       {
         answers: { [privateQuestionId]: ["A"] },
+        version_id: privateVersionId,
       },
       ownerToken,
     );

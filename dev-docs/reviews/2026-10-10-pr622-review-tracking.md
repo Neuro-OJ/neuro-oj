@@ -584,4 +584,11 @@
 - PGlite：`cd noj-core && deno task test:domain submission` → **298 passed / 0 failed / 40 ignored**。
 - 独立真实 PostgreSQL schema `codex_pr622_20261011`：迁移成功；`deno task test:domain submission` → **328 passed / 0 failed / 10 ignored**；`deno task test:domain catalog` → **328 passed / 0 failed**。锁屏障用例覆盖结果写入、策略切换、外键等待和源状态竞争；测试断言改为确认阻塞者是宿主屏障事务，避免漏报外键路径的同一宿主锁等待。
 - `noj-lmcc-extension npm run check`：Prettier 与 TypeScript 检查均通过。
-- 本地尚未启动完整 `noj-tests` E2E 栈；该栈由 CI `e2e.yml` 负责验收，推送后须以 PR 最新 head 的工作流结果为最终依据。
+- `noj-tests` 本地完整 E2E 栈已启动并复跑：`test:domain objective` **4 passed / 0 failed**；`test:domain contest` **27 passed / 0 failed**。
+
+## 第四轮 CI 回归修复（2026-10-11）
+
+| 问题 | 结论与修复 | 验收证据 |
+|---|---|---|
+| Judge Sandbox E2E 三个双容器夹具输出越界评分 | 已修：`result.accept()` 的输入单位是百分制，夹具将 `1000/10000` 改为 `10/100`，保持平台存储分数不变；见 Agent Note `2026-10-11-pr622-judge-sdk-score-fixtures.md` | `NOJ_RUN_E2E=1 cargo test --test e2e_dual_container -- --ignored --test-threads=1` → **15 passed / 0 failed**；相关 Docker E2E 套件全绿 |
+| objective/contest E2E 请求缺少必填 `version_id` | 已修：发布辅助函数返回 `version_id`，所有客观题与竞赛代码提交夹具显式传入绑定版本 | 本地 objective **4 passed / 0 failed**；contest **27 passed / 0 failed** |

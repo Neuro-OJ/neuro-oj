@@ -43,6 +43,7 @@ let paperId = "";
 let singleId = "";
 let multipleId = "";
 let judgeId = "";
+let paperVersionId = "";
 /** 共享草稿 revision（小题写入与发布的乐观锁，Handbook §2.4/§6.4）。 */
 let draftRevision = 0;
 
@@ -84,7 +85,7 @@ async function questionWrite(
 }
 
 /** 发布当前草稿为新版本（作答与公开读取的事实源）。 */
-async function publishPaper(changeNote = "E2E 发布"): Promise<number> {
+async function publishPaper(changeNote = "E2E 发布"): Promise<string> {
   const revision = draftRevision || await refreshDraftRevision();
   const res = await api("POST", `/api/v1/problems/${paperId}/versions`, {
     token: ownerToken,
@@ -95,10 +96,15 @@ async function publishPaper(changeNote = "E2E 发布"): Promise<number> {
     throw new Error(`发布套卷失败: ${res.status} ${JSON.stringify(res.body)}`);
   }
   const data = (res.body as {
-    data: { draft_revision: number; version: number; unchanged: boolean };
+    data: {
+      draft_revision: number;
+      version: number;
+      version_id: string;
+      unchanged: boolean;
+    };
   }).data;
   draftRevision = data.draft_revision;
-  return data.version;
+  return data.version_id;
 }
 
 e2eTest("[e2e/objective] Setup: 管理端 + 出题人 + 答题人", async () => {
@@ -212,7 +218,7 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
   judgeId = (judge.body as { data: QuestionData }).data.id;
 
   // 1.4 发布 V1：作答与公开读取都以版本快照为准（未发布时非编辑者 404）
-  await publishPaper("E2E 初始卷");
+  paperVersionId = await publishPaper("E2E 初始卷");
 
   // 1.5 答对提交 → 即时判定满分
   const okRes = await apiPost(
@@ -223,6 +229,7 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
         [multipleId]: ["A", "B"],
         [judgeId]: [true],
       },
+      version_id: paperVersionId,
     },
     solverToken,
   );
@@ -267,6 +274,7 @@ e2eTest(
           [multipleId]: ["A"],
           [judgeId]: [false],
         },
+        version_id: paperVersionId,
       },
       solverToken,
     );
@@ -391,6 +399,7 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
         [judgeId]: [true],
       },
       contest_id: contestId,
+      version_id: paperVersionId,
     },
     solverToken,
   );
@@ -449,6 +458,7 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
         [judgeId]: [true],
       },
       contest_id: contestId,
+      version_id: paperVersionId,
     },
     solverToken,
   );
@@ -518,6 +528,7 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
         [judgeId]: [true],
       },
       contest_id: contestId,
+      version_id: paperVersionId,
     },
     outsider.token,
   );
