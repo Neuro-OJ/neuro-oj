@@ -533,3 +533,28 @@
 - **`retryAfterMs` 兜底**：限流实现可能不返回该值 → `plusSeconds(NaN)` 抛 `RangeError`，把"延期"变成真失败；在 `upgrade-quota.ts` 与 `UpgradeQuotaDeferredError` 构造器各加有限值兜底。
 - **删除路径容错**：`submissions-crud.ts` 删除提交后的产物物理清理改为 try/catch（预约未过期时守卫会返回可重试 409，提交行已删除，不能因此让删除失败）。
 - **迁移产物归正**：本轮 schema 改动改用 `deno task db:generate` 生成 `0111_clever_khan.sql` + `0111_snapshot.json`（删除此前手写的 `0110`），快照链门禁与 schema parity 均通过；`schema-ddl.ts` 压缩到 1199 行以过单文件规模门禁。
+
+---
+
+## 第三轮复审（2026-10-11）10 项缺陷处置
+
+| # | 严重度 | 结论 | 关键改动 | 验收证据 |
+|---|---|---|---|---|
+| 1 | P1 | 已修 | sequence **不再在预检阶段冻结**（`PreparedJobExecution` 去掉该字段），由 `createAttempt` 在**源提交行锁内**统一分配；任务封套在提交后用**落库返回的** `attempt.sequence` 回填（`dispatch-job-item.ts`）。存量 `legacy_unknown` + `rejudge_seq=7` 场景落库与封套同为 7 | `versioning-job-sequence.test.ts`（存量场景 + 重派沿用）；真实 PG 屏障「预检期间另一轮评测完成 → 封套仍取落库 sequence」 |
+| 2 | P1 | 已修 | 新增 **吊销 outbox** 表 `llm_token_revocations`（迁移 `0112`）：写终态（finished/error/**superseded**）的**同一 DB 事务**内登记 pending 行 → 提交后立即执行吊销并标 done → 失败由 sweeper 周期 `runPendingTokenRevocations()` 持久化重试；TTL 仍由尝试快照推导 | `versioning-terminal-revocation.test.ts`「revoke#2」3 例：Redis 不可用 → pending 且标记缺失、恢复后补偿 done；「终态已提交未吊销时进程退出」→ 新进程补偿；superseded 同样走 outbox |
+| 3 | P2 | 已修 | savepoint 模拟改用 **AsyncLocalStorage 按事务节点判定父子**：直接子事务进**该父的子队列**（同父兄弟按序），链外发起进全局兄弟队列；父在 RELEASE 前排空自己的子队列；`RELEASE` 失败必须抛出、回滚失败标记连接损坏 | `tests/db/test-transaction-savepoint_test.ts` **5 例**：同时启动兄弟、**外层已开始后启动的延迟兄弟**、**外层内 `Promise.all` 两个内层事务**、内层失败不中止外层、嵌套不死锁 |
+| 4 | P2 | 已修 | `materialized_at` 改为从刷新事务读取 `transaction_timestamp()`（与视图 `now()` 同源），不再用应用时间；等锁跨边界时两者必然同侧 | 真实 PG：①"刷新事务等锁跨过比赛结束" → 不误判 trusted 且内联口径正确；②应用时钟偏移 +1h → 记录值仍落在数据库时钟窗口。A/B：改回 `new Date()` 时两用例必失败 |
+| 5 | P2 | 已修 | 占位与扣费合并为**单次原子 EVAL**：幂等标记检查 → `INCR`+窗口 TTL → 超限**不写标记** → 扣费成功才写标记。标记只代表"扣费已完成" | `upgrade-quota.test.ts`：响应丢失后重试不重复扣费；扣费阶段故障注入 → 无标记残留、恢复后正确扣一次；连接重建后幂等 |
+| 6 | P2 | 已修 | 额度按**提交类型与上下文**分桶：`code` / `contest_code` / `objective`，与正常提交**同键、同窗口、同阈值**；管理员代升级仍扣原用户 | `versioning-upgrade-quota-bucket.test.ts` 4 例（桶映射、三桶独立、桶耗尽延期、重派只扣一次）+ 额度层桶隔离测试 |
+| 7 | P2 | 已修 | 流式上传（无法上传前预测哈希）改为**上传后在登记行锁事务内真实 `stat()` 复核**：存在 → 用服务端元数据恢复 `ready` 并绑定；明确缺失 → `STORAGE_OBJECT_MISSING` 拒绝绑定；stat 抛错 → 原样上抛不改状态 | `storage-registry.test.ts` 4 例（**连续两次重传都成功**、缺失拒绝、stat 抛错、首次上传）；真实 PG `versioning-lock-order.pg.test.ts` 两例（重传循环两轮、删除/流式并发终态只能 ready+存在 或 deleted+缺失，且重试随后成功） |
+| 8 | P2 | 已修 | 客观题重判/升级在**源行锁内**复查存在性与活动尝试，统一映射 `SOURCE_DELETED`/`SOURCE_JUDGING` → 条目 **skipped**（与普通提交同分类）；重判分支整段入事务 | 真实 PG 屏障 3 例：重判期间源被删除 → skipped；重判期间源被换活动尝试 → skipped；升级期间源被删除 → skipped 且不留副本 |
+| 9 | P2 | 已修 | 我上一轮新增的 `test-transaction-savepoint_test.ts` 有 4 个 lint 错误（3×`require-await`、1×未用 `tx`）。重写用例：回调内真实执行事务查询、去掉多余 `async`/未用参数 | `deno task lint` → **0 问题**（此前 4 errors）。**过程纠正**：上一轮我用 `deno lint \| tail -1` 只看了汇总行，把红灯误报成"通过"——本轮起改用 `deno task lint` 全量输出判定 |
+| 10 | P2 | 已修 | `test-parallel.ts` 在启动分片前用 advisory lock **串行完成数据库级公共扩展初始化**并显式 `WITH SCHEMA public`；分片内 `CREATE EXTENSION IF NOT EXISTS` 随之成为空操作 | **全新数据库**上 `test:parallel --shards 2` → **1534 passed / 0 failed / 11 ignored**（修复前该场景 `23505 pg_extension_name_index` 连锁失败） |
+
+### 本轮验收结果（Lead 亲自复跑）
+
+- 真实 PG **全部 15 个域 0 failed**：submission **323**、catalog 328、contest 95、identity 319、system 156、objective 63、query 33、community 72、search 30、admin 16、gateway 23、messaging 67、observability 20、legal 42、content-review 11
+- `scripts/test-shared.sh`（真实 PG）**299 passed / 0 failed**
+- PGlite：submission 295、catalog 328、contest 94、query 27、objective 63，全 0 failed
+- **全新数据库**双分片 `test:parallel`：**1534 passed / 0 failed**
+- 静态与门禁：core `fmt` / `lint`（0 问题）/ `deno check`（0 error）、schema parity（68 表）、迁移快照链、单文件规模、`check-ci` 全通过

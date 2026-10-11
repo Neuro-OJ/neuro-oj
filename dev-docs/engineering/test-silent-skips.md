@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **1055** 处（ignore=702 early-return=268 rust-ignore=45 rust-env-guard=27 env-guard=13）。
+> 当前命中 **1066** 处（ignore=713 early-return=268 rust-ignore=45 rust-env-guard=27 env-guard=13）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -501,10 +501,12 @@
 | noj-core/src/domains/query/tests/routes/stats.test.ts | 23 | ignore |
 | noj-core/src/domains/query/tests/routes/stats.test.ts | 46 | ignore |
 | noj-core/src/domains/query/tests/routes/stats.test.ts | 65 | ignore |
-| noj-core/src/domains/query/tests/services/rankings-view-refresh.pg.test.ts | 101 | ignore |
-| noj-core/src/domains/query/tests/services/rankings-view-refresh.pg.test.ts | 391 | ignore |
-| noj-core/src/domains/query/tests/services/rankings-view-refresh.pg.test.ts | 454 | ignore |
-| noj-core/src/domains/query/tests/services/rankings-view-refresh.pg.test.ts | 527 | ignore |
+| noj-core/src/domains/query/tests/services/rankings-view-refresh.pg.test.ts | 102 | ignore |
+| noj-core/src/domains/query/tests/services/rankings-view-refresh.pg.test.ts | 392 | ignore |
+| noj-core/src/domains/query/tests/services/rankings-view-refresh.pg.test.ts | 455 | ignore |
+| noj-core/src/domains/query/tests/services/rankings-view-refresh.pg.test.ts | 528 | ignore |
+| noj-core/src/domains/query/tests/services/rankings-view-refresh.pg.test.ts | 639 | ignore |
+| noj-core/src/domains/query/tests/services/rankings-view-refresh.pg.test.ts | 751 | ignore |
 | noj-core/src/domains/query/tests/services/rankings.test.ts | 130 | ignore |
 | noj-core/src/domains/query/tests/services/rankings.test.ts | 183 | ignore |
 | noj-core/src/domains/query/tests/services/rankings.test.ts | 224 | ignore |
@@ -617,16 +619,23 @@
 | noj-core/src/domains/submission/tests/services/submissions.test.ts | 1256 | ignore |
 | noj-core/src/domains/submission/tests/services/submissions.test.ts | 1384 | ignore |
 | noj-core/src/domains/submission/tests/services/versioning-lock-order.pg.test.ts | 5 | ignore |
-| noj-core/src/domains/submission/tests/services/versioning-lock-order.pg.test.ts | 183 | ignore |
-| noj-core/src/domains/submission/tests/services/versioning-lock-order.pg.test.ts | 267 | ignore |
-| noj-core/src/domains/submission/tests/services/versioning-lock-order.pg.test.ts | 376 | ignore |
-| noj-core/src/domains/submission/tests/services/versioning-lock-order.pg.test.ts | 448 | ignore |
+| noj-core/src/domains/submission/tests/services/versioning-lock-order.pg.test.ts | 190 | ignore |
+| noj-core/src/domains/submission/tests/services/versioning-lock-order.pg.test.ts | 274 | ignore |
+| noj-core/src/domains/submission/tests/services/versioning-lock-order.pg.test.ts | 383 | ignore |
+| noj-core/src/domains/submission/tests/services/versioning-lock-order.pg.test.ts | 456 | ignore |
+| noj-core/src/domains/submission/tests/services/versioning-lock-order.pg.test.ts | 536 | ignore |
+| noj-core/src/domains/submission/tests/services/versioning-lock-order.pg.test.ts | 654 | ignore |
 | noj-core/src/domains/submission/tests/versioning/lock-order-policy-cross-contest.test.ts | 622 | ignore |
 | noj-core/src/domains/submission/tests/versioning/lock-order-policy-cross-contest.test.ts | 723 | ignore |
-| noj-core/src/domains/submission/tests/versioning/versioning-job-concurrency.test.ts | 693 | ignore |
-| noj-core/src/domains/submission/tests/versioning/versioning-job-concurrency.test.ts | 763 | ignore |
-| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 241 | ignore |
-| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 290 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-concurrency.test.ts | 716 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-concurrency.test.ts | 787 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-concurrency.test.ts | 840 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 248 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 297 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 333 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 579 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 617 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 660 | ignore |
 | noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 90 | ignore |
 | noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 111 | ignore |
 | noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 136 | ignore |
@@ -697,9 +706,11 @@
 | noj-core/src/domains/system/tests/services/judge-images.test.ts | 249 | ignore |
 | noj-core/tests/db/pr622_review_migration_test.ts | 273 | ignore |
 | noj-core/tests/db/pr622_review_migration_test.ts | 385 | ignore |
-| noj-core/tests/db/test-transaction-savepoint_test.ts | 28 | ignore |
-| noj-core/tests/db/test-transaction-savepoint_test.ts | 62 | ignore |
-| noj-core/tests/db/test-transaction-savepoint_test.ts | 91 | ignore |
+| noj-core/tests/db/test-transaction-savepoint_test.ts | 30 | ignore |
+| noj-core/tests/db/test-transaction-savepoint_test.ts | 63 | ignore |
+| noj-core/tests/db/test-transaction-savepoint_test.ts | 111 | ignore |
+| noj-core/tests/db/test-transaction-savepoint_test.ts | 151 | ignore |
+| noj-core/tests/db/test-transaction-savepoint_test.ts | 181 | ignore |
 | noj-core/tests/helper.ts | 163 | env-guard |
 | noj-core/tests/perf/community_search_bench.test.ts | 27 | ignore |
 | noj-core/tests/perf/search_bench.test.ts | 37 | ignore |

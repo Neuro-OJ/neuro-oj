@@ -9,22 +9,36 @@
  * 3. **物理上传之前必须先写上传预约**（`reserveStorageObjectUpload()`，与登记行锁
  *    同一事务），上传成功登记 ready 时消费它——否则"删除在途 + 并发重传同一内容"
  *    会留下 `state = ready` 而物理文件已被删除的对象（2026-10-11 复审问题 1）。
- * 4. **上传补偿不得直接调用 `storage.delete()`**——统一走
+ * 4. **流式上传（`putStream`）无法在上传前预测内容哈希**，改用
+ *    `registerStreamedStorageObject()` 在登记行锁事务内 `stat()` 复核后登记：
+ *    物理存在才置 `ready`，缺失则拒绝绑定——否则"删除后重传同一内容"会永久卡在
+ *    `deleted`（2026-10-11 复审问题 7）。
+ * 5. **上传补偿不得直接调用 `storage.delete()`**——统一走
  *    `deleteStorageObject()`，它在有引用时拒绝物理删除并返回 `referenced`。
  *
  * 状态机：`unknown`（存量登记，未核实）→ `ready` ↔ `missing`；
  * `ready`/`missing` → `deleting` → `deleted`。
  *
- * 上传协议（调用方顺序，缺一不可）：
+ * 上传协议（两条路径，按上传前是否已知内容哈希选择）：
  * ```ts
+ * // A. 内容已知（put）：预约 → 物理上传 → 消费预约登记 ready
  * const reservation = await reserveStorageObjectUpload({ storageUrl });
- * const url = await storage.put(key, bytes); // 物理上传
+ * const url = await storage.put(key, bytes);
  * await registerReadyStorageObject({ storageUrl: url, reservationId: reservation.reservation_id });
- * // 随后在同一/后续事务里建立业务引用（assertStorageObjectBindable）
+ *
+ * // B. 流式（putStream）：物理上传 → 在绑定引用的同一事务内 stat 复核后登记
+ * const url = await storage.putStream(key, stream, contentType);
+ * await db.transaction(async (tx) => {
+ *   await registerStreamedStorageObject({ storageUrl: url }, tx); // 锁内 stat，缺失即抛错
+ *   await assertStorageObjectBindable(url, tx);
+ *   // …插入业务引用
+ * });
  * ```
  * `registerReadyStorageObject()` 只有在**持有本人未过期预约**时才允许把
  * `deleting` / `deleted` 恢复为 `ready`：仅凭"此前上传成功"无条件恢复会在删除已经
- * 物理删掉文件后写出一个 `ready` 的幽灵记录。
+ * 物理删掉文件后写出一个 `ready` 的幽灵记录。流式路径没有预约，其等价的"新鲜性
+ * 证明"是**持锁当下的 stat 事实**——删除方需要同一把登记行锁，因此它无法在
+ * "stat 确认存在"与"登记 ready"之间物理删除。
  */
 
 import { and, eq, gt, lte, sql } from "drizzle-orm";
@@ -40,7 +54,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import type { StorageObjectState } from "../../../../shared/versioning/types.ts";
 import { getStorageProvider } from "./factory.ts";
-import { sha256Hex } from "./types.ts";
+import { parseStorageUrl, sha256Hex } from "./types.ts";
 
 /** 登记行读模型。 */
 export interface StorageObjectRecord {
@@ -101,6 +115,32 @@ export class StorageObjectDeletedError extends AppError {
       "STORAGE_OBJECT_DELETED",
     );
     this.name = "StorageObjectDeletedError";
+  }
+}
+
+/**
+ * 流式上传复核时后端**明确报告**物理对象不存在：拒绝登记与绑定（可重试）。
+ *
+ * 只在 `stat()` 返回 `{ exists: false }` 时抛出——`stat()` 抛错（网络/403）表示
+ * "无法确认"，必须原样上抛，绝不能当成不存在而拒绝一次真实上传。
+ */
+export class StorageObjectMissingError extends AppError {
+  constructor(storageUrl: string) {
+    super(
+      `存储对象物理不存在，拒绝登记与绑定（请重新上传）：${storageUrl}`,
+      409,
+      "STORAGE_OBJECT_MISSING",
+    );
+    this.name = "StorageObjectMissingError";
+  }
+}
+
+/** 从 `noj-storage://` URL 读取内嵌 checksum（解析失败返回 null）。 */
+function checksumFromStorageUrl(storageUrl: string): string | null {
+  try {
+    return parseStorageUrl(storageUrl).checksumSha256 ?? null;
+  } catch {
+    return null;
   }
 }
 
@@ -334,6 +374,61 @@ export async function registerReadyStorageObject(
       state: "ready",
       sha256: input.sha256 ?? existing.sha256,
       byte_size: input.byteSize ?? existing.byte_size,
+    }).where(eq(storageObjects.storage_url, input.storageUrl));
+  });
+}
+
+/**
+ * **流式上传**（`putStream`）完成后的持锁复核登记（2026-10-11 复审问题 7）。
+ *
+ * 为什么需要独立入口：`putStream` 边写边算 SHA-256，调用方在物理上传完成前拿不到
+ * URL/哈希，因此无法先写预约。这条路径的"新鲜性证明"换成**持锁当下的真实
+ * `stat()`**：
+ *
+ * 1. 后端确认存在 → 用服务端元数据（URL 内嵌 checksum + stat 大小）更新登记并置
+ *    `ready`。`unknown` / `missing` / `deleted` / `deleting` 都可以恢复——依据是此刻
+ *    的物理事实，而不是"此前上传成功过"。
+ * 2. 后端明确不存在（`exists: false`）→ **不置 `ready`**，抛
+ *    {@link StorageObjectMissingError} 拒绝绑定（调用方重新上传后即可通过）。
+ * 3. `stat()` 抛错（网络/403/超时）→ 原样上抛：无法确认就不得改写登记状态。
+ *
+ * **必须与"插入业务引用"处于同一事务**：本函数只加锁、不提交。删除方需要同一把
+ * 登记行锁，所以在"stat 确认存在"与"引用落库"之间它插不进来；而本事务一旦提交，
+ * 引用计数非零，删除守卫只会返回 `referenced`。若把本函数放到独立事务，两个提交点
+ * 之间就会出现"登记 ready → 无引用 → 被删 → 绑定失败"的窗口。
+ *
+ * 另外，删除方在本函数持锁期间也不会物理删除对象，因此不需要额外的短租约；
+ * 若调用方在 putStream 之后还有长时间外部 IO，可在拿到 URL 后补一个
+ * {@link reserveStorageObjectUpload} 短租约以降低"上传白做"的概率（可选优化，
+ * 不是正确性前提），但必须保证所有失败路径都
+ * {@link releaseStorageObjectUploadReservation}。
+ */
+export async function registerStreamedStorageObject(
+  input: {
+    storageUrl: string;
+    /** 已知的内容 SHA-256；缺省时优先取 URL 内嵌 checksum。 */
+    sha256?: string | null;
+    byteSize?: number | null;
+  },
+  executor?: StorageExecutor,
+): Promise<void> {
+  const db = (executor ?? getDb()) as RootDb;
+  await db.transaction(async (tx) => {
+    const existing = await lockStorageObjectRow(tx, input.storageUrl);
+    if (!existing) throw new StorageObjectMissingError(input.storageUrl);
+
+    // 持锁后核实物理事实：stat 抛错 = 无法确认 → 原样上抛，不改登记状态。
+    const storage = await getStorageProvider();
+    const stat = await storage.stat(input.storageUrl);
+    if (!stat.exists) {
+      throw new StorageObjectMissingError(input.storageUrl);
+    }
+
+    await tx.update(storageObjects).set({
+      state: "ready",
+      sha256: checksumFromStorageUrl(input.storageUrl) ??
+        input.sha256 ?? existing.sha256,
+      byte_size: stat.sizeBytes ?? input.byteSize ?? existing.byte_size,
     }).where(eq(storageObjects.storage_url, input.storageUrl));
   });
 }

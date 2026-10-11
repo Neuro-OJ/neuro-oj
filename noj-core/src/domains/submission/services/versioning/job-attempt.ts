@@ -3,7 +3,7 @@
  *
  * 顺序契约（#7）：**先**在工作流外完成目标执行上下文的全部准备与预检
  * （支持包存在性、LLM 服务/模型/预算、完整非敏感快照、预先分配的 attempt ID /
- * 副本 ID / sequence），**再**在一个事务里创建副本、尝试与条目关联。这样：
+ * 副本 ID），**再**在一个事务里创建副本、尝试与条目关联。这样：
  * - Provider 缺配、支持包缺失等永久失败不会留下不该存在的尝试行；
  * - 进程中途崩溃时快照已冻结，恢复只按快照重放，不会重新解析当前默认配置。
  */
@@ -18,10 +18,7 @@ import {
 import type { Executor } from "../../../../shared/db/executor.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
-import {
-  assertStorageObjectBindable,
-  isRateLimitEnabled,
-} from "../../../system/index.ts";
+import { assertStorageObjectBindable } from "../../../system/index.ts";
 import { resolveSubmissionVersion } from "./submission-version.ts";
 import { createAttempt } from "./attempts.ts";
 import {
@@ -30,21 +27,27 @@ import {
 } from "./projection.ts";
 import type { ClaimedJobItem } from "./job-worker.ts";
 import type { DispatchSource, JobUpgradeContext } from "./dispatch-job-item.ts";
-import { consumeSubmissionQuotaForUpgrade } from "./upgrade-quota.ts";
+import {
+  consumeSubmissionQuotaForUpgrade,
+  type UpgradeQuotaBucket,
+} from "./upgrade-quota.ts";
 
 /**
  * 预先分配并冻结的执行上下文（#7）。
  *
- * 这些值在**进入事务之前**就已确定：attempt ID、升级副本 ID、sequence 与完整
- * 非敏感执行快照。事务内只负责落库与关联，不再解析任何"当前默认"配置。
+ * 这些值在**进入事务之前**就已确定：attempt ID、升级副本 ID 与完整非敏感执行
+ * 快照。事务内只负责落库与关联，不再解析任何"当前默认"配置。
+ *
+ * **sequence 不在此冻结**（复审问题 1）：它必须在**源提交行锁内**由
+ * `createAttempt` 统一分配（`max(MAX(尝试)+1, 源行 rejudge_seq)`），否则存量
+ * `legacy_unknown` 提交（无尝试行但 `rejudge_seq=7`）会落库 7、任务封套 0，
+ * 结果因 sequence 不匹配被静默丢弃。任务封套一律使用**落库返回的** `attempt.sequence`。
  */
 export interface PreparedJobExecution {
   /** 预分配的尝试 ID（= 正式评测 `run_id`）。 */
   attemptId: string;
   /** 重测时等于源提交 ID；升级时是预分配的**新副本** ID。 */
   destinationId: string;
-  /** 预分配的尝试 sequence（同一提交内递增；事务内复用该值）。 */
-  sequence: number;
   /** 完整非敏感执行快照（语言、版本、运行配置、LLM provider/model/预算等）。 */
   taskSnapshot: Record<string, unknown>;
 }
@@ -75,6 +78,8 @@ export class UpgradeQuotaDeferredError extends Error {
 export type UpgradeQuotaConsumer = (
   sourceUserId: string,
   jobItemId: string,
+  /** 副本实际生成的提交类型对应的额度桶（复审问题 6）。 */
+  bucket: UpgradeQuotaBucket,
 ) => Promise<{ ok: true } | { ok: false; retryAfterMs: number }>;
 
 /**
@@ -90,9 +95,11 @@ export type UpgradeQuotaConsumer = (
 export function defaultUpgradeQuotaConsumer(
   sourceUserId: string,
   jobItemId: string,
+  bucket: UpgradeQuotaBucket,
 ): Promise<{ ok: true } | { ok: false; retryAfterMs: number }> {
-  if (!isRateLimitEnabled()) return Promise.resolve({ ok: true });
-  return consumeSubmissionQuotaForUpgrade(sourceUserId, jobItemId);
+  // 桶选择必须与"新副本实际生成的提交类型"一致（复审问题 6）：
+  // 否则用户可用练习额度跑竞赛升级、或用代码额度跑客观题升级。
+  return consumeSubmissionQuotaForUpgrade(sourceUserId, jobItemId, { bucket });
 }
 
 /**
@@ -109,9 +116,10 @@ export async function consumeUpgradeQuota(
   _executor: Executor,
   sourceUserId: string,
   jobItemId: string,
+  bucket: UpgradeQuotaBucket,
   consumer: UpgradeQuotaConsumer = defaultUpgradeQuotaConsumer,
 ): Promise<void> {
-  const result = await consumer(sourceUserId, jobItemId);
+  const result = await consumer(sourceUserId, jobItemId, bucket);
   if (!result.ok) throw new UpgradeQuotaDeferredError(result.retryAfterMs);
 }
 
@@ -215,11 +223,21 @@ export async function ensureJobAttempt(
       });
       // #9：升级副本占用**原用户**的正常提交额度（幂等标识 = job item）；
       // 额度不足抛 UpgradeQuotaDeferredError → 本事务回滚（不发新提交）。
-      await consumeUpgradeQuota(tx, source.user_id, item.id, quotaConsumer);
+      // 桶按"新副本实际生成的提交类型"选择：留在原竞赛的升级走竞赛桶，
+      // 练习升级走普通代码桶（复审问题 6）。
+      const quotaBucket: UpgradeQuotaBucket = input.context === "source_contest"
+        ? "contest_code"
+        : "code";
+      await consumeUpgradeQuota(
+        tx,
+        source.user_id,
+        item.id,
+        quotaBucket,
+        quotaConsumer,
+      );
     }
     const attempt = await createAttempt({
       id: prepared.attemptId,
-      sequence: prepared.sequence,
       source: {
         kind: "submission",
         id: prepared.destinationId,

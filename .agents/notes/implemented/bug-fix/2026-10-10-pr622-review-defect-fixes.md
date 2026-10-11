@@ -73,6 +73,16 @@ PR #622 搭出了「不可变版本 + 共享草稿 + 评测尝试 + 有效成绩
    - 榜单新鲜度加入**赛期边界**维度（新增 `query_projection_revisions.materialized_at`），竞赛结束/改期即时失效。
    - 原生 PG 测试连接统一走 `tests/helper/pg-raw-connection.ts`（带 `TEST_SCHEMA` search_path），绑定检查与引用插入放入同一真实事务。
 
+9. **第三轮复审（2026-10-11）10 项缺陷**：
+   - 批任务 sequence 不再在预检阶段冻结，改由 `createAttempt` 在源行锁内统一分配，任务封套用**落库返回**的 sequence 回填（避免"落库 7 / 封套 0"导致结果被静默丢弃）。
+   - 新增 LLM token 吊销 **outbox**（`llm_token_revocations`，迁移 `0112`）：在写终态的同一数据库事务内登记 pending，提交后立即执行、失败由 sweeper 周期持久化重试；finished / error / superseded 三条路径共用，进程退出也不丢吊销。
+   - 测试事务 savepoint 模拟改用 `AsyncLocalStorage` 按**事务节点**判定父子：同父子事务按序、链外兄弟排队、外层 RELEASE 前排空子队列。
+   - 榜单刷新覆盖时间改用刷新事务的 `transaction_timestamp()`，与视图 `now()` 同源，消除"等锁跨赛期边界"时的误判可信。
+   - 升级额度占位与扣费合并为**单次原子 EVAL**（标记只在扣费成功后写入）；额度按 `code` / `contest_code` / `objective` 与实际提交**同桶同阈值**。
+   - artifact 流式上传改为**上传后在登记行锁内真实 stat 复核**，据此恢复 `ready` 或拒绝绑定。
+   - 客观题重判/升级的源竞争在源行锁内复查并统一归入 `skipped`（SOURCE_DELETED / SOURCE_JUDGING）。
+   - 双分片前串行初始化数据库级公共扩展（advisory lock + `WITH SCHEMA public`），消除全新库上 `pg_trgm` 并发创建的 23505 竞争。
+
 **口径决策（记录在案）**：
 
 - 队列网络失败在**批任务条目层**使用 1/2/4/8/16s 有界退避；直提路径维持「保留 pending +

@@ -41,7 +41,9 @@ import {
   deleteStorageObject,
   getStorageObject,
   registerReadyStorageObject,
+  registerStreamedStorageObject,
   reserveStorageObjectUpload,
+  StorageObjectMissingError,
   StorageUploadInFlightError,
 } from "../../../system/services/storage/registry.ts";
 import {
@@ -94,6 +96,11 @@ class GatedDeleteProvider extends LocalStorageProvider {
 /** 极短等待；仅用于让被阻塞的事务进入 PostgreSQL 锁队列。 */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** 构造与 `putStream()` 对接的字节流（流式上传路径）。 */
+function streamOf(bytes: Uint8Array): ReadableStream<Uint8Array> {
+  return new Blob([bytes as unknown as BlobPart]).stream();
 }
 
 /** 轮询等待条件成立（避免用固定 sleep 猜锁时序）。 */
@@ -440,6 +447,205 @@ Deno.test({
     assertEquals((await provider.stat(url)).exists, false);
 
     await cleanupStorageObject(url);
+  },
+});
+
+Deno.test({
+  name:
+    "pg lock: 流式重传在登记行锁内 stat 复核后可恢复 ready 并绑定（问题 7）",
+  ignore: !HAS_PG,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const provider = new GatedDeleteProvider(tempStorageDir);
+    setStorageProviderForTest(provider);
+    const bytes = new TextEncoder().encode("streamed-reupload-pg");
+    const url = await provider.putStream(
+      `artifacts/${crypto.randomUUID()}.zip`,
+      streamOf(bytes),
+      "application/zip",
+    );
+    await registerReadyStorageObject({
+      storageUrl: url,
+      sha256: "h",
+      byteSize: bytes.byteLength,
+    });
+    // 正常删除：登记 deleted 且物理文件消失
+    assertEquals((await deleteStorageObject(url)).outcome, "deleted");
+    assertEquals((await provider.stat(url)).exists, false);
+    await assertRejects(() => assertStorageObjectBindable(url));
+
+    const problemId = `pg-lock-p4-${crypto.randomUUID().slice(0, 8)}`;
+    await cleanupByNumber(986004);
+    const versionId = await seedProblem(problemId, 986004);
+
+    // 复审实测的"连续两次重传都失败"：修复前 putStream 写回字节后登记行仍是 deleted，
+    // assertStorageObjectBindable 永远拒绝；现在持锁 stat 复核把 ready 恢复回来。
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const again = await provider.putStream(
+        `artifacts/${crypto.randomUUID()}.zip`,
+        streamOf(bytes),
+        "application/zip",
+      );
+      assertEquals(again, url, "内容寻址：同一 ZIP 必须得到同一 URL");
+      assertEquals((await getStorageObject(url))?.state, "deleted");
+
+      await withRawTransaction(async (tx) => {
+        await registerStreamedStorageObject({ storageUrl: url }, tx);
+        await assertStorageObjectBindable(url, tx);
+        await tx.insert(submissions).values({
+          id: `pg-lock-stream-${crypto.randomUUID()}`,
+          user_id: "0",
+          problem_id: problemId,
+          language: "python3",
+          code: "",
+          artifact_storage_url: url,
+          submitted_version_id: versionId,
+          version_origin: "known",
+          status: "pending",
+          created_at: now,
+        });
+      });
+
+      assertEquals((await getStorageObject(url))?.state, "ready");
+      assertEquals((await getStorageObject(url))?.byte_size, bytes.byteLength);
+      assertEquals((await provider.stat(url)).exists, true);
+      assertEquals(
+        (await db.select().from(submissions).where(
+          eq(submissions.artifact_storage_url, url),
+        )).length,
+        1,
+      );
+
+      // 解绑后再次删除（回到 deleted），验证下一轮同样成立
+      await db.delete(submissions).where(
+        eq(submissions.artifact_storage_url, url),
+      );
+      assertEquals((await deleteStorageObject(url)).outcome, "deleted");
+      assertEquals((await provider.stat(url)).exists, false);
+    }
+
+    await cleanupStorageObject(url);
+    await cleanupProblem(problemId);
+  },
+});
+
+Deno.test({
+  name:
+    "pg lock: 流式复核与删除并发——终态只能是 ready+存在或 deleted+缺失（问题 7）",
+  ignore: !HAS_PG,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const provider = new LocalStorageProvider(tempStorageDir);
+    setStorageProviderForTest(provider);
+    const bytes = new TextEncoder().encode("streamed-race-pg");
+    const url = await provider.putStream(
+      `artifacts/${crypto.randomUUID()}.zip`,
+      streamOf(bytes),
+      "application/zip",
+    );
+    await registerReadyStorageObject({
+      storageUrl: url,
+      sha256: "h",
+      byteSize: bytes.byteLength,
+    });
+    const problemId = `pg-lock-p5-${crypto.randomUUID().slice(0, 8)}`;
+    await cleanupByNumber(986005);
+    const versionId = await seedProblem(problemId, 986005);
+
+    // A：持登记行锁，让"删除"与"流式复核+绑定"都停在锁外排队
+    const barrier = createRawClient();
+    await barrier`BEGIN`;
+    await barrier`SELECT storage_url FROM storage_objects WHERE storage_url = ${url} FOR UPDATE`;
+
+    let deleteSettled = false;
+    const deletePromise = withRawTransaction(async (tx) => {
+      const outcome = await deleteStorageObject(url, tx);
+      deleteSettled = true;
+      return outcome;
+    });
+    const deleteGuard = deletePromise.catch(() => {});
+    await sleep(120);
+
+    // 并发流式重传：物理写回不需要登记行锁（这正是旧实现踩的坑：写回成功但登记
+    // 永远不恢复）。流式复核 + 绑定则必须排在删除之后。
+    const again = await provider.putStream(
+      `artifacts/${crypto.randomUUID()}.zip`,
+      streamOf(bytes),
+      "application/zip",
+    );
+    assertEquals(again, url);
+    assertEquals((await provider.stat(url)).exists, true);
+
+    const bindPromise = withRawTransaction(async (tx) => {
+      await registerStreamedStorageObject({ storageUrl: url }, tx);
+      await assertStorageObjectBindable(url, tx);
+      await tx.insert(submissions).values({
+        id: `pg-lock-stream-${crypto.randomUUID()}`,
+        user_id: "0",
+        problem_id: problemId,
+        language: "python3",
+        code: "",
+        artifact_storage_url: url,
+        submitted_version_id: versionId,
+        version_origin: "known",
+        status: "pending",
+        created_at: now,
+      });
+      return "bound";
+    });
+    const bindGuard = bindPromise.catch(() => {});
+
+    await sleep(200);
+    assertEquals(deleteSettled, false, "删除必须等 A 释放登记行锁");
+
+    await barrier`COMMIT`;
+    await barrier.end();
+
+    // FIFO：删除先拿到锁 → 物理删掉刚写回的字节 → deleted；
+    // 随后流式复核的 stat 确认缺失 → 拒绝绑定。绝不出现 ready + 物理缺失。
+    assertEquals((await deletePromise).outcome, "deleted");
+    await deleteGuard;
+    await assertRejects(() => bindPromise, StorageObjectMissingError);
+    await bindGuard;
+    assertEquals((await getStorageObject(url))?.state, "deleted");
+    assertEquals((await provider.stat(url)).exists, false);
+    assertEquals(
+      (await db.select().from(submissions).where(
+        eq(submissions.artifact_storage_url, url),
+      )).length,
+      0,
+    );
+
+    // 重试即可成功（不是"永久无法重提"）：写回 + 持锁复核 + 绑定 → ready 且物理存在
+    const retryUrl = await provider.putStream(
+      `artifacts/${crypto.randomUUID()}.zip`,
+      streamOf(bytes),
+      "application/zip",
+    );
+    assertEquals(retryUrl, url);
+    await withRawTransaction(async (tx) => {
+      await registerStreamedStorageObject({ storageUrl: url }, tx);
+      await assertStorageObjectBindable(url, tx);
+      await tx.insert(submissions).values({
+        id: `pg-lock-stream-${crypto.randomUUID()}`,
+        user_id: "0",
+        problem_id: problemId,
+        language: "python3",
+        code: "",
+        artifact_storage_url: url,
+        submitted_version_id: versionId,
+        version_origin: "known",
+        status: "pending",
+        created_at: now,
+      });
+    });
+    assertEquals((await getStorageObject(url))?.state, "ready");
+    assertEquals((await provider.stat(url)).exists, true);
+
+    await cleanupStorageObject(url);
+    await cleanupProblem(problemId);
   },
 });
 

@@ -26,7 +26,10 @@ import type { JudgeTaskPriority } from "../types/index.ts";
 import { AppError } from "../../../shared/base/errors.ts";
 import { rebuildPendingTask } from "./pending-recovery.ts";
 import { applyAttemptResult } from "../services/versioning/result-write.ts";
-import { revokeAttemptLlmTokens } from "../services/versioning/job-worker.ts";
+import { runAttemptTerminalRevocationAfterCommit } from "../services/versioning/attempts.ts";
+import {
+  runPendingTokenRevocations,
+} from "../services/versioning/job-worker.ts";
 
 const RESULT_QUEUE = "noj:judge:results";
 
@@ -360,20 +363,18 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
     },
     onPermanentError: async (row, err) => {
       if (row.active_attempt_id) {
-        await applyAttemptResult({
-          attemptId: row.active_attempt_id,
-          resultKind: "platform_error",
-          resultStatus: "RECOVERY_FAILED",
-          score: null,
-          accepted: false,
-          output: err instanceof Error ? err.message : String(err),
+        // applyAttemptResult 在同一事务内登记吊销 outbox，提交后立即尝试执行。
+        await db.transaction(async (tx) => {
+          await applyAttemptResult({
+            attemptId: row.active_attempt_id!,
+            resultKind: "platform_error",
+            resultStatus: "RECOVERY_FAILED",
+            score: null,
+            accepted: false,
+            output: err instanceof Error ? err.message : String(err),
+          }, tx);
         });
-        // 崩溃恢复被判永久失败同样是**尝试终态**：必须走统一吊销后处理，
-        // 否则该尝试已签发的 LLM token 在剩余有效期内仍可继续调用 gateway。
-        await revokeAttemptLlmTokens({
-          attemptId: row.active_attempt_id,
-          submissionId: row.id,
-        });
+        await runAttemptTerminalRevocationAfterCommit(row.active_attempt_id);
       } else {
         await db.update(submissions).set({
           status: "error",
@@ -574,6 +575,9 @@ export async function runQueueSweeperOnce(): Promise<void> {
     ),
     recoverPendingSubmissions(now),
     recoverPendingSelfTests(now),
+    // 终态吊销 outbox 的持久化补偿：Redis 恢复后把 pending 行推进到 done
+    // （复审问题 2：终态已提交但吊销失败时必须最终一致，不依赖进程内重试）。
+    runPendingTokenRevocations(),
     logQueueAlertsIfNeeded(),
   ]);
   for (const result of results) {

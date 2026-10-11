@@ -13,14 +13,18 @@
  * 唯一 ID 并在用例结束时清理；在**独立 schema**（TEST_SCHEMA）下由 Lead 串行执行。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
+import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import {
   disableTestTransactionForFile,
   getDb,
 } from "../../../../shared/db/connection.ts";
 import {
+  contestProblems,
+  contests,
   evaluationAttempts,
   judgeImages,
+  objectiveSubmissions,
   problems,
   problemVersions,
   submissionJobItems,
@@ -34,7 +38,17 @@ import {
   type DispatchOutcome,
 } from "../../services/versioning/dispatch-job-item.ts";
 import { acceptRejudgeJob } from "../../services/versioning/rejudge-jobs.ts";
+import { acceptUpgradeJob } from "../../services/versioning/upgrade-jobs.ts";
+import {
+  setContestProblemEffectiveVersionPolicy,
+  setProblemEffectiveVersionPolicy,
+} from "../../services/versioning/effective-policy.ts";
 import { withRawTransaction } from "../../../../../tests/helper/pg-raw-connection.ts";
+import {
+  getRedis,
+  resetRedisForTest,
+} from "../../../../shared/mq/connection.ts";
+import { startFakeRedis } from "../mq/_setup.ts";
 
 /** 需要真实 PostgreSQL 的双连接屏障（PGlite 单连接无法并行）。 */
 const hasRealPg = !!Deno.env.get("DATABASE_URL");
@@ -199,7 +213,7 @@ async function cleanup(fixture: Fixture): Promise<void> {
     eq(problems.id, fixture.problemId),
   );
   await db.delete(problemVersions).where(
-    eq(problemVersions.id, fixture.versionId),
+    inArray(problemVersions.problem_id, [fixture.problemId]),
   );
   await db.delete(problems).where(eq(problems.id, fixture.problemId));
   await db.delete(users).where(eq(users.id, fixture.userId));
@@ -316,6 +330,534 @@ Deno.test({
       );
     } finally {
       await cleanup(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "sequence#1[真实 PG]: 预检期间另一轮评测完成 → 任务封套仍取落库 sequence",
+  ignore: !hasRealPg,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const fixture = await seedFixture("seq");
+    const fake = startFakeRedis();
+    const prevUrl = Deno.env.get("REDIS_URL") ?? null;
+    try {
+      resetRedisForTest();
+      Deno.env.set("REDIS_URL", fake.url);
+      await getRedis().connect();
+      // 存量提交带着较大的源序号（无尝试行时不回退）
+      await db.update(submissions).set({ rejudge_seq: 3 }).where(
+        eq(submissions.id, fixture.submissionId),
+      );
+
+      const concurrentAttemptId = crypto.randomUUID();
+      const outcome = await dispatchWithConcurrentSourceChange(
+        fixture,
+        async (tx) => {
+          // 派发阻塞在源行锁期间，"另一轮评测"完成：插入 sequence=5 的尝试并推进源序号
+          await tx.insert(evaluationAttempts).values({
+            id: concurrentAttemptId,
+            submission_id: fixture.submissionId,
+            problem_id: fixture.problemId,
+            problem_version_id: fixture.versionId,
+            sequence: 5,
+            source: "rejudge",
+            state: "finished",
+            created_at: now,
+          });
+          await tx.update(submissions).set({ rejudge_seq: 5 }).where(
+            eq(submissions.id, fixture.submissionId),
+          );
+        },
+      );
+      assertEquals(outcome, "dispatched");
+
+      const [item] = await db.select().from(submissionJobItems).where(
+        eq(submissionJobItems.id, fixture.itemId),
+      );
+      const [attempt] = await db.select().from(evaluationAttempts).where(
+        eq(evaluationAttempts.id, item.attempt_id as string),
+      );
+      // 锁内统一分配：max(MAX(尝试)+1 = 6, 源序号 5) = 6
+      assertEquals(attempt.sequence, 6);
+      // 任务封套必须与落库一致（复审问题 1：不一致会让结果被静默丢弃）
+      const messages: Record<string, unknown>[] = [];
+      for (
+        const queue of [
+          "noj:judge:queue:ai:low",
+          "noj:judge:queue:ai:medium",
+        ]
+      ) {
+        for (const raw of fake.getMessages(queue)) {
+          messages.push(JSON.parse(raw) as Record<string, unknown>);
+        }
+      }
+      assertEquals(messages.length, 1);
+      assertEquals(messages[0].rejudge_seq, 6);
+      assertEquals(messages[0].run_id, attempt.id);
+    } finally {
+      resetRedisForTest();
+      if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
+      else Deno.env.delete("REDIS_URL");
+      await fake.stop();
+      await cleanup(fixture);
+    }
+  },
+});
+
+/** 客观题夹具：题目 + 客观题版本 + 客观题提交 + 任务条目。 */
+interface ObjectiveFixture extends Fixture {
+  objectiveSubmissionId: string;
+  contestId: string | null;
+}
+
+async function seedObjectiveFixture(
+  tag: string,
+  jobKind: "rejudge" | "upgrade",
+  inContest = false,
+): Promise<ObjectiveFixture> {
+  const userId = `skp-obj-user-${tag}-${ts}`;
+  const problemId = `skp-obj-prob-${tag}-${ts}`;
+  const versionId = `skp-obj-v1-${tag}-${ts}`;
+  const latestVersionId = `skp-obj-v2-${tag}-${ts}`;
+  const objectiveSubmissionId = crypto.randomUUID();
+  const contestId = inContest ? `skp-obj-contest-${tag}-${ts}` : null;
+  const owner = `skp-obj-w-${tag}`;
+  await ensureJudgeImages();
+  await db.insert(users).values({
+    id: userId,
+    username: `skp-obj-${tag}-${ts}`,
+    email: `skp-obj-${tag}-${ts}@test.noj`,
+    password_hash: "hash",
+    created_at: now,
+    updated_at: now,
+  }).onConflictDoNothing();
+  await db.insert(problems).values({
+    id: problemId,
+    title: `客观题屏障测试 ${tag}`,
+    description: "d",
+    difficulty: "easy",
+    type: "P",
+    number: 93000 + Math.floor(Math.random() * 900),
+    owner_id: userId,
+    judge_type: "dual",
+    is_objective: true,
+    runtime_config: dualConfig,
+    created_at: now,
+    updated_at: now,
+  });
+  const objectiveContent = (title: string) => ({
+    kind: "objective",
+    title,
+    description: "d",
+    samples: [],
+    questions: [],
+  });
+  await db.insert(problemVersions).values([
+    {
+      id: versionId,
+      problem_id: problemId,
+      version: 1,
+      origin: "published",
+      content: objectiveContent(`客观题屏障测试 ${tag} V1`),
+      published_at: now,
+    },
+    {
+      // 升级目标是"受理时固定的最新版"：必须与源版本不同（否则 ALREADY_LATEST）
+      id: latestVersionId,
+      problem_id: problemId,
+      version: 2,
+      origin: "published",
+      content: objectiveContent(`客观题屏障测试 ${tag} V2`),
+      published_at: now,
+    },
+  ]);
+  await db.update(problems).set({ latest_version_id: latestVersionId }).where(
+    eq(problems.id, problemId),
+  );
+  if (contestId) {
+    await db.insert(contests).values({
+      id: contestId,
+      title: `客观题策略锁序 ${tag}`,
+      description: "",
+      start_time: new Date(Date.now() - 60_000).toISOString(),
+      end_time: new Date(Date.now() + 60_000).toISOString(),
+      type: "kaggle",
+      kind: "public",
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contestProblems).values({
+      contest_id: contestId,
+      problem_id: problemId,
+      label: "A",
+      score: 100,
+      pinned_version_id: versionId,
+    });
+  }
+  await db.insert(objectiveSubmissions).values({
+    id: objectiveSubmissionId,
+    paper_id: problemId,
+    user_id: userId,
+    contest_id: contestId,
+    submission_type: contestId ? "contest" : "practice",
+    answers: {},
+    status: "finished",
+    score: 0,
+    details: {},
+    submitted_version_id: versionId,
+    version_origin: "known",
+    created_at: now,
+  });
+  const accepted = jobKind === "upgrade"
+    ? await acceptUpgradeJob(
+      userId,
+      {
+        submissions: [{ kind: "objective", id: objectiveSubmissionId }],
+        context: "practice",
+      },
+      `skp-obj-key-${tag}-${ts}`,
+    )
+    : await acceptRejudgeJob(
+      userId,
+      {
+        kind: "rejudge",
+        scope: {
+          type: "selected",
+          submissions: [{ kind: "objective", id: objectiveSubmissionId }],
+        },
+        target: { mode: "submitted" },
+      },
+      `skp-obj-key-${tag}-${ts}`,
+    );
+  const [item] = (await claimJobItems(owner, { limit: 100 })).filter(
+    (row) => row.job_id === accepted.job_id,
+  );
+  return {
+    userId,
+    problemId,
+    versionId,
+    submissionId: objectiveSubmissionId,
+    objectiveSubmissionId,
+    jobId: accepted.job_id,
+    itemId: item.id,
+    owner,
+    contestId,
+  };
+}
+
+async function cleanupObjective(fixture: ObjectiveFixture): Promise<void> {
+  await db.delete(submissionJobItems).where(
+    eq(submissionJobItems.job_id, fixture.jobId),
+  );
+  await db.delete(submissionJobs).where(eq(submissionJobs.id, fixture.jobId));
+  const attempts = await db.select({ id: evaluationAttempts.id }).from(
+    evaluationAttempts,
+  ).where(eq(evaluationAttempts.problem_id, fixture.problemId));
+  if (attempts.length > 0) {
+    await db.delete(evaluationAttempts).where(
+      inArray(
+        evaluationAttempts.id,
+        attempts.map((row) => row.id),
+      ),
+    );
+  }
+  await db.delete(objectiveSubmissions).where(
+    eq(objectiveSubmissions.id, fixture.objectiveSubmissionId),
+  );
+  if (fixture.contestId) {
+    await db.delete(contests).where(eq(contests.id, fixture.contestId));
+  }
+  await db.update(problems).set({ latest_version_id: null }).where(
+    eq(problems.id, fixture.problemId),
+  );
+  await db.delete(problemVersions).where(
+    eq(problemVersions.id, fixture.versionId),
+  );
+  await db.delete(problems).where(eq(problems.id, fixture.problemId));
+  await db.delete(users).where(eq(users.id, fixture.userId));
+}
+
+/**
+ * 客观题屏障：持 `objective_submissions` 源行锁 → 启动派发 → 锁内改写源 → 提交。
+ */
+async function dispatchObjectiveWithChange(
+  fixture: ObjectiveFixture,
+  jobKind: "rejudge" | "upgrade",
+  mutate: (
+    tx: Parameters<Parameters<typeof withRawTransaction>[0]>[0],
+  ) => Promise<void>,
+): Promise<DispatchOutcome> {
+  const [item] = await db.select().from(submissionJobItems).where(
+    eq(submissionJobItems.id, fixture.itemId),
+  );
+  let pending: Promise<DispatchOutcome> | null = null;
+  await withRawTransaction(async (tx) => {
+    await tx.select({ id: objectiveSubmissions.id }).from(objectiveSubmissions)
+      .where(
+        eq(objectiveSubmissions.id, fixture.objectiveSubmissionId),
+      ).for("update");
+    pending = dispatchJobItem(item, fixture.owner, jobKind, "practice");
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await mutate(tx);
+  });
+  assertEquals(pending !== null, true);
+  return await pending!;
+}
+
+/**
+ * 确认派发已阻塞在指定宿主锁上，再让策略事务持宿主锁并重算源提交。
+ * 若派发先锁了 objective_submissions，策略重算将与其形成真实锁环；修复后派发
+ * 会先等宿主，策略更新可先拿源行并提交，随后派发继续。有限锁超时防止测试挂死。
+ */
+async function dispatchDuringObjectivePolicyChange(
+  fixture: ObjectiveFixture,
+  scope: "problem" | "contest",
+): Promise<DispatchOutcome> {
+  if (scope === "contest" && !fixture.contestId) {
+    throw new Error("竞赛策略用例缺少竞赛夹具");
+  }
+  const [item] = await db.select().from(submissionJobItems).where(
+    eq(submissionJobItems.id, fixture.itemId),
+  );
+  const pendingDispatch: { promise?: Promise<DispatchOutcome> } = {};
+  try {
+    await withRawTransaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL lock_timeout = '3s'`);
+      const pidRows = unwrapRows<{ pid: number }>(
+        await tx.execute(sql`SELECT pg_backend_pid() AS pid`) as never,
+      );
+      const barrierPid = pidRows[0].pid;
+      if (scope === "problem") {
+        await tx.select({ id: problems.id }).from(problems).where(
+          eq(problems.id, fixture.problemId),
+        ).for("update");
+      } else {
+        await tx.select({ id: problems.id }).from(problems).where(
+          eq(problems.id, fixture.problemId),
+        ).for("share");
+        await tx.select({ id: contests.id }).from(contests).where(
+          eq(contests.id, fixture.contestId!),
+        ).for("update");
+      }
+
+      pendingDispatch.promise = dispatchJobItem(item, fixture.owner, "rejudge");
+      const deadline = Date.now() + 5_000;
+      let blocked = false;
+      while (Date.now() < deadline) {
+        const waiting = unwrapRows<{ blocked: boolean }>(
+          await tx.execute(sql`
+            SELECT EXISTS (
+              SELECT 1 FROM pg_stat_activity AS activity
+              WHERE activity.pid <> ${barrierPid}
+                AND activity.wait_event_type = 'Lock'
+                AND ${barrierPid} = ANY(pg_blocking_pids(activity.pid))
+                AND activity.query ILIKE ${`%${
+            scope === "problem" ? "problems" : "contests"
+          }%`}
+            ) AS blocked
+          `) as never,
+        );
+        if (waiting[0]?.blocked) {
+          blocked = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      if (!blocked) throw new Error(`客观题派发未阻塞于 ${scope} 宿主锁`);
+
+      if (scope === "problem") {
+        await setProblemEffectiveVersionPolicy(fixture.problemId, {
+          policy: { mode: "any" },
+          expectedRevision: 0,
+        }, tx);
+      } else {
+        await setContestProblemEffectiveVersionPolicy(
+          fixture.contestId!,
+          fixture.problemId,
+          { policy: { mode: "any" }, expectedRevision: 0 },
+          tx,
+        );
+      }
+      // 回调返回后先提交策略事务，释放宿主锁；派发继续在外层 await。
+    });
+  } finally {
+    // 策略侧异常时释放宿主锁后也收束派发 Promise，避免留下挂起连接。
+    if (pendingDispatch.promise) {
+      await pendingDispatch.promise.catch(() => undefined);
+    }
+  }
+  return await pendingDispatch.promise!;
+}
+
+Deno.test({
+  name:
+    "objective#8[真实 PG]: 客观题重判期间源被删除 → skipped + SOURCE_DELETED",
+  ignore: !hasRealPg,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const fixture = await seedObjectiveFixture("del", "rejudge");
+    try {
+      const outcome = await dispatchObjectiveWithChange(
+        fixture,
+        "rejudge",
+        async (tx) => {
+          await tx.delete(objectiveSubmissions).where(
+            eq(objectiveSubmissions.id, fixture.objectiveSubmissionId),
+          );
+        },
+      );
+      assertEquals(outcome, "skipped");
+      const [item] = await db.select().from(submissionJobItems).where(
+        eq(submissionJobItems.id, fixture.itemId),
+      );
+      assertEquals(item.status, "skipped");
+      assertEquals(item.reason_code, "SOURCE_DELETED");
+      assertEquals(item.attempt_id, null);
+      // 未创建任何新尝试（与普通提交分类一致，不再退化成 retry）
+      assertEquals(
+        (await db.select().from(evaluationAttempts).where(
+          eq(evaluationAttempts.problem_id, fixture.problemId),
+        )).length,
+        0,
+      );
+    } finally {
+      await cleanupObjective(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "objective#8[真实 PG]: 客观题重判期间源被换上活动尝试 → skipped + SOURCE_JUDGING",
+  ignore: !hasRealPg,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const fixture = await seedObjectiveFixture("judging", "rejudge");
+    try {
+      const concurrentAttemptId = crypto.randomUUID();
+      const outcome = await dispatchObjectiveWithChange(
+        fixture,
+        "rejudge",
+        async (tx) => {
+          await tx.insert(evaluationAttempts).values({
+            id: concurrentAttemptId,
+            objective_submission_id: fixture.objectiveSubmissionId,
+            problem_id: fixture.problemId,
+            problem_version_id: fixture.versionId,
+            sequence: 9,
+            source: "rejudge",
+            state: "queued",
+            created_at: now,
+          });
+          await tx.update(objectiveSubmissions).set({
+            active_attempt_id: concurrentAttemptId,
+          }).where(
+            eq(objectiveSubmissions.id, fixture.objectiveSubmissionId),
+          );
+        },
+      );
+      assertEquals(outcome, "skipped");
+      const [item] = await db.select().from(submissionJobItems).where(
+        eq(submissionJobItems.id, fixture.itemId),
+      );
+      assertEquals(item.status, "skipped");
+      assertEquals(item.reason_code, "SOURCE_JUDGING");
+      assertEquals(item.attempt_id, null);
+    } finally {
+      await cleanupObjective(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name: "objective#8[真实 PG]: 客观题升级期间源被删除 → skipped 且不留副本",
+  ignore: !hasRealPg,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const fixture = await seedObjectiveFixture("up-del", "upgrade");
+    try {
+      const outcome = await dispatchObjectiveWithChange(
+        fixture,
+        "upgrade",
+        async (tx) => {
+          await tx.delete(objectiveSubmissions).where(
+            eq(objectiveSubmissions.id, fixture.objectiveSubmissionId),
+          );
+        },
+      );
+      assertEquals(outcome, "skipped");
+      const [item] = await db.select().from(submissionJobItems).where(
+        eq(submissionJobItems.id, fixture.itemId),
+      );
+      assertEquals(item.status, "skipped");
+      assertEquals(item.reason_code, "SOURCE_DELETED");
+      assertEquals(item.result_submission_id, null);
+      // 事务回滚：没有留下任何升级副本
+      assertEquals(
+        (await db.select().from(objectiveSubmissions).where(
+          eq(objectiveSubmissions.paper_id, fixture.problemId),
+        )).length,
+        0,
+      );
+    } finally {
+      await cleanupObjective(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name: "objective lock order[真实 PG]: 题库策略修改与客观题重判按宿主先行串行",
+  ignore: !hasRealPg,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const fixture = await seedObjectiveFixture("problem-policy", "rejudge");
+    try {
+      assertEquals(
+        await dispatchDuringObjectivePolicyChange(fixture, "problem"),
+        "dispatched",
+      );
+      const [item] = await db.select().from(submissionJobItems).where(
+        eq(submissionJobItems.id, fixture.itemId),
+      );
+      assertEquals(item.status, "succeeded");
+      assertEquals(typeof item.attempt_id, "string");
+    } finally {
+      await cleanupObjective(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name: "objective lock order[真实 PG]: 竞赛策略修改与客观题重判按宿主先行串行",
+  ignore: !hasRealPg,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const fixture = await seedObjectiveFixture(
+      "contest-policy",
+      "rejudge",
+      true,
+    );
+    try {
+      assertEquals(
+        await dispatchDuringObjectivePolicyChange(fixture, "contest"),
+        "dispatched",
+      );
+      const [item] = await db.select().from(submissionJobItems).where(
+        eq(submissionJobItems.id, fixture.itemId),
+      );
+      assertEquals(item.status, "succeeded");
+      assertEquals(typeof item.attempt_id, "string");
+    } finally {
+      await cleanupObjective(fixture);
     }
   },
 });

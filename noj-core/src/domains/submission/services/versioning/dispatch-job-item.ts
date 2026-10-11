@@ -18,6 +18,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
+import type { Executor } from "../../../../shared/db/executor.ts";
 import {
   objectiveSubmissions,
   submissionJobItems,
@@ -31,9 +32,12 @@ import { buildJudgeTaskLlm } from "../../../gateway/index.ts";
 import type { FrozenLlmExecution } from "../../../gateway/index.ts";
 import { classifyJudgeQueueError, pushJudgeTask } from "../../mq/producer.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
+import { getAttempt, isTerminalAttemptState } from "./attempts.ts";
 import type { JudgeTask } from "../../types/index.ts";
-import { nextAttemptSequence } from "./attempts.ts";
-import { bumpSubmissionCountRevisions } from "./projection.ts";
+import {
+  bumpSubmissionCountRevisions,
+  lockProjectionHosts,
+} from "./projection.ts";
 import {
   consumeUpgradeQuota,
   defaultUpgradeQuotaConsumer,
@@ -152,6 +156,52 @@ async function loadAttemptWithSnapshot(
     eq(evaluationAttempts.id, attemptId),
   ).limit(1);
   return row ?? null;
+}
+
+/**
+ * 锁内复查**客观题源**（复审问题 8）。
+ *
+ * 与普通提交一致：命中源已删除 / 仍在评测时抛统一稳定原因码，由派发层映射为
+ * `skipped`（而不是被外层 `<500` 分支记成 failed、或退化成 retry）。必须在
+ * `objective_submissions` 源行锁内调用，消灭"预检时源还在、锁内已被删除"的窗口。
+ */
+async function assertObjectiveSourceDispatchable(
+  executor: Executor,
+  sourceId: string,
+): Promise<void> {
+  const [row] = await executor.select({
+    active: objectiveSubmissions.active_attempt_id,
+  }).from(objectiveSubmissions).where(
+    eq(objectiveSubmissions.id, sourceId),
+  ).for("update");
+  if (!row) throw new AppError("源提交已删除", 409, "SOURCE_DELETED");
+  if (row.active) {
+    const active = await getAttempt(row.active, executor);
+    if (active && !isTerminalAttemptState(active.state)) {
+      throw new AppError("源提交正在评测", 409, "SOURCE_JUDGING");
+    }
+  }
+}
+
+/** 源竞争（已删除/正在评测）的统一 skipped 收尾。 */
+async function completeSourceContention(
+  item: ClaimedJobItem,
+  owner: string,
+  err: unknown,
+): Promise<"skipped" | null> {
+  if (
+    err instanceof AppError &&
+    (err.code === "SOURCE_JUDGING" || err.code === "SOURCE_DELETED")
+  ) {
+    await completeJobItem(item.id, {
+      leaseOwner: owner,
+      status: "skipped",
+      reasonCode: err.code,
+      reasonMessage: err.message,
+    });
+    return "skipped";
+  }
+  return null;
 }
 
 /**
@@ -293,22 +343,38 @@ async function dispatchClaimedJobItem(
     const { rejudgeObjectiveSubmissionForJob } = await import(
       "../../../objective/index.ts"
     );
+    // 闭包内无法保留 `item` 的可空收窄，先固化为非空局部量
+    const objectiveTargetVersionId = item.target_version_id;
     try {
-      const result = await rejudgeObjectiveSubmissionForJob({
-        submissionId: source.id,
-        targetVersionId: item.target_version_id,
-        jobKind: "rejudge",
-        jobItemId: item.id,
-        leaseOwner: owner,
-      });
-      await completeJobItem(item.id, {
-        leaseOwner: owner,
-        status: "succeeded",
-        attemptId: result.attempt_id,
-        reasonMessage: "客观题按目标版本快照重判完成",
+      // 重判与源行锁复查放在同一事务：锁内发现源已删除/正在评测 → skipped（#8）
+      await getDb().transaction(async (tx) => {
+        // Handbook §5.1：先锁题库与竞赛宿主，再锁客观题提交行。
+        // 与策略切换重算保持相同的 host → source 顺序，避免双方互等。
+        await lockProjectionHosts(tx, {
+          kind: "objective",
+          id: source.id,
+          problem_id: source.problem_id,
+          contest_id: source.contest_id,
+        });
+        await assertObjectiveSourceDispatchable(tx, source.id);
+        const result = await rejudgeObjectiveSubmissionForJob({
+          submissionId: source.id,
+          targetVersionId: objectiveTargetVersionId,
+          jobKind: "rejudge",
+          jobItemId: item.id,
+          leaseOwner: owner,
+        }, tx);
+        await completeJobItem(item.id, {
+          leaseOwner: owner,
+          status: "succeeded",
+          attemptId: result.attempt_id,
+          reasonMessage: "客观题按目标版本快照重判完成",
+        }, tx);
       });
       return "dispatched";
     } catch (err) {
+      const contended = await completeSourceContention(item, owner, err);
+      if (contended) return contended;
       logger.error("客观题重判失败", { item_id: item.id, err });
       await scheduleDispatchRetryOrFail(item.id, {
         leaseOwner: owner,
@@ -451,8 +517,10 @@ async function dispatchJudgeAttempt(input: {
   try {
     // ── 阶段 1：准备目标执行上下文（**不落库**） ────────────────────────────
     //
-    // #7：先确定 attempt / 副本 ID 与 sequence，再完成支持包存在性、LLM 服务/模型/
-    // 预算预检与完整非敏感快照；任何一步失败都不会留下不该存在的尝试行。
+    // #7：先确定 attempt / 副本 ID，再完成支持包存在性、LLM 服务/模型/预算预检与
+    // 完整非敏感快照；任何一步失败都不会留下不该存在的尝试行。
+    // **sequence 不在此冻结**（复审问题 1）：它只能在源提交行锁内由 `createAttempt`
+    // 统一分配；任务封套在事务提交后回填 `attempt.sequence`。
     // 重派（item.attempt_id 已存在）只**续签交付凭据**，Provider/模型/预算取自
     // 既有快照，绝不重新解析当前默认服务配置。
     const existing = item.attempt_id
@@ -471,13 +539,6 @@ async function dispatchJudgeAttempt(input: {
     destinationId = input.sourceKind === "upgrade"
       ? (existing?.submission_id ?? crypto.randomUUID())
       : source.id;
-    const sequence = existing?.sequence ?? await nextAttemptSequence({
-      kind: "submission",
-      id: destinationId,
-      problem_id: source.problem_id,
-      contest_id: input.attemptSource.contest_id,
-    });
-
     // 支持包**存在性**（缺失抛 SUPPORT_PACKAGE_MISSING）与下载地址（重派重新签发）
     const downloadUrl = await versionSupportPackageDownload(targetVersionId);
     let artifactDownloadUrl: string | undefined;
@@ -526,14 +587,12 @@ async function dispatchJudgeAttempt(input: {
       code: source.artifact_storage_url ? "" : source.code,
       file_name: source.file_name ?? undefined,
       llm: llmTask,
-      rejudge_seq: sequence,
     });
 
     // 完整非敏感快照（排除源码、短期下载地址与 token）：事务内与尝试一同落库
     const prepared: PreparedJobExecution = {
       attemptId,
       destinationId,
-      sequence,
       taskSnapshot: {
         ...executionSnapshot(task, llmConfig, previousSnapshot),
         batch_job_id: item.job_id,
@@ -590,6 +649,12 @@ async function dispatchJudgeAttempt(input: {
     }
     throw err;
   }
+
+  // 落库返回的 `sequence` 是唯一权威（源提交行锁内统一分配：MAX(尝试)+1 与源
+  // `rejudge_seq` 取大者）。任务封套必须与之一致，否则结果回写会因 sequence
+  // 不匹配被静默丢弃（复审问题 1：存量提交 `rejudge_seq=7` 无尝试行时落库 7、
+  // 封套 0 → `applied=false`，提交卡 judging、活动尝试不清）。
+  task = { ...task, rejudge_seq: attempt.sequence };
 
   if (["finished", "error", "superseded"].includes(attempt.state)) {
     await completeJobItem(item.id, {
@@ -673,6 +738,16 @@ async function dispatchObjectiveUpgrade(input: {
   );
   try {
     await db.transaction(async (tx) => {
+      // Handbook §5.1：先锁来源题库与竞赛，再锁客观题源行；随后才能创建副本、
+      // 分配 revision 并创建新尝试。策略重算使用同一宿主 → 来源提交顺序。
+      await lockProjectionHosts(tx, {
+        kind: "objective",
+        id: source.id,
+        problem_id: source.problem_id,
+        contest_id: source.contest_id,
+      });
+      // 锁内复查源：预检期间被删除/换活动尝试 → skipped（#8），且不留副本
+      await assertObjectiveSourceDispatchable(tx, source.id);
       const newId = crypto.randomUUID();
       await tx.insert(objectiveSubmissions).values({
         id: newId,
@@ -695,10 +770,12 @@ async function dispatchObjectiveUpgrade(input: {
         contest_id: null,
       });
       // #9：升级副本占用原用户正常提交额度（幂等标识 = job item）
+      // 客观题副本必须占用**客观题**额度桶（复审问题 6）
       await consumeUpgradeQuota(
         tx,
         source.user_id,
         item.id,
+        "objective",
         input.quotaConsumer,
       );
       await tx.update(submissionJobItems).set({ result_submission_id: newId })
@@ -722,6 +799,9 @@ async function dispatchObjectiveUpgrade(input: {
       );
       return "deferred";
     }
+    // 源竞争（已删除/正在评测）→ skipped，与普通提交分类一致（#8）
+    const contended = await completeSourceContention(item, owner, err);
+    if (contended) return contended;
     logger.error("客观题升级失败", { item_id: item.id, err });
     await scheduleDispatchRetryOrFail(item.id, {
       leaseOwner: owner,

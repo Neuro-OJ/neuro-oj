@@ -12,11 +12,12 @@
  * - 全部条目终态后由 `refreshJobStatus` 推导任务状态（无进程内计数器）。
  */
 
-import { and, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
   evaluationAttempts,
+  llmTokenRevocations,
   submissionJobItems,
   submissionJobs,
 } from "../../../../shared/db/schema.ts";
@@ -25,6 +26,7 @@ import { getRedis } from "../../../../shared/mq/connection.ts";
 import { refreshJobStatus } from "./rejudge-jobs.ts";
 import { lockProjectionHosts, lockProjectionSource } from "./projection.ts";
 import { applyAttemptResult } from "./result-write.ts";
+import { runAttemptTerminalRevocationAfterCommit } from "./attempts.ts";
 
 /** 默认 lease 时长（秒）。 */
 export const JOB_ITEM_LEASE_SECONDS = 60;
@@ -316,18 +318,39 @@ export async function revokeAttemptLlmTokens(input: {
     ? await loadAttemptTaskSnapshot(input.attemptId)
     : input.taskSnapshot;
   const ttlSeconds = resolveAttemptTokenTtlSeconds(snapshot);
-  const attemptId = input.attemptId;
-  if (!attemptId && !input.submissionId) {
-    return { applied: false, ttl_seconds: ttlSeconds, attempt_id: null };
-  }
+  const applied = await writeRevocationMarkers({
+    attemptId: input.attemptId,
+    submissionId: input.submissionId ?? null,
+    ttlSeconds,
+  });
+  return {
+    applied,
+    ttl_seconds: ttlSeconds,
+    attempt_id: input.attemptId,
+  };
+}
+
+/**
+ * 以**显式 TTL** 写吊销标记（幂等）。Redis 不可用/异常时返回 false，不抛错。
+ *
+ * 显式 TTL 入口供 outbox 补偿使用：补偿必须沿用**登记时冻结的** TTL，而不是
+ * 重新推导（快照可能已被替换或清理）。
+ */
+export async function writeRevocationMarkers(input: {
+  attemptId: string | null;
+  submissionId?: string | null;
+  ttlSeconds: number;
+}): Promise<boolean> {
+  if (!input.attemptId && !input.submissionId) return false;
+  const ttlSeconds = Number.isFinite(input.ttlSeconds) && input.ttlSeconds > 0
+    ? Math.floor(input.ttlSeconds)
+    : LLM_REVOCATION_MIN_TTL_SECONDS;
   try {
     const redis = getRedis();
-    if (redis.status !== "ready") {
-      return { applied: false, ttl_seconds: ttlSeconds, attempt_id: attemptId };
-    }
-    if (attemptId) {
+    if (redis.status !== "ready") return false;
+    if (input.attemptId) {
       await redis.set(
-        `llm:attempt:revoked:${attemptId}`,
+        `llm:attempt:revoked:${input.attemptId}`,
         "1",
         "EX",
         ttlSeconds,
@@ -342,11 +365,133 @@ export async function revokeAttemptLlmTokens(input: {
         ttlSeconds,
       );
     }
-    return { applied: true, ttl_seconds: ttlSeconds, attempt_id: attemptId };
+    return true;
   } catch {
-    // 吊销失败不能影响已提交的业务终态；由 sweeper/日志兜底观测
-    return { applied: false, ttl_seconds: ttlSeconds, attempt_id: attemptId };
+    // 吊销失败不能影响已提交的业务终态；由 outbox 补偿与日志兜底观测
+    return false;
   }
+}
+
+/** 终态吊销 outbox 的行读模型。 */
+export interface PendingTokenRevocation {
+  id: string;
+  attempt_id: string;
+  submission_id: string | null;
+  ttl_seconds: number;
+}
+
+/**
+ * 在**写尝试终态的同一数据库事务内**登记一行 pending 吊销 outbox（幂等）。
+ *
+ * 为什么必须持久化：Redis 不可用时"终态已提交、吊销未执行"不能只靠日志兜底——
+ * 重复终结会因尝试已是终态而提前返回，sweeper 也不会再碰它，吊销将被永久遗漏
+ * （复审问题 2 实测）。outbox 行由后台消费者重试直到 `done`。
+ *
+ * 幂等：同一尝试已有 `pending`/`done` 行时直接返回（不重复插入）。
+ */
+export async function enqueueAttemptTokenRevocation(
+  executor: Executor,
+  input: {
+    attemptId: string;
+    submissionId?: string | null;
+    /** 登记时冻结的 TTL（覆盖该尝试已签发 token 的剩余有效期）。 */
+    ttlSeconds: number;
+  },
+): Promise<void> {
+  const [existing] = await executor.select({ id: llmTokenRevocations.id })
+    .from(llmTokenRevocations).where(
+      and(
+        eq(llmTokenRevocations.attempt_id, input.attemptId),
+        inArray(llmTokenRevocations.state, ["pending", "done"]),
+      ),
+    ).limit(1);
+  if (existing) return;
+  await executor.insert(llmTokenRevocations).values({
+    id: crypto.randomUUID(),
+    attempt_id: input.attemptId,
+    submission_id: input.submissionId ?? null,
+    ttl_seconds: Math.floor(input.ttlSeconds),
+    state: "pending",
+    attempts: 0,
+    created_at: nowIso(),
+  });
+}
+
+/**
+ * 立即执行某个尝试的 outbox 吊销（终态事务提交后调用）。
+ *
+ * 成功 → 行标记 `done`；失败（Redis 不可用）→ 保留 `pending` 并累加 `attempts`，
+ * 交给后台消费者重试。返回是否已完成。
+ */
+export async function attemptTokenRevocationNow(
+  attemptId: string,
+): Promise<boolean> {
+  const db = getDb();
+  const rows = await db.select().from(llmTokenRevocations).where(
+    and(
+      eq(llmTokenRevocations.attempt_id, attemptId),
+      eq(llmTokenRevocations.state, "pending"),
+    ),
+  );
+  if (rows.length === 0) return true;
+  let allDone = true;
+  for (const row of rows) {
+    if (await completeTokenRevocationRow(row)) continue;
+    allDone = false;
+    await db.update(llmTokenRevocations).set({
+      attempts: sql`${llmTokenRevocations.attempts} + 1`,
+    }).where(eq(llmTokenRevocations.id, row.id));
+  }
+  return allDone;
+}
+
+/** 执行单行吊销并标记 done（Redis 未成功写入时返回 false）。 */
+async function completeTokenRevocationRow(
+  row: PendingTokenRevocation,
+): Promise<boolean> {
+  const applied = await writeRevocationMarkers({
+    attemptId: row.attempt_id,
+    submissionId: row.submission_id,
+    ttlSeconds: row.ttl_seconds,
+  });
+  if (!applied) return false;
+  const rows = await getDb().update(llmTokenRevocations).set({
+    state: "done",
+    done_at: nowIso(),
+    attempts: sql`${llmTokenRevocations.attempts} + 1`,
+  }).where(
+    and(
+      eq(llmTokenRevocations.id, row.id),
+      eq(llmTokenRevocations.state, "pending"),
+    ),
+  ).returning({ id: llmTokenRevocations.id });
+  return rows.length > 0;
+}
+
+/**
+ * 后台补偿：把 pending 吊销推进到 done（Redis 恢复后自动完成）。
+ *
+ * 由 sweeper 周期与进程启动阶段调用；也可供测试直接驱动。
+ * 按 `created_at` 升序处理，单轮上限 `limit`（默认 100）。
+ */
+export async function runPendingTokenRevocations(
+  limit = 100,
+): Promise<{ processed: number; completed: number }> {
+  const db = getDb();
+  const rows = await db.select().from(llmTokenRevocations).where(
+    eq(llmTokenRevocations.state, "pending"),
+  ).orderBy(asc(llmTokenRevocations.created_at)).limit(Math.max(1, limit));
+  let completed = 0;
+  for (const row of rows) {
+    if (await completeTokenRevocationRow(row)) {
+      completed += 1;
+      continue;
+    }
+    await db.update(llmTokenRevocations).set({
+      attempts: sql`${llmTokenRevocations.attempts} + 1`,
+    }).where(eq(llmTokenRevocations.id, row.id));
+  }
+  return { processed: rows.length, completed };
 }
 
 /** 事务内收集到的待吊销目标（提交后执行）。 */
@@ -387,7 +532,10 @@ export async function completeJobItem(
   const written = await getDb().transaction((tx) =>
     completeJobItemInTx(itemId, terminal, tx)
   );
-  if (written.revoked) await revokeAttemptLlmTokens(written.revoked);
+  // 提交后立即执行 outbox 吊销；失败保留 pending，由后台消费者重试（复审问题 2）
+  if (written.revoked) {
+    await runAttemptTerminalRevocationAfterCommit(written.revoked.attemptId);
+  }
   return written.ok;
 }
 
@@ -572,8 +720,7 @@ export async function scheduleDispatchRetryOrFail(
           eq(submissionJobItems.status, "failed"),
         ),
       );
-      // 尝试已被判失败（platform_error）：终态后必须吊销其 LLM token，
-      // 否则 token 在剩余有效期内仍可继续调用 gateway。
+      // `applyAttemptResult` 在 `finishAttempt` 内与终态同事务登记吊销 outbox。
       return {
         ok: false,
         revoked: attempt
@@ -601,8 +748,11 @@ export async function scheduleDispatchRetryOrFail(
     );
     return { ok: true };
   });
-  // 事务提交后才吊销：避免回滚后留下"仍在跑却被吊销"的尝试
-  if (written.revoked) await revokeAttemptLlmTokens(written.revoked);
+  // 事务提交后才执行吊销：避免回滚后留下"仍在跑却被吊销"的尝试；
+  // 失败保留 outbox pending，由后台消费者重试（复审问题 2）
+  if (written.revoked) {
+    await runAttemptTerminalRevocationAfterCommit(written.revoked.attemptId);
+  }
   return written.ok;
 }
 

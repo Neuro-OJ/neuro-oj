@@ -53,6 +53,47 @@ type SelfTestStatus =
  * 两个提交外键走惰性 `.references()`，从而让两类提交可以反向 `.references()`
  * 本表的尝试指针。
  */
+/**
+ * LLM token 吊销 outbox（2026-10-11 复审问题 2）。
+ *
+ * 吊销是**外部副作用**（Redis），必须在尝试终态事务**提交后**执行；若此时 Redis
+ * 不可用，仅靠日志/内存重试会永久丢失吊销，旧 token 在剩余有效期内仍可用。
+ *
+ * 契约：
+ * - 写尝试终态（finished / error / superseded）的**同一事务**内插入一行 pending；
+ * - 提交后立即尝试执行吊销，成功则标记 done；
+ * - 失败由后台消费者（sweeper 周期）按行重试，直到 done —— 进程退出也不丢。
+ */
+export const llmTokenRevocations = pgTable(
+  "llm_token_revocations",
+  {
+    id: text("id").primaryKey(),
+    /** 与正式评测 `run_id` 同源的尝试 ID（吊销键按它派生）。 */
+    attempt_id: text("attempt_id").notNull(),
+    /** 旧协议提交维度吊销键（可选）。 */
+    submission_id: text("submission_id"),
+    /** 吊销标记 TTL 秒数：覆盖该尝试全部已签发 token 的剩余有效期。 */
+    ttl_seconds: integer("ttl_seconds").notNull(),
+    state: text("state").$type<"pending" | "done">().notNull().default(
+      "pending",
+    ),
+    attempts: integer("attempts").notNull().default(0),
+    created_at: text("created_at").notNull(),
+    done_at: text("done_at"),
+  },
+  (table) => ({
+    stateCheck: check(
+      "llm_token_revocations_state_check",
+      sql`${table.state} IN ('pending', 'done')`,
+    ),
+    pendingIdx: index("idx_llm_token_revocations_pending").on(
+      table.state,
+      table.created_at,
+    ),
+    attemptIdx: index("idx_llm_token_revocations_attempt").on(table.attempt_id),
+  }),
+);
+
 export const evaluationAttempts = pgTable(
   "evaluation_attempts",
   {

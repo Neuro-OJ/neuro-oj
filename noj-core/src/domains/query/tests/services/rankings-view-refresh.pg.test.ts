@@ -37,6 +37,7 @@ import {
 } from "../../index.ts";
 import { updateContest } from "../../../contest/index.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
+import { withRawTransaction } from "../../../../../tests/helper/pg-raw-connection.ts";
 
 const hasPg = !!Deno.env.get("DATABASE_URL");
 
@@ -612,6 +613,215 @@ Deno.test({
         "竞赛重新变为进行中后，内联口径必须立即排除该提交（用户无通过记录 → 不上榜）",
       );
     } finally {
+      await cleanupBoundaryFixture(fixture);
+    }
+  },
+});
+
+// ── 2026-10-11 复审问题 4：materialized_at 必须取同一刷新事务的数据库时钟 ──────
+
+/** 读取数据库当前时刻（与 materialized_at 同一格式，便于比较）。 */
+async function readDbNowIso(): Promise<string> {
+  const result = await getDb().execute(
+    sql`SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS iso`,
+  );
+  return String(unwrapRows<{ iso: string }>(result as never)[0]?.iso ?? "");
+}
+
+/** 规范 ISO（毫秒 + Z）：赛期边界守卫只认这一形态，非规范形态会 fail-closed。 */
+function isCanonicalIso(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value);
+}
+
+Deno.test({
+  name:
+    "rankings view(#4-①): 刷新事务等锁跨过比赛结束 → 事务时钟记账，绝不误判 trusted",
+  ignore: !hasPg,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const runId = crypto.randomUUID().slice(0, 8);
+    const fixture: BoundaryFixture = {
+      userId: `pg-b4-user-${runId}`,
+      problemIds: [],
+      contestIds: [],
+      submissionIds: [],
+    };
+    await db.insert(users).values({
+      id: fixture.userId,
+      username: `pg-b4-${runId}`,
+      email: `pg-b4-${runId}@example.com`,
+      password_hash: "hash",
+      created_at: now,
+      updated_at: now,
+    });
+    // 竞赛在 ~0.9s 后结束；刷新事务会在"赛前"开始并被行锁阻塞到"赛后"
+    const endTime = new Date(Date.now() + 900).toISOString();
+    const contestId = await seedBoundaryContest(
+      fixture,
+      runId,
+      "d",
+      endTime,
+    );
+    await seedBoundaryAcceptance(fixture, runId, "d", contestId, 990105);
+
+    // 屏障：另一条原生连接持 `query_projection_revisions('global')` 行锁
+    let markLocked: () => void = () => {};
+    const locked = new Promise<void>((resolve) => {
+      markLocked = resolve;
+    });
+    let releaseBlocker: () => void = () => {};
+    const released = new Promise<void>((resolve) => {
+      releaseBlocker = resolve;
+    });
+    const blocker = withRawTransaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT data_revision FROM query_projection_revisions WHERE scope_key = 'global' FOR UPDATE`,
+      );
+      markLocked();
+      await released;
+    });
+
+    try {
+      await locked;
+      // 刷新事务在此开始（BEGIN + advisory lock），随后阻塞在行锁上
+      const refreshPromise = refreshRankingsView();
+      await sleep(400);
+      const raced = await Promise.race([
+        refreshPromise.then(() => "done" as const),
+        sleep(50).then(() => "pending" as const),
+      ]);
+      assertEquals(
+        raced,
+        "pending",
+        "测试前提：刷新事务必须被行锁阻塞在赛期边界之前",
+      );
+
+      // 等过 end_time 再放锁：刷新在"赛后"继续，但事务时钟仍是赛前
+      await sleep(700);
+      assertEquals(
+        Date.now() > Date.parse(endTime),
+        true,
+        "测试前提：放锁时竞赛已自然结束",
+      );
+      releaseBlocker();
+      await blocker;
+      await refreshPromise;
+
+      const freshness = await inspectRankingView();
+      assertExists(freshness.materialized_at);
+      assertEquals(
+        isCanonicalIso(freshness.materialized_at),
+        true,
+        "materialized_at 必须规范化为可被边界守卫识别的 ISO 形态",
+      );
+      assertEquals(
+        Date.parse(freshness.materialized_at) < Date.parse(endTime),
+        true,
+        "覆盖时刻必须是事务开始（数据库时钟），而不是等锁后的应用时间",
+      );
+      assertEquals(
+        freshness.stale_by_boundary,
+        true,
+        "视图按赛前口径生成、却跨越了结束边界 → 必须判落后",
+      );
+      assertEquals(
+        freshness.trusted,
+        false,
+        "此时绝不能把视图标为可信（旧实现会用应用时钟误判 trusted）",
+      );
+
+      // 内联口径必须已计入结束竞赛的提交
+      const page = await getGlobalRankings({ page: 1, limit: 100 });
+      const row = page.data.find((item) => item.user_id === fixture.userId);
+      assertExists(row, "内联口径必须包含该用户");
+      assertEquals(row.solved_count, 1);
+    } finally {
+      releaseBlocker();
+      await blocker.catch(() => {});
+      await cleanupBoundaryFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "rankings view(#4-②): 应用时钟偏移不影响 materialized_at（以数据库时钟为准）",
+  ignore: !hasPg,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const runId = crypto.randomUUID().slice(0, 8);
+    const fixture: BoundaryFixture = {
+      userId: `pg-b5-user-${runId}`,
+      problemIds: [],
+      contestIds: [],
+      submissionIds: [],
+    };
+    await db.insert(users).values({
+      id: fixture.userId,
+      username: `pg-b5-${runId}`,
+      email: `pg-b5-${runId}@example.com`,
+      password_hash: "hash",
+      created_at: now,
+      updated_at: now,
+    });
+    const contestId = await seedBoundaryContest(
+      fixture,
+      runId,
+      "e",
+      new Date(Date.now() - 60_000).toISOString(),
+    );
+    await seedBoundaryAcceptance(fixture, runId, "e", contestId, 990106);
+
+    const realDate = globalThis.Date;
+    const skewMs = 3_600_000; // 应用时钟故意快 1 小时
+    try {
+      const dbNowBefore = await readDbNowIso();
+      // 只偏移应用的"当前时刻"：`new Date()` 与 `Date.now()` 快 1 小时
+      const skewedDate = function (...args: unknown[]): Date {
+        return args.length === 0
+          ? new (realDate as unknown as new (ms: number) => Date)(
+            realDate.now() + skewMs,
+          )
+          : new (realDate as unknown as new (...a: unknown[]) => Date)(...args);
+      } as unknown as DateConstructor;
+      skewedDate.now = () => realDate.now() + skewMs;
+      skewedDate.parse = realDate.parse;
+      skewedDate.UTC = realDate.UTC;
+
+      try {
+        globalThis.Date = skewedDate;
+        await refreshRankingsView();
+      } finally {
+        globalThis.Date = realDate;
+      }
+
+      const dbNowAfter = await readDbNowIso();
+      const freshness = await inspectRankingView();
+      assertExists(freshness.materialized_at);
+      const materializedMs = Date.parse(freshness.materialized_at);
+      const dbBeforeMs = Date.parse(dbNowBefore);
+      const dbAfterMs = Date.parse(dbNowAfter);
+
+      assertEquals(isCanonicalIso(freshness.materialized_at), true);
+      assertEquals(
+        materializedMs >= dbBeforeMs - 5_000 &&
+          materializedMs <= dbAfterMs + 5_000,
+        true,
+        "materialized_at 必须落在数据库时钟窗口内",
+      );
+      assertEquals(
+        Math.abs(materializedMs - (realDate.now() + skewMs)) > 600_000,
+        true,
+        "不得使用被偏移的应用时钟（否则快 1 小时的应用时间会写进视图账本）",
+      );
+      // 结束后已跨越边界，因此本次刷新覆盖后视图应恢复可信
+      assertEquals(freshness.trusted, true, "刷新覆盖边界后视图可信");
+    } finally {
+      globalThis.Date = realDate;
       await cleanupBoundaryFixture(fixture);
     }
   },

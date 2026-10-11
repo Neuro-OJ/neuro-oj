@@ -93,6 +93,18 @@ const ts = Date.now();
 /** 需要真实 PostgreSQL 的并发语义（PGlite 单连接无法并行）。 */
 const hasRealPg = !!Deno.env.get("DATABASE_URL");
 
+/**
+ * 本文件在真实 PG 下关闭 preload 事务（并发用例需要真实事务），因此必须**显式清理**
+ * 自己创建的夹具：否则残留行会污染同一 schema 上的其它用例与后续运行。
+ * 各 seed 辅助函数把 id 登记到这里，文件末尾的统一清理用例负责删除。
+ */
+const createdFixtures = {
+  userIds: new Set<string>(),
+  problemIds: new Set<string>(),
+  submissionIds: new Set<string>(),
+  jobIds: new Set<string>(),
+};
+
 // 真实 PG 下的两个并发用例必须各自持有真实事务（preload 的单连接 savepoint
 // 代理无法承载 `Promise.all` 的并发事务，会报 "savepoint ... does not exist"）。
 // 本文件所有夹具使用 `ts` 唯一 ID，关闭事务包装不会与其他用例互相污染。
@@ -114,6 +126,7 @@ const dualConfig = (timeLimitMs: number) => ({
 
 async function makeUser(tag: string): Promise<string> {
   const id = `conc-user-${tag}-${ts}`;
+  createdFixtures.userIds.add(id);
   await db.insert(users).values({
     id,
     username: `conc-${tag}-${ts}`,
@@ -132,6 +145,7 @@ async function seedProblemWithVersions(
   const problemId = `conc-prob-${tag}-${ts}`;
   const v1 = `conc-v1-${tag}-${ts}`;
   const v2 = `conc-v2-${tag}-${ts}`;
+  createdFixtures.problemIds.add(problemId);
   await db.insert(problems).values({
     id: problemId,
     title: `并发测试题 ${tag}`,
@@ -188,6 +202,7 @@ async function seedSubmission(
 ): Promise<{ submissionId: string; attemptId: string }> {
   const submissionId = crypto.randomUUID();
   const attemptId = crypto.randomUUID();
+  createdFixtures.submissionIds.add(submissionId);
   await db.insert(submissions).values({
     id: submissionId,
     user_id: userId,
@@ -254,6 +269,7 @@ Deno.test("worker#37: 租约过期换主后，旧 worker 的所有写入均被�
   const { problemId, v1 } = await seedProblemWithVersions("lease");
   const { submissionId } = await seedSubmission(problemId, "0", v1);
   const jobId = `conc-lease-job-${ts}`;
+  createdFixtures.jobIds.add(jobId);
   await db.insert(submissionJobs).values({
     id: jobId,
     kind: "rejudge",
@@ -337,6 +353,7 @@ Deno.test({
     const { problemId, v1 } = await seedProblemWithVersions("hb");
     const { submissionId } = await seedSubmission(problemId, actor, v1);
     const jobId = `conc-hb-job-${ts}`;
+    createdFixtures.jobIds.add(jobId);
     await db.insert(submissionJobs).values({
       id: jobId,
       kind: "rejudge",
@@ -405,6 +422,8 @@ Deno.test({
       `conc-requeue-key-${ts}`,
     );
     const jobId = accepted.job_id;
+    createdFixtures.jobIds.add(jobId);
+
     const itemId = (await loadItem(jobId)).id;
 
     const fake = startFakeRedis();
@@ -493,6 +512,8 @@ Deno.test({
       `conc-up-retry-key-${ts}`,
     );
     const jobId = accepted.job_id;
+    createdFixtures.jobIds.add(jobId);
+
     const itemId = (await loadItem(jobId)).id;
 
     const fake = startFakeRedis();
@@ -610,6 +631,8 @@ Deno.test({
       `conc-netfail-key-${ts}`,
     );
     const jobId = accepted.job_id;
+    createdFixtures.jobIds.add(jobId);
+
     const itemId = (await loadItem(jobId)).id;
 
     const prevUrl = Deno.env.get("REDIS_URL") ?? null;
@@ -720,6 +743,7 @@ Deno.test({
       `conc-dual-key-${ts}`,
     );
     const jobId = accepted.job_id;
+    createdFixtures.jobIds.add(jobId);
 
     // 两个 worker 并发领取：SKIP LOCKED 必须保证同一行不被两个 worker 同时占用。
     // （每 worker 只领 1 条：否则先到者会一口气领走全部，掩盖并发语义。）
@@ -780,6 +804,8 @@ Deno.test({
       `conc-status-key-${ts}`,
     );
     const jobId = accepted.job_id;
+    createdFixtures.jobIds.add(jobId);
+
     const itemId = (await loadItem(jobId)).id;
 
     // 并发：一半先写条目终态再聚合，另一半只聚合。
@@ -801,5 +827,57 @@ Deno.test({
       eq(submissionJobs.id, jobId),
     );
     assertEquals(job.status, "completed");
+  },
+});
+
+/**
+ * 文件末尾统一清理（真实 PG 下本文件关闭了 preload 事务，必须显式删除夹具）。
+ *
+ * 依赖 Deno 在单文件内按声明顺序执行测试；清理用例声明在最后。
+ */
+Deno.test({
+  name: "cleanup: 删除本文件在真实 PG 下创建的夹具",
+  ignore: !hasRealPg,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    for (const jobId of createdFixtures.jobIds) {
+      await db.delete(submissionJobItems).where(
+        eq(submissionJobItems.job_id, jobId),
+      );
+      await db.delete(submissionJobs).where(eq(submissionJobs.id, jobId));
+    }
+    // 按题目删除**全部**提交（含派发生成的升级副本，它们不在登记集合里），
+    // 否则其 `submitted_version_id` 外键会阻止删除版本行
+    for (const problemId of createdFixtures.problemIds) {
+      const subs = await db.select({ id: submissions.id }).from(submissions)
+        .where(eq(submissions.problem_id, problemId));
+      for (const row of subs) {
+        await db.delete(evaluationAttempts).where(
+          eq(evaluationAttempts.submission_id, row.id),
+        );
+      }
+      await db.delete(submissions).where(
+        eq(submissions.problem_id, problemId),
+      );
+    }
+    for (const submissionId of createdFixtures.submissionIds) {
+      await db.delete(evaluationAttempts).where(
+        eq(evaluationAttempts.submission_id, submissionId),
+      );
+      await db.delete(submissions).where(eq(submissions.id, submissionId));
+    }
+    for (const problemId of createdFixtures.problemIds) {
+      await db.update(problems).set({ latest_version_id: null }).where(
+        eq(problems.id, problemId),
+      );
+      await db.delete(problemVersions).where(
+        eq(problemVersions.problem_id, problemId),
+      );
+      await db.delete(problems).where(eq(problems.id, problemId));
+    }
+    for (const userId of createdFixtures.userIds) {
+      await db.delete(users).where(eq(users.id, userId));
+    }
   },
 });

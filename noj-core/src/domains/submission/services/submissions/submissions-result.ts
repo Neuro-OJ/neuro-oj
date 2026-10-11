@@ -31,7 +31,7 @@ import {
 import { isAcceptedResult } from "../../../../shared/versioning/verdict.ts";
 import type { AttemptResultKind } from "../../../../shared/versioning/types.ts";
 import { applyAttemptResult } from "../versioning/result-write.ts";
-import { revokeAttemptLlmTokens } from "../versioning/job-worker.ts";
+import { runAttemptTerminalRevocationAfterCommit } from "../versioning/attempts.ts";
 
 // 允许的状态转换
 const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
@@ -270,11 +270,10 @@ export async function saveEvaluationResult(
   // 走**统一的尝试终态后处理**（`revokeAttemptLlmTokens`）：worker/sweeper 的永久
   // 失败、重试耗尽与溃复失败路径共用同一入口，标记 TTL 按尝试快照推导，
   // 覆盖该尝试全部已签发 token 的剩余有效期（不再写死 3600s）。
-  await revokeAttemptLlmTokens({
-    attemptId: outcome.attempt_id ?? null,
-    submissionId: result.submission_id,
-    taskSnapshot: outcome.task_snapshot,
-  });
+  if (outcome.attempt_id) {
+    // 提交后立即尝试；失败保留 outbox pending，由后台消费者重试直到 done
+    await runAttemptTerminalRevocationAfterCommit(outcome.attempt_id);
+  }
 
   // 注：此前此处会在选手首次通过题目时写入社区自动动态（`first_accepted`，metadata
   // 含内部 submission_id）。该功能已按审计 VULN-08 整体下线：事件不携带竞赛上下文，

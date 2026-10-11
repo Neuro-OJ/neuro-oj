@@ -14,6 +14,7 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import {
   evaluationAttempts,
   judgeImages,
+  llmTokenRevocations,
   problems,
   problemVersions,
   submissionJobItems,
@@ -27,6 +28,7 @@ import {
   LLM_REVOCATION_TTL_MARGIN_SECONDS,
   resolveAttemptTokenTtlSeconds,
   revokeAttemptLlmTokens,
+  runPendingTokenRevocations,
   scheduleDispatchRetryOrFail,
 } from "../../services/versioning/job-worker.ts";
 import { dispatchJobItem } from "../../services/versioning/dispatch-job-item.ts";
@@ -559,6 +561,260 @@ Deno.test({
       if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
       else Deno.env.delete("REDIS_URL");
       await fake.stop();
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "revoke#2: Redis 不可用 → 终态已提交且 outbox pending；恢复后补偿 done + 吊销键存在",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const prevUrl = Deno.env.get("REDIS_URL") ?? null;
+    const attemptId = `rev-outbox-attempt-${ts}`;
+    try {
+      // 第一段：Redis 不可用（指向拒绝连接的端口且不建立连接）——吊销必然失败
+      resetRedisForTest();
+      Deno.env.set("REDIS_URL", "redis://127.0.0.1:1/");
+      const actor = await makeUser("outbox");
+      const { problemId, versionId } = await seedProblem("outbox");
+      const submissionId = await seedSubmission(problemId, actor, versionId);
+      const { itemId } = await acceptAndClaim(actor, submissionId);
+      await db.insert(evaluationAttempts).values({
+        id: attemptId,
+        submission_id: submissionId,
+        problem_id: problemId,
+        problem_version_id: versionId,
+        sequence: 0,
+        source: "rejudge",
+        state: "queued",
+        task_snapshot: { runtime_config: dualConfig(LONG_TIME_LIMIT_MS) },
+        created_at: now,
+      });
+      await db.update(submissions).set({
+        active_attempt_id: attemptId,
+        status: "pending",
+      }).where(eq(submissions.id, submissionId));
+      await db.update(submissionJobItems).set({ attempt_id: attemptId }).where(
+        eq(submissionJobItems.id, itemId),
+      );
+
+      const owner = (await loadItem(itemId)).lease_owner as string;
+      assertEquals(
+        await completeJobItem(itemId, {
+          leaseOwner: owner,
+          status: "failed",
+          attemptId,
+          reasonCode: "DISPATCH_PERMANENT_FAILURE",
+          reasonMessage: "Redis 不可用",
+        }),
+        true,
+      );
+      // 终态已提交（条目 failed + 尝试 error），吊销未执行 → outbox 必须有 pending 行
+      assertEquals((await loadItem(itemId)).status, "failed");
+      const [attempt] = await db.select().from(evaluationAttempts).where(
+        eq(evaluationAttempts.id, attemptId),
+      );
+      assertEquals(attempt.state, "error");
+      const pendingRows = await db.select().from(llmTokenRevocations).where(
+        eq(llmTokenRevocations.attempt_id, attemptId),
+      );
+      assertEquals(pendingRows.length, 1);
+      assertEquals(pendingRows[0].state, "pending");
+      // TTL 由快照推导（长寿命 token 场景）
+      assertEquals(
+        pendingRows[0].ttl_seconds,
+        14400 + LLM_REVOCATION_TTL_MARGIN_SECONDS,
+      );
+
+      // 第二段：Redis 恢复 → 后台补偿（sweeper 周期/启动阶段同一入口）→ done + 键存在
+      const fake = startFakeRedis();
+      try {
+        resetRedisForTest();
+        Deno.env.set("REDIS_URL", fake.url);
+        await getRedis().connect();
+        const outcome = await runPendingTokenRevocations();
+        // 断言按"本尝试"收敛：隔离 schema 下可能同时存在其它用例遗留的 pending 行
+        assertEquals(outcome.processed >= 1, true);
+        assertEquals(outcome.completed >= 1, true);
+        const [doneRow] = await db.select().from(llmTokenRevocations).where(
+          eq(llmTokenRevocations.attempt_id, attemptId),
+        );
+        assertEquals(doneRow.state, "done");
+        assertEquals(typeof doneRow.done_at, "string");
+        assertEquals(
+          await getRedis().get(`llm:attempt:revoked:${attemptId}`),
+          "1",
+        );
+        assertEquals(
+          await getRedis().get(`llm:token:revoked:${submissionId}`),
+          "1",
+        );
+      } finally {
+        resetRedisForTest();
+        if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
+        else Deno.env.delete("REDIS_URL");
+        await fake.stop();
+      }
+    } finally {
+      resetRedisForTest();
+      if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
+      else Deno.env.delete("REDIS_URL");
+      // 隔离被关闭（并行 PG 用例）时显式清理本用例的 outbox 行
+      await db.delete(llmTokenRevocations).where(
+        eq(llmTokenRevocations.attempt_id, attemptId),
+      );
+    }
+  },
+});
+
+Deno.test({
+  name: 'revoke#2: 终态已提交、吊销未执行时"进程退出"→ 新进程启动补偿成功',
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const prevUrl = Deno.env.get("REDIS_URL") ?? null;
+    const attemptId = `rev-outbox-restart-${ts}`;
+    try {
+      // 模拟"上一进程"：Redis 不可用，终态提交但吊销失败
+      resetRedisForTest();
+      Deno.env.set("REDIS_URL", "redis://127.0.0.1:1/");
+      const actor = await makeUser("restart");
+      const { problemId, versionId } = await seedProblem("restart");
+      const submissionId = await seedSubmission(problemId, actor, versionId);
+      const { itemId } = await acceptAndClaim(actor, submissionId);
+      await db.insert(evaluationAttempts).values({
+        id: attemptId,
+        submission_id: submissionId,
+        problem_id: problemId,
+        problem_version_id: versionId,
+        sequence: 0,
+        source: "rejudge",
+        state: "queued",
+        task_snapshot: { runtime_config: dualConfig(1000) },
+        created_at: now,
+      });
+      await db.update(submissions).set({
+        active_attempt_id: attemptId,
+        status: "pending",
+      }).where(eq(submissions.id, submissionId));
+      await db.update(submissionJobItems).set({ attempt_id: attemptId }).where(
+        eq(submissionJobItems.id, itemId),
+      );
+      const owner = (await loadItem(itemId)).lease_owner as string;
+      // 直提永久失败：终态提交但吊销失败（Redis 不可用）→ outbox pending
+      assertEquals(
+        await completeJobItem(itemId, {
+          leaseOwner: owner,
+          status: "failed",
+          attemptId,
+          reasonCode: "DISPATCH_PERMANENT_FAILURE",
+          reasonMessage: "Redis 不可用（模拟进程退出前）",
+        }),
+        true,
+      );
+      assertEquals(
+        (await db.select().from(llmTokenRevocations).where(
+          eq(llmTokenRevocations.attempt_id, attemptId),
+        ))[0].state,
+        "pending",
+      );
+
+      // 模拟"新进程启动"：只恢复 Redis 并跑一次补偿（不重复终结尝试）
+      const fake = startFakeRedis();
+      try {
+        resetRedisForTest();
+        Deno.env.set("REDIS_URL", fake.url);
+        await getRedis().connect();
+        // 隔离被关闭时同 schema 可能有其它用例的 pending 行：按"本尝试"断言
+        assertEquals(
+          (await runPendingTokenRevocations()).completed >= 1,
+          true,
+        );
+        assertEquals(
+          (await db.select().from(llmTokenRevocations).where(
+            eq(llmTokenRevocations.attempt_id, attemptId),
+          ))[0].state,
+          "done",
+        );
+        assertEquals(
+          await getRedis().get(`llm:attempt:revoked:${attemptId}`),
+          "1",
+        );
+      } finally {
+        resetRedisForTest();
+        if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
+        else Deno.env.delete("REDIS_URL");
+        await fake.stop();
+      }
+    } finally {
+      resetRedisForTest();
+      if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
+      else Deno.env.delete("REDIS_URL");
+      await db.delete(llmTokenRevocations).where(
+        eq(llmTokenRevocations.attempt_id, attemptId),
+      );
+    }
+  },
+});
+
+Deno.test({
+  name: "revoke#2: superseded 终态同样走 outbox 并可由补偿完成",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const prevUrl = Deno.env.get("REDIS_URL") ?? null;
+    const attemptId = `rev-supersede-attempt-${ts}`;
+    try {
+      resetRedisForTest();
+      Deno.env.set("REDIS_URL", "redis://127.0.0.1:1/");
+      const actor = await makeUser("supersede");
+      const { problemId, versionId } = await seedProblem("supersede");
+      const submissionId = await seedSubmission(problemId, actor, versionId);
+      await db.insert(evaluationAttempts).values({
+        id: attemptId,
+        submission_id: submissionId,
+        problem_id: problemId,
+        problem_version_id: versionId,
+        sequence: 0,
+        source: "rejudge",
+        state: "queued",
+        task_snapshot: { runtime_config: dualConfig(1000) },
+        created_at: now,
+      });
+      const { supersedeAttempt } = await import(
+        "../../services/versioning/attempts.ts"
+      );
+      assertEquals(await supersedeAttempt(attemptId), true);
+      const [row] = await db.select().from(llmTokenRevocations).where(
+        eq(llmTokenRevocations.attempt_id, attemptId),
+      );
+      assertEquals(row.state, "pending");
+
+      const fake = startFakeRedis();
+      try {
+        resetRedisForTest();
+        Deno.env.set("REDIS_URL", fake.url);
+        await getRedis().connect();
+        assertEquals((await runPendingTokenRevocations()).completed >= 1, true);
+        assertEquals(
+          await getRedis().get(`llm:attempt:revoked:${attemptId}`),
+          "1",
+        );
+      } finally {
+        resetRedisForTest();
+        if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
+        else Deno.env.delete("REDIS_URL");
+        await fake.stop();
+      }
+    } finally {
+      resetRedisForTest();
+      if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
+      else Deno.env.delete("REDIS_URL");
+      await db.delete(llmTokenRevocations).where(
+        eq(llmTokenRevocations.attempt_id, attemptId),
+      );
     }
   },
 });

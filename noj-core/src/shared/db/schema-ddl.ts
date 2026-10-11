@@ -1087,6 +1087,20 @@ $$ LANGUAGE plpgsql`,
   `CREATE INDEX IF NOT EXISTS idx_data_requests_user ON data_requests (user_id, created_at)`,
 
   // 23. carousel_slides（首页轮播，与公告解耦，2026-09-24）
+  // 7.8.1 llm_token_revocations（LLM token 吊销 outbox；复审问题 2）
+  `CREATE TABLE IF NOT EXISTS llm_token_revocations (
+    id TEXT PRIMARY KEY, attempt_id TEXT NOT NULL, submission_id TEXT,
+    ttl_seconds INTEGER NOT NULL,
+    state TEXT NOT NULL DEFAULT 'pending'
+      CHECK (state IN ('pending', 'done')),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL, done_at TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_llm_token_revocations_pending
+    ON llm_token_revocations (state, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_llm_token_revocations_attempt
+    ON llm_token_revocations (attempt_id)`,
+
   // 7.9 query_projection_revisions（query 域所有：revision 缓存与物化视图回退）
   `CREATE TABLE IF NOT EXISTS query_projection_revisions (
     scope_key TEXT PRIMARY KEY,
@@ -1137,6 +1151,7 @@ export const ALL_TABLES = [
   "storage_object_reservations",
   "query_projection_revisions",
   "evaluation_attempts",
+  "llm_token_revocations",
   "submission_version_results",
   "submission_jobs",
   "submission_job_items",

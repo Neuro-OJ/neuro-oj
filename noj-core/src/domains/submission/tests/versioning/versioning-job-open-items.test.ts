@@ -343,7 +343,6 @@ Deno.test("dispatch#35: 派发前持久化条目关联，结果先到后派发�
     prepared: {
       attemptId: preparedAttemptId,
       destinationId: "oi-source",
-      sequence: 0,
       taskSnapshot: {
         language: "python",
         problem_version_id: versionId,

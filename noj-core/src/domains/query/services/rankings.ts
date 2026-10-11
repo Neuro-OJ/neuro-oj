@@ -187,6 +187,11 @@ function scheduleRankingsRefresh(freshness: RankingViewFreshness): void {
  * 从同一事务快照刷新榜单，并登记其覆盖的 revision 与刷新时刻。
  * 数据库锁跨副本串行化刷新；只要 revision 或赛期边界落后，读取仍使用内联查询。
  *
+ * **覆盖时刻取数据库事务时钟**（2026-10-11 复审问题 4）：`materialized_at` 来自
+ * 同一事务内的 `transaction_timestamp()`（规范化为 ISO 8601 UTC，毫秒精度），
+ * 与视图定义里 `now()` 的求值时刻完全一致。不能用应用 `new Date()`：刷新事务若
+ * 被行锁阻塞在赛期边界两侧，应用时钟会让"按赛前口径生成"的视图被误判为可信。
+ *
  * **根因说明（2026-10-11 复审纠错）**：此前注释称
  * "`REFRESH MATERIALIZED VIEW CONCURRENTLY` 不允许在事务块内执行（PG 25001）"，
  * 该说法**不成立**——PG 16.15 实测 `BEGIN; REFRESH ... CONCURRENTLY; ROLLBACK;`
@@ -216,15 +221,24 @@ export async function refreshRankingsView(): Promise<void> {
         sql`INSERT INTO query_projection_revisions (scope_key, data_revision, materialized_revision) VALUES ('global', 0, 0) ON CONFLICT (scope_key) DO NOTHING`,
       );
       const revisionResult = await tx.execute(
-        sql`SELECT data_revision FROM query_projection_revisions WHERE scope_key = 'global' FOR UPDATE`,
+        sql`SELECT data_revision,
+              to_char(transaction_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS transaction_iso
+            FROM query_projection_revisions WHERE scope_key = 'global' FOR UPDATE`,
       );
-      const revision = Number(
-        unwrapRows<{ data_revision: number }>(revisionResult as never)[0]
-          .data_revision,
-      );
-      // 刷新前取时刻：刷新期间新结束的竞赛保守地算作"未被覆盖"，
-      // 会让下一次读取再刷新一次，而不是错误地把过期视图标为最新。
-      const refreshedAt = new Date().toISOString();
+      const revisionRow = unwrapRows<
+        { data_revision: number; transaction_iso: string }
+      >(revisionResult as never)[0];
+      const revision = Number(revisionRow.data_revision);
+      // 覆盖时刻必须取**数据库事务时钟**（`transaction_timestamp()`），
+      // 而不是应用 `new Date()`（2026-10-11 复审问题 4）：
+      // 视图定义里的 `now()` 就是本事务的 `transaction_timestamp()`（事务开始即固定），
+      // 若刷新事务在赛前开始、被 revision 行锁阻塞到赛后再继续，应用时钟会落到
+      // 边界另一侧，使"按赛前口径生成"的视图被误判为可信。取同一事务时钟后，
+      // `inspectRankingView()` 的 `materialized_at < end_time <= now()` 必然与视图
+      // 内容口径一致。
+      // 格式必须规范化为 `YYYY-MM-DDTHH:MM:SS.mmmZ`：边界判定与内联查询共用
+      // 同一 ISO 形态守卫，非规范形态会被 fail-closed 视为"未结束"。
+      const refreshedAt = String(revisionRow.transaction_iso);
       await tx.execute(
         sql`REFRESH MATERIALIZED VIEW CONCURRENTLY user_rankings`,
       );

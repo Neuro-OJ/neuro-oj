@@ -27,6 +27,7 @@ import {
   finishAttempt,
   getAttempt,
   isTerminalAttemptState,
+  runAttemptTerminalRevocationAfterCommit,
 } from "./attempts.ts";
 import {
   lockProjectionHosts,
@@ -128,7 +129,13 @@ export async function applyAttemptResult(
   executor?: Executor,
 ): Promise<ApplyAttemptOutcome> {
   if (!executor) {
-    return await getDb().transaction((tx) => applyAttemptResult(input, tx));
+    const outcome = await getDb().transaction((tx) =>
+      applyAttemptResult(input, tx)
+    );
+    if (outcome.applied !== "ignored") {
+      await runAttemptTerminalRevocationAfterCommit(input.attemptId);
+    }
+    return outcome;
   }
   const db = executor;
   const attempt = await getAttempt(input.attemptId, db);

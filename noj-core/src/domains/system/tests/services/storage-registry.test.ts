@@ -21,9 +21,11 @@ import {
   getStorageObject,
   registerLegacyStorageObject,
   registerReadyStorageObject,
+  registerStreamedStorageObject,
   releaseStorageObjectUploadReservation,
   reserveStorageObjectUpload,
   StorageObjectDeletedError,
+  StorageObjectMissingError,
   StorageUploadInFlightError,
   uploadStorageObjectWithReservation,
   verifyStorageObject,
@@ -43,6 +45,27 @@ async function countReservations(storageUrl: string): Promise<number> {
     eq(storageObjectReservations.storage_url, storageUrl),
   );
   return rows.length;
+}
+
+/** 构造一个与 `putStream()` 对接的字节流。 */
+function streamOf(bytes: Uint8Array): ReadableStream<Uint8Array> {
+  return new Blob([bytes as unknown as BlobPart]).stream();
+}
+
+/**
+ * 模拟"后端明确报告对象不存在"的 provider：`stat` 返回 `exists:false`。
+ *
+ * 与 `UnreachableStatProvider`（抛错=无法确认）不同，这里后端**确认缺失**，
+ * 因此流式复核必须拒绝登记与绑定（问题 7 的要求 2）。
+ */
+class MissingStatProvider extends LocalStorageProvider {
+  override stat(_url: string): Promise<StorageObjectStat> {
+    return Promise.resolve({
+      exists: false,
+      sizeBytes: null,
+      lastModified: null,
+    });
+  }
 }
 
 /**
@@ -399,6 +422,113 @@ Deno.test("storage registry: 补偿不得把已删除对象恢复 ready", async 
     "deleted",
   );
   assertEquals(await countReservations(url), 0);
+});
+
+Deno.test("storage registry: 流式复核可把 deleted 恢复 ready——连续两次重传都成功（问题 7）", async () => {
+  const provider = useTempStorage();
+  // 非 zip 内容（contentType 缺省）→ 与 artifact 流式上传一致
+  const bytes = new TextEncoder().encode("streamed-artifact-bytes");
+  const url = await provider.putStream(
+    "artifacts/x.zip",
+    streamOf(bytes),
+    "application/zip",
+  );
+  await registerReadyStorageObject({ storageUrl: url });
+  assertEquals((await deleteStorageObject(url)).outcome, "deleted");
+  assertEquals((await provider.stat(url)).exists, false);
+  await assertRejects(() => assertStorageObjectBindable(url));
+
+  // 复审实测：同一 ZIP 内容寻址 → 同一 URL；流式重传把字节写回，但登记行仍是
+  // deleted。修复前这里永远不会恢复 ready，"重试即可"不成立；现在靠持锁 stat 复核。
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const again = await provider.putStream(
+      "artifacts/x.zip",
+      streamOf(bytes),
+      "application/zip",
+    );
+    assertEquals(again, url);
+    // 上传完成、尚未复核：登记行仍是 deleted（不得凭"写回成功"自动 ready）
+    assertEquals((await getStorageObject(url))?.state, "deleted");
+
+    await registerStreamedStorageObject({ storageUrl: url });
+    const row = await getStorageObject(url);
+    assertEquals(row?.state, "ready");
+    assertEquals(row?.byte_size, bytes.byteLength);
+    // 服务端元数据取自 URL 内嵌 checksum
+    assertEquals(row?.sha256, url.split("checksum_sha256=")[1]);
+    await assertStorageObjectBindable(url);
+    assertEquals((await provider.stat(url)).exists, true);
+
+    // 每轮结束回到 deleted，验证第二轮同样成立
+    assertEquals((await deleteStorageObject(url)).outcome, "deleted");
+  }
+});
+
+Deno.test("storage registry: 流式复核 stat 确认缺失 → 拒绝绑定且不置 ready（问题 7）", async () => {
+  const provider = useTempStorage();
+  const bytes = new TextEncoder().encode("streamed-missing");
+  const url = await provider.putStream(
+    "artifacts/y.zip",
+    streamOf(bytes),
+    "application/zip",
+  );
+  await registerReadyStorageObject({ storageUrl: url });
+  assertEquals((await deleteStorageObject(url)).outcome, "deleted");
+
+  // 字节被重新写回（物理文件存在），但后端报告不存在 → 不得登记 ready
+  const again = await provider.putStream(
+    "artifacts/y.zip",
+    streamOf(bytes),
+    "application/zip",
+  );
+  assertEquals(again, url);
+  setStorageProviderForTest(new MissingStatProvider(tempStorageDir));
+  await assertRejects(
+    () => registerStreamedStorageObject({ storageUrl: url }),
+    StorageObjectMissingError,
+  );
+  assertEquals((await getStorageObject(url))?.state, "deleted");
+  await assertRejects(() => assertStorageObjectBindable(url));
+});
+
+Deno.test("storage registry: 流式复核 stat 抛错不得改写登记状态（#13 同源）", async () => {
+  const provider = useTempStorage();
+  const bytes = new TextEncoder().encode("streamed-unreachable");
+  const url = await provider.putStream(
+    "artifacts/z.zip",
+    streamOf(bytes),
+    "application/zip",
+  );
+  await registerReadyStorageObject({ storageUrl: url });
+  assertEquals((await deleteStorageObject(url)).outcome, "deleted");
+
+  setStorageProviderForTest(
+    new UnreachableStatProvider(tempStorageDir, new Error("ETIMEDOUT")),
+  );
+  await assertRejects(
+    () => registerStreamedStorageObject({ storageUrl: url }),
+    Error,
+    "ETIMEDOUT",
+  );
+  // "无法确认"不等于"不存在"：不得把登记行改成 ready，也不得拒绑定以外的副作用
+  assertEquals((await getStorageObject(url))?.state, "deleted");
+});
+
+Deno.test("storage registry: 首次流式上传复核直接登记 ready", async () => {
+  useTempStorage();
+  const bytes = new TextEncoder().encode("streamed-first-upload");
+  const provider = await getStorageProvider();
+  const url = await provider.putStream(
+    "artifacts/first.zip",
+    streamOf(bytes),
+    "application/zip",
+  );
+  assertEquals(await getStorageObject(url), null);
+  await registerStreamedStorageObject({ storageUrl: url });
+  const row = await getStorageObject(url);
+  assertEquals(row?.state, "ready");
+  assertEquals(row?.sha256, url.split("checksum_sha256=")[1]);
+  assertEquals(row?.byte_size, bytes.byteLength);
 });
 
 Deno.test("storage registry: 带预约上传（reserve→put→ready）URL 可预测且预约被消费", async () => {

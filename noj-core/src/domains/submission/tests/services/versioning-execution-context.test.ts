@@ -14,7 +14,10 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   evaluationAttempts,
+  llmTokenRevocations,
+  judgeImages,
   problems,
+  problemVersionObjects,
   problemVersions,
   queryProjectionRevisions,
   selfTests,
@@ -42,6 +45,8 @@ import {
 import type { ProblemContentV1 } from "../../../catalog/index.ts";
 import { setStorageProviderForTest } from "../../../system/services/storage/factory.ts";
 import { LocalStorageProvider } from "../../../system/services/storage/local.ts";
+import { buildStorageUrl } from "../../../system/services/storage/types.ts";
+import { _resetSystemSettingsForTest } from "../../../system/services/system-settings.ts";
 import { startFakeRedis } from "../mq/_setup.ts";
 import {
   getRedis,
@@ -58,12 +63,87 @@ function useTempStorage(): LocalStorageProvider {
   return provider;
 }
 
+class TrackingLocalStorageProvider extends LocalStorageProvider {
+  putCount = 0;
+  uploadedUrls: string[] = [];
+  failNextDownloadUrl = false;
+  downloadUrlOverride?: string;
+
+  override async putStream(
+    key: string,
+    stream: ReadableStream<Uint8Array>,
+    contentType?: string,
+    maxSizeBytes?: number,
+  ): Promise<string> {
+    this.putCount++;
+    const url = await super.putStream(key, stream, contentType, maxSizeBytes);
+    this.uploadedUrls.push(url);
+    return url;
+  }
+
+  override downloadUrl(
+    storageUrl: string,
+    expiresIn?: number,
+  ): Promise<string> {
+    if (this.failNextDownloadUrl) {
+      this.failNextDownloadUrl = false;
+      return Promise.reject(new Error("download URL test failure"));
+    }
+    if (this.downloadUrlOverride !== undefined) {
+      return Promise.resolve(this.downloadUrlOverride);
+    }
+    return super.downloadUrl(storageUrl, expiresIn);
+  }
+}
+
+function stubLlmGatewayProvider(enabled: boolean): () => void {
+  const envNames = [
+    "NOJ_LLM_DEFAULT_PROVIDER_ID",
+    "NOJ_LLM_DEFAULT_MODEL",
+    "NOJ_LLM_SERVICE_TOKEN",
+    "NOJ_LLM_GATEWAY_URL",
+  ] as const;
+  const oldEnv = envNames.map((name) => [name, Deno.env.get(name)] as const);
+  const originalFetch = globalThis.fetch;
+  Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", "prov-default");
+  Deno.env.set("NOJ_LLM_DEFAULT_MODEL", "test-model");
+  Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "test-service-token-0123456789abcdef");
+  Deno.env.set("NOJ_LLM_GATEWAY_URL", "http://llm-gateway.test");
+  _resetSystemSettingsForTest();
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(JSON.stringify({
+        data: {
+          id: "prov-default",
+          name: "test",
+          base_url: "http://provider.test",
+          cost_per_1k_tokens: 0,
+          api_key_masked: "sk-****",
+          enabled,
+          created_at: now,
+          updated_at: now,
+        },
+      }), { status: 200, headers: { "Content-Type": "application/json" } }),
+    )) as typeof fetch;
+  return () => {
+    globalThis.fetch = originalFetch;
+    for (const [name, value] of oldEnv) {
+      if (value === undefined) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    }
+    _resetSystemSettingsForTest();
+  };
+}
+
 interface VersionSpec {
   command: string;
   timeLimitMs: number;
   template: string;
   artifactMaxSizeMb: number | null;
   submissionMode: "code" | "artifact";
+  evaluatorImage?: string;
+  solutionImage?: string;
+  llmConfig?: Record<string, unknown> | null;
 }
 
 /** 构造一份 `kind = ai` 的版本内容。 */
@@ -76,20 +156,20 @@ function aiContent(spec: VersionSpec): Record<string, unknown> {
     submission_mode: spec.submissionMode,
     runtime_config: {
       evaluator: {
-        image: "noj-evaluator-python",
+        image: spec.evaluatorImage ?? "noj-evaluator-python",
         command: spec.command,
         time_limit_ms: spec.timeLimitMs,
         memory_limit_mb: 256,
       },
       solution: {
-        image: "noj-solution-python",
+        image: spec.solutionImage ?? "noj-solution-python",
         call_timeout_ms: 1000,
         memory_limit_mb: 256,
       },
     },
     template_content: spec.template,
     artifact_max_size_mb: spec.artifactMaxSizeMb,
-    llm_config: null,
+    llm_config: spec.llmConfig ?? null,
   };
 }
 
@@ -445,10 +525,274 @@ Deno.test("execution result: 非法评分按平台错误处理，不产生正式
   assertEquals(after.effective_attempt_id, null);
 });
 
-Deno.test("execution context: 上传失败补偿不得删除共享对象（#11）", async () => {
-  const provider = useTempStorage();
+Deno.test("artifact preflight: Provider 停用时上传文件由统一补偿清理", async () => {
   const db = getDb();
-  const now2 = new Date().toISOString();
+  const provider = new TrackingLocalStorageProvider(tempStorageDir);
+  setStorageProviderForTest(provider);
+  await seedTwoVersions(
+    "ec-p8-provider",
+    985019,
+    {
+      command: "python3 /workspace/evaluate_v1.py",
+      timeLimitMs: 1111,
+      template: "v1",
+      artifactMaxSizeMb: 5,
+      submissionMode: "artifact",
+    },
+    {
+      command: "python3 /workspace/evaluate_v2.py",
+      timeLimitMs: 2222,
+      template: "v2",
+      artifactMaxSizeMb: 5,
+      submissionMode: "artifact",
+      llmConfig: { max_calls: 2, max_tokens: 1000 },
+    },
+  );
+
+  const restoreLlm = stubLlmGatewayProvider(false);
+
+  try {
+    await assertRejects(
+      () =>
+        createArtifactSubmission("0", {
+          problem_id: "ec-p8-provider",
+          file_name: "submission.zip",
+          file_stream: zipStream(2048),
+          version_id: "ec-p8-provider-v2",
+        }),
+      Error,
+      "已停用",
+    );
+    assertEquals(provider.putCount, 1);
+    const uploadedUrl = provider.uploadedUrls[0];
+    assertEquals((await provider.stat(uploadedUrl)).exists, false);
+    const [object] = await db.select().from(storageObjects).where(
+      eq(storageObjects.storage_url, uploadedUrl),
+    );
+    assertEquals(object.state, "deleted");
+    assertEquals(
+      (await db.select().from(submissions).where(
+        eq(submissions.problem_id, "ec-p8-provider"),
+      )).length,
+      0,
+    );
+  } finally {
+    restoreLlm();
+  }
+});
+
+Deno.test({
+  name: "initial dispatch: code 与 artifact 永久入队失败都登记并执行吊销 outbox",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const fake = startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL") ?? null;
+    const restoreLlm = stubLlmGatewayProvider(true);
+    const db = getDb();
+    try {
+      resetRedisForTest();
+      Deno.env.set("REDIS_URL", fake.url);
+      await getRedis().connect();
+
+      const codeProblemId = "ec-p8-outbox-code";
+      await seedTwoVersions(
+        codeProblemId,
+        985022,
+        {
+          command: "python3 /workspace/evaluate_v1.py",
+          timeLimitMs: 1111,
+          template: "v1",
+          artifactMaxSizeMb: null,
+          submissionMode: "code",
+          llmConfig: { max_calls: 2, max_tokens: 1000 },
+        },
+        {
+          command: "python3 /workspace/evaluate_v2.py",
+          timeLimitMs: 2222,
+          template: "v2",
+          artifactMaxSizeMb: null,
+          submissionMode: "code",
+          llmConfig: { max_calls: 2, max_tokens: 1000 },
+        },
+      );
+      await assertRejects(
+        () =>
+          createSubmission("0", {
+            problem_id: codeProblemId,
+            language: "python3",
+            code: "x".repeat(16 * 1024 * 1024 + 1024),
+            version_id: `${codeProblemId}-v2`,
+          }),
+        Error,
+        "队列暂时不可用",
+      );
+      const [codeSubmission] = await db.select().from(submissions).where(
+        eq(submissions.problem_id, codeProblemId),
+      );
+      assertEquals(codeSubmission.status, "error");
+      const [codeAttempt] = await db.select().from(evaluationAttempts).where(
+        eq(evaluationAttempts.submission_id, codeSubmission.id),
+      );
+      assertEquals("llm_execution" in codeAttempt.task_snapshot, true);
+      const [codeRevocation] = await db.select().from(llmTokenRevocations)
+        .where(eq(llmTokenRevocations.attempt_id, codeAttempt.id));
+      assertEquals(codeRevocation.state, "done");
+      assertEquals(
+        await getRedis().get(`llm:attempt:revoked:${codeAttempt.id}`),
+        "1",
+      );
+
+      const artifactProblemId = "ec-p8-outbox-artifact";
+      await seedTwoVersions(
+        artifactProblemId,
+        985023,
+        {
+          command: "python3 /workspace/evaluate_v1.py",
+          timeLimitMs: 1111,
+          template: "v1",
+          artifactMaxSizeMb: 5,
+          submissionMode: "artifact",
+          llmConfig: { max_calls: 2, max_tokens: 1000 },
+        },
+        {
+          command: "python3 /workspace/evaluate_v2.py",
+          timeLimitMs: 2222,
+          template: "v2",
+          artifactMaxSizeMb: 5,
+          submissionMode: "artifact",
+          llmConfig: { max_calls: 2, max_tokens: 1000 },
+        },
+      );
+      const provider = new TrackingLocalStorageProvider(tempStorageDir);
+      provider.downloadUrlOverride = "x".repeat(16 * 1024 * 1024 + 1024);
+      setStorageProviderForTest(provider);
+      await assertRejects(
+        () =>
+          createArtifactSubmission("0", {
+            problem_id: artifactProblemId,
+            file_name: "submission.zip",
+            file_stream: zipStream(2048),
+            version_id: `${artifactProblemId}-v2`,
+          }),
+        Error,
+        "队列暂时不可用",
+      );
+      const [artifactSubmission] = await db.select().from(submissions).where(
+        eq(submissions.problem_id, artifactProblemId),
+      );
+      assertEquals(artifactSubmission.status, "error");
+      const [artifactAttempt] = await db.select().from(evaluationAttempts)
+        .where(eq(evaluationAttempts.submission_id, artifactSubmission.id));
+      assertEquals("llm_execution" in artifactAttempt.task_snapshot, true);
+      const [artifactRevocation] = await db.select().from(llmTokenRevocations)
+        .where(eq(llmTokenRevocations.attempt_id, artifactAttempt.id));
+      assertEquals(artifactRevocation.state, "done");
+      assertEquals(
+        await getRedis().get(`llm:attempt:revoked:${artifactAttempt.id}`),
+        "1",
+      );
+      // 永久入队失败在任务未派发成功的情况下终结了尝试；不把它描述成 token 已送达 judge。
+    } finally {
+      restoreLlm();
+      resetRedisForTest();
+      if (previousRedisUrl === null) Deno.env.delete("REDIS_URL");
+      else Deno.env.set("REDIS_URL", previousRedisUrl);
+      await fake.stop();
+    }
+  },
+});
+
+Deno.test("artifact preflight: 停用镜像与丢失支持包均在上传前拒绝", async () => {
+  const db = getDb();
+  const provider = new TrackingLocalStorageProvider(tempStorageDir);
+  setStorageProviderForTest(provider);
+  await seedTwoVersions(
+    "ec-p8-image",
+    985020,
+    {
+      command: "python3 /workspace/evaluate_v1.py",
+      timeLimitMs: 1111,
+      template: "v1",
+      artifactMaxSizeMb: 5,
+      submissionMode: "artifact",
+    },
+    {
+      command: "python3 /workspace/evaluate_v2.py",
+      timeLimitMs: 2222,
+      template: "v2",
+      artifactMaxSizeMb: 5,
+      submissionMode: "artifact",
+      solutionImage: "noj-solution-pr622-disabled",
+    },
+  );
+  await assertRejects(
+    () =>
+      createArtifactSubmission("0", {
+        problem_id: "ec-p8-image",
+        file_name: "submission.zip",
+        file_stream: zipStream(2048),
+        version_id: "ec-p8-image-v2",
+      }),
+    Error,
+    "不在允许列表",
+  );
+  assertEquals(provider.putCount, 0, "镜像预检失败不得先上传产物");
+
+  await seedTwoVersions(
+    "ec-p8-package",
+    985021,
+    {
+      command: "python3 /workspace/evaluate_v1.py",
+      timeLimitMs: 1111,
+      template: "v1",
+      artifactMaxSizeMb: 5,
+      submissionMode: "artifact",
+    },
+    {
+      command: "python3 /workspace/evaluate_v2.py",
+      timeLimitMs: 2222,
+      template: "v2",
+      artifactMaxSizeMb: 5,
+      submissionMode: "artifact",
+    },
+  );
+  const missingPackageUrl = buildStorageUrl(
+    "local",
+    `missing-support-${crypto.randomUUID()}`,
+    "0".repeat(64),
+  );
+  await db.insert(storageObjects).values({
+    storage_url: missingPackageUrl,
+    sha256: null,
+    byte_size: null,
+    state: "unknown",
+    created_at: now,
+  });
+  await db.insert(problemVersionObjects).values({
+    version_id: "ec-p8-package-v2",
+    role: "support_package",
+    path: "package.zip",
+    storage_url: missingPackageUrl,
+  });
+  await assertRejects(
+    () =>
+      createArtifactSubmission("0", {
+        problem_id: "ec-p8-package",
+        file_name: "submission.zip",
+        file_stream: zipStream(2048),
+        version_id: "ec-p8-package-v2",
+      }),
+    Error,
+    "支持包已缺失",
+  );
+  assertEquals(provider.putCount, 0, "支持包预检失败不得先上传产物");
+});
+
+Deno.test("execution context: 上传后失败补偿不得删除共享对象（#11）", async () => {
+  const provider = new TrackingLocalStorageProvider(tempStorageDir);
+  setStorageProviderForTest(provider);
+  const db = getDb();
 
   // 题目 A：正常 artifact 题，先成功落库并引用内容寻址对象
   await seedTwoVersions(
@@ -470,49 +814,24 @@ Deno.test("execution context: 上传失败补偿不得删除共享对象（#11�
     },
   );
 
-  // 题目 B：版本内容声明 ai/artifact，但 runtime_config 是 OI → 上传后才会失败
-  await db.insert(problems).values({
-    id: "ec-p8b",
-    title: "ec-p8b",
-    description: "d",
-    type: "P",
-    number: 985018,
-    owner_id: "0",
-    difficulty: "easy",
-    judge_type: "dual",
-    submission_mode: "artifact",
-    runtime_config: { backend: "native", languages: ["c"] },
-    created_at: now2,
-    updated_at: now2,
-  });
-  await db.insert(problemVersions).values({
-    id: "ec-p8b-v1",
-    problem_id: "ec-p8b",
-    version: 1,
-    origin: "published",
-    content: {
-      kind: "ai",
-      title: "ec-p8b",
-      description: "d",
-      samples: [],
-      submission_mode: "artifact",
-      // OI 形状的 runtime_config：isOiRuntimeConfig 为 true
-      runtime_config: {
-        backend: "native",
-        languages: ["c"],
-        time_limit_ms: 1000,
-        memory_limit_mb: 256,
-        checker: { type: "default" },
-        subtasks: [],
-      },
-      template_content: "",
-      artifact_max_size_mb: 5,
-      llm_config: null,
+  // 题目 B 也允许 artifact；第二次相同字节上传后故意让下载 URL 生成失败。
+  await seedTwoVersions(
+    "ec-p8b",
+    985018,
+    {
+      command: "python3 /workspace/evaluate_v1.py",
+      timeLimitMs: 1111,
+      template: "v1",
+      artifactMaxSizeMb: 5,
+      submissionMode: "artifact",
     },
-    published_at: now2,
-  });
-  await db.update(problems).set({ latest_version_id: "ec-p8b-v1" }).where(
-    eq(problems.id, "ec-p8b"),
+    {
+      command: "python3 /workspace/evaluate_v2.py",
+      timeLimitMs: 2222,
+      template: "v2",
+      artifactMaxSizeMb: 5,
+      submissionMode: "artifact",
+    },
   );
 
   const bytes = new Uint8Array(2048);
@@ -539,19 +858,21 @@ Deno.test("execution context: 上传失败补偿不得删除共享对象（#11�
   const sharedUrl = bound.artifact_storage_url!;
   assertEquals((await provider.stat(sharedUrl)).exists, true);
 
-  // 第二个请求上传**相同字节**（内容寻址 → 同一 URL），随后在 OI 校验处失败：
+  // 第二个请求上传**相同字节**（内容寻址 → 同一 URL），随后下载 URL 生成失败：
   // 补偿不得删除已被第一个提交引用的共享对象。
+  provider.failNextDownloadUrl = true;
   await assertRejects(
     () =>
       createArtifactSubmission("0", {
         problem_id: "ec-p8b",
         file_name: "submission.zip",
         file_stream: streamOf(),
-        version_id: "ec-p8b-v1",
+        version_id: "ec-p8b-v2",
       }),
     Error,
-    "OI 题目不支持 artifact 提交",
+    "无法生成 artifact 下载地址",
   );
+  assertEquals(provider.putCount, 2);
   assertEquals(
     (await db.select().from(submissions).where(
       eq(submissions.problem_id, "ec-p8b"),

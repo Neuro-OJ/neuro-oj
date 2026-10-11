@@ -167,6 +167,77 @@ function normalizeLimitKey(value: string): string {
   return value.trim().toLowerCase().slice(0, 128);
 }
 
+/**
+ * `shared/rate-limit/rate-limit.ts` 的内部 Redis 键前缀（该模块未导出）。
+ *
+ * 需要**复用同一计数键**的场景（升级副本额度脚本、故障注入测试）必须与本模块的
+ * `enforceRateLimit` 落到完全相同的键上，否则会出现"两套额度"。
+ */
+const SHARED_RATE_LIMIT_KEY_PREFIX = "ratelimit";
+
+/**
+ * 正常提交的额度桶。三类提交各自独立计数（键前缀与阈值必须与对应 `enforce*` 一致）：
+ *
+ * | bucket | 正常提交入口 | 键前缀 | 阈值常量 |
+ * |---|---|---|---|
+ * | `code` | `enforceSubmissionRateLimit` | `submission:user:` | {@link SUBMISSION_USER_LIMIT} |
+ * | `contest_code` | `enforceContestSubmissionRateLimit` | `contest-submission:user:` | {@link CONTEST_SUBMISSION_USER_LIMIT} |
+ * | `objective` | `enforceObjectiveSubmitRateLimit` | `objective-submit:user:` | {@link OBJECTIVE_SUBMIT_USER_LIMIT} |
+ */
+export type SubmissionQuotaBucket = "code" | "contest_code" | "objective";
+
+/**
+ * 额度桶 → 正常提交的键前缀与窗口配置（单一事实源）。
+ *
+ * 升级副本必须"占用与它等价的正常提交额度"：代码升级扣代码桶、竞赛内升级扣
+ * 竞赛提交桶、客观题升级扣客观题桶，否则用户可以用另一种题型的额度绕过限制
+ * （2026-10-11 复审问题 6）。
+ */
+export const SUBMISSION_QUOTA_BUCKETS: Record<
+  SubmissionQuotaBucket,
+  { keyPrefix: string; limit: RateLimitConfig }
+> = {
+  code: { keyPrefix: "submission:user:", limit: SUBMISSION_USER_LIMIT },
+  contest_code: {
+    keyPrefix: "contest-submission:user:",
+    limit: CONTEST_SUBMISSION_USER_LIMIT,
+  },
+  objective: {
+    keyPrefix: "objective-submit:user:",
+    limit: OBJECTIVE_SUBMIT_USER_LIMIT,
+  },
+};
+
+/**
+ * 指定额度桶的**用户额度 Redis 键**（与对应 `enforce*` 完全同键）。
+ *
+ * 归一化规则与 `enforceRateLimit` 逐字一致（`trim` + 小写 + 截断 128），因此
+ * 升级副本额度脚本直接对同一键做 INCR/PEXPIRE 就等价于"占用该桶的正常提交额度"。
+ *
+ * @param bucket 额度桶（缺省调用方显式给出；`code` 为普通代码提交）
+ * @param userId 提交用户（升级场景传**原用户**，不是操作者）
+ * @returns 完整 Redis 键，例如 `ratelimit:hardening:submission:user:<uuid>`
+ */
+export function submissionQuotaRedisKey(
+  bucket: SubmissionQuotaBucket,
+  userId: string,
+): string {
+  const { keyPrefix } = SUBMISSION_QUOTA_BUCKETS[bucket];
+  return `${SHARED_RATE_LIMIT_KEY_PREFIX}:hardening:${
+    normalizeLimitKey(`${keyPrefix}${userId}`)
+  }`;
+}
+
+/**
+ * 普通**代码**提交的用户额度键（`submissionQuotaRedisKey("code", userId)` 的别名）。
+ *
+ * @param userId 提交用户
+ * @returns 完整 Redis 键 `ratelimit:hardening:submission:user:<uuid>`
+ */
+export function submissionUserQuotaRedisKey(userId: string): string {
+  return submissionQuotaRedisKey("code", userId);
+}
+
 export async function enforceRateLimit(
   key: string,
   cfg: RateLimitConfig,

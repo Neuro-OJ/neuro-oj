@@ -258,7 +258,22 @@ export async function finishAttempt(
   input: FinishAttemptInput,
   executor?: Executor,
 ): Promise<boolean> {
-  const db = executor ?? getDb();
+  if (!executor) {
+    const applied = await getDb().transaction((tx) => finishAttempt(input, tx));
+    if (applied) {
+      await runAttemptTerminalRevocationAfterCommit(input.attemptId);
+    }
+    return applied;
+  }
+  const db = executor;
+  const [attempt] = await db.select({
+    submission_id: evaluationAttempts.submission_id,
+    objective_submission_id: evaluationAttempts.objective_submission_id,
+    task_snapshot: evaluationAttempts.task_snapshot,
+  }).from(evaluationAttempts).where(
+    eq(evaluationAttempts.id, input.attemptId),
+  ).limit(1);
+  if (!attempt) return false;
   const now = new Date().toISOString();
   const rows = await db.update(evaluationAttempts).set({
     state: input.resultKind === "graded" ? "finished" : "error",
@@ -277,7 +292,49 @@ export async function finishAttempt(
       sql`${evaluationAttempts.state} NOT IN ('finished', 'error', 'superseded')`,
     ),
   ).returning({ id: evaluationAttempts.id });
-  return rows.length > 0;
+  if (rows.length === 0) return false;
+  await registerAttemptTerminalRevocation(db, {
+    attemptId: input.attemptId,
+    submissionId: attempt.submission_id ?? attempt.objective_submission_id,
+    taskSnapshot: attempt.task_snapshot,
+  });
+  return true;
+}
+
+/**
+ * 在终态写事务内登记吊销 outbox。所有终态写路径复用此服务，Redis 的执行仍须等
+ * 事务提交后；worker/sweeper 仅负责调用同一个 post-commit drain。
+ */
+export async function registerAttemptTerminalRevocation(
+  executor: Executor,
+  input: {
+    attemptId: string;
+    submissionId?: string | null;
+    taskSnapshot: unknown;
+  },
+): Promise<void> {
+  const { enqueueAttemptTokenRevocation, resolveAttemptTokenTtlSeconds } =
+    await import("./job-worker.ts");
+  await enqueueAttemptTokenRevocation(executor, {
+    attemptId: input.attemptId,
+    submissionId: input.submissionId,
+    ttlSeconds: resolveAttemptTokenTtlSeconds(input.taskSnapshot),
+  });
+}
+
+/**
+ * 提交后 best-effort 执行已登记的吊销 outbox。任何 Redis/DB 异常都留给 pending
+ * 消费者重试，不能把已提交的评测终态变成对调用方可见的失败。
+ */
+export async function runAttemptTerminalRevocationAfterCommit(
+  attemptId: string,
+): Promise<void> {
+  try {
+    const { attemptTokenRevocationNow } = await import("./job-worker.ts");
+    await attemptTokenRevocationNow(attemptId);
+  } catch {
+    // outbox 已持久化，后台消费者负责补偿。
+  }
 }
 
 /**
@@ -298,6 +355,12 @@ export async function supersedeAttempt(
   executor?: Executor,
 ): Promise<boolean> {
   const apply = async (db: Executor): Promise<boolean> => {
+    const [attempt] = await db.select({
+      submissionId: evaluationAttempts.submission_id,
+      objectiveSubmissionId: evaluationAttempts.objective_submission_id,
+      snapshot: evaluationAttempts.task_snapshot,
+    }).from(evaluationAttempts).where(eq(evaluationAttempts.id, attemptId))
+      .limit(1);
     const rows = await db.update(evaluationAttempts).set({
       state: "superseded",
       finished_at: new Date().toISOString(),
@@ -307,32 +370,20 @@ export async function supersedeAttempt(
         sql`${evaluationAttempts.state} NOT IN ('finished', 'error', 'superseded')`,
       ),
     ).returning({ id: evaluationAttempts.id });
-    return rows.length > 0;
+    if (rows.length === 0) return false;
+    // **同一事务**登记吊销 outbox（复审问题 2）。
+    await registerAttemptTerminalRevocation(db, {
+      attemptId,
+      submissionId: attempt?.submissionId ??
+        attempt?.objectiveSubmissionId ?? null,
+      taskSnapshot: attempt?.snapshot ?? null,
+    });
+    return true;
   };
 
   if (executor) return await apply(executor);
 
   const applied = await getDb().transaction((tx) => apply(tx));
-  if (applied) await revokeSupersededAttemptTokens(attemptId);
+  if (applied) await runAttemptTerminalRevocationAfterCommit(attemptId);
   return applied;
-}
-
-/**
- * 终态提交后吊销该尝试的 token（动态导入 job-worker，避免
- * attempts → job-worker → result-write → attempts 的静态循环）。
- *
- * 同时写尝试维度键与提交维度旧键；Redis 不可用/失败时静默（不影响已提交终态，
- * 由 sweeper 与日志兜底）。
- */
-async function revokeSupersededAttemptTokens(attemptId: string): Promise<void> {
-  try {
-    const attempt = await getAttempt(attemptId);
-    const { revokeAttemptLlmTokens } = await import("./job-worker.ts");
-    await revokeAttemptLlmTokens({
-      attemptId,
-      submissionId: attempt?.submission_id ?? null,
-    });
-  } catch {
-    // 吊销失败不得影响已提交的业务终态
-  }
 }
