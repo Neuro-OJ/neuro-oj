@@ -21,7 +21,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
-import type { Executor } from "../../../../shared/db/executor.ts";
+import type { Executor, RootDb } from "../../../../shared/db/executor.ts";
 import {
   objectiveSubmissions,
   problems,
@@ -36,6 +36,7 @@ import type {
   SubmissionJobItemStatus,
 } from "../../../../shared/versioning/types.ts";
 import {
+  lockEffectivePolicyHosts,
   setContestProblemEffectiveVersionPolicy,
   setProblemEffectiveVersionPolicy,
 } from "./effective-policy.ts";
@@ -430,13 +431,24 @@ async function planItems(
 /**
  * 受理管理员重测任务。
  *
+ * 锁序（Handbook §5.1）：受理事务在任何策略写入与投影重算**之前**，先按 ID 升序
+ * 锁定全部相关题目，再按 ID 升序锁定全部相关竞赛，一次拿全；随后才进入策略写入、
+ * 提交投影、revision 递增与条目写入。旧的"逐项改策略时边重算边取下一场竞赛锁"
+ * 会在持有 global revision 锁的情况下继续抢竞赛锁，与并发批量受理成环（40P01）。
+ *
  * @param actorId 操作者（幂等键与 actor 绑定）
  * @param idempotencyKey 客户端幂等键（必填）
+ * @param testRootDb **测试专用注入点，生产调用一律省略**。仅当测试模式连接池被固定为
+ *   `max: 1`（`TEST_SCHEMA` / `NOJ_ENV=test`）时，`getDb()` 无法让两次受理真正并发，
+ *   真实 PostgreSQL 屏障用例需要注入一条独立原生根连接才能驱动本受理路径。
+ *   **省略时行为完全不变**（走 `getDb()` 单例，事务与锁序语义一致）；无论是否注入，
+ *   本函数都在自己的事务里执行全部读写，宿主锁持有到整批提交。
  */
 export async function acceptRejudgeJob(
   actorId: string,
   request: RejudgeRequest,
   idempotencyKey: string,
+  testRootDb?: RootDb,
 ): Promise<AcceptJobResult> {
   if (!idempotencyKey || idempotencyKey.length > 128) {
     throw new AppError(
@@ -445,7 +457,7 @@ export async function acceptRejudgeJob(
       "IDEMPOTENCY_KEY_REQUIRED",
     );
   }
-  const db = getDb();
+  const db = testRootDb ?? getDb();
   const normalized = normalizeRejudgeRequest(request);
   const requestHash = await hashRequest(normalized);
 
@@ -472,7 +484,7 @@ export async function acceptRejudgeJob(
   const jobId = crypto.randomUUID();
   let jobStatus: "queued" | "completed" = "queued";
   try {
-    await db.transaction(async (tx) => {
+    const write = async (tx: Executor): Promise<void> => {
       const members = await resolveScopeItems(normalized.scope, tx);
       planned = await planItems(members, normalized.target, tx);
       // §4.3：策略变更必须显式作用域，且只能作用于任务包含的题目/竞赛。
@@ -482,20 +494,30 @@ export async function acceptRejudgeJob(
         new Set(planned.map((item) => item.problem_id)),
         members,
       );
-      // 策略与任务必须原子提交。按宿主排序获取锁，避免不同批次反向修改导致死锁。
+      // §5.1 固定锁序：**先按 ID 升序锁定全部相关题目，再按 ID 升序锁定全部相关
+      // 竞赛（去重）**，一次拿全；全部宿主锁到手后才进入策略写入、提交投影、
+      // revision 递增与条目写入阶段。
+      //
+      // 相关宿主 = 本次批量策略修改要改写的宿主（`policy_changes` 的题目与竞赛）：
+      // 题目策略写在 `problems` 行上、竞赛策略写在 `contest_problems` 行上，
+      // 两者的投影重算分别写提交行并递增 `problem:*` / `contest:*` / `global`
+      // 的 projection revision。
+      //
+      // 反例（修复前）：先只锁题目，再按 changes 顺序逐项"取竞赛锁 → 重算投影 →
+      // 递增 global revision"，于是一个请求可能已持有 global revision 锁却仍在
+      // 抢下一场竞赛锁；两批**题目不相交、竞赛相交**的请求各自先拿到一场对方
+      // 也要的竞赛 → 环 → PostgreSQL 40P01。`changes.sort()` 只是必要条件：
+      // 题目升序无法决定竞赛的获取顺序。
       const changes = [...(normalized.policy_changes ?? [])].sort((a, b) =>
         a.problem_id.localeCompare(b.problem_id) ||
         (a.contest_id ?? "").localeCompare(b.contest_id ?? "")
       );
-      for (
-        const problemId of [
-          ...new Set(changes.map((change) => change.problem_id)),
-        ].sort()
-      ) {
-        await tx.select({ id: problems.id }).from(problems).where(
-          eq(problems.id, problemId),
-        ).for("update");
-      }
+      await lockEffectivePolicyHosts(tx, {
+        problemIds: changes.map((change) => change.problem_id),
+        contestIds: changes.map((change) => change.contest_id).filter(
+          (contestId): contestId is string => !!contestId,
+        ),
+      });
       for (const change of changes) {
         const input = {
           policy: change.policy,
@@ -552,8 +574,14 @@ export async function acceptRejudgeJob(
           })),
         );
       }
-    });
+    };
+    // 必须在**自己的事务**里执行：宿主锁与全部写入要么一起提交，要么一起回滚。
+    // （测试注入根连接时同样在此开启真实事务；否则语句各自 autocommit，
+    // 预取的宿主锁会在下一条语句前释放，锁序协议就失去意义。）
+    await db.transaction((tx) => write(tx));
   } catch (error) {
+    // 注入测试根连接时不重读：由调用方决定回滚与错误映射（屏障测试要观察原始错误）。
+    if (testRootDb) throw error;
     // 幂等键竞态：并发受理同键 → 返回先写入的那个任务
     const [raced] = await db.select().from(submissionJobs).where(
       and(
@@ -829,6 +857,13 @@ export async function hashRetryRequest(
 /**
  * 重试任务：只包含 `failed` / `skipped` 条目，生成**关联新任务**，
  * 保留目标版本映射，**不再次修改有效策略**。
+ *
+ * 锁序（Handbook §5.1）：本入口不写有效策略、不重算投影（重试请求的
+ * `policy_changes` 恒为空，条目沿用父任务固定的目标版本），因此不获取任何
+ * 题目/竞赛宿主锁，只在本事务内插入 `submission_jobs` / `submission_job_items`
+ * 行——不参与「题目 → 竞赛 → 提交 → 尝试 → revision」争用，也就不可能与批量
+ * 策略修改入口互相成环。若将来在此引入策略/竞赛锁，必须改为调用
+ * `lockEffectivePolicyHosts` 一次拿全（题目升序 → 竞赛升序），而不是逐项获取。
  */
 export async function retryRejudgeJob(
   actorId: string,

@@ -108,6 +108,12 @@ type TestTransactionState =
 let _testTransactionState: TestTransactionState = { status: "idle" };
 let _testTransactionDisabled = false;
 let _savepointSeq = 0;
+/** savepoint 事务串行队列：测试连接只有一条，兄弟事务不能交错。 */
+let _savepointQueue: Promise<unknown> = Promise.resolve();
+/** 回滚失败后置位：连接上的事务已不可继续使用，后续 savepoint 事务立即报错。 */
+let _savepointBroken = false;
+/** 当前 savepoint 事务嵌套深度；>0 表示内层调用，必须直接执行而不是排队。 */
+let _savepointDepth = 0;
 let _testTransactionProxy: DbClient | null = null;
 
 /**
@@ -356,11 +362,18 @@ function createTestTransactionDb(realDb: DbClient): DbClient {
 /**
  * 在测试事务内模拟嵌套事务：SAVEPOINT / RELEASE / ROLLBACK TO。
  *
- * `_savepointSeq` **不随测试事务重启而重置**：savepoint 名在同一连接上必须单调
- * 递增。若按用例重置为 0，上一个用例的迟到语句（连接池 max:1 下排队/延迟执行的
- * 查询）会与新用例新建的 savepoint 重名，导致 `RELEASE/ROLLBACK TO SAVEPOINT`
- * 命中错误的 savepoint 甚至把它释放掉，把一个正常的用例变成
- * `savepoint "noj_sp_N" does not exist` → `current transaction is aborted` 的假失败。
+ * 两条不变量（2026-10-11 复审修正）：
+ *
+ * 1. **兄弟事务串行化**：测试事务只用一条连接（测试模式 `max: 1`），而
+ *    `SAVEPOINT`/`RELEASE` 是**连接级**状态。若两个 `db.transaction()` 回调交错
+ *    执行，先完成的那个 `RELEASE` 会连带释放后创建的 savepoint，后一个再
+ *    `RELEASE` 就报 `3B001`，而 PostgreSQL 事务在中止后无法自行恢复——表现为
+ *    "两个事务都返回成功，下一条查询却报 `25P02`"的假成功。
+ *    因此这里用一条 Promise 队列把 savepoint 事务**串行**执行。
+ * 2. **记账错误不吞**：成功路径的 `RELEASE` 失败必须抛出（否则调用方会把已中止的
+ *    事务当成成功）；回滚路径只保留回调的原始异常，但一旦 `ROLLBACK TO SAVEPOINT`
+ *    本身失败，说明连接上的事务已不可继续使用，必须标记为损坏，后续调用立即报错，
+ *    而不是继续返回结果。
  */
 async function savepointTransaction(
   callback: (tx: DbClient) => unknown,
@@ -370,39 +383,60 @@ async function savepointTransaction(
   if (state.status !== "active") {
     throw new Error("savepointTransaction 只能在 active 测试事务内调用");
   }
-  const db = state.rawDb;
-  const name = `noj_sp_${_savepointSeq++}`;
-  await db.execute(sql`SAVEPOINT ${sql.raw(name)}`);
-  try {
-    const result = await callback(_testTransactionProxy!);
-    await savepointBookkeeping(db, `RELEASE SAVEPOINT ${name}`);
-    return result;
-  } catch (err) {
-    // 先按序回滚 savepoint，再释放；两者都只是记账，不能覆盖回调抛出的真实错误。
-    await savepointBookkeeping(db, `ROLLBACK TO SAVEPOINT ${name}`);
-    await savepointBookkeeping(db, `RELEASE SAVEPOINT ${name}`);
-    throw err;
+  if (_savepointBroken) {
+    throw new Error(
+      "测试事务已损坏（savepoint 回滚失败，连接事务不可继续使用）：请让该用例使用独立连接",
+    );
   }
+  // 嵌套调用（同一逻辑事务内的内层 db.transaction）必须**直接执行**：
+  // 外层正持有队列，若内层也去排队就会与外层互等（死锁）。
+  // 只有"兄弟"（最外层、彼此独立）事务才需要串行化。
+  if (_savepointDepth > 0) {
+    return await runSavepointTransaction(callback);
+  }
+  const run = () => runSavepointTransaction(callback);
+  const chained = _savepointQueue.then(run, run);
+  _savepointQueue = chained.then(() => undefined, () => undefined);
+  return await chained;
 }
 
-/**
- * savepoint 记账语句：只忽略"已被外层/迟到语句连带释放"这类竞态错误。
- *
- * - `3B001` savepoint 不存在：外层 RELEASE 会连带释放内层 savepoint，属并发/迟到
- *   语句竞态；此时数据变更已发生，测试继续更接近真实语义。
- * - `25P02` 事务已中止：回调自身的真实错误已在 catch 中重新抛出，记账阶段的
- *   "事务已中止"不能让真实错误被替换成误导性的 savepoint 报错。
- */
-async function savepointBookkeeping(
-  db: DbClient,
-  statement: string,
-): Promise<void> {
+/** 单次 savepoint 事务的实际执行（由 savepointTransaction 串行调度）。 */
+async function runSavepointTransaction(
+  callback: (tx: DbClient) => unknown,
+): Promise<unknown> {
+  if (_savepointBroken) {
+    throw new Error("测试事务已损坏：savepoint 回滚失败，连接事务不可继续使用");
+  }
+  const state = _testTransactionState;
+  if (state.status !== "active") {
+    throw new Error("savepointTransaction 只能在 active 测试事务内调用");
+  }
+  const db = state.rawDb;
+  // savepoint 名在同一连接上单调递增（不随用例重置），避免与迟到语句重名。
+  const name = `noj_sp_${_savepointSeq++}`;
+  _savepointDepth++;
   try {
-    await db.execute(sql.raw(statement));
-  } catch (err) {
-    const code = (err as { code?: string }).code ??
-      (err as { cause?: { code?: string } }).cause?.code;
-    if (code !== "3B001" && code !== "25P02") throw err;
+    await db.execute(sql`SAVEPOINT ${sql.raw(name)}`);
+    try {
+      const result = await callback(_testTransactionProxy!);
+      // 成功路径：RELEASE 失败必须传播，不能声明成功。
+      await db.execute(sql.raw(`RELEASE SAVEPOINT ${name}`));
+      return result;
+    } catch (err) {
+      try {
+        await db.execute(sql.raw(`ROLLBACK TO SAVEPOINT ${name}`));
+        await db.execute(sql.raw(`RELEASE SAVEPOINT ${name}`));
+      } catch (rollbackErr) {
+        // 回滚失败：连接事务已不可继续使用。保留原始异常，但标记损坏。
+        _savepointBroken = true;
+        logger.error("测试事务 savepoint 回滚失败，标记连接事务损坏", {
+          rollbackErr,
+        });
+      }
+      throw err;
+    }
+  } finally {
+    _savepointDepth--;
   }
 }
 
@@ -418,6 +452,8 @@ async function startRealTransaction(): Promise<void> {
   if (isPGliteMode()) {
     if (!_pgliteInstance) return; // DB 尚未初始化，保持 pending
     await _pgliteInstance.query("BEGIN");
+    // 新事务开始：上一次回滚失败导致的"损坏"状态随 ROLLBACK 失效。
+    _savepointBroken = false;
     const realDb = getDb();
     const proxy = createTestTransactionDb(realDb);
     _testTransactionState = {
@@ -448,6 +484,7 @@ async function startRealTransaction(): Promise<void> {
   }
   const realDb = getDb();
   await realDb.execute(sql`BEGIN`);
+  _savepointBroken = false;
   const proxy = createTestTransactionDb(realDb);
   _testTransactionState = {
     status: "active",

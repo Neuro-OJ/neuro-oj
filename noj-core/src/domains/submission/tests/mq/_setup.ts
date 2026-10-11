@@ -330,6 +330,17 @@ function handleEval(
   const keys = args.slice(2, 2 + numKeys);
   const argv = args.slice(2 + numKeys);
 
+  // 升级额度幂等占位（`upgrade-quota.ts`）：`SET key value PX ttl NX`。
+  // 与下面的离线迁移脚本区分：那条是 `'SET',KEYS[1]`（无空格）且返回字符串 OK。
+  if (
+    script.includes("'SET'") && script.includes("'PX'") &&
+    script.includes("'NX'")
+  ) {
+    if (queues.has(keys[0])) return renderRespInteger(0);
+    queues.set(keys[0], [argv[0]]);
+    return renderRespInteger(1);
+  }
+
   // 离线迁移契约的锁与尾部比较搬运；真实 CI Redis 仍执行原 Lua 脚本。
   if (script.includes("'SET',KEYS[1]") && script.includes("'NX'")) {
     if (queues.has(keys[0])) return renderRespNull();

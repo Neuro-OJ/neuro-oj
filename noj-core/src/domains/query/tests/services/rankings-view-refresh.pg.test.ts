@@ -23,20 +23,28 @@ import {
   getDb,
 } from "../../../../shared/db/connection.ts";
 import {
+  contests,
   evaluationAttempts,
   objectiveSubmissions,
   problems,
   submissions,
   users,
 } from "../../../../shared/db/schema.ts";
-import { getGlobalRankings, refreshRankingsView } from "../../index.ts";
+import {
+  getGlobalRankings,
+  inspectRankingView,
+  refreshRankingsView,
+} from "../../index.ts";
+import { updateContest } from "../../../contest/index.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 
 const hasPg = !!Deno.env.get("DATABASE_URL");
 
-// 本文件专门验证物化视图刷新：`REFRESH MATERIALIZED VIEW CONCURRENTLY` 不允许在
-// 事务块内执行，且 `refreshRankingsView()` 在测试事务内主动跳过（见 rankings.ts）。
-// 因此必须关闭 preload 事务包装；用例自带唯一 runId 夹具并显式清理。
+// 本文件专门验证物化视图刷新：`refreshRankingsView()` 会真实执行
+// `REFRESH MATERIALIZED VIEW CONCURRENTLY`（该语句**允许**在事务块内执行，见
+// rankings.ts 的根因勘误），并在测试事务内主动跳过（`isInsideTestTransaction()`
+// 短路，属测试适配）。因此这里关闭 preload 事务包装，让刷新真正跑起来；
+// 用例自带唯一 runId 夹具并显式清理。
 if (hasPg) disableTestTransactionForFile();
 
 const now = new Date().toISOString();
@@ -64,6 +72,27 @@ async function bumpGlobalRevision(): Promise<void> {
   await getDb().execute(
     sql`INSERT INTO query_projection_revisions (scope_key, data_revision, materialized_revision) VALUES ('global', 1, 0) ON CONFLICT (scope_key) DO UPDATE SET data_revision = query_projection_revisions.data_revision + 1`,
   );
+}
+
+/** 读取视图里某用户的聚合行（不存在返回 null）。 */
+async function readViewRow(userId: string): Promise<
+  {
+    solved_count: number;
+    total_submissions: number;
+  } | null
+> {
+  const result = await getDb().execute(
+    sql`SELECT solved_count, total_submissions FROM user_rankings WHERE user_id = ${userId}`,
+  );
+  const rows = unwrapRows<{ solved_count: number; total_submissions: number }>(
+    result as never,
+  );
+  return rows[0] ?? null;
+}
+
+/** 极短等待；用于让竞赛自然跨越 end_time（问题 8 的"无写入也过期"场景）。 */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 Deno.test({
@@ -236,5 +265,354 @@ Deno.test({
     await refreshRankingsView();
     const cleaned = await readRevisions();
     assertEquals(cleaned.materialized, cleaned.data);
+  },
+});
+
+// ── 2026-10-11 复审问题 8：赛期边界新鲜度 ─────────────────────────────────────
+
+interface BoundaryFixture {
+  userId: string;
+  problemIds: string[];
+  contestIds: string[];
+  submissionIds: string[];
+}
+
+/** 竞赛用 public 形态：`updateContest` 对邀请赛要求非空邀请码，与本用例无关。 */
+async function seedBoundaryContest(
+  fixture: BoundaryFixture,
+  runId: string,
+  tag: string,
+  endTime: string,
+  affectGlobalRanking = true,
+): Promise<string> {
+  const contestId = `pg-b-c-${tag}-${runId}`;
+  await getDb().insert(contests).values({
+    id: contestId,
+    title: `PG 赛期边界-${tag}`,
+    start_time: new Date(Date.now() - 3_600_000).toISOString(),
+    end_time: endTime,
+    type: "kaggle",
+    config: {},
+    kind: "public",
+    is_public: true,
+    affect_global_ranking: affectGlobalRanking,
+    created_by: fixture.userId,
+    created_at: now,
+    updated_at: now,
+  });
+  fixture.contestIds.push(contestId);
+  return contestId;
+}
+
+async function seedBoundaryAcceptance(
+  fixture: BoundaryFixture,
+  runId: string,
+  tag: string,
+  contestId: string | null,
+  number: number,
+): Promise<void> {
+  const problemId = `pg-b-p-${tag}-${runId}`;
+  const submissionId = `pg-b-s-${tag}-${runId}`;
+  const attemptId = `pg-b-a-${tag}-${runId}`;
+  await getDb().insert(problems).values({
+    id: problemId,
+    title: `PG 赛期边界题-${tag}`,
+    description: "d",
+    difficulty: "easy",
+    runtime_config: null,
+    number,
+    owner_id: fixture.userId,
+    type: "P",
+    visibility: "public",
+    created_at: now,
+    updated_at: now,
+  });
+  await getDb().insert(submissions).values({
+    id: submissionId,
+    user_id: fixture.userId,
+    problem_id: problemId,
+    contest_id: contestId,
+    language: "python3",
+    code: "print(1)",
+    status: "finished",
+    is_valid: true,
+    is_accepted: true,
+    created_at: now,
+  });
+  await getDb().insert(evaluationAttempts).values({
+    id: attemptId,
+    submission_id: submissionId,
+    problem_id: problemId,
+    sequence: 0,
+    source: "initial",
+    state: "finished",
+    result_kind: "graded",
+    result_status: "finished",
+    score: FULL_SCORE,
+    accepted: true,
+    created_at: now,
+    finished_at: now,
+  });
+  await getDb().update(submissions).set({
+    latest_attempt_id: attemptId,
+    effective_attempt_id: attemptId,
+  }).where(eq(submissions.id, submissionId));
+  fixture.problemIds.push(problemId);
+  fixture.submissionIds.push(submissionId);
+}
+
+async function cleanupBoundaryFixture(fixture: BoundaryFixture): Promise<void> {
+  if (fixture.submissionIds.length > 0) {
+    await getDb().delete(evaluationAttempts).where(
+      inArray(evaluationAttempts.submission_id, fixture.submissionIds),
+    );
+    await getDb().delete(submissions).where(
+      inArray(submissions.id, fixture.submissionIds),
+    );
+  }
+  if (fixture.contestIds.length > 0) {
+    await getDb().delete(contests).where(
+      inArray(contests.id, fixture.contestIds),
+    );
+  }
+  if (fixture.problemIds.length > 0) {
+    await getDb().delete(problems).where(
+      inArray(problems.id, fixture.problemIds),
+    );
+  }
+  await getDb().delete(users).where(eq(users.id, fixture.userId));
+  // 清掉视图里的测试行，避免污染同一 schema 的后续用例
+  await refreshRankingsView();
+}
+
+Deno.test({
+  name:
+    "rankings view(#8-①): 赛期自然结束且无任何新写入时，视图不再可信、内联口径正确",
+  ignore: !hasPg,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const runId = crypto.randomUUID().slice(0, 8);
+    const fixture: BoundaryFixture = {
+      userId: `pg-b-user-${runId}`,
+      problemIds: [],
+      contestIds: [],
+      submissionIds: [],
+    };
+    await db.insert(users).values({
+      id: fixture.userId,
+      username: `pg-b-${runId}`,
+      email: `pg-b-${runId}@example.com`,
+      password_hash: "hash",
+      created_at: now,
+      updated_at: now,
+    });
+    // 竞赛在 0.6s 后自然结束；提交先落库并通过刷新进入"未结束"口径
+    const contestId = await seedBoundaryContest(
+      fixture,
+      runId,
+      "a",
+      new Date(Date.now() + 600).toISOString(),
+    );
+    await seedBoundaryAcceptance(fixture, runId, "a", contestId, 990101);
+
+    try {
+      await refreshRankingsView();
+      assertEquals(
+        await readViewRow(fixture.userId),
+        null,
+        "刷新时竞赛尚未结束，视图不应包含该用户",
+      );
+      const fresh = await inspectRankingView();
+      assertEquals(fresh.trusted, true, "刚刷新且未跨赛期边界时视图可信");
+
+      // 关键：此后**没有任何写入**，只是时钟跨过了 end_time
+      await sleep(1000);
+      const stale = await inspectRankingView();
+      assertEquals(stale.trusted, false, "跨越 end_time 后视图必须被判落后");
+      assertEquals(stale.stale_by_boundary, true, "落后原因必须是赛期边界");
+      assertEquals(
+        stale.data_revision,
+        stale.materialized_revision,
+        "本场景 revision 完全不变，落后只能由赛期边界解释",
+      );
+
+      const page = await getGlobalRankings({ page: 1, limit: 100 });
+      const row = page.data.find((item) => item.user_id === fixture.userId);
+      assertExists(row, "内联口径必须已计入结束竞赛的提交");
+      assertEquals(row.solved_count, 1);
+      assertEquals(row.total_submissions, 1);
+    } finally {
+      await cleanupBoundaryFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name: "rankings view(#8-②): 刷新后再跨过一个结束边界仍需刷新",
+  ignore: !hasPg,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const runId = crypto.randomUUID().slice(0, 8);
+    const fixture: BoundaryFixture = {
+      userId: `pg-b2-user-${runId}`,
+      problemIds: [],
+      contestIds: [],
+      submissionIds: [],
+    };
+    await db.insert(users).values({
+      id: fixture.userId,
+      username: `pg-b2-${runId}`,
+      email: `pg-b2-${runId}@example.com`,
+      password_hash: "hash",
+      created_at: now,
+      updated_at: now,
+    });
+    const firstContest = await seedBoundaryContest(
+      fixture,
+      runId,
+      "b1",
+      new Date(Date.now() + 400).toISOString(),
+    );
+    await seedBoundaryAcceptance(fixture, runId, "b1", firstContest, 990102);
+
+    try {
+      // 等第一个竞赛结束后再刷新：此时视图口径与内联一致，可信
+      await sleep(700);
+      await refreshRankingsView();
+      const trusted = await inspectRankingView();
+      assertEquals(trusted.trusted, true, "跨越边界后刷新，视图应恢复可信");
+      const viewRow = await readViewRow(fixture.userId);
+      assertExists(viewRow);
+      assertEquals(viewRow.solved_count, 1);
+
+      // 再引入一个"刷新之后才结束"的竞赛：跨过它的 end_time 后必须再次落后
+      const secondContest = await seedBoundaryContest(
+        fixture,
+        runId,
+        "b2",
+        new Date(Date.now() + 400).toISOString(),
+      );
+      await seedBoundaryAcceptance(fixture, runId, "b2", secondContest, 990103);
+      await sleep(700);
+
+      const staleAgain = await inspectRankingView();
+      assertEquals(
+        staleAgain.trusted,
+        false,
+        "刷新之后新结束的竞赛必须让视图再次落后",
+      );
+      assertEquals(staleAgain.stale_by_boundary, true);
+      // 视图仍是刷新时的快照（只有 1 题通过），内联已经能看到 2 题
+      const staleViewRow = await readViewRow(fixture.userId);
+      assertExists(staleViewRow);
+      assertEquals(staleViewRow.solved_count, 1, "视图尚未刷新");
+
+      const page = await getGlobalRankings({ page: 1, limit: 100 });
+      const row = page.data.find((item) => item.user_id === fixture.userId);
+      assertExists(row);
+      assertEquals(row.solved_count, 2, "内联口径必须已计入第二个竞赛");
+    } finally {
+      await cleanupBoundaryFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "rankings view(#8-③): 修改 end_time / affect_global_ranking 立即失效（无需等边界）",
+  ignore: !hasPg,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const runId = crypto.randomUUID().slice(0, 8);
+    const fixture: BoundaryFixture = {
+      userId: `pg-b3-user-${runId}`,
+      problemIds: [],
+      contestIds: [],
+      submissionIds: [],
+    };
+    await db.insert(users).values({
+      id: fixture.userId,
+      username: `pg-b3-${runId}`,
+      email: `pg-b3-${runId}@example.com`,
+      password_hash: "hash",
+      created_at: now,
+      updated_at: now,
+    });
+    // 初始：竞赛已结束但 affect_global_ranking=false → 提交不计入全站榜
+    const contestId = await seedBoundaryContest(
+      fixture,
+      runId,
+      "c",
+      new Date(Date.now() - 60_000).toISOString(),
+      false,
+    );
+    await seedBoundaryAcceptance(fixture, runId, "c", contestId, 990104);
+
+    try {
+      await bumpGlobalRevision();
+      await refreshRankingsView();
+      const trusted = await inspectRankingView();
+      assertEquals(trusted.trusted, true, "测试前提：刷新后视图可信");
+      assertEquals(
+        await readViewRow(fixture.userId),
+        null,
+        "不计入全局榜的竞赛提交不应进入视图",
+      );
+
+      // ① 改 affect_global_ranking → 必须立即递增 global revision 并失效
+      const revisionBefore = (await readRevisions()).data;
+      await updateContest(contestId, { affect_global_ranking: true }, true);
+      assertEquals(
+        (await readRevisions()).data,
+        revisionBefore + 1,
+        "改 affect_global_ranking 必须递增 global data_revision",
+      );
+      const afterAffect = await inspectRankingView();
+      assertEquals(afterAffect.trusted, false, "改开关后视图必须立即不可信");
+      assertEquals(
+        afterAffect.stale_by_boundary,
+        false,
+        "本场景由 revision 导致落后，而非赛期边界",
+      );
+      const included = await getGlobalRankings({ page: 1, limit: 100 });
+      assertEquals(
+        included.data.find((item) => item.user_id === fixture.userId)
+          ?.solved_count,
+        1,
+        "开关生效后内联口径必须立即计入",
+      );
+
+      // ② 改 end_time 到未来 → 再次立即失效
+      const beforeEndTime = (await readRevisions()).data;
+      await updateContest(
+        contestId,
+        { end_time: new Date(Date.now() + 3_600_000).toISOString() },
+        true,
+      );
+      assertEquals(
+        (await readRevisions()).data,
+        beforeEndTime + 1,
+        "改 end_time 必须递增 global data_revision",
+      );
+      assertEquals(
+        (await inspectRankingView()).trusted,
+        false,
+        "改结束时间后视图必须立即不可信",
+      );
+      const excluded = await getGlobalRankings({ page: 1, limit: 100 });
+      assertEquals(
+        excluded.data.find((item) => item.user_id === fixture.userId),
+        undefined,
+        "竞赛重新变为进行中后，内联口径必须立即排除该提交（用户无通过记录 → 不上榜）",
+      );
+    } finally {
+      await cleanupBoundaryFixture(fixture);
+    }
   },
 });

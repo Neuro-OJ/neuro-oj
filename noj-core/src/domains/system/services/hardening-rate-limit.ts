@@ -182,6 +182,49 @@ export async function enforceRateLimit(
   }
 }
 
+/**
+ * 非抛出的固定窗口计数检查（worker 侧「额度不足 → 延期」语义用）。
+ *
+ * 与 {@link enforceRateLimit} 共用**同一 key 归一化**与配置对象，因此传入相同
+ * `submission:user:<id>` 键时会与普通提交共享同一个窗口计数器——这正是
+ * 升级副本「占用原用户正常提交额度」的实现基础（2026-10-11 复审问题 9）。
+ *
+ * 语义差异（相对 `enforceRateLimit`）：
+ * - 不抛 `RateLimitedError`，返回 `{ allowed, retryAfterMs }` 供调用方**延期重试**
+ *   而不是把任务判失败；
+ * - 限流总开关关闭（`NOJ_ENV=test` 默认）时直接放行，保持既有测试与开发语义；
+ * - Redis 不可用时 **fail-closed**：按"额度不足"返回一个窗口长度的延时候选，
+ *   让调用方稍后重试，绝不因为限流服务抖动而放行无限额度。
+ *
+ * @param key 未归一化的逻辑键（与 `enforceRateLimit` 传入值一致）
+ * @param cfg 窗口配置（默认值由调用方决定）
+ * @returns `allowed=false` 时 `retryAfterMs` 为距窗口重置的建议等待时长
+ */
+export async function tryConsumeRateLimit(
+  key: string,
+  cfg: RateLimitConfig,
+): Promise<{ allowed: boolean; retryAfterMs: number }> {
+  if (!isRateLimitEnabled()) return { allowed: true, retryAfterMs: 0 };
+  try {
+    const result = await checkRateLimit(
+      `hardening:${normalizeLimitKey(key)}`,
+      cfg,
+    );
+    return {
+      allowed: result.allowed,
+      retryAfterMs: result.allowed
+        ? 0
+        : Math.max(1000, result.retryAfter * 1000),
+    };
+  } catch {
+    // fail-closed：限流服务不可用时按额度不足处理（调用方延期重试）
+    return {
+      allowed: false,
+      retryAfterMs: Math.max(1000, cfg.windowSec * 1000),
+    };
+  }
+}
+
 /** 注册端点：按客户端 IP 限流。 */
 export async function enforceRegisterRateLimit(c: Context): Promise<void> {
   await enforceRateLimit(

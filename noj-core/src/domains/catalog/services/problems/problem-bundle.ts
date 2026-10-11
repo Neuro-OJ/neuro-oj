@@ -30,7 +30,7 @@ import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "catalog"]);
 import { checkPermission } from "./../../../identity/index.ts";
-import { getStorageProvider } from "./../../../system/index.ts";
+import { uploadStorageObjectWithReservation } from "./../../../system/index.ts";
 import {
   parseBundleZip,
   readBundleTemplate,
@@ -75,7 +75,6 @@ import {
   saveProblemDraft,
   saveProblemDraftWithObjects,
 } from "../versioning/draft.ts";
-import { registerLegacyStorageObject } from "../../../system/index.ts";
 import { deleteStorageObject } from "../../../system/index.ts";
 import { publishProblemVersion } from "../versioning/publish.ts";
 
@@ -296,7 +295,6 @@ export async function importProblemBundle(
 
   // 5. 剥离元数据，重建纯净评测包
   const strippedZip = stripMetadataEntries(file.data);
-  const storage = await getStorageProvider();
 
   // 5.1 编辑器初始代码模板：**随包上传、导入时持久化**（与题面 `description`
   //     同策略）。此前模板只在请求时按 `manifest.number + title` 去服务器本地
@@ -331,7 +329,6 @@ export async function importProblemBundle(
         description,
         actor,
         c,
-        storage,
         strippedZip,
         templateContent,
       );
@@ -342,7 +339,6 @@ export async function importProblemBundle(
         number,
         actor,
         c,
-        storage,
         strippedZip,
         templateContent,
       );
@@ -355,7 +351,6 @@ export async function importProblemBundle(
       number,
       actor,
       c,
-      storage,
       strippedZip,
       templateContent,
     );
@@ -427,7 +422,6 @@ async function updateExisting(
   description: string,
   actor: BundleImportActor,
   c: Context | undefined,
-  storage: Awaited<ReturnType<typeof getStorageProvider>>,
   strippedZip: Uint8Array,
   templateContent: string,
 ): Promise<ProblemResponseWithTags> {
@@ -455,11 +449,14 @@ async function updateExisting(
   const expectedRevision = rawRevision === undefined
     ? draft.revision
     : Number(rawRevision.replace(/^"|"$/g, ""));
-  const storageUrl = await storage.put(
-    buildPackageKey(`${problemId}/${crypto.randomUUID()}`),
-    strippedZip,
-    "application/zip",
-  );
+  // Handbook §2.5：物理上传之前先写上传预约（reserve → put → 登记 ready）。
+  // 若先 put 再取登记行锁，并发删除会把刚写回的文件删掉，随后登记出
+  // "ready 但物理缺失"的幽灵对象（2026-10-11 复审问题 1）。
+  const { storageUrl } = await uploadStorageObjectWithReservation({
+    key: buildPackageKey(`${problemId}/${crypto.randomUUID()}`),
+    bytes: strippedZip,
+    contentType: "application/zip",
+  });
   try {
     const updated = await updateProblem(
       problemId,
@@ -757,7 +754,6 @@ async function createViaCrud(
   number: number | undefined,
   actor: BundleImportActor,
   c: Context | undefined,
-  storage: Awaited<ReturnType<typeof getStorageProvider>>,
   strippedZip: Uint8Array,
   templateContent: string,
 ): Promise<ProblemResponseWithTags> {
@@ -868,12 +864,12 @@ async function createViaCrud(
     await syncProblemTags(id, tagIds);
   }
 
-  // 注册评测包并回填
-  const storageUrl = await storage.put(
-    buildPackageKey(id),
-    strippedZip,
-    "application/zip",
-  );
+  // 注册评测包并回填（先预约再物理上传，上传成功后登记 ready 并消费预约）
+  const { storageUrl } = await uploadStorageObjectWithReservation({
+    key: buildPackageKey(id),
+    bytes: strippedZip,
+    contentType: "application/zip",
+  });
   await db
     .update(problems)
     .set({ support_package_storage_url: storageUrl, updated_at: now })
@@ -882,7 +878,6 @@ async function createViaCrud(
   // 导入是内容写入者：创建路径直接插题目行，需补建共享草稿并把支持包绑定到
   // **草稿**引用，`--publish` 才有内容与文件可固定（Handbook §5.3 第 7 步）。
   await syncProblemDraftFromProjection(id, actor.userId);
-  await registerLegacyStorageObject(storageUrl);
   await replaceDraftObjectsForRole(id, "support_package", [{
     path: "package.zip",
     storage_url: storageUrl,

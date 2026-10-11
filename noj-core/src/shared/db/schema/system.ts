@@ -277,6 +277,35 @@ export const ipBans = pgTable(
  * 检查全部引用，再进入 `deleting`；新引用不能绑定 `deleting/deleted` 对象。
  * 上传补偿不得直接 `storage.delete()`——本地内容寻址会返回共享对象。
  */
+/**
+ * 对象上传 reservation（2026-10-11 复审问题 1）。
+ *
+ * 物理上传发生在登记之前，删除守卫无法从 `storage_objects.state` 看出"有上传在途"，
+ * 于是"删除在途 + 并发重传同一内容"会得到 `state=ready` 但物理文件已被删除的对象。
+ *
+ * 契约：
+ * - 任何物理上传**之前**必须先在本表写入 reservation（与登记行锁同一事务）；
+ * - 删除守卫在持有登记行锁时检查未过期 reservation，存在则拒绝删除（可重试）；
+ * - 上传成功并完成引用绑定后删除 reservation（同一事务）。
+ */
+export const storageObjectReservations = pgTable(
+  "storage_object_reservations",
+  {
+    reservation_id: text("reservation_id").primaryKey(),
+    /** 目标对象 URL；可能早于 `storage_objects` 登记行存在，故不设外键。 */
+    storage_url: text("storage_url").notNull(),
+    reserved_at: text("reserved_at").notNull(),
+    /** 过期时间：crash 遗留的 reservation 不会永久阻塞删除。 */
+    expires_at: text("expires_at").notNull(),
+  },
+  (table) => ({
+    urlIdx: index("idx_storage_object_reservations_url").on(table.storage_url),
+    expiresIdx: index("idx_storage_object_reservations_expires").on(
+      table.expires_at,
+    ),
+  }),
+);
+
 export const storageObjects = pgTable(
   "storage_objects",
   {

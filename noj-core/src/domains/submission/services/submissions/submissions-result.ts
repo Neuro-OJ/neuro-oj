@@ -22,8 +22,6 @@ import type { JudgeResult, SubmissionStatus } from "../../types/index.ts";
 import { applyNewResult, refreshRankingsView } from "../../../query/index.ts";
 import { filterUnendedContestIds } from "../../../contest/index.ts";
 import { getLogger } from "@logtape/logtape";
-import { getRedis } from "./../../../../shared/mq/connection.ts";
-
 const logger = getLogger(["noj", "submission"]);
 import { Channels } from "./../../../../shared/sse/event-bus.ts";
 import {
@@ -33,6 +31,7 @@ import {
 import { isAcceptedResult } from "../../../../shared/versioning/verdict.ts";
 import type { AttemptResultKind } from "../../../../shared/versioning/types.ts";
 import { applyAttemptResult } from "../versioning/result-write.ts";
+import { revokeAttemptLlmTokens } from "../versioning/job-worker.ts";
 
 // 允许的状态转换
 const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
@@ -232,6 +231,8 @@ export async function saveEvaluationResult(
       applied: true,
       attempt_applied: attemptApplied,
       attempt_id: attemptId,
+      // 冻结快照：终态后处理据此推导已签发 token 的 TTL 上界（§6.7）
+      task_snapshot: attempt.task_snapshot,
       created_at: sub.created_at,
       contest_id: sub.contest_id,
       user_id: sub.user_id,
@@ -266,28 +267,14 @@ export async function saveEvaluationResult(
   //
   // 版本化后按**尝试**吊销（Handbook §6.7）：`llm:attempt:revoked:<attempt_id>`
   // 只终结这一次执行；同一提交重测签发的新 token 走新键，不会被旧吊销误杀。
-  // 提交维度的旧键继续写，用于吊销旧协议（无 attempt_id）token。
-  try {
-    const redis = getRedis();
-    if (redis.status === "ready") {
-      if (outcome.attempt_id) {
-        void redis.set(
-          `llm:attempt:revoked:${outcome.attempt_id}`,
-          "1",
-          "EX",
-          3600,
-        );
-      }
-      void redis.set(
-        `llm:token:revoked:${result.submission_id}`,
-        "1",
-        "EX",
-        3600,
-      );
-    }
-  } catch {
-    // ignore
-  }
+  // 走**统一的尝试终态后处理**（`revokeAttemptLlmTokens`）：worker/sweeper 的永久
+  // 失败、重试耗尽与溃复失败路径共用同一入口，标记 TTL 按尝试快照推导，
+  // 覆盖该尝试全部已签发 token 的剩余有效期（不再写死 3600s）。
+  await revokeAttemptLlmTokens({
+    attemptId: outcome.attempt_id ?? null,
+    submissionId: result.submission_id,
+    taskSnapshot: outcome.task_snapshot,
+  });
 
   // 注：此前此处会在选手首次通过题目时写入社区自动动态（`first_accepted`，metadata
   // 含内部 submission_id）。该功能已按审计 VULN-08 整体下线：事件不携带竞赛上下文，

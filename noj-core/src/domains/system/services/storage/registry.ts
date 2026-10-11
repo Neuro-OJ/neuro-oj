@@ -1,29 +1,46 @@
 /**
  * 存储对象登记与删除互斥（Handbook §2.5）。
  *
- * 三条不可协商的规则：
+ * 四条不可协商的规则：
  * 1. **新引用不能绑定 `deleting` / `deleted` 对象**——绑定前必须
  *    `assertStorageObjectBindable()`。
- * 2. **删除必须锁登记行、检查全部引用，再进入 `deleting`**——不能先删物理对象
- *    再补记录（本地上传是内容寻址，删掉的对象可能仍被其他记录共享）。
- * 3. **上传补偿不得直接调用 `storage.delete()`**——统一走
+ * 2. **删除必须锁登记行、检查全部引用与在途上传预约，再进入 `deleting`**——不能先删
+ *    物理对象再补记录（本地上传是内容寻址，删掉的对象可能仍被其他记录共享）。
+ * 3. **物理上传之前必须先写上传预约**（`reserveStorageObjectUpload()`，与登记行锁
+ *    同一事务），上传成功登记 ready 时消费它——否则"删除在途 + 并发重传同一内容"
+ *    会留下 `state = ready` 而物理文件已被删除的对象（2026-10-11 复审问题 1）。
+ * 4. **上传补偿不得直接调用 `storage.delete()`**——统一走
  *    `deleteStorageObject()`，它在有引用时拒绝物理删除并返回 `referenced`。
  *
  * 状态机：`unknown`（存量登记，未核实）→ `ready` ↔ `missing`；
  * `ready`/`missing` → `deleting` → `deleted`。
+ *
+ * 上传协议（调用方顺序，缺一不可）：
+ * ```ts
+ * const reservation = await reserveStorageObjectUpload({ storageUrl });
+ * const url = await storage.put(key, bytes); // 物理上传
+ * await registerReadyStorageObject({ storageUrl: url, reservationId: reservation.reservation_id });
+ * // 随后在同一/后续事务里建立业务引用（assertStorageObjectBindable）
+ * ```
+ * `registerReadyStorageObject()` 只有在**持有本人未过期预约**时才允许把
+ * `deleting` / `deleted` 恢复为 `ready`：仅凭"此前上传成功"无条件恢复会在删除已经
+ * 物理删掉文件后写出一个 `ready` 的幽灵记录。
  */
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gt, lte, sql } from "drizzle-orm";
+import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor, RootDb } from "../../../../shared/db/executor.ts";
 import {
   problemDraftObjects,
   problemVersionObjects,
+  storageObjectReservations,
   storageObjects,
   submissions,
 } from "../../../../shared/db/schema.ts";
 import type { StorageObjectState } from "../../../../shared/versioning/types.ts";
 import { getStorageProvider } from "./factory.ts";
+import { sha256Hex } from "./types.ts";
 
 /** 登记行读模型。 */
 export interface StorageObjectRecord {
@@ -46,39 +63,273 @@ export interface StorageReferenceReport {
 /** 数据库或事务句柄（见 `shared/db/executor.ts`）。 */
 type StorageExecutor = Executor;
 
+/** 上传预约默认有效期（15 分钟）：够大文件上传，crash 残留又能自动失效。 */
+export const STORAGE_UPLOAD_RESERVATION_TTL_MS = 15 * 60 * 1000;
+
+/** 在途上传预约：物理上传**之前**写入，上传成功登记 `ready` 时删除。 */
+export interface StorageUploadReservation {
+  reservation_id: string;
+  storage_url: string;
+  reserved_at: string;
+  /** ISO 8601 UTC；`expires_at <= now` 视为无效（crash 残留不得永久阻塞删除）。 */
+  expires_at: string;
+}
+
+/** 删除被在途上传预约拒绝：可重试错误（HTTP 409）。 */
+export class StorageUploadInFlightError extends AppError {
+  constructor() {
+    super(
+      "存储对象正在上传中，删除被拒绝（可重试）",
+      409,
+      "STORAGE_OBJECT_UPLOAD_IN_FLIGHT",
+    );
+    this.name = "StorageUploadInFlightError";
+  }
+}
+
+/**
+ * 缺少本次上传自己的未过期预约，不得把 `deleting` / `deleted` 恢复为 `ready`。
+ *
+ * 仅凭"此前某次上传成功"就恢复，会在删除已经物理删掉文件之后写出 `ready` 的幽灵
+ * 记录——这正是 2026-10-11 复审问题 1 的根因。
+ */
+export class StorageObjectDeletedError extends AppError {
+  constructor(storageUrl: string) {
+    super(
+      `存储对象已进入删除流程，缺少本次上传的未过期预约，不能登记为 ready：${storageUrl}`,
+      409,
+      "STORAGE_OBJECT_DELETED",
+    );
+    this.name = "StorageObjectDeletedError";
+  }
+}
+
+/**
+ * 登记行锁：先 upsert 保证行存在（`SELECT ... FOR UPDATE` 锁不住不存在的行），
+ * 再取更新锁。
+ *
+ * 上传预约、登记 `ready`、删除守卫三者都先调用本函数，因此三者严格串行：删除的
+ * "引用检查 + 物理删除"期间不可能插入新预约；上传的"预约 + 登记"期间也不可能被
+ * 删除穿透。
+ */
+async function lockStorageObjectRow(
+  tx: StorageExecutor,
+  storageUrl: string,
+): Promise<StorageObjectRecord | undefined> {
+  await tx.insert(storageObjects).values({
+    storage_url: storageUrl,
+    state: "unknown",
+    created_at: new Date().toISOString(),
+  }).onConflictDoNothing();
+  const rows = await tx.select().from(storageObjects).where(
+    eq(storageObjects.storage_url, storageUrl),
+  ).for("update");
+  return rows[0] as StorageObjectRecord | undefined;
+}
+
+/**
+ * 写入上传预约（**必须在物理上传之前调用**）。
+ *
+ * 与登记行锁同一事务：写入成功后提交，锁释放，但预约行本身持续证明"有上传在途"，
+ * 直到 {@link registerReadyStorageObject} 消费它或（进程崩溃后）自然过期。
+ *
+ * 预约写入与删除守卫争用同一把登记行锁，所以只要预约先提交，删除就不可能穿透
+ * 物理上传窗口；即使删除先拿到锁，上传方的预约也要排队到删除提交之后才写入，
+ * 于是物理上传必然发生在删除之后（而不是之前）。
+ */
+export async function reserveStorageObjectUpload(
+  input: { storageUrl: string; ttlMs?: number },
+  executor?: StorageExecutor,
+): Promise<StorageUploadReservation> {
+  const db = (executor ?? getDb()) as RootDb;
+  const ttlMs = input.ttlMs ?? STORAGE_UPLOAD_RESERVATION_TTL_MS;
+  return await db.transaction(async (tx) => {
+    await lockStorageObjectRow(tx, input.storageUrl);
+    const reservedAt = new Date();
+    const reservation: StorageUploadReservation = {
+      reservation_id: crypto.randomUUID(),
+      storage_url: input.storageUrl,
+      reserved_at: reservedAt.toISOString(),
+      expires_at: new Date(reservedAt.getTime() + ttlMs).toISOString(),
+    };
+    await tx.insert(storageObjectReservations).values(reservation);
+    return reservation;
+  });
+}
+
+/**
+ * 上传前预约（**内容已知**路径的便捷入口）。
+ *
+ * 先算内容 SHA-256 → 用 provider 的 `urlForUpload()` 预测本次 `put()` 将返回的
+ * 存储 URL → 写 reservation。调用方拿到 `storageUrl` 后执行物理上传，再用它与
+ * `reservation.reservation_id` 调用 {@link registerReadyStorageObject}。
+ *
+ * 物理上传失败时用 {@link releaseStorageObjectUploadReservation} 释放预约；
+ * 已上传但后续事务失败的补偿走 {@link compensateUploadedObject}。
+ */
+export async function reserveStorageObjectUploadForContent(
+  input: {
+    key: string;
+    bytes: Uint8Array;
+    contentType?: string;
+    ttlMs?: number;
+    /** 已知的内容 SHA-256（避免重复计算）；缺省时内部计算。 */
+    sha256?: string | null;
+  },
+  executor?: StorageExecutor,
+): Promise<{ storageUrl: string; reservation: StorageUploadReservation }> {
+  const storage = await getStorageProvider();
+  if (!storage.urlForUpload) {
+    throw new Error(
+      "当前存储后端不支持上传前 URL 预测，无法在物理上传前写预约",
+    );
+  }
+  const contentSha256 = input.sha256 ?? await sha256Hex(input.bytes);
+  const storageUrl = storage.urlForUpload(
+    input.key,
+    contentSha256,
+    input.contentType,
+  );
+  const reservation = await reserveStorageObjectUpload(
+    { storageUrl, ttlMs: input.ttlMs },
+    executor,
+  );
+  return { storageUrl, reservation };
+}
+
+/**
+ * 带预约的物理上传（**唯一的"上传并登记"入口**）：预约 → `put()` → 登记 `ready`。
+ *
+ * 顺序不可交换：reservation 必须先于物理上传提交，删除守卫才能在"文件正在被写回"
+ * 的窗口里拒绝物理删除（Handbook §2.5、2026-10-11 复审问题 1）。
+ *
+ * - 物理上传失败：释放自己的预约，不留下阻塞删除的残留；
+ * - 上传成功但登记失败：走 {@link compensateUploadedObject}（引用守卫，共享对象
+ *   不会被误删）；
+ * - 后端返回的 URL 与内容寻址预测不一致：视为契约破坏，同样走补偿后抛错。
+ *
+ * @returns 登记为 `ready` 的存储 URL
+ */
+export async function uploadStorageObjectWithReservation(
+  input: {
+    key: string;
+    bytes: Uint8Array;
+    contentType?: string;
+    /** 已知的内容 SHA-256；缺省时内部计算。 */
+    sha256?: string | null;
+    ttlMs?: number;
+  },
+  executor?: StorageExecutor,
+): Promise<{ storageUrl: string }> {
+  const storage = await getStorageProvider();
+  const contentSha256 = input.sha256 ?? await sha256Hex(input.bytes);
+  const { storageUrl, reservation } =
+    await reserveStorageObjectUploadForContent(
+      { ...input, sha256: contentSha256 },
+      executor,
+    );
+  let uploaded = false;
+  try {
+    const putUrl = await storage.put(input.key, input.bytes, input.contentType);
+    uploaded = true;
+    if (putUrl !== storageUrl) {
+      throw new Error(
+        `存储后端返回的 URL 与上传前预测不一致（拒绝登记到错误的登记行）：${putUrl} != ${storageUrl}`,
+      );
+    }
+    await registerReadyStorageObject(
+      {
+        storageUrl,
+        sha256: contentSha256,
+        byteSize: input.bytes.byteLength,
+        reservationId: reservation.reservation_id,
+      },
+      executor,
+    );
+    return { storageUrl };
+  } catch (error) {
+    if (uploaded) {
+      await compensateUploadedObject(
+        { storageUrl, reservationId: reservation.reservation_id },
+        executor,
+      ).catch(() => {});
+    } else {
+      await releaseStorageObjectUploadReservation(
+        reservation.reservation_id,
+        executor,
+      ).catch(() => {});
+    }
+    throw error;
+  }
+}
+
+/**
+ * 释放上传预约（物理上传失败或放弃上传时调用）。
+ *
+ * 只删除本次自己的预约行：其他并发上传的预约不受影响。释放后删除守卫即可正常
+ * 推进（对象无引用且无其他预约时）。物理上传本身失败时对象没有新增字节，不需要
+ * 走 `deleteStorageObject()`。
+ */
+export async function releaseStorageObjectUploadReservation(
+  reservationId: string,
+  executor?: StorageExecutor,
+): Promise<void> {
+  const db = executor ?? getDb();
+  await db.delete(storageObjectReservations).where(
+    eq(storageObjectReservations.reservation_id, reservationId),
+  );
+}
+
 /**
  * 登记一个新上传对象（`state = ready`）。
  *
- * 同 URL 重复登记是幂等的（内容寻址下同一字节内容会得到同一 URL）。调用方只在
- * **物理上传成功之后**调用本函数，因此这里可以在登记行锁内把
- * `deleted` / `missing` / `unknown` 恢复为 `ready`——这正是 Handbook §2.5 要求的
- * "删除后重新上传相同内容必须重新可用"（`deleted` 状态不能永久粘住）。
+ * 同 URL 重复登记是幂等的（内容寻址下同一字节内容会得到同一 URL）。调用方必须在
+ * **物理上传成功之后**调用本函数，并传入上传前 {@link reserveStorageObjectUpload}
+ * 拿到的 `reservationId`。
  *
- * 恢复与删除共用同一登记行锁：物理删除全程持有该行锁（见
- * {@link deleteStorageObject}），所以本函数一旦拿到锁，就不存在"旧删除任务还在
- * 后台跑"的窗口，不会把刚恢复的对象再删掉。
+ * 契约（Handbook §2.5）：
+ * - 对象处于 `deleting` / `deleted` 时，**只有**持有本人未过期预约才允许恢复
+ *   `ready`——预约证明"物理上传发生在删除之后"，恢复是安全的；否则抛
+ *   {@link StorageObjectDeletedError}，绝不写出幽灵 `ready`。
+ * - 登记与删除共用同一登记行锁，预约的消费与状态更新在同一事务内完成。
  */
 export async function registerReadyStorageObject(
   input: {
     storageUrl: string;
     sha256?: string | null;
     byteSize?: number | null;
+    /** {@link reserveStorageObjectUpload} 返回的预约 id。 */
+    reservationId?: string;
   },
   executor?: StorageExecutor,
 ): Promise<void> {
   const db = (executor ?? getDb()) as RootDb;
   await db.transaction(async (tx) => {
-    await tx.insert(storageObjects).values({
-      storage_url: input.storageUrl,
-      sha256: input.sha256 ?? null,
-      byte_size: input.byteSize ?? null,
-      state: "ready",
-      created_at: new Date().toISOString(),
-    }).onConflictDoNothing();
-    const [existing] = await tx.select().from(storageObjects).where(
-      eq(storageObjects.storage_url, input.storageUrl),
-    ).for("update");
+    const existing = await lockStorageObjectRow(tx, input.storageUrl);
     if (!existing) return;
+
+    // 消费本人预约：id、URL、未过期三者必须同时匹配，防止拿了别人的预约或过期
+    // 预约来"证明"一次并不存在的物理上传。
+    const consumed = input.reservationId
+      ? await tx.delete(storageObjectReservations).where(
+        and(
+          eq(
+            storageObjectReservations.reservation_id,
+            input.reservationId,
+          ),
+          eq(storageObjectReservations.storage_url, input.storageUrl),
+          gt(storageObjectReservations.expires_at, new Date().toISOString()),
+        ),
+      ).returning({ id: storageObjectReservations.reservation_id })
+      : [];
+
+    if (
+      (existing.state === "deleting" || existing.state === "deleted") &&
+      consumed.length === 0
+    ) {
+      throw new StorageObjectDeletedError(input.storageUrl);
+    }
+
     await tx.update(storageObjects).set({
       state: "ready",
       sha256: input.sha256 ?? existing.sha256,
@@ -232,11 +483,16 @@ export type StorageDeleteOutcome =
   | { outcome: "missing" };
 
 /**
- * 引用守卫删除：锁定登记行 → 检查全部引用 → 进入 `deleting` → 物理删除 →
- * `deleted`，**全过程在同一个持有登记行锁的事务内**。
+ * 引用守卫删除：锁定登记行 → 检查全部引用 → 检查在途上传预约 → 进入 `deleting` →
+ * 物理删除 → `deleted`，**全过程在同一个持有登记行锁的事务内**。
  *
  * 有引用时**不删除**并返回 `referenced`，调用方据此保留对象（上传补偿路径必须
  * 接受这个结果，而不是绕过守卫直接删除）。
+ *
+ * 有**未过期上传预约**时抛 {@link StorageUploadInFlightError}（409，可重试）：
+ * 此刻删掉物理文件，上传方随后就会把对象登记成 `ready`，得到 `ready` + 物理缺失的
+ * 幽灵记录（2026-10-11 复审问题 1）。过期预约代表 crash 残留，先清理再判定，
+ * 不得永久阻塞删除。
  *
  * 为什么物理删除也必须在锁内（tracking #12/#14）：
  * - 若先提交 `deleting` 再在事务外物理删除，"检查无引用 → 新引用建立 → 对象被删"
@@ -251,19 +507,37 @@ export async function deleteStorageObject(
 ): Promise<StorageDeleteOutcome> {
   const db = (executor ?? getDb()) as RootDb;
   return await db.transaction(async (tx) => {
-    await tx.insert(storageObjects).values({
-      storage_url: storageUrl,
-      state: "unknown",
-      created_at: new Date().toISOString(),
-    }).onConflictDoNothing();
-    const [existing] = await tx.select().from(storageObjects).where(
-      eq(storageObjects.storage_url, storageUrl),
-    ).for("update");
-    if (existing.state === "deleted") return { outcome: "deleted" } as const;
+    const existing = await lockStorageObjectRow(tx, storageUrl);
+    const nowIso = new Date().toISOString();
+
+    // 崩溃遗留的过期预约立即清掉：crash 不得永久阻塞删除。
+    await tx.delete(storageObjectReservations).where(
+      and(
+        eq(storageObjectReservations.storage_url, storageUrl),
+        lte(storageObjectReservations.expires_at, nowIso),
+      ),
+    );
+
+    if (existing?.state === "deleted") {
+      // 已删除：不再触碰物理文件（在途重传可能刚写回同一内容，交给它登记）。
+      return { outcome: "deleted" } as const;
+    }
 
     const references = await collectStorageReferences(storageUrl, tx);
     if (references.total > 0) {
       return { outcome: "referenced", references } as const;
+    }
+
+    const [inFlight] = await tx.select({ count: sql<number>`count(*)::int` })
+      .from(storageObjectReservations)
+      .where(
+        and(
+          eq(storageObjectReservations.storage_url, storageUrl),
+          gt(storageObjectReservations.expires_at, nowIso),
+        ),
+      );
+    if ((inFlight?.count ?? 0) > 0) {
+      throw new StorageUploadInFlightError();
     }
 
     // 标记与物理删除同事务：新引用必须等到本事务提交后看到 `deleted` 再被拒绝。
@@ -291,16 +565,28 @@ export async function deleteStorageObject(
  *
  * 用于「上传成功但后续事务失败」的清理路径。内容寻址下同一字节内容可能已被
  * 其他记录引用，直接 `storage.delete()` 会把别人的文件删掉。
+ *
+ * 对象已在 `deleting` / `deleted` 时**不恢复** `ready`（那会制造幽灵 `ready`）：
+ * 直接交给删除守卫判定——它要么因引用而在字节层面保留对象，要么返回 `deleted`；
+ * 若此时还有别人的在途预约则抛 409，由调用方决定重试。此时调用方自己的预约会被
+ * 释放，避免残留阻塞后续删除。
  */
 export async function compensateUploadedObject(
   input: {
     storageUrl: string;
     sha256?: string | null;
     byteSize?: number | null;
+    /** 本次上传自己的预约 id；上传失败时用于释放预约。 */
+    reservationId?: string;
   },
   executor?: StorageExecutor,
 ): Promise<StorageDeleteOutcome> {
   const db = executor ?? getDb();
-  await registerReadyStorageObject(input, db);
+  const record = await getStorageObject(input.storageUrl, db);
+  if (!record || (record.state !== "deleting" && record.state !== "deleted")) {
+    await registerReadyStorageObject(input, db);
+  } else if (input.reservationId) {
+    await releaseStorageObjectUploadReservation(input.reservationId, db);
+  }
   return await deleteStorageObject(input.storageUrl, db);
 }

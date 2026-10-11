@@ -88,6 +88,27 @@ export interface StorageProvider {
   put(key: string, data: Uint8Array, contentType?: string): Promise<string>;
 
   /**
+   * 预测 `put()` 将返回的 `noj-storage://` URL（**不写盘、不发请求**）。
+   *
+   * 用途：Handbook §2.5 要求"物理上传**之前**先写上传预约
+   * （`reserveStorageObjectUpload`）"，而预约以存储 URL 为准。local 是内容寻址、
+   * S3 用调用方选定的 key，二者都能由 `key` + 内容 SHA-256 唯一决定，因此调用方
+   * 可以先把 URL 算出来登记预约，再执行真正的上传。
+   *
+   * 实现必须与同实现的 `put()` 返回完全一致（`put` 应复用本方法）。
+   *
+   * @param key 存储键（local 忽略，内容寻址；S3 为对象键）
+   * @param sha256Hex 内容 SHA-256（十六进制小写）
+   * @param contentType 内容类型（local 用于推导扩展名）
+   * @returns 与 `put()` 相同格式的 `noj-storage://` URL
+   */
+  urlForUpload?(
+    key: string,
+    sha256Hex: string,
+    contentType?: string,
+  ): string;
+
+  /**
    * 流式存储数据并返回 `noj-storage://` URL。
    *
    * 用于大文件（如 artifact zip）上传，内存占用 O(1)（S3 模式使用固定

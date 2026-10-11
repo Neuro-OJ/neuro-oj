@@ -280,19 +280,59 @@ export async function finishAttempt(
   return rows.length > 0;
 }
 
-/** 把尝试标记为过时（真正超时且已创建新执行时使用）。 */
+/**
+ * 把尝试标记为过时（真正超时且已创建新执行时使用）。
+ *
+ * **终态后必须吊销该尝试已签发的 LLM token**（Handbook §6.7）：被 superseded 的
+ * 旧尝试若不在剩余有效期内吊销，旧 token 会在剩余 TTL 内继续可用。吊销是外部
+ * 副作用，**只能在业务事务提交后执行**，因此：
+ *
+ * - 未传 `executor`（本函数自行开事务）：提交后立即吊销，返回是否真的置为过时；
+ * - 传入 `executor`（调用方事务尚未提交）：**本函数不吊销**，调用方必须在提交后
+ *   自行调用 `revokeAttemptLlmTokens({ attemptId })`（幂等）。
+ *
+ * @returns 是否真的把该尝试置为 `superseded`（已是终态时返回 false）
+ */
 export async function supersedeAttempt(
   attemptId: string,
   executor?: Executor,
-): Promise<void> {
-  const db = executor ?? getDb();
-  await db.update(evaluationAttempts).set({
-    state: "superseded",
-    finished_at: new Date().toISOString(),
-  }).where(
-    and(
-      eq(evaluationAttempts.id, attemptId),
-      sql`${evaluationAttempts.state} NOT IN ('finished', 'error', 'superseded')`,
-    ),
-  );
+): Promise<boolean> {
+  const apply = async (db: Executor): Promise<boolean> => {
+    const rows = await db.update(evaluationAttempts).set({
+      state: "superseded",
+      finished_at: new Date().toISOString(),
+    }).where(
+      and(
+        eq(evaluationAttempts.id, attemptId),
+        sql`${evaluationAttempts.state} NOT IN ('finished', 'error', 'superseded')`,
+      ),
+    ).returning({ id: evaluationAttempts.id });
+    return rows.length > 0;
+  };
+
+  if (executor) return await apply(executor);
+
+  const applied = await getDb().transaction((tx) => apply(tx));
+  if (applied) await revokeSupersededAttemptTokens(attemptId);
+  return applied;
+}
+
+/**
+ * 终态提交后吊销该尝试的 token（动态导入 job-worker，避免
+ * attempts → job-worker → result-write → attempts 的静态循环）。
+ *
+ * 同时写尝试维度键与提交维度旧键；Redis 不可用/失败时静默（不影响已提交终态，
+ * 由 sweeper 与日志兜底）。
+ */
+async function revokeSupersededAttemptTokens(attemptId: string): Promise<void> {
+  try {
+    const attempt = await getAttempt(attemptId);
+    const { revokeAttemptLlmTokens } = await import("./job-worker.ts");
+    await revokeAttemptLlmTokens({
+      attemptId,
+      submissionId: attempt?.submission_id ?? null,
+    });
+  } catch {
+    // 吊销失败不得影响已提交的业务终态
+  }
 }

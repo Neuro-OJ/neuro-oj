@@ -21,6 +21,7 @@ import {
   submissionJobs,
 } from "../../../../shared/db/schema.ts";
 import type { SubmissionJobItemStatus } from "../../../../shared/versioning/types.ts";
+import { getRedis } from "../../../../shared/mq/connection.ts";
 import { refreshJobStatus } from "./rejudge-jobs.ts";
 import { lockProjectionHosts, lockProjectionSource } from "./projection.ts";
 import { applyAttemptResult } from "./result-write.ts";
@@ -226,6 +227,142 @@ export async function markJobItemDispatched(
 }
 
 /**
+ * LLM eval_token 吊销标记的**最小** TTL（秒）。
+ *
+ * 即便尝试没有可推导的签发有效期，也不早于 1h 过期。
+ */
+export const LLM_REVOCATION_MIN_TTL_SECONDS = 3600;
+/** 吊销 TTL 余量（秒）：覆盖写入延迟与时钟偏差。 */
+export const LLM_REVOCATION_TTL_MARGIN_SECONDS = 300;
+
+/**
+ * 从尝试的冻结快照推导本次已签发 eval_token 的 TTL 上界（秒）。
+ *
+ * 与 gateway 的签发口径保持一致（`gateway/services/llm-token.ts`：
+ * `ttl = max(60, ceil(evaluator.time_limit_ms * 4 / 1000))`），再取 1h 下限并加余量。
+ *
+ * **不能写死 3600**：`judge_max_evaluator_time_limit_ms` 未配置时题目可以声明任意长的
+ * `time_limit_ms`，其 token 有效期会远超 1h；吊销标记若先于 token 过期，token 会在尝试
+ * 终态之后继续可用。快照缺失时退回 1h 下限。
+ */
+export function resolveAttemptTokenTtlSeconds(taskSnapshot: unknown): number {
+  const runtime =
+    (taskSnapshot as { runtime_config?: unknown } | null | undefined)
+      ?.runtime_config as
+        | { evaluator?: { time_limit_ms?: unknown } }
+        | undefined;
+  const timeLimitMs = runtime?.evaluator?.time_limit_ms;
+  const issuedTtl = typeof timeLimitMs === "number" &&
+      Number.isFinite(timeLimitMs) && timeLimitMs > 0
+    ? Math.max(60, Math.ceil((timeLimitMs * 4) / 1000))
+    : 0;
+  return Math.max(LLM_REVOCATION_MIN_TTL_SECONDS, issuedTtl) +
+    LLM_REVOCATION_TTL_MARGIN_SECONDS;
+}
+
+/** 吊销后处理结果（供测试与日志断言）。 */
+export interface AttemptRevocationOutcome {
+  /** 是否成功写入 Redis 吊销标记（Redis 不可用/异常时为 false）。 */
+  applied: boolean;
+  /** 实际写入的标记 TTL（秒）。 */
+  ttl_seconds: number;
+  attempt_id: string | null;
+}
+
+/** 读取尝试的冻结快照（用于推导 token TTL）；尝试不存在或查询失败返回 null。 */
+async function loadAttemptTaskSnapshot(
+  attemptId: string | null | undefined,
+): Promise<unknown> {
+  if (!attemptId) return null;
+  try {
+    const [row] = await getDb().select({
+      snapshot: evaluationAttempts.task_snapshot,
+    }).from(evaluationAttempts).where(
+      eq(evaluationAttempts.id, attemptId),
+    ).limit(1);
+    return row?.snapshot ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * **统一的尝试终态后处理：吊销该尝试签发的 LLM eval_token**（Handbook §6.7）。
+ *
+ * 为什么必须是统一入口：吊销此前只写在正常结果入口（`submissions-result.ts`），
+ * 而 worker / sweeper 的永久失败、重试耗尽、崩溃恢复失败等路径直接调用
+ * `applyAttemptResult()` 终结尝试，**绕过吊销** —— 被判失败的尝试其 token 仍可在
+ * 剩余有效期内继续调用 gateway，形成免费的额度绕过。
+ *
+ * 语义：
+ * - 覆盖 `finished` / `error` / `superseded` 等**全部**尝试终态（本函数不区分终态种类）；
+ * - 标记 TTL 覆盖该尝试**全部已签发 token 的剩余有效期**（由冻结快照推导 + 余量），
+ *   不是固定 3600s；
+ * - 幂等：重复调用只是刷新同一批键的 TTL；
+ * - **必须在业务事务提交之后调用**：在事务内吊销会在回滚后留下"尝试仍在跑却被吊销"
+ *   的错误状态。因此 `completeJobItem` / `scheduleDispatchRetryOrFail` 只在自身事务
+ *   提交后调用本函数；持有调用方事务的路径由调用方在提交后自行调用。
+ *
+ * @param input.attemptId 尝试 ID（= 正式评测 `run_id`）
+ * @param input.submissionId 源提交 ID；用于兼容旧协议（无 attempt 维度）的吊销键
+ * @param input.taskSnapshot 冻结快照；缺省时按 attemptId 查库
+ */
+export async function revokeAttemptLlmTokens(input: {
+  attemptId: string | null;
+  submissionId?: string | null;
+  taskSnapshot?: unknown;
+}): Promise<AttemptRevocationOutcome> {
+  const snapshot = input.taskSnapshot === undefined
+    ? await loadAttemptTaskSnapshot(input.attemptId)
+    : input.taskSnapshot;
+  const ttlSeconds = resolveAttemptTokenTtlSeconds(snapshot);
+  const attemptId = input.attemptId;
+  if (!attemptId && !input.submissionId) {
+    return { applied: false, ttl_seconds: ttlSeconds, attempt_id: null };
+  }
+  try {
+    const redis = getRedis();
+    if (redis.status !== "ready") {
+      return { applied: false, ttl_seconds: ttlSeconds, attempt_id: attemptId };
+    }
+    if (attemptId) {
+      await redis.set(
+        `llm:attempt:revoked:${attemptId}`,
+        "1",
+        "EX",
+        ttlSeconds,
+      );
+    }
+    if (input.submissionId) {
+      // 旧协议 token 仅带 submission 维度，继续写旧键保证同样被吊销。
+      await redis.set(
+        `llm:token:revoked:${input.submissionId}`,
+        "1",
+        "EX",
+        ttlSeconds,
+      );
+    }
+    return { applied: true, ttl_seconds: ttlSeconds, attempt_id: attemptId };
+  } catch {
+    // 吊销失败不能影响已提交的业务终态；由 sweeper/日志兜底观测
+    return { applied: false, ttl_seconds: ttlSeconds, attempt_id: attemptId };
+  }
+}
+
+/** 事务内收集到的待吊销目标（提交后执行）。 */
+interface PendingRevocation {
+  attemptId: string;
+  submissionId: string | null;
+  taskSnapshot: unknown;
+}
+
+/** 尝试终态事务的返回值：是否写入 + 提交后需要吊销的尝试。 */
+interface JobItemTerminalWrite {
+  ok: boolean;
+  revoked?: PendingRevocation;
+}
+
+/**
  * 写条目终态（幂等）。
  *
  * 已是终态（succeeded/failed/skipped）的行不再被覆盖——相同尝试允许重复派发，
@@ -243,12 +380,29 @@ export async function completeJobItem(
   },
   executor?: Executor,
 ): Promise<boolean> {
-  if (!executor) {
-    return await getDb().transaction((tx) =>
-      completeJobItem(itemId, terminal, tx)
-    );
+  if (executor) {
+    // 调用方持有事务：吊销必须由调用方在**提交之后**执行（见 revokeAttemptLlmTokens）
+    return (await completeJobItemInTx(itemId, terminal, executor)).ok;
   }
-  const db = executor;
+  const written = await getDb().transaction((tx) =>
+    completeJobItemInTx(itemId, terminal, tx)
+  );
+  if (written.revoked) await revokeAttemptLlmTokens(written.revoked);
+  return written.ok;
+}
+
+/** `completeJobItem` 的事务内实现：返回待吊销目标供提交后处理。 */
+async function completeJobItemInTx(
+  itemId: string,
+  terminal: {
+    status: JobItemTerminalStatus;
+    attemptId?: string | null;
+    reasonCode?: string | null;
+    reasonMessage?: string | null;
+    leaseOwner?: string;
+  },
+  db: Executor,
+): Promise<JobItemTerminalWrite> {
   if (terminal.status === "failed" && terminal.leaseOwner) {
     const [identity] = await db.select().from(submissionJobItems).where(
       eq(submissionJobItems.id, itemId),
@@ -276,7 +430,7 @@ export async function completeJobItem(
         !current || current.status !== "preparing" ||
         current.lease_owner !== terminal.leaseOwner || !current.lease_until ||
         current.lease_until <= nowIso()
-      ) return false;
+      ) return { ok: false };
       const applied = await applyAttemptResult({
         attemptId: attempt.id,
         resultKind: "platform_error",
@@ -295,7 +449,15 @@ export async function completeJobItem(
           lease_owner: null,
           lease_until: null,
         }).where(eq(submissionJobItems.id, itemId));
-        return true;
+        return {
+          ok: true,
+          revoked: {
+            attemptId: attempt.id,
+            submissionId: attempt.submission_id ??
+              attempt.objective_submission_id,
+            taskSnapshot: attempt.task_snapshot,
+          },
+        };
       }
     }
   }
@@ -323,9 +485,9 @@ export async function completeJobItem(
         : []),
     ),
   ).returning({ id: submissionJobItems.id });
-  if (rows.length === 0) return false;
+  if (rows.length === 0) return { ok: false };
   await touchJobStatus(itemId, db);
-  return true;
+  return { ok: true };
 }
 
 /** 依据条目 id 找到任务并刷新其聚合状态。 */
@@ -347,7 +509,9 @@ export async function scheduleDispatchRetryOrFail(
   itemId: string,
   options: { reasonCode: string; reasonMessage: string; leaseOwner?: string },
 ): Promise<boolean> {
-  return await getDb().transaction(async (db) => {
+  const written = await getDb().transaction(async (db): Promise<
+    JobItemTerminalWrite
+  > => {
     // 与结果落库遵循同一锁序：策略宿主 → 提交 → 条目 → 任务。
     const [identity] = await db.select().from(submissionJobItems).where(
       eq(submissionJobItems.id, itemId),
@@ -378,7 +542,7 @@ export async function scheduleDispatchRetryOrFail(
         (item.status !== "preparing" ||
           item.lease_owner !== options.leaseOwner || !item.lease_until ||
           item.lease_until <= nowIso()))
-    ) return false;
+    ) return { ok: false };
     const retries = item.dispatch_retries;
     if (retries >= DISPATCH_BACKOFF_SECONDS.length) {
       if (attempt) {
@@ -408,7 +572,19 @@ export async function scheduleDispatchRetryOrFail(
           eq(submissionJobItems.status, "failed"),
         ),
       );
-      return false;
+      // 尝试已被判失败（platform_error）：终态后必须吊销其 LLM token，
+      // 否则 token 在剩余有效期内仍可继续调用 gateway。
+      return {
+        ok: false,
+        revoked: attempt
+          ? {
+            attemptId: attempt.id,
+            submissionId: attempt.submission_id ??
+              attempt.objective_submission_id,
+            taskSnapshot: attempt.task_snapshot,
+          }
+          : undefined,
+      };
     }
     const backoff = DISPATCH_BACKOFF_SECONDS[retries];
     await db.update(submissionJobItems).set({
@@ -423,8 +599,11 @@ export async function scheduleDispatchRetryOrFail(
         sql`${submissionJobItems.status} NOT IN ('succeeded', 'failed', 'skipped')`,
       ),
     );
-    return true;
+    return { ok: true };
   });
+  // 事务提交后才吊销：避免回滚后留下"仍在跑却被吊销"的尝试
+  if (written.revoked) await revokeAttemptLlmTokens(written.revoked);
+  return written.ok;
 }
 
 /**

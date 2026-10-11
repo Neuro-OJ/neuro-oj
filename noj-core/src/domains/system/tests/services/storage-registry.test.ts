@@ -10,6 +10,7 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import {
   problemDraftObjects,
   problems,
+  storageObjectReservations,
   storageObjects,
 } from "../../../../shared/db/schema.ts";
 import {
@@ -20,6 +21,11 @@ import {
   getStorageObject,
   registerLegacyStorageObject,
   registerReadyStorageObject,
+  releaseStorageObjectUploadReservation,
+  reserveStorageObjectUpload,
+  StorageObjectDeletedError,
+  StorageUploadInFlightError,
+  uploadStorageObjectWithReservation,
   verifyStorageObject,
 } from "../../services/storage/registry.ts";
 import {
@@ -30,6 +36,14 @@ import { LocalStorageProvider } from "../../services/storage/local.ts";
 import type { StorageObjectStat } from "../../services/storage/types.ts";
 
 const now = new Date().toISOString();
+
+/** 某个存储 URL 当前的预约行数（用于断言预约已消费/清理）。 */
+async function countReservations(storageUrl: string): Promise<number> {
+  const rows = await getDb().select().from(storageObjectReservations).where(
+    eq(storageObjectReservations.storage_url, storageUrl),
+  );
+  return rows.length;
+}
 
 /**
  * 模拟"后端不可达/无权限"的 provider：`stat` 抛错（而非返回 `exists:false`）。
@@ -247,17 +261,208 @@ Deno.test("storage registry: 删除后重传相同内容恢复 ready 并可绑�
   assertEquals((await deleteStorageObject(first)).outcome, "deleted");
   await assertRejects(() => assertStorageObjectBindable(first));
 
-  // 内容寻址：重传相同字节得到同一 URL；成功上传后必须恢复 ready（不能永久粘 deleted）。
+  // 内容寻址：重传相同字节得到同一 URL；重传必须**先写预约再物理上传**，
+  // 上传成功后携带自己的预约登记，才能把 deleted 恢复 ready（不能永久粘 deleted）。
   const again = await provider.put("reupload", bytes);
   assertEquals(again, first);
+  const reservation = await reserveStorageObjectUpload({ storageUrl: again });
   await registerReadyStorageObject({
     storageUrl: again,
     sha256: "same",
     byteSize: bytes.byteLength,
+    reservationId: reservation.reservation_id,
   });
   assertEquals((await getStorageObject(again))?.state, "ready");
   await assertStorageObjectBindable(again);
   assertEquals((await provider.stat(again)).exists, true);
+  // 预约已被消费：不留下永久阻塞删除的残留
+  assertEquals(await countReservations(again), 0);
+});
+
+Deno.test("storage registry: 未过期上传预约阻止删除（409），过期残留清理后放行", async () => {
+  const provider = useTempStorage();
+  const bytes = new TextEncoder().encode("reservation-guard");
+  const url = await provider.put("resv-guard", bytes);
+
+  const reservation = await reserveStorageObjectUpload({ storageUrl: url });
+  assertEquals(reservation.storage_url, url);
+
+  // 有在途上传预约：删除必须可重试地拒绝，且不得删物理文件、不得进入 deleted。
+  await assertRejects(
+    () => deleteStorageObject(url),
+    StorageUploadInFlightError,
+  );
+  assertEquals((await provider.stat(url)).exists, true);
+  assertEquals((await getStorageObject(url))?.state, "unknown");
+
+  // 上传成功并携带自己的预约登记：状态 ready + 预约被消费。
+  await registerReadyStorageObject({
+    storageUrl: url,
+    sha256: "rh",
+    byteSize: bytes.byteLength,
+    reservationId: reservation.reservation_id,
+  });
+  assertEquals((await getStorageObject(url))?.state, "ready");
+  assertEquals(await countReservations(url), 0);
+
+  // crash 遗留的过期预约不得永久阻塞删除：视为无效并清理。
+  await reserveStorageObjectUpload({ storageUrl: url, ttlMs: -1000 });
+  assertEquals(await countReservations(url), 1);
+  assertEquals((await deleteStorageObject(url)).outcome, "deleted");
+  assertEquals(await countReservations(url), 0);
+  assertEquals((await getStorageObject(url))?.state, "deleted");
+});
+
+Deno.test("storage registry: 无本人未过期预约不得把 deleted 恢复 ready", async () => {
+  const provider = useTempStorage();
+  const bytes = new TextEncoder().encode("no-reservation-recovery");
+  const url = await provider.put("no-resv", bytes);
+  await registerReadyStorageObject({ storageUrl: url });
+  assertEquals((await deleteStorageObject(url)).outcome, "deleted");
+
+  // 物理重传成功，但没有本次上传的预约：不得凭"此前上传成功"恢复 ready
+  // （删除可能已把文件删掉，恢复就是 ready + 物理缺失的幽灵记录）。
+  await provider.put("no-resv", bytes);
+  await assertRejects(
+    () => registerReadyStorageObject({ storageUrl: url }),
+    StorageObjectDeletedError,
+  );
+  assertEquals((await getStorageObject(url))?.state, "deleted");
+  await assertRejects(() => assertStorageObjectBindable(url));
+
+  // 过期预约同样不算"自己的"：不得用它恢复 ready。
+  const expired = await reserveStorageObjectUpload({
+    storageUrl: url,
+    ttlMs: -1,
+  });
+  await assertRejects(
+    () =>
+      registerReadyStorageObject({
+        storageUrl: url,
+        reservationId: expired.reservation_id,
+      }),
+    StorageObjectDeletedError,
+  );
+  assertEquals((await getStorageObject(url))?.state, "deleted");
+
+  // 正确路径：有效期内先 reserve → 物理上传 → 携带自己的预约登记 → ready 且文件在。
+  const mine = await reserveStorageObjectUpload({ storageUrl: url });
+  await registerReadyStorageObject({
+    storageUrl: url,
+    reservationId: mine.reservation_id,
+  });
+  assertEquals((await getStorageObject(url))?.state, "ready");
+  await assertStorageObjectBindable(url);
+  assertEquals((await provider.stat(url)).exists, true);
+});
+
+Deno.test("storage registry: 上传失败释放预约后删除可继续", async () => {
+  const provider = useTempStorage();
+  const url = await provider.put("released", new TextEncoder().encode("rel"));
+  const reservation = await reserveStorageObjectUpload({ storageUrl: url });
+  await assertRejects(
+    () => deleteStorageObject(url),
+    StorageUploadInFlightError,
+  );
+
+  // 物理上传失败：释放自己的预约，对象不得因残留预约永久卡死。
+  await releaseStorageObjectUploadReservation(reservation.reservation_id);
+  assertEquals(await countReservations(url), 0);
+  assertEquals((await deleteStorageObject(url)).outcome, "deleted");
+});
+
+Deno.test("storage registry: 补偿不得把已删除对象恢复 ready", async () => {
+  const provider = useTempStorage();
+  const bytes = new TextEncoder().encode("compensate-deleted");
+  const url = await provider.put("compensate", bytes);
+  await registerReadyStorageObject({ storageUrl: url });
+  assertEquals((await deleteStorageObject(url)).outcome, "deleted");
+
+  // 上传补偿路径：对象已删除时不得反手登记成 ready（那会在文件缺失时谎称可用）。
+  assertEquals(
+    (await compensateUploadedObject({ storageUrl: url })).outcome,
+    "deleted",
+  );
+  assertEquals((await getStorageObject(url))?.state, "deleted");
+  assertEquals((await provider.stat(url)).exists, false);
+
+  // 补偿时携带自己的预约：预约同样必须被释放，不留阻塞删除的残留。
+  const reservation = await reserveStorageObjectUpload({
+    storageUrl: url,
+    ttlMs: -1,
+  });
+  assertEquals(
+    (await compensateUploadedObject({
+      storageUrl: url,
+      reservationId: reservation.reservation_id,
+    })).outcome,
+    "deleted",
+  );
+  assertEquals(await countReservations(url), 0);
+});
+
+Deno.test("storage registry: 带预约上传（reserve→put→ready）URL 可预测且预约被消费", async () => {
+  const provider = useTempStorage();
+  const bytes = new TextEncoder().encode("upload-with-reservation");
+  const { storageUrl } = await uploadStorageObjectWithReservation({
+    key: "callers-may-pass-any-key",
+    bytes,
+    contentType: "application/zip",
+  });
+
+  // 内容寻址：predict（urlForUpload）与真正 put() 必须给出同一个 URL
+  assertEquals(storageUrl, await provider.put("ignored-key", bytes));
+  const row = await getStorageObject(storageUrl);
+  assertEquals(row?.state, "ready");
+  assertEquals(row?.byte_size, bytes.byteLength);
+  assertEquals(await countReservations(storageUrl), 0);
+  await assertStorageObjectBindable(storageUrl);
+  assertEquals((await provider.stat(storageUrl)).exists, true);
+});
+
+Deno.test("storage registry: 带预约上传可把 deleted 对象重新登记为 ready", async () => {
+  const provider = useTempStorage();
+  const bytes = new TextEncoder().encode("reupload-with-reservation");
+  const url = await provider.put("reup-resv", bytes);
+  await registerReadyStorageObject({ storageUrl: url });
+  assertEquals((await deleteStorageObject(url)).outcome, "deleted");
+  assertEquals((await provider.stat(url)).exists, false);
+
+  // 重传同一内容：reserve（删除前锁定 URL）→ put → 登记 ready，物理文件重建
+  const { storageUrl } = await uploadStorageObjectWithReservation({
+    key: "reup-resv",
+    bytes,
+  });
+  assertEquals(storageUrl, url);
+  assertEquals((await getStorageObject(url))?.state, "ready");
+  assertEquals((await provider.stat(url)).exists, true);
+  assertEquals(await countReservations(url), 0);
+});
+
+Deno.test("storage registry: 带预约上传后仍有引用时补偿不误删共享对象", async () => {
+  const provider = useTempStorage();
+  const bytes = new TextEncoder().encode("shared-with-reservation");
+  const { storageUrl } = await uploadStorageObjectWithReservation({
+    key: "shared-resv",
+    bytes,
+  });
+  await seedProblem("sr-resv-prob", 910002);
+  await getDb().insert(problemDraftObjects).values({
+    problem_id: "sr-resv-prob",
+    role: "support_package",
+    path: "package.zip",
+    storage_url: storageUrl,
+  });
+
+  // 后续事务失败 → 补偿：有引用时保留字节，只解绑
+  const outcome = await compensateUploadedObject({ storageUrl });
+  assertEquals(outcome.outcome, "referenced");
+  assertEquals((await provider.stat(storageUrl)).exists, true);
+  assertEquals((await getStorageObject(storageUrl))?.state, "ready");
+  await getDb().delete(problemDraftObjects).where(
+    eq(problemDraftObjects.problem_id, "sr-resv-prob"),
+  );
+  await getDb().delete(problems).where(eq(problems.id, "sr-resv-prob"));
 });
 
 Deno.test("storage registry: stat 对 local provider 返回大小", async () => {

@@ -146,7 +146,23 @@ export class LocalStorageProvider implements StorageProvider {
       await Deno.remove(tmpPath);
     }
 
-    return buildStorageUrl("local", ext ? fileName : base64Key, hashHex);
+    return this.urlForUpload(_key, hashHex, contentType);
+  }
+
+  /**
+   * 预测 `put()` 将返回的 URL（不写盘）。
+   *
+   * local 是内容寻址：URL key 只由内容 SHA-256 决定（`_key` 忽略），扩展名由
+   * contentType 推导，因此上传前即可算出 URL 并先登记上传预约。
+   */
+  urlForUpload(_key: string, sha256Hex: string, contentType?: string): string {
+    const base64Key = this.hexToBase64url(sha256Hex);
+    const ext = extensionFor(contentType);
+    return buildStorageUrl(
+      "local",
+      ext ? `${base64Key}.${ext}` : base64Key,
+      sha256Hex,
+    );
   }
 
   /**

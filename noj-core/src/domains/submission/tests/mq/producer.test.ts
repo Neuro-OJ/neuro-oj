@@ -116,9 +116,10 @@ Deno.test({
       );
       assertEquals(parsed.code, "print(42)");
     } finally {
-      await fake.stop();
+      /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
       Deno.env.delete("REDIS_URL");
+      await fake.stop();
     }
   },
 });
@@ -148,9 +149,10 @@ Deno.test({
       assertEquals(fake.getMessages("noj:judge:queue:ai:low").length, 1);
       assertEquals(fake.getMessages("noj:judge:queue:ai:medium").length, 0);
     } finally {
-      await fake.stop();
+      /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
       Deno.env.delete("REDIS_URL");
+      await fake.stop();
     }
   },
 });
@@ -176,9 +178,10 @@ Deno.test({
         "Redis 连接不可用",
       );
     } finally {
-      await fake.stop();
+      /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
       Deno.env.delete("REDIS_URL");
+      await fake.stop();
     }
   },
 });
@@ -216,9 +219,10 @@ Deno.test({
       }));
       assertEquals(len, 1);
     } finally {
-      await fake.stop();
+      /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
       Deno.env.delete("REDIS_URL");
+      await fake.stop();
     }
   },
 });
@@ -249,9 +253,10 @@ Deno.test({
         "超过大小限制",
       );
     } finally {
-      await fake.stop();
+      /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
       Deno.env.delete("REDIS_URL");
+      await fake.stop();
     }
   },
 });
@@ -288,9 +293,10 @@ Deno.test({
       // 验证 JSON 序列化结果在 LPUSH 中正确传递
       assertEquals(parsed.submission_id, "test-format-42");
     } finally {
-      await fake.stop();
+      /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
       Deno.env.delete("REDIS_URL");
+      await fake.stop();
     }
   },
 });

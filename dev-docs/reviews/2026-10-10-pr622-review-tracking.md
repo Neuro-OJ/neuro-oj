@@ -495,7 +495,9 @@
 在「真实 PostgreSQL 全量域回归」阶段又定位并修复了两个会让验收假红/假绿的缺陷，二者此前被误判为"环境差异"：
 
 1. **测试事务在真实 PG 下不生效**（`src/shared/db/connection.ts`）。连接池是首次 `getDb()` 才懒创建的，而 `startRealTransaction()` 在 `_client` 为空时直接 `return`，于是**测试进程的第一个触库用例不在事务内**：其写入自动提交、不被 preload 回滚（PGlite 模式因模板实例启动期即就绪而不受影响，这正是"PGlite 绿、PG 红"的原因）。修复：PG 分支先显式初始化连接池再 `BEGIN`。
-2. **fire-and-forget 的物化视图刷新污染测试事务**（`src/domains/query/services/rankings.ts`）。结果写入后会 `refreshRankingsView().catch(...)`，它在**测试的长事务内**执行 `REFRESH MATERIALIZED VIEW CONCURRENTLY`（PG 25001：不允许在事务块内执行），并与用例并发创建/释放 savepoint，导致 `savepoint "noj_sp_N" does not exist` → `current transaction is aborted` 的级联假失败。修复：测试事务内直接跳过刷新（测试期读取一律走内联查询，被测语义不变）；同时让 savepoint 名在同一连接上单调递增、并只忽略 `3B001/25P02` 这类记账竞态错误。
+2. **fire-and-forget 的物化视图刷新与测试事务的 savepoint 交错**（`src/domains/query/services/rankings.ts`）。结果写入后会 `refreshRankingsView().catch(...)`，它在**测试的长事务内**创建/释放 savepoint，与用例自身的 savepoint 记账**交错竞争**，导致 `savepoint "noj_sp_N" does not exist` → `current transaction is aborted` 的级联假失败。
+   - **根因勘误（2026-10-11）**：此前把根因写成"PG 25001：`REFRESH MATERIALIZED VIEW CONCURRENTLY` 不允许在事务块内执行"是**错误的**。PG 16.15 实测 `BEGIN; REFRESH MATERIALIZED VIEW CONCURRENTLY ...; ROLLBACK;` **成功**，该语句本身允许在事务块内执行（本函数的正式实现也正是"同一事务内取锁 → 刷新 → 记账"）。真实原因是异步刷新与测试事务的 savepoint 交错。
+   - 修复：`connection.ts` 把 savepoint 事务**串行化**（同一条测试连接上兄弟事务不得交错）并让记账错误正常抛出（不再吞 `3B001/25P02`）；`refreshRankingsView()` 额外保留 `isInsideTestTransaction()` 短路，作为**测试适配**（测试期读取一律走内联查询，跳过真跑物化视图重建，被测语义不变）。
 3. 相应地，`rankings-view-refresh.pg.test.ts`（专门验证刷新的真实 PG 用例）改为 `disableTestTransactionForFile()`，并保留其自带唯一夹具与显式清理。
 
 修复后真实 PG 全绿：submission **279 passed / 0 failed**（修复前 271/8，连续两次全新 schema 复现）、catalog 328/0、contest 94/0、identity 319/0，`bash scripts/test-shared.sh` 294/0；PGlite 全量域回归同样全绿。
@@ -503,3 +505,31 @@
 **验收注意**：CI 的每个 job 使用**独立数据库**（先 `00_migrate_test` + `seed_bootstrap_admin_test` 再跑本域）。若在**同一个** schema 里连续跑「shared 套件 → 域套件」，`tests/db/reset-db-tables.test.ts`（`disableTestTransactionForFile()`，会提交式 TRUNCATE）会清掉 RBAC/镜像白名单等种子，使后续域用例出现与代码无关的失败。这不是产品缺陷，按 CI 的「一 job 一库」方式运行即全绿。
 2. 真实 PG 全量域回归需在独占库/独占 schema 上串行执行（`test:domain` 会 TRUNCATE），本轮已按此方式执行迁移、锁序、结算一致性、视图刷新、批任务并发用例。
 3. **跨模块 E2E 未在本轮运行**：`noj-tests` 的 `test:domain` 需要先 `docker compose -f docker-compose.e2e.yml up -d` 起完整栈（core/judge/llm-mock/minio，端口 8099）。本轮修复环境只起了开发态容器，直接运行会全部 `Connection refused`（`http://localhost:8099` 连接被拒）；尝试启动 E2E 栈时被沙箱的只读 `/home/<user>/.docker/buildx/activity` 阻断，镜像构建无法完成。结论：E2E 必须由具备可写 Docker builder 的环境执行（CI 的 `e2e.yml` 已覆盖 core/judge/gateway 镜像构建与全链路用例）。
+
+---
+
+## 第二轮复审（2026-10-11）10 项遗留缺陷处置
+
+> 基准：复审者在本地工作区（相对 `061ff7d0` 的累计改动）独立复现的 10 项问题。
+> 本表记录每项的处置与验收证据；全部改动均在**真实 PostgreSQL 隔离 schema** 上复跑。
+
+| # | 严重度 | 结论 | 关键改动 | 验收证据 |
+|---|---|---|---|---|
+| 1 | P1 | 已修 | 新增持久化**上传预约**（表 `storage_object_reservations`，生成迁移 `0111`）；物理上传前在登记行锁事务内写入预约、上传成功后消费预约；删除守卫持锁检查未过期预约 → `409 STORAGE_OBJECT_UPLOAD_IN_FLIGHT`，不删物理文件、不置 deleted；`registerReadyStorageObject` 仅凭「自己的 + 同 URL + 未过期」预约才可从 `deleting/deleted` 恢复 `ready`（`system/services/storage/registry.ts`）；调用方 `oi-draft.ts`、`problem-bundle.ts`、`support-package.ts` 统一改为 reserve → put → register | `versioning-lock-order.pg.test.ts` 新增「删除执行期间重传并绑定——绝不出现 ready 但物理缺失」（GatedDeleteProvider 屏障）；`storage-registry.test.ts` 18 例（含过期预约清理、无预约不得复活 deleted、补偿不误删共享对象） |
+| 2 | P1 | 已修 | `effective-policy.ts` 新增唯一锁序实现 `lockEffectivePolicyHosts()`：题目升序 → 竞赛升序，一次取全；`acceptRejudgeJob` 在**任何策略写入/投影重算前**对 changes 的题目∪竞赛取全锁，单条入口同序；`testRootDb?` 为**测试专用**可选注入（省略时行为不变） | 新增 `lock-order-policy-cross-contest.test.ts`：两批**题目不相交、竞赛相交**并发受理，确定性屏障复现；临时恢复旧锁序 → 第 1 轮即 `40P01`，修复后 5 轮稳定通过 |
+| 3 | P1 | 已修 | LLM token 吊销收敛为统一终态后处理 `revokeAttemptLlmTokens()`，覆盖 finished/error/superseded，四条终结路径（正常结果、job 直提永久失败、重试耗尽、sweeper 永久恢复失败）均在**事务提交后**调用；TTL 由尝试快照推导（≥1h 下限 + 余量），不再写死 3600s；`supersedeAttempt` 也在提交后吊销（传 executor 时不提前吊销） | `versioning-terminal-revocation.test.ts` 6 例（含「派发响应丢失后终结仍吊销」「长寿命 token > 1h 仍被吊销」「superseded 后吊销」） |
+| 4 | P2 | 已修 | `connection.ts` savepoint 模拟：**兄弟事务串行化**（连接级 Promise 队列）、**嵌套不离队**（深度计数，避免与外层互等死锁）、成功路径 `RELEASE` 失败**必须抛出**（不再吞 `3B001/25P02`）、回滚失败标记连接事务损坏并保留原始异常 | 新增 `tests/db/test-transaction-savepoint_test.ts` 3 例：交错兄弟事务后 `SELECT 1` 仍成功（旧实现报 `25P02`）、内层失败不中止外层、嵌套事务不死锁 |
+| 5 | P2 | 已修 | 新增 `tests/helper/pg-raw-connection.ts`：原生连接统一复用 `buildConnectionOptions(TEST_SCHEMA, jitDisabled)`，提供 `withRawTransaction()` 把「可绑定检查 + 插入引用」放进同一真实事务；`versioning-lock-order.pg.test.ts` 的原生连接全部改走该 helper，并发 Promise 均装拒绝守卫 | 隔离 schema（`TEST_SCHEMA`）下该文件 4 例全绿（修复前 277/3 failed）；`rankings-view-refresh.pg.test.ts`、`contest-settlement-consistency.pg.test.ts` 同样走 helper |
+| 6 | P2 | 已修 | 升级副本**首次插入的同一事务**内 `bumpSubmissionCountRevisions(tx, …)`（problem/contest/global）；复用副本提前返回不重复递增；客观题升级副本同样补齐 | `versioning-upgrade-copy.test.ts`「revision#6」两例（含 source_contest 递增竞赛作用域、重派不重复递增） |
+| 7 | P2 | 已修 | 新增 `PreparedJobExecution`：**先预分配** attempt/副本 ID、sequence 与完整非敏感快照 → 支持包存在性 + LLM 服务/模型/预算预检（重派用冻结快照，不重解析平台默认）→ 再在**单事务**内落副本/尝试/条目；预检与配置类永久失败**不留尝试行** | `versioning-preflight-order.test.ts` 3 例（Provider 缺配、支持包缺失均 0 尝试；重派用快照 provider/model） |
+| 8 | P2 | 已修 | `query_projection_revisions.materialized_at`（生成迁移 `0111`）记录刷新覆盖时刻；`inspectRankingView()` 的新鲜度加入**赛期边界**判定（`materialized_at < c.end_time <= now()` 且 `affect_global_ranking`；`materialized_at IS NULL` 按落后），落后即回退内联并调度刷新；`updateContest`/`deleteContest` 变更赛期或 `affect_global_ranking` 时递增 global data revision | 真实 PG `rankings-view-refresh.pg.test.ts` 4 例：比赛自然结束且**无任何写入** → 视图不再可信、内联口径正确；刷新后再跨边界仍需刷新；改字段立即失效。PGlite `contest-revision-invalidation.test.ts` |
+| 9 | P2 | 已修 | 新增 `consumeSubmissionQuotaForUpgrade(sourceUserId, jobItemId)`：与普通提交**共享** `submission:user:<id>` 额度；Lua `SET NX PX` 占位保证幂等（重派不重复扣费，24h）；额度不足释放占位并返回结构化延期；管理员代升级扣**原用户**；**限流总开关关闭时（含测试默认）直接放行**；worker 在副本插入同事务内调用，延期则回滚 + `requeueJobItem` | `upgrade-quota.test.ts` 3 例（延期不失败、重派只扣一次、管理员扣原用户且不占 actor 预算）+ `versioning-upgrade-copy.test.ts`「quota#9」（fail-closed → 条目延期、不发新提交、恢复后重试成功） |
+| 10 | P2 | 已修 | 锁内复查的 `SOURCE_JUDGING`/`SOURCE_DELETED` → 条目 **skipped**（租约丢失仍延期；其它 <500 仍 failed），worker 外层兜底同分类 | `versioning-job-skipped.test.ts`（契约）+ `versioning-job-skipped-source.pg.test.ts`（真实 PG 行锁屏障 2 例） |
+
+### 本轮集成验收额外修复（Lead 收口）
+
+- **`RATE_LIMIT_ENABLED` 模块级泄漏**（`upgrade-quota.test.ts`）：测试文件在模块顶层 `Deno.env.set("RATE_LIMIT_ENABLED","true")`，而 Deno 测试文件共享同一进程 → 后续所有文件都被开启限流，升级派发开始扣真实额度并被延期。改为**每用例内**开启、`finally` 还原（与 `routes/self-tests.test.ts` 既有 `withRateLimitEnabled` 同模式）。修复后 submission 整域真实 PG **302 passed / 0 failed**（修复前 294/8）。
+- **额度总开关顺序**：`consumeSubmissionQuotaForUpgrade` 原先先碰 Redis 占位再判总开关，Redis 异常会把"未启用限流"误判成"额度不足"；改为总开关优先短路。
+- **`retryAfterMs` 兜底**：限流实现可能不返回该值 → `plusSeconds(NaN)` 抛 `RangeError`，把"延期"变成真失败；在 `upgrade-quota.ts` 与 `UpgradeQuotaDeferredError` 构造器各加有限值兜底。
+- **删除路径容错**：`submissions-crud.ts` 删除提交后的产物物理清理改为 try/catch（预约未过期时守卫会返回可重试 409，提交行已删除，不能因此让删除失败）。
+- **迁移产物归正**：本轮 schema 改动改用 `deno task db:generate` 生成 `0111_clever_khan.sql` + `0111_snapshot.json`（删除此前手写的 `0110`），快照链门禁与 schema parity 均通过；`schema-ddl.ts` 压缩到 1199 行以过单文件规模门禁。

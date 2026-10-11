@@ -305,13 +305,14 @@ Deno.test({
         .limit(1);
       assertEquals(row.status, "judging");
     } finally {
-      await fake.stop();
+      /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
       if (prevUrl !== null) {
         Deno.env.set("REDIS_URL", prevUrl);
       } else {
         Deno.env.delete("REDIS_URL");
       }
+      await fake.stop();
     }
   },
 });
@@ -342,13 +343,14 @@ Deno.test({
       assertEquals(row.status, "judging");
       assertEquals(row.judge_started_at, oldNow);
     } finally {
-      await fake.stop();
+      /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
       if (prevUrl !== null) {
         Deno.env.set("REDIS_URL", prevUrl);
       } else {
         Deno.env.delete("REDIS_URL");
       }
+      await fake.stop();
     }
   },
 });

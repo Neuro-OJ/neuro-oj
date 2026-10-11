@@ -100,8 +100,9 @@ Deno.test({
       assertEquals(second.fromProcessing, 0);
       assertEquals(fake.getMessages(JUDGE_QUEUES.medium).length, 3);
     } finally {
-      await fake.stop();
+      /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
+      await fake.stop();
       if (originalRedis === undefined) Deno.env.delete("REDIS_URL");
       else Deno.env.set("REDIS_URL", originalRedis);
     }

@@ -19,6 +19,12 @@ export const queryProjectionRevisions = pgTable(
       .default(0),
     materialized_revision: bigint("materialized_revision", { mode: "number" })
       .notNull().default(0),
+    /**
+     * 上次成功刷新（覆盖 materialized_revision）的时刻，ISO 8601。
+     * 榜单内容还依赖**竞赛结束时间**：时钟跨越 end_time 不改变 data_revision，
+     * 因此新鲜度判定需要该时刻与"下一次赛期边界"比较（2026-10-11 复审问题 8）。
+     */
+    materialized_at: text("materialized_at"),
   },
   (table) => ({
     /** data_revision 单调不回退；物化 revision 不得超过数据 revision。 */

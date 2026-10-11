@@ -14,6 +14,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   evaluationAttempts,
+  judgeImages,
   problems,
   problemVersions,
   submissionJobItems,
@@ -33,8 +34,44 @@ import { applyAttemptResult } from "../../services/versioning/result-write.ts";
 import type { SubmissionJobItemStatus } from "../../../../shared/versioning/types.ts";
 
 const now = new Date().toISOString();
+
+// 真实 PG（独立 schema）由迁移创建，不含 PGlite 的 root 种子；
+// 用例把 `owner_id` 指向 "0"，因此这里幂等补一行（PGlite 下已存在，无副作用）。
+await getDb().insert(users).values({
+  id: "0",
+  username: "root",
+  email: "root@noj.local",
+  password_hash: "",
+  created_at: now,
+  updated_at: now,
+}).onConflictDoNothing();
+
+// 真实 PG（独立 schema）不含 PGlite 的评测镜像种子：白名单为空会让所有派发被
+// 预检拒绝（JUDGE_IMAGE_NOT_ALLOWED），因此这里幂等补上两条（PGlite 下已存在）。
+await getDb().insert(judgeImages).values([
+  {
+    id: "e0000000-0000-0000-0000-000000000002",
+    image: "noj-evaluator-python",
+    mode: "all_versions",
+    kind: "evaluator",
+    description: "测试 Evaluator",
+    created_at: now,
+    updated_at: now,
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000003",
+    image: "noj-solution-python",
+    mode: "all_versions",
+    kind: "solution",
+    description: "测试 Solution",
+    created_at: now,
+    updated_at: now,
+  },
+]).onConflictDoNothing();
+
 const db = getDb();
 
+// 幂等：真实 PG 下模块级写入不随用例回滚，重复运行不得冲突
 await db.insert(users).values({
   id: "oi-user",
   username: "oi-user",
@@ -42,7 +79,7 @@ await db.insert(users).values({
   password_hash: "hash",
   created_at: now,
   updated_at: now,
-});
+}).onConflictDoNothing();
 
 const dualConfig = {
   evaluator: {
@@ -272,8 +309,11 @@ Deno.test("dispatch#35: 派发前持久化条目关联，结果先到后派发�
   });
 
   const owner = "worker-a";
-  const [claimed] = await claimJobItems(owner, { limit: 1 });
-  assertEquals(claimed.id, "oi-item-2");
+  // 领取后按 id 定位本用例条目（隔离 schema 下可能混入其他用例的条目）
+  const claimedRows = await claimJobItems(owner, { limit: 100 });
+  const claimed = claimedRows.find((row) => row.id === "oi-item-2");
+  assertEquals(claimed?.id, "oi-item-2");
+  if (!claimed) throw new Error("未领取到本用例条目 oi-item-2");
   assertEquals(claimed.attempt_id, null);
 
   const source: DispatchSource = {
@@ -291,14 +331,28 @@ Deno.test("dispatch#35: 派发前持久化条目关联，结果先到后派发�
   };
 
   // 创建尝试：条目 attempt_id 与源 active_attempt_id 必须在**同一事务**里落库，
-  // 且此刻条目仍是 preparing（MQ 消息尚未发送）
+  // 且此刻条目仍是 preparing（MQ 消息尚未发送）。
+  // #7 之后执行上下文由调用方**预分配并冻结**（attemptId / destinationId /
+  // sequence / 非敏感快照），事务内只落库与关联。
+  const preparedAttemptId = crypto.randomUUID();
   const attempt = await ensureJobAttempt({
     item: claimed,
     owner,
     source,
-    content: aiContent,
     kind: "rejudge",
+    prepared: {
+      attemptId: preparedAttemptId,
+      destinationId: "oi-source",
+      sequence: 0,
+      taskSnapshot: {
+        language: "python",
+        problem_version_id: versionId,
+        runtime_config: dualConfig,
+        batch_job_id: "oi-job-2",
+      },
+    },
   });
+  assertEquals(attempt.id, preparedAttemptId);
   const [bound] = await db.select().from(submissionJobItems).where(
     eq(submissionJobItems.id, "oi-item-2"),
   );

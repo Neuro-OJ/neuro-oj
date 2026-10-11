@@ -21,6 +21,7 @@ import {
   getStorageProvider,
   parseStorageUrl,
   sha256Hex,
+  uploadStorageObjectWithReservation,
 } from "../../../system/index.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
@@ -293,7 +294,6 @@ export async function saveOiDraft(
       const byPath = new Map<string, DraftObjectRef>();
       for (const ref of existingRefs) byPath.set(ref.path, ref);
 
-      const storage = await getStorageProvider();
       const nextRefs: DraftObjectRef[] = [];
       for (const [path, bytes] of Object.entries(entries)) {
         if (bytes.length > MAX_OI_FILE_SIZE) {
@@ -313,21 +313,28 @@ export async function saveOiDraft(
           nextRefs.push(previous);
           continue;
         }
-        const url = await storage.put(
-          `oi-file-${crypto.randomUUID()}`,
+        // Handbook §2.5：物理上传之前先写上传预约，上传成功后在同一登记事务内
+        // 消费预约并置 ready——否则"删除在途 + 并发重传"会留下 ready 但文件已删。
+        const { storageUrl: url } = await uploadStorageObjectWithReservation({
+          key: `oi-file-${crypto.randomUUID()}`,
           bytes,
-          "application/octet-stream",
-        );
+          contentType: "application/octet-stream",
+          sha256: hash,
+        });
         uploaded.push(url);
         nextRefs.push({ role: "oi_file", path, storage_url: url });
       }
 
       // 打包 ZIP 与逐文件引用同批切换（同一草稿事务）
-      const packageUrl = await storage.put(
-        `oi-runtime-${crypto.randomUUID()}.zip`,
-        await buildOiArchive(entries),
-        "application/zip",
-      );
+      const packageBytes = await buildOiArchive(entries);
+      const { storageUrl: packageUrl } =
+        await uploadStorageObjectWithReservation(
+          {
+            key: `oi-runtime-${crypto.randomUUID()}.zip`,
+            bytes: packageBytes,
+            contentType: "application/zip",
+          },
+        );
       uploaded.push(packageUrl);
       supportUrl = packageUrl;
       objects = nextRefs;

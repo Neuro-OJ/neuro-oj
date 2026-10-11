@@ -42,6 +42,11 @@ import {
 import type { ProblemContentV1 } from "../../../catalog/index.ts";
 import { setStorageProviderForTest } from "../../../system/services/storage/factory.ts";
 import { LocalStorageProvider } from "../../../system/services/storage/local.ts";
+import { startFakeRedis } from "../mq/_setup.ts";
+import {
+  getRedis,
+  resetRedisForTest,
+} from "../../../../shared/mq/connection.ts";
 
 const now = new Date().toISOString();
 const tempStorageDir = Deno.makeTempDirSync({ prefix: "noj-exec-ctx-" });
@@ -679,6 +684,114 @@ async function expectAppErrorCode(
   }
   throw new Error(`预期抛出 ${code}，但调用未失败`);
 }
+
+Deno.test("attempt lifecycle: superseded 后吊销旧尝试 token；传 executor 时不提前吊销", async () => {
+  const db = getDb();
+  await seedTwoVersions(
+    "ec-p10",
+    985010,
+    {
+      command: "python3 /workspace/evaluate_v1.py",
+      timeLimitMs: 1111,
+      template: "v1",
+      artifactMaxSizeMb: null,
+      submissionMode: "code",
+    },
+    {
+      command: "python3 /workspace/evaluate_v2.py",
+      timeLimitMs: 2222,
+      template: "v2",
+      artifactMaxSizeMb: null,
+      submissionMode: "code",
+    },
+  );
+  await db.insert(submissions).values({
+    id: "ec-s10",
+    user_id: "0",
+    problem_id: "ec-p10",
+    language: "python3",
+    code: "print(1)",
+    submitted_version_id: "ec-p10-v1",
+    version_origin: "known",
+    status: "pending",
+    created_at: now,
+  });
+
+  const fake = startFakeRedis();
+  const prevUrl = Deno.env.get("REDIS_URL") ?? null;
+  resetRedisForTest();
+  Deno.env.set("REDIS_URL", fake.url);
+  try {
+    const redis = getRedis();
+    await redis.connect();
+    const attemptKey = (id: string) => `llm:attempt:revoked:${id}`;
+
+    // 自行开事务：提交后必须吊销（尝试维度 + 提交维度旧键）
+    const first = await createAttempt({
+      source: {
+        kind: "submission",
+        id: "ec-s10",
+        problem_id: "ec-p10",
+        contest_id: null,
+      },
+      problemVersionId: "ec-p10-v1",
+      source_kind: "initial",
+      taskSnapshot: {
+        language: "python3",
+        problem_version_id: "ec-p10-v1",
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 1111,
+            memory_limit_mb: 256,
+          },
+          solution: {
+            image: "noj-solution-python",
+            call_timeout_ms: 1000,
+            memory_limit_mb: 256,
+          },
+        },
+      },
+    });
+    assertEquals(await supersedeAttempt(first.id), true);
+    assertEquals(await redis.get(attemptKey(first.id)), "1");
+    assertEquals(await redis.get("llm:token:revoked:ec-s10"), "1");
+    // 已是终态：再次调用返回 false（幂等，不重复写）
+    assertEquals(await supersedeAttempt(first.id), false);
+
+    // 传入 executor 时事务尚未提交 → 不得提前吊销（调用方提交后自行吊销）
+    const second = await createAttempt({
+      source: {
+        kind: "submission",
+        id: "ec-s10",
+        problem_id: "ec-p10",
+        contest_id: null,
+      },
+      problemVersionId: "ec-p10-v1",
+      source_kind: "rejudge",
+    });
+    let appliedInTx = false;
+    await db.transaction(async (tx) => {
+      appliedInTx = await supersedeAttempt(second.id, tx);
+      assertEquals(await redis.get(attemptKey(second.id)), null);
+    });
+    assertEquals(appliedInTx, true);
+    // 提交后本函数按契约不吊销（调用方负责）
+    assertEquals(await redis.get(attemptKey(second.id)), null);
+    assertEquals(
+      (await getDb().select().from(evaluationAttempts).where(
+        eq(evaluationAttempts.id, second.id),
+      ))[0].state,
+      "superseded",
+    );
+  } finally {
+    await fake.stop();
+    resetRedisForTest();
+    if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
+    else Deno.env.delete("REDIS_URL");
+  }
+});
 
 Deno.test("execution preflight: 语言/模式/镜像/产物上限给出稳定原因码（#33 共享 helper）", async () => {
   const aiContent = {

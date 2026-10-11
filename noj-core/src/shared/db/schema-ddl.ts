@@ -167,6 +167,14 @@ $$ LANGUAGE plpgsql`,
   )`,
   `CREATE INDEX IF NOT EXISTS idx_storage_objects_state ON storage_objects (state)`,
   `CREATE INDEX IF NOT EXISTS idx_storage_objects_sha256 ON storage_objects (sha256)`,
+  `CREATE TABLE IF NOT EXISTS storage_object_reservations (
+    reservation_id TEXT PRIMARY KEY, storage_url TEXT NOT NULL,
+    reserved_at TEXT NOT NULL, expires_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_storage_object_reservations_url
+    ON storage_object_reservations (storage_url)`,
+  `CREATE INDEX IF NOT EXISTS idx_storage_object_reservations_expires
+    ON storage_object_reservations (expires_at)`,
 
   // 3.0.3 problem_drafts（每题一个共享草稿；revision 乐观锁）
   `CREATE TABLE IF NOT EXISTS problem_drafts (
@@ -1084,6 +1092,7 @@ $$ LANGUAGE plpgsql`,
     scope_key TEXT PRIMARY KEY,
     data_revision BIGINT NOT NULL DEFAULT 0,
     materialized_revision BIGINT NOT NULL DEFAULT 0,
+    materialized_at TEXT,
     CONSTRAINT query_projection_revisions_revision_check CHECK (
       data_revision >= 0 AND materialized_revision >= 0
       AND materialized_revision <= data_revision
@@ -1125,6 +1134,7 @@ export const ALL_TABLES = [
   "problem_draft_objects",
   "problem_version_objects",
   "storage_objects",
+  "storage_object_reservations",
   "query_projection_revisions",
   "evaluation_attempts",
   "submission_version_results",

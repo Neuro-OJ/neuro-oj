@@ -60,7 +60,18 @@ PR #622 搭出了「不可变版本 + 共享草稿 + 评测尝试 + 有效成绩
 
 7. **测试夹具层的两个真实缺陷**（验收阶段用真实 PostgreSQL 全量回归才暴露，PGlite 下不可见）：
    - `shared/db/connection.ts`：连接池懒创建导致 `startRealTransaction()` 在测试进程**第一个触库用例**上直接返回，该用例不在事务内、写入自动提交（表现为固定 fixture id 的重复主键与 `current transaction is aborted` 级联）。改为先显式初始化连接池再 `BEGIN`；savepoint 名在同一连接上单调递增（不再随用例重置），并只忽略 `3B001`/`25P02` 这类记账竞态错误。
-   - `query/services/rankings.ts`：结果写入后的 fire-and-forget `refreshRankingsView()` 会在测试长事务内执行 `REFRESH MATERIALIZED VIEW CONCURRENTLY`（PG 25001，事务块内不允许），并与用例并发争用 savepoint。改为**测试事务内直接跳过刷新**（测试期读取本就走内联查询）；专门验证刷新的 `rankings-view-refresh.pg.test.ts` 改为关闭 preload 事务包装。
+   - `query/services/rankings.ts`：结果写入后的 fire-and-forget `refreshRankingsView()` 会在测试长事务内**与用例的 savepoint 记账交错竞争**，导致 `savepoint "noj_sp_N" does not exist` → `current transaction is aborted` 的级联假失败。修复分两层：`connection.ts` 把同一条测试连接上的 savepoint 事务串行化，并让成功路径的 `RELEASE` 失败正常抛出（不再吞 `3B001`/`25P02`）；`refreshRankingsView()` 保留 `isInsideTestTransaction()` 短路作为**测试适配**（测试期读取本就走内联查询）；专门验证刷新的 `rankings-view-refresh.pg.test.ts` 关闭 preload 事务包装。
+   - **根因勘误（2026-10-11）**：此处原先写作"`REFRESH MATERIALIZED VIEW CONCURRENTLY` 不允许在事务块内执行（PG 25001）"是**错误的**。PG 16.15 实测 `BEGIN; REFRESH MATERIALIZED VIEW CONCURRENTLY ...; ROLLBACK;` 成功；该语句允许在事务块内执行，`refreshRankingsView()` 的正式实现就是"同一事务内取 advisory lock → 刷新 → 记录 revision 与 materialized_at"。真正的问题是测试长事务里的 savepoint 交错，与 REFRESH 本身无关。
+
+8. **第二轮复审（2026-10-11）10 项遗留缺陷**：
+   - 存储引入**持久化上传预约**（`storage_object_reservations`）：物理上传前在登记行锁内预约，删除守卫见未过期预约即拒绝（409），登记只在持有自己的预约时才能从 `deleting/deleted` 恢复 `ready`——「删除在途 + 并发重传」不再产生 `ready` 但物理缺失的对象。
+   - 批量策略修改改为**先按 ID 升序锁定全部题目、再锁定全部竞赛**（唯一实现 `lockEffectivePolicyHosts`），消除题目不相交/竞赛相交两批请求的 `40P01` 死锁。
+   - LLM token 吊销收敛为**统一终态后处理** `revokeAttemptLlmTokens`（finished/error/superseded，四类终结路径都在事务提交后调用），TTL 由尝试快照推导而不再写死 3600s；`supersedeAttempt` 亦在提交后吊销。
+   - 测试事务 savepoint 模拟修正：兄弟事务**串行化**、嵌套**不离队**、成功路径 `RELEASE` 失败必须抛出、回滚失败标记连接不可用。
+   - 批任务改为**先完整预检并冻结快照、再单事务创建**副本/尝试/条目；锁内 `SOURCE_JUDGING`/`SOURCE_DELETED` 记为 `skipped`。
+   - 升级副本插入同一事务内递增统计 revision；升级副本与普通提交**共享**用户额度（幂等键 = job item，限流总开关关闭时直接放行）。
+   - 榜单新鲜度加入**赛期边界**维度（新增 `query_projection_revisions.materialized_at`），竞赛结束/改期即时失效。
+   - 原生 PG 测试连接统一走 `tests/helper/pg-raw-connection.ts`（带 `TEST_SCHEMA` search_path），绑定检查与引用插入放入同一真实事务。
 
 **口径决策（记录在案）**：
 

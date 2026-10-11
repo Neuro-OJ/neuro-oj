@@ -26,6 +26,7 @@ import type { JudgeTaskPriority } from "../types/index.ts";
 import { AppError } from "../../../shared/base/errors.ts";
 import { rebuildPendingTask } from "./pending-recovery.ts";
 import { applyAttemptResult } from "../services/versioning/result-write.ts";
+import { revokeAttemptLlmTokens } from "../services/versioning/job-worker.ts";
 
 const RESULT_QUEUE = "noj:judge:results";
 
@@ -366,6 +367,12 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
           score: null,
           accepted: false,
           output: err instanceof Error ? err.message : String(err),
+        });
+        // 崩溃恢复被判永久失败同样是**尝试终态**：必须走统一吊销后处理，
+        // 否则该尝试已签发的 LLM token 在剩余有效期内仍可继续调用 gateway。
+        await revokeAttemptLlmTokens({
+          attemptId: row.active_attempt_id,
+          submissionId: row.id,
         });
       } else {
         await db.update(submissions).set({

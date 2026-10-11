@@ -1074,8 +1074,17 @@ export async function deleteSubmission(id: string): Promise<void> {
     return row;
   });
   // 先提交引用删除，再调用带共享引用守卫的物理清理；升级副本仍有引用时保留。
+  // 上传预约（reservation）未过期或存在共享引用时清理会返回可重试错误——
+  // 提交行已删除，这里不能把清理失败变成删除失败（对象由后续守卫清理回收）。
   if (deleted.artifact_storage_url) {
-    await deleteStorageObject(deleted.artifact_storage_url);
+    try {
+      await deleteStorageObject(deleted.artifact_storage_url);
+    } catch (err) {
+      logger.warn("提交删除后的产物物理清理失败，保留对象等待回收", {
+        submission_id: id,
+        err,
+      });
+    }
   }
   await publishSearchIndexEvent("submission", id, "delete");
 }

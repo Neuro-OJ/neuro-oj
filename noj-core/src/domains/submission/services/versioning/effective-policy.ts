@@ -15,7 +15,7 @@
  * - 单独升级竞赛固定版本时，若现有 `exact` 策略与目标固定版本冲突 → 409。
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
@@ -67,6 +67,77 @@ export function contestPolicyConflict(
     409,
     "CONTEST_PROBLEM_VERSION_POLICY_CONFLICT",
   );
+}
+
+/** 策略宿主行锁强度：`update` 用于要改写的宿主，`share` 用于只读但需与写入互斥的宿主。 */
+export type PolicyHostLockStrength = "update" | "share";
+
+/**
+ * 单条 `SELECT ... FOR ...` 最多锁定的宿主行数。
+ *
+ * 只为限制单语句绑定参数数量；分块按 ID 升序推进、块内也按 ID 升序，
+ * 因此整体获取顺序仍是**全局升序**。
+ */
+export const POLICY_HOST_LOCK_BATCH = 500;
+
+/**
+ * 按 Handbook §5.1 固定锁序获取策略宿主锁：
+ * **全部题目（按 ID 升序）→ 全部竞赛（按 ID 升序）**。
+ *
+ * 这是策略宿主锁序的**唯一实现**，所有会修改有效策略或重算投影的入口
+ * （批量受理 `acceptRejudgeJob`、逐条 `setProblemEffectiveVersionPolicy` /
+ * `setContestProblemEffectiveVersionPolicy` / `upgradeContestProblemPinnedVersion`）
+ * 都必须经由它，且必须在**任何策略写入与投影重算之前一次拿全**。
+ *
+ * 为什么必须"一次拿全"而不是"边重算边取下一把"：策略重算会先写提交行并递增
+ * `query_projection_revisions`（含 `global`），此时若继续获取后续竞赛锁，就与
+ * 并发请求形成「各自持有对方想要的锁」的环 → PostgreSQL 40P01 死锁。
+ * 按同一全序一次拿全部宿主锁后，环不可能出现。
+ *
+ * 逐条入口与批量入口共用同一全序，避免两个入口互相成环。
+ *
+ * @param hosts 相关宿主 ID（内部去重并升序排序；空集合不产生任何锁）
+ * @param locks 锁强度（默认 `update`：策略宿主要被改写；`share` 用于只读互斥）
+ */
+export async function lockEffectivePolicyHosts(
+  executor: Executor,
+  hosts: {
+    problemIds?: Iterable<string>;
+    contestIds?: Iterable<string>;
+  },
+  locks: {
+    problemLock?: PolicyHostLockStrength;
+    contestLock?: PolicyHostLockStrength;
+  } = {},
+): Promise<void> {
+  const problemIds = [...new Set(hosts.problemIds ?? [])].sort();
+  const contestIds = [...new Set(hosts.contestIds ?? [])].sort();
+  const problemLock = locks.problemLock ?? "update";
+  const contestLock = locks.contestLock ?? "update";
+  for (
+    let offset = 0;
+    offset < problemIds.length;
+    offset += POLICY_HOST_LOCK_BATCH
+  ) {
+    await executor.select({ id: problems.id }).from(problems).where(
+      inArray(
+        problems.id,
+        problemIds.slice(offset, offset + POLICY_HOST_LOCK_BATCH),
+      ),
+    ).orderBy(problems.id).for(problemLock);
+  }
+  for (
+    let offset = 0;
+    offset < contestIds.length;
+    offset += POLICY_HOST_LOCK_BATCH
+  ) {
+    await executor.select({ id: contests.id }).from(contests).where(
+      inArray(
+        contests.id,
+        contestIds.slice(offset, offset + POLICY_HOST_LOCK_BATCH),
+      ),
+    ).orderBy(contests.id).for(contestLock);
+  }
 }
 
 /** 校验 `exact` 策略引用的版本属于该题且已发布。 */
@@ -192,12 +263,11 @@ export async function setContestProblemEffectiveVersionPolicy(
 ): Promise<PolicyChangeResult> {
   const db = getDb();
   const write = async (tx: Executor) => {
-    await tx.select({ id: problems.id }).from(problems).where(
-      eq(problems.id, problemId),
-    ).for("share");
-    await tx.select({ id: contests.id }).from(contests).where(
-      eq(contests.id, contestId),
-    ).for("update");
+    // §5.1 固定锁序：题目（share，只读宿主）先于竞赛（update）；与批量受理入口同序。
+    await lockEffectivePolicyHosts(tx, {
+      problemIds: [problemId],
+      contestIds: [contestId],
+    }, { problemLock: "share" });
     const [row] = await tx.select({
       pinned: contestProblems.pinned_version_id,
       mode: contestProblems.effective_version_mode,
@@ -303,12 +373,11 @@ export async function upgradeContestProblemPinnedVersion(
 ): Promise<PolicyChangeResult & { pinned_version_id: string }> {
   const db = getDb();
   const result = await db.transaction(async (tx) => {
-    await tx.select({ id: problems.id }).from(problems).where(
-      eq(problems.id, problemId),
-    ).for("share");
-    await tx.select({ id: contests.id }).from(contests).where(
-      eq(contests.id, contestId),
-    ).for("update");
+    // §5.1 固定锁序：题目先于竞赛（与批量受理、逐条策略入口同序）。
+    await lockEffectivePolicyHosts(tx, {
+      problemIds: [problemId],
+      contestIds: [contestId],
+    }, { problemLock: "share" });
     const [row] = await tx.select({
       pinned: contestProblems.pinned_version_id,
       mode: contestProblems.effective_version_mode,

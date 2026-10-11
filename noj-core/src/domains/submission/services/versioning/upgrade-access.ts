@@ -13,7 +13,16 @@ import { resolveSubmissionVersion } from "./submission-version.ts";
 import type { ClaimedJobItem } from "./job-worker.ts";
 import type { DispatchSource, JobUpgradeContext } from "./dispatch-job-item.ts";
 
-/** 同一条目重试只占用一次竞赛提交预算。管理员操作仍保留源用户身份。 */
+/**
+ * 同一条目重试只占用一次竞赛提交预算。管理员操作仍保留源用户身份。
+ *
+ * **预算口径分工（2026-10-11 复审问题 9）**：
+ * - 本函数负责"操作者授权 + 原用户当前可提交资格（读题权限/赛期/竞赛提交限额）"；
+ * - 普通提交额度（每用户 60s/120 次）由派发路径在**创建副本的同一事务内**调用
+ *   `consumeSubmissionQuotaForUpgrade(source.user_id, item.id)` 单独占用，
+ *   管理员代升级也扣**原用户**预算；额度不足返回延期信号（不抛异常），
+ *   由调用方回滚事务并延期条目。两者互不替代。
+ */
 export async function assertUpgradeAccess(
   item: ClaimedJobItem,
   source: DispatchSource,

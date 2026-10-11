@@ -28,6 +28,10 @@ import {
 } from "./../../../shared/security/public-id.ts";
 import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
 import {
+  bumpProjectionRevision,
+  globalScopeKey,
+} from "./../../submission/index.ts";
+import {
   getJudgeBackend,
   getSubmissionLanguages,
   type ProblemContentV1,
@@ -617,6 +621,19 @@ export async function updateContest(
 
     await tx.update(contests).set(updates).where(eq(contests.id, id));
 
+    // 全站榜口径失效（2026-10-11 复审问题 8）：全站排名的过滤条件包含
+    // `contests.end_time`（赛期结束才计入）与 `affect_global_ranking`，而时钟跨越
+    // end_time 或这两列被修改都不产生任何提交/判定写入——不递增 revision，
+    // 缓存与物化视图就会继续按旧口径命中。这里复用唯一递增入口
+    // （`bumpProjectionRevision`），与投影/策略路径同一套缓存失效语义。
+    if (
+      input.start_time !== undefined ||
+      input.end_time !== undefined ||
+      input.affect_global_ranking !== undefined
+    ) {
+      await bumpProjectionRevision(tx, globalScopeKey());
+    }
+
     if (problemInputs) {
       // 题目关联是「整体替换」：必须先读旧固定版本，否则编辑竞赛（改名/改时间）
       // 会把已固定的版本重置到最新版，等于静默换版（Handbook §4.3）。
@@ -667,6 +684,11 @@ export async function deleteContest(id: string): Promise<void> {
   if (deleted.length === 0) {
     throw new NotFoundError("竞赛不存在");
   }
+
+  // 删除竞赛会把 `submissions.contest_id` 置空（onDelete set null），这些提交从
+  // "竞赛口径"回到"练习口径"，全站榜的过滤与通过口径随之变化 → 立即递增 global
+  // data revision（2026-10-11 复审问题 8；与题目/策略路径共用同一入口）。
+  await bumpProjectionRevision(db, globalScopeKey());
 
   await publishSearchIndexEvent("contest", id, "delete");
 }

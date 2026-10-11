@@ -31,7 +31,17 @@ import { buildJudgeTaskLlm } from "../../../gateway/index.ts";
 import type { FrozenLlmExecution } from "../../../gateway/index.ts";
 import { classifyJudgeQueueError, pushJudgeTask } from "../../mq/producer.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
-import { ensureJobAttempt } from "./job-attempt.ts";
+import type { JudgeTask } from "../../types/index.ts";
+import { nextAttemptSequence } from "./attempts.ts";
+import { bumpSubmissionCountRevisions } from "./projection.ts";
+import {
+  consumeUpgradeQuota,
+  defaultUpgradeQuotaConsumer,
+  ensureJobAttempt,
+  type PreparedJobExecution,
+  type UpgradeQuotaConsumer,
+  UpgradeQuotaDeferredError,
+} from "./job-attempt.ts";
 import { assertUpgradeAccess } from "./upgrade-access.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import {
@@ -46,6 +56,7 @@ import {
   markJobItemDispatched,
   renewJobItemLease,
   requeueJobItem,
+  revokeAttemptLlmTokens,
   scheduleDispatchRetryOrFail,
   startJobItemLeaseHeartbeat,
 } from "./job-worker.ts";
@@ -132,6 +143,18 @@ async function loadSource(
 export type JobUpgradeContext = "practice" | "source_contest";
 
 /**
+ * 读取重派目标尝试（含冻结快照，用于"只续签凭据、不重解析默认配置"）。
+ */
+async function loadAttemptWithSnapshot(
+  attemptId: string,
+): Promise<typeof evaluationAttempts.$inferSelect | null> {
+  const [row] = await getDb().select().from(evaluationAttempts).where(
+    eq(evaluationAttempts.id, attemptId),
+  ).limit(1);
+  return row ?? null;
+}
+
+/**
  * 派发单个已领取条目。
  *
  * @param owner 本 worker 实例标识（lease 归属）
@@ -141,13 +164,25 @@ export async function dispatchJobItem(
   owner: string,
   jobKind: "rejudge" | "upgrade",
   upgradeContext: JobUpgradeContext = "practice",
+  /**
+   * 升级额度消费者（缺省 = Redis 实现）。**仅用于测试注入**：额度实现只访问
+   * Redis，而 `REDIS_URL` 是进程级变量，测试并行时伪造 URL 的窗口会让其他文件
+   * 的额度调用 fail-closed；注入替代实现可隔离验证「额度不足 → 延期」映射。
+   */
+  quotaConsumer: UpgradeQuotaConsumer = defaultUpgradeQuotaConsumer,
 ): Promise<DispatchOutcome> {
   if (!await renewJobItemLease(item.id, owner)) return "deferred";
   // §5.7「执行期间续租」：单次派发含支持包下载、LLM token 签发与 MQ 推送等长 IO，
   // 仅在开始时续租一次会让 lease 中途过期，另一个 worker 遂重复领取同一条目。
   const heartbeat = startJobItemLeaseHeartbeat(item.id, owner);
   try {
-    return await dispatchClaimedJobItem(item, owner, jobKind, upgradeContext);
+    return await dispatchClaimedJobItem(
+      item,
+      owner,
+      jobKind,
+      upgradeContext,
+      quotaConsumer,
+    );
   } finally {
     heartbeat.stop();
   }
@@ -159,6 +194,7 @@ async function dispatchClaimedJobItem(
   owner: string,
   jobKind: "rejudge" | "upgrade",
   upgradeContext: JobUpgradeContext,
+  quotaConsumer: UpgradeQuotaConsumer,
 ): Promise<DispatchOutcome> {
   const source = await loadSource(item);
   if (!source) {
@@ -251,6 +287,7 @@ async function dispatchClaimedJobItem(
         source,
         targetVersionId: item.target_version_id,
         owner,
+        quotaConsumer,
       });
     }
     const { rejudgeObjectiveSubmissionForJob } = await import(
@@ -356,6 +393,7 @@ async function dispatchClaimedJobItem(
       source,
       content,
       upgradeContext,
+      quotaConsumer,
     });
   }
 
@@ -373,6 +411,7 @@ async function dispatchClaimedJobItem(
     content,
     sourceKind: "rejudge",
     priority: "low",
+    quotaConsumer,
   });
 }
 
@@ -393,87 +432,183 @@ async function dispatchJudgeAttempt(input: {
   content: Exclude<ProblemContentV1, { kind: "objective" }>;
   sourceKind: "rejudge" | "upgrade";
   priority: "low" | "medium";
+  quotaConsumer: UpgradeQuotaConsumer;
 }): Promise<DispatchOutcome> {
   const { item, owner, source, content } = input;
   const targetVersionId = item.target_version_id as string;
+  const llmConfig = content.kind === "ai"
+    ? (content.llm_config as LlmConfig | null)
+    : null;
 
-  const attempt = await ensureJobAttempt({
-    item,
-    owner,
-    source,
-    content,
-    kind: input.sourceKind,
-    context: input.upgradeContext,
-  });
+  // 阶段 1/2 的产物需要跨越 catch 之后的派发代码使用；上面的 catch 覆盖全部分支
+  // （成功路径必然赋值，否则已 return/throw），因此使用明确赋值断言。
+  let attempt!: typeof evaluationAttempts.$inferSelect;
+  let destinationId!: string;
+  let task!: JudgeTask;
+  // 预检/配置类失败（AppError < 500）必须就地写条目 `failed`：
+  // 阶段 1 的任何失败都发生在创建尝试之前，不得留下尝试行；阶段 2 的失败
+  // 由 `ensureJobAttempt` 的事务整体回滚（同样不留残留）。
+  try {
+    // ── 阶段 1：准备目标执行上下文（**不落库**） ────────────────────────────
+    //
+    // #7：先确定 attempt / 副本 ID 与 sequence，再完成支持包存在性、LLM 服务/模型/
+    // 预算预检与完整非敏感快照；任何一步失败都不会留下不该存在的尝试行。
+    // 重派（item.attempt_id 已存在）只**续签交付凭据**，Provider/模型/预算取自
+    // 既有快照，绝不重新解析当前默认服务配置。
+    const existing = item.attempt_id
+      ? await loadAttemptWithSnapshot(item.attempt_id)
+      : null;
+    if (item.attempt_id && !existing) {
+      await completeJobItem(item.id, {
+        leaseOwner: owner,
+        status: "failed",
+        reasonCode: "JOB_ATTEMPT_MISSING",
+        reasonMessage: "尝试关联已失效，无法恢复派发",
+      });
+      return "failed";
+    }
+    const attemptId = existing?.id ?? crypto.randomUUID();
+    destinationId = input.sourceKind === "upgrade"
+      ? (existing?.submission_id ?? crypto.randomUUID())
+      : source.id;
+    const sequence = existing?.sequence ?? await nextAttemptSequence({
+      kind: "submission",
+      id: destinationId,
+      problem_id: source.problem_id,
+      contest_id: input.attemptSource.contest_id,
+    });
+
+    // 支持包**存在性**（缺失抛 SUPPORT_PACKAGE_MISSING）与下载地址（重派重新签发）
+    const downloadUrl = await versionSupportPackageDownload(targetVersionId);
+    let artifactDownloadUrl: string | undefined;
+    if (source.artifact_storage_url) {
+      const storage = await getStorageProvider();
+      artifactDownloadUrl = await storage.downloadUrl(
+        source.artifact_storage_url,
+      );
+    }
+
+    // LLM 预检 + 凭据：首次解析平台默认并冻结；重派使用快照中的 provider/model/预算
+    const previousSnapshot = (existing?.task_snapshot ?? null) as
+      | Record<string, unknown>
+      | null;
+    const frozenLlm = previousSnapshot?.llm_execution as
+      | FrozenLlmExecution
+      | undefined;
+    let llmTask;
+    if (llmConfig && content.kind === "ai") {
+      llmTask = await buildJudgeTaskLlm(
+        llmConfig,
+        destinationId,
+        source.problem_id,
+        source.user_id,
+        content.runtime_config,
+        {
+          // 同一尝试重派共享预算：重新签发 token 不重置额度
+          attemptId,
+          problemVersionId: targetVersionId,
+          frozen: frozenLlm,
+        },
+      );
+    }
+
+    task = await prepareJudgeTask({
+      attempt_id: attemptId,
+      problem_version_id: targetVersionId,
+      submission_id: destinationId,
+      problem_id: source.problem_id,
+      user_id: source.user_id,
+      priority: input.priority,
+      runtime_config: content.runtime_config,
+      download_url: downloadUrl,
+      artifact_download_url: artifactDownloadUrl,
+      language: source.language,
+      code: source.artifact_storage_url ? "" : source.code,
+      file_name: source.file_name ?? undefined,
+      llm: llmTask,
+      rejudge_seq: sequence,
+    });
+
+    // 完整非敏感快照（排除源码、短期下载地址与 token）：事务内与尝试一同落库
+    const prepared: PreparedJobExecution = {
+      attemptId,
+      destinationId,
+      sequence,
+      taskSnapshot: {
+        ...executionSnapshot(task, llmConfig, previousSnapshot),
+        batch_job_id: item.job_id,
+        submission_mode: content.kind === "ai"
+          ? content.submission_mode
+          : "code",
+      },
+    };
+
+    // ── 阶段 2：一个事务内创建副本 / 尝试 / 条目关联 ──────────────────────
+    attempt = await ensureJobAttempt({
+      item,
+      owner,
+      source,
+      kind: input.sourceKind,
+      context: input.upgradeContext,
+      prepared,
+    }, input.quotaConsumer);
+  } catch (err) {
+    // #9：额度不足 → 条目**延期**（可重试、不计失败、不发新提交）
+    if (err instanceof UpgradeQuotaDeferredError) {
+      await requeueJobItem(
+        item.id,
+        Math.max(1, Math.ceil(err.retryAfterMs / 1000)),
+        owner,
+      );
+      return "deferred";
+    }
+    // #10：锁内复查发现源正在评测 / 已删除 → **skipped**（其它配置/交付物错误仍 failed）
+    if (
+      err instanceof AppError &&
+      (err.code === "SOURCE_JUDGING" || err.code === "SOURCE_DELETED")
+    ) {
+      await completeJobItem(item.id, {
+        leaseOwner: owner,
+        status: "skipped",
+        reasonCode: err.code,
+        reasonMessage: err.message,
+      });
+      return "skipped";
+    }
+    // 租约丢失交由 worker 层延期（不写终态，条目应由新持有者接管）
+    if (err instanceof AppError && err.code === "JOB_LEASE_LOST") throw err;
+    // 预检/永久失败（Provider 缺配、支持包缺失、目标配置非法等）：条目 failed，
+    // 且**不留尝试行**（阶段 1 失败时尝试尚未创建）
+    if (err instanceof AppError && err.statusCode < 500) {
+      await completeJobItem(item.id, {
+        leaseOwner: owner,
+        status: "failed",
+        reasonCode: err.code,
+        reasonMessage: err.message,
+      });
+      return "failed";
+    }
+    throw err;
+  }
+
   if (["finished", "error", "superseded"].includes(attempt.state)) {
     await completeJobItem(item.id, {
       leaseOwner: owner,
       status: attempt.result_kind === "graded" ? "succeeded" : "failed",
       attemptId: attempt.id,
     });
+    // 尝试已是终态（含 superseded）：补一次**幂等**的统一吊销后处理，
+    // 保证任何在此观察到终态的路径都不会留下可用 token。
+    await revokeAttemptLlmTokens({
+      attemptId: attempt.id,
+      submissionId: attempt.submission_id ?? attempt.objective_submission_id,
+      taskSnapshot: attempt.task_snapshot,
+    });
     return "dispatched";
   }
-  const destinationId = attempt.submission_id!;
-  let artifactDownloadUrl: string | undefined;
-  if (source.artifact_storage_url) {
-    const storage = await getStorageProvider();
-    artifactDownloadUrl = await storage.downloadUrl(
-      source.artifact_storage_url,
-    );
-  }
-
-  let llmTask;
-  const llmConfig = content.kind === "ai"
-    ? (content.llm_config as LlmConfig | null)
-    : null;
-  if (llmConfig && content.kind === "ai") {
-    llmTask = await buildJudgeTaskLlm(
-      llmConfig,
-      destinationId,
-      source.problem_id,
-      source.user_id,
-      content.runtime_config,
-      {
-        // 同一尝试重派共享预算：重新签发 token 不重置额度
-        attemptId: attempt.id,
-        problemVersionId: targetVersionId,
-        frozen: (attempt.task_snapshot as Record<string, unknown> | null)
-          ?.llm_execution as FrozenLlmExecution | undefined,
-      },
-    );
-  }
-
-  const task = await prepareJudgeTask({
-    attempt_id: attempt.id,
-    problem_version_id: targetVersionId,
-    submission_id: destinationId,
-    problem_id: source.problem_id,
-    user_id: source.user_id,
-    priority: input.priority,
-    runtime_config: content.runtime_config,
-    download_url: await versionSupportPackageDownload(targetVersionId),
-    artifact_download_url: artifactDownloadUrl,
-    language: source.language,
-    code: source.artifact_storage_url ? "" : source.code,
-    file_name: source.file_name ?? undefined,
-    llm: llmTask,
-    rejudge_seq: attempt.sequence,
-  });
 
   // 续租后再派发：长任务不会因 lease 过期被其他 worker 重复领取
   if (!await renewJobItemLease(item.id, owner)) return "deferred";
-  await getDb().update(evaluationAttempts).set({
-    task_snapshot: {
-      ...executionSnapshot(
-        task,
-        llmConfig,
-        attempt.task_snapshot as Record<string, unknown> | null,
-      ),
-      batch_job_id: item.job_id,
-      submission_mode: content.kind === "ai" ? content.submission_mode : "code",
-    },
-  }).where(eq(evaluationAttempts.id, attempt.id));
-
   try {
     await pushJudgeTask(task);
   } catch (err) {
@@ -529,6 +664,7 @@ async function dispatchObjectiveUpgrade(input: {
   source: DispatchSource;
   targetVersionId: string;
   owner: string;
+  quotaConsumer: UpgradeQuotaConsumer;
 }): Promise<DispatchOutcome> {
   const { item, source, targetVersionId, owner } = input;
   const db = getDb();
@@ -553,6 +689,18 @@ async function dispatchObjectiveUpgrade(input: {
         upgraded_from_id: source.id,
         created_at: new Date().toISOString(),
       });
+      // #6：新增正式提交（含客观题升级副本）必须递增实际提交数 revision
+      await bumpSubmissionCountRevisions(tx, {
+        problem_id: source.problem_id,
+        contest_id: null,
+      });
+      // #9：升级副本占用原用户正常提交额度（幂等标识 = job item）
+      await consumeUpgradeQuota(
+        tx,
+        source.user_id,
+        item.id,
+        input.quotaConsumer,
+      );
       await tx.update(submissionJobItems).set({ result_submission_id: newId })
         .where(eq(submissionJobItems.id, item.id));
       await rejudgeObjectiveSubmissionForJob({
@@ -565,6 +713,15 @@ async function dispatchObjectiveUpgrade(input: {
     });
     return "dispatched";
   } catch (err) {
+    // 额度不足同样属"延期"：本事务已回滚（不发新提交），条目可重试
+    if (err instanceof UpgradeQuotaDeferredError) {
+      await requeueJobItem(
+        item.id,
+        Math.max(1, Math.ceil(err.retryAfterMs / 1000)),
+        owner,
+      );
+      return "deferred";
+    }
     logger.error("客观题升级失败", { item_id: item.id, err });
     await scheduleDispatchRetryOrFail(item.id, {
       leaseOwner: owner,
@@ -585,6 +742,7 @@ async function dispatchCodeUpgrade(input: {
   source: DispatchSource;
   content: Exclude<ProblemContentV1, { kind: "objective" }>;
   upgradeContext: JobUpgradeContext;
+  quotaConsumer: UpgradeQuotaConsumer;
 }): Promise<DispatchOutcome> {
   const { item, owner, source, content, upgradeContext } = input;
   return await dispatchJudgeAttempt({
@@ -604,6 +762,7 @@ async function dispatchCodeUpgrade(input: {
     sourceKind: "upgrade",
     upgradeContext,
     priority: "medium",
+    quotaConsumer: input.quotaConsumer,
   });
 }
 
@@ -659,6 +818,31 @@ export async function runSubmissionJobWorkerOnce(
       logger.error("批任务条目派发异常", { item_id: item.id, err });
       if (err instanceof AppError && err.code === "JOB_LEASE_LOST") {
         stats.deferred++;
+        continue;
+      }
+      // #9：额度不足属"延期"（可重试、不计失败、不发新提交）
+      if (err instanceof UpgradeQuotaDeferredError) {
+        await requeueJobItem(
+          item.id,
+          Math.max(1, Math.ceil(err.retryAfterMs / 1000)),
+          leaseOwner,
+        );
+        stats.deferred++;
+        continue;
+      }
+      // #10：锁内复查发现的"源正在评测 / 源已删除"属 Handbook 固定分类的
+      // **skipped**（可重试），不是配置/交付物错误，不能记 failed。
+      if (
+        err instanceof AppError &&
+        (err.code === "SOURCE_JUDGING" || err.code === "SOURCE_DELETED")
+      ) {
+        await completeJobItem(item.id, {
+          leaseOwner,
+          status: "skipped",
+          reasonCode: err.code,
+          reasonMessage: err.message,
+        });
+        stats.skipped++;
         continue;
       }
       if (err instanceof AppError && err.statusCode < 500) {

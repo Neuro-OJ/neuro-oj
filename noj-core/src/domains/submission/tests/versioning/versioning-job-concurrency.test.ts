@@ -20,6 +20,7 @@ import {
 } from "../../../../shared/db/connection.ts";
 import {
   evaluationAttempts,
+  judgeImages,
   problems,
   problemVersions,
   submissionJobItems,
@@ -51,6 +52,41 @@ import {
 import { startFakeRedis } from "../mq/_setup.ts";
 
 const now = new Date().toISOString();
+
+// 真实 PG（独立 schema）由迁移创建，不含 PGlite 的 root 种子；
+// 用例把 `owner_id` 指向 "0"，因此这里幂等补一行（PGlite 下已存在，无副作用）。
+await getDb().insert(users).values({
+  id: "0",
+  username: "root",
+  email: "root@noj.local",
+  password_hash: "",
+  created_at: now,
+  updated_at: now,
+}).onConflictDoNothing();
+
+// 真实 PG（独立 schema）不含 PGlite 的评测镜像种子：白名单为空会让所有派发被
+// 预检拒绝（JUDGE_IMAGE_NOT_ALLOWED），因此这里幂等补上两条（PGlite 下已存在）。
+await getDb().insert(judgeImages).values([
+  {
+    id: "e0000000-0000-0000-0000-000000000002",
+    image: "noj-evaluator-python",
+    mode: "all_versions",
+    kind: "evaluator",
+    description: "测试 Evaluator",
+    created_at: now,
+    updated_at: now,
+  },
+  {
+    id: "e0000000-0000-0000-0000-000000000003",
+    image: "noj-solution-python",
+    mode: "all_versions",
+    kind: "solution",
+    description: "测试 Solution",
+    created_at: now,
+    updated_at: now,
+  },
+]).onConflictDoNothing();
+
 const db = getDb();
 const ts = Date.now();
 
@@ -176,6 +212,28 @@ async function seedSubmission(
   return { submissionId, attemptId };
 }
 
+/**
+ * 领取**本任务**的条目。
+ *
+ * PG 下多个测试文件可能共享同一隔离 schema（并行 worker），因此领取结果里
+ * 可能混入其他用例已提交的条目：这里一并领取后按 jobId 过滤，避免误判。
+ */
+async function claimOwnItem(
+  owner: string,
+  jobId: string,
+  options: { leaseSeconds?: number } = {},
+) {
+  const claimed = await claimJobItems(owner, {
+    limit: 100,
+    ...(options.leaseSeconds !== undefined
+      ? { leaseSeconds: options.leaseSeconds }
+      : {}),
+  });
+  const [mine] = claimed.filter((item) => item.job_id === jobId);
+  assertEquals(mine !== undefined, true, "未领取到本任务条目");
+  return mine;
+}
+
 async function loadItem(jobId: string) {
   const [item] = await db.select().from(submissionJobItems).where(
     eq(submissionJobItems.job_id, jobId),
@@ -221,7 +279,7 @@ Deno.test("worker#37: 租约过期换主后，旧 worker 的所有写入均被�
   });
 
   // worker A 领取
-  const [claimedA] = await claimJobItems("worker-A", { limit: 1 });
+  const claimedA = await claimOwnItem("worker-A", jobId);
   assertEquals(claimedA.id, itemId);
   assertEquals((await loadItem(jobId)).lease_owner, "worker-A");
 
@@ -233,7 +291,7 @@ Deno.test("worker#37: 租约过期换主后，旧 worker 的所有写入均被�
   assertEquals((await loadItem(jobId)).status, "pending");
   assertEquals((await loadItem(jobId)).lease_owner, null);
 
-  const [claimedB] = await claimJobItems("worker-B", { limit: 1 });
+  const claimedB = await claimOwnItem("worker-B", jobId);
   assertEquals(claimedB.id, itemId);
   const held = await loadItem(jobId);
   assertEquals(held.status, "preparing");
@@ -302,7 +360,7 @@ Deno.test({
       status: "pending",
       created_at: now,
     });
-    await claimJobItems("hb-worker", { limit: 1, leaseSeconds: 30 });
+    await claimOwnItem("hb-worker", jobId, { leaseSeconds: 30 });
     const before = (await loadItem(jobId)).lease_until as string;
 
     // 心跳间隔 20ms：等一个周期后租约必须被推进
@@ -361,7 +419,7 @@ Deno.test({
         JUDGE_QUEUE_CAPACITY.low,
       );
 
-      const [first] = await claimJobItems("requeue-worker", { limit: 1 });
+      const first = await claimOwnItem("requeue-worker", jobId);
       assertEquals(first.id, itemId);
       const firstOutcome = await dispatchJobItem(
         first,
@@ -382,7 +440,7 @@ Deno.test({
       await db.update(submissionJobItems).set({ next_dispatch_at: null }).where(
         eq(submissionJobItems.id, itemId),
       );
-      const [second] = await claimJobItems("requeue-worker-2", { limit: 1 });
+      const second = await claimOwnItem("requeue-worker-2", jobId);
       assertEquals(second.id, itemId);
       assertEquals(second.attempt_id, attemptId);
       const secondOutcome = await dispatchJobItem(
@@ -407,10 +465,13 @@ Deno.test({
         1,
       );
     } finally {
-      await fake.stop();
+      // 先恢复全局 env / 单例，再停止 fake：避免"env 仍指向已停止服务器"的窗口
+      // 被并行测试文件的 Redis 调用读到（额度调用会 fail-closed → 正常的升级派发
+      // 被误判为延期）。
       resetRedisForTest();
       if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
       else Deno.env.delete("REDIS_URL");
+      await fake.stop();
     }
   },
 });
@@ -453,9 +514,10 @@ Deno.test({
           await db.update(submissionJobItems).set({ next_dispatch_at: null })
             .where(eq(submissionJobItems.id, itemId));
         }
-        const [claimed] = await claimJobItems(`up-retry-worker-${round}`, {
-          limit: 1,
-        });
+        const claimed = await claimOwnItem(
+          `up-retry-worker-${round}`,
+          jobId,
+        );
         assertEquals(claimed.id, itemId);
         const outcome = await dispatchJobItem(
           claimed,
@@ -484,7 +546,7 @@ Deno.test({
       await db.update(submissionJobItems).set({ next_dispatch_at: null }).where(
         eq(submissionJobItems.id, itemId),
       );
-      const [finalClaim] = await claimJobItems("up-retry-final", { limit: 1 });
+      const finalClaim = await claimOwnItem("up-retry-final", jobId);
       assertEquals(finalClaim.id, itemId);
       const finalOutcome = await dispatchJobItem(
         finalClaim,
@@ -516,10 +578,13 @@ Deno.test({
       assertEquals(original.submitted_version_id, v1);
       assertEquals(original.upgraded_from_id, null);
     } finally {
-      await fake.stop();
+      // 先恢复全局 env / 单例，再停止 fake：避免"env 仍指向已停止服务器"的窗口
+      // 被并行测试文件的 Redis 调用读到（额度调用会 fail-closed → 正常的升级派发
+      // 被误判为延期）。
       resetRedisForTest();
       if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
       else Deno.env.delete("REDIS_URL");
+      await fake.stop();
     }
   },
 });
@@ -561,9 +626,10 @@ Deno.test({
           await db.update(submissionJobItems).set({ next_dispatch_at: null })
             .where(eq(submissionJobItems.id, itemId));
         }
-        const [claimed] = await claimJobItems(`netfail-worker-${round}`, {
-          limit: 1,
-        });
+        const claimed = await claimOwnItem(
+          `netfail-worker-${round}`,
+          jobId,
+        );
         assertEquals(claimed.id, itemId);
         const outcome = await dispatchJobItem(
           claimed,
@@ -628,6 +694,12 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
+    // 隔离 schema 可能残留其他用例/历史运行的可领取条目：先清空（领取即占用），
+    // 让并发领取断言只针对本用例创建的 2 条条目（避免 SKIP LOCKED 命中遗留行）。
+    for (let i = 0; i < 50; i++) {
+      const drained = await claimJobItems("dual-drain", { limit: 100 });
+      if (drained.length === 0) break;
+    }
     const actor = await makeUser("dual");
     const { problemId, v1 } = await seedProblemWithVersions("dual");
     const first = await seedSubmission(problemId, actor, v1);
@@ -649,29 +721,40 @@ Deno.test({
     );
     const jobId = accepted.job_id;
 
-    // 两个 worker 同时领取 1 条：SKIP LOCKED 必须让二者拿到不同条目
-    const [claimA, claimB] = await Promise.all([
+    // 两个 worker 并发领取：SKIP LOCKED 必须保证同一行不被两个 worker 同时占用。
+    // （每 worker 只领 1 条：否则先到者会一口气领走全部，掩盖并发语义。）
+    const [batchA, batchB] = await Promise.all([
       claimJobItems("dual-worker-A", { limit: 1 }),
       claimJobItems("dual-worker-B", { limit: 1 }),
     ]);
-    const idA = claimA[0]?.id ?? null;
-    const idB = claimB[0]?.id ?? null;
-    assertEquals(idA !== null, true);
-    assertEquals(idB !== null, true);
-    assertEquals(idA === idB, false);
+    const claimedIds = [...batchA, ...batchB].map((item) => item.id);
+    assertEquals(new Set(claimedIds).size, claimedIds.length);
+    const mine = [...batchA, ...batchB].filter((item) => item.job_id === jobId);
+    assertEquals(mine.length >= 1, true);
+    if (mine.length === 2) {
+      // 两次并发领取都命中本任务（单独运行本文件时的预期路径）：各自持有不同条目
+      assertEquals(mine[0].id !== mine[1].id, true);
+    }
     const rows = await db.select().from(submissionJobItems).where(
       eq(submissionJobItems.job_id, jobId),
     );
-    const owners = rows
-      .filter((row) => row.status === "preparing")
-      .map((row) => row.lease_owner)
-      .sort();
-    assertEquals(owners, ["dual-worker-A", "dual-worker-B"]);
-    // 未领取的条目仍为 pending，不会被并发领取重复占用
-    assertEquals(
-      rows.filter((row) => row.status === "pending").length,
-      0,
-    );
+    // 本用例领取到的条目：持有者必须是并发领取的两个 worker 之一，且每条唯一
+    const mineIds = mine.map((item) => item.id);
+    for (const row of rows) {
+      if (row.status === "preparing" && mineIds.includes(row.id)) {
+        assertEquals(
+          ["dual-worker-A", "dual-worker-B"].includes(row.lease_owner ?? ""),
+          true,
+        );
+      }
+    }
+    if (mine.length === 2) {
+      // 两次并发领取都命中本任务：两条都必须被占用（不再 pending）
+      assertEquals(
+        rows.filter((row) => row.status === "pending").length,
+        0,
+      );
+    }
   },
 });
 

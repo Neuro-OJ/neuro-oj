@@ -151,6 +151,14 @@ export async function setSupportPackage(
     sha256?: string | null;
     byteSize?: number | null;
     expectedRevision?: number;
+    /**
+     * 上传前 `reserveStorageObjectUpload*()` 返回的预约 id。
+     *
+     * Handbook §2.5：调用方**必须先写预约再物理上传**，本函数在登记 ready 时
+     * 消费它；没有自己未过期预约时，`deleted` / `deleting` 对象不会被恢复成
+     * ready（避免 ready + 物理缺失）。
+     */
+    reservationId?: string;
   },
 ): Promise<void> {
   // 哈希与大小由**服务端**产生：优先取调用方在上传时算出的值，其次读存储 URL
@@ -177,6 +185,7 @@ export async function setSupportPackage(
     storageUrl: input.storageUrl,
     sha256,
     byteSize,
+    reservationId: input.reservationId,
   });
   const draft = await getProblemDraft(
     problemId,
