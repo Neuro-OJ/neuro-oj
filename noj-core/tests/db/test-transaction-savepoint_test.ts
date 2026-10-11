@@ -246,8 +246,8 @@ Deno.test({
       ) as never,
     );
     assertEquals(
-      childRows,
-      [],
+      childRows.length,
+      0,
       "父 savepoint 回滚必须一并移除成功子节点的写入",
     );
     const rows = unwrapRows<{ ok: number }>(
