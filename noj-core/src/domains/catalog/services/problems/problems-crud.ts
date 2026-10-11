@@ -55,6 +55,7 @@ import {
   type LlmConfig,
   type ProblemResponseWithTags,
   type ProblemRuntimeConfig,
+  SUBMISSION_MODES,
   type UpdateProblemInput,
 } from "./../../types/problems.ts";
 import { validateProblemRuntimeConfig } from "./problems-types.ts";
@@ -174,7 +175,9 @@ export async function createProblem(
   const submissionMode = input.submission_mode ?? "code";
   if (!isValidSubmissionMode(submissionMode)) {
     throw new BadRequestError(
-      `非法提交模式：${input.submission_mode}，仅允许 code / artifact`,
+      `非法提交模式：${input.submission_mode}，仅允许 ${
+        SUBMISSION_MODES.join(" / ")
+      }`,
     );
   }
 
@@ -225,10 +228,13 @@ export async function createProblem(
     if (
       isOiRuntimeConfig(input.runtime_config) &&
       (input.submission_mode === "artifact" ||
+        input.submission_mode === "prompt" ||
         (input.artifact_max_size_mb !== undefined &&
           input.artifact_max_size_mb !== null))
     ) {
-      throw new BadRequestError("OI 题仅支持 code 提交，不支持 artifact 配置");
+      throw new BadRequestError(
+        "OI 题仅支持 code 提交，不支持 artifact / prompt 配置",
+      );
     }
     if (!isOiRuntimeConfig(input.runtime_config)) {
       try {
@@ -603,7 +609,9 @@ export async function updateProblem(
     !isValidSubmissionMode(input.submission_mode)
   ) {
     throw new BadRequestError(
-      `非法提交模式：${input.submission_mode}，仅允许 code / artifact`,
+      `非法提交模式：${input.submission_mode}，仅允许 ${
+        SUBMISSION_MODES.join(" / ")
+      }`,
     );
   }
 
@@ -646,10 +654,13 @@ export async function updateProblem(
     if (
       isOiRuntimeConfig(input.runtime_config) &&
       (input.submission_mode === "artifact" ||
+        input.submission_mode === "prompt" ||
         (input.artifact_max_size_mb !== undefined &&
           input.artifact_max_size_mb !== null))
     ) {
-      throw new BadRequestError("OI 题仅支持 code 提交，不支持 artifact 配置");
+      throw new BadRequestError(
+        "OI 题仅支持 code 提交，不支持 artifact / prompt 配置",
+      );
     }
     if (!isOiRuntimeConfig(input.runtime_config)) {
       await validateJudgeImageWithKind(
@@ -679,10 +690,13 @@ export async function updateProblem(
   if (
     !isObjective && isOiRuntimeConfig(effectiveRuntimeForSubmission) &&
     (input.submission_mode === "artifact" ||
+      input.submission_mode === "prompt" ||
       (input.artifact_max_size_mb !== undefined &&
         input.artifact_max_size_mb !== null))
   ) {
-    throw new BadRequestError("OI 题仅支持 code 提交，不支持 artifact 配置");
+    throw new BadRequestError(
+      "OI 题仅支持 code 提交，不支持 artifact / prompt 配置",
+    );
   }
 
   // LLM 配置变更校验：仅 P 型/官方题可启用，且必须保持 evaluator 网络开启。

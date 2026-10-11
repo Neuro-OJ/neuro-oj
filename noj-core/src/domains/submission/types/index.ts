@@ -10,6 +10,14 @@ import {
   judgeTypeForRuntimeConfig,
   type ProblemRuntimeConfig,
 } from "../../catalog/index.ts";
+import {
+  buildPromptSolutionModule,
+  PROMPT_LANGUAGE,
+  PROMPT_WRAPPED_FILE_NAME,
+  PROMPT_WRAPPED_LANGUAGE,
+} from "./prompt-solution.ts";
+
+export * from "./prompt-solution.ts";
 
 /** LLM 评测任务字段：携带 gateway 地址与短期 eval_token。 */
 export interface JudgeTaskLlm {
@@ -133,6 +141,9 @@ export interface BuildJudgeTaskInput {
  *
  * 可选字段仅在**有值**时写入，保持消息体最小；Rust 侧对可选字段使用
  * `Option` + `#[serde(skip_serializing_if)]`，两者语义一致。
+ *
+ * 提示词提交（`language = "prompt"`）在此统一包装为 Python Solution 模块，
+ * judge 侧看到的始终是 `python3` 代码（见 `prompt-solution.ts`）。
  */
 export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
   const inferredType = judgeTypeForRuntimeConfig(input.runtime_config);
@@ -155,6 +166,8 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
       throw new BadRequestError("OI 不支持 LLM/artifact 任务");
     }
   }
+  // 提示词提交：在此统一包装为 Python Solution 模块（OI 语言白名单已在上方拦截 prompt）
+  const isPrompt = input.language === PROMPT_LANGUAGE;
   const task: JudgeTask = {
     scheduling_version: 1,
     resource_pool: judgeResourcePool(input.runtime_config),
@@ -165,14 +178,15 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
     judge_type: input.judge_type ??
       judgeTypeForRuntimeConfig(input.runtime_config),
     runtime_config: structuredClone(input.runtime_config),
-    language: input.language,
-    code: input.code,
+    language: isPrompt ? PROMPT_WRAPPED_LANGUAGE : input.language,
+    code: isPrompt ? buildPromptSolutionModule(input.code) : input.code,
   };
   if (
     isOiRuntimeConfig(input.runtime_config) &&
     input.runtime_config.backend === "wasm"
   ) task.oi_cost_profile = structuredClone(input.oi_cost_profile!);
-  if (input.file_name !== undefined) task.file_name = input.file_name;
+  if (isPrompt) task.file_name = PROMPT_WRAPPED_FILE_NAME;
+  else if (input.file_name !== undefined) task.file_name = input.file_name;
   if (input.run_id !== undefined) {
     task.run_id = input.run_id;
     if (!input.submission_id.startsWith("st_")) {

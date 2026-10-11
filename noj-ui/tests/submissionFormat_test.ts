@@ -54,6 +54,7 @@ Deno.test('getStatusLabel: result 优先，state 回退，未知原样返回', (
 Deno.test('getLanguageLabel: 已知语言映射，未知原样返回', () => {
   assertEquals(getLanguageLabel('cpp'), 'C++');
   assertEquals(getLanguageLabel('java'), 'Java');
+  assertEquals(getLanguageLabel('prompt'), '提示词');
   assertEquals(getLanguageLabel('pascal'), 'pascal');
 });
 

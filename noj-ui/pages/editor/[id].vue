@@ -49,7 +49,7 @@ type StandardProblem = EditorLanguageConfig & {
   samples?: import("~/utils/oiWorkspace").ProblemSample[]
   difficulty: string
   type: 'U' | 'P'
-  submission_mode?: 'code' | 'artifact'
+  submission_mode?: 'code' | 'artifact' | 'prompt'
   tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
   /** 关联的未结束公开赛（仅所有者/管理员会收到）；非空时页面顶部提示保密。 */
   contest_secrecy?: ProblemContestSecrecyNotice[]
@@ -122,6 +122,8 @@ const workspaceProblem = computed(() => {
 })
 
 const isArtifact = computed(() => workspaceProblem.value?.submission_mode === 'artifact')
+/** 提示词题：渲染专用的提示词编辑界面，不进入代码编辑器 */
+const isPrompt = computed(() => workspaceProblem.value?.submission_mode === 'prompt')
 
 /**
  * 作答版本（Handbook §4.2）：题库页取有效策略解析出的版本，竞赛页取竞赛固定版本。
@@ -308,6 +310,41 @@ const templateUrl = (pid: string) =>
         </UButton>
       </div>
     </div>
+
+    <!-- 提示词题：专用提示词编辑界面（props 与代码工作区一致） -->
+    <PromptWorkspace
+      v-else-if="isPrompt"
+      class="flex-1 min-h-0"
+      :problem="workspaceProblem"
+      :pending="pending"
+      :error="error"
+      :retry="refresh"
+      :history-url="historyUrl"
+      :submit="submit"
+      :self-test="isContest ? undefined : selfTest"
+      :template-url="templateUrl"
+      :self-test-history-url="isContest || !workspaceProblem ? undefined : `/api/v1/problems/${workspaceProblem.id}/self-tests?limit=30`"
+      :draft-key="draftKey"
+      :open-submission-url="(id: string) => publicUrl('submission', id)"
+      :back-url="backUrl"
+      :back-label="'返回题目详情'"
+      :subtitle="editorSubtitle"
+      :can-submit="canSubmit"
+      :submission-filter="submissionFilter"
+      @accepted="refresh"
+    >
+      <template v-if="isContest" #toolbar-actions>
+        <UButton
+          color="neutral"
+          variant="outline"
+          size="sm"
+          icon="i-lucide-trophy"
+          :to="`${publicUrl('contest', contestId)}/ranking`"
+        >
+          排名
+        </UButton>
+      </template>
+    </PromptWorkspace>
 
     <!-- 工作区自身带 h-screen，作为 flex 子项被 flex-1 + min-h-0 压回剩余高度，
          以免上方提示横幅把满屏工作区挤出视口 -->

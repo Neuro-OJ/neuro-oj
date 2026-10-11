@@ -26,6 +26,7 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import {
+  AppError,
   BadRequestError,
   ForbiddenError,
   NotFoundError,
@@ -291,6 +292,119 @@ Deno.test({
       BadRequestError,
       "不支持的语言",
     );
+  },
+});
+
+Deno.test({
+  name: "submissions service: 代码题拒绝提示词提交（language=prompt）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    // 代码题的版本只接受 code 模式：prompt 提交被版本校验拒绝（400）
+    const err = await assertRejects(
+      async () =>
+        createSubmission(TEST_USER_ID, {
+          problem_id: TEST_PROBLEM_ID,
+          version_id: await publishBaselineVersionForTest(TEST_PROBLEM_ID),
+          language: "prompt",
+          code: "你是一个助手",
+        }),
+      AppError,
+    );
+    assertEquals(err.code, "SUBMISSION_MODE_MISMATCH");
+  },
+});
+
+Deno.test({
+  name:
+    "submissions service: 提示词题只收 prompt 语言，落库保存提示词原文与 prompt.md",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const promptProblemId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.insert(problems).values({
+      id: promptProblemId,
+      title: `提示词题 ${Date.now()}`,
+      description: "提示词提交模式测试",
+      difficulty: "easy",
+      type: "P",
+      number: 62000 + (Date.now() & 0x7fff),
+      owner_id: TEST_USER_ID,
+      submission_mode: "prompt",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
+      created_at: now,
+      updated_at: now,
+    });
+
+    resetRedisForTest();
+    const fakeRedis = await startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
+    Deno.env.set("REDIS_URL", fakeRedis.url);
+    const redis = getRedis();
+    await redis.connect();
+    await redis.ping();
+
+    const versionId = await publishBaselineVersionForTest(promptProblemId);
+    let submissionId: string | undefined;
+    try {
+      await assertRejects(
+        () =>
+          createSubmission(TEST_USER_ID, {
+            problem_id: promptProblemId,
+            version_id: versionId,
+            language: "python3",
+            code: "def get_prompt():\n    return 'x'",
+          }),
+        AppError,
+        "提交模式为 prompt",
+      );
+
+      const prompt = '你是翻译助手。\n输入："""{text}"""\n只输出译文。';
+      const created = await createSubmission(TEST_USER_ID, {
+        problem_id: promptProblemId,
+        version_id: versionId,
+        language: "prompt",
+        code: prompt,
+        file_name: "evil.py",
+      });
+      submissionId = created.id;
+
+      const [stored] = await db.select({
+        language: submissions.language,
+        code: submissions.code,
+        file_name: submissions.file_name,
+      }).from(submissions).where(eq(submissions.id, created.id)).limit(1);
+      assertEquals(stored.language, "prompt");
+      assertEquals(
+        stored.code,
+        prompt,
+        "数据库应保存提示词原文而非包装后的模块",
+      );
+      assertEquals(stored.file_name, "prompt.md", "提示词提交忽略客户端文件名");
+    } finally {
+      if (submissionId) {
+        await db.delete(submissions).where(eq(submissions.id, submissionId));
+      }
+      await db.delete(problems).where(eq(problems.id, promptProblemId));
+      resetRedisForTest();
+      await fakeRedis.stop();
+      if (previousRedisUrl) Deno.env.set("REDIS_URL", previousRedisUrl);
+      else Deno.env.delete("REDIS_URL");
+    }
   },
 });
 

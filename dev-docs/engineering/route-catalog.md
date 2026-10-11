@@ -137,6 +137,7 @@
 | GET | `/posts/counts` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/problems` | noj-core/src/domains/admin/routes/catalog.ts |
 | GET | `/problems/:id/preflight` | noj-core/src/domains/admin/routes/catalog.ts |
+| GET | `/problems/:id/self-tests` | noj-core/src/domains/submission/routes/self-tests.ts |
 | GET | `/problems/review` | noj-core/src/domains/admin/routes/catalog.ts |
 | GET | `/public/recent` | noj-core/src/domains/submission/routes/submissions.ts |
 | GET | `/queue/events` | noj-core/src/domains/submission/routes/sse.ts |

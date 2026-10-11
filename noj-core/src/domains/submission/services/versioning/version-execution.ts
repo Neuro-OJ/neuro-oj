@@ -12,6 +12,7 @@ import {
   isOiRuntimeConfig,
   type LlmConfig,
   type ProblemContentV1,
+  type SubmissionMode,
 } from "../../../catalog/index.ts";
 import { resolveLlmLimits } from "../../../gateway/index.ts";
 import type { JudgeTask } from "../../types/index.ts";
@@ -71,7 +72,7 @@ export async function versionSupportPackageDownload(
 /** 版本接受性输入：提交模式与语言。 */
 export interface VersionAcceptanceInput {
   language: string;
-  submissionMode: "code" | "artifact";
+  submissionMode: SubmissionMode;
 }
 
 /**

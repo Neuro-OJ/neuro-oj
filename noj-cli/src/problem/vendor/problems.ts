@@ -76,7 +76,7 @@ export type ProblemType = typeof PROBLEM_TYPES[number];
 /**
  * 允许的提交模式。
  */
-export const SUBMISSION_MODES = ["code", "artifact"] as const;
+export const SUBMISSION_MODES = ["code", "artifact", "prompt"] as const;
 export type SubmissionMode = typeof SUBMISSION_MODES[number];
 
 /**

@@ -33,6 +33,7 @@ import type { FrozenLlmExecution } from "../../../gateway/index.ts";
 import { classifyJudgeQueueError, pushJudgeTask } from "../../mq/producer.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
 import { getAttempt, isTerminalAttemptState } from "./attempts.ts";
+import { submissionModeForLanguage } from "../../types/index.ts";
 import type { JudgeTask } from "../../types/index.ts";
 import {
   bumpSubmissionCountRevisions,
@@ -422,7 +423,9 @@ async function dispatchClaimedJobItem(
   try {
     await assertExecutionPreflight(content, {
       language: source.language,
-      submissionMode: source.artifact_storage_url ? "artifact" : "code",
+      submissionMode: source.artifact_storage_url
+        ? "artifact"
+        : submissionModeForLanguage(source.language),
       artifactMaxSizeMb: content.kind === "ai"
         ? content.artifact_max_size_mb
         : null,

@@ -101,6 +101,8 @@ const isDetailPage = computed(() => route.path === `/problems/${problemId}`)
 const isObjective = computed(() => problem.value?.is_objective === true)
 /** artifact 提交模式：选手上传 zip 产物 */
 const isArtifact = computed(() => problem.value?.submission_mode === 'artifact')
+/** 提示词题：做题页渲染提示词编辑界面而非代码编辑器 */
+const isPrompt = computed(() => problem.value?.submission_mode === 'prompt')
 
 /**
  * 作答版本（Handbook §4.2）：提交必须原样回传该 ID。
@@ -335,8 +337,8 @@ const publishBlockReason = computed(() => {
                   size="lg"
                   :to="editorUrl"
                 >
-                  <UIcon name="i-lucide-code-2" class="size-5" />
-                  开始编码
+                  <UIcon :name="isPrompt ? 'i-lucide-message-square-text' : 'i-lucide-code-2'" class="size-5" />
+                  {{ isPrompt ? '编写提示词' : '开始编码' }}
                 </UButton>
               </template>
             </ProblemHeader>
@@ -412,6 +414,8 @@ const publishBlockReason = computed(() => {
               v-model:expanded="statementExpanded"
               :content="problem.description"
               :editor-to="editorUrl"
+              :editor-label="isPrompt ? '编写提示词' : '在编辑器打开'"
+              :editor-icon="isPrompt ? 'i-lucide-message-square-text' : 'i-lucide-code-2'"
               :edit-to="editUrl"
             />
 

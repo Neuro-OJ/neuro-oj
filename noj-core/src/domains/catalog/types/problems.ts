@@ -72,8 +72,13 @@ export type ProblemType = typeof PROBLEM_TYPES[number];
 
 /**
  * 允许的提交模式。
+ *
+ * - code：单文件 Python 代码提交（默认）
+ * - artifact：zip 产物提交
+ * - prompt：提示词提交——选手只编辑提示词文本，核心在构造评测任务时
+ *   将其包装为 Python 模块（见 `submission/types/prompt-solution.ts`）
  */
-export const SUBMISSION_MODES = ["code", "artifact"] as const;
+export const SUBMISSION_MODES = ["code", "artifact", "prompt"] as const;
 export type SubmissionMode = typeof SUBMISSION_MODES[number];
 
 /**
@@ -297,7 +302,7 @@ export interface ProblemResponseWithTags {
   visibility: "public" | "private";
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective: boolean;
-  /** 提交模式：code / artifact */
+  /** 提交模式：code / artifact / prompt */
   submission_mode: SubmissionMode;
   /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
   artifact_max_size_mb: number | null;

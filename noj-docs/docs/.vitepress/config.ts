@@ -204,6 +204,7 @@ export default withMermaid(defineConfig({
           text: "题型实战",
           items: [
             { text: "LLM 智能体调用题", link: "/problemsetters/llm-problem" },
+            { text: "提示词题", link: "/problemsetters/prompt-problem" },
             {
               text: "客观题套卷出题",
               link: "/problemsetters/objective-problem",
@@ -243,6 +244,7 @@ export default withMermaid(defineConfig({
           text: "题型实战",
           items: [
             { text: "LLM 智能体调用题", link: "/problemsetters/llm-problem" },
+            { text: "提示词题", link: "/problemsetters/prompt-problem" },
             {
               text: "客观题套卷出题",
               link: "/problemsetters/objective-problem",

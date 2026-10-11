@@ -48,6 +48,7 @@ noj-ui/
 ├── components/            # 可复用 Vue 组件（按功能分目录）
 │   ├── layout/            # Navbar / FooterBar / Sidebar / UserMenu
 │   ├── editor/            # MonacoEditor / CodingProblemEditor / EditorSidebar / EditorToolbar / EditorStatusBar / ActivityBar / EditorWorkspace / ResizableSplitter
+│   ├── prompt/            # PromptWorkspace（提示词题专用编辑界面，editor/[id].vue 按 submission_mode 选择）
 │   ├── feature/           # ProblemFilterBar / CheckInCard / RandomProblems / StatsToggle / FollowingFeed / LatestSubmissions / ChatSidebar / search（SearchPalette / SearchResultItem）/ community（CommentCard）
 │   ├── shared/            # MarkdownRenderer（DOMPurify 清洗）/ MarkdownEditor（分屏编辑 + 实时预览）/ PaginationNav / BrandLogo / MarqueeTitle
 │   ├── ui/                # AsyncContent / DialogModal / DifficultyBadge / StatusBadge / ProblemId / SubmissionResult / TableSkeleton / ToastBanner / AnimatedCounter

@@ -22,7 +22,10 @@ import {
   problems,
   problemVersions,
 } from "../../../../shared/db/schema.ts";
-import type { ProblemContentV1 } from "../../../catalog/index.ts";
+import type {
+  ProblemContentV1,
+  SubmissionMode,
+} from "../../../catalog/index.ts";
 
 /** 解析结果：明确的提交时版本。 */
 export interface ResolvedSubmissionVersion {
@@ -106,7 +109,7 @@ export async function loadPublishedVersionContent(
  */
 export function assertVersionAcceptsSubmission(
   content: ProblemContentV1,
-  input: { language: string; submissionMode: "code" | "artifact" },
+  input: { language: string; submissionMode: SubmissionMode },
 ): void {
   assertVersionAcceptance(content, input);
 }

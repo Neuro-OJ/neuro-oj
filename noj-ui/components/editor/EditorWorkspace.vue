@@ -30,7 +30,7 @@ export interface WorkspaceProblem extends EditorLanguageConfig {
   samples?: import("~/utils/oiWorkspace").ProblemSample[]
   difficulty: string
   type: 'U' | 'P'
-  submission_mode?: 'code' | 'artifact'
+  submission_mode?: 'code' | 'artifact' | 'prompt'
   tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
 }
 

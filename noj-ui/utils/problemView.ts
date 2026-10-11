@@ -44,7 +44,7 @@ export interface ProblemView {
   judge_type?: 'dual' | 'oi';
   judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
   /** 提交模式：`code` 代码 / `artifact` 产物 zip。 */
-  submission_mode: 'code' | 'artifact';
+  submission_mode: 'code' | 'artifact' | 'prompt';
   /** artifact 单文件大小上限（MB）；null 表示使用平台默认上限。 */
   artifact_max_size_mb: number | null;
   /** 出题人用户名（仅用户题库有值）。 */
@@ -104,7 +104,7 @@ export interface ProblemResource {
   is_objective: boolean;
   judge_type?: 'dual' | 'oi';
   judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
-  submission_mode?: 'code' | 'artifact';
+  submission_mode?: 'code' | 'artifact' | 'prompt';
   artifact_max_size_mb?: number | null;
   tags?: ProblemTagView[];
   has_hidden_algorithm_tags?: boolean;
@@ -137,7 +137,7 @@ export interface ContestProblemResource {
   description: string;
   samples?: import('./oiWorkspace.ts').ProblemSample[];
   difficulty: string;
-  submission_mode?: 'code' | 'artifact';
+  submission_mode?: 'code' | 'artifact' | 'prompt';
   artifact_max_size_mb?: number | null;
   is_objective?: boolean;
   judge_type?: 'dual' | 'oi';

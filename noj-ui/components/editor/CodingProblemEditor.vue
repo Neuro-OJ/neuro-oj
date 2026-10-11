@@ -59,7 +59,7 @@ const publishing = ref(false)
 // ── 表单数据 ──
 const { title, description, difficulty, samples, tagIds, visibility } = useProblemAuthorFields()
 const problemType = ref(props.initialType)
-const submissionMode = ref<'code' | 'artifact'>('code')
+const submissionMode = ref<'code' | 'artifact' | 'prompt'>('code')
 const artifactMaxSizeMb = ref<number | null>(null)
 
 // 编辑模式专用
@@ -244,7 +244,7 @@ async function loadProblem() {
       time_limit_ms: number; memory_limit_mb: number
       display_id: string; type: string; number: number
       tags: { id: string }[]
-      submission_mode?: 'code' | 'artifact'
+      submission_mode?: 'code' | 'artifact' | 'prompt'
       artifact_max_size_mb?: number | null
       runtime_config: RuntimeConfigPayload | null
       latest_version?: number | null
@@ -565,6 +565,7 @@ async function handleSubmit() {
             :items="[
               { label: '代码提交（code）', value: 'code' },
               { label: '产物提交（artifact / zip）', value: 'artifact' },
+              { label: '提示词提交（prompt）', value: 'prompt' },
             ]"
             class="w-full"
           />

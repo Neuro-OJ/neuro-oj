@@ -23,6 +23,7 @@ import {
 import {
   createSelfTest,
   getSelfTest,
+  listMySelfTests,
   saveSelfTestResult,
 } from "../../index.ts";
 import { SELF_TEST_ID_PREFIX } from "../../types/self-tests.ts";
@@ -551,6 +552,75 @@ Deno.test({
       eq(problemVersions.problem_id, problemId),
     );
     await db.delete(problems).where(eq(problems.id, problemId));
+  },
+});
+
+Deno.test({
+  name: "self-tests service: listMySelfTests 只列本人记录、倒序、不含代码",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const otherUserId = `tst-st-other-${ts}`;
+    await db.insert(users).values({
+      id: otherUserId,
+      username: `tstst-other-${ts}`,
+      email: `tstst-other-${ts}@test.noj`,
+      password_hash: "hash",
+      created_at: now,
+      updated_at: now,
+    });
+    const older = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
+    const newer = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
+    const others = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
+    await db.insert(selfTests).values([
+      {
+        id: older,
+        user_id: USER_ID,
+        problem_id: PROBLEM_ID,
+        language: "prompt",
+        code: "第一轮提示词",
+        created_at: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        id: newer,
+        user_id: USER_ID,
+        problem_id: PROBLEM_ID,
+        language: "prompt",
+        code: "第二轮提示词",
+        created_at: "2026-01-02T00:00:00.000Z",
+      },
+      {
+        id: others,
+        user_id: otherUserId,
+        problem_id: PROBLEM_ID,
+        language: "prompt",
+        code: "他人的提示词",
+        created_at: "2026-01-03T00:00:00.000Z",
+      },
+    ]);
+    try {
+      const list = await listMySelfTests(USER_ID, PROBLEM_ID, 100);
+      const ids = list.map((r) => r.id);
+      assertEquals(ids.includes(others), false, "不得列出他人的自测");
+      assertEquals(
+        ids.indexOf(newer) < ids.indexOf(older),
+        true,
+        "应按创建时间倒序",
+      );
+      assertEquals("code" in list[0], false, "列表不应返回代码");
+
+      const limited = await listMySelfTests(USER_ID, PROBLEM_ID, 1);
+      assertEquals(limited.length, 1);
+
+      await assertRejects(
+        () => listMySelfTests(USER_ID, "nonexistent-problem"),
+        NotFoundError,
+      );
+    } finally {
+      await db.delete(selfTests).where(eq(selfTests.id, others));
+      await db.delete(users).where(eq(users.id, otherUserId));
+    }
   },
 });
 

@@ -32,6 +32,7 @@ import {
   isValidSubmissionMode,
   type LlmConfig,
   type RuntimeConfig,
+  SUBMISSION_MODES,
 } from "./problems.ts";
 import {
   type OiRuntimeConfig,
@@ -69,7 +70,7 @@ export interface ProblemBundleManifest {
   tags?: string[];
   /** 模板文件索引（纯文件名，缺省默认 "template.py"）：前端编辑器初始代码 */
   template?: string;
-  /** 提交模式：code（默认）或 artifact */
+  /** 提交模式：code（默认）/ artifact / prompt */
   submission_mode?: string;
   /** artifact 提交大小上限（MB），可空 */
   artifact_max_size_mb?: number | null;
@@ -245,7 +246,9 @@ export function validateBundleManifest(
     !isValidSubmissionMode(m.submission_mode as string)
   ) {
     throw new BadRequestError(
-      `非法提交模式：${String(m.submission_mode)}，仅允许 code / artifact`,
+      `非法提交模式：${String(m.submission_mode)}，仅允许 ${
+        SUBMISSION_MODES.join(" / ")
+      }`,
     );
   }
 

@@ -17,6 +17,7 @@ import type {
   ProblemRuntimeConfig,
   ProblemTagRef,
   RuntimeConfig,
+  SubmissionMode,
 } from "./../../types/problems.ts";
 import {
   isOiRuntimeConfig,
@@ -48,8 +49,8 @@ export interface ProblemResponse {
   judge_type: "dual" | "oi";
   /** 可公开的执行后端；客观题或配置不可用时为空。 */
   judge_backend: "dual" | "oi-native" | "oi-wasm" | null;
-  /** 提交模式：code / artifact */
-  submission_mode: "code" | "artifact";
+  /** 提交模式：code / artifact / prompt */
+  submission_mode: SubmissionMode;
   /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
   artifact_max_size_mb: number | null;
   /** LLM 配置（可空，仅 owner/admin 返回） */
@@ -108,7 +109,7 @@ export interface AdminProblemListItem {
   type: string;
   /** 题目可见性：public / private */
   visibility: "public" | "private";
-  submission_mode: "code" | "artifact";
+  submission_mode: SubmissionMode;
   artifact_max_size_mb: number | null;
   display_id: string;
 }

@@ -6,7 +6,7 @@
  *
  * 三条不可变约束（首次发布后固定，跨类型转换必须新建题目）：
  * 1. `kind`（objective / oi / ai）；
- * 2. AI 题的 `submission_mode`（code / artifact）；
+ * 2. AI 题的 `submission_mode`（code / artifact / prompt）；
  * 3. 客观题小题的 `key`（同题跨版本稳定，用于重判时匹配旧答案）。
  */
 
