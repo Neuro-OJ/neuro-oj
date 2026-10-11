@@ -24,6 +24,7 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import { listPaperQuestionsWithAccess } from "../../../objective/index.ts";
+import { generatePublicId } from "../../../../shared/security/public-id.ts";
 
 await resetDbForTest({ refreshRankings: true });
 
@@ -109,6 +110,7 @@ Deno.test({
     const userId = await seedUser("cobj-user");
     const paperId = crypto.randomUUID();
     const contestId = crypto.randomUUID();
+    const contestPublicId = generatePublicId("ct");
     const versionV1 = `${paperId}-v1`;
     const versionV2 = `${paperId}-v2`;
 
@@ -120,6 +122,7 @@ Deno.test({
     );
     await db.insert(contests).values({
       id: contestId,
+      public_id: contestPublicId,
       title: "客观题固定版本测试",
       start_time: atMinutes(-30),
       end_time: atMinutes(60),
@@ -164,6 +167,17 @@ Deno.test({
       // 作答者响应必须裁剪答案与解析（响应字段不下发，而非置空数组）
       assertEquals(inContest.questions[0].answer, undefined);
       assertEquals(inContest.questions[0].explanation, undefined);
+
+      // 浏览器 URL 携带 public_id 时也必须显示固定 V1，不能回退题库最新版 V2。
+      const viaPublicId = await listPaperQuestionsWithAccess(paperId, {
+        viewerId: userId,
+        isAdmin: false,
+        contestId: contestPublicId,
+        userId,
+        versionId: versionV2,
+      });
+      assertEquals(viaPublicId.version_id, versionV1);
+      assertEquals(viaPublicId.questions, inContest.questions);
 
       // ② 客户端传 version_id=V2 也不能覆盖竞赛固定版本
       const override = await listPaperQuestionsWithAccess(paperId, {

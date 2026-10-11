@@ -377,7 +377,10 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
       `创建竞赛失败: ${contestRes.status} ${JSON.stringify(contestRes.body)}`,
     );
   }
-  const contestId = (contestRes.body as { data: { id: string } }).data.id;
+  // 浏览器竞赛 URL 使用 public_id，覆盖从读题、管理设置到提交和历史的完整契约。
+  const contestId =
+    (contestRes.body as { data: { public_id: string } }).data.public_id;
+  if (!contestId?.startsWith("ct-")) throw new Error("竞赛没有公开 ID");
 
   // 3.2 注册参赛
   const reg = await apiPost(
@@ -387,6 +390,49 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
   );
   if (reg.status !== 200 && reg.status !== 201) {
     throw new Error(`注册失败: ${reg.status}`);
+  }
+
+  const policy = await apiPut(
+    `/api/v1/admin/contests/${contestId}/problems/${paperId}/effective-version-policy`,
+    {
+      policy: { mode: "exact", version_id: paperVersionId },
+      expected_revision: 0,
+    },
+    adminToken,
+  );
+  if (policy.status !== 200) {
+    throw new Error(`公开 ID 保存策略失败: ${JSON.stringify(policy)}`);
+  }
+  const version = await apiPut(
+    `/api/v1/admin/contests/${contestId}/problems/${paperId}/version`,
+    {
+      version_id: paperVersionId,
+      policy: { mode: "any" },
+      expected_revision: 1,
+    },
+    adminToken,
+  );
+  if (version.status !== 200) {
+    throw new Error(`公开 ID 保存固定版本失败: ${JSON.stringify(version)}`);
+  }
+
+  const questions = await apiGet(
+    `/api/v1/problems/${paperId}/questions?contest_id=${contestId}`,
+    solverToken,
+  );
+  const questionView = questions.body as {
+    data: QuestionData[];
+    version_id: string;
+  };
+  if (
+    questions.status !== 200 || questionView.version_id !== paperVersionId ||
+    questionView.data.length !== 3 || questionView.data.some((q) =>
+      q.answer !== undefined
+    )
+  ) {
+    throw new Error(
+      `公开 ID 读题应使用固定版本并裁剪答案: ${JSON.stringify(questions)}`,
+    );
   }
 
   // 3.3 竞赛内提交（contest_id 携带）→ 判定满分
@@ -426,6 +472,16 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
     };
   }).data;
   if (!submitted.contest_mode) throw new Error("竞赛提交应标记 contest_mode");
+  const history = await apiGet(
+    `/api/v1/problems/submissions?paper_id=${paperId}&contest_id=${contestId}`,
+    solverToken,
+  );
+  if (
+    history.status !== 200 ||
+    (history.body as { data: { total: number } }).data.total !== 1
+  ) {
+    throw new Error(`公开 ID 查询竞赛历史失败: ${JSON.stringify(history)}`);
+  }
   // 审计 VULN-03：竞赛未结束前只回执"已提交"——不返回分数、正确题数与逐题对错。
   // 否则协同作弊者可用小号提交当答案预言机，逐题试探即可拼出满分答案。
   if (submitted.score !== null || submitted.correct_count !== null) {

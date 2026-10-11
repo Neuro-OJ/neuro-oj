@@ -127,6 +127,12 @@ Deno.test({
     const adminToken = await createUserToken("admin");
     const { problemId, v1 } = await seedProblem("lib");
     const url = `/api/v1/admin/problems/${problemId}/effective-version-policy`;
+    const [identity] = await db.select({ number: problems.number }).from(
+      problems,
+    )
+      .where(eq(problems.id, problemId));
+    const publicUrl =
+      `/api/v1/admin/problems/P${identity.number}/effective-version-policy`;
 
     // 非法 policy.mode → 400
     const badMode = await jsonRequest(app, url, {
@@ -153,7 +159,7 @@ Deno.test({
     assertEquals(badRevision.status, 400);
 
     // 正常切换为 exact(V1)
-    const switched = await jsonRequest(app, url, {
+    const switched = await jsonRequest(app, publicUrl, {
       method: "PUT",
       token: adminToken,
       body: { policy: { mode: "exact", version_id: v1 }, expected_revision: 0 },
@@ -239,10 +245,11 @@ Deno.test({
     }, creatorId);
     const contestId = contest.id;
 
+    // 管理页面从公开竞赛 URL 载入；写入也必须接受同一个 public_id。
     const policyUrl =
-      `/api/v1/admin/contests/${contestId}/problems/${problemId}/effective-version-policy`;
+      `/api/v1/admin/contests/${contest.public_id}/problems/${problemId}/effective-version-policy`;
     const versionUrl =
-      `/api/v1/admin/contests/${contestId}/problems/${problemId}/version`;
+      `/api/v1/admin/contests/${contest.public_id}/problems/${problemId}/version`;
 
     // 竞赛 exact(V1)：固定作答版本同步变为 V1（§1.2）
     const exact = await jsonRequest(app, policyUrl, {

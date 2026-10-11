@@ -18,7 +18,10 @@ import {
   resolveSupportPackageRef,
   setSupportPackage,
 } from "../../services/support-package.ts";
-import { saveProblemDraft } from "../../services/versioning/draft.ts";
+import {
+  getProblemDraft,
+  saveProblemDraft,
+} from "../../services/versioning/draft.ts";
 import { publishProblemVersion } from "../../services/versioning/publish.ts";
 import { setStorageProviderForTest } from "../../../system/services/storage/factory.ts";
 import { LocalStorageProvider } from "../../../system/services/storage/local.ts";
@@ -154,7 +157,7 @@ Deno.test("support package: 删除草稿包不删除历史版本引用的对象"
     content: aiContent("t"),
     expectedRevision: 1,
   });
-  await publishProblemVersion("sp-p2", { expectedRevision: 2 });
+  const v1 = await publishProblemVersion("sp-p2", { expectedRevision: 2 });
 
   await deleteSupportPackage("sp-p2", "0", "admin");
 
@@ -178,6 +181,32 @@ Deno.test("support package: 删除草稿包不删除历史版本引用的对象"
     eq(problemDraftObjects.problem_id, "sp-p2"),
   );
   assertEquals(draftRows.length, 0);
+
+  // 删除后继续编辑题面不能从 V1 自动补回已删除的草稿包。
+  const draft = await getProblemDraft("sp-p2");
+  const saved = await saveProblemDraft("sp-p2", {
+    content: { ...draft.content, title: "不带支持包的 V2" },
+    expectedRevision: draft.revision,
+  });
+  assertEquals(await getDraftSupportPackageUrl("sp-p2"), null);
+  const v2 = await publishProblemVersion("sp-p2", {
+    expectedRevision: saved.revision,
+  });
+  assertEquals(v2.version, 2);
+  assertEquals(await resolveSupportPackageRef("sp-p2"), null);
+  assertEquals(
+    new TextDecoder().decode(
+      (await getSupportPackageBytes(
+        "sp-p2",
+        "0",
+        "admin",
+        undefined,
+        { versionId: v1.version_id },
+      ))!,
+    ),
+    "shared-package",
+  );
+  assertEquals((await provider.stat(url)).exists, true);
 });
 
 Deno.test("support package: 未发布题目删除时清理迁移期投影", async () => {

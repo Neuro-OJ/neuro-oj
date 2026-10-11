@@ -22,9 +22,16 @@ import {
   loadOiDataFromVersion,
   saveOiDraft,
 } from "../../services/versioning/oi-draft.ts";
-import { getProblemDraft } from "../../services/versioning/draft.ts";
+import {
+  getProblemDraft,
+  saveProblemDraft,
+} from "../../services/versioning/draft.ts";
 import { publishProblemVersion } from "../../services/versioning/publish.ts";
-import { setStorageProviderForTest } from "../../../system/services/storage/factory.ts";
+import {
+  getStorageProvider,
+  setStorageProviderForTest,
+} from "../../../system/services/storage/factory.ts";
+import { readOiArchive } from "../../services/oi-archive.ts";
 import { LocalStorageProvider } from "../../../system/services/storage/local.ts";
 import type { OiRuntimeConfig } from "../../types/runtime-config.ts";
 
@@ -176,13 +183,40 @@ Deno.test("oi draft: 发布后版本数据与草稿分离", async () => {
 
   // 草稿改成 v2 数据并再发布草稿版本（Revision 递增到 3）
   await saveOiDraft("oid-p4", {
-    runtime_config: oiConfig(),
+    runtime_config: oiConfig("2.in", "2.out"),
     expectedRevision: 2,
-  }, entriesOf({ "1.in": "v2-input", "1.out": "v2-output" }));
+  }, entriesOf({ "2.in": "v2-input", "2.out": "v2-output" }));
   assertEquals(
     decode(await loadOiDataFromDraft("oid-p4")),
-    { "1.in": "v2-input", "1.out": "v2-output" },
+    { "2.in": "v2-input", "2.out": "v2-output" },
   );
+
+  // 后续普通题面保存不能补回 V1 已移除的 1.in/1.out。
+  const draft = await getProblemDraft("oid-p4");
+  const metadata = await saveProblemDraft("oid-p4", {
+    content: { ...draft.content, title: "V2 新数据题面" },
+    expectedRevision: draft.revision,
+  });
+  assertEquals(decode(await loadOiDataFromDraft("oid-p4")), {
+    "2.in": "v2-input",
+    "2.out": "v2-output",
+  });
+  const archiveUrl = await draftPackageRef("oid-p4");
+  assert(archiveUrl);
+  const archiveFiles = await readOiArchive(
+    await (await getStorageProvider()).get(archiveUrl),
+  );
+  assertEquals(
+    decode(archiveFiles),
+    decode(await loadOiDataFromDraft("oid-p4")),
+  );
+  const v2 = await publishProblemVersion("oid-p4", {
+    expectedRevision: metadata.revision,
+  });
+  assertEquals(decode(await loadOiDataFromVersion(v2.version_id)), {
+    "2.in": "v2-input",
+    "2.out": "v2-output",
+  });
 
   // 历史版本仍返回 v1 数据（进度重置/旧重测可用）
   const versionFiles = await loadOiDataFromVersion(published.version_id);

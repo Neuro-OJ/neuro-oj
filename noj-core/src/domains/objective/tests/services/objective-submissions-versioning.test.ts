@@ -19,7 +19,8 @@ import {
   submissionVersionResults,
   users,
 } from "../../../../shared/db/schema.ts";
-import { submitObjectivePaper } from "../../index.ts";
+import { listObjectiveSubmissions, submitObjectivePaper } from "../../index.ts";
+import { generatePublicId } from "../../../../shared/security/public-id.ts";
 import {
   createDraftQuestion,
   updateDraftQuestion,
@@ -323,8 +324,10 @@ Deno.test({
     const v1 = await publishDraft(paper, "V1");
 
     const contestId = crypto.randomUUID();
+    const contestPublicId = generatePublicId("ct");
     await db.insert(contests).values({
       id: contestId,
+      public_id: contestPublicId,
       title: `版本化客观题竞赛 ${ts}`,
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
@@ -351,7 +354,7 @@ Deno.test({
 
     const result = await submitObjectivePaper(paper, {
       answers: { [q1.key]: ["A"] },
-      contest_id: contestId,
+      contest_id: contestPublicId,
       version_id: v1.version_id,
     }, user);
     if (result.contest_mode !== true) throw new Error("竞赛模式应返回赛期回执");
@@ -361,6 +364,7 @@ Deno.test({
     );
     // 竞赛固定版本 → 提交时版本已知
     assertEquals(row.submitted_version_id, v1.version_id);
+    assertEquals(row.contest_id, contestId);
     assertEquals(row.version_origin, "known");
     assertEquals(row.is_valid, true);
     assertEquals(row.is_accepted, true);
@@ -374,6 +378,16 @@ Deno.test({
       eq(queryProjectionRevisions.scope_key, `contest:${contestId}`),
     );
     assertEquals(revision.data_revision >= 1, true);
+    const history = await listObjectiveSubmissions({
+      viewerId: user,
+      viewerRole: "user",
+      paperId: paper,
+      contestId: contestPublicId,
+      page: 1,
+      perPage: 20,
+    });
+    assertEquals(history.total, 1);
+    assertEquals(history.data[0].id, result.submission_id);
   },
 });
 

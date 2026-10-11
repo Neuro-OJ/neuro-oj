@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import type { AuthEnv } from "./../../identity/index.ts";
 import { BadRequestError } from "./../../../shared/base/errors.ts";
 import type { EffectiveVersionPolicy } from "./../../../shared/versioning/types.ts";
+import { resolveProblemIdOrThrow } from "../../catalog/index.ts";
+import { resolveContestId } from "../../contest/index.ts";
 import {
   setContestProblemEffectiveVersionPolicy,
   setProblemEffectiveVersionPolicy,
@@ -54,7 +56,7 @@ function parseExpectedRevision(value: unknown): number {
 
 /** 切换题库有效版本策略（`any` / `exact(X)`，不修改最新版指针）。 */
 router.put("/problems/:id/effective-version-policy", async (c) => {
-  const problemId = c.req.param("id") as string;
+  const problemId = await resolveProblemIdOrThrow(c.req.param("id") as string);
   const body = await c.req.json<Record<string, unknown>>().catch(() => null);
   if (!body || typeof body !== "object") {
     throw new BadRequestError("请求体必须是 JSON 对象");
@@ -71,8 +73,12 @@ router.put("/problems/:id/effective-version-policy", async (c) => {
 router.put(
   "/contests/:contestId/problems/:problemId/effective-version-policy",
   async (c) => {
-    const contestId = c.req.param("contestId") as string;
-    const problemId = c.req.param("problemId") as string;
+    const contestId = await resolveContestId(
+      c.req.param("contestId") as string,
+    );
+    const problemId = await resolveProblemIdOrThrow(
+      c.req.param("problemId") as string,
+    );
     const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body !== "object") {
       throw new BadRequestError("请求体必须是 JSON 对象");
@@ -97,8 +103,10 @@ router.put(
  * 给出新策略，服务层返回 409（不静默改动策略）。
  */
 router.put("/contests/:contestId/problems/:problemId/version", async (c) => {
-  const contestId = c.req.param("contestId") as string;
-  const problemId = c.req.param("problemId") as string;
+  const contestId = await resolveContestId(c.req.param("contestId") as string);
+  const problemId = await resolveProblemIdOrThrow(
+    c.req.param("problemId") as string,
+  );
   const body = await c.req.json<Record<string, unknown>>().catch(() => null);
   if (!body || typeof body !== "object") {
     throw new BadRequestError("请求体必须是 JSON 对象");

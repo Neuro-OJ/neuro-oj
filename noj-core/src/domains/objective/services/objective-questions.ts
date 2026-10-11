@@ -27,7 +27,10 @@ import {
   type ObjectiveQuestionSnapshot,
   resolveProblemAnswerVersion,
 } from "./../../catalog/index.ts";
-import { verifyContestAccess } from "./../../contest/index.ts";
+import {
+  resolveContestId,
+  verifyContestAccess,
+} from "./../../contest/index.ts";
 import { isUuid } from "./../../../shared/security/public-id.ts";
 import {
   JUDGE_OPTIONS,
@@ -276,8 +279,12 @@ export async function listPaperQuestionsWithAccess(
   const paper = await getPaperOrThrow(paperId);
   assertObjectivePaper(paper);
 
-  const contestAccess = options.contestId
-    ? await verifyContestAccess(options.viewerId, options.contestId, paper.id)
+  // 浏览器路由使用公开竞赛 ID，权限与固定版本查询必须先归一到内部 UUID。
+  const contestId = options.contestId
+    ? await resolveContestId(options.contestId)
+    : null;
+  const contestAccess = contestId
+    ? await verifyContestAccess(options.viewerId, contestId, paper.id)
     : null;
   const { result: access } = await evaluateProblemAccess(paper, {
     viewerId: options.viewerId,

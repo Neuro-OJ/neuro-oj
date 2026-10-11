@@ -612,3 +612,14 @@
 对普通用户临时保密；复跑不同域前结束该独立测试库的残留竞赛，避免跨域夹具污染。CI
 每域独立栈，不需要此步骤。修复决定见 Agent Note
 `2026-10-11-pr622-initial-attempt-envelope.md`。
+
+## 第六轮独立实现复审（2026-10-12）
+
+本轮按 Handbook 重新走查当前 `07bb2d52` 的实现，覆盖版本发布与草稿文件集合、结果封套与平台错误、策略隔离及锁序、升级身份和任务恢复、Web/IDE/CLI 版本契约、Judge/Gateway attempt 归属。确认两项会阻断正常功能的缺陷；现有 CI 使用 UUID 或单步草稿操作的夹具，未覆盖这些真实组合。
+
+| 问题 | 修复前证据 | 修复与回归 |
+|---|---|---|
+| 公开竞赛 ID 被作为内部主键查询，管理设置及客观题竞赛流程失败 | 独立 E2E 栈：管理员用 `ct-...` 载入成功，保存策略返回 `404 CONTEST_PROBLEM_NOT_FOUND`；新回归 admin **15/1**、objective **62/1**、contest **93/1**，分别复现保存 404、提交“竞赛不存在”、读题 404；完整 objective E2E **3/1** | 管理版本路由及客观题读题/提交/历史入口用既有解析器归一标识。PGlite admin **16/0**、objective **63/0**、contest **94/0**；真实 PG 独立 schema admin **16/0**、objective **63/0**、contest **95/0**；使用公开 ID 的完整 objective E2E **4/0**，覆盖管理策略、固定版本、答案裁剪、提交、历史和一次提交限制 |
+| 已删除的草稿文件被后续题面保存从最新版补回 | 新回归 catalog **327/1**：V1 发布 → 删除草稿支持包 → 保存题面后 `getDraftSupportPackageUrl` 再次返回旧包 URL，预期为 null | 仅在草稿行不存在时继承基线引用；已有草稿的空引用保持为空。catalog PGlite、真实 PG 均 **328/0**；支持包 V2 无包且 V1 字节保留，OI 换数据后再编辑/发布仍保持逐文件与实际 ZIP 一致，历史 V1 数据不变 |
+
+修复决定见 Agent Notes `2026-10-12-pr622-public-contest-versioning.md` 与 `2026-10-12-pr622-draft-file-removal.md`。新增证据均先在未修复实现上复现，再验证修复；本轮最终远端 CI 以新签名 head 为准。

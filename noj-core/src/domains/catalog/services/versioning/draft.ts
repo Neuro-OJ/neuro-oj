@@ -286,18 +286,20 @@ export async function saveProblemDraft(
     if (input.content.kind !== problemContentKindOf(identity)) {
       throw new AppError("题目类别已变化", 409, "CONTENT_KIND_IMMUTABLE");
     }
-    // 无草稿行但题目已有最新版：保存前把**基线文件引用**复制进草稿引用表，
-    // 否则本次编辑会以空文件集合覆盖基线，存量支持包/OI 文件静默丢失（#24）。
-    await materializeDraftObjectsFromLatestVersion(
-      tx,
-      problemId,
-      identity.latest_version_id,
-    );
     const [row] = await tx.select().from(problemDrafts).where(
       eq(problemDrafts.problem_id, problemId),
     ).limit(1);
     const current = row?.revision ?? PROBLEM_DRAFT_VIRTUAL_REVISION;
     if (current !== expected) throw draftRevisionConflict(expected, current);
+
+    // 仅首次物化继承基线引用；已有草稿的空引用可能表示用户主动删除，不能补回。
+    if (!row) {
+      await materializeDraftObjectsFromLatestVersion(
+        tx,
+        problemId,
+        identity.latest_version_id,
+      );
+    }
 
     const now = new Date().toISOString();
     const nextRevision = current + 1;
@@ -395,17 +397,19 @@ export async function saveProblemDraftWithObjects(
     if (input.content.kind !== problemContentKindOf(identity)) {
       throw new AppError("题目类别已变化", 409, "CONTENT_KIND_IMMUTABLE");
     }
-    // 同 saveProblemDraft：先把基线文件引用物化进草稿引用表（#24）。
-    await materializeDraftObjectsFromLatestVersion(
-      tx,
-      problemId,
-      identity.latest_version_id,
-    );
     const [row] = await tx.select().from(problemDrafts).where(
       eq(problemDrafts.problem_id, problemId),
     ).limit(1);
     const current = row?.revision ?? PROBLEM_DRAFT_VIRTUAL_REVISION;
     if (current !== expected) throw draftRevisionConflict(expected, current);
+
+    if (!row) {
+      await materializeDraftObjectsFromLatestVersion(
+        tx,
+        problemId,
+        identity.latest_version_id,
+      );
+    }
 
     // 引用替换：先确认新引用可绑定，再删除多余引用、写入目标引用
     for (const ref of input.objects) {

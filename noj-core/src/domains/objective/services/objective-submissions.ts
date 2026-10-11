@@ -44,6 +44,7 @@ import {
   getContest,
   getContestProblems,
   isProblemInUnendedPublicContest,
+  resolveContestId,
 } from "../../contest/index.ts";
 import type {
   ObjectiveAttemptSummary,
@@ -219,7 +220,10 @@ export async function submitObjectivePaper(
   // 练习/竞赛提交统一访问判定（F-05/C1）：private 套卷非 owner/admin 且无竞赛
   // 上下文一律拒绝；被公开赛保密的套卷同此口径（无法从独立路径提交）；
   // 竞赛上下文由 validateContestSubmission 独立校验，不接受伪造。
-  const contestId = input.contest_id ?? null;
+  // 对外竞赛 URL 使用 public_id；落库、版本绑定与一次提交约束统一使用 UUID。
+  const contestId = input.contest_id
+    ? await resolveContestId(input.contest_id)
+    : null;
   if (!contestId) {
     const { result: access } = await evaluateProblemAccess(paper, {
       viewerId: userId,
@@ -745,11 +749,15 @@ export async function listObjectiveSubmissions(params: {
     viewerRole,
     c,
     paperId,
-    contestId,
+    contestId: contestReference,
     targetUserId,
     page,
     perPage,
   } = params;
+
+  const contestId = contestReference
+    ? await resolveContestId(contestReference)
+    : undefined;
 
   // 非 admin（submission:read_all）只能查自己；他人查询参数被忽略
   const isAdmin = c
