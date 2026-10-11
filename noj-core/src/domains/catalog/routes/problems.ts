@@ -945,6 +945,10 @@ router.get("/:id/template", authMiddleware, async (c) => {
   if (!result.allowed) {
     throw new NotFoundError("题目不存在");
   }
+  // 界面题的脚本模板是出题人的评测逻辑，选手只通过 ui.html 填参数，不下发模板
+  if (problem.submission_mode === "ui") {
+    return c.json({ error: "该题目没有初始代码模板" }, 404);
+  }
   const requestedTemplateVersionId = c.req.query("version_id")?.trim() || null;
   const tpl = await resolveProblemTemplate({
     id: problem.id,

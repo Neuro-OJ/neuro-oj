@@ -639,6 +639,7 @@ async function handleSubmit() {
               { label: '代码提交（code）', value: 'code' },
               { label: '产物提交（artifact / zip）', value: 'artifact' },
               { label: '预测提交（prediction / 单文件）', value: 'prediction' },
+              { label: '界面提交（ui，题包需含 ui.html）', value: 'ui' },
             ]"
             class="w-full"
           />

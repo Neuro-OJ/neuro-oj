@@ -11,8 +11,8 @@
  * 直接断言（与 `utils/problemStats.ts`、`utils/submissionFormat.ts` 一致）。
  */
 
-/** 提交模式：`code` 代码 / `artifact` 产物 zip / `prediction` 预测单文件。 */
-export type SubmissionMode = 'code' | 'artifact' | 'prediction';
+/** 提交模式：`code` 代码 / `artifact` 产物 zip / `prediction` 预测单文件 / `ui` 题包自带界面。 */
+export type SubmissionMode = 'code' | 'artifact' | 'prediction' | 'ui';
 
 /** artifact 上传 accept（zip）。 */
 export const ARTIFACT_FILE_ACCEPT = '.zip,application/zip,application/x-zip-compressed';
@@ -57,7 +57,7 @@ export interface ProblemView {
   /** 评测题型与公开后端标识；不依赖仅管理员可见的运行配置。 */
   judge_type?: 'dual' | 'oi';
   judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
-  /** 提交模式：`code` 代码 / `artifact` 产物 zip / `prediction` 预测单文件。 */
+  /** 提交模式：`code` 代码 / `artifact` 产物 zip / `prediction` 预测单文件 / `ui` 题包自带界面。 */
   submission_mode: SubmissionMode;
   /** artifact 单文件大小上限（MB）；null 表示使用平台默认上限。 */
   artifact_max_size_mb: number | null;

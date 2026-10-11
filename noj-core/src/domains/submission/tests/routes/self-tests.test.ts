@@ -220,6 +220,20 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "self-tests route: GET /api/v1/problems/:id/self-tests 无 token 返回 401",
+  fn: async () => {
+    const app = createApp();
+    const res = await jsonRequest(
+      app,
+      `/api/v1/problems/${PROBLEM_ID}/self-tests`,
+      {},
+    );
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
   name: "self-tests route: GET /api/v1/self-tests/:id 不存在返回 404",
   ignore: skip,
   fn: async () => {

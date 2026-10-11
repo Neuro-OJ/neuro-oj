@@ -16,6 +16,18 @@ import {
 import { resolveLlmLimits } from "../../../gateway/index.ts";
 import type { JudgeTask } from "../../types/index.ts";
 
+/**
+ * 界面提交的脚本模板：以**目标版本**的 `template_content` 为准（版本才是判卷事实源），
+ * 未版本化的存量题目回退题目投影。非界面提交无需调用。
+ */
+export function scriptTemplateOf(
+  content: ProblemContentV1 | null | undefined,
+  fallback?: string | null,
+): string | undefined {
+  if (content?.kind === "ai") return content.template_content;
+  return fallback ?? undefined;
+}
+
 /** 指定版本的支持包地址；不存在引用与后端丢失是不同情况。 */
 export async function versionSupportPackageUrl(
   versionId: string,
@@ -81,7 +93,7 @@ export async function versionSupportPackageDownload(
 /** 版本接受性输入：提交模式与语言。 */
 export interface VersionAcceptanceInput {
   language: string;
-  submissionMode: "code" | "artifact" | "prediction";
+  submissionMode: "code" | "artifact" | "prediction" | "ui";
 }
 
 /**

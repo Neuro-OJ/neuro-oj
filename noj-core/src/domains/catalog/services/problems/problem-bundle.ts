@@ -34,14 +34,17 @@ import { uploadStorageObjectWithReservation } from "./../../../system/index.ts";
 import {
   parseBundleZip,
   readBundleTemplate,
+  readBundleUi,
   stripMetadataEntries,
 } from "./../bundle-parser.ts";
 import {
   DEFAULT_TEMPLATE_FILE,
   isValidProblemBundleName,
   MAX_TEMPLATE_BYTES,
+  MAX_UI_HTML_BYTES,
   type ObjectiveQuestionBundleInput,
   type ProblemBundleManifest,
+  UI_FILE,
   validateBundleManifest,
   validateObjectiveQuestions,
 } from "./../../types/problem-bundle.ts";
@@ -306,6 +309,22 @@ export async function importProblemBundle(
   //     改为从上传包内读取并落库后，运行期不再依赖部署目录，也不需要为读一个
   //     几 KB 的模板而下载整个支持包。
   const templateContent = extractImportedTemplate(manifest, parsed.entries);
+
+  // 5.2 界面题必须随包提供 ui.html（运行期按版本从支持包读取，导入时只做存在性与
+  //     大小校验——缺失会让选手打开做题页只见空白，必须在导入时就拒绝）。
+  if (manifest.submission_mode === "ui") {
+    const ui = readBundleUi(parsed.entries);
+    if (ui.status === "missing") {
+      throw new BadRequestError(
+        `界面题（submission_mode=ui）的题包根目录必须包含 ${UI_FILE}`,
+      );
+    }
+    if (ui.status === "too_large") {
+      throw new BadRequestError(
+        `${UI_FILE} 超过大小上限（${MAX_UI_HTML_BYTES} 字节）`,
+      );
+    }
+  }
 
   // 6. 分发：manifest.number 提供时按 (type, number) 业务键匹配（命中 → 更新；
   //    未命中 → 创建）；未提供 → 创建（number 自动分配）。id 一律由服务端生成，

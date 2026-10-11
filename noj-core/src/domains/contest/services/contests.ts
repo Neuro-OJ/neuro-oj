@@ -34,9 +34,11 @@ import {
 import {
   getJudgeBackend,
   getSubmissionLanguages,
+  isValidSubmissionMode,
   type ProblemContentV1,
   type ProblemRuntimeConfig,
   projectProblemContent,
+  type SubmissionMode,
 } from "../../catalog/index.ts";
 import { findContestRow } from "./contest-row.ts";
 import { normalizeContestTime } from "./contest-window.ts";
@@ -1122,9 +1124,10 @@ function toContestProblemResponse(
       Array.isArray(versionFields["supported_languages"])
     ? versionFields["supported_languages"] as string[]
     : getSubmissionLanguages(fallbackJudgeType, fallbackConfig);
-  const submissionMode = versionFields?.["submission_mode"] === "artifact" ||
-      versionFields?.["submission_mode"] === "code"
-    ? versionFields["submission_mode"]
+  const submissionMode = isValidSubmissionMode(
+      String(versionFields?.["submission_mode"]),
+    )
+    ? versionFields!["submission_mode"] as SubmissionMode
     : row.submission_mode as ContestProblemResponse["submission_mode"];
   // 注意区分"版本内容显式声明 null"与"版本内容缺失"：前者表示该版本无产物上限，
   // 不能回退到题目投影里的其他版本取值
