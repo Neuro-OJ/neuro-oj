@@ -498,6 +498,8 @@
 2. **fire-and-forget 的物化视图刷新污染测试事务**（`src/domains/query/services/rankings.ts`）。结果写入后会 `refreshRankingsView().catch(...)`，它在**测试的长事务内**执行 `REFRESH MATERIALIZED VIEW CONCURRENTLY`（PG 25001：不允许在事务块内执行），并与用例并发创建/释放 savepoint，导致 `savepoint "noj_sp_N" does not exist` → `current transaction is aborted` 的级联假失败。修复：测试事务内直接跳过刷新（测试期读取一律走内联查询，被测语义不变）；同时让 savepoint 名在同一连接上单调递增、并只忽略 `3B001/25P02` 这类记账竞态错误。
 3. 相应地，`rankings-view-refresh.pg.test.ts`（专门验证刷新的真实 PG 用例）改为 `disableTestTransactionForFile()`，并保留其自带唯一夹具与显式清理。
 
-修复后真实 PG 全绿：submission **279 passed / 0 failed**（修复前 271/8）、catalog 328/0、contest 94/0、identity 319/0，`bash scripts/test-shared.sh` 294/0；PGlite 全量域回归同样全绿。
+修复后真实 PG 全绿：submission **279 passed / 0 failed**（修复前 271/8，连续两次全新 schema 复现）、catalog 328/0、contest 94/0、identity 319/0，`bash scripts/test-shared.sh` 294/0；PGlite 全量域回归同样全绿。
+
+**验收注意**：CI 的每个 job 使用**独立数据库**（先 `00_migrate_test` + `seed_bootstrap_admin_test` 再跑本域）。若在**同一个** schema 里连续跑「shared 套件 → 域套件」，`tests/db/reset-db-tables.test.ts`（`disableTestTransactionForFile()`，会提交式 TRUNCATE）会清掉 RBAC/镜像白名单等种子，使后续域用例出现与代码无关的失败。这不是产品缺陷，按 CI 的「一 job 一库」方式运行即全绿。
 2. 真实 PG 全量域回归需在独占库/独占 schema 上串行执行（`test:domain` 会 TRUNCATE），本轮已按此方式执行迁移、锁序、结算一致性、视图刷新、批任务并发用例。
 3. **跨模块 E2E 未在本轮运行**：`noj-tests` 的 `test:domain` 需要先 `docker compose -f docker-compose.e2e.yml up -d` 起完整栈（core/judge/llm-mock/minio，端口 8099）。本轮修复环境只起了开发态容器，直接运行会全部 `Connection refused`（`http://localhost:8099` 连接被拒）；尝试启动 E2E 栈时被沙箱的只读 `/home/<user>/.docker/buildx/activity` 阻断，镜像构建无法完成。结论：E2E 必须由具备可写 Docker builder 的环境执行（CI 的 `e2e.yml` 已覆盖 core/judge/gateway 镜像构建与全链路用例）。
