@@ -5,6 +5,8 @@
 > **审查结论**：**目前不建议合并 PR #622**。实现搭出了版本、尝试和有效成绩投影的主体，但评测配置来源、存储留存、事务一致性、批任务恢复、客观题统计等关键路径没有闭环，“功能全部落地”的结论不成立。  
 > **说明**：本清单用于跟踪发现的 56 项缺陷与并发风险，区分已确认的实现缺陷与并发时序风险，待后续统筹修复与验收。
 
+> **当前复审结论（2026-10-11）**：上述结论是相对初始基准提交的历史记录。经过三轮修复及本轮对 PR 讨论中 10 条遗留评论的逐条复核，当前工作区没有已确认的实现阻断项；本轮新增的投影批量重算、锁序测试修正和门禁检查见文末，最终是否可合并仍以推送后的 CI 结果为准。
+
 ---
 
 ## 进度概览
@@ -558,3 +560,28 @@
 - PGlite：submission 295、catalog 328、contest 94、query 27、objective 63，全 0 failed
 - **全新数据库**双分片 `test:parallel`：**1534 passed / 0 failed**
 - 静态与门禁：core `fmt` / `lint`（0 问题）/ `deno check`（0 error）、schema parity（68 表）、迁移快照链、单文件规模、`check-ci` 全通过
+
+## PR 讨论遗留评论复核（2026-10-11）
+
+> 基准为远端 PR head `061ff7d05240839d52073ec02d8c53588848b0d8` 上的 10 条未解决 inline review thread。前 9 条对应的业务修复已存在于累计改动中；第 10 条在本轮补齐。这里记录实现对应关系和可复核证据，避免把「评论尚未标记 resolved」误认为「实现仍未修复」。
+
+| # | 评论关注点 | 当前结论与实现位置 | 验收证据 |
+|---|---|---|---|
+| 1 | 派发入队失败后留下孤儿 attempt | 已修：派发前先落库并绑定 attempt，永久失败统一终结尝试和 token 吊销 outbox；`dispatch-job-item.ts`、`result-write.ts`、`llm_token_revocations` | `versioning-execution-context.test.ts`、`versioning-terminal-revocation.test.ts` |
+| 2 | 结果先写入再标记条目 dispatched，条目可能永久 running | 已修：结果处理与条目状态更新使用统一事务/终态路径，早到结果可回填条目且重复结果无副作用 | `versioning-result-write.test.ts`、真实 PG submission 域 |
+| 3 | 重测入队后未将条目置为 judging | 已修：成功入队后在持有租约的条件更新中写入 `judging`，重派与首次派发共用状态机 | `versioning-job-skipped.test.ts`、真实 PG submission 域 |
+| 4 | 结果写入后删除 artifact，违背留存语义 | 已修：正式产物仅在显式删除路径清理，结果与入队失败路径保留对象并经引用守卫 | `versioning-execution-context.test.ts`、`storage-registry.test.ts` |
+| 5 | 结果锁没有先锁题目/竞赛宿主，可能丢失策略更新 | 已修：结果、策略切换和投影重算共用题目 → 竞赛 → 提交锁序；`lockProjectionHosts` 与 `result-write.ts` 先取宿主共享锁 | `versioning-lock-order.pg.test.ts`，真实 PG submission 域 328 passed / 0 failed |
+| 6 | pending 恢复使用最新版支持包而不是绑定版本 | 已修：恢复从尝试执行快照和绑定版本对象读取支持包、运行配置及 LLM 上下文；缺少快照按平台错误处理 | `versioning-execution-context.test.ts`、pending recovery 用例 |
+| 7 | unchanged 去重搜索全历史，A→B→A 不能发布 | 已修：发布去重只比较当前最新版，恢复旧内容生成新版本 | `publish-hardening.test.ts`「#21」 |
+| 8 | 重测任务批量插入可能超过 PostgreSQL 参数上限且策略不原子 | 已修：策略宿主统一锁定，受理与策略修改在单事务内完成，条目按批次插入 | `versioning-job-concurrency.test.ts`、真实 PG submission/catalog 域 |
+| 9 | ignored attempt 仍写状态、SSE 和统计 | 已修：可信封套和 ignored 判定在副作用入口之前完成，ignored 直接返回且不更新投影/统计/事件 | `versioning-result-write.test.ts`、`submissions-result.test.ts` |
+| 10 | `recompute*Projections` 对每条提交重复读取策略和判定（N+1） | 已修：`projection.ts` 批量读取题目策略、当前判定和去重后的竞赛策略，按 5,000 个 ID 分批，再复用纯计算器写回；同时覆盖参数上限 | PGlite submission 298 passed / 0 failed / 40 ignored；真实 PG submission 328 passed / 0 failed、catalog 328 passed / 0 failed |
+
+### 本轮复审验收记录
+
+- `noj-core`：`deno fmt --check`（784 files）、`deno task lint`（662 files，0 问题）、全 `src` `deno check`、`deno task check:jsdoc`（覆盖率 64.3%，阈值 59.6%）均通过。
+- PGlite：`cd noj-core && deno task test:domain submission` → **298 passed / 0 failed / 40 ignored**。
+- 独立真实 PostgreSQL schema `codex_pr622_20261011`：迁移成功；`deno task test:domain submission` → **328 passed / 0 failed / 10 ignored**；`deno task test:domain catalog` → **328 passed / 0 failed**。锁屏障用例覆盖结果写入、策略切换、外键等待和源状态竞争；测试断言改为确认阻塞者是宿主屏障事务，避免漏报外键路径的同一宿主锁等待。
+- `noj-lmcc-extension npm run check`：Prettier 与 TypeScript 检查均通过。
+- 本地尚未启动完整 `noj-tests` E2E 栈；该栈由 CI `e2e.yml` 负责验收，推送后须以 PR 最新 head 的工作流结果为最终依据。

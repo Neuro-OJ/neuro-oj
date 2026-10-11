@@ -15,7 +15,6 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import {
   evaluationAttempts,
   llmTokenRevocations,
-  judgeImages,
   problems,
   problemVersionObjects,
   problemVersions,
@@ -112,18 +111,21 @@ function stubLlmGatewayProvider(enabled: boolean): () => void {
   _resetSystemSettingsForTest();
   globalThis.fetch = (() =>
     Promise.resolve(
-      new Response(JSON.stringify({
-        data: {
-          id: "prov-default",
-          name: "test",
-          base_url: "http://provider.test",
-          cost_per_1k_tokens: 0,
-          api_key_masked: "sk-****",
-          enabled,
-          created_at: now,
-          updated_at: now,
-        },
-      }), { status: 200, headers: { "Content-Type": "application/json" } }),
+      new Response(
+        JSON.stringify({
+          data: {
+            id: "prov-default",
+            name: "test",
+            base_url: "http://provider.test",
+            cost_per_1k_tokens: 0,
+            api_key_masked: "sk-****",
+            enabled,
+            created_at: now,
+            updated_at: now,
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     )) as typeof fetch;
   return () => {
     globalThis.fetch = originalFetch;
@@ -582,7 +584,8 @@ Deno.test("artifact preflight: Provider 停用时上传文件由统一补偿清�
 });
 
 Deno.test({
-  name: "initial dispatch: code 与 artifact 永久入队失败都登记并执行吊销 outbox",
+  name:
+    "initial dispatch: code 与 artifact 永久入队失败都登记并执行吊销 outbox",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -634,7 +637,11 @@ Deno.test({
       const [codeAttempt] = await db.select().from(evaluationAttempts).where(
         eq(evaluationAttempts.submission_id, codeSubmission.id),
       );
-      assertEquals("llm_execution" in codeAttempt.task_snapshot, true);
+      assertEquals(
+        "llm_execution" in
+          (codeAttempt.task_snapshot as Record<string, unknown>),
+        true,
+      );
       const [codeRevocation] = await db.select().from(llmTokenRevocations)
         .where(eq(llmTokenRevocations.attempt_id, codeAttempt.id));
       assertEquals(codeRevocation.state, "done");
@@ -684,7 +691,11 @@ Deno.test({
       assertEquals(artifactSubmission.status, "error");
       const [artifactAttempt] = await db.select().from(evaluationAttempts)
         .where(eq(evaluationAttempts.submission_id, artifactSubmission.id));
-      assertEquals("llm_execution" in artifactAttempt.task_snapshot, true);
+      assertEquals(
+        "llm_execution" in
+          (artifactAttempt.task_snapshot as Record<string, unknown>),
+        true,
+      );
       const [artifactRevocation] = await db.select().from(llmTokenRevocations)
         .where(eq(llmTokenRevocations.attempt_id, artifactAttempt.id));
       assertEquals(artifactRevocation.state, "done");

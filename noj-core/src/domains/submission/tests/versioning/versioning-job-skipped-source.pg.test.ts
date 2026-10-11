@@ -648,6 +648,9 @@ async function dispatchDuringObjectivePolicyChange(
       const deadline = Date.now() + 5_000;
       let blocked = false;
       while (Date.now() < deadline) {
+        // UPDATE submission_job_items 也会因其 problem_id 外键先等待同一宿主行；
+        // 因而不能只按 SQL 文本筛选 problems/contests。只要阻塞者就是本屏障
+        // 事务，便能证明派发没有先拿 source 行锁而形成反向锁环。
         const waiting = unwrapRows<{ blocked: boolean }>(
           await tx.execute(sql`
             SELECT EXISTS (
@@ -655,9 +658,6 @@ async function dispatchDuringObjectivePolicyChange(
               WHERE activity.pid <> ${barrierPid}
                 AND activity.wait_event_type = 'Lock'
                 AND ${barrierPid} = ANY(pg_blocking_pids(activity.pid))
-                AND activity.query ILIKE ${`%${
-            scope === "problem" ? "problems" : "contests"
-          }%`}
             ) AS blocked
           `) as never,
         );

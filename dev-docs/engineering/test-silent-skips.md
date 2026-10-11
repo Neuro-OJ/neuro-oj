@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **1066** 处（ignore=713 early-return=268 rust-ignore=45 rust-env-guard=27 env-guard=13）。
+> 当前命中 **1070** 处（ignore=717 early-return=268 rust-ignore=45 rust-env-guard=27 env-guard=13）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -630,12 +630,14 @@
 | noj-core/src/domains/submission/tests/versioning/versioning-job-concurrency.test.ts | 716 | ignore |
 | noj-core/src/domains/submission/tests/versioning/versioning-job-concurrency.test.ts | 787 | ignore |
 | noj-core/src/domains/submission/tests/versioning/versioning-job-concurrency.test.ts | 840 | ignore |
-| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 248 | ignore |
-| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 297 | ignore |
-| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 333 | ignore |
-| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 579 | ignore |
-| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 617 | ignore |
-| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 660 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 255 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 304 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 340 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 699 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 737 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 780 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 817 | ignore |
+| noj-core/src/domains/submission/tests/versioning/versioning-job-skipped-source.pg.test.ts | 840 | ignore |
 | noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 90 | ignore |
 | noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 111 | ignore |
 | noj-core/src/domains/system/tests/middleware/rate-limit.test.ts | 136 | ignore |
@@ -706,11 +708,13 @@
 | noj-core/src/domains/system/tests/services/judge-images.test.ts | 249 | ignore |
 | noj-core/tests/db/pr622_review_migration_test.ts | 273 | ignore |
 | noj-core/tests/db/pr622_review_migration_test.ts | 385 | ignore |
-| noj-core/tests/db/test-transaction-savepoint_test.ts | 30 | ignore |
-| noj-core/tests/db/test-transaction-savepoint_test.ts | 63 | ignore |
-| noj-core/tests/db/test-transaction-savepoint_test.ts | 111 | ignore |
-| noj-core/tests/db/test-transaction-savepoint_test.ts | 151 | ignore |
-| noj-core/tests/db/test-transaction-savepoint_test.ts | 181 | ignore |
+| noj-core/tests/db/test-transaction-savepoint_test.ts | 31 | ignore |
+| noj-core/tests/db/test-transaction-savepoint_test.ts | 64 | ignore |
+| noj-core/tests/db/test-transaction-savepoint_test.ts | 112 | ignore |
+| noj-core/tests/db/test-transaction-savepoint_test.ts | 165 | ignore |
+| noj-core/tests/db/test-transaction-savepoint_test.ts | 262 | ignore |
+| noj-core/tests/db/test-transaction-savepoint_test.ts | 302 | ignore |
+| noj-core/tests/db/test-transaction-savepoint_test.ts | 332 | ignore |
 | noj-core/tests/helper.ts | 163 | env-guard |
 | noj-core/tests/perf/community_search_bench.test.ts | 27 | ignore |
 | noj-core/tests/perf/search_bench.test.ts | 37 | ignore |
