@@ -62,7 +62,10 @@ import { judgeOptions } from "../../../objective/index.ts";
 import { getProblem } from "./problems-list.ts";
 import { getTagIdsByNames, listTags } from "../tags.ts";
 import { logAudit } from "../../../system/index.ts";
-import { assertLlmLimitsWithinDefault } from "../../../gateway/index.ts";
+import {
+  assertLlmLimitsWithinDefault,
+  assertLlmModelsValid,
+} from "../../../gateway/index.ts";
 import { MAX_SUPPORT_PACKAGE_SIZE } from "../support-package.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import {
@@ -438,6 +441,8 @@ async function updateExisting(
   enforceResourceLimits(manifest.runtime_config!);
   if (manifest.llm) {
     assertLlmLimitsWithinDefault(manifest.llm);
+    // 题包可先于运营配置导入：别名未配置只告警，跨 Provider 仍拒绝
+    await assertLlmModelsValid(manifest.llm, { allowUnknown: true });
   }
 
   const draft = await getProblemDraft(
@@ -803,6 +808,8 @@ async function createViaCrud(
   }
   if (manifest.llm) {
     assertLlmLimitsWithinDefault(manifest.llm);
+    // 题包可先于运营配置导入：别名未配置只告警，跨 Provider 仍拒绝
+    await assertLlmModelsValid(manifest.llm, { allowUnknown: true });
   }
 
   const db = getDb();

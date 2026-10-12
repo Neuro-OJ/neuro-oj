@@ -20,6 +20,7 @@
 | DELETE | `/contests/:id` | noj-core/src/domains/admin/routes/contest.ts |
 | DELETE | `/contests/:id/participants/:userId` | noj-core/src/domains/admin/routes/contest.ts |
 | DELETE | `/judge-images/:id` | noj-core/src/domains/admin/routes/system.ts |
+| DELETE | `/llm/model-aliases/:alias` | noj-core/src/domains/admin/routes/gateway.ts |
 | DELETE | `/me/avatar` | noj-core/src/domains/identity/routes/users.ts |
 | DELETE | `/oauth/accounts/:id` | noj-core/src/domains/identity/routes/auth.ts |
 | DELETE | `/posts/:postId` | noj-core/src/domains/community/routes/community.ts |
@@ -115,6 +116,8 @@
 | GET | `/health/ready` | noj-core/src/domains/observability/routes/health.ts |
 | GET | `/history` | noj-core/src/domains/identity/routes/checkin.ts |
 | GET | `/judge-images` | noj-core/src/domains/admin/routes/system.ts |
+| GET | `/llm-model-aliases` | noj-core/src/domains/catalog/routes/problems.ts |
+| GET | `/llm/model-aliases` | noj-core/src/domains/admin/routes/gateway.ts |
 | GET | `/llm/providers` | noj-core/src/domains/admin/routes/gateway.ts |
 | GET | `/llm/quotas` | noj-core/src/domains/admin/routes/gateway.ts |
 | GET | `/llm/usage` | noj-core/src/domains/admin/routes/gateway.ts |
@@ -287,6 +290,7 @@
 | PUT | `/contests/:contestId/problems/:problemId/version` | noj-core/src/domains/admin/routes/problem-versions.ts |
 | PUT | `/contests/:id` | noj-core/src/domains/admin/routes/contest.ts |
 | PUT | `/judge-images/:id` | noj-core/src/domains/admin/routes/system.ts |
+| PUT | `/llm/model-aliases/:alias` | noj-core/src/domains/admin/routes/gateway.ts |
 | PUT | `/llm/providers/:id` | noj-core/src/domains/admin/routes/gateway.ts |
 | PUT | `/me` | noj-core/src/domains/identity/routes/users.ts |
 | PUT | `/problems/:id/effective-version-policy` | noj-core/src/domains/admin/routes/problem-versions.ts |

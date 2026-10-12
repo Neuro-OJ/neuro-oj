@@ -186,3 +186,15 @@ gateway 按别名选路， 属于独立的 token
 2. core：别名设置与管理 API、`buildJudgeTaskLlm` / 冻结快照、题目与题包校验；
 3. ui + noj-cli + 文档：别名卡片、出题多选、题包格式文档；
 4. E2E 与发布说明（注明「先 gateway 后 core」）。
+
+## 12. 实施偏差（2026-10-12，core 实现时确认）
+
+- **别名存专用表而非系统设置**（§3.1 退路）：系统设置注册表只有 boolean / string
+  / text(≤1000) / integer，不支持 JSON；表 `llm_model_aliases` 每次直读
+  DB，无进程内缓存，多副本一致。迁移 `0114` 新建该表并把
+  `audit_logs_action_check` 扩充为超集（新增 `llm_model_alias.upsert|delete`）。
+- **`model_map` 同时出现在 `JudgeTaskLlm`**（仅题目使用非 `default`
+  别名时）：core 需要它写入 冻结快照；judge 以 serde
+  默认行为忽略未知字段，评测容器环境变量只含别名。`default`-only 的 任务与 token
+  与旧版逐字节一致，`judge-task.contract.json` 不变。
+- 题包导入对未配置别名只告警，发布 / 保存题目 / 提交解析仍严格校验。

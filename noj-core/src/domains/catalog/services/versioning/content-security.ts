@@ -17,7 +17,10 @@ import {
   assertSensitiveFieldPermissions,
   enforceResourceLimits,
 } from "../problems/problem-field-guard.ts";
-import { assertLlmLimitsWithinDefault } from "../../../gateway/index.ts";
+import {
+  assertLlmLimitsWithinDefault,
+  assertLlmModelsValid,
+} from "../../../gateway/index.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 
 /** 草稿可不完整，但显式修改敏感字段始终受权限和平台上限约束。 */
@@ -47,6 +50,7 @@ export async function assertDraftContentSecurity(
       throw new ForbiddenError("仅 P 型/官方题可启用 LLM");
     }
     assertLlmLimitsWithinDefault(content.llm_config);
+    await assertLlmModelsValid(content.llm_config);
     if (
       !runtime || !("evaluator" in runtime) ||
       !runtime.evaluator.network?.enabled
