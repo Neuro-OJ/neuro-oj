@@ -15,7 +15,7 @@ import {
 import type { WorkspaceContext } from "../../../shared/workspace/types.ts";
 import { getUserPermissions } from "../../identity/index.ts";
 import { domainPermissions, validateDomainConfiguration } from "../types.ts";
-import { getInstancePolicy } from "./instance.ts";
+import { getInstanceAccessPolicy } from "./instance.ts";
 
 /** 服务端实时解析域身份、成员及平台权限，不信任客户端的权限或上次使用域。 */
 export async function loadWorkspace(
@@ -31,7 +31,7 @@ export async function loadWorkspace(
     ? await getUserPermissions(actorId, db)
     : new Set<string>();
   const platformAdmin = platformPermissions.has("admin:full_access");
-  if (getInstancePolicy().access === "authenticated" && !actorId) {
+  if (getInstanceAccessPolicy().access === "authenticated" && !actorId) {
     throw new UnauthorizedError("此实例需要登录");
   }
   if (actorId) {

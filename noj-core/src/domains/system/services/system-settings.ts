@@ -23,6 +23,7 @@ import {
 } from "../../../shared/db/connection.ts";
 import { systemSettings } from "../../../shared/db/schema.ts";
 import { ValidationError } from "../../../shared/base/errors.ts";
+import { validateWorkspaceSetting } from "../../../shared/workspace/resource-policy.ts";
 import { logAudit } from "./audit-log.ts";
 import { getEnvSnapshotValue } from "./env-snapshot.ts";
 import {
@@ -273,6 +274,16 @@ function validateValueType(
           ok: false,
           message: `${key} 长度不能超过 1000 字符（当前 ${value.length}）`,
         };
+      }
+      if (def.valueSchema) {
+        try {
+          validateWorkspaceSetting(def.valueSchema, value);
+        } catch (error) {
+          return {
+            ok: false,
+            message: error instanceof Error ? error.message : "结构化配置非法",
+          };
+        }
       }
       return { ok: true, raw: JSON.stringify(value) };
     }

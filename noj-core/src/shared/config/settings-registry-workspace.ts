@@ -1,7 +1,41 @@
 import type { SettingDefinition } from "./settings-registry.ts";
+import {
+  allowedDomainFeatures,
+  unlimitedDomainLimits,
+} from "../workspace/resource-policy.ts";
 
 /** 工作空间治理配置走既有 DB 配置加载与跨副本重新加载通道。 */
 export const WORKSPACE_CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
+  {
+    key: "instance_allowed_modules",
+    type: "text",
+    default: JSON.stringify(allowedDomainFeatures()),
+    valueSchema: "domain_features",
+    description: "实例允许启用的可选模块；域配置不能越过此列表",
+    is_secret: false,
+    scope: "runtime",
+    category: "other",
+  },
+  {
+    key: "domain_default_limits",
+    type: "text",
+    default: JSON.stringify(unlimitedDomainLimits()),
+    valueSchema: "domain_limits",
+    description: "新域资源默认限额；null 不额外限制，不覆盖已有域",
+    is_secret: false,
+    scope: "runtime",
+    category: "other",
+  },
+  {
+    key: "domain_limit_caps",
+    type: "text",
+    default: JSON.stringify(unlimitedDomainLimits()),
+    valueSchema: "domain_limits",
+    description: "实例对各域资源的实时上限；域管理员不能提高自己的有效额度",
+    is_secret: false,
+    scope: "runtime",
+    category: "other",
+  },
   {
     key: "instance_access",
     type: "string",

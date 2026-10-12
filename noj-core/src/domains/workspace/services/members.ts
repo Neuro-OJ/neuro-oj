@@ -3,7 +3,6 @@ import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
   domainJoinRequests,
-  domainLimits,
   domainMemberRoles,
   domainMemberships,
   domainResourceCounters,
@@ -24,6 +23,7 @@ import {
   loadWorkspace,
 } from "./access.ts";
 import { workspaceAudit } from "./domains.ts";
+import { getDomainEffectiveLimits } from "./limits.ts";
 
 /** 调用方已锁住 Domain，成员数检查和身份恢复同事务执行。 */
 export async function addDomainMember(
@@ -49,9 +49,7 @@ export async function addDomainMember(
       "DOMAIN_MEMBER_REMOVED",
     );
   }
-  const [limit] = await db.select().from(domainLimits).where(
-    eq(domainLimits.domain_id, domainId),
-  );
+  const { effective: limit } = await getDomainEffectiveLimits(domainId, db);
   const [used] = await db.select({ count: count() }).from(domainMemberships)
     .where(
       and(

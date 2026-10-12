@@ -8,7 +8,6 @@ import {
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
-  domainLimits,
   domainProblemBindings,
   domainResourceCounters,
   domains,
@@ -19,6 +18,7 @@ import {
 import type { EffectiveVersionPolicy } from "../../../../shared/versioning/types.ts";
 import {
   assertWorkspacePermission,
+  getDomainEffectiveLimits,
   loadWorkspace,
   workspaceAudit,
 } from "../../../workspace/index.ts";
@@ -142,14 +142,12 @@ export async function importDomainProblem(
         ),
       };
     }
-    const [limit] = await tx.select().from(domainLimits).where(
-      eq(domainLimits.domain_id, domain.id),
-    );
+    const { effective: limit } = await getDomainEffectiveLimits(domain.id, tx);
     const [usage] = await tx.select({ count: count() }).from(
       domainProblemBindings,
     ).where(eq(domainProblemBindings.domain_id, domain.id));
     if (
-      limit?.problems !== null && limit?.problems !== undefined &&
+      limit.problems !== null &&
       usage.count >= limit.problems
     ) throw new AppError("域题库条目额度已用尽", 429, "DOMAIN_PROBLEM_LIMIT");
     const [sourceBinding] = await tx.select().from(domainProblemBindings).where(

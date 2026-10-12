@@ -33,7 +33,14 @@ import {
   validateDomainSlug,
 } from "../types.ts";
 import { assertWorkspacePermission, loadWorkspace } from "./access.ts";
-import { getInstancePolicy } from "./instance.ts";
+import {
+  getInstanceAccessPolicy,
+  getInstanceResourcePolicy,
+} from "./instance.ts";
+import {
+  combineDomainLimits,
+  constrainDomainConfiguration,
+} from "../../../shared/workspace/resource-policy.ts";
 
 /** 域配置变化的审计与业务操作在同一事务保存。 */
 export async function workspaceAudit(
@@ -97,7 +104,7 @@ export async function createDomain(
   if (!actor) throw new NotFoundError("负责人账号不可用");
   const permissions = await getUserPermissions(actorId, db);
   const platformAdmin = permissions.has("admin:full_access");
-  const policy = getInstancePolicy();
+  const policy = getInstanceAccessPolicy();
   if (
     !platformAdmin && !options.approved &&
     policy.domain_creation_policy !== "open"
@@ -119,6 +126,17 @@ export async function createDomain(
     );
   }
   const now = new Date().toISOString();
+  const resourcePolicy = await getInstanceResourcePolicy(db);
+  const limits = combineDomainLimits(
+    resourcePolicy.default_limits,
+    resourcePolicy.limit_caps,
+  );
+  if (limits.members !== null && limits.members < 1) {
+    throw new ForbiddenError(
+      "实例成员额度不足以建立负责人身份",
+      "DOMAIN_MEMBER_LIMIT",
+    );
+  }
   const [domain] = await db.insert(domains).values({
     id: crypto.randomUUID(),
     slug: input.slug,
@@ -126,7 +144,10 @@ export async function createDomain(
     description: input.description ?? "",
     owner_id: actorId,
     preset: input.preset,
-    configuration: presetConfiguration(input.preset),
+    configuration: constrainDomainConfiguration(
+      presetConfiguration(input.preset),
+      resourcePolicy.modules,
+    ),
     created_at: now,
     updated_at: now,
   }).onConflictDoNothing({ target: domains.slug }).returning();
@@ -141,7 +162,7 @@ export async function createDomain(
     membership_id: membership.id,
     role: "owner",
   });
-  await db.insert(domainLimits).values({ domain_id: domain.id });
+  await db.insert(domainLimits).values({ domain_id: domain.id, ...limits });
   await db.insert(domainResourceCounters).values(
     ["members", "problems", "storage_bytes"].map((resource) => ({
       domain_id: domain.id,
@@ -239,6 +260,18 @@ export async function updateDomain(
     }
     const now = new Date().toISOString();
     if (patch.configuration) {
+      const allowed = (await getInstanceResourcePolicy(tx)).modules;
+      for (const key of Object.keys(allowed) as Array<keyof typeof allowed>) {
+        if (
+          patch.configuration.features[key] &&
+          !domain.configuration.features[key] && !allowed[key]
+        ) {
+          throw new ForbiddenError(
+            "实例未允许启用此模块",
+            "DOMAIN_FEATURE_NOT_ALLOWED",
+          );
+        }
+      }
       for (
         const feature of [
           "classroom",
@@ -334,7 +367,7 @@ export async function setDomainStatus(
 
 /** 域目录仅返回可发现且当前可访问的条目，不暴露私有域存在性。 */
 export async function listDomains(actorId: string | null, mine = false) {
-  if (getInstancePolicy().access === "authenticated" && !actorId) {
+  if (getInstanceAccessPolicy().access === "authenticated" && !actorId) {
     throw new ForbiddenError("此实例需要登录");
   }
   const db = getDb();

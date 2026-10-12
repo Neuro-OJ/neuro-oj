@@ -15,7 +15,7 @@ import type { DomainPreset } from "../../../shared/workspace/types.ts";
 import { getUserPermissions } from "../../identity/index.ts";
 import { validateDomainSlug } from "../types.ts";
 import { createDomain } from "./domains.ts";
-import { getInstancePolicy } from "./instance.ts";
+import { getInstanceAccessPolicy } from "./instance.ts";
 
 /** 申请创建与申请加入分开；同一用户同一标识的待审申请幂等复用。 */
 export async function requestDomainCreation(
@@ -23,7 +23,7 @@ export async function requestDomainCreation(
   input: { slug: string; name: string; preset: DomainPreset; reason: string },
 ) {
   validateDomainSlug(input.slug);
-  if (getInstancePolicy().domain_creation_policy !== "approval") {
+  if (getInstanceAccessPolicy().domain_creation_policy !== "approval") {
     throw new ForbiddenError("实例未启用工作空间创建申请");
   }
   if (

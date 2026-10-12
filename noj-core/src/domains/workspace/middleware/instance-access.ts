@@ -1,11 +1,11 @@
 import type { MiddlewareHandler } from "hono";
 import { UnauthorizedError } from "../../../shared/base/errors.ts";
 import { optionalAuthMiddleware } from "../../identity/index.ts";
-import { getInstancePolicy } from "../services/instance.ts";
+import { getInstanceAccessPolicy } from "../services/instance.ts";
 
 /** 私有实例的最外层读门控，登录/验证/法律信息保持可进入。 */
 export const instanceAccessMiddleware: MiddlewareHandler = async (c, next) => {
-  if (getInstancePolicy().access === "public") return await next();
+  if (getInstanceAccessPolicy().access === "public") return await next();
   const path = c.req.path;
   if (
     path.startsWith("/api/v1/auth/") || path === "/api/v1/instance" ||

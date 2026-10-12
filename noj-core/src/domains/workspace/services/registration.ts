@@ -3,7 +3,7 @@ import type { Executor } from "../../../shared/db/executor.ts";
 import { domainInvitations, domains } from "../../../shared/db/schema.ts";
 import { DEFAULT_DOMAIN_SLUG } from "../../../shared/workspace/types.ts";
 import { ForbiddenError } from "../../../shared/base/errors.ts";
-import { getInstancePolicy } from "./instance.ts";
+import { getInstanceAccessPolicy } from "./instance.ts";
 import {
   assertInvitationRegistrationAllowed,
   consumeDomainInvitation,
@@ -15,7 +15,7 @@ import { ensureDefaultWorkspace } from "./domains.ts";
 
 /** 在创建账号前检查实例注册政策；域邀请不能越过管理员开户政策。 */
 export function assertInstanceRegistration(invitationToken?: string) {
-  const policy = getInstancePolicy();
+  const policy = getInstanceAccessPolicy();
   if (
     invitationToken !== undefined &&
     (typeof invitationToken !== "string" ||
@@ -34,7 +34,7 @@ export async function enrollRegisteredAccount(
   userId: string,
   invitationToken?: string,
 ) {
-  const policy = getInstancePolicy();
+  const policy = getInstanceAccessPolicy();
   if (
     invitationToken && policy.registration_mode === "invite" &&
     !policy.allow_domain_registration_invites

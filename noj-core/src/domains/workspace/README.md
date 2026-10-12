@@ -7,13 +7,15 @@
 ## 当前交付
 
 - 实例访问 / 注册 / 域创建政策及邀请注册限制，配置复用系统注册表。
+- 实例模块允许列表、新域资源默认值、域上限及带 revision 的配额治理接口。
+- 容量操作读取持久政策；域管理员只降低自身有效限额，成员及引用题受当前上限约束。
 - 公开发现与本人域列表、创建 / 申请审核、设置、状态及 Preset 差异预览 / 应用。
 - 当前成员关系、固定组合角色、加入申请、负责人原子交接及邀请接受 / 撤销。
 - 注册与 OAuth 新账号遵守实例政策；邀请不绕过管理员开户，不重置已有账号。
 - 默认域幂等初始化；既有配置和负责人不会被启动重新覆盖。
 - URL 解析上下文、事务审计、revision 前置条件及受保护的只读 / 停用状态。
 
-完整实例模块允许列表、资源默认上限、管理 Web 界面、教学及资源全链路隔离
+管理 Web 界面、存储 / 提交 / LLM 限额、模块全入口接入、教学及资源全链路隔离
 尚未完成。单独创建 Domain 不代表所有 OJ 资源已切换到域路由。
 
 ## 调用与授权
@@ -34,19 +36,36 @@
 
 接口前缀为 `/api/v1`，具体路由以 `routes/index.ts` 为准。
 
-| 入口                                            | 用途                         |
-| ----------------------------------------------- | ---------------------------- |
-| `/instance`                                     | 当前实例访问和创建政策摘要   |
-| `/domains`、`/me/domains`                       | 发现、创建与本人当前空间     |
-| `/domain-creation-requests`                     | 创建申请                     |
-| `/admin/instance/domain-creation-requests`      | 平台审核                     |
-| `/domain-invitations/accept`                    | 登录身份接受邀请             |
-| `/domains/:slug`                                | 概览及带 If-Match 的配置修改 |
-| 域下 `status`、`preset-preview`、`preset-apply` | 状态与模板配置               |
-| 域下 `join`、`join-requests`、`members`         | 加入与当前成员治理           |
-| 域下 `invitations`、`transfer`                  | 邀请和负责人交接             |
+| 入口                                            | 用途                                 |
+| ----------------------------------------------- | ------------------------------------ |
+| `/instance`                                     | 当前实例访问和创建政策摘要           |
+| `/domains`、`/me/domains`                       | 发现、创建与本人当前空间             |
+| `/domain-creation-requests`                     | 创建申请                             |
+| `/admin/instance/domain-creation-requests`      | 平台审核                             |
+| `/domain-invitations/accept`                    | 登录身份接受邀请                     |
+| `/domains/:slug`                                | 概览及带 If-Match 的配置修改         |
+| 域下 `status`、`preset-preview`、`preset-apply` | 状态与模板配置                       |
+| 域下 `join`、`join-requests`、`members`         | 加入与当前成员治理                   |
+| 域下 `invitations`、`transfer`                  | 邀请和负责人交接                     |
+| 域下 `limits`                                   | 配额及实例上限读取，带 If-Match 修改 |
 
 用户偏好仅用于导航。资源 ID 放入其他域路径必须重新校验该域归属，不据 ID 放行。
+
+## 资源政策
+
+`instance_allowed_modules`、`domain_default_limits`、`domain_limit_caps` 复用
+DB-owned 设置，结构化文本写入时检查完整字段、依赖和数值范围。
+默认资源值只在新域创建时复制，修改默认值不改存量域，也不给迁移默认域增加新限额。
+`null` 不额外限制，`0` 禁止增加使用；有效额度逐项取本域值与实例上限的严格值。
+
+成员加入、引用题和配额修改通过 executor 查询当前持久上限。
+域管理员不能提高自己的有效额度，平台提高仍受实例上限约束。
+降低到已使用量以下不清除已有成员或历史，只阻断后续增加使用。
+
+`getInstanceAccessPolicy()` 仅用于身份和访问政策；无效资源配置不会阻断管理修复。
+`getInstancePolicy()` 提供完整摘要，额度执行用 `getInstanceResourcePolicy()`。
+`assertDomainFeatureEnabled()` 须在域及资源授权之后调用；历史教学读取例外
+不授予班级、学生代码或其他资源权限。
 
 ## 初始化与迁移
 

@@ -19,9 +19,14 @@ import {
 } from "../../../shared/db/schema.ts";
 import type {
   DomainConfiguration,
+  DomainLimits,
   DomainPreset,
   DomainRole,
 } from "../../../shared/workspace/types.ts";
+import {
+  getDomainEffectiveLimits,
+  updateDomainLimits,
+} from "../services/limits.ts";
 import {
   assertWorkspacePermission,
   loadWorkspace,
@@ -150,6 +155,30 @@ router.get("/domains/:slug", optionalAuthMiddleware, async (c) => {
   );
   return c.json({
     data: { ...domain, permissions: [...context.domainPermissions] },
+  });
+});
+router.get("/domains/:slug/limits", authMiddleware, async (c) => {
+  const { domain, context } = await loadWorkspace(
+    c.req.param("slug")!,
+    c.var.userId!,
+  );
+  assertWorkspacePermission(context, "domain:limits");
+  return c.json({
+    data: {
+      ...await getDomainEffectiveLimits(domain.id),
+      revision: domain.revision,
+    },
+  });
+});
+router.patch("/domains/:slug/limits", authMiddleware, async (c) => {
+  const input = await body(c);
+  return c.json({
+    data: await updateDomainLimits(
+      c.req.param("slug")!,
+      c.var.userId!,
+      revisionHeader(c.req.header("If-Match")),
+      input as unknown as DomainLimits,
+    ),
   });
 });
 router.patch("/domains/:slug", authMiddleware, async (c) => {

@@ -26,7 +26,7 @@ import { toUserResponse } from "./auth/auth-register.ts";
 import { recordConsentsForRegistration } from "../../legal/index.ts";
 import {
   enrollRegisteredAccount,
-  getInstancePolicy,
+  getInstanceAccessPolicy,
 } from "../../workspace/index.ts";
 import { getSetting } from "../../system/index.ts";
 import { ForbiddenError } from "../../../shared/base/errors.ts";
@@ -535,7 +535,7 @@ async function createOAuthUser(
 ): Promise<string> {
   if (
     getSetting("allow_register")?.value === false ||
-    getInstancePolicy().registration_mode !== "open"
+    getInstanceAccessPolicy().registration_mode !== "open"
   ) {
     throw new ForbiddenError(
       "此实例不允许第三方登录自动创建账号",
