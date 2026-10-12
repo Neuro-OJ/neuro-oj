@@ -10,6 +10,7 @@ export interface EducationEvent {
     | "problem.changed"
     | "recipient.changed"
     | "assignment.published"
+    | "assignment.refresh"
     | "module.changed";
   user_id?: string;
   problem_id?: string;
@@ -22,14 +23,31 @@ export interface EducationEvent {
 export async function recordEducationEvent(
   executor: Executor,
   event: EducationEvent,
+  options: { availableAt?: string } = {},
 ) {
   const now = new Date().toISOString();
   await executor.insert(educationOutbox).values({
     id: crypto.randomUUID(),
     ...event,
     created_at: now,
-    available_at: now,
+    available_at: options.availableAt ?? now,
+    payload: {
+      ...event.payload,
+      ...(options.availableAt && options.availableAt > now
+        ? { _invalidate_on_claim: true }
+        : {}),
+    },
   });
+  if (!options.availableAt || options.availableAt <= now) {
+    await invalidateEducationEvent(executor, event);
+  }
+}
+
+/** 到期事件开始处理时再递增事实版本，比赛结束前不会提前标为已公开成绩。 */
+export async function invalidateEducationEvent(
+  executor: Executor,
+  event: EducationEvent,
+) {
   const [clock] = await executor.insert(queryProjectionRevisions).values({
     scope_key: educationRevisionScope(event.domain_id),
     data_revision: 1,
@@ -93,4 +111,23 @@ export function educationCellScopes(
     `${base}:user:${userId}`,
     `${base}:cell:${userId}:${problemId}`,
   ];
+}
+
+/** 读取过期投影只请求补算，不改变事实版本；数据库唯一索引合并并发刷新。 */
+export async function enqueueEducationRefresh(
+  executor: Executor,
+  domainId: string,
+  assignmentId: string,
+  userId?: string,
+) {
+  const now = new Date().toISOString();
+  await executor.insert(educationOutbox).values({
+    id: crypto.randomUUID(),
+    domain_id: domainId,
+    assignment_id: assignmentId,
+    user_id: userId,
+    event_type: "assignment.refresh",
+    created_at: now,
+    available_at: now,
+  }).onConflictDoNothing();
 }

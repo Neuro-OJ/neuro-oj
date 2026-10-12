@@ -14,6 +14,7 @@
  */
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
+import { recordProblemEducationChange } from "../workspace/education-events.ts";
 import {
   contestProblems,
   domainProblemBindings,
@@ -881,6 +882,10 @@ export async function updateProblem(
       if (applied.length === 0) {
         throw new ConflictError("题目已被修改，请重新加载后保存");
       }
+      if (
+        input.visibility !== undefined &&
+        input.visibility !== problem.visibility
+      ) await recordProblemEducationChange(tx, id);
       if (validatedTagIds !== undefined) {
         await tx.delete(problemTags).where(eq(problemTags.problem_id, id));
         if (validatedTagIds.length > 0) {

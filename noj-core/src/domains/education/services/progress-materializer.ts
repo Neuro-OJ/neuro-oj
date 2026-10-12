@@ -14,6 +14,7 @@ import {
   selectAssignmentProgress,
 } from "./progress-selection.ts";
 import { loadEducationCellRevisions } from "./progress-revisions.ts";
+import { appendAssignmentBindingHistory } from "./assignment-history.ts";
 
 /** 一次重算一页学生，按最新正式判定覆盖，不累加事件中的分数。 */
 export async function recomputeAssignmentProgress(
@@ -21,11 +22,12 @@ export async function recomputeAssignmentProgress(
   userIds: string[],
 ) {
   if (!userIds.length) return;
-  await getDb().transaction(async (tx) => {
+  return await getDb().transaction(async (tx) => {
     const [assignment] = await tx.select().from(assignments).where(
       eq(assignments.id, assignmentId),
     ).for("update");
     if (!assignment?.published_at) return;
+    const history = await appendAssignmentBindingHistory(tx, assignmentId);
     const recipients = await tx.select().from(assignmentRecipients).where(and(
       eq(assignmentRecipients.assignment_id, assignmentId),
       inArray(assignmentRecipients.user_id, userIds),
@@ -35,6 +37,9 @@ export async function recomputeAssignmentProgress(
     ).orderBy(assignmentItems.sort_order);
     const ids = recipients.map((r) => r.user_id),
       now = new Date().toISOString();
+    const deadline = [assignment.deadline_at, assignment.ended_at].filter((
+      date,
+    ): date is string => date !== null).sort()[0] ?? null;
     const revisionFor = await loadEducationCellRevisions(
       tx,
       assignment.domain_id,
@@ -75,21 +80,31 @@ export async function recomputeAssignmentProgress(
           policy_revision: resource.revision,
           resource_available: available,
         }).where(eq(assignmentItems.id, item.id));
-        await tx.insert(assignmentItemHistory).values({
-          id: crypto.randomUUID(),
-          domain_id: assignment.domain_id,
-          item_id: item.id,
-          problem_id: item.problem_id,
-          answer_version_id: resource.answer_version_id,
-          policy_mode: resource.effective_version_mode,
-          required_version_id: resource.required_version_id,
-          policy_revision: resource.revision,
-          actor_id: item.policy_revision !== resource.revision
-            ? resource.policy_actor_id
-            : resource.version_actor_id,
-          reason: available ? "题库策略或作答版本变化" : "资源授权失效",
-          created_at: now,
-        });
+        const recorded = resource.revision !== item.policy_revision &&
+            resource.policy_actor_id !== null ||
+          history.changes.some((h) =>
+            h.item_id === item.id && h.revision === resource.revision &&
+            h.answer_version_id === resource.answer_version_id
+          );
+        if (!recorded) {
+          await tx.insert(assignmentItemHistory).values({
+            id: crypto.randomUUID(),
+            domain_id: assignment.domain_id,
+            item_id: item.id,
+            problem_id: item.problem_id,
+            answer_version_id: resource.answer_version_id,
+            policy_mode: resource.effective_version_mode,
+            required_version_id: resource.required_version_id,
+            policy_revision: resource.revision,
+            actor_id: item.policy_revision !== resource.revision
+              ? resource.policy_actor_id
+              : item.answer_version_id !== resource.answer_version_id
+              ? resource.version_actor_id
+              : null,
+            reason: available ? "题库策略或作答版本变化" : "资源授权失效",
+            created_at: now,
+          });
+        }
       }
       for (const userId of ids) {
         for (const scope of ["on_time", "current"] as const) {
@@ -98,7 +113,7 @@ export async function recomputeAssignmentProgress(
             item.requirement,
             item.minimum_score,
             available,
-            assignment.deadline_at,
+            deadline,
           );
           rows.push({
             id: crypto.randomUUID(),
@@ -141,5 +156,6 @@ export async function recomputeAssignmentProgress(
             sql`${assignmentProgress.projection_revision} <= excluded.projection_revision`,
         });
     }
+    return { history_pending: history.has_more };
   });
 }

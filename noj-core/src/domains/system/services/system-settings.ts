@@ -17,6 +17,8 @@
  */
 
 import { eq, inArray } from "drizzle-orm";
+import type { Executor } from "../../../shared/db/executor.ts";
+import { recordInstanceEducationModulesChange } from "../../../shared/education-modules.ts";
 import {
   getDb,
   registerDbResetCallback,
@@ -610,25 +612,52 @@ export async function updateSetting(
   const oldSetting = getSetting(key);
   const fromRaw = oldSetting?.value;
 
-  // UPSERT：PG `ON CONFLICT (key) DO UPDATE`
-  await db
-    .insert(systemSettings)
-    .values({
-      key,
-      value: validation.raw,
-      description: findDefinition(key)?.description ?? "",
-      is_secret: findDefinition(key)?.is_secret ?? false,
-      updated_at: now,
-      updated_by: actorId,
-    })
-    .onConflictDoUpdate({
-      target: systemSettings.key,
-      set: {
-        value: validation.raw,
+  const persist = async (writer: Executor) => {
+    let previousRaw: string | undefined;
+    if (key === "instance_allowed_modules") {
+      // 同一设置行串行化停用及恢复，区间与实际政策共同提交。
+      await writer.insert(systemSettings).values({
+        key,
+        value: oldSetting?.raw ?? JSON.stringify(findDefinition(key)!.default),
         updated_at: now,
         updated_by: actorId,
-      },
-    });
+      }).onConflictDoNothing();
+      const [previous] = await writer.select().from(systemSettings).where(
+        eq(systemSettings.key, key),
+      ).for("update");
+      previousRaw = previous.value;
+    }
+    // UPSERT：PG `ON CONFLICT (key) DO UPDATE`
+    await writer
+      .insert(systemSettings)
+      .values({
+        key,
+        value: validation.raw,
+        description: findDefinition(key)?.description ?? "",
+        is_secret: findDefinition(key)?.is_secret ?? false,
+        updated_at: now,
+        updated_by: actorId,
+      })
+      .onConflictDoUpdate({
+        target: systemSettings.key,
+        set: {
+          value: validation.raw,
+          updated_at: now,
+          updated_by: actorId,
+        },
+      });
+    if (key === "instance_allowed_modules") {
+      await recordInstanceEducationModulesChange(
+        writer,
+        previousRaw,
+        validation.raw,
+        now,
+      );
+    }
+  };
+  if (tx) await persist(tx);
+  else if (key === "instance_allowed_modules") await db.transaction(persist);
+  else await persist(db);
 
   // 事务模式：缓存刷新与审计由调用方在提交后统一处理
   if (tx) {
@@ -716,7 +745,20 @@ export async function resetSetting(
   const oldSetting = getSetting(key);
   const fromRaw = oldSetting?.value;
 
-  await db.delete(systemSettings).where(eq(systemSettings.key, key));
+  if (key === "instance_allowed_modules") {
+    await db.transaction(async (tx) => {
+      const [previous] = await tx.select().from(systemSettings).where(
+        eq(systemSettings.key, key),
+      ).for("update");
+      await tx.delete(systemSettings).where(eq(systemSettings.key, key));
+      await recordInstanceEducationModulesChange(
+        tx,
+        previous?.value ?? oldSetting?.raw,
+        JSON.stringify(findDefinition(key)!.default),
+        new Date().toISOString(),
+      );
+    });
+  } else await db.delete(systemSettings).where(eq(systemSettings.key, key));
 
   cache.delete(key);
   // 重置后不需要 reload（已经从 Map 删除，下次读会走 env/default 兜底）

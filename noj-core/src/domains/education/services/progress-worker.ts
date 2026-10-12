@@ -16,6 +16,7 @@ import {
   educationOutbox,
 } from "../../../shared/db/schema.ts";
 import { recomputeAssignmentProgress } from "./progress-materializer.ts";
+import { invalidateEducationEvent } from "../../../shared/education-events.ts";
 
 /** 租约标识只用于当前数据库领取，不代表用户权限。 */
 export type ClaimedEducationEvent = typeof educationOutbox.$inferSelect;
@@ -37,11 +38,28 @@ export async function claimEducationEvents(limit = 20) {
       { skipLocked: true },
     );
     if (!events.length) return [];
-    return await tx.update(educationOutbox).set({
+    const claimed = await tx.update(educationOutbox).set({
       lease_token: crypto.randomUUID(),
       leased_until: lease,
       attempts: sql`${educationOutbox.attempts} + 1`,
     }).where(inArray(educationOutbox.id, events.map((e) => e.id))).returning();
+    for (const event of claimed) {
+      if (event.payload._invalidate_on_claim) {
+        await invalidateEducationEvent(tx, {
+          domain_id: event.domain_id,
+          event_type: "submission.changed",
+          user_id: event.user_id ?? undefined,
+          problem_id: event.problem_id ?? undefined,
+          assignment_id: event.assignment_id ?? undefined,
+          classroom_id: event.classroom_id ?? undefined,
+        });
+        event.payload = { ...event.payload, _invalidate_on_claim: false };
+        await tx.update(educationOutbox).set({ payload: event.payload }).where(
+          eq(educationOutbox.id, event.id),
+        );
+      }
+    }
+    return claimed;
   });
 }
 
@@ -102,11 +120,13 @@ export async function processEducationEvent(event: ClaimedEducationEvent) {
         ? gt(assignmentRecipients.user_id, cursor.student_after)
         : undefined,
     )).orderBy(assignmentRecipients.user_id).limit(50);
-  await recomputeAssignmentProgress(
+  const projection = await recomputeAssignmentProgress(
     assignment.id,
     students.map((s) => s.user_id),
   );
-  const next: EducationCursor = students.length < 50
+  const next: EducationCursor = projection?.history_pending
+    ? { assignment_id: assignment.id, student_after: cursor.student_after }
+    : students.length < 50
     ? { assignment_after: assignment.id }
     : { assignment_id: assignment.id, student_after: students.at(-1)!.user_id };
   const rows = await db.update(educationOutbox).set({
@@ -115,6 +135,7 @@ export async function processEducationEvent(event: ClaimedEducationEvent) {
     leased_until: null,
     lease_token: null,
     last_error: null,
+    attempts: 0,
   }).where(and(
     eq(educationOutbox.id, event.id),
     eq(educationOutbox.lease_token, event.lease_token!),

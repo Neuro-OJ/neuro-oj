@@ -12,6 +12,7 @@ import { createApp } from "../../../../app.ts";
 import { createProblem } from "../../index.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
+  problemBindingHistory,
   problemDrafts,
   problems,
   problemVersions,
@@ -512,7 +513,10 @@ Deno.test({
     assertEquals(afterBody.version_id, versionId);
     assertEquals(afterBody.latest_version, 1);
 
-    // 清理顺序：草稿（base_version_id 为 NO ACTION）→ 最新版指针 → 版本行
+    // 隔离测试清理先移除绑定沿革引用，再清除草稿、指针和版本。
+    await getDb().delete(problemBindingHistory).where(
+      eq(problemBindingHistory.problem_id, problemId),
+    );
     await getDb().delete(problemDrafts).where(
       eq(problemDrafts.problem_id, problemId),
     );

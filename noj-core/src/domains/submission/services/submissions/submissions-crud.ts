@@ -1,4 +1,5 @@
 import { oiVerdict, projectMeteringDetails } from "./oi-details.ts";
+import { prepareEducationSubmissionDeletion } from "../../../education/index.ts";
 import { projectContestSubmissionReads } from "./contest-read-projection.ts";
 /**
  * Submissions CRUD（PR-3 拆分）。
@@ -1109,6 +1110,13 @@ export async function deleteSubmission(id: string): Promise<void> {
       current?.active_attempt_id ||
       (current && ["pending", "judging"].includes(current.status))
     ) throw new AppError("提交正在评测，不能删除", 409, "SOURCE_JUDGING");
+    await prepareEducationSubmissionDeletion(tx, {
+      id,
+      kind: "submission",
+      domain_id: identity.domain_id,
+      user_id: identity.user_id,
+      problem_id: identity.problem_id,
+    });
     const [row] = await tx.delete(submissions).where(eq(submissions.id, id))
       .returning();
     if (!row) throw new NotFoundError("提交不存在");

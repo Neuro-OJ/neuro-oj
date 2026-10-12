@@ -9,6 +9,7 @@ import {
   pgTable,
   text,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -16,7 +17,10 @@ import { users } from "./identity.ts";
 import { domains } from "./workspace.ts";
 import { classroomMemberships, classrooms } from "./education.ts";
 import { problems, problemVersions } from "./catalog.ts";
-import { domainProblemBindings } from "./catalog-workspace.ts";
+import {
+  domainProblemBindings,
+  problemBindingHistory,
+} from "./catalog-workspace.ts";
 import { contests } from "./contest.ts";
 import { evaluationAttempts } from "./submission.ts";
 import type { AssignmentState } from "../../education-types.ts";
@@ -243,6 +247,9 @@ export const assignmentItemHistory = pgTable("assignment_item_history", {
   id: text("id").primaryKey(),
   domain_id: text("domain_id").notNull(),
   item_id: text("item_id").notNull(),
+  binding_history_id: text("binding_history_id").references(() =>
+    problemBindingHistory.id
+  ),
   problem_id: text("problem_id").notNull(),
   answer_version_id: text("answer_version_id"),
   policy_mode: text("policy_mode").notNull(),
@@ -252,6 +259,8 @@ export const assignmentItemHistory = pgTable("assignment_item_history", {
   actor_id: text("actor_id").references(() => users.id),
   created_at: text("created_at").notNull(),
 }, (t) => ({
+  bindingChangeUnique: unique("assignment_item_history_binding_change_unique")
+    .on(t.item_id, t.binding_history_id),
   itemFk: foreignKey({
     name: "assignment_item_history_item_domain_fk",
     columns: [t.domain_id, t.item_id],
@@ -386,6 +395,13 @@ export const educationOutbox = pgTable("education_outbox", {
     t.available_at,
     t.leased_until,
   ),
+  refreshUnique: uniqueIndex("education_outbox_pending_refresh_unique").on(
+    t.domain_id,
+    t.assignment_id,
+    sql`COALESCE(${t.user_id}, '')`,
+  ).where(
+    sql`${t.event_type} = 'assignment.refresh' AND ${t.processed_at} IS NULL`,
+  ),
 }));
 
 /** 教学模块停用区间用于排除停用期间练习，重新启用不自动回填。 */
@@ -393,7 +409,7 @@ export const educationDisabledIntervals = pgTable(
   "education_disabled_intervals",
   {
     id: text("id").primaryKey(),
-    domain_id: text("domain_id").notNull().references(() => domains.id),
+    domain_id: text("domain_id").references(() => domains.id),
     started_at: text("started_at").notNull(),
     ended_at: text("ended_at"),
     reason: text("reason").notNull(),

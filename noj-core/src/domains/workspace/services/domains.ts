@@ -1,5 +1,7 @@
 import { and, count, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { ROOT_USER_ID } from "../../../shared/base/constants.ts";
+import { recordSourceDomainEducationChange } from "../../catalog/index.ts";
+import { recordEducationEvent } from "../../../shared/education-events.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
@@ -397,6 +399,23 @@ export async function updateDomain(
     await workspaceAudit(tx, actorId, domain.id, "domain.update", {
       revision: updated.revision,
     });
+    if (
+      patch.configuration &&
+      patch.configuration.access !== domain.configuration.access
+    ) {
+      await recordSourceDomainEducationChange(tx, domain.id);
+    } else if (
+      patch.configuration &&
+      (["classroom", "assignment"] as const).some((feature) =>
+        patch.configuration!.features[feature] !==
+          domain.configuration.features[feature]
+      )
+    ) {
+      await recordEducationEvent(tx, {
+        domain_id: domain.id,
+        event_type: "module.changed",
+      });
+    }
     return updated;
   });
 }
@@ -438,6 +457,7 @@ export async function setDomainStatus(
       before: domain.status,
       after: status,
     });
+    await recordSourceDomainEducationChange(tx, domain.id);
     return updated;
   });
 }

@@ -37,7 +37,7 @@ export async function loadBindingAvailability(
         AND COALESCE(share.enabled, false) AND (share.scope = 'all' OR EXISTS (
           SELECT 1 FROM problem_share_targets t WHERE t.problem_id = p.id AND t.domain_id = ${domainId}))
         AND EXISTS (SELECT 1 FROM domain_problem_bindings owned WHERE owned.domain_id = src.id
-          AND owned.problem_id = p.id AND owned.kind = 'owned' AND owned.disabled_at IS NULL)
+          AND owned.problem_id = p.id AND owned.kind = 'owned' AND owned.visibility = 'public' AND owned.disabled_at IS NULL)
         AND NOT ${
       unendedPublicContestForProblem(sql`p.id`, sql`p.domain_id`)
     }))) AS available

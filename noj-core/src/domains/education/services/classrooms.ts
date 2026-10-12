@@ -1,4 +1,5 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { recordEducationEvent } from "../../../shared/education-events.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
@@ -191,6 +192,13 @@ export async function updateClassroom(
       classroom_id: classroomId,
       revision: updated.revision,
     });
+    if (input.archive) {
+      await recordEducationEvent(tx, {
+        domain_id: access.domain.id,
+        classroom_id: classroomId,
+        event_type: "recipient.changed",
+      });
+    }
     return updated;
   });
 }

@@ -19,6 +19,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
+import { recordEducationEvent } from "../../../../shared/education-events.ts";
 import {
   contestProblems,
   contests,
@@ -231,6 +232,11 @@ export async function setProblemEffectiveVersionPolicy(
         actor_id: input.actorId ?? "0",
         reason: "默认域兼容入口修改有效版本策略",
         created_at: new Date().toISOString(),
+      });
+      await recordEducationEvent(tx, {
+        domain_id: updated.domain_id,
+        problem_id: problemId,
+        event_type: "problem.changed",
       });
     }
 

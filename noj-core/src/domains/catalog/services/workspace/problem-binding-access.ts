@@ -41,6 +41,7 @@ export async function assertCurrentProblemShare(
       eq(domainProblemBindings.domain_id, source.id),
       eq(domainProblemBindings.problem_id, problem.id),
       eq(domainProblemBindings.kind, "owned"),
+      eq(domainProblemBindings.visibility, "public"),
       isNull(domainProblemBindings.disabled_at),
     ));
   if (!sourceBinding) throw new NotFoundError("源题已下架或源域绑定不可用");

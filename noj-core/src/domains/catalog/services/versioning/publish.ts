@@ -34,6 +34,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import { publishSearchIndexEvent } from "../../../../shared/search-events.ts";
+import { recordPublishedBindingChanges } from "../workspace/education-events.ts";
 import {
   assertContentKindTransition,
   computeProblemContentHash,
@@ -628,6 +629,13 @@ export async function publishProblemVersion(
       now,
     });
     await writeProblemSearchIndex(tx, problemId);
+    await recordPublishedBindingChanges(
+      tx,
+      problemId,
+      versionId,
+      input.actorId ?? null,
+      now,
+    );
 
     return {
       problem_id: problemId,

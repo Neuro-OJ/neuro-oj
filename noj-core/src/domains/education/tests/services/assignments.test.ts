@@ -326,7 +326,7 @@ Deno.test("作业名单：新生只补入未截止全班任务，离班保留历
   );
   assertEquals(
     restored.find((r) => r.assignment_id === closed.id)?.status,
-    "historical",
+    "active",
   );
 });
 

@@ -7,6 +7,7 @@ import {
 } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
+  domainProblemBindings,
   domains,
   problems,
   problemShareSettings,
@@ -18,6 +19,7 @@ import {
   workspaceAudit,
 } from "../../../workspace/index.ts";
 import { parseDomainProblemReference } from "./problem-reference.ts";
+import { recordProblemEducationChange } from "./education-events.ts";
 
 /** 设置引用授权与题目可见性分离；关闭授权的提交即时使后续检查拒绝。 */
 export async function setDomainProblemSharing(
@@ -65,10 +67,18 @@ export async function setDomainProblemSharing(
       ),
     ).for("update");
     if (!problem) throw new NotFoundError("源题不存在");
+    const [owned] = await tx.select({
+      visibility: domainProblemBindings.visibility,
+    }).from(domainProblemBindings).where(and(
+      eq(domainProblemBindings.domain_id, domain.id),
+      eq(domainProblemBindings.problem_id, problem.id),
+      eq(domainProblemBindings.kind, "owned"),
+    ));
     if (
       input.enabled &&
       (problem.visibility !== "public" || !problem.latest_version_id ||
-        domain.configuration.access !== "public")
+        domain.configuration.access !== "public" ||
+        owned?.visibility !== "public")
     ) throw new BadRequestError("只有公开域内已发布的公开题可以共享");
     if (targets.includes(domain.id)) {
       throw new BadRequestError("不能向源域自身授予引用");
@@ -116,6 +126,7 @@ export async function setDomainProblemSharing(
       revision: updated.revision,
       target_domain_ids: targets,
     });
+    await recordProblemEducationChange(tx, problem.id);
     return updated;
   });
 }

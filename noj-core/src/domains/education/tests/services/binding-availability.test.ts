@@ -18,6 +18,9 @@ Deno.test("共享可用性：批量读取实时授权，目标域比赛不会把
   await f.db.update(domains).set({
     configuration: { ...f.school.configuration, access: "public" },
   }).where(eq(domains.id, f.school.id));
+  await f.db.update(domainProblemBindings).set({ visibility: "public" }).where(
+    eq(domainProblemBindings.id, f.bindingId),
+  );
   await f.db.insert(domainProblemBindings).values({
     id: bindingId,
     domain_id: f.other.id,

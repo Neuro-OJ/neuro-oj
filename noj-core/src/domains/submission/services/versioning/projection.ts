@@ -465,10 +465,12 @@ export async function recomputeSubmissionProjection(
     ? await executor.select({
       domain_id: submissions.domain_id,
       user_id: submissions.user_id,
+      contest_id: submissions.contest_id,
     }).from(submissions).where(eq(submissions.id, source.id))
     : await executor.select({
       domain_id: objectiveSubmissions.domain_id,
       user_id: objectiveSubmissions.user_id,
+      contest_id: objectiveSubmissions.contest_id,
     }).from(objectiveSubmissions).where(eq(objectiveSubmissions.id, source.id));
   if (identity?.domain_id) {
     await recordEducationEvent(executor, {
@@ -477,6 +479,19 @@ export async function recomputeSubmissionProjection(
       problem_id: source.problem_id,
       event_type: "submission.changed",
     });
+    if (identity.contest_id) {
+      const [contest] = await executor.select({ end_time: contests.end_time })
+        .from(contests).where(eq(contests.id, identity.contest_id));
+      if (contest && contest.end_time > new Date().toISOString()) {
+        await recordEducationEvent(executor, {
+          domain_id: identity.domain_id,
+          user_id: identity.user_id,
+          problem_id: source.problem_id,
+          event_type: "submission.changed",
+          payload: { contest_id: identity.contest_id },
+        }, { availableAt: contest.end_time });
+      }
+    }
   }
   return plan;
 }

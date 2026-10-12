@@ -23,7 +23,7 @@ export async function loadAssignmentCandidates(
     FROM objective_submissions s JOIN assignment_items i ON i.problem_id = s.paper_id AND i.domain_id = s.domain_id
     WHERE i.assignment_id = ${assignmentId} AND s.user_id IN (${userCondition})
   ), eligible AS (
-    SELECT s.*, i.binding_id, a.deadline_at FROM sources s
+    SELECT s.*, i.binding_id, a.deadline_at, a.ended_at FROM sources s
     JOIN assignment_items i ON i.assignment_id = ${assignmentId} AND i.domain_id = s.domain_id AND i.problem_id = s.problem_id
     JOIN assignments a ON a.id = i.assignment_id
     JOIN assignment_recipients r ON r.assignment_id = a.id AND r.user_id = s.user_id
@@ -31,11 +31,13 @@ export async function loadAssignmentCandidates(
     WHERE a.published_at IS NOT NULL AND (a.include_previous_submissions OR s.received_at >= a.published_at)
       AND EXISTS (SELECT 1 FROM jsonb_array_elements(r.credit_intervals) w
         WHERE s.received_at >= w->>'start' AND (w->>'end' IS NULL OR s.received_at <= w->>'end'))
-      AND (a.ended_at IS NULL OR s.received_at <= a.ended_at)
       AND (a.archived_at IS NULL OR s.received_at <= a.archived_at)
       AND (class.archived_at IS NULL OR s.received_at <= class.archived_at)
-      AND NOT EXISTS (SELECT 1 FROM education_disabled_intervals d WHERE d.domain_id = s.domain_id
+      AND NOT EXISTS (SELECT 1 FROM education_disabled_intervals d WHERE (d.domain_id = s.domain_id OR d.domain_id IS NULL)
         AND s.received_at >= d.started_at AND (d.ended_at IS NULL OR s.received_at < d.ended_at))
+      AND NOT EXISTS (SELECT 1 FROM domain_feature_intervals d WHERE d.domain_id = s.domain_id
+        AND d.feature IN ('classroom', 'assignment') AND s.received_at >= d.disabled_at
+        AND (d.enabled_at IS NULL OR s.received_at < d.enabled_at))
       AND (s.contest_id IS NULL OR EXISTS (SELECT 1 FROM contests c WHERE c.id = s.contest_id
         AND ${endedWindowCondition(sql`c.end_time`)}))
   ), graded AS (
@@ -48,6 +50,7 @@ export async function loadAssignmentCandidates(
     CROSS JOIN (VALUES ('on_time'), ('current')) AS scope(name)
     WHERE e.problem_id = s.problem_id AND e.state = 'finished' AND e.result_kind = 'graded' AND e.score IS NOT NULL
       AND (scope.name = 'current' OR s.deadline_at IS NULL OR s.received_at <= s.deadline_at)
+      AND (scope.name = 'current' OR s.ended_at IS NULL OR s.received_at <= s.ended_at)
       AND (b.effective_version_mode = 'any' OR e.problem_version_id = b.required_version_id)
   ), pending AS (
     SELECT s.submission_id, s.source_kind, s.user_id, s.problem_id, s.received_at, s.receipt_sequence,
@@ -57,6 +60,7 @@ export async function loadAssignmentCandidates(
     CROSS JOIN (VALUES ('on_time'), ('current')) AS scope(name)
     WHERE e.state IN ('queued', 'judging')
       AND (scope.name = 'current' OR s.deadline_at IS NULL OR s.received_at <= s.deadline_at)
+      AND (scope.name = 'current' OR s.ended_at IS NULL OR s.received_at <= s.ended_at)
       AND (b.effective_version_mode = 'any' OR e.problem_version_id = b.required_version_id)
   ), ranked AS (
     SELECT g.*, row_number() OVER (PARTITION BY user_id, problem_id, scope

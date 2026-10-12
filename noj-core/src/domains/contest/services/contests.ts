@@ -1,4 +1,5 @@
 import type { Executor } from "../../../shared/db/executor.ts";
+import { rescheduleContestEducation } from "../../../shared/education-contests.ts";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";
@@ -679,6 +680,11 @@ export async function updateContest(
     }
 
     await tx.update(contests).set(updates).where(eq(contests.id, id));
+    if (
+      updates.end_time !== undefined && updates.end_time !== existing.end_time
+    ) {
+      await rescheduleContestEducation(tx, id, updates.end_time);
+    }
 
     // 全站榜口径失效（2026-10-11 复审问题 8）：全站排名的过滤条件包含
     // `contests.end_time`（赛期结束才计入）与 `affect_global_ranking`，而时钟跨越

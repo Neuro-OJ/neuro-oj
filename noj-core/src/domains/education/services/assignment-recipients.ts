@@ -38,8 +38,9 @@ export async function syncStudentAssignmentRecipients(
       }).where(eq(assignmentRecipients.id, recipient.id));
     } else {
       if (
-        task.state !== "published" || task.ended_at ||
-        task.deadline_at && task.deadline_at <= now ||
+        task.state !== "published" ||
+        !recipient &&
+          (task.ended_at || task.deadline_at && task.deadline_at <= now) ||
         task.target_student_ids !== null && !recipient ||
         recipient?.status === "active"
       ) continue;
@@ -61,7 +62,12 @@ export async function syncStudentAssignmentRecipients(
           user_id: userId,
           added_by: "automatic",
           joined_at: now,
-          credit_intervals: [{ start: now, end: null }],
+          credit_intervals: [{
+            start: task.include_previous_submissions
+              ? "1970-01-01T00:00:00.000Z"
+              : task.published_at!,
+            end: null,
+          }],
         });
       }
     }

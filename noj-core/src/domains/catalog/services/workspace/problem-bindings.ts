@@ -1,4 +1,5 @@
 import { and, asc, count, eq, inArray } from "drizzle-orm";
+import { recordEducationEvent } from "../../../../shared/education-events.ts";
 import {
   AppError,
   BadRequestError,
@@ -52,6 +53,11 @@ async function recordBinding(
     actor_id: actorId,
     reason,
     created_at: new Date().toISOString(),
+  });
+  await recordEducationEvent(executor, {
+    domain_id: binding.domain_id,
+    problem_id: binding.problem_id,
+    event_type: "problem.changed",
   });
   await workspaceAudit(executor, actorId, binding.domain_id, "domain.update", {
     operation: "problem.binding",

@@ -1,5 +1,10 @@
 import { Hono } from "hono";
 import {
+  getAssignmentMatrix,
+  getMyAssignmentProgress,
+  type ProgressScope,
+} from "../services/progress-read.ts";
+import {
   type AssignmentCopyInput,
   copyAssignment,
 } from "../services/assignment-copy.ts";
@@ -139,6 +144,40 @@ router.post("/domains/:slug/assignments/:id/copy", async (c) => {
       input,
     ),
   }, 201);
+});
+
+/** 作业准备路由，与班级路由一起等待完整隔离门禁后开放。 */
+router.get(
+  "/domains/:slug/assignments/:id/progress",
+  async (c) =>
+    c.json({
+      data: await getMyAssignmentProgress(
+        c.req.param("slug"),
+        c.req.param("id"),
+        c.var.userId,
+        c.req.query("scope") as ProgressScope | undefined,
+      ),
+    }),
+);
+router.get("/domains/:slug/assignments/:id/matrix", async (c) => {
+  const { page } = parsePagination(c, { defaultPerPage: 50, maxPerPage: 50 });
+  return c.json({
+    data: await getAssignmentMatrix(
+      c.req.param("slug"),
+      c.req.param("id"),
+      c.var.userId,
+      {
+        page,
+        scope: c.req.query("scope") as ProgressScope | undefined,
+        recipients: c.req.query("recipients") as
+          | "current"
+          | "historical"
+          | "all"
+          | undefined,
+        search: c.req.query("search"),
+      },
+    ),
+  });
 });
 
 /** 作业准备路由，与班级路由一起等待完整隔离门禁后开放。 */

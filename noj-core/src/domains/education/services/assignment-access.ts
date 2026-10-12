@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
@@ -18,7 +18,10 @@ export async function loadAssignment(
 ) {
   const executor = options.executor ?? getDb();
   const [row] = await executor.select().from(assignments).where(
-    eq(assignments.id, id),
+    and(
+      eq(assignments.id, id),
+      sql`${assignments.domain_id} IN (SELECT id FROM domains WHERE slug = ${slug})`,
+    ),
   );
   if (!row) throw new NotFoundError("作业不存在");
   const access = await loadClassroom(slug, row.classroom_id, actorId, {
