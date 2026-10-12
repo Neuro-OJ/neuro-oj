@@ -54,6 +54,12 @@ const classroomWritable = computed(() =>
 );
 const writable = computed(() => classroomWritable.value && task.data.value?.data.state !== 'archived');
 const capture = useWorkspaceActionScope();
+const requestedHelp = computed(() => typeof route.query.help === 'string' ? route.query.help : undefined);
+const requestedFeedback = computed(() => typeof route.query.feedback === 'string' ? route.query.feedback : undefined);
+const showHistory = ref(route.query.history === '1');
+watch(() => route.query.history, (value) => {
+  if (value === '1') showHistory.value = true;
+});
 usePolling({
   intervalMs: computed(() => matrix.data.value?.data.updating || progress.data.value?.data.updating ? 3000 : null),
   immediate: false,
@@ -199,7 +205,10 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
       <UButton v-if="selected && can('feedback:write')" variant="ghost" @click="selected = null">改为整体反馈</UButton>
       <AssignmentConversation :key="key" :slug="slug!" :assignment-id="id" :is-student="isStudent"
         :can-feedback="can('feedback:write')" :can-help="can('help:manage')" :writable="!!writable"
-        :target-user-id="selected?.userId" />
+        :target-user-id="selected?.userId" :help-id="requestedHelp" :feedback-id="requestedFeedback" />
+      <UButton variant="outline" icon="i-lucide-history"
+        @click="showHistory = !showHistory">{{ showHistory ? '收起变化依据' : '查看版本与策略变化依据' }}</UButton>
+      <AssignmentHistory v-if="showHistory" :key="`${key}:history`" :slug="slug!" :assignment-id="id" />
       <USlideover v-model:open="drawer" title="学生提交与反馈">
         <template #body>
           <div v-if="selected" class="space-y-4">

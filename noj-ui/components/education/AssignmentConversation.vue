@@ -10,11 +10,13 @@ const props = defineProps<
     canHelp: boolean;
     writable: boolean;
     targetUserId?: string | null;
+    helpId?: string;
+    feedbackId?: string;
   }
 >();
 const education = useEducationApi(), capture = useWorkspaceActionScope();
 const actor = useState<{ id: string } | null>('auth:user', () => null);
-const feedbackPage = ref(1), helpPage = ref(1), replyPage = ref(1), selectedHelp = ref('');
+const feedbackPage = ref(1), helpPage = ref(1), replyPage = ref(1), selectedHelp = ref(props.helpId ?? '');
 const feedbackBody = ref(''), question = ref(''), replyBody = ref(''), saving = ref(false);
 const feedbackKey = ref(crypto.randomUUID()),
   questionKey = ref(crypto.randomUUID()),
@@ -41,6 +43,16 @@ const detail = await useAsyncData(
       ? education.helpDetail(props.slug, props.assignmentId, selectedHelp.value, replyPage.value)
       : Promise.resolve(null),
 );
+const focusedFeedback = await useAsyncData(
+  () => `${base.value}:feedback-detail:${props.feedbackId ?? ''}:${props.isStudent}:${props.canFeedback}`,
+  () =>
+    props.feedbackId && (props.isStudent || props.canFeedback)
+      ? education.feedbackDetail(props.slug, props.assignmentId, props.feedbackId)
+      : Promise.resolve(null),
+);
+watch(() => props.helpId, (id) => {
+  selectedHelp.value = id ?? '';
+});
 watch([feedbackBody, () => props.targetUserId], () => {
   feedbackKey.value = crypto.randomUUID();
 });
@@ -96,6 +108,13 @@ async function act(kind: 'feedback' | 'question' | 'reply' | 'resolve') {
   <div class="grid gap-5 lg:grid-cols-2">
     <UCard v-if="isStudent || canFeedback">
       <h2 class="mb-4 font-semibold">作业反馈</h2>
+      <UAlert v-if="focusedFeedback.error.value" class="mb-3" color="error"
+        :title="extractApiError(focusedFeedback.error.value).message" />
+      <article v-if="feedbackId && focusedFeedback.data.value?.data.id === feedbackId"
+        class="mb-4 rounded border border-primary p-3">
+        <p class="mb-2 text-xs text-text-muted">{{ focusedFeedback.data.value!.data.author_name }} · 本次通知的反馈</p>
+        <p class="whitespace-pre-wrap text-sm">{{ focusedFeedback.data.value!.data.body }}</p>
+      </article>
       <UAlert v-if="feedback.error.value" color="error" :title="extractApiError(feedback.error.value).message" />
       <article v-for="note in feedback.data.value?.data.data" :key="note.id" class="mb-3 border-b border-border pb-3">
         <p

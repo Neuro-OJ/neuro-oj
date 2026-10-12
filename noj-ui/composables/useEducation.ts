@@ -1,4 +1,5 @@
 import { useApi } from '~/composables/useApi';
+import type { AssignmentHistoryEntry, TeachingNotice } from '~/utils/education-notifications';
 import type {
   ClassroomImportPreview,
   ClassroomImportResult,
@@ -182,6 +183,22 @@ export function useEducationApi() {
     ) => api.post<{ data: LineAnnotation }>(`${source(slug, classId, id)}/annotations`, input, idempotent(key)),
     feedback: (slug: string, id: string, page = 1) =>
       api.get<{ data: TeachingPage<AssignmentFeedback> }>(`${task(slug, id)}/feedback`, {
+        query: { page },
+        silent: true,
+      }),
+    feedbackDetail: (slug: string, id: string, feedbackId: string) =>
+      api.get<{ data: AssignmentFeedback }>(`${task(slug, id)}/feedback/${encodeURIComponent(feedbackId)}`, {
+        silent: true,
+      }),
+    notifications: (slug: string, page = 1) =>
+      api.get<{ data: TeachingPage<TeachingNotice> & { unread: number } }>(`${root(slug)}/notifications`, {
+        query: { page },
+        silent: true,
+      }),
+    readNotification: (slug: string, id: string) =>
+      api.post(`${root(slug)}/notifications/${encodeURIComponent(id)}/read`, {}),
+    history: (slug: string, id: string, page = 1) =>
+      api.get<{ data: TeachingPage<AssignmentHistoryEntry> }>(`${task(slug, id)}/history`, {
         query: { page },
         silent: true,
       }),

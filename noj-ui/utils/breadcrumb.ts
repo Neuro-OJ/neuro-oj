@@ -58,6 +58,12 @@ type TrailEntry =
 const ROUTES: BreadcrumbRoute[] = [
   // 工作空间层级保留 URL 中的使用域，不能跳往默认域。
   { pattern: '/workspaces', trail: [{ key: 'breadcrumb.workspaces' }] },
+  {
+    pattern: '/d/:slug/notifications',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, {
+      key: 'breadcrumb.notifications',
+    }],
+  },
   { pattern: '/join', trail: [{ key: 'breadcrumb.invitation' }] },
   { pattern: '/d/:slug', trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }] },
   {
