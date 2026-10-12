@@ -5,7 +5,8 @@
  * 相同内容重复发布（unchanged）、版本列表与指定版本读取（非编辑者答案裁剪）、
  * 非编辑者访问草稿被拒。
  */
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { AppError } from "../../../../shared/base/errors.ts";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
 import { createProblem } from "../../index.ts";
@@ -325,7 +326,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "problem versions route: 删除带版本的题目清理干净（不再被外键阻塞）",
+  name: "problem versions route: 有版本的源题拒绝物理删除并保留草稿及版本",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -353,29 +354,26 @@ Deno.test({
 
     const db = getDb();
     const { deleteProblem, getProblemDraft } = await import("../../index.ts");
-    // 版本、草稿与文件引用都必须先清理，否则 problems 行删不掉（NO ACTION 外键）
-    await deleteProblem(problemId, undefined, "admin");
+    const error = await assertRejects(
+      () => deleteProblem(problemId, undefined, "admin"),
+      AppError,
+    );
+    assertEquals(error.statusCode, 409);
+    assertEquals(error.code, "SOURCE_HAS_RETAINED_REFERENCES");
 
     const [problemRow] = await db.select().from(problems).where(
       eq(problems.id, problemId),
     );
-    assertEquals(problemRow, undefined);
+    assertEquals(problemRow.id, problemId);
     const versionRows = await db.select().from(problemVersions).where(
       eq(problemVersions.problem_id, problemId),
     );
-    assertEquals(versionRows.length, 0);
+    assertEquals(versionRows.length, 1);
     const draftRows = await db.select().from(problemDrafts).where(
       eq(problemDrafts.problem_id, problemId),
     );
-    assertEquals(draftRows.length, 0);
-    // 删除后再读草稿：题目已不存在 → 明确 404（不返回幽灵草稿）
-    let code: string | undefined;
-    try {
-      await getProblemDraft(problemId);
-    } catch (err) {
-      code = (err as { code?: string }).code;
-    }
-    assertEquals(code, "PROBLEM_NOT_FOUND");
+    assertEquals(draftRows.length, 1);
+    assertEquals((await getProblemDraft(problemId)).problem_id, problemId);
   },
 });
 

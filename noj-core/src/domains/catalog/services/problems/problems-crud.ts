@@ -94,6 +94,7 @@ import {
   problemScopeKey,
 } from "../../../submission/index.ts";
 import { registerLegacyStorageObject } from "./../../../system/index.ts";
+import { assertProblemHasNoRetainedReferences } from "../workspace/problem-retention.ts";
 
 /**
  * 题目内容编辑权限（唯一判定入口）。
@@ -1065,6 +1066,7 @@ export async function deleteProblem(
         "SOURCE_JUDGING",
       );
     }
+    await assertProblemHasNoRetainedReferences(id, tx);
     // 清理关联提交（submissions 无 ON DELETE CASCADE，需手动清理；
     // 评测尝试/分版本判定随提交级联删除）
     await tx.delete(submissions).where(eq(submissions.problem_id, id));
