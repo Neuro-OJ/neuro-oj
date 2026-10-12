@@ -2,14 +2,22 @@ import { and, eq, inArray, isNull, not, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
-  evaluationResults,
+  evaluationAttempts,
   problems,
   selfTests,
   submissions,
   users,
 } from "./../../../shared/db/schema.ts";
 import { getRedis } from "./../../../shared/mq/connection.ts";
-import { JUDGE_QUEUES } from "../mq/producer.ts";
+import {
+  ALL_JUDGE_QUEUES,
+  JUDGE_POOL_QUEUES,
+  JUDGE_QUEUE_LAYOUT,
+  JUDGE_QUEUE_PREFIX,
+  JUDGE_QUEUES,
+  JUDGE_RESOURCE_POOLS,
+  type JudgeQueuePool,
+} from "../../../shared/mq/judge-queues.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "submission"]);
@@ -19,11 +27,7 @@ import { logAudit } from "../../system/index.ts";
 import { SELF_TEST_ID_PREFIX } from "./../types/self-tests.ts";
 
 /** 评测任务队列名称列表（与 producer.ts 一致，按优先级排列）。 */
-const JUDGE_QUEUE_LIST = [
-  JUDGE_QUEUES.high,
-  JUDGE_QUEUES.medium,
-  JUDGE_QUEUES.low,
-];
+const JUDGE_QUEUE_LIST = ALL_JUDGE_QUEUES;
 
 /** 评测结果队列名称（与 consumer.ts 一致）。 */
 const RESULT_QUEUE = "noj:judge:results";
@@ -43,6 +47,8 @@ export interface QueueItem {
   submitted_by: string;
   /** 条目类型：正式提交或自测。 */
   kind: "submission" | "self_test";
+  resource_pool?: JudgeQueuePool;
+  waiting_reason?: "pool_full" | "user_busy" | "memory";
   /** 仅 judging 和 completed 项有值。 */
   judge_started_at?: string | null;
   /** 仅 completed 项有值。 */
@@ -58,6 +64,19 @@ export interface QueueStats {
   pending_count: number;
   judging_count: number;
   completed_today: number;
+  pools?: Record<
+    JudgeQueuePool,
+    {
+      pending: number;
+      processing: number;
+      active?: number;
+      compiling?: number;
+      running?: number;
+      task_capacity?: number;
+      run_capacity?: number;
+    }
+  >;
+  resource_memory?: { reserved_mb: number; budget_mb: number };
 }
 
 /** `GET /api/v1/queue` 完整响应体。 */
@@ -80,6 +99,8 @@ export interface QueueHealthEntry {
 
 /** `GET /api/v1/admin/queue/health` 响应体。 */
 export interface QueueHealthResponse {
+  pools?: Record<JudgeQueuePool, QueueHealthEntry>;
+  resource_groups?: Record<string, Record<string, unknown>>;
   /** 评测任务队列（noj-core → noj-judge）。 */
   judge: QueueHealthEntry;
   /** 评测结果队列（noj-judge → noj-core）。 */
@@ -102,7 +123,11 @@ interface QueueTableColumns {
 }
 
 /**
- * 查询正式提交或自测的队列行，统一 JOIN problems/users（及可选的 evaluation_results）。
+ * 查询正式提交或自测的队列行，统一 JOIN problems/users（及可选的最近尝试）。
+ *
+ * `scoreFromAttempt` 给定时，分数取该提交**最近一次终态尝试**（优先
+ * `latest_attempt_id`，存量行回退 `effective_attempt_id`）——不再读已停止写入的
+ * `evaluation_results`。
  */
 async function queryQueueRows(
   table: AnyPgTable,
@@ -111,7 +136,7 @@ async function queryQueueRows(
   where: SQL | undefined,
   orderBy?: SQL,
   limit?: number,
-  scoreFromEval = false,
+  scoreFromAttempt?: { latest: AnyPgColumn; effective: AnyPgColumn },
 ): Promise<QueueItem[]> {
   const db = getDb();
   const selectFields: Record<string, unknown> = {
@@ -127,8 +152,8 @@ async function queryQueueRows(
     selectFields.judge_finished_at = cols.judgeFinishedAt;
   }
   if (cols.status) selectFields.status = cols.status;
-  if (scoreFromEval) {
-    selectFields.score = evaluationResults.score;
+  if (scoreFromAttempt) {
+    selectFields.score = evaluationAttempts.score;
   } else if (cols.score) {
     selectFields.score = cols.score;
   }
@@ -141,10 +166,13 @@ async function queryQueueRows(
     .from(table)
     .innerJoin(problems, eq(cols.problemId, problems.id))
     .innerJoin(users, eq(cols.userId, users.id));
-  if (scoreFromEval) {
+  if (scoreFromAttempt) {
     query = query.leftJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, cols.id),
+      evaluationAttempts,
+      eq(
+        evaluationAttempts.id,
+        sql`coalesce(${scoreFromAttempt.latest}, ${scoreFromAttempt.effective})`,
+      ),
     );
   }
   if (where) query = query.where(where);
@@ -196,9 +224,31 @@ export interface SubmissionStatusResponse {
  * `limit` 是**跨三级队列的总上限**：旧实现把 limit 分别应用到每个队列，
  * 调用方要 20 条却可能拿到 60 条。
  */
-export async function getPendingSubmissionIds(
-  limit = PENDING_LIST_LIMIT,
-): Promise<string[]> {
+interface PendingSchedulingTask {
+  submission_id: string;
+  resource_pool?: JudgeQueuePool;
+  run_id?: string;
+  rejudge_seq?: number;
+}
+
+/** 等待诊断只有匹配当前评测轮次时才显示，拒绝任意 Worker 字段。 */
+export function matchingResourceWaitReason(
+  task: { run_id?: string; rejudge_seq?: number },
+  value: unknown,
+): "user_busy" | "memory" | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const waiting = value as Record<string, unknown>;
+  if (
+    waiting.run_id !== (task.run_id ?? null) ||
+    waiting.rejudge_seq !== (task.rejudge_seq ?? 0)
+  ) return null;
+  return waiting.reason === "user_busy" || waiting.reason === "memory"
+    ? waiting.reason
+    : null;
+}
+async function getPendingSchedulingTasks(
+  limit: number,
+): Promise<PendingSchedulingTask[]> {
   const redis = getRedis();
   if (redis.status !== "ready") {
     await redis.connect();
@@ -211,20 +261,38 @@ export async function getPendingSubmissionIds(
     const end = unlimited ? -1 : Math.max(0, limit - raw.length - 1);
     raw.push(...await redis.lrange(queue, 0, end));
   }
-  const ids: string[] = [];
+  const tasks: PendingSchedulingTask[] = [];
   for (const item of raw) {
     try {
       const parsed = JSON.parse(item);
-      if (parsed.submission_id) {
-        ids.push(parsed.submission_id);
+      if (typeof parsed.submission_id === "string") {
+        tasks.push({
+          submission_id: parsed.submission_id,
+          ...(JUDGE_RESOURCE_POOLS.includes(parsed.resource_pool)
+            ? { resource_pool: parsed.resource_pool }
+            : {}),
+          ...(typeof parsed.run_id === "string"
+            ? { run_id: parsed.run_id }
+            : {}),
+          ...(Number.isSafeInteger(parsed.rejudge_seq)
+            ? { rejudge_seq: parsed.rejudge_seq }
+            : {}),
+        });
       }
     } catch {
-      logger.error("队列中存在无法解析的条目，已跳过", {
-        content: item.slice(0, 200),
-      });
+      logger.error("队列中存在无法解析的条目，已跳过");
     }
   }
-  return ids;
+  return tasks;
+}
+
+/** 从各池队列提取提交标识；源码和测试包不进入响应。 */
+export async function getPendingSubmissionIds(
+  limit = PENDING_LIST_LIMIT,
+): Promise<string[]> {
+  return (await getPendingSchedulingTasks(limit)).map((task) =>
+    task.submission_id
+  );
 }
 
 /** 获取 pending 队列实际长度（O(1)）。 */
@@ -254,34 +322,37 @@ export async function getPendingQueuePosition(
   if (redis.status !== "ready") {
     await redis.connect();
   }
-  const lengths = await Promise.all(
-    JUDGE_QUEUE_LIST.map((queue) => redis.llen(queue)),
-  );
-  const queueLength = lengths.reduce(
-    (total, value) => total + Number(value ?? 0),
-    0,
-  );
-  let ahead = 0;
-  for (let i = 0; i < JUDGE_QUEUE_LIST.length; i++) {
-    const rawItems = await redis.lrange(JUDGE_QUEUE_LIST[i], 0, -1);
-    const idx = rawItems.findIndex((item) => {
-      try {
-        return JSON.parse(item).submission_id === submissionId;
-      } catch {
-        return false;
+  const groups = JUDGE_QUEUE_LAYOUT === "legacy"
+    ? [Object.values(JUDGE_QUEUES)]
+    : JUDGE_RESOURCE_POOLS.map((pool) =>
+      Object.values(JUDGE_POOL_QUEUES[pool])
+    );
+  for (const queues of groups) {
+    const lengths = await Promise.all(queues.map((queue) => redis.llen(queue)));
+    let ahead = 0;
+    for (let index = 0; index < queues.length; index++) {
+      if (!Number(lengths[index])) continue;
+      const items = await redis.lrange(queues[index], 0, -1);
+      const found = items.findIndex((raw) => {
+        try {
+          return JSON.parse(raw).submission_id === submissionId;
+        } catch {
+          return false;
+        }
+      });
+      if (found !== -1) {
+        return {
+          position: ahead + items.length - found,
+          queueLength: lengths.reduce(
+            (total, length) => total + Number(length ?? 0),
+            0,
+          ),
+        };
       }
-    });
-    if (idx !== -1) {
-      // 更高优先级队列的任务全部排在其前面；
-      // 本队列中更靠近尾部（更早出队）的任务也排在其前面。
-      return {
-        position: ahead + rawItems.length - idx,
-        queueLength,
-      };
+      ahead += Number(lengths[index] ?? 0);
     }
-    ahead += Number(lengths[i] ?? 0);
   }
-  return { position: null, queueLength };
+  return { position: null, queueLength: 0 };
 }
 
 /** 管理员移除尚未被 worker 领取的评测任务。 */
@@ -346,12 +417,17 @@ export async function removePendingSubmission(id: string): Promise<void> {
 export async function getPendingQueueSnapshot(): Promise<{
   ids: string[];
   length: number;
+  scheduling: Map<string, PendingSchedulingTask>;
 }> {
   const length = await getPendingQueueLength();
-  const ids = length > PENDING_LIST_LIMIT
-    ? await getPendingSubmissionIds(-1)
-    : await getPendingSubmissionIds();
-  return { ids, length };
+  const tasks = await getPendingSchedulingTasks(
+    length > PENDING_LIST_LIMIT ? -1 : PENDING_LIST_LIMIT,
+  );
+  return {
+    ids: tasks.map((task) => task.submission_id),
+    length,
+    scheduling: new Map(tasks.map((task) => [task.submission_id, task])),
+  };
 }
 
 // ─── 公开 API ───────────────────────────────────────────────────────
@@ -395,10 +471,12 @@ export async function getQueueOverview(
   // 不向队列页面抛 500。
   let pendingIds: string[] = [];
   let pendingQueueLength = 0;
+  let pendingScheduling = new Map<string, PendingSchedulingTask>();
   try {
     const snapshot = await getPendingQueueSnapshot();
     pendingIds = snapshot.ids;
     pendingQueueLength = snapshot.length;
+    pendingScheduling = snapshot.scheduling;
   } catch (err) {
     logger.warn("Redis 不可用，队列 pending 信息降级为空", { err });
   }
@@ -536,7 +614,10 @@ export async function getQueueOverview(
       ),
       sql`${submissions.judge_finished_at} DESC`,
       10,
-      true,
+      {
+        latest: submissions.latest_attempt_id,
+        effective: submissions.effective_attempt_id,
+      },
     ),
     ...await queryQueueRows(
       selfTests,
@@ -606,7 +687,80 @@ export async function getQueueOverview(
   const judgingCount = Number(judgingCountRow?.count ?? 0) +
     Number(selfJudgingCountRow?.count ?? 0);
   const completedToday = Number(completedTodayRow?.count ?? 0);
+  const poolStats = Object.fromEntries(
+    await Promise.all(JUDGE_RESOURCE_POOLS.map(async (pool) => {
+      const queues = Object.values(JUDGE_POOL_QUEUES[pool]);
+      const pending = await Promise.all(
+        queues.map((queue) => getRedis().llen(queue)),
+      );
+      const processing = await Promise.all(
+        queues.map((queue) => getRedis().llen(`${queue}:processing`)),
+      );
+      return [pool, {
+        pending: pending.reduce((sum, value) => sum + Number(value), 0),
+        processing: processing.reduce((sum, value) => sum + Number(value), 0),
+      }];
+    })),
+  ) as NonNullable<QueueStats["pools"]>;
+  const resourceMemory = { reserved_mb: 0, budget_mb: 0 };
+  if (JUDGE_QUEUE_LAYOUT === "pools") {
+    const health = await getQueueHealth();
+    for (const group of Object.values(health.resource_groups ?? {})) {
+      const capacities = group.capacities as
+        | Record<string, unknown>
+        | undefined;
+      const active = group.active as Record<string, unknown> | undefined;
+      if (!capacities || !active) continue;
+      const safe = (value: unknown) =>
+        typeof value === "number" && Number.isFinite(value) && value >= 0
+          ? value
+          : 0;
+      resourceMemory.reserved_mb += safe(group.reserved_memory_mb);
+      resourceMemory.budget_mb += safe(capacities.memory_mb);
+      for (const pool of JUDGE_RESOURCE_POOLS) {
+        if (
+          Array.isArray(group.resource_pools) &&
+          !group.resource_pools.includes(pool)
+        ) continue;
+        const stat = poolStats[pool];
+        const key = pool === "oi-wasm"
+          ? "wasm_tasks"
+          : pool === "oi-native"
+          ? "native_tasks"
+          : "ai_tasks";
+        stat.active = (stat.active ?? 0) + safe(active[pool]);
+        stat.task_capacity = (stat.task_capacity ?? 0) + safe(capacities[key]);
+        if (pool === "oi-wasm") {
+          stat.compiling = (stat.compiling ?? 0) + safe(active.compile);
+          stat.running = (stat.running ?? 0) + safe(active.run);
+          stat.run_capacity = (stat.run_capacity ?? 0) +
+            safe(capacities.wasm_run);
+        }
+      }
+    }
+  }
 
+  // 仅查询已通过提交/比赛权限过滤的条目；等待原因与评测轮次绑定。
+  await Promise.all(
+    pendingItems.slice(0, PENDING_LIST_LIMIT).map(async (item) => {
+      const task = pendingScheduling.get(item.id);
+      if (!task?.resource_pool) return;
+      item.resource_pool = task.resource_pool;
+      const stat = poolStats[task.resource_pool];
+      if (stat.task_capacity && (stat.active ?? 0) >= stat.task_capacity) {
+        item.waiting_reason = "pool_full";
+      }
+      try {
+        const raw = await getRedis().get(
+          `${JUDGE_QUEUE_PREFIX}:waiting:${item.id}`,
+        );
+        if (!raw) return;
+        const waiting = JSON.parse(raw);
+        const reason = matchingResourceWaitReason(task, waiting);
+        if (reason) item.waiting_reason = reason;
+      } catch { /* Redis 异常时仍展示队列快照。 */ }
+    }),
+  );
   return {
     pending: pendingItems,
     judging: judgingItems,
@@ -615,6 +769,9 @@ export async function getQueueOverview(
       pending_count: pendingCount,
       judging_count: judgingCount,
       completed_today: completedToday,
+      ...(JUDGE_QUEUE_LAYOUT === "pools"
+        ? { pools: poolStats, resource_memory: resourceMemory }
+        : {}),
     },
   };
 }
@@ -778,9 +935,81 @@ export async function getQueueHealth(): Promise<QueueHealthResponse> {
 
   const judge = await readJudgeQueueHealth();
   const result = await readQueueHealth(RESULT_QUEUE);
+  const pools = Object.fromEntries(
+    await Promise.all(JUDGE_RESOURCE_POOLS.map(async (pool) => {
+      const entries = await Promise.all(
+        Object.values(JUDGE_POOL_QUEUES[pool]).map(readQueueHealth),
+      );
+      const sum = (field: keyof QueueHealthEntry) =>
+        entries.some((entry) => entry[field] < 0)
+          ? -1
+          : entries.reduce((total, entry) => total + entry[field], 0);
+      return [pool, {
+        queue_length: sum("queue_length"),
+        processing_length: sum("processing_length"),
+        dead_length: sum("dead_length"),
+      }];
+    })),
+  ) as Record<JudgeQueuePool, QueueHealthEntry>;
+  const resource_groups: Record<string, Record<string, unknown>> = Object
+    .create(null);
+  if (redisOk) {
+    let cursor = "0";
+    let scanned = 0;
+    do {
+      const [next, keys] = await redis.scan(
+        cursor,
+        "MATCH",
+        "noj:observability:judge:*",
+        "COUNT",
+        100,
+      );
+      cursor = next;
+      for (const key of keys) {
+        if (++scanned > 1000) break;
+        try {
+          const raw = await redis.get(key);
+          if (!raw) continue;
+          const heartbeat = JSON.parse(raw);
+          if (
+            heartbeat.scheduling_version !== 1 ||
+            typeof heartbeat.resource_group !== "string" || !heartbeat.resources
+          ) continue;
+          const previous = resource_groups[heartbeat.resource_group];
+          const enabled = [
+            ...new Set([
+              ...(Array.isArray(previous?.resource_pools)
+                ? previous.resource_pools
+                : []),
+              ...(Array.isArray(heartbeat.resource_pools)
+                ? heartbeat.resource_pools.filter((pool: unknown) =>
+                  JUDGE_RESOURCE_POOLS.includes(pool as JudgeQueuePool)
+                )
+                : []),
+            ]),
+          ];
+          if (
+            !previous ||
+            Number(heartbeat.updated_at_ms) >= Number(previous.updated_at_ms)
+          ) {
+            resource_groups[heartbeat.resource_group] = {
+              ...heartbeat.resources,
+              updated_at_ms: heartbeat.updated_at_ms,
+              scheduling_version: 1,
+              resource_pools: enabled,
+            };
+          } else {
+            previous.resource_pools = enabled;
+          }
+        } catch { /* 无效心跳不影响队列健康读取。 */ }
+      }
+    } while (cursor !== "0" && scanned <= 1000);
+  }
   return {
     judge,
     result,
+    pools,
+    resource_groups,
     redis_ok: redisOk,
   };
 }

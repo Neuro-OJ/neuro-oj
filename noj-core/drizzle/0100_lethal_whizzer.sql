@@ -1,0 +1,2 @@
+ALTER TABLE "self_tests" DROP CONSTRAINT "self_tests_status_check";--> statement-breakpoint
+ALTER TABLE "self_tests" ADD CONSTRAINT "self_tests_status_check" CHECK ("self_tests"."status" IN ('pending', 'judging', 'finished', 'error', 'cancelled'));

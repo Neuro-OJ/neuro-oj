@@ -19,6 +19,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -33,6 +34,7 @@ import {
   parseStorageUrl,
   sha256Hex,
   type StorageObjectInfo,
+  type StorageObjectStat,
   type StorageProvider,
   validateStorageKey,
 } from "./types.ts";
@@ -104,7 +106,18 @@ export class S3StorageProvider implements StorageProvider {
       }),
     );
 
-    return buildStorageUrl("s3", key, hashHex);
+    return this.urlForUpload(key, hashHex, contentType);
+  }
+
+  /**
+   * 预测 `put()` 将返回的 URL（不发请求）。
+   *
+   * S3 用调用方选定的 key 作为对象键，URL 只由 key + 内容 SHA-256 决定，因此上传
+   * 前即可算出 URL 并先登记上传预约（Handbook §2.5）。
+   */
+  urlForUpload(key: string, sha256Hex: string, _contentType?: string): string {
+    validateStorageKey(key);
+    return buildStorageUrl("s3", key, sha256Hex);
   }
 
   /**
@@ -267,6 +280,34 @@ export class S3StorageProvider implements StorageProvider {
       const errMsg = String(err);
       if (errMsg.includes("NoSuchKey") || errMsg.includes("NotFound")) {
         return;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * 查询 S3 对象的存在性与大小（HEAD 元数据查询，不下载内容）。
+   */
+  async stat(url: string): Promise<StorageObjectStat> {
+    const parsed = parseStorageUrl(url);
+    if (parsed.provider !== "s3") {
+      throw new Error(`s3 provider 拒绝 ${parsed.provider} URL`);
+    }
+    try {
+      const response = await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: parsed.key }),
+      );
+      return {
+        exists: true,
+        sizeBytes: response.ContentLength ?? null,
+        lastModified: response.LastModified?.toISOString() ?? null,
+      };
+    } catch (err) {
+      const name = (err as { name?: string }).name;
+      const status = (err as { $metadata?: { httpStatusCode?: number } })
+        .$metadata?.httpStatusCode;
+      if (name === "NotFound" || name === "NoSuchKey" || status === 404) {
+        return { exists: false, sizeBytes: null, lastModified: null };
       }
       throw err;
     }

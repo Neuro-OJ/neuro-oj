@@ -189,6 +189,9 @@ export const messages: Record<Locale, Record<string, string>> = {
     'error.RATE_LIMITED': '操作过于频繁，请稍后再试',
     'error.SERVICE_UNAVAILABLE': '服务暂时不可用，请稍后重试',
     'error.EMAIL_VERIFY_INVALID': '验证链接无效或已过期',
+    'error.VERSION_REQUIRED': '提交必须携带题目版本，请刷新页面后重试',
+    'error.CONTEST_PROBLEM_VERSION_CHANGED': '竞赛题目版本已变更，请刷新页面后重新提交',
+    'error.PROBLEM_VERSION_NOT_FOUND': '题目版本不存在或尚未发布',
     'error.INTERNAL_ERROR': '服务器内部错误，请稍后重试',
   },
   'en-US': {
@@ -373,6 +376,9 @@ export const messages: Record<Locale, Record<string, string>> = {
     'error.RATE_LIMITED': 'Too many requests. Please try again later.',
     'error.SERVICE_UNAVAILABLE': 'The service is temporarily unavailable.',
     'error.EMAIL_VERIFY_INVALID': 'This verification link is invalid or expired',
+    'error.VERSION_REQUIRED': 'The submission must include a problem version. Please refresh and retry.',
+    'error.CONTEST_PROBLEM_VERSION_CHANGED': 'The contest problem version changed. Please refresh and submit again.',
+    'error.PROBLEM_VERSION_NOT_FOUND': 'The problem version does not exist or is not published yet.',
     'error.INTERNAL_ERROR': 'Internal server error. Please try again later.',
   },
 };

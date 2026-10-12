@@ -39,6 +39,7 @@ import {
   getSupportPackageBytes,
   resolveProblemTemplate,
 } from "../../catalog/services/support-package.ts";
+import { isOiRuntimeConfig } from "../../catalog/types/runtime-config.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
 import {
   deleteTraining,
@@ -101,6 +102,15 @@ router.get("/problems/:id/preflight", async (c) => {
     add("runtime", "pass", "客观题无需双容器运行配置");
   } else if (!problem.runtime_config) {
     add("runtime", "error", "缺少 runtime_config");
+  } else if (isOiRuntimeConfig(problem.runtime_config)) {
+    add(
+      "runtime",
+      "pass",
+      `OI ${problem.runtime_config.backend} 评测配置已通过结构校验`,
+    );
+    if (problem.runtime_config.checker.type === "testlib") {
+      add("checker", "warning", "testlib checker 将由 OI runner 受信执行");
+    }
   } else {
     for (
       const [kind, config] of [

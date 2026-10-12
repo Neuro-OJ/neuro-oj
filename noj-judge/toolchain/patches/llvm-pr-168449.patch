@@ -1,0 +1,23 @@
+From 852c8a2ebc0fdb1e781591e3e6e08d3a539bcfc3 Mon Sep 17 00:00:00 2001
+From: Yerzhan Zhamashev <yerzhan@novel.systems>
+Date: Wed, 21 Jan 2026 16:50:41 +0200
+Subject: [PATCH] libunwind: exclude __declspec from wasm build
+
+---
+ libunwind/src/config.h | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/libunwind/src/config.h b/libunwind/src/config.h
+index f017403fa2234..6014a37e27212 100644
+--- a/libunwind/src/config.h
++++ b/libunwind/src/config.h
+@@ -75,7 +75,8 @@
+   #define _LIBUNWIND_EXPORT
+   #define _LIBUNWIND_HIDDEN
+ #else
+-  #if !defined(__ELF__) && !defined(__MACH__) && !defined(_AIX)
++  #if !defined(__ELF__) && !defined(__MACH__) && !defined(_AIX) &&             \
++      !defined(__wasm__)
+     #define _LIBUNWIND_EXPORT __declspec(dllexport)
+     #define _LIBUNWIND_HIDDEN
+   #else

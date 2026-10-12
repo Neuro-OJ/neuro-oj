@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type {
+  ObjectiveOption,
   ObjectivePaper,
   ObjectiveQuestion,
+  ObjectiveQuestionType,
   QuestionDraft,
   QuestionInput,
 } from '~/composables/useObjective'
@@ -13,6 +15,10 @@ import { problemUrl } from '~/utils/publicIdentifiers'
  * 客观题套卷编辑器（并入 problems 体系：is_objective 题目）。
  * 创建模式（无 paperId）：填元信息创建套卷后自动进入小题管理；
  * 编辑模式（有 paperId）：管理套卷元信息与小题（单选/多选/判断）CRUD。
+ *
+ * 版本化（Handbook §6.4/§6.8，批次 2d）：小题与套卷内容都写**共享草稿**并共用
+ * 同一个 revision 乐观锁；「发布版本」才把草稿固定成新的作答版本。已发布内容
+ * 不因草稿编辑而改变，作答者读的是版本快照。
  */
 const props = defineProps<{
   /** 套卷题目 ID（problems.id）；缺省 = 创建模式 */
@@ -24,6 +30,8 @@ const {
   updatePaper,
   deletePaper,
   listQuestions,
+  getDraft,
+  publishDraft,
   createQuestion,
   updateQuestion,
   deleteQuestion,
@@ -32,6 +40,14 @@ const { toast } = useToast()
 const { dialog } = useDialog()
 const { api } = useApi()
 const router = useRouter()
+
+/** 共享草稿 revision（小题与套卷内容写入的乐观锁）。 */
+const draftRevision = ref<number | null>(null)
+/** 最新已发布版本号（null = 尚未发布）。 */
+const latestVersion = ref<number | null>(null)
+const publishing = ref(false)
+/** 草稿是否已加载（避免投影里的旧标题覆盖草稿标题）。 */
+const draftLoaded = ref(false)
 
 // 创建模式：先填元信息创建套卷，创建成功后进入编辑模式
 const activePaperId = ref<string | null>(props.paperId ?? null)
@@ -127,18 +143,60 @@ const questions = ref<ObjectiveQuestion[]>([])
 const qError = ref(false)
 const qLoading = ref(false)
 
+/**
+ * 加载套卷草稿：小题列表与 revision 来自**同一个响应**，保证编辑初值一致。
+ *
+ * 编辑者的题面/小题事实源是草稿（投影只在发布时更新，可能落后）。
+ */
 async function loadQuestions() {
   if (!activePaperId.value) return
   qLoading.value = true
   qError.value = false
   try {
-    const res = await listQuestions(activePaperId.value)
-    questions.value = res.data ?? []
+    const res = await getDraft(activePaperId.value)
+    draftRevision.value = res.data.revision
+    const content = res.data.content as {
+      title?: string
+      description?: string
+      questions?: Array<Record<string, unknown>>
+    }
+    if (typeof content.title === 'string') title.value = content.title
+    if (typeof content.description === 'string') description.value = content.description
+    questions.value = (content.questions ?? []).map((item) => ({
+      id: String(item.key),
+      paper_id: activePaperId.value as string,
+      sort_order: Number(item.sort_order ?? 0),
+      type: item.type as ObjectiveQuestionType,
+      prompt: String(item.prompt ?? ''),
+      options: (item.options ?? []) as ObjectiveOption[],
+      answer: (item.answer ?? []) as (string | boolean)[],
+      explanation: String(item.explanation ?? ''),
+      created_at: '',
+      updated_at: '',
+    })).sort((a, b) => a.sort_order - b.sort_order)
+    draftLoaded.value = true
   } catch {
-    qError.value = true
-    questions.value = []
+    // 回退：草稿读取失败（如旧版后端）时仍用小题接口展示
+    try {
+      const res = await listQuestions(activePaperId.value)
+      questions.value = res.data ?? []
+    } catch {
+      qError.value = true
+      questions.value = []
+    }
   } finally {
     qLoading.value = false
+  }
+}
+
+/** 重新读取草稿 revision（管理信息保存会递增它）。 */
+async function refreshRevision() {
+  if (!activePaperId.value) return
+  try {
+    const res = await getDraft(activePaperId.value)
+    draftRevision.value = res.data.revision
+  } catch {
+    // useApi 已弹错误
   }
 }
 
@@ -150,15 +208,21 @@ const description = ref('')
 const editTagIds = ref<string[]>([])
 watchEffect(() => {
   if (paper.value) {
-    title.value = paper.value.title
-    description.value = paper.value.description
+    // 管理信息（标签、最新版）来自题目行；内容以草稿为准（draftLoaded 时）
     editTagIds.value = (paper.value.tags ?? []).map((t) => t.id)
+    latestVersion.value =
+      (paper.value as { latest_version?: number | null }).latest_version ?? latestVersion.value
+    if (!draftLoaded.value) {
+      title.value = paper.value.title
+      description.value = paper.value.description
+    }
   }
 })
 
-// activePaperId 变化时重新加载套卷元信息与小题列表
+// activePaperId 变化时重新加载套卷草稿（元信息 + 小题 + revision）
 watchEffect(() => {
   if (activePaperId.value) {
+    draftLoaded.value = false
     loadQuestions()
   } else {
     questions.value = []
@@ -173,16 +237,39 @@ async function onSaveMeta() {
   }
   savingMeta.value = true
   try {
+    // 套卷内容（题面/描述）写草稿，管理信息（标签）直接生效
     await updatePaper(activePaperId.value!, {
       title: title.value.trim(),
       description: description.value.trim(),
       tag_ids: editTagIds.value,
     })
-    toast.success('套卷信息已保存')
+    await refreshRevision()
+    await loadQuestions()
+    toast.success('套卷信息已保存（发布后才会成为新的作答版本）')
   } catch {
     // useApi 已弹错误
   } finally {
     savingMeta.value = false
+  }
+}
+
+/** 发布当前草稿为新版本（相同内容复用既有版本，不制造空版本）。 */
+async function onPublish() {
+  if (!activePaperId.value || publishing.value) return
+  publishing.value = true
+  try {
+    const res = await publishDraft(activePaperId.value, draftRevision.value ?? 0)
+    draftRevision.value = res.data.draft_revision
+    latestVersion.value = res.data.version
+    toast.success(
+      res.data.unchanged
+        ? `内容未变化，继续使用 V${res.data.version}`
+        : `已发布 V${res.data.version}`,
+    )
+  } catch {
+    // useApi 已弹错误（409 时提示重新加载）
+  } finally {
+    publishing.value = false
   }
 }
 
@@ -334,11 +421,22 @@ async function onSaveQuestion(next = false) {
   savingQuestion.value = true
   try {
     if (e.id === null) {
-      await createQuestion(activePaperId.value!, payload)
-      toast.success('小题已添加')
+      const res = await createQuestion(
+        activePaperId.value!,
+        payload,
+        draftRevision.value ?? 0,
+      )
+      draftRevision.value = res.data.draft_revision ?? draftRevision.value
+      toast.success('小题已添加（发布后才会生效）')
     } else {
-      await updateQuestion(activePaperId.value!, e.id, payload)
-      toast.success('小题已更新')
+      const res = await updateQuestion(
+        activePaperId.value!,
+        e.id,
+        payload,
+        draftRevision.value ?? 0,
+      )
+      draftRevision.value = res.data.draft_revision ?? draftRevision.value
+      toast.success('小题已更新（发布后才会生效）')
     }
     closeEditor()
     // 重新拉取题单，确保新增/编辑的小题立即出现在列表中
@@ -346,7 +444,8 @@ async function onSaveQuestion(next = false) {
     // 「保存并继续添加」：直接打开下一道空白小题
     if (next) startEditing(blankDraft())
   } catch {
-    // useApi 已弹错误
+    // useApi 已弹错误（409 时需重新加载草稿）
+    await refreshRevision()
   } finally {
     savingQuestion.value = false
   }
@@ -361,12 +460,18 @@ async function onDeleteQuestion(q: ObjectiveQuestion, index: number) {
   })
   if (!ok) return
   try {
-    await deleteQuestion(activePaperId.value!, q.id)
+    const res = await deleteQuestion(
+      activePaperId.value!,
+      q.id,
+      draftRevision.value ?? 0,
+    )
+    draftRevision.value = res.data.draft_revision
     if (editing.value?.id === q.id) closeEditor()
-    toast.success('小题已删除')
+    toast.success('小题已删除（发布后才会生效）')
     await loadQuestions()
   } catch {
-    // useApi 已弹错误
+    // useApi 已弹错误（409 时需重新加载草稿）
+    await refreshRevision()
   }
 }
 </script>
@@ -461,8 +566,21 @@ async function onDeleteQuestion(q: ObjectiveQuestion, index: number) {
               </div>
             </div>
           </UFormField>
-          <div class="flex gap-2">
-            <UButton color="primary" :loading="savingMeta" @click="onSaveMeta">保存信息</UButton>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="mr-auto text-xs text-text-secondary">
+              {{ latestVersion ? `当前最新版 V${latestVersion}` : '尚未发布（发布后才可作答）' }}
+              <span v-if="draftRevision !== null" class="text-text-muted">· 草稿 revision {{ draftRevision }}</span>
+            </span>
+            <UButton color="primary" variant="outline" :loading="savingMeta" @click="onSaveMeta">保存信息</UButton>
+            <UButton
+              color="primary"
+              class="border border-transparent bg-signal text-on-signal hover:bg-signal/80"
+              :loading="publishing"
+              :disabled="savingMeta || draftRevision === null"
+              @click="onPublish"
+            >
+              发布版本
+            </UButton>
             <UButton color="error" variant="outline" @click="onDeletePaper">删除套卷</UButton>
           </div>
         </div>

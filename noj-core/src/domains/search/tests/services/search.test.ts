@@ -14,6 +14,8 @@ import {
 } from "../../services/index-writer.ts";
 import { searchFlat, searchGrouped } from "../../services/search.ts";
 
+import { publishAllProblemsForTest } from "../../../../../tests/helper.ts";
+
 await resetDbForTest();
 
 async function seed() {
@@ -47,6 +49,8 @@ async function seed() {
     created_at: now,
     updated_at: now,
   });
+  // 夹具题目必须"已发布"才入索引（Handbook §6.6）
+  await publishAllProblemsForTest();
   await upsertSearchEntry((await buildProblemEntry("p-search-1"))!);
   await upsertSearchEntry((await buildUserEntry("u-search-1"))!);
 }
@@ -138,6 +142,7 @@ Deno.test({
         updated_at: now,
       },
     ]);
+    await publishAllProblemsForTest();
     await upsertSearchEntry((await buildProblemEntry("p-percent-1"))!);
     await upsertSearchEntry((await buildProblemEntry("p-percent-2"))!);
     const result = await searchFlat({

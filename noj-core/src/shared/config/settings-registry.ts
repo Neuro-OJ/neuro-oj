@@ -848,6 +848,17 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     category: "judge",
   },
   {
+    key: "JUDGE_QUEUE_LAYOUT",
+    type: "string",
+    default: "pools",
+    description:
+      "评测队列布局：pools 为分资源池，legacy 仅用于协调升级前兼容旧 Worker；启动时固定",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "JUDGE_QUEUE_LAYOUT",
+    category: "judge",
+  },
+  {
     key: "judge_max_evaluator_time_limit_ms",
     type: "integer",
     default: 0,

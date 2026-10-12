@@ -19,7 +19,11 @@ import {
 } from "../../../system/index.ts";
 import { ensureRbacSeeds } from "../../../system/index.ts";
 import { enterTestContext, leaveTestContext } from "../../../system/index.ts";
-import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
+import {
+  createUserToken,
+  jsonRequest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 import { createContest } from "../../../contest/index.ts";
 
 if (!Deno.env.get("JWT_SECRET")) {
@@ -1190,6 +1194,9 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
+
+    // 竞赛只能固定已发布版本（Handbook §2.6）：夹具题目补迁移基线
+    await publishBaselineVersionForTest("community-silence-contest-problem");
     const contest = await createContest(
       {
         title: `路由静默 ${Date.now()}`,

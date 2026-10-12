@@ -9,7 +9,9 @@ pub mod judge;
 pub mod logging;
 pub mod metrics;
 pub mod mq;
+pub mod oi;
 pub mod sandbox;
+pub mod scheduling;
 pub mod types;
 pub mod user_claim;
 

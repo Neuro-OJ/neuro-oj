@@ -15,6 +15,8 @@ Deno.test("parseProblemArgs: init 选项与位置参数", () => {
     "hard",
     "--title",
     "标题",
+    "--judge-type",
+    "oi",
     "--no-interactive",
   ]);
   assertEquals(a.sub, "init");
@@ -22,6 +24,7 @@ Deno.test("parseProblemArgs: init 选项与位置参数", () => {
   assertEquals(a.type, "P");
   assertEquals(a.difficulty, "hard");
   assertEquals(a.title, "标题");
+  assertEquals(a.judgeType, "oi");
   assertEquals(a.noInteractive, true);
 });
 
@@ -139,6 +142,48 @@ Deno.test("lintBundle: 合法包无 error", () => {
     names: ["problem.json", "evaluate.py"],
   });
   assertEquals(report.hasError, false);
+});
+
+Deno.test("lintBundle: OI 包不要求 evaluate.py 且检查测试点文件", () => {
+  const base = {
+    format_version: 1,
+    title: "oi",
+    judge_type: "oi",
+    runtime_config: {
+      backend: "native",
+      languages: ["c"],
+      time_limit_ms: 1000,
+      memory_limit_mb: 256,
+      checker: { type: "default" },
+      subtasks: [{
+        id: "all",
+        score: 100,
+        cases: [{ input: "testdata/1.in", output: "testdata/1.out" }],
+      }],
+    },
+  };
+  const valid = lintBundle({
+    texts: { "problem.json": JSON.stringify(base) },
+    names: ["problem.json", "testdata/1.in", "testdata/1.out"],
+  });
+  assertEquals(valid.hasError, false);
+  assertEquals(
+    valid.findings.some((finding) => finding.rule === "must/missing-evaluator"),
+    false,
+  );
+
+  const invalid = lintBundle({
+    texts: { "problem.json": JSON.stringify(base) },
+    names: ["problem.json"],
+  });
+  assertEquals(invalid.hasError, true);
+  assertEquals(
+    invalid.findings.filter((finding) =>
+      finding.rule === "must/missing-oi-file"
+    )
+      .length,
+    2,
+  );
 });
 
 Deno.test("lintBundle: 缺 manifest / 缺 evaluator / JSON 非法均为 error", () => {
@@ -292,6 +337,46 @@ Deno.test("initProblemScaffold: 生成骨架且拒绝非空目录", async () => 
     await assertRejects(() =>
       initProblemScaffold({ slug: "my-problem", root })
     );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("initProblemScaffold: 生成传统 OI 题包骨架", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const result = await initProblemScaffold({
+      slug: "oi-problem",
+      root,
+      judgeType: "oi",
+    });
+    const manifest = JSON.parse(
+      await Deno.readTextFile(join(result.dir, "problem.json")),
+    );
+    assertEquals(manifest.judge_type, "oi");
+    assertEquals(manifest.runtime_config.backend, "native");
+    assertEquals(
+      await Deno.stat(join(result.dir, "testdata/1.in")).then((s) => s.isFile),
+      true,
+    );
+    assertEquals(result.files.includes("evaluate.py"), false);
+    const report = lintBundle(
+      await (async () => {
+        const texts: Record<string, string> = {};
+        const names: string[] = [];
+        for await (const entry of Deno.readDir(result.dir)) {
+          if (entry.isFile) {
+            names.push(entry.name);
+            texts[entry.name] = await Deno.readTextFile(
+              join(result.dir, entry.name),
+            );
+          }
+        }
+        names.push("testdata/1.in", "testdata/1.out");
+        return { texts, names };
+      })(),
+    );
+    assertEquals(report.hasError, false);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

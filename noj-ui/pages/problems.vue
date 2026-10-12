@@ -3,6 +3,7 @@ import { difficultyBadgeColors, difficultyLabels, formatAcceptanceRate } from "~
 import { problemUrl } from "~/utils/publicIdentifiers"
 import { contestHiddenRowClass } from "~/utils/contestHidden"
 import type { ObjectiveSubmission } from '~/composables/useObjective'
+import { problemJudgeTypeLabel } from '~/utils/problemView'
 
 definePageMeta({ breadcrumbWidth: '960px' })
 const { api } = useApi()
@@ -25,6 +26,8 @@ interface ProblemItem {
   owner_avatar_url?: string | null
   number: number
   is_objective: boolean
+  judge_type?: 'dual' | 'oi'
+  judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null
   /**
    * 是否被「尚未结束的公开赛」收编（VULN-07）。
    *
@@ -61,6 +64,8 @@ const {
   page,
   keyword,
   difficulty,
+  judgeType,
+  judgeBackend,
   tagId,
   problemType,
   limit,
@@ -232,11 +237,16 @@ const columns = computed(() => {
       :difficulty="difficulty"
       :tag-id="tagId"
       :problem-type="problemType"
+      :judge-type="judgeType"
+      :judge-backend="judgeBackend"
       :tags="tags"
+      @reset="router.push({ query: {} })"
       @update:keyword="setFilter('keyword', $event)"
       @update:difficulty="setFilter('difficulty', $event)"
       @update:tag-id="setFilter('tag', $event)"
       @update:problem-type="setFilter('type', $event)"
+      @update:judge-type="setFilter('judge_type', $event)"
+      @update:judge-backend="setFilter('judge_backend', $event)"
     />
 
     <!-- 异步内容 -->
@@ -267,15 +277,27 @@ const columns = computed(() => {
             <ProblemId :display-id="row.original.display_id" :type="row.original.type" />
           </template>
           <template #title-cell="{ row }">
-            <div class="flex items-center gap-2">
-              <NuxtLink
-                :to="problemUrl(row.original.id, row.original.display_id)"
-                class="text-text no-underline font-medium hover:text-primary transition-colors"
-              >
-                {{ row.original.title }}
-              </NuxtLink>
-              <!-- 公开赛收编标识（VULN-07）：斜纹底由行的 class 承担，此处提供悬浮说明 -->
-              <ContestHiddenMark v-if="row.original.is_contest_hidden" />
+            <div class="flex flex-col gap-1">
+              <div class="flex items-center gap-2">
+                <NuxtLink
+                  :to="problemUrl(row.original.id, row.original.display_id)"
+                  class="text-text no-underline font-medium hover:text-primary transition-colors"
+                >
+                  {{ row.original.title }}
+                </NuxtLink>
+                <!-- 公开赛收编标识（VULN-07）：斜纹底由行的 class 承担，此处提供悬浮说明 -->
+                <ContestHiddenMark v-if="row.original.is_contest_hidden" />
+              </div>
+              <div class="flex flex-wrap items-center gap-1 text-xs">
+                <span
+                  v-if="problemJudgeTypeLabel(row.original)"
+                  class="rounded border border-primary/20 bg-primary/5 px-1.5 text-primary"
+                >{{ problemJudgeTypeLabel(row.original) }}</span>
+                <span
+                  v-if="!row.original.is_objective && row.original.judge_backend"
+                  class="rounded border border-border px-1.5 font-mono text-text-secondary"
+                >{{ row.original.judge_backend }}</span>
+              </div>
             </div>
           </template>
           <template #owner-cell="{ row }">

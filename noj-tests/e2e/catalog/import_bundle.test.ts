@@ -15,6 +15,7 @@ import {
   isE2E,
   isJudgeAvailable,
   pollSubmission,
+  publishProblemVersion,
   submitCode,
   waitForServer,
 } from "../helper.ts";
@@ -174,6 +175,9 @@ e2eTest("[e2e/import-bundle] admin 上传统一包创建题目", async () => {
 
 e2eTest("[e2e/import-bundle] 重复导入幂等（不产生新题）", async () => {
   if (!isE2E || !problemId) return;
+  const draft = await apiGet(`/api/v1/problems/${problemId}/draft`, adminToken);
+  if (draft.status !== 200) throw new Error("读取重复导入基线失败");
+  const revision = (draft.body as { data: { revision: number } }).data.revision;
   const zip = await makeBundleZip();
   const formData = new FormData();
   formData.append(
@@ -190,10 +194,15 @@ e2eTest("[e2e/import-bundle] 重复导入幂等（不产生新题）", async () 
   const { BASE_URL } = await import("../helper.ts");
   const res = await fetch(`${BASE_URL}/api/v1/problems/import-bundle`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${adminToken}` },
+    headers: {
+      Authorization: `Bearer ${adminToken}`,
+      "If-Match": String(revision),
+    },
     body: formData,
   });
-  if (res.status !== 200) throw new Error("重复导入失败");
+  if (res.status !== 200) {
+    throw new Error(`重复导入失败: ${res.status} ${await res.text()}`);
+  }
   const body = (await res.json()) as { data: { id: string } };
   if (body.data.id !== problemId) {
     throw new Error("重复导入应更新同一题目而非新建");
@@ -202,6 +211,8 @@ e2eTest("[e2e/import-bundle] 重复导入幂等（不产生新题）", async () 
 
 e2eTest("[e2e/import-bundle] 提交评测闭环（judge 可用时）", async () => {
   if (!isE2E || !problemId || !judgeAvailable) return;
+  // 统一题包导入只写共享草稿（Handbook §6.2），提交前必须显式发布版本
+  await publishProblemVersion(adminToken, problemId, "e2e 导入后发布");
   const submissionId = await submitCode(
     adminToken,
     problemId,

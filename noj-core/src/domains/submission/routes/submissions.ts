@@ -9,6 +9,7 @@ import {
   resolveSubmissionId,
 } from "../services/submissions/submissions.ts";
 import { applySubmissionProjection } from "../services/submissions/submission-projection.ts";
+import { versionRequired } from "../services/versioning/submission-version.ts";
 import { verifyContestAccess } from "../../contest/index.ts";
 import { getCachedTodayStats, getCachedTotalStats } from "../../query/index.ts";
 import { getSubmissionQueueStatus } from "../services/queue.ts";
@@ -54,6 +55,12 @@ const router = new Hono<Env>();
  */
 const MAX_CODE_LENGTH = 100 * 1024;
 
+/** 解析布尔筛选参数：`1` / `true` 为真，其余（含缺省）为假。 */
+function parseFlag(value: string | undefined): boolean | undefined {
+  if (value === undefined || value === "") return undefined;
+  return value === "1" || value === "true";
+}
+
 /**
  * 提交列表（分页 + 筛选）。
  * GET /api/v1/submissions
@@ -76,12 +83,26 @@ router.get("/", authMiddleware, async (c) => {
   const status = c.req.query("status") || undefined;
   const from = c.req.query("from") || undefined;
   const to = c.req.query("to") || undefined;
+  const versionId = c.req.query("version_id") || undefined;
+  const versionOrigin = c.req.query("version_origin") || undefined;
+  const validOnly = parseFlag(c.req.query("valid_only"));
+  const acceptedOnly = parseFlag(c.req.query("accepted_only"));
+  const upgradable = parseFlag(c.req.query("upgradable"));
 
   // status 参数校验
   const validStatuses = SUBMISSION_STATUSES;
   if (status && !(validStatuses as readonly string[]).includes(status)) {
     throw new BadRequestError(
       `无效的状态值：${status}，有效值：${validStatuses.join("、")}`,
+    );
+  }
+  // 版本来源筛选（Handbook §4.4）：只允许两个已知取值
+  if (
+    versionOrigin && versionOrigin !== "known" &&
+    versionOrigin !== "legacy_unknown"
+  ) {
+    throw new BadRequestError(
+      `无效的版本来源：${versionOrigin}，有效值：known、legacy_unknown`,
     );
   }
 
@@ -94,6 +115,11 @@ router.get("/", authMiddleware, async (c) => {
     status,
     from,
     to,
+    versionId,
+    versionOrigin: versionOrigin as "known" | "legacy_unknown" | undefined,
+    validOnly,
+    acceptedOnly,
+    upgradable,
     page,
     perPage,
   });
@@ -117,6 +143,7 @@ function parseArtifactMultipart(
   problem_id: string;
   file_name: string;
   file_stream: ReadableStream<Uint8Array>;
+  version_id: string;
 }> {
   return new Promise((resolve, reject) => {
     const contentType = c.req.header("content-type");
@@ -127,6 +154,7 @@ function parseArtifactMultipart(
     const bb = busboy({ headers: { "content-type": contentType } });
     let problemId = "";
     let fileName = "";
+    let versionId = "";
     let fileStream: ReadableStream<Uint8Array> | null = null;
     let resolved = false;
 
@@ -136,18 +164,22 @@ function parseArtifactMultipart(
      */
     function maybeResolve() {
       if (resolved) return;
-      if (problemId && fileName && fileStream) {
+      // `version_id` 也是必需字段（Handbook §4.2）：必须等它到达再消费文件流，
+      // 否则先到的文件会让我们在不知道版本的情况下开始上传。
+      if (problemId && versionId && fileName && fileStream) {
         resolved = true;
         resolve({
           problem_id: problemId,
           file_name: fileName,
           file_stream: fileStream,
+          version_id: versionId,
         });
       }
     }
 
     bb.on("field", (name: string, val: string) => {
       if (name === "problem_id") problemId = val;
+      if (name === "version_id") versionId = val;
       maybeResolve();
     });
     bb.on("file", (name: string, file: unknown, info: { filename: string }) => {
@@ -163,9 +195,15 @@ function parseArtifactMultipart(
       if (!resolved) reject(err);
     });
     bb.on("close", () => {
-      if (!resolved) {
-        reject(new BadRequestError("缺少必填字段：problem_id 或 file"));
+      if (resolved) return;
+      // 已收到文件但缺版本：明确要求升级客户端，不静默绑定最新版。
+      // 未消费的文件流必须主动取消，否则连接会一直挂着。
+      if (fileStream) void fileStream.cancel().catch(() => {});
+      if (!versionId) {
+        reject(versionRequired());
+        return;
       }
+      reject(new BadRequestError("缺少必填字段：problem_id 或 file"));
     });
 
     Readable.fromWeb(
@@ -227,6 +265,9 @@ router.post("/", authMiddleware, async (c) => {
       language: body.language as string,
       code: body.code as string,
       file_name: body.file_name as string | undefined,
+      version_id: typeof body.version_id === "string" && body.version_id
+        ? body.version_id
+        : undefined,
     },
     undefined,
     isAdmin,

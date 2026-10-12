@@ -6,9 +6,15 @@
  */
 import { extractApiError } from '~/utils/apiError';
 
-export type SelfTestStatus = 'pending' | 'judging' | 'finished' | 'error';
+export type SelfTestStatus = 'pending' | 'judging' | 'finished' | 'error' | 'cancelled';
 
 export interface PolledSelfTest {
+  progress?: {
+    phase: string;
+    active_cases: { case_id: string; subtask_id: string }[];
+    completed_cases: Record<string, unknown>[];
+    total_cases: number;
+  } | null;
   id: string;
   status: SelfTestStatus;
   result_status: string | null;
@@ -21,7 +27,7 @@ export interface PolledSelfTest {
   details?: Record<string, unknown> | null;
 }
 
-const TERMINAL_STATUSES: SelfTestStatus[] = ['finished', 'error'];
+const TERMINAL_STATUSES: SelfTestStatus[] = ['finished', 'error', 'cancelled'];
 const POLL_INTERVAL_MS = 1500;
 
 export function useSelfTestPolling(selfTestIdRef: Ref<string | null>) {

@@ -7,34 +7,35 @@
  *    提交，超过 2 分钟后自动重新构建 JudgeTask 入队。
  */
 
-import { and, asc, eq, isNull, lte, type SQL, sql } from "drizzle-orm";
+import { and, asc, eq, lte, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { getDb } from "../../../shared/db/connection.ts";
 import { problems, selfTests, submissions } from "../../../shared/db/schema.ts";
-import { getStorageProvider } from "../../system/index.ts";
 import { getSetting } from "../../system/index.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
 import { listSweepTargets } from "../../../shared/mq/sweep-targets.ts";
 import {
+  ALL_JUDGE_QUEUES,
   isRetryableJudgeQueueError,
   JUDGE_QUEUE_CAPACITY,
-  JUDGE_QUEUES,
 } from "./producer.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "submission"]);
 import type { JudgeTaskPriority } from "../types/index.ts";
-import { buildJudgeTask } from "../types/index.ts";
-import type { RuntimeConfig } from "../../catalog/index.ts";
-import { LANGUAGE_EXT_MAP } from "../types/index.ts";
-import { resolveJudgeTaskPriority } from "../services/submissions/judge-priority.ts";
+import { AppError } from "../../../shared/base/errors.ts";
+import { rebuildPendingTask } from "./pending-recovery.ts";
+import { applyAttemptResult } from "../services/versioning/result-write.ts";
+import { runAttemptTerminalRevocationAfterCommit } from "../services/versioning/attempts.ts";
+import {
+  runPendingTokenRevocations,
+} from "../services/versioning/job-worker.ts";
 
 const RESULT_QUEUE = "noj:judge:results";
 
 const TASK_PROCESSING_TIMEOUT_MS = 10 * 60_000;
 const RESULT_PROCESSING_TIMEOUT_MS = 2 * 60_000;
 const PENDING_RECOVERY_MS = 2 * 60_000;
-const ARTIFACT_PENDING_CLEANUP_MS = 10 * 60_000;
 const SWEEP_INTERVAL_MS = 30_000;
 
 /** 根据管理员配置的最大 evaluator 时限推导任务 processing 超时，避免长任务被提前重投。 */
@@ -146,7 +147,7 @@ async function sweepProcessingQueue(
   }
 }
 
-interface PendingRecoveryRow {
+export interface PendingRecoveryRow {
   id: string;
   language: string;
   code: string;
@@ -158,6 +159,14 @@ interface PendingRecoveryRow {
   judge_started_at?: string | null;
   user_id?: string;
   contest_id?: string | null;
+  /** 在途评测尝试（正式提交）；恢复时以它绑定的版本为唯一配置来源。 */
+  active_attempt_id?: string | null;
+  /** 自测绑定版本（自测没有评测尝试记录）。 */
+  problem_version_id?: string | null;
+  /** 产物对象引用（artifact 提交）：保留到提交显式删除，恢复时重新生成下载 URL。 */
+  artifact_storage_url?: string | null;
+  judge_run_id?: string | null;
+  task_snapshot?: Record<string, unknown> | null;
 }
 
 interface PendingRecoveryActions<T extends PendingRecoveryRow> {
@@ -187,6 +196,11 @@ interface PendingRecoveryTableColumns {
   userId?: AnyPgColumn;
   judgeStartedAt?: AnyPgColumn;
   contestId?: AnyPgColumn;
+  activeAttemptId?: AnyPgColumn;
+  problemVersionIdCol?: AnyPgColumn;
+  artifactStorageUrl?: AnyPgColumn;
+  judgeRunId?: AnyPgColumn;
+  taskSnapshot?: AnyPgColumn;
 }
 
 /**
@@ -211,6 +225,18 @@ async function selectPendingRecoveryRows(
   if (cols.userId) selectFields.user_id = cols.userId;
   if (cols.judgeStartedAt) selectFields.judge_started_at = cols.judgeStartedAt;
   if (cols.contestId) selectFields.contest_id = cols.contestId;
+  if (cols.activeAttemptId) {
+    selectFields.active_attempt_id = cols.activeAttemptId;
+  }
+  if (cols.problemVersionIdCol) {
+    selectFields.problem_version_id = cols.problemVersionIdCol;
+  }
+  if (cols.artifactStorageUrl) {
+    selectFields.artifact_storage_url = cols.artifactStorageUrl;
+  }
+
+  if (cols.judgeRunId) selectFields.judge_run_id = cols.judgeRunId;
+  if (cols.taskSnapshot) selectFields.task_snapshot = cols.taskSnapshot;
 
   // 动态列集合无法保留 Drizzle 的精确查询类型，这里使用 any 收窄到内部契约。
   // deno-lint-ignore no-explicit-any
@@ -235,65 +261,21 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
   source: "submission" | "self_test",
 ): Promise<void> {
   for (const row of rows) {
-    const runtimeConfig = row.runtime_config as RuntimeConfig | null;
-    if (!runtimeConfig) {
-      await actions.onMissingRuntimeConfig(row);
-      continue;
-    }
-
-    let download_url: string | undefined;
-    if (row.support_package_storage_url) {
-      try {
-        const storage = await getStorageProvider();
-        download_url = await storage.downloadUrl(
-          row.support_package_storage_url,
-        );
-      } catch (err) {
-        logger.error("pending 恢复获取支持包失败，将以无支持包任务继续", {
+    let task;
+    try {
+      task = await rebuildPendingTask(row, source);
+    } catch (err) {
+      // 缺失不可变版本/交付物或退役 Provider 是永久失败；基础设施暂时不可达继续等待。
+      if (err instanceof AppError && err.statusCode < 500) {
+        await actions.onPermanentError(row, err);
+      } else {
+        logger.error("pending 恢复暂时失败，等待下轮", {
           [actions.idKey]: row.id,
           err,
         });
       }
+      continue;
     }
-
-    let priority: JudgeTaskPriority;
-    if (source === "self_test") {
-      priority = "medium";
-    } else if ((row.rejudge_seq ?? 0) > 0) {
-      priority = "low";
-    } else {
-      priority = await resolveJudgeTaskPriority(
-        row.contest_id ?? null,
-        "submission",
-      );
-    }
-
-    // **注意：此处刻意不组装 `llm`**（2026-09-22 评审）。
-    //
-    // 平台默认 Provider 的解析（`buildJudgeTaskLlm`）在缺配或 Provider 停用时
-    // 会抛错（400/5xx）。若在 sweeper 里补上 `llm`，一次 gateway 抖动或漏配就
-    // 会让每轮重试都以失败告终，进而把提交永久标记为 `error`
-    // （`onPermanentError`）——那比"少一次 LLM 调用"严重得多。
-    //
-    // 现状语义：pending 恢复出来的 LLM 题任务不带 `llm`，evaluator 侧按普通
-    // 题目执行（LLM 能力不可用）。这与移除 BYOK 之前的行为一致，属**已知取舍**。
-    // 后续若要支持"恢复时重建 llm"，必须同时把解析失败降级为"跳过本轮重试"，
-    // 而不是让整个恢复流程永久失败。
-    const task = buildJudgeTask({
-      submission_id: row.id,
-      problem_id: row.problem_id,
-      user_id: row.user_id ?? "",
-      priority,
-      runtime_config: runtimeConfig,
-      download_url,
-      language: row.language,
-      code: row.code,
-      file_name: row.file_name ??
-        (LANGUAGE_EXT_MAP[row.language] || "main.txt"),
-      ...(row.rejudge_seq !== undefined
-        ? { rejudge_seq: row.rejudge_seq }
-        : {}),
-    });
 
     const { pushJudgeTask } = await import("./producer.ts");
     try {
@@ -345,11 +327,14 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
       rejudgeSeq: submissions.rejudge_seq,
       userId: submissions.user_id,
       contestId: submissions.contest_id,
+      activeAttemptId: submissions.active_attempt_id,
+      artifactStorageUrl: submissions.artifact_storage_url,
     },
     and(
       eq(submissions.status, "pending"),
-      isNull(submissions.artifact_storage_url),
       lte(submissions.created_at, cutoff),
+      // 批任务由自己的持久化租约与退避负责派发，不能被 sweeper 抢先执行。
+      sql`NOT EXISTS (SELECT 1 FROM submission_job_items ji WHERE ji.attempt_id = ${submissions.active_attempt_id} AND ji.status IN ('pending', 'preparing', 'dispatched'))`,
     ),
   );
 
@@ -376,15 +361,28 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
           and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
         );
     },
-    onPermanentError: async (row) => {
-      await db.update(submissions)
-        .set({
+    onPermanentError: async (row, err) => {
+      if (row.active_attempt_id) {
+        // applyAttemptResult 在同一事务内登记吊销 outbox，提交后立即尝试执行。
+        await db.transaction(async (tx) => {
+          await applyAttemptResult({
+            attemptId: row.active_attempt_id!,
+            resultKind: "platform_error",
+            resultStatus: "RECOVERY_FAILED",
+            score: null,
+            accepted: false,
+            output: err instanceof Error ? err.message : String(err),
+          }, tx);
+        });
+        await runAttemptTerminalRevocationAfterCommit(row.active_attempt_id);
+      } else {
+        await db.update(submissions).set({
           status: "error",
           judge_finished_at: new Date().toISOString(),
-        })
-        .where(
+        }).where(
           and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
         );
+      }
     },
   }, "submission");
 }
@@ -408,6 +406,10 @@ export async function recoverPendingSelfTests(now: number): Promise<void> {
       runtimeConfig: problems.runtime_config,
       supportPackageStorageUrl: problems.support_package_storage_url,
       judgeStartedAt: selfTests.judge_started_at,
+      problemVersionIdCol: selfTests.problem_version_id,
+      judgeRunId: selfTests.judge_run_id,
+      taskSnapshot: selfTests.task_snapshot,
+      userId: selfTests.user_id,
     },
     and(
       eq(selfTests.status, "pending"),
@@ -444,6 +446,8 @@ export async function recoverPendingSelfTests(now: number): Promise<void> {
       await db.update(selfTests)
         .set({
           status: "error",
+          // 永久失败保留可解释的原因码（不写成泛化的 PLATFORM_ERROR）
+          result_status: "RECOVERY_FAILED",
           judge_finished_at: new Date().toISOString(),
         })
         .where(
@@ -454,55 +458,10 @@ export async function recoverPendingSelfTests(now: number): Promise<void> {
 }
 
 /**
- * 清理孤儿 artifact 提交：超过 N 分钟仍处于 pending 的 artifact 提交，
- * 删除其存储对象并标记为 error（artifact 不支持重测，不重新入队）。
+ * 产物提交的 pending 恢复已并入 {@link recoverPendingRows}：
+ * 产物对象保留到提交显式删除，recovery 重新签发下载 URL 并入队，
+ * 不再存在"超时即删除对象并标记 error"的不可恢复路径（Handbook §6.5）。
  */
-export async function cleanupOrphanArtifacts(now: number): Promise<void> {
-  const cutoff = new Date(now - ARTIFACT_PENDING_CLEANUP_MS).toISOString();
-  const db = getDb();
-
-  const rows = await db
-    .select({
-      id: submissions.id,
-      artifact_storage_url: submissions.artifact_storage_url,
-    })
-    .from(submissions)
-    .where(
-      and(
-        eq(submissions.status, "pending"),
-        sql`${submissions.artifact_storage_url} IS NOT NULL`,
-        lte(submissions.created_at, cutoff),
-      ),
-    )
-    .limit(200);
-
-  const storage = await getStorageProvider();
-  for (const row of rows) {
-    if (row.artifact_storage_url) {
-      try {
-        await storage.delete(row.artifact_storage_url);
-      } catch (err) {
-        logger.error("清理孤儿 artifact 存储对象失败", {
-          submission_id: row.id,
-          storage_url: row.artifact_storage_url,
-          err,
-        });
-      }
-    }
-    await db.update(submissions)
-      .set({
-        status: "error",
-        judge_finished_at: new Date().toISOString(),
-      })
-      .where(
-        and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
-      );
-    logger.warn("孤儿 artifact 提交已清理并标记 error", {
-      submission_id: row.id,
-    });
-  }
-}
-
 /**
  * 队列告警去抖状态：同一异常只在上“升沿”记录一次，恢复后复位。
  */
@@ -528,21 +487,12 @@ async function logQueueAlertsIfNeeded(): Promise<void> {
   }
 
   const queues = [
-    {
-      key: "judge:high",
-      main: JUDGE_QUEUES.high,
-      capacity: JUDGE_QUEUE_CAPACITY.high,
-    },
-    {
-      key: "judge:medium",
-      main: JUDGE_QUEUES.medium,
-      capacity: JUDGE_QUEUE_CAPACITY.medium,
-    },
-    {
-      key: "judge:low",
-      main: JUDGE_QUEUES.low,
-      capacity: JUDGE_QUEUE_CAPACITY.low,
-    },
+    ...ALL_JUDGE_QUEUES.map((queue) => ({
+      key: `judge:${queue}`,
+      main: queue,
+      capacity:
+        JUDGE_QUEUE_CAPACITY[queue.split(":").at(-1) as JudgeTaskPriority],
+    })),
     {
       key: "result",
       main: RESULT_QUEUE,
@@ -592,11 +542,7 @@ async function logQueueAlertsIfNeeded(): Promise<void> {
 
 export async function runQueueSweeperOnce(): Promise<void> {
   const now = Date.now();
-  const judgeQueues = [
-    JUDGE_QUEUES.high,
-    JUDGE_QUEUES.medium,
-    JUDGE_QUEUES.low,
-  ] as const;
+  const judgeQueues = ALL_JUDGE_QUEUES;
 
   // 评测三级队列与结果队列由 core/judge 直接约定（judge 侧写入 processing），
   // 保持硬编码；其余消费者队列从登记表读取（createConsumer 自动登记），
@@ -629,7 +575,9 @@ export async function runQueueSweeperOnce(): Promise<void> {
     ),
     recoverPendingSubmissions(now),
     recoverPendingSelfTests(now),
-    cleanupOrphanArtifacts(now),
+    // 终态吊销 outbox 的持久化补偿：Redis 恢复后把 pending 行推进到 done
+    // （复审问题 2：终态已提交但吊销失败时必须最终一致，不依赖进程内重试）。
+    runPendingTokenRevocations(),
     logQueueAlertsIfNeeded(),
   ]);
   for (const result of results) {

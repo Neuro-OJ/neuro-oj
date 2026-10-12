@@ -10,6 +10,10 @@
  * - 校验失败抛 `BadRequestError`（HTTP 400）
  */
 
+import {
+  type ProblemSample,
+  validateProblemSamples,
+} from "./problem-samples.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import { validateRuntimeConfig } from "../index.ts";
 import {
@@ -29,6 +33,10 @@ import {
   type LlmConfig,
   type RuntimeConfig,
 } from "./problems.ts";
+import {
+  type OiRuntimeConfig,
+  validateOiRuntimeConfig,
+} from "./runtime-config.ts";
 
 /** 当前 manifest 格式版本。 */
 export const BUNDLE_FORMAT_VERSION = 1 as const;
@@ -48,6 +56,7 @@ export const BUNDLE_METADATA_ENTRIES = [
  * `runtime_config` 的 `evaluator.command` 允许缺省（运行时校验前注入默认值）。
  */
 export interface ProblemBundleManifest {
+  samples?: ProblemSample[];
   format_version: number;
   title: string;
   /** 题面 Markdown（`statement.md` 存在时以文件为准，本字段作为兜底） */
@@ -72,8 +81,10 @@ export interface ProblemBundleManifest {
   llm?: LlmConfig;
   /** 客观题套卷标记：true 时使用 questions.json，不要求 runtime_config/evaluate.py */
   is_objective?: boolean;
-  /** 编程题必填；客观题缺省 */
-  runtime_config?: RuntimeConfig;
+  /** 评测模式，存量题缺省为双容器。 */
+  judge_type?: "dual" | "oi";
+  /** 编程题必填；由 judge_type 区分双容器和 OI。 */
+  runtime_config?: RuntimeConfig | OiRuntimeConfig;
 }
 
 /**
@@ -130,7 +141,7 @@ export const MAX_TEMPLATE_BYTES = 256 * 1024;
  * - `difficulty`/`type` 枚举合法
  * - `number` 类型合法
  * - `tags` 为字符串数组
- * - `samples` 已废弃（从不落库）：本层不校验、不拒绝；由服务层记一次 warning
+ * - `samples` 校验并作为独立公开样例保存
  * - `runtime_config` 必填：先注入 command 默认值，再通过 `validateRuntimeConfig`
  *
  * @throws {BadRequestError} 任一字段非法，错误信息指明字段
@@ -149,6 +160,27 @@ export function validateBundleManifest(
     throw new BadRequestError("manifest.is_objective 必须是布尔值");
   }
   const isObjective = m.is_objective === true;
+  const judgeType = m.judge_type ?? "dual";
+  if (judgeType !== "dual" && judgeType !== "oi") {
+    throw new BadRequestError("manifest.judge_type 仅允许 dual/oi");
+  }
+  if (isObjective && judgeType === "oi") {
+    throw new BadRequestError("客观题套卷不允许 judge_type=oi");
+  }
+  if (judgeType === "oi") {
+    for (
+      const field of [
+        "llm",
+        "template",
+        "submission_mode",
+        "artifact_max_size_mb",
+      ] as const
+    ) {
+      if (m[field] !== undefined) {
+        throw new BadRequestError(`OI 题不允许提供 ${field}`);
+      }
+    }
+  }
 
   if (m.format_version !== BUNDLE_FORMAT_VERSION) {
     throw new BadRequestError(
@@ -193,9 +225,7 @@ export function validateBundleManifest(
     throw new BadRequestError("manifest.tags 必须是字符串数组");
   }
 
-  // `samples` 已废弃（2026-09-24 审计 A2-2）：该字段从不落库、也没有任何消费者。
-  // 为兼容存量题包，这里**不校验、不拒绝**，由服务层（importProblemBundle）
-  // 记录一次 warning。新增题包不应再写该字段，题面样例请直接写在题面正文。
+  if (m.samples !== undefined) validateProblemSamples(m.samples);
 
   if (m.template !== undefined) {
     if (typeof m.template !== "string" || !m.template.trim()) {
@@ -244,7 +274,7 @@ export function validateBundleManifest(
     llm = m.llm as LlmConfig;
   }
 
-  let runtimeConfig: RuntimeConfig | undefined;
+  let runtimeConfig: RuntimeConfig | OiRuntimeConfig | undefined;
   if (isObjective) {
     if (m.runtime_config !== undefined) {
       throw new BadRequestError("客观题套卷不允许提供 runtime_config");
@@ -266,14 +296,16 @@ export function validateBundleManifest(
       throw new BadRequestError("manifest.runtime_config 是必填字段");
     }
 
-    // 注入 command 默认值后执行既有结构校验（含镜像白名单由调用方在落库前校验）
-    runtimeConfig = resolveManifestCommand(
-      m.runtime_config as RuntimeConfig,
-    );
-    validateRuntimeConfig(runtimeConfig);
-
-    if (llm !== undefined && !runtimeConfig.evaluator.network?.enabled) {
-      throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
+    if (judgeType === "oi") {
+      validateOiRuntimeConfig(m.runtime_config);
+      runtimeConfig = structuredClone(m.runtime_config);
+    } else {
+      // 注入 command 默认值后执行既有结构校验（含镜像白名单由调用方在落库前校验）
+      runtimeConfig = resolveManifestCommand(m.runtime_config as RuntimeConfig);
+      validateRuntimeConfig(runtimeConfig);
+      if (llm !== undefined && !runtimeConfig.evaluator.network?.enabled) {
+        throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
+      }
     }
   }
 
@@ -290,24 +322,37 @@ export function validateBundleManifest(
     artifact_max_size_mb: m.artifact_max_size_mb as number | null | undefined,
     llm,
     is_objective: isObjective,
+    judge_type: judgeType,
     runtime_config: isObjective ? undefined : runtimeConfig,
   };
 }
 
 /**
+ * 客观题题包中小题的可选稳定 key。
+ *
+ * Handbook §6.4：`questions.json` 支持可选 `key`（同题跨版本稳定，重判时按 key
+ * 匹配旧答案）；重复 key 拒绝；未提供时由导入流程生成新 key。导入**不得**按序号
+ * 或题干猜测旧小题对应关系。
+ */
+export type ObjectiveQuestionBundleInput = CreateQuestionInput & {
+  key?: string;
+};
+
+/**
  * 校验客观题小题数组（questions.json）。
  *
- * 每项对应 CreateQuestionInput；sort_order 缺省按数组下标；至少 1 道。
+ * 每项对应 CreateQuestionInput（可选 `key`）；sort_order 缺省按数组下标；至少 1 道。
  *
  * @throws {BadRequestError} 任一小题非法
  */
 export function validateObjectiveQuestions(
   raw: unknown,
-): CreateQuestionInput[] {
+): ObjectiveQuestionBundleInput[] {
   if (!Array.isArray(raw) || raw.length === 0) {
     throw new BadRequestError("questions.json 必须是非空数组");
   }
   const seenSort = new Set<number>();
+  const seenKeys = new Set<string>();
   return raw.map((item, index) => {
     if (typeof item !== "object" || item === null || Array.isArray(item)) {
       throw new BadRequestError(`questions.json[${index}] 必须是对象`);
@@ -323,6 +368,20 @@ export function validateObjectiveQuestions(
       throw new BadRequestError(
         `questions.json[${index}].prompt 必须是非空字符串`,
       );
+    }
+    // 可选稳定 key：非空字符串且同包内不重复
+    let key: string | undefined;
+    if (q.key !== undefined) {
+      if (typeof q.key !== "string" || !q.key.trim()) {
+        throw new BadRequestError(
+          `questions.json[${index}].key 必须是非空字符串`,
+        );
+      }
+      key = q.key.trim();
+      if (seenKeys.has(key)) {
+        throw new BadRequestError(`questions.json 中 key ${key} 重复`);
+      }
+      seenKeys.add(key);
     }
 
     let options: ObjectiveOption[] | undefined;
@@ -385,6 +444,7 @@ export function validateObjectiveQuestions(
     seenSort.add(sortOrder);
 
     return {
+      ...(key !== undefined ? { key } : {}),
       type,
       prompt: q.prompt,
       options: type === "judge" ? undefined : options,

@@ -32,27 +32,27 @@ noj-cli judge install --dir /srv/noj-judge \
 
 首次配置必填项（缺失会报"首装必须提供 …"，退出码 2）：
 
-- **`--version`** → `NOJ_VERSION`：不可变 Release 版本，建议与 noj-core 版本一致，例如 `v0.10.4-rc.1`；
-  不接受 `main`/`latest`。
-- **`--redis-url`** → `REDIS_URL`：与 noj-core 相同的 Redis 地址、数据库和认证信息。
-- **`--socket-path`** → `JUDGE_DOCKER_SOCKET`：只服务于 Judge 的 rootless
-  Docker daemon 的 Unix socket 路径。
+- **`--version`** → `NOJ_VERSION`：不可变 Release 版本，建议与 noj-core
+  版本一致，例如 `v0.10.4-rc.1`； 不接受 `main`/`latest`。
+- **`--redis-url`** → `REDIS_URL`：与 noj-core 相同的 Redis
+  地址、数据库和认证信息。
+- **`--socket-path`** → `JUDGE_DOCKER_SOCKET`：只服务于 Judge 的 rootless Docker
+  daemon 的 Unix socket 路径。
 - **`--socket-gid`** → `JUDGE_DOCKER_SOCKET_GID`：该 socket 的组 ID，必须与
   `stat -c '%g' <socket>` 一致，否则启动前的 socket 校验会失败。
 
-其余键（`JUDGE_QUEUE` / `RESULT_QUEUE` / 并发数等）使用内置默认值，需要改动时直接
-编辑安装目录下的 `.env.judge`（600）。
+其余键（`JUDGE_QUEUE` / `RESULT_QUEUE` /
+并发数等）使用内置默认值，需要改动时直接 编辑安装目录下的 `.env.judge`（600）。
 
-::: tip `--redis-mode local` 可省去自建 Redis
-独立 Judge 节点若没有现成 Redis，可加 `--redis-mode local`，让 CLI 在本机创建
-一个**仅绑定回环地址**（`127.0.0.1`）的 Redis 容器（默认端口 `16379`，
-容器名 `noj-judge-redis`），并自动生成随机口令写入 600 权限的 `redis.conf`。
-容器只带 `com.neuro-oj.component` 标签、只管理自己创建的同名容器。
-:::
+::: tip `--redis-mode local` 可省去自建 Redis 独立 Judge 节点若没有现成
+Redis，可加 `--redis-mode local`，让 CLI 在本机创建
+一个**仅绑定回环地址**（`127.0.0.1`）的 Redis 容器（默认端口 `16379`， 容器名
+`noj-judge-redis`），并自动生成随机口令写入 600 权限的 `redis.conf`。 容器只带
+`com.neuro-oj.component` 标签、只管理自己创建的同名容器。 :::
 
 > **既有配置优先**：`.env.judge` 已存在时 `judge install` 只更新 `--version`，
-> 其余旗标不会生效，并会打印"以下旗标未生效（既有配置优先）"提示。
-> 要改 Redis / socket，请直接编辑 `.env.judge` 或先移走该文件。
+> 其余旗标不会生效，并会打印"以下旗标未生效（既有配置优先）"提示。 要改 Redis /
+> socket，请直接编辑 `.env.judge` 或先移走该文件。
 
 管理独立 Worker：
 
@@ -76,27 +76,91 @@ Docker socket 绕过该限制。
 
 单个 Worker 同时执行的评测任务数由 `JUDGE_MAX_CONCURRENT_JUDGES` 控制：
 
-| 项 | 值 |
-|---|---|
-| 默认值 | `2` |
-| 有效范围 | `1` – `1024`（正整数） |
-| 超范围/未设置 | 回退默认值 `2` |
+| 项            | 值                     |
+| ------------- | ---------------------- |
+| 默认值        | `2`                    |
+| 有效范围      | `1` – `1024`（正整数） |
+| 超范围/未设置 | 回退默认值 `2`         |
 
-需要提高吞吐时，应结合 Docker、CPU、内存和数据库连接池容量调整该值。
-跨 Worker 还会限制「同一用户同时最多 1 个评测」（按 Redis claim 协调）。
+需要提高吞吐时，应结合 Docker、CPU、内存和数据库连接池容量调整该值。 跨 Worker
+还会限制「同一用户同时最多 1 个评测」（按 Redis claim 协调）。
 
 ### 评测容器资源
 
 每个 Worker 创建的 Evaluator 和 Solution 容器默认限制为 1 个 CPU 核。可通过
 `JUDGE_CPU_LIMIT_MILLICORES` 调整该 Worker 的统一上限：
 
-| 项 | 值 |
-|---|---|
-| 单位 | millicores（`1000m = 1 核`） |
-| 默认值 | `1000m` |
-| 有效范围 | `100m` – `16000m` |
+| 项       | 值                           |
+| -------- | ---------------------------- |
+| 单位     | millicores（`1000m = 1 核`） |
+| 默认值   | `1000m`                      |
+| 有效范围 | `100m` – `16000m`            |
 
 未设置或超出范围时回退到 `1000m`，**不会**因为配置为 `0` 而变成不限制 CPU。
+
+传统 OI 题使用固定的 `JUDGE_OI_IMAGE`（默认 `noj-oi-cpp`）。Worker 启动时要求该
+镜像名以 `JUDGE_IMAGE_PREFIX` 开头；题目消息不能指定 OI 镜像。镜像应由部署流程
+预先构建并加载到每个评测节点。
+
+### OI 专用评测节点
+
+生产环境的 OI native 任务应配置独立的 go-judge 服务：
+
+```dotenv
+JUDGE_GO_JUDGE_URL=https://judge.example.internal
+JUDGE_GO_JUDGE_TOKEN=<secret>
+```
+
+Worker 只向该服务提交固定的 C99/C++11 编译命令、题目输入和资源限制；题目消息不能
+修改 URL、token、编译参数或镜像。每个测试点的 CPU 时间使用
+`cpuLimit`，墙钟保护为 三倍时限，标准输出和 checker 文件均限制为 32
+MiB。`testlib` checker 会在另一个 go-judge sandbox
+中运行，不能读取用户程序容器的文件或进程。
+
+远端测试点还通过 Redis 有序集合租约做跨 Worker 并发闸门。默认最多同时占用 2 个
+远端子任务槽位，可用 `JUDGE_GO_JUDGE_RESOURCE_CAPACITY`、
+`JUDGE_GO_JUDGE_RESOURCE_TTL_MS` 和 `JUDGE_GO_JUDGE_RESOURCE_WAIT_MS`
+调整；租约使用 Redis 服务端时间并在 Worker 异常退出后由 TTL 回收。TTL
+默认且最小为 660000 ms， 覆盖任务看门狗与仍在执行的远端请求窗口。容量应按
+go-judge 节点实际 CPU/ 内存预算设置，不能把它当作题目资源限制的替代品。
+
+WASM 题目不使用 go-judge 执行用户代码。正式 Worker 镜像内置固定的 WASI SDK，
+生产 Compose 与独立 Worker 均传递 OI 环境配置。Worker 使用固定的 `JUDGE_WASI_CC`
+/ `JUDGE_WASI_CXX` 编译 C99/C++11，再由 Wasmtime 以 NOJ 内置统一标准换算的 fuel
+预算运行； `JUDGE_WASI_TARGET` 与可选 `JUDGE_WASI_SYSROOT`
+必须由节点管理员统一配置。使用 WASM `testlib` 时还要把可信 testlib 头文件放在
+`JUDGE_WASI_TESTLIB_INCLUDE` 指定的 固定目录中。每个测试点的真实墙钟保护为
+`max(30 秒, 等效时限 × 10)`，触发判 SE；文件输入题的工作目录新增 数据上限为 32
+MiB。WASI 编译器还受 10 秒墙钟/CPU、512 MiB 地址空间和 64 MiB 输出
+上限约束，超时会回收整个编译进程组。
+
+WASI 编译节点需要启用 Landlock ABI 3 或更新版本的 Linux 内核（Linux 6.2+）。
+编译器只能读取系统工具链及管理员指定的 SDK/sysroot/testlib 目录，写入仅限本次
+临时目录，不能用源码的 `include`/`incbin` 读取 Worker 配置或凭据。 自定义
+`JUDGE_WASI_CC` / `JUDGE_WASI_CXX` 必须指向同一固定 SDK 的 `bin/clang` 和
+`bin/clang++`，sysroot 必须属于该 SDK。配置 WASI 的 Worker 启动时逐文件校验
+编译器、头文件、标准库和链接器内容，缺失或不匹配时启动失败；SDK 必须对 Worker
+只读。未配置 WASI 的原生专用 Worker 不执行该启动校验，收到 WASM 任务时返回 SE。
+编译隔离不可用时返回 SE。 默认 target 为 `wasm32-wasip1`，lld
+固定一个链接线程；WASM C++ 使用 SDK 的无异常 libc++
+配置（`-fno-exceptions`），显式使用 `throw`/`try` 的题目应选择 Native 后端。
+部署前可用以下命令验收真实工具链（含 C/C++、文件题、checker
+与私有文件隔离）。开发环境先构建 NOJ 修补版，不能直接使用未修补的官方 SDK：
+
+```bash
+cd noj-judge
+bash scripts/build-oi-wasi-toolchain.sh \
+  /tmp/noj-wasi-cache /tmp/noj-wasi-build /tmp/noj-wasi-sdk
+bash scripts/check-oi-wasi-toolchain.sh /tmp/noj-wasi-sdk
+```
+
+构建需要 Python 3.11+、CMake 3.20+、Ninja、Git 和 tar，源码与官方编译器下载均
+按固定 SHA-256 校验，产物必须匹配内置组件清单。构建和输出目录必须不存在，缓存
+目录可复用。生产镜像使用同一构建入口。
+
+升级 v2 时先暂停 WASM 提交入队并排空旧任务，再升级 Core 和全部 Worker，确认
+后台标准版本及摘要一致后恢复入队。旧任务不会自动切换标准；若携带 v1 快照交给 v2
+Worker，会返回 SE，需重新评测。历史成绩不自动重测。
 
 ## Docker daemon 权限边界
 
@@ -264,9 +328,9 @@ noj-core 维护评测镜像白名单（`judgeImages`），并在题目 CRUD /
    - LLM 调用题会按 `JUDGE_ALLOW_EVALUATOR_NETWORK` / `JUDGE_EVALUATOR_NETWORK`
      让 Evaluator 加入**评测隔离网络**（生产为 `noj-eval-net`）以访问
      `noj-llm-gateway`；Solution 容器始终 `network_mode=none`。
-   - `JUDGE_EVALUATOR_NETWORK` **不得**填 `bridge` / `host`：noj-judge 在生产启动
-     校验中会直接拒绝（默认 bridge 会让沙箱经网关 IP 触达宿主机与内网基础设施，
-     host 模式则完全取消隔离）。
+   - `JUDGE_EVALUATOR_NETWORK` **不得**填 `bridge` / `host`：noj-judge
+     在生产启动 校验中会直接拒绝（默认 bridge 会让沙箱经网关 IP
+     触达宿主机与内网基础设施， host 模式则完全取消隔离）。
 4. 注入用户代码与支持包，启动双容器 NDJSON 编排。
 5. 评测完成后按 RAII 顺序清理容器（先 Solution 后
    Evaluator），下次评测重新创建。
@@ -283,14 +347,15 @@ noj-cli status
 noj-cli logs judge --follow
 ```
 
-::: details 调高 judge 日志详细度（临时）
-judge 的日志级别同时读 `RUST_LOG` 与 `LOG_LEVEL`（`RUST_LOG` 优先）。
-用 compose 临时覆盖环境变量即可开启 debug，无需改 `.env.prod`：
+::: details 调高 judge 日志详细度（临时） judge 的日志级别同时读 `RUST_LOG` 与
+`LOG_LEVEL`（`RUST_LOG` 优先）。 用 compose 临时覆盖环境变量即可开启
+debug，无需改 `.env.prod`：
 
 ```bash
 docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
   -e RUST_LOG=noj_judge=debug judge
 ```
+
 :::
 
 ## 队列监控 {#queue-monitoring}
@@ -306,8 +371,8 @@ docker exec noj-prod-redis-1 redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queu
 ```
 
 > 容器名由 Compose 项目名派生（`name: noj-prod` + service `redis` →
-> `noj-prod-redis-1`）。用 `docker ps` 确认实际名称，或改用
-> `noj-cli status` 查看 compose 状态。
+> `noj-prod-redis-1`）。用 `docker ps` 确认实际名称，或改用 `noj-cli status`
+> 查看 compose 状态。
 
 密码从 `/opt/neuro-oj/.env.prod` 的 `REDIS_PASSWORD` 读取。
 

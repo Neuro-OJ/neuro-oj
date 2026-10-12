@@ -4,7 +4,11 @@ import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { BadRequestError } from "./../../../shared/base/errors.ts";
 import { enforceSelfTestRateLimit } from "../../system/index.ts";
 import { resolveProblem } from "./../../catalog/index.ts";
-import { createSelfTest, getSelfTest } from "../services/self-tests.ts";
+import {
+  cancelSelfTest,
+  createSelfTest,
+  getSelfTest,
+} from "../services/self-tests.ts";
 import type { SelfTestInput } from "./../types/self-tests.ts";
 
 type Env = {
@@ -56,6 +60,10 @@ router.post("/problems/:id/self-test", authMiddleware, async (c) => {
     language: body.language as string,
     code: body.code as string,
     file_name: body.file_name as string | undefined,
+    cases: body.cases as SelfTestInput["cases"],
+    version_id: typeof body.version_id === "string" && body.version_id
+      ? body.version_id
+      : undefined,
   };
 
   const isAdmin = await checkPermission(c, "submission:read_all");
@@ -71,6 +79,11 @@ router.get("/self-tests/:id", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const result = await getSelfTest(id, c);
   return c.json({ data: result });
+});
+
+router.post("/self-tests/:id/cancel", authMiddleware, async (c) => {
+  await cancelSelfTest(c.req.param("id") as string, c);
+  return c.json({ data: { cancel_requested: true } });
 });
 
 export default router;

@@ -19,12 +19,12 @@ import {
   eq,
   ilike,
   inArray,
+  isNotNull,
   type SQL,
   sql,
 } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
-  evaluationResults,
   problems,
   problemTags,
   submissions,
@@ -39,19 +39,25 @@ import { unendedPublicContestForProblem } from "./../../../contest/index.ts";
 import type { TagKind } from "../tags.ts";
 import {
   DIFFICULTIES,
+  getJudgeBackend,
+  getSubmissionLanguages,
   isValidDifficulty,
   isValidProblemType,
   type LlmConfig,
   type ProblemListQuery,
   type ProblemResponseWithTags,
+  type ProblemRuntimeConfig,
   type ProblemTagRef,
-  type RuntimeConfig,
 } from "./../../types/problems.ts";
 import type {
   AdminProblemListResponse,
   ProblemListResponse,
   ProblemResponse,
 } from "./problems-types.ts";
+
+function persistedJudgeType(value: string | null | undefined): "dual" | "oi" {
+  return value === "oi" ? "oi" : "dual";
+}
 
 /**
  * 将数据库行转换为题目响应。
@@ -68,6 +74,8 @@ function toProblemResponse(
     id: row.id,
     title: row.title,
     description: row.description,
+    samples: (row.samples ??
+      []) as import("../../types/problem-samples.ts").ProblemSample[],
     difficulty: row.difficulty,
     has_support_package: row.support_package_storage_url !== null,
     number: row.number,
@@ -75,6 +83,16 @@ function toProblemResponse(
     type: row.type,
     visibility: row.visibility as "public" | "private",
     is_objective: row.is_objective,
+    judge_type: persistedJudgeType(row.judge_type),
+    judge_backend: getJudgeBackend(
+      row.judge_type,
+      row.runtime_config,
+      row.is_objective,
+    ),
+    supported_languages: getSubmissionLanguages(
+      row.judge_type,
+      row.runtime_config as ProblemRuntimeConfig | null,
+    ),
     submission_mode: row.submission_mode as ProblemResponse["submission_mode"],
     artifact_max_size_mb: row.artifact_max_size_mb,
     display_id: `${row.type}${row.number}`,
@@ -90,7 +108,7 @@ function toProblemResponse(
   return {
     ...base,
     support_package_storage_url: row.support_package_storage_url,
-    runtime_config: row.runtime_config as RuntimeConfig,
+    runtime_config: row.runtime_config as ProblemRuntimeConfig,
     llm_config: row.llm_config as ProblemResponse["llm_config"],
   };
 }
@@ -154,6 +172,35 @@ export async function listProblems(
 
   // 构建筛选条件
   const conditions: SQL[] = [];
+  if (query.judge_type) {
+    if (!["oi", "dual", "objective"].includes(query.judge_type)) {
+      throw new BadRequestError("judge_type 仅允许 oi/dual/objective");
+    }
+    if (query.judge_type === "objective") {
+      conditions.push(eq(problems.is_objective, true));
+    } else {
+      conditions.push(eq(problems.is_objective, false));
+      conditions.push(
+        sql`COALESCE(${problems.judge_type}, 'dual') = ${query.judge_type}`,
+      );
+    }
+  }
+  if (query.judge_backend) {
+    if (!["dual", "oi-native", "oi-wasm"].includes(query.judge_backend)) {
+      throw new BadRequestError("judge_backend 仅允许 dual/oi-native/oi-wasm");
+    }
+    conditions.push(eq(problems.is_objective, false));
+    if (query.judge_backend === "dual") {
+      conditions.push(sql`COALESCE(${problems.judge_type}, 'dual') = 'dual'`);
+    } else {
+      conditions.push(eq(problems.judge_type, "oi"));
+      conditions.push(
+        sql`${problems.runtime_config}->>'backend' = ${
+          query.judge_backend.slice(3)
+        }`,
+      );
+    }
+  }
 
   if (query.difficulty) {
     if (!isValidDifficulty(query.difficulty)) {
@@ -193,6 +240,9 @@ export async function listProblems(
     (query.owner_id !== undefined && viewer.userId === query.owner_id);
   if (!canSeeOwnPrivate) {
     conditions.push(eq(problems.visibility, "public"));
+    // 未发布题目（无已发布版本）不进公共列表（Handbook §4.1/§6.2）：
+    // 普通访问者对未发布题目一律 404，列表里出现行等于泄露草稿题目的存在性。
+    conditions.push(isNotNull(problems.latest_version_id));
   }
 
   // ── 公开赛题目全域隐藏（审计 VULN-07）──
@@ -365,6 +415,7 @@ export async function listAllProblems(
       difficulty: problems.difficulty,
       support_package_storage_url: problems.support_package_storage_url,
       runtime_config: problems.runtime_config,
+      judge_type: problems.judge_type,
       llm_config: problems.llm_config,
       created_at: problems.created_at,
       updated_at: problems.updated_at,
@@ -405,7 +456,8 @@ export async function listAllProblems(
       title: r.title,
       difficulty: r.difficulty,
       support_package_storage_url: r.support_package_storage_url,
-      runtime_config: r.runtime_config as RuntimeConfig,
+      runtime_config: r.runtime_config as ProblemRuntimeConfig,
+      judge_type: persistedJudgeType(r.judge_type),
       llm_config: r.llm_config as LlmConfig | null,
       tags: tagMap.get(r.id) ?? [],
       created_at: r.created_at,
@@ -572,7 +624,14 @@ export async function applyAlgorithmTagVisibility(
 }
 
 /**
- * 查询 viewer 是否在指定题目存在通过提交（finished 且 score>0）。
+ * 查询 viewer 是否在指定题目存在**有效通过**提交。
+ *
+ * 版本化后（Handbook §3.4）通过状态改为读取提交的有效成绩投影
+ * `submissions.is_accepted`：它由唯一投影服务按当前有效版本策略计算，
+ * 覆盖历史版本、`exact(X)` 策略与升级提交，且命中索引
+ * `idx_submissions_problem_accepted_user (problem_id, is_accepted, user_id)`。
+ *
+ * 存量数据由迁移 0103 回填投影，因此读取口径与旧 `acceptedResultSql` 完全一致。
  */
 async function hasAcceptedSubmission(
   problemId: string,
@@ -582,16 +641,11 @@ async function hasAcceptedSubmission(
   const rows = await db
     .select({ id: submissions.id })
     .from(submissions)
-    .innerJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, submissions.id),
-    )
     .where(
       and(
         eq(submissions.problem_id, problemId),
         eq(submissions.user_id, userId),
-        eq(evaluationResults.status, "finished"),
-        sql`${evaluationResults.score} > 0`,
+        eq(submissions.is_accepted, true),
       ),
     )
     .limit(1);

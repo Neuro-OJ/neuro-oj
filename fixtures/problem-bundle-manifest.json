@@ -39,7 +39,7 @@
       }
     },
     {
-      "name": "artifact 提交 + 标签 + 已废弃 samples（非法形状仍被容忍）",
+      "name": "artifact 提交 + 标签 + 独立样例",
       "manifest": {
         "format_version": 1,
         "title": "产物题",
@@ -49,7 +49,13 @@
         "tags": [
           "模拟"
         ],
-        "samples": "legacy-shape-must-be-tolerated",
+        "samples": [
+          {
+            "id": "sample1",
+            "input": "1 2\n",
+            "output": "3\n"
+          }
+        ],
         "runtime_config": {
           "evaluator": {
             "image": "noj/evaluator-python:1",
@@ -81,13 +87,48 @@
             "command": "c",
             "time_limit_ms": 1,
             "memory_limit_mb": 1,
-            "network": { "enabled": true }
+            "network": {
+              "enabled": true
+            }
           },
           "solution": {
             "image": "i",
             "call_timeout_ms": 1,
             "memory_limit_mb": 1
           }
+        }
+      }
+    },
+    {
+      "name": "传统 OI 题",
+      "manifest": {
+        "format_version": 1,
+        "title": "A+B OI",
+        "type": "P",
+        "judge_type": "oi",
+        "runtime_config": {
+          "backend": "native",
+          "languages": [
+            "c",
+            "cc"
+          ],
+          "time_limit_ms": 1000,
+          "memory_limit_mb": 256,
+          "checker": {
+            "type": "default"
+          },
+          "subtasks": [
+            {
+              "id": "all",
+              "score": 100,
+              "cases": [
+                {
+                  "input": "testdata/1.in",
+                  "output": "testdata/1.out"
+                }
+              ]
+            }
+          ]
         }
       }
     }
@@ -205,6 +246,38 @@
         "format_version": 1,
         "title": "x",
         "submission_mode": "binary"
+      }
+    },
+    {
+      "name": "OI 题不允许模板",
+      "manifest": {
+        "format_version": 1,
+        "title": "x",
+        "judge_type": "oi",
+        "template": "template.c",
+        "runtime_config": {
+          "backend": "native",
+          "languages": [
+            "c"
+          ],
+          "time_limit_ms": 1,
+          "memory_limit_mb": 1,
+          "checker": {
+            "type": "default"
+          },
+          "subtasks": [
+            {
+              "id": "all",
+              "score": 100,
+              "cases": [
+                {
+                  "input": "1.in",
+                  "output": "1.out"
+                }
+              ]
+            }
+          ]
+        }
       }
     }
   ]

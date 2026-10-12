@@ -1,3 +1,4 @@
+import { SCHEDULING_ENV_DEFAULTS } from "./scheduling-env.ts";
 /**
  * 独立 Judge 的命令编排（T21）。
  *
@@ -558,7 +559,7 @@ export function renderStatusSummary(env: Record<string, string>): string[] {
     "JUDGE_QUEUE",
     "RESULT_QUEUE",
     "WORK_DIR",
-    "JUDGE_MAX_CONCURRENT_JUDGES",
+    ...Object.keys(SCHEDULING_ENV_DEFAULTS),
     "JUDGE_IMAGE_PREFIX",
     "JUDGE_IMAGE_REGISTRY",
     "JUDGE_DOCKER_SOCKET",
@@ -778,7 +779,7 @@ function defaultsForDryRun(): Record<string, string> {
     JUDGE_QUEUE: "noj:judge:queue",
     RESULT_QUEUE: "noj:judge:results",
     WORK_DIR: "/tmp/noj-judge",
-    JUDGE_MAX_CONCURRENT_JUDGES: "2",
+    ...SCHEDULING_ENV_DEFAULTS,
     JUDGE_IMAGE_PREFIX: "noj-",
     JUDGE_IMAGE_REGISTRY: "ghcr.io/neuro-oj",
     JUDGE_DOCKER_HOST: "unix:///run/noj-judge/docker.sock",

@@ -20,6 +20,32 @@ export {
   setStorageProviderForTest,
 } from "./factory.ts";
 export { LocalStorageProvider } from "./local.ts";
+export {
+  assertStorageObjectBindable,
+  collectStorageReferences,
+  compensateUploadedObject,
+  deleteStorageObject,
+  getStorageObject,
+  registerLegacyStorageObject,
+  registerReadyStorageObject,
+  registerStorageObject,
+  registerStreamedStorageObject,
+  releaseStorageObjectUploadReservation,
+  reserveStorageObjectUpload,
+  reserveStorageObjectUploadForContent,
+  STORAGE_UPLOAD_RESERVATION_TTL_MS,
+  StorageObjectDeletedError,
+  StorageObjectMissingError,
+  StorageUploadInFlightError,
+  uploadStorageObjectWithReservation,
+  verifyStorageObject,
+} from "./registry.ts";
+export type {
+  StorageDeleteOutcome,
+  StorageObjectRecord,
+  StorageReferenceReport,
+  StorageUploadReservation,
+} from "./registry.ts";
 export { S3StorageProvider } from "./s3.ts";
 export {
   buildStorageAuditReport,
@@ -41,6 +67,7 @@ export type {
   ParsedDownloadUrl,
   ParsedStorageUrl,
   StorageObjectInfo,
+  StorageObjectStat,
   StorageProvider,
 } from "./types.ts";
 export type {

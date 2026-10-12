@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   contests,
-  evaluationResults,
   problems,
   submissions,
   users,
@@ -56,7 +55,6 @@ async function createSubmission(
   const submissionId = crypto.randomUUID();
   const now = new Date().toISOString();
   const resultStatus = kind === "error" ? "error" : "finished";
-  const score = kind === "pass" ? 10000 : 0;
   await db.insert(submissions).values({
     id: submissionId,
     user_id: userId,
@@ -66,15 +64,10 @@ async function createSubmission(
     code: "print(1)",
     file_name: "main.py",
     status: resultStatus,
-    created_at: now,
-  });
-  await db.insert(evaluationResults).values({
-    id: crypto.randomUUID(),
-    submission_id: submissionId,
-    status: resultStatus,
-    score,
-    output: "",
-    details: "{}",
+    // 榜单读的是有效成绩投影（由结果服务维护）；此处直接落投影以模拟该状态
+    is_valid: resultStatus === "finished",
+    is_accepted: kind === "pass",
+    latest_attempt_id: null,
     created_at: now,
   });
 }
@@ -115,20 +108,10 @@ async function createTestProblem(problemNumber: number): Promise<string> {
 }
 
 /**
- * 清理测试用户的提交 + 评测结果 + 用户记录。
+ * 清理测试用户的提交 + 用户记录（尝试随提交级联删除）。
  */
 async function cleanupUser(userId: string): Promise<void> {
   const db = getDb();
-  // 先删除 evaluation_results（FK → submissions）
-  const userSubs = await db
-    .select({ id: submissions.id })
-    .from(submissions)
-    .where(eq(submissions.user_id, userId));
-  for (const sub of userSubs) {
-    await db.delete(evaluationResults).where(
-      eq(evaluationResults.submission_id, sub.id),
-    );
-  }
   await db.delete(submissions).where(eq(submissions.user_id, userId));
   await db.delete(users).where(eq(users.id, userId));
 }
@@ -138,16 +121,6 @@ async function cleanupUser(userId: string): Promise<void> {
  */
 async function cleanupProblem(problemId: string): Promise<void> {
   const db = getDb();
-  // 先删除关联的 submissions + evaluation_results
-  const problemSubs = await db
-    .select({ id: submissions.id })
-    .from(submissions)
-    .where(eq(submissions.problem_id, problemId));
-  for (const sub of problemSubs) {
-    await db.delete(evaluationResults).where(
-      eq(evaluationResults.submission_id, sub.id),
-    );
-  }
   await db.delete(submissions).where(eq(submissions.problem_id, problemId));
   await db.delete(problems).where(eq(problems.id, problemId));
 }
@@ -415,7 +388,13 @@ Deno.test({
       const row = result.data.find((item) => item.user_id === userId);
       assertExists(row);
       assertEquals(row.solved_count, 2);
-      assertEquals(row.total_submissions, 3);
+      // 全站榜单的聚合输入**整体**共用竞赛过滤（Handbook §3.4「保留赛期与
+      // affect_global_ranking 过滤」）：不计入全局榜的竞赛提交既不算通过，
+      // 也不进入提交总数与通过率分母。物化视图（0108）与内联查询口径一致：
+      // problem1（练习）+ problem3（计入全局榜且已结束）= 2；problem2 属
+      // affect_global_ranking=false 的竞赛 → 排除。
+      assertEquals(row.total_submissions, 2);
+      assertEquals(row.valid_submissions, 2);
     } finally {
       await cleanupUser(userId);
       await db.delete(contests).where(eq(contests.id, excludedContestId));

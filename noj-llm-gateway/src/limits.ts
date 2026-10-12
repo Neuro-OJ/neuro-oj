@@ -11,6 +11,49 @@ import type { Db } from "./db.ts";
 import type { RedisClient } from "./redis.ts";
 import type { EvalTokenPayload } from "./crypto.ts";
 
+/**
+ * 单 token 预算/计数的作用域（版本化后按**评测尝试**隔离）。
+ *
+ * - `attempt`：协议 v2 的 eval_token 携带 `attempt_id`，额度键为
+ *   `llm:attempt:<id>:calls|tokens|cost`，同一提交的重测各自独立预算；
+ * - `submission`：旧 core 未携带 `attempt_id`，沿用 `llm:sub:<id>:*`，
+ *   并在提交结束后由 core 按提交吊销。
+ */
+export function evalTokenScope(
+  payload: EvalTokenPayload,
+): { kind: "attempt" | "submission"; id: string } {
+  return payload.attempt_id
+    ? { kind: "attempt", id: payload.attempt_id }
+    : { kind: "submission", id: payload.submission_id };
+}
+
+/** 单 token 维度额度计数键（attempt 优先，旧 token 回退 submission）。 */
+export function evalTokenCounterKey(
+  payload: EvalTokenPayload,
+  field: "calls" | "tokens" | "cost",
+): string {
+  const scope = evalTokenScope(payload);
+  return scope.kind === "attempt"
+    ? `llm:attempt:${scope.id}:${field}`
+    : `llm:sub:${scope.id}:${field}`;
+}
+
+/** eval_token 吊销键（attempt 优先，旧 token 回退 submission）。 */
+export function evalTokenRevokedKey(payload: EvalTokenPayload): string {
+  const scope = evalTokenScope(payload);
+  return scope.kind === "attempt"
+    ? `llm:attempt:revoked:${scope.id}`
+    : `llm:token:revoked:${scope.id}`;
+}
+
+/** 多来源 IP 监控键（attempt 优先，旧 token 回退 submission）。 */
+export function evalTokenIpSetKey(payload: EvalTokenPayload): string {
+  const scope = evalTokenScope(payload);
+  return scope.kind === "attempt"
+    ? `llm:attempt-ips:${scope.id}`
+    : `llm:token-ips:${scope.id}`;
+}
+
 export interface QuotaRow {
   max_calls: number;
   max_tokens: number;
@@ -422,19 +465,19 @@ export async function enforceAndCount(
 
   const counters: CounterSpec[] = [
     {
-      key: `llm:sub:${payload.submission_id}:calls`,
+      key: evalTokenCounterKey(payload, "calls"),
       limit: payload.max_calls,
       inc: 1,
       ttl: opts.ttlSeconds,
     },
     {
-      key: `llm:sub:${payload.submission_id}:tokens`,
+      key: evalTokenCounterKey(payload, "tokens"),
       limit: payload.max_tokens,
       inc: tokens,
       ttl: opts.ttlSeconds,
     },
     {
-      key: `llm:sub:${payload.submission_id}:cost`,
+      key: evalTokenCounterKey(payload, "cost"),
       limit: -1,
       inc: cost,
       ttl: opts.ttlSeconds,
@@ -584,13 +627,13 @@ export async function settleUsage(
 
   const counters: CounterSpec[] = [
     {
-      key: `llm:sub:${payload.submission_id}:tokens`,
+      key: evalTokenCounterKey(payload, "tokens"),
       limit: payload.max_tokens,
       inc: deltaTokens,
       ttl: opts.ttlSeconds,
     },
     {
-      key: `llm:sub:${payload.submission_id}:cost`,
+      key: evalTokenCounterKey(payload, "cost"),
       limit: -1,
       inc: deltaCost,
       ttl: opts.ttlSeconds,

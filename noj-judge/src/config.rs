@@ -10,11 +10,11 @@ use tracing::warn;
 pub struct Config {
     /// Redis 连接 URL
     pub redis_url: String,
-    /// 评测任务队列名前缀（实际队列为 `{prefix}:high/:medium/:low`）
+    /// 评测任务队列名前缀（实际队列为 `{prefix}:{pool}:{high|medium|low}`）
     pub judge_queue: String,
     /// 评测结果列表名
     pub result_queue: String,
-    /// 优先级轮询时每个队列 BRPOPLPUSH 的超时秒数
+    /// 兼容 API 的阻塞超时；分池消费者只用于空池退让，最多 25ms。
     pub priority_poll_timeout_secs: f64,
     /// 临时工作目录
     pub work_dir: String,
@@ -32,6 +32,8 @@ pub struct Config {
     pub instance_id_source: InstanceIdSource,
     /// 受信评测镜像名前缀（镜像最后一段必须以此开头）
     pub image_prefix: String,
+    /// 传统 OI 题使用的固定编译/运行镜像；不从题目消息读取。
+    pub oi_image: String,
     /// 受信评测命令可执行文件白名单（逗号分隔）
     pub command_whitelist: Vec<String>,
     /// 是否允许消息开启 evaluator 网络（默认拒绝；E2E 可显式开启）
@@ -87,6 +89,7 @@ impl std::fmt::Debug for Config {
             .field("instance_id", &self.instance_id)
             .field("instance_id_source", &self.instance_id_source)
             .field("image_prefix", &self.image_prefix)
+            .field("oi_image", &self.oi_image)
             .field("command_whitelist", &self.command_whitelist)
             .field("allow_evaluator_network", &self.allow_evaluator_network)
             .field("evaluator_network_mode", &self.evaluator_network_mode)
@@ -391,6 +394,7 @@ impl Config {
             instance_id,
             instance_id_source,
             image_prefix: env_or("JUDGE_IMAGE_PREFIX", "noj-"),
+            oi_image: env_or("JUDGE_OI_IMAGE", "noj-oi-cpp"),
             command_whitelist: env_or("JUDGE_COMMAND_WHITELIST", "python3,deno,node,bash,sh")
                 .split(',')
                 .map(|s| s.trim().to_string())
@@ -427,6 +431,8 @@ impl Config {
     }
 
     /// 返回三个评测任务队列名（high / medium / low）。
+    /// 历史队列布局用于配置兼容测试；生产调度使用资源池队列。
+    #[allow(dead_code)]
     pub fn judge_queues(&self) -> [String; 3] {
         [
             format!("{}:high", self.judge_queue),
@@ -448,8 +454,29 @@ impl Config {
     /// VULN-20：禁止 evaluator 加入 `bridge`（默认桥接网络，可横向访问同宿主
     /// 业务容器）或 `host`（共享宿主网络栈）。
     pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.priority_poll_timeout_secs.is_finite() && self.priority_poll_timeout_secs > 0.0,
+            "配置校验失败：JUDGE_PRIORITY_POLL_TIMEOUT_MS 必须为有限正数"
+        );
         validate_evaluator_network_mode(&self.evaluator_network_mode)
             .map_err(|e| anyhow::anyhow!("配置校验失败：{}", e))?;
+        if self.oi_image.is_empty()
+            || self.oi_image.contains('\0')
+            || self.oi_image.contains("..")
+            || !self
+                .oi_image
+                .rsplit('/')
+                .next()
+                .unwrap_or_default()
+                .split(':')
+                .next()
+                .unwrap_or_default()
+                .starts_with(&self.image_prefix)
+        {
+            anyhow::bail!(
+                "配置校验失败：JUDGE_OI_IMAGE 必须是以 JUDGE_IMAGE_PREFIX 开头的安全镜像名"
+            );
+        }
         Ok(())
     }
 }
@@ -536,6 +563,7 @@ mod tests {
             "JUDGE_DOCKER_HOST",
             "JUDGE_REQUIRE_ISOLATED_DOCKER",
             "JUDGE_PRIORITY_POLL_TIMEOUT_MS",
+            "JUDGE_OI_IMAGE",
             // 实例 ID 必须由环境变量隔离，否则会读到宿主/其他测试的值
             "JUDGE_INSTANCE_ID",
             "JUDGE_EVALUATOR_NETWORK",
@@ -562,6 +590,7 @@ mod tests {
         assert_eq!(cfg.work_dir, "/tmp/noj-judge");
         assert_eq!(cfg.max_concurrent_judges, DEFAULT_MAX_CONCURRENT_JUDGES);
         assert_eq!(cfg.cpu_limit_millicores, DEFAULT_CPU_LIMIT_MILLICORES);
+        assert_eq!(cfg.oi_image, "noj-oi-cpp");
         assert_eq!(cfg.docker_host, crate::docker::DEFAULT_DOCKER_HOST);
         assert!(!cfg.require_isolated_docker);
     }

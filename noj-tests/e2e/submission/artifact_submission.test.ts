@@ -2,7 +2,7 @@
  * Artifact 提交跨模块 E2E：上传 zip → 评测 → 分数展示。
  */
 
-import { zipSync, strToU8 } from "npm:fflate@0.8.2";
+import { strToU8, zipSync } from "npm:fflate@0.8.2";
 import {
   apiGet,
   apiPost,
@@ -10,6 +10,7 @@ import {
   e2eTest,
   getAdminToken,
   isE2E,
+  publishProblemVersion,
   registerUser,
   TEST_PASSWORD,
   waitForServer,
@@ -19,7 +20,9 @@ function makeZip(): Blob {
   const zipData = zipSync({
     "submission.py": strToU8("def solve():\n    return 42\n"),
   });
-  return new Blob([zipData as unknown as BlobPart], { type: "application/zip" });
+  return new Blob([zipData as unknown as BlobPart], {
+    type: "application/zip",
+  });
 }
 
 e2eTest("[e2e/artifact] Setup", async () => {
@@ -52,7 +55,7 @@ e2eTest("[e2e/artifact] 创建 artifact 题目并上传 zip 评测", async () =>
           command:
             `python3 -c "import json; from noj_evaluator_sdk import SolutionRunner, result; ` +
             `runner = SolutionRunner(); value = runner.call('solve'); ` +
-            `result.accept(score=10000, details={'value': value})"`,
+            `result.accept(score=100, details={'value': value})"`,
           time_limit_ms: 15000,
           memory_limit_mb: 256,
         },
@@ -66,13 +69,21 @@ e2eTest("[e2e/artifact] 创建 artifact 题目并上传 zip 评测", async () =>
     adminToken,
   );
   if (createRes.status !== 201) {
-    throw new Error(`创建 artifact 题目失败: ${createRes.status} ${JSON.stringify(createRes.body)}`);
+    throw new Error(
+      `创建 artifact 题目失败: ${createRes.status} ${
+        JSON.stringify(createRes.body)
+      }`,
+    );
   }
   const problemId = (createRes.body as { data: { id: string } }).data.id;
+
+  // 发布作答版本：版本化后提交必须携带 version_id，未发布的题目无法提交
+  const versionId = await publishProblemVersion(adminToken, problemId, "e2e");
 
   // 上传 zip
   const form = new FormData();
   form.append("problem_id", problemId);
+  form.append("version_id", versionId);
   form.append("language", "python3");
   form.append("file", makeZip(), "submission.zip");
   const uploadRes = await fetch(`${BASE_URL}/api/v1/submissions`, {
@@ -81,15 +92,25 @@ e2eTest("[e2e/artifact] 创建 artifact 题目并上传 zip 评测", async () =>
     body: form,
   });
   if (uploadRes.status !== 201) {
-    throw new Error(`上传 artifact 失败: ${uploadRes.status} ${await uploadRes.text()}`);
+    throw new Error(
+      `上传 artifact 失败: ${uploadRes.status} ${await uploadRes.text()}`,
+    );
   }
   const submission = (await uploadRes.json() as { data: { id: string } }).data;
 
   // 轮询评测结果
   let result: { status: string; score?: number } | null = null;
   for (let i = 0; i < 40; i++) {
-    const detail = await apiGet(`/api/v1/submissions/${submission.id}`, userToken);
-    const d = (detail.body as { data: { status: string; result: { status: string; score: number } | null } }).data;
+    const detail = await apiGet(
+      `/api/v1/submissions/${submission.id}`,
+      userToken,
+    );
+    const d = (detail.body as {
+      data: {
+        status: string;
+        result: { status: string; score: number } | null;
+      };
+    }).data;
     if (d.status === "finished" || d.status === "error") {
       result = d.result ?? { status: d.status };
       break;

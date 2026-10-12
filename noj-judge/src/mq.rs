@@ -6,6 +6,25 @@ use crate::types::{JudgeResult, JudgeTask};
 
 const PROCESSING_SUFFIX: &str = ":processing";
 
+/// 等待诊断只保留轮次和原因，不携带源码或题包；短 TTL 防止异常退出残留。
+pub async fn mark_resource_wait(
+    client: &redis::Client,
+    prefix: &str,
+    task: &JudgeTask,
+    reason: Option<&str>,
+) {
+    let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+        return;
+    };
+    let key = format!("{prefix}:waiting:{}", task.submission_id);
+    if let Some(reason) = reason {
+        let value = serde_json::json!({"run_id":task.run_id,"rejudge_seq":task.rejudge_seq.unwrap_or(0),"reason":reason}).to_string();
+        let _: redis::RedisResult<()> = conn.set_ex(key, value, 30).await;
+    } else {
+        let _: redis::RedisResult<usize> = conn.del(key).await;
+    }
+}
+
 /// 固定比例轮转序列：high:medium:low = 4:2:1。
 /// 下标对应 `[high, medium, low]` 队列数组。
 pub const PRIORITY_SEQUENCE: [usize; 7] = [0, 0, 0, 0, 1, 1, 2];
@@ -75,29 +94,16 @@ async fn handle_pulled_message(
 ///    高优先级空队列超时之后；
 /// 2. 三个队列都为空时只做**一次**阻塞 BRPOPLPUSH（旧实现对 7 个槽位各阻塞
 ///    一次，一轮空转最长 7×timeout，默认 700ms）。
+// 保留单池阻塞 API，供兼容调用方使用；生产分池消费者只用非阻塞入口。
+#[allow(dead_code)]
 pub async fn pull_task_priority(
     conn: &mut redis::aio::MultiplexedConnection,
     queues: &[String; 3],
     cursor: &mut usize,
     timeout_secs: f64,
 ) -> Result<Option<PulledTask>> {
-    // 阶段 1：非阻塞按序探测。
-    for offset in 0..PRIORITY_SEQUENCE.len() {
-        let idx = priority_slot(*cursor, offset);
-        let queue = &queues[idx];
-        let processing = processing_queue(queue);
-        let raw: Option<String> = conn
-            .rpoplpush(queue, &processing)
-            .await
-            .context("RPOPLPUSH 拉取任务失败")?;
-
-        if let Some(raw) = raw {
-            *cursor = advance_cursor(*cursor, offset);
-            if let Some(pulled) = handle_pulled_message(conn, queue, &processing, raw).await {
-                return Ok(Some(pulled));
-            }
-            // 坏消息已移出 processing，继续探测序列中的下一个队列。
-        }
+    if let Some(task) = try_pull_task_priority(conn, queues, cursor).await? {
+        return Ok(Some(task));
     }
 
     // 阶段 2：全部为空，只阻塞等待一次（等待游标所在队列，保证不偏袒低优先级）。
@@ -160,6 +166,34 @@ if redis.call('LREM', KEYS[1], 1, ARGV[1]) > 0 then
 end
 return 0
 "#;
+
+/// 分资源池消费者使用非阻塞探测，空池不能阻塞其他池的领取。
+pub async fn try_pull_task_priority(
+    conn: &mut redis::aio::MultiplexedConnection,
+    queues: &[String; 3],
+    cursor: &mut usize,
+) -> Result<Option<PulledTask>> {
+    // 阶段 1：非阻塞按序探测。
+    for offset in 0..PRIORITY_SEQUENCE.len() {
+        let idx = priority_slot(*cursor, offset);
+        let queue = &queues[idx];
+        let processing = processing_queue(queue);
+        let raw: Option<String> = conn
+            .rpoplpush(queue, &processing)
+            .await
+            .context("RPOPLPUSH 拉取任务失败")?;
+
+        if let Some(raw) = raw {
+            *cursor = advance_cursor(*cursor, offset);
+            if let Some(pulled) = handle_pulled_message(conn, queue, &processing, raw).await {
+                return Ok(Some(pulled));
+            }
+            // 坏消息已移出 processing，继续探测序列中的下一个队列。
+        }
+    }
+
+    Ok(None)
+}
 
 pub async fn requeue_task(redis_client: &redis::Client, queue: &str, raw: &str) -> Result<()> {
     let mut conn = redis_client
@@ -436,7 +470,10 @@ mod tests {
         }"#;
         let task = parse_task_message(json).expect("应解析成功");
         assert_eq!(task.submission_id, "sid-1");
-        assert_eq!(task.runtime_config.evaluator.image, "noj-evaluator-python");
+        assert_eq!(
+            task.runtime_config.as_dual().unwrap().evaluator.image,
+            "noj-evaluator-python"
+        );
     }
 
     #[test]

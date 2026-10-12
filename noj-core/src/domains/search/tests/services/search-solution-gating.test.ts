@@ -18,6 +18,7 @@ import {
   leaveTestContext,
   updateSetting,
 } from "../../../system/index.ts";
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 
 const ownerId = "sg-owner";
 const problemId = "sg-problem";
@@ -49,6 +50,8 @@ async function setup(): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  // 竞赛只能固定已发布版本（Handbook §2.6）：夹具题目补迁移基线
+  await publishBaselineVersionForTest(problemId);
   enterTestContext({ actorId: "0", actorIp: "127.0.0.1", actorRole: "admin" });
   try {
     await updateSetting("community_enabled", true, "0");

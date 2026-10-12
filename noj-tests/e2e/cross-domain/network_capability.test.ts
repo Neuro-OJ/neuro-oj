@@ -25,6 +25,7 @@ import {
   getProblemIdByNumber,
   isE2E,
   pollSubmission,
+  publishProblemVersion,
   registerUser,
   submitCode,
   TEST_PASSWORD,
@@ -311,6 +312,8 @@ e2eTest(
         `设置导入题目公开失败: ${pubRes.status} ${JSON.stringify(pubRes.body)}`,
       );
     }
+    // 题包导入只写共享草稿；提交前必须显式发布作答版本（Handbook §6.2）
+    await publishProblemVersion(adminToken, bundleProblemId, "E2E 联网题 V1");
     console.log(
       `  → 导入题目 ${bundleProblemId.slice(0, 8)} 成功（联网已开启）`,
     );

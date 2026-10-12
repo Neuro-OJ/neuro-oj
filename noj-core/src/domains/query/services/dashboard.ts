@@ -1,7 +1,6 @@
+import { unifiedSubmissionSources } from "../../../shared/versioning/submission-sources.ts";
 import { sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
-// deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
-import { evaluationResults } from "./../../../shared/db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
 import { problems } from "./../../../shared/db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
@@ -19,6 +18,7 @@ export interface DashboardStats {
   total_users: number;
   total_problems: number;
   total_submissions: number;
+  valid_submissions: number;
   total_tags: number;
   total_accepted: number;
   total_pending: number;
@@ -52,9 +52,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
  * 实际执行统计查询的内部函数。
  * 由 getDashboardStats() 调用，异常由外层统一转换为 DASHBOARD_STATS_ERROR。
  */
-// NOJ-084：5 秒基础缓存，避免管理首页反复全表 COUNT。
-let _dashboardCache: { at: number; data: DashboardStats } | null = null;
-const DASHBOARD_CACHE_TTL_MS = 5000;
 
 /**
  * 统一取查询结果的首行。
@@ -81,9 +78,6 @@ function executeRow<T>(
  */
 async function queryDashboardStats(): Promise<DashboardStats> {
   const now = Date.now();
-  if (_dashboardCache && now - _dashboardCache.at < DASHBOARD_CACHE_TTL_MS) {
-    return _dashboardCache.data;
-  }
 
   const db = getDb();
   const twentyFourHoursAgo = new Date(now - 24 * 60 * 60 * 1000).toISOString();
@@ -106,13 +100,12 @@ async function queryDashboardStats(): Promise<DashboardStats> {
       (SELECT count(*)::text FROM problems) AS total_problems,
       (SELECT count(*)::text FROM tags) AS total_tags,
       count(*)::text AS total_submissions,
-      count(*) FILTER (WHERE er.status = 'finished' AND er.score > 0)::text AS total_accepted,
-      count(*) FILTER (WHERE er.status IS NOT NULL)::text AS total_judged,
-      count(*) FILTER (WHERE s.status = 'pending')::text AS total_pending,
-      count(*) FILTER (WHERE s.created_at >= ${twentyFourHoursAgo})::text AS recent_submissions_24h,
-      count(DISTINCT s.user_id) FILTER (WHERE s.created_at >= ${twentyFourHoursAgo})::text AS active_users_24h
-    FROM submissions s
-    LEFT JOIN evaluation_results er ON er.submission_id = s.id
+      count(*) FILTER (WHERE ${sql`submissions.is_accepted`})::text AS total_accepted,
+      count(*) FILTER (WHERE submissions.is_valid)::text AS total_judged,
+      count(*) FILTER (WHERE submissions.status = 'pending')::text AS total_pending,
+      count(*) FILTER (WHERE submissions.created_at >= ${twentyFourHoursAgo})::text AS recent_submissions_24h,
+      count(DISTINCT submissions.user_id) FILTER (WHERE submissions.created_at >= ${twentyFourHoursAgo})::text AS active_users_24h
+    FROM ${unifiedSubmissionSources}
   `);
 
   const row = executeRow(result);
@@ -133,6 +126,7 @@ async function queryDashboardStats(): Promise<DashboardStats> {
     total_users: totalUsers,
     total_problems: totalProblems,
     total_submissions: totalSubmissions,
+    valid_submissions: totalJudged,
     total_tags: totalTags,
     total_accepted: totalAccepted,
     total_pending: totalPending,
@@ -140,11 +134,10 @@ async function queryDashboardStats(): Promise<DashboardStats> {
     recent_submissions_24h: recentSubmissions24h,
     active_users_24h: activeUsers24h,
   };
-  _dashboardCache = { at: now, data };
   return data;
 }
 
 /** 测试用：清空仪表盘缓存。 */
 export function _resetDashboardCacheForTest(): void {
-  _dashboardCache = null;
+  // 统计直接查询数据库，保留既有测试入口。
 }

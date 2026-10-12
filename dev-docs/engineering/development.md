@@ -43,6 +43,18 @@ cd noj-judge && cargo run           # 需要 Docker
 cd noj-llm-gateway && deno task dev # 可选，LLM 题需要；先停掉 compose 中的 llm-gateway
 ```
 
+Judge 不自动读取 `.env` 或 `.env.example`。本地 MinIO 使用 HTTP 时，在启动
+Judge 的终端显式传入开关，否则任务会在下载测试数据包时因要求 HTTPS 而终止：
+
+```bash
+cd noj-judge
+JUDGE_ALLOW_HTTP_S3=true cargo run --release
+```
+
+WASM 题还需通过启动环境设置 `JUDGE_WASI_CC`、`JUDGE_WASI_CXX` 和
+`JUDGE_WASI_SYSROOT`，指向通过标准校验的 NOJ 修补版 SDK。只允许 HTTP 下载
+不会自动启用 WASM 工具链。修改环境变量后需重新启动 Worker，失败提交需重测。
+
 ## 常用命令
 
 ```bash

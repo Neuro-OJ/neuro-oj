@@ -1,13 +1,17 @@
 import { createApp } from "./app.ts";
 import { closeDbForShutdown } from "./shared/db/connection.ts";
 import { runMigrations } from "./shared/db/migrate.ts";
-import { startQueueSweeper } from "./domains/submission/index.ts";
+import {
+  startQueueSweeper,
+  startSubmissionJobWorker,
+} from "./domains/submission/index.ts";
 import { closeRedisForShutdown, connectRedis } from "./shared/mq/connection.ts";
 import {
   requestResultConsumerShutdown,
   startResultConsumerWithRetry,
 } from "./domains/submission/index.ts";
 import { migrateLegacyJudgeQueue } from "./domains/submission/mq/legacy-judge-queue.ts";
+import { migratePoolJudgeQueues } from "./domains/submission/mq/pool-judge-queue.ts";
 import { initEventSubscriber } from "./shared/sse/event-bus.ts";
 import { startSseEventRetentionTask } from "./shared/sse/sse-events.ts";
 import { snapshotEnv } from "./domains/system/index.ts";
@@ -290,8 +294,10 @@ async function main() {
     await connectRedis();
     // 三级优先级队列升级：把旧单队列残留任务迁入 medium，避免升级瞬间
     // 在途任务永久卡在 pending/judging（幂等、失败不阻断启动）。
+    await migratePoolJudgeQueues();
     await migrateLegacyJudgeQueue();
   } catch (err) {
+    if (err instanceof Error && /迁移|processing/.test(err.message)) throw err;
     logger.error("Redis 连接失败，评测分发功能不可用", { err });
   }
 
@@ -306,6 +312,9 @@ async function main() {
 
   // 启动 processing 超时重投 + pending 提交恢复 sweeper
   startQueueSweeper();
+
+  // 启动批量任务 worker（管理员重测 / 用户升级条目派发；Handbook §5.7）
+  startSubmissionJobWorker();
 
   // 初始化 Redis Pub/Sub 事件订阅者（后台运行，用于 SSE 推送）
   initEventSubscriber();

@@ -10,6 +10,10 @@
  * `fixtures/problem-bundle-manifest.json` 断言，任一漂移即红灯。
  */
 import { validateBundleManifest } from "./vendor/problem-bundle.ts";
+import {
+  isOiRuntimeConfig,
+  type OiRuntimeConfig,
+} from "./vendor/runtime-config.ts";
 
 /** 单条校验发现。 */
 export interface LintFinding {
@@ -174,8 +178,8 @@ export function lintBundle(files: BundleFiles): LintReport {
     }
   }
 
-  // 打包必需文件（非客观题要求 evaluate.py）
-  if (manifest.is_objective !== true) {
+  // 打包必需文件（OI 题使用测试数据，不要求 evaluate.py）
+  if (manifest.is_objective !== true && manifest.judge_type !== "oi") {
     if (!files.names.includes("evaluate.py")) {
       findings.push({
         level: "error",
@@ -184,13 +188,50 @@ export function lintBundle(files: BundleFiles): LintReport {
         file: "evaluate.py",
       });
     }
-  } else if (!files.names.includes("questions.json")) {
+  } else if (
+    manifest.is_objective === true && !files.names.includes("questions.json")
+  ) {
     findings.push({
       level: "error",
       rule: "must/missing-questions",
       message: "客观题套卷缺少 questions.json",
       file: "questions.json",
     });
+  }
+
+  // OI 题包的配置引用必须在同一个目录中，避免 pack 后才发现输入/答案缺失。
+  if (
+    manifest.judge_type === "oi" && isOiRuntimeConfig(manifest.runtime_config)
+  ) {
+    const runtime = manifest.runtime_config as OiRuntimeConfig;
+    const requireFile = (path: string, context: string): void => {
+      if (!files.names.includes(path)) {
+        findings.push({
+          level: "error",
+          rule: "must/missing-oi-file",
+          message: `${context} 引用的文件不存在：${path}`,
+          file: path,
+        });
+      }
+    };
+    for (const subtask of runtime.subtasks) {
+      for (const testCase of subtask.cases) {
+        requireFile(testCase.input, "OI 测试点输入");
+        requireFile(testCase.output, "OI 测试点标准答案");
+      }
+    }
+    if (runtime.checker.type === "testlib" && runtime.checker.path) {
+      requireFile(runtime.checker.path, "OI testlib checker");
+    }
+    for (
+      const path of [
+        ...(runtime.compile_extra_files ?? []),
+        ...(runtime.checker_extra_files ?? []),
+        ...(runtime.user_extra_files ?? []),
+      ]
+    ) {
+      requireFile(path, "OI extra file");
+    }
   }
 
   findings.push(...runQualityRules({ files, manifest }));

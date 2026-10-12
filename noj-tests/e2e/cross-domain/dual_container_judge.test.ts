@@ -18,6 +18,7 @@ import {
   apiPut,
   e2eTest,
   getAdminToken,
+  publishProblemVersion,
   registerUser,
 } from "../helper.ts";
 
@@ -307,6 +308,11 @@ e2eTest(
       adminToken,
       `[${TEST_TAG}] 普通用户提交双容器`,
     );
+    const versionId = await publishProblemVersion(
+      adminToken,
+      problemId,
+      "E2E 双容器作答版本",
+    );
 
     // 普通用户提交代码
     const userToken = await registerUser(
@@ -319,6 +325,7 @@ e2eTest(
       "/api/v1/submissions",
       {
         problem_id: problemId,
+        version_id: versionId,
         language: "python3",
         code: "def solve(a, b):\n    return a + b\n",
       },

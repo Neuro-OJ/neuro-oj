@@ -166,7 +166,10 @@ services:
       REDIS_URL: redis://redis:6379/1
       JUDGE_QUEUE: noj:judge:queue
       RESULT_QUEUE: noj:judge:results
-      MAX_CONCURRENT: "2"
+      # 此栈覆盖现有 AI/客观题 API 和浏览器链路，不含 WASI SDK。
+      # WASM 通过 judge-check 的真实 SDK、跨进程快照和生产镜像另行验收。
+      JUDGE_RESOURCE_POOLS: ai
+      JUDGE_AI_TASK_CONCURRENCY: "2"
       WORK_DIR: /tmp/noj-work
       JUDGE_INSTANCE_ID: noj-e2e-judge-1
       JUDGE_IMAGE_PREFIX: noj-

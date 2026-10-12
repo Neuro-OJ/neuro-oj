@@ -18,6 +18,7 @@ export interface UserProfileResponse {
   };
   stats: {
     total_submissions: number;
+    valid_submissions: number;
     accepted: number;
     acceptance_rate: number;
     solved_count: number;
@@ -60,6 +61,7 @@ export interface ProfileUserRow {
 /** 提交统计聚合行。 */
 export interface ProfileStatsRow {
   total_submissions: number;
+  valid_submissions: number;
   accepted: number;
   solved_count: number;
 }

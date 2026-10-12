@@ -18,6 +18,10 @@ export type AuditAction =
   | "problems.runtime_config_changed"
   | "problems.imported"
   | "problems.review"
+  | "problems.version_published"
+  | "problems.effective_version_policy_changed"
+  | "contest.problem_version_changed"
+  | "contest.problem_effective_version_policy_changed"
   | "trainings.update"
   | "trainings.delete"
   | "tags.create"
@@ -113,6 +117,39 @@ export type AuditDetail =
     action: "problems.review";
     problem_ids: string[];
     operation: string;
+  }
+  | {
+    action: "problems.version_published";
+    version: number;
+    version_id: string;
+    change_note: string;
+  }
+  | {
+    action: "problems.effective_version_policy_changed";
+    title: string;
+    display_id: string;
+    from_mode: string;
+    to_mode: string;
+    required_version_id: string | null;
+    expected_revision: number;
+    affected_submissions: number;
+  }
+  | {
+    action: "contest.problem_version_changed";
+    contest_id: string;
+    problem_id: string;
+    from_version_id: string | null;
+    to_version_id: string;
+  }
+  | {
+    action: "contest.problem_effective_version_policy_changed";
+    contest_id: string;
+    problem_id: string;
+    from_mode: string;
+    to_mode: string;
+    required_version_id: string | null;
+    expected_revision: number;
+    affected_submissions: number;
   }
   | {
     action: "trainings.update";

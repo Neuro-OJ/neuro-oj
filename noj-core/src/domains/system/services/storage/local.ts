@@ -22,6 +22,7 @@ import {
   parseStorageUrl,
   sha256Hex,
   type StorageObjectInfo,
+  type StorageObjectStat,
   type StorageProvider,
   validateStorageKey,
 } from "./types.ts";
@@ -87,11 +88,18 @@ function filePathFor(storageDir: string, key: string): string {
 export class LocalStorageProvider implements StorageProvider {
   private warned = false;
 
-  /** 存储根目录（构造时解析 SUPPORT_PACKAGE_DIR，缺省 data/storage）。 */
-  private readonly storageDir: string = Deno.env.get("SUPPORT_PACKAGE_DIR") ??
-    "data/storage";
+  /**
+   * 存储根目录：显式传入优先（测试注入），否则 `SUPPORT_PACKAGE_DIR`，
+   * 最后回退 `data/storage`。
+   *
+   * 显式参数存在的意义：测试若用 `Deno.env.set` 覆盖环境变量，会**污染同进程
+   * 其他测试文件**（全量测试共用一个进程时，其他用例会写进临时目录而断言失败）。
+   */
+  private readonly storageDir: string;
 
-  constructor() {
+  constructor(storageDir?: string) {
+    this.storageDir = storageDir ?? Deno.env.get("SUPPORT_PACKAGE_DIR") ??
+      "data/storage";
     this.emitDeprecationWarning();
   }
 
@@ -138,7 +146,23 @@ export class LocalStorageProvider implements StorageProvider {
       await Deno.remove(tmpPath);
     }
 
-    return buildStorageUrl("local", ext ? fileName : base64Key, hashHex);
+    return this.urlForUpload(_key, hashHex, contentType);
+  }
+
+  /**
+   * 预测 `put()` 将返回的 URL（不写盘）。
+   *
+   * local 是内容寻址：URL key 只由内容 SHA-256 决定（`_key` 忽略），扩展名由
+   * contentType 推导，因此上传前即可算出 URL 并先登记上传预约。
+   */
+  urlForUpload(_key: string, sha256Hex: string, contentType?: string): string {
+    const base64Key = this.hexToBase64url(sha256Hex);
+    const ext = extensionFor(contentType);
+    return buildStorageUrl(
+      "local",
+      ext ? `${base64Key}.${ext}` : base64Key,
+      sha256Hex,
+    );
   }
 
   /**
@@ -238,6 +262,30 @@ export class LocalStorageProvider implements StorageProvider {
       if (err instanceof Deno.errors.NotFound) {
         // 幂等删除
         return;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * 查询本地对象的存在性与大小（仅文件元数据，不读内容）。
+   */
+  async stat(url: string): Promise<StorageObjectStat> {
+    const parsed = parseStorageUrl(url);
+    if (parsed.provider !== "local") {
+      throw new Error(`local provider 拒绝 ${parsed.provider} URL`);
+    }
+    const filePath = filePathFor(this.storageDir, parsed.key);
+    try {
+      const info = await Deno.stat(filePath);
+      return {
+        exists: true,
+        sizeBytes: info.size,
+        lastModified: info.mtime?.toISOString() ?? null,
+      };
+    } catch (err) {
+      if (err instanceof Deno.errors.NotFound) {
+        return { exists: false, sizeBytes: null, lastModified: null };
       }
       throw err;
     }

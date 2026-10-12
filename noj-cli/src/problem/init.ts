@@ -7,7 +7,7 @@
  * ⚠️ 这是**刻意的第二份实现**（issue #514 决策：`noj-cli` 不依赖主仓库导入映射）。
  * 修改时必须同步 `noj-core/scripts/problems-init.ts`。
  */
-import { join } from "@std/path";
+import { dirname, join } from "@std/path";
 
 /** slug 允许的字符：小写字母/数字/连字符，3-64 位，首尾非连字符。 */
 export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/;
@@ -27,6 +27,7 @@ export interface ProblemInitOptions {
   title?: string;
   type?: string;
   difficulty?: string;
+  judgeType?: "dual" | "oi";
   root?: string;
 }
 
@@ -42,26 +43,42 @@ function problemJson(options: {
   title: string;
   type: string;
   difficulty: string;
+  judgeType: "dual" | "oi";
 }): string {
+  const runtimeConfig = options.judgeType === "oi"
+    ? {
+      backend: "native",
+      languages: ["c", "cc"],
+      time_limit_ms: 1000,
+      memory_limit_mb: 256,
+      checker: { type: "default" },
+      subtasks: [{
+        id: "all",
+        score: 100,
+        cases: [{ input: "testdata/1.in", output: "testdata/1.out" }],
+      }],
+    }
+    : {
+      evaluator: {
+        image: "noj/evaluator-python:1",
+        command: "python3 /workspace/evaluate.py",
+        time_limit_ms: 1000,
+        memory_limit_mb: 256,
+      },
+      solution: {
+        image: "noj/solution-python:1",
+        call_timeout_ms: 5000,
+        memory_limit_mb: 256,
+      },
+    };
   return JSON.stringify(
     {
       format_version: 1,
       title: options.title,
       difficulty: options.difficulty,
       type: options.type,
-      runtime_config: {
-        evaluator: {
-          image: "noj/evaluator-python:1",
-          command: "python3 /workspace/evaluate.py",
-          time_limit_ms: 1000,
-          memory_limit_mb: 256,
-        },
-        solution: {
-          image: "noj/solution-python:1",
-          call_timeout_ms: 5000,
-          memory_limit_mb: 256,
-        },
-      },
+      judge_type: options.judgeType,
+      runtime_config: runtimeConfig,
     },
     null,
     2,
@@ -111,18 +128,29 @@ if __name__ == "__main__":
     main()
 `;
 
-function readmeMarkdown(title: string): string {
+function readmeMarkdown(title: string, judgeType: "dual" | "oi"): string {
+  const todo = judgeType === "oi"
+    ? [
+      "- [ ] 填写 statement.md 题面",
+      "- [ ] 补齐 testdata/1.in 与 testdata/1.out，并在 problem.json 配置测试点",
+      "- [ ] 确认 checker 与子任务分值符合 OI 题意",
+      "- [ ] 运行 noj-cli problem lint . 校验",
+      "- [ ] 运行 noj-cli problem pack . 打包",
+    ]
+    : [
+      "- [ ] 填写 statement.md 题面",
+      "- [ ] 实现 evaluate.py 判分逻辑",
+      "- [ ] 补齐 visible.jsonl / hidden.jsonl 用例",
+      "- [ ] 确认 template.py 不含可直接满分的实现",
+      "- [ ] 运行 noj-cli problem lint . 校验",
+      "- [ ] 运行 noj-cli problem pack . 打包",
+    ];
   return [
     `# ${title}`,
     "",
     "## 待办",
     "",
-    "- [ ] 填写 statement.md 题面",
-    "- [ ] 实现 evaluate.py 判分逻辑",
-    "- [ ] 补齐 visible.jsonl / hidden.jsonl 用例",
-    "- [ ] 确认 template.py 不含可直接满分的实现",
-    "- [ ] 运行 noj-cli problem lint . 校验",
-    "- [ ] 运行 noj-cli problem pack . 打包",
+    ...todo,
     "",
   ].join("\n");
 }
@@ -150,6 +178,13 @@ export async function initProblemScaffold(
     throw new Error(`难度非法：${difficulty}（仅允许 easy / medium / hard）`);
   }
 
+  if (
+    opts.judgeType !== undefined && opts.judgeType !== "dual" &&
+    opts.judgeType !== "oi"
+  ) {
+    throw new Error(`评测模式非法：${opts.judgeType}（仅允许 dual/oi）`);
+  }
+  const judgeType = opts.judgeType ?? "dual";
   const root = opts.root ?? "problems";
   const dir = join(root, opts.slug);
   const title = opts.title?.trim() || opts.slug;
@@ -184,20 +219,35 @@ export async function initProblemScaffold(
     createdDir = true;
   }
 
-  const files: Array<[string, string]> = [
-    ["problem.json", problemJson({ slug: opts.slug, title, type, difficulty })],
-    ["statement.md", STATEMENT(title)],
-    ["template.py", TEMPLATE_PY],
-    ["evaluate.py", EVALUATE_PY],
-    ["visible.jsonl", ""],
-    ["hidden.jsonl", ""],
-    ["README.md", readmeMarkdown(title)],
-  ];
+  const files: Array<[string, string]> = judgeType === "oi"
+    ? [
+      [
+        "problem.json",
+        problemJson({ slug: opts.slug, title, type, difficulty, judgeType }),
+      ],
+      ["statement.md", STATEMENT(title)],
+      ["testdata/1.in", "1\n"],
+      ["testdata/1.out", "1\n"],
+      ["README.md", readmeMarkdown(title, judgeType)],
+    ]
+    : [
+      [
+        "problem.json",
+        problemJson({ slug: opts.slug, title, type, difficulty, judgeType }),
+      ],
+      ["statement.md", STATEMENT(title)],
+      ["template.py", TEMPLATE_PY],
+      ["evaluate.py", EVALUATE_PY],
+      ["visible.jsonl", ""],
+      ["hidden.jsonl", ""],
+      ["README.md", readmeMarkdown(title, judgeType)],
+    ];
 
   const written: string[] = [];
   try {
     for (const [name, content] of files) {
       const target = join(dir, name);
+      await Deno.mkdir(dirname(target), { recursive: true });
       await Deno.writeTextFile(target, content, { createNew: true });
       written.push(target);
     }

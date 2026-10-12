@@ -21,6 +21,12 @@ export const MAX_LINES = 1200;
  * 拆分后请把数值改成新的实际行数（或直接删除条目）。
  */
 export const SIZE_BASELINE: Record<string, number> = {
+  // 2026-10-11：题目版本管理第二轮/第三轮修复新增 outbox 表
+  // （`llm_token_revocations`）与上传预约表（`storage_object_reservations`）的 PGlite
+  // DDL，使该文件从 1199 → 1215 行。DDL 数组是**顺序敏感的单一事实源**，逐条拆分
+  // 风险高于收益；后续把「版本管理 / 存储 / 尝试 / 任务」相关 DDL 整体抽成
+  // `schema-ddl-versioning.ts` 时同步下调本数值。
+  "noj-core/src/shared/db/schema-ddl.ts": 1215,
   // 2026-09-28：按审计 VULN-16/17 的改动把管道写入原语拆到 dual/pipe.rs、
   // 单元测试拆到 dual/tests.rs（子模块，`use super::*` 语义不变），
   // dual/mod.rs 1839 → 1153 行，**已低于阈值，条目移除**（棘轮只允许下调/删除）。
@@ -39,7 +45,7 @@ export const SIZE_BASELINE: Record<string, number> = {
   "noj-cli/src/prod/lifecycle.ts": 2097,
   // 2026-09-23：`backup` 参数解析抽到 `backup-args.ts`，cli.ts 1518 行；同步下调
   // 以锁住成果（棘轮只允许下调）。
-  "noj-cli/src/cli.ts": 1518,
+  "noj-cli/src/cli.ts": 1506,
   "noj-cli/src/prod/config.ts": 1218,
 };
 

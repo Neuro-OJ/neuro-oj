@@ -1,409 +1,115 @@
 /**
- * Submissions 重测（PR-3 拆分）。
+ * 单条 / 整题重测入口适配层（Handbook §4.3）。
  *
- * 包含：
- * - rejudgeSubmission：单条重测（管理员单条入口）
- * - rejudgeProblemSubmissions：批量重测（管理员按题目入口）
+ * 这两个函数是**兼容入口**：既有管理端按钮仍在用它们，但它们不再自行派发任务，
+ * 而是调用统一任务受理服务 `acceptRejudgeJob`：
  *
- * CRUD 在 submissions-crud.ts；结果写回在 submissions-result.ts。
+ * - 目标固定为 `submitted`（不可变的提交时版本，不用"最近评测版本"）；
+ * - 单条：`scope = selected`，默认 `submitted` 目标；
+ * - 整题：`scope = problem`，**没有 500 条总量限制**（后台分批执行）；
+ * - 受理后由批任务 worker 派发（版本内容为唯一配置来源），本层不再修改提交状态、
+ *   不再预先递增 `rejudge_seq`、不再直接推送 MQ。
+ *
+ * 审计沿用 `submissions.rejudge`，保证管理操作的可追溯性不因入口统一而丢失。
  */
 
-import { and, eq, inArray, sql } from "drizzle-orm";
-import { submissions } from "./../../../../shared/db/schema.ts";
-import {
-  AppError,
-  BadRequestError,
-  NotFoundError,
-} from "./../../../../shared/base/errors.ts";
-import { getDb } from "./../../../../shared/db/connection.ts";
-import { pushJudgeTask } from "../../mq/producer.ts";
-import { getProblem } from "../../../catalog/index.ts";
-import { getStorageProvider } from "./../../../system/index.ts";
-import { logAudit } from "../../../system/index.ts";
-import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
-import type { JudgeTaskLlm } from "../../types/index.ts";
-import { buildJudgeTask } from "../../types/index.ts";
-import type { RuntimeConfig } from "./../../../catalog/index.ts";
-import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
-import {
-  Channels,
-  publishSseEvent,
-} from "./../../../../shared/sse/event-bus.ts";
-import { getRedis } from "./../../../../shared/mq/connection.ts";
-import { updateSubmissionStatus } from "./submissions-result.ts";
 import { getLogger } from "@logtape/logtape";
+import { getDb } from "./../../../../shared/db/connection.ts";
+import { problems } from "./../../../../shared/db/schema.ts";
+import { eq } from "drizzle-orm";
+import { logAudit } from "./../../../system/index.ts";
+import {
+  type AcceptJobResult,
+  acceptRejudgeJob,
+  getRejudgeJob,
+} from "./../versioning/rejudge-jobs.ts";
 
 const logger = getLogger(["noj", "submission"]);
 
-const MAX_BATCH_REJUDGE = 500;
-
-type BatchTxResult = {
-  ids: string[];
-  count: number;
-  rows?: {
-    id: string;
-    language: string;
-    code: string;
-    file_name: string | null;
-  }[];
-} | { error: string };
+/** 兼容入口每次调用生成独立幂等键（等价于"这次点击是一次新任务"）。 */
+function legacyIdempotencyKey(): string {
+  return `legacy-rejudge-${crypto.randomUUID()}`;
+}
 
 /**
- * 单条提交重测。
+ * 单条重测（兼容入口）。
  *
- * 流程：
- * 1. 删除 evaluation_results（事务）
- * 2. 重置 submission 状态为 pending（事务）+ rejudge_seq++
- * 3. 写审计
- * 4. 推送 MQ
- *
- * @throws {NotFoundError} 提交不存在
- * @throws {AppError} 推送 MQ 失败
+ * @param id 提交 ID（普通提交）
+ * @returns 受理结果（任务 ID、状态、条目数）
  */
-export async function rejudgeSubmission(id: string): Promise<void> {
+export async function rejudgeSubmission(
+  id: string,
+  actorId = "0",
+): Promise<AcceptJobResult> {
+  const accepted = await acceptRejudgeJob(
+    actorId,
+    {
+      kind: "rejudge",
+      scope: {
+        type: "selected",
+        submissions: [{ kind: "submission", id }],
+      },
+      target: { mode: "submitted" },
+    },
+    legacyIdempotencyKey(),
+  );
+
+  await logAudit(
+    "submissions.rejudge",
+    { action: "submissions.rejudge", submission_id: id },
+    { type: "submission", id },
+  );
+  logger.info("单条重测已受理", { submission_id: id, job_id: accepted.job_id });
+  return accepted;
+}
+
+/**
+ * 整题批量重测（兼容入口）。
+ *
+ * 受理时固定提交集合；之后产生的新提交不进入本批任务。空集合返回已完成、
+ * 总数为 0 的任务（与统一契约一致）。
+ *
+ * @param problemId 题目 ID
+ * @returns 受理结果（任务 ID、状态、条目数）
+ */
+export async function rejudgeProblemSubmissions(
+  problemId: string,
+  actorId = "0",
+): Promise<AcceptJobResult> {
+  const accepted = await acceptRejudgeJob(
+    actorId,
+    {
+      kind: "rejudge",
+      scope: { type: "problem", problem_id: problemId },
+      target: { mode: "submitted" },
+    },
+    legacyIdempotencyKey(),
+  );
+
   const db = getDb();
+  const [problem] = await db.select({
+    title: problems.title,
+    type: problems.type,
+    number: problems.number,
+  }).from(problems).where(eq(problems.id, problemId)).limit(1);
 
-  const [submission] = await db
-    .select()
-    .from(submissions)
-    .where(eq(submissions.id, id))
-    .limit(1);
-
-  if (!submission) {
-    throw new NotFoundError("提交不存在");
-  }
-
-  if (submission.artifact_storage_url) {
-    throw new BadRequestError("artifact 提交不支持重测");
-  }
-
-  if (submission.status !== "finished" && submission.status !== "error") {
-    throw new BadRequestError("仅已完成或出错的提交可以重测");
-  }
-
-  const problem = await getProblem(submission.problem_id);
-
-  // 获取支持包 download URL
-  let download_url: string | undefined;
-  try {
-    if (problem.support_package_storage_url) {
-      const storage = await getStorageProvider();
-      download_url = await storage.downloadUrl(
-        problem.support_package_storage_url,
-      );
-    }
-  } catch (err) {
-    logger.error("重测获取支持包 download URL 失败", {
-      storage_url: problem.support_package_storage_url,
-      err,
-    });
-  }
-
-  // **LLM 任务必须在改变状态之前解析**（2026-09-22 评审）。
-  //
-  // `buildJudgeTaskLlm` 在平台默认 Provider 缺配/停用时抛 `BadRequestError`。
-  // 此前该调用位于"事务把提交置回 pending 并递增 rejudge_seq"**之后**，
-  // 抛错会让提交卡在 `pending`：MQ 里没有任务，sweeper 要等到下一轮才恢复，
-  // 而 sweeper 又不带 `llm`（见 sweeper 的说明）。管理员看到的是"重测按钮
-  // 报错但提交变成评测中"。
-  //
-  // 前置后，解析失败不会产生任何状态变更，管理员补配后可直接重试。
-  const runtimeConfig = problem.runtime_config as
-    | RuntimeConfig
-    | null
-    | undefined;
-
-  let llmTask: JudgeTaskLlm | undefined;
-  if (problem.llm_config && runtimeConfig) {
-    llmTask = await buildJudgeTaskLlm(
-      problem.llm_config,
-      id,
-      submission.problem_id,
-      submission.user_id,
-      runtimeConfig,
-    );
-  }
-
-  await db.transaction(async (tx) => {
-    // JA-02：发起重测时不预先物理删除 evaluationResults，历史成绩保留至新结果落库时替换；
-    // 避免 Redis 入队失败或网络异常时导致历史成绩物理丢失。
-    await tx.update(submissions)
-      .set({
-        status: "pending",
-        judge_started_at: null,
-        judge_finished_at: null,
-        rejudge_seq: sql`${submissions.rejudge_seq} + 1`,
-      })
-      .where(eq(submissions.id, id));
-  });
-
-  const [updated] = await db
-    .select({ rejudge_seq: submissions.rejudge_seq })
-    .from(submissions)
-    .where(eq(submissions.id, id))
-    .limit(1);
-
-  const task = buildJudgeTask({
-    submission_id: id,
-    problem_id: submission.problem_id,
-    user_id: submission.user_id,
-    priority: "low",
-    runtime_config: runtimeConfig as NonNullable<typeof runtimeConfig>,
-    download_url,
-    language: submission.language,
-    code: submission.code,
-    file_name: submission.file_name ??
-      (LANGUAGE_EXT_MAP[submission.language] || "main.txt"),
-    rejudge_seq: updated?.rejudge_seq ?? 0,
-    llm: llmTask ?? undefined,
-  });
-
-  // 审计日志：先写入审计再推送不可逆的 MQ 消息（issue #101）
   await logAudit(
     "submissions.rejudge",
     {
       action: "submissions.rejudge",
-      submission_id: id,
+      problem_id: problemId,
+      count: accepted.total_items,
     },
-    { type: "submission", id },
+    { type: "problem", id: problemId },
   );
-
-  // 决策 7 · AR-08：发起重测时清空前次评测的 Token 吊销标记，使重新签发的 eval_token 生效
-  try {
-    const redis = getRedis();
-    if (redis.status === "ready") {
-      void redis.del(`llm:token:revoked:${id}`);
-    }
-  } catch {
-    // ignore
-  }
-
-  try {
-    await pushJudgeTask(task);
-    // 入队成功后才置为 judging，并且只在仍为 pending 时更新，
-    // 避免结果先落库后把 finished 覆盖回 judging（与批量重测路径一致）。
-    await db.update(submissions).set({ status: "judging" }).where(
-      and(eq(submissions.id, id), eq(submissions.status, "pending")),
-    );
-  } catch (mqErr) {
-    logger.error("重测任务推送失败", { submission_id: id, err: mqErr });
-    try {
-      await updateSubmissionStatus(id, "error");
-    } catch {
-      // ignore cleanup failure
-    }
-    throw new AppError(
-      "重测失败：评测队列暂时不可用，请稍后重试",
-      500,
-      "REJUDGE_QUEUE_ERROR",
-    );
-  }
-
-  await publishSseEvent(Channels.queue, { type: "queue:changed" });
-}
-
-/**
- * 批量重测某题目所有 finished/error 状态的提交。
- *
- * 事务内：检查无活跃任务 → 删除所有 evaluation_results → 重置状态 + rejudge_seq++
- * 事务后：写审计 + 逐条推 MQ（任一失败不阻断整体）
- *
- * @returns total / queued / skipped（部分入队失败时 skipped > 0）
- * @throws {BadRequestError} 题目仍有 pending/judging 提交 / 超过 MAX_BATCH_REJUDGE
- */
-export async function rejudgeProblemSubmissions(
-  problemId: string,
-): Promise<{ total: number; queued: number; skipped: number }> {
-  const db = getDb();
-
-  const problem = await getProblem(problemId);
-
-  // 获取支持包 download URL（该题所有提交共享同一份）
-  let download_url: string | undefined;
-  try {
-    if (problem.support_package_storage_url) {
-      const storage = await getStorageProvider();
-      download_url = await storage.downloadUrl(
-        problem.support_package_storage_url,
-      );
-    }
-  } catch (err) {
-    logger.error("批量重测获取支持包 download URL 失败", {
-      storage_url: problem.support_package_storage_url,
-      err,
-    });
-  }
-
-  const txResult = await db.transaction<BatchTxResult>(async (tx) => {
-    const activeCounts = await tx
-      .select({ status: submissions.status, count: sql<number>`count(*)::int` })
-      .from(submissions)
-      .where(
-        and(
-          eq(submissions.problem_id, problemId),
-          inArray(submissions.status, ["pending", "judging"]),
-        ),
-      )
-      .groupBy(submissions.status);
-
-    if (activeCounts.length > 0) {
-      const details = activeCounts
-        .map((r) => `${r.status}: ${r.count}条`)
-        .join("、");
-      return {
-        error:
-          `该题目尚有活跃评测中的提交（${details}），无法批量重测，请等待完成后再试`,
-      };
-    }
-
-    const rows = await tx
-      .select({
-        id: submissions.id,
-        language: submissions.language,
-        code: submissions.code,
-        file_name: submissions.file_name,
-        user_id: submissions.user_id,
-        artifact_storage_url: submissions.artifact_storage_url,
-      })
-      .from(submissions)
-      .where(
-        and(
-          eq(submissions.problem_id, problemId),
-          inArray(submissions.status, ["finished", "error"]),
-        ),
-      );
-
-    if (rows.length === 0) {
-      return { ids: [], count: 0 };
-    }
-
-    if (rows.some((r) => r.artifact_storage_url)) {
-      return {
-        error: "该题目包含 artifact 提交，artifact 提交不支持重测",
-      };
-    }
-
-    if (rows.length > MAX_BATCH_REJUDGE) {
-      return {
-        error:
-          `批量重测超过上限（${rows.length} > ${MAX_BATCH_REJUDGE}），请分批操作`,
-      };
-    }
-
-    const ids = rows.map((r) => r.id);
-
-    // JA-02：发起重测时不预先物理删除 evaluationResults，历史成绩保留至新结果落库时替换；
-    // 避免批量入队中断时导致历史成绩物理丢失。
-    await tx.update(submissions)
-      .set({
-        status: "pending",
-        judge_started_at: null,
-        judge_finished_at: null,
-        rejudge_seq: sql`${submissions.rejudge_seq} + 1`,
-      })
-      .where(inArray(submissions.id, ids));
-
-    return { ids, count: ids.length, rows };
+  logger.info("整题重测已受理", {
+    problem_id: problemId,
+    display_id: problem ? `${problem.type}${problem.number}` : undefined,
+    job_id: accepted.job_id,
+    total_items: accepted.total_items,
   });
-
-  if ("error" in txResult) {
-    throw new BadRequestError(txResult.error);
-  }
-
-  const { ids: allIds, count: total } = txResult;
-
-  if (total === 0) {
-    return { total: 0, queued: 0, skipped: 0 };
-  }
-
-  // NOJ-075：不再用首条提交的 rejudge_seq 覆盖全部提交。
-  // 事务内已对每条提交递增各自的 rejudge_seq，逐行读取并透传。
-  const rejudgeRows = await db
-    .select()
-    .from(submissions)
-    .where(inArray(submissions.id, allIds));
-
-  // 审计日志：先写入审计再推送不可逆的 MQ 消息
-  if (total > 0) {
-    await logAudit(
-      "submissions.rejudge",
-      {
-        action: "submissions.rejudge",
-        problem_id: problemId,
-        count: total,
-      },
-      { type: "problem", id: problemId },
-    );
-  }
-
-  // 决策 7 · AR-08：批量重测清空前次评测的 Token 吊销标记
-  try {
-    const redis = getRedis();
-    if (redis.status === "ready" && allIds.length > 0) {
-      void redis.del(...allIds.map((subId) => `llm:token:revoked:${subId}`));
-    }
-  } catch {
-    // ignore
-  }
-
-  // 逐条入队（每条代码内容不同，无法合并）
-  let queued = 0;
-  for (const sub of rejudgeRows) {
-    try {
-      let llmTask: JudgeTaskLlm | undefined;
-      const runtimeConfig = problem.runtime_config as RuntimeConfig | null;
-      if (problem.llm_config && runtimeConfig) {
-        llmTask = await buildJudgeTaskLlm(
-          problem.llm_config,
-          sub.id,
-          problemId,
-          sub.user_id,
-          runtimeConfig,
-        );
-      }
-
-      const task = buildJudgeTask({
-        submission_id: sub.id,
-        problem_id: problemId,
-        user_id: sub.user_id,
-        priority: "low",
-        runtime_config: runtimeConfig as NonNullable<typeof runtimeConfig>,
-        download_url,
-        language: sub.language,
-        code: sub.code,
-        file_name: sub.file_name ??
-          (LANGUAGE_EXT_MAP[sub.language] || "main.txt"),
-        rejudge_seq: sub.rejudge_seq,
-        llm: llmTask ?? undefined,
-      });
-
-      await pushJudgeTask(task);
-      // 条件更新：结果可能在入队后立即回写，不得覆盖终态。
-      await db.update(submissions).set({ status: "judging" }).where(
-        and(eq(submissions.id, sub.id), eq(submissions.status, "pending")),
-      );
-      queued++;
-    } catch (err) {
-      logger.error("批量重测入队失败", { submission_id: sub.id, err });
-      // 入队失败：将状态回退到 error，避免卡在 pending 导致无法重试
-      try {
-        const errNow = new Date().toISOString();
-        await db.update(submissions)
-          .set({
-            status: "error",
-            judge_started_at: null,
-            judge_finished_at: errNow,
-          })
-          .where(eq(submissions.id, sub.id));
-      } catch { /* ignore cleanup failure */ }
-    }
-  }
-
-  await publishSseEvent(Channels.queue, { type: "queue:changed" });
-
-  return {
-    total,
-    queued,
-    skipped: total - queued,
-  };
+  return accepted;
 }
+
+/** 读取任务详情（管理端轮询进度用；非本次受理返回 null）。 */
+export { getRejudgeJob };

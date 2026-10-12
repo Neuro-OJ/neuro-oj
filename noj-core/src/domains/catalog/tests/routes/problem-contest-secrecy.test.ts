@@ -14,8 +14,12 @@ import { createProblem } from "../../index.ts";
 import { createContest, deleteContest } from "../../../contest/index.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { contests, problems } from "../../../../shared/db/schema.ts";
-import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
-import { initRedisForTest } from "../../../../../tests/helper.ts";
+import {
+  createUserToken,
+  initRedisForTest,
+  jsonRequest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skipEnv = !hasEnv;
@@ -57,6 +61,8 @@ async function createOwnedPublicProblem(ownerId: string): Promise<string> {
       updated_at: new Date().toISOString(),
     })
     .where(eq(problems.id, created.id));
+  // 竞赛只能固定**已发布**版本（Handbook §2.6）：补迁移基线 V1
+  await publishBaselineVersionForTest(created.id);
   return created.id;
 }
 

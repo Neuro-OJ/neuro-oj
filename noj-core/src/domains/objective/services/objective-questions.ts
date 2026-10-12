@@ -1,34 +1,47 @@
 /**
- * 客观题小题 CRUD + 套卷详情组装。
+ * 客观题套卷读取与小题可见性裁剪（Handbook §6.4）。
  *
- * 权限：套卷遵循 U 型规则（owner/admin 可管理小题）；
- * 答案可见性裁剪集中在此服务层（路由不直接回传原始行）：
- * - owner/admin 视图：含 answer / explanation
- * - 公开视图：裁剪 answer / explanation
+ * 内容事实源（批次 2d 起）：
+ * - **编辑者**（owner/admin）读**共享草稿**小题，含答案与解析，供编辑；
+ * - **作答者/公开视图**读**默认作答版本**的小题快照，答案与解析一律裁剪；
+ * - 未发布套卷对非编辑者返回 404（与题目详情口径一致）。
+ *
+ * 旧 `objective_questions` 表已随迁移 0107 删除：小题的唯一事实源是草稿与版本
+ * 快照；`legacy_unknown` 存量提交（无提交时版本）的卷面无法还原，按未作答处理。
+ *
+ * 权限：套卷遵循 U 型规则（owner/admin 可管理小题）。
  */
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { getDb } from "./../../../shared/db/connection.ts";
-import { objectiveQuestions, problems } from "./../../../shared/db/schema.ts";
+import { problems, problemVersions } from "./../../../shared/db/schema.ts";
 import {
+  AppError,
   BadRequestError,
   ForbiddenError,
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { assertPermission } from "./../../identity/index.ts";
-import { evaluateProblemAccess } from "./../../catalog/index.ts";
-import { verifyContestAccess } from "./../../contest/index.ts";
+import {
+  evaluateProblemAccess,
+  type ObjectiveQuestionSnapshot,
+  resolveProblemAnswerVersion,
+} from "./../../catalog/index.ts";
+import {
+  resolveContestId,
+  verifyContestAccess,
+} from "./../../contest/index.ts";
 import { isUuid } from "./../../../shared/security/public-id.ts";
 import {
-  type CreateQuestionInput,
   JUDGE_OPTIONS,
   type ObjectiveOption,
   type ObjectiveQuestionResponse,
   type QuestionType,
-  type UpdateQuestionInput,
-  validateAnswerForType,
-  validateOptions,
 } from "./../types/objective.ts";
+import {
+  listDraftQuestions,
+  listVersionQuestions,
+} from "./versioning/objective-drafts.ts";
 
 /** 套卷行类型（problems 表 type='O' 行）。 */
 export type PaperRow = typeof problems.$inferSelect;
@@ -60,27 +73,19 @@ export async function resolvePaperId(
   if (isUuid(paperId) || /^\d+$/.test(paperId)) {
     const rows = await db.select().from(problems).where(
       eq(problems.id, paperId),
-    )
-      .limit(1);
+    ).limit(1);
     return rows[0] ?? null;
   }
-  const match = paperId.match(/^([UuPp])(\d+)$/);
-  if (match) {
-    const type = match[1].toUpperCase();
-    const number = parseInt(match[2], 10);
-    const rows = await db
-      .select()
-      .from(problems)
-      .where(and(eq(problems.type, type), eq(problems.number, number)))
-      .limit(1);
-    return rows[0] ?? null;
-  }
-  const rows = await db.select().from(problems).where(eq(problems.id, paperId))
-    .limit(1);
-  return rows[0] ?? null;
+  const match = /^([UP])(\d+)$/.exec(paperId);
+  if (!match) return null;
+  const [, type, number] = match;
+  const rows = await db.select().from(problems).where(
+    eq(problems.number, Number(number)),
+  );
+  return rows.find((row) => row.type === type) ?? null;
 }
 
-/** 把套卷引用解析为规范 UUID（display_id → 真实 id），用于小题/提交落库。 */
+/** 解析套卷引用的规范 UUID（display_id → 真实 id）。 */
 export async function resolvePaperIdToUuid(paperId: string): Promise<string> {
   const paper = await getPaperOrThrow(paperId);
   return paper.id;
@@ -116,7 +121,6 @@ export async function isPaperOwnerOrAdmin(
         return false;
       }
     }
-    // CLI/内部调用 fallback（无 Hono Context，无法实时查权限）
     return userRole === "admin";
   }
   // U 型：owner 或实时 RBAC admin 权限
@@ -144,44 +148,103 @@ export async function assertPaperManageable(
 }
 
 /**
- * 序列化小题响应：owner/admin 含答案与解析，公开视图裁剪。
+ * 小题快照 → 响应形态。
+ *
+ * 现有 API 的 `id` 返回**版本内的稳定 key**（Handbook §6.4）：同一小题在
+ * V1/V2 上标识一致，历史答案可按 key 匹配。
  */
 export function serializeQuestion(
-  row: typeof objectiveQuestions.$inferSelect,
+  paperId: string,
+  question: ObjectiveQuestionSnapshot,
   includeAnswer: boolean,
 ): ObjectiveQuestionResponse {
   const base: ObjectiveQuestionResponse = {
-    id: row.id,
-    paper_id: row.paper_id,
-    sort_order: row.sort_order,
-    type: row.type as QuestionType,
-    prompt: row.prompt,
-    options: row.options as ObjectiveOption[],
-    created_at: row.created_at,
-    updated_at: row.updated_at,
+    id: question.key,
+    paper_id: paperId,
+    sort_order: question.sort_order,
+    type: question.type as QuestionType,
+    prompt: question.prompt,
+    options: question.options as ObjectiveOption[],
+    created_at: "",
+    updated_at: "",
   };
   if (includeAnswer) {
-    base.answer = row.answer as ObjectiveQuestionResponse["answer"];
-    base.explanation = row.explanation;
+    base.answer = question.answer;
+    base.explanation = question.explanation;
   }
   return base;
 }
 
 /**
- * 获取套卷小题列表（按 sort_order 升序）。
- * includeAnswer=true 时返回答案与解析（owner/admin）。
+ * 读取套卷小题：编辑者读草稿（含答案），其他人读**作答版本**快照。
+ *
+ * 已发布内容以版本快照为准（作答与历史查看不随草稿变化）；未发布套卷对
+ * 非编辑者按 404 处理，与题目详情口径一致。
+ *
+ * @param options.versionId 显式目标版本（竞赛固定版本 / 客户端携带的作答版本）；
+ *   缺省解析题库默认作答版本（`exact` → 要求版本、`any` → 最新版）。竞赛场景必须
+ *   传固定版本，否则会出现"展示最新版小题、判卷按固定版"。
+ * @throws {NotFoundError} 套卷不存在或尚未发布（非编辑者）
  */
 export async function listPaperQuestions(
   paperId: string,
   includeAnswer: boolean,
+  options: { versionId?: string | null } = {},
 ): Promise<ObjectiveQuestionResponse[]> {
-  const db = getDb();
-  const rows = await db
-    .select()
-    .from(objectiveQuestions)
-    .where(eq(objectiveQuestions.paper_id, paperId))
-    .orderBy(asc(objectiveQuestions.sort_order));
-  return rows.map((row) => serializeQuestion(row, includeAnswer));
+  const paper = await getPaperOrThrow(paperId);
+  assertObjectivePaper(paper);
+  if (includeAnswer) {
+    const questions = await listDraftQuestions(paper.id);
+    return questions.map((question) =>
+      serializeQuestion(paper.id, question, true)
+    );
+  }
+  const version = await resolveAnswerVersion(paper, options.versionId);
+  if (!version) throw new NotFoundError("题目不存在");
+  const questions = await listVersionQuestions(version.version_id);
+  return questions.map((question) =>
+    serializeQuestion(paper.id, question, false)
+  );
+}
+
+/**
+ * 解析作答版本：显式版本优先（必须属于该题且已发布），否则题库默认作答版本。
+ *
+ * 与提交路径 `resolveSubmissionVersion` 口径一致：竞赛固定版本由调用方（catalog
+ * 路由经 `verifyContestAccess`）解析后作为显式版本传入，objective 域不反向依赖
+ * contest 域的业务规则。
+ */
+async function resolveAnswerVersion(
+  paper: PaperRow,
+  requestedVersionId?: string | null,
+): Promise<
+  { version_id: string; version: number } | null
+> {
+  const requested = requestedVersionId?.trim() || null;
+  if (requested) {
+    const db = getDb();
+    const [row] = await db.select({
+      id: problemVersions.id,
+      version: problemVersions.version,
+    }).from(problemVersions).where(
+      and(
+        eq(problemVersions.problem_id, paper.id),
+        eq(problemVersions.id, requested),
+      ),
+    ).limit(1);
+    if (!row) {
+      // 与提交路径同一错误码：客户端据此提示"版本不存在/未发布"
+      throw new AppError(
+        `题目版本不存在或未发布：${requested}`,
+        404,
+        "PROBLEM_VERSION_NOT_FOUND",
+      );
+    }
+    return { version_id: row.id, version: row.version };
+  }
+  const fallback = await resolveProblemAnswerVersion(paper.id, paper);
+  if (!fallback) return null;
+  return { version_id: fallback.version_id, version: fallback.version };
 }
 
 /**
@@ -190,6 +253,11 @@ export async function listPaperQuestions(
  * 供 catalog 路由在 `?contest_id=` 场景下使用：竞赛上下文由 contest 域
  * `verifyContestAccess` 校验后传入 `resolveProblemAccess`，避免 catalog 域
  * 反向依赖 contest 域（域边界约束）。
+ *
+ * 版本绑定（Handbook §2.6/§6.4）：
+ * - 编辑者读**共享草稿**（编辑不看成答版本）；
+ * - 竞赛场景使用 `contestAccess.pinnedVersionId`（**竞赛固定版本**）；
+ * - 题库作答按 `versionId` 显式指定，缺省走默认作答版本。
  */
 export async function listPaperQuestionsWithAccess(
   paperId: string,
@@ -197,16 +265,26 @@ export async function listPaperQuestionsWithAccess(
     viewerId: string | null;
     isAdmin: boolean;
     contestId?: string | null;
+    /** 客户端携带的作答版本（题库显式选择）。 */
+    versionId?: string | null;
     userId?: string;
     userRole?: string;
     c?: Context;
   },
-): Promise<ObjectiveQuestionResponse[]> {
+): Promise<{
+  questions: ObjectiveQuestionResponse[];
+  version_id: string | null;
+  version: number | null;
+}> {
   const paper = await getPaperOrThrow(paperId);
   assertObjectivePaper(paper);
 
-  const contestAccess = options.contestId
-    ? await verifyContestAccess(options.viewerId, options.contestId, paper.id)
+  // 浏览器路由使用公开竞赛 ID，权限与固定版本查询必须先归一到内部 UUID。
+  const contestId = options.contestId
+    ? await resolveContestId(options.contestId)
+    : null;
+  const contestAccess = contestId
+    ? await verifyContestAccess(options.viewerId, contestId, paper.id)
     : null;
   const { result: access } = await evaluateProblemAccess(paper, {
     viewerId: options.viewerId,
@@ -223,273 +301,20 @@ export async function listPaperQuestionsWithAccess(
     options.userRole,
     options.c,
   );
-  return listPaperQuestions(paper.id, includeAnswer);
-}
-
-/**
- * 创建小题（绑定套卷）。
- *
- * - 套卷必须存在且 type='O'
- * - owner/admin 可创建
- * - sort_order 默认 MAX+1 追加到末尾；多选/单选答案按题型校验
- * - judge 型忽略传入 options，使用固定对/错选项
- */
-export async function createQuestion(
-  paperId: string,
-  input: CreateQuestionInput,
-  userId?: string,
-  userRole?: string,
-  c?: Context,
-): Promise<ObjectiveQuestionResponse> {
-  const db = getDb();
-  const paper = await getPaperOrThrow(paperId);
-  assertObjectivePaper(paper);
-  await assertPaperManageable(paper, userId, userRole, c);
-  // 落库一律使用规范 UUID（display_id 引用解析为真实 id）
-  const paperUuid = paper.id;
-
-  const type = input.type;
-  if (!type || !(typeof type === "string")) {
-    throw new BadRequestError("缺少必填字段：type");
-  }
-  if (!(type === "single" || type === "multiple" || type === "judge")) {
-    throw new BadRequestError("非法题型：仅允许 single/multiple/judge");
-  }
-  if (!input.prompt) {
-    throw new BadRequestError("缺少必填字段：prompt");
-  }
-
-  // 答案按题型校验（single 恰好 1 个、judge 布尔、multiple 非空不重复）
-  try {
-    validateAnswerForType(type, input.answer);
-  } catch (err) {
-    throw new BadRequestError((err as Error).message);
-  }
-
-  // 选项校验：judge 型使用固定对/错；其余必须提供合法选项数组
-  let options: ObjectiveOption[];
-  if (type === "judge") {
-    options = judgeOptions();
-  } else {
-    if (input.options === undefined) {
-      throw new BadRequestError("缺少必填字段：options");
-    }
-    try {
-      validateOptions(input.options);
-    } catch (err) {
-      throw new BadRequestError((err as Error).message);
-    }
-    options = input.options;
-    // 答案必须存在于选项中（judge 型跳过）
-    for (const key of input.answer as string[]) {
-      if (!options.some((o) => o.key === key)) {
-        throw new BadRequestError(`答案选项 ${key} 不存在于选项中`);
-      }
-    }
-  }
-
-  const now = new Date().toISOString();
-  const id = crypto.randomUUID();
-
-  // sort_order：默认追加到末尾（MAX+1）；显式传入必须为非负整数
-  let sortOrder = input.sort_order;
-  if (sortOrder === undefined) {
-    const maxResult = await db
-      .select({
-        max: sql<number>`COALESCE(MAX(${objectiveQuestions.sort_order}), -1)`,
-      })
-      .from(objectiveQuestions)
-      .where(eq(objectiveQuestions.paper_id, paperUuid));
-    sortOrder = (maxResult[0]?.max ?? -1) + 1;
-  } else if (!Number.isInteger(sortOrder) || sortOrder < 0) {
-    throw new BadRequestError("sort_order 必须是非负整数");
-  }
-
-  const row = {
-    id,
-    paper_id: paperUuid,
-    sort_order: sortOrder,
-    type,
-    prompt: input.prompt,
-    options,
-    answer: input.answer,
-    explanation: input.explanation ?? "",
-    created_at: now,
-    updated_at: now,
+  // 竞赛 > 显式版本 > 默认作答版本：竞赛固定版本不可被客户端参数覆盖。
+  const effectiveVersionId = contestAccess?.allowed
+    ? (contestAccess.pinnedVersionId ?? null)
+    : (options.versionId?.trim() || null);
+  const questions = await listPaperQuestions(paper.id, includeAnswer, {
+    versionId: effectiveVersionId,
+  });
+  // 回传实际展示的版本：客户端据此提交同一版本（竞赛里不匹配将 409）。
+  const version = includeAnswer
+    ? null
+    : await resolveAnswerVersion(paper, effectiveVersionId);
+  return {
+    questions,
+    version_id: version?.version_id ?? null,
+    version: version?.version ?? null,
   };
-  try {
-    await db.insert(objectiveQuestions).values(row);
-  } catch (err) {
-    // sort_order 撞 UNIQUE(paper_id, sort_order) → 400 而非裸 500
-    const pgCode = (err as Record<string, unknown>)?.code ??
-      ((err as Record<string, unknown>)?.cause as Record<string, unknown>)
-        ?.code;
-    if (pgCode === "23505") {
-      throw new BadRequestError(`排序号 ${sortOrder} 已存在，请调整后重试`);
-    }
-    throw err;
-  }
-  return serializeQuestion(row as typeof objectiveQuestions.$inferSelect, true);
-}
-
-/**
- * 更新小题（部分更新）。
- * 权限按所属套卷 owner/admin 判断。
- */
-export async function updateQuestion(
-  questionId: string,
-  input: UpdateQuestionInput,
-  userId?: string,
-  userRole?: string,
-  c?: Context,
-): Promise<ObjectiveQuestionResponse> {
-  const db = getDb();
-  const rows = await db
-    .select()
-    .from(objectiveQuestions)
-    .where(eq(objectiveQuestions.id, questionId))
-    .limit(1);
-  if (rows.length === 0) {
-    throw new NotFoundError("小题不存在");
-  }
-  const existing = rows[0];
-  const paper = await getPaperOrThrow(existing.paper_id);
-  await assertPaperManageable(paper, userId, userRole, c);
-
-  const updates: Record<string, unknown> = {};
-  let nextType = existing.type;
-  let nextAnswer = existing.answer;
-  let nextOptions = existing.options;
-
-  if (input.type !== undefined) {
-    if (
-      !(input.type === "single" || input.type === "multiple" ||
-        input.type === "judge")
-    ) {
-      throw new BadRequestError("非法题型：仅允许 single/multiple/judge");
-    }
-    const typeChanged = input.type !== existing.type;
-    nextType = input.type;
-    // 改题型时校验既有答案对新题型是否仍合法
-    // （否则旧答案入库后该题永远无法答对，且 JSONB 无 DB 层约束兜底）
-    if (typeChanged && input.answer === undefined) {
-      try {
-        validateAnswerForType(nextType, nextAnswer);
-      } catch {
-        throw new BadRequestError(
-          "题型变更后现有答案不合法，请同时提交新的 answer",
-        );
-      }
-    }
-    if (typeChanged) {
-      if (nextType === "judge") {
-        // judge 型固定对/错选项，旧自定义选项作废
-        nextOptions = judgeOptions();
-      } else if (existing.type === "judge" && input.options === undefined) {
-        // 由判断题改为其他题型：固定对/错选项不可复用，必须显式提供
-        throw new BadRequestError(
-          "由判断题改为其他题型时，必须同时提供 options 与 answer",
-        );
-      }
-    }
-  }
-  if (input.prompt !== undefined) {
-    if (!input.prompt) throw new BadRequestError("prompt 不能为空");
-    updates.prompt = input.prompt;
-  }
-  if (input.answer !== undefined) {
-    try {
-      validateAnswerForType(nextType, input.answer);
-    } catch (err) {
-      throw new BadRequestError((err as Error).message);
-    }
-    nextAnswer = input.answer;
-  }
-  if (input.options !== undefined) {
-    if (nextType === "judge") {
-      throw new BadRequestError("判断题选项不可自定义（固定对/错）");
-    }
-    try {
-      validateOptions(input.options);
-    } catch (err) {
-      throw new BadRequestError((err as Error).message);
-    }
-    nextOptions = input.options;
-  }
-  // 答案选项必须存在于选项中（judge 型跳过）
-  if (nextType !== "judge") {
-    const opts = nextOptions as ObjectiveOption[];
-    for (const key of nextAnswer as string[]) {
-      if (!opts.some((o) => o.key === key)) {
-        throw new BadRequestError(`答案选项 ${key} 不存在于选项中`);
-      }
-    }
-  }
-  if (input.explanation !== undefined) {
-    updates.explanation = input.explanation;
-  }
-  if (input.sort_order !== undefined) {
-    if (!Number.isInteger(input.sort_order) || input.sort_order < 0) {
-      throw new BadRequestError("sort_order 必须是非负整数");
-    }
-    updates.sort_order = input.sort_order;
-  }
-
-  if (nextType !== existing.type) updates.type = nextType;
-  if (JSON.stringify(nextAnswer) !== JSON.stringify(existing.answer)) {
-    updates.answer = nextAnswer;
-  }
-  if (JSON.stringify(nextOptions) !== JSON.stringify(existing.options)) {
-    updates.options = nextOptions;
-  }
-  updates.updated_at = new Date().toISOString();
-
-  try {
-    await db.update(objectiveQuestions).set(updates).where(
-      eq(objectiveQuestions.id, questionId),
-    );
-  } catch (err) {
-    // sort_order 撞 UNIQUE(paper_id, sort_order) → 400 而非裸 500
-    const pgCode = (err as Record<string, unknown>)?.code ??
-      ((err as Record<string, unknown>)?.cause as Record<string, unknown>)
-        ?.code;
-    if (pgCode === "23505") {
-      throw new BadRequestError("排序号冲突，请调整后重试");
-    }
-    throw err;
-  }
-
-  const updated = await db
-    .select()
-    .from(objectiveQuestions)
-    .where(eq(objectiveQuestions.id, questionId))
-    .limit(1);
-  return serializeQuestion(updated[0], true);
-}
-
-/**
- * 删除小题。
- * 权限按所属套卷 owner/admin 判断。
- */
-export async function deleteQuestion(
-  questionId: string,
-  userId?: string,
-  userRole?: string,
-  c?: Context,
-): Promise<void> {
-  const db = getDb();
-  const rows = await db
-    .select()
-    .from(objectiveQuestions)
-    .where(eq(objectiveQuestions.id, questionId))
-    .limit(1);
-  if (rows.length === 0) {
-    throw new NotFoundError("小题不存在");
-  }
-  const existing = rows[0];
-  const paper = await getPaperOrThrow(existing.paper_id);
-  await assertPaperManageable(paper, userId, userRole, c);
-  await db.delete(objectiveQuestions).where(
-    eq(objectiveQuestions.id, questionId),
-  );
 }

@@ -13,6 +13,10 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { zipSync } from "fflate";
+import {
+  getProblemDraft,
+  loadProblemIdentity,
+} from "../../services/versioning/draft.ts";
 import { createApp } from "../../../../app.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 
@@ -349,12 +353,23 @@ Deno.test({
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
+        "If-Match": String(
+          (await getProblemDraft(
+            problemId,
+            await loadProblemIdentity(problemId),
+          )).revision,
+        ),
       },
       body: JSON.stringify({ title: "新标题" }),
     });
     assertEquals(res.status, 200);
     const body = await res.json();
-    assertEquals(body.data.title, "新标题");
+    assertEquals(body.data.title === "新标题", false);
+    assertEquals(
+      (await getProblemDraft(problemId, await loadProblemIdentity(problemId)))
+        .content.title,
+      "新标题",
+    );
   },
 });
 
@@ -371,6 +386,12 @@ Deno.test({
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
+        "If-Match": String(
+          (await getProblemDraft(
+            FIELD_OWN_PROBLEM_ID,
+            await loadProblemIdentity(FIELD_OWN_PROBLEM_ID),
+          )).revision,
+        ),
       },
       body: JSON.stringify({
         runtime_config: {

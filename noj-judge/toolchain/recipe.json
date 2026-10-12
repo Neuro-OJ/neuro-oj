@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "revision": "noj-wasi-sdk-34-v2",
+  "sdk_commit": "5a0bf653a1a06e1c18867567c5937006d3394a69",
+  "sdk_url": "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-34/wasi-sdk-34.0-x86_64-linux.tar.gz",
+  "sdk_sha256": "b761e3a0721dbae9c09a0059e5fdb2bf917d1b4a8a7b430fb3b5aafb0984b2c4",
+  "llvm_commit": "895aa2c896ada719451be2e3673c83da8ddf1141",
+  "llvm_sha256": "aa428add21933cad2286f344ea14dcb731e05e6c7112787c41c15aa5f4508c0a",
+  "sync_upstream_commit": "3b7447e00baff23660b49fdcb67ce83a3bf94605",
+  "source_date_epoch": 0,
+  "cmake_args": [
+    "-DCMAKE_SYSTEM_NAME=WASI",
+    "-DCMAKE_SYSTEM_VERSION=1",
+    "-DCMAKE_SYSTEM_PROCESSOR=wasm32",
+    "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+    "-DCMAKE_C_COMPILER_WORKS=ON",
+    "-DCMAKE_CXX_COMPILER_WORKS=ON",
+    "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
+    "-DLLVM_ENABLE_RUNTIMES=libcxx;libcxxabi",
+    "-DLLVM_COMPILER_CHECKED=ON",
+    "-DLLVM_INCLUDE_TESTS=OFF",
+    "-DLIBCXX_ENABLE_THREADS=ON",
+    "-DLIBCXX_HAS_PTHREAD_API=ON",
+    "-DLIBCXX_ENABLE_SHARED=ON",
+    "-DLIBCXX_ENABLE_EXCEPTIONS=OFF",
+    "-DLIBCXX_ENABLE_FILESYSTEM=ON",
+    "-DLIBCXX_ENABLE_ABI_LINKER_SCRIPT=OFF",
+    "-DLIBCXX_CXX_ABI=libcxxabi",
+    "-DLIBCXX_HAS_MUSL_LIBC=OFF",
+    "-DLIBCXX_ABI_VERSION=2",
+    "-DLIBCXXABI_ENABLE_EXCEPTIONS=OFF",
+    "-DLIBCXXABI_ENABLE_SHARED=ON",
+    "-DLIBCXXABI_SILENT_TERMINATE=ON",
+    "-DLIBCXXABI_ENABLE_THREADS=ON",
+    "-DLIBCXXABI_HAS_PTHREAD_API=ON",
+    "-DLIBCXXABI_USE_LLVM_UNWINDER=OFF",
+    "-DLIBCXX_LIBDIR_SUFFIX=/wasm32-wasip1/noeh",
+    "-DLIBCXXABI_LIBDIR_SUFFIX=/wasm32-wasip1/noeh",
+    "-DLIBCXX_INCLUDE_TESTS=OFF",
+    "-DLIBCXX_INCLUDE_BENCHMARKS=OFF",
+    "-DUNIX=ON",
+    "-DCMAKE_INSTALL_INCLUDEDIR=include/wasm32-wasip1/noeh"
+  ],
+  "patches": [
+    {
+      "path": "llvm-pr-168449.patch",
+      "sha256": "402310bd986400bb7419b11b59f877f1b1f4306f019347822cd4ee7fb5cb2c91"
+    },
+    {
+      "path": "llvm-pr-186054.patch",
+      "sha256": "4ed0d85e6280f37701a8a7b30c1750e61a9bec62cc7b040fd5338d90551811de"
+    },
+    {
+      "path": "llvm-undo-part-of-194317.patch",
+      "sha256": "bd901d86af8f1e000aa7efeb4e3d3677292fe07a106e817b09a0a67124a7ad00"
+    },
+    {
+      "path": "sync-streams.patch",
+      "sha256": "2738a0b1e0ed1bfbafcd9da1c685294fcfbaf5c20461af789c91fa92882e6219"
+    },
+    {
+      "path": "integer-parsing.patch",
+      "sha256": "82b4f37246bdbc8c80198f21a5110fdc1e7be9cbed6857f15f8e6dff86eddc27"
+    },
+    {
+      "path": "reproducible-paths.patch",
+      "sha256": "a4b6d998c0e73475483a62985751a420f6b034f3874f7bf6c9f013e9bf9663c0"
+    }
+  ]
+}

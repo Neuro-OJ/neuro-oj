@@ -242,6 +242,7 @@ function formatElapsed(iso: string) {
 
     <!-- 自测 tab -->
     <div v-else-if="active === 'self-test' && showSelfTest" class="p-4 space-y-4">
+      <slot name="oi-self-test">
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-semibold text-text">自测</h3>
         <UIcon name="i-lucide-loader-2" class="animate-spin text-primary size-3" v-if="isPollingSelfTest" />
@@ -288,6 +289,7 @@ function formatElapsed(iso: string) {
           <pre class="whitespace-pre-wrap break-words bg-bg-page border border-border rounded-md p-3 text-[11px] leading-relaxed max-h-72 overflow-y-auto">{{ selfTest.output }}</pre>
         </div>
       </div>
+      </slot>
     </div>
 
     <!-- 设置 tab -->

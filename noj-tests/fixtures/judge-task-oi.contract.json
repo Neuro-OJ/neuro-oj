@@ -1,0 +1,68 @@
+{
+  "submission_id": "11111111-1111-4111-8111-111111111111",
+  "problem_id": "22222222-2222-4222-8222-222222222222",
+  "user_id": "33333333-3333-4333-8333-333333333333",
+  "priority": "medium",
+  "judge_type": "oi",
+  "runtime_config": {
+    "backend": "wasm",
+    "languages": [
+      "c",
+      "cc"
+    ],
+    "time_limit_ms": 1000,
+    "memory_limit_mb": 256,
+    "checker": {
+      "type": "default"
+    },
+    "subtasks": [
+      {
+        "id": "all",
+        "score": 100,
+        "cases": [
+          {
+            "input": "testdata/1.in",
+            "output": "testdata/1.out"
+          }
+        ]
+      }
+    ]
+  },
+  "oi_cost_profile": {
+    "schema_version": 1,
+    "runtime_version": "wasmtime-49",
+    "costs": {
+      "default": 1
+    },
+    "variable_costs": {
+      "memory_copy_per_byte": 1,
+      "memory_fill_per_byte": 1,
+      "memory_init_per_byte": 1,
+      "memory_grow_per_page": 1,
+      "table_copy_per_element": 1,
+      "table_fill_per_element": 1,
+      "table_init_per_element": 1,
+      "table_grow_per_element": 1,
+      "array_copy_per_element": 1,
+      "array_fill_per_element": 1,
+      "array_new_data_per_element": 1,
+      "array_init_data_per_element": 1,
+      "array_new_elem_per_element": 1,
+      "array_init_elem_per_element": 1,
+      "array_new_default_per_element": 1,
+      "array_new_per_element": 1
+    },
+    "io_fuel_per_byte": 1,
+    "fuel_per_ms": 1000000,
+    "hash": "dd45773b77ab74fa69e15427760a86dc8defcac79d2dfb61ec91c18eba08a906",
+    "toolchain": "wasi-sdk-34",
+    "benchmark": "noj-wasm-v1"
+  },
+  "download_url": "noj-download://base64/?content=UEsDBBQAAAAI&checksum_sha256=abc123",
+  "language": "cc",
+  "code": "int main() { return 0; }",
+  "file_name": "main.cpp",
+  "rejudge_seq": 1,
+  "scheduling_version": 1,
+  "resource_pool": "oi-wasm"
+}

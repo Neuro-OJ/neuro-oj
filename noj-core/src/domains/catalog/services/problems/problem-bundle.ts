@@ -18,11 +18,9 @@
 import type { Context } from "hono";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
+import { problems, problemTags } from "./../../../../shared/db/schema.ts";
 import {
-  objectiveQuestions,
-  problems,
-} from "./../../../../shared/db/schema.ts";
-import {
+  AppError,
   BadRequestError,
   ForbiddenError,
   NotFoundError,
@@ -32,7 +30,7 @@ import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "catalog"]);
 import { checkPermission } from "./../../../identity/index.ts";
-import { getStorageProvider } from "./../../../system/index.ts";
+import { uploadStorageObjectWithReservation } from "./../../../system/index.ts";
 import {
   parseBundleZip,
   readBundleTemplate,
@@ -42,16 +40,18 @@ import {
   DEFAULT_TEMPLATE_FILE,
   isValidProblemBundleName,
   MAX_TEMPLATE_BYTES,
+  type ObjectiveQuestionBundleInput,
   type ProblemBundleManifest,
   validateBundleManifest,
   validateObjectiveQuestions,
 } from "./../../types/problem-bundle.ts";
-import type {
-  ProblemResponseWithTags,
-  RuntimeConfig,
+import {
+  isOiRuntimeConfig,
+  type ProblemResponseWithTags,
+  type ProblemRuntimeConfig as RuntimeConfig,
 } from "./../../types/problems.ts";
-import { type CreateQuestionInput } from "../../../objective/index.ts";
-import { updateProblem } from "./problems-crud.ts";
+import type { ObjectiveQuestionSnapshot } from "./../../types/problem-content.ts";
+import { assertProblemEditPermission, updateProblem } from "./problems-crud.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import {
   assertSensitiveFieldPermissions,
@@ -65,6 +65,70 @@ import { logAudit } from "../../../system/index.ts";
 import { assertLlmLimitsWithinDefault } from "../../../gateway/index.ts";
 import { MAX_SUPPORT_PACKAGE_SIZE } from "../support-package.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
+import {
+  deriveDraftContentFromProblem,
+  draftRevisionConflict,
+  draftRevisionRequired,
+  getProblemDraft,
+  loadProblemIdentity,
+  replaceDraftObjectsForRole,
+  saveProblemDraft,
+  saveProblemDraftWithObjects,
+} from "../versioning/draft.ts";
+import { deleteStorageObject } from "../../../system/index.ts";
+import { publishProblemVersion } from "../versioning/publish.ts";
+
+/**
+ * 把当前题目投影（题面/配置/模板/客观题小题）同步进**共享草稿**。
+ *
+ * 导入流程是"写入者"：它先把内容落成题目投影，再调用本函数把同一份内容写进草稿，
+ * 使 `--publish` 与后续编辑都以草稿为起点。客观题小题的 `key` 取旧小题 UUID
+ * （与迁移基线规则一致，保证历史答案可按 key 匹配）。
+ */
+export async function syncProblemDraftFromProjection(
+  problemId: string,
+  actorId?: string | null,
+): Promise<number> {
+  const db = getDb();
+  const [identity] = await db.select().from(problems).where(
+    eq(problems.id, problemId),
+  ).limit(1);
+  if (!identity) throw new BadRequestError("题目不存在");
+  const content = await deriveDraftContentFromProblem(identity);
+  const draft = await getProblemDraft(problemId, identity);
+  const saved = await saveProblemDraft(problemId, {
+    content,
+    expectedRevision: draft.revision,
+    actorId: actorId ?? null,
+  });
+  return saved.revision;
+}
+
+/**
+ * 导入后显式发布当前内容为新版本（`problems import --publish`）。
+ *
+ * 内容事实源是**草稿**：编程题与客观题导入都直接写草稿（客观题小题 key 取
+ * 现有/生成的 UUID），此处发布当前草稿 revision。相同内容重复发布返回既有版本
+ * （`unchanged: true`），不制造空版本。
+ */
+export async function publishImportedProblem(
+  problemId: string,
+  actorId?: string | null,
+  changeNote = "题目包导入",
+): Promise<{ version_id: string; version: number; unchanged: boolean }> {
+  const identity = await loadProblemIdentity(problemId);
+  const revision = (await getProblemDraft(problemId, identity)).revision;
+  const published = await publishProblemVersion(problemId, {
+    expectedRevision: revision,
+    changeNote,
+    actorId: actorId ?? null,
+  });
+  return {
+    version_id: published.version_id,
+    version: published.version,
+    unchanged: published.unchanged,
+  };
+}
 
 /** 导入执行者（CLI 场景无 Hono Context）。 */
 export interface BundleImportActor {
@@ -134,7 +198,20 @@ export async function importProblemBundle(
   file: { name: string; data: Uint8Array },
   actor: BundleImportActor,
   c?: Context,
+  target?: string | {
+    /** 目标题目：内容写入该题的**共享草稿**，不新建题目。 */
+    problemId: string;
+    /** 客户端编辑基线（target 模式下必填）：缺失 428、过时 409。 */
+    expectedRevision?: number | null;
+  },
 ): Promise<ProblemResponseWithTags> {
+  const targetProblemId = typeof target === "string"
+    ? target
+    : target?.problemId;
+  const targetExpectedRevision = typeof target === "string"
+    ? undefined
+    : target?.expectedRevision;
+
   // 1. 基础校验：后缀 + 大小（与 support-package 上传约定一致）
   if (!isValidProblemBundleName(file.name)) {
     throw new ValidationError("仅支持 .zip 格式文件");
@@ -151,27 +228,6 @@ export async function importProblemBundle(
   const parsed = parseBundleZip(file.data);
   const manifest = validateBundleManifest(parsed.manifest);
 
-  // 2.5 已废弃字段告警（2026-09-24 审计 A2-2）：`samples` 从不落库、无消费者。
-  // 校验层为兼容存量题包而容忍该字段，这里补一条可见 warning，避免出题人
-  // 继续写一个"看起来生效、实际无效"的字段。
-  if (
-    typeof parsed.manifest === "object" && parsed.manifest !== null &&
-    !Array.isArray(parsed.manifest) &&
-    (parsed.manifest as Record<string, unknown>).samples !== undefined
-  ) {
-    const samples = (parsed.manifest as Record<string, unknown>).samples;
-    logger.warn(
-      "题目包 manifest.samples 已废弃（从不落库），本次导入已忽略；样例请直接写进题面",
-      {
-        file: file.name,
-        // 便于发现手写坏值：以前非法形状会 400，软废弃后只在 warning 里可见。
-        value_type: Array.isArray(samples)
-          ? `array(len=${samples.length})`
-          : typeof samples,
-      },
-    );
-  }
-
   // 3. 题面：statement.md 优先，manifest.description 兜底，二者皆缺 → 400
   const description = parsed.statement ?? manifest.description;
   if (!description || !description.trim()) {
@@ -180,16 +236,48 @@ export async function importProblemBundle(
     );
   }
 
-  // 4. 权限与 number 语义：number 是 admin 幂等键——admin 提供时按 (type, number)
-  //    匹配既有题目 → 更新、未命中 → 新建；非 admin 提供 number 直接拒绝（400），
-  //    普通用户导入仅走创建路径（number 自动分配）。
-  const admin = await isAdminActor(actor, c);
-  if (!admin && manifest.number !== undefined) {
-    throw new BadRequestError(
-      "仅管理员可指定 number（按 (type, number) 幂等更新既有题目）；普通用户导入时题号由系统自动分配",
+  // 4. 目标题目模式（编辑器支持包上传，tracking #55）：题号由**目标题目**决定，
+  //    包内 `number` 不再参与匹配，也不再因非管理员而被拒；内容只写该题的草稿。
+  let number: number | undefined;
+  if (targetProblemId) {
+    const identity = await loadProblemIdentity(targetProblemId);
+    await assertProblemEditPermission(
+      c,
+      identity,
+      actor.userId,
+      actor.userRole,
     );
+    if (manifest.type && manifest.type !== identity.type) {
+      throw new BadRequestError("题包类型与目标题目不一致");
+    }
+    manifest.type = identity.type;
+    number = identity.number;
+    if (!identity.latest_version_id) {
+      // 未发布题目 API 无法提交，也不存在编辑基线：target 模式必须有 draft revision。
+      throw draftRevisionRequired();
+    }
+    if (targetExpectedRevision === undefined) throw draftRevisionRequired();
+    const currentRevision = (await getProblemDraft(targetProblemId, identity))
+      .revision;
+    if (currentRevision !== Number(targetExpectedRevision)) {
+      throw draftRevisionConflict(
+        Number(targetExpectedRevision),
+        currentRevision,
+      );
+    }
   }
-  const number = admin ? manifest.number : undefined;
+
+  // 4.1 number 幂等键语义：admin 提供时按 (type, number) 匹配既有题目 → 更新、
+  //     未命中 → 新建；非 admin 提供 number 直接拒绝（400），普通用户仅走创建路径。
+  const admin = await isAdminActor(actor, c);
+  if (!targetProblemId) {
+    if (!admin && manifest.number !== undefined) {
+      throw new BadRequestError(
+        "仅管理员可指定 number（按 (type, number) 幂等更新既有题目）；普通用户导入时题号由系统自动分配",
+      );
+    }
+    number = admin ? manifest.number : undefined;
+  }
 
   // 4.5 客观题套卷：走独立导入路径（无评测包，事务性创建/更新 + 全量替换小题）
   if (manifest.is_objective) {
@@ -201,12 +289,12 @@ export async function importProblemBundle(
       number,
       actor,
       c,
+      !!targetProblemId,
     );
   }
 
   // 5. 剥离元数据，重建纯净评测包
   const strippedZip = stripMetadataEntries(file.data);
-  const storage = await getStorageProvider();
 
   // 5.1 编辑器初始代码模板：**随包上传、导入时持久化**（与题面 `description`
   //     同策略）。此前模板只在请求时按 `manifest.number + title` 去服务器本地
@@ -241,7 +329,6 @@ export async function importProblemBundle(
         description,
         actor,
         c,
-        storage,
         strippedZip,
         templateContent,
       );
@@ -252,7 +339,6 @@ export async function importProblemBundle(
         number,
         actor,
         c,
-        storage,
         strippedZip,
         templateContent,
       );
@@ -265,7 +351,6 @@ export async function importProblemBundle(
       number,
       actor,
       c,
-      storage,
       strippedZip,
       templateContent,
     );
@@ -337,7 +422,6 @@ async function updateExisting(
   description: string,
   actor: BundleImportActor,
   c: Context | undefined,
-  storage: Awaited<ReturnType<typeof getStorageProvider>>,
   strippedZip: Uint8Array,
   templateContent: string,
 ): Promise<ProblemResponseWithTags> {
@@ -356,39 +440,77 @@ async function updateExisting(
     assertLlmLimitsWithinDefault(manifest.llm);
   }
 
-  if (oldStorageUrl) {
-    try {
-      await storage.delete(oldStorageUrl);
-    } catch (err) {
-      logger.warn("题目导入：删除旧评测包失败", { problem_id: problemId, err });
-    }
-  }
-  const storageUrl = await storage.put(
-    buildPackageKey(problemId),
-    strippedZip,
-    "application/zip",
-  );
-  return updateProblem(
+  const draft = await getProblemDraft(
     problemId,
-    {
-      title: manifest.title,
-      description,
-      difficulty: manifest.difficulty,
-      runtime_config: manifest.runtime_config!,
-      submission_mode: manifest.submission_mode,
-      artifact_max_size_mb: manifest.artifact_max_size_mb,
-      llm: manifest.llm,
-      support_package_storage_url: storageUrl,
-      // 模板与题包同源：重新导入即用新包内的模板覆盖（包内无模板则清空，
-      // 避免旧模板与新题包不一致）。
-      template_content: templateContent,
-      tag_ids: await resolveTagIds(manifest.tags),
-    },
-    actor.userId,
-    actor.userRole,
-    c,
-    true, // import-bundle 是服务端生成 storage URL 的受控流程
+    await loadProblemIdentity(problemId),
   );
+  const rawRevision = c?.req.header("if-match");
+  if (c && rawRevision === undefined) throw draftRevisionRequired();
+  const expectedRevision = rawRevision === undefined
+    ? draft.revision
+    : Number(rawRevision.replace(/^"|"$/g, ""));
+  // Handbook §2.5：物理上传之前先写上传预约（reserve → put → 登记 ready）。
+  // 若先 put 再取登记行锁，并发删除会把刚写回的文件删掉，随后登记出
+  // "ready 但物理缺失"的幽灵对象（2026-10-11 复审问题 1）。
+  const { storageUrl } = await uploadStorageObjectWithReservation({
+    key: buildPackageKey(`${problemId}/${crypto.randomUUID()}`),
+    bytes: strippedZip,
+    contentType: "application/zip",
+  });
+  try {
+    const updated = await updateProblem(
+      problemId,
+      {
+        title: manifest.title,
+        samples: manifest.samples ?? [],
+        description,
+        expected_revision: expectedRevision,
+        difficulty: manifest.difficulty,
+        runtime_config: manifest.runtime_config!,
+        judge_type: isOiRuntimeConfig(manifest.runtime_config) ? "oi" : "dual",
+        submission_mode: manifest.submission_mode,
+        artifact_max_size_mb: manifest.artifact_max_size_mb,
+        llm: manifest.llm,
+        support_package_storage_url: storageUrl,
+        // 模板与题包同源：重新导入即用新包内的模板覆盖（包内无模板则清空，
+        // 避免旧模板与新题包不一致）。
+        template_content: templateContent,
+        tag_ids: await resolveTagIds(manifest.tags),
+      },
+      actor.userId,
+      actor.userRole,
+      c,
+      true, // import-bundle 是服务端生成 storage URL 的受控流程
+    );
+    // 旧包不能直删：历史版本仍引用它（重测要按版本取包），统一走引用守卫；
+    // 引用存在时保留字节，只解绑草稿引用。
+    if (oldStorageUrl && oldStorageUrl !== storageUrl) {
+      try {
+        const outcome = await deleteStorageObject(oldStorageUrl);
+        if (outcome.outcome === "referenced") {
+          logger.info("题目导入：旧评测包仍被历史版本引用，保留字节", {
+            problem_id: problemId,
+          });
+        }
+      } catch (err) {
+        logger.warn("题目导入：删除旧评测包失败", {
+          problem_id: problemId,
+          err,
+        });
+      }
+    }
+    return updated;
+  } catch (error) {
+    if (storageUrl !== oldStorageUrl) {
+      await deleteStorageObject(storageUrl).catch((cleanupError) =>
+        logger.warn("导入回滚：新评测包清理失败", {
+          problem_id: problemId,
+          err: cleanupError,
+        })
+      );
+    }
+    throw error;
+  }
 }
 
 /**
@@ -402,15 +524,18 @@ async function updateExisting(
 async function importObjectivePaper(
   manifest: ProblemBundleManifest,
   description: string,
-  questions: CreateQuestionInput[],
+  questions: ObjectiveQuestionBundleInput[],
   number: number | undefined,
   actor: BundleImportActor,
   c?: Context,
+  explicitTarget = false,
 ): Promise<ProblemResponseWithTags> {
   const type = manifest.type ?? "U";
 
   // number 权限（与编程题一致，防御性重复校验）
-  if (!(await isAdminActor(actor, c)) && number !== undefined) {
+  if (
+    !explicitTarget && !(await isAdminActor(actor, c)) && number !== undefined
+  ) {
     throw new BadRequestError(
       "仅管理员可指定 number（按 (type, number) 幂等更新既有题目）；普通用户导入时题号由系统自动分配",
     );
@@ -458,24 +583,35 @@ async function importObjectivePaper(
     }
 
     let problemId: string;
+    let isNewProblem = false;
     if (existingId) {
       problemId = existingId;
+      const identity = await loadProblemIdentity(problemId, tx);
+      await assertProblemEditPermission(
+        c,
+        identity,
+        actor.userId,
+        actor.userRole,
+      );
+      // 题型不可变（Handbook §2.3）：编程题（AI/OI）导入客观题包必须冲突，
+      // 而不是把题目行改成客观题、清空运行配置/模板后再另写草稿——即使发布被
+      // 拒绝，身份行也已与版本内容不一致（公开投影被提前改写）。
+      if (!identity.is_objective) {
+        throw new AppError(
+          "已存在的编程题不能通过导入客观题包改为客观题；跨题型转换请新建题目",
+          409,
+          "CONTENT_KIND_IMMUTABLE",
+        );
+      }
+      await tx.select({ id: problems.id }).from(problems).where(
+        eq(problems.id, problemId),
+      ).for("update");
       await tx.update(problems).set({
-        title: manifest.title,
-        description,
         difficulty: manifest.difficulty ?? "medium",
-        is_objective: true,
-        visibility: type === "P" ? "public" : "private",
-        runtime_config: null,
-        support_package_storage_url: null,
-        submission_mode: "code",
-        artifact_max_size_mb: null,
-        // 客观题套卷禁止 template（校验层已拦），从编程题转套卷时一并清空。
-        template_content: null,
-        llm_config: null,
         updated_at: now,
       }).where(eq(problems.id, problemId));
     } else {
+      isNewProblem = true;
       problemId = crypto.randomUUID();
       let finalNumber = number;
       const MAX_RETRIES = 3;
@@ -491,9 +627,11 @@ async function importObjectivePaper(
           await tx.insert(problems).values({
             id: problemId,
             title: manifest.title,
+            samples: manifest.samples ?? [],
             description,
             difficulty: manifest.difficulty ?? "medium",
             runtime_config: null,
+            judge_type: "dual",
             is_objective: true,
             visibility: type === "P" ? "public" : "private",
             number: finalNumber,
@@ -523,44 +661,80 @@ async function importObjectivePaper(
       }
     }
 
-    // 全量替换小题
-    await tx.delete(objectiveQuestions).where(
-      eq(objectiveQuestions.paper_id, problemId),
-    );
+    // 全量替换小题：**草稿是唯一事实源**（Handbook §6.4，旧 `objective_questions`
+    // 表已在 0107 删除）。key 取包内显式 key 或新生成 UUID。
+    const snapshots: ObjectiveQuestionSnapshot[] = [];
     for (const q of questions) {
       const options = q.type === "judge" ? judgeOptions() : (q.options ?? []);
-      await tx.insert(objectiveQuestions).values({
-        id: crypto.randomUUID(),
-        paper_id: problemId,
-        sort_order: q.sort_order ?? 0,
-        type: q.type,
+      const key = q.key?.trim() || crypto.randomUUID();
+      snapshots.push({
+        key,
+        sort_order: q.sort_order ?? snapshots.length,
+        type: q.type as ObjectiveQuestionSnapshot["type"],
         prompt: q.prompt,
         options,
         answer: q.answer,
         explanation: q.explanation ?? "",
-        created_at: now,
-        updated_at: now,
       });
     }
 
-    return { problemId };
+    const identity = await loadProblemIdentity(problemId, tx);
+    const draft = await getProblemDraft(problemId, identity, tx);
+    const rawRevision = c?.req.header("if-match");
+    if (existingId && c && rawRevision === undefined) {
+      throw draftRevisionRequired();
+    }
+    const expectedRevision = rawRevision === undefined
+      ? draft.revision
+      : Number(rawRevision.replace(/^"|"$/g, ""));
+    await tx.delete(problemTags).where(eq(problemTags.problem_id, problemId));
+    if (tagIds.length) {
+      await tx.insert(problemTags).values(
+        tagIds.map((tag_id) => ({ problem_id: problemId, tag_id })),
+      );
+    }
+    const draftContent = {
+      kind: "objective" as const,
+      title: manifest.title,
+      description,
+      samples: manifest.samples ?? [],
+      questions: snapshots,
+    };
+    await saveProblemDraftWithObjects(problemId, {
+      content: draftContent,
+      expectedRevision,
+      actorId: actor.userId,
+      context: c,
+      objects: [],
+    }, tx);
+    // 公开投影只由**发布**更新（Handbook §2.2）：已发布题目导入只改草稿，
+    // 题面/运行配置等投影保持不变，导入被拒绝或未发布时对外内容零变化。
+    // 未发布题目除外——尚无版本可发布，投影是它唯一的读取来源，必须与草稿一致。
+    if (isNewProblem) {
+      await tx.update(problems).set({
+        title: draftContent.title,
+        description: draftContent.description,
+        samples: draftContent.samples,
+        runtime_config: null,
+        template_content: null,
+        judge_type: "dual",
+        updated_at: now,
+      }).where(eq(problems.id, problemId));
+    }
+    return { problemId, snapshots };
   });
 
-  // 标签同步（独立事务，与既有导入一致）
-  if (tagIds.length > 0) {
-    await syncProblemTags(outcome.problemId, tagIds, true);
-  }
-
-  // 若从编程题转换为客观题，尽力清理旧评测包（失败不阻塞）
+  // 旧投影引用（仅未发布存量行会有）统一走引用守卫：历史版本/提交仍引用时保留字节。
   if (oldStorageUrl) {
     try {
-      const storage = await getStorageProvider();
-      await storage.delete(oldStorageUrl);
+      const outcome = await deleteStorageObject(oldStorageUrl);
+      if (outcome.outcome === "referenced") {
+        logger.info("客观题导入：旧投影支持包仍被引用，保留字节", {
+          problem_id: outcome.references.total,
+        });
+      }
     } catch (err) {
-      logger.warn("客观题导入：删除旧评测包失败", {
-        problem_id: outcome.problemId,
-        err,
-      });
+      logger.warn("客观题导入：清理旧投影支持包失败", { err });
     }
   }
 
@@ -580,7 +754,6 @@ async function createViaCrud(
   number: number | undefined,
   actor: BundleImportActor,
   c: Context | undefined,
-  storage: Awaited<ReturnType<typeof getStorageProvider>>,
   strippedZip: Uint8Array,
   templateContent: string,
 ): Promise<ProblemResponseWithTags> {
@@ -600,27 +773,31 @@ async function createViaCrud(
     throw new ForbiddenError("无权创建题目");
   }
 
-  // 镜像白名单校验（与 createProblem 一致）
-  await validateJudgeImageWithKind(
-    manifest.runtime_config!.evaluator.image,
-    "evaluator",
-  );
-  await validateJudgeImageWithKind(
-    manifest.runtime_config!.solution.image,
-    "solution",
-  );
+  // 双容器题目才需要镜像白名单；OI 题使用 worker 的受信固定镜像。
+  if (!isOiRuntimeConfig(manifest.runtime_config)) {
+    await validateJudgeImageWithKind(
+      manifest.runtime_config!.evaluator.image,
+      "evaluator",
+    );
+    await validateJudgeImageWithKind(
+      manifest.runtime_config!.solution.image,
+      "solution",
+    );
+  }
 
   // evaluator 联网权限与题目创建权限一致：普通用户导入创建 U 型题可开网；
   // P 型由上方类型检查保证仅 admin。安全提醒：联网 + 可控 evaluator.command
   // = 联网容器任意命令执行，题目包 manifest.runtime_config 由上传者完全可控。
   // issue #207：与 CRUD 创建路径一致的敏感字段权限检查 + 资源上限校验
-  await assertSensitiveFieldPermissions(
-    c,
-    actor.userId,
-    actor.userRole,
-    manifest.runtime_config!,
-  );
-  enforceResourceLimits(manifest.runtime_config!);
+  if (!isOiRuntimeConfig(manifest.runtime_config)) {
+    await assertSensitiveFieldPermissions(
+      c,
+      actor.userId,
+      actor.userRole,
+      manifest.runtime_config!,
+    );
+    enforceResourceLimits(manifest.runtime_config!);
+  }
   if (manifest.llm) {
     assertLlmLimitsWithinDefault(manifest.llm);
   }
@@ -648,9 +825,11 @@ async function createViaCrud(
       await db.insert(problems).values({
         id,
         title: manifest.title,
+        samples: manifest.samples ?? [],
         description,
         difficulty: manifest.difficulty ?? "medium",
         runtime_config: manifest.runtime_config!,
+        judge_type: isOiRuntimeConfig(manifest.runtime_config) ? "oi" : "dual",
         visibility: type === "P" ? "public" : "private",
         submission_mode: manifest.submission_mode ?? "code",
         artifact_max_size_mb: manifest.artifact_max_size_mb ?? null,
@@ -685,16 +864,24 @@ async function createViaCrud(
     await syncProblemTags(id, tagIds);
   }
 
-  // 注册评测包并回填
-  const storageUrl = await storage.put(
-    buildPackageKey(id),
-    strippedZip,
-    "application/zip",
-  );
+  // 注册评测包并回填（先预约再物理上传，上传成功后登记 ready 并消费预约）
+  const { storageUrl } = await uploadStorageObjectWithReservation({
+    key: buildPackageKey(id),
+    bytes: strippedZip,
+    contentType: "application/zip",
+  });
   await db
     .update(problems)
     .set({ support_package_storage_url: storageUrl, updated_at: now })
     .where(eq(problems.id, id));
+
+  // 导入是内容写入者：创建路径直接插题目行，需补建共享草稿并把支持包绑定到
+  // **草稿**引用，`--publish` 才有内容与文件可固定（Handbook §5.3 第 7 步）。
+  await syncProblemDraftFromProjection(id, actor.userId);
+  await replaceDraftObjectsForRole(id, "support_package", [{
+    path: "package.zip",
+    storage_url: storageUrl,
+  }]);
 
   return getProblem(id);
 }

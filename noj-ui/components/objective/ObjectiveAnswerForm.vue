@@ -17,6 +17,13 @@ import {
 const props = defineProps<{
   /** 套卷题目 ID（problems.id） */
   paperId: string
+  /**
+   * 作答版本 ID（Handbook §4.2）：套卷已发布版本时必须由父组件传入，
+   * 服务端据此记录提交时版本；未发布版本的存量套卷为 null。
+   */
+  versionId?: string | null
+  /** 父组件切换作答版本等场景下禁用提交，避免把旧版本的 answers 提交到新版本上。 */
+  disabled?: boolean
 }>()
 
 const { listQuestions, submitPaper, listSubmissions } = useObjective()
@@ -87,6 +94,17 @@ function formatTime(iso: string): string {
   })
 }
 
+/**
+ * 提交时版本文案（Handbook §4.2；与普通提交列表同口径）。
+ *
+ * 后端尚未下发版本字段时返回 null → 不渲染徽标（优雅降级）。
+ */
+function objectiveVersionLabel(sub: ObjectiveSubmission): string | null {
+  if (sub.submitted_version != null) return `v${sub.submitted_version}`
+  if (sub.version_origin === 'legacy_unknown') return '未知历史版本'
+  return null
+}
+
 function toggleOption(qid: string, value: string | boolean) {
   const q = questions.value.find((item) => item.id === qid)
   if (!q) return
@@ -109,7 +127,7 @@ function isSelected(qid: string, value: string | boolean) {
 }
 
 async function onSubmit() {
-  if (submitting.value) return
+  if (submitting.value || props.disabled) return
   // 校验：所有题目必须作答
   const unanswered = questions.value.filter((q) => (answers.value[q.id] ?? []).length === 0)
   if (unanswered.length > 0) {
@@ -120,7 +138,12 @@ async function onSubmit() {
   submitting.value = true
   lastResult.value = null
   try {
-    const res = await submitPaper(props.paperId, answers.value)
+    const res = await submitPaper(
+      props.paperId,
+      answers.value,
+      undefined,
+      props.versionId,
+    )
     lastResult.value = res.data
     await refreshQuestions()
     await refreshHist()
@@ -281,7 +304,15 @@ async function onSubmit() {
                 class="flex w-full items-center justify-between gap-3 text-left"
                 @click="expandedSubmissionId = expandedSubmissionId === sub.id ? null : sub.id"
               >
-                <span class="text-sm text-text-secondary">{{ formatTime(sub.created_at) }}</span>
+                <span class="flex flex-wrap items-center gap-2">
+                  <span class="text-sm text-text-secondary">{{ formatTime(sub.created_at) }}</span>
+                  <!-- 提交时版本 / 有效性与通过（缺失时不渲染，兼容未升级的后端） -->
+                  <UBadge v-if="objectiveVersionLabel(sub)" color="primary" variant="subtle" size="sm">
+                    {{ objectiveVersionLabel(sub) }}
+                  </UBadge>
+                  <UBadge v-if="sub.is_valid" color="primary" variant="subtle" size="sm">有效成绩</UBadge>
+                  <UBadge v-if="sub.is_accepted" color="success" variant="subtle" size="sm">通过</UBadge>
+                </span>
                 <span class="text-sm font-semibold" :class="sub.score === null ? 'text-text-muted' : 'text-primary'">
                   {{ objectiveSubmissionScoreText(sub.score) }}
                 </span>
@@ -316,7 +347,7 @@ async function onSubmit() {
           color="primary"
           size="lg"
           :loading="submitting"
-          :disabled="questions.length === 0"
+          :disabled="questions.length === 0 || disabled"
           @click="onSubmit"
         >
           提交答案

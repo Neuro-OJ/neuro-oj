@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ProblemView } from '~/utils/problemView'
+import { problemJudgeTypeLabel } from '~/utils/problemView'
 import { formatAcceptanceRate } from '~/utils/submissionFormat'
 import type { PublicProblemStats } from '~/utils/problemStats'
 
@@ -33,6 +34,14 @@ const acceptanceText = computed(() => {
   <section class="rounded-xl border border-border bg-white p-5">
     <h2 class="mb-3 text-sm font-semibold text-text">题目信息</h2>
     <dl class="space-y-2.5 text-sm">
+      <div v-if="problemJudgeTypeLabel(problem)" class="flex items-center justify-between gap-3">
+        <dt class="text-text-secondary">题目类型</dt>
+        <dd class="text-text">{{ problemJudgeTypeLabel(problem) }}</dd>
+      </div>
+      <div v-if="problem.is_objective || problem.judge_backend" class="flex items-center justify-between gap-3">
+        <dt class="text-text-secondary">评测后端</dt>
+        <dd class="font-mono text-xs text-text">{{ problem.is_objective ? '即时判定' : problem.judge_backend }}</dd>
+      </div>
       <div class="flex items-center justify-between gap-3">
         <dt class="text-text-secondary">编号</dt>
         <dd class="font-mono text-xs font-semibold text-text">{{ problem.display_id }}</dd>

@@ -3,6 +3,7 @@ import { problems } from "../../../../shared/db/schema.ts";
 import { createContest } from "../../services/contests.ts";
 import { assertSearchEventPublished } from "../../../../../tests/helper/search-events.ts";
 import { connectRedis } from "../../../../shared/mq/connection.ts";
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 
 try {
   await connectRedis();
@@ -34,6 +35,9 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
+    // 竞赛只能固定已发布版本（Handbook §2.6）：夹具题目补迁移基线
+    await publishBaselineVersionForTest("p-contest-event");
+
     const startTime = new Date(Date.now() + 60_000).toISOString();
     const endTime = new Date(Date.now() + 3_600_000).toISOString();
     // 不要 del(SEARCH_INDEX_QUEUE)：同一分片内多个测试文件会并行操作同一

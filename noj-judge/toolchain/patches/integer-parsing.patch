@@ -1,0 +1,143 @@
+--- a/libcxx/include/__iterator/istreambuf_iterator.h
++++ b/libcxx/include/__iterator/istreambuf_iterator.h
+@@ -82,6 +82,9 @@
+   }
+   _LIBCPP_HIDE_FROM_ABI __proxy operator++(int) { return __proxy(__sbuf_->sbumpc(), __sbuf_); }
+ 
++  // NOJ: 仅供 num_get 的标准十进制解析路径直接使用原有流缓冲。
++  _LIBCPP_HIDE_FROM_ABI streambuf_type* __streambuf_for_num_get() const { return __sbuf_; }
++
+   [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI bool equal(const istreambuf_iterator& __b) const {
+     return __test_for_eof() == __b.__test_for_eof();
+   }
+--- a/libcxx/include/__locale_dir/num.h
++++ b/libcxx/include/__locale_dir/num.h
+@@ -89,6 +89,19 @@
+       _CharT* __atoms);
+ 
+   _LIBCPP_HIDE_FROM_ABI static ptrdiff_t __atoms_offset(const _CharT* __atoms, _CharT __val) {
++    // NOJ: char 的数字字符表固定为 ASCII，直接分类避免逐字符搜索通用表。
++    // 宽字符仍沿用 locale 提供的字符映射。
++    if (is_same<_CharT, char>::value) {
++      const unsigned __c = static_cast<unsigned char>(__val);
++      if (__c >= '0' && __c <= '9') return __c - '0';
++      if (__c >= 'a' && __c <= 'f') return __c - 'a' + 10;
++      if (__c >= 'A' && __c <= 'F') return __c - 'A' + 16;
++      if (__c == 'x') return 22;
++      if (__c == 'X') return 23;
++      if (__c == '+') return 24;
++      if (__c == '-') return 25;
++      return __int_chr_cnt;
++    }
+     // TODO: Remove the manual vectorization once https://llvm.org/PR168551 is resolved
+ #  if _LIBCPP_HAS_ALGORITHM_VECTOR_UTILS
+     if constexpr (is_same<_CharT, char>::value) {
+@@ -394,6 +407,7 @@
+     const auto& __numpunct    = use_facet<numpunct<_CharT> >(__iob.getloc());
+     char_type __thousands_sep = __numpunct.thousands_sep();
+     string __grouping         = __numpunct.grouping();
++    const bool __use_grouping = !__grouping.empty();
+ 
+     char_type __atoms_buffer[__num_get_base::__int_chr_cnt];
+     const char_type* __atoms = this->__do_widen(__iob, __atoms_buffer);
+@@ -407,7 +421,7 @@
+       return __first;
+     }
+ 
+-    while (!__grouping.empty() && *__first == __thousands_sep) {
++    while (__use_grouping && *__first == __thousands_sep) {
+       ++__first;
+       if (__g_end - __g < this->__num_get_buf_sz)
+         *__g_end++ = 0;
+@@ -476,28 +490,62 @@
+     // Calculate the actual number
+     _Unsigned __val   = 0;
+     bool __overflowed = false;
+-    for (; __first != __last; ++__first) {
+-      auto __c = *__first;
+-      if (!__grouping.empty() && __c == __thousands_sep) {
+-        if (__g_end - __g < this->__num_get_buf_sz) {
+-          *__g_end++ = __dc;
+-          __dc       = 0;
++    bool __used_decimal_path = false;
++    // NOJ: 普通 char、十进制且没有分组时直接使用原有 streambuf。
++    // 仍做完整溢出检查；其他进制、locale 和自定义迭代器沿用通用路径。
++    if constexpr (is_same<_CharT, char>::value && is_same<iter_type, istreambuf_iterator<char>>::value) {
++      if (__base == 10 && !__use_grouping) {
++        __used_decimal_path = true;
++        auto* __buffer = __first.__streambuf_for_num_get();
++        auto __character = __buffer->sgetc();
++        constexpr _Unsigned __decimal_cutoff = numeric_limits<_Unsigned>::max() / 10;
++        constexpr _Unsigned __decimal_cutlim = numeric_limits<_Unsigned>::max() % 10;
++        while (__character >= '0' && __character <= '9') {
++          const _Unsigned __digit = static_cast<_Unsigned>(__character - '0');
++          if (!__overflowed) {
++            if (__val > __decimal_cutoff || (__val == __decimal_cutoff && __digit > __decimal_cutlim))
++              __overflowed = true;
++            else
++              __val = __val * 10 + __digit;
++          }
++          __parsed_num = true;
++          __character = __buffer->snextc();
+         }
+-        continue;
++        if (char_traits<char>::eq_int_type(__character, char_traits<char>::eof()))
++          __first = iter_type();
+       }
+-      auto __offset = this->__atoms_offset(__atoms, __c);
+-      if (__offset >= 22) // Not a valid integer character
+-        break;
+-
+-      if (__base == 16 && __offset >= 16)
+-        __offset -= 6;
+-      if (__offset >= __base)
+-        break;
+-      // __val = (__val * __base) + __offset
+-      __overflowed |= __builtin_mul_overflow(__val, __base, std::addressof(__val)) ||
+-                      __builtin_add_overflow(__val, __offset, std::addressof(__val));
+-      __parsed_num = true;
+-      ++__dc;
++    }
++    if (!__used_decimal_path) {
++      // NOJ: 预计算阈值，避免 wasm32 将逐位溢出乘法展开为宽整数软件运算。
++      const _Unsigned __cutoff = numeric_limits<_Unsigned>::max() / __base;
++      const _Unsigned __cutlim = numeric_limits<_Unsigned>::max() % __base;
++      for (; __first != __last; ++__first) {
++        auto __c = *__first;
++        if (__use_grouping && __c == __thousands_sep) {
++          if (__g_end - __g < this->__num_get_buf_sz) {
++            *__g_end++ = __dc;
++            __dc       = 0;
++          }
++          continue;
++        }
++        auto __offset = this->__atoms_offset(__atoms, __c);
++        if (__offset >= 22) // Not a valid integer character
++          break;
++  
++        if (__base == 16 && __offset >= 16)
++          __offset -= 6;
++        if (__offset >= __base)
++          break;
++        // __val = (__val * __base) + __offset
++        if (!__overflowed) {
++          if (__val > __cutoff || (__val == __cutoff && static_cast<_Unsigned>(__offset) > __cutlim))
++            __overflowed = true;
++          else
++            __val = __val * __base + static_cast<_Unsigned>(__offset);
++        }
++        __parsed_num = true;
++        ++__dc;
++      }
+     }
+ 
+     if (!__parsed_num) {
+@@ -528,7 +576,7 @@
+       __v = -__val;
+     }
+ 
+-    if (__grouping.size() != 0 && __g_end - __g < __num_get_base::__num_get_buf_sz)
++    if (__use_grouping && __g_end - __g < __num_get_base::__num_get_buf_sz)
+       *__g_end++ = __dc;
+ 
+     // Digit grouping checked

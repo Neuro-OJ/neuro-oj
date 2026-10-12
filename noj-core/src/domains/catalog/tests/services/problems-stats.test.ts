@@ -4,7 +4,7 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   contestProblems,
   contests,
-  evaluationResults,
+  evaluationAttempts,
   problems,
   submissions,
   users,
@@ -52,6 +52,12 @@ async function seedUser(prefix: string): Promise<string> {
   return id;
 }
 
+/**
+ * 写入一条"已评测"的提交：提交行 + graded 尝试 + 有效成绩投影。
+ *
+ * 统计读的是**有效成绩**（§3.2/§3.4）：只写 `evaluation_results` 的旧夹具不再
+ * 代表真实数据（真实写入服务总是同时写尝试与投影）。
+ */
 async function seedSubmission(
   problemId: string,
   userId: string,
@@ -59,6 +65,7 @@ async function seedSubmission(
   details: unknown,
 ): Promise<void> {
   const submissionId = crypto.randomUUID();
+  const attemptId = crypto.randomUUID();
   const now = new Date().toISOString();
   await getDb().insert(submissions).values({
     id: submissionId,
@@ -69,15 +76,27 @@ async function seedSubmission(
     status: "finished",
     created_at: now,
   });
-  await getDb().insert(evaluationResults).values({
-    id: crypto.randomUUID(),
+  await getDb().insert(evaluationAttempts).values({
+    id: attemptId,
     submission_id: submissionId,
-    status: "finished",
+    problem_id: problemId,
+    sequence: 0,
+    source: "initial",
+    state: "finished",
+    result_kind: "graded",
+    result_status: "finished",
     score,
-    output: "",
-    details: JSON.stringify(details),
+    accepted: score > 0,
+    details: details as never,
     created_at: now,
+    finished_at: now,
   });
+  await getDb().update(submissions).set({
+    latest_attempt_id: attemptId,
+    effective_attempt_id: attemptId,
+    is_valid: true,
+    is_accepted: score > 0,
+  }).where(eq(submissions.id, submissionId));
 }
 
 async function cleanup(problemId: string, userIds: string[]): Promise<void> {
@@ -86,8 +105,8 @@ async function cleanup(problemId: string, userIds: string[]): Promise<void> {
     .from(submissions)
     .where(eq(submissions.problem_id, problemId));
   for (const row of rows) {
-    await getDb().delete(evaluationResults)
-      .where(eq(evaluationResults.submission_id, row.id))
+    await getDb().delete(evaluationAttempts)
+      .where(eq(evaluationAttempts.submission_id, row.id))
       .catch(() => {});
   }
   await getDb().delete(submissions).where(
@@ -217,7 +236,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "problems-stats: details 为非法 JSON 时跳过而不抛错",
+  name: "problems-stats: details 缺少 cases 时跳过而不抛错",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -225,7 +244,10 @@ Deno.test({
     const problemId = await seedProblem(940004);
     const alice = await seedUser("ps-alice3");
     try {
+      // 尝试详情必须是对象（DB CHECK 强制），但**不保证**含 `cases`：
+      // 缺少用例数组时必须跳过而非抛错（评测脚本可自定义 details 结构）
       const submissionId = crypto.randomUUID();
+      const attemptId = crypto.randomUUID();
       const now = new Date().toISOString();
       await getDb().insert(submissions).values({
         id: submissionId,
@@ -236,15 +258,27 @@ Deno.test({
         status: "finished",
         created_at: now,
       });
-      await getDb().insert(evaluationResults).values({
-        id: crypto.randomUUID(),
+      await getDb().insert(evaluationAttempts).values({
+        id: attemptId,
         submission_id: submissionId,
-        status: "finished",
+        problem_id: problemId,
+        sequence: 0,
+        source: "initial",
+        state: "finished",
+        result_kind: "graded",
+        result_status: "finished",
         score: 0,
-        output: "",
-        details: "{ 不是合法 JSON",
+        accepted: false,
+        details: { note: "无 cases 字段" },
         created_at: now,
+        finished_at: now,
       });
+      await getDb().update(submissions).set({
+        latest_attempt_id: attemptId,
+        effective_attempt_id: attemptId,
+        is_valid: true,
+        is_accepted: false,
+      }).where(eq(submissions.id, submissionId));
 
       const detail = await getProblemStatsDetail(problemId);
       assertEquals(detail.sample_size, 1);

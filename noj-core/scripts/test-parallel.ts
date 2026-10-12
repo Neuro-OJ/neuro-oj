@@ -112,6 +112,23 @@ if (!DRY_RUN) {
   ) as { entries: Array<{ when: number; tag: string }> };
   const latestMigration = journal.entries[journal.entries.length - 1];
 
+  // 数据库级**公共扩展**串行初始化（2026-10-11 复审问题 10）：
+  // 迁移里有 `CREATE EXTENSION IF NOT EXISTS pg_trgm`，而 `IF NOT EXISTS` 并不保证
+  // 并发安全：两个分片同时执行会在 `pg_extension_name_index` 上撞 23505，随后本批
+  // 迁移整体失败、大量用例因 schema 不完整而连锁失败（仅在**全新数据库**上出现）。
+  // 这里在分片启动前，用 advisory lock 串行创建一次并显式装在 `public`，
+  // 之后各分片的 `IF NOT EXISTS` 都成为无副作用的空操作。
+  {
+    await admin.unsafe(`SELECT pg_advisory_lock(622110)`);
+    try {
+      await admin.unsafe(
+        `CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public`,
+      );
+    } finally {
+      await admin.unsafe(`SELECT pg_advisory_unlock(622110)`);
+    }
+  }
+
   for (const shard of SHARDS.slice(0, SHARD_COUNT)) {
     await admin.unsafe(`CREATE SCHEMA IF NOT EXISTS "${shard.schema}"`);
 

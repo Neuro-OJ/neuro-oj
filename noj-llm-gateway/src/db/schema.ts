@@ -43,6 +43,10 @@ export const llmUsage = pgTable(
   {
     id: text("id").primaryKey(),
     submission_id: text("submission_id").notNull(),
+    /** 评测尝试 ID（版本化后写入；旧记录为 NULL） */
+    attempt_id: text("attempt_id"),
+    /** 评测使用的题目版本（版本化后写入；旧记录为 NULL） */
+    problem_version_id: text("problem_version_id"),
     problem_id: text("problem_id").notNull(),
     user_id: text("user_id").notNull(),
     provider_id: text("provider_id").notNull(),
@@ -70,6 +74,7 @@ export const llmUsage = pgTable(
   },
   (table) => ({
     submissionIdx: index("idx_llm_usage_submission_id").on(table.submission_id),
+    attemptIdx: index("idx_llm_usage_attempt_id").on(table.attempt_id),
     problemIdx: index("idx_llm_usage_problem_id").on(table.problem_id),
     userIdx: index("idx_llm_usage_user_id").on(table.user_id),
     providerIdx: index("idx_llm_usage_provider_id").on(table.provider_id),

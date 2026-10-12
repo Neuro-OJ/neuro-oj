@@ -38,10 +38,17 @@ use zip::write::SimpleFileOptions;
 
 fn dual_task() -> JudgeTask {
     JudgeTask {
+        scheduling_version: None,
+        resource_pool: None,
+        run_id: None,
+        attempt_id: None,
+        problem_version_id: None,
+        evaluation_protocol_version: None,
         submission_id: format!("sub-{}", uuid::Uuid::new_v4()),
         problem_id: "1001".to_string(),
         user_id: "user-1".to_string(),
         priority: "medium".to_string(),
+        judge_type: "dual".to_string(),
         download_url: None,
         artifact_download_url: None,
         runtime_config: RuntimeConfig {
@@ -57,7 +64,9 @@ fn dual_task() -> JudgeTask {
                 call_timeout_ms: 1_000,
                 memory_limit_mb: 256,
             },
-        },
+        }
+        .into(),
+        oi_cost_profile: None,
         language: "python3".to_string(),
         code: String::new(),
         file_name: Some("solution.py".to_string()),
@@ -600,10 +609,17 @@ fn dual_task_runtime_config_serialization() {
     });
     let task: JudgeTask = serde_json::from_value(json).unwrap();
     assert_eq!(
-        task.runtime_config.evaluator.image,
+        task.runtime_config.as_dual().unwrap().evaluator.image,
         "noj-evaluator-python:3.12"
     );
-    assert_eq!(task.runtime_config.solution.call_timeout_ms, 1000);
+    assert_eq!(
+        task.runtime_config
+            .as_dual()
+            .unwrap()
+            .solution
+            .call_timeout_ms,
+        1000
+    );
 }
 
 #[allow(dead_code)]
@@ -694,7 +710,7 @@ from noj_evaluator_sdk import SolutionRunner, result
 runner = SolutionRunner()
 try:
     runner.call('sleep_solution')
-    result.accept(score=1000, details={'cases': [{'id': 'c1', 'status': 'Accepted'}]})
+    result.accept(score=10, details={'cases': [{'id': 'c1', 'status': 'Accepted'}]})
 except Exception as e:
     result.accept(score=0, details={'cases': [{'id': 'c1', 'status': type(e).__name__}]})
 ""#;
@@ -781,7 +797,7 @@ def fast():
 t1 = threading.Thread(target=slow)
 t2 = threading.Thread(target=fast)
 t1.start(); t2.start(); t1.join(); t2.join()
-result.accept(score=1000, details={'cases': out})
+result.accept(score=10, details={'cases': out})
 ""#;
     let runtime_config = RuntimeConfig {
         evaluator: EvaluatorRuntime {
@@ -861,7 +877,7 @@ runner = SolutionRunner()
 time.sleep(2.5)
 try:
     r = runner.call('report')
-    result.accept(score=1000, details={'cap': r})
+    result.accept(score=10, details={'cap': r})
 except Exception as e:
     result.accept(score=0, details={'cap': type(e).__name__})
 ""#;
@@ -1072,7 +1088,7 @@ from noj_evaluator_sdk import SolutionRunner, SolutionTimeoutError, result
 runner = SolutionRunner()
 try:
     runner.call('sleep_solution')
-    result.accept(score=1000, details={'cases': [{'id': 'c1', 'status': 'Accepted'}]})
+    result.accept(score=10, details={'cases': [{'id': 'c1', 'status': 'Accepted'}]})
 except SolutionTimeoutError:
     result.wrong_answer(
         score=0,
@@ -1155,7 +1171,7 @@ from noj_evaluator_sdk import SolutionRunner, result
 runner = SolutionRunner()
 try:
     value = runner.call('solve')
-    result.accept(score=10000, details={'value': value})
+    result.accept(score=100, details={'value': value})
 except Exception as e:
     result.accept(score=0, details={'error': type(e).__name__})
 ""#;

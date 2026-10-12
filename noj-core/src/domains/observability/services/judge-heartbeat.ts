@@ -22,6 +22,10 @@ interface JudgeHeartbeat {
   cache_bytes?: number;
   work_dir_bytes?: number;
   updated_at_ms?: number;
+  scheduling_version?: number;
+  resource_group?: string;
+  resource_pools?: string[];
+  resources?: { capacities?: Record<string, number> };
 }
 
 function numberOrZero(value: unknown): number {
@@ -55,6 +59,10 @@ export async function readJudgeHeartbeats(
   const aggregate = emptyJudgeSnapshot();
   let cursor = "0";
   let scanned = 0;
+  const groupCapacities = new Map<
+    string,
+    { capacities: Record<string, number>; pools: Set<string> }
+  >();
   do {
     const [nextCursor, keys] = await redis.scan(
       cursor,
@@ -72,7 +80,17 @@ export async function readJudgeHeartbeats(
         const hb = JSON.parse(raw) as JudgeHeartbeat;
         aggregate.workers += 1;
         aggregate.active_tasks += numberOrZero(hb.active_tasks);
-        aggregate.max_concurrent_tasks += numberOrZero(hb.max_concurrent_tasks);
+        if (
+          hb.scheduling_version === 1 &&
+          typeof hb.resource_group === "string" && hb.resources?.capacities
+        ) {
+          const group = groupCapacities.get(hb.resource_group) ??
+            { capacities: hb.resources.capacities, pools: new Set<string>() };
+          for (const pool of hb.resource_pools ?? []) group.pools.add(pool);
+          groupCapacities.set(hb.resource_group, group);
+        } else {aggregate.max_concurrent_tasks += numberOrZero(
+            hb.max_concurrent_tasks,
+          );}
         aggregate.completed_tasks_total += numberOrZero(
           hb.completed_tasks_total,
         );
@@ -97,6 +115,18 @@ export async function readJudgeHeartbeats(
     }
     if (scanned > 1000) break;
   } while (cursor !== "0");
+  for (const group of groupCapacities.values()) {
+    for (
+      const [pool, key] of [["oi-wasm", "wasm_tasks"], [
+        "oi-native",
+        "native_tasks",
+      ], ["ai", "ai_tasks"]]
+    ) {
+      if (group.pools.has(pool)) {
+        aggregate.max_concurrent_tasks += numberOrZero(group.capacities[key]);
+      }
+    }
+  }
   return aggregate;
 }
 

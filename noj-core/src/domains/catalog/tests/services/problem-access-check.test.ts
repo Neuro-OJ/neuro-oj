@@ -10,6 +10,7 @@ import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { contests, problems, users } from "../../../../shared/db/schema.ts";
 import { createProblem } from "../../index.ts";
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import {
   evaluateProblemAccess,
   evaluateProblemAccessWithContestId,
@@ -67,6 +68,8 @@ async function createOwnedPublicProblem(ownerId: string): Promise<string> {
       updated_at: new Date().toISOString(),
     })
     .where(eq(problems.id, created.id));
+  // 竞赛只能固定**已发布**版本（Handbook §2.6）：补迁移基线 V1
+  await publishBaselineVersionForTest(created.id);
   return created.id;
 }
 

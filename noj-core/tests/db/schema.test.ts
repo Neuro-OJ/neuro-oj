@@ -1,6 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import {
-  evaluationResults,
+  evaluationAttempts,
   oauthAccounts,
   problems,
   submissions,
@@ -107,10 +107,13 @@ Deno.test("schema: submissions.status type matches SubmissionStatus", () => {
   assertEquals(validStatuses.includes("finished"), true);
 });
 
-Deno.test("schema: evaluation_results table uses integer score", () => {
-  const columns = Object.keys(evaluationResults);
+Deno.test("schema: evaluation_attempts table carries the graded fact fields", () => {
+  const columns = Object.keys(evaluationAttempts);
   assertEquals(columns.includes("submission_id"), true);
-  assertEquals(columns.includes("status"), true);
+  assertEquals(columns.includes("problem_version_id"), true);
+  assertEquals(columns.includes("state"), true);
+  assertEquals(columns.includes("result_kind"), true);
+  assertEquals(columns.includes("result_status"), true);
   assertEquals(columns.includes("score"), true);
   assertEquals(columns.includes("output"), true);
   assertEquals(columns.includes("details"), true);
@@ -118,21 +121,21 @@ Deno.test("schema: evaluation_results table uses integer score", () => {
   assertEquals(columns.includes("memory_kb"), true);
 });
 
-Deno.test("schema: evaluation_results columns have correct constraints", () => {
-  assertEquals(evaluationResults.id.primary, true); // PRIMARY KEY
-  assertEquals(evaluationResults.submission_id.notNull, true); // FK → submissions.id
-  assertEquals(evaluationResults.status.notNull, true);
-  assertEquals(evaluationResults.score.notNull, true);
-  assertEquals(evaluationResults.score.hasDefault, true);
-  assertEquals(evaluationResults.score.default, 0); // DEFAULT 0
-  assertEquals(evaluationResults.output.notNull, true);
-  assertEquals(evaluationResults.output.hasDefault, true);
-  assertEquals(evaluationResults.output.default, "");
-  assertEquals(evaluationResults.details.notNull, true);
-  assertEquals(evaluationResults.details.hasDefault, true);
-  assertEquals(evaluationResults.details.default, "{}");
-  assertEquals(evaluationResults.time_ms.notNull, false); // 可选
-  assertEquals(evaluationResults.memory_kb.notNull, false); // 可选
+Deno.test("schema: evaluation_attempts columns have correct constraints", () => {
+  assertEquals(evaluationAttempts.id.primary, true); // PRIMARY KEY（同时是 run_id）
+  assertEquals(evaluationAttempts.submission_id.notNull, false); // 与客观题来源二选一
+  assertEquals(evaluationAttempts.problem_id.notNull, true);
+  assertEquals(evaluationAttempts.sequence.notNull, true);
+  assertEquals(evaluationAttempts.source.notNull, true);
+  assertEquals(evaluationAttempts.state.notNull, true);
+  assertEquals(evaluationAttempts.accepted.notNull, true);
+  assertEquals(evaluationAttempts.accepted.hasDefault, true);
+  assertEquals(evaluationAttempts.accepted.default, false);
+  assertEquals(evaluationAttempts.score.notNull, false); // 未终结时为空
+  // 部署错误不写入正式判定：result_kind 允许为空
+  assertEquals(evaluationAttempts.result_kind.notNull, false);
+  assertEquals(evaluationAttempts.details.notNull, true);
+  assertEquals(evaluationAttempts.created_at.notNull, true);
 });
 
 Deno.test("schema: exports are defined", () => {
@@ -140,7 +143,7 @@ Deno.test("schema: exports are defined", () => {
   assertEquals(problems !== null && problems !== undefined, true);
   assertEquals(submissions !== null && submissions !== undefined, true);
   assertEquals(
-    evaluationResults !== null && evaluationResults !== undefined,
+    evaluationAttempts !== null && evaluationAttempts !== undefined,
     true,
   );
 });

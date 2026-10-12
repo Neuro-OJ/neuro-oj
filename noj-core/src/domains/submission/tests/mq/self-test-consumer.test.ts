@@ -1,9 +1,14 @@
-import { assertEquals } from "jsr:@std/assert@^1";
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
+import {
+  seedActiveAttemptForTest,
+  v2ResultForTest,
+} from "../_versioning-fixtures.ts";
+import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 
 import {
-  evaluationResults,
+  evaluationAttempts,
   problems,
   selfTests,
   submissions,
@@ -28,6 +33,7 @@ const USER_ID = `tst-consumer-st-user-${ts}`;
 const PROBLEM_ID = `tst-consumer-st-problem-${ts}`;
 const SELF_TEST_ID = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
 const SUBMISSION_ID = `tst-consumer-st-sub-${ts}`;
+const ATTEMPT_ID = `tst-consumer-st-att-${ts}`;
 const BAD_PROBLEM_ID = `tst-consumer-st-bad-problem-${ts}`;
 const PENDING_SELF_TEST_ID = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
 const RECOVERABLE_SELF_TEST_ID = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
@@ -90,6 +96,8 @@ await db.insert(problems).values([
 await db.insert(selfTests).values([
   {
     id: SELF_TEST_ID,
+    judge_run_id: "self-test-run",
+    problem_version_id: await publishBaselineVersionForTest(PROBLEM_ID),
     user_id: USER_ID,
     problem_id: PROBLEM_ID,
     language: "python3",
@@ -108,6 +116,8 @@ await db.insert(selfTests).values([
   },
   {
     id: RECOVERABLE_SELF_TEST_ID,
+    judge_run_id: "recovery-run",
+    problem_version_id: await publishBaselineVersionForTest(PROBLEM_ID),
     user_id: USER_ID,
     problem_id: PROBLEM_ID,
     language: "python3",
@@ -124,6 +134,16 @@ await db.insert(submissions).values({
   status: "judging",
   language: "python3",
   code: "print('hi')",
+  created_at: now,
+});
+// 正式提交的在途尝试：协议 v2 下结果按 attempt_id 落到尝试终态
+await seedActiveAttemptForTest({
+  id: ATTEMPT_ID,
+  submission_id: SUBMISSION_ID,
+  problem_id: PROBLEM_ID,
+  sequence: 0,
+  source: "initial",
+  state: "judging",
   created_at: now,
 });
 await db.insert(submissions).values({
@@ -151,15 +171,17 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await handleResultMessage({
-      submission_id: SELF_TEST_ID,
-      status: "finished",
-      score: 10000,
-      output: "---RESULT---\n{}",
-      details: { cases: [] },
-      time_ms: 12,
-      memory_kb: 1024,
-    });
+    await handleResultMessage(
+      await v2ResultForTest({
+        submission_id: SELF_TEST_ID,
+        status: "finished",
+        score: 10000,
+        output: "---RESULT---\n{}",
+        details: { cases: [] },
+        time_ms: 12,
+        memory_kb: 1024,
+      }),
+    );
 
     const db = getDb();
     const [st] = await db
@@ -171,12 +193,12 @@ Deno.test({
     assertEquals(st.result_status, "finished");
     assertEquals(st.score, 10000);
 
-    const [er] = await db
-      .select({ id: evaluationResults.id })
-      .from(evaluationResults)
-      .where(eq(evaluationResults.submission_id, SELF_TEST_ID))
-      .limit(1);
-    assertEquals(er, undefined);
+    // 自测不得产生正式评测尝试（与正式提交统计/成绩隔离）
+    const selfTestAttempts = await db
+      .select({ id: evaluationAttempts.id })
+      .from(evaluationAttempts)
+      .where(eq(evaluationAttempts.submission_id, SELF_TEST_ID));
+    assertEquals(selfTestAttempts.length, 0);
   },
 });
 
@@ -186,21 +208,27 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await handleResultMessage({
-      submission_id: SUBMISSION_ID,
-      status: "finished",
-      score: 1000,
-      output: "---RESULT---\n{}",
-      details: {},
-    });
+    await handleResultMessage(
+      await v2ResultForTest({
+        submission_id: SUBMISSION_ID,
+        attempt_id: ATTEMPT_ID,
+        status: "finished",
+        score: 1000,
+        output: "---RESULT---\n{}",
+        details: {},
+      }),
+    );
 
     const db = getDb();
-    const [er] = await db
+    const [attempt] = await db
       .select()
-      .from(evaluationResults)
-      .where(eq(evaluationResults.submission_id, SUBMISSION_ID))
+      .from(evaluationAttempts)
+      .where(eq(evaluationAttempts.id, ATTEMPT_ID))
       .limit(1);
-    assertEquals(er.status, "finished");
+    assertExists(attempt);
+    assertEquals(attempt.state, "finished");
+    assertEquals(attempt.result_status, "finished");
+    assertEquals(attempt.score, 1000);
   },
 });
 
@@ -211,23 +239,27 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     // 先产生一个终态 finished（本用例独立完成，不依赖上一个用例）
-    await handleResultMessage({
-      submission_id: SELF_TEST_ID,
-      status: "finished",
-      score: 10000,
-      output: "---RESULT---\n{}",
-      details: { cases: [] },
-      time_ms: 12,
-      memory_kb: 1024,
-    });
+    await handleResultMessage(
+      await v2ResultForTest({
+        submission_id: SELF_TEST_ID,
+        status: "finished",
+        score: 10000,
+        output: "---RESULT---\n{}",
+        details: { cases: [] },
+        time_ms: 12,
+        memory_kb: 1024,
+      }),
+    );
     // 再发送重复终态，应被幂等忽略
-    await handleResultMessage({
-      submission_id: SELF_TEST_ID,
-      status: "finished",
-      score: 0,
-      output: "---RESULT---\n{}",
-      details: {},
-    });
+    await handleResultMessage(
+      await v2ResultForTest({
+        submission_id: SELF_TEST_ID,
+        status: "finished",
+        score: 0,
+        output: "---RESULT---\n{}",
+        details: {},
+      }),
+    );
 
     const db = getDb();
     const [st] = await db
@@ -254,6 +286,15 @@ Deno.test({
       const redis = getRedis();
       await redis.connect();
 
+      await seedActiveAttemptForTest({
+        id: `${RECOVERABLE_SUBMISSION_ID}-attempt`,
+        submission_id: RECOVERABLE_SUBMISSION_ID,
+        problem_id: PROBLEM_ID,
+        sequence: 0,
+        source: "initial",
+        state: "queued",
+        created_at: oldNow,
+      });
       await recoverPendingSubmissions(Date.now());
 
       const db = getDb();
@@ -264,13 +305,14 @@ Deno.test({
         .limit(1);
       assertEquals(row.status, "judging");
     } finally {
-      await fake.stop();
+      /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
       if (prevUrl !== null) {
         Deno.env.set("REDIS_URL", prevUrl);
       } else {
         Deno.env.delete("REDIS_URL");
       }
+      await fake.stop();
     }
   },
 });
@@ -301,13 +343,14 @@ Deno.test({
       assertEquals(row.status, "judging");
       assertEquals(row.judge_started_at, oldNow);
     } finally {
-      await fake.stop();
+      /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
       resetRedisForTest();
       if (prevUrl !== null) {
         Deno.env.set("REDIS_URL", prevUrl);
       } else {
         Deno.env.delete("REDIS_URL");
       }
+      await fake.stop();
     }
   },
 });
@@ -355,9 +398,6 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const db = getDb();
-    await db.delete(evaluationResults).where(
-      eq(evaluationResults.submission_id, SUBMISSION_ID),
-    );
     await db.delete(submissions).where(eq(submissions.id, SUBMISSION_ID));
     await db.delete(submissions).where(
       eq(submissions.id, RECOVERABLE_SUBMISSION_ID),

@@ -7,6 +7,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import {
   ALLOWED_JUDGE_STATUSES,
+  isValidGradedScore,
   sanitizeJudgeResult,
 } from "../../services/submissions/sanitize-judge-result.ts";
 import type { JudgeResult } from "../../types/index.ts";
@@ -33,27 +34,43 @@ Deno.test("sanitize-judge-result: 合法结果原样通过", () => {
   assertEquals(safe.memory_kb, 1024);
 });
 
-Deno.test("sanitize-judge-result: 超范围分数被 clamp（脏分数不得进入榜单）", () => {
+Deno.test("sanitize-judge-result: 越界分数只报告、不 clamp（不得伪造正式成绩）", () => {
   const high = sanitizeJudgeResult(result({ score: 999999 }));
-  assertEquals(high.result.score, 10000);
+  assertEquals(high.result.score, 999999);
   assertEquals(high.adjustments.length, 1);
 
   const negative = sanitizeJudgeResult(result({ score: -500 }));
-  assertEquals(negative.result.score, 0);
+  assertEquals(negative.result.score, -500);
   assertEquals(negative.adjustments.length, 1);
 });
 
-Deno.test("sanitize-judge-result: 非数值分数降级为 0", () => {
+Deno.test("sanitize-judge-result: 非数值分数只报告、不降级为 0", () => {
   const nan = sanitizeJudgeResult(result({ score: Number.NaN }));
-  assertEquals(nan.result.score, 0);
+  assertEquals(Number.isNaN(nan.result.score), true);
+  assertEquals(nan.adjustments.length, 1);
+
   const stringScore = sanitizeJudgeResult(
     result({ score: "10000" as unknown as number }),
   );
-  assertEquals(stringScore.result.score, 0);
+  assertEquals(stringScore.result.score as unknown, "10000");
+  assertEquals(stringScore.adjustments.length, 1);
+
   const infinite = sanitizeJudgeResult(
     result({ score: Number.POSITIVE_INFINITY }),
   );
-  assertEquals(infinite.result.score, 0);
+  assertEquals(infinite.result.score, Number.POSITIVE_INFINITY);
+  assertEquals(infinite.adjustments.length, 1);
+});
+
+Deno.test("sanitize-judge-result: isValidGradedScore 只接受 0..10000 整数", () => {
+  assertEquals(isValidGradedScore(0), true);
+  assertEquals(isValidGradedScore(10000), true);
+  assertEquals(isValidGradedScore(12.5), false);
+  assertEquals(isValidGradedScore(-1), false);
+  assertEquals(isValidGradedScore(10001), false);
+  assertEquals(isValidGradedScore("100"), false);
+  assertEquals(isValidGradedScore(undefined), false);
+  assertEquals(isValidGradedScore(Number.NaN), false);
 });
 
 Deno.test("sanitize-judge-result: 未知状态降级为 error", () => {

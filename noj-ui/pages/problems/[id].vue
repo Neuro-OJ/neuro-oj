@@ -3,9 +3,10 @@ import { useRoute } from "vue-router"
 import type { PostRow } from "~/composables/useCommunity"
 import { isAdminUser } from "~/utils/isAdminUser"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
-import { extractApiError, isNotFoundError } from "~/utils/apiError"
+import { extractApiError, isNotFoundError, isVersionConflictError } from "~/utils/apiError"
 import type { PublicProblemStats } from "~/utils/problemStats"
 import { useProblemStats } from "~/composables/useProblemStats"
+import { useProblemVersions, type ProblemVersionSummary } from "~/composables/useProblemVersions"
 import { toProblemView, type ProblemResource } from "~/utils/problemView"
 import { useBreadcrumbLabel } from "~/composables/useBreadcrumb"
 
@@ -16,10 +17,32 @@ const { config, loadConfig } = useCommunity()
 
 const problemId = route.params.id as string
 
+/**
+ * 指定作答版本（Handbook §4.1 / §4.2）。
+ *
+ * 默认（哨兵值 `DEFAULT_VERSION`）= 由有效版本策略解析：`exact` → 固定版、
+ * `any` → 最新已发布版；选择某个已发布版本后按该版本读取题面与内容，提交/自测
+ * 原样携带它的 `version_id`（题库允许显式提交其他已发布版本）。历史版本遵循题目
+ * 当前访问权限，选择旧版本不能绕过竞赛保密与门控。
+ */
+const DEFAULT_VERSION = "__default__"
+const selectedVersion = ref(DEFAULT_VERSION)
+const requestedVersionId = computed(() =>
+  selectedVersion.value && selectedVersion.value !== DEFAULT_VERSION
+    ? selectedVersion.value
+    : null
+)
+
+const problemRequestUrl = computed(() =>
+  requestedVersionId.value
+    ? `/api/v1/problems/${problemId}?version_id=${encodeURIComponent(requestedVersionId.value)}`
+    : `/api/v1/problems/${problemId}`
+)
+
 const { data, pending, error, refresh } = await useFetch<{
   data: ProblemResource
 }>(
-  `/api/v1/problems/${problemId}`,
+  problemRequestUrl,
 )
 
 // 404 → 真正的 404 页（含"题目已被公开赛保密、对非所有者/管理员不可见"）。
@@ -62,6 +85,8 @@ useSeoMeta({
 // 保证用户通过本题（AC）后回到详情页即可看到算法标签与最新门控状态。
 onMounted(() => {
   refresh()
+  // 版本列表在客户端加载：非关键数据，SSR 不阻塞首屏，也避免游客触发多余查询
+  if (problem.value?.id) void loadPublishedVersions(problem.value.id)
 })
 
 const canEdit = computed(() => {
@@ -77,12 +102,60 @@ const isObjective = computed(() => problem.value?.is_objective === true)
 /** artifact 提交模式：选手上传 zip 产物 */
 const isArtifact = computed(() => problem.value?.submission_mode === 'artifact')
 
-/** 独立编辑器入口（客观题与 artifact 题无编辑器）。 */
-const editorUrl = computed(() =>
-  problem.value && !isObjective.value && !isArtifact.value
-    ? `/editor/${problem.value.display_id || problemId}`
-    : null
-)
+/**
+ * 作答版本（Handbook §4.2）：提交必须原样回传该 ID。
+ *
+ * 题库按有效版本策略解析（`exact` → 固定版本；`any` → 最新已发布版）；
+ * `null` 表示该题尚未发布任何版本，此时不能提交（服务端也会 409）。
+ */
+const answerVersionId = computed(() => problem.value?.version_id ?? null)
+
+// ── 版本选择（Handbook §6.8：版本选择 / 最新版提示 / 当前通过要求）──
+const { listVersions } = useProblemVersions()
+/** 已发布版本（新→旧）。非关键数据：失败静默降级为"不展示选择器"。 */
+const publishedVersions = ref<ProblemVersionSummary[]>([])
+const versionsLoading = ref(false)
+
+async function loadPublishedVersions(id: string) {
+  versionsLoading.value = true
+  try {
+    const res = await listVersions(id, 1, 100, { silent: true })
+    publishedVersions.value = res.data
+  } catch {
+    publishedVersions.value = []
+  } finally {
+    versionsLoading.value = false
+  }
+}
+
+/** 选项：默认作答版本 + 每个已发布版本（标注最新）。 */
+const versionOptions = computed(() => [
+  { value: DEFAULT_VERSION, label: "默认作答版本（按有效版本策略）" },
+  ...publishedVersions.value.map((item) => ({
+    value: item.id,
+    label: `v${item.version}${item.is_latest ? "（最新）" : ""}`,
+  })),
+])
+
+/** 只有多于一个已发布版本时才需要选择器。 */
+const showVersionPicker = computed(() => publishedVersions.value.length > 1)
+
+/** 当前通过要求（Handbook §1.4 题型名称与通过标准）。 */
+const passRequirement = computed(() => {
+  if (isObjective.value) return "本套卷为客观题：满分才算通过"
+  if (problem.value?.judge_type === "oi") return "OI 题：本次评测 verdict 为 AC 才算通过"
+  return "代码题 / 产物提交题：按当前有效正分规则判定是否通过"
+})
+
+/** 独立编辑器入口（客观题与 artifact 题无编辑器）；显式选版时把版本带进做题页。 */
+const editorUrl = computed(() => {
+  const p = problem.value
+  if (!p || isObjective.value || isArtifact.value) return null
+  const base = `/editor/${p.display_id || problemId}`
+  return requestedVersionId.value
+    ? `${base}?version_id=${encodeURIComponent(requestedVersionId.value)}`
+    : base
+})
 const editUrl = computed(() =>
   problem.value && canEdit.value
     ? `${problemUrl(problem.value.id, problem.value.display_id)}/edit`
@@ -114,11 +187,17 @@ async function handleArtifactSubmit() {
     artifactError.value = '请选择 zip 文件'
     return
   }
+  if (!answerVersionId.value) {
+    artifactError.value = '该题尚未发布任何版本，暂时无法提交'
+    return
+  }
   artifactError.value = ''
   artifactSubmitting.value = true
   try {
     const form = new FormData()
     form.append('problem_id', problem.value.id)
+    // 版本必须随提交上传（Handbook §4.2）：服务端据此判定"在评哪一版"
+    form.append('version_id', answerVersionId.value)
     form.append('language', 'python3')
     form.append('file', artifactFile.value)
     const res = await api.post<{ data: { id: string; public_id?: string } }>(
@@ -129,6 +208,8 @@ async function handleArtifactSubmit() {
     artifactFile.value = null
   } catch (err: unknown) {
     artifactError.value = extractApiError(err).message
+    // 版本冲突：不自动换版重提，仅刷新题目让用户确认新的作答版本
+    if (isVersionConflictError(err)) await refresh()
   } finally {
     artifactSubmitting.value = false
   }
@@ -260,6 +341,53 @@ const publishBlockReason = computed(() => {
               </template>
             </ProblemHeader>
 
+            <!-- 作答版本（Handbook §4.2）：提交必须携带；未发布版本时禁止提交 -->
+            <div class="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-white px-4 py-3 text-sm">
+              <span class="text-text-secondary">作答版本</span>
+              <UBadge v-if="problem.version != null" color="primary" variant="subtle">
+                v{{ problem.version }}
+              </UBadge>
+              <UBadge v-else color="warning" variant="subtle">未发布</UBadge>
+              <span v-if="problem.effective_version_policy?.mode === 'exact'" class="text-text-muted">
+                题库已将该题固定为此版本
+              </span>
+              <span v-else-if="problem.latest_version != null && !problem.is_latest" class="text-text-muted">
+                最新已发布版本为 v{{ problem.latest_version }}
+              </span>
+              <span v-else-if="problem.latest_version != null" class="text-text-muted">已是最新版本</span>
+              <span v-if="!answerVersionId" class="text-warning-text">该题尚未发布任何版本，暂时无法提交</span>
+              <span class="text-text-muted">· 通过要求：{{ passRequirement }}</span>
+            </div>
+
+            <!-- 版本选择（Handbook §6.8）：题库允许显式选择其他已发布版本作答 -->
+            <div
+              v-if="showVersionPicker"
+              class="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-white px-4 py-3 text-sm"
+            >
+              <span class="text-text-secondary">选择版本作答</span>
+              <USelect
+                v-model="selectedVersion"
+                :items="versionOptions"
+                :loading="versionsLoading"
+                class="min-w-[220px]"
+              />
+              <UButton
+                v-if="requestedVersionId"
+                color="neutral"
+                variant="outline"
+                size="xs"
+                @click="selectedVersion = DEFAULT_VERSION"
+              >
+                回到默认作答版本
+              </UButton>
+              <span v-if="requestedVersionId" class="text-warning-text">
+                正在查看历史版本 v{{ problem.version }}，提交将记录该版本
+              </span>
+              <span v-else class="text-11px text-text-muted">
+                历史版本遵循题目当前访问权限；所选版本会随提交一起记录。
+              </span>
+            </div>
+
             <!-- 客观题：作答表单内联在题面卡片中（不折叠、不复制） -->
             <ProblemStatement
               v-if="isObjective"
@@ -269,7 +397,12 @@ const publishBlockReason = computed(() => {
               :copyable="false"
             >
               <template #body>
-                <ObjectiveAnswerForm :paper-id="problem.display_id || problem.id" />
+                <ObjectiveAnswerForm
+                  :paper-id="problem.display_id || problem.id"
+                  :version-id="answerVersionId"
+                  :disabled="pending"
+                />
+            <section v-if="problem.samples?.length" class="mt-6 space-y-4"><h2 class="text-lg font-semibold">样例</h2><div v-for="(sample,index) in problem.samples" :key="sample.id" class="space-y-2"><h3 class="font-medium">样例 {{index+1}}</h3><div class="grid gap-3 sm:grid-cols-2"><div><p class="mb-1 text-sm text-text-secondary">输入</p><pre class="overflow-auto rounded-md bg-sunken p-3 text-sm">{{sample.input}}</pre></div><div><p class="mb-1 text-sm text-text-secondary">输出</p><pre class="overflow-auto rounded-md bg-sunken p-3 text-sm">{{sample.output}}</pre></div></div><MarkdownRenderer v-if="sample.explanation" :content="sample.explanation" /></div></section>
               </template>
             </ProblemStatement>
 
@@ -302,7 +435,7 @@ const publishBlockReason = computed(() => {
                   <NuxtLink :to="publicUrl('submission', artifactSuccessId)" class="text-primary no-underline hover:underline">查看评测结果</NuxtLink>
                 </div>
                 <div class="flex items-center gap-3">
-                  <UButton color="primary" :loading="artifactSubmitting" :disabled="!isLoggedIn || artifactSubmitting" @click="handleArtifactSubmit">
+                  <UButton color="primary" :loading="artifactSubmitting" :disabled="!isLoggedIn || artifactSubmitting || pending" @click="handleArtifactSubmit">
                     <UIcon name="i-lucide-upload" class="size-4" />
                     上传并提交
                   </UButton>

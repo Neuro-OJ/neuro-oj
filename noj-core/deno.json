@@ -39,6 +39,7 @@
     "test:pg": "BCRYPT_SALT_ROUNDS=4 deno test -A --no-check --preload=tests/preload.ts"
   },
   "imports": {
+    "yaml": "npm:yaml@^2.9.1",
     "@cliffy/command": "jsr:@cliffy/command@^1.2.1",
     "hono": "npm:hono@^4",
     "hono/": "npm:/hono@^4/",

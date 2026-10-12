@@ -2,7 +2,11 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
-import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
+import {
+  createUserToken,
+  jsonRequest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { auditLogs } from "../../../../shared/db/schema.ts";
 import {
@@ -291,6 +295,8 @@ Deno.test({
       problem_id: problemId,
       tag_id: tagId,
     });
+    // 公共列表只含已发布题目（Handbook §6.2）：补基线版本
+    await publishBaselineVersionForTest(problemId);
 
     // 按标签筛选命中
     const res = await jsonRequest(app, `/api/v1/problems?tag=${tagId}`);

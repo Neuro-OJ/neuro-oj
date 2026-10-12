@@ -24,6 +24,7 @@ import {
   CODE_SAMPLES,
   e2eTest,
   getAdminToken,
+  getContestAnswerVersionId,
   getProblemIdByNumber,
   isE2E,
   isJudgeAvailable,
@@ -102,9 +103,14 @@ async function createRunningContestWithRegistration(): Promise<string> {
 
 /** 竞赛入口提交（服务端据此推导为 high 优先级）。 */
 async function submitInContest(code = CODE_SAMPLES.accepted): Promise<string> {
+  const versionId = await getContestAnswerVersionId(
+    userToken,
+    contestId,
+    problemId,
+  );
   const res = await apiPost(
     `/api/v1/contests/${contestId}/submit`,
-    { problem_id: problemId, language: "python3", code },
+    { problem_id: problemId, language: "python3", code, version_id: versionId },
     userToken,
   );
   if (res.status !== 201) {
@@ -159,7 +165,8 @@ e2eTest("[e2e/priority-queue] high/medium/low 均能被消费", async () => {
     {},
     adminToken,
   );
-  if (rejudge.status !== 200) {
+  // 统一任务受理后单条重测返回 202 + 任务 ID（Handbook §4.3）
+  if (rejudge.status !== 202) {
     throw new Error(
       `重测失败: ${rejudge.status} ${JSON.stringify(rejudge.body)}`,
     );
@@ -195,7 +202,8 @@ e2eTest("[e2e/priority-queue] high 洪峰下 low 仍能完成（不饿死）", a
     {},
     adminToken,
   );
-  if (rejudge.status !== 200) {
+  // 统一任务受理后单条重测返回 202 + 任务 ID（Handbook §4.3）
+  if (rejudge.status !== 202) {
     throw new Error(
       `重测失败: ${rejudge.status} ${JSON.stringify(rejudge.body)}`,
     );
