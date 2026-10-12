@@ -23,6 +23,7 @@ import {
 import type { CreateProblemInput } from "../types/problems.ts";
 import type { ProblemDraftContent } from "../types/problem-content.ts";
 import { draftRevisionRequired } from "../services/versioning/draft.ts";
+import { setDomainProblemBindingState } from "../services/workspace/problem-bindings.ts";
 
 /** 显式域题库路由；资源隔离阶段完成后由组合根统一挂载。 */
 export const domainProblemsRouter = new Hono<AuthEnv>();
@@ -144,5 +145,26 @@ domainProblemsRouter.post(
         c,
       ),
     );
+  },
+);
+
+domainProblemsRouter.post(
+  `${prefix}/:reference/state`,
+  authMiddleware,
+  async (c) => {
+    const input = await parseJsonBody<
+      { disabled: boolean; visibility?: "public" | "members"; reason: string }
+    >(c);
+    assertObjectBody(input);
+    c.header("Cache-Control", "no-store");
+    return c.json({
+      data: await setDomainProblemBindingState(
+        c.req.param("slug")!,
+        c.req.param("reference")!,
+        c.var.userId,
+        draftRevision(c.req.header("If-Match")),
+        input,
+      ),
+    });
   },
 );

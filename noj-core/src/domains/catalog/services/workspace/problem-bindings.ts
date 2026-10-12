@@ -32,6 +32,7 @@ import {
   domainProblemReference,
   parseDomainProblemReference,
 } from "./problem-reference.ts";
+import { recordProblemEducationChange } from "./education-events.ts";
 
 /** 写入绑定变化依据，和配置共用事务，不依赖可丢失的通知。 */
 async function recordBinding(
@@ -54,17 +55,23 @@ async function recordBinding(
     reason,
     created_at: new Date().toISOString(),
   });
-  await recordEducationEvent(executor, {
-    domain_id: binding.domain_id,
-    problem_id: binding.problem_id,
-    event_type: "problem.changed",
-  });
+  if (binding.kind === "owned") {
+    await recordProblemEducationChange(executor, binding.problem_id);
+  } else {
+    await recordEducationEvent(executor, {
+      domain_id: binding.domain_id,
+      problem_id: binding.problem_id,
+      event_type: "problem.changed",
+    });
+  }
   await workspaceAudit(executor, actorId, binding.domain_id, "domain.update", {
     operation: "problem.binding",
     binding_id: binding.id,
     problem_id: binding.problem_id,
     revision: binding.revision,
     reason,
+    visibility: binding.visibility,
+    disabled_at: binding.disabled_at,
   });
 }
 
@@ -281,6 +288,112 @@ export async function setDomainProblemBindingPolicy(
       tx,
     );
     await recomputeProblemBindingProjections(tx, updated);
+    return updated;
+  });
+}
+
+/** 下架保留源题、不可变版本、绑定和提交；恢复共享引用时重新检查来源授权。 */
+export async function setDomainProblemBindingState(
+  slug: string,
+  reference: string,
+  actorId: string,
+  expectedRevision: number | null,
+  input: {
+    disabled: boolean;
+    visibility?: "public" | "members";
+    reason: string;
+  },
+) {
+  if (
+    expectedRevision === null || !Number.isSafeInteger(expectedRevision) ||
+    expectedRevision < 0
+  ) {
+    throw new AppError("需要题库配置 revision", 428, "REVISION_REQUIRED");
+  }
+  if (
+    typeof input.disabled !== "boolean" ||
+    input.visibility !== undefined &&
+      !["public", "members"].includes(input.visibility) ||
+    typeof input.reason !== "string" || !input.reason.trim() ||
+    input.reason.length > 2000
+  ) {
+    throw new BadRequestError("需要有效的题库状态、展示范围和变更理由");
+  }
+  const parsed = parseDomainProblemReference(reference);
+  return await getDb().transaction(async (tx) => {
+    await loadWorkspace(slug, actorId, { executor: tx, write: true });
+    await tx.select({ id: domains.id }).from(domains).where(
+      inArray(domains.slug, [slug, parsed.sourceSlug ?? slug]),
+    ).orderBy(asc(domains.id)).for("update");
+    const workspace = await loadWorkspace(slug, actorId, {
+      executor: tx,
+      write: true,
+      lock: true,
+    });
+    const [resource] = await tx.select({
+      problem: problems,
+      source: domains,
+      binding: domainProblemBindings,
+    })
+      .from(domainProblemBindings).innerJoin(
+        problems,
+        eq(problems.id, domainProblemBindings.problem_id),
+      )
+      .innerJoin(domains, eq(domains.id, problems.domain_id)).where(and(
+        eq(domainProblemBindings.domain_id, workspace.domain.id),
+        eq(problems.number, parsed.number),
+        parsed.sourceSlug
+          ? eq(domains.slug, parsed.sourceSlug)
+          : eq(problems.domain_id, workspace.domain.id),
+      ));
+    if (!resource) throw new NotFoundError("域题库中不存在此题");
+    if (resource.binding.kind === "owned") {
+      assertWorkspacePermission(
+        workspace.context,
+        workspace.context.domainPermissions.has("problem:write_any")
+          ? "problem:write_any"
+          : resource.problem.owner_id === actorId
+          ? "problem:write_own"
+          : "problem:write_any",
+      );
+    } else assertWorkspacePermission(workspace.context, "problem:policy");
+    const [currentProblem] = await tx.select().from(problems).where(
+      eq(problems.id, resource.problem.id),
+    ).for("update");
+    const [binding] = await tx.select().from(domainProblemBindings).where(
+      eq(domainProblemBindings.id, resource.binding.id),
+    ).for("update");
+    if (binding.revision !== expectedRevision) {
+      throw new ConflictError("题库配置已变化，请重新读取");
+    }
+    if (binding.kind === "shared" && !input.disabled) {
+      await assertCurrentProblemShare(
+        currentProblem,
+        resource.source,
+        workspace.domain.id,
+        tx,
+      );
+    }
+    const now = new Date().toISOString();
+    const [updated] = await tx.update(domainProblemBindings).set({
+      disabled_at: input.disabled ? binding.disabled_at ?? now : null,
+      ...(input.visibility ? { visibility: input.visibility } : {}),
+      revision: binding.revision + 1,
+      updated_at: now,
+    }).where(eq(domainProblemBindings.id, binding.id)).returning();
+    if (binding.kind === "owned" && input.visibility) {
+      await tx.update(problems).set({
+        visibility: input.visibility === "public" ? "public" : "private",
+        updated_at: now,
+      }).where(eq(problems.id, resource.problem.id));
+    }
+    await recordBinding(
+      updated,
+      updated.required_version_id ?? currentProblem.latest_version_id,
+      actorId,
+      input.reason.trim(),
+      tx,
+    );
     return updated;
   });
 }
