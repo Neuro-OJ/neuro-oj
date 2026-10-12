@@ -8,6 +8,7 @@ import {
 } from "../../../shared/db/schema.ts";
 import { ConflictError, NotFoundError } from "../../../shared/base/errors.ts";
 import { workspaceAudit } from "./domains.ts";
+import { retireDomainEducationMemberships } from "../../education/index.ts";
 
 /** 成员写入先锁目标账号，再锁域；注销提交后不允许用旧读取创建有效成员关系。 */
 export async function lockActiveWorkspaceAccount(
@@ -58,6 +59,7 @@ export async function retireAccountWorkspaceMemberships(
     ),
   );
   for (const domain of affected) {
+    await retireDomainEducationMemberships(executor, domain.id, userId);
     await executor.update(domainResourceCounters).set({
       used:
         sql`(SELECT count(*) FROM domain_memberships membership WHERE membership.domain_id = ${domain.id} AND membership.status = 'active')`,

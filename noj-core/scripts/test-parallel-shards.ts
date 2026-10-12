@@ -57,6 +57,7 @@ export const SHARDS: Shard[] = [
       "src/domains/contest/tests/types",
       "src/domains/submission/tests/types",
       "src/domains/workspace/tests/types",
+      "src/domains/education/tests/types",
       "src/domains/observability/tests",
       "src/domains/search/tests/consumer",
       "tests/data",
@@ -110,6 +111,8 @@ export const SHARDS: Shard[] = [
       "src/domains/legal/tests/services",
       "src/domains/workspace/tests/routes",
       "src/domains/workspace/tests/services",
+      "src/domains/education/tests/routes",
+      "src/domains/education/tests/services",
     ],
   },
 ];

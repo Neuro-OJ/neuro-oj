@@ -130,6 +130,7 @@ noj-core/
 │   │   ├── identity/      # 注册登录、JWT/RBAC、用户、OAuth、TFA、封禁
 │   │   ├── catalog/       # 题目、标签、题包、题单
 │   │   ├── workspace/     # 产品工作空间、成员、角色、邀请及实例政策（见模块 README）
+│   │   ├── education/     # 班级、作业、教学权限及学情（见模块 README）
 │   │   ├── objective/     # 客观题
 │   │   ├── submission/    # 提交、评测协议、MQ、自测、SSE
 │   │   ├── contest/       # 竞赛

@@ -214,6 +214,8 @@ jobs:
               - 'noj-core/src/domains/workspace/**'
             core-legal:
               - 'noj-core/src/domains/legal/**'
+            core-education:
+              - 'noj-core/src/domains/education/**'
             core-gateway:
               - 'noj-core/src/domains/gateway/**'
             core-content-review:
@@ -284,7 +286,7 @@ jobs:
           import json, os
           def flag(name):
               return os.environ.get(name, '') == 'true'
-          all_core = ["identity","catalog","submission","contest","system","community","messaging","objective","admin","search","query","gateway","content-review","observability","legal","workspace"]
+          all_core = ["identity","catalog","submission","contest","system","community","messaging","objective","admin","search","query","gateway","content-review","observability","legal","workspace","education"]
           core_domains = []
           if flag('CORE_SHARED'):
               core_domains = all_core[:]
@@ -1566,6 +1568,85 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-workspace-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  core-education:
+    name: Core education
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'education') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: 安装 Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version-file: .dvmrc
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行 Domain 测试
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-domain.sh education
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-education-logs
           path: |
             noj-core/test-logs/
             noj-core/test-output.log

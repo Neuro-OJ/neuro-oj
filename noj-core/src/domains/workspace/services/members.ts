@@ -26,6 +26,7 @@ import { workspaceAudit } from "./domains.ts";
 import { getDomainEffectiveLimits } from "./limits.ts";
 import { ROOT_USER_ID } from "../../../shared/base/constants.ts";
 import { lockActiveWorkspaceAccount } from "./account-lifecycle.ts";
+import { retireDomainEducationMemberships } from "../../education/index.ts";
 
 /** 调用方已按账号 → Domain 顺序加锁；成员数检查和身份恢复同事务执行。 */
 export async function addDomainMember(
@@ -299,6 +300,7 @@ export async function removeDomainMember(
       status: "removed",
       left_at: new Date().toISOString(),
     }).where(eq(domainMemberships.id, member.id));
+    await retireDomainEducationMemberships(tx, domain.id, userId);
     await tx.update(domainResourceCounters).set({
       used: sql`GREATEST(used - 1, 0)`,
     }).where(
