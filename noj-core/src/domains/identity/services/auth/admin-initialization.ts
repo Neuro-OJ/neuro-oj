@@ -16,6 +16,7 @@ import { ADMIN_INITIALIZATION_KEY } from "../../../../shared/security/admin-init
 import { hashPassword } from "../security/password.ts";
 import { validatePasswordStrength } from "./auth-register.ts";
 import type { RegisterInput } from "../../types/auth.ts";
+import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 
 /** 升级已有站点时永久关闭首次初始化；不改变任何用户权限。 */
 export async function sealExistingSiteAdminInitialization(): Promise<void> {
@@ -77,6 +78,7 @@ export async function initializeFirstAdmin(
       updated_at: now,
     });
     await tx.insert(userRoles).values({ user_id: id, role_id: adminRole.id });
+    await ensureDefaultWorkspace(tx);
     createdUserId = id;
     return true;
   });

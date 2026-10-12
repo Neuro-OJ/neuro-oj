@@ -10,3 +10,4 @@ export * from "./services/creation-requests.ts";
 export * from "./services/registration.ts";
 export * from "./middleware/instance-access.ts";
 export * from "./services/limits.ts";
+export * from "./services/account-lifecycle.ts";

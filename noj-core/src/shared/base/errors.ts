@@ -40,8 +40,8 @@ export class AppError extends Error {
  * 用于资源重复场景（如用户名/邮箱已存在）。
  */
 export class ConflictError extends AppError {
-  constructor(message: string) {
-    super(message, 409, "CONFLICT_ERROR");
+  constructor(message: string, code?: string) {
+    super(message, 409, code ?? "CONFLICT_ERROR");
     this.name = "ConflictError";
   }
 }

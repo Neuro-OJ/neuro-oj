@@ -6,6 +6,9 @@ import {
   resetDbForTest,
 } from "../../../../shared/db/connection.ts";
 import {
+  domainMemberRoles,
+  domainMemberships,
+  domains,
   roles,
   systemSettings,
   userRoles,
@@ -64,6 +67,10 @@ test("空站创建管理员、密码仅存哈希且强制改密，不输出凭�
   );
   assertEquals(user.must_change_password, true);
   assertEquals(user.email_verified, false);
+  const [main] = await getDb().select().from(domains).where(
+    eq(domains.slug, "main"),
+  );
+  assertEquals(main.owner_id, user.id);
   await assertRejects(() => initializeFirstAdmin(input), ConflictError);
 });
 
@@ -147,6 +154,21 @@ test("完成后删除管理员仍不能重新初始化", async () => {
   await initializeFirstAdmin(input);
   const [user] = await db.select().from(users).where(
     eq(users.username, input.username),
+  );
+  // 模拟人工数据库维护，不通过注销业务绕过负责人交接守卫。
+  await db.update(domains).set({ owner_id: "0" }).where(
+    eq(domains.owner_id, user.id),
+  );
+  const memberships = await db.select().from(domainMemberships).where(
+    eq(domainMemberships.user_id, user.id),
+  );
+  for (const member of memberships) {
+    await db.delete(domainMemberRoles).where(
+      eq(domainMemberRoles.membership_id, member.id),
+    );
+  }
+  await db.delete(domainMemberships).where(
+    eq(domainMemberships.user_id, user.id),
   );
   await db.delete(userRoles).where(eq(userRoles.user_id, user.id));
   await db.delete(users).where(eq(users.id, user.id));

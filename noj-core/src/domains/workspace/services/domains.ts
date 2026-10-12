@@ -1,4 +1,5 @@
-import { and, count, eq, isNull, sql } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { ROOT_USER_ID } from "../../../shared/base/constants.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
@@ -183,9 +184,20 @@ export async function ensureDefaultWorkspace(
   if (!executor) {
     return await getDb().transaction((tx) => ensureDefaultWorkspace(tx));
   }
+  const [existing] = await executor.select().from(domains).where(
+    eq(domains.slug, DEFAULT_DOMAIN_SLUG),
+  );
+  if (existing && existing.owner_id !== ROOT_USER_ID) return;
   const now = new Date().toISOString();
   const admins = await getAdminUserIds(executor);
-  const ownerId = [...admins].sort()[0] ?? "0";
+  const candidates = [...admins].filter((id) => id !== ROOT_USER_ID);
+  const [admin] = candidates.length
+    ? await executor.select({ id: users.id }).from(users).where(
+      and(inArray(users.id, candidates), isNull(users.deleted_at)),
+    )
+      .orderBy(users.id).limit(1).for("update")
+    : [];
+  const ownerId = admin?.id ?? ROOT_USER_ID;
   const [inserted] = await executor.insert(domains).values({
     id: DEFAULT_DOMAIN_ID,
     slug: DEFAULT_DOMAIN_SLUG,
@@ -196,10 +208,75 @@ export async function ensureDefaultWorkspace(
     created_at: now,
     updated_at: now,
   }).onConflictDoNothing({ target: domains.slug }).returning();
-  if (!inserted) return;
+  if (!inserted) {
+    if (ownerId === ROOT_USER_ID) return;
+    const [current] = await executor.select().from(domains).where(
+      eq(domains.slug, DEFAULT_DOMAIN_SLUG),
+    ).for("update");
+    if (!current || current.owner_id !== ROOT_USER_ID) return;
+    const [owner] = await executor.insert(domainMemberships).values({
+      id: crypto.randomUUID(),
+      domain_id: current.id,
+      user_id: ownerId,
+      joined_at: now,
+    }).onConflictDoUpdate({
+      target: [domainMemberships.domain_id, domainMemberships.user_id],
+      set: { status: "active", left_at: null },
+    }).returning();
+    await executor.insert(domainMemberRoles).values({
+      membership_id: owner.id,
+      role: "owner",
+    }).onConflictDoNothing();
+    const [root] = await executor.select().from(domainMemberships).where(
+      and(
+        eq(domainMemberships.domain_id, current.id),
+        eq(domainMemberships.user_id, ROOT_USER_ID),
+      ),
+    );
+    if (root) {
+      await executor.delete(domainMemberRoles).where(
+        eq(domainMemberRoles.membership_id, root.id),
+      );
+      await executor.update(domainMemberships).set({
+        status: "removed",
+        left_at: now,
+      }).where(eq(domainMemberships.id, root.id));
+    }
+    await executor.update(domains).set({
+      owner_id: ownerId,
+      revision: current.revision + 1,
+      updated_at: now,
+    }).where(eq(domains.id, current.id));
+    const [members] = await executor.select({ count: count() }).from(
+      domainMemberships,
+    ).where(
+      and(
+        eq(domainMemberships.domain_id, current.id),
+        eq(domainMemberships.status, "active"),
+      ),
+    );
+    await executor.insert(domainResourceCounters).values({
+      domain_id: current.id,
+      resource: "members",
+      used: members.count,
+    })
+      .onConflictDoUpdate({
+        target: [
+          domainResourceCounters.domain_id,
+          domainResourceCounters.resource,
+        ],
+        set: { used: members.count },
+      });
+    await workspaceAudit(executor, ownerId, current.id, "domain.transfer", {
+      operation: "bootstrap_owner",
+      previous_owner_id: ROOT_USER_ID,
+      owner_id: ownerId,
+    });
+    return;
+  }
   await executor.insert(domainLimits).values({ domain_id: inserted.id });
   const accounts = await executor.select({ id: users.id }).from(users).where(
-    isNull(users.deleted_at),
+    and(isNull(users.deleted_at), ne(users.id, ROOT_USER_ID)),
   );
   for (const account of accounts) {
     const [member] = await executor.insert(domainMemberships).values({

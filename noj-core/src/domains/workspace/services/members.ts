@@ -24,6 +24,7 @@ import {
 } from "./access.ts";
 import { workspaceAudit } from "./domains.ts";
 import { getDomainEffectiveLimits } from "./limits.ts";
+import { ROOT_USER_ID } from "../../../shared/base/constants.ts";
 
 /** 调用方已锁住 Domain，成员数检查和身份恢复同事务执行。 */
 export async function addDomainMember(
@@ -304,13 +305,26 @@ export async function transferDomain(
   actorId: string,
   newOwnerId: string,
 ) {
+  if (newOwnerId === ROOT_USER_ID) {
+    throw new BadRequestError("系统账号不能担任新的空间负责人");
+  }
   return await getDb().transaction(async (tx) => {
-    const { domain, context } = await loadWorkspace(slug, actorId, {
-      write: true,
-      lock: true,
-      executor: tx,
-    });
+    const [account] = await tx.select({ id: users.id }).from(users).where(
+      and(eq(users.id, newOwnerId), isNull(users.deleted_at)),
+    ).for("update");
+    if (!account) throw new NotFoundError("新负责人必须是有效域成员");
+    const { domain, context, platformAdmin } = await loadWorkspace(
+      slug,
+      actorId,
+      {
+        lock: true,
+        executor: tx,
+      },
+    );
     assertWorkspacePermission(context, "domain:transfer");
+    if (domain.status !== "active" && !platformAdmin) {
+      throw new ForbiddenError("工作空间只读或停用", "DOMAIN_READ_ONLY");
+    }
     if (newOwnerId === domain.owner_id) return domain;
     const [next] = await tx.select().from(domainMemberships).where(
       and(
@@ -319,10 +333,7 @@ export async function transferDomain(
         eq(domainMemberships.status, "active"),
       ),
     );
-    const [account] = await tx.select({ id: users.id }).from(users).where(
-      and(eq(users.id, newOwnerId), isNull(users.deleted_at)),
-    );
-    if (!next || !account) throw new NotFoundError("新负责人必须是有效域成员");
+    if (!next) throw new NotFoundError("新负责人必须是有效域成员");
     const [previous] = await tx.select().from(domainMemberships).where(
       and(
         eq(domainMemberships.domain_id, domain.id),

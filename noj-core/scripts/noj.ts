@@ -186,6 +186,7 @@ async function runBootstrapAdmin(
   console.log("检查管理员...");
   await ensureAdminFromEnv();
   await ensureBootstrapAdmin();
+  await ensureDefaultWorkspace();
 }
 
 /** 开发环境一键初始化（含 dev 专用数据：E2E 守卫用户）。 */
