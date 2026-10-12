@@ -192,7 +192,7 @@ jobs:
 
   e2e-identity:
     name: E2E identity
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'identity') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -206,7 +206,7 @@ jobs:
 
   e2e-catalog:
     name: E2E catalog
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'catalog') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -220,7 +220,7 @@ jobs:
 
   e2e-submission:
     name: E2E submission
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'submission') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -234,7 +234,7 @@ jobs:
 
   e2e-contest:
     name: E2E contest
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'contest') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -248,7 +248,7 @@ jobs:
 
   e2e-system:
     name: E2E system
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'system') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -262,7 +262,7 @@ jobs:
 
   e2e-community:
     name: E2E community
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'community') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -276,7 +276,7 @@ jobs:
 
   e2e-messaging:
     name: E2E messaging
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'messaging') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -290,7 +290,7 @@ jobs:
 
   e2e-objective:
     name: E2E objective
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'objective') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -304,7 +304,7 @@ jobs:
 
   e2e-admin:
     name: E2E admin
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'admin') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -318,7 +318,7 @@ jobs:
 
   e2e-rate-limit:
     name: E2E Rate Limit
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'rate-limit') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -338,7 +338,7 @@ jobs:
 
   e2e-cross-domain:
     name: E2E Cross Domain
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'cross-domain') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -352,7 +352,7 @@ jobs:
 
   e2e-browser:
     name: E2E Browser
-    needs: changes
+    needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'browser') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -364,6 +364,64 @@ jobs:
         with:
           domain: browser
           browser: 'true'
+
+  # 统一构建 E2E 评测栈镜像一次，以 artifact 分发给各 Domain job。
+  # 此前每个 Domain job 各自构建同样的 5 个镜像（judge 的 Rust 依赖层单项 ~270s），
+  # 而测试本身只要几秒到两三分钟。
+  e2e-images:
+    name: E2E Image (${{ matrix.image }})
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.e2e-domains != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - image: evaluator
+            context: noj-judge
+            file: noj-judge/docker/evaluator-python/Dockerfile
+            tag: noj-evaluator-python
+          - image: solution
+            context: noj-judge
+            file: noj-judge/docker/solution-python/Dockerfile
+            tag: noj-solution-python
+          - image: core
+            context: noj-core
+            file: noj-core/Dockerfile.e2e
+            tag: noj-e2e-core
+          - image: judge
+            context: noj-judge
+            file: noj-judge/Dockerfile.e2e
+            tag: noj-e2e-judge
+          - image: gateway
+            context: noj-llm-gateway
+            file: noj-llm-gateway/Dockerfile
+            tag: noj-e2e-llm-gateway
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: 设置 Docker BuildKit
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: 构建镜像（带 GHA 缓存）
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          tags: ${{ matrix.tag }}
+          outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.image }}.tar
+          # core 的 CACHE_BUST 仅用于使其后的层按 run 失效，其他 Dockerfile 无此 ARG
+          build-args: ${{ matrix.image == 'core' && format('CACHE_BUST={0}', github.run_id) || '' }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || format('type=gha,mode=min,scope={0}', matrix.image) }}
+      - name: 上传镜像
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-image-${{ matrix.image }}
+          path: ${{ runner.temp }}/${{ matrix.image }}.tar
+          retention-days: 1
+          compression-level: 1
 
   judge-sandbox:
     name: Judge Sandbox E2E
