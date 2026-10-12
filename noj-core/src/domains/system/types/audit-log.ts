@@ -82,6 +82,8 @@ export type AuditAction =
   | "llm_provider.create"
   | "llm_provider.update"
   | "llm_quota.upsert"
+  | "llm_model_alias.upsert"
+  | "llm_model_alias.delete"
   | "legal.publish_version"
   | "legal.data_request_update";
 
@@ -373,6 +375,8 @@ export type AuditDetail =
   | { action: "llm_provider.create"; name: string }
   | { action: "llm_provider.update"; id: string; name?: string }
   | { action: "llm_quota.upsert"; id?: string | null }
+  | { action: "llm_model_alias.upsert"; alias: string }
+  | { action: "llm_model_alias.delete"; alias: string }
   // ── legal 子域合规操作（2026-09-24 评审：合规关键写操作必须留痕） ──
   | {
     action: "legal.publish_version";

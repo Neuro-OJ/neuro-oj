@@ -235,6 +235,8 @@ export const auditLogs = pgTable(
         'llm_provider.create',
         'llm_provider.update',
         'llm_quota.upsert',
+        'llm_model_alias.upsert',
+        'llm_model_alias.delete',
         'legal.publish_version',
         'legal.data_request_update'
       )`,
@@ -333,3 +335,23 @@ export const storageObjects = pgTable(
     sha256Idx: index("idx_storage_objects_sha256").on(table.sha256),
   }),
 );
+
+/**
+ * LLM 模型别名表：别名 → (gateway Provider, 真实模型名)。
+ *
+ * 题目 `llm_config.models` 只引用别名；`default` 为保留别名，不入此表，
+ * 恒等于系统设置 `llm_default_provider_id` + `llm_default_model`。
+ */
+export const llmModelAliases = pgTable("llm_model_aliases", {
+  alias: text("alias").primaryKey(),
+  /** gateway 内部 Provider UUID */
+  provider_id: text("provider_id").notNull(),
+  /** 上游真实模型名 */
+  model: text("model").notNull(),
+  /** 出题人下拉展示用的简短说明 */
+  description: text("description").notNull().default(""),
+  updated_at: text("updated_at").notNull(),
+  updated_by: text("updated_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+});

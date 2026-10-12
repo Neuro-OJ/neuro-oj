@@ -60,8 +60,18 @@ export async function versionSupportPackageDownload(
       ? {
         llm_execution: previous?.llm_execution ?? {
           provider_id: task.llm.provider_id,
-          model: task.llm.allowed_models[0],
+          // 旧字段：default-only 时为真实模型名，否则为首个别名对应的真实模型
+          model: task.llm.model_map
+            ? Object.values(task.llm.model_map)[0]
+            : task.llm.allowed_models[0],
           ...resolveLlmLimits(llmConfig),
+          ...(task.llm.model_map
+            ? {
+              models: Object.entries(task.llm.model_map).map((
+                [alias, model],
+              ) => ({ alias, model })),
+            }
+            : {}),
         },
       }
       : {}),

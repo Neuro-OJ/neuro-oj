@@ -42,7 +42,10 @@ import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "catalog"]);
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import { logAudit } from "../../../system/index.ts";
-import { assertLlmLimitsWithinDefault } from "../../../gateway/index.ts";
+import {
+  assertLlmLimitsWithinDefault,
+  assertLlmModelsValid,
+} from "../../../gateway/index.ts";
 import {
   type CreateProblemInput,
   DIFFICULTIES,
@@ -289,6 +292,7 @@ export async function createProblem(
       throw new ForbiddenError("仅 P 型/官方题可启用 LLM");
     }
     assertLlmLimitsWithinDefault(input.llm);
+    await assertLlmModelsValid(input.llm);
     const runtime = input.runtime_config;
     if (
       !runtime || isOiRuntimeConfig(runtime) ||
@@ -745,6 +749,8 @@ export async function updateProblem(
         throw new BadRequestError("客观题套卷不支持 LLM 配置");
       }
       assertLlmLimitsWithinDefault(input.llm);
+      await assertLlmModelsValid(input.llm);
+      await assertLlmModelsValid(input.llm);
       const effectiveRuntime = input.runtime_config ?? baselineRuntime;
       if (
         !effectiveRuntime || isOiRuntimeConfig(effectiveRuntime) ||

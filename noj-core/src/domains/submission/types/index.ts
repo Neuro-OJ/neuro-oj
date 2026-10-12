@@ -16,7 +16,13 @@ export interface JudgeTaskLlm {
   gateway_url: string;
   eval_token: string;
   provider_id: string;
+  /** 模型别名列表（题目使用非 default 别名时），否则为真实模型名 */
   allowed_models: string[];
+  /**
+   * 别名 → 真实模型名；仅题目使用非 default 别名时存在。供 core 写入执行快照，
+   * judge 忽略该字段（评测代码只能看到别名）。
+   */
+  model_map?: Record<string, string>;
 }
 
 /** 评测任务优先级。 */

@@ -26,6 +26,8 @@ import {
   enforceProblemImportRateLimit,
 } from "../../system/index.ts";
 import { withActorContext } from "../../system/index.ts";
+import { listLlmModelAliases } from "../../gateway/index.ts";
+import { LLM_DEFAULT_MODEL_ALIAS } from "../types/problems.ts";
 import {
   assertProblemEditPermission,
   createProblem,
@@ -184,6 +186,22 @@ router.get("/", optionalAuthMiddleware, async (c) => {
     total: result.total,
     page: result.page,
     limit: result.limit,
+  });
+});
+
+/**
+ * 出题人可选的 LLM 模型别名（仅别名与说明，不含 Provider 与真实模型名）。
+ * 静态路径须在 /:id 之前注册。
+ * GET /api/v1/problems/llm-model-aliases
+ * 响应：`{ data: { alias, description }[] }`，首项恒为 `default`。
+ */
+router.get("/llm-model-aliases", authMiddleware, async (c) => {
+  const rows = await listLlmModelAliases();
+  return c.json({
+    data: [
+      { alias: LLM_DEFAULT_MODEL_ALIAS, description: "平台默认模型" },
+      ...rows.map((r) => ({ alias: r.alias, description: r.description })),
+    ],
   });
 });
 

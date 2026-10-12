@@ -20,6 +20,13 @@ import {
   updateLlmProvider,
   upsertLlmQuota,
 } from "../../gateway/services/llm.ts";
+import {
+  deleteLlmModelAlias,
+  listLlmModelAliases,
+  listProblemsUsingAlias,
+  type LlmModelAliasInput,
+  upsertLlmModelAlias,
+} from "../../gateway/services/llm-model-aliases.ts";
 
 /**
  * 管理端 LLM Gateway 路由（挂载前缀 /api/v1/admin）。
@@ -169,6 +176,71 @@ router.post("/llm/providers/:id/test", async (c) => {
       latency_ms: Math.round(performance.now() - startedAt),
     },
   });
+});
+
+/**
+ * 模型别名列表。
+ * GET /api/v1/admin/llm/model-aliases
+ *
+ * 权限/认证：管理员（adminMiddleware 组级保护）。
+ * 响应：`{ data: (LlmModelAlias & { problem_count: number })[] }`。
+ */
+router.get("/llm/model-aliases", async (c) => {
+  const rows = await listLlmModelAliases();
+  const data = await Promise.all(
+    rows.map(async (r) => ({
+      ...r,
+      problem_count: (await listProblemsUsingAlias(r.alias)).length,
+    })),
+  );
+  return c.json({ data });
+});
+
+/**
+ * 新增或更新模型别名。
+ * PUT /api/v1/admin/llm/model-aliases/:alias
+ *
+ * body: { provider_id, model, description? }；`default` 为保留别名。
+ * 说明：改映射只影响此后新建的评测尝试，已冻结的尝试与重测不受影响。
+ */
+router.put("/llm/model-aliases/:alias", async (c) => {
+  const alias = c.req.param("alias") as string;
+  const body = await parseJsonBody<LlmModelAliasInput>(c);
+  const data = await upsertLlmModelAlias(alias, body, c.get("userId"));
+  await adminAudit(
+    "llm_model_alias.upsert",
+    { action: "llm_model_alias.upsert", alias },
+    { type: "llm_model_alias", id: alias },
+  );
+  return c.json({ data });
+});
+
+/**
+ * 删除模型别名。
+ * DELETE /api/v1/admin/llm/model-aliases/:alias?force=true
+ *
+ * 被题目引用时默认返回 409 并列出题目 ID；`force=true` 强制删除
+ * （这些题的后续提交会返回 400，已冻结的重测不受影响）。
+ */
+router.delete("/llm/model-aliases/:alias", async (c) => {
+  const alias = c.req.param("alias") as string;
+  const used = await listProblemsUsingAlias(alias);
+  if (used.length > 0 && c.req.query("force") !== "true") {
+    return c.json({
+      error: `该别名被 ${used.length} 道题引用，删除后这些题的提交将失败`,
+      code: "ALIAS_IN_USE",
+      problem_ids: used,
+    }, 409);
+  }
+  if (!(await deleteLlmModelAlias(alias))) {
+    throw new NotFoundError("模型别名不存在");
+  }
+  await adminAudit(
+    "llm_model_alias.delete",
+    { action: "llm_model_alias.delete", alias },
+    { type: "llm_model_alias", id: alias },
+  );
+  return c.body(null, 204);
 });
 
 /**

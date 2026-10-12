@@ -708,6 +708,16 @@ $$ LANGUAGE plpgsql`,
     updated_by TEXT REFERENCES users(id) ON DELETE SET NULL
   )`,
 
+  // 14.1 llm_model_aliases（LLM 模型别名：别名 → Provider + 真实模型）
+  `CREATE TABLE IF NOT EXISTS llm_model_aliases (
+    alias TEXT PRIMARY KEY,
+    provider_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT REFERENCES users(id) ON DELETE SET NULL
+  )`,
+
   // 15. audit_logs (issue #101 + PR-2)
   `CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY,
@@ -738,7 +748,8 @@ $$ LANGUAGE plpgsql`,
       'contest.ranking_snapshot','contest.create','contest.update','contest.delete',
       'contest.participants_add','contest.participants_remove','contest.kind_change','contest.reset_code',
       'judge_images.create','judge_images.update','judge_images.delete','email_delivery.clear_suppression',
-      'llm_provider.create','llm_provider.update','llm_quota.upsert','legal.publish_version',
+      'llm_provider.create','llm_provider.update','llm_quota.upsert','llm_model_alias.upsert',
+      'llm_model_alias.delete','legal.publish_version',
       'legal.data_request_update')
     ))
   `,
@@ -1176,6 +1187,7 @@ export const ALL_TABLES = [
   "message_deletions",
   "conversation_preferences",
   "system_settings",
+  "llm_model_aliases",
   "audit_logs",
   "ip_bans",
   "user_bans",
