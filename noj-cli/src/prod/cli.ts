@@ -715,8 +715,15 @@ export async function runBackupCreate(
   // `listBackups` 拼出的 `/x//name` 不一致，会让下面的 `excludePaths` 完全失配
   // → 刚创建的快照仍可能被自己的清理删掉。
   const backupDir = normalizeDir(opts.backupDir ?? prodBackupDir(dir));
-  const passphraseFile = opts.passphraseFile;
   const env = await readEnvValues(envFile);
+  // 口令来源：显式选项（旗标）> 进程环境 > `.env.prod`，与 verify/restore/drill
+  // 一致。此前只认旗标：`install`/`update` 已把口令路径写进 `.env.prod`，
+  // 手动 `backup create` 却仍报"缺少 GPG 口令文件"。
+  const passphraseFile = opts.passphraseFile ??
+    resolveBackupPassphrase(opts.args, {
+      env: d.processEnv,
+      configured: env["NOJ_BACKUP_PASSPHRASE_FILE"],
+    });
 
   // ---- 0. 数字旗标校验（bash `check_numbers` :108-111）----
   // **必须在任何副作用之前**：`--retention-days oops` 若拖到清理阶段才报错，
@@ -1143,8 +1150,11 @@ export async function runBackupSchedule(
     envFile: join(dir, PROD_ENV_FILE),
     composeFile: join(dir, PROD_COMPOSE_FILE),
     backupDir: flagValue(args, "--backup-dir") ?? prodBackupDir(dir),
-    passphraseFile: flagValue(args, "--passphrase-file") ??
-      d.processEnv["NOJ_BACKUP_PASSPHRASE_FILE"],
+    // 口令来源与 create/verify 一致：旗标 > 进程环境 > `.env.prod`。
+    passphraseFile: resolveBackupPassphrase(args, {
+      env: d.processEnv,
+      configured: await readConfiguredPassphrase(dir),
+    }),
     // 同上：`--json` 时人类日志走 stderr，保证 stdout 干净。
     log: (line: string) => {
       if (hasJson(args)) console.error(line);
