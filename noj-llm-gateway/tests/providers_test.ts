@@ -1,6 +1,12 @@
-import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertThrows,
+} from "jsr:@std/assert@^1";
 import {
   maskApiKey,
+  normalizeRateLimit,
   testProviderConnection,
   updateProvider,
 } from "../src/providers.ts";
@@ -98,4 +104,16 @@ Deno.test("providers: 连通性测试必须显式指定 model", async () => {
     Error,
     "model_required",
   );
+});
+
+Deno.test("normalizeRateLimit: 缺省为 0，只接受非负整数", () => {
+  assertEquals(normalizeRateLimit(undefined), 0);
+  assertEquals(normalizeRateLimit(null), 0);
+  assertEquals(normalizeRateLimit(""), 0);
+  assertEquals(normalizeRateLimit(0), 0);
+  assertEquals(normalizeRateLimit(1000), 1000);
+  assertEquals(normalizeRateLimit("60"), 60);
+  for (const bad of [-1, 1.5, "abc", 2_000_000_000, Number.NaN]) {
+    assertThrows(() => normalizeRateLimit(bad), Error, "provider_invalid");
+  }
 });

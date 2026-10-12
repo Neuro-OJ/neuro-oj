@@ -21,6 +21,10 @@ export interface LlmProviderInput {
   cost_per_1k_tokens?: number;
   /** 是否启用（可选） */
   enabled?: boolean;
+  /** 上游每分钟请求数上限（0 = 不限；超限时 gateway 排队） */
+  rpm_limit?: number;
+  /** 上游每分钟 token 数上限（0 = 不限；超限时 gateway 排队） */
+  tpm_limit?: number;
 }
 
 /**
@@ -52,6 +56,10 @@ export interface LlmProviderView {
   api_key_masked: string;
   /** 是否启用 */
   enabled: boolean;
+  /** 上游每分钟请求数上限（0 = 不限） */
+  rpm_limit: number;
+  /** 上游每分钟 token 数上限（0 = 不限） */
+  tpm_limit: number;
   /** 创建时间 */
   created_at: string;
   /** 更新时间 */

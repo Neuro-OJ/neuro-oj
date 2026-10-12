@@ -391,6 +391,91 @@ Deno.test("llm route: 超大上游响应触发 upstream_response_too_large 返�
   }
 });
 
+Deno.test("llm route: Provider RPM 超限排队超时返回 429 + Retry-After，且不扣用户额度", async () => {
+  const provider = {
+    ...(await makeProvider(testConfig.storeKey)),
+    rpm_limit: 1,
+  };
+  const { db, usageInserts } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  // 节流脚本始终返回「队首，2 秒后窗口才有余量」，其后是退出排队脚本的返回
+  redis.evalResults = [[0, 2000, 0], [0, 2000, 0], [0, 2000, 0], 1];
+  const restore = stubFetch(() => {
+    throw new Error("排队超时的请求不应转发上游");
+  });
+  try {
+    const app = createLlmRouter({
+      config: { ...testConfig, providerQueueTimeoutMs: 30 },
+      db,
+      redis,
+      resolveDns: publicDns,
+    });
+    const token = await makeToken(testConfig);
+    const res = await requestChat(app, token, {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 5,
+    });
+
+    assertEquals(res.status, 429);
+    assertEquals(res.headers.get("retry-after"), "2");
+    const body = await res.json();
+    assertEquals(body.error.code, "provider_queue_timeout");
+    assertEquals(usageInserts.length, 1);
+    assertEquals(usageInserts[0].status, "rejected");
+    assertEquals(usageInserts[0].error_code, "provider_queue_timeout");
+    // 只调用了 Provider 节流脚本（键均为 llm:provider:{prov-1}:*），未执行用户额度扣减
+    for (const keys of redis.evalKeys) {
+      assertEquals(
+        keys.every((k) => k.startsWith("llm:provider:{prov-1}:")),
+        true,
+      );
+    }
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("llm route: 未配置 RPM/TPM 时不访问 Provider 节流", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  const restore = stubFetch(() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "pong" } }],
+          usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
+        }),
+        { status: 200 },
+      ),
+    )
+  );
+  try {
+    const app = createLlmRouter({
+      config: testConfig,
+      db,
+      redis,
+      resolveDns: publicDns,
+    });
+    const token = await makeToken(testConfig);
+    const res = await requestChat(app, token, {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 5,
+    });
+    assertEquals(res.status, 200);
+    assertEquals(
+      redis.evalKeys.some((keys) =>
+        keys.some((k) => k.startsWith("llm:provider:"))
+      ),
+      false,
+    );
+  } finally {
+    restore();
+  }
+});
+
 Deno.test("llm route: 模型别名转发前改写为真实模型名，审计记录真实名与别名", async () => {
   const provider = await makeProvider(testConfig.storeKey);
   const { db, usageInserts } = createFakeDb(provider);

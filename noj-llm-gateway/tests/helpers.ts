@@ -11,7 +11,7 @@ import {
 import { createLlmRouter } from "../src/routes/llm.ts";
 
 export class FakeRedis implements RedisClient {
-  evalResults: string[] = [];
+  evalResults: unknown[] = [];
 
   incr(): Promise<number> {
     return Promise.resolve(1);
@@ -146,6 +146,7 @@ export const testConfig: GatewayConfig = {
   redisUrl: "redis://fake",
   usageRetentionDays: 90,
   upstreamAllowedHosts: new Set(),
+  providerQueueTimeoutMs: 60_000,
 };
 
 export async function makeToken(

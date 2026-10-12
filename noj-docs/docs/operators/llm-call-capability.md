@@ -66,6 +66,7 @@ Provider 上游地址（Base URL）的出站限制：
 - API Key：仅保存到 gateway，加密存储；列表只显示掩码。
 - 费用/1K token：用于用量估算。
 - 启用状态：只有 `enabled=true` 的 Provider 才能被 LLM 题目使用。
+- RPM / TPM 上限：按上游账号限额填写每分钟请求数与 token 数，`0` 表示不限。
 
 > Provider 不再自带默认模型；调用哪个模型由下一节的平台默认决定。
 
@@ -85,6 +86,23 @@ Provider 上游地址（Base URL）的出站限制：
 - 修改别名映射只影响此后新建的评测，已冻结的评测与重测仍使用当时的模型；
 - 删除被题目引用的别名需二次确认，之后这些题的提交返回 400；
 - 升级顺序：**先升级 `llm-gateway`，再升级 `noj-core`**，否则使用别名的题会把别名原样转发给上游而失败。
+
+### Provider 速率上限与排队
+
+上游（如 SiliconFlow、OpenAI）按账号限制每分钟请求数（RPM）与 token 数（TPM），超出即
+返回 429。为 Provider 配置 RPM / TPM 后，网关会在转发前自行节流：
+
+- 超过上限的请求**排队等待**，按到达顺序先来先得，窗口有余量后自动转发，评测代码无需重试；
+- 窗口为 60 秒滑动窗口；TPM 先按「prompt 估算 + `max_tokens`」预占，响应后按上游返回的
+  实际 token 数修正；
+- 排队超过 `NOJ_LLM_PROVIDER_QUEUE_TIMEOUT_SECONDS`（默认 `60`，`0` 表示不排队）仍未放行时，
+  返回 429（`code: provider_queue_timeout`）并带 `Retry-After` 头，OpenAI SDK 会自动退避重试；
+  超时的请求不消耗用户 / 题目额度；
+- 排队状态保存在 Redis 中，多副本部署共享同一队列；副本崩溃遗留的排队记录 5 秒后自动清理；
+- 指标：`noj_llm_provider_queue_wait_seconds`（排队时长）、
+  `noj_llm_provider_queue_timeouts_total`（排队超时次数）。
+
+建议将上限设为上游限额的 80%–90%，为其他使用同一账号的服务留出余量。
 
 ## 3. 配置平台默认 Provider 与模型
 

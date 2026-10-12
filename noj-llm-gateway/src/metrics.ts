@@ -37,6 +37,14 @@ const META: Record<
     help: "LLM provider 错误总数",
     type: "counter",
   },
+  noj_llm_provider_queue_wait_seconds: {
+    help: "Provider RPM/TPM 限流排队等待时长（秒，仅统计发生排队的请求）",
+    type: "histogram",
+  },
+  noj_llm_provider_queue_timeouts_total: {
+    help: "Provider RPM/TPM 限流排队超时总数",
+    type: "counter",
+  },
 };
 
 function labelsKey(labels: Labels = {}): string {

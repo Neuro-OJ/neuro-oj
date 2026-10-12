@@ -19,6 +19,8 @@ interface LlmProvider {
   cost_per_1k_tokens: number
   api_key_masked: string
   enabled: boolean
+  rpm_limit?: number
+  tpm_limit?: number
   created_at: string
   updated_at: string
 }
@@ -37,6 +39,7 @@ const columns: AdminColumn[] = [
   { key: "id", label: "Provider ID" },
   { key: "base_url", label: "Base URL" },
   { key: "cost_per_1k_tokens", label: "费用/1K token" },
+  { key: "rate_limit", label: "RPM / TPM" },
   { key: "api_key_masked", label: "API Key" },
   { key: "enabled", label: "状态" },
   { key: "created_at", label: "创建时间" },
@@ -182,8 +185,16 @@ const formBaseUrl = ref("")
 const formCostPer1k = ref(0)
 const formApiKey = ref("")
 const formEnabled = ref(true)
+// RPM / TPM 上限：0 表示不限；超过时 gateway 排队等待而非直接失败
+const formRpmLimit = ref(0)
+const formTpmLimit = ref(0)
 const saving = ref(false)
 const formError = ref("")
+
+// RPM / TPM 展示：0 或缺失显示「不限」
+function formatLimit(value: number | undefined): string {
+  return value ? value.toLocaleString("zh-CN") : "不限"
+}
 
 // 打开新增表单并清空状态
 function openCreate() {
@@ -193,6 +204,8 @@ function openCreate() {
   formCostPer1k.value = 0
   formApiKey.value = ""
   formEnabled.value = true
+  formRpmLimit.value = 0
+  formTpmLimit.value = 0
   formError.value = ""
   showForm.value = true
 }
@@ -205,6 +218,8 @@ function openEdit(item: LlmProvider) {
   formCostPer1k.value = item.cost_per_1k_tokens ?? 0
   formApiKey.value = ""
   formEnabled.value = item.enabled
+  formRpmLimit.value = item.rpm_limit ?? 0
+  formTpmLimit.value = item.tpm_limit ?? 0
   formError.value = ""
   showForm.value = true
 }
@@ -213,6 +228,12 @@ function openEdit(item: LlmProvider) {
 async function handleSave() {
   if (!formName.value.trim() || !formBaseUrl.value.trim()) {
     formError.value = "名称与 Base URL 均为必填"
+    return
+  }
+  const rpmLimit = Number(formRpmLimit.value)
+  const tpmLimit = Number(formTpmLimit.value)
+  if (![rpmLimit, tpmLimit].every((v) => Number.isSafeInteger(v) && v >= 0)) {
+    formError.value = "RPM / TPM 上限须为非负整数（0 表示不限）"
     return
   }
   saving.value = true
@@ -224,6 +245,8 @@ async function handleSave() {
         base_url: formBaseUrl.value.trim(),
         cost_per_1k_tokens: Number(formCostPer1k.value) || 0,
         enabled: formEnabled.value,
+        rpm_limit: rpmLimit,
+        tpm_limit: tpmLimit,
       }
       if (formApiKey.value.trim()) payload.api_key = formApiKey.value.trim()
       await api.put(`/api/v1/admin/gateway/llm/providers/${editingItem.value.id}`, payload, {
@@ -241,6 +264,8 @@ async function handleSave() {
         cost_per_1k_tokens: Number(formCostPer1k.value) || 0,
         api_key: formApiKey.value.trim(),
         enabled: formEnabled.value,
+        rpm_limit: rpmLimit,
+        tpm_limit: tpmLimit,
       })
     }
     showForm.value = false
@@ -583,6 +608,9 @@ async function removeAlias(item: ModelAlias) {
             class="ml-1 text-11px px-1.5 py-0.5 rounded font-medium bg-success-bg text-success-text"
           >默认</span>
         </template>
+        <template v-else-if="column.key === 'rate_limit'">
+          <span class="tabular-nums">{{ formatLimit((row as unknown as LlmProvider).rpm_limit) }} / {{ formatLimit((row as unknown as LlmProvider).tpm_limit) }}</span>
+        </template>
         <template v-else-if="column.key === 'enabled'">
           {{ (row as unknown as LlmProvider).enabled ? "启用" : "停用" }}
         </template>
@@ -630,6 +658,19 @@ async function removeAlias(item: ModelAlias) {
         <label class="text-xs font-semibold text-text">API Key {{ editingItem ? "（留空则保持不变）" : "" }} <span v-if="!editingItem" class="text-error-text">*</span></label>
         <input v-model="formApiKey" type="password" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="sk-..." />
       </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">RPM 上限（次/分钟）</label>
+          <input v-model.number="formRpmLimit" type="number" min="0" step="1" class="px-3 py-2 text-sm tabular-nums border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="0" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">TPM 上限（token/分钟）</label>
+          <input v-model.number="formTpmLimit" type="number" min="0" step="1" class="px-3 py-2 text-sm tabular-nums border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="0" />
+        </div>
+      </div>
+      <p class="text-xs text-text-muted -mt-1">
+        按上游账号的限额填写，0 表示不限。超过上限的请求会排队等待，而不是被上游 429 拒绝；排队超过网关 NOJ_LLM_PROVIDER_QUEUE_TIMEOUT_SECONDS（默认 60 秒）才返回 429。
+      </p>
       <div class="flex items-center gap-2 pt-1">
         <USwitch v-model="formEnabled" />
         <span class="text-xs text-text-secondary font-medium">启用此 Provider</span>

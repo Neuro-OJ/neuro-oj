@@ -424,6 +424,17 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.gateway == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Provider RPM/TPM 节流的 Lua 脚本须在真实 Redis 上验证（tests/provider_throttle_test.ts）
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: 检出代码
@@ -454,6 +465,8 @@ jobs:
 
       - name: 单元测试 (deno test)
         working-directory: noj-llm-gateway
+        env:
+          NOJ_LLM_TEST_REDIS_URL: redis://localhost:6379/15
         run: deno test -A --no-check
 
       - name: 导出 JSDoc 覆盖率检查

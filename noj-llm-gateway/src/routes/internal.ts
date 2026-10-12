@@ -45,7 +45,7 @@ export function createInternalRouter(deps: InternalDeps): Hono {
   app.get("/internal/providers/:id", async (c) => {
     const id = c.req.param("id");
     const rows = await deps
-      .db`SELECT id, name, base_url, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id}`;
+      .db`SELECT id, name, base_url, cost_per_1k_tokens, enabled, rpm_limit, tpm_limit, created_at, updated_at FROM llm_providers WHERE id = ${id}`;
     if (rows.length === 0) {
       return c.json({ error: "provider_not_found" }, 404);
     }
