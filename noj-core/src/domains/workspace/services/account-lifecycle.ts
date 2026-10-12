@@ -1,12 +1,25 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
   domainMemberships,
   domainResourceCounters,
   domains,
+  users,
 } from "../../../shared/db/schema.ts";
-import { ConflictError } from "../../../shared/base/errors.ts";
+import { ConflictError, NotFoundError } from "../../../shared/base/errors.ts";
 import { workspaceAudit } from "./domains.ts";
+
+/** 成员写入先锁目标账号，再锁域；注销提交后不允许用旧读取创建有效成员关系。 */
+export async function lockActiveWorkspaceAccount(
+  executor: Executor,
+  userId: string,
+) {
+  const [account] = await executor.select().from(users).where(
+    and(eq(users.id, userId), isNull(users.deleted_at)),
+  ).for("update");
+  if (!account) throw new NotFoundError("成员账号不可用");
+  return account;
+}
 
 /** 注销事务已锁定目标账号；与创建及交接按账号 → 域顺序锁定，防止留下失效负责人。 */
 export async function assertAccountHasNoOwnedDomain(

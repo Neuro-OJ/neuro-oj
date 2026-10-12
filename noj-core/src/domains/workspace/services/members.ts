@@ -25,8 +25,9 @@ import {
 import { workspaceAudit } from "./domains.ts";
 import { getDomainEffectiveLimits } from "./limits.ts";
 import { ROOT_USER_ID } from "../../../shared/base/constants.ts";
+import { lockActiveWorkspaceAccount } from "./account-lifecycle.ts";
 
-/** 调用方已锁住 Domain，成员数检查和身份恢复同事务执行。 */
+/** 调用方已按账号 → Domain 顺序加锁；成员数检查和身份恢复同事务执行。 */
 export async function addDomainMember(
   db: Executor,
   domainId: string,
@@ -100,6 +101,7 @@ export async function joinDomain(slug: string, actorId: string, reason = "") {
     throw new BadRequestError("申请理由非法");
   }
   return await getDb().transaction(async (tx) => {
+    await lockActiveWorkspaceAccount(tx, actorId);
     const domain = await loadDomainForJoining(slug, tx);
     const [member] = await tx.select().from(domainMemberships).where(
       and(
@@ -169,6 +171,19 @@ export async function reviewJoinRequest(
   approved: boolean,
 ) {
   return await getDb().transaction(async (tx) => {
+    const initial = await loadWorkspace(slug, actorId, {
+      executor: tx,
+      write: true,
+    });
+    assertWorkspacePermission(initial.context, "domain:members");
+    // 先读不可变的申请人与域定位，授权前不返回任何申请信息。
+    const [candidate] = await tx.select({ user_id: domainJoinRequests.user_id })
+      .from(domainJoinRequests)
+      .innerJoin(domains, eq(domains.id, domainJoinRequests.domain_id))
+      .where(and(eq(domainJoinRequests.id, requestId), eq(domains.slug, slug)));
+    if (approved && candidate) {
+      await lockActiveWorkspaceAccount(tx, candidate.user_id);
+    }
     const { domain, context } = await loadWorkspace(slug, actorId, {
       write: true,
       lock: true,

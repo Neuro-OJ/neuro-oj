@@ -1,11 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
-import {
-  domainInvitations,
-  domains,
-  users,
-} from "../../../shared/db/schema.ts";
+import { domainInvitations, domains } from "../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ForbiddenError,
@@ -17,6 +13,7 @@ import { addDomainMember } from "./members.ts";
 import { workspaceAudit } from "./domains.ts";
 import { getInstanceAccessPolicy } from "./instance.ts";
 import { getEmailConfigStatus, getSetting } from "../../system/index.ts";
+import { lockActiveWorkspaceAccount } from "./account-lifecycle.ts";
 
 /** 签发者退出或失去邀请能力后，旧链接也不能继续增加成员。 */
 async function assertInvitationIssuerActive(
@@ -167,6 +164,7 @@ export async function consumeDomainInvitation(
     domain_id: domainInvitations.domain_id,
   }).from(domainInvitations).where(eq(domainInvitations.token_hash, tokenHash));
   if (!found) throw new NotFoundError("邀请无效");
+  const user = await lockActiveWorkspaceAccount(executor, userId);
   const [domain] = await executor.select().from(domains).where(
     and(eq(domains.id, found.domain_id), eq(domains.status, "active")),
   ).for("update");
@@ -177,9 +175,6 @@ export async function consumeDomainInvitation(
       isNull(domainInvitations.revoked_at),
     ),
   ).for("update");
-  const [user] = await executor.select().from(users).where(
-    and(eq(users.id, userId), isNull(users.deleted_at)),
-  );
   if (
     !domain || !invite || !user ||
     !Number.isFinite(Date.parse(invite.expires_at)) ||
