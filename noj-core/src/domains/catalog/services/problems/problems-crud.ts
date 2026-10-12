@@ -2,7 +2,7 @@
  * Problems CRUD：createProblem / updateProblem / deleteProblem（PR 拆分 PR-3）。
  *
  * 设计要点：
- * - createProblem 中 MAX+1 重试循环保留原行为不动（已有并发场景验证）
+ * - 创建题目、初始草稿与标签同事务；旧题号分配待切换域计数器
  * - updateProblem 防御性忽略 type / number 字段（spec 承诺不可变）
  * - deleteProblem 手动清理 submissions / evaluation_results（FK 无 CASCADE）
  *
@@ -326,11 +326,6 @@ export async function createProblem(
     }
   }
   let number = input.number;
-  // 半写入防护：标签校验（存在性 + 客观题 kind 规则）在题目行写入之前完成，
-  // 校验失败（400）不产生孤儿题目（syncProblemTags 内部仍重复校验兜底）。
-  if (input.tag_ids && input.tag_ids.length > 0) {
-    await validateProblemTagIds(input.tag_ids, isObjective);
-  }
 
   // 确定题号 + 插入（MAX+1 并发冲突时最多重试 3 次）
   const MAX_RETRIES = 3;
@@ -345,28 +340,41 @@ export async function createProblem(
       number = (result[0]?.max ?? 0) + 1;
     }
 
+    const assignedNumber = number;
     try {
-      await db.insert(problems).values({
-        id,
-        title: input.title,
-        description: input.description,
-        samples: input.samples ?? [],
-        difficulty: input.difficulty ?? "medium",
-        support_package_storage_url: input.support_package_storage_url ?? null,
-        runtime_config: isObjective ? null : (input.runtime_config ?? null),
-        judge_type: isObjective
-          ? "dual"
-          : judgeTypeForRuntimeConfig(input.runtime_config),
-        is_objective: isObjective,
-        visibility: type === "P" ? "public" : (input.visibility ?? "private"),
-        submission_mode: submissionMode,
-        artifact_max_size_mb: input.artifact_max_size_mb ?? null,
-        llm_config: llmConfig,
-        number,
-        owner_id: ownerId,
-        type,
-        created_at: now,
-        updated_at: now,
+      await db.transaction(async (tx) => {
+        const [created] = await tx.insert(problems).values({
+          id,
+          title: input.title,
+          description: input.description,
+          samples: input.samples ?? [],
+          difficulty: input.difficulty ?? "medium",
+          support_package_storage_url: input.support_package_storage_url ??
+            null,
+          runtime_config: isObjective ? null : (input.runtime_config ?? null),
+          judge_type: isObjective
+            ? "dual"
+            : judgeTypeForRuntimeConfig(input.runtime_config),
+          is_objective: isObjective,
+          visibility: type === "P" ? "public" : (input.visibility ?? "private"),
+          submission_mode: submissionMode,
+          artifact_max_size_mb: input.artifact_max_size_mb ?? null,
+          llm_config: llmConfig,
+          number: assignedNumber,
+          owner_id: ownerId,
+          type,
+          created_at: now,
+          updated_at: now,
+        }).returning();
+        await saveProblemDraft(id, {
+          content: deriveDraftContentFromProblem(created),
+          expectedRevision: PROBLEM_DRAFT_VIRTUAL_REVISION,
+          actorId: ownerId,
+          context: c,
+        }, tx);
+        if (input.tag_ids?.length) {
+          await syncProblemTags(id, input.tag_ids, isObjective, tx);
+        }
       });
       break; // 插入成功，退出重试循环
     } catch (err) {
@@ -388,27 +396,6 @@ export async function createProblem(
     }
   }
 
-  // 每题一个共享草稿（Handbook §2.4/§6.2）：创建即建草稿，初值取自刚写入的
-  // 题目投影。此后**所有内容修改走草稿 + 显式发布**，投影只由发布服务更新。
-  try {
-    const draftContent = await deriveDraftContentFromProblem({
-      ...(await db.select().from(problems).where(eq(problems.id, id)).limit(1))[
-        0
-      ],
-    });
-    await saveProblemDraft(id, {
-      content: draftContent,
-      expectedRevision: PROBLEM_DRAFT_VIRTUAL_REVISION,
-      actorId: ownerId,
-      context: c,
-    });
-  } catch (err) {
-    // 草稿建立失败不能留下"有题目没草稿"的半成品（发布入口依赖草稿 revision）
-    await db.delete(problems).where(eq(problems.id, id));
-    logger.error("createProblem: 草稿建立失败，已回滚题目行", { id, err });
-    throw err;
-  }
-
   // 服务端派生支持包（题包导入）：登记对象并写入**草稿**文件引用，发布时随版本固定
   if (input.support_package_storage_url) {
     try {
@@ -425,11 +412,6 @@ export async function createProblem(
         err,
       });
     }
-  }
-
-  // 处理标签关联（客观题禁止算法标签，校验在 syncProblemTags 内）
-  if (input.tag_ids && input.tag_ids.length > 0) {
-    await syncProblemTags(id, input.tag_ids, isObjective);
   }
 
   await publishSearchIndexEvent("problem", id, "upsert");

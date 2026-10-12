@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   createProblem,
   deleteProblem,
@@ -88,6 +88,39 @@ const MODULE_PROBLEM = await createProblem({
   runtime_config: VALID_RUNTIME_CONFIG,
 });
 const TEST_PROBLEM_ID = MODULE_PROBLEM.id;
+
+Deno.test({
+  name: "problems service: 初始草稿写入失败时题目同事务回滚",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const title = "draft-write-rollback";
+    // 在测试库制造草稿写入错误，证明不是只回滚提前校验失败的请求。
+    await db.execute(
+      sql`ALTER TABLE problem_drafts ADD CONSTRAINT test_initial_draft_failure CHECK (content->>'title' <> 'draft-write-rollback')`,
+    );
+    try {
+      await assertRejects(() =>
+        createProblem({
+          title,
+          description: "验证题目与草稿的原子写入",
+          is_objective: true,
+        })
+      );
+      assertEquals(
+        await db.select({ id: problems.id }).from(problems).where(
+          eq(problems.title, title),
+        ),
+        [],
+      );
+    } finally {
+      await db.execute(
+        sql`ALTER TABLE problem_drafts DROP CONSTRAINT test_initial_draft_failure`,
+      );
+    }
+  },
+});
 
 Deno.test({
   name: "problems service: 列表返回正确分页结构",
