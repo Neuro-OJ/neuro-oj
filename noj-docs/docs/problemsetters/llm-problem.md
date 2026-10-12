@@ -45,6 +45,7 @@ Solution 容器**始终无网**，也不会拿到任何 `NOJ_LLM_*` 环境变量
 | `llm` | ❌ | 非 `null` 即启用；`{}` 亦合法，表示启用并沿用平台默认预算 |
 | `llm.max_calls` | ❌ | 单次评测 LLM 调用上限，正整数 |
 | `llm.max_tokens` | ❌ | 单次评测 billed token 上限，正整数 |
+| `llm.models` | ❌ | 允许评测代码调用的**模型别名**（1–8 个，如 `["default", "fast"]`）；缺省 = `["default"]`（平台默认模型）。同一道题的别名须属于同一个 Provider |
 | `runtime_config.evaluator.network.enabled` | ✅ | 启用 LLM 时**必须**为 `true` |
 
 ::: warning 预算不得超过平台天花板
@@ -83,9 +84,13 @@ from noj_evaluator_sdk import register_capability
 register_capability("solve_math", evaluate)
 ```
 
-- 用哪个模型由**平台默认**决定，是唯一权威来源：`eval_token` 只允许 `NOJ_LLM_ALLOWED_MODELS`
-  中的模型（即平台默认模型一项），传入其他模型会被 gateway 以 403
-  `model_not_allowed` 拒绝。因此请**省略 `model=`**，由 SDK 取允许列表首个（平台默认）。
+- 可调用哪些模型由题目的 `llm.models`（模型别名）决定：`eval_token` 只允许
+  `NOJ_LLM_ALLOWED_MODELS` 中的名称，传入其他名称会被 gateway 以 403
+  `model_not_allowed` 拒绝。未声明 `llm.models` 时只允许平台默认模型，请**省略 `model=`**，
+  由 SDK 取允许列表首个。声明了多个别名时，`model=` 写别名（如 `model="fast"`），
+  省略则取 `llm.models` 的第一个；gateway 会把别名换成平台配置的真实模型名，
+  评测代码里**不要**写真实模型名。可选别名见编辑器「允许调用的模型」列表，
+  别名由运营者在「LLM → Provider 管理」页维护，因此题包可以跨部署导入。
 - `llm.complete(messages=..., **params)` 会读取评测时自动注入的
   `NOJ_LLM_GATEWAY_URL`、`NOJ_LLM_TOKEN`、`NOJ_LLM_ALLOWED_MODELS`（以及
   `NOJ_LLM_PROVIDER_ID`）等环境变量。

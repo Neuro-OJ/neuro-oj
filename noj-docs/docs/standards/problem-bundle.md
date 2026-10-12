@@ -109,7 +109,7 @@ OI 的 `runtime_config` 需要声明 `backend`、`languages`、`checker` 和
 | `template`             |  ❌  | 模板文件索引（纯文件名，禁止 `/`、`\`、`..`），缺省 `"template.py"`；客观题包禁止提供                                                       |
 | `submission_mode`      |  ❌  | 提交模式 `code`（缺省）/ `artifact`；客观题包禁止提供                                                                                       |
 | `artifact_max_size_mb` |  ❌  | artifact 提交大小上限（MB），正整数或 `null`（缺省 `null` = 用平台硬上限）；客观题包禁止提供                                                |
-| `llm`                  |  ❌  | LLM 调用题配置 `{ max_calls?, max_tokens? }`（非 null 即启用，预算均可选）；仅 P 型 + evaluator 联网可启用；客观题包禁止提供                |
+| `llm`                  |  ❌  | LLM 调用题配置 `{ max_calls?, max_tokens?, models? }`（非 null 即启用，均可选；`models` 为模型别名数组）；仅 P 型 + evaluator 联网可启用；客观题包禁止提供                |
 
 > `categories` 字段已退役，统一使用 `tags`。 `runtime_config.solution`
 > 无需配置入口文件名：Solution 入口为评测内部约定，用户代码由 Judge Worker
@@ -179,6 +179,7 @@ Provider、哪个模型由平台全局 默认统一决定（后台「LLM → Pro
 ```
 
 - `llm` 非 null 即启用；`max_calls` / `max_tokens` 均可选，若提供必须为正整数。
+- `llm.models` 可选：允许评测代码调用的模型别名（1–8 个，格式 `^[a-z][a-z0-9_-]{0,31}$`，不得重复），缺省 `["default"]`。题包只含别名，不含真实模型名；别名在目标平台由运营者配置，导入时未配置的别名只告警，评测前须配置，且同一道题的别名须属于同一个 Provider。
 - 旧 manifest 中的 `provider_id` / `model` 被容忍并忽略（不报错）。
 - 必须 P 型 + evaluator 联网，否则导入被拒。
 - 安全与配额要求见[出 LLM 调用题](../problemsetters/llm-problem.md)。

@@ -304,6 +304,118 @@ async function runTest() {
     testing.value = false
   }
 }
+
+// ─── 模型别名 ─────────────────────────────────────────────
+// 题目只引用别名（default 恒等于上方平台默认）；这里维护 别名 → Provider + 真实模型。
+// 改映射只影响此后新建的评测尝试，已冻结的尝试与重测不受影响。
+
+interface ModelAlias {
+  alias: string
+  provider_id: string
+  model: string
+  description: string
+  updated_at: string
+  problem_count: number
+}
+
+const aliases = ref<ModelAlias[]>([])
+const aliasLoading = ref(true)
+const aliasError = ref("")
+const showAliasForm = ref(false)
+const editingAlias = ref<ModelAlias | null>(null)
+const aliasName = ref("")
+const aliasProviderId = ref("")
+const aliasModel = ref("")
+const aliasDescription = ref("")
+const aliasSaving = ref(false)
+const aliasFormError = ref("")
+
+function providerName(id: string): string {
+  return items.value.find((p) => p.id === id)?.name ?? `未知（${id.slice(0, 8)}）`
+}
+
+async function loadAliases() {
+  if (!isLoggedIn.value) return
+  aliasLoading.value = true
+  aliasError.value = ""
+  try {
+    const res = await api.get<{ data: ModelAlias[] }>("/api/v1/admin/gateway/llm/model-aliases", { silent: true })
+    aliases.value = res.data
+  } catch (err: unknown) {
+    aliasError.value = extractApiError(err).message
+  } finally {
+    aliasLoading.value = false
+  }
+}
+
+watch(isLoggedIn, (val) => { if (val) loadAliases() }, { immediate: true })
+
+function openAliasCreate() {
+  editingAlias.value = null
+  aliasName.value = ""
+  aliasProviderId.value = currentDefaultProviderId.value || items.value[0]?.id || ""
+  aliasModel.value = ""
+  aliasDescription.value = ""
+  aliasFormError.value = ""
+  showAliasForm.value = true
+}
+
+function openAliasEdit(item: ModelAlias) {
+  editingAlias.value = item
+  aliasName.value = item.alias
+  aliasProviderId.value = item.provider_id
+  aliasModel.value = item.model
+  aliasDescription.value = item.description
+  aliasFormError.value = ""
+  showAliasForm.value = true
+}
+
+async function saveAlias() {
+  const alias = aliasName.value.trim()
+  if (!/^[a-z][a-z0-9_-]{0,31}$/.test(alias)) {
+    aliasFormError.value = "别名须以小写字母开头，仅含小写字母、数字、_、-，且不超过 32 字符"
+    return
+  }
+  if (alias === "default") {
+    aliasFormError.value = "default 是保留别名，请在上方「平台默认 Provider / 模型」中配置"
+    return
+  }
+  if (!aliasProviderId.value || !aliasModel.value.trim()) {
+    aliasFormError.value = "Provider 与模型均为必填"
+    return
+  }
+  aliasSaving.value = true
+  aliasFormError.value = ""
+  try {
+    await api.put(`/api/v1/admin/gateway/llm/model-aliases/${encodeURIComponent(alias)}`, {
+      provider_id: aliasProviderId.value,
+      model: aliasModel.value.trim(),
+      description: aliasDescription.value.trim(),
+    }, { silent: true })
+    showAliasForm.value = false
+    await loadAliases()
+    toast.success("模型别名已保存")
+  } catch (err: unknown) {
+    aliasFormError.value = extractApiError(err).message
+  } finally {
+    aliasSaving.value = false
+  }
+}
+
+async function removeAlias(item: ModelAlias) {
+  const used = item.problem_count > 0
+  const tip = used
+    ? `别名「${item.alias}」被 ${item.problem_count} 道题引用，删除后这些题的提交会失败（已冻结的重测不受影响）。确定强制删除？`
+    : `确定删除别名「${item.alias}」？`
+  if (!window.confirm(tip)) return
+  try {
+    await api.delete(`/api/v1/admin/gateway/llm/model-aliases/${encodeURIComponent(item.alias)}${used ? "?force=true" : ""}`, { silent: true })
+    await loadAliases()
+    toast.success("模型别名已删除")
+  } catch (err: unknown) {
+    toast.error(extractApiError(err).message)
+  }
+}
 </script>
 
 <template>
@@ -389,6 +501,69 @@ async function runTest() {
             保存默认配置
           </UButton>
         </div>
+      </div>
+    </section>
+
+
+    <!-- 模型别名（题目只引用别名；default 即上方平台默认） -->
+    <section class="bg-white border border-border rounded-xl overflow-hidden">
+      <div class="px-5 py-3 border-b border-border bg-bg-page flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-tags" class="size-4 text-primary" />
+          <h2 class="text-base font-semibold text-text">模型别名</h2>
+        </div>
+        <UButton color="primary" size="sm" variant="outline" @click="openAliasCreate">
+          <UIcon name="i-lucide-plus" class="size-4" />
+          新增别名
+        </UButton>
+      </div>
+      <div class="px-5 py-4 flex flex-col gap-3">
+        <p class="text-xs text-text-secondary">
+          出题人为每道题选择允许调用的别名；<span class="font-mono">default</span> 恒等于上方平台默认。改映射只影响此后新建的评测，已冻结的评测与重测仍使用当时的模型。同一道题的别名须属于同一 Provider。
+        </p>
+        <p v-if="aliasError" class="text-error-text text-xs">{{ aliasError }}</p>
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-xs text-text-secondary border-b border-border">
+              <th class="py-1.5 pr-3 font-semibold">别名</th>
+              <th class="py-1.5 pr-3 font-semibold">Provider</th>
+              <th class="py-1.5 pr-3 font-semibold">真实模型</th>
+              <th class="py-1.5 pr-3 font-semibold">说明</th>
+              <th class="py-1.5 pr-3 font-semibold">引用题数</th>
+              <th class="py-1.5 font-semibold text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-border/60 text-text-muted">
+              <td class="py-1.5 pr-3 font-mono">default</td>
+              <td class="py-1.5 pr-3">{{ currentDefaultProviderId ? providerName(currentDefaultProviderId) : "未配置" }}</td>
+              <td class="py-1.5 pr-3 font-mono">{{ currentDefaultModel || "未配置" }}</td>
+              <td class="py-1.5 pr-3">平台默认（在上方配置）</td>
+              <td class="py-1.5 pr-3">-</td>
+              <td class="py-1.5"></td>
+            </tr>
+            <tr v-for="a in aliases" :key="a.alias" class="border-b border-border/60">
+              <td class="py-1.5 pr-3 font-mono">{{ a.alias }}</td>
+              <td class="py-1.5 pr-3">{{ providerName(a.provider_id) }}</td>
+              <td class="py-1.5 pr-3 font-mono">{{ a.model }}</td>
+              <td class="py-1.5 pr-3">{{ a.description || "-" }}</td>
+              <td class="py-1.5 pr-3 tabular-nums">{{ a.problem_count }}</td>
+              <td class="py-1.5 text-right">
+                <div class="flex gap-1.5 justify-end">
+                  <UButton color="neutral" variant="outline" size="xs" title="编辑" aria-label="编辑" @click="openAliasEdit(a)">
+                    <UIcon name="i-lucide-pencil" class="size-3.5" />
+                  </UButton>
+                  <UButton color="neutral" variant="outline" size="xs" title="删除" aria-label="删除" @click="removeAlias(a)">
+                    <UIcon name="i-lucide-trash-2" class="size-3.5" />
+                  </UButton>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!aliasLoading && aliases.length === 0">
+              <td colspan="6" class="py-3 text-center text-xs text-text-muted">尚未配置自定义别名，所有 LLM 题使用 default</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </section>
 
@@ -500,6 +675,37 @@ async function runTest() {
           <span class="text-xs font-mono opacity-80">{{ testResult.model }}{{ testResult.code ? ` · ${testResult.code}` : "" }}</span>
         </div>
       </div>
+    </div>
+  </AdminEditPanel>
+  <!-- 模型别名编辑抽屉 -->
+  <AdminEditPanel
+    :open="showAliasForm"
+    :title="editingAlias ? `编辑别名：${editingAlias.alias}` : '新增模型别名'"
+    :loading="aliasSaving"
+    save-text="保存别名"
+    @close="showAliasForm = false"
+    @save="saveAlias"
+  >
+    <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">别名 <span class="text-error-text">*</span></label>
+        <input v-model="aliasName" :disabled="!!editingAlias" class="px-3 py-2 text-sm font-mono border border-border rounded outline-none transition-colors duration-150 focus:border-primary disabled:opacity-60" placeholder="如：fast / reasoning" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">Provider <span class="text-error-text">*</span></label>
+        <select v-model="aliasProviderId" class="px-3 py-2 text-sm border border-border rounded outline-none bg-white focus:border-primary">
+          <option v-for="p in items" :key="p.id" :value="p.id">{{ p.name }}{{ p.enabled ? "" : "（已停用）" }}</option>
+        </select>
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">真实模型名 <span class="text-error-text">*</span></label>
+        <input v-model="aliasModel" class="px-3 py-2 text-sm font-mono border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="如：Qwen/Qwen3-8B" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">说明（出题人可见，≤ 80 字）</label>
+        <input v-model="aliasDescription" maxlength="80" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="如：低延迟、低成本" />
+      </div>
+      <p v-if="aliasFormError" class="text-error-text text-xs">{{ aliasFormError }}</p>
     </div>
   </AdminEditPanel>
 </template>
