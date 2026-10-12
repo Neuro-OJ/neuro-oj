@@ -48,6 +48,12 @@ import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "submission"]);
 import type { JudgeTask, JudgeTaskLlm } from "../../types/index.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
+import {
+  type DomainExecutionRequest,
+  lockDomainExecution,
+  resolveDomainExecution,
+} from "../workspace-execution.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
 import { isOiRuntimeConfig } from "./../../../catalog/index.ts";
 import type { SubmissionResponse } from "./submissions-types.ts";
 import { createAttempt } from "../versioning/attempts.ts";
@@ -142,12 +148,22 @@ export async function createArtifactSubmission(
   },
   contestId?: string,
   isAdmin = false,
+  domainRequest?: DomainExecutionRequest,
 ): Promise<SubmissionResponse> {
   const db = getDb();
   if (contestId && input.contest_id && contestId !== input.contest_id) {
     throw new BadRequestError("竞赛 ID 不一致");
   }
   const resolvedContestId = contestId ?? input.contest_id ?? null;
+  if (domainRequest && resolvedContestId) {
+    throw new BadRequestError("域内练习不能携带比赛上下文");
+  }
+  const domainExecution = domainRequest
+    ? await resolveDomainExecution(domainRequest, userId, input.version_id)
+    : null;
+  if (domainExecution && domainExecution.problem.id !== input.problem_id) {
+    throw new NotFoundError("域题目引用与内部身份不一致");
+  }
 
   // 比赛内每道题提交次数上限（含 error 计数）
   if (resolvedContestId) {
@@ -159,7 +175,7 @@ export async function createArtifactSubmission(
   }
 
   // 读取最新题目配置（快照读，避免无事务包裹导致单语句 FOR UPDATE 锁即刻释放的伪锁缺陷）
-  const lockedRows = await db
+  const lockedRows = domainExecution ? [domainExecution.problem] : await db
     .select()
     .from(problems)
     .where(eq(problems.id, input.problem_id))
@@ -168,27 +184,27 @@ export async function createArtifactSubmission(
     throw new NotFoundError("题目不存在");
   }
   const problem = lockedRows[0];
-  assertDefaultProblemSource(problem);
+  if (!domainExecution) assertDefaultProblemSource(problem);
 
   // 统一访问解析：普通入口 private 题非 owner/admin 拒绝（被公开赛保密的题目同此
   // 口径，无法从独立路径提交）；竞赛入口先经 verifyContestAccess 校验成员+窗口。
   const contestAccess = resolvedContestId
     ? await verifyContestAccess(userId, resolvedContestId, problem.id)
     : null;
-  const { result: access } = await evaluateProblemAccess(problem, {
-    viewerId: userId,
-    isAdmin,
-    contestAccess,
-  });
-  if (!access.allowed) {
-    throw new ForbiddenError("无权对该题目提交");
+  if (!domainExecution) {
+    const { result: access } = await evaluateProblemAccess(problem, {
+      viewerId: userId,
+      isAdmin,
+      contestAccess,
+    });
+    if (!access.allowed) throw new ForbiddenError("无权对该题目提交");
   }
   // 服务层防御：竞赛提交只允许 running 窗口（contest 路由已拦截，这里防未来调用方绕过）。
   if (resolvedContestId && contestAccess && !contestAccess.running) {
     throw new ForbiddenError("仅可在竞赛进行期间提交");
   }
 
-  if (problem.submission_mode !== "artifact") {
+  if (!domainExecution && problem.submission_mode !== "artifact") {
     throw new BadRequestError("该题目不支持 artifact 提交");
   }
   if (!input.file_name.toLowerCase().endsWith(".zip")) {
@@ -222,6 +238,16 @@ export async function createArtifactSubmission(
     throw new BadRequestError("必须指定已发布版本");
   }
   const content = versionResolution.version.content;
+  if (
+    content.kind === "ai" && content.llm_config && domainExecution &&
+    domainExecution.domain.id !== DEFAULT_DOMAIN_ID
+  ) {
+    throw new AppError(
+      "使用域尚未配置 LLM Provider 和模型",
+      400,
+      "DOMAIN_LLM_NOT_CONFIGURED",
+    );
+  }
   if (content.kind !== "ai") {
     throw new BadRequestError("必须选择已发布的产物题版本");
   }
@@ -344,11 +370,15 @@ export async function createArtifactSubmission(
 
     try {
       await db.transaction(async (tx) => {
-        const workspace = await resolveDefaultExecutionContext(
-          input.problem_id,
-          userId,
-          tx,
-        );
+        const workspace = domainExecution && domainRequest
+          ? await lockDomainExecution(
+            domainExecution,
+            domainRequest,
+            userId,
+            input.version_id,
+            tx,
+          )
+          : await resolveDefaultExecutionContext(input.problem_id, userId, tx);
         await lockProjectionHosts(tx, {
           kind: "submission",
           id,

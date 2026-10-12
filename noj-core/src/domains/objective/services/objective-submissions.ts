@@ -8,7 +8,8 @@
  *
  * 判定详情权限：仅提交者本人或 admin 可读；竞赛模式不展示解析（防泄题）。
  */
-import { and, count, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { DEFAULT_DOMAIN_ID } from "../../workspace/index.ts";
 import type { Context } from "hono";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
@@ -34,7 +35,10 @@ import { judgePaper } from "./objective-judge.ts";
 import {
   applyAttemptResult,
   createAttempt,
+  type DomainExecutionRequest,
   loadPublishedVersionContent,
+  lockDomainExecution,
+  resolveDomainExecution,
   resolveSubmissionVersion,
 } from "./../../submission/index.ts";
 import type { ObjectiveQuestionSnapshot } from "./../../catalog/index.ts";
@@ -218,10 +222,20 @@ export async function submitObjectivePaper(
   input: SubmitObjectiveInput,
   userId: string,
   isAdmin = false,
+  domainRequest?: DomainExecutionRequest,
 ): Promise<SubmitObjectiveResponse> {
   const db = getDb();
-  const paper = await getPaperOrThrow(paperId);
-  assertDefaultProblemSource(paper);
+  if (domainRequest && input.contest_id) {
+    throw new BadRequestError("域内练习不能携带比赛上下文");
+  }
+  const domainExecution = domainRequest
+    ? await resolveDomainExecution(domainRequest, userId, input.version_id)
+    : null;
+  const paper = domainExecution?.problem ?? await getPaperOrThrow(paperId);
+  if (domainExecution && paper.id !== paperId) {
+    throw new NotFoundError("域题目引用与内部身份不一致");
+  }
+  if (!domainExecution) assertDefaultProblemSource(paper);
   assertObjectivePaper(paper);
   const paperUuid = paper.id;
 
@@ -232,7 +246,7 @@ export async function submitObjectivePaper(
   const contestId = input.contest_id
     ? await resolveContestId(input.contest_id)
     : null;
-  if (!contestId) {
+  if (!contestId && !domainExecution) {
     const { result: access } = await evaluateProblemAccess(paper, {
       viewerId: userId,
       isAdmin,
@@ -328,11 +342,15 @@ export async function submitObjectivePaper(
 
   try {
     await db.transaction(async (tx) => {
-      const workspace = await resolveDefaultExecutionContext(
-        paperUuid,
-        userId,
-        tx,
-      );
+      const workspace = domainExecution && domainRequest
+        ? await lockDomainExecution(
+          domainExecution,
+          domainRequest,
+          userId,
+          input.version_id,
+          tx,
+        )
+        : await resolveDefaultExecutionContext(paperUuid, userId, tx);
       await tx.insert(objectiveSubmissions).values({ ...row, ...workspace });
       const attempt = await createAttempt({
         source,
@@ -670,6 +688,9 @@ export async function getObjectiveSubmission(
     throw new NotFoundError("提交记录不存在");
   }
   const row = rows[0];
+  if (row.domain_id !== null && row.domain_id !== DEFAULT_DOMAIN_ID) {
+    throw new NotFoundError("默认域不存在此提交");
+  }
   // 实时权限查询（submission:read_all，admin:full_access 通配），与编程题 getSubmission 一致
   const isAdmin = c
     ? await checkPermission(c, "submission:read_all")
@@ -782,7 +803,9 @@ export async function listObjectiveSubmissions(params: {
   }
   const paperUuid = paper?.id;
 
-  const conditions = [eq(objectiveSubmissions.user_id, userId)];
+  const defaultDomain =
+    sql`(${objectiveSubmissions.domain_id} = ${DEFAULT_DOMAIN_ID} OR ${objectiveSubmissions.domain_id} IS NULL)`;
+  const conditions = [eq(objectiveSubmissions.user_id, userId), defaultDomain];
   if (paperUuid) conditions.push(eq(objectiveSubmissions.paper_id, paperUuid));
   if (contestId) {
     conditions.push(eq(objectiveSubmissions.contest_id, contestId));
@@ -817,6 +840,7 @@ export async function listObjectiveSubmissions(params: {
       .where(
         and(
           eq(objectiveSubmissions.user_id, userId),
+          defaultDomain,
           eq(objectiveSubmissions.paper_id, paperUuid),
           eq(objectiveSubmissions.submission_type, "practice"),
           eq(objectiveSubmissions.is_valid, true),

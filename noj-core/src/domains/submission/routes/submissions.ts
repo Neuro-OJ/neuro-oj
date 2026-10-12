@@ -137,8 +137,9 @@ router.get("/", authMiddleware, async (c) => {
  * 一旦 `problem_id` 与文件流都就绪就立即 resolve（不等 busboy `close`），
  * 由服务层马上消费文件流，从而避免 busboy 因文件缓冲满而暂停输入导致死锁。
  */
-function parseArtifactMultipart(
+export function parseArtifactMultipart(
   c: Context,
+  problemField: "problem_id" | "problem_ref" = "problem_id",
 ): Promise<{
   problem_id: string;
   file_name: string;
@@ -178,7 +179,7 @@ function parseArtifactMultipart(
     }
 
     bb.on("field", (name: string, val: string) => {
-      if (name === "problem_id") problemId = val;
+      if (name === problemField) problemId = val;
       if (name === "version_id") versionId = val;
       maybeResolve();
     });

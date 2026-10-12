@@ -15,6 +15,7 @@ import {
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { checkPermission } from "./../../identity/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../workspace/index.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
 import { isRetryableJudgeQueueError, pushJudgeTask } from "../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
@@ -26,6 +27,11 @@ import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import type { JudgeResult } from "../types/index.ts";
 import { prepareJudgeTask } from "./prepare-judge-task.ts";
+import {
+  type DomainExecutionRequest,
+  lockDomainExecution,
+  resolveDomainExecution,
+} from "./workspace-execution.ts";
 import {
   executionSnapshot,
   versionSupportPackageDownload,
@@ -110,11 +116,18 @@ export async function createSelfTest(
   problemId: string,
   input: SelfTestInput,
   isAdmin = false,
+  domainRequest?: DomainExecutionRequest,
 ): Promise<SelfTestResponse> {
   const db = getDb();
+  const domainExecution = domainRequest
+    ? await resolveDomainExecution(domainRequest, userId, input.version_id)
+    : null;
+  if (domainExecution && domainExecution.problem.id !== problemId) {
+    throw new NotFoundError("域题目引用与内部身份不一致");
+  }
 
   // 读取最新题目配置；不依赖行级锁（自测是只读快照，入队前若 config 变化由 judge 侧兜底）
-  const rows = await db
+  const rows = domainExecution ? [domainExecution.problem] : await db
     .select()
     .from(problems)
     .where(eq(problems.id, problemId))
@@ -123,15 +136,17 @@ export async function createSelfTest(
     throw new NotFoundError("题目不存在");
   }
   const problem = rows[0];
-  assertDefaultProblemSource(problem);
+  if (!domainExecution) assertDefaultProblemSource(problem);
 
   // 统一访问解析：自测不允许携带竞赛上下文，private 题仅 owner/admin；
   // 被公开赛保密的题目同样只有 owner/管理员可自测。
-  const { result: access } = await evaluateProblemAccess(problem, {
-    viewerId: userId,
-    isAdmin,
-  });
-  if (!access.allowed) {
+  const access = domainExecution
+    ? null
+    : (await evaluateProblemAccess(problem, {
+      viewerId: userId,
+      isAdmin,
+    })).result;
+  if (access && !access.allowed) {
     // 被未结束公开赛保密的题目对外一律"不存在"（面 1.4 审计 F-03）：
     // 若此处统一 403，则 403（保密题）与 404（题目不存在）的差异本身就是
     // **存在性预言机**——display_id 可枚举，攻击者据此即可在赛前确认某题已被
@@ -253,11 +268,15 @@ export async function createSelfTest(
 
   try {
     await db.transaction(async (tx) => {
-      const workspace = await resolveDefaultExecutionContext(
-        problemId,
-        userId,
-        tx,
-      );
+      const workspace = domainExecution && domainRequest
+        ? await lockDomainExecution(
+          domainExecution,
+          domainRequest,
+          userId,
+          input.version_id,
+          tx,
+        )
+        : await resolveDefaultExecutionContext(problemId, userId, tx);
       await tx.insert(selfTests).values({
         ...workspace,
         id,
@@ -351,6 +370,9 @@ export async function getSelfTest(
   }
 
   const row = rows[0];
+  if (row.domain_id !== null && row.domain_id !== DEFAULT_DOMAIN_ID) {
+    throw new NotFoundError("默认域不存在此自测");
+  }
 
   // 权限：owner 或 admin 可读
   const isOwner = !!c.var.userId && row.user_id === c.var.userId;

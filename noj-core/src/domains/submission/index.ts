@@ -1,5 +1,14 @@
 export * from "./services/submissions/submissions.ts";
-export { createDomainSubmission } from "./services/domain-submissions.ts";
+export {
+  createDomainArtifactSubmission,
+  createDomainSelfTest,
+  createDomainSubmission,
+} from "./services/domain-submissions.ts";
+export {
+  type DomainExecutionRequest,
+  lockDomainExecution,
+  resolveDomainExecution,
+} from "./services/workspace-execution.ts";
 export {
   applySubmissionProjection,
   type ProjectionCtx,
