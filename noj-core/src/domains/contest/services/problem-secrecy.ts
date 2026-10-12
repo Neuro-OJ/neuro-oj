@@ -86,11 +86,19 @@ export async function loadPublicContestSecrecy(
  */
 export function unendedPublicContestForProblem(
   problemIdExpr: AnyColumn | SQL,
+  domainIdExpr?: AnyColumn | SQL,
 ): SQL {
   return sql`EXISTS (
     SELECT 1 FROM contest_problems cp
     JOIN contests c ON c.id = cp.contest_id
     WHERE cp.problem_id = ${problemIdExpr}
+      ${
+    domainIdExpr
+      ? sql`AND (c.domain_id = ${domainIdExpr} OR (c.domain_id IS NULL
+        AND EXISTS (SELECT 1 FROM domains legacy_domain WHERE legacy_domain.id = ${domainIdExpr}
+          AND legacy_domain.slug = 'main')))`
+      : sql``
+  }
       AND c.kind = 'public'
       AND ${unendedWindowCondition(sql`c.end_time`)}
   )`;

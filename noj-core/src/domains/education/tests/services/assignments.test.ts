@@ -14,8 +14,6 @@ import {
   assignments,
   domainProblemBindings,
   educationOutbox,
-  problems,
-  problemVersions,
 } from "../../../../shared/db/schema.ts";
 import {
   changeAssignmentLifecycle,
@@ -30,66 +28,10 @@ import {
   setClassroomMember,
   updateAssignment,
 } from "../../index.ts";
-import { educationFixture } from "../_fixtures.ts";
-
-async function fixture() {
-  const f = await educationFixture();
-  await setClassroomMember(
-    f.school.slug,
-    f.classroom.id,
-    f.teacher,
-    f.student,
-    0,
-    { role: "student" },
-  );
-  const now = new Date().toISOString(),
-    problemId = crypto.randomUUID(),
-    versionId = crypto.randomUUID(),
-    bindingId = crypto.randomUUID();
-  await f.db.insert(problems).values({
-    id: problemId,
-    domain_id: f.school.id,
-    type: "P",
-    number: 1001,
-    title: "教学题",
-    description: "题面",
-    owner_id: f.owner,
-    created_at: now,
-    updated_at: now,
-  });
-  await f.db.insert(problemVersions).values({
-    id: versionId,
-    problem_id: problemId,
-    version: 1,
-    content: { kind: "ai", title: "教学题", description: "题面" },
-    published_at: now,
-  });
-  await f.db.update(problems).set({ latest_version_id: versionId }).where(
-    eq(problems.id, problemId),
-  );
-  await f.db.insert(domainProblemBindings).values({
-    id: bindingId,
-    domain_id: f.school.id,
-    problem_id: problemId,
-    kind: "owned",
-    visibility: "members",
-    created_by: f.owner,
-    created_at: now,
-    updated_at: now,
-  });
-  const input = {
-    title: "基础作业",
-    items: [{
-      binding_id: bindingId,
-      requirement: "min_score" as const,
-      minimum_score: 6000,
-    }],
-  };
-  return { ...f, problemId, versionId, bindingId, input };
-}
+import { assignmentFixture } from "../_assignment-fixture.ts";
 
 Deno.test("作业：发布固定条目与名单、原子保存版本依据和事件，重复键不重复发布", async () => {
-  const f = await fixture();
+  const f = await assignmentFixture();
   const draft = await createAssignment(
     f.school.slug,
     f.classroom.id,
@@ -146,7 +88,7 @@ Deno.test("作业：发布固定条目与名单、原子保存版本依据和事
 });
 
 Deno.test("作业：题库绑定、目标名单与写权限严格限定当前班级和域", async () => {
-  const f = await fixture();
+  const f = await assignmentFixture();
   await assertRejects(
     () => createAssignment(f.other.slug, f.classroom.id, f.owner, f.input),
     NotFoundError,
@@ -205,7 +147,7 @@ Deno.test("作业：题库绑定、目标名单与写权限严格限定当前班
 });
 
 Deno.test("作业：发布时资源失效整体回滚；定时发布再次校验并保留具体失败", async () => {
-  const f = await fixture();
+  const f = await assignmentFixture();
   const draft = await createAssignment(
     f.school.slug,
     f.classroom.id,
@@ -251,7 +193,7 @@ Deno.test("作业：发布时资源失效整体回滚；定时发布再次校验
 });
 
 Deno.test("作业：按当前有效策略发布，延长截止有沿革，归档保留学生阅读", async () => {
-  const f = await fixture();
+  const f = await assignmentFixture();
   await f.db.update(domainProblemBindings).set({
     effective_version_mode: "exact",
     required_version_id: f.versionId,
@@ -305,7 +247,7 @@ Deno.test("作业：按当前有效策略发布，延长截止有沿革，归档
 });
 
 Deno.test("作业名单：新生只补入未截止全班任务，离班保留历史并结束计入区间", async () => {
-  const f = await fixture();
+  const f = await assignmentFixture();
   const all = await createAssignment(
     f.school.slug,
     f.classroom.id,
@@ -389,7 +331,7 @@ Deno.test("作业名单：新生只补入未截止全班任务，离班保留历
 });
 
 Deno.test("作业复制：生成独立部分学生补题，保留来源且重试不重复创建", async () => {
-  const f = await fixture();
+  const f = await assignmentFixture();
   const original = await createAssignment(
     f.school.slug,
     f.classroom.id,
