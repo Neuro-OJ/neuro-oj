@@ -1134,54 +1134,6 @@ Deno.test("新增: backup create 成功后写出 noj_backup.prom（接线断言�
     await Deno.writeTextFile(pass, "x".repeat(64));
 
     const { runBackupCreate } = await import("./cli.ts");
-    const { createContainer } = await import("./backup/container.ts");
-    void createContainer;
-    // 最小 ops：写真实文件 + 真实 tar.zst（不加密，避免依赖 gpg）
-    const ops = {
-      async postgresDump(d: string) {
-        await Deno.writeFile(d, new Uint8Array([0x50, 0x47, 0x44, 0x4d, 0x50]));
-      },
-      async postgresGlobals(d: string) {
-        await Deno.writeTextFile(d, "-- g\nCREATE ROLE noj;\n");
-      },
-      async postgresRestoreList(_s: string, d: string) {
-        await Deno.writeTextFile(d, "; listing\n1; 0 0 TABLE public t\n");
-      },
-      async redisRdb(d: string) {
-        await Deno.writeFile(d, new Uint8Array([0x52, 0x45, 0x44, 0x49, 0x53]));
-      },
-      async redisPersistence(d: string) {
-        await Deno.writeTextFile(d, "rdb_last_bgsave_status:ok\r\n");
-      },
-      async minioMirror(d: string) {
-        await Deno.mkdir(d, { recursive: true });
-        await Deno.writeTextFile(`${d}/o.txt`, "x");
-      },
-      async minioList(_d: string, dest: string) {
-        await Deno.writeTextFile(dest, "o.txt\n");
-      },
-      async restorePostgres() {},
-      async restoreRedisRdb() {},
-      async gpgEncrypt(src: string, dest: string) {
-        await Deno.copyFile(src, dest);
-      },
-      async gpgDecrypt(src: string, dest: string) {
-        await Deno.copyFile(src, dest);
-      },
-      async tarZst(staging: string, dest: string) {
-        const r = await new Deno.Command("tar", {
-          args: ["-I", "zstd", "-cf", dest, "-C", staging, "."],
-        }).output();
-        if (r.code !== 0) throw new Error("tar failed");
-      },
-      async untarZst(src: string, destDir: string) {
-        await Deno.mkdir(destDir, { recursive: true });
-        const r = await new Deno.Command("tar", {
-          args: ["-I", "zstd", "-xf", src, "-C", destDir],
-        }).output();
-        if (r.code !== 0) throw new Error("untar failed");
-      },
-    };
 
     await runBackupCreate(dir, {
       args: [],
@@ -1198,7 +1150,7 @@ Deno.test("新增: backup create 成功后写出 noj_backup.prom（接线断言�
       backupDir,
       passphraseFile: pass,
       noEncrypt: true,
-      ops: ops as never,
+      ops: fakePayloadOps() as never,
     });
 
     // 指标必须由 create **自己**写出（这才是本用例要钉的接线）
@@ -1210,6 +1162,196 @@ Deno.test("新增: backup create 成功后写出 noj_backup.prom（接线断言�
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
+
+// ── 生产实测缺陷：backup create 不读 `.env.prod` 中的口令路径 ──
+//
+// `update` 首次备份会生成口令文件并把路径写进 `.env.prod`，verify/restore/drill
+// 也都按"旗标 > 进程环境 > .env.prod"解析；唯独 `backup create`（及
+// `backup schedule`）只认旗标，手动执行即报"缺少 GPG 口令文件"。
+
+/** 造一个带 `NOJ_BACKUP_PASSPHRASE_FILE` 的安装目录与对应口令文件。 */
+async function makeCreateFixture(root: string): Promise<{
+  dir: string;
+  backupDir: string;
+  configuredPass: string;
+}> {
+  const dir = join(root, "install");
+  // schedule install 要求 `<dir>/bin/noj-cli` 存在且可执行（cron 的调用目标）
+  await Deno.mkdir(join(dir, "bin"), { recursive: true });
+  await Deno.writeTextFile(join(dir, "bin", "noj-cli"), "#!/bin/sh\n");
+  await Deno.chmod(join(dir, "bin", "noj-cli"), 0o755);
+  await Deno.writeTextFile(
+    join(dir, "docker-compose.prod.yml"),
+    "services: {}\n",
+  );
+  const configuredPass = join(root, "configured-pass");
+  await Deno.writeTextFile(configuredPass, "x".repeat(64));
+  await Deno.chmod(configuredPass, 0o600);
+  await Deno.writeTextFile(
+    join(dir, ".env.prod"),
+    "NOJ_VERSION=v0.9.5\nPOSTGRES_USER=noj\nPOSTGRES_DB=noj\nS3_BUCKET=b\n" +
+      `NOJ_BACKUP_PASSPHRASE_FILE=${configuredPass}\n`,
+  );
+  await Deno.chmod(join(dir, ".env.prod"), 0o600);
+  const backupDir = join(root, "backups");
+  await Deno.mkdir(backupDir, { recursive: true });
+  return { dir, backupDir, configuredPass };
+}
+
+/** 跑一次加密的 `backup create`，返回 gpgEncrypt 实际收到的口令文件路径。 */
+async function createWithPassphrase(
+  dir: string,
+  backupDir: string,
+  opts: { passphraseFile?: string; processEnv?: Record<string, string> },
+): Promise<string[]> {
+  const used: string[] = [];
+  const { runBackupCreate } = await import("./cli.ts");
+  await runBackupCreate(dir, {
+    args: [],
+    deps: {
+      runner: {
+        run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }),
+        spawn: () => {
+          throw new Error("no spawn");
+        },
+      },
+      processEnv: opts.processEnv ?? {},
+      now: () => new Date("2026-10-12T08:00:00Z"),
+    },
+    backupDir,
+    passphraseFile: opts.passphraseFile,
+    ops: fakePayloadOps({ onEncrypt: (pass) => used.push(pass) }) as never,
+    probeFreeBytes: () => Promise.resolve(Number.MAX_SAFE_INTEGER),
+  });
+  return used;
+}
+
+Deno.test("缺陷修复: backup create 未传旗标时读取 .env.prod 的口令路径", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const { dir, backupDir, configuredPass } = await makeCreateFixture(root);
+    const used = await createWithPassphrase(dir, backupDir, {});
+    assert(used.length > 0, "加密备份必须调用 gpgEncrypt");
+    assert(
+      used.every((p) => p === configuredPass),
+      `应使用 .env.prod 中的口令路径，实际：${used.join(", ")}`,
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("缺陷修复: backup create 口令优先级为 旗标 > 进程环境 > .env.prod", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const { dir, backupDir } = await makeCreateFixture(root);
+    const envPass = join(root, "env-pass");
+    const flagPass = join(root, "flag-pass");
+    for (const p of [envPass, flagPass]) {
+      await Deno.writeTextFile(p, "y".repeat(64));
+      await Deno.chmod(p, 0o600);
+    }
+    const processEnv = { NOJ_BACKUP_PASSPHRASE_FILE: envPass };
+
+    const fromEnv = await createWithPassphrase(dir, backupDir, { processEnv });
+    assert(fromEnv.every((p) => p === envPass), "进程环境应覆盖 .env.prod");
+
+    const fromFlag = await createWithPassphrase(dir, backupDir, {
+      processEnv,
+      passphraseFile: flagPass,
+    });
+    assert(fromFlag.every((p) => p === flagPass), "旗标应覆盖进程环境");
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("缺陷修复: backup schedule install 未传旗标时读取 .env.prod 的口令路径", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const { dir, configuredPass } = await makeCreateFixture(root);
+    let written = "";
+    const { runBackupSchedule } = await import("./cli.ts");
+    const result = await runBackupSchedule(dir, ["install"], {
+      runner: {
+        run(_cmd: string, args: string[], opts?: { stdin?: string }) {
+          if (args[0] === "-") written = opts?.stdin ?? "";
+          // `crontab -l` 非 0 = 当前无 crontab（常态）
+          return Promise.resolve({
+            code: args[0] === "-l" ? 1 : 0,
+            stdout: "",
+            stderr: "",
+          });
+        },
+        spawn() {
+          throw new Error("不应 spawn");
+        },
+      },
+      processEnv: {},
+      out: () => {},
+    });
+    assertEquals(result.exitCode, 0, result.message);
+    assertEquals(result.paths.passphraseFile, configuredPass);
+    assertStringIncludes(written, configuredPass);
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+/**
+ * 最小采集/打包 ops：写真实文件 + 真实 tar.zst；gpg 以复制代替（避免依赖 gpg），
+ * `onEncrypt` 用于断言 create 实际传给加密步骤的口令文件路径。
+ */
+function fakePayloadOps(
+  hooks: { onEncrypt?: (passphraseFile: string) => void } = {},
+) {
+  return {
+    async postgresDump(d: string) {
+      await Deno.writeFile(d, new Uint8Array([0x50, 0x47, 0x44, 0x4d, 0x50]));
+    },
+    async postgresGlobals(d: string) {
+      await Deno.writeTextFile(d, "-- g\nCREATE ROLE noj;\n");
+    },
+    async postgresRestoreList(_s: string, d: string) {
+      await Deno.writeTextFile(d, "; listing\n1; 0 0 TABLE public t\n");
+    },
+    async redisRdb(d: string) {
+      await Deno.writeFile(d, new Uint8Array([0x52, 0x45, 0x44, 0x49, 0x53]));
+    },
+    async redisPersistence(d: string) {
+      await Deno.writeTextFile(d, "rdb_last_bgsave_status:ok\r\n");
+    },
+    async minioMirror(d: string) {
+      await Deno.mkdir(d, { recursive: true });
+      await Deno.writeTextFile(`${d}/o.txt`, "x");
+    },
+    async minioList(_d: string, dest: string) {
+      await Deno.writeTextFile(dest, "o.txt\n");
+    },
+    async restorePostgres() {},
+    async restoreRedisRdb() {},
+    async gpgEncrypt(src: string, dest: string, passphraseFile: string) {
+      hooks.onEncrypt?.(passphraseFile);
+      await Deno.copyFile(src, dest);
+    },
+    async gpgDecrypt(src: string, dest: string) {
+      await Deno.copyFile(src, dest);
+    },
+    async tarZst(staging: string, dest: string) {
+      const r = await new Deno.Command("tar", {
+        args: ["--zstd", "-cf", dest, "-C", staging, "."],
+      }).output();
+      if (r.code !== 0) throw new Error("tar failed");
+    },
+    async untarZst(src: string, destDir: string) {
+      await Deno.mkdir(destDir, { recursive: true });
+      const r = await new Deno.Command("tar", {
+        args: ["--zstd", "-xf", src, "-C", destDir],
+      }).output();
+      if (r.code !== 0) throw new Error("untar failed");
+    },
+  };
+}
 
 // ── 我自查发现的缺陷：judge --redis-mode local 在 --dry-run 下真建了 Redis ──
 //
