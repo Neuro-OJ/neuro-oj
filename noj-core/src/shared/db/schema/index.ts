@@ -15,3 +15,4 @@ export * from "./carousel.ts";
 export * from "./workspace.ts";
 export * from "./catalog-workspace.ts";
 export * from "./education.ts";
+export * from "./assignment.ts";

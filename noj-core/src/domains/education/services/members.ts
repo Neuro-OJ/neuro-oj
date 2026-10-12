@@ -20,6 +20,7 @@ import {
 } from "../../../shared/education-types.ts";
 import { workspaceAudit } from "../../workspace/index.ts";
 import { assertActiveDomainStudent } from "./classrooms.ts";
+import { syncStudentAssignmentRecipients } from "./assignment-recipients.ts";
 import {
   assertClassroomCapability,
   assertClassroomCoach,
@@ -147,6 +148,14 @@ export async function setClassroomMember(
     await tx.delete(classroomAssistantGrants).where(
       eq(classroomAssistantGrants.membership_id, member.id),
     );
+    await syncStudentAssignmentRecipients(
+      tx,
+      access.domain.id,
+      classroomId,
+      userId,
+      input.role === "student",
+      now,
+    );
     if (capabilities.length) {
       await tx.insert(classroomAssistantGrants).values(
         capabilities.map((capability) => ({
@@ -210,6 +219,14 @@ export async function removeClassroomMember(
       left_at: now,
     })
       .where(eq(classroomMemberships.id, member.id));
+    await syncStudentAssignmentRecipients(
+      tx,
+      access.domain.id,
+      classroomId,
+      userId,
+      false,
+      now,
+    );
     await tx.delete(classroomAssistantGrants).where(
       eq(classroomAssistantGrants.membership_id, member.id),
     );
@@ -254,6 +271,14 @@ export async function transferClassroom(
       appointed_at: now,
     })
       .where(eq(classroomMemberships.id, target.id));
+    await syncStudentAssignmentRecipients(
+      tx,
+      access.domain.id,
+      classroomId,
+      targetId,
+      false,
+      now,
+    );
     await tx.delete(classroomAssistantGrants).where(
       eq(classroomAssistantGrants.membership_id, target.id),
     );

@@ -1,0 +1,388 @@
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { eq } from "drizzle-orm";
+import {
+  AppError,
+  BadRequestError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+} from "../../../../shared/base/errors.ts";
+import {
+  assignmentItemHistory,
+  assignmentItems,
+  assignmentRecipients,
+  assignments,
+  domainProblemBindings,
+  educationOutbox,
+  problems,
+  problemVersions,
+} from "../../../../shared/db/schema.ts";
+import {
+  changeAssignmentLifecycle,
+  createAssignment,
+  getAssignment,
+  listAssignments,
+  publishAssignment,
+  publishDueAssignments,
+  removeClassroomMember,
+  scheduleAssignment,
+  setClassroomMember,
+  updateAssignment,
+} from "../../index.ts";
+import { educationFixture } from "../_fixtures.ts";
+
+async function fixture() {
+  const f = await educationFixture();
+  await setClassroomMember(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    f.student,
+    0,
+    { role: "student" },
+  );
+  const now = new Date().toISOString(),
+    problemId = crypto.randomUUID(),
+    versionId = crypto.randomUUID(),
+    bindingId = crypto.randomUUID();
+  await f.db.insert(problems).values({
+    id: problemId,
+    domain_id: f.school.id,
+    type: "P",
+    number: 1001,
+    title: "教学题",
+    description: "题面",
+    owner_id: f.owner,
+    created_at: now,
+    updated_at: now,
+  });
+  await f.db.insert(problemVersions).values({
+    id: versionId,
+    problem_id: problemId,
+    version: 1,
+    content: { kind: "ai", title: "教学题", description: "题面" },
+    published_at: now,
+  });
+  await f.db.update(problems).set({ latest_version_id: versionId }).where(
+    eq(problems.id, problemId),
+  );
+  await f.db.insert(domainProblemBindings).values({
+    id: bindingId,
+    domain_id: f.school.id,
+    problem_id: problemId,
+    kind: "owned",
+    visibility: "members",
+    created_by: f.owner,
+    created_at: now,
+    updated_at: now,
+  });
+  const input = {
+    title: "基础作业",
+    items: [{
+      binding_id: bindingId,
+      requirement: "min_score" as const,
+      minimum_score: 6000,
+    }],
+  };
+  return { ...f, problemId, versionId, bindingId, input };
+}
+
+Deno.test("作业：发布固定条目与名单、原子保存版本依据和事件，重复键不重复发布", async () => {
+  const f = await fixture();
+  const draft = await createAssignment(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    f.input,
+  );
+  await assertRejects(
+    () => getAssignment(f.school.slug, draft.id, f.student),
+    NotFoundError,
+  );
+  assertEquals(
+    await listAssignments(f.school.slug, f.classroom.id, f.student),
+    [],
+  );
+  const published = await publishAssignment(
+    f.school.slug,
+    draft.id,
+    f.teacher,
+    0,
+    "publish-one",
+  );
+  assertEquals(published.state, "published");
+  assertEquals(
+    await publishAssignment(
+      f.school.slug,
+      draft.id,
+      f.teacher,
+      0,
+      "publish-one",
+    ),
+    published,
+  );
+  assertEquals(
+    (await f.db.select().from(assignmentRecipients)).map((r) => r.user_id),
+    [f.student],
+  );
+  const [item] = await f.db.select().from(assignmentItems);
+  assertEquals(item.minimum_score, 6000);
+  assertEquals(item.published_version_id, f.versionId);
+  assertEquals(item.answer_version_id, f.versionId);
+  assertEquals((await f.db.select().from(assignmentItemHistory)).length, 1);
+  assertEquals((await f.db.select().from(educationOutbox)).length, 1);
+  const detail = await getAssignment(f.school.slug, draft.id, f.student);
+  assertEquals("target_student_ids" in detail, false);
+  await assertRejects(
+    () => updateAssignment(f.school.slug, draft.id, f.teacher, 1, f.input),
+    ConflictError,
+  );
+  await assertRejects(
+    () =>
+      publishAssignment(f.school.slug, draft.id, f.teacher, 1, "publish-one"),
+    ConflictError,
+  );
+});
+
+Deno.test("作业：题库绑定、目标名单与写权限严格限定当前班级和域", async () => {
+  const f = await fixture();
+  await assertRejects(
+    () => createAssignment(f.other.slug, f.classroom.id, f.owner, f.input),
+    NotFoundError,
+  );
+  await assertRejects(
+    () => createAssignment(f.school.slug, f.classroom.id, f.student, f.input),
+    ForbiddenError,
+  );
+  await assertRejects(
+    () =>
+      createAssignment(f.school.slug, f.classroom.id, f.teacher, {
+        ...f.input,
+        target_student_ids: [f.teacher],
+      }),
+    BadRequestError,
+  );
+  await assertRejects(
+    () =>
+      createAssignment(f.school.slug, f.classroom.id, f.teacher, {
+        ...f.input,
+        items: [{
+          binding_id: f.bindingId,
+          requirement: "min_score",
+          minimum_score: null,
+        }],
+      }),
+    BadRequestError,
+  );
+  const draft = await createAssignment(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    {
+      ...f.input,
+      target_student_ids: [f.student],
+      include_previous_submissions: true,
+    },
+  );
+  await assertRejects(
+    () => updateAssignment(f.school.slug, draft.id, f.teacher, null, f.input),
+    AppError,
+  );
+  const edited = await updateAssignment(f.school.slug, draft.id, f.teacher, 0, {
+    ...f.input,
+    title: "新题目集合",
+  });
+  assertEquals(edited.revision, 1);
+  await assertRejects(
+    () => getAssignment(f.other.slug, draft.id, f.owner),
+    NotFoundError,
+  );
+  await assertRejects(
+    () => updateAssignment(f.school.slug, draft.id, f.teacher, 0, f.input),
+    AppError,
+  );
+});
+
+Deno.test("作业：发布时资源失效整体回滚；定时发布再次校验并保留具体失败", async () => {
+  const f = await fixture();
+  const draft = await createAssignment(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    f.input,
+  );
+  const scheduled = await scheduleAssignment(
+    f.school.slug,
+    draft.id,
+    f.teacher,
+    0,
+    new Date(Date.now() + 60000).toISOString(),
+  );
+  await assertRejects(
+    () =>
+      publishAssignment(
+        f.school.slug,
+        draft.id,
+        f.teacher,
+        scheduled.revision,
+        "early",
+      ),
+    ConflictError,
+  );
+  await f.db.update(domainProblemBindings).set({
+    disabled_at: new Date().toISOString(),
+  }).where(eq(domainProblemBindings.id, f.bindingId));
+  await f.db.update(assignments).set({
+    publish_at: new Date(Date.now() - 1000).toISOString(),
+  }).where(eq(assignments.id, draft.id));
+  assertEquals(await publishDueAssignments(), [{
+    id: draft.id,
+    published: false,
+  }]);
+  const failed = await getAssignment(f.school.slug, draft.id, f.teacher);
+  assertEquals(failed.state, "draft");
+  assertEquals(failed.published_at, null);
+  assertEquals(typeof failed.publish_error, "string");
+  assertEquals((await f.db.select().from(assignmentRecipients)).length, 0);
+  assertEquals((await f.db.select().from(assignmentItemHistory)).length, 0);
+  assertEquals((await f.db.select().from(educationOutbox)).length, 0);
+  assertEquals(failed.items[0].published_version_id, null);
+});
+
+Deno.test("作业：按当前有效策略发布，延长截止有沿革，归档保留学生阅读", async () => {
+  const f = await fixture();
+  await f.db.update(domainProblemBindings).set({
+    effective_version_mode: "exact",
+    required_version_id: f.versionId,
+    revision: 2,
+  }).where(eq(domainProblemBindings.id, f.bindingId));
+  const deadline = new Date(Date.now() + 3600000).toISOString();
+  const draft = await createAssignment(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    { ...f.input, deadline_at: deadline },
+  );
+  await publishAssignment(f.school.slug, draft.id, f.teacher, 0, "exact");
+  const detail = await getAssignment(f.school.slug, draft.id, f.student);
+  assertEquals(detail.items[0].published_policy_mode, "exact");
+  assertEquals(detail.items[0].published_policy_revision, 2);
+  await assertRejects(
+    () =>
+      changeAssignmentLifecycle(f.school.slug, draft.id, f.teacher, 1, {
+        action: "extend",
+        reason: "缩短",
+        deadline_at: new Date(Date.now() + 1000).toISOString(),
+      }),
+    BadRequestError,
+  );
+  const extended = await changeAssignmentLifecycle(
+    f.school.slug,
+    draft.id,
+    f.teacher,
+    1,
+    {
+      action: "extend",
+      reason: "延长练习",
+      deadline_at: new Date(Date.now() + 7200000).toISOString(),
+    },
+  );
+  assertEquals(extended.revision, 2);
+  const archived = await changeAssignmentLifecycle(
+    f.school.slug,
+    draft.id,
+    f.teacher,
+    2,
+    { action: "archive", reason: "学期结束" },
+  );
+  assertEquals(archived.state, "archived");
+  assertEquals(
+    (await getAssignment(f.school.slug, draft.id, f.student)).state,
+    "archived",
+  );
+  assertEquals((await f.db.select().from(assignmentRecipients)).length, 1);
+});
+
+Deno.test("作业名单：新生只补入未截止全班任务，离班保留历史并结束计入区间", async () => {
+  const f = await fixture();
+  const all = await createAssignment(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    f.input,
+  );
+  const selected = await createAssignment(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    { ...f.input, target_student_ids: [f.student] },
+  );
+  const closed = await createAssignment(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    f.input,
+  );
+  for (const task of [all, selected, closed]) {
+    await publishAssignment(f.school.slug, task.id, f.teacher, 0, task.id);
+  }
+  await f.db.update(assignments).set({
+    deadline_at: new Date(Date.now() - 1000).toISOString(),
+  }).where(eq(assignments.id, closed.id));
+  await setClassroomMember(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    f.assistant,
+    1,
+    { role: "student" },
+  );
+  const newcomer = await f.db.select().from(assignmentRecipients).where(
+    eq(assignmentRecipients.user_id, f.assistant),
+  );
+  assertEquals(newcomer.map((r) => r.assignment_id), [all.id]);
+  assertEquals(newcomer[0].added_by, "automatic");
+  await removeClassroomMember(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    f.student,
+    2,
+  );
+  const historical = await f.db.select().from(assignmentRecipients).where(
+    eq(assignmentRecipients.user_id, f.student),
+  );
+  assertEquals(
+    historical.every((r) =>
+      r.status === "historical" && !!r.left_at && !!r.credit_intervals[0].end
+    ),
+    true,
+  );
+  assertEquals(
+    (await getAssignment(f.school.slug, selected.id, f.student)).id,
+    selected.id,
+  );
+  await setClassroomMember(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    f.student,
+    3,
+    { role: "student" },
+  );
+  const restored = await f.db.select().from(assignmentRecipients).where(
+    eq(assignmentRecipients.user_id, f.student),
+  );
+  assertEquals(
+    restored.find((r) => r.assignment_id === all.id)?.credit_intervals.length,
+    2,
+  );
+  assertEquals(
+    restored.find((r) => r.assignment_id === selected.id)?.status,
+    "active",
+  );
+  assertEquals(
+    restored.find((r) => r.assignment_id === closed.id)?.status,
+    "historical",
+  );
+});

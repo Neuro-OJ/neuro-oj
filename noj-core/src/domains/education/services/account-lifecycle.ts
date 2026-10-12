@@ -1,5 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Executor } from "../../../shared/db/executor.ts";
+import { syncStudentAssignmentRecipients } from "./assignment-recipients.ts";
 import {
   classroomAssistantGrants,
   classroomMemberships,
@@ -42,6 +43,14 @@ export async function retireDomainEducationMemberships(
       ),
     );
   for (const row of affected) {
+    await syncStudentAssignmentRecipients(
+      executor,
+      domainId,
+      row.id,
+      userId,
+      false,
+      now,
+    );
     await executor.update(classrooms).set({
       revision: sql`${classrooms.revision} + 1`,
       updated_at: now,

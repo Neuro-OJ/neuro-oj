@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { syncStudentAssignmentRecipients } from "./assignment-recipients.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
@@ -120,6 +121,14 @@ export async function joinInvitedClassroom(
   }).returning();
   await executor.delete(classroomAssistantGrants).where(
     eq(classroomAssistantGrants.membership_id, member.id),
+  );
+  await syncStudentAssignmentRecipients(
+    executor,
+    domainId,
+    classroomId,
+    userId,
+    true,
+    now,
   );
   await executor.update(classrooms).set({
     revision: classroom.revision + 1,

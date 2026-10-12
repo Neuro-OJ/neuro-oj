@@ -9,6 +9,7 @@ import {
 import { WORKSPACE_DDL, WORKSPACE_TABLES } from "./schema-ddl-workspace.ts";
 import { EXECUTION_WORKSPACE_DDL } from "./schema-ddl-execution-workspace.ts";
 import { EDUCATION_DDL, EDUCATION_TABLES } from "./schema-ddl-education.ts";
+import { ASSIGNMENT_DDL, ASSIGNMENT_TABLES } from "./schema-ddl-assignment.ts";
 import { WORKSPACE_AUDIT_ACTION_SQL } from "../workspace/audit.ts";
 /** PGlite DDL 与 Drizzle schema 同步；新子系统通过独立 DDL 模块扩展。 */
 export const SCHEMA_DDL: string[] = [
@@ -1095,6 +1096,7 @@ $$ LANGUAGE plpgsql`,
   ...CATALOG_WORKSPACE_DDL,
   ...EXECUTION_WORKSPACE_DDL,
   ...EDUCATION_DDL,
+  ...ASSIGNMENT_DDL,
 ];
 
 // 索引与可选扩展索引拆到独立模块（单文件规模棘轮，见 scripts/check-file-size.ts）：
@@ -1108,6 +1110,7 @@ export const ALL_TABLES = [
   ...WORKSPACE_TABLES,
   ...CATALOG_WORKSPACE_TABLES,
   ...EDUCATION_TABLES,
+  ...ASSIGNMENT_TABLES,
   "users",
   "oauth_accounts",
   "problems",

@@ -1,4 +1,5 @@
 import { type Context, Hono } from "hono";
+import { assignmentRouter } from "./assignments.ts";
 import { type AuthEnv, authMiddleware } from "../../identity/index.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
@@ -207,4 +208,5 @@ router.delete(
 );
 
 /** 班级准备路由；完成域资源隔离后在生产组合根挂载。 */
+router.route("/", assignmentRouter);
 export const educationRouter = router;
