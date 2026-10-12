@@ -26,3 +26,4 @@ export * from "./services/versioning/job-worker.ts";
 export * from "./services/versioning/dispatch-job-item.ts";
 export * from "./services/versioning/upgrade-jobs.ts";
 export * from "./services/workspace-backfill.ts";
+export { oiVerdict } from "./services/submissions/oi-details.ts";

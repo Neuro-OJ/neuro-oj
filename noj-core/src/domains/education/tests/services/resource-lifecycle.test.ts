@@ -23,6 +23,7 @@ import { recomputeSubmissionProjection } from "../../../submission/index.ts";
 import {
   createAssignment,
   createClassroom,
+  getClassroomStudentSubmission,
   getMyAssignmentProgress,
   publishAssignment,
   setClassroomMember,
@@ -151,6 +152,15 @@ Deno.test("资源下架：源访问与目标引用立即关闭，保留学生代
   );
   assertEquals(unavailable.cells[0].status, "unavailable");
   assertEquals(unavailable.cells[0].score, 7000);
+  const retained = await getClassroomStudentSubmission(
+    f.other.slug,
+    classroom.id,
+    submissionId,
+    "submission",
+    f.owner,
+  );
+  assertEquals(retained.code, "学生原代码");
+  assertEquals(retained.display_ref, "class-school:1001");
   assertEquals(
     (await f.db.select().from(submissions).where(
       eq(submissions.id, submissionId),
