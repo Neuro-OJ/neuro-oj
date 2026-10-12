@@ -252,6 +252,58 @@ async function handleSave() {
     saving.value = false
   }
 }
+
+// ─── 连接测试 ─────────────────────────────────────────────
+// gateway 用已保存的 Key 向上游发起 1 token 的真实请求，验证 Base URL / Key / 模型。
+// 上游不通（鉴权失败、限流、超时等）以 status=failed 返回原因，不走错误提示。
+
+interface ProviderTestResult {
+  status: "ok" | "failed"
+  model: string
+  latency_ms: number
+  code?: string
+  message?: string
+}
+
+const showTest = ref(false)
+const testingItem = ref<LlmProvider | null>(null)
+const testModel = ref("")
+const testing = ref(false)
+const testResult = ref<ProviderTestResult | null>(null)
+const testError = ref("")
+
+// 打开连接测试面板；模型默认取平台默认模型
+function openTest(item: LlmProvider) {
+  testingItem.value = item
+  testModel.value = currentDefaultModel.value
+  testResult.value = null
+  testError.value = ""
+  showTest.value = true
+}
+
+async function runTest() {
+  if (!testingItem.value) return
+  const model = testModel.value.trim()
+  if (!model) {
+    testError.value = "请填写要测试的模型名称"
+    return
+  }
+  testing.value = true
+  testResult.value = null
+  testError.value = ""
+  try {
+    const res = await api.post<{ data: ProviderTestResult }>(
+      `/api/v1/admin/gateway/llm/providers/${testingItem.value.id}/test`,
+      { model },
+      { silent: true },
+    )
+    testResult.value = res.data
+  } catch (err: unknown) {
+    testError.value = extractApiError(err).message
+  } finally {
+    testing.value = false
+  }
+}
 </script>
 
 <template>
@@ -366,6 +418,9 @@ async function handleSave() {
       </template>
       <template #actions="{ row }">
         <div class="flex gap-1.5 justify-center">
+          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="测试连接" aria-label="测试连接" @click="openTest(row as unknown as LlmProvider)">
+            <UIcon name="i-lucide-plug-zap" class="size-3.5" />
+          </UButton>
           <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" @click="openEdit(row as unknown as LlmProvider)">
             <UIcon name="i-lucide-pencil" class="size-3.5" />
           </UButton>
@@ -405,6 +460,46 @@ async function handleSave() {
         <span class="text-xs text-text-secondary font-medium">启用此 Provider</span>
       </div>
       <p v-if="formError" class="text-error-text text-xs">{{ formError }}</p>
+    </div>
+  </AdminEditPanel>
+  <!-- Provider 连接测试抽屉 -->
+  <AdminEditPanel
+    :open="showTest"
+    :title="testingItem ? `测试连接：${testingItem.name}` : '测试连接'"
+    :loading="testing"
+    save-text="开始测试"
+    @close="showTest = false"
+    @save="runTest"
+  >
+    <div class="flex flex-col gap-3">
+      <p class="text-xs text-text-secondary">
+        使用已保存的 API Key 向 <span class="font-mono">{{ testingItem?.base_url }}</span> 发起一次 1 token 的真实请求（10 秒超时），会产生极少量费用。
+      </p>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">模型 <span class="text-error-text">*</span></label>
+        <input
+          v-model="testModel"
+          class="px-3 py-2 text-sm font-mono border border-border rounded outline-none transition-colors duration-150 focus:border-primary"
+          placeholder="如：gpt-4o-mini / Qwen/Qwen3-8B"
+          @keydown.enter="runTest"
+        />
+      </div>
+      <p v-if="testError" class="text-error-text text-xs">{{ testError }}</p>
+      <div
+        v-if="testResult"
+        class="flex items-start gap-2 px-3 py-2 rounded border text-sm"
+        :class="testResult.status === 'ok' ? 'bg-success-bg border-success-text/30 text-success-text' : 'bg-error-bg border-error-text/30 text-error-text'"
+      >
+        <UIcon :name="testResult.status === 'ok' ? 'i-lucide-circle-check' : 'i-lucide-circle-x'" class="size-4 mt-0.5 shrink-0" />
+        <div class="flex flex-col gap-0.5">
+          <span class="font-semibold">
+            {{ testResult.status === "ok" ? "连接成功" : "连接失败" }}
+            <span class="font-normal tabular-nums">（{{ testResult.latency_ms }} ms）</span>
+          </span>
+          <span v-if="testResult.message" class="text-xs">{{ testResult.message }}</span>
+          <span class="text-xs font-mono opacity-80">{{ testResult.model }}{{ testResult.code ? ` · ${testResult.code}` : "" }}</span>
+        </div>
+      </div>
     </div>
   </AdminEditPanel>
 </template>

@@ -268,3 +268,24 @@ export async function upsertLlmQuota(
   );
   return body.data;
 }
+
+/**
+ * 用指定模型对 Provider 发起一次最小真实调用，验证 Base URL / Key / 模型可用。
+ *
+ * gateway 侧以 `max_tokens: 1` 请求上游 `/chat/completions`（10 秒超时），
+ * 成功即返回；失败时抛出 LlmGatewayError，错误码见 gateway
+ * `testProviderConnection`（provider_auth_failed / provider_rate_limited /
+ * provider_unavailable / provider_error / provider_base_url_blocked 等）。
+ */
+export async function testLlmProvider(
+  id: string,
+  model: string,
+): Promise<void> {
+  await request<{ data: { status: string } }>(
+    `/internal/providers/${encodeURIComponent(id)}/test`,
+    {
+      method: "POST",
+      body: JSON.stringify({ model }),
+    },
+  );
+}

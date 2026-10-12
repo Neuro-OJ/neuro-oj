@@ -233,6 +233,7 @@
 | POST | `/import-bundle` | noj-core/src/domains/catalog/routes/problems.ts |
 | POST | `/judge-images` | noj-core/src/domains/admin/routes/system.ts |
 | POST | `/llm/providers` | noj-core/src/domains/admin/routes/gateway.ts |
+| POST | `/llm/providers/:id/test` | noj-core/src/domains/admin/routes/gateway.ts |
 | POST | `/llm/quotas` | noj-core/src/domains/admin/routes/gateway.ts |
 | POST | `/login` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/logout` | noj-core/src/domains/identity/routes/auth.ts |
