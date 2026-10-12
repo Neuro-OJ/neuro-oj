@@ -129,6 +129,7 @@ noj-core/
 │   │   ├── admin/         # 管理端统一门面域：identity/catalog/system/... 子域路由、审计、乐观锁
 │   │   ├── identity/      # 注册登录、JWT/RBAC、用户、OAuth、TFA、封禁
 │   │   ├── catalog/       # 题目、标签、题包、题单
+│   │   ├── workspace/     # 产品工作空间、成员、角色、邀请及实例政策（见模块 README）
 │   │   ├── objective/     # 客观题
 │   │   ├── submission/    # 提交、评测协议、MQ、自测、SSE
 │   │   ├── contest/       # 竞赛
@@ -259,6 +260,11 @@ deno task test:smoke        # 快速冒烟（Hono server + /health，需 Redis�
 ```
 
 ### 测试并行分片（TEST_SCHEMA）
+
+产品工作空间基础与扩展资源迁移见
+[`src/domains/workspace/README.md`](src/domains/workspace/README.md)。
+默认域资源回填使用 `deno task db:catalog-backfill`，先完成迁移并处理核实后的旧 U
+题数据；它不删除数据，不覆盖已有绑定配置。新增域资源 API 全链路隔离仍在实现中。
 
 `deno task test:parallel`（`scripts/test-parallel.ts`）把测试按目录分为
 `unit`（tests/shared、域内 lib/middleware/types 测试、data/app）与 `db`（域内

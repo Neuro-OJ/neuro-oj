@@ -34,9 +34,11 @@ import {
   seedTags,
 } from "../src/domains/system/index.ts";
 import {
+  backfillDefaultCatalog,
   importProblemBundle,
   publishImportedProblem,
 } from "../src/domains/catalog/index.ts";
+import { ensureDefaultWorkspace } from "../src/domains/workspace/index.ts";
 import { reindexAll } from "../src/domains/search/index.ts";
 import { ROOT_USER_ID } from "./../src/shared/base/constants.ts";
 import { getBuildInfo } from "./../src/shared/base/build-info.ts";
@@ -219,6 +221,16 @@ const dbCmd = new Command()
   .command("migrate", "执行数据库迁移")
   .action(() => {
     return runMigrations();
+  })
+  .command(
+    "catalog-backfill",
+    "默认域资源归属和题库绑定回填（需先完成迁移与旧 U 数据处理）",
+  )
+  .action(async () => {
+    await ensureRootUser();
+    await ensureRbacSeeds();
+    await ensureDefaultWorkspace();
+    console.log(JSON.stringify(await backfillDefaultCatalog()));
   });
 
 const initCmd = new Command()

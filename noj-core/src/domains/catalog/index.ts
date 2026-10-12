@@ -35,3 +35,8 @@ export * from "./services/versioning/draft.ts";
 export * from "./services/versioning/publish.ts";
 export * from "./services/versioning/version-read-view.ts";
 export * from "./services/versioning/oi-draft.ts";
+export * from "./services/workspace/problem-reference.ts";
+export * from "./services/workspace/backfill.ts";
+export * from "./services/workspace/problem-binding-access.ts";
+export * from "./services/workspace/problem-bindings.ts";
+export * from "./services/workspace/problem-sharing.ts";

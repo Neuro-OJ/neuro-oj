@@ -21,6 +21,7 @@
 import { and, asc, eq, inArray, type SQL, sql } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
+import type { Executor } from "../../../shared/db/executor.ts";
 import { contestProblems, contests } from "./../../../shared/db/schema.ts";
 import { unendedWindowCondition } from "./contest-window.ts";
 
@@ -43,8 +44,9 @@ export type PublicContestSecrecyRef = {
  */
 export async function loadPublicContestSecrecy(
   problemId: string,
+  executor: Executor = getDb(),
 ): Promise<PublicContestSecrecyRef[]> {
-  const rows = await getDb()
+  const rows = await executor
     .select({
       contestId: contests.id,
       publicId: contests.public_id,
