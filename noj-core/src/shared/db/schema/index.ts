@@ -12,3 +12,4 @@ export * from "./search.ts";
 export * from "./legal.ts";
 export * from "./query.ts";
 export * from "./carousel.ts";
+export * from "./workspace.ts";

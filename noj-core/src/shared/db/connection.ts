@@ -46,6 +46,7 @@ const PGLITE_TEMPLATE_FORMAT = 1;
  */
 const PGLITE_TEMPLATE_INPUT_FILES = [
   "schema-ddl.ts",
+  "schema-ddl-workspace.ts",
   "../../domains/system/services/seed/seed-rbac.ts",
   "../../domains/community/services/community/community-seed.ts",
 ] as const;
