@@ -29,6 +29,7 @@ export const classrooms = pgTable("classrooms", {
   status: text("status").$type<"active" | "archived">().notNull().default(
     "active",
   ),
+  archived_at: text("archived_at"),
   primary_coach_id: text("primary_coach_id").notNull().references(() =>
     users.id
   ),

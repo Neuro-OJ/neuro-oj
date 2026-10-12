@@ -1,15 +1,14 @@
 import { eq } from "drizzle-orm";
 import type { Executor } from "../../../shared/db/executor.ts";
-import { domainInvitations, domains } from "../../../shared/db/schema.ts";
+import { domains } from "../../../shared/db/schema.ts";
 import { DEFAULT_DOMAIN_SLUG } from "../../../shared/workspace/types.ts";
 import { ForbiddenError } from "../../../shared/base/errors.ts";
 import { getInstanceAccessPolicy } from "./instance.ts";
 import {
+  assertInvitationAccountRegistration,
   assertInvitationRegistrationAllowed,
   consumeDomainInvitation,
-  hashInvitationToken,
 } from "./invitations.ts";
-import { getUserPermissions } from "../../identity/index.ts";
 import { addDomainMember } from "./members.ts";
 import { ensureDefaultWorkspace } from "./domains.ts";
 
@@ -36,24 +35,9 @@ export async function enrollRegisteredAccount(
 ) {
   const policy = getInstanceAccessPolicy();
   if (
-    invitationToken && policy.registration_mode === "invite" &&
-    !policy.allow_domain_registration_invites
+    invitationToken && policy.registration_mode === "invite"
   ) {
-    const hash = await hashInvitationToken(invitationToken);
-    const [invitation] = await executor.select().from(domainInvitations).where(
-      eq(domainInvitations.token_hash, hash),
-    );
-    if (
-      !invitation ||
-      !(await getUserPermissions(invitation.created_by, executor)).has(
-        "admin:full_access",
-      )
-    ) {
-      throw new ForbiddenError(
-        "实例未授权域管理员邀请新账号",
-        "REGISTER_INVITATION_UNAUTHORIZED",
-      );
-    }
+    await assertInvitationAccountRegistration(invitationToken, executor);
   }
   if (invitationToken) {
     await consumeDomainInvitation(invitationToken, userId, executor);

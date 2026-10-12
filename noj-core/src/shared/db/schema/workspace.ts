@@ -1,6 +1,7 @@
 import {
   bigint,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -11,6 +12,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { users } from "./identity.ts";
+import { classrooms } from "./education.ts";
 import type {
   DomainConfiguration,
   DomainPreset,
@@ -133,6 +135,7 @@ export const domainInvitations = pgTable(
   {
     id: text("id").primaryKey(),
     domain_id: text("domain_id").notNull().references(() => domains.id),
+    classroom_id: text("classroom_id"),
     token_hash: text("token_hash").notNull().unique(),
     email: text("email").notNull(),
     expires_at: text("expires_at").notNull(),
@@ -143,6 +146,11 @@ export const domainInvitations = pgTable(
   },
   (t) => ({
     domainIdx: index("idx_domain_invitations_domain").on(t.domain_id),
+    classroomFk: foreignKey({
+      name: "domain_invitations_classroom_domain_fk",
+      columns: [t.domain_id, t.classroom_id],
+      foreignColumns: [classrooms.domain_id, classrooms.id],
+    }),
   }),
 );
 /** 工作空间加入申请。 */

@@ -22,6 +22,11 @@ import {
   setClassroomMember,
   transferClassroom,
 } from "../services/members.ts";
+import {
+  createClassroomInvitation,
+  listClassroomInvitations,
+  revokeClassroomInvitation,
+} from "../services/invitations.ts";
 
 const router = new Hono<AuthEnv>();
 async function body<T>(c: Context): Promise<T> {
@@ -164,6 +169,42 @@ router.post("/domains/:slug/classrooms/:id/transfer", async (c) => {
     ),
   });
 });
+
+/** 班级准备路由；完成域资源隔离后在生产组合根挂载。 */
+router.post("/domains/:slug/classrooms/:id/invitations", async (c) => {
+  const input = await body<{ email: string }>(c);
+  return c.json({
+    data: await createClassroomInvitation(
+      c.req.param("slug"),
+      c.req.param("id"),
+      c.var.userId,
+      input.email,
+    ),
+  }, 201);
+});
+router.get(
+  "/domains/:slug/classrooms/:id/invitations",
+  async (c) =>
+    c.json({
+      data: await listClassroomInvitations(
+        c.req.param("slug"),
+        c.req.param("id"),
+        c.var.userId,
+      ),
+    }),
+);
+router.delete(
+  "/domains/:slug/classrooms/:id/invitations/:inviteId",
+  async (c) =>
+    c.json({
+      data: await revokeClassroomInvitation(
+        c.req.param("slug"),
+        c.req.param("id"),
+        c.var.userId,
+        c.req.param("inviteId"),
+      ),
+    }),
+);
 
 /** 班级准备路由；完成域资源隔离后在生产组合根挂载。 */
 export const educationRouter = router;

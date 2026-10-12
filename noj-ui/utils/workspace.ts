@@ -59,6 +59,8 @@ export interface WorkspaceInvitationPreview {
   email: string;
   expires_at: string;
   can_register: boolean;
+  classroom_id?: string;
+  classroom_name?: string;
 }
 export interface WorkspaceLimits {
   members: number | null;

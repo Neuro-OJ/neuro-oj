@@ -3,4 +3,5 @@ export * from "./services/access.ts";
 export * from "./services/classrooms.ts";
 export * from "./services/members.ts";
 export * from "./services/account-lifecycle.ts";
+export * from "./services/invitations.ts";
 export * from "../../shared/education-types.ts";

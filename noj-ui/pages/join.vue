@@ -82,7 +82,7 @@ async function accept() {
     const response = await api.post<{ data: { domain_slug: string } }>('/api/v1/domain-invitations/accept', {
       token: token.value,
     }, { silent: true });
-    toast.success('已加入空间');
+    toast.success(preview.value?.classroom_id ? '已加入班级与所属空间' : '已加入空间');
     await navigateTo(workspacePath(response.data.domain_slug), { replace: true });
   } catch (cause) {
     error.value = extractApiError(cause).message;
@@ -95,11 +95,12 @@ useSeoMeta({ title: '接受空间邀请' });
 
 <template>
   <UCard class="w-full max-w-lg rounded">
-    <h1 class="text-xl font-bold text-text">接受空间邀请</h1>
+    <h1 class="text-xl font-bold text-text">{{ preview?.classroom_id ? '接受班级邀请' : '接受空间邀请' }}</h1>
     <p v-if="pending" class="mt-4 text-sm text-text-muted">正在检查邀请…</p>
     <UAlert v-if="error" class="mt-4" color="error" :title="error" />
     <template v-if="preview">
       <p class="mt-4 text-text-secondary">邀请你加入 <strong class="text-text">{{ preview.domain_name }}</strong>。</p>
+      <p v-if="preview.classroom_name" class="mt-2 text-text-secondary">班级：<strong class="text-text">{{ preview.classroom_name }}</strong>。接受后会同时成为该空间的基础成员。</p>
       <p class="mt-2 text-sm text-text-muted">受邀邮箱：{{ preview.email }}</p>
       <p class="mt-1 text-xs text-text-muted">{{ new Date(preview.expires_at).toLocaleString() }} 到期</p>
       <template v-if="auth.isLoggedIn.value">

@@ -180,7 +180,9 @@ export async function updateClassroom(
     assertClassroomRevision(access.classroom.revision, expectedRevision);
     const [updated] = await tx.update(classrooms).set({
       ...values,
-      ...(input.archive ? { status: "archived" as const } : {}),
+      ...(input.archive
+        ? { status: "archived" as const, archived_at: new Date().toISOString() }
+        : {}),
       revision: access.classroom.revision + 1,
       updated_at: new Date().toISOString(),
     }).where(eq(classrooms.id, classroomId)).returning();
