@@ -34,6 +34,7 @@ import { oiVerdict, projectMeteringDetails } from "./oi-details.ts";
 
 import { and, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm";
 import {
+  domainProblemBindings,
   evaluationAttempts,
   problems,
   problemVersions,
@@ -836,13 +837,23 @@ export async function getSubmission(
       effective_version_mode: problems.effective_version_mode,
       required_version_id: problems.required_version_id,
       latest_version_id: problems.latest_version_id,
+      binding_mode: domainProblemBindings.effective_version_mode,
+      binding_required: domainProblemBindings.required_version_id,
     })
     .from(problems)
+    .leftJoin(
+      domainProblemBindings,
+      eq(domainProblemBindings.id, row.domain_problem_binding_id ?? ""),
+    )
     .where(eq(problems.id, row.problem_id))
     .limit(1);
   const effectiveVersionPolicy: EffectiveVersionPolicy = policyFromColumns(
-    policyRow?.effective_version_mode,
-    policyRow?.required_version_id,
+    row.domain_problem_binding_id
+      ? policyRow?.binding_mode
+      : policyRow?.effective_version_mode,
+    row.domain_problem_binding_id
+      ? policyRow?.binding_required
+      : policyRow?.required_version_id,
   ) ?? { mode: "any" };
   const isSubmittedVersionLatest = !!row.submitted_version_id &&
     row.submitted_version_id === policyRow?.latest_version_id;

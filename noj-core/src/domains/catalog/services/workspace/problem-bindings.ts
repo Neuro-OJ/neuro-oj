@@ -16,6 +16,7 @@ import {
   problemVersions,
 } from "../../../../shared/db/schema.ts";
 import type { EffectiveVersionPolicy } from "../../../../shared/versioning/types.ts";
+import { recomputeProblemBindingProjections } from "../../../submission/index.ts";
 import {
   assertWorkspacePermission,
   getDomainEffectiveLimits,
@@ -232,6 +233,10 @@ export async function setDomainProblemBindingPolicy(
     const resolved = await resolveDomainProblem(slug, reference, actorId, {
       executor: tx,
     });
+    // 与正式结果写入共用宿主锁，策略和投影在同一事务生效。
+    await tx.select({ id: problems.id }).from(problems).where(
+      eq(problems.id, resolved.problem.id),
+    ).for("update");
     const [binding] = await tx.select().from(domainProblemBindings).where(
       eq(domainProblemBindings.id, resolved.binding.id),
     ).for("update");
@@ -263,6 +268,7 @@ export async function setDomainProblemBindingPolicy(
       reason.trim(),
       tx,
     );
+    await recomputeProblemBindingProjections(tx, updated);
     return updated;
   });
 }

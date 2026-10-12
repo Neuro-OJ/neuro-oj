@@ -12,14 +12,22 @@ import {
   domainProblemBindings,
   domainResourceCounters,
   domains,
+  evaluationAttempts,
+  objectiveSubmissions,
   problemBindingHistory,
   problems,
   problemVersions,
   roles,
+  submissions,
   trainings,
   userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
+import {
+  recomputeProblemProjections,
+  recomputeSubmissionProjection,
+  upsertCurrentVersionResult,
+} from "../../../submission/index.ts";
 import {
   consumeDomainInvitation,
   createDomain,
@@ -329,6 +337,166 @@ Deno.test("默认域回填：未处理 U 题阻止整个事务，不默默转换
     true,
   );
   assertEquals((await getDb().select().from(domainProblemBindings)).length, 0);
+});
+
+Deno.test("域成绩：策略切换即时重算本绑定，重测和源域批量重算不串域", async () => {
+  const f = await fixture(), db = getDb();
+  const school = await importDomainProblem(
+    f.school.slug,
+    "public-source:1001",
+    f.teacher,
+  );
+  const other = await importDomainProblem(
+    f.other.slug,
+    "public-source:1001",
+    f.platform,
+  );
+  const now = new Date().toISOString();
+  const ids = [crypto.randomUUID(), crypto.randomUUID()];
+  await db.insert(submissions).values({
+    id: ids[0],
+    domain_id: f.school.id,
+    domain_problem_binding_id: school.binding.id,
+    user_id: f.student,
+    problem_id: school.binding.problem_id,
+    language: "python3",
+    code: "original",
+    version_origin: "known",
+    submitted_version_id: f.versions[0],
+    created_at: now,
+  });
+  await db.insert(objectiveSubmissions).values({
+    id: ids[1],
+    domain_id: f.other.id,
+    domain_problem_binding_id: other.binding.id,
+    user_id: f.student,
+    paper_id: school.binding.problem_id,
+    answers: {},
+    submission_type: "practice",
+    version_origin: "known",
+    submitted_version_id: f.versions[0],
+    created_at: now,
+  });
+  const sources = ids.map((id, i) => ({
+    kind: i ? "objective" as const : "submission" as const,
+    id,
+    problem_id: school.binding.problem_id,
+  }));
+  const score = async (attemptId: string | null) => {
+    const [row] = await db.select({ score: evaluationAttempts.score }).from(
+      evaluationAttempts,
+    )
+      .where(eq(evaluationAttempts.id, attemptId!));
+    return row.score;
+  };
+  const attempts: string[][] = [[], []];
+  for (const [i, source] of sources.entries()) {
+    for (let v = 0; v < 2; v++) {
+      const attempt = crypto.randomUUID();
+      attempts[i].push(attempt);
+      await db.insert(evaluationAttempts).values({
+        id: attempt,
+        submission_id: i ? null : source.id,
+        objective_submission_id: i ? source.id : null,
+        problem_id: source.problem_id,
+        problem_version_id: f.versions[v],
+        sequence: v,
+        source: "initial",
+        state: "finished",
+        result_kind: "graded",
+        result_status: "finished",
+        score: v ? 2000 : 10000,
+        accepted: !v,
+        created_at: now,
+      });
+      await upsertCurrentVersionResult(db, {
+        source,
+        problemVersionId: f.versions[v],
+        attemptId: attempt,
+      });
+    }
+    await recomputeSubmissionProjection(db, source);
+  }
+  await setDomainProblemBindingPolicy(
+    f.school.slug,
+    "public-source:1001",
+    f.teacher,
+    0,
+    { mode: "exact", version_id: f.versions[1] },
+    "学校仅接受 V2",
+  );
+  const [plain] = await db.select().from(submissions).where(
+    eq(submissions.id, ids[0]),
+  );
+  const [objective] = await db.select().from(objectiveSubmissions).where(
+    eq(objectiveSubmissions.id, ids[1]),
+  );
+  assertEquals(await score(plain.effective_attempt_id), 2000);
+  assertEquals(plain.is_accepted, false);
+  assertEquals(plain.global_policy_revision, 1);
+  assertEquals(plain.effective_attempt_id, attempts[0][1]);
+  assertEquals(plain.code, "original");
+  assertEquals(plain.created_at, now);
+  assertEquals(await score(objective.effective_attempt_id), 10000);
+  assertEquals(objective.global_policy_revision, 0);
+  // 源题策略改动和整题重算仍分别使用每条提交所属域的绑定。
+  await setDomainProblemBindingPolicy(f.source.slug, "1001", f.platform, 0, {
+    mode: "exact",
+    version_id: f.versions[1],
+  }, "源域切换");
+  await recomputeProblemProjections(db, school.binding.problem_id);
+  assertEquals(
+    await score(
+      (await db.select().from(objectiveSubmissions).where(
+        eq(objectiveSubmissions.id, ids[1]),
+      ))[0].effective_attempt_id,
+    ),
+    10000,
+  );
+  // V2 重测降低成绩，只影响该提交；策略 revision 不变。
+  const replacement = crypto.randomUUID();
+  await db.insert(evaluationAttempts).values({
+    id: replacement,
+    submission_id: ids[0],
+    problem_id: school.binding.problem_id,
+    problem_version_id: f.versions[1],
+    sequence: 2,
+    source: "rejudge",
+    state: "finished",
+    result_kind: "graded",
+    result_status: "finished",
+    score: 500,
+    accepted: false,
+    created_at: now,
+  });
+  await upsertCurrentVersionResult(db, {
+    source: sources[0],
+    problemVersionId: f.versions[1],
+    attemptId: replacement,
+  });
+  await recomputeSubmissionProjection(db, sources[0]);
+  assertEquals(
+    await score(
+      (await db.select().from(submissions).where(eq(submissions.id, ids[0])))[0]
+        .effective_attempt_id,
+    ),
+    500,
+  );
+  await setDomainProblemBindingPolicy(
+    f.school.slug,
+    "public-source:1001",
+    f.teacher,
+    1,
+    { mode: "any" },
+    "恢复全部版本",
+  );
+  assertEquals(
+    await score(
+      (await db.select().from(submissions).where(eq(submissions.id, ids[0])))[0]
+        .effective_attempt_id,
+    ),
+    10000,
+  );
 });
 
 Deno.test("域绑定：来源题号、策略独立、默认版本切换与 revision 沿革", async () => {

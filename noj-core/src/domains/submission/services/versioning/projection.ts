@@ -15,10 +15,12 @@
  */
 
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { AppError } from "../../../../shared/base/errors.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
   contestProblems,
   contests,
+  domainProblemBindings,
   evaluationAttempts,
   objectiveSubmissions,
   problems,
@@ -51,6 +53,8 @@ export interface ProjectionSource {
    * `undefined` = 调用方未取该字段，投影计算会自行回查（安全兜底，多一次 PK 查询）。
    */
   contest_id?: string | null;
+  /** 使用域绑定；null 仅用于尚未回填的旧记录。 */
+  domain_problem_binding_id?: string | null;
 }
 
 /** 写入统一锁顺序：题目 → 竞赛 → 提交。结果、策略与创建尝试必须共用。 */
@@ -185,6 +189,7 @@ type LoadedPolicy = {
 
 interface ProjectionBatchContext {
   problemPolicy: LoadedPolicy;
+  bindingPolicies: ReadonlyMap<string, LoadedPolicy>;
   resultsBySource: ReadonlyMap<string, CurrentVersionResult[]>;
   contestPolicies: ReadonlyMap<string, LoadedPolicy>;
 }
@@ -231,6 +236,43 @@ async function loadContestPolicies(
   return out;
 }
 
+/** 批量读取使用域策略，源域策略不能覆盖其他域的绑定。 */
+async function loadBindingPolicies(
+  db: Executor,
+  sources: readonly ProjectionSource[],
+): Promise<Map<string, LoadedPolicy>> {
+  const ids = [
+    ...new Set(
+      sources.flatMap((s) =>
+        s.domain_problem_binding_id ? [s.domain_problem_binding_id] : []
+      ),
+    ),
+  ];
+  const out = new Map<string, LoadedPolicy>();
+  for (
+    let offset = 0;
+    offset < ids.length;
+    offset += PROJECTION_QUERY_BATCH_SIZE
+  ) {
+    const rows = await db.select().from(domainProblemBindings).where(
+      inArray(
+        domainProblemBindings.id,
+        ids.slice(offset, offset + PROJECTION_QUERY_BATCH_SIZE),
+      ),
+    );
+    for (const row of rows) {
+      out.set(row.id, {
+        policy: policyFromColumns(
+          row.effective_version_mode,
+          row.required_version_id,
+        )!,
+        revision: row.revision,
+      });
+    }
+  }
+  return out;
+}
+
 /** 用已批量读取的数据计算单条投影；此函数不再触发数据库查询。 */
 function buildSubmissionProjectionPlan(
   source: ProjectionSource,
@@ -239,10 +281,17 @@ function buildSubmissionProjectionPlan(
   const contestId = source.contest_id ?? null;
   const results = context.resultsBySource.get(projectionSourceKey(source)) ??
     [];
-  const global = selectEffectiveResults(
-    results,
-    context.problemPolicy.policy,
-  );
+  const problemPolicy = source.domain_problem_binding_id
+    ? context.bindingPolicies.get(source.domain_problem_binding_id)
+    : context.problemPolicy;
+  if (!problemPolicy) {
+    throw new AppError(
+      "提交的题库策略不存在",
+      503,
+      "PROBLEM_BINDING_INCONSISTENT",
+    );
+  }
+  const global = selectEffectiveResults(results, problemPolicy.policy);
 
   let contest: EffectiveSelection = { ...EMPTY_EFFECTIVE_SELECTION };
   let contestRevision: number | null = null;
@@ -258,7 +307,7 @@ function buildSubmissionProjectionPlan(
     source: { ...source, contest_id: contestId },
     global,
     contest,
-    global_policy_revision: context.problemPolicy.revision,
+    global_policy_revision: problemPolicy.revision,
     contest_policy_revision: contestRevision,
   };
 }
@@ -328,13 +377,27 @@ export async function computeSubmissionProjection(
   db: Executor,
   source: ProjectionSource,
 ): Promise<SubmissionProjectionPlan> {
-  // 竞赛上下文兜底补全：竞赛口径的投影必须在**所有**调用点都拿到 `contest_id`，
-  // 否则一次漏传就会把该提交的 `is_contest_*` 清零（竞赛固定版本策略失效）。
-  // 调用方已显式给出 `null`（练习提交）时不回查，避免批量重算多出 N 次查询。
-  const contestId = source.contest_id !== undefined
-    ? source.contest_id
-    : await loadSubmissionContestId(db, source);
-  const resolvedSource: ProjectionSource = { ...source, contest_id: contestId };
+  const table = source.kind === "submission"
+    ? submissions
+    : objectiveSubmissions;
+  const [stored] = source.contest_id === undefined ||
+      source.domain_problem_binding_id === undefined
+    ? await db.select({
+      contest_id: table.contest_id,
+      binding_id: table.domain_problem_binding_id,
+    })
+      .from(table).where(eq(table.id, source.id)).limit(1)
+    : [];
+  const contestId = source.contest_id === undefined
+    ? stored?.contest_id ?? null
+    : source.contest_id;
+  const resolvedSource: ProjectionSource = {
+    ...source,
+    contest_id: contestId,
+    domain_problem_binding_id: source.domain_problem_binding_id === undefined
+      ? stored?.binding_id ?? null
+      : source.domain_problem_binding_id,
+  };
 
   const problemPolicy = await loadProblemPolicy(db, resolvedSource.problem_id);
   const results = await loadCurrentVersionResults(db, resolvedSource);
@@ -349,6 +412,7 @@ export async function computeSubmissionProjection(
   }
   return buildSubmissionProjectionPlan(resolvedSource, {
     problemPolicy,
+    bindingPolicies: await loadBindingPolicies(db, [resolvedSource]),
     resultsBySource: new Map([[projectionSourceKey(resolvedSource), results]]),
     contestPolicies,
   });
@@ -403,18 +467,33 @@ export async function recomputeSubmissionProjection(
 export async function listProblemProjectionSources(
   db: Executor,
   problemId: string,
+  bindingId?: string,
 ): Promise<ProjectionSource[]> {
   const plainRows = await db.select({
     id: submissions.id,
     problem_id: submissions.problem_id,
     contest_id: submissions.contest_id,
-  }).from(submissions).where(eq(submissions.problem_id, problemId));
+    domain_problem_binding_id: submissions.domain_problem_binding_id,
+  }).from(submissions).where(
+    and(
+      eq(submissions.problem_id, problemId),
+      bindingId
+        ? eq(submissions.domain_problem_binding_id, bindingId)
+        : undefined,
+    ),
+  );
   const objectiveRows = await db.select({
     id: objectiveSubmissions.id,
     problem_id: objectiveSubmissions.paper_id,
     contest_id: objectiveSubmissions.contest_id,
+    domain_problem_binding_id: objectiveSubmissions.domain_problem_binding_id,
   }).from(objectiveSubmissions).where(
-    eq(objectiveSubmissions.paper_id, problemId),
+    and(
+      eq(objectiveSubmissions.paper_id, problemId),
+      bindingId
+        ? eq(objectiveSubmissions.domain_problem_binding_id, bindingId)
+        : undefined,
+    ),
   );
   return [
     ...plainRows.map((row) => ({
@@ -422,12 +501,14 @@ export async function listProblemProjectionSources(
       id: row.id,
       problem_id: row.problem_id,
       contest_id: row.contest_id,
+      domain_problem_binding_id: row.domain_problem_binding_id,
     })),
     ...objectiveRows.map((row) => ({
       kind: "objective" as const,
       id: row.id,
       problem_id: row.problem_id,
       contest_id: row.contest_id,
+      domain_problem_binding_id: row.domain_problem_binding_id,
     })),
   ];
 }
@@ -443,8 +524,13 @@ export async function listProblemProjectionSources(
 export async function recomputeProblemProjections(
   executor: Executor,
   problemId: string,
+  bindingId?: string,
 ): Promise<number> {
-  const sources = await listProblemProjectionSources(executor, problemId);
+  const sources = await listProblemProjectionSources(
+    executor,
+    problemId,
+    bindingId,
+  );
   const resolvedSources = sources.map((source) => ({
     ...source,
     // listProblemProjectionSources 明确选择了 contest_id；这里仅把类型上的
@@ -465,6 +551,7 @@ export async function recomputeProblemProjections(
   );
   const context: ProjectionBatchContext = {
     problemPolicy,
+    bindingPolicies: await loadBindingPolicies(executor, resolvedSources),
     resultsBySource,
     contestPolicies,
   };
@@ -475,6 +562,20 @@ export async function recomputeProblemProjections(
   await bumpProjectionRevision(executor, problemScopeKey(problemId));
   await bumpProjectionRevision(executor, globalScopeKey());
   return sources.length;
+}
+
+/** 按绑定重算；调用方先锁源题，策略与结果共用宿主锁。 */
+export async function recomputeProblemBindingProjections(
+  executor: Executor,
+  binding: { id: string; problem_id: string; domain_id: string },
+): Promise<number> {
+  const count = await recomputeProblemProjections(
+    executor,
+    binding.problem_id,
+    binding.id,
+  );
+  await bumpProjectionRevision(executor, `domain:${binding.domain_id}`);
+  return count;
 }
 
 /**
@@ -517,6 +618,7 @@ export async function recomputeContestProblemProjections(
   );
   const context: ProjectionBatchContext = {
     problemPolicy,
+    bindingPolicies: await loadBindingPolicies(executor, sources),
     resultsBySource,
     contestPolicies,
   };
@@ -541,6 +643,7 @@ async function listContestProblemSources(
       id: submissions.id,
       problem_id: submissions.problem_id,
       contest_id: submissions.contest_id,
+      domain_problem_binding_id: submissions.domain_problem_binding_id,
     }).from(submissions).where(
       and(
         eq(submissions.contest_id, contestId),
@@ -552,12 +655,14 @@ async function listContestProblemSources(
       id: row.id,
       problem_id: row.problem_id,
       contest_id: row.contest_id,
+      domain_problem_binding_id: row.domain_problem_binding_id,
     }));
   }
   const rows = await db.select({
     id: objectiveSubmissions.id,
     problem_id: objectiveSubmissions.paper_id,
     contest_id: objectiveSubmissions.contest_id,
+    domain_problem_binding_id: objectiveSubmissions.domain_problem_binding_id,
   }).from(objectiveSubmissions).where(
     and(
       eq(objectiveSubmissions.contest_id, contestId),
@@ -569,6 +674,7 @@ async function listContestProblemSources(
     id: row.id,
     problem_id: row.problem_id,
     contest_id: row.contest_id,
+    domain_problem_binding_id: row.domain_problem_binding_id,
   }));
 }
 

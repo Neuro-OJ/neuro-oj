@@ -22,6 +22,8 @@ import type { Executor } from "../../../../shared/db/executor.ts";
 import {
   contestProblems,
   contests,
+  domainProblemBindings,
+  problemBindingHistory,
   problems,
 } from "../../../../shared/db/schema.ts";
 import { logAudit } from "../../../system/index.ts";
@@ -200,6 +202,37 @@ export async function setProblemEffectiveVersionPolicy(
       required_version_id: columns.required_version_id,
       effective_policy_revision: nextRevision,
     }).where(eq(problems.id, problemId));
+
+    // 兼容入口只修改源域本域绑定，其他域的共享策略保持独立。
+    const [owned] = await tx.select().from(domainProblemBindings).where(
+      and(
+        eq(domainProblemBindings.problem_id, problemId),
+        eq(domainProblemBindings.kind, "owned"),
+      ),
+    ).for("update");
+    if (owned) {
+      const [updated] = await tx.update(domainProblemBindings).set({
+        ...columns,
+        revision: owned.revision + 1,
+        updated_at: new Date().toISOString(),
+      }).where(eq(domainProblemBindings.id, owned.id)).returning();
+      const [source] = await tx.select({ latest: problems.latest_version_id })
+        .from(problems)
+        .where(eq(problems.id, problemId));
+      await tx.insert(problemBindingHistory).values({
+        id: crypto.randomUUID(),
+        binding_id: updated.id,
+        problem_id: problemId,
+        revision: updated.revision,
+        effective_version_mode: updated.effective_version_mode,
+        required_version_id: updated.required_version_id,
+        answer_version_id: updated.required_version_id ?? source.latest,
+        disabled_at: updated.disabled_at,
+        actor_id: input.actorId ?? "0",
+        reason: "默认域兼容入口修改有效版本策略",
+        created_at: new Date().toISOString(),
+      });
+    }
 
     // 同一事务内重算：策略提交后立即生效（含 data_revision 递增）
     const affected = await recomputeProblemProjections(tx, problemId);
