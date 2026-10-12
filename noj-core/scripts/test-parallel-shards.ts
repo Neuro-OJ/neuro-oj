@@ -139,6 +139,8 @@ export function isCoveredByShards(
 export const PERF_EXCLUDED_PREFIXES = [
   "tests/perf/",
   "src/domains/search/tests/perf/",
+  // 教学矩阵含 5000 份正式成绩，主分片不承受性能数据准备；CI core-perf 单独执行。
+  "src/domains/education/tests/perf/",
 ] as const;
 
 /** 某测试文件是否属于刻意排除的性能基准。 */

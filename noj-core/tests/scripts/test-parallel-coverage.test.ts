@@ -136,6 +136,9 @@ Deno.test("shards: 性能基准按登记豁免（而非被静默遗漏）", () =
   // 反向证据：perf 文件确实存在于文件系统，但被显式排除。
   assert(isPerfExcluded("tests/perf/search_bench.test.ts"));
   assert(isPerfExcluded("src/domains/search/tests/perf/search_bench.test.ts"));
+  assert(
+    isPerfExcluded("src/domains/education/tests/perf/matrix-bench.test.ts"),
+  );
   assert(!isPerfExcluded("tests/security-headers.test.ts"));
 });
 

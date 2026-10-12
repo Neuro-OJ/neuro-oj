@@ -13,3 +13,15 @@ export const ASSISTANT_CAPABILITIES = [
 export type AssistantCapability = typeof ASSISTANT_CAPABILITIES[number];
 /** 作业持久生命周期，截止与评测等待由事实计算。 */
 export type AssignmentState = "draft" | "scheduled" | "published" | "archived";
+
+/** 正式进度状态，updating 仅由读取接口描述尚未完成的投影。 */
+export const ASSIGNMENT_PROGRESS_STATES = [
+  "not_started",
+  "judging",
+  "below_target",
+  "achieved",
+  "unavailable",
+] as const;
+/** 持久进度状态与筛选契约统一。 */
+export type AssignmentProgressStatus =
+  typeof ASSIGNMENT_PROGRESS_STATES[number];

@@ -1,33 +1,43 @@
 import { and, count, eq, inArray, isNull, like } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
+import type { AssignmentProgressStatus } from "../../../shared/education-types.ts";
 import {
   assignmentItems,
   assignmentProgress,
   assignmentRecipients,
+  domains,
+  problems,
   users,
 } from "../../../shared/db/schema.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
 import { enqueueEducationRefresh } from "../../../shared/education-events.ts";
-import { loadBindingAvailability } from "../../catalog/index.ts";
+import {
+  domainProblemReference,
+  loadBindingAvailability,
+} from "../../catalog/index.ts";
 import { assertClassroomCapability } from "./access.ts";
 import { loadAssignment } from "./assignment-access.ts";
 import { recomputeAssignmentProgress } from "./progress-materializer.ts";
 import { loadEducationCellRevisions } from "./progress-revisions.ts";
+import { type MatrixFilters, matrixStudentFilter } from "./matrix-filters.ts";
 
 /** 学情读取范围沿用两种正式统计，不接受任意范围字符串。 */
 export type ProgressScope = "on_time" | "current";
+
+/** 学生分页与单元筛选使用同一契约，CSV 与 JSON 读取共享权限和结果口径。 */
+export interface AssignmentMatrixOptions extends MatrixFilters {
+  page?: number;
+  scope?: ProgressScope;
+  recipients?: "current" | "historical" | "all";
+  search?: string;
+}
 
 /** 成绩矩阵按学生分页；无源码权限也不会随学情数据返回代码或 evaluator 文本。 */
 export async function getAssignmentMatrix(
   slug: string,
   id: string,
   actorId: string,
-  options: {
-    page?: number;
-    scope?: ProgressScope;
-    recipients?: "current" | "historical" | "all";
-    search?: string;
-  } = {},
+  options: AssignmentMatrixOptions = {},
 ) {
   const access = await loadAssignment(slug, id, actorId);
   assertClassroomCapability(access, "progress:read");
@@ -43,8 +53,13 @@ export async function getAssignmentMatrix(
     throw new BadRequestError("矩阵分页、统计范围或筛选格式错误");
   }
   const db = getDb();
+  const matching = await matrixStudentFilter(access, scope, options);
   const condition = and(
     eq(assignmentRecipients.assignment_id, id),
+    options.student_id
+      ? eq(assignmentRecipients.user_id, options.student_id)
+      : undefined,
+    matching,
     recipients === "all" ? undefined : eq(
       assignmentRecipients.status,
       recipients === "current" ? "active" : "historical",
@@ -81,6 +96,8 @@ export async function getAssignmentMatrix(
     access,
     students.map((s) => s.recipient.user_id),
     scope,
+    true,
+    options.item_id,
   );
   return {
     page,
@@ -135,11 +152,44 @@ async function readCells(
   userIds: string[],
   scope: ProgressScope,
   enqueue = true,
+  itemId?: string,
 ) {
   const db = getDb(), id = access.assignment.id;
-  const items = await db.select().from(assignmentItems).where(
-    eq(assignmentItems.assignment_id, id),
-  ).orderBy(assignmentItems.sort_order);
+  const sourceRows = await db.select({
+    item: assignmentItems,
+    number: problems.number,
+    problem_id: problems.id,
+    source_domain_id: domains.id,
+    source_slug: domains.slug,
+  }).from(assignmentItems)
+    .innerJoin(problems, eq(problems.id, assignmentItems.problem_id)).innerJoin(
+      domains,
+      eq(domains.id, problems.domain_id),
+    )
+    .where(
+      and(
+        eq(assignmentItems.assignment_id, id),
+        itemId ? eq(assignmentItems.id, itemId) : undefined,
+      ),
+    )
+    .orderBy(assignmentItems.sort_order);
+  const items = sourceRows.map((row) => row.item);
+  const references = new Map(
+    sourceRows.map((
+      row,
+    ) => [
+      row.item.id,
+      domainProblemReference(
+        {
+          id: row.problem_id,
+          domain_id: row.source_domain_id,
+          number: row.number,
+        },
+        row.source_slug,
+        access.domain.id,
+      ),
+    ]),
+  );
   const resources = new Map(
     (await loadBindingAvailability(
       db,
@@ -174,15 +224,16 @@ async function readCells(
         projection.policy_revision !== resource?.revision ||
         item.answer_version_id !== resource?.answer_version_id;
       const unavailable = !resource?.available;
+      const status: AssignmentProgressStatus | "updating" = unavailable
+        ? "unavailable"
+        : updating
+        ? "updating"
+        : projection.status;
       return {
         item_id: item.id,
         user_id: userId,
         updating,
-        status: unavailable
-          ? "unavailable"
-          : updating
-          ? "updating"
-          : projection.status,
+        status,
         score: updating ? null : projection.score,
         accepted: !updating && projection.accepted,
         source_submission_id: updating ? null : projection.source_submission_id,
@@ -206,6 +257,7 @@ async function readCells(
     cells,
     items: items.map((i) => ({
       id: i.id,
+      reference: references.get(i.id)!,
       problem_id: i.problem_id,
       binding_id: i.binding_id,
       sort_order: i.sort_order,

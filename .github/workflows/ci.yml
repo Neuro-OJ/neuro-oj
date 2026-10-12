@@ -2142,6 +2142,13 @@ jobs:
           BCRYPT_SALT_ROUNDS: 4
         run: deno test -A tests/00_migrate_test.ts tests/perf src/domains/search/tests/perf
 
+      - name: 教学矩阵性能（标准教育测试入口）
+        working-directory: noj-core
+        env:
+          TEST_SCHEMA: test_education_perf
+          STORAGE_PROVIDER: local
+        run: deno task test:domain education
+
   # ===========================================================================
   # noj-ui — Nuxt 4 前端（Deno 构建检查）
   # ===========================================================================

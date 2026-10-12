@@ -46,4 +46,23 @@ Deno.test("作业学情 API：本人同步读取、教师分页、学生禁止�
     400,
   );
   assertEquals((await jsonRequest(app, `${base}/progress`)).status, 401);
+  const csv = await jsonRequest(
+    app,
+    `${base}/matrix.csv?student_id=${f.student}`,
+    { token: teacher },
+  );
+  assertEquals(csv.status, 200);
+  assertEquals(csv.headers.get("Content-Type"), "text/csv; charset=utf-8");
+  assertEquals(csv.headers.get("Cache-Control"), "no-store");
+  assertEquals((await csv.text()).includes("1001 分数"), true);
+  assertEquals(
+    (await jsonRequest(app, `${base}/matrix.csv`, { token: student })).status,
+    403,
+  );
+  assertEquals(
+    (await jsonRequest(app, `${base}/matrix?status=invalid`, {
+      token: teacher,
+    })).status,
+    400,
+  );
 });

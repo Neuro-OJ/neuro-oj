@@ -1,9 +1,11 @@
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import {
+  type AssignmentMatrixOptions,
   getAssignmentMatrix,
   getMyAssignmentProgress,
   type ProgressScope,
 } from "../services/progress-read.ts";
+import { exportAssignmentMatrixCsv } from "../services/matrix-csv.ts";
 import {
   type AssignmentCopyInput,
   copyAssignment,
@@ -166,18 +168,53 @@ router.get("/domains/:slug/assignments/:id/matrix", async (c) => {
       c.req.param("slug"),
       c.req.param("id"),
       c.var.userId,
-      {
-        page,
-        scope: c.req.query("scope") as ProgressScope | undefined,
-        recipients: c.req.query("recipients") as
-          | "current"
-          | "historical"
-          | "all"
-          | undefined,
-        search: c.req.query("search"),
-      },
+      { ...matrixOptions(c), page },
     ),
   });
+});
+
+function matrixOptions(
+  c: Context<AuthEnv>,
+): Omit<AssignmentMatrixOptions, "page"> {
+  return {
+    scope: c.req.query("scope") as AssignmentMatrixOptions["scope"],
+    recipients: c.req.query(
+      "recipients",
+    ) as AssignmentMatrixOptions["recipients"],
+    search: c.req.query("search"),
+    student_id: c.req.query("student_id"),
+    item_id: c.req.query("item_id"),
+    status: c.req.query("status") as AssignmentMatrixOptions["status"],
+    verdict: c.req.query("verdict") as AssignmentMatrixOptions["verdict"],
+  };
+}
+
+router.get("/domains/:slug/assignments/:id/matrix.csv", async (c) => {
+  const iterator = await exportAssignmentMatrixCsv(
+    c.req.param("slug"),
+    c.req.param("id"),
+    c.var.userId,
+    matrixOptions(c),
+  );
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const next = await iterator.next();
+      if (next.done) controller.close();
+      else controller.enqueue(encoder.encode(next.value));
+    },
+    async cancel() {
+      await iterator.return();
+    },
+  });
+  c.header("Content-Type", "text/csv; charset=utf-8");
+  c.header(
+    "Content-Disposition",
+    `attachment; filename="assignment-${
+      encodeURIComponent(c.req.param("id"))
+    }.csv"`,
+  );
+  return c.body(stream);
 });
 
 /** 作业准备路由，与班级路由一起等待完整隔离门禁后开放。 */
