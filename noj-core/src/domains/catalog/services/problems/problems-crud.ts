@@ -178,7 +178,7 @@ export async function createProblem(
   const submissionMode = input.submission_mode ?? "code";
   if (!isValidSubmissionMode(submissionMode)) {
     throw new BadRequestError(
-      `非法提交模式：${input.submission_mode}，仅允许 code / artifact / prediction`,
+      `非法提交模式：${input.submission_mode}，仅允许 code / artifact / prediction / ui`,
     );
   }
 
@@ -618,7 +618,7 @@ export async function updateProblem(
     !isValidSubmissionMode(input.submission_mode)
   ) {
     throw new BadRequestError(
-      `非法提交模式：${input.submission_mode}，仅允许 code / artifact / prediction`,
+      `非法提交模式：${input.submission_mode}，仅允许 code / artifact / prediction / ui`,
     );
   }
 

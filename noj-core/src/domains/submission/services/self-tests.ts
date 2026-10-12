@@ -5,7 +5,7 @@
  * 不参与统计/榜单/AC 活动。
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { problems, selfTests } from "./../../../shared/db/schema.ts";
 import {
@@ -23,11 +23,18 @@ import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "submission"]);
 import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import type { Context } from "hono";
-import { LANGUAGE_EXT_MAP } from "../types/index.ts";
+import {
+  assertSubmissionLanguage,
+  LANGUAGE_EXT_MAP,
+  submissionModeForLanguage,
+  UI_FILE_NAME,
+  UI_LANGUAGE,
+} from "../types/index.ts";
 import type { JudgeResult } from "../types/index.ts";
 import { prepareJudgeTask } from "./prepare-judge-task.ts";
 import {
   executionSnapshot,
+  scriptTemplateOf,
   versionSupportPackageDownload,
   versionSupportPackageUrl,
 } from "./versioning/version-execution.ts";
@@ -43,10 +50,13 @@ import {
 } from "./../../catalog/index.ts";
 import {
   SELF_TEST_ID_PREFIX,
+  SELF_TEST_LIST_DEFAULT_LIMIT,
+  SELF_TEST_LIST_MAX_LIMIT,
   type SelfTestDetail,
   type SelfTestInput,
   type SelfTestResponse,
   type SelfTestStatus,
+  type SelfTestSummary,
 } from "./../types/self-tests.ts";
 
 /** 详情接口返回的 output 最大长度（字节近似），与正式提交一致。 */
@@ -142,14 +152,16 @@ export async function createSelfTest(
   }
 
   // 验证语言（与正式提交保持一致）
-  const supportedLanguages = Object.keys(LANGUAGE_EXT_MAP);
-  if (!supportedLanguages.includes(input.language)) {
-    throw new BadRequestError(`不支持的语言: ${input.language}`);
-  }
+  assertSubmissionLanguage(
+    problem.submission_mode,
+    input.language,
+    Object.keys(LANGUAGE_EXT_MAP),
+  );
 
   // 生成文件默认名
-  const fileName = input.file_name || LANGUAGE_EXT_MAP[input.language] ||
-    "main.txt";
+  const fileName = input.language === UI_LANGUAGE
+    ? UI_FILE_NAME
+    : input.file_name || LANGUAGE_EXT_MAP[input.language] || "main.txt";
 
   // 自测版本解析（Handbook §4.2）：与正式提交同一口径——显式版本逐字生效，
   // 未指定时按有效策略取默认作答版本；存量未版本化题目回退题目投影。
@@ -174,7 +186,7 @@ export async function createSelfTest(
     const content = versionResolution.version.content;
     assertVersionAcceptsSubmission(content, {
       language: input.language,
-      submissionMode: "code",
+      submissionMode: submissionModeForLanguage(input.language),
     });
     if (content.kind === "ai" || content.kind === "oi") {
       versionRuntimeConfig = content.runtime_config;
@@ -248,6 +260,9 @@ export async function createSelfTest(
     download_url: oiSelfTest?.download_url ?? download_url,
     language: input.language,
     code: input.code,
+    script_template: input.language === UI_LANGUAGE
+      ? scriptTemplateOf(versionContent)
+      : undefined,
     file_name: fileName,
   });
 
@@ -318,6 +333,58 @@ export async function createSelfTest(
     status: "judging",
     created_at: now,
   };
+}
+
+/**
+ * 列出当前用户在某题下的自测（按创建时间倒序）。
+ *
+ * 只返回本人记录；访问口径与创建自测一致——无权访问的题目一律 404
+ * （被公开赛保密的题目同样 404，避免成为存在性预言机）。
+ * 列表不含代码与输出，界面参数/代码由前端按需调用 `getSelfTest` 获取。
+ */
+export async function listMySelfTests(
+  userId: string,
+  problemId: string,
+  limit = SELF_TEST_LIST_DEFAULT_LIMIT,
+  isAdmin = false,
+): Promise<SelfTestSummary[]> {
+  const db = getDb();
+  const [problem] = await db
+    .select()
+    .from(problems)
+    .where(eq(problems.id, problemId))
+    .limit(1);
+  if (!problem) {
+    throw new NotFoundError("题目不存在");
+  }
+  const { result: access } = await evaluateProblemAccess(problem, {
+    viewerId: userId,
+    isAdmin,
+  });
+  if (!access.allowed) {
+    throw new NotFoundError("题目不存在");
+  }
+
+  const safeLimit = Math.min(
+    Math.max(Math.trunc(limit) || SELF_TEST_LIST_DEFAULT_LIMIT, 1),
+    SELF_TEST_LIST_MAX_LIMIT,
+  );
+  const rows = await db
+    .select({
+      id: selfTests.id,
+      language: selfTests.language,
+      status: selfTests.status,
+      result_status: selfTests.result_status,
+      score: selfTests.score,
+      created_at: selfTests.created_at,
+    })
+    .from(selfTests)
+    .where(
+      and(eq(selfTests.user_id, userId), eq(selfTests.problem_id, problemId)),
+    )
+    .orderBy(desc(selfTests.created_at))
+    .limit(safeLimit);
+  return rows.map((r) => ({ ...r, status: r.status as SelfTestStatus }));
 }
 
 /**

@@ -26,6 +26,7 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import {
+  AppError,
   BadRequestError,
   ForbiddenError,
   NotFoundError,
@@ -342,6 +343,111 @@ Deno.test({
       );
     } finally {
       await db.delete(problems).where(eq(problems.id, predictionProblemId));
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "submissions service: 界面题只收 ui 语言，落库保存参数 JSON 与 params.json",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const uiProblemId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.insert(problems).values({
+      id: uiProblemId,
+      title: `界面题 ${Date.now()}`,
+      description: "界面提交模式测试",
+      difficulty: "easy",
+      type: "P",
+      number: 63000 + (Date.now() & 0x7fff),
+      owner_id: TEST_USER_ID,
+      submission_mode: "ui",
+      template_content: "def solve(x):\n    return prompt\n",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
+      created_at: now,
+      updated_at: now,
+    });
+
+    resetRedisForTest();
+    const fakeRedis = await startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
+    Deno.env.set("REDIS_URL", fakeRedis.url);
+    const redis = getRedis();
+    await redis.connect();
+    await redis.ping();
+
+    const versionId = await publishBaselineVersionForTest(uiProblemId);
+    let submissionId: string | undefined;
+    try {
+      await assertRejects(
+        () =>
+          createSubmission(TEST_USER_ID, {
+            problem_id: uiProblemId,
+            version_id: versionId,
+            language: "python3",
+            code: "print(1)",
+          }),
+        AppError,
+        "提交模式为 ui",
+      );
+      await assertRejects(
+        () =>
+          createSubmission(TEST_USER_ID, {
+            problem_id: uiProblemId,
+            version_id: versionId,
+            language: "ui",
+            code: "不是 JSON",
+          }),
+        BadRequestError,
+        "合法的 JSON",
+      );
+
+      const values = '{"prompt":"你好 \\"\\"\\" 三引号"}';
+      const created = await createSubmission(TEST_USER_ID, {
+        problem_id: uiProblemId,
+        version_id: versionId,
+        language: "ui",
+        code: values,
+        file_name: "evil.py",
+      });
+      submissionId = created.id;
+
+      const [stored] = await db.select({
+        language: submissions.language,
+        code: submissions.code,
+        file_name: submissions.file_name,
+      }).from(submissions).where(eq(submissions.id, created.id)).limit(1);
+      assertEquals(stored.language, "ui");
+      assertEquals(
+        stored.code,
+        values,
+        "数据库应保存参数 JSON 原文而非生成的脚本",
+      );
+      assertEquals(stored.file_name, "params.json", "界面提交忽略客户端文件名");
+    } finally {
+      if (submissionId) {
+        await db.delete(submissions).where(eq(submissions.id, submissionId));
+      }
+      await db.delete(problems).where(eq(problems.id, uiProblemId));
+      resetRedisForTest();
+      await fakeRedis.stop();
+      if (previousRedisUrl) Deno.env.set("REDIS_URL", previousRedisUrl);
+      else Deno.env.delete("REDIS_URL");
     }
   },
 });

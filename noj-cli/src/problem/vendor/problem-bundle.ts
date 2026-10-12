@@ -37,6 +37,7 @@ import {
   isValidProblemType,
   isValidSubmissionMode,
   type LlmConfig,
+  SUBMISSION_MODES,
   type SubmissionMode,
 } from "./problems.ts";
 
@@ -70,7 +71,7 @@ export interface ProblemBundleManifest {
   tags?: string[];
   /** 模板文件索引（纯文件名，缺省默认 "template.py"）：前端编辑器初始代码 */
   template?: string;
-  /** 提交模式：code（默认）/ artifact / prediction */
+  /** 提交模式：code（默认）/ artifact / prediction / ui */
   submission_mode?: string;
   /** artifact 提交大小上限（MB），可空 */
   artifact_max_size_mb?: number | null;
@@ -123,6 +124,17 @@ export function isValidTemplateFileName(name: string): boolean {
 
 /** manifest 未声明 `template` 时的默认模板文件名。 */
 export const DEFAULT_TEMPLATE_FILE = "template.py";
+
+/**
+ * 界面题（`submission_mode: "ui"`）的界面文件名：固定为包根级 `ui.html`。
+ *
+ * 不提供 manifest 字段：导入时 `problem.json` 会被剥离，运行期无从得知自定义文件名
+ * （模板读取同理只认默认名）。
+ */
+export const UI_FILE = "ui.html";
+
+/** 界面文件的大小上限（512 KiB）：界面应是自包含的单页，不该夹带大资源。 */
+export const MAX_UI_HTML_BYTES = 512 * 1024;
 
 /**
  * 编辑器初始代码模板的大小上限（256 KiB）。
@@ -248,9 +260,9 @@ export function validateBundleManifest(
     !isValidSubmissionMode(m.submission_mode as string)
   ) {
     throw new BadRequestError(
-      `非法提交模式：${
-        String(m.submission_mode)
-      }，仅允许 code / artifact / prediction`,
+      `非法提交模式：${String(m.submission_mode)}，仅允许 ${
+        SUBMISSION_MODES.join(" / ")
+      }`,
     );
   }
 

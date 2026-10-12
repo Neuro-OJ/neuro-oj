@@ -8,6 +8,7 @@ import {
   cancelSelfTest,
   createSelfTest,
   getSelfTest,
+  listMySelfTests,
 } from "../services/self-tests.ts";
 import type { SelfTestInput } from "./../types/self-tests.ts";
 
@@ -69,6 +70,24 @@ router.post("/problems/:id/self-test", authMiddleware, async (c) => {
   const isAdmin = await checkPermission(c, "submission:read_all");
   const result = await createSelfTest(userId, problem.id, input, isAdmin);
   return c.json({ data: result }, 201);
+});
+
+/**
+ * 列出当前用户在某题下的自测（运行历史，不含代码）。
+ * GET /api/v1/problems/:id/self-tests?limit=20
+ */
+router.get("/problems/:id/self-tests", authMiddleware, async (c) => {
+  const userId = c.var.userId as string;
+  const problem = await resolveProblem(c.req.param("id") as string);
+  const limit = Number(c.req.query("limit") ?? "");
+  const isAdmin = await checkPermission(c, "submission:read_all");
+  const data = await listMySelfTests(
+    userId,
+    problem.id,
+    Number.isFinite(limit) && limit > 0 ? limit : undefined,
+    isAdmin,
+  );
+  return c.json({ data });
 });
 
 /**

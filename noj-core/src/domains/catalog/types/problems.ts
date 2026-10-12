@@ -72,8 +72,18 @@ export type ProblemType = typeof PROBLEM_TYPES[number];
 
 /**
  * 允许的提交模式。
+ *
+ * - code：单文件 Python 代码提交（默认）
+ * - artifact：zip 产物提交
+ * - ui：界面提交——题包自带 `ui.html`，选手在界面里填写参数，核心把参数 JSON
+ *   注入脚本模板后交给 judge 运行（见 `submission/types/ui-solution.ts`）
  */
-export const SUBMISSION_MODES = ["code", "artifact", "prediction"] as const;
+export const SUBMISSION_MODES = [
+  "code",
+  "artifact",
+  "prediction",
+  "ui",
+] as const;
 export type SubmissionMode = typeof SUBMISSION_MODES[number];
 
 /**
@@ -315,7 +325,7 @@ export interface ProblemResponseWithTags {
   visibility: "public" | "private";
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective: boolean;
-  /** 提交模式：code / artifact / prediction */
+  /** 提交模式：code / artifact / prediction / ui */
   submission_mode: SubmissionMode;
   /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
   artifact_max_size_mb: number | null;

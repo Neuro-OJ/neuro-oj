@@ -17,7 +17,10 @@ import { eq } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { problems } from "./../../../../shared/db/schema.ts";
 import { NotFoundError } from "./../../../../shared/base/errors.ts";
-import type { JudgeSubmissionMode } from "../../types/index.ts";
+import {
+  type JudgeSubmissionMode,
+  toJudgeSubmissionMode,
+} from "../../types/index.ts";
 
 /**
  * 解析题目的提交模式（仅供路由分派）。
@@ -38,5 +41,5 @@ export async function resolveProblemSubmissionMode(
   if (!row) {
     throw new NotFoundError("题目不存在");
   }
-  return (row.submission_mode as JudgeSubmissionMode) ?? "code";
+  return toJudgeSubmissionMode(row.submission_mode);
 }

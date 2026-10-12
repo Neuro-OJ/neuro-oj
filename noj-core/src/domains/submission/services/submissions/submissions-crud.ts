@@ -75,7 +75,13 @@ import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
 import { isOiRuntimeConfig } from "./../../../catalog/index.ts";
 import type { JudgeTaskLlm, SubmissionStatus } from "../../types/index.ts";
 import type { Context } from "hono";
-import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
+import {
+  assertSubmissionLanguage,
+  LANGUAGE_EXT_MAP,
+  submissionModeForLanguage,
+  UI_FILE_NAME,
+  UI_LANGUAGE,
+} from "../../types/index.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
 import {
   assertVersionAcceptsSubmission,
@@ -89,6 +95,7 @@ import {
 } from "../versioning/projection.ts";
 import {
   executionSnapshot,
+  scriptTemplateOf,
   versionSupportPackageDownload,
 } from "../versioning/version-execution.ts";
 import {
@@ -486,19 +493,21 @@ export async function createSubmission(
   if (versionResolution.kind === "known") {
     assertVersionAcceptsSubmission(versionResolution.version.content, {
       language: input.language,
-      submissionMode: "code",
+      submissionMode: submissionModeForLanguage(input.language),
     });
   }
 
-  // 验证语言（与 LANGUAGE_EXT_MAP 键集保持一致）
-  const supportedLanguages = Object.keys(LANGUAGE_EXT_MAP);
-  if (!supportedLanguages.includes(input.language)) {
-    throw new BadRequestError(`不支持的语言: ${input.language}`);
-  }
+  // 验证语言：ui 题只收界面参数；其余与 LANGUAGE_EXT_MAP 键集保持一致
+  assertSubmissionLanguage(
+    problem.submission_mode,
+    input.language,
+    Object.keys(LANGUAGE_EXT_MAP),
+  );
 
-  // 生成文件默认名：优先使用 LANGUAGE_EXT_MAP
-  const fileName = input.file_name || LANGUAGE_EXT_MAP[input.language] ||
-    "main.txt";
+  // 生成文件默认名：提示词固定 prompt.md，否则优先使用 LANGUAGE_EXT_MAP
+  const fileName = input.language === UI_LANGUAGE
+    ? UI_FILE_NAME
+    : input.file_name || LANGUAGE_EXT_MAP[input.language] || "main.txt";
 
   // 创建提交记录并推送到评测队列（在同一个 try 块中保证一致性）
   const id = crypto.randomUUID();
@@ -600,6 +609,14 @@ export async function createSubmission(
     download_url,
     language: input.language,
     code: input.code,
+    script_template: input.language === UI_LANGUAGE
+      ? scriptTemplateOf(
+        versionResolution.kind === "known"
+          ? versionResolution.version.content
+          : null,
+        problem.template_content,
+      )
+      : undefined,
     file_name: fileName,
     llm: llmTask ?? undefined,
   });
