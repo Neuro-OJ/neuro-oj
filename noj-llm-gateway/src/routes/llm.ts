@@ -192,6 +192,19 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     if (!payload.allowed_models.includes(model)) {
       return c.json({ error: "model_not_allowed" }, 403);
     }
+    // 模型别名：token 携带 model_map 时，评测代码请求里的 model 是别名，
+    // 转发前改写为上游真实模型名；无 model_map 时行为不变。
+    let upstreamModel = model;
+    if (payload.model_map) {
+      const mapped = Object.hasOwn(payload.model_map, model)
+        ? payload.model_map[model]
+        : undefined;
+      if (typeof mapped !== "string" || !mapped) {
+        return c.json({ error: "model_not_allowed" }, 403);
+      }
+      upstreamModel = mapped;
+    }
+    const aliasForAudit = upstreamModel === model ? undefined : model;
 
     let providerSecret;
     try {
@@ -256,9 +269,9 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         problem_id: payload.problem_id,
         user_id: payload.user_id,
         provider_id: payload.provider_id,
-        model,
+        model: upstreamModel,
         request_messages: body.messages,
-        request_params: pickParams(body),
+        request_params: pickParams(body, aliasForAudit),
         prompt_tokens: promptTokens,
         completion_tokens: 0,
         total_tokens: promptTokens,
@@ -281,7 +294,9 @@ export function createLlmRouter(deps: LlmDeps): Hono {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${providerSecret.apiKey}`,
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(
+          upstreamModel === model ? body : { ...body, model: upstreamModel },
+        ),
         signal: AbortSignal.timeout(120_000),
         redirect: "error",
       });
@@ -295,9 +310,9 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         problem_id: payload.problem_id,
         user_id: payload.user_id,
         provider_id: payload.provider_id,
-        model,
+        model: upstreamModel,
         request_messages: body.messages,
-        request_params: pickParams(body),
+        request_params: pickParams(body, aliasForAudit),
         prompt_tokens: promptTokens,
         completion_tokens: 0,
         total_tokens: promptTokens,
@@ -331,9 +346,9 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         problem_id: payload.problem_id,
         user_id: payload.user_id,
         provider_id: payload.provider_id,
-        model,
+        model: upstreamModel,
         request_messages: body.messages,
-        request_params: pickParams(body),
+        request_params: pickParams(body, aliasForAudit),
         prompt_tokens: promptTokens,
         completion_tokens: 0,
         total_tokens: promptTokens,
@@ -399,9 +414,9 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         problem_id: payload.problem_id,
         user_id: payload.user_id,
         provider_id: payload.provider_id,
-        model,
+        model: upstreamModel,
         request_messages: body.messages,
-        request_params: pickParams(body),
+        request_params: pickParams(body, aliasForAudit),
         prompt_tokens: actualPromptTokens,
         completion_tokens: actualCompletionTokens,
         total_tokens: actualTotalTokens,
@@ -426,9 +441,9 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       problem_id: payload.problem_id,
       user_id: payload.user_id,
       provider_id: payload.provider_id,
-      model,
+      model: upstreamModel,
       request_messages: body.messages,
-      request_params: pickParams(body),
+      request_params: pickParams(body, aliasForAudit),
       prompt_tokens: actualPromptTokens,
       completion_tokens: actualCompletionTokens,
       total_tokens: actualTotalTokens,
@@ -478,7 +493,10 @@ function estimateCost(totalTokens: number, costPer1k: number): number {
 }
 
 /** 从请求体中挑选需要审计的关键参数（排除 messages 等大字段）。 */
-function pickParams(body: ChatCompletionRequest): Record<string, unknown> {
+function pickParams(
+  body: ChatCompletionRequest,
+  alias?: string,
+): Record<string, unknown> {
   const params: Record<string, unknown> = {};
   for (
     const key of [
@@ -493,5 +511,7 @@ function pickParams(body: ChatCompletionRequest): Record<string, unknown> {
   ) {
     if (body[key] !== undefined) params[key] = body[key];
   }
+  // 请求里的 model 是别名时（alias 非空），保留别名便于对账（usage.model 记录真实模型名）
+  if (alias !== undefined) params.model_alias = alias;
   return params;
 }
