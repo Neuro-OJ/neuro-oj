@@ -69,6 +69,18 @@ const ROUTES: BreadcrumbRoute[] = [
     trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { key: 'breadcrumb.settings' }],
   },
   // ── 题库 ──
+  {
+    pattern: '/d/:slug/classrooms',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { key: 'breadcrumb.classrooms' }],
+  },
+  {
+    pattern: '/d/:slug/classrooms/:classroomId',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { param: 'classroomId' }],
+  },
+  {
+    pattern: '/d/:slug/assignments/:assignmentId',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { param: 'assignmentId' }],
+  },
   { pattern: '/problems', trail: [{ key: 'nav.problems' }] },
   { pattern: '/problems/new', trail: [{ key: 'nav.problems', to: '/problems' }, { key: 'breadcrumb.newProblem' }] },
   {
