@@ -19,6 +19,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import {
   changeAssignmentLifecycle,
+  copyAssignment,
   createAssignment,
   getAssignment,
   listAssignments,
@@ -384,5 +385,78 @@ Deno.test("作业名单：新生只补入未截止全班任务，离班保留历
   assertEquals(
     restored.find((r) => r.assignment_id === closed.id)?.status,
     "historical",
+  );
+});
+
+Deno.test("作业复制：生成独立部分学生补题，保留来源且重试不重复创建", async () => {
+  const f = await fixture();
+  const original = await createAssignment(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    f.input,
+  );
+  const published = await publishAssignment(
+    f.school.slug,
+    original.id,
+    f.teacher,
+    0,
+    "original",
+  );
+  const detail = await getAssignment(f.school.slug, original.id, f.teacher);
+  const input = {
+    title: "单独补题",
+    item_ids: [detail.items[0].id],
+    target_student_ids: [f.student],
+  };
+  const copied = await copyAssignment(
+    f.school.slug,
+    original.id,
+    f.teacher,
+    1,
+    "copy",
+    input,
+  );
+  assertEquals(copied.state, "draft");
+  assertEquals(copied.source_assignment_id, original.id);
+  assertEquals(copied.include_previous_submissions, false);
+  assertEquals(
+    await copyAssignment(
+      f.school.slug,
+      original.id,
+      f.teacher,
+      1,
+      "copy",
+      input,
+    ),
+    copied,
+  );
+  assertEquals((await f.db.select().from(assignments)).length, 2);
+  const copiedDetail = await getAssignment(f.school.slug, copied.id, f.teacher);
+  assertEquals(copiedDetail.items[0].published_version_id, null);
+  assertEquals(copiedDetail.items[0].minimum_score, 6000);
+  await assertRejects(
+    () =>
+      copyAssignment(f.school.slug, original.id, f.student, 1, "copy", input),
+    ForbiddenError,
+  );
+  await assertRejects(
+    () =>
+      copyAssignment(f.school.slug, original.id, f.teacher, 1, "invalid", {
+        item_ids: [crypto.randomUUID()],
+      }),
+    BadRequestError,
+  );
+  await publishAssignment(
+    f.school.slug,
+    copied.id,
+    f.teacher,
+    0,
+    "remediation",
+  );
+  assertEquals((await f.db.select().from(assignmentRecipients)).length, 2);
+  assertEquals(
+    (await getAssignment(f.school.slug, original.id, f.teacher)).revision,
+    published.revision,
   );
 });

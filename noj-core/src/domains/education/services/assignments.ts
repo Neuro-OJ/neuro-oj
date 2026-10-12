@@ -206,41 +206,54 @@ export async function createAssignment(
   actorId: string,
   input: AssignmentDraftInput,
 ) {
+  return await getDb().transaction((tx) =>
+    insertAssignmentDraft(tx, slug, classroomId, actorId, input)
+  );
+}
+
+/** 复制和创建共用已授权事务，避免嵌套根事务重复取班级锁。 */
+export async function insertAssignmentDraft(
+  tx: Executor,
+  slug: string,
+  classroomId: string,
+  actorId: string,
+  input: AssignmentDraftInput,
+  sourceAssignmentId?: string,
+) {
   const values = draftInput(input);
-  return await getDb().transaction(async (tx) => {
-    const access = await loadClassroom(slug, classroomId, actorId, {
-      executor: tx,
-      write: true,
-    });
-    assertClassroomCapability(access, "assignments:manage");
-    const policy = await getInstanceResourcePolicy(tx);
-    if (
-      !access.domain.configuration.features.assignment ||
-      !policy.modules.assignment
-    ) throw new AppError("作业模块未启用", 403, "MODULE_DISABLED");
-    await assignmentStudents(
-      tx,
-      access.domain.id,
-      classroomId,
-      values.target_student_ids,
-    );
-    const now = new Date().toISOString();
-    const [assignment] = await tx.insert(assignments).values({
-      id: crypto.randomUUID(),
-      domain_id: access.domain.id,
-      classroom_id: classroomId,
-      ...values,
-      created_by: actorId,
-      created_at: now,
-      updated_at: now,
-    }).returning();
-    await replaceItems(tx, assignment, slug, actorId, input);
-    await workspaceAudit(tx, actorId, access.domain.id, "domain.update", {
-      operation: "assignment.create",
-      assignment_id: assignment.id,
-    });
-    return assignment;
+  const access = await loadClassroom(slug, classroomId, actorId, {
+    executor: tx,
+    write: true,
   });
+  assertClassroomCapability(access, "assignments:manage");
+  const policy = await getInstanceResourcePolicy(tx);
+  if (
+    !access.domain.configuration.features.assignment ||
+    !policy.modules.assignment
+  ) throw new AppError("作业模块未启用", 403, "MODULE_DISABLED");
+  await assignmentStudents(
+    tx,
+    access.domain.id,
+    classroomId,
+    values.target_student_ids,
+  );
+  const now = new Date().toISOString();
+  const [assignment] = await tx.insert(assignments).values({
+    id: crypto.randomUUID(),
+    domain_id: access.domain.id,
+    classroom_id: classroomId,
+    ...values,
+    source_assignment_id: sourceAssignmentId,
+    created_by: actorId,
+    created_at: now,
+    updated_at: now,
+  }).returning();
+  await replaceItems(tx, assignment, slug, actorId, input);
+  await workspaceAudit(tx, actorId, access.domain.id, "domain.update", {
+    operation: "assignment.create",
+    assignment_id: assignment.id,
+  });
+  return assignment;
 }
 
 /** 草稿编辑使用完整表单和 revision；发布后调整题目需复制新任务。 */

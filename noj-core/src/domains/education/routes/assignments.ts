@@ -1,4 +1,8 @@
 import { Hono } from "hono";
+import {
+  type AssignmentCopyInput,
+  copyAssignment,
+} from "../services/assignment-copy.ts";
 import { type AuthEnv, authMiddleware } from "../../identity/index.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
@@ -120,6 +124,22 @@ for (const action of ["extend", "end", "archive"] as const) {
     });
   });
 }
+
+/** 作业准备路由，与班级路由一起等待完整隔离门禁后开放。 */
+router.post("/domains/:slug/assignments/:id/copy", async (c) => {
+  const input = await parseJsonBody<AssignmentCopyInput>(c);
+  assertObjectBody(input);
+  return c.json({
+    data: await copyAssignment(
+      c.req.param("slug"),
+      c.req.param("id"),
+      c.var.userId,
+      revision(c.req.header("If-Match")),
+      c.req.header("Idempotency-Key") ?? "",
+      input,
+    ),
+  }, 201);
+});
 
 /** 作业准备路由，与班级路由一起等待完整隔离门禁后开放。 */
 export const assignmentRouter = router;
