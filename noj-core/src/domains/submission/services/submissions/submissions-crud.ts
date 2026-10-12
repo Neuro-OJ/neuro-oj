@@ -464,9 +464,16 @@ export async function createSubmission(
     throw new ForbiddenError("仅可在竞赛进行期间提交");
   }
 
-  // artifact 题目必须走 multipart zip 上传，拒绝 JSON 代码提交
-  if (problem.submission_mode === "artifact") {
-    throw new BadRequestError("该题目要求上传 zip 产物");
+  // artifact / prediction 题目必须走 multipart 上传，拒绝 JSON 代码提交
+  if (
+    problem.submission_mode === "artifact" ||
+    problem.submission_mode === "prediction"
+  ) {
+    throw new BadRequestError(
+      problem.submission_mode === "artifact"
+        ? "该题目要求上传 zip 产物"
+        : "该题目要求上传预测结果文件",
+    );
   }
 
   // 提交时版本：竞赛用固定版本（客户端覆盖 → 409），题库用显式指定版本；
@@ -533,6 +540,13 @@ export async function createSubmission(
     if (input.language === "c" || input.language === "cc") {
       throw new BadRequestError("C/C++ 提交仅适用于 judge_type=oi 的题目");
     }
+    if (!runtimeConfig.solution) {
+      throw new AppError(
+        "题目缺少 solution 运行时配置，无法评测",
+        500,
+        "RUNTIME_CONFIG_SOLUTION_MISSING",
+      );
+    }
     // 防御性 final gate：校验双容器镜像 + kind
     await validateJudgeImageWithKind(
       runtimeConfig.evaluator.image,
@@ -581,6 +595,7 @@ export async function createSubmission(
     problem_id: input.problem_id,
     user_id: userId,
     priority,
+    submission_mode: "code",
     runtime_config: runtimeConfig,
     download_url,
     language: input.language,

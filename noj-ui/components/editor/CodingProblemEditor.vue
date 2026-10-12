@@ -5,6 +5,7 @@ import { isAdminUser } from "~/utils/isAdminUser"
 import { useToast } from "~/composables/useToast"
 import { useProblemStats } from "~/composables/useProblemStats"
 import type { ProblemStatsDetail } from "~/utils/problemStats"
+import type { SubmissionMode } from "~/utils/problemView"
 
 interface RuntimeConfigPayload {
   evaluator: {
@@ -13,8 +14,11 @@ interface RuntimeConfigPayload {
     time_limit_ms: number
     memory_limit_mb: number
     network?: { enabled: boolean }
+    /** prediction 模式 /workspace tmpfs 上限（MB）；缺省由 judge 决定 */
+    workspace_size_mb?: number
   }
-  solution: {
+  /** prediction 模式无 Solution 容器，提交时省略该块。 */
+  solution?: {
     image: string
     call_timeout_ms: number
     memory_limit_mb: number
@@ -59,8 +63,11 @@ const publishing = ref(false)
 // ── 表单数据 ──
 const { title, description, difficulty, samples, tagIds, visibility } = useProblemAuthorFields()
 const problemType = ref(props.initialType)
-const submissionMode = ref<'code' | 'artifact'>('code')
+const submissionMode = ref<SubmissionMode>('code')
 const artifactMaxSizeMb = ref<number | null>(null)
+
+/** prediction 模式无 Solution 容器：隐藏 Solution 配置并省略 runtime_config.solution。 */
+const isPredictionMode = computed(() => submissionMode.value === 'prediction')
 
 // 编辑模式专用
 const displayId = ref("")
@@ -137,6 +144,10 @@ const evaluatorCommand = ref("python3 /workspace/evaluate.py")
 const evaluatorTimeLimitMs = ref(5000)
 const evaluatorMemoryLimitMb = ref(512)
 const evaluatorNetworkEnabled = ref(false)
+// prediction 专用：/workspace tmpfs 上限（MB）；空 = 用 judge 缺省。
+// 该字段受管理员上限（JUDGE_MAX_PREDICTION_WORKSPACE_MB）约束，越界会被
+// judge 收敛并打警告，因此界面上给出提示（2026-09-22 评审：此前只能改 JSON）。
+const evaluatorWorkspaceSizeMb = ref<number | null>(null)
 const solutionImage = ref("")
 const solutionCallTimeoutMs = ref(1000)
 const solutionMemoryLimitMb = ref(256)
@@ -272,7 +283,7 @@ async function loadProblem() {
       time_limit_ms: number; memory_limit_mb: number
       display_id: string; type: string; number: number
       tags: { id: string }[]
-      submission_mode?: 'code' | 'artifact'
+      submission_mode?: SubmissionMode
       artifact_max_size_mb?: number | null
       runtime_config: RuntimeConfigPayload | null
       latest_version?: number | null
@@ -302,7 +313,7 @@ async function loadProblem() {
         models?: string[]
       } | null
     }).llm_config
-    if (llmConfig) {
+    if (llmConfig && !isPredictionMode.value) {
       llmEnabled.value = true
       llmMaxCalls.value = llmConfig.max_calls != null ? String(llmConfig.max_calls) : ""
       llmMaxTokens.value = llmConfig.max_tokens != null ? String(llmConfig.max_tokens) : ""
@@ -330,9 +341,13 @@ function applyRuntimeConfig(rc: RuntimeConfigPayload) {
   evaluatorTimeLimitMs.value = rc.evaluator.time_limit_ms
   evaluatorMemoryLimitMb.value = rc.evaluator.memory_limit_mb
   evaluatorNetworkEnabled.value = rc.evaluator.network?.enabled === true
-  solutionImage.value = rc.solution.image
-  solutionCallTimeoutMs.value = rc.solution.call_timeout_ms
-  solutionMemoryLimitMb.value = rc.solution.memory_limit_mb
+  evaluatorWorkspaceSizeMb.value = rc.evaluator.workspace_size_mb ?? null
+  // prediction 题的 runtime_config 省略 solution
+  if (rc.solution) {
+    solutionImage.value = rc.solution.image
+    solutionCallTimeoutMs.value = rc.solution.call_timeout_ms
+    solutionMemoryLimitMb.value = rc.solution.memory_limit_mb
+  }
 }
 
 /** 用草稿内容覆盖表单（kind=ai 的内容快照）。 */
@@ -383,8 +398,9 @@ function validate(): boolean {
   if (!title.value.trim()) errors.title = "请输入题目标题"
   if (!description.value.trim()) errors.description = "请输入题目描述"
   if (!evaluatorImage.value.trim()) errors.evaluator_image = "请选择 evaluator 镜像"
-  if (!solutionImage.value.trim()) errors.solution_image = "请选择 solution 镜像"
-  if (llmEnabled.value) {
+  // prediction 无 Solution 容器，不要求 solution 镜像
+  if (!isPredictionMode.value && !solutionImage.value.trim()) errors.solution_image = "请选择 solution 镜像"
+  if (llmEnabled.value && !isPredictionMode.value) {
     if (!evaluatorNetworkEnabled.value) errors.evaluator_network = "启用 LLM 必须开启 Evaluator 联网"
     if (llmModels.value.length === 0) errors.llm_models = "请至少选择一个模型"
     else if (llmModels.value.length > 8) errors.llm_models = "最多选择 8 个模型"
@@ -395,6 +411,15 @@ function validate(): boolean {
     }
     if (maxTokens !== null && (!Number.isInteger(maxTokens) || maxTokens <= 0)) {
       errors.llm_max_tokens = "token 上限必须是正整数"
+    }
+  }
+  // prediction 的 workspace 上限：留空 = 用 judge 缺省；填了必须是范围内的正整数
+  // （越界会被 judge 收敛并打警告，但 UI 提前报错更直观）。
+  if (isPredictionMode.value && evaluatorWorkspaceSizeMb.value !== null &&
+      evaluatorWorkspaceSizeMb.value !== undefined) {
+    const ws = Number(evaluatorWorkspaceSizeMb.value)
+    if (!Number.isInteger(ws) || ws < 512 || ws > 16384) {
+      errors.evaluator_workspace = "工作区上限必须是 512–16384 的整数（留空用缺省）"
     }
   }
   fieldErrors.value = errors
@@ -410,18 +435,29 @@ function buildRuntimeConfig(): RuntimeConfigPayload {
       time_limit_ms: evaluatorTimeLimitMs.value,
       memory_limit_mb: evaluatorMemoryLimitMb.value,
       ...(evaluatorNetworkEnabled.value ? { network: { enabled: true } } : {}),
+      // 仅 prediction 模式提交该字段；其他模式省略，避免写入无意义配置。
+      ...(isPredictionMode.value && typeof evaluatorWorkspaceSizeMb.value === "number"
+        ? { workspace_size_mb: evaluatorWorkspaceSizeMb.value }
+        : {}),
     },
-    solution: {
-      image: solutionImage.value.trim(),
-      call_timeout_ms: solutionCallTimeoutMs.value,
-      memory_limit_mb: solutionMemoryLimitMb.value,
-    },
+    // prediction 无 Solution 容器：省略 solution，避免提交空壳配置
+    ...(isPredictionMode.value ? {} : {
+      solution: {
+        image: solutionImage.value.trim(),
+        call_timeout_ms: solutionCallTimeoutMs.value,
+        memory_limit_mb: solutionMemoryLimitMb.value,
+      },
+    }),
   }
 }
 
 function buildLlmPayload() {
   const llmMaxCallsNum = llmMaxCalls.value === "" ? null : Number(llmMaxCalls.value)
   const llmMaxTokensNum = llmMaxTokens.value === "" ? null : Number(llmMaxTokens.value)
+  // prediction 题禁止 LLM 配置（后端 400）：省略该字段而非发 null。
+  // 发 null 会被 update 路径当作「显式清空」，从而绕过「切 prediction 前先移除
+  // LLM」的守卫。
+  if (isPredictionMode.value) return undefined
   return llmEnabled.value
     ? {
         ...(llmMaxCallsNum !== null ? { max_calls: llmMaxCallsNum } : {}),
@@ -443,7 +479,7 @@ function buildContent(): Record<string, unknown> {
     runtime_config: buildRuntimeConfig(),
     template_content: "",
     artifact_max_size_mb: artifactMaxSizeMb.value,
-    llm_config: buildLlmPayload(),
+    llm_config: buildLlmPayload() ?? null,
   }
 }
 
@@ -602,13 +638,17 @@ async function handleSubmit() {
             :items="[
               { label: '代码提交（code）', value: 'code' },
               { label: '产物提交（artifact / zip）', value: 'artifact' },
+              { label: '预测提交（prediction / 单文件）', value: 'prediction' },
             ]"
             class="w-full"
           />
+          <p v-if="isPredictionMode" class="text-xs text-warning-text">
+            预测提交无 Solution 容器，选手上传单个预测结果文件（csv / npy / parquet 等），平台在本地 GPU 对照隐藏标签出分。
+          </p>
         </div>
 
-        <div v-if="submissionMode === 'artifact'" class="flex flex-col gap-1">
-          <label class="text-xs font-semibold text-text">artifact 大小上限（MB）</label>
+        <div v-if="submissionMode === 'artifact' || isPredictionMode" class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">{{ isPredictionMode ? '预测文件大小上限（MB）' : 'artifact 大小上限（MB）' }}</label>
           <input v-model.number="artifactMaxSizeMb" type="number" min="1" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:input-base-focus bg-white" placeholder="留空使用 NOJ 默认上限" />
         </div>
 
@@ -646,7 +686,10 @@ async function handleSubmit() {
     <!-- 评测配置（双容器模式） -->
     <section class="px-6 py-5 border-b border-border last:border-b-0">
       <h2 class="text-sm font-semibold text-text mb-3">评测配置（双容器）</h2>
-      <p class="text-xs text-text-muted mb-3">
+      <p v-if="isPredictionMode" class="text-xs text-text-muted mb-3">
+        预测提交仅运行 Evaluator（可信端）：加载支持包与隐藏标签，读取选手上传的预测文件出分，不创建 Solution 容器。
+      </p>
+      <p v-else class="text-xs text-text-muted mb-3">
         所有题目统一使用双容器模式：Evaluator（可信）运行 evaluate.py + 支持包；Solution（不可信）单独运行用户代码。
       </p>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -683,6 +726,19 @@ async function handleSubmit() {
                 <input v-model.number="evaluatorMemoryLimitMb" type="number" class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white" min="32" max="8192" />
               </div>
             </div>
+            <div v-if="isPredictionMode" class="flex flex-col gap-1">
+              <label class="text-xs font-semibold text-text">预测工作区上限 (MB，可留空)</label>
+              <input
+                v-model.number="evaluatorWorkspaceSizeMb"
+                type="number"
+                class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white"
+                min="512"
+                max="16384"
+                placeholder="缺省 2048（受管理员上限约束，范围 512–16384）"
+              />
+              <span class="text-xs text-text-muted">prediction 题的 /workspace tmpfs 容量；越界时 judge 会收敛并记录警告</span>
+              <p v-if="fieldErrors.evaluator_workspace" class="text-xs text-red-600">{{ fieldErrors.evaluator_workspace }}</p>
+            </div>
             <label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text">
               <input v-model="evaluatorNetworkEnabled" type="checkbox" class="size-4 accent-primary" :disabled="llmEnabled">
               <span>
@@ -691,8 +747,8 @@ async function handleSubmit() {
               </span>
             </label>
 
-            <!-- LLM 配置 -->
-            <div class="border-t border-border mt-2 pt-2.5 flex flex-col gap-2">
+            <!-- LLM 配置（prediction 题禁止：评测只跑 Evaluator，不注入 NOJ_LLM_*） -->
+            <div v-if="!isPredictionMode" class="border-t border-border mt-2 pt-2.5 flex flex-col gap-2">
               <label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text">
                 <input v-model="llmEnabled" type="checkbox" class="size-4 accent-primary">
                 <span>
@@ -747,8 +803,8 @@ async function handleSubmit() {
           </div>
         </div>
 
-        <!-- Solution 卡片 -->
-        <div class="border border-border rounded-lg p-3.5 bg-gray-50">
+        <!-- Solution 卡片（prediction 无 Solution 容器） -->
+        <div v-if="!isPredictionMode" class="border border-border rounded-lg p-3.5 bg-gray-50">
           <h3 class="text-xs font-semibold text-text mb-2.5 flex items-center gap-1.5">
             <span class="px-1.5 py-0.5 bg-warning-text text-white text-[10px] rounded">Solution</span>
             不可信端（运行用户代码，隔离)

@@ -1,9 +1,12 @@
 /**
- * Artifact 提交服务（类 Kaggle 产物提交）。
+ * Artifact 提交服务（类 Kaggle 产物提交），同时承载 prediction（预测结果文件）提交。
+ *
+ * 两种模式共用同一条「上传文件 → 版本绑定 → 尝试 → 入队」流程，差异由
+ * {@link UploadedSubmissionSpec} 描述（文件名/魔数校验、存储扩展名、镜像要求）。
  *
  * 负责：
- * - 校验题目 submission_mode=artifact
- * - 流式上传 zip 到存储（local 临时文件 / S3 multipart）
+ * - 校验题目 submission_mode 与上传模式一致
+ * - 流式上传到存储（local 临时文件 / S3 multipart）
  * - 双层大小限制（题目 artifact_max_size_mb + NOJ 硬上限）
  * - 创建提交记录并推送评测任务
  * - 产物保留到提交删除；上传补偿通过共享引用守卫
@@ -40,6 +43,7 @@ import {
   publishSseEvent,
 } from "./../../../../shared/sse/event-bus.ts";
 import { getLogger } from "@logtape/logtape";
+import { peekFirstChunk } from "./stream-peek.ts";
 
 const logger = getLogger(["noj", "submission"]);
 import type { JudgeTask, JudgeTaskLlm } from "../../types/index.ts";
@@ -79,45 +83,47 @@ export function getArtifactHardLimit(): number {
   return DEFAULT_ARTIFACT_MAX_SIZE_BYTES;
 }
 
-/** 从 web stream 读取首个 chunk，并返回可重新播放的流（用于 zip magic 校验）。 */
-async function peekFirstChunk(
-  stream: ReadableStream<Uint8Array>,
-): Promise<{ first: Uint8Array; rest: ReadableStream<Uint8Array> }> {
-  const reader = stream.getReader();
-  const { done, value } = await reader.read();
-  if (done) {
-    return {
-      first: new Uint8Array(0),
-      rest: new ReadableStream({
-        start(controller) {
-          controller.close();
-        },
-      }),
-    };
-  }
-  const first = value ?? new Uint8Array(0);
-  let firstPending = true;
-  const rest = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      if (firstPending) {
-        firstPending = false;
-        controller.enqueue(first);
-        return;
-      }
-      const r = await reader.read();
-      if (r.done) {
-        controller.close();
-        reader.releaseLock();
-      } else if (r.value && r.value.length > 0) {
-        controller.enqueue(r.value);
-      }
-    },
-    cancel() {
-      reader.releaseLock();
-    },
-  });
-  return { first, rest };
+/** 上传文件类提交的输入（单文件流）。 */
+export interface UploadedSubmissionInput {
+  problem_id: string;
+  file_name: string;
+  file_stream: ReadableStream<Uint8Array>;
+  contest_id?: string;
+  /** 提交时版本（Handbook §4.2）：上传类提交必填，不静默绑定最新版。 */
+  version_id?: string;
 }
+
+/** 上传类提交的模式差异（artifact zip / prediction 数据文件）。 */
+export interface UploadedSubmissionSpec {
+  mode: "artifact" | "prediction";
+  /** 模式不匹配时的提示。 */
+  modeMismatchMessage: string;
+  /** 上传前的文件名校验（不读流）。 */
+  validateFileName(fileName: string): void;
+  /** 基于首块字节的格式校验（魔数等）。 */
+  validateHead(fileName: string, first: Uint8Array): void;
+  /** 存储对象扩展名（含点）。 */
+  storageExtension(fileName: string): string;
+  contentType: string;
+}
+
+const ARTIFACT_SPEC: UploadedSubmissionSpec = {
+  mode: "artifact",
+  modeMismatchMessage: "该题目不支持 artifact 提交",
+  validateFileName(fileName) {
+    if (!fileName.toLowerCase().endsWith(".zip")) {
+      throw new BadRequestError("仅支持 .zip 格式文件");
+    }
+  },
+  validateHead(_fileName, first) {
+    // 校验 zip magic bytes（PK 头）
+    if (first.length < 4 || first[0] !== 0x50 || first[1] !== 0x4b) {
+      throw new BadRequestError("文件不是有效的 zip 格式");
+    }
+  },
+  storageExtension: () => ".zip",
+  contentType: "application/zip",
+};
 
 /**
  * 创建 artifact 提交。
@@ -126,16 +132,33 @@ async function peekFirstChunk(
  * @param input problem_id / file_name / file_stream / contest_id
  * @param contestId 路由层显式竞赛 ID（可选）
  */
-export async function createArtifactSubmission(
+export function createArtifactSubmission(
   userId: string,
-  input: {
-    problem_id: string;
-    file_name: string;
-    file_stream: ReadableStream<Uint8Array>;
-    contest_id?: string;
-    /** 提交时版本（Handbook §4.2）：artifact 提交必填，不静默绑定最新版。 */
-    version_id?: string;
-  },
+  input: UploadedSubmissionInput,
+  contestId?: string,
+  isAdmin = false,
+): Promise<SubmissionResponse> {
+  return createUploadedSubmission(
+    ARTIFACT_SPEC,
+    userId,
+    input,
+    contestId,
+    isAdmin,
+  );
+}
+
+/**
+ * 上传文件类提交的共用流程（artifact / prediction）。
+ *
+ * @param spec 模式差异描述
+ * @param userId 提交用户
+ * @param input problem_id / file_name / file_stream / contest_id
+ * @param contestId 路由层显式竞赛 ID（可选）
+ */
+export async function createUploadedSubmission(
+  spec: UploadedSubmissionSpec,
+  userId: string,
+  input: UploadedSubmissionInput,
   contestId?: string,
   isAdmin = false,
 ): Promise<SubmissionResponse> {
@@ -183,12 +206,10 @@ export async function createArtifactSubmission(
     throw new ForbiddenError("仅可在竞赛进行期间提交");
   }
 
-  if (problem.submission_mode !== "artifact") {
-    throw new BadRequestError("该题目不支持 artifact 提交");
+  if (problem.submission_mode !== spec.mode) {
+    throw new BadRequestError(spec.modeMismatchMessage);
   }
-  if (!input.file_name.toLowerCase().endsWith(".zip")) {
-    throw new BadRequestError("仅支持 .zip 格式文件");
-  }
+  spec.validateFileName(input.file_name);
 
   // 固定语言 python3
   const language = "python3";
@@ -206,7 +227,7 @@ export async function createArtifactSubmission(
     const content = versionResolution.version.content;
     assertVersionAcceptsSubmission(content, {
       language,
-      submissionMode: "artifact",
+      submissionMode: spec.mode,
     });
     if (content.kind === "ai") {
       versionMaxSizeMb = content.artifact_max_size_mb;
@@ -229,14 +250,23 @@ export async function createArtifactSubmission(
     );
   }
   if (isOiRuntimeConfig(runtimeConfig)) {
-    throw new BadRequestError("OI 题目不支持 artifact 提交");
+    throw new BadRequestError(`OI 题目不支持 ${spec.mode} 提交`);
   }
   // 所有不依赖上传内容的版本预检先完成，避免配置错误留下未登记的物理文件。
   const download_url = await versionSupportPackageDownload(
     versionResolution.version.version_id,
   );
   await validateJudgeImageWithKind(runtimeConfig.evaluator.image, "evaluator");
-  await validateJudgeImageWithKind(runtimeConfig.solution.image, "solution");
+  // prediction 只运行 Evaluator：版本省略 solution 时跳过其镜像校验。
+  if (runtimeConfig.solution) {
+    await validateJudgeImageWithKind(runtimeConfig.solution.image, "solution");
+  } else if (spec.mode !== "prediction") {
+    throw new AppError(
+      "题目缺少 solution 运行时配置，无法评测",
+      500,
+      "RUNTIME_CONFIG_SOLUTION_MISSING",
+    );
+  }
 
   // 双层大小限制（目标版本上限 + NOJ 硬上限）
   const hardLimit = getArtifactHardLimit();
@@ -245,23 +275,21 @@ export async function createArtifactSubmission(
     : hardLimit;
   const maxSizeBytes = Math.min(problemLimit, hardLimit);
 
-  // 校验 zip magic bytes（PK 头）
+  // 取头部做格式校验，rest 可重放供上传消费。
   const { first, rest } = await peekFirstChunk(input.file_stream);
-  if (
-    first.length < 4 || first[0] !== 0x50 || first[1] !== 0x4b
-  ) {
-    throw new BadRequestError("文件不是有效的 zip 格式");
-  }
+  spec.validateHead(input.file_name, first);
 
-  // 流式上传到存储
+  // 流式上传到存储（prediction 复用 artifacts/ 前缀，便于既有治理脚本覆盖）
   const storage = await getStorageProvider();
-  const storageKey = `artifacts/${crypto.randomUUID()}.zip`;
+  const storageKey = `artifacts/${crypto.randomUUID()}${
+    spec.storageExtension(input.file_name)
+  }`;
   let artifactStorageUrl: string;
   try {
     artifactStorageUrl = await storage.putStream(
       storageKey,
       rest,
-      "application/zip",
+      spec.contentType,
       maxSizeBytes,
     );
   } catch (err) {
@@ -328,6 +356,7 @@ export async function createArtifactSubmission(
       problem_id: input.problem_id,
       user_id: userId,
       priority,
+      submission_mode: spec.mode,
       runtime_config: runtimeConfig,
       download_url,
       artifact_download_url: artifactDownloadUrl,
@@ -391,7 +420,7 @@ export async function createArtifactSubmission(
           source_kind: "initial",
           taskSnapshot: {
             ...executionSnapshot(task, llmConfig),
-            submission_mode: "artifact",
+            submission_mode: spec.mode,
           },
           createdBy: userId,
         });
@@ -446,7 +475,8 @@ export async function createArtifactSubmission(
       );
     }
   } catch (mqErr) {
-    logger.error("artifact 评测任务推送失败", {
+    logger.error("上传类提交评测任务推送失败", {
+      mode: spec.mode,
       submission_id: id,
       err: mqErr,
     });

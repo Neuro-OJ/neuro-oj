@@ -422,7 +422,13 @@ async function dispatchClaimedJobItem(
   try {
     await assertExecutionPreflight(content, {
       language: source.language,
-      submissionMode: source.artifact_storage_url ? "artifact" : "code",
+      // 上传文件提交的具体模式（artifact / prediction）取自题目提交模式：
+      // 发布后不可变，因此源提交与目标版本同属一种上传模式。
+      submissionMode: source.artifact_storage_url
+        ? (content.kind === "ai" && content.submission_mode === "prediction"
+          ? "prediction"
+          : "artifact")
+        : "code",
       artifactMaxSizeMb: content.kind === "ai"
         ? content.artifact_max_size_mb
         : null,
@@ -580,6 +586,9 @@ async function dispatchJudgeAttempt(input: {
       problem_id: source.problem_id,
       user_id: source.user_id,
       priority: input.priority,
+      // 提交模式取自目标版本内容（发布后不可变）：prediction 提交据此走单容器
+      // 评分路径，代码/产物提交沿用双容器。
+      submission_mode: content.kind === "ai" ? content.submission_mode : "code",
       runtime_config: content.runtime_config,
       download_url: downloadUrl,
       artifact_download_url: artifactDownloadUrl,

@@ -22,6 +22,9 @@ export interface JudgeTaskLlm {
 /** 评测任务优先级。 */
 export type JudgeTaskPriority = "high" | "medium" | "low";
 
+/** JudgeTask 的提交模式（与题目 submission_mode 对应）。 */
+export type JudgeSubmissionMode = "code" | "artifact" | "prediction";
+
 /**
  * 当前评测协议版本（Handbook §5.5）。
  *
@@ -68,6 +71,8 @@ export interface JudgeTask {
   user_id: string;
   /** 评测任务优先级（服务端推导，客户端不可声明） */
   priority: JudgeTaskPriority;
+  /** 提交模式（服务端推导，客户端不可声明） */
+  submission_mode: JudgeSubmissionMode;
   /** 评测模式；历史消息缺省由 judge 按 dual 兼容处理。 */
   judge_type: JudgeType;
   /** 双容器或 OI Runtime 配置（必填） */
@@ -105,6 +110,7 @@ export interface BuildJudgeTaskInput {
   problem_id: string;
   user_id: string;
   priority: JudgeTaskPriority;
+  submission_mode: JudgeSubmissionMode;
   runtime_config: ProblemRuntimeConfig;
   /** WASM 活动成本快照，仅服务端任务构造允许注入。 */
   oi_cost_profile?: OiCostProfile;
@@ -162,6 +168,7 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
     problem_id: input.problem_id,
     user_id: input.user_id,
     priority: input.priority,
+    submission_mode: input.submission_mode,
     judge_type: input.judge_type ??
       judgeTypeForRuntimeConfig(input.runtime_config),
     runtime_config: structuredClone(input.runtime_config),
@@ -211,6 +218,7 @@ export const JUDGE_TASK_FIELDS: readonly string[] = [
   "problem_id",
   "user_id",
   "priority",
+  "submission_mode",
   "judge_type",
   "runtime_config",
   "oi_cost_profile",

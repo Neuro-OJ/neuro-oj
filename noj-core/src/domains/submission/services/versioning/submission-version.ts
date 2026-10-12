@@ -106,7 +106,10 @@ export async function loadPublishedVersionContent(
  */
 export function assertVersionAcceptsSubmission(
   content: ProblemContentV1,
-  input: { language: string; submissionMode: "code" | "artifact" },
+  input: {
+    language: string;
+    submissionMode: "code" | "artifact" | "prediction";
+  },
 ): void {
   assertVersionAcceptance(content, input);
 }

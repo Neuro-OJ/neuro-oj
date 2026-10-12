@@ -25,6 +25,13 @@ export {
 export { createArtifactSubmission } from "./artifact-submissions.ts";
 
 export {
+  createPredictionSubmission,
+  type PredictionSubmissionInput,
+} from "./prediction-submissions.ts";
+
+export { resolveProblemSubmissionMode } from "./problem-mode.ts";
+
+export {
   saveEvaluationResult,
   updateSubmissionStatus,
 } from "./submissions-result.ts";

@@ -127,6 +127,10 @@ export async function rebuildPendingTask(
     problem_id: row.problem_id,
     user_id: row.user_id ?? "",
     priority,
+    // 自测恒为代码；正式提交按绑定版本的提交模式恢复（发布后不可变）。
+    submission_mode: source === "submission" && content.kind === "ai"
+      ? content.submission_mode
+      : "code",
     runtime_config: executionRuntime,
     download_url: downloadUrl,
     artifact_download_url: artifactDownloadUrl,

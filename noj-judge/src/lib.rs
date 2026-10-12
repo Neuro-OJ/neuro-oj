@@ -10,6 +10,7 @@ pub mod logging;
 pub mod metrics;
 pub mod mq;
 pub mod oi;
+pub mod prediction;
 pub mod sandbox;
 pub mod scheduling;
 pub mod types;

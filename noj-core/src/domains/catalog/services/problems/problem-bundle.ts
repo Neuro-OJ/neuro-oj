@@ -774,15 +774,18 @@ async function createViaCrud(
   }
 
   // 双容器题目才需要镜像白名单；OI 题使用 worker 的受信固定镜像。
+  // prediction 模式无 Solution 容器，solution 可省略；显式提供时才校验。
   if (!isOiRuntimeConfig(manifest.runtime_config)) {
     await validateJudgeImageWithKind(
       manifest.runtime_config!.evaluator.image,
       "evaluator",
     );
-    await validateJudgeImageWithKind(
-      manifest.runtime_config!.solution.image,
-      "solution",
-    );
+    if (manifest.runtime_config!.solution) {
+      await validateJudgeImageWithKind(
+        manifest.runtime_config!.solution.image,
+        "solution",
+      );
+    }
   }
 
   // evaluator 联网权限与题目创建权限一致：普通用户导入创建 U 型题可开网；

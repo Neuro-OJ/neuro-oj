@@ -18,6 +18,18 @@ from .errors import (
     SolutionTimeoutError,
     SystemError,
 )
+from .prediction import (
+    PredictionBundle,
+    accuracy,
+    assert_id_alignment,
+    emit_case_scores,
+    f1_score,
+    load_predictions,
+    mae,
+    rmse,
+    roc_auc,
+    values_equal,
+)
 from .result import Result
 from .runner import SolutionRunner
 from .logging_config import configure_logging
@@ -33,6 +45,16 @@ __all__ = [
     "llm",
     "result",
     "configure_logging",
+    "PredictionBundle",
+    "load_predictions",
+    "assert_id_alignment",
+    "accuracy",
+    "f1_score",
+    "rmse",
+    "mae",
+    "roc_auc",
+    "values_equal",
+    "emit_case_scores",
     "ConnectionError",
     "NotFoundError",
     "RejectedError",

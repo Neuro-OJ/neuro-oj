@@ -666,18 +666,19 @@ fn test_clamp_runtime_config_caps_time_and_memory() {
             time_limit_ms: 999_999,
             memory_limit_mb: 9999,
             network: None,
+            workspace_size_mb: None,
         },
-        solution: SolutionRuntime {
+        solution: Some(SolutionRuntime {
             image: "noj-solution".to_string(),
             call_timeout_ms: 999_999,
             memory_limit_mb: 9999,
-        },
+        }),
     };
     let clamped = clamp_runtime_config(&rc, 5000, 1000);
     assert_eq!(clamped.evaluator.time_limit_ms, 5000);
-    assert_eq!(clamped.solution.call_timeout_ms, 1000);
+    assert_eq!(clamped.solution.as_ref().unwrap().call_timeout_ms, 1000);
     assert_eq!(clamped.evaluator.memory_limit_mb, 4096);
-    assert_eq!(clamped.solution.memory_limit_mb, 4096);
+    assert_eq!(clamped.solution.as_ref().unwrap().memory_limit_mb, 4096);
 }
 
 #[test]
@@ -703,12 +704,13 @@ fn test_validate_runtime_config_rejects_bad_image() {
             time_limit_ms: 1000,
             memory_limit_mb: 256,
             network: None,
+            workspace_size_mb: None,
         },
-        solution: SolutionRuntime {
+        solution: Some(SolutionRuntime {
             image: "noj-solution".to_string(),
             call_timeout_ms: 1000,
             memory_limit_mb: 256,
-        },
+        }),
     };
     let err =
         validate_runtime_config("sid-1", &rc, false, "noj-", &["python3".to_string()]).unwrap_err();
@@ -730,12 +732,13 @@ fn test_validate_runtime_config_rejects_network_when_disallowed() {
             time_limit_ms: 1000,
             memory_limit_mb: 256,
             network: Some(crate::types::EvaluatorNetwork { enabled: true }),
+            workspace_size_mb: None,
         },
-        solution: SolutionRuntime {
+        solution: Some(SolutionRuntime {
             image: "noj-solution".to_string(),
             call_timeout_ms: 1000,
             memory_limit_mb: 256,
-        },
+        }),
     };
     let err =
         validate_runtime_config("sid-2", &rc, false, "noj-", &["python3".to_string()]).unwrap_err();
@@ -757,12 +760,13 @@ fn test_validate_runtime_config_rejects_command_not_in_whitelist() {
             time_limit_ms: 1000,
             memory_limit_mb: 256,
             network: None,
+            workspace_size_mb: None,
         },
-        solution: SolutionRuntime {
+        solution: Some(SolutionRuntime {
             image: "noj-solution".to_string(),
             call_timeout_ms: 1000,
             memory_limit_mb: 256,
-        },
+        }),
     };
     let err =
         validate_runtime_config("sid-3", &rc, false, "noj-", &["python3".to_string()]).unwrap_err();
@@ -1057,4 +1061,53 @@ async fn test_handlers_report_pipe_ok_in_normal_path() {
     .await
     .unwrap();
     assert!(sol_ok);
+}
+
+/// prediction 提交没有 Solution 运行时；clamp 与 validate 都必须成功，
+/// 不得因为 `solution == None` 报错（无 Docker，纯逻辑）。
+#[test]
+fn test_clamp_and_validate_allow_absent_solution() {
+    use crate::types::EvaluatorRuntime;
+
+    let rc = RuntimeConfig {
+        evaluator: EvaluatorRuntime {
+            image: "noj-evaluator".to_string(),
+            command: "python3 /workspace/evaluate.py".to_string(),
+            time_limit_ms: 999_999,
+            memory_limit_mb: 9999,
+            network: None,
+            workspace_size_mb: Some(4096),
+        },
+        solution: None,
+    };
+
+    let clamped = clamp_runtime_config(&rc, 5000, 1000);
+    assert!(clamped.solution.is_none(), "无 solution 时不应被凭空创建");
+    assert_eq!(clamped.evaluator.time_limit_ms, 5000);
+    assert_eq!(clamped.evaluator.memory_limit_mb, 4096);
+
+    assert!(
+        validate_runtime_config("sid-pred", &rc, false, "noj-", &["python3".to_string()]).is_ok(),
+        "无 solution 的 prediction 配置应通过白名单复验"
+    );
+}
+
+/// 双容器路径必须携带 solution；缺失时给出明确的守卫错误（无 Docker）。
+#[test]
+fn test_require_solution_rejects_absent_solution() {
+    use crate::types::EvaluatorRuntime;
+
+    let rc = RuntimeConfig {
+        evaluator: EvaluatorRuntime {
+            image: "noj-evaluator".to_string(),
+            command: "python3 /workspace/evaluate.py".to_string(),
+            time_limit_ms: 1000,
+            memory_limit_mb: 256,
+            network: None,
+            workspace_size_mb: None,
+        },
+        solution: None,
+    };
+    let err = require_solution("sid-pred-guard", &rc).unwrap_err();
+    assert!(err.to_string().contains("缺少 solution"), "err={}", err);
 }

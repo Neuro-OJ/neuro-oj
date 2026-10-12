@@ -10,6 +10,7 @@ import { useResizableSplitter } from '~/composables/useResizableSplitter'
 import { useDialog } from '~/composables/useDialog'
 import { useToast } from '~/composables/useToast'
 import { restoreCodeTemplate } from '~/utils/codeEditorTemplate'
+import type { SubmissionMode } from '~/utils/problemView'
 import { getEditorLanguages, type EditorLanguageConfig } from '~/utils/editorLanguages'
 
 /**
@@ -30,7 +31,7 @@ export interface WorkspaceProblem extends EditorLanguageConfig {
   samples?: import("~/utils/oiWorkspace").ProblemSample[]
   difficulty: string
   type: 'U' | 'P'
-  submission_mode?: 'code' | 'artifact'
+  submission_mode?: SubmissionMode
   tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
 }
 

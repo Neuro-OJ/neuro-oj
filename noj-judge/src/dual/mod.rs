@@ -11,6 +11,7 @@
 //! 8. RAII 清理两个容器
 
 pub mod container;
+pub mod inject;
 pub mod llm_env;
 pub mod protocol;
 pub mod tracker;
@@ -37,7 +38,9 @@ mod result;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use inject::inject_file_stream_to_container;
 use pipe::{forward_frame, write_timeout_frame, PipeWriteOutcome};
+pub(crate) use result::build_judge_result;
 
 use crate::sandbox::container::{
     extract_zip_entries_from_file, inject_file_to_container, inject_zip_entries_to_container,
@@ -75,7 +78,7 @@ pub(crate) const MSG_NETWORK_NOT_ALLOWED: &str =
 ///
 /// 失败时返回以 [`PublicJudgeError`] 为根的错误：`Display` 为详细原因（写日志），
 /// 提交详情页只展示固定的公开文案。
-fn validate_runtime_config(
+pub(crate) fn validate_runtime_config(
     submission_id: &str,
     runtime_config: &RuntimeConfig,
     allow_evaluator_network: bool,
@@ -88,11 +91,14 @@ fn validate_runtime_config(
             submission_id, runtime_config.evaluator.image
         )));
     }
-    if !image_allowed(&runtime_config.solution.image, image_prefix) {
-        return Err(PublicJudgeError(MSG_IMAGE_NOT_ALLOWED).with_detail(format!(
-            "submission {}: solution 镜像不在白名单前缀内: {}",
-            submission_id, runtime_config.solution.image
-        )));
+    // prediction 模式没有 Solution 容器，solution 缺省时跳过其镜像复验。
+    if let Some(solution) = &runtime_config.solution {
+        if !image_allowed(&solution.image, image_prefix) {
+            return Err(PublicJudgeError(MSG_IMAGE_NOT_ALLOWED).with_detail(format!(
+                "submission {}: solution 镜像不在白名单前缀内: {}",
+                submission_id, solution.image
+            )));
+        }
     }
 
     let argv = parse_command(&runtime_config.evaluator.command);
@@ -126,7 +132,7 @@ fn validate_runtime_config(
 }
 
 /// 对任务中的资源限制字段执行硬上限收敛，防止 core 配置缺失或消息被篡改。
-fn clamp_runtime_config(
+pub(crate) fn clamp_runtime_config(
     rc: &RuntimeConfig,
     max_evaluator_time_ms: u64,
     max_solution_call_timeout_ms: u64,
@@ -136,15 +142,14 @@ fn clamp_runtime_config(
         clamped.evaluator.time_limit_ms =
             clamped.evaluator.time_limit_ms.min(max_evaluator_time_ms);
     }
-    if max_solution_call_timeout_ms > 0 {
-        clamped.solution.call_timeout_ms = clamped
-            .solution
-            .call_timeout_ms
-            .min(max_solution_call_timeout_ms);
-    }
     // 内存硬上限与容器创建逻辑保持一致（0 由容器层规范化为 512MB，上限 4096MB）。
     clamped.evaluator.memory_limit_mb = clamped.evaluator.memory_limit_mb.min(4096);
-    clamped.solution.memory_limit_mb = clamped.solution.memory_limit_mb.min(4096);
+    if let Some(solution) = clamped.solution.as_mut() {
+        if max_solution_call_timeout_ms > 0 {
+            solution.call_timeout_ms = solution.call_timeout_ms.min(max_solution_call_timeout_ms);
+        }
+        solution.memory_limit_mb = solution.memory_limit_mb.min(4096);
+    }
     clamped
 }
 
@@ -174,7 +179,7 @@ fn ceil_char_boundary(s: &str, idx: usize) -> usize {
 /// core sweeper 重投后再次 panic，形成无限循环。
 ///
 /// 现在截断点一律对齐到字符边界，且总长度硬性不超过 `MAX_OUTPUT_BYTES`。
-fn append_capped(buf: &mut String, s: &str) {
+pub(crate) fn append_capped(buf: &mut String, s: &str) {
     if s.len() >= MAX_OUTPUT_BYTES {
         // 单次追加本身就超限（极端恶意输出）：只保留 s 的尾部。
         let start = ceil_char_boundary(s, s.len() - MAX_OUTPUT_BYTES);
@@ -196,7 +201,7 @@ fn append_capped(buf: &mut String, s: &str) {
 ///
 /// VULN-17：先同步提取 zip 中所有文件到内存，再用**一次**批量注入
 /// （单个 tar 流 + 单次 `docker exec`）解包，消除 N 次串行 exec。
-async fn inject_support_package_to_evaluator(
+pub(crate) async fn inject_support_package_to_evaluator(
     docker: &bollard::Docker,
     container_id: &str,
     zip_path: &Path,
@@ -227,12 +232,22 @@ async fn inject_support_package_to_evaluator(
     Ok(())
 }
 
+/// 双容器路径必须携带 Solution 运行时；缺失时返回明确的守卫错误（纯函数，便于单测）。
+pub(crate) fn require_solution<'a>(
+    submission_id: &str,
+    runtime_config: &'a RuntimeConfig,
+) -> Result<&'a crate::types::SolutionRuntime> {
+    runtime_config.solution.as_ref().ok_or_else(|| {
+        anyhow::anyhow!("submission {}: 双容器路径缺少 solution 配置", submission_id)
+    })
+}
+
 /// 从容器读取一次内存峰值（KB）。
 ///
 /// Docker `stats` 的 `memory_stats.max_usage` 仅 cgroups v1 可用；
 /// cgroups v2 下该字段缺失，回退到 `usage` 近似值。读取失败或容器已销毁时
 /// 返回 `None`（不阻断评测主流程）。
-async fn read_container_memory_peak_kb(
+pub(crate) async fn read_container_memory_peak_kb(
     docker: &bollard::Docker,
     container_id: &str,
 ) -> Option<u64> {
@@ -288,6 +303,8 @@ pub async fn evaluate_dual_with_cpu_limit(
         image_prefix,
         command_whitelist,
     )?;
+    // prediction 提交（无 Solution）走 `crate::prediction` 独立编排，不应进入本函数。
+    let solution = require_solution(task_submission_id, &runtime_config)?;
     let started = Instant::now();
     // F-08：启动期 30s 绝对时限从注入/容器准备阶段开始计时（注入耗时计入启动期）。
     let startup_deadline = Instant::now() + Duration::from_secs(30);
@@ -318,8 +335,8 @@ pub async fn evaluate_dual_with_cpu_limit(
 
     // 2. 创建 Solution 容器
     dual.create_solution(
-        &runtime_config.solution.image,
-        runtime_config.solution.memory_limit_mb,
+        &solution.image,
+        solution.memory_limit_mb,
         cpu_limit_millicores,
     )
     .await
@@ -406,7 +423,7 @@ pub async fn evaluate_dual_with_cpu_limit(
             evaluator_exec,
             solution_exec,
             runtime_config.evaluator.time_limit_ms,
-            runtime_config.solution.call_timeout_ms,
+            solution.call_timeout_ms,
             task_rejudge_seq,
             startup_deadline,
         )

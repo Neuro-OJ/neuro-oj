@@ -204,6 +204,10 @@ export async function createSelfTest(
     if (input.language === "c" || input.language === "cc") {
       throw new BadRequestError("C/C++ 自测仅适用于 judge_type=oi 的题目");
     }
+    // 自测执行用户代码，需要 Solution 容器；prediction 题没有 solution，不支持自测。
+    if (!runtimeConfig.solution) {
+      throw new BadRequestError("该题目不支持代码自测");
+    }
     await validateJudgeImageWithKind(
       runtimeConfig.evaluator.image,
       "evaluator",
@@ -239,6 +243,7 @@ export async function createSelfTest(
     ...(selfTestVersionId ? { problem_version_id: selfTestVersionId } : {}),
     user_id: userId,
     priority: "medium",
+    submission_mode: "code",
     runtime_config: oiSelfTest?.runtime_config ?? runtimeConfig,
     download_url: oiSelfTest?.download_url ?? download_url,
     language: input.language,

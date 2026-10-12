@@ -208,6 +208,10 @@ export default withMermaid(defineConfig({
               text: "客观题套卷出题",
               link: "/problemsetters/objective-problem",
             },
+            {
+              text: "预测提交题（本地 GPU）",
+              link: "/problemsetters/prediction-problems",
+            },
           ],
         },
         {
@@ -246,6 +250,10 @@ export default withMermaid(defineConfig({
             {
               text: "客观题套卷出题",
               link: "/problemsetters/objective-problem",
+            },
+            {
+              text: "预测提交题（本地 GPU）",
+              link: "/problemsetters/prediction-problems",
             },
           ],
         },

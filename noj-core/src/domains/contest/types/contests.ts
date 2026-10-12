@@ -151,7 +151,7 @@ export interface ContestProblemResponse extends ContestProblemInput {
   description: string;
   difficulty: string;
   display_id: string;
-  submission_mode: "code" | "artifact";
+  submission_mode: "code" | "artifact" | "prediction";
   artifact_max_size_mb: number | null;
   /**
    * 题目可见性（public / private）。

@@ -3,9 +3,11 @@ import busboy from "busboy";
 import { Readable } from "node:stream";
 import {
   createArtifactSubmission,
+  createPredictionSubmission,
   createSubmission,
   getSubmission,
   listSubmissions,
+  resolveProblemSubmissionMode,
   resolveSubmissionId,
 } from "../services/submissions/submissions.ts";
 import { applySubmissionProjection } from "../services/submissions/submission-projection.ts";
@@ -224,12 +226,12 @@ router.post("/", authMiddleware, async (c) => {
     const parsed = await parseArtifactMultipart(c);
     // 参数解析合法后执行提交限流
     await enforceSubmissionRateLimit(c, userId);
-    const result = await createArtifactSubmission(
-      userId,
-      parsed,
-      undefined,
-      isAdmin,
-    );
+    // multipart 已解析但题目尚未加载：先只读解析题目模式用于分派，
+    // 服务层随后会重新校验模式、版本与访问规则。
+    const mode = await resolveProblemSubmissionMode(parsed.problem_id);
+    const result = mode === "prediction"
+      ? await createPredictionSubmission(userId, parsed, undefined, isAdmin)
+      : await createArtifactSubmission(userId, parsed, undefined, isAdmin);
     return c.json({ data: result }, 201);
   }
 

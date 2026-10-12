@@ -71,7 +71,7 @@ export async function versionSupportPackageDownload(
 /** 版本接受性输入：提交模式与语言。 */
 export interface VersionAcceptanceInput {
   language: string;
-  submissionMode: "code" | "artifact";
+  submissionMode: "code" | "artifact" | "prediction";
 }
 
 /**
@@ -157,9 +157,12 @@ export async function assertExecutionPreflight(
   // OI 无容器镜像与平台容器资源上限口径（其限额随版本由发布校验保证）。
   if (isOiRuntimeConfig(runtimeConfig)) return;
 
+  // prediction 版本没有 Solution 容器，solution 缺省时只复验 evaluator 镜像。
   const images: Array<{ image: string; kind: "evaluator" | "solution" }> = [
     { image: runtimeConfig.evaluator.image, kind: "evaluator" },
-    { image: runtimeConfig.solution.image, kind: "solution" },
+    ...(runtimeConfig.solution
+      ? [{ image: runtimeConfig.solution.image, kind: "solution" as const }]
+      : []),
   ];
   for (const item of images) {
     try {
@@ -185,7 +188,7 @@ export async function assertExecutionPreflight(
   const limitMb = input.artifactMaxSizeMb ??
     (content.kind === "ai" ? content.artifact_max_size_mb : null);
   if (
-    input.submissionMode === "artifact" && limitMb != null &&
+    input.submissionMode !== "code" && limitMb != null &&
     limitMb >= 0 && input.artifactByteSize != null &&
     input.artifactByteSize > limitMb * 1024 * 1024
   ) {

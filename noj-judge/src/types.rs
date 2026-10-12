@@ -30,7 +30,9 @@ impl JudgeStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeConfig {
     pub evaluator: EvaluatorRuntime,
-    pub solution: SolutionRuntime,
+    /// prediction 模式省略（无 Solution 容器）。
+    #[serde(default)]
+    pub solution: Option<SolutionRuntime>,
 }
 
 /// 任务运行时配置。旧任务的 JSON 保持原样，OI 配置使用同一字段传输。
@@ -81,6 +83,9 @@ pub struct EvaluatorRuntime {
     /// 网络配置；缺省/None = 容器保持 `network_mode: none`（与旧行为一致）。
     #[serde(default)]
     pub network: Option<EvaluatorNetwork>,
+    /// prediction 模式 /workspace 上限（MB）。
+    #[serde(default)]
+    pub workspace_size_mb: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,6 +145,9 @@ pub struct JudgeTask {
     /// 评测任务优先级（服务端推导；judge 调度只看队列，此字段用于 requeue/日志）
     #[serde(default = "default_priority")]
     pub priority: String,
+    /// 提交模式；缺省 "code"（兼容在途旧消息）。
+    #[serde(default = "default_submission_mode")]
+    pub submission_mode: String,
     /// 评测类型：历史任务默认 dual。
     #[serde(default = "default_judge_type")]
     pub judge_type: String,
@@ -169,6 +177,10 @@ pub struct JudgeTask {
 
 fn default_priority() -> String {
     "medium".to_string()
+}
+
+fn default_submission_mode() -> String {
+    "code".to_string()
 }
 
 fn default_judge_type() -> String {
