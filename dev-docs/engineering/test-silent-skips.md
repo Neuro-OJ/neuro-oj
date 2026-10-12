@@ -527,7 +527,7 @@
 | noj-core/src/domains/query/tests/services/rankings.test.ts | 286 | ignore |
 | noj-core/src/domains/query/tests/services/rankings.test.ts | 319 | ignore |
 | noj-core/src/domains/query/tests/services/rankings.test.ts | 332 | ignore |
-| noj-core/src/domains/search/tests/perf/search_bench.test.ts | 13 | ignore |
+| noj-core/src/domains/search/tests/perf/search_bench.test.ts | 14 | ignore |
 | noj-core/src/domains/search/tests/routes/search.test.ts | 66 | ignore |
 | noj-core/src/domains/search/tests/routes/search.test.ts | 86 | ignore |
 | noj-core/src/domains/search/tests/routes/search.test.ts | 106 | ignore |
@@ -737,7 +737,7 @@
 | noj-core/tests/helper.ts | 163 | env-guard |
 | noj-core/tests/perf/community_search_bench.test.ts | 27 | ignore |
 | noj-core/tests/perf/search_bench.test.ts | 37 | ignore |
-| noj-core/tests/perf/search_bench.test.ts | 170 | ignore |
+| noj-core/tests/perf/search_bench.test.ts | 179 | ignore |
 | noj-core/tests/scripts/backfill_public_ids_test.ts | 8 | ignore |
 | noj-core/tests/seed_bootstrap_admin_test.ts | 103 | ignore |
 | noj-core/tests/seed_bootstrap_admin_test.ts | 119 | ignore |
