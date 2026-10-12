@@ -1,11 +1,10 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
   domainMemberRoles,
   domainMemberships,
   domains,
-  users,
 } from "../../../shared/db/schema.ts";
 import {
   ForbiddenError,
@@ -13,7 +12,10 @@ import {
   UnauthorizedError,
 } from "../../../shared/base/errors.ts";
 import type { WorkspaceContext } from "../../../shared/workspace/types.ts";
-import { getUserPermissions } from "../../identity/index.ts";
+import {
+  assertActiveInstanceAccount,
+  getUserPermissions,
+} from "../../identity/index.ts";
 import { domainPermissions, validateDomainConfiguration } from "../types.ts";
 import { getInstanceAccessPolicy } from "./instance.ts";
 
@@ -25,6 +27,10 @@ export async function loadWorkspace(
     {},
 ) {
   const db = options.executor ?? getDb();
+  if (getInstanceAccessPolicy().access === "authenticated" && !actorId) {
+    throw new UnauthorizedError("此实例需要登录");
+  }
+  if (actorId) await assertActiveInstanceAccount(actorId, db);
   const query = db.select().from(domains).where(eq(domains.slug, slug));
   const [domain] = options.lock
     ? await query.for(options.lock === "share" ? "share" : "update")
@@ -34,15 +40,6 @@ export async function loadWorkspace(
     ? await getUserPermissions(actorId, db)
     : new Set<string>();
   const platformAdmin = platformPermissions.has("admin:full_access");
-  if (getInstanceAccessPolicy().access === "authenticated" && !actorId) {
-    throw new UnauthorizedError("此实例需要登录");
-  }
-  if (actorId) {
-    const [actor] = await db.select({ id: users.id }).from(users).where(
-      and(eq(users.id, actorId), isNull(users.deleted_at)),
-    );
-    if (!actor) throw new UnauthorizedError("账号不可用");
-  }
   validateDomainConfiguration(domain.configuration);
   if (domain.status === "suspended" && !platformAdmin) {
     throw new NotFoundError("工作空间不可用");

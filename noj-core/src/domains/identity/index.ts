@@ -8,6 +8,7 @@ export * from "./services/account-deletion.ts";
 export * from "./services/banlist.ts";
 export * from "./services/checkin.ts";
 export * from "./services/security/permissions.ts";
+export * from "./services/security/account-access.ts";
 export * from "./services/security/jwt.ts";
 export * from "./services/security/password.ts";
 export * from "./services/security/tfa.ts";

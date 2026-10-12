@@ -35,6 +35,7 @@ export const assignments = pgTable("assignments", {
   state: text("state").$type<AssignmentState>().notNull().default("draft"),
   revision: integer("revision").notNull().default(0),
   publish_at: text("publish_at"),
+  scheduled_by: text("scheduled_by").references(() => users.id),
   deadline_at: text("deadline_at"),
   published_at: text("published_at"),
   ended_at: text("ended_at"),
@@ -84,7 +85,7 @@ export const assignments = pgTable("assignments", {
   revisionCheck: check("assignments_revision_check", sql`${t.revision} >= 0`),
   scheduledCheck: check(
     "assignments_schedule_check",
-    sql`${t.state} <> 'scheduled' OR ${t.publish_at} IS NOT NULL`,
+    sql`${t.state} <> 'scheduled' OR (${t.publish_at} IS NOT NULL AND ${t.scheduled_by} IS NOT NULL)`,
   ),
   publishedCheck: check(
     "assignments_publish_check",

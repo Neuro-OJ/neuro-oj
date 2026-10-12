@@ -9,6 +9,7 @@ import {
 import { ConflictError, NotFoundError } from "../../../shared/base/errors.ts";
 import { workspaceAudit } from "./domains.ts";
 import { retireDomainEducationMemberships } from "../../education/index.ts";
+import { assertInstanceAccountNotBanned } from "../../identity/index.ts";
 
 /** 成员写入先锁目标账号，再锁域；注销提交后不允许用旧读取创建有效成员关系。 */
 export async function lockActiveWorkspaceAccount(
@@ -19,6 +20,7 @@ export async function lockActiveWorkspaceAccount(
     and(eq(users.id, userId), isNull(users.deleted_at)),
   ).for("update");
   if (!account) throw new NotFoundError("成员账号不可用");
+  await assertInstanceAccountNotBanned(userId, executor);
   return account;
 }
 

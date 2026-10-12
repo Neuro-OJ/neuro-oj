@@ -195,10 +195,18 @@ export async function scheduleAssignment(
     const [scheduled] = await tx.update(assignments).set({
       state: "scheduled",
       publish_at: date,
+      scheduled_by: actorId,
       publish_error: null,
       revision: access.assignment.revision + 1,
       updated_at: new Date().toISOString(),
     }).where(eq(assignments.id, id)).returning();
+    await workspaceAudit(tx, actorId, access.domain.id, "domain.update", {
+      operation: "assignment.schedule",
+      assignment_id: id,
+      scheduled_by: actorId,
+      publish_at: date,
+      revision: scheduled.revision,
+    });
     return scheduled;
   });
 }
@@ -289,7 +297,7 @@ export async function publishDueAssignments(limit = 20) {
       await publishAssignment(
         slug,
         assignment.id,
-        assignment.created_by,
+        assignment.scheduled_by!,
         assignment.revision,
         `scheduled:${assignment.id}:${assignment.revision}`,
       );
