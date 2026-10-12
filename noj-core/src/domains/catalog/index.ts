@@ -42,3 +42,4 @@ export * from "./services/workspace/problem-bindings.ts";
 export * from "./services/workspace/problem-sharing.ts";
 export * from "./services/workspace/problem-read.ts";
 export * from "./services/workspace/problem-edit.ts";
+export * from "./services/workspace/execution-context.ts";

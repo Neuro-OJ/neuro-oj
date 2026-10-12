@@ -79,6 +79,8 @@ export type DispatchOutcome =
 
 /** 源提交（两类统一视图）。 */
 export interface DispatchSource {
+  domain_id?: string | null;
+  domain_problem_binding_id?: string | null;
   id: string;
   problem_id: string;
   user_id: string;
@@ -101,6 +103,8 @@ async function loadSource(
   if (item.source_kind === "submission") {
     const [row] = await db.select({
       id: submissions.id,
+      domain_id: submissions.domain_id,
+      domain_problem_binding_id: submissions.domain_problem_binding_id,
       problem_id: submissions.problem_id,
       user_id: submissions.user_id,
       language: submissions.language,
@@ -115,6 +119,8 @@ async function loadSource(
   }
   const [row] = await db.select({
     id: objectiveSubmissions.id,
+    domain_id: objectiveSubmissions.domain_id,
+    domain_problem_binding_id: objectiveSubmissions.domain_problem_binding_id,
     problem_id: objectiveSubmissions.paper_id,
     user_id: objectiveSubmissions.user_id,
     language: objectiveSubmissions.submission_type,
@@ -130,6 +136,8 @@ async function loadSource(
   if (!row) return null;
   return {
     id: row.id,
+    domain_id: row.domain_id,
+    domain_problem_binding_id: row.domain_problem_binding_id,
     problem_id: row.problem_id,
     user_id: row.user_id,
     language: "objective",
@@ -750,6 +758,9 @@ async function dispatchObjectiveUpgrade(input: {
       await assertObjectiveSourceDispatchable(tx, source.id);
       const newId = crypto.randomUUID();
       await tx.insert(objectiveSubmissions).values({
+        domain_id: item.domain_id ?? source.domain_id ?? null,
+        domain_problem_binding_id: item.domain_problem_binding_id ??
+          source.domain_problem_binding_id ?? null,
         id: newId,
         paper_id: source.problem_id,
         user_id: source.user_id,

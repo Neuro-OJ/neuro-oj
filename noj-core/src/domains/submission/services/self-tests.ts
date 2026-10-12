@@ -35,7 +35,11 @@ import {
   assertVersionAcceptsSubmission,
   resolveSubmissionVersion,
 } from "./versioning/submission-version.ts";
-import { evaluateProblemAccess } from "./../../catalog/index.ts";
+import {
+  assertDefaultProblemSource,
+  evaluateProblemAccess,
+  resolveDefaultExecutionContext,
+} from "./../../catalog/index.ts";
 import { buildOiSelfTestPackage } from "../../catalog/index.ts";
 import {
   isOiRuntimeConfig,
@@ -119,6 +123,7 @@ export async function createSelfTest(
     throw new NotFoundError("题目不存在");
   }
   const problem = rows[0];
+  assertDefaultProblemSource(problem);
 
   // 统一访问解析：自测不允许携带竞赛上下文，private 题仅 owner/admin；
   // 被公开赛保密的题目同样只有 owner/管理员可自测。
@@ -247,24 +252,33 @@ export async function createSelfTest(
   });
 
   try {
-    await db.insert(selfTests).values({
-      id,
-      user_id: userId,
-      problem_id: problemId,
-      language: input.language,
-      code: input.code,
-      file_name: fileName,
-      status: "pending",
-      judge_run_id: task.run_id,
-      // 自测同样记录版本与执行快照：sweeper 据此从版本恢复（不读当前投影）
-      problem_version_id: selfTestVersionId,
-      task_snapshot: {
-        ...executionSnapshot(task),
-        ...(oiSelfTest ? { self_test_cases: cases } : {}),
-      },
-      created_at: now,
+    await db.transaction(async (tx) => {
+      const workspace = await resolveDefaultExecutionContext(
+        problemId,
+        userId,
+        tx,
+      );
+      await tx.insert(selfTests).values({
+        ...workspace,
+        id,
+        user_id: userId,
+        problem_id: problemId,
+        language: input.language,
+        code: input.code,
+        file_name: fileName,
+        status: "pending",
+        judge_run_id: task.run_id,
+        // 自测同样记录版本与执行快照：sweeper 据此从版本恢复（不读当前投影）
+        problem_version_id: selfTestVersionId,
+        task_snapshot: {
+          ...executionSnapshot(task),
+          ...(oiSelfTest ? { self_test_cases: cases } : {}),
+        },
+        created_at: now,
+      });
     });
   } catch (dbErr) {
+    if (dbErr instanceof AppError) throw dbErr;
     logger.error("自测记录插入失败", { err: dbErr });
     throw new AppError(
       "自测失败：数据库写入错误，请稍后重试",

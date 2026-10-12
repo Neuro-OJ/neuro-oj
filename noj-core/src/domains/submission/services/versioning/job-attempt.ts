@@ -200,6 +200,9 @@ export async function ensureJobAttempt(
       }
       // 升级副本使用**预分配**的 ID（副本、尝试、条目关联同一事务落库）
       await tx.insert(submissions).values({
+        domain_id: item.domain_id ?? source.domain_id ?? null,
+        domain_problem_binding_id: item.domain_problem_binding_id ??
+          source.domain_problem_binding_id ?? null,
         id: prepared.destinationId,
         public_id: generatePublicId("sub"),
         user_id: source.user_id,

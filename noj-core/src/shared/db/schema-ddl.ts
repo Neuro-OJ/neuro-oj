@@ -7,6 +7,7 @@ import {
   CATALOG_WORKSPACE_TABLES,
 } from "./schema-ddl-catalog-workspace.ts";
 import { WORKSPACE_DDL, WORKSPACE_TABLES } from "./schema-ddl-workspace.ts";
+import { EXECUTION_WORKSPACE_DDL } from "./schema-ddl-execution-workspace.ts";
 import { WORKSPACE_AUDIT_ACTION_SQL } from "../workspace/audit.ts";
 /** PGlite DDL 与 Drizzle schema 同步；新子系统通过独立 DDL 模块扩展。 */
 export const SCHEMA_DDL: string[] = [
@@ -277,6 +278,8 @@ $$ LANGUAGE plpgsql`,
   // 3.3 objective_submissions（客观题提交，服务端即时判定；依赖 contests 表）
   `CREATE TABLE IF NOT EXISTS objective_submissions (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
+    domain_problem_binding_id TEXT,
     paper_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES users(id),
     contest_id TEXT REFERENCES contests(id) ON DELETE SET NULL,
@@ -341,6 +344,8 @@ $$ LANGUAGE plpgsql`,
   // 6. submissions
   `CREATE TABLE IF NOT EXISTS submissions (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
+    domain_problem_binding_id TEXT,
     public_id TEXT NOT NULL DEFAULT ('sub-' || substr(md5(random()::text),1,8)) UNIQUE,
     user_id TEXT NOT NULL REFERENCES users(id),
     problem_id TEXT NOT NULL REFERENCES problems(id),
@@ -481,6 +486,7 @@ $$ LANGUAGE plpgsql`,
   // 6.7 批量任务（管理员重测 / 用户升级共用）
   `CREATE TABLE IF NOT EXISTS submission_jobs (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
     kind TEXT NOT NULL CHECK (kind IN ('rejudge', 'upgrade')),
     actor_id TEXT NOT NULL REFERENCES users(id),
     idempotency_key TEXT NOT NULL,
@@ -490,7 +496,7 @@ $$ LANGUAGE plpgsql`,
       CHECK (status IN ('queued', 'running', 'completed', 'completed_with_errors')),
     created_at TEXT NOT NULL,
     finished_at TEXT,
-    UNIQUE (actor_id, kind, idempotency_key)
+    CONSTRAINT submission_jobs_actor_kind_key_unique UNIQUE (actor_id, kind, idempotency_key)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_submission_jobs_status_created
     ON submission_jobs (status, created_at)`,
@@ -498,6 +504,8 @@ $$ LANGUAGE plpgsql`,
     ON submission_jobs (actor_id, created_at)`,
   `CREATE TABLE IF NOT EXISTS submission_job_items (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
+    domain_problem_binding_id TEXT,
     job_id TEXT NOT NULL REFERENCES submission_jobs(id) ON DELETE CASCADE,
     ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
     source_kind TEXT NOT NULL CHECK (source_kind IN ('submission', 'objective')),
@@ -527,6 +535,8 @@ $$ LANGUAGE plpgsql`,
   // 7.1 self_tests（issue #221）
   `CREATE TABLE IF NOT EXISTS self_tests (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
+    domain_problem_binding_id TEXT,
     user_id TEXT NOT NULL REFERENCES users(id),
     problem_id TEXT NOT NULL REFERENCES problems(id),
     problem_version_id TEXT,
@@ -1078,6 +1088,7 @@ $$ LANGUAGE plpgsql`,
   `CREATE INDEX IF NOT EXISTS idx_carousel_slides_enabled_sort ON carousel_slides (is_enabled, sort_order)`,
   ...WORKSPACE_DDL,
   ...CATALOG_WORKSPACE_DDL,
+  ...EXECUTION_WORKSPACE_DDL,
 ];
 
 // 索引与可选扩展索引拆到独立模块（单文件规模棘轮，见 scripts/check-file-size.ts）：

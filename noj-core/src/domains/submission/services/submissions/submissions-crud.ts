@@ -56,7 +56,11 @@ import {
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import { checkPermission } from "./../../../identity/index.ts";
-import { evaluateProblemAccess } from "../../../catalog/index.ts";
+import {
+  assertDefaultProblemSource,
+  evaluateProblemAccess,
+  resolveDefaultExecutionContext,
+} from "../../../catalog/index.ts";
 import { verifyContestAccess } from "../../../contest/index.ts";
 import {
   generatePublicId,
@@ -445,6 +449,7 @@ export async function createSubmission(
     throw new NotFoundError("题目不存在");
   }
   const problem = lockedRows[0];
+  assertDefaultProblemSource(problem);
 
   // 统一访问解析：普通入口 private 题非 owner/admin 拒绝（被公开赛保密的题目同此
   // 口径，无法从独立路径提交）；竞赛入口先经 verifyContestAccess 校验成员+窗口。
@@ -591,6 +596,11 @@ export async function createSubmission(
 
   try {
     await db.transaction(async (tx) => {
+      const workspace = await resolveDefaultExecutionContext(
+        input.problem_id,
+        userId,
+        tx,
+      );
       await lockProjectionHosts(tx, {
         kind: "submission",
         id,
@@ -603,6 +613,7 @@ export async function createSubmission(
         requestedVersionId: input.version_id,
       }, tx);
       await tx.insert(submissions).values({
+        ...workspace,
         id,
         public_id: publicId,
         user_id: userId,

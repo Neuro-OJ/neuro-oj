@@ -21,11 +21,14 @@ import { getInstanceAccessPolicy } from "./instance.ts";
 export async function loadWorkspace(
   slug: string,
   actorId: string | null,
-  options: { write?: boolean; lock?: boolean; executor?: Executor } = {},
+  options: { write?: boolean; lock?: boolean | "share"; executor?: Executor } =
+    {},
 ) {
   const db = options.executor ?? getDb();
   const query = db.select().from(domains).where(eq(domains.slug, slug));
-  const [domain] = options.lock ? await query.for("update") : await query;
+  const [domain] = options.lock
+    ? await query.for(options.lock === "share" ? "share" : "update")
+    : await query;
   if (!domain) throw new NotFoundError("工作空间不存在");
   const platformPermissions = actorId
     ? await getUserPermissions(actorId, db)

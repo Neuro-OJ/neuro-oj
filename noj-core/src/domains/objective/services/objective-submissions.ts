@@ -24,7 +24,11 @@ import {
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { checkPermission } from "./../../identity/index.ts";
-import { evaluateProblemAccess } from "./../../catalog/index.ts";
+import {
+  assertDefaultProblemSource,
+  evaluateProblemAccess,
+  resolveDefaultExecutionContext,
+} from "./../../catalog/index.ts";
 import { judgePaper } from "./objective-judge.ts";
 import {
   applyAttemptResult,
@@ -214,6 +218,7 @@ export async function submitObjectivePaper(
 ): Promise<SubmitObjectiveResponse> {
   const db = getDb();
   const paper = await getPaperOrThrow(paperId);
+  assertDefaultProblemSource(paper);
   assertObjectivePaper(paper);
   const paperUuid = paper.id;
 
@@ -320,7 +325,12 @@ export async function submitObjectivePaper(
 
   try {
     await db.transaction(async (tx) => {
-      await tx.insert(objectiveSubmissions).values(row);
+      const workspace = await resolveDefaultExecutionContext(
+        paperUuid,
+        userId,
+        tx,
+      );
+      await tx.insert(objectiveSubmissions).values({ ...row, ...workspace });
       const attempt = await createAttempt({
         source,
         problemVersionId: submittedVersionId,

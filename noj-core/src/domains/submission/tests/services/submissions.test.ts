@@ -1237,8 +1237,7 @@ Deno.test({
         await db.delete(submissions).where(eq(submissions.id, subId));
         await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
         await db.delete(problems).where(eq(problems.id, localProblemId));
-        await db.delete(users).where(eq(users.id, adminId));
-        await db.delete(users).where(eq(users.id, localUserId));
+        // 域成员与负责人历史由测试事务回滚，账号不再物理删除。
       }
     } finally {
       await fakeRedis.stop();
@@ -1364,8 +1363,7 @@ Deno.test({
       // 受理会写 submissions.rejudge 审计（admin_id 外键），先清审计再删用户
       await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
       await db.delete(problems).where(eq(problems.id, localProblemId));
-      await db.delete(users).where(eq(users.id, adminId));
-      await db.delete(users).where(eq(users.id, localUserId));
+      // 域成员与负责人历史由测试事务回滚。
     } finally {
       if (oldP === undefined) Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
       else Deno.env.set("NOJ_LLM_DEFAULT_PROVIDER_ID", oldP);
@@ -1513,8 +1511,7 @@ Deno.test({
         }
         await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
         await db.delete(problems).where(eq(problems.id, localProblemId));
-        await db.delete(users).where(eq(users.id, adminId));
-        await db.delete(users).where(eq(users.id, localUserId));
+        // 域成员与负责人历史由测试事务回滚。
       }
     } finally {
       await fakeRedis.stop();

@@ -232,6 +232,16 @@ const dbCmd = new Command()
     await ensureRbacSeeds();
     await ensureDefaultWorkspace();
     console.log(JSON.stringify(await backfillDefaultCatalog()));
+  })
+  .command(
+    "execution-backfill",
+    "历史执行记录的使用域和绑定回填（先完成题库回填）",
+  )
+  .action(async () => {
+    const { backfillExecutionWorkspaces } = await import(
+      "../src/domains/submission/index.ts"
+    );
+    console.log(JSON.stringify(await backfillExecutionWorkspaces()));
   });
 
 const initCmd = new Command()

@@ -11,7 +11,8 @@
  *
  * 权限：套卷遵循 U 型规则（owner/admin 可管理小题）。
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import type { Context } from "hono";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { problems, problemVersions } from "./../../../shared/db/schema.ts";
@@ -72,7 +73,13 @@ export async function resolvePaperId(
   const db = getDb();
   if (isUuid(paperId) || /^\d+$/.test(paperId)) {
     const rows = await db.select().from(problems).where(
-      eq(problems.id, paperId),
+      and(
+        eq(problems.id, paperId),
+        or(
+          isNull(problems.domain_id),
+          eq(problems.domain_id, DEFAULT_DOMAIN_ID),
+        ),
+      ),
     ).limit(1);
     return rows[0] ?? null;
   }
@@ -80,7 +87,10 @@ export async function resolvePaperId(
   if (!match) return null;
   const [, type, number] = match;
   const rows = await db.select().from(problems).where(
-    eq(problems.number, Number(number)),
+    and(
+      eq(problems.number, Number(number)),
+      or(isNull(problems.domain_id), eq(problems.domain_id, DEFAULT_DOMAIN_ID)),
+    ),
   );
   return rows.find((row) => row.type === type) ?? null;
 }

@@ -40,7 +40,8 @@
  * （并发用例必须各自持有真实事务），夹具按固定 ID 自愈清理。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { inArray, like } from "drizzle-orm";
+import { inArray, like, sql } from "drizzle-orm";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import {
@@ -426,6 +427,16 @@ async function cleanupFixedIds(): Promise<void> {
       ...ALL_PROBLEMS.map((problemId) => `problem:${problemId}`),
       ...ALL_CONTESTS.map((contestId) => `contest:${contestId}`),
     ]),
+  );
+  // 本文件使用真实独立事务；只清理自己的默认域成员夹具并校准容量计数。
+  await db.execute(
+    sql`DELETE FROM domain_member_roles WHERE membership_id IN (SELECT id FROM domain_memberships WHERE user_id = ${ACTOR})`,
+  );
+  await db.execute(
+    sql`DELETE FROM domain_memberships WHERE user_id = ${ACTOR}`,
+  );
+  await db.execute(
+    sql`UPDATE domain_resource_counters counter SET used = (SELECT count(*) FROM domain_memberships membership WHERE membership.domain_id = counter.domain_id AND membership.status = 'active') WHERE counter.domain_id = ${DEFAULT_DOMAIN_ID} AND counter.resource = 'members'`,
   );
   await db.delete(users).where(inArray(users.id, [ACTOR]));
 }

@@ -14,6 +14,8 @@ import { sql } from "drizzle-orm";
 import { users } from "./identity.ts";
 import { problems, problemVersions } from "./catalog.ts";
 import { contests } from "./contest.ts";
+import { domains } from "./workspace.ts";
+import { domainProblemBindings } from "./catalog-workspace.ts";
 import type { SubmissionVersionOrigin } from "../../versioning/types.ts";
 
 /**
@@ -25,6 +27,8 @@ export const objectiveSubmissions = pgTable(
   "objective_submissions",
   {
     id: text("id").primaryKey(),
+    domain_id: text("domain_id").references(() => domains.id),
+    domain_problem_binding_id: text("domain_problem_binding_id"),
     /** 所属套卷 ID（problems.id，is_objective=true） */
     paper_id: text("paper_id")
       .notNull()
@@ -140,5 +144,23 @@ export const objectiveSubmissions = pgTable(
       columns: [table.paper_id, table.submitted_version_id],
       foreignColumns: [problemVersions.problem_id, problemVersions.id],
     }),
+    workspaceBindingFk: foreignKey({
+      name: "objective_submissions_workspace_binding_fk",
+      columns: [table.domain_id, table.domain_problem_binding_id],
+      foreignColumns: [
+        domainProblemBindings.domain_id,
+        domainProblemBindings.id,
+      ],
+    }),
+    bindingProblemFk: foreignKey({
+      name: "objective_submissions_binding_problem_fk",
+      columns: [table.domain_problem_binding_id, table.paper_id],
+      foreignColumns: [
+        domainProblemBindings.id,
+        domainProblemBindings.problem_id,
+      ],
+    }),
+    workspaceUserPaperIdx: index("idx_objective_submissions_domain_user_paper")
+      .on(table.domain_id, table.user_id, table.paper_id, table.created_at),
   }),
 );
