@@ -16,7 +16,7 @@ import { sql } from "drizzle-orm";
 import { users } from "./identity.ts";
 import { domains } from "./workspace.ts";
 import { classroomMemberships, classrooms } from "./education.ts";
-import { problems, problemVersions } from "./catalog.ts";
+import { problems, problemVersions, trainings } from "./catalog.ts";
 import {
   domainProblemBindings,
   problemBindingHistory,
@@ -42,6 +42,11 @@ export const assignments = pgTable("assignments", {
   include_previous_submissions: boolean("include_previous_submissions")
     .notNull().default(false),
   target_student_ids: jsonb("target_student_ids").$type<string[]>(),
+  source_training_id: text("source_training_id").references(() => trainings.id),
+  source_training_rule: jsonb("source_training_rule").$type<{
+    requirement: "accepted" | "min_score";
+    minimum_score: number | null;
+  }>(),
   source_assignment_id: text("source_assignment_id").references(
     (): AnyPgColumn => assignments.id,
   ),

@@ -398,6 +398,7 @@ export const trainings = pgTable(
     description: text("description").notNull().default(""),
     visibility: text("visibility").notNull().default("private"),
     is_pinned: boolean("is_pinned").notNull().default(false),
+    revision: integer("revision").notNull().default(0),
     created_by: text("created_by").notNull().references(() => users.id, {
       onDelete: "cascade",
     }),

@@ -66,11 +66,21 @@ export async function copyAssignment(
             include_previous_submissions: input.include_previous_submissions ??
               false,
             target_student_ids: input.target_student_ids ?? null,
-            items: items.map((item) => ({
-              binding_id: item.binding_id,
-              requirement: item.requirement,
-              minimum_score: item.minimum_score,
-            })),
+            ...(access.assignment.source_training_id &&
+                !access.assignment.published_at
+              ? {
+                training: {
+                  id: access.assignment.source_training_id,
+                  ...access.assignment.source_training_rule!,
+                },
+              }
+              : {
+                items: items.map((item) => ({
+                  binding_id: item.binding_id,
+                  requirement: item.requirement,
+                  minimum_score: item.minimum_score,
+                })),
+              }),
           },
           id,
         );

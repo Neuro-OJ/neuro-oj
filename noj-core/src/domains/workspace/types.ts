@@ -43,6 +43,8 @@ const EDITOR = [
   "problem:write_own",
   "problem:publish",
   "training:create",
+  "training:import",
+  "problem:import",
   "training:write_own",
   "contest:create",
   "contest:manage_own",
@@ -80,6 +82,8 @@ export function domainPermissions(
     }
     if (role === "educator" || role === "admin" || role === "owner") {
       permissions.add("classroom:create");
+      permissions.add("training:import");
+      permissions.add("problem:import");
     }
     if (role === "moderator") permissions.add("community:moderate");
     if (role === "admin" || role === "owner") {

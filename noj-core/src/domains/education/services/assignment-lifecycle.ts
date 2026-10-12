@@ -22,6 +22,8 @@ import {
   assignmentStudents,
 } from "./assignments.ts";
 import { educationOperation } from "./operations.ts";
+import { lockTrainingExpansion } from "../../catalog/index.ts";
+import { expandAssignmentTraining } from "./assignment-training.ts";
 
 /** 发布一次性校验所有题目、版本、授权与名单，任意失败都回滚整个发布。 */
 export async function publishAssignment(
@@ -32,6 +34,17 @@ export async function publishAssignment(
   idempotencyKey: string,
 ) {
   return await getDb().transaction(async (tx) => {
+    const initial = await loadAssignment(slug, id, actorId, { executor: tx });
+    if (
+      initial.assignment.source_training_id && !initial.assignment.published_at
+    ) {
+      await lockTrainingExpansion(
+        tx,
+        slug,
+        initial.assignment.source_training_id,
+        actorId,
+      );
+    }
     const access = await loadAssignment(slug, id, actorId, {
       executor: tx,
       write: true,
@@ -60,6 +73,7 @@ export async function publishAssignment(
         ) {
           throw new BadRequestError("发布时间必须早于截止时间");
         }
+        await expandAssignmentTraining(tx, slug, actorId, assignment);
         const items = await tx.select().from(assignmentItems).where(
           eq(assignmentItems.assignment_id, id),
         ).orderBy(assignmentItems.sort_order);

@@ -73,12 +73,13 @@ export async function importDomainProblem(
   slug: string,
   sourceReference: string,
   actorId: string,
+  executor?: Executor,
 ) {
   const parsed = parseDomainProblemReference(sourceReference);
   if (!parsed.sourceSlug || parsed.sourceSlug === slug) {
     throw new BadRequestError("引用题必须使用其他域的来源题号");
   }
-  return await getDb().transaction(async (tx) => {
+  const importProblem = async (tx: Executor) => {
     // 多域写入按稳定 ID 加锁，避免两个域互相引用时形成相反锁顺序。
     await loadWorkspace(slug, actorId, { executor: tx, write: true });
     await tx.select({ id: domains.id }).from(domains).where(
@@ -88,7 +89,9 @@ export async function importDomainProblem(
       executor: tx,
       write: true,
     });
-    assertWorkspacePermission(context, "problem:create");
+    if (!context.domainPermissions.has("problem:import")) {
+      assertWorkspacePermission(context, "problem:create");
+    }
     const [source] = await tx.select({ problem: problems, domain: domains })
       .from(problems).innerJoin(domains, eq(domains.id, problems.domain_id))
       .where(
@@ -206,7 +209,10 @@ export async function importDomainProblem(
         domain.id,
       ),
     };
-  });
+  };
+  return executor
+    ? await importProblem(executor)
+    : await getDb().transaction(importProblem);
 }
 
 /** 题库策略独立修改；不更新其他域绑定或改写旧版本和提交。 */

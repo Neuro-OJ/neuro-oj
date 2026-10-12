@@ -21,7 +21,10 @@ import {
   getInstanceResourcePolicy,
   workspaceAudit,
 } from "../../workspace/index.ts";
-import { resolveDomainProblem } from "../../catalog/index.ts";
+import {
+  readDomainTraining,
+  resolveDomainProblem,
+} from "../../catalog/index.ts";
 import {
   assertClassroomCapability,
   assertClassroomRevision,
@@ -36,7 +39,12 @@ export interface AssignmentDraftInput {
   deadline_at?: string | null;
   include_previous_submissions?: boolean;
   target_student_ids?: string[] | null;
-  items: Array<
+  training?: {
+    id: string;
+    requirement: "accepted" | "min_score";
+    minimum_score?: number | null;
+  };
+  items?: Array<
     {
       binding_id: string;
       requirement: "accepted" | "min_score";
@@ -73,7 +81,22 @@ function draftInput(input: AssignmentDraftInput) {
   ) {
     throw new BadRequestError("历史提交选项必须为布尔值");
   }
-  if (
+  if (input.training && input.items !== undefined) {
+    throw new BadRequestError("请选择手工题目或题单，不能同时指定");
+  }
+  if (input.training) {
+    const t = input.training;
+    if (
+      typeof t.id !== "string" || !t.id ||
+      !["accepted", "min_score"].includes(t.requirement) ||
+      t.requirement === "accepted" && t.minimum_score != null ||
+      t.requirement === "min_score" &&
+        (!Number.isSafeInteger(t.minimum_score) || t.minimum_score! < 0 ||
+          t.minimum_score! > 10000)
+    ) {
+      throw new BadRequestError("题单来源及达标要求格式错误");
+    }
+  } else if (
     !Array.isArray(input.items) || !input.items.length ||
     input.items.length > 200 ||
     input.items.some((i) =>
@@ -105,6 +128,13 @@ function draftInput(input: AssignmentDraftInput) {
     deadline_at: assignmentDate(input.deadline_at, "截止时间"),
     include_previous_submissions: input.include_previous_submissions ?? false,
     target_student_ids: target,
+    source_training_id: input.training?.id ?? null,
+    source_training_rule: input.training
+      ? {
+        requirement: input.training.requirement,
+        minimum_score: input.training.minimum_score ?? null,
+      }
+      : null,
   };
 }
 
@@ -174,7 +204,18 @@ async function replaceItems(
   input: AssignmentDraftInput,
 ) {
   const rows: Array<typeof assignmentItems.$inferInsert> = [];
-  for (const [sort_order, item] of input.items.entries()) {
+  if (input.training) {
+    const preview = await readDomainTraining(
+      slug,
+      input.training.id,
+      actorId,
+      executor,
+    );
+    if (!preview.items.length || preview.items.length > 200) {
+      throw new BadRequestError("作业题单需要 1–200 道题");
+    }
+  }
+  for (const [sort_order, item] of (input.items ?? []).entries()) {
     const resource = await assignmentProblem(
       executor,
       slug,
@@ -196,7 +237,7 @@ async function replaceItems(
   await executor.delete(assignmentItems).where(
     eq(assignmentItems.assignment_id, assignment.id),
   );
-  await executor.insert(assignmentItems).values(rows);
+  if (rows.length) await executor.insert(assignmentItems).values(rows);
 }
 
 /** 创建草稿允许修改题目和要求，发布前不向学生开放。 */

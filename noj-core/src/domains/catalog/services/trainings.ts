@@ -384,6 +384,7 @@ export async function updateTraining(
     }
   }
   const next = {
+    revision: sql`${trainings.revision} + 1`,
     ...(input.title !== undefined ? { title: input.title.trim() } : {}),
     ...(input.description !== undefined
       ? { description: input.description.trim() }
@@ -621,6 +622,8 @@ export async function addTrainingProblem(
   }
 
   const nextPosition = await db.transaction(async (tx) => {
+    await tx.update(trainings).set({ revision: sql`${trainings.revision} + 1` })
+      .where(eq(trainings.id, trainingId));
     let target = position;
     if (target === undefined) {
       const [maxRow] = await tx
@@ -715,6 +718,8 @@ export async function reorderTrainingProblems(
   }
 
   await db.transaction(async (tx) => {
+    await tx.update(trainings).set({ revision: sql`${trainings.revision} + 1` })
+      .where(eq(trainings.id, trainingId));
     await tx.delete(trainingProblems).where(
       eq(trainingProblems.training_id, trainingId),
     );
@@ -747,8 +752,12 @@ export async function removeTrainingProblem(
 ): Promise<void> {
   await assertWritable(trainingId, actorId, isAdmin);
   const db = getDb();
-  await db.delete(trainingProblems).where(and(
-    eq(trainingProblems.training_id, trainingId),
-    eq(trainingProblems.problem_id, problemId),
-  ));
+  await db.transaction(async (tx) => {
+    await tx.update(trainings).set({ revision: sql`${trainings.revision} + 1` })
+      .where(eq(trainings.id, trainingId));
+    await tx.delete(trainingProblems).where(and(
+      eq(trainingProblems.training_id, trainingId),
+      eq(trainingProblems.problem_id, problemId),
+    ));
+  });
 }

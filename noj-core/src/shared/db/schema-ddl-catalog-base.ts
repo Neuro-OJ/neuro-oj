@@ -55,6 +55,7 @@ export const CATALOG_TRAINING_BASE_DDL: string[] = [
     description TEXT NOT NULL DEFAULT '',
     visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'unlisted', 'public')),
     is_pinned BOOLEAN NOT NULL DEFAULT false,
+    revision INTEGER NOT NULL DEFAULT 0,
     created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
