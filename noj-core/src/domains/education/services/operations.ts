@@ -3,6 +3,18 @@ import type { Executor } from "../../../shared/db/executor.ts";
 import { educationOperations } from "../../../shared/db/schema.ts";
 import { BadRequestError, ConflictError } from "../../../shared/base/errors.ts";
 
+/** 请求及预览事实使用同一确定哈希，不保存 CSV 令牌或进程内导入状态。 */
+export async function educationRequestHash(input: unknown) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify(input)),
+  );
+  return Array.from(
+    new Uint8Array(digest),
+    (n) => n.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 /** 调用方先取得班级锁并重新验证授权，才允许读取幂等结果。 */
 export async function educationOperation<T extends Record<string, unknown>>(
   executor: Executor,
@@ -19,14 +31,7 @@ export async function educationOperation<T extends Record<string, unknown>>(
       "IDEMPOTENCY_KEY_REQUIRED",
     );
   }
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(JSON.stringify(input)),
-  );
-  const hash = Array.from(
-    new Uint8Array(digest),
-    (n) => n.toString(16).padStart(2, "0"),
-  ).join("");
+  const hash = await educationRequestHash(input);
   const [previous] = await executor.select().from(educationOperations).where(
     and(
       eq(educationOperations.domain_id, domainId),

@@ -3,6 +3,7 @@ import { assignmentRouter } from "./assignments.ts";
 import { studentSubmissionsRouter } from "./student-submissions.ts";
 import { interactionRouter } from "./interactions.ts";
 import { annotationRouter } from "./annotations.ts";
+import { classroomEnrollmentRouter } from "./enrollment.ts";
 import { type AuthEnv, authMiddleware } from "../../identity/index.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
@@ -215,4 +216,5 @@ router.route("/", assignmentRouter);
 router.route("/", studentSubmissionsRouter);
 router.route("/", interactionRouter);
 router.route("/", annotationRouter);
+router.route("/", classroomEnrollmentRouter);
 export const educationRouter = router;

@@ -4,6 +4,8 @@ export * from "./services/classrooms.ts";
 export * from "./services/members.ts";
 export * from "./services/account-lifecycle.ts";
 export * from "./services/invitations.ts";
+export * from "./services/join-requests.ts";
+export * from "./services/classroom-import.ts";
 export * from "./services/assignments.ts";
 export * from "./services/assignment-access.ts";
 export * from "./services/assignment-lifecycle.ts";
