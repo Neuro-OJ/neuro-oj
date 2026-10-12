@@ -41,6 +41,9 @@ async function fixture() {
     f.input,
   );
   await publishAssignment(f.school.slug, task.id, f.teacher, 0, "publish");
+  // 此组只验证互动新增通知；发布通知由独立生命周期用例覆盖。
+  await drain();
+  await f.db.delete(educationNotifications);
   return { ...f, task };
 }
 

@@ -12,7 +12,10 @@ import {
   assignments,
   domains,
 } from "../../../shared/db/schema.ts";
-import { recordEducationEvent } from "../../../shared/education-events.ts";
+import {
+  recordEducationEvent,
+  recordEducationNotice,
+} from "../../../shared/education-events.ts";
 import { workspaceAudit } from "../../workspace/index.ts";
 import { assertClassroomRevision } from "./access.ts";
 import { loadAssignment } from "./assignment-access.ts";
@@ -150,6 +153,11 @@ export async function publishAssignment(
           classroom_id: assignment.classroom_id,
           event_type: "assignment.published",
         });
+        await recordEducationNotice(tx, {
+          domain_id: assignment.domain_id,
+          assignment_id: id,
+          type: "assignment",
+        });
         await workspaceAudit(
           tx,
           actorId,
@@ -279,6 +287,13 @@ export async function changeAssignmentLifecycle(
       event_type: "recipient.changed",
       payload: { action: input.action },
     });
+    if (assignment.published_at) {
+      await recordEducationNotice(tx, {
+        domain_id: assignment.domain_id,
+        assignment_id: id,
+        type: "assignment_changed",
+      });
+    }
     return updated;
   });
 }

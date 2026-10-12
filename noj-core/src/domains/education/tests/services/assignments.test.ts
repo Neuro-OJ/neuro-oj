@@ -73,7 +73,7 @@ Deno.test("作业：发布固定条目与名单、原子保存版本依据和事
   assertEquals(item.published_version_id, f.versionId);
   assertEquals(item.answer_version_id, f.versionId);
   assertEquals((await f.db.select().from(assignmentItemHistory)).length, 1);
-  assertEquals((await f.db.select().from(educationOutbox)).length, 1);
+  assertEquals((await f.db.select().from(educationOutbox)).length, 2);
   const detail = await getAssignment(f.school.slug, draft.id, f.student);
   assertEquals("target_student_ids" in detail, false);
   await assertRejects(

@@ -1,4 +1,5 @@
 import { and, eq, isNotNull } from "drizzle-orm";
+import { recordEducationNotice } from "../../../shared/education-events.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
   assignmentRecipients,
@@ -44,6 +45,12 @@ export async function syncStudentAssignmentRecipients(
         task.target_student_ids !== null && !recipient ||
         recipient?.status === "active"
       ) continue;
+      await recordEducationNotice(executor, {
+        domain_id: domainId,
+        assignment_id: task.id,
+        type: "assignment",
+        user_id: userId,
+      });
       if (recipient) {
         await executor.update(assignmentRecipients).set({
           status: "active",

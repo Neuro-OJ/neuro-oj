@@ -121,10 +121,16 @@ Deno.test("教学事件：重复与乱序按最新事实覆盖，持久游标在
     f.input,
   );
   await publishAssignment(f.school.slug, task.id, f.teacher, 0, "publish");
-  const [event] = await claimEducationEvents();
+  const claimed = await claimEducationEvents();
+  const event = claimed.find((e) => e.event_type === "assignment.published")!;
+  for (const other of claimed.filter((e) => e.id !== event.id)) {
+    await processEducationEvent(other);
+  }
   assertEquals(await processEducationEvent(event), true);
   assertEquals((await f.db.select().from(assignmentProgress)).length, 2);
-  const [checkpoint] = await f.db.select().from(educationOutbox);
+  const [checkpoint] = await f.db.select().from(educationOutbox).where(
+    eq(educationOutbox.id, event.id),
+  );
   assertEquals(checkpoint.processed_at, null);
   assertEquals(checkpoint.lease_token, null);
   assertEquals(checkpoint.payload._education_cursor, {
@@ -132,7 +138,9 @@ Deno.test("教学事件：重复与乱序按最新事实覆盖，持久游标在
   });
   await processEducationBatch();
   assertEquals(
-    (await f.db.select().from(educationOutbox))[0].processed_at !== null,
+    (await f.db.select().from(educationOutbox).where(
+      eq(educationOutbox.id, event.id),
+    ))[0].processed_at !== null,
     true,
   );
   assertEquals((await claimEducationEvents()).length, 0);
@@ -152,7 +160,8 @@ Deno.test("教学事件：并发领取不重复，过期租约回收，旧租约
     claimEducationEvents(1),
     claimEducationEvents(1),
   ]);
-  assertEquals(groups[0].length + groups[1].length, 1);
+  assertEquals(groups[0].length + groups[1].length, 2);
+  assertEquals(new Set(groups.flat().map((e) => e.id)).size, 2);
   const old = groups.flat()[0];
   await f.db.update(educationOutbox).set({
     leased_until: "2020-01-01T00:00:00.000Z",

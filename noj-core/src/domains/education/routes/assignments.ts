@@ -6,6 +6,7 @@ import {
   type ProgressScope,
 } from "../services/progress-read.ts";
 import { exportAssignmentMatrixCsv } from "../services/matrix-csv.ts";
+import { getAssignmentHistory } from "../services/history-read.ts";
 import {
   type AssignmentCopyInput,
   copyAssignment,
@@ -169,6 +170,17 @@ router.get("/domains/:slug/assignments/:id/matrix", async (c) => {
       c.req.param("id"),
       c.var.userId,
       { ...matrixOptions(c), page },
+    ),
+  });
+});
+router.get("/domains/:slug/assignments/:id/history", async (c) => {
+  const { page } = parsePagination(c, { defaultPerPage: 50, maxPerPage: 50 });
+  return c.json({
+    data: await getAssignmentHistory(
+      c.req.param("slug"),
+      c.req.param("id"),
+      c.var.userId,
+      page,
     ),
   });
 });

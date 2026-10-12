@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import type { Executor } from "../../../shared/db/executor.ts";
 import { assignmentItemHistory } from "../../../shared/db/schema.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
+import { recordEducationNotice } from "../../../shared/education-events.ts";
 
 interface BindingChange {
   item_id: string;
@@ -32,20 +33,29 @@ export async function appendAssignmentBindingHistory(
     ORDER BY i.id, h.revision LIMIT 500`) as never,
   );
   if (rows.length) {
-    await executor.insert(assignmentItemHistory).values(rows.map((h) => ({
-      id: crypto.randomUUID(),
-      item_id: h.item_id,
-      domain_id: h.domain_id,
-      problem_id: h.problem_id,
-      binding_history_id: h.binding_history_id,
-      answer_version_id: h.answer_version_id,
-      policy_mode: h.effective_version_mode,
-      required_version_id: h.required_version_id,
-      policy_revision: h.revision,
-      actor_id: h.actor_id,
-      reason: h.reason,
-      created_at: h.created_at,
-    }))).onConflictDoNothing();
+    const inserted = await executor.insert(assignmentItemHistory).values(
+      rows.map((h) => ({
+        id: crypto.randomUUID(),
+        item_id: h.item_id,
+        domain_id: h.domain_id,
+        problem_id: h.problem_id,
+        binding_history_id: h.binding_history_id,
+        answer_version_id: h.answer_version_id,
+        policy_mode: h.effective_version_mode,
+        required_version_id: h.required_version_id,
+        policy_revision: h.revision,
+        actor_id: h.actor_id,
+        reason: h.reason,
+        created_at: h.created_at,
+      })),
+    ).onConflictDoNothing().returning({ id: assignmentItemHistory.id });
+    if (inserted.length) {
+      await recordEducationNotice(executor, {
+        domain_id: rows[0].domain_id,
+        assignment_id: assignmentId,
+        type: "assignment_changed",
+      });
+    }
   }
   return { changes: rows, has_more: rows.length === 500 };
 }

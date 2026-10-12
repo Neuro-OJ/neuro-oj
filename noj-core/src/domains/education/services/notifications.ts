@@ -95,7 +95,23 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
     if (!resource) throw new Error("教学通知任务定位无效");
     const after = current.payload._notice_after as string | undefined;
     const staff = (type === "help" || type === "help_reply") && !event.user_id;
-    const audience = staff
+    const lifecycle =
+      ["assignment", "assignment_changed", "resource_unavailable"].includes(
+        type,
+      ) && !event.user_id;
+    const audience = lifecycle
+      ? tx.execute(sql`SELECT user_id FROM (
+        SELECT r.user_id FROM assignment_recipients r WHERE r.assignment_id = ${event
+        .assignment_id!}
+        UNION
+        SELECT cm.user_id FROM classroom_memberships cm WHERE cm.classroom_id = ${resource.assignment.classroom_id}
+          AND cm.status = 'active' AND (cm.role = 'coach' OR (cm.role = 'assistant' AND EXISTS
+            (SELECT 1 FROM classroom_assistant_grants g WHERE g.membership_id = cm.id
+              AND g.capability IN ('progress:read', 'assignments:manage'))))
+      ) audience ${
+        after ? sql`WHERE user_id > ${after}` : sql``
+      } ORDER BY user_id LIMIT 50`)
+      : staff
       ? tx.select({ user_id: classroomMemberships.user_id }).from(
         classroomMemberships,
       ).where(and(
@@ -114,7 +130,10 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
           : undefined,
         after ? gt(assignmentRecipients.user_id, after) : undefined,
       )).orderBy(assignmentRecipients.user_id).limit(50);
-    const targets = await audience;
+    const raw = await audience;
+    const targets = lifecycle
+      ? unwrapRows<{ user_id: string }>(raw as never)
+      : raw as { user_id: string }[];
     for (const { user_id } of targets) {
       if (
         !(await canReceive(

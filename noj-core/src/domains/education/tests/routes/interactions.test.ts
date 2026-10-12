@@ -82,7 +82,7 @@ Deno.test("教学互动 API：反馈、求助、通知认证及跨域错误，�
   const notices = await jsonRequest(app, notifications, { token: student });
   assertEquals(notices.status, 200);
   const listing = (await notices.json()).data;
-  assertEquals(listing.total, 2);
+  assertEquals(listing.total, 3);
   assertEquals(
     (await jsonRequest(app, `${notifications}/${listing.data[0].id}/read`, {
       token: student,

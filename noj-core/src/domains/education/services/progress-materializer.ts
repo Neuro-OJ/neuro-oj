@@ -15,6 +15,7 @@ import {
 } from "./progress-selection.ts";
 import { loadEducationCellRevisions } from "./progress-revisions.ts";
 import { appendAssignmentBindingHistory } from "./assignment-history.ts";
+import { recordEducationNotice } from "../../../shared/education-events.ts";
 
 /** 一次重算一页学生，按最新正式判定覆盖，不累加事件中的分数。 */
 export async function recomputeAssignmentProgress(
@@ -86,6 +87,20 @@ export async function recomputeAssignmentProgress(
             h.item_id === item.id && h.revision === resource.revision &&
             h.answer_version_id === resource.answer_version_id
           );
+        if (item.resource_available && !available) {
+          await recordEducationNotice(tx, {
+            domain_id: assignment.domain_id,
+            assignment_id: assignmentId,
+            type: "resource_unavailable",
+          });
+        }
+        if (available && !recorded) {
+          await recordEducationNotice(tx, {
+            domain_id: assignment.domain_id,
+            assignment_id: assignmentId,
+            type: "assignment_changed",
+          });
+        }
         if (!recorded) {
           await tx.insert(assignmentItemHistory).values({
             id: crypto.randomUUID(),
