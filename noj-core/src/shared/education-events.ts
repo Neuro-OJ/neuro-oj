@@ -1,6 +1,7 @@
 import type { Executor } from "./db/executor.ts";
 import { educationOutbox, queryProjectionRevisions } from "./db/schema.ts";
 import { sql } from "drizzle-orm";
+import type { EducationNoticeType } from "./education-types.ts";
 
 /** 生产者只登记事实定位，消费者从数据库读取最新结果，不信任事件里的成绩。 */
 export interface EducationEvent {
@@ -11,6 +12,7 @@ export interface EducationEvent {
     | "recipient.changed"
     | "assignment.published"
     | "assignment.refresh"
+    | "notification"
     | "module.changed";
   user_id?: string;
   problem_id?: string;
@@ -63,6 +65,34 @@ export async function invalidateEducationEvent(
   }).onConflictDoUpdate({
     target: queryProjectionRevisions.scope_key,
     set: { data_revision: clock.revision },
+  });
+}
+
+/** 互动事实和通知事件同事务落库；通知不使成绩投影失效。 */
+export async function recordEducationNotice(executor: Executor, notice: {
+  domain_id: string;
+  assignment_id: string;
+  type: EducationNoticeType;
+  user_id?: string;
+  feedback_id?: string;
+  help_id?: string;
+  reply_id?: string;
+}) {
+  const now = new Date().toISOString();
+  await executor.insert(educationOutbox).values({
+    id: crypto.randomUUID(),
+    domain_id: notice.domain_id,
+    assignment_id: notice.assignment_id,
+    user_id: notice.user_id,
+    event_type: "notification",
+    created_at: now,
+    available_at: now,
+    payload: {
+      notice_type: notice.type,
+      feedback_id: notice.feedback_id ?? null,
+      help_id: notice.help_id ?? null,
+      reply_id: notice.reply_id ?? null,
+    },
   });
 }
 

@@ -215,6 +215,11 @@ export const assignmentRecipients = pgTable("assignment_recipients", {
     t.assignment_id,
     t.user_id,
   ),
+  targetUnique: unique("assignment_recipients_target_unique").on(
+    t.domain_id,
+    t.assignment_id,
+    t.user_id,
+  ),
   assignmentFk: foreignKey({
     name: "assignment_recipients_assignment_class_fk",
     columns: [t.domain_id, t.assignment_id, t.classroom_id],

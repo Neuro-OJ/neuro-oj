@@ -22,6 +22,15 @@ export const ASSIGNMENT_PROGRESS_STATES = [
   "achieved",
   "unavailable",
 ] as const;
+/** 教学通知使用定位与类型，不保存私有正文摘要。 */
+export type EducationNoticeType =
+  | "assignment"
+  | "assignment_changed"
+  | "resource_unavailable"
+  | "feedback"
+  | "help"
+  | "help_reply";
+
 /** 持久进度状态与筛选契约统一。 */
 export type AssignmentProgressStatus =
   typeof ASSIGNMENT_PROGRESS_STATES[number];

@@ -17,6 +17,7 @@ import {
 } from "../../../shared/db/schema.ts";
 import { recomputeAssignmentProgress } from "./progress-materializer.ts";
 import { invalidateEducationEvent } from "../../../shared/education-events.ts";
+import { processEducationNotice } from "./notifications.ts";
 
 /** 租约标识只用于当前数据库领取，不代表用户权限。 */
 export type ClaimedEducationEvent = typeof educationOutbox.$inferSelect;
@@ -71,6 +72,9 @@ type EducationCursor = {
 
 /** 每次只处理一个任务的一页学生，持久游标让大量名单也可在重启后继续。 */
 export async function processEducationEvent(event: ClaimedEducationEvent) {
+  if (event.event_type === "notification") {
+    return await processEducationNotice(event);
+  }
   const db = getDb(),
     cursor = (event.payload._education_cursor ?? {}) as EducationCursor;
   const query = db.select().from(assignments).where(
