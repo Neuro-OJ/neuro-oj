@@ -390,3 +390,64 @@ Deno.test("llm route: 超大上游响应触发 upstream_response_too_large 返�
     restore();
   }
 });
+
+Deno.test("llm route: 模型别名转发前改写为真实模型名，审计记录真实名与别名", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db, usageInserts } = createFakeDb(provider);
+  let upstreamModel = "";
+  const restore = stubFetch((_url, init) => {
+    upstreamModel = JSON.parse(String(init?.body)).model;
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "ok" } }],
+          usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
+        }),
+        { status: 200 },
+      ),
+    );
+  });
+  try {
+    const app = createLlmRouter({
+      config: testConfig,
+      db,
+      redis: new FakeRedis(),
+      resolveDns: publicDns,
+    });
+    const token = await makeToken(testConfig, "fast", {
+      modelMap: { fast: "Qwen/Qwen3-8B" },
+    });
+    const res = await requestChat(app, token, {
+      model: "fast",
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 5,
+    });
+    assertEquals(res.status, 200);
+    assertEquals(upstreamModel, "Qwen/Qwen3-8B");
+    assertEquals(usageInserts.at(-1)?.model, "Qwen/Qwen3-8B");
+    const params = usageInserts.at(-1)?.request_params;
+    const parsed = typeof params === "string" ? JSON.parse(params) : params;
+    assertEquals((parsed as Record<string, unknown>).model_alias, "fast");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("llm route: model_map 缺少别名映射时拒绝（403）", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db } = createFakeDb(provider);
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis: new FakeRedis(),
+    resolveDns: publicDns,
+  });
+  const token = await makeToken(testConfig, "fast", {
+    modelMap: { other: "x" },
+  });
+  const res = await requestChat(app, token, {
+    model: "fast",
+    messages: [{ role: "user", content: "ping" }],
+  });
+  assertEquals(res.status, 403);
+});

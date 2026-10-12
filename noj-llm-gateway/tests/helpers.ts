@@ -151,7 +151,11 @@ export const testConfig: GatewayConfig = {
 export async function makeToken(
   config: GatewayConfig = testConfig,
   model = "deepseek-chat",
-  scope: { attemptId?: string; problemVersionId?: string } = {},
+  scope: {
+    attemptId?: string;
+    problemVersionId?: string;
+    modelMap?: Record<string, string>;
+  } = {},
 ): Promise<string> {
   const payload: EvalTokenPayload = {
     jti: crypto.randomUUID(),
@@ -160,6 +164,7 @@ export async function makeToken(
     user_id: "user-1",
     provider_id: "prov-1",
     allowed_models: [model],
+    ...(scope.modelMap ? { model_map: scope.modelMap } : {}),
     iat: Math.floor(Date.now() / 1000) - 10,
     exp: Math.floor(Date.now() / 1000) + 3600,
     max_calls: 10,
