@@ -13,12 +13,12 @@
  *   algorithm=算法标签（通过题目后可见，spoiler 门控见 problems-list.ts）
  * - 全部写操作写入审计（tags.create/update/delete/merge）
  */
-import { and, asc, count, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "catalog"]);
 import { getDb } from "./../../../shared/db/connection.ts";
-import { problemTags, tags } from "./../../../shared/db/schema.ts";
+import { problems, problemTags, tags } from "./../../../shared/db/schema.ts";
 import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";
 import {
   BadRequestError,
@@ -26,6 +26,7 @@ import {
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { logAudit } from "../../system/index.ts";
+import { unendedPublicContestForProblem } from "../../contest/index.ts";
 
 /** 标签 kind 枚举。 */
 export const TAG_KINDS = ["problem", "algorithm"] as const;
@@ -101,10 +102,18 @@ export async function listTags(): Promise<TagResponse[]> {
       kind: tags.kind,
       created_at: tags.created_at,
       updated_at: tags.updated_at,
-      problemCount: count(problemTags.tag_id),
+      problemCount: count(problems.id),
     })
     .from(tags)
     .leftJoin(problemTags, eq(problemTags.tag_id, tags.id))
+    .leftJoin(
+      problems,
+      and(
+        eq(problems.id, problemTags.problem_id),
+        eq(problems.visibility, "public"),
+        sql`NOT (${unendedPublicContestForProblem(problems.id)})`,
+      ),
+    )
     .groupBy(tags.id)
     .orderBy(asc(tags.name));
 
@@ -132,10 +141,18 @@ export async function getTag(id: string): Promise<TagResponse> {
       kind: tags.kind,
       created_at: tags.created_at,
       updated_at: tags.updated_at,
-      problemCount: count(problemTags.tag_id),
+      problemCount: count(problems.id),
     })
     .from(tags)
     .leftJoin(problemTags, eq(problemTags.tag_id, tags.id))
+    .leftJoin(
+      problems,
+      and(
+        eq(problems.id, problemTags.problem_id),
+        eq(problems.visibility, "public"),
+        sql`NOT (${unendedPublicContestForProblem(problems.id)})`,
+      ),
+    )
     .where(eq(tags.id, id))
     .groupBy(tags.id)
     .limit(1);

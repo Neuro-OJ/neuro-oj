@@ -3,6 +3,7 @@
  */
 import type { Db } from "./db.ts";
 import { decryptSecret, encryptSecret } from "./crypto.ts";
+import { assertResolvesPublic, type ResolveFn } from "./upstream-guard.ts";
 
 export interface ProviderInput {
   name: string;
@@ -119,14 +120,20 @@ export async function createProvider(
   input: ProviderInput,
   storeKey: string,
 ): Promise<ProviderView> {
+  const rawCost = input.cost_per_1k_tokens ?? 0;
+  const cost = Number(rawCost);
+  if (!Number.isFinite(cost) || cost < 0 || cost > MAX_COST_PER_1K_TOKENS) {
+    throw new Error("provider_invalid");
+  }
+
   const id = uuid();
   const createdAt = now();
   const encrypted = await encryptSecret(input.api_key, storeKey);
   await db`
     INSERT INTO llm_providers (id, name, base_url, cost_per_1k_tokens, encrypted_api_key, enabled, created_at, updated_at)
-    VALUES (${id}, ${input.name}, ${input.base_url}, ${
-    input.cost_per_1k_tokens ?? 0
-  }, ${encrypted}, ${input.enabled ?? true}, ${createdAt}, ${createdAt})
+    VALUES (${id}, ${input.name}, ${input.base_url}, ${cost}, ${encrypted}, ${
+    input.enabled ?? true
+  }, ${createdAt}, ${createdAt})
   `;
   const row = await getProviderById(db, id);
   if (!row) throw new Error("provider_not_found");
@@ -218,12 +225,19 @@ export async function deleteProvider(
   return true;
 }
 
-/** 使用固定的最小请求测试 Provider 连通性，不返回上游响应。 */
+/**
+ * 使用固定的最小请求测试 Provider 连通性，不返回上游响应。
+ *
+ * 访问上游前同样执行出站校验（G-03）：否则状态码差异（鉴权失败/限流/其他）
+ * 可被用作内网端口探测的预言机。
+ */
 export async function testProviderConnection(
   db: Db,
   id: string,
   storeKey: string,
   model: string,
+  allowedHosts: Set<string> = new Set(),
+  resolve?: ResolveFn,
 ): Promise<void> {
   if (!model.trim()) {
     throw new Error("model_required");
@@ -233,6 +247,7 @@ export async function testProviderConnection(
     throw new Error("provider_not_found");
   }
   const baseUrl = row.base_url;
+  await assertResolvesPublic(baseUrl, allowedHosts, resolve);
   const { apiKey } = await getProviderSecret(db, id, storeKey);
   let response: Response;
   try {

@@ -12,6 +12,23 @@
 import type { SendEmail, SendPasswordResetEmail } from "./types.ts";
 import { getSetting } from "../system-settings.ts";
 import { buildResetPasswordHtml, getSettingOrThrow } from "./common.ts";
+import { encodeBase64 } from "@std/encoding/base64";
+
+/**
+ * 把 HTML 正文编码为腾讯云 SES 要求的 base64。
+ *
+ * ⚠️ 不能用 `btoa(html)`：`btoa` 只接受 Latin-1 字符，而本站邮件模板正文含中文
+ * （`buildResetPasswordHtml` / `buildEmailVerificationHtml`），调用会抛
+ * `InvalidCharacterError: The string to be encoded contains characters outside of
+ * the Latin1 range`——邮件永远发不出去，且错误发生在本地编码阶段（2026-09-26 由
+ * aliyun 侧同类"从未被执行过"缺陷顺带发现；腾讯云通道当前无凭据，仅静态验证）。
+ *
+ * @param html - HTML 正文
+ * @returns UTF-8 字节的 base64 字符串
+ */
+export function encodeHtmlBase64(html: string): string {
+  return encodeBase64(new TextEncoder().encode(html));
+}
 
 /**
  * 发送密码重置邮件（腾讯云 SES）。
@@ -48,7 +65,7 @@ export const sendEmail: SendEmail = async (email, subject, html) => {
     Destination: [email],
     Subject: subject,
     Simple: {
-      Html: btoa(html),
+      Html: encodeHtmlBase64(html),
     },
   });
   return true;

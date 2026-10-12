@@ -319,6 +319,9 @@ def run_case(
         # 与 1001 样例题一致，两个字段都给。
         "visibility": "hidden" if hidden else "visible",
         "time_ms": elapsed_ms,
+        # 用例级 memory_kb 为可选，本骨架**不产出**：Evaluator 容器读不到 Solution
+        # 容器的内存峰值，提交级峰值由评测机回填（NOJ-162）。若你的评测方式能
+        # 自行测量，可加 "memory_kb": <KB> —— 该键在平台白名单内、会随用例落库。
     }
     if not hidden:
         actual_text = raw_output if isinstance(raw_output, str) else json.dumps(

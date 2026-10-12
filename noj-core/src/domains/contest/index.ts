@@ -20,10 +20,21 @@ export {
   isProblemInRunningContest,
 } from "./services/problem-exposure.ts";
 export {
+  filterUnendedContestIds,
+  hasUnendedPublicContest,
+  isProblemInUnendedPublicContest,
+  loadPublicContestSecrecy,
+  type PublicContestSecrecyRef,
+  unendedPublicContestForProblem,
+} from "./services/problem-secrecy.ts";
+export {
   CONTEST_TIME_ISO_REGEX_SQL,
+  endedWindowCondition,
   normalizeContestTime,
   normalizeOptionalContestTime,
   runningContestExistsForProblem,
+  // 审计规范名（别名）与历史名并存，同一实现
+  runningContestForProblem,
   runningContestProblemIds,
   runningWindowCondition,
 } from "./services/contest-window.ts";
@@ -38,6 +49,7 @@ export {
   getContestRankingView,
   getContestSettlementStatus,
   getLatestContestRankingSnapshot,
+  isContestFrozen,
   listContestRankingSnapshots,
   publishContestRankingSnapshot,
 } from "./services/contest-ranking.ts";

@@ -10,6 +10,8 @@ import {
   buildUserEntry,
 } from "../../services/index-writer.ts";
 
+import { publishAllProblemsForTest } from "../../../../../tests/helper.ts";
+
 try {
   await connectRedis();
 } catch (e) {
@@ -51,6 +53,7 @@ async function seed() {
     created_at: now,
     updated_at: now,
   });
+  await publishAllProblemsForTest();
   await upsertSearchEntry((await buildProblemEntry("p-search-route-1"))!);
   await upsertSearchEntry((await buildUserEntry("u-search-route-1"))!);
 }

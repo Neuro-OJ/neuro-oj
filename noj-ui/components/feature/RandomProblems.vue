@@ -1,5 +1,5 @@
 <template>
-    <div class="bg-white border border-border rounded-xl shadow-card animate-[fadeInUp_0.5s_ease_0.15s_both] h-full flex flex-col">
+    <div class="bg-white border border-border rounded-lg shadow-card animate-[fadeInUp_0.5s_ease_0.15s_both] h-full flex flex-col">
         <div class="flex items-center gap-2 px-5 py-3.5 border-b border-border">
             <UIcon name="i-lucide-code" class="text-primary shrink-0 size-4" />
             <h3 class="text-sm font-semibold text-text m-0 leading-none">随机题目</h3>
@@ -32,6 +32,7 @@
                     :title="p.title"
                     :difficulty="p.difficulty"
                     :is_objective="p.is_objective"
+                    :is_contest_hidden="p.is_contest_hidden"
                     :runtime_config="p.runtime_config"
                     :tags="p.tags"
                 />
@@ -57,6 +58,8 @@ interface ProblemItem {
     type: string
     difficulty: string
     is_objective: boolean
+    /** 是否被尚未结束的公开赛收编（VULN-07）：仅特权用户会收到该字段 */
+    is_contest_hidden?: boolean
     runtime_config: { evaluator: { time_limit_ms: number; memory_limit_mb: number } }
     tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
 }

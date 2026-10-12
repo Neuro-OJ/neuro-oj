@@ -1,0 +1,7 @@
+=== N-02 修复前 ===
+solution-gating(N-02): 赛前筹备期举报路径不得回显题解全文 ... FAILED (83ms)
+solution-gating(N-02): 赛前筹备期举报路径不得回显题解全文 => ./tests/preload.ts:79:10
+solution-gating(N-02): 赛前筹备期举报路径不得回显题解全文 => ./tests/preload.ts:79:10
+FAILED | 10 passed | 1 failed (1s)
+=== N-02 修复后 ===
+ok | 11 passed | 0 failed (1s)

@@ -1,8 +1,6 @@
 export {
   assertObjectivePaper,
   assertPaperManageable,
-  createQuestion,
-  deleteQuestion,
   getPaperOrThrow,
   isPaperOwnerOrAdmin,
   judgeOptions,
@@ -12,7 +10,6 @@ export {
   resolvePaperId,
   resolvePaperIdToUuid,
   serializeQuestion,
-  updateQuestion,
 } from "./services/objective-questions.ts";
 export {
   getObjectiveSubmission,
@@ -27,3 +24,6 @@ export {
   type QuestionToJudge,
 } from "./services/objective-judge.ts";
 export * from "./types/objective.ts";
+export * from "./services/versioning/objective-drafts.ts";
+export * from "./services/versioning/objective-regrade.ts";
+export * from "./services/versioning/objective-regrade-job.ts";

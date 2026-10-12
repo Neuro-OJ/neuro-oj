@@ -40,7 +40,6 @@ export function getCommunityConfig(): CommunityConfig {
     solutions_enabled: settingBoolean("community_solutions_enabled"),
     discussions_enabled: settingBoolean("community_discussions_enabled"),
     moments_enabled: settingBoolean("community_moments_enabled"),
-    activities_enabled: settingBoolean("community_activities_enabled"),
     comments_enabled: settingBoolean("community_comments_enabled"),
     reactions_enabled: settingBoolean("community_reactions_enabled"),
     bookmarks_enabled: settingBoolean("community_bookmarks_enabled"),

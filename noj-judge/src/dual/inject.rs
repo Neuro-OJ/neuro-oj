@@ -1,12 +1,10 @@
-//! 容器文件注入原语（双容器 / prediction 路径共用）。
+//! 大文件流式注入原语（prediction 路径使用）。
 //!
-//! 两种注入方式：
-//! - [`inject_file_to_container`] / [`inject_support_package_to_evaluator`]：内容已在
-//!   内存（zip 解压结果 / 用户代码），整块写 tar 到 `docker exec ... tar xf -`；
-//! - [`inject_file_stream_to_container`]：宿主文件可达多 GB，用有界 channel 背压，
-//!   边读边产出 tar 帧，**整文件绝不一次性读入内存**。
+//! 内存中的小文件（支持包条目 / 用户代码）走 `crate::sandbox::container` 的批量
+//! 注入；本模块的 [`inject_file_stream_to_container`] 面向可达多 GB 的宿主文件，
+//! 用有界 channel 背压边读边产出 tar 帧，**整文件绝不一次性读入内存**。
 //!
-//! 所有路径均经 [`sanitize_rel_path`] 校验，拒绝绝对路径与 `..`，防止 tar 条目
+//! 路径经 [`sanitize_rel_path`] 校验，拒绝绝对路径与 `..`，防止 tar 条目
 //! 逃出 `/workspace`。
 
 use std::path::Path;
@@ -14,9 +12,6 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use tokio::io::AsyncWriteExt;
-use tracing::info;
-
-use crate::sandbox::container::extract_zip_entries_from_file;
 
 /// 文件注入 exec 完成轮询次数与间隔（50 × 100ms = 5s 上限）。
 const INJECT_POLL_ATTEMPTS: u32 = 50;
@@ -179,105 +174,6 @@ pub(crate) async fn inject_file_stream_to_container(
         if let Some(code) = inspect.exit_code {
             if code != 0 {
                 anyhow::bail!("注入文件 {} 失败（exit_code={}）", rel, code);
-            }
-            return Ok(());
-        }
-        tokio::time::sleep(Duration::from_millis(INJECT_POLL_INTERVAL_MS)).await;
-    }
-    anyhow::bail!("注入文件超时")
-}
-
-/// 注入支持包（zip）到 Evaluator 容器的 /workspace 目录。
-///
-/// 先同步提取 zip 中所有文件到内存，再逐个异步注入到容器。
-pub(crate) async fn inject_support_package_to_evaluator(
-    docker: &bollard::Docker,
-    container_id: &str,
-    zip_path: &Path,
-) -> Result<()> {
-    // 直接以磁盘文件作为 zip 读取源，避免先把整个 zip 读进内存再 to_vec 拷贝。
-    // ZipFile 不是 Send，因此仍在 spawn_blocking 中做同步解压，但输入是文件流。
-    let entries = tokio::task::spawn_blocking({
-        let path = zip_path.to_path_buf();
-        move || extract_zip_entries_from_file(&path)
-    })
-    .await
-    .context("spawn_blocking 提取 zip 失败")??;
-
-    // 异步逐个注入到容器（目录条目由 tar 解压自动创建，无需注入）
-    for entry in &entries {
-        if entry.is_dir {
-            continue;
-        }
-        // 只传文件名（相对路径），因为 docker exec 的 tar 已 -C /workspace
-        inject_file_to_container(docker, container_id, &entry.file_name, &entry.data)
-            .await
-            .context(format!("注入支持包文件 {} 失败", entry.file_name))?;
-        info!("已注入支持包文件: {}", entry.file_name);
-    }
-
-    info!("支持包注入完成 (共 {} 个文件)", entries.len());
-    Ok(())
-}
-
-/// 使用 `tar | docker exec tar xf` 模式，注入文件到容器。
-pub(crate) async fn inject_file_to_container(
-    docker: &bollard::Docker,
-    container_id: &str,
-    file_name: &str,
-    content: &[u8],
-) -> Result<()> {
-    // **路径必须在打包进 tar 之前校验**（2026-09-22 评审）：tar 条目名会直接
-    // 落到容器内，本模块的文档承诺"所有路径均经 sanitize_rel_path 校验"，但此前
-    // 只有流式注入路径调用了它。调用链（zip 解压产物 / 用户代码文件名）虽然各自
-    // 也做过校验，但此处是 tar 条目的**唯一落点**，按纵深防御在此复验。
-    let rel = sanitize_rel_path(file_name)?;
-
-    // 构造 tar in-memory
-    let mut header = tar::Header::new_gnu();
-    header.set_size(content.len() as u64);
-    header.set_mode(0o644);
-    header.set_cksum();
-
-    let mut tar_buf: Vec<u8> = Vec::new();
-    {
-        let mut builder = tar::Builder::new(&mut tar_buf);
-        builder.append_data(&mut header, &rel, content)?;
-        builder.finish()?;
-    }
-
-    // docker exec tar xf - -C /workspace
-    let exec = docker
-        .create_exec(
-            container_id,
-            bollard::models::ExecConfig {
-                cmd: Some(vec![
-                    "sh".to_string(),
-                    "-c".to_string(),
-                    "tar xf - -C /workspace".to_string(),
-                ]),
-                attach_stdin: Some(true),
-                attach_stdout: Some(false),
-                attach_stderr: Some(false),
-                ..Default::default()
-            },
-        )
-        .await
-        .context("创建 inject exec 失败")?;
-
-    let started = docker.start_exec(&exec.id, None).await?;
-    if let bollard::exec::StartExecResults::Attached { mut input, .. } = started {
-        input.write_all(&tar_buf).await?;
-        input.shutdown().await?;
-    }
-
-    // 等 exec 完成（简化处理：用 inspect_exec 轮询直到退出）
-    // 轮询上限 50 次 × 100ms = 5s；退出码非 0 时视为注入失败。
-    for _ in 0..INJECT_POLL_ATTEMPTS {
-        let inspect = docker.inspect_exec(&exec.id).await?;
-        if let Some(code) = inspect.exit_code {
-            if code != 0 {
-                anyhow::bail!("注入文件 {} 失败（exit_code={}）", file_name, code);
             }
             return Ok(());
         }

@@ -84,7 +84,7 @@ export const PERMISSION_DEFS: Array<{
   {
     resource: "contest",
     action: "anti_cheat_read",
-    description: "查看竞赛风控关联线索（IP 与提交时间线）",
+    description: "查看竞赛风控线索（代码相似度）",
   },
   { resource: "contest", action: "participate", description: "参加竞赛" },
   // 社区内容与互动
@@ -138,6 +138,8 @@ export const PERMISSION_DEFS: Array<{
   { resource: "training", action: "pin", description: "置顶题单" },
   // 公告
   { resource: "announcement", action: "manage", description: "管理公告" },
+  // 法律与合规
+  { resource: "legal", action: "manage", description: "法律与合规管理" },
   // 系统
   { resource: "system", action: "settings", description: "系统设置" },
   { resource: "system", action: "judge_images", description: "管理评测镜像" },

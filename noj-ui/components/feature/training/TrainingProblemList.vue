@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TrainingProblem } from '~/composables/useTrainings'
+import { contestHiddenRowClass } from '~/utils/contestHidden'
 
 defineProps<{ problems: TrainingProblem[] }>()
 </script>
@@ -10,6 +11,7 @@ defineProps<{ problems: TrainingProblem[] }>()
       v-for="(problem, index) in problems"
       :key="problem.problem_id"
       class="flex items-center gap-4 px-5 py-3"
+      :class="contestHiddenRowClass(problem.is_contest_hidden)"
     >
       <span class="w-8 text-center text-sm text-text-secondary">{{ index + 1 }}</span>
       <span
@@ -24,6 +26,8 @@ defineProps<{ problems: TrainingProblem[] }>()
       >
         {{ problem.display_id }} · {{ problem.title }}
       </NuxtLink>
+      <!-- 公开赛收编标识（VULN-07）：字段只对特权用户下发，缺失时不渲染 -->
+      <ContestHiddenMark v-if="problem.is_contest_hidden" />
       <span class="text-xs text-text-secondary">{{ problem.difficulty }}</span>
     </li>
   </ol>

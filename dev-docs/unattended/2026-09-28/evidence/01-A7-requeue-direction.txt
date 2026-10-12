@@ -1,0 +1,18 @@
+=== NOJ-A7 重投方向回归：修复前 / 修复后 对照 ===
+
+被测：noj-judge/tests/requeue_redis.rs::requeued_task_goes_to_the_back_of_the_line
+命令：REDIS_URL=redis://127.0.0.1:6379/9 cargo test --test requeue_redis
+
+【修复前状态】REQUEUE_SCRIPT 用 RPUSH（与消费端 RPOPLPUSH 同端）
+test requeued_task_goes_to_the_back_of_the_line ... FAILED
+---- requeued_task_goes_to_the_back_of_the_line stdout ----
+thread 'requeued_task_goes_to_the_back_of_the_line' (590) panicked at tests/requeue_redis.rs:88:5:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+（断言 head == "old-1" 失败：重投的消息落在右端，会被立刻重新弹出）
+
+【修复后状态】REQUEUE_SCRIPT 改为 LPUSH（回到队头 = 最后才被服务）
+test requeued_task_goes_to_the_back_of_the_line ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+--- 附：user_claim 全量（含 NOJ-D2 新增用例）---
+test purge_instance_claims_removes_only_this_instances_claims ... ok
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s

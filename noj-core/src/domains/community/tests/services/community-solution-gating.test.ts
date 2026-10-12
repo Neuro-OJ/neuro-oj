@@ -6,6 +6,7 @@ import {
   communityBookmarks,
   communityComments,
   communityPostLikes,
+  communityPosts,
 } from "../../../../shared/db/schema.ts";
 import {
   countPostsByType,
@@ -20,6 +21,10 @@ import {
   togglePostLike,
 } from "../../index.ts";
 import { createContest } from "../../../contest/index.ts";
+import {
+  ForbiddenError,
+  NotFoundError,
+} from "../../../../shared/base/errors.ts";
 import { getUserProfileAggregate } from "../../../identity/index.ts";
 import {
   _resetSystemSettingsForTest,
@@ -29,6 +34,7 @@ import {
   leaveTestContext,
   updateSetting,
 } from "../../../system/index.ts";
+import { publishAllProblemsForTest } from "../../../../../tests/helper.ts";
 
 const ownerId = "gating-owner";
 const normalProblemId = "gating-normal-problem";
@@ -77,6 +83,8 @@ async function setup(): Promise<void> {
       updated_at: now,
     },
   ]);
+  // 竞赛只能固定已发布版本（Handbook §2.6）：夹具题目补迁移基线
+  await publishAllProblemsForTest();
   enterTestContext({ actorId: "0", actorIp: "127.0.0.1", actorRole: "admin" });
   try {
     await updateSetting("community_enabled", true, "0");
@@ -195,13 +203,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "solution-gating: 未开始（pending）竞赛不触发门控",
+  name:
+    "solution-gating: 赛前筹备期（pending）同样门控——赛前是最严重的泄密通道",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await setup();
     await seedSolution(contestProblemId, "竞赛题题解");
-    // 改为未开始
+    // 改为未开始（已挂题但尚未开赛）
     await getDb().update(contests)
       .set({
         start_time: new Date(Date.now() + 3_600_000).toISOString(),
@@ -209,11 +218,40 @@ Deno.test({
       })
       .where(eq(contests.id, contestId));
 
+    // 审计 VULN-02：保密窗口是「从公开赛收编该题起，直到 end_time」，
+    // 此前只查 running 使赛前筹备期完全放行——正是最需要保密的阶段。
     const list = await listPosts({
       type: "solution",
       problemId: contestProblemId,
     });
-    assertEquals(list.data.length, 1);
+    assertEquals(list.data.length, 0);
+    const counts = await countPostsByType();
+    assertEquals(counts.solution, 0);
+
+    // 赛前同样禁止发布题解（服务层写入门控）。
+    // 先关掉"需先通过题目"门槛，确保拦截原因确实是公开赛保密而非 AC 门槛
+    // （两道门都在 createPost 内，顺序上 AC 门槛在前）。
+    enterTestContext({
+      actorId: "0",
+      actorIp: "127.0.0.1",
+      actorRole: "admin",
+    });
+    try {
+      await updateSetting("community_solution_requires_accepted", false, "0");
+    } finally {
+      leaveTestContext();
+    }
+    await assertRejects(
+      () =>
+        createPost(ownerId, {
+          type: "solution",
+          title: "赛前抢发题解",
+          content: "不该被接受",
+          problem_id: contestProblemId,
+        }),
+      ForbiddenError,
+      "该题目当前归属于公开赛",
+    );
   },
 });
 
@@ -283,15 +321,10 @@ Deno.test({
       bookmarks.data.filter((row) => row.post.id === post.id).length,
       0,
     );
-    // 5. 动态流（solution_published 活动不出现）
+    // 5. 动态流不再携带任何自动事件（审计 VULN-08 已整体下线该功能），
+    //    因此不存在"某选手通过某题"的实时广播侧信道。
     const feed = await listFeed("latest", ownerId);
-    assertEquals(
-      feed.data.filter((item) =>
-        item.kind === "activity" &&
-        item.activity?.type === "solution_published"
-      ).length,
-      0,
-    );
+    assertEquals(feed.data.some((item) => item.kind !== "moment"), false);
 
     // 赛后全部恢复（含互动不再被拒）
     await getDb().update(contests)
@@ -460,5 +493,67 @@ Deno.test({
     const detail = await getReportDetail(report.id, ownerId, false);
     assertEquals(detail.report.content_snapshot, body);
     assertEquals(detail.comment?.content, body);
+  },
+});
+
+/**
+ * 面 1.5 审计 N-02 回归：举报路径的窗口口径必须是 **unended（含赛前筹备期 pending）**。
+ *
+ * 此前该服务的三处门控都用 `isProblemInRunningContest`（仅 `start ≤ now < end`），
+ * 而所有读路径已改用 `unended`。于是把竞赛改成 pending 后：
+ * `GET /community/posts/:id` 已 404，但 `POST /api/v1/community/reports` 仍**原样返回**
+ * 题解全文（`content_snapshot`）——同一份"未结束公开赛"事实的两套口径，而赛前筹备期
+ * 恰是最需要保密的阶段。
+ */
+Deno.test({
+  name: "solution-gating(N-02): 赛前筹备期举报路径不得回显题解全文",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const reporterId = "gating-reporter";
+    const now = new Date().toISOString();
+    await getDb().insert(users).values({
+      id: reporterId,
+      username: reporterId,
+      email: `${reporterId}@example.com`,
+      password_hash: "hash",
+      created_at: now,
+      updated_at: now,
+    });
+    const secret = "赛前筹备期不得经举报回显的题解正文";
+    const post = await seedSolution(contestProblemId, "赛前题解");
+    await getDb().update(communityPosts).set({ content: secret }).where(
+      eq(communityPosts.id, post.id),
+    );
+
+    // 把竞赛推到"尚未开始"（pending）：start 与 end 都在未来
+    await getDb().update(contests).set({
+      start_time: new Date(Date.now() + 3_600_000).toISOString(),
+      end_time: new Date(Date.now() + 7_200_000).toISOString(),
+    }).where(eq(contests.id, contestId));
+
+    // 非作者、非审核员举报 → 必须 404（不确认内容是否存在）
+    await assertRejects(
+      () =>
+        createReport(reporterId, {
+          post_id: post.id,
+          reason: "赛前举报",
+          category: "其他",
+        }),
+      NotFoundError,
+    );
+
+    // 对照：竞赛结束（end_time 已过）后同一举报可正常拿到完整正文
+    await getDb().update(contests).set({
+      start_time: new Date(Date.now() - 7_200_000).toISOString(),
+      end_time: new Date(Date.now() - 1_000).toISOString(),
+    }).where(eq(contests.id, contestId));
+    const afterEnd = await createReport(reporterId, {
+      post_id: post.id,
+      reason: "赛后举报",
+      category: "其他",
+    });
+    assertEquals(afterEnd.content_snapshot, secret);
   },
 });

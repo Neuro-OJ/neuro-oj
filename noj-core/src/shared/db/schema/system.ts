@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   check,
   index,
@@ -10,6 +11,7 @@ import {
 import { sql } from "drizzle-orm";
 import { publicIdColumn } from "./common.ts";
 import { users } from "./identity.ts";
+import type { StorageObjectState } from "../../versioning/types.ts";
 
 /**
  * 评测镜像白名单表。
@@ -107,6 +109,11 @@ export const announcements = pgTable(
     title: text("title").notNull(),
     /** Markdown 正文，1–50000 字符 */
     content: text("content").notNull(),
+    /**
+     * 横幅文字（导航栏下方可关闭横幅的内容）。
+     * 与 `content`（详情页正文）独立；为空则此公告不出横幅。
+     */
+    banner_text: text("banner_text"),
     /** 是否置顶（公开列表优先展示） */
     is_pinned: boolean("is_pinned").notNull().default(false),
     /** 是否发布中（false = 已下架，公开列表不可见） */
@@ -164,6 +171,10 @@ export const auditLogs = pgTable(
         'problems.runtime_config_changed',
         'problems.imported',
         'problems.review',
+        'problems.version_published',
+        'problems.effective_version_policy_changed',
+        'contest.problem_version_changed',
+        'contest.problem_effective_version_policy_changed',
         'trainings.update',
         'trainings.delete',
         'tags.create',
@@ -202,6 +213,10 @@ export const auditLogs = pgTable(
         'announcement.create',
         'announcement.update',
         'announcement.delete',
+        'carousel.create',
+        'carousel.update',
+        'carousel.delete',
+        'carousel.reorder',
         'review.queued',
         'review.rejected',
         'review.resolved',
@@ -219,7 +234,9 @@ export const auditLogs = pgTable(
         'email_delivery.clear_suppression',
         'llm_provider.create',
         'llm_provider.update',
-        'llm_quota.upsert'
+        'llm_quota.upsert',
+        'legal.publish_version',
+        'legal.data_request_update'
       )`,
     ),
     adminIdx: index("audit_logs_admin_id_idx").on(table.admin_id),
@@ -250,5 +267,69 @@ export const ipBans = pgTable(
   (table) => ({
     ipCidrIdx: index("idx_ip_bans_ip_or_cidr").on(table.ip_or_cidr),
     expiresIdx: index("idx_ip_bans_expires_at").on(table.expires_at),
+  }),
+);
+
+/**
+ * 存储对象登记表（Handbook §2.5）。
+ *
+ * 对象存储里的物理对象与业务引用之间的**唯一登记点**：删除必须锁定登记行、
+ * 检查全部引用，再进入 `deleting`；新引用不能绑定 `deleting/deleted` 对象。
+ * 上传补偿不得直接 `storage.delete()`——本地内容寻址会返回共享对象。
+ */
+/**
+ * 对象上传 reservation（2026-10-11 复审问题 1）。
+ *
+ * 物理上传发生在登记之前，删除守卫无法从 `storage_objects.state` 看出"有上传在途"，
+ * 于是"删除在途 + 并发重传同一内容"会得到 `state=ready` 但物理文件已被删除的对象。
+ *
+ * 契约：
+ * - 任何物理上传**之前**必须先在本表写入 reservation（与登记行锁同一事务）；
+ * - 删除守卫在持有登记行锁时检查未过期 reservation，存在则拒绝删除（可重试）；
+ * - 上传成功并完成引用绑定后删除 reservation（同一事务）。
+ */
+export const storageObjectReservations = pgTable(
+  "storage_object_reservations",
+  {
+    reservation_id: text("reservation_id").primaryKey(),
+    /** 目标对象 URL；可能早于 `storage_objects` 登记行存在，故不设外键。 */
+    storage_url: text("storage_url").notNull(),
+    reserved_at: text("reserved_at").notNull(),
+    /** 过期时间：crash 遗留的 reservation 不会永久阻塞删除。 */
+    expires_at: text("expires_at").notNull(),
+  },
+  (table) => ({
+    urlIdx: index("idx_storage_object_reservations_url").on(table.storage_url),
+    expiresIdx: index("idx_storage_object_reservations_expires").on(
+      table.expires_at,
+    ),
+  }),
+);
+
+export const storageObjects = pgTable(
+  "storage_objects",
+  {
+    /** `noj-storage://` 形式的稳定存储 URL，作为主键。 */
+    storage_url: text("storage_url").primaryKey(),
+    /** 内容哈希；存量登记允许为空，首次预检/使用时核实回填。 */
+    sha256: text("sha256"),
+    /** 字节数；存量登记允许为空。 */
+    byte_size: bigint("byte_size", { mode: "number" }),
+    /**
+     * 状态机：新对象登记为 `ready`；存量对象登记为 `unknown`（首次预检核实）；
+     * 删除流程依次经过 `deleting` → `deleted`。
+     */
+    state: text("state").$type<StorageObjectState>().notNull().default(
+      "unknown",
+    ),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    stateCheck: check(
+      "storage_objects_state_check",
+      sql`${table.state} IN ('unknown', 'ready', 'missing', 'deleting', 'deleted')`,
+    ),
+    stateIdx: index("idx_storage_objects_state").on(table.state),
+    sha256Idx: index("idx_storage_objects_sha256").on(table.sha256),
   }),
 );

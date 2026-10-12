@@ -1,0 +1,8 @@
+=== 修复后（生产路径=按值消费）===
+[NOJ-A1 峰值内存] 借用路径=60820125 字节，生产注入路径=30404441 字节，降幅=50.0%
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 189 filtered out; finished in 0.04s
+=== 修复前（生产路径=借用版，模拟未修复状态）===
+[NOJ-A1 峰值内存] 借用路径=60820125 字节，生产注入路径=60820125 字节，降幅=0.0%
+thread 'sandbox::container::tests::test_consuming_tar_path_halves_peak_memory' (301) panicked at src/sandbox/container.rs:1031:9:
+按值消费路径的峰值内存应至少低于借用路径 25%：旧=60820125 字节，新=60820125 字节
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 189 filtered out; finished in 0.04s

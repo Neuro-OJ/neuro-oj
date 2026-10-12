@@ -58,6 +58,7 @@ async fn evaluator_crash_no_result_returns_system_error() {
             &["python3".to_string()],
             300_000,
             60_000,
+            "noj-e2e-test",
         ),
     )
     .await
@@ -102,6 +103,7 @@ async fn evaluator_no_result_exit0_returns_system_error() {
             &["python3".to_string()],
             300_000,
             60_000,
+            "noj-e2e-test",
         ),
     )
     .await
@@ -157,6 +159,7 @@ async fn dual_container_failure_returns_err() {
         &["python3".to_string()],
         300_000,
         60_000,
+        "noj-e2e-test",
     )
     .await;
 
@@ -200,6 +203,7 @@ async fn support_package_missing_still_finished() {
             &["python3".to_string()],
             300_000,
             60_000,
+            "noj-e2e-test",
         ),
     )
     .await
@@ -261,6 +265,7 @@ async fn result_payload_survives_solution_eof() {
             &["python3".to_string()],
             300_000,
             60_000,
+            "noj-e2e-test",
         ),
     )
     .await
@@ -323,6 +328,7 @@ async fn evaluator_eof_without_result_fails_fast() {
             &["python3".to_string()],
             300_000,
             60_000,
+            "noj-e2e-test",
         ),
     )
     .await

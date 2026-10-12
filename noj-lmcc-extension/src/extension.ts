@@ -276,16 +276,38 @@ async function selectProblem(
   }
   if (!chosen) return undefined;
 
+  // 选定题目时固定作答版本：提交必须携带，服务端据此判断"在评测哪一版"
+  let versionId: string | null = null;
+  let version: number | null = null;
+  try {
+    const detail = await api.problem(chosen.id);
+    versionId = detail.version_id;
+    version = detail.version;
+  } catch (err) {
+    output.appendLine(
+      `[版本] 读取题目版本失败：${err instanceof Error ? err.message : err}`,
+    );
+  }
+  if (!versionId) {
+    vscode.window.showWarningMessage(
+      "该题目尚未发布任何版本，暂时无法提交（请联系管理员发布后重试）",
+    );
+    return undefined;
+  }
+
   const selected: SelectedProblem = {
     id: chosen.id,
     displayId: chosen.display_id,
     title: chosen.title,
+    versionId,
+    version,
   };
   await context.globalState.update(SELECTED_PROBLEM_KEY, selected);
   tree.markSelected(selected);
   updateStatusBar(context);
   vscode.window.setStatusBarMessage(
-    `当前题目：${selected.displayId} ${selected.title}`,
+    `当前题目：${selected.displayId} ${selected.title}` +
+      (selected.version ? `（V${selected.version}）` : ""),
     3000,
   );
   return selected;
@@ -336,6 +358,7 @@ async function submit(context: vscode.ExtensionContext): Promise<void> {
           selected!.id,
           code,
           path.basename(document.fileName),
+          selected!.versionId,
         );
         output.appendLine(`\n[提交] ${selected!.displayId} ${selected!.title}`);
         output.appendLine(`文件：${document.fileName}`);

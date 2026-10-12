@@ -2,9 +2,17 @@
 import BanBanner from "~/components/BanBanner.vue"
 import BreadcrumbNav from "~/components/layout/BreadcrumbNav.vue"
 import SearchPalette from "~/components/feature/search/SearchPalette.vue";
+import LegalConsentModal from "~/components/legal/LegalConsentModal.vue";
 import { useBanStatus } from "~/composables/useBanStatus"
+import { collectPendingConsents } from "~/utils/legalConsent"
 
 const { ipBanned, ipBanInfo, userBanned, userBanInfo } = useBanStatus()
+
+// 政策重大变更同意弹窗（PIPL）：登录用户存在未同意的重大版本时展示
+const { user } = useAuth()
+const pendingConsents = computed(() =>
+    user.value ? collectPendingConsents(user.value.legal) : []
+)
 
 const { state, open, close } = useSearch();
 
@@ -26,7 +34,7 @@ onUnmounted(() => {
 });
 </script>
 <template>
-    <div class="flex flex-col min-h-screen w-full overflow-x-hidden">
+    <div class="flex flex-col min-h-screen w-full overflow-x-hidden bg-bg-page bg-tech-grid">
         <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-white focus:text-text focus:px-4 focus:py-2 focus:rounded-md focus:shadow-modal">
             跳转到主要内容
         </a>
@@ -43,6 +51,7 @@ onUnmounted(() => {
         </div>
         <FooterBar />
         <SearchPalette />
+        <LegalConsentModal v-if="pendingConsents.length > 0" :pending="pendingConsents" />
     </div>
 </template>
 

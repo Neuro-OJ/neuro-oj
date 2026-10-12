@@ -2,6 +2,7 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import {
   isJtiRevoked,
   remainingTtlFromExp,
+  revocationTtl,
   revokeJti,
 } from "../../services/security/revokedTokens.ts";
 import {
@@ -32,6 +33,24 @@ Deno.test({
       remainingTtlFromExp("garbage" as unknown as number),
       0,
     );
+  },
+});
+
+Deno.test({
+  name: "revokedTokens: revocationTtl 覆盖长有效期 token，缺 exp 回退 24h",
+  fn: () => {
+    const now = Math.floor(Date.now() / 1000);
+    const thirtyDays = 30 * 24 * 3600;
+
+    // 「记住我」token：TTL 等于剩余有效期，而非固定 24h
+    const ttl = revocationTtl(now + thirtyDays);
+    assertEquals(ttl >= thirtyDays - 1 && ttl <= thirtyDays, true);
+
+    // 历史 token 无 exp：保守回退 24h
+    assertEquals(revocationTtl(undefined), 24 * 3600);
+
+    // 已过期：0（revokeJti 跳过写入）
+    assertEquals(revocationTtl(now - 10), 0);
   },
 });
 

@@ -20,6 +20,7 @@ import { contestRouter } from "./domains/contest/routes/index.ts";
 import { communityRouter } from "./domains/community/routes/index.ts";
 import { messagingRouter } from "./domains/messaging/routes/index.ts";
 import { systemRouter } from "./domains/system/routes/index.ts";
+import { legalRouter } from "./domains/legal/routes/index.ts";
 import submissionSse from "./domains/submission/routes/sse.ts";
 import communitySse from "./domains/community/routes/sse.ts";
 import { AppError } from "./shared/base/errors.ts";
@@ -195,6 +196,7 @@ export function createApp(): Hono {
   app.route("/api/v1", communityRouter);
   app.route("/api/v1", messagingRouter);
   app.route("/api/v1", systemRouter);
+  app.route("/api/v1", legalRouter);
   app.route("/api/v1/admin", admin);
   // 评测镜像公开列表
   app.get("/api/v1/judge-images", async (c) => {

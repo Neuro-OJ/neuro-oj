@@ -291,9 +291,19 @@ export interface ProdPayloadOps {
   untarZst(src: string, destDir: string): Promise<void>;
 }
 
-/** MinIO 客户端镜像（固定 digest，与 `maintain/backup_driver.ts` 同源）。 */
+/**
+ * MinIO 客户端镜像（固定 digest）。
+ *
+ * 2026-09-26：`minio/mc` 官方仓库已从 Docker Hub 整体下架（`quay.io/minio/*` 与
+ * `dl.min.io` 同样不可用），原 `minio/mc:latest@sha256:a7fe…` 已无法拉取。
+ * 改用 Bitnami 冻结镜像源的 mc 客户端（2025-07-21 版本，多架构 manifest list），
+ * 与 prod compose 的 `minio-init` 保持同一来源。
+ *
+ * 注：备份路径实际执行的是 `docker compose run … minio-init`（复用 compose 服务），
+ * 本常量保留给需要 mc 客户端的预检/离线场景使用。
+ */
 export const MINIO_CLIENT_IMAGE =
-  "minio/mc:latest@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727";
+  "bitnamilegacy/minio-client:2025.7.21-debian-12-r3@sha256:73bd39f7899a0cef12b8dd5df13aa93a3ed1aaa44236542442e9ac76819ac158";
 
 /** pg 采集的空口令告警：缺口令时 pg_dump 会失败，故提前给出可操作报错。 */
 export function postgresEnvOf(

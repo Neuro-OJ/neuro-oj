@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { difficultyBadgeColors, difficultyLabels, formatAcceptanceRate } from "~/utils/submissionFormat"
 import { problemUrl } from "~/utils/publicIdentifiers"
+import { contestHiddenRowClass } from "~/utils/contestHidden"
 import type { ObjectiveSubmission } from '~/composables/useObjective'
+import { problemJudgeTypeLabel } from '~/utils/problemView'
 
 definePageMeta({ breadcrumbWidth: '960px' })
 const { api } = useApi()
@@ -21,8 +23,18 @@ interface ProblemItem {
   type: string
   owner_id: string
   owner_username?: string
+  owner_avatar_url?: string | null
   number: number
   is_objective: boolean
+  judge_type?: 'dual' | 'oi'
+  judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null
+  /**
+   * 是否被「尚未结束的公开赛」收编（VULN-07）。
+   *
+   * 该字段只对特权用户（管理员 / 题目所有者）下发；普通用户看不到该行（后端 SQL 过滤）。
+   * 缺失（undefined）表示后端未下发，此时不做任何标识渲染。
+   */
+  is_contest_hidden?: boolean
   /** 代码题的评测配置；客观题套卷为 NULL（模板已按 is_objective 分支） */
   runtime_config?: {
     evaluator?: {
@@ -52,6 +64,8 @@ const {
   page,
   keyword,
   difficulty,
+  judgeType,
+  judgeBackend,
   tagId,
   problemType,
   limit,
@@ -131,7 +145,9 @@ async function fetchUserProblemStatus() {
       if (gen !== statusFetchGen || !isLoggedIn.value) return // stale
       const list = res.data?.data ?? []
       for (const s of list) {
-        if (s.submission_type !== 'practice') continue
+        // 竞赛提交不计入练习最高分；score 为 null（竞赛进行中，VULN-03）时无法比较，
+        // 必须显式跳过，否则既会算错也会在渲染处对 null 调 toFixed
+        if (s.submission_type !== 'practice' || s.score === null) continue
         const prev = bestByPaper.get(s.paper_id)
         if (prev === undefined || s.score > prev) {
           bestByPaper.set(s.paper_id, s.score)
@@ -202,9 +218,17 @@ const columns = computed(() => {
   <!-- /problems/:id 和 /problems/new 等子路由由 NuxtPage 渲染 -->
   <NuxtPage v-if="route.path !== '/problems'" />
   <div v-else class="px-4 py-5 sm:px-7 sm:py-8 max-w-[960px] mx-auto">
-    <div class="flex items-baseline gap-3 mb-6">
-      <h1 class="text-2xl font-bold text-text">{{ t('problem.title') }}</h1>
-      <span class="text-sm text-text-muted">{{ t('problem.count', { count: total }) }}</span>
+    <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-3">
+        <div class="flex size-10 items-center justify-center rounded-lg bg-primary-bg text-primary border border-primary/20 shadow-xs">
+          <UIcon name="i-lucide-book-open" class="size-5" />
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold text-text leading-tight">{{ t('problem.title') }}</h1>
+          <p class="text-xs text-text-muted mt-0.5">算法与 AI 精选题库 · 支持代码与客观题在线评测</p>
+        </div>
+      </div>
+      <span class="text-xs text-text-muted px-2.5 py-1 rounded-md bg-bg-sunken border border-border tabular-nums font-mono">{{ t('problem.count', { count: total }) }}</span>
     </div>
 
     <!-- 筛选栏 -->
@@ -213,11 +237,16 @@ const columns = computed(() => {
       :difficulty="difficulty"
       :tag-id="tagId"
       :problem-type="problemType"
+      :judge-type="judgeType"
+      :judge-backend="judgeBackend"
       :tags="tags"
+      @reset="router.push({ query: {} })"
       @update:keyword="setFilter('keyword', $event)"
       @update:difficulty="setFilter('difficulty', $event)"
       @update:tag-id="setFilter('tag', $event)"
       @update:problem-type="setFilter('type', $event)"
+      @update:judge-type="setFilter('judge_type', $event)"
+      @update:judge-backend="setFilter('judge_backend', $event)"
     />
 
     <!-- 异步内容 -->
@@ -237,22 +266,43 @@ const columns = computed(() => {
       </template>
 
       <!-- 题目表格 -->
-      <div class="bg-white border border-border rounded-xl overflow-x-auto">
-        <UTable :columns="columns" :data="problems" :empty="t('problem.empty')">
+      <div class="bg-white border border-border rounded-lg shadow-card overflow-x-auto">
+        <UTable
+          :columns="columns"
+          :data="problems"
+          :empty="t('problem.empty')"
+          :meta="{ class: { tr: (row) => `${contestHiddenRowClass(row.original.is_contest_hidden)} transition-colors hover:bg-primary-50/40` } }"
+        >
           <template #display_id-cell="{ row }">
             <ProblemId :display-id="row.original.display_id" :type="row.original.type" />
           </template>
           <template #title-cell="{ row }">
-            <NuxtLink
-              :to="problemUrl(row.original.id, row.original.display_id)"
-              class="text-text no-underline font-medium hover:text-primary"
-            >
-              {{ row.original.title }}
-            </NuxtLink>
+            <div class="flex flex-col gap-1">
+              <div class="flex items-center gap-2">
+                <NuxtLink
+                  :to="problemUrl(row.original.id, row.original.display_id)"
+                  class="text-text no-underline font-medium hover:text-primary transition-colors"
+                >
+                  {{ row.original.title }}
+                </NuxtLink>
+                <!-- 公开赛收编标识（VULN-07）：斜纹底由行的 class 承担，此处提供悬浮说明 -->
+                <ContestHiddenMark v-if="row.original.is_contest_hidden" />
+              </div>
+              <div class="flex flex-wrap items-center gap-1 text-xs">
+                <span
+                  v-if="problemJudgeTypeLabel(row.original)"
+                  class="rounded border border-primary/20 bg-primary/5 px-1.5 text-primary"
+                >{{ problemJudgeTypeLabel(row.original) }}</span>
+                <span
+                  v-if="!row.original.is_objective && row.original.judge_backend"
+                  class="rounded border border-border px-1.5 font-mono text-text-secondary"
+                >{{ row.original.judge_backend }}</span>
+              </div>
+            </div>
           </template>
           <template #owner-cell="{ row }">
             <UserIdentity
-              :user="{ id: row.original.owner_id, username: row.original.owner_username || '未知' }"
+              :user="{ id: row.original.owner_id, username: row.original.owner_username || '未知', avatar_url: row.original.owner_avatar_url }"
               size="sm"
             />
           </template>
@@ -260,23 +310,21 @@ const columns = computed(() => {
             <!-- 客观题：在难度位置标记为「客观题」 -->
             <span
               v-if="row.original.is_objective"
-              class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700"
+              class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
             >
+              <UIcon name="i-lucide-file-question" class="size-3" />
               {{ t('problem.objective') }}
             </span>
-            <span
+            <DifficultyBadge
               v-else
-              class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
-              :class="difficultyBadgeColors[row.original.difficulty] || ''"
-            >
-              {{ difficultyLabels[row.original.difficulty] || row.original.difficulty }}
-            </span>
+              :difficulty="row.original.difficulty"
+            />
           </template>
           <template #tags-cell="{ row }">
             <span
               v-for="tag in row.original.tags"
               :key="tag.id"
-              class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 mr-1"
+              class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary-bg text-primary border border-primary/20 mr-1"
             >{{ tag.name }}</span>
             <span v-if="!row.original.tags?.length" class="text-xs text-text-muted">--</span>
           </template>

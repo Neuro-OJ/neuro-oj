@@ -139,7 +139,7 @@ function formatTime(iso: string): string {
           v-model="searchQuery"
           type="text"
           placeholder="搜索用户..."
-          class="w-full pl-8 pr-3 py-1.5 text-sm rounded-md border border-border bg-page text-text outline-none transition-colors focus:border-signal focus:ring-1 focus:ring-signal"
+          class="w-full pl-8 pr-3 py-1.5 text-sm rounded-md border border-border bg-page text-text outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
         />
         <UIcon name="i-lucide-loader-2" class="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary animate-spin size-3.5" v-if="searching"/>
       </div>

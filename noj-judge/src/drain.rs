@@ -12,6 +12,38 @@ use tracing::{info, warn};
 
 const ABORT_JOIN_TIMEOUT_SECS: u64 = 5;
 
+/// 退出前兜底清扫的时间上限（秒）。
+pub const POST_DRAIN_CLEANUP_TIMEOUT_SECS: u64 = 15;
+
+/// VULN-15（Drain 优雅退出）：drain 超时后 abort 的评测任务来不及执行显式
+/// `DualContainer::destroy()`；这里在进程退出**之前**按确定性实例标签做一次
+/// 有界的、显式 `await` 的兜底清扫。
+///
+/// 必须在 Tokio 运行时仍然存活时调用（`main` 在 `rt.block_on` 内调用），
+/// 否则清理任务会被运行时就绪销毁强杀。
+///
+/// 返回被清理的容器数量（超时/失败时返回 0）。
+pub async fn cleanup_containers_after_drain(
+    docker: &bollard::Docker,
+    instance_id: &str,
+    timeout_secs: u64,
+) -> usize {
+    let cleanup = crate::sandbox::cleanup::cleanup_orphan_containers(docker, instance_id);
+    match tokio::time::timeout(Duration::from_secs(timeout_secs), cleanup).await {
+        Ok(cleaned) => {
+            info!(cleaned, instance_id, "退出前兜底清扫本实例容器完成");
+            cleaned
+        }
+        Err(_elapsed) => {
+            warn!(
+                instance_id,
+                timeout_secs, "退出前兜底清扫超时（残留容器将在下次启动时按实例标签回收）"
+            );
+            0
+        }
+    }
+}
+
 /// 排空正在执行的任务列表。
 ///
 /// 行为：

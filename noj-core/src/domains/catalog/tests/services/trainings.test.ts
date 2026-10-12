@@ -1,8 +1,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
-  evaluationResults,
   objectiveSubmissions,
   problems,
   submissions,
@@ -226,16 +225,9 @@ Deno.test({
         status: "finished",
         language: "python3",
         code: "print(1)",
-        created_at: now,
-      });
-      await db.insert(evaluationResults).values({
-        id: crypto.randomUUID(),
-        submission_id: subId,
-        status: "finished",
-        score: 10000,
-        output: "",
-        time_ms: 1,
-        memory_kb: 1,
+        // 进度读有效成绩投影（由结果服务维护）；此处直接落投影
+        is_valid: true,
+        is_accepted: true,
         created_at: now,
       });
       await db.insert(objectiveSubmissions).values({
@@ -247,6 +239,9 @@ Deno.test({
         status: "finished",
         score: 10000,
         details: {},
+        // 客观题进度同样读有效成绩投影：满分通过由提交写入服务落 `is_accepted`
+        is_valid: true,
+        is_accepted: true,
         created_at: now,
       });
 
@@ -285,18 +280,6 @@ Deno.test({
       );
     } finally {
       await db.delete(trainings).where(eq(trainings.id, training.id));
-      const solverSubs = await db
-        .select({ id: submissions.id })
-        .from(submissions)
-        .where(eq(submissions.user_id, solver));
-      if (solverSubs.length > 0) {
-        await db.delete(evaluationResults).where(
-          inArray(
-            evaluationResults.submission_id,
-            solverSubs.map((s) => s.id),
-          ),
-        );
-      }
       await db.delete(submissions).where(eq(submissions.user_id, solver));
       await db.delete(objectiveSubmissions).where(
         eq(objectiveSubmissions.user_id, solver),

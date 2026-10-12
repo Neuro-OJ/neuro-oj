@@ -1,3 +1,7 @@
+import {
+  saveV2ResultForTest,
+  seedActiveAttemptForTest,
+} from "../_versioning-fixtures.ts";
 /**
  * MQ Consumer 单元测试。
  *
@@ -12,17 +16,18 @@ import { sanitizeJudgeDetails } from "../../mq/consumer.ts";
 import { createRedisClientForUrl } from "../../../../shared/mq/connection.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
-  evaluationResults,
+  evaluationAttempts,
   problems,
   submissions,
   users,
 } from "../../../../shared/db/schema.ts";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { startFakeRedis } from "./_setup.ts";
 
 const hasDb = true;
 const TS = Date.now();
 const SUBMISSION_ID = `consumer-test-sub-${TS}`;
+const ATTEMPT_ID = `consumer-test-att-${TS}`;
 const PROBLEM_ID = `consumer-test-pr-${TS}`;
 const USER_ID = `consumer-test-user-${TS}`;
 
@@ -73,16 +78,27 @@ async function setupTestData() {
     code: "print('t')",
     created_at: now,
   });
+  // 在途尝试：协议 v2 下评测结果按 attempt_id 落到尝试终态（唯一事实来源）
+  await seedActiveAttemptForTest({
+    id: ATTEMPT_ID,
+    submission_id: SUBMISSION_ID,
+    problem_id: PROBLEM_ID,
+    sequence: 0,
+    source: "initial",
+    state: "judging",
+    created_at: now,
+  });
 }
 
-async function assertResultExists(submissionId: string): Promise<boolean> {
+/** 尝试是否已写入终态（旧 evaluation_results 断言的替代口径）。 */
+async function assertAttemptTerminal(): Promise<boolean> {
   const db = getDb();
   const [row] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(evaluationResults)
-    .where(eq(evaluationResults.submission_id, submissionId))
+    .select({ state: evaluationAttempts.state })
+    .from(evaluationAttempts)
+    .where(eq(evaluationAttempts.id, ATTEMPT_ID))
     .limit(1);
-  return Number(row?.count ?? 0) > 0;
+  return row?.state === "finished";
 }
 
 /** 向 fake Redis LPUSH 一条消息 */
@@ -174,11 +190,9 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await setupTestData();
-    const { saveEvaluationResult } = await import(
-      "../../index.ts"
-    );
-    await saveEvaluationResult({
+    await saveV2ResultForTest({
       submission_id: SUBMISSION_ID,
+      attempt_id: ATTEMPT_ID,
       status: "finished",
       score: 1000,
       output: '---RESULT---\n{"status":"finished"}',
@@ -187,8 +201,12 @@ Deno.test({
       memory_kb: 8192,
     });
 
-    const exists = await assertResultExists(SUBMISSION_ID);
-    assertEquals(exists, true, "评测结果应已持久化到 evaluation_results");
+    const terminal = await assertAttemptTerminal();
+    assertEquals(
+      terminal,
+      true,
+      "评测结果应已写入尝试终态（evaluation_attempts）",
+    );
   },
 });
 
@@ -230,6 +248,7 @@ Deno.test({
         case_id: "c1",
         status: "Accepted",
         visibility: "visible",
+        memory_kb: 8192,
         secret: "x",
       }],
       score_content: 90,
@@ -242,7 +261,12 @@ Deno.test({
     assertEquals(result.hidden, undefined);
     assertEquals(
       (result.cases as Array<Record<string, unknown>>)[0],
-      { case_id: "c1", status: "Accepted", visibility: "visible" },
+      {
+        case_id: "c1",
+        status: "Accepted",
+        visibility: "visible",
+        memory_kb: 8192,
+      },
     );
   },
 });
@@ -256,4 +280,23 @@ Deno.test({
     const result = sanitizeJudgeDetails({ summary: big });
     assertEquals(result.summary, undefined);
   },
+});
+
+Deno.test("mq/consumer: 统一标准摘要落库前保留，任意原始数据仍被裁剪", () => {
+  const hash = "b".repeat(64);
+  const projected = sanitizeJudgeDetails({
+    metering: {
+      standard_version: "noj-wasm-v1",
+      standard_hash: hash,
+      source_hash: hash,
+      evaluation_hash: hash,
+      comparison_hash: hash,
+      comparable: true,
+      hidden_data: "never-store",
+    },
+  });
+  const metering = projected.metering as Record<string, unknown>;
+  assertEquals(metering.standard_hash, hash);
+  assertEquals(metering.comparable, true);
+  assertEquals(metering.hidden_data, undefined);
 });

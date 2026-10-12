@@ -56,11 +56,13 @@ import {
   toggleCommentLike,
   toggleFollow,
   togglePostLike,
-  updateActivityVisibility,
   updateComment,
   updatePost,
 } from "../services/community/community.ts";
-import { isProblemInRunningContest } from "../../contest/index.ts";
+import {
+  hasUnendedPublicContest,
+  isProblemInUnendedPublicContest,
+} from "../../contest/index.ts";
 
 const router = new Hono<OptionalAuthEnv>();
 
@@ -113,7 +115,8 @@ async function requirePostPermission(
 /**
  * GET /config — 获取社区配置与当前用户权限。
  * 认证：可选（optionalAuthMiddleware）。未登录时仅返回配置，不返回权限。
- * 响应：{ data: { ...config, permissions } }。
+ * 响应：{ data: { ...config, permissions, contest_silence } }。
+ * `contest_silence` 为 true 时（存在未结束公开赛且非审核员），社区写入入口应禁用。
  */
 router.get("/config", optionalAuthMiddleware, async (c) => {
   const config = getCommunityConfig();
@@ -131,7 +134,13 @@ router.get("/config", optionalAuthMiddleware, async (c) => {
       moderate: await isModerator(c),
     }
     : {};
-  return c.json({ data: { ...config, permissions } });
+  // 赛时社区全局静默：供前端预先禁用发帖/评论/编辑入口（服务层仍强制，此处仅展示）。
+  // 审核员免静默；匿名用户本就不能写入，统一按非审核员口径返回。
+  const contestSilence = !(loggedIn && await isModerator(c)) &&
+    await hasUnendedPublicContest();
+  return c.json({
+    data: { ...config, permissions, contest_silence: contestSilence },
+  });
 });
 
 /**
@@ -226,24 +235,38 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
   const accepted = requiresAccepted
     ? await hasAcceptedSolution(actorId, problemId)
     : true;
-  // 赛期门控：进行中竞赛的题目，赛期不开放题解发布（赛后自动恢复）。
-  // 审核员不受限（复核需要），与读路径门控口径一致。
+  // 公开赛保密门控（审计 VULN-02）：归属于**尚未结束**公开赛（含赛前筹备期）的
+  // 题目不开放题解发布，赛后自动恢复。此前只判 `running`，赛前筹备期完全放行。
+  // 审核员不受限（复核需要），与读路径门控口径一致；判据复用 contest 域单一真相源。
   const moderator = await isModerator(c);
-  const inRunningContest = await isProblemInRunningContest(problemId);
-  const blockedByContest = inRunningContest && !moderator;
+  const inUnendedPublicContest = await isProblemInUnendedPublicContest(
+    problemId,
+  );
+  const blockedByContest = inUnendedPublicContest && !moderator;
+  // 赛时社区全局静默：任一公开赛未结束时，非赛题题解同样暂停发布（与 createPost 同口径）
+  const blockedBySilence = !moderator && !blockedByContest &&
+    await hasUnendedPublicContest();
   const canCreate = config.solutions_enabled &&
     (!config.read_only || moderator) &&
     (await checkPermission(c, "community:create_solution")) &&
     (accepted || moderator) &&
-    !blockedByContest;
+    !blockedByContest &&
+    !blockedBySilence;
   return c.json({
     data: {
       enabled: config.solutions_enabled,
       requires_accepted: requiresAccepted,
       accepted,
       can_create: canCreate,
-      // 供前端展示禁用原因，而非让用户点击后吃 403
-      blocked_reason: blockedByContest ? "running_contest" : null,
+      // 供前端展示禁用原因，而非让用户点击后吃 403。
+      // 机器码保持 `running_contest` 以兼容既有前端分支；语义已扩展为
+      // "归属尚未结束的公开赛（赛前筹备期 + 赛中）"。
+      // `contest_silence`：本题不在赛中，但全站有未结束公开赛，暂停发布题解。
+      blocked_reason: blockedByContest
+        ? "running_contest"
+        : blockedBySilence
+        ? "contest_silence"
+        : null,
     },
   });
 });
@@ -513,24 +536,6 @@ router.post("/users/:userId/follow", authMiddleware, async (c) => {
   });
 });
 /**
- * PUT /me/activity-visibility — 更新当前用户的活动可见性。
- * 认证：必填。body：{ visibility: "hidden" | "following" | "everyone" }。
- * 响应：{ data: 更新后的可见性 }。
- */
-router.put("/me/activity-visibility", authMiddleware, async (c) => {
-  const body = await parseJsonBody<
-    { visibility?: "hidden" | "following" | "everyone" }
-  >(c);
-  if (
-    !body.visibility ||
-    !["hidden", "following", "everyone"].includes(body.visibility)
-  ) throw new BadRequestError("无效活动可见性");
-  return c.json({
-    data: await updateActivityVisibility(userId(c), body.visibility),
-  });
-});
-
-/**
  * GET /feed — 获取社区动态流（最新 / 关注）。
  * 认证：可选。query：view（latest/following）、cursor、limit。
  * 响应：{ data, next_cursor }。
@@ -632,14 +637,14 @@ router.post("/reports", authMiddleware, async (c) => {
     }
   >(c);
   if (!body.reason?.trim()) throw new BadRequestError("缺少举报原因");
-  return c.json({
-    // 审核员免赛期门控（High#3）：普通用户举报被门控内容一律 404，不确认其存在
-    data: await createReport(
-      actorId,
-      { ...body, reason: body.reason },
-      await isModerator(c),
-    ),
-  }, 201);
+  const report = await createReport(
+    actorId,
+    { ...body, reason: body.reason },
+    await isModerator(c),
+  );
+  // FC-05: 举报接口响应体中仅返回举报记录信息，严禁回显 content_snapshot 全文
+  const { content_snapshot: _stripped, ...safeReport } = report;
+  return c.json({ data: safeReport }, 201);
 });
 /**
  * GET /reports/:reportId — 获取举报工单详情。

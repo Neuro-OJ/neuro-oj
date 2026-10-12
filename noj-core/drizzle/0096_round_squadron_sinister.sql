@@ -1,0 +1,2 @@
+ALTER TABLE "problems" ADD COLUMN "judge_type" text DEFAULT 'dual' NOT NULL;--> statement-breakpoint
+ALTER TABLE "problems" ADD CONSTRAINT "problems_judge_type_check" CHECK ("problems"."judge_type" IN ('dual', 'oi'));

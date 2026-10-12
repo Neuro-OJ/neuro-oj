@@ -4,7 +4,7 @@
  * 覆盖：
  * - admin 通过 API 配置双容器题目 + 提交 → 期望进入评测队列
  * - 镜像白名单被下架后 admin 提交被拒
- * - 普通用户默认不能设置 runtime_config 中的敏感字段（evaluator.command）
+ * - 普通用户默认不能将 runtime_config 中的敏感字段（evaluator.command）设为非默认值
  * - runtime_config 是必填字段，不可清空
  *
  * 要求：
@@ -18,6 +18,7 @@ import {
   apiPut,
   e2eTest,
   getAdminToken,
+  publishProblemVersion,
   registerUser,
 } from "../helper.ts";
 
@@ -135,7 +136,7 @@ e2eTest(
       "UserPass123!",
     );
 
-    // 普通用户创建题目时携带 evaluator.command 等敏感字段 → 期望 403
+    // 普通用户创建题目时设置非默认 evaluator.command（敏感字段）→ 期望 403
     const res = await apiPost(
       "/api/v1/problems",
       {
@@ -145,7 +146,7 @@ e2eTest(
         runtime_config: {
           evaluator: {
             image: EVALUATOR_IMAGE,
-            command: "python3 /workspace/evaluate.py",
+            command: "bash /workspace/run.sh",
             time_limit_ms: 5000,
             memory_limit_mb: 512,
           },
@@ -307,6 +308,11 @@ e2eTest(
       adminToken,
       `[${TEST_TAG}] 普通用户提交双容器`,
     );
+    const versionId = await publishProblemVersion(
+      adminToken,
+      problemId,
+      "E2E 双容器作答版本",
+    );
 
     // 普通用户提交代码
     const userToken = await registerUser(
@@ -319,6 +325,7 @@ e2eTest(
       "/api/v1/submissions",
       {
         problem_id: problemId,
+        version_id: versionId,
         language: "python3",
         code: "def solve(a, b):\n    return a + b\n",
       },

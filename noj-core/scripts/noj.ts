@@ -33,10 +33,13 @@ import {
   seedJudgeImages,
   seedTags,
 } from "../src/domains/system/index.ts";
-import { importProblemBundle } from "../src/domains/catalog/index.ts";
-import { isValidTemplateFileName } from "./../src/domains/catalog/types/problem-bundle.ts";
+import {
+  importProblemBundle,
+  publishImportedProblem,
+} from "../src/domains/catalog/index.ts";
 import { reindexAll } from "../src/domains/search/index.ts";
 import { ROOT_USER_ID } from "./../src/shared/base/constants.ts";
+import { getBuildInfo } from "./../src/shared/base/build-info.ts";
 
 const PROJECT_ROOT = Deno.env.get("NOJ_PROJECT_ROOT") ??
   join(import.meta.dirname ?? ".", "..");
@@ -44,33 +47,14 @@ const SRC_DIR = join(PROJECT_ROOT, "data", "problems-src");
 const OUT_DIR = join(PROJECT_ROOT, "data", "packages");
 
 /**
- * 读取题目 manifest 声明的模板文件名（缺省 "template.py"）。
- *
- * 模板仅供前端编辑器使用，不属于评测内容。打包时需动态排除
- * manifest.template 索引的文件：仅排除字面 `template.py` 会让自定义
- * 模板名（如 starter.py）混入评测包。manifest 缺失/损坏或模板值非法
- * （含 `/`、`\`、`..`，与导入校验规则一致）时回退默认名。
- */
-function resolveTemplateExclude(srcDir: string): string {
-  let templateFile = "template.py";
-  try {
-    const manifest = JSON.parse(
-      Deno.readTextFileSync(join(srcDir, "problem.json")),
-    ) as { template?: unknown };
-    const t = manifest.template;
-    if (typeof t === "string" && isValidTemplateFileName(t)) {
-      templateFile = t;
-    }
-  } catch {
-    // manifest 缺失或损坏：回退默认 template.py
-  }
-  return templateFile;
-}
-
-/**
  * 构建单个题目包（problems-src/<id>/ → packages/<id>.zip）。
  *
- * 排除规则：submission*（参考实现）、manifest.template 模板文件、__pycache__（字节码）、.git。
+ * 排除规则：submission*（参考实现）、__pycache__（字节码）、.git。
+ *
+ * **模板不做排除**：编辑器初始代码（manifest.template，缺省 template.py）随包
+ * 上传，导入时由 `importProblemBundle` 落库到 `problems.template_content`，
+ * 运行期据此返回——不再依赖服务器本地 `data/problems-src`（容器化生产没有它）。
+ * 参考实现仍必须排除（见 `submission*`）。
  */
 async function buildProblemPackage(id: string): Promise<void> {
   const srcDir = join(SRC_DIR, id);
@@ -95,8 +79,6 @@ async function buildProblemPackage(id: string): Promise<void> {
       ".",
       "-x",
       "submission*",
-      "-x",
-      resolveTemplateExclude(srcDir),
       "-x",
       "*__pycache__*",
       "-x",
@@ -133,8 +115,14 @@ async function buildAllPackages(): Promise<void> {
 /**
  * 批量导入目录下的统一题目包（默认 data/packages）。
  * 以 root/admin 身份执行（CLI 为运维工具），幂等 upsert。
+ *
+ * `--publish`：导入后把内容显式发布为版本（Handbook §6.8）。不发布时题目只有
+ * 草稿，普通访问者读不到、也无法按版本提交——生产演练与开发初始化必须发布。
  */
-async function importProblemPackages(dir: string): Promise<void> {
+async function importProblemPackages(
+  dir: string,
+  options: { publish?: boolean } = {},
+): Promise<void> {
   let imported = 0;
   try {
     for await (const entry of Deno.readDir(dir)) {
@@ -142,11 +130,22 @@ async function importProblemPackages(dir: string): Promise<void> {
         continue;
       }
       const data = await Deno.readFile(join(dir, entry.name));
-      await importProblemBundle(
+      const problem = await importProblemBundle(
         { name: entry.name, data },
         { userId: ROOT_USER_ID, userRole: "admin" },
       );
-      console.log(`  已导入: ${entry.name}`);
+      if (options.publish) {
+        const published = await publishImportedProblem(
+          problem.id,
+          ROOT_USER_ID,
+        );
+        console.log(
+          `  已导入并发布: ${entry.name} → V${published.version}` +
+            (published.unchanged ? "（内容未变，复用既有版本）" : ""),
+        );
+      } else {
+        console.log(`  已导入: ${entry.name}（未发布，仅草稿）`);
+      }
       imported++;
     }
   } catch (err) {
@@ -205,8 +204,9 @@ async function runDevSetup(): Promise<void> {
   console.log("\n[4/5] 构建题目包");
   await buildAllPackages();
 
-  console.log("\n[5/5] 导入题目包 + dev 专用数据");
-  await importProblemPackages(OUT_DIR);
+  console.log("\n[5/5] 导入题目包（显式发布）+ dev 专用数据");
+  // 开发初始化必须发布：否则题目只有草稿，提交/自测会因缺少已发布版本而拒绝
+  await importProblemPackages(OUT_DIR, { publish: true });
   await ensureE2EPwChangeUser();
 
   console.log("\ndev-setup 完成");
@@ -315,8 +315,12 @@ const problemsCmd = new Command()
   })
   .command("import", "批量导入统一题目包（幂等 upsert）")
   .option("--dir <dir:string>", "题目包目录", { default: OUT_DIR })
-  .action((opts: { dir: string }) => {
-    return importProblemPackages(opts.dir);
+  .option(
+    "--publish",
+    "导入后显式发布为题目版本（不加则只写草稿，普通用户不可见）",
+  )
+  .action((opts: { dir: string; publish?: boolean }) => {
+    return importProblemPackages(opts.dir, { publish: opts.publish === true });
   });
 
 const searchCmd = new Command()
@@ -332,7 +336,7 @@ try {
   await new Command()
     .name("noj")
     .description("Neuro OJ 管理 CLI（迁移、初始化、管理员、题目包）")
-    .version("0.9.5")
+    .version(getBuildInfo().version)
     .command("db", dbCmd)
     .command("init", initCmd)
     .command("bootstrap", bootstrapCmd)

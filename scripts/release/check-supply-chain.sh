@@ -37,8 +37,21 @@ check_dockerfiles() {
 
   for file in "${files[@]}"; do
     require_file "$file"
+    local stages=() from_parts=() from_image known_stage stage_name from_count
     while IFS= read -r line; do
-      [[ "$line" == *'@sha256:'* ]] || fail "$file 存在未固定 digest 的基础镜像：$line"
+      read -r -a from_parts <<< "$line"
+      from_image="${from_parts[1]}"
+      [[ "$from_image" != --platform=* ]] || from_image="${from_parts[2]}"
+      known_stage=false
+      for stage_name in "${stages[@]}"; do
+        [[ "${from_image,,}" != "$stage_name" ]] || known_stage=true
+      done
+      # 内部阶段继承已验证的固定基础镜像，不是新的外部镜像引用。
+      [[ "$known_stage" == true || "$from_image" == *'@sha256:'* ]] || fail "$file 存在未固定 digest 的基础镜像：$line"
+      from_count="${#from_parts[@]}"
+      if [[ "${from_parts[from_count-2]^^}" == AS ]]; then
+        stages+=("${from_parts[from_count-1],,}")
+      fi
     done < <(sed -n '/^[[:space:]]*FROM[[:space:]]/p' "$ROOT_DIR/$file")
   done
   ok "生产 Dockerfile 基础镜像均固定 digest"
@@ -118,7 +131,8 @@ check_release_workflow() {
   [[ "$(printf '%s\n' "$trivy_refs" | sed '/^$/d' | wc -l | tr -d ' ')" == "2" ]] \
     || fail "Release workflow 必须配置两个 Trivy 步骤"
   while IFS= read -r line; do
-    [[ "$line" == *'aquasecurity/trivy-action@v0.36.0'* ]] \
+    # 固定到经核验的 v0.36.0 commit SHA（审计 S1：可变 tag 不可信，只认 SHA）
+    [[ "$line" == *'aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25'* ]] \
       || fail "Release workflow 使用了未经验证的 Trivy Action 版本：$line"
   done <<< "$trivy_refs"
   grep -q 'cosign' "$file" || fail "Release workflow 未配置镜像签名"

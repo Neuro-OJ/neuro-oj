@@ -36,6 +36,8 @@ export interface Contest {
 }
 
 export interface ContestProblem {
+  judge_type?: 'dual' | 'oi';
+  supported_languages?: string[];
   problem_id: string;
   sort_order: number;
   label: string;
@@ -52,6 +54,21 @@ export interface ContestProblem {
    * （运行时恒为 undefined），保留以便后续后端支持时无需改动调用方。
    */
   is_objective?: boolean;
+  /**
+   * 竞赛固定作答版本（Handbook §4.1/§4.2）。
+   *
+   * 提交必须原样回传；与固定版本不一致 → 409 `CONTEST_PROBLEM_VERSION_CHANGED`。
+   * 迁移期尚未固定版本的竞赛题目为 null（此时按存量路径作答）。
+   */
+  version_id?: string | null;
+  /** 固定版本的版本号（展示用）。 */
+  version?: number | null;
+  /** 该「竞赛 × 题目」的有效版本策略（与题库策略独立）。 */
+  effective_version_policy?:
+    | { mode: 'any' }
+    | { mode: 'exact'; version_id: string | null };
+  /** 策略乐观锁版本（管理端切换策略/升级固定版本时必须回传）。 */
+  effective_version_policy_revision?: number;
 }
 
 export interface ContestProblemInput {
@@ -88,6 +105,13 @@ export interface AdminProblemOption {
   display_id: string;
   title: string;
   difficulty: string;
+  /**
+   * 题目可见性（`GET /api/v1/admin/catalog/problems` 返回）。
+   *
+   * 邀请赛选题时需要据此提示"公开题无法全站保密"（VULN-04 / VULN-05），
+   * 故在此显式声明；旧后端未返回时为 undefined，调用方按"未知"处理、不做提示。
+   */
+  visibility?: 'public' | 'private';
 }
 
 export interface KaggleProblemScore {
@@ -140,34 +164,6 @@ export interface Pagination {
   total_pages: number;
 }
 
-export interface ContestAntiCheatAccount {
-  user_id: string;
-  username: string;
-  submission_count: number;
-  first_submission_at: string;
-  last_submission_at: string;
-}
-
-export interface ContestAntiCheatGroup {
-  ip: string;
-  account_count: number;
-  submission_count: number;
-  first_submission_at: string;
-  last_submission_at: string;
-  accounts: ContestAntiCheatAccount[];
-}
-
-export interface ContestAntiCheatTimelineItem {
-  submission_id: string;
-  user_id: string;
-  username: string;
-  problem_id: string;
-  problem_title: string;
-  language: string;
-  status: string;
-  created_at: string;
-}
-
 export function useContests() {
   const { api } = useApi();
   const { t, locale } = useI18n();
@@ -218,35 +214,11 @@ export function useContests() {
     );
   }
 
-  function listAntiCheatGroups(
-    contestId: string,
-    query?: { page?: number; per_page?: number; min_accounts?: number },
-  ) {
-    return api.get<
-      {
-        data: ContestAntiCheatGroup[];
-        pagination: Pagination;
-        data_policy: {
-          purpose: string;
-          retention_days: number;
-          automated_penalty: boolean;
-        };
-      }
-    >(
-      `/api/v1/admin/contest/contests/${contestId}/anti-cheat/ip-groups`,
-      { query, silent: true },
-    );
-  }
-
-  function listAntiCheatTimeline(contestId: string, ip: string) {
-    return api.get<{ data: ContestAntiCheatTimelineItem[] }>(
-      `/api/v1/admin/contest/contests/${contestId}/anti-cheat/timeline`,
-      { query: { ip }, silent: true },
-    );
-  }
-
   /**
    * 竞赛内互相高度相似的提交对（人工复核线索）。
+   *
+   * 基于 IP 碰撞的作弊判定（`anti-cheat/ip-groups`、`anti-cheat/timeline`）
+   * 已全面下线（VULN-06：机房 NAT 多 IP 共用误伤过高），只保留代码相似度查重。
    * 响应**不含源代码**；源码走 `/api/v1/admin/submission/submissions/:id`。
    */
   function listAntiCheatSimilarSubmissions(
@@ -289,8 +261,6 @@ export function useContests() {
     listClarifications,
     askClarification,
     replyClarification,
-    listAntiCheatGroups,
-    listAntiCheatTimeline,
     listAntiCheatSimilarSubmissions,
   };
 }

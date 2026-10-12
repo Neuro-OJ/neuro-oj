@@ -105,6 +105,49 @@ export function runningWindowCondition(
 }
 
 /**
+ * "竞赛窗口尚未结束"的判定条件（`now < end`），按**时刻**比较。
+ *
+ * 供**公开赛题目保密**门控使用：题目一旦被关联到尚未结束的公开赛，就对非
+ * owner/管理员不可见（见 `problem-secrecy.ts` 与 `resolveProblemAccess`）；
+ * 竞赛 `end_time` 一过，门控自动失效、题目恢复常规可见性——判定纯派生自时间，
+ * 无需任何状态翻转动作或多副本共享状态。
+ *
+ * 形态守卫、`CASE` 求值顺序与 fail-closed 取向与 {@link runningWindowCondition}
+ * 完全一致：结束时间无法解析时**无法证明竞赛已结束**，故按"未结束"处理——
+ * 继续保密（隐藏内容），而不是泄露内容。
+ *
+ * @param endTimeExpr 竞赛结束时间列引用或 SQL 表达式。
+ * @returns 可直接放进 `WHERE` / `AND` 的布尔 SQL 片段。
+ */
+export function unendedWindowCondition(endTimeExpr: AnyColumn | SQL): SQL {
+  return sql`CASE
+    WHEN ${endTimeExpr} ~ ${CONTEST_TIME_ISO_REGEX_SQL}
+     AND pg_input_is_valid(${endTimeExpr}, 'timestamptz')
+    THEN ${endTimeExpr}::timestamptz > now()
+    ELSE true
+  END`;
+}
+
+/**
+ * "竞赛窗口已结束"的判定条件（`end <= now`），按时刻比较。
+ *
+ * 供榜单/全局统计等排除赛期提交复用（决策 3 / DL-02 / DL-03）：
+ * 竞赛结束前，赛中提交不计入全站榜单与用户个人成就。
+ * 形态非法或不可解析时按"未结束"处理（返回 false，fail-closed）。
+ *
+ * @param endTimeExpr 竞赛结束时间列引用或 SQL 表达式。
+ * @returns 可直接放进 WHERE / AND 的布尔 SQL 片段。
+ */
+export function endedWindowCondition(endTimeExpr: AnyColumn | SQL): SQL {
+  return sql`CASE
+    WHEN ${endTimeExpr} ~ ${CONTEST_TIME_ISO_REGEX_SQL}
+     AND pg_input_is_valid(${endTimeExpr}, 'timestamptz')
+    THEN ${endTimeExpr}::timestamptz <= now()
+    ELSE false
+  END`;
+}
+
+/**
  * "该题目处于进行中竞赛"的共享 SQL 谓词：返回 `EXISTS (...)` 片段。
  *
  * 供 community 域（题解门控、动态流）复用——此前这些位置各持一份带错误字典序假设的
@@ -123,6 +166,15 @@ export function runningContestExistsForProblem(
       AND ${runningWindowCondition(sql`c.start_time`, sql`c.end_time`)}
   )`;
 }
+
+/**
+ * 审计规范名称的别名：{@link runningContestExistsForProblem}。
+ *
+ * 「进行中竞赛 SQL 谓词」的**规范名**（审计报告 §4.1 公开赛-题目状态判定权威模块）。
+ * 旧名保留是因为已有多个调用点（community / identity / search）在用它；两者是同一
+ * 实现的别名，不存在口径漂移。新代码请优先使用本名。
+ */
+export const runningContestForProblem = runningContestExistsForProblem;
 
 /**
  * "进行中竞赛所包含的题目 id 集合"子查询，用于 `IN (...)` 反连接。

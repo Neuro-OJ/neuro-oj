@@ -5,6 +5,7 @@ import {
   assertStringIncludes,
 } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
+import { getBuildInfo } from "../../src/shared/base/build-info.ts";
 
 Deno.test({
   name: "health: GET /health 返回服务状态 JSON",
@@ -14,7 +15,12 @@ Deno.test({
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.service, "noj-core");
-    assertEquals(body.version, "0.9.5");
+    // 不再断言硬编码值：版本号来自共享构建身份（回归：曾长期停留在 0.9.5）
+    assertEquals(body.version, getBuildInfo().version);
+    assert(
+      body.version !== "0.9.5" || getBuildInfo().version === "0.9.5",
+      "version 必须与真相源一致",
+    );
     assertExists(body.status);
     assertExists(body.database);
     assertExists(body.redis);

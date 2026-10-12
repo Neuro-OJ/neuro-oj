@@ -1,3 +1,4 @@
+import type { Executor } from "../../../shared/db/executor.ts";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";
@@ -26,6 +27,17 @@ import {
   resolvePublicId,
 } from "./../../../shared/security/public-id.ts";
 import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
+import {
+  bumpProjectionRevision,
+  globalScopeKey,
+} from "./../../submission/index.ts";
+import {
+  getJudgeBackend,
+  getSubmissionLanguages,
+  type ProblemContentV1,
+  type ProblemRuntimeConfig,
+  projectProblemContent,
+} from "../../catalog/index.ts";
 import { findContestRow } from "./contest-row.ts";
 import { normalizeContestTime } from "./contest-window.ts";
 import {
@@ -257,14 +269,20 @@ function normalizeProblems(
 }
 
 /**
- * 断言竞赛题目均可加入：题目必须真实存在；
+ * 断言竞赛题目均可加入：题目必须真实存在、**已发布至少一个版本**；
  * 普通用户只能加入 public 题或自己拥有的题（堵“造竞赛上下文套他人私有题”洞）。
+ *
+ * 同时返回各题当前的最新已发布版本，供调用方写入竞赛固定版本
+ * （`contest_problems.pinned_version_id`，Handbook §2.6/§4.1「竞赛默认 = 固定版本」）。
+ * 未发布题目不能加入竞赛：固定版本是竞赛作答与判卷的唯一来源，空固定版本会让
+ * 竞赛题目无法确定"评哪一版"。
  *
  * @param problemInputs 竞赛题目输入列表
  * @param creatorId 竞赛创建者/更新者用户 ID
  * @param isAdmin 是否为管理员
  * @param db 数据库连接或事务对象
- * @throws {BadRequestError} 存在不存在的题目时
+ * @returns problem_id → 最新已发布版本 ID（保证非空）
+ * @throws {BadRequestError} 存在不存在或尚未发布任何版本的题目时
  * @throws {ForbiddenError} 普通用户加入他人私有题时
  */
 async function assertContestProblemAddable(
@@ -273,22 +291,38 @@ async function assertContestProblemAddable(
   isAdmin: boolean,
   // deno-lint-ignore no-explicit-any -- postgres.js 与 PGlite 事务共享接口
   db: any,
-): Promise<void> {
+): Promise<Map<string, string>> {
   const ids = problemInputs.map((value) => value.problem_id);
   const rows = await db.select({
     id: problems.id,
     owner_id: problems.owner_id,
     visibility: problems.visibility,
+    latest_version_id: problems.latest_version_id,
   }).from(problems).where(inArray(problems.id, ids));
   if (rows.length !== ids.length) {
     throw new BadRequestError("竞赛包含不存在的题目");
   }
-  if (isAdmin) return;
-  for (const row of rows) {
-    if (row.visibility !== "public" && row.owner_id !== creatorId) {
-      throw new ForbiddenError("仅可加入公开题或自己拥有的题目");
+  if (!isAdmin) {
+    for (const row of rows) {
+      if (row.visibility !== "public" && row.owner_id !== creatorId) {
+        throw new ForbiddenError("仅可加入公开题或自己拥有的题目");
+      }
     }
   }
+  const unpublished = rows.filter(
+    (row: { latest_version_id: string | null }) => !row.latest_version_id,
+  );
+  if (unpublished.length > 0) {
+    // 固定版本不可为空（NOT NULL + 复合外键）；未发布题目必须先发布版本
+    throw new BadRequestError(
+      `竞赛只能包含已发布题目：${unpublished.length} 道题尚未发布任何版本（请先发布题目版本）`,
+    );
+  }
+  return new Map(
+    rows.map((
+      row: { id: string; latest_version_id: string | null },
+    ) => [row.id, row.latest_version_id as string]),
+  );
 }
 
 /**
@@ -409,7 +443,12 @@ export async function createContest(
   const db = getDb();
 
   await db.transaction(async (tx) => {
-    await assertContestProblemAddable(problemInputs, userId, isAdmin, tx);
+    const latestVersions = await assertContestProblemAddable(
+      problemInputs,
+      userId,
+      isAdmin,
+      tx,
+    );
     await tx.insert(contests).values({
       id,
       public_id: publicId,
@@ -431,7 +470,13 @@ export async function createContest(
       updated_at: now,
     });
     await tx.insert(contestProblems).values(
-      problemInputs.map((value) => ({ contest_id: id, ...value })),
+      problemInputs.map((value) => ({
+        contest_id: id,
+        ...value,
+        // 创建即固定版本：钉在当时的已发布最新版，之后题库发布新版本不影响本竞赛
+        // （换版必须走显式的「竞赛固定版本升级」操作，Handbook §4.1/§4.3）。
+        pinned_version_id: latestVersions.get(value.problem_id)!,
+      })),
     );
   });
 
@@ -511,10 +556,29 @@ export async function updateContest(
     ? await hashPassword(input.password)
     : null;
   const db = getDb();
+  /** 本次更新涉及题目的最新已发布版本（在事务内校验题目可加入时一并取得）。 */
+  let latestVersions: Map<string, string> | null = null;
 
   await db.transaction(async (tx) => {
+    const previousProblems = await tx.select({
+      problem_id: contestProblems.problem_id,
+    }).from(contestProblems).where(eq(contestProblems.contest_id, id));
+    const hostIds = [
+      ...new Set([
+        ...previousProblems.map((row) => row.problem_id),
+        ...(problemInputs ?? []).map((row) => row.problem_id),
+      ]),
+    ].sort();
+    if (hostIds.length) {
+      await tx.select({ id: problems.id }).from(problems).where(
+        inArray(problems.id, hostIds),
+      ).orderBy(problems.id).for("share");
+    }
+    await tx.select({ id: contests.id }).from(contests).where(
+      eq(contests.id, id),
+    ).for("update");
     if (problemInputs) {
-      await assertContestProblemAddable(
+      latestVersions = await assertContestProblemAddable(
         problemInputs,
         existing.created_by ?? "",
         isAdmin,
@@ -557,12 +621,45 @@ export async function updateContest(
 
     await tx.update(contests).set(updates).where(eq(contests.id, id));
 
+    // 全站榜口径失效（2026-10-11 复审问题 8）：全站排名的过滤条件包含
+    // `contests.end_time`（赛期结束才计入）与 `affect_global_ranking`，而时钟跨越
+    // end_time 或这两列被修改都不产生任何提交/判定写入——不递增 revision，
+    // 缓存与物化视图就会继续按旧口径命中。这里复用唯一递增入口
+    // （`bumpProjectionRevision`），与投影/策略路径同一套缓存失效语义。
+    if (
+      input.start_time !== undefined ||
+      input.end_time !== undefined ||
+      input.affect_global_ranking !== undefined
+    ) {
+      await bumpProjectionRevision(tx, globalScopeKey());
+    }
+
     if (problemInputs) {
+      // 题目关联是「整体替换」：必须先读旧固定版本，否则编辑竞赛（改名/改时间）
+      // 会把已固定的版本重置到最新版，等于静默换版（Handbook §4.3）。
+      const previousBindings = new Map(
+        (await tx.select().from(contestProblems).where(
+          eq(contestProblems.contest_id, id),
+        )).map((row) => [row.problem_id, row]),
+      );
       await tx.delete(contestProblems).where(
         eq(contestProblems.contest_id, id),
       );
       await tx.insert(contestProblems).values(
-        problemInputs.map((value) => ({ contest_id: id, ...value })),
+        problemInputs.map((value) => {
+          // 已有固定版本原样保留（编辑竞赛不得静默换版）；新加入的题目用本次
+          // 解析出的最新已发布版本（assert 已保证存在，未发布题目直接 400）。
+          const binding = previousBindings.get(value.problem_id);
+          return {
+            contest_id: id,
+            ...value,
+            pinned_version_id: binding?.pinned_version_id ??
+              latestVersions!.get(value.problem_id)!,
+            effective_version_mode: binding?.effective_version_mode ?? "any",
+            required_version_id: binding?.required_version_id ?? null,
+            effective_policy_revision: binding?.effective_policy_revision ?? 0,
+          };
+        }),
       );
     }
   });
@@ -588,6 +685,11 @@ export async function deleteContest(id: string): Promise<void> {
     throw new NotFoundError("竞赛不存在");
   }
 
+  // 删除竞赛会把 `submissions.contest_id` 置空（onDelete set null），这些提交从
+  // "竞赛口径"回到"练习口径"，全站榜的过滤与通过口径随之变化 → 立即递增 global
+  // data revision（2026-10-11 复审问题 8；与题目/策略路径共用同一入口）。
+  await bumpProjectionRevision(db, globalScopeKey());
+
   await publishSearchIndexEvent("contest", id, "delete");
 }
 
@@ -602,8 +704,9 @@ export async function deleteContest(id: string): Promise<void> {
 export async function getContest(
   id: string,
   userId?: string,
+  executor?: Executor,
 ): Promise<ContestResponse> {
-  const db = getDb();
+  const db = executor ?? getDb();
   const rows = await db.execute(sql`
     SELECT c.*,
       (SELECT COUNT(*)::int FROM contest_problems cp WHERE cp.contest_id = c.id) AS problem_count,
@@ -834,6 +937,7 @@ export async function assertContestSubmissionLimit(
   contestId: string,
   userId: string,
   problemId: string,
+  reservationId?: string,
 ): Promise<void> {
   const contest = await findContestRow(contestId);
   const config = contest.config as ContestConfig;
@@ -842,6 +946,31 @@ export async function assertContestSubmissionLimit(
 
   const redis = getRedis();
   const key = `contest:lim:${contestId}:u:${userId}:p:${problemId}`;
+  const ttl = Math.max(
+    1,
+    Math.floor((Date.parse(contest.end_time) - Date.now()) / 1000),
+  );
+  if (reservationId) {
+    const reserved = Number(
+      await redis.eval(
+        `
+      if redis.call('EXISTS', KEYS[2]) == 1 then return 1 end
+      if tonumber(redis.call('GET', KEYS[1]) or '0') >= tonumber(ARGV[1]) then return 0 end
+      redis.call('INCR', KEYS[1])
+      redis.call('EXPIRE', KEYS[1], ARGV[2])
+      redis.call('SET', KEYS[2], '1', 'EX', ARGV[2])
+      return 1
+    `,
+        2,
+        key,
+        `${key}:reservation:${reservationId}`,
+        limit,
+        ttl,
+      ),
+    );
+    if (!reserved) throw new RateLimitedError("提交次数已达上限");
+    return;
+  }
   const used = await redis.incr(key);
   if (used === 1) {
     const ttl = Math.max(
@@ -898,23 +1027,35 @@ export async function getContestProblems(
       cp.sort_order,
       cp.label,
       cp.score,
+      cp.pinned_version_id,
+      pv.version AS pinned_version_number,
+      -- 题面与派生字段一律以**固定版本的版本内容**为准（缺陷 #2）：
+      -- 读 problems 投影会得到"最新版"题面，出现"版本号 V1、内容 V2"的不一致
+      pv.content AS pinned_content,
+      cp.effective_version_mode,
+      cp.required_version_id,
+      cp.effective_policy_revision,
       p.title,
       p.description,
       p.difficulty,
+      p.judge_type,
+      p.is_objective,
+      p.runtime_config,
       p.submission_mode,
       p.artifact_max_size_mb,
+      p.visibility,
       CONCAT(p.type, p.number::text) AS display_id,
       CASE
         WHEN ${userId ?? null}::text IS NULL THEN 'untouched'
+        -- 通过状态读「竞赛口径有效通过」投影（Handbook §3.4）：
+        -- 不再 JOIN 待删除的 evaluation_results，且 exact 策略收紧后立即不再算通过
         WHEN EXISTS (
           SELECT 1
           FROM submissions s
-          JOIN evaluation_results er ON er.submission_id = s.id
           WHERE s.contest_id = cp.contest_id
             AND s.problem_id = cp.problem_id
             AND s.user_id = ${userId ?? null}
-            AND er.status = 'finished'
-            AND er.score > 0
+            AND s.is_contest_accepted = TRUE
         ) THEN 'solved'
         WHEN EXISTS (
           SELECT 1
@@ -927,24 +1068,110 @@ export async function getContestProblems(
       END AS user_status
     FROM contest_problems cp
     JOIN problems p ON p.id = cp.problem_id
+    LEFT JOIN problem_versions pv ON pv.id = cp.pinned_version_id
     WHERE cp.contest_id = ${contestId}
     ORDER BY cp.sort_order ASC, cp.label ASC
   `);
 
-  return unwrapRows<Record<string, unknown>>(rows as never).map((row) => ({
+  return unwrapRows<Record<string, unknown>>(rows as never).map(
+    toContestProblemResponse,
+  );
+}
+
+/**
+ * 竞赛题目行 → 响应对象。
+ *
+ * **内容字段必须以竞赛固定版本（`contest_problems.pinned_version_id`）为准**
+ * （Handbook §2.6/§4.1，缺陷 #2）：
+ *
+ * - 修复前 `title`/`description`/`judge_type`/`submission_mode`/支持语言/评测后端
+ *   均取 `problems` 投影（即"最新版"口径）。竞赛固定 V1、题库已发布 V2 时，
+ *   竞赛页展示 V2 题面却按 V1 判卷；
+ * - 派生字段（`supported_languages`、`judge_backend`）同样由该版本内容计算，
+ *   避免"版本号说 V1、语言/后端却是 V2"；
+ * - 难度、可见性、所有权、`display_id` 属于题目**管理信息**，沿用题目身份值。
+ *
+ * 非编辑者视角（`projectProblemContent(content, false)`）：不下发
+ * `runtime_config` / `llm_config`，与竞赛题目响应既有形态一致（竞赛响应本就不含
+ * 评测配置）。固定版本内容缺失（数据损坏）时退回题目投影，保证列表不 500。
+ */
+function toContestProblemResponse(
+  row: Record<string, unknown>,
+): ContestProblemResponse {
+  const versionFields = row.pinned_content === null ||
+      row.pinned_content === undefined
+    ? null
+    : projectProblemContent(row.pinned_content as ProblemContentV1, false);
+
+  // 无版本内容时的兜底口径：题目投影（仅数据损坏时走到）
+  const fallbackJudgeType = row.judge_type === "oi" ? "oi" : "dual";
+  const fallbackConfig = row.runtime_config as ProblemRuntimeConfig | null;
+
+  const judgeType: "dual" | "oi" = versionFields?.["judge_type"] === "oi" ||
+      versionFields?.["judge_type"] === "dual"
+    ? versionFields["judge_type"]
+    : fallbackJudgeType;
+  const isObjective = typeof versionFields?.["is_objective"] === "boolean"
+    ? versionFields["is_objective"]
+    : row.is_objective === true;
+  const judgeBackend = versionFields !== null &&
+      "judge_backend" in versionFields
+    ? versionFields["judge_backend"] as ContestProblemResponse["judge_backend"]
+    : getJudgeBackend(fallbackJudgeType, fallbackConfig, isObjective);
+  const supportedLanguages = versionFields !== null &&
+      Array.isArray(versionFields["supported_languages"])
+    ? versionFields["supported_languages"] as string[]
+    : getSubmissionLanguages(fallbackJudgeType, fallbackConfig);
+  const submissionMode = versionFields?.["submission_mode"] === "artifact" ||
+      versionFields?.["submission_mode"] === "code"
+    ? versionFields["submission_mode"]
+    : row.submission_mode as ContestProblemResponse["submission_mode"];
+  // 注意区分"版本内容显式声明 null"与"版本内容缺失"：前者表示该版本无产物上限，
+  // 不能回退到题目投影里的其他版本取值
+  const artifactMaxSizeMb = versionFields !== null &&
+      "artifact_max_size_mb" in versionFields
+    ? versionFields["artifact_max_size_mb"] as number | null
+    : row.artifact_max_size_mb === null ||
+        row.artifact_max_size_mb === undefined
+    ? null
+    : Number(row.artifact_max_size_mb);
+
+  return {
     problem_id: row.problem_id as string,
     sort_order: Number(row.sort_order),
     label: row.label as string,
     score: Number(row.score),
-    title: row.title as string,
-    description: row.description as string,
+    title: typeof versionFields?.["title"] === "string"
+      ? versionFields["title"]
+      : row.title as string,
+    description: typeof versionFields?.["description"] === "string"
+      ? versionFields["description"]
+      : row.description as string,
+    // 难度 / 可见性 / display_id 属于题目管理信息，沿用题目身份值
     difficulty: row.difficulty as string,
-    display_id: row.display_id as string,
-    submission_mode: row
-      .submission_mode as ContestProblemResponse["submission_mode"],
-    artifact_max_size_mb: row.artifact_max_size_mb === null
+    judge_type: judgeType,
+    is_objective: isObjective,
+    judge_backend: judgeBackend,
+    // 竞赛固定作答版本：客户端提交时原样回传（不一致 → 409，绝不自动换版）
+    version_id: (row.pinned_version_id as string | null) ?? null,
+    version: row.pinned_version_number == null
       ? null
-      : Number(row.artifact_max_size_mb),
+      : Number(row.pinned_version_number),
+    // 竞赛 × 题目 有效版本策略与乐观锁版本（管理端切换策略/升级固定版本用）
+    effective_version_policy: row.effective_version_mode === "exact"
+      ? {
+        mode: "exact" as const,
+        version_id: (row.required_version_id as string | null) ?? null,
+      }
+      : { mode: "any" as const },
+    effective_version_policy_revision: Number(
+      row.effective_policy_revision ?? 0,
+    ),
+    supported_languages: supportedLanguages,
+    display_id: row.display_id as string,
+    submission_mode: submissionMode,
+    artifact_max_size_mb: artifactMaxSizeMb,
+    visibility: row.visibility as ContestProblemResponse["visibility"],
     user_status: row.user_status as ContestProblemResponse["user_status"],
-  }));
+  };
 }

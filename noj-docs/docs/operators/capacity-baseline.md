@@ -3,6 +3,9 @@
 本文定义低并发公测的可重复容量验收方法。它不是所有部署环境的固定承诺；更换硬件、镜像、题型、
 Judge 并发或 LLM Provider 后，应重新执行。
 
+> **结论先行**：没有实测数据时，不得把“仅能启动/诊断”写成“可承载公测”。
+> 本页下文依次给出“固定测试条件”“验收场景”与可复制的“报告模板”。
+
 ## 固定测试条件
 
 每次报告至少记录以下字段：
@@ -50,6 +53,7 @@ disk_free_gib=
 docker_free_gib=
 judge_location=same-host|separate-worker|disabled
 judge_concurrency=
+judge_cpu_limit_millicores=
 problem_fixture=
 request_rate_per_second=
 duration_minutes=

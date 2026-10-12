@@ -19,15 +19,31 @@ import { sha256Hex } from "../util/hash.ts";
  * - 使用 Deno 内置 fetch()（可注入），不 spawn curl/wget：既去掉对外部二进制的
  *   依赖，也彻底消除拼接 shell 命令带来的注入面。
  *
- * Release 资产名（由 .github/workflows/release.yml 发布，T12 依赖此契约）：
- * - docker-compose.prod.yml            + docker-compose.prod.yml.sha256
- * - .env.prod.example                  + .env.prod.example.sha256
+ * Release 资产名与落盘文件名（由 .github/workflows/release.yml 发布，T12 依赖此契约）：
+ * - docker-compose.prod.yml  + docker-compose.prod.yml.sha256 → 落盘 docker-compose.prod.yml
+ * - env.prod.example         + env.prod.example.sha256        → 落盘 .env.prod.example
+ *
+ * **资产名与落盘名必须分开**：GitHub 会把以 `.` 开头的资产名改写成
+ * `default.<name>` —— 这是服务端行为，即使用 uploads API 显式传 `name` 也一样
+ * （2026-09-27 在临时草稿 Release 上实测：`.dotfile` → `default.dotfile`，
+ * `.env.prod.leadingdot` → `default.env.prod.leadingdot`）。因此资产侧不能再叫
+ * `.env.prod.example`，否则 `<repo>/releases/download/<ref>/.env.prod.example`
+ * 恒为 404，而 `install` / `update` 都**无条件**走本模块 → 二者全线失败
+ * （0.10.1-alpha.2 / alpha.3 / beta.1 三个 Release 均受影响）。
  */
 
-/** bootstrap 需要的 Release 资产名（不含 .sha256；顺序即下载顺序）。 */
-export const RELEASE_FILES: readonly string[] = [
-  "docker-compose.prod.yml",
-  ".env.prod.example",
+/** Release 资产与它在安装目录里的文件名（顺序即下载顺序）。 */
+export interface ReleaseFile {
+  /** Release 侧资产名（`.sha256` 校验文件以此为基名；**不得以 `.` 开头**）。 */
+  asset: string;
+  /** 写入安装目录时的文件名。 */
+  target: string;
+}
+
+/** bootstrap 需要的 Release 资产（不含 .sha256；顺序即下载顺序）。 */
+export const RELEASE_FILES: readonly ReleaseFile[] = [
+  { asset: "docker-compose.prod.yml", target: "docker-compose.prod.yml" },
+  { asset: "env.prod.example", target: ".env.prod.example" },
 ];
 
 /** 资产下载器：返回对应 URL 的响应；默认注入全局 fetch。 */
@@ -183,7 +199,7 @@ export async function downloadReleaseFiles(
   const fetcher = opts.fetcher ?? ((url: string) => fetch(url));
   const overwrite = opts.overwrite ?? false;
 
-  const targets = RELEASE_FILES.map((name) => join(targetDir, name));
+  const targets = RELEASE_FILES.map(({ target }) => join(targetDir, target));
 
   // 覆盖模式下目标目录已存在（安装/升级场景），缺失时按需创建；
   // 拒绝模式下目录不存在时后续同样按需创建。
@@ -192,7 +208,7 @@ export async function downloadReleaseFiles(
       if (await fileExists(targets[i]!)) {
         throw new Error(
           `${
-            RELEASE_FILES[i]
+            RELEASE_FILES[i]!.target
           } 已存在同名文件，拒绝覆盖（如需更新请显式允许覆盖）`,
         );
       }
@@ -211,7 +227,7 @@ export async function downloadReleaseFiles(
   try {
     // 阶段一：全部下载 + 校验到暂存文件。任一步失败都不会触碰目标文件。
     for (let i = 0; i < RELEASE_FILES.length; i++) {
-      const asset = RELEASE_FILES[i]!;
+      const { asset } = RELEASE_FILES[i]!;
       const target = targets[i]!;
       const tmp = join(
         targetDir,

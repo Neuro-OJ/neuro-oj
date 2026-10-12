@@ -7,8 +7,6 @@ import type {
   Contest,
   ContestPayload,
   Pagination,
-  ContestAntiCheatGroup,
-  ContestAntiCheatTimelineItem,
   ContestProblem,
 } from '~/composables/useContests'
 import type { SimilarSubmissionPair, SimilarSubmissionsMeta } from '~/utils/contestAntiCheat'
@@ -18,7 +16,7 @@ import { runContestMutation } from '~/utils/contestMutation'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', ssr: false })
 
-const { typeLabels, statusLabels, formatDateTime, statusClass, listAntiCheatGroups, listAntiCheatTimeline, listAntiCheatSimilarSubmissions } = useContests()
+const { typeLabels, statusLabels, formatDateTime, statusClass, listAntiCheatSimilarSubmissions } = useContests()
 const { toast } = useToast()
 const { dialog } = useDialog()
 const { api } = useApi()
@@ -35,19 +33,19 @@ const formError = ref('')
 const editingId = ref<string | null>(null)
 let contestRequestVersion = 0
 const antiCheatContest = ref<Contest | null>(null)
-const antiCheatGroups = ref<ContestAntiCheatGroup[]>([])
-const antiCheatTimeline = ref<ContestAntiCheatTimelineItem[]>([])
-const antiCheatIp = ref('')
-const antiCheatLoading = ref(false)
+/** 竞赛题目列表加载失败（面板只用于相似提交的题目筛选）。 */
 const antiCheatError = ref('')
 
-// ── 风控面板分栏：IP 关联 / 相似提交 ─────────────────────────────
+// ── 风控面板：仅代码相似度查重 ─────────────────────────────────
+// IP 碰撞判定（同 IP 多账号 / IP 时间线）已下线（VULN-06：机房 NAT 误伤过高），
+// 面板不再分栏，只保留相似提交。
 // 该文件未接入 i18n（全仓 104 个页面/组件中仅 11 个用 useI18n），文案直接写中文。
-const antiCheatTab = ref<'ip' | 'similar'>('ip')
 const similarPairs = ref<SimilarSubmissionPair[]>([])
 const similarMeta = ref<SimilarSubmissionsMeta | null>(null)
 const similarThreshold = ref(0.8)
-const similarProblemId = ref('')
+// Reka UI 的 SelectItem 禁止空字符串 value（会抛错导致整页 500），“全部题目”用哨兵值表示
+const ALL_PROBLEMS = 'all'
+const similarProblemId = ref<string>(ALL_PROBLEMS)
 const similarLoading = ref(false)
 const similarError = ref('')
 /** 本场竞赛的题目，用于相似提交的题目筛选（比全局题目列表更贴合该场次）。 */
@@ -56,7 +54,7 @@ const antiCheatProblems = ref<ContestProblem[]>([])
 const similarCoverageText = computed(() => describeCoverage(similarMeta.value))
 const similarTruncated = computed(() => isTruncated(similarMeta.value))
 const similarProblemOptions = computed(() => [
-  { label: '全部题目', value: '' },
+  { label: '全部题目', value: ALL_PROBLEMS },
   ...antiCheatProblems.value.map((p) => ({
     label: `${p.label} ${p.display_id || p.problem_id} ${p.title}`,
     value: p.problem_id,
@@ -163,34 +161,26 @@ async function loadProblems(keyword = '') {
 
 async function openAntiCheat(contest: Contest) {
   antiCheatContest.value = contest
-  antiCheatGroups.value = []
-  antiCheatTimeline.value = []
-  antiCheatIp.value = ''
   antiCheatError.value = ''
   // 每次打开都重置相似提交状态，避免残留上一场竞赛的结果与筛选条件
-  antiCheatTab.value = 'ip'
   similarPairs.value = []
   similarMeta.value = null
-  similarProblemId.value = ''
+  similarProblemId.value = ALL_PROBLEMS
   similarThreshold.value = 0.8
   similarError.value = ''
   antiCheatProblems.value = []
-  antiCheatLoading.value = true
   try {
-    const [groupsResponse, detailResponse] = await Promise.all([
-      listAntiCheatGroups(contest.public_id || contest.id, { min_accounts: 2, per_page: 100 }),
-      api.get<{ data: { problems?: ContestProblem[] } }>(
-        `/api/v1/admin/contest/contests/${contest.public_id || contest.id}`,
-        { silent: true },
-      ),
-    ])
-    antiCheatGroups.value = groupsResponse.data
+    // 只需本场竞赛的题目列表，用于相似提交的题目筛选（比全局题目列表更贴合该场次）
+    const detailResponse = await api.get<{ data: { problems?: ContestProblem[] } }>(
+      `/api/v1/admin/contest/contests/${contest.public_id || contest.id}`,
+      { silent: true },
+    )
     antiCheatProblems.value = detailResponse.data.problems ?? []
   } catch (error: unknown) {
     antiCheatError.value = extractApiError(error).message
-  } finally {
-    antiCheatLoading.value = false
   }
+  // 相似度计算是 200 份候选量级的开销，面板打开即有明确意图，此处直接加载
+  void loadSimilarSubmissions()
 }
 
 async function loadSimilarSubmissions() {
@@ -203,7 +193,9 @@ async function loadSimilarSubmissions() {
       {
         threshold: similarThreshold.value,
         limit: 50,
-        ...(similarProblemId.value ? { problem_id: similarProblemId.value } : {}),
+        ...(similarProblemId.value && similarProblemId.value !== ALL_PROBLEMS
+          ? { problem_id: similarProblemId.value }
+          : {}),
       },
     )
     similarPairs.value = response.data
@@ -214,25 +206,6 @@ async function loadSimilarSubmissions() {
     similarMeta.value = null
   } finally {
     similarLoading.value = false
-  }
-}
-
-/** 切换分栏时按需加载：相似度计算是 200 份候选量级的开销，不应在打开面板时就跑。 */
-watch(antiCheatTab, (tab) => {
-  if (tab === 'similar' && similarPairs.value.length === 0 && !similarLoading.value) {
-    void loadSimilarSubmissions()
-  }
-})
-
-async function openAntiCheatTimeline(ip: string) {
-  if (!antiCheatContest.value) return
-  antiCheatIp.value = ip
-  antiCheatError.value = ''
-  try {
-    const response = await listAntiCheatTimeline(antiCheatContest.value.public_id || antiCheatContest.value.id, ip)
-    antiCheatTimeline.value = response.data
-  } catch (error: unknown) {
-    antiCheatError.value = extractApiError(error).message
   }
 }
 
@@ -707,7 +680,7 @@ async function removeParticipant(participant: Participant) {
               </li>
             </ul>
           </section>
-        <div class="border-t border-border p-5"><label class="mb-2 block text-xs font-semibold text-text">修订/发布说明（可选；失败评测时必填）</label><textarea v-model="settlementNote" rows="2" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-signal" placeholder="例如：已确认失败任务不影响参赛者成绩，按当前结果结算"></textarea><label v-if="settlement.failed_count" class="mt-3 flex items-center gap-2 text-sm text-text-secondary"><input v-model="settlementAllowFailed" type="checkbox" class="size-4 rounded border-border text-primary" />我确认已处理失败评测，并允许带失败评测发布</label><div class="mt-4 flex justify-end gap-2"><UButton color="neutral" variant="outline" @click="settlementContest = null">关闭</UButton><UButton color="primary" :disabled="!settlement.ready || (settlement.failed_count > 0 && (!settlementAllowFailed || !settlementNote.trim()))" @click="publishSnapshot">发布正式成绩</UButton></div></div>
+        <div class="border-t border-border p-5"><label class="mb-2 block text-xs font-semibold text-text">修订/发布说明（可选；失败评测时必填）</label><textarea v-model="settlementNote" rows="2" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" placeholder="例如：已确认失败任务不影响参赛者成绩，按当前结果结算"></textarea><label v-if="settlement.failed_count" class="mt-3 flex items-center gap-2 text-sm text-text-secondary"><input v-model="settlementAllowFailed" type="checkbox" class="size-4 rounded border-border text-primary" />我确认已处理失败评测，并允许带失败评测发布</label><div class="mt-4 flex justify-end gap-2"><UButton color="neutral" variant="outline" @click="settlementContest = null">关闭</UButton><UButton color="primary" :disabled="!settlement.ready || (settlement.failed_count > 0 && (!settlementAllowFailed || !settlementNote.trim()))" @click="publishSnapshot">发布正式成绩</UButton></div></div>
       </template>
     </div>
   </div>
@@ -715,15 +688,10 @@ async function removeParticipant(participant: Participant) {
   <div v-if="antiCheatContest" class="fixed inset-0 z-300 flex items-center justify-center bg-black/45 p-4" @click.self="antiCheatContest = null">
     <div class="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-modal">
       <header class="flex items-center justify-between border-b border-border px-6 py-4"><div><h2 class="text-lg font-bold text-text">竞赛风控线索</h2><p class="mt-1 text-xs text-text-muted">{{ antiCheatContest.title }} · 仅供人工复核，不自动封禁或取消成绩</p></div><button class="rounded-lg p-2 text-text-secondary hover:bg-primary-hover" @click="antiCheatContest = null"><UIcon name="i-lucide-x" class="size-4.5" /></button></header>
-      <div class="flex gap-1 border-b border-border px-6 pt-3">
-        <button class="rounded-t-lg px-3 py-2 text-sm font-medium transition" :class="antiCheatTab === 'ip' ? 'border-b-2 border-signal text-text' : 'text-text-secondary hover:text-text'" @click="antiCheatTab = 'ip'">IP 关联</button>
-        <button class="rounded-t-lg px-3 py-2 text-sm font-medium transition" :class="antiCheatTab === 'similar' ? 'border-b-2 border-signal text-text' : 'text-text-secondary hover:text-text'" @click="antiCheatTab = 'similar'">相似提交</button>
-      </div>
-      <div v-if="antiCheatTab === 'ip'" class="border-b border-border bg-amber-50 px-6 py-3 text-xs text-amber-800">提交来源 IP 用于竞赛账号关联，默认保留 180 天；仅管理员可见。共享网络、代理和 NAT 可能导致误报，请结合其他证据复核。</div>
-      <div v-else class="border-b border-border bg-amber-50 px-6 py-3 text-xs text-amber-800">基于代码 token 指纹的相似度，仅供人工复核，不自动判罚。阈值过高会漏掉改名洗稿，过低会放大同思路独立实现的误报。</div>
-      <div v-if="antiCheatTab === 'ip'" class="flex-1 overflow-y-auto p-5"><p v-if="antiCheatError" class="mb-3 text-sm text-error-text">{{ antiCheatError }}</p><p v-if="antiCheatLoading" class="py-12 text-center text-sm text-text-muted">加载中...</p><div v-else-if="antiCheatGroups.length" class="grid gap-4 lg:grid-cols-2"><button v-for="group in antiCheatGroups" :key="group.ip" class="rounded-xl border border-border p-4 text-left transition hover:border-signal" :class="antiCheatIp === group.ip ? 'border-signal bg-signal/5' : ''" @click="openAntiCheatTimeline(group.ip)"><div class="flex items-center justify-between"><code class="font-mono text-sm font-semibold text-text">{{ group.ip }}</code><UBadge color="warning" variant="subtle">{{ group.account_count }} 个账号</UBadge></div><p class="mt-2 text-xs text-text-secondary">{{ group.submission_count }} 次提交 · {{ formatDateTime(group.first_submission_at) }} 至 {{ formatDateTime(group.last_submission_at) }}</p><div class="mt-3 flex flex-wrap gap-1.5"><UBadge v-for="account in group.accounts" :key="account.user_id" color="neutral" variant="subtle">{{ account.username }}（{{ account.submission_count }}）</UBadge></div></button></div><p v-else-if="!antiCheatLoading" class="py-12 text-center text-sm text-text-muted">暂无同 IP 多账号候选组</p><div v-if="antiCheatTimeline.length" class="mt-5 rounded-xl border border-border"><div class="border-b border-border px-4 py-3 text-sm font-semibold text-text">提交时间线：{{ antiCheatIp }}</div><div class="divide-y divide-border"><div v-for="item in antiCheatTimeline" :key="item.submission_id" class="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-3 text-xs"><span><strong class="text-text">{{ item.username }}</strong><span class="ml-2 text-text-secondary">{{ item.problem_title }} · {{ item.language }}</span></span><span class="text-text-muted">{{ formatDateTime(item.created_at) }}</span><code class="font-mono text-text-muted">{{ item.submission_id.slice(0, 12) }}</code></div></div></div></div>
+      <div class="border-b border-border bg-amber-50 px-6 py-3 text-xs text-amber-800">基于代码 token 指纹的相似度，仅供人工复核，不自动判罚。阈值过高会漏掉改名洗稿，过低会放大同思路独立实现的误报。</div>
+      <div class="flex-1 space-y-4 overflow-y-auto p-5">
+        <p v-if="antiCheatError" class="text-sm text-error-text">{{ antiCheatError }}</p>
 
-      <div v-else class="flex-1 space-y-4 overflow-y-auto p-5">
         <div class="flex flex-wrap items-center gap-3">
           <label class="flex items-center gap-2 text-xs text-text-secondary">
             相似度阈值
@@ -760,13 +728,92 @@ async function removeParticipant(participant: Participant) {
     </div>
   </div>
 
-  <ContestFormModal v-if="formOpen" :contest="editingContest" :problems="problems" :saving="saving" :error="formError" @save="saveContest" @search-problems="loadProblems" @cancel="formOpen = false" />
+  <ContestFormModal
+    v-model:open="formOpen"
+    :contest="editingContest"
+    :problems="problems"
+    :saving="saving"
+    :error="formError"
+    @save="saveContest"
+    @search-problems="loadProblems"
+    @cancel="formOpen = false"
+  />
 
-  <div v-if="participantContest" class="fixed inset-0 z-300 flex items-center justify-center bg-black/45 p-4" @click.self="participantContest = null">
-    <div class="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-modal">
-      <header class="flex items-center justify-between border-b border-border px-6 py-4"><div><h2 class="text-lg font-bold text-text">参与者管理</h2><p class="mt-1 text-xs text-text-muted">{{ participantContest.title }} · {{ participants.length }} 人</p></div><button class="rounded-lg p-2 text-text-secondary hover:bg-primary-hover" @click="participantContest = null"><UIcon name="i-lucide-x" class="size-4.5" /></button></header>
-      <div class="border-b border-border p-5"><div class="flex gap-2"><input v-model="userQuery" class="min-w-0 flex-1 rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-signal" placeholder="搜索用户名或邮箱" @keyup.enter="searchUsers"><UButton color="primary" size="md" :disabled="searchingUsers" @click="searchUsers"><UIcon name="i-lucide-user-plus" class="size-3.5" />搜索</UButton></div><div v-if="userResults.length" class="mt-2 max-h-36 overflow-y-auto rounded-lg border border-border"><button v-for="user in userResults" :key="user.id" class="flex w-full items-center justify-between border-b border-border px-3 py-2 text-left text-xs last:border-0 hover:bg-primary-bg" @click="addParticipant(user)"><span><strong class="text-text">{{ user.username }}</strong><span class="ml-2 text-text-muted">{{ user.email }}</span></span><UIcon name="i-lucide-plus" class="text-primary size-3.5" /></button></div></div>
-      <div class="flex-1 overflow-y-auto p-5"><div v-if="participantLoading" class="py-12 text-center text-sm text-text-muted">加载中...</div><div v-else-if="participants.length" class="divide-y divide-border rounded-xl border border-border"><div v-for="participant in participants" :key="participant.user_id" class="flex items-center gap-3 px-4 py-3"><UserIdentity :user="{ id: participant.user_id, username: participant.username, avatar_url: participant.avatar_url }" size="sm" :link="false" /><div class="min-w-0 flex-1"><div class="truncate text-sm font-semibold text-text">{{ participant.username }}</div><div class="text-xs text-text-muted">{{ formatDateTime(participant.registered_at) }} 报名</div></div><button class="rounded-lg p-2 text-text-muted hover:bg-red-50 hover:text-error-text" title="移除" @click="removeParticipant(participant)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></button></div></div><p v-else class="py-12 text-center text-sm text-text-muted">暂无参与者</p></div>
-    </div>
-  </div>
+  <!-- 参与者管理抽屉 -->
+  <USlideover
+    :open="participantContest !== null"
+    side="right"
+    :ui="{
+      content: 'w-full sm:max-w-xl h-screen flex flex-col',
+      header: 'px-6 py-4 border-b border-border bg-bg-page/40',
+      body: 'p-0 overflow-y-auto flex-1 flex flex-col',
+      footer: 'px-6 py-3 border-t border-border bg-bg-page/30 flex justify-end',
+    }"
+    @update:open="(val: boolean) => !val && (participantContest = null)"
+  >
+    <template #title>
+      <div class="flex items-center gap-2.5 text-base font-bold text-text">
+        <div class="size-8 rounded-md bg-primary-bg text-primary flex items-center justify-center shrink-0 border border-primary/20">
+          <UIcon name="i-lucide-users" class="size-4.5" />
+        </div>
+        <div class="flex flex-col">
+          <span>参与者管理</span>
+          <span class="text-xs font-normal text-text-muted">{{ participantContest?.title }} · {{ participants.length }} 人</span>
+        </div>
+      </div>
+    </template>
+
+    <template #body>
+      <div class="border-b border-border p-5 bg-bg-page/20">
+        <div class="flex gap-2">
+          <input
+            v-model="userQuery"
+            class="min-w-0 flex-1 rounded-md border border-border px-3 py-2 text-sm outline-none focus:border-primary transition-colors"
+            placeholder="搜索用户名或邮箱"
+            @keyup.enter="searchUsers"
+          />
+          <UButton color="primary" size="sm" :disabled="searchingUsers" @click="searchUsers">
+            <UIcon name="i-lucide-user-plus" class="size-3.5" />搜索
+          </UButton>
+        </div>
+        <div v-if="userResults.length" class="mt-2 max-h-36 overflow-y-auto rounded-md border border-border bg-white dark:bg-slate-900">
+          <button
+            v-for="user in userResults"
+            :key="user.id"
+            class="flex w-full items-center justify-between border-b border-border px-3 py-2 text-left text-xs last:border-0 hover:bg-primary-bg transition-colors"
+            @click="addParticipant(user)"
+          >
+            <span>
+              <strong class="text-text">{{ user.username }}</strong>
+              <span class="ml-2 text-text-muted">{{ user.email }}</span>
+            </span>
+            <UIcon name="i-lucide-plus" class="text-primary size-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-5">
+        <div v-if="participantLoading" class="py-12 text-center text-sm text-text-muted">加载中...</div>
+        <div v-else-if="participants.length" class="divide-y divide-border rounded-lg border border-border">
+          <div v-for="participant in participants" :key="participant.user_id" class="flex items-center gap-3 px-4 py-3">
+            <UserIdentity :user="{ id: participant.user_id, username: participant.username, avatar_url: participant.avatar_url }" size="sm" :link="false" />
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-semibold text-text">{{ participant.username }}</div>
+              <div class="text-xs text-text-muted tabular-nums">{{ formatDateTime(participant.registered_at) }} 报名</div>
+            </div>
+            <button class="rounded-md p-1.5 text-text-muted hover:bg-red-50 hover:text-error-text transition-colors" title="移除" @click="removeParticipant(participant)">
+              <UIcon name="i-lucide-trash-2" class="size-4" />
+            </button>
+          </div>
+        </div>
+        <p v-else class="py-12 text-center text-sm text-text-muted">暂无参与者</p>
+      </div>
+    </template>
+
+    <template #footer>
+      <UButton color="neutral" variant="outline" size="sm" @click="participantContest = null">
+        关闭
+      </UButton>
+    </template>
+  </USlideover>
 </template>

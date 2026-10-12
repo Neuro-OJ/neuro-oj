@@ -15,6 +15,8 @@ Deno.test("parseProblemArgs: init 选项与位置参数", () => {
     "hard",
     "--title",
     "标题",
+    "--judge-type",
+    "oi",
     "--no-interactive",
   ]);
   assertEquals(a.sub, "init");
@@ -22,6 +24,7 @@ Deno.test("parseProblemArgs: init 选项与位置参数", () => {
   assertEquals(a.type, "P");
   assertEquals(a.difficulty, "hard");
   assertEquals(a.title, "标题");
+  assertEquals(a.judgeType, "oi");
   assertEquals(a.noInteractive, true);
 });
 
@@ -84,10 +87,10 @@ Deno.test("shouldExclude: 对齐 noj.ts 的排除规则", () => {
   assertEquals(shouldExclude(".git/config"), true);
   // 打包脚本
   assertEquals(shouldExclude("build_bundle.sh"), true);
-  // 模板文件必须**排除**（规范 problem-bundle.md:26 + 旧 noj.ts 行为；
-  // 编辑器模板从 data/problems-src 读取，不从包里读）
-  assertEquals(shouldExclude("template.py", "template.py"), true);
-  assertEquals(shouldExclude("my-template.py", "my-template.py"), true);
+  // 模板文件**保留**（2026-09 修正）：平台导入题目包时从这里取编辑器初始代码，
+  // 不再依赖服务器本地 data/problems-src（容器化生产没有该目录）
+  assertEquals(shouldExclude("template.py"), false);
+  assertEquals(shouldExclude("my-template.py"), false);
   // 正常文件保留
   assertEquals(shouldExclude("evaluate.py"), false);
   assertEquals(shouldExclude("problem.json"), false);
@@ -139,6 +142,48 @@ Deno.test("lintBundle: 合法包无 error", () => {
     names: ["problem.json", "evaluate.py"],
   });
   assertEquals(report.hasError, false);
+});
+
+Deno.test("lintBundle: OI 包不要求 evaluate.py 且检查测试点文件", () => {
+  const base = {
+    format_version: 1,
+    title: "oi",
+    judge_type: "oi",
+    runtime_config: {
+      backend: "native",
+      languages: ["c"],
+      time_limit_ms: 1000,
+      memory_limit_mb: 256,
+      checker: { type: "default" },
+      subtasks: [{
+        id: "all",
+        score: 100,
+        cases: [{ input: "testdata/1.in", output: "testdata/1.out" }],
+      }],
+    },
+  };
+  const valid = lintBundle({
+    texts: { "problem.json": JSON.stringify(base) },
+    names: ["problem.json", "testdata/1.in", "testdata/1.out"],
+  });
+  assertEquals(valid.hasError, false);
+  assertEquals(
+    valid.findings.some((finding) => finding.rule === "must/missing-evaluator"),
+    false,
+  );
+
+  const invalid = lintBundle({
+    texts: { "problem.json": JSON.stringify(base) },
+    names: ["problem.json"],
+  });
+  assertEquals(invalid.hasError, true);
+  assertEquals(
+    invalid.findings.filter((finding) =>
+      finding.rule === "must/missing-oi-file"
+    )
+      .length,
+    2,
+  );
 });
 
 Deno.test("lintBundle: 缺 manifest / 缺 evaluator / JSON 非法均为 error", () => {
@@ -235,6 +280,42 @@ Deno.test("runQualityRules: 隐藏用例泄露到可见文件 → 警告", () =>
   );
 });
 
+Deno.test("runQualityRules: manifest.samples 已废弃 → 警告", () => {
+  const findings = runQualityRules({
+    files: { texts: {}, names: [] },
+    manifest: { samples: [{ input: "1 2", output: "3" }] },
+  });
+  const finding = findings.find((f) => f.rule === "quality/deprecated-samples");
+  assertEquals(finding?.rule, "quality/deprecated-samples");
+  // 必须是 warn：一旦被误升级为 error，带 samples 的存量题包会被 pack 拒绝
+  assertEquals(finding?.level, "warn");
+  assertEquals(finding?.file, "problem.json");
+  // 打包判定只看 hasError，warn 不得阻断
+  assertEquals(findings.some((f) => f.level === "error"), false);
+});
+
+Deno.test("runQualityRules: samples 为非法形状（字符串）同样只告警不报错", () => {
+  // 软废弃后不再校验形状：历史坏值也必须能打包，只在 warning 里可见
+  const findings = runQualityRules({
+    files: { texts: {}, names: [] },
+    manifest: { samples: "legacy-shape" },
+  });
+  const finding = findings.find((f) => f.rule === "quality/deprecated-samples");
+  assertEquals(finding?.level, "warn");
+  assertEquals(findings.some((f) => f.level === "error"), false);
+});
+
+Deno.test("runQualityRules: 无 samples → 不告警", () => {
+  const findings = runQualityRules({
+    files: { texts: {}, names: [] },
+    manifest: { title: "x" },
+  });
+  assertEquals(
+    findings.some((f) => f.rule === "quality/deprecated-samples"),
+    false,
+  );
+});
+
 Deno.test("initProblemScaffold: 生成骨架且拒绝非空目录", async () => {
   const root = await Deno.makeTempDir();
   try {
@@ -256,6 +337,46 @@ Deno.test("initProblemScaffold: 生成骨架且拒绝非空目录", async () => 
     await assertRejects(() =>
       initProblemScaffold({ slug: "my-problem", root })
     );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("initProblemScaffold: 生成传统 OI 题包骨架", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const result = await initProblemScaffold({
+      slug: "oi-problem",
+      root,
+      judgeType: "oi",
+    });
+    const manifest = JSON.parse(
+      await Deno.readTextFile(join(result.dir, "problem.json")),
+    );
+    assertEquals(manifest.judge_type, "oi");
+    assertEquals(manifest.runtime_config.backend, "native");
+    assertEquals(
+      await Deno.stat(join(result.dir, "testdata/1.in")).then((s) => s.isFile),
+      true,
+    );
+    assertEquals(result.files.includes("evaluate.py"), false);
+    const report = lintBundle(
+      await (async () => {
+        const texts: Record<string, string> = {};
+        const names: string[] = [];
+        for await (const entry of Deno.readDir(result.dir)) {
+          if (entry.isFile) {
+            names.push(entry.name);
+            texts[entry.name] = await Deno.readTextFile(
+              join(result.dir, entry.name),
+            );
+          }
+        }
+        names.push("testdata/1.in", "testdata/1.out");
+        return { texts, names };
+      })(),
+    );
+    assertEquals(report.hasError, false);
   } finally {
     await Deno.remove(root, { recursive: true });
   }
@@ -315,9 +436,11 @@ Deno.test("vendored 副本：每个文件都必须有同步警示与原始路径
   }
 });
 
-Deno.test("pack: 模板文件必须被排除（规范 problem-bundle.md:26）", () => {
-  // 评审修正：早先把 template.py 打进包，违背规范与旧 noj.ts 行为
-  assertEquals(shouldExclude("template.py", "template.py"), true);
-  assertEquals(shouldExclude("template.py"), true);
-  assertEquals(shouldExclude("custom-tpl.py", "custom-tpl.py"), true);
+Deno.test("pack: 模板文件必须进包（平台据此填充编辑器初始代码）", () => {
+  // 2026-09 修正：模板随包上传，由核心在导入时落库到 problems.template_content。
+  // 旧规则（模板排除）依赖服务器本地 problems-src，容器化生产没有该目录，
+  // 导致线上所有题目的编辑器都没有初始代码。
+  assertEquals(shouldExclude("template.py"), false);
+  assertEquals(shouldExclude("custom-tpl.py"), false);
+  assertEquals(shouldExclude("templates/template.py"), false);
 });

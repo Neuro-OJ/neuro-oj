@@ -241,3 +241,133 @@ export async function createUserToken(
   await insertWithRetry();
   return await signToken({ sub: id, role });
 }
+
+/**
+ * 为已存在的题目登记"迁移基线"已发布版本，并推进最新版指针。
+ *
+ * 版本化后公共列表/详情只对**已发布**题目可见（Handbook §4.1/§6.2），
+ * 存量库里的题目都有基线 V1；因此直接插入题目行的测试夹具需要显式补齐这一步，
+ * 否则题目对普通访问者等同不存在。内容按题目行派生（客观题取现有小题、
+ * OI 带运行配置、AI 带模板与 LLM 配置），与生产迁移基线同口径。
+ *
+ * @param problemId 题目 UUID
+ * @param content 版本内容（缺省按题目行派生）
+ * @returns 新版本 ID
+ */
+export async function publishBaselineVersionForTest(
+  problemId: string,
+  content?: Record<string, unknown>,
+): Promise<string> {
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { problems, problemVersions } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const { deriveDraftContentFromProblem } = await import(
+    "../src/domains/catalog/services/versioning/draft.ts"
+  );
+  const { eq } = await import("drizzle-orm");
+  const db = getDb();
+  const [row] = await db.select().from(problems).where(
+    eq(problems.id, problemId),
+  ).limit(1);
+  if (!row) throw new Error(`题目不存在：${problemId}`);
+  // 已有最新已发布版本：直接复用（幂等）。避免在已有 version=1 的题目上插入
+  // 冲突版本被 `onConflictDoNothing` 跳过后，把指针写成不存在的版本 id（外键失败）。
+  if (row.latest_version_id) return row.latest_version_id;
+  const versionId = `baseline-${problemId}`;
+  const now = new Date().toISOString();
+  // 内容按题目 kind 派生（客观题必须带 questions，否则判卷会拒绝该版本）
+  const derived = await deriveDraftContentFromProblem(row);
+  await db.insert(problemVersions).values({
+    id: versionId,
+    problem_id: problemId,
+    version: 1,
+    origin: "migration_baseline",
+    content: content ?? {
+      ...derived,
+      runtime_config: (derived as { runtime_config?: unknown })
+        .runtime_config ??
+        {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+          },
+          solution: {
+            image: "noj-solution-python",
+            call_timeout_ms: 2000,
+            memory_limit_mb: 512,
+          },
+        },
+      samples: derived.samples ?? [],
+    } as unknown as Record<string, unknown>,
+    published_at: now,
+  }).onConflictDoNothing();
+  await db.update(problems).set({ latest_version_id: versionId }).where(
+    eq(problems.id, problemId),
+  );
+  return versionId;
+}
+
+/**
+ * 把当前库中所有题目补成"已发布"（迁移基线版本）。
+ *
+ * 供直接插入题目行的测试夹具使用：版本化后只有已发布题目会进公共列表与搜索索引
+ * （Handbook §4.1/§6.2/§6.6），夹具若不补这一步，题目在读取路径上等同不存在。
+ * 幂等：已发布题目重复调用不产生新版本行（`onConflictDoNothing` + 指针回写）。
+ */
+export async function publishAllProblemsForTest(): Promise<void> {
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { problems } = await import("../src/shared/db/schema.ts");
+  const rows = await getDb().select({ id: problems.id }).from(problems);
+  for (const row of rows) {
+    await publishBaselineVersionForTest(row.id);
+  }
+}
+
+/**
+ * 竞赛题目关联的夹具输入行：`pinned_version_id` 可省略（自动补迁移基线）。
+ *
+ * 与 `contest_problems` 插入形状一致（未列出的列均有默认值）。
+ */
+export interface ContestProblemFixtureRow {
+  contest_id: string;
+  problem_id: string;
+  label: string;
+  score: number;
+  sort_order?: number;
+  pinned_version_id?: string | null;
+  effective_version_mode?: string;
+  required_version_id?: string | null;
+  effective_policy_revision?: number;
+}
+
+/**
+ * 插入竞赛题目关联，自动补齐**必填**的固定版本（Handbook §2.6）。
+ *
+ * `contest_problems.pinned_version_id` 收紧为 NOT NULL 且有复合外键
+ * （`problem_id, pinned_version_id` → `problem_versions`），因此直接插行的夹具
+ * 必须为题目准备一个已发布版本：未显式指定固定版本的行会经
+ * {@link publishBaselineVersionForTest} 补迁移基线（幂等），再插入关联。
+ *
+ * @param input 关联行（单行或数组；可省略 `pinned_version_id`）
+ */
+export async function insertContestProblems(
+  input: ContestProblemFixtureRow | readonly ContestProblemFixtureRow[],
+): Promise<void> {
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { contestProblems } = await import("../src/shared/db/schema.ts");
+  const rows: readonly ContestProblemFixtureRow[] = Array.isArray(input)
+    ? input
+    : [input as ContestProblemFixtureRow];
+  const resolved = [];
+  for (const row of rows) {
+    resolved.push({
+      ...row,
+      pinned_version_id: row.pinned_version_id ??
+        await publishBaselineVersionForTest(row.problem_id),
+    });
+  }
+  await getDb().insert(contestProblems).values(resolved);
+}

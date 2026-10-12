@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import type { Training } from '~/composables/useTrainings'
 
-const props = defineProps<{ problemId: string }>()
+const props = withDefaults(defineProps<{
+  problemId: string
+  /**
+   * 按钮尺寸，必须与相邻的主操作按钮一致。
+   *
+   * 此前本组件内部写死默认尺寸（md），而题目详情页的「开始编码」用自定义
+   * `px-5 py-2.5` 撑得更高，两个按钮并排时高度/内边距不一致，视觉上错位。
+   */
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
+}>(), { size: 'md' })
 
 const { listMine, listContainingProblem, addProblem, removeProblem, createTraining } = useTrainings()
 const open = ref(false)
@@ -98,8 +107,10 @@ async function createAndAdd() {
 </script>
 
 <template>
-  <div>
-    <UButton icon="i-lucide-list-plus" @click="openModal">加入题单</UButton>
+  <!-- `flex` 包裹：UButton 是 inline-flex，直接放进块级 div 会产生行盒基线下方的
+       间隙，使按钮在 `items-center` 的兄弟容器里看起来比相邻按钮偏高。 -->
+  <div class="flex">
+    <UButton :size="props.size" icon="i-lucide-list-plus" @click="openModal">加入题单</UButton>
 
     <UModal
       v-model:open="open"

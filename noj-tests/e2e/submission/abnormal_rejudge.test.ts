@@ -31,15 +31,26 @@ e2eTest("[e2e/submission-abnormal] Setup", async () => {
   PROBLEM_ID = await getProblemIdByNumber(1001);
 });
 
-e2eTest("[e2e/submission-abnormal] 重测不存在的提交返回 404", async () => {
-  if (!isE2E) return;
-  const { status } = await apiPost(
-    "/api/v1/admin/submission/submissions/00000000-0000-0000-0000-000000000000/rejudge",
-    {},
-    adminToken,
-  );
-  if (status !== 404) throw new Error("期望 404，实际 " + status);
-});
+e2eTest(
+  "[e2e/submission-abnormal] 重测不存在的提交：受理为空任务",
+  async () => {
+    if (!isE2E) return;
+    // 统一任务化后（Handbook §4.3）单条重测是入口适配层，返回 202 与任务 ID；
+    // 不存在的提交不会被固定进条目集合，因此任务总数为 0（"空集合返回已完成、
+    // 总数为 0 的任务"），而不是 404。
+    const { status, body } = await apiPost(
+      "/api/v1/admin/submission/submissions/00000000-0000-0000-0000-000000000000/rejudge",
+      {},
+      adminToken,
+    );
+    if (status !== 202) throw new Error("期望 202，实际 " + status);
+    const d = body as { data: { job_id: string; total_items: number } };
+    if (!d.data.job_id) throw new Error("应返回任务 ID");
+    if (d.data.total_items !== 0) {
+      throw new Error("不存在提交不应产生条目，实际 " + d.data.total_items);
+    }
+  },
+);
 
 e2eTest("[e2e/submission-abnormal] 并发重测同一提交不崩溃", async () => {
   if (!isE2E) return;

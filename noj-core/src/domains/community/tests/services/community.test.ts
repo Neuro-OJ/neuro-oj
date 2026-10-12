@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   auditLogs,
-  communityActivityEvents,
   communityNotifications,
   communityPosts,
   communityReports,
@@ -18,7 +17,6 @@ import {
   assertCommunityWritable,
   changeCommentStatus,
   changePostStatus,
-  createActivity,
   createBoard,
   createComment,
   createPost,
@@ -36,7 +34,6 @@ import {
   toggleBookmark,
   toggleCommentLike,
   togglePostLike,
-  updateActivityVisibility,
   updateBoardRoleGrant,
   updatePost,
 } from "../../index.ts";
@@ -73,7 +70,6 @@ async function setup(): Promise<void> {
       username: "community-test-user",
       email: "community-test@example.com",
       password_hash: "hash",
-      community_activity_visibility: "everyone",
       created_at: now,
       updated_at: now,
     },
@@ -82,7 +78,6 @@ async function setup(): Promise<void> {
       username: "community-test-observer",
       email: "community-test-observer@example.com",
       password_hash: "hash",
-      community_activity_visibility: "everyone",
       created_at: now,
       updated_at: now,
     },
@@ -102,7 +97,6 @@ async function setup(): Promise<void> {
   try {
     await updateSetting("community_enabled", true, "0");
     await updateSetting("community_moments_enabled", true, "0");
-    await updateSetting("community_activities_enabled", true, "0");
     await updateSetting("community_new_user_review_hours", 0, "0");
   } finally {
     leaveTestContext();
@@ -110,22 +104,36 @@ async function setup(): Promise<void> {
 }
 
 Deno.test({
-  name: "community service: 活动去重并显示在最新动态流",
+  name: "community service: 自动动态功能已下线，动态流只含用户短动态",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await setup();
-    await createActivity(actorId, "first_accepted", "problem", "p-1", {});
-    await createActivity(actorId, "first_accepted", "problem", "p-1", {});
-
-    const rows = await getDb().select().from(communityActivityEvents).where(
-      eq(communityActivityEvents.actor_id, actorId),
-    );
-    assertEquals(rows.length, 1);
+    // 审计 VULN-08：community_activity_events 功能整体移除，
+    // 动态流不再混排 first_accepted / solution_published / contest_joined 事件。
+    const now = new Date().toISOString();
+    await getDb().insert(communityPosts).values({
+      id: "feed-moment-1",
+      public_id: "post_feedmoment1",
+      type: "moment",
+      author_id: actorId,
+      problem_id: null,
+      board_id: null,
+      title: null,
+      content: "动态流只应有我这一条短动态",
+      status: "published",
+      is_locked: false,
+      is_pinned: false,
+      moderation_reason: null,
+      published_at: now,
+      created_at: now,
+      updated_at: now,
+    });
 
     const feed = await listFeed("latest");
     assertEquals(feed.data.length, 1);
-    assertEquals(feed.data[0]?.kind, "activity");
+    assertEquals(feed.data[0]?.kind, "moment");
+    assertEquals(feed.data[0]?.post.id, "feed-moment-1");
   },
 });
 
@@ -575,10 +583,9 @@ Deno.test({
     );
     assertEquals(reports[0]?.resolution, "已处理");
 
-    await createActivity(actorId, "first_accepted", "problem", "p-hidden", {});
-    await updateActivityVisibility(actorId, "hidden");
+    // 审计 VULN-08：自动动态已下线，动态流不再可能泄露任何自动事件
     const feed = await listFeed("latest", observerId);
-    assertEquals(feed.data.some((item) => item.kind === "activity"), false);
+    assertEquals(feed.data.some((item) => item.kind !== "moment"), false);
   },
 });
 
@@ -729,12 +736,8 @@ Deno.test({
     assertEquals(page1.next_cursor !== null, true);
     const page2 = await listFeed("latest", undefined, page1.next_cursor!, 2);
     assertEquals(page2.data.length, 1);
-    const ids1 = new Set(
-      page1.data.map((i) => (i.kind === "moment" ? i.post.id : i.activity.id)),
-    );
-    const ids2 = new Set(
-      page2.data.map((i) => (i.kind === "moment" ? i.post.id : i.activity.id)),
-    );
+    const ids1 = new Set(page1.data.map((i) => i.post.id));
+    const ids2 = new Set(page2.data.map((i) => i.post.id));
     for (const id of ids2) assertEquals(ids1.has(id), false);
   },
 });

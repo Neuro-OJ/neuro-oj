@@ -17,4 +17,12 @@ export type ContestAccessInfo = {
   allowed: boolean;
   /** 当前是否处于竞赛窗口内（running）；ended 时为 false */
   running: boolean;
+  /**
+   * 该竞赛**固定**的题目版本（`contest_problems.pinned_version_id`）。
+   *
+   * 竞赛题面与小题目必须按固定版本展示（Handbook §2.6「竞赛默认作答版本 =
+   * 固定版本」）：展示用最新版、判卷用固定版会造成"看到 V2、按 V1 判卷"。
+   * 竞赛侧未填充时为 `null`/`undefined`，读取方回退默认作答版本。
+   */
+  pinnedVersionId?: string | null;
 };

@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import postgres from "postgres";
 import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { PGlite } from "@electric-sql/pglite";
 import * as schema from "./schema.ts";
 import {
@@ -108,6 +109,18 @@ type TestTransactionState =
 let _testTransactionState: TestTransactionState = { status: "idle" };
 let _testTransactionDisabled = false;
 let _savepointSeq = 0;
+/** 独立兄弟事务的全局串行队列：测试连接只有一条，兄弟事务不能交错。 */
+const _siblingQueue = new Map<symbol, Promise<unknown>>();
+/** 每个事务节点的**子事务**队列：同父兄弟按序；跨父（真正嵌套）可立即执行。 */
+const _childQueues = new Map<symbol, Promise<unknown>>();
+/** 节点仍接收子事务；父回调结束后关闭，阻止迟到的异步分支越过 savepoint。 */
+const _openSavepointNodes = new Set<symbol>();
+/** 全局队列的键（单一队列）。 */
+const SIBLING_KEY: symbol = Symbol("noj-savepoint-siblings");
+/** 异步上下文：把"当前事务节点"传播给其后代调用（含 await 之后）。 */
+const _savepointContext = new AsyncLocalStorage<{ node: symbol }>();
+/** 回滚失败后置位：连接上的事务已不可继续使用，后续 savepoint 事务立即报错。 */
+let _savepointBroken = false;
 let _testTransactionProxy: DbClient | null = null;
 
 /**
@@ -135,7 +148,6 @@ export async function runDbResetSeeders(): Promise<void> {
 }
 
 // ── PGlite 模板缓存 ──────────────────────────────────────────
-
 /**
  * 计算 PGlite 模板内容 hash。
  *
@@ -356,26 +368,136 @@ function createTestTransactionDb(realDb: DbClient): DbClient {
 
 /**
  * 在测试事务内模拟嵌套事务：SAVEPOINT / RELEASE / ROLLBACK TO。
+ *
+ * 四条不变量（2026-10-11 复审修正 3）：
+ *
+ * 1. **按异步上下文归属父节点**：测试事务只用一条连接（测试模式 `max: 1`），
+ *    `SAVEPOINT`/`RELEASE` 是连接级状态，兄弟事务交错必然互相破坏。子事务由
+ *    AsyncLocalStorage 中的父节点决定队列归属；不能再要求父节点恰好是当前运行节点，
+ *    因为父回调可在子 A 暂停期间启动同级子 B。
+ * 2. **内层也要按序**：同一根内的并发内层调用（如回调里 `Promise.all` 两个
+ *    `db.transaction()`）同样必须串行，否则再次交错；外层在 `RELEASE` 前会把
+ *    该根的嵌套队列**排空**，避免 fire-and-forget 的内层在 savepoint 释放后落地。
+ * 3. **父节点结束时关闭并排空子队列**：不再接收迟到子事务，先等待已经开始或排队
+ *    的子事务完成，再释放/回滚父 savepoint，避免子事务 SQL 越过父边界。
+ * 4. **记账错误不吞**：成功路径的 `RELEASE` 失败必须抛出；回滚路径保留回调的
+ *    原始异常，但 `ROLLBACK TO SAVEPOINT` 自身失败意味着连接事务不可继续使用，
+ *    必须标记损坏并让后续调用立即失败。
  */
 async function savepointTransaction(
   callback: (tx: DbClient) => unknown,
   _config?: unknown,
 ): Promise<unknown> {
+  assertSavepointUsable();
+  const parentNode = _savepointContext.getStore()?.node ?? null;
+  const node = Symbol("noj-savepoint-node");
+  if (parentNode !== null) {
+    if (!_openSavepointNodes.has(parentNode)) {
+      throw new Error("父 savepoint 已结束，拒绝执行迟到的子事务");
+    }
+    // **直接子事务**（真正的嵌套）：与"同父兄弟"按序执行。
+    // 不能进全局队列——父正在 await 它，进全局会与父互等（死锁）。
+    return await enqueue(
+      _childQueues,
+      parentNode,
+      () => runSavepointTransaction(callback, node),
+    );
+  }
+  // 从任何 savepoint 回调之外发起的独立兄弟：进入全局串行队列。
+  return await enqueue(
+    _siblingQueue,
+    SIBLING_KEY,
+    () => runSavepointTransaction(callback, node),
+  );
+}
+
+/** 串行队列：把任务接到队尾，前一个无论成败都继续排队。 */
+function enqueue<T>(
+  queues: Map<symbol, Promise<unknown>>,
+  key: symbol,
+  task: () => Promise<T>,
+): Promise<T> {
+  const prev = queues.get(key) ?? Promise.resolve();
+  const next = prev.then(task, task);
+  queues.set(key, next.then(() => undefined, () => undefined));
+  return next;
+}
+
+/** savepoint 事务前置校验（active + 未损坏）；返回收窄后的 active 状态。 */
+function assertSavepointUsable(): Extract<
+  TestTransactionState,
+  { status: "active" }
+> {
   const state = _testTransactionState;
   if (state.status !== "active") {
     throw new Error("savepointTransaction 只能在 active 测试事务内调用");
   }
+  if (_savepointBroken) {
+    throw new Error(
+      "测试事务已损坏（savepoint 回滚失败，连接事务不可继续使用）：请让该用例使用独立连接",
+    );
+  }
+  return state;
+}
+
+/** 单次 savepoint 事务的实际执行（由队列串行调度）。 */
+async function runSavepointTransaction(
+  callback: (tx: DbClient) => unknown,
+  node: symbol,
+): Promise<unknown> {
+  const state = assertSavepointUsable();
   const db = state.rawDb;
+  // savepoint 名在同一连接上单调递增（不随用例重置），避免与迟到语句重名。
   const name = `noj_sp_${_savepointSeq++}`;
-  await db.execute(sql`SAVEPOINT ${sql.raw(name)}`);
+  _openSavepointNodes.add(node);
+
+  /** 关闭节点后排空已提交到该节点的队列；其失败不覆盖父回调异常。 */
+  const closeAndDrainChildren = async (): Promise<void> => {
+    _openSavepointNodes.delete(node);
+    await (_childQueues.get(node) ?? Promise.resolve());
+  };
+
+  /** 保存原始异常；回滚错误只标记连接损坏。 */
+  const rollbackAndRelease = async (): Promise<void> => {
+    try {
+      await db.execute(sql.raw(`ROLLBACK TO SAVEPOINT ${name}`));
+      await db.execute(sql.raw(`RELEASE SAVEPOINT ${name}`));
+    } catch (rollbackErr) {
+      _savepointBroken = true;
+      logger.error("测试事务 savepoint 回滚失败，标记连接事务损坏", {
+        rollbackErr,
+      });
+    }
+  };
+
   try {
-    const result = await callback(_testTransactionProxy!);
-    await db.execute(sql`RELEASE SAVEPOINT ${sql.raw(name)}`);
-    return result;
-  } catch (err) {
-    await db.execute(sql`ROLLBACK TO SAVEPOINT ${sql.raw(name)}`);
-    await db.execute(sql`RELEASE SAVEPOINT ${sql.raw(name)}`);
-    throw err;
+    await db.execute(sql`SAVEPOINT ${sql.raw(name)}`);
+    let result: unknown;
+    try {
+      result = await _savepointContext.run(
+        { node },
+        () => callback(_testTransactionProxy!),
+      );
+    } catch (err) {
+      // 父回调失败时先禁止迟到子事务，再等待已开始/排队的子事务结束；
+      // 否则 ROLLBACK TO 会移除仍在使用的子 savepoint。
+      await closeAndDrainChildren();
+      await rollbackAndRelease();
+      throw err;
+    }
+
+    await closeAndDrainChildren();
+    try {
+      // 成功路径：RELEASE 失败必须传播，不能声明成功。
+      await db.execute(sql.raw(`RELEASE SAVEPOINT ${name}`));
+      return result;
+    } catch (err) {
+      await rollbackAndRelease();
+      throw err;
+    }
+  } finally {
+    _openSavepointNodes.delete(node);
+    _childQueues.delete(node);
   }
 }
 
@@ -391,9 +513,10 @@ async function startRealTransaction(): Promise<void> {
   if (isPGliteMode()) {
     if (!_pgliteInstance) return; // DB 尚未初始化，保持 pending
     await _pgliteInstance.query("BEGIN");
+    // 新事务开始：上一次回滚失败导致的"损坏"状态随 ROLLBACK 失效。
+    _savepointBroken = false;
     const realDb = getDb();
     const proxy = createTestTransactionDb(realDb);
-    _savepointSeq = 0;
     _testTransactionState = {
       status: "active",
       db: proxy,
@@ -405,12 +528,25 @@ async function startRealTransaction(): Promise<void> {
     return;
   }
 
-  // PG 模式：测试模式连接池为 max:1，直接在同一连接上 BEGIN
-  if (!_client) return; // DB 尚未初始化，保持 pending
+  // PG 模式：测试模式连接池为 max:1，直接在同一连接上 BEGIN。
+  //
+  // 连接池（`_client`/`_db`）是**首次 `getDb()` 时才懒创建**的，因此不能在这里
+  // 只看 `_client`：某个测试进程的「第一个触库用例」此时 `_client` 仍为 null，
+  // 若直接 `return` 就会让该用例**不进入事务**——它的写入自动提交、不被 preload
+  // 回滚（PGlite 模式不受影响，因为模板实例在启动期已同步就绪）。
+  //
+  // 后果是真实 PG 下出现与测试顺序无关的假失败：固定 fixture id 的重复主键
+  // （如 problems_pkey）以及随后用例的「current transaction is aborted」级联。
+  // 这里先显式初始化连接池，保证每个用例（含第一个）都在真实事务内执行。
+  if (!_client) {
+    if (!Deno.env.get("DATABASE_URL")) return; // 无外部库：保持 pending
+    getDb(); // 同步创建 _client/_db（幂等；pending 状态下不会返回事务代理）
+    if (!_client) return;
+  }
   const realDb = getDb();
   await realDb.execute(sql`BEGIN`);
+  _savepointBroken = false;
   const proxy = createTestTransactionDb(realDb);
-  _savepointSeq = 0;
   _testTransactionState = {
     status: "active",
     db: proxy,
@@ -467,6 +603,27 @@ export function disableTestTransactionForFile(): void {
 }
 
 /**
+ * 构造 postgres.js 的 `connection` 选项（libpq startup 参数）。
+ *
+ * - `TEST_SCHEMA` 非空时附带 `public`，使系统/扩展对象（如 pg_trgm 运算符）可解析；
+ * - `jitDisabled` 为真时发送 `-cjit=off`。
+ *
+ * 返回 `undefined` 表示无启动参数（保持 postgres.js 默认行为）。
+ *
+ * @param testSchema 测试分片 schema 名（空串表示不分片）。
+ * @param jitDisabled 是否关闭 PostgreSQL JIT。
+ */
+export function buildConnectionOptions(
+  testSchema: string,
+  jitDisabled: boolean,
+): { options: string } | undefined {
+  const opts: string[] = [];
+  if (testSchema) opts.push(`-csearch_path=${testSchema},public`);
+  if (jitDisabled) opts.push("-cjit=off");
+  return opts.length > 0 ? { options: opts.join(" ") } : undefined;
+}
+
+/**
  * 获取 Drizzle ORM 数据库实例（单例模式）。
  *
  * 双模式驱动：
@@ -515,6 +672,10 @@ export function getDb() {
       Deno.env.get("DATABASE_MAX_LIFETIME") || "3600",
       10,
     );
+    // JIT 默认关闭（OLTP）：退化查询（如中文 2 字短词触发全表扫描）会被 PG 判为
+    // 高代价而触发 JIT 编译，实测编译耗时 238ms 纯属开销。DATABASE_JIT=on 可恢复。
+    const jitDisabled = Deno.env.get("DATABASE_JIT")?.trim().toLowerCase() !==
+      "on";
     // TEST_SCHEMA：测试并行分片时每个 worker 进程指向独立的 PG schema，
     // 使 resetDbForTest() 的 TRUNCATE 只影响本分片（进程间互不干扰）。
     // 通过 libpq 的 startup 参数 `-csearch_path=...` 在每个物理连接建立时
@@ -533,10 +694,13 @@ export function getDb() {
       connect_timeout: connectTimeout,
       idle_timeout: idleTimeout,
       max_lifetime: maxLifetime,
-      // 附带 public 兜底：系统/扩展对象（如 pg_trgm 运算符）仍可解析
-      connection: testSchema
-        ? { options: `-csearch_path=${testSchema},public` }
-        : undefined,
+      // 启动参数（libpq startup packet）：
+      // - TEST_SCHEMA：附带 public 兜底，使系统/扩展对象（如 pg_trgm 运算符）仍可解析；
+      // - JIT：默认关闭。NOJ 是 OLTP 负载（多为短查询），而中文 2 字等退化查询会
+      //   命中全表扫描并被 PG 判定为高代价，触发 JIT 编译——实测 10 万行搜索中
+      //   JIT 编译占 238ms/309ms（纯开销，不改善结果）。关闭后同一查询降至 57ms。
+      //   长分析型查询确有需要时可设 DATABASE_JIT=on 恢复。
+      connection: buildConnectionOptions(testSchema, jitDisabled),
     });
     _db = drizzlePg(_client, { schema });
     return _db;

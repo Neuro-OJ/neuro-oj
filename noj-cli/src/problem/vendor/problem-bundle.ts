@@ -4,8 +4,8 @@
 /**
  * 统一题目包（Problem Bundle）类型与校验。
  *
- * 导入载体 zip 根级必须包含 `problem.json`（manifest）与 `evaluate.py`，
- * 可包含 `statement.md`（题面）与任意评测内容（testcase 不标准化）。
+ * 导入载体 zip 根级必须包含 `problem.json`（manifest）；双容器题还需要
+ * `evaluate.py`，传统 OI 题则由 runtime_config 引用 `testdata/` 文件。
  *
  * 与 `problem-bundle-import` spec 对齐：
  * - manifest 顶层字段映射 `CreateProblemInput`（title/difficulty/type/number/runtime_config）
@@ -15,6 +15,12 @@
 
 // ⚠️ 本文件是 noj-core 的**刻意副本**，见文件头说明。
 import { BadRequestError } from "./errors.ts";
+import {
+  type OiRuntimeConfig,
+  type ProblemRuntimeConfig,
+  type RuntimeConfig,
+  validateOiRuntimeConfig,
+} from "./runtime-config.ts";
 import { validateRuntimeConfig } from "./runtime-config-validate.ts";
 import {
   type CreateQuestionInput,
@@ -31,7 +37,6 @@ import {
   isValidProblemType,
   isValidSubmissionMode,
   type LlmConfig,
-  type RuntimeConfig,
   type SubmissionMode,
 } from "./problems.ts";
 
@@ -46,12 +51,6 @@ export const BUNDLE_METADATA_ENTRIES = [
   "problem.json",
   "statement.md",
 ] as const;
-
-/** manifest 中可选的样例对。 */
-export interface ProblemBundleSample {
-  input: string;
-  output: string;
-}
 
 /**
  * 统一题目包 manifest（`problem.json`）。
@@ -69,7 +68,6 @@ export interface ProblemBundleManifest {
   number?: number;
   /** 标签名数组，按 name 匹配已有标签，缺省忽略 + warning（issue #223） */
   tags?: string[];
-  samples?: ProblemBundleSample[];
   /** 模板文件索引（纯文件名，缺省默认 "template.py"）：前端编辑器初始代码 */
   template?: string;
   /** 提交模式：code（默认）/ artifact / prediction */
@@ -82,10 +80,12 @@ export interface ProblemBundleManifest {
    * `provider_id` / `model` 容忍并忽略。
    */
   llm?: LlmConfig;
+  /** 评测模式；存量题包缺省为 dual。 */
+  judge_type: "dual" | "oi";
   /** 客观题套卷标记：true 时使用 questions.json，不要求 runtime_config/evaluate.py */
   is_objective?: boolean;
   /** 编程题必填；客观题缺省 */
-  runtime_config?: RuntimeConfig;
+  runtime_config?: ProblemRuntimeConfig;
 }
 
 /**
@@ -113,13 +113,25 @@ export function isValidProblemBundleName(name: string): boolean {
  * 校验模板文件名是否合法（纯文件名）。
  *
  * 模板名禁止路径分隔符（`/`、`\`）与 `..`，防止读取/打包时路径穿越。
- * 导入校验（validateBundleManifest）、模板读取（getProblemTemplate）与
- * 打包排除（noj.ts resolveTemplateExclude）共用同一规则。
+ * 导入校验（validateBundleManifest）、模板读取（readBundleTemplate /
+ * getProblemTemplate）与打包（noj-cli `problem pack`、`problems:build`）共用。
  */
 export function isValidTemplateFileName(name: string): boolean {
   return name.trim().length > 0 &&
     !name.includes("/") && !name.includes("\\") && !name.includes("..");
 }
+
+/** manifest 未声明 `template` 时的默认模板文件名。 */
+export const DEFAULT_TEMPLATE_FILE = "template.py";
+
+/**
+ * 编辑器初始代码模板的大小上限（256 KiB）。
+ *
+ * 模板是"作答骨架"，正常只有几 KB。导入时超过该上限说明作者把大文件当模板
+ * （例如整份参考实现），此时不落库并在导入日志告警——避免把无关内容写进
+ * `problems.template_content` 文本列，也避免静默吞掉异常。
+ */
+export const MAX_TEMPLATE_BYTES = 256 * 1024;
 
 /**
  * 校验 manifest 结构与字段合法性，返回规范化副本（不修改入参）。
@@ -130,8 +142,8 @@ export function isValidTemplateFileName(name: string): boolean {
  * - `difficulty`/`type` 枚举合法
  * - `number` 类型合法
  * - `tags` 为字符串数组
- * - `samples` 为 `{ input, output }` 数组
- * - `runtime_config` 必填：先注入 command 默认值，再通过 `validateRuntimeConfig`
+ * - `samples` 已废弃（从不落库）：出于兼容不做校验，也不记 warning（cli 侧由 lint 规则 Q4 提示）
+ * - `runtime_config` 必填：dual 先注入 command 默认值，OI 使用专用结构校验
  *
  * @throws {BadRequestError} 任一字段非法，错误信息指明字段
  */
@@ -149,6 +161,27 @@ export function validateBundleManifest(
     throw new BadRequestError("manifest.is_objective 必须是布尔值");
   }
   const isObjective = m.is_objective === true;
+  const judgeType = m.judge_type ?? "dual";
+  if (judgeType !== "dual" && judgeType !== "oi") {
+    throw new BadRequestError("manifest.judge_type 仅允许 dual/oi");
+  }
+  if (isObjective && judgeType === "oi") {
+    throw new BadRequestError("客观题套卷不允许 judge_type=oi");
+  }
+  if (judgeType === "oi") {
+    for (
+      const field of [
+        "llm",
+        "template",
+        "submission_mode",
+        "artifact_max_size_mb",
+      ] as const
+    ) {
+      if (m[field] !== undefined) {
+        throw new BadRequestError(`OI 题不允许提供 ${field}`);
+      }
+    }
+  }
 
   if (m.format_version !== BUNDLE_FORMAT_VERSION) {
     throw new BadRequestError(
@@ -193,22 +226,9 @@ export function validateBundleManifest(
     throw new BadRequestError("manifest.tags 必须是字符串数组");
   }
 
-  if (m.samples !== undefined) {
-    if (
-      !Array.isArray(m.samples) ||
-      m.samples.some(
-        (s) =>
-          typeof s !== "object" ||
-          s === null ||
-          typeof (s as ProblemBundleSample).input !== "string" ||
-          typeof (s as ProblemBundleSample).output !== "string",
-      )
-    ) {
-      throw new BadRequestError(
-        "manifest.samples 必须是 { input, output } 字符串对象数组",
-      );
-    }
-  }
+  // `samples` 已废弃（2026-09-24 审计 A2-2，与 noj-core 同步）：该字段从不落库、
+  // 也没有任何消费者。为兼容存量题包，这里**不校验、不拒绝**；新增题包不应再写
+  // 该字段，题面样例请直接写在题面正文。
 
   if (m.template !== undefined) {
     if (typeof m.template !== "string" || !m.template.trim()) {
@@ -264,7 +284,7 @@ export function validateBundleManifest(
     llm = m.llm as LlmConfig;
   }
 
-  let runtimeConfig: RuntimeConfig | undefined;
+  let runtimeConfig: ProblemRuntimeConfig | undefined;
   if (isObjective) {
     if (m.runtime_config !== undefined) {
       throw new BadRequestError("客观题套卷不允许提供 runtime_config");
@@ -286,19 +306,24 @@ export function validateBundleManifest(
       throw new BadRequestError("manifest.runtime_config 是必填字段");
     }
 
-    // 注入 command 默认值后执行既有结构校验（含镜像白名单由调用方在落库前校验）
-    runtimeConfig = resolveManifestCommand(
-      m.runtime_config as RuntimeConfig,
-    );
-    // 模式只由显式 submission_mode 判定，不靠字段缺席推断：code/artifact 仍需
-    // solution，prediction 可省略。
-    validateRuntimeConfig(
-      runtimeConfig,
-      (m.submission_mode as SubmissionMode) ?? "code",
-    );
+    if (judgeType === "oi") {
+      validateOiRuntimeConfig(m.runtime_config);
+      runtimeConfig = structuredClone(m.runtime_config) as OiRuntimeConfig;
+    } else {
+      // 注入 command 默认值后执行既有结构校验（含镜像白名单由调用方在落库前校验）
+      runtimeConfig = resolveManifestCommand(
+        m.runtime_config as RuntimeConfig,
+      );
+      // 模式只由显式 submission_mode 判定，不靠字段缺席推断：code/artifact 仍需
+      // solution，prediction 可省略。
+      validateRuntimeConfig(
+        runtimeConfig,
+        (m.submission_mode as SubmissionMode) ?? "code",
+      );
 
-    if (llm !== undefined && !runtimeConfig.evaluator.network?.enabled) {
-      throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
+      if (llm !== undefined && !runtimeConfig.evaluator.network?.enabled) {
+        throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
+      }
     }
   }
 
@@ -310,12 +335,12 @@ export function validateBundleManifest(
     type: m.type as string | undefined,
     number: m.number as number | undefined,
     tags: m.tags as string[] | undefined,
-    samples: m.samples as ProblemBundleSample[] | undefined,
     template: m.template as string | undefined,
     submission_mode: m.submission_mode as string | undefined,
     artifact_max_size_mb: m.artifact_max_size_mb as number | null | undefined,
     llm,
     is_objective: isObjective,
+    judge_type: judgeType,
     runtime_config: isObjective ? undefined : runtimeConfig,
   };
 }

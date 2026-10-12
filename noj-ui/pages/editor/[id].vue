@@ -3,7 +3,9 @@ import type { Contest, ContestProblem } from '~/composables/useContests'
 import type { WorkspaceSubmission } from '~/components/editor/EditorWorkspace.vue'
 import { getProblemTemplateUrl } from '~/utils/problemTemplate'
 import { publicUrl } from '~/utils/publicIdentifiers'
-import type { SubmissionMode } from '~/utils/problemView'
+import { isNotFoundError, isVersionConflictError } from '~/utils/apiError'
+import type { ProblemContestSecrecyNotice, SubmissionMode } from '~/utils/problemView'
+import type { EditorLanguageConfig } from '~/utils/editorLanguages'
 
 /**
  * 独立做题页（标准题库与竞赛共用）。
@@ -19,6 +21,16 @@ const problemId = computed(() => route.params.id as string)
 const contestId = computed(() => (route.query.contest as string) || '')
 const label = computed(() => (route.query.label as string) || '')
 const isContest = computed(() => !!contestId.value)
+/**
+ * 题目详情页「选择版本作答」带来的指定版本（Handbook §4.2）。
+ *
+ * 只有题库模式接受它（竞赛只接受竞赛固定版本，客户端不能覆盖）；带该参数时按
+ * 指定版本读取题面，提交/自测回传的就是这一版。
+ */
+const requestedVersionId = computed(() => {
+  const value = route.query.version_id
+  return !isContest.value && typeof value === 'string' && value.length > 0 ? value : null
+})
 const { user } = useAuth()
 const { api } = useApi()
 
@@ -29,15 +41,27 @@ const { data: contestData } = useFetch<{ data: Contest }>(
 )
 const contest = computed(() => contestData.value?.data ?? null)
 
-type StandardProblem = {
+type StandardProblem = EditorLanguageConfig & {
   id: string
   display_id: string
   title: string
   description: string
+  samples?: import("~/utils/oiWorkspace").ProblemSample[]
   difficulty: string
   type: 'U' | 'P'
   submission_mode?: SubmissionMode
   tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
+  /** 关联的未结束公开赛（仅所有者/管理员会收到）；非空时页面顶部提示保密。 */
+  contest_secrecy?: ProblemContestSecrecyNotice[]
+  /** 作答版本（题库有效版本策略解析；未发布为 null）。 */
+  version_id?: string | null
+  version?: number | null
+  latest_version_id?: string | null
+  latest_version?: number | null
+  effective_version_policy?:
+    | { mode: 'any' }
+    | { mode: 'exact'; version_id: string | null }
+  is_latest?: boolean
 }
 
 const { data, pending, error, refresh } = useFetch<{
@@ -45,8 +69,22 @@ const { data, pending, error, refresh } = useFetch<{
 }>(
   () => isContest.value
     ? `/api/v1/contests/${contestId.value}/problems/${label.value}`
-    : `/api/v1/problems/${problemId.value}`,
+    : `/api/v1/problems/${problemId.value}${
+      requestedVersionId.value
+        ? `?version_id=${encodeURIComponent(requestedVersionId.value)}`
+        : ''
+    }`,
   { server: false },
+)
+
+/** 404（题目不存在，或被公开赛保密而对当前用户不可见）→ 页面按"不存在"呈现。 */
+const notFound = computed(() => isNotFoundError(error.value))
+
+/** 公开赛保密提示数据（竞赛模式不提示：参赛者本身就是通过竞赛进入的）。 */
+const secrecyNotices = computed<ProblemContestSecrecyNotice[]>(() =>
+  isContest.value
+    ? []
+    : ((data.value?.data as StandardProblem | undefined)?.contest_secrecy ?? [])
 )
 
 const workspaceProblem = computed(() => {
@@ -63,6 +101,8 @@ const workspaceProblem = computed(() => {
       difficulty: p.difficulty,
       type: 'P' as const,
       submission_mode: p.submission_mode ?? 'code',
+      judge_type: p.judge_type,
+      supported_languages: p.supported_languages,
       tags: [],
     }
   }
@@ -75,6 +115,8 @@ const workspaceProblem = computed(() => {
     difficulty: p.difficulty,
     type: p.type,
     submission_mode: p.submission_mode ?? 'code',
+    judge_type: p.judge_type,
+    supported_languages: p.supported_languages,
     tags: p.tags ?? [],
   }
 })
@@ -84,6 +126,17 @@ const isArtifact = computed(() => workspaceProblem.value?.submission_mode === 'a
 const isPrediction = computed(() => workspaceProblem.value?.submission_mode === 'prediction')
 /** artifact 与 prediction 均不走代码编辑器。 */
 const isFileUploadMode = computed(() => isArtifact.value || isPrediction.value)
+
+/**
+ * 作答版本（Handbook §4.2）：题库页取有效策略解析出的版本，竞赛页取竞赛固定版本。
+ *
+ * 提交与自测都必须原样回传，服务端据此判定"在评哪一版"；`null`（题目尚未发布
+ * 任何版本）时不能提交。
+ */
+const answerVersion = computed(() => data.value?.data?.version_id ?? null)
+
+/** 作答版本号（展示用；竞赛接口同样返回）。 */
+const answerVersionNumber = computed(() => data.value?.data?.version ?? null)
 
 // 竞赛访问控制：仅进行中且参赛者/管理员可进入编辑器
 const canUseEditor = computed(() => {
@@ -111,6 +164,13 @@ const canSubmit = computed(
   () => !isContest.value || contest.value?.status === 'running',
 )
 
+/**
+ * 提交代码。
+ *
+ * 必须携带 `version_id`（Handbook §4.2）：题库提交按有效版本策略解析出的版本，
+ * 竞赛提交为竞赛固定版本；服务端不一致时返回 409，此处刷新题目让用户确认新版本
+ * （**不自动换版重提**，代码留在编辑器里）。
+ */
 function submit(pid: string, language: string, code: string) {
   const url = isContest.value
     ? `/api/v1/contests/${contestId.value}/submit`
@@ -120,15 +180,22 @@ function submit(pid: string, language: string, code: string) {
       problem_id: pid,
       language,
       code,
+      ...(answerVersion.value ? { version_id: answerVersion.value } : {}),
     })
     .then((r) => r.data)
+    .catch(async (err: unknown) => {
+      if (isVersionConflictError(err)) await refresh()
+      throw err
+    })
 }
 
+/** 自测同样携带版本：自测按目标版本的运行时配置与语言集合执行。 */
 function selfTest(pid: string, language: string, code: string) {
   return api
     .post<{ data: { id: string } }>(`/api/v1/problems/${pid}/self-test`, {
       language,
       code,
+      ...(answerVersion.value ? { version_id: answerVersion.value } : {}),
     })
     .then((r) => r.data)
 }
@@ -151,86 +218,136 @@ const draftKey = computed(() => isContest.value
   ? `contest:${contestId.value}:${label.value}`
   : problemId.value)
 
-const templateUrl = getProblemTemplateUrl
+/**
+ * 模板地址：竞赛模式携带 `contest_id`。
+ *
+ * 保密题在竞赛中对参赛者不可见"独立路径"，模板接口因此也做同口径校验；
+ * 带上竞赛上下文后，赛中改题/重置模板仍能取到 starter code。
+ */
+/** 指定版本作答且不是最新版：副标题显式标注"历史版本"。 */
+const isHistoricalVersion = computed(() => {
+  if (!requestedVersionId.value) return false
+  return (data.value?.data as StandardProblem | undefined)?.is_latest === false
+})
+
+/** 工作区副标题：竞赛标题 + 作答版本（让选手始终知道在答哪一版）。 */
+const editorSubtitle = computed(() => {
+  const base = isContest.value ? (contest.value?.title ?? '') : ''
+  const versionText = answerVersionNumber.value != null
+    ? `作答版本 v${answerVersionNumber.value}${isHistoricalVersion.value ? '（历史版本）' : ''}`
+    : (answerVersion.value ? '作答版本' : '尚未发布版本')
+  return base ? `${base} · ${versionText}` : versionText
+})
+
+const templateUrl = (pid: string) =>
+  isContest.value
+    ? `${getProblemTemplateUrl(pid)}?contest_id=${encodeURIComponent(contestId.value)}`
+    : getProblemTemplateUrl(pid)
 </script>
 
 <template>
-  <!-- 页面级标题（WCAG 1.3.1）：编辑器为满屏工作区，无可见标题，用 sr-only 提供语义 -->
-  <h1 class="sr-only">做题</h1>
-  <!-- 竞赛访问拦截：结束后 / 未报名 / 未开始 → 提示并返回详情页 -->
-  <div
-    v-if="isContest && !pending && contest && !canUseEditor"
-    class="h-screen flex items-center justify-center bg-bg-page"
-  >
-    <div class="flex flex-col items-center gap-3 rounded-xl border border-border bg-white px-8 py-10 text-center">
-      <span class="flex size-11 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-xl font-bold">
-        <UIcon name="i-lucide-lock" class="size-5" />
-      </span>
-      <p class="text-sm font-medium text-text">{{ accessMessage || '暂无权限进入做题' }}</p>
-      <div class="mt-1 flex gap-2">
-        <UButton color="neutral" variant="outline" size="sm" :to="backUrl">
-          返回题目详情
-        </UButton>
-        <UButton
-          v-if="isContest"
-          color="neutral"
-          variant="outline"
-          size="sm"
-          :to="publicUrl('contest', contestId)"
-        >
-          返回竞赛
+  <div class="flex h-screen flex-col">
+    <!-- 页面级标题（WCAG 1.3.1）：编辑器为满屏工作区，无可见标题，用 sr-only 提供语义 -->
+    <h1 class="sr-only">做题</h1>
+
+    <!-- 公开赛保密提示：仅题目所有者/管理员能打开本页（其他人 404） -->
+    <ProblemContestNotice :contests="secrecyNotices" class="mx-2 mt-2 shrink-0" />
+
+    <!-- 题目不存在 / 被公开赛保密而对当前用户不可见：后端对两者返回同一个 404，
+         此处按"不存在"呈现（本页 ssr:false，无 HTTP 状态语义，故用页面态而非抛错） -->
+    <div
+      v-if="notFound"
+      class="flex-1 min-h-0 flex items-center justify-center bg-bg-page"
+    >
+      <div class="flex flex-col items-center gap-3 rounded-xl border border-border bg-white px-8 py-10 text-center">
+        <span class="flex size-11 items-center justify-center rounded-full bg-sunken text-text-muted text-xl font-bold">
+          404
+        </span>
+        <p class="text-sm font-medium text-text">题目不存在</p>
+        <UButton color="neutral" variant="outline" size="sm" to="/problems">
+          返回题库
         </UButton>
       </div>
     </div>
-  </div>
 
-  <!-- artifact / prediction 题：不使用代码编辑器，引导返回详情页上传文件 -->
-  <div
-    v-else-if="isFileUploadMode"
-    class="h-screen flex items-center justify-center bg-bg-page"
-  >
-    <div class="flex flex-col items-center gap-3 rounded-xl border border-border bg-white px-8 py-10 text-center">
-      <span class="flex size-11 items-center justify-center rounded-full bg-signal/10 text-primary text-xl font-bold">
-        <UIcon :name="isPrediction ? 'i-lucide-file-up' : 'i-lucide-package'" class="size-5" />
-      </span>
-      <p class="text-sm font-medium text-text">
-        {{ isPrediction ? '该题为预测提交题，请返回题目详情上传预测结果文件（单文件）。' : '该题为产物提交题，请返回题目详情上传 zip 文件。' }}
-      </p>
-      <UButton color="primary" variant="outline" size="sm" :to="backUrl">
-        返回题目详情
-      </UButton>
+    <!-- 竞赛访问拦截：结束后 / 未报名 / 未开始 → 提示并返回详情页 -->
+    <div
+      v-else-if="isContest && !pending && contest && !canUseEditor"
+      class="flex-1 min-h-0 flex items-center justify-center bg-bg-page"
+    >
+      <div class="flex flex-col items-center gap-3 rounded-xl border border-border bg-white px-8 py-10 text-center">
+        <span class="flex size-11 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-xl font-bold">
+          <UIcon name="i-lucide-lock" class="size-5" />
+        </span>
+        <p class="text-sm font-medium text-text">{{ accessMessage || '暂无权限进入做题' }}</p>
+        <div class="mt-1 flex gap-2">
+          <UButton color="neutral" variant="outline" size="sm" :to="backUrl">
+            返回题目详情
+          </UButton>
+          <UButton
+            v-if="isContest"
+            color="neutral"
+            variant="outline"
+            size="sm"
+            :to="publicUrl('contest', contestId)"
+          >
+            返回竞赛
+          </UButton>
+        </div>
+      </div>
     </div>
-  </div>
 
-  <EditorWorkspace
-    v-else
-    :problem="workspaceProblem"
-    :pending="pending"
-    :error="error"
-    :retry="refresh"
-    :history-url="historyUrl"
-    :submit="submit"
-    :self-test="isContest ? undefined : selfTest"
-    :template-url="templateUrl"
-    :draft-key="draftKey"
-    :open-submission-url="(id: string) => publicUrl('submission', id)"
-    :back-url="backUrl"
-    :back-label="'返回题目详情'"
-    :subtitle="isContest ? (contest?.title ?? '') : ''"
-    :can-submit="canSubmit"
-    :submission-filter="submissionFilter"
-    @accepted="refresh"
-  >
-    <template v-if="isContest" #toolbar-actions>
-      <UButton
-        color="neutral"
-        variant="outline"
-        size="sm"
-        class="gap-1.5 px-3 py-1.5 text-xs"
-        :to="`${publicUrl('contest', contestId)}/ranking`"
-      >
-        <UIcon name="i-lucide-trophy" class="size-3.5" />排名
-      </UButton>
-    </template>
-  </EditorWorkspace>
+    <!-- artifact / prediction 题：不使用代码编辑器，引导返回详情页上传文件 -->
+    <div
+      v-else-if="isFileUploadMode"
+      class="flex-1 min-h-0 flex items-center justify-center bg-bg-page"
+    >
+      <div class="flex flex-col items-center gap-3 rounded-xl border border-border bg-white px-8 py-10 text-center">
+        <span class="flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary text-xl font-bold">
+          <UIcon :name="isPrediction ? 'i-lucide-file-up' : 'i-lucide-package'" class="size-5" />
+        </span>
+        <p class="text-sm font-medium text-text">
+          {{ isPrediction ? '该题为预测提交题，请返回题目详情上传预测结果文件（单文件）。' : '该题为产物提交题，请返回题目详情上传 zip 文件。' }}
+        </p>
+        <UButton color="primary" variant="outline" size="sm" :to="backUrl">
+          返回题目详情
+        </UButton>
+      </div>
+    </div>
+
+    <!-- 工作区自身带 h-screen，作为 flex 子项被 flex-1 + min-h-0 压回剩余高度，
+         以免上方提示横幅把满屏工作区挤出视口 -->
+    <EditorWorkspace
+      v-else
+      class="flex-1 min-h-0"
+      :problem="workspaceProblem"
+      :pending="pending"
+      :error="error"
+      :retry="refresh"
+      :history-url="historyUrl"
+      :submit="submit"
+      :self-test="isContest ? undefined : selfTest"
+      :template-url="templateUrl"
+      :draft-key="draftKey"
+      :open-submission-url="(id: string) => publicUrl('submission', id)"
+      :back-url="backUrl"
+      :back-label="'返回题目详情'"
+      :subtitle="editorSubtitle"
+      :can-submit="canSubmit"
+      :submission-filter="submissionFilter"
+      @accepted="refresh"
+    >
+      <template v-if="isContest" #toolbar-actions>
+        <UButton
+          color="neutral"
+          variant="outline"
+          size="sm"
+          class="gap-1.5 px-3 py-1.5 text-xs"
+          :to="`${publicUrl('contest', contestId)}/ranking`"
+        >
+          <UIcon name="i-lucide-trophy" class="size-3.5" />排名
+        </UButton>
+      </template>
+    </EditorWorkspace>
+  </div>
 </template>

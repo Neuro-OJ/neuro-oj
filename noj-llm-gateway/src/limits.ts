@@ -4,12 +4,55 @@
  * 使用 Redis Lua 脚本原子完成“检查 + 自增”，避免并发下超限。
  * 支持：
  * - 单次提交 calls/tokens
- * - 用户 / 全局 / 题目 的 day / month 维度 calls / tokens / cost
+ * - 用户 / 全局 / 题目 / 用户×题目（user_problem）的 day / month 维度 calls / tokens / cost
  * - 用户与 IP 的分钟速率窗口
  */
 import type { Db } from "./db.ts";
 import type { RedisClient } from "./redis.ts";
 import type { EvalTokenPayload } from "./crypto.ts";
+
+/**
+ * 单 token 预算/计数的作用域（版本化后按**评测尝试**隔离）。
+ *
+ * - `attempt`：协议 v2 的 eval_token 携带 `attempt_id`，额度键为
+ *   `llm:attempt:<id>:calls|tokens|cost`，同一提交的重测各自独立预算；
+ * - `submission`：旧 core 未携带 `attempt_id`，沿用 `llm:sub:<id>:*`，
+ *   并在提交结束后由 core 按提交吊销。
+ */
+export function evalTokenScope(
+  payload: EvalTokenPayload,
+): { kind: "attempt" | "submission"; id: string } {
+  return payload.attempt_id
+    ? { kind: "attempt", id: payload.attempt_id }
+    : { kind: "submission", id: payload.submission_id };
+}
+
+/** 单 token 维度额度计数键（attempt 优先，旧 token 回退 submission）。 */
+export function evalTokenCounterKey(
+  payload: EvalTokenPayload,
+  field: "calls" | "tokens" | "cost",
+): string {
+  const scope = evalTokenScope(payload);
+  return scope.kind === "attempt"
+    ? `llm:attempt:${scope.id}:${field}`
+    : `llm:sub:${scope.id}:${field}`;
+}
+
+/** eval_token 吊销键（attempt 优先，旧 token 回退 submission）。 */
+export function evalTokenRevokedKey(payload: EvalTokenPayload): string {
+  const scope = evalTokenScope(payload);
+  return scope.kind === "attempt"
+    ? `llm:attempt:revoked:${scope.id}`
+    : `llm:token:revoked:${scope.id}`;
+}
+
+/** 多来源 IP 监控键（attempt 优先，旧 token 回退 submission）。 */
+export function evalTokenIpSetKey(payload: EvalTokenPayload): string {
+  const scope = evalTokenScope(payload);
+  return scope.kind === "attempt"
+    ? `llm:attempt-ips:${scope.id}`
+    : `llm:token-ips:${scope.id}`;
+}
 
 export interface QuotaRow {
   max_calls: number;
@@ -24,6 +67,18 @@ interface CounterSpec {
   ttl: number;
 }
 
+/**
+ * 读取某作用域的配额。
+ *
+ * **解析顺序**（无通配回退，评审 2026-09-25 明确）：
+ * 1. `llm_quotas` 中 `(scope_type, scope_id, window_type)` **精确匹配**的行；
+ * 2. `fallbackQuota()`：env `NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>` → 内置默认值。
+ *
+ * `scope_id` 传入的是"实际计入键"的 id：`global` 为 `""`，`user` 为 `user_id`，
+ * `problem` 为 `problem_id`，`user_problem` 为 `<userId>:<problemId>`。因此
+ * `seed.ts` 里 `scope_id=""` 的 user/problem 行**永远不会命中本查询**，它们只是
+ * 占位记录——默认值请改 env（或写一条精确 id 的行）。
+ */
 async function getQuota(
   db: Db,
   scopeType: string,
@@ -44,12 +99,19 @@ export const QUOTA_ENV_PREFIX = "NOJ_LLM_DEFAULT_";
 /** 配额窗口类型（与下方 defaults 表一致） */
 export const QUOTA_WINDOWS = ["day", "month"] as const;
 /** 配额作用域类型 */
-export const QUOTA_SCOPES = ["global", "user", "problem"] as const;
+export const QUOTA_SCOPES = [
+  "global",
+  "user",
+  "problem",
+  "user_problem",
+] as const;
+/** 配额作用域联合类型 */
+export type QuotaScope = typeof QUOTA_SCOPES[number];
 /** 配额字段 */
 export const QUOTA_FIELDS = ["CALLS", "TOKENS", "COST"] as const;
 
 /**
- * 本模块实际读取的全部配额 env 名（共 3 scope × 2 window × 3 field = 18 个）。
+ * 本模块实际读取的全部配额 env 名（共 4 scope × 2 window × 3 field = 24 个）。
  *
  * 由模板拼接生成——这也是这些键长期在「按字面量搜索」下隐身的原因。
  * 显式枚举出来，供 `src/config-registry.ts` 的声明与测试比对，
@@ -75,7 +137,7 @@ export const QUOTA_ENV_KEYS: string[] = (() => {
  * 默认值与 noj-core 初始化种子一致；可通过环境变量覆盖。
  * 缺失配额 MUST NOT 视为无限。
  */
-function fallbackQuota(
+export function fallbackQuota(
   scopeType: string,
   windowType: string,
 ): QuotaRow {
@@ -103,6 +165,18 @@ function fallbackQuota(
       max_calls: 50_000,
       max_tokens: 5_000_000,
       max_cost: 5000,
+    },
+    // F-06：单用户对单题的累计预算，防止一名选手反复提交打满**全选手共享**的
+    // problem 日桶，把他人 LLM 题评测冻在 0 分（关门攻击）。
+    "user_problem/day": {
+      max_calls: 500,
+      max_tokens: 50_000,
+      max_cost: 50,
+    },
+    "user_problem/month": {
+      max_calls: 5_000,
+      max_tokens: 500_000,
+      max_cost: 500,
     },
   };
   const d = defaults[`${scopeType}/${windowType}`] ?? {
@@ -145,15 +219,35 @@ function monthEndMs(now: number): number {
 }
 
 function scopePrefix(
-  scopeType: "user" | "global" | "problem",
+  scopeType: QuotaScope,
   scopeId: string,
 ): string {
-  return scopeType === "global" ? "llm:global" : `llm:${scopeType}:${scopeId}`;
+  if (scopeType === "global") return "llm:global";
+  if (scopeType === "user_problem") {
+    // scopeId 形如 `<userId>:<problemId>`；用单独前缀避免与 user/problem 冲突
+    return `llm:user_problem:${scopeId}`;
+  }
+  return `llm:${scopeType}:${scopeId}`;
+}
+
+/**
+ * IP 维度分钟限流的 key 前缀（F-10）。
+ *
+ * 有真实客户端 IP 时按 IP 分桶；缺失（Evaluator 容器内直连、无 XFF）时
+ * **不再共用 `ip:unknown` 桶**——否则所有评测流量挤在同一个 60/min 桶里，
+ * 少量高吞吐提交会让他人的 LLM 评测随机 429。改按 submission 隔离，
+ * 使限流只约束单个评测任务自身。
+ */
+export function ipRatePrefix(ip: string, submissionId: string): string {
+  const trimmed = ip.trim();
+  return trimmed && trimmed !== "unknown"
+    ? `llm:rate:ip:${trimmed}`
+    : `llm:rate:sub:${submissionId}`;
 }
 
 /** 每次只构造指定窗口的计数器，避免日/月额度混用和重复扣算。 */
 function scopeCounters(
-  scopeType: "user" | "global" | "problem",
+  scopeType: QuotaScope,
   scopeId: string,
   window: typeof QUOTA_WINDOWS[number],
   quota: QuotaRow | null,
@@ -165,9 +259,10 @@ function scopeCounters(
   const date = new Date(now);
   const windowKey = window === "day" ? dayKey(date) : monthKey(date);
   const prefix = `${scopePrefix(scopeType, scopeId)}:${window}:${windowKey}`;
-  const maxCalls = quota?.max_calls ?? 0;
-  const maxTokens = quota?.max_tokens ?? 0;
-  const maxCost = quota?.max_cost ?? 0;
+  const fallback = fallbackQuota(scopeType, window);
+  const maxCalls = quota ? quota.max_calls : fallback.max_calls;
+  const maxTokens = quota ? quota.max_tokens : fallback.max_tokens;
+  const maxCost = quota ? quota.max_cost : fallback.max_cost;
   const end = window === "day" ? dayEndMs(now) : monthEndMs(now);
   const ttl = Math.max(1, Math.ceil((end - now) / 1000));
   const out: CounterSpec[] = [];
@@ -228,7 +323,9 @@ for i = 3, #KEYS do
   local j = i - 2
   local limit = tonumber(limits[j])
   local inc = tonumber(incs[j])
-  if limit > 0 then
+  if limit == 0 then
+    return 'limit_exceeded'
+  elseif limit > 0 then
     local cur = tonumber(redis.call('GET', KEYS[i]) or '0')
     if cur + inc > limit then
       return 'limit_exceeded'
@@ -252,14 +349,18 @@ local ttls = meta.ttls
 
 for i = 1, #KEYS do
   local new = redis.call('INCRBY', KEYS[i], tonumber(incs[i]))
-  if new == tonumber(incs[i]) then
+  if new < 0 then
+    redis.call('SET', KEYS[i], '0')
+  elseif new == tonumber(incs[i]) then
     redis.call('EXPIRE', KEYS[i], tonumber(ttls[i]))
   end
 end
 
 for i = 1, #KEYS do
   local limit = tonumber(limits[i])
-  if limit > 0 then
+  if limit == 0 then
+    return 'limit_exceeded'
+  elseif limit > 0 then
     local cur = tonumber(redis.call('GET', KEYS[i]) or '0')
     if cur > limit then
       return 'limit_exceeded'
@@ -348,23 +449,36 @@ export async function enforceAndCount(
     payload.problem_id,
     "month",
   );
+  const userProblemScopeId = `${payload.user_id}:${payload.problem_id}`;
+  const userProblemDay = await getQuota(
+    db,
+    "user_problem",
+    userProblemScopeId,
+    "day",
+  );
+  const userProblemMonth = await getQuota(
+    db,
+    "user_problem",
+    userProblemScopeId,
+    "month",
+  );
 
   const counters: CounterSpec[] = [
     {
-      key: `llm:sub:${payload.submission_id}:calls`,
+      key: evalTokenCounterKey(payload, "calls"),
       limit: payload.max_calls,
       inc: 1,
       ttl: opts.ttlSeconds,
     },
     {
-      key: `llm:sub:${payload.submission_id}:tokens`,
+      key: evalTokenCounterKey(payload, "tokens"),
       limit: payload.max_tokens,
       inc: tokens,
       ttl: opts.ttlSeconds,
     },
     {
-      key: `llm:sub:${payload.submission_id}:cost`,
-      limit: 0,
+      key: evalTokenCounterKey(payload, "cost"),
+      limit: -1,
       inc: cost,
       ttl: opts.ttlSeconds,
     },
@@ -419,13 +533,37 @@ export async function enforceAndCount(
       now,
       true,
     ),
+    // F-06：用户×题目组合维度，防止单用户打满共享 problem 桶
+    ...scopeCounters(
+      "user_problem",
+      userProblemScopeId,
+      "day",
+      userProblemDay,
+      tokens,
+      cost,
+      now,
+      true,
+    ),
+    ...scopeCounters(
+      "user_problem",
+      userProblemScopeId,
+      "month",
+      userProblemMonth,
+      tokens,
+      cost,
+      now,
+      true,
+    ),
   ];
 
   const result = await runLimitScript(
     redis,
     [
       `llm:rate:${payload.user_id}:${minuteKey()}`,
-      `llm:rate:ip:${opts.ip || "unknown"}:${minuteKey()}`,
+      // F-10：Evaluator 侧不经边缘代理、无 X-Forwarded-For 时，此前全部落到
+      // 共享的 `ip:unknown` 桶（默认 60/min），少量高吞吐提交即可让他人 LLM
+      // 评测随机 429。无真实 IP 时改用 submission 维度隔离，避免互相挤兑。
+      `${ipRatePrefix(opts.ip, payload.submission_id)}:${minuteKey()}`,
     ],
     counters,
     opts.userRateLimitPerMinute,
@@ -473,17 +611,30 @@ export async function settleUsage(
     payload.problem_id,
     "month",
   );
+  const userProblemScopeId = `${payload.user_id}:${payload.problem_id}`;
+  const userProblemDay = await getQuota(
+    db,
+    "user_problem",
+    userProblemScopeId,
+    "day",
+  );
+  const userProblemMonth = await getQuota(
+    db,
+    "user_problem",
+    userProblemScopeId,
+    "month",
+  );
 
   const counters: CounterSpec[] = [
     {
-      key: `llm:sub:${payload.submission_id}:tokens`,
+      key: evalTokenCounterKey(payload, "tokens"),
       limit: payload.max_tokens,
       inc: deltaTokens,
       ttl: opts.ttlSeconds,
     },
     {
-      key: `llm:sub:${payload.submission_id}:cost`,
-      limit: 0,
+      key: evalTokenCounterKey(payload, "cost"),
+      limit: -1,
       inc: deltaCost,
       ttl: opts.ttlSeconds,
     },
@@ -542,6 +693,27 @@ export async function settleUsage(
       payload.problem_id,
       "month",
       problemMonth,
+      deltaTokens,
+      deltaCost,
+      now,
+      false,
+    ),
+    // F-06：用户×题目组合维度结算
+    ...scopeCounters(
+      "user_problem",
+      userProblemScopeId,
+      "day",
+      userProblemDay,
+      deltaTokens,
+      deltaCost,
+      now,
+      false,
+    ),
+    ...scopeCounters(
+      "user_problem",
+      userProblemScopeId,
+      "month",
+      userProblemMonth,
       deltaTokens,
       deltaCost,
       now,

@@ -1,0 +1,35 @@
+=== NOJ-F-04a 计数口径回归：修复前 / 修复后 ===
+
+被测：noj-core/src/domains/identity/tests/services/users-profile-secrecy.test.ts
+命令：cd noj-core && BCRYPT_SALT_ROUNDS=4 NOJ_ENV=test JWT_SECRET=<test> \
+      deno test -A --no-check --preload=tests/preload.ts \
+      src/domains/identity/tests/services/users-profile-secrecy.test.ts
+
+被修的缺陷（面 1.4 审计 F-04a）：`queryProfileStats` 的 total_submissions / accepted /
+solved_count **完全没有保密过滤**，而兄弟列表（`querySolvedProblems` / `queryRecentSubmissions`）
+是按查看者门控的。后果是"计数 5、列表 4 行"这一**差额**本身就泄露"存在一道被未结束公开赛
+收编的题目且该用户已通过"——比直接显示该行更隐蔽。
+
+【修复前】`queryProfileStats` 不过滤（临时撤掉 viewer 门控）：
+identity: 个人主页题解门控覆盖进行中与赛前筹备期（F-01 回归） ... FAILED (36ms)
+error: AssertionError: Values are not equal: solved_count 必须与已通过题目列表同口径（F-04a）
+FAILED | 0 passed | 1 failed (45ms)
+
+【修复后】`queryProfileStats(db, userId, viewer)` + 复用 `contestSecrecyCondition`：
+identity: 个人主页题解门控覆盖进行中与赛前筹备期（F-01 回归） ... ok (42ms)
+ok | 1 passed | 0 failed (52ms)
+
+用例覆盖的相位（同一流程一次锁死）：
+  A) 未被任何竞赛收编        → 题解 1 条 / solution_count=1 / solved_count=1（基线，证明断言非恒真）
+  B) 进行中公开赛收编        → 题解 0 条 / solution_count=0 / solved_count=0 / 已通过列表 0 行
+  C) 竞赛结束                → 题解 1 条 / solved_count=1（赛后自动放行）
+  D) **赛前筹备期（pending）** → 三者全为 0（F-01 与 F-04a 的共同修复点）
+  E) 特权查看者（管理员/审核员）→ 题解、计数、已通过列表**同时**放行（不制造新的口径不一致）
+
+⚠️ 诚实记录（本文件曾有一版错误内容，已作废）：
+本文件最初版本的"修复后"一节记录为 `FAILED | 0 passed | 1 failed`。那次运行**不是**修复后的
+状态——我用脚本做反向验证时，恢复步骤用了 `replace(..., 1)`（只替换第一处匹配），而文件中存在
+多处同类文本，导致改动落到错误的函数上、把文件改坏。发现后我没有逐处猜测，而是
+`jj restore --from @-` 把该文件退回已提交状态、**重新施加修复**，并核对"改动只落在
+`queryProfileStats`（第 101 行的 `.where(`）、其他函数的 `.where(` 形态未变"，最后复跑得到
+上面的 `ok`。本文件至此为准确版本。

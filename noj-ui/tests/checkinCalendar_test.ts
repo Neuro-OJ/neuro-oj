@@ -2,7 +2,7 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { buildMonthCalendar } from '../utils/checkinCalendar.ts';
+import { buildMonthCalendar, currentUtcMonth, normalizeMonth, shiftMonth } from '../utils/checkinCalendar.ts';
 
 Deno.test('buildMonthCalendar: 生成当月日历并标记已签到日期', () => {
   const ref = new Date('2026-07-15T00:00:00Z');
@@ -32,4 +32,19 @@ Deno.test('buildMonthCalendar: 今日不在当月则不标记今日', () => {
   const ref = new Date('2026-03-01T00:00:00Z');
   const cells = buildMonthCalendar([], '2026-04-01', ref);
   assertEquals(cells.every((c) => !c.isToday), true);
+});
+
+Deno.test('normalizeMonth: 合法月份原样返回，非法回退到当前 UTC 月', () => {
+  const ref = new Date('2026-07-15T00:00:00Z');
+  assertEquals(normalizeMonth('2026-03', ref), '2026-03');
+  assertEquals(normalizeMonth('2026-13', ref), '2026-07');
+  assertEquals(normalizeMonth(undefined, ref), '2026-07');
+  assertEquals(normalizeMonth(['2026-03'], ref), '2026-07');
+  assertEquals(currentUtcMonth(ref), '2026-07');
+});
+
+Deno.test('shiftMonth: 跨年平移', () => {
+  assertEquals(shiftMonth('2026-01', -1), '2025-12');
+  assertEquals(shiftMonth('2025-12', 1), '2026-01');
+  assertEquals(shiftMonth('2026-07', 0), '2026-07');
 });

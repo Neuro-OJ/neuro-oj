@@ -377,86 +377,86 @@ watch(activeTab, () => switchTab(activeTab.value), { immediate: true })
       </div>
     </div>
 
-    <!-- 详情弹窗（含私信聊天上下文） -->
-    <UModal v-model:open="showDetail" title="审查详情" :ui="{ content: 'max-w-xl' }" :unmount-on-hide="true">
-      <template #body>
-        <div v-if="detailLoading" class="py-10 text-center text-sm text-text-secondary">加载中…</div>
-        <div v-else-if="detailItem" class="space-y-4 py-2 text-sm">
-          <div>
-            <span class="mb-1 block text-xs text-text-muted">送审内容快照</span>
-            <div class="whitespace-pre-wrap rounded-md border border-border bg-bg-page px-3 py-2 text-text-secondary">
-              {{ detailItem.content_snapshot || "（空）" }}
-            </div>
-          </div>
-          <div v-if="detailItem.content_type === 'message' && detailItem.context?.message" class="space-y-2">
-            <span class="block text-xs text-text-muted">私信会话上下文</span>
-            <div class="rounded-md bg-bg-page p-3">
-              <div class="mb-2 text-xs text-text-secondary">
-                会话双方：{{ detailItem.context.message.conversation?.user1.username ?? "?" }} ↔ {{ detailItem.context.message.conversation?.user2.username ?? "?" }}
-              </div>
-              <div class="max-h-[320px] space-y-1.5 overflow-y-auto">
-                <div v-if="!detailItem.context.message.history?.length" class="text-xs text-text-muted">暂无更多消息</div>
-                <div v-for="m in detailItem.context.message.history" :key="m.id" class="rounded px-2 py-1 text-xs" :class="m.id === detailItem.target_id ? 'bg-amber-50 ring-1 ring-amber-200' : 'bg-white/60'">
-                  <span class="mr-1.5 font-semibold text-primary">{{ m.sender_name }}</span>
-                  <span class="text-text-secondary">{{ m.recalled_at ? "（已撤回）" : "" }}{{ m.content || "[图片]" }}</span>
-                  <span v-if="m.id === detailItem.target_id" class="ml-1.5 text-amber-700">← 送审消息</span>
-                </div>
-              </div>
-            </div>
-            <p class="text-xs text-text-muted">提示：私信处置仅记录留痕；如需封禁/禁言用户，请到「举报管理」提交举报后处理。</p>
-          </div>
-          <div v-else-if="detailItem.content_type !== 'message'" class="space-y-1 text-xs text-text-secondary">
-            <div v-if="detailItem.context?.post?.author_username">作者：{{ detailItem.context.post.author_username }}</div>
-            <div v-else-if="detailItem.context?.comment?.author_username">作者：{{ detailItem.context.comment.author_username }}</div>
-            <div v-if="detailItem.context?.post">帖子当前状态：{{ detailItem.context.post.status }}</div>
-            <div v-else-if="detailItem.context?.comment">评论当前状态：{{ detailItem.context.comment.status }}</div>
-          </div>
-          <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-secondary">
-            <span>Provider：{{ providerLabel[detailItem.review_provider] ?? detailItem.review_provider }}</span>
-            <span>判定：{{ verdictLabel[detailItem.verdict] ?? detailItem.verdict }}</span>
-            <span v-if="detailItem.risk_level">风险：{{ detailItem.risk_level }}</span>
+    <!-- 审查详情抽屉（含私信聊天上下文） -->
+    <AdminDetailDrawer
+      :open="showDetail"
+      title="审查详情"
+      width-class="sm:max-w-xl"
+      @update:open="(val: boolean) => showDetail = val"
+      @close="showDetail = false"
+    >
+      <div v-if="detailLoading" class="py-10 text-center text-sm text-text-secondary">加载中…</div>
+      <div v-else-if="detailItem" class="space-y-4 py-2 text-sm">
+        <div>
+          <span class="mb-1 block text-xs text-text-muted">送审内容快照</span>
+          <div class="whitespace-pre-wrap rounded-md border border-border bg-bg-page px-3 py-2 text-text-secondary">
+            {{ detailItem.content_snapshot || "（空）" }}
           </div>
         </div>
-      </template>
-      <template #footer>
-        <div class="flex justify-end">
-          <UButton color="neutral" variant="ghost" @click="showDetail = false">关闭</UButton>
+        <div v-if="detailItem.content_type === 'message' && detailItem.context?.message" class="space-y-2">
+          <span class="block text-xs text-text-muted">私信会话上下文</span>
+          <div class="rounded-md bg-bg-page p-3">
+            <div class="mb-2 text-xs text-text-secondary">
+              会话双方：{{ detailItem.context.message.conversation?.user1.username ?? "?" }} ↔ {{ detailItem.context.message.conversation?.user2.username ?? "?" }}
+            </div>
+            <div class="max-h-[320px] space-y-1.5 overflow-y-auto">
+              <div v-if="!detailItem.context.message.history?.length" class="text-xs text-text-muted">暂无更多消息</div>
+              <div v-for="m in detailItem.context.message.history" :key="m.id" class="rounded px-2 py-1 text-xs" :class="m.id === detailItem.target_id ? 'bg-amber-50 ring-1 ring-amber-200' : 'bg-white/60'">
+                <span class="mr-1.5 font-semibold text-primary">{{ m.sender_name }}</span>
+                <span class="text-text-secondary">{{ m.recalled_at ? "（已撤回）" : "" }}{{ m.content || "[图片]" }}</span>
+                <span v-if="m.id === detailItem.target_id" class="ml-1.5 text-amber-700">← 送审消息</span>
+              </div>
+            </div>
+          </div>
+          <p class="text-xs text-text-muted">提示：私信处置仅记录留痕；如需封禁/禁言用户，请到「举报管理」提交举报后处理。</p>
         </div>
-      </template>
-    </UModal>
+        <div v-else-if="detailItem.content_type !== 'message'" class="space-y-1 text-xs text-text-secondary">
+          <div v-if="detailItem.context?.post?.author_username">作者：{{ detailItem.context.post.author_username }}</div>
+          <div v-else-if="detailItem.context?.comment?.author_username">作者：{{ detailItem.context.comment.author_username }}</div>
+          <div v-if="detailItem.context?.post">帖子当前状态：{{ detailItem.context.post.status }}</div>
+          <div v-else-if="detailItem.context?.comment">评论当前状态：{{ detailItem.context.comment.status }}</div>
+        </div>
+        <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-secondary">
+          <span>Provider：{{ providerLabel[detailItem.review_provider] ?? detailItem.review_provider }}</span>
+          <span>判定：{{ verdictLabel[detailItem.verdict] ?? detailItem.verdict }}</span>
+          <span v-if="detailItem.risk_level">风险：{{ detailItem.risk_level }}</span>
+        </div>
+      </div>
+    </AdminDetailDrawer>
 
-    <!-- 处置弹窗 -->
-    <UModal v-model:open="showResolve" title="处置审查记录" :description="resolveTarget ? `${typeLabel[resolveTarget.content_type]}：${resolveTarget.content_snapshot.slice(0, 80)}` : ''">
-      <template #body>
-        <div class="space-y-4 py-2">
-          <template v-if="resolveTarget?.content_type !== 'message'">
-            <label class="block">
-              <span class="mb-1 block text-xs text-text-secondary">处置方式</span>
-              <div class="flex gap-4">
-                <label class="flex items-center gap-2 text-sm">
-                  <input v-model="resolveAction" type="radio" value="hide_content" class="accent-primary" />
-                  隐藏违规内容
-                </label>
-                <label class="flex items-center gap-2 text-sm">
-                  <input v-model="resolveAction" type="radio" value="record_only" class="accent-primary" />
-                  仅记录（内容保留）
-                </label>
-              </div>
-            </label>
-          </template>
-          <p v-else class="text-xs text-text-secondary">私信无公开内容可隐藏，本处置将仅记录留痕；如需封禁用户请走举报管理。</p>
+    <!-- 处置审查记录抽屉 -->
+    <AdminEditPanel
+      :open="showResolve"
+      :title="resolveTarget ? `处置审查记录：${typeLabel[resolveTarget.content_type]}` : '处置审查记录'"
+      width-class="sm:max-w-lg"
+      :loading="processingId !== null"
+      save-text="确认处置"
+      @update:open="(val: boolean) => showResolve = val"
+      @close="showResolve = false"
+      @save="submitResolve"
+    >
+      <div class="space-y-4 py-2">
+        <template v-if="resolveTarget?.content_type !== 'message'">
           <label class="block">
-            <span class="mb-1 block text-xs text-text-secondary">处置说明</span>
-            <textarea v-model="resolveReason" class="min-h-20 w-full rounded border border-border px-3 py-2 text-sm" placeholder="例如：违反社区规范，隐藏处理" />
+            <span class="mb-1 block text-xs text-text-secondary">处置方式</span>
+            <div class="flex gap-4">
+              <label class="flex items-center gap-2 text-sm">
+                <input v-model="resolveAction" type="radio" value="hide_content" class="accent-primary" />
+                隐藏违规内容
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input v-model="resolveAction" type="radio" value="record_only" class="accent-primary" />
+                仅记录（内容保留）
+              </label>
+            </div>
           </label>
-        </div>
-      </template>
-      <template #footer>
-        <div class="flex justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="showResolve = false">取消</UButton>
-          <UButton color="primary" :disabled="processingId !== null" @click="submitResolve">{{ processingId !== null ? "处理中…" : "确认处置" }}</UButton>
-        </div>
-      </template>
-    </UModal>
+        </template>
+        <p v-else class="text-xs text-text-secondary">私信无公开内容可隐藏，本处置将仅记录留痕；如需封禁用户请走举报管理。</p>
+        <label class="block">
+          <span class="mb-1 block text-xs text-text-secondary">处置说明</span>
+          <textarea v-model="resolveReason" class="min-h-20 w-full rounded border border-border px-3 py-2 text-sm" placeholder="例如：违反社区规范，隐藏处理" />
+        </label>
+      </div>
+    </AdminEditPanel>
   </div>
 </template>

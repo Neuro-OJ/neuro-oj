@@ -19,3 +19,8 @@ E2E 的所有 Domain job 在共享前置阶段拉取 `minio/mc:RELEASE.2025-08-1
 ## Consequences
 
 E2E 不再依赖已失效的 Docker Hub MinIO 仓库，Compose 配置检查和启动脚本静态检查通过；推送后需等待 GitHub Actions 重新执行各 Domain E2E，确认镜像拉取和完整测试链路恢复。
+
+## 后续（2026-09-26）
+
+Quay 这一来源随后也被下架（`quay.io/minio/*` 无 manifest，Docker Hub 的 `minio/*` 整组织 404，`dl.min.io` 返回 410），镜像来源再次迁移到 Bitnami 冻结源，并顺带修复 prod compose 与 `noj-cli` 备份镜像的同类失效。详见
+[`2026-09-26-minio-official-images-removed.md`](./2026-09-26-minio-official-images-removed.md)。

@@ -42,9 +42,6 @@ export const users = pgTable(
     must_change_password: boolean("must_change_password").notNull().default(
       false,
     ),
-    /** 社区系统活动可见范围：hidden / following / everyone */
-    community_activity_visibility: text("community_activity_visibility")
-      .notNull().default("following"),
     /** 用户头像存储 URL（`noj-storage://` 格式），NULL = 未设置 */
     avatar_url: text("avatar_url"),
     /** TOTP secret 加密后的密文（AES-256-GCM），NULL = 未设置 */
@@ -65,10 +62,6 @@ export const users = pgTable(
     searchVectorIdx: index("idx_users_search_vector").using(
       "gin",
       table.searchVector,
-    ),
-    communityActivityVisibilityCheck: check(
-      "users_community_activity_visibility_check",
-      sql`${table.community_activity_visibility} IN ('hidden', 'following', 'everyone')`,
     ),
   }),
 );

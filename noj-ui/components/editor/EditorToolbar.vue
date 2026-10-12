@@ -98,7 +98,7 @@ const draftDotClass = computed(() => {
     <div class="flex items-center gap-2 min-w-0">
       <span
         v-if="badge"
-        class="inline-flex size-7 items-center justify-center rounded-md bg-bg-dark font-mono text-xs font-bold text-white flex-shrink-0"
+        class="inline-flex size-7 items-center justify-center rounded-md bg-primary-bg font-mono text-xs font-bold text-primary border border-primary/20 flex-shrink-0"
       >
         {{ badge }}
       </span>

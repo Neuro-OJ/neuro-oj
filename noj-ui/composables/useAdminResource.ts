@@ -19,6 +19,7 @@ export function useAdminResource<T = Record<string, unknown>>(options: AdminReso
   return {
     items: list.items,
     totalPages: list.totalPages,
+    totalItems: list.totalItems,
     loading: list.loading,
     error: list.error,
     currentPage: list.currentPage,

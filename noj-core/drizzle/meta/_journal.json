@@ -614,8 +614,183 @@
     {
       "idx": 87,
       "version": "7",
-      "when": 1790246809323,
-      "tag": "0087_green_hercules",
+      "when": 1790166125073,
+      "tag": "0087_free_morlun",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1790167732994,
+      "tag": "0088_migrate_data_policy_to_legal",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1790208762096,
+      "tag": "0089_wooden_the_leader",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1790211666245,
+      "tag": "0090_colossal_whirlwind",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1790217610701,
+      "tag": "0091_black_fixer",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1790246049996,
+      "tag": "0092_material_darkstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1790343139131,
+      "tag": "0093_dazzling_red_hulk",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1790512159573,
+      "tag": "0094_tidy_pretty_boy",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1790574277375,
+      "tag": "0095_steady_korg",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1790954538572,
+      "tag": "0096_round_squadron_sinister",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1791288440066,
+      "tag": "0097_steady_union_jack",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1791289329534,
+      "tag": "0098_talented_cassandra_nova",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1791289716127,
+      "tag": "0099_burly_magik",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1791290179613,
+      "tag": "0100_lethal_whizzer",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1791290785927,
+      "tag": "0101_oi_accepted_rankings",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1791547634273,
+      "tag": "0102_problem_version_management",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1791556042443,
+      "tag": "0103_version_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1791613662596,
+      "tag": "0104_rebuild_user_rankings_view",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1791614703631,
+      "tag": "0105_superb_major_mapleleaf",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1791619109315,
+      "tag": "0106_flowery_iceman",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1791622334387,
+      "tag": "0107_military_zarek",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1791641298821,
+      "tag": "0108_correct_versioned_rankings",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1791650000000,
+      "tag": "0109_legacy_platform_errors",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1791707116634,
+      "tag": "0111_clever_khan",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1791718080782,
+      "tag": "0112_futuristic_khan",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1791794895919,
+      "tag": "0113_tense_jetstream",
       "breakpoints": true
     }
   ]

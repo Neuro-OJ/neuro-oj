@@ -48,6 +48,21 @@ export interface StorageObjectInfo {
   lastModified: string | null;
 }
 
+/**
+ * 对象存在性与大小的查询结果（`StorageProvider.stat`）。
+ *
+ * 用于**确认对象真实存在**（Handbook §2.5）：发布预检、存量对象首次核实、
+ * 删除前的存在性判断都依赖它，不能只看数据库登记行。
+ */
+export interface StorageObjectStat {
+  /** 对象是否存在于后端。 */
+  exists: boolean;
+  /** 对象字节数；后端无法提供时为 null。 */
+  sizeBytes: number | null;
+  /** 最后修改时间（ISO 8601）；无法提供时为 null。 */
+  lastModified: string | null;
+}
+
 // ── URL 常量 ─────────────────────────────────────────────────
 
 export const STORAGE_URL_PREFIX = "noj-storage://";
@@ -71,6 +86,27 @@ export interface StorageProvider {
    * @returns `noj-storage://` URL，包含 checksum_sha256
    */
   put(key: string, data: Uint8Array, contentType?: string): Promise<string>;
+
+  /**
+   * 预测 `put()` 将返回的 `noj-storage://` URL（**不写盘、不发请求**）。
+   *
+   * 用途：Handbook §2.5 要求"物理上传**之前**先写上传预约
+   * （`reserveStorageObjectUpload`）"，而预约以存储 URL 为准。local 是内容寻址、
+   * S3 用调用方选定的 key，二者都能由 `key` + 内容 SHA-256 唯一决定，因此调用方
+   * 可以先把 URL 算出来登记预约，再执行真正的上传。
+   *
+   * 实现必须与同实现的 `put()` 返回完全一致（`put` 应复用本方法）。
+   *
+   * @param key 存储键（local 忽略，内容寻址；S3 为对象键）
+   * @param sha256Hex 内容 SHA-256（十六进制小写）
+   * @param contentType 内容类型（local 用于推导扩展名）
+   * @returns 与 `put()` 相同格式的 `noj-storage://` URL
+   */
+  urlForUpload?(
+    key: string,
+    sha256Hex: string,
+    contentType?: string,
+  ): string;
 
   /**
    * 流式存储数据并返回 `noj-storage://` URL。
@@ -120,6 +156,17 @@ export interface StorageProvider {
    * 非致命——失败仅 warn，不阻止启动
    */
   ensureBucket?(): Promise<void>;
+
+  /**
+   * 查询对象存在性与大小（不读取内容）。
+   *
+   * - local：使用文件系统元数据；
+   * - S3：使用对象元数据查询（HEAD）。
+   *
+   * 对象不存在时返回 `{ exists: false }`，**不抛错**——调用方据此把登记行
+   * 标记为 `missing` 或让删除流程继续。
+   */
+  stat(url: string): Promise<StorageObjectStat>;
 
   /**
    * 只读列举对象，用于生命周期盘点和容量观测。

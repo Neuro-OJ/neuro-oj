@@ -1,13 +1,13 @@
 # NOJ 测试体系
 
-本文档汇总 NOJ 各模块的测试分层、运行命令与约定。详细模块级内容以各模块 `CLAUDE.md` 为准。
+本文档汇总 NOJ 各模块的测试分层、运行命令与约定。详细模块级内容以各模块 `AGENTS.md` / `CLAUDE.md` 为准。
 
 ## 分层
 
 | 层 | 位置 | 说明 |
 |---|---|---|
-| 单元/服务测试 | `noj-core/tests/` | lib/middleware/types/data/app 等 |
-| 路由/集成测试 | `noj-core/tests/routes/`、`tests/services/`、`tests/mq/` | 需要 DB/Redis 的测试 |
+| Domain 单元/集成测试 | `noj-core/src/domains/<domain>/tests/`（按 `routes/`、`services/`、`mq/`、`middleware/` 等分组） | 各业务域的路由、服务与 MQ 测试，部分需要 DB/Redis；由 `deno task test:domain <domain>` 运行 |
+| 共享/全局测试 | `noj-core/tests/`（`shared/`、`routes/`、`app.test.ts` 等） | 跨域共享基础设施、全局中间件与应用装配；由 `scripts/test-shared.sh` 运行 |
 | 冒烟测试 | `noj-core/tests/smoke.test.ts` | 快速验证 HTTP 核心路径 |
 | noj-llm-gateway 测试 | `noj-llm-gateway/tests/` | 网关逻辑、限流、审计 |
 | noj-ui 测试 | `noj-ui/tests/` | 工具函数、部分 composable |
@@ -63,14 +63,19 @@ deno task test:domain cross-domain # 跨域 E2E
 
 ## 覆盖率报告与基线
 
-- 覆盖率报告：`deno run -A scripts/coverage-report.ts --report`，输出到 `dev-docs/engineering/test-coverage.md`。
+- 覆盖率报告：`deno run -A scripts/coverage-report.ts --report`，输出到 `dev-docs/engineering/test-coverage.md`（生成物，不入库）。
+  加 `--check` 时各模块 `test:coverage` 自带的 `--threshold` 生效（当前 noj-llm-gateway ≥ 54%、noj-ui ≥ 60%）；
+  CI 的 Coverage Check job 即以 `--report --check` 运行，属于**硬门禁**。noj-core / noj-judge 的覆盖率由各自 CI job 采集，不在该报告聚合范围内。
 - 静默跳过清单：`deno run -A scripts/silent-skip-report.ts`，输出到 `dev-docs/engineering/test-silent-skips.md`。
-- 慢测试基线：`deno run -A scripts/test-baseline.ts`，输出到 `dev-docs/engineering/test-baseline.md`。
-- 覆盖率目标仅作趋势跟踪，不设 CI 硬门禁。
+- 慢测试基线：`deno run -A scripts/test-baseline.ts`，输出到 `dev-docs/engineering/test-baseline.md`（生成物，不入库）。
+
+## 已落地的配套门禁
+
+- 集中 gate runner：`scripts/check-all.ts`（本地）/ `scripts/check-ci.ts`（CI），闸门清单见 `scripts/gate-list.ts`。
+- 入口存在性检查：`scripts/smoke-entrypoints.ts`（CI 中运行；仅校验入口源文件与已构建产物存在，不启动进程）。
+- LLM 回放测试：`cd noj-llm-gateway && deno task test:snapshot`（录制用 `test:snapshot:record`）。
 
 ## 后续计划
 
-- 集中 gate runner：`scripts/check-all.ts` / `scripts/check-ci.ts`。
-- 覆盖率门禁：noj-core ≥ 75%、noj-judge ≥ 80%、noj-llm-gateway ≥ 80%、noj-ui 关键 composables ≥ 60%。
-- 真实入口 smoke：judge release binary / Docker 镜像、core `deno compile`。
-- LLM 回放测试：录制-回放快照。
+- 真实入口 smoke：启动 judge release binary / Docker 镜像、core `deno compile` 产物并探活。
+- 提高覆盖率阈值：目标 noj-core ≥ 75%、noj-judge ≥ 80%、noj-llm-gateway ≥ 80%、noj-ui 关键 composables ≥ 60%。

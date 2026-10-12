@@ -11,6 +11,7 @@ import { useDialog } from '~/composables/useDialog'
 import { useToast } from '~/composables/useToast'
 import { restoreCodeTemplate } from '~/utils/codeEditorTemplate'
 import type { SubmissionMode } from '~/utils/problemView'
+import { getEditorLanguages, type EditorLanguageConfig } from '~/utils/editorLanguages'
 
 /**
  * 独立做题工作区（从 pages/editor/[id].vue 抽出，供标准题库与竞赛共用）。
@@ -20,12 +21,14 @@ import type { SubmissionMode } from '~/utils/problemView'
  * - historyUrl / submit / templateUrl / draftKey / openSubmissionUrl：提交链路
  * - backUrl / backLabel / subtitle / badge：页面上下文（竞赛标题、题号徽标等）
  */
-export interface WorkspaceProblem {
+export interface WorkspaceProblem extends EditorLanguageConfig {
+  judge_backend?: "dual" | "oi-native" | "oi-wasm" | null
   id: string
   display_id: string
   label?: string
   title: string
   description: string
+  samples?: import("~/utils/oiWorkspace").ProblemSample[]
   difficulty: string
   type: 'U' | 'P'
   submission_mode?: SubmissionMode
@@ -154,14 +157,19 @@ const submissions = computed(() => {
   return props.submissionFilter ? all.filter(props.submissionFilter) : all
 })
 
-// 语言（仅 Python 3，多语言等待 judge 镜像就绪后启用）
-const languages = [{ value: 'python3', label: 'Python 3' }]
+// 题目异步加载后同步白名单，优先选择 C++，且不保留失效的语言选项。
+const languages = computed(() => getEditorLanguages(props.problem))
 const language = ref('python3')
+watch(languages, (options) => {
+  if (!options.some((option) => option.value === language.value)) {
+    language.value = options[0]?.value ?? ''
+  }
+}, { immediate: true })
 
 // 提交
 const submitting = ref(false)
 const submitError = ref('')
-const canSubmit = computed(() => props.canSubmit && isLoggedIn.value && code.value.trim().length > 0)
+const canSubmit = computed(() => props.canSubmit && isLoggedIn.value && code.value.trim().length > 0 && languages.value.some((option) => option.value === language.value))
 
 async function handleSubmit() {
   if (!props.problem) return
@@ -191,6 +199,8 @@ async function handleSubmit() {
 }
 
 // 自测
+const oiPanel = ref<{runAll:()=>Promise<void>} | null>(null)
+const isOi = computed(() => props.problem?.judge_type === "oi")
 const selfTesting = ref(false)
 const selfTestError = ref('')
 const selfTestDisplayError = computed(
@@ -206,6 +216,9 @@ async function handleSelfTest() {
   if (!canSelfTest.value) {
     selfTestError.value = isLoggedIn.value ? '请先编写代码' : '请先登录'
     return
+  }
+  if(isOi.value) {
+    sidebarTab.value="self-test"; sidebarVisible.value=true; await nextTick(); await oiPanel.value?.runAll(); return
   }
   selfTesting.value = true
   selfTestError.value = ''
@@ -445,7 +458,9 @@ const toolbarProblem = computed(() => {
                 @update:draft-enabled="draftEnabled = $event"
                 @clear-draft="handleClearDraft"
                 @open-submission="openSubmission"
-              />
+              >
+                <template v-if="isOi && problem" #oi-self-test><OiSelfTestPanel ref="oiPanel" :problem-id="problem.id" :code="code" :language="language" :samples="problem.samples??[]" :backend="problem.judge_backend" /></template>
+              </EditorSidebar>
             </div>
             <ResizableSplitter
               v-model="sidebarWidth"

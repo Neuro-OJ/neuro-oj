@@ -1,8 +1,12 @@
 <template>
-    <div class="bg-white border border-border rounded-xl shadow-card animate-[fadeInUp_0.5s_ease_0.15s_both] h-full flex flex-col">
+    <div class="bg-white border border-border rounded-lg shadow-card animate-[fadeInUp_0.5s_ease_0.15s_both] h-full flex flex-col">
         <div class="flex items-center gap-2 px-5 py-3.5 border-b border-border shrink-0">
             <UIcon name="i-lucide-clock" class="text-primary shrink-0 size-4" />
             <h3 class="text-sm font-semibold text-text m-0">最新评测</h3>
+            <span class="relative flex size-2 ml-0.5" title="实时推送中">
+                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-signal opacity-75"></span>
+                <span class="relative inline-flex size-2 rounded-full bg-signal"></span>
+            </span>
             <StatsToggle :today-stats="todayStats" :total-stats="totalStats" />
         </div>
         <div class="flex-1 flex flex-col">

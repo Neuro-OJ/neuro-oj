@@ -40,6 +40,39 @@ export function isNetworkError(err: unknown): boolean {
 }
 
 /**
+ * 判断是否为 404（`$fetch`/`useFetch` 的 FetchError，或经 `extractApiError` 提取的结果）。
+ *
+ * 用于把"题目不存在/题目被公开赛保密而对当前用户不可见"渲染成真正的 404 页面，
+ * 而不是笼统的"加载失败"面板——后端对这两种情况刻意返回同一个 404
+ * `题目不存在`（防存在性探测），前端不应把它降级成 200。
+ */
+export function isNotFoundError(err: unknown): boolean {
+  if (!err) return false;
+  const status = (err as { status?: unknown; statusCode?: unknown }).status ??
+    (err as { statusCode?: unknown }).statusCode;
+  return status === 404;
+}
+
+/**
+ * 判断是否为「作答版本冲突」（Handbook §4.2/§4.4）。
+ *
+ * 服务端在客户端提交的版本与当前作答版本不一致（题库换版后旧页面）或未携带版本时
+ * 返回 409：`VERSION_REQUIRED` / `CONTEST_PROBLEM_VERSION_CHANGED`；
+ * 版本已被删除/未发布时为 404 `PROBLEM_VERSION_NOT_FOUND`。
+ *
+ * 调用方一律**不要自动改用其他版本重提**：保留用户已写内容，重新拉取题目让用户
+ * 确认新版本后再提交。
+ */
+export function isVersionConflictError(err: unknown): boolean {
+  if (!err) return false;
+  const data = (err as { data?: unknown }).data;
+  const code = data && typeof data === 'object' ? (data as { code?: unknown }).code : undefined;
+  return code === 'VERSION_REQUIRED' ||
+    code === 'CONTEST_PROBLEM_VERSION_CHANGED' ||
+    code === 'PROBLEM_VERSION_NOT_FOUND';
+}
+
+/**
  * 从任意异常提取错误信息。
  *
  * 提取优先级：

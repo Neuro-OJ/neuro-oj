@@ -190,6 +190,7 @@ async fn prediction_end_to_end_scores_and_creates_no_solution_container() {
                     &whitelist,
                     300_000,
                     512,
+                    "noj-e2e-prediction",
                 )
                 .await
             });

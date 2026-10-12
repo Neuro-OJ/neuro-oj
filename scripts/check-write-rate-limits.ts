@@ -69,6 +69,17 @@ export const ALLOWLIST: Record<
     status: "exempt",
     reason: "管理后台写操作：admin 权限 + 审计日志兜底",
   },
+  // ── 题目版本管理（2026-10-10）：管理端写操作，admin 权限 + 审计兜底 ──
+  "noj-core/src/domains/admin/routes/submission-jobs.ts": {
+    status: "exempt",
+    reason:
+      "管理后台批量重测受理/重试：admin 权限 + 审计日志兜底（矩阵文档「已知未覆盖」）",
+  },
+  "noj-core/src/domains/admin/routes/problem-versions.ts": {
+    status: "exempt",
+    reason:
+      "管理后台版本策略/固定版本：admin 权限 + 审计日志兜底（矩阵文档「已知未覆盖」）",
+  },
   // ── 题单/标签 CRUD：权限受限、频率低，矩阵文档列为可接受 ──
   "noj-core/src/domains/catalog/routes/tags.ts": {
     status: "exempt",
@@ -83,10 +94,6 @@ export const ALLOWLIST: Record<
     status: "pending",
     reason:
       "每日签到本身按天幂等；但写路由无任何限流，建议补 IP 限流或明确豁免",
-  },
-  "noj-core/src/domains/identity/routes/users.ts": {
-    status: "pending",
-    reason: "资料修改/注销账号等写路由无限流；注销为高价值操作，建议补限流",
   },
   "noj-core/src/domains/system/routes/email-delivery.ts": {
     status: "pending",

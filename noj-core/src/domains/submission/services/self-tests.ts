@@ -5,7 +5,7 @@
  * 不参与统计/榜单/AC 活动。
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { problems, selfTests } from "./../../../shared/db/schema.ts";
 import {
@@ -15,7 +15,7 @@ import {
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { checkPermission } from "./../../identity/index.ts";
-import { getStorageProvider } from "./../../system/index.ts";
+import { getRedis } from "../../../shared/mq/connection.ts";
 import { isRetryableJudgeQueueError, pushJudgeTask } from "../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
 import { getLogger } from "@logtape/logtape";
@@ -25,9 +25,22 @@ import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import type { JudgeResult } from "../types/index.ts";
-import { buildJudgeTask } from "../types/index.ts";
-import { resolveProblemAccess } from "./../../catalog/index.ts";
-import type { RuntimeConfig } from "./../../catalog/index.ts";
+import { prepareJudgeTask } from "./prepare-judge-task.ts";
+import {
+  executionSnapshot,
+  versionSupportPackageDownload,
+  versionSupportPackageUrl,
+} from "./versioning/version-execution.ts";
+import {
+  assertVersionAcceptsSubmission,
+  resolveSubmissionVersion,
+} from "./versioning/submission-version.ts";
+import { evaluateProblemAccess } from "./../../catalog/index.ts";
+import { buildOiSelfTestPackage } from "../../catalog/index.ts";
+import {
+  isOiRuntimeConfig,
+  type ProblemRuntimeConfig,
+} from "./../../catalog/index.ts";
 import {
   SELF_TEST_ID_PREFIX,
   type SelfTestDetail,
@@ -38,6 +51,39 @@ import {
 
 /** 详情接口返回的 output 最大长度（字节近似），与正式提交一致。 */
 const MAX_OUTPUT_LENGTH = 8 * 1024;
+
+/** 取消 OI 自测；先持久化共享取消信号，再锁住终态，保留已有进度结果。 */
+export async function cancelSelfTest(id: string, c: Context): Promise<void> {
+  const detail = await getSelfTest(id, c);
+  if (!["pending", "judging"].includes(detail.status)) return;
+  const db = getDb();
+  const [row] = await db.select().from(selfTests).where(eq(selfTests.id, id));
+  if (!row.judge_run_id) {
+    throw new BadRequestError("此自测使用旧协议，不支持取消");
+  }
+  await getRedis().set(
+    `noj:judge:cancel:${id}:${row.judge_run_id}`,
+    "1",
+    "EX",
+    3600,
+  );
+  await db.update(selfTests).set({
+    status: "cancelled",
+    result_status: "cancelled",
+    judge_finished_at: new Date().toISOString(),
+  })
+    .where(
+      and(
+        eq(selfTests.id, id),
+        eq(selfTests.judge_run_id, row.judge_run_id),
+        inArray(selfTests.status, ["pending", "judging"]),
+      ),
+    );
+  await publishSseEvent(Channels.submission(id), {
+    type: "submission:updated",
+    id,
+  });
+}
 
 /** 解析 details 字段（数据库存 JSON 字符串）。 */
 function parseDetails(raw: string | null): Record<string, unknown> | null {
@@ -74,12 +120,20 @@ export async function createSelfTest(
   }
   const problem = rows[0];
 
-  // 统一访问解析：自测不允许携带竞赛上下文，private 题仅 owner/admin。
-  const access = resolveProblemAccess(problem, {
+  // 统一访问解析：自测不允许携带竞赛上下文，private 题仅 owner/admin；
+  // 被公开赛保密的题目同样只有 owner/管理员可自测。
+  const { result: access } = await evaluateProblemAccess(problem, {
     viewerId: userId,
     isAdmin,
   });
   if (!access.allowed) {
+    // 被未结束公开赛保密的题目对外一律"不存在"（面 1.4 审计 F-03）：
+    // 若此处统一 403，则 403（保密题）与 404（题目不存在）的差异本身就是
+    // **存在性预言机**——display_id 可枚举，攻击者据此即可在赛前确认某题已被
+    // 某场未开始的公开赛收编。详情/模板/支持包路径都已是 404，自测路径曾漏掉。
+    if (access.mode === "contest-secret") {
+      throw new NotFoundError("题目不存在");
+    }
     throw new ForbiddenError("无权对该题目自测");
   }
 
@@ -97,28 +151,43 @@ export async function createSelfTest(
   const fileName = input.file_name || LANGUAGE_EXT_MAP[input.language] ||
     "main.txt";
 
-  // 获取支持包 download URL
-  let download_url: string | undefined;
-  if (problem.support_package_storage_url) {
-    try {
-      const storage = await getStorageProvider();
-      download_url = await storage.downloadUrl(
-        problem.support_package_storage_url,
-      );
-    } catch (err) {
-      logger.error("自测获取支持包 download URL 失败", {
-        storage_url: problem.support_package_storage_url,
-        err,
-      });
-      // 获取失败不阻塞自测，但会跳过支持包
+  // 自测版本解析（Handbook §4.2）：与正式提交同一口径——显式版本逐字生效，
+  // 未指定时按有效策略取默认作答版本；存量未版本化题目回退题目投影。
+  const versionResolution = await resolveSubmissionVersion(problemId, {
+    requestedVersionId: input.version_id,
+    latestVersionId: problem.latest_version_id,
+  });
+  if (
+    versionResolution.kind !== "known" ||
+    versionResolution.version.content.kind === "objective"
+  ) {
+    throw new BadRequestError("自测必须选择已发布的编程题版本");
+  }
+  const versionContent = versionResolution.version.content;
+  const download_url = await versionSupportPackageDownload(
+    versionResolution.version.version_id,
+  );
+  let selfTestVersionId: string | null = null;
+  let versionRuntimeConfig: ProblemRuntimeConfig | null = null;
+  if (versionResolution.kind === "known") {
+    selfTestVersionId = versionResolution.version.version_id;
+    const content = versionResolution.version.content;
+    assertVersionAcceptsSubmission(content, {
+      language: input.language,
+      submissionMode: "code",
+    });
+    if (content.kind === "ai" || content.kind === "oi") {
+      versionRuntimeConfig = content.runtime_config;
     }
   }
 
-  // 双容器 runtime_config 校验
-  const runtimeConfig = problem.runtime_config as
-    | RuntimeConfig
-    | null
-    | undefined;
+  // 双容器 runtime_config 校验：已版本化时**以版本内容为准**（题目投影只是最新版
+  // 的影子，版本才是判卷事实源）
+  const runtimeConfig = (versionRuntimeConfig ??
+    problem.runtime_config) as
+      | ProblemRuntimeConfig
+      | null
+      | undefined;
   if (!runtimeConfig) {
     throw new AppError(
       "题目缺少 runtime_config 配置，无法评测",
@@ -127,33 +196,56 @@ export async function createSelfTest(
     );
   }
 
-  await validateJudgeImageWithKind(
-    runtimeConfig.evaluator.image,
-    "evaluator",
-  );
-  if (!runtimeConfig.solution) {
-    throw new AppError(
-      "题目缺少 solution 运行时配置，无法评测",
-      500,
-      "RUNTIME_CONFIG_SOLUTION_MISSING",
+  if (isOiRuntimeConfig(runtimeConfig)) {
+    if (!runtimeConfig.languages.includes(input.language as "c" | "cc")) {
+      throw new BadRequestError(`该 OI 题目不支持语言: ${input.language}`);
+    }
+  } else {
+    if (input.language === "c" || input.language === "cc") {
+      throw new BadRequestError("C/C++ 自测仅适用于 judge_type=oi 的题目");
+    }
+    // 自测执行用户代码，需要 Solution 容器；prediction 题没有 solution，不支持自测。
+    if (!runtimeConfig.solution) {
+      throw new BadRequestError("该题目不支持代码自测");
+    }
+    await validateJudgeImageWithKind(
+      runtimeConfig.evaluator.image,
+      "evaluator",
+    );
+    await validateJudgeImageWithKind(
+      runtimeConfig.solution.image,
+      "solution",
     );
   }
-  await validateJudgeImageWithKind(
-    runtimeConfig.solution.image,
-    "solution",
-  );
 
   const id = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
   const now = new Date().toISOString();
 
-  const task = buildJudgeTask({
+  const cases = input.cases ?? (versionContent.samples ?? []).map((sample) => ({
+    id: sample.id,
+    input: sample.input,
+    expected_output: sample.output,
+  }));
+  const oiSelfTest = isOiRuntimeConfig(runtimeConfig)
+    ? await buildOiSelfTestPackage(
+      runtimeConfig,
+      await versionSupportPackageUrl(versionResolution.version.version_id),
+      cases,
+    )
+    : undefined;
+  if (!isOiRuntimeConfig(runtimeConfig) && input.cases !== undefined) {
+    throw new BadRequestError("自定义用例仅用于 OI 自测");
+  }
+  const task = await prepareJudgeTask({
+    // 自测使用独立运行标识（不是评测尝试），但仍携带版本与协议版本
     submission_id: id,
     problem_id: problemId,
+    ...(selfTestVersionId ? { problem_version_id: selfTestVersionId } : {}),
     user_id: userId,
     priority: "medium",
     submission_mode: "code",
-    runtime_config: runtimeConfig,
-    download_url,
+    runtime_config: oiSelfTest?.runtime_config ?? runtimeConfig,
+    download_url: oiSelfTest?.download_url ?? download_url,
     language: input.language,
     code: input.code,
     file_name: fileName,
@@ -168,6 +260,13 @@ export async function createSelfTest(
       code: input.code,
       file_name: fileName,
       status: "pending",
+      judge_run_id: task.run_id,
+      // 自测同样记录版本与执行快照：sweeper 据此从版本恢复（不读当前投影）
+      problem_version_id: selfTestVersionId,
+      task_snapshot: {
+        ...executionSnapshot(task),
+        ...(oiSelfTest ? { self_test_cases: cases } : {}),
+      },
       created_at: now,
     });
   } catch (dbErr) {
@@ -192,9 +291,12 @@ export async function createSelfTest(
   } catch (mqErr) {
     logger.error("自测任务推送失败", { self_test_id: id, err: mqErr });
     if (!isRetryableJudgeQueueError(mqErr)) {
+      // 永久错误（消息超限 / 队列布局需协调升级）：立刻终态，并保留**具体原因码**，
+      // 不能被泛化的 PLATFORM_ERROR 覆盖（capacity/network 仍保留 pending 等下轮）。
       await db.update(selfTests)
         .set({
           status: "error",
+          result_status: "DISPATCH_FAILED",
           judge_finished_at: new Date().toISOString(),
         })
         .where(eq(selfTests.id, id));
@@ -261,6 +363,9 @@ export async function getSelfTest(
     problem_id: row.problem_id,
     language: row.language,
     code: row.code,
+    progress: row.judge_progress as
+      | import("./oi-progress.ts").OiProgress
+      | null,
     file_name: row.file_name,
     status: row.status as SelfTestStatus,
     result_status: row.result_status,
@@ -285,17 +390,26 @@ export async function saveSelfTestResult(
   result: JudgeResult,
 ): Promise<boolean> {
   const db = getDb();
+  if (
+    result.evaluation_protocol_version !== 2 || !result.run_id ||
+    !result.problem_version_id ||
+    !["graded", "platform_error"].includes(result.result_kind ?? "")
+  ) return false;
 
   const now = new Date().toISOString();
-  const status: SelfTestStatus =
-    result.status === "error" || result.status === "SystemError"
-      ? "error"
-      : "finished";
+  const status: SelfTestStatus = result.status === "cancelled"
+    ? "cancelled"
+    : result.status === "error" || result.status === "SystemError"
+    ? "error"
+    : "finished";
 
   const outcome = await db.transaction(async (tx) => {
     const [existing] = await tx
       .select({
         status: selfTests.status,
+        judge_run_id: selfTests.judge_run_id,
+        problem_version_id: selfTests.problem_version_id,
+        problem_id: selfTests.problem_id,
         judge_started_at: selfTests.judge_started_at,
       })
       .from(selfTests)
@@ -309,10 +423,16 @@ export async function saveSelfTestResult(
       });
       return null;
     }
+    if (
+      existing.judge_run_id !== result.run_id ||
+      existing.problem_version_id !== result.problem_version_id
+    ) return null;
 
     // 已终态：忽略重复结果
     const current = existing.status as SelfTestStatus;
-    if (current === "finished" || current === "error") {
+    if (
+      current === "finished" || current === "error" || current === "cancelled"
+    ) {
       logger.info("重复自测结果，跳过", {
         self_test_id: result.submission_id,
       });

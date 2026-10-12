@@ -7,16 +7,28 @@ import type { RedisClient } from "../redis.ts";
 import type { GatewayConfig } from "../config.ts";
 import { verifyEvalToken } from "../crypto.ts";
 import { getProviderSecret } from "../providers.ts";
-import { enforceAndCount, settleUsage } from "../limits.ts";
-import { recordUsage } from "../usage.ts";
+import {
+  enforceAndCount,
+  evalTokenIpSetKey,
+  evalTokenRevokedKey,
+  settleUsage,
+} from "../limits.ts";
+import { recordRejectedUsage, recordUsage } from "../usage.ts";
 import { calcBilledUsage } from "../billing.ts";
 import { inc, observe } from "../metrics.ts";
 import { logger } from "../logger.ts";
+import {
+  assertResolvesPublic,
+  type ResolveFn,
+  UPSTREAM_BLOCKED,
+} from "../upstream-guard.ts";
 
 export interface LlmDeps {
   config: GatewayConfig;
   db: Db;
   redis: RedisClient;
+  /** DNS 解析（测试注入）；缺省使用 Deno.resolveDns。 */
+  resolveDns?: ResolveFn;
 }
 
 interface ChatCompletionRequest {
@@ -28,7 +40,41 @@ interface ChatCompletionRequest {
   [key: string]: unknown;
 }
 
-const MAX_UPSTREAM_BODY_BYTES = 1024 * 1024;
+const MAX_UPSTREAM_BODY_BYTES = 10 * 1024 * 1024;
+
+/** 流式截断读取上游响应，防止超大流式内容引发 OOM 崩溃（GW-01）。 */
+async function readUpstreamBodyWithLimit(
+  res: Response,
+  maxBytes: number,
+): Promise<string> {
+  const body = res.body;
+  if (!body) return "";
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel("upstream_response_too_large");
+        throw new Error("upstream_response_too_large");
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    return text;
+  } catch (err) {
+    try {
+      await reader.cancel();
+    } catch {
+      // ignore
+    }
+    throw err;
+  }
+}
 
 /** 根据 Provider base_url 拼接 OpenAI 兼容 Chat Completions 地址。 */
 function buildChatUrl(baseUrl: string): string {
@@ -97,11 +143,19 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       return c.json({ error: "invalid_token" }, 401);
     }
 
+    // 校验 eval_token 是否已被吊销（决策 7 · AR-08 · 单次生命周期绑定）。
+    // 版本化后按**评测尝试**吊销：同一提交的重测不受旧尝试吊销影响；
+    // 旧 core（token 无 attempt_id）继续读提交维度的旧键。
+    const isRevoked = await deps.redis.get(evalTokenRevokedKey(payload));
+    if (isRevoked !== null) {
+      return c.json({ error: "token_revoked" }, 401);
+    }
+
     // 监控：同一 submission 的 token 若从多个来源 IP 调用，记录告警（不阻断）。
     const ttlSeconds = Math.max(60, Math.floor(payload.exp - payload.iat));
     const clientIp = c.req.header("x-forwarded-for") ?? "unknown";
     try {
-      const ipKey = `llm:token-ips:${payload.submission_id}`;
+      const ipKey = evalTokenIpSetKey(payload);
       const added = await deps.redis.sadd(ipKey, clientIp);
       if (added === 0) {
         const ipCount = await deps.redis.scard(ipKey);
@@ -113,6 +167,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
             "eval_token 多来源 IP 调用: submission={submission_id} ip={client_ip} ips={ips}",
             {
               submission_id: payload.submission_id,
+              attempt_id: payload.attempt_id ?? null,
+              problem_version_id: payload.problem_version_id ?? null,
               client_ip: clientIp,
               ips: ipCount,
             },
@@ -128,6 +184,9 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     const body = await c.req.json<ChatCompletionRequest>().catch(() => null);
     if (!body || !Array.isArray(body.messages)) {
       return c.json({ error: "invalid_request" }, 400);
+    }
+    if (body.stream) {
+      return c.json({ error: "stream_not_supported" }, 400);
     }
     const model = body.model ?? "";
     if (!payload.allowed_models.includes(model)) {
@@ -146,6 +205,22 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     }
     if (!providerSecret.provider.enabled) {
       return c.json({ error: "provider_disabled" }, 403);
+    }
+    // 出站目标校验（G-03）：调用前解析 DNS，目标落在内网即拒绝（白名单除外）。
+    // 放在额度扣减之前，被拦截的调用不消耗配额。
+    try {
+      await assertResolvesPublic(
+        providerSecret.provider.base_url,
+        deps.config.upstreamAllowedHosts,
+        deps.resolveDns,
+      );
+    } catch {
+      inc("noj_llm_provider_errors_total");
+      logger.warn(
+        "Provider 上游地址被出站校验拦截: provider={provider_id}",
+        { provider_id: payload.provider_id },
+      );
+      return c.json({ error: UPSTREAM_BLOCKED }, 502);
     }
 
     const startedAt = Date.now();
@@ -172,9 +247,12 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     } catch (err) {
       const message = err instanceof Error ? err.message : "limit_exceeded";
       inc("noj_llm_rate_limited_total");
-      await recordUsage(deps.db, {
+      // 调用前拒绝：不存原文 + 按提交去重（G-04），见 recordRejectedUsage
+      await recordRejectedUsage(deps.db, deps.redis, {
         id: crypto.randomUUID(),
         submission_id: payload.submission_id,
+        attempt_id: payload.attempt_id ?? null,
+        problem_version_id: payload.problem_version_id ?? null,
         problem_id: payload.problem_id,
         user_id: payload.user_id,
         provider_id: payload.provider_id,
@@ -205,12 +283,15 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(120_000),
+        redirect: "error",
       });
     } catch {
       inc("noj_llm_provider_errors_total");
       await recordUsage(deps.db, {
         id: crypto.randomUUID(),
         submission_id: payload.submission_id,
+        attempt_id: payload.attempt_id ?? null,
+        problem_version_id: payload.problem_version_id ?? null,
         problem_id: payload.problem_id,
         user_id: payload.user_id,
         provider_id: payload.provider_id,
@@ -230,15 +311,48 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       return c.json({ error: "upstream_error" }, 502);
     }
 
-    const upstreamText = await upstreamRes.text();
+    let upstreamText = "";
+    try {
+      upstreamText = await readUpstreamBodyWithLimit(
+        upstreamRes,
+        MAX_UPSTREAM_BODY_BYTES,
+      );
+    } catch (readErr) {
+      inc("noj_llm_provider_errors_total");
+      const errCode = readErr instanceof Error &&
+          readErr.message === "upstream_response_too_large"
+        ? "upstream_response_too_large"
+        : "upstream_error";
+      await recordUsage(deps.db, {
+        id: crypto.randomUUID(),
+        submission_id: payload.submission_id,
+        attempt_id: payload.attempt_id ?? null,
+        problem_version_id: payload.problem_version_id ?? null,
+        problem_id: payload.problem_id,
+        user_id: payload.user_id,
+        provider_id: payload.provider_id,
+        model,
+        request_messages: body.messages,
+        request_params: pickParams(body),
+        prompt_tokens: promptTokens,
+        completion_tokens: 0,
+        total_tokens: promptTokens,
+        estimated_cost: 0,
+        latency_ms: Date.now() - startedAt,
+        status: "error",
+        error_code: errCode,
+        prompt_hash: await sha256Hex(JSON.stringify(body.messages)),
+        created_at: new Date().toISOString(),
+      });
+      return c.json({ error: errCode }, 502);
+    }
+
     let upstreamBody: Record<string, unknown> | null = null;
-    if (upstreamText.length <= MAX_UPSTREAM_BODY_BYTES) {
-      try {
-        upstreamBody = JSON.parse(upstreamText);
-      } catch {
-        // 上游返回畸形 JSON 时按空 body 处理，不使代理 500
-        upstreamBody = null;
-      }
+    try {
+      upstreamBody = JSON.parse(upstreamText);
+    } catch {
+      // 上游返回畸形 JSON 时按空 body 处理，不使代理 500
+      upstreamBody = null;
     }
     const latency = Date.now() - startedAt;
     const usage = upstreamBody?.usage as
@@ -280,6 +394,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       await recordUsage(deps.db, {
         id: crypto.randomUUID(),
         submission_id: payload.submission_id,
+        attempt_id: payload.attempt_id ?? null,
+        problem_version_id: payload.problem_version_id ?? null,
         problem_id: payload.problem_id,
         user_id: payload.user_id,
         provider_id: payload.provider_id,
@@ -305,6 +421,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     await recordUsage(deps.db, {
       id: crypto.randomUUID(),
       submission_id: payload.submission_id,
+      attempt_id: payload.attempt_id ?? null,
+      problem_version_id: payload.problem_version_id ?? null,
       problem_id: payload.problem_id,
       user_id: payload.user_id,
       provider_id: payload.provider_id,

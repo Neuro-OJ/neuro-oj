@@ -49,7 +49,7 @@ noj-ui/
 │   ├── layout/            # Navbar / FooterBar / Sidebar / UserMenu
 │   ├── editor/            # MonacoEditor / CodingProblemEditor / EditorSidebar / EditorToolbar / EditorStatusBar / ActivityBar / EditorWorkspace / ResizableSplitter
 │   ├── feature/           # ProblemFilterBar / CheckInCard / RandomProblems / StatsToggle / FollowingFeed / LatestSubmissions / ChatSidebar / search（SearchPalette / SearchResultItem）/ community（CommentCard）
-│   ├── shared/            # MarkdownRenderer（DOMPurify 清洗）/ PaginationNav / BrandLogo / MarqueeTitle
+│   ├── shared/            # MarkdownRenderer（DOMPurify 清洗）/ MarkdownEditor（分屏编辑 + 实时预览）/ PaginationNav / BrandLogo / MarqueeTitle
 │   ├── ui/                # AsyncContent / DialogModal / DifficultyBadge / StatusBadge / ProblemId / SubmissionResult / TableSkeleton / ToastBanner / AnimatedCounter
 │   ├── card/              # ProblemCard / SubmissionCard
 │   ├── form/              # TextInput / PasswordField
@@ -221,6 +221,7 @@ cd dist
 
 - 复杂或复用的样式组合使用 `@apply` 封装在 `<style>` 中
 - 全局主题定制（颜色、字体、阴影）统一在 `assets/css/main.css` 的 `@theme` 与 `--ui-*` 变量中配置
+- 全站目前仅支持亮色：`nuxt.config.ts` 中 `ui.colorMode: false`，不跟随系统暗色（否则 `<html>` 加 `.dark` 后 Nuxt UI 会让原生复选框等变成暗色外观）；暗色只存在于编辑器 `.editor-dark` 区域
 - CSS 变量（`--c-*`）仅在 `app.vue:root` 定义，`assets/css/main.css` 的 `@theme`/`--ui-*` 引用
 - Vue Transition（`<Transition name="...">`）、`::before`/`::after` 伪元素、`@keyframes` 可保留 `<style>` 块
 
@@ -251,8 +252,9 @@ cd dist
 
 ### 品牌设计系统
 
-- 品牌蓝（蓝黑墨）：`#1B2B4A`（亮色）/ `#7C96D6`（暗色），用于 Logo、导航、品牌识别。
-- 评测信号绿：`#00d68a`（亮色）/ `#00e07a`（暗色），用于动作、选中、进行中、焦点。
+- 品牌天青蓝：`#0284c7`（亮色 Sky 600）/ `#38bdf8`（暗色 Sky 400），用于高亮链接、关键按钮、激活项与品牌交互。
+- 深邃科技海军蓝：`#0b0f19`（暗色底）/ `#131b2e`（暗色面板）/ `#0f172a`（Slate 900 正文），用于品牌身份、暗色沉浸 Hero、终端。
+- 评测信号绿：`#059669`（亮色）/ `#00e07a`（暗色），用于评测状态、提交通过、运行就绪、动作。
 - 完整 token 见 [`dev-docs/design/noj-design-tokens.md`](../dev-docs/design/noj-design-tokens.md)。
 
 ## 组件结构
@@ -364,6 +366,7 @@ cd dist
 |------|------|
 | `MonacoEditor.vue` | 基于 npm `monaco-editor` 包（postinstall 脚本自托管 `public/monaco`，非 CDN），`diff` 模式可选 |
 | `MarkdownRenderer.vue` | markdown-it + highlight.js + KaTeX 渲染，**DOMPurify 清洗 HTML** 防 XSS |
+| `MarkdownEditor.vue` | `v-model` 分屏 Markdown 编辑器：左源码右 `MarkdownRenderer` 实时预览（编辑/分屏/预览三态、工具栏、Ctrl+B/I/K、防抖预览、滚动同步）；用于题目描述、法律政策、公告。新增 Markdown 输入优先复用它 |
 | `CodingProblemEditor.vue` | 题目编辑器（`editor/` 目录），支持 U/P 类型切换、`submission_mode`（code/artifact/prediction）与 artifact 大小上限，必填字段校验；prediction 模式隐藏 Solution 卡片与 LLM 配置（后端 400 拒绝） |
 | `ProblemCard.vue` / `SubmissionCard.vue` | 题目卡片 / 提交卡片（状态标签着色，点击跳转详情） |
 | `AsyncContent.vue` | 异步内容容器，统一处理 loading / empty / error 状态 |
@@ -413,11 +416,9 @@ cd dist
 
 ## 贡献要求
 
-- **所有提交必须 GPG 签名**（详见根目录 README.md）
-- 分支与推送纪律以根目录 [`AGENTS.md`](../AGENTS.md) §7.1 为准：日常开发与缺陷修复
-  可直接提交 `main`；需要评审的变更从 `main` 派生分支走 PR。无论走哪条路径，
-  提交前必须完成本模块的检查与验收（2026-09-12 更正：此处原写"禁止直接推送到 main"，
-  与顶层 AGENTS.md 冲突）
+- **所有提交必须 GPG 签名**（详见根目录 [`AGENTS.md`](../AGENTS.md) §7.5）
+- 分支与推送纪律以根目录 [`AGENTS.md`](../AGENTS.md) §7.1 为准：**禁止直接推送
+  `main`**，所有变更从 `main` 派生主题分支并通过 PR 合入；合入前必须完成本模块的检查与验收
 - 提交信息格式：`feat(ui): 中文描述` / `fix(ui): 中文描述`
 
 ## 相关文档

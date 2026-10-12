@@ -9,9 +9,7 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 
 import {
   contestParticipants,
-  contestProblems,
   contests,
-  objectiveQuestions,
   objectiveSubmissions,
   problems,
   users,
@@ -24,7 +22,14 @@ import {
 import {
   BadRequestError,
   ForbiddenError,
+  NotFoundError,
 } from "../../../../shared/base/errors.ts";
+import { insertContestProblems } from "../../../../../tests/helper.ts";
+import {
+  getProblemDraft,
+  saveProblemDraft,
+} from "../../../catalog/services/versioning/draft.ts";
+import { publishProblemVersion } from "../../../catalog/services/versioning/publish.ts";
 
 await resetDbForTest();
 const db = getDb();
@@ -88,7 +93,26 @@ async function makeCodeProblem(): Promise<string> {
   return id;
 }
 
-/** 创建小题并返回 {id, sort_order}。 */
+/**
+ * 读取题目最新已发布版本 ID。
+ *
+ * 提交必须**显式携带** `version_id`（Handbook §4.2；不再静默绑定最新版），
+ * 因此所有成功提交的夹具都要拿真实版本 ID 传入。
+ */
+async function latestVersionId(paperId: string): Promise<string> {
+  const [row] = await db.select({ latest: problems.latest_version_id }).from(
+    problems,
+  ).where(eq(problems.id, paperId)).limit(1);
+  if (!row?.latest) throw new Error(`题目尚未发布版本：${paperId}`);
+  return row.latest;
+}
+
+/**
+ * 创建小题：写入**共享草稿**并立即发布一个版本。
+ *
+ * 判卷事实源是已发布版本的卷面快照（旧 `objective_questions` 表已随 0107 删除），
+ * 因此夹具必须在提交前发布版本。
+ */
 async function makeQuestion(
   paperId: string,
   sortOrder: number,
@@ -96,26 +120,36 @@ async function makeQuestion(
   answer: unknown[],
   explanation = "",
 ): Promise<string> {
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  await db.insert(objectiveQuestions).values({
-    id,
-    paper_id: paperId,
-    sort_order: sortOrder,
-    type,
-    prompt: `题目 ${sortOrder}`,
-    options: type === "judge"
-      ? [{ key: "true", text: "正确" }, { key: "false", text: "错误" }]
-      : [{ key: "A", text: "A" }, { key: "B", text: "B" }, {
-        key: "C",
-        text: "C",
-      }],
-    answer,
-    explanation,
-    created_at: now,
-    updated_at: now,
+  const draft = await getProblemDraft(paperId);
+  const key = crypto.randomUUID();
+  const existing = (draft.content as { questions?: unknown[] }).questions ?? [];
+  const options = type === "judge"
+    ? [{ key: "true", text: "正确" }, { key: "false", text: "错误" }]
+    : [{ key: "A", text: "A" }, { key: "B", text: "B" }, {
+      key: "C",
+      text: "C",
+    }];
+  const saved = await saveProblemDraft(paperId, {
+    content: {
+      ...draft.content,
+      kind: "objective",
+      questions: [
+        ...existing,
+        {
+          key,
+          sort_order: sortOrder,
+          type,
+          prompt: `题目 ${sortOrder}`,
+          options,
+          answer,
+          explanation,
+        },
+      ],
+    },
+    expectedRevision: draft.revision,
   });
-  return id;
+  await publishProblemVersion(paperId, { expectedRevision: saved.revision });
+  return key;
 }
 
 Deno.test({
@@ -130,6 +164,7 @@ Deno.test({
 
     const result = await submitObjectivePaper(paper, {
       answers: { [q1]: ["A"] },
+      version_id: await latestVersionId(paper),
     }, user);
 
     assertEquals(result.score, 100);
@@ -159,13 +194,16 @@ Deno.test({
     const paper = await makePaper(owner);
     const q1 = await makeQuestion(paper, 1, "single", ["A"]);
 
+    const versionId = await latestVersionId(paper);
     const first = await submitObjectivePaper(paper, {
       answers: { [q1]: ["B"] },
+      version_id: versionId,
     }, user);
     assertEquals(first.score, 0);
 
     const second = await submitObjectivePaper(paper, {
       answers: { [q1]: ["A"] },
+      version_id: versionId,
     }, user);
     assertEquals(second.score, 100);
 
@@ -208,7 +246,7 @@ Deno.test({
       user_id: user,
       registered_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: paper,
       sort_order: 1,
@@ -216,13 +254,22 @@ Deno.test({
       score: 10000,
     });
 
+    const contestVersionId = await latestVersionId(paper);
     const first = await submitObjectivePaper(paper, {
       answers: { [q1]: ["A"] },
       contest_id: contestId,
+      version_id: contestVersionId,
     }, user);
-    assertEquals(first.contest_mode, true);
-    assertEquals(first.details[q1].explanation, undefined); // 竞赛模式无解析
-    assertEquals(first.details[q1].expected, undefined); // 竞赛模式不返回期望答案（防泄题）
+    // ── 竞赛模式赛期只回执"已提交"（审计 VULN-03）──
+    // 不再返回分数、正确题数或逐题对错：否则参赛者可用小号提交当答案预言机，
+    // 逐题试探排除错误选项（协同套题）。
+    // 用字面量收窄联合类型：contest_mode === true ⇒ SubmitObjectiveContestReceipt
+    if (first.contest_mode !== true) throw new Error("竞赛模式应返回赛期回执");
+    assertEquals(first.status, "finished");
+    assertEquals(first.score, null);
+    assertEquals(first.score_db, null);
+    assertEquals(first.correct_count, null);
+    assertEquals(Object.keys(first.details).length, 0);
 
     // 第二次提交被拒（先查后插 + 唯一索引兜底）
     await assertRejects(
@@ -230,6 +277,7 @@ Deno.test({
         submitObjectivePaper(paper, {
           answers: { [q1]: ["A"] },
           contest_id: contestId,
+          version_id: contestVersionId,
         }, user),
       BadRequestError,
     );
@@ -295,7 +343,7 @@ Deno.test({
     );
 
     // 套卷在题单但竞赛未开始
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: paper,
       sort_order: 1,
@@ -330,6 +378,7 @@ Deno.test({
 
     const result = await submitObjectivePaper(paper, {
       answers: { [q1]: ["A"] },
+      version_id: await latestVersionId(paper),
     }, user);
 
     // 提交者本人可读（练习模式含解析；expected 写入时已剥离，F-14）
@@ -338,10 +387,10 @@ Deno.test({
     assertEquals(mine.details[q1].explanation, "解析");
     assertEquals(mine.details[q1].expected, undefined);
 
-    // 他人读取被拒
+    // 他人读取被拒（抛出 NotFoundError 避免存在性侧信道，DL-05）
     await assertRejects(
       () => getObjectiveSubmission(result.submission_id, other),
-      ForbiddenError,
+      NotFoundError,
     );
 
     // admin 可读
@@ -398,7 +447,7 @@ Deno.test({
       user_id: user,
       registered_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: contestId,
       problem_id: paper,
       sort_order: 1,
@@ -409,22 +458,96 @@ Deno.test({
     const result = await submitObjectivePaper(paper, {
       answers: { [q1]: ["A"] },
       contest_id: contestId,
+      version_id: await latestVersionId(paper),
     }, user);
 
-    // 提交详情（竞赛模式）：提交者本人也看不到期望答案与解析（防泄题）
+    // 提交详情（竞赛未结束）：提交者本人也看不到期望答案、解析、**逐题对错与分数**
+    // （审计 VULN-03：逐题对错即答案预言机；精确分数可被二分探测）
     const mine = await getObjectiveSubmission(result.submission_id, user);
     assertEquals(mine.submission_type, "contest");
+    assertEquals(mine.score, null);
     assertEquals(mine.details[q1].expected, undefined);
     assertEquals(mine.details[q1].explanation, undefined);
-    assertEquals(mine.details[q1].correct, true);
+    assertEquals(mine.details[q1].correct, undefined);
+    // 自己的作答仍可见（非敏感，UI 用于回显）
+    assertEquals(mine.details[q1].given, ["A"]);
 
-    // admin 视图同样裁剪（统一防泄题立场；原始数据仍存 DB 供审计）
+    // admin 视图同样裁剪（"竞赛未结束前一律"的严格口径；原始数据仍存 DB 供审计）
     const byAdmin = await getObjectiveSubmission(
       result.submission_id,
       "0",
       "admin",
     );
+    assertEquals(byAdmin.score, null);
     assertEquals(byAdmin.details[q1].expected, undefined);
+    assertEquals(byAdmin.details[q1].correct, undefined);
+  },
+});
+
+Deno.test({
+  name: "objective submissions: 竞赛结束后恢复分数与逐题对错（赛后复盘）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const owner = await makeUser("endview-owner");
+    const user = await makeUser("endview");
+    const paper = await makePaper(owner);
+    const q1 = await makeQuestion(paper, 1, "single", ["A"], "赛后解析");
+    const now = new Date().toISOString();
+    const contestId = crypto.randomUUID();
+    await db.insert(contests).values({
+      id: contestId,
+      title: `赛后复盘竞赛 ${ts}`,
+      description: "",
+      start_time: new Date(Date.now() - 7_200_000).toISOString(),
+      end_time: new Date(Date.now() + 3_600_000).toISOString(),
+      type: "kaggle",
+      created_by: owner,
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: user,
+      registered_at: now,
+    });
+    await insertContestProblems({
+      contest_id: contestId,
+      problem_id: paper,
+      sort_order: 1,
+      label: "A",
+      score: 10000,
+    });
+
+    const result = await submitObjectivePaper(paper, {
+      answers: { [q1]: ["A"] },
+      contest_id: contestId,
+      version_id: await latestVersionId(paper),
+    }, user);
+
+    // 赛期：无分数、无对错
+    const during = await getObjectiveSubmission(result.submission_id, user);
+    assertEquals(during.score, null);
+    assertEquals(during.details[q1].correct, undefined);
+
+    // 把竞赛改为已结束 → 对错与分数恢复（仍剥离期望答案，防泄题立场不变）
+    await db.update(contests).set({
+      end_time: new Date(Date.now() - 1_000).toISOString(),
+    }).where(eq(contests.id, contestId));
+
+    const after = await getObjectiveSubmission(result.submission_id, user);
+    assertEquals(after.score, 10000);
+    assertEquals(after.details[q1].correct, true);
+    assertEquals(after.details[q1].expected, undefined);
+
+    // 历史列表同样按竞赛是否结束切换口径
+    const duringList = await listObjectiveSubmissions({
+      viewerId: user,
+      contestId,
+      page: 1,
+      perPage: 10,
+    });
+    assertEquals(duringList.data[0]?.score, 10000);
   },
 });
 
@@ -511,15 +634,17 @@ Deno.test({
     );
 
     // owner 本人仍可练习提交（得到解析）
+    const privateVersionId = await latestVersionId(paper);
     const ownerResult = await submitObjectivePaper(paper, {
       answers: { [q1]: ["A"] },
+      version_id: privateVersionId,
     }, owner);
     assertEquals(ownerResult.details[q1].explanation, "私有解析");
 
     // admin 也可练习提交，并可在详情中看到解析（owner/admin 解析门）
     const adminResult = await submitObjectivePaper(
       paper,
-      { answers: { [q1]: ["A"] } },
+      { answers: { [q1]: ["A"] }, version_id: privateVersionId },
       "0",
       true,
     );

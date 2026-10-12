@@ -26,6 +26,8 @@ export interface ObjectiveQuestion {
   explanation?: string;
   created_at: string;
   updated_at: string;
+  /** 写入响应附带的最新草稿 revision（继续写入时的乐观锁取值） */
+  draft_revision?: number;
 }
 
 export interface ObjectivePaper {
@@ -45,19 +47,35 @@ export interface ObjectivePaper {
   updated_at: string;
 }
 
+/**
+ * 单题判定结果。
+ *
+ * 竞赛模式（VULN-03）：比赛结束前后端**不返回** `correct` / `expected` / `explanation`，
+ * 只返回 `given`（你的作答）；因此 `correct` 为可选，缺失即"尚无判定信息"，
+ * 调用方不得把它当成 `false`（否则会把未公布渲染成"回答错误"）。
+ */
 export interface QuestionJudgement {
-  correct: boolean;
+  correct?: boolean;
   expected?: (string | boolean)[];
   given: (string | boolean)[];
   explanation?: string;
 }
 
+/**
+ * 客观题提交回执。
+ *
+ * 竞赛模式（VULN-03）在比赛结束前返回：
+ * `{ score: null, score_db: null, correct_count: null, total_count: <题数>, details: {} }`，
+ * 即"已提交但成绩未公布"。练习模式照旧为具体分数。
+ */
 export interface SubmitResult {
   submission_id: string;
   paper_id: string;
-  score: number;
-  score_db: number;
-  correct_count: number;
+  /** 百分制分数（0–100）；竞赛进行中为 null（成绩赛后开放）。 */
+  score: number | null;
+  score_db: number | null;
+  /** 答对题数；竞赛进行中为 null。 */
+  correct_count: number | null;
   total_count: number;
   details: Record<string, QuestionJudgement>;
   contest_mode: boolean;
@@ -71,9 +89,24 @@ export interface ObjectiveSubmission {
   submission_type: 'practice' | 'contest';
   answers: Record<string, (string | boolean)[]>;
   status: string;
-  score: number;
+  /** 百分制分数；竞赛进行中为 null（历史列表同样不公布，VULN-03）。 */
+  score: number | null;
   details: Record<string, QuestionJudgement>;
   created_at: string;
+  // ── 版本与有效性（Handbook §4.1/§4.2：与普通提交同口径返回）──
+  // 均为可选：老响应缺失时前端不渲染对应徽标（优雅降级）。
+  /** 提交时版本 ID；迁移前历史提交为 null。 */
+  submitted_version_id?: string | null;
+  /** 提交时版本号（展示用）；未知历史版本为 null。 */
+  submitted_version?: number | null;
+  /** 版本来源：known / legacy_unknown。 */
+  version_origin?: string;
+  /** 是否为当前有效成绩（按套卷有效版本策略解析）。 */
+  is_valid?: boolean;
+  /** 是否为当前"通过"指针。 */
+  is_accepted?: boolean;
+  /** 由升级任务派生时指向源提交。 */
+  upgraded_from_id?: string | null;
 }
 
 export interface ObjectiveSubmissionList {
@@ -88,6 +121,16 @@ export interface QuestionInput {
   options?: ObjectiveOption[];
   answer: (string | boolean)[];
   explanation?: string;
+}
+
+/** 套卷编辑器中的小题草稿（id 为 null 表示新建） */
+export interface QuestionDraft {
+  id: string | null;
+  type: ObjectiveQuestionType;
+  prompt: string;
+  options: ObjectiveOption[];
+  answer: (string | boolean)[];
+  explanation: string;
 }
 
 /** 题型中文标签 */
@@ -130,43 +173,101 @@ export function useObjective() {
     return api.delete<null>(`/api/v1/problems/${id}`);
   }
 
-  /** 小题列表（owner/admin（U 型）或 admin（P 型）含答案，其余裁剪） */
+  /** 小题列表（owner/admin（U 型）或 admin（P 型）读草稿含答案，其余读版本快照并裁剪） */
   function listQuestions(paperId: string) {
     return api.get<{ data: ObjectiveQuestion[] }>(
       `/api/v1/problems/${paperId}/questions`,
     );
   }
 
-  /** 创建小题 */
-  function createQuestion(paperId: string, payload: QuestionInput) {
+  /**
+   * 读取共享草稿（编辑初值 + 小题写入的乐观锁 revision）。
+   *
+   * 小题编辑与套卷内容共用同一草稿 revision（Handbook §2.4）：每次写入都必须
+   * 携带当前 revision，成功响应回传新值。
+   */
+  function getDraft(paperId: string) {
+    return api.get<{
+      data: {
+        revision: number;
+        base_version_id: string | null;
+        content: Record<string, unknown>;
+      };
+    }>(`/api/v1/problems/${paperId}/draft`);
+  }
+
+  /** 发布当前草稿为新版本（相同内容返回既有版本）。 */
+  function publishDraft(paperId: string, expectedRevision: number, changeNote = '') {
+    return api.post<{
+      data: {
+        problem_id: string;
+        version_id: string;
+        version: number;
+        draft_revision: number;
+        unchanged: boolean;
+      };
+    }>(
+      `/api/v1/problems/${paperId}/versions`,
+      { change_note: changeNote },
+      { headers: { 'If-Match': String(expectedRevision) } },
+    );
+  }
+
+  /** 创建小题（写共享草稿，携带 `If-Match: revision`）。 */
+  function createQuestion(
+    paperId: string,
+    payload: QuestionInput,
+    expectedRevision: number,
+  ) {
     return api.post<{ data: ObjectiveQuestion }>(
       `/api/v1/problems/${paperId}/questions`,
       payload,
+      { headers: { 'If-Match': String(expectedRevision) } },
     );
   }
 
-  /** 更新小题 */
-  function updateQuestion(paperId: string, questionId: string, payload: Partial<QuestionInput>) {
+  /** 更新小题（`key` 跨版本稳定，写共享草稿）。 */
+  function updateQuestion(
+    paperId: string,
+    questionId: string,
+    payload: Partial<QuestionInput>,
+    expectedRevision: number,
+  ) {
     return api.put<{ data: ObjectiveQuestion }>(
       `/api/v1/problems/${paperId}/questions/${questionId}`,
       payload,
+      { headers: { 'If-Match': String(expectedRevision) } },
     );
   }
 
-  /** 删除小题 */
-  function deleteQuestion(paperId: string, questionId: string) {
-    return api.delete<null>(`/api/v1/problems/${paperId}/questions/${questionId}`);
+  /** 删除小题（写共享草稿；返回删除后的新 revision）。 */
+  function deleteQuestion(
+    paperId: string,
+    questionId: string,
+    expectedRevision: number,
+  ) {
+    return api.delete<{ data: { draft_revision: number } }>(
+      `/api/v1/problems/${paperId}/questions/${questionId}`,
+      { headers: { 'If-Match': String(expectedRevision) } },
+    );
   }
 
-  /** 提交套卷答案（即时判定；竞赛提交携带 contest_id） */
+  /**
+   * 提交套卷答案（即时判定；竞赛提交携带 contest_id）。
+   *
+   * `versionId` 为作答版本（Handbook §4.2）：已发布版本的套卷必须携带，
+   * 服务端据此记录"在评哪一版"，缺省会被 409 拒绝。
+   */
   function submitPaper(
     paperId: string,
     answers: Record<string, (string | boolean)[]>,
     contestId?: string,
+    versionId?: string | null,
   ) {
     return api.post<{ data: SubmitResult }>(`/api/v1/problems/${paperId}/submit`, {
       answers,
       ...(contestId ? { contest_id: contestId } : {}),
+      ...(versionId ? { version_id: versionId } : {}),
     });
   }
 
@@ -200,6 +301,8 @@ export function useObjective() {
     updatePaper,
     deletePaper,
     listQuestions,
+    getDraft,
+    publishDraft,
     createQuestion,
     updateQuestion,
     deleteQuestion,

@@ -1,3 +1,7 @@
+import {
+  assertSchedulingEnv,
+  SCHEDULING_ENV_DEFAULTS,
+} from "./scheduling-env.ts";
 /**
  * 独立 Judge Worker 的配置层与**安全守卫**（T21）。
  *
@@ -36,6 +40,7 @@
  * 本模块不持有模块级可变状态（AGENTS.md §8.2 多副本约束）。
  */
 
+import { OI_ENV_DEFAULTS } from "./oi-env.ts";
 import { dirname, isAbsolute, join, normalize } from "@std/path";
 import { isPlaceholder, validateEnv } from "../../core/config-schema.ts";
 import { parseEnvFile, writeEnvFileAtomic } from "../../core/env-file.ts";
@@ -121,7 +126,7 @@ export const JUDGE_REQUIRED_KEYS: readonly string[] = [
   "JUDGE_QUEUE",
   "RESULT_QUEUE",
   "WORK_DIR",
-  "JUDGE_MAX_CONCURRENT_JUDGES",
+
   "JUDGE_IMAGE_PREFIX",
   "JUDGE_IMAGE_REGISTRY",
   "JUDGE_DOCKER_SOCKET",
@@ -132,11 +137,13 @@ export const JUDGE_REQUIRED_KEYS: readonly string[] = [
 
 /** 首装写入的键与默认值（bash `:550-580` 的 heredoc 逐字）。 */
 export const JUDGE_DEFAULT_VALUES: Readonly<Record<string, string>> = {
+  ...OI_ENV_DEFAULTS,
+  ...SCHEDULING_ENV_DEFAULTS,
   JUDGE_QUEUE: "noj:judge:queue",
   RESULT_QUEUE: "noj:judge:results",
   JUDGE_PRIORITY_POLL_TIMEOUT_MS: "100",
   WORK_DIR: "/tmp/noj-judge",
-  JUDGE_MAX_CONCURRENT_JUDGES: "2",
+
   JUDGE_IMAGE_PREFIX: "noj-",
   JUDGE_IMAGE_REGISTRY: "ghcr.io/neuro-oj",
   JUDGE_DOCKER_SOCKET: JUDGE_SOCKET_CONTAINER_PATH,
@@ -150,7 +157,11 @@ export const JUDGE_DEFAULT_VALUES: Readonly<Record<string, string>> = {
   JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS: "60000",
   JUDGE_COMMAND_WHITELIST: "python3,deno,node,bash,sh",
   JUDGE_ALLOW_EVALUATOR_NETWORK: "false",
-  JUDGE_EVALUATOR_NETWORK: "bridge",
+  // 审计 VULN-20：评测隔离网络。此前默认 "bridge"（Docker 默认桥），会让
+  // Evaluator 沙箱经网关 IP 触达宿主机与同宿主机上的其他容器网络；noj-judge 的
+  // 生产启动校验现已**拒绝** bridge/host，故默认值改为专用隔离网络名。
+  // 该网络由渲染出的 docker-compose.judge.yml 声明并创建（见 compose.ts）。
+  JUDGE_EVALUATOR_NETWORK: "noj-eval-net",
   JUDGE_ALLOW_HTTP_S3: "false",
   SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT: "60",
   SUPPORT_CACHE_DIR: "/tmp/noj-judge/support-cache",
@@ -362,12 +373,7 @@ export function assertJudgeConfigValues(env: Record<string, string>): void {
   }
   assertJudgeVersion(envValue(env, "NOJ_VERSION"));
 
-  const concurrency = envValue(env, "JUDGE_MAX_CONCURRENT_JUDGES");
-  if (!/^[1-9][0-9]*$/.test(concurrency)) {
-    throw new UsageError(
-      `JUDGE_MAX_CONCURRENT_JUDGES 必须是正整数：${concurrency}`,
-    );
-  }
+  assertSchedulingEnv(env);
   for (const key of ["JUDGE_DOCKER_SOCKET_GID", "JUDGE_UID", "JUDGE_GID"]) {
     if (!/^[0-9]+$/.test(envValue(env, key))) {
       throw new UsageError(`${key} 必须是数字：${envValue(env, key)}`);

@@ -193,6 +193,13 @@ function handleCommand(
       return handleLlen(args, queues);
     case "DEL":
       return handleDel(args, queues);
+    case "GET":
+      return queues.has(args[0])
+        ? renderRespBulkString(queues.get(args[0])![0])
+        : renderRespNull();
+    case "SET":
+      queues.set(args[0], [args[1]]);
+      return renderRespString("OK");
     case "EVAL":
       return handleEval(args, queues);
     case "BRPOP":
@@ -323,6 +330,60 @@ function handleEval(
   const keys = args.slice(2, 2 + numKeys);
   const argv = args.slice(2 + numKeys);
 
+  // 升级额度**原子占用**脚本（`upgrade-quota.ts`，第三轮问题 5/6）：
+  // `EXISTS 标记 → INCR 桶计数 → 超上限返回 [0,ttl] 且不写标记 → 成功写标记`。
+  // 与下面单键 NX 分支区分：本分支同时引用 KEYS[1] 与 KEYS[2]。
+  if (
+    script.includes("'EXISTS', KEYS[1]") && script.includes("'INCR', KEYS[2]")
+  ) {
+    const markerKey = keys[0];
+    const counterKey = keys[1];
+    // 幂等标记存在 = 该副本已扣费过 → 直接成功且不再计数
+    if (queues.has(markerKey)) return renderRespArray(["1", "0"]);
+    const max = Number(argv[3]);
+    const current = Number(queues.get(counterKey)?.[0] ?? "0") + 1;
+    queues.set(counterKey, [String(current)]);
+    if (Number.isFinite(max) && current > max) {
+      // 额度不足：不写标记，返回窗口剩余毫秒（这里给固定 1000）
+      return renderRespArray(["0", "1000"]);
+    }
+    queues.set(markerKey, [argv[0]]);
+    return renderRespArray(["1", "0"]);
+  }
+
+  // 升级额度幂等占位（`upgrade-quota.ts`）：`SET key value PX ttl NX`。
+  // 与下面的离线迁移脚本区分：那条是 `'SET',KEYS[1]`（无空格）且返回字符串 OK。
+  if (
+    script.includes("'SET'") && script.includes("'PX'") &&
+    script.includes("'NX'")
+  ) {
+    if (queues.has(keys[0])) return renderRespInteger(0);
+    queues.set(keys[0], [argv[0]]);
+    return renderRespInteger(1);
+  }
+
+  // 离线迁移契约的锁与尾部比较搬运；真实 CI Redis 仍执行原 Lua 脚本。
+  if (script.includes("'SET',KEYS[1]") && script.includes("'NX'")) {
+    if (queues.has(keys[0])) return renderRespNull();
+    queues.set(keys[0], [argv[0]]);
+    return renderRespString("OK");
+  }
+  if (script.includes("'LINDEX',KEYS[1],-1")) {
+    if (queues.get(keys[2])?.[0] !== argv[2]) return renderRespInteger(-1);
+    const source = queues.get(keys[0]) ?? [];
+    if (source.at(-1) !== argv[0]) return renderRespInteger(0);
+    source.pop();
+    const destination = queues.get(keys[1]) ?? [];
+    destination.unshift(argv[1]);
+    queues.set(keys[1], destination);
+    return renderRespInteger(1);
+  }
+  if (script.includes("'GET',KEYS[1]") && script.includes("'DEL',KEYS[1]")) {
+    if (queues.get(keys[0])?.[0] !== argv[0]) return renderRespInteger(0);
+    queues.delete(keys[0]);
+    return renderRespInteger(1);
+  }
+
   // producer 的「容量检查 + LPUSH」脚本。
   if (script.includes("LLEN")) {
     const key = keys[0];
@@ -331,7 +392,11 @@ function handleEval(
       return renderRespError("ERR invalid queue capacity");
     }
     const queue = queues.get(key) ?? [];
-    if (queue.length >= maxLength) return renderRespInteger(-1);
+    const total = keys.reduce(
+      (sum, item) => sum + (queues.get(item)?.length ?? 0),
+      0,
+    );
+    if (total >= maxLength) return renderRespInteger(-1);
     queue.unshift(argv[1]);
     queues.set(key, queue);
     return renderRespInteger(queue.length);
@@ -382,6 +447,15 @@ function handleBrpop(
 
 function renderRespString(s: string): Uint8Array {
   return new TextEncoder().encode(`+${s}\r\n`);
+}
+
+function renderRespBulkString(s: string): Uint8Array {
+  const bytes = new TextEncoder().encode(s);
+  return new TextEncoder().encode(`$${bytes.length}\r\n${s}\r\n`);
+}
+
+function renderRespNull(): Uint8Array {
+  return new TextEncoder().encode("$-1\r\n");
 }
 
 function renderRespError(s: string): Uint8Array {

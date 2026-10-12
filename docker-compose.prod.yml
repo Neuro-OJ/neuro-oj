@@ -15,6 +15,9 @@ x-core-env: &core-env
   NOJ_MIGRATIONS_DIR: /app/drizzle
   PORT: "8000"
   DATABASE_URL: postgres://${POSTGRES_USER:-noj}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-noj}
+  # noj-core 连接参数：默认关闭 PostgreSQL JIT（消除搜索退化路径的编译开销，
+  # 2026-09-23 CI 红灯修复）。置 on 恢复服务端默认。
+  DATABASE_JIT: ${DATABASE_JIT:-off}
   REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
   JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
   TFA_ENCRYPTION_KEY: ${TFA_ENCRYPTION_KEY:?TFA_ENCRYPTION_KEY is required}
@@ -31,13 +34,21 @@ x-core-env: &core-env
   # 两项必须同时配置，否则 LLM 题提交返回 400。
   NOJ_LLM_DEFAULT_PROVIDER_ID: ${NOJ_LLM_DEFAULT_PROVIDER_ID:-}
   NOJ_LLM_DEFAULT_MODEL: ${NOJ_LLM_DEFAULT_MODEL:-}
+  # 单次评测 eval_token 调用/token 上限（空值 → 代码默认 100 / 50000）
+  NOJ_LLM_MAX_CALLS: ${NOJ_LLM_MAX_CALLS:-}
+  NOJ_LLM_MAX_TOKENS: ${NOJ_LLM_MAX_TOKENS:-}
   # 内部健康/指标地址（**与上面的出站地址用途不同**，2026-09-12 评审 §5.3）：
   # 观测域 runtime-contract 用它构造 healthUrl/metricsUrl，默认值写的是
   # `http://noj-llm-gateway:8001`——那是开发编排的 container_name，生产 compose
   # 的服务名是 `llm-gateway`，不显式设置会指向不存在的 DNS 名。
   RUNTIME_LLM_GATEWAY_URL: http://llm-gateway:8001
   RUNTIME_JUDGE_MODE: ${RUNTIME_JUDGE_MODE:-heartbeat}
+  # 观测快照/探针参数（空值 → 代码默认）
+  OBSERVABILITY_SNAPSHOT_TIMEOUT_MS: ${OBSERVABILITY_SNAPSHOT_TIMEOUT_MS:-}
+  OBSERVABILITY_CACHE_TTL_MS: ${OBSERVABILITY_CACHE_TTL_MS:-}
+  OBSERVABILITY_MAX_SERIES: ${OBSERVABILITY_MAX_SERIES:-}
   JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
+  JWT_REMEMBER_EXPIRES_IN: ${JWT_REMEMBER_EXPIRES_IN:-30d}
   APP_URL: ${APP_URL:?APP_URL is required}
   CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
   NOJ_ALLOW_INSECURE_HTTP: ${NOJ_ALLOW_INSECURE_HTTP:-false}
@@ -50,6 +61,15 @@ x-core-env: &core-env
   S3_BUCKET: ${S3_BUCKET:?S3_BUCKET is required}
   S3_FORCE_PATH_STYLE: "true"
   EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER is required}
+  # 邮件凭据为 bootstrap 配置（env 唯一事实源，后台只读）：此前未注入，
+  # EMAIL_PROVIDER=aliyun/tencent 时 core 启动期生产配置校验必失败。
+  ALIBABA_ACCESS_KEY_ID: ${ALIBABA_ACCESS_KEY_ID:-}
+  ALIBABA_ACCESS_KEY_SECRET: ${ALIBABA_ACCESS_KEY_SECRET:-}
+  ALIBABA_FROM_EMAIL: ${ALIBABA_FROM_EMAIL:-}
+  TENCENT_SECRET_ID: ${TENCENT_SECRET_ID:-}
+  TENCENT_SECRET_KEY: ${TENCENT_SECRET_KEY:-}
+  TENCENT_FROM_EMAIL: ${TENCENT_FROM_EMAIL:-}
+  TENCENT_REGION: ${TENCENT_REGION:-}
   LOG_LEVEL: ${LOG_LEVEL:-info}
   LOG_FORMAT: ${LOG_FORMAT:-json}
   JUDGE_IMAGE_BASE: ${JUDGE_IMAGE_BASE-ghcr.io/neuro-oj/}
@@ -148,6 +168,8 @@ services:
       NUXT_NOJ_ENV: ${NUXT_NOJ_ENV:-production}
       NUXT_ALLOW_INSECURE_HTTP: ${NOJ_ALLOW_INSECURE_HTTP:-false}
       NODE_ENV: ${NODE_ENV:-production}
+      # sitemap/canonical 权威地址（覆盖 runtimeConfig.siteUrl；空值时回退校验后的 Host 头）
+      NUXT_SITE_URL: ${NUXT_SITE_URL:-}
       PORT: "3000"
     depends_on:
       core:
@@ -175,10 +197,18 @@ services:
   judge:
     logging: *default-logging
     # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
-    mem_limit: "${JUDGE_MEM_LIMIT:-2g}"
+    # auto 调度预算取有效上限的 50%；旧 2g 上限不足以准入完整题包与编译阶段。
+    mem_limit: "${JUDGE_MEM_LIMIT:-8g}"
     profiles:
       - judge
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-judge:${NOJ_VERSION:?NOJ_VERSION is required}"
+    # 优雅关闭窗口必须 ≥ judge 自身的 drain 上限（NOJ-D3）。
+    # judge 的 drain 上限 = max(30, SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT + 30)（默认 90s，
+    # 下载超时调到 300s 时为 330s），drain 之后还有一次 15s 有界的兜底清扫。
+    # Docker 默认只给 10s 就 SIGKILL —— 那会让 drain 与兜底清扫**在真实部署里
+    # 永远跑不到**（SIGTERM 后 10s 即硬杀），每次 restart / 升级都强杀在飞评测、
+    # 留下孤儿容器，只能靠下次启动的标签清扫回收。此处显式给足窗口。
+    stop_grace_period: "${JUDGE_STOP_GRACE_PERIOD:-120s}"
     # 无 healthcheck，这是**有意为之**（2026-09-12 评审 §5.2）：
     # judge 是纯 worker，没有 HTTP 端口或心跳文件可供探测；它的失败模式是进程退出，
     # 已由 `restart: unless-stopped` 覆盖。写一个 `CMD true` 式的 healthcheck 只会
@@ -200,15 +230,40 @@ services:
       RESULT_QUEUE: ${RESULT_QUEUE:-noj:judge:results}
       JUDGE_PRIORITY_POLL_TIMEOUT_MS: ${JUDGE_PRIORITY_POLL_TIMEOUT_MS:-100}
       WORK_DIR: ${WORK_DIR:-/tmp/noj-judge}
-      JUDGE_MAX_CONCURRENT_JUDGES: ${JUDGE_MAX_CONCURRENT_JUDGES:-2}
+      JUDGE_RESOURCE_GROUP: "${JUDGE_RESOURCE_GROUP:-}"
+      JUDGE_RESOURCE_POOLS: "${JUDGE_RESOURCE_POOLS:-oi-wasm,oi-native,ai}"
+      JUDGE_WASM_TASK_CONCURRENCY: "${JUDGE_WASM_TASK_CONCURRENCY:-4}"
+      JUDGE_NATIVE_TASK_CONCURRENCY: "${JUDGE_NATIVE_TASK_CONCURRENCY:-2}"
+      JUDGE_AI_TASK_CONCURRENCY: "${JUDGE_AI_TASK_CONCURRENCY:-2}"
+      JUDGE_WASM_COMPILE_CONCURRENCY: "${JUDGE_WASM_COMPILE_CONCURRENCY:-2}"
+      JUDGE_WASM_CASE_CONCURRENCY: "${JUDGE_WASM_CASE_CONCURRENCY:-16}"
+      JUDGE_RESOURCE_MEMORY_MB: "${JUDGE_RESOURCE_MEMORY_MB:-auto}"
       JUDGE_CPU_LIMIT_MILLICORES: ${JUDGE_CPU_LIMIT_MILLICORES:-1000}
       JUDGE_MAX_EVALUATOR_TIME_MS: ${JUDGE_MAX_EVALUATOR_TIME_MS:-300000}
       JUDGE_PREDICTION_WORKSPACE_MB: ${JUDGE_PREDICTION_WORKSPACE_MB:-2048}
       JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS: ${JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS:-60000}
       JUDGE_IMAGE_PREFIX: ${JUDGE_IMAGE_PREFIX:-noj-}
+      JUDGE_OI_IMAGE: "${JUDGE_OI_IMAGE:-noj-oi-cpp}"
+      JUDGE_GO_JUDGE_URL: "${JUDGE_GO_JUDGE_URL:-}"
+      JUDGE_GO_JUDGE_TOKEN: "${JUDGE_GO_JUDGE_TOKEN:-}"
+      JUDGE_GO_JUDGE_RESOURCE_CAPACITY: "${JUDGE_GO_JUDGE_RESOURCE_CAPACITY:-2}"
+      JUDGE_GO_JUDGE_RESOURCE_TTL_MS: "${JUDGE_GO_JUDGE_RESOURCE_TTL_MS:-660000}"
+      JUDGE_GO_JUDGE_RESOURCE_WAIT_MS: "${JUDGE_GO_JUDGE_RESOURCE_WAIT_MS:-300000}"
+      JUDGE_GO_JUDGE_RESOURCE_KEY: "${JUDGE_GO_JUDGE_RESOURCE_KEY:-noj:judge:oi:go-judge}"
+      JUDGE_WASI_CC: "${JUDGE_WASI_CC:-/opt/wasi-sdk/bin/clang}"
+      JUDGE_WASI_CXX: "${JUDGE_WASI_CXX:-/opt/wasi-sdk/bin/clang++}"
+      JUDGE_WASI_TARGET: "${JUDGE_WASI_TARGET:-wasm32-wasip1}"
+      JUDGE_WASI_SYSROOT: "${JUDGE_WASI_SYSROOT:-/opt/wasi-sdk/share/wasi-sysroot}"
+      JUDGE_WASI_TESTLIB_INCLUDE: "${JUDGE_WASI_TESTLIB_INCLUDE:-}"
       JUDGE_COMMAND_WHITELIST: ${JUDGE_COMMAND_WHITELIST:-python3,deno,node,bash,sh}
       JUDGE_ALLOW_EVALUATOR_NETWORK: ${JUDGE_ALLOW_EVALUATOR_NETWORK:-false}
-      JUDGE_EVALUATOR_NETWORK: ${JUDGE_EVALUATOR_NETWORK:-noj-net}
+      # 评测隔离网络（审计 VULN-20）。**必须**与本文件底部 `noj-eval-net` 的实际
+      # 网络名一致（即 ${NOJ_EVAL_NETWORK_NAME:-noj-eval-net}）；judge 用
+      # `network_mode: <此值>` 把 Evaluator 容器接到该网络。
+      # 不得填 `bridge` / `host`：noj-judge 启动时会直接拒绝（生产强护栏），
+      # 因为默认 bridge 会让 Evaluator 经网关 IP 触达宿主机与内网基础设施，
+      # host 模式更是完全取消隔离。
+      JUDGE_EVALUATOR_NETWORK: ${JUDGE_EVALUATOR_NETWORK:-noj-eval-net}
       JUDGE_ALLOW_HTTP_S3: ${JUDGE_ALLOW_HTTP_S3:-false}
       JUDGE_DOCKER_HOST: ${JUDGE_DOCKER_HOST:-unix:///run/noj-judge/docker.sock}
       JUDGE_REQUIRE_ISOLATED_DOCKER: "true"
@@ -258,6 +313,10 @@ services:
       NOJ_LLM_STORE_KEY: ${NOJ_LLM_STORE_KEY:?NOJ_LLM_STORE_KEY is required}
       NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE: ${NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE:-60}
       NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE: ${NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE:-60}
+      # 上游出站白名单（审计 G-03）：放行内网自建模型的主机名/IP，逗号分隔
+      NOJ_LLM_UPSTREAM_ALLOWED_HOSTS: ${NOJ_LLM_UPSTREAM_ALLOWED_HOSTS:-}
+      # llm_usage 保留天数（0 = 不清理）
+      NOJ_LLM_USAGE_RETENTION_DAYS: ${NOJ_LLM_USAGE_RETENTION_DAYS:-90}
       DATABASE_URL: postgres://${POSTGRES_USER:-noj}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-noj}
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
       NOJ_LLM_DEFAULT_GLOBAL_DAY_CALLS: ${NOJ_LLM_DEFAULT_GLOBAL_DAY_CALLS:-10000}
@@ -269,6 +328,23 @@ services:
       NOJ_LLM_DEFAULT_PROBLEM_DAY_CALLS: ${NOJ_LLM_DEFAULT_PROBLEM_DAY_CALLS:-5000}
       NOJ_LLM_DEFAULT_PROBLEM_DAY_TOKENS: ${NOJ_LLM_DEFAULT_PROBLEM_DAY_TOKENS:-500000}
       NOJ_LLM_DEFAULT_PROBLEM_DAY_COST: ${NOJ_LLM_DEFAULT_PROBLEM_DAY_COST:-500}
+      # F-06：用户×题目组合预算（防单用户打满共享题目桶）
+      NOJ_LLM_DEFAULT_USER_PROBLEM_DAY_CALLS: ${NOJ_LLM_DEFAULT_USER_PROBLEM_DAY_CALLS:-500}
+      NOJ_LLM_DEFAULT_USER_PROBLEM_DAY_TOKENS: ${NOJ_LLM_DEFAULT_USER_PROBLEM_DAY_TOKENS:-50000}
+      NOJ_LLM_DEFAULT_USER_PROBLEM_DAY_COST: ${NOJ_LLM_DEFAULT_USER_PROBLEM_DAY_COST:-50}
+      # month 窗口（此前 .env.prod.example 有文档但 compose 未注入 → 设了静默无效）
+      NOJ_LLM_DEFAULT_GLOBAL_MONTH_CALLS: ${NOJ_LLM_DEFAULT_GLOBAL_MONTH_CALLS:-100000}
+      NOJ_LLM_DEFAULT_GLOBAL_MONTH_TOKENS: ${NOJ_LLM_DEFAULT_GLOBAL_MONTH_TOKENS:-10000000}
+      NOJ_LLM_DEFAULT_GLOBAL_MONTH_COST: ${NOJ_LLM_DEFAULT_GLOBAL_MONTH_COST:-10000}
+      NOJ_LLM_DEFAULT_USER_MONTH_CALLS: ${NOJ_LLM_DEFAULT_USER_MONTH_CALLS:-10000}
+      NOJ_LLM_DEFAULT_USER_MONTH_TOKENS: ${NOJ_LLM_DEFAULT_USER_MONTH_TOKENS:-1000000}
+      NOJ_LLM_DEFAULT_USER_MONTH_COST: ${NOJ_LLM_DEFAULT_USER_MONTH_COST:-1000}
+      NOJ_LLM_DEFAULT_PROBLEM_MONTH_CALLS: ${NOJ_LLM_DEFAULT_PROBLEM_MONTH_CALLS:-50000}
+      NOJ_LLM_DEFAULT_PROBLEM_MONTH_TOKENS: ${NOJ_LLM_DEFAULT_PROBLEM_MONTH_TOKENS:-5000000}
+      NOJ_LLM_DEFAULT_PROBLEM_MONTH_COST: ${NOJ_LLM_DEFAULT_PROBLEM_MONTH_COST:-5000}
+      NOJ_LLM_DEFAULT_USER_PROBLEM_MONTH_CALLS: ${NOJ_LLM_DEFAULT_USER_PROBLEM_MONTH_CALLS:-5000}
+      NOJ_LLM_DEFAULT_USER_PROBLEM_MONTH_TOKENS: ${NOJ_LLM_DEFAULT_USER_PROBLEM_MONTH_TOKENS:-500000}
+      NOJ_LLM_DEFAULT_USER_PROBLEM_MONTH_COST: ${NOJ_LLM_DEFAULT_USER_PROBLEM_MONTH_COST:-500}
     expose:
       - "8001"
     depends_on:
@@ -284,7 +360,11 @@ services:
       retries: 3
     restart: unless-stopped
     networks:
+      # 唯一同时加入后端网络与评测隔离网络的受控入口（审计 VULN-20）：
+      # 后端经 `http://llm-gateway:8001` 调用；Evaluator 沙箱经同一别名在本网络上
+      # 调用它，从而拿到"可访问 LLM、不可访问内网其余部分"的最小特权面。
       - noj-net
+      - noj-eval-net
 
   # ── 反向代理 / TLS ────────────────────────────────────────────────
   nginx:
@@ -413,23 +493,39 @@ services:
     logging: *default-logging
     # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
     mem_limit: "${MINIO_MEM_LIMIT:-1g}"
-    image: minio/minio:RELEASE.2024-11-07T00-52-20Z@sha256:d051d800a3025588f37f69f132bb5ef718547a9a4ee95ddee44e04ad952a0a96
-    command: server /data --console-address :9001
+    # 镜像来源变更（2026-09-26）：MinIO 已停止免费分发，`minio/minio`（Docker Hub）
+    # 与 `quay.io/minio/*` 均已 404/无 manifest、`dl.min.io` 返回 410，原镜像无法拉取
+    # （新装/换机部署会直接失败）。改用 Bitnami 冻结镜像源，MinIO 版本与原镜像一致
+    # （RELEASE.2024-11-07），digest 为多架构 manifest list。
+    image: bitnamilegacy/minio:2024.11.7-debian-12-r2@sha256:81cd091fb9f14b2e9e9bfa6dbc2bf2d46fdd5eafa6c5e7c9213baf4256ff13d6
+    # 以 root 启动入口脚本：Bitnami 入口会 `chown -R minio` 数据目录后把服务降到
+    # `minio` 用户运行（libminio.sh 的 minio_initialize）。这同时是**存量升级的自愈路径**：
+    # 旧镜像以 root 写入属主 0:0/0755，非 root 启动会 `Permission denied` 直接退出。
+    user: "0"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
     volumes:
-      - miniodata:/data
+      # 数据目录随镜像改为 Bitnami 约定路径 /bitnami/minio/data（卷内容不变，
+      # 仅挂载点变化，因此存量数据仍在卷根、升级不丢对象）
+      - miniodata:/bitnami/minio/data
     restart: unless-stopped
     networks:
       - noj-net
 
   # ── MinIO bucket 初始化（一次性，带重试等待 MinIO 就绪）──────────
+  #
+  # 脚本必须保持 **POSIX sh 兼容**：镜像从官方 mc（sh=bash）换到 Bitnami（sh=dash）后，
+  # 原先的 bash 专有展开 `${policy//__S3_BUCKET__/${S3_BUCKET}}` 会以
+  # `Bad substitution` 直接失败，导致 bucket/策略/应用用户全部没建、core 无法使用 S3。
+  # 这里改用 sed 做同一件事（两种 shell 下都可用）。
   minio-init:
     logging: *default-logging
     # 资源上限（可用 env 覆盖）：防止单个服务 OOM 拖垮整机（评审 §5.2）
     mem_limit: "${MINIO_INIT_MEM_LIMIT:-256m}"
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:eb4ea9884b77704230e2423e9004d2fa738dc272876b9cc41a297d29443b8780
+    # 同因镜像下架（2026-09-26）：mc 客户端改用 Bitnami 冻结源（2025-07-21 版本，
+    # 与原 2025-08-13 同代，管理命令语法不变，已对本镜像实测建桶/建策略/授权链路）。
+    image: bitnamilegacy/minio-client:2025.7.21-debian-12-r3@sha256:73bd39f7899a0cef12b8dd5df13aa93a3ed1aaa44236542442e9ac76819ac158
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
@@ -443,9 +539,7 @@ services:
               echo "S3 应用凭据不得复用 MinIO root 凭据" >&2; exit 1;
             fi;
             mc mb --ignore-existing "local/$$S3_BUCKET";
-            policy=$$(cat /etc/noj/minio-policy.json.tpl);
-            policy=$${policy//__S3_BUCKET__/$${S3_BUCKET}};
-            printf '%s' "$${policy}" > /tmp/noj-minio-policy.json;
+            sed "s/__S3_BUCKET__/$${S3_BUCKET}/g" /etc/noj/minio-policy.json.tpl > /tmp/noj-minio-policy.json;
             mc admin policy remove local noj-support-packages-app >/dev/null 2>&1 || true;
             mc admin policy create local noj-support-packages-app /tmp/noj-minio-policy.json;
             mc admin user add local "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" >/dev/null 2>&1 || true;
@@ -472,11 +566,41 @@ services:
       - noj-net
 
 networks:
+  # ── 后端核心网络 ──────────────────────────────────────────────────
+  # postgres / redis / minio / core / ui / judge / nginx / 监控 均在此网络。
+  # 名称保持 `noj-net`（未按审计草案改名为 `noj-backend-net`）：改名会连带影响
+  # noj-cli 生成的 judge compose、restore-drill 覆盖文件、监控文档与告警脚本里的
+  # 网络名引用，而**隔离效果完全相同**——真正的隔离来自下面的 `noj-eval-net`
+  # 只承载 Evaluator 容器。语义上本网络即"后端网络"。
   noj-net:
     driver: bridge
     ipam:
       config:
         - subnet: 172.28.0.0/16
+
+  # ── 评测隔离网络（审计 VULN-20）────────────────────────────────────
+  #
+  # **只有 Evaluator 沙箱容器 + llm-gateway 在它上面。**
+  #
+  # 隔离效果（对应审计"方案 A：Compose 双网络拓扑物理切分"）：
+  # - Evaluator 容器加入本网络后：对 postgres / redis / minio / core / judge 的
+  #   **DNS 解析与网络路由为 0**（它们不在本网络上），内网横向穿透与 SSRF 被物理
+  #   切断；如需联网（LLM 题），只能访问本网络上唯一的受控入口 llm-gateway，
+  #   以及经网关 NAT 出公网；
+  # - llm-gateway 是唯一同时加入两个网络的服务（受控双网卡入口），因此
+  #   "评测需要访问 LLM"与"评测不得访问内网"两个目标同时成立；
+  # - judge 自身仍留在 noj-net（它需要 redis 与 minio）；被隔离的是它**创建的**
+  #   Evaluator 容器，不是 worker 本身。
+  #
+  # `name:` 显式固定为常量名：judge 通过 Docker API 以 `network_mode: <name>`
+  # 接入，需要的是**精确网络名**，而不是 Compose 默认的 `<项目名>_noj-eval-net`。
+  # 同一宿主机跑多套 stack（如 restore-drill 演练）时，用 `NOJ_EVAL_NETWORK_NAME`
+  # 覆盖本名，并同步设置 `JUDGE_EVALUATOR_NETWORK` 为同一个值。
+  # 不固定 ipam 子网：交由 Docker 自动分配，避免与演练/其他 stack 的子网池冲突。
+  noj-eval-net:
+    name: ${NOJ_EVAL_NETWORK_NAME:-noj-eval-net}
+    driver: bridge
+    internal: true
 
 volumes:
   pgdata:

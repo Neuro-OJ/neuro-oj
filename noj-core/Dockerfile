@@ -40,6 +40,7 @@ RUN deno cache \
 # 编译 API server 与 CLI 两个独立二进制
 RUN mkdir -p /build/bin \
     && deno compile -A --no-check --unstable-byonm --unstable-node-globals \
+        --include src/domains/catalog/services/oi-archive-worker.ts \
         --output /build/bin/noj-server src/main.ts \
     && deno compile -A --no-check --unstable-byonm --unstable-node-globals \
         --output /build/bin/noj scripts/noj.ts
@@ -73,6 +74,16 @@ RUN mkdir -p /app/data/packages /app/data/storage \
 # deno compile 后 import.meta.dirname 指向临时解包目录，必须显式指定项目根/迁移目录
 ENV NOJ_PROJECT_ROOT=/app
 ENV NOJ_MIGRATIONS_DIR=/app/drizzle
+
+# 构建身份（release.yml build-arg 注入）：noj-core 从容器 ENV 读取，经
+# `/health*` 与公开的 `/api/v1/site/meta` 对外暴露，页脚据此显示后端版本。
+# 缺省空串 → 运行期回退 `unknown`（不阻塞启动；本地直接 build 镜像时即为此情形）。
+ARG NOJ_BUILD_VERSION=""
+ARG NOJ_BUILD_COMMIT=""
+ARG NOJ_BUILD_TIME=""
+ENV NOJ_BUILD_VERSION=$NOJ_BUILD_VERSION \
+    NOJ_BUILD_COMMIT=$NOJ_BUILD_COMMIT \
+    NOJ_BUILD_TIME=$NOJ_BUILD_TIME
 
 USER noj
 

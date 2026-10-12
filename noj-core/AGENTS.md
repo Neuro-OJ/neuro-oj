@@ -180,6 +180,7 @@ noj-core/
 | `JWT_SECRET`                      | —                         | HS256 签名密钥（≥32 字符）                                    |
 | `TFA_ENCRYPTION_KEY`              | —                         | TOTP secret 加密密钥（≥32 字符，与 JWT_SECRET 隔离）          |
 | `JWT_EXPIRES_IN`                  | `24h`                     | Token 有效期                                                  |
+| `JWT_REMEMBER_EXPIRES_IN`         | `30d`                     | 勾选「记住我」登录时的 Token 有效期                           |
 | `REDIS_URL`                       | `redis://127.0.0.1:6379/` | Redis 连接串                                                  |
 | `RESULT_CONSUMER_CONCURRENCY`     | `4`                       | 评测结果消费者连接数（1-16）                                  |
 | `PORT`                            | `8000`                    | HTTP 监听端口                                                 |
@@ -238,14 +239,14 @@ deno task db:migrate
 # 生成 Drizzle 迁移文件
 deno task db:generate
 
-# 种子数据（示例题 + 标签 + 管理员）
+# 开发环境一键初始化（幂等：迁移 + 系统数据 + 管理员引导 + 题目包构建与导入 + E2E 用户）
 deno task dev-setup
+
+# 仅初始化系统基础数据（root/RBAC/镜像白名单/标签）
+deno task init:system
 
 # 构建支持包
 deno task problems:build
-
-# 一键初始化
-deno task dev-setup          # 开发环境一键初始化（迁移 + 系统数据 + 题目导入）
 
 # 对象存储只读盘点（仅 SELECT + LIST，不删除对象）
 deno task storage:audit -- --pretty --output /tmp/storage-audit.json
@@ -378,63 +379,174 @@ docker compose down     # 停止
 
 ## 启动顺序（main.ts）
 
-1. **JWT_SECRET 强度校验** — ≥32 字符，不足则拒绝启动
-2. **数据库迁移** — 失败为致命错误，终止启动
-3. **确保 root 系统用户** — UID=0，admin 角色，不可登录，不计入管理员统计
-4. **邮件 Provider 配置检查** — 非致命：配置缺失时降级到 mock 并 console.warn
-5. **连接 Redis** — 失败则 degraded 模式（HTTP 仍启动，评测功能不可用）
-6. **启动评测结果消费者** — 后台自动重连（指数退避 1s→2s→4s→…→30s）
-7. **启动 HTTP 服务**
+以 `src/main.ts` 的 `main()` 为准，当前顺序：
+
+1. **JWT_SECRET 校验** — ≥32 字符且不得为示例占位值，否则拒绝启动
+2. **TFA_ENCRYPTION_KEY 校验** — 必须配置且独立于 `JWT_SECRET`，否则拒绝启动
+3. **数据库迁移** — 失败为致命错误，终止启动
+4. **确保 root 系统用户** — UID=0，admin 角色，不可登录，不计入管理员统计
+5. **RBAC 种子、管理员初始化状态、系统设置注册表校验与缓存初始化** —
+   均为致命步骤
+6. **邮件服务就绪检查** —
+   非致命：未就绪时记录告警，邮箱验证/密码找回不可用且公开注册被禁止
+   （仅允许站点引导阶段的首次注册）
+7. **生产配置校验**（致命）与**对象存储 bucket 检查**（非致命，失败仅 warn）
+8. **连接 Redis** — 失败则 degraded 模式（HTTP
+   仍启动，评测功能不可用）；成功后迁移旧单队列残留任务
+9. **启动后台任务** —
+   评测结果消费者（自动重连，指数退避）、私信审核消费者、搜索索引消费者、 队列
+   sweeper、批量任务 worker（`submission_job_items` 领取/续租/退避）、 SSE
+   事件订阅；均接入现有关闭流程
+10. **启动 HTTP 服务**
 
 ## 数据库 Schema 设计
 
-| 表                      | 关键列                                                                                                                                                                   | 约束 / 索引                                                      |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| `users`                 | `id`(UUID), `username`, `email`(unique), `password_hash`, `bio`, `must_change_password`, `email_verified`, `email_verify_token`, `email_verify_expires_at`, `deleted_at` | PK, active username partial UK, UK(email)                        |
-| `problems`              | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`, `visibility`(public/private)                                            | PK, UK(display_id), UK(type,number), FK→users, CHECK(visibility) |
-| `contests`              | `id`(UUID), `public_id`, `title`, `start_time`, `end_time`, `type`, `kind`(public/invite), `is_public`, `password`                                                       | PK, UK(public_id), CHECK(kind), CHECK(type)                      |
-| `tags`                  | `id`(UUID), `name`(unique), `kind`(problem/algorithm), `created_at`, `updated_at`                                                                                        | PK, UK(name), CHECK(kind)                                        |
-| `problem_tags`          | `problem_id`, `tag_id`                                                                                                                                                   | FK→problems ON DELETE CASCADE, FK→tags ON DELETE CASCADE         |
-| `submissions`           | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                                                                        | PK, FK→users, FK→problems, idx(user_id,created_at)               |
-| `evaluation_results`    | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb`                                                                    | PK, UK(submission_id), FK→submissions                            |
-| `check_ins`             | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                                                                          | PK, FK→users, UK(user_id,checkin_date)                           |
-| `judge_images`          | `id`(UUID), `image`(text), `enabled`(bool)                                                                                                                               | PK, UK(image)                                                    |
-| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                                                                              | PK, FK→users, UK(token_hash)                                     |
-| `conversations`         | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                                                                              | PK, FK→users, UK(participant_a,participant_b)                    |
-| `messages`              | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                                                                          | PK, FK→conversations, idx(conversation_id,created_at)            |
-| `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                                                                           | PK, FK→conversations, FK→users, UK(conversation_id,user_id)      |
-| `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                                                                  | PK, FK→messages, FK→users                                        |
+| 表                      | 关键列                                                                                                                                                                                           | 约束 / 索引                                                                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `users`                 | `id`(UUID), `username`, `email`(unique), `password_hash`, `bio`, `must_change_password`, `email_verified`, `email_verify_token`, `email_verify_expires_at`, `deleted_at`                         | PK, active username partial UK, UK(email)                                                                                        |
+| `problems`              | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`, `visibility`(public/private)                                                                    | PK, UK(display_id), UK(type,number), FK→users, CHECK(visibility)                                                                 |
+| `contests`              | `id`(UUID), `public_id`, `title`, `start_time`, `end_time`, `type`, `kind`(public/invite), `is_public`, `password`                                                                               | PK, UK(public_id), CHECK(kind), CHECK(type)                                                                                      |
+| `tags`                  | `id`(UUID), `name`(unique), `kind`(problem/algorithm), `created_at`, `updated_at`                                                                                                                | PK, UK(name), CHECK(kind)                                                                                                        |
+| `problem_tags`          | `problem_id`, `tag_id`                                                                                                                                                                           | FK→problems ON DELETE CASCADE, FK→tags ON DELETE CASCADE                                                                         |
+| `submissions`           | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                                                                                                | PK, FK→users, FK→problems, idx(user_id,created_at)                                                                               |
+| `evaluation_attempts`   | `id`(UUID，= 正式评测 `run_id`), `submission_id`/`objective_submission_id`(恰好一个非空), `problem_id`, `problem_version_id`, `sequence`, `source`, `state`, `result_kind`, `score`(INTEGER×100) | PK, UNIQUE(submission_id,sequence)/UNIQUE(objective_submission_id,sequence), idx(submission_id,problem_version_id,sequence DESC) |
+| `check_ins`             | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                                                                                                  | PK, FK→users, UK(user_id,checkin_date)                                                                                           |
+| `judge_images`          | `id`(UUID), `image`(text), `enabled`(bool)                                                                                                                                                       | PK, UK(image)                                                                                                                    |
+| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                                                                                                      | PK, FK→users, UK(token_hash)                                                                                                     |
+| `conversations`         | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                                                                                                      | PK, FK→users, UK(participant_a,participant_b)                                                                                    |
+| `messages`              | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                                                                                                  | PK, FK→conversations, idx(conversation_id,created_at)                                                                            |
+| `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                                                                                                   | PK, FK→conversations, FK→users, UK(conversation_id,user_id)                                                                      |
+| `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                                                                                          | PK, FK→messages, FK→users                                                                                                        |
 
-> 上表为核心表速查。完整 Schema 共 54
-> 张表（`src/shared/db/schema/`，按域拆分；`schema.ts` 为 barrel 导出），另有：
+> 上表为核心表速查。完整 Schema 共 **66 张表**（`src/shared/db/schema/`，
+> 按域拆分；`schema.ts` 为 barrel 导出；权威清单见 `src/shared/db/schema-ddl.ts`
+> 的 `ALL_TABLES`），另有：
 >
 > - **竞赛**：`contests` / `contest_problems` / `contest_participants` /
 >   `contest_clarifications`
 > - **RBAC**：`roles` / `permissions` / `role_permissions` / `user_roles`
 > - **社区**：`community_boards` / `community_posts` / `community_comments` /
->   `community_follows` / `community_activity_events` / `community_reports` /
->   `community_moderation_actions` / `community_sanctions` /
->   `community_notifications` 等 17 张
+>   `community_follows` / `community_reports` / `community_moderation_actions` /
+>   `community_sanctions` / `community_notifications` 等 16
+>   张（`community_activity_events` 已随 2026-09-28 审计 VULN-08
+>   整体下线，见迁移 `0095`）
+> - **题目版本管理**（2026-10-10 实施）：`problem_versions`（不可变版本）、
+>   `problem_drafts`（共享草稿，`revision` 乐观锁）、`storage_objects` /
+>   `problem_draft_objects` / `problem_version_objects`（文件引用与删除守卫）、
+>   `submission_version_results`（某提交在某版本上的当前判定）、
+>   `submission_jobs` / `submission_job_items`（批量重测/升级任务）、
+>   `query_projection_revisions`（统计缓存 revision）； `problems` /
+>   `contest_problems` / 两类提交增加版本与投影字段
 > - **其他**：`system_settings` / `audit_logs` / `ip_bans` / `user_bans`
 
 **设计要点**：
 
 - 所有时间戳使用 ISO 8601 **文本**格式存储（非原生 `timestamptz`）
-- `evaluation_results.score` 为 `INTEGER`（×100），`scoreToDb`/`scoreFromDb`
-  在应用层转换
+- `evaluation_attempts.score` / `submission_version_results` 关联的分数为
+  `INTEGER`（×100），`scoreToDb`/`scoreFromDb` 在应用层转换；**旧
+  `evaluation_results` 已随迁移 `0105` 删除**，成绩事实源是评测尝试终态 +
+  分版本当前判定 + 有效成绩投影（见「题目版本管理」一节）
 - `problems.number` 按 `type` 分别自增（`(type, number)` UNIQUE）
 - `problems.visibility` 取值 `public`/`private`，由 `resolveProblemAccess`
   统一判定读取/提交/竞赛上下文访问；新建 U 型默认 `private`，P 型恒 `public`
+- **公开赛题目保密**（2026-09-26，2026-09-28 审计 VULN-02/VULN-07 扩展）：
+  题目被加入 `kind='public'` 且 `now < end_time` 的竞赛后（**含赛前筹备期
+  pending**），除 owner/admin（以及携带有效竞赛上下文的参赛者）外：
+  - 详情读取一律 404、独立提交/自测路径 403；
+  - **题库列表、题单、个人主页（已通过题目/最近提交）与全局搜索整行不返回**
+    （SQL 层过滤，非特权用户看不到存在性与任何元数据）；特权用户保留该行并收到
+    `is_contest_hidden: true`（前端渲染浅灰斜纹底 + Tooltip）；
+  - 题解与讨论的**读**（列表/详情/收藏/Tab 计数/搜索）与**写**（`createPost`）
+    一并封禁，只有 `moderator` 免门控；
+  - `end_time` 一过全部自动失效（赛后复盘正常）。 判定事实由 contest
+    域**单一真相源** `problem-secrecy.ts` 提供：内存判定
+    `isProblemInUnendedPublicContest`、Drizzle 谓词
+    `unendedPublicContestForProblem`、竞赛维度集合 `filterUnendedContestIds`
+    （另有 `loadPublicContestSecrecy` 供横幅展示，经 catalog 域
+    `evaluateProblemAccess*` 统一取数判定，见
+    `src/domains/catalog/services/problem-access-check.ts`）； 查看者可见性字段
+    `contest_secrecy` 只下发给 owner/admin。
+    所有新门控**禁止**再手写时间窗口比较（口径漂移正是上述漏洞的根因）
 - `contests.kind` 取值 `public`/`invite`：public
   仅管理员可创建、可自助报名；invite 必须设置邀请码并校验；`is_public` 与 kind
   绑定：public 公开可见，invite 不进入公开列表
 - `tags.kind`
   区分题目标签（problem，人人可见）与算法标签（algorithm，通过题目后可见，spoiler
   门控后端强制）
+- **已下线机制**（2026-09-28 审计）：
+  - 社区自动动态（`community_activity_events` 表、`community_activities_enabled`
+    配置、`users.community_activity_visibility`
+    列、`/community/me/activity-visibility`
+    端点）——它会在封榜期实时广播"某选手首次通过题目 X"并泄露内部 `submission_id`
+    与私密邀请赛标题（VULN-08）；
+  - 提交来源 IP 反作弊（`submissions.client_ip` 列与索引、
+    `anti_cheat_ip_retention_days`、`/contests/:id/anti-cheat/ip-groups` 与
+    `/anti-cheat/timeline` 端点）——机房 NAT 共用 IP 导致误伤率过高且可被 VPN
+    规避 （VULN-06）。代码相似度查重（`/anti-cheat/similar-submissions`）保留。
+- **竞赛提交隐私口径**：进行中（含封榜期）竞赛的排行榜对非管理员**只返回本人一行**
+  （匿名返回空列表）；竞赛提交 SSE 对非管理员不下发 `user_id` 与
+  `submission_id`； `/submissions/:id/events` 有归属校验；队列概览的自测记录按
+  `user_id` 隔离。
+- **延续既有口径**：客观题竞赛模式在竞赛结束前只回执"已提交" （不返回分数与逐题
+  `correct`）；竞赛答疑提问默认私密，仅主办方显式"公开回复" 才广播
 - `submissions` 有复合索引 `(user_id, created_at)` 优化"我的提交历史"查询
 - 评测脚本
   `details.cases[].hidden`（布尔）是提交结果投影判断隐藏用例的依据；旧脚本缺少该标记时
   fail-safe 剥离详情
+
+## 题目版本管理（2026-10-10 实施）
+
+四个独立概念：题目身份（`problems`）、不可变版本（`problem_versions`）、提交时版本
+（`submissions.submitted_version_id` /
+`objective_submissions.submitted_version_id`）、
+评测尝试（`evaluation_attempts`）。用户文档见
+[noj-docs/docs/features/problem-versioning.md](../noj-docs/docs/features/problem-versioning.md)；
+决策记录见
+[.agents/notes/implemented/architecture/2026-10-10-problem-version-management.md](../.agents/notes/implemented/architecture/2026-10-10-problem-version-management.md)。
+
+**内容事实源**：每题一个共享草稿 `problem_drafts`（`revision` 乐观锁，缺失 428 /
+过时 409）；发布（`publishProblemVersion`）才写版本并更新 `problems`
+上的最新版投影。 `updateProblem`
+的内容字段写草稿（未发布题目同步投影以保持迁移期可读），管理信息
+（难度/可见性/标签）与题型直接写题目行。OI 走 `saveOiDraft`（配置 + 逐文件引用 +
+打包 ZIP 同一草稿事务）；客观题小题走 `objective-drafts`（key 跨版本稳定）。
+
+**有效成绩**：`submission_version_results`
+保存分版本当前判定，`selectEffectiveResults` 按策略（题库 /
+竞赛各自独立）选出「最高分指针 + 通过指针」（两者分开），写入提交的 `is_valid` /
+`is_accepted` / `effective_attempt_id` / `accepted_attempt_id` 及竞赛口径字段。
+策略切换与判定替换在业务事务中递增 `query_projection_revisions.data_revision`，
+Redis 缓存键与物化视图刷新都以 revision 为准；多副本下无进程内状态。
+
+**统一尝试与任务**：所有正式执行（初次、重测、升级）都创建 `evaluation_attempts`
+（`state` 终态只写一次）；批量重测/升级走 `submission_jobs` /
+`submission_job_items` （worker 在 `main()`
+后台启动阶段注册，`FOR UPDATE SKIP LOCKED` + lease 续租 + 指数退避）。
+
+**评测协议 v2**：`JudgeTask`/`JudgeResult` 携带
+`evaluation_protocol_version = 2`、
+`attempt_id`、`problem_version_id`、`run_id`、`result_kind`；core
+校验一致性后落库。
+
+与版本管理相关的主要端点（均挂在 `/api/v1`，详见各路由文件）：
+
+| 方法与路径                                                                                | 说明                                                      |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `GET/PUT /problems/:id/draft`                                                             | 读/存共享草稿（`If-Match: <revision>`）                   |
+| `GET /problems/:id/draft/preflight`                                                       | 发布预检                                                  |
+| `POST /problems/:id/versions`                                                             | 发布草稿为新版本（`If-Match`）                            |
+| `GET /problems/:id/versions[/:versionId]`                                                 | 版本列表 / 指定版本内容（权限裁剪）                       |
+| `POST/PUT/DELETE /problems/:id/questions[/:qid]`                                          | 客观题小题写草稿（`If-Match`，响应回传 `draft_revision`） |
+| `POST /admin/submission-jobs`、`GET /admin/submission-jobs/:id[/items]`、`POST .../retry` | 批量重测任务（`Idempotency-Key`）                         |
+| `POST /submission-upgrade-jobs`、`GET /submission-upgrade-jobs/:id`                       | 用户批量升级任务                                          |
+| `PUT /admin/problems/:id/effective-version-policy` 等三个策略端点                         | 题库 / 竞赛策略与竞赛固定版本                             |
+
+**迁移链**：`0102` 建表 → `0103` 迁移基线 V1 + 既有结果转 `legacy_import` 尝试 →
+`0104` 重建 `user_rankings` 视图 → `0105` 删 `evaluation_results` → `0106`
+竞赛固定 版本回填 + `NOT NULL` → `0107` 删
+`objective_questions`。`legacy_unknown`
+（无提交时版本的存量提交）保留未知状态：`any` 策略下仍有效，`exact(X)` 不匹配，
+按提交时版本重测会跳过（`LEGACY_VERSION_UNKNOWN`）。
 
 ## 代码规范
 
@@ -454,29 +566,29 @@ docker compose down     # 停止
 
 ## 服务层业务规则
 
-| 规则                 | 说明                                                                                                                                     |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| 提交状态机           | `pending → [judging, error]` → `judging → [finished, error]`，finished/error 为终态；artifact 提交评测完成后立即删除存储对象，不支持重测 |
-| 输出截断             | API 返回时截断至 8KB（`MAX_OUTPUT_LENGTH`），数据库保留完整内容                                                                          |
-| 代码大小上限         | 100KB（`MAX_CODE_LENGTH`），路由层校验                                                                                                   |
-| 个人简介上限         | 5000 字符                                                                                                                                |
-| 支持包读取失败       | 非致命：日志记录后继续（无支持包），由 judge 端处理                                                                                      |
-| 题目更新             | 静默忽略 `type` 和 `number` 字段（API 接受但不处理）                                                                                     |
-| 题目编号冲突         | 自动分配时重试 3 次（PG 23505），手动指定时立即报错                                                                                      |
-| 评测结果写入         | UPSERT 语义（`onConflictDoUpdate`），用最新结果覆盖旧数据；配合 `rejudge_seq` 防护乱序覆盖                                               |
-| 队列位置查询         | 即使 DB 状态为 "judging" 也检查 Redis 队列（状态在入队时已更新）                                                                         |
-| 问题列表默认         | 默认只显示 `type='P'` 的题目，U 类型需直接 URL 或所有者主页访问                                                                          |
-| 分页默认值           | page=1, per_page=20, max per_page=100                                                                                                    |
-| 用户枚举防护         | 登录失败统一返回"用户名或密码错误"，不区分"用户不存在"和"密码错误"                                                                       |
-| Root 用户            | UID="0"，admin 角色，随机密码不可登录，不计入管理员统计，不出现在用户列表                                                                |
-| 密码重置邮箱枚举防护 | `POST /forgot-password` 不管邮箱是否存在都返 200 + 同一消息（与登录失败防枚举共存）                                                      |
-| 密码重置令牌         | DB 存 SHA-256 hex 哈希（**不存明文**），URL 传明文 base64url；32 字节随机数                                                              |
-| 密码重置 TTL         | 15 分钟（OWASP 2025+ 建议 ≤ 15 分钟），单 SQL 原子消耗防并发                                                                             |
-| 密码重置邮件         | 策略模式：`EMAIL_PROVIDER` 选择 mock（默认）/ aliyun / tencent；mock 为控制台输出；真实 Provider 在发送前校验环境变量完整性              |
-| 首个生产管理员       | 部署者在服务器交互终端执行 `bootstrap first-admin` 一次性创建；公开注册仅获普通角色，已有站点永久关闭初始化且不自动提权                  |
-| 开发引导管理员       | 无可登录 admin 且未设 ADMIN_EMAIL 时，开发环境 `bootstrap admin` 自动创建 username=admin 临时账号，must_change_password=true             |
-| 强制改密守卫         | authMiddleware 检测 token.must_change_password=true，白名单（/change-password, /me）外全部 403 PASSWORD_CHANGE_REQUIRED                  |
-| change-password限流  | 独立 pwchange 命名空间，不污染 /login 限流桶（issue #75 评审 H4）                                                                        |
+| 规则                 | 说明                                                                                                                                                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 提交状态机           | `pending → [judging, error]` → `judging → [finished, error]`，finished/error 为终态；评测尝试终态不可覆盖，重测创建新 attempt（递增 `sequence`，旧尝试标记 `superseded`）；artifact 产物**保留到提交被显式删除**，可重测 |
+| 输出截断             | API 返回时截断至 8KB（`MAX_OUTPUT_LENGTH`），数据库保留完整内容                                                                                                                                                          |
+| 代码大小上限         | 100KB（`MAX_CODE_LENGTH`），路由层校验                                                                                                                                                                                   |
+| 个人简介上限         | 5000 字符                                                                                                                                                                                                                |
+| 支持包读取失败       | 非致命：日志记录后继续（无支持包），由 judge 端处理                                                                                                                                                                      |
+| 题目更新             | 静默忽略 `type` 和 `number` 字段（API 接受但不处理）                                                                                                                                                                     |
+| 题目编号冲突         | 自动分配时重试 3 次（PG 23505），手动指定时立即报错                                                                                                                                                                      |
+| 评测结果写入         | 写入 `evaluation_attempts` 终态（**只写一次**，重复回调不覆盖）+ `graded` 时更新 `submission_version_results` 当前判定，再按当前策略重算有效成绩投影；`rejudge_seq`/`run_id` 防护乱序                                    |
+| 队列位置查询         | 即使 DB 状态为 "judging" 也检查 Redis 队列（状态在入队时已更新）                                                                                                                                                         |
+| 问题列表默认         | 默认只显示 `type='P'` 的题目，U 类型需直接 URL 或所有者主页访问                                                                                                                                                          |
+| 分页默认值           | page=1, per_page=20, max per_page=100                                                                                                                                                                                    |
+| 用户枚举防护         | 登录失败统一返回"用户名或密码错误"，不区分"用户不存在"和"密码错误"                                                                                                                                                       |
+| Root 用户            | UID="0"，admin 角色，随机密码不可登录，不计入管理员统计，不出现在用户列表                                                                                                                                                |
+| 密码重置邮箱枚举防护 | `POST /forgot-password` 不管邮箱是否存在都返 200 + 同一消息（与登录失败防枚举共存）                                                                                                                                      |
+| 密码重置令牌         | DB 存 SHA-256 hex 哈希（**不存明文**），URL 传明文 base64url；32 字节随机数                                                                                                                                              |
+| 密码重置 TTL         | 15 分钟（OWASP 2025+ 建议 ≤ 15 分钟），单 SQL 原子消耗防并发                                                                                                                                                             |
+| 密码重置邮件         | 策略模式：`EMAIL_PROVIDER` 选择 mock（默认）/ aliyun / tencent；mock 为控制台输出；真实 Provider 在发送前校验环境变量完整性                                                                                              |
+| 首个生产管理员       | 部署者在服务器交互终端执行 `bootstrap first-admin` 一次性创建；公开注册仅获普通角色，已有站点永久关闭初始化且不自动提权                                                                                                  |
+| 开发引导管理员       | 无可登录 admin 且未设 ADMIN_EMAIL 时，开发环境 `bootstrap admin` 自动创建 username=admin 临时账号，must_change_password=true                                                                                             |
+| 强制改密守卫         | authMiddleware 检测 token.must_change_password=true，白名单（/change-password, /me）外全部 403 PASSWORD_CHANGE_REQUIRED                                                                                                  |
+| change-password限流  | 独立 pwchange 命名空间，不污染 /login 限流桶（issue #75 评审 H4）                                                                                                                                                        |
 
 ## 登录速率限制（issue #73）
 
@@ -608,13 +720,19 @@ flat/grouped 两种返回。设计文档见
 
 ## CLI 说明
 
-| 命令                                                          | 行为                                                                                                                    |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `deno task dev-setup`（`scripts/noj.ts dev-setup`）           | 幂等：迁移 → 系统基础数据（root/RBAC/镜像白名单/标签）→ 管理员引导 → 构建题目包 → 导入题目包 → dev 专用数据（E2E 用户） |
-| `deno task problems:build`（`scripts/noj.ts problems build`） | 调用系统 `zip` 命令（非 JS 库），在 `data/problems-src/<id>/` 目录执行，排除 `submission*`/`__pycache__`/`.git`         |
-| `deno task db:migrate`（`scripts/noj.ts db migrate`）         | 日志中脱敏数据库密码（`"//***@"`），迁移后关闭 DB 连接确保进程退出                                                      |
+| 命令                                                          | 行为                                                                                                                                     |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `deno task dev-setup`（`scripts/noj.ts dev-setup`）           | 幂等：迁移 → 系统基础数据（root/RBAC/镜像白名单/标签）→ 管理员引导 → 构建题目包 → 导入题目包 → dev 专用数据（E2E 用户）                  |
+| `deno task problems:build`（`scripts/noj.ts problems build`） | 调用系统 `zip` 命令（非 JS 库），在 `data/problems-src/<id>/` 目录执行，排除 `submission*`/`__pycache__`/`.git`                          |
+| `deno task db:migrate`（`scripts/noj.ts db migrate`）         | 日志中脱敏数据库密码（`"//***@"`），迁移后关闭 DB 连接确保进程退出                                                                       |
+| `scripts/noj.ts problems import [--publish]`                  | 导入题目包；**`--publish` 显式发布为版本**（不发布时题目只有草稿，普通访问者读不到、也无法按版本提交）；`dev-setup` 内部即用 `--publish` |
+| `scripts/noj.ts search reindex`（`reindexAll`）               | 全量重建 `search_entries` 索引（升级收尾步骤；只索引已发布题目）                                                                         |
 
 ## 评测脚本协议（Judge 集成）
+
+> **适用范围**：本节描述 **AI 题的 dual 双容器评测**。NOJ 共有三条评测路径—— OI
+> 题（`judge_type=oi`，native/WASM runner）、AI 题（dual 双容器 RPC，本节）、
+> 客观题（core 内即时判定）。dual 不是 NOJ 的唯一评测模型。
 
 noj-core 不直接执行评测，但 `data/problems-src/` 中的 evaluate.py 遵循以下约定
 （双容器架构）：
@@ -627,6 +745,11 @@ noj-core 不直接执行评测，但 `data/problems-src/` 中的 evaluate.py 遵
   `noj-judge/src/dual/protocol.rs`）
 - 输出格式：`---RESULT---` 标记行 + JSON `{score, details}`（不再输出
   `status`，judge 统一映射 `finished`/`error`）
+- **协议 v2 封套**：任务与结果都携带 `evaluation_protocol_version = 2`、
+  `attempt_id`、`problem_version_id`、`run_id`（正式提交
+  `run_id = attempt_id`）； 结果另有 `result_kind`（`graded` /
+  `platform_error`）。core 校验协议/尝试/版本/ sequence/run_id
+  全部一致，未知或不匹配的消息不写成绩
 - `details.cases` 每个用例必须带布尔 `hidden`
   标记（`true`=隐藏、`false`=可见）；
   隐藏用例只输出非敏感元数据，不得输出输入/期望/实际输出
@@ -641,11 +764,10 @@ API 或独立的安全通道部署，`support_package_path` 指向受控存储�
 
 ## 贡献要求
 
-- **所有提交必须 GPG 签名**（详见根目录 README.md）
-- 分支与推送纪律以根目录 [`AGENTS.md`](../AGENTS.md) §7.1
-  为准：日常开发与缺陷修复 可直接提交 `main`；需要评审的变更从 `main` 派生分支走
-  PR。无论走哪条路径， 提交前必须完成本模块的检查与验收（2026-09-12
-  更正：此处原写"禁止直接推送到 main"， 与顶层 AGENTS.md 冲突）
+- **所有提交必须 GPG 签名**（详见根目录 [`AGENTS.md`](../AGENTS.md) §7.5）
+- 分支与推送纪律以根目录 [`AGENTS.md`](../AGENTS.md) §7.1 为准：**禁止直接推送
+  `main`**，所有变更从 `main` 派生主题分支并通过 PR
+  合入；合入前必须完成本模块的检查与验收
 - 提交信息格式：`feat(core): 中文描述` / `fix(core): 中文描述`
 
 ## 相关文档

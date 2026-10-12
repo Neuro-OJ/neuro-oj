@@ -1,5 +1,10 @@
 import { Hono } from "hono";
-import { type AuthEnv, authMiddleware } from "../../identity/index.ts";
+import {
+  type AuthEnv,
+  authMiddleware,
+  checkPermission,
+} from "../../identity/index.ts";
+import { ForbiddenError } from "../../../shared/base/errors.ts";
 import { Channels } from "../../../shared/sse/event-bus.ts";
 import { createSseStream } from "../../../shared/sse/sse-stream.ts";
 import {
@@ -42,6 +47,19 @@ sse.get("/submissions/:id/events", async (c) => {
     c.get("userRole"),
     c,
   );
+
+  // ── 订阅归属校验（审计 VULN-10）──
+  //
+  // `getSubmission` 对非所有者**不抛错**（仅把 code/output/details 置 null），
+  // 因此这里此前允许任何登录用户订阅**任意**提交的信道。配合竞赛 SSE 广播中
+  // 泄露的 `submission_id`，任何参赛者都能实时监听他人提交的评测完成瞬间。
+  //
+  // 实时状态变更本身也属于他人隐私（能反推"谁在何时被判出什么结果"），
+  // 故订阅必须与详情读取同权限：仅所有者本人或具备 submission:read_all 者。
+  const isAdmin = await checkPermission(c, "submission:read_all");
+  if (submission.user_id !== userId && !isAdmin) {
+    throw new ForbiddenError("无权订阅该提交的评测事件");
+  }
 
   return createSseStream(
     c,
@@ -94,9 +112,14 @@ sse.get("/queue/events", (c) => {
   return createSseStream(
     c,
     async ({ stream, closed, close, onUnsubscribe }) => {
-      // 连接建立后立即推送当前队列全量数据（MQTT Retain 语义）
+      // 连接建立后立即推送当前队列全量数据（MQTT Retain 语义）。
+      // 该调用只用于探测队列可用性（结果不入事件体），但同样按查看者隔离自测，
+      // 避免任何未来误用成为越权读取面。
       try {
-        await getQueueOverview();
+        await getQueueOverview(
+          await checkPermission(c, "submission:read_all"),
+          c.get("userId"),
+        );
         await stream.writeSSE({
           event: "queue:changed",
           data: JSON.stringify({ type: "queue:changed" }),

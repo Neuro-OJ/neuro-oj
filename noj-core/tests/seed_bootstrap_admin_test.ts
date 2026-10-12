@@ -16,7 +16,6 @@ import {
   auditLogs,
   conversationReads,
   conversations,
-  evaluationResults,
   messageDeletions,
   messages,
   roles,
@@ -57,8 +56,8 @@ async function getAdminCount(): Promise<number> {
  */
 async function cleanNonRootAdmins(): Promise<void> {
   const db = getDb();
-  // 清理 submissions 相关表的 FK 引用（无 CASCADE，须手动清理）
-  await db.delete(evaluationResults);
+  // 清理 submissions 相关表的 FK 引用（无 CASCADE，须手动清理；
+  // 评测尝试/分版本判定随提交级联删除）
   await db.delete(submissions);
   // 清理 conversations 相关表的 FK 引用
   await db.delete(messageDeletions);

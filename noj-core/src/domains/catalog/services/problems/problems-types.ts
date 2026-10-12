@@ -14,15 +14,21 @@ import { BadRequestError } from "./../../../../shared/base/errors.ts";
 import type {
   LlmConfig,
   ProblemResponseWithTags,
+  ProblemRuntimeConfig,
   ProblemTagRef,
   RuntimeConfig,
   SubmissionMode,
+} from "./../../types/problems.ts";
+import {
+  isOiRuntimeConfig,
+  validateOiRuntimeConfig,
 } from "./../../types/problems.ts";
 
 /**
  * 公开题目响应（不含关联标签）。
  */
 export interface ProblemResponse {
+  samples: import("../../types/problem-samples.ts").ProblemSample[];
   id: string;
   title: string;
   description: string;
@@ -31,7 +37,7 @@ export interface ProblemResponse {
   support_package_storage_url?: string | null;
   has_support_package: boolean;
   /** 仅 owner/admin 返回；非 owner/admin 不返回该字段 */
-  runtime_config?: RuntimeConfig | null;
+  runtime_config?: ProblemRuntimeConfig | null;
   number: number;
   owner_id: string;
   type: string;
@@ -39,13 +45,27 @@ export interface ProblemResponse {
   visibility: "public" | "private";
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective: boolean;
+  /** 评测模式；存量题目缺省推断为 dual。 */
+  judge_type: "dual" | "oi";
+  /** 可公开的执行后端；客观题或配置不可用时为空。 */
+  judge_backend: "dual" | "oi-native" | "oi-wasm" | null;
   /** 提交模式：code / artifact / prediction */
-  submission_mode: "code" | "artifact" | "prediction";
+  submission_mode: SubmissionMode;
   /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
   artifact_max_size_mb: number | null;
   /** LLM 配置（可空，仅 owner/admin 返回） */
   llm_config?: LlmConfig | null;
   display_id: string;
+  /**
+   * 该题目是否被**尚未结束的公开赛**收编（审计 VULN-07）。
+   *
+   * 语义：
+   * - 非特权用户（非管理员且非题目所有者）：这类题目**整行不会出现在列表里**
+   *   （后端 SQL 过滤），故该字段恒为 false/不出现——不存在"看得到但被隐藏"的中间态；
+   * - 特权用户（管理员 / 题目所有者）：行照常返回，`is_contest_hidden === true`
+   *   表示它对普通用户处于隐藏保密状态，前端据此展示浅灰斜纹底 + Tooltip。
+   */
+  is_contest_hidden?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -77,7 +97,8 @@ export interface AdminProblemListItem {
   title: string;
   difficulty: string;
   support_package_storage_url: string | null;
-  runtime_config: RuntimeConfig;
+  runtime_config: ProblemRuntimeConfig;
+  judge_type: "dual" | "oi";
   llm_config: LlmConfig | null;
   tags: ProblemTagRef[];
   created_at: string;
@@ -216,4 +237,19 @@ export function validateRuntimeConfig(
       );
     }
   }
+}
+
+/** 校验题目的任一评测后端配置。 */
+export function validateProblemRuntimeConfig(
+  rc: ProblemRuntimeConfig,
+  submissionMode: SubmissionMode = "code",
+): void {
+  if (isOiRuntimeConfig(rc)) {
+    if (submissionMode !== "code") {
+      throw new BadRequestError("OI 题目只支持 code 提交模式");
+    }
+    validateOiRuntimeConfig(rc);
+    return;
+  }
+  validateRuntimeConfig(rc as RuntimeConfig, submissionMode);
 }

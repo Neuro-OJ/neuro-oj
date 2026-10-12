@@ -17,6 +17,9 @@ import {
 const REPO = "https://github.com/Neuro-OJ/neuro-oj";
 const REF = "0.9.5";
 const COMPOSE = "docker-compose.prod.yml";
+/** 模板的 Release 资产名（**非**点号开头，GitHub 会把点号名改写为 default.<name>）。 */
+const ENV_EXAMPLE_ASSET = "env.prod.example";
+/** 模板落盘后的文件名（安装目录内，点号开头）。 */
 const ENV_EXAMPLE = ".env.prod.example";
 
 const encoder = new TextEncoder();
@@ -66,7 +69,7 @@ function makeFetcher(
 function fixtureAssets(): Record<string, Uint8Array<ArrayBuffer>> {
   return {
     [COMPOSE]: encoder.encode("services:\n  noj-server:\n    image: noj\n"),
-    [ENV_EXAMPLE]: encoder.encode("NOJ_VERSION=0.9.5\nJWT_SECRET=\n"),
+    [ENV_EXAMPLE_ASSET]: encoder.encode("NOJ_VERSION=0.9.5\nJWT_SECRET=\n"),
   };
 }
 
@@ -82,18 +85,19 @@ Deno.test("downloadReleaseFiles: 成功下载、校验并逐字节写入目标�
       fetcher: makeFetcher(calls, assets),
     });
 
+    // 返回值与落盘用的是 target 文件名（`.env.prod.example`）。
     assertEquals(files, [join(dir, COMPOSE), join(dir, ENV_EXAMPLE)]);
     assertEquals(await Deno.readFile(join(dir, COMPOSE)), assets[COMPOSE]);
     assertEquals(
       await Deno.readFile(join(dir, ENV_EXAMPLE)),
-      assets[ENV_EXAMPLE],
+      assets[ENV_EXAMPLE_ASSET],
     );
-    // URL 形状：<repo>/releases/download/<ref>/<asset>[.sha256]
+    // URL 形状：<repo>/releases/download/<ref>/<asset>[.sha256]（资产名，非落盘名）
     assertEquals(calls, [
       `${REPO}/releases/download/${REF}/${COMPOSE}`,
       `${REPO}/releases/download/${REF}/${COMPOSE}.sha256`,
-      `${REPO}/releases/download/${REF}/${ENV_EXAMPLE}`,
-      `${REPO}/releases/download/${REF}/${ENV_EXAMPLE}.sha256`,
+      `${REPO}/releases/download/${REF}/${ENV_EXAMPLE_ASSET}`,
+      `${REPO}/releases/download/${REF}/${ENV_EXAMPLE_ASSET}.sha256`,
     ]);
     await assertNoTempLeftovers(dir);
   } finally {
@@ -106,8 +110,8 @@ Deno.test("downloadReleaseFiles: 大写十六进制摘要同样通过校验", as
   try {
     const assets = fixtureAssets();
     const upper: Record<string, string> = {};
-    for (const name of RELEASE_FILES) {
-      upper[name] = (await sha256Hex(assets[name]!)).toUpperCase();
+    for (const { asset } of RELEASE_FILES) {
+      upper[asset] = (await sha256Hex(assets[asset]!)).toUpperCase();
     }
     await downloadReleaseFiles({
       repository: REPO,
@@ -118,7 +122,7 @@ Deno.test("downloadReleaseFiles: 大写十六进制摘要同样通过校验", as
     assertEquals(await Deno.readFile(join(dir, COMPOSE)), assets[COMPOSE]);
     assertEquals(
       await Deno.readFile(join(dir, ENV_EXAMPLE)),
-      assets[ENV_EXAMPLE],
+      assets[ENV_EXAMPLE_ASSET],
     );
   } finally {
     await Deno.remove(dir, { recursive: true });
@@ -138,7 +142,7 @@ Deno.test("downloadReleaseFiles: 第二个文件校验失败时不写入任何�
           targetDir: dir,
           // 第一个文件校验通过，第二个失败：证明"全部通过才提交"。
           fetcher: makeFetcher(calls, assets, {
-            [ENV_EXAMPLE]: "0".repeat(64),
+            [ENV_EXAMPLE_ASSET]: "0".repeat(64),
           }),
         }),
       Error,
@@ -236,7 +240,7 @@ Deno.test("downloadReleaseFiles: overwrite=true 时原子覆盖现有文件", as
     assertEquals(await Deno.readFile(join(dir, COMPOSE)), assets[COMPOSE]);
     assertEquals(
       await Deno.readFile(join(dir, ENV_EXAMPLE)),
-      assets[ENV_EXAMPLE],
+      assets[ENV_EXAMPLE_ASSET],
     );
     await assertNoTempLeftovers(dir);
   } finally {
@@ -438,6 +442,33 @@ Deno.test("releaseAssetUrl: 拼出 GitHub Release 资产地址", () => {
   );
 });
 
+Deno.test("RELEASE_FILES: 资产名不得以点号开头（GitHub 会改写为 default.<name>）", () => {
+  // 回归点（2026-09-27 实测）：`.env.prod.example` 这类资产名会被 GitHub 改写为
+  // `default.env.prod.example`，原名在 releases/download 下恒 404 → install/update
+  // 全线失败。资产名必须非点号，落盘名由 target 承担。
+  for (const { asset, target } of RELEASE_FILES) {
+    assertEquals(
+      asset.startsWith("."),
+      false,
+      `Release 资产名不得以点号开头：${asset}`,
+    );
+    assertEquals(
+      asset.includes("/"),
+      false,
+      `资产名不得含路径分隔符：${asset}`,
+    );
+    assertEquals(asset.length > 0, true, "资产名不得为空");
+    // 落盘名是本地文件名，点号开头（隐藏配置文件）是合法且需要的。
+    assertEquals(target.length > 0, true, `缺少落盘文件名：${asset}`);
+  }
+  // 模板资产的资产名与落盘名刻意不同，锁住这条契约。
+  assertEquals(
+    RELEASE_FILES.some(({ asset, target }) => asset !== target),
+    true,
+    "至少应有资产名与落盘名不同的条目（模板）",
+  );
+});
+
 Deno.test("release workflow: 发布 bootstrap 依赖的全部资产", async () => {
   const workflow = await Deno.readTextFile(
     new URL("../../../.github/workflows/release.yml", import.meta.url),
@@ -450,14 +481,24 @@ Deno.test("release workflow: 发布 bootstrap 依赖的全部资产", async () =
   const lines = upload.split(/\r?\n/).map((line) => line.trim());
   const isListed = (asset: string): boolean =>
     lines.some((line) => line === asset || line === asset + " \\");
-  for (const name of RELEASE_FILES) {
+  for (const { asset } of RELEASE_FILES) {
     for (const suffix of ["", ".sha256"]) {
-      const asset = `${name}${suffix}`;
+      const name = `${asset}${suffix}`;
       assertEquals(
-        isListed(asset),
+        isListed(name),
         true,
-        `Release 未发布 bootstrap 依赖的资产：${asset}`,
+        `Release 未发布 bootstrap 依赖的资产：${name}`,
       );
     }
+  }
+  // 资产名与仓库文件名不同的条目，工作流必须先把它准备好再上传：
+  // 否则要么上传失败，要么又把点号名传上去（本条即 404 的成因）。
+  for (const { asset, target } of RELEASE_FILES) {
+    if (asset === target) continue;
+    assertEquals(
+      workflow.includes(`cp ${target} ${asset}`),
+      true,
+      `release.yml 未把仓库文件 ${target} 复制为资产名 ${asset}`,
+    );
   }
 });

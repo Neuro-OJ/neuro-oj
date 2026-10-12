@@ -6,8 +6,9 @@
 # scripts/check-deno-version.ts。
 #
 # 修复 finding M8：之前没有自动依赖更新，actions/changes 只能手工 follow。
-# github-actions ecosystem 生成的 PR 会用 SHA 钉形式（如
-# `actions/checkout@<sha> # v4.1.7`），对应修复 S2 的供应链风险。
+# 所有外部 action 均固定为 `owner/repo@<commit SHA> # <版本>`（审计 S1，
+# 由 scripts/check-action-pins.ts 门禁强制）；Dependabot 升级时会同步改写
+# SHA 与版本注释。注意：此前此处声称"已 SHA 钉"而实际零处固定，门禁即为防此类漂移。
 #
 # 触发节奏：weekly（每周一）
 # 合并策略：建议用 dependabot[bot] 自动 squash merge
@@ -21,7 +22,10 @@ updates:
   # GitHub Actions 自动更新（覆盖 ci.yml / e2e.yml / 未来 composite action）
   # ---------------------------------------------------------------------------
   - package-ecosystem: "github-actions"
-    directory: "/"
+    # "/" 只扫 .github/workflows；composite action 需单独列出，否则其引用永不升级
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: "weekly"
       day: "monday"

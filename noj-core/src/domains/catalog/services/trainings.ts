@@ -13,9 +13,9 @@
  */
 
 import { and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { unendedPublicContestForProblem } from "./../../contest/index.ts";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
-  evaluationResults,
   objectiveSubmissions,
   problems,
   submissions,
@@ -103,7 +103,12 @@ async function countProblems(
       count: sql<number>`count(*)::int`,
     })
     .from(trainingProblems)
-    .where(inArray(trainingProblems.training_id, trainingIds))
+    .innerJoin(problems, eq(trainingProblems.problem_id, problems.id))
+    .where(and(
+      inArray(trainingProblems.training_id, trainingIds),
+      eq(problems.visibility, "public"),
+      sql`NOT (${unendedPublicContestForProblem(problems.id)})`,
+    ))
     .groupBy(trainingProblems.training_id);
   return new Map(rows.map((r) => [r.training_id, r.count]));
 }
@@ -446,7 +451,8 @@ async function assertWritable(
 
 /**
  * 计算用户对给定题目集合的 AC 集合。
- * 编程题：finished 且 score>0；客观题：满分（score=10000）。
+ * 编程题与客观题都读有效成绩投影：客观题的通过口径是**满分**，由迁移回填与
+ * 提交写入服务（批次 3d）统一保证，读路径不再自行比较分数。
  *
  * @param userId 用户 id
  * @param problemIds 题目 id 列表
@@ -458,26 +464,23 @@ async function getAcceptedProblemIds(
 ): Promise<Set<string>> {
   if (problemIds.length === 0) return new Set();
   const db = getDb();
+  // 编程题：读有效成绩投影（版本化后由唯一投影服务维护；存量由 0103 回填）
   const acceptedRows = await db
     .select({ problem_id: submissions.problem_id })
     .from(submissions)
-    .innerJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, submissions.id),
-    )
     .where(and(
       eq(submissions.user_id, userId),
       inArray(submissions.problem_id, problemIds),
-      eq(submissions.status, "finished"),
-      sql`${evaluationResults.score} > 0`,
+      eq(submissions.is_accepted, true),
     ));
+  // 客观题：同一投影口径（`is_accepted` = 满分通过，写入侧唯一判定）
   const objectiveRows = await db
     .select({ paper_id: objectiveSubmissions.paper_id })
     .from(objectiveSubmissions)
     .where(and(
       eq(objectiveSubmissions.user_id, userId),
       inArray(objectiveSubmissions.paper_id, problemIds),
-      eq(objectiveSubmissions.score, 10000),
+      eq(objectiveSubmissions.is_accepted, true),
     ));
   return new Set([
     ...acceptedRows.map((r) => r.problem_id),
@@ -515,14 +518,25 @@ export async function listTrainingProblems(
       visibility: problems.visibility,
       owner_id: problems.owner_id,
       is_objective: problems.is_objective,
+      // 是否被尚未结束的公开赛收编（审计 VULN-07）
+      is_contest_hidden: sql<boolean>`${
+        unendedPublicContestForProblem(problems.id)
+      }`
+        .as("is_contest_hidden"),
     })
     .from(trainingProblems)
     .innerJoin(problems, eq(trainingProblems.problem_id, problems.id))
     .where(eq(trainingProblems.training_id, trainingId))
     .orderBy(asc(trainingProblems.position));
+  // 非特权用户：private 题与"被未结束公开赛收编"的题一律不出现在题单里
+  // （此前只过滤 visibility，赛题的存在性/标题/难度/题面仍会泄露给任何人）。
   const visibleRows = canViewAll
     ? rows
-    : rows.filter((r) => r.visibility === "public");
+    : rows.filter((r) =>
+      r.visibility === "public" &&
+      // 题单所有者之外的查看者：即使题目 owner 是自己也保持一致口径
+      r.is_contest_hidden !== true
+    );
   const accepted = viewerId
     ? await getAcceptedProblemIds(
       viewerId,
@@ -540,6 +554,7 @@ export async function listTrainingProblems(
     type: r.type,
     is_objective: r.is_objective,
     accepted: accepted.has(r.problem_id),
+    is_contest_hidden: r.is_contest_hidden === true,
   }));
 }
 

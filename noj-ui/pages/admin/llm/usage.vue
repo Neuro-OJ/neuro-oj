@@ -40,7 +40,8 @@ const filterUser = ref("")
 const filterProblem = ref("")
 const filterSubmission = ref("")
 const filterProvider = ref("")
-const filterStatus = ref("")
+// USelect 不允许空串作为选项值，"全部"用 all 哨兵表示
+const filterStatus = ref("all")
 const filterStart = ref("")
 const filterEnd = ref("")
 const limit = ref(100)
@@ -69,7 +70,7 @@ async function load() {
     if (filterProblem.value.trim()) params.set("problem_id", filterProblem.value.trim())
     if (filterSubmission.value.trim()) params.set("submission_id", filterSubmission.value.trim())
     if (filterProvider.value.trim()) params.set("provider_id", filterProvider.value.trim())
-    if (filterStatus.value.trim()) params.set("status", filterStatus.value.trim())
+    if (filterStatus.value !== "all") params.set("status", filterStatus.value)
     if (filterStart.value) params.set("start_time", filterStart.value)
     if (filterEnd.value) params.set("end_time", filterEnd.value)
     params.set("limit", String(limit.value))
@@ -138,31 +139,31 @@ function openDetail(row: LlmUsageRow) {
     <div class="flex flex-wrap items-end gap-3 p-4 bg-white border border-border rounded-xl">
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">用户 ID</label>
-        <input v-model="filterUser" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal" placeholder="user_id" />
+        <input v-model="filterUser" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary" placeholder="user_id" />
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">题目 ID</label>
-        <input v-model="filterProblem" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal" placeholder="problem_id" />
+        <input v-model="filterProblem" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary" placeholder="problem_id" />
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">提交 ID</label>
-        <input v-model="filterSubmission" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal" placeholder="submission_id" />
+        <input v-model="filterSubmission" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary" placeholder="submission_id" />
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">Provider ID</label>
-        <input v-model="filterProvider" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal" placeholder="provider_id" />
+        <input v-model="filterProvider" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary" placeholder="provider_id" />
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">状态</label>
-        <USelect v-model="filterStatus" :items="['', 'ok', 'error', 'rejected'].map((s) => ({ label: s || '全部', value: s }))" class="w-32" />
+        <USelect v-model="filterStatus" :items="['all', 'ok', 'error', 'rejected'].map((s) => ({ label: s === 'all' ? '全部' : s, value: s }))" class="w-32" />
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">开始时间</label>
-        <input v-model="filterStart" type="datetime-local" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal" />
+        <input v-model="filterStart" type="datetime-local" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary" />
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">结束时间</label>
-        <input v-model="filterEnd" type="datetime-local" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal" />
+        <input v-model="filterEnd" type="datetime-local" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary" />
       </div>
       <UButton color="primary" size="sm" :loading="loading" @click="page = 1; load()">查询</UButton>
     </div>
@@ -218,20 +219,25 @@ function openDetail(row: LlmUsageRow) {
       <UButton color="neutral" variant="outline" size="sm" :disabled="rows.length < limit" @click="page++; load()">下一页</UButton>
     </div>
 
-    <UModal v-model:open="showDetail" title="LLM 调用详情" :unmount-on-hide="true">
-      <template #body>
-        <div v-if="detail" class="flex flex-col gap-2 text-sm">
-          <p><strong>模型：</strong>{{ detail.model }}</p>
-          <p><strong>Token：</strong>{{ detail.prompt_tokens }} / {{ detail.completion_tokens }} / {{ detail.total_tokens }}</p>
-          <p><strong>费用：</strong>{{ detail.estimated_cost }}</p>
-          <p><strong>耗时：</strong>{{ detail.latency_ms }}ms</p>
-          <p><strong>状态：</strong>{{ detail.status }}{{ detail.error_code ? ` (${detail.error_code})` : "" }}</p>
-          <div class="mt-1">
-            <p class="font-semibold mb-1">请求消息</p>
-            <pre class="text-xs bg-bg-page p-3 rounded overflow-auto max-h-80">{{ JSON.stringify(detail.request_messages, null, 2) }}</pre>
-          </div>
+    <!-- LLM 调用详情抽屉 -->
+    <AdminDetailDrawer
+      :open="showDetail"
+      title="LLM 调用详情"
+      width-class="sm:max-w-xl"
+      @update:open="(val: boolean) => showDetail = val"
+      @close="showDetail = false"
+    >
+      <div v-if="detail" class="flex flex-col gap-2 text-sm">
+        <p><strong>模型：</strong>{{ detail.model }}</p>
+        <p><strong>Token：</strong>{{ detail.prompt_tokens }} / {{ detail.completion_tokens }} / {{ detail.total_tokens }}</p>
+        <p><strong>费用：</strong>{{ detail.estimated_cost }}</p>
+        <p><strong>耗时：</strong>{{ detail.latency_ms }}ms</p>
+        <p><strong>状态：</strong>{{ detail.status }}{{ detail.error_code ? ` (${detail.error_code})` : "" }}</p>
+        <div class="mt-2">
+          <p class="font-semibold mb-1">请求消息</p>
+          <pre class="text-xs bg-bg-page p-3 rounded border border-border overflow-auto max-h-80">{{ JSON.stringify(detail.request_messages, null, 2) }}</pre>
         </div>
-      </template>
-    </UModal>
+      </div>
+    </AdminDetailDrawer>
   </div>
 </template>

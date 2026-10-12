@@ -92,7 +92,7 @@ async function ensureUser(
     );
   }
   await api("POST", "/api/v1/auth/register", {
-    body: { username, email, password },
+    body: { username, email, password, accepted_legal: true },
   });
   const login = await api("POST", "/api/v1/auth/login", {
     body: { login: email, password },

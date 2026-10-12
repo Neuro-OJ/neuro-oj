@@ -59,6 +59,12 @@ const ROUTES: BreadcrumbRoute[] = [
   { pattern: '/problems', trail: [{ key: 'nav.problems' }] },
   { pattern: '/problems/new', trail: [{ key: 'nav.problems', to: '/problems' }, { key: 'breadcrumb.newProblem' }] },
   {
+    pattern: '/problems/new/oi',
+    trail: [{ key: 'nav.problems', to: '/problems' }, { key: 'breadcrumb.newProblem', to: '/problems/new' }, {
+      key: 'breadcrumb.newCodingProblem',
+    }],
+  },
+  {
     pattern: '/problems/new/coding',
     trail: [{ key: 'nav.problems', to: '/problems' }, { key: 'breadcrumb.newProblem', to: '/problems/new' }, {
       key: 'breadcrumb.newCodingProblem',
@@ -147,6 +153,8 @@ const ROUTES: BreadcrumbRoute[] = [
   { pattern: '/settings', trail: [{ key: 'breadcrumb.settings' }] },
   { pattern: '/about', trail: [{ key: 'breadcrumb.about' }] },
   { pattern: '/data-policy', trail: [{ key: 'breadcrumb.dataPolicy' }] },
+  { pattern: '/legal/privacy', trail: [{ key: 'breadcrumb.privacyPolicy' }] },
+  { pattern: '/legal/terms', trail: [{ key: 'breadcrumb.termsOfService' }] },
 ];
 
 /** 把 `/a/:b/c` 编译为「静态段数组」，便于无正则匹配。 */

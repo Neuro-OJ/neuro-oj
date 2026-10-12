@@ -1,6 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import {
-  evaluationResults,
+  evaluationAttempts,
   oauthAccounts,
   problems,
   submissions,
@@ -107,10 +107,13 @@ Deno.test("schema: submissions.status type matches SubmissionStatus", () => {
   assertEquals(validStatuses.includes("finished"), true);
 });
 
-Deno.test("schema: evaluation_results table uses integer score", () => {
-  const columns = Object.keys(evaluationResults);
+Deno.test("schema: evaluation_attempts table carries the graded fact fields", () => {
+  const columns = Object.keys(evaluationAttempts);
   assertEquals(columns.includes("submission_id"), true);
-  assertEquals(columns.includes("status"), true);
+  assertEquals(columns.includes("problem_version_id"), true);
+  assertEquals(columns.includes("state"), true);
+  assertEquals(columns.includes("result_kind"), true);
+  assertEquals(columns.includes("result_status"), true);
   assertEquals(columns.includes("score"), true);
   assertEquals(columns.includes("output"), true);
   assertEquals(columns.includes("details"), true);
@@ -118,21 +121,21 @@ Deno.test("schema: evaluation_results table uses integer score", () => {
   assertEquals(columns.includes("memory_kb"), true);
 });
 
-Deno.test("schema: evaluation_results columns have correct constraints", () => {
-  assertEquals(evaluationResults.id.primary, true); // PRIMARY KEY
-  assertEquals(evaluationResults.submission_id.notNull, true); // FK → submissions.id
-  assertEquals(evaluationResults.status.notNull, true);
-  assertEquals(evaluationResults.score.notNull, true);
-  assertEquals(evaluationResults.score.hasDefault, true);
-  assertEquals(evaluationResults.score.default, 0); // DEFAULT 0
-  assertEquals(evaluationResults.output.notNull, true);
-  assertEquals(evaluationResults.output.hasDefault, true);
-  assertEquals(evaluationResults.output.default, "");
-  assertEquals(evaluationResults.details.notNull, true);
-  assertEquals(evaluationResults.details.hasDefault, true);
-  assertEquals(evaluationResults.details.default, "{}");
-  assertEquals(evaluationResults.time_ms.notNull, false); // 可选
-  assertEquals(evaluationResults.memory_kb.notNull, false); // 可选
+Deno.test("schema: evaluation_attempts columns have correct constraints", () => {
+  assertEquals(evaluationAttempts.id.primary, true); // PRIMARY KEY（同时是 run_id）
+  assertEquals(evaluationAttempts.submission_id.notNull, false); // 与客观题来源二选一
+  assertEquals(evaluationAttempts.problem_id.notNull, true);
+  assertEquals(evaluationAttempts.sequence.notNull, true);
+  assertEquals(evaluationAttempts.source.notNull, true);
+  assertEquals(evaluationAttempts.state.notNull, true);
+  assertEquals(evaluationAttempts.accepted.notNull, true);
+  assertEquals(evaluationAttempts.accepted.hasDefault, true);
+  assertEquals(evaluationAttempts.accepted.default, false);
+  assertEquals(evaluationAttempts.score.notNull, false); // 未终结时为空
+  // 部署错误不写入正式判定：result_kind 允许为空
+  assertEquals(evaluationAttempts.result_kind.notNull, false);
+  assertEquals(evaluationAttempts.details.notNull, true);
+  assertEquals(evaluationAttempts.created_at.notNull, true);
 });
 
 Deno.test("schema: exports are defined", () => {
@@ -140,7 +143,7 @@ Deno.test("schema: exports are defined", () => {
   assertEquals(problems !== null && problems !== undefined, true);
   assertEquals(submissions !== null && submissions !== undefined, true);
   assertEquals(
-    evaluationResults !== null && evaluationResults !== undefined,
+    evaluationAttempts !== null && evaluationAttempts !== undefined,
     true,
   );
 });
@@ -176,4 +179,60 @@ Deno.test("schema: 社区搜索 pg_trgm 索引与迁移 DDL 保持同步", async
   );
   assertEquals(migration.includes('"idx_community_posts_title_trgm"'), true);
   assertEquals(migration.includes('"idx_community_posts_content_trgm"'), true);
+});
+
+Deno.test("schema: ALL_TABLES 覆盖全部 Drizzle 表（resetDbForTest 不得漏表）", async () => {
+  // 2026-09-24 评审：carousel_slides 建表但漏登记 ALL_TABLES，导致
+  // resetDbForTest() 不清该表、同进程用例互相污染，且 schema parity 门禁
+  // 看不到这类名单遗漏。这里从两份事实源交叉核对：
+  //   1) schema-ddl.ts 的 CREATE TABLE 语句（测试模式建表的事实源）
+  //   2) Drizzle schema 模块导出的表名（生产迁移的事实源）
+  const { ALL_TABLES } = await import("../../src/shared/db/schema-ddl.ts");
+  const ddl = await Deno.readTextFile(
+    new URL("../../src/shared/db/schema-ddl.ts", import.meta.url),
+  );
+  const ddlTables = [...ddl.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)]
+    .map((m) => m[1]);
+
+  const listed = new Set<string>(ALL_TABLES as readonly string[]);
+  const missingFromAllTables = ddlTables.filter((t) => !listed.has(t));
+  assertEquals(
+    missingFromAllTables,
+    [],
+    `ALL_TABLES 漏登记：${
+      missingFromAllTables.join(", ")
+    }（resetDbForTest 不会清空这些表）`,
+  );
+
+  // 反向：ALL_TABLES 不应包含 DDL 中不存在的表名（拼写漂移同样危险）
+  const ddlSet = new Set(ddlTables);
+  const phantom = [...listed].filter((t) => !ddlSet.has(t));
+  assertEquals(
+    phantom,
+    [],
+    `ALL_TABLES 含 DDL 不存在的表：${phantom.join(", ")}`,
+  );
+
+  // 逐个 Drizzle 表（来自 schema.ts 的运行时导出）也必须在 ALL_TABLES 内。
+  const schema = await import("../../src/shared/db/schema.ts");
+  const drizzleTables: string[] = [];
+  for (const value of Object.values(schema)) {
+    if (typeof value !== "object" || value === null) continue;
+    // Drizzle pgTable 对象带 Symbol.for("drizzle:Name") 表名
+    const name = (value as unknown as Record<symbol, unknown>)[
+      Symbol.for("drizzle:Name")
+    ];
+    if (typeof name === "string") drizzleTables.push(name);
+  }
+  assertEquals(
+    drizzleTables.length > 0,
+    true,
+    "未能从 Drizzle schema 提取表名",
+  );
+  const missingFromDrizzle = drizzleTables.filter((t) => !listed.has(t));
+  assertEquals(
+    missingFromDrizzle,
+    [],
+    `ALL_TABLES 漏登记 Drizzle 表：${missingFromDrizzle.join(", ")}`,
+  );
 });

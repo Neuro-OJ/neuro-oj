@@ -42,23 +42,46 @@ export interface TokenPayload {
   session_version?: number;
   /** JWT 唯一标识（用于单会话黑名单/撤销） */
   jti?: string;
+  /** 过期时间（Unix 秒）；仅 verifyToken 返回，签发时忽略 */
+  exp?: number;
+}
+
+/**
+ * 签发选项。
+ *
+ * - remember：「记住我」登录，改用 `jwt_remember_expires_in`（默认 30d）
+ * - expiresAt：沿用指定的绝对过期时间（Unix 秒），用于改密换发新 token 时
+ *   保持原会话时长，优先级高于 remember
+ */
+export interface SignTokenOptions {
+  remember?: boolean;
+  expiresAt?: number;
+}
+
+/** 读取字符串类型的时长设置，缺失或为空时回退默认值。 */
+function readDurationSetting(key: string, fallback: string): string {
+  const setting = getSetting(key);
+  return typeof setting?.value === "string" && setting.value.length > 0
+    ? setting.value
+    : fallback;
 }
 
 /**
  * 签发 JWT。
  *
  * @param payload - 包含用户 ID (sub) 和角色 (role) 的负载
+ * @param options - 有效期选项（记住我 / 沿用原过期时间）
  * @returns 签名的 JWT 字符串
  */
 export async function signToken(
   payload: TokenPayload,
+  options: SignTokenOptions = {},
 ): Promise<string> {
   const secret = getSecretKey();
-  const setting = getSetting("jwt_expires_in");
-  const expiresIn =
-    typeof setting?.value === "string" && setting.value.length > 0
-      ? setting.value
-      : "24h";
+  const expiresIn: string | number = options.expiresAt ??
+    (options.remember
+      ? readDurationSetting("jwt_remember_expires_in", "30d")
+      : readDurationSetting("jwt_expires_in", "24h"));
   const jti = payload.jti ?? crypto.randomUUID();
 
   const token = await new SignJWT({
@@ -123,5 +146,6 @@ export async function verifyToken(
     // 旧 token 无 must_change_password 字段，缺省视为 false
     must_change_password: (payload.must_change_password as boolean) ?? false,
     jti: payload.jti,
+    exp: payload.exp,
   };
 }

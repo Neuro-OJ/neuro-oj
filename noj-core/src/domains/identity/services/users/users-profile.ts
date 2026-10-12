@@ -33,6 +33,7 @@ export type { UserProfileResponse } from "./users-profile-types.ts";
 export async function getUserProfileAggregate(
   userId: string,
   moderator = false,
+  viewer: { viewerId?: string; isAdmin?: boolean } = {},
 ): Promise<UserProfileResponse> {
   const db = getDb();
 
@@ -49,9 +50,11 @@ export async function getUserProfileAggregate(
     moments,
   ] = await Promise.all([
     queryProfileUser(db, userId),
-    queryProfileStats(db, userId),
-    querySolvedProblems(db, userId),
-    queryRecentSubmissions(db, userId),
+    // 统计与列表同口径（面 1.4 审计 F-04a）：必须传 viewer，否则计数会包含被
+    // 未结束公开赛保密的题目，差额本身即泄露"该用户已通过一道保密题"。
+    queryProfileStats(db, userId, viewer),
+    querySolvedProblems(db, userId, viewer),
+    queryRecentSubmissions(db, userId, viewer),
     queryProfileCommunityStats(db, userId, moderator),
     queryProfileSolutions(db, userId, moderator),
     queryProfileMoments(db, userId),
@@ -64,8 +67,9 @@ export async function getUserProfileAggregate(
   const totalSubmissions = Number(statsRow?.total_submissions ?? 0);
   const accepted = Number(statsRow?.accepted ?? 0);
   const solvedCount = Number(statsRow?.solved_count ?? 0);
-  const acceptanceRate = totalSubmissions > 0
-    ? Math.round((accepted / totalSubmissions) * 1000) / 1000
+  const validSubmissions = Number(statsRow?.valid_submissions ?? 0);
+  const acceptanceRate = validSubmissions > 0
+    ? Math.round((accepted / validSubmissions) * 1000) / 1000
     : 0;
 
   type SolvedProblemRow = {
@@ -73,6 +77,7 @@ export async function getUserProfileAggregate(
     problem_title: string;
     difficulty: string;
     accepted_at: string;
+    is_contest_hidden?: boolean;
   };
   type RecentSubmissionRow = {
     id: string;
@@ -90,6 +95,7 @@ export async function getUserProfileAggregate(
     title: row.problem_title,
     difficulty: row.difficulty,
     accepted_at: row.accepted_at,
+    is_contest_hidden: row.is_contest_hidden === true,
   }));
 
   const recentSubmissions = recentRows.map((row: RecentSubmissionRow) => ({
@@ -113,6 +119,7 @@ export async function getUserProfileAggregate(
     },
     stats: {
       total_submissions: totalSubmissions,
+      valid_submissions: validSubmissions,
       accepted,
       acceptance_rate: acceptanceRate,
       solved_count: solvedCount,

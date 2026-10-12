@@ -5,7 +5,6 @@ import {
   communityBoards,
   communityComments,
   communityPosts,
-  contestProblems,
   contests,
   conversations,
   messageDeletions,
@@ -30,6 +29,11 @@ import {
   upsertSearchEntry,
 } from "../../services/index-writer.ts";
 import { sql } from "drizzle-orm";
+import {
+  insertContestProblems,
+  publishAllProblemsForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 
 await resetDbForTest();
 
@@ -61,6 +65,8 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
+    // 版本化后只有已发布题目进索引（Handbook §3.5/§6.6）
+    await publishBaselineVersionForTest("p-search-1");
     const entry = await buildProblemEntry("p-search-1");
     assertEquals(entry !== null, true);
     await upsertSearchEntry(entry!);
@@ -438,7 +444,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
-    await db.insert(contestProblems).values({
+    await insertContestProblems({
       contest_id: "contest-entry-1",
       problem_id: "p-contest-entry",
       sort_order: 0,
@@ -450,6 +456,88 @@ Deno.test({
     assertEquals(entry?.metadata.problem_titles, ["竞赛关联题"]);
     assertEquals(entry?.metadata.problem_display_ids, ["P7"]);
     assert(entry!.body.includes("竞赛关联题"));
+  },
+});
+
+Deno.test({
+  name: "index-writer: buildContestEntry 不索引私题标题（#554）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const now = new Date().toISOString();
+    const runtime = {
+      evaluator: {
+        image: "x",
+        command: "x",
+        time_limit_ms: 1000,
+        memory_limit_mb: 128,
+      },
+      solution: { image: "x", call_timeout_ms: 1000, memory_limit_mb: 128 },
+    };
+    // 一道公开题 + 一道私题同时挂到公开竞赛下
+    await db.insert(problems).values([
+      {
+        id: "p-contest-public",
+        title: "公开关联题",
+        description: "desc",
+        difficulty: "medium",
+        runtime_config: runtime,
+        number: 8,
+        type: "P",
+        visibility: "public",
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: "p-contest-private",
+        title: "赛前保密的私题",
+        description: "desc",
+        difficulty: "medium",
+        runtime_config: runtime,
+        number: 9,
+        type: "U",
+        visibility: "private",
+        created_at: now,
+        updated_at: now,
+      },
+    ]);
+    await db.insert(contests).values({
+      id: "contest-entry-2",
+      title: "含私题的公开竞赛",
+      description: "竞赛描述",
+      start_time: "2026-01-01T00:00:00.000Z",
+      end_time: "2026-01-02T00:00:00.000Z",
+      type: "kaggle",
+      kind: "public",
+      is_public: true,
+      created_at: now,
+      updated_at: now,
+    });
+    await insertContestProblems([
+      {
+        contest_id: "contest-entry-2",
+        problem_id: "p-contest-public",
+        sort_order: 0,
+        label: "A",
+        score: 100,
+      },
+      {
+        contest_id: "contest-entry-2",
+        problem_id: "p-contest-private",
+        sort_order: 1,
+        label: "B",
+        score: 100,
+      },
+    ]);
+    const entry = await buildContestEntry("contest-entry-2");
+    assertEquals(entry !== null, true);
+    // 只有公开题可进索引；私题标题/编号必须完全不出现
+    assertEquals(entry?.metadata.problem_titles, ["公开关联题"]);
+    assertEquals(entry?.metadata.problem_display_ids, ["P8"]);
+    assert(!entry!.body.includes("赛前保密的私题"));
+    assert(!entry!.body.includes("U9"));
   },
 });
 
@@ -503,6 +591,7 @@ Deno.test({
       createdAt: now,
       updatedAt: now,
     });
+    await publishAllProblemsForTest();
     const counts = await reindexAll();
     assertEquals(counts.problem, 1);
     const keepRows = await db.select().from(searchEntries).where(

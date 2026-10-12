@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatAcceptanceRate } from "~/utils/submissionFormat";
 import type { RankingRow } from "~/composables/useRankings"
+import { normalizeMonth } from "~/utils/checkinCalendar"
 
 definePageMeta({
   // 公开页面，无需登录（OJ 榜单标准）
@@ -30,18 +31,56 @@ const totalPages = computed<number>(() => {
 function setPage(p: number) {
   router.push({ query: { ...route.query, page: String(p) } })
 }
+
+// 榜单切换（#580）：`?board=checkin` 为签到活跃榜，缺省为解题榜
+// UTabs v-model 类型为 string | number，这里用 string 承接
+const board = computed<string>({
+  get: () => (route.query.board === "checkin" ? "checkin" : "solved"),
+  // 切换榜单时重置页码与月份，避免沿用另一榜单的分页
+  set: (value: string) => {
+    router.push({ query: value === "checkin" ? { board: "checkin" } : {} })
+  },
+})
+const boardItems = [
+  { label: "解题榜", value: "solved", icon: "i-lucide-trophy" },
+  { label: "签到活跃榜", value: "checkin", icon: "i-lucide-calendar-check" },
+]
+
+const checkinMonth = computed(() => normalizeMonth(route.query.month))
+function setCheckinMonth(month: string) {
+  router.push({ query: { board: "checkin", month } })
+}
 </script>
 
 <template>
   <div class="px-4 py-5 sm:px-7 sm:py-8 max-w-[960px] mx-auto">
-    <div class="flex items-baseline gap-3 mb-6">
-      <UIcon name="i-lucide-trophy" class="text-primary self-center size-[22px]" />
-      <h1 class="text-2xl font-bold text-text">榜单</h1>
-      <span class="text-sm text-text-muted">共 {{ total }} 位上榜用户</span>
+    <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-3">
+        <div class="flex size-10 items-center justify-center rounded-lg bg-primary-bg text-primary border border-primary/20 shadow-xs">
+          <UIcon name="i-lucide-trophy" class="size-5" />
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold text-text leading-tight">全站榜单</h1>
+          <p class="text-xs text-text-muted mt-0.5">解题成就与每月签到活跃排行榜</p>
+        </div>
+      </div>
+      <span v-if="board === 'solved'" class="text-xs text-text-muted px-2.5 py-1 rounded-md bg-bg-sunken border border-border tabular-nums font-mono">共 {{ total }} 位上榜选手</span>
     </div>
 
-    <!-- 异步内容 -->
+    <UTabs v-model="board" :items="boardItems" :content="false" class="mb-5 w-fit" />
+
+    <!-- 签到活跃榜 -->
+    <CheckinLeaderboard
+      v-if="board === 'checkin'"
+      :month="checkinMonth"
+      :page="page"
+      @update:month="setCheckinMonth"
+      @update:page="setPage"
+    />
+
+    <!-- 解题榜 -->
     <AsyncContent
+      v-else
       :status="pending ? 'loading' : error ? 'error' : rows.length === 0 ? 'empty' : 'data'"
       error="榜单加载失败"
       @retry="refresh"
@@ -56,15 +95,15 @@ function setPage(p: number) {
       </template>
 
       <!-- 榜单表格 -->
-      <div class="bg-white border border-border rounded-xl overflow-x-auto">
+      <div class="bg-white border border-border rounded-lg shadow-card overflow-x-auto">
         <table class="w-full border-collapse">
           <thead>
             <tr>
-              <th scope="col" class="w-20 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">排名</th>
-              <th scope="col" class="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">用户</th>
-              <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-right bg-gray-50 border-b border-border">解题数</th>
-              <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-right bg-gray-50 border-b border-border hidden sm:table-cell">通过率</th>
-              <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-right bg-gray-50 border-b border-border hidden sm:table-cell">提交数</th>
+              <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-bg-sunken/60 border-b border-border">排名</th>
+              <th scope="col" class="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-bg-sunken/60 border-b border-border">选手</th>
+              <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-right bg-bg-sunken/60 border-b border-border">解题数</th>
+              <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-right bg-bg-sunken/60 border-b border-border hidden sm:table-cell">通过率</th>
+              <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-right bg-bg-sunken/60 border-b border-border hidden sm:table-cell">总提交</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-border">
@@ -74,22 +113,18 @@ function setPage(p: number) {
               :class="[
                 'transition-colors duration-150',
                 isLoggedIn && currentUser?.id === row.user_id
-                  ? 'bg-signal/5 hover:bg-signal/10'
-                  : 'hover:bg-gray-50',
+                  ? 'bg-signal/5 hover:bg-signal/10 ring-1 ring-inset ring-signal/30'
+                  : row.rank === 1
+                  ? 'bg-amber-500/[0.03] hover:bg-amber-500/[0.06]'
+                  : row.rank === 2
+                  ? 'bg-slate-500/[0.02] hover:bg-slate-500/[0.05]'
+                  : row.rank === 3
+                  ? 'bg-orange-500/[0.02] hover:bg-orange-500/[0.05]'
+                  : 'hover:bg-bg-sunken/40',
               ]"
             >
-              <td class="w-20 px-4 py-3.5">
-                <span
-                  class="inline-flex items-center justify-center min-w-[2.25rem] px-2 py-0.5 rounded-full text-sm font-bold tabular-nums"
-                  :class="{
-                    'bg-yellow-100 text-yellow-800': row.rank === 1,
-                    'bg-gray-200 text-gray-700': row.rank === 2,
-                    'bg-orange-100 text-orange-800': row.rank === 3,
-                    'bg-gray-50 text-text-secondary': row.rank > 3,
-                  }"
-                >
-                  #{{ row.rank }}
-                </span>
+              <td class="w-24 px-4 py-3.5">
+                <RankBadge :rank="row.rank" />
               </td>
               <td class="px-4 py-3.5">
                 <UserIdentity :user="{ id: row.user_id, username: row.username, avatar_url: row.avatar_url }" size="sm" />

@@ -1,7 +1,6 @@
 import { and, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
-  communityActivityEvents,
   communityFollows,
   communityNotifications,
   communityPosts,
@@ -14,39 +13,20 @@ import {
 import { getCommunityConfig } from "./community-config.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
 import { authorProjection } from "./community-post-select.ts";
-import { runningContestExistsForProblem } from "./../../../contest/index.ts";
 
 /**
- * 创建一条社区动态事件（活动流）。
- * 活动功能关闭时静默跳过；重复事件按唯一约束忽略。
- * @param actorId 触发动态的用户 UUID。
- * @param type 动态类型：首次通过 / 发布题解 / 加入竞赛。
- * @param subjectType 动态主体类型（如 post）。
- * @param subjectId 动态主体 UUID。
- * @param metadata 附加元数据。
- */
-export async function createActivity(
-  actorId: string,
-  type: "first_accepted" | "solution_published" | "contest_joined",
-  subjectType: string,
-  subjectId: string,
-  metadata: Record<string, unknown>,
-) {
-  if (!getCommunityConfig().activities_enabled) return;
-  const db = getDb();
-  await db.insert(communityActivityEvents).values({
-    id: crypto.randomUUID(),
-    actor_id: actorId,
-    type,
-    subject_type: subjectType,
-    subject_id: subjectId,
-    metadata,
-    created_at: nowIso(),
-  }).onConflictDoNothing();
-}
-
-/**
- * 列出社区动态流（最新 / 关注），合并短动态（moment）与活动事件并按时间倒序。
+ * 列出社区动态流（最新 / 关注），按时间倒序返回短动态（moment）。
+ *
+ * **2026-09-28 安全整改（审计 VULN-08）：自动动态功能整体下线。**
+ * 此前这里把 `community_activity_events` 的三类自动动态（`first_accepted`
+ * 首次过题 / `solution_published` 发布题解 / `contest_joined` 参加竞赛）与短动态
+ * 混排返回。该功能与「讨论」高度重叠且缺乏实质内容，更严重的是**击穿竞赛封榜与
+ * 保密**：`first_accepted` 事件不携带竞赛上下文，比赛中（含封榜期）任何人只要刷新
+ * 动态流就能实时看到"某选手首次通过题目 X"；事件 metadata 还直接暴露内部
+ * `submission_id`，`contest_joined` 会广播私密邀请赛标题。
+ *
+ * 现彻底移除事件流查询，动态流只保留用户短动态（有实质内容的用户自述）。
+ *
  * @param view 视图：latest（最新）或 following（仅关注用户）。
  * @param viewerId 可选，当前查看者用户 UUID（following 视图必填）。
  * @param cursor 可选，复合游标 `createdAt|id`，用于分页。
@@ -61,7 +41,7 @@ export async function listFeed(
   limit = 20,
 ) {
   const config = getCommunityConfig();
-  if (!config.moments_enabled && !config.activities_enabled) {
+  if (!config.moments_enabled) {
     throw new ForbiddenError("该社区功能已关闭", "FEATURE_DISABLED");
   }
   const db = getDb();
@@ -89,107 +69,23 @@ export async function listFeed(
       inArray(communityPosts.author_id, follows.map((f) => f.id)),
     );
   }
-  const momentRows = config.moments_enabled
-    ? await db.select({
-      post: communityPosts,
-      author: authorProjection,
-    }).from(communityPosts).innerJoin(
-      users,
-      eq(users.id, communityPosts.author_id),
-    ).where(and(...conditions)).orderBy(
-      desc(communityPosts.created_at),
-      desc(communityPosts.id),
-    ).limit(
-      normalizedLimit + 1,
-    )
-    : [];
-
-  const activityConditions = [];
-  if (cursorParts) {
-    activityConditions.push(
-      cursorParts.id
-        ? sql`(${communityActivityEvents.created_at} < ${cursorParts.at} OR (${communityActivityEvents.created_at} = ${cursorParts.at} AND ${communityActivityEvents.id} < ${cursorParts.id}))`
-        : lt(communityActivityEvents.created_at, cursorParts.at),
-    );
-  }
-  if (view === "following") {
-    if (!viewerId) throw new ForbiddenError("登录后可查看关注动态");
-    const follows = await db.select({ id: communityFollows.followee_id }).from(
-      communityFollows,
-    ).where(eq(communityFollows.follower_id, viewerId));
-    if (follows.length) {
-      activityConditions.push(
-        inArray(
-          communityActivityEvents.actor_id,
-          follows.map((item) => item.id),
-        ),
-      );
-    } else {
-      activityConditions.push(sql`false`);
-    }
-  }
-  if (getCommunityConfig().activities_enabled) {
-    activityConditions.push(
-      view === "following"
-        ? sql`${users.community_activity_visibility} IN ('following', 'everyone')`
-        : sql`${users.community_activity_visibility} = 'everyone'${
-          viewerId
-            ? sql` OR ${communityActivityEvents.actor_id} = ${viewerId}`
-            : sql``
-        }`,
-    );
-  } else {
-    activityConditions.push(sql`false`);
-  }
-  // 赛期题解门控：不展示"发布竞赛题题解"的动态。
-  // `solution_published` 事件的 subject_id 是 **post id**（非 problem id），
-  // 故用相关子查询反查该帖所属题目是否处于进行中竞赛。
-  // 不做"赛期隐藏全部 solution_published"的简化 —— 那会连普通练习题题解活动一起隐藏。
-  // "进行中"判定复用 contest 域的共享谓词（曾因文本字典序比较而 fail-open）。
-  activityConditions.push(sql`NOT (
-    ${communityActivityEvents.type} = 'solution_published'
-    AND EXISTS (
-      SELECT 1 FROM community_posts p
-      WHERE p.id = ${communityActivityEvents.subject_id}
-        AND p.type = 'solution'
-        AND p.problem_id IS NOT NULL
-        AND ${runningContestExistsForProblem(sql`p.problem_id`)}
-    )
-  )`);
-  const activityRows = await db.select({
-    activity: communityActivityEvents,
+  const momentRows = await db.select({
+    post: communityPosts,
     author: authorProjection,
-  }).from(communityActivityEvents).innerJoin(
+  }).from(communityPosts).innerJoin(
     users,
-    eq(users.id, communityActivityEvents.actor_id),
-  ).where(and(...activityConditions)).orderBy(
-    desc(communityActivityEvents.created_at),
-    desc(communityActivityEvents.id),
+    eq(users.id, communityPosts.author_id),
+  ).where(and(...conditions)).orderBy(
+    desc(communityPosts.created_at),
+    desc(communityPosts.id),
   ).limit(normalizedLimit + 1);
 
-  const data = [
-    ...momentRows.map((item) => ({ kind: "moment" as const, ...item })),
-    ...activityRows.map((item) => ({ kind: "activity" as const, ...item })),
-  ].sort((left, right) => {
-    const leftCreatedAt = left.kind === "moment"
-      ? left.post.created_at
-      : left.activity.created_at;
-    const rightCreatedAt = right.kind === "moment"
-      ? right.post.created_at
-      : right.activity.created_at;
-    const atCompare = rightCreatedAt.localeCompare(leftCreatedAt);
-    if (atCompare !== 0) return atCompare;
-    const leftId = left.kind === "moment" ? left.post.id : left.activity.id;
-    const rightId = right.kind === "moment" ? right.post.id : right.activity.id;
-    return rightId.localeCompare(leftId);
-  });
+  const data = momentRows.map((item) => ({ kind: "moment" as const, ...item }));
   const hasMore = data.length > normalizedLimit;
   const page = hasMore ? data.slice(0, normalizedLimit) : data;
   const last = page.at(-1);
-  const lastCreatedAt = last?.kind === "moment"
-    ? last.post.created_at
-    : last?.activity.created_at;
-  const lastId = last?.kind === "moment" ? last.post.id : last?.activity.id;
+  const lastCreatedAt = last?.post.created_at;
+  const lastId = last?.post.id;
   return {
     data: page,
     next_cursor: hasMore && lastCreatedAt ? `${lastCreatedAt}|${lastId}` : null,

@@ -21,14 +21,16 @@
 
 import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert@^1";
 import { eq, like } from "drizzle-orm";
-import {
-  createPredictionSubmission,
-  JUDGE_QUEUES,
-  rejudgeProblemSubmissions,
-  rejudgeSubmission,
-} from "../../index.ts";
+import { createPredictionSubmission, JUDGE_QUEUES } from "../../index.ts";
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
-import { problems, submissions, users } from "../../../../shared/db/schema.ts";
+import {
+  evaluationAttempts,
+  problems,
+  problemVersions,
+  submissions,
+  users,
+} from "../../../../shared/db/schema.ts";
 import { AppError, BadRequestError } from "../../../../shared/base/errors.ts";
 import {
   LocalStorageProvider,
@@ -57,6 +59,8 @@ function nextProblemNumber(): number {
 interface Fixture {
   userId: string;
   problemId: string;
+  /** 已发布的提交时版本（上传类提交必须显式携带）。 */
+  versionId: string;
 }
 
 /**
@@ -107,14 +111,29 @@ async function insertFixture(
     created_at: now,
     updated_at: now,
   });
-  return { userId, problemId };
+  const versionId = await publishBaselineVersionForTest(problemId);
+  return { userId, problemId, versionId };
 }
 
 /** 删除 fixture 数据（事务回滚已隔离，这里保证非 preload 运行也不留残留）。 */
 async function deleteFixture(fixture: Fixture): Promise<void> {
   const db = getDb();
+  const subs = await db.select({ id: submissions.id }).from(submissions).where(
+    eq(submissions.problem_id, fixture.problemId),
+  );
+  for (const sub of subs) {
+    await db.delete(evaluationAttempts).where(
+      eq(evaluationAttempts.submission_id, sub.id),
+    );
+  }
   await db.delete(submissions).where(
     eq(submissions.problem_id, fixture.problemId),
+  );
+  await db.update(problems).set({ latest_version_id: null }).where(
+    eq(problems.id, fixture.problemId),
+  );
+  await db.delete(problemVersions).where(
+    eq(problemVersions.problem_id, fixture.problemId),
   );
   await db.delete(problems).where(eq(problems.id, fixture.problemId));
   await db.delete(users).where(eq(users.id, fixture.userId));
@@ -201,6 +220,7 @@ Deno.test({
             fixture.userId,
             {
               problem_id: fixture.problemId,
+              version_id: fixture.versionId,
               file_name: "prediction.csv",
               file_stream: streamOf(payload),
             },
@@ -259,65 +279,6 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "prediction-submissions: 题目切为 prediction 后旧代码提交重测仍以 code 入队",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    // 回归：重测只承载代码提交（artifact_storage_url 为空），必须固定 code。
-    // 若从 problem.submission_mode 派生，题目被作者切为 prediction 后此处会
-    // 发出 prediction，judge 找不到预测文件而静默失败。
-    const fixture = await insertFixture("prediction");
-    try {
-      const db = getDb();
-      const now = new Date().toISOString();
-      const subId = crypto.randomUUID();
-      await db.insert(submissions).values({
-        id: subId,
-        user_id: fixture.userId,
-        problem_id: fixture.problemId,
-        language: "python3",
-        code: "print(1)",
-        file_name: "main.py",
-        status: "finished",
-        rejudge_seq: 0,
-        created_at: now,
-      });
-
-      await withFakeRedis(async (fake) => {
-        // 单条重测
-        await rejudgeSubmission(subId);
-        const single = fake.getMessages(JUDGE_QUEUES.low);
-        assertEquals(single.length, 1);
-        const singleTask = JSON.parse(single[0]) as Record<string, unknown>;
-        assertEquals(
-          singleTask.submission_mode,
-          "code",
-          "重测路径只承载代码提交，必须固定 code，不随题目当前模式漂移",
-        );
-
-        // 批量重测：同题同样固定 code
-        await getDb().update(submissions).set({ status: "finished" })
-          .where(eq(submissions.id, subId));
-        fake.clear();
-        await rejudgeProblemSubmissions(fixture.problemId);
-        const batch = fake.getMessages(JUDGE_QUEUES.low);
-        assertEquals(batch.length, 1);
-        const batchTask = JSON.parse(batch[0]) as Record<string, unknown>;
-        assertEquals(
-          batchTask.submission_mode,
-          "code",
-          "批量重测路径只承载代码提交，必须固定 code",
-        );
-      });
-    } finally {
-      await deleteFixture(fixture);
-    }
-  },
-});
-
-Deno.test({
   name: "prediction-submissions: .pkl 被格式校验拒绝",
   ignore: skip,
   sanitizeResources: false,
@@ -330,6 +291,7 @@ Deno.test({
           () =>
             createPredictionSubmission(fixture.userId, {
               problem_id: fixture.problemId,
+              version_id: fixture.versionId,
               file_name: "model.pkl",
               file_stream: streamOf(new Uint8Array([0x80, 0x04, 1, 2])),
             }),
@@ -361,6 +323,7 @@ Deno.test({
           () =>
             createPredictionSubmission(fixture.userId, {
               problem_id: fixture.problemId,
+              version_id: fixture.versionId,
               file_name: "big.csv",
               file_stream: streamOf(big),
             }),
@@ -397,6 +360,7 @@ Deno.test({
         () =>
           createPredictionSubmission(fixture.userId, {
             problem_id: fixture.problemId,
+            version_id: fixture.versionId,
             file_name: "prediction.csv",
             file_stream: streamOf(new TextEncoder().encode("id,value\n")),
           }),
@@ -411,7 +375,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "prediction-submissions: 入队失败删除已上传的预测文件",
+  name: "prediction-submissions: 瞬时入队失败保留预测文件供 sweeper 恢复",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -425,6 +389,7 @@ Deno.test({
           () =>
             createPredictionSubmission(fixture.userId, {
               problem_id: fixture.problemId,
+              version_id: fixture.versionId,
               file_name: "prediction.csv",
               file_stream: streamOf(
                 new TextEncoder().encode("id,value\n1,0.5\n"),
@@ -434,58 +399,13 @@ Deno.test({
         );
         assertEquals(err.code, "SUBMISSION_QUEUE_ERROR");
 
-        // 可重试入队失败：提交行保留为 pending，但预测文件必须立即删除
+        // 可重试入队失败：提交行保留为 pending，预测文件同样保留（sweeper 复用原尝试）
         const rows = await findSubmissions(fixture.problemId);
         assertEquals(rows.length, 1);
         assertEquals(rows[0].status, "pending");
         const url = rows[0].artifact_storage_url;
         assertExists(url);
-        await assertRejects(() => storage.get(url), Deno.errors.NotFound);
-        assertEquals((await storage.listObjects()).length, 0);
-      });
-    } finally {
-      await deleteFixture(fixture);
-    }
-  },
-});
-
-Deno.test({
-  name: "prediction-submissions: prediction 提交不可重测",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const fixture = await insertFixture("prediction");
-    try {
-      await withLocalStorage(async () => {
-        await withFakeRedis(async () => {
-          const created = await createPredictionSubmission(
-            fixture.userId,
-            {
-              problem_id: fixture.problemId,
-              file_name: "prediction.csv",
-              file_stream: streamOf(
-                new TextEncoder().encode("id,value\n1,0.5\n"),
-              ),
-            },
-          );
-
-          // 单条重测：artifact_storage_url 非空 → 复用既有拒绝
-          const single = await assertRejects(
-            () => rejudgeSubmission(created.id),
-            BadRequestError,
-          );
-          assertEquals(single.message, "产物/预测提交不支持重测");
-
-          // 批量重测：题目含 prediction 提交 → 拒绝
-          await getDb().update(submissions).set({ status: "finished" })
-            .where(eq(submissions.id, created.id));
-          const batch = await assertRejects(
-            () => rejudgeProblemSubmissions(fixture.problemId),
-            BadRequestError,
-          );
-          assertEquals(batch.message.includes("产物/预测提交"), true);
-        });
+        assertEquals((await storage.get(url)).length > 0, true);
       });
     } finally {
       await deleteFixture(fixture);

@@ -12,6 +12,8 @@ interface QueueItemShape {
   submitted_by: string
   submitted_at: string
   kind?: 'submission' | 'self_test'
+  resource_pool?: 'oi-wasm' | 'oi-native' | 'ai'
+  waiting_reason?: 'pool_full' | 'user_busy' | 'memory'
   judge_started_at?: string | null
   status?: string
   score?: number | null
@@ -32,6 +34,8 @@ const props = withDefaults(defineProps<Props>(), {
   showScore: false,
 })
 
+const waitingLabels = { pool_full: '资源池已满', user_busy: '等待用户槽位', memory: '等待内存预算' }
+
 function elapsed(): string {
   if (!props.item.judge_started_at) return "--"
   const ms = props.now - new Date(props.item.judge_started_at).getTime()
@@ -50,6 +54,8 @@ function elapsed(): string {
       #{{ item.public_id || item.id.slice(0, 8) }}
     </span>
     <span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text">{{ item.problem_id }} {{ item.problem_title }}</span>
+    <UBadge v-if="item.resource_pool" color="neutral" variant="outline" size="sm">{{ item.resource_pool }}</UBadge>
+    <UBadge v-if="item.waiting_reason" color="warning" variant="subtle" size="sm">{{ waitingLabels[item.waiting_reason] }}</UBadge>
     <span v-if="item.kind === 'self_test'" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">自测</span>
     <span class="text-text-secondary min-w-[70px] text-center text-xs">{{ getLanguageLabel(item.language) }}</span>
     <span class="text-text-secondary min-w-[60px]">{{ item.submitted_by }}</span>

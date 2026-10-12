@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
+import type { Executor } from "../../../shared/db/executor.ts";
 import { ROOT_USER_ID } from "../../../shared/base/constants.ts";
 import { unwrapFirstRow, unwrapRows } from "../../../shared/base/sql-rows.ts";
 import { searchEntries } from "../../../shared/db/schema.ts";
@@ -55,10 +56,16 @@ export async function deleteSearchEntry(
   );
 }
 
+/**
+ * 构造题目的搜索索引条目。
+ *
+ * @param db 可传入**事务执行器**：发布事务内需要把索引写入与版本提交原子化
+ *   （否则"已发布但索引永久缺失"，tracking #23）。
+ */
 export async function buildProblemEntry(
   id: string,
+  db: Executor = getDb(),
 ): Promise<SearchEntryInput | null> {
-  const db = getDb();
   const rows = await db.execute<{
     id: string;
     title: string;
@@ -80,7 +87,9 @@ export async function buildProblemEntry(
              WHERE pt.problem_id = p.id
            ), '') AS tags
     FROM problems p
-    WHERE p.id = ${id}
+    -- 只索引**已发布**题目（Handbook §3.5/§6.6）：草稿内容不进公开索引；
+    -- 未发布题目对普通访问者本就不存在，索引出现行等于泄露存在性
+    WHERE p.id = ${id} AND p.latest_version_id IS NOT NULL
   `);
   const row = unwrapFirstRow<{
     id: string;
@@ -333,12 +342,16 @@ export async function buildContestEntry(
              FROM contest_problems cp
              JOIN problems p ON p.id = cp.problem_id
              WHERE cp.contest_id = c.id
+               -- #554：仅公开题进入索引，避免公开赛引用私题时泄露题目标题
+               AND p.visibility = 'public'
            ), '{}') AS problem_titles,
            COALESCE((
              SELECT array_agg(p.type || p.number ORDER BY cp.sort_order)
              FROM contest_problems cp
              JOIN problems p ON p.id = cp.problem_id
              WHERE cp.contest_id = c.id
+               -- #554：display_id 同理，私题编号不进索引
+               AND p.visibility = 'public'
            ), '{}') AS problem_display_ids
     FROM contests c
     WHERE c.id = ${id}

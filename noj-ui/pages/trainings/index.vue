@@ -33,21 +33,25 @@ async function onCreate() {
 
 <template>
   <div class="min-h-full bg-bg-page py-10">
-    <div class="mx-auto max-w-[960px] space-y-7 px-4 sm:px-7">
-      <section class="rounded-2xl bg-bg-dark px-8 py-9 text-white shadow-card">
-        <div class="flex items-center justify-between gap-4">
-          <div>
-            <h1 class="text-3xl font-bold">题单</h1>
-            <p class="mt-3 text-sm leading-6 text-slate-300">按学习路径刷题，整理自己的题目集合。</p>
+    <div class="mx-auto max-w-[960px] space-y-6 px-4 sm:px-7">
+      <!-- 页面头部（开放式轻量页头，对齐题库与榜单） -->
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="flex size-10 items-center justify-center rounded-lg bg-primary-bg text-primary border border-primary/20 shadow-xs">
+            <UIcon name="i-lucide-list-todo" class="size-5" />
           </div>
-          <UButton
-            v-if="isLoggedIn"
-            icon="i-lucide-plus"
-            color="primary"
-            @click="showCreate = true"
-          >新建题单</UButton>
+          <div>
+            <h1 class="text-2xl font-bold text-text leading-tight">题单大厅</h1>
+            <p class="text-xs text-text-muted mt-0.5">按学习路径精选题单，系统化训练解题与工程技能</p>
+          </div>
         </div>
-      </section>
+        <UButton
+          v-if="isLoggedIn"
+          icon="i-lucide-plus"
+          color="primary"
+          @click="showCreate = true"
+        >新建题单</UButton>
+      </div>
 
       <AsyncContent
         :status="pending ? 'loading' : error ? 'error' : data?.data.length ? 'data' : 'empty'"

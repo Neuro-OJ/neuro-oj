@@ -1,6 +1,6 @@
 {
   "name": "@noj/core",
-  "version": "0.9.5",
+  "version": "0.10.4-rc.1",
   "exports": "./src/mod.ts",
   "tasks": {
     "dev": "deno run --watch --env-file=.env -A src/main.ts",
@@ -39,6 +39,7 @@
     "test:pg": "BCRYPT_SALT_ROUNDS=4 deno test -A --no-check --preload=tests/preload.ts"
   },
   "imports": {
+    "yaml": "npm:yaml@^2.9.1",
     "@cliffy/command": "jsr:@cliffy/command@^1.2.1",
     "hono": "npm:hono@^4",
     "hono/": "npm:/hono@^4/",
@@ -56,6 +57,8 @@
     "@alicloud/openapi-core": "npm:@alicloud/openapi-core@^1.0.7",
     "tencentcloud-sdk-nodejs-ses": "npm:tencentcloud-sdk-nodejs-ses@^4.1.247",
     "@electric-sql/pglite": "npm:@electric-sql/pglite@^0.5.3",
+    "pkijs": "npm:pkijs@3.2.4",
+    "asn1js": "npm:asn1js@3.0.5",
     "@aws-sdk/client-s3": "npm:@aws-sdk/client-s3@^3",
     "@aws-sdk/s3-request-presigner": "npm:@aws-sdk/s3-request-presigner@^3",
     "fflate": "npm:fflate@~0.8.3",

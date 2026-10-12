@@ -11,7 +11,6 @@ export interface CommunityConfig {
   solutions_enabled: boolean;
   discussions_enabled: boolean;
   moments_enabled: boolean;
-  activities_enabled: boolean;
   comments_enabled: boolean;
   reactions_enabled: boolean;
   bookmarks_enabled: boolean;
@@ -25,6 +24,8 @@ export interface CommunityConfig {
   comment_max_length?: number;
   post_interval_seconds?: number;
   permissions: Record<string, boolean>;
+  /** 赛时社区全局静默：存在未结束公开赛且当前用户非审核员时为 true，写入入口应禁用。 */
+  contest_silence?: boolean;
 }
 
 /** 社区帖子（来自后端完整行） */
@@ -141,21 +142,15 @@ export interface CommunityCounts {
   moment: number;
 }
 
-/** 系统活动事件（动态流条目） */
-export interface FeedActivity {
-  id: string;
-  type: 'first_accepted' | 'solution_published' | 'contest_joined';
-  subject_type: string;
-  subject_id: string;
-  metadata: Record<string, unknown>;
-  created_at: string;
-}
-
-/** 动态流条目：短动态或系统活动 */
+/**
+ * 关注流条目。
+ *
+ * 系统活动事件（`community_activity_events`）已全栈下线（VULN-08）：
+ * `GET /api/v1/community/feed` 只返回帖子，故这里不再有 `activity` 分支。
+ */
 export interface FeedItem {
-  kind: 'moment' | 'activity';
-  post?: CommunityPost;
-  activity?: FeedActivity;
+  kind: 'moment';
+  post: CommunityPost;
   author: { id: string; username: string };
 }
 

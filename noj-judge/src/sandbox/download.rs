@@ -13,8 +13,10 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use percent_encoding::percent_decode_str;
+use reqwest::Url;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tracing::warn;
 
 // 与 noj-core 的 NOJ artifact 硬上限（默认 2GB）对齐。
 const MAX_SUPPORT_PACKAGE_BYTES: usize = 2 * 1024 * 1024 * 1024;
@@ -36,6 +38,45 @@ impl Drop for DownloadedPackage {
             let _ = std::fs::remove_file(&self.path);
         }
     }
+}
+
+/// 校验 S3 下载 URL 的 Host，拦截环回地址、链路本地地址与云元数据服务器（SSRF 防御，SE-02）。
+fn validate_s3_host_not_ssrf(host: &str) -> Result<()> {
+    let lower_host = host.to_lowercase();
+    // 拦截常见云元数据端点域名
+    if lower_host == "instance-data"
+        || lower_host == "metadata.google.internal"
+        || lower_host.starts_with("metadata.")
+        || lower_host.ends_with(".metadata.google.internal")
+    {
+        bail!("S3 下载目标禁止访问云元数据服务: {}", host);
+    }
+
+    // 若 host 为 IP 地址，拦截环回与链路本地/云元数据 IP
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        match ip {
+            std::net::IpAddr::V4(ipv4) => {
+                if ipv4.is_loopback() {
+                    bail!("S3 下载目标禁止访问环回地址: {}", ipv4);
+                }
+                if ipv4.is_link_local() {
+                    bail!("S3 下载目标禁止访问链路本地/云元数据地址: {}", ipv4);
+                }
+                if ipv4.is_unspecified() || ipv4.is_broadcast() {
+                    bail!("S3 下载目标非法 IP: {}", ipv4);
+                }
+            }
+            std::net::IpAddr::V6(ipv6) => {
+                if ipv6.is_loopback() {
+                    bail!("S3 下载目标禁止访问环回地址: {}", ipv6);
+                }
+                if ipv6.is_unspecified() {
+                    bail!("S3 下载目标非法 IP: {}", ipv6);
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// 生成 WorkDir 下的唯一临时 zip 路径。
@@ -78,6 +119,11 @@ pub async fn fetch_support_package_to_path(
         "base64" => {
             let content = parse_query_param(&query, "content")
                 .context("noj-download://base64 缺少 content 参数")?;
+            // 兼容百分号编码的参数；不能用表单解码把原始 base64 的 + 转为空格。
+            let content = percent_decode_str(&content)
+                .decode_utf8()
+                .context("base64 content percent 解码失败")?
+                .into_owned();
             let estimated_len = content.len().div_ceil(4).saturating_mul(3);
             if estimated_len > MAX_SUPPORT_PACKAGE_BYTES {
                 bail!("支持包大小超过上限 {}", MAX_SUPPORT_PACKAGE_BYTES);
@@ -148,6 +194,12 @@ pub async fn fetch_support_package_to_path(
                 bail!("S3 下载 URL 必须使用 HTTPS: {}", redact_url(&decoded_url));
             }
 
+            // SE-02：SSRF 防御——校验 S3 Host，拦截云元数据服务、环回地址与未授权私有地址。
+            let parsed_url = Url::parse(&decoded_url).context("无效的 S3 下载 URL")?;
+            if let Some(host_str) = parsed_url.host_str() {
+                validate_s3_host_not_ssrf(host_str)?;
+            }
+
             let path = temp_package_path(dest_dir);
             if let Err(e) = http_download_to_file(&decoded_url, &path, download_timeout_secs).await
             {
@@ -162,6 +214,14 @@ pub async fn fetch_support_package_to_path(
             })
         }
         "local" => {
+            // SE-01：生产环境严格禁止使用 noj-download://local 协议直接读取本地文件。
+            let allow_local = std::env::var("JUDGE_ALLOW_LOCAL_DOWNLOAD")
+                .map(|v| v.trim() == "true" || v.trim() == "1")
+                .unwrap_or(false);
+            if !allow_local && !cfg!(test) {
+                bail!("生产环境禁止使用 noj-download://local 协议");
+            }
+
             let raw_path =
                 parse_query_param(&query, "path").context("noj-download://local 缺少 path 参数")?;
             let path = percent_decode_str(&raw_path)
@@ -172,6 +232,16 @@ pub async fn fetch_support_package_to_path(
             if !path_ref.is_absolute() || !path.ends_with(".zip") || path.contains("..") {
                 bail!("local 下载路径非法: {}", redact_url(&path));
             }
+
+            // VULN-22：保留协议（不禁用），但在执行本地文件复制**之前**显式告警。
+            // 该协议绕过了对象存储鉴权直接读取底层文件系统，生产环境出现即为异常。
+            warn!(
+                "【安全风险告警】检测到使用 noj-download://local 协议直接读取本地文件！\
+                 该协议绕过对象存储鉴权直接访问底层文件系统，存在宿主机文件泄露与未授权\
+                 读取风险，仅允许在受信任的本地开发或集成测试环境中使用。若在生产环境\
+                 出现请立即排查任务来源！目标路径（已脱敏）={}",
+                redact_local_path(&path)
+            );
 
             let dest = temp_package_path(dest_dir);
             if let Err(e) = copy_local_to_file(path_ref, &dest).await {
@@ -197,6 +267,23 @@ fn redact_url(url: &str) -> String {
         Some(idx) => format!("{}?...", &url[..idx]),
         None => url.to_string(),
     }
+}
+
+/// 本地路径脱敏（VULN-22）：只保留末段文件名，隐藏宿主机目录结构。
+///
+/// 告警日志需要可定位（文件名/条目名），但不得泄露部署路径（如
+/// `/srv/noj-prod/data/storage/...` 会暴露基础设施布局）。
+fn redact_local_path(path: &str) -> String {
+    let file_name = path
+        .rsplit(['/', '\\'])
+        .find(|part| !part.is_empty())
+        .unwrap_or(path);
+    let depth = path
+        .split(['/', '\\'])
+        .filter(|part| !part.is_empty())
+        .count()
+        .saturating_sub(1);
+    format!("<{} 级目录已脱敏>/{}", depth, file_name)
 }
 
 /// HTTPS GET 下载支持包并流式写入目标文件。
@@ -479,6 +566,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_fetch_support_package_preserves_raw_and_encoded_base64_symbols() {
+        // 包含 +、/ 和 =，覆盖旧协议及 URL 编码后的协议。
+        let expected = [0xfb, 0xff, 0xff, 0xfb];
+        let content = base64::engine::general_purpose::STANDARD.encode(expected);
+        assert!(content.contains('+') && content.contains('/') && content.contains('='));
+        let encoded = content
+            .replace('+', "%2B")
+            .replace('/', "%2F")
+            .replace('=', "%3D");
+        let checksum = format!("{:x}", Sha256::digest(expected));
+        for value in [content, encoded] {
+            let tmp = tempfile::tempdir().unwrap();
+            let url = format!("noj-download://base64/?content={value}&checksum_sha256={checksum}");
+            let pkg = fetch_support_package_to_path(&url, tmp.path(), 5, false)
+                .await
+                .unwrap();
+            assert_eq!(tokio::fs::read(&pkg.path).await.unwrap(), expected);
+            verify_checksum_file(&pkg.path, pkg.checksum.as_deref())
+                .await
+                .unwrap();
+        }
+    }
+
+    #[tokio::test]
     async fn test_fetch_support_package_to_path_unknown_host() {
         let tmp = tempfile::tempdir().unwrap();
         let result =
@@ -510,5 +621,68 @@ mod tests {
         assert!(verify_checksum_file(&path, Some(&hex)).await.is_ok());
         assert!(verify_checksum_file(&path, Some("bad")).await.is_err());
         assert!(verify_checksum_file(&path, None).await.is_err());
+    }
+
+    // ── VULN-22：local 协议告警 + 路径脱敏 ──
+
+    /// 脱敏后不得泄露宿主机目录结构，但保留文件名（可定位）。
+    #[test]
+    fn test_redact_local_path_hides_host_directories() {
+        let redacted = redact_local_path("/srv/noj-prod/data/storage/problems/1001/pkg.zip");
+        assert!(redacted.ends_with("pkg.zip"), "应保留文件名: {}", redacted);
+        for leaked in ["srv", "noj-prod", "storage", "problems", "1001"] {
+            assert!(
+                !redacted.contains(leaked),
+                "脱敏后不应包含宿主目录 {}: {}",
+                leaked,
+                redacted
+            );
+        }
+
+        // 单层路径（如 /pkg.zip）也不 panic
+        assert!(redact_local_path("/pkg.zip").ends_with("pkg.zip"));
+        assert_eq!(redact_local_path("pkg.zip"), "<0 级目录已脱敏>/pkg.zip");
+    }
+
+    /// 协议保留：local 协议在告警之后仍能正常复制文件（不禁用）。
+    #[tokio::test]
+    async fn test_local_protocol_still_copies_file_after_warning() {
+        let src_dir = tempfile::tempdir().unwrap();
+        let src = src_dir.path().join("support.zip");
+        tokio::fs::write(&src, b"PK\x03\x04payload").await.unwrap();
+
+        let dest_dir = tempfile::tempdir().unwrap();
+        let url = format!(
+            "noj-download://local?path={}&checksum_sha256={}",
+            src.to_string_lossy().replace('/', "%2F"),
+            sha256_hex(b"PK\x03\x04payload")
+        );
+        let pkg = fetch_support_package_to_path(&url, dest_dir.path(), 5, false)
+            .await
+            .expect("local 协议应保留可用");
+        let copied = tokio::fs::read(&pkg.path).await.unwrap();
+        assert_eq!(copied, b"PK\x03\x04payload");
+        assert!(pkg.cleanup);
+    }
+
+    #[test]
+    fn test_validate_s3_host_not_ssrf() {
+        // 环回与未指定
+        assert!(validate_s3_host_not_ssrf("127.0.0.1").is_err());
+        assert!(validate_s3_host_not_ssrf("127.0.1.1").is_err());
+        assert!(validate_s3_host_not_ssrf("::1").is_err());
+        assert!(validate_s3_host_not_ssrf("0.0.0.0").is_err());
+
+        // 云元数据 IMDS (169.254.169.254 & 链路本地)
+        assert!(validate_s3_host_not_ssrf("169.254.169.254").is_err());
+        assert!(validate_s3_host_not_ssrf("169.254.1.1").is_err());
+        assert!(validate_s3_host_not_ssrf("instance-data").is_err());
+        assert!(validate_s3_host_not_ssrf("metadata.google.internal").is_err());
+        assert!(validate_s3_host_not_ssrf("metadata.aliyun.com").is_err());
+
+        // 合法公网/对象存储域名放行
+        assert!(validate_s3_host_not_ssrf("s3.amazonaws.com").is_ok());
+        assert!(validate_s3_host_not_ssrf("oss-cn-hangzhou.aliyuncs.com").is_ok());
+        assert!(validate_s3_host_not_ssrf("minio.internal.lan").is_ok());
     }
 }

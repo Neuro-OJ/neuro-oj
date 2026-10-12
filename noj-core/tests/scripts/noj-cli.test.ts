@@ -10,6 +10,7 @@
  */
 
 import { assertEquals } from "jsr:@std/assert@^1";
+import { getBuildInfo } from "../../src/shared/base/build-info.ts";
 
 const CLI = new URL("../../scripts/noj.ts", import.meta.url).pathname;
 
@@ -42,7 +43,8 @@ Deno.test("noj --help 包含全部子命令", async () => {
 Deno.test("noj --version 输出版本", async () => {
   const { code, stdout } = await runCli(["--version"]);
   assertEquals(code, 0);
-  assertEquals(stdout.includes("0.9.5"), true);
+  // 版本号来自共享构建身份（此前硬编码 0.9.5，已随构建身份改造收敛）
+  assertEquals(stdout.includes(getBuildInfo().version), true);
 });
 
 Deno.test("noj problems build --help 包含 --id 选项", async () => {

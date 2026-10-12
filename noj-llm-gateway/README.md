@@ -27,12 +27,14 @@ LLM 调用网关，作为 evaluator 与外部 OpenAI 兼容 LLM API 之间的可
 | `NOJ_LLM_PORT` / `PORT`                    | 否   | 监听端口，默认 `8001`                                         |
 | `NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE`       | 否   | 每个用户每 UTC 分钟调用次数，默认 `60`，正整数                |
 | `NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE`         | 否   | 每个 IP 每 UTC 分钟调用次数，默认 `60`，正整数                |
+| `NOJ_LLM_USAGE_RETENTION_DAYS`             | 否   | `llm_usage` 用量审计保留天数，默认 `90`，`0` 表示不清理       |
+| `NOJ_LLM_UPSTREAM_ALLOWED_HOSTS`           | 否   | 允许 http / 内网地址的上游主机白名单（逗号分隔），默认为空    |
 | `NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>` | 否   | LLM 默认配额兜底值，见下节                                    |
 
 ### LLM 默认配额 fallback（`NOJ_LLM_DEFAULT_*`）
 
 `SCOPE` ∈ `GLOBAL|USER|PROBLEM`，`WINDOW` ∈ `DAY|MONTH`，`FIELD` ∈
-`CALLS|TOKENS|COST`， 共 **18 个**变量，例如
+`CALLS|TOKENS|COST`， 共 **24 个**变量，例如
 `NOJ_LLM_DEFAULT_PROBLEM_MONTH_COST`。
 
 - **生效条件**：仅当 `llm_quotas` 表没有对应记录时作为兜底 （`src/limits.ts` 的

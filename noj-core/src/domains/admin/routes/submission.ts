@@ -136,8 +136,20 @@ router.delete("/queue/submissions/:id", async (c) => {
  */
 router.post("/submissions/:id/rejudge", async (c) => {
   const id = await resolveSubmissionId(c.req.param("id") as string);
-  await rejudgeSubmission(id);
-  return c.json({ data: { message: "重测任务已提交", submission_id: id } });
+  const actorId = (c.get("userId") as string | undefined) ?? "0";
+  const job = await rejudgeSubmission(id, actorId);
+  return c.json(
+    {
+      data: {
+        message: "重测任务已受理",
+        submission_id: id,
+        job_id: job.job_id,
+        status: job.status,
+        total_items: job.total_items,
+      },
+    },
+    202,
+  );
 });
 
 /**
@@ -147,14 +159,20 @@ router.post("/submissions/:id/rejudge", async (c) => {
 router.post("/problems/:id/rejudge", async (c) => {
   const problem = await resolveProblem(c.req.param("id") as string);
   const id = problem.id;
-  const result = await rejudgeProblemSubmissions(id);
-  return c.json({
-    data: {
-      message: "批量重测任务已提交",
-      problem_id: id,
-      ...result,
+  const actorId = (c.get("userId") as string | undefined) ?? "0";
+  const job = await rejudgeProblemSubmissions(id, actorId);
+  return c.json(
+    {
+      data: {
+        message: "批量重测任务已受理",
+        problem_id: id,
+        job_id: job.job_id,
+        status: job.status,
+        total_items: job.total_items,
+      },
     },
-  });
+    202,
+  );
 });
 
 export default router;

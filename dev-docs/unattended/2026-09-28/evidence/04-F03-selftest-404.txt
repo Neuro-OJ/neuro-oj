@@ -1,0 +1,10 @@
+=== 修复前（统一 403）===
+self-tests service: 赛前筹备期保密题返回 404（存在性预言机回归 F-03） ... FAILED (9ms)
+self-tests service: 赛前筹备期保密题返回 404（存在性预言机回归 F-03） => ./tests/preload.ts:79:10
+error: AssertionError: Expected error to be instance of "NotFoundError", but was "ForbiddenError".
+self-tests service: 赛前筹备期保密题返回 404（存在性预言机回归 F-03） => ./tests/preload.ts:79:10
+FAILED | 7 passed | 1 failed (58ms)
+error: Test failed
+=== 修复后（回执）===
+self-tests service: 赛前筹备期保密题返回 404（存在性预言机回归 F-03） ... ok (15ms)
+ok | 8 passed | 0 failed (68ms)

@@ -3,9 +3,10 @@ import { useRoute } from "vue-router"
 import type { PostRow } from "~/composables/useCommunity"
 import { isAdminUser } from "~/utils/isAdminUser"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
-import { extractApiError } from "~/utils/apiError"
+import { extractApiError, isNotFoundError, isVersionConflictError } from "~/utils/apiError"
 import type { PublicProblemStats } from "~/utils/problemStats"
 import { useProblemStats } from "~/composables/useProblemStats"
+import { useProblemVersions, type ProblemVersionSummary } from "~/composables/useProblemVersions"
 import {
   ARTIFACT_FILE_ACCEPT,
   isPredictionView,
@@ -23,14 +24,54 @@ const { config, loadConfig } = useCommunity()
 
 const problemId = route.params.id as string
 
-const { data, pending, error, refresh } = useFetch<{ data: ProblemResource }>(
-  `/api/v1/problems/${problemId}`,
+/**
+ * 指定作答版本（Handbook §4.1 / §4.2）。
+ *
+ * 默认（哨兵值 `DEFAULT_VERSION`）= 由有效版本策略解析：`exact` → 固定版、
+ * `any` → 最新已发布版；选择某个已发布版本后按该版本读取题面与内容，提交/自测
+ * 原样携带它的 `version_id`（题库允许显式提交其他已发布版本）。历史版本遵循题目
+ * 当前访问权限，选择旧版本不能绕过竞赛保密与门控。
+ */
+const DEFAULT_VERSION = "__default__"
+const selectedVersion = ref(DEFAULT_VERSION)
+const requestedVersionId = computed(() =>
+  selectedVersion.value && selectedVersion.value !== DEFAULT_VERSION
+    ? selectedVersion.value
+    : null
 )
+
+const problemRequestUrl = computed(() =>
+  requestedVersionId.value
+    ? `/api/v1/problems/${problemId}?version_id=${encodeURIComponent(requestedVersionId.value)}`
+    : `/api/v1/problems/${problemId}`
+)
+
+const { data, pending, error, refresh } = await useFetch<{
+  data: ProblemResource
+}>(
+  problemRequestUrl,
+)
+
+// 404 → 真正的 404 页（含"题目已被公开赛保密、对非所有者/管理员不可见"）。
+// 后端对"不存在"与"不可见"刻意返回同一个 404，前端不能降级成 200 + 加载失败面板。
+if (isNotFoundError(error.value)) {
+  throw createError({ statusCode: 404, statusMessage: '题目不存在' })
+}
 
 /** 原始资源 → 统一视图模型（#511：与竞赛做题页共用同一形状）。 */
 const problem = computed(() =>
   data.value?.data ? toProblemView(data.value.data) : null
 )
+
+/**
+ * 是否已被「尚未结束的公开赛」收编（VULN-02）。
+ *
+ * `contest_secrecy` 只对题目所有者 / 管理员下发（其他人对这类题目本就 404），
+ * 因此非空即表示"赛前或赛中的保密题"。此时题解与讨论入口必须**完全不渲染**
+ * （不是置灰、不是隐藏按钮），也不发起任何题解相关请求；比赛结束后后端不再下发
+ * 该字段，入口自动恢复——赛后复盘是正常需求，不做永久屏蔽。
+ */
+const isContestHidden = computed(() => (problem.value?.contest_secrecy?.length ?? 0) > 0)
 
 // ── 面包屑（#512）：数据到位后用题名精化末层文案 ──
 useBreadcrumbLabel(() => problem.value?.title)
@@ -51,6 +92,8 @@ useSeoMeta({
 // 保证用户通过本题（AC）后回到详情页即可看到算法标签与最新门控状态。
 onMounted(() => {
   refresh()
+  // 版本列表在客户端加载：非关键数据，SSR 不阻塞首屏，也避免游客触发多余查询
+  if (problem.value?.id) void loadPublishedVersions(problem.value.id)
 })
 
 const canEdit = computed(() => {
@@ -70,12 +113,61 @@ const isPrediction = computed(() => problem.value != null && isPredictionView(pr
 /** artifact 与 prediction 均不进入代码编辑器。 */
 const isFileUploadMode = computed(() => isArtifact.value || isPrediction.value)
 
-/** 独立编辑器入口（客观题与文件上传题无编辑器）。 */
-const editorUrl = computed(() =>
-  problem.value && !isObjective.value && !isFileUploadMode.value
-    ? `/editor/${problem.value.display_id || problemId}`
-    : null
-)
+/**
+ * 作答版本（Handbook §4.2）：提交必须原样回传该 ID。
+ *
+ * 题库按有效版本策略解析（`exact` → 固定版本；`any` → 最新已发布版）；
+ * `null` 表示该题尚未发布任何版本，此时不能提交（服务端也会 409）。
+ */
+const answerVersionId = computed(() => problem.value?.version_id ?? null)
+
+// ── 版本选择（Handbook §6.8：版本选择 / 最新版提示 / 当前通过要求）──
+const { listVersions } = useProblemVersions()
+/** 已发布版本（新→旧）。非关键数据：失败静默降级为"不展示选择器"。 */
+const publishedVersions = ref<ProblemVersionSummary[]>([])
+const versionsLoading = ref(false)
+
+async function loadPublishedVersions(id: string) {
+  versionsLoading.value = true
+  try {
+    const res = await listVersions(id, 1, 100, { silent: true })
+    publishedVersions.value = res.data
+  } catch {
+    publishedVersions.value = []
+  } finally {
+    versionsLoading.value = false
+  }
+}
+
+/** 选项：默认作答版本 + 每个已发布版本（标注最新）。 */
+const versionOptions = computed(() => [
+  { value: DEFAULT_VERSION, label: "默认作答版本（按有效版本策略）" },
+  ...publishedVersions.value.map((item) => ({
+    value: item.id,
+    label: `v${item.version}${item.is_latest ? "（最新）" : ""}`,
+  })),
+])
+
+/** 只有多于一个已发布版本时才需要选择器。 */
+const showVersionPicker = computed(() => publishedVersions.value.length > 1)
+
+/** 当前通过要求（Handbook §1.4 题型名称与通过标准）。 */
+const passRequirement = computed(() => {
+  if (isObjective.value) return "本套卷为客观题：满分才算通过"
+  if (problem.value?.judge_type === "oi") return "OI 题：本次评测 verdict 为 AC 才算通过"
+  if (isPrediction.value) return "预测提交题：按服务端对照隐藏标签得到的有效正分规则判定是否通过"
+  return "代码题 / 产物提交题：按当前有效正分规则判定是否通过"
+})
+
+/** 独立编辑器入口（客观题与文件上传题无编辑器）；显式选版时把版本带进做题页。 */
+const editorUrl = computed(() => {
+  const p = problem.value
+  if (!p || isObjective.value || isFileUploadMode.value) return null
+  const base = `/editor/${p.display_id || problemId}`
+  return requestedVersionId.value
+    ? `${base}?version_id=${encodeURIComponent(requestedVersionId.value)}`
+    : base
+})
 const editUrl = computed(() =>
   problem.value && canEdit.value
     ? `${problemUrl(problem.value.id, problem.value.display_id)}/edit`
@@ -110,11 +202,17 @@ async function handleArtifactSubmit() {
     artifactError.value = isPrediction.value ? '请选择预测结果文件' : '请选择 zip 文件'
     return
   }
+  if (!answerVersionId.value) {
+    artifactError.value = '该题尚未发布任何版本，暂时无法提交'
+    return
+  }
   artifactError.value = ''
   artifactSubmitting.value = true
   try {
     const form = new FormData()
     form.append('problem_id', problem.value.id)
+    // 版本必须随提交上传（Handbook §4.2）：服务端据此判定"在评哪一版"
+    form.append('version_id', answerVersionId.value)
     form.append('language', 'python3')
     form.append('file', artifactFile.value)
     const res = await api.post<{ data: { id: string; public_id?: string } }>(
@@ -125,6 +223,8 @@ async function handleArtifactSubmit() {
     artifactFile.value = null
   } catch (err: unknown) {
     artifactError.value = extractApiError(err).message
+    // 版本冲突：不自动换版重提，仅刷新题目让用户确认新的作答版本
+    if (isVersionConflictError(err)) await refresh()
   } finally {
     artifactSubmitting.value = false
   }
@@ -138,7 +238,7 @@ const eligibility = ref<{
   requires_accepted: boolean
   accepted: boolean
   can_create: boolean
-  /** 赛期门控原因：running_contest 时禁用发布入口。 */
+  /** 赛期门控原因：running_contest（本题在赛中）/ contest_silence（全站赛时静默）时禁用发布入口。 */
   blocked_reason: string | null
 } | null>(null)
 
@@ -146,12 +246,20 @@ watch(
   problem,
   async (p) => {
     if (!p) return
+    // 公开统计与题解并行拉取；失败时保持 null（不渲染），不影响主内容
+    void fetchPublic(p.id)
+      .then((res) => { publicStats.value = res.data })
+      .catch(() => { publicStats.value = null })
+    // 公开赛收编题目（VULN-02 短路）：连题解列表 / 发布资格都不请求，
+    // 避免无意义流量，也杜绝任何"题解/讨论"UI 残留（含只读入口与跳转按钮）。
+    if (isContestHidden.value) {
+      solutions.value = []
+      eligibility.value = null
+      loadingSolutions.value = false
+      return
+    }
     loadingSolutions.value = true
     try {
-      // 公开统计与题解并行拉取；失败时保持 null（不渲染），不影响主内容
-      void fetchPublic(p.id)
-        .then((res) => { publicStats.value = res.data })
-        .catch(() => { publicStats.value = null })
       const [solRes, cfg] = await Promise.all([
         api.get<{ data: PostRow[] }>(
           `/api/v1/community/posts?type=solution&problem_id=${p.id}&limit=5`,
@@ -189,6 +297,7 @@ const publishBlockReason = computed(() => {
   if (el.can_create) return null
   // 赛期门控优先展示：这是"看得到题但暂时不能写题解"的场景，与权限不足不同
   if (el.blocked_reason === "running_contest") return "竞赛进行中，赛后开放题解"
+  if (el.blocked_reason === "contest_silence") return "公开赛进行期间全站暂停发布题解，赛后恢复"
   if (!el.enabled) return "题解区已关闭"
   if (config.value?.read_only) return "社区当前为只读模式"
   if (el.requires_accepted && !el.accepted) return "通过本题后可发布题解"
@@ -213,11 +322,14 @@ const publishBlockReason = computed(() => {
 
       <!-- v-if="problem"：与 AsyncContent 的 'data' 状态等价，同时让模板对 problem 做类型收窄 -->
       <div v-if="problem" class="mx-auto max-w-7xl p-4 sm:p-6">
-        <!-- 页内锚点：题面 / 题解（客观题无题解区） -->
+        <!-- 公开赛保密提示：仅所有者/管理员能看到本页（其他人 404），此处提醒注意保密 -->
+        <ProblemContestNotice :contests="problem.contest_secrecy" />
+
+        <!-- 页内锚点：题面 / 题解（客观题无题解区；公开赛收编题目不出现题解入口，VULN-02） -->
         <nav aria-label="页内导航" class="mb-4 flex items-center gap-4 text-sm">
           <NuxtLink to="/problems" class="text-text-secondary no-underline hover:text-primary">题库</NuxtLink>
           <a href="#statement" class="text-text-secondary no-underline hover:text-primary">题面</a>
-          <a v-if="!isObjective" href="#solutions" class="text-text-secondary no-underline hover:text-primary">题解</a>
+          <a v-if="!isObjective && !isContestHidden" href="#solutions" class="text-text-secondary no-underline hover:text-primary">题解</a>
         </nav>
 
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -225,18 +337,71 @@ const publishBlockReason = computed(() => {
           <div class="min-w-0 space-y-6 lg:col-span-8">
             <ProblemHeader :problem="problem" :stats="publicStats">
               <template #actions>
-                <AddToTrainingMenu v-if="isLoggedIn" :problem-id="problem.id" />
+                <!-- 两个按钮必须同尺寸（size="lg"）：此前「加入题单」用默认 md，
+                     「开始编码」用自定义 px-5 py-2.5，并排时高度与内边距不一致。 -->
+                <AddToTrainingMenu
+                  v-if="isLoggedIn"
+                  :problem-id="problem.id"
+                  size="lg"
+                />
                 <UButton
                   v-if="editorUrl"
                   color="primary"
-                  class="inline-flex items-center gap-2 px-5 py-2.5 text-sm"
+                  size="lg"
                   :to="editorUrl"
                 >
-                  <UIcon name="i-lucide-code-2" class="size-4" />
+                  <UIcon name="i-lucide-code-2" class="size-5" />
                   开始编码
                 </UButton>
               </template>
             </ProblemHeader>
+
+            <!-- 作答版本（Handbook §4.2）：提交必须携带；未发布版本时禁止提交 -->
+            <div class="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-white px-4 py-3 text-sm">
+              <span class="text-text-secondary">作答版本</span>
+              <UBadge v-if="problem.version != null" color="primary" variant="subtle">
+                v{{ problem.version }}
+              </UBadge>
+              <UBadge v-else color="warning" variant="subtle">未发布</UBadge>
+              <span v-if="problem.effective_version_policy?.mode === 'exact'" class="text-text-muted">
+                题库已将该题固定为此版本
+              </span>
+              <span v-else-if="problem.latest_version != null && !problem.is_latest" class="text-text-muted">
+                最新已发布版本为 v{{ problem.latest_version }}
+              </span>
+              <span v-else-if="problem.latest_version != null" class="text-text-muted">已是最新版本</span>
+              <span v-if="!answerVersionId" class="text-warning-text">该题尚未发布任何版本，暂时无法提交</span>
+              <span class="text-text-muted">· 通过要求：{{ passRequirement }}</span>
+            </div>
+
+            <!-- 版本选择（Handbook §6.8）：题库允许显式选择其他已发布版本作答 -->
+            <div
+              v-if="showVersionPicker"
+              class="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-white px-4 py-3 text-sm"
+            >
+              <span class="text-text-secondary">选择版本作答</span>
+              <USelect
+                v-model="selectedVersion"
+                :items="versionOptions"
+                :loading="versionsLoading"
+                class="min-w-[220px]"
+              />
+              <UButton
+                v-if="requestedVersionId"
+                color="neutral"
+                variant="outline"
+                size="xs"
+                @click="selectedVersion = DEFAULT_VERSION"
+              >
+                回到默认作答版本
+              </UButton>
+              <span v-if="requestedVersionId" class="text-warning-text">
+                正在查看历史版本 v{{ problem.version }}，提交将记录该版本
+              </span>
+              <span v-else class="text-11px text-text-muted">
+                历史版本遵循题目当前访问权限；所选版本会随提交一起记录。
+              </span>
+            </div>
 
             <!-- 客观题：作答表单内联在题面卡片中（不折叠、不复制） -->
             <ProblemStatement
@@ -247,7 +412,12 @@ const publishBlockReason = computed(() => {
               :copyable="false"
             >
               <template #body>
-                <ObjectiveAnswerForm :paper-id="problem.display_id || problem.id" />
+                <ObjectiveAnswerForm
+                  :paper-id="problem.display_id || problem.id"
+                  :version-id="answerVersionId"
+                  :disabled="pending"
+                />
+            <section v-if="problem.samples?.length" class="mt-6 space-y-4"><h2 class="text-lg font-semibold">样例</h2><div v-for="(sample,index) in problem.samples" :key="sample.id" class="space-y-2"><h3 class="font-medium">样例 {{index+1}}</h3><div class="grid gap-3 sm:grid-cols-2"><div><p class="mb-1 text-sm text-text-secondary">输入</p><pre class="overflow-auto rounded-md bg-sunken p-3 text-sm">{{sample.input}}</pre></div><div><p class="mb-1 text-sm text-text-secondary">输出</p><pre class="overflow-auto rounded-md bg-sunken p-3 text-sm">{{sample.output}}</pre></div></div><MarkdownRenderer v-if="sample.explanation" :content="sample.explanation" /></div></section>
               </template>
             </ProblemStatement>
 
@@ -286,7 +456,7 @@ const publishBlockReason = computed(() => {
                   <NuxtLink :to="publicUrl('submission', artifactSuccessId)" class="text-primary no-underline hover:underline">查看评测结果</NuxtLink>
                 </div>
                 <div class="flex items-center gap-3">
-                  <UButton color="primary" :loading="artifactSubmitting" :disabled="!isLoggedIn || artifactSubmitting" @click="handleArtifactSubmit">
+                  <UButton color="primary" :loading="artifactSubmitting" :disabled="!isLoggedIn || artifactSubmitting || pending" @click="handleArtifactSubmit">
                     <UIcon name="i-lucide-upload" class="size-4" />
                     上传并提交
                   </UButton>
@@ -303,8 +473,8 @@ const publishBlockReason = computed(() => {
               后即可提交代码
             </div>
 
-            <!-- 题解区（客观题不展示） -->
-            <section v-if="!isObjective" id="solutions" class="scroll-mt-20 rounded-xl border border-border bg-white p-6">
+            <!-- 题解区（客观题不展示；公开赛赛前/赛中整段不渲染，VULN-02） -->
+            <section v-if="!isObjective && !isContestHidden" id="solutions" class="scroll-mt-20 rounded-xl border border-border bg-white p-6">
               <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 class="text-base font-semibold text-text">题解与讨论</h2>
@@ -390,7 +560,7 @@ const publishBlockReason = computed(() => {
               <!-- 门槛禁用说明（community-ui spec 场景：未通过用户受门槛限制） -->
               <p v-if="isLoggedIn && eligibility && !eligibility.can_create && eligibility.enabled" class="mt-3 flex items-center gap-1.5 text-xs text-text-muted">
                 <UIcon name="i-lucide-lock" class="size-3" />
-                {{ publishBlockReason }}<template v-if="eligibility.blocked_reason !== 'running_contest'">。通过本题后即可发布题解。</template>
+                {{ publishBlockReason }}<template v-if="!eligibility.blocked_reason">。通过本题后即可发布题解。</template>
               </p>
             </section>
           </div>

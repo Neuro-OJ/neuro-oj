@@ -23,10 +23,16 @@
 
 ## 启动开发环境
 
-在仓库根目录启动 PostgreSQL、Redis 和 MinIO：
+在仓库根目录启动 PostgreSQL、Redis 和 MinIO（同时会构建并启动 `llm-gateway` 容器，监听 8001 端口）：
 
 ```bash
 docker compose up -d
+```
+
+首次启动前初始化开发数据（迁移、系统数据、管理员引导、导入示例题目包；可重复执行）：
+
+```bash
+cd noj-core && deno task dev-setup
 ```
 
 然后按需在独立终端启动模块：
@@ -38,7 +44,7 @@ cd noj-judge && cargo run
 cd noj-llm-gateway && deno task dev
 ```
 
-`noj-llm-gateway` 为可选模块；`noj-judge` 需要 Docker 访问权限。`noj-cli` 只面向生产部署与运维（开发部署入口已随双模态一起移除），从源码运行它的方式见 [`noj-cli/README.md`](./noj-cli/README.md)；本地开发流程见 [`dev-docs/engineering/development.md`](./dev-docs/engineering/development.md)。
+`noj-llm-gateway` 为可选模块，从源码运行前先执行 `docker compose stop llm-gateway` 以释放 8001 端口；`noj-judge` 需要 Docker 访问权限。`noj-cli` 只面向生产部署与运维（开发部署入口已随双模态一起移除），从源码运行它的方式见 [`noj-cli/README.md`](./noj-cli/README.md)；本地开发流程见 [`dev-docs/engineering/development.md`](./dev-docs/engineering/development.md)。
 
 ## 测试与检查
 
@@ -50,7 +56,8 @@ cd noj-llm-gateway && deno task dev
 | `noj-ui` | `cd noj-ui && deno task check` | `deno task test` |
 | `noj-judge` | `cd noj-judge && cargo fmt --check && cargo clippy` | `cargo nextest run --all-targets` |
 | `noj-llm-gateway` | `cd noj-llm-gateway && deno task check` | `deno task test` |
-| 跨模块 E2E | — | `cd noj-tests && deno task test` |
+| `noj-cli` | `cd noj-cli && deno task check` | `deno task test` |
+| 跨模块 E2E | — | `cd noj-tests && deno task test`；按 Domain 使用 `deno task test:domain <domain>` |
 
 文档改动至少执行：
 
@@ -68,16 +75,29 @@ deno run -A scripts/verify-agent-note-format.ts
 
 ## 分支与 Pull Request
 
-当前仓库以 `main` 作为默认集成分支。日常开发建议从最新 `main` 创建主题分支：
+`main` 是唯一集成分支，**禁止直接推送 `main`**：所有改动（含维护者的日常开发与缺陷修复）都从最新 `main` 派生主题分支，通过 Pull Request 合入。
+
+仓库本地工作流推荐使用 Jujutsu（jj）：
+
+```bash
+jj git fetch
+jj new main
+# 修改代码后
+jj describe -m "docs(root): 补充贡献指南"
+jj bookmark create docs/contributing-guide -r @
+jj git push -b docs/contributing-guide
+gh pr create --draft --base main --head docs/contributing-guide
+```
+
+不使用 jj 时，等价的 Git 流程为：
 
 ```bash
 git fetch origin
-git switch main
-git pull --ff-only
-git switch -c docs/contributing-guide
+git switch -c docs/contributing-guide origin/main
+# 修改并提交后
+git push -u origin docs/contributing-guide
+gh pr create --draft --base main
 ```
-
-完成修改后请创建 Pull Request，并将目标分支设置为 `main`；不要直接向 `main` 推送贡献提交。
 
 提交 Pull Request 前请确认：
 
@@ -88,7 +108,7 @@ git switch -c docs/contributing-guide
 - 非平凡变更已补充 `.agents/notes/implemented/` 下的 Agent Note；
 - PR 描述中的验证清单与实际结果一致。
 
-`main` 必须始终保持可部署状态。是否需要 PR 评审以维护者和仓库当前策略为准；需要评审的改动应从 `main` 派生主题分支并在合入前完成评审。
+`main` 必须始终保持可部署状态：PR 需在 CI 通过、完成评审后才能合入。
 
 ## 提交信息与签名
 
@@ -98,7 +118,13 @@ git switch -c docs/contributing-guide
 <type>(<scope>): <中文描述>
 ```
 
-可用的 `type` 包括 `feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`chore`、`ci` 和 `build`；`scope` 通常使用 `core`、`ui`、`judge` 或 `root`。
+可用的 `type` 包括 `feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`chore`、`ci` 和 `build`。
+
+`scope` 可选值：
+
+- 模块：`core`、`ui`、`judge`、`gateway`、`cli`、`lmcc`、`docs`（noj-docs 文档站）、`tests`（noj-tests）；
+- 横切：`root`（根目录、`scripts/`、`dev-docs/` 等）、`ci`（工作流）、`deps`（依赖升级）；
+- 涉及多个模块时用英文逗号分隔且不加空格，例如 `feat(core,ui): ...`。
 
 提交前先确认签名配置：
 
@@ -109,12 +135,10 @@ git config --get commit.gpgsign
 jj config get signing.key
 ```
 
-仓库本地工作流使用 Jujutsu（jj）时，通常采用：
+使用 jj 时，若 `signing.behavior` 未设为 `own` 或 `force`，推送前需手动签名：
 
 ```bash
-jj describe -m "docs(root): 补充贡献指南"
 jj sign -r @
-jj git push
 ```
 
 不要提交未签名提交，也不要修改迁移日志 `_journal.json` 或锁文件 `deno.lock` / `Cargo.lock`。

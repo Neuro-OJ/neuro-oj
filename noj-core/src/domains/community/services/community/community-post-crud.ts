@@ -27,8 +27,8 @@ import {
   getCommunityConfig,
 } from "./community-config.ts";
 import { listBoardRoleGrants } from "./community-boards.ts";
-import { createActivity } from "./community-feed.ts";
 import {
+  assertNotContestSilenced,
   featureForType,
   hasAcceptedSolution,
   publicationStatus,
@@ -39,7 +39,7 @@ import {
   postStatsProjection,
 } from "./community-post-select.ts";
 import { reviewUgcContent } from "./community-review.ts";
-import { isProblemInRunningContest } from "./../../../contest/index.ts";
+import { isProblemInUnendedPublicContest } from "./../../../contest/index.ts";
 
 /**
  * 判断用户是否为指定题目的所有者（用于官方题解标记的写入校验）。
@@ -154,7 +154,36 @@ export async function createPost(
     if (!moderator && !await canPostToBoard(authorId, input.board_id)) {
       throw new ForbiddenError("你没有在该板块发帖的权限");
     }
+    if (input.problem_id) {
+      const resolvedProblemId = await resolveProblemId(input.problem_id);
+      if (!resolvedProblemId) throw new ValidationError("题目不存在");
+      input.problem_id = resolvedProblemId;
+    }
   }
+  // ── 公开赛保密写入门控（审计 VULN-02）──
+  //
+  // 此前**只有前端**的 `/solutions/eligibility` 提示"竞赛进行中"，底层落库的
+  // createPost **完全没有**公开赛归属校验：直接发包即可在赛中发布题解；讨论帖
+  // 同样不受任何限制。前端置灰按钮不是访问控制。
+  //
+  // 现由服务层强制：只要关联题目归属于尚未结束的公开赛（含赛前筹备期 pending），
+  // 非审核员一律禁止发布相关题解/讨论。判据复用 contest 域单一真相源
+  // `isProblemInUnendedPublicContest`，与列表/详情读取门控同口径。
+  // moderator（审核员）免门控，用于赛后归档与官方说明。
+  if (!moderator && input.type !== "moment" && input.problem_id) {
+    if (await isProblemInUnendedPublicContest(input.problem_id)) {
+      throw new ForbiddenError(
+        "该题目当前归属于公开赛，赛前及赛中禁止发布题解或讨论",
+        "CONTEST_SECRECY",
+      );
+    }
+  }
+  // ── 赛时社区全局静默（决策 1 · 方案 A · N-01/FC-01/AR-09）──
+  // 公开赛进行期间（含 pending 筹备期与 running 进行期），全站普通用户禁止创建任何帖子
+  // （讨论、动态与题解）；仅审核员/管理员可发帖；参赛者提问严格收敛至赛中答疑。
+  // 题解同样纳入：挂在非赛题下的题解正文可夹带赛题解法，按挂靠题目判定的
+  // 保密门控（上方）无法识别。放在保密门控之后，使赛题题解仍得到更具体的 CONTEST_SECRECY。
+  await assertNotContestSilenced(moderator);
   // 发布频率限制：配置的间隔秒数内禁止再次发布（0 为不限制）
   const postIntervalSeconds = getCommunityConfig().post_interval_seconds;
   if (postIntervalSeconds > 0) {
@@ -181,7 +210,9 @@ export async function createPost(
     public_id: generatePublicId("post"),
     type: input.type,
     author_id: authorId,
-    problem_id: input.type === "solution" ? input.problem_id! : null,
+    problem_id: (input.type === "solution" || input.type === "discussion")
+      ? (input.problem_id ?? null)
+      : null,
     board_id: input.type === "discussion" ? input.board_id! : null,
     title: title ?? null,
     content,
@@ -212,11 +243,8 @@ export async function createPost(
   });
   const db = getDb();
   await db.insert(communityPosts).values(post);
-  if (status === "published" && input.type === "solution") {
-    await createActivity(authorId, "solution_published", "post", post.id, {
-      problem_id: input.problem_id,
-    });
-  }
+  // 注：社区自动动态（community_activity_events）已按审计 VULN-08 整体下线，
+  // 不再产生 solution_published 动态事件（该事件会实时广播题目被解出，击穿封榜）。
 
   await publishSearchIndexEvent("community_post", post.id, "upsert");
 
@@ -279,10 +307,16 @@ export async function getPost(
     row.post.status !== "published" && row.post.author_id !== viewerId &&
     !moderator
   ) throw new NotFoundError("社区内容不存在");
-  // 赛期题解门控：进行中竞赛的题解对普通用户（含作者本人）不可见。
-  // 含作者本人是为了避免"自己能看到 = 该题有题解"的侧信道确认。
-  if (!moderator && row.post.type === "solution" && row.post.problem_id) {
-    if (await isProblemInRunningContest(row.post.problem_id)) {
+  // 公开赛保密读取门控（审计 VULN-02）：归属于尚未结束的公开赛（含赛前筹备期）
+  // 的题解与讨论，对普通用户（含作者本人）一律按"不存在"处理。
+  // - 覆盖 `discussion`（此前只门控 solution，讨论区全量放行）；
+  // - 覆盖赛前 pending 窗口（此前只查 running，赛前是最严重的泄密通道）；
+  // - 含作者本人是为了避免"自己能看到 = 该题有内容"的侧信道确认。
+  if (
+    !moderator && row.post.problem_id &&
+    (row.post.type === "solution" || row.post.type === "discussion")
+  ) {
+    if (await isProblemInUnendedPublicContest(row.post.problem_id)) {
       throw new NotFoundError("社区内容不存在");
     }
   }
@@ -312,6 +346,8 @@ export async function updatePost(
   if (current.post.status === "deleted") {
     throw new ValidationError("已删除内容不能编辑");
   }
+  // 赛时静默同样覆盖编辑（含题解）：否则可把赛前发布的帖子改写为完整解法向全场广播（N-01 残余）。
+  await assertNotContestSilenced(moderator);
   const content = input.content === undefined
     ? current.post.content
     : input.content.trim();

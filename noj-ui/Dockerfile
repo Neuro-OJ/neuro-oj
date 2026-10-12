@@ -26,6 +26,16 @@ RUN for i in 1 2 3 4 5; do \
 # 复制源码（.dockerignore 会排除 node_modules/.nuxt/.output/dist 等）
 COPY . .
 
+# 构建身份（release.yml build-arg 注入）：必须在 `deno task compile` **之前**设好，
+# 由 nuxt.config.ts 读入并编译进产物（页脚显示前端版本，运行期无需再读 ENV）。
+# 缺省空串 → 构建期回退本地 git/package.json（镜像内无 .git → `unknown`）。
+ARG NOJ_BUILD_VERSION=""
+ARG NOJ_BUILD_COMMIT=""
+ARG NOJ_BUILD_TIME=""
+ENV NOJ_BUILD_VERSION=$NOJ_BUILD_VERSION \
+    NOJ_BUILD_COMMIT=$NOJ_BUILD_COMMIT \
+    NOJ_BUILD_TIME=$NOJ_BUILD_TIME
+
 # 构建前修补 Monaco 内置 workerManager，避免 Vite/Rolldown worker 插件报错
 RUN deno run -A scripts/patch-monaco-workers.mjs
 

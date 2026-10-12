@@ -21,7 +21,10 @@ import {
   assertCommunityEnabled,
   getCommunityConfig,
 } from "./community-config.ts";
-import { notGatedSolution, resolveProblemId } from "./community-post-common.ts";
+import {
+  notGatedContestContent,
+  resolveProblemId,
+} from "./community-post-common.ts";
 import {
   authorProjection,
   postStatsProjection,
@@ -92,8 +95,9 @@ export async function listPosts(
     // 但已删除内容仍应在任何列表中隐藏，避免删除后仍出现在社区主页。
     conditions.push(ne(communityPosts.status, "deleted"));
   }
-  // 赛期题解门控：进行中竞赛的题目，其题解对普通用户整体不可见（设计 spec §6.2）
-  if (!options.moderator) conditions.push(notGatedSolution());
+  // 公开赛保密门控：归属于尚未结束的公开赛（含赛前筹备期）的题解与讨论，
+  // 对普通用户整体不可见（审计 VULN-02；判定收敛于 contest 域单一真相源）
+  if (!options.moderator) conditions.push(notGatedContestContent());
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
   const cursorParts = options.cursor ? parsePostCursor(options.cursor) : null;
 
@@ -211,8 +215,8 @@ export async function countPostsByType(): Promise<
   }).from(communityPosts).where(and(
     eq(communityPosts.status, "published"),
     inArray(communityPosts.type, enabledTypes),
-    // 被门控的题解不计入 Tab 计数（否则计数与列表不一致，暴露题解存在性）
-    notGatedSolution(),
+    // 被门控的题解/讨论不计入 Tab 计数（否则计数与列表不一致，暴露内容存在性）
+    notGatedContestContent(),
   )).groupBy(communityPosts.type);
   for (const row of rows) {
     result[row.type as CommunityPostType] = Number(row.count);
@@ -230,8 +234,8 @@ export async function listBookmarks(
   const conditions = [
     eq(communityBookmarks.user_id, userId),
     eq(communityPosts.status, "published"),
-    // 收藏列表同受门控：赛期不展示被门控的题解
-    notGatedSolution(),
+    // 收藏列表同受门控：赛前/赛期不展示被门控的题解与讨论
+    notGatedContestContent(),
   ];
   if (cursor) conditions.push(lt(communityBookmarks.created_at, cursor));
   const limit = Math.min(Math.max(requestedLimit ?? 20, 1), 100);

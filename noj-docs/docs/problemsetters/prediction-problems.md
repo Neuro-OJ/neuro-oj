@@ -188,10 +188,9 @@ result.accept(score=max(0.0, 100.0 - rmse(pred, gold)), details={"cases": cases}
 
 ## 生命周期与限制
 
-- 预测文件复用提交的 `artifact_storage_url`；**评测完成后对象即被删除**。
-- **不支持重测**：预测文件是一次性的，需要重算请重新提交。
+- 预测文件复用提交的 `artifact_storage_url`，生命周期与产物一致：**保留到提交被显式删除**，管理员可通过版本任务重测；对象缺失时重测条目以 `ARTIFACT_MISSING` 失败并保留原成绩。
 - 评测期间容器内 `workspace_size_mb` 为 tmpfs，大文件会占用 Worker 内存，请按需设置；
-  **预测文件必须小于 `evaluator.memory_limit_mb`**（tmpfs 页计入容器 cgroup，超限会在注入期超时失败，且 prediction 不支持重测）。
+  **预测文件必须小于 `evaluator.memory_limit_mb`**（tmpfs 页计入容器 cgroup，超限会在注入期超时失败，该次评测记为平台错误）。
 - prediction 题不执行 Solution 容器，因此没有 `call_timeout_ms` / 用户函数调用语义。
 
 ## 验证方法
@@ -201,5 +200,5 @@ result.accept(score=max(0.0, 100.0 - rmse(pred, gold)), details={"cases": cases}
 3. 恶意用例：
    - 上传 `.pkl` / 带 pickle 协议头的文件 → 应返回 `PREDICTION_FORMAT_REJECTED`。
    - 上传 ID 错位（缺行 / 重复 / 多出）→ `evaluate.py` 应报可读错误而不是算错分。
-   - 尝试重测已完成的 prediction 提交 → 应被拒绝。
+   - 管理员对已完成的 prediction 提交发起重测 → 应使用目标版本的配置重新出分。
 4. 检查提交详情页的 `details` 中**没有任何隐藏标签内容**。

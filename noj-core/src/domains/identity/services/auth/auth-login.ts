@@ -172,12 +172,13 @@ export async function loginUser(
   const isAdmin = await isUserAdmin(user.id);
 
   // 签发 JWT（不携带 is_admin claim，权限判定实时查询）
+  // 勾选「记住我」时使用长有效期；仅接受严格的 true，防止字符串等被误判
   const token = await signToken({
     sub: user.id,
     role: jwtRole,
     must_change_password: user.must_change_password,
     session_version: user.session_version,
-  });
+  }, { remember: input.remember === true });
 
   // PR-2 审计：登录成功
   await logAuthEvent(
@@ -187,6 +188,7 @@ export async function loginUser(
     {
       user_id: user.id,
       login: input.login,
+      remember: input.remember === true,
     },
   );
 

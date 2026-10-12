@@ -33,6 +33,7 @@ import {
   e2eTest,
   getAdminToken,
   isE2E,
+  publishProblemVersion,
   registerUser,
   TEST_PASSWORD,
   waitForServer,
@@ -116,9 +117,13 @@ e2eTest("[e2e/prediction] 创建 prediction 题目并上传 csv 评测", async (
   }
   const problemId = (createRes.body as { data: { id: string } }).data.id;
 
+  // 发布作答版本：版本化后提交必须携带 version_id
+  const versionId = await publishProblemVersion(adminToken, problemId, "e2e");
+
   // multipart 上传单个预测 csv
   const form = new FormData();
   form.append("problem_id", problemId);
+  form.append("version_id", versionId);
   form.append("file", makePredictionCsv(), "predictions.csv");
   const uploadRes = await fetch(`${BASE_URL}/api/v1/submissions`, {
     method: "POST",

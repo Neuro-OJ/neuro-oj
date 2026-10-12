@@ -45,7 +45,6 @@ import {
 } from "../../submission/index.ts";
 import type { CreateContestInput } from "./../types/contests.ts";
 import { isValidContestType } from "./../types/contests.ts";
-import { createActivity } from "../../community/index.ts";
 import {
   enforceContestRegisterRateLimit,
   enforceContestSubmissionRateLimit,
@@ -58,6 +57,9 @@ const MAX_CODE_LENGTH = 100 * 1024;
  * 解析竞赛 artifact 提交的 multipart/form-data 请求。
  * 一旦 `problem_id` 与文件流都就绪就立即 resolve，由服务层马上消费文件流，
  * 避免 busboy 大文件死锁。
+ *
+ * `version_id` 为客户端携带的作答版本（Handbook §4.2）：字段须排在文件之前
+ * （浏览器 FormData 按 append 顺序发送），与 `problem_id` 同时读出。
  */
 function parseContestArtifactMultipart(
   c: Context,
@@ -65,6 +67,7 @@ function parseContestArtifactMultipart(
   problem_id: string;
   file_name: string;
   file_stream: ReadableStream<Uint8Array>;
+  version_id?: string;
 }> {
   return new Promise((resolve, reject) => {
     const contentType = c.req.header("content-type");
@@ -75,6 +78,7 @@ function parseContestArtifactMultipart(
     const bb = busboy({ headers: { "content-type": contentType } });
     let problemId = "";
     let fileName = "";
+    let versionId = "";
     let fileStream: ReadableStream<Uint8Array> | null = null;
     let resolved = false;
 
@@ -87,12 +91,14 @@ function parseContestArtifactMultipart(
           problem_id: problemId,
           file_name: fileName,
           file_stream: fileStream,
+          ...(versionId ? { version_id: versionId } : {}),
         });
       }
     }
 
     bb.on("field", (name: string, val: string) => {
       if (name === "problem_id") problemId = val;
+      if (name === "version_id") versionId = val;
       maybeResolve();
     });
     bb.on("file", (name: string, file: unknown, info: { filename: string }) => {
@@ -202,13 +208,8 @@ contests.post("/:id/register", authMiddleware, async (c) => {
     c.var.userId as string,
     body.password,
   );
-  await createActivity(
-    c.var.userId as string,
-    "contest_joined",
-    "contest",
-    contestId,
-    {},
-  );
+  // 注：此前此处广播 `contest_joined` 自动动态（会对外暴露私密邀请赛标题），
+  // 该功能已按审计 VULN-08 整体下线，不再产生任何社区动态事件。
   return c.json({ message: "竞赛注册成功" }, 201);
 });
 
@@ -333,13 +334,13 @@ contests.get("/:id/final-ranking", optionalAuthMiddleware, async (c) => {
 /**
  * POST /:id/submit —— 提交竞赛题目（支持代码 JSON 或 artifact multipart）。
  * 权限：登录且为参赛者（管理员可豁免），仅竞赛进行期间。path：id。
- * body（JSON）：{ problem_id, language, code, file_name? } 或 multipart 文件。
+ * body（JSON）：{ problem_id, language, code, version_id, file_name? } 或 multipart 文件。
+ * `version_id` 必须是该竞赛的固定版本，不一致 → 409 CONTEST_PROBLEM_VERSION_CHANGED。
  * 响应：201 { data }。
  */
 contests.post("/:id/submit", authMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const userId = c.var.userId as string;
-  await enforceContestSubmissionRateLimit(c, userId);
   const contest = await getContest(contestId, userId);
   if (
     computeContestStatus(contest.start_time, contest.end_time) !== "running"
@@ -363,23 +364,17 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
     if (!contestProblem) {
       throw new BadRequestError("题目不属于该竞赛");
     }
+    await enforceContestSubmissionRateLimit(c, userId);
     // 复用成员校验时已取得的 submission_mode，避免为分派再查一次题目。
-    const mode = contestProblem.submission_mode;
-    const data = mode === "prediction"
-      ? await createPredictionSubmission(
-        userId,
-        { ...parsed, contest_id: contestId },
-        contestId,
-        undefined,
-        isAdmin,
-      )
-      : await createArtifactSubmission(
-        userId,
-        { ...parsed, contest_id: contestId },
-        contestId,
-        undefined,
-        isAdmin,
-      );
+    const create = contestProblem.submission_mode === "prediction"
+      ? createPredictionSubmission
+      : createArtifactSubmission;
+    const data = await create(
+      userId,
+      { ...parsed, contest_id: contestId },
+      contestId,
+      isAdmin,
+    );
     return c.json({ data }, 201);
   }
 
@@ -388,6 +383,7 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
     language?: string;
     code?: string;
     file_name?: string;
+    version_id?: string;
   }>(c);
   if (!body.problem_id || !body.language || !body.code) {
     throw new BadRequestError("缺少必填字段：problem_id、language 或 code");
@@ -400,6 +396,8 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
       `代码长度超过限制（${MAX_CODE_LENGTH} 字符），请精简后重新提交`,
     );
   }
+
+  await enforceContestSubmissionRateLimit(c, userId);
   const contestProblems = await getContestProblems(contestId, userId);
   if (!contestProblems.some((item) => item.problem_id === body.problem_id)) {
     throw new BadRequestError("题目不属于该竞赛");
@@ -413,9 +411,9 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
       code: body.code,
       file_name: body.file_name,
       contest_id: contestId,
+      version_id: body.version_id,
     },
     contestId,
-    undefined,
     isAdmin,
   );
   return c.json({ data }, 201);

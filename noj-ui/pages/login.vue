@@ -61,6 +61,18 @@
       </template>
     </TextInput>
 
+    <label class="flex items-center gap-2 text-sm text-text-secondary cursor-pointer select-none">
+      <input
+        id="remember"
+        v-model="form.remember"
+        type="checkbox"
+        class="size-4 accent-primary"
+        :disabled="loading"
+      >
+      <span>{{ t('auth.rememberMe') }}</span>
+      <span class="text-xs text-text-muted">{{ t('auth.rememberMeHint') }}</span>
+    </label>
+
     <template #footer>
       <p class="mb-2">
         {{ t('auth.noAccount') }} <NuxtLink to="/register" class="text-primary no-underline font-semibold hover:underline">{{ t('auth.registerNow') }}</NuxtLink>
@@ -88,6 +100,16 @@
     >
       {{ t('auth.loginWith', { name: provider.name }) }}
     </UButton>
+    <!-- 新账号走第三方登录会撞 PIPL 同意硬门槛：给出可自救的指引（2026-09-25 评审）。
+         已有账号不受影响，故这里不强制勾选，只提供去注册页同意的入口。 -->
+    <div
+      v-if="legalConsentRequired"
+      class="rounded border border-warning-text/40 bg-sunken px-3 py-2 text-xs text-text-secondary leading-relaxed"
+      data-testid="oauth-legal-consent-notice"
+    >
+      {{ t('auth.oauthLegalConsentRequired') }}
+      <NuxtLink to="/register" class="text-primary no-underline hover:underline">{{ t('auth.goToRegister') }}</NuxtLink>
+    </div>
   </div>
 
   <AuthFormCard
@@ -241,7 +263,7 @@ const route = useRoute()
 const { t, locale } = useI18n()
 const { error, setError, clearError } = useFormError()
 
-const form = reactive({ login: "", password: "", code: "" })
+const form = reactive({ login: "", password: "", code: "", remember: false })
 const loading = ref(false)
 const tfaRequired = ref(false)
 const recoveryMode = ref(false)
@@ -250,12 +272,19 @@ const recoveryFileCodes = ref<string[]>([])
 const recoveryFileError = ref("")
 const oauthProviders = ref<Array<{ id: string; name: string }>>([])
 const oauthLoading = ref(false)
+/** 新账号走第三方登录但未同意条款时，展示"去注册页同意"的可行动指引。 */
+const legalConsentRequired = ref(false)
 
 onMounted(async () => {
   if (route.query.oauth_error) {
-    setError(route.query.oauth_error === "state_invalid"
-      ? "第三方登录请求已失效，请重新尝试"
-      : "第三方登录失败，请稍后重试")
+    if (route.query.oauth_error === "legal_consent_required") {
+      // 不折叠成"稍后重试"：这是可自救的合规门槛，反复重试永远不会成功。
+      legalConsentRequired.value = true
+    } else {
+      setError(route.query.oauth_error === "state_invalid"
+        ? "第三方登录请求已失效，请重新尝试"
+        : "第三方登录失败，请稍后重试")
+    }
   }
   try {
     oauthProviders.value = await auth.getOAuthProviders()
@@ -383,6 +412,7 @@ async function handleLogin() {
       form.login.trim(),
       form.password,
       tfaRequired.value ? form.code.trim() : undefined,
+      form.remember,
     )
     // issue #75：临时引导管理员首次登录必须改密
     if (loggedInUser?.must_change_password === true) {

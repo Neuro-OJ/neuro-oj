@@ -1,15 +1,19 @@
+import { unifiedSubmissionSources } from "../../../../shared/versioning/submission-sources.ts";
 /**
  * 题目统计聚合：公开通过率 + 出题人数据洞察。
  *
- * 口径约定（设计 spec §5.4/§5.5）：
- * - 仅统计 `submissions.status = 'finished'` 且有评测结果的提交；
+ * 口径约定（设计 spec §5.4/§5.5 + Handbook §3.4）：
+ * - **不按运行状态过滤**：重测期间源状态为 `pending`、平台错误后为 `error`，但已有
+ *   有效判定必须继续计入（缺陷 #50）；
+ * - 实际提交数（`submit_count`）与当前口径有效数（`valid_submissions`）分离，
+ *   公开通过率分母为有效数（缺陷 #52）；
  * - 隐藏用例只进**匿名聚合桶**（`hidden-1`、`hidden-2`…），**绝不返回真实 case_id**；
  * - 取数上限 `MAX_STATS_SAMPLE`，超出返回 `truncated = true`（**不静默截断**）。
  */
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
-  evaluationResults,
+  evaluationAttempts,
   submissions,
 } from "./../../../../shared/db/schema.ts";
 import { isProblemInRunningContest } from "./../../../contest/index.ts";
@@ -30,6 +34,11 @@ export interface PublicProblemStats {
   attempt_count: number;
   /** 提交总数；竞赛进行中时为 null（与 `acceptance_rate` 同步抑制，防算术还原）。 */
   submit_count: number | null;
+  /**
+   * 当前口径下**有效**的提交数（已产生正式判定）；公开通过率的分母。
+   * 竞赛进行中时为 null（与 `acceptance_rate` 同步抑制）。
+   */
+  valid_submissions: number | null;
   /** 通过数；竞赛进行中时为 null（与 `acceptance_rate` 同步抑制，防算术还原）。 */
   accepted_count: number | null;
   /** 通过率（0-1）；竞赛进行中时为 null。 */
@@ -42,6 +51,8 @@ export interface PublicProblemStats {
 export interface ProblemStatsDetail {
   attempt_count: number;
   submit_count: number;
+  /** 当前口径下有效的提交数（公开通过率分母，§3.4）。 */
+  valid_submissions: number;
   accepted_count: number;
   acceptance_rate: number | null;
   suppressed_reason: "running_contest" | null;
@@ -57,18 +68,8 @@ export interface ProblemStatsDetail {
   window_days: number;
 }
 
-/**
- * 进程内统计缓存（5 分钟 TTL）。
- *
- * **单副本专用**：多副本部署下各副本各自缓存，最多 5 分钟内可能读到旧统计。
- * 已登记于 `dev-docs/engineering/domain-boundaries.md` 的多副本约束表。
- */
-const statsCache = new Map<string, { at: number; value: ProblemStatsDetail }>();
-
-/** 测试用：清空统计缓存，避免用例间互相污染。 */
-export function _resetProblemStatsCacheForTest(): void {
-  statsCache.clear();
-}
+/** 保留测试入口；统计直接使用当前数据库投影。 */
+export function _resetProblemStatsCacheForTest(): void {}
 
 /**
  * 判定用例是否为隐藏用例。
@@ -102,42 +103,36 @@ export function median(values: number[]): number | null {
  *
  * @param problemId 题目 UUID。
  * @param windowDays 统计窗口天数（默认 90）；仅统计该窗口内的提交。
- * @returns 聚合结果；缓存命中时直接返回缓存值。
+ * @returns 聚合结果（直查数据库投影，无进程内缓存——多副本口径一致）。
  */
 export async function getProblemStatsDetail(
   problemId: string,
   windowDays = 90,
 ): Promise<ProblemStatsDetail> {
-  const cached = statsCache.get(problemId);
-  if (
-    cached &&
-    Date.now() - cached.at < STATS_CACHE_TTL_MS &&
-    cached.value.window_days === windowDays
-  ) {
-    return cached.value;
-  }
-
   const since = new Date(
     Date.now() - windowDays * 24 * 60 * 60 * 1000,
   ).toISOString();
   const db = getDb();
   // 只取聚合所需字段（不含 code），避免把用户源码拉进内存
+  // 读**有效成绩**（§3.2/§3.4）：分数/状态/详情取有效尝试，
+  // 是否通过与"有效提交"口径直接读投影（策略切换后立即生效）。
   const rows = await db
     .select({
-      user_id: submissions.user_id,
-      created_at: submissions.created_at,
-      status: evaluationResults.status,
-      score: evaluationResults.score,
-      details: evaluationResults.details,
+      user_id: sql<string>`${submissions.user_id}`,
+      created_at: sql<string>`${submissions.created_at}`,
+      status: evaluationAttempts.result_status,
+      score: evaluationAttempts.score,
+      details: evaluationAttempts.details,
+      is_accepted: sql<boolean>`${submissions.is_accepted}`,
+      is_valid: sql<boolean>`${submissions.is_valid}`,
     })
-    .from(submissions)
-    .innerJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, submissions.id),
+    .from(unifiedSubmissionSources)
+    .leftJoin(
+      evaluationAttempts,
+      eq(evaluationAttempts.id, submissions.effective_attempt_id),
     )
     .where(and(
       eq(submissions.problem_id, problemId),
-      eq(submissions.status, "finished"),
       gte(submissions.created_at, since),
     ))
     .orderBy(desc(submissions.created_at))
@@ -153,6 +148,8 @@ export async function getProblemStatsDetail(
   const firstAcAt = new Map<string, number>();
   const firstSubmitAt = new Map<string, number>();
   let acceptedCount = 0;
+  /** 当前口径下有效的提交数（公开通过率分母，§3.4）。 */
+  let validCount = 0;
 
   // 正序遍历（rows 为 created_at 降序，故反转后即为时间升序），
   // 以便把每个用户的首次提交时间与首次 AC 时间都取到"最早"的那次。
@@ -164,7 +161,8 @@ export async function getProblemStatsDetail(
 
     const status = row.status ?? "unknown";
     statusDistribution[status] = (statusDistribution[status] ?? 0) + 1;
-    if (row.status === "finished" && row.score > 0) {
+    if (row.is_valid) validCount += 1;
+    if (row.is_accepted) {
       acceptedCount += 1;
       if (Number.isFinite(submittedAt) && !firstAcAt.has(row.user_id)) {
         firstAcAt.set(row.user_id, submittedAt);
@@ -173,7 +171,11 @@ export async function getProblemStatsDetail(
 
     let parsed: unknown;
     try {
-      parsed = JSON.parse(row.details);
+      // `evaluation_attempts.details` 是 JSONB（对象），`evaluation_results.details`
+      // 是文本；兼容两种形态，避免迁移期读不到用例分布。
+      parsed = typeof row.details === "string"
+        ? JSON.parse(row.details)
+        : row.details;
     } catch {
       continue;
     }
@@ -215,8 +217,10 @@ export async function getProblemStatsDetail(
   const value: ProblemStatsDetail = {
     attempt_count: firstSubmitAt.size,
     submit_count: sample.length,
+    // 有效成绩口径：分母是"当前有效、已产生正式判定"的提交数（§3.4）
+    valid_submissions: validCount,
     accepted_count: acceptedCount,
-    acceptance_rate: sample.length === 0 ? 0 : acceptedCount / sample.length,
+    acceptance_rate: validCount === 0 ? 0 : acceptedCount / validCount,
     suppressed_reason: null,
     status_distribution: statusDistribution,
     case_failure_distribution: [...caseFailures.entries()]
@@ -232,7 +236,6 @@ export async function getProblemStatsDetail(
     window_days: windowDays,
   };
 
-  statsCache.set(problemId, { at: Date.now(), value });
   return value;
 }
 
@@ -258,6 +261,7 @@ export async function getPublicProblemStats(
   return {
     attempt_count: detail.attempt_count,
     submit_count: suppressed ? null : detail.submit_count,
+    valid_submissions: suppressed ? null : detail.valid_submissions,
     accepted_count: suppressed ? null : detail.accepted_count,
     acceptance_rate: suppressed ? null : detail.acceptance_rate,
     suppressed_reason: suppressed ? "running_contest" : null,

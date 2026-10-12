@@ -20,11 +20,23 @@ const ts = Date.now();
 const OWNER_ID = `bundle-owner-${ts}`;
 
 /**
+ * 读取题目当前草稿 revision：命中既有题目的导入（`problem_id` 或 number 幂等键）
+ * 是**内容修改**，必须携带编辑基线 `If-Match`（缺失 428、过时 409）。
+ */
+async function draftRevisionOf(problemId: string): Promise<number> {
+  const { getProblemDraft } = await import(
+    "../../services/versioning/draft.ts"
+  );
+  return (await getProblemDraft(problemId)).revision;
+}
+
+/**
  * 构造统一题目包 zip。
  * @param manifestOverrides 覆盖 manifest 字段
  */
 export function makeBundleZip(
   manifestOverrides: Record<string, unknown> = {},
+  extraEntries: Record<string, string> = {},
 ): Uint8Array {
   const manifest = {
     format_version: 1,
@@ -46,6 +58,10 @@ export function makeBundleZip(
     ...manifestOverrides,
   };
   const enc = new TextEncoder();
+  const extras: Record<string, Uint8Array> = {};
+  for (const [name, content] of Object.entries(extraEntries)) {
+    extras[name] = enc.encode(content);
+  }
   return zipSync({
     "problem.json": enc.encode(JSON.stringify(manifest)),
     "statement.md": enc.encode(
@@ -53,11 +69,15 @@ export function makeBundleZip(
     ),
     "evaluate.py": enc.encode("print('evaluator')"),
     "visible.jsonl": enc.encode('{"input": "1 2", "output": "3"}\n'),
+    ...extras,
   }, { level: 6 });
 }
 
-function makeZipBlob(overrides: Record<string, unknown> = {}): Blob {
-  const zip = makeBundleZip(overrides);
+function makeZipBlob(
+  overrides: Record<string, unknown> = {},
+  extraEntries: Record<string, string> = {},
+): Blob {
+  const zip = makeBundleZip(overrides, extraEntries);
   return new Blob(
     [zip.buffer.slice(
       zip.byteOffset,
@@ -172,8 +192,12 @@ Deno.test({
   },
 });
 
+/** 模板内容样例（断言落库与端点返回用）。 */
+const TEMPLATE_SKELETON = "# 作答骨架\nprint('TODO')\n";
+
 Deno.test({
-  name: "import-bundle: manifest.template 合法值导入成功",
+  name:
+    "import-bundle: 模板随包落库、/template 可读、存量题目回退读包、重导入清空",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -182,19 +206,89 @@ Deno.test({
     const app = createApp();
     const token = await createUserToken("admin");
 
+    // ① 模板随包导入（默认名 template.py）
     const formData = new FormData();
     formData.append(
       "file",
-      makeZipBlob({ template: "starter.py" }),
+      makeZipBlob(
+        { title: `模板题 ${ts}` },
+        { "template.py": TEMPLATE_SKELETON },
+      ),
       "tpl1.zip",
     );
-
     const res = await app.request("/api/v1/problems/import-bundle", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
     assertEquals(res.status, 200);
+    const body = await res.json();
+    const problemId = body.data.id as string;
+
+    // ② 落库校验：运行期不再依赖服务器本地 data/problems-src
+    const db = getDb();
+    const [row] = await db.select().from(problems).where(
+      eq(problems.id, problemId),
+    ).limit(1);
+    assertEquals(row.template_content, TEMPLATE_SKELETON);
+
+    // ③ 端点校验：编辑器实际拿到的内容
+    const tplRes = await app.request(
+      `/api/v1/problems/${problemId}/template`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    assertEquals(tplRes.status, 200);
+    const tpl = await tplRes.json();
+    assertEquals(tpl.data.content, TEMPLATE_SKELETON);
+    assertEquals(tpl.data.language, "python3");
+
+    // ④ 存量题目（本次改动前导入、字段为空）：回退读支持包内的默认名模板
+    await db.update(problems).set({ template_content: null }).where(
+      eq(problems.id, problemId),
+    );
+    const fallbackRes = await app.request(
+      `/api/v1/problems/${problemId}/template`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    assertEquals(fallbackRes.status, 200);
+    assertEquals((await fallbackRes.json()).data.content, TEMPLATE_SKELETON);
+
+    // ⑤ 重新导入同一 (type, number)、包内无模板 → 落库为空串（"已核对无模板"，
+    //    解析时据此不再回源下载整个支持包），端点回到 404
+    const reimport = new FormData();
+    reimport.append(
+      "file",
+      makeZipBlob({ title: `模板题 ${ts}`, number: body.data.number }),
+      "tpl1-b.zip",
+    );
+    const reimportRes = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "If-Match": String(await draftRevisionOf(problemId)),
+      },
+      body: reimport,
+    });
+    assertEquals(reimportRes.status, 200);
+    assertEquals((await reimportRes.json()).data.id, problemId);
+    // 模板是**内容**字段：写入共享草稿，公开投影（只由发布更新）保持原值 null
+    const { getProblemDraft: readDraftAgain } = await import(
+      "../../services/versioning/draft.ts"
+    );
+    const clearedDraft = await readDraftAgain(problemId);
+    assertEquals(
+      (clearedDraft.content as { template_content?: string }).template_content,
+      "",
+    );
+    const [afterRow] = await db.select().from(problems).where(
+      eq(problems.id, problemId),
+    ).limit(1);
+    assertEquals(afterRow.template_content, null);
+    const goneRes = await app.request(
+      `/api/v1/problems/${problemId}/template`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    assertEquals(goneRes.status, 404);
   },
 });
 
@@ -275,19 +369,30 @@ Deno.test({
 
     const res = await app.request("/api/v1/problems/import-bundle", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        // 命中既有题目 → 内容修改，携带编辑基线 revision
+        "If-Match": String(await draftRevisionOf(pid)),
+      },
       body: formData,
     });
     assertEquals(res.status, 200);
     const body = await res.json();
     // id 由服务端生成（UUID），不因导入而改变
     assertEquals(body.data.id, pid);
-    assertEquals(body.data.title, "新标题");
 
-    // 题目行数不变（幂等更新）
+    // 内容（题面/标题）写**草稿**，公开投影只由发布更新（Handbook §2.2/§6.2）：
+    // 题目行仍是旧标题，草稿内容已是新标题。
+    const { getProblemDraft: readDraft } = await import(
+      "../../services/versioning/draft.ts"
+    );
+    const draftAfter = await readDraft(pid);
+    assertEquals(draftAfter.content.title, "新标题");
+
+    // 题目行数不变（幂等更新），且投影未被内容导入提前改写
     const [row] = await db.select().from(problems).where(eq(problems.id, pid))
       .limit(1);
-    assertEquals(row.title, "新标题");
+    assertEquals(row.title, "旧标题");
   },
 });
 
@@ -336,8 +441,7 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "import-bundle: 普通用户导入含 evaluator.command 的 U 型题目被拒（NOJ-062）",
+  name: "import-bundle: 普通用户导入默认 command 的 U 型题目放行",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -349,6 +453,46 @@ Deno.test({
 
     const formData = new FormData();
     formData.append("file", makeZipBlob(), "u2.zip");
+
+    const res = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    assertEquals(res.status, 200);
+  },
+});
+
+Deno.test({
+  name: "import-bundle: 普通用户导入自定义 evaluator.command 被拒（NOJ-062）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await ensureUser(OWNER_ID);
+    const app = createApp();
+    const token = await signToken({ sub: OWNER_ID, role: "user" });
+
+    const formData = new FormData();
+    formData.append(
+      "file",
+      makeZipBlob({
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "bash /workspace/run.sh",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+          },
+          solution: {
+            image: "noj-solution-python",
+            call_timeout_ms: 2000,
+            memory_limit_mb: 512,
+          },
+        },
+      }),
+      "u3.zip",
+    );
 
     const res = await app.request("/api/v1/problems/import-bundle", {
       method: "POST",
@@ -480,7 +624,10 @@ Deno.test({
     // 重复导入 → 按 (type, number) 命中更新路径，不产生新行
     const res2 = await app.request("/api/v1/problems/import-bundle", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "If-Match": String(await draftRevisionOf(body.data.id)),
+      },
       body: formData,
     });
     assertEquals(res2.status, 200);
@@ -492,6 +639,65 @@ Deno.test({
       eq(problems.id, body.data.id),
     );
     assertEquals(rows.length, 1, "重复导入不应产生新行");
+
+    // LocalStorageProvider 按内容寻址，两次上传可返回同一 URL；发布后不能回收它。
+    const download = await app.request(
+      `/api/v1/problems/${body.data.id}/support-package`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    assertEquals(download.status, 200, "重复导入后支持包仍可下载");
+    const packageBytes = new Uint8Array(await download.arrayBuffer());
+    assertEquals(packageBytes.length > 0, true);
+
+    // 注入数据库写入失败，验证失败请求的**零副作用**：不新增行、题目投影不变、
+    // 草稿 revision 不变、已存在且被复用的支持包对象不被回收。
+    //
+    // 注入点必须是 db.update（而不是 db.transaction）：测试事务代理
+    // （connection.ts createTestTransactionDb）的 get trap 对 `transaction`
+    // 恒返回内部的 savepointTransaction，直接赋值会被静默忽略；而 insert/update/
+    // select 等属性经 Reflect.get 转发，赋值可生效且同样会进入业务事务内部
+    // （`tx` 就是同一个代理），因此能真实模拟"事务内写入失败"。
+    const revisionBefore = await draftRevisionOf(body.data.id);
+    const [rowBefore] = await db.select({ title: problems.title }).from(
+      problems,
+    )
+      .where(eq(problems.id, body.data.id)).limit(1);
+    const originalUpdate = db.update;
+    // deno-lint-ignore no-explicit-any
+    (db as any).update = () => {
+      throw new Error("测试注入：题目更新失败");
+    };
+    try {
+      const failed = await app.request("/api/v1/problems/import-bundle", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "If-Match": String(revisionBefore),
+        },
+        body: formData,
+      });
+      assertEquals(failed.status, 500);
+    } finally {
+      // deno-lint-ignore no-explicit-any
+      (db as any).update = originalUpdate;
+    }
+
+    // 零副作用：题目行与草稿 revision 都不变
+    const [rowAfterFailure] = await db.select({ title: problems.title }).from(
+      problems,
+    ).where(eq(problems.id, body.data.id)).limit(1);
+    assertEquals(rowAfterFailure?.title, rowBefore?.title);
+    assertEquals(await draftRevisionOf(body.data.id), revisionBefore);
+
+    const afterFailure = await app.request(
+      `/api/v1/problems/${body.data.id}/support-package`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    assertEquals(afterFailure.status, 200, "回滚后旧支持包仍可下载");
+    assertEquals(
+      new Uint8Array(await afterFailure.arrayBuffer()),
+      packageBytes,
+    );
   },
 });
 
@@ -572,12 +778,13 @@ Deno.test({
     assertEquals(row.runtime_config, null);
     assertEquals(row.support_package_storage_url, null);
 
-    const { objectiveQuestions } = await import(
-      "../../../../shared/db/schema.ts"
+    // 小题事实源是共享草稿（旧表已随 0107 删除）
+    const { getProblemDraft } = await import(
+      "../../services/versioning/draft.ts"
     );
-    const qs = await db.select().from(objectiveQuestions).where(
-      eq(objectiveQuestions.paper_id, body.data.id),
-    );
+    const draft = await getProblemDraft(body.data.id);
+    const qs = (draft.content as { questions?: { prompt: string }[] })
+      .questions ?? [];
     assertEquals(qs.length, 1);
     assertEquals(qs[0].prompt, "1+1=?");
   },
@@ -628,23 +835,37 @@ Deno.test({
     );
     const res2 = await app.request("/api/v1/problems/import-bundle", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "If-Match": String(await draftRevisionOf(id)),
+      },
       body: formData2,
     });
     assertEquals(res2.status, 200);
     const body2 = await res2.json();
     assertEquals(body2.data.id, id);
-    assertEquals(body2.data.title, "新客观题");
-
+    // 标题写草稿；公开投影仍为首次导入值，直到发布新版本
+    const { getProblemDraft } = await import(
+      "../../services/versioning/draft.ts"
+    );
+    const draftAfterSecond = await getProblemDraft(id);
+    assertEquals(draftAfterSecond.content.title, "新客观题");
     const db = getDb();
-    const { objectiveQuestions } = await import(
-      "../../../../shared/db/schema.ts"
-    );
-    const qs = await db.select().from(objectiveQuestions).where(
-      eq(objectiveQuestions.paper_id, id),
-    );
+    const [projectionRow] = await db.select({ title: problems.title })
+      .from(problems).where(eq(problems.id, id)).limit(1);
+    assertEquals(projectionRow?.title, "旧客观题");
+
+    const draft = draftAfterSecond;
+    const qs = (draft.content as { questions?: { type: string }[] })
+      .questions ?? [];
     assertEquals(qs.length, 1);
     assertEquals(qs[0].type, "judge");
+    const [updatedProblem] = await db.select({
+      judge_type: problems.judge_type,
+      runtime_config: problems.runtime_config,
+    }).from(problems).where(eq(problems.id, id)).limit(1);
+    assertEquals(updatedProblem?.judge_type, "dual");
+    assertEquals(updatedProblem?.runtime_config, null);
   },
 });
 

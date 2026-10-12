@@ -1,0 +1,343 @@
+/**
+ * 竞赛题目固定版本测试（Handbook §4.1/§4.3）。
+ *
+ * 规则：
+ * - 创建竞赛时把每道题钉在**当时的**已发布最新版（`contest_problems.pinned_version_id`）；
+ * - 题库之后发布新版本**不影响**已固定版本（换版必须走显式的固定版本升级操作）；
+ * - 编辑竞赛会整体替换题目关联，但必须保留既有固定版本（否则改名/改时间等于静默换版）；
+ * - 新加入竞赛的题目按当前最新已发布版固定；题库尚无已发布版本的题目固定为 null（存量路径）。
+ */
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { BadRequestError } from "../../../../shared/base/errors.ts";
+import { and, eq } from "drizzle-orm";
+import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import {
+  contestProblems,
+  contests,
+  problems,
+  problemVersions,
+  submissions,
+  users,
+} from "../../../../shared/db/schema.ts";
+import {
+  createContest,
+  getContestProblems,
+  updateContest,
+} from "../../index.ts";
+
+await resetDbForTest();
+
+const now = new Date().toISOString();
+
+async function createUser(prefix: string): Promise<string> {
+  const id = crypto.randomUUID();
+  const unique = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+  await getDb().insert(users).values({
+    id,
+    username: `${prefix}-${unique}`,
+    email: `${prefix}-${unique}@example.com`,
+    password_hash: "hash",
+    created_at: now,
+    updated_at: now,
+  });
+  return id;
+}
+
+/** 建一道带 AI 版本内容的题（visibility 默认 public，任何登录用户可加入竞赛）。 */
+async function createProblem(id: string, number: number): Promise<void> {
+  await getDb().insert(problems).values({
+    id,
+    title: id,
+    description: "d",
+    type: "P",
+    number,
+    owner_id: "0",
+    difficulty: "easy",
+    created_at: now,
+    updated_at: now,
+  });
+}
+
+/** 为题目发布一个版本并推进 `problems.latest_version_id`。 */
+async function publishVersion(
+  problemId: string,
+  version: number,
+): Promise<string> {
+  const versionId = `${problemId}-v${version}`;
+  await getDb().insert(problemVersions).values({
+    id: versionId,
+    problem_id: problemId,
+    version,
+    schema_version: 1,
+    origin: "published",
+    content: {
+      kind: "ai",
+      title: problemId,
+      description: "d",
+      samples: [],
+      submission_mode: "code",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 60000,
+          memory_limit_mb: 512,
+        },
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 60000,
+          memory_limit_mb: 512,
+        },
+      },
+      template_content: "",
+      artifact_max_size_mb: null,
+      llm_config: null,
+    },
+    content_sha256: `hash-${versionId}`,
+    published_at: now,
+  });
+  await getDb().update(problems).set({ latest_version_id: versionId }).where(
+    eq(problems.id, problemId),
+  );
+  return versionId;
+}
+
+async function pinnedVersionOf(
+  contestId: string,
+  problemId: string,
+): Promise<string | null> {
+  const [row] = await getDb().select({
+    pinned_version_id: contestProblems.pinned_version_id,
+  }).from(contestProblems).where(
+    and(
+      eq(contestProblems.contest_id, contestId),
+      eq(contestProblems.problem_id, problemId),
+    ),
+  ).limit(1);
+  return row?.pinned_version_id ?? null;
+}
+
+Deno.test({
+  name: "contest pinning: 创建即固定最新版，题库发新版不改变竞赛作答版本",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const creatorId = await createUser("pinning-creator");
+    await createProblem("cp-pin-p1", 985001);
+    await createProblem("cp-pin-p2", 985002);
+    await publishVersion("cp-pin-p1", 1);
+    const p1v2 = await publishVersion("cp-pin-p1", 2);
+
+    // cp-pin-p2 尚未发布任何版本 → 不能加入竞赛（Handbook §2.6）
+    await assertRejects(
+      () =>
+        createContest({
+          title: "未发布题目入赛",
+          start_time: new Date(Date.now() + 60_000).toISOString(),
+          end_time: new Date(Date.now() + 3_600_000).toISOString(),
+          type: "kaggle",
+          password: "ContestPass123",
+          problems: [
+            {
+              problem_id: "cp-pin-p1",
+              label: "A",
+              sort_order: 0,
+              score: 10000,
+            },
+            {
+              problem_id: "cp-pin-p2",
+              label: "B",
+              sort_order: 1,
+              score: 10000,
+            },
+          ],
+        }, creatorId),
+      BadRequestError,
+    );
+
+    const contest = await createContest({
+      title: "固定版本测试赛",
+      start_time: new Date(Date.now() + 60_000).toISOString(),
+      end_time: new Date(Date.now() + 3_600_000).toISOString(),
+      type: "kaggle",
+      password: "ContestPass123",
+      problems: [
+        { problem_id: "cp-pin-p1", label: "A", sort_order: 0, score: 10000 },
+      ],
+    }, creatorId);
+
+    assertEquals(await pinnedVersionOf(contest.id, "cp-pin-p1"), p1v2);
+
+    // 题库发布 v3：竞赛固定版本不变，竞赛接口仍回答 v2
+    await publishVersion("cp-pin-p1", 3);
+    assertEquals(await pinnedVersionOf(contest.id, "cp-pin-p1"), p1v2);
+    const problemsInContest = await getContestProblems(contest.id, creatorId);
+    const itemA = problemsInContest.find((item) =>
+      item.problem_id === "cp-pin-p1"
+    );
+    assertEquals(itemA?.version_id, p1v2);
+    assertEquals(itemA?.version, 2);
+  },
+});
+
+Deno.test({
+  name:
+    "contest pinning: 编辑竞赛整体替换题目关联但保留固定版本，新题按当前最新版固定",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const creatorId = await createUser("pinning-editor");
+    await createProblem("cp-pin-p3", 985003);
+    await createProblem("cp-pin-p4", 985004);
+    await publishVersion("cp-pin-p3", 1);
+    const p3v2 = await publishVersion("cp-pin-p3", 2);
+
+    const contest = await createContest({
+      title: "编辑保留固定版本",
+      start_time: new Date(Date.now() + 60_000).toISOString(),
+      end_time: new Date(Date.now() + 3_600_000).toISOString(),
+      type: "kaggle",
+      password: "ContestPass123",
+      problems: [
+        { problem_id: "cp-pin-p3", label: "A", sort_order: 0, score: 10000 },
+      ],
+    }, creatorId);
+    // 创建时钉在 v2（当时的最新版）
+    assertEquals(await pinnedVersionOf(contest.id, "cp-pin-p3"), p3v2);
+
+    // 题库再发 v3，之后编辑竞赛（改名 + 重传同一题目列表）：固定版本必须仍是创建时的 v2
+    await publishVersion("cp-pin-p3", 3);
+    // 新加入的 cp-pin-p4 尚未发布 → 整次编辑被拒（不产生半更新的关联）
+    await assertRejects(
+      () =>
+        updateContest(contest.id, {
+          title: "改名后仍固定 v2",
+          problems: [
+            {
+              problem_id: "cp-pin-p3",
+              label: "A",
+              sort_order: 0,
+              score: 10000,
+            },
+            {
+              problem_id: "cp-pin-p4",
+              label: "B",
+              sort_order: 1,
+              score: 10000,
+            },
+          ],
+        }),
+      BadRequestError,
+    );
+    await updateContest(contest.id, {
+      title: "改名后仍固定 v2",
+      problems: [
+        { problem_id: "cp-pin-p3", label: "A", sort_order: 0, score: 10000 },
+      ],
+    });
+    assertEquals(await pinnedVersionOf(contest.id, "cp-pin-p3"), p3v2);
+    // 先发布再加题：按加入时的最新版固定
+    await publishVersion("cp-pin-p4", 1);
+    await updateContest(contest.id, {
+      problems: [
+        { problem_id: "cp-pin-p3", label: "A", sort_order: 0, score: 10000 },
+        { problem_id: "cp-pin-p4", label: "B", sort_order: 1, score: 10000 },
+      ],
+    });
+    assertEquals(
+      await pinnedVersionOf(contest.id, "cp-pin-p4"),
+      "cp-pin-p4-v1",
+    );
+    // 再次整体替换后，p3 仍停在创建时的 v2（不会被抬到 v3）
+    assertEquals(await pinnedVersionOf(contest.id, "cp-pin-p3"), p3v2);
+    const problemsInContest = await getContestProblems(contest.id, creatorId);
+    assertEquals(
+      problemsInContest.find((item) => item.problem_id === "cp-pin-p3")
+        ?.version,
+      2,
+    );
+  },
+});
+
+Deno.test({
+  name: "contest pinning: 题目列表下发竞赛策略与通过状态读投影",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const creatorId = await createUser("pinning-list-creator");
+    const solverId = await createUser("pinning-list-solver");
+    await createProblem("cp-pin-p5", 985005);
+    const v1 = await publishVersion("cp-pin-p5", 1);
+    await publishVersion("cp-pin-p5", 2);
+
+    const contest = await createContest({
+      title: "策略下发测试赛",
+      start_time: new Date(Date.now() + 60_000).toISOString(),
+      end_time: new Date(Date.now() + 3_600_000).toISOString(),
+      type: "kaggle",
+      password: "ContestPass123",
+      problems: [{
+        problem_id: "cp-pin-p5",
+        label: "A",
+        sort_order: 0,
+        score: 10000,
+      }],
+    }, creatorId);
+
+    // 通过状态只读投影：仅有提交但没有 is_contest_accepted → attempted
+    await getDb().insert(submissions).values({
+      id: "cp-pin-sub-1",
+      user_id: solverId,
+      problem_id: "cp-pin-p5",
+      contest_id: contest.id,
+      language: "python",
+      code: "print(1)",
+      submitted_version_id: v1,
+      version_origin: "known",
+      created_at: now,
+    });
+    const attempted = await getContestProblems(contest.id, solverId);
+    assertEquals(attempted[0].user_status, "attempted");
+
+    // 投影置为竞赛口径通过 → solved（不依赖已废弃的 evaluation_results）
+    await getDb().update(submissions).set({ is_contest_accepted: true })
+      .where(eq(submissions.id, "cp-pin-sub-1"));
+    const solved = await getContestProblems(contest.id, solverId);
+    assertEquals(solved[0].user_status, "solved");
+
+    // 策略与乐观锁版本随列表下发（管理端切换策略时回传）
+    assertEquals(solved[0].effective_version_policy, { mode: "any" });
+    assertEquals(solved[0].effective_version_policy_revision, 0);
+    await getDb().update(contestProblems).set({
+      effective_version_mode: "exact",
+      required_version_id: v1,
+      effective_policy_revision: 1,
+      pinned_version_id: v1,
+    }).where(and(
+      eq(contestProblems.contest_id, contest.id),
+      eq(contestProblems.problem_id, "cp-pin-p5"),
+    ));
+    const exact = await getContestProblems(contest.id, solverId);
+    assertEquals(exact[0].effective_version_policy, {
+      mode: "exact",
+      version_id: v1,
+    });
+    assertEquals(exact[0].effective_version_policy_revision, 1);
+    // 固定版本同步为 V1（exact 下的作答版本）
+    assertEquals(exact[0].version_id, v1);
+
+    // 策略收紧后投影未重算：通过状态仍来自投影（读侧不自行推导）
+    await getDb().delete(submissions).where(eq(submissions.id, "cp-pin-sub-1"));
+    await getDb().delete(contestProblems).where(
+      eq(contestProblems.contest_id, contest.id),
+    );
+    await getDb().delete(contests).where(eq(contests.id, contest.id));
+    await getDb().update(problems).set({ latest_version_id: null }).where(
+      eq(problems.id, "cp-pin-p5"),
+    );
+    await getDb().delete(problemVersions).where(
+      eq(problemVersions.problem_id, "cp-pin-p5"),
+    );
+    await getDb().delete(problems).where(eq(problems.id, "cp-pin-p5"));
+  },
+});

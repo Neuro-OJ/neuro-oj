@@ -4,7 +4,11 @@ import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { BadRequestError } from "./../../../shared/base/errors.ts";
 import { enforceSelfTestRateLimit } from "../../system/index.ts";
 import { resolveProblem } from "./../../catalog/index.ts";
-import { createSelfTest, getSelfTest } from "../services/self-tests.ts";
+import {
+  cancelSelfTest,
+  createSelfTest,
+  getSelfTest,
+} from "../services/self-tests.ts";
 import type { SelfTestInput } from "./../types/self-tests.ts";
 
 type Env = {
@@ -27,10 +31,7 @@ router.post("/problems/:id/self-test", authMiddleware, async (c) => {
   const userId = c.var.userId as string;
   const problemId = c.req.param("id") as string;
 
-  // 自测专用限流（IP + 用户双维度）
-  await enforceSelfTestRateLimit(c, userId);
-
-  // 先做 body 解析与代码大小校验，再查询题目，避免超大请求先触发 DB 读
+  // 先做 body 解析与代码大小校验，再查询题目与限流，避免超大/格式错误请求消耗配额与 DB
   const body = await parseJsonBody<Record<string, unknown>>(c);
 
   if (!body.language || !body.code) {
@@ -49,6 +50,9 @@ router.post("/problems/:id/self-test", authMiddleware, async (c) => {
     );
   }
 
+  // 自测专用限流（IP + 用户双维度）在校验通过后执行
+  await enforceSelfTestRateLimit(c, userId);
+
   // 题目双索引解析（不存在时抛 404；返回真实 UUID 供 service 使用）
   const problem = await resolveProblem(problemId);
 
@@ -56,6 +60,10 @@ router.post("/problems/:id/self-test", authMiddleware, async (c) => {
     language: body.language as string,
     code: body.code as string,
     file_name: body.file_name as string | undefined,
+    cases: body.cases as SelfTestInput["cases"],
+    version_id: typeof body.version_id === "string" && body.version_id
+      ? body.version_id
+      : undefined,
   };
 
   const isAdmin = await checkPermission(c, "submission:read_all");
@@ -71,6 +79,11 @@ router.get("/self-tests/:id", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const result = await getSelfTest(id, c);
   return c.json({ data: result });
+});
+
+router.post("/self-tests/:id/cancel", authMiddleware, async (c) => {
+  await cancelSelfTest(c.req.param("id") as string, c);
+  return c.json({ data: { cancel_requested: true } });
 });
 
 export default router;

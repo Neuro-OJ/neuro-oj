@@ -17,25 +17,33 @@ export interface ReleaseSummary {
   assets?: { name?: string }[];
 }
 
-/** 稳定版本标签（`v0.1.0` / `0.1.0`）；RC / 预发布一律不匹配。 */
-const STABLE_TAG_RE = /^v?[0-9]+\.[0-9]+\.[0-9]+$/;
+/**
+ * Release 标签格式：`v?X.Y.Z`，允许 SemVer 预发布后缀（`-rc.1` / `-beta.3` 等），
+ * 与 `prod/judge/config.ts` 的 `VERSION_RE` 一致。
+ */
+const RELEASE_TAG_RE = /^v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
 
 /**
- * 标签是否为**稳定版本**（`v0.1.0` 或 `0.1.0`）。
+ * 标签是否为合法的 Release 标签（`v0.1.0` / `0.1.0` / `v0.10.4-rc.1`）。
+ *
+ * **稳定性不由标签后缀判定**：发布流水线先以 GitHub 预发布创建 Release，全部
+ * 校验通过后才转正（`prerelease=false`）。因此已转正的 `-rc.N` 等标签同样是
+ * 可自动选择的正式版本；未转正的由 {@link selectLatestAssetReadyRelease} 的
+ * draft/prerelease 条件排除。
  *
  * 从 {@link resolveLatestVersion} 抽出为共享判定：prod 侧升级（T16
- * `prod/release.ts`）需要同一条稳定版本规则，但资产集合不同。抽成纯函数后
+ * `prod/release.ts`）需要同一条标签规则，但资产集合不同。抽成纯函数后
  * 两处**共用同一份**规则实现，不各写一遍正则与 draft/prerelease 条件。
  */
-export function isStableReleaseTag(tag: string): boolean {
-  return STABLE_TAG_RE.test(tag);
+export function isReleaseTag(tag: string): boolean {
+  return RELEASE_TAG_RE.test(tag);
 }
 
 /**
- * 从 Release 列表里选出**资产就绪**的最新稳定版本标签（保留原始 v 前缀）。
+ * 从 Release 列表里选出**资产就绪**的最新正式版本标签（保留原始 v 前缀）。
  *
  * 过滤规则与 scripts/deploy/install.sh / production.sh 的 `awk` 一致：
- * 稳定标签 → 非 draft → 非 prerelease → `assets` 含**全部**期望资产名
+ * 合法标签 → 非 draft → 非 prerelease → `assets` 含**全部**期望资产名
  * （issue #431：避免选中"已发布但资产尚未就绪"的版本）。列表顺序即优先级，
  * 命中即返回；无命中返回 `null`（由调用方给出各自的、资产集合相关的报错文案）。
  *
@@ -51,7 +59,7 @@ export function selectLatestAssetReadyRelease(
 ): string | null {
   for (const release of releases) {
     const tag = release.tag_name ?? "";
-    if (!isStableReleaseTag(tag)) continue;
+    if (!isReleaseTag(tag)) continue;
     if (release.draft || release.prerelease) continue;
     const names = new Set((release.assets ?? []).map((asset) => asset.name));
     if (!assets.every((asset) => names.has(asset))) continue;

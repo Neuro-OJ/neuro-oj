@@ -1,0 +1,11 @@
+=== A5 修复前/后：compose 项目名 ===
+--- 修复前（不设 COMPOSE_PROJECT_NAME，即脚本原行为）---
+project name = neuro-oj
+--- 修复后（脚本现在会导出的默认值）---
+project name = noj-e2e-local
+--- dev compose 的项目名（对照，保持 neuro-oj）---
+project name = neuro-oj
+=== check-setup.sh 回归 ===
+SDK 构建失败传播检查通过
+compose 项目名隔离检查通过
+E2E 启动脚本静态检查通过

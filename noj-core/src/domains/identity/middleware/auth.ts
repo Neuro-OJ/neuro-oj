@@ -170,6 +170,7 @@ export async function optionalAuthMiddleware(
     c.set("mustChangePassword", payload.must_change_password ?? false);
     c.set("emailVerified", account.emailVerified);
     if (payload.jti) c.set("jti", payload.jti);
+    if (payload.exp) c.set("tokenExp", payload.exp);
 
     await checkBanStatus(c, payload.sub);
   }
@@ -232,6 +233,7 @@ export async function authMiddleware(c: Context, next: Next): Promise<void> {
   c.set("mustChangePassword", payload.must_change_password ?? false);
   c.set("emailVerified", account.emailVerified);
   if (payload.jti) c.set("jti", payload.jti);
+  if (payload.exp) c.set("tokenExp", payload.exp);
   await next();
 }
 

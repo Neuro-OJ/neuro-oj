@@ -362,13 +362,13 @@ async function envFileExists(path: string): Promise<
  *   首装"传 `overwrite:false`，T9 会拒绝覆盖并卡死重试。这里有任一资产就已经
  *   不是"空目录首装"，必须允许覆盖。
  *
- * 反例（review Finding 1 的成因）：若把 `overwrite`/`created` 都挂在 T5 的
- * 两件套标记上，"只有 `.env.prod`、没有 compose"的目录会被判为首装，
- * `seedEnvFile` 随即 truncate 掉用户的真实配置。
+ * 反例（review Finding 1 的成因）：若把 `overwrite`/`created` 都挂在 T5 的两件套
+ * 标记上，"只有 `.env.prod`、没有 compose"的目录会被判为首装并 truncate 掉用户配置。
  */
 async function hasReleaseAssets(dir: string): Promise<boolean> {
-  for (const asset of RELEASE_FILES) {
-    if (await isFile(join(dir, asset))) return true;
+  // 判定用**落盘名**（target）：Release 资产叫 env.prod.example，本地叫 .env.prod.example。
+  for (const { target } of RELEASE_FILES) {
+    if (await isFile(join(dir, target))) return true;
   }
   return false;
 }

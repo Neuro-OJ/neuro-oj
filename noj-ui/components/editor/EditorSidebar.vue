@@ -219,7 +219,7 @@ function formatElapsed(iso: string) {
         <button
           v-for="sub in submissions"
           :key="sub.id"
-          class="w-full text-left p-3 rounded-md border border-border hover:border-signal hover:bg-bg-page transition-colors group relative mb-2"
+          class="w-full text-left p-3 rounded-md border border-border hover:border-primary hover:bg-bg-page transition-colors group relative mb-2"
           @click="emit('open-submission', sub.id)"
         >
           <div class="flex items-center justify-between mb-1">
@@ -242,6 +242,7 @@ function formatElapsed(iso: string) {
 
     <!-- 自测 tab -->
     <div v-else-if="active === 'self-test' && showSelfTest" class="p-4 space-y-4">
+      <slot name="oi-self-test">
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-semibold text-text">自测</h3>
         <UIcon name="i-lucide-loader-2" class="animate-spin text-primary size-3" v-if="isPollingSelfTest" />
@@ -288,6 +289,7 @@ function formatElapsed(iso: string) {
           <pre class="whitespace-pre-wrap break-words bg-bg-page border border-border rounded-md p-3 text-[11px] leading-relaxed max-h-72 overflow-y-auto">{{ selfTest.output }}</pre>
         </div>
       </div>
+      </slot>
     </div>
 
     <!-- 设置 tab -->

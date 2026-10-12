@@ -54,6 +54,7 @@ async function registerPayload(username: string) {
       username,
       email: `${username}@example.com`,
       password: "TestPwd-2024-Xy9",
+      accepted_legal: true,
     },
   });
 }

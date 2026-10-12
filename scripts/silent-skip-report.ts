@@ -289,16 +289,21 @@ if (import.meta.main) {
 
   const md = renderReport(hits);
   const baseline = buildBaseline(hits);
-  await Deno.writeTextFile(REPORT_PATH, md);
 
   const byReason = summarizeReasons(hits);
   const summary = [...byReason.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([reason, count]) => `${reason}=${count}`)
     .join(" ");
-  console.log(
-    `静默跳过清单已写入 ${REPORT_PATH}（扫描 ${scannedFiles} 个测试文件，命中 ${hits.length} 处：${summary}）`,
-  );
+  // --check 是**只读门禁**：必须先读盘上报告比对新鲜度，不能先写。
+  // 此前无条件"先写后读"，使下面的 `onDisk !== md` **恒假**——"报告过期"是死检查，
+  // 且只读门禁会改写 git 跟踪的报告文件（2026-09-29 面 7 审计 B3）。
+  if (!check) {
+    await Deno.writeTextFile(REPORT_PATH, md);
+    console.log(
+      `静默跳过清单已写入 ${REPORT_PATH}（扫描 ${scannedFiles} 个测试文件，命中 ${hits.length} 处：${summary}）`,
+    );
+  }
 
   if (writeBaseline) {
     await Deno.writeTextFile(
@@ -328,7 +333,13 @@ if (import.meta.main) {
   }
 
   const errors = compareWithBaseline(hits, base);
-  const onDisk = await Deno.readTextFile(REPORT_PATH);
+  // 报告缺失也算"过期"（此前文件必然存在，因为刚被自己写过）
+  let onDisk: string | null = null;
+  try {
+    onDisk = await Deno.readTextFile(REPORT_PATH);
+  } catch {
+    onDisk = null;
+  }
   if (onDisk !== md) {
     errors.push(
       `${REPORT_PATH} 与扫描结果不一致（报告过期），请运行 deno run -A scripts/silent-skip-report.ts`,

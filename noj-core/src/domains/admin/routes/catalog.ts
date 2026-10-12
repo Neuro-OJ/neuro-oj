@@ -31,13 +31,15 @@ import { parsePagination } from "../../../shared/http/pagination.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { problems } from "../../../shared/db/schema.ts";
+import { publishSearchIndexEvent } from "../../../shared/search-events.ts";
 import { listAllProblems } from "../../catalog/services/problems/problems.ts";
 import { resolveProblem } from "../../catalog/services/problem-resolve.ts";
 import { inspectEvaluationPackage } from "../../catalog/services/bundle-parser.ts";
 import {
-  getProblemTemplate,
   getSupportPackageBytes,
+  resolveProblemTemplate,
 } from "../../catalog/services/support-package.ts";
+import { isOiRuntimeConfig } from "../../catalog/types/runtime-config.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
 import type { JudgeImageKind } from "../../catalog/types/problems.ts";
 import {
@@ -101,6 +103,15 @@ router.get("/problems/:id/preflight", async (c) => {
     add("runtime", "pass", "客观题无需双容器运行配置");
   } else if (!problem.runtime_config) {
     add("runtime", "error", "缺少 runtime_config");
+  } else if (isOiRuntimeConfig(problem.runtime_config)) {
+    add(
+      "runtime",
+      "pass",
+      `OI ${problem.runtime_config.backend} 评测配置已通过结构校验`,
+    );
+    if (problem.runtime_config.checker.type === "testlib") {
+      add("checker", "warning", "testlib checker 将由 OI runner 受信执行");
+    }
   } else {
     const configs: [JudgeImageKind, { image: string } | undefined][] = [
       ["evaluator", problem.runtime_config.evaluator],
@@ -123,15 +134,7 @@ router.get("/problems/:id/preflight", async (c) => {
     }
   }
 
-  const template = problem.is_objective ? null : await getProblemTemplate({
-    number: problem.number,
-    title: problem.title,
-  });
-  add(
-    "template",
-    template ? "pass" : "warning",
-    template ? "模板可读取" : "未找到模板，发布后编辑器没有初始代码",
-  );
+  // 支持包先读取：模板解析第 2 级要用它（避免为同一份包下载两次）。
   const packageBytes = await getSupportPackageBytes(
     problem.id,
     c.var.userId,
@@ -142,6 +145,17 @@ router.get("/problems/:id/preflight", async (c) => {
     "support_package",
     packageBytes ? "pass" : "error",
     packageBytes ? "支持包可读取" : "缺少支持包",
+  );
+
+  const template = problem.is_objective ? null : await resolveProblemTemplate({
+    id: problem.id,
+    number: problem.number,
+    title: problem.title,
+  }, { packageBytes });
+  add(
+    "template",
+    template ? "pass" : "warning",
+    template ? "模板可读取" : "未找到模板，发布后编辑器没有初始代码",
   );
 
   if (packageBytes && !problem.is_objective) {
@@ -379,6 +393,12 @@ router.post(
           visibility: "public",
           updated_at: updatedAt,
         }).where(inArray(problems.id, ids)).returning({ id: problems.id });
+
+        // AR-03: 补齐公开题目的搜索索引事件
+        for (const item of updated) {
+          await publishSearchIndexEvent("problem", item.id, "upsert");
+        }
+
         return c.json({
           data: {
             action,
@@ -389,30 +409,36 @@ router.post(
 
       if (action === "to_p") {
         const db = getDb();
-        const rows = await db.select({
-          id: problems.id,
-          title: problems.title,
-          type: problems.type,
-          number: problems.number,
-          owner_id: problems.owner_id,
-        }).from(problems).where(inArray(problems.id, ids));
-
-        if (rows.length !== ids.length) {
-          throw new NotFoundError("部分题目不存在");
-        }
-        const nonU = rows.find((row) => row.type !== "U");
-        if (nonU) {
-          throw new BadRequestError(`仅支持将 U 型题转为 P 型：${nonU.id}`);
-        }
-
-        const [maxRow] = await db.select({
-          max: sql<number>`COALESCE(MAX(${problems.number}), 0)`,
-        }).from(problems).where(eq(problems.type, "P"));
-        let nextNumber = Number(maxRow?.max ?? 0) + 1;
         const updatedAt = new Date().toISOString();
+        const updatedIds: string[] = [];
 
-        let updated = 0;
         await db.transaction(async (tx) => {
+          // AR-03: 事务级排他咨询锁，防止并发分配相同 P 题号引发 23505 唯一键冲突
+          await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(hashtext('to_p_problem_number'))`,
+          );
+
+          const rows = await tx.select({
+            id: problems.id,
+            title: problems.title,
+            type: problems.type,
+            number: problems.number,
+            owner_id: problems.owner_id,
+          }).from(problems).where(inArray(problems.id, ids)).for("update");
+
+          if (rows.length !== ids.length) {
+            throw new NotFoundError("部分题目不存在");
+          }
+          const nonU = rows.find((row) => row.type !== "U");
+          if (nonU) {
+            throw new BadRequestError(`仅支持将 U 型题转为 P 型：${nonU.id}`);
+          }
+
+          const [maxRow] = await tx.select({
+            max: sql<number>`COALESCE(MAX(${problems.number}), 0)::int`,
+          }).from(problems).where(eq(problems.type, "P"));
+          let nextNumber = Number(maxRow?.max ?? 0) + 1;
+
           for (const row of rows) {
             const result = await tx.update(problems).set({
               type: "P",
@@ -422,12 +448,17 @@ router.post(
             }).where(eq(problems.id, row.id)).returning({
               id: problems.id,
             });
-            if (result.length > 0) updated++;
+            if (result.length > 0) updatedIds.push(result[0].id);
           }
         });
 
+        // 事务成功提交后发布搜索索引事件（AR-03）
+        for (const id of updatedIds) {
+          await publishSearchIndexEvent("problem", id, "upsert");
+        }
+
         return c.json({
-          data: { action, updated },
+          data: { action, updated: updatedIds.length },
         });
       }
 

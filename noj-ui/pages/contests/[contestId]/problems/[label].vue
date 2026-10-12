@@ -3,7 +3,7 @@ import type { Contest, ContestProblem } from '~/composables/useContests'
 import type { ObjectiveQuestion } from '~/composables/useObjective'
 import { QUESTION_TYPE_LABELS } from '~/composables/useObjective'
 import { publicUrl } from '~/utils/publicIdentifiers'
-import { extractApiError } from '~/utils/apiError'
+import { extractApiError, isVersionConflictError } from '~/utils/apiError'
 import {
   ARTIFACT_FILE_ACCEPT,
   isPredictionView,
@@ -51,6 +51,13 @@ useBreadcrumbParams({
   label: () => label,
 })
 
+/**
+ * 竞赛固定作答版本（Handbook §4.1/§4.2）：提交必须原样回传。
+ *
+ * `null` = 迁移期尚未固定版本的存量竞赛题目（服务端按存量路径作答）。
+ */
+const answerVersionId = computed(() => problemView.value?.version_id ?? null)
+
 const isObjective = computed(() => problemView.value?.is_objective === true)
 const isArtifact = computed(() => problemView.value?.submission_mode === 'artifact')
 /** prediction 提交模式：单文件上传（本地 GPU 出分）。 */
@@ -84,6 +91,8 @@ async function handleArtifactSubmit() {
   try {
     const form = new FormData()
     form.append('problem_id', problem.value.problem_id)
+    // 竞赛提交必须携带固定版本：不一致时服务端返回 409（不自动换版）
+    if (answerVersionId.value) form.append('version_id', answerVersionId.value)
     form.append('language', 'python3')
     form.append('file', artifactFile.value)
     const res = await api.post<{ data: { id: string; public_id?: string } }>(
@@ -94,6 +103,8 @@ async function handleArtifactSubmit() {
     artifactFile.value = null
   } catch (err: unknown) {
     artifactError.value = extractApiError(err).message
+    // 竞赛换版后旧页面提交会 409：刷新题目拿到新的固定版本，保留已选文件
+    if (isVersionConflictError(err)) await refresh()
   } finally {
     artifactSubmitting.value = false
   }
@@ -130,7 +141,7 @@ const qUrl = computed(() =>
     : null
 )
 // Nuxt UseFetch 的 url getter 类型不接受 null，运行时支持返回 null 跳过请求；断言仅类型层面。
-const { data: qData, error: qError } = await useFetch<{ data: ObjectiveQuestion[] }>(
+const { data: qData, error: qError, status: qStatus } = await useFetch<{ data: ObjectiveQuestion[] }>(
   qUrl as unknown as Ref<`/api/v1/problems/${string}`>,
   { server: false },
 )
@@ -155,6 +166,13 @@ const alreadySubmitted = computed(() =>
 const answers = ref<Record<string, (string | boolean)[]>>({})
 const submitting = ref(false)
 const submitError = ref('')
+/**
+ * 本次提交回执中的分数。
+ *
+ * 竞赛模式在比赛结束前后端返回 `score: null`（VULN-03），此时**不得**显示分数，
+ * 也不得把 null 当作 0 —— 改为提示"成绩赛后开放"。
+ * 非 null 时才是真实分数；页面刷新后回执丢失，则按竞赛状态给出对应说明。
+ */
 const lastScore = ref<number | null>(null)
 
 function toggleOption(qid: string, value: string | boolean) {
@@ -185,11 +203,18 @@ async function onSubmit() {
   submitError.value = ''
   submitting.value = true
   try {
-    const res = await submitPaper(paperId.value, answers.value, contestId)
+    const res = await submitPaper(
+      paperId.value,
+      answers.value,
+      contestId,
+      answerVersionId.value,
+    )
+    // 竞赛进行中 score 为 null：保留 null 语义，模板据此不渲染分数（VULN-03）
     lastScore.value = res.data.score
     await refreshSubs()
-  } catch {
-    // useApi 已弹错误
+  } catch (err: unknown) {
+    // useApi 已弹错误；版本冲突（竞赛换版）额外刷新题目拿新固定版本
+    if (isVersionConflictError(err)) await refresh()
   } finally {
     submitting.value = false
   }
@@ -207,7 +232,7 @@ async function onSubmit() {
         <ProblemHeader :problem="problemView">
           <!-- 题号标识（「返回竞赛」已由 #512 面包屑承担，避免同页两套导航） -->
           <template #leading>
-            <span class="flex size-7 items-center justify-center rounded-lg bg-bg-dark font-mono text-xs font-bold text-white">{{ problem?.label }}</span>
+            <span class="flex size-7 items-center justify-center rounded-lg bg-primary-bg font-mono text-xs font-bold text-primary border border-primary/20">{{ problem?.label }}</span>
           </template>
           <template #titleSuffix>
             <span class="text-xs text-text-muted">{{ contest?.title }} · {{ problem?.display_id }}</span>
@@ -225,6 +250,16 @@ async function onSubmit() {
           </template>
         </ProblemHeader>
 
+        <!-- 竞赛固定作答版本（Handbook §4.1）：提示选手本次作答针对哪一版 -->
+        <div class="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-white px-4 py-3 text-sm">
+          <span class="text-text-secondary">作答版本</span>
+          <UBadge v-if="answerVersionId" color="primary" variant="subtle">v{{ problemView.version }}</UBadge>
+          <UBadge v-else color="warning" variant="subtle">未固定</UBadge>
+          <span class="text-text-muted">
+            竞赛固定版本：比赛期间题库发布新版本不影响本场评测；若版本已变更，请刷新后重新提交。
+          </span>
+        </div>
+
         <!-- 客观题：内联答题表单（竞赛一次性提交） -->
         <ProblemStatement
           v-if="isObjective"
@@ -235,7 +270,7 @@ async function onSubmit() {
         >
           <template #body>
             <AsyncContent
-              :status="qError ? 'error' : questions.length ? 'data' : 'empty'"
+              :status="qError ? 'error' : questions.length ? 'data' : qStatus === 'success' ? 'empty' : 'loading'"
               error="客观题加载失败"
               empty-text="该套卷暂无小题"
             >
@@ -250,24 +285,24 @@ async function onSubmit() {
                       {{ idx + 1 }}. {{ QUESTION_TYPE_LABELS[q.type] }}
                     </span>
                   </div>
-                  <p class="mb-3 whitespace-pre-wrap text-sm text-text">{{ q.prompt }}</p>
+                  <ObjectiveRichText class="mb-3" :content="q.prompt" />
 
                   <div v-if="q.type === 'judge'" class="flex flex-col gap-2">
                     <label
                       v-for="opt in q.options"
                       :key="opt.key"
-                      class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+                      class="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
                       :class="isSelected(q.id, opt.key === 'true') ? 'border-signal bg-signal/5' : 'border-border hover:bg-bg-page'"
                     >
                       <input
                         type="radio"
                         :name="q.id"
-                        class="accent-primary"
+                        class="mt-1 shrink-0 accent-primary"
                         :disabled="alreadySubmitted"
                         :checked="isSelected(q.id, opt.key === 'true')"
                         @change="toggleOption(q.id, opt.key === 'true')"
                       />
-                      {{ opt.text }}
+                      <ObjectiveRichText class="flex-1" :content="opt.text" />
                     </label>
                   </div>
 
@@ -275,18 +310,19 @@ async function onSubmit() {
                     <label
                       v-for="opt in q.options"
                       :key="opt.key"
-                      class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+                      class="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
                       :class="isSelected(q.id, opt.key) ? 'border-signal bg-signal/5' : 'border-border hover:bg-bg-page'"
                     >
                       <input
                         type="radio"
                         :name="q.id"
-                        class="accent-primary"
+                        class="mt-1 shrink-0 accent-primary"
                         :disabled="alreadySubmitted"
                         :checked="isSelected(q.id, opt.key)"
                         @change="toggleOption(q.id, opt.key)"
                       />
-                      <span class="font-medium">{{ opt.key }}.</span> {{ opt.text }}
+                      <span class="shrink-0 font-medium">{{ opt.key }}.</span>
+                      <ObjectiveRichText class="flex-1" :content="opt.text" />
                     </label>
                   </div>
 
@@ -294,17 +330,18 @@ async function onSubmit() {
                     <label
                       v-for="opt in q.options"
                       :key="opt.key"
-                      class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+                      class="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
                       :class="isSelected(q.id, opt.key) ? 'border-signal bg-signal/5' : 'border-border hover:bg-bg-page'"
                     >
                       <input
                         type="checkbox"
-                        class="accent-primary"
+                        class="mt-1 shrink-0 accent-primary"
                         :disabled="alreadySubmitted"
                         :checked="isSelected(q.id, opt.key)"
                         @change="toggleOption(q.id, opt.key)"
                       />
-                      <span class="font-medium">{{ opt.key }}.</span> {{ opt.text }}
+                      <span class="shrink-0 font-medium">{{ opt.key }}.</span>
+                      <ObjectiveRichText class="flex-1" :content="opt.text" />
                     </label>
                   </div>
                 </section>
@@ -314,7 +351,9 @@ async function onSubmit() {
                   class="rounded-xl border border-success-text/30 bg-success-text/5 px-5 py-4 text-sm text-success-text"
                 >
                   <UIcon name="i-lucide-check-circle" class="mr-1" />
-                  本套卷已提交（竞赛内仅可提交一次）<span v-if="lastScore !== null">，得分 {{ lastScore.toFixed(0) }} 分</span>
+                  本套卷已提交（竞赛内仅可提交一次）<template v-if="lastScore !== null">，得分 {{ lastScore.toFixed(0) }} 分</template>
+                  <template v-else-if="contest?.status === 'ended'">，可在提交记录中查看成绩</template>
+                  <template v-else>，成绩与解析将在比赛结束后开放</template>
                 </div>
                 <p v-else-if="submitError" class="text-sm text-error-text">{{ submitError }}</p>
 

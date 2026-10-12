@@ -139,7 +139,7 @@ export async function listUsers(
       .limit(opts.perPage)
       .offset(offset),
     db
-      .select({ count: sql<number>`count(*)` })
+      .select({ count: sql<number>`count(*)::int` })
       .from(users)
       .where(where),
   ]);

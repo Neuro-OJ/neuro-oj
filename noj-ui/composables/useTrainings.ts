@@ -25,6 +25,13 @@ export interface TrainingProblem {
   display_id: string;
   type: string;
   is_objective: boolean;
+  /**
+   * 是否被「尚未结束的公开赛」收编（VULN-07）。
+   *
+   * 后端题单题目列表同规则下发：只对特权用户（管理员 / 题目所有者）返回
+   * `is_contest_hidden: true`，普通用户看到的题单里这些题目整行消失。
+   */
+  is_contest_hidden?: boolean;
   accepted: boolean;
 }
 

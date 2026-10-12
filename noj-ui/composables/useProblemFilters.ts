@@ -12,6 +12,8 @@ export function useProblemFilters() {
   const page = computed(() => Number(route.query.page) || 1);
   const keyword = computed(() => (route.query.keyword as string) || '');
   const difficulty = computed(() => (route.query.difficulty as string) || '');
+  const judgeType = computed(() => (route.query.judge_type as string) || '');
+  const judgeBackend = computed(() => (route.query.judge_backend as string) || '');
   const tagId = computed(() => (route.query.tag as string) || '');
   /** 题目类型筛选。空字符串 = 未选择（API 默认返回 P 型）。 */
   const problemType = computed(() => (route.query.type as string) || '');
@@ -19,7 +21,9 @@ export function useProblemFilters() {
 
   const limit = 20;
 
-  const hasActiveFilters = computed(() => !!keyword.value || !!difficulty.value || !!tagId.value);
+  const hasActiveFilters = computed(() =>
+    !!keyword.value || !!difficulty.value || !!tagId.value || !!judgeType.value || !!judgeBackend.value
+  );
 
   /**
    * 更新单个筛选参数。
@@ -47,6 +51,8 @@ export function useProblemFilters() {
     params.limit = String(limit);
     if (keyword.value) params.keyword = keyword.value;
     if (difficulty.value) params.difficulty = difficulty.value;
+    if (judgeType.value) params.judge_type = judgeType.value;
+    if (judgeBackend.value) params.judge_backend = judgeBackend.value;
     if (tagId.value) params.tag = tagId.value;
     if (problemType.value) params.type = problemType.value;
     if (problemNumber.value) params.number = problemNumber.value;
@@ -58,6 +64,8 @@ export function useProblemFilters() {
     limit,
     keyword,
     difficulty,
+    judgeType,
+    judgeBackend,
     tagId,
     problemType,
     problemNumber,

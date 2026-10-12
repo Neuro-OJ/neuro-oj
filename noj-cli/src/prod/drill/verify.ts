@@ -387,6 +387,9 @@ class Verifier {
         username: `drill_${suffix}`.slice(0, 30),
         email: `drill-${suffix}@${DRILL_ADMIN_EMAIL_DOMAIN}`,
         password: DRILL_ADMIN_PASSWORD,
+        // PIPL 同意硬门槛（2026-09-25 评审）：不带该字段注册恒 400，探针会被永久
+        // 降级成 warning，且归因误导为"邮件提供方问题"。
+        accepted_legal: true,
       }),
     });
     if (res.status === 201) {
@@ -412,6 +415,9 @@ class Verifier {
         type: "application/zip",
       }),
     );
+    // 演练必须**显式发布**：否则题目只有草稿，后续"演练提交"会因缺少已发布版本
+    // 被服务端拒绝，演练结论会误报为平台故障（Handbook §6.8）。
+    form.append("publish", "true");
     const importRes = await this.api("POST", "/problems/import-bundle", {
       body: form,
     });
@@ -421,11 +427,16 @@ class Verifier {
         (payload as { data?: { problem?: { id?: string }; id?: string } })?.data
           ?.problem?.id ??
           (payload as { data?: { id?: string } })?.data?.id ?? null;
+      const published = (payload as {
+        data?: { published?: { version?: number } | null };
+      })?.data?.published;
       this.record(
         "problem_import",
         "passed",
         problemId
-          ? `演练题目导入成功：${problemId}`
+          ? `演练题目导入并发布成功：${problemId}${
+            published?.version ? `（V${published.version}）` : ""
+          }`
           : "演练题目导入成功（响应中未解析到题目 ID）",
       );
       return problemId;

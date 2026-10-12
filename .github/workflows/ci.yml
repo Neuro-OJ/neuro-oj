@@ -44,8 +44,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: denoland/setup-deno@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: 检查 CLI 与离线生产安装流程
@@ -54,7 +54,6 @@ jobs:
           deno task check
           deno task test
           deno task test:production
-
 
   # ===========================================================================
   # noj-cli 真实 E2E：备份产物的**真实工具链往返**（用户要求，CI 侧）。
@@ -101,8 +100,8 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: denoland/setup-deno@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       # 本 job 直接操作 `docker exec`（不经 compose），故需要容器名可达。
@@ -129,7 +128,6 @@ jobs:
           # 只跑真实 E2E 目录（单测由 production-cli job 覆盖，避免重复）
           deno test -A src/prod/e2e/
 
-
   # ===========================================================================
   # 生产镜像供应链配置检查：在 PR 阶段提前阻止 latest 和未固定 digest 回归。
   # ===========================================================================
@@ -140,8 +138,7 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 检查供应链约束
         run: bash scripts/release/test-supply-chain.sh
 
@@ -166,13 +163,13 @@ jobs:
       extension: ${{ steps.filter.outputs.extension }}
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # paths-filter 需要比较 base/head，push 事件需完整历史
           fetch-depth: 0
 
       - name: 按模块与 Domain 路径过滤
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
         id: filter
         with:
           filters: |
@@ -213,6 +210,8 @@ jobs:
               - 'noj-core/src/domains/search/**'
             core-query:
               - 'noj-core/src/domains/query/**'
+            core-legal:
+              - 'noj-core/src/domains/legal/**'
             core-gateway:
               - 'noj-core/src/domains/gateway/**'
             core-content-review:
@@ -275,13 +274,14 @@ jobs:
           CORE_GATEWAY: ${{ steps.filter.outputs.core-gateway }}
           CORE_CONTENT_REVIEW: ${{ steps.filter.outputs.core-content-review }}
           CORE_OBSERVABILITY: ${{ steps.filter.outputs.core-observability }}
+          CORE_LEGAL: ${{ steps.filter.outputs.core-legal }}
           CORE_SHARED: ${{ steps.filter.outputs.core-shared }}
         run: |
           python3 - <<'PY'
           import json, os
           def flag(name):
               return os.environ.get(name, '') == 'true'
-          all_core = ["identity","catalog","submission","contest","system","community","messaging","objective","admin","search","query","gateway","content-review","observability"]
+          all_core = ["identity","catalog","submission","contest","system","community","messaging","objective","admin","search","query","gateway","content-review","observability","legal"]
           core_domains = []
           if flag('CORE_SHARED'):
               core_domains = all_core[:]
@@ -307,10 +307,9 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: npm
@@ -346,15 +345,14 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
 
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-quick-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -407,10 +405,9 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
 
@@ -430,15 +427,14 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
 
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             noj-llm-gateway/.deno_cache
@@ -474,12 +470,14 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
+
+      - name: 验证 WASM 统一标准
+        run: deno run -A scripts/verify-wasm-standard.ts
 
       - name: 仓库级门禁
         run: deno run -A scripts/check-ci.ts
@@ -494,10 +492,9 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
 
@@ -514,10 +511,9 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
 
@@ -528,7 +524,7 @@ jobs:
         run: deno run -A scripts/silent-skip-report.ts
       - name: 上传测试治理报告
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: test-governance-reports
           path: |
@@ -579,9 +575,9 @@ jobs:
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: Inject or validate JWT_SECRET
@@ -603,7 +599,7 @@ jobs:
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -616,7 +612,7 @@ jobs:
         run: bash scripts/test-domain.sh identity
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-identity-logs
           path: |
@@ -662,9 +658,9 @@ jobs:
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: Inject or validate JWT_SECRET
@@ -682,7 +678,7 @@ jobs:
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -695,7 +691,7 @@ jobs:
         run: bash scripts/test-domain.sh catalog
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-catalog-logs
           path: |
@@ -741,9 +737,9 @@ jobs:
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: Inject or validate JWT_SECRET
@@ -761,7 +757,7 @@ jobs:
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -774,7 +770,7 @@ jobs:
         run: bash scripts/test-domain.sh submission
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-submission-logs
           path: |
@@ -820,9 +816,9 @@ jobs:
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: Inject or validate JWT_SECRET
@@ -840,7 +836,7 @@ jobs:
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -853,7 +849,7 @@ jobs:
         run: bash scripts/test-domain.sh contest
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-contest-logs
           path: |
@@ -899,9 +895,9 @@ jobs:
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: Inject or validate JWT_SECRET
@@ -919,7 +915,7 @@ jobs:
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -932,7 +928,7 @@ jobs:
         run: bash scripts/test-domain.sh system
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-system-logs
           path: |
@@ -978,9 +974,9 @@ jobs:
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: Inject or validate JWT_SECRET
@@ -998,7 +994,7 @@ jobs:
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -1011,7 +1007,7 @@ jobs:
         run: bash scripts/test-domain.sh community
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-community-logs
           path: |
@@ -1057,9 +1053,9 @@ jobs:
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: Inject or validate JWT_SECRET
@@ -1077,7 +1073,7 @@ jobs:
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -1090,7 +1086,7 @@ jobs:
         run: bash scripts/test-domain.sh messaging
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-messaging-logs
           path: |
@@ -1136,9 +1132,9 @@ jobs:
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: Inject or validate JWT_SECRET
@@ -1156,7 +1152,7 @@ jobs:
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -1169,7 +1165,7 @@ jobs:
         run: bash scripts/test-domain.sh objective
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-objective-logs
           path: |
@@ -1215,9 +1211,9 @@ jobs:
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: Inject or validate JWT_SECRET
@@ -1235,7 +1231,7 @@ jobs:
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -1248,7 +1244,7 @@ jobs:
         run: bash scripts/test-domain.sh admin
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-admin-logs
           path: |
@@ -1294,9 +1290,9 @@ jobs:
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: Inject or validate JWT_SECRET
@@ -1314,7 +1310,7 @@ jobs:
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -1327,7 +1323,7 @@ jobs:
         run: bash scripts/test-domain.sh search
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-search-logs
           path: |
@@ -1373,9 +1369,9 @@ jobs:
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: Inject or validate JWT_SECRET
@@ -1393,7 +1389,7 @@ jobs:
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -1406,9 +1402,88 @@ jobs:
         run: bash scripts/test-domain.sh query
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-query-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
+  core-legal:
+    name: Core legal
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.core-domains), 'legal') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      NOJ_ENV: test
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: 安装 Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version-file: .dvmrc
+      - name: Inject or validate JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          fi
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+      - name: 运行 Domain 测试
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: bash scripts/test-domain.sh legal
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-legal-logs
           path: |
             noj-core/test-logs/
             noj-core/test-output.log
@@ -1452,9 +1527,9 @@ jobs:
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: Inject or validate JWT_SECRET
@@ -1472,7 +1547,7 @@ jobs:
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -1485,7 +1560,7 @@ jobs:
         run: bash scripts/test-domain.sh gateway
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-gateway-logs
           path: |
@@ -1531,9 +1606,9 @@ jobs:
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: Inject or validate JWT_SECRET
@@ -1551,7 +1626,7 @@ jobs:
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -1564,7 +1639,7 @@ jobs:
         run: bash scripts/test-domain.sh content-review
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-content-review-logs
           path: |
@@ -1610,9 +1685,9 @@ jobs:
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: Inject or validate JWT_SECRET
@@ -1630,7 +1705,7 @@ jobs:
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -1643,7 +1718,7 @@ jobs:
         run: bash scripts/test-domain.sh observability
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-observability-logs
           path: |
@@ -1689,9 +1764,9 @@ jobs:
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: Inject or validate JWT_SECRET
@@ -1709,7 +1784,7 @@ jobs:
             echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           fi
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -1737,7 +1812,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-shared-logs
           path: |
@@ -1799,15 +1874,14 @@ jobs:
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
 
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-sharded-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -1823,7 +1897,7 @@ jobs:
 
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: core-test-sharded-logs
           path: |
@@ -1882,15 +1956,14 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
 
       - name: 缓存 Deno 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/noj-core/.deno_cache
           key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
@@ -1918,15 +1991,14 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
 
       - name: 缓存 node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           # cache key 同时 hash package.json 和 deno.lock（修复 finding P8）。
           # 原单 hashFiles('package.json') 在 lockfile 隐式更新时不刷缓存，
@@ -1963,7 +2035,7 @@ jobs:
       # 失败时上传 Nuxt 构建日志与 .output（修复 finding M7）
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ui-check-logs
           path: |
@@ -1981,12 +2053,12 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: denoland/setup-deno@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
       - name: 缓存 node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: noj-ui/node_modules
           key: npm-${{ hashFiles('noj-ui/package.json', 'noj-ui/deno.lock') }}
@@ -2044,27 +2116,28 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 安装 Rust 工具链
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
+          # 固定 SHA 后不再能从 ref 名推断工具链，显式声明（审计 S1）
+          toolchain: stable
           components: rustfmt, clippy
 
       - name: 启用 sccache（Rust 编译缓存）
-        uses: mozilla/sccache-action@v0.0.11
+        uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
         # 同上：必须显式设置 RUSTC_WRAPPER / SCCACHE_GHA_ENABLED 才会生效。
         env:
           RUSTC_WRAPPER: sccache
           SCCACHE_GHA_ENABLED: "true"
 
       - name: 安装 cargo-nextest（并行测试运行器）
-        uses: taiki-e/install-action@v2.87.0
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
           tool: cargo-nextest
 
       - name: 缓存 Cargo 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -2089,13 +2162,51 @@ jobs:
         # 本项目无 doctest（src 无 /// ``` 示例），覆盖等价。
         run: cargo nextest run --all-targets
 
-      # 失败时上传 cargo 编译缓存（修复 finding M7）
+      - name: 缓存固定 WASI 构建来源
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/noj-wasi-cache
+          key: noj-wasi-v2-${{ hashFiles('noj-judge/toolchain/recipe.json', 'noj-judge/toolchain/archive-encodings.json', 'noj-judge/toolchain/patches/*.patch', 'noj-judge/scripts/build-oi-wasi-toolchain.*') }}
+
+      - name: 校验固定来源下载保护
+        working-directory: noj-judge
+        run: python3 -m unittest discover -s scripts -p test_build_oi_wasi_toolchain.py
+
+      - name: 构建并验证固定 NOJ WASI SDK
+        working-directory: noj-judge
+        run: >-
+          bash scripts/build-oi-wasi-toolchain.sh
+          "${RUNNER_TEMP}/noj-wasi-cache"
+          "${RUNNER_TEMP}/noj-wasi-build-a"
+          "${RUNNER_TEMP}/noj-wasi-sdk-a"
+
+      - name: 不同目录构建产物一致性
+        working-directory: noj-judge
+        run: >-
+          bash scripts/build-oi-wasi-toolchain.sh
+          "${RUNNER_TEMP}/noj-wasi-cache"
+          "${RUNNER_TEMP}/noj-wasi-build-b"
+          "${RUNNER_TEMP}/noj-wasi-sdk-b"
+
+      - name: 真实 WASI C/C++ 评测验收
+        working-directory: noj-judge
+        shell: bash
+        run: >-
+          bash scripts/check-oi-wasi-toolchain.sh "${RUNNER_TEMP}/noj-wasi-sdk-a"
+          2>&1 | tee "${RUNNER_TEMP}/noj-wasi-toolchain-check.log"
+
+      - name: 生产 WASI runtime 镜像验收
+        working-directory: noj-judge
+        shell: bash
+        run: bash scripts/check-oi-wasi-image.sh 2>&1 | tee "${RUNNER_TEMP}/noj-wasi-image-check.log"
+
+      # 仅上传诊断日志，避免整个 target 的数 GiB 编译缓存阻塞失败反馈与取消。
       - name: 上传失败日志
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: judge-check-logs
-          path: noj-judge/target/
+          path: ${{ runner.temp }}/noj-wasi-*-check.log
           retention-days: 7
           if-no-files-found: ignore
         continue-on-error: true

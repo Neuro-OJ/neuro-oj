@@ -2,6 +2,7 @@
  * noj-llm-gateway Hono 应用工厂。
  */
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import type { GatewayConfig } from "./config.ts";
 import { requestIdMiddleware } from "./context.ts";
 import { createDb } from "./db.ts";
@@ -9,6 +10,7 @@ import { createRedis } from "./redis.ts";
 import { createLlmRouter } from "./routes/llm.ts";
 import { createInternalRouter } from "./routes/internal.ts";
 import { renderMetrics } from "./metrics.ts";
+import { startUsageRetention } from "./usage.ts";
 
 /** 创建 Hono 应用；DB/Redis 可用时挂载代理与内部管理路由。 */
 export function createApp(config: GatewayConfig) {
@@ -16,6 +18,15 @@ export function createApp(config: GatewayConfig) {
 
   // 请求上下文最先挂载：使后续所有路由/服务的日志自动带上同一 request_id。
   app.use("*", requestIdMiddleware());
+
+  // 入站请求体限制在 10MB 以内，超出直接 413，防止超大包 DoS（GW-01 / GW-03）。
+  app.use(
+    "*",
+    bodyLimit({
+      maxSize: 10 * 1024 * 1024,
+      onError: (c) => c.json({ error: "payload_too_large" }, 413),
+    }),
+  );
 
   const db = config.databaseUrl ? createDb(config.databaseUrl) : null;
   const redis = config.redisUrl ? createRedis(config.redisUrl) : null;
@@ -61,6 +72,8 @@ export function createApp(config: GatewayConfig) {
   if (db && redis) {
     app.route("/", createLlmRouter({ config, db, redis }));
     app.route("/", createInternalRouter({ config, db }));
+    // llm_usage 保留期清理（G-04）：多副本经 Redis 锁互斥，仅一个副本执行
+    startUsageRetention(db, redis, config.usageRetentionDays);
   }
 
   app.notFound((c) => c.json({ error: "not_found" }, 404));

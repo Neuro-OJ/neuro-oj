@@ -73,20 +73,32 @@ export interface SubmitObjectiveInput {
   answers: Record<string, ObjectiveAnswerValue[]>;
   /** 竞赛提交时携带；练习模式省略 */
   contest_id?: string;
+  /**
+   * 提交时版本（Handbook §4.2）。竞赛提交携带时必须等于固定版本；
+   * 题库提交缺省时按有效策略解析默认作答版本（`any` → 最新版 / `exact` → 要求版本）。
+   */
+  version_id?: string;
 }
 
 /** 单题判定结果。 */
 export interface QuestionJudgement {
-  correct: boolean;
+  /**
+   * 该题是否判定正确。
+   *
+   * **竞赛未结束前为 `undefined`**（审计 VULN-03）：赛期返回逐题对错会让参赛者
+   * 逐题试探、并联合作弊团伙把小号提交当"答案预言机"逐个排除错误选项，
+   * 迅速拼凑满分答案。故赛期一律屏蔽，赛后统一结算才下发。
+   */
+  correct?: boolean;
   /** 期望答案（判卷后展示；竞赛模式响应不包含，防泄题） */
   expected?: ObjectiveAnswerValue[];
-  /** 用户给定答案 */
+  /** 用户给定答案（非敏感：参赛者自己的作答） */
   given: ObjectiveAnswerValue[];
   /** 答案解析（练习模式响应/详情包含；竞赛模式不展示） */
   explanation?: string;
 }
 
-/** 提交判定结果响应。 */
+/** 练习模式提交判定结果（含逐题对错与解析）。 */
 export interface SubmitObjectiveResult {
   submission_id: string;
   paper_id: string;
@@ -97,9 +109,41 @@ export interface SubmitObjectiveResult {
   total_count: number;
   /** 逐题判定（练习模式含 explanation） */
   details: Record<string, QuestionJudgement>;
-  /** 竞赛模式为 true 时不展示解析 */
-  contest_mode: boolean;
+  /** 恒为 false（竞赛模式走 {@link SubmitObjectiveContestReceipt}） */
+  contest_mode: false;
 }
+
+/**
+ * 竞赛模式提交回执（审计 VULN-03）。
+ *
+ * 赛期**只回执"已提交"事实**，不返回分数、不返回逐题对错：
+ * ```json
+ * { "submission_id": "...", "status": "finished", "contest_mode": true }
+ * ```
+ * 竞赛结束后，参赛者可通过提交详情/历史接口看到完整分数与逐题判定
+ * （赛后复盘与申诉不受影响）。
+ */
+export interface SubmitObjectiveContestReceipt {
+  submission_id: string;
+  paper_id: string;
+  status: "finished";
+  contest_mode: true;
+  /** 赛期恒为 null；赛后由详情接口给出 */
+  score: null;
+  /** 赛期恒为 null；赛后由详情接口给出 */
+  score_db: null;
+  /** 赛期恒为 null；赛后由详情接口给出 */
+  correct_count: null;
+  /** 题量不敏感（套卷题面本就对参赛者可见），保留以便前端展示进度 */
+  total_count: number;
+  /** 赛期恒为空对象（不返回任何题目判定） */
+  details: Record<string, QuestionJudgement>;
+}
+
+/** 客观题提交响应联合类型：练习模式给完整判定，竞赛模式只给回执。 */
+export type SubmitObjectiveResponse =
+  | SubmitObjectiveResult
+  | SubmitObjectiveContestReceipt;
 
 /** 提交记录响应。 */
 export interface ObjectiveSubmissionResponse {
@@ -110,9 +154,95 @@ export interface ObjectiveSubmissionResponse {
   submission_type: "practice" | "contest";
   answers: Record<string, ObjectiveAnswerValue[]>;
   status: string;
-  score: number;
+  /**
+   * ×100 整数分。**竞赛未结束前为 null**（审计 VULN-03：赛期不得即时返回精确分数，
+   * 否则"提交一次看分数变化"即可二分探测答案）。赛后结算恢复为数值。
+   */
+  score: number | null;
   details: Record<string, QuestionJudgement>;
   created_at: string;
+
+  // ── 版本与有效性投影（tracking #53；命名与普通提交侧完全一致）────────────
+  /** 提交时版本 ID；`legacy_unknown` 的历史提交为 null。 */
+  submitted_version_id: string | null;
+  /** 提交时版本号（展示用）；未知历史版本为 null。 */
+  submitted_version: number | null;
+  /** 版本来源：`known`（提交时明确版本）/ `legacy_unknown`（迁移前未知）。 */
+  version_origin: "known" | "legacy_unknown";
+  /** 提交时版本是否仍是该套卷最新已发布版本。 */
+  is_latest: boolean;
+  /** 当前口径是否存在有效判定（投影结果，前端不得自行推断）。 */
+  is_valid: boolean;
+  /**
+   * 当前口径是否通过（客观题通过标准 = 满分）。
+   *
+   * **竞赛未结束前为 null**：与 `score` 同一防泄题口径——即时返回通过与否等于给
+   * 出"这套答案对不对"的预言机（审计 VULN-03）。
+   */
+  is_accepted: boolean | null;
+  /** 在途执行指针；无在途任务为 null。 */
+  active_attempt_id: string | null;
+  /** 最近一次终态执行指针。 */
+  latest_attempt_id: string | null;
+  /** 当前有效成绩指针（最高分候选）；无有效判定为 null。 */
+  effective_attempt_id: string | null;
+  /** 当前通过成绩指针（竞赛未结束时为 null，防泄题）。 */
+  accepted_attempt_id: string | null;
+  /** 由升级任务派生时指向来源提交（同题旧版）；否则为 null。 */
+  upgraded_from_id: string | null;
+  /**
+   * 全部执行历史（含 superseded 重测与平台错误），按 sequence 升序。
+   *
+   * 只含非敏感字段（无 output/details）；竞赛未结束时 `is_accepted` / `is_effective`
+   * 一律为 false，避免用相对分数探测答案。
+   */
+  attempts: ObjectiveAttemptView[];
+  /** 最近一次执行摘要（`latest_attempt_id` 所指）；无执行为 null。 */
+  latest_attempt: ObjectiveAttemptSummary | null;
+  /** 当前有效成绩摘要（`effective_attempt_id` 所指）；无有效判定为 null。 */
+  effective_attempt: ObjectiveAttemptSummary | null;
+}
+
+/**
+ * 客观题逐次执行历史条目（字段与普通提交侧 `SubmissionAttemptView` 同源，
+ * 便于前端零改动切换）。
+ */
+export interface ObjectiveAttemptView {
+  attempt_id: string;
+  sequence: number;
+  problem_version_id: string | null;
+  /** 版本号（展示用）；未知历史版本为 null。 */
+  version: number | null;
+  source: "initial" | "rejudge" | "upgrade" | "legacy_import";
+  state: "queued" | "judging" | "finished" | "error" | "superseded";
+  result_kind: "graded" | "platform_error" | null;
+  /** 展示用结果状态（finished / error / pending / judging）。 */
+  status: string;
+  /** ×100 整数；未终结为 0。 */
+  score: number;
+  time_ms: number | null;
+  memory_kb: number | null;
+  is_effective: boolean;
+  is_accepted: boolean;
+  is_latest: boolean;
+  created_at: string;
+  finished_at: string | null;
+}
+
+/** 最近执行 / 当前有效成绩的定位摘要（字段与 {@link ObjectiveAttemptView} 同源）。 */
+export interface ObjectiveAttemptSummary {
+  attempt_id: string;
+  sequence: number;
+  problem_version_id: string | null;
+  version: number | null;
+  state: ObjectiveAttemptView["state"];
+  result_kind: "graded" | "platform_error" | null;
+  status: string;
+  score: number;
+  time_ms: number | null;
+  memory_kb: number | null;
+  created_at: string;
+  finished_at: string | null;
 }
 
 /** 历史查询结果。 */

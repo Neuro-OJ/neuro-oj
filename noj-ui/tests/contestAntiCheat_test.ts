@@ -1,45 +1,14 @@
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
-import { assertEquals, assertStringIncludes } from 'jsr:@std/assert@^1';
+import { assertEquals } from 'jsr:@std/assert@^1';
 import {
   describeCoverage,
   isTruncated,
   type SimilarSubmissionPair,
   type SimilarSubmissionsMeta,
 } from '../utils/contestAntiCheat.ts';
-type ContestAntiCheatGroup = {
-  ip: string;
-  account_count: number;
-  submission_count: number;
-  first_submission_at: string;
-  last_submission_at: string;
-  accounts: Array<{
-    user_id: string;
-    username: string;
-    submission_count: number;
-    first_submission_at: string;
-    last_submission_at: string;
-  }>;
-};
-
-Deno.test('竞赛风控 DTO 仅包含人工复核所需的最小字段', () => {
-  const group: ContestAntiCheatGroup = {
-    ip: '203.0.113.10',
-    account_count: 2,
-    submission_count: 3,
-    first_submission_at: '2026-01-01T00:00:00.000Z',
-    last_submission_at: '2026-01-01T00:03:00.000Z',
-    accounts: [{
-      user_id: 'u1',
-      username: 'alice',
-      submission_count: 2,
-      first_submission_at: '2026-01-01T00:00:00.000Z',
-      last_submission_at: '2026-01-01T00:02:00.000Z',
-    }],
-  };
-  assertEquals(group.account_count, 2);
-  assertStringIncludes(group.ip, '203.0.113.');
-  assertEquals('email' in group.accounts[0]!, false);
-});
+// 注：原「竞赛风控 DTO 仅包含最小字段（同 IP 多账号组）」用例随 IP 反作弊功能
+// 一并删除（VULN-06：机房 NAT 多 IP 共用导致误伤过高，已全面下线）。
+// 相似度查重（下述用例）保留。
 
 Deno.test('相似提交 DTO 不含源代码，且携带人工复核所需的证据强度字段', () => {
   // 断言的是实现里导出的**真实类型**，而非测试内自建的镜像副本——

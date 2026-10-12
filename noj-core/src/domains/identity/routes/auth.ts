@@ -1,6 +1,7 @@
 import { type Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { eq } from "drizzle-orm";
+import { getLogger } from "@logtape/logtape";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { users } from "./../../../shared/db/schema.ts";
 import {
@@ -49,10 +50,16 @@ import {
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { getUserPermissions } from "./../services/security/permissions.ts";
 import { signToken, verifyToken } from "./../services/security/jwt.ts";
-import { revokeJti } from "./../services/security/revokedTokens.ts";
+import { getLegalStatus } from "./../../legal/index.ts";
+import {
+  revocationTtl,
+  revokeJti,
+} from "./../services/security/revokedTokens.ts";
 import { getEmailConfigStatus, getSetting } from "../../system/index.ts";
 import { getClientIp } from "../../system/index.ts";
 import { getBannedIpDetail } from "../services/banlist.ts";
+
+const logger = getLogger(["noj", "identity", "auth"]);
 import {
   applyLoginBackoff,
   clearLoginFailure,
@@ -149,6 +156,11 @@ auth.post("/register", async (c) => {
     throw new ValidationError(`密码长度不能少于 ${MIN_PASSWORD_LENGTH} 位`);
   }
 
+  // PIPL 合规硬门槛：必须明确同意服务条款与隐私政策。
+  if (body.accepted_legal !== true) {
+    throw new ValidationError("必须同意服务条款与隐私政策后才能注册");
+  }
+
   // 注：此前这里有一个 register_email_verify 开关，开启即 fail-closed 拒绝全部注册。
   // 该开关的「实现未完成」前提早已过期——验证链路现已完整（下方 sendEmailVerification
   // 发送一次性令牌、/auth/email/verify 与 /auth/email/resend 消费与重发、
@@ -156,7 +168,11 @@ auth.post("/register", async (c) => {
   // 它唯一的效果是把站点注册彻底关死，与名字表达的语义相反。
   // 已按 issue #498 删除该开关。
   const clientIp = getClientIp(c);
-  const user = await registerUser(body, clientIp);
+  const user = await registerUser(
+    body,
+    clientIp,
+    c.req.header("user-agent") ?? null,
+  );
   const emailVerification = await sendEmailVerification(
     user.id,
     new URL(c.req.url).origin,
@@ -302,7 +318,8 @@ async function tfaAction<T>(
  * 用户登录端点。
  * POST /api/v1/auth/login
  *
- * 需登录名与密码；执行账号维度限流（限流 + 退避 + 锁定），成功后返回
+ * 需登录名与密码；可选 `remember: true` 签发长有效期 token（「记住我」）。
+ * 执行账号维度限流（限流 + 退避 + 锁定），成功后返回
  * `{ data: { user, token } }`，失败记录认证失败计数。
  */
 auth.post("/login", loginIpRateLimit(), async (c) => {
@@ -396,10 +413,14 @@ auth.get("/oauth/providers", (c) => {
 /** 发起登录或绑定授权。绑定由 POST /oauth/:provider/link 创建 state。 */
 auth.get("/oauth/:provider", async (c) => {
   const requestUrl = c.req.url;
+  // PIPL：新建 OAuth 账号需已明确同意条款；登录页可省略（仅影响建号）。
+  const acceptedLegal = c.req.query("accepted_legal") === "true";
   const result = await createOAuthAuthorization(
     c.req.param("provider") as string,
     "login",
     requestUrl,
+    undefined,
+    acceptedLegal,
   );
   setCookie(c, oauthStateCookieName(), result.cookieValue, {
     ...oauthCookieOptions(),
@@ -439,6 +460,7 @@ auth.get("/oauth/:provider/callback", async (c) => {
       identity,
       state.intent,
       state.userId,
+      state.acceptedLegal,
     );
     setOAuthSession(c, result.user, result.token);
     return c.redirect(
@@ -455,13 +477,29 @@ auth.get("/oauth/:provider/callback", async (c) => {
     );
   } catch (error) {
     deleteCookie(c, oauthStateCookieName(), { path: "/" });
-    const code =
-      error instanceof BadRequestError && error.code.startsWith("OAUTH_STATE")
-        ? "state_invalid"
-        : "provider_error";
+    // 2026-09-25 评审：PIPL 同意门槛此前被折叠成 provider_error，登录页只显示
+    // "第三方登录失败，请稍后重试"，新用户从登录页走 OAuth 建号时无从自救。
+    // 这里保留语义化错误码，前端据此给出"去注册页同意条款"的可行动指引。
+    const code = oauthErrorCode(error);
+    logger.warn("OAuth 回调失败: provider={provider} code={code} err={err}", {
+      provider,
+      code,
+      err: error instanceof Error ? error.message : String(error),
+    });
     return c.redirect(oauthFrontendRedirect(requestUrl, code), 302);
   }
 });
+
+/** 把回调异常映射为前端可读的 `oauth_error` 码（保留语义，不吞同意门槛）。 */
+function oauthErrorCode(error: unknown): string {
+  if (error instanceof BadRequestError) {
+    if (error.code === "LEGAL_CONSENT_REQUIRED") {
+      return "legal_consent_required";
+    }
+    if (error.code.startsWith("OAUTH_STATE")) return "state_invalid";
+  }
+  return "provider_error";
+}
 
 /**
  * 发起绑定第三方账号授权。
@@ -535,7 +573,11 @@ auth.get("/me", authMiddleware, async (c) => {
   const userId = c.get("userId") as string;
   const user = await getUserProfile(userId);
   const permissions = await getUserPermissions(userId);
-  return c.json({ data: { ...user, permissions: [...permissions] } }, 200);
+  const legal = await getLegalStatus(userId);
+  return c.json(
+    { data: { ...user, permissions: [...permissions], legal } },
+    200,
+  );
 });
 
 /**
@@ -590,20 +632,22 @@ auth.post(
       );
       await clearLoginFailure(userId, PWCHANGE_NAMESPACE);
 
-      // 撤销旧 jti（issue #75 JWT 撤销机制）：jose 验证后拿不到原 exp，
-      // 直接用 24h 上限（jwt_expires_in 默认值）作为保守 TTL
+      // 撤销旧 jti（issue #75 JWT 撤销机制）：TTL 取旧 token 剩余有效期，
+      // 「记住我」token 可能长达 30d，固定 24h 会让撤销条目先于 token 过期
       const oldJti = c.get("jti");
+      const oldExp = c.get("tokenExp") as number | undefined;
       if (oldJti) {
-        await revokeJti(oldJti, SECONDS_PER_DAY);
+        await revokeJti(oldJti, revocationTtl(oldExp));
       }
 
-      // 签发新 token（must_change_password 必为 false，changePassword 已 UPDATE）
+      // 签发新 token（must_change_password 必为 false，changePassword 已 UPDATE）；
+      // 沿用旧 token 的过期时间，保持「记住我」会话时长不变
       const newToken = await signToken({
         sub: user.id,
         role: "user",
         must_change_password: false,
         session_version: sessionVersion,
-      });
+      }, oldExp && oldExp > Date.now() / 1000 ? { expiresAt: oldExp } : {});
 
       return c.json({ data: { user, token: newToken } }, 200);
     } catch (err) {
@@ -693,9 +737,11 @@ auth.post(
 auth.post("/logout", authMiddleware, async (c) => {
   const jti = c.get("jti");
   if (jti) {
-    // TTL 取保守 24h（与 jwt_expires_in 默认一致）；
-    // 精确的剩余 TTL 需要重新解析 token exp，复杂度高于收益。
-    await revokeJti(jti, SECONDS_PER_DAY);
+    // TTL 取 token 剩余有效期（「记住我」token 可能长达 30d）
+    await revokeJti(
+      jti,
+      revocationTtl(c.get("tokenExp") as number | undefined),
+    );
   }
   return c.json({ data: { ok: true } }, 200);
 });

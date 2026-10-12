@@ -5,6 +5,11 @@ export interface RegisterInput {
   username: string;
   email: string;
   password: string;
+  /**
+   * 是否已同意服务条款与隐私政策（PIPL 合规硬门槛）。
+   * 非 true 时注册端点返回 400。
+   */
+  accepted_legal?: boolean;
 }
 
 /**
@@ -16,6 +21,8 @@ export interface LoginInput {
   password: string;
   /** TFA 验证码或恢复码；用户已启用 TFA 时必填 */
   code?: string;
+  /** 「记住我」：为 true 时签发长有效期 token（jwt_remember_expires_in） */
+  remember?: boolean;
 }
 
 /**

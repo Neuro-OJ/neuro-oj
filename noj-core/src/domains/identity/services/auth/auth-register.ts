@@ -9,6 +9,7 @@ import {
 } from "./../../../../shared/db/schema.ts";
 import { hashPassword } from "./../security/password.ts";
 import { getEmailConfigStatus, logAuthEvent } from "../../../system/index.ts";
+import { recordConsentsForRegistration } from "../../../legal/index.ts";
 import {
   BadRequestError,
   ConflictError,
@@ -135,6 +136,7 @@ function conflictFromUniqueViolation(err: unknown): ConflictError | null {
 export async function registerUser(
   input: RegisterInput,
   clientIp?: string,
+  userAgent?: string | null,
 ): Promise<UserResponse> {
   // 密码强度校验（issue 64 评论 §6.5）
   validatePasswordStrength(input.password, input.username, input.email);
@@ -210,6 +212,14 @@ export async function registerUser(
       user_id: id,
       role_id: role.id,
     }).onConflictDoNothing();
+
+    // PIPL：同一事务内写入 privacy + terms 的当前版本同意记录（原子，避免半写入）。
+    await recordConsentsForRegistration(
+      tx,
+      id,
+      clientIp ?? null,
+      userAgent ?? null,
+    );
   }).catch((err) => {
     const conflict = conflictFromUniqueViolation(err);
     if (conflict) throw conflict;

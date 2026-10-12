@@ -69,7 +69,7 @@ watch(
     <NuxtLink
       v-else
       :to="`/submissions/${latest.public_id || latest.id}`"
-      class="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 no-underline transition-colors hover:border-signal/40"
+      class="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 no-underline transition-colors hover:border-primary/40"
     >
       <span class="flex flex-col gap-0.5">
         <span

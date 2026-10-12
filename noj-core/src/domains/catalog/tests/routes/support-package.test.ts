@@ -147,12 +147,12 @@ Deno.test({
       })
       .where(eq(problems.id, pid));
 
-    // 再删除
+    // 再删除（文件引用修改必须携带编辑基线 revision：缺失 428）
     const res = await app.request(
       `/api/v1/problems/${problemIdRef[0]}/support-package`,
       {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, "If-Match": "0" },
       },
     );
     assertEquals(res.status, 200);
@@ -176,7 +176,7 @@ Deno.test({
       `/api/v1/problems/${problemIdRef[0]}/support-package`,
       {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, "If-Match": "0" },
       },
     );
     assertEquals(res.status, 200);

@@ -69,9 +69,11 @@ const canReact = computed(
 const canBookmark = computed(
   () => isLoggedIn.value && config.value?.bookmarks_enabled === true,
 )
+// 赛时社区全局静默：服务端强制拒绝写入，此处预先禁用入口避免用户写完才被拒
+const contestSilenced = computed(() => config.value?.contest_silence === true)
 const canComment = computed(
   () => isLoggedIn.value && config.value?.comments_enabled === true &&
-    config.value.permissions.comment === true,
+    config.value.permissions.comment === true && !contestSilenced.value,
 )
 const canModerate = computed(() => config.value?.permissions.moderate === true)
 const canReport = computed(
@@ -79,7 +81,8 @@ const canReport = computed(
     !userBanned.value,
 )
 const isAuthor = computed(() => post.value?.post.author_id === currentUserId.value)
-const canEditPost = computed(() => isAuthor.value || canModerate.value)
+const canDeletePost = computed(() => isAuthor.value || canModerate.value)
+const canEditPost = computed(() => canDeletePost.value && !contestSilenced.value)
 const commentMaxLength = computed(() => config.value?.comment_max_length ?? 1000)
 
 const rootComments = computed(() =>
@@ -88,8 +91,11 @@ const rootComments = computed(() =>
 function repliesOf(parentId: string): CommentRow[] {
   return comments.value.filter((c) => c.comment.parent_id === parentId)
 }
-function canEditComment(row: CommentRow): boolean {
+function canDeleteComment(row: CommentRow): boolean {
   return row.author.id === currentUserId.value || canModerate.value
+}
+function canEditComment(row: CommentRow): boolean {
+  return canDeleteComment(row) && !contestSilenced.value
 }
 function canReportComment(row: CommentRow): boolean {
   return canReport.value && row.author.id !== currentUserId.value
@@ -238,7 +244,8 @@ async function reportComment(commentId: string) {
 const { data: initialData } = await useAsyncData(
   'community-post-detail',
   async () => {
-    await loadConfig()
+    // 强制刷新：赛时静默随竞赛起止实时变化，不能沿用会话内缓存
+    await loadConfig(true)
     const [postResult, commentResult] = await Promise.all([
       api.get<{ data: PostDetail }>(`/api/v1/community/posts/${postId.value}`),
       api.get<{ data: CommentRow[] }>(`/api/v1/community/posts/${postId.value}/comments`),
@@ -276,7 +283,7 @@ watch(initialData, (value) => {
             <p class="text-xs text-text-secondary"><NuxtTime :datetime="post.post.created_at" locale="zh-CN" year="numeric" month="short" day="numeric" hour="2-digit" minute="2-digit" /></p>
             <span v-if="isCommunityEdited(post.post.created_at, post.post.updated_at)" class="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-pencil" class="size-[10px]" />已编辑</span>
             <UButton color="primary" variant="outline" class="text-xs" v-if="canEditPost"  type="button" @click="startEditPost"><UIcon name="i-lucide-pencil" class="size-3.5" />编辑</UButton>
-            <UButton color="primary" variant="outline" class="text-xs text-red-600" v-if="canEditPost"  type="button" @click="deletePost"><UIcon name="i-lucide-trash-2" class="size-3.5" />删除</UButton>
+            <UButton color="primary" variant="outline" class="text-xs text-red-600" v-if="canDeletePost"  type="button" @click="deletePost"><UIcon name="i-lucide-trash-2" class="size-3.5" />删除</UButton>
             <UButton color="neutral" variant="outline" class="text-xs" v-if="canReport && !isAuthor" type="button" @click="reportPost"><UIcon name="i-lucide-flag" class="size-3.5" />举报</UButton>
           </div>
         </div>
@@ -321,6 +328,7 @@ watch(initialData, (value) => {
           <UButton color="primary" type="submit" :disabled="submittingComment || !comment.trim() || comment.length > commentMaxLength"><UIcon name="i-lucide-send" class="size-4" />{{ submittingComment ? '发送中…' : '发送' }}</UButton>
         </div>
       </form>
+      <p v-else-if="isLoggedIn && config?.comments_enabled && contestSilenced" class="mb-5 rounded-md bg-primary-bg px-3 py-2 text-sm text-primary-text">公开赛进行期间全站暂停评论与编辑，赛后恢复；参赛提问请使用赛中答疑。</p>
       <p v-else-if="isLoggedIn && config?.comments_enabled" class="mb-5 rounded-md bg-primary-bg px-3 py-2 text-sm text-primary-text">当前账号没有评论权限。</p>
 
       <div v-if="rootComments.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center text-text-secondary">还没有评论，来抢沙发吧。</div>
@@ -330,6 +338,7 @@ watch(initialData, (value) => {
             :row="item"
             :can-comment="canComment"
             :can-edit="canEditComment(item)"
+              :can-delete="canDeleteComment(item)"
             :can-report="canReportComment(item)"
             :comment-max-length="commentMaxLength"
             @start-reply="startReply(item.comment.id)"
@@ -349,6 +358,7 @@ watch(initialData, (value) => {
               :row="reply"
               :can-comment="false"
               :can-edit="canEditComment(reply)"
+              :can-delete="canDeleteComment(reply)"
               :can-report="canReportComment(reply)"
               :comment-max-length="commentMaxLength"
               @save-edit="(c) => saveEditComment(reply.comment.id, c)"

@@ -12,6 +12,7 @@ export interface RegisterFlowDeps {
     username: string,
     email: string,
     password: string,
+    acceptedLegal: boolean,
   ) => Promise<boolean>;
   login: (username: string, password: string) => Promise<unknown>;
 }
@@ -33,9 +34,10 @@ export async function submitRegistration(
   username: string,
   email: string,
   password: string,
+  acceptedLegal: boolean,
 ): Promise<RegisterFlowResult | null> {
   // 注册接口失败时错误向调用方传播，由页面统一提示
-  const sent = await deps.register(username, email, password);
+  const sent = await deps.register(username, email, password, acceptedLegal);
 
   try {
     await deps.login(username, password);

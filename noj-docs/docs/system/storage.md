@@ -1,67 +1,88 @@
-# 存储与评测包交付
+# 存储与评测包交付体系（Storage）
 
-对象类型、引用和只读生命周期盘点见[对象存储生命周期治理](./object-storage-governance.md)。
+Neuro OJ 创新地采用了**两层 URI
+解耦架构**，将静态资产的"持久化存储归属"与评测任务的"即时下载交付"彻底分离，实现了业务核心与评测机节点在单机直连与多云对象存储环境下的无缝伸缩。
 
-Neuro OJ 使用两层 URL 区分持久存储和评测交付。
+---
 
-## 存储层 URL
+## 两层 URI 架构与解耦哲学
 
-`noj-storage://` 表示资源在存储后端中的位置，会写入数据库。
+```mermaid
+flowchart TD
+    subgraph CoreLayer["noj-core 业务控制面"]
+        DB[("PostgreSQL 数据库<br/>存储 noj-storage://")]
+        StorageProvider["StorageProvider 抽象层<br/>(Local / AWS S3 / MinIO)"]
+    end
 
-本地模式示例：
+    subgraph JudgeLayer["noj-judge 评测执行面"]
+        TaskMQ["Redis 任务队列<br/>分发 noj-download://"]
+        Worker["评测机下载器<br/>校验 SHA-256 并解包"]
+    end
 
-```text
-noj-storage://local/<base64>?checksum_sha256=...
+    DB --> StorageProvider
+    StorageProvider -- "根据部署环境动态转换" --> TaskMQ
+    TaskMQ --> Worker
 ```
 
-S3 模式示例：
+### 1. 持久存储层 URI（`noj-storage://`）
 
-```text
-noj-storage://s3/<key>?checksum_sha256=...
+记录资产在存储后端的永久落盘位置与内容指纹，写入数据库
+`problems.support_package_storage_url` 表字段中。
+
+- **协议语法**：`noj-storage://<provider>/<key>?checksum_sha256=<hex>`
+- **存储模式**：
+  - **Local
+    本地盘**：`noj-storage://local/<base64url>?checksum_sha256=...`（采用基于内容指纹的内容寻址）；
+  - **S3 /
+    MinIO**：`noj-storage://s3/packages/<problem_id>.zip?checksum_sha256=...`（采用结构化受控路径前缀）。
+
+### 2. 评测分发交付 URI（`noj-download://`）
+
+由 `noj-core` 在将任务推入 Redis 队列时动态生成，告知评测机如何下载纯净支持包：
+
+- **`noj-download://s3`（生产推荐）**：携带服务端生成的限时对象存储**预签名
+  URL（Presigned URL）**，评测机直接走 HTTPS 高速流式拉取，不消耗 Redis 带宽；
+- **`noj-download://local`**：在单机极简开发模式下，核心与评测机共享宿主目录，直接通过本地绝对路径加载；
+- **`noj-download://base64`（仅兼容测试）**：将数据直接内联在任务中。
+
+::: warning 生产严禁使用 Base64 内联交付
+Redis 评测任务具备 **16 MiB 序列化硬上限**（由 `noj-core` 消息生产者强制校验）。若采用内联 base64，将挤占队列消息容量并导致 Redis 内存暴涨。生产环境必须采用 S3 预签名 URL 交付。
+:::
+
+---
+
+## 纯净评测包生命周期流转
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Setter as 出题人
+    participant Core as noj-core
+    participant S3 as MinIO / S3
+    participant DB as PostgreSQL
+    participant Judge as noj-judge
+
+    Setter->>Core: 上传包含题面与配置的原始题目包 zip
+    Core->>Core: 校验 ZIP 炸弹防御，提取题面与元数据
+    Core->>Core: 剥离 problem.json 与 statement.md，生成纯净评测包
+    Core->>S3: 将纯净包存入 packages/<problem_id>.zip
+    Core->>DB: 记录持久化 URL: noj-storage://s3/...
+    Note over Core,Judge: 发起评测阶段
+    Core->>S3: 生成有效期 15 分钟的 Presigned URL
+    Core->>Judge: 经 Redis 派发任务 (noj-download://s3?url=...)
+    Judge->>S3: 流式下载纯净包并校验 SHA-256
+    Judge->>Judge: 挂载解包至 Evaluator 容器 /workspace
 ```
 
-## 评测交付 URL
+### 1. 纯净评测包转换
 
-`noj-download://` 表示 Judge Worker 如何获取纯净评测包内容，会放入评测任务。
+原始题目包含有 `problem.json`（题目配置）与
+`statement.md`（题面描述）。在上传入库时，服务端自动剥离这些仅面向前端的元数据，仅保留
+`evaluate.py`、测试数据与评分依赖，压缩归一化为**纯净评测包**，杜绝给沙箱传输冗余文件。
 
-本地或内联交付示例：
+### 2. 容量上限与安全限额
 
-```text
-noj-download://base64/?content=<base64>&checksum_sha256=...
-```
-
-local 模式会把支持包 Base64 内联到评测任务，再通过 Redis 传给 Judge；评测任务有
-16 MiB 的序列化消息上限，因此支持包还要与用户代码、运行配置共同占用这部分额度，
-可用的支持包大小会小于 16 MiB。该模式仅适合开发/测试和小型样例题；大支持包或多实例
-部署应使用 S3/MinIO 交付，避免把二进制内容重复编码并复制到 Redis 消息中。
-
-S3 交付示例：
-
-```text
-noj-download://s3?url=<encoded-presigned-url>&checksum_sha256=...
-```
-
-生产环境必须使用独立的 S3 应用凭据。MinIO root 凭据仅供初始化和受限运维使用，不能注入 `noj-core`；生产配置和轮换步骤见[生产密钥轮换 Runbook](../operators/production-secrets.md)。
-
-## 为什么要分两层
-
-数据库只需要知道资源归属和校验和；Judge Worker 需要知道当前这次任务如何下载纯净评测包。把两者分开后，同一个数据库记录可以在 local、S3 或其他存储后端之间切换交付方式。
-
-## 评测包生命周期
-
-正式题目的默认生命周期：
-
-1. 出题人在 Web 界面创建或编辑题目。
-2. 出题人上传统一题目包 zip（含 `problem.json`/`evaluate.py`；旧式松散支持包上传已废弃）。
-3. noj-core 校验并剥离元数据，通过 StorageProvider 注册纯净评测包为 `noj-storage://` URL。
-4. noj-core 创建评测任务时把存储 URL 转换为 Judge Worker 可下载的 `noj-download://` URL。
-5. noj-judge 下载、校验并缓存纯净评测包，再注入 Evaluator 容器执行评测。
-
-内置样例题的开发生命周期：
-
-1. 维护者把样例题源文件放在 `noj-core/data/problems-src/<id>/`。
-2. 维护者运行 `deno task problems:build` 生成 `noj-core/data/packages/<id>.zip`。
-3. 维护者运行 `deno task problems:import`（或 `deno task dev-setup`）导入统一题目包，
-   由 noj-core 剥离元数据并把纯净评测包注册到 StorageProvider。
-
-样例题流程用于开发和测试，不是正式出题发布路径。
+- **支持包容量上限**：单道题目的支持包体积上限为 **128
+  MiB**（`MAX_SUPPORT_PACKAGE_SIZE`）；
+- **专用应用凭据**：生产环境中 `noj-core` **严禁使用 MinIO root
+  凭据**，必须使用经过最小特权隔离的专用应用 AccessKey / SecretKey。

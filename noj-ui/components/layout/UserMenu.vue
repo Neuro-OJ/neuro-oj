@@ -1,7 +1,7 @@
 <template>
     <template v-if="!isLoggedIn">
-        <UButton color="primary" variant="outline" class="px-3.5 py-1.5 text-sm !rounded-full" to="/login">登录</UButton>
-        <UButton color="primary" class="px-3.5 py-1.5 text-sm !rounded-full" to="/register">注册</UButton>
+        <UButton color="primary" variant="outline" class="px-3.5 py-1.5 text-sm rounded-md" to="/login">登录</UButton>
+        <UButton color="primary" class="px-3.5 py-1.5 text-sm rounded-md" to="/register">注册</UButton>
     </template>
     <div v-else class="relative">
         <div class="flex items-center gap-3">

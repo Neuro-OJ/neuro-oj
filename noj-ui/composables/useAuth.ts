@@ -12,6 +12,8 @@ interface UserResponse {
   tfa_enabled?: boolean;
   avatar_url?: string | null;
   permissions?: string[];
+  /** 法律文档同意状态（PIPL）；未发布政策时后端可能不返回 */
+  legal?: import('~/utils/legalConsent').LegalStatusMap;
   created_at: string;
   updated_at: string;
 }
@@ -106,11 +108,15 @@ export function useAuth() {
     loading.value = false;
   }
 
-  async function login(login: string, password: string, code?: string) {
+  /**
+   * 登录。remember=true 时后端签发长有效期 token（「记住我」），
+   * Nitro 代理按 token exp 同步延长 Cookie 有效期。
+   */
+  async function login(login: string, password: string, code?: string, remember = false) {
     // 5s 超时（评审修复 L2，与 fetchUser 一致），由 useApi timeout 选项实现
     const res = await api.post<{ data: { user: UserResponse } }>(
       '/api/v1/auth/login',
-      { login, password, ...(code ? { code } : {}) },
+      { login, password, ...(code ? { code } : {}), ...(remember ? { remember: true } : {}) },
       { silent: true, timeout: 5000 },
     );
     // token 已由 Nitro 代理设置为 HTTP-only cookie，客户端不接收 token 字段
@@ -119,13 +125,19 @@ export function useAuth() {
     return { user: userData };
   }
 
-  async function register(username: string, email: string, password: string) {
+  async function register(
+    username: string,
+    email: string,
+    password: string,
+    acceptedLegal = false,
+  ) {
     const res = await api.post<{ data: { email_verification_sent: boolean } }>(
       '/api/v1/auth/register',
       {
         username,
         email,
         password,
+        accepted_legal: acceptedLegal,
       },
       {
         silent: true,

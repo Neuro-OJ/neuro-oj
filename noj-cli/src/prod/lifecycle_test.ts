@@ -57,6 +57,9 @@ import { PRODUCTION_MARKERS } from "../profile.ts";
 const REPO = "https://github.com/Neuro-OJ/neuro-oj";
 const REF = "v0.9.5";
 const COMPOSE = "docker-compose.prod.yml";
+/** 模板的 Release 资产名（非点号开头）。 */
+const ENV_EXAMPLE_ASSET = "env.prod.example";
+/** 模板落盘后的文件名（安装目录内）。 */
 const ENV_EXAMPLE = ".env.prod.example";
 const ENV_FILE = ".env.prod";
 
@@ -90,7 +93,7 @@ const EXAMPLE_BODY = [
 
 const ASSETS: Record<string, Uint8Array<ArrayBuffer>> = {
   [COMPOSE]: encoder.encode(COMPOSE_BODY),
-  [ENV_EXAMPLE]: encoder.encode(EXAMPLE_BODY),
+  [ENV_EXAMPLE_ASSET]: encoder.encode(EXAMPLE_BODY),
 };
 
 /** 一次 runner 调用记录。 */
@@ -646,7 +649,7 @@ Deno.test("install 失败原子性：资产校验失败 → 不写 .env.prod、�
           io: makeIO(["v0.9.5", "oj.test-oj.cn"], events),
           runner: makeRunner(records),
           fetcher: makeFetcher(calls, events, {
-            [ENV_EXAMPLE]: "0".repeat(64),
+            [ENV_EXAMPLE_ASSET]: "0".repeat(64),
           }),
           isTty: true,
           passphraseFile: join(root, "backup-passphrase"),
@@ -3663,8 +3666,9 @@ const UPDATE_ASSETS = [
   "noj-cli-linux-amd64.sha256",
   "docker-compose.prod.yml",
   "docker-compose.prod.yml.sha256",
-  ".env.prod.example",
-  ".env.prod.example.sha256",
+  // Release 资产名非点号开头（GitHub 会改写点号名为 default.<name>）。
+  "env.prod.example",
+  "env.prod.example.sha256",
 ];
 
 /** 造一个 Release 列表 fetcher，并记录请求 URL。 */
@@ -4638,8 +4642,8 @@ Deno.test("评审: update --latest 的 pull/up 必须使用暂存配置（目标
                     { name: "noj-cli-linux-amd64.sha256" },
                     { name: "docker-compose.prod.yml" },
                     { name: "docker-compose.prod.yml.sha256" },
-                    { name: ".env.prod.example" },
-                    { name: ".env.prod.example.sha256" },
+                    { name: "env.prod.example" },
+                    { name: "env.prod.example.sha256" },
                   ],
                 },
               ]),

@@ -2,6 +2,13 @@
 import type { ObjectiveQuestion, ObjectiveSubmission, SubmitResult } from '~/composables/useObjective'
 import { QUESTION_TYPE_LABELS } from '~/composables/useObjective'
 import { formatObjectiveAnswer } from '~/utils/objectiveFormat'
+import {
+  correctnessByQuestion,
+  hasPendingObjectiveScore,
+  OBJECTIVE_PENDING_HINT,
+  objectiveScoreView,
+  objectiveSubmissionScoreText,
+} from '~/utils/objectiveResult'
 
 /**
  * 客观题作答表单（练习模式；并入 problems 详情页）。
@@ -10,11 +17,18 @@ import { formatObjectiveAnswer } from '~/utils/objectiveFormat'
 const props = defineProps<{
   /** 套卷题目 ID（problems.id） */
   paperId: string
+  /**
+   * 作答版本 ID（Handbook §4.2）：套卷已发布版本时必须由父组件传入，
+   * 服务端据此记录提交时版本；未发布版本的存量套卷为 null。
+   */
+  versionId?: string | null
+  /** 父组件切换作答版本等场景下禁用提交，避免把旧版本的 answers 提交到新版本上。 */
+  disabled?: boolean
 }>()
 
 const { listQuestions, submitPaper, listSubmissions } = useObjective()
 
-const { data: qData, error: qError, refresh: refreshQuestions } = await useFetch<
+const { data: qData, error: qError, status: qStatus, refresh: refreshQuestions } = await useFetch<
   { data: ObjectiveQuestion[] }
 >(`/api/v1/problems/${props.paperId}/questions`, { server: false })
 const questions = computed(() => qData.value?.data ?? [])
@@ -42,10 +56,34 @@ const bestScore = computed(() => histData.value?.data?.best_score ?? null)
 const submitCount = computed(() => histData.value?.data?.total ?? 0)
 const submissions = computed(() => histData.value?.data?.data ?? [])
 
+/**
+ * 单题对错：仅当服务端确实返回了 `correct` 时才有值（VULN-03）。
+ *
+ * 竞赛进行中后端只返回 `given`，此时表内没有该题 —— 模板据此**完全不渲染**
+ * 对错徽标与红绿色，而不是把缺失当成 `false` 显示"回答错误"。
+ */
+const correctness = computed(() => correctnessByQuestion(lastResult.value?.details))
+
+/** 判定汇总视图：`pending` 表示成绩未公布（score === null），不渲染分数与正确题数。 */
+const scoreView = computed(() =>
+  lastResult.value
+    ? objectiveScoreView(
+      lastResult.value.score,
+      lastResult.value.correct_count,
+      lastResult.value.total_count,
+    )
+    : null
+)
+
+/** 历史记录里存在"成绩未公布"的竞赛提交（用于给出统一说明）。 */
+const hasPendingContestScores = computed(() => hasPendingObjectiveScore(submissions.value))
+
 // 提交记录展开状态
 const showHistory = ref(false)
 const expandedSubmissionId = ref<string | null>(null)
 const questionMap = computed(() => new Map(questions.value.map((q) => [q.id, q])))
+/** 小题 ID → 题号（从 1 开始），用于提交记录展示 */
+const questionIndex = computed(() => new Map(questions.value.map((q, i) => [q.id, i + 1])))
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString('zh-CN', {
@@ -54,6 +92,17 @@ function formatTime(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+/**
+ * 提交时版本文案（Handbook §4.2；与普通提交列表同口径）。
+ *
+ * 后端尚未下发版本字段时返回 null → 不渲染徽标（优雅降级）。
+ */
+function objectiveVersionLabel(sub: ObjectiveSubmission): string | null {
+  if (sub.submitted_version != null) return `v${sub.submitted_version}`
+  if (sub.version_origin === 'legacy_unknown') return '未知历史版本'
+  return null
 }
 
 function toggleOption(qid: string, value: string | boolean) {
@@ -78,7 +127,7 @@ function isSelected(qid: string, value: string | boolean) {
 }
 
 async function onSubmit() {
-  if (submitting.value) return
+  if (submitting.value || props.disabled) return
   // 校验：所有题目必须作答
   const unanswered = questions.value.filter((q) => (answers.value[q.id] ?? []).length === 0)
   if (unanswered.length > 0) {
@@ -89,7 +138,12 @@ async function onSubmit() {
   submitting.value = true
   lastResult.value = null
   try {
-    const res = await submitPaper(props.paperId, answers.value)
+    const res = await submitPaper(
+      props.paperId,
+      answers.value,
+      undefined,
+      props.versionId,
+    )
     lastResult.value = res.data
     await refreshQuestions()
     await refreshHist()
@@ -109,7 +163,7 @@ async function onSubmit() {
     </div>
 
     <AsyncContent
-      :status="qError ? 'error' : questions.length ? 'data' : 'empty'"
+      :status="qError ? 'error' : questions.length ? 'data' : qStatus === 'success' ? 'empty' : 'loading'"
       error="题目加载失败"
       empty-text="该套卷暂无小题"
       @retry="refreshQuestions"
@@ -124,33 +178,34 @@ async function onSubmit() {
             <span class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-text-secondary">
               {{ idx + 1 }}. {{ QUESTION_TYPE_LABELS[q.type] }}
             </span>
+            <!-- 判定信息缺失（竞赛进行中）时整块不渲染：既不显示徽标也不着色（VULN-03） -->
             <span
-              v-if="lastResult?.details[q.id]"
+              v-if="correctness.has(q.id)"
               class="inline-flex items-center gap-1 text-xs font-medium"
-              :class="lastResult.details[q.id]?.correct ? 'text-green-600' : 'text-red-600'"
+              :class="correctness.get(q.id) ? 'text-green-600' : 'text-red-600'"
             >
-              <UIcon :name="lastResult.details[q.id]?.correct ? 'i-lucide-check-circle' : 'i-lucide-x-circle'" />
-              {{ lastResult.details[q.id]?.correct ? '回答正确' : '回答错误' }}
+              <UIcon :name="correctness.get(q.id) ? 'i-lucide-check-circle' : 'i-lucide-x-circle'" />
+              {{ correctness.get(q.id) ? '回答正确' : '回答错误' }}
             </span>
           </div>
-          <p class="mb-3 whitespace-pre-wrap text-sm text-text">{{ q.prompt }}</p>
+          <ObjectiveRichText class="mb-3" :content="q.prompt" />
 
           <!-- 判断：固定对/错 -->
           <div v-if="q.type === 'judge'" class="flex flex-col gap-2">
             <label
               v-for="opt in q.options"
               :key="opt.key"
-              class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+              class="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
               :class="isSelected(q.id, opt.key === 'true') ? 'border-signal bg-signal/5' : 'border-border hover:bg-gray-50'"
             >
               <input
                 type="radio"
                 :name="q.id"
-                class="accent-primary"
+                class="mt-1 shrink-0 accent-primary"
                 :checked="isSelected(q.id, opt.key === 'true')"
                 @change="toggleOption(q.id, opt.key === 'true')"
               />
-              {{ opt.text }}
+              <ObjectiveRichText class="flex-1" :content="opt.text" />
             </label>
           </div>
 
@@ -159,17 +214,18 @@ async function onSubmit() {
             <label
               v-for="opt in q.options"
               :key="opt.key"
-              class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+              class="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
               :class="isSelected(q.id, opt.key) ? 'border-signal bg-signal/5' : 'border-border hover:bg-gray-50'"
             >
               <input
                 type="radio"
                 :name="q.id"
-                class="accent-primary"
+                class="mt-1 shrink-0 accent-primary"
                 :checked="isSelected(q.id, opt.key)"
                 @change="toggleOption(q.id, opt.key)"
               />
-              <span class="font-medium">{{ opt.key }}.</span> {{ opt.text }}
+              <span class="shrink-0 font-medium">{{ opt.key }}.</span>
+              <ObjectiveRichText class="flex-1" :content="opt.text" />
             </label>
           </div>
 
@@ -178,38 +234,44 @@ async function onSubmit() {
             <label
               v-for="opt in q.options"
               :key="opt.key"
-              class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+              class="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
               :class="isSelected(q.id, opt.key) ? 'border-signal bg-signal/5' : 'border-border hover:bg-gray-50'"
             >
               <input
                 type="checkbox"
-                class="accent-primary"
+                class="mt-1 shrink-0 accent-primary"
                 :checked="isSelected(q.id, opt.key)"
                 @change="toggleOption(q.id, opt.key)"
               />
-              <span class="font-medium">{{ opt.key }}.</span> {{ opt.text }}
+              <span class="shrink-0 font-medium">{{ opt.key }}.</span>
+              <ObjectiveRichText class="flex-1" :content="opt.text" />
             </label>
           </div>
 
           <!-- 判定后解析（练习模式） -->
-          <p
+          <div
             v-if="lastResult?.details[q.id]?.explanation"
-            class="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-text-secondary"
+            class="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-text-secondary"
           >
-            解析：{{ lastResult.details[q.id]?.explanation }}
-          </p>
+            <div class="mb-1 text-xs font-medium">解析</div>
+            <ObjectiveRichText :content="lastResult.details[q.id]?.explanation ?? ''" />
+          </div>
         </section>
 
-        <!-- 判定汇总 -->
+        <!-- 判定汇总：score 为 null（竞赛进行中）时不显示分数与正确题数（VULN-03） -->
         <div
           v-if="lastResult"
           class="rounded-xl border px-5 py-4 text-sm"
           :class="lastResult.score === 100 ? 'border-green-200 bg-green-50 text-green-700' : 'border-border bg-white'"
         >
-          <span class="font-semibold">
-            本次得分：{{ lastResult.score.toFixed(0) }} 分（{{ lastResult.correct_count }}/{{ lastResult.total_count }}）
-          </span>
-          <span v-if="lastResult.contest_mode" class="ml-2 text-text-muted">竞赛提交（仅一次）</span>
+          <template v-if="scoreView?.pending">
+            <span class="font-semibold text-text">{{ OBJECTIVE_PENDING_HINT }}</span>
+            <span class="ml-2 text-text-muted">（本套卷共 {{ lastResult.total_count }} 题，已提交）</span>
+          </template>
+          <template v-else>
+            <span class="font-semibold">{{ scoreView?.text }}</span>
+            <span v-if="lastResult.contest_mode" class="ml-2 text-text-muted">竞赛提交（仅一次）</span>
+          </template>
         </div>
 
         <!-- 提交记录列表 -->
@@ -233,29 +295,43 @@ async function onSubmit() {
             <p v-if="submissions.length === 0" class="px-5 py-4 text-sm text-text-secondary">
               暂无提交记录
             </p>
+            <p v-else-if="hasPendingContestScores" class="px-5 py-3 text-xs text-text-muted">
+              竞赛进行中，成绩与解析将在比赛结束后开放。
+            </p>
             <div v-for="sub in submissions" :key="sub.id" class="px-5 py-3">
               <button
                 type="button"
                 class="flex w-full items-center justify-between gap-3 text-left"
                 @click="expandedSubmissionId = expandedSubmissionId === sub.id ? null : sub.id"
               >
-                <span class="text-sm text-text-secondary">{{ formatTime(sub.created_at) }}</span>
-                <span class="text-sm font-semibold text-primary">
-                  {{ (sub.score / 100).toFixed(0) }} 分
+                <span class="flex flex-wrap items-center gap-2">
+                  <span class="text-sm text-text-secondary">{{ formatTime(sub.created_at) }}</span>
+                  <!-- 提交时版本 / 有效性与通过（缺失时不渲染，兼容未升级的后端） -->
+                  <UBadge v-if="objectiveVersionLabel(sub)" color="primary" variant="subtle" size="sm">
+                    {{ objectiveVersionLabel(sub) }}
+                  </UBadge>
+                  <UBadge v-if="sub.is_valid" color="primary" variant="subtle" size="sm">有效成绩</UBadge>
+                  <UBadge v-if="sub.is_accepted" color="success" variant="subtle" size="sm">通过</UBadge>
+                </span>
+                <span class="text-sm font-semibold" :class="sub.score === null ? 'text-text-muted' : 'text-primary'">
+                  {{ objectiveSubmissionScoreText(sub.score) }}
                 </span>
               </button>
 
               <div v-if="expandedSubmissionId === sub.id" class="mt-3 space-y-2 rounded-lg bg-bg-page p-3">
                 <div v-for="(detail, qid) in sub.details" :key="qid" class="text-xs">
                   <div class="flex items-center gap-2">
+                    <!-- correct 缺失（竞赛进行中）时不渲染对错图标与颜色（VULN-03） -->
                     <UIcon
+                      v-if="typeof detail.correct === 'boolean'"
                       :name="detail.correct ? 'i-lucide-check-circle' : 'i-lucide-x-circle'"
                       class="size-3.5"
                       :class="detail.correct ? 'text-green-600' : 'text-red-600'"
                     />
-                    <span class="font-medium text-text">{{ questionMap.get(qid)?.prompt ?? '未知题目' }}</span>
+                    <!-- 题干可能含表格 / 公式，记录里只显示题号 -->
+                    <span class="font-medium text-text">{{ questionIndex.has(qid) ? `第 ${questionIndex.get(qid)} 题` : '未知题目' }}</span>
                   </div>
-                  <p class="mt-1 pl-5 text-text-secondary">
+                  <p class="mt-1 text-text-secondary" :class="typeof detail.correct === 'boolean' ? 'pl-5' : ''">
                     作答：{{ formatObjectiveAnswer(questionMap.get(qid), detail.given) }}
                   </p>
                 </div>
@@ -271,7 +347,7 @@ async function onSubmit() {
           color="primary"
           size="lg"
           :loading="submitting"
-          :disabled="questions.length === 0"
+          :disabled="questions.length === 0 || disabled"
           @click="onSubmit"
         >
           提交答案

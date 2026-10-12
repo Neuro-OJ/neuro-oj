@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
   BadRequestError,
@@ -15,7 +15,13 @@ import type {
   RankingVisibility,
 } from "./../types/contests.ts";
 import { getContest } from "./contests.ts";
-import { contestRankingSnapshots } from "../../../shared/db/schema.ts";
+import type { Executor } from "../../../shared/db/executor.ts";
+import {
+  contestProblems,
+  contestRankingSnapshots,
+  contests,
+  problems,
+} from "../../../shared/db/schema.ts";
 import { logAudit } from "../../system/index.ts";
 
 export async function publishContestRankingSnapshot(
@@ -26,34 +32,37 @@ export async function publishContestRankingSnapshot(
 ): Promise<
   { id: string; version: number; rows: KaggleRankingRow[]; created_at: string }
 > {
-  const contest = await getContest(contestId);
-  if (contest.status !== "ended") {
-    throw new ConflictError("竞赛尚未结束，不能发布正式成绩");
-  }
-  const settlement = await getContestSettlementStatus(contestId);
-  if (settlement.pending_count > 0) {
-    throw new ConflictError(
-      `仍有 ${settlement.pending_count} 条评测待处理，请完成评测后再结算`,
-    );
-  }
-  if (
-    settlement.failed_count > 0 &&
-    (!options.allowFailed || !note.trim())
-  ) {
-    throw new ConflictError(
-      `发现 ${settlement.failed_count} 条失败评测；请处理失败任务，或填写说明并明确允许带失败评测发布`,
-    );
-  }
   const db = getDb();
-  // 快照需要保留提交/评测明细供 CSV/JSON 导出核对；实时榜默认不返回这些内部字段。
-  const rows = await getKaggleRanking(contestId, undefined, true);
   const created_at = new Date().toISOString();
   const id = crypto.randomUUID();
-  const version = await db.transaction(async (tx) => {
-    // 锁定竞赛行，串行化同一竞赛的版本分配，避免 max(version)+1 竞态。
-    await tx.execute(
-      sql`SELECT id FROM contests WHERE id = ${contestId} FOR UPDATE`,
-    );
+  const result = await db.transaction(async (tx) => {
+    const refs = await tx.select({ problem_id: contestProblems.problem_id })
+      .from(contestProblems).where(eq(contestProblems.contest_id, contestId));
+    const ids = refs.map((row) => row.problem_id).sort();
+    if (ids.length) {
+      await tx.select({ id: problems.id }).from(problems).where(
+        inArray(problems.id, ids),
+      ).orderBy(problems.id).for("share");
+    }
+    await tx.select({ id: contests.id }).from(contests).where(
+      eq(contests.id, contestId),
+    ).for("update");
+    const contest = await getContest(contestId, undefined, tx);
+    if (contest.status !== "ended") {
+      throw new ConflictError("竞赛尚未结束，不能发布正式成绩");
+    }
+    const settlement = await getContestSettlementStatus(contestId, tx);
+    if (settlement.pending_count) {
+      throw new ConflictError(
+        `仍有 ${settlement.pending_count} 条评测待处理，请完成评测后再结算`,
+      );
+    }
+    if (settlement.failed_count && (!options.allowFailed || !note.trim())) {
+      throw new ConflictError(
+        `发现 ${settlement.failed_count} 条失败评测；请处理失败任务，或填写说明并明确允许带失败评测发布`,
+      );
+    }
+    const rows = await getKaggleRanking(contestId, undefined, true, tx);
     const [latest] = await tx.select({
       version: contestRankingSnapshots.version,
     })
@@ -71,8 +80,9 @@ export async function publishContestRankingSnapshot(
       created_by: actorId,
       created_at,
     });
-    return nextVersion;
+    return { version: nextVersion, rows, settlement };
   });
+  const { version, rows, settlement } = result;
   await logAudit("contest.ranking_snapshot", {
     action: "contest.ranking_snapshot",
     contest_id: contestId,
@@ -107,47 +117,111 @@ export interface ContestSettlementStatus {
 }
 
 /**
- * 读取结算门禁状态。pending/judging、缺失结果均属于待处理；error 属于失败。
- * 该查询只读，不会改变队列或提交状态，管理员可据此决定处理或带说明发布。
+ * 结算候选集合 + 判定分类（Handbook §3.3/§6.6，缺陷 #47）。
+ *
+ * 分类只用**权威字段**：`submissions.status` 与
+ * `evaluation_attempts.state` / `result_kind`；`result_status` 只作展示。
+ *
+ * 为什么不能再看 `result_status` 字符串：正式 TLE/WA/CE 等 graded 判定会把
+ * 具体 verdict（`TimeLimitExceeded`、`WA`…）写进该列，用 `finished`/`error`
+ * 白名单判断"是否完成"会把**已完成**的正式判定永久当成待处理，结算门禁被
+ * 误报卡死（原缺陷 #47）。
+ *
+ * 最近一次运行优先取**在途**尝试：重测期间 `active_attempt_id` 指向新尝试，
+ * 若只看最近终态/有效指针就会漏掉正在跑的评测。
  */
-export async function getContestSettlementStatus(
-  contestId: string,
-): Promise<ContestSettlementStatus> {
-  const contest = await getContest(contestId);
-  const db = getDb();
-  const result = await db.execute(sql`
+function contestTasksCte(contestId: string) {
+  return sql`
     WITH contest_tasks AS (
       SELECT s.id AS submission_id, s.user_id, u.username, s.problem_id,
-        p.title AS problem_title, s.status,
-        er.status AS result_status, s.created_at, 'submission'::text AS kind
+        p.title AS problem_title,
+        s.status AS submission_status,
+        ea.result_status AS result_status,
+        ea.state AS attempt_state,
+        ea.result_kind AS attempt_result_kind,
+        (ea.id IS NOT NULL) AS has_attempt,
+        s.created_at, 'submission'::text AS kind
       FROM submissions s
       JOIN users u ON u.id = s.user_id
       JOIN problems p ON p.id = s.problem_id
       JOIN contests c ON c.id = s.contest_id
-      LEFT JOIN evaluation_results er ON er.submission_id = s.id
+      -- 在途尝试优先（重测门禁），其次最近终态尝试，最后有效成绩指针
+      LEFT JOIN evaluation_attempts ea
+        ON ea.id = coalesce(s.active_attempt_id, s.latest_attempt_id, s.effective_attempt_id)
       WHERE s.contest_id = ${contestId}
         AND s.created_at <= c.end_time
       UNION ALL
       SELECT os.id AS submission_id, os.user_id, u.username, os.paper_id,
-        p.title AS problem_title, os.status,
-        os.status AS result_status, os.created_at, 'objective'::text AS kind
+        p.title AS problem_title,
+        os.status AS submission_status,
+        ea.result_status AS result_status,
+        ea.state AS attempt_state,
+        ea.result_kind AS attempt_result_kind,
+        (ea.id IS NOT NULL) AS has_attempt,
+        os.created_at, 'objective'::text AS kind
       FROM objective_submissions os
+      LEFT JOIN evaluation_attempts ea
+        ON ea.id = coalesce(os.active_attempt_id, os.latest_attempt_id, os.effective_attempt_id)
       JOIN users u ON u.id = os.user_id
       JOIN problems p ON p.id = os.paper_id
       JOIN contests c ON c.id = os.contest_id
       WHERE os.contest_id = ${contestId}
         AND os.created_at <= c.end_time
+    ),
+    classified AS (
+      SELECT *,
+        -- 失败 = 提交级 error、尝试级 error 或平台错误；正常 WA / 零分 / 用户超时
+        -- 都是 graded 正式判定，不算评测故障（Handbook §6.6）
+        (
+          COALESCE(submission_status = 'error', FALSE)
+          OR COALESCE(attempt_state = 'error', FALSE)
+          OR COALESCE(attempt_result_kind = 'platform_error', FALSE)
+        ) AS failed,
+        -- 待处理 = 未终结（提交级或尝试级），或根本没有尝试记录（fail-closed）
+        (
+          COALESCE(submission_status IN ('pending', 'judging'), FALSE)
+          OR COALESCE(attempt_state IN ('queued', 'judging'), FALSE)
+          OR has_attempt = FALSE
+        ) AS unfinished
+      FROM contest_tasks
     )
+  `;
+}
+
+/** 结算门禁尚未终态的任务条目状态（queued/preparing 尚未创建尝试时同样计入）。 */
+const OPEN_JOB_ITEM_STATUSES = sql`('pending', 'preparing', 'dispatched')`;
+
+/**
+ * 读取结算门禁状态。未终结的评测尝试与尚未终态的任务条目属于待处理；
+ * 提交级/尝试级 error 与平台错误属于失败（正常 WA/零分不算失败）。
+ * 该查询只读，不会改变队列或提交状态，管理员可据此决定处理或带说明发布。
+ */
+export async function getContestSettlementStatus(
+  contestId: string,
+  executor?: Executor,
+): Promise<ContestSettlementStatus> {
+  const db = executor ?? getDb();
+  const contest = await getContest(contestId, undefined, db);
+  const result = await db.execute(sql`
+    ${contestTasksCte(contestId)}
     SELECT
-      COUNT(*) FILTER (WHERE status IN ('pending', 'judging')
-        OR result_status IS NULL
-        OR result_status NOT IN ('finished', 'error'))::int AS pending_count,
-      COUNT(*) FILTER (WHERE status = 'error' OR result_status = 'error')::int
-        AS failed_count
-    FROM contest_tasks
+      -- 已判定为失败的提交不重复计入待处理
+      COUNT(*) FILTER (WHERE NOT failed AND unfinished)::int AS pending_count,
+      COUNT(*) FILTER (WHERE failed)::int AS failed_count
+    FROM classified
   `);
   const [counts] = unwrapRows<Record<string, unknown>>(result as never);
-  const pendingCount = Number(counts?.pending_count ?? 0);
+  // 批任务在**受理事务**里就落库条目（可能还没有 attempt_id），因此
+  // pending/preparing/dispatched 都必须进入结算门禁（缺陷 #46）。
+  const jobs = await db.execute(
+    sql`SELECT count(*)::int AS pending FROM submission_job_items ji
+    LEFT JOIN submissions s ON ji.source_kind = 'submission' AND ji.source_id = s.id
+    LEFT JOIN objective_submissions os ON ji.source_kind = 'objective' AND ji.source_id = os.id
+    WHERE ji.status IN ${OPEN_JOB_ITEM_STATUSES}
+      AND coalesce(s.contest_id, os.contest_id) = ${contestId}`,
+  );
+  const pendingCount = Number(counts?.pending_count ?? 0) +
+    Number(unwrapRows<{ pending: number }>(jobs as never)[0]?.pending ?? 0);
   const failedCount = Number(counts?.failed_count ?? 0);
 
   // 没有待处理/失败任务时无需再查明细，避免大竞赛每次 readiness 都扫描 500 行。
@@ -164,35 +238,11 @@ export async function getContestSettlementStatus(
   }
 
   const itemResult = await db.execute(sql`
-    WITH contest_tasks AS (
-      SELECT s.id AS submission_id, s.user_id, u.username, s.problem_id,
-        p.title AS problem_title, s.status,
-        er.status AS result_status, s.created_at, 'submission'::text AS kind
-      FROM submissions s
-      JOIN users u ON u.id = s.user_id
-      JOIN problems p ON p.id = s.problem_id
-      JOIN contests c ON c.id = s.contest_id
-      LEFT JOIN evaluation_results er ON er.submission_id = s.id
-      WHERE s.contest_id = ${contestId}
-        AND s.created_at <= c.end_time
-      UNION ALL
-      SELECT os.id AS submission_id, os.user_id, u.username, os.paper_id,
-        p.title AS problem_title, os.status,
-        os.status AS result_status, os.created_at, 'objective'::text AS kind
-      FROM objective_submissions os
-      JOIN users u ON u.id = os.user_id
-      JOIN problems p ON p.id = os.paper_id
-      JOIN contests c ON c.id = os.contest_id
-      WHERE os.contest_id = ${contestId}
-        AND os.created_at <= c.end_time
-    )
+    ${contestTasksCte(contestId)}
     SELECT submission_id, user_id, username, problem_id, problem_title,
-      status, result_status, created_at, kind
-    FROM contest_tasks
-    WHERE status IN ('pending', 'judging', 'error')
-      OR result_status IS NULL
-      OR result_status NOT IN ('finished', 'error')
-      OR result_status = 'error'
+      submission_status AS status, result_status, created_at, kind
+    FROM classified
+    WHERE failed OR unfinished
     ORDER BY created_at ASC, submission_id ASC
     LIMIT 501
   `);
@@ -307,12 +357,13 @@ export async function getKaggleRanking(
   contestId: string,
   cutoffTime?: string,
   includeDetails = false,
+  executor?: Executor,
 ): Promise<KaggleRankingRow[]> {
-  const contest = await getContest(contestId);
+  const db = executor ?? getDb();
+  const contest = await getContest(contestId, undefined, db);
   if (contest.type !== "kaggle") {
     throw new BadRequestError("该竞赛不是类 Kaggle 赛制");
   }
-  const db = getDb();
   const result = await db.execute(sql`
     WITH contest_data AS (
       SELECT id, start_time, end_time
@@ -320,22 +371,28 @@ export async function getKaggleRanking(
       WHERE id = ${contestId}
     ),
     submission_scores AS (
-      SELECT s.id, s.user_id, s.problem_id, s.created_at, er.score,
-        er.status AS evaluation_status, er.created_at AS evaluation_created_at,
-        s.rejudge_seq
+      -- 竞赛计分只取「竞赛口径有效成绩」（Handbook §3.4/§6.6）：
+      -- 有效成绩指针指向的已完成正式尝试，不再读 evaluation_results
+      SELECT s.id, s.user_id, s.problem_id, s.created_at, ea.score,
+        ea.result_status AS evaluation_status,
+        coalesce(ea.finished_at, ea.created_at) AS evaluation_created_at,
+        ea.sequence AS rejudge_seq, ea.id AS contest_effective_attempt_id, s.submitted_version_id, ea.problem_version_id AS evaluated_version_id
       FROM submissions s
-      JOIN evaluation_results er ON er.submission_id = s.id
+      JOIN evaluation_attempts ea ON ea.id = s.contest_effective_attempt_id
       JOIN contest_data c ON c.id = s.contest_id
       WHERE s.contest_id = ${contestId}
+        AND s.is_contest_valid = TRUE
         AND s.created_at <= c.end_time
         ${cutoffTime ? sql`AND s.created_at <= ${cutoffTime}` : sql``}
       UNION ALL
-      SELECT os.id, os.user_id, os.paper_id, os.created_at, os.score,
-        os.status AS evaluation_status, os.created_at AS evaluation_created_at,
-        0 AS rejudge_seq
+      SELECT os.id, os.user_id, os.paper_id, os.created_at, ea.score,
+        ea.result_status AS evaluation_status, coalesce(ea.finished_at, ea.created_at) AS evaluation_created_at,
+        ea.sequence AS rejudge_seq, ea.id AS contest_effective_attempt_id, os.submitted_version_id, ea.problem_version_id AS evaluated_version_id
       FROM objective_submissions os
+      JOIN evaluation_attempts ea ON ea.id = os.contest_effective_attempt_id
       JOIN contest_data c ON c.id = os.contest_id
       WHERE os.contest_id = ${contestId}
+        AND os.is_contest_valid = TRUE
         AND os.created_at <= c.end_time
         ${cutoffTime ? sql`AND os.created_at <= ${cutoffTime}` : sql``}
     ),
@@ -370,6 +427,7 @@ export async function getKaggleRanking(
         created_at,
         score,
         rejudge_seq,
+        contest_effective_attempt_id, submitted_version_id, evaluated_version_id,
         evaluation_status,
         evaluation_created_at,
         ROW_NUMBER() OVER (
@@ -386,6 +444,7 @@ export async function getKaggleRanking(
         created_at AS last_best_at,
         id AS submission_id,
         rejudge_seq,
+        contest_effective_attempt_id, submitted_version_id, evaluated_version_id,
         evaluation_status,
         evaluation_created_at
       FROM best_rows
@@ -410,7 +469,16 @@ export async function getKaggleRanking(
         bs.rejudge_seq,
         bs.evaluation_status,
         bs.evaluation_created_at,
-        rt.last_refresh_at
+        rt.last_refresh_at,
+        -- 正式成绩归因（Handbook §6.6）：记录最佳成绩所属提交的有效尝试与提交时版本，
+        -- 以及该「竞赛 × 题目」当时的版本策略与固定版本
+        bs.contest_effective_attempt_id,
+        bs.submitted_version_id,
+        bs.evaluated_version_id,
+        cp.pinned_version_id,
+        cp.effective_version_mode,
+        cp.required_version_id,
+        cp.effective_policy_revision
       FROM contest_participants participant
       CROSS JOIN contest_problems cp
       LEFT JOIN best_scores bs
@@ -430,7 +498,12 @@ export async function getKaggleRanking(
         ps.user_id,
         ps.registered_at,
         SUM(ps.best_score)::int AS total_score,
-        MAX(ps.last_refresh_at) AS last_submission_at,
+        CASE
+          WHEN SUM(ps.best_score) > 0 THEN
+            MAX(ps.last_best_at) FILTER (WHERE ps.best_score > 0)
+          ELSE
+            MIN(ps.last_best_at) FILTER (WHERE ps.attempts > 0)
+        END AS last_submission_at,
         jsonb_agg(
           jsonb_build_object(
             'label', ps.label,
@@ -440,7 +513,20 @@ export async function getKaggleRanking(
             'submission_id', ps.submission_id,
             'rejudge_seq', ps.rejudge_seq,
             'evaluation_status', ps.evaluation_status,
-            'evaluation_created_at', ps.evaluation_created_at
+            'evaluation_created_at', ps.evaluation_created_at,
+            'effective_attempt_id', ps.contest_effective_attempt_id,
+            'evaluated_version_id', ps.evaluated_version_id,
+            'submitted_version_id', ps.submitted_version_id,
+            'pinned_version_id', ps.pinned_version_id,
+            'policy_revision', ps.effective_policy_revision,
+            'version_policy', CASE
+              WHEN ps.effective_version_mode = 'exact'
+                THEN jsonb_build_object(
+                  'mode', 'exact',
+                  'version_id', ps.required_version_id
+                )
+              ELSE jsonb_build_object('mode', 'any')
+            END
           ) ORDER BY ps.sort_order, ps.label
         ) AS problem_scores
       FROM problem_stats ps
@@ -517,7 +603,7 @@ export function getContestFreezeWindow(contest: {
   return { start: new Date(startMs).toISOString(), end };
 }
 
-function isContestFrozen(
+export function isContestFrozen(
   window: { start: string | null; end: string },
   now = Date.now(),
 ): boolean {
@@ -542,6 +628,10 @@ function assertRankingVisibility(
 /**
  * 返回带视图元数据的竞赛榜单。普通用户在封榜窗口及待结算期间只能读取
  * freeze_start_time 之前的稳定视图，正式快照发布后才切换为 official。
+ *
+ * **隐私不因视图切换而放宽（审计 VULN-09）**：非管理员在**任何**视图下都只会拿到
+ * 本人一行；`frozen` 视图只是"取封榜时刻的稳定数据"，不是"公开全量明细"。
+ * 身份（登录 / 参赛）与单人过滤守卫先于视图状态判定执行。
  */
 export async function getContestRankingView(
   contestId: string,
@@ -587,11 +677,32 @@ export async function getContestRankingView(
     };
   }
 
+  // ── 非管理员：身份与隐私守卫必须**先于**视图状态判定（审计 VULN-09）──
+  //
+  // 修复前：封榜窗口一到，代码在鉴权与"仅返回本人一行"过滤**之前**就直接 return
+  // 全量 Kaggle 榜。于是"平时看不到别人成绩"的选手，一旦进入封榜期，排行榜反而
+  // 向全员（含未登录匿名访客）透出全场所有选手封榜前的分数、提交尝试次数、
+  // 最后得分时间与名次——权限与隐私完全倒挂。
+  //
+  // 封榜窗口（freeze_start_time ~ end_time）是 running 的**子区间**，路由契约明确
+  // "进行中非管理员仅返回自己的排名"，因此守卫必须对封榜状态同样生效。
+  if (contest.status === "running" && !viewerId) {
+    throw new UnauthorizedError("竞赛进行期间需登录查看排名");
+  }
+  if (contest.status === "running" && contest.is_registered !== true) {
+    throw new ForbiddenError("仅参赛者可查看进行中的排名");
+  }
+
   const frozen = isContestFrozen(window) ||
     (contest.status === "ended" && window.start !== null);
   if (frozen) {
+    // 非管理员：只返回本人一行；匿名（无 viewerId）自然得到空列表，
+    // 而不是他人成绩 —— 隐私策略在封榜期与赛期完全一致。
+    const frozenRows = await getKaggleRanking(contestId, window.start!);
     return {
-      rows: await getKaggleRanking(contestId, window.start!),
+      rows: viewerId === undefined
+        ? []
+        : frozenRows.filter((row) => row.user_id === viewerId),
       view: "frozen",
       ranking_visibility: contest.ranking_visibility,
       freeze_start_time: window.start,
@@ -605,12 +716,6 @@ export async function getContestRankingView(
     throw new ConflictError("竞赛已结束，正式成绩尚未发布");
   }
 
-  if (contest.status === "running" && !viewerId) {
-    throw new UnauthorizedError("竞赛进行期间需登录查看排名");
-  }
-  if (contest.status === "running" && contest.is_registered !== true) {
-    throw new ForbiddenError("仅参赛者可查看进行中的排名");
-  }
   const rows = await getKaggleRanking(contestId);
   return {
     // 进行中非管理员保持旧语义：只返回自己的排名，避免泄露他人实时成绩。

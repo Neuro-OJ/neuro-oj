@@ -4,6 +4,7 @@ import { useMessages } from "~/composables/useMessages"
 import { useToast } from "~/composables/useToast"
 import { difficultyBadgeColors, difficultyLabels, formatDateTime, formatScore, getLanguageLabel } from "~/utils/submissionFormat"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
+import { contestHiddenRowClass } from "~/utils/contestHidden"
 import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 
 definePageMeta({ breadcrumbWidth: '900px' })
@@ -38,6 +39,13 @@ interface UserProfile {
     title: string
     difficulty: string
     accepted_at: string
+    /**
+     * 是否被「尚未结束的公开赛」收编（VULN-07，可选）。
+     *
+     * 该 profile 接口目前**未下发**该字段；这里只做兼容渲染——后端若今后下发，
+     * 特权用户即可看到斜纹底与提示，否则保持原样，不臆造数据、不额外发请求。
+     */
+    is_contest_hidden?: boolean
   }[]
   recent_submissions: {
     id: string
@@ -401,13 +409,18 @@ async function toggleFollow() {
             v-for="problem in profile.solved_problems"
             :key="problem.id"
             class="flex items-center justify-between px-6 py-3 hover:bg-primary-bg"
+            :class="contestHiddenRowClass(problem.is_contest_hidden)"
           >
-            <NuxtLink
-              :to="problemUrl(problem.id, problem.display_id)"
-              class="text-sm text-primary no-underline hover:underline"
-            >
-              {{ problem.title }}
-            </NuxtLink>
+            <div class="flex min-w-0 items-center gap-2">
+              <NuxtLink
+                :to="problemUrl(problem.id, problem.display_id)"
+                class="text-sm text-primary no-underline hover:underline"
+              >
+                {{ problem.title }}
+              </NuxtLink>
+              <!-- 公开赛收编标识（VULN-07）：接口未下发该字段时不渲染 -->
+              <ContestHiddenMark v-if="problem.is_contest_hidden" />
+            </div>
             <div class="flex items-center gap-3">
               <span
                 class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"

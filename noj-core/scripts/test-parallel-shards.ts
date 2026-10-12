@@ -85,6 +85,8 @@ export const SHARDS: Shard[] = [
       "src/domains/submission/tests/routes",
       "src/domains/submission/tests/services",
       "src/domains/submission/tests/mq",
+      // 批任务/重测/升级的并发与租约回归（2026-10-10 PR #622 审查修复新增）
+      "src/domains/submission/tests/versioning",
       "src/domains/query/tests/routes",
       "src/domains/query/tests/services",
       "src/domains/search/tests/routes",
@@ -100,8 +102,11 @@ export const SHARDS: Shard[] = [
       "src/domains/system/tests/routes",
       "src/domains/system/tests/services",
       "src/domains/admin/tests/services",
+      "src/domains/admin/tests/routes",
       "src/domains/gateway/tests/services",
       "src/domains/content-review/tests/services",
+      "src/domains/legal/tests/routes",
+      "src/domains/legal/tests/services",
     ],
   },
 ];

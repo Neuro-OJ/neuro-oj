@@ -3,11 +3,16 @@
 本页面向运营者/管理员：如何在本实例上提供“LLM 调用能力”，让出题人可以创建
 调用真实 LLM API 的题目。
 
+> 若只需**能提交 LLM 题**，关键就三步：gateway 两个密钥就位 → 后台建一个启用
+> 的 Provider → 配齐平台默认 `provider_id` + `model`。缺任一项，LLM 题提交会
+> 以 400 失败。
+
 ## 总体流程
 
 1. 部署并配置 `noj-llm-gateway`。
 2. 在管理后台添加并启用 LLM Provider。
-3. 配置平台默认 Provider 与模型（`llm_default_provider_id` / `llm_default_model`）。
+3. 配置平台默认 Provider 与模型（`llm_default_provider_id` /
+   `llm_default_model`）。
 4. 按需配置用户/全局/题目的配额。
 5. 确认 Judge Worker 的 evaluator 能访问 gateway。
 6. 出题人创建 P 型 LLM 题目并完成评测验证。
@@ -18,11 +23,15 @@
 
 生产环境使用 `docker-compose.prod.yml`：
 
-- 必须设置 `NOJ_LLM_SERVICE_TOKEN`（core↔gateway 服务间鉴权 + eval_token 签发/校验）。
-- 必须设置 `NOJ_LLM_STORE_KEY`（加密 Provider API Key）。
+- 必须设置 `NOJ_LLM_SERVICE_TOKEN`（core↔gateway 服务间鉴权 + eval_token
+  签发/校验，≥16 字符）。
+- 必须设置 `NOJ_LLM_STORE_KEY`（加密 Provider API Key，≥16 字符）。
 - `llm-gateway` 容器加入 `noj-net`，core 通过 `http://llm-gateway:8001` 访问。
 
-由于 `docker-compose.prod.yml` 默认始终启动 `llm-gateway` 且对这两个密钥使用 `${...:?}` 必填校验，**即使不使用 LLM 调用题也必须填写**这两个密钥。
+::: warning 即使不做 LLM 题也必须填这两个密钥
+`docker-compose.prod.yml` 默认**始终启动** `llm-gateway` 且对这两个密钥使用
+`${...:?}` 必填校验，缺失会导致 `docker compose config` 直接报错。
+:::
 
 网关分钟限流可通过环境变量调整：
 
@@ -30,6 +39,23 @@
 - `NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE`：每个 IP 在 UTC 分钟窗口内的调用上限。
 - 两项均为可选正整数，默认均为 `60`；配置缺失不会改变既有行为。
 - 配置在网关启动时读取，修改后需重启 `llm-gateway`；非法值会导致启动失败。
+
+Provider 上游地址（Base URL）的出站限制：
+
+- 默认只允许 **https 公网地址**。`localhost`、Docker 服务名等不带点的短名、`*.internal` /
+  `*.local` / `*.lan`、私网与回环 IP、云元数据地址（`169.254.169.254`）均会被拒绝；
+  网关每次调用上游前还会解析 DNS，域名解析到内网地址同样被拦截（防止借网关访问内网服务）。
+- 内网自建模型（如 vLLM）需在 `NOJ_LLM_UPSTREAM_ALLOWED_HOSTS` 中显式放行主机名或 IP
+  （逗号分隔），白名单内的主机允许 http 与内网地址。
+- 被拦截时后台保存 Provider 会提示"Base URL 不被允许"；评测中的调用返回
+  `provider_base_url_blocked`，不消耗额度。
+
+用量审计（`llm_usage` 表）的保留与写入规则：
+
+- `NOJ_LLM_USAGE_RETENTION_DAYS`：保留天数，默认 `90`，`0` 表示不清理。网关启动时及之后每
+  6 小时删除过期记录；多副本部署时同一轮只有一个副本执行。
+- 调用前就被限流或额度拒绝的请求**不保存 prompt 原文**（只保留哈希），且同一提交、同一拒绝原因
+  60 秒内只记录一条，避免被拒请求持续写库；拒绝次数仍可从 `noj_llm_rate_limited_total` 指标查看。
 
 ## 2. 创建并启用 Provider
 
@@ -45,13 +71,15 @@
 
 ## 3. 配置平台默认 Provider 与模型
 
-题目不再携带 Provider / 模型，改用平台级全局默认。在管理后台
-「系统设置 → LLM」中配置以下两项 **runtime 设置**（写库即时生效，无需重启）：
+题目不再携带 Provider / 模型，改用平台级全局默认。在管理后台「LLM → Provider
+管理」页顶部的「平台默认 Provider / 模型」卡片中选择 Provider、填写模型名并保存
+（也可在「系统设置」的运行时配置表中直接编辑同名键）。两项均为 **runtime 设置**
+（写库即时生效，无需重启）：
 
-| 设置键 | 说明 |
-| --- | --- |
+| 设置键                    | 说明                                          |
+| ------------------------- | --------------------------------------------- |
 | `llm_default_provider_id` | 上一节创建的 Provider ID（gateway 内部 UUID） |
-| `llm_default_model` | 调用的模型名，如 `qwen-plus`（必须显式填写） |
+| `llm_default_model`       | 调用的模型名，如 `qwen-plus`（必须显式填写）  |
 
 - **两项必须同时配置，无回退**：缺任一项时，LLM 题目的提交会被拒绝（400）。
 - 部署者也可用 env 兜底 `NOJ_LLM_DEFAULT_PROVIDER_ID` /
@@ -60,26 +88,47 @@
 
 ## 4. 配额（可选）
 
-在「LLM 用量 / 配额」管理能力中，可按用户、全局、题目维度维护
-day/month 的 calls/tokens/cost 上限；`0` 表示不限制但仍计数。
+配额在管理后台「评测与算力 → LLM 配额」（`/admin/llm/quotas`）中维护，底层接口为
+`GET/POST /api/v1/admin/gateway/llm/quotas`：可按用户、全局、题目，以及**用户×题目组合**
+维度维护 day/month 的 calls/tokens/cost 上限。
+
+- 取值语义：`-1` 表示不限，`0` 表示**禁止调用**，正数为上限；
+- 按「作用域 + 作用域 ID + 窗口」精确匹配，同一组合只应有一行——后台新增时若已存在会自动改为更新；
+- 新增时上限留空，由网关按 `NOJ_LLM_DEFAULT_*` 默认值填入；
+- 后台暂不支持删除配额行；如需恢复默认值，请把各项改回与 env 默认值一致。
+
+用户×题目组合维度（`scope_type=user_problem`，`scope_id` 形如
+`<userId>:<problemId>`）用于防止一名选手反复提交打满**全选手共享**的题目日桶，
+导致他人 LLM 题评测因 `out_of_usage` 得 0 分。默认兜底值见网关 `.env.example` 的
+`NOJ_LLM_DEFAULT_USER_PROBLEM_*`（网关**启动期读取 env**，改动后需重启网关；`llm_quotas` 里的
+占位行按 `scope_id=''` 写入，与 `<userId>:<problemId>` 精确匹配不上，不参与限额计算——
+需要单条覆盖时请写 `scope_id` 为具体组合的行）。
+
+分钟维度限流对无客户端 IP 的评测流量（Evaluator 直连网关、无
+`X-Forwarded-For`）按 submission 隔离，不再共用全局 `unknown` 桶。
 
 ## 5. 网络要求
 
 LLM 调用题要求 evaluator 联网访问 gateway：
 
 - `JUDGE_ALLOW_EVALUATOR_NETWORK=true`
-- `JUDGE_EVALUATOR_NETWORK` 必须指向 `llm-gateway` 所在 Docker 网络（如 `noj-net`）。
+- `JUDGE_EVALUATOR_NETWORK` 必须指向 `llm-gateway` 所在 Docker 网络，生产默认
+  `noj-eval-net`（**评测隔离网络**：只承载 Evaluator 沙箱与 `llm-gateway`，
+  沙箱因此能出公网、能访问 `http://llm-gateway:8001`，但对 postgres / redis /
+  minio / core 的 DNS 与路由为 0）。**不得**填 `bridge` / `host`，noj-judge 会在
+  启动校验中直接拒绝。
 - Solution 容器始终无网，且不注入任何 `NOJ_LLM_*` 环境变量。
 
 ## 6. 验证
 
-1. 管理后台确认 Provider 为启用状态，且「系统设置 → LLM」两项平台默认已填写。
+1. 管理后台确认 Provider 为启用状态，且「LLM → Provider 管理」页顶部的平台默认 Provider / 模型已填写。
 2. 按出题人文档创建一道 P 型 LLM 题并提交。
 3. 在「LLM 用量」页确认调用记录已落库、状态为 `ok`。
 
 ## 密钥与安全
 
-- 轮换 `NOJ_LLM_SERVICE_TOKEN` 会让所有未过期 eval_token 失效，需 core 与 gateway 同步更新。
+- 轮换 `NOJ_LLM_SERVICE_TOKEN` 会让所有未过期 eval_token 失效，需 core 与
+  gateway 同步更新。
 - 轮换 `NOJ_LLM_STORE_KEY` 后需要用新主密钥重新加密所有 Provider Key。
 - 真实上游 Key 不会出现在 evaluator 容器、支持包、日志或提交代码中。
 

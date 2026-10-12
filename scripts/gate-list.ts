@@ -39,12 +39,15 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/check-migration-safety_test.ts",
   "scripts/check-migration-snapshot-chain_test.ts",
   "scripts/verify-capability-seams_test.ts",
+  "scripts/verify-compile-safe-imports_test.ts",
   "scripts/gen-route-catalog_test.ts",
   "scripts/silent-skip-report_test.ts",
   "scripts/check-file-size_test.ts",
   "scripts/check-write-rate-limits_test.ts",
   "scripts/check-log-migration_test.ts",
   "scripts/check-deno-version_test.ts",
+  "scripts/check-action-pins_test.ts",
+  "scripts/check-prod-env-injection_test.ts",
   // 评审发现：下面两个是本次新增/扩展的守卫测试，却**不在任何执行入口内**
   // ——写了测试却永不执行，正是本仓库反复治理的"假绿"形态。
   "scripts/gate-list_test.ts",
@@ -66,7 +69,18 @@ export const REPO_GATES: Gate[] = [
   { args: ["deno", "run", "-A", "scripts/verify-md-links.ts"] },
   { args: ["deno", "run", "-A", "scripts/verify-export-jsdoc.ts"] },
   { args: ["deno", "run", "-A", "scripts/verify-capability-seams.ts"] },
+  // deno compile 导入安全：变量说明符的动态导入无法内联进生产二进制，
+  // 编译期不报错、源码运行与单元测试全绿，只在生产容器里抛 Module not found
+  //（2026-09-25 实测：noj-server 的阿里云邮件 Provider 不可用，邮件全链路 500）。
+  { args: ["deno", "run", "-A", "scripts/verify-compile-safe-imports.ts"] },
   { args: ["deno", "run", "-A", "scripts/verify-domain-ci.ts"] },
+  // E2E 启动脚本闸门：**项目名隔离**（2026-09-28 实测事故——setup.sh 与 dev 共用 compose
+  // 项目名 `neuro-oj`，执行它会把 dev 的 noj-postgres/redis/minio 认领并重建为 noj-e2e-*）
+  // 与"SDK 镜像构建失败必须阻止启动"。此前该脚本仅手工可跑，缺陷因此无人拦。
+  {
+    label: "E2E 启动脚本闸门（项目名隔离 + SDK 构建失败传播）",
+    args: ["bash", "scripts/e2e/check-setup.sh"],
+  },
   // 静默跳过：与基线比对，**跳过数增长即失败**（2026-09-12 评审 §5.1）。
   {
     label: "静默跳过棘轮（silent-skip-report --check）",
@@ -118,6 +132,12 @@ export const REPO_GATES: Gate[] = [
   // Deno 版本一致性（2026-09-17）：CI 曾用浮动 v2.x，2.9.7 发布引入 BrokenPipe
   // 回归导致 UI Components 间歇红灯。.dvmrc 为唯一事实源，禁止写死 deno-version。
   { args: ["deno", "run", "-A", "scripts/check-deno-version.ts"] },
+  // Actions 引用固定（审计 S1，2026-10-04）：175 处 uses 曾零处固定 SHA，而 release.yml
+  // 持有写权限并 --clobber 覆盖 Release 资产——上游可变 tag 被篡改即污染所有后续安装。
+  { args: ["deno", "run", "-A", "scripts/check-action-pins.ts"] },
+  // 生产 env 注入一致性（2026-10-04）：compose 无 env_file，.env.prod.example 声明却未插值的
+  // 变量静默无效——实测邮件凭据未注入导致启用邮件即 core 启动失败、G-03 白名单无法放行。
+  { args: ["deno", "run", "-A", "scripts/check-prod-env-injection.ts"] },
   // schema-ddl.ts（PGlite 测试用手工 SQL 镜像）与 Drizzle schema 的表/列一致性
   //（2026-09-12 评审 §3.3）。脚本置于 noj-core 下以便解析其导入映射。
   {

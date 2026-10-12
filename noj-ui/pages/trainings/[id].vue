@@ -58,42 +58,40 @@ async function handleDeleteTraining() {
         error="题单加载失败"
         @retry="refresh"
       >
-        <section class="rounded-2xl bg-bg-dark px-8 py-8 text-white shadow-card">
-          <div class="flex items-center gap-3">
-            <h1 class="text-3xl font-bold">{{ training?.title }}</h1>
+        <section class="rounded-lg bg-white border border-border p-6 sm:p-7 shadow-card">
+          <div class="flex flex-wrap items-center gap-3">
+            <h1 class="text-2xl sm:text-3xl font-bold text-text">{{ training?.title }}</h1>
             <span
               v-if="training?.visibility === 'private'"
-              class="rounded-full bg-white/10 px-3 py-1 text-xs"
+              class="rounded-full bg-bg-sunken border border-border px-3 py-1 text-xs font-medium text-text-muted"
             >私有</span>
             <span
               v-else-if="training?.visibility === 'unlisted'"
-              class="rounded-full bg-white/10 px-3 py-1 text-xs"
+              class="rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 text-xs font-medium"
             >链接可见</span>
-            <span v-else class="rounded-full bg-white/10 px-3 py-1 text-xs">公开</span>
-            <UButton
-              v-if="isOwner"
-              icon="i-lucide-pencil"
-              size="xs"
-              color="neutral"
-              variant="ghost"
-              class="ml-auto text-white/80 hover:text-white"
-              @click="showEdit = true"
-            >
-              编辑
-            </UButton>
-            <UButton
-              v-if="isOwner"
-              icon="i-lucide-trash-2"
-              size="xs"
-              color="error"
-              variant="ghost"
-              class="text-white/80 hover:text-white"
-              @click="handleDeleteTraining"
-            >
-              删除
-            </UButton>
+            <span v-else class="rounded-full bg-primary-bg text-primary border border-primary/20 px-3 py-1 text-xs font-semibold">公开</span>
+            <div v-if="isOwner" class="ml-auto flex items-center gap-1">
+              <UButton
+                icon="i-lucide-pencil"
+                size="xs"
+                color="neutral"
+                variant="ghost"
+                @click="showEdit = true"
+              >
+                编辑
+              </UButton>
+              <UButton
+                icon="i-lucide-trash-2"
+                size="xs"
+                color="error"
+                variant="ghost"
+                @click="handleDeleteTraining"
+              >
+                删除
+              </UButton>
+            </div>
           </div>
-          <p class="mt-4 whitespace-pre-line text-sm leading-6 text-slate-300">
+          <p v-if="training?.description" class="mt-3 whitespace-pre-line text-sm leading-6 text-text-secondary border-t border-border/60 pt-3">
             {{ training?.description }}
           </p>
         </section>

@@ -1,21 +1,29 @@
 # 生产密钥轮换 Runbook
 
-本文档适用于 Docker Compose 生产部署。未接入 secrets manager 时，将密钥写入 `/opt/neuro-oj/.env.prod`（权限 600），不得提交 Git、打入镜像或写入日志。
+本文档适用于 Docker Compose 生产部署。未接入 secrets manager 时，将密钥写入 `/opt/neuro-oj/.env.prod`（权限 `600`），不得提交 Git、打入镜像或写入日志。
+
+::: warning 轮换前必备
+- 在维护窗口执行，并准备**上一份配置**用于回滚；
+- 每次轮换前先备份数据库与配置（见[生产部署的备份与恢复演练](./production-deploy.md)）；
+- 记录时间、变更人、受影响服务与 smoke test 结果。
+:::
 
 ## 部署前检查
 
 ```bash
+# 1. 收紧配置权限
 chmod 600 /opt/neuro-oj/.env.prod
-docker compose --env-file /opt/neuro-oj/.env.prod \
-  -f /opt/neuro-oj/docker-compose.prod.yml config >/dev/null
+
+# 2. 只做本地配置校验（不改变服务、不拉镜像）
+noj-cli config check
 ```
 
-检查命令只输出配置键名和错误原因，不输出 secret 值。生产环境禁止已知占位符、mock 邮件 Provider 和 local 存储。
+`config check` 只输出配置键名和错误原因，不输出 secret 值。生产环境禁止已知占位符、`mock` 邮件 Provider 和 `local` 存储；生产启动还会在 HTTP 监听前执行一次 fail-fast 校验。
 
 ## S3/MinIO 应用凭据轮换
 
-1. 生成新的 `S3_ACCESS_KEY` 和 `S3_SECRET_KEY`，确保它们与 `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` 不同。
-2. 在维护窗口更新 `/opt/neuro-oj/.env.prod`，运行 `noj config check`。
+1. 生成新的 `S3_ACCESS_KEY` 和 `S3_SECRET_KEY`，确保它们与 `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` 不同（`minio-init` 会拒绝复用 root 凭据）。
+2. 在维护窗口更新 `/opt/neuro-oj/.env.prod`，运行 `noj-cli config check`。
 3. 执行 `minio-init`，让目标 bucket 的应用策略和新用户生效：
 
    ```bash
@@ -32,25 +40,30 @@ docker compose --env-file /opt/neuro-oj/.env.prod \
 
 1. 在邮件服务商创建新的 API 凭据，并确认发件域名/地址已验证。
 2. 更新对应的 `ALIBABA_*` 或 `TENCENT_*` 配置，保留 `EMAIL_PROVIDER` 不变。
-3. 运行 `noj config check` 并重启 `core`，执行密码重置邮件 smoke test。
+3. 运行 `noj-cli config check` 并重启 `core`，执行密码重置邮件 smoke test。
 4. 确认新凭据发送成功后，撤销旧凭据。
 
-`EMAIL_PROVIDER=mock` 在生产环境会阻止 core 启动。
+> `EMAIL_PROVIDER=mock` 在生产环境会阻止 core 启动。
+> `EMAIL_PROVIDER` 属于 **bootstrap（env-owned）** 项，不能在管理后台热改，必须改 `.env.prod` 后重启 core。
 
 ## Redis、PostgreSQL 和管理员凭据
 
 1. 创建新凭据并先在 staging 验证连接。
-2. 更新 secret 文件或 secrets manager，执行配置检查。
+2. 更新 secret 文件或 secrets manager，执行 `noj-cli config check`。
 3. 先备份 PostgreSQL、Redis AOF/RDB、MinIO bucket 和当前配置，再重启对应服务。
 4. 确认健康检查、登录、提交评测和结果回写正常后撤销旧凭据。
 
+::: warning 轮换有短暂不可用窗口
 Redis/PostgreSQL 凭据轮换可能造成短暂不可用；应在维护窗口执行，并准备上一份配置用于回滚。
+:::
 
 ## JWT 与 TFA 密钥
 
+::: danger 高危：TFA 密钥直接替换会导致用户无法登录
 - 轮换 `JWT_SECRET` 会使既有 JWT 会话失效，用户需要重新登录。
-- 轮换 `TFA_ENCRYPTION_KEY` 可能使已保存的 TOTP secret 无法解密；除非已完成 TFA 数据迁移方案，否则不得直接替换。
-- 轮换前必须完成数据库和配置备份，并记录影响范围；回滚时恢复旧配置后重启 `core`。
+- 轮换 `TFA_ENCRYPTION_KEY` 可能使已保存的 TOTP secret 无法解密；除非已完成 TFA 数据迁移方案，否则**不得**直接替换。
+- 两者均为 **bootstrap（env-owned）** 项，改 `.env.prod` 后需重启 `core`；轮换前必须完成数据库和配置备份，并记录影响范围。回滚时恢复旧配置后重启 `core`。
+:::
 
 ## LLM Gateway 密钥
 

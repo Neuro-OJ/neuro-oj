@@ -194,8 +194,20 @@ impl PredictionOutput {
                     // `unwrap_or(0)` → **静默 0 分且 prediction 不支持重测**
                     // （CI 的 Judge Sandbox E2E 因此从 6666 分变成 0 分）。
                     if self.payload.is_some() {
-                        if self.payload_candidates.len() < MAX_PAYLOAD_CANDIDATES {
-                            self.payload_candidates.push(s.trim().to_string());
+                        let trimmed = s.trim();
+                        // 含 `score` 的合法 JSON 才是真结果：即使前面已有 8 行噪声占满
+                        // 普通候选名额，也必须保留它（评审：真 JSON 排在第 9 行之后
+                        // 会被丢弃 → 误判 0 分且不可重测）。可用候选自身也有上限，防刷屏。
+                        let usable = trimmed.starts_with('{')
+                            && serde_json::from_str::<Value>(trimmed)
+                                .is_ok_and(|v| v.get("score").is_some());
+                        let cap = if usable {
+                            MAX_PAYLOAD_CANDIDATES * 2
+                        } else {
+                            MAX_PAYLOAD_CANDIDATES
+                        };
+                        if self.payload_candidates.len() < cap {
+                            self.payload_candidates.push(trimmed.to_string());
                         }
                         // 首个非空行仍是"主 payload"（保持既有语义与提前结束行为）。
                         if self.payload.as_ref() == Some(&String::new()) {
@@ -235,10 +247,11 @@ pub async fn evaluate_prediction(
     command_whitelist: &[String],
     max_evaluator_time_ms: u64,
     default_workspace_mb: u64,
+    instance_id: &str,
 ) -> Result<JudgeResult> {
-    // 复用双容器路径的同名 clamp/validate（solution 为 None 时自动跳过其校验）
-    let rc =
-        crate::dual::clamp_runtime_config_for_prediction(runtime_config, max_evaluator_time_ms);
+    // 复用双容器路径的 clamp/validate（solution 为 None 时自动跳过其收敛与校验；
+    // prediction 无调用级超时，solution 上限传 0 即不收敛）。
+    let rc = crate::dual::clamp_runtime_config(runtime_config, max_evaluator_time_ms, 0);
     crate::dual::validate_runtime_config(
         submission_id,
         &rc,
@@ -248,7 +261,6 @@ pub async fn evaluate_prediction(
     )?;
 
     let started = Instant::now();
-    let startup_deadline = Instant::now() + Duration::from_secs(30);
 
     let network_enabled = rc
         .evaluator
@@ -270,6 +282,7 @@ pub async fn evaluate_prediction(
         network_mode,
         cpu_limit_millicores,
         workspace_mb,
+        instance_id,
     )
     .await
     .context("创建 Evaluator 容器失败")?;
@@ -289,9 +302,12 @@ pub async fn evaluate_prediction(
     let rel = format!("prediction/{}", prediction_file_name);
     // Task 7 裁决：`inject_file_stream_to_container` 自身**不含截止时间**（容器侧
     // `tar xf -` 挂起时会无限等待），由调用方界定时间上限。预测文件可能有数 GB，
-    // 这里复用启动期剩余的 30s 预算作为硬上限；超时则返回 system_error，
-    // 由 RAII（`dual` 的 Drop）负责销毁 Evaluator 容器。
-    let inject_budget = startup_deadline.saturating_duration_since(Instant::now());
+    // 注入预算与 evaluator 运行预算**脱钩**（评审：二者共用 30s 启动期时，大文件
+    // 注入耗掉预算会让静默计算的 evaluator 被误判启动超时）：至少 30s，且不低于
+    // 题目 `time_limit_ms`；超时则返回 system_error，由 RAII（`dual` 的 Drop）
+    // 负责销毁 Evaluator 容器。
+    let inject_budget =
+        Duration::from_secs(30).max(Duration::from_millis(rc.evaluator.time_limit_ms));
     match tokio::time::timeout(
         inject_budget,
         crate::dual::inject_file_stream_to_container(&docker, &evaluator_id, prediction_path, &rel),
@@ -317,14 +333,8 @@ pub async fn evaluate_prediction(
         .await
         .context("启动 Evaluator exec 失败")?;
 
-    let outcome = run_prediction_loop(
-        submission_id,
-        exec,
-        rc.evaluator.time_limit_ms,
-        rejudge_seq,
-        startup_deadline,
-    )
-    .await;
+    let outcome =
+        run_prediction_loop(submission_id, exec, rc.evaluator.time_limit_ms, rejudge_seq).await;
 
     let memory_peak_kb = crate::dual::read_container_memory_peak_kb(&docker, &evaluator_id).await;
     if let Err(e) = dual.destroy().await {
@@ -346,39 +356,13 @@ async fn run_prediction_loop(
     mut exec: crate::dual::container::ExecSession,
     time_limit_ms: u64,
     rejudge_seq: Option<i64>,
-    startup_deadline: Instant,
 ) -> Result<JudgeResult> {
     let mut out = PredictionOutput::new();
 
-    // 阶段 1：等待首条输出（30s 启动期）
-    let mut first_seen = false;
-    while !first_seen {
-        let remaining = startup_deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            return Ok(JudgeResult::system_error(
-                submission_id,
-                "评测程序启动超时",
-                rejudge_seq,
-            ));
-        }
-        match tokio::time::timeout(remaining, exec.output.next()).await {
-            Err(_) => {
-                return Ok(JudgeResult::system_error(
-                    submission_id,
-                    "评测程序启动超时",
-                    rejudge_seq,
-                ))
-            }
-            Ok(None) => break,
-            Ok(Some(Err(e))) => return Err(anyhow::anyhow!("读取 Evaluator 输出失败: {}", e)),
-            Ok(Some(Ok(chunk))) => {
-                first_seen = true;
-                out.feed(&chunk);
-            }
-        }
-    }
-
-    // 阶段 2：总时限内持续读取，直到捕获到**可用** payload（可解析且含 score）
+    // 不再要求 evaluator 在启动期内打印首条输出：prediction 的 evaluator 通常
+    // 先静默计算、最后才打印 `---RESULT---`，30s 内无输出不是故障（评审）。
+    // 总时限只由题目 `time_limit_ms` 约束，从 exec 启动起计。
+    // 总时限内持续读取，直到捕获到**可用** payload（可解析且含 score）
     // 或流结束。退出条件不能用「任意非空行」——「标记 → 噪声 → 真 JSON」场景
     // 会在噪声处提前退出并丢掉真结果（2026-09-24 评审修复）。
     let deadline = Instant::now() + Duration::from_millis(time_limit_ms);
@@ -420,13 +404,15 @@ async fn run_prediction_loop(
             for candidate in out.payload_candidates_ordered() {
                 match serde_json::from_str::<Value>(&candidate) {
                     Ok(parsed) if parsed.get("score").is_some() => {
-                        return Ok(crate::dual::build_judge_result(
+                        // 评分合法性（整数、0..=10000）由 build_judge_result 强制校验；
+                        // 非法评分返回平台错误，而不是退化成正式零分（defect #29）。
+                        return crate::dual::build_judge_result(
                             submission_id,
                             &parsed,
                             &out.stderr_buf,
                             &out.stdout_full,
                             rejudge_seq,
-                        ))
+                        );
                     }
                     Ok(_) => {
                         last_err = Some(
@@ -755,29 +741,35 @@ mod fix_tests {
         assert_eq!(ordered[1], "{\"score\":42,\"details\":{}}");
     }
 
-    /// F-3：浮点 score 必须四舍五入为整数，不得静默 0。
+    /// 评分合法性沿用 defect #29：非整数浮点 score 是平台错误（保留已有成绩），
+    /// 既不四舍五入、也不静默判 0；整数值浮点（`800.0`）与整数等价。
     #[test]
-    fn test_float_score_rounds_instead_of_zero() {
+    fn test_prediction_score_follows_strict_integer_contract() {
         let parsed: serde_json::Value =
             serde_json::from_str("{\"score\":6666.666666666667,\"details\":{}}").unwrap();
-        let result = crate::dual::build_judge_result("sub-1", &parsed, "", "", None);
-        assert_eq!(result.status, "finished");
-        assert_eq!(result.score, 6667, "浮点 score 应四舍五入而非判 0");
+        assert!(crate::dual::build_judge_result("sub-1", &parsed, "", "", None).is_err());
 
-        // 整数行为不变
-        let parsed: serde_json::Value = serde_json::from_str("{\"score\":5000}").unwrap();
-        let result = crate::dual::build_judge_result("sub-1", &parsed, "", "", None);
-        assert_eq!(result.score, 5000);
+        let parsed: serde_json::Value = serde_json::from_str("{\"score\":800.0}").unwrap();
+        let result = crate::dual::build_judge_result("sub-1", &parsed, "", "", None).unwrap();
+        assert_eq!(result.score, 800);
+    }
 
-        // 超界仍夹取；非数值/NaN/Infinity 仍为 0
-        let parsed: serde_json::Value = serde_json::from_str("{\"score\":12345.6}").unwrap();
-        let result = crate::dual::build_judge_result("sub-1", &parsed, "", "", None);
-        assert_eq!(result.score, 10_000);
-        let parsed: serde_json::Value = serde_json::from_str("{\"score\":\"abc\"}").unwrap();
-        let result = crate::dual::build_judge_result("sub-1", &parsed, "", "", None);
-        assert_eq!(result.score, 0);
-        let parsed: serde_json::Value = serde_json::from_str("{\"score\":-3}").unwrap();
-        let result = crate::dual::build_judge_result("sub-1", &parsed, "", "", None);
-        assert_eq!(result.score, 0);
+    /// 评审：标记后先有超过候选上限的噪声行，真正的 `{"score":..}` 排在第 9 行之后
+    /// 仍必须被保留并判为可用，而不是被丢弃 → 误判 0 分。
+    #[test]
+    fn test_usable_payload_survives_noise_beyond_candidate_cap() {
+        let mut out = PredictionOutput::new();
+        let mut text = String::from("---RESULT---\n");
+        for i in 0..(MAX_PAYLOAD_CANDIDATES + 5) {
+            text.push_str(&format!("warning line {i}\n"));
+        }
+        text.push_str("{\"score\":4242,\"details\":{}}\n");
+        out.feed(&stdout_chunk(&text));
+        out.finish();
+        assert!(out.has_usable_payload());
+        assert!(out
+            .payload_candidates_ordered()
+            .iter()
+            .any(|c| c == "{\"score\":4242,\"details\":{}}"));
     }
 }

@@ -19,6 +19,8 @@ import {
 import { getMyRanking } from "../../query/index.ts";
 import { deleteOwnAccount } from "../services/account-deletion.ts";
 import { getClientIp } from "../../system/index.ts";
+import { buildUserDataExport } from "../services/me-data-export.ts";
+import { enforceRateLimit } from "../../system/index.ts";
 
 const users = new Hono<AuthEnv>();
 
@@ -42,6 +44,7 @@ users.get("/search", authMiddleware, async (c) => {
  */
 users.put("/me", authMiddleware, async (c) => {
   const userId = c.get("userId") as string;
+  await enforceRateLimit(`users-me:user:${userId}`, { windowSec: 30, max: 10 });
   const body = await parseJsonBody<{ bio?: string }>(c);
 
   if (body.bio === undefined) {
@@ -59,6 +62,10 @@ users.put("/me", authMiddleware, async (c) => {
  */
 users.post("/me/avatar", authMiddleware, async (c) => {
   const userId = c.get("userId") as string;
+  await enforceRateLimit(`users-avatar:user:${userId}`, {
+    windowSec: 60,
+    max: 5,
+  });
   const body = await c.req.parseBody();
   const file = body["file"];
   if (!file || !(file instanceof File)) {
@@ -74,15 +81,47 @@ users.post("/me/avatar", authMiddleware, async (c) => {
  */
 users.delete("/me/avatar", authMiddleware, async (c) => {
   const userId = c.get("userId") as string;
+  await enforceRateLimit(`users-avatar:user:${userId}`, {
+    windowSec: 60,
+    max: 5,
+  });
   await clearUserAvatar(userId);
   return c.body(null, 204);
 });
 
 /** 注销当前账户。需要再次确认当前密码。 */
 users.post("/me/delete-account", authMiddleware, async (c) => {
+  const userId = c.get("userId") as string;
+  await enforceRateLimit(`users-delete:user:${userId}`, {
+    windowSec: 300,
+    max: 3,
+  });
   const body = await parseJsonBody<{ password?: string }>(c);
   await deleteOwnAccount(c.get("userId"), body.password ?? "", getClientIp(c));
   return c.body(null, 204);
+});
+
+/**
+ * 导出当前用户的个人信息（PIPL 第 45 条：查阅、复制权）。
+ * GET /api/v1/users/me/data-export
+ * 返回本人账户、提交、社区内容与同意记录的 JSON。
+ * 低频重读端点，按用户维度限流。
+ */
+users.get("/me/data-export", authMiddleware, async (c) => {
+  const userId = c.get("userId") as string;
+  await enforceRateLimit(`data-export:user:${userId}`, {
+    windowSec: 60,
+    max: 5,
+  });
+  const data = await buildUserDataExport(userId);
+  if (!data) {
+    throw new BadRequestError("用户不存在");
+  }
+  c.header(
+    "Content-Disposition",
+    `attachment; filename="noj-data-export-${userId}.json"`,
+  );
+  return c.json({ data });
 });
 
 /**
@@ -116,7 +155,13 @@ users.get("/:id/profile", optionalAuthMiddleware, async (c) => {
   const userId = await resolveUserId(c.req.param("id") as string);
   // admin:full_access 通配放行由 checkPermission 内部处理
   const moderator = await checkPermission(c, "community_moderation:review");
-  const profile = await getUserProfileAggregate(userId, moderator);
+  // 查看者上下文：非特权查看者看不到"被未结束公开赛保密的题目"的解题/提交记录
+  // （审计 VULN-07）。管理员判定走 submission:read_all（admin:full_access 通配）。
+  const viewer = {
+    viewerId: c.get("userId"),
+    isAdmin: await checkPermission(c, "submission:read_all"),
+  };
+  const profile = await getUserProfileAggregate(userId, moderator, viewer);
   // 追加 rank 字段：复用 rankings service 的 getMyRanking，确保排序逻辑一致
   const ranking = await getMyRanking(userId);
   return c.json({ data: { ...profile, rank: ranking?.rank ?? null } }, 200);

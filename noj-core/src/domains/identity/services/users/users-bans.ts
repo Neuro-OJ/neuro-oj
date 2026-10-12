@@ -122,7 +122,14 @@ export async function banUser(
 
   const now = new Date().toISOString();
 
-  // 1. 关闭已有活跃封禁
+  // 1. 关闭已有活跃封禁并递增 session_version 使所有已有会话与 JWT 即刻失效（AR-05）
+  await db.update(users)
+    .set({
+      session_version: sql`${users.session_version} + 1`,
+      updated_at: now,
+    })
+    .where(eq(users.id, targetUserId));
+
   await db.update(userBans)
     .set({ unbanned_at: now, updated_at: now })
     .where(

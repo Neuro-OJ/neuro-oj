@@ -1,13 +1,19 @@
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
 import { extractApiError } from '../utils/apiError.ts';
-import { normalizeLocale, translate } from '../utils/i18n.ts';
+import { messages, normalizeLocale, translate } from '../utils/i18n.ts';
 
 Deno.test('i18n defaults to Chinese and interpolates messages', () => {
   assertEquals(normalizeLocale(undefined), 'zh-CN');
   assertEquals(normalizeLocale('en'), 'en-US');
   assertEquals(translate('en-US', 'contest.count', { count: 3 }), '3 contests');
   assertEquals(translate('zh-CN', 'contest.count', { count: 3 }), '共 3 场竞赛');
+});
+
+Deno.test('i18n: zh-CN 与 en-US 的键集合完全一致（新增文案必须双语）', () => {
+  const zh = Object.keys(messages['zh-CN']).sort();
+  const en = Object.keys(messages['en-US']).sort();
+  assertEquals(zh, en);
 });
 
 Deno.test('API error codes are localized before backend error text', () => {

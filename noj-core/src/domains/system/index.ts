@@ -1,6 +1,7 @@
 export * from "./services/audit-log.ts";
 export * from "./services/system-settings.ts";
 export * from "./services/announcements.ts";
+export * from "./services/carousel.ts";
 export * from "./services/judge-images.ts";
 export * from "./services/seed/seed-rbac.ts";
 export * from "./services/seed/seed-system.ts";
@@ -13,6 +14,7 @@ export * from "./services/email-providers/types.ts";
 export * from "./services/email-delivery/types.ts";
 export * from "./services/email-delivery/service.ts";
 export * from "./services/env-snapshot.ts";
+export * from "./services/oi-cost-profile.ts";
 export * from "./middleware/rate-limit.ts";
 export * from "./types/audit-log.ts";
 export * from "./services/request-context.ts";

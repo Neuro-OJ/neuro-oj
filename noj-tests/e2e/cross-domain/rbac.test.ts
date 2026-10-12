@@ -150,7 +150,8 @@ e2eTest("rbac-e2e: 服务层权限校验——普通用户无法创建 P 型题"
     throw new Error("普通用户不应能创建 P 型题");
   }
 
-  // 创建 U 型题时因携带 evaluator.command 敏感字段同样应被拒（NOJ-062）
+  // 创建 U 型题时设置非默认 evaluator.command（敏感字段）同样应被拒（NOJ-062）；
+  // 使用默认命令 `python3 /workspace/evaluate.py` 不触发敏感字段检查
   const uRes = await api("POST", "/api/v1/problems", {
     token,
     body: {
@@ -160,7 +161,7 @@ e2eTest("rbac-e2e: 服务层权限校验——普通用户无法创建 P 型题"
       runtime_config: {
         evaluator: {
           image: "noj-evaluator-python",
-          command: "python3 /workspace/evaluate.py",
+          command: "bash /workspace/run.sh",
           time_limit_ms: 5000,
           memory_limit_mb: 512,
         },
