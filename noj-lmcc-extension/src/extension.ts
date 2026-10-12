@@ -3,10 +3,11 @@ import * as vscode from "vscode";
 import { ApiError, NeuroOjApi, normalizeServerUrl } from "./api";
 import { pollSubmission } from "./polling";
 import { ProblemsTreeProvider } from "./problemsTree";
-import type { Problem, SelectedProblem, SubmissionDetail, User } from "./types";
+import type { Domain, Problem, SelectedProblem, SubmissionDetail, User } from "./types";
 
 const USER_KEY = "neuroOj.user";
 const SELECTED_PROBLEM_KEY = "neuroOj.selectedProblem";
+const DOMAIN_KEY = "neuroOj.domain";
 
 let api: NeuroOjApi;
 let tree: ProblemsTreeProvider;
@@ -48,6 +49,7 @@ export async function activate(
       (problem?: Problem) => selectProblem(context, problem),
     ),
     vscode.commands.registerCommand("neuroOj.submit", () => submit(context)),
+    vscode.commands.registerCommand("neuroOj.selectDomain", () => selectDomain(context)),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("neuroOj")) void initializeApi(context);
     }),
@@ -239,9 +241,18 @@ async function refreshProblems(
 ): Promise<Problem[]> {
   tree.setLoading();
   try {
-    const problems = await api.listProblems();
+    let domain = context.globalState.get<Domain>(domainKey(context));
+    const domains = await api.domains();
+    domain = domains.find((item) => item.slug === domain?.slug && item.status !== 'suspended');
+    if (!domain) {
+      if (domains.length === 1) domain = domains[0];
+      else domain = await pickDomain(domains);
+      if (!domain) { tree.setMessage('请选择工作空间'); return []; }
+      await context.globalState.update(domainKey(context), domain);
+    }
+    const problems = await api.domainProblems(domain.slug);
     const selected =
-      context.globalState.get<SelectedProblem>(SELECTED_PROBLEM_KEY);
+      context.globalState.get<SelectedProblem>(selectionKey(context, domain.slug));
     tree.setProblems(problems, selected);
     if (notify)
       vscode.window.setStatusBarMessage(
@@ -255,6 +266,23 @@ async function refreshProblems(
     if (notify) showError("加载题目失败", error);
     return [];
   }
+}
+
+async function pickDomain(domains: Domain[]): Promise<Domain | undefined> {
+  const item = await vscode.window.showQuickPick(domains.filter((domain) => domain.status !== 'suspended').map((domain) => ({
+    label: domain.name, description: domain.slug, domain,
+  })), { title: '选择 Neuro OJ 工作空间' });
+  return item?.domain;
+}
+
+async function selectDomain(context: vscode.ExtensionContext): Promise<void> {
+  try {
+    const domain = await pickDomain(await api.domains());
+    if (!domain) return;
+    await context.globalState.update(domainKey(context), domain);
+    updateStatusBar(context);
+    await refreshProblems(context);
+  } catch (error) { showError('切换工作空间失败', error); }
 }
 
 async function selectProblem(
@@ -275,12 +303,18 @@ async function selectProblem(
     chosen = picked?.problem;
   }
   if (!chosen) return undefined;
+  const domain = context.globalState.get<Domain>(domainKey(context));
+  if (!domain) return undefined;
 
   // 选定题目时固定作答版本：提交必须携带，服务端据此判断"在评测哪一版"
   let versionId: string | null = null;
   let version: number | null = null;
   try {
-    const detail = await api.problem(chosen.id);
+    const detail = await api.domainProblem(domain.slug, chosen.id);
+    if (detail.content.submission_mode === 'artifact' || detail.supported_languages && !detail.supported_languages.includes('python3')) {
+      vscode.window.showWarningMessage('此题不能通过 Python 代码提交，请在网站中作答');
+      return undefined;
+    }
     versionId = detail.version_id;
     version = detail.version;
   } catch (err) {
@@ -296,13 +330,15 @@ async function selectProblem(
   }
 
   const selected: SelectedProblem = {
+    domainSlug: domain.slug,
+    reference: chosen.display_id,
     id: chosen.id,
     displayId: chosen.display_id,
     title: chosen.title,
     versionId,
     version,
   };
-  await context.globalState.update(SELECTED_PROBLEM_KEY, selected);
+  await context.globalState.update(selectionKey(context, domain.slug), selected);
   tree.markSelected(selected);
   updateStatusBar(context);
   vscode.window.setStatusBarMessage(
@@ -326,7 +362,8 @@ async function submit(context: vscode.ExtensionContext): Promise<void> {
     if (!(await context.secrets.get(tokenKey(currentServerUrl)))) return;
   }
 
-  let selected = context.globalState.get<SelectedProblem>(SELECTED_PROBLEM_KEY);
+  const domain = context.globalState.get<Domain>(domainKey(context));
+  let selected = domain ? context.globalState.get<SelectedProblem>(selectionKey(context, domain.slug)) : undefined;
   if (!selected) selected = await selectProblem(context);
   if (!selected) return;
 
@@ -344,6 +381,7 @@ async function submit(context: vscode.ExtensionContext): Promise<void> {
     "提交评测",
   );
   if (confirmation !== "提交评测") return;
+  if (!selected.domainSlug || !selected.versionId || context.globalState.get<Domain>(domainKey(context))?.slug !== selected.domainSlug) return;
 
   try {
     const detail = await vscode.window.withProgress(
@@ -354,18 +392,19 @@ async function submit(context: vscode.ExtensionContext): Promise<void> {
       },
       async (progress, cancellation) => {
         progress.report({ message: "正在上传代码…" });
-        const created = await api.submitCode(
-          selected!.id,
+        const created = await api.submitDomainCode(
+          selected!.domainSlug!,
+          selected!.reference!,
           code,
           path.basename(document.fileName),
-          selected!.versionId,
+          selected!.versionId!,
         );
         output.appendLine(`\n[提交] ${selected!.displayId} ${selected!.title}`);
         output.appendLine(`文件：${document.fileName}`);
         output.appendLine(`提交编号：${created.public_id ?? created.id}`);
 
         const config = vscode.workspace.getConfiguration("neuroOj");
-        return await pollSubmission(() => api.submission(created.id), {
+        return await pollSubmission(() => api.domainSubmission(selected!.domainSlug!, created.id), {
           intervalMs: config.get<number>("pollIntervalSeconds", 2) * 1000,
           timeoutMs: config.get<number>("pollTimeoutSeconds", 180) * 1000,
           isCancelled: () => cancellation.isCancellationRequested,
@@ -383,6 +422,9 @@ async function submit(context: vscode.ExtensionContext): Promise<void> {
     );
     showResult(detail);
   } catch (error) {
+    if (error instanceof ApiError && error.status === 409) {
+      vscode.window.showWarningMessage('作答版本已变化，当前文件保留。请刷新并重新选择题目，确认新题面后再次提交。');
+    }
     await handleAuthenticatedError(context, error);
     showError("提交或评测失败", error);
   }
@@ -431,7 +473,7 @@ async function resolvePythonDocument(): Promise<
 function showResult(detail: SubmissionDetail): void {
   output.appendLine(`状态：${statusLabel(detail.status)}`);
   if (detail.result) {
-    output.appendLine(`得分：${(detail.result.score / 100).toFixed(2)}`);
+    if (detail.result_visibility !== 'hidden' && detail.result.score !== null) output.appendLine(`得分：${(detail.result.score / 100).toFixed(2)}`);
     if (detail.result.time_ms != null)
       output.appendLine(`耗时：${detail.result.time_ms} ms`);
     if (detail.result.memory_kb != null)
@@ -448,7 +490,9 @@ function showResult(detail: SubmissionDetail): void {
   if (detail.status === "error") {
     vscode.window.showErrorMessage("Neuro OJ 评测失败，详情已写入输出面板");
   } else {
-    const score = detail.result
+    const score = detail.result_visibility === 'hidden'
+      ? '已受理，结果按比赛规则暂未公开'
+      : detail.result && detail.result.score !== null
       ? `${(detail.result.score / 100).toFixed(2)} 分`
       : "结果已完成";
     vscode.window.showInformationMessage(`Neuro OJ 评测完成：${score}`);
@@ -465,15 +509,23 @@ async function handleAuthenticatedError(
 }
 
 function updateStatusBar(context: vscode.ExtensionContext): void {
+  const domain = context.globalState.get<Domain>(domainKey(context));
   const selected =
-    context.globalState.get<SelectedProblem>(SELECTED_PROBLEM_KEY);
+    domain ? context.globalState.get<SelectedProblem>(selectionKey(context, domain.slug)) : undefined;
   const user = context.globalState.get<User>(USER_KEY);
   statusBar.text = selected
-    ? `$(cloud-upload) ${selected.displayId}`
+    ? `$(cloud-upload) ${domain?.slug} · ${selected.displayId}`
     : user
       ? "$(cloud-upload) Neuro OJ"
       : "$(account) 登录 Neuro OJ";
   statusBar.command = user ? "neuroOj.submit" : "neuroOj.login";
+}
+
+function domainKey(context: vscode.ExtensionContext): string {
+  return `${DOMAIN_KEY}:${currentServerUrl}:${context.globalState.get<User>(USER_KEY)?.id ?? ''}`;
+}
+function selectionKey(context: vscode.ExtensionContext, slug: string): string {
+  return `${SELECTED_PROBLEM_KEY}:${currentServerUrl}:${context.globalState.get<User>(USER_KEY)?.id ?? ''}:${slug}`;
 }
 
 async function setAuthenticated(value: boolean): Promise<void> {

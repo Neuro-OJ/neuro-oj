@@ -95,7 +95,7 @@ test("checkConnection 不携带已有令牌", async () => {
 
   await api.checkConnection();
   assert.equal(captured?.headers.Authorization, undefined);
-  assert.equal(captured?.url.pathname, "/api/v1/problems");
+  assert.equal(captured?.url.pathname, "/api/v1/instance");
 });
 
 test("listProblems 翻页并排除客观题与产物题", async () => {

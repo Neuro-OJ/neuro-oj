@@ -28,7 +28,7 @@ export type SubmissionStatus = "pending" | "judging" | "finished" | "error";
 /** 评测结果详情。分数沿用服务端协议，为放大 100 倍的整数。 */
 export interface EvaluationResult {
   status: string;
-  score: number;
+  score: number | null;
   output: string | null;
   output_truncated: boolean | null;
   time_ms: number | null;
@@ -58,6 +58,7 @@ export interface ProblemDetail extends ProblemVersionInfo {
 
 /** 提交详情响应。 */
 export interface SubmissionDetail extends CreatedSubmission {
+  result_visibility?: 'hidden' | 'summary' | 'cases';
   problem_id: string;
   file_name: string;
   result: EvaluationResult | null;
@@ -67,6 +68,8 @@ export interface SubmissionDetail extends CreatedSubmission {
 
 /** 保存在扩展状态中的当前题目摘要。 */
 export interface SelectedProblem {
+  domainSlug?: string;
+  reference?: string;
   id: string;
   displayId: string;
   title: string;
@@ -79,4 +82,19 @@ export interface SelectedProblem {
    */
   versionId: string | null;
   version: number | null;
+}
+
+/** 当前账号可用的工作空间。 */
+export interface Domain {
+  id: string;
+  slug: string;
+  name: string;
+  status: 'active' | 'archived' | 'suspended';
+}
+export interface DomainProblem {
+  reference: { problem_id: string; display_ref: string; source_domain_slug: string; is_shared: boolean };
+  title: string;
+  kind: 'oi' | 'ai' | 'objective';
+  version_id: string;
+  version: number;
 }

@@ -66,6 +66,29 @@ const ROUTES: BreadcrumbRoute[] = [
   },
   { pattern: '/join', trail: [{ key: 'breadcrumb.invitation' }] },
   { pattern: '/d/:slug', trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }] },
+  { pattern: '/d/:slug/llm', trail: [{ param: 'slug' }, { key: 'breadcrumb.settings' }] },
+  { pattern: '/d/:slug/problems', trail: [{ param: 'slug' }, { key: 'nav.problems' }] },
+  {
+    pattern: '/d/:slug/problems/:reference',
+    trail: [{ param: 'slug' }, { key: 'nav.problems', to: '/d/:slug/problems' }, { param: 'reference' }],
+  },
+  { pattern: '/d/:slug/contests', trail: [{ param: 'slug' }, { key: 'nav.contests' }] },
+  {
+    pattern: '/d/:slug/contests/new',
+    trail: [{ param: 'slug' }, { key: 'nav.contests', to: '/d/:slug/contests' }, { key: 'breadcrumb.edit' }],
+  },
+  {
+    pattern: '/d/:slug/contests/:contestId',
+    trail: [{ param: 'slug' }, { key: 'nav.contests', to: '/d/:slug/contests' }, { param: 'contestId' }],
+  },
+  {
+    pattern: '/d/:slug/contests/:contestId/ranking',
+    trail: [{ param: 'slug' }, { param: 'contestId' }, { key: 'breadcrumb.ranking' }],
+  },
+  {
+    pattern: '/d/:slug/contests/:contestId/manage',
+    trail: [{ param: 'slug' }, { param: 'contestId' }, { key: 'breadcrumb.edit' }],
+  },
   {
     pattern: '/d/:slug/members',
     trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { key: 'breadcrumb.members' }],
@@ -299,6 +322,7 @@ function dynamicTarget(pattern: string, paramName: string, params: Record<string
   if (prefix === '/d') return workspaceSlugFromPath(`/d/${value}`) ? workspacePath(value) : undefined;
   if (prefix === '/d/:slug/classrooms' && params.slug) return workspacePath(params.slug, `classrooms/${value}`);
   if (prefix === '/d/:slug/assignments' && params.slug) return workspacePath(params.slug, `assignments/${value}`);
+  if (prefix === '/d/:slug/contests' && params.slug) return workspacePath(params.slug, `contests/${value}`);
 
   // 题目 / 用户 / 竞赛 / 提交 / 题单 / 帖子 / 公告均有公开标识构造器
   if (prefix === '/problems') return problemUrl(value);
@@ -334,7 +358,10 @@ export function resolveBreadcrumb(path: string, locale: Locale = DEFAULT_LOCALE)
   const items: BreadcrumbItem[] = [];
   for (const entry of route.trail) {
     if ('key' in entry) {
-      items.push({ label: label(entry.key, locale), to: entry.to });
+      items.push({
+        label: label(entry.key, locale),
+        to: entry.to?.replace(/:([A-Za-z0-9_]+)/g, (_, name: string) => encodeURIComponent(match.params[name] ?? '')),
+      });
     } else {
       const value = match.params[entry.param];
       if (value === undefined) continue;

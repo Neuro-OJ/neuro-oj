@@ -38,10 +38,16 @@
     "onCommand:neuroOj.logout",
     "onCommand:neuroOj.refreshProblems",
     "onCommand:neuroOj.selectProblem",
+    "onCommand:neuroOj.selectDomain",
     "onCommand:neuroOj.submit"
   ],
   "contributes": {
     "commands": [
+      {
+        "command": "neuroOj.selectDomain",
+        "title": "Neuro OJ: 切换工作空间",
+        "icon": "$(organization)"
+      },
       {
         "command": "neuroOj.configureServer",
         "title": "Neuro OJ: 配置服务器地址",
@@ -95,6 +101,11 @@
     },
     "menus": {
       "view/title": [
+        {
+          "command": "neuroOj.selectDomain",
+          "when": "view == neuroOj.problems && neuroOj.authenticated",
+          "group": "navigation@0"
+        },
         {
           "command": "neuroOj.configureServer",
           "when": "view == neuroOj.problems",
