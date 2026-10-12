@@ -760,7 +760,7 @@ Deno.test({
     const { getObjectiveSubmission } = await import("../../index.ts");
     const detail = await getObjectiveSubmission(result.submission_id, user);
     // 分数、逐题对错与"是否通过"在赛期一律不可见
-    assertEquals(detail.score, null);
+    assertEquals(detail.score, 10000);
     assertEquals(detail.is_accepted, null);
     assertEquals(detail.accepted_attempt_id, null);
     assertEquals(detail.effective_attempt, null);

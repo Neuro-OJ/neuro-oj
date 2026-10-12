@@ -54,7 +54,7 @@ export const contests = pgTable(
     publicIdUnique: unique("contests_public_id_unique").on(table.public_id),
     typeCheck: check(
       "contests_type_check",
-      sql`${table.type} IN ('kaggle')`,
+      sql`${table.type} IN ('kaggle', 'oi', 'ioi', 'ioi_strict', 'acm')`,
     ),
     kindCheck: check(
       "contests_kind_check",

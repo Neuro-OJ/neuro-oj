@@ -294,7 +294,7 @@ Deno.test({
       code: "print(1)",
       submitted_version_id: v1,
       version_origin: "known",
-      created_at: now,
+      created_at: contest.start_time,
     });
     const attempted = await getContestProblems(contest.id, solverId);
     assertEquals(attempted[0].user_status, "attempted");

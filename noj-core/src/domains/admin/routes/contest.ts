@@ -430,7 +430,12 @@ router.get("/contests/:id/submissions", async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   await getContest(contestId);
   const { page, perPage } = parsePagination(c);
-  const result = await listSubmissions({ contestId, page, perPage });
+  const result = await listSubmissions({
+    contestId,
+    page,
+    perPage,
+    platformAdmin: true,
+  });
   return c.json({
     data: result.data,
     pagination: buildPaginationMeta(page, perPage, result.total),
@@ -580,7 +585,7 @@ function buildRankingSnapshotJson(
       total_score: scoreFromDb(row.total_score),
       problem_scores: (row.problem_scores ?? []).map((s) => ({
         ...s,
-        best_score: scoreFromDb(s.best_score),
+        best_score: s.best_score === null ? null : scoreFromDb(s.best_score),
       })),
     }))
     : snapshot.rows;
@@ -657,7 +662,7 @@ function* buildRankingCsv(snapshot: {
         scoreFromDb(row.total_score),
         row.last_submission_at ?? "",
         score.label,
-        scoreFromDb(score.best_score),
+        score.best_score === null ? "待处理" : scoreFromDb(score.best_score),
         score.attempts,
         score.last_best_at ?? "",
       ].map(csvCell).join(",") + "\n";

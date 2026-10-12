@@ -12,6 +12,7 @@ import { and, count, desc, eq, inArray } from "drizzle-orm";
 import type { Context } from "hono";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
+  contests,
   evaluationAttempts,
   objectiveSubmissions,
   problems,
@@ -44,6 +45,7 @@ import {
   resolvePaperId,
 } from "./objective-questions.ts";
 import {
+  type ContestResponse,
   filterUnendedContestIds,
   getContest,
   getContestProblems,
@@ -120,7 +122,7 @@ async function validateContestSubmission(
   contestId: string,
   paperId: string,
   userId: string,
-): Promise<void> {
+): Promise<ContestResponse> {
   const contest = await getContest(contestId, userId);
   if (contest.status !== "running") {
     throw new ForbiddenError("竞赛未在进行中，无法提交");
@@ -147,6 +149,7 @@ async function validateContestSubmission(
   if (existing.length > 0) {
     throw new BadRequestError("该竞赛中已提交过此套卷，只允许提交一次");
   }
+  return contest;
 }
 
 /**
@@ -247,9 +250,9 @@ export async function submitObjectivePaper(
   }
 
   const contestMode = contestId !== null;
-  if (contestMode) {
-    await validateContestSubmission(contestId, paperUuid, userId);
-  }
+  const contest = contestId
+    ? await validateContestSubmission(contestId, paperUuid, userId)
+    : null;
 
   // 提交时版本（Handbook §4.2/§6.4）：**必须显式携带** `version_id`——竞赛只接受该
   // 竞赛的固定版本（不一致 → 409 `CONTEST_PROBLEM_VERSION_CHANGED`），题库显式版本
@@ -369,21 +372,17 @@ export async function submitObjectivePaper(
     throw err;
   }
 
-  // ── 竞赛模式：只回执"已提交"事实（审计 VULN-03）──
-  //
-  // 此前这里返回 `stripExpected(details)`——虽剥离了标准答案，却**保留每题
-  // correct: true/false**，并即时返回精确分数。协同作弊者据此把小号提交当作答案
-  // 预言机，逐题试探即可拼出全套满分答案。
-  // 现赛期不返回任何判定与分数；竞赛结束后由详情/历史接口给出（见
-  // getObjectiveSubmission / listObjectiveSubmissions 的赛后放行逻辑）。
+  // 比赛一次正式交卷：Kaggle 只给本人原始总分，OI 隐藏成绩；均不返回逐题对错。
   if (contestMode) {
     return {
       submission_id: submissionId,
       paper_id: paperId,
       status: "finished",
       contest_mode: true,
-      score: null,
-      score_db: null,
+      score: contest?.type === "kaggle"
+        ? judgement.score / SCORE_SCALE_FACTOR
+        : null,
+      score_db: contest?.type === "kaggle" ? judgement.score : null,
       correct_count: null,
       total_count: judgement.total_count,
       details: {},
@@ -679,8 +678,7 @@ export async function getObjectiveSubmission(
     throw new NotFoundError("提交记录不存在");
   }
 
-  // 竞赛未结束：屏蔽通过与否（防答案预言机，审计 VULN-03）。版本/尝试元信息不泄题，
-  // 但逐条尝试的相对分差同样可用于试探，因此一并屏蔽 is_effective/is_accepted。
+  // 赛期按赛制裁剪：Kaggle 可读总分，OI 不返回执行历史，均隐藏逐题正确性。
   const contestUnended = row.submission_type === "contest" && row.contest_id
     ? (await filterUnendedContestIds([row.contest_id])).has(row.contest_id)
     : false;
@@ -695,12 +693,13 @@ export async function getObjectiveSubmission(
   });
 
   if (row.submission_type === "contest") {
-    // 竞赛模式：隐藏解析与期望答案（防泄题）；竞赛**尚未结束**时进一步屏蔽逐题
-    // 对错与分数（审计 VULN-03）——否则参赛者提交后调用详情接口即可拿到答案预言机。
+    // 比赛题的答案与解析按窗口裁剪，赛制决定本人总分是否可见。
     if (contestUnended) {
+      const contest = await getContest(row.contest_id!, viewerId);
+      if (contest.type === "oi") return hiddenObjectiveResult(response);
       return {
         ...response,
-        score: null,
+        score: contest.type === "kaggle" ? response.score : null,
         details: stripContestJudgement(response.details),
       };
     }
@@ -829,8 +828,7 @@ export async function listObjectiveSubmissions(params: {
     }
   }
 
-  // 竞赛模式的赛期屏蔽（审计 VULN-03）：一次查询算出本页涉及的"未结束竞赛"集合，
-  // 再对命中行剥离逐题对错、分数与通过标记。与详情接口同一口径，避免"列表是旁路"。
+  // 批量加载本页比赛政策，列表和详情采用相同的总分及逐题正确性口径。
   const unendedContests = await filterUnendedContestIds(
     rows
       .filter((row) => row.submission_type === "contest" && row.contest_id)
@@ -848,6 +846,12 @@ export async function listObjectiveSubmissions(params: {
     true,
   );
   const plainAttempts = await loadAttempts(plainRows.map((row) => row.id));
+  const contestTypes = new Map(
+    (unendedContests.size
+      ? await db.select({ id: contests.id, type: contests.type }).from(contests)
+        .where(inArray(contests.id, [...unendedContests]))
+      : []).map((row) => [row.id, row.type]),
+  );
   const data = rows.map((row) => {
     const contestUnended = maskedRows.includes(row);
     const attempts = contestUnended
@@ -859,9 +863,14 @@ export async function listObjectiveSubmissions(params: {
       maskCorrectness: contestUnended,
     });
     if (!contestUnended) return response;
+    if (contestTypes.get(row.contest_id!) === "oi") {
+      return hiddenObjectiveResult(response);
+    }
     return {
       ...response,
-      score: null,
+      score: contestTypes.get(row.contest_id!) === "kaggle"
+        ? response.score
+        : null,
       details: stripContestJudgement(response.details),
     };
   });
@@ -870,5 +879,37 @@ export async function listObjectiveSubmissions(params: {
     data,
     total,
     best_score: bestScore,
+  };
+}
+
+/** OI 赛期只保留本人原答案与不可变提交身份，执行历史不能成为成绩旁路。 */
+function hiddenObjectiveResult(
+  row: ObjectiveSubmissionResponse,
+): ObjectiveSubmissionResponse {
+  return {
+    id: row.id,
+    paper_id: row.paper_id,
+    user_id: row.user_id,
+    contest_id: row.contest_id,
+    submission_type: row.submission_type,
+    answers: row.answers,
+    created_at: row.created_at,
+    submitted_version_id: row.submitted_version_id,
+    submitted_version: row.submitted_version,
+    version_origin: row.version_origin,
+    is_latest: row.is_latest,
+    upgraded_from_id: row.upgraded_from_id,
+    status: "submitted",
+    score: null,
+    details: {},
+    is_valid: null,
+    is_accepted: null,
+    active_attempt_id: null,
+    latest_attempt_id: null,
+    effective_attempt_id: null,
+    accepted_attempt_id: null,
+    attempts: [],
+    latest_attempt: null,
+    effective_attempt: null,
   };
 }

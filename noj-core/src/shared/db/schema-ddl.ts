@@ -203,6 +203,7 @@ $$ LANGUAGE plpgsql`,
     PRIMARY KEY (problem_id, tag_id)
   )`,
 
+  `CREATE SEQUENCE IF NOT EXISTS submission_receipt_sequence START WITH 1`,
   `CREATE TABLE IF NOT EXISTS contests (
     id TEXT PRIMARY KEY,
     public_id TEXT NOT NULL DEFAULT ('ct-' || substr(md5(random()::text),1,8)) UNIQUE,
@@ -215,7 +216,7 @@ $$ LANGUAGE plpgsql`,
     freeze_start_time TEXT,
     freeze_duration_seconds INTEGER NOT NULL DEFAULT 0
       CHECK (freeze_duration_seconds >= 0),
-    type TEXT NOT NULL CHECK (type IN ('kaggle')),
+    type TEXT NOT NULL CHECK (type IN ('kaggle', 'oi', 'ioi', 'ioi_strict', 'acm')),
     kind TEXT NOT NULL DEFAULT 'public' CHECK (kind IN ('public', 'invite')),
     config JSONB NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(config) = 'object'),
     is_public BOOLEAN NOT NULL DEFAULT true,
@@ -278,6 +279,7 @@ $$ LANGUAGE plpgsql`,
   // 3.3 objective_submissions（客观题提交，服务端即时判定；依赖 contests 表）
   `CREATE TABLE IF NOT EXISTS objective_submissions (
     id TEXT PRIMARY KEY,
+    receipt_sequence BIGINT NOT NULL DEFAULT nextval('submission_receipt_sequence'),
     domain_id TEXT,
     domain_problem_binding_id TEXT,
     paper_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
@@ -344,6 +346,7 @@ $$ LANGUAGE plpgsql`,
   // 6. submissions
   `CREATE TABLE IF NOT EXISTS submissions (
     id TEXT PRIMARY KEY,
+    receipt_sequence BIGINT NOT NULL DEFAULT nextval('submission_receipt_sequence'),
     domain_id TEXT,
     domain_problem_binding_id TEXT,
     public_id TEXT NOT NULL DEFAULT ('sub-' || substr(md5(random()::text),1,8)) UNIQUE,

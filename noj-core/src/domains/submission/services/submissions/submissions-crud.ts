@@ -1,4 +1,5 @@
 import { oiVerdict, projectMeteringDetails } from "./oi-details.ts";
+import { projectContestSubmissionReads } from "./contest-read-projection.ts";
 /**
  * Submissions CRUD（PR-3 拆分）。
  *
@@ -219,6 +220,14 @@ export async function listSubmissions(
 
   // 动态构建筛选条件（仅对提供的参数添加条件）
   const conditions: ReturnType<typeof eq>[] = [];
+  if (!params.platformAdmin && (status || validOnly || acceptedOnly)) {
+    // 结果筛选本身也会泄露 OI 判定，赛期不让隐藏结果参与筛选计数。
+    conditions.push(
+      sql`NOT EXISTS (SELECT 1 FROM contests c WHERE c.id = ${submissions.contest_id}
+      AND c.type = 'oi' AND c.start_time <= ${new Date().toISOString()}
+      AND c.end_time > ${new Date().toISOString()})`,
+    );
+  }
 
   if (userId) conditions.push(eq(submissions.user_id, userId));
   if (contestId) conditions.push(eq(submissions.contest_id, contestId));
@@ -411,7 +420,14 @@ export async function listSubmissions(
     };
   });
 
-  return { data, total };
+  return {
+    data: await projectContestSubmissionReads(
+      data,
+      userId ?? null,
+      params.platformAdmin,
+    ),
+    total,
+  };
 }
 
 /**
@@ -1002,7 +1018,7 @@ export async function getSubmission(
     viewerRole ?? undefined,
   );
 
-  return {
+  const response: SubmissionDetail = {
     id: row.id,
     public_id: row.public_id,
     ...(canSeeDetails
@@ -1041,6 +1057,14 @@ export async function getSubmission(
     effective_attempt_id: effectiveAttemptId,
     accepted_attempt_id: acceptedAttemptId,
   };
+  const platformAdmin = c
+    ? await checkPermission(c, "admin:full_access")
+    : viewerRole === "admin";
+  return (await projectContestSubmissionReads(
+    [response],
+    viewerId ?? null,
+    platformAdmin,
+  ))[0];
 }
 
 /**

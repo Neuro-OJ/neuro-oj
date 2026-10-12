@@ -11,6 +11,7 @@ import type { ContestAccessInfo } from "./../../catalog/index.ts";
 import { computeContestStatus } from "./contests.ts";
 import { findContestRow } from "./contest-row.ts";
 import { isParticipant } from "./contests.ts";
+import type { ContestType } from "../types/contests.ts";
 
 /**
  * 校验指定用户对竞赛内题目的访问权限。
@@ -29,10 +30,14 @@ export async function verifyContestAccess(
 ): Promise<ContestAccessInfo> {
   let startTime: string;
   let endTime: string;
+  let type: ContestType;
+  let organizer: boolean;
   try {
     const contest = await findContestRow(contestId);
     startTime = contest.start_time;
     endTime = contest.end_time;
+    type = contest.type as ContestType;
+    organizer = userId !== null && userId === contest.created_by;
   } catch {
     return { contestId, allowed: false, running: false };
   }
@@ -60,6 +65,8 @@ export async function verifyContestAccess(
     contestId,
     allowed,
     running: status === "running",
+    type,
+    organizer,
     // 竞赛固定作答版本：竞赛题面/小题目按它展示（否则展示最新版、判卷固定版）。
     pinnedVersionId: problem.pinned_version_id ?? null,
   };

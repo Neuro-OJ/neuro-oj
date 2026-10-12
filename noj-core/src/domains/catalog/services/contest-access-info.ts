@@ -9,6 +9,8 @@
  * - `allowed=false` 时 resolver 一律拒绝，且不回退 public 判定（防伪造上下文）。
  */
 
+import type { ContestType } from "../../contest/index.ts";
+
 /** 竞赛上下文访问判定结果（由 contest 域 verifyContestAccess 产出）。 */
 export type ContestAccessInfo = {
   /** 竞赛 UUID */
@@ -17,6 +19,8 @@ export type ContestAccessInfo = {
   allowed: boolean;
   /** 当前是否处于竞赛窗口内（running）；ended 时为 false */
   running: boolean;
+  type?: ContestType;
+  organizer?: boolean;
   /**
    * 该竞赛**固定**的题目版本（`contest_problems.pinned_version_id`）。
    *

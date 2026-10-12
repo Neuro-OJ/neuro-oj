@@ -266,8 +266,8 @@ Deno.test({
     // 用字面量收窄联合类型：contest_mode === true ⇒ SubmitObjectiveContestReceipt
     if (first.contest_mode !== true) throw new Error("竞赛模式应返回赛期回执");
     assertEquals(first.status, "finished");
-    assertEquals(first.score, null);
-    assertEquals(first.score_db, null);
+    assertEquals(first.score, 100);
+    assertEquals(first.score_db, 10000);
     assertEquals(first.correct_count, null);
     assertEquals(Object.keys(first.details).length, 0);
 
@@ -465,7 +465,7 @@ Deno.test({
     // （审计 VULN-03：逐题对错即答案预言机；精确分数可被二分探测）
     const mine = await getObjectiveSubmission(result.submission_id, user);
     assertEquals(mine.submission_type, "contest");
-    assertEquals(mine.score, null);
+    assertEquals(mine.score, 10000);
     assertEquals(mine.details[q1].expected, undefined);
     assertEquals(mine.details[q1].explanation, undefined);
     assertEquals(mine.details[q1].correct, undefined);
@@ -478,9 +478,55 @@ Deno.test({
       "0",
       "admin",
     );
-    assertEquals(byAdmin.score, null);
+    assertEquals(byAdmin.score, 10000);
     assertEquals(byAdmin.details[q1].expected, undefined);
     assertEquals(byAdmin.details[q1].correct, undefined);
+    const oiContest = crypto.randomUUID();
+    await db.insert(contests).values({
+      id: oiContest,
+      title: "OI 客观题",
+      type: "oi",
+      created_by: owner,
+      start_time: new Date(Date.now() - 3600_000).toISOString(),
+      end_time: new Date(Date.now() + 3600_000).toISOString(),
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: oiContest,
+      user_id: user,
+      registered_at: now,
+    });
+    await insertContestProblems({
+      contest_id: oiContest,
+      problem_id: paper,
+      label: "A",
+      score: 2000,
+      sort_order: 0,
+    });
+    const oiReceipt = await submitObjectivePaper(paper, {
+      answers: { [q1]: ["A"] },
+      contest_id: oiContest,
+      version_id: await latestVersionId(paper),
+    }, user);
+    assertEquals(oiReceipt.score, null);
+    const oiDetail = await getObjectiveSubmission(
+      oiReceipt.submission_id,
+      user,
+    );
+    assertEquals(oiDetail.score, null);
+    assertEquals(oiDetail.status, "submitted");
+    assertEquals(oiDetail.is_valid, null);
+    assertEquals(oiDetail.attempts, []);
+    assertEquals(oiDetail.details, {});
+    const oiList = await listObjectiveSubmissions({
+      viewerId: user,
+      contestId: oiContest,
+      page: 1,
+      perPage: 20,
+    });
+    assertEquals(oiList.data[0].score, null);
+    assertEquals(oiList.data[0].attempts, []);
   },
 });
 
@@ -527,7 +573,7 @@ Deno.test({
 
     // 赛期：无分数、无对错
     const during = await getObjectiveSubmission(result.submission_id, user);
-    assertEquals(during.score, null);
+    assertEquals(during.score, 10000);
     assertEquals(during.details[q1].correct, undefined);
 
     // 把竞赛改为已结束 → 对错与分数恢复（仍剥离期望答案，防泄题立场不变）

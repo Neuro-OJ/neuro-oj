@@ -9,11 +9,13 @@ import {
   isValidRankingVisibility,
 } from "../../types/contests.ts";
 
-Deno.test("contests: 仅允许 kaggle 赛制", () => {
+Deno.test("contests: 允许五种已确认赛制", () => {
   assertEquals(isValidContestType("kaggle"), true);
   assertEquals(isValidContestType("icpc"), false);
-  assertEquals(isValidContestType("ioi"), false);
-  assertEquals(isValidContestType("oi"), false);
+  assertEquals(isValidContestType("ioi"), true);
+  assertEquals(isValidContestType("oi"), true);
+  assertEquals(isValidContestType("ioi_strict"), true);
+  assertEquals(isValidContestType("acm"), true);
 });
 
 Deno.test("contests: submission_limits 配置合法", () => {

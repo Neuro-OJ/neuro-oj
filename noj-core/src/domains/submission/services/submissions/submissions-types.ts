@@ -252,6 +252,8 @@ export interface SubmissionListItem {
 
 /** 列表查询参数 */
 export interface ListSubmissionsParams {
+  /** 由认证调用方传入，不能来自查询参数。 */
+  platformAdmin?: boolean;
   userId?: string;
   contestId?: string;
   problemId?: string;

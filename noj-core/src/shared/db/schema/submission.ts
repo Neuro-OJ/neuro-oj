@@ -1,16 +1,24 @@
 import {
+  bigint,
   boolean,
   check,
   foreignKey,
   index,
   integer,
   jsonb,
+  pgSequence,
   pgTable,
   serial,
   text,
   unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+
+/** 正式受理顺序，普通提交与客观题共用，不随评测或重测改变。 */
+export const submissionReceiptSequence = pgSequence(
+  "submission_receipt_sequence",
+  { startWith: 1 },
+);
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { publicIdColumn } from "./common.ts";
@@ -215,6 +223,8 @@ export const submissions = pgTable(
   "submissions",
   {
     id: text("id").primaryKey(),
+    receipt_sequence: bigint("receipt_sequence", { mode: "number" }).notNull()
+      .default(sql`nextval('submission_receipt_sequence')`),
     public_id: publicIdColumn("sub"),
     /** 使用域及其题库配置，创建后保持不变。 */
     domain_id: text("domain_id").references(() => domains.id),

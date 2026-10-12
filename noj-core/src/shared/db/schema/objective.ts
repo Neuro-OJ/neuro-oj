@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   check,
   foreignKey,
@@ -27,6 +28,8 @@ export const objectiveSubmissions = pgTable(
   "objective_submissions",
   {
     id: text("id").primaryKey(),
+    receipt_sequence: bigint("receipt_sequence", { mode: "number" }).notNull()
+      .default(sql`nextval('submission_receipt_sequence')`),
     domain_id: text("domain_id").references(() => domains.id),
     domain_problem_binding_id: text("domain_problem_binding_id"),
     /** 所属套卷 ID（problems.id，is_objective=true） */

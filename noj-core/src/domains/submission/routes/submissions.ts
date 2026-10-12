@@ -360,7 +360,7 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
   let data = result;
   if (result.contest_id) {
     const isAdmin = viewerId
-      ? await checkPermission(c, "submission:read_all")
+      ? await checkPermission(c, "admin:full_access")
       : false;
     const contestAccess = await verifyContestAccess(
       viewerId,
@@ -376,6 +376,8 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
         contest: {
           running: contestAccess.running,
           participant: contestAccess.allowed,
+          type: contestAccess.type,
+          organizer: contestAccess.organizer,
         },
       },
     ) as unknown as typeof result;
