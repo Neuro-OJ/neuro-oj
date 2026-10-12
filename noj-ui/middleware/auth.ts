@@ -45,7 +45,7 @@ export default defineNuxtRouteMiddleware(async (to, _from) => {
   await ensureAuthReady();
 
   if (!isLoggedIn.value) {
-    return navigateTo('/login');
+    return navigateTo({ path: '/login', query: { redirect: to.fullPath } });
   }
 
   // ── issue #75：session cookie 启动时可能只含基础字段，必须调一次 /me 拿到完整 UserResponse ──

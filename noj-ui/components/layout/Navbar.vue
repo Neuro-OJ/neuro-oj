@@ -30,6 +30,7 @@
                 </template>
             </UDrawer>
             <BrandLogo text-class="hidden sm:inline" />
+            <WorkspaceSwitcher :workspaces="availableWorkspaces?.data ?? []" :current-slug="currentWorkspaceSlug" :pending="workspacesPending === 'pending' || authLoading" @select="selectWorkspace" />
             <!-- 桌面端导航（≥md 显示） -->
             <nav ref="navRef" class="hidden md:flex flex-1 items-center gap-1 ml-6 min-w-0">
               <NuxtLink
@@ -56,6 +57,7 @@
               </UDropdownMenu>
             </nav>
             <button
+                v-if="!currentWorkspaceSlug"
                 type="button"
                 class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:bg-primary-hover hover:text-text rounded-md transition-colors border border-border/60 hover:border-primary/40 bg-bg-sunken/40"
                 :aria-label="t('nav.searchFull')"
@@ -66,7 +68,7 @@
                 <kbd class="hidden md:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-text-muted bg-white dark:bg-bg-sunken border border-border rounded shadow-[0_1px_0_rgba(0,0,0,0.06)] tabular-nums">Ctrl K</kbd>
             </button>
             <div class="flex items-center gap-3 ml-auto">
-                <NuxtLink v-if="user && communityConfig?.enabled" to="/community/notifications" class="relative flex items-center justify-center rounded-md p-2 text-text-secondary no-underline transition-colors hover:bg-primary-hover hover:text-text" :aria-label="t('nav.notifications')">
+                <NuxtLink v-if="!currentWorkspaceSlug && user && communityConfig?.enabled" to="/community/notifications" class="relative flex items-center justify-center rounded-md p-2 text-text-secondary no-underline transition-colors hover:bg-primary-hover hover:text-text" :aria-label="t('nav.notifications')">
                     <UIcon name="i-lucide-bell" class="size-4.5" />
                     <span v-if="unreadCount > 0" class="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white">{{ unreadCount > 9 ? '9+' : unreadCount }}</span>
                 </NuxtLink>
@@ -89,8 +91,21 @@
 
 <script setup lang="ts">
 import { shouldLoadCommunityUnreadCount } from '~/utils/communityNotifications';
+import { workspaceCacheKey, workspacePath, workspaceSlugFromPath } from '~/utils/workspace';
+import type { WorkspaceSummary } from '~/utils/workspace';
+import { useToast as useWorkspaceToast } from '~/composables/useToast';
 
-const { user } = useAuth();
+const { user, loading: authLoading } = useAuth();
+const route = useRoute();
+const workspaceApi = useWorkspaceApi();
+const { toast: workspaceToast } = useWorkspaceToast();
+const currentWorkspaceSlug = computed(() => workspaceSlugFromPath(route.path));
+const switcherKey = computed(() => workspaceCacheKey("", user.value?.id ?? null, "switcher"));
+const { data: availableWorkspaces, status: workspacesPending, refresh: refreshWorkspaces } = useAsyncData(switcherKey, () => user.value ? workspaceApi.list(true) : Promise.resolve({ data: [] }), { watch: [() => route.path] });
+async function selectWorkspace(space: WorkspaceSummary) {
+  try { await workspaceApi.remember(space.slug); await navigateTo(workspacePath(space.slug)); }
+  catch { workspaceToast.error("此空间当前不可访问"); await refreshWorkspaces(); }
+}
 const { t, setLocale, isEnglish } = useI18n();
 const { open: openSearch } = useSearch();
 const { config: communityConfig, loadConfig } = useCommunity();
@@ -107,7 +122,11 @@ interface NavItem {
   needsCommunity?: boolean
 }
 
-const baseNavItems = computed<NavItem[]>(() => [
+const baseNavItems = computed<NavItem[]>(() => currentWorkspaceSlug.value ? [
+  { label: "空间概览", to: workspacePath(currentWorkspaceSlug.value), icon: "i-lucide-building-2" },
+  { label: "浏览空间", to: "/workspaces", icon: "i-lucide-grid-2x2" },
+] : [
+  { label: "空间", to: "/workspaces", icon: "i-lucide-building-2" },
   { label: t('nav.home'), to: '/', icon: 'i-lucide-home' },
   { label: t('nav.problems'), to: '/problems', icon: 'i-lucide-book-open' },
   { label: t('nav.contests'), to: '/contests', icon: 'i-lucide-trophy' },

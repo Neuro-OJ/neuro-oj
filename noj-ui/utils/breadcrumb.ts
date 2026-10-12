@@ -16,6 +16,7 @@
  */
 import { DEFAULT_LOCALE, type Locale, messages } from './i18n.ts';
 import { problemUrl, publicUrl, userUrl } from './publicIdentifiers.ts';
+import { workspacePath, workspaceSlugFromPath } from './workspace.ts';
 
 /** 解析后的单层面包屑。`to` 缺省表示当前页（末层，不可点击）。 */
 export interface BreadcrumbItem {
@@ -55,6 +56,18 @@ type TrailEntry =
  * 不在此重复拼字符串。
  */
 const ROUTES: BreadcrumbRoute[] = [
+  // 工作空间层级保留 URL 中的使用域，不能跳往默认域。
+  { pattern: '/workspaces', trail: [{ key: 'breadcrumb.workspaces' }] },
+  { pattern: '/join', trail: [{ key: 'breadcrumb.invitation' }] },
+  { pattern: '/d/:slug', trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }] },
+  {
+    pattern: '/d/:slug/members',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { key: 'breadcrumb.members' }],
+  },
+  {
+    pattern: '/d/:slug/settings',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { key: 'breadcrumb.settings' }],
+  },
   // ── 题库 ──
   { pattern: '/problems', trail: [{ key: 'nav.problems' }] },
   { pattern: '/problems/new', trail: [{ key: 'nav.problems', to: '/problems' }, { key: 'breadcrumb.newProblem' }] },
@@ -237,6 +250,7 @@ function dynamicTarget(pattern: string, paramName: string, params: Record<string
   const prefix = pattern.split('/').slice(0, pattern.split('/').indexOf(`:${paramName}`)).join('/');
   const value = params[paramName];
   if (!value) return undefined;
+  if (prefix === '/d') return workspaceSlugFromPath(`/d/${value}`) ? workspacePath(value) : undefined;
 
   // 题目 / 用户 / 竞赛 / 提交 / 题单 / 帖子 / 公告均有公开标识构造器
   if (prefix === '/problems') return problemUrl(value);

@@ -250,6 +250,8 @@
 
 <script setup lang="ts">
 import { extractApiError } from "~/utils/apiError"
+import { safeAuthRedirect } from "~/utils/authRedirect"
+import { workspacePath } from "~/utils/workspace"
 import {
   assertRecoveryCodeFileSize,
   parseRecoveryCodesFile,
@@ -260,6 +262,7 @@ definePageMeta({ layout: "auth" })
 const router = useRouter()
 const auth = useAuth()
 const route = useRoute()
+const workspaces = useWorkspaceApi()
 const { t, locale } = useI18n()
 const { error, setError, clearError } = useFormError()
 
@@ -418,7 +421,14 @@ async function handleLogin() {
     if (loggedInUser?.must_change_password === true) {
       router.replace("/change-password")
     } else {
-      router.replace("/")
+      let destination = safeAuthRedirect(route.query.redirect, "")
+      if (!destination) {
+        const results = await Promise.allSettled([workspaces.instance(), workspaces.list(true)])
+        const policy = results[0]; const available = results[1]
+        destination = policy.status === "fulfilled" && policy.value.data.access === "authenticated" && available.status === "fulfilled" && available.value.data.length === 1
+          ? workspacePath(available.value.data[0]!.slug) : "/"
+      }
+      router.replace(destination)
     }
   } catch (e: any) {
     // ban-status-endpoint：被封用户直接 inline 显示 banner，不用 URL 跳转

@@ -5,6 +5,7 @@ import SearchPalette from "~/components/feature/search/SearchPalette.vue";
 import LegalConsentModal from "~/components/legal/LegalConsentModal.vue";
 import { useBanStatus } from "~/composables/useBanStatus"
 import { collectPendingConsents } from "~/utils/legalConsent"
+import { workspaceSlugFromPath } from "~/utils/workspace"
 
 const { ipBanned, ipBanInfo, userBanned, userBanInfo } = useBanStatus()
 
@@ -15,11 +16,14 @@ const pendingConsents = computed(() =>
 )
 
 const { state, open, close } = useSearch();
+const route = useRoute();
+const workspaceRoute = computed(() => !!workspaceSlugFromPath(route.path));
+watch(workspaceRoute, () => close());
 
 function onGlobalKeydown(e: KeyboardEvent) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        open();
+        if (!workspaceRoute.value) open();
     } else if (e.key === "Escape" && state.value.open) {
         close();
     }
@@ -50,7 +54,7 @@ onUnmounted(() => {
             </main>
         </div>
         <FooterBar />
-        <SearchPalette />
+        <SearchPalette v-if="!workspaceRoute" />
         <LegalConsentModal v-if="pendingConsents.length > 0" :pending="pendingConsents" />
     </div>
 </template>

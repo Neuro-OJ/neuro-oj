@@ -73,3 +73,15 @@ Deno.test('breadcrumb: 静态段优先于动态段匹配', () => {
   assertEquals(items[1].label, '我的题单');
   assertEquals(matchBreadcrumbRoute('/trainings/mine')?.pattern, '/trainings/mine');
 });
+
+Deno.test('breadcrumb: 空间管理回跳保留当前域，动态名称和语言有独立层级', () => {
+  const items = resolveBreadcrumb('/d/school-one/members');
+  assertEquals(items.map((item) => item.label), ['空间', 'school-one', '成员']);
+  assertEquals(items.map((item) => item.to), ['/workspaces', '/d/school-one', undefined]);
+  assertEquals(resolveBreadcrumb('/d/team-two/settings', 'en-US').map((item) => item.label), [
+    'Workspaces',
+    'team-two',
+    'Settings',
+  ]);
+  assertEquals(resolveBreadcrumb('/d/ab/settings')[1].to, undefined);
+});

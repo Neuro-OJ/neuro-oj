@@ -163,6 +163,13 @@ export default defineNuxtConfig({
   // 导致请求挂起、复用错误响应，甚至把一个用户的数据暴露给另一个用户。需要缓存时，
   // 应在明确的、非个性化 server handler 中单独实现。
   routeRules: {
+    '/workspaces': { headers: { 'cache-control': 'no-store' } },
+    '/d/**': { headers: { 'cache-control': 'no-store' } },
+    '/d/*/members': { ssr: false },
+    '/d/*/settings': { ssr: false },
+    '/join': { ssr: false, headers: { 'cache-control': 'no-store' } },
+    '/api/v1/domains/**': { headers: { 'cache-control': 'no-store' } },
+    '/api/v1/me/**': { headers: { 'cache-control': 'no-store' } },
     '/api/v1/auth/**': { headers: { 'cache-control': 'no-store' } },
     '/api/v1/submissions/**': { headers: { 'cache-control': 'no-store' } },
     '/api/v1/queue/**': { headers: { 'cache-control': 'no-store' } },
