@@ -119,6 +119,8 @@ useSeoMeta({ title: '班级成员' });
     <UButton :to="workspacePath(slug!, `classrooms/${id}`)" variant="ghost"
       icon="i-lucide-arrow-left">返回班级</UButton>
     <AdminPageHeader title="班级成员" :description="room.data.value?.data.name" />
+    <p v-if="manage"
+      class="text-sm text-text-muted">本域成员可以通过 <NuxtLink class="text-primary" :to="workspacePath(slug!, `classrooms/${id}/join`)">班级申请链接</NuxtLink> 提交申请。</p>
     <UAlert v-if="error" color="error" :title="error" />
     <AsyncContent
       :status="roster.error.value ? 'error' : roster.status.value === 'pending' ? 'loading' : roster.data.value ? 'data' : 'empty'"
@@ -142,6 +144,10 @@ useSeoMeta({ title: '班级成员' });
         </UCard>
       </div>
     </AsyncContent>
+    <ClassroomImport v-if="manage" :key="base" :slug="slug!" :classroom-id="id" :writable="!!writable"
+      @changed="refresh()" />
+    <ClassroomJoinRequests v-if="manage && room.data.value" :key="`${base}:requests`" :slug="slug!" :classroom-id="id"
+      :revision="room.data.value.data.revision" :writable="!!writable" @changed="refresh()" />
     <UCard v-if="writable">
       <h2 class="mb-3 font-semibold">邀请学生</h2>
       <p

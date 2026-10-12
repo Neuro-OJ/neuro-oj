@@ -95,6 +95,10 @@ const ROUTES: BreadcrumbRoute[] = [
     }],
   },
   {
+    pattern: '/d/:slug/classrooms/:classroomId/join',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { key: 'breadcrumb.invitation' }],
+  },
+  {
     pattern: '/d/:slug/classrooms/:classroomId/settings',
     trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { param: 'classroomId' }, {
       key: 'breadcrumb.settings',

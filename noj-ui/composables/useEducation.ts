@@ -1,5 +1,11 @@
 import { useApi } from '~/composables/useApi';
 import type {
+  ClassroomImportPreview,
+  ClassroomImportResult,
+  ClassroomJoinRequest,
+  ClassroomJoinView,
+} from '~/utils/education-enrollment';
+import type {
   Assignment,
   AssignmentDetail,
   AssignmentDraftInput,
@@ -129,6 +135,37 @@ export function useEducationApi() {
         `${source(slug, classId, id)}/files`,
         { silent: true },
       ),
+    previewImport: (slug: string, id: string, csv: string, replace_pending: boolean) =>
+      api.post<{ data: ClassroomImportPreview }>(`${classroom(slug, id)}/imports/preview`, { csv, replace_pending }),
+    executeImport: (
+      slug: string,
+      id: string,
+      input: { csv: string; preview_hash: string; replace_pending: boolean },
+      current: number,
+      key: string,
+    ) =>
+      api.post<{ data: ClassroomImportResult }>(`${classroom(slug, id)}/imports/execute`, input, {
+        headers: { ...revision(current).headers, ...idempotent(key).headers },
+      }),
+    joinView: (slug: string, id: string) =>
+      api.get<{ data: ClassroomJoinView }>(`${classroom(slug, id)}/join`, { silent: true }),
+    requestJoin: (slug: string, id: string, reason: string) => api.post(`${classroom(slug, id)}/join`, { reason }),
+    joinRequests: (slug: string, id: string, page: number, status: ClassroomJoinRequest['status']) =>
+      api.get<{ data: TeachingPage<ClassroomJoinRequest> }>(`${classroom(slug, id)}/join-requests`, {
+        query: { page, status },
+        silent: true,
+      }),
+    reviewJoin: (
+      slug: string,
+      id: string,
+      requestId: string,
+      decision: 'approve' | 'reject',
+      current: number,
+      key: string,
+    ) =>
+      api.post(`${classroom(slug, id)}/join-requests/${encodeURIComponent(requestId)}/review`, { decision }, {
+        headers: { ...revision(current).headers, ...idempotent(key).headers },
+      }),
     text: (slug: string, classId: string, id: string, file: string) =>
       api.get<{ data: TeachingText }>(`${source(slug, classId, id)}/text`, { query: { file }, silent: true }),
     annotations: (slug: string, classId: string, id: string, page = 1) =>
