@@ -34,7 +34,10 @@ type StudentSubmissionRow = {
   memory_kb: number | null;
 };
 
-function relation(access: Awaited<ReturnType<typeof loadClassroom>>) {
+/** 同域学生关系、历史任务／批注依据及比赛保密共同约束源码访问。 */
+export function teachingSubmissionRelation(
+  access: Awaited<ReturnType<typeof loadClassroom>>,
+) {
   const classroom = access.classroom.id, domain = access.domain.id;
   const organizes = access.platformAdmin ||
     access.context.domainPermissions.has("contest:manage");
@@ -46,6 +49,9 @@ function relation(access: Awaited<ReturnType<typeof loadClassroom>>) {
         JOIN users u ON u.id = cm.user_id
         WHERE cm.classroom_id = ${classroom} AND cm.user_id = s.user_id
           AND cm.role = 'student' AND cm.status = 'active' AND dm.status = 'active' AND u.deleted_at IS NULL)
+      OR (s.kind = 'submission' AND EXISTS (SELECT 1 FROM submission_annotations n
+        WHERE n.domain_id = ${domain} AND n.classroom_id = ${classroom}
+          AND n.submission_id = s.id AND n.user_id = s.user_id))
       OR EXISTS (SELECT 1 FROM assignment_recipients r JOIN assignments a ON a.id = r.assignment_id
         JOIN assignment_items i ON i.assignment_id = a.id
         WHERE r.classroom_id = ${classroom} AND r.user_id = s.user_id
@@ -117,7 +123,9 @@ export async function listClassroomStudentSubmissions(
       !["submission", "objective"].includes(options.kind)
   ) throw new BadRequestError("提交分页或类型格式错误");
   const db = getDb();
-  const condition = sql`${relation(access)} AND s.user_id = ${userId} ${
+  const condition = sql`${
+    teachingSubmissionRelation(access)
+  } AND s.user_id = ${userId} ${
     options.kind ? sql`AND s.kind = ${options.kind}` : sql``
   }`;
   const totalResult = await db.execute(
@@ -160,7 +168,9 @@ export async function getClassroomStudentSubmission(
     throw new BadRequestError("提交类型格式错误");
   }
   const result = await getDb().execute(sql`${select(true)}
-    WHERE ${relation(access)} AND s.id = ${id} AND s.kind = ${kind} LIMIT 1`);
+    WHERE ${
+    teachingSubmissionRelation(access)
+  } AND s.id = ${id} AND s.kind = ${kind} LIMIT 1`);
   const [row] = unwrapRows<StudentSubmissionRow>(result as never);
   if (!row) throw new NotFoundError("提交不存在或不可访问");
   if (access.platformAdmin) {

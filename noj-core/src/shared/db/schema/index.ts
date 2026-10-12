@@ -17,3 +17,4 @@ export * from "./catalog-workspace.ts";
 export * from "./education.ts";
 export * from "./assignment.ts";
 export * from "./education-interactions.ts";
+export * from "./submission-annotations.ts";

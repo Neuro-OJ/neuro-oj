@@ -2,6 +2,7 @@ import { type Context, Hono } from "hono";
 import { assignmentRouter } from "./assignments.ts";
 import { studentSubmissionsRouter } from "./student-submissions.ts";
 import { interactionRouter } from "./interactions.ts";
+import { annotationRouter } from "./annotations.ts";
 import { type AuthEnv, authMiddleware } from "../../identity/index.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
@@ -213,4 +214,5 @@ router.delete(
 router.route("/", assignmentRouter);
 router.route("/", studentSubmissionsRouter);
 router.route("/", interactionRouter);
+router.route("/", annotationRouter);
 export const educationRouter = router;

@@ -1,6 +1,11 @@
 import { and, eq, or, sql } from "drizzle-orm";
 import type { Executor } from "../../../shared/db/executor.ts";
-import { assignmentProgress, assignments } from "../../../shared/db/schema.ts";
+import {
+  assignmentProgress,
+  assignments,
+  submissionAnnotations,
+} from "../../../shared/db/schema.ts";
+import { ConflictError } from "../../../shared/base/errors.ts";
 import { recordEducationEvent } from "../../../shared/education-events.ts";
 
 /** 删除先释放派生尝试指针并登记重算；其他候选及教学历史不随提交级联清除。 */
@@ -15,6 +20,18 @@ export async function prepareEducationSubmissionDeletion(
   },
 ) {
   if (!source.domain_id) return;
+  if (source.kind === "submission") {
+    const [annotation] = await executor.select({ id: submissionAnnotations.id })
+      .from(submissionAnnotations).where(
+        eq(submissionAnnotations.submission_id, source.id),
+      ).limit(1);
+    if (annotation) {
+      throw new ConflictError(
+        "此提交有教学批注，需要保留原代码依据",
+        "SUBMISSION_HAS_ANNOTATIONS",
+      );
+    }
+  }
   const sourceColumn = source.kind === "submission"
     ? sql`e.submission_id`
     : sql`e.objective_submission_id`;

@@ -11,6 +11,10 @@ import { EXECUTION_WORKSPACE_DDL } from "./schema-ddl-execution-workspace.ts";
 import { EDUCATION_DDL, EDUCATION_TABLES } from "./schema-ddl-education.ts";
 import { ASSIGNMENT_DDL, ASSIGNMENT_TABLES } from "./schema-ddl-assignment.ts";
 import {
+  SUBMISSION_ANNOTATIONS_DDL,
+  SUBMISSION_ANNOTATIONS_TABLES,
+} from "./schema-ddl-submission-annotations.ts";
+import {
   EDUCATION_INTERACTIONS_DDL,
   EDUCATION_INTERACTIONS_TABLES,
 } from "./schema-ddl-education-interactions.ts";
@@ -1102,6 +1106,7 @@ $$ LANGUAGE plpgsql`,
   ...EDUCATION_DDL,
   ...ASSIGNMENT_DDL,
   ...EDUCATION_INTERACTIONS_DDL,
+  ...SUBMISSION_ANNOTATIONS_DDL,
 ];
 
 // 索引与可选扩展索引拆到独立模块（单文件规模棘轮，见 scripts/check-file-size.ts）：
@@ -1117,6 +1122,7 @@ export const ALL_TABLES = [
   ...EDUCATION_TABLES,
   ...ASSIGNMENT_TABLES,
   ...EDUCATION_INTERACTIONS_TABLES,
+  ...SUBMISSION_ANNOTATIONS_TABLES,
   "users",
   "oauth_accounts",
   "problems",

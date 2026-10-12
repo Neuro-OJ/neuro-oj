@@ -16,4 +16,9 @@ export * from "./services/matrix-csv.ts";
 export * from "./services/feedback.ts";
 export * from "./services/help.ts";
 export * from "./services/notifications.ts";
+export * from "./services/annotations.ts";
+export {
+  getTeachingTextFile,
+  listTeachingTextFiles,
+} from "./services/submission-text.ts";
 export * from "../../shared/education-types.ts";

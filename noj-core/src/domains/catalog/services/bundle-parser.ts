@@ -35,11 +35,12 @@ export const MAX_FILE_SIZE = 64 * 1024 * 1024;
 /** 对齐 judge 端 `MAX_TOTAL_SIZE`（512 MiB）。 */
 export const MAX_TOTAL_SIZE = 512 * 1024 * 1024;
 
-/** 读取已发布的评测文件或编辑输入，解压前验证路径与大小，拒绝 ZIP 炸弹。 */
+/** 读取 ZIP 文件，解压前验证路径与大小；选择器只解压需要预览的条目。 */
 export function readEvaluationEntries(
   data: Uint8Array,
   includeContents = true,
   paths?: string[],
+  include?: (name: string, size: number) => boolean,
 ): Record<string, Uint8Array> {
   let count = 0;
   let total = 0;
@@ -57,7 +58,8 @@ export function readEvaluationEntries(
         }
         if (file.name.endsWith("/")) return false;
         paths?.push(file.name);
-        return includeContents;
+        return includeContents &&
+          (!include || include(file.name, file.originalSize));
       },
     });
   } catch (error) {

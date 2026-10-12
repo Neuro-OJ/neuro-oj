@@ -53,6 +53,7 @@ const PGLITE_TEMPLATE_INPUT_FILES = [
   "schema-ddl-education.ts",
   "schema-ddl-assignment.ts",
   "schema-ddl-education-interactions.ts",
+  "schema-ddl-submission-annotations.ts",
   "../workspace/audit.ts",
   "../../domains/system/services/seed/seed-rbac.ts",
   "../../domains/community/services/community/community-seed.ts",

@@ -295,6 +295,11 @@ export const submissions = pgTable(
   },
   (table) => ({
     publicIdUnique: unique("submissions_public_id_unique").on(table.public_id),
+    teachingSourceUnique: unique("submissions_teaching_source_unique").on(
+      table.domain_id,
+      table.id,
+      table.user_id,
+    ),
     user_idx: index("idx_submissions_user_id").on(table.user_id),
     problem_idx: index("idx_submissions_problem_id").on(table.problem_id),
     status_idx: index("idx_submissions_status").on(table.status),
