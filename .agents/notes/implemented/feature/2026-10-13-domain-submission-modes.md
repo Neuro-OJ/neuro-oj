@@ -26,5 +26,10 @@ Status: implemented
 评测封套、客观题即时判定及三个入口比赛旁路测试。OI
 测试覆盖任务封套与归属，尚未覆盖真实 Judge 沙箱运行；完整浏览器旅程也未完成。
 
+冻结代码后，core PostgreSQL 标准并行回归 unit 379／db 1731 项通过、0 失败、17
+项跳过。 submission 标准模块 PostgreSQL 344／PGlite 314 项通过；objective
+两种数据库各 63 项通过。 完整源类型、lint、域边界、CI 覆盖、Schema
+parity、迁移及文档门禁通过。
+
 准备路由暂未开放。完整查询、作业／比赛上下文、批量执行、域内 LLM
 与数值配额继续实施，本记录不代表提交隔离或全题型教学阶段已签收。
