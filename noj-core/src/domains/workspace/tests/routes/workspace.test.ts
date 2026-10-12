@@ -14,6 +14,24 @@ import { createDomainInvitation } from "../../index.ts";
 await resetDbForTest();
 await initRedisForTest();
 
+Deno.test("工作空间 HTTP：挂载中间件不覆盖其他模块的响应缓存契约", async () => {
+  await resetDbForTest();
+  const app = createApp();
+  const token = await createUserToken("user");
+  app.get(
+    "/api/v1/fixture-export",
+    () =>
+      new Response("export", {
+        headers: { "Cache-Control": "private, no-store" },
+      }),
+  );
+  const unrelated = await jsonRequest(app, "/api/v1/fixture-export", { token });
+  assertEquals(unrelated.status, 200);
+  assertEquals(unrelated.headers.get("Cache-Control"), "private, no-store");
+  const instance = await jsonRequest(app, "/api/v1/instance");
+  assertEquals(instance.headers.get("Cache-Control"), "no-store");
+});
+
 Deno.test({
   name: "工作空间 HTTP：跨域拒绝、缺失 revision、私有实例旧入口统一门控",
   sanitizeResources: false,

@@ -59,11 +59,26 @@ import {
 import { configurationDiff, presetConfiguration } from "../types.ts";
 
 const router = new Hono<OptionalAuthEnv>();
-router.use("*", async (c, next) => {
-  c.header("Cache-Control", "no-store");
-  c.header("Vary", "Authorization, Cookie", { append: true });
-  await next();
-});
+// 挂载到 /api/v1 时通配中间件会影响其他模块，只限定本模块的路径。
+for (
+  const path of [
+    "/instance",
+    "/domains",
+    "/domains/*",
+    "/me/domains",
+    "/me/workspace-preference",
+    "/auth/domain-invitation",
+    "/domain-invitations/*",
+    "/domain-creation-requests",
+    "/admin/instance/*",
+  ]
+) {
+  router.use(path, async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    c.header("Vary", "Authorization, Cookie", { append: true });
+    await next();
+  });
+}
 
 function revisionHeader(value: string | undefined) {
   if (!value || !/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) {
