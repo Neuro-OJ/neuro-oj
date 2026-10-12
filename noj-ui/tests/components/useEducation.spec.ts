@@ -1,9 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn() }));
+const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn() }));
 vi.mock('~/composables/useApi', () => ({ useApi: () => ({ api }) }));
 import { useEducationApi } from '~/composables/useEducation';
 beforeEach(() => vi.clearAllMocks());
 describe('教学客户端契约', () => {
+  it('发布和补题复制同时携带原 revision 与幂等键，保留目标学生和题目选择', () => {
+    const education = useEducationApi();
+    education.publish('school', 'task', 7, 'publish-key');
+    expect(api.post).toHaveBeenCalledWith('/api/v1/domains/school/assignments/task/publish', {}, {
+      headers: { 'If-Match': '7', 'Idempotency-Key': 'publish-key' },
+    });
+    const input = { title: '补题', target_student_ids: ['student'], item_ids: ['item'] };
+    education.copy('school', 'task', 7, 'copy-key', input);
+    expect(api.post).toHaveBeenCalledWith('/api/v1/domains/school/assignments/task/copy', input, {
+      headers: { 'If-Match': '7', 'Idempotency-Key': 'copy-key' },
+    });
+  });
+  it('助教能力只提交固定项，角色和成员变更使用班级 revision', () => {
+    const education = useEducationApi();
+    education.setMember('school', 'class', 'assistant', 'assistant', ['assignments:manage'], 4);
+    expect(api.put).toHaveBeenCalledWith('/api/v1/domains/school/classrooms/class/members/assistant', {
+      role: 'assistant',
+      capabilities: ['assignments:manage'],
+    }, { headers: { 'If-Match': '4' } });
+    education.removeMember('school', 'class', 'student', 5);
+    expect(api.delete).toHaveBeenCalledWith('/api/v1/domains/school/classrooms/class/members/student', {
+      headers: { 'If-Match': '5' },
+    });
+  });
   it('同一源提交在两个学校使用明确路径，不回退默认域', () => {
     const education = useEducationApi();
     education.text('school-a', 'class-a', 'original', 'src/train.py');

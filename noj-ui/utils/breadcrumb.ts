@@ -82,6 +82,30 @@ const ROUTES: BreadcrumbRoute[] = [
     trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { param: 'assignmentId' }],
   },
   { pattern: '/problems', trail: [{ key: 'nav.problems' }] },
+  {
+    pattern: '/d/:slug/classrooms/:classroomId/assignments/new',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { param: 'classroomId' }, {
+      key: 'breadcrumb.newAssignment',
+    }],
+  },
+  {
+    pattern: '/d/:slug/classrooms/:classroomId/members',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { param: 'classroomId' }, {
+      key: 'breadcrumb.members',
+    }],
+  },
+  {
+    pattern: '/d/:slug/classrooms/:classroomId/settings',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { param: 'classroomId' }, {
+      key: 'breadcrumb.settings',
+    }],
+  },
+  {
+    pattern: '/d/:slug/assignments/:assignmentId/edit',
+    trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { param: 'assignmentId' }, {
+      key: 'breadcrumb.edit',
+    }],
+  },
   { pattern: '/problems/new', trail: [{ key: 'nav.problems', to: '/problems' }, { key: 'breadcrumb.newProblem' }] },
   {
     pattern: '/problems/new/oi',
@@ -263,6 +287,8 @@ function dynamicTarget(pattern: string, paramName: string, params: Record<string
   const value = params[paramName];
   if (!value) return undefined;
   if (prefix === '/d') return workspaceSlugFromPath(`/d/${value}`) ? workspacePath(value) : undefined;
+  if (prefix === '/d/:slug/classrooms' && params.slug) return workspacePath(params.slug, `classrooms/${value}`);
+  if (prefix === '/d/:slug/assignments' && params.slug) return workspacePath(params.slug, `assignments/${value}`);
 
   // 题目 / 用户 / 竞赛 / 提交 / 题单 / 帖子 / 公告均有公开标识构造器
   if (prefix === '/problems') return problemUrl(value);

@@ -1,14 +1,19 @@
 import { useApi } from '~/composables/useApi';
 import type {
   Assignment,
+  AssignmentDetail,
+  AssignmentDraftInput,
   AssignmentFeedback,
   AssignmentHelp,
   Classroom,
   ClassroomDetail,
+  ClassroomMember,
   LineAnnotation,
   MatrixData,
   MyProgress,
+  TeachingCapability,
   TeachingPage,
+  TeachingProblemOption,
   TeachingText,
 } from '~/utils/education';
 
@@ -30,7 +35,89 @@ export function useEducationApi() {
       api.post<{ data: Classroom }>(`${root(slug)}/classrooms`, input),
     assignments: (slug: string, id: string, page = 1) =>
       api.get<{ data: Assignment[] }>(`${classroom(slug, id)}/assignments`, { query: { page }, silent: true }),
-    assignment: (slug: string, id: string) => api.get<{ data: Assignment }>(task(slug, id), { silent: true }),
+    assignment: (slug: string, id: string) => api.get<{ data: AssignmentDetail }>(task(slug, id), { silent: true }),
+    createAssignment: (slug: string, id: string, input: AssignmentDraftInput) =>
+      api.post<{ data: Assignment }>(`${classroom(slug, id)}/assignments`, input),
+    saveAssignment: (slug: string, id: string, input: AssignmentDraftInput, current: number) =>
+      api.patch<{ data: Assignment }>(task(slug, id), input, revision(current)),
+    publish: (slug: string, id: string, current: number, key: string) =>
+      api.post<{ data: Assignment }>(`${task(slug, id)}/publish`, {}, {
+        headers: { ...revision(current).headers, ...idempotent(key).headers },
+      }),
+    schedule: (slug: string, id: string, current: number, publish_at: string) =>
+      api.post(`${task(slug, id)}/schedule`, { publish_at }, revision(current)),
+    lifecycle: (
+      slug: string,
+      id: string,
+      current: number,
+      action: 'extend' | 'end' | 'archive',
+      input: { reason: string; deadline_at?: string | null },
+    ) => api.post(`${task(slug, id)}/${action}`, input, revision(current)),
+    copy: (
+      slug: string,
+      id: string,
+      current: number,
+      key: string,
+      input: { title: string; target_student_ids?: string[]; item_ids?: string[] },
+    ) =>
+      api.post<{ data: Assignment }>(`${task(slug, id)}/copy`, input, {
+        headers: { ...revision(current).headers, ...idempotent(key).headers },
+      }),
+    problems: (slug: string, page: number, keyword: string) =>
+      api.get<{ items: TeachingProblemOption[]; total: number }>(`${root(slug)}/problems`, {
+        query: { page, limit: 50, keyword },
+        silent: true,
+      }),
+    problem: (slug: string, reference: string) =>
+      api.get<
+        {
+          binding_id: string;
+          reference: TeachingProblemOption['reference'];
+          version: number;
+          content: { title: string; kind: string };
+        }
+      >(`${root(slug)}/problems/${encodeURIComponent(reference)}`),
+    training: (slug: string, id: string) =>
+      api.get<{ data: { id: string; title: string; revision: number; items: { display_ref: string }[] } }>(
+        `${root(slug)}/trainings/${encodeURIComponent(id)}`,
+      ),
+    members: (slug: string, id: string) =>
+      api.get<{ data: ClassroomMember[] }>(`${classroom(slug, id)}/members`, { silent: true }),
+    setMember: (
+      slug: string,
+      id: string,
+      userId: string,
+      role: ClassroomMember['role'],
+      capabilities: TeachingCapability[],
+      current: number,
+    ) =>
+      api.put(
+        `${classroom(slug, id)}/members/${encodeURIComponent(userId)}`,
+        { role, capabilities },
+        revision(current),
+      ),
+    removeMember: (slug: string, id: string, userId: string, current: number) =>
+      api.delete(`${classroom(slug, id)}/members/${encodeURIComponent(userId)}`, revision(current)),
+    invite: (slug: string, id: string, email: string) =>
+      api.post<{ data: { token: string; id: string; expires_at: string } }>(`${classroom(slug, id)}/invitations`, {
+        email,
+      }),
+    invitations: (slug: string, id: string) =>
+      api.get<
+        { data: { id: string; email: string; used_at: string | null; revoked_at: string | null; expires_at: string }[] }
+      >(`${classroom(slug, id)}/invitations`, { silent: true }),
+    revokeInvitation: (slug: string, id: string, inviteId: string) =>
+      api.delete(`${classroom(slug, id)}/invitations/${encodeURIComponent(inviteId)}`),
+    updateClassroom: (
+      slug: string,
+      id: string,
+      input: { name: string; description: string; stage_tag: string },
+      current: number,
+    ) => api.patch(`${classroom(slug, id)}`, input, revision(current)),
+    archiveClassroom: (slug: string, id: string, current: number) =>
+      api.post(`${classroom(slug, id)}/archive`, {}, revision(current)),
+    transferClassroom: (slug: string, id: string, userId: string, current: number) =>
+      api.post(`${classroom(slug, id)}/transfer`, { user_id: userId }, revision(current)),
     matrix: (slug: string, id: string, query: Record<string, string | number | undefined>) =>
       api.get<{ data: MatrixData }>(`${task(slug, id)}/matrix`, { query, silent: true }),
     progress: (slug: string, id: string, scope: 'on_time' | 'current') =>

@@ -21,7 +21,7 @@ const room = await useAsyncData(
 const can = (cap: TeachingCapability) => !!room.data.value && classroomCan(room.data.value.data, cap);
 const isStudent = computed(() =>
   room.data.value?.data.membership?.role === 'student' ||
-  !!task.data.value && extractApiError(room.error.value).status === 404
+  room.data.value?.data.historical_student === true
 );
 const query = computed(() => ({
   scope: scope.value,
@@ -33,24 +33,26 @@ const query = computed(() => ({
   verdict: verdictFilter.value === 'all' ? undefined : verdictFilter.value,
 }));
 const matrix = await useAsyncData(
-  () => `${key.value}:matrix:${JSON.stringify(query.value)}:${can('progress:read')}`,
+  () =>
+    `${key.value}:matrix:${JSON.stringify(query.value)}:${can('progress:read')}:${!!task.data.value?.data
+      .published_at}`,
   () =>
     can('progress:read') && task.data.value?.data.published_at
       ? education.matrix(slug.value!, id.value, query.value)
       : Promise.resolve(null),
 );
 const progress = await useAsyncData(
-  () => `${key.value}:progress:${scope.value}:${isStudent.value}`,
+  () => `${key.value}:progress:${scope.value}:${isStudent.value}:${!!task.data.value?.data.published_at}`,
   () =>
     isStudent.value && task.data.value?.data.published_at
       ? education.progress(slug.value!, id.value, scope.value)
       : Promise.resolve(null),
 );
-const writable = computed(() =>
+const classroomWritable = computed(() =>
   domain.value?.status === 'active' && domain.value.configuration.features.classroom &&
-  domain.value.configuration.features.assignment && room.data.value?.data.status === 'active' &&
-  task.data.value?.data.state !== 'archived'
+  domain.value.configuration.features.assignment && room.data.value?.data.status === 'active'
 );
+const writable = computed(() => classroomWritable.value && task.data.value?.data.state !== 'archived');
 const capture = useWorkspaceActionScope();
 usePolling({
   intervalMs: computed(() => matrix.data.value?.data.updating || progress.data.value?.data.updating ? 3000 : null),
@@ -108,6 +110,20 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
           icon="i-lucide-arrow-left">返回班级</UButton>
         <AdminPageHeader class="mt-4" :title="task.data.value.data.title"
           :description="assignmentPhase(task.data.value.data)" icon="i-lucide-clipboard-list" />
+        <UAlert v-if="task.data.value.data.publish_error" class="mt-4" color="warning" title="定时发布失败"
+          :description="task.data.value.data.publish_error" />
+        <p v-if="task.data.value.data.state === 'scheduled'"
+          class="mt-3 text-sm text-text-muted">预定发布时间：{{ new Date(task.data.value.data.publish_at!).toLocaleString() }}</p>
+        <div v-if="can('assignments:manage')" class="mt-4 flex flex-wrap gap-3">
+          <ClientOnly>
+            <AssignmentActions :key="key" :slug="slug!" :task="task.data.value.data" :writable="!!classroomWritable"
+              @changed="task.refresh()" />
+            <AssignmentCopy :key="`${key}:copy`" :slug="slug!" :task="task.data.value.data"
+              :writable="!!classroomWritable" />
+          </ClientOnly>
+        </div>
+        <AssignmentDraftPreview v-if="can('assignments:manage') && !task.data.value.data.published_at" class="mt-4"
+          :key="`${key}:${task.data.value.data.revision}`" :slug="slug!" :task="task.data.value.data" />
         <MarkdownRenderer v-if="task.data.value.data.description" class="mt-4"
           :content="task.data.value.data.description" />
         <p v-if="task.data.value.data.deadline_at"

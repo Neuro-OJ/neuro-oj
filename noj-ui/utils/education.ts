@@ -20,6 +20,7 @@ export interface ClassroomDetail extends Classroom {
   membership: { role: 'coach' | 'assistant' | 'student'; status: string } | null;
   capabilities: TeachingCapability[];
   manages_domain: boolean;
+  historical_student?: boolean;
 }
 export interface Assignment {
   id: string;
@@ -35,6 +36,84 @@ export interface Assignment {
   archived_at: string | null;
   publish_error: string | null;
   include_previous_submissions: boolean;
+}
+export interface ClassroomMember {
+  id: string;
+  user_id: string;
+  username: string;
+  role: 'coach' | 'assistant' | 'student';
+  status: 'active' | 'removed';
+  effective_active: boolean;
+  capabilities?: TeachingCapability[];
+}
+export interface AssignmentDraftInput {
+  title: string;
+  description: string;
+  deadline_at: string | null;
+  include_previous_submissions: boolean;
+  target_student_ids: string[] | null;
+  items?: { binding_id: string; requirement: 'accepted' | 'min_score'; minimum_score: number | null }[];
+  training?: { id: string; requirement: 'accepted' | 'min_score'; minimum_score: number | null };
+}
+export interface AssignmentDetail extends Assignment {
+  target_student_ids?: string[] | null;
+  source_training_id: string | null;
+  source_training_rule: { requirement: 'accepted' | 'min_score'; minimum_score: number | null } | null;
+  items: {
+    id: string;
+    binding_id: string;
+    requirement: 'accepted' | 'min_score';
+    minimum_score: number | null;
+    reference: { display_ref: string; qualified_ref: string };
+    answer_version_id: string | null;
+    policy_revision: number | null;
+  }[];
+}
+export interface TeachingProblemOption {
+  binding_id: string;
+  title: string;
+  kind: string;
+  version: number;
+  reference: { display_ref: string; qualified_ref: string };
+}
+export const TEACHING_CAPABILITY_LABELS: Record<TeachingCapability, string> = {
+  'progress:read': '查看学情',
+  'submissions:read': '查看学生提交',
+  'assignments:manage': '创建和管理作业',
+  'feedback:write': '撰写反馈',
+  'help:manage': '处理求助',
+  'students:manage': '管理学生成员',
+};
+
+/** 显示分精确转为 ×100 整数，不把三位小数静默舍入为另一项达标要求。 */
+export function teachingScore(value: string | number) {
+  const match = /^(\d{1,3})(?:\.(\d{1,2}))?$/.exec(String(value).trim());
+  if (!match) throw new Error('最低分需要 0–100，最多两位小数');
+  const score = Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0'));
+  if (score > 10000) throw new Error('最低分不能超过 100');
+  return score;
+}
+/** 表单在客户端按用户时区编辑，接口统一使用 UTC。 */
+export function teachingLocalTime(iso: string | null) {
+  if (!iso) return '';
+  const d = new Date(iso), two = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}T${two(d.getHours())}:${two(d.getMinutes())}`;
+}
+export function teachingUtcTime(local: string) {
+  if (!local) return null;
+  const date = new Date(local);
+  if (!Number.isFinite(date.getTime())) throw new Error('时间格式错误');
+  return date.toISOString();
+}
+/** 题单链接提取稳定资源标识，执行始终使用当前目标域。 */
+export function teachingTrainingId(value: string) {
+  const input = value.trim();
+  if (!input) throw new Error('请选择题单或粘贴题单链接');
+  if (!input.includes('/')) return input;
+  const url = new URL(input, 'https://noj.local');
+  const match = /^\/d\/[a-z0-9-]+\/trainings\/([^/]+)\/?$/.exec(url.pathname);
+  if (!match) throw new Error('请使用带空间的题单链接');
+  return decodeURIComponent(match[1]!);
 }
 export type ProgressStatus = 'not_started' | 'judging' | 'below_target' | 'achieved' | 'unavailable';
 export interface TeachingCell {

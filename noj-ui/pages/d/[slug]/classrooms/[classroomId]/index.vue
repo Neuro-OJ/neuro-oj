@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { assignmentPhase, educationCacheKey } from '~/utils/education';
+import { assignmentPhase, classroomCan, educationCacheKey } from '~/utils/education';
 import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
-const route = useRoute(), { slug } = useWorkspace(), education = useEducationApi();
+const route = useRoute(), { slug, domain } = useWorkspace(), education = useEducationApi();
 const actor = useState<{ id: string } | null>('auth:user', () => null), page = ref(1);
 const id = computed(() => String(route.params.classroomId));
 const room = await useAsyncData(
@@ -23,7 +23,18 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级' });
       :status="room.error.value ? 'error' : room.status.value === 'pending' ? 'loading' : room.data.value ? 'data' : 'empty'"
       :error="room.error.value ? extractApiError(room.error.value).message : undefined" @retry="room.refresh()">
       <AdminPageHeader :title="room.data.value?.data.name ?? '班级'" :description="room.data.value?.data.description"
-        icon="i-lucide-graduation-cap" />
+        icon="i-lucide-graduation-cap">
+        <template #actions>
+          <UButton
+            v-if="room.data.value && classroomCan(room.data.value.data, 'assignments:manage') && room.data.value.data.status === 'active' && domain?.status === 'active' && domain.configuration.features.assignment && domain.configuration.features.classroom"
+            :to="workspacePath(slug!, `classrooms/${id}/assignments/new`)" icon="i-lucide-plus">创建作业</UButton>
+          <UButton v-if="room.data.value && classroomCan(room.data.value.data, 'students:manage')"
+            :to="workspacePath(slug!, `classrooms/${id}/members`)" variant="outline">班级成员</UButton>
+          <UButton
+            v-if="room.data.value && (room.data.value.data.manages_domain || room.data.value.data.membership?.role === 'coach')"
+            :to="workspacePath(slug!, `classrooms/${id}/settings`)" variant="outline">班级设置</UButton>
+        </template>
+      </AdminPageHeader>
       <UAlert v-if="room.data.value?.data.status === 'archived'" class="mt-4" color="warning"
         title="班级已归档，可以继续查看获授权的历史" />
     </AsyncContent>
