@@ -29,10 +29,10 @@ tempfile = "3"
 # OI WASM 后端：WASI 运行时与 fuel/线性内存限制。
 wasmtime = { version = "=49.0.1", features = ["cranelift", "wat"] }
 wasmtime-wasi = "=49.0.1"
-wasmparser = "=0.258.0"
-wasm-encoder = { version = "=0.258.0", features = ["wasmparser"] }
+wasmparser = "=0.258.3"
+wasm-encoder = { version = "=0.258.3", features = ["wasmparser"] }
 
 [dev-dependencies]
 serial_test = "3"
 bytes = "1.12.1"
-wat = "=1.260.0"
+wat = "=1.261.0"
