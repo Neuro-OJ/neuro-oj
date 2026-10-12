@@ -16,6 +16,7 @@
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
+import { recordEducationEvent } from "../../../../shared/education-events.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
   contestProblems,
@@ -460,6 +461,23 @@ export async function recomputeSubmissionProjection(
     );
   }
   await bumpProjectionRevision(executor, globalScopeKey());
+  const [identity] = source.kind === "submission"
+    ? await executor.select({
+      domain_id: submissions.domain_id,
+      user_id: submissions.user_id,
+    }).from(submissions).where(eq(submissions.id, source.id))
+    : await executor.select({
+      domain_id: objectiveSubmissions.domain_id,
+      user_id: objectiveSubmissions.user_id,
+    }).from(objectiveSubmissions).where(eq(objectiveSubmissions.id, source.id));
+  if (identity?.domain_id) {
+    await recordEducationEvent(executor, {
+      domain_id: identity.domain_id,
+      user_id: identity.user_id,
+      problem_id: source.problem_id,
+      event_type: "submission.changed",
+    });
+  }
   return plan;
 }
 

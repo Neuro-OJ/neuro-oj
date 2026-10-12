@@ -18,6 +18,7 @@ import { snapshotEnv } from "./domains/system/index.ts";
 import { validateRegistry } from "./shared/config/settings-registry.ts";
 import { createReviewConsumer } from "./domains/content-review/index.ts";
 import { startSearchIndexConsumer } from "./domains/search/index.ts";
+import { startEducationWorker } from "./domains/education/index.ts";
 import {
   ensureRootUser,
   sealExistingSiteAdminInitialization,
@@ -317,6 +318,7 @@ async function main() {
 
   // 启动批量任务 worker（管理员重测 / 用户升级条目派发；Handbook §5.7）
   startSubmissionJobWorker();
+  const educationWorker = startEducationWorker();
 
   // 初始化 Redis Pub/Sub 事件订阅者（后台运行，用于 SSE 推送）
   initEventSubscriber();
@@ -341,6 +343,7 @@ async function main() {
 
     try {
       requestResultConsumerShutdown();
+      educationWorker.stop();
       // SSE 等长连接可能让 shutdown() 一直等待；加一个兜底超时，
       // 超时后继续关闭资源并退出，避免被 K8s SIGKILL 前卡死。
       await Promise.race([

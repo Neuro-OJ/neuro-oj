@@ -8,4 +8,5 @@ export * from "./services/assignments.ts";
 export * from "./services/assignment-access.ts";
 export * from "./services/assignment-lifecycle.ts";
 export * from "./services/assignment-copy.ts";
+export * from "./services/worker-lifecycle.ts";
 export * from "../../shared/education-types.ts";
