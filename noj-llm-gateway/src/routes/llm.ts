@@ -14,6 +14,12 @@ import {
   settleUsage,
 } from "../limits.ts";
 import { recordRejectedUsage, recordUsage } from "../usage.ts";
+import {
+  acquireProviderSlot,
+  ProviderQueueAbortedError,
+  ProviderQueueTimeoutError,
+  type ProviderSlot,
+} from "../provider-throttle.ts";
 import { calcBilledUsage } from "../billing.ts";
 import { inc, observe } from "../metrics.ts";
 import { logger } from "../logger.ts";
@@ -107,6 +113,27 @@ function openAiLimitError(_message: string): Response {
     {
       status: 429,
       headers: { "content-type": "application/json" },
+    },
+  );
+}
+
+/** 构造 Provider 排队超时的 OpenAI 兼容 429 响应（SDK 会按 Retry-After 退避重试）。 */
+function providerQueueTimeoutError(retryAfterSeconds: number): Response {
+  return new Response(
+    JSON.stringify({
+      error: {
+        message:
+          "Provider rate limit reached and the request timed out while queued",
+        type: "rate_limit_error",
+        code: "provider_queue_timeout",
+      },
+    }),
+    {
+      status: 429,
+      headers: {
+        "content-type": "application/json",
+        "retry-after": String(Math.max(1, retryAfterSeconds)),
+      },
     },
   );
 }
@@ -246,6 +273,77 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       providerSecret.provider.cost_per_1k_tokens,
     );
 
+    // Provider 级 RPM / TPM：超限时排队等待（多副本共享 Redis 队列），放在额度
+    // 扣减之前——排队超时的请求不消耗用户/题目配额。
+    let providerSlot: ProviderSlot;
+    try {
+      providerSlot = await acquireProviderSlot(deps.redis, {
+        providerId: payload.provider_id,
+        rpmLimit: providerSecret.provider.rpm_limit ?? 0,
+        tpmLimit: providerSecret.provider.tpm_limit ?? 0,
+        tokens: promptTokens + completionTokens,
+        timeoutMs: deps.config.providerQueueTimeoutMs,
+        signal: c.req.raw.signal,
+      });
+    } catch (err) {
+      if (err instanceof ProviderQueueAbortedError) {
+        // 客户端已断开：不再转发，也无需记录用量
+        return new Response(
+          JSON.stringify({ error: "client_closed_request" }),
+          { status: 499, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (err instanceof ProviderQueueTimeoutError) {
+        inc("noj_llm_provider_queue_timeouts_total");
+        observe(
+          "noj_llm_provider_queue_wait_seconds",
+          Math.max(0, Date.now() - startedAt) / 1000,
+        );
+        logger.warn(
+          "Provider 限流排队超时: provider={provider_id}",
+          { provider_id: payload.provider_id },
+        );
+        await recordRejectedUsage(deps.db, deps.redis, {
+          id: crypto.randomUUID(),
+          submission_id: payload.submission_id,
+          attempt_id: payload.attempt_id ?? null,
+          problem_version_id: payload.problem_version_id ?? null,
+          problem_id: payload.problem_id,
+          user_id: payload.user_id,
+          provider_id: payload.provider_id,
+          model,
+          request_messages: body.messages,
+          request_params: pickParams(body),
+          prompt_tokens: promptTokens,
+          completion_tokens: 0,
+          total_tokens: promptTokens,
+          estimated_cost: 0,
+          latency_ms: Date.now() - startedAt,
+          status: "rejected",
+          error_code: "provider_queue_timeout",
+          prompt_hash: await sha256Hex(JSON.stringify(body.messages)),
+          created_at: new Date().toISOString(),
+        });
+        return providerQueueTimeoutError(err.retryAfterSeconds);
+      }
+      // Redis 故障时放行（fail-open）：节流只为保护上游，上游自身仍会 429
+      logger.warn(
+        "Provider 限流不可用，直接放行: provider={provider_id}",
+        { provider_id: payload.provider_id },
+      );
+      providerSlot = {
+        waitedMs: 0,
+        release: () => Promise.resolve(),
+        settle: () => Promise.resolve(),
+      };
+    }
+    if (providerSlot.waitedMs > 0) {
+      observe(
+        "noj_llm_provider_queue_wait_seconds",
+        providerSlot.waitedMs / 1000,
+      );
+    }
+
     try {
       await enforceAndCount(deps.db, deps.redis, payload, {
         model,
@@ -260,6 +358,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     } catch (err) {
       const message = err instanceof Error ? err.message : "limit_exceeded";
       inc("noj_llm_rate_limited_total");
+      // 请求未发往上游：归还 Provider 窗口额度
+      await providerSlot.release().catch(() => undefined);
       // 调用前拒绝：不存原文 + 按提交去重（G-04），见 recordRejectedUsage
       await recordRejectedUsage(deps.db, deps.redis, {
         id: crypto.randomUUID(),
@@ -386,6 +486,10 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     const actualTotalTokens = billedUsage.totalTokens;
     const actualBilledTotalTokens = billedUsage.billedTotalTokens;
     inc("noj_llm_tokens_total", {}, actualBilledTotalTokens);
+    // 上游 TPM 按实际总 token 计：用真实用量修正预占（失败不影响响应）
+    if (usage) {
+      await providerSlot.settle(actualTotalTokens).catch(() => undefined);
+    }
     const actualCost = estimateCost(
       actualBilledTotalTokens,
       providerSecret.provider.cost_per_1k_tokens,

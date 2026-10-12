@@ -23,6 +23,8 @@ export interface RedisClient {
     keys: string[],
     args: (string | number)[],
   ): Promise<unknown>;
+  /** 关闭连接（可选；测试与优雅退出使用） */
+  quit?(): Promise<unknown>;
 }
 
 /** 创建 Redis 客户端适配器，统一暴露限流所需的最小操作集。 */
@@ -45,6 +47,7 @@ export function createRedis(redisUrl: string): RedisClient {
     scard: (key) => redis.scard(key),
     eval: (script, keys, args) =>
       redis.eval(script, keys.length, ...keys, ...args),
+    quit: () => redis.quit(),
   };
 }
 

@@ -109,6 +109,14 @@ export const GATEWAY_CONFIG_DEFINITIONS: GatewayEnvDefinition[] = [
     readMode: "static",
   },
   {
+    key: "NOJ_LLM_PROVIDER_QUEUE_TIMEOUT_SECONDS",
+    description:
+      "Provider RPM/TPM 超限时单个请求的最长排队秒数（0 = 不排队，超限立即 429），默认 60",
+    isSecret: false,
+    readMode: "static",
+    defaultValue: "60",
+  },
+  {
     key: "NOJ_LLM_USAGE_RETENTION_DAYS",
     description:
       "llm_usage 用量审计保留天数（0 = 不清理）；启动时与每 6 小时清理一次",

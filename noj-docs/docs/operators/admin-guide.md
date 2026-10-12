@@ -189,6 +189,9 @@ compose 内 `noj-net` 子网一致），否则所有请求都被解析成反向�
 - 操作列「测试连接」可用指定模型向上游发起一次 1 token 的真实请求，验证 Base URL
   / API Key / 模型是否可用，并显示耗时或失败原因。
 - 「模型别名」卡片维护 `别名 → Provider + 真实模型`，供出题人逐题选择允许调用的模型；`default` 即平台默认。详见 [LLM 调用能力](./llm-call-capability.md#模型别名逐题选择模型)。
+- 可为每个 Provider 设置 RPM / TPM 上限（`0` 表示不限）：超过上限的请求在网关排队等待，
+  超过 `NOJ_LLM_PROVIDER_QUEUE_TIMEOUT_SECONDS` 才返回 429，详见
+  [LLM 调用能力](./llm-call-capability.md#provider-速率上限与排队)。
 - API Key 保存后**不会**再明文返回，列表中只显示掩码（如
   `sk-****abcd`）；需要更新时重新填写 Key。
 - 只有 `enabled=true` 的 Provider 可用于 LLM 题目；停用后已有评测 token

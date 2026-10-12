@@ -26,6 +26,10 @@ export const llmProviders = pgTable(
     encrypted_api_key: text("encrypted_api_key").notNull(),
     /** 是否启用；停用后新评测不能选用 */
     enabled: boolean("enabled").notNull().default(true),
+    /** 上游每分钟请求数上限（0 = 不限）；超过时排队等待 */
+    rpm_limit: integer("rpm_limit").notNull().default(0),
+    /** 上游每分钟 token 数上限（0 = 不限）；超过时排队等待 */
+    tpm_limit: integer("tpm_limit").notNull().default(0),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
   },
