@@ -374,6 +374,8 @@ export async function publishProblemVersion(
     changeNote?: string;
     actorId?: string | null;
     context?: Context;
+    /** 域路由在发布事务内重新确认授权，与资源写入共用锁和连接。 */
+    authorize?: (executor: Executor) => Promise<void>;
   },
 ): Promise<PublishProblemVersionResult> {
   if (input.expectedRevision == null) throw draftRevisionRequired();
@@ -411,6 +413,7 @@ export async function publishProblemVersion(
   );
   const db = getDb();
   const outcome = await db.transaction(async (tx) => {
+    await input.authorize?.(tx);
     // 步骤 2：锁定题目与草稿
     const locked = unwrapRows<{ id: string }>(
       await tx.execute(

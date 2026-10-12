@@ -40,3 +40,5 @@ export * from "./services/workspace/backfill.ts";
 export * from "./services/workspace/problem-binding-access.ts";
 export * from "./services/workspace/problem-bindings.ts";
 export * from "./services/workspace/problem-sharing.ts";
+export * from "./services/workspace/problem-read.ts";
+export * from "./services/workspace/problem-edit.ts";

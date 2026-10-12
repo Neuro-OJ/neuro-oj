@@ -38,6 +38,10 @@ import {
   setDomainProblemBindingPolicy,
 } from "../../services/workspace/problem-bindings.ts";
 import { setDomainProblemSharing } from "../../services/workspace/problem-sharing.ts";
+import {
+  listDomainProblems,
+  readDomainProblem,
+} from "../../services/workspace/problem-read.ts";
 
 async function account(admin = false) {
   const id = crypto.randomUUID();
@@ -114,7 +118,20 @@ async function fixture() {
       id,
       problem_id: i === 2 ? second : problem,
       version: i === 1 ? 2 : 1,
-      content: { kind: "ai", title: `V${i}`, description: "不可变内容" },
+      content: {
+        kind: "ai",
+        title: `V${i}`,
+        description: "不可变内容",
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 evaluate.py",
+          },
+          solution: { image: "noj-solution-python" },
+        },
+        llm_config: { max_calls: 5 },
+        template_content: "print('template')",
+      },
       published_at: now,
     })),
   );
@@ -219,6 +236,75 @@ Deno.test("默认域回填：保留源 ID、版本、题号和策略，重复运
   );
   assertEquals(domain.next_problem_number, 4322);
   assertEquals((await getDb().select().from(problemBindingHistory)).length, 1);
+});
+
+Deno.test("域题库读取：分页计数先授权，exact 题面及来源题号保持目标域口径", async () => {
+  const f = await fixture();
+  const imported = await importDomainProblem(
+    f.school.slug,
+    "public-source:1001",
+    f.teacher,
+  );
+  await importDomainProblem(f.school.slug, "public-source:1002", f.teacher);
+  await setDomainProblemBindingPolicy(
+    f.school.slug,
+    "public-source:1001",
+    f.teacher,
+    imported.binding.revision,
+    { mode: "exact", version_id: f.versions[0] },
+    "使用初版",
+  );
+  const page = await listDomainProblems(f.school.slug, f.student, {
+    page: 1,
+    limit: 1,
+  });
+  assertEquals(page.total, 2);
+  assertEquals(page.items.length, 1);
+  assertEquals(page.items[0].reference.display_ref, "public-source:1001");
+  assertEquals(page.items[0].title, "V0");
+  const detail = await readDomainProblem(
+    f.school.slug,
+    "public-source:1001",
+    f.teacher,
+  );
+  assertEquals(detail.can_edit, false);
+  assertEquals(detail.content.title, "V0");
+  assertEquals("runtime_config" in detail.content, false);
+  assertEquals("llm_config" in detail.content, false);
+  await assertRejects(
+    () => readDomainProblem(f.other.slug, "public-source:1001", f.student),
+    NotFoundError,
+  );
+});
+
+Deno.test("域题库读取：源题撤销同时移除列表、命中数和题面", async () => {
+  const f = await fixture();
+  await importDomainProblem(f.school.slug, "public-source:1001", f.teacher);
+  await importDomainProblem(f.school.slug, "public-source:1002", f.teacher);
+  await setDomainProblemSharing(f.source.slug, "1001", f.platform, {
+    expectedRevision: 1,
+    enabled: false,
+    scope: "all",
+    targetDomainIds: [],
+  });
+  const page = await listDomainProblems(f.school.slug, f.teacher, {
+    page: 1,
+    limit: 20,
+  });
+  assertEquals(page.total, 1);
+  assertEquals(page.items[0].reference.display_ref, "public-source:1002");
+  assertEquals(
+    (await listDomainProblems(f.school.slug, f.teacher, {
+      page: 1,
+      limit: 20,
+      keyword: "V1",
+    })).total,
+    0,
+  );
+  await assertRejects(
+    () => readDomainProblem(f.school.slug, "public-source:1001", f.platform),
+    NotFoundError,
+  );
 });
 
 Deno.test("默认域回填：未处理 U 题阻止整个事务，不默默转换或清除", async () => {
