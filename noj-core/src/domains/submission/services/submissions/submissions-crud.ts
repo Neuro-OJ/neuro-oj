@@ -85,6 +85,12 @@ import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
 import {
+  type DomainExecutionRequest,
+  lockDomainExecution,
+  resolveDomainExecution,
+} from "../workspace-execution.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
+import {
   assertVersionAcceptsSubmission,
   resolveSubmissionVersion,
 } from "../versioning/submission-version.ts";
@@ -220,7 +226,9 @@ export async function listSubmissions(
   } = params;
 
   // 动态构建筛选条件（仅对提供的参数添加条件）
-  const conditions: ReturnType<typeof eq>[] = [];
+  const conditions: ReturnType<typeof eq>[] = [
+    sql`(${submissions.domain_id} = ${DEFAULT_DOMAIN_ID} OR ${submissions.domain_id} IS NULL)`,
+  ];
   if (!params.platformAdmin && (status || validOnly || acceptedOnly)) {
     // 结果筛选本身也会泄露 OI 判定，赛期不让隐藏结果参与筛选计数。
     conditions.push(
@@ -441,12 +449,22 @@ export async function createSubmission(
   input: SubmissionInput,
   contestId?: string,
   isAdmin = false,
+  domainRequest?: DomainExecutionRequest,
 ): Promise<SubmissionResponse> {
   const db = getDb();
   if (contestId && input.contest_id && contestId !== input.contest_id) {
     throw new BadRequestError("竞赛 ID 不一致");
   }
   const resolvedContestId = contestId ?? input.contest_id ?? null;
+  if (domainRequest && resolvedContestId) {
+    throw new BadRequestError("域内练习提交不能携带比赛上下文");
+  }
+  const domainExecution = domainRequest
+    ? await resolveDomainExecution(domainRequest, userId, input.version_id)
+    : null;
+  if (domainExecution && domainExecution.problem.id !== input.problem_id) {
+    throw new NotFoundError("域题目引用与内部身份不一致");
+  }
 
   // 比赛内每道题提交次数上限（含 error 计数）
   if (resolvedContestId) {
@@ -458,7 +476,7 @@ export async function createSubmission(
   }
 
   // 读取最新题目配置（快照读，避免无事务包裹导致单语句 FOR UPDATE 锁即刻释放的伪锁缺陷）
-  const lockedRows = await db
+  const lockedRows = domainExecution ? [domainExecution.problem] : await db
     .select()
     .from(problems)
     .where(eq(problems.id, input.problem_id))
@@ -467,20 +485,20 @@ export async function createSubmission(
     throw new NotFoundError("题目不存在");
   }
   const problem = lockedRows[0];
-  assertDefaultProblemSource(problem);
+  if (!domainExecution) assertDefaultProblemSource(problem);
 
   // 统一访问解析：普通入口 private 题非 owner/admin 拒绝（被公开赛保密的题目同此
   // 口径，无法从独立路径提交）；竞赛入口先经 verifyContestAccess 校验成员+窗口。
   const contestAccess = resolvedContestId
     ? await verifyContestAccess(userId, resolvedContestId, problem.id)
     : null;
-  const { result: access } = await evaluateProblemAccess(problem, {
-    viewerId: userId,
-    isAdmin,
-    contestAccess,
-  });
-  if (!access.allowed) {
-    throw new ForbiddenError("无权对该题目提交");
+  if (!domainExecution) {
+    const { result: access } = await evaluateProblemAccess(problem, {
+      viewerId: userId,
+      isAdmin,
+      contestAccess,
+    });
+    if (!access.allowed) throw new ForbiddenError("无权对该题目提交");
   }
   // 服务层防御：竞赛提交只允许 running 窗口（contest 路由已拦截，这里防未来调用方绕过）。
   if (resolvedContestId && contestAccess && !contestAccess.running) {
@@ -488,7 +506,7 @@ export async function createSubmission(
   }
 
   // artifact 题目必须走 multipart zip 上传，拒绝 JSON 代码提交
-  if (problem.submission_mode === "artifact") {
+  if (!domainExecution && problem.submission_mode === "artifact") {
     throw new BadRequestError("该题目要求上传 zip 产物");
   }
 
@@ -570,6 +588,13 @@ export async function createSubmission(
   let llmTask: JudgeTaskLlm | undefined;
   const llmConfig = content.kind === "ai" ? content.llm_config : null;
   if (llmConfig) {
+    if (domainExecution && domainExecution.domain.id !== DEFAULT_DOMAIN_ID) {
+      throw new AppError(
+        "使用域尚未配置 LLM Provider 和模型",
+        400,
+        "DOMAIN_LLM_NOT_CONFIGURED",
+      );
+    }
     if (isOiRuntimeConfig(runtimeConfig)) {
       throw new BadRequestError("OI 题目不支持 LLM 评测");
     }
@@ -614,11 +639,15 @@ export async function createSubmission(
 
   try {
     await db.transaction(async (tx) => {
-      const workspace = await resolveDefaultExecutionContext(
-        input.problem_id,
-        userId,
-        tx,
-      );
+      const workspace = domainExecution && domainRequest
+        ? await lockDomainExecution(
+          domainExecution,
+          domainRequest,
+          userId,
+          input.version_id,
+          tx,
+        )
+        : await resolveDefaultExecutionContext(input.problem_id, userId, tx);
       await lockProjectionHosts(tx, {
         kind: "submission",
         id,
@@ -778,6 +807,9 @@ export async function getSubmission(
   }
 
   const row = rows[0];
+  if (row.domain_id !== null && row.domain_id !== DEFAULT_DOMAIN_ID) {
+    throw new NotFoundError("默认域不存在此提交");
+  }
 
   // 权限判断：仅 owner 或 admin 可看 code/output/details
   // 注意：基础数据（题号/状态/时间等）对所有访问者公开，不在这里做"非所有者 404"的拦截

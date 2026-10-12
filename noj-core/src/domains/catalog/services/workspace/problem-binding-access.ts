@@ -58,7 +58,9 @@ export async function assertCurrentProblemShare(
     );
     if (!grant) throw new NotFoundError("源题未授权此工作空间引用");
   }
-  if ((await loadPublicContestSecrecy(problem.id, executor)).length) {
+  if (
+    (await loadPublicContestSecrecy(problem.id, executor, source.id)).length
+  ) {
     throw new NotFoundError("源题处于比赛保密窗口");
   }
 }
@@ -127,7 +129,8 @@ export async function resolveDomainProblem(
         workspace.context.domainPermissions.has("problem:write_own"));
     if (
       !editable &&
-      (await loadPublicContestSecrecy(row.problem.id, executor)).length
+      (await loadPublicContestSecrecy(row.problem.id, executor, row.source.id))
+        .length
     ) throw new NotFoundError("此题处于比赛保密窗口");
   }
   const versionId = row.binding.effective_version_mode === "exact"

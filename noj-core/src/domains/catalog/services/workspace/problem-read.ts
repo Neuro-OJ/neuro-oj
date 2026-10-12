@@ -49,7 +49,12 @@ export async function listDomainProblems(
         eq(binding.kind, "owned"),
         eq(problems.domain_id, workspace.domain.id),
         canEdit ? undefined : or(
-          sql`NOT ${unendedPublicContestForProblem(problems.id)}`,
+          sql`NOT ${
+            unendedPublicContestForProblem(
+              problems.id,
+              sql`${workspace.domain.id}`,
+            )
+          }`,
           actorId &&
             workspace.context.domainPermissions.has("problem:write_own")
             ? eq(problems.owner_id, actorId)
@@ -64,7 +69,7 @@ export async function listDomainProblems(
         eq(problemShareSettings.enabled, true),
         sql`(${problemShareSettings.scope} = 'all' OR EXISTS (SELECT 1 FROM problem_share_targets grant_target WHERE grant_target.problem_id = ${problems.id} AND grant_target.domain_id = ${workspace.domain.id}))`,
         sql`EXISTS (SELECT 1 FROM domain_problem_bindings source_binding WHERE source_binding.problem_id = ${problems.id} AND source_binding.domain_id = ${source.id} AND source_binding.kind = 'owned' AND source_binding.visibility = 'public' AND source_binding.disabled_at IS NULL)`,
-        sql`NOT ${unendedPublicContestForProblem(problems.id)}`,
+        sql`NOT ${unendedPublicContestForProblem(problems.id, source.id)}`,
       ),
     ),
     query.keyword

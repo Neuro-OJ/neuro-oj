@@ -1,4 +1,5 @@
 export * from "./services/submissions/submissions.ts";
+export { createDomainSubmission } from "./services/domain-submissions.ts";
 export {
   applySubmissionProjection,
   type ProjectionCtx,

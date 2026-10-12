@@ -25,6 +25,7 @@ import { NotFoundError } from "./../../../shared/base/errors.ts";
 import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import { logAudit } from "../../system/index.ts";
 import { SELF_TEST_ID_PREFIX } from "./../types/self-tests.ts";
+import { DEFAULT_DOMAIN_ID } from "../../workspace/index.ts";
 
 /** 评测任务队列名称列表（与 producer.ts 一致，按优先级排列）。 */
 const JUDGE_QUEUE_LIST = ALL_JUDGE_QUEUES;
@@ -807,7 +808,10 @@ export async function getSubmissionQueueStatus(
       judge_finished_at: submissions.judge_finished_at,
     })
     .from(submissions)
-    .where(eq(submissions.id, submissionId))
+    .where(and(
+      eq(submissions.id, submissionId),
+      sql`(${submissions.domain_id} = ${DEFAULT_DOMAIN_ID} OR ${submissions.domain_id} IS NULL)`,
+    ))
     .limit(1);
 
   if (rows.length === 0) return null;

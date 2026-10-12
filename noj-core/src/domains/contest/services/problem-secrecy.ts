@@ -18,7 +18,8 @@
  * 时间比较按「时刻」而非「文本」，复用 `unendedWindowCondition`
  * （`::timestamptz` + 形态守卫），杜绝字典序比较对 `+08:00` 形态静默 fail-open。
  */
-import { and, asc, eq, inArray, type SQL, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, type SQL, sql } from "drizzle-orm";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import type { AnyColumn } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
@@ -45,6 +46,7 @@ export type PublicContestSecrecyRef = {
 export async function loadPublicContestSecrecy(
   problemId: string,
   executor: Executor = getDb(),
+  domainId?: string,
 ): Promise<PublicContestSecrecyRef[]> {
   const rows = await executor
     .select({
@@ -56,6 +58,14 @@ export async function loadPublicContestSecrecy(
     .innerJoin(contests, eq(contestProblems.contest_id, contests.id))
     .where(and(
       eq(contestProblems.problem_id, problemId),
+      domainId
+        ? or(
+          eq(contests.domain_id, domainId),
+          domainId === DEFAULT_DOMAIN_ID
+            ? isNull(contests.domain_id)
+            : undefined,
+        )
+        : undefined,
       eq(contests.kind, "public"),
       unendedWindowCondition(contests.end_time),
     ))

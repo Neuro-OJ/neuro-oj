@@ -15,6 +15,7 @@ export {
   updateContest,
 } from "./services/contests.ts";
 export { verifyContestAccess } from "./services/contest-access.ts";
+export { assertDomainPracticeAllowed } from "./services/practice-admission.ts";
 export {
   filterProblemsInRunningContest,
   isProblemInRunningContest,
