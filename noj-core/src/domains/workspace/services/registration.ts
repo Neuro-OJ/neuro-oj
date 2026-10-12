@@ -55,14 +55,15 @@ export async function enrollRegisteredAccount(
       );
     }
   }
+  if (invitationToken) {
+    await consumeDomainInvitation(invitationToken, userId, executor);
+    return;
+  }
   await ensureDefaultWorkspace(executor);
   const [main] = await executor.select().from(domains).where(
     eq(domains.slug, DEFAULT_DOMAIN_SLUG),
   ).for("update");
   if (main?.status === "active" && main.configuration.join_policy === "open") {
     await addDomainMember(executor, main.id, userId);
-  }
-  if (invitationToken) {
-    await consumeDomainInvitation(invitationToken, userId, executor);
   }
 }

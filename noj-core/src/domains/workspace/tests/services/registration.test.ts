@@ -7,6 +7,7 @@ import {
 } from "../../../../shared/db/connection.ts";
 import {
   domainInvitations,
+  domainLimits,
   domainMemberships,
   roles,
   userRoles,
@@ -18,7 +19,12 @@ import {
 } from "../../../../shared/base/errors.ts";
 import { registerUser } from "../../../identity/index.ts";
 import { updateSetting } from "../../../system/index.ts";
-import { createDomain, createDomainInvitation } from "../../index.ts";
+import {
+  createDomain,
+  createDomainInvitation,
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../index.ts";
 
 // 验证真实事务，不让 preload 的外层事务掩盖跨连接读取死锁。
 disableTestTransactionForFile();
@@ -46,6 +52,10 @@ Deno.test({
       user_id: operator,
       role_id: admin.id,
     });
+    await ensureDefaultWorkspace();
+    await getDb().update(domainLimits).set({ members: 0 }).where(
+      eq(domainLimits.domain_id, DEFAULT_DOMAIN_ID),
+    );
     const domain = await createDomain({
       slug: "registration-school",
       name: "学校",
@@ -91,8 +101,8 @@ Deno.test({
     assertEquals(
       (await getDb().select().from(domainMemberships).where(
         eq(domainMemberships.user_id, student.id),
-      )).some((row) => row.domain_id === domain.id),
-      true,
+      )).map((row) => row.domain_id),
+      [domain.id],
     );
     assertEquals(
       (await getDb().select().from(domainInvitations).where(

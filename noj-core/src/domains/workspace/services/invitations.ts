@@ -10,10 +10,95 @@ import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
+  UnauthorizedError,
 } from "../../../shared/base/errors.ts";
 import { assertWorkspacePermission, loadWorkspace } from "./access.ts";
 import { addDomainMember } from "./members.ts";
 import { workspaceAudit } from "./domains.ts";
+import { getInstanceAccessPolicy } from "./instance.ts";
+import { getEmailConfigStatus, getSetting } from "../../system/index.ts";
+
+/** 签发者退出或失去邀请能力后，旧链接也不能继续增加成员。 */
+async function assertInvitationIssuerActive(
+  slug: string,
+  userId: string,
+  executor: Executor,
+) {
+  try {
+    const issuer = await loadWorkspace(slug, userId, { executor });
+    if (
+      !issuer.platformAdmin &&
+      !issuer.context.domainPermissions.has("domain:invitations")
+    ) throw new NotFoundError("邀请无效或已失效");
+    return issuer.platformAdmin;
+  } catch (error) {
+    if (
+      error instanceof ForbiddenError || error instanceof NotFoundError ||
+      error instanceof UnauthorizedError
+    ) throw new NotFoundError("邀请无效或已失效");
+    throw error;
+  }
+}
+
+/** 邀请目录只返回管理所需字段，永不返回令牌或哈希。 */
+export async function listDomainInvitations(slug: string, actorId: string) {
+  const { domain, context } = await loadWorkspace(slug, actorId);
+  assertWorkspacePermission(context, "domain:invitations");
+  return await getDb().select({
+    id: domainInvitations.id,
+    email: domainInvitations.email,
+    expires_at: domainInvitations.expires_at,
+    used_at: domainInvitations.used_at,
+    revoked_at: domainInvitations.revoked_at,
+    created_at: domainInvitations.created_at,
+  }).from(domainInvitations).where(eq(domainInvitations.domain_id, domain.id))
+    .orderBy(domainInvitations.created_at).limit(100);
+}
+
+/** 持有有效邀请可预览限定的加入信息；使用请求体，避免令牌进入 API URL。 */
+export async function previewDomainInvitation(
+  token: string,
+  executor: Executor = getDb(),
+) {
+  if (typeof token !== "string" || !/^[0-9a-f-]{72}$/.test(token)) {
+    throw new NotFoundError("邀请无效或已失效");
+  }
+  const hash = await hashInvitationToken(token);
+  const [row] = await executor.select({
+    invite: domainInvitations,
+    domain: domains,
+  }).from(domainInvitations).innerJoin(
+    domains,
+    eq(domains.id, domainInvitations.domain_id),
+  ).where(and(
+    eq(domainInvitations.token_hash, hash),
+    isNull(domainInvitations.used_at),
+    isNull(domainInvitations.revoked_at),
+    eq(domains.status, "active"),
+  ));
+  if (
+    !row || !Number.isFinite(Date.parse(row.invite.expires_at)) ||
+    Date.parse(row.invite.expires_at) <= Date.now()
+  ) throw new NotFoundError("邀请无效或已失效");
+  const platformIssuer = await assertInvitationIssuerActive(
+    row.domain.slug,
+    row.invite.created_by,
+    executor,
+  );
+  const policy = getInstanceAccessPolicy();
+  const canRegister = getSetting("allow_register")?.value !== false &&
+    getEmailConfigStatus().configured &&
+    policy.registration_mode !== "admin_only" &&
+    (policy.registration_mode === "open" ||
+      policy.allow_domain_registration_invites || platformIssuer);
+  return {
+    domain_slug: row.domain.slug,
+    domain_name: row.domain.name,
+    email: row.invite.email,
+    expires_at: row.invite.expires_at,
+    can_register: canRegister,
+  };
+}
 
 /** 邀请令牌不可逆摘要，不把令牌写入审计或列表。 */
 export async function hashInvitationToken(token: string) {
@@ -101,6 +186,7 @@ export async function consumeDomainInvitation(
     Date.parse(invite.expires_at) <= Date.now() ||
     invite.email !== user.email.toLowerCase()
   ) throw new NotFoundError("邀请无效、过期或不属于此账号");
+  await assertInvitationIssuerActive(domain.slug, invite.created_by, executor);
   await addDomainMember(executor, domain.id, userId, true);
   await executor.update(domainInvitations).set({
     used_at: new Date().toISOString(),

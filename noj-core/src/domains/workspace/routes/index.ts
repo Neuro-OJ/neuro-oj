@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
 import {
   authMiddleware,
   optionalAuthMiddleware,
@@ -14,7 +13,6 @@ import { AppError, BadRequestError } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
   domainCreationRequests,
-  domainJoinRequests,
   userWorkspacePreferences,
 } from "../../../shared/db/schema.ts";
 import type {
@@ -41,10 +39,13 @@ import { getInstancePolicy } from "../services/instance.ts";
 import {
   consumeDomainInvitation,
   createDomainInvitation,
+  listDomainInvitations,
+  previewDomainInvitation,
   revokeDomainInvitation,
 } from "../services/invitations.ts";
 import {
   joinDomain,
+  listDomainJoinRequests,
   listDomainMembers,
   removeDomainMember,
   reviewJoinRequest,
@@ -58,6 +59,11 @@ import {
 import { configurationDiff, presetConfiguration } from "../types.ts";
 
 const router = new Hono<OptionalAuthEnv>();
+router.use("*", async (c, next) => {
+  c.header("Cache-Control", "no-store");
+  c.header("Vary", "Authorization, Cookie", { append: true });
+  await next();
+});
 
 function revisionHeader(value: string | undefined) {
   if (!value || !/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) {
@@ -148,13 +154,23 @@ router.post("/domain-invitations/accept", authMiddleware, async (c) => {
     data: await consumeDomainInvitation(input.token as string, c.var.userId!),
   });
 });
+router.post("/auth/domain-invitation", async (c) => {
+  const input = await body(c);
+  return c.json({ data: await previewDomainInvitation(input.token as string) });
+});
 router.get("/domains/:slug", optionalAuthMiddleware, async (c) => {
-  const { domain, context } = await loadWorkspace(
+  const { domain, context, membership, platformAdmin } = await loadWorkspace(
     c.req.param("slug")!,
     c.var.userId ?? null,
   );
   return c.json({
-    data: { ...domain, permissions: [...context.domainPermissions] },
+    data: {
+      ...domain,
+      permissions: [...context.domainPermissions],
+      is_member: !!membership,
+      platform_admin: platformAdmin,
+      actor_id: context.actorId,
+    },
   });
 });
 router.get("/domains/:slug/limits", authMiddleware, async (c) => {
@@ -245,15 +261,8 @@ router.post("/domains/:slug/join", authMiddleware, async (c) => {
   });
 });
 router.get("/domains/:slug/join-requests", authMiddleware, async (c) => {
-  const { domain, context } = await loadWorkspace(
-    c.req.param("slug")!,
-    c.var.userId!,
-  );
-  assertWorkspacePermission(context, "domain:members");
   return c.json({
-    data: await getDb().select().from(domainJoinRequests).where(
-      eq(domainJoinRequests.domain_id, domain.id),
-    ).orderBy(domainJoinRequests.created_at).limit(100),
+    data: await listDomainJoinRequests(c.req.param("slug")!, c.var.userId!),
   });
 });
 router.post(
@@ -279,10 +288,23 @@ router.post(
 router.get(
   "/domains/:slug/members",
   authMiddleware,
-  async (c) =>
-    c.json({
-      data: await listDomainMembers(c.req.param("slug")!, c.var.userId!),
-    }),
+  async (c) => {
+    const raw = c.req.query("page") ?? "1";
+    const page = Number(raw);
+    if (
+      !/^\d+$/.test(raw) || !Number.isSafeInteger(page) || page < 1 ||
+      page > 10000
+    ) throw new BadRequestError("成员页码非法");
+    return c.json({
+      data: await listDomainMembers(
+        c.req.param("slug")!,
+        c.var.userId!,
+        (page - 1) * 100,
+      ),
+      page,
+      per_page: 100,
+    });
+  },
 );
 router.put(
   "/domains/:slug/members/:userId/roles",
@@ -333,6 +355,11 @@ router.post("/domains/:slug/invitations", authMiddleware, async (c) => {
       input.email as string,
     ),
   }, 201);
+});
+router.get("/domains/:slug/invitations", authMiddleware, async (c) => {
+  return c.json({
+    data: await listDomainInvitations(c.req.param("slug")!, c.var.userId!),
+  });
 });
 router.delete(
   "/domains/:slug/invitations/:id",

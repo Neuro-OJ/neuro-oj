@@ -9,6 +9,7 @@ import {
 } from "../../../../../tests/helper.ts";
 import { refreshSettingsCache, updateSetting } from "../../../system/index.ts";
 import { unlimitedDomainLimits } from "../../../../shared/workspace/resource-policy.ts";
+import { createDomainInvitation } from "../../index.ts";
 
 await resetDbForTest();
 await initRedisForTest();
@@ -55,6 +56,43 @@ Deno.test({
     assertEquals(
       (await jsonRequest(app, "/api/v1/auth/register-status")).status,
       200,
+    );
+  },
+});
+
+Deno.test({
+  name: "邀请 HTTP：私有实例允许持有效链接预览，响应禁止缓存且不返回账号存在性",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const admin = await createUserToken("admin");
+    const app = createApp();
+    const created = await jsonRequest(app, "/api/v1/domains", {
+      method: "POST",
+      token: admin,
+      body: { slug: "preview-school", name: "学校", preset: "education" },
+    });
+    const { data: domain } = await created.json();
+    const invitation = await createDomainInvitation(
+      domain.slug,
+      domain.owner_id,
+      "new-student@example.com",
+    );
+    await updateSetting("instance_access", "authenticated", "0");
+    const preview = await jsonRequest(app, "/api/v1/auth/domain-invitation", {
+      method: "POST",
+      body: { token: invitation.token },
+    });
+    assertEquals(preview.status, 200);
+    assertEquals(preview.headers.get("Cache-Control"), "no-store");
+    const { data } = await preview.json();
+    assertEquals(data.domain_slug, domain.slug);
+    assertEquals(data.email, "new-student@example.com");
+    assertEquals("account_exists" in data, false);
+    assertEquals(
+      (await jsonRequest(app, "/api/v1/domains/preview-school")).status,
+      401,
     );
   },
 });

@@ -11,7 +11,11 @@
 - 容量操作读取持久政策；域管理员只降低自身有效限额，成员及引用题受当前上限约束。
 - 公开发现与本人域列表、创建 / 申请审核、设置、状态及 Preset 差异预览 / 应用。
 - 当前成员关系、固定组合角色、加入申请、负责人原子交接及邀请接受 / 撤销。
+- 成员目录批量返回角色；注销账号显示匿名身份。加入申请目录只返回当前域的管理字段。
+- 通过请求体预览邀请，不暴露账号是否存在、令牌哈希或未获授权的空间目录。
+- 邀请签发者退出、失去邀请权限或被停用后，未消费链接即时失效。
 - 注册与 OAuth 新账号遵守实例政策；邀请不绕过管理员开户，不重置已有账号。
+- 邀请注册只加入目标域，不自动占用公开默认域的成员名额；账号及邀请消费同事务保存。
 - 默认域幂等初始化；既有配置和负责人不会被启动重新覆盖。
 - URL 解析上下文、事务审计、revision 前置条件及受保护的只读 / 停用状态。
 
@@ -36,20 +40,25 @@
 
 接口前缀为 `/api/v1`，具体路由以 `routes/index.ts` 为准。
 
-| 入口                                            | 用途                                 |
-| ----------------------------------------------- | ------------------------------------ |
-| `/instance`                                     | 当前实例访问和创建政策摘要           |
-| `/domains`、`/me/domains`                       | 发现、创建与本人当前空间             |
-| `/domain-creation-requests`                     | 创建申请                             |
-| `/admin/instance/domain-creation-requests`      | 平台审核                             |
-| `/domain-invitations/accept`                    | 登录身份接受邀请                     |
-| `/domains/:slug`                                | 概览及带 If-Match 的配置修改         |
-| 域下 `status`、`preset-preview`、`preset-apply` | 状态与模板配置                       |
-| 域下 `join`、`join-requests`、`members`         | 加入与当前成员治理                   |
-| 域下 `invitations`、`transfer`                  | 邀请和负责人交接                     |
-| 域下 `limits`                                   | 配额及实例上限读取，带 If-Match 修改 |
+| 入口                                            | 用途                                    |
+| ----------------------------------------------- | --------------------------------------- |
+| `/instance`                                     | 当前实例访问和创建政策摘要              |
+| `/domains`、`/me/domains`                       | 发现、创建与本人当前空间                |
+| `/domain-creation-requests`                     | 创建申请                                |
+| `/admin/instance/domain-creation-requests`      | 平台审核                                |
+| `/domain-invitations/accept`                    | 登录身份接受邀请                        |
+| `/auth/domain-invitation`                       | 持有有效邀请预览加入信息（POST 请求体） |
+| `/domains/:slug`                                | 概览及带 If-Match 的配置修改            |
+| 域下 `status`、`preset-preview`、`preset-apply` | 状态与模板配置                          |
+| 域下 `join`、`join-requests`、`members`         | 加入与当前成员治理                      |
+| 域下 `invitations`、`transfer`                  | 邀请和负责人交接                        |
+| 域下 `limits`                                   | 配额及实例上限读取，带 If-Match 修改    |
 
 用户偏好仅用于导航。资源 ID 放入其他域路径必须重新校验该域归属，不据 ID 放行。
+概览返回服务端实际 `actor_id`，客户端不能把另一账号的响应保存到当前账号缓存。
+工作空间接口使用 `Cache-Control: no-store`，并按 Authorization / Cookie
+区分响应。
+私有实例允许匿名通过认证入口预览有效邀请；没有有效令牌不能据此列举空间。
 
 ## 资源政策
 

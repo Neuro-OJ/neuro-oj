@@ -1,4 +1,4 @@
-import { and, count, eq, isNull, sql } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
@@ -133,6 +133,31 @@ export async function joinDomain(slug: string, actorId: string, reason = "") {
     await workspaceAudit(tx, actorId, domain.id, "domain.join");
     return { membership };
   });
+}
+
+/** 加入申请目录只返回当前域的管理字段，已注销账号不保留旧显示身份。 */
+export async function listDomainJoinRequests(slug: string, actorId: string) {
+  const { domain, context } = await loadWorkspace(slug, actorId);
+  assertWorkspacePermission(context, "domain:members");
+  const rows = await getDb().select({
+    id: domainJoinRequests.id,
+    user_id: domainJoinRequests.user_id,
+    username: users.username,
+    deleted_at: users.deleted_at,
+    reason: domainJoinRequests.reason,
+    status: domainJoinRequests.status,
+    created_at: domainJoinRequests.created_at,
+  }).from(domainJoinRequests).innerJoin(
+    users,
+    eq(users.id, domainJoinRequests.user_id),
+  )
+    .where(eq(domainJoinRequests.domain_id, domain.id))
+    .orderBy(domainJoinRequests.created_at, domainJoinRequests.id).limit(100);
+  return rows.map(({ deleted_at, ...row }) => ({
+    ...row,
+    username: deleted_at ? "已注销用户" : row.username,
+    can_approve: !deleted_at && row.status === "pending",
+  }));
 }
 
 /** 加入申请审批不改变平台账号角色。 */
@@ -345,11 +370,33 @@ export async function listDomainMembers(
     user_id: users.id,
     username: users.username,
     email: users.email,
+    deleted_at: users.deleted_at,
     status: domainMemberships.status,
   }).from(domainMemberships).innerJoin(
     users,
     eq(users.id, domainMemberships.user_id),
-  ).where(eq(domainMemberships.domain_id, domain.id)).orderBy(users.username)
+  ).where(eq(domainMemberships.domain_id, domain.id)).orderBy(
+    users.username,
+    users.id,
+  )
     .limit(100).offset(Math.max(0, offset));
-  return members;
+  const assignments = members.length
+    ? await getDb().select().from(domainMemberRoles).where(
+      inArray(
+        domainMemberRoles.membership_id,
+        members.map((member) => member.id),
+      ),
+    )
+    : [];
+  return members.map((member) => ({
+    id: member.id,
+    user_id: member.user_id,
+    username: member.deleted_at ? "已注销用户" : member.username,
+    email: member.deleted_at ? "" : member.email,
+    status: member.status,
+    roles: assignments.filter((role) => role.membership_id === member.id).map((
+      role,
+    ) => role.role),
+    is_owner: member.user_id === domain.owner_id,
+  }));
 }
