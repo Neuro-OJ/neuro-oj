@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import { manyToManyPk, publicIdColumn, tsvector } from "./common.ts";
 import { ROOT_USER_ID } from "../../base/constants.ts";
 import { users } from "./identity.ts";
+import { domains } from "./workspace.ts";
 import { storageObjects } from "./system.ts";
 import type {
   ProblemObjectRole,
@@ -205,6 +206,8 @@ export const problems = pgTable(
   "problems",
   {
     id: text("id").primaryKey(),
+    /** 扩展迁移先加可空归属，回填校验后再收紧；新工作空间写入须显式指定。 */
+    domain_id: text("domain_id").references(() => domains.id),
     title: text("title").notNull(),
     description: text("description").notNull(),
     /** 公开样例独立于题面，旧题目缺省为空数组。 */
@@ -274,6 +277,14 @@ export const problems = pgTable(
     searchVector: tsvector("search_vector"),
   },
   (table) => ({
+    domainIdUnique: unique("problems_domain_id_id_unique").on(
+      table.domain_id,
+      table.id,
+    ),
+    domainNumberIdx: index("idx_problems_domain_number").on(
+      table.domain_id,
+      table.number,
+    ),
     typeNumberUnique: unique("problems_type_number_unique").on(
       table.type,
       table.number,
@@ -378,6 +389,8 @@ export const trainings = pgTable(
   "trainings",
   {
     id: text("id").primaryKey(),
+    /** 存量先可空，域归属回填完成后收紧。 */
+    domain_id: text("domain_id").references(() => domains.id),
     public_id: publicIdColumn("tr"),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),

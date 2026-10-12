@@ -1,3 +1,11 @@
+import {
+  CATALOG_PROBLEM_BASE_DDL,
+  CATALOG_TRAINING_BASE_DDL,
+} from "./schema-ddl-catalog-base.ts";
+import {
+  CATALOG_WORKSPACE_DDL,
+  CATALOG_WORKSPACE_TABLES,
+} from "./schema-ddl-catalog-workspace.ts";
 import { WORKSPACE_DDL, WORKSPACE_TABLES } from "./schema-ddl-workspace.ts";
 import { WORKSPACE_AUDIT_ACTION_SQL } from "../workspace/audit.ts";
 /** PGlite DDL 与 Drizzle schema 同步；新子系统通过独立 DDL 模块扩展。 */
@@ -54,48 +62,7 @@ export const SCHEMA_DDL: string[] = [
     updated_at TEXT NOT NULL
   )`,
 
-  // 3. problems（issue #100：含 search_vector 列供 PGlite 模式测试）
-  `CREATE TABLE IF NOT EXISTS problems (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    description TEXT NOT NULL,
-    difficulty TEXT NOT NULL DEFAULT 'medium',
-    support_package_storage_url TEXT,
-    samples JSONB DEFAULT '[]'::jsonb,
-    oi_data_files JSONB,
-    runtime_config JSONB CHECK (jsonb_typeof(runtime_config) = 'object'),
-    judge_type TEXT NOT NULL DEFAULT 'dual' CHECK (judge_type IN ('dual', 'oi')),
-    number INTEGER NOT NULL,
-    owner_id TEXT NOT NULL DEFAULT '0',
-    type TEXT NOT NULL DEFAULT 'U' CHECK (type IN ('U', 'P')),
-    is_objective BOOLEAN NOT NULL DEFAULT false,
-    visibility TEXT NOT NULL DEFAULT 'public'
-      CHECK (visibility IN ('public', 'private')),
-    CONSTRAINT problems_p_visibility_check CHECK (type <> 'P' OR visibility = 'public'),
-    submission_mode TEXT NOT NULL DEFAULT 'code'
-      CHECK (submission_mode IN ('code', 'artifact')),
-    artifact_max_size_mb INTEGER,
-    template_content TEXT,
-    llm_config JSONB,
-    latest_version_id TEXT,
-    effective_version_mode TEXT NOT NULL DEFAULT 'any'
-      CHECK (effective_version_mode IN ('any', 'exact')),
-    required_version_id TEXT,
-    effective_policy_revision INTEGER NOT NULL DEFAULT 0
-      CHECK (effective_policy_revision >= 0),
-    CONSTRAINT problems_effective_version_policy_check CHECK (
-      (effective_version_mode = 'any' AND required_version_id IS NULL)
-      OR (effective_version_mode = 'exact' AND required_version_id IS NOT NULL)
-    ),
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    search_vector tsvector GENERATED ALWAYS AS (
-      setweight(to_tsvector('simple', coalesce(title, '')), 'A') ||
-      setweight(to_tsvector('simple',
-        coalesce(type, '') || ' ' || coalesce(number::text, '')
-      ), 'B')
-    ) STORED
-  )`,
+  ...CATALOG_PROBLEM_BASE_DDL,
 
   // 3.0.1 problem_versions（题目版本；发布后不可修改，DB 触发器/服务层双重守卫）
   `CREATE TABLE IF NOT EXISTS problem_versions (
@@ -369,26 +336,7 @@ $$ LANGUAGE plpgsql`,
     UNIQUE (contest_id, version)
   )`,
 
-  // 3.4 trainings（题单，issue #224）
-  `CREATE TABLE IF NOT EXISTS trainings (
-    id TEXT PRIMARY KEY,
-    public_id TEXT NOT NULL DEFAULT ('tr-' || substr(md5(random()::text),1,8)) UNIQUE,
-    title TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'unlisted', 'public')),
-    is_pinned BOOLEAN NOT NULL DEFAULT false,
-    created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  )`,
-
-  `CREATE TABLE IF NOT EXISTS training_problems (
-    training_id TEXT NOT NULL REFERENCES trainings(id) ON DELETE CASCADE,
-    problem_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
-    position INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (training_id, problem_id),
-    UNIQUE (training_id, position)
-  )`,
+  ...CATALOG_TRAINING_BASE_DDL,
 
   // 6. submissions
   `CREATE TABLE IF NOT EXISTS submissions (
@@ -1129,6 +1077,7 @@ $$ LANGUAGE plpgsql`,
   )`,
   `CREATE INDEX IF NOT EXISTS idx_carousel_slides_enabled_sort ON carousel_slides (is_enabled, sort_order)`,
   ...WORKSPACE_DDL,
+  ...CATALOG_WORKSPACE_DDL,
 ];
 
 // 索引与可选扩展索引拆到独立模块（单文件规模棘轮，见 scripts/check-file-size.ts）：
@@ -1140,6 +1089,7 @@ export {
 
 export const ALL_TABLES = [
   ...WORKSPACE_TABLES,
+  ...CATALOG_WORKSPACE_TABLES,
   "users",
   "oauth_accounts",
   "problems",
