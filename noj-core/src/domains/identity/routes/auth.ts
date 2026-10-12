@@ -202,12 +202,17 @@ auth.post("/register", async (c) => {
  */
 auth.get("/register-status", (c) => {
   const allowRegister = getSetting("allow_register")?.value !== false;
+  const mode = getSetting("instance_registration_mode")?.value ?? "open";
   const reason = !allowRegister
     ? "register_disabled"
+    : mode === "admin_only"
+    ? "admin_only"
+    : mode === "invite"
+    ? "invitation_required"
     : !getEmailConfigStatus().configured
     ? "email_unconfigured"
     : null;
-  return c.json({ data: { allowed: reason === null, reason } });
+  return c.json({ data: { allowed: reason === null, reason, mode } });
 });
 
 /** 验证一次性邮箱令牌。 */

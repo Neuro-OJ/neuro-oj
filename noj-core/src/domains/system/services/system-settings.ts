@@ -256,6 +256,12 @@ function validateValueType(
       if (typeof value !== "string") {
         return { ok: false, message: `${key} 必须是 string` };
       }
+      if (def.choices && !def.choices.includes(value)) {
+        return {
+          ok: false,
+          message: `${key} 必须为 ${def.choices.join(" / ")}`,
+        };
+      }
       return { ok: true, raw: JSON.stringify(value) };
     }
     case "text": {

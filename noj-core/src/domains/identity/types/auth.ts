@@ -10,6 +10,8 @@ export interface RegisterInput {
    * 非 true 时注册端点返回 400。
    */
   accepted_legal?: boolean;
+  /** 可选的绑定邮箱域邀请；由注册事务原子消费。 */
+  invitation_token?: string;
 }
 
 /**

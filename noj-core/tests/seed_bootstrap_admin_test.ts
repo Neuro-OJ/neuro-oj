@@ -11,11 +11,13 @@
 
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "./../src/shared/db/connection.ts";
-import { and, eq, not } from "drizzle-orm";
+import { and, eq, inArray, not } from "drizzle-orm";
 import {
   auditLogs,
   conversationReads,
   conversations,
+  domainMemberRoles,
+  domainMemberships,
   messageDeletions,
   messages,
   roles,
@@ -95,6 +97,18 @@ async function countAdminRoleAssignments(userId: string): Promise<number> {
 async function cleanupUser(userId: string): Promise<void> {
   const db = getDb();
   await db.delete(auditLogs).where(eq(auditLogs.admin_id, userId));
+  // 测试物理清理先移除合成成员关系；生产账号注销仍保留历史身份。
+  await db.delete(domainMemberRoles).where(
+    inArray(
+      domainMemberRoles.membership_id,
+      db.select({ id: domainMemberships.id }).from(domainMemberships).where(
+        eq(domainMemberships.user_id, userId),
+      ),
+    ),
+  );
+  await db.delete(domainMemberships).where(
+    eq(domainMemberships.user_id, userId),
+  );
   await db.delete(users).where(eq(users.id, userId));
 }
 

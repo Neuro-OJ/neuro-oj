@@ -23,6 +23,7 @@ import {
   sealExistingSiteAdminInitialization,
 } from "./domains/identity/index.ts";
 import { ensureRbacSeeds } from "./domains/system/index.ts";
+import { ensureDefaultWorkspace } from "./domains/workspace/index.ts";
 import { getStorageProvider } from "./domains/system/index.ts";
 import {
   getEmailConfigStatus,
@@ -179,6 +180,7 @@ async function main() {
 
   // 初始化 RBAC 种子数据（幂等）
   await fatalStep("RBAC 种子数据初始化", () => ensureRbacSeeds());
+  await fatalStep("默认工作空间初始化", () => ensureDefaultWorkspace());
 
   await fatalStep("管理员初始化状态检查", sealExistingSiteAdminInitialization);
 

@@ -1,3 +1,11 @@
 /** 工作空间业务公开门面。 */
 export * from "./types.ts";
 export * from "../../shared/workspace/types.ts";
+export * from "./services/access.ts";
+export * from "./services/domains.ts";
+export * from "./services/instance.ts";
+export * from "./services/members.ts";
+export * from "./services/invitations.ts";
+export * from "./services/creation-requests.ts";
+export * from "./services/registration.ts";
+export * from "./middleware/instance-access.ts";

@@ -1,0 +1,357 @@
+import { and, count, eq, isNull, sql } from "drizzle-orm";
+import { getDb } from "../../../shared/db/connection.ts";
+import type { Executor } from "../../../shared/db/executor.ts";
+import {
+  auditLogs,
+  domainFeatureIntervals,
+  domainLimits,
+  domainMemberRoles,
+  domainMemberships,
+  domainResourceCounters,
+  domains,
+  users,
+} from "../../../shared/db/schema.ts";
+import {
+  AppError,
+  BadRequestError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+} from "../../../shared/base/errors.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  DEFAULT_DOMAIN_SLUG,
+  type DomainConfiguration,
+  type DomainPreset,
+} from "../../../shared/workspace/types.ts";
+import { getAdminUserIds, getUserPermissions } from "../../identity/index.ts";
+import { getRequestContext } from "../../system/index.ts";
+import type { WorkspaceAuditAction } from "../../../shared/workspace/audit.ts";
+import {
+  presetConfiguration,
+  validateDomainConfiguration,
+  validateDomainSlug,
+} from "../types.ts";
+import { assertWorkspacePermission, loadWorkspace } from "./access.ts";
+import { getInstancePolicy } from "./instance.ts";
+
+/** 域配置变化的审计与业务操作在同一事务保存。 */
+export async function workspaceAudit(
+  db: Executor,
+  actorId: string,
+  domainId: string,
+  action: WorkspaceAuditAction,
+  detail: Record<string, unknown> = {},
+) {
+  let ipAddress = "";
+  try {
+    ipAddress = getRequestContext().actorIp;
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !error.message.includes("RequestContext 未注入")
+    ) throw error;
+  }
+  await db.insert(auditLogs).values({
+    id: crypto.randomUUID(),
+    admin_id: actorId,
+    action,
+    target_type: "domain",
+    target_id: domainId,
+    ip_address: ipAddress,
+    detail: { ...detail, domain_id: domainId },
+    created_at: new Date().toISOString(),
+  });
+}
+
+/** 经实例创建政策和数量上限检查后原子创建域及负责人身份。 */
+export async function createDomain(
+  input: {
+    slug: string;
+    name: string;
+    preset: DomainPreset;
+    description?: string;
+  },
+  actorId: string,
+  options: { executor?: Executor; approved?: boolean } = {},
+): Promise<typeof domains.$inferSelect> {
+  validateDomainSlug(input.slug);
+  if (
+    typeof input.name !== "string" || !input.name.trim() ||
+    input.name.length > 100 ||
+    typeof input.description !== "undefined" &&
+      (typeof input.description !== "string" || input.description.length > 2000)
+  ) throw new BadRequestError("工作空间名称或简介非法");
+  if (!["community", "education", "team", "custom"].includes(input.preset)) {
+    throw new BadRequestError("工作空间模板非法");
+  }
+  if (!options.executor) {
+    return await getDb().transaction((tx) =>
+      createDomain(input, actorId, { ...options, executor: tx })
+    );
+  }
+  const db = options.executor;
+  const [actor] = await db.select({ id: users.id }).from(users).where(
+    and(eq(users.id, actorId), isNull(users.deleted_at)),
+  ).for("update");
+  if (!actor) throw new NotFoundError("负责人账号不可用");
+  const permissions = await getUserPermissions(actorId, db);
+  const platformAdmin = permissions.has("admin:full_access");
+  const policy = getInstancePolicy();
+  if (
+    !platformAdmin && !options.approved &&
+    policy.domain_creation_policy !== "open"
+  ) {
+    throw new ForbiddenError(
+      policy.domain_creation_policy === "approval"
+        ? "请先申请创建工作空间"
+        : "仅平台管理员可创建工作空间",
+      "DOMAIN_CREATION_RESTRICTED",
+    );
+  }
+  const [owned] = await db.select({ count: count() }).from(domains).where(
+    eq(domains.owner_id, actorId),
+  );
+  if (!platformAdmin && owned.count >= policy.domain_creation_limit) {
+    throw new ForbiddenError(
+      "已达到工作空间创建数量上限",
+      "DOMAIN_CREATION_LIMIT",
+    );
+  }
+  const now = new Date().toISOString();
+  const [domain] = await db.insert(domains).values({
+    id: crypto.randomUUID(),
+    slug: input.slug,
+    name: input.name.trim(),
+    description: input.description ?? "",
+    owner_id: actorId,
+    preset: input.preset,
+    configuration: presetConfiguration(input.preset),
+    created_at: now,
+    updated_at: now,
+  }).onConflictDoNothing({ target: domains.slug }).returning();
+  if (!domain) throw new ConflictError("工作空间标识已存在");
+  const [membership] = await db.insert(domainMemberships).values({
+    id: crypto.randomUUID(),
+    domain_id: domain.id,
+    user_id: actorId,
+    joined_at: now,
+  }).returning();
+  await db.insert(domainMemberRoles).values({
+    membership_id: membership.id,
+    role: "owner",
+  });
+  await db.insert(domainLimits).values({ domain_id: domain.id });
+  await db.insert(domainResourceCounters).values(
+    ["members", "problems", "storage_bytes"].map((resource) => ({
+      domain_id: domain.id,
+      resource: resource as "members" | "problems" | "storage_bytes",
+      used: resource === "members" ? 1 : 0,
+    })),
+  );
+  await workspaceAudit(db, actorId, domain.id, "domain.create", {
+    preset: input.preset,
+  });
+  return domain;
+}
+
+/** 默认域种子幂等；重启不覆盖现有域配置或负责人。 */
+export async function ensureDefaultWorkspace(
+  executor?: Executor,
+): Promise<void> {
+  if (!executor) {
+    return await getDb().transaction((tx) => ensureDefaultWorkspace(tx));
+  }
+  const now = new Date().toISOString();
+  const admins = await getAdminUserIds(executor);
+  const ownerId = [...admins].sort()[0] ?? "0";
+  const [inserted] = await executor.insert(domains).values({
+    id: DEFAULT_DOMAIN_ID,
+    slug: DEFAULT_DOMAIN_SLUG,
+    name: "Neuro OJ",
+    owner_id: ownerId,
+    preset: "community",
+    configuration: presetConfiguration("community"),
+    created_at: now,
+    updated_at: now,
+  }).onConflictDoNothing({ target: domains.slug }).returning();
+  if (!inserted) return;
+  await executor.insert(domainLimits).values({ domain_id: inserted.id });
+  const accounts = await executor.select({ id: users.id }).from(users).where(
+    isNull(users.deleted_at),
+  );
+  for (const account of accounts) {
+    const [member] = await executor.insert(domainMemberships).values({
+      id: crypto.randomUUID(),
+      domain_id: inserted.id,
+      user_id: account.id,
+      joined_at: now,
+    }).returning();
+    await executor.insert(domainMemberRoles).values({
+      membership_id: member.id,
+      role: account.id === ownerId ? "owner" : "member",
+    });
+  }
+  await executor.insert(domainResourceCounters).values(
+    ["members", "problems", "storage_bytes"].map((resource) => ({
+      domain_id: inserted.id,
+      resource: resource as "members" | "problems" | "storage_bytes",
+      used: resource === "members" ? accounts.length : 0,
+    })),
+  );
+}
+
+/** 修改必须携带旧 revision；模板应用调用相同的授权与修改入口。 */
+export async function updateDomain(
+  slug: string,
+  actorId: string,
+  revision: number,
+  patch: {
+    name?: string;
+    description?: string;
+    configuration?: DomainConfiguration;
+  },
+) {
+  if (!Number.isInteger(revision) || revision < 0) {
+    throw new AppError("缺少有效配置版本", 428, "REVISION_REQUIRED");
+  }
+  if (patch.configuration !== undefined) {
+    validateDomainConfiguration(patch.configuration);
+  }
+  if (
+    patch.name !== undefined &&
+    (typeof patch.name !== "string" || !patch.name.trim() ||
+      patch.name.length > 100)
+  ) throw new BadRequestError("名称非法");
+  if (
+    patch.description !== undefined &&
+    (typeof patch.description !== "string" || patch.description.length > 2000)
+  ) throw new BadRequestError("简介非法");
+  return await getDb().transaction(async (tx) => {
+    const { domain, context } = await loadWorkspace(slug, actorId, {
+      write: true,
+      lock: true,
+      executor: tx,
+    });
+    assertWorkspacePermission(context, "domain:settings");
+    if (domain.revision !== revision) {
+      throw new ConflictError("配置已被其他管理员更新");
+    }
+    const now = new Date().toISOString();
+    if (patch.configuration) {
+      for (
+        const feature of [
+          "classroom",
+          "assignment",
+          "analytics",
+          "community",
+        ] as const
+      ) {
+        if (
+          domain.configuration.features[feature] &&
+          !patch.configuration.features[feature]
+        ) {
+          await tx.insert(domainFeatureIntervals).values({
+            id: crypto.randomUUID(),
+            domain_id: domain.id,
+            feature,
+            disabled_at: now,
+          });
+        }
+        if (
+          !domain.configuration.features[feature] &&
+          patch.configuration.features[feature]
+        ) {
+          await tx.update(domainFeatureIntervals).set({ enabled_at: now })
+            .where(
+              and(
+                eq(domainFeatureIntervals.domain_id, domain.id),
+                eq(domainFeatureIntervals.feature, feature),
+                isNull(domainFeatureIntervals.enabled_at),
+              ),
+            );
+        }
+      }
+    }
+    const [updated] = await tx.update(domains).set({
+      ...(patch.name === undefined ? {} : { name: patch.name.trim() }),
+      ...(patch.description === undefined
+        ? {}
+        : { description: patch.description }),
+      ...(patch.configuration === undefined
+        ? {}
+        : { configuration: patch.configuration }),
+      revision: domain.revision + 1,
+      updated_at: now,
+    }).where(eq(domains.id, domain.id)).returning();
+    await workspaceAudit(tx, actorId, domain.id, "domain.update", {
+      revision: updated.revision,
+    });
+    return updated;
+  });
+}
+
+/** 域生命周期只允许授权动作；默认域不能归档或停用。 */
+export async function setDomainStatus(
+  slug: string,
+  actorId: string,
+  status: "active" | "archived" | "suspended",
+  revision: number,
+) {
+  if (!["active", "archived", "suspended"].includes(status)) {
+    throw new BadRequestError("工作空间状态非法");
+  }
+  if (!Number.isInteger(revision) || revision < 0) {
+    throw new AppError("缺少有效配置版本", 428, "REVISION_REQUIRED");
+  }
+  return await getDb().transaction(async (tx) => {
+    const { domain, context, platformAdmin } = await loadWorkspace(
+      slug,
+      actorId,
+      { lock: true, executor: tx },
+    );
+    if (status === "suspended" || domain.status === "suspended") {
+      if (!platformAdmin) {
+        throw new ForbiddenError("仅平台管理员可停用或恢复工作空间");
+      }
+    } else assertWorkspacePermission(context, "domain:archive");
+    if (domain.slug === DEFAULT_DOMAIN_SLUG && status !== "active") {
+      throw new ConflictError("默认工作空间不能归档或停用");
+    }
+    if (domain.revision !== revision) throw new ConflictError("配置已变化");
+    const [updated] = await tx.update(domains).set({
+      status,
+      revision: domain.revision + 1,
+      updated_at: new Date().toISOString(),
+    }).where(eq(domains.id, domain.id)).returning();
+    await workspaceAudit(tx, actorId, domain.id, "domain.status", {
+      before: domain.status,
+      after: status,
+    });
+    return updated;
+  });
+}
+
+/** 域目录仅返回可发现且当前可访问的条目，不暴露私有域存在性。 */
+export async function listDomains(actorId: string | null, mine = false) {
+  if (getInstancePolicy().access === "authenticated" && !actorId) {
+    throw new ForbiddenError("此实例需要登录");
+  }
+  const db = getDb();
+  const conditions = [sql`${domains.status} <> 'suspended'`];
+  if (mine) {
+    if (!actorId) throw new ForbiddenError("请先登录");
+    conditions.push(
+      sql`EXISTS (SELECT 1 FROM domain_memberships m WHERE m.domain_id = ${domains.id} AND m.user_id = ${actorId} AND m.status = 'active')`,
+    );
+  } else {conditions.push(
+      sql`${domains.configuration}->>'discoverable' = 'true'`,
+    );}
+  return await db.select({
+    id: domains.id,
+    slug: domains.slug,
+    name: domains.name,
+    description: domains.description,
+    status: domains.status,
+  }).from(domains).where(and(...conditions)).orderBy(domains.slug).limit(100);
+}

@@ -1,9 +1,6 @@
 import { WORKSPACE_DDL, WORKSPACE_TABLES } from "./schema-ddl-workspace.ts";
-/**
- * Schema DDL SQL 字符串——与 src/db/schema.ts 同步。
- *
- * 供 PGlite 模式在测试中建表使用。当 Drizzle schema 变更时需同步更新此文件。
- */
+import { WORKSPACE_AUDIT_ACTION_SQL } from "../workspace/audit.ts";
+/** PGlite DDL 与 Drizzle schema 同步；新子系统通过独立 DDL 模块扩展。 */
 export const SCHEMA_DDL: string[] = [
   // 1. users（issue #100：含 search_vector 列供 PGlite 模式测试）
   `CREATE TABLE IF NOT EXISTS users (
@@ -740,7 +737,7 @@ $$ LANGUAGE plpgsql`,
       'contest.participants_add','contest.participants_remove','contest.kind_change','contest.reset_code',
       'judge_images.create','judge_images.update','judge_images.delete','email_delivery.clear_suppression',
       'llm_provider.create','llm_provider.update','llm_quota.upsert','legal.publish_version',
-      'legal.data_request_update')
+      'legal.data_request_update', ${WORKSPACE_AUDIT_ACTION_SQL})
     ))
   `,
 

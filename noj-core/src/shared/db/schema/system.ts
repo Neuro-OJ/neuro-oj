@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 import { publicIdColumn } from "./common.ts";
 import { users } from "./identity.ts";
 import type { StorageObjectState } from "../../versioning/types.ts";
+import { WORKSPACE_AUDIT_ACTION_SQL } from "../../workspace/audit.ts";
 
 /**
  * 评测镜像白名单表。
@@ -237,7 +238,7 @@ export const auditLogs = pgTable(
         'llm_quota.upsert',
         'legal.publish_version',
         'legal.data_request_update'
-      )`,
+      ) OR ${table.action} IN (${sql.raw(WORKSPACE_AUDIT_ACTION_SQL)})`,
     ),
     adminIdx: index("audit_logs_admin_id_idx").on(table.admin_id),
     createdAtIdx: index("audit_logs_created_at_idx").on(table.created_at),

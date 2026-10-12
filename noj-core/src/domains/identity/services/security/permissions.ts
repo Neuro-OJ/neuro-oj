@@ -16,6 +16,7 @@
 import { sql } from "drizzle-orm";
 import { Context, MiddlewareHandler, Next } from "hono";
 import { getDb } from "../../../../shared/db/connection.ts";
+import type { Executor } from "../../../../shared/db/executor.ts";
 import { ForbiddenError } from "../../../../shared/base/errors.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 
@@ -24,8 +25,11 @@ export const ADMIN_FULL_ACCESS = "admin:full_access";
 
 // ── 数据库查询（只有这个函数访问 DB）──────────────────────
 
-export async function getUserPermissions(userId: string): Promise<Set<string>> {
-  const db = getDb();
+export async function getUserPermissions(
+  userId: string,
+  executor?: Executor,
+): Promise<Set<string>> {
+  const db = executor ?? getDb();
 
   const result = await db.execute<{ perm: string }>(sql`
     WITH RECURSIVE resolved AS (
@@ -60,8 +64,10 @@ export async function isUserAdmin(userId: string): Promise<boolean> {
  * 查询所有拥有 admin:full_access 权限（含角色继承链）的用户 id 集合。
  * 供 admin 列表展示 / is_admin 筛选 / 封禁保护等批量场景使用，避免 N+1。
  */
-export async function getAdminUserIds(): Promise<Set<string>> {
-  const db = getDb();
+export async function getAdminUserIds(
+  executor?: Executor,
+): Promise<Set<string>> {
+  const db = executor ?? getDb();
 
   const result = await db.execute<{ user_id: string }>(sql`
     WITH RECURSIVE resolved AS (

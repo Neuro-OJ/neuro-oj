@@ -21,6 +21,8 @@ import { communityRouter } from "./domains/community/routes/index.ts";
 import { messagingRouter } from "./domains/messaging/routes/index.ts";
 import { systemRouter } from "./domains/system/routes/index.ts";
 import { legalRouter } from "./domains/legal/routes/index.ts";
+import { workspaceRouter } from "./domains/workspace/routes/index.ts";
+import { instanceAccessMiddleware } from "./domains/workspace/index.ts";
 import submissionSse from "./domains/submission/routes/sse.ts";
 import communitySse from "./domains/community/routes/sse.ts";
 import { AppError } from "./shared/base/errors.ts";
@@ -180,6 +182,7 @@ export function createApp(): Hono {
   // 才能拦截请求。原 banlistMiddleware 注册在 routes 之后，存在顺序 bug。
   app.use("/api/v1/*", banlistMiddleware);
   app.use("/api/v1/*", maintenanceMode);
+  app.use("/api/v1/*", instanceAccessMiddleware);
 
   // 注册路由（按域自装配；各域 routes/index.ts 内部保持顺序敏感注释）
   app.route("/", createHealthRouter(observabilityRegistry));
@@ -197,6 +200,7 @@ export function createApp(): Hono {
   app.route("/api/v1", messagingRouter);
   app.route("/api/v1", systemRouter);
   app.route("/api/v1", legalRouter);
+  app.route("/api/v1", workspaceRouter);
   app.route("/api/v1/admin", admin);
   // 评测镜像公开列表
   app.get("/api/v1/judge-images", async (c) => {
