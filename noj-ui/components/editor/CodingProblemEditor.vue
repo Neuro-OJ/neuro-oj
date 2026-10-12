@@ -145,9 +145,37 @@ const solutionMemoryLimitMb = ref(256)
 const llmEnabled = ref(false)
 const llmMaxCalls = ref("")
 const llmMaxTokens = ref("")
+// 允许评测代码调用的模型别名（缺省仅 default = 平台默认模型）；选项来自平台别名表
+const llmModels = ref<string[]>(["default"])
+const llmModelOptions = ref<{ alias: string; description: string }[]>([
+  { alias: "default", description: "平台默认模型" },
+])
+let llmModelOptionsLoaded = false
+async function loadLlmModelOptions() {
+  if (llmModelOptionsLoaded) return
+  llmModelOptionsLoaded = true
+  try {
+    const res = await api.get<{ data: { alias: string; description: string }[] }>(
+      "/api/v1/problems/llm-model-aliases",
+      { silent: true },
+    )
+    llmModelOptions.value = res.data
+  } catch {
+    llmModelOptionsLoaded = false
+  }
+}
+// 已保存但平台已删除的别名仍要显示（便于出题人发现并取消勾选）
+const llmModelChoices = computed(() => {
+  const known = new Set(llmModelOptions.value.map((o) => o.alias))
+  return [
+    ...llmModelOptions.value,
+    ...llmModels.value.filter((a) => !known.has(a)).map((alias) => ({ alias, description: "平台未配置此别名" })),
+  ]
+})
 
 // 启用 LLM 必须同时开启 evaluator 网络
 watch(llmEnabled, (val) => {
+  if (val) void loadLlmModelOptions()
   if (val) evaluatorNetworkEnabled.value = true
 })
 
@@ -271,12 +299,14 @@ async function loadProblem() {
       llm_config?: {
         max_calls?: number | null
         max_tokens?: number | null
+        models?: string[]
       } | null
     }).llm_config
     if (llmConfig) {
       llmEnabled.value = true
       llmMaxCalls.value = llmConfig.max_calls != null ? String(llmConfig.max_calls) : ""
       llmMaxTokens.value = llmConfig.max_tokens != null ? String(llmConfig.max_tokens) : ""
+      llmModels.value = llmConfig.models?.length ? [...llmConfig.models] : ["default"]
     }
 
     // 内容以**草稿**为编辑初值（投影只在发布时更新，可能落后于草稿）
@@ -321,11 +351,14 @@ function applyDraftContent(content: Record<string, unknown>) {
   if (content.runtime_config) {
     applyRuntimeConfig(content.runtime_config as RuntimeConfigPayload)
   }
-  const llmConfig = content.llm_config as { max_calls?: number | null; max_tokens?: number | null } | null
+  const llmConfig = content.llm_config as
+    | { max_calls?: number | null; max_tokens?: number | null; models?: string[] }
+    | null
   if (llmConfig) {
     llmEnabled.value = true
     llmMaxCalls.value = llmConfig.max_calls != null ? String(llmConfig.max_calls) : ""
     llmMaxTokens.value = llmConfig.max_tokens != null ? String(llmConfig.max_tokens) : ""
+    llmModels.value = llmConfig.models?.length ? [...llmConfig.models] : ["default"]
   }
 }
 
@@ -353,6 +386,8 @@ function validate(): boolean {
   if (!solutionImage.value.trim()) errors.solution_image = "请选择 solution 镜像"
   if (llmEnabled.value) {
     if (!evaluatorNetworkEnabled.value) errors.evaluator_network = "启用 LLM 必须开启 Evaluator 联网"
+    if (llmModels.value.length === 0) errors.llm_models = "请至少选择一个模型"
+    else if (llmModels.value.length > 8) errors.llm_models = "最多选择 8 个模型"
     const maxCalls = llmMaxCalls.value === "" ? null : Number(llmMaxCalls.value)
     const maxTokens = llmMaxTokens.value === "" ? null : Number(llmMaxTokens.value)
     if (maxCalls !== null && (!Number.isInteger(maxCalls) || maxCalls <= 0)) {
@@ -391,6 +426,8 @@ function buildLlmPayload() {
     ? {
         ...(llmMaxCallsNum !== null ? { max_calls: llmMaxCallsNum } : {}),
         ...(llmMaxTokensNum !== null ? { max_tokens: llmMaxTokensNum } : {}),
+        // 仅 default 时不写 models，保持与旧题 / 旧版本完全一致
+        ...(llmModels.value.length === 1 && llmModels.value[0] === "default" ? {} : { models: llmModels.value }),
       }
     : null
 }
@@ -687,6 +724,18 @@ async function handleSubmit() {
                     />
                     <p v-if="fieldErrors.llm_max_tokens" class="text-xs text-red-600">{{ fieldErrors.llm_max_tokens }}</p>
                   </div>
+                </div>
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs font-semibold text-text">允许调用的模型</label>
+                  <div class="flex flex-col gap-1 px-2.5 py-2 border border-border rounded-md bg-white">
+                    <label v-for="opt in llmModelChoices" :key="opt.alias" class="flex items-center gap-2 text-sm cursor-pointer">
+                      <input v-model="llmModels" type="checkbox" :value="opt.alias" class="size-4 accent-primary">
+                      <span class="font-mono">{{ opt.alias }}</span>
+                      <span class="text-xs text-text-muted">{{ opt.description }}</span>
+                    </label>
+                  </div>
+                  <p class="text-xs text-text-muted">评测代码调用时在请求里写这里的别名（如 <span class="font-mono">model="default"</span>）；同一道题的模型须属于同一个 Provider。</p>
+                  <p v-if="fieldErrors.llm_models" class="text-xs text-red-600">{{ fieldErrors.llm_models }}</p>
                 </div>
                 <div class="px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
                   <p class="font-semibold mb-1 flex items-center gap-1.5"><UIcon name="i-lucide-triangle-alert" class="size-3.5" />启用 LLM 调用必须开启 Evaluator 联网</p>
