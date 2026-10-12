@@ -22,6 +22,7 @@ import {
   workspaceAudit,
 } from "../../workspace/index.ts";
 import {
+  domainProblemReference,
   readDomainTraining,
   resolveDomainProblem,
 } from "../../catalog/index.ts";
@@ -372,9 +373,28 @@ export async function listAssignments(
 /** 学生详情不返回其他人的接收名单，也不返回可修改的目标账号配置。 */
 export async function getAssignment(slug: string, id: string, actorId: string) {
   const access = await loadAssignment(slug, id, actorId);
-  const items = await getDb().select().from(assignmentItems).where(
-    eq(assignmentItems.assignment_id, id),
-  ).orderBy(assignmentItems.sort_order);
+  const rows = await getDb().select({
+    item: assignmentItems,
+    problemId: problems.id,
+    number: problems.number,
+    sourceId: domains.id,
+    sourceSlug: domains.slug,
+  }).from(assignmentItems)
+    .innerJoin(problems, eq(problems.id, assignmentItems.problem_id))
+    .innerJoin(domains, eq(domains.id, problems.domain_id)).where(
+      eq(assignmentItems.assignment_id, id),
+    ).orderBy(assignmentItems.sort_order);
   const { target_student_ids, ...detail } = access.assignment;
-  return { ...detail, ...(access.staff ? { target_student_ids } : {}), items };
+  return {
+    ...detail,
+    ...(access.staff ? { target_student_ids } : {}),
+    items: rows.map((r) => ({
+      ...r.item,
+      reference: domainProblemReference(
+        { id: r.problemId, number: r.number, domain_id: r.sourceId },
+        r.sourceSlug,
+        access.domain.id,
+      ),
+    })),
+  };
 }

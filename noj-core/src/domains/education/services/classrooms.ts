@@ -149,12 +149,15 @@ export async function getClassroom(
   classroomId: string,
   actorId: string,
 ) {
-  const access = await loadClassroom(slug, classroomId, actorId);
+  const access = await loadClassroom(slug, classroomId, actorId, {
+    historicalStudent: true,
+  });
   return {
     ...access.classroom,
     membership: access.classMembership,
     capabilities: [...access.capabilities],
     manages_domain: access.managesDomain,
+    historical_student: !access.classMembership && !access.managesDomain,
   };
 }
 

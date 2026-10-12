@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
   classroomAssistantGrants,
@@ -55,6 +55,7 @@ export async function listClassroomMembers(
   const staff = access.managesDomain ||
     access.classMembership?.role === "coach" ||
     access.capabilities.has("progress:read") ||
+    access.capabilities.has("assignments:manage") ||
     access.capabilities.has("students:manage");
   const rows = await db.select({
     membership: classroomMemberships,
@@ -79,11 +80,30 @@ export async function listClassroomMembers(
       ),
     )
     .orderBy(classroomMemberships.joined_at, classroomMemberships.id);
+  const canManage = access.managesDomain ||
+    access.classMembership?.role === "coach" ||
+    access.capabilities.has("students:manage");
+  const grants = canManage && rows.length
+    ? await db.select().from(classroomAssistantGrants)
+      .where(
+        inArray(
+          classroomAssistantGrants.membership_id,
+          rows.map((r) => r.membership.id),
+        ),
+      )
+    : [];
   return rows.map((row) => ({
     ...row.membership,
     username: row.deleted_at ? "已注销账号" : row.username,
     effective_active: row.membership.status === "active" &&
       row.domain_status === "active" && !row.deleted_at,
+    ...(canManage
+      ? {
+        capabilities: grants.filter((g) =>
+          g.membership_id === row.membership.id
+        ).map((g) => g.capability),
+      }
+      : {}),
   }));
 }
 
