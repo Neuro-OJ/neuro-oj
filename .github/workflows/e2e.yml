@@ -123,6 +123,7 @@ jobs:
             e2e-cross-domain:
               - 'noj-tests/e2e/cross-domain/**'
               # 跨域 E2E 直接覆盖这些域，core 域改动必须触发跨域用例
+              - 'noj-core/src/domains/workspace/**'
               - 'noj-core/src/domains/search/**'
               - 'noj-core/src/domains/query/**'
               - 'noj-core/src/domains/gateway/**'
