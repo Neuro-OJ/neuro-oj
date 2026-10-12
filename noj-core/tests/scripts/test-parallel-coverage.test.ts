@@ -66,7 +66,7 @@ async function collectTestFiles(): Promise<string[]> {
 
 Deno.test("shards: 每个 domain 的 tests 目录都被某个分片覆盖", () => {
   // 显式断言 observability / admin 在列（防止回归到 2026-09-21 前的遗漏）。
-  for (const domain of ["observability", "admin"]) {
+  for (const domain of ["observability", "admin", "workspace"]) {
     const covered = SHARDS.some((s) =>
       s.dirs.some((d) => d.startsWith(`src/domains/${domain}/tests`))
     );
