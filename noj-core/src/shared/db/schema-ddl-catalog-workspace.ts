@@ -30,7 +30,7 @@ export const CATALOG_WORKSPACE_DDL: string[] = [
   'CREATE INDEX "idx_domain_training_bindings_source" ON "domain_training_bindings" USING btree ("training_id");',
   'ALTER TABLE "problems" ADD CONSTRAINT "problems_domain_id_domains_id_fk" FOREIGN KEY ("domain_id") REFERENCES "domains"("id") ON DELETE no action ON UPDATE no action;',
   'ALTER TABLE "trainings" ADD CONSTRAINT "trainings_domain_id_domains_id_fk" FOREIGN KEY ("domain_id") REFERENCES "domains"("id") ON DELETE no action ON UPDATE no action;',
-  'CREATE INDEX "idx_problems_domain_number" ON "problems" USING btree ("domain_id","number");',
+  'ALTER TABLE "problems" ADD CONSTRAINT "problems_domain_number_unique" UNIQUE ("domain_id","number");',
   'ALTER TABLE "problems" ADD CONSTRAINT "problems_domain_id_id_unique" UNIQUE("domain_id","id");',
 ];
 /** 测试重置包含绑定、授权与沿革，不遗留跨用例状态。 */

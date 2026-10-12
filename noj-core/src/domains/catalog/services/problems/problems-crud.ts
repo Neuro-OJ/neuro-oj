@@ -2,7 +2,7 @@
  * Problems CRUD：createProblem / updateProblem / deleteProblem（PR 拆分 PR-3）。
  *
  * 设计要点：
- * - 创建题目、初始草稿与标签同事务；旧题号分配待切换域计数器
+ * - 创建题目、初始草稿、标签、本域绑定及编号同事务
  * - updateProblem 防御性忽略 type / number 字段（spec 承诺不可变）
  * - deleteProblem 手动清理 submissions / evaluation_results（FK 无 CASCADE）
  *
@@ -16,7 +16,11 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   contestProblems,
+  domainProblemBindings,
+  domainResourceCounters,
+  domains,
   objectiveSubmissions,
+  problemBindingHistory,
   problemDraftObjects,
   problemDrafts,
   problems,
@@ -95,6 +99,14 @@ import {
 } from "../../../submission/index.ts";
 import { registerLegacyStorageObject } from "./../../../system/index.ts";
 import { assertProblemHasNoRetainedReferences } from "../workspace/problem-retention.ts";
+import {
+  bindCreatedDomainProblem,
+  prepareDomainProblemCreation,
+} from "../workspace/problem-create.ts";
+import {
+  DEFAULT_DOMAIN_SLUG,
+  ensureDefaultWorkspace,
+} from "../../../workspace/index.ts";
 
 /**
  * 题目内容编辑权限（唯一判定入口）。
@@ -149,6 +161,7 @@ export async function createProblem(
   userRole?: string,
   c?: Context,
   allowServerDerivedFields = false,
+  workspaceSlug?: string,
 ): Promise<ProblemResponseWithTags> {
   const db = getDb();
   if (input.samples !== undefined) validateProblemSamples(input.samples);
@@ -296,13 +309,13 @@ export async function createProblem(
   // NOJ-102：创建权限按题目类型细粒度强制执行。
   // admin:full_access 通配放行；普通用户需 problem:create（U 型）/
   // problem:create_p（P 型）。无 Context 的 CLI 场景保持旧回退。
-  if (type === "P") {
+  if (!workspaceSlug && type === "P") {
     if (c) {
       await assertPermission(c, "problem:create_p");
     } else if (userRole !== "admin") {
       throw new ForbiddenError("仅管理员可创建管理题");
     }
-  } else {
+  } else if (!workspaceSlug) {
     if (c) {
       await assertPermission(c, "problem:create");
     } else if (
@@ -315,86 +328,70 @@ export async function createProblem(
   // 确定所有者
   const ownerId = userId ?? ROOT_USER_ID;
 
-  // 确定题号（同一 type 内自增，并发冲突时重试）
-  // 仅 admin 可指定 number；普通用户强制 MAX+1
+  // 旧入口保留创建权限兼容，但一律写入默认域并使用同一个数字编号游标。
   const adminProvidedNumber = input.number !== undefined;
-  if (adminProvidedNumber) {
+  if (adminProvidedNumber && !workspaceSlug) {
     if (c) {
       await assertPermission(c, "problem:write_any");
     } else if (userRole !== "admin") {
       throw new ForbiddenError("仅管理员可指定题号");
     }
   }
-  let number = input.number;
-
-  // 确定题号 + 插入（MAX+1 并发冲突时最多重试 3 次）
-  const MAX_RETRIES = 3;
-  const now = new Date().toISOString();
-
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    if (number === undefined) {
-      const result = await db
-        .select({ max: sql<number>`COALESCE(MAX(${problems.number}), 0)` })
-        .from(problems)
-        .where(eq(problems.type, type));
-      number = (result[0]?.max ?? 0) + 1;
-    }
-
-    const assignedNumber = number;
-    try {
-      await db.transaction(async (tx) => {
-        const [created] = await tx.insert(problems).values({
-          id,
-          title: input.title,
-          description: input.description,
-          samples: input.samples ?? [],
-          difficulty: input.difficulty ?? "medium",
-          support_package_storage_url: input.support_package_storage_url ??
-            null,
-          runtime_config: isObjective ? null : (input.runtime_config ?? null),
-          judge_type: isObjective
-            ? "dual"
-            : judgeTypeForRuntimeConfig(input.runtime_config),
-          is_objective: isObjective,
-          visibility: type === "P" ? "public" : (input.visibility ?? "private"),
-          submission_mode: submissionMode,
-          artifact_max_size_mb: input.artifact_max_size_mb ?? null,
-          llm_config: llmConfig,
-          number: assignedNumber,
-          owner_id: ownerId,
-          type,
-          created_at: now,
-          updated_at: now,
-        }).returning();
-        await saveProblemDraft(id, {
-          content: deriveDraftContentFromProblem(created),
-          expectedRevision: PROBLEM_DRAFT_VIRTUAL_REVISION,
-          actorId: ownerId,
-          context: c,
-        }, tx);
-        if (input.tag_ids?.length) {
-          await syncProblemTags(id, input.tag_ids, isObjective, tx);
-        }
-      });
-      break; // 插入成功，退出重试循环
-    } catch (err) {
-      if (attempt === MAX_RETRIES - 1) throw err;
-      // PostgreSQL UNIQUE 约束冲突错误码 23505
-      // postgres.js 在 err.code，PGlite 在 err.cause.code
-      const pgCode = err && typeof err === "object"
-        ? (err as Record<string, unknown>).code ||
-          ((err as Record<string, unknown>).cause as Record<string, unknown>)
-            ?.code
-        : undefined;
-      if (pgCode === "23505") {
-        // 管理员指定 number 冲突 → 直接报错，不自动重试
-        if (adminProvidedNumber) throw err;
-        number = undefined; // 重置 number，下一轮重新 MAX+1
-        continue;
-      }
-      throw err; // 非唯一冲突，直接抛出
-    }
+  if (!workspaceSlug) {
+    const [defaultDomain] = await db.select({ id: domains.id }).from(domains)
+      .where(eq(domains.slug, DEFAULT_DOMAIN_SLUG));
+    if (!defaultDomain) await ensureDefaultWorkspace();
   }
+  const now = new Date().toISOString();
+  await db.transaction(async (tx) => {
+    const reservation = await prepareDomainProblemCreation(
+      workspaceSlug ?? DEFAULT_DOMAIN_SLUG,
+      ownerId,
+      input.number,
+      tx,
+      !workspaceSlug,
+    );
+    const [created] = await tx.insert(problems).values({
+      id,
+      title: input.title,
+      description: input.description,
+      samples: input.samples ?? [],
+      difficulty: input.difficulty ?? "medium",
+      support_package_storage_url: input.support_package_storage_url ??
+        null,
+      runtime_config: isObjective ? null : (input.runtime_config ?? null),
+      judge_type: isObjective
+        ? "dual"
+        : judgeTypeForRuntimeConfig(input.runtime_config),
+      is_objective: isObjective,
+      visibility: type === "P" ? "public" : (input.visibility ?? "private"),
+      submission_mode: submissionMode,
+      artifact_max_size_mb: input.artifact_max_size_mb ?? null,
+      llm_config: llmConfig,
+      number: reservation.number,
+      domain_id: reservation.domain.id,
+      owner_id: ownerId,
+      type,
+      created_at: now,
+      updated_at: now,
+    }).returning();
+    await saveProblemDraft(id, {
+      content: deriveDraftContentFromProblem(created),
+      expectedRevision: PROBLEM_DRAFT_VIRTUAL_REVISION,
+      actorId: ownerId,
+      context: c,
+    }, tx);
+    if (input.tag_ids?.length) {
+      await syncProblemTags(id, input.tag_ids, isObjective, tx);
+    }
+    await bindCreatedDomainProblem(
+      created,
+      reservation.domain.id,
+      ownerId,
+      reservation.used,
+      tx,
+    );
+  });
 
   // 服务端派生支持包（题包导入）：登记对象并写入**草稿**文件引用，发布时随版本固定
   if (input.support_package_storage_url) {
@@ -417,6 +414,16 @@ export async function createProblem(
   await publishSearchIndexEvent("problem", id, "upsert");
 
   return getProblem(id);
+}
+
+/** 显式使用域创建源题；复用运行配置校验、共享草稿和不可变版本流程。 */
+export function createDomainProblem(
+  slug: string,
+  input: CreateProblemInput,
+  actorId: string,
+  context?: Context,
+) {
+  return createProblem(input, actorId, undefined, context, false, slug);
 }
 
 /**
@@ -1018,6 +1025,11 @@ export async function deleteProblem(
 
   await db.transaction(async (tx) => {
     // 排他题目锁与尝试创建互斥；检查与全部关联清理必须原子提交。
+    if (problem.domain_id) {
+      await tx.select({ id: domains.id }).from(domains).where(
+        eq(domains.id, problem.domain_id),
+      ).for("update");
+    }
     await tx.select({ id: problems.id }).from(problems).where(
       eq(problems.id, id),
     ).for("update");
@@ -1049,6 +1061,22 @@ export async function deleteProblem(
       );
     }
     await assertProblemHasNoRetainedReferences(id, tx);
+    await tx.delete(problemBindingHistory).where(
+      eq(problemBindingHistory.problem_id, id),
+    );
+    const bindings = await tx.delete(domainProblemBindings).where(
+      eq(domainProblemBindings.problem_id, id),
+    ).returning();
+    if (problem.domain_id && bindings.length) {
+      await tx.update(domainResourceCounters).set({
+        used: sql`${domainResourceCounters.used} - ${bindings.length}`,
+      }).where(
+        and(
+          eq(domainResourceCounters.domain_id, problem.domain_id),
+          eq(domainResourceCounters.resource, "problems"),
+        ),
+      );
+    }
     // 清理关联提交（submissions 无 ON DELETE CASCADE，需手动清理；
     // 评测尝试/分版本判定随提交级联删除）
     await tx.delete(submissions).where(eq(submissions.problem_id, id));

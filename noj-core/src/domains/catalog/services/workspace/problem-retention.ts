@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
@@ -20,7 +20,10 @@ export async function assertProblemHasNoRetainedReferences(
   ).where(eq(problemVersions.problem_id, problemId)).limit(1);
   const [binding] = await executor.select({ id: domainProblemBindings.id })
     .from(domainProblemBindings).where(
-      eq(domainProblemBindings.problem_id, problemId),
+      and(
+        eq(domainProblemBindings.problem_id, problemId),
+        eq(domainProblemBindings.kind, "shared"),
+      ),
     ).limit(1);
   const [submission] = await executor.select({ id: submissions.id }).from(
     submissions,

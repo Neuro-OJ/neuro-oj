@@ -20,10 +20,13 @@ import {
   ilike,
   inArray,
   isNotNull,
+  isNull,
+  or,
   type SQL,
   sql,
 } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   problems,
   problemTags,
@@ -171,7 +174,9 @@ export async function listProblems(
   const offset = (page - 1) * limit;
 
   // 构建筛选条件
-  const conditions: SQL[] = [];
+  const conditions: SQL[] = [
+    or(eq(problems.domain_id, DEFAULT_DOMAIN_ID), isNull(problems.domain_id))!,
+  ];
   if (query.judge_type) {
     if (!["oi", "dual", "objective"].includes(query.judge_type)) {
       throw new BadRequestError("judge_type 仅允许 oi/dual/objective");
@@ -356,7 +361,9 @@ export async function listAllProblems(
   const offset = (page - 1) * limit;
 
   // 构建筛选条件（不默认添加 type='P'）
-  const conditions: SQL[] = [];
+  const conditions: SQL[] = [
+    or(eq(problems.domain_id, DEFAULT_DOMAIN_ID), isNull(problems.domain_id))!,
+  ];
 
   if (query.difficulty) {
     if (!isValidDifficulty(query.difficulty)) {
@@ -546,6 +553,10 @@ export async function getProblemByTypeAndNumber(
       and(
         eq(problems.type, type.toUpperCase()),
         eq(problems.number, number),
+        or(
+          eq(problems.domain_id, DEFAULT_DOMAIN_ID),
+          isNull(problems.domain_id),
+        ),
       ),
     )
     .limit(1);

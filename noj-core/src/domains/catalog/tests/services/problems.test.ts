@@ -11,6 +11,8 @@ import {
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   auditLogs,
+  domainProblemBindings,
+  problemBindingHistory,
   problems,
   selfTests,
   tags,
@@ -702,6 +704,12 @@ Deno.test({
       );
     } finally {
       for (const id of ids) {
+        await db.delete(problemBindingHistory).where(
+          eq(problemBindingHistory.problem_id, id),
+        );
+        await db.delete(domainProblemBindings).where(
+          eq(domainProblemBindings.problem_id, id),
+        );
         await db.delete(problems).where(eq(problems.id, id));
       }
     }

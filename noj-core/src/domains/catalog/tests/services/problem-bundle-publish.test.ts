@@ -93,7 +93,7 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: null }).where(
       eq(problems.id, created.id),
     );
-    await db.delete(problems).where(eq(problems.id, created.id));
+    // 已发布资源保留至测试事务回滚，使用生产删除接口不能清除版本历史。
   },
 });
 
@@ -152,6 +152,6 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: null }).where(
       eq(problems.id, created.id),
     );
-    await db.delete(problems).where(eq(problems.id, created.id));
+    // 已发布资源保留至测试事务回滚。
   },
 });

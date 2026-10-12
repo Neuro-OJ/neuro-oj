@@ -46,13 +46,13 @@ async function expectRetained(id: string) {
   );
 }
 
-Deno.test("源题保留：有域绑定即明确拒绝删除，权限检查仍在历史守卫之前", async () => {
+Deno.test("源题保留：有共享引用即明确拒绝删除，权限检查仍在历史守卫之前", async () => {
   const { id, now } = await source();
   await getDb().insert(domainProblemBindings).values({
     id: crypto.randomUUID(),
     domain_id: DEFAULT_DOMAIN_ID,
     problem_id: id,
-    kind: "owned",
+    kind: "shared",
     created_by: "0",
     created_at: now,
     updated_at: now,

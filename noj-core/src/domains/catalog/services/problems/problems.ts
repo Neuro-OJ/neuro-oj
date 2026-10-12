@@ -18,6 +18,7 @@
 
 export {
   assertProblemEditPermission,
+  createDomainProblem,
   createProblem,
   deleteProblem,
   updateProblem,

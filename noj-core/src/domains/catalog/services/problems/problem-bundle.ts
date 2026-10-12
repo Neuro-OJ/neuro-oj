@@ -8,7 +8,7 @@
  * - manifest 不含 id：题目主键一律由服务端生成 UUID。
  * - manifest.number 仅 admin 生效，作为幂等键：按 (type, number) 匹配既有题目
  *   → 更新（元数据 + 替换评测包）；未命中 → 创建；(type, number) 由 DB 联合
- *   唯一约束保证唯一，缺省时自动分配 type 内 MAX+1。
+ *   旧分类仍用于格式 1 兼容，编号统一由默认域原子游标分配。
  * - 非 admin 提供 manifest.number 直接拒绝（400）：普通用户导入只能创建新题
  *   （number 自动分配），避免"上传以为更新、实则新建"的误导。
  * - 题面唯一事实来源是数据库：statement.md 与 manifest.description 仅用于
@@ -16,7 +16,7 @@
  */
 
 import type { Context } from "hono";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { problems, problemTags } from "./../../../../shared/db/schema.ts";
 import {
@@ -51,13 +51,26 @@ import {
   type ProblemRuntimeConfig as RuntimeConfig,
 } from "./../../types/problems.ts";
 import type { ObjectiveQuestionSnapshot } from "./../../types/problem-content.ts";
-import { assertProblemEditPermission, updateProblem } from "./problems-crud.ts";
+import {
+  assertProblemEditPermission,
+  createProblem,
+  updateProblem,
+} from "./problems-crud.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  DEFAULT_DOMAIN_SLUG,
+  ensureDefaultWorkspace,
+} from "../../../workspace/index.ts";
+import {
+  bindCreatedDomainProblem,
+  prepareDomainProblemCreation,
+} from "../workspace/problem-create.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import {
   assertSensitiveFieldPermissions,
   enforceResourceLimits,
 } from "./problem-field-guard.ts";
-import { syncProblemTags, validateProblemTagIds } from "./problems-tags.ts";
+import { validateProblemTagIds } from "./problems-tags.ts";
 import { judgeOptions } from "../../../objective/index.ts";
 import { getProblem } from "./problems-list.ts";
 import { getTagIdsByNames, listTags } from "../tags.ts";
@@ -306,7 +319,7 @@ export async function importProblemBundle(
 
   // 6. 分发：manifest.number 提供时按 (type, number) 业务键匹配（命中 → 更新；
   //    未命中 → 创建）；未提供 → 创建（number 自动分配）。id 一律由服务端生成，
-  //    (type, number) 由 DB 联合唯一约束保证唯一（problems_type_number_unique）。
+  //    旧入口只在默认域匹配，域内数字题号由 DB 唯一约束保证。
   let result: ProblemResponseWithTags;
   if (number !== undefined) {
     const type = manifest.type ?? "U";
@@ -318,7 +331,16 @@ export async function importProblemBundle(
         runtimeConfig: problems.runtime_config,
       })
       .from(problems)
-      .where(and(eq(problems.type, type), eq(problems.number, number)))
+      .where(
+        and(
+          eq(problems.type, type),
+          eq(problems.number, number),
+          or(
+            eq(problems.domain_id, DEFAULT_DOMAIN_ID),
+            isNull(problems.domain_id),
+          ),
+        ),
+      )
       .limit(1);
     if (byNumber.length > 0) {
       result = await updateExisting(
@@ -564,6 +586,7 @@ async function importObjectivePaper(
 
   const now = new Date().toISOString();
   let oldStorageUrl: string | null = null;
+  await ensureDefaultWorkspace();
 
   const outcome = await db.transaction(async (tx) => {
     let existingId: string | null = null;
@@ -574,7 +597,16 @@ async function importObjectivePaper(
           storageUrl: problems.support_package_storage_url,
         })
         .from(problems)
-        .where(and(eq(problems.type, type), eq(problems.number, number)))
+        .where(
+          and(
+            eq(problems.type, type),
+            eq(problems.number, number),
+            or(
+              eq(problems.domain_id, DEFAULT_DOMAIN_ID),
+              isNull(problems.domain_id),
+            ),
+          ),
+        )
         .limit(1);
       if (rows.length > 0) {
         existingId = rows[0].id;
@@ -613,52 +645,37 @@ async function importObjectivePaper(
     } else {
       isNewProblem = true;
       problemId = crypto.randomUUID();
-      let finalNumber = number;
-      const MAX_RETRIES = 3;
-      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        if (finalNumber === undefined) {
-          const [row] = await tx
-            .select({ max: sql<number>`COALESCE(MAX(${problems.number}), 0)` })
-            .from(problems)
-            .where(eq(problems.type, type));
-          finalNumber = Number(row?.max ?? 0) + 1;
-        }
-        try {
-          await tx.insert(problems).values({
-            id: problemId,
-            title: manifest.title,
-            samples: manifest.samples ?? [],
-            description,
-            difficulty: manifest.difficulty ?? "medium",
-            runtime_config: null,
-            judge_type: "dual",
-            is_objective: true,
-            visibility: type === "P" ? "public" : "private",
-            number: finalNumber,
-            owner_id: actor.userId ?? ROOT_USER_ID,
-            type,
-            created_at: now,
-            updated_at: now,
-          });
-          break;
-        } catch (err) {
-          if (attempt === MAX_RETRIES - 1) throw err;
-          const pgCode = err && typeof err === "object"
-            ? (err as Record<string, unknown>).code ||
-              ((err as Record<string, unknown>).cause as Record<
-                string,
-                unknown
-              >)
-                ?.code
-            : undefined;
-          if (pgCode === "23505") {
-            if (number !== undefined) throw err;
-            finalNumber = undefined;
-            continue;
-          }
-          throw err;
-        }
-      }
+      const reservation = await prepareDomainProblemCreation(
+        DEFAULT_DOMAIN_SLUG,
+        actor.userId ?? ROOT_USER_ID,
+        number,
+        tx,
+        true,
+      );
+      const [created] = await tx.insert(problems).values({
+        id: problemId,
+        title: manifest.title,
+        samples: manifest.samples ?? [],
+        description,
+        difficulty: manifest.difficulty ?? "medium",
+        runtime_config: null,
+        judge_type: "dual",
+        is_objective: true,
+        visibility: type === "P" ? "public" : "private",
+        number: reservation.number,
+        domain_id: reservation.domain.id,
+        owner_id: actor.userId ?? ROOT_USER_ID,
+        type,
+        created_at: now,
+        updated_at: now,
+      }).returning();
+      await bindCreatedDomainProblem(
+        created,
+        reservation.domain.id,
+        actor.userId ?? ROOT_USER_ID,
+        reservation.used,
+        tx,
+      );
     }
 
     // 全量替换小题：**草稿是唯一事实源**（Handbook §6.4，旧 `objective_questions`
@@ -805,64 +822,31 @@ async function createViaCrud(
   const db = getDb();
   const tagIds = await resolveTagIds(manifest.tags);
 
-  // number：admin 指定或 type 内 MAX+1（并发冲突 23505 时最多重试 3 次，
-  // 与 createProblem 的分配语义一致）
-  const MAX_RETRIES = 3;
   const now = new Date().toISOString();
-  const id = crypto.randomUUID();
-  let finalNumber = number;
-
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    if (finalNumber === undefined) {
-      const [row] = await db
-        .select({ max: sql<number>`COALESCE(MAX(${problems.number}), 0)` })
-        .from(problems)
-        .where(eq(problems.type, type));
-      finalNumber = Number(row?.max ?? 0) + 1;
-    }
-
-    try {
-      await db.insert(problems).values({
-        id,
-        title: manifest.title,
-        samples: manifest.samples ?? [],
-        description,
-        difficulty: manifest.difficulty ?? "medium",
-        runtime_config: manifest.runtime_config!,
-        judge_type: isOiRuntimeConfig(manifest.runtime_config) ? "oi" : "dual",
-        visibility: type === "P" ? "public" : "private",
-        submission_mode: manifest.submission_mode ?? "code",
-        artifact_max_size_mb: manifest.artifact_max_size_mb ?? null,
-        template_content: templateContent,
-        llm_config: manifest.llm ?? null,
-        number: finalNumber,
-        owner_id: actor.userId ?? ROOT_USER_ID,
-        type,
-        created_at: now,
-        updated_at: now,
-      });
-      break;
-    } catch (err) {
-      if (attempt === MAX_RETRIES - 1) throw err;
-      // PG 唯一约束冲突（type+number）
-      const pgCode = err && typeof err === "object"
-        ? (err as Record<string, unknown>).code ||
-          ((err as Record<string, unknown>).cause as Record<string, unknown>)
-            ?.code
-        : undefined;
-      if (pgCode === "23505") {
-        // admin 显式指定 number 冲突 → 直接报错
-        if (number !== undefined) throw err;
-        finalNumber = undefined;
-        continue;
-      }
-      throw err;
-    }
-  }
-
-  if (tagIds.length > 0) {
-    await syncProblemTags(id, tagIds);
-  }
+  const created = await createProblem(
+    {
+      title: manifest.title,
+      samples: manifest.samples ?? [],
+      description,
+      difficulty: manifest.difficulty ?? "medium",
+      runtime_config: manifest.runtime_config!,
+      judge_type: isOiRuntimeConfig(manifest.runtime_config) ? "oi" : "dual",
+      visibility: type === "P" ? "public" : "private",
+      submission_mode: manifest.submission_mode ?? "code",
+      artifact_max_size_mb: manifest.artifact_max_size_mb ?? null,
+      llm: manifest.llm ?? null,
+      number,
+      type,
+      tag_ids: tagIds,
+    },
+    actor.userId,
+    actor.userRole,
+    c,
+  );
+  const id = created.id;
+  await db.update(problems).set({ template_content: templateContent }).where(
+    eq(problems.id, id),
+  );
 
   // 注册评测包并回填（先预约再物理上传，上传成功后登记 ready 并消费预约）
   const { storageUrl } = await uploadStorageObjectWithReservation({

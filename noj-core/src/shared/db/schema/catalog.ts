@@ -9,6 +9,7 @@ import {
   primaryKey,
   text,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { manyToManyPk, publicIdColumn, tsvector } from "./common.ts";
@@ -281,14 +282,15 @@ export const problems = pgTable(
       table.domain_id,
       table.id,
     ),
-    domainNumberIdx: index("idx_problems_domain_number").on(
+    domainNumberUnique: unique("problems_domain_number_unique").on(
       table.domain_id,
       table.number,
     ),
-    typeNumberUnique: unique("problems_type_number_unique").on(
-      table.type,
-      table.number,
-    ),
+    legacyTypeNumberUnique: uniqueIndex("problems_legacy_type_number_unique")
+      .on(
+        table.type,
+        table.number,
+      ).where(sql`${table.domain_id} IS NULL`),
     typeCheck: check(
       "problems_type_check",
       sql`${table.type} IN ('U', 'P')`,
