@@ -16,6 +16,7 @@ import {
   type LlmQuotaInput,
   type LlmUsageQuery,
   queryLlmUsage,
+  testLlmProvider,
   updateLlmProvider,
   upsertLlmQuota,
 } from "../../gateway/services/llm.ts";
@@ -26,6 +27,7 @@ import {
  * 提供：
  * - GET/POST /llm/providers         Provider 列表 / 新增
  * - PUT /llm/providers/:id          Provider 更新
+ * - POST /llm/providers/:id/test    Provider 连接测试
  * - GET /llm/usage                  用量查询
  * - GET/POST /llm/quotas            配额查询 / 新增或更新
  */
@@ -100,6 +102,74 @@ router.put(
     return c.json({ data });
   },
 );
+
+/**
+ * 上游连接测试的失败原因（返回给管理员的可读提示）。
+ *
+ * 只收录"上游不通"类错误：它们是测试的**正常结果**，以 200 + status=failed
+ * 返回，前端直接展示原因；Provider 不存在、gateway 不可用等仍走 mapLlmError。
+ */
+const PROVIDER_TEST_FAILURES: Record<string, string> = {
+  provider_auth_failed: "上游鉴权失败：API Key 无效，或该 Key 无权访问此模型",
+  provider_rate_limited: "上游限流（429）：请稍后重试，或检查账户额度",
+  provider_unavailable: "无法连接上游：网络不通或 10 秒内无响应",
+  provider_error: "上游返回错误：请检查 Base URL 与模型名称是否正确",
+  provider_base_url_blocked:
+    "Base URL 不被允许：仅支持 https 公网地址；内网自建模型请在网关 NOJ_LLM_UPSTREAM_ALLOWED_HOSTS 中放行该主机",
+};
+
+/**
+ * 将连接测试抛出的错误转换为测试结果；非上游类错误返回 null，由调用方重新抛出。
+ */
+export function describeProviderTestFailure(
+  error: unknown,
+): { code: string; message: string } | null {
+  if (!(error instanceof LlmGatewayError)) return null;
+  const message = PROVIDER_TEST_FAILURES[error.code];
+  return message ? { code: error.code, message } : null;
+}
+
+/**
+ * 测试 LLM Provider 连接。
+ * POST /api/v1/admin/llm/providers/:id/test
+ *
+ * 权限/认证：管理员（adminMiddleware 组级保护）。
+ * path: :id = Provider ID
+ * body: { model }（用于测试的模型名称，必填）
+ * 说明：gateway 用已保存的 Key 向上游发起 1 token 的真实请求，会产生极少量费用。
+ * 响应：`{ data: { status: "ok" | "failed", model, latency_ms, code?, message? } }`；
+ * 缺少模型返回 400，Provider 不存在返回 404，gateway 不可用返回 503。
+ */
+router.post("/llm/providers/:id/test", async (c) => {
+  const id = c.req.param("id") as string;
+  const body = await parseJsonBody<{ model?: unknown }>(c);
+  const model = typeof body?.model === "string" ? body.model.trim() : "";
+  if (!model) {
+    throw new BadRequestError("请填写要测试的模型名称", "model_required");
+  }
+  const startedAt = performance.now();
+  try {
+    await testLlmProvider(id, model);
+  } catch (error) {
+    const failure = describeProviderTestFailure(error);
+    if (!failure) throw error;
+    return c.json({
+      data: {
+        status: "failed",
+        model,
+        latency_ms: Math.round(performance.now() - startedAt),
+        ...failure,
+      },
+    });
+  }
+  return c.json({
+    data: {
+      status: "ok",
+      model,
+      latency_ms: Math.round(performance.now() - startedAt),
+    },
+  });
+});
 
 /**
  * 查询 LLM 用量记录。

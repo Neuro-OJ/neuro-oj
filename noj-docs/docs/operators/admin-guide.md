@@ -186,6 +186,8 @@ compose 内 `noj-net` 子网一致），否则所有请求都被解析成反向�
   模型」 卡片决定（对应系统设置 `llm_default_provider_id` /
   `llm_default_model`，两项须同时 配置）。列表中当前默认的 Provider
   会带「默认」标记。
+- 操作列「测试连接」可用指定模型向上游发起一次 1 token 的真实请求，验证 Base URL
+  / API Key / 模型是否可用，并显示耗时或失败原因。
 - API Key 保存后**不会**再明文返回，列表中只显示掩码（如
   `sk-****abcd`）；需要更新时重新填写 Key。
 - 只有 `enabled=true` 的 Provider 可用于 LLM 题目；停用后已有评测 token
