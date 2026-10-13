@@ -178,3 +178,16 @@ export async function sendTestEmail(to: string): Promise<boolean> {
       "<p>收到此邮件说明当前邮件服务配置可用，可以开放公开注册。</p>",
   );
 }
+
+/** 业务通知使用现有 Provider；正文由调用模块在当前授权后生成。 */
+export async function sendNotificationEmail(
+  to: string,
+  subject: string,
+  html: string,
+): Promise<boolean> {
+  metrics.inc("noj_email_send_attempts_total", {
+    provider: currentProvider(),
+    message_type: "notification",
+  });
+  return await (await loadGenericSendFn())(to, subject, html);
+}

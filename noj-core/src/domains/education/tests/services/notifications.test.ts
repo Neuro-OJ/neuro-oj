@@ -2,6 +2,7 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { NotFoundError } from "../../../../shared/base/errors.ts";
 import {
+  educationNotificationEmails,
   educationNotifications,
   educationOutbox,
 } from "../../../../shared/db/schema.ts";
@@ -43,6 +44,7 @@ async function fixture() {
   await publishAssignment(f.school.slug, task.id, f.teacher, 0, "publish");
   // 此组只验证互动新增通知；发布通知由独立生命周期用例覆盖。
   await drain();
+  await f.db.delete(educationNotificationEmails);
   await f.db.delete(educationNotifications);
   return { ...f, task };
 }

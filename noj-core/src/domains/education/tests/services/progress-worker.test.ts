@@ -203,3 +203,66 @@ Deno.test("教学自动更新：后台循环消费正式成绩，完成后停止
     await worker.done;
   }
 });
+
+Deno.test("教学后台：慢邮件保持在途时仍在5秒内更新正式学情，共同停止等待两条循环", async () => {
+  const f = await assignmentFixture();
+  const task = await createAssignment(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    f.input,
+  );
+  await publishAssignment(
+    f.school.slug,
+    task.id,
+    f.teacher,
+    0,
+    "slow-email-publish",
+  );
+  let markStarted!: () => void, release!: (sent: boolean) => void;
+  const mailStarted = new Promise<void>((resolve) => markStarted = resolve);
+  const heldMail = new Promise<boolean>((resolve) => release = resolve);
+  const worker = startEducationWorker({
+    sendEmail: () => {
+      markStarted();
+      return heldMail;
+    },
+  });
+  try {
+    let timeout: ReturnType<typeof setTimeout>;
+    try {
+      await Promise.race([
+        mailStarted,
+        new Promise<void>((_, reject) =>
+          timeout = setTimeout(() => reject(new Error("邮件未开始")), 5000)
+        ),
+      ]);
+    } finally {
+      clearTimeout(timeout!);
+    }
+    const started = Date.now();
+    await gradeFixture(f);
+    let cells = await f.db.select().from(assignmentProgress);
+    while (
+      !cells.some((cell) => cell.score === 6500) && Date.now() - started < 5000
+    ) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 20));
+      cells = await f.db.select().from(assignmentProgress);
+    }
+    assertEquals(
+      cells.every((cell) => cell.score === 6500 && cell.status === "achieved"),
+      true,
+    );
+    assertEquals(cells.length, 2);
+    assertEquals(Date.now() - started < 5000, true);
+    worker.stop();
+    let stopped = false;
+    void worker.done.then(() => stopped = true);
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    assertEquals(stopped, false);
+  } finally {
+    worker.stop();
+    release(true);
+    await worker.done;
+  }
+});

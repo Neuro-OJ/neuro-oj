@@ -11,6 +11,7 @@ import {
   assignments,
   classroomMemberships,
   domains,
+  educationNotificationEmails,
   educationNotifications,
   educationOutbox,
 } from "../../../shared/db/schema.ts";
@@ -20,6 +21,11 @@ import { getAssignmentFeedback } from "./feedback.ts";
 import { getAssignmentHelp } from "./help.ts";
 import { loadInteractionAccess } from "./interaction-access.ts";
 import type { ClaimedEducationEvent } from "./progress-worker.ts";
+import {
+  Channels,
+  publishSseEventAfterTx,
+} from "../../../shared/sse/event-bus.ts";
+import { recordSseEvent } from "../../../shared/sse/sse-events.ts";
 
 /** 通知投递复用真实资源读取检查；授权失效只跳过收件人，不发送私有摘要。 */
 async function canReceive(
@@ -68,7 +74,10 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
       "help_reply",
     ].includes(type)
   ) throw new Error("教学通知类型非法");
-  return await getDb().transaction(async (tx) => {
+  const delivered = await getDb().transaction(async (tx) => {
+    const updates: Array<
+      { channel: string; eventId: number; payload: Record<string, unknown> }
+    > = [];
     const now = new Date().toISOString();
     const [current] = await tx.select().from(educationOutbox).where(
       and(
@@ -78,7 +87,7 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
         isNull(educationOutbox.processed_at),
       ),
     ).for("update");
-    if (!current) return false;
+    if (!current) return { processed: false, updates };
     const [resource] = await tx.select({
       assignment: assignments,
       slug: domains.slug,
@@ -144,7 +153,7 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
           current.payload,
         ))
       ) continue;
-      await tx.insert(educationNotifications).values({
+      const [inserted] = await tx.insert(educationNotifications).values({
         id: crypto.randomUUID(),
         domain_id: event.domain_id,
         assignment_id: event.assignment_id!,
@@ -155,7 +164,22 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
         help_id: (current.payload.help_id as string | null) ?? null,
         reply_id: (current.payload.reply_id as string | null) ?? null,
         created_at: now,
-      }).onConflictDoNothing();
+      }).onConflictDoNothing().returning({ id: educationNotifications.id });
+      if (inserted) {
+        await tx.insert(educationNotificationEmails).values({
+          notification_id: inserted.id,
+          available_at: now,
+        });
+        const channel = Channels.user(user_id);
+        const payload = {
+          type: "education:notification",
+          notification_id: inserted.id,
+          domain_id: event.domain_id,
+          assignment_id: event.assignment_id!,
+        };
+        const eventId = await recordSseEvent(channel, payload, tx);
+        updates.push({ channel, eventId, payload });
+      }
     }
     const complete = targets.length < 50 || !!event.user_id;
     await tx.update(educationOutbox).set({
@@ -175,8 +199,12 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
         eq(educationOutbox.lease_token, event.lease_token!),
       ),
     );
-    return true;
+    return { processed: true, updates };
   });
+  for (const update of delivered.updates) {
+    publishSseEventAfterTx(update.channel, update.payload, update.eventId);
+  }
+  return delivered.processed;
 }
 
 function visibleNotifications(
@@ -193,10 +221,11 @@ function visibleNotifications(
     WHERE r.assignment_id = n.assignment_id AND r.user_id = ${actorId}
       AND (cm.status = 'active' OR cm.role = 'student'))`;
   const staff = (capability: string) =>
-    sql`${governs} OR EXISTS (SELECT 1 FROM classroom_memberships cm
+    sql`${governs} OR (${!!workspace
+      .membership} AND EXISTS (SELECT 1 FROM classroom_memberships cm
     WHERE cm.classroom_id = a.classroom_id AND cm.user_id = ${actorId} AND cm.status = 'active'
       AND (cm.role = 'coach' OR (cm.role = 'assistant' AND EXISTS (SELECT 1 FROM classroom_assistant_grants g
-        WHERE g.membership_id = cm.id AND g.capability = ${capability}))))`;
+        WHERE g.membership_id = cm.id AND g.capability = ${capability})))))`;
   return sql`a.published_at IS NOT NULL AND (
     (n.type IN ('assignment','assignment_changed','resource_unavailable') AND ((${recipient}) OR (${
     staff("progress:read")
@@ -222,6 +251,29 @@ type NotificationRow = {
   created_at: string;
   read_at: string | null;
 };
+
+/** 单条通知读取用于实时推送和邮件投递，重新检查当前域与具体资源关系。 */
+export async function getEducationNotification(
+  slug: string,
+  actorId: string,
+  id: string,
+) {
+  const workspace = await loadWorkspace(slug, actorId);
+  const result = await getDb().execute(
+    sql`SELECT n.id, n.type, n.assignment_id, n.feedback_id, n.help_id, n.reply_id, n.created_at, n.read_at
+    FROM education_notifications n JOIN assignments a ON a.id = n.assignment_id
+    WHERE n.id = ${id} AND n.domain_id = ${workspace.domain.id} AND n.user_id = ${actorId} AND ${
+      visibleNotifications(workspace, actorId)
+    }`,
+  );
+  const [notification] = unwrapRows<NotificationRow>(result as never);
+  if (!notification) throw new NotFoundError("通知不存在或不可访问");
+  return {
+    ...notification,
+    domain_id: workspace.domain.id,
+    domain_slug: workspace.domain.slug,
+  };
+}
 
 /** 通知目录在计数及分页前检查当前教学关系；摘要只说明类型，不返回私有正文。 */
 export async function listEducationNotifications(

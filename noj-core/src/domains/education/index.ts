@@ -19,6 +19,7 @@ export * from "./services/matrix-csv.ts";
 export * from "./services/feedback.ts";
 export * from "./services/help.ts";
 export * from "./services/notifications.ts";
+export * from "./services/notification-email.ts";
 export * from "./services/history-read.ts";
 export * from "./services/workbench.ts";
 export * from "./services/annotations.ts";

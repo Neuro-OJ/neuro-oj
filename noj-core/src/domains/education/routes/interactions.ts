@@ -24,9 +24,11 @@ import {
   listEducationNotifications,
   markEducationNotificationRead,
 } from "../services/notifications.ts";
+import { educationNotificationSse } from "./notification-sse.ts";
 
 /** 教学互动准备路由，复用当前域授权、禁用缓存和统一错误处理。 */
 export const interactionRouter = new Hono<AuthEnv>();
+interactionRouter.route("/", educationNotificationSse);
 interactionRouter.use(
   "/domains/:slug/assignments/*",
   authMiddleware,

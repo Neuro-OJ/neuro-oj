@@ -1,6 +1,7 @@
 import { logger } from "../../../shared/base/logging.ts";
 import { publishDueAssignments } from "./assignment-lifecycle.ts";
 import { processEducationBatch } from "./progress-worker.ts";
+import { processEducationEmailBatch } from "./notification-email.ts";
 
 async function waitForTick(signal: AbortSignal) {
   if (signal.aborted) return;
@@ -18,9 +19,11 @@ async function waitForTick(signal: AbortSignal) {
 }
 
 /** 生命周期只保存停止句柄，业务领取、重试和游标均在数据库，多副本可并行运行。 */
-export function startEducationWorker() {
+export function startEducationWorker(options: {
+  sendEmail?: Parameters<typeof processEducationEmailBatch>[1];
+} = {}) {
   const controller = new AbortController();
-  const done = (async () => {
+  const progress = (async () => {
     while (!controller.signal.aborted) {
       try {
         await publishDueAssignments();
@@ -34,5 +37,19 @@ export function startEducationWorker() {
       await waitForTick(controller.signal);
     }
   })();
+  const email = (async () => {
+    while (!controller.signal.aborted) {
+      try {
+        const batch = await processEducationEmailBatch(20, options.sendEmail);
+        if (batch.length) continue;
+      } catch (error) {
+        logger.warn("教学邮件后台任务失败，将从持久记录重试", {
+          error_type: error instanceof Error ? error.name : "Error",
+        });
+      }
+      await waitForTick(controller.signal);
+    }
+  })();
+  const done = Promise.all([progress, email]).then(() => undefined);
   return { stop: () => controller.abort(), done };
 }
