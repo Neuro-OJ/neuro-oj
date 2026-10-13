@@ -5,6 +5,7 @@
  */
 import { assertEquals } from "jsr:@std/assert@^1.0.13";
 import { expect } from "npm:playwright@1.62.1/test";
+import { collectPendingConsents } from "../../../noj-ui/utils/legalConsent.ts";
 import {
   api,
   apiGet,
@@ -44,6 +45,16 @@ async function login(page: Page, account: string, password: string) {
   );
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
+  await gotoPage(page, "/workspaces");
+  const identity = await page.request.get(`${UI_URL}/api/v1/auth/me`);
+  assertEquals(identity.status(), 200);
+  const actor = await identity.json();
+  if (collectPendingConsents(actor.data.legal).length) {
+    await page.getByRole("button", { name: "我已知悉并同意", exact: true })
+      .click();
+    await expect(page.getByRole("dialog", { name: "政策更新通知" }))
+      .toBeHidden();
+  }
 }
 
 async function select(page: Page, label: string, option: string) {
@@ -397,19 +408,46 @@ Deno.test({
             name: "继续练习",
             exact: true,
           }).click();
+          await student.page.waitForURL((url) =>
+            url.pathname.startsWith(`/d/${slug}/problems/`)
+          );
+          const problemUrl = new URL(student.page.url());
+          assertEquals(
+            problemUrl.searchParams.get("assignment_id"),
+            assignmentId,
+          );
+          const assignmentItemId = problemUrl.searchParams.get(
+            "assignment_item_id",
+          );
+          assertEquals(typeof assignmentItemId, "string");
           await student.page.getByRole("checkbox", {
             name: "待改进选项",
             exact: true,
           }).check();
           await student.page.getByRole("button", { name: "交卷", exact: true })
             .click();
-          await write(
+          const submitted = await write(
             student.page,
             "POST",
             `/api/v1/domains/${slug}/problems/${number}/objective-submissions`,
             () =>
               student.page.getByRole("button", { name: "确认", exact: true })
                 .click(),
+          );
+          const origin = {
+            assignment_id: assignmentId,
+            assignment_item_id: assignmentItemId,
+          };
+          assertEquals(submitted.data.assignment_origin, origin);
+          const history = await apiGet(
+            `/api/v1/domains/${slug}/objective-submissions/${submitted.data.submission_id}`,
+            studentToken,
+          );
+          assertEquals(history.status, 200);
+          assertEquals(
+            (history.body as { data: { assignment_origin: unknown } }).data
+              .assignment_origin,
+            origin,
           );
           await expect(
             student.page.getByText("本次成绩：0 分", { exact: true }),
