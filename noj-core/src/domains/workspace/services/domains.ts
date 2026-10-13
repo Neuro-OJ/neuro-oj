@@ -49,9 +49,10 @@ import {
 export async function workspaceAudit(
   db: Executor,
   actorId: string,
-  domainId: string,
+  domainId: string | null,
   action: WorkspaceAuditAction,
   detail: Record<string, unknown> = {},
+  target?: { type: string; id: string },
 ) {
   let ipAddress = "";
   try {
@@ -66,8 +67,8 @@ export async function workspaceAudit(
     id: crypto.randomUUID(),
     admin_id: actorId,
     action,
-    target_type: "domain",
-    target_id: domainId,
+    target_type: target?.type ?? "domain",
+    target_id: target?.id ?? domainId,
     ip_address: ipAddress,
     detail: { ...detail, domain_id: domainId },
     created_at: new Date().toISOString(),

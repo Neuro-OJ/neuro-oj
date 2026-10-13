@@ -11,10 +11,8 @@ import {
 } from "../../../shared/http/request.ts";
 import { AppError, BadRequestError } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
-import {
-  domainCreationRequests,
-  userWorkspacePreferences,
-} from "../../../shared/db/schema.ts";
+import { userWorkspacePreferences } from "../../../shared/db/schema.ts";
+import { parsePagination } from "../../../shared/http/pagination.ts";
 import type {
   DomainConfiguration,
   DomainLimits,
@@ -57,6 +55,11 @@ import {
   reviewDomainCreation,
 } from "../services/creation-requests.ts";
 import { configurationDiff, presetConfiguration } from "../types.ts";
+import {
+  listAdminDomains,
+  listDomainCreationRequests,
+} from "../services/governance.ts";
+import { getDomainResourceUsage } from "../services/resource-usage.ts";
 
 const router = new Hono<OptionalAuthEnv>();
 // 挂载到 /api/v1 时通配中间件会影响其他模块，只限定本模块的路径。
@@ -133,15 +136,29 @@ router.post("/domain-creation-requests", authMiddleware, async (c) => {
   }, 201);
 });
 router.get(
+  "/admin/instance/domains",
+  authMiddleware,
+  requireAdmin(),
+  async (c) =>
+    c.json(
+      await listAdminDomains(c.var.userId!, parsePagination(c), {
+        status: c.req.query("status"),
+        keyword: c.req.query("keyword"),
+      }),
+    ),
+);
+router.get(
   "/admin/instance/domain-creation-requests",
   authMiddleware,
   requireAdmin(),
   async (c) =>
-    c.json({
-      data: await getDb().select().from(domainCreationRequests).orderBy(
-        domainCreationRequests.created_at,
-      ).limit(100),
-    }),
+    c.json(
+      await listDomainCreationRequests(
+        c.var.userId!,
+        parsePagination(c),
+        c.req.query("status"),
+      ),
+    ),
 );
 router.post(
   "/admin/instance/domain-creation-requests/:id/review",
@@ -197,6 +214,7 @@ router.get("/domains/:slug/limits", authMiddleware, async (c) => {
   return c.json({
     data: {
       ...await getDomainEffectiveLimits(domain.id),
+      usage: await getDomainResourceUsage(domain.id),
       revision: domain.revision,
     },
   });

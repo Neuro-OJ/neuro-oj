@@ -11,6 +11,9 @@
 - 容量操作读取持久政策；域管理员只降低自身有效限额，成员及引用题受当前上限约束。
 - 公开发现与本人域列表、创建 / 申请审核、设置、状态及 Preset 差异预览 / 应用。
 - 当前成员关系、固定组合角色、加入申请、负责人原子交接及邀请接受 / 撤销。
+- 平台治理目录按状态、名称和标识筛选及分页，包含未加入的私有、归档与暂停域。
+- 创建审核按状态分页展示申请人，批准与拒绝都在业务事务审计明确的申请 ID。
+- 域配额视图返回配置、实例上限及成员、题库、存储的已用和预留数量。
 - 成员目录批量返回角色；注销账号显示匿名身份。加入申请目录只返回当前域的管理字段。
 - 通过请求体预览邀请，不暴露账号是否存在、令牌哈希或未获授权的空间目录。
 - 邀请签发者退出、失去邀请权限或被停用后，未消费链接即时失效。
@@ -56,6 +59,7 @@
 | `/domains`、`/me/domains`                       | 发现、创建与本人当前空间                |
 | `/domain-creation-requests`                     | 创建申请                                |
 | `/admin/instance/domain-creation-requests`      | 平台审核                                |
+| `/admin/instance/domains`                       | 平台完整域目录及分页治理                |
 | `/domain-invitations/accept`                    | 登录身份接受邀请                        |
 | `/auth/domain-invitation`                       | 持有有效邀请预览加入信息（POST 请求体） |
 | `/domains/:slug`                                | 概览及带 If-Match 的配置修改            |
@@ -65,9 +69,14 @@
 | 域下 `limits`                                   | 配额及实例上限读取，带 If-Match 修改    |
 
 用户偏好仅用于导航。资源 ID 放入其他域路径必须重新校验该域归属，不据 ID 放行。
-概览返回服务端实际 `actor_id`，客户端不能把另一账号的响应保存到当前账号缓存。
-工作空间接口使用 `Cache-Control: no-store`，并按 Authorization / Cookie
-区分响应。
+平台目录和审核目录使用 `page`、`per_page`，返回 `data` 与 `pagination`，
+后者包含 page / per_page / total / total_pages。平台目录可按 status / keyword
+筛选，审核目录可按 status 筛选；两者均要求当前平台管理权限。 `limits` 的 usage
+包含 members / problems / storage_bytes 和对应 reserved 字段，
+成员及题库使用持久容量计数，存储使用实际对象归属与有效上传预约；
+submissions_per_minute 为吞吐限制，不在容量占用中伪造当前值。 概览返回服务端实际
+`actor_id`，客户端不能把另一账号的响应保存到当前账号缓存。 工作空间接口使用
+`Cache-Control: no-store`，并按 Authorization / Cookie 区分响应。
 私有实例允许匿名通过认证入口预览有效邀请；没有有效令牌不能据此列举空间。
 
 ## 资源政策

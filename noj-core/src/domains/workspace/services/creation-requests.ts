@@ -14,7 +14,7 @@ import {
 import type { DomainPreset } from "../../../shared/workspace/types.ts";
 import { getUserPermissions } from "../../identity/index.ts";
 import { validateDomainSlug } from "../types.ts";
-import { createDomain } from "./domains.ts";
+import { createDomain, workspaceAudit } from "./domains.ts";
 import { getInstanceAccessPolicy } from "./instance.ts";
 
 /** 申请创建与申请加入分开；同一用户同一标识的待审申请幂等复用。 */
@@ -68,10 +68,10 @@ export async function reviewDomainCreation(
   actorId: string,
   approved: boolean,
 ) {
-  if (!(await getUserPermissions(actorId)).has("admin:full_access")) {
-    throw new ForbiddenError("需要平台管理权限");
-  }
   return await getDb().transaction(async (tx) => {
+    if (!(await getUserPermissions(actorId, tx)).has("admin:full_access")) {
+      throw new ForbiddenError("需要平台管理权限");
+    }
     const [request] = await tx.select().from(domainCreationRequests).where(
       eq(domainCreationRequests.id, requestId),
     ).for("update");
@@ -90,6 +90,12 @@ export async function reviewDomainCreation(
       reviewed_by: actorId,
       reviewed_at: new Date().toISOString(),
     }).where(eq(domainCreationRequests.id, requestId)).returning();
+    await workspaceAudit(tx, actorId, domain?.id ?? null, "domain.update", {
+      operation: "creation_request_review",
+      approved,
+      applicant_id: request.applicant_id,
+      requested_slug: request.slug,
+    }, { type: "domain_creation_request", id: request.id });
     return updated;
   });
 }

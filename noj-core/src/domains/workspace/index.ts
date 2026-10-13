@@ -13,3 +13,5 @@ export * from "./services/limits.ts";
 export * from "./services/submission-limit.ts";
 export * from "./services/storage-quota.ts";
 export * from "./services/account-lifecycle.ts";
+export * from "./services/governance.ts";
+export * from "./services/resource-usage.ts";
