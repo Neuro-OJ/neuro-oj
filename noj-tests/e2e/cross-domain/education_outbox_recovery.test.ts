@@ -98,9 +98,9 @@ Deno.test({
       Deno.env.get("E2E_DB_URL") ?? Deno.env.get("DATABASE_URL")!,
       { max: 1 },
     );
-    const core = "noj-e2e-core",
-      judge = "noj-e2e-judge",
-      gateway = "noj-e2e-llm-gateway";
+    const core = Deno.env.get("E2E_CORE_CONTAINER") ?? "noj-e2e-core",
+      judge = Deno.env.get("E2E_JUDGE_CONTAINER") ?? "noj-e2e-judge",
+      gateway = Deno.env.get("E2E_GATEWAY_CONTAINER") ?? "noj-e2e-llm-gateway";
     const suffix = `${Date.now().toString(36)}${
       crypto.randomUUID().slice(0, 4)
     }`;

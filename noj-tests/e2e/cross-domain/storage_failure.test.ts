@@ -1,8 +1,7 @@
 /**
- * 存储故障 E2E：本地支持包缺失时，下载可观测失败且新提交在预检阶段被拒绝。
+ * 存储故障 E2E：支持包缺失时，下载可观测失败且新提交在预检阶段被拒绝。
  *
- * E2E 栈使用 `STORAGE_PROVIDER=local`（见 docker-compose.e2e.yml），因此本测试
- * 不验证 S3 presigned URL，而是验证：
+ * 标准 E2E 栈使用 local；独立正式镜像验收可使用 S3 和显式容器定位，验证：
  * - 无支持包题目下载返回 404（local 存储路径不存在）
  * - 存储文件被删除后下载返回 5xx（存储故障可观测）
  * - 已发布版本的支持包缺失时拒绝新提交，不产生无从执行的记录
@@ -188,34 +187,46 @@ e2eTest("[e2e/storage-failure] 存储文件缺失时下载返回 5xx", async () 
   const storageUrl =
     (published.body as { data: { support_package_storage_url: string | null } })
       .data.support_package_storage_url;
-  if (!storageUrl || !storageUrl.startsWith("noj-storage://local/")) {
-    throw new Error("期望 local 存储 URL, 实际 " + storageUrl);
+  const provider = Deno.env.get("STORAGE_PROVIDER") ?? "local";
+  if (!storageUrl || !storageUrl.startsWith(`noj-storage://${provider}/`)) {
+    throw new Error(`期望 ${provider} 存储 URL, 实际 ${storageUrl}`);
   }
-  // 解析 local key：noj-storage://local/<base64>?checksum_sha256=...
-  brokenStorageKey = storageUrl.split("?")[0].replace(
-    "noj-storage://local/",
-    "",
-  );
+  brokenStorageKey = decodeURIComponent(new URL(storageUrl).pathname.slice(1));
 
-  // 删除容器内存储文件模拟存储故障（与 pipeline.test.ts 的 docker exec 模式一致）
-  try {
-    const cmd = new Deno.Command("docker", {
-      args: [
-        "exec",
-        "noj-e2e-core",
-        "rm",
-        "-f",
-        `/app/data/storage/${brokenStorageKey}.zip`,
-      ],
-    });
-    const out = await cmd.output();
-    if (!out.success) {
-      console.log("  ⚠ docker exec 删除存储文件失败，跳过存储故障断言");
-      return;
-    }
-  } catch {
-    console.log("  ⚠ docker exec 不可用，跳过存储故障断言");
-    return;
+  async function execute(container: string, args: string[]) {
+    return await new Deno.Command("docker", {
+      args: ["exec", container, ...args],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+  }
+  if (provider === "s3") {
+    const container = Deno.env.get("E2E_MINIO_CONTAINER") ?? "noj-e2e-minio";
+    const alias = await execute(container, [
+      "mc",
+      "alias",
+      "set",
+      "storage-failure",
+      "http://localhost:9000",
+      Deno.env.get("MINIO_ROOT_USER") ?? "minioadmin",
+      Deno.env.get("MINIO_ROOT_PASSWORD") ?? "minioadmin",
+    ]);
+    if (!alias.success) throw new Error("无法配置存储故障夹具的 MinIO 连接");
+    const object = `storage-failure/${
+      Deno.env.get("S3_BUCKET") ?? "noj-support-packages"
+    }/${brokenStorageKey}`;
+    const before = await execute(container, ["mc", "stat", object]);
+    if (!before.success) throw new Error("故障注入前 S3 支持包对象必须存在");
+    const removed = await execute(container, ["mc", "rm", object]);
+    if (!removed.success) throw new Error("删除故障夹具的 S3 支持包失败");
+    const after = await execute(container, ["mc", "stat", object]);
+    if (after.success) throw new Error("故障注入后 S3 支持包对象仍然存在");
+  } else {
+    const removed = await execute(
+      Deno.env.get("E2E_CORE_CONTAINER") ?? "noj-e2e-core",
+      ["rm", "-f", `/app/data/storage/${brokenStorageKey}.zip`],
+    );
+    if (!removed.success) throw new Error("删除故障夹具的 local 支持包失败");
   }
 
   const download = await apiGet(
