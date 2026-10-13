@@ -110,6 +110,7 @@ export async function saveEvaluationResult(
         contest_id: submissions.contest_id,
         user_id: submissions.user_id,
         problem_id: submissions.problem_id,
+        domain_id: submissions.domain_id,
         status: submissions.status,
         artifact_storage_url: submissions.artifact_storage_url,
         active_attempt_id: submissions.active_attempt_id,
@@ -237,6 +238,7 @@ export async function saveEvaluationResult(
       contest_id: sub.contest_id,
       user_id: sub.user_id,
       problem_id: sub.problem_id,
+      domain_id: sub.domain_id,
       is_rejudge: attempt.source !== "initial",
       artifact_storage_url: sub.artifact_storage_url,
       outbox_events: outboxEvents,
@@ -251,10 +253,10 @@ export async function saveEvaluationResult(
     if (outcome.contest_id) {
       const unended = await filterUnendedContestIds([outcome.contest_id]);
       if (!unended.has(outcome.contest_id)) {
-        applyNewResult();
+        applyNewResult(outcome.domain_id ?? undefined);
       }
     } else {
-      applyNewResult();
+      applyNewResult(outcome.domain_id ?? undefined);
     }
   }
 

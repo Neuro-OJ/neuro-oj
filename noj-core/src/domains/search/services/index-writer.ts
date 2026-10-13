@@ -11,11 +11,15 @@ export async function upsertSearchEntry(
   // deno-lint-ignore no-explicit-any
   db: any = getDb(),
 ): Promise<void> {
+  const domainId = input.domainId === undefined
+    ? await resolveSearchEntryDomain(input.entityType, input.entityId, db)
+    : input.domainId;
   await db
     .insert(searchEntries)
     .values({
       entity_type: input.entityType,
       entity_id: input.entityId,
+      domain_id: domainId,
       title: input.title,
       body: input.body,
       metadata: input.metadata,
@@ -31,6 +35,7 @@ export async function upsertSearchEntry(
     .onConflictDoUpdate({
       target: [searchEntries.entity_type, searchEntries.entity_id],
       set: {
+        domain_id: domainId,
         title: input.title,
         body: input.body,
         metadata: input.metadata,
@@ -43,6 +48,29 @@ export async function upsertSearchEntry(
         updated_at: input.updatedAt,
       },
     });
+}
+
+/** 资源索引归属由源记录确定，账号与平台公告保留实例级关系。 */
+async function resolveSearchEntryDomain(
+  type: string,
+  id: string,
+  db: Executor,
+): Promise<string | null> {
+  const query = type === "problem"
+    ? sql`SELECT domain_id FROM problems WHERE id=${id}`
+    : type === "contest"
+    ? sql`SELECT domain_id FROM contests WHERE id=${id}`
+    : type === "community_post"
+    ? sql`SELECT domain_id FROM community_posts WHERE id=${id}`
+    : type === "community_comment"
+    ? sql`SELECT domain_id FROM community_comments WHERE id=${id}`
+    : type === "submission"
+    ? sql`SELECT domain_id FROM submissions WHERE id=${id}`
+    : null;
+  if (!query) return null;
+  const rows = await db.execute(query);
+  return unwrapFirstRow<{ domain_id: string | null }>(rows as never)
+    ?.domain_id ?? null;
 }
 
 export async function deleteSearchEntry(
@@ -327,8 +355,6 @@ export async function buildContestEntry(
     created_at: string;
     updated_at: string;
     participant_ids: string[];
-    problem_titles: string[];
-    problem_display_ids: string[];
   }>(sql`
     SELECT c.id, c.public_id, c.title, c.description, c.kind, c.is_public,
            c.created_at, c.updated_at,
@@ -336,23 +362,7 @@ export async function buildContestEntry(
              SELECT array_agg(user_id)
              FROM contest_participants cp
              WHERE cp.contest_id = c.id
-           ), '{}') AS participant_ids,
-           COALESCE((
-             SELECT array_agg(p.title ORDER BY cp.sort_order)
-             FROM contest_problems cp
-             JOIN problems p ON p.id = cp.problem_id
-             WHERE cp.contest_id = c.id
-               -- #554：仅公开题进入索引，避免公开赛引用私题时泄露题目标题
-               AND p.visibility = 'public'
-           ), '{}') AS problem_titles,
-           COALESCE((
-             SELECT array_agg(p.type || p.number ORDER BY cp.sort_order)
-             FROM contest_problems cp
-             JOIN problems p ON p.id = cp.problem_id
-             WHERE cp.contest_id = c.id
-               -- #554：display_id 同理，私题编号不进索引
-               AND p.visibility = 'public'
-           ), '{}') AS problem_display_ids
+           ), '{}') AS participant_ids
     FROM contests c
     WHERE c.id = ${id}
   `);
@@ -366,22 +376,17 @@ export async function buildContestEntry(
     created_at: string;
     updated_at: string;
     participant_ids: string[];
-    problem_titles: string[];
-    problem_display_ids: string[];
   }>(rows as never);
   if (!row) return null;
-  const problemText = row.problem_titles.join(" ");
   return {
     entityType: "contest",
     entityId: row.id,
     title: row.title,
-    body: `${row.description} ${problemText}`.trim(),
+    body: row.description,
     metadata: {
       public_id: row.public_id,
       kind: row.kind,
       is_public: row.is_public,
-      problem_titles: row.problem_titles,
-      problem_display_ids: row.problem_display_ids,
     },
     ownerId: null,
     participantIds: row.participant_ids,

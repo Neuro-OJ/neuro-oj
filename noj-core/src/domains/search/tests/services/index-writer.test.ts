@@ -405,7 +405,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "index-writer: buildContestEntry 包含关联题目名",
+  name: "index-writer: buildContestEntry 只索引比赛摘要，不携带赛题集合",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -453,9 +453,9 @@ Deno.test({
     });
     const entry = await buildContestEntry("contest-entry-1");
     assertEquals(entry !== null, true);
-    assertEquals(entry?.metadata.problem_titles, ["竞赛关联题"]);
-    assertEquals(entry?.metadata.problem_display_ids, ["P7"]);
-    assert(entry!.body.includes("竞赛关联题"));
+    assertEquals(entry?.metadata.problem_titles, undefined);
+    assertEquals(entry?.metadata.problem_display_ids, undefined);
+    assertEquals(entry!.body, "竞赛描述");
   },
 });
 
@@ -533,9 +533,9 @@ Deno.test({
     ]);
     const entry = await buildContestEntry("contest-entry-2");
     assertEquals(entry !== null, true);
-    // 只有公开题可进索引；私题标题/编号必须完全不出现
-    assertEquals(entry?.metadata.problem_titles, ["公开关联题"]);
-    assertEquals(entry?.metadata.problem_display_ids, ["P8"]);
+    // 题目清单由比赛授权接口提供，不进入摘要搜索索引。
+    assertEquals(entry?.metadata.problem_titles, undefined);
+    assertEquals(entry?.metadata.problem_display_ids, undefined);
     assert(!entry!.body.includes("赛前保密的私题"));
     assert(!entry!.body.includes("U9"));
   },

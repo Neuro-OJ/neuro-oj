@@ -1,76 +1,86 @@
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
+import {
+  type OptionalAuthEnv,
+  optionalAuthMiddleware,
+} from "../../identity/index.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../workspace/index.ts";
 import { Channels } from "../../../shared/sse/event-bus.ts";
 import { createSseStream } from "../../../shared/sse/sse-stream.ts";
 import {
-  replayToStream,
+  lastEventId,
   subscribeToChannel,
 } from "../../../shared/sse/server-helpers.ts";
+import { replaySseEvents } from "../../../shared/sse/sse-events.ts";
+import { getDomainSubmissionStats } from "../services/stats-cache.ts";
 import {
-  getCachedTodayStats,
-  getCachedTotalStats,
-} from "../services/stats-cache.ts";
+  loadDomainQueryScope,
+  PUBLIC_DEFAULT_QUERY_SCOPE,
+} from "../services/domain-query.ts";
 
-/**
- * query 域公开统计 SSE 路由。
- *
- * 无鉴权，挂载在 `/api/v1` 前缀下。
- */
-const statsSse = new Hono();
-
-statsSse.get("/submissions/stats/events", (c) => {
-  return createSseStream(
-    c,
-    async ({ stream, closed, onUnsubscribe }) => {
-      // 连接建立后立即推送当前统计数据（类似 MQTT Retain 语义）
+/** 每次实时推送和持久重放重新验证当前成员关系；只发送重算的允许统计字段。 */
+export const domainStatsSse = new Hono<OptionalAuthEnv>();
+const statsSse = new Hono<OptionalAuthEnv>();
+async function handler(c: Context<OptionalAuthEnv>) {
+  const explicitSlug = c.req.param("slug"), slug = explicitSlug ?? "main";
+  if (!explicitSlug) await ensureDefaultWorkspace();
+  const initialScope = await loadDomainQueryScope(slug, c.var.userId ?? null);
+  const channel = initialScope.domainId === DEFAULT_DOMAIN_ID
+    ? Channels.stats
+    : `noj:events:domain:${initialScope.domainId}:stats`;
+  c.header("Cache-Control", "no-store");
+  return createSseStream(c, async (streamContext) => {
+    const snapshot = async () => {
+      const current = await loadDomainQueryScope(slug, c.var.userId ?? null);
+      const scope = explicitSlug ? current : PUBLIC_DEFAULT_QUERY_SCOPE;
+      const [total, today] = await Promise.all([
+        getDomainSubmissionStats(scope),
+        getDomainSubmissionStats(scope, true),
+      ]);
+      return { type: "stats:updated", total, today };
+    };
+    await streamContext.stream.writeSSE({
+      event: "stats:updated",
+      data: JSON.stringify(await snapshot()),
+    });
+    subscribeToChannel(
+      streamContext.onUnsubscribe,
+      channel,
+      "stats:updated",
+      streamContext.stream,
+      () => streamContext.closed,
+      streamContext.close,
+      async () => {
+        try {
+          return JSON.stringify(await snapshot());
+        } catch {
+          streamContext.close();
+          return null;
+        }
+      },
+    );
+    const missed = await replaySseEvents([channel], lastEventId(c), 200);
+    for (const event of missed) {
+      if (streamContext.closed) return;
       try {
-        const [total, today] = await Promise.all([
-          getCachedTotalStats(),
-          getCachedTodayStats(),
-        ]);
-        await stream.writeSSE({
+        await streamContext.stream.writeSSE({
           event: "stats:updated",
-          data: JSON.stringify({ type: "stats:updated", total, today }),
+          id: String(event.id),
+          data: JSON.stringify(await snapshot()),
         });
       } catch {
-        // 初始化失败不影响后续订阅
+        streamContext.close();
+        return;
       }
-
-      subscribeToChannel(
-        onUnsubscribe,
-        Channels.stats,
-        "stats:updated",
-        stream,
-        () => closed,
-        () => {},
-        async (message) => {
-          try {
-            const [total, today] = await Promise.all([
-              getCachedTotalStats(),
-              getCachedTodayStats(),
-            ]);
-            return JSON.stringify({
-              type: "stats:updated",
-              total,
-              today,
-              ...JSON.parse(message),
-            });
-          } catch {
-            // 静默失败
-            return null;
-          }
-        },
-      );
-
-      // 重放缺失事件
-      await replayToStream(
-        c,
-        stream,
-        () => closed,
-        [Channels.stats],
-        "stats:updated",
-      );
-    },
-  );
-});
-
+    }
+  });
+}
+statsSse.get("/submissions/stats/events", optionalAuthMiddleware, handler);
+domainStatsSse.get(
+  "/domains/:slug/submissions/stats/events",
+  optionalAuthMiddleware,
+  handler,
+);
 export default statsSse;

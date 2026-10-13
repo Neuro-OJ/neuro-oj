@@ -104,9 +104,7 @@ export function unendedPublicContestForProblem(
     WHERE cp.problem_id = ${problemIdExpr}
       ${
     domainIdExpr
-      ? sql`AND (c.domain_id = ${domainIdExpr} OR (c.domain_id IS NULL
-        AND EXISTS (SELECT 1 FROM domains legacy_domain WHERE legacy_domain.id = ${domainIdExpr}
-          AND legacy_domain.slug = 'main')))`
+      ? sql`AND COALESCE(c.domain_id, ${DEFAULT_DOMAIN_ID}) = ${domainIdExpr}`
       : sql``
   }
       AND c.kind = 'public'

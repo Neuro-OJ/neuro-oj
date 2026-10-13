@@ -232,6 +232,27 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const now = new Date().toISOString();
+    await getDb().insert(users).values(["u-del-a", "u-del-b"].map((id) => ({
+      id,
+      username: id,
+      email: `${id}@example.com`,
+      created_at: now,
+      updated_at: now,
+    })));
+    await getDb().insert(conversations).values({
+      id: "conv-perm-1",
+      user1_id: "u-del-a",
+      user2_id: "u-del-b",
+      created_at: now,
+      last_message_at: now,
+    });
+    await getDb().insert(messages).values({
+      id: "msg-perm-1",
+      conversation_id: "conv-perm-1",
+      sender_id: "u-del-a",
+      content: "私信秘密",
+      created_at: now,
+    });
     await upsertSearchEntry({
       entityType: "message",
       entityId: "msg-perm-1",

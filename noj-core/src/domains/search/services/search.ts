@@ -5,9 +5,18 @@ import type { SearchPermissionContext } from "./permission-filter.ts";
 import {
   communityVisibilityWhere,
   contestSecrecyProblemWhere,
+  currentSearchResourceWhere,
   notGatedContestContentWhere,
   permissionWhere,
 } from "./permission-filter.ts";
+
+// 旧索引的比赛body可能包含未公开赛题；匹配和输出均读取当前比赛摘要。
+const safeBody = sql`CASE WHEN entity_type='contest' THEN
+  (SELECT c.description FROM contests c WHERE c.id=search_entries.entity_id) ELSE body END`;
+const safeVector = sql`CASE WHEN entity_type='contest' THEN
+  to_tsvector('simple', title || ' ' || coalesce(${safeBody},'')) ELSE search_vector END`;
+const safeMetadata =
+  sql`CASE WHEN entity_type='contest' THEN metadata-'problem_titles'-'problem_display_ids' ELSE metadata END`;
 
 function escapeLikePattern(s: string): string {
   return s.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll(
@@ -61,20 +70,21 @@ export async function searchGrouped(params: {
       metadata: Record<string, unknown>;
     }>(sql`
       SELECT id, entity_type, entity_id, title,
-        ts_rank(search_vector, websearch_to_tsquery('simple', ${q})) AS rank,
+        ts_rank(${safeVector}, websearch_to_tsquery('simple', ${q})) AS rank,
         ts_headline('simple', title, websearch_to_tsquery('simple', ${q}),
           'StartSel=[[HIGHLIGHT]], StopSel=[[/HIGHLIGHT]], MaxWords=20, MinWords=5'
         ) AS highlight,
-        metadata
+        ${safeMetadata} AS metadata
       FROM search_entries
       WHERE entity_type = ${type}
         AND is_active = true
         AND (
-          search_vector @@ websearch_to_tsquery('simple', ${q})
+          ${safeVector} @@ websearch_to_tsquery('simple', ${q})
           OR title ILIKE ${likeQ} ESCAPE '\\'
-          OR body ILIKE ${likeQ} ESCAPE '\\'
+          OR ${safeBody} ILIKE ${likeQ} ESCAPE '\\'
         )
         AND ${permissionWhere(ctx)}
+        AND ${currentSearchResourceWhere(ctx)}
         AND ${communityVisibilityWhere(ctx)}
         AND ${notGatedContestContentWhere(ctx)}
         AND ${contestSecrecyProblemWhere(ctx)}
@@ -121,19 +131,20 @@ export async function searchFlat(params: {
     metadata: Record<string, unknown>;
   }>(sql`
     SELECT id, entity_type, entity_id, title,
-      ts_rank(search_vector, websearch_to_tsquery('simple', ${q})) AS rank,
+      ts_rank(${safeVector}, websearch_to_tsquery('simple', ${q})) AS rank,
       ts_headline('simple', title, websearch_to_tsquery('simple', ${q}),
         'StartSel=[[HIGHLIGHT]], StopSel=[[/HIGHLIGHT]], MaxWords=20, MinWords=5'
       ) AS highlight,
-      metadata
+      ${safeMetadata} AS metadata
     FROM search_entries
     WHERE is_active = true
       AND (
-        search_vector @@ websearch_to_tsquery('simple', ${q})
+        ${safeVector} @@ websearch_to_tsquery('simple', ${q})
         OR title ILIKE ${likeQ} ESCAPE '\\'
-        OR body ILIKE ${likeQ} ESCAPE '\\'
+        OR ${safeBody} ILIKE ${likeQ} ESCAPE '\\'
       )
       AND ${permissionWhere(ctx)}
+      AND ${currentSearchResourceWhere(ctx)}
       AND ${communityVisibilityWhere(ctx)}
       AND ${notGatedContestContentWhere(ctx)}
       AND ${contestSecrecyProblemWhere(ctx)}

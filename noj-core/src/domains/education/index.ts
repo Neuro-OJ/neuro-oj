@@ -14,6 +14,7 @@ export * from "./services/worker-lifecycle.ts";
 export * from "./services/submission-lifecycle.ts";
 export * from "./services/progress-read.ts";
 export * from "./services/student-submissions.ts";
+export * from "./services/submission-access-sql.ts";
 export * from "./services/matrix-csv.ts";
 export * from "./services/feedback.ts";
 export * from "./services/help.ts";

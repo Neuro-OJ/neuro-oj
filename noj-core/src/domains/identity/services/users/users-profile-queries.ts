@@ -21,8 +21,36 @@ import type {
   ProfileStatsRow,
   ProfileUserRow,
 } from "./users-profile-types.ts";
+import {
+  PUBLIC_DEFAULT_QUERY_SCOPE,
+  submissionQueryVisibility,
+} from "../../../query/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
+import { domainProblemBindingAvailableWhere } from "../../../catalog/index.ts";
 
 type Db = ReturnType<typeof getDb>;
+function publicSubmissionCondition() {
+  return submissionQueryVisibility(PUBLIC_DEFAULT_QUERY_SCOPE, {
+    domainId: submissions.domain_id,
+    bindingId: submissions.domain_problem_binding_id,
+    contestId: submissions.contest_id,
+  });
+}
+function publicCommunityCondition() {
+  return sql`coalesce(${communityPosts.domain_id},${DEFAULT_DOMAIN_ID})=${DEFAULT_DOMAIN_ID}
+    AND (${communityPosts.domain_id} IS NULL OR EXISTS (SELECT 1 FROM domains profile_domain
+      WHERE profile_domain.id=${DEFAULT_DOMAIN_ID} AND profile_domain.status<>'suspended'
+        AND profile_domain.configuration->>'access'='public'
+        AND profile_domain.configuration->'features'->>'community'='true'))
+    AND (${communityPosts.problem_id} IS NULL OR ${communityPosts.domain_id} IS NULL
+      OR ${
+    domainProblemBindingAvailableWhere(
+      communityPosts.domain_problem_binding_id,
+      sql`${DEFAULT_DOMAIN_ID}`,
+      { member: false },
+    )
+  })`;
+}
 
 /** 个人主页查看者上下文（用于公开赛题目隐藏判定，审计 VULN-07）。 */
 export interface ProfileViewerContext {
@@ -58,7 +86,12 @@ function contestSecrecyCondition(
       )
     )
     AND (
-      NOT (${unendedPublicContestForProblem(submissions.problem_id)})
+      NOT (${
+    unendedPublicContestForProblem(
+      submissions.problem_id,
+      sql`${DEFAULT_DOMAIN_ID}`,
+    )
+  })
       OR ${problems.owner_id} = ${viewer.viewerId ?? null}
     )
   )`;
@@ -111,9 +144,12 @@ export function queryProfileStats(
     // problem_id 为 NOT NULL 外键，inner join 不会丢行。
     .innerJoin(problems, eq(submissions.problem_id, problems.id))
     .where(
-      secrecy
-        ? and(eq(submissions.user_id, userId), secrecy)
-        : eq(submissions.user_id, userId),
+      and(
+        publicSubmissionCondition(),
+        secrecy
+          ? and(eq(submissions.user_id, userId), secrecy)
+          : eq(submissions.user_id, userId),
+      ),
     )
     .then((rows) => rows[0]);
 }
@@ -140,23 +176,29 @@ export function querySolvedProblems(
     // 特权查看者（管理员 / 主页本人 / 题目 owner）才可能看到这类行，
     // 标记出来供前端做"已被公开赛收编"的视觉提示（审计 VULN-07）
     is_contest_hidden: sql<boolean>`${
-      unendedPublicContestForProblem(submissions.problem_id)
+      unendedPublicContestForProblem(
+        submissions.problem_id,
+        sql`${DEFAULT_DOMAIN_ID}`,
+      )
     }`
       .as("is_contest_hidden"),
   })
     .from(unifiedSubmissionSources)
     .innerJoin(problems, eq(submissions.problem_id, problems.id))
     .where(
-      secrecy
-        ? and(
-          eq(submissions.user_id, userId),
-          eq(submissions.is_accepted, true),
-          secrecy,
-        )
-        : and(
-          eq(submissions.user_id, userId),
-          eq(submissions.is_accepted, true),
-        ),
+      and(
+        publicSubmissionCondition(),
+        secrecy
+          ? and(
+            eq(submissions.user_id, userId),
+            eq(submissions.is_accepted, true),
+            secrecy,
+          )
+          : and(
+            eq(submissions.user_id, userId),
+            eq(submissions.is_accepted, true),
+          ),
+      ),
     )
     .groupBy(submissions.problem_id, problems.title, problems.difficulty)
     .orderBy(sql`min(${submissions.created_at}) DESC`);
@@ -196,9 +238,12 @@ export function queryRecentSubmissions(
       ),
     )
     .where(
-      secrecy
-        ? and(eq(submissions.user_id, userId), secrecy)
-        : eq(submissions.user_id, userId),
+      and(
+        publicSubmissionCondition(),
+        secrecy
+          ? and(eq(submissions.user_id, userId), secrecy)
+          : eq(submissions.user_id, userId),
+      ),
     )
     .orderBy(sql`${submissions.created_at} DESC`)
     .limit(10);
@@ -224,9 +269,15 @@ export function queryProfileCommunityStats(
   // 口径必须是 **unended**（含 pending 赛前筹备期），不能用 running：
   // 个人主页匿名可读，用 running 会让"已被未开始公开赛收编"的题解在赛前就可见
   //（面 1.4 审计 F-01）。
-  const solutionGate = moderator
-    ? sql`true`
-    : sql`NOT ${unendedPublicContestForProblem(communityPosts.problem_id)}`;
+  const solutionGate = and(
+    publicCommunityCondition(),
+    moderator ? sql`true` : sql`NOT ${
+      unendedPublicContestForProblem(
+        communityPosts.problem_id,
+        sql`${DEFAULT_DOMAIN_ID}`,
+      )
+    }`,
+  )!;
   return db.select({
     following_count: sql<
       number
@@ -239,7 +290,7 @@ export function queryProfileCommunityStats(
     >`(select count(*) from community_posts where author_id = ${userId} and type = 'solution' and status = 'published' and ${solutionGate})::int`,
     moment_count: sql<
       number
-    >`(select count(*) from community_posts where author_id = ${userId} and type = 'moment' and status = 'published')::int`,
+    >`(select count(*) from community_posts where author_id = ${userId} and type = 'moment' and status = 'published' AND ${publicCommunityCondition()})::int`,
   }).from(users).where(eq(users.id, userId)).limit(1).then((rows) => rows[0]);
 }
 
@@ -263,6 +314,7 @@ export function queryProfileSolutions(
     eq(communityPosts.author_id, userId),
     eq(communityPosts.type, "solution"),
     eq(communityPosts.status, "published"),
+    publicCommunityCondition(),
   ];
   // 直接用 contest 域的共享谓词而非 community 域的 notGatedSolution()：
   // 本查询已固定 type='solution'，无需重复该判断，同时避免 identity → community 反向依赖
@@ -270,7 +322,12 @@ export function queryProfileSolutions(
   // 否则"计数 3、列表 2 条"本身就是侧信道，且赛前窗口会漏（面 1.4 审计 F-01）。
   if (!moderator) {
     conditions.push(
-      sql`NOT ${unendedPublicContestForProblem(communityPosts.problem_id)}`,
+      sql`NOT ${
+        unendedPublicContestForProblem(
+          communityPosts.problem_id,
+          sql`${DEFAULT_DOMAIN_ID}`,
+        )
+      }`,
     );
   }
   return db.select({
@@ -298,6 +355,7 @@ export function queryProfileMoments(
         eq(communityPosts.author_id, userId),
         eq(communityPosts.type, "moment"),
         eq(communityPosts.status, "published"),
+        publicCommunityCondition(),
       ),
     ).orderBy(sql`${communityPosts.created_at} DESC`).limit(10);
 }
