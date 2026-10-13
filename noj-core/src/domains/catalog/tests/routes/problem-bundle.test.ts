@@ -972,6 +972,96 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name:
+    "import-bundle: 目标题目模式可写入**未发布**题目的草稿（新建题目后上传支持包）",
+  ignore: skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
+
+    // 编辑器主路径：先建题（未发布；建题即写入首个草稿）……
+    const createRes = await app.request("/api/v1/problems", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "待上传题包",
+        description: "占位题面",
+        difficulty: "easy",
+        type: "P",
+        visibility: "public",
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+          },
+          solution: {
+            image: "noj-solution-python",
+            call_timeout_ms: 2000,
+            memory_limit_mb: 512,
+          },
+        },
+      }),
+    });
+    assertEquals(createRes.status, 201);
+    const problemId = (await createRes.json()).data.id as string;
+    const revision = await draftRevisionOf(problemId);
+    const countBefore = (await getDb().select({ id: problems.id }).from(
+      problems,
+    )).length;
+
+    // ……缺少编辑基线仍是 428（乐观锁语义不变）
+    const missing = new FormData();
+    missing.append("file", makeZipBlob({ type: "P" }), "target.zip");
+    missing.append("problem_id", problemId);
+    const missingRes = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: missing,
+    });
+    assertEquals(missingRes.status, 428);
+
+    // ……携带当前基线 → 写入该题草稿，不新建题目
+    const formData = new FormData();
+    formData.append("file", makeZipBlob({ type: "P" }), "target.zip");
+    formData.append("problem_id", problemId);
+    formData.append("expected_revision", String(revision));
+    const res = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "If-Match": String(revision),
+      },
+      body: formData,
+    });
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.data.id, problemId);
+    assertEquals(body.data.draft_revision, revision + 1);
+
+    const { getProblemDraft } = await import(
+      "../../services/versioning/draft.ts"
+    );
+    const draft = await getProblemDraft(problemId);
+    assertEquals(
+      (draft.content as { title: string }).title,
+      `导入测试题 ${ts}`,
+    );
+    const countAfter = (await getDb().select({ id: problems.id }).from(
+      problems,
+    )).length;
+    assertEquals(countAfter, countBefore, "目标模式不得创建新题目");
+  },
+});
+
 // 清理
 Deno.test({
   name: "import-bundle: cleanup",

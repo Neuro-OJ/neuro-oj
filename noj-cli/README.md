@@ -129,7 +129,16 @@ noj-cli problem init <slug> [--type P|U] [--judge-type dual|oi] \
   [--difficulty easy|medium|hard]
 noj-cli problem lint <目录>
 noj-cli problem pack <目录> --out <目录>
+noj-cli problem push <目录|zip> --server https://noj.example.com [--publish]
 ```
+
+`problem push`
+把题目包推送到平台建题（与网页「从题目包导入」同一接口）：目录会先 lint
+再打包，有错误不上传；默认保存为草稿，`--publish` 导入后立即发布，输出编辑页
+地址。认证优先读环境变量
+`NOJ_TOKEN`，未设置时在终端提示登录（密码不回显，支持两步
+验证）；令牌不落盘。`--server` 也可用 `NOJ_SERVER` 指定，非本机地址必须是
+HTTPS。
 
 `problem init` 在 TTY 下进入交互引导（含校验与回退，输入 `:b` 退回上一步）； 非
 TTY 或 `--no-interactive` 需显式给出参数。

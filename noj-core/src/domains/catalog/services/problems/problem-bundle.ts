@@ -258,10 +258,10 @@ export async function importProblemBundle(
     }
     manifest.type = identity.type;
     number = identity.number;
-    if (!identity.latest_version_id) {
-      // 未发布题目 API 无法提交，也不存在编辑基线：target 模式必须有 draft revision。
-      throw draftRevisionRequired();
-    }
+    // 编辑基线必填（缺失 428、过时 409）。未发布题目同样适用：建题即写入
+    // 首个草稿（无草稿行时为 `getProblemDraft` 派生的虚拟 revision 0），而
+    // "新建题目 → 上传支持包"正是编辑器的主路径。此前这里对未发布题目一律
+    // 428，导致这条路径在任何情况下都走不通。
     if (targetExpectedRevision === undefined) throw draftRevisionRequired();
     const currentRevision = (await getProblemDraft(targetProblemId, identity))
       .revision;

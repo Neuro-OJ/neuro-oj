@@ -10,6 +10,12 @@ import { UsageError } from "../util/args.ts";
 import { type BundleFiles, lintBundle, type LintFinding } from "./lint.ts";
 import { packBundle } from "./pack.ts";
 import { initProblemScaffold, validateSlug } from "./init.ts";
+import {
+  normalizeServer,
+  pushBundle,
+  PushError,
+  pushErrorHint,
+} from "./push.ts";
 import { guideProblemInit } from "./tui.ts";
 import { realIO } from "../tui/io.ts";
 import { zipSync } from "fflate";
@@ -33,6 +39,10 @@ export interface ProblemArgs {
   type?: string;
   difficulty?: string;
   judgeType?: "dual" | "oi";
+  /** push: 平台地址（缺省读 NOJ_SERVER）。 */
+  server?: string;
+  /** push: 导入后立即发布。 */
+  publish: boolean;
 }
 
 /** 解析 problem 子命令参数。 */
@@ -42,6 +52,7 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
     strict: false,
     json: false,
     noInteractive: false,
+    publish: false,
   };
   const positional: string[] = [];
   const takeValue = (name: string, i: number): string => {
@@ -84,6 +95,13 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
         i++;
         break;
       }
+      case "--server":
+        out.server = takeValue("--server", i);
+        i++;
+        break;
+      case "--publish":
+        out.publish = true;
+        break;
       case "--strict":
         out.strict = true;
         break;
@@ -107,7 +125,7 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
   // 使 `problem lint --dir <别的题包>` 把 out.dir 覆盖成 undefined，
   // 随后静默回落到 cwd 并返回 0——既忽略用户显式指定的目录，
   // 又给出假阳性结果（校验/打包的其实是当前目录）。
-  if (out.sub === "lint" || out.sub === "pack") {
+  if (out.sub === "lint" || out.sub === "pack" || out.sub === "push") {
     if (positional.length > 0) out.dir = positional[0];
     out.slug = undefined;
   }
@@ -219,23 +237,25 @@ export function bundleSlug(dir: string): string {
   return last;
 }
 
-/** 执行 `problem pack`。 */
-export async function runProblemPack(args: ProblemArgs): Promise<number> {
-  const dir = resolve(args.dir ?? Deno.cwd());
+/** 目录打包结果：lint 报告 + 打包产物（lint 有错误时为 null，不产出包）。 */
+export interface DirectoryPackResult {
+  report: ReturnType<typeof lintBundle>;
+  pack: ReturnType<typeof packBundle> | null;
+}
+
+/**
+ * 校验并打包题目目录（`problem pack` 与 `problem push` 共用）。
+ *
+ * 打包前先 lint：有错误直接返回、不产出包，避免产出/上传不可导入的包。
+ */
+export async function packDirectory(dir: string): Promise<DirectoryPackResult> {
   if (!(await isDirectory(dir))) {
     throw new UsageError(`目录不存在或不是目录：${dir}`);
   }
-  const files = await readBundleFiles(dir);
-
-  // 打包前先 lint：错误直接拒绝，避免产出不可导入的包
-  const report = lintBundle(files);
-  if (report.hasError) {
-    console.error(formatLintReport(report.findings));
-    return EXIT_FAILURE;
-  }
+  const report = lintBundle(await readBundleFiles(dir));
+  if (report.hasError) return { report, pack: null };
 
   const entries: Record<string, Uint8Array> = {};
-  const encoder = new TextEncoder();
   async function collect(current: string, prefix: string): Promise<void> {
     for await (const entry of Deno.readDir(current)) {
       const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
@@ -249,10 +269,20 @@ export async function runProblemPack(args: ProblemArgs): Promise<number> {
     }
   }
   await collect(dir, "");
-
   // 注意：模板文件（manifest.template，缺省 template.py）**保留在包内**——
   // 平台导入题目包时从这里取编辑器初始代码，不再依赖服务器本地 problems-src。
-  const result = packBundle({ entries });
+  return { report, pack: packBundle({ entries }) };
+}
+
+/** 执行 `problem pack`。 */
+export async function runProblemPack(args: ProblemArgs): Promise<number> {
+  const dir = resolve(args.dir ?? Deno.cwd());
+  const { report, pack: result } = await packDirectory(dir);
+  if (!result) {
+    console.error(formatLintReport(report.findings));
+    return EXIT_FAILURE;
+  }
+
   const outDir = resolve(args.out ?? join(dirname(dir), "packages"));
   await Deno.mkdir(outDir, { recursive: true });
   // 产物以**题目目录名（slug）**命名，而非父目录名——父目录是所有题共享的根。
@@ -282,8 +312,89 @@ export async function runProblemPack(args: ProblemArgs): Promise<number> {
     );
     for (const name of result.excluded) console.log(`    - ${name}`);
   }
-  void encoder;
   return EXIT_OK;
+}
+
+/**
+ * 执行 `problem push`：校验打包（或直接读取 .zip）后推送到平台建题。
+ *
+ * 位置参数可以是题目目录（先 lint 再内存打包，有错误不上传）或现成的 .zip。
+ */
+export async function runProblemPush(args: ProblemArgs): Promise<number> {
+  const server = args.server ?? Deno.env.get("NOJ_SERVER");
+  if (!server) {
+    throw new UsageError(
+      "problem push: 需要 --server <平台地址>（或设置 NOJ_SERVER），例如 --server https://noj.example.com",
+    );
+  }
+  // 先校验地址（非本机必须 HTTPS），再读目录/打包：用法错误应尽早失败
+  normalizeServer(server);
+  const target = resolve(args.dir ?? Deno.cwd());
+
+  let bundle: { name: string; data: Uint8Array };
+  if (target.toLowerCase().endsWith(".zip")) {
+    try {
+      bundle = { name: bundleSlug(target), data: await Deno.readFile(target) };
+    } catch {
+      throw new UsageError(`无法读取题目包：${target}`);
+    }
+  } else {
+    const { report, pack } = await packDirectory(target);
+    if (!pack) {
+      console.error(formatLintReport(report.findings));
+      return EXIT_FAILURE;
+    }
+    bundle = { name: `${bundleSlug(target)}.zip`, data: pack.data };
+  }
+
+  const interactive = !args.noInteractive && Deno.stdin.isTerminal();
+  try {
+    const result = await pushBundle(
+      { server, bundle, publish: args.publish },
+      {
+        fetch,
+        io: interactive ? realIO() : null,
+        envToken: Deno.env.get("NOJ_TOKEN"),
+      },
+    );
+    if (args.json) {
+      console.log(JSON.stringify({ pass: true, ...result }, null, 2));
+    } else {
+      const label = result.display_id ?? result.id;
+      const state = result.published
+        ? (result.published.unchanged
+          ? `内容未变化，沿用 V${result.published.version}`
+          : `已发布 V${result.published.version}`)
+        : "草稿，核对后发布即可作答";
+      console.log(
+        `已导入 ${label}${
+          result.title ? `《${result.title}》` : ""
+        }（${state}）`,
+      );
+      console.log(`编辑页：${result.edit_url}`);
+    }
+    return EXIT_OK;
+  } catch (err) {
+    if (!(err instanceof PushError)) throw err;
+    const hint = pushErrorHint(err);
+    if (args.json) {
+      console.log(JSON.stringify(
+        {
+          pass: false,
+          status: err.status,
+          code: err.code,
+          error: err.message,
+          hint,
+        },
+        null,
+        2,
+      ));
+    } else {
+      console.error(`推送失败：${err.message}`);
+      if (hint) console.error(`提示：${hint}`);
+    }
+    return EXIT_FAILURE;
+  }
 }
 
 /**
@@ -391,8 +502,10 @@ export async function runProblem(args: ProblemArgs): Promise<number> {
       return await runProblemPack(args);
     case "init":
       return await runProblemInit(args);
+    case "push":
+      return await runProblemPush(args);
     default:
-      console.error("problem: 需要子命令 init/lint/pack");
+      console.error("problem: 需要子命令 init/lint/pack/push");
       console.error("运行 'noj-cli problem --help' 查看用法。");
       return EXIT_USAGE;
   }
