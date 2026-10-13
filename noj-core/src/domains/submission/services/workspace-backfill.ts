@@ -89,7 +89,7 @@ export async function backfillExecutionWorkspaces(
     UNION ALL SELECT 'objective', count(*), count(*) FILTER (WHERE domain_id IS NULL OR domain_problem_binding_id IS NULL) FROM objective_submissions
     UNION ALL SELECT 'self_tests', count(*), count(*) FILTER (WHERE domain_id IS NULL OR domain_problem_binding_id IS NULL) FROM self_tests
     UNION ALL SELECT 'jobs', count(*), count(*) FILTER (WHERE domain_id IS NULL) FROM submission_jobs
-    UNION ALL SELECT 'items', count(*), count(*) FILTER (WHERE domain_id IS NULL OR (problem_id <> '' AND domain_problem_binding_id IS NULL)) FROM submission_job_items`,
+    UNION ALL SELECT 'items', count(*), count(*) FILTER (WHERE domain_id IS NULL OR (status NOT IN ('failed', 'skipped') AND domain_problem_binding_id IS NULL)) FROM submission_job_items`,
   );
   const rows = (Array.isArray(summaries) ? summaries : (summaries as {
     rows: Array<

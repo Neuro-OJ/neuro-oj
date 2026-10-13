@@ -21,7 +21,10 @@ import {
   acceptUpgradeJob,
   getUpgradeJobForActor,
 } from "../../services/versioning/upgrade-jobs.ts";
-import { insertContestProblems } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  insertContestProblems,
+} from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 
@@ -65,6 +68,7 @@ async function seedProblem(problemId: string, number: number): Promise<void> {
   }
   await db.update(problems).set({ latest_version_id: `${problemId}-v2` })
     .where(eq(problems.id, problemId));
+  await bindPublishedProblemForTest(problemId);
 }
 
 async function seedSubmission(

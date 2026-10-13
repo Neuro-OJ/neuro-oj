@@ -497,6 +497,78 @@ Deno.test("jobs: 手动所选超过 500 条被拒绝", async () => {
   );
 });
 
+Deno.test("jobs: 无合法题目上下文的重试保持 skipped，合法条目继续 pending", async () => {
+  await seedProblem("rj-retry-context", 993101);
+  const db = getDb(), jobId = crypto.randomUUID();
+  await db.insert(submissionJobs).values({
+    id: jobId,
+    domain_id: DEFAULT_DOMAIN_ID,
+    kind: "rejudge",
+    actor_id: "admin-1",
+    idempotency_key: "retry-context-parent",
+    request_hash: "parent",
+    request: request(),
+    status: "completed_with_errors",
+    created_at: now,
+  });
+  await db.insert(submissionJobItems).values(
+    ["rj-retry-context", "deleted-problem", ""].map((problem_id, ordinal) => ({
+      id: crypto.randomUUID(),
+      domain_id: DEFAULT_DOMAIN_ID,
+      job_id: jobId,
+      ordinal,
+      source_kind: "submission" as const,
+      source_id: `retry-context-source-${ordinal}`,
+      problem_id,
+      status: "failed" as const,
+      created_at: now,
+    })),
+  );
+  const retried = await retryRejudgeJob(
+    "admin-1",
+    jobId,
+    "retry-context-child",
+  );
+  assertEquals(retried.status, "queued");
+  const rows = await db.select().from(submissionJobItems).where(
+    eq(submissionJobItems.job_id, retried.job_id),
+  ).orderBy(submissionJobItems.ordinal);
+  assertEquals(rows.map((row) => row.status), [
+    "pending",
+    "skipped",
+    "skipped",
+  ]);
+  assertEquals(
+    rows[0].domain_problem_binding_id,
+    "main-binding-rj-retry-context",
+  );
+  assertEquals(
+    rows.slice(1).map((
+      row,
+    ) => [row.domain_problem_binding_id, row.reason_code, !!row.finished_at]),
+    [
+      [null, "SOURCE_DELETED", true],
+      [null, "SOURCE_DELETED", true],
+    ],
+  );
+  const repeated = await retryRejudgeJob(
+    "admin-1",
+    jobId,
+    "retry-context-child",
+  );
+  assertEquals([repeated.job_id, repeated.existing], [retried.job_id, true]);
+  const terminal = await retryRejudgeJob(
+    "admin-1",
+    retried.job_id,
+    "retry-context-terminal",
+  );
+  assertEquals([terminal.status, terminal.total_items], ["completed", 2]);
+  const [job] = await db.select().from(submissionJobs).where(
+    eq(submissionJobs.id, terminal.job_id),
+  );
+  assertEquals([job.status, !!job.finished_at], ["completed", true]);
+});
+
 Deno.test("jobs: 状态由条目聚合（running / completed）", async () => {
   const db = getDb();
   await seedProblem("rj-p13", 993013);

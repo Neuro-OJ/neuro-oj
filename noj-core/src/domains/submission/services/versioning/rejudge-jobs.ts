@@ -1010,10 +1010,18 @@ export async function retryRejudgeJob(
         tx,
       );
       for (const row of rows) {
+        const context = contexts.get(row.problem_id);
         row.domain_id = DEFAULT_DOMAIN_ID;
-        row.domain_problem_binding_id =
-          contexts.get(row.problem_id)?.domain_problem_binding_id ?? null;
+        row.domain_problem_binding_id = context?.domain_problem_binding_id ??
+          null;
+        if (!context) {
+          row.status = "skipped";
+          row.reason_code = "SOURCE_DELETED";
+          row.reason_message = "源题已不存在，不能重新评测";
+          row.finished_at = now;
+        }
       }
+      const complete = rows.every((row) => row.status === "skipped");
       await tx.insert(submissionJobs).values({
         id: newJobId,
         domain_id: DEFAULT_DOMAIN_ID,
@@ -1026,8 +1034,9 @@ export async function retryRejudgeJob(
           retry_of: jobId,
           policy_changes: [],
         } as unknown as Record<string, unknown>,
-        status: "queued",
+        status: complete ? "completed" : "queued",
         created_at: now,
+        finished_at: complete ? now : null,
       });
       // 整题/整场任务的重试条目数可达数万：分批插入（#41）
       await insertJobItemsBatched(tx, rows);
@@ -1057,7 +1066,9 @@ export async function retryRejudgeJob(
 
   return {
     job_id: newJobId,
-    status: "queued",
+    status: rows.every((row) => row.status === "skipped")
+      ? "completed"
+      : "queued",
     total_items: retryable.length,
     existing: false,
   };

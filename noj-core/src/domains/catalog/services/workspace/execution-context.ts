@@ -21,7 +21,7 @@ export function assertDefaultProblemSource(
   }
 }
 
-/** 旧执行入口只使用默认域；可空绑定仅供扩展迁移期间的存量记录。 */
+/** 旧执行入口只使用默认域，受理时必须具有本域题库绑定。 */
 export async function resolveDefaultExecutionContext(
   problemId: string,
   actorId: string,
@@ -51,7 +51,7 @@ export async function resolveDefaultExecutionContexts(
   });
   const contexts = new Map<
     string,
-    { domain_id: string; domain_problem_binding_id: string | null }
+    { domain_id: string; domain_problem_binding_id: string }
   >();
   const ids = [...new Set(problemIds)];
   // 大任务按固定批次读取，避免 PostgreSQL 参数上限；域行锁只获取一次。
@@ -73,7 +73,9 @@ export async function resolveDefaultExecutionContexts(
       .where(inArray(problems.id, ids.slice(offset, offset + 500)));
     for (const source of sources) {
       assertDefaultProblemSource(source);
-      if (source.disabled_at) throw new NotFoundError("此题已下架");
+      if (!source.binding_id || source.disabled_at) {
+        throw new NotFoundError("默认域不存在可使用的题库绑定");
+      }
       contexts.set(source.id, {
         domain_id: DEFAULT_DOMAIN_ID,
         domain_problem_binding_id: source.binding_id,

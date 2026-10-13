@@ -1,6 +1,9 @@
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
-import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 import {
   authorizeLegacyJobActorForTest,
   saveV2ResultForTest,
@@ -1038,6 +1041,7 @@ Deno.test({
 
       try {
         // 执行：单条重测
+        await bindPublishedProblemForTest(localProblemId);
         await rejudgeSubmission(subId, adminId);
 
         // 验证：审计日志写入
@@ -1172,6 +1176,7 @@ Deno.test({
       // 执行：平台默认缺失。统一任务受理**不在受理阶段**解析 LLM Provider
       // （解析发生在派发阶段并记入条目原因码），因此受理本身必须成功——
       // 关键在于提交状态与 rejudge_seq 都不被改写（不会卡在 pending）。
+      await bindPublishedProblemForTest(localProblemId);
       const accepted = await rejudgeSubmission(subId, adminId);
       assertEquals(typeof accepted.job_id, "string");
 
@@ -1306,6 +1311,7 @@ Deno.test({
 
       try {
         // 执行：批量重测
+        await bindPublishedProblemForTest(localProblemId);
         const result = await rejudgeProblemSubmissions(localProblemId, adminId);
         // 统一任务契约：受理返回任务 ID 与条目数（`submitted` 目标下 3 条均为
         // legacy_unknown → 受理成功但条目在受理阶段即被标记无法按提交时版本重测）

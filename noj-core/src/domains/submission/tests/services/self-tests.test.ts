@@ -1,7 +1,10 @@
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { v2ResultForTest } from "../_versioning-fixtures.ts";
-import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -384,6 +387,7 @@ Deno.test({
     });
     await db.update(problems).set({ latest_version_id: versionId })
       .where(eq(problems.id, problemId));
+    await bindPublishedProblemForTest(problemId);
 
     // 不属于该题的版本：逐字生效（404），不静默换版本
     let code: string | undefined;
@@ -497,6 +501,7 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: v2 }).where(
       eq(problems.id, problemId),
     );
+    await bindPublishedProblemForTest(problemId);
 
     // 显式选择 V1 + 自定义用例（评测队列不可用时记录仍已落库）
     await createSelfTest(USER_ID, problemId, {

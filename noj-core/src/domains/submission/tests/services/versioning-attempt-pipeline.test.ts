@@ -1,4 +1,5 @@
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 import {
   saveV2ResultForTest,
   seedActiveAttemptForTest,
@@ -92,6 +93,7 @@ async function seedProblem(problemId: string, number: number): Promise<void> {
   });
   await db.update(problems).set({ latest_version_id: `${problemId}-v1` })
     .where(eq(problems.id, problemId));
+  await bindPublishedProblemForTest(problemId);
 }
 
 /** 建一次提交（评测队列不可用会抛错，但提交与尝试已落库）。 */

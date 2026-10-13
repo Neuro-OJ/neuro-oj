@@ -25,6 +25,7 @@ import {
 import { updateSetting } from "../../../system/index.ts";
 import { submitObjectivePaper } from "../../../objective/index.ts";
 import { backfillExecutionWorkspaces } from "../../index.ts";
+import { AppError } from "../../../../shared/base/errors.ts";
 
 async function fixture() {
   await resetDbForTest();
@@ -153,6 +154,88 @@ Deno.test("执行回填：保留 ID、代码、受理时间及未知版本，重
   ], [id, "immutable-code", f.now, "legacy_unknown", null]);
   assertEquals(row.domain_id, DEFAULT_DOMAIN_ID);
   assertEquals(row.domain_problem_binding_id, f.binding.id);
+});
+
+Deno.test("执行回填：无合法源题的 failed/skipped 条目保留原始引用和空绑定", async () => {
+  const f = await fixture(), jobId = crypto.randomUUID();
+  await f.db.insert(submissionJobs).values({
+    id: jobId,
+    actor_id: f.user,
+    kind: "rejudge",
+    idempotency_key: "terminal-history",
+    request_hash: "history",
+    status: "completed_with_errors",
+    created_at: f.now,
+  });
+  await f.db.insert(submissionJobItems).values(
+    ["failed", "skipped"].map((status, ordinal) => ({
+      id: crypto.randomUUID(),
+      job_id: jobId,
+      ordinal,
+      source_kind: "submission" as const,
+      source_id: `deleted-source-${ordinal}`,
+      problem_id: ordinal ? "" : "deleted-problem-reference",
+      target_version_ref: "deleted-version-reference",
+      status: status as "failed" | "skipped",
+      created_at: f.now,
+    })),
+  );
+  await backfillExecutionWorkspaces();
+  const summaries = await backfillExecutionWorkspaces();
+  assertEquals(summaries.find((row) => row.kind === "items")?.incomplete, 0);
+  const items = await f.db.select().from(submissionJobItems).where(
+    eq(submissionJobItems.job_id, jobId),
+  ).orderBy(submissionJobItems.ordinal);
+  assertEquals(
+    items.map((item) => [
+      item.domain_id,
+      item.domain_problem_binding_id,
+      item.problem_id,
+      item.status,
+      item.target_version_ref,
+    ]),
+    [
+      [
+        DEFAULT_DOMAIN_ID,
+        null,
+        "deleted-problem-reference",
+        "failed",
+        "deleted-version-reference",
+      ],
+      [DEFAULT_DOMAIN_ID, null, "", "skipped", "deleted-version-reference"],
+    ],
+  );
+});
+
+Deno.test("执行回填：空题目引用不能让无绑定 pending 条目通过核对，事务回滚", async () => {
+  const f = await fixture(), jobId = crypto.randomUUID();
+  await f.db.insert(submissionJobs).values({
+    id: jobId,
+    actor_id: f.user,
+    kind: "rejudge",
+    idempotency_key: "pending-history",
+    request_hash: "history",
+    created_at: f.now,
+  });
+  await f.db.insert(submissionJobItems).values({
+    id: crypto.randomUUID(),
+    job_id: jobId,
+    ordinal: 0,
+    source_kind: "submission",
+    source_id: "deleted-source",
+    problem_id: "",
+    status: "pending",
+    created_at: f.now,
+  });
+  const error = await assertRejects(
+    () => backfillExecutionWorkspaces(),
+    AppError,
+  );
+  assertEquals(error.code, "EXECUTION_BACKFILL_INCOMPLETE");
+  const [job] = await f.db.select().from(submissionJobs).where(
+    eq(submissionJobs.id, jobId),
+  );
+  assertEquals(job.domain_id, null);
 });
 
 Deno.test("执行写入：客观题使用服务端默认域，忽略客户端伪造归属", async () => {

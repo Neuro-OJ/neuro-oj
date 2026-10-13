@@ -1,4 +1,7 @@
-import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  deleteProblemFixtures,
+} from "../../../../../tests/helper.ts";
 /**
  * 真实 PostgreSQL 并发屏障用例：**交叉竞赛的批量策略修改**
  * （2026-10-11 复审问题 2 / tracking task-8）。
@@ -267,6 +270,9 @@ async function seedRound(): Promise<void> {
     },
   ]);
 
+  for (const problemId of ALL_PROBLEMS) {
+    await bindPublishedProblemForTest(problemId);
+  }
   await db.insert(problemVersions).values(
     ALL_PROBLEMS.map((problemId) => ({
       id: versionOf(problemId),

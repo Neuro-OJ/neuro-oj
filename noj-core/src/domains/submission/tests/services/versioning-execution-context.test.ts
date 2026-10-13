@@ -10,6 +10,7 @@
  * - 新增/删除提交递增题目、竞赛与 **global** 作用域 revision。
  */
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -243,6 +244,7 @@ async function seedTwoVersions(
   await db.update(problems).set({ latest_version_id: `${problemId}-v2` }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
 }
 
 async function attemptsOf(submissionId: string) {

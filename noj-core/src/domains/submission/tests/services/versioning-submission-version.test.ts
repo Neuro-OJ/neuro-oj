@@ -22,7 +22,10 @@ import {
 } from "../../services/versioning/submission-version.ts";
 import { createSubmission } from "../../index.ts";
 import type { ProblemContentV1 } from "../../../catalog/index.ts";
-import { insertContestProblems } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  insertContestProblems,
+} from "../../../../../tests/helper.ts";
 
 const now = new Date().toISOString();
 
@@ -115,6 +118,7 @@ async function seedProblem(
   await getDb().update(problems).set({ latest_version_id: `${id}-v1` }).where(
     eq(problems.id, id),
   );
+  await bindPublishedProblemForTest(id);
 }
 
 Deno.test("submission version: 显式版本被采用并标记 known", async () => {
