@@ -44,6 +44,7 @@ import {
 } from "../../submission/index.ts";
 import type { CreateContestInput } from "./../types/contests.ts";
 import { isValidContestType } from "./../types/contests.ts";
+import { resolveDefaultContestAccess } from "../services/default-access.ts";
 import {
   enforceContestRegisterRateLimit,
   enforceContestSubmissionRateLimit,
@@ -51,6 +52,12 @@ import {
 
 const contests = new Hono<OptionalAuthEnv>();
 const MAX_CODE_LENGTH = 100 * 1024;
+for (const path of ["/:id", "/:id/*"]) {
+  contests.use(path, optionalAuthMiddleware, async (c, next) => {
+    await resolveDefaultContestAccess(c.req.param("id")!, c.var.userId ?? null);
+    await next();
+  });
+}
 
 /**
  * 解析竞赛 artifact 提交的 multipart/form-data 请求。
@@ -165,7 +172,12 @@ contests.get("/", async (c) => {
   const type = typeQuery && isValidContestType(typeQuery)
     ? typeQuery
     : undefined;
-  const result = await listContests({ page, perPage, type });
+  const result = await listContests({
+    page,
+    perPage,
+    type,
+    defaultDomainOnly: true,
+  });
   return c.json({
     data: result.data,
     pagination: buildPaginationMeta(page, perPage, result.total),

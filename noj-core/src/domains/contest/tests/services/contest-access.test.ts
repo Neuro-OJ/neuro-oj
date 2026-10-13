@@ -111,8 +111,10 @@ Deno.test({
       await deleteContest(contestId).catch(() => {});
       const db = getDb();
       await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, participantId));
-      await db.delete(users).where(eq(users.id, creatorId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, participantId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, creatorId));
     }
   },
 });
@@ -144,8 +146,10 @@ Deno.test({
       await deleteContest(contestId).catch(() => {});
       const db = getDb();
       await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, participantId));
-      await db.delete(users).where(eq(users.id, creatorId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, participantId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, creatorId));
     }
   },
 });
@@ -177,8 +181,10 @@ Deno.test({
       await deleteContest(contestId).catch(() => {});
       const db = getDb();
       await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, participantId));
-      await db.delete(users).where(eq(users.id, creatorId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, participantId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, creatorId));
     }
   },
 });
@@ -210,9 +216,12 @@ Deno.test({
       await deleteContest(contestId).catch(() => {});
       const db = getDb();
       await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, strangerId));
-      await db.delete(users).where(eq(users.id, participantId));
-      await db.delete(users).where(eq(users.id, creatorId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, strangerId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, participantId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, creatorId));
     }
   },
 });

@@ -1,5 +1,7 @@
-import { sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
+import { contestProblems } from "../../../shared/db/schema.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import {
   getJudgeBackend,
@@ -8,9 +10,10 @@ import {
   type ProblemRuntimeConfig,
   projectProblemContent,
 } from "../../catalog/index.ts";
-import type { ContestProblemResponse } from "../types/contests.ts";
+import type { ContestProblemResponse, ContestType } from "../types/contests.ts";
 import { findContestRow } from "./contest-row.ts";
 import { computeContestStatus } from "./contests.ts";
+import { resolveDomainContestProblems } from "./domain-problems.ts";
 
 /**
  * 获取竞赛题目列表（按排序值升序），可选附带当前用户的作答状态。
@@ -23,10 +26,27 @@ import { computeContestStatus } from "./contests.ts";
 export async function getContestProblems(
   contestId: string,
   userId?: string,
+  organizer = false,
 ): Promise<ContestProblemResponse[]> {
   const contest = await findContestRow(contestId);
   const db = getDb();
-  const hideOiResults = contest.type === "oi" &&
+  // 旧默认域路由也走此读取门面，不能用固定版本恢复已撤销的跨域题面。
+  // 扩展迁移尚未回填的旧比赛行由后续收缩迁移统一补齐绑定。
+  const bindings = await db.select({ problem_id: contestProblems.problem_id })
+    .from(contestProblems).where(and(
+      eq(contestProblems.contest_id, contestId),
+      isNotNull(contestProblems.domain_problem_binding_id),
+    ));
+  if (bindings.length) {
+    await resolveDomainContestProblems(
+      db,
+      contest.domain_id ?? DEFAULT_DOMAIN_ID,
+      bindings.map((row) => row.problem_id),
+      contest.type as ContestType,
+      false,
+    );
+  }
+  const hideOiResults = !organizer && contest.type === "oi" &&
     computeContestStatus(contest.start_time, contest.end_time) !== "ended";
   const rows = await db.execute(sql`
     WITH contest_sources AS (

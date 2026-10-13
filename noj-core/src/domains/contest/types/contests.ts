@@ -137,6 +137,8 @@ export interface UpdateContestInput {
 
 export interface ContestResponse {
   id: string;
+  domain_id: string | null;
+  revision: number;
   public_id: string;
   title: string;
   description: string;

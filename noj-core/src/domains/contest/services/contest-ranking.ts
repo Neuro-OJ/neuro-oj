@@ -29,11 +29,11 @@ export async function publishContestRankingSnapshot(
   contestId: string,
   actorId: string,
   note = "",
-  options: { allowFailed?: boolean } = {},
+  options: { allowFailed?: boolean; executor?: Executor } = {},
 ): Promise<
   { id: string; version: number; rows: KaggleRankingRow[]; created_at: string }
 > {
-  const db = getDb();
+  const db = options.executor ?? getDb();
   const created_at = new Date().toISOString();
   const id = crypto.randomUUID();
   const result = await db.transaction(async (tx) => {

@@ -6,7 +6,14 @@
  */
 import { and, eq } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
-import { contestProblems } from "./../../../shared/db/schema.ts";
+import { contestProblems, domains } from "./../../../shared/db/schema.ts";
+import type { Executor } from "../../../shared/db/executor.ts";
+import { DEFAULT_DOMAIN_ID, loadWorkspace } from "../../workspace/index.ts";
+import {
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError,
+} from "../../../shared/base/errors.ts";
 import type { ContestAccessInfo } from "./../../catalog/index.ts";
 import { computeContestStatus } from "./contests.ts";
 import { findContestRow } from "./contest-row.ts";
@@ -27,22 +34,49 @@ export async function verifyContestAccess(
   userId: string | null,
   contestId: string,
   problemId: string,
+  options: { domainId?: string; executor?: Executor } = {},
 ): Promise<ContestAccessInfo> {
   let startTime: string;
   let endTime: string;
   let type: ContestType;
   let organizer: boolean;
   try {
-    const contest = await findContestRow(contestId);
+    const db = options.executor ?? getDb();
+    const contest = await findContestRow(contestId, db);
+    if (
+      options.domainId &&
+      (contest.domain_id ?? DEFAULT_DOMAIN_ID) !== options.domainId
+    ) {
+      return { contestId, allowed: false, running: false };
+    }
     startTime = contest.start_time;
     endTime = contest.end_time;
     type = contest.type as ContestType;
     organizer = userId !== null && userId === contest.created_by;
-  } catch {
-    return { contestId, allowed: false, running: false };
+    if (contest.domain_id && contest.domain_id !== DEFAULT_DOMAIN_ID) {
+      const [domain] = await db.select({ slug: domains.slug }).from(domains)
+        .where(eq(domains.id, contest.domain_id));
+      if (!domain) return { contestId, allowed: false, running: false };
+      const workspace = await loadWorkspace(domain.slug, userId, {
+        executor: db,
+      });
+      organizer = workspace.platformAdmin ||
+        workspace.context.domainPermissions.has("contest:manage") ||
+        userId === contest.created_by &&
+          workspace.context.domainPermissions.has("contest:manage_own");
+      if (!workspace.membership && !workspace.platformAdmin) {
+        return { contestId, allowed: false, running: false };
+      }
+    }
+  } catch (error) {
+    if (
+      error instanceof NotFoundError || error instanceof ForbiddenError ||
+      error instanceof UnauthorizedError
+    ) return { contestId, allowed: false, running: false };
+    throw error;
   }
 
-  const db = getDb();
+  const db = options.executor ?? getDb();
   const [problem] = await db
     .select({
       problem_id: contestProblems.problem_id,
@@ -59,7 +93,8 @@ export async function verifyContestAccess(
   }
 
   const status = computeContestStatus(startTime, endTime);
-  const participant = userId !== null && await isParticipant(contestId, userId);
+  const participant = userId !== null &&
+    await isParticipant(contestId, userId, db);
   const allowed = participant && (status === "running" || status === "ended");
   return {
     contestId,

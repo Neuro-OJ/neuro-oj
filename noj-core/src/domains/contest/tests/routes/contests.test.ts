@@ -407,10 +407,11 @@ Deno.test({
         problems.id,
         [problemId, otherProblemId],
       ));
-      await db.delete(users).where(inArray(
-        users.id,
-        [adminId, userId, invitedId],
-      ));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(inArray(
+          users.id,
+          [adminId, userId, invitedId],
+        ));
     }
   },
 });

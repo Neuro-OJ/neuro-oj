@@ -190,9 +190,12 @@ Deno.test({
       const db = getDb();
       await db.delete(problems).where(eq(problems.id, problemA));
       await db.delete(problems).where(eq(problems.id, problemB));
-      await db.delete(users).where(eq(users.id, participantId));
-      await db.delete(users).where(eq(users.id, invitedId));
-      await db.delete(users).where(eq(users.id, creatorId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, participantId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, invitedId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, creatorId));
     }
   },
 });
@@ -231,8 +234,10 @@ Deno.test({
       );
     } finally {
       await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, normal));
-      await db.delete(users).where(eq(users.id, owner));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, normal));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, owner));
     }
   },
 });
@@ -266,7 +271,8 @@ Deno.test({
       );
     } finally {
       await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, creator));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, creator));
     }
   },
 });
@@ -301,7 +307,8 @@ Deno.test({
       );
     } finally {
       await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, creator));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, creator));
     }
   },
 });
@@ -340,8 +347,10 @@ Deno.test({
     } finally {
       await deleteContest(contest.id).catch(() => {});
       await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, participant));
-      await db.delete(users).where(eq(users.id, admin));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, participant));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, admin));
     }
   },
 });
@@ -378,8 +387,10 @@ Deno.test({
     } finally {
       await deleteContest(contest.id).catch(() => {});
       await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, participant));
-      await db.delete(users).where(eq(users.id, creator));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, participant));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, creator));
     }
   },
 });
@@ -416,8 +427,10 @@ Deno.test({
     } finally {
       await deleteContest(contest.id).catch(() => {});
       await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, participant));
-      await db.delete(users).where(eq(users.id, creator));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, participant));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, creator));
     }
   },
 });
@@ -490,11 +503,13 @@ Deno.test({
       const participant = await createUser("kind-invite-user");
       await registerForContest(contest.id, participant, "NewInviteCode1");
       assertEquals(await isParticipant(contest.id, participant), true);
-      await db.delete(users).where(eq(users.id, participant));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, participant));
     } finally {
       await deleteContest(contest.id).catch(() => {});
       await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, creator));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, creator));
     }
   },
 });
@@ -541,11 +556,13 @@ Deno.test({
       const participant = await createUser("invite-clear-user");
       await registerForContest(contest.id, participant, "KeepMeCode123");
       assertEquals(await isParticipant(contest.id, participant), true);
-      await db.delete(users).where(eq(users.id, participant));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, participant));
     } finally {
       await deleteContest(contest.id).catch(() => {});
       await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, creator));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, creator));
     }
   },
 });

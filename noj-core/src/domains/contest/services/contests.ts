@@ -1,6 +1,6 @@
 import type { Executor } from "../../../shared/db/executor.ts";
 import { rescheduleContestEducation } from "../../../shared/education-contests.ts";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";
 import {
@@ -33,7 +33,14 @@ import {
   bumpProjectionRevision,
   globalScopeKey,
 } from "./../../submission/index.ts";
-import { type ProblemContentV1 } from "../../catalog/index.ts";
+import {
+  assertDefaultProblemSource,
+  type ProblemContentV1,
+} from "../../catalog/index.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../workspace/index.ts";
 import { findContestRow } from "./contest-row.ts";
 import { contestAllowsProblem } from "./contest-scoring.ts";
 import { normalizeContestTime } from "./contest-window.ts";
@@ -58,6 +65,8 @@ export interface ListContestsParams {
   perPage?: number;
   type?: ContestType;
   showAll?: boolean;
+  /** 旧 API 固定默认域，显式域列表由专用授权入口提供。 */
+  defaultDomainOnly?: boolean;
 }
 
 /** 竞赛列表查询结果（分页数据与总数）。 */
@@ -306,6 +315,7 @@ async function assertContestProblemAddable(
     visibility: problems.visibility,
     latest_version_id: problems.latest_version_id,
     content: problemVersions.content,
+    domain_id: problems.domain_id,
   }).from(problems).leftJoin(
     problemVersions,
     eq(problemVersions.id, problems.latest_version_id),
@@ -314,6 +324,7 @@ async function assertContestProblemAddable(
   if (rows.length !== ids.length) {
     throw new BadRequestError("竞赛包含不存在的题目");
   }
+  for (const row of rows) assertDefaultProblemSource(row);
   if (!isAdmin) {
     for (const row of rows) {
       if (row.visibility !== "public" && row.owner_id !== creatorId) {
@@ -358,6 +369,8 @@ function toContestResponse(
 ): ContestResponse {
   return {
     id: row.id,
+    domain_id: row.domain_id,
+    revision: row.revision,
     public_id: row.public_id,
     title: row.title,
     description: row.description,
@@ -425,6 +438,12 @@ export async function createContest(
   input: CreateContestInput,
   userId: string,
   isAdmin = false,
+  options: {
+    executor?: Executor;
+    domainId?: string;
+    versions?: Map<string, string>;
+    bindings?: Map<string, string>;
+  } = {},
 ): Promise<ContestResponse> {
   if (!input.title.trim()) {
     throw new BadRequestError("竞赛标题不能为空");
@@ -473,18 +492,21 @@ export async function createContest(
   const id = crypto.randomUUID();
   const publicId = generatePublicId("ct");
   const now = new Date().toISOString();
-  const db = getDb();
+  const db = options.executor ?? getDb();
 
   await db.transaction(async (tx) => {
-    const latestVersions = await assertContestProblemAddable(
-      problemInputs,
-      userId,
-      isAdmin,
-      tx,
-      input.type,
-    );
+    if (!options.domainId) await ensureDefaultWorkspace(tx);
+    const latestVersions = options.versions ??
+      await assertContestProblemAddable(
+        problemInputs,
+        userId,
+        isAdmin,
+        tx,
+        input.type,
+      );
     await tx.insert(contests).values({
       id,
+      domain_id: options.domainId ?? DEFAULT_DOMAIN_ID,
       public_id: publicId,
       title: input.title.trim(),
       description: input.description ?? "",
@@ -506,6 +528,12 @@ export async function createContest(
     await tx.insert(contestProblems).values(
       problemInputs.map((value) => ({
         contest_id: id,
+        ...(options.domainId
+          ? {
+            domain_id: options.domainId,
+            domain_problem_binding_id: options.bindings?.get(value.problem_id),
+          }
+          : {}),
         ...value,
         // 创建即固定版本：钉在当时的已发布最新版，之后题库发布新版本不影响本竞赛
         // （换版必须走显式的「竞赛固定版本升级」操作，Handbook §4.1/§4.3）。
@@ -516,7 +544,7 @@ export async function createContest(
 
   await publishSearchIndexEvent("contest", id, "upsert");
 
-  return getContest(id);
+  return getContest(id, undefined, db);
 }
 
 /**
@@ -532,8 +560,14 @@ export async function updateContest(
   id: string,
   input: UpdateContestInput,
   isAdmin = false,
+  options: {
+    executor?: Executor;
+    versions?: Map<string, string>;
+    domainId?: string;
+    bindings?: Map<string, string>;
+  } = {},
 ): Promise<ContestResponse> {
-  const existing = await findContestRow(id);
+  const existing = await findContestRow(id, options.executor);
   const type = input.type ?? existing.type as ContestType;
   if (!isValidContestType(type)) {
     throw new BadRequestError("竞赛类型不合法");
@@ -589,7 +623,7 @@ export async function updateContest(
     : input.password
     ? await hashPassword(input.password)
     : null;
-  const db = getDb();
+  const db = options.executor ?? getDb();
   /** 本次更新涉及题目的最新已发布版本（在事务内校验题目可加入时一并取得）。 */
   let latestVersions: Map<string, string> | null = null;
 
@@ -617,12 +651,13 @@ export async function updateContest(
     if (
       Date.now() >= Date.parse(locked.start_time) &&
       (input.type !== undefined && input.type !== locked.type ||
-        input.config !== undefined)
+        input.config !== undefined || input.freeze_start_time !== undefined ||
+        input.freeze_duration_seconds !== undefined)
     ) {
       throw new ConflictError("开赛后不能修改赛制或计分配置");
     }
     if (problemInputs) {
-      latestVersions = await assertContestProblemAddable(
+      latestVersions = options.versions ?? await assertContestProblemAddable(
         problemInputs,
         existing.created_by ?? "",
         isAdmin,
@@ -717,6 +752,14 @@ export async function updateContest(
           const binding = previousBindings.get(value.problem_id);
           return {
             contest_id: id,
+            ...(options.domainId
+              ? {
+                domain_id: options.domainId,
+                domain_problem_binding_id:
+                  options.bindings?.get(value.problem_id) ??
+                    binding?.domain_problem_binding_id,
+              }
+              : {}),
             ...value,
             pinned_version_id: binding?.pinned_version_id ??
               latestVersions!.get(value.problem_id)!,
@@ -731,7 +774,7 @@ export async function updateContest(
 
   await publishSearchIndexEvent("contest", id, "upsert");
 
-  return getContest(id);
+  return getContest(id, undefined, db);
 }
 
 /**
@@ -791,7 +834,7 @@ export async function getContest(
   }
   const registered = userId === undefined
     ? undefined
-    : await isParticipant(id, userId);
+    : await isParticipant(id, userId, db);
   return toContestResponse(row, registered);
 }
 
@@ -818,6 +861,14 @@ export async function listContests(
   }
 
   const conditions = [];
+  if (params.defaultDomainOnly) {
+    conditions.push(
+      or(
+        eq(contests.domain_id, DEFAULT_DOMAIN_ID),
+        isNull(contests.domain_id),
+      )!,
+    );
+  }
   if (!params.showAll) conditions.push(eq(contests.is_public, true));
   if (params.type) conditions.push(eq(contests.type, params.type));
   const where = conditions.length === 0 ? undefined : and(...conditions);
@@ -834,6 +885,11 @@ export async function listContests(
       (SELECT COUNT(*)::int FROM contest_participants cpa WHERE cpa.contest_id = c.id) AS participant_count
     FROM contests c
     WHERE ${params.showAll ? sql`TRUE` : sql`c.is_public = TRUE`}
+      ${
+    params.defaultDomainOnly
+      ? sql`AND (c.domain_id = ${DEFAULT_DOMAIN_ID} OR c.domain_id IS NULL)`
+      : sql``
+  }
       ${params.type ? sql`AND c.type = ${params.type}` : sql``}
     ORDER BY c.start_time DESC, c.id ASC
     LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
@@ -862,8 +918,9 @@ export async function registerForContest(
   contestId: string,
   userId: string,
   password?: string,
+  executor?: Executor,
 ): Promise<void> {
-  const contest = await findContestRow(contestId);
+  const contest = await findContestRow(contestId, executor);
   if (computeContestStatus(contest.start_time, contest.end_time) === "ended") {
     throw new ForbiddenError("竞赛已结束，无法注册");
   }
@@ -885,7 +942,7 @@ export async function registerForContest(
     throw new ForbiddenError("竞赛密码错误");
   }
 
-  const db = getDb();
+  const db = executor ?? getDb();
   const inserted = await db.insert(contestParticipants).values({
     contest_id: contestId,
     user_id: userId,
@@ -1059,8 +1116,9 @@ export async function assertContestSubmissionLimit(
 export async function isParticipant(
   contestId: string,
   userId: string,
+  executor: Executor = getDb(),
 ): Promise<boolean> {
-  const db = getDb();
+  const db = executor;
   const [row] = await db.select({ user_id: contestParticipants.user_id }).from(
     contestParticipants,
   ).where(

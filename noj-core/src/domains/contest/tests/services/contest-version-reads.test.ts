@@ -234,7 +234,8 @@ Deno.test({
         eq(problemVersions.problem_id, problemId),
       );
       await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, adminId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, adminId));
     }
   },
 });
@@ -416,7 +417,8 @@ Deno.test({
         );
         await db.delete(problems).where(eq(problems.id, id));
       }
-      await db.delete(users).where(eq(users.id, adminId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, adminId));
     }
   },
 });
@@ -630,7 +632,8 @@ Deno.test({
         eq(problemVersions.problem_id, problemId),
       );
       await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, userId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, userId));
     }
   },
 });
@@ -722,7 +725,8 @@ Deno.test({
         eq(problemVersions.problem_id, problemId),
       );
       await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, adminId));
+      await db.update(users).set({ deleted_at: new Date().toISOString() })
+        .where(eq(users.id, adminId));
     }
   },
 });

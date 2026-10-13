@@ -1,0 +1,294 @@
+import { Hono } from "hono";
+import {
+  authMiddleware,
+  type OptionalAuthEnv,
+  optionalAuthMiddleware,
+} from "../../identity/index.ts";
+import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
+import {
+  assertObjectBody,
+  parseJsonBody,
+} from "../../../shared/http/request.ts";
+import {
+  buildPaginationMeta,
+  parsePagination,
+} from "../../../shared/http/pagination.ts";
+import {
+  addDomainContestParticipants,
+  createDomainContest,
+  getDomainContest,
+  listDomainContestParticipants,
+  listDomainContests,
+  registerForDomainContest,
+  removeDomainContestParticipant,
+  updateDomainContest,
+} from "../services/domain-contests.ts";
+import {
+  getDomainContestFinalRanking,
+  getDomainContestProblems,
+  getDomainContestRanking,
+  getDomainContestSettlement,
+  getDomainContestSnapshots,
+  publishDomainContestRanking,
+} from "../services/domain-results.ts";
+import {
+  type CreateContestInput,
+  isValidContestType,
+  type UpdateContestInput,
+} from "../types/contests.ts";
+import { enforceContestRegisterRateLimit } from "../../system/index.ts";
+import { loadDomainContest } from "../services/domain-access.ts";
+import { domainContestSseRouter } from "./sse.ts";
+import {
+  getDomainContestObjectiveQuestions,
+  getDomainContestTemplate,
+} from "../services/domain-content.ts";
+
+/** 完整隔离验收前由应用保留未挂载的显式域比赛路由。 */
+export const domainContestRouter = new Hono<OptionalAuthEnv>();
+domainContestRouter.use("/domains/:slug/contests", optionalAuthMiddleware);
+domainContestRouter.use("/domains/:slug/contests/*", optionalAuthMiddleware);
+domainContestRouter.use("*", async (c, next) => {
+  c.header("Cache-Control", "no-store");
+  await next();
+});
+const path = "/domains/:slug/contests";
+async function body<T>(c: Parameters<typeof parseJsonBody>[0]) {
+  const input = await parseJsonBody<unknown>(c);
+  assertObjectBody(input);
+  return input as T;
+}
+function revision(value?: string) {
+  if (!value) return null;
+  const match = /^"?([0-9]+)"?$/.exec(value);
+  if (!match || !Number.isSafeInteger(Number(match[1]))) {
+    throw new BadRequestError("If-Match 必须是比赛 revision");
+  }
+  return Number(match[1]);
+}
+domainContestRouter.get(path, async (c) => {
+  const { page, perPage } = parsePagination(c), type = c.req.query("type");
+  if (type && !isValidContestType(type)) {
+    throw new BadRequestError("竞赛类型不合法");
+  }
+  const result = await listDomainContests(
+    c.req.param("slug"),
+    c.var.userId ?? null,
+    {
+      page,
+      perPage,
+      type: type && isValidContestType(type) ? type : undefined,
+    },
+  );
+  return c.json({
+    data: result.data,
+    pagination: buildPaginationMeta(page, perPage, result.total),
+  });
+});
+domainContestRouter.post(
+  path,
+  authMiddleware,
+  async (c) =>
+    c.json({
+      data: await createDomainContest(
+        c.req.param("slug")!,
+        c.var.userId!,
+        await body<CreateContestInput>(c),
+      ),
+    }, 201),
+);
+domainContestRouter.get(
+  `${path}/:id`,
+  async (c) =>
+    c.json({
+      data: await getDomainContest(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.var.userId ?? null,
+      ),
+    }),
+);
+domainContestRouter.patch(
+  `${path}/:id`,
+  authMiddleware,
+  async (c) =>
+    c.json({
+      data: await updateDomainContest(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.var.userId!,
+        revision(c.req.header("If-Match")),
+        await body<UpdateContestInput>(c),
+      ),
+    }),
+);
+domainContestRouter.post(`${path}/:id/register`, authMiddleware, async (c) => {
+  const input = await body<{ password?: string }>(c);
+  const access = await loadDomainContest(
+    c.req.param("slug")!,
+    c.req.param("id")!,
+    c.var.userId!,
+    { joining: true },
+  );
+  await enforceContestRegisterRateLimit(c, access.contest.id);
+  await registerForDomainContest(
+    c.req.param("slug")!,
+    c.req.param("id")!,
+    c.var.userId!,
+    input.password,
+  );
+  return c.json({ message: "竞赛注册成功" }, 201);
+});
+domainContestRouter.get(
+  `${path}/:id/problems`,
+  authMiddleware,
+  async (c) =>
+    c.json({
+      data: await getDomainContestProblems(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.var.userId!,
+      ),
+    }),
+);
+domainContestRouter.get(
+  `${path}/:id/problems/:label`,
+  authMiddleware,
+  async (c) => {
+    const problems = await getDomainContestProblems(
+      c.req.param("slug")!,
+      c.req.param("id")!,
+      c.var.userId!,
+    );
+    const problem = problems.find((item) =>
+      item.label === c.req.param("label")
+    );
+    if (!problem) throw new NotFoundError("比赛题目不存在");
+    return c.json({ data: problem });
+  },
+);
+domainContestRouter.get(`${path}/:id/ranking`, async (c) => {
+  const result = await getDomainContestRanking(
+    c.req.param("slug")!,
+    c.req.param("id")!,
+    c.var.userId ?? null,
+  );
+  return c.json({ data: result.rows, ...result, rows: undefined });
+});
+domainContestRouter.get(
+  `${path}/:id/problems/:label/template`,
+  authMiddleware,
+  async (c) =>
+    c.json(
+      await getDomainContestTemplate(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.req.param("label")!,
+        c.var.userId!,
+      ),
+    ),
+);
+domainContestRouter.get(
+  `${path}/:id/problems/:label/objective-questions`,
+  authMiddleware,
+  async (c) =>
+    c.json(
+      await getDomainContestObjectiveQuestions(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.req.param("label")!,
+        c.var.userId!,
+      ),
+    ),
+);
+domainContestRouter.get(
+  `${path}/:id/final-ranking`,
+  async (c) =>
+    c.json(
+      await getDomainContestFinalRanking(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.var.userId ?? null,
+      ),
+    ),
+);
+domainContestRouter.get(
+  `${path}/:id/participants`,
+  authMiddleware,
+  async (c) =>
+    c.json({
+      data: await listDomainContestParticipants(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.var.userId!,
+      ),
+    }),
+);
+domainContestRouter.post(
+  `${path}/:id/participants`,
+  authMiddleware,
+  async (c) => {
+    const input = await body<{ user_ids: string[] }>(c);
+    return c.json({
+      data: {
+        added: await addDomainContestParticipants(
+          c.req.param("slug")!,
+          c.req.param("id")!,
+          c.var.userId!,
+          input.user_ids,
+        ),
+      },
+    }, 201);
+  },
+);
+domainContestRouter.delete(
+  `${path}/:id/participants/:userId`,
+  authMiddleware,
+  async (c) => {
+    await removeDomainContestParticipant(
+      c.req.param("slug")!,
+      c.req.param("id")!,
+      c.var.userId!,
+      c.req.param("userId")!,
+    );
+    return c.json({ message: "已移除参赛者" });
+  },
+);
+domainContestRouter.get(
+  `${path}/:id/settlement`,
+  authMiddleware,
+  async (c) =>
+    c.json({
+      data: await getDomainContestSettlement(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.var.userId!,
+      ),
+    }),
+);
+domainContestRouter.get(
+  `${path}/:id/snapshots`,
+  authMiddleware,
+  async (c) =>
+    c.json({
+      data: await getDomainContestSnapshots(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.var.userId!,
+      ),
+    }),
+);
+domainContestRouter.post(
+  `${path}/:id/publish-ranking`,
+  authMiddleware,
+  async (c) =>
+    c.json({
+      data: await publishDomainContestRanking(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.var.userId!,
+        await body<{ note?: string; allow_failed?: boolean }>(c),
+      ),
+    }, 201),
+);
+domainContestRouter.route("/", domainContestSseRouter);
