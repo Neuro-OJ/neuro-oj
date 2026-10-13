@@ -1,9 +1,18 @@
 <script setup lang="ts">
 import { WORKSPACE_PRESETS, workspacePath } from '~/utils/workspace';
 import { workspaceNavigation } from '~/utils/workspace-navigation';
+import { workspaceHomepagePath } from '~/utils/workspace-homepage';
 import { useToast } from '~/composables/useToast';
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context' });
 const { domain, refresh } = useWorkspace();
+const route = useRoute();
+const homepage = computed(() => domain.value ? workspaceHomepagePath(domain.value) : null);
+if (homepage.value) await navigateTo(homepage.value, { replace: true });
+watch(homepage, (path) => {
+  if (path && domain.value && route.path === workspacePath(domain.value.slug)) {
+    return navigateTo(path, { replace: true });
+  }
+});
 const { isLoggedIn } = useAuth();
 const workspace = useWorkspaceApi();
 const { toast } = useToast();
