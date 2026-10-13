@@ -2,6 +2,7 @@
 .gitignore
 src/**
 out/test/**
+scripts/**
 tsconfig.json
 *.vsix
 *.log

@@ -194,9 +194,10 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p tsconfig.json",
-    "format:check": "prettier --check \"src/**/*.ts\" package.json tsconfig.json README.md CHANGELOG.md",
+    "format:check": "prettier --check \"src/**/*.ts\" \"scripts/**/*.cjs\" package.json tsconfig.json README.md CHANGELOG.md",
     "check": "npm run format:check && tsc -p tsconfig.json --noEmit",
     "test": "npm run compile && node --test out/test/*.test.js",
+    "test:host": "npm run compile && node scripts/test-extension-host.cjs",
     "package": "npx @vscode/vsce package"
   },
   "devDependencies": {

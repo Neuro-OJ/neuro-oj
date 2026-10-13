@@ -463,9 +463,8 @@ async function selectProblem(
     versionId = detail.version_id;
     version = detail.version;
   } catch (err) {
-    output.appendLine(
-      `[版本] 读取题目版本失败：${err instanceof Error ? err.message : err}`,
-    );
+    showError("读取题目版本失败", err);
+    return undefined;
   }
   if (!versionId) {
     vscode.window.showWarningMessage(
