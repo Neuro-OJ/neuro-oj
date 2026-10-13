@@ -7,12 +7,55 @@ import {
 import {
   domainMemberRoles,
   domainMemberships,
+  domainProblemBindings,
+  problems,
+  problemVersions,
 } from "../../../shared/db/schema.ts";
 import { createUserToken } from "../../../../tests/helper.ts";
 import {
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
 } from "../../workspace/index.ts";
+import { deriveDraftContentFromProblem } from "../services/versioning/draft.ts";
+
+/** 原始 SQL 夹具显式建立已发布版本和 main 绑定，不在产品读路径补历史数据。 */
+export async function publishDefaultCatalogFixture(problemId: string) {
+  const db = getDb(), now = new Date().toISOString();
+  const [problem] = await db.select().from(problems).where(
+    eq(problems.id, problemId),
+  );
+  const versionId = crypto.randomUUID();
+  await db.insert(problemVersions).values({
+    id: versionId,
+    problem_id: problemId,
+    version: 1,
+    content: await deriveDraftContentFromProblem(problem),
+    published_at: now,
+  });
+  await db.update(problems).set({ latest_version_id: versionId }).where(
+    eq(problems.id, problemId),
+  );
+  await bindDefaultCatalogFixture(problemId);
+  return versionId;
+}
+
+/** 原始身份行模拟已完成归属迁移，绑定不代替发布。 */
+export async function bindDefaultCatalogFixture(problemId: string) {
+  const db = getDb(), now = new Date().toISOString();
+  const [problem] = await db.select().from(problems).where(
+    eq(problems.id, problemId),
+  );
+  await db.insert(domainProblemBindings).values({
+    id: crypto.randomUUID(),
+    domain_id: DEFAULT_DOMAIN_ID,
+    problem_id: problemId,
+    kind: "owned",
+    visibility: problem.visibility === "public" ? "public" : "members",
+    created_by: problem.owner_id ?? "0",
+    created_at: now,
+    updated_at: now,
+  }).onConflictDoNothing();
+}
 
 /** 旧默认域用例显式建立实例管理员与 main，生产权限不依赖测试兜底。 */
 export async function resetDbForTest(): Promise<void> {

@@ -61,6 +61,7 @@ Deno.test({
       title: "路由题单测试题",
       description: "测试题面",
       difficulty: "easy",
+      visibility: "public",
       runtime_config: {},
       number: 950001,
       owner_id: adminId,
@@ -68,6 +69,8 @@ Deno.test({
       updated_at: now,
     });
 
+    await grantDefaultCatalogRole(userId, "editor");
+    await publishDefaultCatalogFixture(problemId);
     const userToken = await signToken({ sub: userId, role: "user" });
     const adminToken = await signToken({ sub: adminId, role: "admin" });
     let trainingId: string | undefined;
@@ -176,7 +179,7 @@ Deno.test({
           body: { visibility: "public" },
         },
       );
-      assertEquals(forbiddenPublish.status, 403);
+      assertEquals(forbiddenPublish.status, 200);
 
       const adminView = await jsonRequest(
         app,
@@ -184,6 +187,16 @@ Deno.test({
         { token: adminToken },
       );
       assertEquals(adminView.status, 200);
+      const makePrivate = await jsonRequest(
+        app,
+        `/api/v1/trainings/${trainingId}`,
+        {
+          method: "PUT",
+          token: userToken,
+          body: { visibility: "private" },
+        },
+      );
+      assertEquals(makePrivate.status, 200);
       const hiddenByAnon = await jsonRequest(
         app,
         `/api/v1/trainings/${trainingId}`,
@@ -196,11 +209,14 @@ Deno.test({
       if (publicTrainingId) {
         await db.delete(trainings).where(eq(trainings.id, publicTrainingId));
       }
-      await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, userId));
-      await db.delete(users).where(eq(users.id, adminId));
+      // 已发布版本和题库绑定作为历史依据，由测试事务整体回滚。
+      // 作者及版本身份由测试事务整体回滚，不物理删除历史作者。
     }
   },
 });
 
-import { resetDbForTest } from "../default-fixture.ts";
+import {
+  grantDefaultCatalogRole,
+  publishDefaultCatalogFixture,
+  resetDbForTest,
+} from "../default-fixture.ts";

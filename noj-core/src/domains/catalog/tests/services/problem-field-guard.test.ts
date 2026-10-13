@@ -536,6 +536,8 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
+    const actorToken = await createDefaultCatalogToken("editor");
+    const actorId = decodeJwt(actorToken).sub!;
     const zip = makeBundleZip({
       runtime_config: {
         ...VALID_RUNTIME_CONFIG,
@@ -549,7 +551,7 @@ Deno.test({
       () =>
         importProblemBundle(
           { name: "cli-bundle.zip", data: zip },
-          { userId: "cli-user", userRole: "user" },
+          { userId: actorId, userRole: "user" },
         ),
       ForbiddenError,
       "权限不足",
@@ -614,6 +616,8 @@ Deno.test({
       updated_at: isoNow,
     }).onConflictDoNothing();
 
+    await bindDefaultCatalogFixture(problemId);
+
     await updateSetting(
       "judge_max_solution_memory_limit_mb",
       256,
@@ -674,6 +678,12 @@ Deno.test({
   },
 });
 
-import { resetDbForTest } from "../default-fixture.ts";
+import {
+  bindDefaultCatalogFixture,
+  resetDbForTest,
+} from "../default-fixture.ts";
 
 import { grantDefaultCatalogRole } from "../default-fixture.ts";
+
+import { createDefaultCatalogToken } from "../default-fixture.ts";
+import { decodeJwt } from "jose";

@@ -773,7 +773,11 @@ Deno.test({
         headers: auth,
         body: {
           policy: { mode: "exact", version_id: v1Id },
-          expected_revision: 0,
+          expected_revision:
+            (await jsonRequest(app, `/api/v1/problems/${problemId}`, {
+              headers: auth,
+            }).then((response) => response.json())).data
+              .effective_version_policy_revision,
         },
       },
     );

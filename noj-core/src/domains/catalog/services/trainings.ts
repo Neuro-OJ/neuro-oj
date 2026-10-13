@@ -4,18 +4,30 @@
  * 职责：
  * - 题单 CRUD 与可见性访问控制
  * - 题单题目管理（加题 / 重排 / 移除）
- * - AC 进度聚合（编程题 finished 且 score>0 + 客观题满分）
+ * - AC 进度聚合（当前 main 绑定的有效判定，排除比赛保密及其他域成绩）
  *
  * 权限约定：
- * - 路由层负责 RBAC 权限判定；服务层做所有权/可见性兜底（fail-closed）。
- * - `visibility=public` 仅管理员（`training:publish`）可设置；
- *   `is_pinned` 仅管理员（`training:pin`）可设置。
+ * - 默认兼容入口始终使用 main 的实时域角色，作者和传入的管理标志不替代授权。
+ * - 资源编辑者可管理自己的题单及公开展示；置顶需要域内完整题单管理能力。
  */
 
-import { and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
-import { unendedPublicContestForProblem } from "./../../contest/index.ts";
+import { and, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import {
+  assertWorkspacePermission,
+  DEFAULT_DOMAIN_ID,
+  DEFAULT_DOMAIN_SLUG,
+  loadWorkspace,
+} from "../../workspace/index.ts";
+import {
+  readDomainTraining,
+  resolveDomainTraining,
+} from "./workspace/training-access.ts";
+import { resolveDomainProblem } from "./workspace/problem-binding-access.ts";
+import { submissionQueryVisibility } from "../../query/index.ts";
+import type { ProblemContentV1 } from "../types/problem-content.ts";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
+  domainTrainingBindings,
   objectiveSubmissions,
   problems,
   submissions,
@@ -54,13 +66,13 @@ export interface ListTrainingsResult {
   total: number;
 }
 
-/** 更新题单时的权限选项。 */
+/** 旧管理调用保留的选项；实际授权始终重新读取 main 角色。 */
 export interface UpdateTrainingOptions {
-  /** 是否可编辑任意题单（admin / training:write_any） */
+  /** 兼容旧调用，不授予管理权限。 */
   isAdmin?: boolean;
-  /** 是否可将可见性设为 public（training:publish） */
+  /** false 可额外禁止发布，不授予实际编辑能力。 */
   canPublish?: boolean;
-  /** 是否可设置 is_pinned（training:pin） */
+  /** 兼容旧调用，置顶仍需实际 training:write_any。 */
   canPin?: boolean;
 }
 
@@ -94,23 +106,18 @@ function normalizePage(params: ListTrainingsParams): {
  */
 async function countProblems(
   trainingIds: string[],
+  actorId: string | null = null,
 ): Promise<Map<string, number>> {
   if (trainingIds.length === 0) return new Map();
-  const db = getDb();
-  const rows = await db
-    .select({
-      training_id: trainingProblems.training_id,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(trainingProblems)
-    .innerJoin(problems, eq(trainingProblems.problem_id, problems.id))
-    .where(and(
-      inArray(trainingProblems.training_id, trainingIds),
-      eq(problems.visibility, "public"),
-      sql`NOT (${unendedPublicContestForProblem(problems.id)})`,
-    ))
-    .groupBy(trainingProblems.training_id);
-  return new Map(rows.map((r) => [r.training_id, r.count]));
+  const counts = new Map<string, number>();
+  for (const id of trainingIds) {
+    const resource = await readDomainTraining(DEFAULT_DOMAIN_SLUG, id, actorId);
+    counts.set(
+      id,
+      resource.items.filter((item) => item.resource_available).length,
+    );
+  }
+  return counts;
 }
 
 /**
@@ -127,6 +134,8 @@ function toResponse(
   return {
     id: row.id,
     public_id: row.public_id,
+    domain_id: row.domain_id!,
+    revision: row.revision,
     title: row.title,
     description: row.description,
     visibility: row.visibility as TrainingVisibility,
@@ -146,17 +155,22 @@ function toResponse(
  */
 export async function listPublicTrainings(
   params: ListTrainingsParams,
+  actorId: string | null = null,
 ): Promise<ListTrainingsResult> {
+  await loadWorkspace(DEFAULT_DOMAIN_SLUG, actorId);
   const db = getDb();
   const { perPage, offset } = normalizePage(params);
-  const where = eq(trainings.visibility, "public");
+  const where = and(
+    eq(trainings.domain_id, DEFAULT_DOMAIN_ID),
+    eq(trainings.visibility, "public"),
+  );
   const [rows, totalRows] = await Promise.all([
     db.select().from(trainings).where(where)
       .orderBy(desc(trainings.is_pinned), desc(trainings.updated_at))
       .limit(perPage).offset(offset),
     db.select({ total: count() }).from(trainings).where(where),
   ]);
-  const counts = await countProblems(rows.map((r) => r.id));
+  const counts = await countProblems(rows.map((r) => r.id), actorId);
   const data = rows.map((r) => toResponse(r, counts.get(r.id) ?? 0));
   return { data, total: totalRows[0]?.total ?? 0 };
 }
@@ -174,14 +188,18 @@ export async function listMyTrainings(
 ): Promise<ListTrainingsResult> {
   const db = getDb();
   const { perPage, offset } = normalizePage(params);
-  const where = eq(trainings.created_by, userId);
+  await loadWorkspace(DEFAULT_DOMAIN_SLUG, userId);
+  const where = and(
+    eq(trainings.domain_id, DEFAULT_DOMAIN_ID),
+    eq(trainings.created_by, userId),
+  );
   const [rows, totalRows] = await Promise.all([
     db.select().from(trainings).where(where)
       .orderBy(desc(trainings.updated_at))
       .limit(perPage).offset(offset),
     db.select({ total: count() }).from(trainings).where(where),
   ]);
-  const counts = await countProblems(rows.map((r) => r.id));
+  const counts = await countProblems(rows.map((r) => r.id), userId);
   const data = rows.map((r) => toResponse(r, counts.get(r.id) ?? 0));
   return { data, total: totalRows[0]?.total ?? 0 };
 }
@@ -195,6 +213,7 @@ export async function listTrainingsContainingProblem(
   problemId: string,
 ): Promise<string[]> {
   const db = getDb();
+  await loadWorkspace(DEFAULT_DOMAIN_SLUG, userId);
   const resolvedProblemId = await resolveProblemId(problemId);
   const rows = await db
     .select({ id: trainings.id })
@@ -204,6 +223,7 @@ export async function listTrainingsContainingProblem(
       eq(trainings.id, trainingProblems.training_id),
     )
     .where(and(
+      eq(trainings.domain_id, DEFAULT_DOMAIN_ID),
       eq(trainings.created_by, userId),
       eq(trainingProblems.problem_id, resolvedProblemId),
     ));
@@ -218,22 +238,29 @@ export async function listTrainingsContainingProblem(
  */
 export async function listAllTrainings(
   params: ListTrainingsParams,
+  actorId: string | null = null,
 ): Promise<ListTrainingsResult> {
+  const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, actorId);
+  assertWorkspacePermission(workspace.context, "training:write_any");
   const db = getDb();
   const { perPage, offset } = normalizePage(params);
   const [rows, totalRows] = await Promise.all([
-    db.select().from(trainings)
+    db.select().from(trainings).where(
+      eq(trainings.domain_id, DEFAULT_DOMAIN_ID),
+    )
       .orderBy(desc(trainings.updated_at))
       .limit(perPage).offset(offset),
-    db.select({ total: count() }).from(trainings),
+    db.select({ total: count() }).from(trainings).where(
+      eq(trainings.domain_id, DEFAULT_DOMAIN_ID),
+    ),
   ]);
-  const counts = await countProblems(rows.map((r) => r.id));
+  const counts = await countProblems(rows.map((r) => r.id), actorId);
   const data = rows.map((r) => toResponse(r, counts.get(r.id) ?? 0));
   return { data, total: totalRows[0]?.total ?? 0 };
 }
 
 /**
- * 列出指定用户创建的题单；非 owner/admin 仅可见 public。
+ * 列出指定用户在 main 创建的题单；非本人或实际域管理员仅可见 public。
  *
  * @param ownerId 题单所属用户 id
  * @param viewerId 查看者 id（可选）
@@ -244,13 +271,18 @@ export async function listAllTrainings(
 export async function listUserTrainings(
   ownerId: string,
   viewerId?: string,
-  isAdmin = false,
+  _isAdmin = false,
   params: ListTrainingsParams = {},
 ): Promise<ListTrainingsResult> {
   const db = getDb();
   const { perPage, offset } = normalizePage(params);
-  const isOwner = ownerId === viewerId || isAdmin;
-  const conditions = [eq(trainings.created_by, ownerId)];
+  const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, viewerId ?? null);
+  const isOwner = ownerId === viewerId || workspace.platformAdmin ||
+    workspace.context.domainPermissions.has("training:write_any");
+  const conditions = [
+    eq(trainings.domain_id, DEFAULT_DOMAIN_ID),
+    eq(trainings.created_by, ownerId),
+  ];
   if (!isOwner) conditions.push(eq(trainings.visibility, "public"));
   const where = and(...conditions);
   const [rows, totalRows] = await Promise.all([
@@ -259,13 +291,13 @@ export async function listUserTrainings(
       .limit(perPage).offset(offset),
     db.select({ total: count() }).from(trainings).where(where),
   ]);
-  const counts = await countProblems(rows.map((r) => r.id));
+  const counts = await countProblems(rows.map((r) => r.id), viewerId ?? null);
   const data = rows.map((r) => toResponse(r, counts.get(r.id) ?? 0));
   return { data, total: totalRows[0]?.total ?? 0 };
 }
 
 /**
- * 获取单个题单详情；private 题单仅 owner/admin 可见（对外表现为不存在）。
+ * 获取 main 题单详情；private 题单须当前作者关系或实际域管理能力。
  *
  * @param id 题单内部 UUID
  * @param viewerId 查看者 id（可选）
@@ -276,17 +308,16 @@ export async function listUserTrainings(
 export async function getTraining(
   id: string,
   viewerId?: string,
-  isAdmin = false,
+  _isAdmin = false,
 ): Promise<TrainingResponse> {
-  const db = getDb();
-  const [row] = await db.select().from(trainings).where(eq(trainings.id, id))
-    .limit(1);
-  if (!row) throw new NotFoundError("题单不存在");
-  if (row.visibility === "private" && row.created_by !== viewerId && !isAdmin) {
-    throw new NotFoundError("题单不存在");
-  }
-  const counts = await countProblems([row.id]);
-  return toResponse(row, counts.get(row.id) ?? 0);
+  const resource = await resolveDomainTraining(
+    DEFAULT_DOMAIN_SLUG,
+    id,
+    viewerId ?? null,
+  );
+  if (resource.shared) throw new NotFoundError("题单不存在");
+  const counts = await countProblems([id], viewerId ?? null);
+  return toResponse(resource.training, counts.get(id) ?? 0);
 }
 
 /**
@@ -309,6 +340,10 @@ export async function createTraining(
   if (!isValidTrainingVisibility(visibility) || visibility === "public") {
     throw new BadRequestError("创建题单时可见性只能为 private 或 unlisted");
   }
+  const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, userId, {
+    write: true,
+  });
+  assertWorkspacePermission(workspace.context, "training:create");
   const db = getDb();
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
@@ -316,6 +351,7 @@ export async function createTraining(
   await db.insert(trainings).values({
     id,
     public_id: publicId,
+    domain_id: DEFAULT_DOMAIN_ID,
     title,
     description: input.description?.trim() ?? "",
     visibility,
@@ -328,8 +364,8 @@ export async function createTraining(
 }
 
 /** 将 UUID 或 public_id 解析为内部题单 UUID；其它格式按主键兜底。 */
-export function resolveTrainingId(value: string): Promise<string> {
-  return resolvePublicId(
+export async function resolveTrainingId(value: string): Promise<string> {
+  const id = await resolvePublicId(
     trainings,
     trainings.id,
     trainings.public_id,
@@ -337,6 +373,12 @@ export function resolveTrainingId(value: string): Promise<string> {
     value,
     "题单不存在",
   );
+  const [row] = await getDb().select({ id: trainings.id }).from(trainings)
+    .where(
+      and(eq(trainings.id, id), eq(trainings.domain_id, DEFAULT_DOMAIN_ID)),
+    );
+  if (!row) throw new NotFoundError("题单不存在");
+  return id;
 }
 
 /**
@@ -357,19 +399,42 @@ export async function updateTraining(
   actorId: string,
   options: UpdateTrainingOptions = {},
 ): Promise<TrainingResponse> {
-  const { isAdmin = false, canPublish = isAdmin, canPin = isAdmin } = options;
+  await assertWritable(id, actorId);
+  const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, actorId, {
+    write: true,
+  });
+  const canPin = workspace.platformAdmin ||
+    workspace.context.domainPermissions.has("training:write_any");
+  const canPublish = options.canPublish !== false;
   const db = getDb();
-  const [row] = await db.select().from(trainings).where(eq(trainings.id, id))
-    .limit(1);
-  if (!row) throw new NotFoundError("题单不存在");
-  if (row.created_by !== actorId && !isAdmin) {
-    throw new ForbiddenError("无权编辑该题单");
-  }
   if (input.is_pinned !== undefined && !canPin) {
     throw new ForbiddenError("无权置顶题单");
   }
   if (input.visibility === "public" && !canPublish) {
     throw new ForbiddenError("无权将题单设为公开");
+  }
+  if (input.visibility === "public") {
+    const resource = await resolveDomainTraining(
+      DEFAULT_DOMAIN_SLUG,
+      id,
+      actorId,
+    );
+    for (const item of resource.items) {
+      const reference = item.source.id === DEFAULT_DOMAIN_ID
+        ? String(item.problem.number)
+        : `${item.source.slug}:${item.problem.number}`;
+      const usable = await resolveDomainProblem(
+        DEFAULT_DOMAIN_SLUG,
+        reference,
+        actorId,
+      );
+      if (
+        usable.binding.visibility !== "public" ||
+        usable.problem.visibility !== "public"
+      ) {
+        throw new BadRequestError("公开题单只能包含公开题目");
+      }
+    }
   }
   if (
     input.visibility !== undefined &&
@@ -394,7 +459,7 @@ export async function updateTraining(
     updated_at: new Date().toISOString(),
   };
   await db.update(trainings).set(next).where(eq(trainings.id, id));
-  return getTraining(id, actorId, isAdmin);
+  return getTraining(id, actorId);
 }
 
 /**
@@ -409,14 +474,15 @@ export async function updateTraining(
 export async function deleteTraining(
   id: string,
   actorId: string,
-  isAdmin = false,
+  _isAdmin = false,
 ): Promise<void> {
   const db = getDb();
-  const [row] = await db.select().from(trainings).where(eq(trainings.id, id))
-    .limit(1);
-  if (!row) throw new NotFoundError("题单不存在");
-  if (row.created_by !== actorId && !isAdmin) {
-    throw new ForbiddenError("无权删除该题单");
+  await assertWritable(id, actorId);
+  const [reference] = await db.select({ id: domainTrainingBindings.id }).from(
+    domainTrainingBindings,
+  ).where(eq(domainTrainingBindings.training_id, id));
+  if (reference) {
+    throw new ConflictError("题单已有共享引用，请停止共享并保留历史");
   }
   await db.delete(trainings).where(eq(trainings.id, id));
 }
@@ -424,7 +490,7 @@ export async function deleteTraining(
 // ── 题单题目管理与进度聚合 ──────────────────────────────
 
 /**
- * 断言操作者有权编辑指定题单（owner 或 admin），并返回题单行。
+ * 断言操作者当前拥有 main 题单的 write_own/write_any，并返回题单行。
  *
  * @param trainingId 题单内部 UUID
  * @param actorId 操作者用户 id
@@ -436,17 +502,21 @@ export async function deleteTraining(
 async function assertWritable(
   trainingId: string,
   actorId: string,
-  isAdmin: boolean,
 ): Promise<typeof trainings.$inferSelect> {
-  const db = getDb();
-  const [row] = await db.select().from(trainings).where(
-    eq(trainings.id, trainingId),
-  )
-    .limit(1);
+  const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, actorId, {
+    write: true,
+  });
+  const [row] = await getDb().select().from(trainings).where(
+    and(
+      eq(trainings.id, trainingId),
+      eq(trainings.domain_id, DEFAULT_DOMAIN_ID),
+    ),
+  );
   if (!row) throw new NotFoundError("题单不存在");
-  if (row.created_by !== actorId && !isAdmin) {
-    throw new ForbiddenError("无权编辑该题单");
-  }
+  assertWorkspacePermission(
+    workspace.context,
+    row.created_by === actorId ? "training:write_own" : "training:write_any",
+  );
   return row;
 }
 
@@ -465,6 +535,11 @@ async function getAcceptedProblemIds(
 ): Promise<Set<string>> {
   if (problemIds.length === 0) return new Set();
   const db = getDb();
+  const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, userId);
+  const scope = {
+    domainId: DEFAULT_DOMAIN_ID,
+    member: !!workspace.membership || workspace.platformAdmin,
+  };
   // 编程题：读有效成绩投影（版本化后由唯一投影服务维护；存量由 0103 回填）
   const acceptedRows = await db
     .select({ problem_id: submissions.problem_id })
@@ -473,6 +548,11 @@ async function getAcceptedProblemIds(
       eq(submissions.user_id, userId),
       inArray(submissions.problem_id, problemIds),
       eq(submissions.is_accepted, true),
+      submissionQueryVisibility(scope, {
+        domainId: submissions.domain_id,
+        bindingId: submissions.domain_problem_binding_id,
+        contestId: submissions.contest_id,
+      }),
     ));
   // 客观题：同一投影口径（`is_accepted` = 满分通过，写入侧唯一判定）
   const objectiveRows = await db
@@ -482,6 +562,11 @@ async function getAcceptedProblemIds(
       eq(objectiveSubmissions.user_id, userId),
       inArray(objectiveSubmissions.paper_id, problemIds),
       eq(objectiveSubmissions.is_accepted, true),
+      submissionQueryVisibility(scope, {
+        domainId: objectiveSubmissions.domain_id,
+        bindingId: objectiveSubmissions.domain_problem_binding_id,
+        contestId: objectiveSubmissions.contest_id,
+      }),
     ));
   return new Set([
     ...acceptedRows.map((r) => r.problem_id),
@@ -501,66 +586,46 @@ async function getAcceptedProblemIds(
 export async function listTrainingProblems(
   trainingId: string,
   viewerId?: string,
-  isAdmin = false,
+  _isAdmin = false,
 ): Promise<TrainingProblemResponse[]> {
-  const training = await getTraining(trainingId, viewerId, isAdmin);
-  const canViewAll = isAdmin || viewerId === training.created_by;
-  const db = getDb();
-  const rows = await db
-    .select({
-      training_id: trainingProblems.training_id,
-      problem_id: trainingProblems.problem_id,
-      position: trainingProblems.position,
-      title: problems.title,
-      description: problems.description,
-      difficulty: problems.difficulty,
-      display_id: sql<string>`${problems.type} || ${problems.number}`,
-      type: problems.type,
-      visibility: problems.visibility,
-      owner_id: problems.owner_id,
-      is_objective: problems.is_objective,
-      // 是否被尚未结束的公开赛收编（审计 VULN-07）
-      is_contest_hidden: sql<boolean>`${
-        unendedPublicContestForProblem(problems.id)
-      }`
-        .as("is_contest_hidden"),
-    })
-    .from(trainingProblems)
-    .innerJoin(problems, eq(trainingProblems.problem_id, problems.id))
-    .where(eq(trainingProblems.training_id, trainingId))
-    .orderBy(asc(trainingProblems.position));
-  // 非特权用户：private 题与"被未结束公开赛收编"的题一律不出现在题单里
-  // （此前只过滤 visibility，赛题的存在性/标题/难度/题面仍会泄露给任何人）。
-  const visibleRows = canViewAll
-    ? rows
-    : rows.filter((r) =>
-      r.visibility === "public" &&
-      // 题单所有者之外的查看者：即使题目 owner 是自己也保持一致口径
-      r.is_contest_hidden !== true
+  await getTraining(trainingId, viewerId);
+  const resource = await readDomainTraining(
+    DEFAULT_DOMAIN_SLUG,
+    trainingId,
+    viewerId ?? null,
+  );
+  const rows: TrainingProblemResponse[] = [];
+  for (const item of resource.items) {
+    if (!item.resource_available) continue;
+    const resolved = await resolveDomainProblem(
+      DEFAULT_DOMAIN_SLUG,
+      item.display_ref,
+      viewerId ?? null,
     );
+    const fields = resolved.version.content as ProblemContentV1;
+    rows.push({
+      training_id: trainingId,
+      problem_id: item.problem_id,
+      position: item.position,
+      title: fields.title,
+      description: fields.description,
+      difficulty: resolved.problem.difficulty,
+      display_id: item.display_ref,
+      is_objective: fields.kind === "objective",
+      accepted: false,
+    });
+  }
   const accepted = viewerId
-    ? await getAcceptedProblemIds(
-      viewerId,
-      visibleRows.map((r) => r.problem_id),
-    )
+    ? await getAcceptedProblemIds(viewerId, rows.map((row) => row.problem_id))
     : new Set<string>();
-  return visibleRows.map((r) => ({
-    training_id: r.training_id,
-    problem_id: r.problem_id,
-    position: r.position,
-    title: r.title,
-    description: r.description,
-    difficulty: r.difficulty,
-    display_id: r.display_id,
-    type: r.type,
-    is_objective: r.is_objective,
-    accepted: accepted.has(r.problem_id),
-    is_contest_hidden: r.is_contest_hidden === true,
+  return rows.map((row) => ({
+    ...row,
+    accepted: accepted.has(row.problem_id),
   }));
 }
 
 /**
- * 将题目标识（display_id 如 P1001/U42，或 UUID）解析为内部题目 UUID。
+ * 将题目标识（数字题号或旧 P1001，或 UUID）解析为内部题目 UUID。
  *
  * @param input 题目标识
  * @returns 内部题目 UUID
@@ -589,9 +654,9 @@ export async function addTrainingProblem(
   problemId: string,
   position: number | undefined,
   actorId: string,
-  isAdmin = false,
+  _isAdmin = false,
 ): Promise<TrainingProblemResponse> {
-  await assertWritable(trainingId, actorId, isAdmin);
+  const training = await assertWritable(trainingId, actorId);
   const db = getDb();
   const resolvedProblemId = await resolveProblemId(problemId);
   const [problem] = await db.select().from(problems).where(
@@ -600,12 +665,17 @@ export async function addTrainingProblem(
     .limit(1);
   if (!problem) throw new NotFoundError("题目不存在");
 
-  // 与建赛加题同规则：普通用户只能加入公开题或自己拥有的题。
+  const resource = await resolveDomainProblem(
+    DEFAULT_DOMAIN_SLUG,
+    String(problem.number),
+    actorId,
+  );
   if (
-    !isAdmin && problem.visibility !== "public" &&
-    problem.owner_id !== actorId
+    training.visibility === "public" &&
+    (resource.binding.visibility !== "public" ||
+      resource.problem.visibility !== "public")
   ) {
-    throw new ForbiddenError("仅可加入公开题或自己拥有的题目");
+    throw new BadRequestError("公开题单只能包含公开题目");
   }
 
   const [existing] = await db
@@ -654,11 +724,10 @@ export async function addTrainingProblem(
     training_id: trainingId,
     problem_id: resolvedProblemId,
     position: nextPosition,
-    title: problem.title,
-    description: problem.description,
-    difficulty: problem.difficulty,
-    display_id: `${problem.type}${problem.number}`,
-    type: problem.type,
+    title: (resource.version.content as ProblemContentV1).title,
+    description: (resource.version.content as ProblemContentV1).description,
+    difficulty: resource.problem.difficulty,
+    display_id: String(problem.number),
     is_objective: problem.is_objective,
     accepted: false,
   };
@@ -680,9 +749,9 @@ export async function reorderTrainingProblems(
   trainingId: string,
   problemsInput: { problem_id: string; position: number }[],
   actorId: string,
-  isAdmin = false,
+  _isAdmin = false,
 ): Promise<TrainingProblemResponse[]> {
-  await assertWritable(trainingId, actorId, isAdmin);
+  await assertWritable(trainingId, actorId);
   const db = getDb();
   const existing = await db
     .select({ problem_id: trainingProblems.problem_id })
@@ -731,7 +800,7 @@ export async function reorderTrainingProblems(
       })),
     );
   });
-  return listTrainingProblems(trainingId, actorId, isAdmin);
+  return listTrainingProblems(trainingId, actorId);
 }
 
 /**
@@ -748,9 +817,9 @@ export async function removeTrainingProblem(
   trainingId: string,
   problemId: string,
   actorId: string,
-  isAdmin = false,
+  _isAdmin = false,
 ): Promise<void> {
-  await assertWritable(trainingId, actorId, isAdmin);
+  await assertWritable(trainingId, actorId);
   const db = getDb();
   await db.transaction(async (tx) => {
     await tx.update(trainings).set({ revision: sql`${trainings.revision} + 1` })

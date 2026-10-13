@@ -174,7 +174,12 @@ Deno.test({
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.data.title, `导入测试题 ${ts}`);
-    assertEquals(typeof body.data.support_package_storage_url, "string");
+    const draftObjects = await listDraftObjects(body.data.id);
+    assertEquals(
+      draftObjects.some((object) => object.role === "support_package"),
+      true,
+    );
+    assertEquals(body.data.support_package_storage_url, null);
 
     // 落库校验：command 默认值已注入
     const db = getDb();
@@ -227,7 +232,10 @@ Deno.test({
     const [row] = await db.select().from(problems).where(
       eq(problems.id, problemId),
     ).limit(1);
-    assertEquals(row.template_content, TEMPLATE_SKELETON);
+    assertEquals(row.template_content, null);
+    const importedDraft = await getProblemDraft(problemId);
+    assertEquals(importedDraft.content.template_content, TEMPLATE_SKELETON);
+    await publishImportedProblem(problemId, decodeJwt(token).sub!);
 
     // ③ 端点校验：编辑器实际拿到的内容
     const tplRes = await app.request(
@@ -285,7 +293,14 @@ Deno.test({
       `/api/v1/problems/${problemId}/template`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
-    assertEquals(goneRes.status, 404);
+    assertEquals(goneRes.status, 200);
+    assertEquals((await goneRes.json()).data.content, TEMPLATE_SKELETON);
+    await publishImportedProblem(problemId, decodeJwt(token).sub!);
+    const publishedGone = await app.request(
+      `/api/v1/problems/${problemId}/template`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    assertEquals(publishedGone.status, 404);
   },
 });
 
@@ -351,6 +366,8 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
+
+    await bindDefaultCatalogFixture(pid);
 
     const app = createApp();
     const token = await createUserToken("admin");
@@ -1073,6 +1090,16 @@ Deno.test({
   },
 });
 
-import { resetDbForTest } from "../default-fixture.ts";
+import {
+  bindDefaultCatalogFixture,
+  resetDbForTest,
+} from "../default-fixture.ts";
 
 import { grantDefaultCatalogRole } from "../default-fixture.ts";
+
+import {
+  getProblemDraft,
+  listDraftObjects,
+} from "../../services/versioning/draft.ts";
+import { publishImportedProblem } from "../../services/problems/problem-bundle.ts";
+import { decodeJwt } from "jose";

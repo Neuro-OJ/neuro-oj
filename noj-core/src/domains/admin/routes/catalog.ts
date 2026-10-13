@@ -271,7 +271,7 @@ router.get("/problems", async (c) => {
 router.get("/trainings", async (c) => {
   await assertPermission(c, "training:read_any");
   const { page, perPage } = parsePagination(c);
-  const result = await listAllTrainings({ page, perPage });
+  const result = await listAllTrainings({ page, perPage }, c.get("userId"));
   return c.json({
     data: result.data,
     total: result.total,
@@ -290,7 +290,7 @@ router.patch(
   "/trainings/:id",
   adminVersionMiddleware(async (c) => {
     const id = await resolveTrainingId(c.req.param("id") as string);
-    return (await getTraining(id)).updated_at;
+    return (await getTraining(id, c.get("userId"))).updated_at;
   }),
   auditRoute(
     {
@@ -354,7 +354,7 @@ router.delete(
   "/trainings/:id",
   adminVersionMiddleware(async (c) => {
     const id = await resolveTrainingId(c.req.param("id") as string);
-    return (await getTraining(id)).updated_at;
+    return (await getTraining(id, c.get("userId"))).updated_at;
   }),
   auditRoute(
     {

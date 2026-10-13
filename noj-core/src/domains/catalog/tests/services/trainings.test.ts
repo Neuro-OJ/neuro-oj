@@ -42,6 +42,10 @@ async function createUser(prefix: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await grantDefaultCatalogRole(
+    id,
+    prefix.includes("owner") ? "editor" : "member",
+  );
   return id;
 }
 
@@ -86,7 +90,7 @@ Deno.test({
         privateTraining.id,
       );
       assertEquals(
-        (await getTraining(privateTraining.id, other, true)).id,
+        (await getTraining(privateTraining.id, "0")).id,
         privateTraining.id,
       );
       assertEquals(
@@ -124,7 +128,7 @@ Deno.test({
       const ownerView = await listUserTrainings(owner, owner);
       assertEquals(ownerView.total, 3);
 
-      const all = await listAllTrainings({ page: 1, perPage: 20 });
+      const all = await listAllTrainings({ page: 1, perPage: 20 }, "0");
       assertEquals(
         all.data.some((t) => t.id === privateTraining.id),
         true,
@@ -152,7 +156,7 @@ Deno.test({
       const pinOwn = await updateTraining(
         unlistedTraining.id,
         { is_pinned: true },
-        owner,
+        "0",
         { canPin: true },
       );
       assertEquals(pinOwn.is_pinned, true);
@@ -164,7 +168,9 @@ Deno.test({
       );
     } finally {
       await db.delete(trainings).where(eq(trainings.created_by, owner));
+      await removeDefaultCatalogMembership(owner);
       await db.delete(users).where(eq(users.id, owner));
+      await removeDefaultCatalogMembership(other);
       await db.delete(users).where(eq(users.id, other));
     }
   },
@@ -198,6 +204,7 @@ Deno.test({
         created_at: now,
         updated_at: now,
       });
+      await publishDefaultCatalogFixture(id);
       return id;
     }
 
@@ -284,7 +291,9 @@ Deno.test({
       await db.delete(objectiveSubmissions).where(
         eq(objectiveSubmissions.user_id, solver),
       );
+      await removeDefaultCatalogMembership(owner);
       await db.delete(users).where(eq(users.id, owner));
+      await removeDefaultCatalogMembership(solver);
       await db.delete(users).where(eq(users.id, solver));
     }
   },
@@ -321,16 +330,22 @@ Deno.test({
       await assertRejects(
         () =>
           addTrainingProblem(training.id, privateProblemId, undefined, owner),
-        ForbiddenError,
-        "仅可加入公开题或自己拥有的题目",
+        NotFoundError,
       );
     } finally {
       await db.delete(trainings).where(eq(trainings.id, training.id));
       await db.delete(problems).where(eq(problems.id, privateProblemId));
+      await removeDefaultCatalogMembership(owner);
       await db.delete(users).where(eq(users.id, owner));
+      await removeDefaultCatalogMembership(other);
       await db.delete(users).where(eq(users.id, other));
     }
   },
 });
 
-import { resetDbForTest } from "../default-fixture.ts";
+import {
+  grantDefaultCatalogRole,
+  publishDefaultCatalogFixture,
+  removeDefaultCatalogMembership,
+  resetDbForTest,
+} from "../default-fixture.ts";

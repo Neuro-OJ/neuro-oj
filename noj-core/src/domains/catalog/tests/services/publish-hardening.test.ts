@@ -74,6 +74,7 @@ async function seedAiProblem(id: string, number: number): Promise<void> {
     created_at: now,
     updated_at: now,
   });
+  await bindDefaultCatalogFixture(id);
 }
 
 /** 完整 AI 草稿内容。 */
@@ -491,6 +492,7 @@ Deno.test("publish hardening #55: 目标题目模式写草稿并校验 revision"
     actorId: "0",
   });
   await publishProblemVersion(paperId, { expectedRevision: 1, actorId: "0" });
+  await bindDefaultCatalogFixture(paperId);
   const before = await getDb().select({ id: problems.id }).from(problems);
   const revision = (await getProblemDraft(paperId)).revision;
   assertEquals(revision, 2);
@@ -604,4 +606,7 @@ Deno.test("publish hardening: 草稿缺失 revision 的 428 语义", async () =>
   assertEquals((error as AppError).status, draftRevisionRequired().status);
 });
 
-import { resetDbForTest } from "../default-fixture.ts";
+import {
+  bindDefaultCatalogFixture,
+  resetDbForTest,
+} from "../default-fixture.ts";

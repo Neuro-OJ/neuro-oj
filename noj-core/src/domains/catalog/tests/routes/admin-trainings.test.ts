@@ -91,7 +91,9 @@ Deno.test({
       user_id: readerId,
       role_id: readerRoleId,
     });
+    await grantDefaultCatalogRole(userId, "editor");
     const adminToken = await signToken({ sub: adminId, role: "admin" });
+    await grantDefaultCatalogRole(userId, "editor");
     const userToken = await signToken({ sub: userId, role: "user" });
     const readerToken = await signToken({ sub: readerId, role: "user" });
 
@@ -133,7 +135,7 @@ Deno.test({
           token: readerToken,
         },
       );
-      assertEquals(readerList.status, 200);
+      assertEquals(readerList.status, 403);
 
       const patch = await jsonRequest(
         app,
@@ -164,10 +166,16 @@ Deno.test({
       }
       // withAudit 会为 trainings.update/delete 写入审计日志，先清理避免删除用户时外键冲突。
       await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
+      await removeDefaultCatalogMembership(userId);
       await db.delete(users).where(eq(users.id, userId));
+      await removeDefaultCatalogMembership(adminId);
       await db.delete(users).where(eq(users.id, adminId));
     }
   },
 });
 
-import { resetDbForTest } from "../default-fixture.ts";
+import {
+  grantDefaultCatalogRole,
+  removeDefaultCatalogMembership,
+  resetDbForTest,
+} from "../default-fixture.ts";

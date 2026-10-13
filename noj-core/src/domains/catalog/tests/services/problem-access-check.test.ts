@@ -35,6 +35,7 @@ async function createUser(prefix: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await grantDefaultCatalogRole(id, "member");
   return id;
 }
 

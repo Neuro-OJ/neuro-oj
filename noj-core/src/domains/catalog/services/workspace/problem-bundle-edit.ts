@@ -1,5 +1,8 @@
 import type { Context } from "hono";
-import { BadRequestError } from "../../../../shared/base/errors.ts";
+import {
+  BadRequestError,
+  ConflictError,
+} from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
@@ -53,6 +56,9 @@ export async function importDomainProblemDraftBundle(
     : access.problem.judge_type === "oi"
     ? "oi"
     : "ai";
+  if (content.kind !== kind) {
+    throw new ConflictError("题目类型不能修改", "CONTENT_KIND_IMMUTABLE");
+  }
   validateProblemContent(kind, content);
   await assertDraftContentSecurity(access.problem, content, actorId, context);
   await assertPublishedRuntimeSafety(content);
