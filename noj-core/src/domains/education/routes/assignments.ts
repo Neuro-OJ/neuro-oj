@@ -7,6 +7,12 @@ import {
 } from "../services/progress-read.ts";
 import { exportAssignmentMatrixCsv } from "../services/matrix-csv.ts";
 import {
+  type ContestRemediationInput,
+  type ContestRemediationRule,
+  createContestRemediation,
+  previewContestRemediation,
+} from "../services/contest-remediation.ts";
+import {
   type AssignmentRemediationInput,
   createAssignmentRemediation,
   previewAssignmentRemediation,
@@ -171,6 +177,36 @@ router.post("/domains/:slug/assignments/:id/remediation", async (c) => {
   assertObjectBody(input);
   return c.json({
     data: await createAssignmentRemediation(
+      c.req.param("slug"),
+      c.req.param("id"),
+      c.var.userId,
+      revision(c.req.header("If-Match")),
+      c.req.header("Idempotency-Key") ?? "",
+      input,
+    ),
+  }, 201);
+});
+
+router.post(
+  "/domains/:slug/classrooms/:id/contest-remediation-preview",
+  async (c) => {
+    const input = await parseJsonBody<ContestRemediationRule>(c);
+    assertObjectBody(input);
+    return c.json({
+      data: await previewContestRemediation(
+        c.req.param("slug"),
+        c.req.param("id"),
+        c.var.userId,
+        input,
+      ),
+    });
+  },
+);
+router.post("/domains/:slug/classrooms/:id/contest-remediation", async (c) => {
+  const input = await parseJsonBody<ContestRemediationInput>(c);
+  assertObjectBody(input);
+  return c.json({
+    data: await createContestRemediation(
       c.req.param("slug"),
       c.req.param("id"),
       c.var.userId,

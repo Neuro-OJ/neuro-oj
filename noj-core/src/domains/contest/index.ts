@@ -62,3 +62,4 @@ export * from "./services/domain-access.ts";
 export * from "./services/domain-results.ts";
 export * from "./services/domain-content.ts";
 export { resolveDefaultContestAccess } from "./services/default-access.ts";
+export * from "./services/teaching-basis.ts";

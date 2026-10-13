@@ -280,8 +280,11 @@ export async function getContestSettlementStatus(
   };
 }
 
-export async function getLatestContestRankingSnapshot(contestId: string) {
-  const [snapshot] = await getDb().select().from(contestRankingSnapshots)
+export async function getLatestContestRankingSnapshot(
+  contestId: string,
+  executor: Executor = getDb(),
+) {
+  const [snapshot] = await executor.select().from(contestRankingSnapshots)
     .where(eq(contestRankingSnapshots.contest_id, contestId))
     .orderBy(desc(contestRankingSnapshots.version)).limit(1);
   return snapshot ?? null;
@@ -646,8 +649,9 @@ export async function getContestRankingView(
   type: ContestType,
   isAdmin = false,
   viewerId?: string,
+  executor: Executor = getDb(),
 ): Promise<ContestRankingResult> {
-  const contest = await getContest(contestId, viewerId);
+  const contest = await getContest(contestId, viewerId, executor);
   if (contest.type !== type) {
     throw new BadRequestError("排名类型与竞赛赛制不一致");
   }
@@ -666,18 +670,18 @@ export async function getContestRankingView(
 
   if (isAdmin) {
     return {
-      rows: await getKaggleRanking(contestId, undefined, true),
+      rows: await getKaggleRanking(contestId, undefined, true, executor),
       view: "live",
       ranking_visibility: contest.ranking_visibility,
       freeze_start_time: window.start,
       freeze_end_time: window.end,
       settlement_pending: contest.status === "ended" &&
-        !await getLatestContestRankingSnapshot(contestId),
+        !await getLatestContestRankingSnapshot(contestId, executor),
     };
   }
 
   const snapshot = contest.status === "ended"
-    ? await getLatestContestRankingSnapshot(contestId)
+    ? await getLatestContestRankingSnapshot(contestId, executor)
     : null;
   if (snapshot) {
     return {
@@ -711,7 +715,12 @@ export async function getContestRankingView(
   if (frozen) {
     // 非管理员：只返回本人一行；匿名（无 viewerId）自然得到空列表，
     // 而不是他人成绩 —— 隐私策略在封榜期与赛期完全一致。
-    const frozenRows = await getKaggleRanking(contestId, window.start!);
+    const frozenRows = await getKaggleRanking(
+      contestId,
+      window.start!,
+      false,
+      executor,
+    );
     return {
       rows: !selfOnly
         ? frozenRows
@@ -731,7 +740,7 @@ export async function getContestRankingView(
     throw new ConflictError("竞赛已结束，正式成绩尚未发布");
   }
 
-  const rows = await getKaggleRanking(contestId);
+  const rows = await getKaggleRanking(contestId, undefined, false, executor);
   return {
     // 进行中非管理员保持旧语义：只返回自己的排名，避免泄露他人实时成绩。
     rows: contest.status === "running" && selfOnly

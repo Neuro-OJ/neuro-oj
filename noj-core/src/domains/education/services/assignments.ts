@@ -261,6 +261,7 @@ export async function insertAssignmentDraft(
   actorId: string,
   input: AssignmentDraftInput,
   sourceAssignmentId?: string,
+  sourceContestId?: string,
 ) {
   const values = draftInput(input);
   const access = await loadClassroom(slug, classroomId, actorId, {
@@ -286,6 +287,7 @@ export async function insertAssignmentDraft(
     classroom_id: classroomId,
     ...values,
     source_assignment_id: sourceAssignmentId,
+    source_contest_id: sourceContestId,
     created_by: actorId,
     created_at: now,
     updated_at: now,

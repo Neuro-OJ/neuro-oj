@@ -28,3 +28,4 @@ export {
 } from "./services/submission-text.ts";
 export * from "../../shared/education-types.ts";
 export * from "./services/assignment-remediation.ts";
+export * from "./services/contest-remediation.ts";
