@@ -14,6 +14,9 @@
  */
 
 import { join } from "jsr:@std/path@^1";
+import { eq } from "drizzle-orm";
+import { getDb } from "../src/shared/db/connection.ts";
+import { domains } from "../src/shared/db/schema.ts";
 import { Command } from "@cliffy/command";
 import { HelpCommand } from "@cliffy/command/help";
 import { CompletionsCommand } from "@cliffy/command/completions";
@@ -40,7 +43,6 @@ import {
 } from "../src/domains/catalog/index.ts";
 import { ensureDefaultWorkspace } from "../src/domains/workspace/index.ts";
 import { reindexAll } from "../src/domains/search/index.ts";
-import { ROOT_USER_ID } from "./../src/shared/base/constants.ts";
 import { getBuildInfo } from "./../src/shared/base/build-info.ts";
 
 const PROJECT_ROOT = Deno.env.get("NOJ_PROJECT_ROOT") ??
@@ -116,7 +118,7 @@ async function buildAllPackages(): Promise<void> {
 
 /**
  * 批量导入目录下的统一题目包（默认 data/packages）。
- * 以 root/admin 身份执行（CLI 为运维工具），幂等 upsert。
+ * 可信运维入口显式使用目标域当前负责人，幂等 upsert。
  *
  * `--publish`：导入后把内容显式发布为版本（Handbook §6.8）。不发布时题目只有
  * 草稿，普通访问者读不到、也无法按版本提交——生产演练与开发初始化必须发布。
@@ -126,17 +128,20 @@ async function importProblemPackages(
   options: { publish?: boolean; domain?: string } = {},
 ): Promise<void> {
   let imported = 0;
+  const slug = options.domain ?? "main";
+  const [workspace] = await getDb().select({ actorId: domains.owner_id })
+    .from(domains).where(eq(domains.slug, slug));
+  if (!workspace) throw new Error(`目标工作空间不存在：${slug}`);
   try {
     for await (const entry of Deno.readDir(dir)) {
       if (!entry.isFile || !entry.name.toLowerCase().endsWith(".zip")) {
         continue;
       }
       const data = await Deno.readFile(join(dir, entry.name));
-      const slug = options.domain ?? "main";
       // 运维导入读取当前编辑基线；真正写入仍按捕获的 revision 校验并发。
       const problem = await importDomainProblemBundle(
         slug,
-        ROOT_USER_ID,
+        workspace.actorId,
         data,
         "current",
       );
@@ -147,7 +152,7 @@ async function importProblemPackages(
         const published = await publishDomainProblemVersion(
           slug,
           String(problem.number),
-          ROOT_USER_ID,
+          workspace.actorId,
           problem.draft_revision,
           "题目包导入",
         );
