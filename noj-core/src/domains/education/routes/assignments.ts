@@ -18,6 +18,7 @@ import {
   previewAssignmentRemediation,
 } from "../services/assignment-remediation.ts";
 import { getAssignmentHistory } from "../services/history-read.ts";
+import { getTrainingComparison } from "../services/training-comparison.ts";
 import {
   type AssignmentCopyInput,
   copyAssignment,
@@ -43,6 +44,27 @@ import {
 } from "../services/assignment-lifecycle.ts";
 
 const router = new Hono<AuthEnv>();
+router.get(
+  "/domains/:slug/assignments/:id/students/:userId/training-comparison",
+  authMiddleware,
+  async (c) => {
+    c.header("Cache-Control", "no-store");
+    return c.json({
+      data: await getTrainingComparison(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.req.param("userId")!,
+        c.var.userId,
+        {
+          before_start: c.req.query("before_start") ?? "",
+          before_end: c.req.query("before_end") ?? "",
+          after_start: c.req.query("after_start") ?? "",
+          after_end: c.req.query("after_end") ?? "",
+        },
+      ),
+    });
+  },
+);
 router.use("/domains/:slug/assignments/*", authMiddleware, async (c, next) => {
   c.header("Cache-Control", "no-store");
   await next();
