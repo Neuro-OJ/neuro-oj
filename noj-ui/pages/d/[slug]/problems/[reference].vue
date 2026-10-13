@@ -9,6 +9,10 @@ const api = useDomainProblems();
 const reference = computed(() => String(route.params.reference));
 const key = computed(() => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'problem', reference.value));
 const { data, status, error, refresh } = await useAsyncData(key, () => api.detail(slug.value!, reference.value));
+const showVersions = ref(false);
+watch(() => [slug.value, reference.value, user.value?.id], () => {
+  showVersions.value = false;
+});
 useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
 </script>
 <template>
@@ -18,7 +22,11 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
       <div class="flex items-start justify-between gap-3">
         <h2
           class="text-xl font-semibold"><span class="font-mono text-primary">{{ data.reference.display_ref }}</span> {{ data.content.title }}</h2>
-        <UBadge variant="subtle">V{{ data.version }}</UBadge>
+        <div class="flex items-center gap-2">
+          <UBadge variant="subtle">V{{ data.version }}</UBadge>
+          <UButton variant="ghost" color="neutral"
+            @click="showVersions = !showVersions">{{ showVersions ? '收起沿革' : '版本沿革' }}</UButton>
+        </div>
       </div>
       <UCard>
         <MarkdownRenderer :content="data.content.description" />
@@ -32,6 +40,8 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
       </UCard>
       <DomainProblemAnswer :key="`${slug}:${reference}:${user?.id}`" :slug="slug!" :problem="data"
         @refresh="refresh()" />
+      <DomainProblemVersions v-if="showVersions" :key="`${slug}:${reference}:${user?.id}:versions`" :slug="slug!"
+        :reference="reference" />
     </div>
   </AsyncContent>
 </template>

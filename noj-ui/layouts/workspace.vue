@@ -1,20 +1,8 @@
 <script setup lang="ts">
 import { extractApiError } from '~/utils/apiError';
-import { workspacePath } from '~/utils/workspace';
-const { domain, status, error, refresh, can } = provideWorkspaceContext();
-const tabs = computed(() =>
-  domain.value
-    ? [
-      { label: '概览', to: workspacePath(domain.value.slug), icon: 'i-lucide-building-2' },
-      ...(can('domain:members')
-        ? [{ label: '成员', to: workspacePath(domain.value.slug, 'members'), icon: 'i-lucide-users' }]
-        : []),
-      ...(can('domain:settings')
-        ? [{ label: '设置', to: workspacePath(domain.value.slug, 'settings'), icon: 'i-lucide-settings' }]
-        : []),
-    ]
-    : []
-);
+import { workspaceNavigation } from '~/utils/workspace-navigation';
+const { domain, status, error, refresh } = provideWorkspaceContext();
+const tabs = computed(() => domain.value ? workspaceNavigation(domain.value) : []);
 </script>
 
 <template>

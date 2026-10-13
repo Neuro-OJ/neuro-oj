@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { WORKSPACE_PRESETS, workspacePath } from '~/utils/workspace';
+import { workspaceNavigation } from '~/utils/workspace-navigation';
 import { useToast } from '~/composables/useToast';
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context' });
 const { domain, refresh } = useWorkspace();
@@ -8,6 +9,13 @@ const workspace = useWorkspaceApi();
 const { toast } = useToast();
 const joining = ref(false);
 const reason = ref('');
+const shortcuts = computed(() =>
+  domain.value
+    ? workspaceNavigation(domain.value).filter((entry) =>
+      entry.section && !['members', 'settings'].includes(entry.section)
+    )
+    : []
+);
 async function join() {
   if (!domain.value || joining.value) return;
   joining.value = true;
@@ -24,6 +32,13 @@ useSeoMeta({ title: () => domain.value?.name ?? '空间' });
 
 <template>
   <div v-if="domain" class="grid gap-4 md:grid-cols-2">
+    <UCard class="md:col-span-2">
+      <h2 class="mb-3 font-semibold text-text">开始使用</h2>
+      <div class="flex flex-wrap gap-3">
+        <UButton v-for="entry in shortcuts" :key="entry.to" :to="entry.to" :icon="entry.icon"
+          variant="outline">{{ entry.label }}</UButton>
+      </div>
+    </UCard>
     <UCard>
       <h2 class="mb-3 font-semibold text-text">空间信息</h2>
       <dl class="grid grid-cols-2 gap-3 text-sm">

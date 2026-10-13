@@ -57,7 +57,9 @@ export interface ProblemDetail extends ProblemVersionInfo {
 }
 
 /** 提交详情响应。 */
-export interface SubmissionDetail extends CreatedSubmission {
+export interface SubmissionDetail extends Omit<CreatedSubmission, "status"> {
+  /** OI 赛时仅返回回执，状态不用于推断评测判定。 */
+  status?: SubmissionStatus;
   result_visibility?: "hidden" | "summary" | "cases";
   problem_id: string;
   file_name: string;

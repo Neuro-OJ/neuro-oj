@@ -634,15 +634,21 @@ async function resolvePythonDocument(): Promise<
 }
 
 function showResult(detail: SubmissionDetail): void {
+  if (detail.result_visibility === "hidden") {
+    output.appendLine("已受理，结果按比赛规则暂未公开");
+    output.show(true);
+    vscode.window.showInformationMessage("Neuro OJ：提交已受理，结果暂未公开");
+    return;
+  }
   output.appendLine(`状态：${statusLabel(detail.status)}`);
   if (detail.result) {
-    if (detail.result_visibility !== "hidden" && detail.result.score !== null)
+    if (detail.result.score !== null)
       output.appendLine(`得分：${(detail.result.score / 100).toFixed(2)}`);
     if (detail.result.time_ms != null)
       output.appendLine(`耗时：${detail.result.time_ms} ms`);
     if (detail.result.memory_kb != null)
       output.appendLine(`内存：${detail.result.memory_kb} KiB`);
-    if (detail.result.output) {
+    if (detail.result_visibility !== "summary" && detail.result.output) {
       output.appendLine("\n评测输出：");
       output.appendLine(detail.result.output);
       if (detail.result.output_truncated)
@@ -655,11 +661,9 @@ function showResult(detail: SubmissionDetail): void {
     vscode.window.showErrorMessage("Neuro OJ 评测失败，详情已写入输出面板");
   } else {
     const score =
-      detail.result_visibility === "hidden"
-        ? "已受理，结果按比赛规则暂未公开"
-        : detail.result && detail.result.score !== null
-          ? `${(detail.result.score / 100).toFixed(2)} 分`
-          : "结果已完成";
+      detail.result && detail.result.score !== null
+        ? `${(detail.result.score / 100).toFixed(2)} 分`
+        : "结果已完成";
     vscode.window.showInformationMessage(`Neuro OJ 评测完成：${score}`);
   }
 }
@@ -705,6 +709,7 @@ async function setAuthenticated(value: boolean): Promise<void> {
 }
 
 function statusLabel(status: SubmissionDetail["status"]): string {
+  if (status === undefined) return "已受理";
   return {
     pending: "等待评测",
     judging: "评测中",
