@@ -18,6 +18,7 @@ watch(keyword, () => {
       description="当前目标固定为 main。资源的编辑、发布、共享及下架在域管理页面执行。">
       <template #actions>
         <UButton to="/d/main/problems/new" icon="i-lucide-plus">在 main 创建题目</UButton>
+        <UButton to="/d/main/problems/new?import=1" variant="outline" icon="i-lucide-file-archive">导入题目包</UButton>
         <UButton to="/d/main/problem-bindings" variant="outline">资源与共享管理</UButton>
         <UButton to="/d/main/problem-drafts" variant="outline">未发布草稿</UButton>
       </template>

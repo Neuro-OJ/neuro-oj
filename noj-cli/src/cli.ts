@@ -265,7 +265,7 @@ export async function run(argv: string[]): Promise<number> {
     // 判定依据是「**是否会路由进 Tier 3 容器**」，而不是只看顶层名
     //（评审 B5）：顶层名 `problem` 同时承担两种角色——
     // `problem build|import` 是 Tier 3（需生产目录），
-    // `problem init|lint|pack` 是本地出题命令。只看顶层名会让前者逃过门禁。
+    // `problem init|lint|pack|push` 是本地出题命令（push 只访问 --server 指定的平台 API）。只看顶层名会让前者逃过门禁。
     const isTier3 = container.matched;
     if (
       effectiveProfile !== null && !wantsHelp(topRest) &&
@@ -1323,7 +1323,7 @@ export async function dispatchCommand(
     return await dispatchProduction(ctx, command, args);
   }
 
-  // `problem` = 题目包管理（#514）：init / lint / pack
+  // `problem` = 题目包管理（#514）：init / lint / pack / push
   if (command === "problem" || command === "problems") {
     if (args.length === 0) {
       console.log(renderProblemHelp());

@@ -1,22 +1,7 @@
 <script setup lang="ts">
-definePageMeta({
-  ssr: false,
-})
-
-useHead({ title: '创建 Coding 编程题 - Neuro OJ' })
-
-const router = useRouter()
-const route = useRoute()
-
-function onSaved() {
-  router.replace("/my/problems")
-}
+const route = useRoute();
+await navigateTo(
+  `/d/main/problems/new?kind=${route.query.type === 'oi' ? 'oi' : 'ai'}`,
+  { replace: true },
+);
 </script>
-
-<template>
-  <div class="px-4 py-5 sm:px-7 sm:py-8 max-w-[860px] mx-auto">
-    <h1 class="text-2xl font-bold text-text mb-5">创建 Coding 编程题</h1>
-
-    <ProblemEditor mode="create" :initial-judge-type="route.query.type === 'oi' ? 'oi' : 'dual'" initial-type="U" @saved="onSaved" />
-  </div>
-</template>

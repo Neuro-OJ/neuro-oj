@@ -39,9 +39,9 @@
 | noj-core/src/domains/catalog/tests/routes/problem-bundle.test.ts | 807 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problem-bundle.test.ts | 886 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problem-bundle.test.ts | 950 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-bundle.test.ts | 989 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-bundle.test.ts | 1008 | ignore |
-| noj-core/src/domains/catalog/tests/routes/problem-bundle.test.ts | 1051 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-bundle.test.ts | 1078 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-bundle.test.ts | 1097 | ignore |
+| noj-core/src/domains/catalog/tests/routes/problem-bundle.test.ts | 1140 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problem-contest-secrecy.test.ts | 140 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problem-contest-secrecy.test.ts | 158 | ignore |
 | noj-core/src/domains/catalog/tests/routes/problem-contest-secrecy.test.ts | 178 | ignore |

@@ -130,6 +130,8 @@ noj-cli problem init <slug> [--judge-type dual|oi] \
 noj-cli problem lint <目录>
 noj-cli problem pack <目录> --out <目录>
 noj-cli problem import --domain school --dir <题包目录>
+noj-cli problem push <目录或zip> --server https://noj.example.com --domain school
+noj-cli problem push <目录或zip> --server https://noj.example.com --domain school --publish
 ```
 
 `problem init` 和 `pack` 生成格式 2 题包，不再写 P/U 分类。`lint` 可校验格式 1

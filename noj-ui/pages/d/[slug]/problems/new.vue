@@ -6,6 +6,10 @@ definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] 
 const { slug, can, domain } = useWorkspace(), api = useDomainProblemEditor(), capture = useWorkspaceActionScope();
 const { user } = useAuth();
 const route = useRoute();
+const importingBundle = computed(() => route.query.import === '1');
+async function onImported(result: { number: number }) {
+  await navigateTo(`/d/${slug.value}/editor/${result.number}`);
+}
 const images = await useAsyncData(() => `instance-judge-images:${user.value?.id}`, () => api.images());
 const evaluatorImage = ref(''), solutionImage = ref('');
 const imageItems = (kind: string) =>
@@ -53,6 +57,12 @@ useSeoMeta({ title: '创建本域题目' });
     <AdminPageHeader title="创建本域题目" description="先创建共享草稿，再配置内容、测试数据和评测并发布。题号自动分配。"
       icon="i-lucide-file-plus-2" />
     <UAlert v-if="!writable" color="warning" title="没有当前域创建题目的能力，或当前域只允许读取" />
+    <template v-else>
+    <div class="flex gap-2">
+      <UButton :to="`/d/${slug}/problems/new`" :variant="importingBundle ? 'outline' : 'solid'">填写配置创建</UButton>
+      <UButton :to="`/d/${slug}/problems/new?import=1`" :variant="importingBundle ? 'solid' : 'outline'">从题目包导入</UButton>
+    </div>
+    <BundleImportPanel v-if="importingBundle && slug" :key="slug" :domain-slug="slug" @imported="onImported" />
     <UCard v-else>
       <form class="space-y-4" @submit.prevent="create">
         <AdminFormField label="题型">
@@ -94,5 +104,6 @@ useSeoMeta({ title: '创建本域题目' });
           :disabled="!title.trim() || (kind === 'ai' && (!evaluatorImage || !solutionImage))">创建草稿并继续编辑</UButton>
       </form>
     </UCard>
+    </template>
   </div>
 </template>
