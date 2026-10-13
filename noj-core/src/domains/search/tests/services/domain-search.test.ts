@@ -72,7 +72,6 @@ export async function fixture() {
     created_at: now,
     updated_at: now,
   });
-  await publishAllProblemsForTest();
   await db.insert(domainProblemBindings).values(
     [DEFAULT_DOMAIN_ID, "school-query-a", "school-query-b"].map(
       (domain_id) => ({
@@ -89,6 +88,7 @@ export async function fixture() {
       }),
     ),
   );
+  await publishAllProblemsForTest();
   await db.insert(problemShareSettings).values({
     problem_id: "query-source",
     enabled: true,

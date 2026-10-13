@@ -438,6 +438,7 @@ Deno.test({
     });
     await db.insert(contests).values({
       id: "contest-entry-1",
+      domain_id: DEFAULT_DOMAIN_ID,
       title: "题目关联竞赛",
       description: "竞赛描述",
       start_time: "2026-01-01T00:00:00.000Z",
@@ -509,6 +510,7 @@ Deno.test({
     ]);
     await db.insert(contests).values({
       id: "contest-entry-2",
+      domain_id: DEFAULT_DOMAIN_ID,
       title: "含私题的公开竞赛",
       description: "竞赛描述",
       start_time: "2026-01-01T00:00:00.000Z",
