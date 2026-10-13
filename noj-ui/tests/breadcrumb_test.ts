@@ -22,7 +22,7 @@ Deno.test('breadcrumb: 三层路径逐层可回跳，末层不可点击', () => 
   assertEquals(items.length, 3);
   assertEquals(items[0].label, '竞赛');
   assertEquals(items[0].to, '/contests');
-  assertEquals(items[1].to, '/contests/c1');
+  assertEquals(items[1].to, '/d/main/contests/c1');
   assertEquals(items[2].to, undefined);
 });
 

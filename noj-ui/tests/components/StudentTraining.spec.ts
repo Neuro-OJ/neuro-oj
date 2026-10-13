@@ -14,6 +14,10 @@ const stubs = {
   PaginationNav: true,
   USlideover: { template: '<div><slot name="body" /></div>' },
   SubmissionReview: true,
+  ArtifactDownload: {
+    props: ['endpoint', 'fileName'],
+    template: '<button :data-endpoint="endpoint" :data-filename="fileName">下载原提交产物</button>',
+  },
 };
 beforeEach(() => {
   vi.clearAllMocks();
@@ -23,12 +27,14 @@ beforeEach(() => {
   vi.stubGlobal('useSeoMeta', vi.fn());
   vi.stubGlobal(
     'useAsyncData',
-    async (_key: unknown, handler: () => Promise<unknown>) => ({
-      data: ref(await handler()),
-      status: ref('success'),
-      error: ref(null),
-      refresh: vi.fn(),
-    }),
+    async (key: () => string, handler: () => Promise<unknown>) => {
+      const data = ref(await handler());
+      const refresh = async () => {
+        data.value = await handler();
+      };
+      watch(key, refresh);
+      return { data, status: ref('success'), error: ref(null), refresh };
+    },
   );
   api.studentSubmissions.mockResolvedValue({
     data: {
@@ -48,6 +54,20 @@ beforeEach(() => {
     },
   });
   api.assignments.mockResolvedValue({ data: [] });
+  api.studentSubmission.mockResolvedValue({
+    data: {
+      id: 's1',
+      display_ref: 'main:1001',
+      kind: 'submission',
+      score: null,
+      verdict: null,
+      status: 'finished',
+      has_artifact: true,
+      file_name: 'answer.zip',
+      time_ms: null,
+      memory_kb: null,
+    },
+  });
 });
 async function view(capabilities: TeachingCapability[], historical = false) {
   const classroom = {
@@ -82,6 +102,17 @@ async function view(capabilities: TeachingCapability[], historical = false) {
   return result;
 }
 describe('学生训练权限分别授权', () => {
+  it('授权产物详情使用班级和使用域下载接口，不提供存储直链', async () => {
+    const result = await view(['submissions:read']);
+    await result.findAll('button').find((button) => button.text().includes('main:1001'))!.trigger('click');
+    await flushPromises();
+    expect(api.studentSubmission).toHaveBeenCalledWith('school', 'c1', 'submission', 's1');
+    const download = result.findAll('button').find((button) => button.text() === '下载原提交产物')!;
+    expect(download.attributes('data-endpoint')).toBe(
+      '/api/v1/domains/school/classrooms/c1/submissions/submission/s1/artifact',
+    );
+    expect(download.attributes('data-filename')).toBe('answer.zip');
+  });
   it('只有学情读取不请求学生提交或原代码详情', async () => {
     const result = await view(['progress:read']);
     expect(api.studentSubmissions).not.toHaveBeenCalled();

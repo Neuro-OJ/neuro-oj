@@ -31,6 +31,9 @@ defineProps<{ entry: OwnSubmissionHistory; offerDomainActions?: boolean }>();
     <UCard v-if="entry.file_name">
       <p class="text-sm">原提交文件：{{ entry.file_name }}</p>
     </UCard>
+    <ArtifactDownload v-if="entry.kind === 'submission' && entry.has_artifact" :key="entry.id"
+      :endpoint="`/api/v1/me/submissions/submission/${encodeURIComponent(entry.id)}/artifact`"
+      :file-name="entry.file_name ?? `submission-${entry.id}.zip`" />
     <UCard v-if="entry.kind === 'objective' && entry.answers">
       <h3 class="mb-3 font-semibold">本人原回答</h3>
       <p v-for="(answer, key, index) in entry.answers" :key="key"

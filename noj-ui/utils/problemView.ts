@@ -227,8 +227,8 @@ export function toContestProblemView(
 }
 
 /** 题型展示文案。 */
-export function problemTypeLabel(type: string | undefined): string {
-  return type === 'U' ? '用户题库' : '主题库';
+export function problemTypeLabel(_type: string | undefined): string {
+  return '题库';
 }
 
 /** 评测题型文案；不将缺失题型的旧响应误判为 AI 题。 */

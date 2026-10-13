@@ -4,6 +4,7 @@ import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
 import JobPage from '~/pages/d/[slug]/submission-jobs/[jobId].vue';
 import type { DomainSubmissionJob } from '~/utils/domain-submission-jobs';
 const api = { detail: vi.fn(), items: vi.fn(), cancel: vi.fn() };
+const objective = { detail: vi.fn() }, navigate = vi.fn();
 let polling: { intervalMs: { value: number | null }; fetcher: () => Promise<void> };
 const job = (): DomainSubmissionJob => ({
   id: 'job-one',
@@ -27,6 +28,9 @@ beforeEach(() => {
   vi.stubGlobal('useWorkspace', () => ({ slug: ref('school'), domain: ref({ status: 'active' }), can: () => false }));
   vi.stubGlobal('useWorkspaceActionScope', () => () => ({ slug: 'school', isCurrent: () => true }));
   vi.stubGlobal('useDomainSubmissionJobs', () => api);
+  vi.stubGlobal('useDomainObjectiveHistory', () => objective);
+  vi.stubGlobal('navigateTo', navigate);
+  objective.detail.mockResolvedValue({ data: { id: 'own-record' } });
   vi.stubGlobal('usePolling', (options: typeof polling) => {
     polling = options;
   });
@@ -122,8 +126,32 @@ describe('域任务详情生命周期', () => {
       pagination: { total: 1, total_pages: 1 },
     });
     const result = await view();
-    expect(result.findAll('button').find((button) => button.text() === '查看升级后的新提交')!.attributes('data-to'))
-      .toBe('/d/school/objective-submissions/new-answer');
+    await result.findAll('button').find((button) => button.text() === '打开本人升级记录')!.trigger('click');
+    await flushPromises();
+    expect(objective.detail).toHaveBeenCalledWith('school', 'new-answer');
+    expect(navigate).toHaveBeenCalledWith('/d/school/objective-submissions/new-answer');
+  });
+  it('他人客观记录不可读时在任务页说明授权入口，不导航到404页', async () => {
+    api.items.mockResolvedValue({
+      data: [{
+        id: 'item',
+        ordinal: 0,
+        source_kind: 'objective',
+        source_id: 'other-answer',
+        problem_id: 'paper',
+        target_version_id: 'v2',
+        status: 'succeeded',
+        result_submission_id: null,
+        reason_message: null,
+      }],
+      pagination: { total: 1, total_pages: 1 },
+    });
+    objective.detail.mockRejectedValue({ statusCode: 404, data: { error: '提交不存在' } });
+    const result = await view();
+    await result.findAll('button').find((button) => button.text() === '打开本人原回答')!.trigger('click');
+    await flushPromises();
+    expect(result.text()).toContain('获授权的班级训练页面');
+    expect(navigate).not.toHaveBeenCalled();
   });
   it('慢请求不能将自动刷新延长为无限读取，过两分钟后停止', async () => {
     const started = Date.now();

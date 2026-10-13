@@ -24,6 +24,7 @@ const entry = (): OwnSubmissionHistory => ({
   contest_id: null,
   language: 'python3',
   file_name: null,
+  has_artifact: false,
   created_at: '2026-10-13',
   submitted_version_id: 'v1',
   status: 'finished',
@@ -37,8 +38,25 @@ const stubs = {
   UCard: { template: '<div><slot /></div>' },
   UButton: { props: ['to'], template: '<button :data-to="to"><slot /></button>' },
   UAlert: { props: ['title'], template: '<p>{{ title }}</p>' },
+  ArtifactDownload: {
+    props: ['endpoint', 'fileName'],
+    template: '<button :data-endpoint="endpoint" :data-filename="fileName">下载原提交产物</button>',
+  },
 };
 describe('本人原提交与成绩摘要', () => {
+  it('本人离域后仍提供受授权检查的原产物入口，不恢复题面导航', () => {
+    const artifact = entry();
+    artifact.has_artifact = true;
+    artifact.file_name = 'answer.zip';
+    artifact.code = null;
+    const view = mount(OwnSubmissionRecord, {
+      props: { entry: artifact, offerDomainActions: true },
+      global: { components: { OwnSubmissionSummary }, stubs },
+    });
+    expect(view.get('button').attributes('data-endpoint')).toBe('/api/v1/me/submissions/submission/s1/artifact');
+    expect(view.get('button').attributes('data-filename')).toBe('answer.zip');
+    expect(view.text()).not.toContain('返回使用域题目');
+  });
   it('失去域访问权仍显示原代码和授权摘要，不生成题面导航', () => {
     const view = mount(OwnSubmissionRecord, {
       props: { entry: entry(), offerDomainActions: true },

@@ -1,10 +1,33 @@
 <script setup lang="ts">
 import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
 import { DOMAIN_JOB_STATUS_LABELS, domainJobTerminal } from '~/utils/domain-submission-jobs';
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError, isNotFoundError } from '~/utils/apiError';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const route = useRoute(), { slug, domain, can } = useWorkspace(), { user } = useAuth();
 const api = useDomainSubmissionJobs(), capture = useWorkspaceActionScope();
+const objective = useDomainObjectiveHistory();
+const opening = ref(''), sourceFailure = ref<{ id: string; message: string } | null>(null);
+async function openObjective(recordId: string) {
+  if (opening.value) return;
+  const context = capture();
+  opening.value = recordId;
+  sourceFailure.value = null;
+  try {
+    await objective.detail(context.slug, recordId);
+    if (context.isCurrent()) await navigateTo(workspacePath(context.slug, `objective-submissions/${recordId}`));
+  } catch (e) {
+    if (context.isCurrent()) {
+      sourceFailure.value = {
+        id: recordId,
+        message: isNotFoundError(e)
+          ? '当前客观题详情入口只提供本人记录。其他学生原回答请从获授权的班级训练页面查看。'
+          : extractApiError(e).message,
+      };
+    }
+  } finally {
+    opening.value = '';
+  }
+}
 const id = computed(() => String(route.params.jobId)),
   page = ref(1),
   polls = ref(0),
@@ -104,10 +127,21 @@ useSeoMeta({ title: '域内评测任务' });
           <p
             class="mt-2 break-all font-mono text-xs text-text-muted">目标版本 {{ item.target_version_id ?? '版本未知' }}</p>
           <p v-if="item.reason_message" class="mt-2 text-sm text-text-secondary">{{ item.reason_message }}</p>
-          <UButton class="mt-3" variant="outline"
-            :to="workspacePath(slug!, `${item.source_kind === 'objective' ? 'objective-submissions' : 'submissions'}/${item.source_id}`)">查看原提交</UButton>
-          <UButton v-if="item.result_submission_id" class="ml-2 mt-3" variant="outline"
-            :to="workspacePath(slug!, `${item.source_kind === 'objective' ? 'objective-submissions' : 'submissions'}/${item.result_submission_id}`)">查看升级后的新提交</UButton>
+          <template v-if="item.source_kind === 'objective'">
+            <UButton class="mt-3" variant="outline" :loading="opening === item.source_id"
+              @click="openObjective(item.source_id)">打开本人原回答</UButton>
+            <UButton v-if="item.result_submission_id" class="ml-2 mt-3" variant="outline"
+              :loading="opening === item.result_submission_id"
+              @click="openObjective(item.result_submission_id)">打开本人升级记录</UButton>
+            <UAlert v-if="sourceFailure && [item.source_id, item.result_submission_id].includes(sourceFailure.id)"
+              class="mt-3" color="info" :title="sourceFailure.message" />
+          </template>
+          <template v-else>
+            <UButton class="mt-3" variant="outline"
+              :to="workspacePath(slug!, `submissions/${item.source_id}`)">查看原提交</UButton>
+            <UButton v-if="item.result_submission_id" class="ml-2 mt-3" variant="outline"
+              :to="workspacePath(slug!, `submissions/${item.result_submission_id}`)">查看升级后的新提交</UButton>
+          </template>
         </UCard>
       </div>
     </AsyncContent>

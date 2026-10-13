@@ -110,6 +110,10 @@ useSeoMeta({ title: () => `${props.student?.username ?? '学生'} · 训练详�
           <template v-if="detail.data.value">
             <p class="mb-3 font-mono">{{ detail.data.value.data.display_ref }}</p>
             <p class="mb-3 text-sm tabular-nums">{{ teachingSubmissionResult(detail.data.value.data) }}</p>
+            <ArtifactDownload v-if="detail.data.value.data.kind === 'submission' && detail.data.value.data.has_artifact"
+              :key="`${slug}:${classroom.id}:${detail.data.value.data.id}`"
+              :endpoint="`/api/v1/domains/${encodeURIComponent(slug)}/classrooms/${encodeURIComponent(classroom.id)}/submissions/submission/${encodeURIComponent(detail.data.value.data.id)}/artifact`"
+              :file-name="detail.data.value.data.file_name ?? `submission-${detail.data.value.data.id}.zip`" class="mb-4" />
             <p v-if="detail.data.value.data.time_ms !== null || detail.data.value.data.memory_kb !== null"
               class="mb-4 text-xs text-text-muted"><span v-if="detail.data.value.data.time_ms !== null">{{ detail.data.value.data.time_ms }} ms</span><span v-if="detail.data.value.data.memory_kb !== null" class="ml-3">{{ detail.data.value.data.memory_kb }} KiB</span></p>
             <SubmissionReview v-if="detail.data.value.data.kind === 'submission'"

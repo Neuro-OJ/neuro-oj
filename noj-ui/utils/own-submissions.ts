@@ -13,6 +13,7 @@ export interface OwnSubmissionHistory {
   contest_id: string | null;
   language: string;
   file_name: string | null;
+  has_artifact: boolean;
   created_at: string;
   submitted_version_id: string | null;
   status: string;

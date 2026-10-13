@@ -5,13 +5,18 @@ import { extractApiError } from '~/utils/apiError';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const { slug, can, domain } = useWorkspace(), api = useDomainProblemEditor(), capture = useWorkspaceActionScope();
 const { user } = useAuth();
+const route = useRoute();
 const images = await useAsyncData(() => `instance-judge-images:${user.value?.id}`, () => api.images());
 const evaluatorImage = ref(''), solutionImage = ref('');
 const imageItems = (kind: string) =>
   images.data.value?.data.filter((item) => item.kind === kind).map((item) => item.image) ?? [];
 const title = ref(''),
   description = ref(''),
-  kind = ref<DomainEditorContent['kind']>('oi'),
+  kind = ref<DomainEditorContent['kind']>(
+    ['oi', 'ai', 'objective'].includes(String(route.query.kind))
+      ? route.query.kind as DomainEditorContent['kind']
+      : 'oi',
+  ),
   visibility = ref<'public' | 'private'>('private');
 const submissionMode = ref<'code' | 'artifact'>('code'), saving = ref(false), failure = ref('');
 const writable = computed(() =>
