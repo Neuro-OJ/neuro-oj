@@ -20,6 +20,7 @@ import { sql } from "drizzle-orm";
 import { dirname, fromFileUrl, resolve } from "jsr:@std/path@^1";
 import { getDb } from "../../src/shared/db/connection.ts";
 import { unwrapRows } from "../../src/shared/base/sql-rows.ts";
+import { DEFAULT_DOMAIN_ID } from "../../src/shared/workspace/types.ts";
 
 /** 需要真实 PostgreSQL 的迁移语义（PGlite 下跳过）。 */
 const hasRealPg = !!Deno.env.get("DATABASE_URL");
@@ -165,16 +166,16 @@ async function seedProblem(
   number: number,
 ): Promise<void> {
   const db = getDb();
-  // 隔离 schema 下没有 seed root 用户；题目的 owner 外键需要一个真实用户。
+  // 在当前隔离 schema 回放迁移语句，资源归属遵守现行 Schema。
   await db.execute(sql`
     INSERT INTO users (id, username, email, created_at, updated_at)
     VALUES ('0', 'pr622-lead-probe', 'pr622-lead@example.test', ${NOW}, ${NOW})
     ON CONFLICT (id) DO NOTHING
   `);
   await db.execute(sql`
-    INSERT INTO problems (id, title, description, type, number, owner_id,
+    INSERT INTO problems (id, domain_id, title, description, number, owner_id,
                           difficulty, judge_type, created_at, updated_at)
-    VALUES (${problemId}, ${problemId}, 'd', 'P', ${number}, '0', 'easy', 'dual',
+    VALUES (${problemId}, ${DEFAULT_DOMAIN_ID}, ${problemId}, 'd', ${number}, '0', 'easy', 'dual',
             ${NOW}, ${NOW})
     ON CONFLICT (id) DO NOTHING
   `);

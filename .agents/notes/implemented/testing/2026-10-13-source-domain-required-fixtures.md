@@ -20,8 +20,9 @@ Status: implemented
 - 原 NULL 回填用例改为合法 main 来源题的 owned binding 补齐与幂等验证；归属
   已保存，因此 assigned 计数为 0，仍覆盖保留 ID、版本、题号和原策略、不覆盖
   修改后绑定策略。真实未归域存量回填由 root 的备份恢复迁移演练验证。
-- 历史迁移用例构造的是迁移前 Schema，保留它的旧分类和 NULL 输入，不使用类型
-  断言让新 Schema 接受不可能的写入。
+- 迁移回归需按真实运行 Schema 判断输入约束，不按测试名称推断。0109 回放测试
+  实际在当前 Schema 执行历史迁移语句，其种子已在后续全量回归批对齐 main 归属
+  并移除旧分类；独立旧 Schema 演练才保留迁移前字段。不使用类型断言绕过约束。
 
 ## Alternatives considered
 

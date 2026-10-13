@@ -10,7 +10,8 @@
  */
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
-import { getDb } from "../../src/shared/db/connection.ts";
+import { getDb, resetDbForTest } from "../../src/shared/db/connection.ts";
+import { DEFAULT_DOMAIN_ID } from "../../src/shared/workspace/types.ts";
 import {
   evaluationAttempts,
   objectiveSubmissions,
@@ -21,6 +22,7 @@ import {
   submissionVersionResults,
 } from "../../src/shared/db/schema.ts";
 
+await resetDbForTest();
 const now = new Date().toISOString();
 
 /** 插入一道题 + 一个版本，返回版本 ID。 */
@@ -31,10 +33,10 @@ async function seedProblemWithVersion(
 ): Promise<void> {
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",

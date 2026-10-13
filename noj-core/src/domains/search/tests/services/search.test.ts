@@ -16,6 +16,7 @@ import {
 import { searchFlat, searchGrouped } from "../../services/search.ts";
 
 import { publishAllProblemsForTest } from "../../../../../tests/helper.ts";
+import { backfillDefaultCatalog } from "../../../catalog/index.ts";
 
 await resetDbForTest();
 
@@ -52,6 +53,7 @@ async function seed() {
   });
   // 夹具题目必须"已发布"才入索引（Handbook §6.6）
   await publishAllProblemsForTest();
+  await backfillDefaultCatalog();
   await upsertSearchEntry((await buildProblemEntry("p-search-1"))!);
   await upsertSearchEntry((await buildUserEntry("u-search-1"))!);
 }
@@ -144,6 +146,7 @@ Deno.test({
       },
     ]);
     await publishAllProblemsForTest();
+    await backfillDefaultCatalog();
     await upsertSearchEntry((await buildProblemEntry("p-percent-1"))!);
     await upsertSearchEntry((await buildProblemEntry("p-percent-2"))!);
     const result = await searchFlat({

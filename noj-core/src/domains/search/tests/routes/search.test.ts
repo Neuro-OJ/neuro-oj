@@ -12,6 +12,7 @@ import {
 } from "../../services/index-writer.ts";
 
 import { publishAllProblemsForTest } from "../../../../../tests/helper.ts";
+import { backfillDefaultCatalog } from "../../../catalog/index.ts";
 
 try {
   await connectRedis();
@@ -55,6 +56,7 @@ async function seed() {
     updated_at: now,
   });
   await publishAllProblemsForTest();
+  await backfillDefaultCatalog();
   await upsertSearchEntry((await buildProblemEntry("p-search-route-1"))!);
   await upsertSearchEntry((await buildUserEntry("u-search-route-1"))!);
 }
