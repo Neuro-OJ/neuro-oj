@@ -975,7 +975,7 @@ Deno.test({
 Deno.test({
   name:
     "import-bundle: 目标题目模式可写入**未发布**题目的草稿（新建题目后上传支持包）",
-  ignore: skipEnv,
+  // 不按环境变量条件跳过：test:domain 总会提供 JWT_SECRET，静默跳过只会掩盖回归
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
