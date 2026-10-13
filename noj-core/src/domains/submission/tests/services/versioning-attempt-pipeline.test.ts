@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 import {
@@ -390,6 +391,7 @@ Deno.test("pipeline: 协议 v2 结果经 run_id 精确落到尝试", async () =>
   const submissionId = crypto.randomUUID();
   const attemptId = crypto.randomUUID();
   await db.insert(submissions).values({
+    ...await problemExecutionForTest("ap-p6"),
     id: submissionId,
     user_id: "0",
     problem_id: "ap-p6",

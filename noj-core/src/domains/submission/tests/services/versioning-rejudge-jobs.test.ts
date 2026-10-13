@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * 批任务受理测试（Handbook §4.3、§2.10、§5.7）。
@@ -89,6 +90,7 @@ async function seedSubmission(
   options: { versionId?: string | null; contestId?: string | null } = {},
 ): Promise<void> {
   await getDb().insert(submissions).values({
+    ...await problemExecutionForTest(problemId),
     id,
     user_id: "0",
     problem_id: problemId,
@@ -311,6 +313,7 @@ Deno.test("jobs: problem 范围覆盖两类提交", async () => {
     eq(problems.id, "rj-p8"),
   );
   await getDb().insert(objectiveSubmissions).values({
+    ...await problemExecutionForTest("rj-p8"),
     id: "rj-o8",
     paper_id: "rj-p8",
     user_id: "0",

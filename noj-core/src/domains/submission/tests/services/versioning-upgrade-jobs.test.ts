@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 /**
  * 用户升级任务受理测试（Handbook §4.4）。
  *
@@ -82,6 +83,7 @@ async function seedSubmission(
   } = {},
 ): Promise<void> {
   await getDb().insert(submissions).values({
+    ...await problemExecutionForTest(problemId),
     id,
     user_id: options.userId ?? "up-user-a",
     problem_id: problemId,
@@ -371,6 +373,7 @@ Deno.test("upgrade: 客观题竞赛提交可升级为练习（新提交仍是练
     pinned_version_id: "up-p7-v1",
   });
   await db.insert(objectiveSubmissions).values({
+    ...await problemExecutionForTest("up-p7"),
     id: "up-o7",
     paper_id: "up-p7",
     user_id: "up-user-a",

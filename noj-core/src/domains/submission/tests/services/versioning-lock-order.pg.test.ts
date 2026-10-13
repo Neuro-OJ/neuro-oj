@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 真实 PostgreSQL 并发/锁协议验证（tracking #12、#30；2026-10-11 复审问题 1、5）。
@@ -243,6 +244,7 @@ Deno.test({
     const bindPromise = withRawTransaction(async (tx) => {
       await assertStorageObjectBindable(url, tx);
       await tx.insert(submissions).values({
+        ...await problemExecutionForTest(problemId),
         id: `pg-lock-bind-${crypto.randomUUID()}`,
         user_id: "0",
         problem_id: problemId,
@@ -344,6 +346,7 @@ Deno.test({
       }, tx);
       await assertStorageObjectBindable(url, tx);
       await tx.insert(submissions).values({
+        ...await problemExecutionForTest(problemId),
         id: `pg-lock-reup-${crypto.randomUUID()}`,
         user_id: "0",
         problem_id: problemId,
@@ -513,6 +516,7 @@ Deno.test({
         await registerStreamedStorageObject({ storageUrl: url }, tx);
         await assertStorageObjectBindable(url, tx);
         await tx.insert(submissions).values({
+          ...await problemExecutionForTest(problemId),
           id: `pg-lock-stream-${crypto.randomUUID()}`,
           user_id: "0",
           problem_id: problemId,
@@ -601,6 +605,7 @@ Deno.test({
       await registerStreamedStorageObject({ storageUrl: url }, tx);
       await assertStorageObjectBindable(url, tx);
       await tx.insert(submissions).values({
+        ...await problemExecutionForTest(problemId),
         id: `pg-lock-stream-${crypto.randomUUID()}`,
         user_id: "0",
         problem_id: problemId,
@@ -648,6 +653,7 @@ Deno.test({
       await registerStreamedStorageObject({ storageUrl: url }, tx);
       await assertStorageObjectBindable(url, tx);
       await tx.insert(submissions).values({
+        ...await problemExecutionForTest(problemId),
         id: `pg-lock-stream-${crypto.randomUUID()}`,
         user_id: "0",
         problem_id: problemId,
@@ -680,6 +686,7 @@ Deno.test({
     const submissionId = `pg-lock-sub-${crypto.randomUUID()}`;
     const attemptId = `pg-lock-att-${crypto.randomUUID()}`;
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       user_id: "0",
       problem_id: problemId,

@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
@@ -97,6 +98,7 @@ await db.insert(problems).values([
 ]);
 await db.insert(selfTests).values([
   {
+    ...await problemExecutionForTest(PROBLEM_ID),
     id: SELF_TEST_ID,
     judge_run_id: "self-test-run",
     problem_version_id: await publishBaselineVersionForTest(PROBLEM_ID),
@@ -108,6 +110,7 @@ await db.insert(selfTests).values([
     created_at: now,
   },
   {
+    ...await problemExecutionForTest(BAD_PROBLEM_ID),
     id: PENDING_SELF_TEST_ID,
     user_id: USER_ID,
     problem_id: BAD_PROBLEM_ID,
@@ -117,6 +120,7 @@ await db.insert(selfTests).values([
     created_at: oldNow,
   },
   {
+    ...await problemExecutionForTest(PROBLEM_ID),
     id: RECOVERABLE_SELF_TEST_ID,
     judge_run_id: "recovery-run",
     problem_version_id: await publishBaselineVersionForTest(PROBLEM_ID),
@@ -130,6 +134,7 @@ await db.insert(selfTests).values([
   },
 ]);
 await db.insert(submissions).values({
+  ...await problemExecutionForTest(PROBLEM_ID),
   id: SUBMISSION_ID,
   user_id: USER_ID,
   problem_id: PROBLEM_ID,
@@ -149,6 +154,7 @@ await seedActiveAttemptForTest({
   created_at: now,
 });
 await db.insert(submissions).values({
+  ...await problemExecutionForTest(PROBLEM_ID),
   id: RECOVERABLE_SUBMISSION_ID,
   user_id: USER_ID,
   problem_id: PROBLEM_ID,
@@ -158,6 +164,7 @@ await db.insert(submissions).values({
   created_at: oldNow,
 });
 await db.insert(submissions).values({
+  ...await problemExecutionForTest(BAD_PROBLEM_ID),
   id: INVALID_SUBMISSION_ID,
   user_id: USER_ID,
   problem_id: BAD_PROBLEM_ID,

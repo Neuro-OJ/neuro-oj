@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 /**
  * 提交/评测执行链回归（tracking #1/#6/#10/#26/#29/#48）。
  *
@@ -961,6 +962,7 @@ Deno.test("attempt sequence: 迁移前较大的源 rejudge_seq 不回退（#27�
 
   // 旧协议迁移行：rejudge_seq=5 且没有任何尝试记录
   await db.insert(submissions).values({
+    ...await problemExecutionForTest(problemId),
     id: "ec-s9",
     user_id: "0",
     problem_id: problemId,
@@ -1044,6 +1046,7 @@ Deno.test("attempt lifecycle: superseded 后吊销旧尝试 token；传 executor
     },
   );
   await db.insert(submissions).values({
+    ...await problemExecutionForTest("ec-p10"),
     id: "ec-s10",
     user_id: "0",
     problem_id: "ec-p10",
@@ -1400,6 +1403,7 @@ Deno.test("projection revision: 新增与删除提交递增题目与 global revi
 
   // 删除路径：直接插入一条无尝试的终态提交再删除
   await db.insert(submissions).values({
+    ...await problemExecutionForTest("ec-p6"),
     id: "ec-s6",
     user_id: "0",
     problem_id: "ec-p6",

@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * pending 恢复的版本来源测试（Handbook §5.4、§6.5）。
@@ -172,6 +173,7 @@ Deno.test({
     const submissionId = `tst-sweep-sub-ver-${ts}`;
     const attemptId = `tst-sweep-att-ver-${ts}`;
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
@@ -247,6 +249,7 @@ Deno.test({
     const submissionId = `tst-sweep-sub-art-${ts}`;
     const attemptId = `tst-sweep-att-art-${ts}`;
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
@@ -312,6 +315,7 @@ Deno.test({
     const submissionId = `tst-sweep-sub-llm-miss-${ts}`;
     const attemptId = `tst-sweep-att-llm-miss-${ts}`;
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
@@ -382,6 +386,7 @@ Deno.test({
     const submissionId = `tst-sweep-sub-llm-frozen-${ts}`;
     const attemptId = `tst-sweep-att-llm-frozen-${ts}`;
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
@@ -486,6 +491,7 @@ Deno.test({
     );
     const submissionId = `tst-sweep-sub-legacy-${ts}`;
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       user_id: userId,
       problem_id: problemId,

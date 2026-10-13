@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 /**
  * 有效版本策略切换测试（Handbook §1.2、§4.5、§3.5）。
  *
@@ -150,6 +151,7 @@ async function seedSubmissionWithResult(input: {
 }): Promise<ProjectionSource> {
   const db = getDb();
   await db.insert(submissions).values({
+    ...await problemExecutionForTest(input.problemId),
     id: input.submissionId,
     user_id: "0",
     problem_id: input.problemId,

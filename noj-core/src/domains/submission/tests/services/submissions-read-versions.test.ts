@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 /**
  * 提交读路径的版本信息测试（Handbook §2.7、§4.4）。
  *
@@ -12,6 +13,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
+  domainProblemBindings,
   evaluationAttempts,
   problems,
   problemVersions,
@@ -73,6 +75,7 @@ async function seedSubmission(input: {
   is_accepted?: boolean;
 }): Promise<ProjectionSource> {
   await getDb().insert(submissions).values({
+    ...await problemExecutionForTest(input.problemId),
     id: input.id,
     user_id: "0",
     problem_id: input.problemId,
@@ -175,12 +178,17 @@ Deno.test({
     // 版本判定按尝试序号升序稳定排列
     assertEquals(detail.version_results?.map((item) => item.sequence), [0, 1]);
 
-    // 切换题目策略为 exact(V1)：有效成绩指针改为 V1，通过指针仍指向 V2
-    await db.update(problems).set({
+    // 切换本域题库策略为 exact(V1)，V2 的通过不能满足当前通过要求。
+    await db.update(domainProblemBindings).set({
       effective_version_mode: "exact",
       required_version_id: v1,
-      effective_policy_revision: 1,
-    }).where(eq(problems.id, "srv-p1"));
+      revision: 1,
+    }).where(
+      eq(
+        domainProblemBindings.id,
+        (await problemExecutionForTest("srv-p1")).domain_problem_binding_id,
+      ),
+    );
     const exact = await getSubmission("srv-s1", "0");
     assertEquals(exact.effective_version_policy, {
       mode: "exact",
@@ -252,11 +260,16 @@ Deno.test({
     assertEquals(list.data[0].version_origin, "legacy_unknown");
 
     // 收紧为 exact(V1) 后，未知版本桶不再计入候选：无有效成绩
-    await getDb().update(problems).set({
+    await getDb().update(domainProblemBindings).set({
       effective_version_mode: "exact",
       required_version_id: v1,
-      effective_policy_revision: 1,
-    }).where(eq(problems.id, "srv-p2"));
+      revision: 1,
+    }).where(
+      eq(
+        domainProblemBindings.id,
+        (await problemExecutionForTest("srv-p2")).domain_problem_binding_id,
+      ),
+    );
     const exact = await getSubmission("srv-s2", "0");
     assertEquals(exact.version_results?.[0].is_effective, false);
   },
@@ -365,6 +378,7 @@ Deno.test({
 
     // 无尝试指针的提交：没有正式判定 → result 为 null（评测事实只在尝试里）
     await db.insert(submissions).values({
+      ...await problemExecutionForTest("srv-p4"),
       id: "srv-s8",
       user_id: "0",
       problem_id: "srv-p4",

@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@^1";
@@ -103,6 +104,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       user_id: ownerId,
       problem_id: problemId,

@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
@@ -139,6 +140,7 @@ async function seedSubmission(
   const submissionId = crypto.randomUUID();
   const attemptId = crypto.randomUUID();
   await db.insert(submissions).values({
+    ...await problemExecutionForTest(problemId),
     id: submissionId,
     user_id: userId,
     problem_id: problemId,
@@ -427,6 +429,7 @@ Deno.test({
     // 存量提交：无提交时版本（legacy_unknown）
     const submissionId = crypto.randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       user_id: actor,
       problem_id: problemId,
@@ -596,6 +599,7 @@ Deno.test({
     const submissionId = crypto.randomUUID();
     const initialAttemptId = crypto.randomUUID();
     await db.insert(objectiveSubmissions).values({
+      ...await problemExecutionForTest(problemId),
       id: submissionId,
       paper_id: problemId,
       user_id: actor,
@@ -940,6 +944,7 @@ Deno.test({
 
     const sourceId = crypto.randomUUID();
     await db.insert(objectiveSubmissions).values({
+      ...await problemExecutionForTest(problemId),
       id: sourceId,
       paper_id: problemId,
       user_id: actor,

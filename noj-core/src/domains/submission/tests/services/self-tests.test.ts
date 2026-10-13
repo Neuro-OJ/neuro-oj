@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { v2ResultForTest } from "../_versioning-fixtures.ts";
@@ -236,6 +237,7 @@ Deno.test({
   fn: async () => {
     const db = getDb();
     await db.insert(selfTests).values({
+      ...await problemExecutionForTest(PROBLEM_ID),
       judge_run_id: "result-self-test-run",
       problem_version_id: await publishBaselineVersionForTest(PROBLEM_ID),
       id: SELF_TEST_ID,

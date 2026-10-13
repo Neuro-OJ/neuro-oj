@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * 批任务 worker 原语测试（Handbook §5.7）。
@@ -51,8 +52,11 @@ await getDb().insert(users).values({
 /** 建一个含 n 个 pending 条目的任务。 */
 async function seedJob(jobId: string, itemCount: number): Promise<string[]> {
   const db = getDb();
+  await seedProblemAndVersion();
+  const execution = await problemExecutionForTest("jw-prob");
   await db.insert(submissionJobs).values({
     id: jobId,
+    domain_id: execution.domain_id,
     kind: "rejudge",
     actor_id: "jw-admin",
     idempotency_key: `key-${jobId}`,
@@ -66,12 +70,13 @@ async function seedJob(jobId: string, itemCount: number): Promise<string[]> {
     const id = `${jobId}-item-${index}`;
     ids.push(id);
     await db.insert(submissionJobItems).values({
+      ...execution,
       id,
       job_id: jobId,
       ordinal: index,
       source_kind: "submission",
       source_id: `src-${index}`,
-      problem_id: `prob-${index}`,
+      problem_id: "jw-prob",
       target_version_id: null,
       status: "pending",
       created_at: now,
@@ -110,6 +115,7 @@ async function seedProblemAndVersion(): Promise<void> {
 /** 建一条已知提交时版本的提交流（题目需已存在）。 */
 async function seedSubmissionForJob(id: string): Promise<void> {
   await getDb().insert(submissions).values({
+    ...await problemExecutionForTest("jw-prob"),
     id,
     user_id: "0",
     problem_id: "jw-prob",

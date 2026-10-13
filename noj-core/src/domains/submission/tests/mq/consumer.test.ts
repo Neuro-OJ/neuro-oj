@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   saveV2ResultForTest,
@@ -71,6 +72,7 @@ async function setupTestData() {
     updated_at: now,
   });
   await db.insert(submissions).values({
+    ...await problemExecutionForTest(PROBLEM_ID),
     id: SUBMISSION_ID,
     user_id: USER_ID,
     problem_id: PROBLEM_ID,

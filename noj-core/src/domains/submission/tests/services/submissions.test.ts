@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
@@ -25,6 +26,7 @@ import {
   auditLogs,
   contestParticipants,
   contests,
+  educationOutbox,
   evaluationAttempts,
   problems,
   sseEvents,
@@ -477,6 +479,7 @@ Deno.test({
     // 先插入一条 pending 状态的提交 + 在途尝试（协议 v2 下结果按 attempt_id 落库）
     const attemptId = crypto.randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(TEST_PROBLEM_ID),
       id: submissionId,
       user_id: TEST_USER_ID,
       problem_id: TEST_PROBLEM_ID,
@@ -554,6 +557,7 @@ Deno.test({
     // 插入提交 + 在途尝试
     const attemptId = crypto.randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(TEST_PROBLEM_ID),
       id: submissionId,
       user_id: TEST_USER_ID,
       problem_id: TEST_PROBLEM_ID,
@@ -672,6 +676,7 @@ Deno.test({
     // 准备 submission（status=judging 让 UPDATE 通行）+ 在途尝试
     const attemptId = crypto.randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(TEST_PROBLEM_ID),
       id: subId,
       user_id: userId,
       problem_id: TEST_PROBLEM_ID,
@@ -725,6 +730,9 @@ Deno.test({
     } finally {
       // 清理
       await db.delete(submissions).where(eq(submissions.id, subId));
+      await db.delete(educationOutbox).where(
+        eq(educationOutbox.user_id, userId),
+      );
       await db.delete(users).where(eq(users.id, userId));
     }
   },
@@ -753,6 +761,7 @@ Deno.test({
 
     const attemptId = crypto.randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(TEST_PROBLEM_ID),
       id: subId,
       user_id: userId,
       problem_id: TEST_PROBLEM_ID,
@@ -814,6 +823,9 @@ Deno.test({
       assertExists(ignoredLog, "应记录旧结果被丢弃的日志");
     } finally {
       await db.delete(submissions).where(eq(submissions.id, subId));
+      await db.delete(educationOutbox).where(
+        eq(educationOutbox.user_id, userId),
+      );
       await db.delete(users).where(eq(users.id, userId));
     }
   },
@@ -842,6 +854,7 @@ Deno.test({
     const firstAttemptId = crypto.randomUUID();
     const rejudgeAttemptId = crypto.randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(TEST_PROBLEM_ID),
       id: subId,
       user_id: userId,
       problem_id: TEST_PROBLEM_ID,
@@ -931,6 +944,9 @@ Deno.test({
       assertEquals(submissionRow.active_attempt_id, null);
     } finally {
       await db.delete(submissions).where(eq(submissions.id, subId));
+      await db.delete(educationOutbox).where(
+        eq(educationOutbox.user_id, userId),
+      );
       await db.delete(users).where(eq(users.id, userId));
     }
   },
@@ -1025,6 +1041,7 @@ Deno.test({
       // 准备：一条 finished 状态的提交（重测只接受已存在的 submission）
       const subId = crypto.randomUUID();
       await db.insert(submissions).values({
+        ...await problemExecutionForTest(localProblemId),
         id: subId,
         user_id: localUserId,
         problem_id: localProblemId,
@@ -1162,6 +1179,7 @@ Deno.test({
       });
       const subId = crypto.randomUUID();
       await db.insert(submissions).values({
+        ...await problemExecutionForTest(localProblemId),
         id: subId,
         user_id: localUserId,
         problem_id: localProblemId,
@@ -1294,6 +1312,7 @@ Deno.test({
         const sid = crypto.randomUUID();
         subIds.push(sid);
         await db.insert(submissions).values({
+          ...await problemExecutionForTest(localProblemId),
           id: sid,
           user_id: localUserId,
           problem_id: localProblemId,
@@ -1414,6 +1433,7 @@ Deno.test({
     });
     const subId = randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: subId,
       user_id: userId,
       problem_id: problemId,
@@ -1476,6 +1496,7 @@ Deno.test({
     });
     const subId = randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: subId,
       user_id: userId,
       problem_id: problemId,
@@ -1536,6 +1557,7 @@ Deno.test({
     });
     const subId = randomUUID();
     await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
       id: subId,
       user_id: userId,
       problem_id: problemId,
