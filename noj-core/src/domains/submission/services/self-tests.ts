@@ -20,6 +20,10 @@ import { getRedis } from "../../../shared/mq/connection.ts";
 import { isRetryableJudgeQueueError, pushJudgeTask } from "../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
 import { getLogger } from "@logtape/logtape";
+import {
+  oiVerdict,
+  projectOiSelfTestDetails,
+} from "./submissions/oi-details.ts";
 
 const logger = getLogger(["noj", "submission"]);
 import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
@@ -63,8 +67,12 @@ import {
 const MAX_OUTPUT_LENGTH = 8 * 1024;
 
 /** 取消 OI 自测；先持久化共享取消信号，再锁住终态，保留已有进度结果。 */
-export async function cancelSelfTest(id: string, c: Context): Promise<void> {
-  const detail = await getSelfTest(id, c);
+export async function cancelSelfTest(
+  id: string,
+  c: Context,
+  domainAccess?: { domainId: string; canReadDetails: boolean },
+): Promise<void> {
+  const detail = await getSelfTest(id, c, domainAccess);
   if (!["pending", "judging"].includes(detail.status)) return;
   const db = getDb();
   const [row] = await db.select().from(selfTests).where(eq(selfTests.id, id));
@@ -356,6 +364,7 @@ export async function createSelfTest(
 export async function getSelfTest(
   id: string,
   c: Context,
+  domainAccess?: { domainId: string; canReadDetails: boolean },
 ): Promise<SelfTestDetail> {
   const db = getDb();
 
@@ -370,13 +379,19 @@ export async function getSelfTest(
   }
 
   const row = rows[0];
-  if (row.domain_id !== null && row.domain_id !== DEFAULT_DOMAIN_ID) {
+  if (
+    domainAccess
+      ? row.domain_id !== domainAccess.domainId
+      : row.domain_id !== null && row.domain_id !== DEFAULT_DOMAIN_ID
+  ) {
     throw new NotFoundError("默认域不存在此自测");
   }
 
   // 权限：owner 或 admin 可读
   const isOwner = !!c.var.userId && row.user_id === c.var.userId;
-  const isAdmin = await checkPermission(c, "submission:read_all");
+  const isAdmin = domainAccess
+    ? domainAccess.canReadDetails
+    : await checkPermission(c, "submission:read_all");
   if (!isOwner && !isAdmin) {
     throw new NotFoundError("自测不存在");
   }
@@ -386,7 +401,11 @@ export async function getSelfTest(
   const output = outputTruncated
     ? rawOutput.slice(0, MAX_OUTPUT_LENGTH)
     : rawOutput;
-  const details = parseDetails(row.details);
+  const parsedDetails = parseDetails(row.details);
+  const isOi = oiVerdict(parsedDetails) !== undefined;
+  const details = isOi
+    ? { oi: projectOiSelfTestDetails(parsedDetails!.oi) }
+    : parsedDetails;
 
   return {
     id: row.id,
@@ -401,8 +420,8 @@ export async function getSelfTest(
     status: row.status as SelfTestStatus,
     result_status: row.result_status,
     score: row.score,
-    output,
-    output_truncated: outputTruncated,
+    output: isOi ? null : output,
+    output_truncated: isOi ? null : outputTruncated,
     details,
     time_ms: row.time_ms,
     memory_kb: row.memory_kb,

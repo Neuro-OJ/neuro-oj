@@ -18,6 +18,10 @@ import {
 import { parseArtifactMultipart } from "./submissions.ts";
 import type { SelfTestInput } from "../types/self-tests.ts";
 import {
+  cancelDomainSelfTest,
+  getDomainSelfTest,
+} from "../services/domain-self-test-read.ts";
+import {
   getDomainSubmission,
   listDomainSubmissions,
 } from "../services/domain-submission-read.ts";
@@ -28,6 +32,35 @@ import {
 
 /** 隔离阶段准备入口；组合根在全部提交／查询隔离完成后统一开放。 */
 export const domainSubmissionsRouter = new Hono<AuthEnv>();
+domainSubmissionsRouter.get(
+  "/domains/:slug/self-tests/:id",
+  authMiddleware,
+  async (c) => {
+    c.header("Cache-Control", "no-store");
+    return c.json({
+      data: await getDomainSelfTest(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.var.userId,
+        c,
+      ),
+    });
+  },
+);
+domainSubmissionsRouter.post(
+  "/domains/:slug/self-tests/:id/cancel",
+  authMiddleware,
+  async (c) => {
+    await cancelDomainSelfTest(
+      c.req.param("slug")!,
+      c.req.param("id")!,
+      c.var.userId,
+      c,
+    );
+    c.header("Cache-Control", "no-store");
+    return c.json({ data: { cancel_requested: true } });
+  },
+);
 domainSubmissionsRouter.get(
   "/domains/:slug/submissions",
   authMiddleware,
