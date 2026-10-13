@@ -17,6 +17,7 @@ import {
 } from "../../../shared/base/errors.ts";
 import { assertActiveInstanceAccount } from "../../identity/index.ts";
 import {
+  assertDomainFeatureEnabled,
   getInstanceResourcePolicy,
   loadWorkspace,
   workspaceAudit,
@@ -53,11 +54,18 @@ async function joinTarget(
   );
   const [classroom] = write ? await query.for("update") : await query;
   if (!classroom) throw new NotFoundError("班级不存在");
-  const policy = await getInstanceResourcePolicy(executor);
+  if (write) {
+    await assertDomainFeatureEnabled(workspace.domain, "classroom", {
+      executor,
+      disabledCode: "CLASSROOM_READ_ONLY",
+    });
+  }
+  const enabled = write ||
+    workspace.domain.configuration.features.classroom === true &&
+      (await getInstanceResourcePolicy(executor)).modules.classroom;
   const canApply = classroom.status === "active" &&
     workspace.domain.status === "active" &&
-    workspace.domain.configuration.features.classroom &&
-    policy.modules.classroom;
+    enabled;
   if (write && !canApply) {
     throw new AppError("班级当前不接受加入申请", 403, "CLASSROOM_READ_ONLY");
   }

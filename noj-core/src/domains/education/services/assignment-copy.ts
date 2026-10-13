@@ -56,9 +56,7 @@ export async function copyAssignment(
         }
         return await insertAssignmentDraft(
           tx,
-          slug,
-          access.classroom.id,
-          actorId,
+          access,
           {
             title: input.title ?? `${access.assignment.title}（副本）`,
             description: input.description ?? access.assignment.description,

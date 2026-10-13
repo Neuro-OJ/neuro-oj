@@ -80,6 +80,20 @@ export async function resolveDomainProblem(
     executor,
     write: options.write,
   });
+  return await resolveDomainProblemInWorkspace(workspace, reference, {
+    ...options,
+    executor,
+  });
+}
+
+/** 同一事务复用已解析的使用域身份，源题、共享与版本仍逐资源读取。 */
+export async function resolveDomainProblemInWorkspace(
+  workspace: Awaited<ReturnType<typeof loadWorkspace>>,
+  reference: string,
+  options: { executor: Executor; write?: boolean; contestId?: string },
+) {
+  const executor = options.executor;
+  const actorId = workspace.context.actorId;
   const parsed = parseDomainProblemReference(reference);
   if (options.write) {
     assertWorkspacePermission(workspace.context, "submission:create");

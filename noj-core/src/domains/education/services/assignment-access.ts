@@ -5,8 +5,8 @@ import {
   assignmentRecipients,
   assignments,
 } from "../../../shared/db/schema.ts";
-import { AppError, NotFoundError } from "../../../shared/base/errors.ts";
-import { getInstanceResourcePolicy } from "../../workspace/index.ts";
+import { NotFoundError } from "../../../shared/base/errors.ts";
+import { assertDomainFeatureEnabled } from "../../workspace/index.ts";
 import { assertClassroomCapability, loadClassroom } from "./access.ts";
 
 /** 单个作业 ID 不能跳过 URL 域校验，学生只可读取自己的已发布任务。 */
@@ -52,17 +52,10 @@ export async function loadAssignment(
   }
   if (options.write) {
     assertClassroomCapability(access, "assignments:manage");
-    const policy = await getInstanceResourcePolicy(executor);
-    if (
-      !access.domain.configuration.features.assignment ||
-      !policy.modules.assignment
-    ) {
-      throw new AppError(
-        "作业模块已停用，只能读取历史",
-        403,
-        "MODULE_DISABLED",
-      );
-    }
+    await assertDomainFeatureEnabled(access.domain, "assignment", {
+      executor,
+      disabledCode: "MODULE_DISABLED",
+    });
   }
   const [assignment] = options.write
     ? await executor.select().from(assignments).where(eq(assignments.id, id))

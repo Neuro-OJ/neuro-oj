@@ -1,11 +1,12 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   AppError,
   BadRequestError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
+  ServiceUnavailableError,
 } from "../../../../shared/base/errors.ts";
 import {
   assignmentItemHistory,
@@ -29,6 +30,60 @@ import {
   updateAssignment,
 } from "../../index.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
+import { loadClassroom } from "../../services/access.ts";
+import { insertAssignmentDraft } from "../../services/assignments.ts";
+
+Deno.test("作业事务上下文：复用授权后仍逐题检查当前绑定，失效不留下半份草稿", async () => {
+  const f = await assignmentFixture();
+  await assertRejects(() =>
+    f.db.transaction(async (tx) => {
+      const access = await loadClassroom(
+        f.school.slug,
+        f.classroom.id,
+        f.teacher,
+        { executor: tx, write: true },
+      );
+      await tx.update(domainProblemBindings).set({
+        disabled_at: new Date().toISOString(),
+      })
+        .where(eq(domainProblemBindings.id, f.bindingId));
+      return await insertAssignmentDraft(tx, access, f.input);
+    }), NotFoundError);
+  assertEquals((await f.db.select().from(assignments)).length, 0);
+  const created = await createAssignment(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    f.input,
+  );
+  assertEquals(created.classroom_id, f.classroom.id);
+});
+
+Deno.test("教学模块配置：导航错误不阻断业务，非法truthy开关拒绝写入而保留历史读取", async () => {
+  const f = await assignmentFixture();
+  await f.db.execute(
+    sql`UPDATE domains SET configuration = jsonb_set(configuration, '{homepage}', '"unknown-navigation"') WHERE id = ${f.school.id}`,
+  );
+  const draft = await createAssignment(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    f.input,
+  );
+  assertEquals(draft.state, "draft");
+  await f.db.execute(
+    sql`UPDATE domains SET configuration = jsonb_set(configuration, '{features,assignment}', '"enabled"') WHERE id = ${f.school.id}`,
+  );
+  await assertRejects(
+    () => createAssignment(f.school.slug, f.classroom.id, f.teacher, f.input),
+    ServiceUnavailableError,
+  );
+  assertEquals(
+    (await getAssignment(f.school.slug, draft.id, f.teacher)).id,
+    draft.id,
+  );
+  assertEquals((await f.db.select().from(assignments)).length, 1);
+});
 
 Deno.test("作业：发布固定条目与名单、原子保存版本依据和事件，重复键不重复发布", async () => {
   const f = await assignmentFixture();

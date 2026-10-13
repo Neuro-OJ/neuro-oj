@@ -219,9 +219,7 @@ export async function createContestRemediation(
         ) throw new BadRequestError("所选学生或题目不属于当前候选");
         const draft = await insertAssignmentDraft(
           tx,
-          slug,
-          classroomId,
-          actorId,
+          access,
           {
             title: input.title,
             deadline_at: input.deadline_at,

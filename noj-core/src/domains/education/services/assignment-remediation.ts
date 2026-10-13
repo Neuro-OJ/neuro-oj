@@ -224,9 +224,7 @@ export async function createAssignmentRemediation(
         }
         const result = await insertAssignmentDraft(
           tx,
-          slug,
-          access.classroom.id,
-          actorId,
+          access,
           {
             title: input.title,
             deadline_at: input.deadline_at,

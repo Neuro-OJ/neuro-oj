@@ -8,14 +8,10 @@ import {
   domainMemberships,
   users,
 } from "../../../shared/db/schema.ts";
+import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
 import {
-  AppError,
-  BadRequestError,
-  NotFoundError,
-} from "../../../shared/base/errors.ts";
-import {
+  assertDomainFeatureEnabled,
   assertWorkspacePermission,
-  getInstanceResourcePolicy,
   loadWorkspace,
   workspaceAudit,
 } from "../../workspace/index.ts";
@@ -87,13 +83,10 @@ export async function createClassroom(slug: string, actorId: string, input: {
       lock: "share",
     });
     assertWorkspacePermission(workspace.context, "classroom:create");
-    const policy = await getInstanceResourcePolicy(tx);
-    if (
-      !workspace.domain.configuration.features.classroom ||
-      !policy.modules.classroom
-    ) {
-      throw new AppError("教学模块未启用", 403, "MODULE_DISABLED");
-    }
+    await assertDomainFeatureEnabled(workspace.domain, "classroom", {
+      executor: tx,
+      disabledCode: "MODULE_DISABLED",
+    });
     if (coachId !== actorId) {
       assertWorkspacePermission(workspace.context, "classroom:manage_any");
     }

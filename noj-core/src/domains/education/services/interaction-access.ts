@@ -12,7 +12,7 @@ import {
   NotFoundError,
 } from "../../../shared/base/errors.ts";
 import type { AssistantCapability } from "../../../shared/education-types.ts";
-import { getInstanceResourcePolicy } from "../../workspace/index.ts";
+import { assertDomainFeatureEnabled } from "../../workspace/index.ts";
 import { loadClassroom } from "./access.ts";
 import { loadAssignment } from "./assignment-access.ts";
 
@@ -36,11 +36,10 @@ export async function loadInteractionAccess(
   const [assignment] = await executor.select().from(assignments).where(
     eq(assignments.id, id),
   ).for("update");
-  const policy = await getInstanceResourcePolicy(executor);
-  if (
-    !classroom.domain.configuration.features.assignment ||
-    !policy.modules.assignment
-  ) throw new AppError("作业模块已停用，只能读取历史", 403, "MODULE_DISABLED");
+  await assertDomainFeatureEnabled(classroom.domain, "assignment", {
+    executor,
+    disabledCode: "MODULE_DISABLED",
+  });
   if (assignment.state === "archived") {
     throw new AppError("作业已归档，只能读取历史", 403, "ASSIGNMENT_READ_ONLY");
   }

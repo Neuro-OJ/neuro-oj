@@ -84,9 +84,7 @@ export async function publishAssignment(
         for (const item of items) {
           const resource = await assignmentProblem(
             tx,
-            slug,
-            assignment.domain_id,
-            actorId,
+            access,
             item.binding_id,
           );
           const values = {

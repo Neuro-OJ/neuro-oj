@@ -97,6 +97,7 @@ import {
 } from "../../../submission/index.ts";
 import { registerLegacyStorageObject } from "./../../../system/index.ts";
 import { assertProblemHasNoRetainedReferences } from "../workspace/problem-retention.ts";
+import { assertProblemAuthoringOutsideParticipation } from "../workspace/problem-contest-authoring.ts";
 import {
   bindCreatedDomainProblem,
   prepareDomainProblemCreation,
@@ -149,6 +150,7 @@ export async function assertProblemEditPermission(
       ? "problem:write_any"
       : "problem:write_own",
   );
+  await assertProblemAuthoringOutsideParticipation(workspace, source.id, db);
 }
 
 /**

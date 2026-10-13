@@ -1,6 +1,5 @@
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
-  AppError,
   BadRequestError,
   ConflictError,
   NotFoundError,
@@ -18,13 +17,13 @@ import {
   users,
 } from "../../../shared/db/schema.ts";
 import {
-  getInstanceResourcePolicy,
+  assertDomainFeatureEnabled,
   workspaceAudit,
 } from "../../workspace/index.ts";
 import {
   domainProblemReference,
   readDomainTraining,
-  resolveDomainProblem,
+  resolveDomainProblemInWorkspace,
 } from "../../catalog/index.ts";
 import {
   assertClassroomCapability,
@@ -173,9 +172,7 @@ export async function assignmentStudents(
 /** 绑定必须属于作业使用域，题面与默认作答版本读取当前源授权。 */
 export async function assignmentProblem(
   executor: Executor,
-  slug: string,
-  domainId: string,
-  actorId: string,
+  access: Awaited<ReturnType<typeof loadClassroom>>,
   bindingId: string,
 ) {
   const [row] = await executor.select({
@@ -187,29 +184,28 @@ export async function assignmentProblem(
     .where(
       and(
         eq(domainProblemBindings.id, bindingId),
-        eq(domainProblemBindings.domain_id, domainId),
+        eq(domainProblemBindings.domain_id, access.domain.id),
       ),
     );
   if (!row) throw new NotFoundError("题目不在此域题库中");
-  const ref = row.problem.domain_id === domainId
+  const ref = row.problem.domain_id === access.domain.id
     ? String(row.problem.number)
     : `${row.source_slug}:${row.problem.number}`;
-  return await resolveDomainProblem(slug, ref, actorId, { executor });
+  return await resolveDomainProblemInWorkspace(access, ref, { executor });
 }
 
 async function replaceItems(
   executor: Executor,
   assignment: typeof assignments.$inferSelect,
-  slug: string,
-  actorId: string,
+  access: Awaited<ReturnType<typeof loadClassroom>>,
   input: AssignmentDraftInput,
 ) {
   const rows: Array<typeof assignmentItems.$inferInsert> = [];
   if (input.training) {
     const preview = await readDomainTraining(
-      slug,
+      access.domain.slug,
       input.training.id,
-      actorId,
+      access.context.actorId,
       executor,
     );
     if (!preview.items.length || preview.items.length > 200) {
@@ -219,9 +215,7 @@ async function replaceItems(
   for (const [sort_order, item] of (input.items ?? []).entries()) {
     const resource = await assignmentProblem(
       executor,
-      slug,
-      assignment.domain_id,
-      actorId,
+      access,
       item.binding_id,
     );
     rows.push({
@@ -248,43 +242,41 @@ export async function createAssignment(
   actorId: string,
   input: AssignmentDraftInput,
 ) {
-  return await getDb().transaction((tx) =>
-    insertAssignmentDraft(tx, slug, classroomId, actorId, input)
-  );
+  return await getDb().transaction(async (tx) => {
+    const access = await loadClassroom(slug, classroomId, actorId, {
+      executor: tx,
+      write: true,
+    });
+    return await insertAssignmentDraft(tx, access, input);
+  });
 }
 
 /** 复制和创建共用已授权事务，避免嵌套根事务重复取班级锁。 */
 export async function insertAssignmentDraft(
   tx: Executor,
-  slug: string,
-  classroomId: string,
-  actorId: string,
+  access: Awaited<ReturnType<typeof loadClassroom>>,
   input: AssignmentDraftInput,
   sourceAssignmentId?: string,
   sourceContestId?: string,
 ) {
   const values = draftInput(input);
-  const access = await loadClassroom(slug, classroomId, actorId, {
-    executor: tx,
-    write: true,
-  });
   assertClassroomCapability(access, "assignments:manage");
-  const policy = await getInstanceResourcePolicy(tx);
-  if (
-    !access.domain.configuration.features.assignment ||
-    !policy.modules.assignment
-  ) throw new AppError("作业模块未启用", 403, "MODULE_DISABLED");
+  const actorId = access.context.actorId!;
+  await assertDomainFeatureEnabled(access.domain, "assignment", {
+    executor: tx,
+    disabledCode: "MODULE_DISABLED",
+  });
   await assignmentStudents(
     tx,
     access.domain.id,
-    classroomId,
+    access.classroom.id,
     values.target_student_ids,
   );
   const now = new Date().toISOString();
   const [assignment] = await tx.insert(assignments).values({
     id: crypto.randomUUID(),
     domain_id: access.domain.id,
-    classroom_id: classroomId,
+    classroom_id: access.classroom.id,
     ...values,
     source_assignment_id: sourceAssignmentId,
     source_contest_id: sourceContestId,
@@ -292,7 +284,7 @@ export async function insertAssignmentDraft(
     created_at: now,
     updated_at: now,
   }).returning();
-  await replaceItems(tx, assignment, slug, actorId, input);
+  await replaceItems(tx, assignment, access, input);
   await workspaceAudit(tx, actorId, access.domain.id, "domain.update", {
     operation: "assignment.create",
     assignment_id: assignment.id,
@@ -327,7 +319,7 @@ export async function updateAssignment(
       access.classroom.id,
       values.target_student_ids,
     );
-    await replaceItems(tx, access.assignment, slug, actorId, input);
+    await replaceItems(tx, access.assignment, access, input);
     const [updated] = await tx.update(assignments).set({
       ...values,
       revision: access.assignment.revision + 1,

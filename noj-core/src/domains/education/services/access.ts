@@ -13,7 +13,7 @@ import {
 } from "../../../shared/base/errors.ts";
 import type { AssistantCapability } from "../../../shared/education-types.ts";
 import {
-  getInstanceResourcePolicy,
+  assertDomainFeatureEnabled,
   loadWorkspace,
 } from "../../workspace/index.ts";
 
@@ -55,17 +55,10 @@ export async function loadClassroom(
     throw new NotFoundError("班级不存在或不可访问");
   }
   if (options.write) {
-    const policy = await getInstanceResourcePolicy(executor);
-    if (
-      !workspace.domain.configuration.features.classroom ||
-      !policy.modules.classroom
-    ) {
-      throw new AppError(
-        "教学模块已停用，只能读取获授权历史",
-        403,
-        "MODULE_DISABLED",
-      );
-    }
+    await assertDomainFeatureEnabled(workspace.domain, "classroom", {
+      executor,
+      disabledCode: "MODULE_DISABLED",
+    });
     if (classroom.status !== "active") {
       throw new AppError(
         "班级已归档，只能读取历史",
