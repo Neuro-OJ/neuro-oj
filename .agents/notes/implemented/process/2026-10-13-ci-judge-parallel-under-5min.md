@@ -45,6 +45,8 @@ sccache 的变量只设置在安装 action 上，后续 cargo 没有启用编译
   回归测试验证并行步骤实际重叠、各步骤失败传播和冻结快照不一致仍阻断验收。
 - Core 镜像不再传入每次运行变化的 `CACHE_BUST`：Docker 的 `COPY` 按输入内容
   失效，源代码更新仍重建对应层，锁文件未变时复用依赖安装层。
+- Core Quick Check 与 Gateway Check 显式设置 `DENO_DIR`，与各自缓存路径一致；
+  原配置只缓存目录，Deno 实际使用默认目录，未复用这些依赖缓存。
 
 ## Alternatives considered
 

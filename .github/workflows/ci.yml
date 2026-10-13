@@ -342,6 +342,8 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    env:
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
 
     steps:
       - name: 检出代码
@@ -424,6 +426,8 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.gateway == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      DENO_DIR: ${{ github.workspace }}/noj-llm-gateway/.deno_cache
     # Provider RPM/TPM 节流的 Lua 脚本须在真实 Redis 上验证（tests/provider_throttle_test.ts）
     services:
       redis:
