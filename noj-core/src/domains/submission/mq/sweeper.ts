@@ -26,7 +26,10 @@ import type { JudgeTaskPriority } from "../types/index.ts";
 import { AppError } from "../../../shared/base/errors.ts";
 import { rebuildPendingTask } from "./pending-recovery.ts";
 import { applyAttemptResult } from "../services/versioning/result-write.ts";
-import { runAttemptTerminalRevocationAfterCommit } from "../services/versioning/attempts.ts";
+import {
+  registerAttemptTerminalRevocation,
+  runAttemptTerminalRevocationAfterCommit,
+} from "../services/versioning/attempts.ts";
 import {
   runPendingTokenRevocations,
 } from "../services/versioning/job-worker.ts";
@@ -443,16 +446,28 @@ export async function recoverPendingSelfTests(now: number): Promise<void> {
         );
     },
     onPermanentError: async (row) => {
-      await db.update(selfTests)
-        .set({
+      await db.transaction(async (tx) => {
+        const changed = await tx.update(selfTests).set({
           status: "error",
           // 永久失败保留可解释的原因码（不写成泛化的 PLATFORM_ERROR）
           result_status: "RECOVERY_FAILED",
           judge_finished_at: new Date().toISOString(),
         })
-        .where(
-          and(eq(selfTests.id, row.id), eq(selfTests.status, "pending")),
-        );
+          .where(and(eq(selfTests.id, row.id), eq(selfTests.status, "pending")))
+          .returning({ id: selfTests.id });
+        if (
+          changed.length && row.judge_run_id && row.task_snapshot?.llm_execution
+        ) {
+          await registerAttemptTerminalRevocation(tx, {
+            attemptId: row.judge_run_id,
+            submissionId: row.id,
+            taskSnapshot: row.task_snapshot,
+          });
+        }
+      });
+      if (row.judge_run_id) {
+        await runAttemptTerminalRevocationAfterCommit(row.judge_run_id);
+      }
     },
   }, "self_test");
 }
