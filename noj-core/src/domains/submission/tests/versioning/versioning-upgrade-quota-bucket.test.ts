@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { resetDbForTest } from "../../../../shared/db/connection.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
@@ -218,6 +219,7 @@ async function seedSubmission(
 ): Promise<string> {
   const id = crypto.randomUUID();
   await db.insert(submissions).values({
+    ...(await problemExecutionForTest(problemId)),
     id,
     user_id: userId,
     problem_id: problemId,
@@ -390,6 +392,7 @@ Deno.test({
     const { problemId, v1 } = await seedProblem("objective", true);
     const objectiveSubmissionId = crypto.randomUUID();
     await db.insert(objectiveSubmissions).values({
+      ...(await problemExecutionForTest(problemId)),
       id: objectiveSubmissionId,
       paper_id: problemId,
       user_id: actor,

@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 /**
@@ -173,6 +174,7 @@ async function seedFixture(tag: string): Promise<Fixture> {
   );
   await bindPublishedProblemForTest(problemId);
   await db.insert(submissions).values({
+    ...(await problemExecutionForTest(problemId)),
     id: submissionId,
     user_id: userId,
     problem_id: problemId,
@@ -526,6 +528,7 @@ async function seedObjectiveFixture(
     });
   }
   await db.insert(objectiveSubmissions).values({
+    ...(await problemExecutionForTest(problemId)),
     id: objectiveSubmissionId,
     paper_id: problemId,
     user_id: userId,

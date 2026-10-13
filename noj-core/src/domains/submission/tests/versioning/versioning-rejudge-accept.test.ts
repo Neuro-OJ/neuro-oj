@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * 批任务受理的缺陷回归（tracking #31、#32、#40、#41）。
@@ -119,6 +120,7 @@ async function seedSubmission(
   contestId: string | null = null,
 ): Promise<void> {
   await getDb().insert(submissions).values({
+    ...(await problemExecutionForTest(problemId)),
     id,
     user_id: "ja-admin",
     problem_id: problemId,
@@ -340,6 +342,7 @@ Deno.test("jobs#40: 重试幂等身份含父任务与条目，父任务 kind 必
 
   // 升级任务不能被解释成重测
   await db.insert(submissionJobs).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "ja-upgrade-job",
     kind: "upgrade",
     actor_id: "ja-admin",
@@ -432,9 +435,11 @@ Deno.test("jobs#41: 受理与重试路径分批插入条目（超出单条 INSER
   await seedProblem("ja-p5", 996005);
   // 受理路径：题目范围含 250 条提交 → 3 个批次
   const total = JOB_ITEM_INSERT_BATCH * 2 + 50;
+  const execution = await problemExecutionForTest("ja-p5");
   const rows: Array<typeof submissions.$inferInsert> = [];
   for (let index = 0; index < total; index++) {
     rows.push({
+      ...execution,
       id: `ja-bulk-${index}`,
       user_id: "ja-admin",
       problem_id: "ja-p5",
@@ -513,7 +518,10 @@ Deno.test("jobs#41: insertJobItemsBatched 按批次拆分单语句（真实 PG �
 
 Deno.test("jobs#41: 大批量条目真实落库（5200 行按批插入）", async () => {
   const db = getDb();
+  await seedProblem("ja-p6", 996006);
+  const execution = await problemExecutionForTest("ja-p6");
   await db.insert(submissionJobs).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "ja-batch-job",
     kind: "rejudge",
     actor_id: "ja-admin",
@@ -530,6 +538,7 @@ Deno.test("jobs#41: 大批量条目真实落库（5200 行按批插入）", asyn
   const rows: Array<typeof submissionJobItems.$inferInsert> = [];
   for (let index = 0; index < 5200; index++) {
     rows.push({
+      ...execution,
       id: `ja-batch-item-${index}`,
       job_id: "ja-batch-job",
       ordinal: index,

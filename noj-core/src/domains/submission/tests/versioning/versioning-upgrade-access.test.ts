@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { resetDbForTest } from "../../../../shared/db/connection.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
@@ -233,6 +234,7 @@ async function seedSubmission(
 ): Promise<string> {
   const submissionId = crypto.randomUUID();
   await db.insert(submissions).values({
+    ...(await problemExecutionForTest(problemId)),
     id: submissionId,
     user_id: userId,
     problem_id: problemId,
@@ -480,6 +482,7 @@ Deno.test("upgrade#43: 客观题竞赛提交在 source_contest 下不得产生�
   });
   const objectiveId = crypto.randomUUID();
   await db.insert(objectiveSubmissions).values({
+    ...(await problemExecutionForTest(problemId)),
     id: objectiveId,
     paper_id: problemId,
     user_id: user,
@@ -519,6 +522,7 @@ Deno.test("upgrade#43: 客观题竞赛提交在 source_contest 下不得产生�
   // 绝不能静默生成一条 contest_id = null 的练习提交
   const jobId = `acc-obj-job-${ts}`;
   await db.insert(submissionJobs).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: jobId,
     kind: "upgrade",
     actor_id: user,
@@ -532,6 +536,7 @@ Deno.test("upgrade#43: 客观题竞赛提交在 source_contest 下不得产生�
     created_at: now,
   });
   await db.insert(submissionJobItems).values({
+    ...(await problemExecutionForTest(problemId)),
     id: `acc-obj-item-${ts}`,
     job_id: jobId,
     ordinal: 0,

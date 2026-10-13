@@ -1,6 +1,7 @@
 import {
   bindPublishedProblemForTest,
   deleteProblemFixtures,
+  problemExecutionForTest,
 } from "../../../../../tests/helper.ts";
 /**
  * 真实 PostgreSQL 并发屏障用例：**交叉竞赛的批量策略修改**
@@ -363,11 +364,12 @@ async function seedRound(): Promise<void> {
     },
   ]);
 
-  const submission = (
+  const submission = async (
     id: string,
     problemId: string,
     contestId: string,
-  ): typeof submissions.$inferInsert => ({
+  ): Promise<typeof submissions.$inferInsert> => ({
+    ...(await problemExecutionForTest(problemId)),
     id,
     user_id: ACTOR,
     problem_id: problemId,
@@ -379,12 +381,14 @@ async function seedRound(): Promise<void> {
     status: "pending",
     created_at: now,
   });
-  await db.insert(submissions).values([
-    submission(SUBMISSION_A1, PROBLEM_A1, CONTEST_2),
-    submission(SUBMISSION_A2, PROBLEM_A2, CONTEST_1),
-    submission(SUBMISSION_B1, PROBLEM_B1, CONTEST_1),
-    submission(SUBMISSION_B2, PROBLEM_B2, CONTEST_2),
-  ]);
+  await db.insert(submissions).values(
+    await Promise.all([
+      submission(SUBMISSION_A1, PROBLEM_A1, CONTEST_2),
+      submission(SUBMISSION_A2, PROBLEM_A2, CONTEST_1),
+      submission(SUBMISSION_B1, PROBLEM_B1, CONTEST_1),
+      submission(SUBMISSION_B2, PROBLEM_B2, CONTEST_2),
+    ]),
+  );
 }
 
 /**

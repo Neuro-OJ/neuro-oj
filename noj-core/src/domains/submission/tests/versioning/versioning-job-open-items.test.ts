@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * 批任务条目关联与结算门禁查询回归（tracking #35、#46）。
@@ -143,6 +144,7 @@ async function seedProblem(problemId: string): Promise<string> {
 async function seedJob(jobId: string): Promise<void> {
   await authorizeLegacyJobActorForTest("oi-user", "admin");
   await db.insert(submissionJobs).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: jobId,
     kind: "rejudge",
     actor_id: "oi-user",
@@ -165,6 +167,7 @@ async function seedItem(input: {
   ordinal?: number;
 }): Promise<void> {
   await db.insert(submissionJobItems).values({
+    ...(await problemExecutionForTest(input.problemId)),
     id: input.id,
     job_id: input.jobId,
     ordinal: input.ordinal ?? 0,
@@ -297,6 +300,7 @@ Deno.test("open-items#46: 查询覆盖 pending/preparing/dispatched，排除终�
 Deno.test("dispatch#35: 派发前持久化条目关联，结果先到后派发写入不回退终态", async () => {
   const versionId = await seedProblem("oi-p2");
   await db.insert(submissions).values({
+    ...(await problemExecutionForTest("oi-p2")),
     id: "oi-source",
     user_id: "oi-user",
     problem_id: "oi-p2",

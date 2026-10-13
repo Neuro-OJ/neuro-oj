@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { withRawTransaction } from "../../../../../tests/helper/pg-raw-connection.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
@@ -218,6 +219,7 @@ async function seedSubmission(
   const attemptId = crypto.randomUUID();
   createdFixtures.submissionIds.add(submissionId);
   await db.insert(submissions).values({
+    ...(await problemExecutionForTest(problemId)),
     id: submissionId,
     user_id: userId,
     problem_id: problemId,
@@ -285,6 +287,7 @@ Deno.test("worker#37: 租约过期换主后，旧 worker 的所有写入均被�
   const jobId = `conc-lease-job-${ts}`;
   createdFixtures.jobIds.add(jobId);
   await db.insert(submissionJobs).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: jobId,
     kind: "rejudge",
     actor_id: "conc-user-lease-" + ts,
@@ -296,6 +299,7 @@ Deno.test("worker#37: 租约过期换主后，旧 worker 的所有写入均被�
   });
   const itemId = `conc-lease-item-${ts}`;
   await db.insert(submissionJobItems).values({
+    ...(await problemExecutionForTest(problemId)),
     id: itemId,
     job_id: jobId,
     ordinal: 0,
@@ -369,6 +373,7 @@ Deno.test({
     const jobId = `conc-hb-job-${ts}`;
     createdFixtures.jobIds.add(jobId);
     await db.insert(submissionJobs).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: jobId,
       kind: "rejudge",
       actor_id: actor,
@@ -380,6 +385,7 @@ Deno.test({
     });
     const itemId = `conc-hb-item-${ts}`;
     await db.insert(submissionJobItems).values({
+      ...(await problemExecutionForTest(problemId)),
       id: itemId,
       job_id: jobId,
       ordinal: 0,

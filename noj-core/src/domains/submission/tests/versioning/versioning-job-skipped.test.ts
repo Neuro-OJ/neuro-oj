@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { resetDbForTest } from "../../../../shared/db/connection.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
@@ -150,6 +151,7 @@ async function seedSubmission(
 ): Promise<string> {
   const id = crypto.randomUUID();
   await db.insert(submissions).values({
+    ...(await problemExecutionForTest(problemId)),
     id,
     user_id: userId,
     problem_id: problemId,
