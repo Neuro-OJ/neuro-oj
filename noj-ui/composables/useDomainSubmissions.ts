@@ -3,6 +3,10 @@ import type { Pagination } from './useContests';
 
 export interface DomainSubmission {
   id: string;
+  user_id?: string;
+  contest_id?: string | null;
+  submitted_version_id?: string | null;
+  is_latest?: boolean;
   domain_id: string;
   reference: DomainProblemReference;
   resource_available: boolean;

@@ -3,10 +3,16 @@ import { workspaceCacheKey, workspaceProblemPath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 import { formatDateTime } from '~/utils/submissionFormat';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
-const route = useRoute(), { slug } = useWorkspace(), { user } = useAuth(), api = useDomainSubmissions();
+const route = useRoute(), { slug, can } = useWorkspace(), { user } = useAuth(), api = useDomainSubmissions();
+const contestApi = useDomainContests();
 const id = computed(() => String(route.params.submissionId));
 const key = computed(() => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'submission', id.value));
 const { data, status, error, refresh } = await useAsyncData(key, () => api.detail(slug.value!, id.value));
+const contest = await useAsyncData(
+  () => `${key.value}:contest-context`,
+  () =>
+    data.value?.data.contest_id ? contestApi.detail(slug.value!, data.value.data.contest_id) : Promise.resolve(null),
+);
 usePolling({
   intervalMs: computed(() =>
     data.value?.data.result_visibility !== 'hidden' && ['pending', 'judging'].includes(data.value?.data.status ?? '')
@@ -33,6 +39,22 @@ useSeoMeta({ title: '空间提交详情' });
       <UAlert v-if="!data.data.resource_available" color="warning"
         title="源资源已不可用，保留已受理的原提交和授权成绩摘要" />
       <DomainSubmissionResult :submission="data.data" />
+      <ClientOnly>
+        <div class="flex flex-wrap gap-3">
+          <DomainUpgradeAction :slug="slug!" :source="{ kind: 'submission', id: data.data.id }"
+            :source-version="data.data.submitted_version_id"
+            :eligible="data.data.user_id === user?.id && data.data.resource_available && data.data.result_visibility !== 'hidden' && data.data.is_latest === false && !['pending', 'judging'].includes(data.data.status ?? '') && (!data.data.contest_id || contest.data.value?.data.status === 'ended')" />
+          <DomainUpgradeAction
+            v-if="contest.data.value?.data.can_manage && contest.data.value.data.status === 'running'"
+            :slug="slug!" :source="{ kind: 'submission', id: data.data.id }" context="source_contest"
+            :source-version="data.data.submitted_version_id"
+            :eligible="data.data.resource_available && data.data.is_latest === false && !['pending', 'judging'].includes(data.data.status ?? '') && (data.data.user_id === user?.id || can('submission:rejudge'))" />
+          <DomainRejudgeAction :slug="slug!"
+            :scope="{ type: 'selected', submissions: [{ kind: 'submission', id: data.data.id }] }"
+            label="重测此提交"
+            :eligible="data.data.resource_available && (!data.data.contest_id || !!contest.data.value?.data.can_manage)" />
+        </div>
+      </ClientOnly>
       <UCard v-if="data.data.code != null">
         <h3 class="mb-3 font-semibold">原提交代码</h3>
         <pre class="max-h-[32rem] overflow-auto whitespace-pre font-mono text-xs">{{ data.data.code }}</pre>

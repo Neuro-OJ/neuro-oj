@@ -29,6 +29,16 @@ useSeoMeta({ title: '本人客观题提交详情' });
     <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data ? 'data' : 'empty'"
       :error="error ? extractApiError(error).message : undefined" @retry="refresh()">
       <OwnSubmissionRecord v-if="data" :entry="data.data" />
+      <ClientOnly v-if="data">
+        <div class="flex flex-wrap gap-3">
+          <DomainUpgradeAction :slug="slug!" :source="{ kind: 'objective', id: data.data.id }"
+            :source-version="data.data.submitted_version_id"
+            :eligible="data.data.resource_available && !data.data.contest_id && data.data.result_visibility !== 'hidden' && !['pending', 'judging'].includes(data.data.status)" />
+          <DomainRejudgeAction :slug="slug!"
+            :scope="{ type: 'selected', submissions: [{ kind: 'objective', id: data.data.id }] }"
+            label="重测此回答" :eligible="data.data.resource_available && !data.data.contest_id" />
+        </div>
+      </ClientOnly>
     </AsyncContent>
   </div>
 </template>

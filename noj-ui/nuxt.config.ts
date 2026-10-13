@@ -174,6 +174,7 @@ export default defineNuxtConfig({
     '/d/*/trainings/new': { ssr: false },
     '/d/*/trainings/*/edit': { ssr: false },
     '/d/*/classrooms/*/contest-remediation': { ssr: false },
+    '/d/*/submission-jobs/**': { ssr: false },
     '/join': { ssr: false, headers: { 'cache-control': 'no-store' } },
     '/api/v1/domains/**': { headers: { 'cache-control': 'no-store' } },
     '/api/v1/me/**': { headers: { 'cache-control': 'no-store' } },

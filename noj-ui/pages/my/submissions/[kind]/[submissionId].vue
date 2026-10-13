@@ -28,7 +28,7 @@ useSeoMeta({ title: '本人提交历史详情' });
     </div>
     <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data ? 'data' : 'empty'"
       :error="error ? extractApiError(error).message : undefined" @retry="refresh()">
-      <OwnSubmissionRecord v-if="data" :entry="data.data" />
+      <OwnSubmissionRecord v-if="data" :entry="data.data" offer-domain-actions />
     </AsyncContent>
   </div>
 </template>

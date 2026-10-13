@@ -41,7 +41,7 @@ const stubs = {
 describe('本人原提交与成绩摘要', () => {
   it('失去域访问权仍显示原代码和授权摘要，不生成题面导航', () => {
     const view = mount(OwnSubmissionRecord, {
-      props: { entry: entry() },
+      props: { entry: entry(), offerDomainActions: true },
       global: { components: { OwnSubmissionSummary }, stubs },
     });
     expect(view.text()).toContain('print("my code")');
@@ -59,6 +59,17 @@ describe('本人原提交与成绩摘要', () => {
     expect(view.text()).not.toContain('100.0 分');
     expect(view.text()).not.toContain('WA');
     expect(view.text()).not.toContain('666');
+  });
+  it('当前仍可进入使用域时，操作导航明确进入该记录所属空间', () => {
+    const accessible = entry();
+    accessible.domain.accessible = true;
+    accessible.resource_available = true;
+    const view = mount(OwnSubmissionRecord, {
+      props: { entry: accessible, offerDomainActions: true },
+      global: { components: { OwnSubmissionSummary }, stubs },
+    });
+    expect(view.findAll('button').find((button) => button.text() === '进入所属空间提交详情')!.attributes('data-to'))
+      .toBe('/d/school/submissions/s1');
   });
   it('平台失败不把尝试零分当作正式成绩', () => {
     const failed = entry();

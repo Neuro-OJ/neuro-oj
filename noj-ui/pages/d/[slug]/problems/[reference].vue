@@ -36,6 +36,11 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
       <UCard>
         <MarkdownRenderer :content="data.content.description" />
       </UCard>
+      <ClientOnly>
+        <DomainRejudgeAction :slug="slug!" :scope="{ type: 'problem', problem_id: data.reference.problem_id }"
+          :label="`重测本域此题提交（${data.reference.display_ref}）`" :eligible="true"
+          :answer-version="{ problemId: data.reference.problem_id, id: data.version_id, version: data.version }" />
+      </ClientOnly>
       <UCard v-for="(sample, index) in data.content.samples" :key="index">
         <h3 class="mb-3 font-semibold">样例 {{ index + 1 }}</h3>
         <div class="grid gap-3 sm:grid-cols-2">

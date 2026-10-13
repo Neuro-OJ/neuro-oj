@@ -2,7 +2,8 @@
 import type { OwnSubmissionHistory } from '~/utils/own-submissions';
 import { originalAnswerText, ownHistoryProblemLink } from '~/utils/own-submissions';
 import { formatDateTime } from '~/utils/submissionFormat';
-defineProps<{ entry: OwnSubmissionHistory }>();
+import { workspacePath } from '~/utils/workspace';
+defineProps<{ entry: OwnSubmissionHistory; offerDomainActions?: boolean }>();
 </script>
 <template>
   <div class="space-y-4">
@@ -16,6 +17,9 @@ defineProps<{ entry: OwnSubmissionHistory }>();
       class="text-sm text-text-muted">使用域 {{ entry.domain.name }} · {{ entry.domain.slug }} · {{ formatDateTime(entry.created_at) }} · {{ entry.kind === 'objective' ? '客观题' : entry.language }}{{ entry.contest_id ? ' · 比赛提交' : '' }}</p>
     <UAlert v-if="!entry.domain.accessible" color="info" title="当前无法进入此域，保留本人原提交与获授权成绩摘要" />
     <UAlert v-else-if="!entry.resource_available" color="info" title="源资源已不可用，保留本人原提交与获授权成绩摘要" />
+    <UButton v-if="offerDomainActions && entry.domain.accessible && entry.resource_available"
+      :to="workspacePath(entry.domain.slug, `${entry.kind === 'objective' ? 'objective-submissions' : 'submissions'}/${entry.id}`)"
+      variant="outline">进入所属空间提交详情</UButton>
     <UCard>
       <h3 class="mb-3 font-semibold">结果摘要</h3>
       <OwnSubmissionSummary :entry="entry" />
