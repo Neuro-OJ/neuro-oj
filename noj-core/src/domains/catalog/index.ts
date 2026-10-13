@@ -50,3 +50,5 @@ export * from "./services/workspace/problem-bundle-import.ts";
 export * from "./services/workspace/execution-context.ts";
 export * from "./services/workspace/binding-availability.ts";
 export * from "./services/workspace/education-events.ts";
+
+export { domainResourceManagementRouter } from "./routes/domain-resource-management.ts";

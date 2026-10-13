@@ -157,6 +157,12 @@ export async function readDomainProblem(
     binding_id: resolved.binding.id,
     policy_revision: resolved.binding.revision,
     effective_version_mode: resolved.binding.effective_version_mode,
+    required_version_id: resolved.binding.required_version_id,
+    answer_version_id: resolved.version.id,
+    visibility: resolved.binding.visibility,
+    can_share: resolved.binding.kind === "owned" &&
+      (resolved.platformAdmin ||
+        resolved.context.domainPermissions.has("problem:share")),
     version_id: resolved.version.id,
     version: resolved.version.version,
     can_edit: canEdit,

@@ -1,4 +1,8 @@
-import { and, asc, count, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import {
+  domainProblemBindingAvailableWhere,
+  loadBindingAvailability,
+} from "./binding-availability.ts";
 import { recordEducationEvent } from "../../../../shared/education-events.ts";
 import {
   AppError,
@@ -138,6 +142,8 @@ export async function importDomainProblem(
           ),
         };
       }
+      // 重复引用不能让教学人员撤销管理员的下架决定。
+      assertWorkspacePermission(context, "problem:policy");
       const [restored] = await tx.update(domainProblemBindings).set({
         disabled_at: null,
         revision: existing.revision + 1,
@@ -396,4 +402,121 @@ export async function setDomainProblemBindingState(
     );
     return updated;
   });
+}
+
+/** 管理列表保留已下架/失效绑定；内容撤销后仅返回来源标识与本域配置。 */
+export async function listDomainProblemBindings(
+  slug: string,
+  actorId: string,
+  query: { page: number; limit: number; keyword?: string },
+) {
+  const workspace = await loadWorkspace(slug, actorId), db = getDb();
+  const permissions = workspace.context.domainPermissions;
+  if (
+    !workspace.platformAdmin &&
+    ![
+      "problem:import",
+      "problem:write_own",
+      "problem:write_any",
+      "problem:policy",
+    ].some((permission) => permissions.has(permission))
+  ) {
+    assertWorkspacePermission(workspace.context, "problem:policy");
+  }
+  const manageAll = workspace.platformAdmin ||
+    permissions.has("problem:write_any") || permissions.has("problem:policy");
+  const available = domainProblemBindingAvailableWhere(
+    domainProblemBindings.id,
+    domainProblemBindings.domain_id,
+    { member: true },
+  );
+  const condition = and(
+    eq(domainProblemBindings.domain_id, workspace.domain.id),
+    manageAll ? undefined : or(
+      eq(domainProblemBindings.kind, "shared"),
+      eq(problems.owner_id, actorId),
+    ),
+    query.keyword
+      ? or(
+        ilike(
+          sql`${domains.slug} || ':' || ${problems.number}`,
+          `%${query.keyword}%`,
+        ),
+        and(
+          or(eq(domainProblemBindings.kind, "owned"), available),
+          ilike(problems.title, `%${query.keyword}%`),
+        ),
+      )
+      : undefined,
+  );
+  const queryRows = () =>
+    db.select({
+      binding: domainProblemBindings,
+      source: { id: domains.id, slug: domains.slug },
+      problem: {
+        id: problems.id,
+        domain_id: problems.domain_id,
+        number: problems.number,
+        owner_id: problems.owner_id,
+        title: problems.title,
+        latest_version_id: problems.latest_version_id,
+      },
+    }).from(domainProblemBindings).innerJoin(
+      problems,
+      eq(problems.id, domainProblemBindings.problem_id),
+    ).innerJoin(domains, eq(domains.id, problems.domain_id)).where(condition);
+  const [[total], rows] = await Promise.all([
+    db.select({ total: count() }).from(
+      queryRows().as("management_problem_bindings"),
+    ),
+    queryRows().orderBy(asc(domains.slug), asc(problems.number)).limit(
+      query.limit,
+    ).offset((query.page - 1) * query.limit),
+  ]);
+  const statuses = new Map(
+    (await loadBindingAvailability(
+      db,
+      workspace.domain.id,
+      rows.map((row) => row.binding.id),
+    )).map((row) => [row.id, row]),
+  );
+  return {
+    page: query.page,
+    limit: query.limit,
+    total: total.total,
+    items: rows.map((row) => {
+      const status = statuses.get(row.binding.id);
+      const owned = row.binding.kind === "owned";
+      const canEdit = owned &&
+        (workspace.platformAdmin || permissions.has("problem:write_any") ||
+          row.problem.owner_id === actorId &&
+            permissions.has("problem:write_own"));
+      return {
+        reference: domainProblemReference(
+          { ...row.problem, domain_id: row.source.id },
+          row.source.slug,
+          workspace.domain.id,
+        ),
+        title: owned || status?.available ? row.problem.title : null,
+        binding_id: row.binding.id,
+        revision: row.binding.revision,
+        policy_revision: row.binding.revision,
+        kind: row.binding.kind,
+        visibility: row.binding.visibility,
+        disabled_at: row.binding.disabled_at,
+        resource_available: status?.available ?? false,
+        effective_version_mode: row.binding.effective_version_mode,
+        required_version_id: row.binding.required_version_id,
+        answer_version_id: status?.answer_version_id ?? null,
+        can_edit: canEdit,
+        can_share: owned &&
+          (workspace.platformAdmin || permissions.has("problem:share")),
+        can_manage_policy: workspace.platformAdmin ||
+          permissions.has("problem:policy"),
+        can_change_state: canEdit ||
+          !owned &&
+            (workspace.platformAdmin || permissions.has("problem:policy")),
+      };
+    }),
+  };
 }

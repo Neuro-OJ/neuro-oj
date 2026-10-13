@@ -4,6 +4,7 @@ import {
   authMiddleware,
   optionalAuthMiddleware,
 } from "../../identity/index.ts";
+import { parsePagination } from "../../../shared/http/pagination.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
   assertObjectBody,
@@ -13,9 +14,13 @@ import {
   type DomainTrainingInput,
   saveDomainTraining,
 } from "../services/workspace/trainings.ts";
-import { readDomainTraining } from "../services/workspace/training-access.ts";
+import {
+  listDomainTrainings,
+  readDomainTraining,
+} from "../services/workspace/training-access.ts";
 import {
   importDomainTraining,
+  readDomainTrainingSharing,
   setDomainTrainingSharing,
 } from "../services/workspace/training-sharing.ts";
 
@@ -71,7 +76,7 @@ domainTrainingsRouter.post(
       {
         enabled: boolean;
         scope: "all" | "selected";
-        target_domain_ids: string[];
+        target_domain_slugs: string[];
       }
     >(c);
     assertObjectBody(input);
@@ -83,7 +88,7 @@ domainTrainingsRouter.post(
         {
           enabled: input.enabled,
           scope: input.scope,
-          targetDomainIds: input.target_domain_ids,
+          targetDomainSlugs: input.target_domain_slugs,
           expectedRevision: revision(c.req.header("If-Match")),
         },
       ),
@@ -107,4 +112,28 @@ domainTrainingsRouter.post(
       ),
     }, 201);
   },
+);
+
+/** 题单列表和共享设置分别读取当前域资源与本域来源授权。 */
+domainTrainingsRouter.get(prefix, optionalAuthMiddleware, async (c) => {
+  const { page, perPage } = parsePagination(c, { perPageField: "limit" });
+  return c.json(
+    await listDomainTrainings(c.req.param("slug")!, c.var.userId ?? null, {
+      page,
+      limit: perPage,
+      keyword: c.req.query("keyword"),
+    }),
+  );
+});
+domainTrainingsRouter.get(
+  `${prefix}/:id/sharing`,
+  authMiddleware,
+  async (c) =>
+    c.json({
+      data: await readDomainTrainingSharing(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.var.userId,
+      ),
+    }),
 );

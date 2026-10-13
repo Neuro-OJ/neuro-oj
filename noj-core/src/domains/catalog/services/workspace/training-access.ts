@@ -1,4 +1,14 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  or,
+  sql,
+} from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
@@ -98,21 +108,35 @@ export async function readDomainTraining(
   const items = [];
   for (const item of resource.items) {
     const qualified = `${item.source.slug}:${item.problem.number}`;
-    if (item.source.id !== resource.domain.id) {
-      await assertCurrentProblemShare(
-        item.problem,
-        item.source,
-        resource.domain.id,
-        executor,
-      );
-    } else {
-      await resolveDomainProblem(slug, String(item.problem.number), actorId, {
-        executor,
-      });
+    let sourceAvailable = true;
+    try {
+      if (item.source.id !== resource.domain.id) {
+        await assertCurrentProblemShare(
+          item.problem,
+          item.source,
+          resource.domain.id,
+          executor,
+        );
+      } else {
+        await resolveDomainProblem(slug, String(item.problem.number), actorId, {
+          executor,
+        });
+      }
+    } catch (error) {
+      if (!(error instanceof NotFoundError)) throw error;
+      sourceAvailable = false;
     }
+    const bindingId = item.binding?.disabled_at
+      ? null
+      : item.binding?.id ?? null;
     items.push({
       problem_id: item.problem.id,
-      binding_id: item.binding?.disabled_at ? null : item.binding?.id ?? null,
+      binding_id: sourceAvailable ? bindingId : null,
+      resource_available: sourceAvailable && bindingId !== null,
+      can_import: sourceAvailable && bindingId === null &&
+        item.source.id !== resource.domain.id &&
+        (resource.platformAdmin ||
+          resource.context.domainPermissions.has("problem:import")),
       source_domain_id: item.source.id,
       source_domain_slug: item.source.slug,
       number: item.problem.number,
@@ -132,6 +156,15 @@ export async function readDomainTraining(
     title: resource.training.title,
     description: resource.training.description,
     revision: resource.training.revision,
+    visibility: resource.training.visibility,
+    can_edit: !resource.shared &&
+      (resource.platformAdmin ||
+        resource.context.domainPermissions.has("training:write_any") ||
+        resource.training.created_by === actorId &&
+          resource.context.domainPermissions.has("training:write_own")),
+    can_share: !resource.shared &&
+      (resource.platformAdmin ||
+        resource.context.domainPermissions.has("training:share")),
     is_shared: resource.shared,
     items,
   };
@@ -164,4 +197,85 @@ export async function lockTrainingExpansion(
   if (!current || current.revision !== resource.training.revision) {
     throw new ConflictError("题单已变化，请重新发布");
   }
+}
+
+/** 题单目录在分页前按本域可见性及实时共享授权过滤，未列出的题单仍可按授权链接读取。 */
+export async function listDomainTrainings(
+  slug: string,
+  actorId: string | null,
+  query: { page: number; limit: number; keyword?: string },
+) {
+  const workspace = await loadWorkspace(slug, actorId), db = getDb();
+  const all = workspace.platformAdmin ||
+    workspace.context.domainPermissions.has("training:write_any");
+  const condition = and(
+    or(
+      and(
+        eq(trainings.domain_id, workspace.domain.id),
+        all ? undefined : or(
+          eq(trainings.visibility, "public"),
+          actorId ? eq(trainings.created_by, actorId) : undefined,
+        ),
+      ),
+      and(
+        eq(domainTrainingBindings.domain_id, workspace.domain.id),
+        isNull(domainTrainingBindings.disabled_at),
+        eq(trainings.visibility, "public"),
+        sql`${domains.status} <> 'suspended'`,
+        sql`${domains.configuration}->>'access' = 'public'`,
+        eq(trainingShareSettings.enabled, true),
+        sql`(${trainingShareSettings.scope} = 'all' OR EXISTS (SELECT 1 FROM training_share_targets target WHERE target.training_id = ${trainings.id} AND target.domain_id = ${workspace.domain.id}))`,
+      ),
+    ),
+    query.keyword ? ilike(trainings.title, `%${query.keyword}%`) : undefined,
+  );
+  const rowsQuery = () =>
+    db.select({
+      training: trainings,
+      source: { id: domains.id, slug: domains.slug },
+    }).from(trainings).innerJoin(domains, eq(domains.id, trainings.domain_id))
+      .leftJoin(
+        domainTrainingBindings,
+        and(
+          eq(domainTrainingBindings.training_id, trainings.id),
+          eq(domainTrainingBindings.domain_id, workspace.domain.id),
+        ),
+      ).leftJoin(
+        trainingShareSettings,
+        eq(trainingShareSettings.training_id, trainings.id),
+      ).where(condition);
+  const [[total], rows] = await Promise.all([
+    db.select({ total: count() }).from(
+      rowsQuery().as("authorized_domain_trainings"),
+    ),
+    rowsQuery().orderBy(asc(trainings.title), asc(trainings.id)).limit(
+      query.limit,
+    ).offset((query.page - 1) * query.limit),
+  ]);
+  return {
+    page: query.page,
+    limit: query.limit,
+    total: total.total,
+    items: rows.map(({ training, source }) => {
+      const owned = source.id === workspace.domain.id;
+      return {
+        id: training.id,
+        public_id: training.public_id,
+        source_domain_id: source.id,
+        source_domain_slug: source.slug,
+        is_shared: !owned,
+        title: training.title,
+        description: training.description,
+        revision: training.revision,
+        visibility: training.visibility,
+        can_edit: owned &&
+          (all ||
+            training.created_by === actorId &&
+              workspace.context.domainPermissions.has("training:write_own")),
+        can_share: owned &&
+          (workspace.platformAdmin ||
+            workspace.context.domainPermissions.has("training:share")),
+      };
+    }),
+  };
 }
