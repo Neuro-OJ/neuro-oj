@@ -1,4 +1,5 @@
 import { useApi } from '~/composables/useApi';
+import type { EducationDashboardData } from '~/utils/education-dashboard';
 import type { AssignmentHistoryEntry, TeachingNotice } from '~/utils/education-notifications';
 import type {
   ClassroomImportPreview,
@@ -35,6 +36,8 @@ export function useEducationApi() {
   const idempotent = (key: string) => ({ headers: { 'Idempotency-Key': key } });
   const revision = (value: number) => ({ headers: { 'If-Match': String(value) } });
   return {
+    dashboard: (slug: string, mode: 'teaching' | 'my-learning', page: number) =>
+      api.get<{ data: EducationDashboardData }>(`${root(slug)}/${mode}`, { query: { page }, silent: true }),
     classrooms: (slug: string, page = 1) =>
       api.get<{ data: Classroom[] }>(`${root(slug)}/classrooms`, { query: { page }, silent: true }),
     classroom: (slug: string, id: string) => api.get<{ data: ClassroomDetail }>(classroom(slug, id), { silent: true }),

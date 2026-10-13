@@ -67,6 +67,8 @@ const ROUTES: BreadcrumbRoute[] = [
   { pattern: '/join', trail: [{ key: 'breadcrumb.invitation' }] },
   { pattern: '/d/:slug', trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }] },
   { pattern: '/d/:slug/llm', trail: [{ param: 'slug' }, { key: 'breadcrumb.settings' }] },
+  { pattern: '/d/:slug/teaching', trail: [{ param: 'slug' }, { key: 'breadcrumb.teaching' }] },
+  { pattern: '/d/:slug/my-learning', trail: [{ param: 'slug' }, { key: 'breadcrumb.myLearning' }] },
   { pattern: '/d/:slug/problems', trail: [{ param: 'slug' }, { key: 'nav.problems' }] },
   {
     pattern: '/d/:slug/problems/:reference',

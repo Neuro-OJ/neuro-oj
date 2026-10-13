@@ -33,6 +33,8 @@ useSeoMeta({ title: '我的班级' });
     <AdminPageHeader title="我的班级" description="在所属班级中查看作业、学习进度和反馈。"
       icon="i-lucide-graduation-cap">
       <template #actions>
+        <UButton :to="workspacePath(slug!, 'teaching')" variant="outline">教学工作台</UButton>
+        <UButton :to="workspacePath(slug!, 'my-learning')" variant="outline">我的学习</UButton>
         <UButton :to="workspacePath(slug!, 'notifications')" variant="outline" icon="i-lucide-bell">教学通知</UButton>
         <UButton
           v-if="can('classroom:create') && domain?.status === 'active' && domain.configuration.features.classroom"

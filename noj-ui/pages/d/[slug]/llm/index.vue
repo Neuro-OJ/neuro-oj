@@ -107,7 +107,7 @@ function saveQuota() {
     api.saveQuota(target, {
       id: quota.id,
       scope_type: quota.scope_type,
-      scope_id: quota.scope_id,
+      scope_id: quota.scope_type === 'domain' ? '' : quota.scope_id,
       window_type: quota.window_type,
       max_calls: limit(quota.calls),
       max_tokens: limit(quota.tokens),
@@ -170,12 +170,13 @@ useSeoMeta({ title: '空间 LLM 配置' });
         <UInput v-model="quota.calls" type="number" min="0" placeholder="调用次数，空为不限"
           aria-label="调用次数上限" />
         <UInput v-model="quota.tokens" type="number" min="0" placeholder="Token，空为不限" aria-label="Token上限" />
-        <UInput v-model="quota.cost" type="number" min="0" step="any" placeholder="费用，空为不限"
-          aria-label="费用上限" />
+        <UInput v-model="quota.cost" type="number" min="0" step="1" placeholder="费用整数额度，空为不限"
+          aria-label="费用整数上限" />
         <UButton type="submit" :disabled="!writable" :loading="busy">{{ quota.id ? '更新配额' : '新增配额' }}</UButton>
         <UButton type="button" variant="ghost" @click="quota.id = undefined">切换为新增</UButton>
       </form>
-      <p class="mt-3 text-xs text-text-muted">实际用量按上游返回结算；调用前预估与上游账单可能存在差异。</p>
+      <p
+        class="mt-3 text-xs text-text-muted">费用额度与 Provider 单价采用同一单位，使用整数；实际用量按上游返回结算，调用前预估与上游账单可能存在差异。</p>
       <div v-for="item in data.quotas" :key="item.id"
         class="mt-3 flex items-center justify-between border-t border-border pt-3 text-sm"><span>{{ item.scope_type }} · {{ item.scope_id }} · {{ item.window_type }}：{{ item.max_calls ?? '不限' }} 次 / {{ item.max_tokens ?? '不限' }} Token / {{ item.max_cost ?? '不限' }} 费用</span><UButton variant="ghost" @click="editQuota(item)">编辑</UButton></div>
     </UCard>

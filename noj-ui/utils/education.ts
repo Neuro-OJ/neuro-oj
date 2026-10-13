@@ -224,7 +224,7 @@ export function teachingCellLabel(cell: TeachingCell) {
   return cell.score === null ? status : `${cell.score / 100} · ${status}${cell.late ? ' · 逾期' : ''}`;
 }
 /** 截止只结束按时统计，不把仍在评测的任务视为成绩永久冻结。 */
-export function assignmentPhase(task: Assignment, now = Date.now()) {
+export function assignmentPhase(task: Pick<Assignment, 'state' | 'ended_at' | 'deadline_at'>, now = Date.now()) {
   if (task.state === 'draft') return '草稿';
   if (task.state === 'scheduled') return '定时发布';
   if (task.state === 'archived') return '已归档';
