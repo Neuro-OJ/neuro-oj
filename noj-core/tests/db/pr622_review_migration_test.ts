@@ -21,6 +21,7 @@ import { dirname, fromFileUrl, resolve } from "jsr:@std/path@^1";
 import { getDb } from "../../src/shared/db/connection.ts";
 import { unwrapRows } from "../../src/shared/base/sql-rows.ts";
 import { DEFAULT_DOMAIN_ID } from "../../src/shared/workspace/types.ts";
+import { problemExecutionForTest } from "../helper.ts";
 
 /** 需要真实 PostgreSQL 的迁移语义（PGlite 下跳过）。 */
 const hasRealPg = !!Deno.env.get("DATABASE_URL");
@@ -204,12 +205,13 @@ interface SubmissionProbe {
 /** 复刻 0103 回填后的存量形态：尝试 + 未知版本桶当前判定 + 有效成绩投影。 */
 async function seedLegacyImport(probe: SubmissionProbe): Promise<void> {
   const db = getDb();
+  const execution = await problemExecutionForTest("pv109-p1");
   // 先插提交（attempt 指针可空），再插尝试，最后回填指针：attempt 与提交之间的
   // 复合外键是延迟插入顺序无法满足的循环依赖，存量回填同样分两步。
   await db.execute(sql`
-    INSERT INTO submissions (id, user_id, problem_id, language, code, status,
+    INSERT INTO submissions (id, domain_id, domain_problem_binding_id, user_id, problem_id, language, code, status,
                              version_origin, submitted_version_id, created_at)
-    VALUES (${probe.submissionId}, '0', 'pv109-p1', 'python', 'print(1)',
+    VALUES (${probe.submissionId}, ${execution.domain_id}, ${execution.domain_problem_binding_id}, '0', 'pv109-p1', 'python', 'print(1)',
             'finished', 'legacy_unknown', NULL, ${NOW})
     ON CONFLICT (id) DO UPDATE SET
       is_valid = false, is_accepted = false,

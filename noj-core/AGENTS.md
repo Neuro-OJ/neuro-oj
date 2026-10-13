@@ -73,20 +73,20 @@ authMiddleware → 注入 isAdmin
 
 ### Permissions
 
-| `resource`           | `action`                                                                                                                                             | 说明                          |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| admin                | full_access                                                                                                                                          | 管理员全权限（隐式拥有全部）  |
+| `resource`           | `action`                                                                                                                                    | 说明                          |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| admin                | full_access                                                                                                                                 | 管理员全权限（隐式拥有全部）  |
 | problem              | create/read/write_own/write_any/delete_own/delete_any/package_manage_own/package_manage_any/field_evaluator_command/field_evaluator_network | 题目 CRUD + 支持包 + 评测字段 |
-| submission           | create/read_own/read_all/rejudge                                                                                                                     | 提交操作                      |
-| user                 | read_profile/search/manage                                                                                                                           | 用户操作                      |
-| tag                  | read/manage                                                                                                                                          | 标签操作                      |
-| contest              | create/manage/anti_cheat_read/participate                                                                                                            | 竞赛                          |
-| community            | read/create_solution/create_discussion/create_moment/comment/react/follow/report                                                                     | 社区内容与互动                |
-| community_moderation | review/hide/lock/sanction                                                                                                                            | 社区治理                      |
-| community_board      | manage                                                                                                                                               | 社区板块                      |
-| training             | create/read/read_any/write_own/write_any/delete_own/delete_any/publish/pin                                                                           | 题单                          |
-| announcement         | manage                                                                                                                                               | 公告                          |
-| system               | settings/judge_images/audit_logs/ip_bans                                                                                                             | 系统管理                      |
+| submission           | create/read_own/read_all/rejudge                                                                                                            | 提交操作                      |
+| user                 | read_profile/search/manage                                                                                                                  | 用户操作                      |
+| tag                  | read/manage                                                                                                                                 | 标签操作                      |
+| contest              | create/manage/anti_cheat_read/participate                                                                                                   | 竞赛                          |
+| community            | read/create_solution/create_discussion/create_moment/comment/react/follow/report                                                            | 社区内容与互动                |
+| community_moderation | review/hide/lock/sanction                                                                                                                   | 社区治理                      |
+| community_board      | manage                                                                                                                                      | 社区板块                      |
+| training             | create/read/read_any/write_own/write_any/delete_own/delete_any/publish/pin                                                                  | 题单                          |
+| announcement         | manage                                                                                                                                      | 公告                          |
+| system               | settings/judge_images/audit_logs/ip_bans                                                                                                    | 系统管理                      |
 
 ### 迁移策略
 
@@ -580,11 +580,11 @@ Redis 缓存键与物化视图刷新都以 revision 为准；多副本下无进�
 | 代码大小上限         | 100KB（`MAX_CODE_LENGTH`），路由层校验                                                                                                                                                                                   |
 | 个人简介上限         | 5000 字符                                                                                                                                                                                                                |
 | 支持包读取失败       | 非致命：日志记录后继续（无支持包），由 judge 端处理                                                                                                                                                                      |
-| 题目更新             | 静默忽略 `type` 和 `number` 字段（API 接受但不处理）                                                                                                                                                                     |
-| 题目编号冲突         | 自动分配时重试 3 次（PG 23505），手动指定时立即报错                                                                                                                                                                      |
+| 题目更新             | 题号不随内容更新改变；内容经共享草稿发布为不可变版本                                                                                                                                                                     |
+| 题目编号冲突         | 数字在 Domain 内唯一；自动创建从持久计数器原子分配，指定数字导入校验权限及 revision                                                                                                                                      |
 | 评测结果写入         | 写入 `evaluation_attempts` 终态（**只写一次**，重复回调不覆盖）+ `graded` 时更新 `submission_version_results` 当前判定，再按当前策略重算有效成绩投影；`rejudge_seq`/`run_id` 防护乱序                                    |
 | 队列位置查询         | 即使 DB 状态为 "judging" 也检查 Redis 队列（状态在入队时已更新）                                                                                                                                                         |
-| 问题列表默认         | 默认只显示 `type='P'` 的题目，U 类型需直接 URL 或所有者主页访问                                                                                                                                                          |
+| 问题列表默认         | 使用路径 Domain 的题库绑定和授权范围；旧无域入口固定 main，公开视角只展示获授权的已发布资源                                                                                                                              |
 | 分页默认值           | page=1, per_page=20, max per_page=100                                                                                                                                                                                    |
 | 用户枚举防护         | 登录失败统一返回"用户名或密码错误"，不区分"用户不存在"和"密码错误"                                                                                                                                                       |
 | Root 用户            | UID="0"，admin 角色，随机密码不可登录，不计入管理员统计，不出现在用户列表                                                                                                                                                |

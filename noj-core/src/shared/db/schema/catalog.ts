@@ -9,7 +9,6 @@ import {
   primaryKey,
   text,
   unique,
-  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { manyToManyPk, publicIdColumn, tsvector } from "./common.ts";

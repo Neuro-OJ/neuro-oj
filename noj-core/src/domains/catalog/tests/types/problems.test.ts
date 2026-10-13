@@ -1,8 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import {
-  DIFFICULTIES,
-  isValidDifficulty,
-} from "../../types/problems.ts";
+import { DIFFICULTIES, isValidDifficulty } from "../../types/problems.ts";
 
 Deno.test({
   name: "DIFFICULTIES 常量包含预期值",
@@ -29,4 +26,3 @@ Deno.test({
     assertEquals(isValidDifficulty("medium "), false);
   },
 });
-
