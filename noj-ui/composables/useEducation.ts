@@ -1,5 +1,6 @@
 import { useApi } from '~/composables/useApi';
 import type { EducationDashboardData } from '~/utils/education-dashboard';
+import type { AssignmentRemediationInput, AssignmentRemediationPreview } from '~/utils/education-remediation-preview';
 import type { TeachingSubmission } from '~/utils/education-submissions';
 import type { AssignmentHistoryEntry, TeachingNotice } from '~/utils/education-notifications';
 import type {
@@ -89,6 +90,15 @@ export function useEducationApi() {
     ) =>
       api.post<{ data: Assignment }>(`${task(slug, id)}/copy`, input, {
         headers: { ...revision(current).headers, ...idempotent(key).headers },
+      }),
+    remediationPreview: (slug: string, id: string, scope: 'on_time' | 'current') =>
+      api.post<{ data: AssignmentRemediationPreview }>(`${task(slug, id)}/remediation-preview`, { scope }, {
+        silent: true,
+      }),
+    createRemediation: (slug: string, id: string, current: number, key: string, input: AssignmentRemediationInput) =>
+      api.post<{ data: Assignment }>(`${task(slug, id)}/remediation`, input, {
+        headers: { ...revision(current).headers, ...idempotent(key).headers },
+        silent: true,
       }),
     problems: (slug: string, page: number, keyword: string) =>
       api.get<{ items: TeachingProblemOption[]; total: number }>(`${root(slug)}/problems`, {

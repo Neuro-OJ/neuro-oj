@@ -127,6 +127,8 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
             <AssignmentCopy :key="`${key}:copy`" :slug="slug!" :task="task.data.value.data"
               :matrix="matrix.data.value?.data"
               :writable="!!classroomWritable" />
+            <AssignmentRemediation :key="`${key}:remediation`" :slug="slug!" :task="task.data.value.data"
+              :writable="!!classroomWritable" :can-read-progress="can('progress:read')" />
           </ClientOnly>
         </div>
         <AssignmentDraftPreview v-if="can('assignments:manage') && !task.data.value.data.published_at" class="mt-4"
