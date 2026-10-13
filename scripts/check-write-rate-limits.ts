@@ -89,6 +89,11 @@ export const ALLOWLIST: Record<
     status: "exempt",
     reason: "题单 CRUD：权限受限、频率低（矩阵文档「已知未覆盖」）",
   },
+  "noj-core/src/domains/catalog/routes/domain-trainings.ts": {
+    status: "exempt",
+    reason:
+      "域题单 CRUD：本域资源管理权限与审计，沿用题单低频管理豁免；不接受普通成员内容写入",
+  },
   // ── 本次新暴露、尚未限流（欠债，保持可见）──
   "noj-core/src/domains/identity/routes/checkin.ts": {
     status: "pending",

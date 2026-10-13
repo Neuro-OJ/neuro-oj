@@ -1,4 +1,5 @@
 import { type Context, Hono } from "hono";
+import { educationWriteRateLimit } from "./write-rate-limit.ts";
 import {
   type AssignmentMatrixOptions,
   getAssignmentMatrix,
@@ -93,18 +94,22 @@ router.get("/domains/:slug/classrooms/:id/assignments", async (c) => {
     per_page: 50,
   });
 });
-router.post("/domains/:slug/classrooms/:id/assignments", async (c) => {
-  const input = await parseJsonBody<AssignmentDraftInput>(c);
-  assertObjectBody(input);
-  return c.json({
-    data: await createAssignment(
-      c.req.param("slug"),
-      c.req.param("id"),
-      c.var.userId,
-      input,
-    ),
-  }, 201);
-});
+router.post(
+  "/domains/:slug/classrooms/:id/assignments",
+  educationWriteRateLimit,
+  async (c) => {
+    const input = await parseJsonBody<AssignmentDraftInput>(c);
+    assertObjectBody(input);
+    return c.json({
+      data: await createAssignment(
+        c.req.param("slug"),
+        c.req.param("id"),
+        c.var.userId,
+        input,
+      ),
+    }, 201);
+  },
+);
 router.get("/domains/:slug/assignments/:id", async (c) =>
   c.json({
     data: await getAssignment(
@@ -113,105 +118,134 @@ router.get("/domains/:slug/assignments/:id", async (c) =>
       c.var.userId,
     ),
   }));
-router.patch("/domains/:slug/assignments/:id", async (c) => {
-  const input = await parseJsonBody<AssignmentDraftInput>(c);
-  assertObjectBody(input);
-  return c.json({
-    data: await updateAssignment(
-      c.req.param("slug"),
-      c.req.param("id"),
-      c.var.userId,
-      revision(c.req.header("If-Match")),
-      input,
-    ),
-  });
-});
-router.post("/domains/:slug/assignments/:id/publish", async (c) =>
-  c.json({
-    data: await publishAssignment(
-      c.req.param("slug"),
-      c.req.param("id"),
-      c.var.userId,
-      revision(c.req.header("If-Match")),
-      c.req.header("Idempotency-Key") ?? "",
-    ),
-  }));
-router.post("/domains/:slug/assignments/:id/schedule", async (c) => {
-  const input = await parseJsonBody<{ publish_at: string }>(c);
-  assertObjectBody(input);
-  return c.json({
-    data: await scheduleAssignment(
-      c.req.param("slug"),
-      c.req.param("id"),
-      c.var.userId,
-      revision(c.req.header("If-Match")),
-      input.publish_at,
-    ),
-  });
-});
-for (const action of ["extend", "end", "archive"] as const) {
-  router.post(`/domains/:slug/assignments/:id/${action}`, async (c) => {
-    const input = await parseJsonBody<
-      { reason: string; deadline_at?: string | null }
-    >(c);
+router.patch(
+  "/domains/:slug/assignments/:id",
+  educationWriteRateLimit,
+  async (c) => {
+    const input = await parseJsonBody<AssignmentDraftInput>(c);
     assertObjectBody(input);
     return c.json({
-      data: await changeAssignmentLifecycle(
+      data: await updateAssignment(
         c.req.param("slug"),
         c.req.param("id"),
         c.var.userId,
         revision(c.req.header("If-Match")),
-        { action, reason: input.reason, deadline_at: input.deadline_at },
+        input,
       ),
     });
-  });
+  },
+);
+router.post(
+  "/domains/:slug/assignments/:id/publish",
+  educationWriteRateLimit,
+  async (c) =>
+    c.json({
+      data: await publishAssignment(
+        c.req.param("slug"),
+        c.req.param("id"),
+        c.var.userId,
+        revision(c.req.header("If-Match")),
+        c.req.header("Idempotency-Key") ?? "",
+      ),
+    }),
+);
+router.post(
+  "/domains/:slug/assignments/:id/schedule",
+  educationWriteRateLimit,
+  async (c) => {
+    const input = await parseJsonBody<{ publish_at: string }>(c);
+    assertObjectBody(input);
+    return c.json({
+      data: await scheduleAssignment(
+        c.req.param("slug"),
+        c.req.param("id"),
+        c.var.userId,
+        revision(c.req.header("If-Match")),
+        input.publish_at,
+      ),
+    });
+  },
+);
+for (const action of ["extend", "end", "archive"] as const) {
+  router.post(
+    `/domains/:slug/assignments/:id/${action}`,
+    educationWriteRateLimit,
+    async (c) => {
+      const input = await parseJsonBody<
+        { reason: string; deadline_at?: string | null }
+      >(c);
+      assertObjectBody(input);
+      return c.json({
+        data: await changeAssignmentLifecycle(
+          c.req.param("slug"),
+          c.req.param("id"),
+          c.var.userId,
+          revision(c.req.header("If-Match")),
+          { action, reason: input.reason, deadline_at: input.deadline_at },
+        ),
+      });
+    },
+  );
 }
 
 /** 作业准备路由，与班级路由一起等待完整隔离门禁后开放。 */
-router.post("/domains/:slug/assignments/:id/copy", async (c) => {
-  const input = await parseJsonBody<AssignmentCopyInput>(c);
-  assertObjectBody(input);
-  return c.json({
-    data: await copyAssignment(
-      c.req.param("slug"),
-      c.req.param("id"),
-      c.var.userId,
-      revision(c.req.header("If-Match")),
-      c.req.header("Idempotency-Key") ?? "",
-      input,
-    ),
-  }, 201);
-});
+router.post(
+  "/domains/:slug/assignments/:id/copy",
+  educationWriteRateLimit,
+  async (c) => {
+    const input = await parseJsonBody<AssignmentCopyInput>(c);
+    assertObjectBody(input);
+    return c.json({
+      data: await copyAssignment(
+        c.req.param("slug"),
+        c.req.param("id"),
+        c.var.userId,
+        revision(c.req.header("If-Match")),
+        c.req.header("Idempotency-Key") ?? "",
+        input,
+      ),
+    }, 201);
+  },
+);
 
-router.post("/domains/:slug/assignments/:id/remediation-preview", async (c) => {
-  const input = await parseJsonBody<{ scope?: ProgressScope }>(c);
-  assertObjectBody(input);
-  return c.json({
-    data: await previewAssignmentRemediation(
-      c.req.param("slug"),
-      c.req.param("id"),
-      c.var.userId,
-      input.scope,
-    ),
-  });
-});
-router.post("/domains/:slug/assignments/:id/remediation", async (c) => {
-  const input = await parseJsonBody<AssignmentRemediationInput>(c);
-  assertObjectBody(input);
-  return c.json({
-    data: await createAssignmentRemediation(
-      c.req.param("slug"),
-      c.req.param("id"),
-      c.var.userId,
-      revision(c.req.header("If-Match")),
-      c.req.header("Idempotency-Key") ?? "",
-      input,
-    ),
-  }, 201);
-});
+router.post(
+  "/domains/:slug/assignments/:id/remediation-preview",
+  educationWriteRateLimit,
+  async (c) => {
+    const input = await parseJsonBody<{ scope?: ProgressScope }>(c);
+    assertObjectBody(input);
+    return c.json({
+      data: await previewAssignmentRemediation(
+        c.req.param("slug"),
+        c.req.param("id"),
+        c.var.userId,
+        input.scope,
+      ),
+    });
+  },
+);
+router.post(
+  "/domains/:slug/assignments/:id/remediation",
+  educationWriteRateLimit,
+  async (c) => {
+    const input = await parseJsonBody<AssignmentRemediationInput>(c);
+    assertObjectBody(input);
+    return c.json({
+      data: await createAssignmentRemediation(
+        c.req.param("slug"),
+        c.req.param("id"),
+        c.var.userId,
+        revision(c.req.header("If-Match")),
+        c.req.header("Idempotency-Key") ?? "",
+        input,
+      ),
+    }, 201);
+  },
+);
 
 router.post(
   "/domains/:slug/classrooms/:id/contest-remediation-preview",
+  educationWriteRateLimit,
   async (c) => {
     const input = await parseJsonBody<ContestRemediationRule>(c);
     assertObjectBody(input);
@@ -225,20 +259,24 @@ router.post(
     });
   },
 );
-router.post("/domains/:slug/classrooms/:id/contest-remediation", async (c) => {
-  const input = await parseJsonBody<ContestRemediationInput>(c);
-  assertObjectBody(input);
-  return c.json({
-    data: await createContestRemediation(
-      c.req.param("slug"),
-      c.req.param("id"),
-      c.var.userId,
-      revision(c.req.header("If-Match")),
-      c.req.header("Idempotency-Key") ?? "",
-      input,
-    ),
-  }, 201);
-});
+router.post(
+  "/domains/:slug/classrooms/:id/contest-remediation",
+  educationWriteRateLimit,
+  async (c) => {
+    const input = await parseJsonBody<ContestRemediationInput>(c);
+    assertObjectBody(input);
+    return c.json({
+      data: await createContestRemediation(
+        c.req.param("slug"),
+        c.req.param("id"),
+        c.var.userId,
+        revision(c.req.header("If-Match")),
+        c.req.header("Idempotency-Key") ?? "",
+        input,
+      ),
+    }, 201);
+  },
+);
 
 /** 作业准备路由，与班级路由一起等待完整隔离门禁后开放。 */
 router.get(

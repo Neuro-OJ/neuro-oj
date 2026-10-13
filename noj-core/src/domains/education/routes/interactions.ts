@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { educationWriteRateLimit } from "./write-rate-limit.ts";
 import { type AuthEnv, authMiddleware } from "../../identity/index.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
@@ -80,23 +81,28 @@ interactionRouter.get(
       ),
     }),
 );
-interactionRouter.post("/domains/:slug/assignments/:id/feedback", async (c) => {
-  const input = await parseJsonBody<
-    { body: string; target_user_id?: string | null }
-  >(c);
-  assertObjectBody(input);
-  return c.json({
-    data: await createAssignmentFeedback(
-      c.req.param("slug"),
-      c.req.param("id"),
-      c.var.userId,
-      c.req.header("Idempotency-Key") ?? "",
-      input,
-    ),
-  }, 201);
-});
+interactionRouter.post(
+  "/domains/:slug/assignments/:id/feedback",
+  educationWriteRateLimit,
+  async (c) => {
+    const input = await parseJsonBody<
+      { body: string; target_user_id?: string | null }
+    >(c);
+    assertObjectBody(input);
+    return c.json({
+      data: await createAssignmentFeedback(
+        c.req.param("slug"),
+        c.req.param("id"),
+        c.var.userId,
+        c.req.header("Idempotency-Key") ?? "",
+        input,
+      ),
+    }, 201);
+  },
+);
 interactionRouter.patch(
   "/domains/:slug/assignments/:id/feedback/:feedbackId",
+  educationWriteRateLimit,
   async (c) => {
     const input = await parseJsonBody<{ body: string }>(c);
     assertObjectBody(input);
@@ -114,6 +120,7 @@ interactionRouter.patch(
 );
 interactionRouter.delete(
   "/domains/:slug/assignments/:id/feedback/:feedbackId",
+  educationWriteRateLimit,
   async (c) =>
     c.json({
       data: await updateAssignmentFeedback(
@@ -143,6 +150,7 @@ interactionRouter.get(
 );
 interactionRouter.post(
   "/domains/:slug/assignments/:id/help-requests",
+  educationWriteRateLimit,
   async (c) => {
     const input = await parseJsonBody<AssignmentHelpInput>(c);
     assertObjectBody(input);
@@ -172,6 +180,7 @@ interactionRouter.get(
 );
 interactionRouter.post(
   "/domains/:slug/assignments/:id/help-requests/:helpId/replies",
+  educationWriteRateLimit,
   async (c) => {
     const input = await parseJsonBody<{ body: string; resolve?: boolean }>(c);
     assertObjectBody(input);
@@ -189,6 +198,7 @@ interactionRouter.post(
 );
 interactionRouter.patch(
   "/domains/:slug/assignments/:id/help-requests/:helpId",
+  educationWriteRateLimit,
   async (c) => {
     const input = await parseJsonBody<{ state: "open" | "resolved" }>(c);
     assertObjectBody(input);
@@ -217,6 +227,7 @@ interactionRouter.get(
 );
 interactionRouter.post(
   "/domains/:slug/notifications/:id/read",
+  educationWriteRateLimit,
   async (c) =>
     c.json({
       data: await markEducationNotificationRead(
