@@ -1,3 +1,7 @@
+import {
+  problemExecutionForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 /**
  * 公开站点统计端点路由层测试。
  *
@@ -92,11 +96,13 @@ Deno.test({
       updated_at: now,
     });
     // 先插提交再插尝试（尝试对提交有外键），最后回填有效成绩指针
+    await publishBaselineVersionForTest(problemId);
     await db.insert(submissions).values([
       {
         id: "stats-accepted-s1",
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         language: "python3",
         code: "print(1)",
         version_origin: "legacy_unknown",
@@ -109,6 +115,7 @@ Deno.test({
         id: "stats-accepted-s2",
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         language: "python3",
         code: "print(2)",
         version_origin: "legacy_unknown",

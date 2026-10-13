@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 题解通过门槛统一聚合回归（Handbook §3.4/§6.6，缺陷 #51）。
@@ -72,6 +73,7 @@ async function seedObjectiveSubmission(
   await getDb().insert(objectiveSubmissions).values({
     id: submissionId,
     paper_id: paperId,
+    ...await problemExecutionForTest(paperId),
     user_id: userId,
     submission_type: "practice",
     answers: {},
@@ -124,6 +126,7 @@ Deno.test({
         id: codeSubmissionId,
         user_id: codePasser,
         problem_id: codeProblemId,
+        ...await problemExecutionForTest(codeProblemId),
         language: "python3",
         code: "print(1)",
         status: "finished",

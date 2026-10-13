@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
@@ -172,6 +173,7 @@ Deno.test({
         id: submissionId,
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         language: "python3",
         code: "print(1)",
         status: "finished",

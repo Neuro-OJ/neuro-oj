@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert@^1";
@@ -48,6 +49,7 @@ async function insertSubmission(
     id,
     user_id: userId,
     problem_id: problemId,
+    ...await problemExecutionForTest(problemId),
     contest_id: contestId,
     language: "python3",
     code: "print(1)",
@@ -204,6 +206,7 @@ Deno.test({
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       contest_id: contestId,
       language: "python3",
       code: "print(1)",
@@ -511,6 +514,7 @@ Deno.test({
       {
         id: fullSubmissionId,
         paper_id: paperId,
+        ...await problemExecutionForTest(paperId),
         user_id: userFull,
         contest_id: contestId,
         submission_type: "contest",
@@ -523,6 +527,7 @@ Deno.test({
       {
         id: partialSubmissionId,
         paper_id: paperId,
+        ...await problemExecutionForTest(paperId),
         user_id: userPartial,
         contest_id: contestId,
         submission_type: "contest",
@@ -834,6 +839,7 @@ Deno.test({
         id: failedId,
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         contest_id: contestId,
         language: "python3",
         code: "print(1)",
@@ -845,6 +851,7 @@ Deno.test({
         id: gradedId,
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         contest_id: contestId,
         language: "python3",
         code: "print(2)",
@@ -971,6 +978,7 @@ Deno.test({
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       contest_id: contestId,
       language: "python3",
       code: "print(1)",
@@ -1096,6 +1104,7 @@ Deno.test({
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       contest_id: contestId,
       language: "python3",
       code: "print(1)",

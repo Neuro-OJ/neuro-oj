@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 /**
  * 个人信息导出端点测试（PIPL 第 45 条）。
  *
@@ -79,6 +80,7 @@ Deno.test({
         id: "sub-mine",
         user_id: "export-user-1",
         problem_id: "p-x",
+        ...await problemExecutionForTest("p-x"),
         language: "python3",
         code: "print(1)",
         created_at: now,
@@ -87,6 +89,7 @@ Deno.test({
         id: "sub-other",
         user_id: "export-user-2",
         problem_id: "p-x",
+        ...await problemExecutionForTest("p-x"),
         language: "python3",
         code: "print(2)",
         created_at: now,

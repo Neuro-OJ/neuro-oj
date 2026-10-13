@@ -1,3 +1,8 @@
+import {
+  deleteProblemFixtures,
+  problemExecutionForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { getUserProfileAggregate, updateUserProfile } from "../../index.ts";
@@ -137,11 +142,13 @@ Deno.test({
       updated_at: now,
     });
     // 先插提交（尝试对提交有外键），再插尝试，最后回填指针
+    await publishBaselineVersionForTest(problemId);
     await db.insert(submissions).values([
       {
         id: `tst-recent-s1-${ts}`,
         user_id: TEST_USER_ID,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         language: "python3",
         code: "print(1)",
         version_origin: "legacy_unknown",
@@ -152,6 +159,7 @@ Deno.test({
         id: `tst-recent-s2-${ts}`,
         user_id: TEST_USER_ID,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         language: "python3",
         code: "print(2)",
         version_origin: "legacy_unknown",
@@ -216,6 +224,6 @@ Deno.test({
     await db.delete(evaluationAttempts).where(
       eq(evaluationAttempts.problem_id, problemId),
     );
-    await db.delete(problems).where(eq(problems.id, problemId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
   },
 });

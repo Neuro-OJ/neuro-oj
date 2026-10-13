@@ -1,3 +1,8 @@
+import {
+  bindPublishedProblemForTest,
+  problemExecutionForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
@@ -54,6 +59,9 @@ Deno.test("公共主页：本人和平台管理员也不能聚合私有域提交
     id: "profile-private-submit",
     domain_id: "profile-school",
     problem_id: "profile-school-problem",
+    domain_problem_binding_id: await bindPublishedProblemForTest(
+      "profile-school-problem",
+    ),
     user_id: actor,
     language: "python3",
     code: "secret",
@@ -111,7 +119,7 @@ Deno.test("公共主页：本人和平台管理员也不能聚合私有域提交
   );
   assertEquals((await queryProfileMoments(db, actor)).length, 0);
   assertEquals((await queryProfileSolutions(db, actor)).length, 0);
-  // 主域legacy记录仍可见；改域后无需索引或缓存失效，立即从公开统计撤除。
+  // 主域已发布题的历史记录可见；域收紧访问政策后公开统计立即撤除。
   await db.insert(problems).values({
     domain_id: DEFAULT_DOMAIN_ID,
     id: "profile-main-problem",
@@ -121,9 +129,11 @@ Deno.test("公共主页：本人和平台管理员也不能聚合私有域提交
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest("profile-main-problem");
   await db.insert(submissions).values({
     id: "profile-main-submit",
     problem_id: "profile-main-problem",
+    ...await problemExecutionForTest("profile-main-problem"),
     user_id: actor,
     language: "python3",
     code: "public",
@@ -137,8 +147,10 @@ Deno.test("公共主页：本人和平台管理员也不能聚合私有域提交
     Number((await queryProfileStats(db, actor))!.total_submissions),
     1,
   );
-  await db.update(submissions).set({ domain_id: "profile-school" }).where(
-    eq(submissions.id, "profile-main-submit"),
+  await db.update(domains).set({
+    configuration: { ...presetConfiguration("community"), access: "members" },
+  }).where(
+    eq(domains.id, DEFAULT_DOMAIN_ID),
   );
   assertEquals(
     Number((await queryProfileStats(db, actor))!.total_submissions),

@@ -1,3 +1,8 @@
+import {
+  deleteProblemFixtures,
+  problemExecutionForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 /**
  * 榜单物化视图刷新回归（Handbook §3.5，缺陷 #49）——**仅真实 PostgreSQL 运行**。
  *
@@ -25,6 +30,7 @@ import {
 } from "../../../../shared/db/connection.ts";
 import {
   contests,
+  educationOutbox,
   evaluationAttempts,
   objectiveSubmissions,
   problems,
@@ -142,11 +148,13 @@ Deno.test({
         created_at: now,
         updated_at: now,
       });
+      await publishBaselineVersionForTest(id);
     }
     await db.insert(submissions).values({
       id: codeSubmissionId,
       user_id: userId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       language: "python3",
       code: "print(1)",
       status: "finished",
@@ -175,6 +183,7 @@ Deno.test({
     await db.insert(objectiveSubmissions).values({
       id: objectiveSubmissionId,
       paper_id: paperId,
+      ...await problemExecutionForTest(paperId),
       user_id: userId,
       submission_type: "practice",
       answers: {},
@@ -262,7 +271,7 @@ Deno.test({
       eq(objectiveSubmissions.id, objectiveSubmissionId),
     );
     await db.delete(submissions).where(eq(submissions.id, codeSubmissionId));
-    await db.delete(problems).where(inArray(problems.id, [problemId, paperId]));
+    await deleteProblemFixtures(inArray(problems.id, [problemId, paperId]));
     await db.delete(users).where(eq(users.id, userId));
     await refreshRankingsView();
     const cleaned = await readRevisions();
@@ -329,10 +338,12 @@ async function seedBoundaryAcceptance(
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(problemId);
   await getDb().insert(submissions).values({
     id: submissionId,
     user_id: fixture.userId,
     problem_id: problemId,
+    ...await problemExecutionForTest(problemId),
     contest_id: contestId,
     language: "python3",
     code: "print(1)",
@@ -378,7 +389,10 @@ async function cleanupBoundaryFixture(fixture: BoundaryFixture): Promise<void> {
     );
   }
   if (fixture.problemIds.length > 0) {
-    await getDb().delete(problems).where(
+    await getDb().delete(educationOutbox).where(
+      inArray(educationOutbox.problem_id, fixture.problemIds),
+    );
+    await deleteProblemFixtures(
       inArray(problems.id, fixture.problemIds),
     );
   }

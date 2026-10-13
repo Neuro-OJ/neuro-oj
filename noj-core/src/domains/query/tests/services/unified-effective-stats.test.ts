@@ -1,3 +1,8 @@
+import {
+  deleteProblemFixtures,
+  problemExecutionForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 /**
  * 全站读取口径统一回归（Handbook §3.4/§3.5）。
  *
@@ -72,6 +77,7 @@ async function seedProblem(
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(id);
   return id;
 }
 
@@ -96,6 +102,7 @@ async function seedCodeSubmission(
     id: submissionId,
     user_id: userId,
     problem_id: problemId,
+    ...await problemExecutionForTest(problemId),
     language: "python3",
     code: "print(1)",
     status: options.submissionStatus ?? "finished",
@@ -264,7 +271,7 @@ Deno.test({
         eq(evaluationAttempts.problem_id, problemId),
       );
       await db.delete(submissions).where(eq(submissions.problem_id, problemId));
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.delete(users).where(eq(users.id, userId));
     }
   },
@@ -305,6 +312,7 @@ Deno.test({
         await db.insert(objectiveSubmissions).values({
           id,
           paper_id: paperId,
+          ...await problemExecutionForTest(paperId),
           user_id: objectiveUserId,
           submission_type: "practice",
           answers: {},
@@ -365,10 +373,10 @@ Deno.test({
       await db.delete(objectiveSubmissions).where(
         eq(objectiveSubmissions.paper_id, paperId),
       );
-      await db.delete(problems).where(
+      await deleteProblemFixtures(
         eq(problems.id, codeProblemId),
       );
-      await db.delete(problems).where(eq(problems.id, paperId));
+      await deleteProblemFixtures(eq(problems.id, paperId));
       await db.delete(users).where(eq(users.id, codeUserId));
       await db.delete(users).where(eq(users.id, objectiveUserId));
     }
@@ -409,7 +417,7 @@ Deno.test({
         eq(evaluationAttempts.problem_id, problemId),
       );
       await db.delete(submissions).where(eq(submissions.problem_id, problemId));
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.delete(users).where(eq(users.id, userId));
     }
   },

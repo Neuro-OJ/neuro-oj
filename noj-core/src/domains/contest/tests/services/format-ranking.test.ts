@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
@@ -98,6 +99,7 @@ async function receipt(
     contest_id: c.id,
     user_id: userId,
     problem_id: p.id,
+    ...await problemExecutionForTest(p.id),
     language: "cc",
     code: "code",
     version_origin: "known",
@@ -323,6 +325,7 @@ Deno.test("客观题计分：Kaggle 与 OI 直接相加原始百分制分，不�
       id,
       user_id: "0",
       paper_id: p.id,
+      ...await problemExecutionForTest(p.id),
       contest_id: c.id,
       submission_type: "contest",
       answers: {},
@@ -365,6 +368,7 @@ Deno.test("受理序号：普通提交与客观题共用数据库序列", async 
     id: crypto.randomUUID(),
     user_id: "0",
     problem_id: p.id,
+    ...await problemExecutionForTest(p.id),
     language: "python3",
     code: "first",
     created_at: now,
@@ -373,6 +377,7 @@ Deno.test("受理序号：普通提交与客观题共用数据库序列", async 
     id: crypto.randomUUID(),
     user_id: "0",
     paper_id: p.id,
+    ...await problemExecutionForTest(p.id),
     submission_type: "practice",
     answers: {},
     created_at: now,

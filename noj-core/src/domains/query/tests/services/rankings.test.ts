@@ -1,3 +1,8 @@
+import {
+  deleteProblemFixtures,
+  problemExecutionForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
@@ -60,6 +65,7 @@ async function createSubmission(
     id: submissionId,
     user_id: userId,
     problem_id: problemId,
+    ...await problemExecutionForTest(problemId),
     contest_id: contestId,
     language: "python3",
     code: "print(1)",
@@ -105,6 +111,7 @@ async function createTestProblem(problemNumber: number): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(id);
   return id;
 }
 
@@ -123,7 +130,7 @@ async function cleanupUser(userId: string): Promise<void> {
 async function cleanupProblem(problemId: string): Promise<void> {
   const db = getDb();
   await db.delete(submissions).where(eq(submissions.problem_id, problemId));
-  await db.delete(problems).where(eq(problems.id, problemId));
+  await deleteProblemFixtures(eq(problems.id, problemId));
 }
 
 Deno.test({

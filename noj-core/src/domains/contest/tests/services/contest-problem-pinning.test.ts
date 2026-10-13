@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 /**
@@ -293,6 +294,7 @@ Deno.test({
       id: "cp-pin-sub-1",
       user_id: solverId,
       problem_id: "cp-pin-p5",
+      ...await problemExecutionForTest("cp-pin-p5"),
       contest_id: contest.id,
       language: "python",
       code: "print(1)",

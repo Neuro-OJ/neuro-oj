@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
@@ -295,6 +296,7 @@ Deno.test({
         public_id: "sub-test0001",
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         contest_id: contestId,
         language: "python3",
         code: "print(1)",

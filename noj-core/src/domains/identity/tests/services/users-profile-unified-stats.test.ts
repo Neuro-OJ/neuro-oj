@@ -1,3 +1,8 @@
+import {
+  deleteProblemFixtures,
+  problemExecutionForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 /**
  * 个人主页统一聚合回归（Handbook §3.4/§6.6，缺陷 #51）。
  *
@@ -56,6 +61,7 @@ async function seedProblem(
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(id);
   return id;
 }
 
@@ -79,6 +85,7 @@ Deno.test({
         await db.insert(objectiveSubmissions).values({
           id: submissionId,
           paper_id: paperId,
+          ...await problemExecutionForTest(paperId),
           user_id: userId,
           submission_type: "practice",
           answers: {},
@@ -116,6 +123,7 @@ Deno.test({
         id: codeSubmissionId,
         user_id: userId,
         problem_id: codeProblemId,
+        ...await problemExecutionForTest(codeProblemId),
         language: "python3",
         code: "print(1)",
         status: "finished",
@@ -183,7 +191,7 @@ Deno.test({
       await db.delete(submissions).where(
         eq(submissions.problem_id, codeProblemId),
       );
-      await db.delete(problems).where(
+      await deleteProblemFixtures(
         inArray(problems.id, [paperId, codeProblemId]),
       );
       await db.delete(users).where(eq(users.id, userId));

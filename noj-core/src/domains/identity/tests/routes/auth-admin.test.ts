@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import {
@@ -815,6 +816,7 @@ Deno.test({
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       language: "python3",
       code: "print('hi')",
       file_name: "main.py",
@@ -880,6 +882,7 @@ Deno.test({
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       language: "python3",
       code: "print('hi')",
       status: "judging",
@@ -1287,6 +1290,6 @@ Deno.test({
     await db.delete(submissionJobs).where(
       eq(submissionJobs.id, body.data.job_id),
     );
-    await db.delete(problems).where(eq(problems.id, problemId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
   },
 });

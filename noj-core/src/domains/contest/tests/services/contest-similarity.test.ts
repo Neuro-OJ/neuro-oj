@@ -24,6 +24,7 @@ import { createApp } from "../../../../app.ts";
 import { signToken } from "../../../identity/index.ts";
 import { ensureRbacSeeds } from "../../../system/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import {
   detectSimilarPairs,
   findSimilarSubmissions,
@@ -555,13 +556,16 @@ Deno.test({
     });
 
     /** 造一条提交；`overrides` 覆盖默认值。 */
+    const contextA = await problemExecutionForTest(problemA);
+    const contextB = await problemExecutionForTest(problemB);
     const submissionRow = (
-      overrides: Record<string, unknown>,
-    ): Record<string, unknown> => ({
+      overrides: Partial<typeof submissions.$inferInsert>,
+    ): typeof submissions.$inferInsert => ({
       id: crypto.randomUUID(),
       public_id: `sub-sim-${crypto.randomUUID().slice(0, 8)}`,
       user_id: userA,
       problem_id: problemA,
+      ...contextA,
       contest_id: contestId,
       language: "python",
       code: BUBBLE_SOLUTION,
@@ -593,6 +597,7 @@ Deno.test({
         public_id: "sub-sim-e",
         user_id: userB,
         problem_id: problemB,
+        ...contextB,
       }),
       // 5：同代码但不同语言（不应命中）
       submissionRow({
@@ -631,7 +636,7 @@ Deno.test({
         code: "print(1)",
       }),
     ];
-    await db.insert(submissions).values(rows as never);
+    await db.insert(submissions).values(rows);
 
     const result = await findSimilarSubmissions(contestId, { threshold: 0.8 });
     // 候选 = 通过「finished + 非 artifact + 非空白 + 长度达标」的行：0,1,2,3,4,5
@@ -837,6 +842,7 @@ Deno.test({
     const base = {
       contest_id: contestId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       language: "python",
       status: "finished" as const,
       created_at: now,
@@ -863,7 +869,7 @@ Deno.test({
         code: BUBBLE_RENAMED,
         created_at: earlier,
       },
-    ] as never);
+    ]);
 
     // 再插入大量过短的调试残留（时间戳更晚）
     const noise = Array.from({ length: 30 }, (_, i) => ({
@@ -873,7 +879,7 @@ Deno.test({
       user_id: i % 2 === 0 ? userA : userB,
       code: "print(1)",
     }));
-    await db.insert(submissions).values(noise as never);
+    await db.insert(submissions).values(noise);
 
     const result = await findSimilarSubmissions(contestId, { threshold: 0.8 });
 

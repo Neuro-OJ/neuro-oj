@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -357,6 +358,7 @@ Deno.test({
       id: "sub-entry-1",
       user_id: "u-sub-entry",
       problem_id: "p-sub-entry",
+      ...await problemExecutionForTest("p-sub-entry"),
       language: "python",
       code: "print(1)",
       status: "finished",

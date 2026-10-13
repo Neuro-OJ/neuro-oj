@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../../../../tests/helper.ts";
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 竞赛结算门禁回归（Handbook §3.3/§6.6）。
@@ -132,6 +133,7 @@ Deno.test({
         id: tleId,
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         contest_id: contestId,
         language: "python3",
         code: "print(1)",
@@ -143,6 +145,7 @@ Deno.test({
         id: ceId,
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         contest_id: contestId,
         language: "python3",
         code: "print(2)",
@@ -154,6 +157,7 @@ Deno.test({
         id: timeoutId,
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         contest_id: contestId,
         language: "python3",
         code: "print(3)",
@@ -165,6 +169,7 @@ Deno.test({
         id: runningId,
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         contest_id: contestId,
         language: "python3",
         code: "print(4)",
@@ -176,6 +181,7 @@ Deno.test({
         id: orphanStateId,
         user_id: userId,
         problem_id: problemId,
+        ...await problemExecutionForTest(problemId),
         contest_id: contestId,
         language: "python3",
         code: "print(5)",
@@ -271,6 +277,7 @@ Deno.test({
     await db.insert(objectiveSubmissions).values({
       id: objectiveId,
       paper_id: paperId,
+      ...await problemExecutionForTest(paperId),
       user_id: userId,
       contest_id: contestId,
       submission_type: "contest",
@@ -409,6 +416,7 @@ Deno.test({
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       contest_id: contestId,
       language: "python3",
       code: "print(1)",
@@ -438,6 +446,7 @@ Deno.test({
     }).where(eq(submissions.id, submissionId));
 
     await db.insert(submissionJobs).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: jobId,
       kind: "rejudge",
       actor_id: adminId,
@@ -455,6 +464,7 @@ Deno.test({
       source_kind: "submission",
       source_id: submissionId,
       problem_id: problemId,
+      ...await problemExecutionForTest(problemId),
       status: "pending",
       created_at: now,
     });

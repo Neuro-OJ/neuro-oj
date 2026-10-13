@@ -6,6 +6,7 @@ import {
 } from "../../../../shared/base/errors.ts";
 import {
   contests,
+  domainProblemBindings,
   evaluationAttempts,
   objectiveSubmissions,
   submissions,
@@ -34,13 +35,26 @@ async function code(
   } = {},
 ) {
   const id = crypto.randomUUID();
+  let bindingId = f.bindingId;
+  if (options.domainId && options.domainId !== f.school.id) {
+    // 跨域原提交仍引用真实目标绑定；源共享现状不恢复教师的其他域读取资格。
+    bindingId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await f.db.insert(domainProblemBindings).values({
+      id: bindingId,
+      domain_id: options.domainId,
+      problem_id: f.problemId,
+      kind: "shared",
+      visibility: "members",
+      created_by: f.owner,
+      created_at: now,
+      updated_at: now,
+    });
+  }
   await f.db.insert(submissions).values({
     id,
     domain_id: options.domainId ?? f.school.id,
-    domain_problem_binding_id:
-      !options.domainId || options.domainId === f.school.id
-        ? f.bindingId
-        : null,
+    domain_problem_binding_id: bindingId,
     user_id: f.student,
     problem_id: f.problemId,
     language: "python",

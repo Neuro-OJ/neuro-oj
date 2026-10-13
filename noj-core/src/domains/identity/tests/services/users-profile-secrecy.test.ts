@@ -1,3 +1,7 @@
+import {
+  problemExecutionForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
@@ -54,6 +58,7 @@ async function seedProblem(): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(id);
   return id;
 }
 
@@ -86,6 +91,7 @@ async function seedAcceptedSubmission(
     id: submissionId,
     user_id: authorId,
     problem_id: problemId,
+    ...await problemExecutionForTest(problemId),
     language: "python3",
     code: "print(1)",
     status: "finished",

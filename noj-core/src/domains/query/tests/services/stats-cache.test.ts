@@ -1,3 +1,7 @@
+import {
+  problemExecutionForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 /**
  * stats-cache 服务测试（Handbook §3.4/§3.5）。
  *
@@ -43,6 +47,7 @@ async function seedProblem(id: string, number: number): Promise<void> {
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(id);
 }
 
 /** 建一条提交（有效成绩指针可指向其尝试）。 */
@@ -58,6 +63,7 @@ async function seedSubmission(input: {
     id: input.id,
     user_id: "0",
     problem_id: input.problemId,
+    ...await problemExecutionForTest(input.problemId),
     language: "python",
     code: "print(1)",
     version_origin: "legacy_unknown",
