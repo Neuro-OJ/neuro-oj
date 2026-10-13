@@ -31,3 +31,51 @@ export function teachingSubmissionResult(row: TeachingSubmission) {
   const score = `${row.score / 100} 分`;
   return row.accepted ? `已通过 · ${score}` : row.verdict ? `${row.verdict} · ${score}` : score;
 }
+
+export interface TeachingOiCase {
+  id?: string;
+  case_id?: string;
+  verdict?: string;
+  status?: string;
+  score?: number;
+  max_score?: number;
+  time_ms?: number;
+  memory_kb?: number;
+}
+export interface TeachingAttempt {
+  id: string;
+  sequence: number;
+  source: string;
+  state: string;
+  result_kind: string | null;
+  problem_version_id: string | null;
+  created_at: string;
+  finished_at: string | null;
+  score: number | null;
+  accepted: boolean;
+  verdict: string | null;
+  current_formal: boolean;
+  matches_policy: boolean;
+  oi: null | {
+    subtasks?: Array<
+      { id: string; verdict?: string; status?: string; score?: number; max_score?: number; cases?: TeachingOiCase[] }
+    >;
+    cases?: TeachingOiCase[];
+  };
+}
+export interface AssignmentSubmissionEvidence {
+  page: number;
+  per_page: number;
+  total: number;
+  scope: 'on_time' | 'current';
+  policy: { mode: 'any' | 'exact'; required_version_id: string | null; revision: number; resource_available: boolean };
+  data: Array<TeachingSubmission & { candidate_attempt_ids: string[] }>;
+}
+/** 平台失败不变成正式零分；旧判定与当前候选分别说明。 */
+export function teachingAttemptLabel(attempt: TeachingAttempt) {
+  if (attempt.result_kind === 'platform_error') return '平台评测失败 · 待处理';
+  if (attempt.score === null) return ['queued', 'judging'].includes(attempt.state) ? '评测中' : '暂无正式成绩';
+  return `${attempt.verdict ? `${attempt.verdict} · ` : ''}${attempt.score / 100} 分${
+    attempt.accepted ? ' · 已通过' : ''
+  }`;
+}

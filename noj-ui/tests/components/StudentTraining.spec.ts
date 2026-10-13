@@ -14,6 +14,10 @@ const stubs = {
   PaginationNav: true,
   USlideover: { template: '<div><slot name="body" /></div>' },
   SubmissionReview: true,
+  SubmissionAttemptHistory: {
+    props: ['slug', 'classroomId', 'submissionId', 'kind'],
+    template: '<p :data-kind="kind" :data-submission="submissionId">正式评测沿革</p>',
+  },
   ArtifactDownload: {
     props: ['endpoint', 'fileName'],
     template: '<button :data-endpoint="endpoint" :data-filename="fileName">下载原提交产物</button>',
@@ -112,6 +116,7 @@ describe('学生训练权限分别授权', () => {
       '/api/v1/domains/school/classrooms/c1/submissions/submission/s1/artifact',
     );
     expect(download.attributes('data-filename')).toBe('answer.zip');
+    expect(result.find('[data-submission="s1"]').attributes('data-kind')).toBe('submission');
   });
   it('只有学情读取不请求学生提交或原代码详情', async () => {
     const result = await view(['progress:read']);

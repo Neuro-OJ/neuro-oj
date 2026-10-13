@@ -8,7 +8,7 @@ import type {
   ContestRemediationInput,
   ContestRemediationPreview,
 } from '~/utils/education-remediation-preview';
-import type { TeachingSubmission } from '~/utils/education-submissions';
+import type { AssignmentSubmissionEvidence, TeachingAttempt, TeachingSubmission } from '~/utils/education-submissions';
 import type { AssignmentHistoryEntry, TeachingNotice } from '~/utils/education-notifications';
 import type {
   ClassroomImportPreview,
@@ -45,6 +45,25 @@ export function useEducationApi() {
   const idempotent = (key: string) => ({ headers: { 'Idempotency-Key': key } });
   const revision = (value: number) => ({ headers: { 'If-Match': String(value) } });
   return {
+    assignmentItemSubmissions: (
+      slug: string,
+      assignmentId: string,
+      userId: string,
+      itemId: string,
+      scope: 'on_time' | 'current',
+      page: number,
+    ) =>
+      api.get<{ data: AssignmentSubmissionEvidence }>(
+        `${task(slug, assignmentId)}/students/${encodeURIComponent(userId)}/items/${
+          encodeURIComponent(itemId)
+        }/submissions`,
+        { query: { scope, page }, silent: true },
+      ),
+    submissionAttempts: (slug: string, classId: string, kind: TeachingSubmission['kind'], id: string, page: number) =>
+      api.get<{ data: TeachingPage<TeachingAttempt> & { resource_available: boolean } }>(
+        `${classroom(slug, classId)}/submissions/${kind}/${encodeURIComponent(id)}/attempts`,
+        { query: { page }, silent: true },
+      ),
     trainingComparison: (slug: string, assignmentId: string, userId: string, windows: TrainingComparisonWindows) =>
       api.get<{ data: TrainingComparisonData }>(
         `${task(slug, assignmentId)}/students/${encodeURIComponent(userId)}/training-comparison`,

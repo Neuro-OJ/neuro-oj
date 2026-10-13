@@ -223,14 +223,15 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
         <template #body>
           <div v-if="selected" class="space-y-4">
             <p class="text-sm tabular-nums">{{ teachingCellLabel(selected.cell) }}</p>
+            <AssignmentCellSubmissions v-if="!isStudent && can('submissions:read')" :key="`${key}:${selected.userId}:${selected.cell.item_id}:${scope}`" :slug="slug!" :assignment-id="id" :classroom-id="task.data.value.data.classroom_id" :user-id="selected.userId" :item-id="selected.cell.item_id" :scope="scope" :can-annotate="!!writable && can('feedback:write')" />
             <TrainingComparison v-if="can('progress:read') && !isStudent" :key="`${key}:${selected.userId}:comparison`"
               :slug="slug!" :assignment-id="id" :user-id="selected.userId"
               :anchor="task.data.value.data.published_at" />
             <SubmissionReview
-              v-if="selected.cell.source_submission_id && selected.cell.source_kind === 'submission' && (isStudent || can('submissions:read'))"
+              v-if="isStudent && selected.cell.source_submission_id && selected.cell.source_kind === 'submission'"
               :key="selected.cell.source_submission_id" :slug="slug!" :classroom-id="task.data.value.data.classroom_id"
               :submission-id="selected.cell.source_submission_id" :can-annotate="!!writable && can('feedback:write')" />
-            <p v-else
+            <p v-else-if="isStudent"
               class="text-sm text-text-muted">{{ selected.cell.updating ? '成绩更新后可查看来源提交。' : selected.cell.source_kind === 'objective' ? '此项为客观题提交。' : '当前没有可查看的代码提交。' }}</p>
           </div>
         </template>

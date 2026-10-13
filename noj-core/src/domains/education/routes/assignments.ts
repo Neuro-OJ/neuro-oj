@@ -19,6 +19,7 @@ import {
 } from "../services/assignment-remediation.ts";
 import { getAssignmentHistory } from "../services/history-read.ts";
 import { getTrainingComparison } from "../services/training-comparison.ts";
+import { listAssignmentItemSubmissions } from "../services/submission-evidence.ts";
 import {
   type AssignmentCopyInput,
   copyAssignment,
@@ -263,6 +264,22 @@ router.get("/domains/:slug/assignments/:id/matrix", async (c) => {
     ),
   });
 });
+router.get(
+  "/domains/:slug/assignments/:id/students/:userId/items/:itemId/submissions",
+  async (c) => {
+    const { page } = parsePagination(c, { defaultPerPage: 25, maxPerPage: 25 });
+    return c.json({
+      data: await listAssignmentItemSubmissions(
+        c.req.param("slug"),
+        c.req.param("id"),
+        c.req.param("userId"),
+        c.req.param("itemId"),
+        c.var.userId,
+        { page, scope: c.req.query("scope") as ProgressScope | undefined },
+      ),
+    });
+  },
+);
 router.get("/domains/:slug/assignments/:id/history", async (c) => {
   const { page } = parsePagination(c, { defaultPerPage: 50, maxPerPage: 50 });
   return c.json({

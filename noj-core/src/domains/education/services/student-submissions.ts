@@ -8,13 +8,13 @@ import { assertClassroomCapability, loadClassroom } from "./access.ts";
 
 /** 教学提交列表涵盖普通与客观题；账号及域归属始终来自路径和授权关系。 */
 export type TeachingSubmissionKind = "submission" | "objective";
-type StudentSubmissionRow = {
+export type StudentSubmissionRow = {
   id: string;
   kind: TeachingSubmissionKind;
   domain_id: string;
   user_id: string;
   problem_id: string;
-  binding_id: string | null;
+  binding_id: string;
   source_slug: string;
   source_domain_id: string;
   number: number;
@@ -66,7 +66,7 @@ export function teachingSubmissionRelation(
         AND (c.end_time::timestamptz <= NOW() OR ${organizes} OR (${managesOwn} AND c.created_by = ${access.context.actorId}))))`;
 }
 
-const sources = sql`(
+export const teachingSubmissionSources = sql`(
   SELECT id, 'submission'::text AS kind, domain_id, user_id, problem_id,
     domain_problem_binding_id AS binding_id, contest_id, created_at, submitted_version_id,
     language, status, is_valid, is_accepted, effective_attempt_id,
@@ -80,7 +80,10 @@ const sources = sql`(
   FROM objective_submissions
 ) s`;
 
-function dto(row: StudentSubmissionRow, detail: boolean) {
+export function teachingSubmissionDto(
+  row: StudentSubmissionRow,
+  detail: boolean,
+) {
   const { verdict_details, code, answers, ...metadata } = row;
   return {
     ...metadata,
@@ -92,7 +95,7 @@ function dto(row: StudentSubmissionRow, detail: boolean) {
   };
 }
 
-function select(detail: boolean) {
+export function selectTeachingSubmissions(detail: boolean) {
   return sql`SELECT s.id, s.kind, s.domain_id, s.user_id, s.problem_id, s.binding_id,
     src.slug AS source_slug, src.id AS source_domain_id, p.number, s.contest_id, s.created_at, s.submitted_version_id,
     s.language, s.status, CASE WHEN s.is_valid THEN e.score END AS score,
@@ -102,7 +105,7 @@ function select(detail: boolean) {
     CASE WHEN s.is_valid THEN e.memory_kb END AS memory_kb,
     ${detail ? sql`s.code` : sql`NULL::text`} AS code,
     ${detail ? sql`s.answers` : sql`NULL::jsonb`} AS answers
-    FROM ${sources} JOIN problems p ON p.id = s.problem_id JOIN domains src ON src.id = p.domain_id
+    FROM ${teachingSubmissionSources} JOIN problems p ON p.id = s.problem_id JOIN domains src ON src.id = p.domain_id
     LEFT JOIN evaluation_attempts e ON e.id = s.effective_attempt_id`;
 }
 
@@ -129,11 +132,11 @@ export async function listClassroomStudentSubmissions(
     options.kind ? sql`AND s.kind = ${options.kind}` : sql``
   }`;
   const totalResult = await db.execute(
-    sql`SELECT count(*)::int AS count FROM ${sources} WHERE ${condition}`,
+    sql`SELECT count(*)::int AS count FROM ${teachingSubmissionSources} WHERE ${condition}`,
   );
   const [total] = unwrapRows<{ count: number }>(totalResult as never);
   const result = await db.execute(
-    sql`${select(false)} WHERE ${condition}
+    sql`${selectTeachingSubmissions(false)} WHERE ${condition}
     ORDER BY s.created_at DESC, s.id DESC, s.kind LIMIT 50 OFFSET ${
       (page - 1) * 50
     }`,
@@ -150,7 +153,7 @@ export async function listClassroomStudentSubmissions(
     page,
     per_page: 50,
     total: total.count,
-    data: rows.map((row) => dto(row, false)),
+    data: rows.map((row) => teachingSubmissionDto(row, false)),
   };
 }
 
@@ -167,7 +170,7 @@ export async function getClassroomStudentSubmission(
   if (!["submission", "objective"].includes(kind)) {
     throw new BadRequestError("提交类型格式错误");
   }
-  const result = await getDb().execute(sql`${select(true)}
+  const result = await getDb().execute(sql`${selectTeachingSubmissions(true)}
     WHERE ${
     teachingSubmissionRelation(access)
   } AND s.id = ${id} AND s.kind = ${kind} LIMIT 1`);
@@ -181,5 +184,5 @@ export async function getClassroomStudentSubmission(
       kind,
     });
   }
-  return dto(row, true);
+  return teachingSubmissionDto(row, true);
 }

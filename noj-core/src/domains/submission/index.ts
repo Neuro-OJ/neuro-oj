@@ -47,4 +47,5 @@ export {
   OI_VERDICTS,
   type OiVerdict,
   oiVerdict,
+  projectOiDetails,
 } from "./services/submissions/oi-details.ts";
