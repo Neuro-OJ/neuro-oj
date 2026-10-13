@@ -69,6 +69,9 @@ Deno.test({
     await publishBaselineVersionForTest("p-search-1");
     const entry = await buildProblemEntry("p-search-1");
     assertEquals(entry !== null, true);
+    assertEquals(entry!.metadata.display_id, "1");
+    assertEquals(entry!.metadata.qualified_ref, "main:1");
+    assertEquals(entry!.metadata.type, undefined);
     await upsertSearchEntry(entry!);
     const rows = await db.select().from(searchEntries).where(
       sql`${searchEntries.entity_type} = 'problem' AND ${searchEntries.entity_id} = 'p-search-1'`,
