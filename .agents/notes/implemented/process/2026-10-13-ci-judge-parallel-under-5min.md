@@ -17,8 +17,8 @@ sccache 的变量只设置在安装 action 上，后续 cargo 没有启用编译
 
 ## Decision
 
-- `judge-check` 只保留 fmt / clippy / nextest；target 缓存改为仅缓存 cargo
-  注册表，依赖 sccache。
+- `judge-check` 执行 fmt / clippy，`judge-test` 使用真实 Redis 执行全量
+  nextest； 两者并行。target 缓存改为仅缓存 cargo 注册表，依赖 sccache。
 - 新增 `judge-wasi-sdk`：SDK 产物按「配方 + 补丁 +
   构建脚本」哈希缓存，命中即跳过构建；
   未命中才构建并执行不同目录一致性校验（构建是确定性的，输入不变则无需重复验证）。
@@ -63,5 +63,5 @@ sccache 的变量只设置在安装 action 上，后续 cargo 没有启用编译
   runner 排队耗时不能由固定 timeout 保证。
 - 缓存在 PR 分支上不可被其他分支读取，main 推送后才会预热；首次变更工具链的 PR
   一定未命中。
-- job 名称新增 `Judge WASI SDK / Acceptance (shard) / Image`；仓库未设置
+- job 名称新增 `Judge Tests / WASI SDK / Acceptance (shard) / Image`；仓库未设置
   required checks，无需同步。

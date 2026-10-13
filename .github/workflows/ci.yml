@@ -11,7 +11,7 @@
 #   - 引入 dorny/paths-filter：PR 上按改动模块只跑相关 job
 #     （改 noj-ui 不再触发 judge/core 全套；push main / 手动触发仍全量）
 #   - 删除冗余 core-fmt / core-lint（core-quick-check 已覆盖 fmt+lint+typecheck）
-#   - judge-fmt / judge-clippy / judge-test 合并为 judge-check 单 job；
+#   - judge-check（fmt/clippy）与 judge-test（nextest）并行；
 #     WASI SDK 构建/验收（2026-10）拆为 judge-wasi-sdk / judge-wasi-acceptance /
 #     judge-wasi-image 并行作业，SDK 产物按输入哈希缓存（详见文件末尾说明）
 # =============================================================================
@@ -2090,7 +2090,8 @@ jobs:
   # ===========================================================================
   # noj-judge — 拆为并行作业（2026-10 提速，目标 PR 总时长 ≤ 5 分钟）
   #
-  #   judge-check          fmt + clippy + nextest（Rust 单元/集成）
+  #   judge-check          fmt + clippy
+  #   judge-test           nextest（Rust 全量单元/集成），与静态检查并行
   #   judge-wasi-sdk       固定 NOJ WASI SDK：产物按输入哈希缓存，命中即跳过
   #                        源码编译（libc++ 约 3.3 分钟/次）；未命中才构建并做
   #                        不同目录一致性校验
@@ -2113,21 +2114,7 @@ jobs:
     permissions:
       actions: write
 
-    # Redis：per-user claim 的集成测试（tests/user_claim_redis.rs）需要真实 Redis。
-    # 没有 Redis 时那些用例会走「未设置 REDIS_URL → 直接 return」分支，被 nextest
-    # 记为 passed 却什么都没验证；提供 Redis 后它们在每次 CI 都真实执行。
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
-      REDIS_URL: redis://localhost:6379/
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
 
@@ -2143,11 +2130,6 @@ jobs:
 
       - name: 启用 sccache（Rust 编译缓存）
         uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
-
-      - name: 安装 cargo-nextest（并行测试运行器）
-        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
-        with:
-          tool: cargo-nextest
 
       - name: 缓存 Cargo 注册表
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -2165,12 +2147,58 @@ jobs:
 
       - name: Clippy 检查 (cargo clippy)
         working-directory: noj-judge
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+  judge-test:
+    name: Judge Tests
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.judge == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: write
+    # Redis 集成测试必须连接真实服务，避免缺少 REDIS_URL 时静默跳过。
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          toolchain: stable
+      - name: 启用 sccache（Rust 编译缓存）
+        uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - name: 安装 cargo-nextest（并行测试运行器）
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        with:
+          tool: cargo-nextest
+      - name: 缓存 Cargo 注册表
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ hashFiles('noj-judge/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-
 
       - name: 运行测试 (cargo nextest)
         working-directory: noj-judge
         # 本项目无 doctest（src 无 /// ``` 示例），覆盖等价。
-        run: cargo nextest run --all-targets
+        run: cargo nextest run --locked --all-targets
 
   judge-wasi-sdk:
     name: Judge WASI SDK
