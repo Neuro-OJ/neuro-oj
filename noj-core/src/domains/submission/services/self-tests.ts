@@ -32,6 +32,11 @@ import {
 } from "../types/index.ts";
 import type { JudgeResult } from "../types/index.ts";
 import { prepareJudgeTask } from "./prepare-judge-task.ts";
+import { buildJudgeTaskLlm } from "../../gateway/index.ts";
+import {
+  registerAttemptTerminalRevocation,
+  runAttemptTerminalRevocationAfterCommit,
+} from "./versioning/attempts.ts";
 import {
   executionSnapshot,
   scriptTemplateOf,
@@ -77,18 +82,26 @@ export async function cancelSelfTest(id: string, c: Context): Promise<void> {
     "EX",
     3600,
   );
-  await db.update(selfTests).set({
-    status: "cancelled",
-    result_status: "cancelled",
-    judge_finished_at: new Date().toISOString(),
-  })
-    .where(
-      and(
-        eq(selfTests.id, id),
-        eq(selfTests.judge_run_id, row.judge_run_id),
-        inArray(selfTests.status, ["pending", "judging"]),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    const changed = await tx.update(selfTests).set({
+      status: "cancelled",
+      result_status: "cancelled",
+      judge_finished_at: new Date().toISOString(),
+    }).where(and(
+      eq(selfTests.id, id),
+      eq(selfTests.judge_run_id, row.judge_run_id!),
+      inArray(selfTests.status, ["pending", "judging"]),
+    )).returning({ id: selfTests.id });
+    const snapshot = row.task_snapshot as Record<string, unknown> | null;
+    if (changed.length && snapshot?.llm_execution) {
+      await registerAttemptTerminalRevocation(tx, {
+        attemptId: row.judge_run_id!,
+        submissionId: id,
+        taskSnapshot: row.task_snapshot,
+      });
+    }
+  });
+  await runAttemptTerminalRevocationAfterCommit(row.judge_run_id);
   await publishSseEvent(Channels.submission(id), {
     type: "submission:updated",
     id,
@@ -232,6 +245,17 @@ export async function createSelfTest(
 
   const id = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
   const now = new Date().toISOString();
+  const runId = crypto.randomUUID();
+  const llmConfig = versionContent.kind === "ai"
+    ? versionContent.llm_config
+    : null;
+  // 自测也按唯一 run_id 隔离 LLM 预算；快照只保存冻结配置，不落库短期 token。
+  const llmTask = llmConfig && !isOiRuntimeConfig(runtimeConfig)
+    ? await buildJudgeTaskLlm(llmConfig, id, problemId, userId, runtimeConfig, {
+      attemptId: runId,
+      problemVersionId: selfTestVersionId,
+    })
+    : undefined;
 
   const cases = input.cases ?? (versionContent.samples ?? []).map((sample) => ({
     id: sample.id,
@@ -249,6 +273,7 @@ export async function createSelfTest(
     throw new BadRequestError("自定义用例仅用于 OI 自测");
   }
   const task = await prepareJudgeTask({
+    run_id: runId,
     // 自测使用独立运行标识（不是评测尝试），但仍携带版本与协议版本
     submission_id: id,
     problem_id: problemId,
@@ -260,6 +285,7 @@ export async function createSelfTest(
     download_url: oiSelfTest?.download_url ?? download_url,
     language: input.language,
     code: input.code,
+    llm: llmTask,
     script_template: input.language === UI_LANGUAGE
       ? scriptTemplateOf(versionContent)
       : undefined,
@@ -279,7 +305,7 @@ export async function createSelfTest(
       // 自测同样记录版本与执行快照：sweeper 据此从版本恢复（不读当前投影）
       problem_version_id: selfTestVersionId,
       task_snapshot: {
-        ...executionSnapshot(task),
+        ...executionSnapshot(task, llmConfig),
         ...(oiSelfTest ? { self_test_cases: cases } : {}),
       },
       created_at: now,
@@ -308,13 +334,24 @@ export async function createSelfTest(
     if (!isRetryableJudgeQueueError(mqErr)) {
       // 永久错误（消息超限 / 队列布局需协调升级）：立刻终态，并保留**具体原因码**，
       // 不能被泛化的 PLATFORM_ERROR 覆盖（capacity/network 仍保留 pending 等下轮）。
-      await db.update(selfTests)
-        .set({
+      await db.transaction(async (tx) => {
+        const changed = await tx.update(selfTests).set({
           status: "error",
           result_status: "DISPATCH_FAILED",
           judge_finished_at: new Date().toISOString(),
-        })
-        .where(eq(selfTests.id, id));
+        }).where(and(
+          eq(selfTests.id, id),
+          inArray(selfTests.status, ["pending", "judging"]),
+        )).returning({ id: selfTests.id });
+        if (changed.length && llmTask) {
+          await registerAttemptTerminalRevocation(tx, {
+            attemptId: runId,
+            submissionId: id,
+            taskSnapshot: executionSnapshot(task, llmConfig),
+          });
+        }
+      });
+      await runAttemptTerminalRevocationAfterCommit(runId);
     }
     throw new AppError(
       "自测失败：评测队列暂时不可用，请稍后重试",
@@ -478,6 +515,7 @@ export async function saveSelfTestResult(
         problem_version_id: selfTests.problem_version_id,
         problem_id: selfTests.problem_id,
         judge_started_at: selfTests.judge_started_at,
+        task_snapshot: selfTests.task_snapshot,
       })
       .from(selfTests)
       .where(eq(selfTests.id, result.submission_id))
@@ -521,8 +559,20 @@ export async function saveSelfTestResult(
       })
       .where(eq(selfTests.id, result.submission_id));
 
+    const snapshot = existing.task_snapshot as Record<string, unknown> | null;
+    if (snapshot?.llm_execution) {
+      await registerAttemptTerminalRevocation(tx, {
+        attemptId: result.run_id!,
+        submissionId: result.submission_id,
+        taskSnapshot: existing.task_snapshot,
+      });
+    }
+
     return true;
   });
 
+  if (outcome === true) {
+    await runAttemptTerminalRevocationAfterCommit(result.run_id);
+  }
   return outcome === true;
 }

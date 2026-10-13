@@ -94,7 +94,7 @@ export async function rebuildPendingTask(
     artifactDownloadUrl = await storage.downloadUrl(row.artifact_storage_url);
   }
   let llm;
-  if (content.kind === "ai" && content.llm_config && source === "submission") {
+  if (content.kind === "ai" && content.llm_config) {
     if (!snapshot?.llm_execution) {
       throw new AppError(
         "LLM 执行快照缺失，拒绝改用当前默认配置",
