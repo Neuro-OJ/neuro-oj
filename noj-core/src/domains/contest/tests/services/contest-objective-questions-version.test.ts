@@ -24,9 +24,11 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import { listPaperQuestionsWithAccess } from "../../../objective/index.ts";
+import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
 
 await resetDbForTest({ refreshRankings: true });
+await ensureDefaultWorkspace();
 
 const now = new Date().toISOString();
 const atMinutes = (minutes: number) =>
@@ -49,6 +51,7 @@ async function seedUser(prefix: string): Promise<string> {
 async function seedPaper(paperId: string, number: number): Promise<void> {
   await getDb().insert(problems).values({
     id: paperId,
+    domain_id: "00000000-0000-4000-8000-000000000001",
     title: "客观题套卷",
     description: "d",
     difficulty: "easy",
@@ -57,7 +60,6 @@ async function seedPaper(paperId: string, number: number): Promise<void> {
     owner_id: "0",
     is_objective: true,
     // P 型 + public：用于验证"无竞赛上下文 → 题库默认作答版本"路径
-    type: "P",
     visibility: "public",
     created_at: now,
     updated_at: now,

@@ -53,8 +53,10 @@ async function makeUser(tag: string): Promise<string> {
 
 /** 创建客观题套卷。 */
 async function makePaper(ownerId: string): Promise<string> {
+  await grantDefaultCatalogRole(ownerId, "editor");
   const id = crypto.randomUUID();
   await db.insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id,
     title: `版本化客观题卷 ${ts} ${id.slice(0, 6)}`,
     description: "测试套卷",
@@ -62,7 +64,6 @@ async function makePaper(ownerId: string): Promise<string> {
     runtime_config: null,
     number: Math.floor(Math.random() * 90000) + 10000,
     owner_id: ownerId,
-    type: "U",
     visibility: "public",
     is_objective: true,
     created_at: now,
@@ -774,3 +775,9 @@ Deno.test({
     assertEquals(detail.is_latest, true);
   },
 });
+
+import { resetDbForTest } from "../../../catalog/tests/default-fixture.ts";
+
+await resetDbForTest();
+
+import { grantDefaultCatalogRole } from "../../../catalog/tests/default-fixture.ts";

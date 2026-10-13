@@ -5,7 +5,7 @@
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 
 import {
   contestParticipants,
@@ -55,9 +55,11 @@ async function makePaper(
   ownerId: string,
   visibility: "public" | "private" = "public",
 ): Promise<string> {
+  await grantDefaultCatalogRole(ownerId, "editor");
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await db.insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id,
     title: `客观题卷 ${ts} ${id.slice(0, 6)}`,
     description: "测试套卷",
@@ -65,7 +67,6 @@ async function makePaper(
     runtime_config: null,
     number: Math.floor(Math.random() * 90000) + 10000,
     owner_id: ownerId,
-    type: "U",
     visibility,
     is_objective: true,
     created_at: now,
@@ -79,6 +80,7 @@ async function makeCodeProblem(): Promise<string> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await db.insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id,
     title: `编程题 ${ts}`,
     description: "code",
@@ -86,7 +88,6 @@ async function makeCodeProblem(): Promise<string> {
     runtime_config: {},
     number: Math.floor(Math.random() * 90000) + 10000,
     owner_id: "0",
-    type: "U",
     created_at: now,
     updated_at: now,
   });
@@ -702,3 +703,7 @@ Deno.test({
     assertEquals(adminView.details[q1].explanation, "私有解析");
   },
 });
+
+import { resetDbForTest } from "../../../catalog/tests/default-fixture.ts";
+
+import { grantDefaultCatalogRole } from "../../../catalog/tests/default-fixture.ts";

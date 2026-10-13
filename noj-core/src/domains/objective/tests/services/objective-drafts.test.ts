@@ -26,10 +26,10 @@ const now = new Date().toISOString();
 
 async function seedPaper(id: string, number: number): Promise<void> {
   await getDb().insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id,
     title: "客观题套卷",
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",
@@ -231,3 +231,7 @@ Deno.test("objective draft: 题目投影与旧小题表不被草稿写入触碰"
   assertEquals(after[0].latest_version_id, null);
   assertEquals(after[0].updated_at, before[0].updated_at);
 });
+
+import { resetDbForTest } from "../../../catalog/tests/default-fixture.ts";
+
+await resetDbForTest();
