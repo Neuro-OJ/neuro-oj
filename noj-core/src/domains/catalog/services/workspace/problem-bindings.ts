@@ -267,7 +267,10 @@ export async function setDomainProblemBindingPolicy(
       eq(domainProblemBindings.id, resolved.binding.id),
     ).for("update");
     if (binding.revision !== expectedRevision) {
-      throw new ConflictError("题库配置已变化，请重新读取");
+      throw new ConflictError(
+        "题库配置已变化，请重新读取",
+        "EFFECTIVE_POLICY_REVISION_CONFLICT",
+      );
     }
     const required = policy.mode === "exact" ? policy.version_id : null;
     if (required) {

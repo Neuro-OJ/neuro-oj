@@ -163,6 +163,7 @@ Deno.test("objective questions: 题库显式版本读取该版本小题（不受
 Deno.test("objective questions: 竞赛读取固定版本小题（不被最新版覆盖）", async () => {
   const owner = await makeUser("owner");
   const viewer = await makeUser("contestant");
+  await grantDefaultCatalogRole(viewer, "member");
   const paper = await makePaper(owner);
 
   const q1 = await createDraftQuestion(
