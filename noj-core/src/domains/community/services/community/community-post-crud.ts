@@ -4,6 +4,7 @@ import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import {
   communityBoards,
   communityPosts,
+  domains,
   problems,
   userRoles,
   users,
@@ -40,6 +41,7 @@ import {
 } from "./community-post-select.ts";
 import { reviewUgcContent } from "./community-review.ts";
 import { isProblemInUnendedPublicContest } from "./../../../contest/index.ts";
+import { domainProblemReference } from "../../../catalog/index.ts";
 import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
@@ -338,10 +340,24 @@ export async function getPost(
   scope?: CommunityScope,
 ) {
   const db = communityDb(scope);
+  const sourceIdentity = db.select({
+    id: problems.id,
+    domain_id: problems.domain_id,
+    number: problems.number,
+    slug: domains.slug,
+    title: problems.title,
+  }).from(problems).innerJoin(domains, eq(domains.id, problems.domain_id))
+    .as("community_source_identity");
   const rows = await db.select({
     post: communityPosts,
     author: authorProjection,
-    problem_title: problems.title,
+    problem_title: sourceIdentity.title,
+    problem_identity: {
+      id: sourceIdentity.id,
+      domain_id: sourceIdentity.domain_id,
+      number: sourceIdentity.number,
+      slug: sourceIdentity.slug,
+    },
     ...postStatsProjection,
     bookmarked: viewerId
       ? sql<
@@ -356,13 +372,14 @@ export async function getPost(
   }).from(communityPosts).innerJoin(
     users,
     eq(users.id, communityPosts.author_id),
-  ).leftJoin(problems, eq(problems.id, communityPosts.problem_id)).where(
-    and(
-      eq(communityPosts.id, postId),
-      communityDomainWhere(communityPosts.domain_id, scope),
-      communityResourceVisible(scope),
-    ),
-  ).limit(1);
+  ).leftJoin(sourceIdentity, eq(sourceIdentity.id, communityPosts.problem_id))
+    .where(
+      and(
+        eq(communityPosts.id, postId),
+        communityDomainWhere(communityPosts.domain_id, scope),
+        communityResourceVisible(scope),
+      ),
+    ).limit(1);
   const row = rows[0];
   if (!row) throw new NotFoundError("社区内容不存在");
   if (!scope && row.post.domain_id === DEFAULT_DOMAIN_ID) {
@@ -393,7 +410,17 @@ export async function getPost(
       throw new NotFoundError("社区内容不存在");
     }
   }
-  return row;
+  const { problem_identity: identity, ...result } = row;
+  return {
+    ...result,
+    problem_reference: identity
+      ? domainProblemReference(
+        identity,
+        identity.slug,
+        communityDomainId(scope),
+      )
+      : null,
+  };
 }
 
 /**
