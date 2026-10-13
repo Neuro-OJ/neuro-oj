@@ -1,7 +1,5 @@
-import { and, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
+import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import {
-  communityFollows,
   communityNotifications,
   communityPosts,
   users,
@@ -13,6 +11,14 @@ import {
 import { getCommunityConfig } from "./community-config.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
 import { authorProjection } from "./community-post-select.ts";
+import {
+  communityDb,
+  communityDomainId,
+  communityDomainWhere,
+  communityResourceVisible,
+  type CommunityScope,
+} from "./community-scope.ts";
+import { notGatedContestContent } from "./community-post-common.ts";
 
 /**
  * 列出社区动态流（最新 / 关注），按时间倒序返回短动态（moment）。
@@ -39,18 +45,20 @@ export async function listFeed(
   viewerId?: string,
   cursor?: string,
   limit = 20,
+  scope?: CommunityScope,
 ) {
   const config = getCommunityConfig();
   if (!config.moments_enabled) {
     throw new ForbiddenError("该社区功能已关闭", "FEATURE_DISABLED");
   }
-  const db = getDb();
+  const db = communityDb(scope);
   const normalizedLimit = Math.min(Math.max(limit, 1), 100);
   // 复合游标 (created_at, id)：避免同一时间戳条目在分页中重复/丢失（design.md）
   const cursorParts = cursor ? parseFeedCursor(cursor) : null;
   const conditions = [
     eq(communityPosts.type, "moment"),
     eq(communityPosts.status, "published"),
+    communityDomainWhere(communityPosts.domain_id, scope),
   ];
   if (cursorParts) {
     conditions.push(
@@ -61,12 +69,9 @@ export async function listFeed(
   }
   if (view === "following") {
     if (!viewerId) throw new ForbiddenError("登录后可查看关注动态");
-    const follows = await db.select({ id: communityFollows.followee_id }).from(
-      communityFollows,
-    ).where(eq(communityFollows.follower_id, viewerId));
-    if (!follows.length) return { data: [], next_cursor: null };
     conditions.push(
-      inArray(communityPosts.author_id, follows.map((f) => f.id)),
+      sql`EXISTS (SELECT 1 FROM community_follows WHERE follower_id = ${viewerId}
+        AND followee_id = ${communityPosts.author_id})`,
     );
   }
   const momentRows = await db.select({
@@ -105,8 +110,12 @@ function parseFeedCursor(cursor: string): { at: string; id?: string } {
  * @param limit 每页条数，默认 30，上限 100。
  * @returns 通知列表，每条含通知记录与触发者信息。
  */
-export function listNotifications(userId: string, limit = 30) {
-  const db = getDb();
+export function listNotifications(
+  userId: string,
+  limit = 30,
+  scope?: CommunityScope,
+) {
+  const db = communityDb(scope);
   return db.select({
     notification: communityNotifications,
     actor: {
@@ -117,7 +126,7 @@ export function listNotifications(userId: string, limit = 30) {
   }).from(communityNotifications).leftJoin(
     users,
     eq(users.id, communityNotifications.actor_id),
-  ).where(eq(communityNotifications.recipient_id, userId)).orderBy(
+  ).where(notificationVisibleWhere(userId, scope)).orderBy(
     desc(communityNotifications.created_at),
   ).limit(Math.min(limit, 100));
 }
@@ -136,8 +145,9 @@ export function listNotifications(userId: string, limit = 30) {
 export async function getNotification(
   userId: string,
   notificationId: string,
+  scope?: CommunityScope,
 ) {
-  const db = getDb();
+  const db = communityDb(scope);
   const rows = await db.select({
     notification: communityNotifications,
     actor: {
@@ -151,7 +161,7 @@ export async function getNotification(
   ).where(
     and(
       eq(communityNotifications.id, notificationId),
-      eq(communityNotifications.recipient_id, userId),
+      notificationVisibleWhere(userId, scope),
     ),
   ).limit(1);
   if (!rows[0]) throw new NotFoundError("通知不存在");
@@ -163,13 +173,16 @@ export async function getNotification(
  * @param userId 接收者用户 UUID。
  * @returns 未读通知数量。
  */
-export async function getNotificationUnreadCount(userId: string) {
-  const db = getDb();
+export async function getNotificationUnreadCount(
+  userId: string,
+  scope?: CommunityScope,
+) {
+  const db = communityDb(scope);
   const rows = await db.select({ count: sql<number>`count(*)` }).from(
     communityNotifications,
   ).where(
     and(
-      eq(communityNotifications.recipient_id, userId),
+      notificationVisibleWhere(userId, scope),
       isNull(communityNotifications.read_at),
     ),
   );
@@ -180,11 +193,14 @@ export async function getNotificationUnreadCount(userId: string) {
  * 将用户全部未读通知标记为已读。
  * @param userId 接收者用户 UUID。
  */
-export async function markNotificationsRead(userId: string) {
-  const db = getDb();
+export async function markNotificationsRead(
+  userId: string,
+  scope?: CommunityScope,
+) {
+  const db = communityDb(scope);
   await db.update(communityNotifications).set({ read_at: nowIso() }).where(
     and(
-      eq(communityNotifications.recipient_id, userId),
+      notificationVisibleWhere(userId, scope),
       isNull(communityNotifications.read_at),
     ),
   );
@@ -194,18 +210,50 @@ export async function markNotificationsRead(userId: string) {
 export async function markNotificationRead(
   userId: string,
   notificationId: string,
+  scope?: CommunityScope,
 ) {
-  const db = getDb();
+  const db = communityDb(scope);
   const existing = await db.select({ id: communityNotifications.id }).from(
     communityNotifications,
   ).where(
     and(
       eq(communityNotifications.id, notificationId),
-      eq(communityNotifications.recipient_id, userId),
+      notificationVisibleWhere(userId, scope),
     ),
   ).limit(1);
   if (!existing[0]) throw new NotFoundError("通知不存在");
   await db.update(communityNotifications).set({ read_at: nowIso() }).where(
     eq(communityNotifications.id, notificationId),
   );
+}
+
+/** 摘要、未读数和已读操作都先过滤域及当前源授权，不保留被撤销的内容入口。 */
+export function notificationVisibleWhere(
+  userId: string,
+  scope?: CommunityScope,
+) {
+  return and(
+    eq(communityNotifications.recipient_id, userId),
+    communityDomainWhere(communityNotifications.domain_id, scope),
+    scope ? undefined : or(
+      isNull(communityNotifications.domain_id),
+      sql`EXISTS (
+      SELECT 1 FROM domains notification_domain WHERE notification_domain.id = ${communityDomainId()}
+        AND notification_domain.status <> 'suspended'
+        AND (notification_domain.configuration->>'access' = 'public' OR EXISTS (
+          SELECT 1 FROM domain_memberships notification_member WHERE notification_member.domain_id = notification_domain.id
+            AND notification_member.user_id = ${userId} AND notification_member.status = 'active'))
+    )`,
+    ),
+    or(
+      isNull(communityNotifications.post_id),
+      sql`EXISTS (
+      SELECT 1 FROM community_posts WHERE community_posts.id = ${communityNotifications.post_id}
+      AND ${communityDomainWhere(communityPosts.domain_id, scope)}
+      AND ${communityResourceVisible(scope)}
+      AND (${communityPosts.status} = 'published' OR ${communityPosts.author_id} = ${userId})
+      AND ${scope?.moderator ? sql`true` : notGatedContestContent(scope)}
+    )`,
+    ),
+  )!;
 }

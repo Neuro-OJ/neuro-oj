@@ -1,5 +1,4 @@
-import { eq } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
+import { and, eq } from "drizzle-orm";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import {
   communityModerationActions,
@@ -11,6 +10,11 @@ import { nowIso } from "./../../../../shared/base/dates.ts";
 import type { CommunityPostStatus } from "./../../types/community.ts";
 import { createNotification } from "../notifications.ts";
 import { logAudit } from "../../../system/index.ts";
+import {
+  communityDb,
+  communityDomainWhere,
+  type CommunityScope,
+} from "./community-scope.ts";
 
 /**
  * 变更帖子状态（published / hidden / deleted），记录审核动作、通知作者并写审计日志。
@@ -26,17 +30,24 @@ export async function changePostStatus(
   actorId: string,
   status: CommunityPostStatus,
   reason = "",
+  scope?: CommunityScope,
 ) {
-  const db = getDb();
+  const db = communityDb(scope);
   const rows = await db.update(communityPosts).set({
     status,
     moderation_reason: reason || null,
     published_at: status === "published" ? nowIso() : null,
     updated_at: nowIso(),
-  }).where(eq(communityPosts.id, postId)).returning();
+  }).where(
+    and(
+      eq(communityPosts.id, postId),
+      communityDomainWhere(communityPosts.domain_id, scope),
+    ),
+  ).returning();
   if (!rows[0]) throw new NotFoundError("社区内容不存在");
   await db.insert(communityModerationActions).values({
     id: crypto.randomUUID(),
+    domain_id: scope?.domainId ?? null,
     moderator_id: actorId,
     action: status,
     target_type: "post",
@@ -53,6 +64,7 @@ export async function changePostStatus(
       postId,
       null,
       { status, reason },
+      scope,
     );
   }
   // 作者自删与审核员处置在审计 detail 中区分，便于追溯删除性质
@@ -97,15 +109,22 @@ export async function togglePostFlag(
   actorId: string,
   field: "is_locked" | "is_pinned",
   value: boolean,
+  scope?: CommunityScope,
 ) {
-  const db = getDb();
+  const db = communityDb(scope);
   const rows = await db.update(communityPosts).set({
     [field]: value,
     updated_at: nowIso(),
-  }).where(eq(communityPosts.id, postId)).returning();
+  }).where(
+    and(
+      eq(communityPosts.id, postId),
+      communityDomainWhere(communityPosts.domain_id, scope),
+    ),
+  ).returning();
   if (!rows[0]) throw new NotFoundError("社区内容不存在");
   await db.insert(communityModerationActions).values({
     id: crypto.randomUUID(),
+    domain_id: scope?.domainId ?? null,
     moderator_id: actorId,
     action: field,
     target_type: "post",

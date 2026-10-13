@@ -6,10 +6,20 @@
  * 通知读取/已读等用户侧操作仍留在 community.ts（仅社区路由使用）。
  */
 
-import { getDb } from "./../../../shared/db/connection.ts";
 import { communityNotifications } from "./../../../shared/db/schema.ts";
+import { communityPosts } from "../../../shared/db/schema.ts";
+import { eq } from "drizzle-orm";
+import {
+  communityDb,
+  type CommunityScope,
+} from "./community/community-scope.ts";
 import { nowIso } from "./../../../shared/base/dates.ts";
-import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
+import {
+  Channels,
+  publishSseEvent,
+  publishSseEventAfterTx,
+} from "./../../../shared/sse/event-bus.ts";
+import { recordSseEvent } from "../../../shared/sse/sse-events.ts";
 
 /**
  * 通知类型：社区互动（reply/like/follow/moderation）与竞赛答疑（clarification）。
@@ -38,10 +48,18 @@ export async function createNotification(
   postId: string | null,
   commentId: string | null,
   data: Record<string, unknown>,
+  scope?: CommunityScope,
 ): Promise<void> {
   if (recipientId === actorId) return;
+  const db = communityDb(scope);
+  const [post] = postId
+    ? await db.select({ domain_id: communityPosts.domain_id }).from(
+      communityPosts,
+    ).where(eq(communityPosts.id, postId))
+    : [];
   const notification = {
     id: crypto.randomUUID(),
+    domain_id: scope?.domainId ?? post?.domain_id ?? null,
     recipient_id: recipientId,
     actor_id: actorId,
     type,
@@ -51,13 +69,15 @@ export async function createNotification(
     read_at: null,
     created_at: nowIso(),
   };
-  const db = getDb();
   await db.insert(communityNotifications).values(notification);
-  await publishSseEvent(
-    Channels.user(recipientId),
-    {
-      type: "notification:new",
-      notification_id: notification.id,
-    },
-  );
+  const channel = Channels.user(recipientId),
+    payload = { type: "notification:new", notification_id: notification.id };
+  if (scope) {
+    const eventId = await recordSseEvent(channel, payload, db);
+    scope.afterCommit.push(() =>
+      publishSseEventAfterTx(channel, payload, eventId)
+    );
+  } else {
+    await publishSseEvent(channel, payload);
+  }
 }

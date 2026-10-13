@@ -30,6 +30,6 @@ export async function ensureCommunitySeeds(): Promise<void> {
       ...board,
       created_at: now,
       updated_at: now,
-    }).onConflictDoNothing({ target: communityBoards.slug });
+    }).onConflictDoNothing();
   }
 }

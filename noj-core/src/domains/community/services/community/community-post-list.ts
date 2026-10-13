@@ -10,7 +10,6 @@ import {
   type SQL,
   sql,
 } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityBookmarks,
   communityPosts,
@@ -29,6 +28,13 @@ import {
   authorProjection,
   postStatsProjection,
 } from "./community-post-select.ts";
+import {
+  communityDb,
+  communityDomainWhere,
+  communityResourceVisible,
+  type CommunityScope,
+  resolveCommunityProblem,
+} from "./community-scope.ts";
 
 /**
  * 列出社区帖子（支持按类型、题目、板块、作者、关键词筛选与游标分页）。
@@ -47,11 +53,15 @@ export async function listPosts(
     limit?: number;
     viewerId?: string;
     moderator?: boolean;
+    scope?: CommunityScope;
   },
 ) {
-  const db = getDb();
+  const db = communityDb(options.scope);
   // 元素可能为 undefined（drizzle 的 or/and 允许），and(...) 会自行忽略
-  const conditions: (SQL | undefined)[] = [];
+  const conditions: (SQL | undefined)[] = [
+    communityDomainWhere(communityPosts.domain_id, options.scope),
+    communityResourceVisible(options.scope),
+  ];
   if (options.type) conditions.push(eq(communityPosts.type, options.type));
   // 未指定类型时仅返回启用模块的内容；审核员查询不受模块开关限制（需审核历史内容）
   if (!options.type && !options.moderator) {
@@ -68,7 +78,10 @@ export async function listPosts(
   }
   if (options.problemId) {
     // 支持 UUID / display_id（P1001）/ 纯数字引用，题目不存在时返回空结果
-    const resolvedProblemId = await resolveProblemId(options.problemId);
+    const resolvedProblemId = options.scope
+      ? (await resolveCommunityProblem(options.problemId, options.scope))
+        .problem.id
+      : await resolveProblemId(options.problemId);
     if (resolvedProblemId) {
       conditions.push(eq(communityPosts.problem_id, resolvedProblemId));
     } else {
@@ -97,7 +110,9 @@ export async function listPosts(
   }
   // 公开赛保密门控：归属于尚未结束的公开赛（含赛前筹备期）的题解与讨论，
   // 对普通用户整体不可见（审计 VULN-02；判定收敛于 contest 域单一真相源）
-  if (!options.moderator) conditions.push(notGatedContestContent());
+  if (!options.moderator) {
+    conditions.push(notGatedContestContent(options.scope));
+  }
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
   const cursorParts = options.cursor ? parsePostCursor(options.cursor) : null;
 
@@ -192,11 +207,11 @@ export async function listPosts(
 }
 
 /** 统计各类型已发布帖子的数量，供社区首页 Tab 计数。 */
-export async function countPostsByType(): Promise<
+export async function countPostsByType(scope?: CommunityScope): Promise<
   Record<CommunityPostType, number>
 > {
   assertCommunityEnabled();
-  const db = getDb();
+  const db = communityDb(scope);
   const config = getCommunityConfig();
   const enabledTypes: CommunityPostType[] = [];
   if (config.solutions_enabled) enabledTypes.push("solution");
@@ -214,9 +229,11 @@ export async function countPostsByType(): Promise<
     count: sql<number>`count(*)::int`,
   }).from(communityPosts).where(and(
     eq(communityPosts.status, "published"),
+    communityDomainWhere(communityPosts.domain_id, scope),
+    communityResourceVisible(scope),
     inArray(communityPosts.type, enabledTypes),
     // 被门控的题解/讨论不计入 Tab 计数（否则计数与列表不一致，暴露内容存在性）
-    notGatedContestContent(),
+    notGatedContestContent(scope),
   )).groupBy(communityPosts.type);
   for (const row of rows) {
     result[row.type as CommunityPostType] = Number(row.count);
@@ -229,17 +246,20 @@ export async function listBookmarks(
   userId: string,
   cursor?: string,
   requestedLimit?: number,
+  scope?: CommunityScope,
 ) {
   assertCommunityEnabled("bookmarks_enabled");
   const conditions = [
     eq(communityBookmarks.user_id, userId),
     eq(communityPosts.status, "published"),
+    communityDomainWhere(communityPosts.domain_id, scope),
+    communityResourceVisible(scope),
     // 收藏列表同受门控：赛前/赛期不展示被门控的题解与讨论
-    notGatedContestContent(),
+    notGatedContestContent(scope),
   ];
   if (cursor) conditions.push(lt(communityBookmarks.created_at, cursor));
   const limit = Math.min(Math.max(requestedLimit ?? 20, 1), 100);
-  const rows = await getDb().select({
+  const rows = await communityDb(scope).select({
     post: communityPosts,
     author: authorProjection,
     bookmarked_at: communityBookmarks.created_at,

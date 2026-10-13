@@ -63,8 +63,23 @@ import {
   hasUnendedPublicContest,
   isProblemInUnendedPublicContest,
 } from "../../contest/index.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  DEFAULT_DOMAIN_SLUG,
+  ensureDefaultWorkspace,
+  loadWorkspace,
+} from "../../workspace/index.ts";
 
 const router = new Hono<OptionalAuthEnv>();
+router.use("*", optionalAuthMiddleware, async (c, next) => {
+  const accountRoute = /\/(?:notifications|reports)(?:\/|$)/.test(c.req.path) ||
+    /\/users\/[^/]+\/follow$/.test(c.req.path);
+  if (!accountRoute) {
+    await ensureDefaultWorkspace();
+    await loadWorkspace(DEFAULT_DOMAIN_SLUG, c.var.userId ?? null);
+  }
+  await next();
+});
 
 /**
  * 从请求上下文读取当前登录用户 UUID，未登录时抛出 ForbiddenError。
@@ -137,7 +152,7 @@ router.get("/config", optionalAuthMiddleware, async (c) => {
   // 赛时社区全局静默：供前端预先禁用发帖/评论/编辑入口（服务层仍强制，此处仅展示）。
   // 审核员免静默；匿名用户本就不能写入，统一按非审核员口径返回。
   const contestSilence = !(loggedIn && await isModerator(c)) &&
-    await hasUnendedPublicContest();
+    await hasUnendedPublicContest(DEFAULT_DOMAIN_ID);
   return c.json({
     data: { ...config, permissions, contest_silence: contestSilence },
   });
@@ -241,11 +256,12 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
   const moderator = await isModerator(c);
   const inUnendedPublicContest = await isProblemInUnendedPublicContest(
     problemId,
+    DEFAULT_DOMAIN_ID,
   );
   const blockedByContest = inUnendedPublicContest && !moderator;
   // 赛时社区全局静默：任一公开赛未结束时，非赛题题解同样暂停发布（与 createPost 同口径）
   const blockedBySilence = !moderator && !blockedByContest &&
-    await hasUnendedPublicContest();
+    await hasUnendedPublicContest(DEFAULT_DOMAIN_ID);
   const canCreate = config.solutions_enabled &&
     (!config.read_only || moderator) &&
     (await checkPermission(c, "community:create_solution")) &&
