@@ -129,6 +129,7 @@ SDK、冻结快照与生产镜像验收验证。 不要在缺少经过标准摘�
 ```bash
 cd noj-tests
 deno task test:domain submission      # 等价于 bash scripts/run-e2e-domain.sh submission
+deno task test:domain cross-domain --filter=workspace-teaching  # 仍使用统一环境和目录
 ```
 
 可用 domain：`identity` / `catalog` / `submission` / `contest` / `system` /
