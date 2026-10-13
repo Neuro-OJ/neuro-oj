@@ -2,7 +2,12 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { type AuthEnv, authMiddleware } from "../../identity/index.ts";
 import { enforceSubmissionRateLimit } from "../../system/index.ts";
-import { BadRequestError } from "../../../shared/base/errors.ts";
+import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
+import { loadWorkspace } from "../../workspace/index.ts";
+import {
+  getOwnSubmissionHistory,
+  listOwnSubmissionHistory,
+} from "../../submission/index.ts";
 import {
   assertObjectBody,
   parseJsonBody,
@@ -12,6 +17,46 @@ import type { ObjectiveAnswerValue } from "../types/objective.ts";
 
 /** 使用域客观题准备入口，隔离阶段完成后统一开放。 */
 export const domainObjectiveRouter = new Hono<AuthEnv>();
+domainObjectiveRouter.get(
+  "/domains/:slug/objective-submissions",
+  authMiddleware,
+  async (c) => {
+    const { domain } = await loadWorkspace(c.req.param("slug")!, c.var.userId);
+    const page = Number(c.req.query("page") ?? 1),
+      perPage = Number(c.req.query("per_page") ?? 20);
+    if (
+      !Number.isSafeInteger(page) || page < 1 ||
+      !Number.isSafeInteger(perPage) || perPage < 1 || perPage > 100
+    ) {
+      throw new BadRequestError("分页范围无效");
+    }
+    c.header("Cache-Control", "no-store");
+    return c.json(
+      await listOwnSubmissionHistory(c.var.userId, page, perPage, {
+        domainId: domain.id,
+        kind: "objective",
+        problemId: c.req.query("problem_id"),
+      }),
+    );
+  },
+);
+domainObjectiveRouter.get(
+  "/domains/:slug/objective-submissions/:id",
+  authMiddleware,
+  async (c) => {
+    const { domain } = await loadWorkspace(c.req.param("slug")!, c.var.userId);
+    const submission = await getOwnSubmissionHistory(
+      c.var.userId,
+      "objective",
+      c.req.param("id")!,
+    );
+    if (submission.domain.id !== domain.id) {
+      throw new NotFoundError("提交不存在");
+    }
+    c.header("Cache-Control", "no-store");
+    return c.json({ data: submission });
+  },
+);
 const submitInDomain = async (c: Context<AuthEnv>) => {
   const body = await parseJsonBody<Record<string, unknown>>(c);
   assertObjectBody(body);

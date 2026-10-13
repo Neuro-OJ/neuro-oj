@@ -9,7 +9,10 @@
  * 判定详情权限：仅提交者本人或 admin 可读；竞赛模式不展示解析（防泄题）。
  */
 import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
-import { DEFAULT_DOMAIN_ID } from "../../workspace/index.ts";
+import {
+  consumeDomainSubmissionQuota,
+  DEFAULT_DOMAIN_ID,
+} from "../../workspace/index.ts";
 import type { Context } from "hono";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
@@ -356,6 +359,12 @@ export async function submitObjectivePaper(
           tx,
         )
         : await resolveDefaultExecutionContext(paperUuid, userId, tx);
+      await consumeDomainSubmissionQuota(
+        workspace.domain_id,
+        userId,
+        submissionId,
+        tx,
+      );
       await tx.insert(objectiveSubmissions).values({ ...row, ...workspace });
       const attempt = await createAttempt({
         source,
