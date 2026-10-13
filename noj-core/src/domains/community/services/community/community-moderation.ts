@@ -258,6 +258,7 @@ export async function createReport(
       message: "你的举报已提交，等待管理员审核中",
     },
     scope,
+    report.domain_id ?? undefined,
   );
   return report;
 }
@@ -427,6 +428,7 @@ export async function resolveReport(
       resolution: resolution || undefined,
     },
     scope,
+    rows[0].domain_id ?? undefined,
   );
   await logAudit(
     "community.report_resolved",
@@ -535,6 +537,7 @@ export async function reopenReport(reportId: string, scope?: CommunityScope) {
         message: "你的举报已重新开启，等待管理员审核",
       },
       scope,
+      rows[0].domain_id ?? undefined,
     );
   }
   return rows[0];
