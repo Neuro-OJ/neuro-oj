@@ -152,7 +152,7 @@ Deno.test("upstream guard: /internal/providers 新建与更新拒绝内网 base_
   };
   const created = await app.request("/internal/providers", {
     method: "POST",
-    headers,
+    headers: { ...headers, "If-Match": "0" },
     body: JSON.stringify({
       name: "x",
       base_url: "http://169.254.169.254/latest",
@@ -164,7 +164,7 @@ Deno.test("upstream guard: /internal/providers 新建与更新拒绝内网 base_
 
   const updated = await app.request("/internal/providers/prov-1", {
     method: "PUT",
-    headers,
+    headers: { ...headers, "If-Match": "1" },
     body: JSON.stringify({ base_url: "https://noj-core:8000" }),
   });
   assertEquals(updated.status, 400);

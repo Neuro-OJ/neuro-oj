@@ -1,5 +1,6 @@
 import {
   boolean,
+  check,
   doublePrecision,
   index,
   integer,
@@ -7,6 +8,7 @@ import {
   pgTable,
   text,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 /**
  * LLM Provider 表。
@@ -27,12 +29,17 @@ export const llmProviders = pgTable(
     encrypted_api_key: text("encrypted_api_key").notNull(),
     /** 是否启用；停用后新评测不能选用 */
     enabled: boolean("enabled").notNull().default(true),
+    revision: integer("revision").notNull().default(1),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
     nameIdx: index("idx_llm_providers_name").on(table.name),
     domainIdx: index("idx_llm_providers_domain").on(table.domain_id),
+    revisionCheck: check(
+      "llm_providers_revision_check",
+      sql`${table.revision} >= 1`,
+    ),
   }),
 );
 
@@ -108,6 +115,7 @@ export const llmQuotas = pgTable(
     max_calls: integer("max_calls"),
     max_tokens: integer("max_tokens"),
     max_cost: integer("max_cost"),
+    revision: integer("revision").notNull().default(1),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
   },
@@ -117,6 +125,10 @@ export const llmQuotas = pgTable(
       table.scope_type,
       table.scope_id,
       table.window_type,
+    ),
+    revisionCheck: check(
+      "llm_quotas_revision_check",
+      sql`${table.revision} >= 1`,
     ),
   }),
 );

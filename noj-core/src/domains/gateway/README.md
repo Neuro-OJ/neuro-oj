@@ -22,8 +22,9 @@ token。Gateway 在调用上游前复查 Provider 归属及启用状态。题目
 - `GET/PUT /settings`：当前域选择；PUT 必须带 `If-Match`，缺少返回 428，冲突返回
   409。
 - `GET/POST /providers` 与 `PUT /providers/:id`：域内 Provider
-  列表、创建及修改/停用。
-- `GET/POST /quotas`：域内持久配额，Domain 管理入口拒绝实例 global 配额。
+  列表、创建及修改/停用，Provider 行包含独立 revision。
+- `GET/POST /quotas`：域内持久配额，GET 保留 data 数组并附加实例 caps
+  day/month； 配额行包含独立 revision，Domain 管理入口拒绝实例 global 配额。
 - `GET /usage`：当前域用量分页与筛选。
 
 实例治理调用 `listInstanceLlmQuotas` 明确发送实例标记，读取实例 global
@@ -34,6 +35,12 @@ token。Gateway 在调用上游前复查 Provider 归属及启用状态。题目
 将操作目标记录审计。 读取不返回其他域 Provider
 名称、地址、掩码、调用正文或用量。接口设置 `no-store`。
 显式域管理路由已接入组合根，完整 Gateway 与 Judge 服务旅程仍待发布验收。
+
+Provider 与配额新建使用 `If-Match: 0`，创建返回 revision 1；更新使用所读取资源的
+revision，不能使用 Domain revision 代替。缺少头返回 428，冲突返回 409。 独立
+Gateway 数据库在 UPDATE 条件内原子比较并增加 revision，core 的旧 main
+管理路由也透传相同前置条件。配额带 id 表示更新既有记录，不会在缺失时插入新行。
+显式 null 额度原样保存，仅缺省字段才采用旧默认域或实例的配置默认值。
 
 ## 验证与剩余工作
 

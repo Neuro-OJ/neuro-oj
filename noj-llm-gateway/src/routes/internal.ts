@@ -18,6 +18,7 @@ import { fallbackQuota } from "../limits.ts";
 import { assertSafeBaseUrl, UPSTREAM_BLOCKED } from "../upstream-guard.ts";
 import { reconcileAccounting } from "../accounting.ts";
 import { bootstrapAccountingBaseline } from "../accounting-baseline.ts";
+import { requireRevision } from "../revision.ts";
 
 export interface InternalDeps {
   config: GatewayConfig;
@@ -56,7 +57,7 @@ export function createInternalRouter(deps: InternalDeps): Hono {
   app.get("/internal/providers/:id", async (c) => {
     const id = c.req.param("id");
     const rows = await deps
-      .db`SELECT id, domain_id, name, base_url, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id} AND domain_id = ${
+      .db`SELECT id, domain_id, revision, name, base_url, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id} AND domain_id = ${
       domain(c)
     }`;
     if (rows.length === 0) {
@@ -67,6 +68,9 @@ export function createInternalRouter(deps: InternalDeps): Hono {
 
   // 新增 Provider
   app.post("/internal/providers", async (c) => {
+    if (requireRevision(c) !== 0) {
+      return c.json({ error: "revision_conflict" }, 409);
+    }
     const body = await c.req.json<ProviderInput>();
     if (!body.name || !body.base_url || !body.api_key) {
       return c.json({ error: "missing_required_fields" }, 400);
@@ -89,6 +93,7 @@ export function createInternalRouter(deps: InternalDeps): Hono {
 
   // 更新 Provider
   app.put("/internal/providers/:id", async (c) => {
+    const revision = requireRevision(c);
     const id = c.req.param("id");
     const body = await c.req.json<Partial<ProviderInput>>();
     try {
@@ -104,22 +109,40 @@ export function createInternalRouter(deps: InternalDeps): Hono {
         body,
         deps.config.storeKey,
         domain(c),
+        revision,
       );
       return c.json({ data: provider });
     } catch (err) {
       const message = err instanceof Error ? err.message : "update_failed";
       return c.json(
         { error: message },
-        message === "provider_not_found" ? 404 : 400,
+        message === "provider_not_found"
+          ? 404
+          : message === "revision_conflict"
+          ? 409
+          : 400,
       );
     }
   });
 
   app.delete("/internal/providers/:id", async (c) => {
-    const deleted = await deleteProvider(deps.db, c.req.param("id"), domain(c));
-    return deleted
-      ? c.body(null, 204)
-      : c.json({ error: "provider_not_found" }, 404);
+    const revision = requireRevision(c);
+    try {
+      const deleted = await deleteProvider(
+        deps.db,
+        c.req.param("id"),
+        domain(c),
+        revision,
+      );
+      return deleted
+        ? c.body(null, 204)
+        : c.json({ error: "provider_not_found" }, 404);
+    } catch (error) {
+      if (error instanceof Error && error.message === "revision_conflict") {
+        return c.json({ error: "revision_conflict" }, 409);
+      }
+      throw error;
+    }
   });
 
   app.post("/internal/providers/:id/test", async (c) => {
@@ -233,8 +256,9 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     return c.json({ data: rows });
   });
 
-  // 新增或更新配额（按 id upsert）
+  // 新增或按 id 更新既有配额，禁止旧版本重新插入失效行。
   app.post("/internal/quotas", async (c) => {
+    const revision = requireRevision(c);
     const body = await c.req.json<{
       id?: string;
       scope_type: string;
@@ -293,22 +317,26 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const maxCost = body.max_cost !== undefined
       ? body.max_cost
       : fallback.max_cost;
-    const saved = await deps.db`
-      INSERT INTO llm_quotas (id, domain_id, scope_type, scope_id, window_type, max_calls, max_tokens, max_cost, created_at, updated_at)
-      VALUES (${id}, ${quotaDomain}, ${body.scope_type}, ${scopeId}, ${windowType}, ${maxCalls}, ${maxTokens}, ${maxCost}, ${now}, ${now})
-      ON CONFLICT (id) DO UPDATE SET
-        scope_type = EXCLUDED.scope_type,
-        scope_id = EXCLUDED.scope_id,
-        window_type = EXCLUDED.window_type,
-        max_calls = EXCLUDED.max_calls,
-        max_tokens = EXCLUDED.max_tokens,
-        max_cost = EXCLUDED.max_cost,
-        updated_at = EXCLUDED.updated_at
-      WHERE llm_quotas.domain_id = EXCLUDED.domain_id
-      RETURNING id
-    `;
-    if (saved.length === 0) return c.json({ error: "quota_not_found" }, 404);
-    return c.json({ data: { id } }, 201);
+    if (!body.id) {
+      if (revision !== 0) return c.json({ error: "revision_conflict" }, 409);
+      const [saved] = await deps.db`
+        INSERT INTO llm_quotas (id, domain_id, scope_type, scope_id, window_type, max_calls, max_tokens, max_cost, created_at, updated_at)
+        VALUES (${id}, ${quotaDomain}, ${body.scope_type}, ${scopeId}, ${windowType}, ${maxCalls}, ${maxTokens}, ${maxCost}, ${now}, ${now})
+        RETURNING id, revision`;
+      return c.json({ data: saved }, 201);
+    }
+    const [saved] = await deps.db`UPDATE llm_quotas SET
+      scope_type=${body.scope_type}, scope_id=${scopeId}, window_type=${windowType},
+      max_calls=${maxCalls}, max_tokens=${maxTokens}, max_cost=${maxCost}, updated_at=${now}, revision=revision+1
+      WHERE id=${id} AND domain_id=${quotaDomain} AND revision=${revision} RETURNING id, revision`;
+    if (!saved) {
+      const existing = await deps
+        .db`SELECT id FROM llm_quotas WHERE id=${id} AND domain_id=${quotaDomain}`;
+      return c.json({
+        error: existing.length ? "revision_conflict" : "quota_not_found",
+      }, existing.length ? 409 : 404);
+    }
+    return c.json({ data: saved }, 201);
   });
 
   // 账本只返回状态和定位，绝不把其他域的计数快照或调用正文混入列表。

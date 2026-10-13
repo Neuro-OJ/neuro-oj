@@ -15,6 +15,7 @@ import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
+  ServiceUnavailableError,
 } from "../../../shared/base/errors.ts";
 import {
   assertWorkspacePermission,
@@ -70,6 +71,15 @@ async function scoped<T>(
       if (!(error instanceof LlmGatewayError)) throw error;
       if (error.status === 404) {
         throw new NotFoundError("工作空间 LLM 资源不存在");
+      }
+      if (error.status === 409) {
+        throw new ConflictError(
+          "LLM 资源已修改，请重新读取",
+          "REVISION_CONFLICT",
+        );
+      }
+      if (error.status === 428) {
+        throw new AppError("需要 LLM 资源 revision", 428, "REVISION_REQUIRED");
       }
       if (error.status < 500) {
         throw new BadRequestError("LLM 配置请求无效", error.code);
@@ -185,13 +195,15 @@ export function addDomainLlmProvider(
   slug: string,
   actorId: string,
   input: LlmProviderInput,
+  revision: number | null = null,
 ) {
+  assertResourceRevision(revision);
   return scoped(
     slug,
     actorId,
     true,
     "domain.llm_provider",
-    (domainId) => createLlmProvider(input, domainId),
+    (domainId) => createLlmProvider(input, domainId, revision),
   );
 }
 
@@ -201,13 +213,15 @@ export function editDomainLlmProvider(
   actorId: string,
   id: string,
   input: Partial<LlmProviderInput>,
+  revision: number | null = null,
 ) {
+  assertResourceRevision(revision);
   return scoped(
     slug,
     actorId,
     true,
     "domain.llm_provider",
-    (domainId) => updateLlmProvider(id, input, domainId),
+    (domainId) => updateLlmProvider(id, input, domainId, revision),
   );
 }
 
@@ -218,7 +232,10 @@ export function readDomainLlmQuotas(slug: string, actorId: string) {
     actorId,
     false,
     "domain.llm_read",
-    (domainId) => listLlmQuotas(domainId),
+    async (domainId, tx) => ({
+      data: await listLlmQuotas(domainId),
+      caps: await readQuotaCaps(tx),
+    }),
   );
 }
 
@@ -227,7 +244,9 @@ export function saveDomainLlmQuota(
   slug: string,
   actorId: string,
   input: LlmQuotaInput,
+  revision: number | null = null,
 ) {
+  assertResourceRevision(revision);
   if (input.scope_type === "global") {
     throw new ForbiddenError("实例总额度不能通过域管理入口修改");
   }
@@ -263,28 +282,51 @@ export function saveDomainLlmQuota(
           }
         }
       }
-      const [setting] = await tx.select({ value: systemSettings.value }).from(
-        systemSettings,
-      )
-        .where(eq(systemSettings.key, "domain_llm_quota_caps"));
-      if (setting) {
-        const text = JSON.parse(setting.value);
-        const caps: DomainLlmQuotaCaps = JSON.parse(text);
-        validateDomainLlmQuotaCaps(caps);
-        for (const field of ["max_calls", "max_tokens", "max_cost"] as const) {
-          const cap = caps[window][field];
-          const requested = input[field] ?? null;
-          if (cap !== null && (requested === null || requested > cap)) {
-            throw new BadRequestError(
-              "域 LLM 配额超过实例上限",
-              "DOMAIN_LLM_QUOTA_CAP_EXCEEDED",
-            );
-          }
+      const caps = await readQuotaCaps(tx);
+      for (const field of ["max_calls", "max_tokens", "max_cost"] as const) {
+        const cap = caps[window][field];
+        const requested = input[field] ?? null;
+        if (cap !== null && (requested === null || requested > cap)) {
+          throw new BadRequestError(
+            "域 LLM 配额超过实例上限",
+            "DOMAIN_LLM_QUOTA_CAP_EXCEEDED",
+          );
         }
       }
-      return await upsertLlmQuota(input, domainId);
+      return await upsertLlmQuota(input, domainId, revision);
     },
   );
+}
+
+function assertResourceRevision(
+  revision: number | null,
+): asserts revision is number {
+  if (revision === null) {
+    throw new AppError("需要 LLM 资源 revision", 428, "REVISION_REQUIRED");
+  }
+  if (!Number.isSafeInteger(revision) || revision < 0) {
+    throw new BadRequestError("revision 非法");
+  }
+}
+
+async function readQuotaCaps(tx: Executor): Promise<DomainLlmQuotaCaps> {
+  const [setting] = await tx.select({ value: systemSettings.value }).from(
+    systemSettings,
+  ).where(eq(systemSettings.key, "domain_llm_quota_caps"));
+  try {
+    const caps: unknown = setting ? JSON.parse(JSON.parse(setting.value)) : {
+      day: { max_calls: null, max_tokens: null, max_cost: null },
+      month: { max_calls: null, max_tokens: null, max_cost: null },
+    };
+    validateDomainLlmQuotaCaps(caps);
+    return caps;
+  } catch (cause) {
+    const error = new ServiceUnavailableError(
+      "实例 LLM 上限配置无效，请联系管理员修复",
+    );
+    error.cause = cause;
+    throw error;
+  }
 }
 
 /** 本域调用用量分页，Gateway 始终追加当前域条件。 */

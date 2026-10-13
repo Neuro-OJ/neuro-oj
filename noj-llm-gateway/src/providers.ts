@@ -15,6 +15,7 @@ export interface ProviderInput {
 
 export interface ProviderRow {
   id: string;
+  revision: number;
   domain_id: string;
   name: string;
   base_url: string;
@@ -27,6 +28,7 @@ export interface ProviderRow {
 
 export interface ProviderView {
   id: string;
+  revision: number;
   domain_id: string;
   name: string;
   base_url: string;
@@ -57,6 +59,7 @@ export function maskApiKey(key: string): string {
 function toView(row: ProviderRow, apiKey: string): ProviderView {
   return {
     id: row.id,
+    revision: row.revision,
     domain_id: row.domain_id,
     name: row.name,
     base_url: row.base_url,
@@ -163,6 +166,7 @@ export async function updateProvider(
   >,
   storeKey: string,
   domainId = "00000000-0000-4000-8000-000000000001",
+  expectedRevision: number,
 ): Promise<ProviderView> {
   const existing = await getProviderById(db, id, domainId);
   if (!existing) {
@@ -201,22 +205,19 @@ export async function updateProvider(
     sets.push(`encrypted_api_key = $${params.length}`);
   }
 
-  params.push(updatedAt, id, domainId);
+  params.push(updatedAt, id, domainId, expectedRevision);
   const offset = sets.length + 1;
   const setSql = sets.length > 0
     ? `${sets.join(", ")}, updated_at = $${offset}`
     : `updated_at = $1`;
-  await db.unsafe(
-    `UPDATE llm_providers SET ${setSql} WHERE id = $${
+  const rows = await db.unsafe<ProviderRow[]>(
+    `UPDATE llm_providers SET ${setSql}, revision = revision + 1 WHERE id = $${
       offset + 1
-    } AND domain_id = $${offset + 2}`,
+    } AND domain_id = $${offset + 2} AND revision = $${offset + 3} RETURNING *`,
     params,
   );
-
-  const row = await getProviderById(db, id, domainId);
-  if (!row) {
-    throw new Error("provider_not_found");
-  }
+  const row = rows[0];
+  if (!row) throw new Error("revision_conflict");
   const apiKey = input.api_key ??
     (await decryptSecret(row.encrypted_api_key, storeKey).catch(() => ""));
   return toView(row, apiKey);
@@ -227,12 +228,15 @@ export async function deleteProvider(
   db: Db,
   id: string,
   domainId = "00000000-0000-4000-8000-000000000001",
+  expectedRevision: number,
 ): Promise<boolean> {
   const row = await getProviderById(db, id, domainId);
   if (!row) {
     return false;
   }
-  await db`UPDATE llm_providers SET enabled = false, updated_at = ${now()} WHERE id = ${id} AND domain_id = ${domainId}`;
+  const updated =
+    await db`UPDATE llm_providers SET enabled = false, updated_at = ${now()}, revision = revision + 1 WHERE id = ${id} AND domain_id = ${domainId} AND revision = ${expectedRevision} RETURNING id`;
+  if (!updated.length) throw new Error("revision_conflict");
   return true;
 }
 

@@ -7,6 +7,20 @@
 
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import { getSetting } from "../../system/index.ts";
+import { AppError, BadRequestError } from "../../../shared/base/errors.ts";
+
+/** 配置管理读取调用方资源 revision；创建传 0，禁止客户端无条件覆盖。 */
+export function parseLlmRevision(header: string | undefined): number {
+  if (header === undefined) {
+    throw new AppError("需要 LLM 资源 revision", 428, "REVISION_REQUIRED");
+  }
+  const raw = header.replace(/^"|"$/g, "");
+  const revision = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(revision)) {
+    throw new BadRequestError("revision 非法");
+  }
+  return revision;
+}
 
 /**
  * 创建或更新 LLM Provider 的输入参数。
@@ -43,6 +57,8 @@ export class LlmGatewayError extends Error {
 export interface LlmProviderView {
   /** Provider ID */
   id: string;
+  /** Gateway 当前配置版本。 */
+  revision: number;
   /** 使用域 */
   domain_id: string;
   /** Provider 名称 */
@@ -86,7 +102,7 @@ export interface LlmUsageQuery {
 }
 
 /**
- * LLM 配额的新增或更新输入（按 id upsert）。
+ * LLM 配额的新增或更新输入（带 id 只更新既有资源）。
  */
 export interface LlmQuotaInput {
   /** 配额 ID（更新时提供；缺省为新增） */
@@ -221,12 +237,16 @@ export async function getLlmProviderById(
 export async function createLlmProvider(
   input: LlmProviderInput,
   domainId = DEFAULT_DOMAIN_ID,
+  revision?: number,
 ): Promise<LlmProviderView> {
   const body = await request<{ data: LlmProviderView }>(
     "/internal/providers",
     {
       method: "POST",
       body: JSON.stringify(input),
+      headers: revision === undefined
+        ? undefined
+        : { "If-Match": String(revision) },
     },
     domainId,
   );
@@ -238,12 +258,16 @@ export async function updateLlmProvider(
   id: string,
   input: Partial<LlmProviderInput>,
   domainId = DEFAULT_DOMAIN_ID,
+  revision?: number,
 ): Promise<LlmProviderView> {
   const body = await request<{ data: LlmProviderView }>(
     `/internal/providers/${id}`,
     {
       method: "PUT",
       body: JSON.stringify(input),
+      headers: revision === undefined
+        ? undefined
+        : { "If-Match": String(revision) },
     },
     domainId,
   );
@@ -274,19 +298,23 @@ export async function queryLlmUsage(
   return body.data;
 }
 
-/** 新增或更新 LLM 配额（按 id upsert）。 */
+/** 新增或按 id 更新既有配额，资源版本由 Gateway 原子比较。 */
 export async function upsertLlmQuota(
   input: LlmQuotaInput,
   domainId = DEFAULT_DOMAIN_ID,
-): Promise<{ id: string }> {
-  const body = await request<{ data: { id: string } }>(
+  revision?: number,
+): Promise<{ id: string; revision: number }> {
+  const body = await request<{ data: { id: string; revision: number } }>(
     "/internal/quotas",
     {
       method: "POST",
       body: JSON.stringify(input),
-      headers: input.scope_type === "global"
-        ? { "X-Noj-Instance-Quota": "1" }
-        : undefined,
+      headers: {
+        ...(input.scope_type === "global"
+          ? { "X-Noj-Instance-Quota": "1" }
+          : {}),
+        ...(revision === undefined ? {} : { "If-Match": String(revision) }),
+      },
     },
     domainId,
   );

@@ -16,7 +16,11 @@ import {
   saveDomainLlmQuota,
   saveDomainLlmSettings,
 } from "../services/domain-management.ts";
-import type { LlmProviderInput, LlmQuotaInput } from "../services/llm.ts";
+import {
+  type LlmProviderInput,
+  type LlmQuotaInput,
+  parseLlmRevision,
+} from "../services/llm.ts";
 
 /** 显式域 LLM 管理入口，不读取其他域的 Provider 或用量。 */
 export const domainLlmRouter = new Hono<AuthEnv>();
@@ -68,6 +72,7 @@ domainLlmRouter.post(`${prefix}/providers`, async (c) => {
       c.req.param("slug")!,
       c.var.userId!,
       input,
+      parseLlmRevision(c.req.header("If-Match")),
     ),
   }, 201);
 });
@@ -80,21 +85,25 @@ domainLlmRouter.put(`${prefix}/providers/:id`, async (c) => {
       c.var.userId!,
       c.req.param("id")!,
       input,
+      parseLlmRevision(c.req.header("If-Match")),
     ),
   });
 });
 domainLlmRouter.get(
   `${prefix}/quotas`,
   async (c) =>
-    c.json({
-      data: await readDomainLlmQuotas(c.req.param("slug")!, c.var.userId!),
-    }),
+    c.json(await readDomainLlmQuotas(c.req.param("slug")!, c.var.userId!)),
 );
 domainLlmRouter.post(`${prefix}/quotas`, async (c) => {
   const input = await parseJsonBody<LlmQuotaInput>(c);
   assertObjectBody(input);
   return c.json({
-    data: await saveDomainLlmQuota(c.req.param("slug")!, c.var.userId!, input),
+    data: await saveDomainLlmQuota(
+      c.req.param("slug")!,
+      c.var.userId!,
+      input,
+      parseLlmRevision(c.req.header("If-Match")),
+    ),
   }, 201);
 });
 domainLlmRouter.get(`${prefix}/usage`, async (c) => {

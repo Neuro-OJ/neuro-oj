@@ -319,9 +319,17 @@ Deno.test({
         row = current.find((entry) => entry.id === body.id);
       if (row) Object.assign(row, body);
       return Promise.resolve(
-        new Response(JSON.stringify({ data: { id: body.id } }), {
-          headers: { "content-type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify({
+            data: {
+              id: body.id,
+              revision: Number(new Headers(init?.headers).get("If-Match")) + 1,
+            },
+          }),
+          {
+            headers: { "content-type": "application/json" },
+          },
+        ),
       );
     };
     const total = (id: string, max_calls: number | null) => ({
@@ -335,20 +343,20 @@ Deno.test({
     });
     try {
       await assertRejects(
-        () => saveDomainLlmQuota(school.slug, owner, total("current", 80)),
+        () => saveDomainLlmQuota(school.slug, owner, total("current", 80), 1),
         ForbiddenError,
       );
       assertEquals(writes, 0);
       assertEquals(
-        await saveDomainLlmQuota(school.slug, owner, total("current", 40)),
-        { id: "current" },
+        await saveDomainLlmQuota(school.slug, owner, total("current", 40), 1),
+        { id: "current", revision: 2 },
       );
       await assertRejects(
-        () => saveDomainLlmQuota(school.slug, owner, total("new-id", 80)),
+        () => saveDomainLlmQuota(school.slug, owner, total("new-id", 80), 1),
         ForbiddenError,
       );
       await assertRejects(
-        () => saveDomainLlmQuota(school.slug, owner, total("new-id", null)),
+        () => saveDomainLlmQuota(school.slug, owner, total("new-id", null), 1),
         ForbiddenError,
       );
       assertEquals(writes, 1);
@@ -361,15 +369,15 @@ Deno.test({
           max_calls: 20,
           max_tokens: null,
           max_cost: null,
-        }),
-        { id: "user" },
+        }, 1),
+        { id: "user", revision: 2 },
       );
       assertEquals(
-        await saveDomainLlmQuota(school.slug, admin, total("current", 80)),
-        { id: "current" },
+        await saveDomainLlmQuota(school.slug, admin, total("current", 80), 2),
+        { id: "current", revision: 3 },
       );
       await assertRejects(
-        () => saveDomainLlmQuota(school.slug, admin, total("current", 101)),
+        () => saveDomainLlmQuota(school.slug, admin, total("current", 101), 1),
         BadRequestError,
       );
       assertEquals(writes, 3);
@@ -480,7 +488,7 @@ Deno.test({
     globalThis.fetch = () => {
       calls++;
       return Promise.resolve(
-        new Response(JSON.stringify({ data: { id: "quota" } }), {
+        new Response(JSON.stringify({ data: { id: "quota", revision: 1 } }), {
           headers: { "content-type": "application/json" },
         }),
       );
@@ -493,7 +501,7 @@ Deno.test({
             max_calls: 4,
             max_tokens: 100,
             max_cost: null,
-          }),
+          }, 0),
         BadRequestError,
       );
       await assertRejects(
@@ -503,7 +511,7 @@ Deno.test({
             max_calls: null,
             max_tokens: 100,
             max_cost: null,
-          }),
+          }, 0),
         BadRequestError,
       );
       assertEquals(calls, 0);
@@ -513,8 +521,8 @@ Deno.test({
           max_calls: 2,
           max_tokens: 99,
           max_cost: null,
-        }),
-        { id: "quota" },
+        }, 0),
+        { id: "quota", revision: 1 },
       );
       assertEquals(calls, 1);
     } finally {

@@ -2,9 +2,10 @@ import { Hono } from "hono";
 import type { AuthEnv } from "./../../identity/index.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { adminAudit } from "../services/admin-audit.ts";
-import { adminVersionMiddleware } from "../middleware/admin-version.ts";
 import {
+  AppError,
   BadRequestError,
+  ConflictError,
   NotFoundError,
   ServiceUnavailableError,
 } from "../../../shared/base/errors.ts";
@@ -17,10 +18,11 @@ import {
   type LlmProviderInput,
   type LlmQuotaInput,
   type LlmUsageQuery,
+  parseLlmRevision,
   queryLlmUsage,
   updateLlmProvider,
   upsertLlmQuota,
-} from "../../gateway/services/llm.ts";
+} from "../../gateway/index.ts";
 
 /**
  * 管理端 LLM Gateway 路由（挂载前缀 /api/v1/admin）。
@@ -43,7 +45,7 @@ router.onError((error) => mapLlmError(error));
 
 /**
  * 获取 LLM Provider 列表。
- * GET /api/v1/admin/llm/providers
+ * GET /api/v1/admin/gateway/llm/providers
  *
  * 权限/认证：管理员（adminMiddleware 组级保护）。
  * 响应：`{ data: LlmProviderView[] }`，Key 已由 gateway 脱敏。
@@ -55,7 +57,7 @@ router.get("/llm/providers", async (c) => {
 
 /**
  * 新增 LLM Provider。
- * POST /api/v1/admin/llm/providers
+ * POST /api/v1/admin/gateway/llm/providers
  *
  * 权限/认证：管理员（adminMiddleware 组级保护）。
  * body: { name, base_url, api_key, cost_per_1k_tokens?, enabled? }
@@ -66,7 +68,11 @@ router.post("/llm/providers", async (c) => {
   if (!body.name || !body.base_url || !body.api_key) {
     return c.json({ error: "缺少必填字段" }, 400);
   }
-  const data = await createLlmProvider(body);
+  const data = await createLlmProvider(
+    body,
+    undefined,
+    parseLlmRevision(c.req.header("If-Match")),
+  );
   await adminAudit(
     "llm_provider.create",
     { action: "llm_provider.create", name: body.name },
@@ -77,7 +83,7 @@ router.post("/llm/providers", async (c) => {
 
 /**
  * 更新 LLM Provider 的指定字段。
- * PUT /api/v1/admin/llm/providers/:id
+ * PUT /api/v1/admin/gateway/llm/providers/:id
  *
  * 权限/认证：管理员（adminMiddleware 组级保护）。
  * path: :id = Provider ID
@@ -86,14 +92,15 @@ router.post("/llm/providers", async (c) => {
  */
 router.put(
   "/llm/providers/:id",
-  adminVersionMiddleware(async (c) => {
-    const id = c.req.param("id") as string;
-    return (await listLlmProviders()).find((p) => p.id === id)?.updated_at;
-  }),
   async (c) => {
     const id = c.req.param("id") as string;
     const body = await parseJsonBody<Partial<LlmProviderInput>>(c);
-    const data = await updateLlmProvider(id, body);
+    const data = await updateLlmProvider(
+      id,
+      body,
+      undefined,
+      parseLlmRevision(c.req.header("If-Match")),
+    );
     await adminAudit(
       "llm_provider.update",
       { action: "llm_provider.update", id, name: body.name },
@@ -105,7 +112,7 @@ router.put(
 
 /**
  * 查询 LLM 用量记录。
- * GET /api/v1/admin/llm/usage
+ * GET /api/v1/admin/gateway/llm/usage
  *
  * 权限/认证：管理员（adminMiddleware 组级保护）。
  * query 可选：submission_id / user_id / problem_id / provider_id / status /
@@ -130,7 +137,7 @@ router.get("/llm/usage", async (c) => {
 
 /**
  * 查询 LLM 配额列表。
- * GET /api/v1/admin/llm/quotas
+ * GET /api/v1/admin/gateway/llm/quotas
  *
  * 权限/认证：管理员（adminMiddleware 组级保护）。
  * 说明：透传 gateway `GET /internal/quotas`（`llm_quotas` 全表，按创建时间倒序），
@@ -148,15 +155,19 @@ router.get("/llm/quotas", async (c) => {
 
 /**
  * 新增或更新 LLM 配额。
- * POST /api/v1/admin/llm/quotas
+ * POST /api/v1/admin/gateway/llm/quotas
  *
  * 权限/认证：管理员（adminMiddleware 组级保护）。
- * body: LlmQuotaInput（按 id upsert：含 id 则更新，否则新增）。
- * 响应：201 `{ data: { id: string } }`。
+ * body: LlmQuotaInput（含 id 只更新既有资源，否则新增），If-Match 必填。
+ * 响应：201 `{ data: { id: string, revision: number } }`。
  */
 router.post("/llm/quotas", async (c) => {
   const body = await parseJsonBody<LlmQuotaInput>(c);
-  const data = await upsertLlmQuota(body);
+  const data = await upsertLlmQuota(
+    body,
+    undefined,
+    parseLlmRevision(c.req.header("If-Match")),
+  );
   await adminAudit(
     "llm_quota.upsert",
     { action: "llm_quota.upsert", id: data?.id ?? null },
@@ -173,6 +184,15 @@ router.post("/llm/quotas", async (c) => {
  */
 export function mapLlmError(error: unknown): never {
   if (error instanceof LlmGatewayError) {
+    if (error.status === 409) {
+      throw new ConflictError(
+        "模型配置已修改，请重新读取",
+        "REVISION_CONFLICT",
+      );
+    }
+    if (error.status === 428) {
+      throw new AppError("需要 LLM 资源 revision", 428, "REVISION_REQUIRED");
+    }
     if (error.status === 404) throw new NotFoundError("模型配置不存在");
     if (error.status >= 500) {
       throw new ServiceUnavailableError("模型服务暂时不可用");

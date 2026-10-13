@@ -85,6 +85,13 @@ Deno.test({
                 authorization: "Bearer " + testConfig.serviceToken,
                 "content-type": "application/json",
                 "X-Noj-Domain-Id": domainId,
+                ...(method === "GET" ? {} : {
+                  "If-Match": path.endsWith("/providers") ||
+                      path.endsWith("/quotas") &&
+                        !(body as { id?: string })?.id
+                    ? "0"
+                    : "1",
+                }),
               },
               body: body === undefined ? undefined : JSON.stringify(body),
             });
@@ -125,23 +132,23 @@ Deno.test({
             [],
           );
           const quota = await request("/internal/quotas", "school-a", "POST", {
-            id: "quota-a",
             scope_type: "domain",
             max_calls: 1,
             max_tokens: null,
             max_cost: null,
           });
           assertEquals(quota.status, 201);
+          const quotaId = (await quota.json()).data.id;
           assertEquals(
             (await request("/internal/quotas", "school-b", "POST", {
-              id: "quota-a",
+              id: quotaId,
               scope_type: "domain",
               max_calls: 99,
             })).status,
             404,
           );
           const [stored] =
-            await db`SELECT domain_id,max_calls,max_tokens FROM llm_quotas WHERE id='quota-a'`;
+            await db`SELECT domain_id,max_calls,max_tokens FROM llm_quotas WHERE id=${quotaId}`;
           assertEquals(stored.domain_id, "school-a");
           assertEquals(stored.max_calls, 1);
           assertEquals(stored.max_tokens, null);
@@ -164,6 +171,7 @@ Deno.test({
                 "content-type": "application/json",
                 "X-Noj-Domain-Id": "school-a",
                 "X-Noj-Instance-Quota": "1",
+                ...(method === "GET" ? {} : { "If-Match": "0" }),
               },
               body: body === undefined ? undefined : JSON.stringify(body),
             });
@@ -174,14 +182,12 @@ Deno.test({
             })).status,
             403,
           );
-          assertEquals(
-            (await instanceQuotaRequest("POST", {
-              id: "new-instance-quota",
-              scope_type: "global",
-              max_calls: 5,
-            })).status,
-            201,
-          );
+          const createdInstance = await instanceQuotaRequest("POST", {
+            scope_type: "global",
+            max_calls: 5,
+          });
+          assertEquals(createdInstance.status, 201);
+          const instanceId = (await createdInstance.json()).data.id;
           const instanceQuotas =
             (await (await instanceQuotaRequest("GET")).json()).data;
           assertEquals(
@@ -192,7 +198,7 @@ Deno.test({
           );
           assertEquals(
             instanceQuotas.some((entry: { id: string }) =>
-              entry.id === "new-instance-quota"
+              entry.id === instanceId
             ),
             true,
           );

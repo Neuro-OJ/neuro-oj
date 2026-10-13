@@ -89,6 +89,13 @@ deno task db:generate # 使用时间戳前缀生成下一份增量迁移
 - `GET /internal/quotas` — 配额列表
 - `POST /internal/quotas` — 新增或更新配额
 
+Provider 创建、更新、停用及配额写入都必须带 `If-Match`。新建使用 0；Provider
+和配额行的初始 revision 为 1，更新使用列表或详情中读取的 revision。更新和停用 在
+PostgreSQL 的 UPDATE 条件中比较 Domain、ID 和 revision，成功后原子增加版本。
+缺少前置条件返回 428，已有资源版本冲突返回 409，其他域或不存在的 ID 返回 404。
+配额写入不再按缺失 id 自动插入；新增不传 id，更新明确传既有 id。 显式 null
+数值保存为 SQL NULL，表示未限制，不触发默认额度。
+
 实例配额 `scope_type=global` 额外需要 `X-Noj-Instance-Quota: 1`；Domain
 管理端不能发送该标记。实例配额列表使用相同标记，返回 `domain_id=''` 的实例行；
 普通列表只返回使用域的配额，互不混合。新域引用公共题时仍必须使用本域

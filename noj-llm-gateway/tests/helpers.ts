@@ -186,6 +186,7 @@ export function createFakeDb(provider: ProviderRow | null): {
 export async function makeProvider(storeKey: string): Promise<ProviderRow> {
   return {
     id: "prov-1",
+    revision: 1,
     domain_id: "00000000-0000-4000-8000-000000000001",
     name: "test",
     base_url: "https://api.openai.com/v1",
