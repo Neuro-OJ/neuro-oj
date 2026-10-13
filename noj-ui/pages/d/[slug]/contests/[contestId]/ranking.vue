@@ -19,6 +19,11 @@ const { data, error, status, refresh } = await useAsyncData(
   () => api.ranking(slug.value!, id.value, official.value),
 );
 useSeoMeta({ title: '比赛成绩榜' });
+usePolling({
+  intervalMs: computed(() => contest.value?.data.status === 'running' && !official.value ? 5000 : null),
+  immediate: false,
+  fetcher: () => refresh(),
+});
 </script>
 <template>
   <div class="space-y-4">
@@ -52,11 +57,17 @@ useSeoMeta({ title: '比赛成绩榜' });
               <td class="p-3 tabular-nums">{{ row.rank }}</td>
               <td class="p-3">{{ row.username }}</td>
               <td
-                class="p-3 text-right tabular-nums">{{ row.pending ? '待处理' : contest?.data.type === 'acm' ? row.solved : (row.total_score / 100).toFixed(2) }}</td>
+                class="p-3 text-right tabular-nums">{{ row.pending && data?.view !== 'frozen' ? '待处理' : contest?.data.type === 'acm' ? row.solved : (row.total_score / 100).toFixed(2) }}</td>
               <td v-if="contest?.data.type === 'acm'"
                 class="p-3 text-right tabular-nums">{{ contestPenaltyText(row.penalty_ms ?? 0) }}</td>
-              <td
-                class="p-3"><span v-for="score in row.problem_scores" :key="score.label" class="mr-3 tabular-nums">{{ score.label }}: {{ score.best_score == null ? '待处理' : (score.best_score / 100).toFixed(2) }}</span></td>
+              <td class="p-3">
+                <span v-for="score in row.problem_scores" :key="score.label" class="mr-3 inline-block tabular-nums">
+                  {{ score.label }}:
+                  <template v-if="contest?.data.type === 'acm'">{{ score.accepted ? 'AC' : score.attempts ? `${score.attempts} 次未通过` : '未提交' }}<span v-if="score.accepted"> · {{ contestPenaltyText(score.penalty_ms ?? 0) }}</span></template>
+                  <template v-else>{{ score.best_score == null ? '待处理' : (score.best_score / 100).toFixed(2) }}</template>
+                  <span v-if="score.pending" class="ml-1 text-text-muted">{{ data?.view === 'frozen' ? '待揭榜' : '待处理' }}</span>
+                </span>
+              </td>
             </tr>
           </tbody>
         </table>

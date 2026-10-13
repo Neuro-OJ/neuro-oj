@@ -73,6 +73,12 @@ const ROUTES: BreadcrumbRoute[] = [
     trail: [{ param: 'slug' }, { key: 'nav.problems', to: '/d/:slug/problems' }, { param: 'reference' }],
   },
   { pattern: '/d/:slug/contests', trail: [{ param: 'slug' }, { key: 'nav.contests' }] },
+  {
+    pattern: '/d/:slug/contests/:contestId/problems/:label',
+    trail: [{ param: 'slug' }, { key: 'nav.contests', to: '/d/:slug/contests' }, { param: 'contestId' }, {
+      param: 'label',
+    }],
+  },
   { pattern: '/d/:slug/submissions', trail: [{ param: 'slug' }, { key: 'nav.submissions' }] },
   {
     pattern: '/d/:slug/submissions/:submissionId',
