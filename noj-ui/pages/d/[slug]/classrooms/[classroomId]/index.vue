@@ -31,6 +31,9 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级' });
           <UButton v-if="room.data.value && classroomCan(room.data.value.data, 'students:manage')"
             :to="workspacePath(slug!, `classrooms/${id}/members`)" variant="outline">班级成员</UButton>
           <UButton
+            v-if="room.data.value && (classroomCan(room.data.value.data, 'submissions:read') || classroomCan(room.data.value.data, 'progress:read'))"
+            :to="workspacePath(slug!, `classrooms/${id}/students`)" variant="outline">学生训练</UButton>
+          <UButton
             v-if="room.data.value && (room.data.value.data.manages_domain || room.data.value.data.membership?.role === 'coach')"
             :to="workspacePath(slug!, `classrooms/${id}/settings`)" variant="outline">班级设置</UButton>
         </template>

@@ -140,6 +140,10 @@ useSeoMeta({ title: '班级成员' });
               <UButton v-if="member.effective_active && member.user_id !== room.data.value?.data.primary_coach_id"
                 variant="ghost" color="error" :disabled="saving" @click="remove(member)">移出班级</UButton>
             </div>
+            <UButton
+              v-if="member.role === 'student' && room.data.value && (classroomCan(room.data.value.data, 'submissions:read') || classroomCan(room.data.value.data, 'progress:read'))"
+              :to="workspacePath(slug!, `classrooms/${id}/students/${member.user_id}`)"
+              variant="outline">训练详情</UButton>
           </div>
         </UCard>
       </div>

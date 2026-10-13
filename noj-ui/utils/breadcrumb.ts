@@ -69,6 +69,19 @@ const ROUTES: BreadcrumbRoute[] = [
   { pattern: '/d/:slug/llm', trail: [{ param: 'slug' }, { key: 'breadcrumb.settings' }] },
   { pattern: '/d/:slug/teaching', trail: [{ param: 'slug' }, { key: 'breadcrumb.teaching' }] },
   { pattern: '/d/:slug/my-learning', trail: [{ param: 'slug' }, { key: 'breadcrumb.myLearning' }] },
+  {
+    pattern: '/d/:slug/classrooms/:classroomId/students',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.classrooms', to: '/d/:slug/classrooms' }, { param: 'classroomId' }, {
+      key: 'breadcrumb.studentTraining',
+    }],
+  },
+  {
+    pattern: '/d/:slug/classrooms/:classroomId/students/:userId',
+    trail: [{ param: 'slug' }, { param: 'classroomId' }, {
+      key: 'breadcrumb.studentTraining',
+      to: '/d/:slug/classrooms/:classroomId/students',
+    }, { param: 'userId' }],
+  },
   { pattern: '/d/:slug/problems', trail: [{ param: 'slug' }, { key: 'nav.problems' }] },
   {
     pattern: '/d/:slug/problem-bindings',
