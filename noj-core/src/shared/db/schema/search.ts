@@ -8,6 +8,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { tsvector } from "./common.ts";
+import { domains } from "./workspace.ts";
 
 /**
  * 统一搜索索引表。
@@ -17,6 +18,7 @@ export const searchEntries = pgTable(
   "search_entries",
   {
     id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+    domain_id: text("domain_id").references(() => domains.id),
     entity_type: text("entity_type").notNull(),
     entity_id: text("entity_id").notNull(),
     title: text("title").notNull().default(""),
@@ -39,6 +41,11 @@ export const searchEntries = pgTable(
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
+    domainIdx: index("idx_search_entries_domain_type_updated").on(
+      table.domain_id,
+      table.entity_type,
+      table.updated_at,
+    ),
     entityUnique: uniqueIndex("idx_search_entries_entity").on(
       table.entity_type,
       table.entity_id,

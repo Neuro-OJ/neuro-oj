@@ -5,6 +5,7 @@
  */
 
 export const SCHEMA_INDEXES: string[] = [
+  "CREATE INDEX IF NOT EXISTS idx_search_entries_domain_type_updated ON search_entries (domain_id, entity_type, updated_at)",
   "CREATE INDEX IF NOT EXISTS idx_oauth_accounts_user_id ON oauth_accounts (user_id)",
   // issue #100：search_vector GIN 索引（schema-ddl 用于 PGlite 模式测试）
   "CREATE INDEX IF NOT EXISTS idx_users_search_vector ON users USING GIN (search_vector)",

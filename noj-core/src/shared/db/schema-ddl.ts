@@ -965,6 +965,7 @@ $$ LANGUAGE plpgsql`,
   // 21. search_entries（统一搜索索引表，search domain）
   `CREATE TABLE IF NOT EXISTS search_entries (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
+    domain_id TEXT,
     entity_type TEXT NOT NULL,
     entity_id TEXT NOT NULL,
     title TEXT NOT NULL DEFAULT '',
@@ -1118,6 +1119,7 @@ $$ LANGUAGE plpgsql`,
   ...SUBMISSION_ANNOTATIONS_DDL,
   ...DOMAIN_EXECUTION_DDL,
   ...COMMUNITY_WORKSPACE_DDL,
+  "ALTER TABLE search_entries ADD CONSTRAINT search_entries_domain_id_domains_id_fk FOREIGN KEY (domain_id) REFERENCES domains(id)",
 ];
 
 // 索引与可选扩展索引拆到独立模块（单文件规模棘轮，见 scripts/check-file-size.ts）：
