@@ -244,28 +244,29 @@ Schema／迁移已有约束；「服务」表示受理、修改或授权代码�
 CHECK。 外键证明身份关联存在，不证明关联对象目前
 active，也不证明当前用户拥有权限。
 
-| 对象／关系                     | 已有数据库约束                                                                                                     | 服务补充检查                                                                                 |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| domains                        | slug 唯一及格式、状态／preset 枚举、配置为 JSON object、非负 revision、owner 指向账号                              | slug 创建后不变；完整配置与模块依赖；负责人交接事务保持有效负责人                            |
-| domain_memberships／roles      | domain/user NOT NULL，域×用户唯一，成员状态与角色枚举，成员×角色主键                                               | 当前账号／成员有效；只有负责人或平台治理管理管理员身份；owner 不由普通角色接口授予           |
-| domain_limits／counters        | 每域配额主键，非负有限数值；counter 域×资源主键且 used/reserved 非负                                               | 创建域同时建立限额与计数；写前原子检查／预留／释放；不存在自动修复缺失行                     |
-| problems／trainings 源归属     | 两表 domain_id **已 NOT NULL**；源题 `(domain_id, number)` 唯一，源资源身份复合唯一                                | 创建使用明确域；原子题号分配；引用不复制源字节、不分配目标本地题号                           |
-| domain_problem_bindings        | domain/problem NOT NULL；同域同源唯一；kind/visibility/revision 与 any/exact CHECK；exact 版本复合 FK 属于源题     | owned 必须对应本域源题、shared 必须对应其他源域；共享及比赛状态实时校验                      |
-| classroom 与 membership        | 非空域；班级域复合身份；教练账号属于同域成员；班级成员与同域成员／班级复合 FK，角色及状态 CHECK                    | 活跃任职与 grants、教练交接、自我提升限制、邀请注册政策                                      |
-| classroom_assistant_grants     | 成员×capability 唯一，固定六项能力 CHECK                                                                           | 仅教练／域治理任命，不能由助教给自己提升能力                                                 |
-| assignments                    | 非空域，班级×域 FK，来源作业／比赛同域 FK，状态／revision 与定时／发布依据非空 CHECK                               | 发布时间与截止窗口校验；发布事务固定题集、达标规则、初始名单，校验共享；已发布内容不直接编辑 |
-| assignment_items               | 同域作业／绑定 FK，绑定×源题 FK，作答／要求版本属于源题，排序与策略 CHECK                                          | 发布依据保留；当前策略和版本变化记录历史并重算                                               |
-| assignment_recipients          | 同作业学生唯一；同域同班作业与成员 FK                                                                              | 实际目标学生、自动补入未截止任务、离班信用区间与历史名单                                     |
-| assignment_progress            | 条目×学生×统计范围唯一，条目／作业／接收名单 FK，统计范围／状态／分数 CHECK                                        | 候选同域、版本口径、按时／补做时间、比赛保密、来源正式尝试；幂等事实重算                     |
-| 提交／客观题／自测的绑定       | 域与绑定 NOT NULL；`(domain_id, binding_id)` 与 `(binding_id, problem_id/paper_id)` 复合 FK                        | 新写入实际域和绑定来自可信执行上下文；外部输入不能覆盖                                       |
-| 作业入口三表                   | 来源两字段同时 NULL 或同时非 NULL；同域作业条目与题目复合 FK                                                       | 实际学生资格、名单、发布／归档／模块、题目绑定在受理事务核对；来源不授予成绩或读取权限       |
-| submission_jobs／items         | 两表域 NOT NULL；job×域、binding×域、binding×题目复合 FK；只有 failed/skipped 可空绑定；状态／序号／重试次数 CHECK | 有效任务条目执行前重新验证；无效来源条目可明确失败／跳过，不假造有效绑定                     |
-| contests／contest_problems     | 比赛域、赛题域与绑定 NOT NULL；contest×域、binding×域、binding×源题、固定／要求版本×源题复合 FK                    | 合法赛制题型、组织关系、发布／固定版本、赛后不能写入原比赛上下文                             |
-| 提交／客观题比赛上下文         | 两表 `(domain_id, contest_id)` 指向同域比赛；练习允许空比赛；删除比赛仅清空 contest_id                             | 受理时间、参赛身份、题目集合及保密窗口仍在服务验证                                           |
-| community posts/comments       | post×board×域、post×binding×域／源题，comment×post×域／parent 复合 FK，类型及状态 CHECK                            | 当前模块、板块、共享源及比赛门控；治理目标固定在路径域                                       |
-| feedback/help/replies          | 非空域与同域作业／recipient／条目／求助复合 FK，正文／状态／revision CHECK                                         | 私人互动能力独立；目标提交的同域／学生关系由服务核对，不声称普通 ID FK已证明这些关系         |
-| submission_annotations         | 非空域；同域班级、同域原提交×学生复合 FK；SHA-256 格式、行范围、正文与 revision CHECK                              | 原提交授权、实际文件和行数／哈希、比赛保密、作者编辑及受控 ZIP 预览                          |
-| education notifications/outbox | 非空域；同域资源复合 FK；event×recipient 去重；通知类型与关联字段组合 CHECK                                        | 每次列表、发送、点击和 SSE 推送重新授权，只推定位，不保存私有正文摘要                        |
+| 对象／关系                                | 已有数据库约束                                                                                                       | 服务补充检查                                                                                 |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| domains                                   | slug 唯一及格式、状态／preset 枚举、配置为 JSON object、非负 revision、owner 指向账号                                | slug 创建后不变；完整配置与模块依赖；负责人交接事务保持有效负责人                            |
+| domain_memberships／roles                 | domain/user NOT NULL，域×用户唯一，成员状态与角色枚举，成员×角色主键                                                 | 当前账号／成员有效；只有负责人或平台治理管理管理员身份；owner 不由普通角色接口授予           |
+| domain_limits／counters                   | 每域配额主键，非负有限数值；counter 域×资源主键且 used/reserved 非负                                                 | 创建域同时建立限额与计数；写前原子检查／预留／释放；不存在自动修复缺失行                     |
+| problems／trainings 源归属                | 两表 domain_id **已 NOT NULL**；源题 `(domain_id, number)` 唯一，源资源身份复合唯一                                  | 创建使用明确域；原子题号分配；引用不复制源字节、不分配目标本地题号                           |
+| domain_problem_bindings                   | domain/problem NOT NULL；同域同源唯一；kind/visibility/revision 与 any/exact CHECK；exact 版本复合 FK 属于源题       | owned 必须对应本域源题、shared 必须对应其他源域；共享及比赛状态实时校验                      |
+| classroom 与 membership                   | 非空域；班级域复合身份；教练账号属于同域成员；班级成员与同域成员／班级复合 FK，角色及状态 CHECK                      | 活跃任职与 grants、教练交接、自我提升限制、邀请注册政策                                      |
+| classroom_assistant_grants                | 成员×capability 唯一，固定六项能力 CHECK                                                                             | 仅教练／域治理任命，不能由助教给自己提升能力                                                 |
+| assignments                               | 非空域，班级×域 FK，来源作业／比赛同域 FK，状态／revision 与定时／发布依据非空 CHECK                                 | 发布时间与截止窗口校验；发布事务固定题集、达标规则、初始名单，校验共享；已发布内容不直接编辑 |
+| assignment_items                          | 同域作业／绑定 FK，绑定×源题 FK，作答／要求版本属于源题，排序与策略 CHECK                                            | 发布依据保留；当前策略和版本变化记录历史并重算                                               |
+| assignment_recipients                     | 同作业学生唯一；同域同班作业与成员 FK                                                                                | 实际目标学生、自动补入未截止任务、离班信用区间与历史名单                                     |
+| assignment_progress                       | 条目×学生×统计范围唯一，条目／作业／接收名单 FK，统计范围／状态／分数 CHECK                                          | 候选同域、版本口径、按时／补做时间、比赛保密、来源正式尝试；幂等事实重算                     |
+| 提交／客观题／自测的绑定                  | 域与绑定 NOT NULL；`(domain_id, binding_id)` 与 `(binding_id, problem_id/paper_id)` 复合 FK                          | 新写入实际域和绑定来自可信执行上下文；外部输入不能覆盖                                       |
+| 作业入口三表                              | 来源两字段同时 NULL 或同时非 NULL；同域作业条目与题目复合 FK                                                         | 实际学生资格、名单、发布／归档／模块、题目绑定在受理事务核对；来源不授予成绩或读取权限       |
+| submission_jobs／items                    | 两表域 NOT NULL；job×域、binding×域、binding×题目复合 FK；只有 failed/skipped 可空绑定；状态／序号／重试次数 CHECK   | 有效任务条目执行前重新验证；无效来源条目可明确失败／跳过，不假造有效绑定                     |
+| contests／contest_problems                | 比赛域、赛题域与绑定 NOT NULL；contest×域、binding×域、binding×源题、固定／要求版本×源题复合 FK                      | 合法赛制题型、组织关系、发布／固定版本、赛后不能写入原比赛上下文                             |
+| 提交／客观题比赛上下文                    | 两表 `(domain_id, contest_id)` 指向同域比赛；练习允许空比赛；删除比赛仅清空 contest_id                               | 受理时间、参赛身份、题目集合及保密窗口仍在服务验证                                           |
+| community boards/posts/comments/sanctions | 域 NOT NULL；post×board×域、post×binding×域／源题，comment×post×域／parent 复合 FK；题解必须有绑定，讨论／动态无绑定 | 当前模块、板块、共享源及比赛门控；治理目标固定在路径域                                       |
+| community reports/notifications/actions   | 举报／通知的帖子和评论同域复合 FK；类型区分域内容与账号事件；内容通知删除目标后仍须有原域                            | report 通知由真实举报记录定位；多态审核 target_id 的实际资源关系由服务核对                   |
+| feedback/help/replies                     | 非空域与同域作业／recipient／条目／求助复合 FK，正文／状态／revision CHECK                                           | 私人互动能力独立；目标提交的同域／学生关系由服务核对，不声称普通 ID FK已证明这些关系         |
+| submission_annotations                    | 非空域；同域班级、同域原提交×学生复合 FK；SHA-256 格式、行范围、正文与 revision CHECK                                | 原提交授权、实际文件和行数／哈希、比赛保密、作者编辑及受控 ZIP 预览                          |
+| education notifications/outbox            | 非空域；同域资源复合 FK；event×recipient 去重；通知类型与关联字段组合 CHECK                                          | 每次列表、发送、点击和 SSE 推送重新授权，只推定位，不保存私有正文摘要                        |
 
 约束依据：[工作空间 Schema](../../noj-core/src/shared/db/schema/workspace.ts)、
 [源题及版本](../../noj-core/src/shared/db/schema/catalog.ts)、
@@ -279,25 +280,24 @@ active，也不证明当前用户拥有权限。
 [比赛](../../noj-core/src/shared/db/schema/contest.ts)、
 [社区](../../noj-core/src/shared/db/schema/community.ts)。
 
-### 8.1 仍处于 nullable 扩展阶段
+### 8.1 具有明确业务意义的可空列
 
 源题、题单及执行归属已收缩。0137 将三种单次执行的域与绑定、批量任务及条目的域
 设为 NOT NULL；0138 收缩比赛及赛题归属并约束提交的同域比赛上下文。
-任务条目的空绑定只允许失败或跳过的历史引用。以下社区列仍
-处于扩展阶段，后续回填与收缩需按实际关系分别处理。
+任务条目的空绑定只允许失败或跳过的历史引用。0139 收缩社区内容归属，
+按真实父关系回填并增加 mixed 数据约束。下列可空列有明确产品语义，不能一律非空。
 
-| 表                                                               | 当前仍可空的工作空间列                            | 后续收缩需区分                                          |
-| ---------------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------- |
-| submission_job_items                                             | domain_problem_binding_id                         | CHECK 限定为空时只能 failed/skipped，保留已删除来源历史 |
-| community_boards、posts、comments、sanctions、moderation_actions | domain_id；题解帖子另有 domain_problem_binding_id | 域内容需要回填；没有关联题目的普通讨论不需要题库绑定    |
-| community_reports、community_notifications                       | domain_id                                         | 私信举报、全站关注等账号事件允许空域，不能一律 NOT NULL |
-| education_disabled_intervals                                     | domain_id                                         | 空域表示实例级停用区间；域级区间保存实际域              |
+| 表                                         | 当前仍可空的工作空间列    | 后续收缩需区分                                                                                           |
+| ------------------------------------------ | ------------------------- | -------------------------------------------------------------------------------------------------------- |
+| submission_job_items                       | domain_problem_binding_id | CHECK 限定为空时只能 failed/skipped，保留已删除来源历史                                                  |
+| community_posts                            | domain_problem_binding_id | 仅 solution 非空；discussion／moment 必须为空                                                            |
+| community_moderation_actions               | domain_id                 | message／user_ban 账号历史为空；其他域审核目标非空                                                       |
+| community_reports、community_notifications | domain_id                 | 私信举报、全站关注及账号封禁为空；reply／like／moderation／clarification 通知非空；report 由真实举报决定 |
+| education_disabled_intervals               | domain_id                 | 空域表示实例级停用区间；域级区间保存实际域                                                               |
 
-PostgreSQL 复合 FK 当前采用默认 MATCH SIMPLE：任一键列为 NULL
-时不会证明整个关联。 因此不能声称「现有 FK
-已保证所有历史空域记录绝不跨域」；服务授权与回填校验仍是必需依据。 同理，提交的
-`contest_id` 同域约束目前依赖可信受理服务，不把不存在的提交×比赛复合 FK
-写成已实现。
+PostgreSQL 复合 FK 采用默认 MATCH SIMPLE；归属非空列与类型 CHECK
+限定可以跳过关系的合法业务形态。账号举报／通知的空域不授予域资源访问。
+普通与客观题提交的非空比赛上下文已有同域 FK；外键不代替当前访问授权。
 
 以下空值具有正常业务意义，应保留：普通练习无
 contest_id、无作业来源的来源两字段、 any 策略无

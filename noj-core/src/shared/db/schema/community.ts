@@ -8,7 +8,6 @@ import {
   pgTable,
   text,
   unique,
-  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -24,7 +23,7 @@ export const communityBoards = pgTable(
   "community_boards",
   {
     id: text("id").primaryKey(),
-    domain_id: text("domain_id").references(() => domains.id),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
     revision: integer("revision").notNull().default(0),
     slug: text("slug").notNull(),
     name: text("name").notNull(),
@@ -43,9 +42,6 @@ export const communityBoards = pgTable(
       table.domain_id,
       table.slug,
     ),
-    legacySlugUnique: uniqueIndex("community_boards_legacy_slug_unique").on(
-      table.slug,
-    ).where(sql`${table.domain_id} IS NULL`),
     sortIdx: index("idx_community_boards_sort").on(
       table.is_archived,
       table.sort_order,
@@ -79,7 +75,7 @@ export const communityPosts = pgTable(
   {
     id: text("id").primaryKey(),
     public_id: publicIdColumn("post"),
-    domain_id: text("domain_id").references(() => domains.id),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
     domain_problem_binding_id: text("domain_problem_binding_id"),
     type: text("type").notNull(),
     author_id: text("author_id").notNull().references(() => users.id, {
@@ -145,6 +141,11 @@ export const communityPosts = pgTable(
       "community_posts_type_check",
       sql`${table.type} IN ('solution', 'discussion', 'moment')`,
     ),
+    bindingRequiredCheck: check(
+      "community_posts_binding_required_check",
+      sql`(${table.type} = 'solution' AND ${table.domain_problem_binding_id} IS NOT NULL)
+        OR (${table.type} <> 'solution' AND ${table.domain_problem_binding_id} IS NULL)`,
+    ),
     statusCheck: check(
       "community_posts_status_check",
       sql`${table.status} IN ('draft', 'pending', 'published', 'hidden', 'deleted')`,
@@ -201,7 +202,7 @@ export const communityComments = pgTable(
   "community_comments",
   {
     id: text("id").primaryKey(),
-    domain_id: text("domain_id").references(() => domains.id),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
     post_id: text("post_id").notNull().references(() => communityPosts.id, {
       onDelete: "cascade",
     }),
@@ -375,6 +376,21 @@ export const communityReports = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
+    workspacePostFk: foreignKey({
+      name: "community_reports_workspace_post_fk",
+      columns: [table.post_id, table.domain_id],
+      foreignColumns: [communityPosts.id, communityPosts.domain_id],
+    }),
+    workspaceCommentFk: foreignKey({
+      name: "community_reports_workspace_comment_fk",
+      columns: [table.comment_id, table.domain_id],
+      foreignColumns: [communityComments.id, communityComments.domain_id],
+    }),
+    workspaceCheck: check(
+      "community_reports_workspace_check",
+      sql`(${table.content_type} = 'message' AND ${table.domain_id} IS NULL)
+        OR (${table.content_type} IN ('post', 'comment') AND ${table.domain_id} IS NOT NULL)`,
+    ),
     targetCheck: check(
       "community_reports_target_check",
       sql`num_nonnulls(${table.post_id}, ${table.comment_id}, ${table.message_id}) = 1`,
@@ -413,6 +429,11 @@ export const communityModerationActions = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
+    workspaceCheck: check(
+      "community_moderation_actions_workspace_check",
+      sql`(${table.target_type} IN ('message', 'user_ban') AND ${table.domain_id} IS NULL)
+        OR (${table.target_type} NOT IN ('message', 'user_ban') AND ${table.domain_id} IS NOT NULL)`,
+    ),
     targetIdx: index("idx_community_moderation_actions_target").on(
       table.target_type,
       table.target_id,
@@ -429,7 +450,7 @@ export const communitySanctions = pgTable(
   "community_sanctions",
   {
     id: text("id").primaryKey(),
-    domain_id: text("domain_id").references(() => domains.id),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
     user_id: text("user_id").notNull().references(() => users.id, {
       onDelete: "cascade",
     }),
@@ -477,6 +498,22 @@ export const communityNotifications = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
+    workspacePostFk: foreignKey({
+      name: "community_notifications_workspace_post_fk",
+      columns: [table.post_id, table.domain_id],
+      foreignColumns: [communityPosts.id, communityPosts.domain_id],
+    }),
+    workspaceCommentFk: foreignKey({
+      name: "community_notifications_workspace_comment_fk",
+      columns: [table.comment_id, table.domain_id],
+      foreignColumns: [communityComments.id, communityComments.domain_id],
+    }),
+    workspaceCheck: check(
+      "community_notifications_workspace_check",
+      sql`(${table.type} IN ('reply', 'like', 'moderation', 'clarification') AND ${table.domain_id} IS NOT NULL)
+        OR (${table.type} IN ('follow', 'ban') AND ${table.domain_id} IS NULL)
+        OR ${table.type} = 'report'`,
+    ),
     typeCheck: check(
       "community_notifications_type_check",
       sql`${table.type} IN ('reply', 'like', 'follow', 'moderation', 'clarification', 'report', 'ban')`,

@@ -779,7 +779,7 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_boards (
     id TEXT PRIMARY KEY,
-    domain_id TEXT,
+    domain_id TEXT NOT NULL,
     revision INTEGER NOT NULL DEFAULT 0,
     slug TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
@@ -801,7 +801,7 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_posts (
     id TEXT PRIMARY KEY,
-    domain_id TEXT,
+    domain_id TEXT NOT NULL,
     domain_problem_binding_id TEXT,
     public_id TEXT NOT NULL DEFAULT ('post-' || substr(md5(random()::text),1,8)) UNIQUE,
     type TEXT NOT NULL CHECK (type IN ('solution', 'discussion', 'moment')),
@@ -828,7 +828,7 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_comments (
     id TEXT PRIMARY KEY,
-    domain_id TEXT,
+    domain_id TEXT NOT NULL,
     post_id TEXT NOT NULL REFERENCES community_posts(id) ON DELETE CASCADE,
     author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     parent_id TEXT REFERENCES community_comments(id) ON DELETE CASCADE,
@@ -883,7 +883,7 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_sanctions (
     id TEXT PRIMARY KEY,
-    domain_id TEXT,
+    domain_id TEXT NOT NULL,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     reason TEXT NOT NULL,
     expires_at TEXT,
