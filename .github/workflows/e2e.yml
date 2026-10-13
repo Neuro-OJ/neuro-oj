@@ -190,11 +190,10 @@ jobs:
               fh.write(f"e2e-domains={json.dumps(e2e_domains)}\n")
           PY
 
-  # UI 构建不依赖后端，在镜像准备期间完成；浏览器 job 只加载同次运行的产物。
+  # UI 构建随 workflow 启动，与 changes / 沙箱并行，避免在 Domain 作业之间排队。
+  # 单域 API PR 也执行一次预构建；浏览器 job 仍按原有路径过滤，只加载同次运行的产物。
   e2e-ui-build:
     name: E2E UI Build
-    needs: changes
-    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'browser') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
