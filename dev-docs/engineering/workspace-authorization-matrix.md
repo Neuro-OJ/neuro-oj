@@ -260,7 +260,8 @@ active，也不证明当前用户拥有权限。
 | 提交／客观题／自测的绑定       | 域与绑定 NOT NULL；`(domain_id, binding_id)` 与 `(binding_id, problem_id/paper_id)` 复合 FK                        | 新写入实际域和绑定来自可信执行上下文；外部输入不能覆盖                                       |
 | 作业入口三表                   | 来源两字段同时 NULL 或同时非 NULL；同域作业条目与题目复合 FK                                                       | 实际学生资格、名单、发布／归档／模块、题目绑定在受理事务核对；来源不授予成绩或读取权限       |
 | submission_jobs／items         | 两表域 NOT NULL；job×域、binding×域、binding×题目复合 FK；只有 failed/skipped 可空绑定；状态／序号／重试次数 CHECK | 有效任务条目执行前重新验证；无效来源条目可明确失败／跳过，不假造有效绑定                     |
-| contest_problems               | contest×域、binding×域、binding×源题、固定／要求版本×源题复合 FK                                                   | 合法赛制题型、组织关系、发布／固定版本、赛后不能写入原比赛上下文                             |
+| contests／contest_problems     | 比赛域、赛题域与绑定 NOT NULL；contest×域、binding×域、binding×源题、固定／要求版本×源题复合 FK                    | 合法赛制题型、组织关系、发布／固定版本、赛后不能写入原比赛上下文                             |
+| 提交／客观题比赛上下文         | 两表 `(domain_id, contest_id)` 指向同域比赛；练习允许空比赛；删除比赛仅清空 contest_id                             | 受理时间、参赛身份、题目集合及保密窗口仍在服务验证                                           |
 | community posts/comments       | post×board×域、post×binding×域／源题，comment×post×域／parent 复合 FK，类型及状态 CHECK                            | 当前模块、板块、共享源及比赛门控；治理目标固定在路径域                                       |
 | feedback/help/replies          | 非空域与同域作业／recipient／条目／求助复合 FK，正文／状态／revision CHECK                                         | 私人互动能力独立；目标提交的同域／学生关系由服务核对，不声称普通 ID FK已证明这些关系         |
 | submission_annotations         | 非空域；同域班级、同域原提交×学生复合 FK；SHA-256 格式、行范围、正文与 revision CHECK                              | 原提交授权、实际文件和行数／哈希、比赛保密、作者编辑及受控 ZIP 预览                          |
@@ -281,16 +282,16 @@ active，也不证明当前用户拥有权限。
 ### 8.1 仍处于 nullable 扩展阶段
 
 源题、题单及执行归属已收缩。0137 将三种单次执行的域与绑定、批量任务及条目的域
-设为 NOT NULL；任务条目的空绑定只允许失败或跳过的历史引用。以下比赛及社区列仍
+设为 NOT NULL；0138 收缩比赛及赛题归属并约束提交的同域比赛上下文。
+任务条目的空绑定只允许失败或跳过的历史引用。以下社区列仍
 处于扩展阶段，后续回填与收缩需按实际关系分别处理。
 
-| 表                                                               | 当前仍可空的工作空间列                            | 后续收缩需区分                                           |
-| ---------------------------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------- |
-| submission_job_items                                             | domain_problem_binding_id                         | CHECK 限定为空时只能 failed/skipped，保留已删除来源历史  |
-| contests、contest_problems                                       | domain_id；比赛条目另有 domain_problem_binding_id | 按实际父比赛及使用题库回填，不按源题所在域推断比赛使用域 |
-| community_boards、posts、comments、sanctions、moderation_actions | domain_id；题解帖子另有 domain_problem_binding_id | 域内容需要回填；没有关联题目的普通讨论不需要题库绑定     |
-| community_reports、community_notifications                       | domain_id                                         | 私信举报、全站关注等账号事件允许空域，不能一律 NOT NULL  |
-| education_disabled_intervals                                     | domain_id                                         | 空域表示实例级停用区间；域级区间保存实际域               |
+| 表                                                               | 当前仍可空的工作空间列                            | 后续收缩需区分                                          |
+| ---------------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------- |
+| submission_job_items                                             | domain_problem_binding_id                         | CHECK 限定为空时只能 failed/skipped，保留已删除来源历史 |
+| community_boards、posts、comments、sanctions、moderation_actions | domain_id；题解帖子另有 domain_problem_binding_id | 域内容需要回填；没有关联题目的普通讨论不需要题库绑定    |
+| community_reports、community_notifications                       | domain_id                                         | 私信举报、全站关注等账号事件允许空域，不能一律 NOT NULL |
+| education_disabled_intervals                                     | domain_id                                         | 空域表示实例级停用区间；域级区间保存实际域              |
 
 PostgreSQL 复合 FK 当前采用默认 MATCH SIMPLE：任一键列为 NULL
 时不会证明整个关联。 因此不能声称「现有 FK

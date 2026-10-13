@@ -25,7 +25,7 @@ export const contests = pgTable(
   "contests",
   {
     id: text("id").primaryKey(),
-    domain_id: text("domain_id").references(() => domains.id),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
     revision: integer("revision").notNull().default(0),
     public_id: publicIdColumn("ct"),
     title: text("title").notNull(),
@@ -126,8 +126,8 @@ export const contests = pgTable(
 export const contestProblems = pgTable(
   "contest_problems",
   {
-    domain_id: text("domain_id").references(() => domains.id),
-    domain_problem_binding_id: text("domain_problem_binding_id"),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
+    domain_problem_binding_id: text("domain_problem_binding_id").notNull(),
     contest_id: text("contest_id")
       .notNull()
       .references(() => contests.id, { onDelete: "cascade" }),

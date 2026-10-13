@@ -102,6 +102,11 @@ export const objectiveSubmissions = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
+    workspaceContestFk: foreignKey({
+      name: "objective_submissions_workspace_contest_fk",
+      columns: [table.domain_id, table.contest_id],
+      foreignColumns: [contests.domain_id, contests.id],
+    }),
     /** 竞赛一次性提交兜底：同一竞赛内同一用户对同一套卷仅一条 */
     contestUnique: unique("objective_submissions_contest_unique").on(
       table.paper_id,

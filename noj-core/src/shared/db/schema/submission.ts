@@ -299,6 +299,11 @@ export const submissions = pgTable(
   },
   (table) => ({
     publicIdUnique: unique("submissions_public_id_unique").on(table.public_id),
+    workspaceContestFk: foreignKey({
+      name: "submissions_workspace_contest_fk",
+      columns: [table.domain_id, table.contest_id],
+      foreignColumns: [contests.domain_id, contests.id],
+    }),
     teachingSourceUnique: unique("submissions_teaching_source_unique").on(
       table.domain_id,
       table.id,
