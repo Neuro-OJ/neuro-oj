@@ -204,15 +204,13 @@ export async function getOrCreateUser(
  * 兼容已不存在），E2E 测试须通过列表接口按 number 筛选拿到真实 UUID。
  *
  * @param number 题号（如 1001）
- * @param type 题目类型（默认 P，样例题均为 P 型）
  */
 export async function getProblemIdByNumber(
   number: number,
-  type = "P",
 ): Promise<string> {
   let token = await getAdminToken();
   let res = await apiGet(
-    `/api/v1/problems?number=${number}&type=${type}&limit=1`,
+    `/api/v1/problems?number=${number}&limit=1`,
     token,
   );
   // 并发 E2E 分组下 admin token 可能刚被其他进程刷新而短暂失效；
@@ -221,13 +219,13 @@ export async function getProblemIdByNumber(
     _adminToken = null;
     token = await getAdminToken();
     res = await apiGet(
-      `/api/v1/problems?number=${number}&type=${type}&limit=1`,
+      `/api/v1/problems?number=${number}&limit=1`,
       token,
     );
   }
   if (res.status !== 200) {
     throw new Error(
-      `获取题目 ${type}${number} 失败: ${res.status} ${
+      `获取默认域题目 ${number} 失败: ${res.status} ${
         JSON.stringify(res.body)
       }`,
     );
@@ -235,7 +233,7 @@ export async function getProblemIdByNumber(
   const items = (res.body as { data: { id: string }[] }).data;
   const problem = items.find((p) => p.id);
   if (!problem) {
-    throw new Error(`题目 ${type}${number} 不存在（dev-setup 未导入？）`);
+    throw new Error(`默认域题目 ${number} 不存在（dev-setup 未导入？）`);
   }
   return problem.id;
 }
