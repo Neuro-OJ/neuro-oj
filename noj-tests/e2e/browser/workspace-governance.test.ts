@@ -97,7 +97,7 @@ async function login(
   );
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
-  await gotoPage(page, administrator ? "/admin/instance" : "/workspaces");
+  await gotoPage(page, "/workspaces");
   const response = await page.request.get(`${UI_URL}/api/v1/auth/me`);
   assertEquals(response.status(), 200);
   const me = await response.json();
@@ -108,6 +108,7 @@ async function login(
     await expect(page.getByRole("dialog", { name: "政策更新通知" }))
       .toBeHidden();
   }
+  if (administrator) await gotoPage(page, "/admin/instance");
 }
 async function select(page: Page, name: string, option: string) {
   await page.getByRole("combobox", { name, exact: true }).click();

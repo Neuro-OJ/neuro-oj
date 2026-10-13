@@ -217,6 +217,7 @@ Deno.test({
     let failed = true,
       classroomId = "",
       assignmentId = "",
+      objectiveSubmissionId = "",
       number = 0,
       otherNumber = 0;
     const errors: string[] = [];
@@ -439,6 +440,7 @@ Deno.test({
             assignment_item_id: assignmentItemId,
           };
           assertEquals(submitted.data.assignment_origin, origin);
+          objectiveSubmissionId = submitted.data.submission_id;
           const history = await apiGet(
             `/api/v1/domains/${slug}/objective-submissions/${submitted.data.submission_id}`,
             studentToken,
@@ -597,8 +599,33 @@ Deno.test({
           await expect(
             teacher.page.getByRole("dialog", { name: "学生提交与反馈" }),
           ).toBeVisible();
+          const panel = teacher.page.getByRole("dialog", {
+            name: "学生提交与反馈",
+          });
+          const path =
+            `/api/v1/domains/${slug}/classrooms/${classroomId}/submissions/objective/${objectiveSubmissionId}/attempts`;
+          const attempts = teacher.page.waitForResponse((response) =>
+            response.request().method() === "GET" &&
+            new URL(response.url()).pathname === path
+          );
+          await panel.locator("div.divide-y > button").filter({
+            hasText: "客观题",
+          }).click();
+          const response = await attempts;
+          assertEquals(response.status(), 200);
+          const evidence = await response.json();
+          assertEquals(evidence.data.data.length, 1);
+          assertEquals(evidence.data.data[0].score, 0);
+          assertEquals(evidence.data.data[0].current_formal, true);
+          assertEquals(evidence.data.data[0].matches_policy, true);
+          await expect(panel.getByRole("heading", {
+            name: "正式评测沿革",
+            exact: true,
+          })).toBeVisible();
           await expect(
-            teacher.page.getByText("此项为客观题提交。", { exact: true }),
+            panel.getByText("该版本当前正式判定 · 符合当前版本策略", {
+              exact: true,
+            }),
           ).toBeVisible();
         },
       );

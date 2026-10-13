@@ -460,6 +460,9 @@ Deno.test({
         const panel = teacher.page.getByRole("dialog", {
           name: "学生提交与反馈",
         });
+        await panel.locator("div.divide-y > button").filter({
+          hasText: /^0 分/,
+        }).click();
         await expect(panel.getByRole("list", { name: "原提交代码" }))
           .toContainText("return '0'");
         await panel.getByRole("spinbutton", { name: "批注起始行" }).fill("1");
@@ -620,6 +623,9 @@ Deno.test({
           let panel = teacher.page.getByRole("dialog", {
             name: "学生提交与反馈",
           });
+          await panel.locator("div.divide-y > button").filter({
+            hasText: /10 分/,
+          }).click();
           await expect(
             panel.getByText(`原提交 ${secondId} · 批注保留在这份代码上`, {
               exact: true,
@@ -675,6 +681,9 @@ Deno.test({
               exact: true,
             }).click();
           panel = teacher.page.getByRole("dialog", { name: "学生提交与反馈" });
+          await panel.locator("div.divide-y > button").filter({
+            hasText: /10 分/,
+          }).click();
           await expect(panel.getByText(archiveNote, { exact: true }))
             .toBeVisible();
           await expect(
