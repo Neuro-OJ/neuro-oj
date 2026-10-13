@@ -114,6 +114,33 @@ const ROUTES: BreadcrumbRoute[] = [
     }],
   },
   { pattern: '/d/:slug/search', trail: [{ param: 'slug' }, { key: 'nav.search' }] },
+  { pattern: '/d/:slug/community', trail: [{ param: 'slug' }, { key: 'nav.community' }] },
+  {
+    pattern: '/d/:slug/community/posts/:postId',
+    trail: [{ param: 'slug' }, { key: 'nav.community', to: '/d/:slug/community' }, { param: 'postId' }],
+  },
+  {
+    pattern: '/d/:slug/community/bookmarks',
+    trail: [{ param: 'slug' }, { key: 'nav.community', to: '/d/:slug/community' }, { key: 'breadcrumb.myBookmarks' }],
+  },
+  {
+    pattern: '/d/:slug/community/notifications',
+    trail: [{ param: 'slug' }, { key: 'nav.community', to: '/d/:slug/community' }, { key: 'breadcrumb.notifications' }],
+  },
+  {
+    pattern: '/d/:slug/community/notifications/:id',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.notifications', to: '/d/:slug/community/notifications' }, {
+      param: 'id',
+    }],
+  },
+  {
+    pattern: '/d/:slug/community/reports/:id',
+    trail: [{ param: 'slug' }, { key: 'nav.community', to: '/d/:slug/community' }, { param: 'id' }],
+  },
+  {
+    pattern: '/d/:slug/community/manage',
+    trail: [{ param: 'slug' }, { key: 'nav.community', to: '/d/:slug/community' }, { key: 'breadcrumb.edit' }],
+  },
   { pattern: '/d/:slug/rankings', trail: [{ param: 'slug' }, { key: 'nav.ranking' }] },
   {
     pattern: '/d/:slug/problem-drafts',

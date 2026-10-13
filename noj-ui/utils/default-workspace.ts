@@ -20,6 +20,8 @@ export function defaultWorkspaceDestination(path: string): DefaultWorkspaceDesti
     '/contests': 'contests',
     '/submissions': 'submissions',
     '/ranking': 'rankings',
+    '/community': 'community',
+    '/community/bookmarks': 'community/bookmarks',
     '/my/problems': 'problem-drafts',
     '/admin/problem-versions': 'problem-bindings',
     '/admin/submission-jobs': 'submissions',
@@ -49,6 +51,7 @@ export function defaultWorkspaceDestination(path: string): DefaultWorkspaceDesti
     };
   }
   const resource = /^\/(trainings|contests|submissions)\/(.+)$/.exec(path);
+  if (/^\/community\/posts\/[^/]+$/.test(path)) return { path: `/d/main${path}` };
   if (resource?.[1] === 'trainings' && resource[2]?.startsWith('tr-')) return { trainingRef: resource[2] };
   if (resource) return { path: `/d/main/${resource[1]}/${resource[2]}` };
   return null;

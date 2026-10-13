@@ -3,20 +3,23 @@
  */
 import { COMMUNITY_UNREAD_COUNT_REQUEST_OPTIONS } from '~/utils/communityNotifications';
 
-export function useCommunityNotifications() {
-  const unreadCount = useState('community:unread-count', () => 0);
+export function useCommunityNotifications(account: boolean | (() => boolean) = false) {
+  const scope = useCommunityScope(account);
+  const stored = useState<{ key: string; count: number } | null>('community:unread-count', () => null);
+  const unreadCount = computed(() => stored.value?.key === scope.key.value ? stored.value.count : 0);
   const { api } = useApi();
 
   async function loadUnreadCount() {
+    const request = scope.capture();
     try {
       // 未读数轮询：静默失败，失败时归零不打扰用户
       const result = await api.get<{ data: { unread_count: number } }>(
-        '/api/v1/community/notifications/unread-count',
+        request.apiPath('notifications/unread-count'),
         COMMUNITY_UNREAD_COUNT_REQUEST_OPTIONS,
       );
-      unreadCount.value = result.data.unread_count;
+      if (request.isCurrent()) stored.value = { key: request.key, count: result.data.unread_count };
     } catch {
-      unreadCount.value = 0;
+      if (request.isCurrent()) stored.value = { key: request.key, count: 0 };
     }
   }
 

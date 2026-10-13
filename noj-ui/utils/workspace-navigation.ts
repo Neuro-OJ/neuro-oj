@@ -11,6 +11,7 @@ export function workspaceNavigation(domain: WorkspaceDetail) {
     { label: '题库', section: 'problems', icon: 'i-lucide-book-open' },
     { label: '题单', section: 'trainings', icon: 'i-lucide-list-ordered' },
     { label: '比赛', section: 'contests', icon: 'i-lucide-trophy' },
+    ...(features.community ? [{ label: '社区', section: 'community', icon: 'i-lucide-messages-square' }] : []),
     ...(features.analytics
       ? [{ label: '排行榜', section: 'rankings', icon: 'i-lucide-chart-no-axes-column-increasing' }]
       : []),

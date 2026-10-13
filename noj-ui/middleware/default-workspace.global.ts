@@ -6,7 +6,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const destination = defaultWorkspaceDestination(to.path);
   if (!destination) return;
   const query = { ...to.query };
-  delete query.type;
+  if (!to.path.startsWith('/community')) delete query.type;
   if ('path' in destination) {
     if (destination.kind) query.kind = destination.kind;
     return navigateTo({ path: destination.path, query, hash: to.hash }, { redirectCode: 301, replace: true });

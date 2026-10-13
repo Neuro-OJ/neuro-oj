@@ -42,3 +42,14 @@ Deno.test('空间导航：匿名仅公开入口，关闭教学模块不显示新
   assert(disabled.some((item) => item.section === 'submissions'));
   assert(!disabled.some((item) => item.section === 'rankings'));
 });
+Deno.test('社区导航由当前域开关决定，入口保留当前域', () => {
+  assert(!workspaceNavigation(base).some((item) => item.section === 'community'));
+  const enabled = workspaceNavigation({
+    ...base,
+    configuration: {
+      ...base.configuration,
+      features: { ...base.configuration.features, community: true },
+    },
+  });
+  assertEquals(enabled.find((item) => item.section === 'community')?.to, '/d/school/community');
+});

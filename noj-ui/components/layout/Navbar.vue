@@ -72,7 +72,7 @@
           class="hidden md:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-text-muted bg-white dark:bg-bg-sunken border border-border rounded shadow-[0_1px_0_rgba(0,0,0,0.06)] tabular-nums">Ctrl K</kbd>
       </button>
       <div class="flex items-center gap-3 ml-auto">
-        <NuxtLink v-if="!currentWorkspaceSlug && user && communityConfig?.enabled" to="/community/notifications"
+        <NuxtLink v-if="user && (!currentWorkspaceSlug || communityConfig?.enabled)" :to="notificationHref"
           class="relative flex items-center justify-center rounded-md p-2 text-text-secondary no-underline transition-colors hover:bg-primary-hover hover:text-text"
           :aria-label="t('nav.notifications')">
           <UIcon name="i-lucide-bell" class="size-4.5" />
@@ -98,6 +98,7 @@
 
 <script setup lang="ts">
 import { shouldLoadCommunityUnreadCount } from '~/utils/communityNotifications';
+import { communityPath } from '~/utils/community-workspace';
 import { workspaceCacheKey, workspacePath, workspaceSlugFromPath } from '~/utils/workspace';
 import type { WorkspaceSummary } from '~/utils/workspace';
 import { useToast as useWorkspaceToast } from '~/composables/useToast';
@@ -125,7 +126,10 @@ async function selectWorkspace(space: WorkspaceSummary) {
 const { t, setLocale, isEnglish } = useI18n();
 const { open: openSearch } = useSearch();
 const { config: communityConfig, loadConfig } = useCommunity();
-const { unreadCount, loadUnreadCount } = useCommunityNotifications();
+const notificationScope = useCommunityScope(() => !currentWorkspaceSlug.value);
+const { unreadCount, loadUnreadCount } = useCommunityNotifications(() => !currentWorkspaceSlug.value);
+const notificationHref = computed(() => communityPath(currentWorkspaceSlug.value, 'notifications'));
+const notificationEventsUrl = computed(() => notificationScope.capture().apiPath('notifications/events'));
 
 // 移动端抽屉显隐
 const mobileOpen = ref(false);
@@ -151,7 +155,7 @@ const baseNavItems = computed<NavItem[]>(() =>
       { label: t('nav.contests'), to: '/d/main/contests', icon: 'i-lucide-trophy' },
       { label: t('nav.ranking'), to: '/d/main/rankings', icon: 'i-lucide-medal' },
       { label: t('nav.trainings'), to: '/d/main/trainings', icon: 'i-lucide-list-todo' },
-      { label: t('nav.community'), to: '/community', icon: 'i-lucide-messages-square', needsCommunity: true },
+      { label: t('nav.community'), to: '/d/main/community', icon: 'i-lucide-messages-square', needsCommunity: true },
       { label: t('nav.submissions'), to: '/d/main/submissions', icon: 'i-lucide-file-text' },
       { label: t('nav.queue'), to: '/queue', icon: 'i-lucide-list-ordered' },
       { label: t('nav.about'), to: '/about', icon: 'i-lucide-info' },
@@ -236,19 +240,21 @@ onMounted(() => {
 
 // 社区通知 SSE：仅登录且社区开启时连接，收到 notification:new 刷新未读数
 const notificationSseEnabled = computed(
-  () => !!user.value && communityConfig.value?.enabled === true,
+  () => !!user.value && (!currentWorkspaceSlug.value || communityConfig.value?.enabled === true),
 );
 
-onMounted(async () => {
-  await loadConfig();
+watch(notificationScope.key, async () => {
+  if (!import.meta.client) return;
+  await loadConfig(true);
   // 未读数接口需要登录且社区开启；游客/未开启时跳过，避免公共页面触发 401 跳转
-  if (shouldLoadCommunityUnreadCount(user.value, communityConfig.value?.enabled)) {
+  if (shouldLoadCommunityUnreadCount(user.value, !currentWorkspaceSlug.value || communityConfig.value?.enabled)) {
     await loadUnreadCount();
   }
-});
+}, { immediate: true });
 
 useEventSource({
-  url: '/api/v1/community/notifications/events',
+  url: notificationEventsUrl,
+  scopeKey: notificationScope.key,
   enabled: notificationSseEnabled,
   onEvent: {
     'notification:new': () => loadUnreadCount(),
