@@ -44,6 +44,20 @@ const stubs = {
   },
 };
 describe('本人原提交与成绩摘要', () => {
+  it('源题撤销后仍可回到本人任务，失去域权限后不生成任务入口', async () => {
+    const history = { ...entry(), assignment_origin: { assignment_id: 'task', assignment_item_id: 'item' } };
+    history.domain.accessible = true;
+    const view = mount(OwnSubmissionRecord, {
+      props: { entry: history },
+      global: { components: { OwnSubmissionSummary }, stubs },
+    });
+    expect(view.findAll('button').find((button) => button.text() === '来源作业')?.attributes('data-to')).toBe(
+      '/d/school/assignments/task',
+    );
+    await view.setProps({ entry: { ...history, domain: { ...history.domain, accessible: false } } });
+    expect(view.text()).not.toContain('来源作业');
+    expect(view.text()).toContain('print("my code")');
+  });
   it('本人离域后仍提供受授权检查的原产物入口，不恢复题面导航', () => {
     const artifact = entry();
     artifact.has_artifact = true;

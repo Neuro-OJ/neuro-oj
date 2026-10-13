@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { workspaceCacheKey } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
+import type { AssignmentSubmissionOrigin } from '~/utils/education';
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context' });
 const route = useRoute();
 const { slug } = useWorkspace();
 const { user } = useAuth();
 const api = useDomainProblems();
 const reference = computed(() => String(route.params.reference));
+const assignmentOrigin = computed<AssignmentSubmissionOrigin | undefined>(() => {
+  const { assignment_id, assignment_item_id } = route.query;
+  return typeof assignment_id === 'string' && typeof assignment_item_id === 'string'
+    ? { assignment_id, assignment_item_id }
+    : undefined;
+});
 const key = computed(() => workspaceCacheKey(slug.value!, user.value?.id ?? null, 'problem', reference.value));
 const { data, status, error, refresh } = await useAsyncData(key, () => api.detail(slug.value!, reference.value));
 const showVersions = ref(false);
@@ -49,7 +56,9 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
         </div>
       </UCard>
       <DomainProblemAnswer :key="`${slug}:${reference}:${user?.id}`" :slug="slug!" :problem="data"
+        :assignment-origin="assignmentOrigin"
         @refresh="refresh()" />
+      <UButton v-if="assignmentOrigin" :to="`/d/${slug}/assignments/${assignmentOrigin.assignment_id}`" variant="outline">返回作业</UButton>
       <DomainProblemVersions v-if="showVersions" :key="`${slug}:${reference}:${user?.id}:versions`" :slug="slug!"
         :reference="reference" />
     </div>

@@ -1,5 +1,6 @@
 import type { DomainProblemReference } from '~/utils/domain-problems';
 import type { PolledSelfTest } from './useSelfTestPolling';
+import type { AssignmentSubmissionOrigin } from '~/utils/education';
 export interface DomainSelfTest extends PolledSelfTest {
   domain_id: string;
   reference: DomainProblemReference;
@@ -22,7 +23,9 @@ export function useDomainSelfTests() {
     create: (
       slug: string,
       reference: string,
-      input: { version_id: string; language: string; code: string; cases?: DomainSelfTestCase[] },
+      input:
+        & { version_id: string; language: string; code: string; cases?: DomainSelfTestCase[] }
+        & Partial<AssignmentSubmissionOrigin>,
     ) =>
       api.post<{ data: { id: string; status: string } }>(
         `/api/v1/domains/${encodeURIComponent(slug)}/problems/${encodeURIComponent(reference)}/self-tests`,

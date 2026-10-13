@@ -198,7 +198,12 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
                 v-if="progress.data.value?.data.cells.find(c => c.item_id === item.id)?.source_kind === 'submission'"
                 variant="ghost"
                 @click="select(actor!.id, progress.data.value!.data.cells.find(c => c.item_id === item.id)!)">查看原提交</UButton>
-              <UButton v-if="item.resource_available" :to="workspaceProblemPath(slug!, item.reference.qualified_ref)"
+              <UButton v-if="item.resource_available" :to="{
+                path: workspaceProblemPath(slug!, item.reference.qualified_ref),
+                query: writable && task.data.value.data.state === 'published' && progress.data.value?.data.recipient_status === 'active'
+                  ? { assignment_id: id, assignment_item_id: item.id }
+                  : undefined,
+              }"
                 variant="outline">继续练习</UButton>
               <UBadge v-else color="warning">资源不可用</UBadge>
             </div>

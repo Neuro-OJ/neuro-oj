@@ -32,6 +32,7 @@ useSeoMeta({ title: '空间提交详情' });
         <h2 class="text-xl font-semibold">{{ data.data.reference.display_ref }} · 提交详情</h2>
         <UButton v-if="data.data.resource_available" :to="workspaceProblemPath(slug!, data.data.reference.display_ref)"
           variant="outline">返回本域题目</UButton>
+        <UButton v-if="data.data.assignment_origin" :to="`/d/${slug}/assignments/${data.data.assignment_origin.assignment_id}`" variant="outline">来源作业</UButton>
         <UButton variant="ghost" icon="i-lucide-refresh-cw" aria-label="刷新结果" @click="refresh()" />
       </div>
       <p

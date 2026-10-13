@@ -3,8 +3,9 @@ import type { DomainProblemDetail } from '~/utils/domain-problems';
 import type { DomainSelfTestCase } from '~/composables/useDomainSelfTests';
 import { domainAnswerKey } from '~/utils/domain-problems';
 import { extractApiError } from '~/utils/apiError';
+import type { AssignmentSubmissionOrigin } from '~/utils/education';
 const props = defineProps<
-  { slug: string; problem: DomainProblemDetail; code: string; language: string; versionId: string; writable: boolean }
+  { slug: string; problem: DomainProblemDetail; code: string; language: string; versionId: string; writable: boolean; assignmentOrigin?: AssignmentSubmissionOrigin }
 >();
 const emit = defineEmits<{ refresh: [] }>();
 const { user } = useAuth(), api = useDomainSelfTests(), capture = useWorkspaceActionScope();
@@ -96,6 +97,7 @@ async function run() {
       version_id: props.versionId,
       language: props.language,
       code: props.code,
+      ...props.assignmentOrigin,
       ...(isOi.value ? { cases: selected } : {}),
     });
     if (scope.isCurrent() && key.value === context) id.value = response.data.id;

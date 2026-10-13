@@ -1,5 +1,6 @@
 import type { DomainProblemReference } from './domain-problems.ts';
 import { workspaceProblemPath } from './workspace.ts';
+import type { AssignmentSubmissionOrigin } from './education.ts';
 export type OwnSubmissionKind = 'submission' | 'objective';
 /** 本人目录可读取失去域权限后的原提交；不包含题面或评测数据。 */
 export interface OwnSubmissionHistory {
@@ -11,6 +12,7 @@ export interface OwnSubmissionHistory {
   reference: DomainProblemReference;
   resource_available: boolean;
   contest_id: string | null;
+  assignment_origin?: AssignmentSubmissionOrigin | null;
   language: string;
   file_name: string | null;
   has_artifact: boolean;

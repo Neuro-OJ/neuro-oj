@@ -3,7 +3,8 @@ import type { DomainProblemDetail } from '~/utils/domain-problems';
 import { domainAnswerKey } from '~/utils/domain-problems';
 import { extractApiError } from '~/utils/apiError';
 import type { SubmitResult } from '~/composables/useObjective';
-const props = defineProps<{ slug: string; problem: DomainProblemDetail }>();
+import type { AssignmentSubmissionOrigin } from '~/utils/education';
+const props = defineProps<{ slug: string; problem: DomainProblemDetail; assignmentOrigin?: AssignmentSubmissionOrigin }>();
 const emit = defineEmits<{ refresh: [] }>();
 const { user, isLoggedIn } = useAuth();
 const { domain } = useWorkspace();
@@ -104,12 +105,12 @@ async function submit() {
   try {
     const reference = props.problem.reference.display_ref;
     if (props.problem.content.kind === 'objective') {
-      const response = await api.objective(operation.slug, reference, answerVersion.value, answers.value);
+      const response = await api.objective(operation.slug, reference, answerVersion.value, answers.value, props.assignmentOrigin);
       if (operation.isCurrent()) result.value = response.data;
     } else {
       const response = props.problem.content.submission_mode === 'artifact'
-        ? await api.artifact(operation.slug, reference, answerVersion.value, file.value!)
-        : await api.code(operation.slug, reference, answerVersion.value, language.value, code.value);
+        ? await api.artifact(operation.slug, reference, answerVersion.value, file.value!, props.assignmentOrigin)
+        : await api.code(operation.slug, reference, answerVersion.value, language.value, code.value, props.assignmentOrigin);
       if (operation.isCurrent()) submissionId.value = response.data.id;
     }
   } catch (error) {
@@ -167,6 +168,7 @@ async function submit() {
       <ClientOnly>
         <MonacoEditor v-model="code" :language="language" :min-height="360" :disabled="submitting" />
         <DomainSelfTestPanel :slug="slug" :problem="problem" :code="code" :language="language"
+          :assignment-origin="assignmentOrigin"
           :version-id="answerVersion" :writable="writable && !submitting && languages.length > 0"
           @refresh="emit('refresh')" />
       </ClientOnly>

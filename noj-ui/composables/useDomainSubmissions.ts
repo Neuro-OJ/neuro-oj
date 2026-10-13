@@ -1,10 +1,12 @@
 import type { DomainProblemReference } from '~/utils/domain-problems';
 import type { Pagination } from './useContests';
+import type { AssignmentSubmissionOrigin } from '~/utils/education';
 
 export interface DomainSubmission {
   id: string;
   user_id?: string;
   contest_id?: string | null;
+  assignment_origin?: AssignmentSubmissionOrigin | null;
   submitted_version_id?: string | null;
   is_latest?: boolean;
   domain_id: string;

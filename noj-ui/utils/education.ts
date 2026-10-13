@@ -6,6 +6,11 @@ export type TeachingCapability =
   | 'feedback:write'
   | 'help:manage'
   | 'students:manage';
+/** 实际作答入口；成绩候选仍由服务端按同域规则计算。 */
+export interface AssignmentSubmissionOrigin {
+  assignment_id: string;
+  assignment_item_id: string;
+}
 export interface Classroom {
   id: string;
   domain_id: string;

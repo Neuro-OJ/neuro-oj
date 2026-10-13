@@ -68,7 +68,7 @@ describe('域题作答', () => {
     await view.find('textarea').setValue('print(1)');
     await view.findAll('button').find((button) => button.text() === '提交评测')!.trigger('click');
     await flushPromises();
-    expect(api.code).toHaveBeenCalledWith('school', 'main:1001', 'v1', 'python3', 'print(1)');
+    expect(api.code).toHaveBeenCalledWith('school', 'main:1001', 'v1', 'python3', 'print(1)', undefined);
     expect(view.text()).toContain('已受理提交：s1');
   });
   it('版本刷新后先阻止提交，明确确认后保留代码使用新版本', async () => {
@@ -81,6 +81,20 @@ describe('域题作答', () => {
     expect(view.find('textarea').element.value).toBe('my code');
     await view.findAll('button').find((button) => button.text() === '提交评测')!.trigger('click');
     await flushPromises();
-    expect(api.code).toHaveBeenCalledWith('school', 'main:1001', 'v2', 'python3', 'my code');
+    expect(api.code).toHaveBeenCalledWith('school', 'main:1001', 'v2', 'python3', 'my code', undefined);
+  });
+  it('作业进入后切换版本保留代码和来源，提交仍使用普通同域接口', async () => {
+    const origin = { assignment_id: 'task', assignment_item_id: 'item' };
+    const view = mount(DomainProblemAnswer, {
+      props: { slug: 'school', problem: detail, assignmentOrigin: origin },
+      global: { stubs },
+    });
+    await view.find('textarea').setValue('my work');
+    await view.setProps({ problem: { ...detail, version_id: 'v2', version: 2 } });
+    await view.findAll('button').find((button) => button.text() === '切换到 V2')!.trigger('click');
+    await flushPromises();
+    await view.findAll('button').find((button) => button.text() === '提交评测')!.trigger('click');
+    await flushPromises();
+    expect(api.code).toHaveBeenCalledWith('school', 'main:1001', 'v2', 'python3', 'my work', origin);
   });
 });

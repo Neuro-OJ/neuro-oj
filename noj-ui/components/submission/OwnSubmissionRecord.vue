@@ -20,6 +20,9 @@ defineProps<{ entry: OwnSubmissionHistory; offerDomainActions?: boolean }>();
     <UButton v-if="offerDomainActions && entry.domain.accessible && entry.resource_available"
       :to="workspacePath(entry.domain.slug, `${entry.kind === 'objective' ? 'objective-submissions' : 'submissions'}/${entry.id}`)"
       variant="outline">进入所属空间提交详情</UButton>
+    <UButton v-if="entry.domain.accessible && entry.assignment_origin"
+      :to="workspacePath(entry.domain.slug, `assignments/${entry.assignment_origin.assignment_id}`)"
+      variant="outline">来源作业</UButton>
     <UCard>
       <h3 class="mb-3 font-semibold">结果摘要</h3>
       <OwnSubmissionSummary :entry="entry" />
