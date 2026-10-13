@@ -1,11 +1,12 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { assertRejects } from "jsr:@std/assert@^1";
 import { NotFoundError } from "../../../../shared/base/errors.ts";
 import { createApp } from "../../../../app.ts";
 import { signToken } from "../../../identity/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import {
+  assignmentProgress,
   classroomMemberships,
   domainMemberRoles,
   domainMemberships,
@@ -23,11 +24,13 @@ import {
   publishAssignment,
   removeClassroomMember,
   setClassroomMember,
+  startEducationWorker,
   transferClassroom,
 } from "../../index.ts";
 import { educationRouter } from "../../routes/index.ts";
 import { recomputeAssignmentProgress } from "../../services/progress-materializer.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
+import { recomputeSubmissionProjection } from "../../../submission/index.ts";
 
 Deno.test({
   name: "教学矩阵性能：100 学生 × 50 题，50 学生分页 HTTP 读取 p95 ≤2 秒",
@@ -239,6 +242,78 @@ Deno.test({
       }),
     );
     assertEquals(p95 <= 2000, true);
+    // 在相同100×50数据上完成一次正式重测，后台消费者必须采用新的尝试。
+    const changed = sourceRows[0], attemptId = crypto.randomUUID();
+    const progressStarted = performance.now();
+    await f.db.transaction(async (tx) => {
+      await tx.insert(evaluationAttempts).values({
+        id: attemptId,
+        submission_id: changed.id,
+        problem_id: changed.source.id,
+        problem_version_id: changed.source.versionId,
+        sequence: 1,
+        source: "rejudge",
+        state: "finished",
+        result_kind: "graded",
+        score: 6500,
+        accepted: false,
+        created_at: new Date().toISOString(),
+      });
+      await tx.update(submissionVersionResults).set({
+        current_attempt_id: attemptId,
+        updated_at: new Date().toISOString(),
+      }).where(eq(submissionVersionResults.submission_id, changed.id));
+      await recomputeSubmissionProjection(tx, {
+        kind: "submission",
+        id: changed.id,
+        problem_id: changed.source.id,
+        contest_id: null,
+        domain_problem_binding_id: changed.source.bindingId,
+      });
+    });
+    const worker = startEducationWorker();
+    try {
+      const readCells = () =>
+        f.db.select().from(assignmentProgress).where(and(
+          eq(assignmentProgress.assignment_id, task.id),
+          eq(assignmentProgress.user_id, changed.user_id),
+          eq(assignmentProgress.source_submission_id, changed.id),
+        ));
+      let cells = await readCells();
+      while (
+        !cells.every((cell) => cell.source_attempt_id === attemptId) &&
+        performance.now() - progressStarted < 5000
+      ) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 20));
+        cells = await readCells();
+      }
+      assertEquals(cells.length, 2);
+      assertEquals(
+        cells.every((cell) =>
+          cell.source_attempt_id === attemptId && cell.score === 6500 &&
+          cell.status === "achieved" && !cell.accepted
+        ),
+        true,
+      );
+      const progressMs = performance.now() - progressStarted;
+      assertEquals(progressMs <= 5000, true);
+      console.log(
+        "教学进度更新性能记录",
+        JSON.stringify({
+          students: 100,
+          problems: 50,
+          graded_submissions: 5000,
+          materialized_cells: 10000,
+          updated_scopes: ["on_time", "current"],
+          elapsed_ms: Math.round(progressMs * 100) / 100,
+          scope:
+            "正式重测投影与持久事件至真实后台消费者更新，含启动及既有发布事件，不含Judge评测耗时",
+        }),
+      );
+    } finally {
+      worker.stop();
+      await worker.done;
+    }
     const csv = await exportAssignmentMatrixCsv(
       f.school.slug,
       task.id,
