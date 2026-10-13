@@ -24,6 +24,9 @@ Status: implemented
 门面，不依赖 education 业务。邮件队列随既有教育 worker 启动，无额外进程内
 业务计数器或去重状态。
 
+进度 / 定时发布与邮件分别运行独立循环，共同停止并等待在途任务；上游邮件慢响应
+不能阻塞成绩重算。
+
 ## Alternatives considered
 
 - 只发布 Redis 通知：连接中断或服务重启会永久丢失更新，继续使用持久 SSE 日志。
@@ -44,3 +47,9 @@ Status: implemented
 撤权及重连拒绝；邮件覆盖失败退避、租约回收、旧租约失效、已完成不重发、排队后
 撤权与邮件关闭。完整 education PostgreSQL / PGlite 回归以及类型、lint、格式和
 模块边界在冻结前执行。浏览器页面旅程和真实邮件服务送达属于整体升级验收。
+
+最终独立循环版本 PostgreSQL 110 项通过、1 项忽略；PGlite 109 项通过、2 项忽略。
+实际持有未完成邮件请求期间写入正式成绩，进度仍在 5 秒内更新，停止操作等待
+邮件释放后完成。日志
+`/tmp/noj-education-notification-independent-{pg,pglite}.log`。
+该单事件回归不代替 100×50 规模下的进度延迟验收。
