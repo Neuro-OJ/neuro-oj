@@ -44,10 +44,10 @@ function useTempStorage(): void {
 
 async function seedOiProblem(id: string, number: number): Promise<void> {
   await getDb().insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id,
     title: "OI 题",
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",
@@ -294,3 +294,6 @@ async function draftPackageRef(problemId: string): Promise<string | null> {
   );
   return rows[0]?.storage_url ?? null;
 }
+
+import { resetDbForTest } from "../default-fixture.ts";
+await resetDbForTest();

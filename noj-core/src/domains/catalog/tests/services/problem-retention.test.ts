@@ -1,7 +1,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { AppError, ForbiddenError } from "../../../../shared/base/errors.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   domainProblemBindings,
   objectiveSubmissions,
@@ -23,7 +23,6 @@ async function source(objective = false) {
     id,
     domain_id: DEFAULT_DOMAIN_ID,
     number: 1001,
-    type: "P",
     title: "历史保护",
     description: "题面",
     is_objective: objective,
@@ -57,7 +56,11 @@ Deno.test("源题保留：有共享引用即明确拒绝删除，权限检查仍
     created_at: now,
     updated_at: now,
   });
-  await assertRejects(() => deleteProblem(id, "other", "user"), ForbiddenError);
+  const token = await createUserToken();
+  await assertRejects(
+    () => deleteProblem(id, decodeJwt(token).sub!, "user"),
+    ForbiddenError,
+  );
   await expectRetained(id);
   assertEquals((await getDb().select().from(domainProblemBindings)).length, 1);
 });
@@ -100,3 +103,8 @@ Deno.test("源题保留：没有版本、绑定和历史提交的草稿仍可删
     0,
   );
 });
+
+import { resetDbForTest } from "../default-fixture.ts";
+
+import { createUserToken } from "../../../../../tests/helper.ts";
+import { decodeJwt } from "jose";

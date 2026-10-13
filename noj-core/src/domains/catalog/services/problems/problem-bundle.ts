@@ -22,14 +22,12 @@ import { problems, problemTags } from "./../../../../shared/db/schema.ts";
 import {
   AppError,
   BadRequestError,
-  ForbiddenError,
   NotFoundError,
   ValidationError,
 } from "./../../../../shared/base/errors.ts";
 import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "catalog"]);
-import { checkPermission } from "./../../../identity/index.ts";
 import { uploadStorageObjectWithReservation } from "./../../../system/index.ts";
 import {
   parseBundleZip,
@@ -57,15 +55,16 @@ import {
   updateProblem,
 } from "./problems-crud.ts";
 import {
+  assertWorkspacePermission,
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
   ensureDefaultWorkspace,
+  loadWorkspace,
 } from "../../../workspace/index.ts";
 import {
   bindCreatedDomainProblem,
   prepareDomainProblemCreation,
 } from "../workspace/problem-create.ts";
-import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import {
   assertSensitiveFieldPermissions,
   enforceResourceLimits,
@@ -181,22 +180,6 @@ async function resolveTagIds(
 }
 
 /**
- * 判断执行者是否 admin。
- *
- * 有 Hono Context 时走 RBAC 权限检查（`problem:write_any` 为 admin 级权限），
- * 否则退化为 userRole 判断（CLI 场景）。
- */
-function isAdminActor(
-  actor: BundleImportActor,
-  c?: Context,
-): boolean | Promise<boolean> {
-  if (c) {
-    return checkPermission(c, "problem:write_any");
-  }
-  return actor.userRole === "admin";
-}
-
-/**
  * 统一题目包导入入口。
  *
  * @param file 上传的 zip（导入载体，根级含 problem.json/evaluate.py）
@@ -254,16 +237,18 @@ export async function importProblemBundle(
   let number: number | undefined;
   if (targetProblemId) {
     const identity = await loadProblemIdentity(targetProblemId);
+    const [source] = await getDb().select({ domainId: problems.domain_id })
+      .from(problems)
+      .where(eq(problems.id, targetProblemId));
+    if (source?.domainId && source.domainId !== DEFAULT_DOMAIN_ID) {
+      throw new NotFoundError("题目不存在");
+    }
     await assertProblemEditPermission(
       c,
       identity,
       actor.userId,
       actor.userRole,
     );
-    if (manifest.type && manifest.type !== identity.type) {
-      throw new BadRequestError("题包类型与目标题目不一致");
-    }
-    manifest.type = identity.type;
     number = identity.number;
     if (!identity.latest_version_id) {
       // 未发布题目 API 无法提交，也不存在编辑基线：target 模式必须有 draft revision。
@@ -282,15 +267,7 @@ export async function importProblemBundle(
 
   // 4.1 number 幂等键语义：admin 提供时按 (type, number) 匹配既有题目 → 更新、
   //     未命中 → 新建；非 admin 提供 number 直接拒绝（400），普通用户仅走创建路径。
-  const admin = await isAdminActor(actor, c);
-  if (!targetProblemId) {
-    if (!admin && manifest.number !== undefined) {
-      throw new BadRequestError(
-        "仅管理员可指定 number（按 (type, number) 幂等更新既有题目）；普通用户导入时题号由系统自动分配",
-      );
-    }
-    number = admin ? manifest.number : undefined;
-  }
+  if (!targetProblemId) number = manifest.number;
 
   // 4.5 客观题套卷：走独立导入路径（无评测包，事务性创建/更新 + 全量替换小题）
   if (manifest.is_objective) {
@@ -474,6 +451,7 @@ async function updateExisting(
   // 若先 put 再取登记行锁，并发删除会把刚写回的文件删掉，随后登记出
   // "ready 但物理缺失"的幽灵对象（2026-10-11 复审问题 1）。
   const { storageUrl } = await uploadStorageObjectWithReservation({
+    domainId: DEFAULT_DOMAIN_ID,
     key: buildPackageKey(`${problemId}/${crypto.randomUUID()}`),
     bytes: strippedZip,
     contentType: "application/zip",
@@ -549,33 +527,8 @@ async function importObjectivePaper(
   number: number | undefined,
   actor: BundleImportActor,
   c?: Context,
-  explicitTarget = false,
+  _explicitTarget = false,
 ): Promise<ProblemResponseWithTags> {
-  const type = manifest.type ?? "U";
-
-  // number 权限（与编程题一致，防御性重复校验）
-  if (
-    !explicitTarget && !(await isAdminActor(actor, c)) && number !== undefined
-  ) {
-    throw new BadRequestError(
-      "仅管理员可指定 number（按 (type, number) 幂等更新既有题目）；普通用户导入时题号由系统自动分配",
-    );
-  }
-
-  // 类型权限（与 createViaCrud 一致）
-  if (type === "P") {
-    if (!(await isAdminActor(actor, c))) {
-      throw new ForbiddenError("仅管理员可创建管理题");
-    }
-  } else if (c) {
-    const canCreate = await checkPermission(c, "problem:create");
-    if (!canCreate) {
-      throw new ForbiddenError("无权创建题目");
-    }
-  } else if (actor.userRole !== "admin" && actor.userRole !== "user") {
-    throw new ForbiddenError("无权创建题目");
-  }
-
   const db = getDb();
   const tagIds = await resolveTagIds(manifest.tags);
   // 半写入防护：客观题禁止算法标签在写库前校验
@@ -586,6 +539,11 @@ async function importObjectivePaper(
   const now = new Date().toISOString();
   let oldStorageUrl: string | null = null;
   await ensureDefaultWorkspace();
+  const workspace = await loadWorkspace(
+    DEFAULT_DOMAIN_SLUG,
+    actor.userId ?? ROOT_USER_ID,
+  );
+  assertWorkspacePermission(workspace.context, "problem:create");
 
   const outcome = await db.transaction(async (tx) => {
     let existingId: string | null = null;
@@ -648,7 +606,6 @@ async function importObjectivePaper(
         actor.userId ?? ROOT_USER_ID,
         number,
         tx,
-        true,
       );
       const [created] = await tx.insert(problems).values({
         id: problemId,
@@ -659,11 +616,10 @@ async function importObjectivePaper(
         runtime_config: null,
         judge_type: "dual",
         is_objective: true,
-        visibility: type === "P" ? "public" : "private",
+        visibility: "public",
         number: reservation.number,
         domain_id: reservation.domain.id,
         owner_id: actor.userId ?? ROOT_USER_ID,
-        type,
         created_at: now,
         updated_at: now,
       }).returning();
@@ -759,7 +715,7 @@ async function importObjectivePaper(
 /**
  * 创建路径。
  *
- * 与 createProblem 对齐的校验（P 型权限、镜像白名单、number 分配）。
+ * 与 createProblem 对齐的校验（域角色权限、镜像白名单、域内 number 分配）。
  * id 一律由服务端生成 UUID；(type, number) 由 DB 联合唯一约束保证唯一，
  * 并发冲突（23505）时自动分配重试。
  */
@@ -772,37 +728,6 @@ async function createViaCrud(
   strippedZip: Uint8Array,
   templateContent: string,
 ): Promise<ProblemResponseWithTags> {
-  const type = manifest.type ?? "U";
-
-  // NOJ-102：创建权限按类型强制执行（与 createProblem 一致）。
-  if (type === "P") {
-    if (!(await isAdminActor(actor, c))) {
-      throw new ForbiddenError("仅管理员可创建管理题");
-    }
-  } else if (c) {
-    const canCreate = await checkPermission(c, "problem:create");
-    if (!canCreate) {
-      throw new ForbiddenError("无权创建题目");
-    }
-  } else if (actor.userRole !== "admin" && actor.userRole !== "user") {
-    throw new ForbiddenError("无权创建题目");
-  }
-
-  // 双容器题目才需要镜像白名单；OI 题使用 worker 的受信固定镜像。
-  if (!isOiRuntimeConfig(manifest.runtime_config)) {
-    await validateJudgeImageWithKind(
-      manifest.runtime_config!.evaluator.image,
-      "evaluator",
-    );
-    await validateJudgeImageWithKind(
-      manifest.runtime_config!.solution.image,
-      "solution",
-    );
-  }
-
-  // evaluator 联网权限与题目创建权限一致：普通用户导入创建 U 型题可开网；
-  // P 型由上方类型检查保证仅 admin。安全提醒：联网 + 可控 evaluator.command
-  // = 联网容器任意命令执行，题目包 manifest.runtime_config 由上传者完全可控。
   // issue #207：与 CRUD 创建路径一致的敏感字段权限检查 + 资源上限校验
   if (!isOiRuntimeConfig(manifest.runtime_config)) {
     await assertSensitiveFieldPermissions(
@@ -829,12 +754,11 @@ async function createViaCrud(
       difficulty: manifest.difficulty ?? "medium",
       runtime_config: manifest.runtime_config!,
       judge_type: isOiRuntimeConfig(manifest.runtime_config) ? "oi" : "dual",
-      visibility: type === "P" ? "public" : "private",
+      visibility: "public",
       submission_mode: manifest.submission_mode ?? "code",
       artifact_max_size_mb: manifest.artifact_max_size_mb ?? null,
       llm: manifest.llm ?? null,
       number,
-      type,
       tag_ids: tagIds,
     },
     actor.userId,
@@ -848,6 +772,7 @@ async function createViaCrud(
 
   // 注册评测包并回填（先预约再物理上传，上传成功后登记 ready 并消费预约）
   const { storageUrl } = await uploadStorageObjectWithReservation({
+    domainId: DEFAULT_DOMAIN_ID,
     key: buildPackageKey(id),
     bytes: strippedZip,
     contentType: "application/zip",

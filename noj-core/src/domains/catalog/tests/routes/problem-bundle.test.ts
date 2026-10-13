@@ -7,7 +7,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { zipSync } from "fflate";
 import { createApp } from "../../../../app.ts";
 import { signToken } from "../../../identity/index.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import { problems, users } from "../../../../shared/db/schema.ts";
 import { eq, sql } from "drizzle-orm";
 import { createUserToken } from "../../../../../tests/helper.ts";
@@ -316,18 +316,19 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "import-bundle: admin 按 (type, number) 匹配更新既有题目（幂等 upsert）",
+  name: "import-bundle: admin 按默认域 number 匹配更新既有题目（幂等 upsert）",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
+    await grantDefaultCatalogRole(OWNER_ID, "editor");
     const db = getDb();
     const pid = `bundle-upsert-${ts}`;
     const now = new Date().toISOString();
     await db.insert(problems).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
       id: pid,
       title: "旧标题",
       description: "旧题面",
@@ -347,7 +348,6 @@ Deno.test({
       },
       number: 70000 + (ts & 0x7fff),
       owner_id: OWNER_ID,
-      type: "U",
       created_at: now,
       updated_at: now,
     });
@@ -394,13 +394,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "import-bundle: 普通用户导入含 number 的包被拒（400）",
+  name: "import-bundle: 默认域编辑者可指定域内 number",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
+    await grantDefaultCatalogRole(OWNER_ID, "editor");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -421,30 +422,24 @@ Deno.test({
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
-    assertEquals(res.status, 400);
-    const body = (await res.json()) as { error?: string };
-    assertEquals(
-      body.error?.includes("仅管理员可指定 number"),
-      true,
-      "错误信息应说明 number 仅限管理员",
-    );
-
-    // 拒绝不得创建任何题目
+    assertEquals(res.status, 200);
+    // 指定题号只在默认域创建一题
     const after = await db.select({ count: sql<number>`COUNT(*)` }).from(
       problems,
     );
-    assertEquals(after[0].count, before[0].count);
+    assertEquals(Number(after[0].count), Number(before[0].count) + 1);
   },
 });
 
 Deno.test({
-  name: "import-bundle: 普通用户导入默认 command 的 U 型题目放行",
+  name: "import-bundle: 默认域编辑者导入默认 command 题目放行",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
+    await grantDefaultCatalogRole(OWNER_ID, "editor");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -467,6 +462,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
+    await grantDefaultCatalogRole(OWNER_ID, "editor");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -508,6 +504,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
+    await grantDefaultCatalogRole(OWNER_ID, "editor");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -932,14 +929,14 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "import-bundle: 普通用户可创建 U 型客观题套卷，但提供 number 被拒（400）",
+  name: "import-bundle: 默认域编辑者可创建客观题套卷并指定域内 number",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
+    await grantDefaultCatalogRole(OWNER_ID, "editor");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -965,7 +962,7 @@ Deno.test({
       headers: { Authorization: `Bearer ${token}` },
       body: formData2,
     });
-    assertEquals(res2.status, 400);
+    assertEquals(res2.status, 200);
   },
 });
 
@@ -997,6 +994,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await ensureUser(OWNER_ID);
+    await grantDefaultCatalogRole(OWNER_ID, "editor");
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -1074,3 +1072,7 @@ Deno.test({
     assertEquals(res.status, 400);
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";
+
+import { grantDefaultCatalogRole } from "../default-fixture.ts";

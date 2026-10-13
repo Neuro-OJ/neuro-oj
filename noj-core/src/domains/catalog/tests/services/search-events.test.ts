@@ -1,4 +1,4 @@
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import { problems, problemTags } from "../../../../shared/db/schema.ts";
 import { createTag, mergeTags } from "../../index.ts";
 import { createProblem } from "../../services/problems/problems-crud.ts";
@@ -42,7 +42,6 @@ Deno.test({
       title: "事件测试题",
       description: "desc",
       difficulty: "easy",
-      type: "U",
       runtime_config: VALID_RUNTIME_CONFIG,
     });
     await assertSearchEventPublished("problem", created.id, "upsert");
@@ -77,7 +76,6 @@ Deno.test({
         runtime_config: null,
         number: 940000 + (ts % 10000),
         owner_id: "0",
-        type: "U",
         created_at: now,
         updated_at: now,
       },
@@ -89,7 +87,6 @@ Deno.test({
         runtime_config: null,
         number: 950000 + (ts % 10000),
         owner_id: "0",
-        type: "U",
         created_at: now,
         updated_at: now,
       },
@@ -104,3 +101,5 @@ Deno.test({
     await assertSearchEventPublished("problem", problemB, "upsert");
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";

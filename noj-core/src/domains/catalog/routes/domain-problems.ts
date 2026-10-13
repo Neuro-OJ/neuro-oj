@@ -212,7 +212,7 @@ domainProblemsRouter.post(prefix, authMiddleware, async (c) => {
     typeof input.title !== "string" || !input.title.trim() ||
     typeof input.description !== "string"
   ) throw new BadRequestError("题目标题与题面必填");
-  if (input.type !== undefined) {
+  if ("type" in input) {
     throw new BadRequestError("域题库不接受 P/U 分类");
   }
   const created = await createDomainProblem(

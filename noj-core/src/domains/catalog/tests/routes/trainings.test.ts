@@ -1,7 +1,7 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   problems,
   trainings,
@@ -56,6 +56,7 @@ Deno.test({
       role_id: "user",
     }).onConflictDoNothing();
     await db.insert(problems).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
       id: problemId,
       title: "路由题单测试题",
       description: "测试题面",
@@ -63,7 +64,6 @@ Deno.test({
       runtime_config: {},
       number: 950001,
       owner_id: adminId,
-      type: "P",
       created_at: now,
       updated_at: now,
     });
@@ -202,3 +202,5 @@ Deno.test({
     }
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";

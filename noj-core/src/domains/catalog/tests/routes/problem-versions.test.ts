@@ -10,7 +10,7 @@ import { AppError } from "../../../../shared/base/errors.ts";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
 import { createProblem } from "../../index.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   problemBindingHistory,
   problemDrafts,
@@ -43,14 +43,13 @@ const runtimeConfig = {
 };
 
 /** 建一道题（内容完整，仅用于草稿/版本接口；默认 U 型）。 */
-async function makeDraftProblem(type: "U" | "P" = "U"): Promise<string> {
+async function makeDraftProblem(): Promise<string> {
   const created = await createProblem({
     title: `草稿路由题 ${ts}_${Math.random().toString(36).slice(2, 8)}`,
     description: "初始题面",
     difficulty: "easy",
     samples: [],
     runtime_config: runtimeConfig,
-    type,
   });
   return created.id;
 }
@@ -544,11 +543,11 @@ Deno.test({
     const problemId = crypto.randomUUID();
     const now = new Date().toISOString();
     await getDb().insert(problems).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
       id: problemId,
       title: `未发布列表题 ${ts}`,
       description: "草稿题面",
       difficulty: "easy",
-      type: "P",
       number: 8900000 + (ts % 10000),
       owner_id: "0",
       created_at: now,
@@ -710,7 +709,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const problemId = await makeDraftProblem("U");
+    const problemId = await makeDraftProblem();
     const app = createApp();
     const token = await adminToken();
     const auth = { Authorization: `Bearer ${token}` };
@@ -821,7 +820,6 @@ Deno.test({
       difficulty: "easy",
       samples: [],
       runtime_config: runtimeConfig,
-      type: "U",
       visibility: "public",
     });
     const problemId = created.id;
@@ -901,3 +899,5 @@ Deno.test({
     );
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";

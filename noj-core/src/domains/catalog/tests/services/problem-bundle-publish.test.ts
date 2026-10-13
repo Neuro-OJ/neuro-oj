@@ -9,7 +9,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { zipSync } from "fflate";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import { problems } from "../../../../shared/db/schema.ts";
 import { createProblem } from "../../index.ts";
 import {
@@ -154,3 +154,5 @@ Deno.test({
     // 已发布资源保留至测试事务回滚。
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";

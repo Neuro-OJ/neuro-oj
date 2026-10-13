@@ -51,7 +51,6 @@ async function seed() {
     domain_id: DEFAULT_DOMAIN_ID,
     title: "公开源题",
     description: "题面",
-    type: "P",
     number: 90001 + i,
     created_at: now,
     updated_at: now,

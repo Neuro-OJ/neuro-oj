@@ -1,6 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   permissions,
   rolePermissions,
@@ -63,3 +63,5 @@ Deno.test({
     );
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";

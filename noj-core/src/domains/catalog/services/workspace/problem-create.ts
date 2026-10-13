@@ -26,7 +26,6 @@ export async function prepareDomainProblemCreation(
   actorId: string,
   requestedNumber: number | undefined,
   executor: Executor,
-  legacyAuthorization = false,
 ) {
   await lockActiveWorkspaceAccount(executor, actorId);
   const { domain, context } = await loadWorkspace(slug, actorId, {
@@ -34,9 +33,7 @@ export async function prepareDomainProblemCreation(
     write: true,
     lock: true,
   });
-  if (!legacyAuthorization) {
-    assertWorkspacePermission(context, "problem:create");
-  }
+  assertWorkspacePermission(context, "problem:create");
   const { effective: limits } = await getDomainEffectiveLimits(
     domain.id,
     executor,

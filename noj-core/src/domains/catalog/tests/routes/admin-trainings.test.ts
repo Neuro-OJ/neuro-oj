@@ -1,7 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   auditLogs,
   permissions,
@@ -169,3 +169,5 @@ Deno.test({
     }
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";

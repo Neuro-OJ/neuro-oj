@@ -14,7 +14,7 @@
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { zipSync } from "fflate";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   permissions,
   problems,
@@ -327,6 +327,7 @@ Deno.test({
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).onConflictDoNothing();
+    await grantDefaultCatalogRole("cli-owner-id", "editor");
     const problem = await createProblem(
       {
         title: `待收紧 ${ts}`,
@@ -358,6 +359,7 @@ Deno.test({
   fn: async () => {
     // 回归：command 为必填字段，"显式设置即检查"会让无权限用户无法创建任何编程题
     await ensureCliUser("cli-user-id");
+    await grantDefaultCatalogRole("cli-user-id", "editor");
     const problem = await createProblem(
       {
         title: `CLI user 默认 ${ts}`,
@@ -378,6 +380,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await ensureCliUser("cli-user");
+    await grantDefaultCatalogRole("cli-user", "editor");
     const { command: _omit, ...evaluator } = VALID_RUNTIME_CONFIG.evaluator;
     const zip = makeBundleZip({
       title: `CLI user 导入 ${ts}`,
@@ -599,6 +602,7 @@ Deno.test({
     const problemId = `i4-existing-${ts}`;
     const isoNow = new Date().toISOString();
     await db.insert(problems).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
       id: problemId,
       title: "旧标题",
       description: "旧题面",
@@ -606,7 +610,6 @@ Deno.test({
       runtime_config: VALID_RUNTIME_CONFIG,
       number: 95000 + (ts % 4000),
       owner_id: ROOT_USER_ID,
-      type: "U",
       created_at: isoNow,
       updated_at: isoNow,
     }).onConflictDoNothing();
@@ -670,3 +673,7 @@ Deno.test({
     }
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";
+
+import { grantDefaultCatalogRole } from "../default-fixture.ts";

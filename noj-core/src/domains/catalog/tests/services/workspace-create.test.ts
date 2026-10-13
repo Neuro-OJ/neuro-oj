@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq, sql } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   domainLimits,
   domainProblemBindings,
@@ -19,7 +19,7 @@ import {
   createDomainProblem,
   createProblem,
   deleteProblem,
-  getProblemByTypeAndNumber,
+  getDefaultDomainProblemByNumber,
   listAllProblems,
 } from "../../index.ts";
 
@@ -81,7 +81,7 @@ Deno.test({
       ),
     );
     assertEquals(counter.used, 1);
-    await assertRejects(() => getProblemByTypeAndNumber("U", 1001));
+    await assertRejects(() => getDefaultDomainProblemByNumber(1001));
     assertEquals(
       (await listAllProblems({ limit: 20 })).items.some((row) =>
         row.id === first.id || row.id === second.id
@@ -201,3 +201,5 @@ Deno.test({
     );
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";

@@ -24,7 +24,11 @@ Deno.test("problem-access: admin 可读任意题（含 private）", () => {
 
 Deno.test("problem-access: owner 可读自己的 private 题", () => {
   assertEquals(
-    resolveProblemAccess(priv, { viewerId: "u-owner", isAdmin: false }).mode,
+    resolveProblemAccess(priv, {
+      viewerId: "u-owner",
+      isAdmin: false,
+      canReadOwn: true,
+    }).mode,
     "owner",
   );
 });
@@ -69,6 +73,7 @@ Deno.test("problem-access: owner 优先级高于竞赛拒绝上下文", () => {
   assertEquals(
     resolveProblemAccess(priv, {
       viewerId: "u-owner",
+      canReadOwn: true,
       isAdmin: false,
       contestAccess: { contestId: "c1", allowed: false, running: false },
     }).mode,
@@ -109,6 +114,7 @@ Deno.test("problem-access: 保密不改变 admin / owner 放行", () => {
   assertEquals(
     resolveProblemAccess(pub, {
       viewerId: "u-owner",
+      canReadOwn: true,
       isAdmin: false,
       secrecy,
     }).mode,

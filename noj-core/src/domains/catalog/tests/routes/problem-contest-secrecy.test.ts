@@ -12,7 +12,7 @@ import { decodeJwt } from "jose";
 import { createApp } from "../../../../app.ts";
 import { createProblem } from "../../index.ts";
 import { createContest, deleteContest } from "../../../contest/index.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import { contests, problems } from "../../../../shared/db/schema.ts";
 import {
   createUserToken,
@@ -29,6 +29,7 @@ await initRedisForTest();
 
 /** 创建一道 public 的 U 型题，并指定 owner。 */
 async function createOwnedPublicProblem(ownerId: string): Promise<string> {
+  await grantDefaultCatalogRole(ownerId, "editor");
   // 不带 userId 走服务端流程：绕过"敏感字段（evaluator.command）需权限"的守卫，
   // 随后再把 owner_id 落到目标用户，模拟"普通用户拥有的公开题"。
   const created = await createProblem({
@@ -37,7 +38,6 @@ async function createOwnedPublicProblem(ownerId: string): Promise<string> {
     }`,
     description: "测试描述",
     difficulty: "easy",
-    type: "U",
     runtime_config: {
       evaluator: {
         image: "noj-evaluator-python",
@@ -427,3 +427,7 @@ Deno.test({
     }
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";
+
+import { grantDefaultCatalogRole } from "../default-fixture.ts";

@@ -26,7 +26,6 @@ const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasEnv;
 
 // 模块级 bootstrap：确保表已创建（PGlite 模式）
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
 await resetDbForTest();
 await initRedisForTest();
 
@@ -279,6 +278,7 @@ Deno.test({
     const problemId = crypto.randomUUID();
     const now = new Date().toISOString();
     await db.insert(problems).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
       id: problemId,
       title: `筛选测试题-${ts}`,
       description: "描述",
@@ -287,7 +287,6 @@ Deno.test({
       is_objective: false,
       number: 900000 + (ts % 10000),
       owner_id: "0",
-      type: "P",
       created_at: now,
       updated_at: now,
     });
@@ -320,3 +319,5 @@ Deno.test({
     await db.delete(tags).where(eq(tags.id, tagId));
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";

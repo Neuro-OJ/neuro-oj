@@ -1,6 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contestProblems,
   contests,
@@ -23,13 +23,13 @@ async function seedProblem(number: number): Promise<string> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await getDb().insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id,
     title: `统计测试题 ${number}`,
     description: "题面",
     difficulty: "easy",
     runtime_config: {},
     number,
-    type: "U",
     visibility: "public",
     created_at: now,
     updated_at: now,
@@ -63,11 +63,13 @@ async function seedSubmission(
   userId: string,
   score: number,
   details: unknown,
+  domainId?: string,
 ): Promise<void> {
   const submissionId = crypto.randomUUID();
   const attemptId = crypto.randomUUID();
   const now = new Date().toISOString();
   await getDb().insert(submissions).values({
+    domain_id: domainId ?? null,
     id: submissionId,
     user_id: userId,
     problem_id: problemId,
@@ -415,4 +417,29 @@ Deno.test({
       await cleanup(problemId, [alice]);
     }
   },
+});
+
+import { resetDbForTest } from "../default-fixture.ts";
+
+Deno.test("默认题目统计不计私有学校提交，学校比赛不抑制 main 公开统计", async () => {
+  const { createDefaultCatalogToken } = await import("../default-fixture.ts");
+  const { decodeJwt } = await import("jose");
+  const { createDomain } = await import("../../../workspace/index.ts");
+  const actor = decodeJwt(await createDefaultCatalogToken("admin")).sub!;
+  const school = await createDomain({
+    slug: "statistics-school",
+    name: "统计学校",
+    preset: "education",
+  }, actor);
+  const problemId = await seedProblem(940020);
+  const student = await seedUser("school-student");
+  await seedSubmission(problemId, student, 10000, {}, school.id);
+  const contestId = await seedRunningContest({ problemIds: [problemId] });
+  await getDb().update(contests).set({ domain_id: school.id }).where(
+    eq(contests.id, contestId),
+  );
+  const stats = await getPublicProblemStats(problemId);
+  assertEquals(stats.submit_count, 0);
+  assertEquals(stats.accepted_count, 0);
+  assertEquals(stats.suppressed_reason, null);
 });

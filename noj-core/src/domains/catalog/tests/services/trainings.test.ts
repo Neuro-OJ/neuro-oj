@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   objectiveSubmissions,
   problems,
@@ -186,6 +186,7 @@ Deno.test({
     ): Promise<string> {
       const id = crypto.randomUUID();
       await db.insert(problems).values({
+        domain_id: "00000000-0000-4000-8000-000000000001",
         id,
         title: `题单测试题 ${number}`,
         description: "测试题面",
@@ -193,7 +194,6 @@ Deno.test({
         runtime_config: isObjective ? null : {},
         number,
         owner_id: "0",
-        type: "P",
         is_objective: isObjective,
         created_at: now,
         updated_at: now,
@@ -301,6 +301,7 @@ Deno.test({
     const now = new Date().toISOString();
     const privateProblemId = crypto.randomUUID();
     await db.insert(problems).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
       id: privateProblemId,
       title: "他人私有题",
       description: "私有题面",
@@ -309,7 +310,6 @@ Deno.test({
       runtime_config: {},
       number: 940010,
       owner_id: other,
-      type: "U",
       created_at: now,
       updated_at: now,
     });
@@ -332,3 +332,5 @@ Deno.test({
     }
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";

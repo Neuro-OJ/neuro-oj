@@ -61,8 +61,6 @@ export interface ProblemBundleManifest {
   /** 题面 Markdown（`statement.md` 存在时以文件为准，本字段作为兜底） */
   description?: string;
   difficulty?: string;
-  /** @deprecated 仅供旧内部导入编排过渡；规范化题包不返回此字段。 */
-  type?: string;
   /** 可选域内题号；导入目标 Domain 由接口路径或命令参数确定。 */
   number?: number;
   /** 标签名数组，按 name 匹配已有标签，缺省忽略 + warning（issue #223） */

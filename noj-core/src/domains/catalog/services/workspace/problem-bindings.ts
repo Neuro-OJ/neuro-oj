@@ -236,6 +236,7 @@ export async function setDomainProblemBindingPolicy(
   expectedRevision: number | null,
   policy: EffectiveVersionPolicy,
   reason: string,
+  executor?: Executor,
 ) {
   if (
     expectedRevision === null || !Number.isInteger(expectedRevision) ||
@@ -248,7 +249,7 @@ export async function setDomainProblemBindingPolicy(
   if (typeof reason !== "string" || !reason.trim() || reason.length > 2000) {
     throw new BadRequestError("请提供不超过 2000 字的修改理由");
   }
-  return await getDb().transaction(async (tx) => {
+  const operation = async (tx: Executor) => {
     const workspace = await loadWorkspace(slug, actorId, {
       executor: tx,
       write: true,
@@ -295,7 +296,10 @@ export async function setDomainProblemBindingPolicy(
     );
     await recomputeProblemBindingProjections(tx, updated);
     return updated;
-  });
+  };
+  return executor
+    ? await operation(executor)
+    : await getDb().transaction(operation);
 }
 
 /** 下架保留源题、不可变版本、绑定和提交；恢复共享引用时重新检查来源授权。 */

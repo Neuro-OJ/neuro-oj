@@ -6,7 +6,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
 import { signToken } from "../../../identity/index.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   problems,
   roles,
@@ -57,7 +57,6 @@ async function createTestUser(id: string): Promise<void> {
  */
 async function createTestProblem(
   ownerId: string = OWNER_ID,
-  type: string = "U",
 ): Promise<string> {
   const db = getDb();
   const pid = `route-sp-problem-${ts}-${++problemSeq}`;
@@ -70,8 +69,10 @@ async function createTestProblem(
       await createTestUser(ownerId);
     }
   }
+  await grantDefaultCatalogRole(ownerId, "editor");
   const now = new Date().toISOString();
   await db.insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
     id: pid,
     title: `支持包路由测试 ${ts}`,
     description: "测试描述",
@@ -91,7 +92,6 @@ async function createTestProblem(
     },
     number: TEST_NUMBER + problemSeq,
     owner_id: ownerId,
-    type,
     created_at: now,
     updated_at: now,
   });
@@ -223,3 +223,7 @@ Deno.test({
     }
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";
+
+import { grantDefaultCatalogRole } from "../default-fixture.ts";

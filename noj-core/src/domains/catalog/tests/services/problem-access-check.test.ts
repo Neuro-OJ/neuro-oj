@@ -7,7 +7,7 @@
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import { contests, problems, users } from "../../../../shared/db/schema.ts";
 import { createProblem } from "../../index.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
@@ -39,13 +39,13 @@ async function createUser(prefix: string): Promise<string> {
 }
 
 async function createOwnedPublicProblem(ownerId: string): Promise<string> {
+  await grantDefaultCatalogRole(ownerId, "editor");
   const created = await createProblem({
     title: `访问判定入口测试题 ${Date.now()}_${
       Math.random().toString(36).slice(2, 8)
     }`,
     description: "题面",
     difficulty: "easy",
-    type: "U",
     runtime_config: {
       evaluator: {
         image: "noj-evaluator-python",
@@ -242,8 +242,10 @@ Deno.test({
       assertEquals(owner.result, { allowed: true, mode: "owner" });
       assertEquals(owner.secrecy.length, 1);
 
+      const adminId = await createUser("pac-admin-5");
+      await grantDefaultCatalogRole(adminId, "admin");
       const admin = await evaluateProblemAccess(problem, {
-        viewerId: await createUser("pac-admin-5"),
+        viewerId: adminId,
         isAdmin: true,
       });
       assertEquals(admin.result.mode, "admin");
@@ -264,3 +266,7 @@ Deno.test({
     }
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";
+
+import { grantDefaultCatalogRole } from "../default-fixture.ts";

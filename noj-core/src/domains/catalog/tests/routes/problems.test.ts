@@ -3,8 +3,11 @@ import { eq } from "drizzle-orm";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
 import { createProblem } from "../../index.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
-import { problems } from "../../../../shared/db/schema.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import {
+  domainProblemBindings,
+  problems,
+} from "../../../../shared/db/schema.ts";
 import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
 
 // PGlite 内存数据库始终可用
@@ -41,7 +44,6 @@ const TEST_PROBLEM_ID = MODULE_PROBLEM.id;
 
 /** 创建测试题目并可按需写入可见性/支持包 URL（模拟服务端私有题）。 */
 async function createProblemForTest(opts: {
-  type?: string;
   visibility?: "public" | "private";
   support_package_storage_url?: string;
   is_objective?: boolean;
@@ -52,7 +54,6 @@ async function createProblemForTest(opts: {
     }`,
     description: "测试描述",
     difficulty: "easy",
-    type: opts.type ?? "U",
     is_objective: opts.is_objective === true,
     ...(opts.is_objective === true ? {} : {
       runtime_config: {
@@ -72,7 +73,13 @@ async function createProblemForTest(opts: {
   });
   const db = getDb();
   const updates: Partial<typeof problems.$inferSelect> = {};
-  if (opts.visibility) updates.visibility = opts.visibility;
+  if (opts.visibility) {
+    updates.visibility = opts.visibility;
+    await db.update(domainProblemBindings).set({
+      visibility: opts.visibility === "public" ? "public" : "members",
+    })
+      .where(eq(domainProblemBindings.problem_id, created.id));
+  }
   if (opts.support_package_storage_url) {
     updates.support_package_storage_url = opts.support_package_storage_url;
   }
@@ -80,6 +87,7 @@ async function createProblemForTest(opts: {
     updates.updated_at = new Date().toISOString();
     await db.update(problems).set(updates).where(eq(problems.id, created.id));
   }
+  await publishBaselineVersionForTest(created.id);
   return { id: created.id, owner_id: created.owner_id };
 }
 
@@ -193,6 +201,7 @@ Deno.test({
       visibility: "public",
       updated_at: new Date().toISOString(),
     }).where(eq(problems.id, problem.id));
+    await publishBaselineVersionForTest(problem.id);
     const res = await jsonRequest(app, `/api/v1/problems/${problem.id}`);
     assertEquals(res.status, 200);
 
@@ -234,7 +243,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "problems route: POST /api/v1/problems 非管理员创建 P 型返回 403",
+  name:
+    "problems route: POST /api/v1/problems 普通成员无默认域创建能力返回 403",
   ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -261,7 +271,6 @@ Deno.test({
             memory_limit_mb: 512,
           },
         },
-        type: "P",
       },
       token,
     });
@@ -364,7 +373,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const p = await createProblemForTest({ type: "U", visibility: "private" });
+    const p = await createProblemForTest({ visibility: "private" });
     const app = createApp();
     const res = await jsonRequest(app, `/api/v1/problems/${p.id}`);
     assertEquals(res.status, 404);
@@ -378,7 +387,6 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const p = await createProblemForTest({
-      type: "U",
       visibility: "public",
       support_package_storage_url: "noj-storage://local/secret",
     });
@@ -400,7 +408,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const p = await createProblemForTest({ type: "U", visibility: "public" });
+    const p = await createProblemForTest({ visibility: "public" });
     const app = createApp();
     const res = await jsonRequest(app, `/api/v1/problems/${p.id}`);
     assertEquals(res.status, 200);
@@ -411,16 +419,13 @@ Deno.test({
   },
 });
 
-Deno.test({
-  name: "problems route: 匿名选手可读取 OI 语言白名单但看不到评测配置",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const p = await createProblemForTest({ type: "U", visibility: "public" });
-    const [configured] = await getDb().update(problems).set({
-      judge_type: "oi",
+Deno.test("problems route: 匿名选手可读取 OI 语言白名单但看不到评测配置", async () => {
+  for (const backend of ["native", "wasm"] as const) {
+    const p = await createProblem({
+      title: "OI 公开语言",
+      description: "题面",
       runtime_config: {
-        backend: "native",
+        backend,
         languages: ["c", "cc"],
         time_limit_ms: 1000,
         memory_limit_mb: 256,
@@ -431,26 +436,17 @@ Deno.test({
           cases: [{ input: "hidden/1.in", output: "hidden/1.out" }],
         }],
       },
-    }).where(eq(problems.id, p.id)).returning();
+    });
+    await publishBaselineVersionForTest(p.id);
     const res = await jsonRequest(createApp(), `/api/v1/problems/${p.id}`);
     assertEquals(res.status, 200);
     const data = (await res.json()).data;
     assertEquals(data.judge_type, "oi");
-    assertEquals(data.judge_backend, "oi-native");
+    assertEquals(data.judge_backend, `oi-${backend}`);
     assertEquals(data.supported_languages, ["c", "cc"]);
     assertEquals(data.runtime_config, undefined);
     assertEquals(data.support_package_storage_url, undefined);
-    await getDb().update(problems).set({
-      runtime_config: {
-        ...(configured.runtime_config as Record<string, unknown>),
-        backend: "wasm",
-      },
-    }).where(eq(problems.id, p.id));
-    const wasmRes = await jsonRequest(createApp(), `/api/v1/problems/${p.id}`);
-    const wasmData = (await wasmRes.json()).data;
-    assertEquals(wasmData.judge_backend, "oi-wasm");
-    assertEquals(wasmData.runtime_config, undefined);
-  },
+  }
 });
 
 Deno.test({
@@ -460,7 +456,6 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const p = await createProblemForTest({
-      type: "U",
       visibility: "private",
       is_objective: true,
     });
@@ -469,3 +464,7 @@ Deno.test({
     assertEquals(res.status, 404);
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";
+
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";

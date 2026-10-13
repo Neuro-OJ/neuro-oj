@@ -1,61 +1,37 @@
-/**
- * 题目双索引解析工具。
- *
- * 支持 UUID、display_id（如 P1001 / U42）、纯数字 ID（兼容旧 seed 数据）以及
- * 任意非标准 ID 格式。供 problems 路由与自测路由共用。
- */
-
-import { getProblem, getProblemByTypeAndNumber } from "../index.ts";
+import { getDefaultDomainProblemByNumber, getProblem } from "../index.ts";
 import type { ProblemViewer } from "../index.ts";
 import { NotFoundError } from "../../../shared/base/errors.ts";
-import { isUuid } from "../../../shared/security/public-id.ts";
+import { DEFAULT_DOMAIN_ID } from "../../workspace/index.ts";
 
-/**
- * 双索引查找题目。
- * 先通过正则判断 id 格式，避免每次 display_id 请求都先多一次 UUID 查询。
- * 对于不匹配任何已知格式的 ID，fallback 到 `getProblem(id)` 直接查找。
- *
- * viewer 可选：传入后 getProblem 会对非 owner/admin 裁剪敏感字段。
- */
-export function resolveProblem(id: string, viewer?: ProblemViewer) {
-  // UUID / 纯数字（兼容旧 seed 数据 1001/1002/1003 等）：直接按 id 精确查找
-  if (isUuid(id) || /^\d+$/.test(id)) {
-    return getProblem(id, viewer);
-  }
-
-  // display_id 格式：解析 "P1001" / "U42" → (type, number)
-  const match = id.match(/^([UuPp])(\d+)$/);
+/** 旧无域入口只定位默认域；历史 P 数字链接转换为数字，U 入口拒绝。 */
+export async function resolveProblem(id: string, viewer?: ProblemViewer) {
+  if (/^[Uu][0-9]+$/.test(id)) throw new NotFoundError("旧用户题入口已取消");
+  const match = /^(?:[Pp])?([1-9][0-9]*)$/.exec(id);
   if (match) {
-    const type = match[1].toUpperCase();
-    const number = parseInt(match[2], 10);
-    return getProblemByTypeAndNumber(type, number, viewer);
+    return await getDefaultDomainProblemByNumber(Number(match[1]), viewer);
   }
-
-  // fallback：尝试直接按 id 查找（兼容非标准 ID 格式）
-  return getProblem(id, viewer);
+  const problem = await getProblem(id, viewer);
+  if (problem.domain_id !== DEFAULT_DOMAIN_ID) {
+    throw new NotFoundError("题目不在默认工作空间");
+  }
+  return problem;
 }
 
-/**
- * 将题目标识解析为内部题目 UUID；题目不存在时返回 null。
- */
+/** 默认域的人类可读题号解析为稳定 ID；不可定位时返回 null。 */
 export async function resolveProblemIdOrNull(
   reference: string,
 ): Promise<string | null> {
   try {
-    const problem = await resolveProblem(reference);
-    return problem.id;
-  } catch (e) {
-    if (e instanceof NotFoundError) return null;
-    throw e;
+    return (await resolveProblem(reference)).id;
+  } catch (error) {
+    if (error instanceof NotFoundError) return null;
+    throw error;
   }
 }
 
-/**
- * 将题目标识解析为内部题目 UUID；题目不存在时抛 NotFoundError。
- */
+/** 默认域兼容入口的稳定 ID 解析，不接受其他域资源 ID。 */
 export async function resolveProblemIdOrThrow(
   reference: string,
 ): Promise<string> {
-  const problem = await resolveProblem(reference);
-  return problem.id;
+  return (await resolveProblem(reference)).id;
 }

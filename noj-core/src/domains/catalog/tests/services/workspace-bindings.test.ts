@@ -553,6 +553,50 @@ Deno.test("域成绩：策略切换即时重算本绑定，重测和源域批量
   );
 });
 
+Deno.test("域绑定：批量任务策略变更与历史依据服从调用方事务回滚", async () => {
+  const f = await fixture();
+  const imported = await importDomainProblem(
+    f.school.slug,
+    "public-source:1001",
+    f.teacher,
+  );
+  const db = getDb();
+  const before = await db.select().from(problemBindingHistory).where(
+    eq(problemBindingHistory.binding_id, imported.binding.id),
+  );
+  await assertRejects(
+    () =>
+      db.transaction(async (tx) => {
+        await setDomainProblemBindingPolicy(
+          f.school.slug,
+          "public-source:1001",
+          f.teacher,
+          0,
+          { mode: "exact", version_id: f.versions[0] },
+          "批量任务策略",
+          tx,
+        );
+        throw new Error("任务创建失败");
+      }),
+    Error,
+    "任务创建失败",
+  );
+  const resource = await resolveDomainProblem(
+    f.school.slug,
+    "public-source:1001",
+    f.student,
+  );
+  assertEquals(resource.binding.revision, 0);
+  assertEquals(resource.binding.effective_version_mode, "any");
+  assertEquals(resource.version.id, f.versions[1]);
+  assertEquals(
+    await db.select().from(problemBindingHistory).where(
+      eq(problemBindingHistory.binding_id, imported.binding.id),
+    ),
+    before,
+  );
+});
+
 Deno.test("域绑定：来源题号、策略独立、默认版本切换与 revision 沿革", async () => {
   const f = await fixture();
   await setDomainProblemBindingPolicy(f.source.slug, "1001", f.platform, 0, {

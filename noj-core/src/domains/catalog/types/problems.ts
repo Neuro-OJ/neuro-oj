@@ -65,12 +65,6 @@ export function isValidDifficulty(value: string): value is Difficulty {
 }
 
 /**
- * 允许的题目类型。
- */
-export const PROBLEM_TYPES = ["U", "P"] as const;
-export type ProblemType = typeof PROBLEM_TYPES[number];
-
-/**
  * 允许的提交模式。
  */
 export const SUBMISSION_MODES = ["code", "artifact"] as const;
@@ -84,14 +78,7 @@ export function isValidSubmissionMode(value: string): value is SubmissionMode {
 }
 
 /**
- * 校验题目类型是否合法。
- */
-export function isValidProblemType(value: string): value is ProblemType {
-  return PROBLEM_TYPES.includes(value as ProblemType);
-}
-
-/**
- * 题目 LLM 配置：出题人只声明预算，Provider/模型由平台全局默认决定。
+ * 题目 LLM 配置：出题人只声明预算，Provider/模型由使用域默认配置决定。
  *
  * 非 null 即启用 LLM；`provider_id` / `model` 等旧字段容忍并忽略。
  */
@@ -168,15 +155,13 @@ export interface CreateProblemInput {
   /** 评测模式；缺省根据 runtime_config 兼容推断。 */
   judge_type?: JudgeType;
   tag_ids?: string[];
-  /** 题目类型：U（用户题）/ P（主题题），默认 U */
-  type?: string;
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective?: boolean;
   /** 提交模式：code（默认）或 artifact */
   submission_mode?: string;
   /** artifact 提交大小上限（MB），可空 */
   artifact_max_size_mb?: number | null;
-  /** LLM 配置（可空）：仅管理员 P 型/官方题或审核题可启用 */
+  /** LLM 配置（可空）：需 evaluator 网络与实例敏感字段授权 */
   llm?: LlmConfig | null;
   /** 题号（仅 admin 可指定，普通用户自动分配） */
   number?: number;
@@ -235,7 +220,6 @@ export interface ProblemListQuery {
   tag?: string;
   keyword?: string;
   /** 按类型筛选（U/P） */
-  type?: string;
   /** 按题号筛选 */
   number?: number;
   /** 按所有者筛选 */
@@ -255,6 +239,7 @@ export interface ProblemTagRef {
  * 题目响应（含标签信息）。
  */
 export interface ProblemResponseWithTags {
+  domain_id: string;
   samples: import("./problem-samples.ts").ProblemSample[];
   id: string;
   title: string;
@@ -283,7 +268,7 @@ export interface ProblemResponseWithTags {
   has_hidden_algorithm_tags: boolean;
   created_at: string;
   updated_at: string;
-  /** 题号（同一 type 内独立） */
+  /** 域内数字题号 */
   number: number;
   /** 题目所有者 ID */
   owner_id: string;
@@ -291,8 +276,6 @@ export interface ProblemResponseWithTags {
   owner_username?: string;
   /** 题目所有者头像 URL（详情/列表场景 JOIN users 返回；未上传为 null） */
   owner_avatar_url?: string | null;
-  /** 题目类型：U / P */
-  type: string;
   /** 题目可见性：public / private */
   visibility: "public" | "private";
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
@@ -303,7 +286,7 @@ export interface ProblemResponseWithTags {
   artifact_max_size_mb: number | null;
   /** LLM 配置（可空，仅 owner/admin 返回） */
   llm_config?: LlmConfig | null;
-  /** 展示标识，格式：{type}{number}（如 P1001、U42） */
+  /** 展示标识：默认域数字题号；跨域使用来源域限定题号 */
   display_id: string;
 }
 

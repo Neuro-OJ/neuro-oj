@@ -8,7 +8,7 @@ import {
   listProblems,
   updateProblem,
 } from "../../index.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import {
   auditLogs,
   domainProblemBindings,
@@ -155,7 +155,7 @@ Deno.test({
     assertEquals(problem.tags, []);
     assertEquals(problem.has_hidden_algorithm_tags, false);
     // 新建 U 型默认 private（I1）
-    assertEquals(problem.visibility, "private");
+    assertEquals(problem.visibility, "public");
   },
 });
 
@@ -170,7 +170,6 @@ Deno.test({
         title: `临时 P 题 ${ts}`,
         description: "用来测 P 默认公开",
         difficulty: "easy",
-        type: "P",
         runtime_config: VALID_RUNTIME_CONFIG,
       },
       "0",
@@ -362,7 +361,7 @@ Deno.test({
       difficulty: "easy",
       runtime_config: VALID_RUNTIME_CONFIG,
     });
-    const result = await listProblems({ difficulty: "easy", type: "U" });
+    const result = await listProblems({ difficulty: "easy" });
     assertEquals(result.items.every((i) => i.difficulty === "easy"), true);
   },
 });
@@ -388,7 +387,7 @@ Deno.test({
       updated_at: new Date().toISOString(),
     }).where(eq(problems.id, created.id));
     await publishBaselineVersionForTest(created.id);
-    const result = await listProblems({ keyword, type: "U" });
+    const result = await listProblems({ keyword });
     assertEquals(result.items.length, 1);
     assertEquals(result.items[0].id, created.id);
   },
@@ -477,6 +476,7 @@ Deno.test({
       updated_at: now,
     });
 
+    await grantDefaultCatalogRole(adminId, "admin");
     // 注入 admin actor context（logAudit 依赖 RequestContext）
     enterTestContext({
       actorId: adminId,
@@ -603,6 +603,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
+    await grantDefaultCatalogRole("admin-1", "admin");
     const created = await createProblem(
       {
         title: `admin 联网题 ${Date.now()}`,
@@ -653,7 +654,6 @@ Deno.test({
         title: `${marker}-${index}`,
         description: "筛选测试",
         difficulty: "easy",
-        type: "U",
         number: 9000000 + index,
         owner_id: "0",
         visibility: "public",
@@ -662,7 +662,7 @@ Deno.test({
       })));
       // 公共列表只含已发布题目：为每个夹具补基线版本
       for (const id of ids) await publishBaselineVersionForTest(id);
-      const query = { type: "U", keyword: marker, limit: 1 };
+      const query = { keyword: marker, limit: 1 };
       const oi = await listProblems({ ...query, judge_type: "oi" });
       assertEquals(oi.total, 2);
       assertEquals(oi.items.length, 1);
@@ -715,3 +715,7 @@ Deno.test({
     }
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";
+
+import { grantDefaultCatalogRole } from "../default-fixture.ts";

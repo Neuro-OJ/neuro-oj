@@ -3,7 +3,7 @@
  */
 import { assert, assertRejects } from "jsr:@std/assert@^1";
 import { createProblem, updateProblem } from "../../index.ts";
-import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
 import { users } from "../../../../shared/db/schema.ts";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 import { getDefaultLlmLimits } from "../../../gateway/index.ts";
@@ -40,6 +40,7 @@ async function createAdminUser(): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await grantDefaultCatalogRole(id, "admin");
   return id;
 }
 
@@ -58,7 +59,6 @@ Deno.test({
           {
             title: `LLM 超限 ${Date.now()}`,
             description: "d",
-            type: "P",
             runtime_config: NETWORKED_RUNTIME_CONFIG,
             llm: { max_calls: defaults.max_calls + 1 },
           },
@@ -83,7 +83,6 @@ Deno.test({
       {
         title: `LLM 更新超限 ${Date.now()}`,
         description: "d",
-        type: "P",
         runtime_config: NETWORKED_RUNTIME_CONFIG,
       },
       adminId,
@@ -116,7 +115,6 @@ Deno.test({
       {
         title: `LLM 无 provider ${Date.now()}`,
         description: "d",
-        type: "P",
         runtime_config: NETWORKED_RUNTIME_CONFIG,
         llm: { max_calls: 5 },
       },
@@ -126,3 +124,7 @@ Deno.test({
     assert(created.llm_config !== undefined);
   },
 });
+
+import { resetDbForTest } from "../default-fixture.ts";
+
+import { grantDefaultCatalogRole } from "../default-fixture.ts";

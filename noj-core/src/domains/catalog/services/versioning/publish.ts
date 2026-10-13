@@ -24,8 +24,10 @@ import {
 import { and, eq, sql } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
+  domainProblemBindings,
   problemDrafts,
   problems,
   problemVersionObjects,
@@ -806,9 +808,22 @@ export async function resolveProblemAnswerVersion(
   problem?: typeof problems.$inferSelect,
 ): Promise<ProblemVersionContentView | null> {
   const identity = problem ?? await loadProblemIdentity(problemId);
-  const versionId = identity.effective_version_mode === "exact"
-    ? identity.required_version_id
-    : identity.latest_version_id;
+  const [binding] = await getDb().select().from(domainProblemBindings).where(
+    and(
+      eq(domainProblemBindings.problem_id, problemId),
+      eq(
+        domainProblemBindings.domain_id,
+        identity.domain_id ?? DEFAULT_DOMAIN_ID,
+      ),
+      eq(domainProblemBindings.kind, "owned"),
+    ),
+  );
+  const mode = binding?.effective_version_mode ??
+    identity.effective_version_mode;
+  const required = binding
+    ? binding.required_version_id
+    : identity.required_version_id;
+  const versionId = mode === "exact" ? required : identity.latest_version_id;
   if (!versionId) return null;
   const row = await getProblemVersionOrThrow(problemId, versionId);
   return {
