@@ -94,6 +94,30 @@ Deno.test("教学管理读取：离班学生可读取历史班级但没有当前
   );
 });
 
+Deno.test("教学管理读取：仅提交读取的助教可选择学生但不能取得其他助教授权", async () => {
+  const f = await assignmentFixture();
+  await setClassroomMember(
+    f.school.slug,
+    f.classroom.id,
+    f.teacher,
+    f.assistant,
+    1,
+    {
+      role: "assistant",
+      capabilities: ["submissions:read"],
+    },
+  );
+  const roster = await listClassroomMembers(
+    f.school.slug,
+    f.classroom.id,
+    f.assistant,
+  );
+  assertEquals(roster.some((member) => member.user_id === f.student), true);
+  assertEquals(roster.every((member) => !("capabilities" in member)), true);
+  const room = await getClassroom(f.school.slug, f.classroom.id, f.assistant);
+  assertEquals(room.capabilities, ["submissions:read"]);
+});
+
 Deno.test("作业管理读取：来源题号及发布依据可读，学生 DTO 不附带其他目标学生或源题内容", async () => {
   const f = await assignmentFixture();
   const draft = await createAssignment(

@@ -55,6 +55,7 @@ export async function listClassroomMembers(
   const staff = access.managesDomain ||
     access.classMembership?.role === "coach" ||
     access.capabilities.has("progress:read") ||
+    access.capabilities.has("submissions:read") ||
     access.capabilities.has("assignments:manage") ||
     access.capabilities.has("students:manage");
   const rows = await db.select({

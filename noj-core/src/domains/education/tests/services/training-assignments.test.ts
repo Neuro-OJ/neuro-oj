@@ -392,8 +392,14 @@ Deno.test("题单引用：跨域身份、定向授权与资源 revision 独立�
       ),
     ),
   );
-  await assertRejects(
-    () => readDomainTraining(f.school.slug, f.training.id, f.teacher),
-    NotFoundError,
-  );
+  const unavailable = (await readDomainTraining(
+    f.school.slug,
+    f.training.id,
+    f.teacher,
+  )).items[0];
+  // 题单仍可读，但撤销题只保留来源定位；不能恢复题面、绑定入口或再次引用。
+  assertEquals(unavailable.resource_available, false);
+  assertEquals(unavailable.binding_id, null);
+  assertEquals(unavailable.can_import, false);
+  assertEquals("title" in unavailable, false);
 });
