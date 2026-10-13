@@ -36,6 +36,9 @@ sccache 的变量只设置在安装 action 上，后续 cargo 没有启用编译
   失败诊断只上传日志，避免传输数 GiB 的 `target/deps`。
 - Python 调度回归测试执行 workflow 中的真实 shell，验证全部 `e2e_*.rs`
   均被运行， 以及四个并行组各自的失败都会使 job 失败。
+- 浏览器的 Nuxt 构建在 `e2e-ui-build` 中与评测栈镜像并行，产物以 tar 分发，
+  保留隐藏文件和依赖链接；浏览器测试加载同次运行的产物后启动 SSR。 Domain E2E
+  通过 `deno task test:domain` 调用现有脚本。
 
 ## Alternatives considered
 
@@ -45,6 +48,7 @@ sccache 的变量只设置在安装 action 上，后续 cargo 没有启用编译
 
 ## Consequences
 
+- 沙箱优化后的运行 `38405677271` 中，沙箱 job 从 6 分 23 秒降到 3 分 22 秒。
 - 五分钟目标以真实 workflow 完成时间验收，同时记录执行与排队时间。 新的 Rust
   优化配置需要首次预热；修改工具链输入仍执行完整的两次构建。 冷缓存与 GitHub
   runner 排队耗时不能由固定 timeout 保证。

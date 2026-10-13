@@ -190,6 +190,40 @@ jobs:
               fh.write(f"e2e-domains={json.dumps(e2e_domains)}\n")
           PY
 
+  # UI 构建不依赖后端，在镜像准备期间完成；浏览器 job 只加载同次运行的产物。
+  e2e-ui-build:
+    name: E2E UI Build
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'browser') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version-file: .dvmrc
+      - name: 缓存 UI 依赖
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: noj-ui/node_modules
+          key: npm-${{ hashFiles('noj-ui/package.json', 'noj-ui/deno.lock') }}
+          restore-keys: |
+            npm-
+      - name: 安装依赖并构建 UI
+        working-directory: noj-ui
+        run: |
+          deno install
+          deno task build
+          # tar 保留 Nitro 的隐藏文件、权限和依赖链接。
+          tar -cf "$RUNNER_TEMP/e2e-ui.tar" .output
+      - name: 上传浏览器测试 UI
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-ui
+          path: ${{ runner.temp }}/e2e-ui.tar
+          retention-days: 1
+          compression-level: 1
+
   e2e-identity:
     name: E2E identity
     needs: [changes, e2e-images]
@@ -352,7 +386,7 @@ jobs:
 
   e2e-browser:
     name: E2E Browser
-    needs: [changes, e2e-images]
+    needs: [changes, e2e-images, e2e-ui-build]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'browser') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
