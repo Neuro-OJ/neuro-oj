@@ -2,7 +2,7 @@
 import { workspaceCacheKey, workspaceProblemPath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context' });
-const { slug } = useWorkspace();
+const { slug, can, domain } = useWorkspace();
 const { user } = useAuth();
 const api = useDomainProblems();
 const page = ref(1);
@@ -20,6 +20,13 @@ useSeoMeta({ title: '空间题库' });
 </script>
 <template>
   <div class="space-y-4">
+    <div class="flex flex-wrap justify-between gap-3">
+      <h2 class="text-xl font-semibold">空间题库</h2>
+      <UButton v-if="domain?.status === 'active' && (can('problem:write_own') || can('problem:write_any'))"
+        :to="`/d/${slug}/problems/new`" icon="i-lucide-plus">创建本域题目</UButton>
+      <UButton v-if="can('problem:write_own') || can('problem:write_any')" :to="`/d/${slug}/problem-drafts`"
+        variant="outline">题目草稿</UButton>
+    </div>
     <form class="flex gap-2" @submit.prevent="find">
       <UInput v-model="keyword" placeholder="搜索题目标题" aria-label="搜索题目" class="flex-1" />
       <UButton type="submit" icon="i-lucide-search">搜索</UButton>

@@ -26,6 +26,8 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
           <UBadge variant="subtle">V{{ data.version }}</UBadge>
           <UButton variant="ghost" color="neutral"
             @click="showVersions = !showVersions">{{ showVersions ? '收起沿革' : '版本沿革' }}</UButton>
+          <UButton v-if="data.can_edit && !data.reference.is_shared" :to="`/d/${slug}/editor/${data.reference.number}`"
+            variant="outline">编辑草稿</UButton>
         </div>
       </div>
       <UCard>

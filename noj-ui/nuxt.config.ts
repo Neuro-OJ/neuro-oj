@@ -167,6 +167,8 @@ export default defineNuxtConfig({
     '/d/**': { headers: { 'cache-control': 'no-store' } },
     '/d/*/members': { ssr: false },
     '/d/*/settings': { ssr: false },
+    '/d/*/editor/**': { ssr: false },
+    '/d/*/problems/new': { ssr: false },
     '/join': { ssr: false, headers: { 'cache-control': 'no-store' } },
     '/api/v1/domains/**': { headers: { 'cache-control': 'no-store' } },
     '/api/v1/me/**': { headers: { 'cache-control': 'no-store' } },
