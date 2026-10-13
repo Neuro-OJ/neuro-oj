@@ -328,7 +328,6 @@ async function objectiveFixture() {
     id: paper,
     domain_id: f.source.id,
     number: 1002,
-    type: "P",
     title: "客观题",
     description: "",
     is_objective: true,

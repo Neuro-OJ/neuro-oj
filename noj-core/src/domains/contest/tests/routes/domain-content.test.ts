@@ -53,7 +53,6 @@ Deno.test({
       await db.insert(problems).values({
         id,
         domain_id: source.id,
-        type: "P",
         number: 1001 + index,
         title: kind,
         description: "statement",

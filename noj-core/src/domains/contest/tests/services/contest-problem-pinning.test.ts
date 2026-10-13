@@ -49,7 +49,6 @@ async function createProblem(id: string, number: number): Promise<void> {
     id,
     title: id,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",

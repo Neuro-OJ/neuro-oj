@@ -68,7 +68,6 @@ async function insertProblem(
     runtime_config: null,
     number,
     owner_id: "0",
-    type: objective ? "U" : "P",
     is_objective: objective,
     created_at: now,
     updated_at: now,

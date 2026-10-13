@@ -225,12 +225,10 @@ export const problems = pgTable(
     runtime_config: jsonb("runtime_config"),
     /** 评测模式：存量题目默认 dual。 */
     judge_type: text("judge_type").notNull().default("dual"),
-    /** 题号（同一 type 内独立自增） */
+    /** 域内数字题号，由工作空间游标原子分配。 */
     number: integer("number").notNull(),
     /** 题目所有者 ID，默认 root (UID=0) */
     owner_id: text("owner_id").notNull().default(ROOT_USER_ID),
-    /** 题目类型：U=用户题库, P=主题库 */
-    type: text("type").notNull().default("U"),
     /** 客观题标记：true 表示该题目是客观题套卷（无评测容器，服务端即时判定） */
     is_objective: boolean("is_objective").notNull().default(false),
     visibility: text("visibility").notNull().default("public"),
@@ -286,15 +284,6 @@ export const problems = pgTable(
       table.domain_id,
       table.number,
     ),
-    legacyTypeNumberUnique: uniqueIndex("problems_legacy_type_number_unique")
-      .on(
-        table.type,
-        table.number,
-      ).where(sql`${table.domain_id} IS NULL`),
-    typeCheck: check(
-      "problems_type_check",
-      sql`${table.type} IN ('U', 'P')`,
-    ),
     submissionModeCheck: check(
       "problems_submission_mode_check",
       sql`${table.submission_mode} IN ('code', 'artifact')`,
@@ -302,10 +291,6 @@ export const problems = pgTable(
     visibilityCheck: check(
       "problems_visibility_check",
       sql`${table.visibility} IN ('public', 'private')`,
-    ),
-    pVisibilityCheck: check(
-      "problems_p_visibility_check",
-      sql`${table.type} <> 'P' OR ${table.visibility} = 'public'`,
     ),
     searchVectorIdx: index("idx_problems_search_vector").using(
       "gin",

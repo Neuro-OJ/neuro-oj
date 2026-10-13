@@ -67,7 +67,6 @@ Deno.test({
         solution: { image: "x", call_timeout_ms: 1000, memory_limit_mb: 128 },
       },
       number: 9001,
-      type: "P",
       visibility: "public",
       created_at: now,
       updated_at: now,

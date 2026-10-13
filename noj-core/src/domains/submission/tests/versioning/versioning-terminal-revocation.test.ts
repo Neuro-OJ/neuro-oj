@@ -125,7 +125,6 @@ async function seedProblem(
     title: `吊销测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number: 96200 + Math.floor(Math.random() * 700),
     owner_id: "0",
     judge_type: "dual",

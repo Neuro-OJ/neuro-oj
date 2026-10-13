@@ -114,7 +114,6 @@ async function seedProblem(problemId: string): Promise<string> {
     id: problemId,
     title: problemId,
     description: "d",
-    type: "P",
     number: 996500 + Math.floor(Math.random() * 1000),
     owner_id: "0",
     judge_type: "dual",

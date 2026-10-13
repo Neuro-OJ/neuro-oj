@@ -83,7 +83,6 @@ Deno.test({
       id: problemId,
       title: "统计通过数题",
       description: "d",
-      type: "P",
       number: 96000 + (Date.now() % 1000),
       owner_id: "0",
       difficulty: "easy",

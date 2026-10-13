@@ -44,7 +44,6 @@ async function fixture() {
     await f.db.insert(problems).values({
       id: problemId,
       domain_id: f.other.id,
-      type: "P",
       number,
       title: String(number),
       description: "公开题面",

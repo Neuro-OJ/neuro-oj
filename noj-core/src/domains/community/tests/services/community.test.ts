@@ -89,7 +89,6 @@ async function setup(): Promise<void> {
     difficulty: "easy",
     runtime_config: {},
     number: 5001,
-    type: "P",
     created_at: now,
     updated_at: now,
   });

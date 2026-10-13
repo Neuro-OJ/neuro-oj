@@ -45,7 +45,6 @@ async function createProblem(prefix: string): Promise<string> {
     difficulty: "easy",
     runtime_config: {},
     number: Math.floor(Math.random() * 1_000_000) + 9_000_000,
-    type: "U",
     visibility: "public",
     created_at: now,
     updated_at: now,

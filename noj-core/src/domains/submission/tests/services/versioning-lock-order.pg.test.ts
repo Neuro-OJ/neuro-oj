@@ -126,7 +126,6 @@ async function seedProblem(id: string, number: number): Promise<string> {
     id,
     title: id,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",

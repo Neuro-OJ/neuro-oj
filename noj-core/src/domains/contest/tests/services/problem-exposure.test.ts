@@ -37,7 +37,6 @@ async function createProblem(number: number): Promise<string> {
     difficulty: "easy",
     runtime_config: {},
     number,
-    type: "U",
     visibility: "public",
     created_at: now,
     updated_at: now,

@@ -302,7 +302,6 @@ Deno.test({
       id: problemId,
       title: "筛选测试题",
       description: "d",
-      type: "P",
       number: 988000 + (Date.now() % 1000),
       owner_id: "0",
       difficulty: "easy",

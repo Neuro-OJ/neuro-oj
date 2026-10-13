@@ -57,7 +57,6 @@ async function setup(): Promise<void> {
     difficulty: "easy",
     runtime_config: {},
     number: 960001,
-    type: "U",
     visibility: "public",
     owner_id: ownerId,
     created_at: now,

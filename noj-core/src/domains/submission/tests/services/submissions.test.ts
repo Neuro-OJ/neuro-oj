@@ -91,7 +91,6 @@ await db.insert(problems).values({
   },
   number: TEST_NUMBER,
   owner_id: TEST_USER_ID,
-  type: "P",
   created_at: now,
   updated_at: now,
 });
@@ -176,7 +175,6 @@ Deno.test({
       },
       number: 60000 + (Date.now() & 0x7fff),
       owner_id: privateOwnerId,
-      type: "U",
       created_at: now,
       updated_at: now,
     });
@@ -1002,7 +1000,6 @@ Deno.test({
         },
         number: 60000 + (Date.now() & 0x7fff),
         owner_id: adminId,
-        type: "U",
         created_at: now,
         updated_at: now,
       });
@@ -1125,7 +1122,6 @@ Deno.test({
         title: `LLM 重测题 ${Date.now()}`,
         description: "rejudge 前置校验回归测试",
         difficulty: "easy",
-        type: "P",
         number: 61000 + (Date.now() & 0x7fff),
         owner_id: adminId,
         llm_config: { provider_id: "p-x", model: "m-x" },
@@ -1266,7 +1262,6 @@ Deno.test({
         },
         number: 61000 + (Date.now() & 0x7fff),
         owner_id: adminId,
-        type: "U",
         created_at: now,
         updated_at: now,
       });
@@ -1379,7 +1374,6 @@ Deno.test({
     });
     await db.insert(problems).values({
       id: problemId,
-      type: "U",
       number: 99999,
       title: "T",
       description: "test",
@@ -1441,7 +1435,6 @@ Deno.test({
     });
     await db.insert(problems).values({
       id: problemId,
-      type: "U",
       number: 99998,
       title: "T",
       description: "test",
@@ -1501,7 +1494,6 @@ Deno.test({
     });
     await db.insert(problems).values({
       id: problemId,
-      type: "U",
       number: 99997,
       title: "T",
       description: "test",

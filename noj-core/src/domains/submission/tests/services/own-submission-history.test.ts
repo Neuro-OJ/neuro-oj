@@ -145,7 +145,6 @@ Deno.test({
       id: paper,
       domain_id: f.a.id,
       number: 1001,
-      type: "P",
       is_objective: true,
       title: "秘密客观卷",
       description: "秘密题面",

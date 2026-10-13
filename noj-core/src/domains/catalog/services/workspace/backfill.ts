@@ -38,13 +38,6 @@ export async function backfillDefaultCatalog(
   const pending = await executor.select().from(problems).where(
     isNull(problems.domain_id),
   ).for("update");
-  if (pending.some((problem) => problem.type === "U")) {
-    throw new AppError(
-      "发现尚未处理的旧 U 题，停止资源回填",
-      409,
-      "LEGACY_U_DATA_REQUIRES_REVIEW",
-    );
-  }
   await executor.update(problems).set({ domain_id: domain.id }).where(
     isNull(problems.domain_id),
   );

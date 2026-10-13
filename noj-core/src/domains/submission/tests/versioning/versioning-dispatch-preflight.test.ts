@@ -112,7 +112,6 @@ async function seedVersionContent(
     title: `预检测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number: 96900 + Math.floor(Math.random() * 900),
     owner_id: "0",
     judge_type: "dual",

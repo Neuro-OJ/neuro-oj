@@ -100,7 +100,6 @@ async function createTestProblem(problemNumber: number): Promise<string> {
     },
     number: problemNumber,
     owner_id: "0",
-    type: "P",
     created_at: now,
     updated_at: now,
   });

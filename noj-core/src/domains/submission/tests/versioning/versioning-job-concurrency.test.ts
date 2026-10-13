@@ -153,7 +153,6 @@ async function seedProblemWithVersions(
     title: `并发测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number: 98500 + Math.floor(Math.random() * 1000),
     owner_id: "0",
     judge_type: "dual",

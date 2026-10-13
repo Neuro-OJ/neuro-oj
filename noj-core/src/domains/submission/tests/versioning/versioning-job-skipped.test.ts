@@ -107,7 +107,6 @@ async function seedProblem(
     title: `skipped 分类测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number: 94700 + Math.floor(Math.random() * 900),
     owner_id: "0",
     judge_type: "dual",

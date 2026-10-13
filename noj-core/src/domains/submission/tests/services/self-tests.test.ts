@@ -118,7 +118,6 @@ await db.insert(problems).values([
     runtime_config: runtimeConfig,
     number: 70000 + (ts % 10000),
     owner_id: USER_ID,
-    type: "P",
     created_at: now,
     updated_at: now,
   },
@@ -131,7 +130,6 @@ await db.insert(problems).values([
     is_objective: true,
     number: 80000 + (ts % 10000),
     owner_id: USER_ID,
-    type: "P",
     created_at: now,
     updated_at: now,
   },
@@ -303,7 +301,6 @@ Deno.test({
       number: 90000 + (ts % 10000),
       // owner 不是 USER_ID：确保以普通用户身份访问会被拒
       owner_id: "0",
-      type: "P",
       visibility: "public",
       created_at: secretNow,
       updated_at: secretNow,
@@ -358,7 +355,6 @@ Deno.test({
       runtime_config: runtimeConfig,
       number: 91000 + (ts % 5000),
       owner_id: USER_ID,
-      type: "P",
       created_at: now,
       updated_at: now,
     });
@@ -458,7 +454,6 @@ Deno.test({
       runtime_config: v2Config,
       number: 92000 + (ts % 1000),
       owner_id: USER_ID,
-      type: "P",
       created_at: now,
       updated_at: now,
     });

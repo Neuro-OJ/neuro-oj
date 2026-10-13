@@ -799,7 +799,6 @@ Deno.test({
         },
       },
       owner_id: userId,
-      type: "U",
       number: 70000 + (ts & 0x7fff),
       created_at: now,
       updated_at: now,
@@ -868,7 +867,6 @@ Deno.test({
       description: "x",
       difficulty: "easy",
       owner_id: userId,
-      type: "U",
       number: 71000 + (ts & 0x7fff),
       created_at: now,
       updated_at: now,
@@ -1090,7 +1088,6 @@ Deno.test({
       },
       number: 80000 + (ts & 0x7fff),
       owner_id: "0",
-      type: "P",
       created_at: now,
       updated_at: now,
     });
@@ -1178,7 +1175,6 @@ Deno.test({
       },
       number: 81000 + (ts & 0x7fff),
       owner_id: "0",
-      type: "P",
       created_at: now,
       updated_at: now,
     });
@@ -1256,7 +1252,6 @@ Deno.test({
       },
       number: 85000 + (ts & 0x7fff),
       owner_id: "0",
-      type: "P",
       created_at: now,
       updated_at: now,
     });

@@ -72,7 +72,6 @@ async function fixture(slug: string, running = false) {
   await db.insert(problems).values({
     id: p,
     domain_id: domain.id,
-    type: "P",
     number: 1001,
     title: "OI",
     description: "description",

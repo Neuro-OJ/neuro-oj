@@ -25,7 +25,6 @@ export async function assignmentFixture() {
   await f.db.insert(problems).values({
     id: problemId,
     domain_id: f.school.id,
-    type: "P",
     number: 1001,
     title: "教学题",
     description: "题面",

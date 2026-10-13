@@ -62,7 +62,6 @@ Deno.test({
       id: problemId,
       title: "竞赛提交版本题",
       description: "d",
-      type: "P",
       number,
       owner_id: "0",
       difficulty: "easy",

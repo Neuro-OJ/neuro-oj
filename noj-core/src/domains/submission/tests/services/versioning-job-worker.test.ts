@@ -83,7 +83,6 @@ async function seedProblemAndVersion(): Promise<void> {
     id: "jw-prob",
     title: "jw",
     description: "d",
-    type: "P",
     number: 994001,
     owner_id: "0",
     judge_type: "dual",

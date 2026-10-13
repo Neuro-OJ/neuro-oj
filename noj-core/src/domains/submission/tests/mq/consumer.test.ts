@@ -65,7 +65,6 @@ async function setupTestData() {
     },
     number: 90000 + (TS & 0x7fff),
     owner_id: USER_ID,
-    type: "P",
     created_at: now,
     updated_at: now,
   });

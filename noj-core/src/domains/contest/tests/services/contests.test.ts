@@ -65,7 +65,6 @@ async function createProblem(number: number): Promise<string> {
     },
     number,
     owner_id: "0",
-    type: "U",
     created_at: now,
     updated_at: now,
   });

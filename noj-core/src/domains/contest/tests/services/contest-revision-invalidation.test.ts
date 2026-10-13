@@ -69,7 +69,6 @@ Deno.test({
       runtime_config: null,
       number: 921201,
       owner_id: adminId,
-      type: "P",
       created_at: now,
       updated_at: now,
     });

@@ -34,7 +34,6 @@ Deno.test({
           solution: { image: "x", call_timeout_ms: 1000, memory_limit_mb: 128 },
         },
         number: i * BATCH + j + 1,
-        type: "P" as const,
         visibility: "public",
         created_at: now,
         updated_at: now,

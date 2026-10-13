@@ -131,7 +131,6 @@ export async function sharedItem(f: Awaited<ReturnType<typeof domainFixture>>) {
     id,
     domain_id: f.source.id,
     owner_id: f.a,
-    type: "P",
     number: 1001,
     title: "source problem",
     description: "source body",

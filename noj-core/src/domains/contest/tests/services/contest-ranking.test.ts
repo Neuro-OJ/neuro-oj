@@ -106,7 +106,6 @@ async function insertProblem(
     runtime_config: {},
     number,
     owner_id: "0",
-    type: "P",
     created_at: now,
     updated_at: now,
   });
@@ -465,7 +464,6 @@ Deno.test({
       runtime_config: null,
       number: 920105,
       owner_id: "0",
-      type: "U",
       is_objective: true,
       created_at: now,
       updated_at: now,

@@ -128,7 +128,6 @@ Deno.test({
       id: problemId,
       title: "最近提交题",
       description: "d",
-      type: "P",
       number: 95000 + (ts % 1000),
       owner_id: "0",
       difficulty: "easy",

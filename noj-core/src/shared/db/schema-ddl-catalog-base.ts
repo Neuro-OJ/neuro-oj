@@ -14,11 +14,9 @@ export const CATALOG_PROBLEM_BASE_DDL: string[] = [
     judge_type TEXT NOT NULL DEFAULT 'dual' CHECK (judge_type IN ('dual', 'oi')),
     number INTEGER NOT NULL,
     owner_id TEXT NOT NULL DEFAULT '0',
-    type TEXT NOT NULL DEFAULT 'U' CHECK (type IN ('U', 'P')),
     is_objective BOOLEAN NOT NULL DEFAULT false,
     visibility TEXT NOT NULL DEFAULT 'public'
       CHECK (visibility IN ('public', 'private')),
-    CONSTRAINT problems_p_visibility_check CHECK (type <> 'P' OR visibility = 'public'),
     submission_mode TEXT NOT NULL DEFAULT 'code'
       CHECK (submission_mode IN ('code', 'artifact')),
     artifact_max_size_mb INTEGER,
@@ -39,7 +37,7 @@ export const CATALOG_PROBLEM_BASE_DDL: string[] = [
     search_vector tsvector GENERATED ALWAYS AS (
       setweight(to_tsvector('simple', coalesce(title, '')), 'A') ||
       setweight(to_tsvector('simple',
-        coalesce(type, '') || ' ' || coalesce(number::text, '')
+        coalesce(number::text, '')
       ), 'B')
     ) STORED
   )`,

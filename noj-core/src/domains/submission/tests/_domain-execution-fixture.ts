@@ -64,7 +64,6 @@ export async function fixture(mode: "code" | "artifact" | "oi" = "code") {
     id: problemId,
     domain_id: source.id,
     number: 1001,
-    type: "P",
     judge_type: mode === "oi" ? "oi" : "dual",
     submission_mode: mode === "artifact" ? "artifact" : "code",
     title: "共享题",

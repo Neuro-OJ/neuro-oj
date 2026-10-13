@@ -33,7 +33,6 @@ async function seedProblem(
     id: problemId,
     title: problemId,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     difficulty: "easy",

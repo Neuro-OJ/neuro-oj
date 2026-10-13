@@ -108,7 +108,6 @@ async function setupContestViaAdmin(): Promise<{
     runtime_config: {},
     number: 990001 + Math.floor(Math.random() * 1000),
     owner_id: adminId,
-    type: "P",
     created_at: now,
     updated_at: now,
   });

@@ -41,7 +41,7 @@ export interface ContestTimes {
 /**
  * 由题目 id 稳定派生一个题号。
  *
- * 用于自动补建夹具题目时满足 `(type, number)` 唯一约束：同一 id 每次得到同一
+ * 用于自动补建夹具题目时满足 `(domain_id, number)` 唯一约束：同一 id 每次得到同一
  * 编号（故可 `onConflictDoNothing` 重复调用），不同 id 冲突概率可忽略。
  */
 function stableProblemNumber(problemId: string): number {
@@ -149,7 +149,7 @@ export async function seedRunningContest(options: {
   if (options.problemIds.length > 0) {
     // 补建缺失题目。编号由题目 id 的字符哈希派生：同一 id 稳定得到同一编号
     // （重复调用 onConflictDoNothing 安全），不同 id 几乎不可能撞上
-    // (type, number) 唯一约束——用递增基数会在并发/多次调用下冲突。
+    // (domain_id, number) 唯一约束——用递增基数会在并发/多次调用下冲突。
     await db.insert(problems).values(
       options.problemIds.map((problemId) => ({
         id: problemId,
@@ -158,7 +158,6 @@ export async function seedRunningContest(options: {
         difficulty: "easy",
         runtime_config: {},
         number: stableProblemNumber(problemId),
-        type: "U",
         visibility: "public",
         owner_id: options.createdBy ?? "0",
         created_at: now,

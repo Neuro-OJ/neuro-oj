@@ -51,7 +51,6 @@ async function setup() {
   });
   await db.insert(problems).values({
     id: PROBLEM_ID,
-    type: "P",
     number: Math.floor(Math.random() * 10000),
     title: "Queue Test Problem",
     difficulty: "easy",

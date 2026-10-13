@@ -76,7 +76,9 @@ export async function getContestProblems(
       p.submission_mode,
       p.artifact_max_size_mb,
       p.visibility,
-      CONCAT(p.type, p.number::text) AS display_id,
+      CASE WHEN COALESCE(p.domain_id, ${DEFAULT_DOMAIN_ID}) = COALESCE(c.domain_id, ${DEFAULT_DOMAIN_ID})
+        THEN p.number::text ELSE CONCAT(source_domain.slug, ':', p.number::text)
+      END AS display_id,
       CASE
         WHEN ${userId ?? null}::text IS NULL THEN 'untouched'
         -- 通过状态读「竞赛口径有效通过」投影（Handbook §3.4）：
@@ -109,6 +111,7 @@ export async function getContestProblems(
     FROM contest_problems cp
     JOIN contests c ON c.id = cp.contest_id
     JOIN problems p ON p.id = cp.problem_id
+    LEFT JOIN domains source_domain ON source_domain.id = COALESCE(p.domain_id, ${DEFAULT_DOMAIN_ID})
     LEFT JOIN problem_versions pv ON pv.id = cp.pinned_version_id
     WHERE cp.contest_id = ${contestId}
     ORDER BY cp.sort_order ASC, cp.label ASC

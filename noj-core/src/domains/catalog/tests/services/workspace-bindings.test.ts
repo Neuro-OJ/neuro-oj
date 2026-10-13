@@ -162,7 +162,6 @@ async function fixture() {
       id,
       domain_id: source.id,
       number: 1001 + i,
-      type: "P",
       title: "公开源题",
       description: "题面",
       owner_id: platform,
@@ -240,7 +239,6 @@ Deno.test("默认域回填：保留源 ID、版本、题号和策略，重复运
   await getDb().insert(problems).values({
     id,
     number: 4321,
-    type: "P",
     title: "旧题",
     description: "题面",
     created_at: now,
@@ -369,14 +367,14 @@ Deno.test("域题库读取：源题撤销同时移除列表、命中数和题面
   );
 });
 
-Deno.test("默认域回填：未处理 U 题阻止整个事务，不默默转换或清除", async () => {
+Deno.test("默认域回填：分类退役后两题均归默认域，重复执行不重复绑定", async () => {
   await resetDbForTest();
   await ensureDefaultWorkspace();
   const now = new Date().toISOString();
+  const ids: string[] = [crypto.randomUUID(), crypto.randomUUID()];
   await getDb().insert(problems).values(
-    ["P", "U"].map((type, i) => ({
-      id: crypto.randomUUID(),
-      type,
+    ids.map((id, i) => ({
+      id,
       number: 1001 + i,
       title: "旧题",
       description: "题面",
@@ -384,13 +382,23 @@ Deno.test("默认域回填：未处理 U 题阻止整个事务，不默默转换
       updated_at: now,
     })),
   );
-  const error = await assertRejects(() => backfillDefaultCatalog(), AppError);
-  assertEquals(error.code, "LEGACY_U_DATA_REQUIRES_REVIEW");
+  assertEquals(await backfillDefaultCatalog(), {
+    problems_assigned: 2,
+    trainings_assigned: 0,
+    bindings_created: 2,
+  });
   assertEquals(
-    (await getDb().select().from(problems)).every((p) => p.domain_id === null),
+    (await getDb().select().from(problems)).every((p) =>
+      p.domain_id === DEFAULT_DOMAIN_ID && ids.includes(p.id)
+    ),
     true,
   );
-  assertEquals((await getDb().select().from(domainProblemBindings)).length, 0);
+  assertEquals(await backfillDefaultCatalog(), {
+    problems_assigned: 0,
+    trainings_assigned: 0,
+    bindings_created: 0,
+  });
+  assertEquals((await getDb().select().from(domainProblemBindings)).length, 2);
 });
 
 Deno.test("域成绩：策略切换即时重算本绑定，重测和源域批量重算不串域", async () => {

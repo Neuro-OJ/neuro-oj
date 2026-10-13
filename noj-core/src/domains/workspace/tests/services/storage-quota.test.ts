@@ -94,7 +94,6 @@ Deno.test({
         number: 1001,
         title: "旧源题",
         description: "",
-        type: "P",
         visibility: "public",
         created_at: now,
         updated_at: now,

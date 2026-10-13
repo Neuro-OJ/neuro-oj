@@ -81,7 +81,6 @@ async function item(
   await db.insert(problems).values({
     id,
     domain_id: domainId,
-    type: "P",
     number,
     title: kind,
     description: "statement",

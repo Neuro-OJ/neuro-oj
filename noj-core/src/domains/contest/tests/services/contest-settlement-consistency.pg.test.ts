@@ -109,7 +109,6 @@ Deno.test({
       difficulty: "easy",
       number: 992001,
       owner_id: adminId,
-      type: "P",
       judge_type: "dual",
       created_at: now,
       updated_at: now,

@@ -85,7 +85,6 @@ if (!skip) {
     },
     number: PROBLEM_NUMBER,
     owner_id: USER_ID,
-    type: "P",
     created_at: now,
     updated_at: now,
   });

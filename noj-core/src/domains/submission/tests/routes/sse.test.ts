@@ -96,7 +96,6 @@ Deno.test({
       runtime_config: {},
       number: 990000 + (Date.now() & 0x7fff),
       owner_id: adminId,
-      type: "U",
       created_at: now,
       updated_at: now,
     });

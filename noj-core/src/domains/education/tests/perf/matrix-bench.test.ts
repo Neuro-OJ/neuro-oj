@@ -88,7 +88,6 @@ Deno.test({
       await f.db.insert(problems).values({
         id,
         domain_id: f.school.id,
-        type: "P",
         number: 2000 + i,
         title: `矩阵题 ${i}`,
         description: "性能夹具",

@@ -65,7 +65,6 @@ export async function fixture() {
     id: "query-source",
     domain_id: DEFAULT_DOMAIN_ID,
     number: 997001,
-    type: "P",
     title: "共享题",
     description: "题面",
     owner_id: actor,

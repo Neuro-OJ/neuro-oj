@@ -138,7 +138,6 @@ async function seedFixture(tag: string): Promise<Fixture> {
     title: `屏障测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number: 94000 + Math.floor(Math.random() * 900),
     // 独立 schema 由迁移创建，不含 PGlite 的 root 种子 → 用夹具用户做题主
     owner_id: userId,
@@ -461,7 +460,6 @@ async function seedObjectiveFixture(
     title: `客观题屏障测试 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number: 93000 + Math.floor(Math.random() * 900),
     owner_id: userId,
     judge_type: "dual",

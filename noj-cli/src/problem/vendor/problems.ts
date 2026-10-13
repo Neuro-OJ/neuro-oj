@@ -68,12 +68,6 @@ export function isValidDifficulty(value: string): value is Difficulty {
 }
 
 /**
- * 允许的题目类型。
- */
-export const PROBLEM_TYPES = ["U", "P"] as const;
-export type ProblemType = typeof PROBLEM_TYPES[number];
-
-/**
  * 允许的提交模式。
  */
 export const SUBMISSION_MODES = ["code", "artifact"] as const;
@@ -84,13 +78,6 @@ export type SubmissionMode = typeof SUBMISSION_MODES[number];
  */
 export function isValidSubmissionMode(value: string): value is SubmissionMode {
   return SUBMISSION_MODES.includes(value as SubmissionMode);
-}
-
-/**
- * 校验题目类型是否合法。
- */
-export function isValidProblemType(value: string): value is ProblemType {
-  return PROBLEM_TYPES.includes(value as ProblemType);
 }
 
 /**
@@ -224,6 +211,7 @@ export interface ProblemTagRef {
  * 题目响应（含标签信息）。
  */
 export interface ProblemResponseWithTags {
+  domain_id: string;
   id: string;
   title: string;
   description: string;
@@ -245,14 +233,12 @@ export interface ProblemResponseWithTags {
   has_hidden_algorithm_tags: boolean;
   created_at: string;
   updated_at: string;
-  /** 题号（同一 type 内独立） */
+  /** 域内数字题号 */
   number: number;
   /** 题目所有者 ID */
   owner_id: string;
   /** 题目所有者用户名（详情/列表场景 JOIN users 返回；可能为"未知"） */
   owner_username?: string;
-  /** 题目类型：U / P */
-  type: string;
   /** 题目可见性：public / private */
   visibility: "public" | "private";
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
@@ -263,7 +249,7 @@ export interface ProblemResponseWithTags {
   artifact_max_size_mb: number | null;
   /** LLM 配置（可空，仅 owner/admin 返回） */
   llm_config?: LlmConfig | null;
-  /** 展示标识，格式：{type}{number}（如 P1001、U42） */
+  /** 展示标识：默认域数字题号；跨域使用来源域限定题号 */
   display_id: string;
 }
 

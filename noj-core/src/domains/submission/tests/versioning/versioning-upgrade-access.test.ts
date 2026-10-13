@@ -155,8 +155,6 @@ async function seedProblemWithVersions(
   options: {
     visibility?: "public" | "private";
     ownerId?: string;
-    /** `private` 只对 U 型题合法（P 型题的 visibility 检查约束恒为 public）。 */
-    type?: "P" | "U";
     /** 版本内容类别（客观题路径需要 `objective` 内容）。 */
     contentKind?: "ai" | "objective";
   } = {},
@@ -169,7 +167,6 @@ async function seedProblemWithVersions(
     title: `升级授权测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: options.type ?? "P",
     number: 97800 + Math.floor(Math.random() * 1000),
     owner_id: options.ownerId ?? "0",
     visibility: options.visibility ?? "public",
@@ -335,7 +332,6 @@ Deno.test({
     // 私有题（U 型才允许 private）：不归 stranger，也不对其可见
     const { problemId, v1 } = await seedProblemWithVersions("private", {
       visibility: "private",
-      type: "U",
       ownerId: owner,
     });
     const submissionId = await seedSubmission(problemId, stranger, v1);

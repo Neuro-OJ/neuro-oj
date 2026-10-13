@@ -31,7 +31,6 @@ async function problem(kind: "oi" | "ai" | "objective", number: number) {
   const now = new Date().toISOString();
   await db.insert(problems).values({
     id,
-    type: "P",
     number,
     title: kind,
     description: "statement",

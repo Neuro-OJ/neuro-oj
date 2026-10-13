@@ -83,7 +83,6 @@ Deno.test({
       id: problem,
       domain_id: DEFAULT_DOMAIN_ID,
       number: 42001,
-      type: "P",
       title: "main题",
       description: "",
       visibility: "public",

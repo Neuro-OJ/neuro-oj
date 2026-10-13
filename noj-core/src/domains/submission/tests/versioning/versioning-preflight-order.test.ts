@@ -113,7 +113,6 @@ async function seedProblem(
     title: `预检顺序测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number: 95400 + Math.floor(Math.random() * 900),
     owner_id: "0",
     judge_type: "dual",

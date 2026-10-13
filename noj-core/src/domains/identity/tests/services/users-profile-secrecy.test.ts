@@ -48,7 +48,6 @@ async function seedProblem(): Promise<string> {
     difficulty: "easy",
     runtime_config: {},
     number: 950_000 + Math.floor(Math.random() * 10_000),
-    type: "U",
     visibility: "public",
     created_at: now,
     updated_at: now,

@@ -44,7 +44,6 @@ Deno.test("公共主页：本人和平台管理员也不能聚合私有域提交
     id: "profile-school-problem",
     domain_id: "profile-school",
     number: 997010,
-    type: "P",
     title: "私有题",
     description: "私有题面",
     created_at: now,
@@ -115,7 +114,6 @@ Deno.test("公共主页：本人和平台管理员也不能聚合私有域提交
   await db.insert(problems).values({
     id: "profile-main-problem",
     number: 997011,
-    type: "P",
     title: "公开题",
     description: "题面",
     created_at: now,

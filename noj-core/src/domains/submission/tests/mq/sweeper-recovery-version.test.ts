@@ -90,7 +90,6 @@ async function seedProblem(
     title: `恢复测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number,
     owner_id: userId,
     runtime_config: projectionConfig,

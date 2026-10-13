@@ -517,7 +517,6 @@ Deno.test({
         runtime_config: {},
         number: 981001,
         owner_id: adminId,
-        type: "P",
         created_at: now,
         updated_at: now,
       },
@@ -529,7 +528,6 @@ Deno.test({
         runtime_config: {},
         number: 981002,
         owner_id: adminId,
-        type: "P",
         created_at: now,
         updated_at: now,
       },
@@ -809,7 +807,6 @@ Deno.test({
       runtime_config: {},
       number: 982001,
       owner_id: userA,
-      type: "P",
       created_at: now,
       updated_at: now,
     });

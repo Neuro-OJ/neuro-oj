@@ -86,7 +86,6 @@ async function seedProblem(problemId: string, number: number): Promise<void> {
     id: problemId,
     title: problemId,
     description: "d",
-    type: "P",
     number,
     owner_id: "0",
     judge_type: "dual",

@@ -69,7 +69,6 @@ async function seedProblemAndSubmission(tag: string): Promise<{
     title: `任务路由题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    type: "P",
     number: 98000 + Math.floor(Math.random() * 900),
     owner_id: "0",
     judge_type: "dual",

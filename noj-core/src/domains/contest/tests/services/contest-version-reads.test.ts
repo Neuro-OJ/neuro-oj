@@ -73,7 +73,6 @@ async function insertProblemRow(
     judge_type: options.judgeType ?? "dual",
     number,
     owner_id: "0",
-    type: "P",
     created_at: now,
     updated_at: now,
   });

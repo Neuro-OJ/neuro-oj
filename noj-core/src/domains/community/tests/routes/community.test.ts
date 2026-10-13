@@ -75,7 +75,6 @@ async function setup(): Promise<void> {
     difficulty: "easy",
     runtime_config: {},
     number: 9999,
-    type: "P",
     created_at: now,
     updated_at: now,
   });
@@ -1190,7 +1189,6 @@ Deno.test({
       difficulty: "easy",
       runtime_config: {},
       number: 9998,
-      type: "P",
       created_at: now,
       updated_at: now,
     });

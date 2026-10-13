@@ -31,7 +31,6 @@ Deno.test({
       runtime_config: {},
       number: 1,
       owner_id: "0",
-      type: "U",
       created_at: now,
       updated_at: now,
     });
