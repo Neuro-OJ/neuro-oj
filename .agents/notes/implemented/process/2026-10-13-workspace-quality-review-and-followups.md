@@ -9,26 +9,26 @@ Status: implemented
 当前升级目标因额度不足暂停；用户要求先记录审查，额度恢复并继续后先修复，再推进
 剩余产品计划。
 
-本记录的 implemented 仅表示只读审查和待办记录已完成，**以下代码整改均未实施**。
-仓库 Agent Note 校验当前只接受 implemented 目录和状态，因此采用 process 分类
-记录已完成的审查过程，不把未实施的简化标记为功能交付。
+本记录最初记录只读审查；用户恢复开发后，以下整改已分别实施、审查并保存签名提交。
+本 process Note 保留原问题依据，具体实现和验证见对应 architecture /
+simplification 记录，不以整改完成代替整个产品升级验收。
 
 审查依据为 2026-10-13 暂停时的当前工作区，包含已提交代码和保留的未提交改动。
-本轮未修改业务代码，未重新运行测试，也未进行完整仓库质量签收。
+初次审查未修改业务代码；后续整改验证列于本记录末尾，完整仓库质量签收仍待完成。
 
 ## Decision
 
 恢复开发后，先完成下列整改，并按可审查范围保存独立签名 jj 提交。修改前核对
 实际调用者和约束，修改后运行受影响模块的标准检查；不以删除检查数量作为目标。
 
-- [ ] **Q1，优先：取消配额记录缺失时的不限额兜底。**
+- [x] **Q1，优先：取消配额记录缺失时的不限额兜底。**
       `noj-core/src/domains/workspace/services/limits.ts` 的
       `getDomainEffectiveLimits()` 在找不到配额行时使用
       `unlimitedDomainLimits()`。
       正常域创建和默认域初始化均建立该行，缺失不应被解释为不限额。先核实所有初始化、
       迁移和夹具路径，明确每域存在配额记录的不变量，再去掉静默放宽分支。默认域明确
       配置的 null 额度继续表示不限额；不要新增复杂的自动修复或恢复层。
-- [ ] **Q2，优先：复用同一事务中已授权的班级与使用域上下文。**
+- [x] **Q2，优先：复用同一事务中已授权的班级与使用域上下文。**
       `education/services/contest-remediation.ts` 已加载并锁定班级，随后
       `education/services/assignments.ts` 的 `insertAssignmentDraft()`
       再次加载班级。 `replaceItems()` 每题通过 `assignmentProblem()` →
@@ -36,17 +36,17 @@ Status: implemented
       又查询相同使用域身份。内部写入函数应复用同一事务中已授权的上下文；仍逐题检查
       源资源、共享、绑定和版本。不要跨请求、跨事务缓存授权，也不要增加可由外部调用者
       传入的 skipAuthorization 开关。
-- [ ] **Q3：简化可信角色到权限集合的映射。** `workspace/types.ts` 的
+- [x] **Q3：简化可信角色到权限集合的映射。** `workspace/types.ts` 的
       `domainPermissions(roles: readonly DomainRole[])` 再次逐项调用
       `isDomainRole()`。当前生产调用来自数据库角色查询，角色列具有 CHECK
       约束，成员角色写入也验证输入。核实调用者后，让该函数成为纯映射；未知 HTTP
       输入仍在写入边界验证，不将内部数据不变量问题伪装成用户请求的 400。
-- [ ] **Q4：合并配置解析中的重复异常包装。** `workspace/services/instance.ts` 的
+- [x] **Q4：合并配置解析中的重复异常包装。** `workspace/services/instance.ts` 的
       `resourcePolicy()` 与 `getInstanceResourcePolicy()`
       都将解析失败转换成相同的
       `ServiceUnavailableError`。在一个明确边界完成转换，保留脱敏的诊断依据，
       不重复吞掉已有异常。无效配额或模块配置继续拒绝执行，不回退成宽松政策。
-- [ ] **Q5：收窄授权读取对无关导航配置的依赖。** `workspace/services/access.ts`
+- [x] **Q5：收窄授权读取对无关导航配置的依赖。** `workspace/services/access.ts`
       的 `loadWorkspace()` 每次校验完整配置，包含 homepage
       等导航字段，使导航错误阻断题库和提交读取。完整验证保留在写入、
       初始化和迁移边界；读取授权仍验证访问政策，具体模块执行检查必要开关。
@@ -54,7 +54,7 @@ Status: implemented
 
 同时保留此前发现的独立正确性问题：
 
-- [ ] **S1：核查并修复参赛题目编辑者的客观题答案旁路。**
+- [x] **S1：核查并修复参赛题目编辑者的客观题答案旁路。**
       `catalog/services/workspace/problem-read.ts` 将普通题面读取的 canEdit
       直接用于
       `trimProblemContentForViewer()`，编辑者可得到完整客观题答案与解析；
@@ -86,6 +86,18 @@ Status: implemented
 不变量，失败明确，少做静默兜底。Q1、Q2 和 S1 优先处理；Q3、Q4 属于较小的
 简化，Q5 需先核实配置约束。
 
-业务整改仍待实施与验证。用户暂停请求继续生效，记录本 Note 不恢复目标、不派发
-subagent，也不自动在额度重置后开始开发。收到继续指令后先处理本清单，再推进
-产品任务清单中的迁移收缩、剩余功能、浏览器及服务验收和 PR / CI。
+用户恢复开发后，已保存两个 GPG 签名提交：
+
+- `43ca8a60`：Q1、Q3、Q4 和 Q5 工作空间授权边界。 workspace PostgreSQL 47
+  项通过；最后增加错误码选项后的 PGlite 39 项通过、 8 项 PostgreSQL
+  专用场景忽略，类型和 lint 通过。
+- `da6ea991`：Q2、S1 及六处教学写入口的 Q5 对齐。 catalog PostgreSQL / PGlite 各
+  364 项通过；education PostgreSQL 104 项通过、 1 项忽略，PGlite 103 项通过、2
+  项忽略。新增真实接口覆盖普通题面、固定版本、
+  草稿、实际组织者、比赛结束恢复与跨域限制不扩散。
+
+日志：`/tmp/noj-workspace-quality-*.log`、
+`/tmp/noj-quality-catalog-{pg,pglite}-final2.log`、
+`/tmp/noj-quality-education-{pg,pglite}-final.log`。
+这六项整改已完成；后续继续产品任务清单中的迁移收缩、剩余功能、浏览器及服务
+验收和 PR / CI。全量回归、完整入口验收及产品升级完成条件尚未满足。
