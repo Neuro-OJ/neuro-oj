@@ -32,6 +32,7 @@ import {
   saveProblemDraft,
 } from "../../../catalog/index.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 
 const db = getDb();
 const now = new Date().toISOString();
@@ -330,6 +331,7 @@ Deno.test({
       id: contestId,
       public_id: contestPublicId,
       title: `版本化客观题竞赛 ${ts}`,
+      domain_id: DEFAULT_DOMAIN_ID,
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
       end_time: new Date(Date.now() + 3600_000).toISOString(),
@@ -729,6 +731,7 @@ Deno.test({
     await db.insert(contests).values({
       id: contestId,
       title: `防预言机竞赛 ${ts}`,
+      domain_id: DEFAULT_DOMAIN_ID,
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
       end_time: new Date(Date.now() + 3600_000).toISOString(),

@@ -27,6 +27,7 @@ import {
   saveProblemDraft,
 } from "../../../catalog/index.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 
 const db = getDb();
 const now = new Date().toISOString();
@@ -196,6 +197,7 @@ Deno.test("objective questions: 竞赛读取固定版本小题（不被最新版
   await db.insert(contests).values({
     id: contestId,
     title: `小题目版本竞赛 ${ts}`,
+    domain_id: DEFAULT_DOMAIN_ID,
     created_by: "0",
     description: "",
     start_time: new Date(Date.now() - 3600_000).toISOString(),

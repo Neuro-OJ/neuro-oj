@@ -18,7 +18,10 @@ import {
   problemVersions,
 } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
-import { jsonRequest } from "../../../../../tests/helper.ts";
+import {
+  deleteProblemFixtures,
+  jsonRequest,
+} from "../../../../../tests/helper.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasEnv;
@@ -42,7 +45,7 @@ const runtimeConfig = {
   },
 };
 
-/** 建一道题（内容完整，仅用于草稿/版本接口；默认 U 型）。 */
+/** 建一道默认域题目，内容完整，仅用于草稿与版本接口。 */
 async function makeDraftProblem(): Promise<string> {
   const created = await createProblem({
     title: `草稿路由题 ${ts}_${Math.random().toString(36).slice(2, 8)}`,
@@ -54,7 +57,7 @@ async function makeDraftProblem(): Promise<string> {
   return created.id;
 }
 
-/** 管理员 token（U 型非 owner 需要 problem:write_any）。 */
+/** 管理员凭据通过实际平台治理权限编辑他人题目。 */
 async function adminToken(): Promise<string> {
   const { createUserToken } = await import("../../../../../tests/helper.ts");
   return await createUserToken("admin");
@@ -539,7 +542,7 @@ Deno.test({
     const { publishBaselineVersionForTest } = await import(
       "../../../../../tests/helper.ts"
     );
-    // 直接落一行 P 型公开题（无已发布版本）：模拟"新建但尚未发布"
+    // 显式公开题（无已发布版本），不能依赖已移除的题库分类决定可见性。
     const problemId = crypto.randomUUID();
     const now = new Date().toISOString();
     await getDb().insert(problems).values({
@@ -548,6 +551,7 @@ Deno.test({
       title: `未发布列表题 ${ts}`,
       description: "草稿题面",
       difficulty: "easy",
+      visibility: "public",
       number: 8900000 + (ts % 10000),
       owner_id: "0",
       created_at: now,
@@ -576,7 +580,7 @@ Deno.test({
     await getDb().delete(problemVersions).where(
       eq(problemVersions.problem_id, problemId),
     );
-    await getDb().delete(problems).where(eq(problems.id, problemId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
   },
 });
 

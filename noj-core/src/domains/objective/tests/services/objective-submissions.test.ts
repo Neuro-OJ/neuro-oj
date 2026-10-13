@@ -25,6 +25,7 @@ import {
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   getProblemDraft,
   saveProblemDraft,
@@ -234,6 +235,7 @@ Deno.test({
     await db.insert(contests).values({
       id: contestId,
       title: `客观题竞赛 ${ts}`,
+      domain_id: DEFAULT_DOMAIN_ID,
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
       end_time: new Date(Date.now() + 3600_000).toISOString(),
@@ -309,6 +311,7 @@ Deno.test({
     await db.insert(contests).values({
       id: contestId,
       title: `客观题竞赛2 ${ts}`,
+      domain_id: DEFAULT_DOMAIN_ID,
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
       end_time: new Date(Date.now() + 3600_000).toISOString(),
@@ -435,6 +438,7 @@ Deno.test({
     await db.insert(contests).values({
       id: contestId,
       title: `客观题竞赛3 ${ts}`,
+      domain_id: DEFAULT_DOMAIN_ID,
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
       end_time: new Date(Date.now() + 3600_000).toISOString(),
@@ -486,6 +490,7 @@ Deno.test({
     await db.insert(contests).values({
       id: oiContest,
       title: "OI 客观题",
+      domain_id: DEFAULT_DOMAIN_ID,
       type: "oi",
       created_by: owner,
       start_time: new Date(Date.now() - 3600_000).toISOString(),
@@ -545,6 +550,7 @@ Deno.test({
     await db.insert(contests).values({
       id: contestId,
       title: `赛后复盘竞赛 ${ts}`,
+      domain_id: DEFAULT_DOMAIN_ID,
       description: "",
       start_time: new Date(Date.now() - 7_200_000).toISOString(),
       end_time: new Date(Date.now() + 3_600_000).toISOString(),
@@ -613,6 +619,7 @@ Deno.test({
     await db.insert(contests).values({
       id: contestId,
       title: `客观题竞赛4 ${ts}`,
+      domain_id: DEFAULT_DOMAIN_ID,
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
       end_time: new Date(Date.now() + 3600_000).toISOString(),

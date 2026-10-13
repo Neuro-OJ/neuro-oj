@@ -4,6 +4,7 @@ import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
 import {
   createUserToken,
+  deleteProblemFixtures,
   jsonRequest,
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
@@ -283,6 +284,7 @@ Deno.test({
       title: `筛选测试题-${ts}`,
       description: "描述",
       difficulty: "easy",
+      visibility: "public",
       runtime_config: null,
       is_objective: false,
       number: 900000 + (ts % 10000),
@@ -315,7 +317,7 @@ Deno.test({
 
     // 清理
     await db.delete(problemTags).where(eq(problemTags.problem_id, problemId));
-    await db.delete(problems).where(eq(problems.id, problemId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
     await db.delete(tags).where(eq(tags.id, tagId));
   },
 });
