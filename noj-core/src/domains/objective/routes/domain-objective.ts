@@ -14,6 +14,7 @@ import {
 } from "../../../shared/http/request.ts";
 import { submitDomainObjectivePaper } from "../services/domain-objective.ts";
 import type { ObjectiveAnswerValue } from "../types/objective.ts";
+import { parseAssignmentOrigin } from "../../../shared/http/assignment-origin.ts";
 
 /** 使用域客观题入口，正式交卷与本人历史均保留使用域归属。 */
 export const domainObjectiveRouter = new Hono<AuthEnv>();
@@ -75,6 +76,7 @@ const submitInDomain = async (c: Context<AuthEnv>) => {
       version_id: typeof body.version_id === "string"
         ? body.version_id
         : undefined,
+      assignment: parseAssignmentOrigin(body),
     },
     c.req.param("id"),
   );

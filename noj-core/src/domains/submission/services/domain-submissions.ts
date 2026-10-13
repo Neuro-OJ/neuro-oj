@@ -4,16 +4,19 @@ import { createArtifactSubmission } from "./submissions/artifact-submissions.ts"
 import { createSelfTest } from "./self-tests.ts";
 import type { SelfTestInput } from "../types/self-tests.ts";
 import type { SubmissionInput } from "./submissions/submissions-types.ts";
+import type { AssignmentSubmissionOrigin } from "../../../shared/education-types.ts";
 
 /** 显式使用域代码提交，源题内部身份从引用解析，继续复用唯一提交与评测链。 */
 export async function createDomainSubmission(
   slug: string,
   reference: string,
   userId: string,
-  input: Omit<SubmissionInput, "problem_id" | "contest_id">,
+  input: Omit<SubmissionInput, "problem_id" | "contest_id"> & {
+    assignment?: AssignmentSubmissionOrigin;
+  },
   contestId?: string,
 ) {
-  const request = { slug, reference, contestId };
+  const request = { slug, reference, contestId, assignment: input.assignment };
   const resolved = await resolveDomainExecution(
     request,
     userId,
@@ -37,6 +40,7 @@ export async function createDomainSubmission(
     domain_id: resolved.domain.id,
     domain_problem_binding_id: resolved.binding.id,
     reference: resolved.reference,
+    assignment_origin: input.assignment ?? null,
   };
 }
 
@@ -45,13 +49,15 @@ export async function createDomainArtifactSubmission(
   slug: string,
   reference: string,
   userId: string,
-  input: Omit<
-    Parameters<typeof createArtifactSubmission>[1],
-    "problem_id" | "contest_id"
-  >,
+  input:
+    & Omit<
+      Parameters<typeof createArtifactSubmission>[1],
+      "problem_id" | "contest_id"
+    >
+    & { assignment?: AssignmentSubmissionOrigin },
   contestId?: string,
 ) {
-  const request = { slug, reference, contestId };
+  const request = { slug, reference, contestId, assignment: input.assignment };
   const resolved = await resolveDomainExecution(
     request,
     userId,
@@ -74,6 +80,7 @@ export async function createDomainArtifactSubmission(
     domain_id: resolved.domain.id,
     domain_problem_binding_id: resolved.binding.id,
     reference: resolved.reference,
+    assignment_origin: input.assignment ?? null,
   };
 }
 
@@ -82,9 +89,9 @@ export async function createDomainSelfTest(
   slug: string,
   reference: string,
   userId: string,
-  input: SelfTestInput,
+  input: SelfTestInput & { assignment?: AssignmentSubmissionOrigin },
 ) {
-  const request = { slug, reference };
+  const request = { slug, reference, assignment: input.assignment };
   const resolved = await resolveDomainExecution(
     request,
     userId,
@@ -102,5 +109,6 @@ export async function createDomainSelfTest(
     domain_id: resolved.domain.id,
     domain_problem_binding_id: resolved.binding.id,
     reference: resolved.reference,
+    assignment_origin: input.assignment ?? null,
   };
 }

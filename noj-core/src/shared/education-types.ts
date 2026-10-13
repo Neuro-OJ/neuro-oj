@@ -14,6 +14,12 @@ export type AssistantCapability = typeof ASSISTANT_CAPABILITIES[number];
 /** 作业持久生命周期，截止与评测等待由事实计算。 */
 export type AssignmentState = "draft" | "scheduled" | "published" | "archived";
 
+/** 用户实际进入的作业及条目；它不限定该提交自动计入哪些作业。 */
+export interface AssignmentSubmissionOrigin {
+  assignment_id: string;
+  assignment_item_id: string;
+}
+
 /** 正式进度状态，updating 仅由读取接口描述尚未完成的投影。 */
 export const ASSIGNMENT_PROGRESS_STATES = [
   "not_started",

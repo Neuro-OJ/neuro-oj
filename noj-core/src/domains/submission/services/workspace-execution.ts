@@ -1,5 +1,7 @@
 import { asc, eq, inArray } from "drizzle-orm";
 import { AppError } from "../../../shared/base/errors.ts";
+import type { AssignmentSubmissionOrigin } from "../../../shared/education-types.ts";
+import { resolveAssignmentSubmissionOrigin } from "../../education/index.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
@@ -19,6 +21,7 @@ export interface DomainExecutionRequest {
   reference: string;
   /** 仅比赛路径设置；reference 在此上下文表示赛题标签。 */
   contestId?: string;
+  assignment?: AssignmentSubmissionOrigin;
 }
 
 /** 解析使用域及当前作答版本；旧编辑内容保留给客户端重新确认。 */
@@ -101,5 +104,12 @@ export async function lockDomainExecution(
   return {
     domain_id: current.domain.id,
     domain_problem_binding_id: current.binding.id,
+    ...await resolveAssignmentSubmissionOrigin(executor, {
+      domainId: current.domain.id,
+      actorId: userId,
+      bindingId: current.binding.id,
+      problemId: current.problem.id,
+      origin: request.assignment,
+    }),
   };
 }

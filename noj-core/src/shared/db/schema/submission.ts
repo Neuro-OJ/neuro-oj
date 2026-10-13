@@ -28,6 +28,7 @@ import { contests } from "./contest.ts";
 import { domains } from "./workspace.ts";
 import { domainProblemBindings } from "./catalog-workspace.ts";
 import { objectiveSubmissions } from "./objective.ts";
+import { assignmentItems, assignments } from "./assignment.ts";
 import type {
   AttemptResultKind,
   AttemptSource,
@@ -229,6 +230,9 @@ export const submissions = pgTable(
     /** 使用域及其题库配置，创建后保持不变。 */
     domain_id: text("domain_id").references(() => domains.id),
     domain_problem_binding_id: text("domain_problem_binding_id"),
+    /** 可选作业入口依据，不限制提交自动计入其他同域作业。 */
+    assignment_id: text("assignment_id"),
+    assignment_item_id: text("assignment_item_id"),
     user_id: text("user_id").notNull().references(() => users.id),
     problem_id: text("problem_id").notNull().references(() => problems.id),
     contest_id: text("contest_id").references(() => contests.id, {
@@ -300,6 +304,35 @@ export const submissions = pgTable(
       table.id,
       table.user_id,
     ),
+    assignmentOriginCheck: check(
+      "submissions_assignment_origin_check",
+      sql`(${table.assignment_id} IS NULL) = (${table.assignment_item_id} IS NULL)`,
+    ),
+    assignmentOriginFk: foreignKey({
+      name: "submissions_assignment_origin_fk",
+      columns: [table.domain_id, table.assignment_id, table.assignment_item_id],
+      foreignColumns: [
+        assignmentItems.domain_id as AnyPgColumn,
+        assignmentItems.assignment_id as AnyPgColumn,
+        assignmentItems.id as AnyPgColumn,
+      ],
+    }),
+    assignmentProblemFk: foreignKey({
+      name: "submissions_assignment_problem_fk",
+      columns: [table.assignment_item_id, table.problem_id],
+      foreignColumns: [
+        assignmentItems.id as AnyPgColumn,
+        assignmentItems.problem_id as AnyPgColumn,
+      ],
+    }),
+    assignmentDomainFk: foreignKey({
+      name: "submissions_assignment_domain_fk",
+      columns: [table.domain_id, table.assignment_id],
+      foreignColumns: [
+        assignments.domain_id as AnyPgColumn,
+        assignments.id as AnyPgColumn,
+      ],
+    }),
     user_idx: index("idx_submissions_user_id").on(table.user_id),
     problem_idx: index("idx_submissions_problem_id").on(table.problem_id),
     status_idx: index("idx_submissions_status").on(table.status),
@@ -628,6 +661,8 @@ export const selfTests = pgTable(
     id: text("id").primaryKey(),
     domain_id: text("domain_id").references(() => domains.id),
     domain_problem_binding_id: text("domain_problem_binding_id"),
+    assignment_id: text("assignment_id"),
+    assignment_item_id: text("assignment_item_id"),
     user_id: text("user_id")
       .notNull()
       .references(() => users.id),
@@ -659,6 +694,35 @@ export const selfTests = pgTable(
   },
   (table) => ({
     user_idx: index("idx_self_tests_user_id").on(table.user_id),
+    assignmentOriginCheck: check(
+      "self_tests_assignment_origin_check",
+      sql`(${table.assignment_id} IS NULL) = (${table.assignment_item_id} IS NULL)`,
+    ),
+    assignmentOriginFk: foreignKey({
+      name: "self_tests_assignment_origin_fk",
+      columns: [table.domain_id, table.assignment_id, table.assignment_item_id],
+      foreignColumns: [
+        assignmentItems.domain_id as AnyPgColumn,
+        assignmentItems.assignment_id as AnyPgColumn,
+        assignmentItems.id as AnyPgColumn,
+      ],
+    }),
+    assignmentProblemFk: foreignKey({
+      name: "self_tests_assignment_problem_fk",
+      columns: [table.assignment_item_id, table.problem_id],
+      foreignColumns: [
+        assignmentItems.id as AnyPgColumn,
+        assignmentItems.problem_id as AnyPgColumn,
+      ],
+    }),
+    assignmentDomainFk: foreignKey({
+      name: "self_tests_assignment_domain_fk",
+      columns: [table.domain_id, table.assignment_id],
+      foreignColumns: [
+        assignments.domain_id as AnyPgColumn,
+        assignments.id as AnyPgColumn,
+      ],
+    }),
     problem_idx: index("idx_self_tests_problem_id").on(table.problem_id),
     created_at_idx: index("idx_self_tests_created_at").on(table.created_at),
     user_created_idx: index("idx_self_tests_user_id_created_at").on(

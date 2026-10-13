@@ -17,6 +17,7 @@ import { problems, problemVersions } from "./catalog.ts";
 import { contests } from "./contest.ts";
 import { domains } from "./workspace.ts";
 import { domainProblemBindings } from "./catalog-workspace.ts";
+import { assignmentItems, assignments } from "./assignment.ts";
 import type { SubmissionVersionOrigin } from "../../versioning/types.ts";
 
 /**
@@ -32,6 +33,8 @@ export const objectiveSubmissions = pgTable(
       .default(sql`nextval('submission_receipt_sequence')`),
     domain_id: text("domain_id").references(() => domains.id),
     domain_problem_binding_id: text("domain_problem_binding_id"),
+    assignment_id: text("assignment_id"),
+    assignment_item_id: text("assignment_item_id"),
     /** 所属套卷 ID（problems.id，is_objective=true） */
     paper_id: text("paper_id")
       .notNull()
@@ -109,6 +112,35 @@ export const objectiveSubmissions = pgTable(
       "objective_submissions_type_check",
       sql`${table.submission_type} IN ('practice', 'contest')`,
     ),
+    assignmentOriginCheck: check(
+      "objective_submissions_assignment_origin_check",
+      sql`(${table.assignment_id} IS NULL) = (${table.assignment_item_id} IS NULL)`,
+    ),
+    assignmentOriginFk: foreignKey({
+      name: "objective_submissions_assignment_origin_fk",
+      columns: [table.domain_id, table.assignment_id, table.assignment_item_id],
+      foreignColumns: [
+        assignmentItems.domain_id as AnyPgColumn,
+        assignmentItems.assignment_id as AnyPgColumn,
+        assignmentItems.id as AnyPgColumn,
+      ],
+    }),
+    assignmentProblemFk: foreignKey({
+      name: "objective_submissions_assignment_problem_fk",
+      columns: [table.assignment_item_id, table.paper_id],
+      foreignColumns: [
+        assignmentItems.id as AnyPgColumn,
+        assignmentItems.problem_id as AnyPgColumn,
+      ],
+    }),
+    assignmentDomainFk: foreignKey({
+      name: "objective_submissions_assignment_domain_fk",
+      columns: [table.domain_id, table.assignment_id],
+      foreignColumns: [
+        assignments.domain_id as AnyPgColumn,
+        assignments.id as AnyPgColumn,
+      ],
+    }),
     paperIdx: index("idx_objective_submissions_paper_id").on(table.paper_id),
     userIdx: index("idx_objective_submissions_user_id").on(table.user_id),
     /** 提交历史按用户+套卷+时间倒序分页 */

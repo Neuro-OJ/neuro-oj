@@ -32,3 +32,4 @@ export * from "../../shared/education-types.ts";
 export * from "./services/assignment-remediation.ts";
 export * from "./services/contest-remediation.ts";
 export * from "./services/training-comparison.ts";
+export * from "./services/assignment-submission-origin.ts";

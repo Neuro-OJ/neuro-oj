@@ -6,6 +6,7 @@ import {
   enforceSubmissionRateLimit,
 } from "../../system/index.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
+import { parseAssignmentOrigin } from "../../../shared/http/assignment-origin.ts";
 import {
   assertObjectBody,
   parseJsonBody,
@@ -107,7 +108,7 @@ const submitInDomain = async (c: Context<AuthEnv>) => {
       c.req.param("slug")!,
       parsed.problem_id,
       c.var.userId,
-      parsed,
+      { ...parsed, assignment: parseAssignmentOrigin(c.req.query()) },
       contestId,
     );
     c.header("Cache-Control", "no-store");
@@ -148,6 +149,7 @@ const submitInDomain = async (c: Context<AuthEnv>) => {
       version_id: typeof body.version_id === "string"
         ? body.version_id
         : undefined,
+      assignment: parseAssignmentOrigin(body),
     },
     contestId,
   );
@@ -195,6 +197,7 @@ domainSubmissionsRouter.post(
           ? body.version_id
           : undefined,
         cases: body.cases as SelfTestInput["cases"],
+        assignment: parseAssignmentOrigin(body),
       },
     );
     c.header("Cache-Control", "no-store");
