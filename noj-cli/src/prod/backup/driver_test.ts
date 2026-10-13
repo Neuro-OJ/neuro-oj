@@ -16,7 +16,12 @@ import { assert, assertEquals, assertRejects } from "@std/assert";
 import { join } from "@std/path";
 import { realRunner } from "../../runtime/command.ts";
 import { makeTempDir } from "../../testing/helpers.ts";
-import { CaptureError, prodComposeArgs, realRawDriver } from "./driver.ts";
+import {
+  CaptureError,
+  createProdPayloadOps,
+  prodComposeArgs,
+  realRawDriver,
+} from "./driver.ts";
 
 /** 一段含 NUL / 高位 / 非法 UTF-8 序列的字节。 */
 const BINARY = new Uint8Array([
@@ -239,4 +244,52 @@ Deno.test("T17 CaptureError：带上命令名与退出码，便于定位", () =>
   assertEquals(err.cmd, "pg_dump");
   assertEquals(err.code, 1);
   assertEquals(err.name, "CaptureError");
+});
+
+Deno.test("T17 MinIO 镜像沿用采集数据库的独立 Compose 项目", async () => {
+  const dir = await makeTempDir();
+  try {
+    const calls: { cmd: string; args: string[] }[] = [];
+    const runner = {
+      ...realRunner(),
+      run(cmd: string, args: string[]) {
+        calls.push({ cmd, args });
+        return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+      },
+    };
+    const compose = {
+      composeFile: "/opt/noj/docker-compose.prod.yml",
+      envFile: "/opt/noj/.env.prod",
+      dockerBin: "/usr/local/bin/docker",
+      projectName: "noj-backup-isolated",
+      judge: true,
+      noAnsi: true,
+    };
+    const ops = createProdPayloadOps({
+      runner,
+      driver: realRawDriver(runner),
+      compose,
+      env: { S3_BUCKET: "school-versions" },
+    });
+    await ops.minioMirror(join(dir, "minio"));
+    assertEquals(calls.length, 1);
+    assertEquals(calls[0]!.cmd, compose.dockerBin);
+    const args = calls[0]!.args;
+    const runIndex = args.indexOf("run");
+    assertEquals(args.slice(0, runIndex), prodComposeArgs(compose, []));
+    assertEquals(args.slice(runIndex), [
+      "run",
+      "--rm",
+      "--no-deps",
+      "--entrypoint",
+      "/bin/sh",
+      "-v",
+      `${join(dir, "minio")}:/backup:rw`,
+      "minio-init",
+      "-c",
+      'set -eu; for i in $(seq 1 30); do mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && break; sleep 2; done; mc mirror --preserve "local/school-versions" /backup',
+    ]);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
