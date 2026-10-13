@@ -126,13 +126,23 @@ export function unendedPublicContestForProblem(
  */
 export async function isProblemInUnendedPublicContest(
   problemId: string,
+  domainId?: string,
+  executor: Executor = getDb(),
 ): Promise<boolean> {
-  const rows = await getDb()
+  const rows = await executor
     .select({ contestId: contests.id })
     .from(contestProblems)
     .innerJoin(contests, eq(contestProblems.contest_id, contests.id))
     .where(and(
       eq(contestProblems.problem_id, problemId),
+      domainId
+        ? or(
+          eq(contests.domain_id, domainId),
+          domainId === DEFAULT_DOMAIN_ID
+            ? isNull(contests.domain_id)
+            : undefined,
+        )
+        : undefined,
       eq(contests.kind, "public"),
       unendedWindowCondition(contests.end_time),
     ))
@@ -147,11 +157,22 @@ export async function isProblemInUnendedPublicContest(
  *
  * @returns 存在未结束公开赛时为 true。
  */
-export async function hasUnendedPublicContest(): Promise<boolean> {
-  const rows = await getDb()
+export async function hasUnendedPublicContest(
+  domainId?: string,
+  executor: Executor = getDb(),
+): Promise<boolean> {
+  const rows = await executor
     .select({ contestId: contests.id })
     .from(contests)
     .where(and(
+      domainId
+        ? or(
+          eq(contests.domain_id, domainId),
+          domainId === DEFAULT_DOMAIN_ID
+            ? isNull(contests.domain_id)
+            : undefined,
+        )
+        : undefined,
       eq(contests.kind, "public"),
       unendedWindowCondition(contests.end_time),
     ))

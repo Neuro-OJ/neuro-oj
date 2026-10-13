@@ -52,6 +52,7 @@ const PGLITE_TEMPLATE_INPUT_FILES = [
   "schema-ddl-catalog-workspace.ts",
   "schema-ddl-execution-workspace.ts",
   "schema-ddl-domain-execution.ts",
+  "schema-ddl-community-workspace.ts",
   "schema-ddl-education.ts",
   "schema-ddl-assignment.ts",
   "schema-ddl-education-interactions.ts",

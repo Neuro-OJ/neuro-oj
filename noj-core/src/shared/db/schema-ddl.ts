@@ -6,6 +6,7 @@ import { CATALOG_WORKSPACE_DDL } from "./schema-ddl-catalog-workspace.ts";
 import { WORKSPACE_DDL } from "./schema-ddl-workspace.ts";
 import { EXECUTION_WORKSPACE_DDL } from "./schema-ddl-execution-workspace.ts";
 import { DOMAIN_EXECUTION_DDL } from "./schema-ddl-domain-execution.ts";
+import { COMMUNITY_WORKSPACE_DDL } from "./schema-ddl-community-workspace.ts";
 import { EDUCATION_DDL } from "./schema-ddl-education.ts";
 import { ASSIGNMENT_DDL } from "./schema-ddl-assignment.ts";
 import {
@@ -767,6 +768,8 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_boards (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
+    revision INTEGER NOT NULL DEFAULT 0,
     slug TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
@@ -787,6 +790,8 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_posts (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
+    domain_problem_binding_id TEXT,
     public_id TEXT NOT NULL DEFAULT ('post-' || substr(md5(random()::text),1,8)) UNIQUE,
     type TEXT NOT NULL CHECK (type IN ('solution', 'discussion', 'moment')),
     author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -812,6 +817,7 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_comments (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
     post_id TEXT NOT NULL REFERENCES community_posts(id) ON DELETE CASCADE,
     author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     parent_id TEXT REFERENCES community_comments(id) ON DELETE CASCADE,
@@ -854,6 +860,7 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_moderation_actions (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
     moderator_id TEXT REFERENCES users(id) ON DELETE SET NULL,
     action TEXT NOT NULL,
     target_type TEXT NOT NULL,
@@ -865,6 +872,7 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_sanctions (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     reason TEXT NOT NULL,
     expires_at TEXT,
@@ -877,6 +885,7 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_reports (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
     reporter_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     post_id TEXT REFERENCES community_posts(id) ON DELETE SET NULL,
     comment_id TEXT REFERENCES community_comments(id) ON DELETE SET NULL,
@@ -898,6 +907,7 @@ $$ LANGUAGE plpgsql`,
 
   `CREATE TABLE IF NOT EXISTS community_notifications (
     id TEXT PRIMARY KEY,
+    domain_id TEXT,
     recipient_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     actor_id TEXT REFERENCES users(id) ON DELETE SET NULL,
     type TEXT NOT NULL CHECK (type IN ('reply', 'like', 'follow', 'moderation', 'clarification', 'report', 'ban')),
@@ -1107,6 +1117,7 @@ $$ LANGUAGE plpgsql`,
   ...EDUCATION_INTERACTIONS_DDL,
   ...SUBMISSION_ANNOTATIONS_DDL,
   ...DOMAIN_EXECUTION_DDL,
+  ...COMMUNITY_WORKSPACE_DDL,
 ];
 
 // 索引与可选扩展索引拆到独立模块（单文件规模棘轮，见 scripts/check-file-size.ts）：

@@ -1,0 +1,23 @@
+/** 社区域扩展，与追加迁移同步；存量归属回填由生产迁移执行。 */
+export const COMMUNITY_WORKSPACE_DDL: string[] = [
+  'ALTER TABLE "community_boards" DROP CONSTRAINT "community_boards_slug_key";',
+  'ALTER TABLE "community_boards" ADD CONSTRAINT "community_boards_domain_id_unique" UNIQUE("id","domain_id");',
+  'ALTER TABLE "community_boards" ADD CONSTRAINT "community_boards_domain_slug_unique" UNIQUE("domain_id","slug");',
+  'ALTER TABLE "community_comments" ADD CONSTRAINT "community_comments_domain_id_unique" UNIQUE("id","domain_id");',
+  'ALTER TABLE "community_comments" ADD CONSTRAINT "community_comments_post_domain_unique" UNIQUE("id","post_id","domain_id");',
+  'ALTER TABLE "community_posts" ADD CONSTRAINT "community_posts_domain_id_unique" UNIQUE("id","domain_id");',
+  'ALTER TABLE "community_boards" ADD CONSTRAINT "community_boards_domain_id_domains_id_fk" FOREIGN KEY ("domain_id") REFERENCES "domains"("id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "community_comments" ADD CONSTRAINT "community_comments_domain_id_domains_id_fk" FOREIGN KEY ("domain_id") REFERENCES "domains"("id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "community_comments" ADD CONSTRAINT "community_comments_workspace_post_fk" FOREIGN KEY ("post_id","domain_id") REFERENCES "community_posts"("id","domain_id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "community_comments" ADD CONSTRAINT "community_comments_workspace_parent_fk" FOREIGN KEY ("parent_id","post_id","domain_id") REFERENCES "community_comments"("id","post_id","domain_id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "community_moderation_actions" ADD CONSTRAINT "community_moderation_actions_domain_id_domains_id_fk" FOREIGN KEY ("domain_id") REFERENCES "domains"("id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "community_notifications" ADD CONSTRAINT "community_notifications_domain_id_domains_id_fk" FOREIGN KEY ("domain_id") REFERENCES "domains"("id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "community_posts" ADD CONSTRAINT "community_posts_domain_id_domains_id_fk" FOREIGN KEY ("domain_id") REFERENCES "domains"("id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "community_posts" ADD CONSTRAINT "community_posts_workspace_board_fk" FOREIGN KEY ("board_id","domain_id") REFERENCES "community_boards"("id","domain_id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "community_posts" ADD CONSTRAINT "community_posts_workspace_binding_fk" FOREIGN KEY ("domain_problem_binding_id","domain_id") REFERENCES "domain_problem_bindings"("id","domain_id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "community_posts" ADD CONSTRAINT "community_posts_binding_problem_fk" FOREIGN KEY ("domain_problem_binding_id","problem_id") REFERENCES "domain_problem_bindings"("id","problem_id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "community_reports" ADD CONSTRAINT "community_reports_domain_id_domains_id_fk" FOREIGN KEY ("domain_id") REFERENCES "domains"("id") ON DELETE no action ON UPDATE no action;',
+  'ALTER TABLE "community_sanctions" ADD CONSTRAINT "community_sanctions_domain_id_domains_id_fk" FOREIGN KEY ("domain_id") REFERENCES "domains"("id") ON DELETE no action ON UPDATE no action;',
+  'CREATE UNIQUE INDEX "community_boards_legacy_slug_unique" ON "community_boards" USING btree ("slug") WHERE "community_boards"."domain_id" IS NULL;',
+  'CREATE INDEX "idx_community_posts_workspace" ON "community_posts" USING btree ("domain_id","type","status","created_at");',
+];
