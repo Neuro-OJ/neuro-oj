@@ -39,10 +39,22 @@
     "onCommand:neuroOj.refreshProblems",
     "onCommand:neuroOj.selectProblem",
     "onCommand:neuroOj.selectDomain",
+    "onCommand:neuroOj.openTemplate",
+    "onCommand:neuroOj.showVersions",
     "onCommand:neuroOj.submit"
   ],
   "contributes": {
     "commands": [
+      {
+        "command": "neuroOj.openTemplate",
+        "title": "Neuro OJ: 打开当前版本模板",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "neuroOj.showVersions",
+        "title": "Neuro OJ: 查看题目版本沿革",
+        "icon": "$(history)"
+      },
       {
         "command": "neuroOj.selectDomain",
         "title": "Neuro OJ: 切换工作空间",

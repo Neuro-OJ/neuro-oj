@@ -58,7 +58,7 @@ export interface ProblemDetail extends ProblemVersionInfo {
 
 /** 提交详情响应。 */
 export interface SubmissionDetail extends CreatedSubmission {
-  result_visibility?: 'hidden' | 'summary' | 'cases';
+  result_visibility?: "hidden" | "summary" | "cases";
   problem_id: string;
   file_name: string;
   result: EvaluationResult | null;
@@ -89,12 +89,17 @@ export interface Domain {
   id: string;
   slug: string;
   name: string;
-  status: 'active' | 'archived' | 'suspended';
+  status: "active" | "archived" | "suspended";
 }
 export interface DomainProblem {
-  reference: { problem_id: string; display_ref: string; source_domain_slug: string; is_shared: boolean };
+  reference: {
+    problem_id: string;
+    display_ref: string;
+    source_domain_slug: string;
+    is_shared: boolean;
+  };
   title: string;
-  kind: 'oi' | 'ai' | 'objective';
+  kind: "oi" | "ai" | "objective";
   version_id: string;
   version: number;
 }
