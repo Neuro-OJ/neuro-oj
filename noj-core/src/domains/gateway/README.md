@@ -40,5 +40,13 @@ token。Gateway 在调用上游前复查 Provider 归属及启用状态。题目
 使用 `deno task test:domain gateway` 验证当前域设置、版本冲突、授权在 fetch
 之前、 冻结模型以及无源域回退；独立 Gateway 的 PostgreSQL/Redis 验证命令见其
 README。 实际提交执行链 Domain 参数由 submission 模块接入；完整 Judge
-调用、持久用量与 Redis
-对账、实例可设上限及完整浏览器旅程仍需跨模块验收，不能由本模块单测替代。
+调用与完整浏览器旅程仍需跨模块验收，不能由本模块单测替代。
+
+Domain 配额写入读取持久 `domain_llm_quota_caps`，不能用较大值或 `null` 超过实例
+日/月上限。Gateway 也在每次调用前通过内部政策接口读取当前上限，平台降低后下一次
+调用即时限制。普通域管理员只能降低当前域日/月总额度，比较整个窗口的最严格有限值，
+另建 ID 不解除约束；平台管理员可在实例上限内治理提高，用户和题目分配额度可按
+总限制调整。Domain 用量采用 metadata 白名单，排除 messages、params、prompt
+hash、原始输出和任意 evaluator 详情；LLM 管理能力不会扩大源题数据或比赛权限。
+持久账本、Redis 幂等结算及旧窗口测量基线的 PostgreSQL/Redis 验证见 Gateway
+README。

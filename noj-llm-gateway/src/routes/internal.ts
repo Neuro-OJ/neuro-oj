@@ -4,6 +4,7 @@
 import { Hono } from "hono";
 import type { Db } from "../db.ts";
 import type { GatewayConfig } from "../config.ts";
+import type { RedisClient } from "../redis.ts";
 import { requireServiceToken } from "../auth.ts";
 import {
   createProvider,
@@ -15,10 +16,13 @@ import {
 } from "../providers.ts";
 import { fallbackQuota } from "../limits.ts";
 import { assertSafeBaseUrl, UPSTREAM_BLOCKED } from "../upstream-guard.ts";
+import { reconcileAccounting } from "../accounting.ts";
+import { bootstrapAccountingBaseline } from "../accounting-baseline.ts";
 
 export interface InternalDeps {
   config: GatewayConfig;
   db: Db;
+  redis?: RedisClient;
 }
 
 /**
@@ -272,9 +276,14 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const quotaDomain = body.scope_type === "global" ? "" : domain(c);
     const id = body.id ?? crypto.randomUUID();
     const now = new Date().toISOString();
-    const scopeId = body.scope_id ?? "";
+    const scopeId = body.scope_type === "domain" || body.scope_type === "global"
+      ? ""
+      : body.scope_id ?? "";
     const windowType = body.window_type ?? "day";
-    const fallback = fallbackQuota(body.scope_type, windowType);
+    const fallback = quotaDomain === "" ||
+        quotaDomain === "00000000-0000-4000-8000-000000000001"
+      ? fallbackQuota(body.scope_type, windowType)
+      : { max_calls: null, max_tokens: null, max_cost: null };
     const maxCalls = body.max_calls !== undefined
       ? body.max_calls
       : fallback.max_calls;
@@ -300,6 +309,55 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     `;
     if (saved.length === 0) return c.json({ error: "quota_not_found" }, 404);
     return c.json({ data: { id } }, 201);
+  });
+
+  // 账本只返回状态和定位，绝不把其他域的计数快照或调用正文混入列表。
+  app.get("/internal/accounting", async (c) => {
+    const rows = await deps
+      .db`SELECT id,domain_id,attempt_id,state,settlement_result,created_at,updated_at
+      FROM llm_call_ledger WHERE domain_id=${
+      domain(c)
+    } AND state IN ('pending','unknown','planned')
+      ORDER BY created_at,id LIMIT 100`;
+    return c.json({ data: rows });
+  });
+  app.post("/internal/accounting/reconcile", async (c) => {
+    if (c.req.header("X-Noj-Instance-Quota") !== "1") {
+      return c.json({ error: "instance_quota_required" }, 403);
+    }
+    if (!deps.redis) return c.json({ error: "redis_required" }, 503);
+    try {
+      return c.json({ data: await reconcileAccounting(deps.db, deps.redis) });
+    } catch (error) {
+      const code =
+        error instanceof Error && error.message.startsWith("accounting_")
+          ? error.message
+          : "accounting_unavailable";
+      return c.json(
+        { error: code },
+        code === "accounting_unavailable" ? 503 : 409,
+      );
+    }
+  });
+  app.post("/internal/accounting/bootstrap", async (c) => {
+    if (c.req.header("X-Noj-Instance-Quota") !== "1") {
+      return c.json({ error: "instance_quota_required" }, 403);
+    }
+    if (!deps.redis) return c.json({ error: "redis_required" }, 503);
+    try {
+      return c.json({
+        data: await bootstrapAccountingBaseline(deps.db, deps.redis),
+      });
+    } catch (error) {
+      const code =
+        error instanceof Error && error.message.startsWith("accounting_")
+          ? error.message
+          : "accounting_unavailable";
+      return c.json(
+        { error: code },
+        code === "accounting_unavailable" ? 503 : 409,
+      );
+    }
   });
 
   return app;

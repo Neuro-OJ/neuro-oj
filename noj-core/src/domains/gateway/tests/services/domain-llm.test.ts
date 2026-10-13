@@ -4,12 +4,14 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   domainLlmSettings,
   roles,
+  systemSettings,
   userRoles,
   users,
 } from "../../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ConflictError,
+  ForbiddenError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import {
@@ -25,6 +27,8 @@ import {
   listLlmQuotas,
   readDomainLlmProviders,
   readDomainLlmSettings,
+  readDomainLlmUsage,
+  saveDomainLlmQuota,
   saveDomainLlmSettings,
 } from "../../index.ts";
 import type { RuntimeConfig } from "../../../catalog/index.ts";
@@ -51,6 +55,7 @@ async function account(admin = false) {
 const runtime: RuntimeConfig = {
   evaluator: {
     image: "noj-evaluator-python",
+    command: "python3 evaluate.py",
     time_limit_ms: 1000,
     memory_limit_mb: 128,
     network: { enabled: true },
@@ -212,6 +217,310 @@ Deno.test({
         Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
       } else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", originalSecret);
       _resetSystemSettingsForTest();
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "域 LLM：真实域负责人只能降低总额度，换ID和null不能绕过，平台可治理提高",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    await resetDbForTest();
+    const admin = await account(true), owner = await account();
+    const school = await createDomain({
+      slug: "llm-lower-only",
+      name: "额度班",
+      preset: "education",
+    }, admin);
+    const { createDomainInvitation, consumeDomainInvitation } = await import(
+      "../../../workspace/index.ts"
+    );
+    const invite = await createDomainInvitation(
+      school.slug,
+      admin,
+      owner + "@test.invalid",
+    );
+    await consumeDomainInvitation(invite.token, owner);
+    await transferDomain(school.slug, admin, owner);
+    const caps = {
+      day: { max_calls: 100, max_tokens: null, max_cost: null },
+      month: { max_calls: null, max_tokens: null, max_cost: null },
+    };
+    await getDb().insert(systemSettings).values({
+      key: "domain_llm_quota_caps",
+      value: JSON.stringify(JSON.stringify(caps)),
+      updated_at: new Date().toISOString(),
+    })
+      .onConflictDoUpdate({
+        target: systemSettings.key,
+        set: { value: JSON.stringify(JSON.stringify(caps)) },
+      });
+    const current = [
+      {
+        id: "current",
+        scope_type: "domain",
+        scope_id: "",
+        window_type: "day",
+        max_calls: 50,
+        max_tokens: null,
+        max_cost: null,
+      },
+      {
+        id: "loose-history",
+        scope_type: "domain",
+        scope_id: "",
+        window_type: "day",
+        max_calls: 90,
+        max_tokens: null,
+        max_cost: null,
+      },
+      {
+        id: "month",
+        scope_type: "domain",
+        scope_id: "",
+        window_type: "month",
+        max_calls: 5,
+        max_tokens: null,
+        max_cost: null,
+      },
+      {
+        id: "user",
+        scope_type: "user",
+        scope_id: owner,
+        window_type: "day",
+        max_calls: 10,
+        max_tokens: null,
+        max_cost: null,
+      },
+    ];
+    const original = globalThis.fetch,
+      token = Deno.env.get("NOJ_LLM_SERVICE_TOKEN");
+    Deno.env.set(
+      "NOJ_LLM_SERVICE_TOKEN",
+      "domain-test-secret-0123456789abcdef",
+    );
+    let writes = 0;
+    globalThis.fetch = (_input, init) => {
+      assertEquals(
+        new Headers(init?.headers).get("X-Noj-Domain-Id"),
+        school.id,
+      );
+      if (!init?.method || init.method === "GET") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ data: current }), {
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      writes++;
+      const body = JSON.parse(String(init.body)),
+        row = current.find((entry) => entry.id === body.id);
+      if (row) Object.assign(row, body);
+      return Promise.resolve(
+        new Response(JSON.stringify({ data: { id: body.id } }), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    };
+    const total = (id: string, max_calls: number | null) => ({
+      id,
+      scope_type: "domain" as const,
+      scope_id: "",
+      window_type: "day" as const,
+      max_calls,
+      max_tokens: null,
+      max_cost: null,
+    });
+    try {
+      await assertRejects(
+        () => saveDomainLlmQuota(school.slug, owner, total("current", 80)),
+        ForbiddenError,
+      );
+      assertEquals(writes, 0);
+      assertEquals(
+        await saveDomainLlmQuota(school.slug, owner, total("current", 40)),
+        { id: "current" },
+      );
+      await assertRejects(
+        () => saveDomainLlmQuota(school.slug, owner, total("new-id", 80)),
+        ForbiddenError,
+      );
+      await assertRejects(
+        () => saveDomainLlmQuota(school.slug, owner, total("new-id", null)),
+        ForbiddenError,
+      );
+      assertEquals(writes, 1);
+      assertEquals(
+        await saveDomainLlmQuota(school.slug, owner, {
+          id: "user",
+          scope_type: "user",
+          scope_id: owner,
+          window_type: "day",
+          max_calls: 20,
+          max_tokens: null,
+          max_cost: null,
+        }),
+        { id: "user" },
+      );
+      assertEquals(
+        await saveDomainLlmQuota(school.slug, admin, total("current", 80)),
+        { id: "current" },
+      );
+      await assertRejects(
+        () => saveDomainLlmQuota(school.slug, admin, total("current", 101)),
+        BadRequestError,
+      );
+      assertEquals(writes, 3);
+    } finally {
+      globalThis.fetch = original;
+      if (token === undefined) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
+      else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", token);
+    }
+  },
+});
+
+Deno.test({
+  name: "域 LLM：用量只返回metadata白名单，不返回evaluator正文和任意详情",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    await resetDbForTest();
+    const actor = await account(true),
+      school = await createDomain({
+        slug: "llm-safe-usage",
+        name: "用量学校",
+        preset: "education",
+      }, actor);
+    const original = globalThis.fetch,
+      previousToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN");
+    Deno.env.set(
+      "NOJ_LLM_SERVICE_TOKEN",
+      "domain-test-secret-0123456789abcdef",
+    );
+    globalThis.fetch = (_input, init) => {
+      assertEquals(
+        new Headers(init?.headers).get("X-Noj-Domain-Id"),
+        school.id,
+      );
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            data: [{
+              id: "usage",
+              domain_id: school.id,
+              model: "school-model",
+              total_tokens: 3,
+              estimated_cost: 1,
+              request_messages: [{ content: "secret-source-answer" }],
+              request_params: { hidden: "secret-source-answer" },
+              prompt_hash: "private-hash",
+              details: { output: "secret-source-answer" },
+              output: "secret-source-answer",
+            }],
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    };
+    try {
+      const rows = await readDomainLlmUsage(school.slug, actor, {
+        page: 1,
+        limit: 10,
+      });
+      assertEquals(rows[0].model, "school-model");
+      assertEquals(rows[0].total_tokens, 3);
+      assertEquals("request_messages" in rows[0], false);
+      assertEquals("details" in rows[0], false);
+      assertEquals(
+        JSON.stringify(rows).includes("secret-source-answer"),
+        false,
+      );
+      assertEquals(JSON.stringify(rows).includes("private-hash"), false);
+    } finally {
+      globalThis.fetch = original;
+      if (previousToken === undefined) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
+      else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", previousToken);
+    }
+  },
+});
+
+Deno.test({
+  name: "域 LLM：域配额真实实例上限约束，数值或null不能越过，降低可提交",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    await resetDbForTest();
+    const actor = await account(true);
+    const school = await createDomain({
+      slug: "quota-cap-school",
+      name: "额度学校",
+      preset: "education",
+    }, actor);
+    const limits = {
+      day: { max_calls: 3, max_tokens: 100, max_cost: null },
+      month: { max_calls: null, max_tokens: null, max_cost: null },
+    };
+    await getDb().insert(systemSettings).values({
+      key: "domain_llm_quota_caps",
+      value: JSON.stringify(JSON.stringify(limits)),
+      updated_at: new Date().toISOString(),
+    }).onConflictDoUpdate({
+      target: systemSettings.key,
+      set: { value: JSON.stringify(JSON.stringify(limits)) },
+    });
+    const original = globalThis.fetch,
+      previousToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN");
+    Deno.env.set(
+      "NOJ_LLM_SERVICE_TOKEN",
+      "domain-test-secret-0123456789abcdef",
+    );
+    let calls = 0;
+    globalThis.fetch = () => {
+      calls++;
+      return Promise.resolve(
+        new Response(JSON.stringify({ data: { id: "quota" } }), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    };
+    try {
+      await assertRejects(
+        () =>
+          saveDomainLlmQuota(school.slug, actor, {
+            scope_type: "domain",
+            max_calls: 4,
+            max_tokens: 100,
+            max_cost: null,
+          }),
+        BadRequestError,
+      );
+      await assertRejects(
+        () =>
+          saveDomainLlmQuota(school.slug, actor, {
+            scope_type: "domain",
+            max_calls: null,
+            max_tokens: 100,
+            max_cost: null,
+          }),
+        BadRequestError,
+      );
+      assertEquals(calls, 0);
+      assertEquals(
+        await saveDomainLlmQuota(school.slug, actor, {
+          scope_type: "domain",
+          max_calls: 2,
+          max_tokens: 99,
+          max_cost: null,
+        }),
+        { id: "quota" },
+      );
+      assertEquals(calls, 1);
+    } finally {
+      globalThis.fetch = original;
+      if (previousToken === undefined) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
+      else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", previousToken);
     }
   },
 });

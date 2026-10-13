@@ -70,14 +70,18 @@ export async function recordUsage(db: Db, entry: UsageEntry): Promise<void> {
   },
       ${entry.problem_version_id ?? null},
       ${entry.problem_id}, ${entry.user_id},
-      ${entry.provider_id}, ${entry.model}, ${JSON.stringify(safeMessages)},
-      ${JSON.stringify(entry.request_params)}, ${entry.prompt_tokens},
+      ${entry.provider_id}, ${entry.model}, ${
+    JSON.stringify(safeMessages)
+  }::text::jsonb,
+      ${
+    JSON.stringify(entry.request_params)
+  }::text::jsonb, ${entry.prompt_tokens},
       ${entry.completion_tokens}, ${entry.total_tokens},
       ${entry.cached_prompt_tokens ?? 0}, ${entry.billed_prompt_tokens ?? 0},
       ${entry.billed_total_tokens ?? 0}, ${entry.estimated_cost},
       ${entry.latency_ms}, ${entry.status}, ${entry.error_code ?? null},
       ${entry.prompt_hash}, ${entry.created_at}
-    )
+    ) ON CONFLICT(id) DO NOTHING
   `;
 }
 

@@ -121,3 +121,54 @@ NOJ_GATEWAY_TEST_REDIS_URL=redis://127.0.0.1:6379/14 deno task test
   API，泄露可伪造调用凭证，请与 core 保持一致并妥善保管。
 - `NOJ_LLM_STORE_KEY` 泄露会解密所有 Provider Key；轮换后需重新加密已存 Key。
 - 真实上游 Key 不进入 evaluator 容器、日志或提交代码。
+
+## 调用账本与额度恢复
+
+每次受理生成 `X-Noj-Call-Id`。`llm_call_ledger` 在上游调用前保存使用域、尝试及
+预占计数快照，已知实际用量与待结算快照同事务写入数据库。Redis 结算使用同一调用
+ID 的幂等标记；Lua 已执行但回复丢失、数据库提交失败时可以继续重放，保持额度只扣
+一次。快照保存原窗口与绝对失效时刻，延迟补算不会移到下一日/月。
+
+后台每 5 秒从数据库以 `FOR UPDATE SKIP LOCKED` 领取待结算记录，服务重启继续读取
+持久事实。Redis 暂时不可用时返回 503
+`accounting_pending`，实际用量已保存；恢复后 继续结算。预占基础设施故障返回 503
+`quota_unavailable`，与明确额度不足的 429 区分。 受理前检查 Redis 进程身份与共享
+ready 标记；整库丢失或重启恢复旧快照后先按账本
+重建，再受理新调用。存在无法重建的旧窗口时保持拒绝，等待明确建立测量基线。
+网络失败无法证明上游未计费，保留预估占用及 `unknown` 状态；进程退出留下的预占
+三分钟后也会列为未知，供治理核对，不自动重发上游。
+
+实例治理（服务凭据及 `X-Noj-Instance-Quota: 1`）可使用：
+
+- `GET /internal/accounting`：当前头指定域的待结算/未知定位；只返回
+  ID、状态与时间。
+- `POST /internal/accounting/reconcile`：从账本重建活动额度键；排他数据库锁与受理/
+  结算共享锁协调，避免覆盖并发调用。
+- `POST /internal/accounting/bootstrap`：旧开发窗口首次建立测量基线。扫描实际存在
+  的 Redis 计数及 TTL，扣除已进入新账本的用量，把旧平台域内维度映射至 main。
+  Redis 和 DB 之间发生失败时复用同一基线标记，不重复累加。
+
+旧审计没有预占快照，`reconcile` 会返回 409
+`accounting_legacy_window_requires_baseline`，保护原计数。先核对并执行明确的
+`bootstrap`；没有可测旧计数则返回
+`accounting_baseline_counts_missing`，未处理的新 调用状态则返回
+`accounting_baseline_unresolved_calls`，由平台治理核对后处理。基线
+只覆盖实际测得的键和值，不把丢失的 Redis 数值或旧上游账单猜成零。
+
+新 HTTP 请求生成新调用 ID；后台对同一笔结算重试的幂等性不代表上游支持重复 POST
+去重。完整账单仍以 Provider 记录为准。
+
+## 实例对各域的 LLM 上限
+
+Gateway 通过 `NOJ_CORE_INTERNAL_URL` 在每次调用前读取 core 内部
+`GET /api/v1/internal/llm/quota-caps`（同一服务凭据）。持久实例设置
+`domain_llm_quota_caps` 提供日/月 `max_calls`、`max_tokens`、`max_cost`，默认全
+`null`。Domain 配额与实例上限取较小值，平台降低配置后下一次调用即时生效；政策
+读取不可用时返回 503 `quota_policy_unavailable`，尚未预占或调用上游。
+
+Domain 管理员保存配额时也检查该持久上限，不能用更大数值或 `null` 解除数值上限。
+域日/月总额度的当前有限维度只允许降低，换新 ID 也不能绕过；平台治理可在实例
+上限内提高。相同域窗口有多条记录时，各维度取最严格有限值，保留原记录；用户/
+题目分配额度仍可在总限制内调整。新域缺省配额为 `null`，默认域及实例原数值限制
+保留。成本额度为整数，单位与 管理员设置的 Provider 每 1K token
+单价一致，未固定为特定货币。

@@ -1,7 +1,14 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
-import { domainLlmSettings } from "../../../shared/db/schema.ts";
+import {
+  domainLlmSettings,
+  systemSettings,
+} from "../../../shared/db/schema.ts";
+import {
+  type DomainLlmQuotaCaps,
+  validateDomainLlmQuotaCaps,
+} from "../../../shared/workspace/resource-policy.ts";
 import {
   AppError,
   BadRequestError,
@@ -39,7 +46,11 @@ async function scoped<T>(
     | "domain.llm_settings"
     | "domain.llm_provider"
     | "domain.llm_quota",
-  operation: (domainId: string, tx: Executor) => Promise<T>,
+  operation: (
+    domainId: string,
+    tx: Executor,
+    platformAdmin: boolean,
+  ) => Promise<T>,
 ) {
   return await getDb().transaction(async (tx) => {
     const workspace = await loadWorkspace(slug, actorId, {
@@ -50,7 +61,11 @@ async function scoped<T>(
     assertWorkspacePermission(workspace.context, "llm:manage");
     let result: T;
     try {
-      result = await operation(workspace.domain.id, tx);
+      result = await operation(
+        workspace.domain.id,
+        tx,
+        workspace.platformAdmin,
+      );
     } catch (error) {
       if (!(error instanceof LlmGatewayError)) throw error;
       if (error.status === 404) {
@@ -221,7 +236,54 @@ export function saveDomainLlmQuota(
     actorId,
     true,
     "domain.llm_quota",
-    (domainId) => upsertLlmQuota(input, domainId),
+    async (domainId, tx, platformAdmin) => {
+      const window = input.window_type ?? "day";
+      if (window !== "day" && window !== "month") {
+        throw new BadRequestError("配额窗口非法");
+      }
+      if (input.scope_type === "domain" && !platformAdmin) {
+        const rows = (await listLlmQuotas(domainId)).filter((row) => {
+          const quota = row as LlmQuotaInput;
+          return quota.scope_type === "domain" &&
+            (quota.scope_id ?? "") === "" &&
+            (quota.window_type ?? "day") === window;
+        }) as LlmQuotaInput[];
+        // 比较本域窗口全部现有约束，另建 ID 不会解除较严格额度。
+        for (const field of ["max_calls", "max_tokens", "max_cost"] as const) {
+          const finite = rows.map((row) => row[field]).filter((
+            value,
+          ): value is number => typeof value === "number");
+          const current = finite.length ? Math.min(...finite) : null;
+          const requested = input[field] ?? null;
+          if (current !== null && (requested === null || requested > current)) {
+            throw new ForbiddenError(
+              "域管理员只能降低当前域总额度",
+              "DOMAIN_LLM_QUOTA_INCREASE_FORBIDDEN",
+            );
+          }
+        }
+      }
+      const [setting] = await tx.select({ value: systemSettings.value }).from(
+        systemSettings,
+      )
+        .where(eq(systemSettings.key, "domain_llm_quota_caps"));
+      if (setting) {
+        const text = JSON.parse(setting.value);
+        const caps: DomainLlmQuotaCaps = JSON.parse(text);
+        validateDomainLlmQuotaCaps(caps);
+        for (const field of ["max_calls", "max_tokens", "max_cost"] as const) {
+          const cap = caps[window][field];
+          const requested = input[field] ?? null;
+          if (cap !== null && (requested === null || requested > cap)) {
+            throw new BadRequestError(
+              "域 LLM 配额超过实例上限",
+              "DOMAIN_LLM_QUOTA_CAP_EXCEEDED",
+            );
+          }
+        }
+      }
+      return await upsertLlmQuota(input, domainId);
+    },
   );
 }
 
@@ -236,6 +298,38 @@ export function readDomainLlmUsage(
     actorId,
     false,
     "domain.llm_read",
-    (domainId) => queryLlmUsage(query, domainId),
+    async (domainId) => {
+      const rows = await queryLlmUsage(query, domainId);
+      // LLM 管理不授予源题评测数据或比赛组织权限，域端只返回计量定位。
+      const fields = [
+        "id",
+        "domain_id",
+        "submission_id",
+        "attempt_id",
+        "problem_version_id",
+        "problem_id",
+        "user_id",
+        "provider_id",
+        "model",
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "cached_prompt_tokens",
+        "billed_prompt_tokens",
+        "billed_total_tokens",
+        "estimated_cost",
+        "latency_ms",
+        "status",
+        "error_code",
+        "created_at",
+      ] as const;
+      return rows.map((row) =>
+        Object.fromEntries(
+          fields.map((
+            field,
+          ) => [field, (row as Record<string, unknown>)[field]]),
+        )
+      );
+    },
   );
 }

@@ -36,7 +36,7 @@ Deno.test("域 LLM：拒绝缺少 domain 的旧协议及无尝试 token", async 
     }, { protocol_version: 3, domain_id: "school" }]
   ) {
     const token = await mintEvalToken(
-      { ...payload, ...scope } as EvalTokenPayload,
+      { ...payload, ...scope } as unknown as EvalTokenPayload,
       testConfig.serviceToken,
     );
     await assertRejects(() => verifyEvalToken(token, testConfig.serviceToken));

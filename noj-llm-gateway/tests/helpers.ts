@@ -11,6 +11,9 @@ import {
 import { createLlmRouter } from "../src/routes/llm.ts";
 
 export class FakeRedis implements RedisClient {
+  serverId(): Promise<string> {
+    return Promise.resolve("test-server");
+  }
   evalResults: string[] = [];
 
   incr(): Promise<number> {
@@ -31,6 +34,9 @@ export class FakeRedis implements RedisClient {
   revoked = new Set<string>();
 
   get(key?: string): Promise<string | null> {
+    if (key === "llm:accounting:ready:v1") {
+      return Promise.resolve("test-server");
+    }
     if (key) this.getKeys.push(key);
     return Promise.resolve(key && this.revoked.has(key) ? "1" : null);
   }
@@ -74,11 +80,57 @@ export function createFakeDb(provider: ProviderRow | null): {
   usageInserts: Record<string, unknown>[];
 } {
   const usageInserts: Record<string, unknown>[] = [];
+  const ledger = new Map<string, Record<string, unknown>>();
   const db = ((
     strings: TemplateStringsArray,
     ...values: unknown[]
   ) => {
     const sql = strings.join("?");
+    if (sql.includes("INSERT INTO llm_call_ledger")) {
+      ledger.set(String(values[0]), {
+        id: values[0],
+        domain_id: values[1],
+        attempt_id: values[2],
+        state: "planned",
+        reservation: JSON.parse(String(values[3])),
+        settlement: null,
+      });
+      return Promise.resolve([]);
+    }
+    if (sql.includes("SELECT * FROM llm_call_ledger WHERE id=")) {
+      const row = ledger.get(String(values[0]));
+      return Promise.resolve(row ? [row] : []);
+    }
+    if (sql.includes("UPDATE llm_call_ledger")) {
+      if (sql.includes("state='pending'")) {
+        const row = ledger.get(String(values[2]));
+        if (row) {
+          row.state = "pending";
+          row.settlement = JSON.parse(String(values[0]));
+        }
+      } else if (sql.includes("state='settled'")) {
+        const row = ledger.get(String(values[2]));
+        if (row) {
+          row.state = "settled";
+          row.settlement_result = values[0];
+        }
+      } else if (sql.includes("state='unknown'")) {
+        const row = ledger.get(String(values[1]));
+        if (row) row.state = "unknown";
+      } else {
+        const row = ledger.get(String(values[2]));
+        if (row) row.state = values[0];
+      }
+      return Promise.resolve([]);
+    }
+    if (sql.includes("UPDATE llm_usage SET status='rejected'")) {
+      const row = usageInserts.find((entry) => entry.id === values[1]);
+      if (row) {
+        row.status = "rejected";
+        row.error_code = values[0];
+      }
+      return Promise.resolve([]);
+    }
     if (sql.includes("FROM llm_providers")) {
       return Promise.resolve(
         provider && values.includes(provider.domain_id) ? [provider] : [],
@@ -123,6 +175,11 @@ export function createFakeDb(provider: ProviderRow | null): {
     return Promise.resolve([]);
   }) as unknown as Db;
   (db as unknown as { unsafe: unknown }).unsafe = () => Promise.resolve([]);
+  (db as unknown as { begin: unknown }).begin = (
+    operation: (tx: Db) => Promise<unknown>,
+  ) => operation(db);
+  (db as unknown as { reserve: unknown }).reserve = () => Promise.resolve(db);
+  (db as unknown as { release: unknown }).release = () => {};
   return { db, usageInserts };
 }
 
@@ -148,6 +205,7 @@ export const testConfig: GatewayConfig = {
   storeKey: "test-store-key-0123456789",
   databaseUrl: "postgres://fake",
   redisUrl: "redis://fake",
+  coreInternalUrl: "http://core.test.invalid",
   usageRetentionDays: 90,
   upstreamAllowedHosts: new Set(),
 };
@@ -206,7 +264,20 @@ export function stubFetch(
 ): () => void {
   const original = globalThis.fetch;
   // deno-lint-ignore no-explicit-any
-  (globalThis as any).fetch = impl;
+  (globalThis as any).fetch = (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    if (String(input).endsWith("/api/v1/internal/llm/quota-caps")) {
+      const window = { max_calls: null, max_tokens: null, max_cost: null };
+      return Promise.resolve(
+        new Response(JSON.stringify({ data: { day: window, month: window } }), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    return impl(input, init);
+  };
   return () => {
     // deno-lint-ignore no-explicit-any
     (globalThis as any).fetch = original;

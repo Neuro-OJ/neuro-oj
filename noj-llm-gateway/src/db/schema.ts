@@ -120,3 +120,25 @@ export const llmQuotas = pgTable(
     ),
   }),
 );
+
+/** 调用预占与结算账本；Redis 计数是可对账的投影。 */
+export const llmCallLedger = pgTable("llm_call_ledger", {
+  id: text("id").primaryKey(),
+  domain_id: text("domain_id").notNull(),
+  attempt_id: text("attempt_id").notNull(),
+  state: text("state").notNull(),
+  reservation: jsonb("reservation").notNull(),
+  settlement: jsonb("settlement"),
+  settlement_result: text("settlement_result"),
+  created_at: text("created_at").notNull(),
+  updated_at: text("updated_at").notNull(),
+}, (table) => ({
+  pendingIdx: index("idx_llm_call_ledger_state_created").on(
+    table.state,
+    table.created_at,
+  ),
+  domainIdx: index("idx_llm_call_ledger_domain_created").on(
+    table.domain_id,
+    table.created_at,
+  ),
+}));

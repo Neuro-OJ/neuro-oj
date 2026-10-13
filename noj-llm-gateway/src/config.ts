@@ -20,6 +20,8 @@ export interface GatewayConfig {
   storeKey: string;
   databaseUrl: string;
   redisUrl: string;
+  /** core 实时实例限额政策接口，不缓存。 */
+  coreInternalUrl: string;
   /** llm_usage 保留天数（0 = 不清理），默认 90 */
   usageRetentionDays: number;
   /** 允许 http / 内网地址的上游主机白名单（小写；内网自建模型与 E2E mock 用） */
@@ -50,6 +52,7 @@ export function loadConfig(
   const storeKey = env.NOJ_LLM_STORE_KEY ?? "";
   const databaseUrl = env.DATABASE_URL ?? "";
   const redisUrl = env.REDIS_URL ?? "redis://127.0.0.1:6379/";
+  const coreInternalUrl = env.NOJ_CORE_INTERNAL_URL ?? "http://127.0.0.1:8000";
 
   if (!serviceToken || serviceToken.length < 16) {
     throw new Error("NOJ_LLM_SERVICE_TOKEN 未设置或长度不足（至少 16 字符）");
@@ -72,6 +75,7 @@ export function loadConfig(
     storeKey,
     databaseUrl,
     redisUrl,
+    coreInternalUrl,
     usageRetentionDays,
     upstreamAllowedHosts,
   };

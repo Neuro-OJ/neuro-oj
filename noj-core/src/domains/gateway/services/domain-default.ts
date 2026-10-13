@@ -4,11 +4,13 @@ import type { Executor } from "../../../shared/db/executor.ts";
 import { domainLlmSettings } from "../../../shared/db/schema.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import { getLlmPlatformDefault } from "./llm.ts";
+import { ensureDefaultWorkspace } from "../../workspace/index.ts";
 
 /** 仅默认域首次继承旧配置；已有域设置（包括明确关闭）永不被启动覆盖。 */
 export async function seedDomainLlmDefaults(executor: Executor = getDb()) {
   const legacy = getLlmPlatformDefault();
   if (!legacy) return;
+  await ensureDefaultWorkspace(executor);
   await executor.insert(domainLlmSettings).values({
     domain_id: DEFAULT_DOMAIN_ID,
     provider_id: legacy.provider_id,

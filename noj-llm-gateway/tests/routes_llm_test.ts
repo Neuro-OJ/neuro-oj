@@ -24,11 +24,19 @@ Deno.test("llm route: 限流超限返回 429 并记录 rejected", async () => {
   });
   const token = await makeToken(testConfig);
 
-  const res = await requestChat(app, token, {
-    model: "deepseek-chat",
-    messages: [{ role: "user", content: "ping" }],
-    max_tokens: 5,
-  });
+  const restore = stubFetch(() =>
+    Promise.reject(new Error("额度不足不得调用上游"))
+  );
+  let res: Response;
+  try {
+    res = await requestChat(app, token, {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 5,
+    });
+  } finally {
+    restore();
+  }
 
   assertEquals(res.status, 429);
   const body = await res.json();
@@ -60,12 +68,19 @@ Deno.test("llm route: 调用前拒绝按提交+原因去重，重复拒绝不再
   const token = await makeToken(testConfig);
   const big = "x".repeat(32 * 1024);
 
-  for (let i = 0; i < 4; i++) {
-    const res = await requestChat(app, token, {
-      model: "deepseek-chat",
-      messages: [{ role: "user", content: big }],
-    });
-    assertEquals(res.status, 429);
+  const restore = stubFetch(() =>
+    Promise.reject(new Error("额度不足不得调用上游"))
+  );
+  try {
+    for (let i = 0; i < 4; i++) {
+      const res = await requestChat(app, token, {
+        model: "deepseek-chat",
+        messages: [{ role: "user", content: big }],
+      });
+      assertEquals(res.status, 429);
+    }
+  } finally {
+    restore();
   }
   // 三次 rate_limit_exceeded 只记一条；不同原因 limit_exceeded 另记一条
   assertEquals(usageInserts.length, 2);
@@ -91,10 +106,18 @@ Deno.test("llm route: 分钟速率超限返回 429 并记录 rejected", async ()
   });
   const token = await makeToken(testConfig);
 
-  const res = await requestChat(app, token, {
-    model: "deepseek-chat",
-    messages: [{ role: "user", content: "ping" }],
-  });
+  const restore = stubFetch(() =>
+    Promise.reject(new Error("额度不足不得调用上游"))
+  );
+  let res: Response;
+  try {
+    res = await requestChat(app, token, {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: "ping" }],
+    });
+  } finally {
+    restore();
+  }
 
   assertEquals(res.status, 429);
   const body = await res.json();

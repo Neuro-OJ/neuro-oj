@@ -10,6 +10,15 @@
 import type { Db } from "./db.ts";
 import type { RedisClient } from "./redis.ts";
 import type { EvalTokenPayload } from "./crypto.ts";
+import { capDomainQuota, type DomainQuotaCaps } from "./quota-policy.ts";
+import {
+  type AccountingCounter,
+  ensureAccountingReady,
+  recordReservationResult,
+  reservationMarker,
+  saveReservation,
+  withReservationLock,
+} from "./accounting.ts";
 
 /**
  * 单 token 预算/计数的作用域（版本化后按**评测尝试**隔离）。
@@ -46,7 +55,7 @@ export interface QuotaRow {
   max_cost: number | null;
 }
 
-interface CounterSpec {
+export interface CounterSpec {
   key: string;
   limit: number;
   inc: number;
@@ -72,11 +81,19 @@ async function getQuota(
   scopeId: string,
   windowType: string,
 ): Promise<QuotaRow | null> {
+  if (scopeType === "domain") {
+    const [aggregate] = await db<(QuotaRow & { policy_count: number })[]>`
+      SELECT count(*)::integer AS policy_count,min(max_calls) AS max_calls,min(max_tokens) AS max_tokens,min(max_cost) AS max_cost
+      FROM llm_quotas WHERE domain_id=${domainId} AND scope_type=${scopeType} AND scope_id=${scopeId} AND window_type=${windowType}`;
+    if (aggregate?.policy_count !== 0 && aggregate) return aggregate;
+    return { max_calls: null, max_tokens: null, max_cost: null };
+  }
   const rows = await db<QuotaRow[]>`
     SELECT max_calls, max_tokens, max_cost FROM llm_quotas
     WHERE domain_id = ${
     scopeType === "global" ? "" : domainId
   } AND scope_type = ${scopeType} AND scope_id = ${scopeId} AND window_type = ${windowType}
+    ORDER BY updated_at DESC, id DESC
     LIMIT 1
   `;
   return rows[0] ??
@@ -304,6 +321,11 @@ local meta = cjson.decode(ARGV[4])
 local limits = meta.limits
 local incs = meta.incs
 local ttls = meta.ttls
+local count = meta.marker and #KEYS - 1 or #KEYS
+if meta.marker then
+  local cached = redis.call('GET', KEYS[#KEYS])
+  if cached then return cached end
+end
 
 local function bump(key, amount, ttl)
   local new = redis.call('INCRBY', key, amount)
@@ -322,7 +344,7 @@ if r2 > ip_rate_limit then
   return 'rate_limit_exceeded'
 end
 
-for i = 3, #KEYS do
+for i = 3, count do
   local j = i - 2
   local limit = tonumber(limits[j])
   local inc = tonumber(incs[j])
@@ -336,10 +358,11 @@ for i = 3, #KEYS do
   end
 end
 
-for i = 3, #KEYS do
+for i = 3, count do
   local j = i - 2
   bump(KEYS[i], tonumber(incs[j]), tonumber(ttls[j]))
 end
+if meta.marker then redis.call('SET', KEYS[#KEYS], 'ok', 'EX', meta.marker_ttl) end
 
 return 'ok'
 `;
@@ -381,16 +404,20 @@ async function runLimitScript(
   userRateLimit: number,
   ipRateLimit: number,
   rateTtl: number,
+  marker?: string,
 ): Promise<string> {
   const keys = [
     rateKeys[0],
     rateKeys[1],
     ...counters.map((c) => c.key),
+    ...(marker ? [marker] : []),
   ];
   const meta = {
     limits: counters.map((c) => c.limit),
     incs: counters.map((c) => c.inc),
     ttls: counters.map((c) => c.ttl),
+    marker: !!marker,
+    marker_ttl: Math.max(60, ...counters.map((c) => c.ttl)) + 60,
   };
   const result = await redis.eval(LIMIT_SCRIPT, keys, [
     userRateLimit,
@@ -435,6 +462,8 @@ export async function enforceAndCount(
     ttlSeconds: number;
     userRateLimitPerMinute: number;
     ipRateLimitPerMinute: number;
+    callId?: string;
+    domainQuotaCaps?: DomainQuotaCaps;
   },
 ): Promise<void> {
   const now = Date.now();
@@ -493,13 +522,19 @@ export async function enforceAndCount(
     "month",
   );
 
-  const domainDay = await getQuota(db, payload.domain_id, "domain", "", "day");
-  const domainMonth = await getQuota(
-    db,
-    payload.domain_id,
-    "domain",
-    "",
-    "month",
+  const domainDay = capDomainQuota(
+    await getQuota(db, payload.domain_id, "domain", "", "day"),
+    opts.domainQuotaCaps?.day,
+  );
+  const domainMonth = capDomainQuota(
+    await getQuota(
+      db,
+      payload.domain_id,
+      "domain",
+      "",
+      "month",
+    ),
+    opts.domainQuotaCaps?.month,
   );
   const counters: CounterSpec[] = [
     {
@@ -633,20 +668,39 @@ export async function enforceAndCount(
     ),
   ];
 
-  const result = await runLimitScript(
-    redis,
-    [
-      `llm:rate:domain:${payload.domain_id}:user:${payload.user_id}:${minuteKey()}`,
-      // F-10：Evaluator 侧不经边缘代理、无 X-Forwarded-For 时，此前全部落到
-      // 共享的 `ip:unknown` 桶（默认 60/min），少量高吞吐提交即可让他人 LLM
-      // 评测随机 429。无真实 IP 时改用 submission 维度隔离，避免互相挤兑。
-      `${ipRatePrefix(opts.ip, payload.submission_id)}:${minuteKey()}`,
-    ],
-    counters,
-    opts.userRateLimitPerMinute,
-    opts.ipRateLimitPerMinute,
-    60,
-  );
+  const reserve = () =>
+    runLimitScript(
+      redis,
+      [
+        `llm:rate:domain:${payload.domain_id}:user:${payload.user_id}:${minuteKey()}`,
+        // F-10：Evaluator 侧不经边缘代理、无 X-Forwarded-For 时，此前全部落到
+        // 共享的 `ip:unknown` 桶（默认 60/min），少量高吞吐提交即可让他人 LLM
+        // 评测随机 429。无真实 IP 时改用 submission 维度隔离，避免互相挤兑。
+        `${ipRatePrefix(opts.ip, payload.submission_id)}:${minuteKey()}`,
+      ],
+      counters,
+      opts.userRateLimitPerMinute,
+      opts.ipRateLimitPerMinute,
+      60,
+      opts.callId
+        ? reservationMarker(payload.domain_id, opts.callId)
+        : undefined,
+    );
+  let result: string;
+  if (opts.callId) {
+    await ensureAccountingReady(db, redis);
+    result = await withReservationLock(db, async (tx) => {
+      await saveReservation(
+        tx,
+        opts.callId!,
+        payload,
+        freezeCounters(counters, now),
+      );
+      const value = await reserve();
+      await recordReservationResult(tx, opts.callId!, value === "ok");
+      return value;
+    });
+  } else result = await reserve();
   if (result !== "ok") {
     throw new Error(result);
   }
@@ -672,6 +726,24 @@ export async function settleUsage(
     ttlSeconds: number;
   },
 ): Promise<void> {
+  const counters = await prepareSettlementCounters(db, payload, opts);
+  const result = await runSettleScript(redis, counters);
+  if (result !== "ok") throw new Error(result);
+}
+
+/** 固定窗口、额度及 delta，后台重试不重新解析已变化的配置。 */
+export async function prepareSettlementCounters(
+  db: Db,
+  payload: EvalTokenPayload,
+  opts: {
+    promptTokens: number;
+    completionTokens: number;
+    estimatedCost: number;
+    actualBilledTotalTokens: number;
+    actualCost: number;
+    ttlSeconds: number;
+  },
+): Promise<CounterSpec[]> {
   const now = Date.now();
   const deltaTokens = opts.actualBilledTotalTokens -
     (opts.promptTokens + opts.completionTokens);
@@ -863,8 +935,18 @@ export async function settleUsage(
     ),
   ];
 
-  const result = await runSettleScript(redis, counters);
-  if (result !== "ok") {
-    throw new Error(result);
-  }
+  return counters;
+}
+
+/** 用绝对失效时刻保存快照，延迟重试不移动日/月窗口。 */
+export function freezeCounters(
+  counters: CounterSpec[],
+  now = Date.now(),
+): AccountingCounter[] {
+  return counters.map(({ key, limit, inc, ttl }) => ({
+    key,
+    limit,
+    inc,
+    expires_at: now + ttl * 1000,
+  }));
 }
