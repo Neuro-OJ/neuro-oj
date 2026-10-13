@@ -48,6 +48,10 @@ export type {
 } from "./registry.ts";
 export { S3StorageProvider } from "./s3.ts";
 export {
+  reconcileDomainStorageBatch,
+  startDomainStorageReconciliation,
+} from "./domain-reconciliation.ts";
+export {
   buildStorageAuditReport,
   classifyStorageObjectKey,
   renderStorageAuditPrometheus,

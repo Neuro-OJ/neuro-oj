@@ -95,6 +95,7 @@ export async function importDomainProblemBundle(
           key: `domain-oi-${crypto.randomUUID()}`,
           bytes: file,
           contentType: "application/octet-stream",
+          domainId: workspace.domain.id,
         });
         objects.push({
           role: "oi_file",
@@ -108,6 +109,7 @@ export async function importDomainProblemBundle(
         key: `domain-bundle-${crypto.randomUUID()}.zip`,
         bytes: stripMetadataEntries(bytes),
         contentType: "application/zip",
+        domainId: workspace.domain.id,
       });
       objects.push({
         role: "support_package",

@@ -183,6 +183,7 @@ domainProblemFilesRouter.post(`${prefix}/save`, async (c) => {
     samples: metadata.content.samples,
     expectedRevision: revision,
     actorId: actor,
+    domainId: access.domain.id,
     authorize: async (tx) => {
       await loadEditableDomainProblem(slug, reference, actor, {
         executor: tx,

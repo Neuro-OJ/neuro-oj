@@ -83,6 +83,7 @@ export async function importDomainProblemDraftBundle(
       expectedRevision,
       actorId,
       authorize,
+      domainId: access.domain.id,
     }, entries);
     return {
       problem_id: saved.problem_id,
@@ -97,6 +98,7 @@ export async function importDomainProblemDraftBundle(
         key: `domain-problem-${access.problem.id}-${crypto.randomUUID()}.zip`,
         bytes: stripMetadataEntries(bytes),
         contentType: "application/zip",
+        domainId: access.domain.id,
       })).storageUrl;
     }
     const saved = await getDb().transaction(async (tx) => {
