@@ -4,12 +4,16 @@ Status: implemented
 
 ## Problem
 
-除 Judge Check 外，ci.yml 的所有 job 均在 2 分钟内完成，但 Judge Check 单 job
-串行执行 15–21 分钟，成为 PR 的唯一关键路径。耗时构成：WASI SDK 从源码编译
-libc++ 共 3 次 （构建 A、一致性构建 B、生产镜像内再一次，约 9
+初始 Judge Check 单 job 串行执行 15–21 分钟，成为 PR 的关键路径。耗时构成：WASI
+SDK 从源码编译 libc++ 共 3 次 （构建 A、一致性构建 B、生产镜像内再一次，约 9
 分钟）；`check-oi-wasi-toolchain.sh` 串行运行 debug
 版验收示例，且每个示例各跑两次比对（约 8 分钟）；target 缓存恢复 + 保存约 2
 分钟。
+
+拆分后的运行 `38402958288` 中，CI 实际执行约 3 分 32 秒，但旧运行取消期间等待 9
+分 43 秒。E2E 运行 `38402958291` 的沙箱 job 实际执行 6 分 23 秒：整个 target
+缓存恢复 98 秒，测试 163 秒，其中 AI 镜像构建/导入 76 秒串在双容器组之后。
+sccache 的变量只设置在安装 action 上，后续 cargo 没有启用编译缓存。
 
 ## Decision
 
@@ -21,8 +25,17 @@ libc++ 共 3 次 （构建 A、一致性构建 B、生产镜像内再一次，�
 - 新增 `judge-wasi-acceptance`：`check-oi-wasi-toolchain.sh` 增加分片参数 （wasi
   / standard / compat / analysis），CI 用 matrix
   并行；脚本内一对示例的两次运行改为并发。
+- WASI 验收在 CI 中仅优化依赖（`profile.dev.package."*".opt-level=3`），
+  工作区仍使用 dev 配置；直接执行编译出的示例，不让 cargo 重建为默认依赖配置。
 - 新增 `judge-wasi-image`：以 Dockerfile +
   工具链输入哈希作缓存标记，输入未变则跳过镜像内构建。
+- 沙箱 E2E 只缓存 Cargo 注册表，sccache 变量设置在 job env，所有 cargo
+  步骤共享。 AI 镜像构建/导入独立作为第四组，创建 dual
+  标签容器的测试仍在同组串行执行。
+- 沙箱 Redis 映射为宿主机 `6380` 到容器 `6379`；测试命令使用 `--locked`。
+  失败诊断只上传日志，避免传输数 GiB 的 `target/deps`。
+- Python 调度回归测试执行 workflow 中的真实 shell，验证全部 `e2e_*.rs`
+  均被运行， 以及四个并行组各自的失败都会使 job 失败。
 
 ## Alternatives considered
 
@@ -32,8 +45,9 @@ libc++ 共 3 次 （构建 A、一致性构建 B、生产镜像内再一次，�
 
 ## Consequences
 
-- 工具链输入未变的 PR：关键路径约 4–5 分钟；修改配方/补丁/脚本的 PR
-  仍需完整构建（约 7–8 分钟），属预期。
+- 五分钟目标以真实 workflow 完成时间验收，同时记录执行与排队时间。 新的 Rust
+  优化配置需要首次预热；修改工具链输入仍执行完整的两次构建。 冷缓存与 GitHub
+  runner 排队耗时不能由固定 timeout 保证。
 - 缓存在 PR 分支上不可被其他分支读取，main 推送后才会预热；首次变更工具链的 PR
   一定未命中。
 - job 名称新增 `Judge WASI SDK / Acceptance (shard) / Image`；仓库未设置

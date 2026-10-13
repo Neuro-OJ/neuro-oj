@@ -17,7 +17,7 @@
 #   - noj-tests 30 个文件分 3 组并行（组间独立进程；文件间无跨文件固定
 #     ID 依赖，admin 改密竞态由 helper.ts loginAndChangePassword 并发
 #     兜底处理）
-#   - judge-sandbox 复用 sccache 编译缓存 + 7 个 binary 分 3 组并行
+#   - judge-sandbox 复用 sccache 编译缓存；AI 镜像测试独立于容器测试并行
 # =============================================================================
 
 name: E2E
@@ -37,15 +37,15 @@ on:
     # （注册验证 / 登录退出 / 代码提交到结果 / 核心失败反馈）依赖完整评测栈；
     # ci.yml 自身改动仍不触发（ci.yml 不涉及评测栈镜像/编排）。
     paths-ignore:
-      - 'dev-docs/**'
-      - 'noj-docs/**'
-      - '**/*.md'
-      - 'docker-compose.yml'
-      - 'LICENSE'
-      - 'scripts/db/**'
-      - '.github/dependabot.yml'
-      - '.github/actionlint.yaml'
-      - '.github/workflows/ci.yml'
+      - "dev-docs/**"
+      - "noj-docs/**"
+      - "**/*.md"
+      - "docker-compose.yml"
+      - "LICENSE"
+      - "scripts/db/**"
+      - ".github/dependabot.yml"
+      - ".github/actionlint.yaml"
+      - ".github/workflows/ci.yml"
   workflow_dispatch:
 
 # 仅 PR 上可取消旧运行（修复 finding M4），main 推送不可被取消。
@@ -363,7 +363,7 @@ jobs:
       - uses: ./.github/actions/e2e-domain
         with:
           domain: browser
-          browser: 'true'
+          browser: "true"
 
   # 统一构建 E2E 评测栈镜像一次，以 artifact 分发给各 Domain job。
   # 此前每个 Domain job 各自构建同样的 5 个镜像（judge 的 Rust 依赖层单项 ~270s），
@@ -429,6 +429,8 @@ jobs:
     timeout-minutes: 30
     env:
       NOJ_RUN_E2E: "1"
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
       # 测试镜像基础镜像直连 Docker Hub（digest 固定在 Dockerfile.test-runner）：
       # 默认的 DaoCloud 代理从 GitHub runner 访问会间歇性 TLS handshake timeout
       NOJ_E2E_PYTHON_IMAGE_REPO: python
@@ -439,7 +441,7 @@ jobs:
       redis:
         image: redis:7-alpine
         ports:
-          - 6380:6380
+          - 6380:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
@@ -459,32 +461,29 @@ jobs:
         # sync 竞争导致 clippy 组件下载失败、测试启动即死）
       - name: 启用 sccache（Rust 编译缓存）
         uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
-        # mozilla/sccache-action 只安装二进制并导出 SCCACHE_PATH；
-        # 必须显式设置 RUSTC_WRAPPER 与 SCCACHE_GHA_ENABLED 才会真正缓存
-        # 编译产物（GHA cache backend，需要 job 级 actions: write）。
-        env:
-          RUSTC_WRAPPER: sccache
-          SCCACHE_GHA_ENABLED: "true"
+      # RUSTC_WRAPPER / SCCACHE_GHA_ENABLED 放在 job env，后续 cargo 才能复用。
 
-      - name: 缓存 Cargo 依赖
+      - name: 缓存 Cargo 注册表
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            noj-judge/target
-          key: cargo-e2e-${{ hashFiles('noj-judge/Cargo.lock') }}
+          key: cargo-registry-${{ hashFiles('noj-judge/Cargo.lock') }}
           restore-keys: |
-            cargo-e2e-
+            cargo-registry-
+
+      - name: 验证沙箱分组覆盖与失败传播
+        run: python3 -m unittest discover -s noj-judge/scripts -p test_ci_sandbox.py
 
       - name: 编译 Judge E2E 测试目标
         working-directory: noj-judge
-        run: cargo build --tests
+        run: cargo build --locked --tests
 
       - name: 构建 OI 原生评测镜像
         run: docker build -t noj-oi-cpp:latest noj-judge/docker/oi-cpp
 
-      - name: Judge E2E 测试（Docker 沙箱，2 组并行）
+      - name: Judge E2E 测试（Docker 沙箱，4 组并行）
         working-directory: noj-judge
         env:
           REDIS_URL: redis://localhost:6380/
@@ -500,7 +499,7 @@ jobs:
           # 必须列出全部 e2e_* 测试文件（e2e_container_pool 已随容器池移除而
           # 删除；e2e_dual_container / e2e_network_capability / e2e_abnormal /
           # e2e_solution_ai / e2e_prediction 为后续新增，漏登记会让测试只编译不执行）。
-          # 性能优化（2026-07）：目标分 2 组并行——组内串行
+          # 目标分 4 组并行——组内串行
           # （serial_test 保证单 binary 内串行），组间并行利用 runner 多核。
           run_group() {
             for target in "$@"; do
@@ -508,7 +507,7 @@ jobs:
               echo "───────────────────────────────────────"
               echo "  $target"
               echo "───────────────────────────────────────"
-              NOJ_RUN_E2E=1 cargo test --test "$target" -- --ignored --test-threads=1
+              NOJ_RUN_E2E=1 cargo test --locked --test "$target" -- --ignored --test-threads=1
             done
           }
           # 分组约束：会创建 dual（evaluator + solution）标签容器的测试必须
@@ -518,12 +517,17 @@ jobs:
           p1=$!
           run_group e2e_support_package e2e_problem_limits e2e_oi_native &
           p2=$!
-          run_group e2e_dual_container e2e_network_capability e2e_solution_ai e2e_abnormal e2e_prediction &
+          run_group e2e_dual_container e2e_network_capability e2e_abnormal e2e_prediction &
           p3=$!
+          # AI 镜像用例只构建镜像并执行导入，不创建 dual 标签容器；
+          # 单独运行避免约 76s 的镜像构建阻塞双容器组。
+          run_group e2e_solution_ai &
+          p4=$!
           fail=0
           wait "$p1" || fail=1
           wait "$p2" || fail=1
           wait "$p3" || fail=1
+          wait "$p4" || fail=1
           exit "$fail"
 
       # 失败时上传 Docker 沙箱产物
@@ -534,7 +538,6 @@ jobs:
           name: judge-sandbox-logs
           path: |
             noj-judge/target/**/test-*.log
-            noj-judge/target/**/deps/
           retention-days: 7
           if-no-files-found: ignore
         continue-on-error: true
