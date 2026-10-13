@@ -37,6 +37,7 @@ import {
 } from "../../catalog/services/support-package.ts";
 import { isOiRuntimeConfig } from "../../catalog/types/runtime-config.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
+import type { JudgeImageKind } from "../../catalog/types/problems.ts";
 import {
   deleteTraining,
   getTraining,
@@ -108,12 +109,14 @@ router.get("/problems/:id/preflight", async (c) => {
       add("checker", "warning", "testlib checker 将由 OI runner 受信执行");
     }
   } else {
-    for (
-      const [kind, config] of [
-        ["evaluator", problem.runtime_config.evaluator],
-        ["solution", problem.runtime_config.solution],
-      ] as const
-    ) {
+    const configs: [JudgeImageKind, { image: string } | undefined][] = [
+      ["evaluator", problem.runtime_config.evaluator],
+    ];
+    if (problem.runtime_config.solution) {
+      configs.push(["solution", problem.runtime_config.solution]);
+    }
+    for (const [kind, config] of configs) {
+      if (!config) continue;
       try {
         await validateJudgeImageWithKind(config.image, kind);
         add(`image:${kind}`, "pass", `镜像 ${config.image} 已在白名单中`);

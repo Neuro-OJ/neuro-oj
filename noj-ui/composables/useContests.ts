@@ -51,7 +51,7 @@ export interface ContestProblem {
   description: string;
   difficulty: string;
   display_id: string;
-  submission_mode: 'code' | 'artifact';
+  submission_mode: 'code' | 'artifact' | 'prediction' | 'ui';
   artifact_max_size_mb: number | null;
   user_status: 'solved' | 'attempted' | 'untouched';
   /**

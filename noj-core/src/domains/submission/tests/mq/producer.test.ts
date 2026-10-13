@@ -51,6 +51,7 @@ function makeTask(overrides?: Partial<JudgeTask>): JudgeTask {
     code: "print(42)",
     file_name: "submission.py",
     priority: "medium",
+    submission_mode: "code",
     judge_type: "dual",
     ...overrides,
   };

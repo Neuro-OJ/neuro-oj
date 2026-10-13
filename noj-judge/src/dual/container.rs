@@ -31,11 +31,17 @@ const DUAL_KIND_LABEL_PREFIX: &str = "com.noj.judge.dual.";
 /// 评测容器 tmpfs 选项：在原有 size/mode 语义上追加 `noexec,nosuid,nodev`（VULN-21）。
 ///
 /// - `/tmp`：`size=256M,mode=1777`；
-/// - `/workspace`：`size=512M,mode=1777`（NOJ-187：rootfs 只读，注入文件落这里）。
-pub fn evaluation_tmpfs() -> std::collections::HashMap<&'static str, &'static str> {
+/// - `/workspace`：`size={workspace_mb}M,mode=1777`（NOJ-187：rootfs 只读，注入文件落这里；
+///   双容器沿用 [`DEFAULT_WORKSPACE_MB`]，预测提交路径可放大）。
+pub fn evaluation_tmpfs_with_workspace(
+    workspace_mb: u64,
+) -> std::collections::HashMap<&'static str, String> {
     let mut tmpfs = std::collections::HashMap::new();
-    tmpfs.insert("/tmp", "size=256M,mode=1777,noexec,nosuid,nodev");
-    tmpfs.insert("/workspace", "size=512M,mode=1777,noexec,nosuid,nodev");
+    tmpfs.insert(
+        "/tmp",
+        "size=256M,mode=1777,noexec,nosuid,nodev".to_string(),
+    );
+    tmpfs.insert("/workspace", workspace_tmpfs_spec(workspace_mb));
     tmpfs
 }
 
@@ -73,11 +79,22 @@ pub struct DualContainer {
     pub instance_id: String,
 }
 
+/// 默认 /workspace tmpfs 上限（MB）——双容器路径沿用历史值。
+pub const DEFAULT_WORKSPACE_MB: u64 = 512;
+
+/// 生成 /workspace tmpfs 规格（纯函数，便于单测）。
+fn workspace_tmpfs_spec(workspace_mb: u64) -> String {
+    format!("size={}M,mode=1777,noexec,nosuid,nodev", workspace_mb)
+}
+
 impl DualContainer {
     /// 创建并启动 Evaluator 容器。
     ///
     /// `network_mode`：开启联网时传专用评测网络名（默认 `noj-eval-net`）；
     /// 关闭联网时传 "none"。
+    ///
+    /// /workspace tmpfs 使用历史默认上限 [`DEFAULT_WORKSPACE_MB`]；需要更大
+    /// 工作区（如预测提交）时改用 [`Self::create_evaluator_with_workspace`]。
     /// `instance_id`：由 `Config::instance_id` 显式传入（不再读取全局易变值）。
     pub async fn create_evaluator(
         docker: &Docker,
@@ -87,6 +104,30 @@ impl DualContainer {
         cpu_limit_millicores: u64,
         instance_id: &str,
     ) -> Result<Self> {
+        Self::create_evaluator_with_workspace(
+            docker,
+            image,
+            memory_mb,
+            network_mode,
+            cpu_limit_millicores,
+            DEFAULT_WORKSPACE_MB,
+            instance_id,
+        )
+        .await
+    }
+
+    /// 创建并启动 Evaluator 容器，显式指定 /workspace tmpfs 上限（MB）。
+    ///
+    /// 其余参数语义同 [`Self::create_evaluator`]。
+    pub async fn create_evaluator_with_workspace(
+        docker: &Docker,
+        image: &str,
+        memory_mb: u64,
+        network_mode: &str,
+        cpu_limit_millicores: u64,
+        workspace_mb: u64,
+        instance_id: &str,
+    ) -> Result<Self> {
         let id = create_container_with_security(
             docker,
             image,
@@ -94,6 +135,7 @@ impl DualContainer {
             "evaluator",
             network_mode,
             cpu_limit_millicores,
+            workspace_mb,
             instance_id,
         )
         .await?;
@@ -120,6 +162,7 @@ impl DualContainer {
             "solution",
             "none",
             cpu_limit_millicores,
+            DEFAULT_WORKSPACE_MB,
             &self.instance_id,
         )
         .await?;
@@ -232,6 +275,7 @@ pub async fn start_exec(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create_container_with_security(
     docker: &Docker,
     image: &str,
@@ -239,6 +283,7 @@ async fn create_container_with_security(
     kind: &str,
     network_mode: &str,
     cpu_limit_millicores: u64,
+    workspace_mb: u64,
     instance_id: &str,
 ) -> Result<String> {
     // NOJ-154 / VULN-15：实例标签（精准清扫）+ 平台级归属标签（兜底清扫）双标签解耦。
@@ -253,8 +298,12 @@ async fn create_container_with_security(
     let memory_bytes = (normalized_memory_mb as i64) * 1024 * 1024;
 
     // NOJ-187 / VULN-21：rootfs 只读，/tmp 与 /workspace 用 tmpfs 承载运行时文件，
-    // 且挂载选项收紧为 noexec,nosuid,nodev。
-    let tmpfs = evaluation_tmpfs();
+    // 且挂载选项收紧为 noexec,nosuid,nodev。默认 512MB，预测提交路径可请求更大上限。
+    let tmpfs_owned = evaluation_tmpfs_with_workspace(workspace_mb);
+    let tmpfs = tmpfs_owned
+        .iter()
+        .map(|(k, v)| (*k, v.as_str()))
+        .collect::<std::collections::HashMap<_, _>>();
 
     let host_config = build_host_config_with_cpu(
         memory_bytes,
@@ -298,6 +347,25 @@ async fn create_container_with_security(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_workspace_tmpfs_string() {
+        // 纯函数：把 MB 转成 tmpfs 规格字符串
+        assert_eq!(
+            workspace_tmpfs_spec(2048),
+            "size=2048M,mode=1777,noexec,nosuid,nodev"
+        );
+    }
+
+    #[test]
+    fn test_workspace_tmpfs_default_spec_unchanged() {
+        // 回归钉住「默认双容器行为不变」：默认上限 512MB 时规格字符串必须
+        // 精确等于历史值，任何改动都会在此处显性失败。
+        assert_eq!(
+            workspace_tmpfs_spec(DEFAULT_WORKSPACE_MB),
+            "size=512M,mode=1777,noexec,nosuid,nodev"
+        );
+    }
 
     /// VULN-15：双标签解耦——实例标签（精准清扫）+ managed-by（平台兜底）。
     #[test]
@@ -343,7 +411,7 @@ mod tests {
     /// 且保留原有 size/mode 语义。
     #[test]
     fn evaluation_tmpfs_hardens_mount_options() {
-        let tmpfs = evaluation_tmpfs();
+        let tmpfs = evaluation_tmpfs_with_workspace(DEFAULT_WORKSPACE_MB);
         for (mount, expected_prefix) in [
             ("/tmp", "size=256M,mode=1777"),
             ("/workspace", "size=512M,mode=1777"),

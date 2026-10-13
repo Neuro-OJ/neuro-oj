@@ -6,24 +6,30 @@ import type { JudgeTaskLlm } from "../../submission/index.ts";
 import type { RuntimeConfig } from "../../catalog/index.ts";
 import { encodeBase64 } from "@std/encoding/base64";
 import { BadRequestError } from "../../../shared/base/errors.ts";
-import {
-  getLlmPlatformDefault,
-  getLlmProviderById,
-  LlmGatewayError,
-} from "./llm.ts";
+import { getLlmProviderById, LlmGatewayError } from "./llm.ts";
 import { resolveLlmLimits } from "./llm-limits.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import { getDomainLlmDefault } from "./domain-default.ts";
+import {
+  isDefaultOnly,
+  normalizeLlmModels,
+  type ResolvedLlmModels,
+  resolveLlmModels,
+} from "./llm-model-aliases.ts";
+import { LLM_DEFAULT_MODEL_ALIAS } from "../../catalog/index.ts";
 
 const IV_LENGTH = 12;
 
 /** 一次尝试已解析的 LLM 执行配置；重新派发只续签凭据，不改 Provider/模型/单次预算。 */
 export interface FrozenLlmExecution {
-  domain_id?: string;
+  domain_id: string;
   provider_id: string;
+  /** 旧字段：等于 models[0].model，兼容无 models 的旧快照 */
   model: string;
   max_calls: number;
   max_tokens: number;
+  /** 别名 → 真实模型（题目声明了非 default 别名时写入；缺省按单个 default 处理） */
+  models?: { alias: string; model: string }[];
 }
 
 async function deriveKey(secret: string): Promise<CryptoKey> {
@@ -61,6 +67,8 @@ interface EvalTokenPayload {
   user_id: string;
   provider_id: string;
   allowed_models: string[];
+  /** 别名 → 真实模型名；仅题目使用非 default 别名时携带 */
+  model_map?: Record<string, string>;
   iat: number;
   exp: number;
   max_calls: number;
@@ -116,39 +124,61 @@ export async function buildJudgeTaskLlm(
   },
 ): Promise<JudgeTaskLlm> {
   const domainId = scope.domainId ?? DEFAULT_DOMAIN_ID;
-  if (
-    scope.frozen && (scope.frozen.domain_id ?? DEFAULT_DOMAIN_ID) !== domainId
-  ) {
+  if (scope.frozen && scope.frozen.domain_id !== domainId) {
     throw new BadRequestError(
       "冻结的 LLM 配置不属于使用域",
       "LLM_DOMAIN_MISMATCH",
     );
   }
-  const platform = scope.frozen ??
-    (scope.domainId
-      ? await getDomainLlmDefault(domainId)
-      : getLlmPlatformDefault());
-  if (!platform) {
-    throw new BadRequestError(
-      "当前工作空间未配置 LLM Provider / 模型，无法评测 LLM 题",
-      "DOMAIN_LLM_NOT_CONFIGURED",
-    );
+  const aliases = normalizeLlmModels(llmConfig);
+  let resolved: ResolvedLlmModels;
+  if (scope.frozen) {
+    resolved = {
+      provider_id: scope.frozen.provider_id,
+      models: scope.frozen.models ??
+        [{ alias: LLM_DEFAULT_MODEL_ALIAS, model: scope.frozen.model }],
+    };
+  } else if (aliases.length === 1 && aliases[0] === LLM_DEFAULT_MODEL_ALIAS) {
+    const selected = await getDomainLlmDefault(domainId);
+    if (!selected) {
+      throw new BadRequestError(
+        "当前工作空间未配置 LLM Provider / 模型，无法评测 LLM 题",
+        "DOMAIN_LLM_NOT_CONFIGURED",
+      );
+    }
+    resolved = {
+      provider_id: selected.provider_id,
+      models: [{ alias: LLM_DEFAULT_MODEL_ALIAS, model: selected.model }],
+    };
+  } else {
+    resolved = await resolveLlmModels(aliases, domainId);
   }
+  const defaultOnly = isDefaultOnly(resolved.models);
+  const providerMissing = defaultOnly
+    ? "当前工作空间默认 LLM Provider 不存在或已停用"
+    : "题目所用模型别名对应的 LLM Provider 不存在或已停用";
   let provider;
   try {
-    provider = await getLlmProviderById(platform.provider_id, domainId);
+    provider = await getLlmProviderById(resolved.provider_id, domainId);
   } catch (e) {
-    // provider_not_found → 400（平台配置指向了不存在的 Provider）；
+    // provider_not_found → 400（使用域配置指向了不存在的 Provider）；
     // 其余（gateway 不可达 / service token 缺失）原样上抛，按 5xx 处理，
     // 避免把服务端故障伪装成客户端错误。
     if (e instanceof LlmGatewayError && e.code === "provider_not_found") {
-      throw new BadRequestError("平台默认 LLM Provider 不存在或已停用");
+      throw new BadRequestError(providerMissing);
     }
     throw e;
   }
   if (!provider.enabled || provider.domain_id !== domainId) {
-    throw new BadRequestError("平台默认 LLM Provider 不存在或已停用");
+    throw new BadRequestError(providerMissing);
   }
+  // 仅 default 时保持旧形态：allowed_models 为真实模型名且无 model_map
+  const allowedModels = defaultOnly
+    ? [resolved.models[0].model]
+    : resolved.models.map((m) => m.alias);
+  const modelMap = defaultOnly
+    ? undefined
+    : Object.fromEntries(resolved.models.map((m) => [m.alias, m.model]));
 
   const gatewayUrl = Deno.env.get("NOJ_LLM_GATEWAY_URL") ??
     "http://localhost:8001";
@@ -165,8 +195,9 @@ export async function buildJudgeTaskLlm(
     submission_id: submissionId,
     problem_id: problemId,
     user_id: userId,
-    provider_id: platform.provider_id,
-    allowed_models: [platform.model],
+    provider_id: resolved.provider_id,
+    allowed_models: allowedModels,
+    ...(modelMap ? { model_map: modelMap } : {}),
     iat: now,
     exp: now + ttlSeconds,
     max_calls: limits.max_calls,
@@ -175,7 +206,8 @@ export async function buildJudgeTaskLlm(
   return {
     gateway_url: gatewayUrl,
     eval_token: token,
-    provider_id: platform.provider_id,
-    allowed_models: [platform.model],
+    provider_id: resolved.provider_id,
+    allowed_models: allowedModels,
+    ...(modelMap ? { model_map: modelMap } : {}),
   };
 }

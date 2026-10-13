@@ -31,6 +31,8 @@ import {
   isValidSubmissionMode,
   type LlmConfig,
   type RuntimeConfig,
+  SUBMISSION_MODES,
+  type SubmissionMode,
 } from "./problems.ts";
 import {
   type OiRuntimeConfig,
@@ -67,7 +69,7 @@ export interface ProblemBundleManifest {
   tags?: string[];
   /** 模板文件索引（纯文件名，缺省默认 "template.py"）：前端编辑器初始代码 */
   template?: string;
-  /** 提交模式：code（默认）或 artifact */
+  /** 提交模式：code（默认）/ artifact / prediction / ui */
   submission_mode?: string;
   /** artifact 提交大小上限（MB），可空 */
   artifact_max_size_mb?: number | null;
@@ -122,6 +124,17 @@ export function isValidTemplateFileName(name: string): boolean {
 export const DEFAULT_TEMPLATE_FILE = "template.py";
 
 /**
+ * 界面题（`submission_mode: "ui"`）的界面文件名：固定为包根级 `ui.html`。
+ *
+ * 不提供 manifest 字段：导入时 `problem.json` 会被剥离，运行期无从得知自定义文件名
+ * （模板读取同理只认默认名）。
+ */
+export const UI_FILE = "ui.html";
+
+/** 界面文件的大小上限（512 KiB）：界面应是自包含的单页，不该夹带大资源。 */
+export const MAX_UI_HTML_BYTES = 512 * 1024;
+
+/**
  * 编辑器初始代码模板的大小上限（256 KiB）。
  *
  * 模板是"作答骨架"，正常只有几 KB。导入时超过该上限说明作者把大文件当模板
@@ -174,10 +187,11 @@ export function normalizeBundleManifestFormat(raw: unknown): {
     manifest.llm = {
       ...(llm.max_calls !== undefined ? { max_calls: llm.max_calls } : {}),
       ...(llm.max_tokens !== undefined ? { max_tokens: llm.max_tokens } : {}),
+      ...(llm.models !== undefined ? { models: llm.models } : {}),
     };
     if (
       Object.keys(llm).some((key) =>
-        key !== "max_calls" && key !== "max_tokens"
+        key !== "max_calls" && key !== "max_tokens" && key !== "models"
       )
     ) {
       warnings.push(
@@ -284,7 +298,9 @@ export function validateBundleManifest(
     !isValidSubmissionMode(m.submission_mode as string)
   ) {
     throw new BadRequestError(
-      `非法提交模式：${String(m.submission_mode)}，仅允许 code / artifact`,
+      `非法提交模式：${String(m.submission_mode)}，仅允许 ${
+        SUBMISSION_MODES.join(" / ")
+      }`,
     );
   }
 
@@ -301,11 +317,16 @@ export function validateBundleManifest(
     );
   }
 
-  // LLM 仅声明单次预算，执行 Provider/模型由使用域决定。
+  // LLM 声明单次预算和模型别名能力，实际映射由使用域决定。
   let llm: LlmConfig | undefined;
   if (m.llm !== undefined && m.llm !== null) {
     if (!isValidLlmConfig(m.llm)) {
       throw new BadRequestError("manifest.llm 格式非法");
+    }
+    // prediction 路径不注入 NOJ_LLM_*（评测只跑 Evaluator），题目级 LLM 配置
+    // 不会生效，导入期即拒绝而不是拖到提交期。
+    if (m.submission_mode === "prediction") {
+      throw new BadRequestError("预测提交题不支持 LLM 配置");
     }
     llm = m.llm as LlmConfig;
   }
@@ -338,7 +359,12 @@ export function validateBundleManifest(
     } else {
       // 注入 command 默认值后执行既有结构校验（含镜像白名单由调用方在落库前校验）
       runtimeConfig = resolveManifestCommand(m.runtime_config as RuntimeConfig);
-      validateRuntimeConfig(runtimeConfig);
+      // 模式只由显式 submission_mode 判定，不靠字段缺席推断：code/artifact 仍需
+      // solution，prediction 可省略。
+      validateRuntimeConfig(
+        runtimeConfig,
+        (m.submission_mode as SubmissionMode) ?? "code",
+      );
       if (llm !== undefined && !runtimeConfig.evaluator.network?.enabled) {
         throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
       }

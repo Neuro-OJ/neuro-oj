@@ -12,6 +12,7 @@ import {
   domainProblemReference,
   type ProblemContentV1,
   resolveProblemTemplate,
+  resolveProblemUiHtml,
 } from "../../catalog/index.ts";
 import { serializeQuestion } from "../../objective/index.ts";
 import { getDomainContestProblems } from "./domain-results.ts";
@@ -83,7 +84,15 @@ export async function getDomainContestTemplate(
   label: string,
   actorId: string,
 ) {
-  const { selected } = await contentForLabel(slug, reference, label, actorId);
+  const { selected, content } = await contentForLabel(
+    slug,
+    reference,
+    label,
+    actorId,
+  );
+  if (content.kind === "ai" && content.submission_mode === "ui") {
+    throw new NotFoundError("界面题不公开执行脚本模板");
+  }
   const template = await resolveProblemTemplate({
     id: selected.problem_id,
     number: selected.reference!.number,
@@ -91,6 +100,29 @@ export async function getDomainContestTemplate(
   }, { versionId: selected.version_id });
   if (!template) throw new NotFoundError("该题目没有初始代码模板");
   return { data: template, version_id: selected.version_id };
+}
+
+/** 界面使用已授权比赛固定版本的 HTML；不返回参数填充脚本或评测配置。 */
+export async function getDomainContestUi(
+  slug: string,
+  reference: string,
+  label: string,
+  actorId: string,
+) {
+  const { selected, content } = await contentForLabel(
+    slug,
+    reference,
+    label,
+    actorId,
+  );
+  if (content.kind !== "ai" || content.submission_mode !== "ui") {
+    throw new NotFoundError("此赛题没有作答界面");
+  }
+  const html = await resolveProblemUiHtml(selected.problem_id, {
+    versionId: selected.version_id,
+  });
+  if (!html) throw new NotFoundError("此赛题没有作答界面");
+  return { data: { html }, version_id: selected.version_id };
 }
 
 /** 客观题比赛作答接口始终裁剪答案和解析，组织者也通过相同安全卷面作答。 */

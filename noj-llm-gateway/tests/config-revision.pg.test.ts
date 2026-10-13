@@ -45,20 +45,24 @@ Deno.test({
         name: "source",
         base_url: "https://api.openai.com",
         api_key: "sk-test-provider",
+        rpm_limit: 1,
+        tpm_limit: 1000,
       }, 0);
       assertEquals(created.status, 201);
       const provider = (await created.json()).data;
       assertEquals(provider.revision, 1);
       const path = "/internal/providers/" + provider.id;
       const results = await Promise.all([
-        request(path, { name: "left" }, 1, "school-a", "PUT"),
-        request(path, { name: "right" }, 1, "school-a", "PUT"),
+        request(path, { name: "left", rpm_limit: 2 }, 1, "school-a", "PUT"),
+        request(path, { name: "right", tpm_limit: 2000 }, 1, "school-a", "PUT"),
       ]);
       assertEquals(results.map((result) => result.status).sort(), [200, 409]);
       const [stored] =
-        await db`SELECT name,revision FROM llm_providers WHERE id=${provider.id}`;
+        await db`SELECT name,revision,rpm_limit,tpm_limit FROM llm_providers WHERE id=${provider.id}`;
       assertEquals(stored.revision, 2);
       assertEquals(["left", "right"].includes(stored.name), true);
+      assertEquals(stored.rpm_limit, stored.name === "left" ? 2 : 1);
+      assertEquals(stored.tpm_limit, stored.name === "right" ? 2000 : 1000);
       assertEquals(
         (await request(path, { enabled: false }, 1, "school-a", "PUT")).status,
         409,

@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import { AppError } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { evaluationAttempts } from "../../../shared/db/schema.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import {
   buildOiSelfTestPackage,
   isOiRuntimeConfig,
@@ -18,12 +17,13 @@ import { getStorageProvider } from "../../system/index.ts";
 import { prepareJudgeTask } from "../services/prepare-judge-task.ts";
 import { loadPublishedVersionContent } from "../services/versioning/submission-version.ts";
 import {
+  scriptTemplateOf,
   versionSupportPackageDownload,
   versionSupportPackageUrl,
 } from "../services/versioning/version-execution.ts";
 import { resolveJudgeTaskPriority } from "../services/submissions/judge-priority.ts";
 import type { PendingRecoveryRow } from "./sweeper.ts";
-import type { JudgeTask } from "../types/index.ts";
+import { type JudgeTask, toJudgeSubmissionMode } from "../types/index.ts";
 
 /** 版本或运行归属缺失时拒绝恢复，禁止猜测最新版。 */
 export async function rebuildPendingTask(
@@ -94,7 +94,7 @@ export async function rebuildPendingTask(
     artifactDownloadUrl = await storage.downloadUrl(row.artifact_storage_url);
   }
   let llm;
-  if (content.kind === "ai" && content.llm_config && source === "submission") {
+  if (content.kind === "ai" && content.llm_config) {
     if (!snapshot?.llm_execution) {
       throw new AppError(
         "LLM 执行快照缺失，拒绝改用当前默认配置",
@@ -110,7 +110,7 @@ export async function rebuildPendingTask(
       content.runtime_config,
       {
         attemptId: runId,
-        domainId: row.domain_id ?? DEFAULT_DOMAIN_ID,
+        domainId: row.domain_id,
         problemVersionId: versionId,
         frozen: snapshot.llm_execution as FrozenLlmExecution,
       },
@@ -129,11 +129,18 @@ export async function rebuildPendingTask(
     problem_id: row.problem_id,
     user_id: row.user_id ?? "",
     priority,
+    // 自测恒为代码；正式提交按绑定版本的提交模式恢复（发布后不可变）。
+    submission_mode: source === "submission" && content.kind === "ai"
+      ? toJudgeSubmissionMode(content.submission_mode)
+      : "code",
     runtime_config: executionRuntime,
     download_url: downloadUrl,
     artifact_download_url: artifactDownloadUrl,
     language: row.language,
     code: row.artifact_storage_url ? "" : row.code,
+    script_template: row.language === "ui"
+      ? scriptTemplateOf(content)
+      : undefined,
     file_name: row.file_name ?? undefined,
     rejudge_seq: sequence,
     llm,

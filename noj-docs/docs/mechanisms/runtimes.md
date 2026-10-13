@@ -53,6 +53,28 @@ flowchart TD
 
 ## 官方标准评测镜像矩阵
 
+## prediction 单容器运行时
+
+**预测提交（prediction）题**是唯一**不创建 Solution 容器**的路径。选手提交的是单个预测数据文件（纯数据，不是代码），平台不执行任何不可信代码，因此只需一个 Evaluator 容器：
+
+- 只创建 `noj-evaluator-python` 容器（`cap_drop ALL` / 默认无网 / `pids_limit` / CPU 上限 / readonly rootfs + tmpfs `/workspace`），**绝不创建 Solution 容器**，也没有 NDJSON 编排。
+- 支持包 zip 注入 Evaluator `/workspace`（`evaluate.py` + 隐藏标签）。
+- 预测文件以**流式注入**写入 `/workspace/prediction/<原始文件名>`，该目录下只有这一个文件。
+- Judge Worker 向 Evaluator exec 注入两个环境变量：
+
+  | 环境变量 | 值 | 说明 |
+  |----------|-----|------|
+  | `NOJ_PREDICTION_DIR` | `/workspace/prediction` | 预测文件所在目录 |
+  | `NOJ_PREDICTION_FILE` | 选手上传的文件名 | 预测文件名 |
+
+- `/workspace` 大小由 `runtime_config.evaluator.workspace_size_mb` 决定；缺省取 Judge Worker 的 `JUDGE_PREDICTION_WORKSPACE_MB`（默认 `2048`，单位 MB）。两者都被收敛到 **512–16384** 范围（题目级越界值在 judge 侧 clamp）；管理员可用 `judge_max_prediction_workspace_mb` 设置项（`JUDGE_MAX_PREDICTION_WORKSPACE_MB`，0 = 不限制）再收一层上限，超限的出题请求在保存时即 400。大预测文件会以 tmpfs 形式占用 Worker 内存。
+- 输出解析与双容器一致：Evaluator stdout 出现 `---RESULT---` 后取下一非空行 JSON `{score, details}`；stdout/stderr 全文受 1 MiB 硬上限约束，标记检测为流式（不依赖滚动缓冲重扫）。
+- prediction 题**不配置 `solution`**：题目的 `runtime_config` 可省略 `solution`，提交时语言固定为 `python3` 占位。
+- 预测文件复用 `artifact_storage_url` 生命周期：与产物一致，保留到提交被显式删除，可按版本任务重测；对象缺失时重测条目以 `ARTIFACT_MISSING` 失败并保留原成绩。
+
+出题约定见[出预测提交题](../problemsetters/prediction-problems.md)。
+
+镜像由 `noj-judge/scripts/build-sdk-images.sh` 构建（默认 tag `:latest`，与 noj-core 种子数据 `judge_images` 登记一致）。
 官方提供经过裁剪与安全加固的标准基础镜像（通过
 `noj-judge/scripts/build-sdk-images.sh` 脚本统一部署构建）：
 

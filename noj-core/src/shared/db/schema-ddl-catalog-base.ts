@@ -18,7 +18,7 @@ export const CATALOG_PROBLEM_BASE_DDL: string[] = [
     visibility TEXT NOT NULL DEFAULT 'public'
       CHECK (visibility IN ('public', 'private')),
     submission_mode TEXT NOT NULL DEFAULT 'code'
-      CHECK (submission_mode IN ('code', 'artifact')),
+      CHECK (submission_mode IN ('code', 'artifact', 'prediction', 'ui')),
     artifact_max_size_mb INTEGER,
     template_content TEXT,
     llm_config JSONB,

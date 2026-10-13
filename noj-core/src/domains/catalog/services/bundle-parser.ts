@@ -26,7 +26,9 @@ import {
   DEFAULT_TEMPLATE_FILE,
   isValidTemplateFileName,
   MAX_TEMPLATE_BYTES,
+  MAX_UI_HTML_BYTES,
   normalizeBundleManifestFormat,
+  UI_FILE,
 } from "./../types/problem-bundle.ts";
 import { validateOiRuntimeConfig } from "../types/runtime-config.ts";
 
@@ -393,6 +395,28 @@ export function readBundleTemplate(
   const raw = entries[name] ?? entries[`./${name}`];
   if (!raw) return { status: "missing" };
   if (raw.byteLength > MAX_TEMPLATE_BYTES) {
+    return { status: "too_large", size: raw.byteLength };
+  }
+  return { status: "ok", content: new TextDecoder().decode(raw) };
+}
+
+/** 读取题包内界面文件（`ui.html`）的结果。 */
+export type BundleUiReadResult =
+  | { status: "ok"; content: string }
+  | { status: "missing" }
+  | { status: "too_large"; size: number };
+
+/**
+ * 从已解析的题包条目中读取界面题的 `ui.html`（包根级固定文件名）。
+ *
+ * 兼容 `./ui.html` 前缀形式（部分 zip 工具给根级条目加 `./`）。
+ */
+export function readBundleUi(
+  entries: Record<string, Uint8Array>,
+): BundleUiReadResult {
+  const raw = entries[UI_FILE] ?? entries[`./${UI_FILE}`];
+  if (!raw) return { status: "missing" };
+  if (raw.byteLength > MAX_UI_HTML_BYTES) {
     return { status: "too_large", size: raw.byteLength };
   }
   return { status: "ok", content: new TextDecoder().decode(raw) };

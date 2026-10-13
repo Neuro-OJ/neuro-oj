@@ -25,7 +25,7 @@ import {
   projectProblemContent,
   trimProblemContentForViewer,
 } from "../versioning/version-read-view.ts";
-import { AppError } from "../../../../shared/base/errors.ts";
+import { AppError, NotFoundError } from "../../../../shared/base/errors.ts";
 import { resolveDomainProblem } from "./problem-binding-access.ts";
 import { domainProblemReference } from "./problem-reference.ts";
 import { problemAuthoringRestrictedByContest } from "./problem-contest-authoring.ts";
@@ -201,6 +201,9 @@ export async function readDomainProblemTemplate(
     );
   }
   const content = resource.version.content as ProblemContentV1;
+  if (content.kind === "ai" && content.submission_mode === "ui") {
+    throw new NotFoundError("界面题不公开评测脚本模板");
+  }
   return {
     version_id: resource.version.id,
     template_content: content.kind === "ai" ? content.template_content : "",

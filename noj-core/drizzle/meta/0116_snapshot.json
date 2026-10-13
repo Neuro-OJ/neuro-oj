@@ -1,6 +1,6 @@
 {
-  "id": "9377fe36-8b59-4898-92fb-8443cffe3f43",
-  "prevId": "3fadfa19-4f3f-4f31-a4ee-61a5410ad849",
+  "id": "077162ce-4b61-4471-8327-3d4d70a78eb5",
+  "prevId": "f968e1e3-d9bd-4ec8-8f51-02aa918c4b2e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -130,6 +130,1790 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.assignment_feedback": {
+      "name": "assignment_feedback",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignment_id": {
+          "name": "assignment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_user_id": {
+          "name": "target_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "author_id": {
+          "name": "author_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_assignment_feedback_list": {
+          "name": "idx_assignment_feedback_list",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "assignment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "assignment_feedback_author_id_users_id_fk": {
+          "name": "assignment_feedback_author_id_users_id_fk",
+          "tableFrom": "assignment_feedback",
+          "tableTo": "users",
+          "columnsFrom": [
+            "author_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_feedback_assignment_fk": {
+          "name": "assignment_feedback_assignment_fk",
+          "tableFrom": "assignment_feedback",
+          "tableTo": "assignments",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_feedback_recipient_fk": {
+          "name": "assignment_feedback_recipient_fk",
+          "tableFrom": "assignment_feedback",
+          "tableTo": "assignment_recipients",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id",
+            "target_user_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "assignment_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "assignment_feedback_scope_unique": {
+          "name": "assignment_feedback_scope_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "domain_id",
+            "assignment_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "assignment_feedback_revision_check": {
+          "name": "assignment_feedback_revision_check",
+          "value": "\"assignment_feedback\".\"revision\" >= 0"
+        },
+        "assignment_feedback_body_check": {
+          "name": "assignment_feedback_body_check",
+          "value": "char_length(\"assignment_feedback\".\"body\") BETWEEN 1 AND 30000"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.assignment_help_replies": {
+      "name": "assignment_help_replies",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignment_id": {
+          "name": "assignment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "help_id": {
+          "name": "help_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "author_id": {
+          "name": "author_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_assignment_help_replies_list": {
+          "name": "idx_assignment_help_replies_list",
+          "columns": [
+            {
+              "expression": "help_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "assignment_help_replies_author_id_users_id_fk": {
+          "name": "assignment_help_replies_author_id_users_id_fk",
+          "tableFrom": "assignment_help_replies",
+          "tableTo": "users",
+          "columnsFrom": [
+            "author_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_help_replies_request_fk": {
+          "name": "assignment_help_replies_request_fk",
+          "tableFrom": "assignment_help_replies",
+          "tableTo": "assignment_help_requests",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id",
+            "help_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "assignment_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "assignment_help_replies_scope_unique": {
+          "name": "assignment_help_replies_scope_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "domain_id",
+            "assignment_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "assignment_help_replies_body_check": {
+          "name": "assignment_help_replies_body_check",
+          "value": "char_length(\"assignment_help_replies\".\"body\") BETWEEN 1 AND 30000"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.assignment_help_requests": {
+      "name": "assignment_help_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignment_id": {
+          "name": "assignment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "submission_id": {
+          "name": "submission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "objective_submission_id": {
+          "name": "objective_submission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "handled_by": {
+          "name": "handled_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "handled_at": {
+          "name": "handled_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_assignment_help_requests_list": {
+          "name": "idx_assignment_help_requests_list",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "assignment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "assignment_help_requests_submission_id_submissions_id_fk": {
+          "name": "assignment_help_requests_submission_id_submissions_id_fk",
+          "tableFrom": "assignment_help_requests",
+          "tableTo": "submissions",
+          "columnsFrom": [
+            "submission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "assignment_help_requests_objective_submission_id_objective_submissions_id_fk": {
+          "name": "assignment_help_requests_objective_submission_id_objective_submissions_id_fk",
+          "tableFrom": "assignment_help_requests",
+          "tableTo": "objective_submissions",
+          "columnsFrom": [
+            "objective_submission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "assignment_help_requests_handled_by_users_id_fk": {
+          "name": "assignment_help_requests_handled_by_users_id_fk",
+          "tableFrom": "assignment_help_requests",
+          "tableTo": "users",
+          "columnsFrom": [
+            "handled_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_help_requests_recipient_fk": {
+          "name": "assignment_help_requests_recipient_fk",
+          "tableFrom": "assignment_help_requests",
+          "tableTo": "assignment_recipients",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "assignment_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_help_requests_item_fk": {
+          "name": "assignment_help_requests_item_fk",
+          "tableFrom": "assignment_help_requests",
+          "tableTo": "assignment_items",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id",
+            "item_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "assignment_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "assignment_help_requests_scope_unique": {
+          "name": "assignment_help_requests_scope_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "domain_id",
+            "assignment_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "assignment_help_requests_source_check": {
+          "name": "assignment_help_requests_source_check",
+          "value": "NOT (\"assignment_help_requests\".\"submission_id\" IS NOT NULL AND \"assignment_help_requests\".\"objective_submission_id\" IS NOT NULL)"
+        },
+        "assignment_help_requests_state_check": {
+          "name": "assignment_help_requests_state_check",
+          "value": "\"assignment_help_requests\".\"state\" IN ('open','resolved')"
+        },
+        "assignment_help_requests_revision_check": {
+          "name": "assignment_help_requests_revision_check",
+          "value": "\"assignment_help_requests\".\"revision\" >= 0"
+        },
+        "assignment_help_requests_body_check": {
+          "name": "assignment_help_requests_body_check",
+          "value": "char_length(\"assignment_help_requests\".\"body\") BETWEEN 1 AND 30000"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.assignment_item_history": {
+      "name": "assignment_item_history",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "binding_history_id": {
+          "name": "binding_history_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "problem_id": {
+          "name": "problem_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "answer_version_id": {
+          "name": "answer_version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "policy_mode": {
+          "name": "policy_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "required_version_id": {
+          "name": "required_version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "policy_revision": {
+          "name": "policy_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "assignment_item_history_binding_history_id_problem_binding_history_id_fk": {
+          "name": "assignment_item_history_binding_history_id_problem_binding_history_id_fk",
+          "tableFrom": "assignment_item_history",
+          "tableTo": "problem_binding_history",
+          "columnsFrom": [
+            "binding_history_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_item_history_actor_id_users_id_fk": {
+          "name": "assignment_item_history_actor_id_users_id_fk",
+          "tableFrom": "assignment_item_history",
+          "tableTo": "users",
+          "columnsFrom": [
+            "actor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_item_history_item_domain_fk": {
+          "name": "assignment_item_history_item_domain_fk",
+          "tableFrom": "assignment_item_history",
+          "tableTo": "assignment_items",
+          "columnsFrom": [
+            "domain_id",
+            "item_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_item_history_item_problem_fk": {
+          "name": "assignment_item_history_item_problem_fk",
+          "tableFrom": "assignment_item_history",
+          "tableTo": "assignment_items",
+          "columnsFrom": [
+            "item_id",
+            "problem_id"
+          ],
+          "columnsTo": [
+            "id",
+            "problem_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_item_history_answer_version_fk": {
+          "name": "assignment_item_history_answer_version_fk",
+          "tableFrom": "assignment_item_history",
+          "tableTo": "problem_versions",
+          "columnsFrom": [
+            "problem_id",
+            "answer_version_id"
+          ],
+          "columnsTo": [
+            "problem_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_item_history_required_version_fk": {
+          "name": "assignment_item_history_required_version_fk",
+          "tableFrom": "assignment_item_history",
+          "tableTo": "problem_versions",
+          "columnsFrom": [
+            "problem_id",
+            "required_version_id"
+          ],
+          "columnsTo": [
+            "problem_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "assignment_item_history_binding_change_unique": {
+          "name": "assignment_item_history_binding_change_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "item_id",
+            "binding_history_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "assignment_item_history_policy_check": {
+          "name": "assignment_item_history_policy_check",
+          "value": "(\"assignment_item_history\".\"policy_mode\" = 'any' AND \"assignment_item_history\".\"required_version_id\" IS NULL) OR\n      (\"assignment_item_history\".\"policy_mode\" = 'exact' AND \"assignment_item_history\".\"required_version_id\" IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.assignment_items": {
+      "name": "assignment_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignment_id": {
+          "name": "assignment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "problem_id": {
+          "name": "problem_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "binding_id": {
+          "name": "binding_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requirement": {
+          "name": "requirement",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "minimum_score": {
+          "name": "minimum_score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "published_version_id": {
+          "name": "published_version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "published_policy_mode": {
+          "name": "published_policy_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'any'"
+        },
+        "published_required_version_id": {
+          "name": "published_required_version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "published_policy_revision": {
+          "name": "published_policy_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "answer_version_id": {
+          "name": "answer_version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "policy_revision": {
+          "name": "policy_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "resource_available": {
+          "name": "resource_available",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        }
+      },
+      "indexes": {
+        "idx_assignment_items_binding": {
+          "name": "idx_assignment_items_binding",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "binding_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "assignment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "assignment_items_problem_id_problems_id_fk": {
+          "name": "assignment_items_problem_id_problems_id_fk",
+          "tableFrom": "assignment_items",
+          "tableTo": "problems",
+          "columnsFrom": [
+            "problem_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_items_assignment_domain_fk": {
+          "name": "assignment_items_assignment_domain_fk",
+          "tableFrom": "assignment_items",
+          "tableTo": "assignments",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_items_binding_domain_fk": {
+          "name": "assignment_items_binding_domain_fk",
+          "tableFrom": "assignment_items",
+          "tableTo": "domain_problem_bindings",
+          "columnsFrom": [
+            "domain_id",
+            "binding_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_items_binding_problem_fk": {
+          "name": "assignment_items_binding_problem_fk",
+          "tableFrom": "assignment_items",
+          "tableTo": "domain_problem_bindings",
+          "columnsFrom": [
+            "binding_id",
+            "problem_id"
+          ],
+          "columnsTo": [
+            "id",
+            "problem_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_items_published_version_fk": {
+          "name": "assignment_items_published_version_fk",
+          "tableFrom": "assignment_items",
+          "tableTo": "problem_versions",
+          "columnsFrom": [
+            "problem_id",
+            "published_version_id"
+          ],
+          "columnsTo": [
+            "problem_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_items_required_version_fk": {
+          "name": "assignment_items_required_version_fk",
+          "tableFrom": "assignment_items",
+          "tableTo": "problem_versions",
+          "columnsFrom": [
+            "problem_id",
+            "published_required_version_id"
+          ],
+          "columnsTo": [
+            "problem_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_items_answer_version_fk": {
+          "name": "assignment_items_answer_version_fk",
+          "tableFrom": "assignment_items",
+          "tableTo": "problem_versions",
+          "columnsFrom": [
+            "problem_id",
+            "answer_version_id"
+          ],
+          "columnsTo": [
+            "problem_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "assignment_items_domain_id_unique": {
+          "name": "assignment_items_domain_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "domain_id",
+            "id"
+          ]
+        },
+        "assignment_items_id_problem_unique": {
+          "name": "assignment_items_id_problem_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "problem_id"
+          ]
+        },
+        "assignment_items_assignment_id_unique": {
+          "name": "assignment_items_assignment_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "domain_id",
+            "assignment_id",
+            "id"
+          ]
+        },
+        "assignment_items_problem_unique": {
+          "name": "assignment_items_problem_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "assignment_id",
+            "problem_id"
+          ]
+        },
+        "assignment_items_order_unique": {
+          "name": "assignment_items_order_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "assignment_id",
+            "sort_order"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "assignment_items_requirement_check": {
+          "name": "assignment_items_requirement_check",
+          "value": "(\"assignment_items\".\"requirement\" = 'accepted' AND \"assignment_items\".\"minimum_score\" IS NULL) OR\n    (\"assignment_items\".\"requirement\" = 'min_score' AND \"assignment_items\".\"minimum_score\" IS NOT NULL AND \"assignment_items\".\"minimum_score\" BETWEEN 0 AND 10000)"
+        },
+        "assignment_items_published_policy_check": {
+          "name": "assignment_items_published_policy_check",
+          "value": "(\"assignment_items\".\"published_policy_mode\" = 'any' AND \"assignment_items\".\"published_required_version_id\" IS NULL) OR\n    (\"assignment_items\".\"published_policy_mode\" = 'exact' AND \"assignment_items\".\"published_required_version_id\" IS NOT NULL)"
+        },
+        "assignment_items_order_check": {
+          "name": "assignment_items_order_check",
+          "value": "\"assignment_items\".\"sort_order\" >= 0 AND \"assignment_items\".\"policy_revision\" >= 0 AND \"assignment_items\".\"published_policy_revision\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.assignment_progress": {
+      "name": "assignment_progress",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignment_id": {
+          "name": "assignment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "score": {
+          "name": "score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accepted": {
+          "name": "accepted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "source_submission_id": {
+          "name": "source_submission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_kind": {
+          "name": "source_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_attempt_id": {
+          "name": "source_attempt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "evaluated_version_id": {
+          "name": "evaluated_version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accepted_attempt_id": {
+          "name": "accepted_attempt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "policy_revision": {
+          "name": "policy_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "projection_revision": {
+          "name": "projection_revision",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "late": {
+          "name": "late",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_assignment_progress_matrix": {
+          "name": "idx_assignment_progress_matrix",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "assignment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scope",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "assignment_progress_user_id_users_id_fk": {
+          "name": "assignment_progress_user_id_users_id_fk",
+          "tableFrom": "assignment_progress",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_progress_source_attempt_id_evaluation_attempts_id_fk": {
+          "name": "assignment_progress_source_attempt_id_evaluation_attempts_id_fk",
+          "tableFrom": "assignment_progress",
+          "tableTo": "evaluation_attempts",
+          "columnsFrom": [
+            "source_attempt_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_progress_evaluated_version_id_problem_versions_id_fk": {
+          "name": "assignment_progress_evaluated_version_id_problem_versions_id_fk",
+          "tableFrom": "assignment_progress",
+          "tableTo": "problem_versions",
+          "columnsFrom": [
+            "evaluated_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_progress_accepted_attempt_id_evaluation_attempts_id_fk": {
+          "name": "assignment_progress_accepted_attempt_id_evaluation_attempts_id_fk",
+          "tableFrom": "assignment_progress",
+          "tableTo": "evaluation_attempts",
+          "columnsFrom": [
+            "accepted_attempt_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_progress_item_assignment_fk": {
+          "name": "assignment_progress_item_assignment_fk",
+          "tableFrom": "assignment_progress",
+          "tableTo": "assignment_items",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id",
+            "item_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "assignment_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_progress_recipient_fk": {
+          "name": "assignment_progress_recipient_fk",
+          "tableFrom": "assignment_progress",
+          "tableTo": "assignment_recipients",
+          "columnsFrom": [
+            "assignment_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "assignment_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "assignment_progress_cell_unique": {
+          "name": "assignment_progress_cell_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "item_id",
+            "user_id",
+            "scope"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "assignment_progress_scope_check": {
+          "name": "assignment_progress_scope_check",
+          "value": "\"assignment_progress\".\"scope\" IN ('on_time', 'current')"
+        },
+        "assignment_progress_status_check": {
+          "name": "assignment_progress_status_check",
+          "value": "\"assignment_progress\".\"status\" IN ('not_started', 'judging', 'below_target', 'achieved', 'unavailable')"
+        },
+        "assignment_progress_score_check": {
+          "name": "assignment_progress_score_check",
+          "value": "\"assignment_progress\".\"score\" IS NULL OR \"assignment_progress\".\"score\" BETWEEN 0 AND 10000"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.assignment_recipients": {
+      "name": "assignment_recipients",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "classroom_id": {
+          "name": "classroom_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignment_id": {
+          "name": "assignment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "added_by": {
+          "name": "added_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "joined_at": {
+          "name": "joined_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "left_at": {
+          "name": "left_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "credit_intervals": {
+          "name": "credit_intervals",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        }
+      },
+      "indexes": {
+        "idx_assignment_recipients_domain_user": {
+          "name": "idx_assignment_recipients_domain_user",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "assignment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "assignment_recipients_user_id_users_id_fk": {
+          "name": "assignment_recipients_user_id_users_id_fk",
+          "tableFrom": "assignment_recipients",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_recipients_assignment_class_fk": {
+          "name": "assignment_recipients_assignment_class_fk",
+          "tableFrom": "assignment_recipients",
+          "tableTo": "assignments",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id",
+            "classroom_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id",
+            "classroom_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_recipients_class_member_fk": {
+          "name": "assignment_recipients_class_member_fk",
+          "tableFrom": "assignment_recipients",
+          "tableTo": "classroom_memberships",
+          "columnsFrom": [
+            "domain_id",
+            "classroom_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "classroom_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "assignment_recipients_user_unique": {
+          "name": "assignment_recipients_user_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "assignment_id",
+            "user_id"
+          ]
+        },
+        "assignment_recipients_target_unique": {
+          "name": "assignment_recipients_target_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "domain_id",
+            "assignment_id",
+            "user_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "assignment_recipients_status_check": {
+          "name": "assignment_recipients_status_check",
+          "value": "\"assignment_recipients\".\"status\" IN ('active', 'historical')"
+        },
+        "assignment_recipients_added_by_check": {
+          "name": "assignment_recipients_added_by_check",
+          "value": "\"assignment_recipients\".\"added_by\" IN ('initial', 'automatic', 'manual')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.assignments": {
+      "name": "assignments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "classroom_id": {
+          "name": "classroom_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "publish_at": {
+          "name": "publish_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scheduled_by": {
+          "name": "scheduled_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deadline_at": {
+          "name": "deadline_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "include_previous_submissions": {
+          "name": "include_previous_submissions",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "target_student_ids": {
+          "name": "target_student_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_training_id": {
+          "name": "source_training_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_training_rule": {
+          "name": "source_training_rule",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_assignment_id": {
+          "name": "source_assignment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_contest_id": {
+          "name": "source_contest_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "publish_error": {
+          "name": "publish_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_assignments_class_state": {
+          "name": "idx_assignments_class_state",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "classroom_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "deadline_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "assignments_domain_id_domains_id_fk": {
+          "name": "assignments_domain_id_domains_id_fk",
+          "tableFrom": "assignments",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignments_scheduled_by_users_id_fk": {
+          "name": "assignments_scheduled_by_users_id_fk",
+          "tableFrom": "assignments",
+          "tableTo": "users",
+          "columnsFrom": [
+            "scheduled_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignments_source_training_id_trainings_id_fk": {
+          "name": "assignments_source_training_id_trainings_id_fk",
+          "tableFrom": "assignments",
+          "tableTo": "trainings",
+          "columnsFrom": [
+            "source_training_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignments_source_assignment_id_assignments_id_fk": {
+          "name": "assignments_source_assignment_id_assignments_id_fk",
+          "tableFrom": "assignments",
+          "tableTo": "assignments",
+          "columnsFrom": [
+            "source_assignment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignments_created_by_users_id_fk": {
+          "name": "assignments_created_by_users_id_fk",
+          "tableFrom": "assignments",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignments_classroom_domain_fk": {
+          "name": "assignments_classroom_domain_fk",
+          "tableFrom": "assignments",
+          "tableTo": "classrooms",
+          "columnsFrom": [
+            "domain_id",
+            "classroom_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignments_source_contest_domain_fk": {
+          "name": "assignments_source_contest_domain_fk",
+          "tableFrom": "assignments",
+          "tableTo": "contests",
+          "columnsFrom": [
+            "domain_id",
+            "source_contest_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignments_source_assignment_domain_fk": {
+          "name": "assignments_source_assignment_domain_fk",
+          "tableFrom": "assignments",
+          "tableTo": "assignments",
+          "columnsFrom": [
+            "domain_id",
+            "source_assignment_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "assignments_domain_id_unique": {
+          "name": "assignments_domain_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "domain_id",
+            "id"
+          ]
+        },
+        "assignments_class_domain_unique": {
+          "name": "assignments_class_domain_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "domain_id",
+            "id",
+            "classroom_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "assignments_state_check": {
+          "name": "assignments_state_check",
+          "value": "\"assignments\".\"state\" IN ('draft', 'scheduled', 'published', 'archived')"
+        },
+        "assignments_revision_check": {
+          "name": "assignments_revision_check",
+          "value": "\"assignments\".\"revision\" >= 0"
+        },
+        "assignments_schedule_check": {
+          "name": "assignments_schedule_check",
+          "value": "\"assignments\".\"state\" <> 'scheduled' OR (\"assignments\".\"publish_at\" IS NOT NULL AND \"assignments\".\"scheduled_by\" IS NOT NULL)"
+        },
+        "assignments_publish_check": {
+          "name": "assignments_publish_check",
+          "value": "\"assignments\".\"state\" <> 'published' OR \"assignments\".\"published_at\" IS NOT NULL"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.audit_logs": {
       "name": "audit_logs",
       "schema": "",
@@ -252,7 +2036,7 @@
       "checkConstraints": {
         "audit_logs_action_check": {
           "name": "audit_logs_action_check",
-          "value": "\"audit_logs\".\"action\" IN (\n        'users.role_change',\n        'users.ban',\n        'users.unban',\n        'users.delete',\n        'roles.create',\n        'roles.update',\n        'roles.delete',\n        'problems.delete',\n        'problems.runtime_config_changed',\n        'problems.imported',\n        'problems.review',\n        'problems.version_published',\n        'problems.effective_version_policy_changed',\n        'contest.problem_version_changed',\n        'contest.problem_effective_version_policy_changed',\n        'trainings.update',\n        'trainings.delete',\n        'tags.create',\n        'tags.update',\n        'tags.delete',\n        'tags.merge',\n        'submissions.rejudge',\n        'submissions.queue_removed',\n        'submissions.delete',\n        'settings.update',\n        'ip_ban.create',\n        'ip_ban.delete',\n        'auth.login_success',\n        'auth.login_failure',\n        'auth.register',\n        'auth.email_verified',\n        'auth.delete_account',\n        'auth.change_password',\n        'auth.forgot_password_request',\n        'auth.password_reset',\n        'auth.tfa_setup',\n        'auth.tfa_enabled',\n        'auth.tfa_disabled',\n        'auth.tfa_recovery_regenerated',\n        'auth.tfa_recovery_used',\n        'community.post_moderated',\n        'community.report_resolved',\n        'community.sanction_created',\n        'community.sanction_revoked',\n        'community.preset_applied',\n        'community.board_create',\n        'community.board_update',\n        'community.board_role_grant_update',\n        'community.board_role_grant_delete',\n        'community.post_flag',\n        'announcement.create',\n        'announcement.update',\n        'announcement.delete',\n        'carousel.create',\n        'carousel.update',\n        'carousel.delete',\n        'carousel.reorder',\n        'review.queued',\n        'review.rejected',\n        'review.resolved',\n        'contest.ranking_snapshot',\n        'contest.create',\n        'contest.update',\n        'contest.delete',\n        'contest.participants_add',\n        'contest.participants_remove',\n        'contest.kind_change',\n        'contest.reset_code',\n        'judge_images.create',\n        'judge_images.update',\n        'judge_images.delete',\n        'email_delivery.clear_suppression',\n        'llm_provider.create',\n        'llm_provider.update',\n        'llm_quota.upsert',\n        'legal.publish_version',\n        'legal.data_request_update'\n      ) OR \"audit_logs\".\"action\" IN ('domain.create', 'domain.update', 'domain.status', 'domain.join', 'domain.join_review', 'domain.member_roles', 'domain.member_remove', 'domain.transfer', 'domain.invite_create', 'domain.invite_accept', 'domain.invite_revoke')"
+          "value": "\"audit_logs\".\"action\" IN (\n        'users.role_change',\n        'users.ban',\n        'users.unban',\n        'users.delete',\n        'roles.create',\n        'roles.update',\n        'roles.delete',\n        'problems.delete',\n        'problems.runtime_config_changed',\n        'problems.imported',\n        'problems.review',\n        'problems.version_published',\n        'problems.effective_version_policy_changed',\n        'contest.problem_version_changed',\n        'contest.problem_effective_version_policy_changed',\n        'trainings.update',\n        'trainings.delete',\n        'tags.create',\n        'tags.update',\n        'tags.delete',\n        'tags.merge',\n        'submissions.rejudge',\n        'submissions.queue_removed',\n        'submissions.delete',\n        'settings.update',\n        'ip_ban.create',\n        'ip_ban.delete',\n        'auth.login_success',\n        'auth.login_failure',\n        'auth.register',\n        'auth.email_verified',\n        'auth.delete_account',\n        'auth.change_password',\n        'auth.forgot_password_request',\n        'auth.password_reset',\n        'auth.tfa_setup',\n        'auth.tfa_enabled',\n        'auth.tfa_disabled',\n        'auth.tfa_recovery_regenerated',\n        'auth.tfa_recovery_used',\n        'community.post_moderated',\n        'community.report_resolved',\n        'community.sanction_created',\n        'community.sanction_revoked',\n        'community.preset_applied',\n        'community.board_create',\n        'community.board_update',\n        'community.board_role_grant_update',\n        'community.board_role_grant_delete',\n        'community.post_flag',\n        'announcement.create',\n        'announcement.update',\n        'announcement.delete',\n        'carousel.create',\n        'carousel.update',\n        'carousel.delete',\n        'carousel.reorder',\n        'review.queued',\n        'review.rejected',\n        'review.resolved',\n        'contest.ranking_snapshot',\n        'contest.create',\n        'contest.update',\n        'contest.delete',\n        'contest.participants_add',\n        'contest.participants_remove',\n        'contest.kind_change',\n        'contest.reset_code',\n        'judge_images.create',\n        'judge_images.update',\n        'judge_images.delete',\n        'email_delivery.clear_suppression',\n        'llm_provider.create',\n        'llm_provider.update',\n        'llm_quota.upsert',\n        'llm_model_alias.upsert',\n        'llm_model_alias.delete',\n        'legal.publish_version',\n        'legal.data_request_update'\n      ) OR \"audit_logs\".\"action\" IN ('domain.create', 'domain.update', 'domain.status', 'domain.join', 'domain.join_review', 'domain.member_roles', 'domain.member_remove', 'domain.transfer', 'domain.invite_create', 'domain.invite_accept', 'domain.invite_revoke', 'domain.llm_read', 'domain.llm_settings', 'domain.llm_provider', 'domain.llm_quota')"
         }
       },
       "isRLSEnabled": false
@@ -432,6 +2216,663 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.classroom_assistant_grants": {
+      "name": "classroom_assistant_grants",
+      "schema": "",
+      "columns": {
+        "membership_id": {
+          "name": "membership_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "capability": {
+          "name": "capability",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "granted_by": {
+          "name": "granted_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "granted_at": {
+          "name": "granted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "classroom_assistant_grants_membership_id_classroom_memberships_id_fk": {
+          "name": "classroom_assistant_grants_membership_id_classroom_memberships_id_fk",
+          "tableFrom": "classroom_assistant_grants",
+          "tableTo": "classroom_memberships",
+          "columnsFrom": [
+            "membership_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "classroom_assistant_grants_granted_by_users_id_fk": {
+          "name": "classroom_assistant_grants_granted_by_users_id_fk",
+          "tableFrom": "classroom_assistant_grants",
+          "tableTo": "users",
+          "columnsFrom": [
+            "granted_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "classroom_assistant_grants_membership_id_capability_pk": {
+          "name": "classroom_assistant_grants_membership_id_capability_pk",
+          "columns": [
+            "membership_id",
+            "capability"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "classroom_assistant_grants_capability_check": {
+          "name": "classroom_assistant_grants_capability_check",
+          "value": "\"classroom_assistant_grants\".\"capability\" IN ('progress:read','submissions:read','assignments:manage','feedback:write','help:manage','students:manage')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.classroom_contest_links": {
+      "name": "classroom_contest_links",
+      "schema": "",
+      "columns": {
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "classroom_id": {
+          "name": "classroom_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contest_id": {
+          "name": "contest_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "linked_by": {
+          "name": "linked_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "linked_at": {
+          "name": "linked_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "classroom_contest_links_linked_by_users_id_fk": {
+          "name": "classroom_contest_links_linked_by_users_id_fk",
+          "tableFrom": "classroom_contest_links",
+          "tableTo": "users",
+          "columnsFrom": [
+            "linked_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "classroom_contest_links_classroom_domain_fk": {
+          "name": "classroom_contest_links_classroom_domain_fk",
+          "tableFrom": "classroom_contest_links",
+          "tableTo": "classrooms",
+          "columnsFrom": [
+            "domain_id",
+            "classroom_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "classroom_contest_links_contest_domain_fk": {
+          "name": "classroom_contest_links_contest_domain_fk",
+          "tableFrom": "classroom_contest_links",
+          "tableTo": "contests",
+          "columnsFrom": [
+            "domain_id",
+            "contest_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "classroom_contest_links_classroom_id_contest_id_pk": {
+          "name": "classroom_contest_links_classroom_id_contest_id_pk",
+          "columns": [
+            "classroom_id",
+            "contest_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.classroom_join_requests": {
+      "name": "classroom_join_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "classroom_id": {
+          "name": "classroom_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "reviewed_by": {
+          "name": "reviewed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "classroom_join_requests_pending_unique": {
+          "name": "classroom_join_requests_pending_unique",
+          "columns": [
+            {
+              "expression": "classroom_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"classroom_join_requests\".\"status\" = 'pending'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "classroom_join_requests_user_id_users_id_fk": {
+          "name": "classroom_join_requests_user_id_users_id_fk",
+          "tableFrom": "classroom_join_requests",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "classroom_join_requests_reviewed_by_users_id_fk": {
+          "name": "classroom_join_requests_reviewed_by_users_id_fk",
+          "tableFrom": "classroom_join_requests",
+          "tableTo": "users",
+          "columnsFrom": [
+            "reviewed_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "classroom_join_requests_classroom_domain_fk": {
+          "name": "classroom_join_requests_classroom_domain_fk",
+          "tableFrom": "classroom_join_requests",
+          "tableTo": "classrooms",
+          "columnsFrom": [
+            "domain_id",
+            "classroom_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "classroom_join_requests_status_check": {
+          "name": "classroom_join_requests_status_check",
+          "value": "\"classroom_join_requests\".\"status\" IN ('pending', 'approved', 'rejected')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.classroom_memberships": {
+      "name": "classroom_memberships",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "classroom_id": {
+          "name": "classroom_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "joined_at": {
+          "name": "joined_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "appointed_at": {
+          "name": "appointed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "left_at": {
+          "name": "left_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_classroom_memberships_domain_user": {
+          "name": "idx_classroom_memberships_domain_user",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "classroom_memberships_user_id_users_id_fk": {
+          "name": "classroom_memberships_user_id_users_id_fk",
+          "tableFrom": "classroom_memberships",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "classroom_memberships_classroom_domain_fk": {
+          "name": "classroom_memberships_classroom_domain_fk",
+          "tableFrom": "classroom_memberships",
+          "tableTo": "classrooms",
+          "columnsFrom": [
+            "domain_id",
+            "classroom_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "classroom_memberships_member_domain_fk": {
+          "name": "classroom_memberships_member_domain_fk",
+          "tableFrom": "classroom_memberships",
+          "tableTo": "domain_memberships",
+          "columnsFrom": [
+            "domain_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "classroom_memberships_identity_unique": {
+          "name": "classroom_memberships_identity_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "classroom_id",
+            "user_id"
+          ]
+        },
+        "classroom_memberships_domain_id_unique": {
+          "name": "classroom_memberships_domain_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "domain_id",
+            "id"
+          ]
+        },
+        "classroom_memberships_recipient_unique": {
+          "name": "classroom_memberships_recipient_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "domain_id",
+            "classroom_id",
+            "user_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "classroom_memberships_role_check": {
+          "name": "classroom_memberships_role_check",
+          "value": "\"classroom_memberships\".\"role\" IN ('coach', 'assistant', 'student')"
+        },
+        "classroom_memberships_status_check": {
+          "name": "classroom_memberships_status_check",
+          "value": "\"classroom_memberships\".\"status\" IN ('active', 'removed')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.classrooms": {
+      "name": "classrooms",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "stage_tag": {
+          "name": "stage_tag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "primary_coach_id": {
+          "name": "primary_coach_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_classrooms_domain_status": {
+          "name": "idx_classrooms_domain_status",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "classrooms_domain_id_domains_id_fk": {
+          "name": "classrooms_domain_id_domains_id_fk",
+          "tableFrom": "classrooms",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "classrooms_primary_coach_id_users_id_fk": {
+          "name": "classrooms_primary_coach_id_users_id_fk",
+          "tableFrom": "classrooms",
+          "tableTo": "users",
+          "columnsFrom": [
+            "primary_coach_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "classrooms_coach_domain_fk": {
+          "name": "classrooms_coach_domain_fk",
+          "tableFrom": "classrooms",
+          "tableTo": "domain_memberships",
+          "columnsFrom": [
+            "domain_id",
+            "primary_coach_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "classrooms_domain_id_unique": {
+          "name": "classrooms_domain_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "domain_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "classrooms_status_check": {
+          "name": "classrooms_status_check",
+          "value": "\"classrooms\".\"status\" IN ('active', 'archived')"
+        },
+        "classrooms_revision_check": {
+          "name": "classrooms_revision_check",
+          "value": "\"classrooms\".\"revision\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.community_board_role_grants": {
       "name": "community_board_role_grants",
       "schema": "",
@@ -539,6 +2980,19 @@
           "primaryKey": true,
           "notNull": true
         },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "slug": {
           "name": "slug",
           "type": "text",
@@ -608,13 +3062,36 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "community_boards_domain_id_domains_id_fk": {
+          "name": "community_boards_domain_id_domains_id_fk",
+          "tableFrom": "community_boards",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "community_boards_slug_unique": {
-          "name": "community_boards_slug_unique",
+        "community_boards_domain_id_unique": {
+          "name": "community_boards_domain_id_unique",
           "nullsNotDistinct": false,
           "columns": [
+            "id",
+            "domain_id"
+          ]
+        },
+        "community_boards_domain_slug_unique": {
+          "name": "community_boards_domain_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "domain_id",
             "slug"
           ]
         }
@@ -803,6 +3280,12 @@
           "primaryKey": true,
           "notNull": true
         },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "post_id": {
           "name": "post_id",
           "type": "text",
@@ -907,6 +3390,19 @@
         }
       },
       "foreignKeys": {
+        "community_comments_domain_id_domains_id_fk": {
+          "name": "community_comments_domain_id_domains_id_fk",
+          "tableFrom": "community_comments",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "community_comments_post_id_community_posts_id_fk": {
           "name": "community_comments_post_id_community_posts_id_fk",
           "tableFrom": "community_comments",
@@ -945,10 +3441,60 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        },
+        "community_comments_workspace_post_fk": {
+          "name": "community_comments_workspace_post_fk",
+          "tableFrom": "community_comments",
+          "tableTo": "community_posts",
+          "columnsFrom": [
+            "post_id",
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id",
+            "domain_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "community_comments_workspace_parent_fk": {
+          "name": "community_comments_workspace_parent_fk",
+          "tableFrom": "community_comments",
+          "tableTo": "community_comments",
+          "columnsFrom": [
+            "parent_id",
+            "post_id",
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id",
+            "post_id",
+            "domain_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "community_comments_domain_id_unique": {
+          "name": "community_comments_domain_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "domain_id"
+          ]
+        },
+        "community_comments_post_domain_unique": {
+          "name": "community_comments_post_domain_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "post_id",
+            "domain_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
         "community_comments_status_check": {
@@ -1061,6 +3607,12 @@
           "primaryKey": true,
           "notNull": true
         },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "moderator_id": {
           "name": "moderator_id",
           "type": "text",
@@ -1151,6 +3703,19 @@
         }
       },
       "foreignKeys": {
+        "community_moderation_actions_domain_id_domains_id_fk": {
+          "name": "community_moderation_actions_domain_id_domains_id_fk",
+          "tableFrom": "community_moderation_actions",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "community_moderation_actions_moderator_id_users_id_fk": {
           "name": "community_moderation_actions_moderator_id_users_id_fk",
           "tableFrom": "community_moderation_actions",
@@ -1168,7 +3733,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "community_moderation_actions_workspace_check": {
+          "name": "community_moderation_actions_workspace_check",
+          "value": "(\"community_moderation_actions\".\"target_type\" IN ('message', 'user_ban') AND \"community_moderation_actions\".\"domain_id\" IS NULL)\n        OR (\"community_moderation_actions\".\"target_type\" NOT IN ('message', 'user_ban') AND \"community_moderation_actions\".\"domain_id\" IS NOT NULL)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.community_notifications": {
@@ -1180,6 +3750,12 @@
           "type": "text",
           "primaryKey": true,
           "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "recipient_id": {
           "name": "recipient_id",
@@ -1322,6 +3898,19 @@
         }
       },
       "foreignKeys": {
+        "community_notifications_domain_id_domains_id_fk": {
+          "name": "community_notifications_domain_id_domains_id_fk",
+          "tableFrom": "community_notifications",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "community_notifications_recipient_id_users_id_fk": {
           "name": "community_notifications_recipient_id_users_id_fk",
           "tableFrom": "community_notifications",
@@ -1373,12 +3962,46 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
+        },
+        "community_notifications_workspace_post_fk": {
+          "name": "community_notifications_workspace_post_fk",
+          "tableFrom": "community_notifications",
+          "tableTo": "community_posts",
+          "columnsFrom": [
+            "post_id",
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id",
+            "domain_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "community_notifications_workspace_comment_fk": {
+          "name": "community_notifications_workspace_comment_fk",
+          "tableFrom": "community_notifications",
+          "tableTo": "community_comments",
+          "columnsFrom": [
+            "comment_id",
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id",
+            "domain_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "community_notifications_workspace_check": {
+          "name": "community_notifications_workspace_check",
+          "value": "(\"community_notifications\".\"type\" IN ('reply', 'like', 'moderation', 'clarification') AND \"community_notifications\".\"domain_id\" IS NOT NULL)\n        OR (\"community_notifications\".\"type\" IN ('follow', 'ban') AND \"community_notifications\".\"domain_id\" IS NULL)\n        OR \"community_notifications\".\"type\" = 'report'"
+        },
         "community_notifications_type_check": {
           "name": "community_notifications_type_check",
           "value": "\"community_notifications\".\"type\" IN ('reply', 'like', 'follow', 'moderation', 'clarification', 'report', 'ban')"
@@ -1485,6 +4108,18 @@
           "notNull": true,
           "default": "'post-' || substr(md5(random()::text), 1, 8)"
         },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "domain_problem_binding_id": {
+          "name": "domain_problem_binding_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "type": {
           "name": "type",
           "type": "text",
@@ -1575,6 +4210,39 @@
         }
       },
       "indexes": {
+        "idx_community_posts_workspace": {
+          "name": "idx_community_posts_workspace",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_community_posts_author": {
           "name": "idx_community_posts_author",
           "columns": [
@@ -1743,6 +4411,19 @@
         }
       },
       "foreignKeys": {
+        "community_posts_domain_id_domains_id_fk": {
+          "name": "community_posts_domain_id_domains_id_fk",
+          "tableFrom": "community_posts",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "community_posts_author_id_users_id_fk": {
           "name": "community_posts_author_id_users_id_fk",
           "tableFrom": "community_posts",
@@ -1781,6 +4462,51 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
+        },
+        "community_posts_workspace_board_fk": {
+          "name": "community_posts_workspace_board_fk",
+          "tableFrom": "community_posts",
+          "tableTo": "community_boards",
+          "columnsFrom": [
+            "board_id",
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id",
+            "domain_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "community_posts_workspace_binding_fk": {
+          "name": "community_posts_workspace_binding_fk",
+          "tableFrom": "community_posts",
+          "tableTo": "domain_problem_bindings",
+          "columnsFrom": [
+            "domain_problem_binding_id",
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id",
+            "domain_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "community_posts_binding_problem_fk": {
+          "name": "community_posts_binding_problem_fk",
+          "tableFrom": "community_posts",
+          "tableTo": "domain_problem_bindings",
+          "columnsFrom": [
+            "domain_problem_binding_id",
+            "problem_id"
+          ],
+          "columnsTo": [
+            "id",
+            "problem_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1791,6 +4517,14 @@
           "columns": [
             "public_id"
           ]
+        },
+        "community_posts_domain_id_unique": {
+          "name": "community_posts_domain_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "domain_id"
+          ]
         }
       },
       "policies": {},
@@ -1798,6 +4532,10 @@
         "community_posts_type_check": {
           "name": "community_posts_type_check",
           "value": "\"community_posts\".\"type\" IN ('solution', 'discussion', 'moment')"
+        },
+        "community_posts_binding_required_check": {
+          "name": "community_posts_binding_required_check",
+          "value": "(\"community_posts\".\"type\" = 'solution' AND \"community_posts\".\"domain_problem_binding_id\" IS NOT NULL)\n        OR (\"community_posts\".\"type\" <> 'solution' AND \"community_posts\".\"domain_problem_binding_id\" IS NULL)"
         },
         "community_posts_status_check": {
           "name": "community_posts_status_check",
@@ -1819,6 +4557,12 @@
           "type": "text",
           "primaryKey": true,
           "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "reporter_id": {
           "name": "reporter_id",
@@ -1999,6 +4743,19 @@
         }
       },
       "foreignKeys": {
+        "community_reports_domain_id_domains_id_fk": {
+          "name": "community_reports_domain_id_domains_id_fk",
+          "tableFrom": "community_reports",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "community_reports_reporter_id_users_id_fk": {
           "name": "community_reports_reporter_id_users_id_fk",
           "tableFrom": "community_reports",
@@ -2089,12 +4846,46 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
+        },
+        "community_reports_workspace_post_fk": {
+          "name": "community_reports_workspace_post_fk",
+          "tableFrom": "community_reports",
+          "tableTo": "community_posts",
+          "columnsFrom": [
+            "post_id",
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id",
+            "domain_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "community_reports_workspace_comment_fk": {
+          "name": "community_reports_workspace_comment_fk",
+          "tableFrom": "community_reports",
+          "tableTo": "community_comments",
+          "columnsFrom": [
+            "comment_id",
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id",
+            "domain_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "community_reports_workspace_check": {
+          "name": "community_reports_workspace_check",
+          "value": "(\"community_reports\".\"content_type\" = 'message' AND \"community_reports\".\"domain_id\" IS NULL)\n        OR (\"community_reports\".\"content_type\" IN ('post', 'comment') AND \"community_reports\".\"domain_id\" IS NOT NULL)"
+        },
         "community_reports_target_check": {
           "name": "community_reports_target_check",
           "value": "num_nonnulls(\"community_reports\".\"post_id\", \"community_reports\".\"comment_id\", \"community_reports\".\"message_id\") = 1"
@@ -2118,6 +4909,12 @@
           "name": "id",
           "type": "text",
           "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
           "notNull": true
         },
         "user_id": {
@@ -2203,6 +5000,19 @@
         }
       },
       "foreignKeys": {
+        "community_sanctions_domain_id_domains_id_fk": {
+          "name": "community_sanctions_domain_id_domains_id_fk",
+          "tableFrom": "community_sanctions",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "community_sanctions_user_id_users_id_fk": {
           "name": "community_sanctions_user_id_users_id_fk",
           "tableFrom": "community_sanctions",
@@ -2684,6 +5494,18 @@
       "name": "contest_problems",
       "schema": "",
       "columns": {
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "domain_problem_binding_id": {
+          "name": "domain_problem_binding_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "contest_id": {
           "name": "contest_id",
           "type": "text",
@@ -2744,6 +5566,19 @@
       },
       "indexes": {},
       "foreignKeys": {
+        "contest_problems_domain_id_domains_id_fk": {
+          "name": "contest_problems_domain_id_domains_id_fk",
+          "tableFrom": "contest_problems",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "contest_problems_contest_id_contests_id_fk": {
           "name": "contest_problems_contest_id_contests_id_fk",
           "tableFrom": "contest_problems",
@@ -2768,6 +5603,51 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "contest_problems_workspace_contest_fk": {
+          "name": "contest_problems_workspace_contest_fk",
+          "tableFrom": "contest_problems",
+          "tableTo": "contests",
+          "columnsFrom": [
+            "domain_id",
+            "contest_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "contest_problems_workspace_binding_fk": {
+          "name": "contest_problems_workspace_binding_fk",
+          "tableFrom": "contest_problems",
+          "tableTo": "domain_problem_bindings",
+          "columnsFrom": [
+            "domain_id",
+            "domain_problem_binding_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "contest_problems_binding_problem_fk": {
+          "name": "contest_problems_binding_problem_fk",
+          "tableFrom": "contest_problems",
+          "tableTo": "domain_problem_bindings",
+          "columnsFrom": [
+            "domain_problem_binding_id",
+            "problem_id"
+          ],
+          "columnsTo": [
+            "id",
+            "problem_id"
+          ],
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "contest_problems_pinned_version_fk": {
@@ -2976,6 +5856,19 @@
           "primaryKey": true,
           "notNull": true
         },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "public_id": {
           "name": "public_id",
           "type": "text",
@@ -3142,6 +6035,19 @@
         }
       },
       "foreignKeys": {
+        "contests_domain_id_domains_id_fk": {
+          "name": "contests_domain_id_domains_id_fk",
+          "tableFrom": "contests",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "contests_created_by_users_id_fk": {
           "name": "contests_created_by_users_id_fk",
           "tableFrom": "contests",
@@ -3164,13 +6070,21 @@
           "columns": [
             "public_id"
           ]
+        },
+        "contests_domain_id_unique": {
+          "name": "contests_domain_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "domain_id",
+            "id"
+          ]
         }
       },
       "policies": {},
       "checkConstraints": {
         "contests_type_check": {
           "name": "contests_type_check",
-          "value": "\"contests\".\"type\" IN ('kaggle')"
+          "value": "\"contests\".\"type\" IN ('kaggle', 'oi', 'ioi', 'ioi_strict', 'acm')"
         },
         "contests_kind_check": {
           "name": "contests_kind_check",
@@ -3897,6 +6811,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "classroom_id": {
+          "name": "classroom_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "token_hash": {
           "name": "token_hash",
           "type": "text",
@@ -3979,6 +6899,21 @@
             "created_by"
           ],
           "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "domain_invitations_classroom_domain_fk": {
+          "name": "domain_invitations_classroom_domain_fk",
+          "tableFrom": "domain_invitations",
+          "tableTo": "classrooms",
+          "columnsFrom": [
+            "domain_id",
+            "classroom_id"
+          ],
+          "columnsTo": [
+            "domain_id",
             "id"
           ],
           "onDelete": "no action",
@@ -4187,6 +7122,73 @@
         "domain_limits_bounds_check": {
           "name": "domain_limits_bounds_check",
           "value": "(\"domain_limits\".\"members\" IS NULL OR \"domain_limits\".\"members\" >= 0) AND (\"domain_limits\".\"problems\" IS NULL OR \"domain_limits\".\"problems\" >= 0) AND (\"domain_limits\".\"storage_bytes\" IS NULL OR \"domain_limits\".\"storage_bytes\" >= 0) AND (\"domain_limits\".\"submissions_per_minute\" IS NULL OR \"domain_limits\".\"submissions_per_minute\" >= 0)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.domain_llm_settings": {
+      "name": "domain_llm_settings",
+      "schema": "",
+      "columns": {
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "domain_llm_settings_domain_id_domains_id_fk": {
+          "name": "domain_llm_settings_domain_id_domains_id_fk",
+          "tableFrom": "domain_llm_settings",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "domain_llm_settings_revision_check": {
+          "name": "domain_llm_settings_revision_check",
+          "value": "\"domain_llm_settings\".\"revision\" >= 1"
+        },
+        "domain_llm_settings_selection_check": {
+          "name": "domain_llm_settings_selection_check",
+          "value": "(\"domain_llm_settings\".\"provider_id\" IS NULL AND \"domain_llm_settings\".\"model\" IS NULL) OR (\"domain_llm_settings\".\"provider_id\" IS NOT NULL AND \"domain_llm_settings\".\"model\" IS NOT NULL AND length(trim(\"domain_llm_settings\".\"provider_id\")) > 0 AND length(trim(\"domain_llm_settings\".\"model\")) > 0)"
         }
       },
       "isRLSEnabled": false
@@ -4641,6 +7643,244 @@
       },
       "isRLSEnabled": false
     },
+    "public.domain_storage_objects": {
+      "name": "domain_storage_objects",
+      "schema": "",
+      "columns": {
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "storage_url": {
+          "name": "storage_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "byte_size": {
+          "name": "byte_size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_domain_storage_objects_url": {
+          "name": "idx_domain_storage_objects_url",
+          "columns": [
+            {
+              "expression": "storage_url",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "domain_storage_objects_domain_id_domains_id_fk": {
+          "name": "domain_storage_objects_domain_id_domains_id_fk",
+          "tableFrom": "domain_storage_objects",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "domain_storage_objects_storage_url_storage_objects_storage_url_fk": {
+          "name": "domain_storage_objects_storage_url_storage_objects_storage_url_fk",
+          "tableFrom": "domain_storage_objects",
+          "tableTo": "storage_objects",
+          "columnsFrom": [
+            "storage_url"
+          ],
+          "columnsTo": [
+            "storage_url"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "domain_storage_objects_domain_id_storage_url_pk": {
+          "name": "domain_storage_objects_domain_id_storage_url_pk",
+          "columns": [
+            "domain_id",
+            "storage_url"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "domain_storage_objects_size_check": {
+          "name": "domain_storage_objects_size_check",
+          "value": "\"domain_storage_objects\".\"byte_size\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.domain_storage_uploads": {
+      "name": "domain_storage_uploads",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "byte_size": {
+          "name": "byte_size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'reserved'"
+        },
+        "storage_url": {
+          "name": "storage_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_domain_storage_uploads_domain": {
+          "name": "idx_domain_storage_uploads_domain",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_domain_storage_uploads_expiry": {
+          "name": "idx_domain_storage_uploads_expiry",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "domain_storage_uploads_domain_id_domains_id_fk": {
+          "name": "domain_storage_uploads_domain_id_domains_id_fk",
+          "tableFrom": "domain_storage_uploads",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "domain_storage_uploads_storage_url_storage_objects_storage_url_fk": {
+          "name": "domain_storage_uploads_storage_url_storage_objects_storage_url_fk",
+          "tableFrom": "domain_storage_uploads",
+          "tableTo": "storage_objects",
+          "columnsFrom": [
+            "storage_url"
+          ],
+          "columnsTo": [
+            "storage_url"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "domain_storage_uploads_size_check": {
+          "name": "domain_storage_uploads_size_check",
+          "value": "\"domain_storage_uploads\".\"byte_size\" >= 0"
+        },
+        "domain_storage_uploads_state_check": {
+          "name": "domain_storage_uploads_state_check",
+          "value": "\"domain_storage_uploads\".\"state\" IN ('reserved', 'settled', 'released')"
+        },
+        "domain_storage_uploads_result_check": {
+          "name": "domain_storage_uploads_result_check",
+          "value": "(\"domain_storage_uploads\".\"state\" = 'settled' AND \"domain_storage_uploads\".\"storage_url\" IS NOT NULL AND \"domain_storage_uploads\".\"finished_at\" IS NOT NULL) OR (\"domain_storage_uploads\".\"state\" = 'released' AND \"domain_storage_uploads\".\"finished_at\" IS NOT NULL) OR (\"domain_storage_uploads\".\"state\" = 'reserved' AND \"domain_storage_uploads\".\"finished_at\" IS NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.domain_training_bindings": {
       "name": "domain_training_bindings",
       "schema": "",
@@ -4901,6 +8141,747 @@
           "value": "jsonb_typeof(\"domains\".\"configuration\") = 'object'"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.education_disabled_intervals": {
+      "name": "education_disabled_intervals",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_education_disabled_intervals_domain": {
+          "name": "idx_education_disabled_intervals_domain",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "education_disabled_intervals_domain_id_domains_id_fk": {
+          "name": "education_disabled_intervals_domain_id_domains_id_fk",
+          "tableFrom": "education_disabled_intervals",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.education_notification_emails": {
+      "name": "education_notification_emails",
+      "schema": "",
+      "columns": {
+        "notification_id": {
+          "name": "notification_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "available_at": {
+          "name": "available_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lease_token": {
+          "name": "lease_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "leased_until": {
+          "name": "leased_until",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_education_notification_emails_pending": {
+          "name": "idx_education_notification_emails_pending",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "available_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "leased_until",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "education_notification_emails_notification_id_education_notifications_id_fk": {
+          "name": "education_notification_emails_notification_id_education_notifications_id_fk",
+          "tableFrom": "education_notification_emails",
+          "tableTo": "education_notifications",
+          "columnsFrom": [
+            "notification_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "education_notification_emails_state_check": {
+          "name": "education_notification_emails_state_check",
+          "value": "\"education_notification_emails\".\"state\" IN ('pending', 'sent', 'skipped')"
+        },
+        "education_notification_emails_attempts_check": {
+          "name": "education_notification_emails_attempts_check",
+          "value": "\"education_notification_emails\".\"attempts\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.education_notifications": {
+      "name": "education_notifications",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignment_id": {
+          "name": "assignment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "feedback_id": {
+          "name": "feedback_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "help_id": {
+          "name": "help_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reply_id": {
+          "name": "reply_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "read_at": {
+          "name": "read_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_education_notifications_user": {
+          "name": "idx_education_notifications_user",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "education_notifications_user_id_users_id_fk": {
+          "name": "education_notifications_user_id_users_id_fk",
+          "tableFrom": "education_notifications",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "education_notifications_event_id_education_outbox_id_fk": {
+          "name": "education_notifications_event_id_education_outbox_id_fk",
+          "tableFrom": "education_notifications",
+          "tableTo": "education_outbox",
+          "columnsFrom": [
+            "event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "education_notifications_assignment_fk": {
+          "name": "education_notifications_assignment_fk",
+          "tableFrom": "education_notifications",
+          "tableTo": "assignments",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "education_notifications_feedback_fk": {
+          "name": "education_notifications_feedback_fk",
+          "tableFrom": "education_notifications",
+          "tableTo": "assignment_feedback",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id",
+            "feedback_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "assignment_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "education_notifications_help_fk": {
+          "name": "education_notifications_help_fk",
+          "tableFrom": "education_notifications",
+          "tableTo": "assignment_help_requests",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id",
+            "help_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "assignment_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "education_notifications_reply_fk": {
+          "name": "education_notifications_reply_fk",
+          "tableFrom": "education_notifications",
+          "tableTo": "assignment_help_replies",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id",
+            "reply_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "assignment_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "education_notifications_delivery_unique": {
+          "name": "education_notifications_delivery_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "event_id",
+            "user_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "education_notifications_type_check": {
+          "name": "education_notifications_type_check",
+          "value": "\"education_notifications\".\"type\" IN ('assignment','assignment_changed','resource_unavailable','feedback','help','help_reply')"
+        },
+        "education_notifications_source_check": {
+          "name": "education_notifications_source_check",
+          "value": "\n    (\"education_notifications\".\"type\" IN ('assignment','assignment_changed','resource_unavailable') AND \"education_notifications\".\"feedback_id\" IS NULL AND \"education_notifications\".\"help_id\" IS NULL AND \"education_notifications\".\"reply_id\" IS NULL)\n    OR (\"education_notifications\".\"type\" = 'feedback' AND \"education_notifications\".\"feedback_id\" IS NOT NULL AND \"education_notifications\".\"help_id\" IS NULL AND \"education_notifications\".\"reply_id\" IS NULL)\n    OR (\"education_notifications\".\"type\" = 'help' AND \"education_notifications\".\"feedback_id\" IS NULL AND \"education_notifications\".\"help_id\" IS NOT NULL AND \"education_notifications\".\"reply_id\" IS NULL)\n    OR (\"education_notifications\".\"type\" = 'help_reply' AND \"education_notifications\".\"feedback_id\" IS NULL AND \"education_notifications\".\"help_id\" IS NOT NULL AND \"education_notifications\".\"reply_id\" IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.education_operations": {
+      "name": "education_operations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operation": {
+          "name": "operation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_hash": {
+          "name": "request_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "result": {
+          "name": "result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "education_operations_domain_id_domains_id_fk": {
+          "name": "education_operations_domain_id_domains_id_fk",
+          "tableFrom": "education_operations",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "education_operations_actor_id_users_id_fk": {
+          "name": "education_operations_actor_id_users_id_fk",
+          "tableFrom": "education_operations",
+          "tableTo": "users",
+          "columnsFrom": [
+            "actor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "education_operations_key_unique": {
+          "name": "education_operations_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "domain_id",
+            "actor_id",
+            "operation",
+            "idempotency_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.education_outbox": {
+      "name": "education_outbox",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "problem_id": {
+          "name": "problem_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "classroom_id": {
+          "name": "classroom_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assignment_id": {
+          "name": "assignment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "available_at": {
+          "name": "available_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "leased_until": {
+          "name": "leased_until",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_token": {
+          "name": "lease_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "processed_at": {
+          "name": "processed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_education_outbox_pending": {
+          "name": "idx_education_outbox_pending",
+          "columns": [
+            {
+              "expression": "processed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "available_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "leased_until",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "education_outbox_pending_refresh_unique": {
+          "name": "education_outbox_pending_refresh_unique",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "assignment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "COALESCE(\"user_id\", '')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"education_outbox\".\"event_type\" = 'assignment.refresh' AND \"education_outbox\".\"processed_at\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "education_outbox_domain_id_domains_id_fk": {
+          "name": "education_outbox_domain_id_domains_id_fk",
+          "tableFrom": "education_outbox",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "education_outbox_user_id_users_id_fk": {
+          "name": "education_outbox_user_id_users_id_fk",
+          "tableFrom": "education_outbox",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "education_outbox_problem_id_problems_id_fk": {
+          "name": "education_outbox_problem_id_problems_id_fk",
+          "tableFrom": "education_outbox",
+          "tableTo": "problems",
+          "columnsFrom": [
+            "problem_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "education_outbox_classroom_domain_fk": {
+          "name": "education_outbox_classroom_domain_fk",
+          "tableFrom": "education_outbox",
+          "tableTo": "classrooms",
+          "columnsFrom": [
+            "domain_id",
+            "classroom_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "education_outbox_assignment_domain_fk": {
+          "name": "education_outbox_assignment_domain_fk",
+          "tableFrom": "education_outbox",
+          "tableTo": "assignments",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.email_delivery_events": {
@@ -5889,6 +9870,109 @@
       },
       "isRLSEnabled": false
     },
+    "public.llm_model_aliases": {
+      "name": "llm_model_aliases",
+      "schema": "",
+      "columns": {
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "alias": {
+          "name": "alias",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "llm_model_aliases_domain_id_domains_id_fk": {
+          "name": "llm_model_aliases_domain_id_domains_id_fk",
+          "tableFrom": "llm_model_aliases",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "llm_model_aliases_updated_by_users_id_fk": {
+          "name": "llm_model_aliases_updated_by_users_id_fk",
+          "tableFrom": "llm_model_aliases",
+          "tableTo": "users",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "llm_model_aliases_domain_id_alias_pk": {
+          "name": "llm_model_aliases_domain_id_alias_pk",
+          "columns": [
+            "domain_id",
+            "alias"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "llm_model_aliases_revision_check": {
+          "name": "llm_model_aliases_revision_check",
+          "value": "\"llm_model_aliases\".\"revision\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.llm_token_revocations": {
       "name": "llm_token_revocations",
       "schema": "",
@@ -6463,6 +10547,37 @@
           "primaryKey": true,
           "notNull": true
         },
+        "receipt_sequence": {
+          "name": "receipt_sequence",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "nextval('submission_receipt_sequence')"
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "domain_problem_binding_id": {
+          "name": "domain_problem_binding_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignment_id": {
+          "name": "assignment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assignment_item_id": {
+          "name": "assignment_item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "paper_id": {
           "name": "paper_id",
           "type": "text",
@@ -6783,9 +10898,55 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "idx_objective_submissions_domain_user_paper": {
+          "name": "idx_objective_submissions_domain_user_paper",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "paper_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
+        "objective_submissions_domain_id_domains_id_fk": {
+          "name": "objective_submissions_domain_id_domains_id_fk",
+          "tableFrom": "objective_submissions",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "objective_submissions_paper_id_problems_id_fk": {
           "name": "objective_submissions_paper_id_problems_id_fk",
           "tableFrom": "objective_submissions",
@@ -6838,6 +10999,68 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
+        "objective_submissions_workspace_contest_fk": {
+          "name": "objective_submissions_workspace_contest_fk",
+          "tableFrom": "objective_submissions",
+          "tableTo": "contests",
+          "columnsFrom": [
+            "domain_id",
+            "contest_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "objective_submissions_assignment_origin_fk": {
+          "name": "objective_submissions_assignment_origin_fk",
+          "tableFrom": "objective_submissions",
+          "tableTo": "assignment_items",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id",
+            "assignment_item_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "assignment_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "objective_submissions_assignment_problem_fk": {
+          "name": "objective_submissions_assignment_problem_fk",
+          "tableFrom": "objective_submissions",
+          "tableTo": "assignment_items",
+          "columnsFrom": [
+            "assignment_item_id",
+            "paper_id"
+          ],
+          "columnsTo": [
+            "id",
+            "problem_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "objective_submissions_assignment_domain_fk": {
+          "name": "objective_submissions_assignment_domain_fk",
+          "tableFrom": "objective_submissions",
+          "tableTo": "assignments",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "objective_submissions_submitted_version_fk": {
           "name": "objective_submissions_submitted_version_fk",
           "tableFrom": "objective_submissions",
@@ -6849,6 +11072,36 @@
           "columnsTo": [
             "problem_id",
             "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "objective_submissions_workspace_binding_fk": {
+          "name": "objective_submissions_workspace_binding_fk",
+          "tableFrom": "objective_submissions",
+          "tableTo": "domain_problem_bindings",
+          "columnsFrom": [
+            "domain_id",
+            "domain_problem_binding_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "objective_submissions_binding_problem_fk": {
+          "name": "objective_submissions_binding_problem_fk",
+          "tableFrom": "objective_submissions",
+          "tableTo": "domain_problem_bindings",
+          "columnsFrom": [
+            "domain_problem_binding_id",
+            "paper_id"
+          ],
+          "columnsTo": [
+            "id",
+            "problem_id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -6871,6 +11124,10 @@
         "objective_submissions_type_check": {
           "name": "objective_submissions_type_check",
           "value": "\"objective_submissions\".\"submission_type\" IN ('practice', 'contest')"
+        },
+        "objective_submissions_assignment_origin_check": {
+          "name": "objective_submissions_assignment_origin_check",
+          "value": "(\"objective_submissions\".\"assignment_id\" IS NULL) = (\"objective_submissions\".\"assignment_item_id\" IS NULL)"
         },
         "objective_submissions_version_origin_check": {
           "name": "objective_submissions_version_origin_check",
@@ -7854,7 +12111,7 @@
           "name": "domain_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "title": {
           "name": "title",
@@ -7919,13 +12176,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'0'"
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'U'"
         },
         "is_objective": {
           "name": "is_objective",
@@ -8012,28 +12262,6 @@
         }
       },
       "indexes": {
-        "problems_legacy_type_number_unique": {
-          "name": "problems_legacy_type_number_unique",
-          "columns": [
-            {
-              "expression": "type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "number",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"problems\".\"domain_id\" IS NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_problems_search_vector": {
           "name": "idx_problems_search_vector",
           "columns": [
@@ -8086,21 +12314,13 @@
       },
       "policies": {},
       "checkConstraints": {
-        "problems_type_check": {
-          "name": "problems_type_check",
-          "value": "\"problems\".\"type\" IN ('U', 'P')"
-        },
         "problems_submission_mode_check": {
           "name": "problems_submission_mode_check",
-          "value": "\"problems\".\"submission_mode\" IN ('code', 'artifact')"
+          "value": "\"problems\".\"submission_mode\" IN ('code', 'artifact', 'prediction', 'ui')"
         },
         "problems_visibility_check": {
           "name": "problems_visibility_check",
           "value": "\"problems\".\"visibility\" IN ('public', 'private')"
-        },
-        "problems_p_visibility_check": {
-          "name": "problems_p_visibility_check",
-          "value": "\"problems\".\"type\" <> 'P' OR \"problems\".\"visibility\" = 'public'"
         },
         "problems_judge_type_check": {
           "name": "problems_judge_type_check",
@@ -8364,6 +12584,12 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "entity_type": {
           "name": "entity_type",
           "type": "text",
@@ -8458,6 +12684,33 @@
         }
       },
       "indexes": {
+        "idx_search_entries_domain_type_updated": {
+          "name": "idx_search_entries_domain_type_updated",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "entity_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_search_entries_entity": {
           "name": "idx_search_entries_entity",
           "columns": [
@@ -8587,7 +12840,21 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "search_entries_domain_id_domains_id_fk": {
+          "name": "search_entries_domain_id_domains_id_fk",
+          "tableFrom": "search_entries",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -8603,6 +12870,30 @@
           "type": "text",
           "primaryKey": true,
           "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "domain_problem_binding_id": {
+          "name": "domain_problem_binding_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignment_id": {
+          "name": "assignment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assignment_item_id": {
+          "name": "assignment_item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "user_id": {
           "name": "user_id",
@@ -8810,9 +13101,49 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "idx_self_tests_domain_user_created": {
+          "name": "idx_self_tests_domain_user_created",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
+        "self_tests_domain_id_domains_id_fk": {
+          "name": "self_tests_domain_id_domains_id_fk",
+          "tableFrom": "self_tests",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "self_tests_user_id_users_id_fk": {
           "name": "self_tests_user_id_users_id_fk",
           "tableFrom": "self_tests",
@@ -8839,6 +13170,53 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
+        "self_tests_assignment_origin_fk": {
+          "name": "self_tests_assignment_origin_fk",
+          "tableFrom": "self_tests",
+          "tableTo": "assignment_items",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id",
+            "assignment_item_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "assignment_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "self_tests_assignment_problem_fk": {
+          "name": "self_tests_assignment_problem_fk",
+          "tableFrom": "self_tests",
+          "tableTo": "assignment_items",
+          "columnsFrom": [
+            "assignment_item_id",
+            "problem_id"
+          ],
+          "columnsTo": [
+            "id",
+            "problem_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "self_tests_assignment_domain_fk": {
+          "name": "self_tests_assignment_domain_fk",
+          "tableFrom": "self_tests",
+          "tableTo": "assignments",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "self_tests_problem_version_fk": {
           "name": "self_tests_problem_version_fk",
           "tableFrom": "self_tests",
@@ -8853,12 +13231,46 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "self_tests_workspace_binding_fk": {
+          "name": "self_tests_workspace_binding_fk",
+          "tableFrom": "self_tests",
+          "tableTo": "domain_problem_bindings",
+          "columnsFrom": [
+            "domain_id",
+            "domain_problem_binding_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "self_tests_binding_problem_fk": {
+          "name": "self_tests_binding_problem_fk",
+          "tableFrom": "self_tests",
+          "tableTo": "domain_problem_bindings",
+          "columnsFrom": [
+            "domain_problem_binding_id",
+            "problem_id"
+          ],
+          "columnsTo": [
+            "id",
+            "problem_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "self_tests_assignment_origin_check": {
+          "name": "self_tests_assignment_origin_check",
+          "value": "(\"self_tests\".\"assignment_id\" IS NULL) = (\"self_tests\".\"assignment_item_id\" IS NULL)"
+        },
         "self_tests_status_check": {
           "name": "self_tests_status_check",
           "value": "\"self_tests\".\"status\" IN ('pending', 'judging', 'finished', 'error', 'cancelled')"
@@ -9073,6 +13485,207 @@
       },
       "isRLSEnabled": false
     },
+    "public.submission_annotations": {
+      "name": "submission_annotations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "classroom_id": {
+          "name": "classroom_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "submission_id": {
+          "name": "submission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "author_id": {
+          "name": "author_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "file_name": {
+          "name": "file_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_hash": {
+          "name": "source_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_line": {
+          "name": "start_line",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_line": {
+          "name": "end_line",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_submission_annotations_source": {
+          "name": "idx_submission_annotations_source",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "classroom_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "submission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "submission_annotations_author_id_users_id_fk": {
+          "name": "submission_annotations_author_id_users_id_fk",
+          "tableFrom": "submission_annotations",
+          "tableTo": "users",
+          "columnsFrom": [
+            "author_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "submission_annotations_classroom_fk": {
+          "name": "submission_annotations_classroom_fk",
+          "tableFrom": "submission_annotations",
+          "tableTo": "classrooms",
+          "columnsFrom": [
+            "domain_id",
+            "classroom_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "submission_annotations_source_fk": {
+          "name": "submission_annotations_source_fk",
+          "tableFrom": "submission_annotations",
+          "tableTo": "submissions",
+          "columnsFrom": [
+            "domain_id",
+            "submission_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "submission_annotations_lines_check": {
+          "name": "submission_annotations_lines_check",
+          "value": "\"submission_annotations\".\"start_line\" >= 1 AND \"submission_annotations\".\"end_line\" >= \"submission_annotations\".\"start_line\""
+        },
+        "submission_annotations_hash_check": {
+          "name": "submission_annotations_hash_check",
+          "value": "\"submission_annotations\".\"source_hash\" ~ '^[a-f0-9]{64}$'"
+        },
+        "submission_annotations_body_check": {
+          "name": "submission_annotations_body_check",
+          "value": "char_length(\"submission_annotations\".\"body\") BETWEEN 1 AND 30000"
+        },
+        "submission_annotations_revision_check": {
+          "name": "submission_annotations_revision_check",
+          "value": "\"submission_annotations\".\"revision\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.submission_job_items": {
       "name": "submission_job_items",
       "schema": "",
@@ -9082,6 +13695,18 @@
           "type": "text",
           "primaryKey": true,
           "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "domain_problem_binding_id": {
+          "name": "domain_problem_binding_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "job_id": {
           "name": "job_id",
@@ -9245,6 +13870,19 @@
         }
       },
       "foreignKeys": {
+        "submission_job_items_domain_id_domains_id_fk": {
+          "name": "submission_job_items_domain_id_domains_id_fk",
+          "tableFrom": "submission_job_items",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "submission_job_items_job_id_submission_jobs_id_fk": {
           "name": "submission_job_items_job_id_submission_jobs_id_fk",
           "tableFrom": "submission_job_items",
@@ -9283,6 +13921,51 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
+        },
+        "submission_job_items_workspace_job_fk": {
+          "name": "submission_job_items_workspace_job_fk",
+          "tableFrom": "submission_job_items",
+          "tableTo": "submission_jobs",
+          "columnsFrom": [
+            "domain_id",
+            "job_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "submission_job_items_workspace_binding_fk": {
+          "name": "submission_job_items_workspace_binding_fk",
+          "tableFrom": "submission_job_items",
+          "tableTo": "domain_problem_bindings",
+          "columnsFrom": [
+            "domain_id",
+            "domain_problem_binding_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "submission_job_items_binding_problem_fk": {
+          "name": "submission_job_items_binding_problem_fk",
+          "tableFrom": "submission_job_items",
+          "tableTo": "domain_problem_bindings",
+          "columnsFrom": [
+            "domain_problem_binding_id",
+            "problem_id"
+          ],
+          "columnsTo": [
+            "id",
+            "problem_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -9307,6 +13990,10 @@
           "name": "submission_job_items_status_check",
           "value": "\"submission_job_items\".\"status\" IN ('pending', 'preparing', 'dispatched', 'succeeded', 'failed', 'skipped')"
         },
+        "submission_job_items_binding_required_check": {
+          "name": "submission_job_items_binding_required_check",
+          "value": "\"submission_job_items\".\"domain_problem_binding_id\" IS NOT NULL OR \"submission_job_items\".\"status\" IN ('failed', 'skipped')"
+        },
         "submission_job_items_ordinal_check": {
           "name": "submission_job_items_ordinal_check",
           "value": "\"submission_job_items\".\"ordinal\" >= 0"
@@ -9326,6 +14013,12 @@
           "name": "id",
           "type": "text",
           "primaryKey": true,
+          "notNull": true
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
           "notNull": true
         },
         "kind": {
@@ -9424,6 +14117,19 @@
         }
       },
       "foreignKeys": {
+        "submission_jobs_domain_id_domains_id_fk": {
+          "name": "submission_jobs_domain_id_domains_id_fk",
+          "tableFrom": "submission_jobs",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "submission_jobs_actor_id_users_id_fk": {
           "name": "submission_jobs_actor_id_users_id_fk",
           "tableFrom": "submission_jobs",
@@ -9440,10 +14146,19 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "submission_jobs_actor_kind_key_unique": {
-          "name": "submission_jobs_actor_kind_key_unique",
+        "submission_jobs_domain_id_unique": {
+          "name": "submission_jobs_domain_id_unique",
           "nullsNotDistinct": false,
           "columns": [
+            "domain_id",
+            "id"
+          ]
+        },
+        "submission_jobs_domain_actor_kind_key_unique": {
+          "name": "submission_jobs_domain_actor_kind_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "domain_id",
             "actor_id",
             "kind",
             "idempotency_key"
@@ -9716,12 +14431,43 @@
           "primaryKey": true,
           "notNull": true
         },
+        "receipt_sequence": {
+          "name": "receipt_sequence",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "nextval('submission_receipt_sequence')"
+        },
         "public_id": {
           "name": "public_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "default": "'sub-' || substr(md5(random()::text), 1, 8)"
+        },
+        "domain_id": {
+          "name": "domain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "domain_problem_binding_id": {
+          "name": "domain_problem_binding_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignment_id": {
+          "name": "assignment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assignment_item_id": {
+          "name": "assignment_item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "user_id": {
           "name": "user_id",
@@ -10122,9 +14868,76 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "idx_submissions_domain_user_created": {
+          "name": "idx_submissions_domain_user_created",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_submissions_domain_problem_user": {
+          "name": "idx_submissions_domain_problem_user",
+          "columns": [
+            {
+              "expression": "domain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "problem_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
+        "submissions_domain_id_domains_id_fk": {
+          "name": "submissions_domain_id_domains_id_fk",
+          "tableFrom": "submissions",
+          "tableTo": "domains",
+          "columnsFrom": [
+            "domain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "submissions_user_id_users_id_fk": {
           "name": "submissions_user_id_users_id_fk",
           "tableFrom": "submissions",
@@ -10177,6 +14990,68 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
+        "submissions_workspace_contest_fk": {
+          "name": "submissions_workspace_contest_fk",
+          "tableFrom": "submissions",
+          "tableTo": "contests",
+          "columnsFrom": [
+            "domain_id",
+            "contest_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "submissions_assignment_origin_fk": {
+          "name": "submissions_assignment_origin_fk",
+          "tableFrom": "submissions",
+          "tableTo": "assignment_items",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id",
+            "assignment_item_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "assignment_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "submissions_assignment_problem_fk": {
+          "name": "submissions_assignment_problem_fk",
+          "tableFrom": "submissions",
+          "tableTo": "assignment_items",
+          "columnsFrom": [
+            "assignment_item_id",
+            "problem_id"
+          ],
+          "columnsTo": [
+            "id",
+            "problem_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "submissions_assignment_domain_fk": {
+          "name": "submissions_assignment_domain_fk",
+          "tableFrom": "submissions",
+          "tableTo": "assignments",
+          "columnsFrom": [
+            "domain_id",
+            "assignment_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "submissions_submitted_version_fk": {
           "name": "submissions_submitted_version_fk",
           "tableFrom": "submissions",
@@ -10191,6 +15066,36 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "submissions_workspace_binding_fk": {
+          "name": "submissions_workspace_binding_fk",
+          "tableFrom": "submissions",
+          "tableTo": "domain_problem_bindings",
+          "columnsFrom": [
+            "domain_id",
+            "domain_problem_binding_id"
+          ],
+          "columnsTo": [
+            "domain_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "submissions_binding_problem_fk": {
+          "name": "submissions_binding_problem_fk",
+          "tableFrom": "submissions",
+          "tableTo": "domain_problem_bindings",
+          "columnsFrom": [
+            "domain_problem_binding_id",
+            "problem_id"
+          ],
+          "columnsTo": [
+            "id",
+            "problem_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -10201,10 +15106,23 @@
           "columns": [
             "public_id"
           ]
+        },
+        "submissions_teaching_source_unique": {
+          "name": "submissions_teaching_source_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "domain_id",
+            "id",
+            "user_id"
+          ]
         }
       },
       "policies": {},
       "checkConstraints": {
+        "submissions_assignment_origin_check": {
+          "name": "submissions_assignment_origin_check",
+          "value": "(\"submissions\".\"assignment_id\" IS NULL) = (\"submissions\".\"assignment_item_id\" IS NULL)"
+        },
         "submissions_version_origin_check": {
           "name": "submissions_version_origin_check",
           "value": "(\"submissions\".\"version_origin\" = 'known' AND \"submissions\".\"submitted_version_id\" IS NOT NULL)\n        OR (\"submissions\".\"version_origin\" = 'legacy_unknown' AND \"submissions\".\"submitted_version_id\" IS NULL)"
@@ -10682,7 +15600,7 @@
           "name": "domain_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "public_id": {
           "name": "public_id",
@@ -10717,6 +15635,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "created_by": {
           "name": "created_by",
@@ -11351,7 +16276,18 @@
   },
   "enums": {},
   "schemas": {},
-  "sequences": {},
+  "sequences": {
+    "public.submission_receipt_sequence": {
+      "name": "submission_receipt_sequence",
+      "schema": "public",
+      "increment": "1",
+      "startWith": "1",
+      "minValue": "1",
+      "maxValue": "9223372036854775807",
+      "cache": "1",
+      "cycle": false
+    }
+  },
   "roles": {},
   "policies": {},
   "views": {},

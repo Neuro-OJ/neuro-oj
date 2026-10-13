@@ -1,4 +1,4 @@
-import type { MatrixData } from './education';
+import type { MatrixData } from './education.ts';
 
 /** 仅从已授权且更新完成的当前页选择，不把等待评测或资源失效当作未达标。 */
 export function currentPageRemediation(matrix: MatrixData) {

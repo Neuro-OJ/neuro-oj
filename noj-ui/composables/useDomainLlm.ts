@@ -7,12 +7,23 @@ export interface DomainLlmProvider {
   enabled: boolean;
   cost_per_1k_tokens: number;
   revision: number;
+  rpm_limit: number;
+  tpm_limit: number;
 }
 export interface DomainLlmSettings {
   domain_id: string;
   provider_id: string | null;
   model: string | null;
   revision: number;
+}
+export interface DomainLlmModelAlias {
+  domain_id: string;
+  alias: string;
+  provider_id: string;
+  model: string;
+  description: string;
+  revision: number;
+  problem_count: number;
 }
 export interface DomainLlmQuota {
   id: string;
@@ -46,14 +57,56 @@ export function useDomainLlm() {
         headers: { 'If-Match': String(revision) },
       }),
     providers: (slug: string) => api.get<{ data: DomainLlmProvider[] }>(`${path(slug)}/providers`, { silent: true }),
+    aliases: (slug: string) =>
+      api.get<{ data: DomainLlmModelAlias[] }>(`${path(slug)}/model-aliases`, { silent: true }),
+    saveAlias: (
+      slug: string,
+      alias: string,
+      body: Pick<DomainLlmModelAlias, 'provider_id' | 'model' | 'description'>,
+      revision: number,
+    ) =>
+      api.put(`${path(slug)}/model-aliases/${encodeURIComponent(alias)}`, body, {
+        headers: { 'If-Match': String(revision) },
+        silent: true,
+      }),
+    deleteAlias: (slug: string, alias: string, revision: number, force: boolean) =>
+      api.delete(`${path(slug)}/model-aliases/${encodeURIComponent(alias)}`, {
+        query: { force },
+        headers: { 'If-Match': String(revision) },
+        silent: true,
+      }),
+    testProvider: (slug: string, id: string, model: string) =>
+      api.post<{ data: { status: 'ok' | 'failed'; model: string; latency_ms: number; message?: string } }>(
+        `${path(slug)}/providers/${encodeURIComponent(id)}/test`,
+        { model },
+        { silent: true },
+      ),
     provider: (
       slug: string,
-      body: { name: string; base_url: string; api_key: string; cost_per_1k_tokens: number; enabled: boolean },
+      body: {
+        name: string;
+        base_url: string;
+        api_key: string;
+        cost_per_1k_tokens: number;
+        enabled: boolean;
+        rpm_limit: number;
+        tpm_limit: number;
+      },
     ) => api.post(`${path(slug)}/providers`, body, { headers: { 'If-Match': '0' }, silent: true }),
     updateProvider: (
       slug: string,
       id: string,
-      body: Partial<{ name: string; base_url: string; api_key: string; cost_per_1k_tokens: number; enabled: boolean }>,
+      body: Partial<
+        {
+          name: string;
+          base_url: string;
+          api_key: string;
+          cost_per_1k_tokens: number;
+          enabled: boolean;
+          rpm_limit: number;
+          tpm_limit: number;
+        }
+      >,
       revision: number,
     ) =>
       api.put(`${path(slug)}/providers/${encodeURIComponent(id)}`, body, {

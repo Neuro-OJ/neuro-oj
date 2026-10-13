@@ -22,7 +22,7 @@ export interface DomainProblemContent {
   title: string;
   description: string;
   samples: Array<{ input: string; output: string; explanation?: string }>;
-  submission_mode?: 'code' | 'artifact';
+  submission_mode?: 'code' | 'artifact' | 'prediction' | 'ui';
   artifact_max_size_mb?: number | null;
   questions?: Array<{
     key: string;

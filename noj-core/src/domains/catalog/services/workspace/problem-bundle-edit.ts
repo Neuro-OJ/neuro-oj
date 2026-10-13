@@ -13,6 +13,7 @@ import { judgeOptions } from "../../../objective/index.ts";
 import {
   parseBundleZip,
   readBundleTemplate,
+  readBundleUi,
   stripMetadataEntries,
 } from "../bundle-parser.ts";
 import {
@@ -164,6 +165,15 @@ export function parseDomainDraftBundle(bytes: Uint8Array) {
     const template = readBundleTemplate(parsed.entries, manifest.template);
     if (template.status === "too_large") {
       throw new BadRequestError("题包模板超过大小限制");
+    }
+    if (manifest.submission_mode === "ui") {
+      const ui = readBundleUi(parsed.entries);
+      if (ui.status === "missing") {
+        throw new BadRequestError("界面题包缺少 ui.html");
+      }
+      if (ui.status === "too_large") {
+        throw new BadRequestError("ui.html 超过大小限制");
+      }
     }
     content = {
       ...base,

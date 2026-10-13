@@ -410,6 +410,7 @@ Deno.test({
         problem_version_id: versionId,
         runtime_config: versionConfig,
         llm_execution: {
+          domain_id: DEFAULT_DOMAIN_ID,
           provider_id: "snap-prov",
           model: "snap-model",
           max_calls: 7,

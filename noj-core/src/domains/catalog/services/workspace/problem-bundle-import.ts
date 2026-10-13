@@ -24,6 +24,7 @@ import {
 import { stripMetadataEntries } from "../bundle-parser.ts";
 import { getTagIdsByNames } from "../tags.ts";
 import { isOiRuntimeConfig } from "../../types/runtime-config.ts";
+import type { SubmissionMode } from "../../types/problems.ts";
 import { readDomainProblemDraft } from "./problem-edit.ts";
 import {
   importDomainProblemDraftBundle,
@@ -132,7 +133,7 @@ export async function importDomainProblemBundle(
         is_objective: manifest.is_objective,
         judge_type: manifest.judge_type,
         submission_mode: content.kind === "ai"
-          ? manifest.submission_mode as "code" | "artifact" | undefined
+          ? manifest.submission_mode as SubmissionMode | undefined
           : "code",
         artifact_max_size_mb: manifest.artifact_max_size_mb,
         llm: manifest.llm,

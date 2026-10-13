@@ -183,7 +183,7 @@ Deno.test("社区约束：关注和封禁属于账号，内容通知删除目标
 Deno.test("社区迁移：真实父关系回填域，原正文和账号通知保留", async () => {
   const f = await fixture();
   const execution = await problemExecutionForTest(f.problemId);
-  // 在回滚隔离中恢复 0138 的可空形态，执行真正的追加迁移。
+  // 在回滚隔离中恢复迁移前的空归属，执行当前迁移的实际回填与约束。
   for (
     const table of [
       "community_boards",
@@ -268,10 +268,36 @@ Deno.test("社区迁移：真实父关系回填域，原正文和账号通知保
     },
   ]);
   const migration = await Deno.readTextFile(
-    new URL("../../drizzle/0139_powerful_eternity.sql", import.meta.url),
+    new URL("../../drizzle/0116_peaceful_gorilla_man.sql", import.meta.url),
   );
-  for (const statement of migration.split("--> statement-breakpoint")) {
-    await f.db.execute(sql.raw(statement));
+  const backfill = migration.split("-- BEGIN COMMUNITY WORKSPACE BACKFILL")[1]
+    .split("-- END COMMUNITY WORKSPACE BACKFILL")[0];
+  const restoredConstraints = new Set([
+    "community_posts_binding_required_check",
+    "community_reports_workspace_check",
+    "community_reports_workspace_post_fk",
+    "community_reports_workspace_comment_fk",
+    "community_notifications_workspace_check",
+    "community_notifications_workspace_post_fk",
+    "community_notifications_workspace_comment_fk",
+    "community_moderation_actions_workspace_check",
+  ]);
+  const contraction = migration.split("--> statement-breakpoint").filter((
+    statement,
+  ) =>
+    /ALTER TABLE "(community_boards|community_posts|community_comments|community_sanctions)" ALTER COLUMN "domain_id" SET NOT NULL/
+      .test(statement) ||
+    [...restoredConstraints].some((name) =>
+      statement.includes(`ADD CONSTRAINT "${name}"`)
+    )
+  );
+  for (
+    const statement of [
+      ...backfill.split("--> statement-breakpoint"),
+      ...contraction,
+    ]
+  ) {
+    if (statement.trim()) await f.db.execute(sql.raw(statement));
   }
   const posts = await f.db.select().from(communityPosts);
   assertEquals(

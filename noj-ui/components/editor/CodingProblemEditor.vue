@@ -1,47 +1,51 @@
 <script setup lang="ts">
-import SupportPackageUpload from '~/components/admin/SupportPackageUpload.vue';
-import { extractApiError } from '~/utils/apiError';
-import { isAdminUser } from '~/utils/isAdminUser';
-import { useToast } from '~/composables/useToast';
-import { useProblemStats } from '~/composables/useProblemStats';
-import type { ProblemStatsDetail } from '~/utils/problemStats';
+import SupportPackageUpload from "~/components/admin/SupportPackageUpload.vue"
+import { extractApiError } from "~/utils/apiError"
+import { isAdminUser } from "~/utils/isAdminUser"
+import { useToast } from "~/composables/useToast"
+import { useProblemStats } from "~/composables/useProblemStats"
+import type { ProblemStatsDetail } from "~/utils/problemStats"
+import type { SubmissionMode } from "~/utils/problemView"
 
 interface RuntimeConfigPayload {
   evaluator: {
-    image: string;
-    command: string;
-    time_limit_ms: number;
-    memory_limit_mb: number;
-    network?: { enabled: boolean };
-  };
-  solution: {
-    image: string;
-    call_timeout_ms: number;
-    memory_limit_mb: number;
-  };
+    image: string
+    command: string
+    time_limit_ms: number
+    memory_limit_mb: number
+    network?: { enabled: boolean }
+    /** prediction 模式 /workspace tmpfs 上限（MB）；缺省由 judge 决定 */
+    workspace_size_mb?: number
+  }
+  /** prediction 模式无 Solution 容器，提交时省略该块。 */
+  solution?: {
+    image: string
+    call_timeout_ms: number
+    memory_limit_mb: number
+  }
 }
 
 interface Props {
-  mode: 'create' | 'edit';
-  problemId?: string;
-  initialType?: string;
+  mode: "create" | "edit"
+  problemId?: string
+  initialType?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  initialType: 'U',
-});
+  initialType: "ai",
+})
 
 const emit = defineEmits<{
-  saved: [problemId: string];
-}>();
+  saved: [problemId: string]
+}>()
 
-const router = useRouter();
-const { user, fetchUser } = useAuth();
-const { api } = useApi();
-const { toast } = useToast();
-const versions = useProblemVersions();
+const router = useRouter()
+const { user, fetchUser } = useAuth()
+const { api } = useApi()
+const { toast } = useToast()
+const versions = useProblemVersions()
 
-const isAdmin = computed(() => isAdminUser(user.value));
+const isAdmin = computed(() => isAdminUser(user.value))
 
 /**
  * 草稿与版本（Handbook §6.8）：编辑模式下的两个动作。
@@ -51,282 +55,323 @@ const isAdmin = computed(() => isAdminUser(user.value));
  * - 发布是新版本的唯一入口：发布前先保存草稿，避免"改了没发"。
  * 未发布题目的投影仍是唯一读取面，但编辑器一律以草稿为编辑初值。
  */
-const draftRevision = ref<number | null>(null);
-const latestVersion = ref<number | null>(null);
-const draftSaving = ref(false);
-const publishing = ref(false);
+const draftRevision = ref<number | null>(null)
+const latestVersion = ref<number | null>(null)
+const draftSaving = ref(false)
+const publishing = ref(false)
 
 // ── 表单数据 ──
-const { title, description, difficulty, samples, tagIds, visibility } = useProblemAuthorFields();
-const submissionMode = ref<'code' | 'artifact'>('code');
-const artifactMaxSizeMb = ref<number | null>(null);
+const { title, description, difficulty, samples, tagIds, visibility } = useProblemAuthorFields()
+const submissionMode = ref<SubmissionMode>('code')
+const artifactMaxSizeMb = ref<number | null>(null)
+
+/** prediction 模式无 Solution 容器：隐藏 Solution 配置并省略 runtime_config.solution。 */
+const isPredictionMode = computed(() => submissionMode.value === 'prediction')
 
 // 编辑模式专用
-const displayId = ref('');
-const isEditMode = computed(() => props.mode === 'edit');
+const displayId = ref("")
+const isEditMode = computed(() => props.mode === "edit")
 
 // ── 题目数据（仅编辑模式）：按需加载，避免每次打开编辑页都跑一次聚合 ──
-const { fetchDetail } = useProblemStats();
-const statsDetail = ref<ProblemStatsDetail | null>(null);
-const statsLoading = ref(false);
-const statsError = ref('');
+const { fetchDetail } = useProblemStats()
+const statsDetail = ref<ProblemStatsDetail | null>(null)
+const statsLoading = ref(false)
+const statsError = ref("")
 
 async function loadStats() {
-  if (!props.problemId) return;
-  statsLoading.value = true;
-  statsError.value = '';
+  if (!props.problemId) return
+  statsLoading.value = true
+  statsError.value = ""
   try {
-    const res = await fetchDetail(props.problemId);
-    statsDetail.value = res.data;
+    const res = await fetchDetail(props.problemId)
+    statsDetail.value = res.data
   } catch (e) {
-    statsError.value = extractApiError(e).message;
-    statsDetail.value = null;
+    statsError.value = extractApiError(e).message
+    statsDetail.value = null
   } finally {
-    statsLoading.value = false;
+    statsLoading.value = false
   }
 }
 
 // 支持包上传
-const hasSupportPackage = ref(false);
+const hasSupportPackage = ref(false)
 
 /** 用于 SupportPackageUpload 组件的实际 problemId（创建模式下保存后才赋值） */
-const uploadProblemId = computed(() => isEditMode.value ? (props.problemId ?? null) : savedProblemId.value);
-const savedProblemId = ref<string | null>(null);
+const uploadProblemId = computed(() =>
+  isEditMode.value ? (props.problemId ?? null) : savedProblemId.value,
+)
+const savedProblemId = ref<string | null>(null)
 
 async function onPackageChanged(hasPackage: boolean) {
-  hasSupportPackage.value = hasPackage;
-  if (!uploadProblemId.value) return;
-  const draft = await versions.getDraft(uploadProblemId.value);
-  draftRevision.value = draft.revision;
-  applyDraftContent(draft.content);
+  hasSupportPackage.value = hasPackage
+  if (!uploadProblemId.value) return
+  const draft = await versions.getDraft(uploadProblemId.value)
+  draftRevision.value = draft.revision
+  applyDraftContent(draft.content)
 }
 
 // 评测镜像白名单（含 kind）
-const judgeImages = ref<{ image: string; kind?: string }[]>([]);
-const judgeImagesLoading = ref(false);
+const judgeImages = ref<{ image: string; kind?: string }[]>([])
+const judgeImagesLoading = ref(false)
 
 async function loadJudgeImages() {
-  judgeImagesLoading.value = true;
+  judgeImagesLoading.value = true
   try {
     const res = await api.get<{ data: { image: string; kind?: string }[] }>(
-      '/api/v1/judge-images',
+      "/api/v1/judge-images",
       { silent: true },
-    );
-    judgeImages.value = res.data ?? [];
+    )
+    judgeImages.value = res.data ?? []
   } catch {
     // 静默失败
   } finally {
-    judgeImagesLoading.value = false;
+    judgeImagesLoading.value = false
   }
 }
 
 /** 按 kind 过滤的镜像列表（dual-container-judge §5） */
-const evaluatorImages = computed(() => judgeImages.value.filter((ji) => (ji.kind ?? 'evaluator') === 'evaluator'));
-const solutionImages = computed(() => judgeImages.value.filter((ji) => ji.kind === 'solution'));
+const evaluatorImages = computed(() =>
+  judgeImages.value.filter((ji) => (ji.kind ?? "evaluator") === "evaluator"),
+)
+const solutionImages = computed(() =>
+  judgeImages.value.filter((ji) => ji.kind === "solution"),
+)
 
 // ── 双容器 Runtime 配置（所有题目统一使用双容器模式） ──
-const evaluatorImage = ref('');
-const evaluatorCommand = ref('python3 /workspace/evaluate.py');
-const evaluatorTimeLimitMs = ref(5000);
-const evaluatorMemoryLimitMb = ref(512);
-const evaluatorNetworkEnabled = ref(false);
-const solutionImage = ref('');
-const solutionCallTimeoutMs = ref(1000);
-const solutionMemoryLimitMb = ref(256);
+const evaluatorImage = ref("")
+const evaluatorCommand = ref("python3 /workspace/evaluate.py")
+const evaluatorTimeLimitMs = ref(5000)
+const evaluatorMemoryLimitMb = ref(512)
+const evaluatorNetworkEnabled = ref(false)
+// prediction 专用：/workspace tmpfs 上限（MB）；空 = 用 judge 缺省。
+// 该字段受管理员上限（JUDGE_MAX_PREDICTION_WORKSPACE_MB）约束，越界会被
+// judge 收敛并打警告，因此界面上给出提示（2026-09-22 评审：此前只能改 JSON）。
+const evaluatorWorkspaceSizeMb = ref<number | null>(null)
+const solutionImage = ref("")
+const solutionCallTimeoutMs = ref(1000)
+const solutionMemoryLimitMb = ref(256)
 
-// ── LLM 单次评测预算 ──
-const llmEnabled = ref(false);
-const llmMaxCalls = ref('');
-const llmMaxTokens = ref('');
+// ── LLM 配置（单次预算与模型能力） ──
+const llmEnabled = ref(false)
+const llmMaxCalls = ref("")
+const llmMaxTokens = ref("")
+// 允许评测代码调用的模型别名（缺省仅 default = 默认域模型）；选项来自默认域别名表
+const llmModels = ref<string[]>(["default"])
+const llmModelOptions = ref<{ alias: string; description: string }[]>([
+  { alias: "default", description: "默认域模型" },
+])
+let llmModelOptionsLoaded = false
+async function loadLlmModelOptions() {
+  if (llmModelOptionsLoaded) return
+  llmModelOptionsLoaded = true
+  try {
+    const res = await api.get<{ data: { alias: string; description: string }[] }>(
+      "/api/v1/domains/main/problems/llm-model-aliases",
+      { silent: true },
+    )
+    llmModelOptions.value = res.data
+  } catch {
+    llmModelOptionsLoaded = false
+  }
+}
+// 已保存但平台已删除的别名仍要显示（便于出题人发现并取消勾选）
+const llmModelChoices = computed(() => {
+  const known = new Set(llmModelOptions.value.map((o) => o.alias))
+  return [
+    ...llmModelOptions.value,
+    ...llmModels.value.filter((a) => !known.has(a)).map((alias) => ({ alias, description: "默认域未配置此别名" })),
+  ]
+})
 
 // 启用 LLM 必须同时开启 evaluator 网络
 watch(llmEnabled, (val) => {
-  if (val) evaluatorNetworkEnabled.value = true;
-});
+  if (val) void loadLlmModelOptions()
+  if (val) evaluatorNetworkEnabled.value = true
+})
 
 // ── 标签选项 ──
-const tags = ref<{ id: string; name: string; kind: 'problem' | 'algorithm' }[]>([]);
+const tags = ref<{ id: string; name: string; kind: 'problem' | 'algorithm' }[]>([])
 
 async function loadTags() {
   try {
     const res = await api.get<{ data: { id: string; name: string; kind: 'problem' | 'algorithm' }[] }>(
-      '/api/v1/tags',
+      "/api/v1/tags",
       { silent: true },
-    );
-    tags.value = res.data;
+    )
+    tags.value = res.data
   } catch { /* 静默失败 */ }
 }
 
 // 标签选项：按 kind 排序（题目标签在前），label 带 kind 前缀区分
-const tagSearch = ref('');
+const tagSearch = ref("")
 const tagOptions = computed(() =>
   [...tags.value]
     .sort((a, b) => {
-      if (a.kind !== b.kind) return a.kind === 'problem' ? -1 : 1;
-      return a.name.localeCompare(b.name);
+      if (a.kind !== b.kind) return a.kind === 'problem' ? -1 : 1
+      return a.name.localeCompare(b.name)
     })
     .map((t) => ({
       label: `${t.kind === 'algorithm' ? '算法标签' : '题目标签'}: ${t.name}`,
       value: t.id,
-    }))
-);
+    })),
+)
 // 标签搜索过滤：匹配 label（含题目标签/算法标签前缀与名称）
 const filteredTagOptions = computed(() => {
-  const keyword = tagSearch.value.trim().toLowerCase();
-  if (!keyword) return tagOptions.value;
-  return tagOptions.value.filter((t) => t.label.toLowerCase().includes(keyword));
-});
+  const keyword = tagSearch.value.trim().toLowerCase()
+  if (!keyword) return tagOptions.value
+  return tagOptions.value.filter((t) => t.label.toLowerCase().includes(keyword))
+})
 
 // 新建标签：仅拥有 tag:manage 权限（或 admin 通配）的用户可见
 const canManageTags = computed(
-  () => isAdmin.value || user.value?.permissions?.includes('tag:manage') === true,
-);
+  () => isAdmin.value || user.value?.permissions?.includes("tag:manage") === true,
+)
 
 // ── 新建标签（API 层以 tag:manage RBAC 判定、默认仅 admin） ──
-const showNewTagForm = ref(false);
-const newTagName = ref('');
-const newTagKind = ref<'problem' | 'algorithm'>('problem');
-const creatingTag = ref(false);
-const newTagError = ref('');
+const showNewTagForm = ref(false)
+const newTagName = ref("")
+const newTagKind = ref<'problem' | 'algorithm'>('problem')
+const creatingTag = ref(false)
+const newTagError = ref("")
 
 function openNewTag() {
-  newTagName.value = '';
-  newTagKind.value = 'problem';
-  newTagError.value = '';
-  showNewTagForm.value = true;
+  newTagName.value = ""
+  newTagKind.value = "problem"
+  newTagError.value = ""
+  showNewTagForm.value = true
 }
 
 async function handleCreateTag() {
   if (!newTagName.value.trim()) {
-    newTagError.value = '请输入标签名称';
-    return;
+    newTagError.value = "请输入标签名称"
+    return
   }
-  creatingTag.value = true;
-  newTagError.value = '';
+  creatingTag.value = true
+  newTagError.value = ""
   try {
     const res = await api.post<{ data: { id: string; name: string; kind: 'problem' | 'algorithm' } }>(
-      '/api/v1/tags',
+      "/api/v1/tags",
       { name: newTagName.value.trim(), kind: newTagKind.value },
-    );
+    )
     // 成功后加入选项并自动选中
-    tags.value = [...tags.value, res.data];
+    tags.value = [...tags.value, res.data]
     if (!tagIds.value.includes(res.data.id)) {
-      tagIds.value = [...tagIds.value, res.data.id];
+      tagIds.value = [...tagIds.value, res.data.id]
     }
-    showNewTagForm.value = false;
-    toast.success('标签已创建');
+    showNewTagForm.value = false
+    toast.success("标签已创建")
   } catch (err: unknown) {
-    newTagError.value = extractApiError(err).message;
+    newTagError.value = extractApiError(err).message
   } finally {
-    creatingTag.value = false;
+    creatingTag.value = false
   }
 }
 
 // ── 编辑模式：加载现有数据 ──
-const pageLoading = ref(false);
-const notFound = ref(false);
-const loadError = ref('');
+const pageLoading = ref(false)
+const notFound = ref(false)
+const loadError = ref("")
 
 async function loadProblem() {
-  if (!props.problemId) return;
-  pageLoading.value = true;
+  if (!props.problemId) return
+  pageLoading.value = true
   try {
-    const res = await api.get<{
-      data: {
-        samples?: import('~/utils/oiWorkspace').ProblemSample[];
-        visibility: 'public' | 'private';
-        title: string;
-        description: string;
-        difficulty: string;
-        time_limit_ms: number;
-        memory_limit_mb: number;
-        display_id: string;
-        type: string;
-        number: number;
-        tags: { id: string }[];
-        submission_mode?: 'code' | 'artifact';
-        artifact_max_size_mb?: number | null;
-        runtime_config: RuntimeConfigPayload | null;
-        latest_version?: number | null;
-      };
-    }>(`/api/v1/problems/${props.problemId}`, { silent: true });
-    const p = res.data;
-    displayId.value = p.display_id;
-    title.value = p.title;
-    description.value = p.description;
-    samples.value = p.samples ?? [];
-    visibility.value = p.visibility;
-    difficulty.value = p.difficulty;
-    tagIds.value = p.tags.map((c) => c.id);
-    submissionMode.value = p.submission_mode ?? 'code';
-    artifactMaxSizeMb.value = p.artifact_max_size_mb ?? null;
-    latestVersion.value = p.latest_version ?? null;
-    hasSupportPackage.value = (p as Record<string, unknown>).has_support_package === true;
+    const res = await api.get<{ data: {
+      samples?: import("~/utils/oiWorkspace").ProblemSample[]; visibility: "public" | "private";
+      title: string; description: string; difficulty: string
+      time_limit_ms: number; memory_limit_mb: number
+      display_id: string; number: number
+      tags: { id: string }[]
+      submission_mode?: SubmissionMode
+      artifact_max_size_mb?: number | null
+      runtime_config: RuntimeConfigPayload | null
+      latest_version?: number | null
+    } }>(`/api/v1/problems/${props.problemId}`, { silent: true })
+    const p = res.data
+    displayId.value = p.display_id
+    title.value = p.title; description.value = p.description
+    samples.value = p.samples ?? []
+    visibility.value = p.visibility
+    difficulty.value = p.difficulty
+    tagIds.value = p.tags.map((c) => c.id)
+    submissionMode.value = p.submission_mode ?? 'code'
+    artifactMaxSizeMb.value = p.artifact_max_size_mb ?? null
+    latestVersion.value = p.latest_version ?? null
+    hasSupportPackage.value = (p as Record<string, unknown>).has_support_package === true
 
     // 加载 runtime_config
     if (p.runtime_config) {
-      applyRuntimeConfig(p.runtime_config);
+      applyRuntimeConfig(p.runtime_config)
     }
     // 加载 LLM 配置
     const llmConfig = (p as {
       llm_config?: {
-        max_calls?: number | null;
-        max_tokens?: number | null;
-      } | null;
-    }).llm_config;
-    if (llmConfig) {
-      llmEnabled.value = true;
-      llmMaxCalls.value = llmConfig.max_calls != null ? String(llmConfig.max_calls) : '';
-      llmMaxTokens.value = llmConfig.max_tokens != null ? String(llmConfig.max_tokens) : '';
+        max_calls?: number | null
+        max_tokens?: number | null
+        models?: string[]
+      } | null
+    }).llm_config
+    if (llmConfig && !isPredictionMode.value) {
+      llmEnabled.value = true
+      llmMaxCalls.value = llmConfig.max_calls != null ? String(llmConfig.max_calls) : ""
+      llmMaxTokens.value = llmConfig.max_tokens != null ? String(llmConfig.max_tokens) : ""
+      llmModels.value = llmConfig.models?.length ? [...llmConfig.models] : ["default"]
     }
 
     // 内容以**草稿**为编辑初值（投影只在发布时更新，可能落后于草稿）
-    const draft = await versions.getDraft(props.problemId);
-    draftRevision.value = draft.revision;
-    applyDraftContent(draft.content);
+    const draft = await versions.getDraft(props.problemId)
+    draftRevision.value = draft.revision
+    applyDraftContent(draft.content)
   } catch (err: unknown) {
-    if (err && typeof err === 'object' && 'status' in err && (err as { status: number }).status === 404) {
-      notFound.value = true;
+    if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 404) {
+      notFound.value = true
     } else {
-      loadError.value = extractApiError(err).message;
+      loadError.value = extractApiError(err).message
     }
   } finally {
-    pageLoading.value = false;
+    pageLoading.value = false
   }
 }
 
 function applyRuntimeConfig(rc: RuntimeConfigPayload) {
-  evaluatorImage.value = rc.evaluator.image;
-  evaluatorCommand.value = rc.evaluator.command;
-  evaluatorTimeLimitMs.value = rc.evaluator.time_limit_ms;
-  evaluatorMemoryLimitMb.value = rc.evaluator.memory_limit_mb;
-  evaluatorNetworkEnabled.value = rc.evaluator.network?.enabled === true;
-  solutionImage.value = rc.solution.image;
-  solutionCallTimeoutMs.value = rc.solution.call_timeout_ms;
-  solutionMemoryLimitMb.value = rc.solution.memory_limit_mb;
+  evaluatorImage.value = rc.evaluator.image
+  evaluatorCommand.value = rc.evaluator.command
+  evaluatorTimeLimitMs.value = rc.evaluator.time_limit_ms
+  evaluatorMemoryLimitMb.value = rc.evaluator.memory_limit_mb
+  evaluatorNetworkEnabled.value = rc.evaluator.network?.enabled === true
+  evaluatorWorkspaceSizeMb.value = rc.evaluator.workspace_size_mb ?? null
+  // prediction 题的 runtime_config 省略 solution
+  if (rc.solution) {
+    solutionImage.value = rc.solution.image
+    solutionCallTimeoutMs.value = rc.solution.call_timeout_ms
+    solutionMemoryLimitMb.value = rc.solution.memory_limit_mb
+  }
 }
 
 /** 用草稿内容覆盖表单（kind=ai 的内容快照）。 */
 function applyDraftContent(content: Record<string, unknown>) {
-  if (typeof content.title === 'string') title.value = content.title;
-  if (typeof content.description === 'string') description.value = content.description;
+  if (typeof content.title === "string") title.value = content.title
+  if (typeof content.description === "string") description.value = content.description
   if (Array.isArray(content.samples)) {
-    samples.value = content.samples as import('~/utils/oiWorkspace').ProblemSample[];
+    samples.value = content.samples as import("~/utils/oiWorkspace").ProblemSample[]
   }
-  if (content.submission_mode === 'code' || content.submission_mode === 'artifact') {
-    submissionMode.value = content.submission_mode;
+  if (content.submission_mode === "code" || content.submission_mode === "artifact" || content.submission_mode === "prediction" || content.submission_mode === "ui") {
+    submissionMode.value = content.submission_mode
   }
-  if (content.artifact_max_size_mb === null || typeof content.artifact_max_size_mb === 'number') {
-    artifactMaxSizeMb.value = content.artifact_max_size_mb as number | null;
+  if (content.artifact_max_size_mb === null || typeof content.artifact_max_size_mb === "number") {
+    artifactMaxSizeMb.value = content.artifact_max_size_mb as number | null
   }
   if (content.runtime_config) {
-    applyRuntimeConfig(content.runtime_config as RuntimeConfigPayload);
+    applyRuntimeConfig(content.runtime_config as RuntimeConfigPayload)
   }
-  const llmConfig = content.llm_config as { max_calls?: number | null; max_tokens?: number | null } | null;
+  const llmConfig = content.llm_config as
+    | { max_calls?: number | null; max_tokens?: number | null; models?: string[] }
+    | null
   if (llmConfig) {
-    llmEnabled.value = true;
-    llmMaxCalls.value = llmConfig.max_calls != null ? String(llmConfig.max_calls) : '';
-    llmMaxTokens.value = llmConfig.max_tokens != null ? String(llmConfig.max_tokens) : '';
+    llmEnabled.value = true
+    llmMaxCalls.value = llmConfig.max_calls != null ? String(llmConfig.max_calls) : ""
+    llmMaxTokens.value = llmConfig.max_tokens != null ? String(llmConfig.max_tokens) : ""
+    llmModels.value = llmConfig.models?.length ? [...llmConfig.models] : ["default"]
   }
 }
 
@@ -334,37 +379,49 @@ onMounted(async () => {
   // 登录态可能只有 session 基础信息，先拉取完整用户（含 RBAC permissions），
   // 供「新建标签」按钮按 tag:manage 权限正确显隐。
   if (user.value && !user.value.permissions) {
-    await fetchUser();
+    await fetchUser()
   }
-  loadTags();
-  loadJudgeImages();
-  if (isEditMode.value) loadProblem();
-});
+  loadTags()
+  loadJudgeImages()
+  if (isEditMode.value) loadProblem()
+})
 
 // ── 提交 ──
-const saving = ref(false);
-const saveError = ref('');
-const fieldErrors = ref<Record<string, string>>({});
+const saving = ref(false)
+const saveError = ref("")
+const fieldErrors = ref<Record<string, string>>({})
 
 function validate(): boolean {
-  const errors: Record<string, string> = {};
-  if (!title.value.trim()) errors.title = '请输入题目标题';
-  if (!description.value.trim()) errors.description = '请输入题目描述';
-  if (!evaluatorImage.value.trim()) errors.evaluator_image = '请选择 evaluator 镜像';
-  if (!solutionImage.value.trim()) errors.solution_image = '请选择 solution 镜像';
-  if (llmEnabled.value) {
-    if (!evaluatorNetworkEnabled.value) errors.evaluator_network = '启用 LLM 必须开启 Evaluator 联网';
-    const maxCalls = llmMaxCalls.value === '' ? null : Number(llmMaxCalls.value);
-    const maxTokens = llmMaxTokens.value === '' ? null : Number(llmMaxTokens.value);
+  const errors: Record<string, string> = {}
+  if (!title.value.trim()) errors.title = "请输入题目标题"
+  if (!description.value.trim()) errors.description = "请输入题目描述"
+  if (!evaluatorImage.value.trim()) errors.evaluator_image = "请选择 evaluator 镜像"
+  // prediction 无 Solution 容器，不要求 solution 镜像
+  if (!isPredictionMode.value && !solutionImage.value.trim()) errors.solution_image = "请选择 solution 镜像"
+  if (llmEnabled.value && !isPredictionMode.value) {
+    if (!evaluatorNetworkEnabled.value) errors.evaluator_network = "启用 LLM 必须开启 Evaluator 联网"
+    if (llmModels.value.length === 0) errors.llm_models = "请至少选择一个模型"
+    else if (llmModels.value.length > 8) errors.llm_models = "最多选择 8 个模型"
+    const maxCalls = llmMaxCalls.value === "" ? null : Number(llmMaxCalls.value)
+    const maxTokens = llmMaxTokens.value === "" ? null : Number(llmMaxTokens.value)
     if (maxCalls !== null && (!Number.isInteger(maxCalls) || maxCalls <= 0)) {
-      errors.llm_max_calls = '调用上限必须是正整数';
+      errors.llm_max_calls = "调用上限必须是正整数"
     }
     if (maxTokens !== null && (!Number.isInteger(maxTokens) || maxTokens <= 0)) {
-      errors.llm_max_tokens = 'token 上限必须是正整数';
+      errors.llm_max_tokens = "token 上限必须是正整数"
     }
   }
-  fieldErrors.value = errors;
-  return Object.keys(errors).length === 0;
+  // prediction 的 workspace 上限：留空 = 用 judge 缺省；填了必须是范围内的正整数
+  // （越界会被 judge 收敛并打警告，但 UI 提前报错更直观）。
+  if (isPredictionMode.value && evaluatorWorkspaceSizeMb.value !== null &&
+      evaluatorWorkspaceSizeMb.value !== undefined) {
+    const ws = Number(evaluatorWorkspaceSizeMb.value)
+    if (!Number.isInteger(ws) || ws < 512 || ws > 16384) {
+      errors.evaluator_workspace = "工作区上限必须是 512–16384 的整数（留空用缺省）"
+    }
+  }
+  fieldErrors.value = errors
+  return Object.keys(errors).length === 0
 }
 
 /** 双容器运行配置负载（AI 题内容的一部分）。 */
@@ -376,39 +433,52 @@ function buildRuntimeConfig(): RuntimeConfigPayload {
       time_limit_ms: evaluatorTimeLimitMs.value,
       memory_limit_mb: evaluatorMemoryLimitMb.value,
       ...(evaluatorNetworkEnabled.value ? { network: { enabled: true } } : {}),
+      // 仅 prediction 模式提交该字段；其他模式省略，避免写入无意义配置。
+      ...(isPredictionMode.value && typeof evaluatorWorkspaceSizeMb.value === "number"
+        ? { workspace_size_mb: evaluatorWorkspaceSizeMb.value }
+        : {}),
     },
-    solution: {
-      image: solutionImage.value.trim(),
-      call_timeout_ms: solutionCallTimeoutMs.value,
-      memory_limit_mb: solutionMemoryLimitMb.value,
-    },
-  };
+    // prediction 无 Solution 容器：省略 solution，避免提交空壳配置
+    ...(isPredictionMode.value ? {} : {
+      solution: {
+        image: solutionImage.value.trim(),
+        call_timeout_ms: solutionCallTimeoutMs.value,
+        memory_limit_mb: solutionMemoryLimitMb.value,
+      },
+    }),
+  }
 }
 
 function buildLlmPayload() {
-  const llmMaxCallsNum = llmMaxCalls.value === '' ? null : Number(llmMaxCalls.value);
-  const llmMaxTokensNum = llmMaxTokens.value === '' ? null : Number(llmMaxTokens.value);
+  const llmMaxCallsNum = llmMaxCalls.value === "" ? null : Number(llmMaxCalls.value)
+  const llmMaxTokensNum = llmMaxTokens.value === "" ? null : Number(llmMaxTokens.value)
+  // prediction 题禁止 LLM 配置（后端 400）：省略该字段而非发 null。
+  // 发 null 会被 update 路径当作「显式清空」，从而绕过「切 prediction 前先移除
+  // LLM」的守卫。
+  if (isPredictionMode.value) return undefined
   return llmEnabled.value
     ? {
-      ...(llmMaxCallsNum !== null ? { max_calls: llmMaxCallsNum } : {}),
-      ...(llmMaxTokensNum !== null ? { max_tokens: llmMaxTokensNum } : {}),
-    }
-    : null;
+        ...(llmMaxCallsNum !== null ? { max_calls: llmMaxCallsNum } : {}),
+        ...(llmMaxTokensNum !== null ? { max_tokens: llmMaxTokensNum } : {}),
+        // 仅 default 时不写 models，保持与旧题 / 旧版本完全一致
+        ...(llmModels.value.length === 1 && llmModels.value[0] === "default" ? {} : { models: llmModels.value }),
+      }
+    : null
 }
 
 /** 草稿内容（kind=ai）：题面 + 评测配置 + 模板 + 产物上限 + LLM。 */
 function buildContent(): Record<string, unknown> {
   return {
-    kind: 'ai',
+    kind: "ai",
     title: title.value.trim(),
     description: description.value.trim(),
     samples: samples.value,
     submission_mode: submissionMode.value,
     runtime_config: buildRuntimeConfig(),
-    template_content: '',
+    template_content: "",
     artifact_max_size_mb: artifactMaxSizeMb.value,
-    llm_config: buildLlmPayload(),
-  };
+    llm_config: buildLlmPayload() ?? null,
+  }
 }
 
 /** 管理信息（题目行）：难度、可见性、标签；内容不在这里提交。 */
@@ -417,82 +487,81 @@ async function saveManagement(): Promise<void> {
     difficulty: difficulty.value,
     visibility: visibility.value,
     tag_ids: tagIds.value,
-  });
+  })
 }
 
 /** 保存草稿（编辑模式）：管理信息 + 共享草稿内容，两个动作都成功才算保存。 */
 async function handleSaveDraft() {
-  if (!validate() || !props.problemId) return;
-  draftSaving.value = true;
-  saveError.value = '';
+  if (!validate() || !props.problemId) return
+  draftSaving.value = true
+  saveError.value = ""
   try {
-    await saveManagement();
+    await saveManagement()
     const saved = await versions.saveDraft(
       props.problemId,
       buildContent(),
       draftRevision.value ?? 0,
-    );
-    draftRevision.value = saved.revision;
-    toast.success('草稿已保存（发布后才会成为新的作答版本）');
+    )
+    draftRevision.value = saved.revision
+    toast.success("草稿已保存（发布后才会成为新的作答版本）")
   } catch (err: unknown) {
-    saveError.value = extractApiError(err).message;
+    saveError.value = extractApiError(err).message
   } finally {
-    draftSaving.value = false;
+    draftSaving.value = false
   }
 }
 
 /** 发布草稿为新版本：先保存当前编辑内容，再显式发布。 */
 async function handlePublish() {
-  if (!validate() || !props.problemId) return;
-  publishing.value = true;
-  saveError.value = '';
+  if (!validate() || !props.problemId) return
+  publishing.value = true
+  saveError.value = ""
   try {
-    await saveManagement();
+    await saveManagement()
     const saved = await versions.saveDraft(
       props.problemId,
       buildContent(),
       draftRevision.value ?? 0,
-    );
-    draftRevision.value = saved.revision;
-    const published = await versions.publish(props.problemId, saved.revision);
-    draftRevision.value = published.draft_revision;
-    latestVersion.value = published.version;
+    )
+    draftRevision.value = saved.revision
+    const published = await versions.publish(props.problemId, saved.revision)
+    draftRevision.value = published.draft_revision
+    latestVersion.value = published.version
     toast.success(
-      published.unchanged ? `内容未变化，继续使用 V${published.version}` : `已发布 V${published.version}`,
-    );
-    await loadProblem();
+      published.unchanged
+        ? `内容未变化，继续使用 V${published.version}`
+        : `已发布 V${published.version}`,
+    )
+    await loadProblem()
   } catch (err: unknown) {
-    saveError.value = extractApiError(err).message;
+    saveError.value = extractApiError(err).message
   } finally {
-    publishing.value = false;
+    publishing.value = false
   }
 }
 
 async function handleSubmit() {
-  if (isEditMode.value) return;
-  if (!validate()) return;
-  saving.value = true;
-  saveError.value = '';
+  if (isEditMode.value) return
+  if (!validate()) return
+  saving.value = true
+  saveError.value = ""
   try {
-    const res = await api.post<{ data: { id: string } }>('/api/v1/problems', {
-      title: title.value.trim(),
-      description: description.value.trim(),
-      samples: samples.value,
-      visibility: visibility.value,
+    const res = await api.post<{ data: { id: string } }>("/api/v1/problems", {
+      title: title.value.trim(), description: description.value.trim(), samples: samples.value, visibility: visibility.value,
       difficulty: difficulty.value,
       tag_ids: tagIds.value,
       runtime_config: buildRuntimeConfig(),
       submission_mode: submissionMode.value,
       artifact_max_size_mb: artifactMaxSizeMb.value,
       llm: buildLlmPayload(),
-    });
-    savedProblemId.value = res.data.id;
-    toast.success('题目已创建（尚未发布：发布后才可作答）');
-    emit('saved', res.data.id);
+    })
+    savedProblemId.value = res.data.id
+    toast.success("题目已创建（尚未发布：发布后才可作答）")
+    emit("saved", res.data.id)
   } catch (err: unknown) {
-    saveError.value = extractApiError(err).message;
+    saveError.value = extractApiError(err).message
   } finally {
-    saving.value = false;
+    saving.value = false
   }
 }
 </script>
@@ -515,35 +584,26 @@ async function handleSubmit() {
 
   <!-- 正常表单 -->
   <div v-else class="bg-white border border-border rounded-xl overflow-hidden">
-    <div v-if="saveError"
-      class="mx-6 mt-4 px-3.5 py-2.5 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">{{ saveError }}</div>
+    <div v-if="saveError" class="mx-6 mt-4 px-3.5 py-2.5 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">{{ saveError }}</div>
 
     <!-- 基本信息 -->
     <section class="px-6 py-5 border-b border-border last:border-b-0">
       <h2 class="text-sm font-semibold text-text mb-0">基本信息</h2>
       <div class="grid grid-cols-2 gap-3.5 mt-3">
-        <!-- 编辑模式：只读题号和类型 -->
-        <template v-if="isEditMode">
-          <div class="flex flex-col gap-1">
-            <label class="text-xs font-semibold text-text">题号</label>
-            <span
-              class="px-3 py-2 text-sm border border-border rounded-md bg-gray-50 text-text-secondary cursor-default">{{ displayId }}</span>
-          </div>
-        </template>
+        <div v-if="isEditMode" class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">题号</label>
+          <span class="font-mono">{{ displayId }}</span>
+        </div>
 
         <div class="flex flex-col gap-1">
           <label class="text-xs font-semibold text-text">标题 <span class="text-red-600">*</span></label>
-          <input v-model="title"
-            class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:input-base-focus bg-white"
-            placeholder="题目标题" />
+          <input v-model="title" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:input-base-focus bg-white" placeholder="题目标题" />
           <p v-if="fieldErrors.title" class="text-xs text-red-600">{{ fieldErrors.title }}</p>
         </div>
 
         <div class="flex flex-col gap-1">
           <label class="text-xs font-semibold text-text">难度</label>
-          <USelect v-model="difficulty"
-            :items="[{ label: '简单', value: 'easy' }, { label: '中等', value: 'medium' }, { label: '困难', value: 'hard' }]"
-            class="w-full" />
+          <USelect v-model="difficulty" :items="[{ label: '简单', value: 'easy' }, { label: '中等', value: 'medium' }, { label: '困难', value: 'hard' }]" class="w-full" />
         </div>
 
         <div class="flex flex-col gap-1">
@@ -553,16 +613,19 @@ async function handleSubmit() {
             :items="[
               { label: '代码提交（code）', value: 'code' },
               { label: '产物提交（artifact / zip）', value: 'artifact' },
+              { label: '预测提交（prediction / 单文件）', value: 'prediction' },
+              { label: '界面提交（ui，题包需含 ui.html）', value: 'ui' },
             ]"
             class="w-full"
           />
+          <p v-if="isPredictionMode" class="text-xs text-warning-text">
+            预测提交无 Solution 容器，选手上传单个预测结果文件（csv / npy / parquet 等），平台在本地 GPU 对照隐藏标签出分。
+          </p>
         </div>
 
-        <div v-if="submissionMode === 'artifact'" class="flex flex-col gap-1">
-          <label class="text-xs font-semibold text-text">artifact 大小上限（MB）</label>
-          <input v-model.number="artifactMaxSizeMb" type="number" min="1"
-            class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:input-base-focus bg-white"
-            placeholder="留空使用 NOJ 默认上限" />
+        <div v-if="submissionMode === 'artifact' || isPredictionMode" class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">{{ isPredictionMode ? '预测文件大小上限（MB）' : 'artifact 大小上限（MB）' }}</label>
+          <input v-model.number="artifactMaxSizeMb" type="number" min="1" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:input-base-focus bg-white" placeholder="留空使用 NOJ 默认上限" />
         </div>
 
         <div class="flex flex-col gap-1 col-span-2">
@@ -579,13 +642,11 @@ async function handleSubmit() {
             placeholder="搜索标签..."
           />
           <div class="flex flex-wrap gap-2">
-            <label v-for="t in filteredTagOptions" :key="t.value"
-              class="flex items-center gap-1 text-xs text-text cursor-pointer">
+            <label v-for="t in filteredTagOptions" :key="t.value" class="flex items-center gap-1 text-xs text-text cursor-pointer">
               <input v-model="tagIds" type="checkbox" :value="t.value" class="accent-primary" />
               {{ t.label }}
             </label>
-            <span v-if="filteredTagOptions.length === 0"
-              class="text-xs text-text-muted">{{ tags.length === 0 ? '暂无标签' : '无匹配标签' }}</span>
+            <span v-if="filteredTagOptions.length === 0" class="text-xs text-text-muted">{{ tags.length === 0 ? '暂无标签' : '无匹配标签' }}</span>
           </div>
         </div>
       </div>
@@ -601,7 +662,10 @@ async function handleSubmit() {
     <!-- 评测配置（双容器模式） -->
     <section class="px-6 py-5 border-b border-border last:border-b-0">
       <h2 class="text-sm font-semibold text-text mb-3">评测配置（双容器）</h2>
-      <p class="text-xs text-text-muted mb-3">
+      <p v-if="isPredictionMode" class="text-xs text-text-muted mb-3">
+        预测提交仅运行 Evaluator（可信端）：加载支持包与隐藏标签，读取选手上传的预测文件出分，不创建 Solution 容器。
+      </p>
+      <p v-else class="text-xs text-text-muted mb-3">
         所有题目统一使用双容器模式：Evaluator（可信）运行 evaluate.py + 支持包；Solution（不可信）单独运行用户代码。
       </p>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -621,39 +685,46 @@ async function handleSubmit() {
                 placeholder="请选择 evaluator 镜像"
                 class="w-full"
               />
-              <p v-if="!judgeImagesLoading && evaluatorImages.length === 0"
-                class="text-xs text-warning-text">白名单无 evaluator 类型镜像</p>
+              <p v-if="!judgeImagesLoading && evaluatorImages.length === 0" class="text-xs text-warning-text">白名单无 evaluator 类型镜像</p>
               <p v-if="fieldErrors.evaluator_image" class="text-xs text-red-600">{{ fieldErrors.evaluator_image }}</p>
             </div>
             <div class="flex flex-col gap-1">
               <label class="text-xs font-semibold text-text">评测命令 <span class="text-red-600">*</span></label>
-              <input v-model="evaluatorCommand"
-                class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white"
-                placeholder="如：python3 /workspace/evaluate.py" />
+              <input v-model="evaluatorCommand" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" placeholder="如：python3 /workspace/evaluate.py" />
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div class="flex flex-col gap-1">
                 <label class="text-xs font-semibold text-text">总时间 (ms)</label>
-                <input v-model.number="evaluatorTimeLimitMs" type="number"
-                  class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white" min="100" max="60000" />
+                <input v-model.number="evaluatorTimeLimitMs" type="number" class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white" min="100" max="60000" />
               </div>
               <div class="flex flex-col gap-1">
                 <label class="text-xs font-semibold text-text">内存 (MB)</label>
-                <input v-model.number="evaluatorMemoryLimitMb" type="number"
-                  class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white" min="32" max="8192" />
+                <input v-model.number="evaluatorMemoryLimitMb" type="number" class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white" min="32" max="8192" />
               </div>
             </div>
+            <div v-if="isPredictionMode" class="flex flex-col gap-1">
+              <label class="text-xs font-semibold text-text">预测工作区上限 (MB，可留空)</label>
+              <input
+                v-model.number="evaluatorWorkspaceSizeMb"
+                type="number"
+                class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white"
+                min="512"
+                max="16384"
+                placeholder="缺省 2048（受管理员上限约束，范围 512–16384）"
+              />
+              <span class="text-xs text-text-muted">prediction 题的 /workspace tmpfs 容量；越界时 judge 会收敛并记录警告</span>
+              <p v-if="fieldErrors.evaluator_workspace" class="text-xs text-red-600">{{ fieldErrors.evaluator_workspace }}</p>
+            </div>
             <label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text">
-              <input v-model="evaluatorNetworkEnabled" type="checkbox" class="size-4 accent-primary"
-                :disabled="llmEnabled">
+              <input v-model="evaluatorNetworkEnabled" type="checkbox" class="size-4 accent-primary" :disabled="llmEnabled">
               <span>
                 允许 Evaluator 联网
                 <span class="block text-xs text-text-muted">开启后 evaluator 容器以 bridge 模式联网（solution 保持无网，仅能通过 capability 调用间接使用网络）</span>
               </span>
             </label>
 
-            <!-- LLM 配置 -->
-            <div class="border-t border-border mt-2 pt-2.5 flex flex-col gap-2">
+            <!-- LLM 配置（prediction 题禁止：评测只跑 Evaluator，不注入 NOJ_LLM_*） -->
+            <div v-if="!isPredictionMode" class="border-t border-border mt-2 pt-2.5 flex flex-col gap-2">
               <label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text">
                 <input v-model="llmEnabled" type="checkbox" class="size-4 accent-primary">
                 <span>
@@ -683,24 +754,33 @@ async function handleSubmit() {
                       class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white"
                       placeholder="留空使用平台默认"
                     />
-                    <p v-if="fieldErrors.llm_max_tokens"
-                      class="text-xs text-red-600">{{ fieldErrors.llm_max_tokens }}</p>
+                    <p v-if="fieldErrors.llm_max_tokens" class="text-xs text-red-600">{{ fieldErrors.llm_max_tokens }}</p>
                   </div>
                 </div>
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs font-semibold text-text">允许调用的模型</label>
+                  <div class="flex flex-col gap-1 px-2.5 py-2 border border-border rounded-md bg-white">
+                    <label v-for="opt in llmModelChoices" :key="opt.alias" class="flex items-center gap-2 text-sm cursor-pointer">
+                      <input v-model="llmModels" type="checkbox" :value="opt.alias" class="size-4 accent-primary">
+                      <span class="font-mono">{{ opt.alias }}</span>
+                      <span class="text-xs text-text-muted">{{ opt.description }}</span>
+                    </label>
+                  </div>
+                  <p class="text-xs text-text-muted">评测代码调用时在请求里写这里的别名（如 <span class="font-mono">model="default"</span>）；同一道题的模型须属于同一个 Provider。</p>
+                  <p v-if="fieldErrors.llm_models" class="text-xs text-red-600">{{ fieldErrors.llm_models }}</p>
+                </div>
                 <div class="px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-                  <p
-                    class="font-semibold mb-1 flex items-center gap-1.5"><UIcon name="i-lucide-triangle-alert" class="size-3.5" />启用 LLM 调用必须开启 Evaluator 联网</p>
+                  <p class="font-semibold mb-1 flex items-center gap-1.5"><UIcon name="i-lucide-triangle-alert" class="size-3.5" />启用 LLM 调用必须开启 Evaluator 联网</p>
                   <p>联网已自动开启且不可关闭，直到移除 LLM 配置。</p>
                 </div>
-                <p v-if="fieldErrors.evaluator_network"
-                  class="text-xs text-red-600">{{ fieldErrors.evaluator_network }}</p>
+                <p v-if="fieldErrors.evaluator_network" class="text-xs text-red-600">{{ fieldErrors.evaluator_network }}</p>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Solution 卡片 -->
-        <div class="border border-border rounded-lg p-3.5 bg-gray-50">
+        <!-- Solution 卡片（prediction 无 Solution 容器） -->
+        <div v-if="!isPredictionMode" class="border border-border rounded-lg p-3.5 bg-gray-50">
           <h3 class="text-xs font-semibold text-text mb-2.5 flex items-center gap-1.5">
             <span class="px-1.5 py-0.5 bg-warning-text text-white text-[10px] rounded">Solution</span>
             不可信端（运行用户代码，隔离)
@@ -715,20 +795,17 @@ async function handleSubmit() {
                 placeholder="请选择 solution 镜像"
                 class="w-full"
               />
-              <p v-if="!judgeImagesLoading && solutionImages.length === 0"
-                class="text-xs text-warning-text">白名单无 solution 类型镜像 — 管理员需先添加并标记 kind='solution'</p>
+              <p v-if="!judgeImagesLoading && solutionImages.length === 0" class="text-xs text-warning-text">白名单无 solution 类型镜像 — 管理员需先添加并标记 kind='solution'</p>
               <p v-if="fieldErrors.solution_image" class="text-xs text-red-600">{{ fieldErrors.solution_image }}</p>
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div class="flex flex-col gap-1">
                 <label class="text-xs font-semibold text-text">单次调用超时 (ms)</label>
-                <input v-model.number="solutionCallTimeoutMs" type="number"
-                  class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white" min="100" max="30000" />
+                <input v-model.number="solutionCallTimeoutMs" type="number" class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white" min="100" max="30000" />
               </div>
               <div class="flex flex-col gap-1">
                 <label class="text-xs font-semibold text-text">内存 (MB)</label>
-                <input v-model.number="solutionMemoryLimitMb" type="number"
-                  class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white" min="16" max="4096" />
+                <input v-model.number="solutionMemoryLimitMb" type="number" class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white" min="16" max="4096" />
               </div>
             </div>
           </div>
@@ -738,14 +815,9 @@ async function handleSubmit() {
 
     <!-- 支持包上传 -->
     <section class="px-6 py-5 border-b border-border last:border-b-0">
-      <UFormField label="可见性">
-        <USelect v-model="visibility" :items="[{label:'公开',value:'public'},{label:'私有',value:'private'}]"
-          class="w-full" />
-      </UFormField>
+      <UFormField label="可见性"><USelect v-model="visibility" :items="[{label:'公开',value:'public'},{label:'私有',value:'private'}]" class="w-full" /></UFormField>
       <ProblemSampleEditor v-model="samples" v-model:statement="description" />
-      <SupportPackageUpload :problem-id="uploadProblemId" :has-package="hasSupportPackage"
-        :draft-revision="draftRevision" :disabled="!uploadProblemId || draftRevision === null"
-        @package-changed="onPackageChanged" />
+      <SupportPackageUpload :problem-id="uploadProblemId" :has-package="hasSupportPackage" :draft-revision="draftRevision" :disabled="!uploadProblemId || draftRevision === null" @package-changed="onPackageChanged" />
     </section>
 
     <!-- 题目数据（仅编辑模式）：出题人视角的评测洞察 -->
@@ -756,7 +828,7 @@ async function handleSubmit() {
           <p class="mt-1 text-xs text-text-secondary">评测状态分布与用例失败分布，用于定位题面歧义与数据强度问题。</p>
         </div>
         <UButton color="neutral" variant="outline" size="sm" :loading="statsLoading" @click="loadStats">
-          {{ statsDetail ? '刷新' : '加载数据' }}
+          {{ statsDetail ? "刷新" : "加载数据" }}
         </UButton>
       </div>
       <p v-if="statsError" class="mt-3 text-sm text-error-text">{{ statsError }}</p>
@@ -771,7 +843,7 @@ async function handleSubmit() {
     <!-- 提交按钮：创建 = 建题；编辑 = 保存草稿 / 发布版本两个独立动作 -->
     <div class="flex flex-wrap items-center justify-end gap-2.5 px-6 py-4">
       <span v-if="isEditMode" class="mr-auto text-xs text-text-secondary">
-        {{ latestVersion ? `当前最新版 V${latestVersion}` : '尚未发布（发布后才可作答）' }}
+        {{ latestVersion ? `当前最新版 V${latestVersion}` : "尚未发布（发布后才可作答）" }}
         <span v-if="draftRevision !== null" class="text-text-muted">· 草稿 revision {{ draftRevision }}</span>
       </span>
       <template v-if="isEditMode">
@@ -805,7 +877,7 @@ async function handleSubmit() {
         @click="handleSubmit"
       >
         <UIcon name="i-lucide-save" class="size-4" />
-        {{ saving ? '创建中...' : '创建题目' }}
+        {{ saving ? "创建中..." : "创建题目" }}
       </UButton>
     </div>
   </div>
@@ -816,9 +888,7 @@ async function handleSubmit() {
       <div class="flex flex-col gap-3">
         <div class="flex flex-col gap-1">
           <label class="text-13px font-semibold text-text">名称 <span class="text-error-text">*</span></label>
-          <input v-model="newTagName"
-            class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:input-base-focus"
-            placeholder="标签名称" />
+          <input v-model="newTagName" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:input-base-focus" placeholder="标签名称" />
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-13px font-semibold text-text">类型 <span class="text-error-text">*</span></label>

@@ -1,5 +1,5 @@
-import type { WorkspaceDetail } from './workspace';
-import { workspacePath } from './workspace';
+import type { WorkspaceDetail } from './workspace.ts';
+import { workspacePath } from './workspace.ts';
 
 /** 导航只表达可进入的功能入口，具体资源和班级授权仍由接口决定。 */
 export function workspaceNavigation(domain: WorkspaceDetail) {

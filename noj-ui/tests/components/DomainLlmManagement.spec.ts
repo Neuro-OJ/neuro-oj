@@ -12,6 +12,7 @@ const api = {
   provider: vi.fn(),
   updateProvider: vi.fn(),
   saveQuota: vi.fn(),
+  testProvider: vi.fn(),
 };
 const scope = ref('school'), user = ref({ id: 'owner' });
 const provider = (revision = 3) => ({
@@ -42,7 +43,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   scope.value = 'school';
   user.value = { id: 'owner' };
-  for (const [name, value] of Object.entries({ computed, ref, reactive, watch })) vi.stubGlobal(name, value);
+  for (const [name, value] of Object.entries({ computed, ref, reactive, shallowRef, watch })) {
+    vi.stubGlobal(name, value);
+  }
   vi.stubGlobal('definePageMeta', vi.fn());
   vi.stubGlobal('useSeoMeta', vi.fn());
   vi.stubGlobal('useAuth', () => ({ user }));
@@ -103,6 +106,7 @@ async function view() {
     global: {
       stubs: {
         UCard: { template: '<section><slot /></section>' },
+        DomainLlmAliases: true,
         UAlert: { props: ['title', 'description'], template: '<p>{{ title }} {{ description }}</p>' },
         UButton: { template: '<button><slot /></button>' },
         UInput: input,
@@ -123,6 +127,27 @@ async function view() {
   return result;
 }
 describe('域 LLM 并发编辑与自然配额对象', () => {
+  it('Provider编辑保留RPM和TPM，连接测试明确属于当前域Provider', async () => {
+    api.providers.mockResolvedValue({ data: [{ ...provider(), rpm_limit: 12, tpm_limit: 3000 }] });
+    api.testProvider.mockResolvedValue({ data: { status: 'ok', model: 'school-model', latency_ms: 18 } });
+    const result = await view();
+    await result.findAll('button').find((button) => button.text() === '编辑')!.trigger('click');
+    expect((result.get('input[aria-label="Provider RPM 上限"]').element as HTMLInputElement).value).toBe('12');
+    await result.findAll('form').find((form) => form.text().includes('API Key'))!.trigger('submit');
+    await flushPromises();
+    expect(api.updateProvider).toHaveBeenCalledWith(
+      'school',
+      'p1',
+      expect.objectContaining({ rpm_limit: 12, tpm_limit: 3000 }),
+      3,
+    );
+    await result.findAll('button').find((button) => button.text() === '测试连接')!.trigger('click');
+    await result.get('input[aria-label="Provider 测试模型"]').setValue('school-model');
+    await result.findAll('form').find((form) => form.text().includes('运行连接测试'))!.trigger('submit');
+    await flushPromises();
+    expect(api.testProvider).toHaveBeenCalledWith('school', 'p1', 'school-model');
+    expect(result.text()).toContain('连接成功，耗时 18 ms');
+  });
   it('成功保存使用自己的写响应版本，随后列表有别人的新版本也不冒充自己的编辑依据', async () => {
     const result = await view();
     await result.findAll('button').find((button) => button.text() === '编辑配额')!.trigger('click');

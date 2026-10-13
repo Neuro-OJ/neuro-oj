@@ -689,6 +689,19 @@ $$ LANGUAGE plpgsql`,
     updated_by TEXT REFERENCES users(id) ON DELETE SET NULL
   )`,
 
+  // 14.1 llm_model_aliases（LLM 模型别名：别名 → Provider + 真实模型）
+  `CREATE TABLE IF NOT EXISTS llm_model_aliases (
+    domain_id TEXT NOT NULL,
+    alias TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
+    provider_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    PRIMARY KEY (domain_id, alias)
+  )`,
+
   // 15. audit_logs (issue #101 + PR-2)
   `CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY,
@@ -719,7 +732,8 @@ $$ LANGUAGE plpgsql`,
       'contest.ranking_snapshot','contest.create','contest.update','contest.delete',
       'contest.participants_add','contest.participants_remove','contest.kind_change','contest.reset_code',
       'judge_images.create','judge_images.update','judge_images.delete','email_delivery.clear_suppression',
-      'llm_provider.create','llm_provider.update','llm_quota.upsert','legal.publish_version',
+      'llm_provider.create','llm_provider.update','llm_quota.upsert','llm_model_alias.upsert',
+      'llm_model_alias.delete','legal.publish_version',
       'legal.data_request_update', ${WORKSPACE_AUDIT_ACTION_SQL})
     ))
   `,
@@ -1122,6 +1136,7 @@ $$ LANGUAGE plpgsql`,
   )`,
   `CREATE INDEX IF NOT EXISTS idx_carousel_slides_enabled_sort ON carousel_slides (is_enabled, sort_order)`,
   ...WORKSPACE_DDL,
+  `ALTER TABLE llm_model_aliases ADD CONSTRAINT llm_model_aliases_domain_id_domains_id_fk FOREIGN KEY (domain_id) REFERENCES domains(id)`,
   ...WORKSPACE_STORAGE_DDL,
   ...CATALOG_WORKSPACE_DDL,
   ...EXECUTION_WORKSPACE_DDL,

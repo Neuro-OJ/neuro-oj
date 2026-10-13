@@ -29,6 +29,7 @@ export const ALL_TABLES = [
   "query_projection_revisions",
   "evaluation_attempts",
   "llm_token_revocations",
+  "llm_model_aliases",
   "submission_version_results",
   "submission_jobs",
   "submission_job_items",

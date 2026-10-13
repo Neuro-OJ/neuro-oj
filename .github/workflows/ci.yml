@@ -429,6 +429,30 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.gateway == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # 域 Provider、revision、持久账本在 PostgreSQL 验证，额度和节流在 Redis 验证。
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj_gateway_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U noj -d noj_gateway_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: 检出代码
@@ -459,7 +483,11 @@ jobs:
 
       - name: 单元测试 (deno test)
         working-directory: noj-llm-gateway
-        run: deno test -A --no-check
+        env:
+          NOJ_LLM_TEST_REDIS_URL: redis://localhost:6379/15
+          NOJ_GATEWAY_TEST_DATABASE_URL: postgres://noj:noj@localhost:5432/noj_gateway_test
+          NOJ_GATEWAY_TEST_REDIS_URL: redis://localhost:6379/15
+        run: deno task test --frozen
 
       - name: 导出 JSDoc 覆盖率检查
         working-directory: noj-llm-gateway

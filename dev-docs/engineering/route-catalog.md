@@ -20,6 +20,7 @@
 | DELETE | `/contests/:id` | noj-core/src/domains/admin/routes/contest.ts |
 | DELETE | `/contests/:id/participants/:userId` | noj-core/src/domains/admin/routes/contest.ts |
 | DELETE | `/judge-images/:id` | noj-core/src/domains/admin/routes/system.ts |
+| DELETE | `/llm/model-aliases/:alias` | noj-core/src/domains/admin/routes/gateway.ts |
 | DELETE | `/me/avatar` | noj-core/src/domains/identity/routes/users.ts |
 | DELETE | `/oauth/accounts/:id` | noj-core/src/domains/identity/routes/auth.ts |
 | DELETE | `/posts/:postId` | noj-core/src/domains/community/routes/community.ts |
@@ -69,6 +70,7 @@
 | GET | `/:id/status` | noj-core/src/domains/submission/routes/submissions.ts |
 | GET | `/:id/support-package` | noj-core/src/domains/catalog/routes/problems.ts |
 | GET | `/:id/template` | noj-core/src/domains/catalog/routes/problems.ts |
+| GET | `/:id/ui` | noj-core/src/domains/catalog/routes/problem-ui.ts |
 | GET | `/:id/unread-count` | noj-core/src/domains/messaging/routes/conversations.ts |
 | GET | `/:id/versions` | noj-core/src/domains/catalog/routes/problems.ts |
 | GET | `/:id/versions/:versionId` | noj-core/src/domains/catalog/routes/problems.ts |
@@ -115,6 +117,8 @@
 | GET | `/health/ready` | noj-core/src/domains/observability/routes/health.ts |
 | GET | `/history` | noj-core/src/domains/identity/routes/checkin.ts |
 | GET | `/judge-images` | noj-core/src/domains/admin/routes/system.ts |
+| GET | `/llm-model-aliases` | noj-core/src/domains/catalog/routes/problems.ts |
+| GET | `/llm/model-aliases` | noj-core/src/domains/admin/routes/gateway.ts |
 | GET | `/llm/providers` | noj-core/src/domains/admin/routes/gateway.ts |
 | GET | `/llm/quotas` | noj-core/src/domains/admin/routes/gateway.ts |
 | GET | `/llm/usage` | noj-core/src/domains/admin/routes/gateway.ts |
@@ -137,6 +141,7 @@
 | GET | `/posts/counts` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/problems` | noj-core/src/domains/admin/routes/catalog.ts |
 | GET | `/problems/:id/preflight` | noj-core/src/domains/admin/routes/catalog.ts |
+| GET | `/problems/:id/self-tests` | noj-core/src/domains/submission/routes/self-tests.ts |
 | GET | `/problems/review` | noj-core/src/domains/admin/routes/catalog.ts |
 | GET | `/public/recent` | noj-core/src/domains/submission/routes/submissions.ts |
 | GET | `/queue/events` | noj-core/src/domains/submission/routes/sse.ts |
@@ -233,6 +238,7 @@
 | POST | `/import-bundle` | noj-core/src/domains/catalog/routes/problems.ts |
 | POST | `/judge-images` | noj-core/src/domains/admin/routes/system.ts |
 | POST | `/llm/providers` | noj-core/src/domains/admin/routes/gateway.ts |
+| POST | `/llm/providers/:id/test` | noj-core/src/domains/admin/routes/gateway.ts |
 | POST | `/llm/quotas` | noj-core/src/domains/admin/routes/gateway.ts |
 | POST | `/login` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/logout` | noj-core/src/domains/identity/routes/auth.ts |
@@ -286,6 +292,7 @@
 | PUT | `/contests/:contestId/problems/:problemId/version` | noj-core/src/domains/admin/routes/problem-versions.ts |
 | PUT | `/contests/:id` | noj-core/src/domains/admin/routes/contest.ts |
 | PUT | `/judge-images/:id` | noj-core/src/domains/admin/routes/system.ts |
+| PUT | `/llm/model-aliases/:alias` | noj-core/src/domains/admin/routes/gateway.ts |
 | PUT | `/llm/providers/:id` | noj-core/src/domains/admin/routes/gateway.ts |
 | PUT | `/me` | noj-core/src/domains/identity/routes/users.ts |
 | PUT | `/problems/:id/effective-version-policy` | noj-core/src/domains/admin/routes/problem-versions.ts |

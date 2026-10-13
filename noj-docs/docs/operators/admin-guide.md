@@ -185,6 +185,13 @@ compose 内 `noj-net` 子网一致），否则所有请求都被解析成反向�
 - Provider、模型和用量属于使用域。域负责人／管理员在 `/d/:slug/llm`
   选择本域启用的 Provider
   与模型，新域须独立配置。平台管理员治理时也须明确目标域。
+- 操作列「测试连接」向本域上游发起一次 1 token
+  的真实请求，验证地址、密钥和模型，并显示耗时或失败原因。
+- 「模型别名」卡片维护本域的「别名 → Provider + 真实模型」映射；`default`
+  对应使用域默认。题目声明能力别名，实际执行由使用域解析。详见
+  [LLM 调用能力](./llm-call-capability.md#模型别名逐题选择模型)。
+- Provider 的 RPM / TPM 上限以 `0` 表示不限；超过上限时网关排队，超时返回
+  429。详见 [LLM 调用能力](./llm-call-capability.md#provider-速率上限与排队)。
 - API Key 保存后**不会**再明文返回，列表中只显示掩码（如
   `sk-****abcd`）；需要更新时重新填写 Key。
 - 只有本域 `enabled=true` 的 Provider 可用于新调用；停用后，持有旧评测 token

@@ -41,12 +41,13 @@ solution。 :::
 }
 ```
 
-| 字段                                       | 必填 | 说明                                                      |
-| ------------------------------------------ | :--: | --------------------------------------------------------- |
-| `llm`                                      |  ❌  | 非 `null` 即启用；`{}` 亦合法，表示启用并沿用平台默认预算 |
-| `llm.max_calls`                            |  ❌  | 单次评测 LLM 调用上限，正整数                             |
-| `llm.max_tokens`                           |  ❌  | 单次评测 billed token 上限，正整数                        |
-| `runtime_config.evaluator.network.enabled` |  ✅  | 启用 LLM 时**必须**为 `true`                              |
+| 字段                                       | 必填 | 说明                                                         |
+| ------------------------------------------ | :--: | ------------------------------------------------------------ |
+| `llm`                                      |  ❌  | 非 `null` 即启用；`{}` 合法，采用默认单次预算                |
+| `llm.max_calls`                            |  ❌  | 单次评测调用上限，正整数                                     |
+| `llm.max_tokens`                           |  ❌  | 单次评测 billed token 上限，正整数                           |
+| `llm.models`                               |  ❌  | 允许调用的能力别名，1–8 个；缺省 `["default"]`，由使用域解析 |
+| `runtime_config.evaluator.network.enabled` |  ✅  | 启用 LLM 时必须为 `true`                                     |
 
 ::: warning 预算不得超过平台天花板 `max_calls` / `max_tokens`
 若提供必须为正整数，且不得超过平台默认上限 （`NOJ_LLM_MAX_CALLS`，默认
@@ -82,10 +83,12 @@ from noj_evaluator_sdk import register_capability
 register_capability("solve_math", evaluate)
 ```
 
-- 用哪个模型由**使用域默认**决定，是唯一权威来源：`eval_token` 只允许
-  `NOJ_LLM_ALLOWED_MODELS` 中的模型（即使用域默认模型一项），传入其他模型会被
-  gateway 以 403 `model_not_allowed` 拒绝。因此请**省略 `model=`**，由 SDK
-  取允许列表首个（使用域默认）。
+- 可调用的名称由题目的 `llm.models` 决定。`eval_token` 只允许
+  `NOJ_LLM_ALLOWED_MODELS` 中的别名，其他名称返回 403 `model_not_allowed`。省略
+  `model=` 时 SDK 使用允许列表的第一个名称。
+- 真实模型与 Provider 由**使用域**配置。`default` 对应该域默认值；`model="fast"`
+  对应该域的 `fast` 映射。评测代码不写真实模型名或 Provider ID。
+- 题包可以跨部署或跨域引用；发布只校验能力名称，缺少使用域映射时拒绝新提交，不使用源域配置。每次评测尝试冻结当时解析的模型映射。
 - `llm.complete(messages=..., **params)` 会读取评测时自动注入的
   `NOJ_LLM_GATEWAY_URL`、`NOJ_LLM_TOKEN`、`NOJ_LLM_ALLOWED_MODELS`（以及
   `NOJ_LLM_PROVIDER_ID`）等环境变量。

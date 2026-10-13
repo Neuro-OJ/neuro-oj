@@ -11,6 +11,8 @@ export function useDomainContestAnswers() {
   return {
     problem: (slug: string, contestId: string, label: string) =>
       api.get<{ data: ContestProblem }>(path(slug, contestId, label), { silent: true }),
+    ui: (slug: string, contestId: string, label: string) =>
+      api.get<{ data: { html: string } }>(`${path(slug, contestId, label)}/ui`, { silent: true }),
     questions: (slug: string, contestId: string, label: string) =>
       api.get<{ data: ObjectiveQuestion[]; version_id: string; version: number }>(
         `${path(slug, contestId, label)}/objective-questions`,

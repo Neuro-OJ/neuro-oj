@@ -21,6 +21,7 @@ import type { SelfTestInput } from "../types/self-tests.ts";
 import {
   cancelDomainSelfTest,
   getDomainSelfTest,
+  listDomainSelfTests,
 } from "../services/domain-self-test-read.ts";
 import {
   getDomainSubmission,
@@ -167,6 +168,29 @@ domainSubmissionsRouter.post(
   submitInDomain,
 );
 
+domainSubmissionsRouter.get(
+  "/domains/:slug/problems/:reference/self-tests",
+  authMiddleware,
+  async (c) => {
+    const { page, perPage } = parsePagination(c, {
+      defaultPerPage: 30,
+      maxPerPage: 100,
+      perPageField: "limit",
+    });
+    const result = await listDomainSelfTests(
+      c.req.param("slug")!,
+      c.req.param("reference")!,
+      c.var.userId,
+      page,
+      perPage,
+    );
+    c.header("Cache-Control", "no-store");
+    return c.json({
+      data: result.data,
+      pagination: buildPaginationMeta(page, perPage, result.total),
+    });
+  },
+);
 domainSubmissionsRouter.post(
   "/domains/:slug/problems/:reference/self-tests",
   authMiddleware,

@@ -208,9 +208,14 @@ export default withMermaid(defineConfig({
           text: "题型实战",
           items: [
             { text: "LLM 智能体调用题", link: "/problemsetters/llm-problem" },
+            { text: "界面题", link: "/problemsetters/ui-problem" },
             {
               text: "客观题套卷出题",
               link: "/problemsetters/objective-problem",
+            },
+            {
+              text: "预测提交题（本地 GPU）",
+              link: "/problemsetters/prediction-problems",
             },
           ],
         },
@@ -247,9 +252,14 @@ export default withMermaid(defineConfig({
           text: "题型实战",
           items: [
             { text: "LLM 智能体调用题", link: "/problemsetters/llm-problem" },
+            { text: "界面题", link: "/problemsetters/ui-problem" },
             {
               text: "客观题套卷出题",
               link: "/problemsetters/objective-problem",
+            },
+            {
+              text: "预测提交题（本地 GPU）",
+              link: "/problemsetters/prediction-problems",
             },
           ],
         },

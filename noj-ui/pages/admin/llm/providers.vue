@@ -20,6 +20,8 @@ interface LlmProvider {
   cost_per_1k_tokens: number
   api_key_masked: string
   enabled: boolean
+  rpm_limit?: number
+  tpm_limit?: number
   created_at: string
   updated_at: string
 }
@@ -38,6 +40,7 @@ const columns: AdminColumn[] = [
   { key: "id", label: "Provider ID" },
   { key: "base_url", label: "Base URL" },
   { key: "cost_per_1k_tokens", label: "费用/1K token" },
+  { key: "rate_limit", label: "RPM / TPM" },
   { key: "api_key_masked", label: "API Key" },
   { key: "enabled", label: "状态" },
   { key: "created_at", label: "创建时间" },
@@ -183,8 +186,16 @@ const formBaseUrl = ref("")
 const formCostPer1k = ref(0)
 const formApiKey = ref("")
 const formEnabled = ref(true)
+// RPM / TPM 上限：0 表示不限；超过时 gateway 排队等待而非直接失败
+const formRpmLimit = ref(0)
+const formTpmLimit = ref(0)
 const saving = ref(false)
 const formError = ref("")
+
+// RPM / TPM 展示：0 或缺失显示「不限」
+function formatLimit(value: number | undefined): string {
+  return value ? value.toLocaleString("zh-CN") : "不限"
+}
 
 // 打开新增表单并清空状态
 function openCreate() {
@@ -194,6 +205,8 @@ function openCreate() {
   formCostPer1k.value = 0
   formApiKey.value = ""
   formEnabled.value = true
+  formRpmLimit.value = 0
+  formTpmLimit.value = 0
   formError.value = ""
   showForm.value = true
 }
@@ -206,6 +219,8 @@ function openEdit(item: LlmProvider) {
   formCostPer1k.value = item.cost_per_1k_tokens ?? 0
   formApiKey.value = ""
   formEnabled.value = item.enabled
+  formRpmLimit.value = item.rpm_limit ?? 0
+  formTpmLimit.value = item.tpm_limit ?? 0
   formError.value = ""
   showForm.value = true
 }
@@ -214,6 +229,12 @@ function openEdit(item: LlmProvider) {
 async function handleSave() {
   if (!formName.value.trim() || !formBaseUrl.value.trim()) {
     formError.value = "名称与 Base URL 均为必填"
+    return
+  }
+  const rpmLimit = Number(formRpmLimit.value)
+  const tpmLimit = Number(formTpmLimit.value)
+  if (![rpmLimit, tpmLimit].every((v) => Number.isSafeInteger(v) && v >= 0)) {
+    formError.value = "RPM / TPM 上限须为非负整数（0 表示不限）"
     return
   }
   saving.value = true
@@ -225,6 +246,8 @@ async function handleSave() {
         base_url: formBaseUrl.value.trim(),
         cost_per_1k_tokens: Number(formCostPer1k.value) || 0,
         enabled: formEnabled.value,
+        rpm_limit: rpmLimit,
+        tpm_limit: tpmLimit,
       }
       if (formApiKey.value.trim()) payload.api_key = formApiKey.value.trim()
       await api.put(`/api/v1/admin/gateway/llm/providers/${editingItem.value.id}`, payload, {
@@ -242,6 +265,8 @@ async function handleSave() {
         cost_per_1k_tokens: Number(formCostPer1k.value) || 0,
         api_key: formApiKey.value.trim(),
         enabled: formEnabled.value,
+        rpm_limit: rpmLimit,
+        tpm_limit: tpmLimit,
       }, { headers: { "If-Match": "0" } })
     }
     showForm.value = false
@@ -251,6 +276,170 @@ async function handleSave() {
     formError.value = extractApiError(err).message
   } finally {
     saving.value = false
+  }
+}
+
+// ─── 连接测试 ─────────────────────────────────────────────
+// gateway 用已保存的 Key 向上游发起 1 token 的真实请求，验证 Base URL / Key / 模型。
+// 上游不通（鉴权失败、限流、超时等）以 status=failed 返回原因，不走错误提示。
+
+interface ProviderTestResult {
+  status: "ok" | "failed"
+  model: string
+  latency_ms: number
+  code?: string
+  message?: string
+}
+
+const showTest = ref(false)
+const testingItem = ref<LlmProvider | null>(null)
+const testModel = ref("")
+const testing = ref(false)
+const testResult = ref<ProviderTestResult | null>(null)
+const testError = ref("")
+
+// 打开连接测试面板；模型默认取平台默认模型
+function openTest(item: LlmProvider) {
+  testingItem.value = item
+  testModel.value = currentDefaultModel.value
+  testResult.value = null
+  testError.value = ""
+  showTest.value = true
+}
+
+async function runTest() {
+  if (!testingItem.value) return
+  const model = testModel.value.trim()
+  if (!model) {
+    testError.value = "请填写要测试的模型名称"
+    return
+  }
+  testing.value = true
+  testResult.value = null
+  testError.value = ""
+  try {
+    const res = await api.post<{ data: ProviderTestResult }>(
+      `/api/v1/admin/gateway/llm/providers/${testingItem.value.id}/test`,
+      { model },
+      { silent: true },
+    )
+    testResult.value = res.data
+  } catch (err: unknown) {
+    testError.value = extractApiError(err).message
+  } finally {
+    testing.value = false
+  }
+}
+
+// ─── 模型别名 ─────────────────────────────────────────────
+// 题目只引用别名（default 恒等于上方平台默认）；这里维护 别名 → Provider + 真实模型。
+// 改映射只影响此后新建的评测尝试，已冻结的尝试与重测不受影响。
+
+interface ModelAlias {
+  alias: string
+  provider_id: string
+  model: string
+  description: string
+  updated_at: string
+  problem_count: number
+}
+
+const aliases = ref<ModelAlias[]>([])
+const aliasLoading = ref(true)
+const aliasError = ref("")
+const showAliasForm = ref(false)
+const editingAlias = ref<ModelAlias | null>(null)
+const aliasName = ref("")
+const aliasProviderId = ref("")
+const aliasModel = ref("")
+const aliasDescription = ref("")
+const aliasSaving = ref(false)
+const aliasFormError = ref("")
+
+function providerName(id: string): string {
+  return items.value.find((p) => p.id === id)?.name ?? `未知（${id.slice(0, 8)}）`
+}
+
+async function loadAliases() {
+  if (!isLoggedIn.value) return
+  aliasLoading.value = true
+  aliasError.value = ""
+  try {
+    const res = await api.get<{ data: ModelAlias[] }>("/api/v1/admin/gateway/llm/model-aliases", { silent: true })
+    aliases.value = res.data
+  } catch (err: unknown) {
+    aliasError.value = extractApiError(err).message
+  } finally {
+    aliasLoading.value = false
+  }
+}
+
+watch(isLoggedIn, (val) => { if (val) loadAliases() }, { immediate: true })
+
+function openAliasCreate() {
+  editingAlias.value = null
+  aliasName.value = ""
+  aliasProviderId.value = currentDefaultProviderId.value || items.value[0]?.id || ""
+  aliasModel.value = ""
+  aliasDescription.value = ""
+  aliasFormError.value = ""
+  showAliasForm.value = true
+}
+
+function openAliasEdit(item: ModelAlias) {
+  editingAlias.value = item
+  aliasName.value = item.alias
+  aliasProviderId.value = item.provider_id
+  aliasModel.value = item.model
+  aliasDescription.value = item.description
+  aliasFormError.value = ""
+  showAliasForm.value = true
+}
+
+async function saveAlias() {
+  const alias = aliasName.value.trim()
+  if (!/^[a-z][a-z0-9_-]{0,31}$/.test(alias)) {
+    aliasFormError.value = "别名须以小写字母开头，仅含小写字母、数字、_、-，且不超过 32 字符"
+    return
+  }
+  if (alias === "default") {
+    aliasFormError.value = "default 是保留别名，请在上方「平台默认 Provider / 模型」中配置"
+    return
+  }
+  if (!aliasProviderId.value || !aliasModel.value.trim()) {
+    aliasFormError.value = "Provider 与模型均为必填"
+    return
+  }
+  aliasSaving.value = true
+  aliasFormError.value = ""
+  try {
+    await api.put(`/api/v1/admin/gateway/llm/model-aliases/${encodeURIComponent(alias)}`, {
+      provider_id: aliasProviderId.value,
+      model: aliasModel.value.trim(),
+      description: aliasDescription.value.trim(),
+    }, { silent: true })
+    showAliasForm.value = false
+    await loadAliases()
+    toast.success("模型别名已保存")
+  } catch (err: unknown) {
+    aliasFormError.value = extractApiError(err).message
+  } finally {
+    aliasSaving.value = false
+  }
+}
+
+async function removeAlias(item: ModelAlias) {
+  const used = item.problem_count > 0
+  const tip = used
+    ? `别名「${item.alias}」被 ${item.problem_count} 道题引用，删除后这些题的提交会失败（已冻结的重测不受影响）。确定强制删除？`
+    : `确定删除别名「${item.alias}」？`
+  if (!window.confirm(tip)) return
+  try {
+    await api.delete(`/api/v1/admin/gateway/llm/model-aliases/${encodeURIComponent(item.alias)}${used ? "?force=true" : ""}`, { silent: true })
+    await loadAliases()
+    toast.success("模型别名已删除")
+  } catch (err: unknown) {
+    toast.error(extractApiError(err).message)
   }
 }
 </script>
@@ -341,6 +530,69 @@ async function handleSave() {
       </div>
     </section>
 
+
+    <!-- 模型别名（题目只引用别名；default 即上方平台默认） -->
+    <section class="bg-white border border-border rounded-xl overflow-hidden">
+      <div class="px-5 py-3 border-b border-border bg-bg-page flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-tags" class="size-4 text-primary" />
+          <h2 class="text-base font-semibold text-text">模型别名</h2>
+        </div>
+        <UButton color="primary" size="sm" variant="outline" @click="openAliasCreate">
+          <UIcon name="i-lucide-plus" class="size-4" />
+          新增别名
+        </UButton>
+      </div>
+      <div class="px-5 py-4 flex flex-col gap-3">
+        <p class="text-xs text-text-secondary">
+          出题人为每道题选择允许调用的别名；<span class="font-mono">default</span> 恒等于上方平台默认。改映射只影响此后新建的评测，已冻结的评测与重测仍使用当时的模型。同一道题的别名须属于同一 Provider。
+        </p>
+        <p v-if="aliasError" class="text-error-text text-xs">{{ aliasError }}</p>
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-xs text-text-secondary border-b border-border">
+              <th class="py-1.5 pr-3 font-semibold">别名</th>
+              <th class="py-1.5 pr-3 font-semibold">Provider</th>
+              <th class="py-1.5 pr-3 font-semibold">真实模型</th>
+              <th class="py-1.5 pr-3 font-semibold">说明</th>
+              <th class="py-1.5 pr-3 font-semibold">引用题数</th>
+              <th class="py-1.5 font-semibold text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-border/60 text-text-muted">
+              <td class="py-1.5 pr-3 font-mono">default</td>
+              <td class="py-1.5 pr-3">{{ currentDefaultProviderId ? providerName(currentDefaultProviderId) : "未配置" }}</td>
+              <td class="py-1.5 pr-3 font-mono">{{ currentDefaultModel || "未配置" }}</td>
+              <td class="py-1.5 pr-3">平台默认（在上方配置）</td>
+              <td class="py-1.5 pr-3">-</td>
+              <td class="py-1.5"></td>
+            </tr>
+            <tr v-for="a in aliases" :key="a.alias" class="border-b border-border/60">
+              <td class="py-1.5 pr-3 font-mono">{{ a.alias }}</td>
+              <td class="py-1.5 pr-3">{{ providerName(a.provider_id) }}</td>
+              <td class="py-1.5 pr-3 font-mono">{{ a.model }}</td>
+              <td class="py-1.5 pr-3">{{ a.description || "-" }}</td>
+              <td class="py-1.5 pr-3 tabular-nums">{{ a.problem_count }}</td>
+              <td class="py-1.5 text-right">
+                <div class="flex gap-1.5 justify-end">
+                  <UButton color="neutral" variant="outline" size="xs" title="编辑" aria-label="编辑" @click="openAliasEdit(a)">
+                    <UIcon name="i-lucide-pencil" class="size-3.5" />
+                  </UButton>
+                  <UButton color="neutral" variant="outline" size="xs" title="删除" aria-label="删除" @click="removeAlias(a)">
+                    <UIcon name="i-lucide-trash-2" class="size-3.5" />
+                  </UButton>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!aliasLoading && aliases.length === 0">
+              <td colspan="6" class="py-3 text-center text-xs text-text-muted">尚未配置自定义别名，所有 LLM 题使用 default</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <AdminTable
       :columns="columns"
       :items="items as unknown as Record<string, unknown>[]"
@@ -357,6 +609,9 @@ async function handleSave() {
             class="ml-1 text-11px px-1.5 py-0.5 rounded font-medium bg-success-bg text-success-text"
           >默认</span>
         </template>
+        <template v-else-if="column.key === 'rate_limit'">
+          <span class="tabular-nums">{{ formatLimit((row as unknown as LlmProvider).rpm_limit) }} / {{ formatLimit((row as unknown as LlmProvider).tpm_limit) }}</span>
+        </template>
         <template v-else-if="column.key === 'enabled'">
           {{ (row as unknown as LlmProvider).enabled ? "启用" : "停用" }}
         </template>
@@ -367,6 +622,9 @@ async function handleSave() {
       </template>
       <template #actions="{ row }">
         <div class="flex gap-1.5 justify-center">
+          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="测试连接" aria-label="测试连接" @click="openTest(row as unknown as LlmProvider)">
+            <UIcon name="i-lucide-plug-zap" class="size-3.5" />
+          </UButton>
           <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" @click="openEdit(row as unknown as LlmProvider)">
             <UIcon name="i-lucide-pencil" class="size-3.5" />
           </UButton>
@@ -401,11 +659,95 @@ async function handleSave() {
         <label class="text-xs font-semibold text-text">API Key {{ editingItem ? "（留空则保持不变）" : "" }} <span v-if="!editingItem" class="text-error-text">*</span></label>
         <input v-model="formApiKey" type="password" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="sk-..." />
       </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">RPM 上限（次/分钟）</label>
+          <input v-model.number="formRpmLimit" type="number" min="0" step="1" class="px-3 py-2 text-sm tabular-nums border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="0" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">TPM 上限（token/分钟）</label>
+          <input v-model.number="formTpmLimit" type="number" min="0" step="1" class="px-3 py-2 text-sm tabular-nums border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="0" />
+        </div>
+      </div>
+      <p class="text-xs text-text-muted -mt-1">
+        按上游账号的限额填写，0 表示不限。超过上限的请求会排队等待，而不是被上游 429 拒绝；排队超过网关 NOJ_LLM_PROVIDER_QUEUE_TIMEOUT_SECONDS（默认 60 秒）才返回 429。
+      </p>
       <div class="flex items-center gap-2 pt-1">
         <USwitch v-model="formEnabled" />
         <span class="text-xs text-text-secondary font-medium">启用此 Provider</span>
       </div>
       <p v-if="formError" class="text-error-text text-xs">{{ formError }}</p>
+    </div>
+  </AdminEditPanel>
+  <!-- Provider 连接测试抽屉 -->
+  <AdminEditPanel
+    :open="showTest"
+    :title="testingItem ? `测试连接：${testingItem.name}` : '测试连接'"
+    :loading="testing"
+    save-text="开始测试"
+    @close="showTest = false"
+    @save="runTest"
+  >
+    <div class="flex flex-col gap-3">
+      <p class="text-xs text-text-secondary">
+        使用已保存的 API Key 向 <span class="font-mono">{{ testingItem?.base_url }}</span> 发起一次 1 token 的真实请求（10 秒超时），会产生极少量费用。
+      </p>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">模型 <span class="text-error-text">*</span></label>
+        <input
+          v-model="testModel"
+          class="px-3 py-2 text-sm font-mono border border-border rounded outline-none transition-colors duration-150 focus:border-primary"
+          placeholder="如：gpt-4o-mini / Qwen/Qwen3-8B"
+          @keydown.enter="runTest"
+        />
+      </div>
+      <p v-if="testError" class="text-error-text text-xs">{{ testError }}</p>
+      <div
+        v-if="testResult"
+        class="flex items-start gap-2 px-3 py-2 rounded border text-sm"
+        :class="testResult.status === 'ok' ? 'bg-success-bg border-success-text/30 text-success-text' : 'bg-error-bg border-error-text/30 text-error-text'"
+      >
+        <UIcon :name="testResult.status === 'ok' ? 'i-lucide-circle-check' : 'i-lucide-circle-x'" class="size-4 mt-0.5 shrink-0" />
+        <div class="flex flex-col gap-0.5">
+          <span class="font-semibold">
+            {{ testResult.status === "ok" ? "连接成功" : "连接失败" }}
+            <span class="font-normal tabular-nums">（{{ testResult.latency_ms }} ms）</span>
+          </span>
+          <span v-if="testResult.message" class="text-xs">{{ testResult.message }}</span>
+          <span class="text-xs font-mono opacity-80">{{ testResult.model }}{{ testResult.code ? ` · ${testResult.code}` : "" }}</span>
+        </div>
+      </div>
+    </div>
+  </AdminEditPanel>
+  <!-- 模型别名编辑抽屉 -->
+  <AdminEditPanel
+    :open="showAliasForm"
+    :title="editingAlias ? `编辑别名：${editingAlias.alias}` : '新增模型别名'"
+    :loading="aliasSaving"
+    save-text="保存别名"
+    @close="showAliasForm = false"
+    @save="saveAlias"
+  >
+    <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">别名 <span class="text-error-text">*</span></label>
+        <input v-model="aliasName" :disabled="!!editingAlias" class="px-3 py-2 text-sm font-mono border border-border rounded outline-none transition-colors duration-150 focus:border-primary disabled:opacity-60" placeholder="如：fast / reasoning" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">Provider <span class="text-error-text">*</span></label>
+        <select v-model="aliasProviderId" class="px-3 py-2 text-sm border border-border rounded outline-none bg-white focus:border-primary">
+          <option v-for="p in items" :key="p.id" :value="p.id">{{ p.name }}{{ p.enabled ? "" : "（已停用）" }}</option>
+        </select>
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">真实模型名 <span class="text-error-text">*</span></label>
+        <input v-model="aliasModel" class="px-3 py-2 text-sm font-mono border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="如：Qwen/Qwen3-8B" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text">说明（出题人可见，≤ 80 字）</label>
+        <input v-model="aliasDescription" maxlength="80" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="如：低延迟、低成本" />
+      </div>
+      <p v-if="aliasFormError" class="text-error-text text-xs">{{ aliasFormError }}</p>
     </div>
   </AdminEditPanel>
 </template>

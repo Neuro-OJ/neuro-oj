@@ -17,6 +17,11 @@ export function useDomainProblems() {
       ),
     detail: (slug: string, reference: string) =>
       api.get<DomainProblemDetail>(domainProblemApiPath(slug, reference), { silent: true }),
+    ui: (slug: string, reference: string, version_id: string) =>
+      api.get<{ data: { html: string } }>(`${domainProblemApiPath(slug, reference)}/ui`, {
+        query: { version_id },
+        silent: true,
+      }),
     template: (slug: string, reference: string, version_id: string) =>
       api.get<{ data: { version_id: string; template_content: string | null } }>(
         `${domainProblemApiPath(slug, reference)}/template`,

@@ -70,7 +70,12 @@ export function isValidDifficulty(value: string): value is Difficulty {
 /**
  * 允许的提交模式。
  */
-export const SUBMISSION_MODES = ["code", "artifact"] as const;
+export const SUBMISSION_MODES = [
+  "code",
+  "artifact",
+  "prediction",
+  "ui",
+] as const;
 export type SubmissionMode = typeof SUBMISSION_MODES[number];
 
 /**
@@ -90,12 +95,24 @@ export interface LlmConfig {
   max_calls?: number;
   /** 单次评测 LLM billed token 上限；缺省 = 平台默认 */
   max_tokens?: number;
+  /**
+   * 允许评测代码调用的模型别名（1–8 项）；缺省 = `["default"]`（平台默认模型）。
+   * 别名 → Provider + 真实模型由管理员在 Provider 管理页维护。
+   */
+  models?: string[];
 }
+
+/** 模型别名格式：小写字母开头，仅含小写字母、数字、`_`、`-`，≤ 32 字符。 */
+export const LLM_MODEL_ALIAS_PATTERN = /^[a-z][a-z0-9_-]{0,31}$/;
+/** 保留别名：恒等于平台默认 Provider + 模型，不入别名表。 */
+export const LLM_DEFAULT_MODEL_ALIAS = "default";
+/** 题目允许的模型别名数量上限。 */
+export const LLM_MAX_MODELS_PER_PROBLEM = 8;
 
 /**
  * 校验 LLM 配置是否合法。
  *
- * 只校验可选预算字段；未知键（含存量的 provider_id/model）忽略，保持前向兼容。
+ * 只校验可选预算与模型别名字段（格式，不查别名是否存在）；未知键（含存量的 provider_id/model）忽略，保持前向兼容。
  */
 export function isValidLlmConfig(value: unknown): value is LlmConfig {
   if (typeof value !== "object" || value === null) return false;
@@ -103,8 +120,14 @@ export function isValidLlmConfig(value: unknown): value is LlmConfig {
   const isValidPositiveInt = (v: unknown): boolean =>
     v === undefined ||
     (typeof v === "number" && Number.isInteger(v) && v > 0);
+  const isValidModels = (v: unknown): boolean =>
+    v === undefined ||
+    (Array.isArray(v) && v.length >= 1 &&
+      v.length <= LLM_MAX_MODELS_PER_PROBLEM &&
+      new Set(v).size === v.length &&
+      v.every((a) => typeof a === "string" && LLM_MODEL_ALIAS_PATTERN.test(a)));
   return isValidPositiveInt(obj.max_calls) &&
-    isValidPositiveInt(obj.max_tokens);
+    isValidPositiveInt(obj.max_tokens) && isValidModels(obj.models);
 }
 
 /**
@@ -148,7 +171,7 @@ export interface CreateProblemInput {
   type?: string;
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective?: boolean;
-  /** 提交模式：code（默认）或 artifact */
+  /** 提交模式：code（默认）/ artifact / prediction */
   submission_mode?: string;
   /** artifact 提交大小上限（MB），可空 */
   artifact_max_size_mb?: number | null;
@@ -173,7 +196,7 @@ export interface UpdateProblemInput {
   tag_ids?: string[];
   /** 客观题标记变更（由客观题改回编程题时必须同时提供 runtime_config） */
   is_objective?: boolean;
-  /** 提交模式变更：code / artifact */
+  /** 提交模式变更：code / artifact / prediction */
   submission_mode?: string;
   /** artifact 提交大小上限（MB），可空 */
   artifact_max_size_mb?: number | null;
@@ -243,7 +266,7 @@ export interface ProblemResponseWithTags {
   visibility: "public" | "private";
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective: boolean;
-  /** 提交模式：code / artifact */
+  /** 提交模式：code / artifact / prediction */
   submission_mode: SubmissionMode;
   /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
   artifact_max_size_mb: number | null;

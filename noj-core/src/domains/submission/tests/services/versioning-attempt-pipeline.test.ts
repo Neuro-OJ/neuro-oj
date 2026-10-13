@@ -308,6 +308,7 @@ Deno.test("pipeline: 任务 run_id 绑定尝试 ID 并携带版本与协议号",
     problem_id: "p-1",
     user_id: "u-1",
     priority: "medium" as const,
+    submission_mode: "code" as const,
     runtime_config: dualConfig,
     language: "python",
     code: "print(1)",
@@ -353,6 +354,7 @@ Deno.test("pipeline: OI 任务无尝试时仍生成唯一 run_id（进度/取消
     problem_id: "p-1",
     user_id: "u-1",
     priority: "medium",
+    submission_mode: "code",
     runtime_config: {
       ...oiConfig,
       languages: [...oiConfig.languages],
@@ -370,6 +372,7 @@ Deno.test("pipeline: OI 任务无尝试时仍生成唯一 run_id（进度/取消
     problem_id: "p-1",
     user_id: "u-1",
     priority: "medium",
+    submission_mode: "code",
     runtime_config: {
       ...oiConfig,
       languages: [...oiConfig.languages],

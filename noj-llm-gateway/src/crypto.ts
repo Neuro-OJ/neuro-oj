@@ -85,6 +85,8 @@ export interface EvalTokenPayload {
   user_id: string;
   provider_id: string;
   allowed_models: string[];
+  /** 模型别名 → 上游真实模型名；缺省表示 allowed_models 即真实模型名 */
+  model_map?: Record<string, string>;
   iat: number;
   exp: number;
   max_calls: number;

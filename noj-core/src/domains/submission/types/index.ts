@@ -10,17 +10,47 @@ import {
   judgeTypeForRuntimeConfig,
   type ProblemRuntimeConfig,
 } from "../../catalog/index.ts";
+import {
+  buildUiSolutionScript,
+  parseUiValues,
+  UI_LANGUAGE,
+  UI_WRAPPED_FILE_NAME,
+  UI_WRAPPED_LANGUAGE,
+} from "./ui-solution.ts";
+
+export * from "./ui-solution.ts";
 
 /** LLM 评测任务字段：携带 gateway 地址与短期 eval_token。 */
 export interface JudgeTaskLlm {
   gateway_url: string;
   eval_token: string;
   provider_id: string;
+  /** 模型别名列表（题目使用非 default 别名时），否则为真实模型名 */
   allowed_models: string[];
+  /**
+   * 别名 → 真实模型名；仅题目使用非 default 别名时存在。供 core 写入执行快照，
+   * judge 忽略该字段（评测代码只能看到别名）。
+   */
+  model_map?: Record<string, string>;
 }
 
 /** 评测任务优先级。 */
 export type JudgeTaskPriority = "high" | "medium" | "low";
+
+/** JudgeTask 的提交模式（与题目 submission_mode 对应）。 */
+export type JudgeSubmissionMode = "code" | "artifact" | "prediction";
+
+/**
+ * 题目提交模式 → 评测任务的提交模式。
+ *
+ * 界面题（`ui`）在构造任务时已被注入为普通 Python 脚本，对 judge 而言就是代码任务，
+ * 因此映射为 `code`；其余模式一一对应。
+ */
+export function toJudgeSubmissionMode(
+  mode: string | null | undefined,
+): JudgeSubmissionMode {
+  return mode === "artifact" || mode === "prediction" ? mode : "code";
+}
 
 /**
  * 当前评测协议版本（Handbook §5.5）。
@@ -68,6 +98,8 @@ export interface JudgeTask {
   user_id: string;
   /** 评测任务优先级（服务端推导，客户端不可声明） */
   priority: JudgeTaskPriority;
+  /** 提交模式（服务端推导，客户端不可声明） */
+  submission_mode: JudgeSubmissionMode;
   /** 评测模式；历史消息缺省由 judge 按 dual 兼容处理。 */
   judge_type: JudgeType;
   /** 双容器或 OI Runtime 配置（必填） */
@@ -105,6 +137,7 @@ export interface BuildJudgeTaskInput {
   problem_id: string;
   user_id: string;
   priority: JudgeTaskPriority;
+  submission_mode: JudgeSubmissionMode;
   runtime_config: ProblemRuntimeConfig;
   /** WASM 活动成本快照，仅服务端任务构造允许注入。 */
   oi_cost_profile?: OiCostProfile;
@@ -112,6 +145,11 @@ export interface BuildJudgeTaskInput {
   judge_type?: JudgeType;
   language: string;
   code: string;
+  /**
+   * 界面提交（`language = "ui"`）必填：出题人的脚本模板，参数 JSON 会被注入其前。
+   * 不进入 JudgeTask（仅用于生成最终脚本）。
+   */
+  script_template?: string;
   file_name?: string;
   download_url?: string;
   artifact_download_url?: string;
@@ -133,6 +171,9 @@ export interface BuildJudgeTaskInput {
  *
  * 可选字段仅在**有值**时写入，保持消息体最小；Rust 侧对可选字段使用
  * `Option` + `#[serde(skip_serializing_if)]`，两者语义一致。
+ *
+ * 界面提交（`language = "ui"`）在此统一包装为 Python 脚本，
+ * judge 侧看到的始终是 `python3` 代码（见 `ui-solution.ts`）。
  */
 export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
   const inferredType = judgeTypeForRuntimeConfig(input.runtime_config);
@@ -155,6 +196,11 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
       throw new BadRequestError("OI 不支持 LLM/artifact 任务");
     }
   }
+  // 界面提交：在此统一包装为 Python 脚本（OI 语言白名单已在上方拦截 ui）
+  const isUi = input.language === UI_LANGUAGE;
+  if (isUi && input.script_template === undefined) {
+    throw new BadRequestError("界面题缺少脚本模板，无法生成评测脚本");
+  }
   const task: JudgeTask = {
     scheduling_version: 1,
     resource_pool: judgeResourcePool(input.runtime_config),
@@ -162,17 +208,24 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
     problem_id: input.problem_id,
     user_id: input.user_id,
     priority: input.priority,
+    submission_mode: input.submission_mode,
     judge_type: input.judge_type ??
       judgeTypeForRuntimeConfig(input.runtime_config),
     runtime_config: structuredClone(input.runtime_config),
-    language: input.language,
-    code: input.code,
+    language: isUi ? UI_WRAPPED_LANGUAGE : input.language,
+    code: isUi
+      ? buildUiSolutionScript(
+        parseUiValues(input.code),
+        input.script_template ?? "",
+      )
+      : input.code,
   };
   if (
     isOiRuntimeConfig(input.runtime_config) &&
     input.runtime_config.backend === "wasm"
   ) task.oi_cost_profile = structuredClone(input.oi_cost_profile!);
-  if (input.file_name !== undefined) task.file_name = input.file_name;
+  if (isUi) task.file_name = UI_WRAPPED_FILE_NAME;
+  else if (input.file_name !== undefined) task.file_name = input.file_name;
   if (input.run_id !== undefined) {
     task.run_id = input.run_id;
     if (!input.submission_id.startsWith("st_")) {
@@ -211,6 +264,7 @@ export const JUDGE_TASK_FIELDS: readonly string[] = [
   "problem_id",
   "user_id",
   "priority",
+  "submission_mode",
   "judge_type",
   "runtime_config",
   "oi_cost_profile",

@@ -6,6 +6,7 @@ import {
   newDomainEditorContent,
   normalizeDomainEditorContent,
 } from '../utils/domain-problem-editor.ts';
+import type { DomainAiRuntime } from '../utils/domain-problem-editor.ts';
 import type { DomainOiRuntime } from '../utils/domain-problem-editor.ts';
 Deno.test('域草稿：OI 编辑保留既有文件扩展、测试点 ID 和专属限制', () => {
   const input = newDomainEditorContent('oi');
@@ -15,6 +16,20 @@ Deno.test('域草稿：OI 编辑保留既有文件扩展、测试点 ID 和专�
   const normalized = normalizeDomainEditorContent(input);
   assertEquals((normalized.runtime_config as DomainOiRuntime).compile_extra_files, ['include.hpp']);
   assertEquals((normalized.runtime_config as DomainOiRuntime).subtasks[0]!.cases[0]!.id, 'stable-case');
+});
+Deno.test('域草稿：预测模式省略Solution，保留工作区；界面与模型能力不丢失', () => {
+  const input = newDomainEditorContent('ai');
+  input.submission_mode = 'prediction';
+  (input.runtime_config as DomainAiRuntime).evaluator.workspace_size_mb = 2048;
+  const prediction = domainEditorPayload(input);
+  assertEquals('solution' in prediction.runtime_config!, false);
+  assertEquals((prediction.runtime_config as DomainAiRuntime).evaluator.workspace_size_mb, 2048);
+  assertEquals('solution' in input.runtime_config!, true);
+  input.submission_mode = 'ui';
+  input.llm_config = { max_calls: 10, models: ['default', 'fast'] };
+  const ui = domainEditorPayload(normalizeDomainEditorContent(input));
+  assertEquals(ui.submission_mode, 'ui');
+  assertEquals(ui.llm_config?.models, ['default', 'fast']);
 });
 Deno.test('域草稿：预算留空省略字段，不改变当前表单或强制Provider模型', () => {
   const input = newDomainEditorContent('ai');

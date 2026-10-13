@@ -7,7 +7,14 @@ import { extractApiError, isNotFoundError, isVersionConflictError } from "~/util
 import type { PublicProblemStats } from "~/utils/problemStats"
 import { useProblemStats } from "~/composables/useProblemStats"
 import { useProblemVersions, type ProblemVersionSummary } from "~/composables/useProblemVersions"
-import { toProblemView, type ProblemResource } from "~/utils/problemView"
+import {
+  ARTIFACT_FILE_ACCEPT,
+  isPredictionView,
+  PREDICTION_FILE_ACCEPT,
+  predictionHint,
+  toProblemView,
+  type ProblemResource,
+} from "~/utils/problemView"
 import { useBreadcrumbLabel } from "~/composables/useBreadcrumb"
 
 const route = useRoute()
@@ -101,6 +108,16 @@ const isDetailPage = computed(() => route.path === `/problems/${problemId}`)
 const isObjective = computed(() => problem.value?.is_objective === true)
 /** artifact 提交模式：选手上传 zip 产物 */
 const isArtifact = computed(() => problem.value?.submission_mode === 'artifact')
+/** prediction 提交模式：选手上传单个预测结果文件（本地 GPU 出分）。 */
+const isPrediction = computed(() => problem.value != null && isPredictionView(problem.value))
+/** artifact 与 prediction 均不进入代码编辑器。 */
+const isFileUploadMode = computed(() => isArtifact.value || isPrediction.value)
+/** 界面题：做题页渲染题包自带的 ui.html */
+const isUi = computed(() => problem.value?.submission_mode === 'ui')
+/** 入口按钮的图标 / 文案（代码题「开始编码」、界面题「打开界面」） */
+const entryIcon = computed(() => (isUi.value ? 'i-lucide-layout-dashboard' : 'i-lucide-code-2'))
+const entryLabel = computed(() => (isUi.value ? '打开界面' : '开始编码'))
+const statementEditorLabel = computed(() => (isUi.value ? '打开界面' : '在编辑器打开'))
 
 /**
  * 作答版本（Handbook §4.2）：提交必须原样回传该 ID。
@@ -144,13 +161,14 @@ const showVersionPicker = computed(() => publishedVersions.value.length > 1)
 const passRequirement = computed(() => {
   if (isObjective.value) return "本套卷为客观题：满分才算通过"
   if (problem.value?.judge_type === "oi") return "OI 题：本次评测 verdict 为 AC 才算通过"
+  if (isPrediction.value) return "预测提交题：按服务端对照隐藏标签得到的有效正分规则判定是否通过"
   return "代码题 / 产物提交题：按当前有效正分规则判定是否通过"
 })
 
-/** 独立编辑器入口（客观题与 artifact 题无编辑器）；显式选版时把版本带进做题页。 */
+/** 独立编辑器入口（客观题与文件上传题无编辑器）；显式选版时把版本带进做题页。 */
 const editorUrl = computed(() => {
   const p = problem.value
-  if (!p || isObjective.value || isArtifact.value) return null
+  if (!p || isObjective.value || isFileUploadMode.value) return null
   const base = `/editor/${p.display_id || problemId}`
   return requestedVersionId.value
     ? `${base}?version_id=${encodeURIComponent(requestedVersionId.value)}`
@@ -169,7 +187,7 @@ function goToEditor() {
   if (editorUrl.value) router.push(editorUrl.value)
 }
 
-// ── artifact 提交 ──
+// ── 文件上传提交（artifact zip / prediction 单文件，共用一套流程）──
 const artifactFile = ref<File | null>(null)
 const artifactSubmitting = ref(false)
 const artifactError = ref('')
@@ -181,10 +199,13 @@ function formatMb(mb: number | null | undefined): string {
   return `${mb} MB`
 }
 
+/** 上传 accept 列表：prediction 单文件白名单，其余为 artifact zip。 */
+const uploadAccept = computed(() => isPrediction.value ? PREDICTION_FILE_ACCEPT : ARTIFACT_FILE_ACCEPT)
+
 async function handleArtifactSubmit() {
   if (!problem.value) return
   if (!artifactFile.value) {
-    artifactError.value = '请选择 zip 文件'
+    artifactError.value = isPrediction.value ? '请选择预测结果文件' : '请选择 zip 文件'
     return
   }
   if (!answerVersionId.value) {
@@ -335,8 +356,8 @@ const publishBlockReason = computed(() => {
                   size="lg"
                   :to="editorUrl"
                 >
-                  <UIcon name="i-lucide-code-2" class="size-5" />
-                  开始编码
+                  <UIcon :name="entryIcon" class="size-5" />
+                  {{ entryLabel }}
                 </UButton>
               </template>
             </ProblemHeader>
@@ -412,20 +433,28 @@ const publishBlockReason = computed(() => {
               v-model:expanded="statementExpanded"
               :content="problem.description"
               :editor-to="editorUrl"
+              :editor-label="statementEditorLabel"
+              :editor-icon="entryIcon"
               :edit-to="editUrl"
             />
 
-            <!-- artifact 题：zip 上传提交 -->
-            <section v-if="isArtifact" class="rounded-xl border border-border bg-white p-6">
-              <h2 class="text-base font-semibold text-text mb-1">提交产物（zip）</h2>
-              <p class="text-sm text-text-secondary">
+            <!-- artifact / prediction 题：文件上传提交（zip 产物 / 预测单文件） -->
+            <section v-if="isFileUploadMode" class="rounded-xl border border-border bg-white p-6">
+              <h2 class="text-base font-semibold text-text mb-1">
+                {{ isPrediction ? '提交预测结果（单文件）' : '提交产物（zip）' }}
+              </h2>
+              <p v-if="isPrediction" class="text-sm text-text-secondary">
+                {{ predictionHint() }}
+                预测文件由题面提供的外链数据集或本地自评产出；大小上限：{{ formatMb(problem.artifact_max_size_mb) }}。
+              </p>
+              <p v-else class="text-sm text-text-secondary">
                 请上传包含 <code class="font-mono text-primary">submission.py</code> 的 zip 压缩包，平台将在云端评测。
                 大小上限：{{ formatMb(problem.artifact_max_size_mb) }}。
               </p>
               <div class="mt-4 flex flex-col gap-3">
                 <input
                   type="file"
-                  accept=".zip,application/zip,application/x-zip-compressed"
+                  :accept="uploadAccept"
                   class="block w-full text-sm text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-signal file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-signal/80"
                   @change="(e: Event) => artifactFile = (e.target as HTMLInputElement).files?.[0] ?? null"
                 />
@@ -447,7 +476,7 @@ const publishBlockReason = computed(() => {
               </div>
             </section>
 
-            <div v-if="!isLoggedIn && !isObjective && !isArtifact" class="text-center text-sm text-text-muted">
+            <div v-if="!isLoggedIn && !isObjective && !isFileUploadMode" class="text-center text-sm text-text-muted">
               <NuxtLink to="/login" class="text-primary no-underline hover:underline">登录</NuxtLink>
               后即可提交代码
             </div>

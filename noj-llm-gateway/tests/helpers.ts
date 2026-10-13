@@ -14,7 +14,7 @@ export class FakeRedis implements RedisClient {
   serverId(): Promise<string> {
     return Promise.resolve("test-server");
   }
-  evalResults: string[] = [];
+  evalResults: unknown[] = [];
 
   incr(): Promise<number> {
     return Promise.resolve(1);
@@ -209,13 +209,18 @@ export const testConfig: GatewayConfig = {
   coreInternalUrl: "http://core.test.invalid",
   usageRetentionDays: 90,
   upstreamAllowedHosts: new Set(),
+  providerQueueTimeoutMs: 60_000,
 };
 
 export async function makeToken(
   config: GatewayConfig = testConfig,
   model = "deepseek-chat",
-  scope: { attemptId?: string; problemVersionId?: string; domainId?: string } =
-    {},
+  scope: {
+    attemptId?: string;
+    problemVersionId?: string;
+    modelMap?: Record<string, string>;
+    domainId?: string;
+  } = {},
 ): Promise<string> {
   const payload: EvalTokenPayload = {
     jti: crypto.randomUUID(),
@@ -227,6 +232,7 @@ export async function makeToken(
     user_id: "user-1",
     provider_id: "prov-1",
     allowed_models: [model],
+    ...(scope.modelMap ? { model_map: scope.modelMap } : {}),
     iat: Math.floor(Date.now() / 1000) - 10,
     exp: Math.floor(Date.now() / 1000) + 3600,
     max_calls: 10,

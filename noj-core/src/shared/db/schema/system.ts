@@ -3,14 +3,17 @@ import {
   boolean,
   check,
   index,
+  integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   unique,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { publicIdColumn } from "./common.ts";
 import { users } from "./identity.ts";
+import { domains } from "./workspace.ts";
 import type { StorageObjectState } from "../../versioning/types.ts";
 import { WORKSPACE_AUDIT_ACTION_SQL } from "../../workspace/audit.ts";
 
@@ -236,6 +239,8 @@ export const auditLogs = pgTable(
         'llm_provider.create',
         'llm_provider.update',
         'llm_quota.upsert',
+        'llm_model_alias.upsert',
+        'llm_model_alias.delete',
         'legal.publish_version',
         'legal.data_request_update'
       ) OR ${table.action} IN (${sql.raw(WORKSPACE_AUDIT_ACTION_SQL)})`,
@@ -334,3 +339,31 @@ export const storageObjects = pgTable(
     sha256Idx: index("idx_storage_objects_sha256").on(table.sha256),
   }),
 );
+
+/**
+ * LLM 模型别名表：别名 → (gateway Provider, 真实模型名)。
+ *
+ * 题目 `llm_config.models` 只引用别名；`default` 为保留别名，不入此表，
+ * 恒等于系统设置 `llm_default_provider_id` + `llm_default_model`。
+ */
+export const llmModelAliases = pgTable("llm_model_aliases", {
+  domain_id: text("domain_id").notNull().references(() => domains.id),
+  alias: text("alias").notNull(),
+  revision: integer("revision").notNull().default(0),
+  /** gateway 内部 Provider UUID */
+  provider_id: text("provider_id").notNull(),
+  /** 上游真实模型名 */
+  model: text("model").notNull(),
+  /** 出题人下拉展示用的简短说明 */
+  description: text("description").notNull().default(""),
+  updated_at: text("updated_at").notNull(),
+  updated_by: text("updated_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.domain_id, table.alias] }),
+  revisionCheck: check(
+    "llm_model_aliases_revision_check",
+    sql`${table.revision} >= 0`,
+  ),
+}));

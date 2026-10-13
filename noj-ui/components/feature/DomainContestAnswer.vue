@@ -3,6 +3,9 @@ import type { ContestProblem } from '~/composables/useContests';
 import type { SubmitResult } from '~/composables/useObjective';
 import { domainAnswerKey } from '~/utils/domain-problems';
 import { extractApiError } from '~/utils/apiError';
+import UiFrame from '~/components/uiproblem/UiFrame.vue';
+import { parseValues, stableStringify, type UiFrameResult } from '~/utils/uiFrame';
+import { PREDICTION_FILE_ACCEPT } from '~/utils/problemView';
 const props = defineProps<
   { slug: string; contestId: string; problem: ContestProblem & { version_id: string }; active: boolean }
 >();
@@ -13,9 +16,13 @@ const api = useDomainContestAnswers(),
   { user } = useAuth();
 const version = ref(props.problem.version_id), versionNumber = ref(props.problem.version);
 const code = ref(''), answers = ref<Record<string, (string | boolean)[]>>({}), file = ref<File | null>(null);
-const language = ref(props.problem.supported_languages?.[0] ?? 'python3');
+const isUi = computed(() => props.problem.submission_mode === 'ui');
+const isPrediction = computed(() => props.problem.submission_mode === 'prediction');
+const isFile = computed(() => ['artifact', 'prediction'].includes(props.problem.submission_mode ?? ''));
+const language = ref(isUi.value ? 'ui' : props.problem.supported_languages?.[0] ?? 'python3');
 const submitting = ref(false), templateLoading = ref(false), failure = ref(''), submissionId = ref('');
 const result = ref<SubmitResult | null>(null);
+const uiResult = ref<UiFrameResult | null>(null);
 const changed = computed(() => version.value !== props.problem.version_id);
 const writable = computed(() =>
   props.active && !changed.value && !submitting.value && (!props.problem.is_objective || !result.value)
@@ -31,6 +38,11 @@ const key = computed(() =>
 );
 const enabled = computed(() => !!user.value);
 const draft = useDomainAnswerDraft(key, code, answers, enabled);
+const uiValues = computed(() => parseValues(code.value));
+const ui = await useAsyncData(
+  () => `${key.value}:ui`,
+  () => isUi.value ? api.ui(props.slug, props.contestId, props.problem.label) : Promise.resolve(null),
+);
 const questions = await useAsyncData(
   () => `${key.value}:questions`,
   () =>
@@ -94,7 +106,7 @@ async function submit() {
       const response = await api.objective(operation.slug, contest, label, version.value, answers.value);
       if (operation.isCurrent()) result.value = response.data;
     } else {
-      const response = props.problem.submission_mode === 'artifact'
+      const response = isFile.value
         ? await api.artifact(operation.slug, contest, label, version.value, file.value!)
         : await api.code(operation.slug, contest, label, version.value, language.value, code.value);
       if (operation.isCurrent()) submissionId.value = response.data.id;
@@ -134,9 +146,20 @@ async function submit() {
       </div>
       <p class="text-xs text-text-muted">一次正式交卷；赛中不返回标准答案和逐题正确性。</p>
     </template>
-    <UFileUpload v-else-if="problem.submission_mode === 'artifact'" :model-value="file" accept=".zip"
-      label="比赛产物 ZIP" :disabled="!writable"
+    <UFileUpload v-else-if="isFile" :model-value="file" :accept="isPrediction ? PREDICTION_FILE_ACCEPT : '.zip'"
+      :label="isPrediction ? '比赛预测结果文件' : '比赛产物 ZIP'" :disabled="!writable"
       @update:model-value="pickedFile" />
+    <template v-else-if="isUi">
+      <UAlert v-if="ui.error.value" color="error" :title="extractApiError(ui.error.value).message" />
+      <UiFrame v-if="ui.data.value" :html="ui.data.value.data.html" :values="uiValues" :result="uiResult" :title="problem.title"
+        :disabled="!writable" class="h-[560px] w-full"
+        @update:values="value => code = stableStringify(value)" @submit="submit" />
+      <ClientOnly>
+        <DomainUiRuns :slug="slug" :problem-id="problem.problem_id" :reference="problem.reference!.display_ref"
+          :contest-id="contestId" :submission-id="submissionId" :self-test="null" :code="code" :writable="writable"
+          @restore="code = $event" @result="uiResult = $event" />
+      </ClientOnly>
+    </template>
     <template v-else>
       <div class="flex gap-3">
         <USelect v-model="language" :items="problem.supported_languages ?? ['python3']" aria-label="比赛提交语言"
@@ -157,7 +180,7 @@ async function submit() {
     <UAlert v-if="result" color="success"
       :title="result.score == null ? '正式交卷已受理，成绩暂未公开' : `本次原始总分：${result.score} 分`" />
     <UButton :loading="submitting"
-      :disabled="!writable || (problem.is_objective ? !questions.data.value : problem.submission_mode === 'artifact' ? !file : !code.trim())"
+      :disabled="!writable || (problem.is_objective ? !questions.data.value : isFile ? !file : !code.trim())"
       @click="submit">{{ problem.is_objective ? '一次正式交卷' : '提交比赛评测' }}</UButton>
   </UCard>
 </template>

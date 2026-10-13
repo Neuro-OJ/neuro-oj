@@ -57,7 +57,7 @@ export function createInternalRouter(deps: InternalDeps): Hono {
   app.get("/internal/providers/:id", async (c) => {
     const id = c.req.param("id");
     const rows = await deps
-      .db`SELECT id, domain_id, revision, name, base_url, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id} AND domain_id = ${
+      .db`SELECT id, domain_id, revision, name, base_url, cost_per_1k_tokens, enabled, rpm_limit, tpm_limit, created_at, updated_at FROM llm_providers WHERE id = ${id} AND domain_id = ${
       domain(c)
     }`;
     if (rows.length === 0) {

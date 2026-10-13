@@ -83,7 +83,7 @@ Deno.test("契约: 规范化输出统一为 v2，无分类、域 ID 或 Provider
     if (result.llm) {
       assertEquals(
         Object.keys(result.llm).every((key) =>
-          key === "max_calls" || key === "max_tokens"
+          key === "max_calls" || key === "max_tokens" || key === "models"
         ),
         true,
       );

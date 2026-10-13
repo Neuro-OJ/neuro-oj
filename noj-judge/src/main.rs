@@ -9,6 +9,7 @@ mod dual;
 mod judge;
 mod mq;
 mod oi;
+mod prediction;
 mod sandbox;
 mod scheduling;
 mod types;
@@ -123,7 +124,8 @@ fn task_memory_reservation(task: &types::JudgeTask) -> (u64, u64) {
             config
                 .evaluator
                 .memory_limit_mb
-                .saturating_add(config.solution.memory_limit_mb),
+                // prediction 任务没有 Solution 容器，只预留 Evaluator 内存。
+                .saturating_add(config.solution.as_ref().map_or(0, |s| s.memory_limit_mb)),
         )
     } else {
         (512, 512)
@@ -214,6 +216,7 @@ fn main() -> Result<()> {
         let cpu_limit_millicores = config.cpu_limit_millicores;
         let max_evaluator_time_ms = config.max_evaluator_time_ms;
         let max_solution_call_timeout_ms = config.max_solution_call_timeout_ms;
+        let prediction_workspace_mb = config.prediction_workspace_mb;
         // F-07：全局并发闸门 + 每用户分布式 claim（同一用户跨 worker 同时最多 1 个评测）。
         // 先获取全局 Semaphore 槽位，再做 per-user 公平调度，避免不同用户任务无限制 spawn。
         if std::env::var_os("JUDGE_MAX_CONCURRENT_JUDGES").is_some() {
@@ -517,6 +520,7 @@ fn main() -> Result<()> {
                             &command_whitelist,
                             max_evaluator_time_ms,
                             max_solution_call_timeout_ms,
+                            prediction_workspace_mb,
                             &task_instance_id,
                             Some((&task_scheduler, &_permit)),
                         );
@@ -671,14 +675,15 @@ mod tests {
                 time_limit_ms: 1000,
                 memory_limit_mb: 256,
                 network: None,
+                workspace_size_mb: None,
             },
-            solution: SolutionRuntime {
+            solution: Some(SolutionRuntime {
                 image: "img".to_string(),
                 call_timeout_ms: 1000,
                 memory_limit_mb: 256,
-            },
+            }),
         };
         assert_eq!(config.evaluator.time_limit_ms, 1000);
-        assert_eq!(config.solution.call_timeout_ms, 1000);
+        assert_eq!(config.solution.as_ref().unwrap().call_timeout_ms, 1000);
     }
 }

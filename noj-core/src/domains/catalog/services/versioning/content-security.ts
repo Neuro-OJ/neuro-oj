@@ -117,6 +117,9 @@ export async function assertPublishedRuntimeSafety(
   if (content.kind !== "ai" || !content.runtime_config) return;
   const runtime = content.runtime_config as RuntimeConfig;
   await validateJudgeImageWithKind(runtime.evaluator.image, "evaluator");
-  await validateJudgeImageWithKind(runtime.solution.image, "solution");
+  // prediction 版本没有 Solution 容器。
+  if (runtime.solution) {
+    await validateJudgeImageWithKind(runtime.solution.image, "solution");
+  }
   enforceResourceLimits(runtime);
 }

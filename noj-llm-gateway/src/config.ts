@@ -26,6 +26,8 @@ export interface GatewayConfig {
   usageRetentionDays: number;
   /** 允许 http / 内网地址的上游主机白名单（小写；内网自建模型与 E2E mock 用） */
   upstreamAllowedHosts: Set<string>;
+  /** Provider RPM/TPM 超限时单个请求的最长排队时间（毫秒），默认 60 秒 */
+  providerQueueTimeoutMs: number;
 }
 
 export function loadConfig(
@@ -45,6 +47,11 @@ export function loadConfig(
     "NOJ_LLM_USAGE_RETENTION_DAYS",
     90,
   );
+  const providerQueueTimeoutMs = parseNonNegativeInteger(
+    env.NOJ_LLM_PROVIDER_QUEUE_TIMEOUT_SECONDS,
+    "NOJ_LLM_PROVIDER_QUEUE_TIMEOUT_SECONDS",
+    60,
+  ) * 1000;
   const upstreamAllowedHosts = parseAllowedHosts(
     env.NOJ_LLM_UPSTREAM_ALLOWED_HOSTS,
   );
@@ -78,6 +85,7 @@ export function loadConfig(
     coreInternalUrl,
     usageRetentionDays,
     upstreamAllowedHosts,
+    providerQueueTimeoutMs,
   };
 }
 

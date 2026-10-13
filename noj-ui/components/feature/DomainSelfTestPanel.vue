@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import type { DomainProblemDetail } from '~/utils/domain-problems';
-import type { DomainSelfTestCase } from '~/composables/useDomainSelfTests';
+import type { DomainSelfTest, DomainSelfTestCase } from '~/composables/useDomainSelfTests';
 import { domainAnswerKey } from '~/utils/domain-problems';
 import { extractApiError } from '~/utils/apiError';
 import type { AssignmentSubmissionOrigin } from '~/utils/education';
 const props = defineProps<
   { slug: string; problem: DomainProblemDetail; code: string; language: string; versionId: string; writable: boolean; assignmentOrigin?: AssignmentSubmissionOrigin }
 >();
-const emit = defineEmits<{ refresh: [] }>();
+const emit = defineEmits<{ refresh: []; result: [record: DomainSelfTest | null] }>();
 const { user } = useAuth(), api = useDomainSelfTests(), capture = useWorkspaceActionScope();
 const id = ref(''), sending = ref(false), cancelling = ref(false), failure = ref('');
 const customs = ref<Array<DomainSelfTestCase & { enabled: boolean }>>([]);
@@ -27,6 +27,7 @@ const record = await useAsyncData(
   () => id.value ? api.detail(props.slug, id.value) : Promise.resolve(null),
 );
 const current = computed(() => record.data.value?.data.id === id.value ? record.data.value.data : null);
+watch(current, value => emit('result', value), { immediate: true });
 const pending = computed(() =>
   !!id.value && !record.error.value && (!current.value || ['pending', 'judging'].includes(current.value.status))
 );
@@ -123,6 +124,7 @@ async function cancel() {
     if (scope.isCurrent()) cancelling.value = false;
   }
 }
+defineExpose({ run });
 </script>
 <template>
   <details class="mt-4 rounded border border-border p-4">

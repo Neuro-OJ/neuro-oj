@@ -1,5 +1,5 @@
 /**
- * LLM 题目配置与 token 签发测试（纯函数，无需 DB）。
+ * LLM 题目能力、使用域默认配置与 token 签发测试。
  */
 import {
   assert,
@@ -23,6 +23,12 @@ import {
   LlmGatewayError,
 } from "../../services/llm.ts";
 import { _resetSystemSettingsForTest } from "../../../system/index.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../../workspace/index.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { domainLlmSettings } from "../../../../shared/db/schema.ts";
 
 Deno.test("llm-config: isValidLlmConfig", () => {
   assert(isValidLlmConfig({}));
@@ -106,6 +112,32 @@ Deno.test("llm-bundle: 未开启网络被拒", () => {
       },
       llm: { provider_id: "p1", model: "qwen-plus" },
     })
+  );
+});
+
+Deno.test("llm-bundle: prediction 模式携带 llm 被拒（judge 不注入 NOJ_LLM_*）", () => {
+  // 回归：prediction 只跑 Evaluator，题目级 LLM 配置不会生效。
+  // 若不在导入期拦截，出题人会在提交期才拿到「环境变量未配置」的评测错误。
+  assertThrows(
+    () =>
+      validateBundleManifest({
+        format_version: 1,
+        title: "预测 LLM 题",
+        type: "P",
+        submission_mode: "prediction",
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            time_limit_ms: 60000,
+            memory_limit_mb: 512,
+            network: { enabled: true },
+          },
+          // prediction 无 Solution 容器
+        },
+        llm: { provider_id: "p1", model: "qwen-plus" },
+      }),
+    BadRequestError,
+    "预测提交题不支持 LLM 配置",
   );
 });
 
@@ -468,7 +500,17 @@ const RUNTIME: RuntimeConfig = {
   },
 };
 
-Deno.test("llm-token: 未配置平台默认时抛错", async () => {
+Deno.test("llm-token: 未配置使用域默认时抛错", async () => {
+  await ensureDefaultWorkspace();
+  await getDb().insert(domainLlmSettings).values({
+    domain_id: DEFAULT_DOMAIN_ID,
+    provider_id: null,
+    model: null,
+    updated_at: new Date().toISOString(),
+  }).onConflictDoUpdate({
+    target: domainLlmSettings.domain_id,
+    set: { provider_id: null, model: null },
+  });
   _resetSystemSettingsForTest();
   Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
   Deno.env.delete("NOJ_LLM_DEFAULT_MODEL");

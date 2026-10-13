@@ -42,6 +42,7 @@ import { domainContestSseRouter } from "./sse.ts";
 import {
   getDomainContestObjectiveQuestions,
   getDomainContestTemplate,
+  getDomainContestUi,
 } from "../services/domain-content.ts";
 
 /** 显式域比赛入口，身份与资源归属由当前数据库授权。 */
@@ -183,6 +184,19 @@ domainContestRouter.get(
   async (c) =>
     c.json(
       await getDomainContestTemplate(
+        c.req.param("slug")!,
+        c.req.param("id")!,
+        c.req.param("label")!,
+        c.var.userId!,
+      ),
+    ),
+);
+domainContestRouter.get(
+  `${path}/:id/problems/:label/ui`,
+  authMiddleware,
+  async (c) =>
+    c.json(
+      await getDomainContestUi(
         c.req.param("slug")!,
         c.req.param("id")!,
         c.req.param("label")!,

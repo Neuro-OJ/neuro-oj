@@ -19,6 +19,12 @@ import {
 } from "../accounting.ts";
 import { recordRejectedUsage, recordUsage } from "../usage.ts";
 import { loadCurrentQuotaCaps } from "../quota-policy.ts";
+import {
+  acquireProviderSlot,
+  ProviderQueueAbortedError,
+  ProviderQueueTimeoutError,
+  type ProviderSlot,
+} from "../provider-throttle.ts";
 import { calcBilledUsage } from "../billing.ts";
 import { inc, observe } from "../metrics.ts";
 import { logger } from "../logger.ts";
@@ -116,6 +122,27 @@ function openAiLimitError(_message: string): Response {
   );
 }
 
+/** 构造 Provider 排队超时的 OpenAI 兼容 429 响应（SDK 会按 Retry-After 退避重试）。 */
+function providerQueueTimeoutError(retryAfterSeconds: number): Response {
+  return new Response(
+    JSON.stringify({
+      error: {
+        message:
+          "Provider rate limit reached and the request timed out while queued",
+        type: "rate_limit_error",
+        code: "provider_queue_timeout",
+      },
+    }),
+    {
+      status: 429,
+      headers: {
+        "content-type": "application/json",
+        "retry-after": String(Math.max(1, retryAfterSeconds)),
+      },
+    },
+  );
+}
+
 /** 创建 OpenAI 兼容代理路由：校验 eval_token → 限流 → 转发 → 真实用量结算/审计。 */
 export function createLlmRouter(deps: LlmDeps): Hono {
   const app = new Hono();
@@ -198,6 +225,19 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     if (!payload.allowed_models.includes(model)) {
       return c.json({ error: "model_not_allowed" }, 403);
     }
+    // 模型别名：token 携带 model_map 时，评测代码请求里的 model 是别名，
+    // 转发前改写为上游真实模型名；无 model_map 时行为不变。
+    let upstreamModel = model;
+    if (payload.model_map) {
+      const mapped = Object.hasOwn(payload.model_map, model)
+        ? payload.model_map[model]
+        : undefined;
+      if (typeof mapped !== "string" || !mapped) {
+        return c.json({ error: "model_not_allowed" }, 403);
+      }
+      upstreamModel = mapped;
+    }
+    const aliasForAudit = upstreamModel === model ? undefined : model;
 
     let providerSecret;
     try {
@@ -248,6 +288,78 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       return c.json({ error: "quota_policy_unavailable" }, 503);
     }
 
+    // Provider 级 RPM / TPM：超限时排队等待（多副本共享 Redis 队列），放在额度
+    // 扣减之前——排队超时的请求不消耗用户/题目配额。
+    let providerSlot: ProviderSlot;
+    try {
+      providerSlot = await acquireProviderSlot(deps.redis, {
+        providerId: payload.provider_id,
+        rpmLimit: providerSecret.provider.rpm_limit ?? 0,
+        tpmLimit: providerSecret.provider.tpm_limit ?? 0,
+        tokens: promptTokens + completionTokens,
+        timeoutMs: deps.config.providerQueueTimeoutMs,
+        signal: c.req.raw.signal,
+      });
+    } catch (err) {
+      if (err instanceof ProviderQueueAbortedError) {
+        // 客户端已断开：不再转发，也无需记录用量
+        return new Response(
+          JSON.stringify({ error: "client_closed_request" }),
+          { status: 499, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (err instanceof ProviderQueueTimeoutError) {
+        inc("noj_llm_provider_queue_timeouts_total");
+        observe(
+          "noj_llm_provider_queue_wait_seconds",
+          Math.max(0, Date.now() - startedAt) / 1000,
+        );
+        logger.warn(
+          "Provider 限流排队超时: provider={provider_id}",
+          { provider_id: payload.provider_id },
+        );
+        await recordRejectedUsage(deps.db, deps.redis, {
+          id: crypto.randomUUID(),
+          domain_id: payload.domain_id,
+          submission_id: payload.submission_id,
+          attempt_id: payload.attempt_id ?? null,
+          problem_version_id: payload.problem_version_id ?? null,
+          problem_id: payload.problem_id,
+          user_id: payload.user_id,
+          provider_id: payload.provider_id,
+          model: upstreamModel,
+          request_messages: body.messages,
+          request_params: pickParams(body, aliasForAudit),
+          prompt_tokens: promptTokens,
+          completion_tokens: 0,
+          total_tokens: promptTokens,
+          estimated_cost: 0,
+          latency_ms: Date.now() - startedAt,
+          status: "rejected",
+          error_code: "provider_queue_timeout",
+          prompt_hash: await sha256Hex(JSON.stringify(body.messages)),
+          created_at: new Date().toISOString(),
+        });
+        return providerQueueTimeoutError(err.retryAfterSeconds);
+      }
+      // Redis 故障时放行（fail-open）：节流只为保护上游，上游自身仍会 429
+      logger.warn(
+        "Provider 限流不可用，直接放行: provider={provider_id}",
+        { provider_id: payload.provider_id },
+      );
+      providerSlot = {
+        waitedMs: 0,
+        release: () => Promise.resolve(),
+        settle: () => Promise.resolve(),
+      };
+    }
+    if (providerSlot.waitedMs > 0) {
+      observe(
+        "noj_llm_provider_queue_wait_seconds",
+        providerSlot.waitedMs / 1000,
+      );
+    }
+
     try {
       await enforceAndCount(deps.db, deps.redis, payload, {
         callId,
@@ -263,6 +375,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "limit_exceeded";
+      // 请求未发往上游：包括配额服务失败也归还 Provider 窗口额度。
+      await providerSlot.release().catch(() => undefined);
       if (message !== "limit_exceeded" && message !== "rate_limit_exceeded") {
         return c.json({ error: "quota_unavailable" }, 503);
       }
@@ -277,9 +391,9 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         problem_id: payload.problem_id,
         user_id: payload.user_id,
         provider_id: payload.provider_id,
-        model,
+        model: upstreamModel,
         request_messages: body.messages,
-        request_params: pickParams(body),
+        request_params: pickParams(body, aliasForAudit),
         prompt_tokens: promptTokens,
         completion_tokens: 0,
         total_tokens: promptTokens,
@@ -302,7 +416,9 @@ export function createLlmRouter(deps: LlmDeps): Hono {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${providerSecret.apiKey}`,
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(
+          upstreamModel === model ? body : { ...body, model: upstreamModel },
+        ),
         signal: AbortSignal.timeout(120_000),
         redirect: "error",
       });
@@ -318,9 +434,9 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         problem_id: payload.problem_id,
         user_id: payload.user_id,
         provider_id: payload.provider_id,
-        model,
+        model: upstreamModel,
         request_messages: body.messages,
-        request_params: pickParams(body),
+        request_params: pickParams(body, aliasForAudit),
         prompt_tokens: promptTokens,
         completion_tokens: 0,
         total_tokens: promptTokens,
@@ -356,9 +472,9 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         problem_id: payload.problem_id,
         user_id: payload.user_id,
         provider_id: payload.provider_id,
-        model,
+        model: upstreamModel,
         request_messages: body.messages,
-        request_params: pickParams(body),
+        request_params: pickParams(body, aliasForAudit),
         prompt_tokens: promptTokens,
         completion_tokens: 0,
         total_tokens: promptTokens,
@@ -396,6 +512,10 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     const actualTotalTokens = billedUsage.totalTokens;
     const actualBilledTotalTokens = billedUsage.billedTotalTokens;
     inc("noj_llm_tokens_total", {}, actualBilledTotalTokens);
+    // 上游 TPM 按实际总 token 计：用真实用量修正预占（失败不影响响应）
+    if (usage) {
+      await providerSlot.settle(actualTotalTokens).catch(() => undefined);
+    }
     const actualCost = estimateCost(
       actualBilledTotalTokens,
       providerSecret.provider.cost_per_1k_tokens,
@@ -413,9 +533,9 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         problem_id: payload.problem_id,
         user_id: payload.user_id,
         provider_id: payload.provider_id,
-        model,
+        model: upstreamModel,
         request_messages: body.messages,
-        request_params: pickParams(body),
+        request_params: pickParams(body, aliasForAudit),
         prompt_tokens: actualPromptTokens,
         completion_tokens: actualCompletionTokens,
         total_tokens: actualTotalTokens,
@@ -481,7 +601,10 @@ function estimateCost(totalTokens: number, costPer1k: number): number {
 }
 
 /** 从请求体中挑选需要审计的关键参数（排除 messages 等大字段）。 */
-function pickParams(body: ChatCompletionRequest): Record<string, unknown> {
+function pickParams(
+  body: ChatCompletionRequest,
+  alias?: string,
+): Record<string, unknown> {
   const params: Record<string, unknown> = {};
   for (
     const key of [
@@ -496,5 +619,7 @@ function pickParams(body: ChatCompletionRequest): Record<string, unknown> {
   ) {
     if (body[key] !== undefined) params[key] = body[key];
   }
+  // 请求里的 model 是别名时（alias 非空），保留别名便于对账（usage.model 记录真实模型名）
+  if (alias !== undefined) params.model_alias = alias;
   return params;
 }

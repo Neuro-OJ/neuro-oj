@@ -10,9 +10,62 @@
 
 ## [Unreleased]
 
+---
+
+## [0.10.5] - 2026-10-12
+
+### 升级须知（破坏性）
+
+- **题目版本管理（PR #622）**：题目内容改为「共享草稿 →
+  不可变版本」发布，提交绑定提交时版本， 评测写入 `evaluation_attempts`
+  并按有效版本策略（`any` / `exact(X)`）物化有效成绩。 这是 core / judge /
+  gateway / UI / IDE / CLI 的**协调升级，不支持新旧评测协议混跑**，
+  升级前请参阅[题目版本管理文档](noj-docs/docs/features/problem-versioning.md)与升级、备份恢复说明。
+- **LLM 模型别名升级顺序**：先升级 gateway（PR #630），再升级 core（PR
+  #631），最后升级 UI（PR #632）。
+- 升级需使用新版 `docker-compose.prod.yml` 与 `.env.prod.example`（新增
+  `NOJ_LLM_PROVIDER_QUEUE_TIMEOUT_SECONDS`）。
+
+### 新功能
+
+- **题目版本管理**：草稿/发布、版本化评测、有效成绩、管理员批量重测与用户升级；
+  题库与每场竞赛可分别使用 `any` / `exact(X)` 策略（PR #622）。
+- **预测提交题**：选手用本地 GPU 训练/推理，提交单个预测文件，服务端在仅含
+  Evaluator 的单容器内 用隐藏标签确定性判分；禁止
+  pickle，隐藏标签不离开服务端（PR #572）。
+- **界面题**：题包自带
+  `ui.html`，选手在界面里填写参数，平台注入出题人的脚本模板后交 judge 运行（PR
+  #633）。
+- **LLM 模型别名**：管理员维护模型别名，出题人为每道题选择 1–8
+  个允许调用的别名， eval_token 携带 `model_map`，重测沿用冻结的映射（PR
+  #630、#631、#632）。
+- **Provider 限流排队**：每个 LLM Provider 可配置 RPM / TPM 上限，超限请求在
+  gateway 排队， 排队超时才返回
+  429（`provider_queue_timeout`，不消耗额度）；新增指标
+  `noj_llm_provider_queue_wait_seconds`、`noj_llm_provider_queue_timeouts_total`（PR
+  #628）。
+- **Provider 测试连接**：管理后台 LLM Provider 页可对已保存 Key
+  发起一次真实上游请求并显示耗时与失败原因（PR #625）。
+- 登录页增加「记住我」选项（PR #621）。
+- 激活与密码重置邮件样式美化（PR #618）。
+
 ### 变更
 
-- `noj-cli install`（省略 `--ref`）与 `update --latest` 现在也会选中已转正的 `-rc.N` / `-beta.N` 等标签：可选与否只看 Release 是否为 draft/prerelease 以及资产是否齐备，不再要求纯 `X.Y.Z` 标签。
+- `noj-cli install`（省略 `--ref`）与 `update --latest` 现在也会选中已转正的
+  `-rc.N` / `-beta.N` 等标签：可选与否只看 Release 是否为 draft/prerelease
+  以及资产是否齐备，不再要求纯 `X.Y.Z` 标签。
+- 清理 VULN-06 下线 IP 风控后的过时描述，权限描述随种子同步（PR #620）。
+
+### 缺陷修复
+
+- `noj-cli backup create` / `backup schedule` 现在读取 `.env.prod`
+  中配置的备份口令文件路径（PR #626）。
+- 修复搜索 perf 基准夹具未写入题目版本导致索引为空、`main` 上 Core Perf
+  持续失败（PR #636）。
+
+### 文档
+
+- 新增竞赛代码相似度判定口径、处置与申诉流程文档（PR #619）。
 
 ---
 

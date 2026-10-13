@@ -4,6 +4,10 @@ import { domainAnswerKey } from '~/utils/domain-problems';
 import { extractApiError } from '~/utils/apiError';
 import type { SubmitResult } from '~/composables/useObjective';
 import type { AssignmentSubmissionOrigin } from '~/utils/education';
+import UiFrame from '~/components/uiproblem/UiFrame.vue';
+import { parseValues, stableStringify, type UiFrameResult } from '~/utils/uiFrame';
+import type { DomainSelfTest } from '~/composables/useDomainSelfTests';
+import { PREDICTION_FILE_ACCEPT, predictionHint } from '~/utils/problemView';
 const props = defineProps<{ slug: string; problem: DomainProblemDetail; assignmentOrigin?: AssignmentSubmissionOrigin }>();
 const emit = defineEmits<{ refresh: [] }>();
 const { user, isLoggedIn } = useAuth();
@@ -12,7 +16,10 @@ const scope = useWorkspaceActionScope();
 const api = useDomainProblems();
 const { dialog } = useDialog();
 const code = ref('');
-const language = ref(props.problem.supported_languages?.[0] ?? 'python3');
+const isUi = computed(() => props.problem.content.submission_mode === 'ui');
+const isPrediction = computed(() => props.problem.content.submission_mode === 'prediction');
+const isFile = computed(() => ['artifact', 'prediction'].includes(props.problem.content.submission_mode ?? ''));
+const language = ref(isUi.value ? 'ui' : props.problem.supported_languages?.[0] ?? 'python3');
 const answerVersion = ref(props.problem.version_id);
 const answerVersionNumber = ref(props.problem.version);
 const file = ref<File | null>(null);
@@ -38,6 +45,17 @@ const key = computed(() =>
 );
 const enabled = computed(() => isLoggedIn.value);
 const draft = useDomainAnswerDraft(key, code, answers, enabled);
+const uiSelfTest = ref<{ run: () => Promise<void> } | null>(null);
+const uiResult = ref<UiFrameResult | null>(null), uiSelfTestRecord = ref<DomainSelfTest | null>(null);
+async function runUiSelfTest() {
+  await nextTick();
+  await uiSelfTest.value?.run();
+}
+const uiValues = computed(() => parseValues(code.value));
+const ui = useAsyncData(
+  () => `${key.value}:ui`,
+  () => isUi.value ? api.ui(props.slug, props.problem.reference.display_ref, answerVersion.value) : Promise.resolve(null),
+);
 
 async function loadTemplate() {
   if (loadingTemplate.value || changed.value) return;
@@ -108,7 +126,7 @@ async function submit() {
       const response = await api.objective(operation.slug, reference, answerVersion.value, answers.value, props.assignmentOrigin);
       if (operation.isCurrent()) result.value = response.data;
     } else {
-      const response = props.problem.content.submission_mode === 'artifact'
+      const response = isFile.value
         ? await api.artifact(operation.slug, reference, answerVersion.value, file.value!, props.assignmentOrigin)
         : await api.code(operation.slug, reference, answerVersion.value, language.value, code.value, props.assignmentOrigin);
       if (operation.isCurrent()) submissionId.value = response.data.id;
@@ -151,11 +169,27 @@ async function submit() {
         </div>
       </div>
     </template>
-    <template v-else-if="problem.content.submission_mode === 'artifact'">
+    <template v-else-if="isFile">
+      <p v-if="isPrediction" class="mb-3 text-sm text-text-secondary">{{ predictionHint() }}</p>
       <p
-        class="mb-3 text-sm text-text-secondary">上传产物 ZIP{{ problem.content.artifact_max_size_mb ? `，最大 ${problem.content.artifact_max_size_mb} MiB` : '' }}。</p>
-      <UFileUpload :model-value="file" accept=".zip" label="选择产物文件" :disabled="!writable || submitting"
+        class="mb-3 text-sm text-text-secondary">{{ isPrediction ? '上传单个预测结果文件' : '上传产物 ZIP' }}{{ problem.content.artifact_max_size_mb ? `，最大 ${problem.content.artifact_max_size_mb} MiB` : '' }}。</p>
+      <UFileUpload :model-value="file" :accept="isPrediction ? PREDICTION_FILE_ACCEPT : '.zip'" :label="isPrediction ? '选择预测结果文件' : '选择产物文件'" :disabled="!writable || submitting"
         @update:model-value="pickedFile" />
+    </template>
+    <template v-else-if="isUi">
+      <UAlert v-if="ui.error.value" color="error" :title="extractApiError(ui.error.value).message" />
+      <UiFrame v-if="ui.data.value" :html="ui.data.value.data.html" :values="uiValues" :result="uiResult" :title="problem.content.title"
+        :disabled="!writable || submitting" class="h-[560px] w-full"
+        @update:values="value => code = stableStringify(value)" @submit="submit" @self-test="runUiSelfTest" />
+      <ClientOnly>
+        <DomainSelfTestPanel ref="uiSelfTest" :slug="slug" :problem="problem" :code="code" language="ui"
+          :assignment-origin="assignmentOrigin" :version-id="answerVersion" :writable="writable && !submitting"
+          @result="uiSelfTestRecord = $event"
+          @refresh="emit('refresh')" />
+        <DomainUiRuns :slug="slug" :problem-id="problem.reference.problem_id" :reference="problem.reference.display_ref"
+          :submission-id="submissionId" :self-test="uiSelfTestRecord" :code="code" :writable="writable && !submitting"
+          @restore="code = $event" @result="uiResult = $event" />
+      </ClientOnly>
     </template>
     <template v-else>
       <div class="mb-3 flex flex-wrap gap-3">
@@ -183,7 +217,7 @@ async function submit() {
       :title="result.score === null ? '已交卷，成绩暂未公开' : `本次成绩：${result.score} 分`" class="mt-4" />
     <div class="mt-4 flex flex-wrap items-center gap-3">
       <UButton :loading="submitting"
-        :disabled="!writable || (problem.content.kind !== 'objective' && (problem.content.submission_mode === 'artifact' ? !file : !code.trim() || !languages.length))"
+        :disabled="!writable || (problem.content.kind !== 'objective' && (isFile ? !file : !code.trim() || !isUi && !languages.length))"
         @click="submit">
         {{ problem.content.kind === 'objective' ? '交卷' : '提交评测' }}
       </UButton>

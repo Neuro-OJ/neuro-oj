@@ -18,6 +18,10 @@ const props = withDefaults(defineProps<{
   anchor?: string
   /** 「在编辑器打开」目标；null 时不渲染该入口。 */
   editorTo?: string | null
+  /** 「在编辑器打开」入口文案（提示词题改为「编写提示词」）。 */
+  editorLabel?: string
+  /** 「在编辑器打开」入口图标。 */
+  editorIcon?: string
   /** 「编辑」目标；null 时不渲染该入口。 */
   editTo?: string | null
   /** 是否可展开/收起（题面过短时隐藏该按钮）。 */
@@ -28,6 +32,8 @@ const props = withDefaults(defineProps<{
   title: '题面',
   anchor: 'statement',
   editorTo: null,
+  editorLabel: '在编辑器打开',
+  editorIcon: 'i-lucide-code-2',
   editTo: null,
   collapsible: true,
   copyable: true,
@@ -72,8 +78,8 @@ function copyStatement() {
           :to="editorTo"
           class="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text-secondary no-underline transition-colors hover:border-primary/40 hover:text-primary"
         >
-          <UIcon name="i-lucide-code-2" class="size-3.5" />
-          在编辑器打开
+          <UIcon :name="editorIcon" class="size-3.5" />
+          {{ editorLabel }}
         </NuxtLink>
         <NuxtLink
           v-if="editTo"

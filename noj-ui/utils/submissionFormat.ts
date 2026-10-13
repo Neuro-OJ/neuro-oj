@@ -58,6 +58,7 @@ export const languageLabels: Record<string, string> = {
   javascript: 'JavaScript',
   java: 'Java',
   nodejs: 'Node.js',
+  ui: '界面参数',
 };
 
 /**

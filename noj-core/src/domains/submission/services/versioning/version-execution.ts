@@ -17,6 +17,18 @@ import { resolveLlmLimits } from "../../../gateway/index.ts";
 import type { JudgeTask } from "../../types/index.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 
+/**
+ * 界面提交的脚本模板：以**目标版本**的 `template_content` 为准（版本才是判卷事实源），
+ * 未版本化的存量题目回退题目投影。非界面提交无需调用。
+ */
+export function scriptTemplateOf(
+  content: ProblemContentV1 | null | undefined,
+  fallback?: string | null,
+): string | undefined {
+  if (content?.kind === "ai") return content.template_content;
+  return fallback ?? undefined;
+}
+
 /** 指定版本的支持包地址；不存在引用与后端丢失是不同情况。 */
 export async function versionSupportPackageUrl(
   versionId: string,
@@ -63,8 +75,18 @@ export async function versionSupportPackageDownload(
         llm_execution: previous?.llm_execution ?? {
           domain_id: domainId,
           provider_id: task.llm.provider_id,
-          model: task.llm.allowed_models[0],
+          // 旧字段：default-only 时为真实模型名，否则为首个别名对应的真实模型
+          model: task.llm.model_map
+            ? Object.values(task.llm.model_map)[0]
+            : task.llm.allowed_models[0],
           ...resolveLlmLimits(llmConfig),
+          ...(task.llm.model_map
+            ? {
+              models: Object.entries(task.llm.model_map).map((
+                [alias, model],
+              ) => ({ alias, model })),
+            }
+            : {}),
         },
       }
       : {}),
@@ -74,7 +96,7 @@ export async function versionSupportPackageDownload(
 /** 版本接受性输入：提交模式与语言。 */
 export interface VersionAcceptanceInput {
   language: string;
-  submissionMode: "code" | "artifact";
+  submissionMode: "code" | "artifact" | "prediction" | "ui";
 }
 
 /**
@@ -160,9 +182,12 @@ export async function assertExecutionPreflight(
   // OI 无容器镜像与平台容器资源上限口径（其限额随版本由发布校验保证）。
   if (isOiRuntimeConfig(runtimeConfig)) return;
 
+  // prediction 版本没有 Solution 容器，solution 缺省时只复验 evaluator 镜像。
   const images: Array<{ image: string; kind: "evaluator" | "solution" }> = [
     { image: runtimeConfig.evaluator.image, kind: "evaluator" },
-    { image: runtimeConfig.solution.image, kind: "solution" },
+    ...(runtimeConfig.solution
+      ? [{ image: runtimeConfig.solution.image, kind: "solution" as const }]
+      : []),
   ];
   for (const item of images) {
     try {
@@ -188,7 +213,7 @@ export async function assertExecutionPreflight(
   const limitMb = input.artifactMaxSizeMb ??
     (content.kind === "ai" ? content.artifact_max_size_mb : null);
   if (
-    input.submissionMode === "artifact" && limitMb != null &&
+    input.submissionMode !== "code" && limitMb != null &&
     limitMb >= 0 && input.artifactByteSize != null &&
     input.artifactByteSize > limitMb * 1024 * 1024
   ) {

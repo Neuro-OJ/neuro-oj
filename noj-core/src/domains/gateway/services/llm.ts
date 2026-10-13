@@ -36,6 +36,10 @@ export interface LlmProviderInput {
   cost_per_1k_tokens?: number;
   /** 是否启用（可选） */
   enabled?: boolean;
+  /** 上游每分钟请求数上限（0 = 不限；超限时 gateway 排队） */
+  rpm_limit?: number;
+  /** 上游每分钟 token 数上限（0 = 不限；超限时 gateway 排队） */
+  tpm_limit?: number;
 }
 
 /**
@@ -71,6 +75,10 @@ export interface LlmProviderView {
   api_key_masked: string;
   /** 是否启用 */
   enabled: boolean;
+  /** 上游每分钟请求数上限（0 = 不限） */
+  rpm_limit: number;
+  /** 上游每分钟 token 数上限（0 = 不限） */
+  tpm_limit: number;
   /** 创建时间 */
   created_at: string;
   /** 更新时间 */
@@ -340,4 +348,27 @@ export async function listInstanceLlmQuotas(): Promise<unknown[]> {
     { headers: { "X-Noj-Instance-Quota": "1" } },
   );
   return body.data;
+}
+
+/**
+ * 用指定模型对 Provider 发起一次最小真实调用，验证 Base URL / Key / 模型可用。
+ *
+ * gateway 侧以 `max_tokens: 1` 请求上游 `/chat/completions`（10 秒超时），
+ * 成功即返回；失败时抛出 LlmGatewayError，错误码见 gateway
+ * `testProviderConnection`（provider_auth_failed / provider_rate_limited /
+ * provider_unavailable / provider_error / provider_base_url_blocked 等）。
+ */
+export async function testLlmProvider(
+  id: string,
+  model: string,
+  domainId = DEFAULT_DOMAIN_ID,
+): Promise<void> {
+  await request<{ data: { status: string } }>(
+    `/internal/providers/${encodeURIComponent(id)}/test`,
+    {
+      method: "POST",
+      body: JSON.stringify({ model }),
+    },
+    domainId,
+  );
 }

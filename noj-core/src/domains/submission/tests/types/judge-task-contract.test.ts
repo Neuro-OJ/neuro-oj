@@ -36,6 +36,7 @@ Deno.test("JudgeTask 协议 v2: 初次代码和产物发送序列 0，重测保�
       problem_id: fixture.problem_id,
       user_id: fixture.user_id,
       priority: fixture.priority,
+      submission_mode: "code" as const,
       runtime_config: fixture.runtime_config,
       language: fixture.language,
       code: artifact ? "" : fixture.code,
@@ -67,6 +68,7 @@ Deno.test("JudgeTask 契约: 工厂按 fixture 构造出的消息与 fixture 完
     problem_id: fixture.problem_id,
     user_id: fixture.user_id,
     priority: fixture.priority,
+    submission_mode: fixture.submission_mode,
     runtime_config: fixture.runtime_config,
     language: fixture.language,
     code: fixture.code,
@@ -90,6 +92,7 @@ Deno.test("JudgeTask 契约: 字段集合与登记表一致", async () => {
     problem_id: fixture.problem_id,
     user_id: fixture.user_id,
     priority: fixture.priority,
+    submission_mode: fixture.submission_mode,
     runtime_config: fixture.runtime_config,
     language: fixture.language,
     code: fixture.code,
@@ -118,6 +121,7 @@ Deno.test("JudgeTask 契约: 可选字段缺省时不写入消息体", () => {
     problem_id: "p",
     user_id: "u",
     priority: "high",
+    submission_mode: "code",
     runtime_config: {
       evaluator: {
         image: "noj-evaluator-python",
@@ -146,6 +150,7 @@ Deno.test("JudgeTask 契约: 可选字段缺省时不写入消息体", () => {
       "problem_id",
       "runtime_config",
       "submission_id",
+      "submission_mode",
       "user_id",
     ].sort(),
   );
@@ -166,6 +171,7 @@ Deno.test("JudgeTask 契约: 必填字段齐全时才构造（类型层面已强
     problem_id: fixture.problem_id,
     user_id: fixture.user_id,
     priority: fixture.priority,
+    submission_mode: fixture.submission_mode,
     runtime_config: fixture.runtime_config,
     language: fixture.language,
     code: fixture.code,
@@ -189,7 +195,8 @@ Deno.test("buildJudgeTask: WASM缺少统一标准快照明确拒绝", () => {
       submission_id: "s",
       problem_id: "p",
       user_id: "u",
-      priority: "medium",
+      priority: "medium" as const,
+      submission_mode: "code" as const,
       language: "cc",
       code: "int main(){}",
       runtime_config: {

@@ -48,14 +48,22 @@ export function normalizePoolTask(
         value.submission_id.startsWith("st_"),
       );
     } else {
-      validateRuntimeConfig(value.runtime_config);
+      validateRuntimeConfig(
+        value.runtime_config,
+        value.submission_mode ?? "code",
+      );
     }
     if (
       value.priority !== undefined &&
       !["high", "medium", "low"].includes(value.priority)
     ) return null;
     const task = buildJudgeTask(
-      { ...value, priority: value.priority ?? priority } as BuildJudgeTaskInput,
+      {
+        ...value,
+        // 旧消息缺 submission_mode 时按 code 兼容（与 judge 侧缺省一致）。
+        submission_mode: value.submission_mode ?? "code",
+        priority: value.priority ?? priority,
+      } as BuildJudgeTaskInput,
     );
     return JSON.stringify(task);
   } catch {

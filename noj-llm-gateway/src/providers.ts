@@ -11,6 +11,10 @@ export interface ProviderInput {
   api_key: string;
   cost_per_1k_tokens?: number;
   enabled?: boolean;
+  /** 每分钟请求数上限（0 = 不限） */
+  rpm_limit?: number;
+  /** 每分钟 token 数上限（0 = 不限） */
+  tpm_limit?: number;
 }
 
 export interface ProviderRow {
@@ -22,6 +26,10 @@ export interface ProviderRow {
   cost_per_1k_tokens: number;
   encrypted_api_key: string;
   enabled: boolean;
+  /** 每分钟请求数上限（0 = 不限；迁移前的旧行可能缺失） */
+  rpm_limit?: number;
+  /** 每分钟 token 数上限（0 = 不限；迁移前的旧行可能缺失） */
+  tpm_limit?: number;
   created_at: string;
   updated_at: string;
 }
@@ -36,6 +44,10 @@ export interface ProviderView {
   /** 脱敏后的 Key，如 `sk-****abcd` */
   api_key_masked: string;
   enabled: boolean;
+  /** 每分钟请求数上限（0 = 不限） */
+  rpm_limit: number;
+  /** 每分钟 token 数上限（0 = 不限） */
+  tpm_limit: number;
   created_at: string;
   updated_at: string;
 }
@@ -66,6 +78,8 @@ function toView(row: ProviderRow, apiKey: string): ProviderView {
     cost_per_1k_tokens: row.cost_per_1k_tokens,
     api_key_masked: maskApiKey(apiKey),
     enabled: row.enabled,
+    rpm_limit: row.rpm_limit ?? 0,
+    tpm_limit: row.tpm_limit ?? 0,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -73,6 +87,23 @@ function toView(row: ProviderRow, apiKey: string): ProviderView {
 
 /** 成本单价上界（防止 u64 溢出与荒谬单价）。下界为 0，拒绝负值。 */
 const MAX_COST_PER_1K_TOKENS = 1_000_000;
+
+/** 速率上限的上界（PostgreSQL integer 范围内，远超任何上游实际限额）。 */
+const MAX_RATE_LIMIT = 1_000_000_000;
+
+/**
+ * 校验并规范化 RPM / TPM 上限：缺省为 0（不限），只接受非负整数。
+ *
+ * @throws {Error} `provider_invalid`：负数、小数、非数字或超过上界
+ */
+export function normalizeRateLimit(value: unknown): number {
+  if (value === undefined || value === null || value === "") return 0;
+  const n = Number(value);
+  if (!Number.isSafeInteger(n) || n < 0 || n > MAX_RATE_LIMIT) {
+    throw new Error("provider_invalid");
+  }
+  return n;
+}
 
 /** 列出全部 Provider；解密失败时返回不可用的掩码，不阻断列表。 */
 export async function listProviders(
@@ -136,14 +167,17 @@ export async function createProvider(
     throw new Error("provider_invalid");
   }
 
+  const rpmLimit = normalizeRateLimit(input.rpm_limit);
+  const tpmLimit = normalizeRateLimit(input.tpm_limit);
+
   const id = uuid();
   const createdAt = now();
   const encrypted = await encryptSecret(input.api_key, storeKey);
   await db`
-    INSERT INTO llm_providers (id, domain_id, name, base_url, cost_per_1k_tokens, encrypted_api_key, enabled, created_at, updated_at)
+    INSERT INTO llm_providers (id, domain_id, name, base_url, cost_per_1k_tokens, encrypted_api_key, enabled, rpm_limit, tpm_limit, created_at, updated_at)
     VALUES (${id}, ${domainId}, ${input.name}, ${input.base_url}, ${cost}, ${encrypted}, ${
     input.enabled ?? true
-  }, ${createdAt}, ${createdAt})
+  }, ${rpmLimit}, ${tpmLimit}, ${createdAt}, ${createdAt})
   `;
   const row = await getProviderById(db, id, domainId);
   if (!row) throw new Error("provider_not_found");
@@ -162,6 +196,8 @@ export async function updateProvider(
       | "api_key"
       | "cost_per_1k_tokens"
       | "enabled"
+      | "rpm_limit"
+      | "tpm_limit"
     >
   >,
   storeKey: string,
@@ -198,6 +234,14 @@ export async function updateProvider(
   if (input.enabled !== undefined) {
     params.push(input.enabled);
     sets.push(`enabled = $${params.length}`);
+  }
+  if (input.rpm_limit !== undefined) {
+    params.push(normalizeRateLimit(input.rpm_limit));
+    sets.push(`rpm_limit = $${params.length}`);
+  }
+  if (input.tpm_limit !== undefined) {
+    params.push(normalizeRateLimit(input.tpm_limit));
+    sets.push(`tpm_limit = $${params.length}`);
   }
   if (input.api_key !== undefined) {
     const encrypted = await encryptSecret(input.api_key, storeKey);

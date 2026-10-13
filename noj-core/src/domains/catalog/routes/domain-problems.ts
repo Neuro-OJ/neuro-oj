@@ -33,10 +33,42 @@ import { importDomainProblemDraftBundle } from "../services/workspace/problem-bu
 import { enforceProblemImportRateLimit } from "../../system/index.ts";
 import { MAX_SUPPORT_PACKAGE_SIZE } from "../services/support-package.ts";
 import { importDomainProblemBundle } from "../services/workspace/problem-bundle-import.ts";
+import {
+  readDomainModelCapabilities,
+  readDomainProblemUi,
+} from "../services/workspace/problem-capabilities.ts";
 
 /** 显式域题库入口，保留使用域上下文及来源题号。 */
 export const domainProblemsRouter = new Hono<AuthEnv>();
 const prefix = "/domains/:slug/problems";
+domainProblemsRouter.get(
+  `${prefix}/llm-model-aliases`,
+  authMiddleware,
+  async (c) => {
+    c.header("Cache-Control", "no-store");
+    return c.json({
+      data: await readDomainModelCapabilities(
+        c.req.param("slug")!,
+        c.var.userId,
+      ),
+    });
+  },
+);
+domainProblemsRouter.get(
+  `${prefix}/:reference/ui`,
+  authMiddleware,
+  async (c) => {
+    c.header("Cache-Control", "no-store");
+    return c.json({
+      data: await readDomainProblemUi(
+        c.req.param("slug")!,
+        c.req.param("reference")!,
+        c.var.userId,
+        c.req.query("version_id"),
+      ),
+    });
+  },
+);
 domainProblemsRouter.route("/", domainProblemFilesRouter);
 domainProblemsRouter.get(
   "/domains/:slug/problem-drafts",

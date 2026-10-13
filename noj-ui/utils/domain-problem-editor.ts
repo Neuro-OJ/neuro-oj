@@ -1,4 +1,4 @@
-import type { ProblemSample } from './oiWorkspace';
+import type { ProblemSample } from './oiWorkspace.ts';
 export interface DomainOiCase {
   id: string;
   input: string;
@@ -29,6 +29,7 @@ export interface DomainAiRuntime {
     time_limit_ms: number;
     memory_limit_mb: number;
     network: { enabled: boolean };
+    workspace_size_mb?: number;
   };
   solution: { image: string; call_timeout_ms: number; memory_limit_mb: number };
 }
@@ -48,10 +49,10 @@ export interface DomainEditorContent {
   samples: ProblemSample[];
   runtime_config?: DomainAiRuntime | DomainOiRuntime | null;
   questions?: DomainObjectiveSnapshot[];
-  submission_mode?: 'code' | 'artifact';
+  submission_mode?: 'code' | 'artifact' | 'prediction' | 'ui';
   artifact_max_size_mb?: number | null;
   template_content?: string;
-  llm_config?: { max_calls?: number; max_tokens?: number } | null;
+  llm_config?: { max_calls?: number; max_tokens?: number; models?: string[] } | null;
   [key: string]: unknown;
 }
 /** 新题从可编辑草稿开始，具体文件存在性和运行上限由发布预检判断。 */
@@ -130,14 +131,19 @@ export function normalizeDomainEditorContent(input: Record<string, unknown>): Do
 export function domainEditorPayload(content: DomainEditorContent): DomainEditorContent {
   const result = JSON.parse(JSON.stringify(content)) as DomainEditorContent;
   if (result.llm_config) {
-    const { max_calls, max_tokens } = result.llm_config;
-    result.llm_config = { max_calls, max_tokens };
+    const { max_calls, max_tokens, models } = result.llm_config;
+    result.llm_config = { max_calls, max_tokens, ...(models ? { models } : {}) };
     for (const key of ['max_calls', 'max_tokens'] as const) {
       const value = result.llm_config[key] as unknown;
       if (value == null || value === '') delete result.llm_config[key];
     }
   }
   if (result.kind === 'ai' && (result.artifact_max_size_mb as unknown) === '') result.artifact_max_size_mb = null;
+  if (result.kind === 'ai' && result.submission_mode === 'prediction') {
+    const runtime = result.runtime_config as DomainAiRuntime;
+    delete (runtime as Partial<DomainAiRuntime>).solution;
+    if ((runtime.evaluator.workspace_size_mb as unknown) === '') delete runtime.evaluator.workspace_size_mb;
+  }
   if (result.kind === 'oi') {
     const runtime = result.runtime_config as DomainOiRuntime;
     if (runtime.filename === '') delete runtime.filename;

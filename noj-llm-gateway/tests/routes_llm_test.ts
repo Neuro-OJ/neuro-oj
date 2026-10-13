@@ -413,3 +413,212 @@ Deno.test("llm route: 超大上游响应触发 upstream_response_too_large 返�
     restore();
   }
 });
+
+Deno.test("llm route: Provider RPM 超限排队超时返回 429 + Retry-After，且不扣用户额度", async () => {
+  const provider = {
+    ...(await makeProvider(testConfig.storeKey)),
+    domain_id: "school-timeout",
+    rpm_limit: 1,
+  };
+  const { db, usageInserts } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  // 节流脚本始终返回「队首，2 秒后窗口才有余量」，其后是退出排队脚本的返回
+  redis.evalResults = [[0, 2000, 0], [0, 2000, 0], [0, 2000, 0], 1];
+  const restore = stubFetch(() => {
+    throw new Error("排队超时的请求不应转发上游");
+  });
+  try {
+    const app = createLlmRouter({
+      config: { ...testConfig, providerQueueTimeoutMs: 30 },
+      db,
+      redis,
+      resolveDns: publicDns,
+    });
+    const token = await makeToken(testConfig, "fast", {
+      domainId: provider.domain_id,
+      modelMap: { fast: "upstream-school-model" },
+    });
+    const res = await requestChat(app, token, {
+      model: "fast",
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 5,
+    });
+
+    assertEquals(res.status, 429);
+    assertEquals(res.headers.get("retry-after"), "2");
+    const body = await res.json();
+    assertEquals(body.error.code, "provider_queue_timeout");
+    assertEquals(usageInserts.length, 1);
+    assertEquals(usageInserts[0].status, "rejected");
+    assertEquals(usageInserts[0].error_code, "provider_queue_timeout");
+    assertEquals(usageInserts[0].domain_id, provider.domain_id);
+    assertEquals(usageInserts[0].model, "upstream-school-model");
+    assertEquals(
+      JSON.parse(String(usageInserts[0].request_params)).model_alias,
+      "fast",
+    );
+    // 只调用了 Provider 节流脚本（键均为 llm:provider:{prov-1}:*），未执行用户额度扣减
+    for (const keys of redis.evalKeys) {
+      assertEquals(
+        keys.every((k) => k.startsWith("llm:provider:{prov-1}:")),
+        true,
+      );
+    }
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("llm route: 未配置 RPM/TPM 时不访问 Provider 节流", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  const restore = stubFetch(() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "pong" } }],
+          usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
+        }),
+        { status: 200 },
+      ),
+    )
+  );
+  try {
+    const app = createLlmRouter({
+      config: testConfig,
+      db,
+      redis,
+      resolveDns: publicDns,
+    });
+    const token = await makeToken(testConfig);
+    const res = await requestChat(app, token, {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 5,
+    });
+    assertEquals(res.status, 200);
+    assertEquals(
+      redis.evalKeys.some((keys) =>
+        keys.some((k) => k.startsWith("llm:provider:"))
+      ),
+      false,
+    );
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("llm route: 模型别名转发前改写为真实模型名，审计记录真实名与别名", async () => {
+  const provider = {
+    ...(await makeProvider(testConfig.storeKey)),
+    domain_id: "school-alias",
+    rpm_limit: 60,
+    tpm_limit: 1000,
+  };
+  const { db, usageInserts } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  redis.evalResults = [[1, 0, 0]];
+  let upstreamModel = "";
+  const restore = stubFetch((_url, init) => {
+    upstreamModel = JSON.parse(String(init?.body)).model;
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "ok" } }],
+          usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
+        }),
+        { status: 200 },
+      ),
+    );
+  });
+  try {
+    const app = createLlmRouter({
+      config: testConfig,
+      db,
+      redis,
+      resolveDns: publicDns,
+    });
+    const token = await makeToken(testConfig, "fast", {
+      domainId: provider.domain_id,
+      modelMap: { fast: "Qwen/Qwen3-8B" },
+    });
+    const res = await requestChat(app, token, {
+      model: "fast",
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 5,
+    });
+    assertEquals(res.status, 200);
+    assertEquals(upstreamModel, "Qwen/Qwen3-8B");
+    assertEquals(usageInserts.at(-1)?.domain_id, provider.domain_id);
+    assertEquals(usageInserts.at(-1)?.model, "Qwen/Qwen3-8B");
+    const params = usageInserts.at(-1)?.request_params;
+    const parsed = typeof params === "string" ? JSON.parse(params) : params;
+    assertEquals((parsed as Record<string, unknown>).model_alias, "fast");
+    assertEquals(
+      redis.evalKeys.some((keys) => keys.includes("llm:provider:{prov-1}:rpm")),
+      true,
+    );
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("llm route: v3 别名 token 不越过 Provider 使用域或停用状态", async () => {
+  const provider = {
+    ...(await makeProvider(testConfig.storeKey)),
+    domain_id: "school-a",
+  };
+  const { db, usageInserts } = createFakeDb(provider);
+  const redis = new FakeRedis();
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis,
+    resolveDns: publicDns,
+  });
+  const restore = stubFetch(() => {
+    throw new Error("无权使用 Provider 时不得调用上游");
+  });
+  try {
+    const token = (domainId: string) =>
+      makeToken(testConfig, "fast", {
+        domainId,
+        modelMap: { fast: "frozen-model" },
+      });
+    const body = {
+      model: "fast",
+      messages: [{ role: "user", content: "ping" }],
+    };
+    const foreign = await requestChat(app, await token("school-b"), body);
+    assertEquals(foreign.status, 400);
+    assertEquals((await foreign.json()).error, "provider_not_found");
+    provider.enabled = false;
+    const disabled = await requestChat(app, await token("school-a"), body);
+    assertEquals(disabled.status, 403);
+    assertEquals((await disabled.json()).error, "provider_disabled");
+    assertEquals(usageInserts.length, 0);
+    assertEquals(redis.evalKeys.length, 0);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("llm route: model_map 缺少别名映射时拒绝（403）", async () => {
+  const provider = await makeProvider(testConfig.storeKey);
+  const { db } = createFakeDb(provider);
+  const app = createLlmRouter({
+    config: testConfig,
+    db,
+    redis: new FakeRedis(),
+    resolveDns: publicDns,
+  });
+  const token = await makeToken(testConfig, "fast", {
+    modelMap: { other: "x" },
+  });
+  const res = await requestChat(app, token, {
+    model: "fast",
+    messages: [{ role: "user", content: "ping" }],
+  });
+  assertEquals(res.status, 403);
+});

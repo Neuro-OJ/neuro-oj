@@ -9,18 +9,23 @@ import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
   addDomainLlmProvider,
   editDomainLlmProvider,
+  readDomainLlmModelAliases,
   readDomainLlmProviders,
   readDomainLlmQuotas,
   readDomainLlmSettings,
   readDomainLlmUsage,
+  removeDomainLlmModelAlias,
+  saveDomainLlmModelAlias,
   saveDomainLlmQuota,
   saveDomainLlmSettings,
+  testDomainLlmProvider,
 } from "../services/domain-management.ts";
 import {
   type LlmProviderInput,
   type LlmQuotaInput,
   parseLlmRevision,
 } from "../services/llm.ts";
+import type { LlmModelAliasInput } from "../services/llm-model-aliases.ts";
 
 /** 显式域 LLM 管理入口，不读取其他域的 Provider 或用量。 */
 export const domainLlmRouter = new Hono<AuthEnv>();
@@ -28,6 +33,51 @@ const prefix = "/domains/:slug/llm";
 domainLlmRouter.use(`${prefix}/*`, authMiddleware, async (c, next) => {
   c.header("Cache-Control", "no-store");
   await next();
+});
+domainLlmRouter.get(
+  `${prefix}/model-aliases`,
+  async (c) =>
+    c.json({
+      data: await readDomainLlmModelAliases(c.req.param("slug")!, c.var.userId),
+    }),
+);
+domainLlmRouter.put(`${prefix}/model-aliases/:alias`, async (c) => {
+  const input = await parseJsonBody<LlmModelAliasInput>(c);
+  assertObjectBody(input);
+  return c.json({
+    data: await saveDomainLlmModelAlias(
+      c.req.param("slug")!,
+      c.var.userId,
+      c.req.param("alias"),
+      input,
+      parseLlmRevision(c.req.header("If-Match")),
+    ),
+  });
+});
+domainLlmRouter.delete(`${prefix}/model-aliases/:alias`, async (c) => {
+  await removeDomainLlmModelAlias(
+    c.req.param("slug")!,
+    c.var.userId,
+    c.req.param("alias"),
+    parseLlmRevision(c.req.header("If-Match")),
+    c.req.query("force") === "true",
+  );
+  return c.json({ data: { deleted: true } });
+});
+domainLlmRouter.post(`${prefix}/providers/:id/test`, async (c) => {
+  const input = await parseJsonBody<{ model: string }>(c);
+  assertObjectBody(input);
+  if (typeof input.model !== "string") {
+    throw new BadRequestError("请填写要测试的模型名称", "model_required");
+  }
+  return c.json({
+    data: await testDomainLlmProvider(
+      c.req.param("slug")!,
+      c.var.userId,
+      c.req.param("id"),
+      input.model.trim(),
+    ),
+  });
 });
 domainLlmRouter.get(
   `${prefix}/settings`,

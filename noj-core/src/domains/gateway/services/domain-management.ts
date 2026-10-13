@@ -34,9 +34,17 @@ import {
   type LlmQuotaInput,
   type LlmUsageQuery,
   queryLlmUsage,
+  testLlmProvider,
   updateLlmProvider,
   upsertLlmQuota,
 } from "./llm.ts";
+import {
+  deleteLlmModelAlias,
+  listLlmModelAliases,
+  listProblemsUsingAlias,
+  type LlmModelAliasInput,
+  upsertLlmModelAlias,
+} from "./llm-model-aliases.ts";
 
 async function scoped<T>(
   slug: string,
@@ -52,6 +60,7 @@ async function scoped<T>(
     tx: Executor,
     platformAdmin: boolean,
   ) => Promise<T>,
+  details: Record<string, unknown> = {},
 ) {
   return await getDb().transaction(async (tx) => {
     const workspace = await loadWorkspace(slug, actorId, {
@@ -87,10 +96,127 @@ async function scoped<T>(
       throw new AppError("LLM Gateway 暂时不可用", 503, error.code);
     }
     if (write || workspace.platformAdmin) {
-      await workspaceAudit(tx, actorId, workspace.domain.id, action);
+      await workspaceAudit(tx, actorId, workspace.domain.id, action, details);
     }
     return result;
   });
+}
+
+/** 本域别名管理视图；只有 LLM 管理能力可查看 Provider 与真实模型。 */
+export function readDomainLlmModelAliases(slug: string, actorId: string) {
+  return scoped(
+    slug,
+    actorId,
+    false,
+    "domain.llm_read",
+    async (domainId, tx) => {
+      const aliases = await listLlmModelAliases(domainId, tx);
+      return await Promise.all(
+        aliases.map(async (row) => ({
+          ...row,
+          problem_count:
+            (await listProblemsUsingAlias(row.alias, domainId, tx)).length,
+        })),
+      );
+    },
+  );
+}
+/** 保存域模型别名，审计保留别名和目标 Provider，revision 原子比较。 */
+export function saveDomainLlmModelAlias(
+  slug: string,
+  actorId: string,
+  alias: string,
+  input: LlmModelAliasInput,
+  revision: number | null,
+) {
+  assertResourceRevision(revision);
+  return scoped(
+    slug,
+    actorId,
+    true,
+    "domain.llm_settings",
+    (domainId, tx) =>
+      upsertLlmModelAlias(alias, input, actorId, domainId, revision, tx),
+    { operation: "model_alias.save", alias, provider_id: input.provider_id },
+  );
+}
+/** 删除只影响本域后续解析；当前作答版本仍引用时要求显式 force。 */
+export function removeDomainLlmModelAlias(
+  slug: string,
+  actorId: string,
+  alias: string,
+  revision: number | null,
+  force = false,
+) {
+  assertResourceRevision(revision);
+  return scoped(
+    slug,
+    actorId,
+    true,
+    "domain.llm_settings",
+    async (domainId, tx) => {
+      const used = await listProblemsUsingAlias(alias, domainId, tx);
+      if (used.length && !force) {
+        throw new ConflictError(
+          "此模型别名仍被本域题目引用",
+          "MODEL_ALIAS_IN_USE",
+        );
+      }
+      const deleted = await deleteLlmModelAlias(alias, domainId, revision, tx);
+      if (!deleted) throw new NotFoundError("模型别名不存在");
+      return deleted;
+    },
+    { operation: "model_alias.delete", alias, force },
+  );
+}
+/** Provider 连接测试沿用当前域授权和网关域条件；不获取密钥。 */
+export function testDomainLlmProvider(
+  slug: string,
+  actorId: string,
+  id: string,
+  model: string,
+) {
+  if (!model.trim()) {
+    throw new BadRequestError("请填写要测试的模型名称", "model_required");
+  }
+  return scoped(
+    slug,
+    actorId,
+    true,
+    "domain.llm_provider",
+    async (domainId) => {
+      await getLlmProviderById(id, domainId);
+      const start = performance.now();
+      try {
+        await testLlmProvider(id, model, domainId);
+      } catch (error) {
+        if (
+          !(error instanceof LlmGatewayError) ||
+          ![
+            "provider_auth_failed",
+            "provider_rate_limited",
+            "provider_unavailable",
+            "provider_error",
+            "provider_base_url_blocked",
+          ].includes(error.code)
+        ) throw error;
+        return {
+          status: "failed" as const,
+          model,
+          latency_ms: Math.round(performance.now() - start),
+          code: error.code,
+          message:
+            "连接测试失败，请检查 Provider 地址、密钥、模型权限或上游额度",
+        };
+      }
+      return {
+        status: "ok" as const,
+        model,
+        latency_ms: Math.round(performance.now() - start),
+      };
+    },
+    { operation: "provider.test", provider_id: id, model },
+  );
 }
 
 /** 当前使用域设置；新域返回空选择和 revision 0。 */

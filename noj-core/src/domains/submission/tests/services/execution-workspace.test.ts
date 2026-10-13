@@ -254,18 +254,30 @@ Deno.test("执行回填：保留 ID、代码、受理时间及未知版本，重
     VALUES (${id}, ${f.user}, ${f.first.id}, 'python3', 'immutable-code', ${f.now})`,
   );
   // 实际追加 SQL 从扩展状态完成回填与收缩，不能仅证明空库建表。
-  await f.db.execute(
-    sql`CREATE UNIQUE INDEX submission_jobs_legacy_actor_kind_key_unique
-    ON submission_jobs (actor_id, kind, idempotency_key) WHERE domain_id IS NULL`,
-  );
   const migration = await Deno.readTextFile(
     new URL(
-      "../../../../../drizzle/0137_wakeful_bulldozer.sql",
+      "../../../../../drizzle/0116_peaceful_gorilla_man.sql",
       import.meta.url,
     ),
   );
-  for (const statement of migration.split("--> statement-breakpoint")) {
-    await f.db.execute(sql.raw(statement));
+  const backfill = migration.split("-- BEGIN EXECUTION WORKSPACE BACKFILL")[1]
+    .split("-- END EXECUTION WORKSPACE BACKFILL")[0];
+  const contraction = migration.split("--> statement-breakpoint").filter((
+    statement,
+  ) =>
+    /ALTER TABLE "(submissions|objective_submissions|self_tests|submission_jobs|submission_job_items)" ALTER COLUMN "(domain_id|domain_problem_binding_id)" SET NOT NULL/
+      .test(statement) ||
+    statement.includes(
+      'ADD CONSTRAINT "submission_job_items_binding_required_check"',
+    )
+  );
+  for (
+    const statement of [
+      ...backfill.split("--> statement-breakpoint"),
+      ...contraction,
+    ]
+  ) {
+    if (statement.trim()) await f.db.execute(sql.raw(statement));
   }
   await backfillExecutionWorkspaces();
   await backfillExecutionWorkspaces();

@@ -29,9 +29,34 @@ watch(data, (value) => {
   }
 }, { immediate: true });
 const modal = ref(false);
+const testModal = ref(false), testProvider = shallowRef<DomainLlmProvider | null>(null), testModel = ref('');
+const testing = ref(false), testFailure = ref('');
+const testResult = shallowRef<Awaited<ReturnType<typeof api.testProvider>>['data'] | null>(null);
+function openTest(provider: DomainLlmProvider) {
+  testProvider.value = provider;
+  testModel.value = data.value?.settings.model ?? '';
+  testResult.value = null;
+  testFailure.value = '';
+  testModal.value = true;
+}
+async function runTest() {
+  if (!writable.value || testing.value || !testProvider.value || !testModel.value.trim()) return;
+  const scope = capture(), id = testProvider.value.id;
+  testing.value = true;
+  testFailure.value = '';
+  testResult.value = null;
+  try {
+    const response = await api.testProvider(scope.slug, id, testModel.value.trim());
+    if (scope.isCurrent()) testResult.value = response.data;
+  } catch (error) {
+    if (scope.isCurrent()) testFailure.value = extractApiError(error).message;
+  } finally {
+    if (scope.isCurrent()) testing.value = false;
+  }
+}
 const editing = ref<string | null>(null);
 const providerRevision = ref(0);
-const form = reactive({ name: '', base_url: '', api_key: '', cost_per_1k_tokens: 0, enabled: true });
+const form = reactive({ name: '', base_url: '', api_key: '', cost_per_1k_tokens: 0, enabled: true, rpm_limit: 0, tpm_limit: 0 });
 const quota = reactive({
   id: undefined as string | undefined,
   revision: 0,
@@ -176,10 +201,16 @@ function edit(provider?: DomainLlmProvider) {
     api_key: '',
     cost_per_1k_tokens: provider?.cost_per_1k_tokens ?? 0,
     enabled: provider?.enabled ?? true,
+    rpm_limit: provider?.rpm_limit ?? 0,
+    tpm_limit: provider?.tpm_limit ?? 0,
   });
   modal.value = true;
 }
 function saveProvider() {
+  if (![form.rpm_limit, form.tpm_limit].every((value) => Number.isSafeInteger(value) && value >= 0)) {
+    failure.value = 'RPM / TPM 上限必须为非负整数，0 表示不限';
+    return;
+  }
   return write(
     (target) =>
       editing.value
@@ -245,6 +276,12 @@ function newQuota() {
 }
 watch(key, () => {
   modal.value = false;
+  testModal.value = false;
+  testProvider.value = null;
+  testModel.value = '';
+  testFailure.value = '';
+  testResult.value = null;
+  testing.value = false;
   editing.value = null;
   providerRevision.value = 0;
   form.api_key = '';
@@ -296,9 +333,11 @@ useSeoMeta({ title: '空间 LLM 配置' });
         <div>
           <p>{{ provider.name }} <UBadge color="neutral" variant="subtle">{{ provider.enabled ? '启用' : '停用' }}</UBadge></p>
           <p class="mt-1 text-xs text-text-muted">{{ provider.base_url }} · {{ provider.api_key_masked }}</p>
+          <p class="mt-1 text-xs text-text-muted tabular-nums">RPM {{ provider.rpm_limit || '不限' }} / TPM {{ provider.tpm_limit || '不限' }}</p>
         </div>
         <div class="flex gap-2">
           <UButton variant="outline" :disabled="!writable" @click="edit(provider)">编辑</UButton>
+          <UButton variant="outline" :disabled="!writable" @click="openTest(provider)">测试连接</UButton>
           <UButton variant="ghost" color="neutral" :disabled="!writable || busy"
             @click="write((target) => api.updateProvider(target, provider.id, { enabled: !provider.enabled }, provider.revision), 'providers')">{{ provider.enabled ? '停用' : '启用' }}</UButton>
         </div>
@@ -347,6 +386,7 @@ useSeoMeta({ title: '空间 LLM 配置' });
       <div v-for="item in data.quotas" :key="item.id"
         class="mt-3 flex items-center justify-between border-t border-border pt-3 text-sm"><span>{{ quotaTarget(item) }} · {{ item.window_type === 'day' ? '每日' : '每月' }}：{{ item.max_calls ?? '不限' }} 次 / {{ item.max_tokens ?? '不限' }} Token / {{ item.max_cost ?? '不限' }} 费用</span><UButton variant="ghost" @click="editQuota(item)">编辑配额</UButton></div>
     </UCard>
+    <DomainLlmAliases v-if="data" :key="key" :slug="slug!" :providers="data.providers" :writable="writable" />
     <UCard>
       <h3 class="mb-3 font-semibold">本域用量</h3>
       <div class="mb-3 flex gap-3">
@@ -360,6 +400,18 @@ useSeoMeta({ title: '空间 LLM 配置' });
       <div
         class="mt-3 flex gap-3"><UButton variant="ghost" :disabled="page <= 1" @click="page--">上一页</UButton><span class="tabular-nums">{{ page }}</span><UButton variant="ghost" :disabled="(usage?.data.length ?? 0) < 30" @click="page++">下一页</UButton></div>
     </UCard>
+    <UModal v-model:open="testModal" title="测试本域 Provider 连接">
+      <template #body>
+        <p class="mb-3 text-sm">{{ testProvider?.name }} · 调用真实上游进行连接检查。</p>
+        <form class="space-y-3" @submit.prevent="runTest">
+          <UInput v-model="testModel" placeholder="测试模型名称" aria-label="Provider 测试模型" required />
+          <UButton type="submit" :disabled="!writable || !testModel.trim()" :loading="testing">运行连接测试</UButton>
+        </form>
+        <UAlert v-if="testFailure" color="error" :title="testFailure" class="mt-3" />
+        <UAlert v-if="testResult" :color="testResult.status === 'ok' ? 'success' : 'error'"
+          :title="testResult.status === 'ok' ? `连接成功，耗时 ${testResult.latency_ms} ms` : testResult.message ?? '上游连接失败'" class="mt-3" />
+      </template>
+    </UModal>
     <UModal v-model:open="modal" :title="editing ? '编辑 Provider' : '新增 Provider'">
       <template #body>
         <form class="space-y-4" @submit.prevent="saveProvider">
@@ -377,6 +429,14 @@ useSeoMeta({ title: '空间 LLM 配置' });
             <UInput v-model.number="form.cost_per_1k_tokens" type="number" min="0" step="any" />
           </AdminFormField>
           <UCheckbox v-model="form.enabled" label="启用" />
+          <div class="grid grid-cols-2 gap-3">
+            <AdminFormField label="RPM 上限" hint="每分钟请求次数，0 为不限">
+              <UInput v-model.number="form.rpm_limit" type="number" min="0" aria-label="Provider RPM 上限" />
+            </AdminFormField>
+            <AdminFormField label="TPM 上限" hint="每分钟 Token，0 为不限">
+              <UInput v-model.number="form.tpm_limit" type="number" min="0" aria-label="Provider TPM 上限" />
+            </AdminFormField>
+          </div>
           <UButton type="submit" :loading="busy">保存</UButton>
         </form>
       </template>

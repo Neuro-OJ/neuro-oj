@@ -98,3 +98,27 @@ passed、0 failed、6 ignored；PGlite 300 passed、0 failed、16 ignored。
 本次验证真实旧 Schema 上的普通提交、尝试、源题、账号及版本未知状态可保留并
 归入默认域，执行、比赛和社区内容归属非空约束已完成；账号混合事件保留有意义的空域。
 这些数据库证明不替代整个服务栈、对象 存储、搜索索引及客户端的备份恢复演练。
+
+## 接续正式 main 的最终迁移链
+
+以上 0136–0139 是未发布主题分支的过程验收。main 已新增
+0113–0115，因此正式集成保留 main 原文件，使用自动生成的追加迁移 0116
+完成同样的数据归属和约束，不能将两套编号混用。
+
+独立恢复库 `noj_upgrade_official_main_20261013b` 先通过真实 main 迁移到
+0115，再执行已授权开发数据清理和合成历史夹具，最后通过标准迁移到 0116。22
+个账号、3 道源题与 3 个版本、2 个板块、1 份合成普通提交、1
+个正式尝试与分版本桶，以及 1 个合成 main
+模型别名的原始字段逐行保留。默认域、真实 owned
+binding、别名域归属与非空约束实际生效。
+
+两次系统初始化、三次默认域初始化与两次搜索重建保持业务依据；搜索索引 25
+条相同。按真实源题锁重建三个绑定的成绩投影后，原提交代码、未知提交时版本、成绩指针、有效
+AC 和 10000 分保留。本人历史服务返回正确 main
+信息与原代码，不返回原始评测输出或详情。
+
+两项证明进程均退出
+0：`/tmp/noj-root-official-main-domain-upgrade-proof-b-20261013.log`、`/tmp/noj-root-official-main-projections-proof-20261013.log`。详细集成决策见
+[迁移记录](../../.agents/notes/implemented/architecture/2026-10-13-main-integration-domain-migration.md)。正式
+S3 完整栈恢复另见
+[恢复记录](../../.agents/notes/implemented/testing/2026-10-13-production-backup-isolated-full-stack-restore.md)；后者使用集成前已验证的镜像，不能代替最终集成镜像验收。

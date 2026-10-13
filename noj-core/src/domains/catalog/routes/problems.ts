@@ -29,6 +29,8 @@ import {
   enforceProblemImportRateLimit,
 } from "../../system/index.ts";
 import { withActorContext } from "../../system/index.ts";
+import { listLlmModelAliases } from "../../gateway/index.ts";
+import { LLM_DEFAULT_MODEL_ALIAS } from "../types/problems.ts";
 import {
   assertProblemEditPermission,
   createProblem,
@@ -169,6 +171,22 @@ router.get("/", optionalAuthMiddleware, async (c) => {
     total: result.total,
     page: result.page,
     limit: result.limit,
+  });
+});
+
+/**
+ * 出题人可选的 LLM 模型别名（仅别名与说明，不含 Provider 与真实模型名）。
+ * 静态路径须在 /:id 之前注册。
+ * GET /api/v1/problems/llm-model-aliases
+ * 响应：`{ data: { alias, description }[] }`，首项恒为 `default`。
+ */
+router.get("/llm-model-aliases", authMiddleware, async (c) => {
+  const rows = await listLlmModelAliases();
+  return c.json({
+    data: [
+      { alias: LLM_DEFAULT_MODEL_ALIAS, description: "平台默认模型" },
+      ...rows.map((r) => ({ alias: r.alias, description: r.description })),
+    ],
   });
 });
 
@@ -904,6 +922,10 @@ router.get("/:id/template", authMiddleware, async (c) => {
   });
   if (!result.allowed) {
     throw new NotFoundError("题目不存在");
+  }
+  // 界面题的脚本模板是出题人的评测逻辑，选手只通过 ui.html 填参数，不下发模板
+  if (problem.submission_mode === "ui") {
+    return c.json({ error: "该题目没有初始代码模板" }, 404);
   }
   const requestedTemplateVersionId = c.req.query("version_id")?.trim() || null;
   const tpl = await resolveProblemTemplate({

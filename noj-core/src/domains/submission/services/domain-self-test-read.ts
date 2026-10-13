@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { and, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { domains, problems, selfTests } from "../../../shared/db/schema.ts";
 import { NotFoundError } from "../../../shared/base/errors.ts";
@@ -7,8 +7,51 @@ import { loadWorkspace } from "../../workspace/index.ts";
 import {
   domainProblemReference,
   loadBindingAvailability,
+  resolveDomainProblem,
 } from "../../catalog/index.ts";
+import { assertDomainPracticeAllowed } from "../../contest/index.ts";
 import { cancelSelfTest, getSelfTest } from "./self-tests.ts";
+
+/** 当前使用域题目下的本人自测目录；只投影列表字段，代码及结果详情按需读取。 */
+export async function listDomainSelfTests(
+  slug: string,
+  reference: string,
+  actorId: string,
+  page: number,
+  perPage: number,
+) {
+  const db = getDb();
+  const resource = await resolveDomainProblem(slug, reference, actorId);
+  await assertDomainPracticeAllowed(
+    resource.domain.id,
+    resource.problem.id,
+    actorId,
+    db,
+  );
+  const where = and(
+    eq(selfTests.domain_id, resource.domain.id),
+    eq(selfTests.problem_id, resource.problem.id),
+    eq(selfTests.user_id, actorId),
+  );
+  const [rows, [total]] = await Promise.all([
+    db.select({
+      id: selfTests.id,
+      domain_id: selfTests.domain_id,
+      language: selfTests.language,
+      version_id: selfTests.problem_version_id,
+      status: selfTests.status,
+      result_status: selfTests.result_status,
+      score: selfTests.score,
+      created_at: selfTests.created_at,
+    }).from(selfTests).where(where).orderBy(
+      desc(selfTests.created_at),
+      desc(selfTests.id),
+    )
+      .limit(perPage).offset((page - 1) * perPage),
+    db.select({ value: count() }).from(selfTests).where(where),
+  ]);
+  return { data: rows, total: total.value };
+}
 
 async function accessSelfTest(slug: string, id: string, actorId: string) {
   const workspace = await loadWorkspace(slug, actorId);
@@ -38,6 +81,12 @@ export async function getDomainSelfTest(
   context: Context,
 ) {
   const access = await accessSelfTest(slug, id, actorId);
+  await assertDomainPracticeAllowed(
+    access.domain.id,
+    access.problem.id,
+    actorId,
+    getDb(),
+  );
   const detail = await getSelfTest(id, context, {
     domainId: access.domain.id,
     canReadDetails: access.manager,

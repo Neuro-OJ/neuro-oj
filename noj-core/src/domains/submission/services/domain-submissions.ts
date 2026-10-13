@@ -1,7 +1,9 @@
 import { resolveDomainExecution } from "./workspace-execution.ts";
 import { createSubmission } from "./submissions/submissions-crud.ts";
 import { createArtifactSubmission } from "./submissions/artifact-submissions.ts";
+import { createPredictionSubmission } from "./submissions/prediction-submissions.ts";
 import { createSelfTest } from "./self-tests.ts";
+import type { ProblemContentV1 } from "../../catalog/index.ts";
 import type { SelfTestInput } from "../types/self-tests.ts";
 import type { SubmissionInput } from "./submissions/submissions-types.ts";
 import type { AssignmentSubmissionOrigin } from "../../../shared/education-types.ts";
@@ -63,7 +65,12 @@ export async function createDomainArtifactSubmission(
     userId,
     input.version_id,
   );
-  const result = await createArtifactSubmission(
+  const content = resolved.version.content as ProblemContentV1;
+  const submit =
+    content.kind === "ai" && content.submission_mode === "prediction"
+      ? createPredictionSubmission
+      : createArtifactSubmission;
+  const result = await submit(
     userId,
     {
       file_name: input.file_name,

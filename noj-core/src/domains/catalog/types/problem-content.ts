@@ -6,7 +6,7 @@
  *
  * 三条不可变约束（首次发布后固定，跨类型转换必须新建题目）：
  * 1. `kind`（objective / oi / ai）；
- * 2. AI 题的 `submission_mode`（code / artifact）；
+ * 2. AI 题的 `submission_mode`（code / artifact / prediction / ui）；
  * 3. 客观题小题的 `key`（同题跨版本稳定，用于重判时匹配旧答案）。
  */
 
@@ -340,10 +340,23 @@ export function validateProblemContent(
     throw new BadRequestError("AI 题目必须声明合法的提交模式");
   }
   const runtime = runtimeConfig as Record<string, unknown>;
-  if (!runtime.evaluator || !runtime.solution) {
-    throw new BadRequestError("AI 题目运行配置必须包含 evaluator 与 solution");
+  // prediction 题只运行 Evaluator（无 Solution 容器），solution 可省略。
+  const requiresSolution = content.submission_mode !== "prediction";
+  if (!runtime.evaluator || (requiresSolution && !runtime.solution)) {
+    throw new BadRequestError(
+      requiresSolution
+        ? "AI 题目运行配置必须包含 evaluator 与 solution"
+        : "预测提交题运行配置必须包含 evaluator",
+    );
   }
-  validateProblemRuntimeConfig(runtimeConfig as RuntimeConfig);
+  validateProblemRuntimeConfig(
+    runtimeConfig as RuntimeConfig,
+    content.submission_mode,
+  );
+  // prediction 评测不注入 NOJ_LLM_*，题目级 LLM 配置不会生效，发布期即拒绝。
+  if (content.submission_mode === "prediction" && content.llm_config != null) {
+    throw new BadRequestError("预测提交题不支持 LLM 配置");
+  }
   if (typeof content.template_content !== "string") {
     throw new BadRequestError("AI 题目必须给出模板内容（可为空串）");
   }

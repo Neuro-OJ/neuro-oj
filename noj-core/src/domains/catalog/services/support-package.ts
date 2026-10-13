@@ -24,6 +24,8 @@ import {
   DEFAULT_TEMPLATE_FILE,
   isValidTemplateFileName,
   MAX_TEMPLATE_BYTES,
+  MAX_UI_HTML_BYTES,
+  UI_FILE,
 } from "./../types/problem-bundle.ts";
 import type { Context } from "hono";
 import {
@@ -625,4 +627,56 @@ export async function resolveProblemTemplate(
     { number: problem.number, title: problem.title },
     options.srcRoot,
   );
+}
+
+/**
+ * 从已存储的支持包 zip 中取出界面题的 `ui.html`。
+ *
+ * 与 {@link extractTemplateFromPackage} 同样用 `filter` 只解压目标条目；
+ * 超过 {@link MAX_UI_HTML_BYTES} 或包损坏时返回 null。
+ */
+export function extractUiHtmlFromPackage(
+  zipBytes: Uint8Array,
+): string | null {
+  const wanted = new Set([UI_FILE, `./${UI_FILE}`]);
+  let entries: Record<string, Uint8Array>;
+  try {
+    entries = unzipSync(zipBytes, { filter: (file) => wanted.has(file.name) });
+  } catch (err) {
+    logger.warn("支持包解析失败，无法读取界面文件", { err });
+    return null;
+  }
+  const raw = entries[UI_FILE] ?? entries[`./${UI_FILE}`];
+  if (!raw) return null;
+  if (raw.byteLength > MAX_UI_HTML_BYTES) {
+    logger.warn("支持包内界面文件超过大小上限，已忽略", {
+      size: raw.byteLength,
+      limit: MAX_UI_HTML_BYTES,
+    });
+    return null;
+  }
+  return new TextDecoder().decode(raw);
+}
+
+/**
+ * 解析界面题的 `ui.html`（做题页渲染界面的运行期入口）。
+ *
+ * 界面文件随题包存放在支持包 zip 里，因此天然按版本管理：显式 `versionId`
+ * （作答版本/竞赛固定版本）读该版本的包，否则读最新版（再回退草稿与投影）。
+ * 界面必须与实际判卷的版本一致——否则选手看到的控件与脚本模板对不上。
+ *
+ * @returns 界面 HTML；题目没有支持包或包内没有 `ui.html` 时返回 null
+ */
+export async function resolveProblemUiHtml(
+  problemId: string,
+  options: { versionId?: string | null; latestVersionId?: string | null } = {},
+): Promise<string | null> {
+  const ref = await resolveSupportPackageRef(problemId, {
+    versionId: options.versionId ?? undefined,
+    latestVersionId: options.latestVersionId,
+  });
+  if (!ref) return null;
+  const storage = await getStorageProvider();
+  const bytes = await storage.get(ref.storage_url);
+  return bytes ? extractUiHtmlFromPackage(bytes) : null;
 }

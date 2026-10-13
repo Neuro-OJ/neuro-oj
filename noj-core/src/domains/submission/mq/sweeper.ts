@@ -26,7 +26,10 @@ import type { JudgeTaskPriority } from "../types/index.ts";
 import { AppError } from "../../../shared/base/errors.ts";
 import { rebuildPendingTask } from "./pending-recovery.ts";
 import { applyAttemptResult } from "../services/versioning/result-write.ts";
-import { runAttemptTerminalRevocationAfterCommit } from "../services/versioning/attempts.ts";
+import {
+  registerAttemptTerminalRevocation,
+  runAttemptTerminalRevocationAfterCommit,
+} from "../services/versioning/attempts.ts";
 import {
   runPendingTokenRevocations,
 } from "../services/versioning/job-worker.ts";
@@ -148,7 +151,7 @@ async function sweepProcessingQueue(
 }
 
 export interface PendingRecoveryRow {
-  domain_id?: string | null;
+  domain_id: string;
   id: string;
   language: string;
   code: string;
@@ -185,7 +188,7 @@ interface PendingRecoveryActions<T extends PendingRecoveryRow> {
 
 /** pending 恢复查询所需的表列集合。 */
 interface PendingRecoveryTableColumns {
-  domainId?: AnyPgColumn;
+  domainId: AnyPgColumn;
   id: AnyPgColumn;
   language: AnyPgColumn;
   code: AnyPgColumn;
@@ -224,7 +227,7 @@ async function selectPendingRecoveryRows(
     support_package_storage_url: cols.supportPackageStorageUrl,
   };
   if (cols.rejudgeSeq) selectFields.rejudge_seq = cols.rejudgeSeq;
-  if (cols.domainId) selectFields.domain_id = cols.domainId;
+  selectFields.domain_id = cols.domainId;
   if (cols.userId) selectFields.user_id = cols.userId;
   if (cols.judgeStartedAt) selectFields.judge_started_at = cols.judgeStartedAt;
   if (cols.contestId) selectFields.contest_id = cols.contestId;
@@ -448,16 +451,28 @@ export async function recoverPendingSelfTests(now: number): Promise<void> {
         );
     },
     onPermanentError: async (row) => {
-      await db.update(selfTests)
-        .set({
+      await db.transaction(async (tx) => {
+        const changed = await tx.update(selfTests).set({
           status: "error",
           // 永久失败保留可解释的原因码（不写成泛化的 PLATFORM_ERROR）
           result_status: "RECOVERY_FAILED",
           judge_finished_at: new Date().toISOString(),
         })
-        .where(
-          and(eq(selfTests.id, row.id), eq(selfTests.status, "pending")),
-        );
+          .where(and(eq(selfTests.id, row.id), eq(selfTests.status, "pending")))
+          .returning({ id: selfTests.id });
+        if (
+          changed.length && row.judge_run_id && row.task_snapshot?.llm_execution
+        ) {
+          await registerAttemptTerminalRevocation(tx, {
+            attemptId: row.judge_run_id,
+            submissionId: row.id,
+            taskSnapshot: row.task_snapshot,
+          });
+        }
+      });
+      if (row.judge_run_id) {
+        await runAttemptTerminalRevocationAfterCommit(row.judge_run_id);
+      }
     },
   }, "self_test");
 }

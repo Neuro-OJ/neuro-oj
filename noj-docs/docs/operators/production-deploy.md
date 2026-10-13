@@ -50,7 +50,7 @@ API，也不会修改已有站点、证书 或其他容器。部署完成后，�
 从 Release 手动下载二进制并校验：
 
 ```bash
-VERSION=v0.10.4-rc.1   # 替换为目标 Release 标签
+VERSION=v0.10.5   # 替换为目标 Release 标签
 curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64"
 curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64.sha256"
 sha256sum -c noj-cli-linux-amd64.sha256

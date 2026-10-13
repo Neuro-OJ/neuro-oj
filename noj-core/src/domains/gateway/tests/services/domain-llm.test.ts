@@ -16,6 +16,7 @@ import {
 } from "../../../../shared/base/errors.ts";
 import {
   createDomain,
+  DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
   transferDomain,
 } from "../../../workspace/index.ts";
@@ -198,6 +199,7 @@ Deno.test({
             domainId: school.id,
             attemptId: "new",
             frozen: {
+              domain_id: DEFAULT_DOMAIN_ID,
               provider_id: "school-provider",
               model: "legacy",
               max_calls: 7,

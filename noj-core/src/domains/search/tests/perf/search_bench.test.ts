@@ -1,5 +1,6 @@
 import { assert } from "jsr:@std/assert@^1";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { sql } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { problems } from "../../../../shared/db/schema.ts";
 import { reindexAll } from "../../services/index-writer.ts";
@@ -42,6 +43,13 @@ Deno.test({
       }));
       await db.insert(problems).values(batch);
     }
+    // 搜索只索引已发布题目（latest_version_id 非空，见 index-writer.buildProblemEntry），
+    // 批量补一个版本并回写 latest_version_id，否则索引为空、基准测的是空结果
+    await db.execute(sql`
+      INSERT INTO problem_versions (id, problem_id, version, content, published_at)
+      SELECT 'v-' || id, id, 1, '{}'::jsonb, ${now} FROM problems
+    `);
+    await db.execute(sql`UPDATE problems SET latest_version_id = 'v-' || id`);
     await reindexAll();
     const start = performance.now();
     const result = await searchFlat({

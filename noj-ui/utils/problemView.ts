@@ -11,6 +11,20 @@
  * 直接断言（与 `utils/problemStats.ts`、`utils/submissionFormat.ts` 一致）。
  */
 
+/** 提交模式：`code` 代码 / `artifact` 产物 zip / `prediction` 预测单文件 / `ui` 题包自带界面。 */
+export type SubmissionMode = 'code' | 'artifact' | 'prediction' | 'ui';
+
+/** artifact 上传 accept（zip）。 */
+export const ARTIFACT_FILE_ACCEPT = '.zip,application/zip,application/x-zip-compressed';
+
+/**
+ * prediction 上传 accept 白名单（单文件，与后端 `prediction-format.ts` 一致）。
+ *
+ * 注意：不接受 `.zip`——prediction 提交的是单个数据文件而非压缩包，
+ * 且后端会按扩展名 + 魔数双重校验。
+ */
+export const PREDICTION_FILE_ACCEPT = '.csv,.tsv,.jsonl,.json,.txt,.npy,.npz,.parquet';
+
 /** 题目标签（`kind='problem'` 可点击筛选；`kind='algorithm'` 通过后可见）。 */
 export interface ProblemTagView {
   id: string;
@@ -43,8 +57,8 @@ export interface ProblemView {
   /** 评测题型与公开后端标识；不依赖仅管理员可见的运行配置。 */
   judge_type?: 'dual' | 'oi';
   judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
-  /** 提交模式：`code` 代码 / `artifact` 产物 zip。 */
-  submission_mode: 'code' | 'artifact';
+  /** 提交模式：`code` 代码 / `artifact` 产物 zip / `prediction` 预测单文件 / `ui` 题包自带界面。 */
+  submission_mode: SubmissionMode;
   /** artifact 单文件大小上限（MB）；null 表示使用平台默认上限。 */
   artifact_max_size_mb: number | null;
   /** 出题人用户名（仅用户题库有值）。 */
@@ -104,7 +118,7 @@ export interface ProblemResource {
   is_objective: boolean;
   judge_type?: 'dual' | 'oi';
   judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
-  submission_mode?: 'code' | 'artifact';
+  submission_mode?: SubmissionMode;
   artifact_max_size_mb?: number | null;
   tags?: ProblemTagView[];
   has_hidden_algorithm_tags?: boolean;
@@ -137,7 +151,7 @@ export interface ContestProblemResource {
   description: string;
   samples?: import('./oiWorkspace.ts').ProblemSample[];
   difficulty: string;
-  submission_mode?: 'code' | 'artifact';
+  submission_mode?: SubmissionMode;
   artifact_max_size_mb?: number | null;
   is_objective?: boolean;
   judge_type?: 'dual' | 'oi';
@@ -229,6 +243,32 @@ export function toContestProblemView(
 /** 题型展示文案。 */
 export function problemTypeLabel(_type: string | undefined): string {
   return '题库';
+}
+
+/** 提交模式展示文案（用于提交入口的标题/说明）。 */
+export function submissionModeLabel(mode: SubmissionMode | undefined): string {
+  switch (mode) {
+    case 'artifact':
+      return '产物提交';
+    case 'prediction':
+      return '预测提交';
+    default:
+      return '代码提交';
+  }
+}
+
+/**
+ * 是否为 prediction（预测单文件）题。
+ *
+ * 后端可能缺失 `submission_mode`（旧接口），只认显式 `'prediction'`。
+ */
+export function isPredictionView(problem: Pick<ProblemView, 'submission_mode'>): boolean {
+  return problem.submission_mode === 'prediction';
+}
+
+/** 预测题说明文案：选手本地 GPU 出结果，平台只做比对。 */
+export function predictionHint(): string {
+  return '本题为预测提交：请在你自己的本地 GPU 上完成训练/推理，上传单个预测结果文件；平台在服务端对照隐藏标签评分，不运行你的代码。';
 }
 
 /** 评测题型文案；不将缺失题型的旧响应误判为 AI 题。 */

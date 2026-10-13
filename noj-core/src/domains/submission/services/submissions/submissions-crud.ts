@@ -58,7 +58,13 @@ import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
 import { isOiRuntimeConfig } from "./../../../catalog/index.ts";
 import type { JudgeTaskLlm, SubmissionStatus } from "../../types/index.ts";
 import type { Context } from "hono";
-import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
+import {
+  assertSubmissionLanguage,
+  LANGUAGE_EXT_MAP,
+  submissionModeForLanguage,
+  UI_FILE_NAME,
+  UI_LANGUAGE,
+} from "../../types/index.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
 import {
   type DomainExecutionRequest,
@@ -78,6 +84,7 @@ import {
 } from "../versioning/projection.ts";
 import {
   executionSnapshot,
+  scriptTemplateOf,
   versionSupportPackageDownload,
 } from "../versioning/version-execution.ts";
 import {
@@ -494,9 +501,16 @@ export async function createSubmission(
     throw new ForbiddenError("仅可在竞赛进行期间提交");
   }
 
-  // artifact 题目必须走 multipart zip 上传，拒绝 JSON 代码提交
-  if (!domainExecution && problem.submission_mode === "artifact") {
-    throw new BadRequestError("该题目要求上传 zip 产物");
+  // artifact / prediction 题目必须走 multipart 上传，拒绝 JSON 代码提交
+  if (
+    !domainExecution && (problem.submission_mode === "artifact" ||
+      problem.submission_mode === "prediction")
+  ) {
+    throw new BadRequestError(
+      problem.submission_mode === "artifact"
+        ? "该题目要求上传 zip 产物"
+        : "该题目要求上传预测结果文件",
+    );
   }
 
   // 提交时版本：竞赛用固定版本（客户端覆盖 → 409），题库用显式指定版本；
@@ -509,19 +523,24 @@ export async function createSubmission(
   if (versionResolution.kind === "known") {
     assertVersionAcceptsSubmission(versionResolution.version.content, {
       language: input.language,
-      submissionMode: "code",
+      submissionMode: submissionModeForLanguage(input.language),
     });
   }
 
-  // 验证语言（与 LANGUAGE_EXT_MAP 键集保持一致）
-  const supportedLanguages = Object.keys(LANGUAGE_EXT_MAP);
-  if (!supportedLanguages.includes(input.language)) {
-    throw new BadRequestError(`不支持的语言: ${input.language}`);
-  }
+  // 验证语言：ui 题只收界面参数；其余与 LANGUAGE_EXT_MAP 键集保持一致
+  assertSubmissionLanguage(
+    versionResolution.kind === "known" &&
+      versionResolution.version.content.kind === "ai"
+      ? versionResolution.version.content.submission_mode
+      : "code",
+    input.language,
+    Object.keys(LANGUAGE_EXT_MAP),
+  );
 
-  // 生成文件默认名：优先使用 LANGUAGE_EXT_MAP
-  const fileName = input.file_name || LANGUAGE_EXT_MAP[input.language] ||
-    "main.txt";
+  // 生成文件默认名：提示词固定 prompt.md，否则优先使用 LANGUAGE_EXT_MAP
+  const fileName = input.language === UI_LANGUAGE
+    ? UI_FILE_NAME
+    : input.file_name || LANGUAGE_EXT_MAP[input.language] || "main.txt";
 
   // 创建提交记录并推送到评测队列（在同一个 try 块中保证一致性）
   const id = crypto.randomUUID();
@@ -567,6 +586,13 @@ export async function createSubmission(
   } else {
     if (input.language === "c" || input.language === "cc") {
       throw new BadRequestError("C/C++ 提交仅适用于 judge_type=oi 的题目");
+    }
+    if (!runtimeConfig.solution) {
+      throw new AppError(
+        "题目缺少 solution 运行时配置，无法评测",
+        500,
+        "RUNTIME_CONFIG_SOLUTION_MISSING",
+      );
     }
     // 防御性 final gate：校验双容器镜像 + kind
     await validateJudgeImageWithKind(
@@ -617,10 +643,19 @@ export async function createSubmission(
     problem_id: input.problem_id,
     user_id: userId,
     priority,
+    submission_mode: "code",
     runtime_config: runtimeConfig,
     download_url,
     language: input.language,
     code: input.code,
+    script_template: input.language === UI_LANGUAGE
+      ? scriptTemplateOf(
+        versionResolution.kind === "known"
+          ? versionResolution.version.content
+          : null,
+        problem.template_content,
+      )
+      : undefined,
     file_name: fileName,
     llm: llmTask ?? undefined,
   });
