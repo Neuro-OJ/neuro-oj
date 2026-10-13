@@ -1,4 +1,5 @@
 import { useApi } from '~/composables/useApi';
+import type { TrainingComparisonData, TrainingComparisonWindows } from '~/utils/education-comparison';
 import type { EducationDashboardData } from '~/utils/education-dashboard';
 import type {
   AssignmentRemediationInput,
@@ -44,6 +45,11 @@ export function useEducationApi() {
   const idempotent = (key: string) => ({ headers: { 'Idempotency-Key': key } });
   const revision = (value: number) => ({ headers: { 'If-Match': String(value) } });
   return {
+    trainingComparison: (slug: string, assignmentId: string, userId: string, windows: TrainingComparisonWindows) =>
+      api.get<{ data: TrainingComparisonData }>(
+        `${task(slug, assignmentId)}/students/${encodeURIComponent(userId)}/training-comparison`,
+        { query: { ...windows }, silent: true },
+      ),
     studentSubmissions: (
       slug: string,
       classId: string,

@@ -6,6 +6,7 @@ export interface DomainLlmProvider {
   api_key_masked: string;
   enabled: boolean;
   cost_per_1k_tokens: number;
+  revision: number;
 }
 export interface DomainLlmSettings {
   domain_id: string;
@@ -15,6 +16,7 @@ export interface DomainLlmSettings {
 }
 export interface DomainLlmQuota {
   id: string;
+  revision: number;
   scope_type: 'domain' | 'user' | 'problem' | 'user_problem';
   scope_id: string;
   window_type: 'day' | 'month';
@@ -22,6 +24,7 @@ export interface DomainLlmQuota {
   max_tokens: number | null;
   max_cost: number | null;
 }
+export type DomainLlmQuotaCaps = Record<'day' | 'month', Pick<DomainLlmQuota, 'max_calls' | 'max_tokens' | 'max_cost'>>;
 export interface DomainLlmUsage {
   id: string;
   user_id: string;
@@ -39,20 +42,31 @@ export function useDomainLlm() {
   return {
     settings: (slug: string) => api.get<{ data: DomainLlmSettings }>(`${path(slug)}/settings`, { silent: true }),
     saveSettings: (slug: string, provider_id: string | null, model: string | null, revision: number) =>
-      api.put(`${path(slug)}/settings`, { provider_id, model }, { headers: { 'If-Match': String(revision) } }),
+      api.put<{ data: DomainLlmSettings }>(`${path(slug)}/settings`, { provider_id, model }, {
+        headers: { 'If-Match': String(revision) },
+      }),
     providers: (slug: string) => api.get<{ data: DomainLlmProvider[] }>(`${path(slug)}/providers`, { silent: true }),
     provider: (
       slug: string,
       body: { name: string; base_url: string; api_key: string; cost_per_1k_tokens: number; enabled: boolean },
-    ) => api.post(`${path(slug)}/providers`, body),
+    ) => api.post(`${path(slug)}/providers`, body, { headers: { 'If-Match': '0' }, silent: true }),
     updateProvider: (
       slug: string,
       id: string,
       body: Partial<{ name: string; base_url: string; api_key: string; cost_per_1k_tokens: number; enabled: boolean }>,
-    ) => api.put(`${path(slug)}/providers/${encodeURIComponent(id)}`, body),
-    quotas: (slug: string) => api.get<{ data: DomainLlmQuota[] }>(`${path(slug)}/quotas`, { silent: true }),
-    saveQuota: (slug: string, body: Omit<DomainLlmQuota, 'id'> & { id?: string }) =>
-      api.post(`${path(slug)}/quotas`, body),
+      revision: number,
+    ) =>
+      api.put(`${path(slug)}/providers/${encodeURIComponent(id)}`, body, {
+        headers: { 'If-Match': String(revision) },
+        silent: true,
+      }),
+    quotas: (slug: string) =>
+      api.get<{ data: DomainLlmQuota[]; caps: DomainLlmQuotaCaps }>(`${path(slug)}/quotas`, { silent: true }),
+    saveQuota: (slug: string, body: Omit<DomainLlmQuota, 'id' | 'revision'> & { id?: string }, revision: number) =>
+      api.post<{ data: { id: string; revision: number } }>(`${path(slug)}/quotas`, body, {
+        headers: { 'If-Match': String(revision) },
+        silent: true,
+      }),
     usage: (slug: string, query: { page: number; provider_id?: string; user_id?: string; problem_id?: string }) =>
       api.get<{ data: DomainLlmUsage[] }>(`${path(slug)}/usage`, { query: { ...query, limit: 30 }, silent: true }),
   };

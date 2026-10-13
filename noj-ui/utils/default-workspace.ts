@@ -23,6 +23,8 @@ export function defaultWorkspaceDestination(path: string): DefaultWorkspaceDesti
     '/my/problems': 'problem-drafts',
     '/admin/problem-versions': 'problem-bindings',
     '/admin/submission-jobs': 'submissions',
+    '/admin/llm/providers': 'llm',
+    '/admin/llm/usage': 'llm',
   };
   if (fixed[path]) return { path: `/d/main/${fixed[path]}` };
   if (path === '/problems/new' || path === '/admin/problem-new') return { path: '/d/main/problems/new' };

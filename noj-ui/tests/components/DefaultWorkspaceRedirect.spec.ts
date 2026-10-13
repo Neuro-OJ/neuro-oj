@@ -31,7 +31,11 @@ describe('旧业务入口的默认域兼容', () => {
     expect(navigate.mock.calls[0]![0].path).toBe('/d/main/problems/1001');
     get.mockRejectedValue({ statusCode: 404 });
     navigate.mockClear();
-    await expect(enter('/problems/foreign-uuid')).rejects.toMatchObject({ statusCode: 404 });
+    await expect(enter('/problems/foreign-uuid')).rejects.toMatchObject({ statusCode: 404, message: '题目不存在' });
+    await expect(enter('/editor/NOEXIST')).rejects.toMatchObject({ statusCode: 404, message: '题目不存在' });
+    const forbidden = { statusCode: 403, message: 'Forbidden' };
+    get.mockRejectedValue(forbidden);
+    await expect(enter('/editor/restricted-uuid')).rejects.toBe(forbidden);
     expect(navigate).not.toHaveBeenCalled();
   });
   it('U题旧地址不映射同号main题；题单公开ID先授权读取稳定ID', async () => {

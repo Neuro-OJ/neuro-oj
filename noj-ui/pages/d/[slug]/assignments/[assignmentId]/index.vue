@@ -205,6 +205,8 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
           </div>
         </UCard>
       </AsyncContent>
+      <TrainingComparison v-if="isStudent && actor" :key="`${key}:own-comparison`" :slug="slug!" :assignment-id="id"
+        :user-id="actor.id" :anchor="task.data.value.data.published_at" />
       <UButton v-if="selected && can('feedback:write')" variant="ghost" @click="selected = null">改为整体反馈</UButton>
       <AssignmentConversation :key="key" :slug="slug!" :assignment-id="id" :is-student="isStudent"
         :can-feedback="can('feedback:write')" :can-help="can('help:manage')" :writable="!!writable"
@@ -216,6 +218,9 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
         <template #body>
           <div v-if="selected" class="space-y-4">
             <p class="text-sm tabular-nums">{{ teachingCellLabel(selected.cell) }}</p>
+            <TrainingComparison v-if="can('progress:read') && !isStudent" :key="`${key}:${selected.userId}:comparison`"
+              :slug="slug!" :assignment-id="id" :user-id="selected.userId"
+              :anchor="task.data.value.data.published_at" />
             <SubmissionReview
               v-if="selected.cell.source_submission_id && selected.cell.source_kind === 'submission' && (isStudent || can('submissions:read'))"
               :key="selected.cell.source_submission_id" :slug="slug!" :classroom-id="task.data.value.data.classroom_id"

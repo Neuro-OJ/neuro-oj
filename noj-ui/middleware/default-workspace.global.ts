@@ -1,5 +1,6 @@
 import { defaultProblemReference, defaultWorkspaceDestination } from '~/utils/default-workspace';
 import { workspaceProblemPath } from '~/utils/workspace';
+import { isNotFoundError } from '~/utils/apiError';
 /** 旧入口在页面 setup 前转到 main，旧表单不再发起业务写操作。 */
 export default defineNuxtRouteMiddleware(async (to) => {
   const destination = defaultWorkspaceDestination(to.path);
@@ -25,11 +26,16 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (!reference && !/^U\d+$/.test(destination.problemRef)) {
     // 仅用已收口 main 的只读兼容门面解析旧 UUID，失败不寻找其他域。
     const { api } = useApi();
-    const result = await api.get<{ data: { number?: number; display_id?: string } }>(
-      `/api/v1/problems/${encodeURIComponent(destination.problemRef)}`,
-      { silent: true },
-    );
-    reference = defaultProblemReference(String(result.data.number ?? result.data.display_id ?? ''));
+    try {
+      const result = await api.get<{ data: { number?: number; display_id?: string } }>(
+        `/api/v1/problems/${encodeURIComponent(destination.problemRef)}`,
+        { silent: true },
+      );
+      reference = defaultProblemReference(String(result.data.number ?? result.data.display_id ?? ''));
+    } catch (error) {
+      if (isNotFoundError(error)) throw createError({ statusCode: 404, statusMessage: '题目不存在' });
+      throw error;
+    }
   }
   if (!reference) throw createError({ statusCode: 404, statusMessage: '旧题目入口不存在' });
   const path = destination.editor

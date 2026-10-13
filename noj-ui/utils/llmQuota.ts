@@ -4,7 +4,8 @@
  * 与 noj-llm-gateway 语义对齐：
  * - 计数键为 `(scope_type, scope_id, window_type)` 精确匹配，无通配回退；
  *   `global` 的 scope_id 恒为 `""`，`user_problem` 为 `<userId>:<problemId>`。
- * - 限额取值：`-1`（任意负数）= 不限，`0` = 禁止调用，正数 = 上限。
+ * - 新写限额：null 不限，0 禁止调用，非负 PostgreSQL integer 为上限。
+ *   历史负数只在读取时兼容，打开编辑先转为 null。
  * - gateway 的 POST 按 id upsert；不带 id 一律新增。若同键已有行仍新增，
  *   会产生重复行且 gateway `LIMIT 1` 命中不确定，因此保存前必须先查重。
  */
@@ -17,24 +18,25 @@ export type QuotaWindowType = 'day' | 'month';
 /** gateway `llm_quotas` 行 */
 export interface LlmQuotaRow {
   id: string;
+  revision: number;
   scope_type: QuotaScopeType;
   scope_id: string;
   window_type: QuotaWindowType;
-  max_calls: number;
-  max_tokens: number;
-  max_cost: number;
+  max_calls: number | null;
+  max_tokens: number | null;
+  max_cost: number | null;
   created_at: string;
   updated_at: string;
 }
 
-/** 编辑表单状态；限额为空字符串表示"使用 gateway 环境变量默认值"（仅新增时允许） */
+/** 编辑表单状态；清空数字输入的空字符串必须在保存前补齐或选择不限。 */
 export interface QuotaForm {
   scope_type: QuotaScopeType;
   scope_id: string;
   window_type: QuotaWindowType;
-  max_calls: number | '';
-  max_tokens: number | '';
-  max_cost: number | '';
+  max_calls: number | null | '';
+  max_tokens: number | null | '';
+  max_cost: number | null | '';
 }
 
 /** 提交给 `POST /api/v1/admin/gateway/llm/quotas` 的请求体 */
@@ -43,9 +45,9 @@ export interface QuotaPayload {
   scope_type: QuotaScopeType;
   scope_id: string;
   window_type: QuotaWindowType;
-  max_calls?: number;
-  max_tokens?: number;
-  max_cost?: number;
+  max_calls?: number | null;
+  max_tokens?: number | null;
+  max_cost?: number | null;
 }
 
 /** 作用域选项（含 scope_id 填写说明） */
@@ -79,10 +81,14 @@ export function windowLabel(window: string): string {
 }
 
 /** 限额展示：负数 = 不限，0 = 禁止调用，正数按千分位。 */
-export function formatQuotaLimit(value: number): string {
-  if (value < 0) return '不限';
+export function formatQuotaLimit(value: number | null): string {
+  if (value === null || value < 0) return '不限';
   if (value === 0) return '禁止调用';
   return value.toLocaleString('zh-CN');
+}
+/** 旧记录负数表示不限，编辑时使用当前 null 协议。 */
+export function editableQuotaLimit(value: number | null): number | null {
+  return value !== null && value < 0 ? null : value;
 }
 
 /**
@@ -101,9 +107,8 @@ export function normalizeScopeId(scope: QuotaScopeType, scopeId: string): string
 
 /**
  * 校验表单；返回首个错误文案，通过时返回 null。
- * @param allowEmptyLimits 新增时允许限额留空（交由 gateway 用 env 默认值填充）
  */
-export function validateQuotaForm(form: QuotaForm, allowEmptyLimits: boolean): string | null {
+export function validateQuotaForm(form: QuotaForm): string | null {
   const scopeId = normalizeScopeId(form.scope_type, form.scope_id);
   if (form.scope_type !== 'global' && !scopeId) {
     return '请填写作用域 ID';
@@ -116,13 +121,11 @@ export function validateQuotaForm(form: QuotaForm, allowEmptyLimits: boolean): s
   }
   for (const [key, label] of LIMIT_FIELDS) {
     const value = form[key];
-    if (value === '') {
-      if (!allowEmptyLimits) return `请填写${label}上限`;
-      continue;
-    }
+    if (value === null) continue;
+    if (value === '') return `请填写${label}上限或选择不额外限制`;
     // gateway 列为 integer，小数会被数据库拒绝
-    if (!Number.isInteger(value) || value < -1) {
-      return `${label}上限须为 ≥ -1 的整数（-1 不限，0 禁止调用）`;
+    if (!Number.isInteger(value) || value < 0 || value > 2147483647) {
+      return `${label}上限须为 0–2147483647 的整数；不限请使用不额外限制选项`;
     }
   }
   return null;
@@ -150,7 +153,7 @@ export function findDuplicateQuota(
   );
 }
 
-/** 构造请求体；留空的限额字段省略，由 gateway 回退到 env 默认值。 */
+/** 从已经通过 validateQuotaForm 的表单构造完整额度请求。 */
 export function buildQuotaPayload(form: QuotaForm, id?: string): QuotaPayload {
   const payload: QuotaPayload = {
     scope_type: form.scope_type,
@@ -159,8 +162,7 @@ export function buildQuotaPayload(form: QuotaForm, id?: string): QuotaPayload {
   };
   if (id) payload.id = id;
   for (const [key] of LIMIT_FIELDS) {
-    const value = form[key];
-    if (value !== '') payload[key] = value;
+    payload[key] = form[key] as number | null;
   }
   return payload;
 }

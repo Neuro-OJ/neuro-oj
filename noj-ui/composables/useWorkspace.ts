@@ -6,6 +6,7 @@ import type {
   WorkspaceDetail,
   WorkspaceLimits,
   WorkspaceLimitUsage,
+  WorkspaceMember,
   WorkspacePreset,
   WorkspaceRecord,
   WorkspaceSummary,
@@ -93,6 +94,11 @@ export function useWorkspaceApi() {
       api.post<{ data: WorkspaceRecord }>('/api/v1/domains', input),
     requestCreation: (input: { slug: string; name: string; preset: WorkspacePreset; reason: string }) =>
       api.post('/api/v1/domain-creation-requests', input),
+    members: (slug: string, page: number) =>
+      api.get<{ data: WorkspaceMember[]; page: number; per_page: number }>(`${path(slug)}/members`, {
+        query: { page },
+        silent: true,
+      }),
     join: (slug: string, reason: string) =>
       api.post<{ data: { membership?: unknown; request?: unknown } }>(`${path(slug)}/join`, { reason }),
     update: (
