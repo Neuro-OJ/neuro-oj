@@ -169,7 +169,11 @@ async function submit() {
       </ClientOnly>
     </template>
     <UAlert v-if="failure" color="error" :title="failure" class="mt-4" />
-    <UAlert v-if="submissionId" color="success" :title="`已受理提交：${submissionId}`" class="mt-4" />
+    <UAlert v-if="submissionId" color="success" :title="`已受理提交：${submissionId}`" class="mt-4">
+      <template #actions>
+        <UButton :to="`/d/${slug}/submissions/${submissionId}`">查看评测</UButton>
+      </template>
+    </UAlert>
     <UAlert v-if="result" color="success"
       :title="result.score === null ? '已交卷，成绩暂未公开' : `本次成绩：${result.score} 分`" class="mt-4" />
     <div class="mt-4 flex flex-wrap items-center gap-3">

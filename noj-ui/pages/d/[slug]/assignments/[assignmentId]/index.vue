@@ -125,6 +125,7 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
             <AssignmentActions :key="key" :slug="slug!" :task="task.data.value.data" :writable="!!classroomWritable"
               @changed="task.refresh()" />
             <AssignmentCopy :key="`${key}:copy`" :slug="slug!" :task="task.data.value.data"
+              :matrix="matrix.data.value?.data"
               :writable="!!classroomWritable" />
           </ClientOnly>
         </div>

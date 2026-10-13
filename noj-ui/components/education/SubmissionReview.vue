@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { extractApiError } from '~/utils/apiError';
 import { educationCacheKey } from '~/utils/education';
+import type { LineAnnotation } from '~/utils/education';
 const props = defineProps<{ slug: string; classroomId: string; submissionId: string; canAnnotate: boolean }>();
 const education = useEducationApi();
 const actor = useState<{ id: string } | null>('auth:user', () => null);
 const file = ref(''), page = ref(1), body = ref(''), start = ref(1), end = ref(1), saving = ref(false);
 const operationKey = ref(crypto.randomUUID());
 const capture = useWorkspaceActionScope();
+const { dialog } = useDialog();
+const editing = ref<LineAnnotation | null>(null), editBody = ref(''), mutationError = ref('');
 const key = computed(() =>
   educationCacheKey(props.slug, actor.value?.id ?? null, props.classroomId, props.submissionId)
 );
@@ -36,6 +39,8 @@ watch(() => [props.slug, props.classroomId, props.submissionId, actor.value?.id]
   body.value = '';
   page.value = 1;
   operationKey.value = crypto.randomUUID();
+  editing.value = null;
+  editBody.value = mutationError.value = '';
 });
 watch([file, start, end, body], () => {
   operationKey.value = crypto.randomUUID();
@@ -50,6 +55,38 @@ const comments = computed(() =>
     n.submission_id === props.submissionId && n.file_name === file.value
   ) ?? []
 );
+function edit(note: LineAnnotation) {
+  editing.value = note;
+  editBody.value = note.body;
+  mutationError.value = '';
+}
+async function update(note: LineAnnotation, withdraw = false) {
+  if (saving.value || !props.canAnnotate) return;
+  const scope = capture(), id = props.submissionId, classroom = props.classroomId;
+  if (withdraw && !await dialog.confirm('撤回这条批注？已保存的作者和修改记录仍会保留。', { title: '撤回行批注' })) {
+    return;
+  }
+  if (!scope.isCurrent()) return;
+  saving.value = true;
+  mutationError.value = '';
+  try {
+    await education.updateAnnotation(
+      scope.slug,
+      classroom,
+      id,
+      note.id,
+      note.revision,
+      withdraw ? { withdraw: true } : { body: editBody.value },
+    );
+    if (!scope.isCurrent() || props.submissionId !== id || props.classroomId !== classroom) return;
+    editing.value = null;
+    await annotations.refresh();
+  } catch (error) {
+    if (scope.isCurrent() && props.submissionId === id) mutationError.value = extractApiError(error).message;
+  } finally {
+    if (scope.isCurrent() && props.submissionId === id) saving.value = false;
+  }
+}
 async function annotate() {
   if (!currentText.value || saving.value) return;
   const scope = capture(), id = props.submissionId, classroom = props.classroomId;
@@ -89,9 +126,21 @@ async function annotate() {
       </ol>
     </AsyncContent>
     <UAlert v-if="annotations.error.value" color="error" :title="extractApiError(annotations.error.value).message" />
+    <UAlert v-if="mutationError" color="error" :title="mutationError" />
     <article v-for="note in comments" :key="note.id" class="rounded border border-border p-3">
       <p class="mb-2 text-xs text-text-muted">{{ note.author_name }} · {{ note.start_line }}–{{ note.end_line }} 行</p>
-      <p class="whitespace-pre-wrap text-sm">{{ note.body }}</p>
+      <form v-if="editing?.id === note.id" class="space-y-3" @submit.prevent="update(note)">
+        <UTextarea v-model="editBody" class="w-full" :maxlength="30000" aria-label="修改行批注正文" />
+        <div class="flex gap-2">
+          <UButton type="submit" :loading="saving" :disabled="!editBody.trim()">保存修改</UButton>
+          <UButton variant="ghost" :disabled="saving" @click="editing = null">取消</UButton>
+        </div>
+      </form>
+      <p v-else class="whitespace-pre-wrap text-sm">{{ note.body }}</p>
+      <div v-if="canAnnotate && note.author_id === actor?.id && editing?.id !== note.id" class="mt-2 flex gap-2">
+        <UButton size="xs" variant="ghost" :disabled="saving" @click="edit(note)">修改</UButton>
+        <UButton size="xs" color="error" variant="ghost" :disabled="saving" @click="update(note, true)">撤回</UButton>
+      </div>
       <p v-if="currentText && note.source_hash !== currentText.source_hash"
         class="mt-2 text-xs text-warning-text">此批注对应另一份文件内容，请按原提交依据核对。</p>
     </article>

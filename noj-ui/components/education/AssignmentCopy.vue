@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { educationCacheKey } from '~/utils/education';
-import type { AssignmentDetail } from '~/utils/education';
+import type { AssignmentDetail, MatrixData } from '~/utils/education';
+import { currentPageRemediation } from '~/utils/education-remediation';
 import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
-const props = defineProps<{ slug: string; task: AssignmentDetail; writable: boolean }>();
+const props = defineProps<{ slug: string; task: AssignmentDetail; writable: boolean; matrix?: MatrixData }>();
 const education = useEducationApi(), capture = useWorkspaceActionScope();
 const actor = useState<{ id: string } | null>('auth:user', () => null);
 const open = ref(false), title = ref(''), selectedStudents = ref<string[]>([]), selectedItems = ref<string[]>([]);
@@ -20,13 +21,19 @@ const roster = await useAsyncData(
 const students = computed(() =>
   roster.data.value?.data.filter((m) => m.role === 'student' && m.effective_active) ?? []
 );
-function prepare() {
+const remediation = computed(() => props.matrix ? currentPageRemediation(props.matrix) : null);
+function prepare(fromMatrix = false) {
   title.value = `${props.task.title}（补题）`;
   originalRevision.value = props.task.revision;
   selectedItems.value = [];
   selectedStudents.value = [];
   targets.value = 'selected';
   items.value = 'all';
+  if (fromMatrix && remediation.value) {
+    selectedStudents.value = remediation.value.studentIds.filter((id) => students.value.some((s) => s.user_id === id));
+    selectedItems.value = remediation.value.itemIds;
+    items.value = 'selected';
+  }
   error.value = '';
   open.value = true;
 }
@@ -61,7 +68,11 @@ watch(() => [props.slug, props.task.id, actor.value?.id], () => {
 </script>
 <template>
   <div v-if="writable">
-    <UButton variant="outline" icon="i-lucide-copy" @click="prepare">复制／布置补题</UButton>
+    <div class="flex flex-wrap gap-2">
+      <UButton variant="outline" icon="i-lucide-copy" @click="prepare()">复制／布置补题</UButton>
+      <UButton v-if="remediation" variant="outline" icon="i-lucide-list-filter"
+        :disabled="!remediation.studentIds.length" @click="prepare(true)">为当前页未达标学生布置补题</UButton>
+    </div>
     <UModal v-model:open="open" title="创建独立补题草稿">
       <template #body>
         <form class="space-y-4" @submit.prevent="copy">
@@ -92,6 +103,8 @@ watch(() => [props.slug, props.task.id, actor.value?.id], () => {
           </div>
           <p
             class="text-sm text-text-muted">创建后进入草稿预览，再调整截止并发布。新任务独立计算，不修改原任务或比赛成绩。</p>
+          <p
+            class="text-sm text-text-muted">所选学生收到所选全部题目；矩阵快捷选择仅包括当前页，发布前可调整名单和题目。</p>
           <UButton type="submit" :loading="saving">创建补题草稿</UButton>
         </form>
       </template>

@@ -181,6 +181,19 @@ export function useEducationApi() {
       input: { file_name: string; source_hash: string; start_line: number; end_line: number; body: string },
       key: string,
     ) => api.post<{ data: LineAnnotation }>(`${source(slug, classId, id)}/annotations`, input, idempotent(key)),
+    updateAnnotation: (
+      slug: string,
+      classId: string,
+      id: string,
+      annotationId: string,
+      current: number,
+      input: { body?: string; withdraw?: boolean },
+    ) =>
+      api.patch<{ data: LineAnnotation }>(
+        `${source(slug, classId, id)}/annotations/${encodeURIComponent(annotationId)}`,
+        input,
+        revision(current),
+      ),
     feedback: (slug: string, id: string, page = 1) =>
       api.get<{ data: TeachingPage<AssignmentFeedback> }>(`${task(slug, id)}/feedback`, {
         query: { page },
