@@ -68,6 +68,14 @@ export interface WorkspaceLimits {
   storage_bytes: number | null;
   submissions_per_minute: number | null;
 }
+export interface WorkspaceLimitUsage {
+  members: number;
+  problems: number;
+  storage_bytes: number;
+  reserved_members: number;
+  reserved_problems: number;
+  reserved_storage_bytes: number;
+}
 export const WORKSPACE_ROLE_LABELS: Record<WorkspaceRole, string> = {
   owner: '负责人',
   admin: '管理员',

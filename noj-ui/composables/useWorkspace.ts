@@ -5,6 +5,7 @@ import { workspaceCacheKey, workspacePath, workspaceSlugFromPath } from '~/utils
 import type {
   WorkspaceDetail,
   WorkspaceLimits,
+  WorkspaceLimitUsage,
   WorkspacePreset,
   WorkspaceRecord,
   WorkspaceSummary,
@@ -101,7 +102,15 @@ export function useWorkspaceApi() {
     ) => api.patch(`${path(slug)}`, input, revision(current)),
     limits: (slug: string) =>
       api.get<
-        { data: { configured: WorkspaceLimits; effective: WorkspaceLimits; caps: WorkspaceLimits; revision: number } }
+        {
+          data: {
+            configured: WorkspaceLimits;
+            effective: WorkspaceLimits;
+            caps: WorkspaceLimits;
+            revision: number;
+            usage: WorkspaceLimitUsage;
+          };
+        }
       >(`${path(slug)}/limits`, { silent: true }),
     updateLimits: (slug: string, input: WorkspaceLimits, current: number) =>
       api.patch(`${path(slug)}/limits`, input, revision(current)),

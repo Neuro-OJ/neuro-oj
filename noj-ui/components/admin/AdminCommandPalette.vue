@@ -54,6 +54,7 @@ const allItems: PaletteItem[] = [
   { id: "legal", label: "法律与合规", to: "/admin/legal", icon: "i-lucide-scale", group: "用户与安全", keywords: ["falv", "privacy", "terms", "compliance"] },
 
   // 系统运维
+  { id: "instance", label: "实例与空间治理", to: "/admin/instance", icon: "i-lucide-building-2", group: "系统运维", keywords: ["instance", "domain", "workspace", "空间", "审核", "额度"] },
   { id: "settings", label: "系统设置", to: "/admin/settings", icon: "i-lucide-settings", group: "系统运维", keywords: ["shezhi", "config", "settings", "env"] },
   { id: "audit", label: "审计日志", to: "/admin/audit-logs", icon: "i-lucide-scroll-text", group: "系统运维", keywords: ["shenji", "audit", "log", "security"] },
 ]

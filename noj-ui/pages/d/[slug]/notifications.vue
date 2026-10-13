@@ -3,6 +3,7 @@ import { educationCacheKey } from '~/utils/education';
 import { TEACHING_NOTICE_LABELS, teachingNoticeTarget } from '~/utils/education-notifications';
 import type { TeachingNotice } from '~/utils/education-notifications';
 import { extractApiError } from '~/utils/apiError';
+import { useEducationNotifications } from '~/composables/useEducationNotifications';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const { slug } = useWorkspace(), education = useEducationApi(), capture = useWorkspaceActionScope();
 const actor = useState<{ id: string } | null>('auth:user', () => null), page = ref(1), opening = ref('');
@@ -10,6 +11,7 @@ const { data, status, error, refresh } = await useAsyncData(
   () => educationCacheKey(slug.value!, actor.value?.id ?? null, 'notifications', page.value),
   () => education.notifications(slug.value!, page.value),
 );
+const stream = useEducationNotifications(() => refresh());
 async function open(notice: TeachingNotice) {
   if (opening.value) return;
   const scope = capture();
@@ -33,6 +35,8 @@ useSeoMeta({ title: '教学通知' });
         <UButton variant="outline" icon="i-lucide-refresh-cw" @click="refresh()">刷新</UButton>
       </template>
     </AdminPageHeader>
+    <p v-if="stream.state.value === 'fallback'"
+      class="text-xs text-text-muted">实时连接暂不可用，每 15 秒重新读取授权通知，并自动尝试恢复连接。</p>
     <AsyncContent
       :status="error ? 'error' : status === 'pending' ? 'loading' : data?.data.data.length ? 'data' : 'empty'"
       :error="error ? extractApiError(error).message : undefined" empty-text="暂无获授权的教学通知" @retry="refresh()">
