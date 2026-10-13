@@ -9,8 +9,16 @@ export function workspaceNavigation(domain: WorkspaceDetail) {
   const entries = [
     { label: '概览', section: '', icon: 'i-lucide-building-2' },
     { label: '题库', section: 'problems', icon: 'i-lucide-book-open' },
+    { label: '题单', section: 'trainings', icon: 'i-lucide-list-ordered' },
     { label: '比赛', section: 'contests', icon: 'i-lucide-trophy' },
+    ...(features.analytics
+      ? [{ label: '排行榜', section: 'rankings', icon: 'i-lucide-chart-no-axes-column-increasing' }]
+      : []),
+    { label: '搜索', section: 'search', icon: 'i-lucide-search' },
   ];
+  if (can('problem:policy') || can('problem:write_own') || can('problem:write_any')) {
+    entries.push({ label: '资源管理', section: 'problem-bindings', icon: 'i-lucide-library-big' });
+  }
   if (signedIn) entries.push({ label: '我的提交', section: 'submissions', icon: 'i-lucide-code-2' });
   if (signedIn && features.classroom) {
     entries.push({ label: '班级', section: 'classrooms', icon: 'i-lucide-users' });

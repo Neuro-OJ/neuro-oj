@@ -71,6 +71,27 @@ const ROUTES: BreadcrumbRoute[] = [
   { pattern: '/d/:slug/my-learning', trail: [{ param: 'slug' }, { key: 'breadcrumb.myLearning' }] },
   { pattern: '/d/:slug/problems', trail: [{ param: 'slug' }, { key: 'nav.problems' }] },
   {
+    pattern: '/d/:slug/problem-bindings',
+    trail: [{ param: 'slug' }, { key: 'nav.problems', to: '/d/:slug/problems' }, { key: 'breadcrumb.resources' }],
+  },
+  { pattern: '/d/:slug/trainings', trail: [{ param: 'slug' }, { key: 'nav.trainings' }] },
+  {
+    pattern: '/d/:slug/trainings/new',
+    trail: [{ param: 'slug' }, { key: 'nav.trainings', to: '/d/:slug/trainings' }, { key: 'breadcrumb.newTraining' }],
+  },
+  {
+    pattern: '/d/:slug/trainings/:trainingId',
+    trail: [{ param: 'slug' }, { key: 'nav.trainings', to: '/d/:slug/trainings' }, { param: 'trainingId' }],
+  },
+  {
+    pattern: '/d/:slug/trainings/:trainingId/edit',
+    trail: [{ param: 'slug' }, { key: 'nav.trainings', to: '/d/:slug/trainings' }, { param: 'trainingId' }, {
+      key: 'breadcrumb.edit',
+    }],
+  },
+  { pattern: '/d/:slug/search', trail: [{ param: 'slug' }, { key: 'nav.search' }] },
+  { pattern: '/d/:slug/rankings', trail: [{ param: 'slug' }, { key: 'nav.ranking' }] },
+  {
     pattern: '/d/:slug/problem-drafts',
     trail: [{ param: 'slug' }, { key: 'nav.problems', to: '/d/:slug/problems' }, { key: 'breadcrumb.problemDrafts' }],
   },
@@ -352,6 +373,7 @@ function dynamicTarget(pattern: string, paramName: string, params: Record<string
   if (prefix === '/d/:slug/classrooms' && params.slug) return workspacePath(params.slug, `classrooms/${value}`);
   if (prefix === '/d/:slug/assignments' && params.slug) return workspacePath(params.slug, `assignments/${value}`);
   if (prefix === '/d/:slug/contests' && params.slug) return workspacePath(params.slug, `contests/${value}`);
+  if (prefix === '/d/:slug/trainings' && params.slug) return workspacePath(params.slug, `trainings/${value}`);
 
   // 题目 / 用户 / 竞赛 / 提交 / 题单 / 帖子 / 公告均有公开标识构造器
   if (prefix === '/problems') return problemUrl(value);

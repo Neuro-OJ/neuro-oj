@@ -26,6 +26,8 @@ useSeoMeta({ title: '空间题库' });
         :to="`/d/${slug}/problems/new`" icon="i-lucide-plus">创建本域题目</UButton>
       <UButton v-if="can('problem:write_own') || can('problem:write_any')" :to="`/d/${slug}/problem-drafts`"
         variant="outline">题目草稿</UButton>
+      <UButton v-if="can('problem:policy') || can('problem:write_own') || can('problem:write_any')"
+        :to="`/d/${slug}/problem-bindings`" variant="outline">资源管理</UButton>
     </div>
     <form class="flex gap-2" @submit.prevent="find">
       <UInput v-model="keyword" placeholder="搜索题目标题" aria-label="搜索题目" class="flex-1" />

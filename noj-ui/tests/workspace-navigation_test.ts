@@ -26,15 +26,19 @@ Deno.test('空间导航：匿名仅公开入口，关闭教学模块不显示新
   assertEquals(workspaceNavigation({ ...base, actor_id: null }).map((item) => item.section), [
     '',
     'problems',
+    'trainings',
     'contests',
+    'rankings',
+    'search',
   ]);
   const disabled = workspaceNavigation({
     ...base,
     configuration: {
       ...base.configuration,
-      features: { ...base.configuration.features, classroom: false, assignment: false },
+      features: { ...base.configuration.features, classroom: false, assignment: false, analytics: false },
     },
   });
   assert(!disabled.some((item) => ['classrooms', 'my-learning', 'teaching'].includes(item.section)));
   assert(disabled.some((item) => item.section === 'submissions'));
+  assert(!disabled.some((item) => item.section === 'rankings'));
 });
