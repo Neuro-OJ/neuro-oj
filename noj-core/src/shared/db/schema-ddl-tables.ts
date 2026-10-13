@@ -4,6 +4,7 @@ import { CATALOG_WORKSPACE_TABLES } from "./schema-ddl-catalog-workspace.ts";
 import { EDUCATION_TABLES } from "./schema-ddl-education.ts";
 import { ASSIGNMENT_TABLES } from "./schema-ddl-assignment.ts";
 import { EDUCATION_INTERACTIONS_TABLES } from "./schema-ddl-education-interactions.ts";
+import { EDUCATION_DELIVERY_TABLES } from "./schema-ddl-education-delivery.ts";
 import { SUBMISSION_ANNOTATIONS_TABLES } from "./schema-ddl-submission-annotations.ts";
 
 /** 测试重置使用完整表清单，避免跨用例残留业务数据。 */
@@ -14,6 +15,7 @@ export const ALL_TABLES = [
   ...EDUCATION_TABLES,
   ...ASSIGNMENT_TABLES,
   ...EDUCATION_INTERACTIONS_TABLES,
+  ...EDUCATION_DELIVERY_TABLES,
   ...SUBMISSION_ANNOTATIONS_TABLES,
   "users",
   "oauth_accounts",

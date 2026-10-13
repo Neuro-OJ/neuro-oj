@@ -16,6 +16,7 @@ import {
 import {
   EDUCATION_INTERACTIONS_DDL,
 } from "./schema-ddl-education-interactions.ts";
+import { EDUCATION_DELIVERY_DDL } from "./schema-ddl-education-delivery.ts";
 import { WORKSPACE_AUDIT_ACTION_SQL } from "../workspace/audit.ts";
 /** PGlite DDL 与 Drizzle schema 同步；新子系统通过独立 DDL 模块扩展。 */
 export const SCHEMA_DDL: string[] = [
@@ -1118,6 +1119,7 @@ $$ LANGUAGE plpgsql`,
   ...EDUCATION_DDL,
   ...ASSIGNMENT_DDL,
   ...EDUCATION_INTERACTIONS_DDL,
+  ...EDUCATION_DELIVERY_DDL,
   ...SUBMISSION_ANNOTATIONS_DDL,
   ...DOMAIN_EXECUTION_DDL,
   ...COMMUNITY_WORKSPACE_DDL,
