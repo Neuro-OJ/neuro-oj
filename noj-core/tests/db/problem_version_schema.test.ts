@@ -1,3 +1,4 @@
+import { problemExecutionForTest } from "../../tests/helper.ts";
 /**
  * 题目版本管理基础模型的数据库约束测试（Handbook §2）。
  *
@@ -62,6 +63,7 @@ Deno.test("problem versions: 复合外键阻止提交引用他题版本", async 
 
   // 正确引用可以写入
   await db.insert(submissions).values({
+    ...await problemExecutionForTest("pv-p12"),
     id: "pv-sub-ok",
     user_id: "0",
     problem_id: "pv-p12",
@@ -76,6 +78,7 @@ Deno.test("problem versions: 复合外键阻止提交引用他题版本", async 
   await assertRejects(() =>
     getDb().transaction(async (tx) => {
       await tx.insert(submissions).values({
+        ...await problemExecutionForTest("pv-p12"),
         id: "pv-sub-cross",
         user_id: "0",
         problem_id: "pv-p12",
@@ -164,6 +167,7 @@ Deno.test("submissions: known 必须有版本，legacy_unknown 必须为空", as
   await assertRejects(() =>
     getDb().transaction(async (tx) => {
       await tx.insert(submissions).values({
+        ...await problemExecutionForTest("pv-origin"),
         id: "pv-origin-bad",
         user_id: "0",
         problem_id: "pv-origin",
@@ -178,6 +182,7 @@ Deno.test("submissions: known 必须有版本，legacy_unknown 必须为空", as
   await assertRejects(() =>
     getDb().transaction(async (tx) => {
       await tx.insert(submissions).values({
+        ...await problemExecutionForTest("pv-origin"),
         id: "pv-origin-bad2",
         user_id: "0",
         problem_id: "pv-origin",
@@ -195,6 +200,7 @@ Deno.test("evaluation attempts: 两个来源恰好一个非空", async () => {
   const db = getDb();
   await seedProblemWithVersion("pv-attempt", "pv-attempt-v1", 900007);
   await db.insert(submissions).values({
+    ...await problemExecutionForTest("pv-attempt"),
     id: "pv-attempt-sub",
     user_id: "0",
     problem_id: "pv-attempt",
@@ -238,6 +244,7 @@ Deno.test("submission version results: 已知版本与未知版本各一个桶",
   const db = getDb();
   await seedProblemWithVersion("pv-svr", "pv-svr-v1", 900008);
   await db.insert(submissions).values({
+    ...await problemExecutionForTest("pv-svr"),
     id: "pv-svr-sub",
     user_id: "0",
     problem_id: "pv-svr",
@@ -330,6 +337,7 @@ Deno.test("objective submissions: 版本字段与重判序列号已就位", asyn
     .set({ is_objective: true, judge_type: "dual" })
     .where(eq(problems.id, "pv-obj-paper"));
   await db.insert(objectiveSubmissions).values({
+    ...await problemExecutionForTest("pv-obj-paper"),
     id: "pv-obj-sub",
     paper_id: "pv-obj-paper",
     user_id: "0",

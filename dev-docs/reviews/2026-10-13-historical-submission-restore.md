@@ -49,8 +49,42 @@ accepted / 10000 摘要。隐藏数据与原始输出没有进入本人历史 DT
 - `/tmp/noj-root-history-backfill-0136-20261013.log`
 - `/tmp/noj-root-history-own-read-0136-20261013.log`
 
+## 0137 执行归属收缩复验
+
+同一隔离恢复库通过标准 `deno task db:migrate` 追加 0137。数据库实际列检查确认
+普通提交、客观提交、自测的域与绑定，以及批量任务和条目的域均为 NOT NULL。
+任务条目的绑定继续允许失败／跳过记录为空，其余状态由 CHECK 拒绝。
+
+原普通提交的稳定 ID、代码、受理时间、未知提交时版本、正式尝试 ID、10000／AC、
+原始输出和详情均保留。再次通过本人历史服务读取，得到原代码及成绩摘要，原始
+评测输出和详情未进入 DTO。
+
+- `/tmp/noj-root-history-migrate-0137-20261013.log`
+- `/tmp/noj-root-history-0137-retained-20261013.log`
+- `/tmp/noj-root-history-own-read-0137-20261013.log`
+
+## 完整成绩投影的独立复验
+
+另建 `noj_upgrade_history_complete_20261013`，从同一原备份重新恢复，等待
+`pg_restore` 正常退出后才写入合成夹具。原备份没有普通提交，因而仍明确使用
+合成记录；本轮同时建立旧 Schema 下真实的未知版本桶当前判定与三个成绩指针，
+补齐前一轮仅验证原提交和评测尝试内容的证据。
+
+按原授权清理准确的 10 道 U 题及 5 场比赛，保留 3 道 P 题、22 个账号和合成
+提交。标准迁移一次升级到 0137，再持题目锁调用公开门面
+`recomputeProblemBindingProjections()` 重建三个源题的成绩投影。
+
+实际断言原代码、受理时间、未知版本、尝试、分版本桶 ID 与指针均未变化；
+投影和本人历史 DTO 的 `is_valid`、`is_accepted` 均为 true，分值仍为 10000。
+原始输出与详情留在尝试中，未进入 DTO。运行进程均退出 0。
+
+- `/tmp/noj-root-history-complete-original-restore-20261013.log`
+- `/tmp/noj-root-history-complete-cleanup-20261013.log`
+- `/tmp/noj-root-history-complete-migrate-0137-20261013.log`
+- `/tmp/noj-root-history-complete-projection-read-0137-20261013.log`
+
 ## 验收边界
 
 本次验证真实旧 Schema 上的普通提交、尝试、源题、账号及版本未知状态可保留并
-归入默认域。不代表全部执行表已完成 NOT NULL 收缩，也不替代整个服务栈、对象
+归入默认域，执行归属非空约束已完成。比赛和社区的待收缩字段单独验收，不替代整个服务栈、对象
 存储、搜索索引及客户端的备份恢复演练。

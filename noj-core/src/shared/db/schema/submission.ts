@@ -228,8 +228,8 @@ export const submissions = pgTable(
       .default(sql`nextval('submission_receipt_sequence')`),
     public_id: publicIdColumn("sub"),
     /** 使用域及其题库配置，创建后保持不变。 */
-    domain_id: text("domain_id").references(() => domains.id),
-    domain_problem_binding_id: text("domain_problem_binding_id"),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
+    domain_problem_binding_id: text("domain_problem_binding_id").notNull(),
     /** 可选作业入口依据，不限制提交自动计入其他同域作业。 */
     assignment_id: text("assignment_id"),
     assignment_item_id: text("assignment_item_id"),
@@ -497,7 +497,7 @@ export const submissionJobs = pgTable(
   "submission_jobs",
   {
     id: text("id").primaryKey(),
-    domain_id: text("domain_id").references(() => domains.id),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
     kind: text("kind").$type<SubmissionJobKind>().notNull(),
     actor_id: text("actor_id").notNull().references(() => users.id),
     idempotency_key: text("idempotency_key").notNull(),
@@ -522,11 +522,6 @@ export const submissionJobs = pgTable(
         table.kind,
         table.idempotency_key,
       ),
-    legacyActorKindKeyUnique: uniqueIndex(
-      "submission_jobs_legacy_actor_kind_key_unique",
-    ).on(table.actor_id, table.kind, table.idempotency_key).where(
-      sql`${table.domain_id} IS NULL`,
-    ),
     kindCheck: check(
       "submission_jobs_kind_check",
       sql`${table.kind} IN ('rejudge', 'upgrade')`,
@@ -558,7 +553,7 @@ export const submissionJobItems = pgTable(
   "submission_job_items",
   {
     id: text("id").primaryKey(),
-    domain_id: text("domain_id").references(() => domains.id),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
     domain_problem_binding_id: text("domain_problem_binding_id"),
     job_id: text("job_id").notNull().references(() => submissionJobs.id, {
       onDelete: "cascade",
@@ -627,6 +622,10 @@ export const submissionJobItems = pgTable(
       "submission_job_items_status_check",
       sql`${table.status} IN ('pending', 'preparing', 'dispatched', 'succeeded', 'failed', 'skipped')`,
     ),
+    bindingRequiredCheck: check(
+      "submission_job_items_binding_required_check",
+      sql`${table.domain_problem_binding_id} IS NOT NULL OR ${table.status} IN ('failed', 'skipped')`,
+    ),
     ordinalCheck: check(
       "submission_job_items_ordinal_check",
       sql`${table.ordinal} >= 0`,
@@ -659,8 +658,8 @@ export const selfTests = pgTable(
   "self_tests",
   {
     id: text("id").primaryKey(),
-    domain_id: text("domain_id").references(() => domains.id),
-    domain_problem_binding_id: text("domain_problem_binding_id"),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
+    domain_problem_binding_id: text("domain_problem_binding_id").notNull(),
     assignment_id: text("assignment_id"),
     assignment_item_id: text("assignment_item_id"),
     user_id: text("user_id")

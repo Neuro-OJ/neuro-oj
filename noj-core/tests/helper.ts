@@ -288,6 +288,19 @@ export async function bindPublishedProblemForTest(
   return binding.id;
 }
 
+/** 源题执行夹具显式携带所属域与真实绑定；共享执行须由用例指定使用域。 */
+export async function problemExecutionForTest(problemId: string) {
+  const bindingId = await bindPublishedProblemForTest(problemId);
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { domainProblemBindings } = await import("../src/shared/db/schema.ts");
+  const { eq } = await import("drizzle-orm");
+  const [binding] = await getDb().select({
+    domain_id: domainProblemBindings.domain_id,
+    domain_problem_binding_id: domainProblemBindings.id,
+  }).from(domainProblemBindings).where(eq(domainProblemBindings.id, bindingId));
+  return binding;
+}
+
 /** 仅测试清理：调用方先释放提交/比赛，再显式删除题库绑定和源题。 */
 export async function deleteProblemFixtures(
   where: import("drizzle-orm").SQL,

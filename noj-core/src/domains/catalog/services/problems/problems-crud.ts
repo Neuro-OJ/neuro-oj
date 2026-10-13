@@ -1080,6 +1080,8 @@ export async function deleteProblem(
       );
     }
     await assertProblemHasNoRetainedReferences(id, tx);
+    // 终态自测不保留题库引用；先释放其绑定，再清理源题。
+    await tx.delete(selfTests).where(eq(selfTests.problem_id, id));
     await tx.delete(problemBindingHistory).where(
       eq(problemBindingHistory.problem_id, id),
     );
@@ -1099,17 +1101,6 @@ export async function deleteProblem(
     // 清理关联提交（submissions 无 ON DELETE CASCADE，需手动清理；
     // 评测尝试/分版本判定随提交级联删除）
     await tx.delete(submissions).where(eq(submissions.problem_id, id));
-
-    // 清理自测记录。
-    //
-    // 2026-09-21 修复：`self_tests.problem_id → problems.id` 是 `ON DELETE no action`
-    // （drizzle/0042 + schema-ddl.ts），但本函数从未清理 self_tests。只要该题
-    // 被任何人自测过一次，`DELETE FROM problems` 就会触发
-    //   `update or delete on table "problems" violates foreign key constraint
-    //    "self_tests_problem_id_fkey" on table "self_tests"`
-    // → 全局 onError 转成 500，题目永久无法删除（运维死锁），且报错信息对
-    // 调用方完全不可解释。与上面 submissions 的手动清理同一模式。
-    await tx.delete(selfTests).where(eq(selfTests.problem_id, id));
 
     // 客观题提交：`paper_id` 有 CASCADE，但其 `submitted_version_id` 复合外键
     // （NO ACTION）会阻止随后删除版本行 → 必须先删提交。

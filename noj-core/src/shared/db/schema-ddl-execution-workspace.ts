@@ -18,7 +18,6 @@ export const EXECUTION_WORKSPACE_DDL = [
   'ALTER TABLE "submissions" ADD CONSTRAINT "submissions_binding_problem_fk" FOREIGN KEY ("domain_problem_binding_id","problem_id") REFERENCES "domain_problem_bindings"("id","problem_id") ON DELETE no action ON UPDATE no action',
   'CREATE INDEX "idx_objective_submissions_domain_user_paper" ON "objective_submissions" USING btree ("domain_id","user_id","paper_id","created_at")',
   'CREATE INDEX "idx_self_tests_domain_user_created" ON "self_tests" USING btree ("domain_id","user_id","created_at")',
-  'CREATE UNIQUE INDEX "submission_jobs_legacy_actor_kind_key_unique" ON "submission_jobs" USING btree ("actor_id","kind","idempotency_key") WHERE "submission_jobs"."domain_id" IS NULL',
   'CREATE INDEX "idx_submissions_domain_user_created" ON "submissions" USING btree ("domain_id","user_id","created_at")',
   'CREATE INDEX "idx_submissions_domain_problem_user" ON "submissions" USING btree ("domain_id","problem_id","user_id")',
   'ALTER TABLE "submission_jobs" ADD CONSTRAINT "submission_jobs_domain_actor_kind_key_unique" UNIQUE("domain_id","actor_id","kind","idempotency_key")',

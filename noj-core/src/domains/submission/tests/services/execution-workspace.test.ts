@@ -1,5 +1,5 @@
 import { assertEquals, assertIsError, assertRejects } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   domainMemberRoles,
@@ -67,6 +67,19 @@ async function fixture() {
   return { db, user, now, first, binding, other };
 }
 
+/** 仅历史回填用例恢复扩展阶段的列；标准 preload 外层事务回滚这些 DDL。 */
+async function reopenLegacyColumns(db: ReturnType<typeof getDb>) {
+  await db.execute(
+    sql`ALTER TABLE submissions ALTER COLUMN domain_id DROP NOT NULL, ALTER COLUMN domain_problem_binding_id DROP NOT NULL`,
+  );
+  await db.execute(
+    sql`ALTER TABLE submission_jobs ALTER COLUMN domain_id DROP NOT NULL`,
+  );
+  await db.execute(
+    sql`ALTER TABLE submission_job_items ALTER COLUMN domain_id DROP NOT NULL, DROP CONSTRAINT submission_job_items_binding_required_check`,
+  );
+}
+
 Deno.test("执行归属：源题相同也不能将其他域绑定写入默认域提交", async () => {
   const f = await fixture();
   const shared = crypto.randomUUID();
@@ -97,6 +110,108 @@ Deno.test("执行归属：源题相同也不能将其他域绑定写入默认域
   assertEquals((error.cause as { code: string }).code, "23503");
 });
 
+Deno.test("执行约束：正式执行与任务必须有域，只有失败或跳过条目允许空绑定", async () => {
+  const f = await fixture();
+  for (const table of ["submissions", "objective_submissions", "self_tests"]) {
+    for (const missing of ["domain_id", "domain_problem_binding_id"]) {
+      const domainId = missing === "domain_id" ? null : DEFAULT_DOMAIN_ID;
+      const bindingId = missing === "domain_problem_binding_id"
+        ? null
+        : f.binding.id;
+      const error = await assertRejects(() =>
+        f.db.transaction(async (tx) => {
+          const problemColumn = table === "objective_submissions"
+            ? "paper_id"
+            : "problem_id";
+          const extraColumns = table === "objective_submissions"
+            ? sql`submission_type, answers`
+            : sql`language, code`;
+          const extraValues = table === "objective_submissions"
+            ? sql`'practice', '{}'::jsonb`
+            : sql`'python3', 'original'`;
+          await tx.execute(sql`INSERT INTO ${sql.identifier(table)}
+          (id, domain_id, domain_problem_binding_id, user_id, ${
+            sql.identifier(problemColumn)
+          }, created_at, ${extraColumns})
+          VALUES (${crypto.randomUUID()}, ${domainId}, ${bindingId}, ${f.user}, ${f.first.id}, ${f.now}, ${extraValues})`);
+        })
+      );
+      assertIsError(error);
+      assertEquals((error.cause as { code: string }).code, "23502");
+      const cause = error.cause as { column_name?: string; column?: string };
+      assertEquals(cause.column_name ?? cause.column, missing);
+    }
+  }
+  const missingJob = await assertRejects(() =>
+    f.db.transaction((tx) =>
+      tx.execute(
+        sql`INSERT INTO submission_jobs (id, actor_id, kind, idempotency_key, request_hash, created_at)
+      VALUES (${crypto.randomUUID()}, ${f.user}, 'rejudge', 'missing-domain', 'hash', ${f.now})`,
+      )
+    )
+  );
+  assertIsError(missingJob);
+  assertEquals((missingJob.cause as { code: string }).code, "23502");
+  const jobId = crypto.randomUUID();
+  await f.db.insert(submissionJobs).values({
+    id: jobId,
+    domain_id: DEFAULT_DOMAIN_ID,
+    actor_id: f.user,
+    kind: "rejudge",
+    idempotency_key: "constraint-statuses",
+    request_hash: "hash",
+    created_at: f.now,
+  });
+  const missingItem = await assertRejects(() =>
+    f.db.transaction((tx) =>
+      tx.execute(sql`INSERT INTO submission_job_items
+      (id, job_id, ordinal, source_kind, source_id, problem_id, status, created_at)
+      VALUES (${crypto.randomUUID()}, ${jobId}, 0, 'submission', 'missing-domain', '', 'failed', ${f.now})`)
+    )
+  );
+  assertIsError(missingItem);
+  assertEquals((missingItem.cause as { code: string }).code, "23502");
+  for (
+    const status of [
+      "pending",
+      "preparing",
+      "dispatched",
+      "succeeded",
+      "failed",
+      "skipped",
+    ] as const
+  ) {
+    const insert = () =>
+      f.db.transaction((tx) =>
+        tx.insert(submissionJobItems).values({
+          id: crypto.randomUUID(),
+          domain_id: DEFAULT_DOMAIN_ID,
+          job_id: jobId,
+          ordinal: 0,
+          source_kind: "submission",
+          source_id: status,
+          problem_id: "deleted-source",
+          status,
+          created_at: f.now,
+        })
+      );
+    if (status === "failed" || status === "skipped") await insert();
+    else {
+      const error = await assertRejects(insert);
+      assertIsError(error);
+      assertEquals((error.cause as { code: string }).code, "23514");
+      const cause = error.cause as {
+        constraint_name?: string;
+        constraint?: string;
+      };
+      assertEquals(
+        cause.constraint_name ?? cause.constraint,
+        "submission_job_items_binding_required_check",
+      );
+    }
+  }
+});
+
 Deno.test("执行归属：任务幂等键包含域，条目不能放入另一域任务", async () => {
   const f = await fixture();
   const jobs = [crypto.randomUUID(), crypto.randomUUID()];
@@ -122,6 +237,7 @@ Deno.test("执行归属：任务幂等键包含域，条目不能放入另一域
         source_kind: "submission",
         source_id: "historical",
         problem_id: f.first.id,
+        status: "failed",
         created_at: f.now,
       })
     )
@@ -132,14 +248,25 @@ Deno.test("执行归属：任务幂等键包含域，条目不能放入另一域
 
 Deno.test("执行回填：保留 ID、代码、受理时间及未知版本，重复回填幂等", async () => {
   const f = await fixture(), id = crypto.randomUUID();
-  await f.db.insert(submissions).values({
-    id,
-    user_id: f.user,
-    problem_id: f.first.id,
-    language: "python3",
-    code: "immutable-code",
-    created_at: f.now,
-  });
+  await reopenLegacyColumns(f.db);
+  await f.db.execute(
+    sql`INSERT INTO submissions (id, user_id, problem_id, language, code, created_at)
+    VALUES (${id}, ${f.user}, ${f.first.id}, 'python3', 'immutable-code', ${f.now})`,
+  );
+  // 实际追加 SQL 从扩展状态完成回填与收缩，不能仅证明空库建表。
+  await f.db.execute(
+    sql`CREATE UNIQUE INDEX submission_jobs_legacy_actor_kind_key_unique
+    ON submission_jobs (actor_id, kind, idempotency_key) WHERE domain_id IS NULL`,
+  );
+  const migration = await Deno.readTextFile(
+    new URL(
+      "../../../../../drizzle/0137_wakeful_bulldozer.sql",
+      import.meta.url,
+    ),
+  );
+  for (const statement of migration.split("--> statement-breakpoint")) {
+    await f.db.execute(sql.raw(statement));
+  }
   await backfillExecutionWorkspaces();
   await backfillExecutionWorkspaces();
   const [row] = await f.db.select().from(submissions).where(
@@ -158,28 +285,18 @@ Deno.test("执行回填：保留 ID、代码、受理时间及未知版本，重
 
 Deno.test("执行回填：无合法源题的 failed/skipped 条目保留原始引用和空绑定", async () => {
   const f = await fixture(), jobId = crypto.randomUUID();
-  await f.db.insert(submissionJobs).values({
-    id: jobId,
-    actor_id: f.user,
-    kind: "rejudge",
-    idempotency_key: "terminal-history",
-    request_hash: "history",
-    status: "completed_with_errors",
-    created_at: f.now,
-  });
-  await f.db.insert(submissionJobItems).values(
-    ["failed", "skipped"].map((status, ordinal) => ({
-      id: crypto.randomUUID(),
-      job_id: jobId,
-      ordinal,
-      source_kind: "submission" as const,
-      source_id: `deleted-source-${ordinal}`,
-      problem_id: ordinal ? "" : "deleted-problem-reference",
-      target_version_ref: "deleted-version-reference",
-      status: status as "failed" | "skipped",
-      created_at: f.now,
-    })),
-  );
+  await reopenLegacyColumns(f.db);
+  await f.db.execute(sql`INSERT INTO submission_jobs
+    (id, actor_id, kind, idempotency_key, request_hash, status, created_at)
+    VALUES (${jobId}, ${f.user}, 'rejudge', 'terminal-history', 'history', 'completed_with_errors', ${f.now})`);
+  for (const [ordinal, status] of ["failed", "skipped"].entries()) {
+    await f.db.execute(sql`INSERT INTO submission_job_items
+      (id, job_id, ordinal, source_kind, source_id, problem_id, target_version_ref, status, created_at)
+      VALUES (${crypto.randomUUID()}, ${jobId}, ${ordinal}, 'submission', ${`deleted-source-${ordinal}`},
+        ${
+      ordinal ? "" : "deleted-problem-reference"
+    }, 'deleted-version-reference', ${status}, ${f.now})`);
+  }
   await backfillExecutionWorkspaces();
   const summaries = await backfillExecutionWorkspaces();
   assertEquals(summaries.find((row) => row.kind === "items")?.incomplete, 0);
@@ -209,24 +326,13 @@ Deno.test("执行回填：无合法源题的 failed/skipped 条目保留原始�
 
 Deno.test("执行回填：空题目引用不能让无绑定 pending 条目通过核对，事务回滚", async () => {
   const f = await fixture(), jobId = crypto.randomUUID();
-  await f.db.insert(submissionJobs).values({
-    id: jobId,
-    actor_id: f.user,
-    kind: "rejudge",
-    idempotency_key: "pending-history",
-    request_hash: "history",
-    created_at: f.now,
-  });
-  await f.db.insert(submissionJobItems).values({
-    id: crypto.randomUUID(),
-    job_id: jobId,
-    ordinal: 0,
-    source_kind: "submission",
-    source_id: "deleted-source",
-    problem_id: "",
-    status: "pending",
-    created_at: f.now,
-  });
+  await reopenLegacyColumns(f.db);
+  await f.db.execute(sql`INSERT INTO submission_jobs
+    (id, actor_id, kind, idempotency_key, request_hash, created_at)
+    VALUES (${jobId}, ${f.user}, 'rejudge', 'pending-history', 'history', ${f.now})`);
+  await f.db.execute(sql`INSERT INTO submission_job_items
+    (id, job_id, ordinal, source_kind, source_id, problem_id, status, created_at)
+    VALUES (${crypto.randomUUID()}, ${jobId}, 0, 'submission', 'deleted-source', '', 'pending', ${f.now})`);
   const error = await assertRejects(
     () => backfillExecutionWorkspaces(),
     AppError,

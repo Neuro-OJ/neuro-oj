@@ -991,6 +991,7 @@ export async function retryRejudgeJob(
   const rows = retryable.map(
     (item, index): typeof submissionJobItems.$inferInsert => ({
       id: crypto.randomUUID(),
+      domain_id: DEFAULT_DOMAIN_ID,
       job_id: newJobId,
       ordinal: index,
       source_kind: item.source_kind,
@@ -1011,7 +1012,6 @@ export async function retryRejudgeJob(
       );
       for (const row of rows) {
         const context = contexts.get(row.problem_id);
-        row.domain_id = DEFAULT_DOMAIN_ID;
         row.domain_problem_binding_id = context?.domain_problem_binding_id ??
           null;
         if (!context) {

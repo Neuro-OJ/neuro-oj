@@ -14,9 +14,9 @@ import {
 
 /** 在准备下载或 LLM 令牌前拒绝用旧入口执行其他域的源题。 */
 export function assertDefaultProblemSource(
-  source: { domain_id: string | null },
+  source: { domain_id: string },
 ) {
-  if (source.domain_id !== null && source.domain_id !== DEFAULT_DOMAIN_ID) {
+  if (source.domain_id !== DEFAULT_DOMAIN_ID) {
     throw new NotFoundError("默认域不存在此题");
   }
 }
