@@ -101,11 +101,12 @@ export function applySubmissionProjection<
 
   // 非本人/非参赛者：竞赛内只给存在级信息。
   if (!participant || !isSubmitter) {
-    return {
-      id: submission.id,
-      problem_id: submission.problem_id,
-      status: submission.status,
-    } as unknown as T;
+    return allowedFields(submission, [
+      "id",
+      "problem_id",
+      "contest_id",
+      "status",
+    ]) as T;
   }
 
   const result = structuredClone(submission);

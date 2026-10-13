@@ -58,9 +58,12 @@ export async function projectContestSubmissionReads<
   const now = Date.now();
   return rows.map((row) => {
     const contest = row.contest_id ? byId.get(row.contest_id) : null;
-    if (!contest || contest.type === "kaggle") return row;
+    if (!contest) return row;
     const running = Date.parse(contest.start_time) <= now &&
       now < Date.parse(contest.end_time);
+    if (!running || contest.type === "kaggle" && row.user_id === viewerId) {
+      return row;
+    }
     return applySubmissionProjection(
       row as unknown as Record<string, unknown>,
       {

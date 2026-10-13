@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import type { SearchPermissionContext } from "./permission-filter.ts";
+import { DEFAULT_DOMAIN_ID } from "../../workspace/index.ts";
 import {
   communityVisibilityWhere,
   contestSecrecyProblemWhere,
@@ -15,8 +16,24 @@ const safeBody = sql`CASE WHEN entity_type='contest' THEN
   (SELECT c.description FROM contests c WHERE c.id=search_entries.entity_id) ELSE body END`;
 const safeVector = sql`CASE WHEN entity_type='contest' THEN
   to_tsvector('simple', title || ' ' || coalesce(${safeBody},'')) ELSE search_vector END`;
-const safeMetadata =
-  sql`CASE WHEN entity_type='contest' THEN metadata-'problem_titles'-'problem_display_ids' ELSE metadata END`;
+function safeMetadata(ctx: SearchPermissionContext) {
+  const domainId = ctx.domainId ?? DEFAULT_DOMAIN_ID;
+  const sourceId =
+    sql`coalesce(current_problem.domain_id,${DEFAULT_DOMAIN_ID})`;
+  const sourceSlug = sql`coalesce(source_domain.slug,'main')`;
+  const qualifiedRef = sql`${sourceSlug} || ':' || current_problem.number`;
+  return sql`CASE
+ WHEN entity_type='contest' THEN metadata-'problem_titles'-'problem_display_ids'
+ WHEN entity_type='problem' THEN metadata || jsonb_build_object('reference',(
+  SELECT jsonb_build_object(
+   'problem_id',current_problem.id,'source_domain_id',${sourceId},'source_domain_slug',${sourceSlug},
+   'number',current_problem.number,'qualified_ref',${qualifiedRef},
+   'display_ref',CASE WHEN ${sourceId}=${domainId} THEN current_problem.number::text ELSE ${qualifiedRef} END,
+   'is_shared',${sourceId}<>${domainId})
+  FROM problems current_problem LEFT JOIN domains source_domain ON source_domain.id=current_problem.domain_id
+  WHERE current_problem.id=search_entries.entity_id))
+ ELSE metadata END`;
+}
 
 function escapeLikePattern(s: string): string {
   return s.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll(
@@ -74,7 +91,7 @@ export async function searchGrouped(params: {
         ts_headline('simple', title, websearch_to_tsquery('simple', ${q}),
           'StartSel=[[HIGHLIGHT]], StopSel=[[/HIGHLIGHT]], MaxWords=20, MinWords=5'
         ) AS highlight,
-        ${safeMetadata} AS metadata
+        ${safeMetadata(ctx)} AS metadata
       FROM search_entries
       WHERE entity_type = ${type}
         AND is_active = true
@@ -135,7 +152,7 @@ export async function searchFlat(params: {
       ts_headline('simple', title, websearch_to_tsquery('simple', ${q}),
         'StartSel=[[HIGHLIGHT]], StopSel=[[/HIGHLIGHT]], MaxWords=20, MinWords=5'
       ) AS highlight,
-      ${safeMetadata} AS metadata
+      ${safeMetadata(ctx)} AS metadata
     FROM search_entries
     WHERE is_active = true
       AND (

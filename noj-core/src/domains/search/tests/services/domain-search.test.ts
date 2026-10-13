@@ -140,7 +140,26 @@ const search = (
 Deno.test("域搜索：同源题引用在目标域使用、撤销即时影响命中与分页", async () => {
   const { db, actor } = await fixture();
   await upsertSearchEntry((await buildProblemEntry("query-source"))!);
-  assertEquals((await search("school-query-a", actor)).items.length, 1);
+  const shared = await search("school-query-a", actor);
+  assertEquals(shared.items.length, 1);
+  assertEquals(shared.items[0].metadata.reference, {
+    problem_id: "query-source",
+    source_domain_id: DEFAULT_DOMAIN_ID,
+    source_domain_slug: "main",
+    number: 997001,
+    qualified_ref: "main:997001",
+    display_ref: "main:997001",
+    is_shared: true,
+  });
+  const local = await search(DEFAULT_DOMAIN_ID, actor);
+  assertEquals(
+    (local.items[0].metadata.reference as Record<string, unknown>).display_ref,
+    "997001",
+  );
+  assertEquals(
+    (local.items[0].metadata.reference as Record<string, unknown>).is_shared,
+    false,
+  );
   assertEquals((await search("unknown-domain", actor)).items.length, 0);
   await db.update(domainProblemBindings).set({
     disabled_at: new Date().toISOString(),

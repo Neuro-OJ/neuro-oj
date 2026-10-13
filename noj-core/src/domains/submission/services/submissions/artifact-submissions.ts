@@ -1,3 +1,4 @@
+import { publishQueueChange } from "../queue.ts";
 /**
  * Artifact 提交服务（类 Kaggle 产物提交）。
  *
@@ -476,7 +477,7 @@ export async function createArtifactSubmission(
     await db.update(submissions).set({ status: "judging" }).where(
       and(eq(submissions.id, id), eq(submissions.status, "pending")),
     );
-    await publishSseEvent(Channels.queue, { type: "queue:changed" });
+    await publishQueueChange(id);
     if (resolvedContestId) {
       await publishSseEvent(
         Channels.contestSubmission(resolvedContestId),

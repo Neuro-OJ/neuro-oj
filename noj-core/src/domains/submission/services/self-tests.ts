@@ -1,3 +1,4 @@
+import { publishQueueChange } from "./queue.ts";
 /**
  * 代码自测服务（issue #221）。
  *
@@ -323,7 +324,7 @@ export async function createSelfTest(
     }).where(
       and(eq(selfTests.id, id), eq(selfTests.status, "pending")),
     );
-    await publishSseEvent(Channels.queue, { type: "queue:changed" });
+    await publishQueueChange(id);
   } catch (mqErr) {
     logger.error("自测任务推送失败", { self_test_id: id, err: mqErr });
     if (!isRetryableJudgeQueueError(mqErr)) {
@@ -507,5 +508,11 @@ export async function saveSelfTestResult(
     return true;
   });
 
+  if (outcome === true) {
+    await publishSseEvent(Channels.submission(result.submission_id), {
+      type: "self-test:updated",
+      id: result.submission_id,
+    });
+  }
   return outcome === true;
 }

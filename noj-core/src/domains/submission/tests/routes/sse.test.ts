@@ -127,8 +127,7 @@ Deno.test({
     } finally {
       await db.delete(submissions).where(eq(submissions.id, submissionId));
       await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(users).where(eq(users.id, adminId));
-      await db.delete(users).where(eq(users.id, ownerId));
+      // preload 事务回滚账号和默认域引导关系，避免物理删账号破坏负责人外键。
     }
   },
 });

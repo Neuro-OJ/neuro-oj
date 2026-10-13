@@ -1,3 +1,4 @@
+import { publishQueueChange } from "../queue.ts";
 import { oiVerdict, projectMeteringDetails } from "./oi-details.ts";
 import { prepareEducationSubmissionDeletion } from "../../../education/index.ts";
 import { projectContestSubmissionReads } from "./contest-read-projection.ts";
@@ -727,7 +728,7 @@ export async function createSubmission(
     );
 
     // 写入 SSE 事件日志并发布队列变更事件
-    await publishSseEvent(Channels.queue, { type: "queue:changed" });
+    await publishQueueChange(id);
     if (resolvedContestId) {
       await publishSseEvent(
         Channels.contestSubmission(resolvedContestId),

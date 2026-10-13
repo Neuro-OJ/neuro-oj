@@ -1,4 +1,6 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { currentTeacherSubmissionAccessWhere } from "../../education/index.ts";
+import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { domains, problems, submissions } from "../../../shared/db/schema.ts";
 import { NotFoundError } from "../../../shared/base/errors.ts";
@@ -114,12 +116,24 @@ export async function getDomainSubmission(
   if (!metadata) throw new NotFoundError("提交不存在");
   const manager = access.platformAdmin ||
     access.context.domainPermissions.has("submission:read_all");
-  if (metadata.user_id !== actorId && !manager) {
+  const teacher = metadata.user_id !== actorId && !manager &&
+    unwrapRows<{ allowed: boolean }>(
+        await getDb().execute(
+          sql`SELECT ${
+            currentTeacherSubmissionAccessWhere(
+              metadata.user_id,
+              access.domain.id,
+              actorId,
+            )
+          } AS allowed`,
+        ) as never,
+      )[0]?.allowed === true;
+  if (metadata.user_id !== actorId && !manager && !teacher) {
     throw new NotFoundError("提交不存在");
   }
   const result = await getSubmission(id, actorId, undefined, undefined, {
     domainId: access.domain.id,
-    canReadDetails: manager,
+    canReadDetails: manager || teacher,
     platformAdmin: access.platformAdmin,
   });
   const [fact] = await loadBindingAvailability(
