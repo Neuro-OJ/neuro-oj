@@ -146,6 +146,7 @@ async function seedProblem(
   const v1 = `qb-v1-${tag}-${ts}`;
   const v2 = `qb-v2-${tag}-${ts}`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `桶测试题 ${tag}`,
     description: "d",

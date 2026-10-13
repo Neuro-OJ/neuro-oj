@@ -207,8 +207,8 @@ export const problems = pgTable(
   "problems",
   {
     id: text("id").primaryKey(),
-    /** 扩展迁移先加可空归属，回填校验后再收紧；新工作空间写入须显式指定。 */
-    domain_id: text("domain_id").references(() => domains.id),
+    /** 所属源域不可为空；使用域通过独立题库绑定表示。 */
+    domain_id: text("domain_id").notNull().references(() => domains.id),
     title: text("title").notNull(),
     description: text("description").notNull(),
     /** 公开样例独立于题面，旧题目缺省为空数组。 */
@@ -377,7 +377,7 @@ export const trainings = pgTable(
   {
     id: text("id").primaryKey(),
     /** 存量先可空，域归属回填完成后收紧。 */
-    domain_id: text("domain_id").references(() => domains.id),
+    domain_id: text("domain_id").notNull().references(() => domains.id),
     public_id: publicIdColumn("tr"),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),

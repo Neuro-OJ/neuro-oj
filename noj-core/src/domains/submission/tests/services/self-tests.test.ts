@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { v2ResultForTest } from "../_versioning-fixtures.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
@@ -111,6 +112,7 @@ await db.insert(users).values({
 });
 await db.insert(problems).values([
   {
+    domain_id: DEFAULT_DOMAIN_ID,
     id: PROBLEM_ID,
     title: "自测测试题",
     description: "测试描述",
@@ -122,6 +124,7 @@ await db.insert(problems).values([
     updated_at: now,
   },
   {
+    domain_id: DEFAULT_DOMAIN_ID,
     id: OBJECTIVE_PROBLEM_ID,
     title: "客观题套卷",
     description: "客观题",
@@ -293,6 +296,7 @@ Deno.test({
     const secretProblemId = `tst-st-secret-${ts}`;
     const secretNow = new Date().toISOString();
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: secretProblemId,
       title: "保密题（不得暴露存在性）",
       description: "题面",
@@ -348,6 +352,7 @@ Deno.test({
       },
     };
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "版本化自测题",
       description: "题面",
@@ -445,6 +450,7 @@ Deno.test({
       memory_limit_mb: 999,
     };
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "OI 版本化自测题",
       description: "题面",

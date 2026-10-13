@@ -9,6 +9,7 @@
  *
  * 依赖 PGlite/PG 测试库（resetDbForTest 保证空库起点）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq, sql } from "drizzle-orm";
 import {
@@ -32,6 +33,7 @@ const now = new Date().toISOString();
 /** 建一道题（仅为满足提交外键）。 */
 async function seedProblem(id: string, number: number): Promise<void> {
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: id,
     description: "d",

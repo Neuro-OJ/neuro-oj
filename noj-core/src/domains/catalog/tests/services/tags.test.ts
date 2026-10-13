@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
@@ -217,6 +218,7 @@ Deno.test({
     const now = new Date().toISOString();
     await db.insert(problems).values([
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: problemA,
         title: `合并题A-${ts}`,
         description: "描述",
@@ -229,6 +231,7 @@ Deno.test({
         updated_at: now,
       },
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: problemB,
         title: `合并题B-${ts}`,
         description: "描述",

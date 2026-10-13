@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   assertEquals,
   assertExists,
@@ -72,6 +73,7 @@ Deno.test({
     }).onConflictDoNothing();
     await db.insert(problems).values([
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: problemId,
         title: "路由竞赛题 A",
         description: "测试题面 A",
@@ -83,6 +85,7 @@ Deno.test({
         updated_at: now,
       },
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: otherProblemId,
         title: "非竞赛题",
         description: "测试题面 B",
@@ -467,6 +470,7 @@ Deno.test({
       role_id: "admin",
     }).onConflictDoNothing();
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "A+B",
       description: "测试题面",

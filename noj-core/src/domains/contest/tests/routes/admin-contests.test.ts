@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
@@ -101,6 +102,7 @@ async function setupContestViaAdmin(): Promise<{
     role_id: "admin",
   }).onConflictDoNothing();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: "后台竞赛测试题",
     description: "测试题面",

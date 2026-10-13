@@ -43,6 +43,7 @@ async function seedProblem(problemId: string, number: number): Promise<void> {
   await authorizeLegacyJobActorForTest("up-user-b");
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",

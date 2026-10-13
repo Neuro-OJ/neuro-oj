@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   saveV2ResultForTest,
   seedActiveAttemptForTest,
@@ -45,6 +46,7 @@ async function setupTestData() {
     updated_at: now,
   });
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: PROBLEM_ID,
     title: `C-Test ${TS}`,
     description: "desc",

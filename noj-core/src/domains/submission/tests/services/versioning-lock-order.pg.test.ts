@@ -17,6 +17,7 @@
  * 3. **锁顺序 题目 → 竞赛 → 提交 → 尝试 → revision**：结果写入对题目取共享锁、
  *    策略切换对策略宿主取更新锁，二者互斥，后到的策略重算不会用旧候选覆盖新投影。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq, sql } from "drizzle-orm";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
@@ -123,6 +124,7 @@ async function waitFor(
 async function seedProblem(id: string, number: number): Promise<string> {
   const versionId = `${id}-v1`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: id,
     description: "d",

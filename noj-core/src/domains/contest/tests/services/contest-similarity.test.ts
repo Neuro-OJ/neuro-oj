@@ -6,6 +6,7 @@
  * 2. 查询服务（取数口径、分桶、规模上限）——需要数据库；
  * 3. 管理端路由（权限、参数校验、响应结构）——需要数据库。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
@@ -510,6 +511,7 @@ Deno.test({
     await db.insert(userRoles).values({ user_id: adminId, role_id: "admin" });
     await db.insert(problems).values([
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: problemA,
         title: "相似度测试题 A",
         description: "",
@@ -521,6 +523,7 @@ Deno.test({
         updated_at: now,
       },
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: problemB,
         title: "相似度测试题 B",
         description: "",
@@ -800,6 +803,7 @@ Deno.test({
     ]);
     // 题目行必须先存在（submissions.problem_id 有外键约束）
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: `噪声测试题-${suffix}`,
       description: "",

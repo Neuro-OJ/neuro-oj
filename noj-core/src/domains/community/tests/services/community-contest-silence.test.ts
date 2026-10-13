@@ -10,6 +10,7 @@
  * 本文件锁定：公开赛未结束（含 pending）时普通用户上述写入一律 CONTEST_SILENCE，
  * 审核员免静默，赛后自动恢复。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -63,6 +64,7 @@ async function setup(): Promise<void> {
   })));
   await getDb().insert(problems).values(
     [normalProblemId, contestProblemId].map((id, i) => ({
+      domain_id: DEFAULT_DOMAIN_ID,
       id,
       title: id,
       description: "x",

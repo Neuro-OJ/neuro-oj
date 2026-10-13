@@ -230,13 +230,14 @@ async function fixture() {
   };
 }
 
-Deno.test("默认域回填：保留源 ID、版本、题号和策略，重复运行不覆盖独立绑定", async () => {
+Deno.test("默认域绑定补齐：合法来源保留 ID、版本、题号和策略，重复运行不覆盖绑定", async () => {
   await resetDbForTest();
   await ensureDefaultWorkspace();
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
   const version = crypto.randomUUID();
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     number: 4321,
     title: "旧题",
@@ -258,6 +259,7 @@ Deno.test("默认域回填：保留源 ID、版本、题号和策略，重复运
     effective_policy_revision: 3,
   }).where(eq(problems.id, id));
   await getDb().insert(trainings).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: crypto.randomUUID(),
     title: "旧题单",
     created_by: "0",
@@ -265,8 +267,8 @@ Deno.test("默认域回填：保留源 ID、版本、题号和策略，重复运
     updated_at: now,
   });
   assertEquals(await backfillDefaultCatalog(), {
-    problems_assigned: 1,
-    trainings_assigned: 1,
+    problems_assigned: 0,
+    trainings_assigned: 0,
     bindings_created: 1,
   });
   const [binding] = await getDb().select().from(domainProblemBindings);
@@ -367,13 +369,14 @@ Deno.test("域题库读取：源题撤销同时移除列表、命中数和题面
   );
 });
 
-Deno.test("默认域回填：分类退役后两题均归默认域，重复执行不重复绑定", async () => {
+Deno.test("默认域绑定补齐：两道合法来源题独立建绑定，重复执行不重复绑定", async () => {
   await resetDbForTest();
   await ensureDefaultWorkspace();
   const now = new Date().toISOString();
   const ids: string[] = [crypto.randomUUID(), crypto.randomUUID()];
   await getDb().insert(problems).values(
     ids.map((id, i) => ({
+      domain_id: DEFAULT_DOMAIN_ID,
       id,
       number: 1001 + i,
       title: "旧题",
@@ -383,7 +386,7 @@ Deno.test("默认域回填：分类退役后两题均归默认域，重复执行
     })),
   );
   assertEquals(await backfillDefaultCatalog(), {
-    problems_assigned: 2,
+    problems_assigned: 0,
     trainings_assigned: 0,
     bindings_created: 2,
   });

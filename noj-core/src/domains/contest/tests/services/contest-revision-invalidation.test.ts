@@ -7,6 +7,7 @@
  * `query_projection_revisions.global.data_revision`，否则缓存与物化视图会继续按
  * 旧口径命中（08 的边界新鲜度只覆盖"时钟自然跨越 end_time"，覆盖不了"改时间"）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -62,6 +63,7 @@ Deno.test({
     const versionId = `${problemId}-v1`;
 
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "口径失效题",
       description: "d",

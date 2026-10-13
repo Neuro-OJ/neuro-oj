@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 批任务 sequence 一致性的回归（第三轮复审问题 1，P1）。
@@ -99,6 +100,7 @@ async function seedProblem(
   const problemId = `sq-prob-${tag}-${ts}`;
   const versionId = `sq-v1-${tag}-${ts}`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `sequence 测试题 ${tag}`,
     description: "d",

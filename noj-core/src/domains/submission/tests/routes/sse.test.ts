@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../../../../src/app.ts";
@@ -89,6 +90,7 @@ Deno.test({
     await db.insert(userRoles).values({ user_id: adminId, role_id: "admin" });
     await db.insert(userRoles).values({ user_id: ownerId, role_id: "user" });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "SSE 权限测试题",
       description: "SSE 权限测试",

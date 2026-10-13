@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
@@ -299,6 +300,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "筛选测试题",
       description: "d",

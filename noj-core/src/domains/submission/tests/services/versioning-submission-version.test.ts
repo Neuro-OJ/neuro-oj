@@ -5,6 +5,7 @@
  * 已版本化题目缺版本 → VERSION_REQUIRED（不静默绑定最新版）、
  * 未发布题目也不能创建未知版本提交、版本内容对提交模式/语言的校验。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -32,6 +33,7 @@ async function seedProblem(
 ): Promise<void> {
   await ensureDefaultWorkspace();
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: id,
     description: "d",

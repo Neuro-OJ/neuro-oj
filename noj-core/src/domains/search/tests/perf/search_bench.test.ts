@@ -1,4 +1,5 @@
 import { assert } from "jsr:@std/assert@^1";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { problems } from "../../../../shared/db/schema.ts";
 import { reindexAll } from "../../services/index-writer.ts";
@@ -20,6 +21,7 @@ Deno.test({
     const BATCH = 1000;
     for (let i = 0; i < 100; i++) {
       const batch = Array.from({ length: BATCH }, (_, j) => ({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: `perf-p-${i}-${j}`,
         title: `题目 ${i * BATCH + j}：测试数据`,
         description: "",

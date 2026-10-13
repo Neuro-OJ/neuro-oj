@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   saveV2ResultForTest,
   seedActiveAttemptForTest,
@@ -35,6 +36,7 @@ async function seedProblem(problemId: string, number: number): Promise<void> {
   await ensureDefaultWorkspace();
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",

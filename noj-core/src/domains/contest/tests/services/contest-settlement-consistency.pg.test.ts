@@ -11,6 +11,7 @@
  * - 因此快照只能是"结算提交那一刻"的一致性视图：并发写入要么整体在快照之前
  *   （被计入），要么整体在快照之后（只影响实时榜）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import {
@@ -103,6 +104,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: `结算一致性-${runId}`,
       description: "d",

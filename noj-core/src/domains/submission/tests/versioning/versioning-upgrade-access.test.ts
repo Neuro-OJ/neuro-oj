@@ -163,6 +163,7 @@ async function seedProblemWithVersions(
   const v1 = `acc-v1-${tag}-${ts}`;
   const v2 = `acc-v2-${tag}-${ts}`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `升级授权测试题 ${tag}`,
     description: "d",

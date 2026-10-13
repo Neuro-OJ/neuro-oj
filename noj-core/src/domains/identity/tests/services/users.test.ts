@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { getUserProfileAggregate, updateUserProfile } from "../../index.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -125,6 +126,7 @@ Deno.test({
   fn: async () => {
     const problemId = `tst-recent-prob-${ts}`;
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "最近提交题",
       description: "d",

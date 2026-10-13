@@ -12,6 +12,7 @@
  * `catalog/tests/**` 的写作用域归 catalog workstream，故这些跨服务口径断言放在
  * query 域测试目录（测试文件不受域边界门禁约束）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -59,6 +60,7 @@ async function seedProblem(
 ): Promise<string> {
   const id = crypto.randomUUID();
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: `口径统一-${number}`,
     description: "d",

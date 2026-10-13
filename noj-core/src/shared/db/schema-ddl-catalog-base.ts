@@ -3,7 +3,7 @@ export const CATALOG_PROBLEM_BASE_DDL: string[] = [
   // 3. problems（issue #100：含 search_vector 列供 PGlite 模式测试）
   `CREATE TABLE IF NOT EXISTS problems (
     id TEXT PRIMARY KEY,
-    domain_id TEXT,
+    domain_id TEXT NOT NULL,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
     difficulty TEXT NOT NULL DEFAULT 'medium',
@@ -47,7 +47,7 @@ export const CATALOG_TRAINING_BASE_DDL: string[] = [
   // 3.4 trainings（题单，issue #224）
   `CREATE TABLE IF NOT EXISTS trainings (
     id TEXT PRIMARY KEY,
-    domain_id TEXT,
+    domain_id TEXT NOT NULL,
     public_id TEXT NOT NULL DEFAULT ('tr-' || substr(md5(random()::text),1,8)) UNIQUE,
     title TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',

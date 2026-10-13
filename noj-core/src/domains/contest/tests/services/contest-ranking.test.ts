@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -99,6 +100,7 @@ async function insertProblem(
 ): Promise<void> {
   const now = new Date().toISOString();
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title,
     description: title,
@@ -457,6 +459,7 @@ Deno.test({
     await insertUser(userFull, "obj-full");
     await insertUser(userPartial, "obj-partial");
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: paperId,
       title: "客观题排名卷",
       description: "客观题",

@@ -23,6 +23,7 @@
  * await seedRunningContest({ problemIds: [problemId], times });
  * ```
  */
+import { DEFAULT_DOMAIN_ID } from "../workspace/types.ts";
 import { getDb } from "../db/connection.ts";
 import {
   contestProblems,
@@ -152,6 +153,7 @@ export async function seedRunningContest(options: {
     // (domain_id, number) 唯一约束——用递增基数会在并发/多次调用下冲突。
     await db.insert(problems).values(
       options.problemIds.map((problemId) => ({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: problemId,
         title: `夹具题目 ${problemId}`,
         description: "",

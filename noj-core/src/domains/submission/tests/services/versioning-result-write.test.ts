@@ -5,6 +5,7 @@
  * 终态只写一次（重复/过时消息不覆盖）、graded 更新当前判定与双口径投影、
  * 平台错误不替换已有正式判定、exact 策略下 graded 结果不产生有效成绩。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -36,6 +37,7 @@ const now = new Date().toISOString();
 async function seedProblem(problemId: string, number: number): Promise<void> {
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",

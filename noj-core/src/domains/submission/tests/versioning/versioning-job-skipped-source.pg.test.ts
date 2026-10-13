@@ -12,6 +12,7 @@
  * 隔离：本文件关闭 preload 的逐用例事务（屏障需要两条真实连接），因此显式使用
  * 唯一 ID 并在用例结束时清理；在**独立 schema**（TEST_SCHEMA）下由 Lead 串行执行。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq, inArray, sql } from "drizzle-orm";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
@@ -134,6 +135,7 @@ async function seedFixture(tag: string): Promise<Fixture> {
   }).onConflictDoNothing();
   await authorizeLegacyJobActorForTest(userId);
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `屏障测试题 ${tag}`,
     description: "d",
@@ -456,6 +458,7 @@ async function seedObjectiveFixture(
   }).onConflictDoNothing();
   await authorizeLegacyJobActorForTest(userId);
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `客观题屏障测试 ${tag}`,
     description: "d",

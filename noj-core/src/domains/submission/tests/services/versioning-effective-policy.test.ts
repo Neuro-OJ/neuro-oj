@@ -113,6 +113,7 @@ async function seedProblem(
 ): Promise<{ v1: string; v2: string }> {
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",

@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import {
   authorizeLegacyJobActorForTest,
@@ -71,6 +72,7 @@ await db.insert(users).values({
 });
 await authorizeLegacyJobActorForTest(TEST_USER_ID);
 await db.insert(problems).values({
+  domain_id: DEFAULT_DOMAIN_ID,
   id: TEST_PROBLEM_ID,
   title: `测试题目 ${ts}`,
   description: "测试描述",
@@ -155,6 +157,7 @@ Deno.test({
     });
     const privateProblemId = `tst-private-problem-${Date.now()}`;
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: privateProblemId,
       title: `私有题 ${Date.now()}`,
       description: "私有题面",
@@ -980,6 +983,7 @@ Deno.test({
         },
       ]);
       await db.insert(problems).values({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: localProblemId,
         title: `重测审计题 ${Date.now()}`,
         description: "rejudgeSubmission 审计测试用题目",
@@ -1118,6 +1122,7 @@ Deno.test({
       ]);
       // P 型题 + llm_config：走 buildJudgeTaskLlm 分支
       await db.insert(problems).values({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: localProblemId,
         title: `LLM 重测题 ${Date.now()}`,
         description: "rejudge 前置校验回归测试",
@@ -1242,6 +1247,7 @@ Deno.test({
         },
       ]);
       await db.insert(problems).values({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: localProblemId,
         title: `批量重测审计题 ${Date.now()}`,
         description: "rejudgeProblemSubmissions 审计测试用题目",
@@ -1373,6 +1379,7 @@ Deno.test({
       updated_at: new Date().toISOString(),
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       number: 99999,
       title: "T",
@@ -1434,6 +1441,7 @@ Deno.test({
       updated_at: new Date().toISOString(),
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       number: 99998,
       title: "T",
@@ -1493,6 +1501,7 @@ Deno.test({
       updated_at: new Date().toISOString(),
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       number: 99997,
       title: "T",

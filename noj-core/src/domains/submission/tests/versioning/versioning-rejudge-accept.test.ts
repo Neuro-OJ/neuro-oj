@@ -9,6 +9,7 @@
  * - #41 大任务分批插入：受理路径按批落库、重试路径同样分批，
  *   成员集合仍在受理事务内固定。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -83,6 +84,7 @@ await getDb().insert(users).values({
 async function seedProblem(problemId: string, number: number): Promise<void> {
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",

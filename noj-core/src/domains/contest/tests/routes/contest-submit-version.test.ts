@@ -10,6 +10,7 @@
  * - **未携带版本 → 409 `VERSION_REQUIRED`**：迁移期兼容路径已关闭（缺陷 #6），
  *   新提交必须显式携带版本，服务端不得替客户端猜版本（Handbook §4.2）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
@@ -59,6 +60,7 @@ Deno.test({
     }).onConflictDoNothing();
 
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "竞赛提交版本题",
       description: "d",

@@ -4,6 +4,7 @@
  * 依赖 PGlite 内存数据库（DATABASE_URL 未设置时自动启用，始终可用），
  * 测试前自动运行迁移并 seed（见 00_migrate_test.ts）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
 import { resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -80,6 +81,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "统计通过数题",
       description: "d",

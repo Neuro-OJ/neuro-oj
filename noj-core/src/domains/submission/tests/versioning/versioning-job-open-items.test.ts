@@ -9,6 +9,7 @@
  *   `hasOpenJobItemsForSources` 必须查得到 `pending`（还没有 `attempt_id`）的条目，
  *   即 `queued`/`preparing` 阶段尚未创建尝试的批任务也进入结算门禁。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 import { eq } from "drizzle-orm";
@@ -111,6 +112,7 @@ const aiContent = {
 async function seedProblem(problemId: string): Promise<string> {
   const versionId = `${problemId}-v1`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",

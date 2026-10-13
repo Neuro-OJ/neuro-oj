@@ -16,6 +16,7 @@
  *    过滤），即 0108 重建后的定义可以安全标为可信；
  * 4. 刷新后再次发生数据变化仍视为落后（不把旧视图当最新）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq, inArray, sql } from "drizzle-orm";
 import {
@@ -128,6 +129,7 @@ Deno.test({
       ] as const
     ) {
       await db.insert(problems).values({
+        domain_id: DEFAULT_DOMAIN_ID,
         id,
         title: `PG 视图口径-${number}`,
         description: "d",
@@ -315,6 +317,7 @@ async function seedBoundaryAcceptance(
   const submissionId = `pg-b-s-${tag}-${runId}`;
   const attemptId = `pg-b-a-${tag}-${runId}`;
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `PG 赛期边界题-${tag}`,
     description: "d",

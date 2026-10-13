@@ -10,6 +10,7 @@
  *   （`pending` / `preparing` / `dispatched`），否则带在途重测的竞赛可以被发布为
  *   正式成绩，快照与最终成绩不一致。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertExists, assertRejects } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -61,6 +62,7 @@ async function insertProblem(
   objective = false,
 ): Promise<void> {
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: `结算门禁-${number}`,
     description: "d",

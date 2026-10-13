@@ -6,6 +6,7 @@
  *
  * 纯单元测试不调用 getDb()，因此不会初始化数据库，零额外开销。
  */
+import "./_setup.ts";
 import {
   beginTestTransaction,
   isTestTransactionDisabled,

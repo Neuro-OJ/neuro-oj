@@ -5,6 +5,7 @@
  * 全局排行一致地覆盖**两类正式提交**。修复前只查 `submissions`，仅通过客观题
  * （满分即通过）的用户无法发布题解。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -42,6 +43,7 @@ async function seedProblem(
 ): Promise<string> {
   const id = crypto.randomUUID();
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: `门槛-${number}`,
     description: "d",

@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 锁内复查分类回归（复审问题 10，P2）——PGlite 可跑部分。
@@ -103,6 +104,7 @@ async function seedProblem(
   const problemId = `sk-prob-${tag}-${ts}`;
   const versionId = `sk-v1-${tag}-${ts}`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `skipped 分类测试题 ${tag}`,
     description: "d",

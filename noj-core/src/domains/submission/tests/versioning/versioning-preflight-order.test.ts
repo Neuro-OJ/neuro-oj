@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 批任务"预检先于创建尝试"的回归（复审问题 7，P2）与升级额度调用点（#9）。
@@ -109,6 +110,7 @@ async function seedProblem(
   const problemId = `pf-order-prob-${tag}-${ts}`;
   const versionId = `pf-order-v1-${tag}-${ts}`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `预检顺序测试题 ${tag}`,
     description: "d",

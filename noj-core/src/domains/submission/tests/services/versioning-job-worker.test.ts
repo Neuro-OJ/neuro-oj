@@ -5,6 +5,7 @@
  * （结果早到时不回退终态）、条目终态幂等、指数退避与超限失败、
  * 队列容量不足重新排队（不计失败）、结果回写时自动完成条目并聚合任务状态。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -80,6 +81,7 @@ async function seedJob(jobId: string, itemCount: number): Promise<string[]> {
 async function seedProblemAndVersion(): Promise<void> {
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "jw-prob",
     title: "jw",
     description: "d",

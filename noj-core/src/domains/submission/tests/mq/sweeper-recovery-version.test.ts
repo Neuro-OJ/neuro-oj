@@ -8,6 +8,7 @@
  * 同时覆盖产物提交：产物对象保留到提交显式删除，pending 产物提交必须被**恢复**
  * （重新签发下载地址后入队），而不是"超时即删除对象并标记 error"。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -86,6 +87,7 @@ async function seedProblem(
     updated_at: now,
   });
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `恢复测试题 ${tag}`,
     description: "d",

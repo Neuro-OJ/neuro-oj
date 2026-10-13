@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -30,6 +31,7 @@ async function problem(kind: "oi" | "ai" | "objective", number: number) {
   const db = getDb(), id = crypto.randomUUID(), version = crypto.randomUUID();
   const now = new Date().toISOString();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     number,
     title: kind,

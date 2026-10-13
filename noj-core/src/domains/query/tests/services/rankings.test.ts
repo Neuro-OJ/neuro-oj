@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -80,6 +81,7 @@ async function createTestProblem(problemNumber: number): Promise<string> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: `rankings_test_${problemNumber}_${Date.now()}`,
     description: "test",

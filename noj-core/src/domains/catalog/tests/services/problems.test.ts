@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq, sql } from "drizzle-orm";
 import {
@@ -649,6 +650,7 @@ Deno.test({
     const db = getDb();
     try {
       await db.insert(problems).values(fixtures.map((fixture, index) => ({
+        domain_id: DEFAULT_DOMAIN_ID,
         ...fixture,
         id: ids[index],
         title: `${marker}-${index}`,

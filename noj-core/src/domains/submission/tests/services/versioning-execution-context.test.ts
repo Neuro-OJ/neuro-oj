@@ -9,6 +9,7 @@
  * - 非法评分不得被改写成正式 0/满分（平台错误保留已有正式判定）；
  * - 新增/删除提交递增题目、竞赛与 **global** 作用域 revision。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -204,6 +205,7 @@ async function seedTwoVersions(
   await ensureDefaultWorkspace();
   const v2Content = aiContent(v2);
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",
@@ -910,6 +912,7 @@ Deno.test("attempt sequence: 迁移前较大的源 rejudge_seq 不回退（#27�
   const problemId = "ec-p9";
   const versionId = "ec-p9-v1";
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",

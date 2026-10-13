@@ -217,6 +217,7 @@ async function seedRound(): Promise<void> {
 
   await db.insert(problems).values([
     {
+      domain_id: DEFAULT_DOMAIN_ID,
       id: PROBLEM_A1,
       title: "lock order A1",
       description: "d",
@@ -228,6 +229,7 @@ async function seedRound(): Promise<void> {
       updated_at: now,
     },
     {
+      domain_id: DEFAULT_DOMAIN_ID,
       id: PROBLEM_A2,
       title: "lock order A2",
       description: "d",
@@ -239,6 +241,7 @@ async function seedRound(): Promise<void> {
       updated_at: now,
     },
     {
+      domain_id: DEFAULT_DOMAIN_ID,
       id: PROBLEM_B1,
       title: "lock order B1",
       description: "d",
@@ -250,6 +253,7 @@ async function seedRound(): Promise<void> {
       updated_at: now,
     },
     {
+      domain_id: DEFAULT_DOMAIN_ID,
       id: PROBLEM_B2,
       title: "lock order B2",
       description: "d",

@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 批任务派发前的平台安全预检回归（tracking #33 后半、Handbook §7）。
@@ -108,6 +109,7 @@ async function seedVersionContent(
   const problemId = `pf-prob-${tag}-${ts}`;
   const versionId = `pf-v1-${tag}-${ts}`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `预检测试题 ${tag}`,
     description: "d",

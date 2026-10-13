@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   acceptLegacyRejudgeJobForTest as acceptRejudgeJob,
   authorizeLegacyJobActorForTest,
@@ -149,6 +150,7 @@ async function seedProblemWithVersions(
   const v2 = `conc-v2-${tag}-${ts}`;
   createdFixtures.problemIds.add(problemId);
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `并发测试题 ${tag}`,
     description: "d",

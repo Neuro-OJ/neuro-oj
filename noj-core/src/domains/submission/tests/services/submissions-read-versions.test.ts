@@ -7,6 +7,7 @@
  * - 迁移期 `legacy_unknown` 提交：版本 ID/版本号为空，未知版本桶判定照常返回；
  * - 列表项同样携带提交时版本（供"按版本筛选/展示"使用）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -30,6 +31,7 @@ async function seedProblem(
 ): Promise<{ v1: string; v2: string }> {
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",

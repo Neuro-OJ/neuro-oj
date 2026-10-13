@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import {
   createUserToken,
@@ -780,6 +781,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: `del-test-${ts}`,
       description: "x",
@@ -862,6 +864,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: `busy-test-${ts}`,
       description: "x",
@@ -1068,6 +1071,7 @@ Deno.test({
     );
 
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: `重测测试 ${ts}`,
       description: "测试",
@@ -1156,6 +1160,7 @@ Deno.test({
     const submissionId = `single-rej-submission-${ts}`;
 
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: `单条重测测试 ${ts}`,
       description: "测试",
@@ -1232,6 +1237,7 @@ Deno.test({
 
     const problemId = `rej-empty-${ts}`;
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: `重测空 ${ts}`,
       description: "测试",

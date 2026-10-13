@@ -10,6 +10,7 @@
  * - **#45**：竞赛榜单按**竞赛口径有效成绩指针**计分，版本策略 any → exact 切换
  *   后立即改用新目标版本的判定，不吃"最近分数"。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -65,6 +66,7 @@ async function insertProblemRow(
   } = {},
 ): Promise<void> {
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: options.title ?? `题目身份-${number}`,
     description: "身份描述（非版本内容）",

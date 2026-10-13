@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import {
   getPendingSubmissionIds,
@@ -50,6 +51,7 @@ async function setup() {
     updated_at: now,
   });
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: PROBLEM_ID,
     number: Math.floor(Math.random() * 10000),
     title: "Queue Test Problem",

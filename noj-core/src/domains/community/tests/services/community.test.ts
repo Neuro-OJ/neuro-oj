@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -83,6 +84,7 @@ async function setup(): Promise<void> {
     },
   ]);
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "community-test-problem",
     title: "社区测试题目",
     description: "测试用题目",

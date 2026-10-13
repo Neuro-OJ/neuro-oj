@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
@@ -22,6 +23,7 @@ async function seed() {
   const db = getDb();
   const now = new Date().toISOString();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "p-search-1",
     title: "动态规划",
     description: "入门",
@@ -101,6 +103,7 @@ Deno.test({
     const now = new Date().toISOString();
     await db.insert(problems).values([
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: "p-percent-1",
         title: "50%off",
         description: "促销",
@@ -120,6 +123,7 @@ Deno.test({
         updated_at: now,
       },
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: "p-percent-2",
         title: "50off",
         description: "促销",

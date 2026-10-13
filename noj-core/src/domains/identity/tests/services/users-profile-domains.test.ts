@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -112,6 +113,7 @@ Deno.test("公共主页：本人和平台管理员也不能聚合私有域提交
   assertEquals((await queryProfileSolutions(db, actor)).length, 0);
   // 主域legacy记录仍可见；改域后无需索引或缓存失效，立即从公开统计撤除。
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "profile-main-problem",
     number: 997011,
     title: "公开题",

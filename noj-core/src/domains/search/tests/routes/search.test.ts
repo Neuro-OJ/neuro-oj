@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -26,6 +27,7 @@ async function seed() {
   const db = getDb();
   const now = new Date().toISOString();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "p-search-route-1",
     title: "动态规划",
     description: "入门",

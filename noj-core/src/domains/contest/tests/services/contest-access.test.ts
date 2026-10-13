@@ -47,6 +47,7 @@ async function createProblem(number: number): Promise<string> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: `竞赛访问测试题 ${number}`,
     description: "测试题面",

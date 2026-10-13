@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 批量任务条目派发测试（Handbook §5.7、边界表）。
@@ -89,6 +90,7 @@ async function seedProblemWithVersions(
   const v1 = `tst-dispatch-v1-${tag}-${ts}`;
   const v2 = `tst-dispatch-v2-${tag}-${ts}`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `派发测试题 ${tag}`,
     description: "d",
@@ -543,6 +545,7 @@ Deno.test({
       explanation,
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "客观题派发题",
       description: "d",
@@ -874,6 +877,7 @@ Deno.test({
       explanation: "",
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: problemId,
       title: "客观题升级题",
       description: "d",

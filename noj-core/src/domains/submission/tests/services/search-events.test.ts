@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
@@ -37,6 +38,7 @@ Deno.test({
         updated_at: now,
       });
       await db.insert(problems).values({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: "p-sub-event",
         title: "提交事件题",
         description: "",

@@ -7,6 +7,7 @@
  * - 编辑竞赛会整体替换题目关联，但必须保留既有固定版本（否则改名/改时间等于静默换版）；
  * - 新加入竞赛的题目按当前最新已发布版固定；题库尚无已发布版本的题目固定为 null（存量路径）。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 import { and, eq } from "drizzle-orm";
@@ -46,6 +47,7 @@ async function createUser(prefix: string): Promise<string> {
 /** 建一道带 AI 版本内容的题（visibility 默认 public，任何登录用户可加入竞赛）。 */
 async function createProblem(id: string, number: number): Promise<void> {
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title: id,
     description: "d",

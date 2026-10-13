@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
@@ -46,6 +47,7 @@ Deno.test({
     const db = getDb();
     const now = new Date().toISOString();
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "p-search-1",
       title: "动态规划",
       description: "入门",
@@ -332,6 +334,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "p-sub-entry",
       title: "提交索引题",
       description: "desc",
@@ -414,6 +417,7 @@ Deno.test({
     const db = getDb();
     const now = new Date().toISOString();
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "p-contest-entry",
       title: "竞赛关联题",
       description: "desc",
@@ -479,6 +483,7 @@ Deno.test({
     // 一道公开题 + 一道私题同时挂到公开竞赛下
     await db.insert(problems).values([
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: "p-contest-public",
         title: "公开关联题",
         description: "desc",
@@ -490,6 +495,7 @@ Deno.test({
         updated_at: now,
       },
       {
+        domain_id: DEFAULT_DOMAIN_ID,
         id: "p-contest-private",
         title: "赛前保密的私题",
         description: "desc",
@@ -548,6 +554,7 @@ Deno.test({
     const db = getDb();
     const now = new Date().toISOString();
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "p-search-keep",
       title: "保留题",
       description: "desc",

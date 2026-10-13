@@ -5,6 +5,7 @@
  * 跨版本保留、未知版本桶、平台错误不参与、通过指针与分数指针分离、
  * 题库与竞赛两个作用域独立，以及策略切换后的整题重算与 revision 递增。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -42,6 +43,7 @@ async function seedProblem(
 ): Promise<{ v1: string; v2: string }> {
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",

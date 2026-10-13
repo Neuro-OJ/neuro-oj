@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 尝试终态统一吊销 LLM token 的回归（复审问题 3，P1）。
@@ -121,6 +122,7 @@ async function seedProblem(
   const problemId = `rev-prob-${tag}-${ts}`;
   const versionId = `rev-v1-${tag}-${ts}`;
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `吊销测试题 ${tag}`,
     description: "d",

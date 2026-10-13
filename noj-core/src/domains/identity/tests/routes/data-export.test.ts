@@ -3,6 +3,7 @@
  *
  * 覆盖：未登录 401；导出包含本体账户、提交与同意记录；不含他人数据。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { submissions, users } from "../../../../shared/db/schema.ts";
@@ -53,6 +54,7 @@ Deno.test({
     const now = new Date().toISOString();
     // 题目夹具（submissions.problem_id FK）
     await db.insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "p-x",
       title: "导出测试题",
       description: "",

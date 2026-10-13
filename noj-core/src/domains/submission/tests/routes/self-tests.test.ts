@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
@@ -66,6 +67,7 @@ if (!skip) {
     },
   ]);
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: PROBLEM_ID,
     title: "路由自测题",
     description: "测试",

@@ -5,6 +5,7 @@
  * （代码提交 + 客观题提交），并按题目 ID 去重；修复前只读 `submissions`，
  * 仅通过客观题的用户 solved_count = 0，与其全局排行/题解门槛口径不一致。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -43,6 +44,7 @@ async function seedProblem(
 ): Promise<string> {
   const id = crypto.randomUUID();
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id,
     title,
     description: "d",

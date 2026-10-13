@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -69,6 +70,7 @@ async function setup(): Promise<void> {
     { user_id: responderId, role_id: "user" },
   ]);
   await getDb().insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "community-search-problem",
     title: "社区搜索关联题目",
     description: "社区搜索测试题目",
@@ -1183,6 +1185,7 @@ Deno.test({
     // 一场与该题无关的进行中公开赛 → 全站静默
     const now = new Date().toISOString();
     await getDb().insert(problems).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "community-silence-contest-problem",
       title: "赛题",
       description: "x",

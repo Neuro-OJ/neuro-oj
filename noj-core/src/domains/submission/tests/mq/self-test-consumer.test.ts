@@ -1,3 +1,4 @@
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import {
   seedActiveAttemptForTest,
@@ -69,6 +70,7 @@ await db.insert(users).values({
 });
 await db.insert(problems).values([
   {
+    domain_id: DEFAULT_DOMAIN_ID,
     id: PROBLEM_ID,
     title: "消费者自测题",
     description: "test",
@@ -80,6 +82,7 @@ await db.insert(problems).values([
     updated_at: now,
   },
   {
+    domain_id: DEFAULT_DOMAIN_ID,
     id: BAD_PROBLEM_ID,
     title: "缺少 runtime_config 的题",
     description: "test",

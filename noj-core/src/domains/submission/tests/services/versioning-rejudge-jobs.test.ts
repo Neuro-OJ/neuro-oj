@@ -6,6 +6,7 @@
  * 「整场统一 V3 缺一题 → 整次受理 400 且不产生任务」、策略变更作用域校验与生效、
  * 重试只带 failed/skipped、任务状态由条目聚合。
  */
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -52,6 +53,7 @@ async function seedProblem(
 ) {
   const db = getDb();
   await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: problemId,
     description: "d",
