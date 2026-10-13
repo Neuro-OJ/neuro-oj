@@ -13,6 +13,10 @@ Status: implemented
 `deno test`。例如 `--filter=workspace-teaching`
 可以聚焦新场景，不必手拼环境与测试命令。
 
+core
+同样支持可选测试参数；迁移与管理员种子仍完整执行，过滤只应用于业务模块测试。PGlite
+模板同步和 preload 事务隔离保持标准入口原有流程。
+
 ## Alternatives considered
 
 - 直接调用 `deno test`：容易漏统一环境，与项目测试要求不一致。
