@@ -67,7 +67,7 @@ export function validateDomainFeatures(
 }
 /** 注册表中的结构化文本同样执行业务格式验证。 */
 export function validateWorkspaceSetting(
-  schema: "domain_limits" | "domain_features",
+  schema: "domain_limits" | "domain_features" | "domain_llm_quota_caps",
   text: string,
 ) {
   let value: unknown;
@@ -77,8 +77,55 @@ export function validateWorkspaceSetting(
     throw new Error("工作空间配置须为合法 JSON");
   }
   if (schema === "domain_limits") validateDomainLimits(value);
-  else validateDomainFeatures(value);
+  else if (schema === "domain_llm_quota_caps") {
+    validateDomainLlmQuotaCaps(value);
+  } else validateDomainFeatures(value);
   return value;
+}
+
+/** 实例 LLM 上限按日/月限制各项数值，单位与 Gateway 配额一致。 */
+export function validateDomainLlmQuotaCaps(
+  value: unknown,
+): asserts value is DomainLlmQuotaCaps {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("LLM 上限须为日/月对象");
+  }
+  const periods = value as Record<string, unknown>;
+  if (
+    Object.keys(periods).length !== 2 || !("day" in periods) ||
+    !("month" in periods)
+  ) throw new Error("LLM 上限须包含 day 和 month");
+  for (const period of [periods.day, periods.month]) {
+    if (!period || typeof period !== "object" || Array.isArray(period)) {
+      throw new Error("LLM 窗口上限须为对象");
+    }
+    const limits = period as Record<string, unknown>;
+    const keys = ["max_calls", "max_tokens", "max_cost"];
+    if (
+      Object.keys(limits).length !== keys.length ||
+      keys.some((key) => !(key in limits))
+    ) throw new Error("LLM 上限字段不完整");
+    for (const key of keys) {
+      const limit = limits[key];
+      if (
+        limit !== null &&
+        (typeof limit !== "number" || !Number.isSafeInteger(limit) || limit < 0)
+      ) throw new Error(`${key} 须为 null 或非负安全整数`);
+    }
+  }
+}
+
+export interface DomainLlmQuotaCaps {
+  day: {
+    max_calls: number | null;
+    max_tokens: number | null;
+    max_cost: number | null;
+  };
+  month: {
+    max_calls: number | null;
+    max_tokens: number | null;
+    max_cost: number | null;
+  };
 }
 /** 本域限额与实例上限组合；任一维度 null 不解除另一层限制。 */
 export function combineDomainLimits(

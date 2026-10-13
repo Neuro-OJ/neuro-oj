@@ -65,6 +65,7 @@ services:
       - "8001:8001"
     environment:
       NOJ_LLM_PORT: "8001"
+      NOJ_CORE_INTERNAL_URL: ${NOJ_CORE_INTERNAL_URL:-http://host.docker.internal:8000}
       NOJ_LLM_SERVICE_TOKEN: ${NOJ_LLM_SERVICE_TOKEN:-dev-llm-service-token-0123456789abcdef}
       NOJ_LLM_STORE_KEY: ${NOJ_LLM_STORE_KEY:-dev-llm-store-key-0123456789abcdef}
       NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE: ${NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE:-60}
@@ -74,6 +75,8 @@ services:
     depends_on:
       - postgres
       - redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
 volumes:

@@ -75,7 +75,7 @@ export interface SettingDefinition {
   /** 字符串设置的合法选项；避免拼写错误导致访问政策失效。 */
   choices?: readonly string[];
   /** 结构化文本的格式约束，在写入设置时校验。 */
-  valueSchema?: "domain_limits" | "domain_features";
+  valueSchema?: "domain_limits" | "domain_features" | "domain_llm_quota_caps";
 }
 
 /** 统一配置注册表：全部配置项（runtime + bootstrap）的元数据定义 */

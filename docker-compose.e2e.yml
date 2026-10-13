@@ -226,6 +226,7 @@ services:
       - "8001:8001"
     environment:
       NOJ_LLM_PORT: "8001"
+      NOJ_CORE_INTERNAL_URL: http://noj-core:8000
       NOJ_LLM_SERVICE_TOKEN: e2e-ci-llm-service-token-0123456789abcdef
       NOJ_LLM_STORE_KEY: e2e-ci-llm-store-key-0123456789abcdef
       DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e

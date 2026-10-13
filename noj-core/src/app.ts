@@ -20,6 +20,7 @@ import { contestRouter } from "./domains/contest/routes/index.ts";
 import { communityRouter } from "./domains/community/routes/index.ts";
 import { messagingRouter } from "./domains/messaging/routes/index.ts";
 import { systemRouter } from "./domains/system/routes/index.ts";
+import { internalLlmPolicyRouter } from "./domains/system/routes/internal-llm-policy.ts";
 import { legalRouter } from "./domains/legal/routes/index.ts";
 import { workspaceRouter } from "./domains/workspace/routes/index.ts";
 import { instanceAccessMiddleware } from "./domains/workspace/index.ts";
@@ -182,6 +183,7 @@ export function createApp(): Hono {
   // 才能拦截请求。原 banlistMiddleware 注册在 routes 之后，存在顺序 bug。
   app.use("/api/v1/*", banlistMiddleware);
   app.use("/api/v1/*", maintenanceMode);
+  app.route("/api/v1", internalLlmPolicyRouter);
   app.use("/api/v1/*", instanceAccessMiddleware);
 
   // 注册路由（按域自装配；各域 routes/index.ts 内部保持顺序敏感注释）

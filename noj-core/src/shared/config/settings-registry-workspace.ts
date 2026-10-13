@@ -7,6 +7,20 @@ import {
 /** 工作空间治理配置走既有 DB 配置加载与跨副本重新加载通道。 */
 export const WORKSPACE_CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
   {
+    key: "domain_llm_quota_caps",
+    type: "text",
+    default: JSON.stringify({
+      day: { max_calls: null, max_tokens: null, max_cost: null },
+      month: { max_calls: null, max_tokens: null, max_cost: null },
+    }),
+    valueSchema: "domain_llm_quota_caps",
+    description:
+      "实例允许各域设置的 LLM 日/月额度上限；null 不额外限制，域管理员只能在上限内降低额度",
+    is_secret: false,
+    scope: "runtime",
+    category: "llm",
+  },
+  {
     key: "instance_allowed_modules",
     type: "text",
     default: JSON.stringify(allowedDomainFeatures()),

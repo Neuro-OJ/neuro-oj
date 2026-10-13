@@ -10,7 +10,9 @@ import {
 } from "../../../shared/base/errors.ts";
 import {
   createLlmProvider,
+  listInstanceLlmQuotas,
   listLlmProviders,
+  listLlmQuotas,
   LlmGatewayError,
   type LlmProviderInput,
   type LlmQuotaInput,
@@ -136,7 +138,11 @@ router.get("/llm/usage", async (c) => {
  * 响应：`{ data: unknown[] }`（gateway `llm_quotas` 行原样透传）。
  */
 router.get("/llm/quotas", async (c) => {
-  const data = await fetchLlmQuotas();
+  const [instanceQuotas, domainQuotas] = await Promise.all([
+    listInstanceLlmQuotas(),
+    listLlmQuotas(),
+  ]);
+  const data = [...instanceQuotas, ...domainQuotas];
   return c.json({ data });
 });
 
@@ -158,42 +164,6 @@ router.post("/llm/quotas", async (c) => {
   );
   return c.json({ data }, 201);
 });
-
-/**
- * 向 LLM Gateway 内部管理 API 请求配额列表。
- *
- * 读取 NOJ_LLM_SERVICE_TOKEN 与 NOJ_LLM_GATEWAY_URL 环境变量，
- * 携带承载 Token 调用 gateway 的 /internal/quotas 端点；失败时抛出异常。
- *
- * @returns 配额列表（无数据时返回空数组）
- * @throws {Error} gateway 返回非 2xx 时抛出，携带状态码
- */
-async function fetchLlmQuotas(): Promise<unknown[]> {
-  const token = Deno.env.get("NOJ_LLM_SERVICE_TOKEN") ?? "";
-  const gatewayUrl = Deno.env.get("NOJ_LLM_GATEWAY_URL") ??
-    "http://localhost:8001";
-  let res: Response;
-  try {
-    res = await fetch(`${gatewayUrl}/internal/quotas`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch {
-    throw new LlmGatewayError(503, "gateway_unavailable");
-  }
-  if (!res.ok) {
-    const errorBody = await res.json().catch(() => null) as
-      | { error?: unknown }
-      | null;
-    throw new LlmGatewayError(
-      res.status,
-      typeof errorBody?.error === "string" ? errorBody.error : "gateway_error",
-    );
-  }
-  const body = await res.json().catch(() => null) as
-    | { data?: unknown[] }
-    | null;
-  return body?.data ?? [];
-}
 
 /**
  * 将 LLM Gateway 转发错误映射为可读的 4xx 而非 500。
