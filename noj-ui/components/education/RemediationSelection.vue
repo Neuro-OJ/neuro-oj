@@ -81,13 +81,16 @@ function submit() {
     </div>
     <div class="max-h-48 space-y-2 overflow-auto rounded border border-border p-3">
       <UCheckbox v-for="item in candidateItems" :key="item.id" :disabled="saving"
-        :label="`${item.reference.display_ref} · ${item.requirement === 'accepted' ? '正式通过' : `至少 ${(item.minimum_score! / 100).toFixed(2)} 分`}`"
+        :label="`${item.label ? `${item.label} · ` : ''}${item.reference.display_ref} · ${item.requirement === 'accepted' ? '正式通过' : `至少 ${(item.minimum_score! / 100).toFixed(2)} 分`}`"
         :model-value="items.includes(item.id)"
         @update:model-value="v => items = v ? [...items, item.id] : items.filter(id => id !== item.id)" />
     </div>
     <p class="text-sm text-text-muted tabular-nums">
       已排除 {{ preview.excluded.pending_cells }} 个待完成成绩、{{ preview.excluded.unavailable_items }} 道不可用题目及
       {{ preview.excluded.historical_students }} 名历史学生。
+    </p>
+    <p v-if="preview.excluded.nonparticipants !== undefined" class="text-sm text-text-muted tabular-nums">
+      另有 {{ preview.excluded.nonparticipants }} 名班级学生没有参加来源比赛，未列入比赛补题候选。
     </p>
     <p
       class="text-sm text-text-secondary">每名所选学生将收到全部所选题目。选题变化后，没有对应未达标题目的学生会退出选择。创建独立草稿后可预览并发布；新任务独立计算进度，原成绩和提交保持原有记录。</p>

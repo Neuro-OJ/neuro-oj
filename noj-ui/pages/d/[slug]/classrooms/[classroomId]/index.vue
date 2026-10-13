@@ -28,6 +28,10 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级' });
           <UButton
             v-if="room.data.value && classroomCan(room.data.value.data, 'assignments:manage') && room.data.value.data.status === 'active' && domain?.status === 'active' && domain.configuration.features.assignment && domain.configuration.features.classroom"
             :to="workspacePath(slug!, `classrooms/${id}/assignments/new`)" icon="i-lucide-plus">创建作业</UButton>
+          <UButton
+            v-if="room.data.value && classroomCan(room.data.value.data, 'assignments:manage') && classroomCan(room.data.value.data, 'progress:read') && room.data.value.data.status === 'active' && domain?.status === 'active' && domain.configuration.features.assignment && domain.configuration.features.classroom"
+            :to="workspacePath(slug!, `classrooms/${id}/contest-remediation`)"
+            variant="outline">按比赛成绩布置补题</UButton>
           <UButton v-if="room.data.value && classroomCan(room.data.value.data, 'students:manage')"
             :to="workspacePath(slug!, `classrooms/${id}/members`)" variant="outline">班级成员</UButton>
           <UButton

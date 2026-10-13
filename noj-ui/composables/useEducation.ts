@@ -1,6 +1,12 @@
 import { useApi } from '~/composables/useApi';
 import type { EducationDashboardData } from '~/utils/education-dashboard';
-import type { AssignmentRemediationInput, AssignmentRemediationPreview } from '~/utils/education-remediation-preview';
+import type {
+  AssignmentRemediationInput,
+  AssignmentRemediationPreview,
+  ContestRemediationCriteria,
+  ContestRemediationInput,
+  ContestRemediationPreview,
+} from '~/utils/education-remediation-preview';
 import type { TeachingSubmission } from '~/utils/education-submissions';
 import type { AssignmentHistoryEntry, TeachingNotice } from '~/utils/education-notifications';
 import type {
@@ -97,6 +103,21 @@ export function useEducationApi() {
       }),
     createRemediation: (slug: string, id: string, current: number, key: string, input: AssignmentRemediationInput) =>
       api.post<{ data: Assignment }>(`${task(slug, id)}/remediation`, input, {
+        headers: { ...revision(current).headers, ...idempotent(key).headers },
+        silent: true,
+      }),
+    contestRemediationPreview: (slug: string, classId: string, input: ContestRemediationCriteria) =>
+      api.post<{ data: ContestRemediationPreview }>(`${classroom(slug, classId)}/contest-remediation-preview`, input, {
+        silent: true,
+      }),
+    createContestRemediation: (
+      slug: string,
+      classId: string,
+      current: number,
+      key: string,
+      input: ContestRemediationInput,
+    ) =>
+      api.post<{ data: Assignment }>(`${classroom(slug, classId)}/contest-remediation`, input, {
         headers: { ...revision(current).headers, ...idempotent(key).headers },
         silent: true,
       }),
