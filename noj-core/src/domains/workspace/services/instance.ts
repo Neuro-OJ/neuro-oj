@@ -1,6 +1,7 @@
 import { getSetting } from "../../system/index.ts";
 import { DEFAULT_DOMAIN_SLUG } from "../../../shared/workspace/types.ts";
 import { ServiceUnavailableError } from "../../../shared/base/errors.ts";
+import { logger } from "../../../shared/base/logging.ts";
 import { inArray } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
@@ -42,8 +43,15 @@ function resourcePolicy(read: (key: string) => unknown) {
         caps,
       ) as DomainLimits,
     };
-  } catch {
-    throw new ServiceUnavailableError("实例资源政策无效，请联系管理员修复");
+  } catch (cause) {
+    logger.error("实例资源政策解析失败", {
+      error_type: cause instanceof Error ? cause.name : typeof cause,
+    });
+    const error = new ServiceUnavailableError(
+      "实例资源政策无效，请联系管理员修复",
+    );
+    error.cause = cause;
+    throw error;
   }
 }
 
@@ -56,14 +64,11 @@ export async function getInstanceResourcePolicy(executor: Executor = getDb()) {
       "domain_limit_caps",
     ]),
   );
-  try {
-    const values = new Map(
-      rows.map((row) => [row.key, JSON.parse(row.value) as unknown]),
-    );
-    return resourcePolicy((key) => values.get(key));
-  } catch {
-    throw new ServiceUnavailableError("实例资源政策无效，请联系管理员修复");
-  }
+  const values = new Map(rows.map((row) => [row.key, row.value]));
+  return resourcePolicy((key) => {
+    const stored = values.get(key);
+    return stored === undefined ? undefined : JSON.parse(stored) as unknown;
+  });
 }
 
 /** 身份与访问政策独立于资源配额，错误额度配置不能阻断登录和治理修复。 */

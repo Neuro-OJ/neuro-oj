@@ -75,7 +75,6 @@ export function domainPermissions(
 ): ReadonlySet<string> {
   const permissions = new Set<string>();
   for (const role of roles) {
-    if (!isDomainRole(role)) throw new BadRequestError("工作空间角色非法");
     for (const permission of MEMBER) permissions.add(permission);
     if (role === "editor" || role === "admin" || role === "owner") {
       for (const permission of EDITOR) permissions.add(permission);

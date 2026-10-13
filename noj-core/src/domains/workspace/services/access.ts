@@ -9,6 +9,7 @@ import {
 import {
   ForbiddenError,
   NotFoundError,
+  ServiceUnavailableError,
   UnauthorizedError,
 } from "../../../shared/base/errors.ts";
 import type { WorkspaceContext } from "../../../shared/workspace/types.ts";
@@ -16,8 +17,16 @@ import {
   assertActiveInstanceAccount,
   getUserPermissions,
 } from "../../identity/index.ts";
-import { domainPermissions, validateDomainConfiguration } from "../types.ts";
+import { domainPermissions } from "../types.ts";
 import { getInstanceAccessPolicy } from "./instance.ts";
+
+/** 读取仅验证进入域所需字段，导航及其他模块配置由其边界处理。 */
+function assertDomainAccess(domain: typeof domains.$inferSelect) {
+  if (
+    domain.configuration?.access !== "public" &&
+    domain.configuration?.access !== "members"
+  ) throw new ServiceUnavailableError("工作空间访问政策无效，请联系管理员修复");
+}
 
 /** 服务端实时解析域身份、成员及平台权限，不信任客户端的权限或上次使用域。 */
 export async function loadWorkspace(
@@ -40,7 +49,7 @@ export async function loadWorkspace(
     ? await getUserPermissions(actorId, db)
     : new Set<string>();
   const platformAdmin = platformPermissions.has("admin:full_access");
-  validateDomainConfiguration(domain.configuration);
+  assertDomainAccess(domain);
   if (domain.status === "suspended" && !platformAdmin) {
     throw new NotFoundError("工作空间不可用");
   }
@@ -95,6 +104,11 @@ export async function loadDomainForJoining(
     and(eq(domains.slug, slug), eq(domains.status, "active")),
   ).for("update");
   if (!domain) throw new NotFoundError("工作空间不可加入");
-  validateDomainConfiguration(domain.configuration);
+  assertDomainAccess(domain);
+  if (
+    !["open", "approval", "invite"].includes(domain.configuration.join_policy)
+  ) {
+    throw new ServiceUnavailableError("工作空间加入政策无效，请联系管理员修复");
+  }
   return domain;
 }

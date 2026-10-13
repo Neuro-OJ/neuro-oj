@@ -1,6 +1,7 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
+  AppError,
   ConflictError,
   ForbiddenError,
   ServiceUnavailableError,
@@ -197,6 +198,14 @@ Deno.test("模块政策：受限 Preset、禁止重新启用及历史教学读�
   await assertDomainFeatureEnabled(domain, "assignment", {
     historicalRead: true,
   });
+  const disabled = await assertRejects(
+    () =>
+      assertDomainFeatureEnabled(domain, "assignment", {
+        disabledCode: "MODULE_DISABLED",
+      }),
+    ForbiddenError,
+  );
+  assertEquals(disabled.code, "MODULE_DISABLED");
   await assertRejects(
     () =>
       updateDomain(domain.slug, platform, 0, {
@@ -246,4 +255,63 @@ Deno.test("结构化设置：错误格式不持久化；异常持久上限不会
     async () => await joinDomain(domain.slug, await account()),
     ServiceUnavailableError,
   );
+});
+Deno.test("配额不变量：显式 null 不限额，缺少配额记录不能静默放宽", async () => {
+  await resetDbForTest();
+  const platform = await account(true);
+  await ensureDefaultWorkspace();
+  const domain = await createDomain({
+    slug: "missing-limits",
+    name: "学校",
+    preset: "community",
+  }, platform);
+  assertEquals(
+    (await getDomainEffectiveLimits(DEFAULT_DOMAIN_ID)).configured,
+    unlimitedDomainLimits(),
+  );
+  assertEquals(
+    (await getDomainEffectiveLimits(domain.id)).effective,
+    unlimitedDomainLimits(),
+  );
+  await getDb().delete(domainLimits).where(
+    eq(domainLimits.domain_id, domain.id),
+  );
+  const error = await assertRejects(
+    () => getDomainEffectiveLimits(domain.id),
+    AppError,
+  );
+  assertEquals(error.code, "DOMAIN_LIMITS_MISSING");
+  assertEquals(error.statusCode, 500);
+  await assertRejects(
+    async () => await joinDomain(domain.slug, await account()),
+    AppError,
+    "工作空间配额未初始化",
+  );
+  const [missing] = await getDb().select().from(domainLimits).where(
+    eq(domainLimits.domain_id, domain.id),
+  );
+  assertEquals(missing, undefined);
+});
+
+Deno.test("实例政策解析：JSON 解析原因只包装一次，响应不包含原配置", async () => {
+  await resetDbForTest();
+  const platform = await account(true);
+  const domain = await createDomain({
+    slug: "invalid-policy-json",
+    name: "学校",
+    preset: "community",
+  }, platform);
+  await getDb().insert(systemSettings).values({
+    key: "domain_limit_caps",
+    value: "private-value-not-json",
+    updated_at: new Date().toISOString(),
+    updated_by: platform,
+  });
+  const error = await assertRejects(
+    () => getDomainEffectiveLimits(domain.id),
+    ServiceUnavailableError,
+  );
+  assert(error.cause instanceof SyntaxError);
+  assertEquals(error.message, "实例资源政策无效，请联系管理员修复");
+  assertEquals(error.meta, undefined);
 });

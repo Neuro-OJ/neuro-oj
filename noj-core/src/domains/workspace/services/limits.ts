@@ -4,6 +4,7 @@ import {
   BadRequestError,
   ConflictError,
   ForbiddenError,
+  ServiceUnavailableError,
 } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
@@ -14,7 +15,6 @@ import type {
 } from "../../../shared/workspace/types.ts";
 import {
   combineDomainLimits,
-  unlimitedDomainLimits,
   validateDomainLimits,
 } from "../../../shared/workspace/resource-policy.ts";
 import { assertWorkspacePermission, loadWorkspace } from "./access.ts";
@@ -29,15 +29,16 @@ export async function getDomainEffectiveLimits(
   const [stored] = await executor.select().from(domainLimits).where(
     eq(domainLimits.domain_id, domainId),
   );
+  if (!stored) {
+    throw new AppError("工作空间配额未初始化", 500, "DOMAIN_LIMITS_MISSING");
+  }
   const policy = await getInstanceResourcePolicy(executor);
-  const configured: DomainLimits = stored
-    ? {
-      members: stored.members,
-      problems: stored.problems,
-      storage_bytes: stored.storage_bytes,
-      submissions_per_minute: stored.submissions_per_minute,
-    }
-    : unlimitedDomainLimits();
+  const configured: DomainLimits = {
+    members: stored.members,
+    problems: stored.problems,
+    storage_bytes: stored.storage_bytes,
+    submissions_per_minute: stored.submissions_per_minute,
+  };
   return {
     configured,
     effective: combineDomainLimits(configured, policy.limit_caps),
@@ -116,10 +117,31 @@ export async function updateDomainLimits(
 export async function assertDomainFeatureEnabled(
   domain: typeof domains.$inferSelect,
   feature: keyof DomainFeatures,
-  options: { historicalRead?: boolean; executor?: Executor } = {},
+  options: {
+    historicalRead?: boolean;
+    executor?: Executor;
+    disabledCode?: string;
+  } = {},
 ) {
   const policy = await getInstanceResourcePolicy(options.executor);
-  if (domain.configuration.features[feature] && policy.modules[feature]) return;
+  const features = domain.configuration.features;
+  const required = feature === "analytics"
+    ? ["analytics", "assignment", "classroom"] as const
+    : feature === "assignment"
+    ? ["assignment", "classroom"] as const
+    : [feature];
+  if (
+    required.some((key) => typeof features?.[key] !== "boolean") ||
+    feature === "assignment" && features.assignment && !features.classroom ||
+    feature === "analytics" && features.analytics &&
+      (!features.assignment || !features.classroom)
+  ) {
+    throw new ServiceUnavailableError("工作空间模块配置无效，请联系管理员修复");
+  }
+  if (features[feature] && policy.modules[feature]) return;
   if (options.historicalRead && feature !== "community") return;
-  throw new ForbiddenError("此模块已停用", "DOMAIN_MODULE_DISABLED");
+  throw new ForbiddenError(
+    "此模块已停用",
+    options.disabledCode ?? "DOMAIN_MODULE_DISABLED",
+  );
 }
