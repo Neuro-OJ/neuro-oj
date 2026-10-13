@@ -17,6 +17,7 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import {
+  bindPublishedProblemForTest,
   createUserToken,
   initRedisForTest,
   jsonRequest,
@@ -99,7 +100,10 @@ async function seedProblemAndSubmission(tag: string): Promise<{
   await db.update(problems).set({ latest_version_id: versionId }).where(
     eq(problems.id, problemId),
   );
+  const bindingId = await bindPublishedProblemForTest(problemId);
   await db.insert(submissions).values({
+    domain_id: DEFAULT_DOMAIN_ID,
+    domain_problem_binding_id: bindingId,
     id: submissionId,
     user_id: userId,
     problem_id: problemId,

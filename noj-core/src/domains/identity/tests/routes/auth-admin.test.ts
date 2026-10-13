@@ -1,7 +1,9 @@
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import {
+  bindPublishedProblemForTest,
   createUserToken,
+  deleteProblemFixtures,
   initRedisForTest,
 } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
@@ -1097,7 +1099,10 @@ Deno.test({
     });
 
     const judgingSubId = `rej-sub-judging-${ts}`;
+    const bindingId = await bindPublishedProblemForTest(problemId);
     await db.insert(submissions).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      domain_problem_binding_id: bindingId,
       id: judgingSubId,
       user_id: testUserId,
       problem_id: problemId,
@@ -1135,7 +1140,7 @@ Deno.test({
       eq(submissionJobs.id, body.data.job_id),
     );
     await db.delete(submissions).where(eq(submissions.id, judgingSubId));
-    await db.delete(problems).where(eq(problems.id, problemId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
   },
 });
 
@@ -1183,7 +1188,10 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
+    const bindingId = await bindPublishedProblemForTest(problemId);
     await db.insert(submissions).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      domain_problem_binding_id: bindingId,
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
@@ -1217,7 +1225,7 @@ Deno.test({
       eq(submissionJobs.id, body.data.job_id),
     );
     await db.delete(submissions).where(eq(submissions.id, submissionId));
-    await db.delete(problems).where(eq(problems.id, problemId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
   },
 });
 
