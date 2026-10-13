@@ -83,6 +83,10 @@ const ROUTES: BreadcrumbRoute[] = [
   },
   { pattern: '/d/:slug/submissions', trail: [{ param: 'slug' }, { key: 'nav.submissions' }] },
   {
+    pattern: '/d/:slug/self-tests/:selfTestId',
+    trail: [{ param: 'slug' }, { key: 'breadcrumb.selfTest' }, { param: 'selfTestId' }],
+  },
+  {
     pattern: '/d/:slug/submissions/:submissionId',
     trail: [{ param: 'slug' }, { key: 'nav.submissions', to: '/d/:slug/submissions' }, { param: 'submissionId' }],
   },

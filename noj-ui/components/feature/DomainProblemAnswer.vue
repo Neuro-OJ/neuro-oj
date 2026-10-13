@@ -166,6 +166,9 @@ async function submit() {
       <UAlert v-if="languages.length === 0" color="warning" title="题目尚未提供可提交语言，请联系管理员" class="mb-3" />
       <ClientOnly>
         <MonacoEditor v-model="code" :language="language" :min-height="360" :disabled="submitting" />
+        <DomainSelfTestPanel :slug="slug" :problem="problem" :code="code" :language="language"
+          :version-id="answerVersion" :writable="writable && !submitting && languages.length > 0"
+          @refresh="emit('refresh')" />
       </ClientOnly>
     </template>
     <UAlert v-if="failure" color="error" :title="failure" class="mt-4" />
