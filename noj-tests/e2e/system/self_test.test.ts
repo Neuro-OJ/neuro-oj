@@ -11,19 +11,19 @@ import {
   apiGet,
   apiPost,
   e2eTest,
-  getAnswerVersionId,
   getOrCreateUser,
-  getProblemIdByNumber,
   isE2E,
   TEST_PASSWORD,
   waitForServer,
 } from "../helper.ts";
+import { createCodingProblemFixture } from "../fixtures/coding-problem.ts";
 
 const USER_KEY = "self_test_user";
 const ts = Date.now().toString(36);
 
 let token = "";
-let problemId = "";
+let problemNumber = 0;
+let versionId = "";
 let selfTestId = "";
 let beforeSubmissionsTotal = 0;
 let beforeTodayStatsTotal = 0;
@@ -34,7 +34,7 @@ async function pollSelfTest(
 ): Promise<{ status: string; score: number; output: string | null }> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const res = await apiGet(`/api/v1/self-tests/${id}`, token);
+    const res = await apiGet(`/api/v1/domains/main/self-tests/${id}`, token);
     if (res.status !== 200) {
       throw new Error(
         `查询自测失败: ${res.status} ${JSON.stringify(res.body)}`,
@@ -65,14 +65,29 @@ e2eTest("[e2e/self-test] Setup", async () => {
     TEST_PASSWORD,
   );
   token = user.token;
-  problemId = await getProblemIdByNumber(1001);
+  // 独立公开版本，其他 E2E 的种子题比赛不会改变本轮自测权限。
+  const problemId = await createCodingProblemFixture();
+  const detail = await apiGet(`/api/v1/problems/${problemId}`, token);
+  if (detail.status !== 200) {
+    throw new Error(`读取独立自测题失败: ${JSON.stringify(detail.body)}`);
+  }
+  const problem =
+    (detail.body as { data: { number: number; version_id: string } }).data;
+  problemNumber = problem.number;
+  versionId = problem.version_id;
 
   // 记录自测前的正式提交总数与今日统计
   const history = await apiGet("/api/v1/submissions", token);
+  if (history.status !== 200) {
+    throw new Error(`读取提交历史失败: ${history.status}`);
+  }
   const body = history.body as { pagination?: { total?: number } };
   beforeSubmissionsTotal = body.pagination?.total ?? 0;
 
   const stats = await apiGet("/api/v1/submissions/today-stats", token);
+  if (stats.status !== 200) {
+    throw new Error(`读取今日统计失败: ${stats.status}`);
+  }
   const statsBody = stats.body as { data?: { total?: number } };
   beforeTodayStatsTotal = statsBody.data?.total ?? 0;
 });
@@ -80,10 +95,8 @@ e2eTest("[e2e/self-test] Setup", async () => {
 e2eTest("[e2e/self-test] 创建自测并返回 id", async () => {
   if (!isE2E) return;
   // 自测与正式提交一样必须携带作答版本（Handbook §4.2）
-  const versionId = await getAnswerVersionId(token, problemId);
-  if (!versionId) throw new Error("题目没有可作答的已发布版本");
   const res = await apiPost(
-    `/api/v1/problems/${problemId}/self-test`,
+    `/api/v1/domains/main/problems/${problemNumber}/self-tests`,
     {
       language: "python3",
       version_id: versionId,
@@ -91,7 +104,8 @@ e2eTest("[e2e/self-test] 创建自测并返回 id", async () => {
 
 @register
 def solve(text: str) -> str:
-    return '{"gate_id":"E-07","status":"fault"}'
+    a, b = map(int, text.split())
+    return str(a + b)
 `,
     },
     token,
@@ -112,8 +126,8 @@ e2eTest("[e2e/self-test] 轮询到终态并返回分数/状态/输出", async ()
   if (result.status !== "finished") {
     throw new Error(`自测未正常完成: ${JSON.stringify(result)}`);
   }
-  if (typeof result.score !== "number") {
-    throw new Error(`自测应返回分数: ${JSON.stringify(result)}`);
+  if (result.score !== 1000) {
+    throw new Error(`自测应返回Judge实际10分: ${JSON.stringify(result)}`);
   }
   if (result.output === null) {
     throw new Error(`自测应返回输出: ${JSON.stringify(result)}`);
@@ -123,6 +137,9 @@ e2eTest("[e2e/self-test] 轮询到终态并返回分数/状态/输出", async ()
 e2eTest("[e2e/self-test] 自测后正式提交历史不变化", async () => {
   if (!isE2E) return;
   const history = await apiGet("/api/v1/submissions", token);
+  if (history.status !== 200) {
+    throw new Error(`读取提交历史失败: ${history.status}`);
+  }
   const body = history.body as { pagination?: { total?: number } };
   const afterTotal = body.pagination?.total ?? 0;
   if (afterTotal !== beforeSubmissionsTotal) {
@@ -132,6 +149,9 @@ e2eTest("[e2e/self-test] 自测后正式提交历史不变化", async () => {
   }
 
   const stats = await apiGet("/api/v1/submissions/today-stats", token);
+  if (stats.status !== 200) {
+    throw new Error(`读取今日统计失败: ${stats.status}`);
+  }
   const statsBody = stats.body as { data?: { total?: number } };
   const afterTodayStatsTotal = statsBody.data?.total ?? 0;
   if (afterTodayStatsTotal !== beforeTodayStatsTotal) {
