@@ -4,18 +4,17 @@
 调用真实 LLM API 的题目。
 
 > 若只需**能提交 LLM 题**，关键就三步：gateway 两个密钥就位 → 后台建一个启用
-> 的 Provider → 配齐平台默认 `provider_id` + `model`。缺任一项，LLM 题提交会
-> 以 400 失败。
+> 的使用域 Provider → 在该域选择默认 Provider 和模型。缺少域内配置时，提交返回
+> `DOMAIN_LLM_NOT_CONFIGURED`，不会借用其他域的密钥。
 
 ## 总体流程
 
 1. 部署并配置 `noj-llm-gateway`。
-2. 在管理后台添加并启用 LLM Provider。
-3. 配置平台默认 Provider 与模型（`llm_default_provider_id` /
-   `llm_default_model`）。
-4. 按需配置用户/全局/题目的配额。
+2. 在使用域的「LLM 管理」添加并启用 Provider。
+3. 配置该域默认 Provider 与模型。
+4. 按需配置实例、域及域内用户／源题／用户×源题配额。
 5. 确认 Judge Worker 的 evaluator 能访问 gateway。
-6. 出题人创建 P 型 LLM 题目并完成评测验证。
+6. 出题人在题库创建 LLM 题并完成评测验证。
 
 出题人侧的接入说明见 [出 LLM 调用题](../problemsetters/llm-problem.md)。
 
@@ -28,10 +27,9 @@
 - 必须设置 `NOJ_LLM_STORE_KEY`（加密 Provider API Key，≥16 字符）。
 - `llm-gateway` 容器加入 `noj-net`，core 通过 `http://llm-gateway:8001` 访问。
 
-::: warning 即使不做 LLM 题也必须填这两个密钥
-`docker-compose.prod.yml` 默认**始终启动** `llm-gateway` 且对这两个密钥使用
-`${...:?}` 必填校验，缺失会导致 `docker compose config` 直接报错。
-:::
+::: warning 即使不做 LLM 题也必须填这两个密钥 `docker-compose.prod.yml`
+默认**始终启动** `llm-gateway` 且对这两个密钥使用 `${...:?}`
+必填校验，缺失会导致 `docker compose config` 直接报错。 :::
 
 网关分钟限流可通过环境变量调整：
 
@@ -42,24 +40,28 @@
 
 Provider 上游地址（Base URL）的出站限制：
 
-- 默认只允许 **https 公网地址**。`localhost`、Docker 服务名等不带点的短名、`*.internal` /
-  `*.local` / `*.lan`、私网与回环 IP、云元数据地址（`169.254.169.254`）均会被拒绝；
-  网关每次调用上游前还会解析 DNS，域名解析到内网地址同样被拦截（防止借网关访问内网服务）。
-- 内网自建模型（如 vLLM）需在 `NOJ_LLM_UPSTREAM_ALLOWED_HOSTS` 中显式放行主机名或 IP
-  （逗号分隔），白名单内的主机允许 http 与内网地址。
+- 默认只允许 **https 公网地址**。`localhost`、Docker
+  服务名等不带点的短名、`*.internal` / `*.local` / `*.lan`、私网与回环
+  IP、云元数据地址（`169.254.169.254`）均会被拒绝； 网关每次调用上游前还会解析
+  DNS，域名解析到内网地址同样被拦截（防止借网关访问内网服务）。
+- 内网自建模型（如 vLLM）需在 `NOJ_LLM_UPSTREAM_ALLOWED_HOSTS`
+  中显式放行主机名或 IP （逗号分隔），白名单内的主机允许 http 与内网地址。
 - 被拦截时后台保存 Provider 会提示"Base URL 不被允许"；评测中的调用返回
   `provider_base_url_blocked`，不消耗额度。
 
 用量审计（`llm_usage` 表）的保留与写入规则：
 
-- `NOJ_LLM_USAGE_RETENTION_DAYS`：保留天数，默认 `90`，`0` 表示不清理。网关启动时及之后每
-  6 小时删除过期记录；多副本部署时同一轮只有一个副本执行。
-- 调用前就被限流或额度拒绝的请求**不保存 prompt 原文**（只保留哈希），且同一提交、同一拒绝原因
-  60 秒内只记录一条，避免被拒请求持续写库；拒绝次数仍可从 `noj_llm_rate_limited_total` 指标查看。
+- `NOJ_LLM_USAGE_RETENTION_DAYS`：保留天数，默认 `90`，`0`
+  表示不清理。网关启动时及之后每 6
+  小时删除过期记录；多副本部署时同一轮只有一个副本执行。
+- 调用前就被限流或额度拒绝的请求**不保存 prompt
+  原文**（只保留哈希），且同一提交、同一拒绝原因 60
+  秒内只记录一条，避免被拒请求持续写库；拒绝次数仍可从
+  `noj_llm_rate_limited_total` 指标查看。
 
 ## 2. 创建并启用 Provider
 
-在管理后台「LLM Providers」新增上游 OpenAI 兼容服务：
+在 `/d/:slug/llm` 的 Provider 管理中新增上游 OpenAI 兼容服务：
 
 - 名称：便于识别的显示名。
 - Base URL：上游服务地址（如 `https://api.openai.com/v1`）。
@@ -67,42 +69,42 @@ Provider 上游地址（Base URL）的出站限制：
 - 费用/1K token：用于用量估算。
 - 启用状态：只有 `enabled=true` 的 Provider 才能被 LLM 题目使用。
 
-> Provider 不再自带默认模型；调用哪个模型由下一节的平台默认决定。
+> Provider 不自带默认模型；调用哪个模型由使用域配置决定。
 
-## 3. 配置平台默认 Provider 与模型
+## 3. 配置使用域默认 Provider 与模型
 
-题目不再携带 Provider / 模型，改用平台级全局默认。在管理后台「LLM → Provider
-管理」页顶部的「平台默认 Provider / 模型」卡片中选择 Provider、填写模型名并保存
-（也可在「系统设置」的运行时配置表中直接编辑同名键）。两项均为 **runtime 设置**
-（写库即时生效，无需重启）：
+题目版本描述 LLM 能力与单次预算。域负责人或管理员在 `/d/:slug/llm`
+选择本域已启用的 Provider，并明确填写模型名，两项一起保存。配置更新使用当前
+revision，写库后用于新评测尝试，无需重启。
 
-| 设置键                    | 说明                                          |
-| ------------------------- | --------------------------------------------- |
-| `llm_default_provider_id` | 上一节创建的 Provider ID（gateway 内部 UUID） |
-| `llm_default_model`       | 调用的模型名，如 `qwen-plus`（必须显式填写）  |
-
-- **两项必须同时配置，无回退**：缺任一项时，LLM 题目的提交会被拒绝（400）。
-- 部署者也可用 env 兜底 `NOJ_LLM_DEFAULT_PROVIDER_ID` /
-  `NOJ_LLM_DEFAULT_MODEL`；DB 值优先，env 仅在 DB 未写入时生效。
-- 修改这两项即可让**全部** LLM 题统一切换 Provider 或模型，无需逐题调整。
+- 未配置、Provider 不属于本域或已停用时，不创建新的上游调用。
+- 学校引用公开 LLM 题时，使用学校 Provider 和模型；提交、用量与额度均归学校。
+- 新域没有默认 Provider，不继承 main 或平台配置；不同域的 LLM 成绩不承诺可比。
+- 一次评测尝试冻结 Provider、模型和预算，排队后修改默认值不改变该尝试。
+- 旧 `llm_default_provider_id` / `llm_default_model`
+  仅用于默认域初始化时映射已有
+  配置，不能作为其他域执行时的回退。日常管理使用域页面。
 
 ## 4. 配额（可选）
 
-配额在管理后台「评测与算力 → LLM 配额」（`/admin/llm/quotas`）中维护，底层接口为
-`GET/POST /api/v1/admin/gateway/llm/quotas`：可按用户、全局、题目，以及**用户×题目组合**
-维度维护 day/month 的 calls/tokens/cost 上限。
+域配额在 `/d/:slug/llm` 中维护，接口位于
+`/api/v1/domains/:slug/llm/quotas`，支持域总量及域内用户、源题、用户×源题的
+day/month calls/tokens/cost 上限。实例总量与上限由平台管理员治理。
 
-- 取值语义：`-1` 表示不限，`0` 表示**禁止调用**，正数为上限；
-- 按「作用域 + 作用域 ID + 窗口」精确匹配，同一组合只应有一行——后台新增时若已存在会自动改为更新；
-- 新增时上限留空，由网关按 `NOJ_LLM_DEFAULT_*` 默认值填入；
-- 后台暂不支持删除配额行；如需恢复默认值，请把各项改回与 env 默认值一致。
+- 域 API 的 `null` 表示不限，`0` 表示禁止调用，正数为上限；Gateway 内部旧数值
+  使用 `-1` 表示不限。
+- 更新使用配额资源的
+  revision；域管理员不能通过本域接口修改实例总量或其他域额度。
+- 同一源题在不同学校分别计数。上游调用前预估预占，结束后按实际用量结算，失败释放。
+- 预估费用与上游实际账单可能有差异，不将预占额度描述为上游账单的绝对封顶。
 
 用户×题目组合维度（`scope_type=user_problem`，`scope_id` 形如
-`<userId>:<problemId>`）用于防止一名选手反复提交打满**全选手共享**的题目日桶，
+`<userId>:<problemId>`）用于防止一名选手反复提交打满**本域选手共享**的题目日桶，
 导致他人 LLM 题评测因 `out_of_usage` 得 0 分。默认兜底值见网关 `.env.example` 的
-`NOJ_LLM_DEFAULT_USER_PROBLEM_*`（网关**启动期读取 env**，改动后需重启网关；`llm_quotas` 里的
-占位行按 `scope_id=''` 写入，与 `<userId>:<problemId>` 精确匹配不上，不参与限额计算——
-需要单条覆盖时请写 `scope_id` 为具体组合的行）。
+`NOJ_LLM_DEFAULT_USER_PROBLEM_*`（网关**启动期读取
+env**，改动后需重启网关；`llm_quotas` 里的 占位行按 `scope_id=''` 写入，与
+`<userId>:<problemId>` 精确匹配不上，不参与限额计算—— 需要单条覆盖时请写
+`scope_id` 为具体组合的行）。
 
 分钟维度限流对无客户端 IP 的评测流量（Evaluator 直连网关、无
 `X-Forwarded-For`）按 submission 隔离，不再共用全局 `unknown` 桶。
@@ -121,9 +123,9 @@ LLM 调用题要求 evaluator 联网访问 gateway：
 
 ## 6. 验证
 
-1. 管理后台确认 Provider 为启用状态，且「LLM → Provider 管理」页顶部的平台默认 Provider / 模型已填写。
-2. 按出题人文档创建一道 P 型 LLM 题并提交。
-3. 在「LLM 用量」页确认调用记录已落库、状态为 `ok`。
+1. 在目标域确认 Provider 启用，且本域默认 Provider 与模型已填写。
+2. 按出题人文档创建一道 LLM 题，或引用获授权公开题，并在目标域提交。
+3. 在同一域的用量页确认调用记录已落库、状态为 `ok`，模型与评测尝试一致。
 
 ## 密钥与安全
 

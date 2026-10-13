@@ -102,9 +102,9 @@ compose 内 `noj-net` 子网一致），否则所有请求都被解析成反向�
 
 > LLM **默认配额**（`NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>`）由
 > **noj-llm-gateway** 消费，不在本面板中；见
-> `noj-llm-gateway/README.md`，修改后需重启 llm-gateway。平台默认
-> Provider/模型（`llm_default_provider_id` / `llm_default_model`）则属于本面板的
-> runtime 设置。
+> `noj-llm-gateway/README.md`，修改后需重启 llm-gateway。日常 Provider／模型在
+> 使用域的 LLM 页面管理；旧 `llm_default_provider_id` / `llm_default_model`
+> 只用于默认域初始化时映射已有配置，不为新域提供回退。
 
 修改即时生效；涉及邮件、限流等键时请先确认新值正确，避免锁死服务。
 
@@ -182,24 +182,23 @@ compose 内 `noj-net` 子网一致），否则所有请求都被解析成反向�
 
 - 新增 Provider 时填写名称、`base_url`、API Key、单价（每 1k
   tokens）与启停状态。
-- Provider 不再自带默认模型；具体调用哪个模型由本页顶部「平台默认 Provider /
-  模型」 卡片决定（对应系统设置 `llm_default_provider_id` /
-  `llm_default_model`，两项须同时 配置）。列表中当前默认的 Provider
-  会带「默认」标记。
+- Provider、模型和用量属于使用域。域负责人／管理员在 `/d/:slug/llm`
+  选择本域启用的 Provider
+  与模型，新域须独立配置。平台管理员治理时也须明确目标域。
 - API Key 保存后**不会**再明文返回，列表中只显示掩码（如
   `sk-****abcd`）；需要更新时重新填写 Key。
-- 只有 `enabled=true` 的 Provider 可用于 LLM 题目；停用后已有评测 token
-  仍可能继续调用到过期，请先停止相关题目或等待 token 自然过期。
+- 只有本域 `enabled=true` 的 Provider 可用于新调用；停用后，持有旧评测 token
+  的新上游调用也会被拒绝。已经开始的调用按实际用量结算。
 
 ### LLM 用量
 
-- 管理后台「LLM 用量」支持按
+- 域内「LLM 用量」支持按
   `submission_id`、用户、题目、Provider、状态、起止时间与分页查询。
 - 每条记录包含请求消息哈希、prompt/completion/total
   token、估算费用、延迟与状态（`ok / error / rejected`）。
-- 管理后台「LLM 配额」（`/admin/llm/quotas`）维护 `llm_quotas`，支持全局 / 用户
-  / 题目 / 用户×题目维度的 day/month 的 calls/tokens/cost 上限；`-1`
-  表示不限，`0` 表示禁止调用。详见
+- 域内配额支持域 / 用户 / 源题 / 用户×源题维度的 day/month calls/tokens/cost
+  上限，API 用 `null` 表示不限、`0` 表示禁止调用。
+  实例总量与上限由平台管理员治理，域管理员只能在允许范围内降低本域额度。详见
   [LLM 调用能力](./llm-call-capability.md)「配额」一节。
 
 ## 提交管理
