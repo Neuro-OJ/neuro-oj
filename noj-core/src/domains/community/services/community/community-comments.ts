@@ -182,6 +182,7 @@ export async function createComment(
   };
   // 内容合规同步审核（issue #413）：高置信违规直接拒绝发布
   await reviewUgcContent({
+    domain_id: communityDomainId(scope),
     content_type: "comment",
     target_id: comment.id,
     content,
@@ -315,6 +316,7 @@ export async function updateComment(
   }
   // 内容合规同步审核（issue #413）：编辑后仍公开的评论高置信违规时拒绝保存
   await reviewUgcContent({
+    domain_id: communityDomainId(scope),
     content_type: "comment",
     target_id: commentId,
     content,

@@ -270,19 +270,35 @@ export async function createReport(
 export function listReports(
   status: "pending" | "resolved" | "dismissed" | "all" = "pending",
   scope?: CommunityScope,
+  accountMessages: "only" | "include" | "exclude" = scope
+    ? "exclude"
+    : "include",
 ) {
   const db = communityDb(scope);
   const conditions = status === "all"
     ? []
     : [eq(communityReports.status, status)];
-  conditions.push(communityDomainWhere(communityReports.domain_id, scope));
-  conditions.push(sql`(${communityReports.message_id} IS NOT NULL OR EXISTS (
+  const contentWhere = and(
+    communityDomainWhere(communityReports.domain_id, scope),
+    sql`EXISTS (
     SELECT 1 FROM community_posts WHERE community_posts.id = coalesce(${communityReports.post_id},
       (SELECT report_comment.post_id FROM community_comments report_comment WHERE report_comment.id = ${communityReports.comment_id}))
       AND ${communityDomainWhere(communityPosts.domain_id, scope)} AND ${
-    communityResourceVisible(scope)
-  }
-  ))`);
+      communityResourceVisible(scope)
+    }
+  )`,
+  );
+  const messageWhere = and(
+    eq(communityReports.content_type, "message"),
+    isNull(communityReports.domain_id),
+  );
+  conditions.push(
+    accountMessages === "only"
+      ? messageWhere!
+      : accountMessages === "include"
+      ? sql`(${messageWhere} OR ${contentWhere})`
+      : contentWhere!,
+  );
   const targetAuthor = aliasedTable(users, "target_author");
   const resolvedByUser = aliasedTable(users, "resolved_by_user");
   return db.select({
@@ -421,8 +437,8 @@ export async function resolveReport(
 }
 
 /** 撤销处理/驳回：把举报放回待处理，恢复被隐藏内容并解除关联封禁/禁言。 */
-export async function reopenReport(reportId: string) {
-  const db = getDb();
+export async function reopenReport(reportId: string, scope?: CommunityScope) {
+  const db = communityDb(scope);
   const current = await db.select({
     id: communityReports.id,
     post_id: communityReports.post_id,
@@ -432,7 +448,7 @@ export async function reopenReport(reportId: string) {
   }).from(communityReports).where(
     and(
       eq(communityReports.id, reportId),
-      communityDomainWhere(communityReports.domain_id),
+      communityDomainWhere(communityReports.domain_id, scope),
     ),
   ).limit(1);
   if (!current[0]) throw new NotFoundError("举报不存在");
@@ -518,6 +534,7 @@ export async function reopenReport(reportId: string) {
         status: "pending",
         message: "你的举报已重新开启，等待管理员审核",
       },
+      scope,
     );
   }
   return rows[0];

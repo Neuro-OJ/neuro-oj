@@ -291,6 +291,7 @@ export async function createPost(
   };
   // 内容合规同步审核（issue #413）：高置信违规直接拒绝发布
   await reviewUgcContent({
+    domain_id: communityDomainId(scope),
     content_type: "post",
     target_id: post.id,
     title: title ?? undefined,
@@ -437,6 +438,7 @@ export async function updatePost(
   if (title && title.length > 200) throw new ValidationError("标题过长");
   // 内容合规同步审核（issue #413）：编辑后仍公开的内容高置信违规时拒绝保存
   await reviewUgcContent({
+    domain_id: communityDomainId(scope),
     content_type: "post",
     target_id: postId,
     title: title ?? undefined,

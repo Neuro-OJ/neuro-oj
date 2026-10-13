@@ -29,6 +29,7 @@ import {
 import { MockReviewProvider } from "../../providers/mock.ts";
 import { ForbiddenError } from "../../../../shared/base/errors.ts";
 import { reviewUgcContent } from "../../../community/services/community/community-review.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建
 await resetDbForTest();
@@ -402,6 +403,7 @@ Deno.test({
       _setReviewProviderFactoryForTest(() => providerReturning("block"));
       try {
         await reviewUgcContent({
+          domain_id: DEFAULT_DOMAIN_ID,
           content_type: "post",
           target_id: "ugc-block-1",
           title: "标题",
@@ -414,10 +416,16 @@ Deno.test({
         if (!(err instanceof ForbiddenError)) throw err;
         assertEquals(err.code, "CONTENT_REVIEW_REJECTED");
       }
+      const [blocked] = await getDb().select().from(contentReviewQueue).where(
+        eq(contentReviewQueue.target_id, "ugc-block-1"),
+      );
+      // 被拦截的内容尚未落库，可信域信息仍应随机器审核快照保存。
+      assertEquals(JSON.parse(blocked.meta).domain_id, DEFAULT_DOMAIN_ID);
 
       // pending 内容（新用户审核期已有）→ block 不拦截
       _setReviewProviderFactoryForTest(() => providerReturning("block"));
       await reviewUgcContent({
+        domain_id: DEFAULT_DOMAIN_ID,
         content_type: "post",
         target_id: "ugc-pending-1",
         content: "内容",
@@ -428,6 +436,7 @@ Deno.test({
       // 疑似 → 放行
       _setReviewProviderFactoryForTest(() => providerReturning("review"));
       await reviewUgcContent({
+        domain_id: DEFAULT_DOMAIN_ID,
         content_type: "comment",
         target_id: "ugc-review-1",
         content: "疑似内容",
@@ -438,6 +447,7 @@ Deno.test({
       // moderator 跳过
       _setReviewProviderFactoryForTest(() => providerReturning("block"));
       await reviewUgcContent({
+        domain_id: DEFAULT_DOMAIN_ID,
         content_type: "post",
         target_id: "ugc-mod-1",
         content: "违规",
