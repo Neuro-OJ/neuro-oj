@@ -11,8 +11,9 @@ export async function createDomainSubmission(
   reference: string,
   userId: string,
   input: Omit<SubmissionInput, "problem_id" | "contest_id">,
+  contestId?: string,
 ) {
-  const request = { slug, reference };
+  const request = { slug, reference, contestId };
   const resolved = await resolveDomainExecution(
     request,
     userId,
@@ -27,7 +28,7 @@ export async function createDomainSubmission(
       version_id: input.version_id,
       problem_id: resolved.problem.id,
     },
-    undefined,
+    resolved.contestId,
     false,
     request,
   );
@@ -48,8 +49,9 @@ export async function createDomainArtifactSubmission(
     Parameters<typeof createArtifactSubmission>[1],
     "problem_id" | "contest_id"
   >,
+  contestId?: string,
 ) {
-  const request = { slug, reference };
+  const request = { slug, reference, contestId };
   const resolved = await resolveDomainExecution(
     request,
     userId,
@@ -63,7 +65,7 @@ export async function createDomainArtifactSubmission(
       version_id: input.version_id,
       problem_id: resolved.problem.id,
     },
-    undefined,
+    resolved.contestId,
     false,
     request,
   );

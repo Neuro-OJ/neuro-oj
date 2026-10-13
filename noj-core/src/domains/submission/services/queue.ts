@@ -795,6 +795,7 @@ export async function getSubmissionQueueStatus(
   submissionId: string,
   viewerUserId?: string,
   viewerRole?: string,
+  domainId?: string,
 ): Promise<SubmissionStatusResponse | null> {
   const db = getDb();
 
@@ -810,7 +811,9 @@ export async function getSubmissionQueueStatus(
     .from(submissions)
     .where(and(
       eq(submissions.id, submissionId),
-      sql`(${submissions.domain_id} = ${DEFAULT_DOMAIN_ID} OR ${submissions.domain_id} IS NULL)`,
+      domainId
+        ? eq(submissions.domain_id, domainId)
+        : sql`(${submissions.domain_id} = ${DEFAULT_DOMAIN_ID} OR ${submissions.domain_id} IS NULL)`,
     ))
     .limit(1);
 

@@ -8,8 +8,9 @@ export async function submitDomainObjectivePaper(
   reference: string,
   userId: string,
   input: Omit<SubmitObjectiveInput, "contest_id">,
+  contestId?: string,
 ) {
-  const request = { slug, reference };
+  const request = { slug, reference, contestId };
   const resolved = await resolveDomainExecution(
     request,
     userId,
@@ -20,6 +21,7 @@ export async function submitDomainObjectivePaper(
     {
       answers: input.answers,
       version_id: input.version_id,
+      contest_id: resolved.contestId,
     },
     userId,
     false,

@@ -21,7 +21,11 @@ import {
 import { loadWorkspace } from "../../../workspace/index.ts";
 import { unendedPublicContestForProblem } from "../../../contest/index.ts";
 import type { ProblemContentV1 } from "../../types/problem-content.ts";
-import { trimProblemContentForViewer } from "../versioning/version-read-view.ts";
+import {
+  projectProblemContent,
+  trimProblemContentForViewer,
+} from "../versioning/version-read-view.ts";
+import { AppError } from "../../../../shared/base/errors.ts";
 import { resolveDomainProblem } from "./problem-binding-access.ts";
 import { domainProblemReference } from "./problem-reference.ts";
 
@@ -146,6 +150,8 @@ export async function readDomainProblem(
       resolved.context.domainPermissions.has("problem:write_any") ||
       actorId === resolved.problem.owner_id &&
         resolved.context.domainPermissions.has("problem:write_own"));
+  const content = resolved.version.content as ProblemContentV1;
+  const fields = projectProblemContent(content, false);
   return {
     reference: resolved.reference,
     binding_id: resolved.binding.id,
@@ -154,9 +160,69 @@ export async function readDomainProblem(
     version_id: resolved.version.id,
     version: resolved.version.version,
     can_edit: canEdit,
+    supported_languages: fields.supported_languages ?? [],
+    submission_mode: content.kind === "ai" ? content.submission_mode : "code",
     content: trimProblemContentForViewer(
       resolved.version.content as ProblemContentV1,
       canEdit,
     ),
+  };
+}
+
+/** 模板只取当前使用域作答版本，不能通过下载入口绕过撤销或版本确认。 */
+export async function readDomainProblemTemplate(
+  slug: string,
+  reference: string,
+  actorId: string | null,
+  requestedVersionId?: string,
+) {
+  const resource = await resolveDomainProblem(slug, reference, actorId);
+  if (requestedVersionId && resource.version.id !== requestedVersionId) {
+    throw new AppError(
+      "作答版本已变化，请重新确认",
+      409,
+      "PROBLEM_ANSWER_VERSION_CHANGED",
+      {
+        expected_version_id: resource.version.id,
+        submitted_version_id: requestedVersionId,
+      },
+    );
+  }
+  const content = resource.version.content as ProblemContentV1;
+  return {
+    version_id: resource.version.id,
+    template_content: content.kind === "ai" ? content.template_content : "",
+  };
+}
+
+/** 版本目录只返回不可变版本依据，所有读取先重新验证使用域及共享。 */
+export async function listDomainProblemVersions(
+  slug: string,
+  reference: string,
+  actorId: string | null,
+  page: number,
+  limit: number,
+) {
+  const resource = await resolveDomainProblem(slug, reference, actorId);
+  const db = getDb(),
+    condition = eq(problemVersions.problem_id, resource.problem.id);
+  const [[total], items] = await Promise.all([
+    db.select({ total: count() }).from(problemVersions).where(condition),
+    db.select({
+      version_id: problemVersions.id,
+      version: problemVersions.version,
+      change_note: problemVersions.change_note,
+      published_at: problemVersions.published_at,
+    })
+      .from(problemVersions).where(condition).orderBy(
+        sql`${problemVersions.version} DESC`,
+      ).offset((page - 1) * limit).limit(limit),
+  ]);
+  return {
+    items,
+    total: total.total,
+    page,
+    limit,
+    answer_version_id: resource.version.id,
   };
 }

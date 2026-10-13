@@ -1,13 +1,62 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
-import { problemVersions } from "../../../shared/db/schema.ts";
-import { NotFoundError } from "../../../shared/base/errors.ts";
 import {
+  contestProblems,
+  domains,
+  problems,
+  problemVersions,
+} from "../../../shared/db/schema.ts";
+import { ForbiddenError, NotFoundError } from "../../../shared/base/errors.ts";
+import type { Executor } from "../../../shared/db/executor.ts";
+import {
+  domainProblemReference,
   type ProblemContentV1,
   resolveProblemTemplate,
 } from "../../catalog/index.ts";
 import { serializeQuestion } from "../../objective/index.ts";
 import { getDomainContestProblems } from "./domain-results.ts";
+import { loadDomainContest } from "./domain-access.ts";
+import { computeContestStatus } from "./contests.ts";
+
+/** 提交入口按比赛路径解析标签，受理窗口与报名关系在事务中仍须成立。 */
+export async function getDomainContestSubmissionTarget(
+  slug: string,
+  reference: string,
+  label: string,
+  actorId: string,
+  executor: Executor = getDb(),
+) {
+  const access = await loadDomainContest(slug, reference, actorId, {
+    write: true,
+    executor,
+  });
+  if (
+    !access.registered ||
+    computeContestStatus(access.contest.start_time, access.contest.end_time) !==
+      "running"
+  ) throw new ForbiddenError("仅进行中的比赛参赛者可以提交");
+  const [row] = await executor.select({ problem: problems, source: domains })
+    .from(contestProblems)
+    .innerJoin(problems, eq(problems.id, contestProblems.problem_id))
+    .innerJoin(domains, eq(domains.id, problems.domain_id))
+    .where(
+      and(
+        eq(contestProblems.contest_id, access.contest.id),
+        eq(contestProblems.label, label),
+      ),
+    );
+  if (!row) throw new NotFoundError("比赛题目不存在");
+  return {
+    contestId: access.contest.id,
+    problemId: row.problem.id,
+    reference: domainProblemReference(
+      { ...row.problem, domain_id: row.source.id },
+      row.source.slug,
+      access.domain.id,
+    )
+      .display_ref,
+  };
+}
 
 /** 比赛内容只读取已授权赛题的固定版本，不接受题库默认版本或客户端覆盖。 */
 async function contentForLabel(

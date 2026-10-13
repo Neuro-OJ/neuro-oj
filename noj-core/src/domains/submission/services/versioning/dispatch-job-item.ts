@@ -48,6 +48,7 @@ import {
 } from "./job-attempt.ts";
 import { assertUpgradeAccess } from "./upgrade-access.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   assertExecutionPreflight,
   executionSnapshot,
@@ -575,6 +576,7 @@ async function dispatchJudgeAttempt(input: {
         {
           // 同一尝试重派共享预算：重新签发 token 不重置额度
           attemptId,
+          domainId: source.domain_id ?? DEFAULT_DOMAIN_ID,
           problemVersionId: targetVersionId,
           frozen: frozenLlm,
         },
@@ -602,7 +604,12 @@ async function dispatchJudgeAttempt(input: {
       attemptId,
       destinationId,
       taskSnapshot: {
-        ...executionSnapshot(task, llmConfig, previousSnapshot),
+        ...executionSnapshot(
+          task,
+          llmConfig,
+          previousSnapshot,
+          source.domain_id ?? DEFAULT_DOMAIN_ID,
+        ),
         batch_job_id: item.job_id,
         submission_mode: content.kind === "ai"
           ? content.submission_mode

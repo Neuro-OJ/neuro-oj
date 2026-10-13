@@ -1,6 +1,11 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
-import { contestParticipants, contests } from "../../../../shared/db/schema.ts";
+import {
+  contestParticipants,
+  contests,
+  domains,
+} from "../../../../shared/db/schema.ts";
+import { loadWorkspace } from "../../../workspace/index.ts";
 import type { ContestType } from "../../../contest/index.ts";
 import { applySubmissionProjection } from "./submission-projection.ts";
 
@@ -36,6 +41,20 @@ export async function projectContestSubmissionReads<
     : [];
   const joined = new Set(memberships.map((r) => r.id));
   const byId = new Map(contestRows.map((c) => [c.id, c]));
+  const domainIds = [
+    ...new Set(contestRows.flatMap((c) => c.domain_id ? [c.domain_id] : [])),
+  ];
+  const domainRows = domainIds.length
+    ? await db.select({ id: domains.id, slug: domains.slug }).from(domains)
+      .where(inArray(domains.id, domainIds))
+    : [];
+  const workspaces = new Map(
+    await Promise.all(
+      domainRows.map(async (domain) =>
+        [domain.id, await loadWorkspace(domain.slug, viewerId)] as const
+      ),
+    ),
+  );
   const now = Date.now();
   return rows.map((row) => {
     const contest = row.contest_id ? byId.get(row.contest_id) : null;
@@ -51,7 +70,18 @@ export async function projectContestSubmissionReads<
         contest: {
           running,
           participant: joined.has(contest.id),
-          organizer: viewerId !== null && contest.created_by === viewerId,
+          organizer: contest.domain_id
+            ? (() => {
+              const workspace = workspaces.get(contest.domain_id!);
+              return !!workspace &&
+                (workspace.platformAdmin ||
+                  workspace.context.domainPermissions.has("contest:manage") ||
+                  viewerId === contest.created_by &&
+                    workspace.context.domainPermissions.has(
+                      "contest:manage_own",
+                    ));
+            })()
+            : viewerId !== null && contest.created_by === viewerId,
           type: contest.type as ContestType,
         },
       },

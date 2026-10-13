@@ -48,8 +48,62 @@ import {
 import { setDomainProblemSharing } from "../../services/workspace/problem-sharing.ts";
 import {
   listDomainProblems,
+  listDomainProblemVersions,
   readDomainProblem,
+  readDomainProblemTemplate,
 } from "../../services/workspace/problem-read.ts";
+
+Deno.test("域作答附件：模板跟随目标版本且冲突保留确认，版本目录不返回配置", async () => {
+  const f = await fixture(), reference = "public-source:1001";
+  await importDomainProblem(f.school.slug, reference, f.teacher);
+  const read = await readDomainProblem(f.school.slug, reference, f.student);
+  assertEquals(read.supported_languages, ["python3"]);
+  assertEquals(
+    (await readDomainProblemTemplate(
+      f.school.slug,
+      reference,
+      f.student,
+      f.versions[1],
+    )).template_content,
+    "print('template')",
+  );
+  const mismatch = await assertRejects(
+    () =>
+      readDomainProblemTemplate(
+        f.school.slug,
+        reference,
+        f.student,
+        f.versions[0],
+      ),
+    AppError,
+  );
+  assertEquals(mismatch.code, "PROBLEM_ANSWER_VERSION_CHANGED");
+  const versions = await listDomainProblemVersions(
+    f.school.slug,
+    reference,
+    f.student,
+    1,
+    1,
+  );
+  assertEquals(versions.items.length, 1);
+  assertEquals(versions.total, 2);
+  assertEquals(versions.answer_version_id, f.versions[1]);
+  assertEquals(Object.hasOwn(versions.items[0], "content"), false);
+  await setDomainProblemSharing(f.source.slug, "1001", f.platform, {
+    expectedRevision: 1,
+    enabled: false,
+    scope: "all",
+    targetDomainIds: [],
+  });
+  await assertRejects(
+    () => readDomainProblemTemplate(f.school.slug, reference, f.student),
+    NotFoundError,
+  );
+  await assertRejects(
+    () => listDomainProblemVersions(f.school.slug, reference, f.student, 1, 20),
+    NotFoundError,
+  );
+});
 
 async function account(admin = false) {
   const id = crypto.randomUUID();

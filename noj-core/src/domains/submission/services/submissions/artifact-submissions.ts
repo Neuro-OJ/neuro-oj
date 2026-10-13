@@ -154,13 +154,18 @@ export async function createArtifactSubmission(
   if (contestId && input.contest_id && contestId !== input.contest_id) {
     throw new BadRequestError("竞赛 ID 不一致");
   }
-  const resolvedContestId = contestId ?? input.contest_id ?? null;
-  if (domainRequest && resolvedContestId) {
+  const requestedContestId = contestId ?? input.contest_id ?? null;
+  if (domainRequest && requestedContestId && !domainRequest.contestId) {
     throw new BadRequestError("域内练习不能携带比赛上下文");
   }
   const domainExecution = domainRequest
     ? await resolveDomainExecution(domainRequest, userId, input.version_id)
     : null;
+  if (
+    domainExecution?.contestId && requestedContestId &&
+    domainExecution.contestId !== requestedContestId
+  ) throw new BadRequestError("比赛路径与提交上下文不一致");
+  const resolvedContestId = domainExecution?.contestId ?? requestedContestId;
   if (domainExecution && domainExecution.problem.id !== input.problem_id) {
     throw new NotFoundError("域题目引用与内部身份不一致");
   }
@@ -189,7 +194,9 @@ export async function createArtifactSubmission(
   // 统一访问解析：普通入口 private 题非 owner/admin 拒绝（被公开赛保密的题目同此
   // 口径，无法从独立路径提交）；竞赛入口先经 verifyContestAccess 校验成员+窗口。
   const contestAccess = resolvedContestId
-    ? await verifyContestAccess(userId, resolvedContestId, problem.id)
+    ? await verifyContestAccess(userId, resolvedContestId, problem.id, {
+      domainId: domainExecution?.domain.id,
+    })
     : null;
   if (!domainExecution) {
     const { result: access } = await evaluateProblemAccess(problem, {
@@ -238,16 +245,6 @@ export async function createArtifactSubmission(
     throw new BadRequestError("必须指定已发布版本");
   }
   const content = versionResolution.version.content;
-  if (
-    content.kind === "ai" && content.llm_config && domainExecution &&
-    domainExecution.domain.id !== DEFAULT_DOMAIN_ID
-  ) {
-    throw new AppError(
-      "使用域尚未配置 LLM Provider 和模型",
-      400,
-      "DOMAIN_LLM_NOT_CONFIGURED",
-    );
-  }
   if (content.kind !== "ai") {
     throw new BadRequestError("必须选择已发布的产物题版本");
   }
@@ -326,6 +323,7 @@ export async function createArtifactSubmission(
         {
           // 额度与吊销按尝试隔离：重测拿到独立预算，旧尝试吊销不影响新尝试
           attemptId,
+          domainId: domainExecution?.domain.id ?? DEFAULT_DOMAIN_ID,
           problemVersionId: versionResolution.version.version_id,
         },
       );
@@ -431,7 +429,12 @@ export async function createArtifactSubmission(
           problemVersionId: versionResolution.version.version_id,
           source_kind: "initial",
           taskSnapshot: {
-            ...executionSnapshot(task, llmConfig),
+            ...executionSnapshot(
+              task,
+              llmConfig,
+              undefined,
+              workspace.domain_id,
+            ),
             submission_mode: "artifact",
           },
           createdBy: userId,

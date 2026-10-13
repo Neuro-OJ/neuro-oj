@@ -225,7 +225,7 @@ export async function submitObjectivePaper(
   domainRequest?: DomainExecutionRequest,
 ): Promise<SubmitObjectiveResponse> {
   const db = getDb();
-  if (domainRequest && input.contest_id) {
+  if (domainRequest && input.contest_id && !domainRequest.contestId) {
     throw new BadRequestError("域内练习不能携带比赛上下文");
   }
   const domainExecution = domainRequest
@@ -243,9 +243,14 @@ export async function submitObjectivePaper(
   // 上下文一律拒绝；被公开赛保密的套卷同此口径（无法从独立路径提交）；
   // 竞赛上下文由 validateContestSubmission 独立校验，不接受伪造。
   // 对外竞赛 URL 使用 public_id；落库、版本绑定与一次提交约束统一使用 UUID。
-  const contestId = input.contest_id
+  const requestedContestId = input.contest_id
     ? await resolveContestId(input.contest_id)
     : null;
+  if (
+    domainExecution?.contestId && requestedContestId &&
+    domainExecution.contestId !== requestedContestId
+  ) throw new BadRequestError("比赛路径与交卷上下文不一致");
+  const contestId = domainExecution?.contestId ?? requestedContestId;
   if (!contestId && !domainExecution) {
     const { result: access } = await evaluateProblemAccess(paper, {
       viewerId: userId,

@@ -13,7 +13,9 @@ import { BadRequestError } from "../../../shared/base/errors.ts";
 import { createDomainProblem } from "../services/problems/problems-crud.ts";
 import {
   listDomainProblems,
+  listDomainProblemVersions,
   readDomainProblem,
+  readDomainProblemTemplate,
 } from "../services/workspace/problem-read.ts";
 import {
   publishDomainProblemVersion,
@@ -28,6 +30,42 @@ import { setDomainProblemBindingState } from "../services/workspace/problem-bind
 /** 显式域题库路由；资源隔离阶段完成后由组合根统一挂载。 */
 export const domainProblemsRouter = new Hono<AuthEnv>();
 const prefix = "/domains/:slug/problems";
+
+domainProblemsRouter.get(
+  `${prefix}/:reference/template`,
+  optionalAuthMiddleware,
+  async (c) => {
+    c.header("Cache-Control", "no-store");
+    return c.json({
+      data: await readDomainProblemTemplate(
+        c.req.param("slug")!,
+        c.req.param("reference")!,
+        c.var.userId ?? null,
+        c.req.query("version_id"),
+      ),
+    });
+  },
+);
+domainProblemsRouter.get(
+  `${prefix}/:reference/versions`,
+  optionalAuthMiddleware,
+  async (c) => {
+    const { page, perPage } = parsePagination(c, {
+      perPageField: "limit",
+      maxPerPage: 100,
+    });
+    c.header("Cache-Control", "no-store");
+    return c.json(
+      await listDomainProblemVersions(
+        c.req.param("slug")!,
+        c.req.param("reference")!,
+        c.var.userId ?? null,
+        page,
+        perPage,
+      ),
+    );
+  },
+);
 
 function draftRevision(header: string | undefined) {
   if (header === undefined) throw draftRevisionRequired();

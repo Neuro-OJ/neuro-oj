@@ -148,6 +148,7 @@ async function sweepProcessingQueue(
 }
 
 export interface PendingRecoveryRow {
+  domain_id?: string | null;
   id: string;
   language: string;
   code: string;
@@ -184,6 +185,7 @@ interface PendingRecoveryActions<T extends PendingRecoveryRow> {
 
 /** pending 恢复查询所需的表列集合。 */
 interface PendingRecoveryTableColumns {
+  domainId?: AnyPgColumn;
   id: AnyPgColumn;
   language: AnyPgColumn;
   code: AnyPgColumn;
@@ -222,6 +224,7 @@ async function selectPendingRecoveryRows(
     support_package_storage_url: cols.supportPackageStorageUrl,
   };
   if (cols.rejudgeSeq) selectFields.rejudge_seq = cols.rejudgeSeq;
+  if (cols.domainId) selectFields.domain_id = cols.domainId;
   if (cols.userId) selectFields.user_id = cols.userId;
   if (cols.judgeStartedAt) selectFields.judge_started_at = cols.judgeStartedAt;
   if (cols.contestId) selectFields.contest_id = cols.contestId;
@@ -326,6 +329,7 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
       supportPackageStorageUrl: problems.support_package_storage_url,
       rejudgeSeq: submissions.rejudge_seq,
       userId: submissions.user_id,
+      domainId: submissions.domain_id,
       contestId: submissions.contest_id,
       activeAttemptId: submissions.active_attempt_id,
       artifactStorageUrl: submissions.artifact_storage_url,
@@ -410,6 +414,7 @@ export async function recoverPendingSelfTests(now: number): Promise<void> {
       judgeRunId: selfTests.judge_run_id,
       taskSnapshot: selfTests.task_snapshot,
       userId: selfTests.user_id,
+      domainId: selfTests.domain_id,
     },
     and(
       eq(selfTests.status, "pending"),

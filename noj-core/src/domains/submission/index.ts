@@ -1,5 +1,9 @@
 export * from "./services/submissions/submissions.ts";
 export {
+  getDomainSubmission,
+  listDomainSubmissions,
+} from "./services/domain-submission-read.ts";
+export {
   createDomainArtifactSubmission,
   createDomainSelfTest,
   createDomainSubmission,

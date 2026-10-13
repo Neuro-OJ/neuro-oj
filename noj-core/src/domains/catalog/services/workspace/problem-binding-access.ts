@@ -15,7 +15,10 @@ import {
   assertWorkspacePermission,
   loadWorkspace,
 } from "../../../workspace/index.ts";
-import { loadPublicContestSecrecy } from "../../../contest/index.ts";
+import {
+  loadPublicContestSecrecy,
+  verifyContestAccess,
+} from "../../../contest/index.ts";
 import {
   domainProblemReference,
   parseDomainProblemReference,
@@ -70,7 +73,7 @@ export async function resolveDomainProblem(
   slug: string,
   reference: string,
   actorId: string | null,
-  options: { executor?: Executor; write?: boolean } = {},
+  options: { executor?: Executor; write?: boolean; contestId?: string } = {},
 ) {
   const executor = options.executor ?? getDb();
   const workspace = await loadWorkspace(slug, actorId, {
@@ -100,6 +103,16 @@ export async function resolveDomainProblem(
       ),
     );
   if (!row) throw new NotFoundError("域题库中不存在此题");
+  const contestAccess = options.contestId
+    ? await verifyContestAccess(actorId, options.contestId, row.problem.id, {
+      domainId: workspace.domain.id,
+      executor,
+    })
+    : null;
+  if (
+    contestAccess &&
+    (!contestAccess.allowed || options.write && !contestAccess.running)
+  ) throw new NotFoundError("此赛题不可作答");
   if (
     row.binding.kind !==
       (row.source.id === workspace.domain.id ? "owned" : "shared")
@@ -128,14 +141,15 @@ export async function resolveDomainProblem(
       (actorId === row.problem.owner_id &&
         workspace.context.domainPermissions.has("problem:write_own"));
     if (
-      !editable &&
+      !editable && !contestAccess?.allowed &&
       (await loadPublicContestSecrecy(row.problem.id, executor, row.source.id))
         .length
     ) throw new NotFoundError("此题处于比赛保密窗口");
   }
-  const versionId = row.binding.effective_version_mode === "exact"
-    ? row.binding.required_version_id
-    : row.problem.latest_version_id;
+  const versionId = contestAccess?.pinnedVersionId ??
+    (row.binding.effective_version_mode === "exact"
+      ? row.binding.required_version_id
+      : row.problem.latest_version_id);
   const [version] = versionId
     ? await executor.select().from(problemVersions).where(
       and(

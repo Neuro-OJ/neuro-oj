@@ -227,7 +227,9 @@ export async function listSubmissions(
 
   // 动态构建筛选条件（仅对提供的参数添加条件）
   const conditions: ReturnType<typeof eq>[] = [
-    sql`(${submissions.domain_id} = ${DEFAULT_DOMAIN_ID} OR ${submissions.domain_id} IS NULL)`,
+    params.domainId
+      ? eq(submissions.domain_id, params.domainId)
+      : sql`(${submissions.domain_id} = ${DEFAULT_DOMAIN_ID} OR ${submissions.domain_id} IS NULL)`,
   ];
   if (!params.platformAdmin && (status || validOnly || acceptedOnly)) {
     // 结果筛选本身也会泄露 OI 判定，赛期不让隐藏结果参与筛选计数。
@@ -455,13 +457,18 @@ export async function createSubmission(
   if (contestId && input.contest_id && contestId !== input.contest_id) {
     throw new BadRequestError("竞赛 ID 不一致");
   }
-  const resolvedContestId = contestId ?? input.contest_id ?? null;
-  if (domainRequest && resolvedContestId) {
+  const requestedContestId = contestId ?? input.contest_id ?? null;
+  if (domainRequest && requestedContestId && !domainRequest.contestId) {
     throw new BadRequestError("域内练习提交不能携带比赛上下文");
   }
   const domainExecution = domainRequest
     ? await resolveDomainExecution(domainRequest, userId, input.version_id)
     : null;
+  if (
+    domainExecution?.contestId && requestedContestId &&
+    domainExecution.contestId !== requestedContestId
+  ) throw new BadRequestError("比赛路径与提交上下文不一致");
+  const resolvedContestId = domainExecution?.contestId ?? requestedContestId;
   if (domainExecution && domainExecution.problem.id !== input.problem_id) {
     throw new NotFoundError("域题目引用与内部身份不一致");
   }
@@ -490,7 +497,9 @@ export async function createSubmission(
   // 统一访问解析：普通入口 private 题非 owner/admin 拒绝（被公开赛保密的题目同此
   // 口径，无法从独立路径提交）；竞赛入口先经 verifyContestAccess 校验成员+窗口。
   const contestAccess = resolvedContestId
-    ? await verifyContestAccess(userId, resolvedContestId, problem.id)
+    ? await verifyContestAccess(userId, resolvedContestId, problem.id, {
+      domainId: domainExecution?.domain.id,
+    })
     : null;
   if (!domainExecution) {
     const { result: access } = await evaluateProblemAccess(problem, {
@@ -588,13 +597,6 @@ export async function createSubmission(
   let llmTask: JudgeTaskLlm | undefined;
   const llmConfig = content.kind === "ai" ? content.llm_config : null;
   if (llmConfig) {
-    if (domainExecution && domainExecution.domain.id !== DEFAULT_DOMAIN_ID) {
-      throw new AppError(
-        "使用域尚未配置 LLM Provider 和模型",
-        400,
-        "DOMAIN_LLM_NOT_CONFIGURED",
-      );
-    }
     if (isOiRuntimeConfig(runtimeConfig)) {
       throw new BadRequestError("OI 题目不支持 LLM 评测");
     }
@@ -607,6 +609,7 @@ export async function createSubmission(
       {
         // 额度与吊销按尝试隔离：重测拿到独立预算，旧尝试吊销不影响新尝试
         attemptId,
+        domainId: domainExecution?.domain.id ?? DEFAULT_DOMAIN_ID,
         problemVersionId: versionResolution.kind === "known"
           ? versionResolution.version.version_id
           : null,
@@ -693,7 +696,7 @@ export async function createSubmission(
           : null,
         source_kind: "initial",
         taskSnapshot: {
-          ...executionSnapshot(task, llmConfig),
+          ...executionSnapshot(task, llmConfig, undefined, workspace.domain_id),
           submission_mode: "code",
         },
         createdBy: userId,
@@ -793,6 +796,11 @@ export async function getSubmission(
   viewerId?: string | null,
   viewerRole?: string | null,
   c?: Context,
+  domainAccess?: {
+    domainId: string;
+    canReadDetails: boolean;
+    platformAdmin: boolean;
+  },
 ): Promise<SubmissionDetail> {
   const db = getDb();
 
@@ -807,7 +815,11 @@ export async function getSubmission(
   }
 
   const row = rows[0];
-  if (row.domain_id !== null && row.domain_id !== DEFAULT_DOMAIN_ID) {
+  if (
+    domainAccess
+      ? row.domain_id !== domainAccess.domainId
+      : row.domain_id !== null && row.domain_id !== DEFAULT_DOMAIN_ID
+  ) {
     throw new NotFoundError("默认域不存在此提交");
   }
 
@@ -816,7 +828,9 @@ export async function getSubmission(
   const isOwner = !!(c?.var.userId ?? viewerId) &&
     row.user_id === (c?.var.userId ?? viewerId);
   // 实时权限查询（submission:read_all，admin:full_access 通配）
-  const isAdmin = c
+  const isAdmin = domainAccess
+    ? domainAccess.canReadDetails
+    : c
     ? await checkPermission(c, "submission:read_all")
     : viewerRole === "admin";
   const canSeeDetails = isOwner || isAdmin;
@@ -1048,7 +1062,8 @@ export async function getSubmission(
   const queueStatus = await getSubmissionQueueStatus(
     id,
     viewerId ?? undefined,
-    viewerRole ?? undefined,
+    isAdmin ? "admin" : viewerRole ?? undefined,
+    domainAccess?.domainId,
   );
 
   const response: SubmissionDetail = {
@@ -1090,7 +1105,9 @@ export async function getSubmission(
     effective_attempt_id: effectiveAttemptId,
     accepted_attempt_id: acceptedAttemptId,
   };
-  const platformAdmin = c
+  const platformAdmin = domainAccess
+    ? domainAccess.platformAdmin
+    : c
     ? await checkPermission(c, "admin:full_access")
     : viewerRole === "admin";
   return (await projectContestSubmissionReads(

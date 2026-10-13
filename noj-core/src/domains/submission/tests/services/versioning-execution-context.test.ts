@@ -115,6 +115,7 @@ function stubLlmGatewayProvider(enabled: boolean): () => void {
         JSON.stringify({
           data: {
             id: "prov-default",
+            domain_id: "00000000-0000-4000-8000-000000000001",
             name: "test",
             base_url: "http://provider.test",
             cost_per_1k_tokens: 0,

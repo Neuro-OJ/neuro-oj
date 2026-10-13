@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { AppError } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { evaluationAttempts } from "../../../shared/db/schema.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import {
   buildOiSelfTestPackage,
   isOiRuntimeConfig,
@@ -109,6 +110,7 @@ export async function rebuildPendingTask(
       content.runtime_config,
       {
         attemptId: runId,
+        domainId: row.domain_id ?? DEFAULT_DOMAIN_ID,
         problemVersionId: versionId,
         frozen: snapshot.llm_execution as FrozenLlmExecution,
       },

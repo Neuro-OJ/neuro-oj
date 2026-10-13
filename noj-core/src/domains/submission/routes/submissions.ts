@@ -140,6 +140,7 @@ router.get("/", authMiddleware, async (c) => {
 export function parseArtifactMultipart(
   c: Context,
   problemField: "problem_id" | "problem_ref" = "problem_id",
+  pathProblemReference?: string,
 ): Promise<{
   problem_id: string;
   file_name: string;
@@ -153,7 +154,7 @@ export function parseArtifactMultipart(
       return;
     }
     const bb = busboy({ headers: { "content-type": contentType } });
-    let problemId = "";
+    let problemId = pathProblemReference ?? "";
     let fileName = "";
     let versionId = "";
     let fileStream: ReadableStream<Uint8Array> | null = null;
@@ -179,7 +180,7 @@ export function parseArtifactMultipart(
     }
 
     bb.on("field", (name: string, val: string) => {
-      if (name === problemField) problemId = val;
+      if (name === problemField && !pathProblemReference) problemId = val;
       if (name === "version_id") versionId = val;
       maybeResolve();
     });

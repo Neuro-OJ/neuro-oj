@@ -429,6 +429,7 @@ Deno.test({
                 cost_per_1k_tokens: 0,
                 api_key_masked: "sk-****",
                 enabled: true,
+                domain_id: "00000000-0000-4000-8000-000000000001",
                 created_at: now,
                 updated_at: now,
               },

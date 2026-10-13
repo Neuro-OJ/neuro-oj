@@ -45,6 +45,158 @@ function zipStream() {
   });
 }
 
+async function runningContest(
+  f: Awaited<ReturnType<typeof fixture>>,
+  problemId = f.problemId,
+  pinnedVersionId = f.v1,
+  type = "kaggle",
+) {
+  const id = crypto.randomUUID(), now = Date.now();
+  await f.db.insert(contests).values({
+    id,
+    domain_id: f.a.id,
+    title: "域内固定版本赛",
+    type,
+    kind: "invite",
+    created_by: f.owner,
+    start_time: new Date(now - 60000).toISOString(),
+    end_time: new Date(now + 60000).toISOString(),
+    created_at: new Date(now).toISOString(),
+    updated_at: new Date(now).toISOString(),
+  });
+  const [binding] = await f.db.select().from(domainProblemBindings).where(
+    eq(domainProblemBindings.problem_id, problemId),
+  ).then((rows) => rows.filter((row) => row.domain_id === f.a.id));
+  await f.db.insert(contestProblems).values({
+    contest_id: id,
+    domain_id: f.a.id,
+    domain_problem_binding_id: binding.id,
+    problem_id: problemId,
+    label: "A",
+    score: 10000,
+    pinned_version_id: pinnedVersionId,
+  });
+  await f.db.insert(contestParticipants).values({
+    contest_id: id,
+    user_id: f.student,
+    registered_at: new Date(now).toISOString(),
+  });
+  return id;
+}
+
+Deno.test({
+  name:
+    "域比赛代码：按标签绑定固定旧版本，题库练习禁用；错误域、未报名、结束及撤销均拒绝",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const f = await fixture(), contestId = await runningContest(f);
+    await withQueue(async () => {
+      const versionError = await assertRejects(
+        () =>
+          createDomainSubmission(f.a.slug, "A", f.student, {
+            version_id: f.v2,
+            language: "python3",
+            code: "print(1)",
+          }, contestId),
+        AppError,
+      );
+      assertEquals(versionError.code, "CONTEST_PROBLEM_VERSION_CHANGED");
+      await assertRejects(
+        () =>
+          createDomainSubmission(f.b.slug, "A", f.student, {
+            version_id: f.v1,
+            language: "python3",
+            code: "print(1)",
+          }, contestId),
+        NotFoundError,
+      );
+      await assertRejects(
+        () =>
+          createDomainSubmission(f.a.slug, "A", f.owner, {
+            version_id: f.v1,
+            language: "python3",
+            code: "print(1)",
+          }, contestId),
+        ForbiddenError,
+      );
+      const created = await createDomainSubmission(f.a.slug, "A", f.student, {
+        version_id: f.v1,
+        language: "python3",
+        code: "print(1)",
+      }, contestId);
+      const [stored] = await f.db.select().from(submissions).where(
+        eq(submissions.id, created.id),
+      );
+      assertEquals(stored.contest_id, contestId);
+      assertEquals(stored.domain_id, f.a.id);
+      assertEquals(stored.domain_problem_binding_id, f.bindingA.id);
+      assertEquals(stored.submitted_version_id, f.v1);
+      await assertRejects(
+        () =>
+          createDomainSubmission(f.a.slug, f.ref, f.student, {
+            version_id: f.v2,
+            language: "python3",
+            code: "print(2)",
+          }),
+        ForbiddenError,
+      );
+      await setDomainProblemSharing(f.source.slug, "1001", f.owner, {
+        expectedRevision: 1,
+        enabled: false,
+        scope: "all",
+        targetDomainIds: [],
+      });
+      await assertRejects(
+        () =>
+          createDomainSubmission(f.a.slug, "A", f.student, {
+            version_id: f.v1,
+            language: "python3",
+            code: "print(3)",
+          }, contestId),
+        NotFoundError,
+      );
+      await f.db.update(contests).set({
+        end_time: new Date(Date.now() - 1000).toISOString(),
+      }).where(eq(contests.id, contestId));
+      await assertRejects(
+        () =>
+          createDomainSubmission(f.a.slug, "A", f.student, {
+            version_id: f.v1,
+            language: "python3",
+            code: "print(4)",
+          }, contestId),
+        ForbiddenError,
+      );
+      assertEquals((await f.db.select().from(submissions)).length, 1);
+    });
+  },
+});
+
+Deno.test({
+  name: "域比赛产物：固定版本与比赛、学校归属保持一致",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const f = await fixture("artifact"), contestId = await runningContest(f);
+    await withQueue(async () => {
+      const created = await createDomainArtifactSubmission(
+        f.a.slug,
+        "A",
+        f.student,
+        { version_id: f.v1, file_name: "answer.zip", file_stream: zipStream() },
+        contestId,
+      );
+      const [stored] = await f.db.select().from(submissions).where(
+        eq(submissions.id, created.id),
+      );
+      assertEquals(stored.contest_id, contestId);
+      assertEquals(stored.domain_id, f.a.id);
+      assertEquals(stored.submitted_version_id, f.v1);
+    });
+  },
+});
+
 Deno.test({
   name: "域产物：流式上传归学校绑定，未授权及撤销不产生提交",
   sanitizeResources: false,
@@ -228,6 +380,39 @@ async function objectiveFixture() {
   const ref = `${f.source.slug}:1002`;
   const { binding } = await importDomainProblem(f.a.slug, ref, f.owner);
   return { ...f, paper, version, objectiveRef: ref, objectiveBinding: binding };
+}
+
+for (const type of ["kaggle", "oi"]) {
+  Deno.test({
+    name: `域比赛客观题 ${type}：同域一次正式交卷及原分/隐藏结果`,
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+      const f = await objectiveFixture(),
+        contestId = await runningContest(f, f.paper, f.version, type);
+      const result = await submitDomainObjectivePaper(
+        f.a.slug,
+        "A",
+        f.student,
+        { version_id: f.version, answers: { q1: ["A"] } },
+        contestId,
+      );
+      assertEquals(result.contest_mode, true);
+      assertEquals(result.score, type === "oi" ? null : 100);
+      assertEquals(JSON.stringify(result).includes('"correct"'), false);
+      await assertRejects(() =>
+        submitDomainObjectivePaper(f.a.slug, "A", f.student, {
+          version_id: f.version,
+          answers: { q1: ["B"] },
+        }, contestId)
+      );
+      const [stored] = await f.db.select().from(objectiveSubmissions);
+      assertEquals(stored.domain_id, f.a.id);
+      assertEquals(stored.contest_id, contestId);
+      assertEquals(stored.score, 10000);
+      assertEquals((await f.db.select().from(objectiveSubmissions)).length, 1);
+    },
+  });
 }
 
 Deno.test({

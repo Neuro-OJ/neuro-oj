@@ -15,6 +15,7 @@ import {
 } from "../../../catalog/index.ts";
 import { resolveLlmLimits } from "../../../gateway/index.ts";
 import type { JudgeTask } from "../../types/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 
 /** 指定版本的支持包地址；不存在引用与后端丢失是不同情况。 */
 export async function versionSupportPackageUrl(
@@ -49,6 +50,7 @@ export async function versionSupportPackageDownload(
   task: JudgeTask,
   llmConfig?: LlmConfig | null,
   previous?: Record<string, unknown> | null,
+  domainId: string = DEFAULT_DOMAIN_ID,
 ): Record<string, unknown> {
   return {
     language: task.language,
@@ -59,6 +61,7 @@ export async function versionSupportPackageDownload(
     ...(task.llm && llmConfig
       ? {
         llm_execution: previous?.llm_execution ?? {
+          domain_id: domainId,
           provider_id: task.llm.provider_id,
           model: task.llm.allowed_models[0],
           ...resolveLlmLimits(llmConfig),
