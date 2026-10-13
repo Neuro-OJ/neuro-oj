@@ -25,6 +25,7 @@ import {
 } from "./domains/identity/index.ts";
 import { ensureRbacSeeds } from "./domains/system/index.ts";
 import { ensureDefaultWorkspace } from "./domains/workspace/index.ts";
+import { seedDomainLlmDefaults } from "./domains/gateway/index.ts";
 import { getStorageProvider } from "./domains/system/index.ts";
 import {
   getEmailConfigStatus,
@@ -192,6 +193,7 @@ async function main() {
   // 初始化系统设置缓存（issue #99）
   // 从 system_settings 全量加载到内存 Map，失败时终止启动。
   await fatalStep("系统设置缓存初始化", () => initSystemSettings());
+  await fatalStep("默认域 LLM 配置初始化", () => seedDomainLlmDefaults());
 
   // 启动期 env 快照（issue #99）
   // 一次性读取 env-only 设置项到内存 Map，admin 面板只读展示。

@@ -2,21 +2,17 @@ import {
   CATALOG_PROBLEM_BASE_DDL,
   CATALOG_TRAINING_BASE_DDL,
 } from "./schema-ddl-catalog-base.ts";
-import {
-  CATALOG_WORKSPACE_DDL,
-  CATALOG_WORKSPACE_TABLES,
-} from "./schema-ddl-catalog-workspace.ts";
-import { WORKSPACE_DDL, WORKSPACE_TABLES } from "./schema-ddl-workspace.ts";
+import { CATALOG_WORKSPACE_DDL } from "./schema-ddl-catalog-workspace.ts";
+import { WORKSPACE_DDL } from "./schema-ddl-workspace.ts";
 import { EXECUTION_WORKSPACE_DDL } from "./schema-ddl-execution-workspace.ts";
-import { EDUCATION_DDL, EDUCATION_TABLES } from "./schema-ddl-education.ts";
-import { ASSIGNMENT_DDL, ASSIGNMENT_TABLES } from "./schema-ddl-assignment.ts";
+import { DOMAIN_EXECUTION_DDL } from "./schema-ddl-domain-execution.ts";
+import { EDUCATION_DDL } from "./schema-ddl-education.ts";
+import { ASSIGNMENT_DDL } from "./schema-ddl-assignment.ts";
 import {
   SUBMISSION_ANNOTATIONS_DDL,
-  SUBMISSION_ANNOTATIONS_TABLES,
 } from "./schema-ddl-submission-annotations.ts";
 import {
   EDUCATION_INTERACTIONS_DDL,
-  EDUCATION_INTERACTIONS_TABLES,
 } from "./schema-ddl-education-interactions.ts";
 import { WORKSPACE_AUDIT_ACTION_SQL } from "../workspace/audit.ts";
 /** PGlite DDL 与 Drizzle schema 同步；新子系统通过独立 DDL 模块扩展。 */
@@ -216,6 +212,7 @@ $$ LANGUAGE plpgsql`,
   `CREATE SEQUENCE IF NOT EXISTS submission_receipt_sequence START WITH 1`,
   `CREATE TABLE IF NOT EXISTS contests (
     id TEXT PRIMARY KEY,
+    revision INTEGER NOT NULL DEFAULT 0,
     domain_id TEXT,
     public_id TEXT NOT NULL DEFAULT ('ct-' || substr(md5(random()::text),1,8)) UNIQUE,
     title TEXT NOT NULL,
@@ -252,6 +249,8 @@ $$ LANGUAGE plpgsql`,
   )`,
 
   `CREATE TABLE IF NOT EXISTS contest_problems (
+    domain_id TEXT,
+    domain_problem_binding_id TEXT,
     contest_id TEXT NOT NULL REFERENCES contests(id) ON DELETE CASCADE,
     problem_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
     sort_order INTEGER NOT NULL DEFAULT 0,
@@ -1107,6 +1106,7 @@ $$ LANGUAGE plpgsql`,
   ...ASSIGNMENT_DDL,
   ...EDUCATION_INTERACTIONS_DDL,
   ...SUBMISSION_ANNOTATIONS_DDL,
+  ...DOMAIN_EXECUTION_DDL,
 ];
 
 // 索引与可选扩展索引拆到独立模块（单文件规模棘轮，见 scripts/check-file-size.ts）：
@@ -1116,82 +1116,4 @@ export {
   SCHEMA_INDEXES,
 } from "./schema-ddl-indexes.ts";
 
-export const ALL_TABLES = [
-  ...WORKSPACE_TABLES,
-  ...CATALOG_WORKSPACE_TABLES,
-  ...EDUCATION_TABLES,
-  ...ASSIGNMENT_TABLES,
-  ...EDUCATION_INTERACTIONS_TABLES,
-  ...SUBMISSION_ANNOTATIONS_TABLES,
-  "users",
-  "oauth_accounts",
-  "problems",
-  "problem_versions",
-  "problem_drafts",
-  "problem_draft_objects",
-  "problem_version_objects",
-  "storage_objects",
-  "storage_object_reservations",
-  "query_projection_revisions",
-  "evaluation_attempts",
-  "llm_token_revocations",
-  "submission_version_results",
-  "submission_jobs",
-  "submission_job_items",
-  "judge_images",
-  "tags",
-  "problem_tags",
-  "contests",
-  "contest_problems",
-  "contest_participants",
-  "contest_clarifications",
-  "contest_ranking_snapshots",
-  "trainings",
-  "training_problems",
-  "submissions",
-  "check_ins",
-  "password_reset_tokens",
-  "tfa_recovery_codes",
-  "conversations",
-  "messages",
-  "message_reactions",
-  "conversation_reads",
-  "message_deletions",
-  "conversation_preferences",
-  "system_settings",
-  "audit_logs",
-  "ip_bans",
-  "user_bans",
-  "roles",
-  "permissions",
-  "role_permissions",
-  "user_roles",
-  "community_boards",
-  "community_board_role_grants",
-  "community_posts",
-  "community_comments",
-  "community_post_likes",
-  "community_comment_likes",
-  "community_bookmarks",
-  "community_follows",
-  "community_reports",
-  "community_moderation_actions",
-  "community_sanctions",
-  "community_notifications",
-  "announcements",
-  "content_review_queue",
-  "search_entries",
-  "email_delivery_events",
-  "email_suppressions",
-  "legal_documents",
-  "legal_document_versions",
-  "user_consents",
-  "data_requests",
-  "carousel_slides",
-  // 2026-09-24 评审：以下表建表但长期漏登记，resetDbForTest 从不清理
-  // （跨用例污染隐患；守卫测试 tests/db/schema.test.ts 现已覆盖该类遗漏）。
-  // 注：`objective_questions` 已随 0107 删除（小题迁入草稿/版本快照）。
-  "objective_submissions",
-  "self_tests",
-  "sse_events",
-] as const;
+export { ALL_TABLES } from "./schema-ddl-tables.ts";

@@ -11,6 +11,10 @@ export const WORKSPACE_AUDIT_ACTIONS = [
   "domain.invite_create",
   "domain.invite_accept",
   "domain.invite_revoke",
+  "domain.llm_read",
+  "domain.llm_settings",
+  "domain.llm_provider",
+  "domain.llm_quota",
 ] as const;
 /** 工作空间审计动作类型。 */
 export type WorkspaceAuditAction = typeof WORKSPACE_AUDIT_ACTIONS[number];

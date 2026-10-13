@@ -111,6 +111,23 @@ export const domainLimits = pgTable("domain_limits", {
     sql`(${t.members} IS NULL OR ${t.members} >= 0) AND (${t.problems} IS NULL OR ${t.problems} >= 0) AND (${t.storage_bytes} IS NULL OR ${t.storage_bytes} >= 0) AND (${t.submissions_per_minute} IS NULL OR ${t.submissions_per_minute} >= 0)`,
   ),
 }));
+/** 使用域默认 LLM 执行选择；密钥与 Provider 记录由独立 Gateway 保存。 */
+export const domainLlmSettings = pgTable("domain_llm_settings", {
+  domain_id: text("domain_id").primaryKey().references(() => domains.id),
+  provider_id: text("provider_id"),
+  model: text("model"),
+  revision: integer("revision").notNull().default(1),
+  updated_at: text("updated_at").notNull(),
+}, (t) => ({
+  revisionCheck: check(
+    "domain_llm_settings_revision_check",
+    sql`${t.revision} >= 1`,
+  ),
+  selectionCheck: check(
+    "domain_llm_settings_selection_check",
+    sql`(${t.provider_id} IS NULL AND ${t.model} IS NULL) OR (${t.provider_id} IS NOT NULL AND ${t.model} IS NOT NULL AND length(trim(${t.provider_id})) > 0 AND length(trim(${t.model})) > 0)`,
+  ),
+}));
 /** 配额计数在业务事务中加锁更新。 */
 export const domainResourceCounters = pgTable("domain_resource_counters", {
   domain_id: text("domain_id").notNull().references(() => domains.id),

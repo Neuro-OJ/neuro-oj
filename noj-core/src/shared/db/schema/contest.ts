@@ -15,6 +15,7 @@ import { manyToManyPk, publicIdColumn } from "./common.ts";
 import { users } from "./identity.ts";
 import { problems, problemVersions } from "./catalog.ts";
 import { domains } from "./workspace.ts";
+import { domainProblemBindings } from "./catalog-workspace.ts";
 
 /**
  * 竞赛主表。
@@ -25,6 +26,7 @@ export const contests = pgTable(
   {
     id: text("id").primaryKey(),
     domain_id: text("domain_id").references(() => domains.id),
+    revision: integer("revision").notNull().default(0),
     public_id: publicIdColumn("ct"),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
@@ -124,6 +126,8 @@ export const contests = pgTable(
 export const contestProblems = pgTable(
   "contest_problems",
   {
+    domain_id: text("domain_id").references(() => domains.id),
+    domain_problem_binding_id: text("domain_problem_binding_id"),
     contest_id: text("contest_id")
       .notNull()
       .references(() => contests.id, { onDelete: "cascade" }),
@@ -153,6 +157,27 @@ export const contestProblems = pgTable(
   },
   (table) => ({
     ...manyToManyPk([table.contest_id, table.problem_id]),
+    workspaceContestFk: foreignKey({
+      name: "contest_problems_workspace_contest_fk",
+      columns: [table.domain_id, table.contest_id],
+      foreignColumns: [contests.domain_id, contests.id],
+    }),
+    workspaceBindingFk: foreignKey({
+      name: "contest_problems_workspace_binding_fk",
+      columns: [table.domain_id, table.domain_problem_binding_id],
+      foreignColumns: [
+        domainProblemBindings.domain_id,
+        domainProblemBindings.id,
+      ],
+    }),
+    bindingProblemFk: foreignKey({
+      name: "contest_problems_binding_problem_fk",
+      columns: [table.domain_problem_binding_id, table.problem_id],
+      foreignColumns: [
+        domainProblemBindings.id,
+        domainProblemBindings.problem_id,
+      ],
+    }),
     labelUnique: unique("contest_problems_contest_label_unique").on(
       table.contest_id,
       table.label,
