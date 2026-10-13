@@ -24,7 +24,10 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
-import { insertContestProblems } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  insertContestProblems,
+} from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   getProblemDraft,
@@ -73,6 +76,7 @@ async function makePaper(
     created_at: now,
     updated_at: now,
   });
+  await bindPublishedProblemForTest(id);
   return id;
 }
 
@@ -92,6 +96,7 @@ async function makeCodeProblem(): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await bindPublishedProblemForTest(id);
   return id;
 }
 

@@ -31,7 +31,10 @@ import {
   publishProblemVersion,
   saveProblemDraft,
 } from "../../../catalog/index.ts";
-import { insertContestProblems } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  insertContestProblems,
+} from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 
 const db = getDb();
@@ -70,6 +73,7 @@ async function makePaper(ownerId: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await bindPublishedProblemForTest(id);
   return id;
 }
 
