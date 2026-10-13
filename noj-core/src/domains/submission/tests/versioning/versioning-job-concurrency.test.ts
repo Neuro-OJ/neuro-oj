@@ -1,4 +1,6 @@
 import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { withRawTransaction } from "../../../../../tests/helper/pg-raw-connection.ts";
+import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   acceptLegacyRejudgeJobForTest as acceptRejudgeJob,
@@ -15,16 +17,17 @@ import {
  *   实际新增提交数必须仍为 1（复用 `result_submission_id` 与尝试）。
  *
  * 本文件的租约/双 worker 用例在 PGlite 下以「同一连接的顺序竞争」模拟两个 worker
- * （写条件全部是数据库条件更新，语义等价）；文件末的**双边并发领取**用例只有真实
- * PostgreSQL 才具备并发语义，无 DATABASE_URL 时跳过。
+ * （写条件全部是数据库条件更新）；真实 PostgreSQL 用例另外使用独立原生连接持锁，
+ * 检查领取跳过被锁条目、释放后再次领取。无 DATABASE_URL 时显式跳过该检查。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   disableTestTransactionForFile,
   getDb,
 } from "../../../../shared/db/connection.ts";
 import {
+  domains,
   evaluationAttempts,
   judgeImages,
   problems,
@@ -150,13 +153,19 @@ async function seedProblemWithVersions(
   const v1 = `conc-v1-${tag}-${ts}`;
   const v2 = `conc-v2-${tag}-${ts}`;
   createdFixtures.problemIds.add(problemId);
+  // 使用真实域计数器原子分配；本文件在PG下关闭事务包装，不能依赖随机题号避让。
+  const [allocated] = await db.update(domains).set({
+    next_problem_number: sql`${domains.next_problem_number} + 1`,
+  }).where(eq(domains.id, DEFAULT_DOMAIN_ID)).returning({
+    number: sql<number>`${domains.next_problem_number} - 1`,
+  });
   await db.insert(problems).values({
     domain_id: DEFAULT_DOMAIN_ID,
     id: problemId,
     title: `并发测试题 ${tag}`,
     description: "d",
     difficulty: "easy",
-    number: 98500 + Math.floor(Math.random() * 1000),
+    number: allocated.number,
     owner_id: "0",
     judge_type: "dual",
     runtime_config: dualConfig(1111),
@@ -717,7 +726,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "worker#37[真实 PG]: 双 worker 并发领取同批条目互不重复（SKIP LOCKED）",
+  name: "worker#37[真实 PG]: 双 worker 同批领取条目互不重复",
   ignore: !hasRealPg,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -750,8 +759,8 @@ Deno.test({
     const jobId = accepted.job_id;
     createdFixtures.jobIds.add(jobId);
 
-    // 两个 worker 并发领取：SKIP LOCKED 必须保证同一行不被两个 worker 同时占用。
-    // （每 worker 只领 1 条：否则先到者会一口气领走全部，掩盖并发语义。）
+    // 两个 worker 各领1条，验证租约去重；测试主池max:1，此处不声称两个连接同时持锁。
+    // 后续独立原生连接用例验证真正的跨连接SKIP LOCKED。
     const [batchA, batchB] = await Promise.all([
       claimJobItems("dual-worker-A", { limit: 1 }),
       claimJobItems("dual-worker-B", { limit: 1 }),
@@ -784,6 +793,98 @@ Deno.test({
         0,
       );
     }
+  },
+});
+
+Deno.test({
+  name:
+    "worker#37[真实 PG]: 独立连接持锁时领取跳过，释放后可领取首条（SKIP LOCKED）",
+  ignore: !hasRealPg,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const actor = await makeUser("locked");
+    const { problemId, v1 } = await seedProblemWithVersions("locked");
+    const first = await seedSubmission(problemId, actor, v1);
+    const second = await seedSubmission(problemId, actor, v1);
+    const accepted = await acceptRejudgeJob(actor, {
+      kind: "rejudge",
+      scope: {
+        type: "selected",
+        submissions: [
+          { kind: "submission", id: first.submissionId },
+          { kind: "submission", id: second.submissionId },
+        ],
+      },
+      target: { mode: "submitted" },
+    }, `conc-locked-key-${ts}`);
+    const jobId = accepted.job_id;
+    createdFixtures.jobIds.add(jobId);
+    const items = await db.select().from(submissionJobItems).where(
+      eq(submissionJobItems.job_id, jobId),
+    ).orderBy(submissionJobItems.ordinal);
+    assertEquals(items.length, 2);
+    const [main] = unwrapRows<{ pid: number; schema: string }>(
+      await db.execute(
+        sql`SELECT pg_backend_pid() AS pid, current_schema() AS schema`,
+      ) as never,
+    );
+    const expectedSchema = Deno.env.get("TEST_SCHEMA") ?? "public";
+    assertEquals(main.schema, expectedSchema);
+
+    await withRawTransaction(async (tx) => {
+      const [locking] = unwrapRows<{ pid: number; schema: string }>(
+        await tx.execute(
+          sql`SELECT pg_backend_pid() AS pid, current_schema() AS schema`,
+        ) as never,
+      );
+      assertEquals(locking.schema, expectedSchema);
+      assertEquals(
+        locking.pid === main.pid,
+        false,
+        "持锁与领取必须使用不同PG连接",
+      );
+      // 夹具已提交，外连接能读取两条；在首条上持有真实行锁直到实际claim完成。
+      const visible = await tx.select({ id: submissionJobItems.id }).from(
+        submissionJobItems,
+      )
+        .where(eq(submissionJobItems.job_id, jobId));
+      assertEquals(visible.length, 2);
+      const held = await tx.select({ id: submissionJobItems.id }).from(
+        submissionJobItems,
+      )
+        .where(eq(submissionJobItems.id, items[0].id)).for("update");
+      assertEquals(held[0].id, items[0].id);
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error("claim在外连接行锁下阻塞，未跳过锁定条目")),
+          2000,
+        );
+      });
+      try {
+        const claimed = await Promise.race([
+          claimJobItems("unlocked-worker", { limit: 1 }),
+          timeout,
+        ]);
+        assertEquals(claimed.map((item) => item.id), [items[1].id]);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    });
+
+    // 外连接事务已提交并释放首条行锁，下一次实际领取必须取到此前跳过的条目。
+    const afterRelease = await claimJobItems("released-worker", { limit: 1 });
+    assertEquals(afterRelease.map((item) => item.id), [items[0].id]);
+    const leased = await db.select().from(submissionJobItems).where(
+      eq(submissionJobItems.job_id, jobId),
+    )
+      .orderBy(submissionJobItems.ordinal);
+    assertEquals(leased.map((item) => item.status), ["preparing", "preparing"]);
+    assertEquals(leased.map((item) => item.lease_owner), [
+      "released-worker",
+      "unlocked-worker",
+    ]);
   },
 });
 
