@@ -169,6 +169,10 @@ Deno.test({
   fn: async () => {
     const { createApp } = await import("../../src/app.ts");
     const { jsonRequest } = await import("../helper.ts");
+    const { ensureDefaultWorkspace } = await import(
+      "../../src/domains/workspace/index.ts"
+    );
+    await ensureDefaultWorkspace();
     const app = createApp();
     // 修复前：limit 与 page 相乘超出 bigint → PG 报错 → 500 INTERNAL_ERROR
     const big = await jsonRequest(
