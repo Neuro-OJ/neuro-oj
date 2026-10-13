@@ -30,6 +30,18 @@ class FakeProvider implements StorageProvider {
   get(_url: string): Promise<Uint8Array> {
     return Promise.resolve(new Uint8Array());
   }
+  getStream(_url: string): Promise<ReadableStream<Uint8Array>> {
+    return Promise.resolve(
+      new ReadableStream({
+        start(controller) {
+          controller.close();
+        },
+      }),
+    );
+  }
+  stat(_url: string) {
+    return Promise.resolve({ exists: true, sizeBytes: 0, lastModified: null });
+  }
   async delete(_url: string): Promise<void> {}
   downloadUrl(_storageUrl: string): Promise<string> {
     return Promise.resolve("fake-download");

@@ -245,6 +245,18 @@ export class LocalStorageProvider implements StorageProvider {
     return Deno.readFile(filePath);
   }
 
+  /** 文件流在消费完成或取消时释放句柄，不生成客户端直链。 */
+  async getStream(url: string): Promise<ReadableStream<Uint8Array>> {
+    const parsed = parseStorageUrl(url);
+    if (parsed.provider !== "local") {
+      throw new Error(`local provider 拒绝 ${parsed.provider} URL`);
+    }
+    const file = await Deno.open(filePathFor(this.storageDir, parsed.key), {
+      read: true,
+    });
+    return file.readable;
+  }
+
   /**
    * 根据 `noj-storage://` URL 删除数据
    *

@@ -13,6 +13,7 @@ import {
   updateSubmissionAnnotation,
 } from "../services/annotations.ts";
 import {
+  downloadTeachingArtifact,
   getTeachingTextFile,
   listTeachingTextFiles,
 } from "../services/submission-text.ts";
@@ -21,6 +22,15 @@ import {
 export const annotationRouter = new Hono<AuthEnv>();
 const path =
   "/domains/:slug/classrooms/:id/submissions/submission/:submissionId";
+annotationRouter.get(`${path}/artifact`, async (c) => {
+  c.header("Cache-Control", "private, no-store");
+  return await downloadTeachingArtifact(
+    c.req.param("slug")!,
+    c.req.param("id")!,
+    c.req.param("submissionId")!,
+    c.var.userId,
+  );
+});
 annotationRouter.get(
   `${path}/files`,
   async (c) =>

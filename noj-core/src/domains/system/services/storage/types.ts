@@ -135,6 +135,9 @@ export interface StorageProvider {
    */
   get(url: string): Promise<Uint8Array>;
 
+  /** 服务端授权下载使用流读取，避免把整份产物载入内存。 */
+  getStream(url: string): Promise<ReadableStream<Uint8Array>>;
+
   /**
    * 根据 `noj-storage://` URL 删除数据
    *

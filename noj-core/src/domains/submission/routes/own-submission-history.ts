@@ -9,6 +9,7 @@ import {
   getOwnSubmissionHistory,
   listOwnSubmissionHistory,
 } from "../services/own-submission-history.ts";
+import { downloadOwnArtifact } from "../services/own-artifact.ts";
 /** 本人跨域历史独立于当前导航工作空间，不授予题面、数据或他人提交访问。 */
 export const ownSubmissionHistoryRouter = new Hono<AuthEnv>();
 for (const path of ["/me/submissions", "/me/submissions/*"]) {
@@ -25,6 +26,13 @@ ownSubmissionHistoryRouter.get("/me/submissions", async (c) => {
     pagination: buildPaginationMeta(page, perPage, result.total),
   });
 });
+ownSubmissionHistoryRouter.get(
+  "/me/submissions/submission/:id/artifact",
+  async (c) => {
+    c.header("Cache-Control", "private, no-store");
+    return await downloadOwnArtifact(c.var.userId, c.req.param("id"));
+  },
+);
 ownSubmissionHistoryRouter.get("/me/submissions/:kind/:id", async (c) => {
   const kind = c.req.param("kind");
   if (kind !== "submission" && kind !== "objective") {

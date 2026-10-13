@@ -7,7 +7,10 @@ import {
   BadRequestError,
   NotFoundError,
 } from "../../../shared/base/errors.ts";
-import { getStorageProvider } from "../../system/index.ts";
+import {
+  deliverStoredArtifact,
+  getStorageProvider,
+} from "../../system/index.ts";
 import { readEvaluationEntries } from "../../catalog/index.ts";
 import { workspaceAudit } from "../../workspace/index.ts";
 import { assertClassroomCapability, loadClassroom } from "./access.ts";
@@ -169,4 +172,24 @@ export async function getTeachingTextFile(
       fileName,
     ),
   };
+}
+
+/** 下载只读取原提交产物；源题授权撤销不恢复题面、支持包或隐藏评测数据。 */
+export async function downloadTeachingArtifact(
+  slug: string,
+  classroomId: string,
+  id: string,
+  actorId: string,
+) {
+  const access = await loadClassroom(slug, classroomId, actorId, {
+    historicalStudent: true,
+  });
+  const source = await loadTeachingTextSource(access, id);
+  if (!source.artifact_storage_url) {
+    throw new NotFoundError("此提交没有产物文件");
+  }
+  return await deliverStoredArtifact(
+    source.artifact_storage_url,
+    source.file_name ?? `${source.id}.zip`,
+  );
 }

@@ -20,11 +20,11 @@ export interface OwnSubmissionHistoryScope {
 const ownedSources = sql`(
  SELECT 'submission'::text AS kind,id,public_id,user_id,problem_id,domain_id,domain_problem_binding_id,
  contest_id,language,code,NULL::jsonb AS answers,file_name,status,created_at,submitted_version_id,
- is_valid,is_accepted,latest_attempt_id,effective_attempt_id FROM submissions
+ is_valid,is_accepted,latest_attempt_id,effective_attempt_id,artifact_storage_url IS NOT NULL AS has_artifact FROM submissions
  UNION ALL
  SELECT 'objective'::text AS kind,id,id AS public_id,user_id,paper_id AS problem_id,domain_id,domain_problem_binding_id,
  contest_id,'objective' AS language,NULL AS code,answers,NULL AS file_name,status,created_at,submitted_version_id,
- is_valid,is_accepted,latest_attempt_id,effective_attempt_id FROM objective_submissions
+ is_valid,is_accepted,latest_attempt_id,effective_attempt_id,false AS has_artifact FROM objective_submissions
 ) owned`;
 interface HistoryRow {
   kind: OwnSubmissionKind;
@@ -50,6 +50,7 @@ interface HistoryRow {
   code: string | null;
   answers: Record<string, unknown> | null;
   file_name: string | null;
+  has_artifact: boolean;
   status: string;
   submitted_version_id: string | null;
   is_valid: boolean;
@@ -72,6 +73,7 @@ export interface OwnSubmissionHistoryItem {
   contest_id: string | null;
   language: string;
   file_name: string | null;
+  has_artifact: boolean;
   created_at: string;
   submitted_version_id: string | null;
   status: string;
@@ -127,6 +129,7 @@ function projectHistory(
     contest_id: row.contest_id,
     language: row.language,
     file_name: row.file_name,
+    has_artifact: row.has_artifact,
     created_at: row.created_at,
     submitted_version_id: row.submitted_version_id,
     status: visibility === "hidden" ? "submitted" : row.status,
@@ -195,7 +198,7 @@ async function readHistory(
     await db.execute(
       sql`SELECT owned.kind,owned.id,owned.public_id,owned.user_id,owned.problem_id,
   owned.domain_problem_binding_id,owned.contest_id,owned.language,owned.file_name,owned.status,owned.created_at,
-  owned.submitted_version_id,owned.is_valid,owned.is_accepted,
+  owned.submitted_version_id,owned.is_valid,owned.is_accepted,owned.has_artifact,
   ${
         options.id
           ? sql`owned.code,owned.answers`

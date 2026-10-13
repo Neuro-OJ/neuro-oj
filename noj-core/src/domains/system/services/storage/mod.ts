@@ -47,6 +47,7 @@ export type {
   StorageUploadReservation,
 } from "./registry.ts";
 export { S3StorageProvider } from "./s3.ts";
+export { deliverStoredArtifact } from "./artifact-delivery.ts";
 export {
   reconcileDomainStorageBatch,
   startDomainStorageReconciliation,

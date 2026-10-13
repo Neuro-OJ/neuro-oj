@@ -16,6 +16,25 @@ import { LocalStorageProvider } from "./../../../src/domains/system/services/sto
 // 测试须从 noj-core 目录运行（CI 与 deno task 均如此）。
 const PROJECT_ROOT = join(import.meta.dirname ?? ".", "..", "..", "..");
 
+Deno.test("LocalStorageProvider: 原产物流式读取及取消释放文件句柄", async () => {
+  const directory = await Deno.makeTempDir();
+  const provider = new LocalStorageProvider(directory);
+  const bytes = new Uint8Array(1024 * 1024).fill(42);
+  try {
+    const url = await provider.put("stream-download", bytes);
+    const response = new Response(await provider.getStream(url));
+    assertEquals(new Uint8Array(await response.arrayBuffer()), bytes);
+    const reader = (await provider.getStream(url)).getReader();
+    assertEquals((await reader.read()).done, false);
+    await reader.cancel();
+    reader.releaseLock();
+    await provider.delete(url);
+    assertEquals((await provider.stat(url)).exists, false);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 Deno.test("LocalStorageProvider: 默认落盘到 data/storage 而非 data/packages", async () => {
   const provider = new LocalStorageProvider();
   const url = await provider.put(

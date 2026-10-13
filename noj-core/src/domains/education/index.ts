@@ -23,6 +23,7 @@ export * from "./services/history-read.ts";
 export * from "./services/workbench.ts";
 export * from "./services/annotations.ts";
 export {
+  downloadTeachingArtifact,
   getTeachingTextFile,
   listTeachingTextFiles,
 } from "./services/submission-text.ts";
