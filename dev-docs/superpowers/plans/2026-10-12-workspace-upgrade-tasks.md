@@ -17,7 +17,10 @@
 
 当前 106 项中，104 项已完成，2 项待完整 API 回归与最终 CI／PR。阶段 0–8 的本地
 功能及用户旅程验收通过；最新客户端、恢复、门禁及验收报告已完成。用户进一步 要求
-API 验收完毕和 CI 全部通过，未满足前不签收整个计划。
+API 验收完毕和 CI 全部通过，未满足前不签收整个计划。 最终正式 core 的真实 API
+补验完成：submission 全部 46 项（38＋真实 S3 八项） 和 cross-domain 55 项／10
+步／零忽略通过，正常进度 1109ms、实际重启恢复 2218ms。原始依据见
+[API Note](../../../.agents/notes/implemented/testing/2026-10-13-final-api-acceptance.md)。
 任务数量不表示工作量比例。所有 subagent 已依用户要求停止，后续由 root 单独执行。
 
 主题分支已推送，草稿 [PR #643](https://github.com/Neuro-OJ/neuro-oj/pull/643)

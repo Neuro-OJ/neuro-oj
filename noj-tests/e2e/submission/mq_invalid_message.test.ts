@@ -20,20 +20,30 @@ import {
 } from "../helper.ts";
 import { createCodingProblemFixture } from "../../fixtures/coding-problem.ts";
 
-const REDIS_CONTAINER = "noj-e2e-redis";
+const REDIS_CONTAINER = Deno.env.get("E2E_REDIS_CONTAINER") ?? "noj-e2e-redis";
+const REDIS_DB = Deno.env.get("E2E_REDIS_DB") ?? "1";
 const QUEUE = "noj:judge:queue:medium";
 
 /**
  * 在 E2E Redis 容器内执行 redis-cli，失败时抛错（不静默跳过）。
  *
- * 固定 `-n 1`：E2E 栈的 REDIS_URL 指向 DB 1（docker-compose.e2e.yml），
+ * 默认 `-n 1`：标准 E2E 栈的 REDIS_URL 指向 DB 1；隔离验收明确指定容器与 DB。
  * 不指定 DB 会把毒消息推入 DB 0，judge 永远消费不到，用例退化为空断言。
  */
 async function redisCli(
   ...args: string[]
 ): Promise<string> {
+  const password = Deno.env.get("E2E_REDIS_PASSWORD");
   const cmd = new Deno.Command("docker", {
-    args: ["exec", REDIS_CONTAINER, "redis-cli", "-n", "1", ...args],
+    args: [
+      "exec",
+      REDIS_CONTAINER,
+      "redis-cli",
+      ...(password ? ["-a", password] : []),
+      "-n",
+      REDIS_DB,
+      ...args,
+    ],
   });
   const { stdout, stderr, success } = await cmd.output();
   if (!success) {
