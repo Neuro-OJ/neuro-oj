@@ -1,7 +1,7 @@
 /** 通过真实题包导入与发布建立独立公开加法题，避免共用赛题污染练习回归。 */
 import { assertEquals } from "jsr:@std/assert@1";
 import { strToU8, zipSync } from "npm:fflate@0.8.2";
-import { BASE_URL, getAdminToken, publishProblemVersion } from "../helper.ts";
+import { BASE_URL, getAdminToken, publishProblemVersion } from "../e2e/helper.ts";
 
 export async function createCodingProblemFixture(): Promise<string> {
   const token = await getAdminToken();

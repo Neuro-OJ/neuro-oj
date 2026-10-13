@@ -14,7 +14,7 @@ import {
   TEST_PASSWORD,
   waitForServer,
 } from "../helper.ts";
-import { createCodingProblemFixture } from "../fixtures/coding-problem.ts";
+import { createCodingProblemFixture } from "../../fixtures/coding-problem.ts";
 
 let token = "";
 let adminToken = "";

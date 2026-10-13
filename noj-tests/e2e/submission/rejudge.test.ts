@@ -23,7 +23,7 @@ import {
   waitForJobCompleted,
   waitForServer,
 } from "../helper.ts";
-import { createCodingProblemFixture } from "../fixtures/coding-problem.ts";
+import { createCodingProblemFixture } from "../../fixtures/coding-problem.ts";
 
 let PROBLEM_ID = "";
 

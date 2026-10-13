@@ -18,7 +18,7 @@ import {
   submitCode,
   TEST_PASSWORD,
 } from "../helper.ts";
-import { createCodingProblemFixture } from "../fixtures/coding-problem.ts";
+import { createCodingProblemFixture } from "../../fixtures/coding-problem.ts";
 
 const REDIS_CONTAINER = "noj-e2e-redis";
 const QUEUE = "noj:judge:queue:medium";

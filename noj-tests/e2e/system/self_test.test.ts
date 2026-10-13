@@ -16,7 +16,7 @@ import {
   TEST_PASSWORD,
   waitForServer,
 } from "../helper.ts";
-import { createCodingProblemFixture } from "../fixtures/coding-problem.ts";
+import { createCodingProblemFixture } from "../../fixtures/coding-problem.ts";
 
 const USER_KEY = "self_test_user";
 const ts = Date.now().toString(36);
