@@ -28,6 +28,9 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
             @click="showVersions = !showVersions">{{ showVersions ? '收起沿革' : '版本沿革' }}</UButton>
           <UButton v-if="data.can_edit && !data.reference.is_shared" :to="`/d/${slug}/editor/${data.reference.number}`"
             variant="outline">编辑草稿</UButton>
+          <UButton v-if="user && data.content.kind === 'objective'"
+            :to="{ path: `/d/${slug}/objective-submissions`, query: { problem_id: data.reference.problem_id } }"
+            variant="outline">本人作答历史</UButton>
         </div>
       </div>
       <UCard>
