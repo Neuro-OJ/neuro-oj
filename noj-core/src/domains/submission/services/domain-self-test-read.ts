@@ -68,6 +68,12 @@ export async function getDomainSelfTest(
     ),
     resource_available: available,
     version_id: access.row.problem_version_id,
+    assignment_origin: access.row.assignment_id
+      ? {
+        assignment_id: access.row.assignment_id,
+        assignment_item_id: access.row.assignment_item_id!,
+      }
+      : null,
   };
 }
 

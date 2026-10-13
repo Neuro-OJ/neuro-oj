@@ -33,8 +33,11 @@ async function submissionMetadata(domainId: string, ids: string[]) {
   return await getDb().select({
     id: submissions.id,
     binding_id: submissions.domain_problem_binding_id,
+    assignment_id: submissions.assignment_id,
+    assignment_item_id: submissions.assignment_item_id,
     user_id: submissions.user_id,
     problem_id: problems.id,
+    title: problems.title,
     number: problems.number,
     source_domain_id: problems.domain_id,
     source_domain_slug: domains.slug,
@@ -97,7 +100,7 @@ export async function listDomainSubmissions(
         resource_available: resourceAvailable,
         problem: {
           id: row.problem_id,
-          title: resourceAvailable ? row.problem.title : "资源不可用",
+          title: resourceAvailable ? source.title : "资源不可用",
         },
       };
     }),
@@ -163,11 +166,14 @@ export async function getDomainSubmission(
       };
     }
   }
-  const projected = applySubmissionProjection(record, {
-    viewerId: actorId,
-    isAdmin: false,
-    isOwner: metadata.user_id === actorId,
-  });
+  // 比赛层的允许列表已完成裁剪；普通练习及赛后仍执行 OI 数据投影。
+  const projected = record.result_visibility
+    ? record
+    : applySubmissionProjection(record, {
+      viewerId: actorId,
+      isAdmin: false,
+      isOwner: metadata.user_id === actorId,
+    });
   if (access.platformAdmin) {
     await workspaceAudit(getDb(), actorId, access.domain.id, "domain.update", {
       operation: "submission.read",
@@ -190,5 +196,11 @@ export async function getDomainSubmission(
     resource_available: resourceAvailable,
     result_visibility:
       (projected.result_visibility ?? "cases") as ResultVisibility,
+    assignment_origin: metadata.assignment_id
+      ? {
+        assignment_id: metadata.assignment_id,
+        assignment_item_id: metadata.assignment_item_id!,
+      }
+      : null,
   };
 }

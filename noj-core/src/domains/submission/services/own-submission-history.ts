@@ -19,11 +19,11 @@ export interface OwnSubmissionHistoryScope {
 }
 const ownedSources = sql`(
  SELECT 'submission'::text AS kind,id,public_id,user_id,problem_id,domain_id,domain_problem_binding_id,
- contest_id,language,code,NULL::jsonb AS answers,file_name,status,created_at,submitted_version_id,
+ contest_id,assignment_id,assignment_item_id,language,code,NULL::jsonb AS answers,file_name,status,created_at,submitted_version_id,
  is_valid,is_accepted,latest_attempt_id,effective_attempt_id,artifact_storage_url IS NOT NULL AS has_artifact FROM submissions
  UNION ALL
  SELECT 'objective'::text AS kind,id,id AS public_id,user_id,paper_id AS problem_id,domain_id,domain_problem_binding_id,
- contest_id,'objective' AS language,NULL AS code,answers,NULL AS file_name,status,created_at,submitted_version_id,
+ contest_id,assignment_id,assignment_item_id,'objective' AS language,NULL AS code,answers,NULL AS file_name,status,created_at,submitted_version_id,
  is_valid,is_accepted,latest_attempt_id,effective_attempt_id,false AS has_artifact FROM objective_submissions
 ) owned`;
 interface HistoryRow {
@@ -43,6 +43,8 @@ interface HistoryRow {
   number: number;
   problem_title: string;
   contest_id: string | null;
+  assignment_id: string | null;
+  assignment_item_id: string | null;
   contest_type: ContestType | null;
   contest_start: string | null;
   contest_end: string | null;
@@ -71,6 +73,10 @@ export interface OwnSubmissionHistoryItem {
   reference: ProblemReference;
   resource_available: boolean;
   contest_id: string | null;
+  assignment_origin: {
+    assignment_id: string;
+    assignment_item_id: string;
+  } | null;
   language: string;
   file_name: string | null;
   has_artifact: boolean;
@@ -127,6 +133,12 @@ function projectHistory(
     },
     resource_available: row.resource_available,
     contest_id: row.contest_id,
+    assignment_origin: row.assignment_id
+      ? {
+        assignment_id: row.assignment_id,
+        assignment_item_id: row.assignment_item_id!,
+      }
+      : null,
     language: row.language,
     file_name: row.file_name,
     has_artifact: row.has_artifact,
@@ -197,7 +209,7 @@ async function readHistory(
   const rows = unwrapRows<HistoryRow>(
     await db.execute(
       sql`SELECT owned.kind,owned.id,owned.public_id,owned.user_id,owned.problem_id,
-  owned.domain_problem_binding_id,owned.contest_id,owned.language,owned.file_name,owned.status,owned.created_at,
+  owned.domain_problem_binding_id,owned.contest_id,owned.assignment_id,owned.assignment_item_id,owned.language,owned.file_name,owned.status,owned.created_at,
   owned.submitted_version_id,owned.is_valid,owned.is_accepted,owned.has_artifact,
   ${
         options.id
