@@ -28,9 +28,9 @@ import {
   listContests,
   listParticipants,
   removeParticipant,
-  resolveContestId,
   updateContest,
 } from "../../contest/services/contests.ts";
+import { resolveDefaultContestAccess } from "../../contest/index.ts";
 import type {
   CreateContestInput,
   KaggleRankingRow,
@@ -101,7 +101,13 @@ router.get("/contests", async (c) => {
   const type = typeQuery && isValidContestType(typeQuery)
     ? typeQuery
     : undefined;
-  const result = await listContests({ page, perPage, type, showAll: true });
+  const result = await listContests({
+    page,
+    perPage,
+    type,
+    showAll: true,
+    defaultDomainOnly: true,
+  });
   return c.json({
     data: result.data,
     pagination: buildPaginationMeta(page, perPage, result.total),
@@ -113,7 +119,10 @@ router.get("/contests", async (c) => {
  * 权限：管理员。path：id。响应：{ data: { ...contest, problems } }。
  */
 router.get("/contests/:id", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
+  const contestId = await resolveDefaultContestAccess(
+    c.req.param("id") as string,
+    c.var.userId,
+  );
   const [contest, problems] = await Promise.all([
     getContest(contestId),
     getContestProblems(contestId),
@@ -171,7 +180,10 @@ router.post(
 router.put(
   "/contests/:id",
   adminVersionMiddleware(async (c) => {
-    const id = await resolveContestId(c.req.param("id") as string);
+    const id = await resolveDefaultContestAccess(
+      c.req.param("id") as string,
+      c.var.userId,
+    );
     return (await getContest(id)).updated_at;
   }),
   auditRoute(
@@ -198,7 +210,10 @@ router.put(
       },
     },
     async (c) => {
-      const contestId = await resolveContestId(c.req.param("id") as string);
+      const contestId = await resolveDefaultContestAccess(
+        c.req.param("id") as string,
+        c.var.userId,
+      );
       const body = await parseJsonBody<UpdateContestInput>(c);
       setAuditBody(c, { input: body, contestId });
       const data = await updateContest(
@@ -218,7 +233,10 @@ router.put(
 router.delete(
   "/contests/:id",
   adminVersionMiddleware(async (c) => {
-    const id = await resolveContestId(c.req.param("id") as string);
+    const id = await resolveDefaultContestAccess(
+      c.req.param("id") as string,
+      c.var.userId,
+    );
     return (await getContest(id)).updated_at;
   }),
   auditRoute(
@@ -239,7 +257,10 @@ router.delete(
       },
     },
     async (c) => {
-      const contestId = await resolveContestId(c.req.param("id") as string);
+      const contestId = await resolveDefaultContestAccess(
+        c.req.param("id") as string,
+        c.var.userId,
+      );
       setAuditBody(c, { contestId });
       await deleteContest(contestId);
       return c.body(null, 204);
@@ -252,7 +273,10 @@ router.delete(
  * 权限：管理员。path：id。响应：{ data }。
  */
 router.get("/contests/:id/participants", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
+  const contestId = await resolveDefaultContestAccess(
+    c.req.param("id") as string,
+    c.var.userId,
+  );
   const data = await listParticipants(contestId);
   return c.json({ data });
 });
@@ -284,7 +308,10 @@ router.post(
       },
     },
     async (c) => {
-      const contestId = await resolveContestId(c.req.param("id") as string);
+      const contestId = await resolveDefaultContestAccess(
+        c.req.param("id") as string,
+        c.var.userId,
+      );
       const userIds = await parseJsonBody<string[]>(c);
       if (!Array.isArray(userIds)) {
         throw new BadRequestError("请求体必须为用户 ID 数组");
@@ -324,7 +351,10 @@ router.delete(
       },
     },
     async (c) => {
-      const contestId = await resolveContestId(c.req.param("id") as string);
+      const contestId = await resolveDefaultContestAccess(
+        c.req.param("id") as string,
+        c.var.userId,
+      );
       const targetUserId = await resolveUserId(c.req.param("userId") as string);
       setAuditBody(c, { contestId, userId: targetUserId });
       await removeParticipant(
@@ -343,7 +373,10 @@ router.delete(
 router.patch(
   "/contests/:id/kind",
   adminVersionMiddleware(async (c) => {
-    const id = await resolveContestId(c.req.param("id") as string);
+    const id = await resolveDefaultContestAccess(
+      c.req.param("id") as string,
+      c.var.userId,
+    );
     return (await getContest(id)).updated_at;
   }),
   auditRoute(
@@ -365,7 +398,10 @@ router.patch(
       },
     },
     async (c) => {
-      const contestId = await resolveContestId(c.req.param("id") as string);
+      const contestId = await resolveDefaultContestAccess(
+        c.req.param("id") as string,
+        c.var.userId,
+      );
       const body = await parseJsonBody<{ kind?: unknown }>(c);
       if (body.kind !== "public" || !isValidContestKind(body.kind)) {
         throw new BadRequestError("仅支持将邀请赛转为公开赛（kind=public）");
@@ -388,7 +424,10 @@ router.patch(
 router.post(
   "/contests/:id/reset-code",
   adminVersionMiddleware(async (c) => {
-    const id = await resolveContestId(c.req.param("id") as string);
+    const id = await resolveDefaultContestAccess(
+      c.req.param("id") as string,
+      c.var.userId,
+    );
     return (await getContest(id)).updated_at;
   }),
   auditRoute(
@@ -409,7 +448,10 @@ router.post(
       },
     },
     async (c) => {
-      const contestId = await resolveContestId(c.req.param("id") as string);
+      const contestId = await resolveDefaultContestAccess(
+        c.req.param("id") as string,
+        c.var.userId,
+      );
       const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
       const bytes = crypto.getRandomValues(new Uint8Array(10));
       const code = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join(
@@ -427,7 +469,10 @@ router.post(
  * 权限：管理员。path：id。query：page、perPage。响应：{ data, pagination }。
  */
 router.get("/contests/:id/submissions", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
+  const contestId = await resolveDefaultContestAccess(
+    c.req.param("id") as string,
+    c.var.userId,
+  );
   await getContest(contestId);
   const { page, perPage } = parsePagination(c);
   const result = await listSubmissions({
@@ -456,7 +501,10 @@ router.get("/contests/:id/submissions", async (c) => {
  */
 router.get("/contests/:id/anti-cheat/similar-submissions", async (c) => {
   await assertPermission(c, "contest:anti_cheat_read");
-  const contestId = await resolveContestId(c.req.param("id") as string);
+  const contestId = await resolveDefaultContestAccess(
+    c.req.param("id") as string,
+    c.var.userId,
+  );
   const threshold = parseSimilarityThreshold(c.req.query("threshold"));
   const limit = parseSimilarityLimit(c.req.query("limit"));
   const problemRef = c.req.query("problem_id")?.trim();
@@ -520,14 +568,20 @@ function parseSimilarityLimit(raw: string | undefined): number | undefined {
 
 /** 查看正式成绩发布门禁及待处理/失败评测明细。 */
 router.get("/contests/:id/ranking-snapshots/readiness", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
+  const contestId = await resolveDefaultContestAccess(
+    c.req.param("id") as string,
+    c.var.userId,
+  );
   const data = await getContestSettlementStatus(contestId);
   return c.json({ data });
 });
 
 /** 发布不可变的正式成绩快照；重复请求会生成新版本并保留审计说明。 */
 router.post("/contests/:id/ranking-snapshots", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
+  const contestId = await resolveDefaultContestAccess(
+    c.req.param("id") as string,
+    c.var.userId,
+  );
   const rawBody = await c.req.text();
   let body: { note?: string; allow_failed?: boolean } = {};
   if (rawBody.trim()) {
@@ -548,14 +602,20 @@ router.post("/contests/:id/ranking-snapshots", async (c) => {
 
 /** 获取当前正式成绩快照；实时排名接口仍用于临时成绩。 */
 router.get("/contests/:id/ranking-snapshots/latest", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
+  const contestId = await resolveDefaultContestAccess(
+    c.req.param("id") as string,
+    c.var.userId,
+  );
   const data = await getLatestContestRankingSnapshot(contestId);
   return c.json({ data });
 });
 
 /** 获取正式成绩历史版本元数据；rows 只在具体版本导出时返回。 */
 router.get("/contests/:id/ranking-snapshots", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
+  const contestId = await resolveDefaultContestAccess(
+    c.req.param("id") as string,
+    c.var.userId,
+  );
   const data = await listContestRankingSnapshots(contestId);
   return c.json({ data });
 });
@@ -705,7 +765,10 @@ async function loadRankingSnapshotOr404(
 
 /** 导出最新正式成绩 JSON，供 CSV 之外的核对与归档使用。 */
 router.get("/contests/:id/ranking-snapshots/latest.json", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
+  const contestId = await resolveDefaultContestAccess(
+    c.req.param("id") as string,
+    c.var.userId,
+  );
   const loaded = await loadRankingSnapshotOr404(contestId);
   if ("response" in loaded) return loaded.response;
   return c.json(buildRankingSnapshotJson(contestId, loaded.snapshot));
@@ -713,7 +776,10 @@ router.get("/contests/:id/ranking-snapshots/latest.json", async (c) => {
 
 /** 导出正式成绩 CSV（最新版）。 */
 router.get("/contests/:id/ranking-snapshots/latest.csv", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
+  const contestId = await resolveDefaultContestAccess(
+    c.req.param("id") as string,
+    c.var.userId,
+  );
   const loaded = await loadRankingSnapshotOr404(contestId);
   if ("response" in loaded) return loaded.response;
   return csvResponse(
@@ -737,7 +803,10 @@ router.get("/contests/:id/ranking-snapshots/latest.csv", async (c) => {
  *   `latest.csv`）**之后**，否则 `:file` 会抢先匹配 `readiness` 等静态段。
  */
 router.get("/contests/:id/ranking-snapshots/:file", async (c) => {
-  const contestId = await resolveContestId(c.req.param("id") as string);
+  const contestId = await resolveDefaultContestAccess(
+    c.req.param("id") as string,
+    c.var.userId,
+  );
   const { version, format } = parseSnapshotFile(c.req.param("file"));
   const loaded = await loadRankingSnapshotOr404(contestId, version);
   if ("response" in loaded) return loaded.response;

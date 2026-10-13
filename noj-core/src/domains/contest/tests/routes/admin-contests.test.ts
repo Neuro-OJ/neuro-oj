@@ -4,6 +4,7 @@ import { createApp } from "../../../../app.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   auditLogs,
+  contests,
   problems,
   userRoles,
   users,
@@ -15,6 +16,7 @@ import {
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
 import { ensureRbacSeeds } from "../../../system/index.ts";
+import { createDomain } from "../../../workspace/index.ts";
 
 // 测试进程通常没有本地 Redis；直接短路 JWT 撤销检查，避免 authMiddleware 503。
 Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
@@ -22,6 +24,58 @@ Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
 await resetDbForTest();
 await initRedisForTest();
 await ensureRbacSeeds();
+
+Deno.test({
+  name: "默认域管理入口：其他域比赛 ID 不能用于详情、修改、删除或列表",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const f = await setupContestViaAdmin(),
+      db = getDb(),
+      now = new Date().toISOString();
+    const other = await createDomain({
+      slug: `admin-other-${crypto.randomUUID().slice(0, 8)}`,
+      name: "其他学校",
+      preset: "team",
+    }, f.adminId);
+    const foreign = crypto.randomUUID();
+    await db.insert(contests).values({
+      id: foreign,
+      domain_id: other.id,
+      title: "私有学校赛",
+      created_by: f.adminId,
+      type: "kaggle",
+      kind: "invite",
+      start_time: now,
+      end_time: new Date(Date.now() + 3600000).toISOString(),
+      created_at: now,
+      updated_at: now,
+    });
+    for (const method of ["GET", "PUT", "DELETE"]) {
+      const response = await jsonRequest(
+        f.app,
+        `/api/v1/admin/contest/contests/${foreign}`,
+        {
+          method,
+          token: f.adminToken,
+          body: method === "PUT" ? { title: "越界改名" } : undefined,
+        },
+      );
+      assertEquals(response.status, 404);
+    }
+    const listed = await jsonRequest(f.app, "/api/v1/admin/contest/contests", {
+      token: f.adminToken,
+    });
+    assertEquals(listed.status, 200);
+    const data = await listed.json() as { data: Array<{ id: string }> };
+    assertEquals(data.data.some((row) => row.id === foreign), false);
+    assertEquals(
+      (await db.select().from(contests).where(eq(contests.id, foreign)))[0]
+        .title,
+      "私有学校赛",
+    );
+  },
+});
 
 async function setupContestViaAdmin(): Promise<{
   app: ReturnType<typeof createApp>;
