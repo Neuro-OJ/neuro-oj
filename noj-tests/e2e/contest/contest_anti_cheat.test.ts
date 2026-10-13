@@ -3,15 +3,14 @@
  *
  * 覆盖 7 个场景（对应 2026-09-05-contest-anti-cheat-fix-plan Task 18 / spec §12）：
  * 1. 无上下文直取私有题 → 404；
- * 2. 伪造 contestId 提交 → 403/400；
- * 3. 竞赛入口重复提交超 submission_limits → 429；普通入口对私有题 → 403；
- * 4. 他人私有题加入自己竞赛/题单 → 403；
+ * 2. 客观题普通入口携带伪造 contestId → 400；
+ * 3. 竞赛入口重复提交超 submission_limits → 429；普通入口对私有题 → 404；
+ * 4. 其他域私有题加入本域竞赛/题单 → 404；
  * 5. 非参赛者订阅 SSE contestSubmission → 无事件；
  * 6. 赛中提交详情/全局队列不泄判据；
  * 7. 客观题练习提交不泄 expected（private paper）。
  *
- * 依赖：Task 17 的 PUT /api/v1/problems/:id visibility setter（owner 转 private）；
- * 若该 setter 尚未实现，测试会以明确的 setup 错误提示阻塞。
+ * 私有题属于独立成员域；通过正式 API 初始化角色与发布依据，不写数据库兜底。
  */
 import {
   api,
@@ -25,7 +24,6 @@ import {
   getOrCreateUser,
   getProblemIdByNumber,
   isE2E,
-  publishProblemVersion,
   TEST_PASSWORD,
   waitForServer,
 } from "../helper.ts";
@@ -39,6 +37,10 @@ let participantToken = "";
 let publicProblemId = "";
 let publicVersionId = "";
 let privatePaperId = "";
+let privateNumber = 0;
+const privateDomain = `ac-private-${ts}`;
+const paperPath = () =>
+  `/api/v1/domains/${privateDomain}/problems/${privateNumber}`;
 let privateVersionId = "";
 let privateQuestionId = "";
 
@@ -47,86 +49,49 @@ let sseContestId = "";
 let limitContestId = "";
 let contestSubmissionId = "";
 
-interface ProblemData {
-  id: string;
-  visibility: string;
-}
-
-interface QuestionData {
-  id: string;
-}
-
-/** 通过 e2e 容器直接更新题目可见性（仅作 setup 兜底；优先走 HTTP visibility setter）。 */
-async function setProblemPrivateViaDb(problemId: string): Promise<void> {
-  const sql =
-    `UPDATE problems SET visibility = 'private', updated_at = now() ` +
-    `WHERE id = '${problemId}'`;
-  const cmd = new Deno.Command("docker", {
-    args: [
-      "exec",
-      "noj-e2e-postgres",
-      "psql",
-      "-U",
-      "e2e",
-      "-d",
-      "e2e",
-      "-c",
-      sql,
-    ],
-  });
-  const output = await cmd.output();
-  if (!output.success) {
-    throw new Error(
-      `docker psql 设置 private 失败: ${
-        new TextDecoder().decode(output.stderr)
-      }`,
-    );
-  }
-}
-
-/** 创建私有客观题套卷：owner 创建后通过 PUT visibility setter 置为 private；setter 未实现时回退 DB 兜底。 */
+/** 私有资源属于独立成员域；普通默认域编辑者仍不能读取或引用。 */
 async function createPrivatePaper(
   token: string,
   title: string,
 ): Promise<string> {
-  const res = await apiPost(
-    "/api/v1/problems",
-    {
-      type: "U",
-      is_objective: true,
-      title,
-      description: "竞赛防作弊 e2e 私有套卷",
-    },
-    token,
-  );
-  if (res.status !== 201) {
-    throw new Error(
-      `创建私有客观题套卷失败: ${res.status} ${JSON.stringify(res.body)}`,
-    );
+  const domain = await apiPost("/api/v1/domains", {
+    slug: privateDomain,
+    name: title,
+    preset: "education",
+  }, adminToken);
+  if (domain.status !== 201) {
+    throw new Error(`创建私有域失败 ${JSON.stringify(domain)}`);
   }
-  const id = (res.body as { data: ProblemData }).data.id;
-
-  await apiPut(
-    `/api/v1/problems/${id}`,
-    { visibility: "private" },
-    token,
-  );
-  let check = await apiGet(`/api/v1/problems/${id}`, token);
-  let data = (check.body as { data: ProblemData }).data;
-  if (data?.visibility === "private") return id;
-
-  // Task 17 的 visibility setter 尚未实现时，用 DB 兜底创建私有题，保证攻击剧本可执行。
-  await setProblemPrivateViaDb(id);
-  check = await apiGet(`/api/v1/problems/${id}`, token);
-  data = (check.body as { data: ProblemData }).data;
-  if (data?.visibility !== "private") {
-    throw new Error(
-      `题目仍无法置为 private（HTTP setter + DB 兜底均失败），当前 ${
-        data?.visibility ?? "未知"
-      }`,
-    );
+  const invite = await apiPost(`/api/v1/domains/${privateDomain}/invitations`, {
+    email: `anticheat_owner_${ts}@test.com`,
+  }, adminToken);
+  if (invite.status !== 201) {
+    throw new Error(`邀请负责人失败 ${JSON.stringify(invite)}`);
   }
-  return id;
+  const accepted = await apiPost("/api/v1/domain-invitations/accept", {
+    token: (invite.body as { data: { token: string } }).data.token,
+  }, token);
+  if (accepted.status !== 200) {
+    throw new Error(`接受邀请失败 ${JSON.stringify(accepted)}`);
+  }
+  const identity = await apiGet("/api/v1/auth/me", token);
+  const transfer = await apiPost(`/api/v1/domains/${privateDomain}/transfer`, {
+    user_id: (identity.body as { data: { id: string } }).data.id,
+  }, adminToken);
+  if (transfer.status !== 200) {
+    throw new Error(`交接负责人失败 ${JSON.stringify(transfer)}`);
+  }
+  const created = await apiPost(`/api/v1/domains/${privateDomain}/problems`, {
+    title,
+    description: "私有域防作弊套卷",
+    is_objective: true,
+  }, token);
+  if (created.status !== 201) {
+    throw new Error(`创建私有套卷失败 ${JSON.stringify(created)}`);
+  }
+  const problem = created.body as { problem_id: string; number: number };
+  privateNumber = problem.number;
+  return problem.problem_id;
 }
 
 /** 创建运行中的竞赛。isPublic=false 时用于 SSE 非参赛者隔离场景。 */
@@ -243,47 +208,71 @@ e2eTest("[e2e/anti-cheat] Setup", async () => {
     `E2E 防作弊私有套卷 ${ts}`,
   );
 
-  // 给私有套卷加一题，供场景 7 练习提交使用。
-  // 客观题小题写共享草稿：必须携带 If-Match（Handbook §4.1/§6.4）。
-  const draftRes = await apiGet(
-    `/api/v1/problems/${privatePaperId}/draft`,
-    ownerToken,
-  );
-  if (draftRes.status !== 200) {
-    throw new Error(
-      `读取私有套卷草稿失败: ${draftRes.status} ${
-        JSON.stringify(draftRes.body)
-      }`,
-    );
+  const draft = await apiGet(`${paperPath()}/draft`, ownerToken);
+  if (draft.status !== 200) {
+    throw new Error(`读取草稿失败 ${JSON.stringify(draft)}`);
   }
-  const draftRevision =
-    (draftRes.body as { data: { revision: number } }).data.revision;
-  const q = await api("POST", `/api/v1/problems/${privatePaperId}/questions`, {
-    body: {
-      type: "single",
-      prompt: "私有套卷唯一题",
-      options: [
-        { key: "A", text: "正确项" },
-        { key: "B", text: "错误项" },
-      ],
-      answer: ["A"],
-      explanation: "这道题的解析不应泄露给非 owner",
-    },
+  const revision = (draft.body as { revision: number }).revision;
+  privateQuestionId = crypto.randomUUID();
+  const saved = await api("PUT", `${paperPath()}/draft`, {
     token: ownerToken,
-    headers: { "If-Match": String(draftRevision) },
+    headers: { "If-Match": String(revision) },
+    body: {
+      content: {
+        kind: "objective",
+        title: `E2E 私有卷 ${ts}`,
+        description: "私有域套卷",
+        samples: [],
+        questions: [{
+          key: privateQuestionId,
+          sort_order: 0,
+          type: "single",
+          prompt: "私有套卷唯一题",
+          options: [{ key: "A", text: "正确项" }, { key: "B", text: "错误项" }],
+          answer: ["A"],
+          explanation: "私有解析",
+        }],
+      },
+    },
   });
-  if (q.status !== 201) {
-    throw new Error(
-      `创建私有套卷小题失败: ${q.status} ${JSON.stringify(q.body)}`,
-    );
+  if (saved.status !== 200) {
+    throw new Error(`保存草稿失败 ${JSON.stringify(saved)}`);
   }
-  privateQuestionId = (q.body as { data: QuestionData }).data.id;
-  // 发布作答版本：未发布题目无法练习提交（也读不到默认作答版本）
-  privateVersionId = await publishProblemVersion(
-    ownerToken,
-    privatePaperId,
-    "E2E 私有套卷 V1",
+  const published = await api("POST", `${paperPath()}/publish`, {
+    token: ownerToken,
+    headers: {
+      "If-Match": String((saved.body as { revision: number }).revision),
+    },
+    body: { change_note: "E2E 私有套卷 V1" },
+  });
+  if (published.status !== 200) {
+    throw new Error(`发布私有卷失败 ${JSON.stringify(published)}`);
+  }
+  privateVersionId = (published.body as { version_id: string }).version_id;
+  // 攻击者有 main 的资源权限，拒绝原因必须来自外域资源归属而非缺少建题单权限。
+  const inviteAttacker = await apiPost("/api/v1/domains/main/invitations", {
+    email: `anticheat_attacker_${ts}@test.com`,
+  }, adminToken);
+  if (inviteAttacker.status !== 201) {
+    throw new Error(`邀请默认域编辑者失败 ${JSON.stringify(inviteAttacker)}`);
+  }
+  const acceptedAttacker = await apiPost("/api/v1/domain-invitations/accept", {
+    token: (inviteAttacker.body as { data: { token: string } }).data.token,
+  }, attackerToken);
+  if (acceptedAttacker.status !== 200) {
+    throw new Error(`编辑者加入失败 ${JSON.stringify(acceptedAttacker)}`);
+  }
+  const attackerIdentity = await apiGet("/api/v1/auth/me", attackerToken);
+  const roles = await apiPut(
+    `/api/v1/domains/main/members/${
+      (attackerIdentity.body as { data: { id: string } }).data.id
+    }/roles`,
+    { roles: ["editor"] },
+    adminToken,
   );
+  if (roles.status !== 200) {
+    throw new Error(`域角色授权失败 ${JSON.stringify(roles)}`);
+  }
   publicVersionId = await getAnswerVersionId(adminToken, publicProblemId) ?? "";
   if (!publicVersionId) {
     throw new Error(`共享题目 ${publicProblemId} 没有已发布作答版本`);
@@ -330,19 +319,19 @@ e2eTest("[e2e/anti-cheat] Setup", async () => {
 
 e2eTest("[e2e/anti-cheat] 1. 无上下文直取私有题 → 404", async () => {
   if (!isE2E) return;
-  const anon = await apiGet(`/api/v1/problems/${privatePaperId}`);
+  const anon = await apiGet(paperPath());
   if (anon.status !== 404) {
     throw new Error(`匿名读取私有题应 404，实际 ${anon.status}`);
   }
   const asOther = await apiGet(
-    `/api/v1/problems/${privatePaperId}`,
+    paperPath(),
     attackerToken,
   );
   if (asOther.status !== 404) {
     throw new Error(`非 owner 读取私有题应 404，实际 ${asOther.status}`);
   }
   const questions = await apiGet(
-    `/api/v1/problems/${privatePaperId}/questions`,
+    paperPath(),
     attackerToken,
   );
   if (questions.status !== 404) {
@@ -351,7 +340,7 @@ e2eTest("[e2e/anti-cheat] 1. 无上下文直取私有题 → 404", async () => {
     );
   }
   const ownerView = await apiGet(
-    `/api/v1/problems/${privatePaperId}`,
+    paperPath(),
     ownerToken,
   );
   if (ownerView.status !== 200) {
@@ -359,26 +348,34 @@ e2eTest("[e2e/anti-cheat] 1. 无上下文直取私有题 → 404", async () => {
   }
 });
 
-e2eTest("[e2e/anti-cheat] 2. 伪造 contestId 提交 → 403/400", async () => {
-  if (!isE2E) return;
-  // 客观题提交入口支持携带 contest_id：攻击者用真实存在的非公开赛 ID，
-  // 但该套卷不属于该赛/攻击者未注册，服务层必须拒绝伪造的竞赛上下文。
-  const res = await apiPost(
-    `/api/v1/problems/${privatePaperId}/submit`,
-    {
-      answers: { [privateQuestionId]: ["A"] },
-      contest_id: sseContestId,
-      version_id: privateVersionId,
-    },
-    attackerToken,
-  );
-  if (res.status !== 403 && res.status !== 400) {
-    throw new Error(`伪造 contestId 提交应 403/400，实际 ${res.status}`);
-  }
-});
+e2eTest(
+  "[e2e/anti-cheat] 2. 普通客观题入口携带伪造 contestId → 400",
+  async () => {
+    if (!isE2E) return;
+    // 客观题提交入口支持携带 contest_id：攻击者用真实存在的非公开赛 ID，
+    // 但该套卷不属于该赛/攻击者未注册，服务层必须拒绝伪造的竞赛上下文。
+    const res = await apiPost(
+      `${paperPath()}/objective-submissions`,
+      {
+        answers: { [privateQuestionId]: ["A"] },
+        contest_id: sseContestId,
+        version_id: privateVersionId,
+      },
+      attackerToken,
+    );
+    if (
+      res.status !== 400 ||
+      (res.body as { error: string }).error !== "交卷上下文由使用域入口解析"
+    ) {
+      throw new Error(
+        `伪造上下文必须在解析时拒绝，实际 ${JSON.stringify(res)}`,
+      );
+    }
+  },
+);
 
 e2eTest(
-  "[e2e/anti-cheat] 3. 竞赛入口重复提交超 submission_limits → 429；普通入口私有题 → 403",
+  "[e2e/anti-cheat] 3. 竞赛入口重复提交超 submission_limits → 429；普通入口私有题 → 404",
   async () => {
     if (!isE2E) return;
     const first = await apiPost(
@@ -424,13 +421,13 @@ e2eTest(
       },
       attackerToken,
     );
-    if (ordinary.status !== 403) {
-      throw new Error(`普通入口提交他人私有题应 403，实际 ${ordinary.status}`);
+    if (ordinary.status !== 404) {
+      throw new Error(`普通入口提交他人私有题应 404，实际 ${ordinary.status}`);
     }
   },
 );
 
-e2eTest("[e2e/anti-cheat] 4. 他人私有题加入自己竞赛/题单 → 403", async () => {
+e2eTest("[e2e/anti-cheat] 4. 其他域私有题加入本域竞赛/题单 → 404", async () => {
   if (!isE2E) return;
   // 4.1 攻击者创建自己的 invite 赛，但尝试加入别人的私有套卷
   const now = Date.now();
@@ -454,9 +451,9 @@ e2eTest("[e2e/anti-cheat] 4. 他人私有题加入自己竞赛/题单 → 403", 
     },
     attackerToken,
   );
-  if (contestRes.status !== 403) {
+  if (contestRes.status !== 404) {
     throw new Error(
-      `把他人私有题加入自己竞赛应 403，实际 ${contestRes.status}`,
+      `把他人私有题加入自己竞赛应 404，实际 ${contestRes.status}`,
     );
   }
 
@@ -477,9 +474,9 @@ e2eTest("[e2e/anti-cheat] 4. 他人私有题加入自己竞赛/题单 → 403", 
     { problem_id: privatePaperId },
     attackerToken,
   );
-  if (addRes.status !== 403) {
+  if (addRes.status !== 404) {
     throw new Error(
-      `把他人私有题加入自己题单应 403，实际 ${addRes.status}`,
+      `把他人私有题加入自己题单应 404，实际 ${addRes.status}`,
     );
   }
 });
@@ -526,7 +523,7 @@ e2eTest("[e2e/anti-cheat] 6. 赛中提交详情/全局队列不泄判据", async
     throw new Error("场景 3 未产生竞赛提交，无法执行场景 6");
   }
 
-  // 6.1 非参赛者查看竞赛提交详情：仅存在级信息（id/problem_id/status）
+  // 6.1 非参赛者查看竞赛提交详情：仅存在级定位，不包含成绩或判据。
   const detail = await apiGet(
     `/api/v1/submissions/${contestSubmissionId}`,
     attackerToken,
@@ -538,13 +535,16 @@ e2eTest("[e2e/anti-cheat] 6. 赛中提交详情/全局队列不泄判据", async
   }
   const data = (detail.body as { data: Record<string, unknown> }).data;
   if (
-    Object.keys(data).length !== 3 ||
+    Object.keys(data).length !== 4 ||
     data.id !== contestSubmissionId ||
     data.problem_id !== publicProblemId ||
+    data.contest_id !== limitContestId ||
     typeof data.status !== "string"
   ) {
     throw new Error(
-      `非参赛者详情应为 {id, problem_id, status}，实际 ${JSON.stringify(data)}`,
+      `非参赛者详情应仅含 {id, problem_id, contest_id, status}，实际 ${
+        JSON.stringify(data)
+      }`,
     );
   }
   if (
@@ -596,16 +596,16 @@ e2eTest(
     if (!isE2E) return;
     // 攻击者对 private 套卷做练习提交应 403（防止把练习当答案 oracle）
     const submit = await apiPost(
-      `/api/v1/problems/${privatePaperId}/submit`,
+      `${paperPath()}/objective-submissions`,
       {
         answers: { [privateQuestionId]: ["A"] },
         version_id: privateVersionId,
       },
       attackerToken,
     );
-    if (submit.status !== 403) {
+    if (submit.status !== 404) {
       throw new Error(
-        `私有套卷练习提交应 403，实际 ${submit.status} ${
+        `私有套卷练习提交应 404，实际 ${submit.status} ${
           JSON.stringify(submit.body)
         }`,
       );
@@ -613,7 +613,7 @@ e2eTest(
 
     // owner 本人可练习提交；即使私有卷也不返回 expected（F-14 写入已剥离）
     const ownerSubmit = await apiPost(
-      `/api/v1/problems/${privatePaperId}/submit`,
+      `${paperPath()}/objective-submissions`,
       {
         answers: { [privateQuestionId]: ["A"] },
         version_id: privateVersionId,
@@ -639,7 +639,7 @@ e2eTest(
 
     // owner 详情同样不泄 expected
     const detail = await apiGet(
-      `/api/v1/problems/submissions/${submitted.submission_id}`,
+      `/api/v1/domains/${privateDomain}/objective-submissions/${submitted.submission_id}`,
       ownerToken,
     );
     if (detail.status !== 200) {
