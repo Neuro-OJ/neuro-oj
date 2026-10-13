@@ -4,11 +4,11 @@
 
 | 频道 | 发布位置 |
 | --- | --- |
-| `submission` | noj-core/src/domains/submission/routes/sse.ts<br>noj-core/src/domains/submission/services/oi-progress.ts<br>noj-core/src/domains/submission/services/self-tests.ts<br>noj-core/src/domains/submission/services/submissions/submissions-result.ts |
-| `queue` | noj-core/src/domains/submission/mq/consumer.ts<br>noj-core/src/domains/submission/routes/sse.ts<br>noj-core/src/domains/submission/services/queue.ts<br>noj-core/src/domains/submission/services/self-tests.ts<br>noj-core/src/domains/submission/services/submissions/artifact-submissions.ts<br>noj-core/src/domains/submission/services/submissions/submissions-crud.ts |
-| `user` | noj-core/src/domains/community/routes/sse.ts<br>noj-core/src/domains/community/services/notifications.ts<br>noj-core/src/domains/messaging/routes/conversations.ts<br>noj-core/src/domains/messaging/services/messages-conversation-actions.ts<br>noj-core/src/domains/messaging/services/messages.ts |
+| `submission` | noj-core/src/domains/submission/routes/sse.ts<br>noj-core/src/domains/submission/services/oi-progress.ts<br>noj-core/src/domains/submission/services/self-tests.ts<br>noj-core/src/domains/submission/services/submissions/submissions-result.ts<br>noj-core/src/domains/submission/tests/routes/domain-submission-sse.test.ts |
+| `queue` | noj-core/src/domains/submission/routes/sse.ts<br>noj-core/src/domains/submission/services/queue.ts |
+| `user` | noj-core/src/domains/community/routes/sse.ts<br>noj-core/src/domains/community/services/notifications.ts<br>noj-core/src/domains/community/tests/routes/domain-community.test.ts<br>noj-core/src/domains/education/routes/notification-sse.ts<br>noj-core/src/domains/education/services/notifications.ts<br>noj-core/src/domains/education/tests/routes/notification-sse.test.ts<br>noj-core/src/domains/messaging/routes/conversations.ts<br>noj-core/src/domains/messaging/services/messages-conversation-actions.ts<br>noj-core/src/domains/messaging/services/messages.ts |
 | `contestRanking` | noj-core/src/domains/contest/routes/sse.ts<br>noj-core/src/domains/submission/services/submissions/submissions-result.ts |
-| `contestSubmission` | noj-core/src/domains/contest/routes/sse.ts<br>noj-core/src/domains/submission/services/submissions/artifact-submissions.ts<br>noj-core/src/domains/submission/services/submissions/submissions-crud.ts |
+| `contestSubmission` | noj-core/src/domains/contest/routes/sse.ts<br>noj-core/src/domains/contest/tests/routes/domain-contests.test.ts<br>noj-core/src/domains/submission/services/submissions/artifact-submissions.ts<br>noj-core/src/domains/submission/services/submissions/submissions-crud.ts |
 | `stats` | noj-core/src/domains/query/routes/sse.ts<br>noj-core/src/domains/query/services/stats-cache.ts |
 | `announcements` | noj-core/src/domains/system/routes/announcements.ts<br>noj-core/src/domains/system/services/announcements.ts |
 | `settings` | noj-core/src/domains/system/services/system-settings.ts<br>noj-core/src/domains/system/tests/services/system-settings-invalidation.test.ts |
