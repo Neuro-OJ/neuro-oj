@@ -80,7 +80,7 @@ services:
     container_name: noj-e2e-migrate
     entrypoint: ["/entrypoint.sh", "setup"]
     environment:
-      DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e
+      DATABASE_URL: postgres://e2e:e2e@postgres:5432/${E2E_DATABASE_NAME:-e2e}
       REDIS_URL: redis://redis:6379/1
       NOJ_RUN_E2E: "1"
       STORAGE_PROVIDER: local
@@ -121,7 +121,7 @@ services:
     # 直接监听 :8000。
     entrypoint: ["/entrypoint.sh", "serve"]
     environment:
-      DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e
+      DATABASE_URL: postgres://e2e:e2e@postgres:5432/${E2E_DATABASE_NAME:-e2e}
       REDIS_URL: redis://redis:6379/1
       JWT_SECRET: e2e-ci-secret-fixed-value-with-32-chars-min-abc
       TFA_ENCRYPTION_KEY: e2e-ci-tfa-encryption-key-with-32-chars-min-abc
@@ -140,7 +140,7 @@ services:
       # LLM Gateway：core 本地 mint eval_token 需要与 gateway 共享 service token。
       # evaluator 容器运行在默认 bridge，只能经宿主机 bridge 网关 IP 访问已发布端口的 gateway。
       NOJ_LLM_SERVICE_TOKEN: e2e-ci-llm-service-token-0123456789abcdef
-      NOJ_LLM_GATEWAY_URL: http://172.17.0.1:8001
+      NOJ_LLM_GATEWAY_URL: http://172.17.0.1:${E2E_LLM_GATEWAY_PORT:-8003}
       # seed 管理员凭证（需与 noj-core/tests/e2e/helper.ts 默认值一致）
       ADMIN_EMAIL: e2e_admin@test.com
       ADMIN_PASS: e2e_admin_pass
@@ -223,13 +223,13 @@ services:
     image: noj-e2e-llm-gateway
     container_name: noj-e2e-llm-gateway
     ports:
-      - "8001:8001"
+      - "${E2E_LLM_GATEWAY_PORT:-8003}:8001"
     environment:
       NOJ_LLM_PORT: "8001"
       NOJ_CORE_INTERNAL_URL: http://noj-core:8000
       NOJ_LLM_SERVICE_TOKEN: e2e-ci-llm-service-token-0123456789abcdef
       NOJ_LLM_STORE_KEY: e2e-ci-llm-store-key-0123456789abcdef
-      DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e
+      DATABASE_URL: postgres://e2e:e2e@postgres:5432/${E2E_DATABASE_NAME:-e2e}
       REDIS_URL: redis://redis:6379/1
       # 出站校验白名单（G-03）：E2E mock 为内网 http 服务，需显式放行
       NOJ_LLM_UPSTREAM_ALLOWED_HOSTS: noj-e2e-llm-mock

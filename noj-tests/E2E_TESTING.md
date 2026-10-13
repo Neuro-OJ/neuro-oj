@@ -17,7 +17,7 @@ Playwright 真实操作浏览器，覆盖 API E2E 无法触达的页面交互：
 
 ```bash
 # 前置：完整评测栈已启动（scripts/e2e/setup.sh），noj-ui 已构建并监听 :3000
-cd noj-ui && NUXT_API_BASE=http://localhost:8099 PORT=3000 deno task preview  # 或 node .output/server/index.mjs
+cd noj-ui && NUXT_API_BASE=http://localhost:8099 PORT=3000 deno task preview  # 或 deno run -A .output/server/index.mjs
 cd noj-tests
 deno run -A npm:playwright install chromium   # 首次安装浏览器
 NOJ_RUN_BROWSER_E2E=1 deno task test:browser
@@ -137,6 +137,15 @@ deno task test:domain submission      # 等价于 bash scripts/run-e2e-domain.sh
 
 > 本地运行需要完整的 E2E 栈（`env.e2e.template` 会设置 `NOJ_RUN_E2E=1`）；
 > 栈未启动时用例会被静默跳过，请先 `bash ../scripts/e2e/setup.sh`。
+
+已有测试栈包含旧开发题时，使用独立新数据库验收新模型。Compose 的三个业务服务
+通过 `E2E_DATABASE_NAME` 选择同一数据库，默认仍为 `e2e`；先在隔离 PostgreSQL
+中创建目标库，再启动当前代码。测试侧同时设置 `DATABASE_URL` 指向该库。
+不要通过删除旧 U 数据或开发数据库绕过收缩迁移的前置检查。
+
+本地 E2E Gateway 默认发布在 `8003`，与开发 Gateway 的 `8001` 隔离。
+`E2E_LLM_GATEWAY_PORT` 可调整该端口，同时更新 core 发给 evaluator 的 Gateway
+地址，避免测试流量调用开发库的 Provider。
 
 ### 一键运行所有 E2E 测试（本地全量）
 
