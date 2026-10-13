@@ -14,12 +14,20 @@ import {
   loadDomainQueryScope,
 } from "../services/domain-query.ts";
 
-/** 显式域统计与榜单，应用组合根在查询隔离验收后统一挂载。 */
+/** 显式域统计与榜单，只聚合当前授权范围内的使用域记录。 */
 export const domainQueryRouter = new Hono<OptionalAuthEnv>();
-domainQueryRouter.use("*", optionalAuthMiddleware, async (c, next) => {
-  c.header("Cache-Control", "no-store");
-  await next();
-});
+for (
+  const path of [
+    "/domains/:slug/stats",
+    "/domains/:slug/rankings",
+    "/domains/:slug/rankings/*",
+  ]
+) {
+  domainQueryRouter.use(path, optionalAuthMiddleware, async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    await next();
+  });
+}
 domainQueryRouter.get(
   "/domains/:slug/stats",
   async (c) =>

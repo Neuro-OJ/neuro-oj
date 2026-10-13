@@ -15,7 +15,7 @@ import {
 import { submitDomainObjectivePaper } from "../services/domain-objective.ts";
 import type { ObjectiveAnswerValue } from "../types/objective.ts";
 
-/** 使用域客观题准备入口，隔离阶段完成后统一开放。 */
+/** 使用域客观题入口，正式交卷与本人历史均保留使用域归属。 */
 export const domainObjectiveRouter = new Hono<AuthEnv>();
 domainObjectiveRouter.get(
   "/domains/:slug/objective-submissions",

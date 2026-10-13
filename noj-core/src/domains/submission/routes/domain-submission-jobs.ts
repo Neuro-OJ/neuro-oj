@@ -18,10 +18,12 @@ import {
 } from "../services/versioning/domain-jobs.ts";
 export const domainSubmissionJobsRouter = new Hono<AuthEnv>();
 const prefix = "/domains/:slug/submission-jobs";
-domainSubmissionJobsRouter.use("*", authMiddleware, async (c, next) => {
-  c.header("Cache-Control", "no-store");
-  await next();
-});
+for (const path of [prefix, `${prefix}/*`]) {
+  domainSubmissionJobsRouter.use(path, authMiddleware, async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    await next();
+  });
+}
 domainSubmissionJobsRouter.post(prefix, async (c) => {
   const body = await parseJsonBody<DomainJobRequest>(c);
   assertObjectBody(body);

@@ -24,7 +24,7 @@ import {
   setDomainTrainingSharing,
 } from "../services/workspace/training-sharing.ts";
 
-/** 显式域题单准备路由，完整隔离门禁通过后由组合根挂载。 */
+/** 显式域题单入口，引用与原题授权在读取和写入时检查。 */
 export const domainTrainingsRouter = new Hono<AuthEnv>();
 const prefix = "/domains/:slug/trainings";
 domainTrainingsRouter.use("/domains/:slug/*", async (c, next) => {

@@ -56,11 +56,11 @@ import {
   enforceReportRateLimit,
 } from "../../system/index.ts";
 
-/** 显式域社区入口；应用组合根在整体隔离验收后统一挂载。 */
+/** 显式域社区入口，每次操作重新检查本域成员及内容授权。 */
 export const domainCommunityRouter = new Hono<OptionalAuthEnv>();
 const prefix = "/domains/:slug/community";
 domainCommunityRouter.use(`${prefix}/*`, optionalAuthMiddleware);
-domainCommunityRouter.use("*", async (c, next) => {
+domainCommunityRouter.use(`${prefix}/*`, async (c, next) => {
   c.header("Cache-Control", "no-store");
   if (c.req.method === "POST" && c.var.userId) {
     const path = c.req.path, actorId = c.var.userId;

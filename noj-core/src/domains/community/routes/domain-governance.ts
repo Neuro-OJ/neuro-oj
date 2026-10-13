@@ -37,7 +37,15 @@ import type { CommunityScope } from "../services/community/community-scope.ts";
 const prefix = "/domains/:slug/community";
 /** 域社区治理只管理目标域内容及域禁言，不提供平台账号或私信管理能力。 */
 export const domainCommunityGovernanceRouter = new Hono<OptionalAuthEnv>();
-domainCommunityGovernanceRouter.use("*", authMiddleware);
+for (
+  const path of [
+    `${prefix}/reports`,
+    `${prefix}/reports/*`,
+    `${prefix}/manage/*`,
+  ]
+) {
+  domainCommunityGovernanceRouter.use(path, authMiddleware);
+}
 async function input<T>(c: Parameters<typeof parseJsonBody>[0]) {
   const body = await parseJsonBody<unknown>(c);
   assertObjectBody(body);

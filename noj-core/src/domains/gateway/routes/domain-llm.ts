@@ -18,7 +18,7 @@ import {
 } from "../services/domain-management.ts";
 import type { LlmProviderInput, LlmQuotaInput } from "../services/llm.ts";
 
-/** 显式域 LLM 管理入口；隔离验收后由组合根统一挂载。 */
+/** 显式域 LLM 管理入口，不读取其他域的 Provider 或用量。 */
 export const domainLlmRouter = new Hono<AuthEnv>();
 const prefix = "/domains/:slug/llm";
 domainLlmRouter.use(`${prefix}/*`, authMiddleware, async (c, next) => {

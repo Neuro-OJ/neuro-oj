@@ -44,14 +44,16 @@ import {
   getDomainContestTemplate,
 } from "../services/domain-content.ts";
 
-/** 完整隔离验收前由应用保留未挂载的显式域比赛路由。 */
+/** 显式域比赛入口，身份与资源归属由当前数据库授权。 */
 export const domainContestRouter = new Hono<OptionalAuthEnv>();
 domainContestRouter.use("/domains/:slug/contests", optionalAuthMiddleware);
 domainContestRouter.use("/domains/:slug/contests/*", optionalAuthMiddleware);
-domainContestRouter.use("*", async (c, next) => {
-  c.header("Cache-Control", "no-store");
-  await next();
-});
+for (const route of ["/domains/:slug/contests", "/domains/:slug/contests/*"]) {
+  domainContestRouter.use(route, async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    await next();
+  });
+}
 const path = "/domains/:slug/contests";
 async function body<T>(c: Parameters<typeof parseJsonBody>[0]) {
   const input = await parseJsonBody<unknown>(c);

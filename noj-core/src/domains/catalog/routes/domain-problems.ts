@@ -34,7 +34,7 @@ import { enforceProblemImportRateLimit } from "../../system/index.ts";
 import { MAX_SUPPORT_PACKAGE_SIZE } from "../services/support-package.ts";
 import { importDomainProblemBundle } from "../services/workspace/problem-bundle-import.ts";
 
-/** 显式域题库路由；资源隔离阶段完成后由组合根统一挂载。 */
+/** 显式域题库入口，保留使用域上下文及来源题号。 */
 export const domainProblemsRouter = new Hono<AuthEnv>();
 const prefix = "/domains/:slug/problems";
 domainProblemsRouter.route("/", domainProblemFilesRouter);

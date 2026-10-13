@@ -25,8 +25,17 @@ import {
 
 const sse = new Hono<AuthEnv>();
 export const domainSubmissionSse = new Hono<AuthEnv>();
-sse.use("*", authMiddleware);
-domainSubmissionSse.use("*", authMiddleware);
+for (const path of ["/submissions/:id/events", "/queue/events"]) {
+  sse.use(path, authMiddleware);
+}
+for (
+  const path of [
+    "/domains/:slug/submissions/:id/events",
+    "/domains/:slug/self-tests/:id/events",
+  ]
+) {
+  domainSubmissionSse.use(path, authMiddleware);
+}
 
 async function currentSubmission(
   c: Context<AuthEnv>,

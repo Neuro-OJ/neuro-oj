@@ -11,10 +11,12 @@ import {
 } from "../services/own-submission-history.ts";
 /** 本人跨域历史独立于当前导航工作空间，不授予题面、数据或他人提交访问。 */
 export const ownSubmissionHistoryRouter = new Hono<AuthEnv>();
-ownSubmissionHistoryRouter.use("*", authMiddleware, async (c, next) => {
-  c.header("Cache-Control", "no-store");
-  await next();
-});
+for (const path of ["/me/submissions", "/me/submissions/*"]) {
+  ownSubmissionHistoryRouter.use(path, authMiddleware, async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    await next();
+  });
+}
 ownSubmissionHistoryRouter.get("/me/submissions", async (c) => {
   const { page, perPage } = parsePagination(c, { maxPerPage: 100 });
   const result = await listOwnSubmissionHistory(c.var.userId, page, perPage);

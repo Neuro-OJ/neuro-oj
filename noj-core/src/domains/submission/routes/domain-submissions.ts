@@ -30,7 +30,7 @@ import {
   parsePagination,
 } from "../../../shared/http/pagination.ts";
 
-/** 隔离阶段准备入口；组合根在全部提交／查询隔离完成后统一开放。 */
+/** 显式域执行入口，受理事务重新检查使用域、版本及源资源授权。 */
 export const domainSubmissionsRouter = new Hono<AuthEnv>();
 domainSubmissionsRouter.get(
   "/domains/:slug/self-tests/:id",
