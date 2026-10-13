@@ -2235,6 +2235,7 @@ jobs:
     env:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
+      NOJ_WASI_OPT_DEPS: "1"
     steps:
       - name: 检出代码
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

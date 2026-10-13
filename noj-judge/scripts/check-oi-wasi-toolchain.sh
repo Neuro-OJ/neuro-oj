@@ -26,7 +26,14 @@ trap 'rm -rf "$report_dir"' EXIT
 want() { [[ "$shard" == all || "$shard" == "$1" ]]; }
 
 # 先编译一次全部示例，之后并发运行同一二进制，避免 cargo 锁串行化。
-cargo build --locked --examples
+# NOJ_WASI_OPT_DEPS=1（CI 设置）：仅依赖（wasmtime/cranelift）开 opt-level=3，
+# 工作区代码仍为 dev 档；验收输出是确定性成本/摘要，与 CPU 速度无关，
+# 但示例在 debug 依赖下运行极慢（单个 ~2 分钟）。
+build_args=(--locked --examples)
+if [[ "${NOJ_WASI_OPT_DEPS:-}" == 1 ]]; then
+  build_args+=(--config 'profile.dev.package."*".opt-level=3')
+fi
+cargo build "${build_args[@]}"
 
 # 两个独立进程使用同一基准，报告只包含确定性成本和摘要，不比较墙钟。
 # 两个进程并发执行（互相独立），任一失败即整体失败。
@@ -44,7 +51,7 @@ run_pair() {
 }
 
 if want wasi; then
-  cargo run --locked --example oi_wasi_acceptance
+  target/debug/examples/oi_wasi_acceptance
 fi
 if want standard; then
   run_pair oi_standard_acceptance worker
