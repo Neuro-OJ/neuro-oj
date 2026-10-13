@@ -4,6 +4,7 @@ import {
 } from "./schema-ddl-catalog-base.ts";
 import { CATALOG_WORKSPACE_DDL } from "./schema-ddl-catalog-workspace.ts";
 import { WORKSPACE_DDL } from "./schema-ddl-workspace.ts";
+import { WORKSPACE_STORAGE_DDL } from "./schema-ddl-workspace-storage.ts";
 import { EXECUTION_WORKSPACE_DDL } from "./schema-ddl-execution-workspace.ts";
 import { DOMAIN_EXECUTION_DDL } from "./schema-ddl-domain-execution.ts";
 import { COMMUNITY_WORKSPACE_DDL } from "./schema-ddl-community-workspace.ts";
@@ -1111,6 +1112,7 @@ $$ LANGUAGE plpgsql`,
   )`,
   `CREATE INDEX IF NOT EXISTS idx_carousel_slides_enabled_sort ON carousel_slides (is_enabled, sort_order)`,
   ...WORKSPACE_DDL,
+  ...WORKSPACE_STORAGE_DDL,
   ...CATALOG_WORKSPACE_DDL,
   ...EXECUTION_WORKSPACE_DDL,
   ...EDUCATION_DDL,

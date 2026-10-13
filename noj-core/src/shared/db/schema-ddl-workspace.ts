@@ -36,6 +36,8 @@ export const WORKSPACE_DDL: string[] = [
 ];
 /** 测试重置时清理全部工作空间表。 */
 export const WORKSPACE_TABLES = [
+  "domain_storage_objects",
+  "domain_storage_uploads",
   "domain_creation_requests",
   "domain_feature_intervals",
   "domain_invitations",
