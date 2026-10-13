@@ -16,6 +16,7 @@ export const llmProviders = pgTable(
   "llm_providers",
   {
     id: text("id").primaryKey(),
+    domain_id: text("domain_id").notNull(),
     name: text("name").notNull(),
     base_url: text("base_url").notNull(),
     /** 每 1K token 费用（用于用量估算；0 表示不计费） */
@@ -31,6 +32,7 @@ export const llmProviders = pgTable(
   },
   (table) => ({
     nameIdx: index("idx_llm_providers_name").on(table.name),
+    domainIdx: index("idx_llm_providers_domain").on(table.domain_id),
   }),
 );
 
@@ -42,6 +44,7 @@ export const llmUsage = pgTable(
   "llm_usage",
   {
     id: text("id").primaryKey(),
+    domain_id: text("domain_id").notNull(),
     submission_id: text("submission_id").notNull(),
     /** 评测尝试 ID（版本化后写入；旧记录为 NULL） */
     attempt_id: text("attempt_id"),
@@ -73,6 +76,10 @@ export const llmUsage = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
+    domainCreatedIdx: index("idx_llm_usage_domain_created").on(
+      table.domain_id,
+      table.created_at,
+    ),
     submissionIdx: index("idx_llm_usage_submission_id").on(table.submission_id),
     attemptIdx: index("idx_llm_usage_attempt_id").on(table.attempt_id),
     problemIdx: index("idx_llm_usage_problem_id").on(table.problem_id),
@@ -90,20 +97,23 @@ export const llmQuotas = pgTable(
   "llm_quotas",
   {
     id: text("id").primaryKey(),
-    /** 配额作用域：user / problem / global */
+    /** 实例 global 的 domain_id 为空，其他配额属于使用域。 */
+    domain_id: text("domain_id").notNull().default(""),
+    /** 配额作用域：domain / user / problem / global / user_problem */
     scope_type: text("scope_type").notNull(),
     /** 对应作用域 ID；global 时为空字符串 */
     scope_id: text("scope_id").notNull().default(""),
     /** 窗口类型：day / month */
     window_type: text("window_type").notNull().default("day"),
-    max_calls: integer("max_calls").notNull().default(0),
-    max_tokens: integer("max_tokens").notNull().default(0),
-    max_cost: integer("max_cost").notNull().default(0),
+    max_calls: integer("max_calls"),
+    max_tokens: integer("max_tokens"),
+    max_cost: integer("max_cost"),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
     scopeIdx: index("idx_llm_quotas_scope").on(
+      table.domain_id,
       table.scope_type,
       table.scope_id,
       table.window_type,

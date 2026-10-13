@@ -75,7 +75,9 @@ export async function seedDefaultQuotas(db: Db): Promise<void> {
   for (const q of DEFAULTS) {
     const existing = await db`
       SELECT id FROM llm_quotas
-      WHERE scope_type = ${q.scope_type}
+      WHERE domain_id = ${
+      q.scope_type === "global" ? "" : "00000000-0000-4000-8000-000000000001"
+    } AND scope_type = ${q.scope_type}
         AND scope_id = ${q.scope_id}
         AND window_type = ${q.window_type}
       LIMIT 1
@@ -83,10 +85,12 @@ export async function seedDefaultQuotas(db: Db): Promise<void> {
     if (existing.length > 0) continue;
     await db`
       INSERT INTO llm_quotas (
-        id, scope_type, scope_id, window_type,
+        id, domain_id, scope_type, scope_id, window_type,
         max_calls, max_tokens, max_cost, created_at, updated_at
       ) VALUES (
-        ${q.id}, ${q.scope_type}, ${q.scope_id}, ${q.window_type},
+        ${q.id}, ${
+      q.scope_type === "global" ? "" : "00000000-0000-4000-8000-000000000001"
+    }, ${q.scope_type}, ${q.scope_id}, ${q.window_type},
         ${q.max_calls}, ${q.max_tokens}, ${q.max_cost}, ${now}, ${now}
       )
     `;

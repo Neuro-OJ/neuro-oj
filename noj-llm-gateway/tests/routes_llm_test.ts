@@ -300,7 +300,7 @@ Deno.test("llm route: 已吊销的 eval_token 返回 401 token_revoked", async (
   const redis = new FakeRedis();
   // 模拟已吊销状态
   redis.get = (key: string) =>
-    Promise.resolve(key.startsWith("llm:token:revoked:") ? "1" : null);
+    Promise.resolve(key.startsWith("llm:attempt:revoked:") ? "1" : null);
   const app = createLlmRouter({
     config: testConfig,
     db,

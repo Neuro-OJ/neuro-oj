@@ -80,7 +80,9 @@ export function createFakeDb(provider: ProviderRow | null): {
   ) => {
     const sql = strings.join("?");
     if (sql.includes("FROM llm_providers")) {
-      return Promise.resolve(provider ? [provider] : []);
+      return Promise.resolve(
+        provider && values.includes(provider.domain_id) ? [provider] : [],
+      );
     }
     if (sql.includes("FROM llm_quotas")) {
       return Promise.resolve([]);
@@ -88,6 +90,7 @@ export function createFakeDb(provider: ProviderRow | null): {
     if (sql.includes("INSERT INTO llm_usage")) {
       const cols = [
         "id",
+        "domain_id",
         "submission_id",
         "attempt_id",
         "problem_version_id",
@@ -126,6 +129,7 @@ export function createFakeDb(provider: ProviderRow | null): {
 export async function makeProvider(storeKey: string): Promise<ProviderRow> {
   return {
     id: "prov-1",
+    domain_id: "00000000-0000-4000-8000-000000000001",
     name: "test",
     base_url: "https://api.openai.com/v1",
     cost_per_1k_tokens: 1,
@@ -151,10 +155,14 @@ export const testConfig: GatewayConfig = {
 export async function makeToken(
   config: GatewayConfig = testConfig,
   model = "deepseek-chat",
-  scope: { attemptId?: string; problemVersionId?: string } = {},
+  scope: { attemptId?: string; problemVersionId?: string; domainId?: string } =
+    {},
 ): Promise<string> {
   const payload: EvalTokenPayload = {
     jti: crypto.randomUUID(),
+    domain_id: scope.domainId ?? "00000000-0000-4000-8000-000000000001",
+    protocol_version: 3,
+    attempt_id: scope.attemptId ?? "att-default",
     submission_id: "sub-1",
     problem_id: "prob-1",
     user_id: "user-1",
@@ -167,7 +175,7 @@ export async function makeToken(
     ...(scope.attemptId
       ? {
         attempt_id: scope.attemptId,
-        protocol_version: 2,
+        protocol_version: 3,
         problem_version_id: scope.problemVersionId ?? null,
       }
       : {}),

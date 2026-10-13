@@ -34,10 +34,17 @@ const MAX_SAFE_PAGE = Number.MAX_SAFE_INTEGER;
 export function createInternalRouter(deps: InternalDeps): Hono {
   const app = new Hono();
   app.use("*", requireServiceToken(deps.config.serviceToken));
+  // 旧平台管理入口固定映射 main；新调用必须传显式使用域，body 不能覆盖归属。
+  const domain = (c: { req: { header(name: string): string | undefined } }) =>
+    c.req.header("X-Noj-Domain-Id") ?? "00000000-0000-4000-8000-000000000001";
 
   // Provider 列表（Key 脱敏）
   app.get("/internal/providers", async (c) => {
-    const providers = await listProviders(deps.db, deps.config.storeKey);
+    const providers = await listProviders(
+      deps.db,
+      deps.config.storeKey,
+      domain(c),
+    );
     return c.json({ data: providers });
   });
 
@@ -45,7 +52,9 @@ export function createInternalRouter(deps: InternalDeps): Hono {
   app.get("/internal/providers/:id", async (c) => {
     const id = c.req.param("id");
     const rows = await deps
-      .db`SELECT id, name, base_url, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id}`;
+      .db`SELECT id, domain_id, name, base_url, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id} AND domain_id = ${
+      domain(c)
+    }`;
     if (rows.length === 0) {
       return c.json({ error: "provider_not_found" }, 404);
     }
@@ -65,6 +74,7 @@ export function createInternalRouter(deps: InternalDeps): Hono {
         deps.db,
         body,
         deps.config.storeKey,
+        domain(c),
       );
       return c.json({ data: provider }, 201);
     } catch (err) {
@@ -89,6 +99,7 @@ export function createInternalRouter(deps: InternalDeps): Hono {
         id,
         body,
         deps.config.storeKey,
+        domain(c),
       );
       return c.json({ data: provider });
     } catch (err) {
@@ -101,7 +112,7 @@ export function createInternalRouter(deps: InternalDeps): Hono {
   });
 
   app.delete("/internal/providers/:id", async (c) => {
-    const deleted = await deleteProvider(deps.db, c.req.param("id"));
+    const deleted = await deleteProvider(deps.db, c.req.param("id"), domain(c));
     return deleted
       ? c.body(null, 204)
       : c.json({ error: "provider_not_found" }, 404);
@@ -118,6 +129,8 @@ export function createInternalRouter(deps: InternalDeps): Hono {
         deps.config.storeKey,
         body.model ?? "",
         deps.config.upstreamAllowedHosts,
+        undefined,
+        domain(c),
       );
       return c.json({ data: { status: "ok" } });
     } catch (err) {
@@ -153,8 +166,8 @@ export function createInternalRouter(deps: InternalDeps): Hono {
       ? Math.min(Math.floor(rawPage), MAX_SAFE_PAGE)
       : 1;
 
-    const conditions: string[] = [];
-    const params: string[] = [];
+    const conditions: string[] = ["domain_id = $1"];
+    const params: string[] = [domain(c)];
     if (submissionId) {
       params.push(submissionId);
       conditions.push(`submission_id = $${params.length}`);
@@ -208,8 +221,11 @@ export function createInternalRouter(deps: InternalDeps): Hono {
 
   // 配额列表
   app.get("/internal/quotas", async (c) => {
+    const quotaDomain = c.req.header("X-Noj-Instance-Quota") === "1"
+      ? ""
+      : domain(c);
     const rows = await deps
-      .db`SELECT * FROM llm_quotas ORDER BY created_at DESC`;
+      .db`SELECT * FROM llm_quotas WHERE domain_id = ${quotaDomain} ORDER BY created_at DESC`;
     return c.json({ data: rows });
   });
 
@@ -220,13 +236,15 @@ export function createInternalRouter(deps: InternalDeps): Hono {
       scope_type: string;
       scope_id?: string;
       window_type?: string;
-      max_calls?: number;
-      max_tokens?: number;
-      max_cost?: number;
+      max_calls?: number | null;
+      max_tokens?: number | null;
+      max_cost?: number | null;
     }>();
     if (
       !body.scope_type ||
-      !["user", "problem", "global", "user_problem"].includes(body.scope_type)
+      !["user", "problem", "domain", "global", "user_problem"].includes(
+        body.scope_type,
+      )
     ) {
       return c.json({ error: "invalid_scope_type" }, 400);
     }
@@ -236,6 +254,22 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     ) {
       return c.json({ error: "invalid_window_type" }, 400);
     }
+    // 实例总量只由 core 平台治理端发送明确的 instance 标记。
+    if (
+      body.scope_type === "global" &&
+      c.req.header("X-Noj-Instance-Quota") !== "1"
+    ) {
+      return c.json({ error: "instance_quota_required" }, 403);
+    }
+    for (const value of [body.max_calls, body.max_tokens, body.max_cost]) {
+      if (
+        value !== undefined && value !== null &&
+        (!Number.isSafeInteger(value) || value < 0)
+      ) {
+        return c.json({ error: "invalid_quota" }, 400);
+      }
+    }
+    const quotaDomain = body.scope_type === "global" ? "" : domain(c);
     const id = body.id ?? crypto.randomUUID();
     const now = new Date().toISOString();
     const scopeId = body.scope_id ?? "";
@@ -250,9 +284,9 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const maxCost = body.max_cost !== undefined
       ? body.max_cost
       : fallback.max_cost;
-    await deps.db`
-      INSERT INTO llm_quotas (id, scope_type, scope_id, window_type, max_calls, max_tokens, max_cost, created_at, updated_at)
-      VALUES (${id}, ${body.scope_type}, ${scopeId}, ${windowType}, ${maxCalls}, ${maxTokens}, ${maxCost}, ${now}, ${now})
+    const saved = await deps.db`
+      INSERT INTO llm_quotas (id, domain_id, scope_type, scope_id, window_type, max_calls, max_tokens, max_cost, created_at, updated_at)
+      VALUES (${id}, ${quotaDomain}, ${body.scope_type}, ${scopeId}, ${windowType}, ${maxCalls}, ${maxTokens}, ${maxCost}, ${now}, ${now})
       ON CONFLICT (id) DO UPDATE SET
         scope_type = EXCLUDED.scope_type,
         scope_id = EXCLUDED.scope_id,
@@ -261,7 +295,10 @@ export function createInternalRouter(deps: InternalDeps): Hono {
         max_tokens = EXCLUDED.max_tokens,
         max_cost = EXCLUDED.max_cost,
         updated_at = EXCLUDED.updated_at
+      WHERE llm_quotas.domain_id = EXCLUDED.domain_id
+      RETURNING id
     `;
+    if (saved.length === 0) return c.json({ error: "quota_not_found" }, 404);
     return c.json({ data: { id } }, 201);
   });
 

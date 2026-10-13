@@ -63,6 +63,7 @@ class FakeRedis implements RedisClient {
     keys: string[],
     args: (string | number)[],
   ): Promise<unknown> {
+    await Promise.resolve();
     this.lastEvalArgs = args;
     this.lastEvalKeys = keys;
     // 按 Lua 的预扣/结算语义更新状态，确保测试能发现重复计数与错误额度。
@@ -84,7 +85,8 @@ class FakeRedis implements RedisClient {
       });
     if (reserving && exceedsLimit()) return "limit_exceeded";
     for (const [i, key] of counters.entries()) {
-      const next = await this.incrby(key, meta.incs[i]);
+      const next = (this.data.get(key) ?? 0) + meta.incs[i];
+      this.data.set(key, next);
       // SETTLE_SCRIPT 会把被负 delta 扣成负数的计数器归零。
       if (!reserving && next < 0) this.data.set(key, 0);
     }
@@ -99,6 +101,9 @@ const emptyDb = ((
 
 const payload: EvalTokenPayload = {
   jti: "jti-1",
+  domain_id: "00000000-0000-4000-8000-000000000001",
+  protocol_version: 3,
+  attempt_id: "att-1",
   submission_id: "submission-1",
   problem_id: "problem-1",
   user_id: "user-1",
@@ -201,9 +206,9 @@ Deno.test("limits: 各作用域只预扣一次，结算后保留实际用量", a
   await enforceAndCount(emptyDb, redis, payload, reserveOptions);
   assertEquals(new Set(redis.lastEvalKeys).size, redis.lastEvalKeys.length);
   const scopeKeys = [...redis.data.keys()].filter((key) =>
-    !key.startsWith("llm:sub:")
+    !key.startsWith("llm:domain:00000000-0000-4000-8000-000000000001:attempt:")
   );
-  assertEquals(scopeKeys.length, 24);
+  assertEquals(scopeKeys.length, 30);
   for (const key of scopeKeys) {
     assertEquals(redis.data.get(key), key.endsWith(":tokens") ? 15 : 1, key);
   }
@@ -233,7 +238,7 @@ Deno.test("limits: 跨日后可继续使用月额度且不能超过月上限", a
   const db =
     ((_strings: TemplateStringsArray, ...values: unknown[]) =>
       Promise.resolve([{
-        max_calls: values[2] === "day" ? 2 : 3,
+        max_calls: values[3] === "day" ? 2 : 3,
         max_tokens: 10000,
         max_cost: 100,
       }])) as unknown as Db;
@@ -255,10 +260,10 @@ Deno.test("limits: 跨日后可继续使用月额度且不能超过月上限", a
     );
     for (
       const prefix of [
-        "llm:user:user-1",
+        "llm:domain:00000000-0000-4000-8000-000000000001:user:user-1",
         "llm:global",
-        "llm:problem:problem-1",
-        "llm:user_problem:user-1:problem-1",
+        "llm:domain:00000000-0000-4000-8000-000000000001:problem:problem-1",
+        "llm:domain:00000000-0000-4000-8000-000000000001:user_problem:user-1:problem-1",
       ]
     ) {
       assertEquals(redis.data.get(`${prefix}:day:2026-09-10:calls`), 2);
@@ -295,7 +300,7 @@ function dbWithQuota(
 ): Db {
   return ((_strings: TemplateStringsArray, ...values: unknown[]) =>
     Promise.resolve(
-      match(String(values[0]), String(values[1])) ? [row] : [],
+      match(String(values[1]), String(values[2])) ? [row] : [],
     )) as unknown as Db;
 }
 
@@ -306,7 +311,7 @@ function userProblemLimits(redis: FakeRedis): number[] {
   };
   // 计数器顺序：sub(3) → user day/month → global day/month → problem day/month
   // → user_problem day/month（各 3 个字段），故 user_problem 位于 21..26。
-  return meta.limits.slice(21, 27);
+  return meta.limits.slice(27, 33);
 }
 
 Deno.test("limits: user_problem 精确 scope_id 行优先于 env（F-06 解析顺序）", async () => {
@@ -397,11 +402,92 @@ Deno.test("limits: 配额 max_calls=0 禁止调用、-1 不设限（产品决策
   Date.now = () => Date.UTC(2026, 8, 10, 12);
   try {
     const unlimited = new FakeRedis();
-    const dayCallsKey = "llm:user:user-1:day:2026-09-10:calls";
+    const dayCallsKey =
+      "llm:domain:00000000-0000-4000-8000-000000000001:user:user-1:day:2026-09-10:calls";
     unlimited.data.set(dayCallsKey, 1_000_000);
     await enforceAndCount(userRow(-1), unlimited, payload, reserveOptions);
     assertEquals(unlimited.data.get(dayCallsKey), 1_000_001);
   } finally {
     Date.now = originalNow;
   }
+});
+
+Deno.test("域配额：最后一个名额并发只受理一次，另一学校同源题不共用域预算", async () => {
+  const redis = new FakeRedis();
+  const db =
+    ((_strings: TemplateStringsArray, ...values: unknown[]) =>
+      Promise.resolve(
+        values[0] === "school-a" && values[1] === "domain"
+          ? [{ max_calls: 1, max_tokens: null, max_cost: null }]
+          : [],
+      )) as unknown as Db;
+  const schoolA = { ...payload, domain_id: "school-a", max_calls: 100 };
+  const results = await Promise.allSettled(
+    Array.from({ length: 20 }, (_, i) =>
+      enforceAndCount(
+        db,
+        redis,
+        { ...schoolA, attempt_id: "a-" + i },
+        reserveOptions,
+      )),
+  );
+  assertEquals(results.filter((item) => item.status === "fulfilled").length, 1);
+  await enforceAndCount(db, redis, {
+    ...schoolA,
+    domain_id: "school-b",
+    attempt_id: "b",
+  }, reserveOptions);
+  const day = new Date().toISOString().slice(0, 10);
+  assertEquals(
+    redis.data.get("llm:domain:school-a:domain::day:" + day + ":calls"),
+    1,
+  );
+  assertEquals(
+    redis.data.get("llm:domain:school-b:domain::day:" + day + ":calls"),
+    1,
+  );
+});
+
+Deno.test("域配额：实例总量同时约束两个学校，null与零额度含义不同", async () => {
+  const redis = new FakeRedis();
+  const db =
+    ((_strings: TemplateStringsArray, ...values: unknown[]) =>
+      Promise.resolve(
+        values[1] === "global"
+          ? [{ max_calls: 1, max_tokens: null, max_cost: null }]
+          : [],
+      )) as unknown as Db;
+  await enforceAndCount(
+    db,
+    redis,
+    { ...payload, domain_id: "school-a" },
+    reserveOptions,
+  );
+  await assertRejects(
+    () =>
+      enforceAndCount(
+        db,
+        redis,
+        { ...payload, domain_id: "school-b" },
+        reserveOptions,
+      ),
+    Error,
+    "limit_exceeded",
+  );
+  const zeroDb =
+    ((_strings: TemplateStringsArray, ...values: unknown[]) =>
+      Promise.resolve(
+        values[0] === "school-b" && values[1] === "domain"
+          ? [{ max_calls: 0, max_tokens: null, max_cost: null }]
+          : [],
+      )) as unknown as Db;
+  await assertRejects(
+    () =>
+      enforceAndCount(zeroDb, new FakeRedis(), {
+        ...payload,
+        domain_id: "school-b",
+      }, reserveOptions),
+    Error,
+    "limit_exceeded",
+  );
 });

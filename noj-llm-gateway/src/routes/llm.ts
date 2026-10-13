@@ -166,6 +166,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
           logger.warn(
             "eval_token 多来源 IP 调用: submission={submission_id} ip={client_ip} ips={ips}",
             {
+              domain_id: payload.domain_id,
               submission_id: payload.submission_id,
               attempt_id: payload.attempt_id ?? null,
               problem_version_id: payload.problem_version_id ?? null,
@@ -199,6 +200,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         deps.db,
         payload.provider_id,
         deps.config.storeKey,
+        payload.domain_id,
       );
     } catch {
       return c.json({ error: "provider_not_found" }, 400);
@@ -250,6 +252,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       // 调用前拒绝：不存原文 + 按提交去重（G-04），见 recordRejectedUsage
       await recordRejectedUsage(deps.db, deps.redis, {
         id: crypto.randomUUID(),
+        domain_id: payload.domain_id,
         submission_id: payload.submission_id,
         attempt_id: payload.attempt_id ?? null,
         problem_version_id: payload.problem_version_id ?? null,
@@ -289,6 +292,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       inc("noj_llm_provider_errors_total");
       await recordUsage(deps.db, {
         id: crypto.randomUUID(),
+        domain_id: payload.domain_id,
         submission_id: payload.submission_id,
         attempt_id: payload.attempt_id ?? null,
         problem_version_id: payload.problem_version_id ?? null,
@@ -325,6 +329,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         : "upstream_error";
       await recordUsage(deps.db, {
         id: crypto.randomUUID(),
+        domain_id: payload.domain_id,
         submission_id: payload.submission_id,
         attempt_id: payload.attempt_id ?? null,
         problem_version_id: payload.problem_version_id ?? null,
@@ -393,6 +398,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       inc("noj_llm_quota_exhausted_total");
       await recordUsage(deps.db, {
         id: crypto.randomUUID(),
+        domain_id: payload.domain_id,
         submission_id: payload.submission_id,
         attempt_id: payload.attempt_id ?? null,
         problem_version_id: payload.problem_version_id ?? null,
@@ -420,6 +426,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
 
     await recordUsage(deps.db, {
       id: crypto.randomUUID(),
+      domain_id: payload.domain_id,
       submission_id: payload.submission_id,
       attempt_id: payload.attempt_id ?? null,
       problem_version_id: payload.problem_version_id ?? null,

@@ -3,8 +3,8 @@
  *
  * 使用 Redis Lua 脚本原子完成“检查 + 自增”，避免并发下超限。
  * 支持：
- * - 单次提交 calls/tokens
- * - 用户 / 全局 / 题目 / 用户×题目（user_problem）的 day / month 维度 calls / tokens / cost
+ * - 单次评测尝试 calls/tokens
+ * - 使用域 / 域内用户 / 实例 / 域内题目 / 域内用户×题目的日/月 calls/tokens/cost
  * - 用户与 IP 的分钟速率窗口
  */
 import type { Db } from "./db.ts";
@@ -14,50 +14,36 @@ import type { EvalTokenPayload } from "./crypto.ts";
 /**
  * 单 token 预算/计数的作用域（版本化后按**评测尝试**隔离）。
  *
- * - `attempt`：协议 v2 的 eval_token 携带 `attempt_id`，额度键为
- *   `llm:attempt:<id>:calls|tokens|cost`，同一提交的重测各自独立预算；
- * - `submission`：旧 core 未携带 `attempt_id`，沿用 `llm:sub:<id>:*`，
- *   并在提交结束后由 core 按提交吊销。
+ * 协议 v3 强制携带 domain_id 与 attempt_id；重测拥有独立预算。
  */
 export function evalTokenScope(
   payload: EvalTokenPayload,
-): { kind: "attempt" | "submission"; id: string } {
-  return payload.attempt_id
-    ? { kind: "attempt", id: payload.attempt_id }
-    : { kind: "submission", id: payload.submission_id };
+): { kind: "attempt"; id: string } {
+  return { kind: "attempt", id: payload.attempt_id };
 }
 
-/** 单 token 维度额度计数键（attempt 优先，旧 token 回退 submission）。 */
+/** 使用域与评测尝试维度额度计数键。 */
 export function evalTokenCounterKey(
   payload: EvalTokenPayload,
   field: "calls" | "tokens" | "cost",
 ): string {
-  const scope = evalTokenScope(payload);
-  return scope.kind === "attempt"
-    ? `llm:attempt:${scope.id}:${field}`
-    : `llm:sub:${scope.id}:${field}`;
+  return `llm:domain:${payload.domain_id}:attempt:${payload.attempt_id}:${field}`;
 }
 
-/** eval_token 吊销键（attempt 优先，旧 token 回退 submission）。 */
+/** eval_token 吊销键与 core 的尝试吊销记录一致。 */
 export function evalTokenRevokedKey(payload: EvalTokenPayload): string {
-  const scope = evalTokenScope(payload);
-  return scope.kind === "attempt"
-    ? `llm:attempt:revoked:${scope.id}`
-    : `llm:token:revoked:${scope.id}`;
+  return `llm:attempt:revoked:${payload.attempt_id}`;
 }
 
-/** 多来源 IP 监控键（attempt 优先，旧 token 回退 submission）。 */
+/** 每次评测尝试的多来源 IP 监控键。 */
 export function evalTokenIpSetKey(payload: EvalTokenPayload): string {
-  const scope = evalTokenScope(payload);
-  return scope.kind === "attempt"
-    ? `llm:attempt-ips:${scope.id}`
-    : `llm:token-ips:${scope.id}`;
+  return `llm:attempt-ips:${payload.attempt_id}`;
 }
 
 export interface QuotaRow {
-  max_calls: number;
-  max_tokens: number;
-  max_cost: number;
+  max_calls: number | null;
+  max_tokens: number | null;
+  max_cost: number | null;
 }
 
 interface CounterSpec {
@@ -81,16 +67,23 @@ interface CounterSpec {
  */
 async function getQuota(
   db: Db,
+  domainId: string,
   scopeType: string,
   scopeId: string,
   windowType: string,
 ): Promise<QuotaRow | null> {
   const rows = await db<QuotaRow[]>`
     SELECT max_calls, max_tokens, max_cost FROM llm_quotas
-    WHERE scope_type = ${scopeType} AND scope_id = ${scopeId} AND window_type = ${windowType}
+    WHERE domain_id = ${
+    scopeType === "global" ? "" : domainId
+  } AND scope_type = ${scopeType} AND scope_id = ${scopeId} AND window_type = ${windowType}
     LIMIT 1
   `;
-  return rows[0] ?? fallbackQuota(scopeType, windowType);
+  return rows[0] ??
+    (scopeType === "global" ||
+        domainId === "00000000-0000-4000-8000-000000000001"
+      ? fallbackQuota(scopeType, windowType)
+      : { max_calls: null, max_tokens: null, max_cost: null });
 }
 
 /** 配额 env 名前缀（`NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>`） */
@@ -106,7 +99,7 @@ export const QUOTA_SCOPES = [
   "user_problem",
 ] as const;
 /** 配额作用域联合类型 */
-export type QuotaScope = typeof QUOTA_SCOPES[number];
+export type QuotaScope = typeof QUOTA_SCOPES[number] | "domain";
 /** 配额字段 */
 export const QUOTA_FIELDS = ["CALLS", "TOKENS", "COST"] as const;
 
@@ -141,6 +134,9 @@ export function fallbackQuota(
   scopeType: string,
   windowType: string,
 ): QuotaRow {
+  if (scopeType === "domain") {
+    return { max_calls: null, max_tokens: null, max_cost: null };
+  }
   const env = Deno.env.toObject();
   const prefix =
     `${QUOTA_ENV_PREFIX}${scopeType.toUpperCase()}_${windowType.toUpperCase()}`;
@@ -151,7 +147,10 @@ export function fallbackQuota(
     return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
   };
 
-  const defaults: Record<string, QuotaRow> = {
+  const defaults: Record<
+    string,
+    { max_calls: number; max_tokens: number; max_cost: number }
+  > = {
     "global/day": { max_calls: 10000, max_tokens: 1_000_000, max_cost: 1000 },
     "global/month": {
       max_calls: 100_000,
@@ -219,15 +218,16 @@ function monthEndMs(now: number): number {
 }
 
 function scopePrefix(
+  domainId: string,
   scopeType: QuotaScope,
   scopeId: string,
 ): string {
   if (scopeType === "global") return "llm:global";
   if (scopeType === "user_problem") {
     // scopeId 形如 `<userId>:<problemId>`；用单独前缀避免与 user/problem 冲突
-    return `llm:user_problem:${scopeId}`;
+    return `llm:domain:${domainId}:user_problem:${scopeId}`;
   }
-  return `llm:${scopeType}:${scopeId}`;
+  return `llm:domain:${domainId}:${scopeType}:${scopeId}`;
 }
 
 /**
@@ -247,6 +247,7 @@ export function ipRatePrefix(ip: string, submissionId: string): string {
 
 /** 每次只构造指定窗口的计数器，避免日/月额度混用和重复扣算。 */
 function scopeCounters(
+  domainId: string,
   scopeType: QuotaScope,
   scopeId: string,
   window: typeof QUOTA_WINDOWS[number],
@@ -258,7 +259,9 @@ function scopeCounters(
 ): CounterSpec[] {
   const date = new Date(now);
   const windowKey = window === "day" ? dayKey(date) : monthKey(date);
-  const prefix = `${scopePrefix(scopeType, scopeId)}:${window}:${windowKey}`;
+  const prefix = `${
+    scopePrefix(domainId, scopeType, scopeId)
+  }:${window}:${windowKey}`;
   const fallback = fallbackQuota(scopeType, window);
   const maxCalls = quota ? quota.max_calls : fallback.max_calls;
   const maxTokens = quota ? quota.max_tokens : fallback.max_tokens;
@@ -270,7 +273,7 @@ function scopeCounters(
     out.push(
       {
         key: `${prefix}:calls`,
-        limit: maxCalls,
+        limit: maxCalls ?? -1,
         inc: 1,
         ttl,
       },
@@ -279,13 +282,13 @@ function scopeCounters(
   out.push(
     {
       key: `${prefix}:tokens`,
-      limit: maxTokens,
+      limit: maxTokens ?? -1,
       inc: tokens,
       ttl,
     },
     {
       key: `${prefix}:cost`,
-      limit: maxCost,
+      limit: maxCost ?? -1,
       inc: cost,
       ttl,
     },
@@ -438,13 +441,38 @@ export async function enforceAndCount(
   const tokens = opts.promptTokens + opts.completionTokens;
   const cost = opts.estimatedCost;
 
-  const userDay = await getQuota(db, "user", payload.user_id, "day");
-  const userMonth = await getQuota(db, "user", payload.user_id, "month");
-  const globalDay = await getQuota(db, "global", "", "day");
-  const globalMonth = await getQuota(db, "global", "", "month");
-  const problemDay = await getQuota(db, "problem", payload.problem_id, "day");
+  const userDay = await getQuota(
+    db,
+    payload.domain_id,
+    "user",
+    payload.user_id,
+    "day",
+  );
+  const userMonth = await getQuota(
+    db,
+    payload.domain_id,
+    "user",
+    payload.user_id,
+    "month",
+  );
+  const globalDay = await getQuota(db, payload.domain_id, "global", "", "day");
+  const globalMonth = await getQuota(
+    db,
+    payload.domain_id,
+    "global",
+    "",
+    "month",
+  );
+  const problemDay = await getQuota(
+    db,
+    payload.domain_id,
+    "problem",
+    payload.problem_id,
+    "day",
+  );
   const problemMonth = await getQuota(
     db,
+    payload.domain_id,
     "problem",
     payload.problem_id,
     "month",
@@ -452,17 +480,27 @@ export async function enforceAndCount(
   const userProblemScopeId = `${payload.user_id}:${payload.problem_id}`;
   const userProblemDay = await getQuota(
     db,
+    payload.domain_id,
     "user_problem",
     userProblemScopeId,
     "day",
   );
   const userProblemMonth = await getQuota(
     db,
+    payload.domain_id,
     "user_problem",
     userProblemScopeId,
     "month",
   );
 
+  const domainDay = await getQuota(db, payload.domain_id, "domain", "", "day");
+  const domainMonth = await getQuota(
+    db,
+    payload.domain_id,
+    "domain",
+    "",
+    "month",
+  );
   const counters: CounterSpec[] = [
     {
       key: evalTokenCounterKey(payload, "calls"),
@@ -483,6 +521,29 @@ export async function enforceAndCount(
       ttl: opts.ttlSeconds,
     },
     ...scopeCounters(
+      payload.domain_id,
+      "domain",
+      "",
+      "day",
+      domainDay,
+      tokens,
+      cost,
+      now,
+      true,
+    ),
+    ...scopeCounters(
+      payload.domain_id,
+      "domain",
+      "",
+      "month",
+      domainMonth,
+      tokens,
+      cost,
+      now,
+      true,
+    ),
+    ...scopeCounters(
+      payload.domain_id,
       "user",
       payload.user_id,
       "day",
@@ -493,6 +554,7 @@ export async function enforceAndCount(
       true,
     ),
     ...scopeCounters(
+      payload.domain_id,
       "user",
       payload.user_id,
       "month",
@@ -502,8 +564,19 @@ export async function enforceAndCount(
       now,
       true,
     ),
-    ...scopeCounters("global", "", "day", globalDay, tokens, cost, now, true),
     ...scopeCounters(
+      payload.domain_id,
+      "global",
+      "",
+      "day",
+      globalDay,
+      tokens,
+      cost,
+      now,
+      true,
+    ),
+    ...scopeCounters(
+      payload.domain_id,
       "global",
       "",
       "month",
@@ -514,6 +587,7 @@ export async function enforceAndCount(
       true,
     ),
     ...scopeCounters(
+      payload.domain_id,
       "problem",
       payload.problem_id,
       "day",
@@ -524,6 +598,7 @@ export async function enforceAndCount(
       true,
     ),
     ...scopeCounters(
+      payload.domain_id,
       "problem",
       payload.problem_id,
       "month",
@@ -535,6 +610,7 @@ export async function enforceAndCount(
     ),
     // F-06：用户×题目组合维度，防止单用户打满共享 problem 桶
     ...scopeCounters(
+      payload.domain_id,
       "user_problem",
       userProblemScopeId,
       "day",
@@ -545,6 +621,7 @@ export async function enforceAndCount(
       true,
     ),
     ...scopeCounters(
+      payload.domain_id,
       "user_problem",
       userProblemScopeId,
       "month",
@@ -559,7 +636,7 @@ export async function enforceAndCount(
   const result = await runLimitScript(
     redis,
     [
-      `llm:rate:${payload.user_id}:${minuteKey()}`,
+      `llm:rate:domain:${payload.domain_id}:user:${payload.user_id}:${minuteKey()}`,
       // F-10：Evaluator 侧不经边缘代理、无 X-Forwarded-For 时，此前全部落到
       // 共享的 `ip:unknown` 桶（默认 60/min），少量高吞吐提交即可让他人 LLM
       // 评测随机 429。无真实 IP 时改用 submission 维度隔离，避免互相挤兑。
@@ -600,13 +677,38 @@ export async function settleUsage(
     (opts.promptTokens + opts.completionTokens);
   const deltaCost = opts.actualCost - opts.estimatedCost;
 
-  const userDay = await getQuota(db, "user", payload.user_id, "day");
-  const userMonth = await getQuota(db, "user", payload.user_id, "month");
-  const globalDay = await getQuota(db, "global", "", "day");
-  const globalMonth = await getQuota(db, "global", "", "month");
-  const problemDay = await getQuota(db, "problem", payload.problem_id, "day");
+  const userDay = await getQuota(
+    db,
+    payload.domain_id,
+    "user",
+    payload.user_id,
+    "day",
+  );
+  const userMonth = await getQuota(
+    db,
+    payload.domain_id,
+    "user",
+    payload.user_id,
+    "month",
+  );
+  const globalDay = await getQuota(db, payload.domain_id, "global", "", "day");
+  const globalMonth = await getQuota(
+    db,
+    payload.domain_id,
+    "global",
+    "",
+    "month",
+  );
+  const problemDay = await getQuota(
+    db,
+    payload.domain_id,
+    "problem",
+    payload.problem_id,
+    "day",
+  );
   const problemMonth = await getQuota(
     db,
+    payload.domain_id,
     "problem",
     payload.problem_id,
     "month",
@@ -614,18 +716,50 @@ export async function settleUsage(
   const userProblemScopeId = `${payload.user_id}:${payload.problem_id}`;
   const userProblemDay = await getQuota(
     db,
+    payload.domain_id,
     "user_problem",
     userProblemScopeId,
     "day",
   );
   const userProblemMonth = await getQuota(
     db,
+    payload.domain_id,
     "user_problem",
     userProblemScopeId,
     "month",
   );
 
+  const domainDay = await getQuota(db, payload.domain_id, "domain", "", "day");
+  const domainMonth = await getQuota(
+    db,
+    payload.domain_id,
+    "domain",
+    "",
+    "month",
+  );
   const counters: CounterSpec[] = [
+    ...scopeCounters(
+      payload.domain_id,
+      "domain",
+      "",
+      "day",
+      domainDay,
+      deltaTokens,
+      deltaCost,
+      now,
+      false,
+    ),
+    ...scopeCounters(
+      payload.domain_id,
+      "domain",
+      "",
+      "month",
+      domainMonth,
+      deltaTokens,
+      deltaCost,
+      now,
+      false,
+    ),
     {
       key: evalTokenCounterKey(payload, "tokens"),
       limit: payload.max_tokens,
@@ -639,6 +773,7 @@ export async function settleUsage(
       ttl: opts.ttlSeconds,
     },
     ...scopeCounters(
+      payload.domain_id,
       "user",
       payload.user_id,
       "day",
@@ -649,6 +784,7 @@ export async function settleUsage(
       false,
     ),
     ...scopeCounters(
+      payload.domain_id,
       "user",
       payload.user_id,
       "month",
@@ -659,6 +795,7 @@ export async function settleUsage(
       false,
     ),
     ...scopeCounters(
+      payload.domain_id,
       "global",
       "",
       "day",
@@ -669,6 +806,7 @@ export async function settleUsage(
       false,
     ),
     ...scopeCounters(
+      payload.domain_id,
       "global",
       "",
       "month",
@@ -679,6 +817,7 @@ export async function settleUsage(
       false,
     ),
     ...scopeCounters(
+      payload.domain_id,
       "problem",
       payload.problem_id,
       "day",
@@ -689,6 +828,7 @@ export async function settleUsage(
       false,
     ),
     ...scopeCounters(
+      payload.domain_id,
       "problem",
       payload.problem_id,
       "month",
@@ -700,6 +840,7 @@ export async function settleUsage(
     ),
     // F-06：用户×题目组合维度结算
     ...scopeCounters(
+      payload.domain_id,
       "user_problem",
       userProblemScopeId,
       "day",
@@ -710,6 +851,7 @@ export async function settleUsage(
       false,
     ),
     ...scopeCounters(
+      payload.domain_id,
       "user_problem",
       userProblemScopeId,
       "month",

@@ -431,6 +431,7 @@ function stubProviderFetch(
   const body = failure ? { error: failure.error } : {
     data: {
       id: "prov-default",
+      domain_id: "00000000-0000-4000-8000-000000000001",
       name: "stub",
       base_url: "http://stub",
       cost_per_1k_tokens: 0,
