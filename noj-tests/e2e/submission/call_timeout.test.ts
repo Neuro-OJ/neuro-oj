@@ -92,7 +92,6 @@ async function createDualProblem(
       title,
       description: `# ${title}\n\nMarkdown 内容`,
       difficulty: "medium",
-      type: "P",
       number: Math.floor(Math.random() * 9000) + 1000,
       runtime_config: {
         evaluator: {

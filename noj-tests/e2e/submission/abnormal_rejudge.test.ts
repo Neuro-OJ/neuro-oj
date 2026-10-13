@@ -7,13 +7,13 @@ import {
   CODE_SAMPLES,
   e2eTest,
   getAdminToken,
-  getProblemIdByNumber,
   isE2E,
   pollSubmission,
   registerUser,
   submitCode,
   TEST_PASSWORD,
 } from "../helper.ts";
+import { createCodingProblemFixture } from "../fixtures/coding-problem.ts";
 
 let token = "";
 let adminToken = "";
@@ -28,7 +28,7 @@ e2eTest("[e2e/submission-abnormal] Setup", async () => {
     "abn_user_" + ts + "@test.com",
     TEST_PASSWORD,
   );
-  PROBLEM_ID = await getProblemIdByNumber(1001);
+  PROBLEM_ID = await createCodingProblemFixture();
 });
 
 e2eTest(

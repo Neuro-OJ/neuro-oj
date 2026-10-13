@@ -12,13 +12,13 @@ import {
   CODE_SAMPLES,
   e2eTest,
   getAdminToken,
-  getProblemIdByNumber,
   isE2E,
   pollSubmission,
   registerUser,
   submitCode,
   TEST_PASSWORD,
 } from "../helper.ts";
+import { createCodingProblemFixture } from "../fixtures/coding-problem.ts";
 
 const REDIS_CONTAINER = "noj-e2e-redis";
 const QUEUE = "noj:judge:queue:medium";
@@ -58,8 +58,8 @@ e2eTest("[e2e/mq-invalid] 非法消息不阻塞队列且被移出 processing", a
     `mq_${ts}@test.com`,
     TEST_PASSWORD,
   );
-  const problemId = await getProblemIdByNumber(1001);
-  // 必须提交能通过 1001 题 evaluator 的代码：`print(1)` 未定义 solve，
+  const problemId = await createCodingProblemFixture();
+  // 必须提交能通过加法 evaluator 的代码：`print(1)` 未定义 solve，
   // 会被评测器判为运行期错误（status=error），无法验证“消费者未卡死”。
   const submissionId = await submitCode(
     token,

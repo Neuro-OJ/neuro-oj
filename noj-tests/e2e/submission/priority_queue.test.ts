@@ -7,16 +7,8 @@
  * - 管理员重测（low）能被消费；
  * - high 洪峰下 low 不被饿死（固定 4:2:1 轮转的最小回归断言）。
  *
- * 2026-09-26 调整（公开赛题目保密规则）：
- * - 评测优先级由**提交携带的竞赛上下文**推导（`resolveJudgeTaskPriority`），而
- *   独立入口 `POST /api/v1/submissions` 从不接受竞赛上下文（`body.contest_id`
- *   会被路由丢弃）——因此 high 必须走 `POST /api/v1/contests/:id/submit`；
- * - 题目一旦被加入公开赛，独立入口对该题对非 owner/管理员一律 403
- *   （`resolveProblemAccess` 的 `contest-secret` 判定），所以 medium 提交必须在
- *   "题目加入竞赛之前"发出，而重测目标改用竞赛入口创建（重测任务优先级恒为 low，
- *   与初次提交优先级无关）；
- * - 本用例的竞赛改用**邀请赛**：见 `createRunningContestWithRegistration` 的说明
- *   （公开赛会让共享题 P1001 在整轮 e2e 剩余时间里对独立入口不可用，污染同域后续用例）。
+ * 使用独立题目；medium 在建赛之前受理，high 通过正式比赛入口受理。
+ * low 等待重测任务终态，不以原提交已完成的状态证明新的尝试执行。
  */
 
 import {
@@ -25,21 +17,20 @@ import {
   e2eTest,
   getAdminToken,
   getContestAnswerVersionId,
-  getProblemIdByNumber,
   isE2E,
-  isJudgeAvailable,
   pollSubmission,
   registerUser,
   submitCode,
   TEST_PASSWORD,
+  waitForJobCompleted,
   waitForServer,
 } from "../helper.ts";
+import { createCodingProblemFixture } from "../fixtures/coding-problem.ts";
 
 let adminToken = "";
 let userToken = "";
 let problemId = "";
 let contestId = "";
-let judgeOk = false;
 
 /** 邀请赛邀请码（`kind='invite'` 必须设置，报名时校验）。 */
 const CONTEST_PASSWORD = "PqInvitePass1";
@@ -47,14 +38,7 @@ const CONTEST_PASSWORD = "PqInvitePass1";
 /**
  * 建一场进行中的**邀请赛**并把题目挂进去，同时让 userToken 报名参赛。
  *
- * 为什么用邀请赛而不是公开赛（2026-09-26 CI 实测）：
- * 本次改动引入了"被公开赛关联的题目对非 owner/管理员一律 404/403"的保密规则。
- * 本用例只需要"题目处于进行中竞赛 ⇒ 提交推导为 high"，与竞赛是否公开无关；
- * 但若用公开赛，共享题 P1001 会在整轮 e2e 的剩余时间里变成"公开赛关联题目"，
- * 同域后续用例（`[e2e/queue] 7.2/7.3` 等）经独立入口 `POST /api/v1/submissions`
- * 提交该题会被 403 —— 这就是 CI 上实际观测到的失败。
- * 邀请赛不触发保密规则（规则显式排除 `kind='invite'`），因此天然隔离：
- * 既不需要收尾清理，也不依赖测试文件执行顺序。
+ * 邀请赛验证实际报名与密码；题目独立，不让比赛保密窗口影响其他回归。
  *
  * @returns 竞赛 id（high 提交与报名身份都需要）。
  */
@@ -125,25 +109,19 @@ e2eTest("[e2e/priority-queue] Setup", async () => {
   if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
-  // 与 01/06/14 保持一致：judge 未就绪时快速跳过，而不是等满 poll 超时后硬失败。
-  judgeOk = await isJudgeAvailable();
-  if (!judgeOk) {
-    console.log("  ⚠ judge worker 不可用，优先级队列测试跳过");
-    return;
-  }
   const ts = Date.now().toString(36);
   userToken = await registerUser(
     `pq_${ts}`,
     `pq_${ts}@test.com`,
     TEST_PASSWORD,
   );
-  problemId = await getProblemIdByNumber(1001);
+  problemId = await createCodingProblemFixture();
 
   // 竞赛在用例 1 里、medium 提交之后才创建：题目一旦进竞赛，独立入口即对该题 403。
 });
 
 e2eTest("[e2e/priority-queue] high/medium/low 均能被消费", async () => {
-  if (!isE2E || !judgeOk) return;
+  if (!isE2E) return;
 
   // medium：普通提交（此时题目尚未加入任何竞赛）
   const mediumId = await submitCode(
@@ -171,11 +149,18 @@ e2eTest("[e2e/priority-queue] high/medium/low 均能被消费", async () => {
       `重测失败: ${rejudge.status} ${JSON.stringify(rejudge.body)}`,
     );
   }
+  const job = await waitForJobCompleted(
+    adminToken,
+    (rejudge.body as { data: { job_id: string } }).data.job_id,
+  );
+  if (job.status !== "completed") {
+    throw new Error(`重测任务失败: ${job.status}`);
+  }
   await pollSubmission(adminToken, mediumId, 60, 2000, true);
 });
 
 e2eTest("[e2e/priority-queue] high 洪峰下 low 仍能完成（不饿死）", async () => {
-  if (!isE2E || !judgeOk) return;
+  if (!isE2E) return;
   if (!contestId) {
     throw new Error("竞赛未创建（用例 1 未成功执行）");
   }
@@ -211,6 +196,15 @@ e2eTest("[e2e/priority-queue] high 洪峰下 low 仍能完成（不饿死）", a
 
   // 4) low 必须在有界时间内完成：4:2:1 轮转保证每 7 次取任务至少取 1 次 low。
   //    若轮转退化为「高优先级不空就永远不取 low」，这里会超时失败。
+  const job = await waitForJobCompleted(
+    adminToken,
+    (rejudge.body as { data: { job_id: string } }).data.job_id,
+    90,
+    2000,
+  );
+  if (job.status !== "completed") {
+    throw new Error(`重测任务失败: ${job.status}`);
+  }
   await pollSubmission(adminToken, baseId, 90, 2000, true);
   console.log(`  ✓ high 洪峰(${highIds.length})下 low 任务已完成`);
 });
