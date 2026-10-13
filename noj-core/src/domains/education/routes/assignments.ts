@@ -6,6 +6,11 @@ import {
   type ProgressScope,
 } from "../services/progress-read.ts";
 import { exportAssignmentMatrixCsv } from "../services/matrix-csv.ts";
+import {
+  type AssignmentRemediationInput,
+  createAssignmentRemediation,
+  previewAssignmentRemediation,
+} from "../services/assignment-remediation.ts";
 import { getAssignmentHistory } from "../services/history-read.ts";
 import {
   type AssignmentCopyInput,
@@ -139,6 +144,33 @@ router.post("/domains/:slug/assignments/:id/copy", async (c) => {
   assertObjectBody(input);
   return c.json({
     data: await copyAssignment(
+      c.req.param("slug"),
+      c.req.param("id"),
+      c.var.userId,
+      revision(c.req.header("If-Match")),
+      c.req.header("Idempotency-Key") ?? "",
+      input,
+    ),
+  }, 201);
+});
+
+router.post("/domains/:slug/assignments/:id/remediation-preview", async (c) => {
+  const input = await parseJsonBody<{ scope?: ProgressScope }>(c);
+  assertObjectBody(input);
+  return c.json({
+    data: await previewAssignmentRemediation(
+      c.req.param("slug"),
+      c.req.param("id"),
+      c.var.userId,
+      input.scope,
+    ),
+  });
+});
+router.post("/domains/:slug/assignments/:id/remediation", async (c) => {
+  const input = await parseJsonBody<AssignmentRemediationInput>(c);
+  assertObjectBody(input);
+  return c.json({
+    data: await createAssignmentRemediation(
       c.req.param("slug"),
       c.req.param("id"),
       c.var.userId,

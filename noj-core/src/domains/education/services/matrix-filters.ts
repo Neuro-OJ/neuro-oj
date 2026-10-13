@@ -5,7 +5,7 @@ import {
   assignmentRecipients,
 } from "../../../shared/db/schema.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
-import { educationRevisionScope } from "../../../shared/education-events.ts";
+import { assignmentCellProjectionStaleSql } from "./progress-revisions.ts";
 import { loadBindingAvailability } from "../../catalog/index.ts";
 import { OI_VERDICTS, type OiVerdict } from "../../submission/index.ts";
 import {
@@ -55,24 +55,13 @@ export async function matrixStudentFilter(
   const resourceAvailable = available.length
     ? sql`b.id IN (${sql.join(available.map((id) => sql`${id}`), sql`, `)})`
     : sql`false`;
-  const base = educationRevisionScope(access.domain.id),
-    user = assignmentRecipients.user_id;
-  const keys = [
-    sql`${base + ":all"}`,
-    sql`${base + ":assignment:" + id}`,
-    sql`${base + ":assignment:" + id + ":user:"} || ${user}`,
-    sql`${base + ":class:" + access.classroom.id}`,
-    sql`${base + ":class:" + access.classroom.id + ":user:"} || ${user}`,
-    sql`${base + ":problem:"} || i.problem_id`,
-    sql`${base + ":user:"} || ${user}`,
-    sql`${base + ":cell:"} || ${user} || ':' || i.problem_id`,
-  ];
-  const revision =
-    sql`COALESCE((SELECT MAX(q.data_revision) FROM query_projection_revisions q
-    WHERE q.scope_key IN (${sql.join(keys, sql`, `)})), 0)`;
-  const stale =
-    sql`g.id IS NULL OR g.projection_revision < ${revision} OR g.policy_revision <> b.revision
-    OR i.answer_version_id IS DISTINCT FROM CASE WHEN b.effective_version_mode = 'exact' THEN b.required_version_id ELSE p.latest_version_id END`;
+  const user = assignmentRecipients.user_id;
+  const stale = assignmentCellProjectionStaleSql(
+    access.domain.id,
+    access.classroom.id,
+    id,
+    sql`${user}`,
+  );
   const status = sql`CASE WHEN NOT (${resourceAvailable}) THEN 'unavailable'
     WHEN ${stale} THEN 'updating' ELSE g.status END`;
   return sql`EXISTS (SELECT 1 FROM assignment_items i
