@@ -27,10 +27,9 @@ let brokenStorageKey = "";
 const testSuffix = Date.now().toString(36);
 
 const MANIFEST = JSON.stringify({
-  format_version: 1,
+  format_version: 2,
   title: `E2E 存储故障测试 ${testSuffix}`,
   difficulty: "easy",
-  type: "U",
   number: 91000 + (Date.now() % 9000),
   runtime_config: {
     evaluator: {
@@ -130,7 +129,6 @@ e2eTest("[e2e/storage-failure] 无支持包下载返回 404", async () => {
           memory_limit_mb: 512,
         },
       },
-      type: "U",
     },
     adminToken,
   );
@@ -178,7 +176,18 @@ e2eTest("[e2e/storage-failure] 存储文件缺失时下载返回 5xx", async () 
     data: { id: string; support_package_storage_url: string | null };
   };
   brokenProblemId = body.data.id;
-  const storageUrl = body.data.support_package_storage_url;
+  // 导入响应的题目投影尚未发布，包事实先在草稿对象登记；发布后才读取投影。
+  await publishProblemVersion(adminToken, brokenProblemId, "E2E 存储故障 V1");
+  const published = await apiGet(
+    `/api/v1/problems/${brokenProblemId}`,
+    adminToken,
+  );
+  if (published.status !== 200) {
+    throw new Error(`读取已发布题目失败 ${JSON.stringify(published)}`);
+  }
+  const storageUrl =
+    (published.body as { data: { support_package_storage_url: string | null } })
+      .data.support_package_storage_url;
   if (!storageUrl || !storageUrl.startsWith("noj-storage://local/")) {
     throw new Error("期望 local 存储 URL, 实际 " + storageUrl);
   }
@@ -187,9 +196,6 @@ e2eTest("[e2e/storage-failure] 存储文件缺失时下载返回 5xx", async () 
     "noj-storage://local/",
     "",
   );
-
-  // 先发布作答版本（发布预检需要支持包存在），随后再删除存储文件模拟故障
-  await publishProblemVersion(adminToken, brokenProblemId, "E2E 存储故障 V1");
 
   // 删除容器内存储文件模拟存储故障（与 pipeline.test.ts 的 docker exec 模式一致）
   try {
@@ -226,7 +232,7 @@ e2eTest(
   async () => {
     if (!isE2E) return;
     // 按版本执行需要目标支持包存在，预检失败不能落库后再等待 Judge。
-    // import-bundle 创建的是 admin 名下的私有 U 型题，必须用 admin 身份提交，
+    // 使用管理该导入题目的相同 admin 身份提交，
     // 普通用户会被 resolveProblemAccess 判为无权访问（403）。
     if (!brokenProblemId) throw new Error("缺少 brokenProblemId");
     const listPath = `/api/v1/submissions?problem_id=${brokenProblemId}`;
@@ -260,13 +266,17 @@ e2eTest(
   },
 );
 
-e2eTest("[e2e/storage-failure] 清理导入的题目", async () => {
-  if (!isE2E || !brokenProblemId) return;
-  const del = await fetch(`${BASE_URL}/api/v1/problems/${brokenProblemId}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${adminToken}` },
-  });
-  if (del.status !== 204 && del.status !== 200) {
-    throw new Error("清理导入题目失败: " + del.status);
-  }
-});
+e2eTest(
+  "[e2e/storage-failure] 已发布版本受删除保护，不级联清除历史依据",
+  async () => {
+    if (!isE2E || !brokenProblemId) return;
+    const del = await fetch(`${BASE_URL}/api/v1/problems/${brokenProblemId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    await del.arrayBuffer();
+    if (del.status !== 409) {
+      throw new Error("已发布题目物理删除应返回409，实际 " + del.status);
+    }
+  },
+);

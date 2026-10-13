@@ -2,8 +2,8 @@
  * 评测网络能力（evaluator 联网 + capability）跨模块 E2E。
  *
  * 覆盖（issue #197）：
- * - 普通用户创建带 network.enabled=true 的 U 型题目（权限放行，无需 admin）
- * - 普通用户通过 import-bundle 导入带联网配置的统一题目包（导入路径同权限）
+ * - 实例管理员创建带 network.enabled=true 的题目，联网仍受实例权限约束
+ * - format_version=2 联网题包显式发布后，普通用户通过 capability 作答
  * - 提交 solution（call_capability）→ 评测完成且 evaluator 联网真实生效：
  *   capability handler 内真实 TCP 出网探测（example.com:443）成功才 finished 且得分>0，
  *   evaluator 无网则返回 no-net → WrongAnswer（测试失败即暴露网络回归）
@@ -106,10 +106,9 @@ async function makeBundleZip(): Promise<Uint8Array> {
   const enc = new TextEncoder();
   try {
     const manifest = JSON.stringify({
-      format_version: 1,
+      format_version: 2,
       title: `[${TEST_TAG}] 联网能力导入题`,
       difficulty: "easy",
-      type: "U",
       // 普通用户导入不带 number（number 由系统自动分配）
       runtime_config: {
         evaluator: {
@@ -301,7 +300,7 @@ e2eTest(
     if (!isE2E) return;
     const zip = await makeBundleZip();
     bundleProblemId = await importBundle(zip);
-    // U 型导入默认 private；普通用户提交前需公开
+    // 默认域新导入资源先显式公开，再发布作答版本。
     const pubRes = await apiPut(
       `/api/v1/problems/${bundleProblemId}/visibility`,
       { visibility: "public" },
