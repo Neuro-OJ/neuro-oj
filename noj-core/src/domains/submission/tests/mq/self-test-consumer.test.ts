@@ -1,3 +1,4 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import {
@@ -415,8 +416,8 @@ Deno.test({
     await db.delete(selfTests).where(
       eq(selfTests.id, RECOVERABLE_SELF_TEST_ID),
     );
-    await db.delete(problems).where(eq(problems.id, PROBLEM_ID));
-    await db.delete(problems).where(eq(problems.id, BAD_PROBLEM_ID));
+    await deleteProblemFixtures(eq(problems.id, PROBLEM_ID));
+    await deleteProblemFixtures(eq(problems.id, BAD_PROBLEM_ID));
     await db.delete(users).where(eq(users.id, USER_ID));
   },
 });

@@ -1,7 +1,8 @@
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { getDb } from "../../../../shared/db/connection.ts";
+import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 import {
   BadRequestError,
   ConflictError,
@@ -26,6 +27,7 @@ import {
   updateContest,
 } from "../../index.ts";
 import type { ContestType } from "../../types/contests.ts";
+await resetDbForTest();
 
 async function problem(kind: "oi" | "ai" | "objective", number: number) {
   const db = getDb(), id = crypto.randomUUID(), version = crypto.randomUUID();
@@ -53,6 +55,7 @@ async function problem(kind: "oi" | "ai" | "objective", number: number) {
   await db.update(problems).set({ latest_version_id: version }).where(
     eq(problems.id, id),
   );
+  await bindPublishedProblemForTest(id);
   return { id, version };
 }
 

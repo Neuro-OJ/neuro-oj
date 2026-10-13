@@ -51,6 +51,7 @@ Deno.test({
       role_id: "admin",
     }).onConflictDoNothing();
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "导出测试赛",
       start_time: "2026-01-01T00:00:00.000Z",
@@ -299,6 +300,7 @@ Deno.test({
       role_id: "admin",
     }).onConflictDoNothing();
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "注入用例赛",
       start_time: "2026-01-01T00:00:00.000Z",
@@ -375,3 +377,4 @@ Deno.test({
     }
   },
 });
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";

@@ -92,6 +92,9 @@ export async function resolveCommunityProblem(
   reference: string,
   scope: CommunityScope,
 ) {
+  if (scope.slug === "main" && /^P\d+$/.test(reference)) {
+    reference = reference.slice(1);
+  }
   const [source] = await scope.executor.select({
     number: problems.number,
     slug: domains.slug,

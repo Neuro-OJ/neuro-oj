@@ -1,3 +1,4 @@
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * pending 恢复的版本来源测试（Handbook §5.4、§6.5）。
  *
@@ -33,6 +34,8 @@ import { startFakeRedis } from "./_setup.ts";
 
 const tempStorageDir = Deno.makeTempDirSync({ prefix: "noj-sweeper-" });
 setStorageProviderForTest(new LocalStorageProvider(tempStorageDir));
+
+await resetDbForTest();
 
 const db = getDb();
 const ts = Date.now();

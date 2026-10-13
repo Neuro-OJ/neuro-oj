@@ -46,7 +46,10 @@ import {
   communityDomainWhere,
   communityResourceVisible,
   type CommunityScope,
+  loadCommunityScope,
 } from "./community-scope.ts";
+import { withDefaultCommunity } from "./domain-community.ts";
+import { DEFAULT_DOMAIN_SLUG } from "../../../workspace/index.ts";
 import { getPost } from "./community-post-crud.ts";
 
 export { banUser, getLatestActiveBanId } from "../../../identity/index.ts";
@@ -72,7 +75,14 @@ export async function createReport(
   },
   moderator = false,
   scope?: CommunityScope,
-) {
+): Promise<typeof communityReports.$inferSelect> {
+  if (!scope && (input.post_id || input.comment_id)) {
+    return await withDefaultCommunity(
+      reporterId,
+      { write: true, moderator },
+      (current) => createReport(reporterId, input, moderator, current),
+    );
+  }
   assertCommunityEnabled();
   const targetCount = [input.post_id, input.comment_id, input.message_id]
     .filter((x) => !!x).length;
@@ -216,7 +226,7 @@ export async function createReport(
   if (reason.length > 500) throw new ValidationError("举报原因最多 500 个字符");
   const report = {
     id: crypto.randomUUID(),
-    domain_id: scope?.domainId ?? null,
+    domain_id: input.message_id ? null : communityDomainId(scope),
     reporter_id: reporterId,
     post_id: input.post_id ?? null,
     comment_id: input.comment_id ?? null,
@@ -229,6 +239,8 @@ export async function createReport(
     resolution: null,
     resolved_by: null,
     resolved_at: null,
+    ban_id: null,
+    sanction_id: null,
     updated_at: nowIso(),
     created_at: nowIso(),
   };
@@ -655,6 +667,9 @@ export async function getReportDetail(
   if (row.report.reporter_id !== _viewerId && !moderator) {
     throw new NotFoundError("举报不存在");
   }
+  if (!scope && row.report.domain_id) {
+    scope = await loadCommunityScope(DEFAULT_DOMAIN_SLUG, _viewerId);
+  }
   if (scope && (row.post || row.comment)) {
     try {
       await getPost(
@@ -721,7 +736,7 @@ export async function createSanction(
   const db = communityDb(scope);
   const sanction = {
     id: crypto.randomUUID(),
-    domain_id: scope?.domainId ?? null,
+    domain_id: communityDomainId(scope),
     user_id: userId,
     reason,
     expires_at: expiresAt ?? null,

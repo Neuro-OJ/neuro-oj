@@ -65,18 +65,30 @@ import {
 } from "../../contest/index.ts";
 import {
   DEFAULT_DOMAIN_ID,
-  DEFAULT_DOMAIN_SLUG,
   ensureDefaultWorkspace,
-  loadWorkspace,
 } from "../../workspace/index.ts";
+import { withDefaultCommunity } from "../services/community/domain-community.ts";
+import type { CommunityScope } from "../services/community/community-scope.ts";
 
-const router = new Hono<OptionalAuthEnv>();
+interface CommunityEnv extends OptionalAuthEnv {
+  Variables: OptionalAuthEnv["Variables"] & { communityScope: CommunityScope };
+}
+const router = new Hono<CommunityEnv>();
 router.use("*", optionalAuthMiddleware, async (c, next) => {
   const accountRoute = /\/(?:notifications|reports)(?:\/|$)/.test(c.req.path) ||
     /\/users\/[^/]+\/follow$/.test(c.req.path);
   if (!accountRoute) {
     await ensureDefaultWorkspace();
-    await loadWorkspace(DEFAULT_DOMAIN_SLUG, c.var.userId ?? null);
+    await withDefaultCommunity(c.var.userId ?? null, {
+      write: !["GET", "HEAD", "OPTIONS"].includes(c.req.method),
+      moderator: !!c.var.userId && await isModerator(c),
+    }, async (scope) => {
+      c.set("communityScope", scope);
+      await next();
+      // Hono 在 next 内转换异常为响应，事务仍需回滚原异常。
+      if (c.error) throw c.error;
+    });
+    return;
   }
   await next();
 });
@@ -166,7 +178,7 @@ router.get("/config", optionalAuthMiddleware, async (c) => {
 router.get("/boards", optionalAuthMiddleware, async (c) => {
   assertCommunityEnabled("discussions_enabled");
   requireGuestRead(c);
-  return c.json({ data: await listBoards() });
+  return c.json({ data: await listBoards(false, c.var.communityScope) });
 });
 
 /**
@@ -205,6 +217,7 @@ router.get("/posts", optionalAuthMiddleware, async (c) => {
       limit: parseQueryLimit(c.req.query("limit"), { default: 20 }),
       viewerId: c.get("userId"),
       moderator,
+      scope: c.var.communityScope,
     }),
   );
 });
@@ -220,6 +233,7 @@ router.get("/bookmarks", authMiddleware, async (c) => {
       userId(c),
       c.req.query("cursor"),
       parseQueryLimit(c.req.query("limit"), { default: 20 }),
+      c.var.communityScope,
     ),
   );
 });
@@ -232,7 +246,7 @@ router.get("/bookmarks", authMiddleware, async (c) => {
 router.get("/posts/counts", optionalAuthMiddleware, async (c) => {
   assertCommunityEnabled();
   requireGuestRead(c);
-  return c.json({ data: await countPostsByType() });
+  return c.json({ data: await countPostsByType(c.var.communityScope) });
 });
 
 /**
@@ -248,7 +262,7 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
   const config = getCommunityConfig();
   const requiresAccepted = config.solution_requires_accepted;
   const accepted = requiresAccepted
-    ? await hasAcceptedSolution(actorId, problemId)
+    ? await hasAcceptedSolution(actorId, problemId, c.var.communityScope)
     : true;
   // 公开赛保密门控（审计 VULN-02）：归属于**尚未结束**公开赛（含赛前筹备期）的
   // 题目不开放题解发布，赛后自动恢复。此前只判 `running`，赛前筹备期完全放行。
@@ -301,6 +315,7 @@ router.get("/posts/:postId", optionalAuthMiddleware, async (c) => {
       postId,
       c.get("userId"),
       c.get("userId") ? await isModerator(c) : false,
+      c.var.communityScope,
     ),
   });
 });
@@ -317,8 +332,15 @@ router.post("/posts", authMiddleware, async (c) => {
     throw new BadRequestError("无效内容类型");
   }
   await requirePostPermission(c, input.type);
-  await assertCommunityWritable(actorId, await isModerator(c));
-  const post = await createPost(actorId, input, await isModerator(c));
+  await assertCommunityWritable(actorId, await isModerator(c), {
+    scope: c.var.communityScope,
+  });
+  const post = await createPost(
+    actorId,
+    input,
+    await isModerator(c),
+    c.var.communityScope,
+  );
   return c.json({ data: post }, 201);
 });
 
@@ -330,7 +352,9 @@ router.post("/posts", authMiddleware, async (c) => {
 router.patch("/posts/:postId", authMiddleware, async (c) => {
   const actorId = userId(c);
   const postId = await resolvePostId(c.req.param("postId") as string);
-  await assertCommunityWritable(actorId, await isModerator(c));
+  await assertCommunityWritable(actorId, await isModerator(c), {
+    scope: c.var.communityScope,
+  });
   const input = await parseJsonBody<
     Partial<Pick<CommunityPostInput, "title" | "content">>
   >(c);
@@ -340,6 +364,7 @@ router.patch("/posts/:postId", authMiddleware, async (c) => {
       actorId,
       await isModerator(c),
       input,
+      c.var.communityScope,
     ),
   });
 });
@@ -358,13 +383,23 @@ router.patch("/posts/:postId/official", authMiddleware, async (c) => {
   const actorId = userId(c);
   const postId = await resolvePostId(c.req.param("postId") as string);
   const moderator = await isModerator(c);
-  await assertCommunityWritable(actorId, moderator);
+  await assertCommunityWritable(actorId, moderator, {
+    scope: c.var.communityScope,
+  });
   const body = await parseJsonBody<{ value?: boolean }>(c);
   if (typeof body.value !== "boolean") {
     throw new BadRequestError("value 必须为布尔值");
   }
-  await setPostOfficial(postId, actorId, moderator, body.value);
-  return c.json({ data: await getPost(postId, actorId, moderator) });
+  await setPostOfficial(
+    postId,
+    actorId,
+    moderator,
+    body.value,
+    c.var.communityScope,
+  );
+  return c.json({
+    data: await getPost(postId, actorId, moderator, c.var.communityScope),
+  });
 });
 
 /**
@@ -379,18 +414,22 @@ router.delete("/posts/:postId", authMiddleware, async (c) => {
     postId,
     actorId,
     await isModerator(c),
+    c.var.communityScope,
   );
   if (post.post.author_id !== actorId && !(await isModerator(c))) {
     throw new ForbiddenError("无权删除该内容");
   }
   await assertCommunityWritable(actorId, await isModerator(c), {
     allowSocialBan: true,
+    scope: c.var.communityScope,
   });
   return c.json({
     data: await changePostStatus(
       postId,
       actorId,
       "deleted",
+      undefined,
+      c.var.communityScope,
     ),
   });
 });
@@ -411,6 +450,7 @@ router.get(
         postId,
         c.get("userId"),
         c.get("userId") ? await isModerator(c) : false,
+        c.var.communityScope,
       ),
     });
   },
@@ -424,7 +464,9 @@ router.post("/posts/:postId/comments", authMiddleware, async (c) => {
   const actorId = userId(c);
   const postId = await resolvePostId(c.req.param("postId") as string);
   await assertPermission(c, "community:comment");
-  await assertCommunityWritable(actorId, await isModerator(c));
+  await assertCommunityWritable(actorId, await isModerator(c), {
+    scope: c.var.communityScope,
+  });
   const body = await parseJsonBody<{ content?: string; parent_id?: string }>(c);
   if (!body.content) throw new BadRequestError("缺少评论内容");
   return c.json({
@@ -434,6 +476,7 @@ router.post("/posts/:postId/comments", authMiddleware, async (c) => {
       body.content,
       body.parent_id,
       await isModerator(c),
+      c.var.communityScope,
     ),
   }, 201);
 });
@@ -445,7 +488,9 @@ router.post("/posts/:postId/comments", authMiddleware, async (c) => {
  */
 router.patch("/comments/:commentId", authMiddleware, async (c) => {
   const actorId = userId(c);
-  await assertCommunityWritable(actorId, await isModerator(c));
+  await assertCommunityWritable(actorId, await isModerator(c), {
+    scope: c.var.communityScope,
+  });
   const body = await parseJsonBody<{ content?: string }>(c);
   if (!body.content) throw new BadRequestError("缺少评论内容");
   return c.json({
@@ -454,6 +499,7 @@ router.patch("/comments/:commentId", authMiddleware, async (c) => {
       actorId,
       await isModerator(c),
       body.content,
+      c.var.communityScope,
     ),
   });
 });
@@ -466,12 +512,14 @@ router.delete("/comments/:commentId", authMiddleware, async (c) => {
   const actorId = userId(c);
   await assertCommunityWritable(actorId, await isModerator(c), {
     allowSocialBan: true,
+    scope: c.var.communityScope,
   });
   return c.json({
     data: await deleteComment(
       c.req.param("commentId") as string,
       actorId,
       await isModerator(c),
+      c.var.communityScope,
     ),
   });
 });
@@ -486,10 +534,12 @@ router.post("/posts/:postId/like", authMiddleware, async (c) => {
   await enforcePostLikeRateLimit(c, actorId);
   const postId = await resolvePostId(c.req.param("postId") as string);
   await assertPermission(c, "community:react");
-  await assertCommunityWritable(actorId, await isModerator(c));
+  await assertCommunityWritable(actorId, await isModerator(c), {
+    scope: c.var.communityScope,
+  });
   return c.json({
     data: {
-      liked: await togglePostLike(actorId, postId),
+      liked: await togglePostLike(actorId, postId, c.var.communityScope),
     },
   });
 });
@@ -503,12 +553,15 @@ router.post("/posts/:postId/bookmark", authMiddleware, async (c) => {
   await enforceBookmarkRateLimit(c, actorId);
   const postId = await resolvePostId(c.req.param("postId") as string);
   await assertPermission(c, "community:react");
-  await assertCommunityWritable(actorId, await isModerator(c));
+  await assertCommunityWritable(actorId, await isModerator(c), {
+    scope: c.var.communityScope,
+  });
   return c.json({
     data: {
       bookmarked: await toggleBookmark(
         actorId,
         postId,
+        c.var.communityScope,
       ),
     },
   });
@@ -522,12 +575,15 @@ router.post("/comments/:commentId/like", authMiddleware, async (c) => {
   const actorId = userId(c);
   await enforceCommentLikeRateLimit(c, actorId);
   await assertPermission(c, "community:react");
-  await assertCommunityWritable(actorId, await isModerator(c));
+  await assertCommunityWritable(actorId, await isModerator(c), {
+    scope: c.var.communityScope,
+  });
   return c.json({
     data: {
       liked: await toggleCommentLike(
         actorId,
         c.req.param("commentId") as string,
+        c.var.communityScope,
       ),
     },
   });
@@ -565,6 +621,7 @@ router.get("/feed", optionalAuthMiddleware, async (c) => {
       c.get("userId"),
       c.req.query("cursor"),
       parseQueryLimit(c.req.query("limit"), { default: 20 }),
+      c.var.communityScope,
     ),
   );
 });

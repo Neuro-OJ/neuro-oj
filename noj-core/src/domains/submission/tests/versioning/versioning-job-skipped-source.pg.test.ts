@@ -1,3 +1,5 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 /**
  * 锁内复查分类的**真实 PostgreSQL 屏障**回归（复审问题 10，P2）。
  *
@@ -169,6 +171,7 @@ async function seedFixture(tag: string): Promise<Fixture> {
   await db.update(problems).set({ latest_version_id: versionId }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
   await db.insert(submissions).values({
     id: submissionId,
     user_id: userId,
@@ -236,7 +239,7 @@ async function cleanup(fixture: Fixture): Promise<void> {
   await db.delete(problemVersions).where(
     inArray(problemVersions.problem_id, [fixture.problemId]),
   );
-  await db.delete(problems).where(eq(problems.id, fixture.problemId));
+  await deleteProblemFixtures(eq(problems.id, fixture.problemId));
   // 域身份是保留历史，不物理删除账号；由独立测试 schema 的生命周期管理。
 }
 
@@ -500,8 +503,10 @@ async function seedObjectiveFixture(
   await db.update(problems).set({ latest_version_id: latestVersionId }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
   if (contestId) {
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: `客观题策略锁序 ${tag}`,
       description: "",
@@ -614,7 +619,7 @@ async function cleanupObjective(fixture: ObjectiveFixture): Promise<void> {
   await db.delete(problemVersions).where(
     eq(problemVersions.id, fixture.versionId),
   );
-  await db.delete(problems).where(eq(problems.id, fixture.problemId));
+  await deleteProblemFixtures(eq(problems.id, fixture.problemId));
   // 保留已加入 main 的账号身份，不能通过删除用户破坏域成员历史。
 }
 

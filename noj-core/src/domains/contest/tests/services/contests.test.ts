@@ -1,8 +1,14 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertMatch, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
-import { contests, problems, users } from "../../../../shared/db/schema.ts";
+import {
+  contestProblems as contestProblemRows,
+  contests,
+  problems,
+  users,
+} from "../../../../shared/db/schema.ts";
 import {
   addParticipants,
   computeContestStatus,
@@ -108,6 +114,14 @@ Deno.test({
       assertEquals(contest.is_public, false);
       assertEquals(contest.problem_count, 1);
       assertEquals(contest.has_password, true);
+      const [binding] = await getDb().select().from(contestProblemRows).where(
+        eq(contestProblemRows.contest_id, contest.id),
+      );
+      assertEquals(binding.domain_id, DEFAULT_DOMAIN_ID);
+      assertEquals(
+        binding.domain_problem_binding_id,
+        `owned-binding-${problemA}`,
+      );
       assertMatch(
         contest.public_id,
         /^ct-[123456789abcdefghjkmnpqrstuvwxyz]{8}$/,
@@ -189,8 +203,8 @@ Deno.test({
     } finally {
       await deleteContest(contest.id).catch(() => {});
       const db = getDb();
-      await db.delete(problems).where(eq(problems.id, problemA));
-      await db.delete(problems).where(eq(problems.id, problemB));
+      await deleteProblemFixtures(eq(problems.id, problemA));
+      await deleteProblemFixtures(eq(problems.id, problemB));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, participantId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
@@ -234,7 +248,7 @@ Deno.test({
         "仅可加入公开题或自己拥有的题目",
       );
     } finally {
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, normal));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
@@ -271,7 +285,7 @@ Deno.test({
         "邀请赛必须设置邀请码",
       );
     } finally {
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, creator));
     }
@@ -307,7 +321,7 @@ Deno.test({
         "仅管理员可创建公开赛",
       );
     } finally {
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, creator));
     }
@@ -347,7 +361,7 @@ Deno.test({
       assertEquals(await isParticipant(contest.id, participant), true);
     } finally {
       await deleteContest(contest.id).catch(() => {});
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, participant));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
@@ -387,7 +401,7 @@ Deno.test({
       );
     } finally {
       await deleteContest(contest.id).catch(() => {});
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, participant));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
@@ -427,7 +441,7 @@ Deno.test({
       assertEquals(await isParticipant(contest.id, participant), true);
     } finally {
       await deleteContest(contest.id).catch(() => {});
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, participant));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
@@ -508,7 +522,7 @@ Deno.test({
         .where(eq(users.id, participant));
     } finally {
       await deleteContest(contest.id).catch(() => {});
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, creator));
     }
@@ -561,7 +575,7 @@ Deno.test({
         .where(eq(users.id, participant));
     } finally {
       await deleteContest(contest.id).catch(() => {});
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, creator));
     }

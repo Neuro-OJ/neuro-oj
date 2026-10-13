@@ -1,3 +1,4 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
@@ -80,7 +81,7 @@ async function cleanup(
 ): Promise<void> {
   for (const id of contestIds) await deleteContest(id).catch(() => {});
   for (const id of problemIds) {
-    await getDb().delete(problems).where(eq(problems.id, id)).catch(() => {});
+    await deleteProblemFixtures(eq(problems.id, id)).catch(() => {});
   }
   for (const id of userIds) {
     await getDb().delete(users).where(eq(users.id, id)).catch(() => {});

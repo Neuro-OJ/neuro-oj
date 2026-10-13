@@ -49,6 +49,8 @@ export async function createNotification(
   commentId: string | null,
   data: Record<string, unknown>,
   scope?: CommunityScope,
+  /** 非社区通知的归属只能由调用方读取已授权业务记录后传入。 */
+  trustedDomainId?: string,
 ): Promise<void> {
   if (recipientId === actorId) return;
   const db = communityDb(scope);
@@ -59,7 +61,7 @@ export async function createNotification(
     : [];
   const notification = {
     id: crypto.randomUUID(),
-    domain_id: scope?.domainId ?? post?.domain_id ?? null,
+    domain_id: scope?.domainId ?? trustedDomainId ?? post?.domain_id ?? null,
     recipient_id: recipientId,
     actor_id: actorId,
     type,

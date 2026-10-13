@@ -1,3 +1,4 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import {
@@ -154,7 +155,7 @@ async function teardown() {
     await db.delete(submissions).where(
       eq(submissions.user_id, USER_ID),
     );
-    await db.delete(problems).where(eq(problems.id, PROBLEM_ID));
+    await deleteProblemFixtures(eq(problems.id, PROBLEM_ID));
     await db.delete(users).where(eq(users.id, USER_ID));
   } catch { /* ignore */ }
 }

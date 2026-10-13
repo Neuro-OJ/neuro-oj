@@ -28,6 +28,7 @@ import { reviewUgcContent } from "./community-review.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
 import {
   communityDb,
+  communityDomainId,
   communityDomainWhere,
   type CommunityScope,
 } from "./community-scope.ts";
@@ -62,7 +63,7 @@ export async function changeCommentStatus(
   }).where(eq(communityComments.id, commentId)).returning();
   await db.insert(communityModerationActions).values({
     id: crypto.randomUUID(),
-    domain_id: scope?.domainId ?? null,
+    domain_id: communityDomainId(scope),
     moderator_id: actorId,
     action: status,
     target_type: "comment",
@@ -169,7 +170,7 @@ export async function createComment(
   const status = await publicationStatus(authorId);
   const comment = {
     id: crypto.randomUUID(),
-    domain_id: scope?.domainId ?? null,
+    domain_id: communityDomainId(scope),
     post_id: postId,
     author_id: authorId,
     parent_id: parentId ?? null,

@@ -1,3 +1,5 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 /**
  * 竞赛提交版本校验路由测试（Handbook §4.2/§4.4）。
  *
@@ -107,6 +109,7 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: versionV2 }).where(
       eq(problems.id, problemId),
     );
+    await bindPublishedProblemForTest(problemId);
 
     const adminToken = await signToken({ sub: adminId, role: "admin" });
     let contestId: string | undefined;
@@ -229,7 +232,7 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
     }
   },
 });

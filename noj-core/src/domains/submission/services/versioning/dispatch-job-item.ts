@@ -84,6 +84,8 @@ export type DispatchOutcome =
 export interface DispatchSource {
   domain_id?: string | null;
   domain_problem_binding_id?: string | null;
+  assignment_id?: string | null;
+  assignment_item_id?: string | null;
   id: string;
   problem_id: string;
   user_id: string;
@@ -108,6 +110,8 @@ async function loadSource(
       id: submissions.id,
       domain_id: submissions.domain_id,
       domain_problem_binding_id: submissions.domain_problem_binding_id,
+      assignment_id: submissions.assignment_id,
+      assignment_item_id: submissions.assignment_item_id,
       problem_id: submissions.problem_id,
       user_id: submissions.user_id,
       language: submissions.language,
@@ -124,6 +128,8 @@ async function loadSource(
     id: objectiveSubmissions.id,
     domain_id: objectiveSubmissions.domain_id,
     domain_problem_binding_id: objectiveSubmissions.domain_problem_binding_id,
+    assignment_id: objectiveSubmissions.assignment_id,
+    assignment_item_id: objectiveSubmissions.assignment_item_id,
     problem_id: objectiveSubmissions.paper_id,
     user_id: objectiveSubmissions.user_id,
     language: objectiveSubmissions.submission_type,
@@ -141,6 +147,8 @@ async function loadSource(
     id: row.id,
     domain_id: row.domain_id,
     domain_problem_binding_id: row.domain_problem_binding_id,
+    assignment_id: row.assignment_id,
+    assignment_item_id: row.assignment_item_id,
     problem_id: row.problem_id,
     user_id: row.user_id,
     language: "objective",
@@ -761,9 +769,12 @@ async function dispatchObjectiveUpgrade(input: {
   );
   try {
     await db.transaction(async (tx) => {
-      if (!item.attempt_id) {
-        await assertDomainJobExecution(item, source, "upgrade", tx);
-      }
+      const execution = await assertDomainJobExecution(
+        item,
+        source,
+        "upgrade",
+        tx,
+      );
       // Handbook §5.1：先锁来源题库与竞赛，再锁客观题源行；随后才能创建副本、
       // 分配 revision 并创建新尝试。策略重算使用同一宿主 → 来源提交顺序。
       await lockProjectionHosts(tx, {
@@ -776,15 +787,16 @@ async function dispatchObjectiveUpgrade(input: {
       await assertObjectiveSourceDispatchable(tx, source.id);
       const newId = crypto.randomUUID();
       await consumeDomainUpgradeQuota(
-        source.domain_id ?? DEFAULT_DOMAIN_ID,
+        execution.domain_id,
         source.user_id,
         item.id,
         tx,
       );
       await tx.insert(objectiveSubmissions).values({
-        domain_id: item.domain_id ?? source.domain_id ?? null,
-        domain_problem_binding_id: item.domain_problem_binding_id ??
-          source.domain_problem_binding_id ?? null,
+        domain_id: execution.domain_id,
+        domain_problem_binding_id: execution.domain_problem_binding_id,
+        assignment_id: source.assignment_id,
+        assignment_item_id: source.assignment_item_id,
         id: newId,
         paper_id: source.problem_id,
         user_id: source.user_id,

@@ -1,3 +1,4 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 竞赛客观题小题固定版本回归（Handbook §6.4，缺陷 #3-contest）。
  *
@@ -144,6 +145,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       public_id: contestPublicId,
       title: "客观题固定版本测试",
@@ -258,7 +260,7 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, paperId),
       );
-      await db.delete(problems).where(eq(problems.id, paperId));
+      await deleteProblemFixtures(eq(problems.id, paperId));
       await db.update(users).set({ deleted_at: now }).where(
         inArray(users.id, [userId]),
       );

@@ -51,6 +51,7 @@ import {
   communityDomainWhere,
   communityResourceVisible,
   type CommunityScope,
+  loadCommunityScope,
   resolveCommunityProblem,
 } from "./community-scope.ts";
 
@@ -158,12 +159,13 @@ export async function createPost(
   }
   if (input.type === "solution") {
     if (!input.problem_id) throw new ValidationError("题解必须关联题目");
-    const bound = scope
-      ? await resolveCommunityProblem(input.problem_id, scope)
-      : null;
-    const resolvedProblemId = bound?.problem.id ??
-      await resolveProblemId(input.problem_id);
-    bindingId = bound?.binding.id ?? null;
+    const bound = await resolveCommunityProblem(
+      input.problem_id,
+      scope ??
+        await loadCommunityScope(DEFAULT_DOMAIN_SLUG, authorId),
+    );
+    const resolvedProblemId = bound.problem.id;
+    bindingId = bound.binding.id;
     if (!resolvedProblemId) throw new ValidationError("题目不存在");
     // 通过门槛仅约束普通用户：管理员/审核员不受限（community-content spec）
     if (!moderator) {
@@ -192,7 +194,8 @@ export async function createPost(
       throw new ValidationError("板块不存在或已归档");
     }
     if (
-      !scope && !moderator && !await canPostToBoard(authorId, input.board_id)
+      (!scope || scope.slug === DEFAULT_DOMAIN_SLUG) && !moderator &&
+      !await canPostToBoard(authorId, input.board_id)
     ) {
       throw new ForbiddenError("你没有在该板块发帖的权限");
     }
@@ -260,7 +263,7 @@ export async function createPost(
   const status = await publicationStatus(authorId);
   const post = {
     id: crypto.randomUUID(),
-    domain_id: scope?.domainId ?? null,
+    domain_id: communityDomainId(scope),
     domain_problem_binding_id: bindingId,
     public_id: generatePublicId("post"),
     type: input.type,

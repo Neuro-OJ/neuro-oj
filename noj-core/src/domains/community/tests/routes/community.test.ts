@@ -26,6 +26,45 @@ import {
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
 import { createContest } from "../../../contest/index.ts";
+import { domainFixture } from "../services/domain-fixture.ts";
+
+Deno.test({
+  name: "旧社区治理固定main：新板块明确归属，平台权限不能用私域资源ID替换目标",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const f = await domainFixture("legacy-gov");
+    const token = await createUserToken("admin");
+    const app = createApp();
+    assertEquals(
+      (await jsonRequest(
+        app,
+        `/api/v1/admin/community/boards/${f.boardB.id}/role-grants`,
+        { token },
+      )).status,
+      404,
+    );
+    assertEquals(
+      (await jsonRequest(
+        app,
+        `/api/v1/admin/community/posts/${f.postB.id}/hidden`,
+        {
+          token,
+          method: "POST",
+          body: { reason: "错误域目标" },
+        },
+      )).status,
+      404,
+    );
+    const created = await jsonRequest(app, "/api/v1/admin/community/boards", {
+      token,
+      method: "POST",
+      body: { slug: "legacy-owned", name: "默认域板块" },
+    });
+    assertEquals(created.status, 201);
+    assertEquals((await created.json()).data.domain_id, DEFAULT_DOMAIN_ID);
+  },
+});
 
 if (!Deno.env.get("JWT_SECRET")) {
   Deno.env.set(
@@ -80,6 +119,7 @@ async function setup(): Promise<void> {
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest("community-search-problem");
   enterTestContext({
     actorId: "0",
     actorIp: "127.0.0.1",

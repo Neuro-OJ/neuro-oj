@@ -1,3 +1,4 @@
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
@@ -30,6 +31,8 @@ import {
   resetRedisForTest,
 } from "../../../../shared/mq/connection.ts";
 import { startFakeRedis } from "../mq/_setup.ts";
+
+await resetDbForTest();
 
 const now = new Date().toISOString();
 

@@ -1,4 +1,5 @@
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 批量任务条目派发测试（Handbook §5.7、边界表）。
@@ -124,6 +125,7 @@ async function seedProblemWithVersions(
   await db.update(problems).set({ latest_version_id: v2 }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
   return { problemId, v1, v2 };
 }
 
@@ -589,6 +591,7 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: v2 }).where(
       eq(problems.id, problemId),
     );
+    await bindPublishedProblemForTest(problemId);
 
     const submissionId = crypto.randomUUID();
     const initialAttemptId = crypto.randomUUID();
@@ -921,7 +924,9 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: v2 }).where(
       eq(problems.id, problemId),
     );
+    await bindPublishedProblemForTest(problemId);
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: `客观题升级竞赛 ${ts}`,
       description: "",

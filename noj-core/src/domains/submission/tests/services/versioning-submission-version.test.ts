@@ -167,6 +167,7 @@ Deno.test("submission version: 未发布题目也不能创建未知版本提交"
 Deno.test("submission version: 竞赛使用固定版本，客户端覆盖 → 409", async () => {
   await seedProblem("sv-p6", 980006);
   await getDb().insert(contests).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "sv-c6",
     public_id: "ct-sv6",
     title: "c",

@@ -1,3 +1,4 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 真实 PostgreSQL 并发屏障用例：**交叉竞赛的批量策略修改**
  * （2026-10-11 复审问题 2 / tracking task-8）。
@@ -288,6 +289,7 @@ async function seedRound(): Promise<void> {
 
   await db.insert(contests).values([
     {
+      domain_id: DEFAULT_DOMAIN_ID,
       id: CONTEST_1,
       title: "lock order contest 1",
       description: "",
@@ -301,6 +303,7 @@ async function seedRound(): Promise<void> {
       updated_at: now,
     },
     {
+      domain_id: DEFAULT_DOMAIN_ID,
       id: CONTEST_2,
       title: "lock order contest 2",
       description: "",
@@ -420,7 +423,7 @@ async function cleanupFixedIds(): Promise<void> {
   await db.delete(problemVersions).where(
     inArray(problemVersions.problem_id, ALL_PROBLEMS),
   );
-  await db.delete(problems).where(inArray(problems.id, ALL_PROBLEMS));
+  await deleteProblemFixtures(inArray(problems.id, ALL_PROBLEMS));
   await db.delete(queryProjectionRevisions).where(
     inArray(queryProjectionRevisions.scope_key, [
       "global",

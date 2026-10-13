@@ -1,3 +1,4 @@
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * 批任务受理测试（Handbook §4.3、§2.10、§5.7）。
  *
@@ -29,6 +30,8 @@ import {
   type RejudgeRequest,
   retryRejudgeJob,
 } from "../../services/versioning/rejudge-jobs.ts";
+
+await resetDbForTest();
 
 const now = new Date().toISOString();
 

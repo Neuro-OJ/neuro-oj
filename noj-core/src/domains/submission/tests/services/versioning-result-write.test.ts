@@ -1,3 +1,4 @@
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * 评测尝试生命周期与结果落库事务测试（Handbook §5.4、§5.6、§1.3）。
  *
@@ -31,6 +32,8 @@ import {
 } from "../../services/versioning/result-write.ts";
 import type { ProjectionSource } from "../../services/versioning/projection.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
+
+await resetDbForTest();
 
 const now = new Date().toISOString();
 
@@ -239,6 +242,7 @@ Deno.test("result write: 竞赛提交自动补全竞赛上下文并写入竞赛�
   await seedProblem("rw-p6", 990006);
   const contestId = "rw-c6";
   await db.insert(contests).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: contestId,
     title: "结果写入竞赛",
     description: "",

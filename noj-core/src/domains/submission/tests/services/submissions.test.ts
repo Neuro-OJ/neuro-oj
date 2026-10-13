@@ -1,3 +1,4 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import {
@@ -193,7 +194,7 @@ Deno.test({
         "无权对该题目提交",
       );
     } finally {
-      await db.delete(problems).where(eq(problems.id, privateProblemId));
+      await deleteProblemFixtures(eq(problems.id, privateProblemId));
       await db.delete(users).where(eq(users.id, privateOwnerId));
     }
   },
@@ -223,6 +224,7 @@ Deno.test({
     const contestId = crypto.randomUUID();
     const now = new Date().toISOString();
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "提交关联竞赛",
       start_time: new Date(Date.now() - 60_000).toISOString(),
@@ -303,6 +305,7 @@ Deno.test({
     const contestId = crypto.randomUUID();
     const now = new Date().toISOString();
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "excludeContest 竞赛",
       start_time: new Date(Date.now() - 60_000).toISOString(),
@@ -391,6 +394,7 @@ Deno.test({
     const contestId = crypto.randomUUID();
     const now = new Date().toISOString();
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "限额竞赛",
       start_time: new Date(Date.now() - 60_000).toISOString(),
@@ -1062,7 +1066,7 @@ Deno.test({
         );
         await db.delete(submissions).where(eq(submissions.id, subId));
         await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
-        await db.delete(problems).where(eq(problems.id, localProblemId));
+        await deleteProblemFixtures(eq(problems.id, localProblemId));
         // 域成员与负责人历史由测试事务回滚，账号不再物理删除。
       }
     } finally {
@@ -1188,7 +1192,7 @@ Deno.test({
       await db.delete(submissions).where(eq(submissions.id, subId));
       // 受理会写 submissions.rejudge 审计（admin_id 外键），先清审计再删用户
       await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
-      await db.delete(problems).where(eq(problems.id, localProblemId));
+      await deleteProblemFixtures(eq(problems.id, localProblemId));
       // 域成员与负责人历史由测试事务回滚。
     } finally {
       if (oldP === undefined) Deno.env.delete("NOJ_LLM_DEFAULT_PROVIDER_ID");
@@ -1336,7 +1340,7 @@ Deno.test({
           await db.delete(submissions).where(eq(submissions.id, sid));
         }
         await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
-        await db.delete(problems).where(eq(problems.id, localProblemId));
+        await deleteProblemFixtures(eq(problems.id, localProblemId));
         // 域成员与负责人历史由测试事务回滚。
       }
     } finally {

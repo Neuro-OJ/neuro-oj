@@ -1,3 +1,4 @@
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * 有效成绩投影写入服务测试（Handbook §3.1、§3.2、§1.3）。
  *
@@ -33,6 +34,8 @@ import {
   upsertCurrentVersionResult,
 } from "../../services/versioning/projection.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
+
+await resetDbForTest();
 
 const now = new Date().toISOString();
 
@@ -314,6 +317,7 @@ Deno.test("projection: 题库与竞赛两个作用域独立计算", async () => 
   const db = getDb();
   const { v1, v2 } = await seedProblem("proj-p5", 930005);
   await db.insert(contests).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "proj-c5",
     public_id: "ct-proj5",
     title: "c",
@@ -406,6 +410,7 @@ Deno.test("projection: 写入投影并递增题目/竞赛 revision", async () =>
   const db = getDb();
   const { v1 } = await seedProblem("proj-p6", 930006);
   await db.insert(contests).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: "proj-c6",
     public_id: "ct-proj6",
     title: "c",
@@ -575,6 +580,7 @@ Deno.test("projection: 当前判定指针可替换（未知版本桶唯一）", 
     sequence: 2,
     source_kind: "legacy_import",
   });
+
   const all = await db.select().from(submissionVersionResults).where(
     eq(submissionVersionResults.submission_id, "proj-s8"),
   );

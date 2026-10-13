@@ -1,3 +1,4 @@
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
 /**
@@ -37,7 +38,12 @@ import {
   resetRedisForTest,
 } from "../../../../shared/mq/connection.ts";
 import { startFakeRedis } from "../mq/_setup.ts";
-import { insertContestProblems } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  insertContestProblems,
+} from "../../../../../tests/helper.ts";
+
+await resetDbForTest();
 
 const now = new Date().toISOString();
 
@@ -157,6 +163,7 @@ async function seedProblem(
   await db.update(problems).set({ latest_version_id: v2 }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
   return { problemId, v1, v2 };
 }
 
@@ -261,6 +268,14 @@ Deno.test({
       const item = await loadItem(accepted.job_id);
       const copyId = item.result_submission_id as string;
       assertEquals(typeof copyId, "string");
+      const [copy] = await db.select().from(submissions).where(
+        eq(submissions.id, copyId),
+      );
+      assertEquals(copy.domain_id, DEFAULT_DOMAIN_ID);
+      assertEquals(
+        copy.domain_problem_binding_id,
+        `owned-binding-${problemId}`,
+      );
 
       // 首次创建副本的同一事务内三个作用域都递增（practice → 无竞赛维度）
       assertEquals(await revisionOf(problemKey), before.problem + 1);

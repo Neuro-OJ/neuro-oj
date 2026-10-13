@@ -1,3 +1,4 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 竞赛结算门禁回归（Handbook §3.3/§6.6）。
  *
@@ -91,6 +92,7 @@ Deno.test({
     await insertProblem(problemId, 921100);
     await insertProblem(paperId, 921101, true);
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "结算分类测试",
       start_time: atMinutes(-120),
@@ -354,7 +356,7 @@ Deno.test({
       await db.delete(problemVersions).where(
         inArray(problemVersions.problem_id, [problemId, paperId]),
       );
-      await db.delete(problems).where(
+      await deleteProblemFixtures(
         inArray(problems.id, [problemId, paperId]),
       );
       await db.delete(users).where(eq(users.id, userId));
@@ -380,6 +382,7 @@ Deno.test({
 
     await insertProblem(problemId, 921110);
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "批任务门禁测试",
       start_time: atMinutes(-120),
@@ -529,7 +532,7 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.delete(users).where(inArray(users.id, [adminId, userId]));
     }
   },

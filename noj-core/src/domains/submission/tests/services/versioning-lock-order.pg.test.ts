@@ -1,3 +1,4 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 真实 PostgreSQL 并发/锁协议验证（tracking #12、#30；2026-10-11 复审问题 1、5）。
  *
@@ -176,7 +177,7 @@ async function cleanupProblem(id: string): Promise<void> {
     effective_version_mode: "any",
   }).where(eq(problems.id, id));
   await db.delete(problemVersions).where(eq(problemVersions.problem_id, id));
-  await db.delete(problems).where(eq(problems.id, id));
+  await deleteProblemFixtures(eq(problems.id, id));
 }
 
 /** 清理存储夹具：预约行、登记行、引用该对象的提交。 */

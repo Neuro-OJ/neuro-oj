@@ -254,6 +254,59 @@ export async function createUserToken(
  * @param content 版本内容（缺省按题目行派生）
  * @returns 新版本 ID
  */
+/** 显式发布夹具同时建立所属域题库；已有独立策略不被初始化覆盖。 */
+export async function bindPublishedProblemForTest(
+  problemId: string,
+): Promise<string> {
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { problems, domainProblemBindings } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const { and, eq } = await import("drizzle-orm");
+  const db = getDb();
+  const [problem] = await db.select().from(problems).where(
+    eq(problems.id, problemId),
+  );
+  if (!problem) throw new Error(`题目不存在：${problemId}`);
+  await db.insert(domainProblemBindings).values({
+    id: `owned-binding-${problem.id}`,
+    domain_id: problem.domain_id,
+    problem_id: problem.id,
+    kind: "owned",
+    visibility: problem.visibility === "public" ? "public" : "members",
+    effective_version_mode: problem.effective_version_mode as "any" | "exact",
+    required_version_id: problem.required_version_id,
+    revision: problem.effective_policy_revision,
+    created_by: problem.owner_id ?? "0",
+    created_at: problem.created_at,
+    updated_at: problem.updated_at,
+  }).onConflictDoNothing();
+  const [binding] = await db.select().from(domainProblemBindings).where(and(
+    eq(domainProblemBindings.domain_id, problem.domain_id),
+    eq(domainProblemBindings.problem_id, problem.id),
+  ));
+  return binding.id;
+}
+
+/** 仅测试清理：调用方先释放提交/比赛，再显式删除题库绑定和源题。 */
+export async function deleteProblemFixtures(
+  where: import("drizzle-orm").SQL,
+): Promise<void> {
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { problems, domainProblemBindings } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const { inArray } = await import("drizzle-orm");
+  const db = getDb();
+  const rows = await db.select({ id: problems.id }).from(problems).where(where);
+  if (rows.length) {
+    await db.delete(domainProblemBindings).where(
+      inArray(domainProblemBindings.problem_id, rows.map((row) => row.id)),
+    );
+  }
+  await db.delete(problems).where(where);
+}
+
 export async function publishBaselineVersionForTest(
   problemId: string,
   content?: Record<string, unknown>,
@@ -271,6 +324,7 @@ export async function publishBaselineVersionForTest(
     eq(problems.id, problemId),
   ).limit(1);
   if (!row) throw new Error(`题目不存在：${problemId}`);
+  await bindPublishedProblemForTest(problemId);
   // 已有最新已发布版本：直接复用（幂等）。避免在已有 version=1 的题目上插入
   // 冲突版本被 `onConflictDoNothing` 跳过后，把指针写成不存在的版本 id（外键失败）。
   if (row.latest_version_id) return row.latest_version_id;
@@ -357,16 +411,37 @@ export async function insertContestProblems(
   input: ContestProblemFixtureRow | readonly ContestProblemFixtureRow[],
 ): Promise<void> {
   const { getDb } = await import("../src/shared/db/connection.ts");
-  const { contestProblems } = await import("../src/shared/db/schema.ts");
+  const { contestProblems, contests, domainProblemBindings } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const { DEFAULT_DOMAIN_ID } = await import(
+    "../src/shared/workspace/types.ts"
+  );
+  const { and, eq } = await import("drizzle-orm");
   const rows: readonly ContestProblemFixtureRow[] = Array.isArray(input)
     ? input
     : [input as ContestProblemFixtureRow];
   const resolved = [];
   for (const row of rows) {
+    const versionId = row.pinned_version_id ??
+      await publishBaselineVersionForTest(row.problem_id);
+    await bindPublishedProblemForTest(row.problem_id);
+    const [contest] = await getDb().select().from(contests).where(
+      eq(contests.id, row.contest_id),
+    );
+    const domainId = contest.domain_id ?? DEFAULT_DOMAIN_ID;
+    const [binding] = await getDb().select().from(domainProblemBindings).where(
+      and(
+        eq(domainProblemBindings.domain_id, domainId),
+        eq(domainProblemBindings.problem_id, row.problem_id),
+      ),
+    );
+    if (!binding) throw new Error("比赛夹具缺少使用域题库绑定");
     resolved.push({
       ...row,
-      pinned_version_id: row.pinned_version_id ??
-        await publishBaselineVersionForTest(row.problem_id),
+      domain_id: domainId,
+      domain_problem_binding_id: binding.id,
+      pinned_version_id: versionId,
     });
   }
   await getDb().insert(contestProblems).values(resolved);

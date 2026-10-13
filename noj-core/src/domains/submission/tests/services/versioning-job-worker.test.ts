@@ -1,3 +1,4 @@
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * 批任务 worker 原语测试（Handbook §5.7）。
  *
@@ -31,6 +32,8 @@ import {
 } from "../../services/versioning/job-worker.ts";
 import { applyAttemptResult } from "../../services/versioning/result-write.ts";
 import { getRejudgeJob } from "../../services/versioning/rejudge-jobs.ts";
+
+await resetDbForTest();
 
 const now = new Date().toISOString();
 

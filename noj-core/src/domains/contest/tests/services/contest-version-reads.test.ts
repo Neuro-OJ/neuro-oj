@@ -1,3 +1,5 @@
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 竞赛固定版本读取与版本策略回归（Handbook §2.6/§4.1/§4.5）。
  *
@@ -158,8 +160,10 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: versionV2 }).where(
       eq(problems.id, problemId),
     );
+    await bindPublishedProblemForTest(problemId);
 
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "固定版本读取测试",
       start_time: atMinutes(-120),
@@ -234,7 +238,7 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, adminId));
     }
@@ -281,6 +285,7 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: versionV1 }).where(
       eq(problems.id, problemId),
     );
+    await bindPublishedProblemForTest(problemId);
     await insertProblemRow(otherProblemId, 921011);
     const otherVersion = `${otherProblemId}-v1`;
     await insertVersion(otherProblemId, otherVersion, 1, {
@@ -309,8 +314,10 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: otherVersion }).where(
       eq(problems.id, otherProblemId),
     );
+    await bindPublishedProblemForTest(otherProblemId);
 
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "策略保留测试",
       start_time: atMinutes(-120),
@@ -416,7 +423,7 @@ Deno.test({
         await db.delete(problemVersions).where(
           eq(problemVersions.problem_id, id),
         );
-        await db.delete(problems).where(eq(problems.id, id));
+        await deleteProblemFixtures(eq(problems.id, id));
       }
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, adminId));
@@ -490,8 +497,10 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: versionV2 }).where(
       eq(problems.id, problemId),
     );
+    await bindPublishedProblemForTest(problemId);
 
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "any/exact 切换测试",
       start_time: atMinutes(-120),
@@ -632,7 +641,7 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, userId));
     }
@@ -678,6 +687,7 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: versionV1 }).where(
       eq(problems.id, problemId),
     );
+    await bindPublishedProblemForTest(problemId);
 
     let contestId: string | undefined;
     try {
@@ -725,7 +735,7 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, adminId));
     }

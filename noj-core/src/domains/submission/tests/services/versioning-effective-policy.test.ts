@@ -198,6 +198,7 @@ async function seedContest(
 ) {
   const db = getDb();
   await db.insert(contests).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: contestId,
     public_id: `ct-${contestId}`.slice(0, 20),
     title: "c",

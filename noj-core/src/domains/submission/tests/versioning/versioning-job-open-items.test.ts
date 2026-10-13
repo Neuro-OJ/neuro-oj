@@ -1,3 +1,4 @@
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * 批任务条目关联与结算门禁查询回归（tracking #35、#46）。
  *
@@ -34,6 +35,8 @@ import { ensureJobAttempt } from "../../services/versioning/job-attempt.ts";
 import type { DispatchSource } from "../../services/versioning/dispatch-job-item.ts";
 import { applyAttemptResult } from "../../services/versioning/result-write.ts";
 import type { SubmissionJobItemStatus } from "../../../../shared/versioning/types.ts";
+
+await resetDbForTest();
 
 const now = new Date().toISOString();
 
@@ -133,6 +136,7 @@ async function seedProblem(problemId: string): Promise<string> {
   await db.update(problems).set({ latest_version_id: versionId }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
   return versionId;
 }
 
@@ -394,3 +398,4 @@ Deno.test("dispatch#35: 派发前持久化条目关联，结果先到后派发�
   );
   assertEquals(attempts.length, 1);
 });
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";

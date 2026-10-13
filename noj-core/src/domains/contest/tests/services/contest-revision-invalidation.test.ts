@@ -1,3 +1,4 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 竞赛变更使全站榜口径立即失效（2026-10-11 复审问题 8）。
  *
@@ -98,6 +99,7 @@ Deno.test({
       eq(problems.id, problemId),
     );
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: "口径失效赛",
       start_time: atMinutes(-120),
@@ -179,7 +181,7 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.delete(users).where(inArray(users.id, [adminId]));
     }
   },

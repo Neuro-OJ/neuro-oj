@@ -237,6 +237,11 @@ Deno.test({
       { content: "512MB。", is_public: true },
     );
     assertEquals(publicReply.is_public, true);
+    const [notification] = await getDb().select().from(communityNotifications)
+      .where(
+        eq(communityNotifications.recipient_id, participantId),
+      );
+    assertEquals(notification.domain_id, DEFAULT_DOMAIN_ID);
     assertEquals(
       await countClarificationNotifications(participantId),
       1,

@@ -1,3 +1,4 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -19,6 +20,7 @@ import { updateSetting } from "../../../system/index.ts";
 import {
   addParticipants,
   createContest,
+  createDomainContest,
   deleteContest,
   verifyContestAccess,
 } from "../../index.ts";
@@ -43,11 +45,14 @@ async function createUser(prefix: string): Promise<string> {
   return id;
 }
 
-async function createProblem(number: number): Promise<string> {
+async function createProblem(
+  number: number,
+  domainId = DEFAULT_DOMAIN_ID,
+): Promise<string> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await getDb().insert(problems).values({
-    domain_id: DEFAULT_DOMAIN_ID,
+    domain_id: domainId,
     id,
     title: `竞赛访问测试题 ${number}`,
     description: "测试题面",
@@ -111,23 +116,28 @@ Deno.test({
   fn: async () => {
     const creator = await createUser("school-organizer");
     const student = await createUser("school-student");
-    const problem = await createProblem(920010);
     await updateSetting("domain_creation_policy", "open", "0");
     const school = await createDomain({
       slug: "organizer-school",
       name: "学校比赛",
       preset: "education",
     }, creator);
+    const problem = await createProblem(920010, school.id);
     const member = await addDomainMember(getDb(), school.id, student);
-    const contest = await createContestWithStatus(
-      -10000,
-      3600000,
-      problem,
-      creator,
-    );
-    await getDb().update(contests).set({ domain_id: school.id }).where(
-      eq(contests.id, contest),
-    );
+    const created = await createDomainContest(school.slug, creator, {
+      title: "学校域比赛",
+      type: "kaggle",
+      kind: "public",
+      start_time: new Date(Date.now() - 10000).toISOString(),
+      end_time: new Date(Date.now() + 3600000).toISOString(),
+      problems: [{
+        problem_id: problem,
+        label: "A",
+        score: 10000,
+        sort_order: 0,
+      }],
+    });
+    const contest = created.id;
     await addParticipants(contest, [student]);
     assertEquals(
       (await verifyContestAccess(student, contest, problem)).allowed,
@@ -153,8 +163,7 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "contest-access: main及NULL历史都按当前角色授权，创建者撤销管理权限立即失效",
+  name: "contest-access: main按当前角色授权，创建者撤销管理权限立即失效",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
@@ -167,7 +176,7 @@ Deno.test({
       creator,
     );
     await addParticipants(contest, [creator]);
-    for (const storedDomain of [DEFAULT_DOMAIN_ID, null]) {
+    for (const storedDomain of [DEFAULT_DOMAIN_ID]) {
       await getDb().update(contests).set({ domain_id: storedDomain }).where(
         eq(contests.id, contest),
       );
@@ -230,7 +239,7 @@ Deno.test({
     } finally {
       await deleteContest(contestId).catch(() => {});
       const db = getDb();
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, participantId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
@@ -265,7 +274,7 @@ Deno.test({
     } finally {
       await deleteContest(contestId).catch(() => {});
       const db = getDb();
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, participantId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
@@ -300,7 +309,7 @@ Deno.test({
     } finally {
       await deleteContest(contestId).catch(() => {});
       const db = getDb();
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, participantId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
@@ -335,7 +344,7 @@ Deno.test({
     } finally {
       await deleteContest(contestId).catch(() => {});
       const db = getDb();
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })
         .where(eq(users.id, strangerId));
       await db.update(users).set({ deleted_at: new Date().toISOString() })

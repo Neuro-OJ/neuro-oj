@@ -1,3 +1,4 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 题解通过门槛统一聚合回归（Handbook §3.4/§6.6，缺陷 #51）。
  *
@@ -22,6 +23,8 @@ await resetDbForTest({ refreshRankings: true });
 
 const now = new Date().toISOString();
 const FULL_SCORE = 10000;
+
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 
 async function seedUser(prefix: string): Promise<string> {
   const id = crypto.randomUUID();
@@ -55,6 +58,7 @@ async function seedProblem(
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(id);
   return id;
 }
 
@@ -170,7 +174,7 @@ Deno.test({
       await db.delete(submissions).where(
         eq(submissions.problem_id, codeProblemId),
       );
-      await db.delete(problems).where(
+      await deleteProblemFixtures(
         inArray(problems.id, [paperId, codeProblemId]),
       );
       await db.delete(users).where(

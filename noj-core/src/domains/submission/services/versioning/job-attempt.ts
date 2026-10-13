@@ -21,10 +21,7 @@ import { generatePublicId } from "../../../../shared/security/public-id.ts";
 import { assertStorageObjectBindable } from "../../../system/index.ts";
 import { resolveSubmissionVersion } from "./submission-version.ts";
 import { assertDomainJobExecution } from "./domain-job-access.ts";
-import {
-  consumeDomainSubmissionQuota,
-  DEFAULT_DOMAIN_ID,
-} from "../../../workspace/index.ts";
+import { consumeDomainSubmissionQuota } from "../../../workspace/index.ts";
 import { createAttempt } from "./attempts.ts";
 import {
   bumpSubmissionCountRevisions,
@@ -174,9 +171,9 @@ export async function ensureJobAttempt(
 ): Promise<typeof evaluationAttempts.$inferSelect> {
   const { item, owner, source, kind, prepared } = input;
   return await getDb().transaction(async (tx) => {
-    if (!item.attempt_id) {
-      await assertDomainJobExecution(item, source, kind, tx);
-    }
+    const execution = !item.attempt_id
+      ? await assertDomainJobExecution(item, source, kind, tx)
+      : null;
     const contestId = kind === "upgrade" && input.context !== "source_contest"
       ? null
       : source.contest_id;
@@ -218,7 +215,7 @@ export async function ensureJobAttempt(
     }
     if (kind === "upgrade") {
       await consumeDomainUpgradeQuota(
-        source.domain_id ?? DEFAULT_DOMAIN_ID,
+        execution!.domain_id,
         source.user_id,
         item.id,
         tx,
@@ -234,9 +231,10 @@ export async function ensureJobAttempt(
       }
       // 升级副本使用**预分配**的 ID（副本、尝试、条目关联同一事务落库）
       await tx.insert(submissions).values({
-        domain_id: item.domain_id ?? source.domain_id ?? null,
-        domain_problem_binding_id: item.domain_problem_binding_id ??
-          source.domain_problem_binding_id ?? null,
+        domain_id: execution!.domain_id,
+        domain_problem_binding_id: execution!.domain_problem_binding_id,
+        assignment_id: original.assignment_id,
+        assignment_item_id: original.assignment_item_id,
         id: prepared.destinationId,
         public_id: generatePublicId("sub"),
         user_id: source.user_id,

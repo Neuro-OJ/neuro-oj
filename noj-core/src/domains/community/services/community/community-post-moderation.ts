@@ -12,6 +12,7 @@ import { createNotification } from "../notifications.ts";
 import { logAudit } from "../../../system/index.ts";
 import {
   communityDb,
+  communityDomainId,
   communityDomainWhere,
   type CommunityScope,
 } from "./community-scope.ts";
@@ -47,7 +48,7 @@ export async function changePostStatus(
   if (!rows[0]) throw new NotFoundError("社区内容不存在");
   await db.insert(communityModerationActions).values({
     id: crypto.randomUUID(),
-    domain_id: scope?.domainId ?? null,
+    domain_id: communityDomainId(scope),
     moderator_id: actorId,
     action: status,
     target_type: "post",
@@ -124,7 +125,7 @@ export async function togglePostFlag(
   if (!rows[0]) throw new NotFoundError("社区内容不存在");
   await db.insert(communityModerationActions).values({
     id: crypto.randomUUID(),
-    domain_id: scope?.domainId ?? null,
+    domain_id: communityDomainId(scope),
     moderator_id: actorId,
     action: field,
     target_type: "post",

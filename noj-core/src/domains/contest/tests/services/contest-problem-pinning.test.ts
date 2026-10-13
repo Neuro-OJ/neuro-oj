@@ -1,3 +1,5 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 /**
  * 竞赛题目固定版本测试（Handbook §4.1/§4.3）。
  *
@@ -100,6 +102,7 @@ async function publishVersion(
   await getDb().update(problems).set({ latest_version_id: versionId }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
   return versionId;
 }
 
@@ -339,6 +342,6 @@ Deno.test({
     await getDb().delete(problemVersions).where(
       eq(problemVersions.problem_id, "cp-pin-p5"),
     );
-    await getDb().delete(problems).where(eq(problems.id, "cp-pin-p5"));
+    await deleteProblemFixtures(eq(problems.id, "cp-pin-p5"));
   },
 });

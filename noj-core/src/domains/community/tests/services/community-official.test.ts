@@ -24,6 +24,7 @@ import {
 } from "../../../system/index.ts";
 
 const ownerId = "official-owner";
+import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 const otherId = "official-other";
 const problemId = "official-problem";
 
@@ -64,6 +65,7 @@ async function setup(): Promise<void> {
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(problemId);
   enterTestContext({ actorId: "0", actorIp: "127.0.0.1", actorRole: "admin" });
   try {
     await updateSetting("community_enabled", true, "0");

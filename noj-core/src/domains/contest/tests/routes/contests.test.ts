@@ -1,3 +1,4 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   assertEquals,
@@ -404,7 +405,7 @@ Deno.test({
         await db.delete(contests).where(inArray(contests.id, ids));
       }
       await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
-      await db.delete(problems).where(inArray(
+      await deleteProblemFixtures(inArray(
         problems.id,
         [problemId, otherProblemId],
       ));

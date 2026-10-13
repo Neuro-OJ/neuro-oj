@@ -42,6 +42,7 @@ import {
   ensureDefaultWorkspace,
 } from "../../workspace/index.ts";
 import { findContestRow } from "./contest-row.ts";
+import { resolveDomainContestProblems } from "./domain-problems.ts";
 import { contestAllowsProblem } from "./contest-scoring.ts";
 import { normalizeContestTime } from "./contest-window.ts";
 import {
@@ -496,6 +497,7 @@ export async function createContest(
 
   await db.transaction(async (tx) => {
     if (!options.domainId) await ensureDefaultWorkspace(tx);
+    const domainId = options.domainId ?? DEFAULT_DOMAIN_ID;
     const latestVersions = options.versions ??
       await assertContestProblemAddable(
         problemInputs,
@@ -504,9 +506,15 @@ export async function createContest(
         tx,
         input.type,
       );
+    const bindings = options.bindings ?? (await resolveDomainContestProblems(
+      tx,
+      domainId,
+      problemInputs.map((problem) => problem.problem_id),
+      input.type,
+    )).bindingIds;
     await tx.insert(contests).values({
       id,
-      domain_id: options.domainId ?? DEFAULT_DOMAIN_ID,
+      domain_id: domainId,
       public_id: publicId,
       title: input.title.trim(),
       description: input.description ?? "",
@@ -528,12 +536,8 @@ export async function createContest(
     await tx.insert(contestProblems).values(
       problemInputs.map((value) => ({
         contest_id: id,
-        ...(options.domainId
-          ? {
-            domain_id: options.domainId,
-            domain_problem_binding_id: options.bindings?.get(value.problem_id),
-          }
-          : {}),
+        domain_id: domainId,
+        domain_problem_binding_id: bindings.get(value.problem_id)!,
         ...value,
         // 创建即固定版本：钉在当时的已发布最新版，之后题库发布新版本不影响本竞赛
         // （换版必须走显式的「竞赛固定版本升级」操作，Handbook §4.1/§4.3）。
@@ -626,6 +630,11 @@ export async function updateContest(
   const db = options.executor ?? getDb();
   /** 本次更新涉及题目的最新已发布版本（在事务内校验题目可加入时一并取得）。 */
   let latestVersions: Map<string, string> | null = null;
+  let bindings: Map<string, string> | null = null;
+  const domainId = options.domainId ?? DEFAULT_DOMAIN_ID;
+  if ((existing.domain_id ?? DEFAULT_DOMAIN_ID) !== domainId) {
+    throw new NotFoundError("竞赛不存在");
+  }
 
   await db.transaction(async (tx) => {
     const previousProblems = await tx.select({
@@ -664,6 +673,12 @@ export async function updateContest(
         tx,
         type,
       );
+      bindings = options.bindings ?? (await resolveDomainContestProblems(
+        tx,
+        domainId,
+        problemInputs.map((problem) => problem.problem_id),
+        type,
+      )).bindingIds;
     } else if (type !== existing.type) {
       // 只切换赛制也要校验已选题目的固定版本，不能留下错误题型。
       const selected = await tx.select({ content: problemVersions.content })
@@ -752,14 +767,8 @@ export async function updateContest(
           const binding = previousBindings.get(value.problem_id);
           return {
             contest_id: id,
-            ...(options.domainId
-              ? {
-                domain_id: options.domainId,
-                domain_problem_binding_id:
-                  options.bindings?.get(value.problem_id) ??
-                    binding?.domain_problem_binding_id,
-              }
-              : {}),
+            domain_id: domainId,
+            domain_problem_binding_id: bindings!.get(value.problem_id)!,
             ...value,
             pinned_version_id: binding?.pinned_version_id ??
               latestVersions!.get(value.problem_id)!,

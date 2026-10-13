@@ -1,3 +1,4 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
   acceptLegacyRejudgeJobForTest as acceptRejudgeJob,
@@ -194,6 +195,7 @@ async function seedProblemWithVersions(
   await db.update(problems).set({ latest_version_id: v2 }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
   return { problemId, v1, v2 };
 }
 
@@ -877,8 +879,9 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
     }
     // 账号由独立测试 schema 的生命周期管理，保留已加入 main 的身份与历史外键。
   },
 });
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";

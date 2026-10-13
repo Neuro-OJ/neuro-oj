@@ -1,3 +1,4 @@
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 用户升级的授权与竞赛语义回归（tracking #42、#43）。
@@ -15,6 +16,7 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import {
   DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
+  removeDomainMember,
 } from "../../../workspace/index.ts";
 import {
   contestParticipants,
@@ -42,6 +44,8 @@ import {
 } from "../../../../shared/mq/connection.ts";
 import { startFakeRedis } from "../mq/_setup.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
+
+await resetDbForTest();
 
 const now = new Date().toISOString();
 
@@ -217,6 +221,7 @@ async function seedProblemWithVersions(
   await db.update(problems).set({ latest_version_id: v2 }).where(
     eq(problems.id, problemId),
   );
+  await bindPublishedProblemForTest(problemId);
   return { problemId, v1, v2 };
 }
 
@@ -330,7 +335,7 @@ Deno.test({
     const admin = await makeUser("admin2", { admin: true });
     const owner = await makeUser("owner2");
     const stranger = await makeUser("stranger");
-    // 私有题（U 型才允许 private）：不归 stranger，也不对其可见
+    // 原用户离域后，管理员的管理权限不能替代其当前提交资格。
     const { problemId, v1 } = await seedProblemWithVersions("private", {
       visibility: "private",
       ownerId: owner,
@@ -346,12 +351,13 @@ Deno.test({
       `acc-private-key-${ts}`,
     );
     assertEquals(accepted.total_items, 1);
+    await removeDomainMember("main", "0", stranger);
 
     // 受理不校验可访问性；派发必须按**原用户**资格拒绝（管理员身份不外借）
     await assertRejects(
       () => dispatchFirstItem(accepted.job_id, "upgrade"),
       Error,
-      "原用户已无题目访问资格",
+      "工作空间权限不足",
     );
     // 未创建任何升级副本
     assertEquals(
@@ -577,3 +583,4 @@ Deno.test("upgrade#43: 客观题竞赛提交在 source_contest 下不得产生�
   assertEquals(rows[0].id, objectiveId);
   assertEquals(rows[0].contest_id, contestId);
 });
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";

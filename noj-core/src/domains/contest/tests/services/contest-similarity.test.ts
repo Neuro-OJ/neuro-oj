@@ -536,6 +536,7 @@ Deno.test({
       },
     ]);
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       public_id: `ct-sim-${suffix}`,
       title: "相似度测试赛",
@@ -815,6 +816,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       public_id: `ct-sim-noise-${suffix}`,
       title: `噪声赛-${suffix}`,

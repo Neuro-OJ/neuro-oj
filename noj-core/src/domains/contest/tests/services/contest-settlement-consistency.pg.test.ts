@@ -1,3 +1,4 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 /**
  * 真实 PostgreSQL 并发验证：结算快照的一致性（tracking #46）——需**串行**执行。
  *
@@ -139,6 +140,7 @@ Deno.test({
       eq(problems.id, problemId),
     );
     await db.insert(contests).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: contestId,
       title: `结算一致性-${runId}`,
       start_time: atMinutes(-120),
@@ -274,7 +276,7 @@ Deno.test({
       await db.delete(problemVersions).where(
         eq(problemVersions.problem_id, problemId),
       );
-      await db.delete(problems).where(eq(problems.id, problemId));
+      await deleteProblemFixtures(eq(problems.id, problemId));
       await db.delete(users).where(inArray(users.id, [userId, adminId]));
     }
   },

@@ -1,3 +1,4 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
@@ -6,7 +7,12 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 
 import { problems, selfTests, users } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../identity/index.ts";
-import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
+import {
+  initRedisForTest,
+  jsonRequest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
+import { addDomainMember } from "../../../workspace/index.ts";
 
 // 限流开关**只**在需要它的用例内临时打开（见下方"超过每用户限流阈值返回 429"）。
 //
@@ -44,6 +50,7 @@ const DISPLAY_ID = `P${PROBLEM_NUMBER}`;
 const now = new Date().toISOString();
 let TEST_TOKEN = "";
 let CREATED_SELF_TEST_ID = "";
+let VERSION_ID = "";
 
 // 模块级 setup：事务外初始化共享测试用户、题目和一个自测记录
 if (!skip) {
@@ -66,6 +73,8 @@ if (!skip) {
       updated_at: now,
     },
   ]);
+  await addDomainMember(db, DEFAULT_DOMAIN_ID, USER_ID);
+  await addDomainMember(db, DEFAULT_DOMAIN_ID, OTHER_USER_ID);
   await db.insert(problems).values({
     domain_id: DEFAULT_DOMAIN_ID,
     id: PROBLEM_ID,
@@ -90,6 +99,7 @@ if (!skip) {
     created_at: now,
     updated_at: now,
   });
+  VERSION_ID = await publishBaselineVersionForTest(PROBLEM_ID);
   TEST_TOKEN = await signToken({ sub: USER_ID, role: "user" });
 
   const app = createApp();
@@ -98,7 +108,7 @@ if (!skip) {
     `/api/v1/problems/${PROBLEM_ID}/self-test`,
     {
       method: "POST",
-      body: { language: "python3", code: "print(1)" },
+      body: { language: "python3", code: "print(1)", version_id: VERSION_ID },
       token: TEST_TOKEN,
     },
   );
@@ -117,7 +127,7 @@ Deno.test({
       `/api/v1/problems/${PROBLEM_ID}/self-test`,
       {
         method: "POST",
-        body: { language: "python3", code: "print(1)" },
+        body: { language: "python3", code: "print(1)", version_id: VERSION_ID },
       },
     );
     assertEquals(res.status, 401);
@@ -152,7 +162,7 @@ Deno.test({
       "/api/v1/problems/nonexistent/self-test",
       {
         method: "POST",
-        body: { language: "python3", code: "print(1)" },
+        body: { language: "python3", code: "print(1)", version_id: VERSION_ID },
         token: TEST_TOKEN,
       },
     );
@@ -172,7 +182,7 @@ Deno.test({
       `/api/v1/problems/${PROBLEM_ID}/self-test`,
       {
         method: "POST",
-        body: { language: "python3", code: "print(1)" },
+        body: { language: "python3", code: "print(1)", version_id: VERSION_ID },
         token: TEST_TOKEN,
       },
     );
@@ -195,7 +205,7 @@ Deno.test({
       `/api/v1/problems/${DISPLAY_ID}/self-test`,
       {
         method: "POST",
-        body: { language: "python3", code: "print(1)" },
+        body: { language: "python3", code: "print(1)", version_id: VERSION_ID },
         token: TEST_TOKEN,
       },
     );
@@ -248,7 +258,11 @@ Deno.test({
           `/api/v1/problems/${PROBLEM_ID}/self-test`,
           {
             method: "POST",
-            body: { language: "python3", code: "print(1)" },
+            body: {
+              language: "python3",
+              code: "print(1)",
+              version_id: VERSION_ID,
+            },
             token: TEST_TOKEN,
           },
         );
@@ -266,6 +280,6 @@ Deno.test({
   fn: async () => {
     const db = getDb();
     await db.delete(selfTests).where(eq(selfTests.problem_id, PROBLEM_ID));
-    await db.delete(problems).where(eq(problems.id, PROBLEM_ID));
+    await deleteProblemFixtures(eq(problems.id, PROBLEM_ID));
   },
 });

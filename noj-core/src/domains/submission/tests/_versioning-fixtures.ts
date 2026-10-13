@@ -21,6 +21,7 @@ import {
 import type { DomainRole } from "../../../shared/workspace/types.ts";
 import type { EffectiveVersionMode } from "../../../shared/versioning/types.ts";
 import { acceptRejudgeJob } from "../services/versioning/rejudge-jobs.ts";
+import { backfillDefaultCatalog } from "../../catalog/index.ts";
 
 /** 旧 main 服务夹具显式提供域角色，生产代码不继承平台旧业务权限。 */
 export async function authorizeLegacyJobActorForTest(
@@ -108,6 +109,7 @@ export async function acceptLegacyRejudgeJobForTest(
   ...args: Parameters<typeof acceptRejudgeJob>
 ) {
   await authorizeLegacyJobActorForTest(args[0], "admin");
+  await backfillDefaultCatalog();
   return await acceptRejudgeJob(...args);
 }
 

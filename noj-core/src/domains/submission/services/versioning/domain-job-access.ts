@@ -38,6 +38,7 @@ export async function resolveDomainJobContexts(
   problemIds: string[],
   executor: Executor,
   policyWrite = false,
+  contestId?: string,
 ) {
   const access = await loadWorkspace(slug, actorId, { executor, write: true });
   const sources = problemIds.length
@@ -98,6 +99,7 @@ export async function resolveDomainJobContexts(
     const resolved = await resolveDomainProblem(slug, ref, actorId, {
       executor,
       write: true,
+      contestId,
     });
     contexts.set(source.id, {
       domain_id: access.domain.id,
@@ -180,13 +182,7 @@ export async function assertDomainJobExecution(
       });
     }
   }
-  let answerVersion: string | null;
-  if (source.domain_problem_binding_id) {
-    const resolved = await resolveDomainJobContexts(domain.slug, job.actor_id, [
-      source.problem_id,
-    ], executor);
-    answerVersion = resolved.contexts.get(source.problem_id)!.answer_version_id;
-  } else {
+  if (!source.domain_problem_binding_id) {
     // 仅扩展迁移期间的旧 main 未绑定行；仍执行当前进入、角色与源题权限。
     const [problem] = await executor.select().from(problems).where(
       eq(problems.id, source.problem_id),
@@ -226,10 +222,21 @@ export async function assertDomainJobExecution(
         );
       }
     }
-    answerVersion = problem.effective_version_mode === "exact"
-      ? problem.required_version_id
-      : problem.latest_version_id;
   }
+  // 旧提交也从当前题库解析绑定；新副本不继承迁移期的空归属。
+  const resolved = await resolveDomainJobContexts(
+    domain.slug,
+    kind === "upgrade" ? source.user_id : job.actor_id,
+    [
+      source.problem_id,
+    ],
+    executor,
+    false,
+    kind === "upgrade" && request.context === "source_contest"
+      ? source.contest_id ?? undefined
+      : undefined,
+  );
+  const context = resolved.contexts.get(source.problem_id)!;
   if (kind === "upgrade" && request.context !== "source_contest") {
     await assertDomainPracticeAllowed(
       domainId,
@@ -239,7 +246,7 @@ export async function assertDomainJobExecution(
     );
     if (
       item.target_version_id !==
-        answerVersion
+        context.answer_version_id
     ) {
       throw new AppError(
         "作答版本已变化，请重新创建升级任务",
@@ -248,4 +255,5 @@ export async function assertDomainJobExecution(
       );
     }
   }
+  return context;
 }

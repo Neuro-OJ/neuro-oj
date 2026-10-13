@@ -1,5 +1,4 @@
 import { and, eq } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityBoardRoleGrants,
   communityBoards,
@@ -8,6 +7,7 @@ import { NotFoundError } from "./../../../../shared/base/errors.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
 import {
   communityDb,
+  communityDomainId,
   communityDomainWhere,
   type CommunityScope,
 } from "./community-scope.ts";
@@ -47,7 +47,7 @@ export async function createBoard(
   const createdAt = nowIso();
   const board = {
     id: crypto.randomUUID(),
-    domain_id: scope?.domainId ?? null,
+    domain_id: communityDomainId(scope),
     revision: 0,
     slug: input.slug,
     name: input.name,
@@ -94,13 +94,23 @@ export async function updateBoard(
   return rows[0];
 }
 
-/**
- * 列出指定板块的角色授权记录。
- * @param boardId 板块 UUID。
- * @returns 该板块的角色授权列表。
- */
-export function listBoardRoleGrants(boardId: string) {
-  const db = getDb();
+/** 校验板块所属域，治理入口不能通过替换资源 ID 改变目标。 */
+async function requireBoard(boardId: string, scope?: CommunityScope) {
+  const [board] = await communityDb(scope).select({ id: communityBoards.id })
+    .from(communityBoards).where(and(
+      eq(communityBoards.id, boardId),
+      communityDomainWhere(communityBoards.domain_id, scope),
+    ));
+  if (!board) throw new NotFoundError("板块不存在");
+}
+
+/** 列出当前域板块的角色授权；有效的其他域板块 ID 也返回 404。 */
+export async function listBoardRoleGrants(
+  boardId: string,
+  scope?: CommunityScope,
+) {
+  const db = communityDb(scope);
+  await requireBoard(boardId, scope);
   return db.select().from(communityBoardRoleGrants).where(
     eq(communityBoardRoleGrants.board_id, boardId),
   );
@@ -117,8 +127,10 @@ export async function updateBoardRoleGrant(
   boardId: string,
   roleId: string,
   input: { can_read?: boolean; can_post?: boolean; can_moderate?: boolean },
+  scope?: CommunityScope,
 ) {
-  const db = getDb();
+  const db = communityDb(scope);
+  await requireBoard(boardId, scope);
   await db.insert(communityBoardRoleGrants).values({
     board_id: boardId,
     role_id: roleId,
@@ -144,8 +156,13 @@ export async function updateBoardRoleGrant(
  * @param boardId 板块 UUID。
  * @param roleId 角色 UUID。
  */
-export async function deleteBoardRoleGrant(boardId: string, roleId: string) {
-  const db = getDb();
+export async function deleteBoardRoleGrant(
+  boardId: string,
+  roleId: string,
+  scope?: CommunityScope,
+) {
+  const db = communityDb(scope);
+  await requireBoard(boardId, scope);
   await db.delete(communityBoardRoleGrants).where(and(
     eq(communityBoardRoleGrants.board_id, boardId),
     eq(communityBoardRoleGrants.role_id, roleId),

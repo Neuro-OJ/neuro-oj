@@ -1,3 +1,4 @@
+import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { v2ResultForTest } from "../_versioning-fixtures.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
@@ -326,7 +327,7 @@ Deno.test({
     );
 
     await db.delete(contests).where(eq(contests.id, contestId));
-    await db.delete(problems).where(eq(problems.id, secretProblemId));
+    await deleteProblemFixtures(eq(problems.id, secretProblemId));
   },
 });
 
@@ -422,7 +423,7 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: null })
       .where(eq(problems.id, problemId));
     await db.delete(problemVersions).where(eq(problemVersions.id, versionId));
-    await db.delete(problems).where(eq(problems.id, problemId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
   },
 });
 
@@ -553,7 +554,7 @@ Deno.test({
     await db.delete(problemVersions).where(
       eq(problemVersions.problem_id, problemId),
     );
-    await db.delete(problems).where(eq(problems.id, problemId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
   },
 });
 
@@ -565,8 +566,8 @@ Deno.test({
   fn: async () => {
     const db = getDb();
     await db.delete(selfTests).where(eq(selfTests.user_id, USER_ID));
-    await db.delete(problems).where(eq(problems.id, PROBLEM_ID));
-    await db.delete(problems).where(eq(problems.id, OBJECTIVE_PROBLEM_ID));
+    await deleteProblemFixtures(eq(problems.id, PROBLEM_ID));
+    await deleteProblemFixtures(eq(problems.id, OBJECTIVE_PROBLEM_ID));
     await db.delete(users).where(eq(users.id, USER_ID));
   },
 });

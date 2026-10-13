@@ -1,3 +1,4 @@
+import { resetDbForTest } from "../../../../shared/db/connection.ts";
 /**
  * 批任务受理的缺陷回归（tracking #31、#32、#40、#41）。
  *
@@ -34,6 +35,8 @@ import {
 } from "../../services/versioning/rejudge-jobs.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
 import { bindMainProblemForTest } from "../_versioning-fixtures.ts";
+
+await resetDbForTest();
 
 const now = new Date().toISOString();
 
@@ -130,6 +133,7 @@ async function seedSubmission(
 
 async function seedContest(contestId: string, publicId: string): Promise<void> {
   await getDb().insert(contests).values({
+    domain_id: DEFAULT_DOMAIN_ID,
     id: contestId,
     public_id: publicId,
     title: contestId,
@@ -522,6 +526,7 @@ Deno.test("jobs#41: 大批量条目真实落库（5200 行按批插入）", asyn
   const { insertJobItemsBatched } = await import(
     "../../services/versioning/rejudge-jobs.ts"
   );
+
   const rows: Array<typeof submissionJobItems.$inferInsert> = [];
   for (let index = 0; index < 5200; index++) {
     rows.push({
