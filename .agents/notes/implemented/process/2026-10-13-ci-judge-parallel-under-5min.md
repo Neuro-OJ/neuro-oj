@@ -40,6 +40,12 @@ sccache 的变量只设置在安装 action 上，后续 cargo 没有启用编译
   保留隐藏文件和依赖链接；浏览器测试加载同次运行的产物后启动 SSR。 Domain E2E
   通过 `deno task test:domain` 调用现有脚本。
 
+- 第二轮提速保留全部执行目标：WASI 分片只链接自身示例，沙箱只预编译
+  `e2e_*.rs`；编译与 OI 镜像构建并行，镜像加载与基础设施启动并行。
+  回归测试验证并行步骤实际重叠、各步骤失败传播和冻结快照不一致仍阻断验收。
+- Core 镜像不再传入每次运行变化的 `CACHE_BUST`：Docker 的 `COPY` 按输入内容
+  失效，源代码更新仍重建对应层，锁文件未变时复用依赖安装层。
+
 ## Alternatives considered
 
 - 验收改用 `--release`：编译成本抵消收益，且需额外证明与 debug

@@ -58,15 +58,18 @@ runs:
         path: ${{ runner.temp }}/e2e-images
         merge-multiple: true
 
-    - name: 加载预构建镜像
+    - name: 加载镜像并启动基础设施
       run: |
-        ls "$RUNNER_TEMP"/e2e-images/*.tar | xargs -P 5 -n 1 docker load -i
+        set -euo pipefail
+        # 基础设施不依赖预构建镜像，拉取与健康检查在 docker load 期间执行。
+        docker compose -f docker-compose.e2e.yml -p "$COMPOSE_PROJECT_NAME" \
+          up -d postgres redis minio minio-init llm-mock &
+        infra_pid=$!
+        fail=0
+        ls "$RUNNER_TEMP"/e2e-images/*.tar | xargs -P 5 -n 1 docker load -i || fail=1
+        wait "$infra_pid" || fail=1
         docker images
-      shell: bash
-
-    - name: 初始化 MinIO bucket
-      run: |
-        docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME up -d minio minio-init
+        exit "$fail"
       shell: bash
 
     # ════════════════════════════════════════════

@@ -444,8 +444,7 @@ jobs:
           file: ${{ matrix.file }}
           tags: ${{ matrix.tag }}
           outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.image }}.tar
-          # core 的 CACHE_BUST 仅用于使其后的层按 run 失效，其他 Dockerfile 无此 ARG
-          build-args: ${{ matrix.image == 'core' && format('CACHE_BUST={0}', github.run_id) || '' }}
+          # COPY 按源码与锁文件内容使缓存失效；不使用 run_id 破坏依赖层缓存。
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || format('type=gha,mode=min,scope={0}', matrix.image) }}
       - name: 上传镜像
@@ -507,14 +506,27 @@ jobs:
             cargo-registry-
 
       - name: 验证沙箱分组覆盖与失败传播
-        run: python3 -m unittest discover -s noj-judge/scripts -p test_ci_sandbox.py
+        run: python3 -m unittest discover -s noj-judge/scripts -p 'test_ci_*.py'
 
-      - name: 编译 Judge E2E 测试目标
+      - name: 并行编译沙箱测试与构建 OI 镜像
         working-directory: noj-judge
-        run: cargo build --locked --tests
-
-      - name: 构建 OI 原生评测镜像
-        run: docker build -t noj-oi-cpp:latest noj-judge/docker/oi-cpp
+        run: |
+          set -euo pipefail
+          build_args=(--locked)
+          # 单元/其他集成测试由 Judge Check 覆盖，此处只预编译全部沙箱目标。
+          for target in tests/e2e_*.rs; do
+            target_name="${target##*/}"
+            build_args+=(--test "${target_name%.rs}")
+          done
+          cargo build "${build_args[@]}" > "$RUNNER_TEMP/noj-sandbox-build.log" 2>&1 &
+          build_pid=$!
+          docker build -t noj-oi-cpp:latest docker/oi-cpp > "$RUNNER_TEMP/noj-oi-image-build.log" 2>&1 &
+          image_pid=$!
+          fail=0
+          wait "$build_pid" || fail=1
+          wait "$image_pid" || fail=1
+          cat "$RUNNER_TEMP/noj-sandbox-build.log" "$RUNNER_TEMP/noj-oi-image-build.log"
+          exit "$fail"
 
       - name: Judge E2E 测试（Docker 沙箱，4 组并行）
         working-directory: noj-judge
@@ -571,6 +583,7 @@ jobs:
           name: judge-sandbox-logs
           path: |
             noj-judge/target/**/test-*.log
+            ${{ runner.temp }}/noj-*-build.log
           retention-days: 7
           if-no-files-found: ignore
         continue-on-error: true

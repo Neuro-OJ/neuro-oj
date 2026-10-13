@@ -9,7 +9,11 @@ fi
 sdk_dir="$(cd "$1" && pwd)"
 shard="${2:-all}"
 case "$shard" in
-  wasi | standard | compat | analysis | all) ;;
+  wasi) build_targets=(--example oi_wasi_acceptance) ;;
+  standard) build_targets=(--example oi_standard_acceptance) ;;
+  compat) build_targets=(--example oi_wasi_v2_acceptance) ;;
+  analysis) build_targets=(--example oi_io_analysis_acceptance) ;;
+  all) build_targets=(--examples) ;;
   *)
     echo "未知分片: $shard" >&2
     exit 2
@@ -25,11 +29,12 @@ trap 'rm -rf "$report_dir"' EXIT
 
 want() { [[ "$shard" == all || "$shard" == "$1" ]]; }
 
-# 先编译一次全部示例，之后并发运行同一二进制，避免 cargo 锁串行化。
+# 分片只编译本组示例，避免每个 runner 重复链接其他分片与资源池基准。
+# 之后并发运行同一二进制，避免 cargo 锁串行化。
 # NOJ_WASI_OPT_DEPS=1（CI 设置）：仅依赖（wasmtime/cranelift）开 opt-level=3，
 # 工作区代码仍为 dev 档；验收输出是确定性成本/摘要，与 CPU 速度无关，
 # 但示例在 debug 依赖下运行极慢（单个 ~2 分钟）。
-build_args=(--locked --examples)
+build_args=(--locked "${build_targets[@]}")
 if [[ "${NOJ_WASI_OPT_DEPS:-}" == 1 ]]; then
   build_args+=(--config 'profile.dev.package."*".opt-level=3')
 fi
