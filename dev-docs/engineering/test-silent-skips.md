@@ -3,7 +3,7 @@
 > 由 `deno run -A scripts/silent-skip-report.ts` 生成；
 > 命中 `ignore` / 环境变量守卫 / 测试体内提前 return / Rust `#[ignore]`。
 >
-> 当前命中 **1093** 处（ignore=755 early-return=250 rust-ignore=46 rust-env-guard=27 env-guard=15）。
+> 当前命中 **1096** 处（ignore=760 early-return=248 rust-ignore=46 rust-env-guard=27 env-guard=15）。
 > 该数量受基线门禁约束：任何增长都会让 `scripts/silent-skip-report.ts --check` 失败
 > （基线文件 `dev-docs/engineering/test-silent-skips.baseline.json`）。
 
@@ -201,6 +201,7 @@
 | noj-core/src/domains/contest/tests/services/contest-settlement-consistency.pg.test.ts | 87 | ignore |
 | noj-core/src/domains/education/tests/perf/matrix-bench.test.ts | 37 | env-guard |
 | noj-core/src/domains/education/tests/perf/matrix-bench.test.ts | 39 | env-guard |
+| noj-core/src/domains/education/tests/routes/write-rate-limit.test.ts | 13 | ignore |
 | noj-core/src/domains/education/tests/services/enrollment-concurrency.pg.test.ts | 31 | ignore |
 | noj-core/src/domains/identity/tests/lib/loginThrottle.test.ts | 61 | ignore |
 | noj-core/src/domains/identity/tests/lib/loginThrottle.test.ts | 82 | ignore |
@@ -715,6 +716,7 @@
 | noj-core/src/domains/system/tests/services/audit-log.test.ts | 203 | ignore |
 | noj-core/src/domains/system/tests/services/audit-log.test.ts | 226 | ignore |
 | noj-core/src/domains/system/tests/services/audit-log.test.ts | 264 | ignore |
+| noj-core/src/domains/system/tests/services/education-write-rate-limit.test.ts | 11 | ignore |
 | noj-core/src/domains/system/tests/services/hardening-rate-limit.test.ts | 63 | ignore |
 | noj-core/src/domains/system/tests/services/judge-images.test.ts | 29 | ignore |
 | noj-core/src/domains/system/tests/services/judge-images.test.ts | 43 | ignore |
@@ -855,7 +857,10 @@
 | noj-tests/e2e/admin/admin_endpoints.test.ts | 222 | early-return |
 | noj-tests/e2e/admin/admin_endpoints.test.ts | 236 | early-return |
 | noj-tests/e2e/admin/admin_endpoints.test.ts | 252 | early-return |
-| noj-tests/e2e/browser/workspace-governance.test.ts | 203 | ignore |
+| noj-tests/e2e/browser/workspace-classroom-matrix.test.ts | 186 | ignore |
+| noj-tests/e2e/browser/workspace-governance.test.ts | 204 | ignore |
+| noj-tests/e2e/browser/workspace-input-modes.test.ts | 122 | ignore |
+| noj-tests/e2e/browser/workspace-llm-model-governance.test.ts | 187 | ignore |
 | noj-tests/e2e/browser/workspace-private-registration-annotations.test.ts | 164 | ignore |
 | noj-tests/e2e/browser/workspace-public-mixed-journeys.test.ts | 197 | ignore |
 | noj-tests/e2e/browser/workspace-teaching-journeys.test.ts | 184 | ignore |
@@ -942,11 +947,11 @@
 | noj-tests/e2e/cross-domain/pipeline.test.ts | 61 | early-return |
 | noj-tests/e2e/cross-domain/pipeline.test.ts | 74 | early-return |
 | noj-tests/e2e/cross-domain/pipeline.test.ts | 82 | early-return |
-| noj-tests/e2e/cross-domain/pipeline.test.ts | 97 | early-return |
-| noj-tests/e2e/cross-domain/pipeline.test.ts | 101 | early-return |
-| noj-tests/e2e/cross-domain/pipeline.test.ts | 110 | early-return |
-| noj-tests/e2e/cross-domain/pipeline.test.ts | 126 | early-return |
-| noj-tests/e2e/cross-domain/pipeline.test.ts | 139 | early-return |
+| noj-tests/e2e/cross-domain/pipeline.test.ts | 99 | early-return |
+| noj-tests/e2e/cross-domain/pipeline.test.ts | 103 | early-return |
+| noj-tests/e2e/cross-domain/pipeline.test.ts | 112 | early-return |
+| noj-tests/e2e/cross-domain/pipeline.test.ts | 128 | early-return |
+| noj-tests/e2e/cross-domain/pipeline.test.ts | 141 | early-return |
 | noj-tests/e2e/cross-domain/search.test.ts | 31 | early-return |
 | noj-tests/e2e/cross-domain/search.test.ts | 43 | early-return |
 | noj-tests/e2e/cross-domain/search.test.ts | 88 | early-return |
@@ -955,13 +960,11 @@
 | noj-tests/e2e/cross-domain/search.test.ts | 122 | early-return |
 | noj-tests/e2e/cross-domain/search.test.ts | 157 | early-return |
 | noj-tests/e2e/cross-domain/search.test.ts | 164 | early-return |
-| noj-tests/e2e/cross-domain/storage_failure.test.ts | 106 | early-return |
-| noj-tests/e2e/cross-domain/storage_failure.test.ts | 112 | early-return |
-| noj-tests/e2e/cross-domain/storage_failure.test.ts | 151 | early-return |
-| noj-tests/e2e/cross-domain/storage_failure.test.ts | 213 | early-return |
-| noj-tests/e2e/cross-domain/storage_failure.test.ts | 217 | early-return |
-| noj-tests/e2e/cross-domain/storage_failure.test.ts | 233 | early-return |
-| noj-tests/e2e/cross-domain/storage_failure.test.ts | 272 | early-return |
+| noj-tests/e2e/cross-domain/storage_failure.test.ts | 105 | early-return |
+| noj-tests/e2e/cross-domain/storage_failure.test.ts | 111 | early-return |
+| noj-tests/e2e/cross-domain/storage_failure.test.ts | 150 | early-return |
+| noj-tests/e2e/cross-domain/storage_failure.test.ts | 244 | early-return |
+| noj-tests/e2e/cross-domain/storage_failure.test.ts | 283 | early-return |
 | noj-tests/e2e/helper.ts | 617 | ignore |
 | noj-tests/e2e/identity/auth.test.ts | 34 | early-return |
 | noj-tests/e2e/identity/auth.test.ts | 49 | early-return |
