@@ -1,10 +1,9 @@
 # 工作空间授权矩阵与关键数据约束
 
 本文供工程 review、接口实现和验收使用，依据 2026-10-13 的实际服务及 Schema，
-覆盖 core 迁移 0137 和当前 Gateway
-Schema。它记录当前授权行为，不能代替执行入口。
-后续收缩迁移必须同步更新本文的「仍可空」清单；现阶段不能将服务显式写入误称为数据库
-NOT NULL。
+覆盖接续 main 后的 core 迁移 0117 和当前 Gateway Schema。原主题分支的 0137–0139
+收缩按既有 main 迁移顺序整合入 0116，历史编号只用于解释实施沿革。
+它记录当前授权行为，不能代替执行入口；下表区分数据库约束和服务检查。
 
 ## 1. 身份、访问与资源授权的层次
 
@@ -210,19 +209,22 @@ Participant
 
 ## 7. Provider、限额与平台敏感评测字段
 
-| 资源／操作                        | 域权限                                                     | 平台／执行限制                                                                                 |
-| --------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| 本域 Provider、默认模型、LLM 用量 | `llm:manage`；目前由负责人／管理员拥有                     | Gateway 全部查询限定当前域，普通其他域管理员不能列出名称、地址、掩码或用量                     |
-| Provider 密钥                     | 可提交本域密钥                                             | Gateway 加密；客户端列表不返回明文；历史 Provider 保留，只停用                                 |
-| 引用源域 LLM 题                   | 使用域成员正常提交                                         | Provider／模型由使用域决定；新域未配置返回 `DOMAIN_LLM_NOT_CONFIGURED`，不借用源域密钥         |
-| 一次 LLM 评测                     | 不通过客户端选择任意 Provider                              | 尝试冻结域、Provider、模型、预算；token protocol v3 含强制 domain_id，Gateway 核对 Provider 域 |
-| 本域 LLM 日／月额度               | `llm:manage`，域管理员只能降低已有域总额并受实例 caps 限制 | 实例 global 额度仅平台管理；Redis 预占／结算键含域；单尝试计量独立                             |
-| 基础成员／题库条目／存储／频率    | `domain:limits` 修改本域配置                               | 受实例默认／上限约束；显式 null 为未限制，0 为禁止；缺少配额行是初始化异常，不能当作无限       |
-| Provider／quota 更新              | 本域治理能力及资源 revision                                | 创建 If-Match=0；更新使用该资源 revision；Gateway DB 原子比较，不用 domain.revision 替代       |
-| LLM 请求正文和响应原文            | LLM 管理能力不授予                                         | 域用量 DTO 只返回计量与定位允许字段，不透传 prompt、response、evaluator details                |
-| 自定义 evaluator.command          | 源题维护能力之外另查平台权限                               | `problem:field_evaluator_command`；仅生效值相对基线变化触发敏感字段授权                        |
-| evaluator 网络                    | 源题维护能力之外另查平台权限                               | `problem:field_evaluator_network`；LLM 题需合法启用 evaluator 网络                             |
-| 镜像及时间／内存资源              | 域题库管理不突破平台限制                                   | 发布验证镜像类型与允许范围，资源受 `judge_max_*` 等平台上限限制                                |
+| 资源／操作                        | 域权限                                                     | 平台／执行限制                                                                                                         |
+| --------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 本域 Provider、默认模型、LLM 用量 | `llm:manage`；目前由负责人／管理员拥有                     | Gateway 全部查询限定当前域，普通其他域管理员不能列出名称、地址、掩码或用量                                             |
+| Provider 密钥                     | 可提交本域密钥                                             | Gateway 加密；客户端列表不返回明文；历史 Provider 保留，只停用                                                         |
+| 引用源域 LLM 题                   | 使用域成员正常提交                                         | Provider／模型由使用域决定；新域未配置返回 `DOMAIN_LLM_NOT_CONFIGURED`，不借用源域密钥                                 |
+| 一次 LLM 评测                     | 不通过客户端选择任意 Provider                              | 尝试冻结域、Provider、模型、预算；token protocol v3 含强制 domain_id，Gateway 核对 Provider 域                         |
+| 本域 LLM 日／月额度               | `llm:manage`，域管理员只能降低已有域总额并受实例 caps 限制 | 实例 global 额度仅平台管理；Redis 预占／结算键含域；单尝试计量独立                                                     |
+| 基础成员／题库条目／存储／频率    | `domain:limits` 修改本域配置                               | 受实例默认／上限约束；显式 null 为未限制，0 为禁止；缺少配额行是初始化异常，不能当作无限                               |
+| Provider／quota 更新              | 本域治理能力及资源 revision                                | 创建 If-Match=0；更新使用该资源 revision；Gateway DB 原子比较，不用 domain.revision 替代                               |
+| 本域模型别名治理                  | `llm:manage`；按使用域与 alias 定位                        | 新建 If-Match=0，更新／删除用别名 revision；core DB 原子比较，本域 Provider 归属检查；default 保留别名使用本域默认配置 |
+| 出题人模型能力目录                | 当前域 `problem:create`                                    | 只返回 alias／description；发布验证能力名称语法，评测时在使用域解析模型集合且只使用同一 Provider，不借源域映射         |
+| Provider RPM／TPM                 | 本域 Provider 治理权限与资源 revision                      | `0` 不额外限制；执行同时检查 Gateway 请求／Token 限流及实例／域预算，不改变评测尝试冻结的模型依据                      |
+| LLM 请求正文和响应原文            | LLM 管理能力不授予                                         | 域用量 DTO 只返回计量与定位允许字段，不透传 prompt、response、evaluator details                                        |
+| 自定义 evaluator.command          | 源题维护能力之外另查平台权限                               | `problem:field_evaluator_command`；仅生效值相对基线变化触发敏感字段授权                                                |
+| evaluator 网络                    | 源题维护能力之外另查平台权限                               | `problem:field_evaluator_network`；LLM 题需合法启用 evaluator 网络                                                     |
+| 镜像及时间／内存资源              | 域题库管理不突破平台限制                                   | 发布验证镜像类型与允许范围，资源受 `judge_max_*` 等平台上限限制                                                        |
 
 Gateway 与 core 使用独立数据库，不存在跨数据库 Provider 外键。 Provider
 归属由服务 token、域参数、可信尝试与 Gateway 查询共同校验。 Gateway
@@ -234,6 +236,7 @@ null，Gateway 内部历史数值用 -1 表示未限制。
 [可信 LLM token](../../noj-core/src/domains/gateway/services/llm-token.ts)、
 [Gateway 原子更新](../../noj-llm-gateway/src/routes/internal.ts)、
 [基础配额](../../noj-core/src/domains/workspace/services/limits.ts)、
+[域模型别名](../../noj-core/src/domains/gateway/services/llm-model-aliases.ts)、
 [敏感评测字段](../../noj-core/src/domains/catalog/services/problems/problem-field-guard.ts)、
 [草稿／发布安全](../../noj-core/src/domains/catalog/services/versioning/content-security.ts)。
 
@@ -253,6 +256,7 @@ active，也不证明当前用户拥有权限。
 | domain_problem_bindings                   | domain/problem NOT NULL；同域同源唯一；kind/visibility/revision 与 any/exact CHECK；exact 版本复合 FK 属于源题       | owned 必须对应本域源题、shared 必须对应其他源域；共享及比赛状态实时校验                      |
 | classroom 与 membership                   | 非空域；班级域复合身份；教练账号属于同域成员；班级成员与同域成员／班级复合 FK，角色及状态 CHECK                      | 活跃任职与 grants、教练交接、自我提升限制、邀请注册政策                                      |
 | classroom_assistant_grants                | 成员×capability 唯一，固定六项能力 CHECK                                                                             | 仅教练／域治理任命，不能由助教给自己提升能力                                                 |
+| classroom_join_requests                   | 同班级×用户只有一份 pending 请求的部分唯一索引                                                                       | 审核在明确目标班级核对成员、当前处理权限与请求状态；不存在 SQL NULL 的域归属例外             |
 | assignments                               | 非空域，班级×域 FK，来源作业／比赛同域 FK，状态／revision 与定时／发布依据非空 CHECK                                 | 发布时间与截止窗口校验；发布事务固定题集、达标规则、初始名单，校验共享；已发布内容不直接编辑 |
 | assignment_items                          | 同域作业／绑定 FK，绑定×源题 FK，作答／要求版本属于源题，排序与策略 CHECK                                            | 发布依据保留；当前策略和版本变化记录历史并重算                                               |
 | assignment_recipients                     | 同作业学生唯一；同域同班作业与成员 FK                                                                                | 实际目标学生、自动补入未截止任务、离班信用区间与历史名单                                     |
@@ -267,6 +271,8 @@ active，也不证明当前用户拥有权限。
 | feedback/help/replies                     | 非空域与同域作业／recipient／条目／求助复合 FK，正文／状态／revision CHECK                                           | 私人互动能力独立；目标提交的同域／学生关系由服务核对，不声称普通 ID FK已证明这些关系         |
 | submission_annotations                    | 非空域；同域班级、同域原提交×学生复合 FK；SHA-256 格式、行范围、正文与 revision CHECK                                | 原提交授权、实际文件和行数／哈希、比赛保密、作者编辑及受控 ZIP 预览                          |
 | education notifications/outbox            | 非空域；同域资源复合 FK；event×recipient 去重；通知类型与关联字段组合 CHECK                                          | 每次列表、发送、点击和 SSE 推送重新授权，只推定位，不保存私有正文摘要                        |
+| education_outbox 的矩阵刷新定位           | assignment.refresh 未处理记录按域×作业×COALESCE(user_id,'') 部分唯一                                                 | 合并同一范围的待处理刷新；领取租约、处理 revision 和最新事实重算仍由消费者执行               |
+| llm_model_aliases                         | domain_id NOT NULL；(domain_id, alias) 复合主键；revision ≥0 CHECK                                                   | default 不写表；管理者只写本域，Provider 属于同域；Gateway 独立数据库不伪造跨库 Provider FK  |
 
 约束依据：[工作空间 Schema](../../noj-core/src/shared/db/schema/workspace.ts)、
 [源题及版本](../../noj-core/src/shared/db/schema/catalog.ts)、
@@ -282,10 +288,12 @@ active，也不证明当前用户拥有权限。
 
 ### 8.1 具有明确业务意义的可空列
 
-源题、题单及执行归属已收缩。0137 将三种单次执行的域与绑定、批量任务及条目的域
-设为 NOT NULL；0138 收缩比赛及赛题归属并约束提交的同域比赛上下文。
-任务条目的空绑定只允许失败或跳过的历史引用。0139 收缩社区内容归属，
-按真实父关系回填并增加 mixed 数据约束。下列可空列有明确产品语义，不能一律非空。
+源题、题单及执行归属已收缩。原主题分支 0137 将三种单次执行的域与绑定、批量任务
+及条目的域设为 NOT NULL；0138 收缩比赛及赛题归属并约束提交的同域比赛上下文；
+0139 按真实父关系收缩社区内容归属并增加 mixed 数据约束。这些变更已整合入接续
+main 的 0116，保留存量回填与原始身份。0116 同时将模型别名归入使用域，旧平台
+别名归 main；0117 补齐班级加入申请和教学刷新事件的 pending 部分唯一索引。
+任务条目的空绑定只允许失败或跳过的历史引用。下列可空列有明确产品语义，不能一律非空。
 
 | 表                                         | 当前仍可空的工作空间列    | 后续收缩需区分                                                                                           |
 | ------------------------------------------ | ------------------------- | -------------------------------------------------------------------------------------------------------- |
