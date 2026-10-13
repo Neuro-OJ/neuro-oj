@@ -101,6 +101,10 @@ jobs:
             e2e-contest:
               - 'noj-tests/e2e/contest/**'
               - 'noj-core/src/domains/contest/**'
+              # 计分版本、客观题判卷和结果裁剪共同决定比赛行为。
+              - 'noj-core/src/domains/catalog/**'
+              - 'noj-core/src/domains/objective/**'
+              - 'noj-core/src/domains/submission/**'
             e2e-system:
               - 'noj-tests/e2e/system/**'
               - 'noj-core/src/domains/system/**'
@@ -241,8 +245,12 @@ jobs:
     timeout-minutes: 60
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-contest
+      # Worker 与 Deno 用例读取同一配置；正式比赛门禁必须实际执行 OI Native。
+      E2E_JUDGE_RESOURCE_POOLS: ai,oi-native
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: 构建比赛 OI Native C++ 运行时
+        run: docker build -t noj-oi-cpp:latest noj-judge/docker/oi-cpp
       - uses: ./.github/actions/e2e-domain
         with:
           domain: contest

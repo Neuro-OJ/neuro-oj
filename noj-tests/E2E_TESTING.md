@@ -118,9 +118,39 @@ noj-tests/
 
 `docker-compose.e2e.yml` 的 Worker 明确启用 `ai` 池，用于现有
 AI、产物提交与客观题 全链路测试；其轻量镜像不包含 WASI SDK。OI Native 的真实
-Docker 沙箱由 Rust E2E 门禁验证；OI WASM 则由 Judge Check 的真实
+Docker 沙箱同时由 Rust E2E 与比赛 HTTP 门禁验证；OI WASM 则由 Judge Check 的真实
 SDK、冻结快照与生产镜像验收验证。 不要在缺少经过标准摘要校验的 SDK 时启用
 `oi-wasm` 池。
+
+### 五赛制真实评测门禁
+
+正式 `e2e-contest` CI 为 Worker 与 Deno 测试统一设置
+`E2E_JUDGE_RESOURCE_POOLS=ai,oi-native`，在启动评测栈前构建
+`noj-judge/docker/oi-cpp/Dockerfile` 的 `noj-oi-cpp:latest` 镜像。
+比赛测试不能依靠另一个 job 构建的镜像；GitHub jobs 使用不同 runner。
+
+本地运行比赛完整门禁时，先在同一 shell 导出配置，再启动和测试：
+
+```bash
+export E2E_JUDGE_RESOURCE_POOLS=ai,oi-native
+bash scripts/e2e/setup.sh
+cd noj-tests
+deno task test:domain contest
+# 只验证新增五赛制链路：
+deno task test:domain contest --filter=contest-formats-native
+```
+
+启动脚本会先刷新包含 OI C++ 的本地 SDK 镜像，再确认 Native
+镜像可用，失败时停止启动。 默认 AI 专用栈的九项 Native 比赛测试使用明确的
+ignored 标记；正式比赛 CI 设置上述配置后实际执行。
+如果复用已启动的栈，必须同时为 Worker
+和测试设置相同资源池，仅给测试导出变量不会启用 Worker。
+
+`contest_formats_native.test.ts` 使用 v2 题包与真实 C++
+提交验证最后一次受理选择、 20/80 分子任务、CE、OI 保密、IOI
+字段允许列表、严格汇总、ACM 罚时与封榜。
+同时验证客观题并发一次交卷、百分制原分，以及按真实结束时间发布正式快照。
+评测成绩均来自 Judge，不向数据库写入成绩或倒改比赛时间。
 
 ## 运行方式
 
