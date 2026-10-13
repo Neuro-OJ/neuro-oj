@@ -86,12 +86,17 @@ export default defineNuxtConfig({
   },
 
   // @nuxt/icon：lucide 集合本地打包，SSR/单二进制离线渲染图标
-  // （scan 扫描源码中实际用到的图标打包进客户端；@nuxt/icon 2.x 无
-  //   collections / includeAllCollections 选项，配置会被忽略，已移除）
+  // scan 的默认扫描不包括 TS，动态空间导航的图标在客户端明确打包。
   icon: {
     serverBundle: 'local',
     clientBundle: {
       scan: true,
+      icons: [
+        'lucide:chart-no-axes-column-increasing',
+        'lucide:library-big',
+        'lucide:bot',
+        'lucide:user-round-cog',
+      ],
     },
   },
 
