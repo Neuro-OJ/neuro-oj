@@ -79,11 +79,13 @@ import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import { validateProblemSamples } from "../../types/problem-samples.ts";
 import {
   deriveDraftContentFromProblem,
+  type DraftObjectRef,
   draftRevisionRequired,
   getProblemDraft,
   PROBLEM_DRAFT_VIRTUAL_REVISION,
   type ProblemDraftView,
   saveProblemDraft,
+  saveProblemDraftWithObjects,
   setDraftObject,
 } from "../versioning/draft.ts";
 import {
@@ -163,6 +165,7 @@ export async function createProblem(
   c?: Context,
   allowServerDerivedFields = false,
   workspaceSlug?: string,
+  initialDraft?: { content: ProblemDraftContent; objects: DraftObjectRef[] },
 ): Promise<ProblemResponseWithTags> {
   const db = getDb();
   if (input.samples !== undefined) validateProblemSamples(input.samples);
@@ -280,7 +283,7 @@ export async function createProblem(
     throw new BadRequestError("runtime_config 是必填字段");
   }
 
-  // LLM 配置准入校验：仅 P 型/官方题可启用，且必须开启 evaluator 网络。
+  // LLM 能力与旧题库分类无关，预算和 evaluator 网络仍受实例安全政策约束。
   let llmConfig: LlmConfig | null = null;
   if (input.llm !== undefined && input.llm !== null) {
     if (isObjective) {
@@ -288,9 +291,6 @@ export async function createProblem(
     }
     if (!isValidLlmConfig(input.llm)) {
       throw new BadRequestError("llm 配置格式非法");
-    }
-    if (type !== "P") {
-      throw new ForbiddenError("仅 P 型/官方题可启用 LLM");
     }
     assertLlmLimitsWithinDefault(input.llm);
     const runtime = input.runtime_config;
@@ -376,12 +376,20 @@ export async function createProblem(
       created_at: now,
       updated_at: now,
     }).returning();
-    await saveProblemDraft(id, {
-      content: deriveDraftContentFromProblem(created),
+    const draftInput = {
+      content: initialDraft?.content ?? deriveDraftContentFromProblem(created),
       expectedRevision: PROBLEM_DRAFT_VIRTUAL_REVISION,
       actorId: ownerId,
       context: c,
-    }, tx);
+    };
+    if (initialDraft) {
+      await saveProblemDraftWithObjects(id, {
+        ...draftInput,
+        objects: initialDraft.objects,
+      }, tx);
+    } else {
+      await saveProblemDraft(id, draftInput, tx);
+    }
     if (input.tag_ids?.length) {
       await syncProblemTags(id, input.tag_ids, isObjective, tx);
     }
@@ -423,8 +431,17 @@ export function createDomainProblem(
   input: CreateProblemInput,
   actorId: string,
   context?: Context,
+  initialDraft?: { content: ProblemDraftContent; objects: DraftObjectRef[] },
 ) {
-  return createProblem(input, actorId, undefined, context, false, slug);
+  return createProblem(
+    input,
+    actorId,
+    undefined,
+    context,
+    false,
+    slug,
+    initialDraft,
+  );
 }
 
 /**
@@ -676,7 +693,7 @@ export async function updateProblem(
     throw new BadRequestError("OI 题仅支持 code 提交，不支持 artifact 配置");
   }
 
-  // LLM 配置变更校验：仅 P 型/官方题可启用，且必须保持 evaluator 网络开启。
+  // LLM 配置变更仍校验预算和 evaluator 网络，不按旧 P/U 分类授权。
   let llmConfig: LlmConfig | null | undefined;
   if (input.llm !== undefined) {
     if (input.llm === null) {
@@ -684,9 +701,6 @@ export async function updateProblem(
     } else {
       if (!isValidLlmConfig(input.llm)) {
         throw new BadRequestError("llm 配置格式非法");
-      }
-      if (problem.type !== "P") {
-        throw new ForbiddenError("仅 P 型/官方题可启用 LLM");
       }
       if (isObjective) {
         throw new BadRequestError("客观题套卷不支持 LLM 配置");

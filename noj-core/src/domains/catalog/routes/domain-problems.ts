@@ -18,6 +18,7 @@ import {
   readDomainProblemTemplate,
 } from "../services/workspace/problem-read.ts";
 import {
+  preflightDomainProblemVersion,
   publishDomainProblemVersion,
   readDomainProblemDraft,
   saveDomainProblemDraft,
@@ -26,10 +27,36 @@ import type { CreateProblemInput } from "../types/problems.ts";
 import type { ProblemDraftContent } from "../types/problem-content.ts";
 import { draftRevisionRequired } from "../services/versioning/draft.ts";
 import { setDomainProblemBindingState } from "../services/workspace/problem-bindings.ts";
+import { listEditableDomainProblemDrafts } from "../services/workspace/problem-draft-list.ts";
+import { domainProblemFilesRouter } from "./domain-problem-files.ts";
+import { importDomainProblemDraftBundle } from "../services/workspace/problem-bundle-edit.ts";
+import { enforceProblemImportRateLimit } from "../../system/index.ts";
+import { MAX_SUPPORT_PACKAGE_SIZE } from "../services/support-package.ts";
+import { importDomainProblemBundle } from "../services/workspace/problem-bundle-import.ts";
 
 /** 显式域题库路由；资源隔离阶段完成后由组合根统一挂载。 */
 export const domainProblemsRouter = new Hono<AuthEnv>();
 const prefix = "/domains/:slug/problems";
+domainProblemsRouter.route("/", domainProblemFilesRouter);
+domainProblemsRouter.get(
+  "/domains/:slug/problem-drafts",
+  authMiddleware,
+  async (c) => {
+    const { page, perPage } = parsePagination(c, {
+      perPageField: "limit",
+      maxPerPage: 100,
+    });
+    c.header("Cache-Control", "no-store");
+    return c.json(
+      await listEditableDomainProblemDrafts(
+        c.req.param("slug")!,
+        c.var.userId,
+        page,
+        perPage,
+      ),
+    );
+  },
+);
 
 domainProblemsRouter.get(
   `${prefix}/:reference/template`,
@@ -76,6 +103,82 @@ function draftRevision(header: string | undefined) {
   }
   return revision;
 }
+
+domainProblemsRouter.post(
+  `${prefix}/import-bundle`,
+  authMiddleware,
+  async (c) => {
+    const header = c.req.header("If-Match");
+    const revision = header === undefined ? undefined : draftRevision(header);
+    await enforceProblemImportRateLimit(c, c.var.userId);
+    const form = await c.req.parseBody();
+    if (
+      !(form.file instanceof File) ||
+      !form.file.name.toLowerCase().endsWith(".zip")
+    ) {
+      throw new BadRequestError("请上传 ZIP 题目包");
+    }
+    if (form.file.size > MAX_SUPPORT_PACKAGE_SIZE) {
+      throw new BadRequestError("题目包超过 128 MiB");
+    }
+    c.header("Cache-Control", "no-store");
+    const saved = await importDomainProblemBundle(
+      c.req.param("slug")!,
+      c.var.userId,
+      new Uint8Array(await form.file.arrayBuffer()),
+      revision,
+      c,
+    );
+    return c.json({ data: saved }, saved.created ? 201 : 200);
+  },
+);
+
+domainProblemsRouter.post(
+  `${prefix}/:reference/import-bundle`,
+  authMiddleware,
+  async (c) => {
+    const revision = draftRevision(c.req.header("If-Match"));
+    await enforceProblemImportRateLimit(c, c.var.userId);
+    const form = await c.req.parseBody();
+    if (
+      !(form.file instanceof File) ||
+      !form.file.name.toLowerCase().endsWith(".zip")
+    ) {
+      throw new BadRequestError("请上传 ZIP 题目包");
+    }
+    if (form.file.size > MAX_SUPPORT_PACKAGE_SIZE) {
+      throw new BadRequestError("题目包超过 128 MiB");
+    }
+    c.header("Cache-Control", "no-store");
+    return c.json({
+      data: await importDomainProblemDraftBundle(
+        c.req.param("slug")!,
+        c.req.param("reference")!,
+        c.var.userId,
+        new Uint8Array(await form.file.arrayBuffer()),
+        revision,
+        c,
+      ),
+    });
+  },
+);
+
+domainProblemsRouter.get(
+  `${prefix}/:reference/publish-preflight`,
+  authMiddleware,
+  async (c) => {
+    const revision = draftRevision(c.req.query("expected_revision"));
+    c.header("Cache-Control", "no-store");
+    return c.json(
+      await preflightDomainProblemVersion(
+        c.req.param("slug")!,
+        c.req.param("reference")!,
+        c.var.userId,
+        revision,
+      ),
+    );
+  },
+);
 
 domainProblemsRouter.get(prefix, optionalAuthMiddleware, async (c) => {
   c.header("Cache-Control", "no-store");

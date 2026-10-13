@@ -237,6 +237,8 @@ export async function saveOiDraft(
     /** 预期草稿 revision；缺少 → 428，过时 → 409。 */
     expectedRevision: number | null | undefined;
     actorId?: string | null;
+    /** 使用域入口在上传后、草稿写入前重新确认当前编辑权限。 */
+    authorize?: (executor: Executor) => Promise<void>;
   },
   entries?: Record<string, Uint8Array>,
 ): Promise<SaveOiDraftResult> {
@@ -358,11 +360,14 @@ export async function saveOiDraft(
       });
     }
 
-    const saved = await saveProblemDraftWithObjects(problemId, {
-      content,
-      expectedRevision: input.expectedRevision,
-      actorId: input.actorId ?? null,
-      objects: nextObjects,
+    const saved = await getDb().transaction(async (tx) => {
+      await input.authorize?.(tx);
+      return await saveProblemDraftWithObjects(problemId, {
+        content,
+        expectedRevision: input.expectedRevision,
+        actorId: input.actorId ?? null,
+        objects: nextObjects,
+      }, tx);
     });
     return {
       problem_id: problemId,

@@ -19,6 +19,26 @@ import { getProblemDraft, saveProblemDraft } from "../versioning/draft.ts";
 import { parseDomainProblemReference } from "./problem-reference.ts";
 import type { Context } from "hono";
 import { publishProblemVersion } from "../versioning/publish.ts";
+import { preflightProblemDraft } from "../versioning/publish.ts";
+import { draftRevisionConflict } from "../versioning/draft.ts";
+
+/** 发布预检先授权本域源题，再校验当前草稿依据，不发布或改写内容。 */
+export async function preflightDomainProblemVersion(
+  slug: string,
+  reference: string,
+  actorId: string,
+  expectedRevision: number,
+) {
+  const resource = await loadEditableDomainProblem(slug, reference, actorId);
+  assertWorkspacePermission(resource.context, "problem:publish");
+  const report = await preflightProblemDraft(resource.problem.id, {
+    verifyObjects: true,
+  });
+  if (report.revision !== expectedRevision) {
+    throw draftRevisionConflict(expectedRevision, report.revision);
+  }
+  return report;
+}
 
 /** 域题库管理只能编辑本域源题；来源引用不授予源域编辑权限。 */
 export async function loadEditableDomainProblem(

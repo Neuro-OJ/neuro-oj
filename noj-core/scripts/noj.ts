@@ -35,8 +35,8 @@ import {
 } from "../src/domains/system/index.ts";
 import {
   backfillDefaultCatalog,
-  importProblemBundle,
-  publishImportedProblem,
+  importDomainProblemBundle,
+  publishDomainProblemVersion,
 } from "../src/domains/catalog/index.ts";
 import { ensureDefaultWorkspace } from "../src/domains/workspace/index.ts";
 import { reindexAll } from "../src/domains/search/index.ts";
@@ -123,7 +123,7 @@ async function buildAllPackages(): Promise<void> {
  */
 async function importProblemPackages(
   dir: string,
-  options: { publish?: boolean } = {},
+  options: { publish?: boolean; domain?: string } = {},
 ): Promise<void> {
   let imported = 0;
   try {
@@ -132,14 +132,24 @@ async function importProblemPackages(
         continue;
       }
       const data = await Deno.readFile(join(dir, entry.name));
-      const problem = await importProblemBundle(
-        { name: entry.name, data },
-        { userId: ROOT_USER_ID, userRole: "admin" },
+      const slug = options.domain ?? "main";
+      // 运维导入读取当前编辑基线；真正写入仍按捕获的 revision 校验并发。
+      const problem = await importDomainProblemBundle(
+        slug,
+        ROOT_USER_ID,
+        data,
+        "current",
       );
+      for (const warning of problem.warnings) {
+        console.warn(`  ${entry.name}: ${warning}`);
+      }
       if (options.publish) {
-        const published = await publishImportedProblem(
-          problem.id,
+        const published = await publishDomainProblemVersion(
+          slug,
+          String(problem.number),
           ROOT_USER_ID,
+          problem.draft_revision,
+          "题目包导入",
         );
         console.log(
           `  已导入并发布: ${entry.name} → V${published.version}` +
@@ -282,15 +292,6 @@ const problemsCmd = new Command()
   .command("init", "生成新题目的最小可评测骨架（脚手架）")
   .arguments("<slug:string>")
   .option("--title <title:string>", "题目标题（缺省用 slug）")
-  .option(
-    "--type <type:string>",
-    // 注意：这里的 U/P 是**题目归属**（U=用户题 / P=主题题），不是「客观题/编程题」。
-    // 客观题由 problem.json 的 is_objective + questions.json 表达，本脚手架只产
-    // 编程题（P）。此前把 U 标为「客观题」会误导出题人生成出 visibility=private
-    // 且默认列表不可见的题目。
-    "题型：U（用户题，visibility=private）/ P（主题题，默认）",
-    { default: "P" },
-  )
   .option("--difficulty <difficulty:string>", "难度：easy / medium / hard", {
     default: "medium",
   })
@@ -299,7 +300,6 @@ const problemsCmd = new Command()
     async (
       opts: {
         title?: string;
-        type?: string;
         difficulty?: string;
         dir?: string;
       },
@@ -308,7 +308,6 @@ const problemsCmd = new Command()
       const result = await initProblem({
         slug,
         title: opts.title,
-        type: opts.type as "U" | "P" | undefined,
         difficulty: opts.difficulty as "easy" | "medium" | "hard" | undefined,
         root: opts.dir,
       });
@@ -338,12 +337,16 @@ const problemsCmd = new Command()
   })
   .command("import", "批量导入统一题目包（幂等 upsert）")
   .option("--dir <dir:string>", "题目包目录", { default: OUT_DIR })
+  .option("--domain <slug:string>", "导入目标工作空间", { default: "main" })
   .option(
     "--publish",
     "导入后显式发布为题目版本（不加则只写草稿，普通用户不可见）",
   )
-  .action((opts: { dir: string; publish?: boolean }) => {
-    return importProblemPackages(opts.dir, { publish: opts.publish === true });
+  .action((opts: { dir: string; domain: string; publish?: boolean }) => {
+    return importProblemPackages(opts.dir, {
+      domain: opts.domain,
+      publish: opts.publish === true,
+    });
   });
 
 const searchCmd = new Command()
