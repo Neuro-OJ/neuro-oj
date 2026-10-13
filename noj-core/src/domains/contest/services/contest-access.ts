@@ -44,18 +44,17 @@ export async function verifyContestAccess(
     const db = options.executor ?? getDb();
     const contest = await findContestRow(contestId, db);
     if (
-      options.domainId &&
-      (contest.domain_id ?? DEFAULT_DOMAIN_ID) !== options.domainId
+      (contest.domain_id ?? DEFAULT_DOMAIN_ID) !==
+        (options.domainId ?? DEFAULT_DOMAIN_ID)
     ) {
       return { contestId, allowed: false, running: false };
     }
     startTime = contest.start_time;
     endTime = contest.end_time;
     type = contest.type as ContestType;
-    organizer = userId !== null && userId === contest.created_by;
-    if (contest.domain_id && contest.domain_id !== DEFAULT_DOMAIN_ID) {
+    {
       const [domain] = await db.select({ slug: domains.slug }).from(domains)
-        .where(eq(domains.id, contest.domain_id));
+        .where(eq(domains.id, contest.domain_id ?? DEFAULT_DOMAIN_ID));
       if (!domain) return { contestId, allowed: false, running: false };
       const workspace = await loadWorkspace(domain.slug, userId, {
         executor: db,

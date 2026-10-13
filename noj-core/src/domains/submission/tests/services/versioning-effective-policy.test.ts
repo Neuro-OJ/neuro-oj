@@ -12,6 +12,9 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contestProblems,
   contests,
+  domainMemberRoles,
+  domainMemberships,
+  domainProblemBindings,
   evaluationAttempts,
   problems,
   problemVersions,
@@ -30,8 +33,79 @@ import {
   upsertCurrentVersionResult,
 } from "../../services/versioning/projection.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
+import { bindMainProblemForTest } from "../_versioning-fixtures.ts";
+import { fixture as domainFixture } from "../_domain-execution-fixture.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
 
 const now = new Date().toISOString();
+
+Deno.test("policy: 默认入口仅修改 main 绑定，外域引用策略与源题旧字段保持独立", async () => {
+  const f = await domainFixture();
+  await seedProblem("main-isolated-policy", 992090);
+  await assertRejects(
+    () =>
+      setProblemEffectiveVersionPolicy(f.problemId, {
+        actorId: "0",
+        expectedRevision: 0,
+        policy: { mode: "any" },
+      }),
+    Error,
+    "默认域题目不存在",
+  );
+  const problemId = "main-isolated-policy";
+  const foreignId = crypto.randomUUID();
+  await f.db.insert(domainProblemBindings).values({
+    id: foreignId,
+    domain_id: f.a.id,
+    problem_id: problemId,
+    kind: "shared",
+    effective_version_mode: "exact",
+    required_version_id: `${problemId}-v1`,
+    revision: 7,
+    created_by: f.owner,
+    created_at: now,
+    updated_at: now,
+  });
+  const changed = await setProblemEffectiveVersionPolicy(problemId, {
+    actorId: "0",
+    expectedRevision: 0,
+    policy: { mode: "exact", version_id: `${problemId}-v2` },
+  });
+  assertEquals(changed.revision, 1);
+  const [source] = await f.db.select().from(problems).where(
+    eq(problems.id, problemId),
+  );
+  assertEquals(source.effective_version_mode, "any");
+  assertEquals(source.effective_policy_revision, 0);
+  const [foreign] = await f.db.select().from(domainProblemBindings).where(
+    eq(domainProblemBindings.id, foreignId),
+  );
+  assertEquals(foreign.revision, 7);
+  assertEquals(foreign.required_version_id, `${problemId}-v1`);
+  const [member] = await f.db.select().from(domainMemberships).where(
+    and(
+      eq(domainMemberships.domain_id, DEFAULT_DOMAIN_ID),
+      eq(domainMemberships.user_id, "0"),
+    ),
+  );
+  await f.db.delete(domainMemberRoles).where(
+    eq(domainMemberRoles.membership_id, member.id),
+  );
+  await f.db.insert(domainMemberRoles).values({
+    membership_id: member.id,
+    role: "member",
+  });
+  await assertRejects(
+    () =>
+      setProblemEffectiveVersionPolicy(problemId, {
+        actorId: "0",
+        expectedRevision: 1,
+        policy: { mode: "any" },
+      }),
+    Error,
+    "工作空间权限不足",
+  );
+});
 
 async function seedProblem(
   problemId: string,
@@ -62,6 +136,7 @@ async function seedProblem(
   }
   await db.update(problems).set({ latest_version_id: `${problemId}-v2` })
     .where(eq(problems.id, problemId));
+  await bindMainProblemForTest(problemId);
   return { v1: `${problemId}-v1`, v2: `${problemId}-v2` };
 }
 
@@ -86,11 +161,13 @@ async function seedSubmissionWithResult(input: {
     created_at: now,
   });
   const source: ProjectionSource = {
+    // 绑定由迁移后夹具补齐，原评测/提交 ID 保持不变。
     kind: "submission",
     id: input.submissionId,
     problem_id: input.problemId,
     contest_id: input.contestId ?? null,
   };
+  await bindMainProblemForTest(input.problemId);
   const attemptId = `${input.submissionId}-a0`;
   await db.insert(evaluationAttempts).values({
     id: attemptId,
@@ -207,7 +284,7 @@ Deno.test("policy: revision 乐观锁与版本校验", async () => {
         expectedRevision: 5,
       }),
     Error,
-    "有效版本策略已被修改",
+    "题库配置已变化",
   );
   // 跨题版本 → 404
   await assertRejects(
@@ -217,7 +294,7 @@ Deno.test("policy: revision 乐观锁与版本校验", async () => {
         expectedRevision: 0,
       }),
     Error,
-    "要求版本不存在或未发布",
+    "要求版本不属于此题或未发布",
   );
   // 合法切换
   await setProblemEffectiveVersionPolicy("ep-p2", {
@@ -232,7 +309,7 @@ Deno.test("policy: revision 乐观锁与版本校验", async () => {
         expectedRevision: 0,
       }),
     Error,
-    "题目不存在",
+    "默认域题目不存在",
   );
 });
 

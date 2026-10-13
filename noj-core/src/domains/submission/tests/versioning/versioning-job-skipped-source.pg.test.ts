@@ -22,9 +22,13 @@ import {
 import {
   contestProblems,
   contests,
+  domainProblemBindings,
+  domains,
+  educationOutbox,
   evaluationAttempts,
   judgeImages,
   objectiveSubmissions,
+  problemBindingHistory,
   problems,
   problemVersions,
   submissionJobItems,
@@ -40,6 +44,7 @@ import {
 import {
   acceptLegacyRejudgeJobForTest as acceptRejudgeJob,
   authorizeLegacyJobActorForTest,
+  bindMainProblemForTest,
 } from "../_versioning-fixtures.ts";
 import { acceptUpgradeJob } from "../../services/versioning/upgrade-jobs.ts";
 import {
@@ -215,6 +220,17 @@ async function cleanup(fixture: Fixture): Promise<void> {
   // 先摘掉最新版指针（problems_latest_version_fk），再删版本行
   await db.update(problems).set({ latest_version_id: null }).where(
     eq(problems.id, fixture.problemId),
+  );
+  const bindings = await db.select({ id: domainProblemBindings.id }).from(
+    domainProblemBindings,
+  ).where(eq(domainProblemBindings.problem_id, fixture.problemId));
+  for (const binding of bindings) {
+    await db.delete(problemBindingHistory).where(
+      eq(problemBindingHistory.binding_id, binding.id),
+    );
+  }
+  await db.delete(domainProblemBindings).where(
+    eq(domainProblemBindings.problem_id, fixture.problemId),
   );
   await db.delete(problemVersions).where(
     inArray(problemVersions.problem_id, [fixture.problemId]),
@@ -555,6 +571,9 @@ async function seedObjectiveFixture(
 }
 
 async function cleanupObjective(fixture: ObjectiveFixture): Promise<void> {
+  await db.delete(educationOutbox).where(
+    eq(educationOutbox.problem_id, fixture.problemId),
+  );
   await db.delete(submissionJobItems).where(
     eq(submissionJobItems.job_id, fixture.jobId),
   );
@@ -578,6 +597,18 @@ async function cleanupObjective(fixture: ObjectiveFixture): Promise<void> {
   }
   await db.update(problems).set({ latest_version_id: null }).where(
     eq(problems.id, fixture.problemId),
+  );
+  const bindings = await db.select({ id: domainProblemBindings.id }).from(
+    domainProblemBindings,
+  )
+    .where(eq(domainProblemBindings.problem_id, fixture.problemId));
+  for (const binding of bindings) {
+    await db.delete(problemBindingHistory).where(
+      eq(problemBindingHistory.binding_id, binding.id),
+    );
+  }
+  await db.delete(domainProblemBindings).where(
+    eq(domainProblemBindings.problem_id, fixture.problemId),
   );
   await db.delete(problemVersions).where(
     eq(problemVersions.id, fixture.versionId),
@@ -622,6 +653,7 @@ async function dispatchDuringObjectivePolicyChange(
   fixture: ObjectiveFixture,
   scope: "problem" | "contest",
 ): Promise<DispatchOutcome> {
+  if (scope === "problem") await bindMainProblemForTest(fixture.problemId);
   if (scope === "contest" && !fixture.contestId) {
     throw new Error("竞赛策略用例缺少竞赛夹具");
   }
@@ -637,6 +669,9 @@ async function dispatchDuringObjectivePolicyChange(
       );
       const barrierPid = pidRows[0].pid;
       if (scope === "problem") {
+        await tx.select({ id: domains.id }).from(domains).where(
+          eq(domains.slug, "main"),
+        ).for("update");
         await tx.select({ id: problems.id }).from(problems).where(
           eq(problems.id, fixture.problemId),
         ).for("update");

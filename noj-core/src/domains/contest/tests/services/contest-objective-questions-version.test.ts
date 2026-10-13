@@ -19,12 +19,18 @@ import {
   contestParticipants,
   contestProblems,
   contests,
+  domainMemberRoles,
+  domainProblemBindings,
   problems,
   problemVersions,
   users,
 } from "../../../../shared/db/schema.ts";
 import { listPaperQuestionsWithAccess } from "../../../objective/index.ts";
-import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
+import {
+  addDomainMember,
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../../workspace/index.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
 
 await resetDbForTest({ refreshRankings: true });
@@ -44,6 +50,11 @@ async function seedUser(prefix: string): Promise<string> {
     password_hash: "hash",
     created_at: now,
     updated_at: now,
+  });
+  const member = await addDomainMember(getDb(), DEFAULT_DOMAIN_ID, id);
+  await getDb().insert(domainMemberRoles).values({
+    membership_id: member.id,
+    role: "editor",
   });
   return id;
 }
@@ -122,6 +133,16 @@ Deno.test({
     await db.update(problems).set({ latest_version_id: versionV2 }).where(
       eq(problems.id, paperId),
     );
+    await db.insert(domainProblemBindings).values({
+      id: `${paperId}-binding`,
+      domain_id: DEFAULT_DOMAIN_ID,
+      problem_id: paperId,
+      kind: "owned",
+      visibility: "public",
+      created_by: "0",
+      created_at: now,
+      updated_at: now,
+    });
     await db.insert(contests).values({
       id: contestId,
       public_id: contestPublicId,
@@ -228,6 +249,9 @@ Deno.test({
         eq(contestProblems.contest_id, contestId),
       );
       await db.delete(contests).where(eq(contests.id, contestId));
+      await db.delete(domainProblemBindings).where(
+        eq(domainProblemBindings.problem_id, paperId),
+      );
       await db.update(problems).set({ latest_version_id: null }).where(
         eq(problems.id, paperId),
       );
@@ -235,7 +259,9 @@ Deno.test({
         eq(problemVersions.problem_id, paperId),
       );
       await db.delete(problems).where(eq(problems.id, paperId));
-      await db.delete(users).where(inArray(users.id, [userId]));
+      await db.update(users).set({ deleted_at: now }).where(
+        inArray(users.id, [userId]),
+      );
     }
   },
 });

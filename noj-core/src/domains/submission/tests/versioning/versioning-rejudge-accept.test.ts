@@ -15,6 +15,7 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contestProblems,
   contests,
+  domainProblemBindings,
   judgeImages,
   problems,
   problemVersions,
@@ -31,6 +32,7 @@ import {
   retryRejudgeJob,
 } from "../../services/versioning/rejudge-jobs.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
+import { bindMainProblemForTest } from "../_versioning-fixtures.ts";
 
 const now = new Date().toISOString();
 
@@ -104,6 +106,7 @@ async function seedProblem(problemId: string, number: number): Promise<void> {
   await db.update(problems).set({ latest_version_id: `${problemId}-v2` }).where(
     eq(problems.id, problemId),
   );
+  await bindMainProblemForTest(problemId, "ja-admin");
 }
 
 async function seedSubmission(
@@ -155,8 +158,8 @@ Deno.test("jobs#31: 第二项策略失败时第一项策略与任务全部回滚
   await seedSubmission("ja-s1", "ja-p1");
   await seedSubmission("ja-s2", "ja-p2");
   // ja-p2 的 revision 已被其他管理员推进到 3
-  await db.update(problems).set({ effective_policy_revision: 3 }).where(
-    eq(problems.id, "ja-p2"),
+  await db.update(domainProblemBindings).set({ revision: 3 }).where(
+    eq(domainProblemBindings.problem_id, "ja-p2"),
   );
 
   await assertRejects(
@@ -189,7 +192,7 @@ Deno.test("jobs#31: 第二项策略失败时第一项策略与任务全部回滚
         "ja-key-atomic",
       ),
     Error,
-    "有效版本策略已被修改",
+    "题库配置已变化",
   );
 
   // 第一项策略必须一起回滚（不是"先提交策略再建任务"）
@@ -197,8 +200,15 @@ Deno.test("jobs#31: 第二项策略失败时第一项策略与任务全部回滚
   assertEquals(p1.effective_version_mode, "any");
   assertEquals(p1.required_version_id, null);
   assertEquals(p1.effective_policy_revision, 0);
-  const [p2] = await db.select().from(problems).where(eq(problems.id, "ja-p2"));
-  assertEquals(p2.effective_policy_revision, 3);
+  const [p2] = await db.select().from(domainProblemBindings).where(
+    eq(domainProblemBindings.problem_id, "ja-p2"),
+  );
+  assertEquals(p2.revision, 3);
+  const [binding1] = await db.select().from(domainProblemBindings).where(
+    eq(domainProblemBindings.problem_id, "ja-p1"),
+  );
+  assertEquals(binding1.revision, 0);
+  assertEquals(binding1.effective_version_mode, "any");
   // 未产生任务与条目
   assertEquals(
     (await db.select().from(submissionJobs).where(

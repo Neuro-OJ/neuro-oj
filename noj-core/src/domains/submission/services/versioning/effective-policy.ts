@@ -15,35 +15,40 @@
  * - 单独升级竞赛固定版本时，若现有 `exact` 策略与目标固定版本冲突 → 409。
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
-import { recordEducationEvent } from "../../../../shared/education-events.ts";
 import {
   contestProblems,
   contests,
   domainProblemBindings,
-  problemBindingHistory,
+  domains,
+  objectiveSubmissions,
   problems,
+  submissions,
 } from "../../../../shared/db/schema.ts";
 import { logAudit } from "../../../system/index.ts";
+import {
+  assertWorkspacePermission,
+  DEFAULT_DOMAIN_ID,
+  DEFAULT_DOMAIN_SLUG,
+  loadWorkspace,
+} from "../../../workspace/index.ts";
+import { setDomainProblemBindingPolicy } from "../../../catalog/index.ts";
 import {
   type EffectiveVersionPolicy,
   policyToColumns,
 } from "../../../../shared/versioning/types.ts";
 import { loadPublishedVersionContent } from "./submission-version.ts";
-import {
-  recomputeContestProblemProjections,
-  recomputeProblemProjections,
-} from "./projection.ts";
+import { recomputeContestProblemProjections } from "./projection.ts";
 
 /** 策略切换结果。 */
 export interface PolicyChangeResult {
   policy: EffectiveVersionPolicy;
   /** 策略宿主的新 revision（乐观锁版本，也是投影版本）。 */
   revision: number;
-  /** 本次重算覆盖的提交数量（题库口径为该题全部提交，竞赛口径为该场该题全部提交）。 */
+  /** 本次重算覆盖的提交数量（题库口径限定当前绑定，竞赛口径限定该场该题）。 */
   affected_submissions: number;
 }
 
@@ -117,6 +122,17 @@ export async function lockEffectivePolicyHosts(
   const contestIds = [...new Set(hosts.contestIds ?? [])].sort();
   const problemLock = locks.problemLock ?? "update";
   const contestLock = locks.contestLock ?? "update";
+  if (contestIds.length) {
+    const rows = await executor.select({ domainId: contests.domain_id }).from(
+      contests,
+    ).where(inArray(contests.id, contestIds));
+    const domainIds = [
+      ...new Set(rows.map((row) => row.domainId ?? DEFAULT_DOMAIN_ID)),
+    ].sort();
+    await executor.select({ id: domains.id }).from(domains).where(
+      inArray(domains.id, domainIds),
+    ).orderBy(domains.id).for("share");
+  }
   for (
     let offset = 0;
     offset < problemIds.length;
@@ -165,7 +181,7 @@ async function assertPolicyVersionUsable(
 }
 
 /**
- * 切换题库有效版本策略（`any` / `exact(X)`）。
+ * 默认域兼容入口：切换 main 本域题库绑定的有效版本策略（`any` / `exact(X)`）。
  *
  * 不修改最新版指针——默认作答版本由解析器按策略选择（§1.2）。
  */
@@ -178,110 +194,57 @@ export async function setProblemEffectiveVersionPolicy(
   },
   executor?: Executor,
 ): Promise<PolicyChangeResult> {
-  const db = getDb();
   const write = async (tx: Executor) => {
-    const [row] = await tx.select({
-      mode: problems.effective_version_mode,
-      required: problems.required_version_id,
-      revision: problems.effective_policy_revision,
-      title: problems.title,
-      type: problems.type,
-      number: problems.number,
-    }).from(problems).where(eq(problems.id, problemId)).for("update");
-    if (!row) {
-      throw new AppError(`题目不存在：${problemId}`, 404, "PROBLEM_NOT_FOUND");
+    const workspace = await loadWorkspace(
+      DEFAULT_DOMAIN_SLUG,
+      input.actorId ?? "0",
+      { executor: tx, write: true },
+    );
+    assertWorkspacePermission(workspace.context, "problem:policy");
+    const [source] = await tx.select({ number: problems.number }).from(problems)
+      .where(
+        and(
+          eq(problems.id, problemId),
+          eq(problems.domain_id, DEFAULT_DOMAIN_ID),
+        ),
+      );
+    if (!source) {
+      throw new AppError("默认域题目不存在", 404, "PROBLEM_NOT_FOUND");
     }
-    if (row.revision !== input.expectedRevision) {
-      throw policyRevisionConflict(input.expectedRevision, row.revision);
+    const [binding] = await tx.select({ id: domainProblemBindings.id }).from(
+      domainProblemBindings,
+    ).where(and(
+      eq(domainProblemBindings.domain_id, DEFAULT_DOMAIN_ID),
+      eq(domainProblemBindings.problem_id, problemId),
+      eq(domainProblemBindings.kind, "owned"),
+    ));
+    if (!binding) {
+      throw new AppError("默认域题目不存在", 404, "PROBLEM_NOT_FOUND");
     }
-    await assertPolicyVersionUsable(problemId, input.policy, tx);
-
-    const columns = policyToColumns(input.policy);
-    const nextRevision = row.revision + 1;
-    await tx.update(problems).set({
-      effective_version_mode: columns.effective_version_mode,
-      required_version_id: columns.required_version_id,
-      effective_policy_revision: nextRevision,
-    }).where(eq(problems.id, problemId));
-
-    // 兼容入口只修改源域本域绑定，其他域的共享策略保持独立。
-    const [owned] = await tx.select().from(domainProblemBindings).where(
-      and(
-        eq(domainProblemBindings.problem_id, problemId),
-        eq(domainProblemBindings.kind, "owned"),
-      ),
-    ).for("update");
-    if (owned) {
-      const [updated] = await tx.update(domainProblemBindings).set({
-        ...columns,
-        revision: owned.revision + 1,
-        updated_at: new Date().toISOString(),
-      }).where(eq(domainProblemBindings.id, owned.id)).returning();
-      const [source] = await tx.select({ latest: problems.latest_version_id })
-        .from(problems)
-        .where(eq(problems.id, problemId));
-      await tx.insert(problemBindingHistory).values({
-        id: crypto.randomUUID(),
-        binding_id: updated.id,
-        problem_id: problemId,
-        revision: updated.revision,
-        effective_version_mode: updated.effective_version_mode,
-        required_version_id: updated.required_version_id,
-        answer_version_id: updated.required_version_id ?? source.latest,
-        disabled_at: updated.disabled_at,
-        actor_id: input.actorId ?? "0",
-        reason: "默认域兼容入口修改有效版本策略",
-        created_at: new Date().toISOString(),
-      });
-      await recordEducationEvent(tx, {
-        domain_id: updated.domain_id,
-        problem_id: problemId,
-        event_type: "problem.changed",
-      });
-    }
-
-    // 同一事务内重算：策略提交后立即生效（含 data_revision 递增）
-    const affected = await recomputeProblemProjections(tx, problemId);
-
+    const updated = await setDomainProblemBindingPolicy(
+      DEFAULT_DOMAIN_SLUG,
+      String(source.number),
+      input.actorId ?? "0",
+      input.expectedRevision,
+      input.policy,
+      "默认域兼容入口修改有效版本策略",
+      tx,
+    );
+    const [count] = await tx.select({ total: sql<number>`count(*)::int` }).from(
+      submissions,
+    )
+      .where(eq(submissions.domain_problem_binding_id, binding.id));
+    const [objectiveCount] = await tx.select({
+      total: sql<number>`count(*)::int`,
+    }).from(objectiveSubmissions)
+      .where(eq(objectiveSubmissions.domain_problem_binding_id, binding.id));
     return {
       policy: input.policy,
-      revision: nextRevision,
-      affected_submissions: affected,
-      previous: { mode: row.mode, required: row.required },
-      displayId: `${row.type}${row.number}`,
-      title: row.title,
+      revision: updated.revision,
+      affected_submissions: count.total + objectiveCount.total,
     };
   };
-  const result = executor ? await write(executor) : await db.transaction(write);
-
-  if (!executor) {
-    try {
-      await logAudit(
-        "problems.effective_version_policy_changed",
-        {
-          action: "problems.effective_version_policy_changed",
-          title: result.title,
-          display_id: result.displayId,
-          from_mode: result.previous.mode,
-          to_mode: result.policy.mode,
-          required_version_id: result.policy.mode === "exact"
-            ? result.policy.version_id
-            : null,
-          expected_revision: input.expectedRevision,
-          affected_submissions: result.affected_submissions,
-        },
-        { type: "problem", id: problemId },
-      );
-    } catch {
-      // 审计失败不影响已生效的策略（logAudit 内部已记录）
-    }
-  }
-
-  return {
-    policy: result.policy,
-    revision: result.revision,
-    affected_submissions: result.affected_submissions,
-  };
+  return executor ? await write(executor) : await getDb().transaction(write);
 }
 
 /**

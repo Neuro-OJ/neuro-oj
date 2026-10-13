@@ -9,7 +9,9 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
+import { bindMainProblemForTest } from "../_versioning-fixtures.ts";
 import {
+  domainProblemBindings,
   objectiveSubmissions,
   problems,
   problemVersions,
@@ -74,6 +76,7 @@ async function seedProblem(
   await db.update(problems).set({
     latest_version_id: `${problemId}-v${versions[versions.length - 1]}`,
   }).where(eq(problems.id, problemId));
+  await bindMainProblemForTest(problemId, "admin-1");
 }
 
 async function seedSubmission(
@@ -94,6 +97,7 @@ async function seedSubmission(
     version_origin: options.versionId === null ? "legacy_unknown" : "known",
     created_at: now,
   });
+  await bindMainProblemForTest(problemId, "admin-1");
 }
 
 function request(overrides: Partial<RejudgeRequest> = {}): RejudgeRequest {
@@ -376,9 +380,15 @@ Deno.test("jobs: 策略变更作用域校验与生效", async () => {
   const [problem] = await db.select().from(problems).where(
     eq(problems.id, "rj-p9"),
   );
-  assertEquals(problem.effective_version_mode, "exact");
-  assertEquals(problem.required_version_id, "rj-p9-v2");
-  assertEquals(problem.effective_policy_revision, 1);
+  assertEquals(problem.effective_version_mode, "any");
+  assertEquals(problem.required_version_id, null);
+  assertEquals(problem.effective_policy_revision, 0);
+  const [binding] = await getDb().select().from(domainProblemBindings).where(
+    eq(domainProblemBindings.problem_id, "rj-p9"),
+  );
+  assertEquals(binding.effective_version_mode, "exact");
+  assertEquals(binding.required_version_id, "rj-p9-v2");
+  assertEquals(binding.revision, 1);
 
   // 预期 revision 过时 → 409（且不产生新任务）
   await assertRejects(
@@ -399,7 +409,7 @@ Deno.test("jobs: 策略变更作用域校验与生效", async () => {
         "key-10",
       ),
     Error,
-    "有效版本策略已被修改",
+    "题库配置已变化",
   );
   const stale = await db.select().from(submissionJobs).where(
     eq(submissionJobs.idempotency_key, "key-10"),

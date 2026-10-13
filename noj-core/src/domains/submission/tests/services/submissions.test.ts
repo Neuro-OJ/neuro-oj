@@ -1,5 +1,6 @@
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import {
+  authorizeLegacyJobActorForTest,
   saveV2ResultForTest,
   seedActiveAttemptForTest,
 } from "../_versioning-fixtures.ts";
@@ -68,6 +69,7 @@ await db.insert(users).values({
   created_at: now,
   updated_at: now,
 });
+await authorizeLegacyJobActorForTest(TEST_USER_ID);
 await db.insert(problems).values({
   id: TEST_PROBLEM_ID,
   title: `测试题目 ${ts}`,

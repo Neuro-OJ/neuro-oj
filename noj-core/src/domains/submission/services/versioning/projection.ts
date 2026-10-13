@@ -22,6 +22,7 @@ import {
   contestProblems,
   contests,
   domainProblemBindings,
+  domains,
   evaluationAttempts,
   objectiveSubmissions,
   problems,
@@ -40,6 +41,7 @@ import {
   mergeSubmissionProjection,
   selectEffectiveResults,
 } from "../../../../shared/versioning/effective-results.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
 
 /** 投影来源：两类正式提交之一。 */
 export type ProjectionSourceKind = "submission" | "objective";
@@ -58,11 +60,21 @@ export interface ProjectionSource {
   domain_problem_binding_id?: string | null;
 }
 
-/** 写入统一锁顺序：题目 → 竞赛 → 提交。结果、策略与创建尝试必须共用。 */
+/** 写入统一锁顺序：持久提交所属域 → 题目 → 竞赛 → 提交。新提交的域锁由受理入口先持有。 */
 export async function lockProjectionHosts(
   db: Executor,
   source: ProjectionSource,
 ): Promise<void> {
+  const table = source.kind === "submission"
+    ? submissions
+    : objectiveSubmissions;
+  const [identity] = await db.select({ domainId: table.domain_id }).from(table)
+    .where(eq(table.id, source.id));
+  if (identity) {
+    await db.select({ id: domains.id }).from(domains).where(
+      eq(domains.id, identity.domainId ?? DEFAULT_DOMAIN_ID),
+    ).for("share");
+  }
   await db.select({ id: problems.id }).from(problems).where(
     eq(problems.id, source.problem_id),
   ).for("share");

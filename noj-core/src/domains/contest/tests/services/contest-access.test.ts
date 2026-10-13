@@ -1,7 +1,21 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
-import { problems, users } from "../../../../shared/db/schema.ts";
+import {
+  contests,
+  domainMemberRoles,
+  domainMemberships,
+  domains,
+  problems,
+  users,
+} from "../../../../shared/db/schema.ts";
+import {
+  addDomainMember,
+  createDomain,
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../../workspace/index.ts";
+import { updateSetting } from "../../../system/index.ts";
 import {
   addParticipants,
   createContest,
@@ -24,6 +38,8 @@ async function createUser(prefix: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await ensureDefaultWorkspace();
+  await addDomainMember(getDb(), DEFAULT_DOMAIN_ID, id);
   return id;
 }
 
@@ -65,6 +81,11 @@ async function createContestWithStatus(
   problemId: string,
   creatorId: string,
 ): Promise<string> {
+  const member = await addDomainMember(getDb(), DEFAULT_DOMAIN_ID, creatorId);
+  await getDb().insert(domainMemberRoles).values({
+    membership_id: member.id,
+    role: "editor",
+  }).onConflictDoNothing();
   const contest = await createContest({
     title: `竞赛访问测试 ${Date.now()}_${
       Math.random().toString(36).slice(2, 8)
@@ -82,6 +103,105 @@ async function createContestWithStatus(
   }, creatorId);
   return contest.id;
 }
+
+Deno.test({
+  name: "contest-access: 默认入口固定main，显式学校域访问及离域撤权",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const creator = await createUser("school-organizer");
+    const student = await createUser("school-student");
+    const problem = await createProblem(920010);
+    await updateSetting("domain_creation_policy", "open", "0");
+    const school = await createDomain({
+      slug: "organizer-school",
+      name: "学校比赛",
+      preset: "education",
+    }, creator);
+    const member = await addDomainMember(getDb(), school.id, student);
+    const contest = await createContestWithStatus(
+      -10000,
+      3600000,
+      problem,
+      creator,
+    );
+    await getDb().update(contests).set({ domain_id: school.id }).where(
+      eq(contests.id, contest),
+    );
+    await addParticipants(contest, [student]);
+    assertEquals(
+      (await verifyContestAccess(student, contest, problem)).allowed,
+      false,
+    );
+    assertEquals(
+      (await verifyContestAccess(student, contest, problem, {
+        domainId: school.id,
+      })).allowed,
+      true,
+    );
+    await getDb().update(domainMemberships).set({
+      status: "removed",
+      left_at: new Date().toISOString(),
+    }).where(eq(domainMemberships.id, member.id));
+    assertEquals(
+      (await verifyContestAccess(student, contest, problem, {
+        domainId: school.id,
+      })).allowed,
+      false,
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "contest-access: main及NULL历史都按当前角色授权，创建者撤销管理权限立即失效",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const creator = await createUser("current-main-organizer"),
+      problem = await createProblem(920009);
+    const contest = await createContestWithStatus(
+      -10000,
+      3600000,
+      problem,
+      creator,
+    );
+    await addParticipants(contest, [creator]);
+    for (const storedDomain of [DEFAULT_DOMAIN_ID, null]) {
+      await getDb().update(contests).set({ domain_id: storedDomain }).where(
+        eq(contests.id, contest),
+      );
+      const before = await verifyContestAccess(creator, contest, problem);
+      assertEquals(before.organizer, true);
+      assertEquals(before.allowed, true);
+      const member = await addDomainMember(getDb(), DEFAULT_DOMAIN_ID, creator);
+      await getDb().delete(domainMemberRoles).where(
+        eq(domainMemberRoles.membership_id, member.id),
+      );
+      await getDb().insert(domainMemberRoles).values({
+        membership_id: member.id,
+        role: "member",
+      });
+      const revoked = await verifyContestAccess(creator, contest, problem);
+      assertEquals(revoked.organizer, false);
+      assertEquals(revoked.allowed, true);
+      await getDb().insert(domainMemberRoles).values({
+        membership_id: member.id,
+        role: "editor",
+      });
+    }
+    const [main] = await getDb().select().from(domains).where(
+      eq(domains.id, DEFAULT_DOMAIN_ID),
+    );
+    await getDb().update(domains).set({
+      configuration: { ...main.configuration, access: "members" },
+    }).where(eq(domains.id, main.id));
+    assertEquals(
+      (await verifyContestAccess(null, contest, problem)).allowed,
+      false,
+    );
+  },
+});
 
 Deno.test({
   name: "contest-access: running + 参赛者 → allowed",

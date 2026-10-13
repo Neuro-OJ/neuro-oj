@@ -36,6 +36,11 @@ import {
   resolveDefaultExecutionContexts,
 } from "../../../catalog/index.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import {
+  assertWorkspacePermission,
+  DEFAULT_DOMAIN_SLUG,
+  loadWorkspace,
+} from "../../../workspace/index.ts";
 import type {
   EffectiveVersionPolicy,
   SubmissionJobItemStatus,
@@ -521,6 +526,16 @@ export async function acceptRejudgeJob(
   let jobStatus: "queued" | "completed" = "queued";
   try {
     const write = async (tx: Executor): Promise<void> => {
+      if (
+        (normalized.policy_changes ?? []).some((change) => !change.contest_id)
+      ) {
+        const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, actorId, {
+          executor: tx,
+          write: true,
+          lock: true,
+        });
+        assertWorkspacePermission(workspace.context, "problem:policy");
+      }
       const members = await resolveScopeItems(normalized.scope, tx);
       const contexts = await resolveDefaultExecutionContexts(
         members.map((member) => member.problem_id),
@@ -540,7 +555,7 @@ export async function acceptRejudgeJob(
       // revision 递增与条目写入阶段。
       //
       // 相关宿主 = 本次批量策略修改要改写的宿主（`policy_changes` 的题目与竞赛）：
-      // 题目策略写在 `problems` 行上、竞赛策略写在 `contest_problems` 行上，
+      // 题库策略写在 main 绑定行上（域锁已先取得）、竞赛策略写在 `contest_problems` 行上，
       // 两者的投影重算分别写提交行并递增 `problem:*` / `contest:*` / `global`
       // 的 projection revision。
       //
