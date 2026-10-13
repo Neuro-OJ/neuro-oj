@@ -11,7 +11,10 @@ import {
 import { eq } from "drizzle-orm";
 import { connectRedis } from "../../../../shared/mq/connection.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
-import { createUserToken } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  createUserToken,
+} from "../../../../../tests/helper.ts";
 import { verifyToken } from "../../../identity/index.ts";
 import {
   createDomain,
@@ -153,10 +156,12 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
+    const bindingId = await bindPublishedProblemForTest("history-paper");
     await db.insert(objectiveSubmissions).values([
       {
         id: "history-own",
         domain_id: a.id,
+        domain_problem_binding_id: bindingId,
         paper_id: "history-paper",
         user_id: actor,
         answers: { q: ["A"] },
@@ -166,6 +171,7 @@ Deno.test({
       {
         id: "history-peer",
         domain_id: a.id,
+        domain_problem_binding_id: bindingId,
         paper_id: "history-paper",
         user_id: other,
         answers: { q: ["B"] },

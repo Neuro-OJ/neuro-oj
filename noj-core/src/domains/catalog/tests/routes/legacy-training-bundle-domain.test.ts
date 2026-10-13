@@ -16,7 +16,10 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { createDomain, DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
-import { jsonRequest } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  jsonRequest,
+} from "../../../../../tests/helper.ts";
 import {
   createDefaultCatalogToken,
   resetDbForTest,
@@ -104,6 +107,7 @@ Deno.test("旧题单入口固定 main，引用读目标版本、撤销即时生�
   await db.insert(submissions).values({
     id: crypto.randomUUID(),
     domain_id: source.id,
+    domain_problem_binding_id: await bindPublishedProblemForTest(id),
     user_id: actor,
     problem_id: id,
     status: "finished",

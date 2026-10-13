@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
@@ -226,6 +227,8 @@ Deno.test({
       await addTrainingProblem(training.id, objective, 2, owner);
       const subId = crypto.randomUUID();
       await db.insert(submissions).values({
+        domain_id: "00000000-0000-4000-8000-000000000001",
+        domain_problem_binding_id: await bindPublishedProblemForTest(p1),
         id: subId,
         user_id: solver,
         problem_id: p1,
@@ -238,6 +241,8 @@ Deno.test({
         created_at: now,
       });
       await db.insert(objectiveSubmissions).values({
+        domain_id: "00000000-0000-4000-8000-000000000001",
+        domain_problem_binding_id: await bindPublishedProblemForTest(objective),
         id: crypto.randomUUID(),
         paper_id: objective,
         user_id: solver,

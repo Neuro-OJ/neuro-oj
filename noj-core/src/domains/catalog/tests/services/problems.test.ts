@@ -434,7 +434,12 @@ Deno.test({
     });
     const now = new Date().toISOString();
     // 已终态的历史自测记录（`pending`/`judging` 属于活动评测，删除入口会拒绝并保留题目）
+    const [binding] = await getDb().select().from(domainProblemBindings).where(
+      eq(domainProblemBindings.problem_id, problem.id),
+    );
     await getDb().insert(selfTests).values({
+      domain_id: problem.domain_id,
+      domain_problem_binding_id: binding.id,
       id: crypto.randomUUID(),
       user_id: "0",
       problem_id: problem.id,

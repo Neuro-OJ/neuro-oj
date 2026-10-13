@@ -690,6 +690,8 @@ Deno.test({
     const derivedId = crypto.randomUUID();
     const nowIso = new Date().toISOString();
     await db.insert(objectiveSubmissions).values({
+      domain_id: DEFAULT_DOMAIN_ID,
+      domain_problem_binding_id: await bindPublishedProblemForTest(paper),
       id: derivedId,
       paper_id: paper,
       user_id: user,

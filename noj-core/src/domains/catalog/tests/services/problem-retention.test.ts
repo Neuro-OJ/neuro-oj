@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 import { eq } from "drizzle-orm";
 import { AppError, ForbiddenError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -67,6 +68,8 @@ Deno.test("源题保留：有共享引用即明确拒绝删除，权限检查仍
 Deno.test("源题保留：未知旧版本的代码提交不能随源题清除", async () => {
   const code = await source();
   await getDb().insert(submissions).values({
+    domain_id: DEFAULT_DOMAIN_ID,
+    domain_problem_binding_id: await bindPublishedProblemForTest(code.id),
     id: crypto.randomUUID(),
     user_id: "0",
     problem_id: code.id,
@@ -81,6 +84,8 @@ Deno.test("源题保留：未知旧版本的代码提交不能随源题清除", 
 Deno.test("源题保留：未知旧版本的客观题答案和成绩不能随源题清除", async () => {
   const objective = await source(true);
   await getDb().insert(objectiveSubmissions).values({
+    domain_id: DEFAULT_DOMAIN_ID,
+    domain_problem_binding_id: await bindPublishedProblemForTest(objective.id),
     id: crypto.randomUUID(),
     user_id: "0",
     paper_id: objective.id,

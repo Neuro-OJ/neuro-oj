@@ -11,7 +11,12 @@
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
-import { initRedisForTest } from "../../../../../tests/helper.ts";
+import {
+  bindPublishedProblemForTest,
+  deleteProblemFixtures,
+  initRedisForTest,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   problems,
@@ -237,7 +242,10 @@ Deno.test({
     const db = getDb();
     const submissionId = crypto.randomUUID();
     const now = new Date().toISOString();
+    await publishBaselineVersionForTest(problemId);
     await db.insert(submissions).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
+      domain_problem_binding_id: await bindPublishedProblemForTest(problemId),
       id: submissionId,
       user_id: userId,
       problem_id: problemId,
@@ -257,7 +265,7 @@ Deno.test({
 
     await db.delete(submissions).where(eq(submissions.id, submissionId));
     await db.delete(problemTags).where(eq(problemTags.problem_id, problemId));
-    await db.delete(problems).where(eq(problems.id, problemId));
+    await deleteProblemFixtures(eq(problems.id, problemId));
     await db.delete(tags).where(eq(tags.id, algoTag.id));
     await db.delete(users).where(eq(users.id, userId));
   },

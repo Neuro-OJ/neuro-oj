@@ -634,6 +634,8 @@ Deno.test({
       updated_at: now,
     });
     const row = {
+      domain_id: DEFAULT_DOMAIN_ID,
+      domain_problem_binding_id: await bindPublishedProblemForTest(paper),
       id: crypto.randomUUID(),
       paper_id: paper,
       user_id: user,

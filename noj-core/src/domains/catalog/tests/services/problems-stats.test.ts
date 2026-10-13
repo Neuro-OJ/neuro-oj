@@ -1,9 +1,16 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import {
+  bindPublishedProblemForTest,
+  deleteProblemFixtures,
+  publishBaselineVersionForTest,
+} from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   contestProblems,
   contests,
+  domainProblemBindings,
   evaluationAttempts,
   problems,
   submissions,
@@ -34,6 +41,7 @@ async function seedProblem(number: number): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await publishBaselineVersionForTest(id);
   return id;
 }
 
@@ -68,8 +76,16 @@ async function seedSubmission(
   const submissionId = crypto.randomUUID();
   const attemptId = crypto.randomUUID();
   const now = new Date().toISOString();
+  const domain = domainId ?? DEFAULT_DOMAIN_ID;
+  const [binding] = await getDb().select().from(domainProblemBindings).where(
+    and(
+      eq(domainProblemBindings.domain_id, domain),
+      eq(domainProblemBindings.problem_id, problemId),
+    ),
+  );
   await getDb().insert(submissions).values({
-    domain_id: domainId ?? null,
+    domain_id: domain,
+    domain_problem_binding_id: binding.id,
     id: submissionId,
     user_id: userId,
     problem_id: problemId,
@@ -114,7 +130,7 @@ async function cleanup(problemId: string, userIds: string[]): Promise<void> {
   await getDb().delete(submissions).where(
     eq(submissions.problem_id, problemId),
   );
-  await getDb().delete(problems).where(eq(problems.id, problemId));
+  await deleteProblemFixtures(eq(problems.id, problemId));
   for (const id of userIds) {
     await getDb().delete(users).where(eq(users.id, id)).catch(() => {});
   }
@@ -252,6 +268,8 @@ Deno.test({
       const attemptId = crypto.randomUUID();
       const now = new Date().toISOString();
       await getDb().insert(submissions).values({
+        domain_id: DEFAULT_DOMAIN_ID,
+        domain_problem_binding_id: await bindPublishedProblemForTest(problemId),
         id: submissionId,
         user_id: alice,
         problem_id: problemId,
@@ -433,6 +451,16 @@ Deno.test("默认题目统计不计私有学校提交，学校比赛不抑制 ma
   }, actor);
   const problemId = await seedProblem(940020);
   const student = await seedUser("school-student");
+  const now = new Date().toISOString();
+  await getDb().insert(domainProblemBindings).values({
+    id: crypto.randomUUID(),
+    domain_id: school.id,
+    problem_id: problemId,
+    kind: "shared",
+    created_by: actor,
+    created_at: now,
+    updated_at: now,
+  });
   await seedSubmission(problemId, student, 10000, {}, school.id);
   const contestId = await seedRunningContest({ problemIds: [problemId] });
   await getDb().update(contests).set({ domain_id: school.id }).where(
