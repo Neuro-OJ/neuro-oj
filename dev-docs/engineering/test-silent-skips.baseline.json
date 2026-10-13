@@ -1,9 +1,9 @@
 {
-  "total": 1096,
+  "total": 1097,
   "by_reason": {
     "early-return": 248,
     "env-guard": 15,
-    "ignore": 760,
+    "ignore": 761,
     "rust-env-guard": 27,
     "rust-ignore": 46
   },
@@ -123,6 +123,7 @@
     "noj-llm-gateway/tests/provider_throttle_test.ts": 1,
     "noj-llm-gateway/tests/real_api_test.ts": 1,
     "noj-tests/e2e/admin/admin_endpoints.test.ts": 11,
+    "noj-tests/e2e/browser/workspace-bundle-import.test.ts": 1,
     "noj-tests/e2e/browser/workspace-classroom-matrix.test.ts": 1,
     "noj-tests/e2e/browser/workspace-governance.test.ts": 1,
     "noj-tests/e2e/browser/workspace-input-modes.test.ts": 1,
