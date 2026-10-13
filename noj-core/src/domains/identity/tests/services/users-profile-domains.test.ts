@@ -86,6 +86,9 @@ Deno.test("公共主页：本人和平台管理员也不能聚合私有域提交
     {
       id: "profile-private-solution",
       domain_id: "profile-school",
+      domain_problem_binding_id: await bindPublishedProblemForTest(
+        "profile-school-problem",
+      ),
       problem_id: "profile-school-problem",
       author_id: actor,
       type: "solution",

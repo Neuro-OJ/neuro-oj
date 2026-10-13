@@ -68,6 +68,7 @@ async function seedSolution(
 ): Promise<void> {
   const now = new Date().toISOString();
   await getDb().insert(communityPosts).values({
+    ...await problemExecutionForTest(problemId),
     id: crypto.randomUUID(),
     type: "solution",
     author_id: authorId,

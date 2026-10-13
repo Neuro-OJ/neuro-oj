@@ -232,6 +232,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(communityBoards).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "board-post-entry",
       slug: "post-entry-board",
       name: "搜索测试板块",
@@ -239,6 +240,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(communityPosts).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "post-entry-1",
       type: "discussion",
       author_id: "u-post-author",
@@ -280,6 +282,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(communityBoards).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "board-comment-entry",
       slug: "comment-entry-board",
       name: "评论测试板块",
@@ -287,6 +290,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(communityPosts).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "post-comment-entry",
       type: "discussion",
       author_id: "u-comment-author",
@@ -298,6 +302,7 @@ Deno.test({
       updated_at: now,
     });
     await db.insert(communityComments).values({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: "comment-entry-1",
       post_id: "post-comment-entry",
       author_id: "u-comment-author",

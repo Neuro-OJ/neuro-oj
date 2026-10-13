@@ -170,8 +170,8 @@ Deno.test({
     const commentId = crypto.randomUUID();
     const now = new Date().toISOString();
     await getDb().execute(sql`
-      INSERT INTO community_comments (id, post_id, author_id, content, status, created_at, updated_at)
-      VALUES (${commentId}, ${post.id}, ${ownerId}, '评论内容无关键词', 'published', ${now}, ${now})
+      INSERT INTO community_comments (id, domain_id, post_id, author_id, content, status, created_at, updated_at)
+      VALUES (${commentId}, ${post.domain_id}, ${post.id}, ${ownerId}, '评论内容无关键词', 'published', ${now}, ${now})
     `);
     await upsertSearchEntry((await buildCommunityCommentEntry(commentId))!);
 

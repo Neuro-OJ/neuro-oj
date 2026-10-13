@@ -719,6 +719,7 @@ Deno.test({
     // 手动插入 3 条同 created_at 的 moment，验证 (created_at, id) 复合游标
     const createdAt = new Date().toISOString();
     const values = [1, 2, 3].map((i) => ({
+      domain_id: DEFAULT_DOMAIN_ID,
       id: `feed-moment-${i}`,
       type: "moment" as const,
       author_id: actorId,
@@ -907,6 +908,7 @@ Deno.test({
         updated_at: createdAt,
       },
       ...[1, 2, 3, 4].map((i) => ({
+        domain_id: DEFAULT_DOMAIN_ID,
         id: `cursor-normal-${i}`,
         type: "moment" as const,
         author_id: actorId,
