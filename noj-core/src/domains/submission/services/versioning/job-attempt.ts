@@ -20,6 +20,11 @@ import { AppError } from "../../../../shared/base/errors.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
 import { assertStorageObjectBindable } from "../../../system/index.ts";
 import { resolveSubmissionVersion } from "./submission-version.ts";
+import { assertDomainJobExecution } from "./domain-job-access.ts";
+import {
+  consumeDomainSubmissionQuota,
+  DEFAULT_DOMAIN_ID,
+} from "../../../workspace/index.ts";
 import { createAttempt } from "./attempts.ts";
 import {
   bumpSubmissionCountRevisions,
@@ -63,6 +68,26 @@ export class UpgradeQuotaDeferredError extends Error {
     this.retryAfterMs = Number.isFinite(retryAfterMs) && retryAfterMs > 0
       ? retryAfterMs
       : 60_000;
+  }
+}
+
+/** 域分钟额度不足同样延期，不把可重试的频率限制记录为永久失败。 */
+export async function consumeDomainUpgradeQuota(
+  domainId: string,
+  userId: string,
+  itemId: string,
+  executor: Executor,
+) {
+  try {
+    await consumeDomainSubmissionQuota(domainId, userId, itemId, executor);
+  } catch (error) {
+    if (
+      error instanceof AppError &&
+      error.code === "DOMAIN_SUBMISSION_QUOTA_EXCEEDED"
+    ) {
+      throw new UpgradeQuotaDeferredError(60_000);
+    }
+    throw error;
   }
 }
 
@@ -149,6 +174,9 @@ export async function ensureJobAttempt(
 ): Promise<typeof evaluationAttempts.$inferSelect> {
   const { item, owner, source, kind, prepared } = input;
   return await getDb().transaction(async (tx) => {
+    if (!item.attempt_id) {
+      await assertDomainJobExecution(item, source, kind, tx);
+    }
     const contestId = kind === "upgrade" && input.context !== "source_contest"
       ? null
       : source.contest_id;
@@ -189,6 +217,12 @@ export async function ensureJobAttempt(
       throw new AppError("源提交正在评测", 409, "SOURCE_JUDGING");
     }
     if (kind === "upgrade") {
+      await consumeDomainUpgradeQuota(
+        source.domain_id ?? DEFAULT_DOMAIN_ID,
+        source.user_id,
+        item.id,
+        tx,
+      );
       if (contestId) {
         await resolveSubmissionVersion(source.problem_id, {
           contestId,

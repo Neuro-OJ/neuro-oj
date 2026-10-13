@@ -12,6 +12,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
+import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 import {
   evaluationAttempts,
   llmTokenRevocations,
@@ -200,6 +201,7 @@ async function seedTwoVersions(
   v2: VersionSpec,
 ): Promise<void> {
   const db = getDb();
+  await ensureDefaultWorkspace();
   const v2Content = aiContent(v2);
   await db.insert(problems).values({
     id: problemId,

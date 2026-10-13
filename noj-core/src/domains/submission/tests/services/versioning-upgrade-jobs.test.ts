@@ -22,6 +22,8 @@ import {
   getUpgradeJobForActor,
 } from "../../services/versioning/upgrade-jobs.ts";
 import { insertContestProblems } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 
 const now = new Date().toISOString();
 
@@ -37,6 +39,8 @@ for (const id of ["up-user-a", "up-user-b"]) {
 }
 
 async function seedProblem(problemId: string, number: number): Promise<void> {
+  await authorizeLegacyJobActorForTest("up-user-a");
+  await authorizeLegacyJobActorForTest("up-user-b");
   const db = getDb();
   await db.insert(problems).values({
     id: problemId,
@@ -144,6 +148,8 @@ Deno.test("upgrade: source_contest 使用竞赛固定作答版本", async () => 
   await seedProblem("up-p3", 995003);
   await db.insert(contests).values({
     id: "up-c3",
+    domain_id: DEFAULT_DOMAIN_ID,
+    created_by: "up-user-a",
     public_id: "ct-up3",
     title: "c",
     start_time: "2026-01-01T00:00:00.000Z",
@@ -183,6 +189,21 @@ Deno.test("upgrade: source_contest 使用竞赛固定作答版本", async () => 
 
   // 竞赛上下文 → 必须先固定最新版 v2，并要求 v2 == 竞赛固定版 v1；
   // 两者不一致 → 条目 skipped + CONTEST_VERSION_MISMATCH（不落错版本，也不改练习）
+  await db.update(contests).set({ created_by: "up-user-b" }).where(
+    eq(contests.id, "up-c3"),
+  );
+  await assertRejects(
+    () =>
+      acceptUpgradeJob("up-user-a", {
+        submissions: [{ kind: "submission", id: "up-s-contest" }],
+        context: "source_contest",
+      }, "up-non-organizer"),
+    Error,
+    "仅比赛组织者可以操作",
+  );
+  await db.update(contests).set({ created_by: "up-user-a" }).where(
+    eq(contests.id, "up-c3"),
+  );
   const contest = await acceptUpgradeJob(
     "up-user-a",
     {
@@ -214,6 +235,8 @@ Deno.test("upgrade: 竞赛固定版本与最新版不同 → source_contest 拒�
   await seedProblem("up-p4", 995004);
   await db.insert(contests).values({
     id: "up-c4",
+    domain_id: DEFAULT_DOMAIN_ID,
+    created_by: "up-user-a",
     public_id: "ct-up4",
     title: "c",
     start_time: "2026-01-01T00:00:00.000Z",
@@ -323,6 +346,8 @@ Deno.test("upgrade: 客观题竞赛提交可升级为练习（新提交仍是练
   );
   await db.insert(contests).values({
     id: "up-c7",
+    domain_id: DEFAULT_DOMAIN_ID,
+    created_by: "up-user-a",
     public_id: "ct-up7",
     title: "c",
     start_time: "2026-01-01T00:00:00.000Z",

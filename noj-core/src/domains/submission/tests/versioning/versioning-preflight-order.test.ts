@@ -1,3 +1,4 @@
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 批任务"预检先于创建尝试"的回归（复审问题 7，P2）与升级额度调用点（#9）。
  *
@@ -26,7 +27,7 @@ import { setStorageProviderForTest } from "../../../system/services/storage/fact
 import { buildStorageUrl } from "../../../system/services/storage/types.ts";
 import { claimJobItems } from "../../services/versioning/job-worker.ts";
 import { dispatchJobItem } from "../../services/versioning/dispatch-job-item.ts";
-import { acceptRejudgeJob } from "../../services/versioning/rejudge-jobs.ts";
+import { acceptLegacyRejudgeJobForTest as acceptRejudgeJob } from "../_versioning-fixtures.ts";
 import {
   getRedis,
   resetRedisForTest,
@@ -97,6 +98,7 @@ async function makeUser(tag: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await authorizeLegacyJobActorForTest(id);
   return id;
 }
 

@@ -3,36 +3,10 @@ import { oiVerdict, projectMeteringDetails } from "./oi-details.ts";
 import { prepareEducationSubmissionDeletion } from "../../../education/index.ts";
 import { projectContestSubmissionReads } from "./contest-read-projection.ts";
 /**
- * Submissions CRUD（PR-3 拆分）。
- *
- * 包含：
- * - listSubmissions（分页 + 筛选 + 队列位置查询）
- * - createSubmission（创建提交并推送到 MQ）
- * - getSubmission（详情，按权限裁剪 code/output/details）
- * - deleteSubmission
- *
- * 重测相关（rejudgeSubmission / rejudgeProblemSubmissions）在
- * submissions-rejudge.ts；评测结果写回（saveEvaluationResult / updateSubmissionStatus）
- * 在 submissions-result.ts。
- *
- * ## 关于本文件中的 `as unknown as ReturnType<typeof eq>` 模式
- *
- * PR-5 评审指出这些 cast 模式（line 107, 114, 126 等）属于类型边界合理使用，
- * 不抽取为 `unwrapRows` helper。原因：
- *
- * 1. `unwrapRows` 处理的是 `db.execute()` 的"返回值"，即 `T[] | { rows: T[] }`
- *    这种**整张表**的形态
- * 2. 本文件中的 `or(...)` / `ilike(...)` 是**单条 SQL 片段**，返回值是
- *    `SQL | SQL<unknown>`，与 unwrapRows 的契约不匹配
- * 3. 强行统一会让类型推导从 SQL 条件表达式退化为 `SQL`，丢失 schema 类型信息
- *
- * 真正的统一方案需 Drizzle 官方提供 `SQL<T>` 与 `SQL` 的统一类型，
- * 目前没有。如未来支持，迁移路径：把所有 `as unknown as ReturnType<typeof eq>`
- * 替换为直接的 `SQL<boolean>` 注解。
- *
- * 风险：每个 `as unknown as` 都是一个潜在的运行时类型漂移点。当前文件所有
- * 此类 cast 都对应 Drizzle 在 LEFT JOIN 条件下 `or`/`ilike` 返回的
- * `SQL<unknown>`，与等价的 `eq()` 返回 `SQL<boolean>` 兼容。
+ * 提交列表、创建、详情及删除。
+ * 重测入口在 submissions-rejudge.ts，评测结果写入在 submissions-result.ts。
+ * Drizzle LEFT JOIN 的 or/ilike 条件返回 SQL<unknown>；局部条件转换为 eq 的
+ * SQL 类型，仅用于统一条件数组，不涉及查询结果行的 unwrapRows。
  */
 
 import { and, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm";
@@ -58,6 +32,7 @@ import {
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
 import { getDb } from "./../../../../shared/db/connection.ts";
+import { consumeDomainSubmissionQuota } from "../../../workspace/index.ts";
 import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import { checkPermission } from "./../../../identity/index.ts";
 import {
@@ -264,11 +239,15 @@ export async function listSubmissions(
   if (validOnly) conditions.push(eq(submissions.is_valid, true));
   if (acceptedOnly) conditions.push(eq(submissions.is_accepted, true));
   if (upgradable) {
-    // 可升级 = 题目已发布版本，且本提交不是针对最新版提交的（`IS DISTINCT FROM`
-    // 让"未知历史版本"也进入候选，其升级由任务条目按 `LEGACY_VERSION_UNKNOWN` 处理）
+    // 作答升级跟随使用域绑定；exact(X) 的当前作答版本不随源域发布新版变化。
+    const answerVersion =
+      sql`coalesce((SELECT CASE WHEN binding.effective_version_mode='exact'
+      THEN binding.required_version_id ELSE ${problems.latest_version_id} END
+      FROM domain_problem_bindings binding WHERE binding.id=${submissions.domain_problem_binding_id}
+      AND binding.domain_id=coalesce(${submissions.domain_id},${DEFAULT_DOMAIN_ID})),${problems.latest_version_id})`;
     conditions.push(
-      sql`${problems.latest_version_id} IS NOT NULL
-        AND ${submissions.submitted_version_id} IS DISTINCT FROM ${problems.latest_version_id}` as unknown as ReturnType<
+      sql`${answerVersion} IS NOT NULL
+        AND ${submissions.submitted_version_id} IS DISTINCT FROM ${answerVersion}` as unknown as ReturnType<
         typeof eq
       >,
     );
@@ -380,7 +359,7 @@ export async function listSubmissions(
   const hasInProgress = rows.some((r) => !r.result_status);
   let pendingPosMap: Map<string, number> | null = null;
   let queueLength: number | null = null;
-  if (hasInProgress) {
+  if (hasInProgress && params.platformAdmin) {
     try {
       const snapshot = await getPendingQueueSnapshot();
       const pendingIds = snapshot.ids;
@@ -551,6 +530,11 @@ export async function createSubmission(
   const attemptId = crypto.randomUUID();
   const publicId = generatePublicId("sub");
   const now = new Date().toISOString();
+  await consumeDomainSubmissionQuota(
+    domainExecution?.domain.id ?? DEFAULT_DOMAIN_ID,
+    userId,
+    id,
+  );
 
   if (versionResolution.kind !== "known") {
     throw new BadRequestError("必须指定已发布版本");
@@ -920,7 +904,10 @@ export async function getSubmission(
       : policyRow?.required_version_id,
   ) ?? { mode: "any" };
   const isSubmittedVersionLatest = !!row.submitted_version_id &&
-    row.submitted_version_id === policyRow?.latest_version_id;
+    row.submitted_version_id ===
+      (row.domain_problem_binding_id && effectiveVersionPolicy.mode === "exact"
+        ? effectiveVersionPolicy.version_id
+        : policyRow?.latest_version_id);
 
   // 全部执行历史（含 queued/judging/superseded 与平台错误，tracking #53）。
   // 只投影非敏感字段：output/details 仍只经 `result` 返回并按权限裁剪，
@@ -1066,6 +1053,11 @@ export async function getSubmission(
     isAdmin ? "admin" : viewerRole ?? undefined,
     domainAccess?.domainId,
   );
+  const platformAdmin = domainAccess
+    ? domainAccess.platformAdmin
+    : c
+    ? await checkPermission(c, "admin:full_access")
+    : viewerRole === "admin";
 
   const response: SubmissionDetail = {
     id: row.id,
@@ -1086,8 +1078,8 @@ export async function getSubmission(
     status: row.status,
     created_at: row.created_at,
     result,
-    queue_position: queueStatus?.queue_position ?? null,
-    queue_length: queueStatus?.queue_length ?? null,
+    queue_position: platformAdmin ? queueStatus?.queue_position ?? null : null,
+    queue_length: platformAdmin ? queueStatus?.queue_length ?? null : null,
     judge_started_at: queueStatus?.judge_started_at ?? row.judge_started_at ??
       null,
     judge_finished_at: queueStatus?.judge_finished_at ??
@@ -1106,11 +1098,6 @@ export async function getSubmission(
     effective_attempt_id: effectiveAttemptId,
     accepted_attempt_id: acceptedAttemptId,
   };
-  const platformAdmin = domainAccess
-    ? domainAccess.platformAdmin
-    : c
-    ? await checkPermission(c, "admin:full_access")
-    : viewerRole === "admin";
   return (await projectContestSubmissionReads(
     [response],
     viewerId ?? null,

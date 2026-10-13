@@ -19,6 +19,8 @@ import {
   resolveDefaultExecutionContexts,
 } from "../../../catalog/index.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
+import { DEFAULT_DOMAIN_SLUG } from "../../../workspace/index.ts";
+import { loadDomainContest } from "../../../contest/index.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
@@ -304,6 +306,18 @@ export async function acceptUpgradeJob(
           "客观题竞赛仅允许一次提交，请使用练习升级或管理员重测",
           409,
           "OBJECTIVE_CONTEST_UPGRADE_FORBIDDEN",
+        );
+      }
+      if (context === "source_contest" && source.contest_id) {
+        await loadDomainContest(
+          DEFAULT_DOMAIN_SLUG,
+          source.contest_id,
+          actorId,
+          {
+            executor: tx,
+            write: true,
+            manage: true,
+          },
         );
       }
       if (source.active_attempt_id) {

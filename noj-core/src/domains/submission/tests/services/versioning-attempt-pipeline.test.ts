@@ -14,6 +14,7 @@ import {
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
+import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 import {
   evaluationAttempts,
   problems,
@@ -31,6 +32,7 @@ import {
 const now = new Date().toISOString();
 
 async function seedProblem(problemId: string, number: number): Promise<void> {
+  await ensureDefaultWorkspace();
   const db = getDb();
   await db.insert(problems).values({
     id: problemId,

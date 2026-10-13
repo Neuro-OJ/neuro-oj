@@ -24,6 +24,52 @@ import { fixture, withQueue } from "../_domain-execution-fixture.ts";
 import { saveV2ResultForTest } from "../_versioning-fixtures.ts";
 
 Deno.test({
+  name: "域本人读取: 私有域排队活动不进入公开域提交长度与排位",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const f = await fixture();
+    const invitation = await createDomainInvitation(
+      f.source.slug,
+      f.owner,
+      `${f.student}@example.com`,
+    );
+    await consumeDomainInvitation(invitation.token, f.student);
+    await withQueue(async () => {
+      const own = await createDomainSubmission(
+        f.source.slug,
+        "1001",
+        f.student,
+        {
+          language: "python3",
+          code: "public",
+          version_id: f.v2,
+        },
+      );
+      await createDomainSubmission(f.a.slug, f.ref, f.student, {
+        language: "python3",
+        code: "private",
+        version_id: f.v2,
+      });
+      const listed = await listDomainSubmissions(f.source.slug, f.student, {
+        page: 1,
+        perPage: 20,
+      });
+      assertEquals(listed.total, 1);
+      assertEquals(listed.data[0].queue_length, null);
+      assertEquals(listed.data[0].queue_position, null);
+      const detail = await getDomainSubmission(
+        f.source.slug,
+        own.id,
+        f.student,
+      );
+      assertEquals(detail.queue_length, null);
+      assertEquals(detail.queue_position, null);
+    });
+  },
+});
+
+Deno.test({
   name: "域提交读取：错误域与同学被拒，撤销保留原代码成绩但删除源输出",
   sanitizeResources: false,
   sanitizeOps: false,

@@ -41,6 +41,8 @@ export * from "./services/versioning/job-worker.ts";
 export * from "./services/versioning/dispatch-job-item.ts";
 export * from "./services/versioning/upgrade-jobs.ts";
 export * from "./services/workspace-backfill.ts";
+export * from "./services/own-submission-history.ts";
+export * from "./services/versioning/domain-jobs.ts";
 export {
   OI_VERDICTS,
   type OiVerdict,

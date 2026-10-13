@@ -1,3 +1,4 @@
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 锁内复查分类回归（复审问题 10，P2）——PGlite 可跑部分。
  *
@@ -21,7 +22,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { claimJobItems } from "../../services/versioning/job-worker.ts";
 import { dispatchJobItem } from "../../services/versioning/dispatch-job-item.ts";
-import { acceptRejudgeJob } from "../../services/versioning/rejudge-jobs.ts";
+import { acceptLegacyRejudgeJobForTest as acceptRejudgeJob } from "../_versioning-fixtures.ts";
 import { applyAttemptResult } from "../../services/versioning/result-write.ts";
 import {
   getRedis,
@@ -92,6 +93,7 @@ async function makeUser(tag: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await authorizeLegacyJobActorForTest(id);
   return id;
 }
 

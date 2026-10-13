@@ -10,6 +10,7 @@
  *   即 `queued`/`preparing` 阶段尚未创建尝试的批任务也进入结算门禁。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
@@ -135,6 +136,7 @@ async function seedProblem(problemId: string): Promise<string> {
 }
 
 async function seedJob(jobId: string): Promise<void> {
+  await authorizeLegacyJobActorForTest("oi-user", "admin");
   await db.insert(submissionJobs).values({
     id: jobId,
     kind: "rejudge",

@@ -37,7 +37,10 @@ import {
   dispatchJobItem,
   type DispatchOutcome,
 } from "../../services/versioning/dispatch-job-item.ts";
-import { acceptRejudgeJob } from "../../services/versioning/rejudge-jobs.ts";
+import {
+  acceptLegacyRejudgeJobForTest as acceptRejudgeJob,
+  authorizeLegacyJobActorForTest,
+} from "../_versioning-fixtures.ts";
 import { acceptUpgradeJob } from "../../services/versioning/upgrade-jobs.ts";
 import {
   setContestProblemEffectiveVersionPolicy,
@@ -124,6 +127,7 @@ async function seedFixture(tag: string): Promise<Fixture> {
     created_at: now,
     updated_at: now,
   }).onConflictDoNothing();
+  await authorizeLegacyJobActorForTest(userId);
   await db.insert(problems).values({
     id: problemId,
     title: `屏障测试题 ${tag}`,
@@ -216,7 +220,7 @@ async function cleanup(fixture: Fixture): Promise<void> {
     inArray(problemVersions.problem_id, [fixture.problemId]),
   );
   await db.delete(problems).where(eq(problems.id, fixture.problemId));
-  await db.delete(users).where(eq(users.id, fixture.userId));
+  // 域身份是保留历史，不物理删除账号；由独立测试 schema 的生命周期管理。
 }
 
 /**
@@ -435,6 +439,7 @@ async function seedObjectiveFixture(
     created_at: now,
     updated_at: now,
   }).onConflictDoNothing();
+  await authorizeLegacyJobActorForTest(userId);
   await db.insert(problems).values({
     id: problemId,
     title: `客观题屏障测试 ${tag}`,
@@ -578,7 +583,7 @@ async function cleanupObjective(fixture: ObjectiveFixture): Promise<void> {
     eq(problemVersions.id, fixture.versionId),
   );
   await db.delete(problems).where(eq(problems.id, fixture.problemId));
-  await db.delete(users).where(eq(users.id, fixture.userId));
+  // 保留已加入 main 的账号身份，不能通过删除用户破坏域成员历史。
 }
 
 /**

@@ -1,3 +1,4 @@
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 用户升级的授权与竞赛语义回归（tracking #42、#43）。
  *
@@ -11,6 +12,10 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
+import {
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../../workspace/index.ts";
 import {
   contestParticipants,
   contests,
@@ -141,6 +146,7 @@ async function makeUser(
     await db.insert(userRoles).values({ user_id: id, role_id: roleId })
       .onConflictDoNothing();
   }
+  await authorizeLegacyJobActorForTest(id);
   return id;
 }
 
@@ -348,7 +354,7 @@ Deno.test({
     await assertRejects(
       () => dispatchFirstItem(accepted.job_id, "upgrade"),
       Error,
-      "升级时已无提交权限",
+      "原用户已无题目访问资格",
     );
     // 未创建任何升级副本
     assertEquals(
@@ -371,6 +377,8 @@ Deno.test({
     const contestId = `acc-contest-${ts}`;
     await db.insert(contests).values({
       id: contestId,
+      domain_id: DEFAULT_DOMAIN_ID,
+      created_by: user,
       public_id: `ct-acc-${ts}`,
       title: "c",
       start_time: "2026-01-01T00:00:00.000Z",
@@ -431,6 +439,7 @@ Deno.test({
 });
 
 Deno.test("upgrade#43: 客观题竞赛提交在 source_contest 下不得产生练习副本", async () => {
+  await ensureDefaultWorkspace();
   const user = await makeUser("obj");
   const { problemId, v1, v2 } = await seedProblemWithVersions("obj", {
     contentKind: "objective",
@@ -441,6 +450,8 @@ Deno.test("upgrade#43: 客观题竞赛提交在 source_contest 下不得产生�
   const contestId = `acc-obj-contest-${ts}`;
   await db.insert(contests).values({
     id: contestId,
+    domain_id: DEFAULT_DOMAIN_ID,
+    created_by: user,
     public_id: `ct-acc-obj-${ts}`,
     title: "c",
     start_time: "2026-01-01T00:00:00.000Z",

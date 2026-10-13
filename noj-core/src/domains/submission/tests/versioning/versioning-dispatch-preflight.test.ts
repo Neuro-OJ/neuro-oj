@@ -1,3 +1,4 @@
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 批任务派发前的平台安全预检回归（tracking #33 后半、Handbook §7）。
  *
@@ -20,7 +21,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
 import { resetSetting, updateSetting } from "../../../system/index.ts";
-import { acceptRejudgeJob } from "../../services/versioning/rejudge-jobs.ts";
+import { acceptLegacyRejudgeJobForTest as acceptRejudgeJob } from "../_versioning-fixtures.ts";
 import { dispatchJobItem } from "../../services/versioning/dispatch-job-item.ts";
 import { claimJobItems } from "../../services/versioning/job-worker.ts";
 import {
@@ -95,6 +96,7 @@ async function makeUser(tag: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await authorizeLegacyJobActorForTest(id);
   return id;
 }
 

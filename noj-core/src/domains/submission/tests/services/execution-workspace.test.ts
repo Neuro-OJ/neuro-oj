@@ -2,6 +2,7 @@ import { assertEquals, assertIsError, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
+  domainMemberRoles,
   domainProblemBindings,
   domains,
   objectiveSubmissions,
@@ -15,7 +16,12 @@ import {
   publishProblemVersion,
   saveProblemDraft,
 } from "../../../catalog/index.ts";
-import { createDomain, DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
+import {
+  addDomainMember,
+  createDomain,
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../../workspace/index.ts";
 import { updateSetting } from "../../../system/index.ts";
 import { submitObjectivePaper } from "../../../objective/index.ts";
 import { backfillExecutionWorkspaces } from "../../index.ts";
@@ -31,6 +37,12 @@ async function fixture() {
     email: `${user}@example.com`,
     created_at: now,
     updated_at: now,
+  });
+  await ensureDefaultWorkspace();
+  const member = await addDomainMember(db, DEFAULT_DOMAIN_ID, user);
+  await db.insert(domainMemberRoles).values({
+    membership_id: member.id,
+    role: "editor",
   });
   const first = await createProblem(
     {

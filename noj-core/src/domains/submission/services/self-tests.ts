@@ -16,7 +16,10 @@ import {
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { checkPermission } from "./../../identity/index.ts";
-import { DEFAULT_DOMAIN_ID } from "../../workspace/index.ts";
+import {
+  consumeDomainSubmissionQuota,
+  DEFAULT_DOMAIN_ID,
+} from "../../workspace/index.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
 import { isRetryableJudgeQueueError, pushJudgeTask } from "../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
@@ -245,6 +248,11 @@ export async function createSelfTest(
 
   const id = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
   const now = new Date().toISOString();
+  await consumeDomainSubmissionQuota(
+    domainExecution?.domain.id ?? DEFAULT_DOMAIN_ID,
+    userId,
+    id,
+  );
 
   const cases = input.cases ?? (versionContent.samples ?? []).map((sample) => ({
     id: sample.id,

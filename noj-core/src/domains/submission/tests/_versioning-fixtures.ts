@@ -2,6 +2,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
+  domainMemberRoles,
   evaluationAttempts,
   selfTests,
   submissions,
@@ -9,6 +10,42 @@ import {
 import { publishBaselineVersionForTest } from "../../../../tests/helper.ts";
 import { saveEvaluationResult } from "../services/submissions/submissions-result.ts";
 import type { JudgeResult } from "../types/index.ts";
+import {
+  addDomainMember,
+  DEFAULT_DOMAIN_ID,
+  ensureDefaultWorkspace,
+} from "../../workspace/index.ts";
+import type { DomainRole } from "../../../shared/workspace/types.ts";
+import { acceptRejudgeJob } from "../services/versioning/rejudge-jobs.ts";
+
+/** 旧 main 服务夹具显式提供域角色，生产代码不继承平台旧业务权限。 */
+export async function authorizeLegacyJobActorForTest(
+  userId = "0",
+  role: DomainRole = "editor",
+) {
+  const db = getDb();
+  await ensureDefaultWorkspace();
+  const administrator = await addDomainMember(db, DEFAULT_DOMAIN_ID, "0", true);
+  await db.insert(domainMemberRoles).values({
+    membership_id: administrator.id,
+    role: "admin",
+  }).onConflictDoNothing();
+  if (userId !== "0") {
+    const member = await addDomainMember(db, DEFAULT_DOMAIN_ID, userId, true);
+    await db.insert(domainMemberRoles).values({
+      membership_id: member.id,
+      role,
+    }).onConflictDoNothing();
+  }
+}
+
+/** 重测执行测试为实际操作者建立域管理角色，不用于权限撤销测试。 */
+export async function acceptLegacyRejudgeJobForTest(
+  ...args: Parameters<typeof acceptRejudgeJob>
+) {
+  await authorizeLegacyJobActorForTest(args[0], "admin");
+  return await acceptRejudgeJob(...args);
+}
 
 /** 模拟生产事务中创建尝试并绑定提交的动作；不用于历史未知版本或负向协议用例。 */
 export async function seedActiveAttemptForTest(

@@ -39,6 +39,7 @@ import {
   lockProjectionHosts,
 } from "./projection.ts";
 import {
+  consumeDomainUpgradeQuota,
   consumeUpgradeQuota,
   defaultUpgradeQuotaConsumer,
   ensureJobAttempt,
@@ -47,6 +48,7 @@ import {
   UpgradeQuotaDeferredError,
 } from "./job-attempt.ts";
 import { assertUpgradeAccess } from "./upgrade-access.ts";
+import { assertDomainJobExecution } from "./domain-job-access.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
@@ -266,6 +268,9 @@ async function dispatchClaimedJobItem(
     return "skipped";
   }
 
+  if (!item.attempt_id) {
+    await assertDomainJobExecution(item, source, jobKind);
+  }
   if (jobKind === "upgrade" && !item.attempt_id) {
     await assertUpgradeAccess(item, source, upgradeContext);
   }
@@ -357,6 +362,9 @@ async function dispatchClaimedJobItem(
     try {
       // 重判与源行锁复查放在同一事务：锁内发现源已删除/正在评测 → skipped（#8）
       await getDb().transaction(async (tx) => {
+        if (!item.attempt_id) {
+          await assertDomainJobExecution(item, source, "rejudge", tx);
+        }
         // Handbook §5.1：先锁题库与竞赛宿主，再锁客观题提交行。
         // 与策略切换重算保持相同的 host → source 顺序，避免双方互等。
         await lockProjectionHosts(tx, {
@@ -753,6 +761,9 @@ async function dispatchObjectiveUpgrade(input: {
   );
   try {
     await db.transaction(async (tx) => {
+      if (!item.attempt_id) {
+        await assertDomainJobExecution(item, source, "upgrade", tx);
+      }
       // Handbook §5.1：先锁来源题库与竞赛，再锁客观题源行；随后才能创建副本、
       // 分配 revision 并创建新尝试。策略重算使用同一宿主 → 来源提交顺序。
       await lockProjectionHosts(tx, {
@@ -764,6 +775,12 @@ async function dispatchObjectiveUpgrade(input: {
       // 锁内复查源：预检期间被删除/换活动尝试 → skipped（#8），且不留副本
       await assertObjectiveSourceDispatchable(tx, source.id);
       const newId = crypto.randomUUID();
+      await consumeDomainUpgradeQuota(
+        source.domain_id ?? DEFAULT_DOMAIN_ID,
+        source.user_id,
+        item.id,
+        tx,
+      );
       await tx.insert(objectiveSubmissions).values({
         domain_id: item.domain_id ?? source.domain_id ?? null,
         domain_problem_binding_id: item.domain_problem_binding_id ??

@@ -13,6 +13,7 @@ import {
   updateSubmissionStatus,
 } from "../../index.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 
 import {
   auditLogs,
@@ -56,6 +57,7 @@ const TEST_NUMBER = 50000 + (ts & 0x7fff);
 
 // 模块级 setup：事务外初始化共享测试题目和用户
 await resetDbForTest();
+await ensureDefaultWorkspace();
 const db = getDb();
 const now = new Date().toISOString();
 await db.insert(users).values({
@@ -339,6 +341,9 @@ Deno.test({
         contest_id: contestId,
       }, contestId);
       ids.push(contestSub.id);
+      await db.update(contests).set({
+        end_time: new Date(Date.now() - 30_000).toISOString(),
+      }).where(eq(contests.id, contestId));
 
       const normalSub = await createSubmission(TEST_USER_ID, {
         problem_id: TEST_PROBLEM_ID,

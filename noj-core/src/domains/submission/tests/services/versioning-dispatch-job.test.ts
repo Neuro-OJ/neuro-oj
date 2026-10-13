@@ -1,3 +1,4 @@
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 批量任务条目派发测试（Handbook §5.7、边界表）。
  *
@@ -20,7 +21,7 @@ import {
   submissionVersionResults,
   users,
 } from "../../../../shared/db/schema.ts";
-import { acceptRejudgeJob } from "../../services/versioning/rejudge-jobs.ts";
+import { acceptLegacyRejudgeJobForTest as acceptRejudgeJob } from "../_versioning-fixtures.ts";
 import { claimJobItems } from "../../services/versioning/job-worker.ts";
 import { dispatchJobItem } from "../../services/versioning/dispatch-job-item.ts";
 import {
@@ -73,6 +74,7 @@ async function makeUser(tag: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await authorizeLegacyJobActorForTest(id);
   return id;
 }
 

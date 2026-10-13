@@ -1,3 +1,4 @@
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 /**
  * 尝试终态统一吊销 LLM token 的回归（复审问题 3，P1）。
  *
@@ -32,7 +33,7 @@ import {
   scheduleDispatchRetryOrFail,
 } from "../../services/versioning/job-worker.ts";
 import { dispatchJobItem } from "../../services/versioning/dispatch-job-item.ts";
-import { acceptRejudgeJob } from "../../services/versioning/rejudge-jobs.ts";
+import { acceptLegacyRejudgeJobForTest as acceptRejudgeJob } from "../_versioning-fixtures.ts";
 import { recoverPendingSubmissions } from "../../mq/sweeper.ts";
 import {
   getRedis,
@@ -108,6 +109,7 @@ async function makeUser(tag: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await authorizeLegacyJobActorForTest(id);
   return id;
 }
 

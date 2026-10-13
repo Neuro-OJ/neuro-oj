@@ -8,6 +8,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
+import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 import {
   contests,
   problems,
@@ -29,6 +30,7 @@ async function seedProblem(
   number: number,
   options: { publish?: boolean; judgeType?: "dual" | "oi" } = {},
 ): Promise<void> {
+  await ensureDefaultWorkspace();
   await getDb().insert(problems).values({
     id,
     title: id,

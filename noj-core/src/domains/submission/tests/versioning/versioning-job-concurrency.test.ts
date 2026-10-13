@@ -1,3 +1,7 @@
+import {
+  acceptLegacyRejudgeJobForTest as acceptRejudgeJob,
+  authorizeLegacyJobActorForTest,
+} from "../_versioning-fixtures.ts";
 /**
  * 批任务并发与租约回归（tracking #34、#36、#37）。
  *
@@ -39,10 +43,7 @@ import {
   startJobItemLeaseHeartbeat,
 } from "../../services/versioning/job-worker.ts";
 import { dispatchJobItem } from "../../services/versioning/dispatch-job-item.ts";
-import {
-  acceptRejudgeJob,
-  refreshJobStatus,
-} from "../../services/versioning/rejudge-jobs.ts";
+import { refreshJobStatus } from "../../services/versioning/rejudge-jobs.ts";
 import { acceptUpgradeJob } from "../../services/versioning/upgrade-jobs.ts";
 import { JUDGE_QUEUE_CAPACITY } from "../../mq/producer.ts";
 import {
@@ -135,6 +136,7 @@ async function makeUser(tag: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await authorizeLegacyJobActorForTest(id);
   return id;
 }
 
@@ -876,8 +878,6 @@ Deno.test({
       );
       await db.delete(problems).where(eq(problems.id, problemId));
     }
-    for (const userId of createdFixtures.userIds) {
-      await db.delete(users).where(eq(users.id, userId));
-    }
+    // 账号由独立测试 schema 的生命周期管理，保留已加入 main 的身份与历史外键。
   },
 });

@@ -3,6 +3,7 @@ import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { ensureDefaultWorkspace } from "../../../workspace/index.ts";
 
 import {
   contests,
@@ -98,6 +99,7 @@ const runtimeConfig = {
 
 // 模块级 setup：事务外初始化共享测试数据
 await resetDbForTest();
+await ensureDefaultWorkspace();
 const db = getDb();
 await db.insert(users).values({
   id: USER_ID,

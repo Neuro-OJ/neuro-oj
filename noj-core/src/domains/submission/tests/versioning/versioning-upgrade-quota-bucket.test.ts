@@ -1,3 +1,5 @@
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
 /**
  * 升级额度**桶选择**的回归（第三轮复审问题 6，P2）。
  *
@@ -132,6 +134,7 @@ async function makeUser(tag: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await authorizeLegacyJobActorForTest(id);
   return id;
 }
 
@@ -230,6 +233,8 @@ async function seedContestFixture(
   const contestId = `qb-contest-${ts}`;
   await db.insert(contests).values({
     id: contestId,
+    domain_id: DEFAULT_DOMAIN_ID,
+    created_by: userId,
     public_id: `qb-ct-${ts}`,
     title: "c",
     start_time: "2026-01-01T00:00:00.000Z",

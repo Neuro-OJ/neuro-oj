@@ -1,3 +1,5 @@
+import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
 /**
  * 升级副本的统计 revision 与额度回归（复审问题 6、9，P2）。
  *
@@ -100,6 +102,7 @@ async function makeUser(tag: string): Promise<string> {
     created_at: now,
     updated_at: now,
   });
+  await authorizeLegacyJobActorForTest(id);
   return id;
 }
 
@@ -320,6 +323,8 @@ Deno.test({
       const contestId = `uq-contest-${ts}`;
       await db.insert(contests).values({
         id: contestId,
+        domain_id: DEFAULT_DOMAIN_ID,
+        created_by: actor,
         public_id: `uq-ct-${ts}`,
         title: "c",
         start_time: "2026-01-01T00:00:00.000Z",

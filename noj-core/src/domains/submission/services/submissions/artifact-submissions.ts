@@ -54,7 +54,15 @@ import {
   lockDomainExecution,
   resolveDomainExecution,
 } from "../workspace-execution.ts";
-import { DEFAULT_DOMAIN_ID } from "../../../workspace/index.ts";
+import {
+  attachDomainStorageUpload,
+  consumeDomainSubmissionQuota,
+  DEFAULT_DOMAIN_ID,
+  growDomainStorageUpload,
+  releaseDomainStorageUpload,
+  reserveDomainStorageUpload,
+  settleDomainStorageUpload,
+} from "../../../workspace/index.ts";
 import { isOiRuntimeConfig } from "./../../../catalog/index.ts";
 import type { SubmissionResponse } from "./submissions-types.ts";
 import { createAttempt } from "../versioning/attempts.ts";
@@ -123,11 +131,65 @@ async function peekFirstChunk(
         controller.enqueue(r.value);
       }
     },
-    cancel() {
+    async cancel(reason) {
+      await reader.cancel(reason);
       reader.releaseLock();
     },
   });
   return { first, rest };
+}
+
+/** 每批最多 1MiB，写入存储前原子预留该批实际字节，失败由调用方释放预约。 */
+function meteredArtifactStream(
+  source: ReadableStream<Uint8Array>,
+  domainId: string,
+  reservationId: string,
+): ReadableStream<Uint8Array> {
+  const reader = source.getReader();
+  let pending: Uint8Array | undefined;
+  let ended = false;
+  const batchSize = 1024 * 1024;
+  return new ReadableStream({
+    async pull(controller) {
+      try {
+        const buffer = new Uint8Array(batchSize);
+        let size = 0;
+        while (size < batchSize && !ended) {
+          if (!pending?.length) {
+            const next = await reader.read();
+            if (next.done) {
+              ended = true;
+              break;
+            }
+            pending = next.value;
+          }
+          const take = Math.min(pending.length, batchSize - size);
+          buffer.set(pending.subarray(0, take), size);
+          pending = pending.subarray(take);
+          size += take;
+        }
+        if (!size) {
+          controller.close();
+          reader.releaseLock();
+          return;
+        }
+        const batch = buffer.subarray(0, size);
+        await growDomainStorageUpload(
+          domainId,
+          reservationId,
+          batch.byteLength,
+        );
+        controller.enqueue(batch);
+      } catch (error) {
+        await reader.cancel(error);
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+      reader.releaseLock();
+    },
+  });
 }
 
 /**
@@ -284,16 +346,27 @@ export async function createArtifactSubmission(
 
   // 流式上传到存储
   const storage = await getStorageProvider();
+  const id = crypto.randomUUID();
+  const uploadDomainId = domainExecution?.domain.id ??
+    (await resolveDefaultExecutionContext(input.problem_id, userId, db))
+      .domain_id;
+  await consumeDomainSubmissionQuota(uploadDomainId, userId, id);
+  const reservation = await reserveDomainStorageUpload({
+    domainId: uploadDomainId,
+    bytes: 0,
+  });
+  const reservationId = reservation.id;
   const storageKey = `artifacts/${crypto.randomUUID()}.zip`;
   let artifactStorageUrl: string;
   try {
     artifactStorageUrl = await storage.putStream(
       storageKey,
-      rest,
+      meteredArtifactStream(rest, uploadDomainId, reservationId),
       "application/zip",
       maxSizeBytes,
     );
   } catch (err) {
+    await releaseDomainStorageUpload(uploadDomainId, reservationId);
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("超过大小限制")) {
       throw new BadRequestError(
@@ -303,7 +376,6 @@ export async function createArtifactSubmission(
     throw err;
   }
 
-  const id = crypto.randomUUID();
   // 尝试 ID 先于任务构造确定：任务 `run_id` 与之一致（Handbook §5.5）
   const attemptId = crypto.randomUUID();
   const publicId = generatePublicId("sub");
@@ -312,6 +384,19 @@ export async function createArtifactSubmission(
   let task: JudgeTask;
 
   try {
+    // 独立登记事务保留物理上传定位；后续业务事务失败仍可被恢复任务盘点。
+    await db.transaction(async (tx) => {
+      await registerStreamedStorageObject(
+        { storageUrl: artifactStorageUrl },
+        tx,
+      );
+      await attachDomainStorageUpload(
+        uploadDomainId,
+        reservationId,
+        artifactStorageUrl,
+        tx,
+      );
+    });
     let llmTask: JudgeTaskLlm | undefined;
     const llmConfig = content.llm_config;
     if (llmConfig) {
@@ -397,6 +482,12 @@ export async function createArtifactSubmission(
           storageUrl: artifactStorageUrl,
         }, tx);
         await assertStorageObjectBindable(artifactStorageUrl, tx);
+        await settleDomainStorageUpload(
+          uploadDomainId,
+          reservationId,
+          artifactStorageUrl,
+          tx,
+        );
         await tx.insert(submissions).values({
           ...workspace,
           id,
@@ -462,6 +553,7 @@ export async function createArtifactSubmission(
   } catch (err) {
     if (!submissionCommitted) {
       await compensateUploadedObject({ storageUrl: artifactStorageUrl })
+        .then(() => releaseDomainStorageUpload(uploadDomainId, reservationId))
         .catch((cleanupError) => {
           logger.error("artifact 上传后处理失败，补偿清理失败", {
             storage_url: artifactStorageUrl,

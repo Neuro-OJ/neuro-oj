@@ -399,7 +399,7 @@ async function assertSpecifiedVersionsUsable(
 }
 
 /** 依据目标模式把解析后的提交集合变成条目计划。 */
-async function planItems(
+export async function planItems(
   members: Array<{
     kind: JobSourceKind;
     id: string;
